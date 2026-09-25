@@ -285,16 +285,28 @@ def _vol_clause(last_vol: float, zone_vol: float) -> str:
     return "今天成交量對比前次大量那天還沒回到那樣"
 
 
+def _vol_heat_tail(vol_c: str, heat_c: str, heat: str) -> str:
+    if vol_c and heat_c and heat in ("up", "peak") and "量縮" in vol_c:
+        return f"{vol_c}，但{heat_c}"
+    if vol_c and heat_c and heat in ("down", "floor") and "仍真" in vol_c:
+        return f"{vol_c}，但{heat_c}"
+    if vol_c and heat_c and heat in ("down", "floor") and "量縮" in vol_c:
+        return f"{vol_c}，溫度也在退"
+    bits = [x for x in (vol_c, heat_c) if x]
+    return "，".join(bits)
+
+
+def _closes_rising(closes: List[float]) -> bool:
+    return len(closes) >= 2 and all(closes[i] > closes[i - 1] for i in range(1, len(closes)))
+
+
 def vol_zone_position_line(
     zone: Optional[Dict[str, Any]],
     last: Optional[Dict[str, Any]],
     card: Optional[Dict[str, Any]] = None,
     bars: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """收盤後口吻：第幾天站上撐、收盤有沒有一路墊高、收有沒有過壓、量、溫度。
-
-    不寫抱、不寫賣、不改如何賣。看起來不錯只在帶內且收盤攀高時出現，不是買訊。
-    """
+    """依這檔在帶裡的現況換句，不是同一套填空。不寫抱、不寫賣、不改如何賣。"""
     if not zone or not last:
         return ""
     hi = _px(zone.get("high"))
@@ -312,50 +324,68 @@ def vol_zone_position_line(
     heat = _heat_key(card)
     heat_c = _HEAT_CLAUSE.get(heat, "")
     vol_c = _vol_clause(_px(last.get("volume")), _px(zone.get("volume")))
+    tail = _vol_heat_tail(vol_c, heat_c, heat)
+    last_hi = _px(last.get("high") or cl)
+    test_press = last_hi >= hi * _PRESS_TOUCH and cl < hi
+    near_press = cl < hi and hi > 0 and (hi - cl) / hi <= 0.015
 
-    def _tail(vol_first: bool = True) -> str:
-        bits: List[str] = []
-        if vol_c and heat_c and heat in ("up", "peak") and "量縮" in vol_c:
-            bits.append(f"{vol_c}，但{heat_c}")
-        else:
-            if vol_c:
-                bits.append(vol_c)
-            if heat_c:
-                bits.append(heat_c)
-        return "，".join(bits)
+    def _end(body: str, *, nice: bool = False, test: bool = False) -> str:
+        if tail:
+            body = f"{body}，{tail}" if not body.endswith("。") else body[:-1] + f"，{tail}。"
+        if not body.endswith("。"):
+            body += "。"
+        if nice:
+            body += "看起來不錯！"
+        elif test:
+            body += "今天高碰到上緣、收沒過，只是測壓不是站上。"
+        return body
 
     if cl < lo:
-        body = f"收盤跌破撐{lo_s}，不是站上支撐"
-        extra = _tail()
-        if extra:
-            body = f"{body}，{extra}"
-        return body + "。"
+        return _end(f"收盤跌破撐{lo_s}，這根大量區撐先不當還在")
     if cl >= hi:
-        body = f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊"
-        extra = _tail()
-        if extra:
-            body = f"{body}，{extra}"
-        return body + "。"
+        return _end(f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊")
 
     streak = _stand_streak(rows, lo)
     n = len(streak) or 1
     n_zh = _zh_days(n)
-    bits = [f"今天是第{n_zh}天站上支撐"]
     closes = [_px(r.get("close")) for r in streak]
-    rising = n >= 2 and all(closes[i] > closes[i - 1] for i in range(1, len(closes)))
+    rising = _closes_rising(closes)
+    last_down = n >= 2 and closes[-1] < closes[-2]
+    nice = rising and heat in ("up", "peak", "") and not test_press
+
+    if n == 1:
+        if test_press:
+            body = f"今天剛站上支撐，收盤還沒過{hi_s}上緣"
+            return _end(body, test=True)
+        body = f"今天剛站上支撐，收盤仍沒有突破{hi_s}上緣壓力"
+        return _end(body)
+
     if rising:
-        bits.append(f"且{n_zh}天收盤價持續攀高")
-    bits.append(f"收盤仍沒有突破{hi_s}上緣壓力")
-    extra = _tail()
-    if extra:
-        bits.append(extra)
-    text = "，".join(bits) + "。"
-    last_hi = _px(last.get("high") or cl)
-    if rising and heat in ("up", "peak", ""):
-        text += "看起來不錯！"
-    elif last_hi >= hi * _PRESS_TOUCH:
-        text += "高碰到壓、收沒過只是測壓，不是站上。"
-    return text
+        body = (
+            f"今天是第{n_zh}天站上支撐，且{n_zh}天收盤價持續攀高，"
+            f"收盤仍沒有突破{hi_s}上緣壓力"
+        )
+        return _end(body, nice=nice, test=test_press and not nice)
+
+    if last_down:
+        body = (
+            f"今天是第{n_zh}天站上支撐，但今天收盤比昨天低，"
+            f"{n_zh}天收盤價沒有一路攀高，收盤仍沒有突破{hi_s}上緣壓力"
+        )
+        return _end(body, test=test_press)
+
+    if near_press:
+        body = (
+            f"今天是第{n_zh}天站上支撐，收盤靠近{hi_s}上緣但沒過，"
+            f"這{n_zh}天收盤價沒有一路攀高"
+        )
+        return _end(body, test=test_press)
+
+    body = (
+        f"今天是第{n_zh}天站上支撐，但這{n_zh}天收盤價沒有一路攀高，"
+        f"收盤仍沒有突破{hi_s}上緣壓力"
+    )
+    return _end(body, test=test_press)
 
 
 def vol_zone_photo_caption(

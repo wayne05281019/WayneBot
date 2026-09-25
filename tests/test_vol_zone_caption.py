@@ -50,6 +50,7 @@ def test_broke_support_no_nice():
     last = {"high": 194, "low": 188, "close": 190, "volume": 4000}
     line = vol_zone_position_line(_ZONE, last, None, bars=[last])
     assert "收盤跌破撐195.5" in line
+    assert "這根大量區撐先不當還在" in line
     assert "看起來不錯" not in line
 
 
@@ -91,4 +92,47 @@ def test_closes_not_rising_skips_climb_phrase():
     line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
     assert "今天是第三天站上支撐" in line
     assert "收盤價持續攀高" not in line
+    assert "沒有一路攀高" in line
     assert "看起來不錯" not in line
+
+
+def test_first_day_on_support():
+    last = {"high": 200, "low": 196, "close": 198, "volume": 4000}
+    line = vol_zone_position_line(_ZONE, last, _card_heat("升溫"), bars=[last])
+    assert "今天剛站上支撐" in line
+    assert "第三天" not in line
+    assert "看起來不錯" not in line
+
+
+def test_today_close_down_not_climb():
+    bars = [
+        {"high": 208, "low": 196, "close": 203, "volume": 8000},
+        {"high": 209, "low": 198, "close": 206, "volume": 6000},
+        {"high": 207, "low": 197, "close": 201, "volume": 4000},
+    ]
+    line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("降溫"), bars=bars)
+    assert "今天收盤比昨天低" in line
+    assert "看起來不錯" not in line
+
+
+def test_wick_test_press_not_breakout():
+    bars = [
+        {"high": 204, "low": 196, "close": 200, "volume": 5000},
+        {"high": 210, "low": 198, "close": 205, "volume": 4000},
+    ]
+    line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
+    assert "測壓不是站上" in line
+    assert "看起來不錯" not in line
+
+
+def test_rising_with_real_volume():
+    bars = [
+        {"high": 204, "low": 196, "close": 200, "volume": 8000},
+        {"high": 206, "low": 198, "close": 203, "volume": 12000},
+        {"high": 208, "low": 199, "close": 206, "volume": 11000},
+    ]
+    line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
+    assert "收盤價持續攀高" in line
+    assert "仍真" in line
+    assert "看起來不錯！" in line
+    assert "量縮" not in line
