@@ -4,7 +4,6 @@ import os
 import tempfile
 import unittest
 
-import pandas as pd
 import pytest
 
 from config import get_db_path
@@ -37,12 +36,6 @@ class NavChartRenderTests(unittest.TestCase):
         self.assertNotIn("arrow_hw = 0.48", src)
         self.assertIn("dn_pick", src)
         self.assertNotIn("dn_stack.append", src)
-        self.assertIn("_paint_nav_volume_zone", src)
-        self.assertIn("vol_zone_note", src)
-        self.assertIn("zone_hi", src)
-        self.assertIn("測壓", inspect.getsource(__import__("wayne_navigator")._paint_nav_volume_zone))
-        zone_src = inspect.getsource(__import__("wayne_navigator")._paint_nav_volume_zone)
-        self.assertIn("大量區", zone_src)
         db = get_db_path()
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "nav.png")
@@ -50,105 +43,6 @@ class NavChartRenderTests(unittest.TestCase):
             self.assertTrue(path)
             with Image.open(path) as im:
                 self.assertGreaterEqual(im.size[0], 2400)
-
-    def test_nav_volume_zone_picks_max_volume_bar(self):
-        from wayne_navigator import _nav_volume_zone
-
-        rows = []
-        for i in range(12):
-            rows.append(
-                {
-                    "date": f"202609{i+1:02d}",
-                    "open": 100 + i,
-                    "high": 105 + i,
-                    "low": 95 + i,
-                    "close": 102 + i,
-                    "volume": 1000 + i * 10,
-                    "is_halt": False,
-                }
-            )
-        rows[4]["volume"] = 90000
-        rows[4]["high"] = 1530
-        rows[4]["low"] = 1365
-        rows[-1]["close"] = 1495  # 還在 8/6 區內／壓下
-        work = pd.DataFrame(rows)
-        zone = _nav_volume_zone(work, lookback=40)
-        self.assertIsNotNone(zone)
-        self.assertEqual(zone["i"], 4)
-        self.assertEqual(zone["high"], 1530)
-        self.assertEqual(zone["low"], 1365)
-
-    def test_nav_volume_zone_prefers_active_overhead_not_cleared_spike(self):
-        """台燿情境：9/17 量更大但已站上；8/6 壓還在頭上 → 大量區認 8/6。"""
-        from wayne_navigator import _nav_volume_zone
-
-        work = pd.DataFrame(
-            [
-                {
-                    "date": "20260806",
-                    "open": 1405,
-                    "high": 1530,
-                    "low": 1365,
-                    "close": 1530,
-                    "volume": 16305,
-                    "is_halt": False,
-                },
-                {
-                    "date": "20260917",
-                    "open": 1445,
-                    "high": 1460,
-                    "low": 1275,
-                    "close": 1320,
-                    "volume": 21653,
-                    "is_halt": False,
-                },
-                {
-                    "date": "20260924",
-                    "open": 1485,
-                    "high": 1530,
-                    "low": 1475,
-                    "close": 1495,
-                    "volume": 10047,
-                    "is_halt": False,
-                },
-            ]
-        )
-        zone = _nav_volume_zone(work, lookback=40)
-        self.assertEqual(zone["date"], "20260806")
-        self.assertEqual(zone["high"], 1530)
-        self.assertEqual(zone["low"], 1365)
-        self.assertTrue(zone["active"])
-
-    def test_nav_volume_zone_skips_biaoke_overlay_bars(self):
-        from wayne_navigator import _nav_volume_zone
-
-        work = pd.DataFrame(
-            [
-                {
-                    "date": "20260901",
-                    "open": 10,
-                    "high": 12,
-                    "low": 9,
-                    "close": 11,
-                    "volume": 50000,
-                    "is_halt": False,
-                    "source": "biaoke_stock_day",
-                },
-                {
-                    "date": "20260902",
-                    "open": 11,
-                    "high": 13,
-                    "low": 10,
-                    "close": 12,
-                    "volume": 8000,
-                    "is_halt": False,
-                    "source": "tpex",
-                },
-            ]
-        )
-        zone = _nav_volume_zone(work, lookback=40)
-        self.assertEqual(zone["i"], 1)
-        self.assertEqual(zone["volume"], 8000)
 
     def test_nav_arrows_are_short_markers_without_outline(self):
         import inspect

@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 介紹圖＋高低溫度卡一次兩張、點開高畫質。圖下「導航圖」＝180 日高低＋大量區（近窗爆大量日高低，非買訊），「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 介紹圖＋高低溫度卡一次兩張、再送大量區專圖（非買訊）；點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
 - 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -722,7 +722,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下「導航圖」是 180 日高低＋大量區（非買訊），要看日K按「K線」（奇摩股市同一檔）。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -2586,12 +2586,13 @@ class WayneTelegramBot:
         labels = {
             "glance": "介紹圖",
             "card": "決策卡",
+            "volzone": "大量區",
             "both": "介紹圖＋高低卡",
             "chart": "導航圖",
             "table": "讀高低卡",
             "album": "一次送出",
         }
-        order = ("both", "album")
+        order = ("both", "album", "volzone")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
@@ -5278,13 +5279,13 @@ class WayneTelegramBot:
                 await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
 
     async def _send_navigation_chart(self, message, code: str, uid: str = ""):
-        """按需產 180 日高低導航＋大量區（重用剛查過的 _ohlc，免重跑決策卡）。"""
+        """按需產 180 日高低導航（重用剛查過的 _ohlc，免重跑決策卡）。"""
         code = str(code or "").strip()
         uid = uid or self._uid_from_message(message)
         wait = None
         try:
             wait = await message.reply_text(
-                self._wait_bubble("導航圖進行中", 0, now="180日高低＋大量區", fill_sec=30.0),
+                self._wait_bubble("導航圖進行中", 0, now="180日高低", fill_sec=30.0),
                 parse_mode="HTML",
             )
         except Exception:
@@ -5350,10 +5351,7 @@ class WayneTelegramBot:
                     disable_web_page_preview=True,
                 )
                 return
-            cap = (
-                "180日高低導航＋大量區（近窗仍有效的爆大量日高低＝壓／撐；桃色帶；非買訊）。"
-                "實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
-            )
+            cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
             for attempt in range(3):
                 try:
                     with open(self._prepare_lookup_album_photo(path), "rb") as f:
@@ -5481,6 +5479,7 @@ class WayneTelegramBot:
         is_em = self._hit_is_emerging(code, hits)
         progress_stop = asyncio.Event()
         progress_task = None
+        volzone_task = None
         op_t0 = time.monotonic()
         self._op_state_map()[actor] = {"sent": [], "current": "table", "t0": op_t0}
         if wait_msg is None:
@@ -5726,11 +5725,25 @@ class WayneTelegramBot:
                 hub = self._hub_keyboard(code, em=is_em, news=news_stats)
             glance_cap = ""
             card_cap = _stock_caption_name(card, code)
+            vol_path_f = self._scratch_chart_path(self.charts_dir, code, "volzone", uid_key)
+
+            def _render_volzone():
+                from vol_zone_chart import render_volume_zone_png
+
+                return render_volume_zone_png(
+                    code,
+                    _stock_caption_name(card, code),
+                    self.db_path,
+                    vol_path_f,
+                    ohlc,
+                    already_normalized=True,
+                )
+
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
             ]
-            kind_labels = {"glance": "介紹圖", "card": "決策卡"}
+            kind_labels = {"glance": "介紹圖", "card": "決策卡", "volzone": "大量區"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
@@ -5769,6 +5782,16 @@ class WayneTelegramBot:
                 if not png:
                     return None
                 return (kind, png, caption, markup)
+
+            volzone_task = asyncio.create_task(
+                _render_ready(
+                    "volzone",
+                    _render_volzone,
+                    _LOOKUP_PNG_TIMEOUT,
+                    "大量區（近窗爆大量日高低＝壓／撐；非買訊）",
+                    None,
+                )
+            )
 
             st = self._op_state_map().setdefault(actor, {"sent": [], "current": "both"})
             st["current"] = "both"
@@ -5823,6 +5846,25 @@ class WayneTelegramBot:
                     if ok:
                         sent_any = True
 
+            # 第三張：大量區專圖（不改導航；跟介紹／決策卡分開送）
+            try:
+                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
+                st["current"] = "volzone"
+                vz = await volzone_task
+            except Exception:
+                logger.exception("大量區專圖失敗 code=%s", code)
+                vz = None
+            if vz:
+                kind, path, caption, _mk = vz
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                ok = await send_photo(prep or path, caption, hub, kind=kind)
+                if ok:
+                    sent_any = True
+                    sent_kinds.append(kind)
+                    hub_on = True
+                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
+                st["sent"] = list(sent_kinds)
+
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan):
                     done_txt = html_escape(_stock_caption_name(card, code) or code)
@@ -5871,6 +5913,8 @@ class WayneTelegramBot:
             progress_stop.set()
             if progress_task is not None:
                 progress_task.cancel()
+            if volzone_task is not None and not volzone_task.done():
+                volzone_task.cancel()
             await _clear_wait()
             fade_roles = {"ack", "wait"}
             if sent_any:
