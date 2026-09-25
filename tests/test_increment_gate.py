@@ -8,6 +8,7 @@ import tempfile
 
 from import_health import (
     MIN_CHIPS_NONZERO,
+    MIN_EM,
     MIN_TWO,
     MIN_TW,
     increment_health_failures,
@@ -19,16 +20,28 @@ from wayne_db import ensure_core_schema
 
 
 def test_increment_health_ok_rejects_any_zero_side():
-    base = {"total": 2000, "chips_nonzero": 500}
+    base = {"total": 2000, "chips_nonzero": 500, "em": MIN_EM}
     assert increment_health_ok({**base, "tw": 0, "two": 900}) is False
     assert increment_health_ok({**base, "tw": 900, "two": 0}) is False
-    assert increment_health_ok({"total": 0, "tw": 900, "two": 900, "chips_nonzero": 500}) is False
+    assert increment_health_ok({"total": 0, "tw": 900, "two": 900, "chips_nonzero": 500, "em": MIN_EM}) is False
 
 
 def test_increment_health_ok_rejects_zero_chips_when_total_high():
-    health = {"total": 2000, "tw": 900, "two": 700, "chips_nonzero": 0}
+    health = {"total": 2000, "tw": 900, "two": 700, "chips_nonzero": 0, "em": MIN_EM}
     assert increment_health_ok(health) is False
     assert any("法人" in r for r in increment_health_failures(health, cap="20260902"))
+
+
+def test_increment_health_ok_rejects_thin_emerging():
+    health = {
+        "total": 2000,
+        "tw": max(MIN_TW, 900),
+        "two": max(MIN_TWO, 700),
+        "chips_nonzero": max(MIN_CHIPS_NONZERO, 500),
+        "em": 0,
+    }
+    assert increment_health_ok(health) is False
+    assert any("興櫃" in r for r in increment_health_failures(health, cap="20260902"))
 
 
 def test_increment_health_ok_passes_complete():
@@ -37,6 +50,7 @@ def test_increment_health_ok_passes_complete():
         "tw": max(MIN_TW, 900),
         "two": max(MIN_TWO, 700),
         "chips_nonzero": max(MIN_CHIPS_NONZERO, 500),
+        "em": MIN_EM,
     }
     assert increment_health_ok(health) is True
     assert increment_health_failures(health, cap="20260902") == []
@@ -44,10 +58,31 @@ def test_increment_health_ok_passes_complete():
 
 def test_main_runner_increment_ok_uses_same_gate():
     runner = MainRunner.__new__(MainRunner)
-    assert runner._increment_ok({"total": 0, "tw": 0, "two": 0}) is False
+    assert runner._increment_ok({"total": 0, "tw": 0, "two": 0, "em": 0}) is False
     assert runner._increment_ok(
-        {"total": 2000, "tw": 900, "two": 700, "chips_nonzero": 500}
+        {"total": 2000, "tw": 900, "two": 700, "chips_nonzero": 500, "em": MIN_EM}
     ) is True
+
+
+def _seed_emerging_day(conn: sqlite3.Connection, ymd: str, n: int = MIN_EM) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS emerging_quotes (
+            date TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            stock_name TEXT,
+            market TEXT,
+            open REAL, high REAL, low REAL, close REAL,
+            volume INTEGER, turnover_k REAL, pct_change REAL, avg_price REAL,
+            source TEXT, PRIMARY KEY (date, stock_id)
+        )"""
+    )
+    for i in range(int(n)):
+        conn.execute(
+            """INSERT INTO emerging_quotes
+            (date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,source)
+            VALUES (?,?,?,?,10,11,9,10,100,10,0.5,10,'test')""",
+            (ymd, f"{7000+i:04d}", "興櫃", "EM"),
+        )
 
 
 def _seed_complete_day(conn: sqlite3.Connection, ymd: str) -> None:
@@ -65,6 +100,7 @@ def _seed_complete_day(conn: sqlite3.Connection, ymd: str) -> None:
             VALUES (?,?,?,?,10,11,9,10,1000,10,0.5,10,50,0,0)""",
             (ymd, f"{6000+i:04d}", "上櫃", "TWO"),
         )
+    _seed_emerging_day(conn, ymd)
 
 
 def test_verify_increment_import_fails_on_empty_db():
@@ -74,7 +110,36 @@ def test_verify_increment_import_fails_on_empty_db():
         ensure_core_schema(path)
         report = verify_increment_import(path, cap="20260902")
         assert report["ok"] is False
-        assert any("為 0" in r for r in report["reasons"])
+        assert any("為 0" in r or "興櫃" in r for r in report["reasons"])
+    finally:
+        os.remove(path)
+
+
+def test_verify_increment_import_fails_without_emerging():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        conn = sqlite3.connect(path)
+        for i in range(MIN_TW):
+            conn.execute(
+                """INSERT INTO daily_quotes
+                (date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net)
+                VALUES (?,?,?,?,10,11,9,10,1000,10,0.5,10,10,0,0)""",
+                ("20260902", f"{1000+i:04d}", "TW", "TW"),
+            )
+        for i in range(MIN_TWO):
+            conn.execute(
+                """INSERT INTO daily_quotes
+                (date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net)
+                VALUES (?,?,?,?,10,11,9,10,1000,10,0.5,10,50,0,0)""",
+                ("20260902", f"{6000+i:04d}", "上櫃", "TWO"),
+            )
+        conn.commit()
+        conn.close()
+        report = verify_increment_import(path, cap="20260902")
+        assert report["ok"] is False
+        assert any("興櫃" in r for r in report["reasons"])
     finally:
         os.remove(path)
 
@@ -122,3 +187,17 @@ def test_increment_job_sends_done_only_after_gate_passes():
     assert "return False" in before_done
     assert "盤後繼續補齊" in before_done
     assert "_fuse_done_message" not in src.split("return False")[0]
+
+
+def test_increment_job_holiday_checks_prior_cap_before_skip():
+    import inspect
+
+    from main_runner import MainRunner
+
+    src = inspect.getsource(MainRunner.run_increment_job)
+    assert "上一完整收盤日是否齊" in src
+    assert "改補齊" in src
+    closed_block = src.split("if closed:")[1].split("if skip_if_done")[0]
+    assert "sync_emerging_quotes" in closed_block
+    assert "audit_import" in closed_block
+    assert "_increment_ok" in closed_block

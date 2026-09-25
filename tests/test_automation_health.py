@@ -13,7 +13,7 @@ from automation_health import (
     run_automation_audit,
     verify_release_snapshot,
 )
-from import_health import MIN_TWO, MIN_TW
+from import_health import MIN_EM, MIN_TWO, MIN_TW
 from wayne_db import ensure_core_schema
 
 
@@ -45,6 +45,24 @@ def _seed_day(conn: sqlite3.Connection, ymd: str) -> None:
             (date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net)
             VALUES (?,?,?,?,10,11,9,10,1000,10,0.5,10,50,0,0)""",
             (ymd, f"{6000+i:04d}", "上櫃", "TWO"),
+        )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS emerging_quotes (
+            date TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            stock_name TEXT,
+            market TEXT,
+            open REAL, high REAL, low REAL, close REAL,
+            volume INTEGER, turnover_k REAL, pct_change REAL, avg_price REAL,
+            source TEXT, PRIMARY KEY (date, stock_id)
+        )"""
+    )
+    for i in range(MIN_EM):
+        conn.execute(
+            """INSERT INTO emerging_quotes
+            (date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,source)
+            VALUES (?,?,?,?,10,11,9,10,100,10,0.5,10,'test')""",
+            (ymd, f"{7000+i:04d}", "興櫃", "EM"),
         )
 
 
