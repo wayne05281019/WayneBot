@@ -23,6 +23,17 @@ import pandas as pd
 from matplotlib import patches
 
 from wayne_navigator import _fp, _fmt_price, _mpl_serial
+from ex_rights import (
+    OFFICIAL_EX_SRC as _OFFICIAL_EX_SRC,
+    bar_ymd as _bar_ymd,
+    ex_gap_note as _ex_gap_note,
+    hydrate_official_ex_for_gaps,
+    is_scale_ex as _is_scale_ex,
+    latest_scale_ex as _latest_ex_event,
+    load_scale_ex_events,
+    scale_ex_verb as _ex_kind_verb,
+    unexplained_gap_dates,
+)
 
 logger = logging.getLogger("WayneBot.VolZone")
 
@@ -149,76 +160,6 @@ def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     return work
 
 
-_OFFICIAL_EX_SRC = frozenset({"TWT49U", "tpex_exDailyQ"})
-_GAP_PCT = 0.05
-
-
-def _bar_ymd(val: Any) -> str:
-    s = str(val or "").replace("-", "").replace("/", "")[:8]
-    return s if s.isdigit() and len(s) == 8 else ""
-
-
-def _ex_kind_verb(kind: Any) -> str:
-    s = str(kind or "")
-    if "減資" in s:
-        return "減資"
-    if "分割" in s:
-        return "分割"
-    if "權" in s and "息" in s:
-        return "除權息"
-    if "權" in s:
-        return "除權"
-    if "息" in s:
-        return "除息"
-    return ""
-
-
-def _is_scale_ex(ev: Dict[str, Any]) -> bool:
-    """會改原柱價位尺度：除權／除息／減資／分割。法說不算。"""
-    return _ex_kind_verb(ev.get("kind")) in ("除息", "除權", "除權息", "減資", "分割")
-
-
-def load_scale_ex_events(
-    stock_id: str,
-    db_path: str,
-    start: str = "",
-    end: str = "",
-) -> List[Dict[str, Any]]:
-    sid = str(stock_id or "").strip()
-    path = str(db_path or "").strip()
-    if not sid or not path:
-        return []
-    try:
-        conn = sqlite3.connect(path, timeout=15.0)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """SELECT stock_id, ex_date, kind, close_before, ref_price, right_plus_div, source
-               FROM ex_rights WHERE stock_id=? AND ex_date>=? AND ex_date<=? AND kind!=''
-               ORDER BY ex_date ASC""",
-            (sid, start or "19000101", end or "99991231"),
-        ).fetchall()
-        conn.close()
-    except sqlite3.OperationalError:
-        return []
-    return [dict(r) for r in rows if _is_scale_ex(dict(r))]
-
-
-def unexplained_gap_dates(work: pd.DataFrame, thresh: float = _GAP_PCT) -> List[str]:
-    if work is None or getattr(work, "empty", True) or len(work) < 2:
-        return []
-    out: List[str] = []
-    for i in range(1, len(work)):
-        prev = float(work["close"].iloc[i - 1] or 0)
-        op = float(work["open"].iloc[i] or 0)
-        if prev <= 0 or op <= 0:
-            continue
-        if abs(op - prev) / prev >= float(thresh):
-            d = _bar_ymd(work["date"].iloc[i])
-            if d:
-                out.append(d)
-    return out
-
-
 def _scale_cut_date(ex_events: Optional[List[Dict[str, Any]]], last_date: str) -> str:
     last = _bar_ymd(last_date)
     cut = ""
@@ -229,119 +170,6 @@ def _scale_cut_date(ex_events: Optional[List[Dict[str, Any]]], last_date: str) -
         if d and last and d <= last and d >= cut:
             cut = d
     return cut
-
-
-def _latest_ex_event(
-    ex_events: Optional[List[Dict[str, Any]]], last_date: str
-) -> Optional[Dict[str, Any]]:
-    last = _bar_ymd(last_date)
-    best = None
-    for ev in ex_events or []:
-        if not _is_scale_ex(ev):
-            continue
-        d = _bar_ymd(ev.get("ex_date") or ev.get("date"))
-        if d and last and d <= last:
-            best = ev
-    return best
-
-
-def hydrate_official_ex_for_gaps(
-    stock_id: str,
-    db_path: str,
-    work: pd.DataFrame,
-    events: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """跳空日還沒官方除權息列（或只剩啟發式）才補抓 TWT49U／櫃買。失敗就沿用庫。"""
-    if os.getenv("WAYNE_SKIP_EX_FETCH") == "1":
-        return events
-    sid = str(stock_id or "").strip()
-    path = str(db_path or "").strip()
-    if not sid or not path:
-        return events
-    official_dates = {
-        _bar_ymd(e.get("ex_date"))
-        for e in events
-        if str(e.get("source") or "") in _OFFICIAL_EX_SRC
-    }
-    need = [d for d in unexplained_gap_dates(work) if d not in official_dates]
-    if not need:
-        return events
-    months = sorted({d[:6] for d in need if len(d) == 8})
-    try:
-        import calendar
-
-        import requests
-
-        from ex_rights import fetch_tpex_month, fetch_twse_month, upsert_events
-
-        sess = requests.Session()
-        sess.headers.update({"User-Agent": "Mozilla/5.0 WayneBot-volzone"})
-        packed: List[Dict[str, Any]] = []
-        for ym in months:
-            y, m = int(ym[:4]), int(ym[4:6])
-            last = calendar.monthrange(y, m)[1]
-            a, b = f"{ym}01", f"{ym}{last:02d}"
-            try:
-                packed.extend(fetch_twse_month(sess, a, b))
-            except Exception:
-                logger.warning("大量區補抓上市除權息 %s 失敗", ym)
-            try:
-                packed.extend(fetch_tpex_month(sess, a, b))
-            except Exception:
-                logger.warning("大量區補抓上櫃除權息 %s 失敗", ym)
-        mine = [x for x in packed if str(x.get("stock_id") or "") == sid]
-        if mine:
-            upsert_events(path, mine)
-            start = _bar_ymd(work["date"].iloc[0]) if len(work) else ""
-            end = _bar_ymd(work["date"].iloc[-1]) if len(work) else ""
-            return load_scale_ex_events(sid, path, start, end)
-    except Exception:
-        logger.warning("大量區補抓除權息略過", exc_info=True)
-    return events
-
-
-def _ex_gap_note(
-    events: Optional[List[Dict[str, Any]]],
-    gaps: Optional[List[str]],
-    last_date: str,
-    zone_date: str = "",
-) -> str:
-    """圖說第一句：官方除權息先講；沒列的大跳空也要講，不准當崩 silently。"""
-    ev = _latest_ex_event(events, last_date)
-    last = _bar_ymd(last_date)
-    zd = _bar_ymd(zone_date)
-    if ev:
-        d = _bar_ymd(ev.get("ex_date"))
-        if d and (d == zd or d == last or (gaps and d in gaps)):
-            verb = _ex_kind_verb(ev.get("kind")) or "除權息"
-            md = _md(d)
-            amt = 0.0
-            before = 0.0
-            ref = 0.0
-            try:
-                amt = float(ev.get("right_plus_div") or 0)
-                before = float(ev.get("close_before") or 0)
-                ref = float(ev.get("ref_price") or 0)
-            except (TypeError, ValueError):
-                pass
-            from wayne_navigator import _fmt_price
-
-            bit = f"{md}{verb}"
-            if amt > 0:
-                bit += f"{_fmt_price(amt)}元"
-            if before > 0 and ref > 0:
-                bit += f"（前收{_fmt_price(before)}、參考價{_fmt_price(ref)}）"
-            src = str(ev.get("source") or "")
-            if src in _OFFICIAL_EX_SRC:
-                return f"{bit}。圖是官方原柱，缺口是息差不是崩。"
-            return f"{bit}。圖是官方原柱；這列還不是證交所／櫃買完成稿，缺口先不當崩。"
-    for d in gaps or []:
-        if d:
-            return (
-                f"{_md(d)}跳空超過五％，庫沒這日官方除權息列，"
-                "缺口先不當崩、也不拿來當測壓理由。"
-            )
-    return ""
 
 
 def find_volume_zone(

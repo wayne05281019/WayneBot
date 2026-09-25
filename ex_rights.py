@@ -530,3 +530,252 @@ def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> 
         return ""
     cands.sort(key=lambda item: (item[0], _event_kind_rank(item[1])))
     return format_next_event_label(cands[0][1], cands[0][0], day)
+
+
+OFFICIAL_EX_SRC = frozenset({"TWT49U", "tpex_exDailyQ"})
+_GAP_PCT = 0.05
+
+
+def bar_ymd(val: Any) -> str:
+    return ymd(val)
+
+
+def scale_ex_verb(kind: Any) -> str:
+    s = str(kind or "")
+    if "減資" in s:
+        return "減資"
+    if "分割" in s:
+        return "分割"
+    if "法說" in s or "股東" in s or "常會" in s or "臨時" in s:
+        return ""
+    return _event_verb(s)
+
+
+def is_scale_ex(ev: Dict[str, Any]) -> bool:
+    return scale_ex_verb((ev or {}).get("kind")) in ("除息", "除權", "除權息", "減資", "分割")
+
+
+def _fmt_px(p: Any) -> str:
+    try:
+        v = float(p)
+    except (TypeError, ValueError):
+        return ""
+    av = abs(v)
+    if av >= 1000:
+        return f"{v:,.0f}"
+    if av >= 100:
+        s = f"{v:,.1f}"
+        return s[:-2] if s.endswith(".0") else s
+    s = f"{v:,.2f}".rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def _md_ex(raw: Any) -> str:
+    t = bar_ymd(raw)
+    if len(t) == 8:
+        return f"{int(t[4:6]):02d}/{int(t[6:8]):02d}"
+    return str(raw or "").strip()
+
+
+def _as_bar_rows(work: Any) -> List[Dict[str, Any]]:
+    if work is None:
+        return []
+    if hasattr(work, "empty") and getattr(work, "empty", False):
+        return []
+    if hasattr(work, "to_dict"):
+        return [dict(x) for x in work.to_dict("records")]
+    if isinstance(work, (list, tuple)):
+        return [dict(x) for x in work if isinstance(x, dict)]
+    return []
+
+
+def load_scale_ex_events(
+    stock_id: str,
+    db_path: str,
+    start: str = "",
+    end: str = "",
+) -> List[Dict[str, Any]]:
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    if not sid or not path:
+        return []
+    try:
+        conn = sqlite3.connect(path, timeout=15.0)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT stock_id, ex_date, kind, close_before, ref_price, right_plus_div, source
+               FROM ex_rights WHERE stock_id=? AND ex_date>=? AND ex_date<=? AND kind!=''
+               ORDER BY ex_date ASC""",
+            (sid, start or "19000101", end or "99991231"),
+        ).fetchall()
+        conn.close()
+    except sqlite3.OperationalError:
+        return []
+    return [dict(r) for r in rows if is_scale_ex(dict(r))]
+
+
+def unexplained_gap_dates(work: Any, thresh: float = _GAP_PCT) -> List[str]:
+    rows = _as_bar_rows(work)
+    out: List[str] = []
+    prev_c = 0.0
+    for row in rows:
+        op = 0.0
+        cl = 0.0
+        try:
+            op = float(row.get("open") or 0)
+            cl = float(row.get("close") or 0)
+        except (TypeError, ValueError):
+            pass
+        if prev_c > 0 and op > 0 and abs(op - prev_c) / prev_c >= float(thresh):
+            d = bar_ymd(row.get("date"))
+            if d:
+                out.append(d)
+        if cl > 0:
+            prev_c = cl
+    return out
+
+
+def latest_scale_ex(
+    events: Optional[List[Dict[str, Any]]], last_date: str
+) -> Optional[Dict[str, Any]]:
+    last = bar_ymd(last_date)
+    best = None
+    for ev in events or []:
+        if not is_scale_ex(ev):
+            continue
+        d = bar_ymd(ev.get("ex_date") or ev.get("date"))
+        if d and last and d <= last:
+            best = ev
+    return best
+
+
+def hydrate_official_ex_for_gaps(
+    stock_id: str,
+    db_path: str,
+    work: Any,
+    events: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """跳空日還沒官方除權息列（或只剩啟發式）才補抓 TWT49U／櫃買。"""
+    if os.getenv("WAYNE_SKIP_EX_FETCH") == "1":
+        return events
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    if not sid or not path:
+        return events
+    official_dates = {
+        bar_ymd(e.get("ex_date"))
+        for e in events
+        if str(e.get("source") or "") in OFFICIAL_EX_SRC
+    }
+    need = [d for d in unexplained_gap_dates(work) if d not in official_dates]
+    if not need:
+        return events
+    months = sorted({d[:6] for d in need if len(d) == 8})
+    try:
+        import calendar
+
+        sess = requests.Session()
+        sess.headers.update(HEADERS)
+        packed: List[Dict[str, Any]] = []
+        for ym in months:
+            y, m = int(ym[:4]), int(ym[4:6])
+            last = calendar.monthrange(y, m)[1]
+            a, b = f"{ym}01", f"{ym}{last:02d}"
+            try:
+                packed.extend(fetch_twse_month(sess, a, b))
+            except Exception:
+                logger.warning("補抓上市除權息 %s 失敗", ym)
+            try:
+                packed.extend(fetch_tpex_month(sess, a, b))
+            except Exception:
+                logger.warning("補抓上櫃除權息 %s 失敗", ym)
+        mine = [x for x in packed if str(x.get("stock_id") or "") == sid]
+        if mine:
+            upsert_events(path, mine)
+            rows = _as_bar_rows(work)
+            start = bar_ymd(rows[0].get("date")) if rows else ""
+            end = bar_ymd(rows[-1].get("date")) if rows else ""
+            return load_scale_ex_events(sid, path, start, end)
+    except Exception:
+        logger.warning("補抓除權息略過", exc_info=True)
+    return events
+
+
+def ex_gap_note(
+    events: Optional[List[Dict[str, Any]]],
+    gaps: Optional[List[str]],
+    last_date: str,
+    zone_date: str = "",
+) -> str:
+    """官方除權息先講；沒列的大跳空也要講，不准當崩 silently。"""
+    ev = latest_scale_ex(events, last_date)
+    last = bar_ymd(last_date)
+    zd = bar_ymd(zone_date)
+    if ev:
+        d = bar_ymd(ev.get("ex_date"))
+        if d and (d == zd or d == last or (gaps and d in gaps)):
+            verb = scale_ex_verb(ev.get("kind")) or "除權息"
+            md = _md_ex(d)
+            amt = 0.0
+            before = 0.0
+            ref = 0.0
+            try:
+                amt = float(ev.get("right_plus_div") or 0)
+                before = float(ev.get("close_before") or 0)
+                ref = float(ev.get("ref_price") or 0)
+            except (TypeError, ValueError):
+                pass
+            bit = f"{md}{verb}"
+            if amt > 0:
+                bit += f"{_fmt_px(amt)}元"
+            if before > 0 and ref > 0:
+                bit += f"（前收{_fmt_px(before)}、參考價{_fmt_px(ref)}）"
+            src = str(ev.get("source") or "")
+            if src in OFFICIAL_EX_SRC:
+                return f"{bit}。圖是官方原柱，缺口是息差不是崩。"
+            return f"{bit}。圖是官方原柱；這列還不是證交所／櫃買完成稿，缺口先不當崩。"
+    for d in gaps or []:
+        if d:
+            return (
+                f"{_md_ex(d)}跳空超過五％，庫沒這日官方除權息列，"
+                "缺口先不當崩、也不拿來當測壓理由。"
+            )
+    return ""
+
+
+def recent_ex_face(
+    stock_id: str,
+    db_path: str,
+    as_of: str = "",
+    bars: Any = None,
+) -> Dict[str, str]:
+    """介紹圖／高低卡：先官方除息除權。回傳 note（圖說）與 label（標題）。"""
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    last = bar_ymd(as_of) or taipei_today_str()
+    rows = _as_bar_rows(bars)
+    if rows:
+        last = bar_ymd(rows[-1].get("date")) or last
+    start = bar_ymd(rows[0].get("date")) if rows else (last[:6] + "01" if len(last) == 8 else "19000101")
+    events = load_scale_ex_events(sid, path, start, last) if sid and path else []
+    if rows and sid and path:
+        events = hydrate_official_ex_for_gaps(sid, path, rows, events)
+    recent = rows[-5:] if rows else []
+    win0 = bar_ymd(recent[0].get("date")) if recent else last
+    events_r = [e for e in events if bar_ymd(e.get("ex_date")) >= win0] if win0 else events
+    gaps = unexplained_gap_dates(recent)
+    note = ex_gap_note(events_r, gaps, last, last)
+    ev = latest_scale_ex(events_r, last)
+    label = ""
+    if ev and note and _md_ex(ev.get("ex_date")) in note:
+        d = bar_ymd(ev.get("ex_date"))
+        verb = scale_ex_verb(ev.get("kind")) or "除權息"
+        amt = 0.0
+        try:
+            amt = float(ev.get("right_plus_div") or 0)
+        except (TypeError, ValueError):
+            amt = 0.0
+        label = f"{_md_ex(d)}{verb}"
+        if amt > 0:
+            label += f"{_fmt_px(amt)}元"
+    return {"note": note, "label": label, "ex_date": bar_ymd((ev or {}).get("ex_date")) if label else ""}

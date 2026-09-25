@@ -210,7 +210,7 @@ def test_upsert_preview_does_not_clobber_factor(tmp_path):
 def test_decision_card_source_forbids_zebra_and_paints_event():
     src = inspect.getsource(render_decision_card_png)
     assert "row_i % 2" not in src
-    assert "next_event" in src
+    assert "_title_event_text" in src
     assert "白底" in src
     from wayne_navigator import NavigatorEngine
 
@@ -220,7 +220,7 @@ def test_decision_card_source_forbids_zebra_and_paints_event():
     from wayne_navigator import render_first_glance_png
 
     glance_src = inspect.getsource(render_first_glance_png)
-    assert "next_event" in glance_src
+    assert "_title_event_text" in glance_src
 
 
 def test_title_bar_prefers_event_over_long_industry():

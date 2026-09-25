@@ -914,6 +914,28 @@ class NavigatorEngine:
                 )
         except Exception:
             face_name = raw_name or str(stock_id)
+        ex_gap_note = ""
+        ex_gap_label = ""
+        try:
+            from ex_rights import recent_ex_face
+            from vol_zone_chart import load_official_ohlc, official_work
+
+            raw_bars = official_work(
+                load_official_ohlc(str(stock_id), self.db_path, 40)
+            )
+            face = recent_ex_face(
+                str(stock_id),
+                self.db_path,
+                str(latest.get("date") or ""),
+                raw_bars,
+            )
+            ex_gap_note = str(face.get("note") or "").strip()
+            ex_gap_label = str(face.get("label") or "").strip()
+            if ex_gap_label and ex_gap_label not in badges:
+                badges.insert(0, ex_gap_label)
+        except Exception:
+            ex_gap_note = ""
+            ex_gap_label = ""
         payload = {
             "stock_id": str(stock_id),
             "stock_name": face_name,
@@ -923,6 +945,8 @@ class NavigatorEngine:
             "asset_type": asset_type,
             "etf_kind": etf_kind,
             "next_event": next_event,
+            "ex_gap_note": ex_gap_note,
+            "ex_gap_label": ex_gap_label,
             "news_label": "",
             "quote_source": quote_source,
             "latest_date": latest["date"],
@@ -2288,6 +2312,8 @@ def _badge_style(text: str):
     """徽章：狀態用實心白字；已除權這類事實才白底描邊。"""
     C = _CARD
     t = str(text or "")
+    if any(k in t for k in ("除息", "除權", "減資", "分割", "已除權")):
+        return C["white"], C["neutral_fg"]
     if t.startswith("月K"):
         return C["navy"], C["white"]
     hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破", "注意", "背離")
@@ -2483,6 +2509,11 @@ def _title_listing_and_industry(card: dict):
     elif fine and fine in listing:
         industry = ""
     return listing, industry, etf_kind
+
+
+def _title_event_text(card: dict) -> str:
+    """標題列：剛發生的官方除息／除權優先，其次才是下次事件。"""
+    return str((card or {}).get("ex_gap_label") or (card or {}).get("next_event") or "").strip()
 
 
 def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8, news: str = "", lead: str = ""):
@@ -2929,7 +2960,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     listing, industry, etf_kind = _title_listing_and_industry(card)
-    event = str(card.get("next_event") or "").strip()
+    event = _title_event_text(card)
     news = str(card.get("news_label") or "").strip()
     if not news:
         from money_flow import industry_flow_tag
@@ -3297,7 +3328,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         extra = kind_lead or industry
         if extra and extra not in listing:
             head = f"{head}　{html_escape(extra)}"
-    event = str(card.get("next_event") or "").strip()
+    event = _title_event_text(card)
     if event:
         head = f"{head}　{html_escape(event)}"
     title_block = f"{head}\n{html_escape(badge)}" if badge else head
@@ -3490,7 +3521,10 @@ def render_first_glance_png(
         footer_src = [f"高低卡要{sa}，現在不要加碼。"]
         if pink_note:
             footer_src.append(pink_note)
-    footer_src = [n for n in footer_src if n][:2]
+    exn = str((card or {}).get("ex_gap_note") or "").strip()
+    if exn:
+        footer_src = [exn] + [n for n in footer_src if n != exn]
+    footer_src = [n for n in footer_src if n][:3]
 
     last = (tape or {}).get("last") or {}
     C = _CARD
@@ -3645,7 +3679,7 @@ def render_first_glance_png(
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     listing, industry, etf_kind = _title_listing_and_industry(card)
-    event = str(card.get("next_event") or "").strip()
+    event = _title_event_text(card)
     news = str(card.get("news_label") or "").strip()
     if not news:
         from money_flow import industry_flow_tag

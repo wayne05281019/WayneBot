@@ -213,6 +213,9 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
     cap = str(base or "").strip() or str(fallback or "").strip()
     if not card:
         return cap
+    gap = str((card or {}).get("ex_gap_note") or "").strip()
+    if gap:
+        cap = f"{gap}\n{cap}" if cap else gap
     short = ""
     try:
         from sell_discipline import attach_sell, sell_note_short
