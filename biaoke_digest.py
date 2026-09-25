@@ -112,12 +112,21 @@ def record_ingest_events(
 
 
 def unread_events(
-    user_id: str, db_path: str, *, now: Optional[datetime] = None
+    user_id: str,
+    db_path: str,
+    *,
+    now: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
     uid = str(user_id or "").strip()
     if not uid or not db_path:
         return []
     ensure_biaoke_digest_tables(db_path)
+    clock = now if now is not None else taipei_now()
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=TAIPEI)
+    else:
+        clock = clock.astimezone(TAIPEI)
+    floor = (clock - timedelta(days=14)).strftime("%Y-%m-%d")
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         row = conn.execute(
@@ -125,10 +134,6 @@ def unread_events(
             (uid,),
         ).fetchone()
         last = str(row[0] or "") if row else ""
-        clock = now or taipei_now()
-        if clock.tzinfo is None:
-            clock = clock.replace(tzinfo=TAIPEI)
-        floor = (clock.astimezone(TAIPEI) - timedelta(days=14)).strftime("%Y-%m-%d")
         if last:
             rows = conn.execute(
                 """
@@ -169,8 +174,13 @@ def unread_events(
     return out
 
 
-def unread_count(user_id: str, db_path: str) -> int:
-    return len(unread_events(user_id, db_path))
+def unread_count(
+    user_id: str,
+    db_path: str,
+    *,
+    now: Optional[datetime] = None,
+) -> int:
+    return len(unread_events(user_id, db_path, now=now))
 
 
 def mark_biaoke_read(user_id: str, db_path: str, *, now: Optional[datetime] = None) -> None:
