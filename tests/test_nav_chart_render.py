@@ -68,12 +68,54 @@ class NavChartRenderTests(unittest.TestCase):
         rows[4]["volume"] = 90000
         rows[4]["high"] = 1530
         rows[4]["low"] = 1365
+        rows[-1]["close"] = 1495  # 還在 8/6 區內／壓下
         work = pd.DataFrame(rows)
         zone = _nav_volume_zone(work, lookback=40)
         self.assertIsNotNone(zone)
         self.assertEqual(zone["i"], 4)
         self.assertEqual(zone["high"], 1530)
         self.assertEqual(zone["low"], 1365)
+
+    def test_nav_volume_zone_prefers_active_overhead_not_cleared_spike(self):
+        """台燿情境：9/17 量更大但已站上；8/6 壓還在頭上 → 大量區認 8/6。"""
+        from wayne_navigator import _nav_volume_zone
+
+        work = pd.DataFrame(
+            [
+                {
+                    "date": "20260806",
+                    "open": 1405,
+                    "high": 1530,
+                    "low": 1365,
+                    "close": 1530,
+                    "volume": 16305,
+                    "is_halt": False,
+                },
+                {
+                    "date": "20260917",
+                    "open": 1445,
+                    "high": 1460,
+                    "low": 1275,
+                    "close": 1320,
+                    "volume": 21653,
+                    "is_halt": False,
+                },
+                {
+                    "date": "20260924",
+                    "open": 1485,
+                    "high": 1530,
+                    "low": 1475,
+                    "close": 1495,
+                    "volume": 10047,
+                    "is_halt": False,
+                },
+            ]
+        )
+        zone = _nav_volume_zone(work, lookback=40)
+        self.assertEqual(zone["date"], "20260806")
+        self.assertEqual(zone["high"], 1530)
+        self.assertEqual(zone["low"], 1365)
+        self.assertTrue(zone["active"])
 
     def test_nav_volume_zone_skips_biaoke_overlay_bars(self):
         from wayne_navigator import _nav_volume_zone

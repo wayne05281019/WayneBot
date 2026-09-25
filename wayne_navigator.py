@@ -4218,7 +4218,12 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
 
 
 def _nav_volume_zone(work: pd.DataFrame, *, lookback: int = _NAV_VOL_ZONE_LOOKBACK):
-    """近窗成交量最大那一根的高低＝大量區。官方柱；不是買訊、不發明 5／9。"""
+    """近窗仍對現價有效的爆大量日高低＝大量區。
+
+    先在近窗找「現價還在當日高低內，或當日高還壓在頭上」的柱，再取其中量最大。
+    若已全部站上那些高，才退回近窗絕對最大量（真的站上大量區）。
+    官方柱；不是買訊、不發明 5／9。
+    """
     if work is None or getattr(work, "empty", True):
         return None
     n = len(work)
@@ -4230,29 +4235,44 @@ def _nav_volume_zone(work: pd.DataFrame, *, lookback: int = _NAV_VOL_ZONE_LOOKBA
         else pd.Series(False, index=work.index)
     )
     start = max(0, n - max(int(lookback or 0), 1))
+    last_close = float(work["close"].iloc[-1] or 0)
     best_i = None
     best_v = -1.0
+    active_i = None
+    active_v = -1.0
     for i in range(start, n):
         if bool(halt.iloc[i]):
             continue
         if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
             continue
         v = float(work["volume"].iloc[i] or 0)
+        if v <= 0:
+            continue
+        hi = float(work["high"].iloc[i] or 0)
+        lo = float(work["low"].iloc[i] or 0)
+        if hi <= 0 or lo <= 0 or hi < lo:
+            continue
         if v > best_v:
             best_v = v
             best_i = i
-    if best_i is None or best_v <= 0:
+        # 當日高還 ≥ 現價＝壓還在頭上（含還在區內）。已全部站上才退回絕對最大量。
+        if hi >= last_close and v > active_v:
+            active_v = v
+            active_i = i
+    pick = active_i if active_i is not None else best_i
+    if pick is None:
         return None
-    hi = float(work["high"].iloc[best_i] or 0)
-    lo = float(work["low"].iloc[best_i] or 0)
+    hi = float(work["high"].iloc[pick] or 0)
+    lo = float(work["low"].iloc[pick] or 0)
     if hi <= 0 or lo <= 0 or hi < lo:
         return None
     return {
-        "i": int(best_i),
-        "date": str(work["date"].iloc[best_i] or ""),
+        "i": int(pick),
+        "date": str(work["date"].iloc[pick] or ""),
         "high": hi,
         "low": lo,
-        "volume": best_v,
+        "volume": float(work["volume"].iloc[pick] or 0),
+        "active": bool(active_i is not None and pick == active_i),
     }
 
 
@@ -4614,7 +4634,7 @@ def draw_from_ohlc(
         0.50, 0.015,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列箭頭見圖上方圖例；實心＝當日觸發、空心＝接近；高點紫／低點青綠，不跟底帶同色　　"
         "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低　　"
-        "桃色帶＝大量區（近窗爆大量日高低；壓洋紅／撐綠；非買訊）",
+        "桃色帶＝大量區（近窗仍有效爆大量日高低；壓洋紅／撐綠；非買訊）",
         ha="center", va="bottom", fontproperties=_fp(9, "bold"), color="#263238",
     )
     plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
