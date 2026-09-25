@@ -213,6 +213,9 @@ class LookupImageTests(unittest.TestCase):
                 WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
             ), patch.object(
                 WayneTelegramBot, "_prepare_album_cell", side_effect=lambda p, box=None: p
+            ), patch(
+                "vol_zone_chart.render_volume_zone_png",
+                side_effect=lambda *_a, **_k: _png("vz.png"),
             ):
                 await bot._send_card_to_locked(
                     message,
@@ -227,7 +230,12 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("card", started)
         self.assertLess(abs(started["glance"] - started["card"]), 0.12)
         self.assertGreaterEqual(message.reply_media_group.await_count, 1)
-        self.assertEqual(message.reply_photo.await_count, 0)
+        self.assertGreaterEqual(message.reply_photo.await_count, 1)
+        caps = [
+            str(c.kwargs.get("caption") or "")
+            for c in message.reply_photo.await_args_list
+        ]
+        self.assertTrue(any("大量區" in c for c in caps), caps)
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
@@ -438,6 +446,9 @@ class LookupImageTests(unittest.TestCase):
             ), patch(
                 "wayne_navigator.render_decision_card_png",
                 side_effect=lambda *_a, **_k: _png("c.png"),
+            ), patch(
+                "vol_zone_chart.render_volume_zone_png",
+                side_effect=lambda *_a, **_k: _png("vz.png"),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -464,7 +475,7 @@ class LookupImageTests(unittest.TestCase):
                 )
 
         asyncio.run(_run())
-        self.assertGreaterEqual(message.reply_photo.await_count, 2)
+        self.assertGreaterEqual(message.reply_photo.await_count, 3)
         texts = [
             str(c.args[0]) if c.args else str(c.kwargs)
             for c in message.reply_html.await_args_list + message.reply_text.await_args_list

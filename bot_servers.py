@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 介紹圖＋高低溫度卡一次兩張、點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 上市／上櫃／興櫃一律介紹圖＋高低溫度卡一次兩張、再送大量區專圖（非買訊）；點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
 - 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -722,7 +722,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡／大量區專圖（非買訊）；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1117,7 +1117,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡。",
+            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡＋大量區。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -1131,7 +1131,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡。",
+            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡＋大量區。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -2586,12 +2586,13 @@ class WayneTelegramBot:
         labels = {
             "glance": "介紹圖",
             "card": "決策卡",
+            "volzone": "大量區",
             "both": "介紹圖＋高低卡",
             "chart": "導航圖",
             "table": "讀高低卡",
             "album": "一次送出",
         }
-        order = ("both", "album")
+        order = ("both", "album", "volzone")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
@@ -4021,7 +4022,7 @@ class WayneTelegramBot:
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。會一次出介紹圖、決策卡。",
+            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律介紹圖、決策卡、大量區。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "industry": "產業說明：請先選一檔。會送一張圖卡。同業＝同一產業鏈才比；跨族檔另標他還有的鏈。",
@@ -5478,6 +5479,7 @@ class WayneTelegramBot:
         is_em = self._hit_is_emerging(code, hits)
         progress_stop = asyncio.Event()
         progress_task = None
+        volzone_task = None
         op_t0 = time.monotonic()
         self._op_state_map()[actor] = {"sent": [], "current": "table", "t0": op_t0}
         if wait_msg is None:
@@ -5723,11 +5725,24 @@ class WayneTelegramBot:
                 hub = self._hub_keyboard(code, em=is_em, news=news_stats)
             glance_cap = ""
             card_cap = _stock_caption_name(card, code)
+            vol_path_f = self._scratch_chart_path(self.charts_dir, code, "volzone", uid_key)
+
+            def _render_volzone():
+                from vol_zone_chart import render_volume_zone_png
+
+                # 大量區只吃官方原柱；不准用決策卡除權還原／盤中合併的 ohlc
+                return render_volume_zone_png(
+                    code,
+                    _stock_caption_name(card, code),
+                    self.db_path,
+                    vol_path_f,
+                )
+
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
             ]
-            kind_labels = {"glance": "介紹圖", "card": "決策卡"}
+            kind_labels = {"glance": "介紹圖", "card": "決策卡", "volzone": "大量區"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
@@ -5766,6 +5781,16 @@ class WayneTelegramBot:
                 if not png:
                     return None
                 return (kind, png, caption, markup)
+
+            volzone_task = asyncio.create_task(
+                _render_ready(
+                    "volzone",
+                    _render_volzone,
+                    _LOOKUP_PNG_TIMEOUT,
+                    "大量區（近窗仍有效爆大量日高低＝壓／撐；測壓≠站上；非買訊）",
+                    None,
+                )
+            )
 
             st = self._op_state_map().setdefault(actor, {"sent": [], "current": "both"})
             st["current"] = "both"
@@ -5820,6 +5845,25 @@ class WayneTelegramBot:
                     if ok:
                         sent_any = True
 
+            # 第三張：大量區專圖（不改導航；跟介紹／決策卡分開送）
+            try:
+                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
+                st["current"] = "volzone"
+                vz = await volzone_task
+            except Exception:
+                logger.exception("大量區專圖失敗 code=%s", code)
+                vz = None
+            if vz:
+                kind, path, caption, _mk = vz
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                ok = await send_photo(prep or path, caption, hub, kind=kind)
+                if ok:
+                    sent_any = True
+                    sent_kinds.append(kind)
+                    hub_on = True
+                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
+                st["sent"] = list(sent_kinds)
+
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan):
                     done_txt = html_escape(_stock_caption_name(card, code) or code)
@@ -5868,6 +5912,8 @@ class WayneTelegramBot:
             progress_stop.set()
             if progress_task is not None:
                 progress_task.cancel()
+            if volzone_task is not None and not volzone_task.done():
+                volzone_task.cancel()
             await _clear_wait()
             fade_roles = {"ack", "wait"}
             if sent_any:
