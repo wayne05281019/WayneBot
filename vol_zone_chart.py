@@ -149,7 +149,207 @@ def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     return work
 
 
-def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -> Optional[Dict[str, Any]]:
+_OFFICIAL_EX_SRC = frozenset({"TWT49U", "tpex_exDailyQ"})
+_GAP_PCT = 0.05
+
+
+def _bar_ymd(val: Any) -> str:
+    s = str(val or "").replace("-", "").replace("/", "")[:8]
+    return s if s.isdigit() and len(s) == 8 else ""
+
+
+def _ex_kind_verb(kind: Any) -> str:
+    s = str(kind or "")
+    if "減資" in s:
+        return "減資"
+    if "分割" in s:
+        return "分割"
+    if "權" in s and "息" in s:
+        return "除權息"
+    if "權" in s:
+        return "除權"
+    if "息" in s:
+        return "除息"
+    return ""
+
+
+def _is_scale_ex(ev: Dict[str, Any]) -> bool:
+    """會改原柱價位尺度：除權／除息／減資／分割。法說不算。"""
+    return _ex_kind_verb(ev.get("kind")) in ("除息", "除權", "除權息", "減資", "分割")
+
+
+def load_scale_ex_events(
+    stock_id: str,
+    db_path: str,
+    start: str = "",
+    end: str = "",
+) -> List[Dict[str, Any]]:
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    if not sid or not path:
+        return []
+    try:
+        conn = sqlite3.connect(path, timeout=15.0)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT stock_id, ex_date, kind, close_before, ref_price, right_plus_div, source
+               FROM ex_rights WHERE stock_id=? AND ex_date>=? AND ex_date<=? AND kind!=''
+               ORDER BY ex_date ASC""",
+            (sid, start or "19000101", end or "99991231"),
+        ).fetchall()
+        conn.close()
+    except sqlite3.OperationalError:
+        return []
+    return [dict(r) for r in rows if _is_scale_ex(dict(r))]
+
+
+def unexplained_gap_dates(work: pd.DataFrame, thresh: float = _GAP_PCT) -> List[str]:
+    if work is None or getattr(work, "empty", True) or len(work) < 2:
+        return []
+    out: List[str] = []
+    for i in range(1, len(work)):
+        prev = float(work["close"].iloc[i - 1] or 0)
+        op = float(work["open"].iloc[i] or 0)
+        if prev <= 0 or op <= 0:
+            continue
+        if abs(op - prev) / prev >= float(thresh):
+            d = _bar_ymd(work["date"].iloc[i])
+            if d:
+                out.append(d)
+    return out
+
+
+def _scale_cut_date(ex_events: Optional[List[Dict[str, Any]]], last_date: str) -> str:
+    last = _bar_ymd(last_date)
+    cut = ""
+    for ev in ex_events or []:
+        if not _is_scale_ex(ev):
+            continue
+        d = _bar_ymd(ev.get("ex_date") or ev.get("date"))
+        if d and last and d <= last and d >= cut:
+            cut = d
+    return cut
+
+
+def _latest_ex_event(
+    ex_events: Optional[List[Dict[str, Any]]], last_date: str
+) -> Optional[Dict[str, Any]]:
+    last = _bar_ymd(last_date)
+    best = None
+    for ev in ex_events or []:
+        if not _is_scale_ex(ev):
+            continue
+        d = _bar_ymd(ev.get("ex_date") or ev.get("date"))
+        if d and last and d <= last:
+            best = ev
+    return best
+
+
+def hydrate_official_ex_for_gaps(
+    stock_id: str,
+    db_path: str,
+    work: pd.DataFrame,
+    events: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """跳空日還沒官方除權息列（或只剩啟發式）才補抓 TWT49U／櫃買。失敗就沿用庫。"""
+    if os.getenv("WAYNE_SKIP_EX_FETCH") == "1":
+        return events
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    if not sid or not path:
+        return events
+    official_dates = {
+        _bar_ymd(e.get("ex_date"))
+        for e in events
+        if str(e.get("source") or "") in _OFFICIAL_EX_SRC
+    }
+    need = [d for d in unexplained_gap_dates(work) if d not in official_dates]
+    if not need:
+        return events
+    months = sorted({d[:6] for d in need if len(d) == 8})
+    try:
+        import calendar
+
+        import requests
+
+        from ex_rights import fetch_tpex_month, fetch_twse_month, upsert_events
+
+        sess = requests.Session()
+        sess.headers.update({"User-Agent": "Mozilla/5.0 WayneBot-volzone"})
+        packed: List[Dict[str, Any]] = []
+        for ym in months:
+            y, m = int(ym[:4]), int(ym[4:6])
+            last = calendar.monthrange(y, m)[1]
+            a, b = f"{ym}01", f"{ym}{last:02d}"
+            try:
+                packed.extend(fetch_twse_month(sess, a, b))
+            except Exception:
+                logger.warning("大量區補抓上市除權息 %s 失敗", ym)
+            try:
+                packed.extend(fetch_tpex_month(sess, a, b))
+            except Exception:
+                logger.warning("大量區補抓上櫃除權息 %s 失敗", ym)
+        mine = [x for x in packed if str(x.get("stock_id") or "") == sid]
+        if mine:
+            upsert_events(path, mine)
+            start = _bar_ymd(work["date"].iloc[0]) if len(work) else ""
+            end = _bar_ymd(work["date"].iloc[-1]) if len(work) else ""
+            return load_scale_ex_events(sid, path, start, end)
+    except Exception:
+        logger.warning("大量區補抓除權息略過", exc_info=True)
+    return events
+
+
+def _ex_gap_note(
+    events: Optional[List[Dict[str, Any]]],
+    gaps: Optional[List[str]],
+    last_date: str,
+    zone_date: str = "",
+) -> str:
+    """圖說第一句：官方除權息先講；沒列的大跳空也要講，不准當崩 silently。"""
+    ev = _latest_ex_event(events, last_date)
+    last = _bar_ymd(last_date)
+    zd = _bar_ymd(zone_date)
+    if ev:
+        d = _bar_ymd(ev.get("ex_date"))
+        if d and (d == zd or d == last or (gaps and d in gaps)):
+            verb = _ex_kind_verb(ev.get("kind")) or "除權息"
+            md = _md(d)
+            amt = 0.0
+            before = 0.0
+            ref = 0.0
+            try:
+                amt = float(ev.get("right_plus_div") or 0)
+                before = float(ev.get("close_before") or 0)
+                ref = float(ev.get("ref_price") or 0)
+            except (TypeError, ValueError):
+                pass
+            from wayne_navigator import _fmt_price
+
+            bit = f"{md}{verb}"
+            if amt > 0:
+                bit += f"{_fmt_price(amt)}元"
+            if before > 0 and ref > 0:
+                bit += f"（前收{_fmt_price(before)}、參考價{_fmt_price(ref)}）"
+            src = str(ev.get("source") or "")
+            if src in _OFFICIAL_EX_SRC:
+                return f"{bit}。圖是官方原柱，缺口是息差不是崩。"
+            return f"{bit}。圖是官方原柱；這列還不是證交所／櫃買完成稿，缺口先不當崩。"
+    for d in gaps or []:
+        if d:
+            return (
+                f"{_md(d)}跳空超過五％，庫沒這日官方除權息列，"
+                "缺口先不當崩、也不拿來當測壓理由。"
+            )
+    return ""
+
+
+def find_volume_zone(
+    work: pd.DataFrame,
+    *,
+    lookback: int = VOL_ZONE_LOOKBACK,
+    ex_events: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
     """近窗仍對現價有效的爆大量日。壓還在頭上才認；已全部站上才退回絕對最大量。
 
     準則（鎖死）：
@@ -158,6 +358,8 @@ def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -
     3. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     4. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
     5. 壓＝該日官方高、撐＝該日官方低。不是買訊、不發明 5／9。
+    6. 官方除權／除息／減資把價位尺度切開：壓撐只在最近一次除權息（含當日）之後的原柱裡找，
+       不准拿除息前的高去壓除息後的收。
     """
     if work is None or getattr(work, "empty", True):
         return None
@@ -169,10 +371,21 @@ def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -
         if "is_halt" in work.columns
         else pd.Series(False, index=work.index)
     )
-    # 不含最後一根：大量區是過去爆大量參考日
     end = n - 1
     start = max(0, end - max(int(lookback or 0), 1))
+    last_d = _bar_ymd(work["date"].iloc[-1])
+    cut = _scale_cut_date(ex_events, last_d)
+    if cut:
+        for i in range(n):
+            if _bar_ymd(work["date"].iloc[i]) >= cut:
+                start = max(start, i)
+                break
     last_close = float(work["close"].iloc[-1] or 0)
+    provisional = False
+    if start >= end:
+        start = end
+        end = n
+        provisional = True
     best_i = None
     best_v = -1.0
     active_i = None
@@ -211,6 +424,8 @@ def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -
         "low": lo,
         "volume": float(work["volume"].iloc[pick] or 0),
         "active": bool(active_i is not None and pick == active_i),
+        "provisional": bool(provisional),
+        "ex_cut": cut,
     }
 
 
@@ -365,6 +580,8 @@ def vol_zone_position_line(
     last: Optional[Dict[str, Any]],
     card: Optional[Dict[str, Any]] = None,
     bars: Optional[List[Dict[str, Any]]] = None,
+    *,
+    on_ex: bool = False,
 ) -> str:
     """依這檔在帶裡的現況換句，不是同一套填空。不寫抱、不寫賣、不改如何賣。"""
     if not zone or not last:
@@ -390,6 +607,10 @@ def vol_zone_position_line(
     near_press = cl < hi and hi > 0 and (hi - cl) / hi <= 0.015
 
     def _end(body: str, *, nice: bool = False, test: bool = False) -> str:
+        if on_ex:
+            body = body.replace("剛站在支撐線上", "剛站在除息後支撐線上")
+            body = body.replace("站在支撐線上", "站在除息後支撐線上")
+            body = body.replace("跌破撐", "跌破除息後撐")
         if tail:
             body = f"{body}，{tail}" if not body.endswith("。") else body[:-1] + f"，{tail}。"
         if not body.endswith("。"):
@@ -463,8 +684,11 @@ def vol_zone_photo_caption(
     zone: Optional[Dict[str, Any]] = None,
     last: Optional[Dict[str, Any]] = None,
     bars: Optional[List[Dict[str, Any]]] = None,
+    ex_events: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """第三張圖說：原句＋收盤口吻位置句。如何賣仍只在介紹圖／高低卡。"""
+    """第三張圖說：原句＋除權息／跳空＋收盤口吻。如何賣仍只在介紹圖／高低卡。"""
+    events = list(ex_events or [])
+    gaps: List[str] = []
     if zone is None or last is None or bars is None:
         sid = str(stock_id or "").strip()
         path = str(db_path or "").strip()
@@ -472,7 +696,12 @@ def vol_zone_photo_caption(
             raw = load_official_ohlc(sid, path, max(VOL_ZONE_BARS + VOL_ZONE_LOOKBACK + 5, 120))
             work = official_work(raw)
             if work is not None and not work.empty:
-                zone = find_volume_zone(work)
+                start = _bar_ymd(work["date"].iloc[0])
+                end = _bar_ymd(work["date"].iloc[-1])
+                events = load_scale_ex_events(sid, path, start, end)
+                events = hydrate_official_ex_for_gaps(sid, path, work, events)
+                gaps = unexplained_gap_dates(work)
+                zone = find_volume_zone(work, ex_events=events)
                 bars = [
                     {
                         "date": r.get("date"),
@@ -484,9 +713,18 @@ def vol_zone_photo_caption(
                     for r in work.to_dict("records")
                 ]
                 last = bars[-1] if bars else last
-    pos = vol_zone_position_line(zone, last, card, bars=bars)
+    on_ex = False
+    last_d = _bar_ymd((last or {}).get("date"))
+    zd = _bar_ymd((zone or {}).get("date"))
+    ev = _latest_ex_event(events, last_d or zd)
+    if ev and _bar_ymd(ev.get("ex_date")) in {zd, last_d}:
+        on_ex = True
+    note = _ex_gap_note(events, gaps, last_d or zd, zd)
+    pos = vol_zone_position_line(zone, last, card, bars=bars, on_ex=on_ex)
     if pos:
-        return f"{VOL_ZONE_CAPTION_HEAD}\n{pos}"
+        return f"{VOL_ZONE_CAPTION_HEAD}\n{note}{pos}" if note else f"{VOL_ZONE_CAPTION_HEAD}\n{pos}"
+    if note:
+        return f"{VOL_ZONE_CAPTION_HEAD}\n{note}"
     return VOL_ZONE_CAPTION_HEAD
 
 
@@ -530,7 +768,13 @@ def render_volume_zone_png(
         work = official_work(df)
     if work is None or work.empty:
         return ""
-    zone = find_volume_zone(work, lookback=lookback)
+    ex_events: List[Dict[str, Any]] = []
+    if db_path:
+        start_d = _bar_ymd(work["date"].iloc[0])
+        end_d = _bar_ymd(work["date"].iloc[-1])
+        ex_events = load_scale_ex_events(sid, str(db_path), start_d, end_d)
+        ex_events = hydrate_official_ex_for_gaps(sid, str(db_path), work, ex_events)
+    zone = find_volume_zone(work, lookback=lookback, ex_events=ex_events)
     if not zone:
         return ""
     n_all = len(work)
@@ -578,6 +822,45 @@ def render_volume_zone_png(
     ax1.axhline(hi, color=_PRESS, linewidth=2.0, zorder=5)
     ax1.axhline(lo, color=_HOLD, linewidth=2.0, zorder=5)
     ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.7, zorder=1)
+
+    ex_by_date = {_bar_ymd(e.get("ex_date")): e for e in ex_events}
+    for i in range(n):
+        ev = ex_by_date.get(_bar_ymd(view["date"].iloc[i]))
+        if not ev:
+            continue
+        verb = _ex_kind_verb(ev.get("kind")) or "除權息"
+        amt = 0.0
+        try:
+            amt = float(ev.get("right_plus_div") or 0)
+        except (TypeError, ValueError):
+            amt = 0.0
+        lab = verb if amt <= 0 else f"{verb}{_fmt_price(amt)}元"
+        ax1.axvline(xs[i], color="#6a1b9a", linewidth=1.0, alpha=0.55, zorder=1)
+        ax1.annotate(
+            lab,
+            xy=(xs[i], float(view["high"].iloc[i])),
+            xytext=(8, 16),
+            textcoords="offset points",
+            ha="left",
+            va="bottom",
+            fontproperties=_fp(10, "bold"),
+            color="#6a1b9a",
+            zorder=8,
+            bbox=dict(
+                boxstyle="round,pad=0.28",
+                facecolor="#f3e5f5",
+                edgecolor="#6a1b9a",
+                linewidth=0.9,
+                alpha=0.96,
+            ),
+        )
+        ref = 0.0
+        try:
+            ref = float(ev.get("ref_price") or 0)
+        except (TypeError, ValueError):
+            ref = 0.0
+        if ref > 0:
+            ax1.axhline(ref, color="#6a1b9a", linewidth=0.9, linestyle=(0, (3, 2)), alpha=0.7, zorder=2)
 
     for i in range(n):
         op = float(view["open"].iloc[i])
@@ -722,18 +1005,33 @@ def render_volume_zone_png(
 
     src = str(view["quote_source"].iloc[-1] if "quote_source" in view.columns else "")
     src_note = "興櫃日均價／高低" if src == "emerging_quotes" else "官方日K原柱"
+    last_ev = _latest_ex_event(ex_events, last.get("date"))
+    ex_title = ""
+    if last_ev:
+        verb = _ex_kind_verb(last_ev.get("kind")) or "除權息"
+        amt = 0.0
+        try:
+            amt = float(last_ev.get("right_plus_div") or 0)
+        except (TypeError, ValueError):
+            amt = 0.0
+        ex_title = f"　{verb} {_md(last_ev.get('ex_date'))}"
+        if amt > 0:
+            ex_title += f" {_fmt_price(amt)}元"
+        ex_title += "（原柱不還原）"
     title = (
         f"{sid} {name}　大量區專圖（非買訊・{src_note}）　"
         f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
         f"最近 {_md(last.get('date'))} "
         f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
         f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
+        f"{ex_title}"
     )
     ax1.set_title(title, fontproperties=_fp(12, "bold"), pad=10, color=_TEXT)
     fig.text(
         0.5,
         0.012,
-        "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。高觸壓、收未過＝測壓，不是站上、不是買訊。導航圖另按。",
+        "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息／減資缺口是息差不是崩。"
+        "高觸壓、收未過＝測壓，不是站上、不是買訊。導航圖另按。",
         ha="center",
         va="bottom",
         fontproperties=_fp(9, "bold"),

@@ -200,3 +200,93 @@ def test_rising_with_real_volume():
     assert "仍真" in line
     assert "看起來不錯！" in line
     assert "量縮" not in line
+
+
+def test_ex_div_cuts_pre_ex_volume_and_caption():
+    """除息後不准拿除息前爆量高去壓除息後的收；圖說要自己講息差。"""
+    import pandas as pd
+
+    from vol_zone_chart import find_volume_zone, vol_zone_photo_caption
+
+    work = pd.DataFrame(
+        [
+            {
+                "date": "20260910",
+                "open": 47.7,
+                "high": 48.0,
+                "low": 46.4,
+                "close": 46.5,
+                "volume": 80000,
+                "is_halt": False,
+            },
+            {
+                "date": "20260922",
+                "open": 46.8,
+                "high": 46.8,
+                "low": 45.4,
+                "close": 45.45,
+                "volume": 22311,
+                "is_halt": False,
+            },
+            {
+                "date": "20260923",
+                "open": 40.0,
+                "high": 40.45,
+                "low": 39.0,
+                "close": 39.55,
+                "volume": 47140,
+                "is_halt": False,
+            },
+            {
+                "date": "20260924",
+                "open": 38.9,
+                "high": 39.5,
+                "low": 38.8,
+                "close": 39.5,
+                "volume": 12468,
+                "is_halt": False,
+            },
+        ]
+    )
+    ev = {
+        "ex_date": "20260923",
+        "kind": "息",
+        "close_before": 45.45,
+        "ref_price": 41.45,
+        "right_plus_div": 4.0,
+        "source": "TWT49U",
+    }
+    raw = find_volume_zone(work)
+    assert raw["date"] == "20260910"
+    zone = find_volume_zone(work, ex_events=[ev])
+    assert zone["date"] == "20260923"
+    assert float(zone["high"]) == 40.45
+    assert float(zone["low"]) == 39.0
+    bars = work.to_dict("records")
+    cap = vol_zone_photo_caption(
+        zone=zone, last=bars[-1], bars=bars, card=_card_heat("持平"), ex_events=[ev]
+    )
+    assert "09/23除息4元" in cap
+    assert "前收45.45" in cap
+    assert "參考價41.45" in cap
+    assert "息差不是崩" in cap
+    assert "除息後支撐" in cap
+    assert "崩盤" not in cap
+
+
+def test_unexplained_gap_is_called_out():
+    from vol_zone_chart import _ex_gap_note
+
+    note = _ex_gap_note([], ["20260923"], "20260924", "20260923")
+    assert "跳空超過五％" in note
+    assert "不當崩" in note
+
+
+def test_render_mentions_ex_div_not_crash():
+    import inspect
+
+    from vol_zone_chart import render_volume_zone_png
+
+    src = inspect.getsource(render_volume_zone_png)
+    assert "息差不是崩" in src
+    assert "原柱不還原" in src

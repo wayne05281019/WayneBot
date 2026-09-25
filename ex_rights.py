@@ -199,6 +199,13 @@ def fetch_tpex_month(session: requests.Session, start: str, end: str) -> List[Di
     return out
 
 
+_OFFICIAL_EX_SRC = frozenset({"TWT49U", "tpex_exDailyQ"})
+
+
+def _is_official_ex_src(src: Any) -> bool:
+    return str(src or "") in _OFFICIAL_EX_SRC
+
+
 def upsert_events(db_path: str, events: List[Dict[str, Any]]) -> int:
     if not events:
         return 0
@@ -207,6 +214,16 @@ def upsert_events(db_path: str, events: List[Dict[str, Any]]) -> int:
     cur = conn.cursor()
     n = 0
     for e in events:
+        sid = str(e.get("stock_id") or "")
+        ex = str(e.get("ex_date") or "")
+        incoming = str(e.get("source") or "")
+        if sid and ex:
+            old = cur.execute(
+                "SELECT source FROM ex_rights WHERE stock_id=? AND ex_date=?",
+                (sid, ex),
+            ).fetchone()
+            if old and _is_official_ex_src(old[0]) and not _is_official_ex_src(incoming):
+                continue
         cur.execute(
             """
             INSERT INTO ex_rights (
@@ -309,6 +326,17 @@ def upsert_heuristic_event(
         return
     if not (0.05 <= f <= 20):
         return
+    try:
+        conn = sqlite3.connect(db_path)
+        old = conn.execute(
+            "SELECT source FROM ex_rights WHERE stock_id=? AND ex_date=?",
+            (str(stock_id), str(ex_date)),
+        ).fetchone()
+        conn.close()
+        if old and _is_official_ex_src(old[0]):
+            return
+    except sqlite3.OperationalError:
+        pass
     upsert_events(
         db_path,
         [
