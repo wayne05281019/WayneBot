@@ -259,7 +259,7 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     dates = out["date"].astype(str).str.replace("-", "", regex=False)
     if sid:
         try:
-            from ex_rights import load_ex_rights
+            from ex_rights import OFFICIAL_EX_SRC, load_ex_rights
 
             for ev in load_ex_rights(sid, db_path):
                 ex = str(ev.get("ex_date") or "")
@@ -273,7 +273,11 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
                     out.loc[mask, ["open", "high", "low", "close"]] * factor
                 )
                 official.add(ex)
-                notes.append(f"官方除權息 {ex} ×{factor:.4f}")
+                src = str(ev.get("source") or "")
+                if src in OFFICIAL_EX_SRC:
+                    notes.append(f"官方除權息 {ex} ×{factor:.4f}")
+                else:
+                    notes.append(f"跳空還原 {ex} ×{factor:.4f}")
             dates = out["date"].astype(str).str.replace("-", "", regex=False)
         except Exception:
             official = set()
@@ -297,7 +301,7 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
             _scale_row(i, factor)
             notes.append(f"修正 {out['date'].iloc[i]} 錯價")
 
-    # 2) 持續跳空＝除權／減資／分割：當天整根離開前收，之後不再跳回
+    # 2) 持續跳空：當天整根離開前收。只做還原，不准寫分割／減資／除權息。
     for i in range(1, n):
         day = str(dates.iloc[i] if i < len(dates) else "").replace("-", "")
         if day in official:
@@ -331,13 +335,13 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
                     factor = round(factor, 2)
         idx = out.index[:i]
         out.loc[idx, ["open", "high", "low", "close"]] = out.loc[idx, ["open", "high", "low", "close"]] * factor
-        tag = "分割" if factor > 1.05 else "減資" if factor < 0.95 else "除權"
-        notes.append(f"{tag}還原 {out['date'].iloc[i]} ×{factor:.4f}")
+        notes.append(f"跳空還原 {out['date'].iloc[i]} ×{factor:.4f}")
         if sid and db_path:
             try:
                 from ex_rights import upsert_heuristic_event
 
-                upsert_heuristic_event(db_path, sid, day, factor, kind=tag)
+                # 只給還原用；話筒除權／除息／分割不准寫啟發式
+                upsert_heuristic_event(db_path, sid, day, factor, kind="啟發式")
                 official.add(day)
             except Exception:
                 pass
@@ -685,10 +689,7 @@ class NavigatorEngine:
                 badges.append(f"{tag} {clock}".strip() if clock else tag)
             except Exception:
                 badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
-        if (not use_raw_table) and any(
-            "除權" in x or "錯價" in x or "官方除權息" in x or "減資" in x or "分割" in x
-            for x in xq_notes
-        ):
+        if (not use_raw_table) and any("官方除權息" in x for x in xq_notes):
             badges.append("已除權還原")
         vr480 = int(latest["vol_rank_480"])
         vr120 = int(latest["vol_rank_120"])
@@ -2332,7 +2333,7 @@ def _badge_style(text: str):
     """徽章：狀態用實心白字；已除權這類事實才白底描邊。"""
     C = _CARD
     t = str(text or "")
-    if any(k in t for k in ("除息", "除權", "減資", "分割", "已除權")):
+    if any(k in t for k in ("除息", "除權", "已除權")):
         return C["white"], C["neutral_fg"]
     if t.startswith("月K"):
         return C["navy"], C["white"]

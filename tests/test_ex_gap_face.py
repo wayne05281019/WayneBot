@@ -250,3 +250,247 @@ def test_hydrate_http_timeout_is_short():
     assert "tpex" in src
     face_src = inspect.getsource(recent_ex_face)
     assert "rows[-5:]" in face_src
+    assert "official_scale_events" in face_src
+
+
+def test_heuristic_split_never_written_on_face(tmp_path):
+    os.environ["WAYNE_SKIP_EX_FETCH"] = "1"
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_heuristic_event(db, "2383", "20260803", 1.15, kind="分割")
+    bars = [
+        {"date": "20260730", "open": 4005, "high": 4510, "low": 3930, "close": 4315},
+        {"date": "20260803", "open": 5135, "high": 5195, "low": 4930, "close": 4980},
+        {"date": "20260804", "open": 4995, "high": 5210, "low": 4875, "close": 5140},
+        {"date": "20260805", "open": 5425, "high": 5425, "low": 5165, "close": 5245},
+        {"date": "20260806", "open": 5200, "high": 5380, "low": 5105, "close": 5305},
+    ]
+    face = recent_ex_face("2383", db, "20260806", bars)
+    assert "分割" not in (face["label"] or "")
+    assert "分割" not in (face["note"] or "")
+
+
+def test_official_div_date_and_amount_chi_hua_and_el(tmp_path):
+    """奇鋐／台光電除息只認 TWT49U：日期＋權值+息值。"""
+    os.environ["WAYNE_SKIP_EX_FETCH"] = "1"
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "3017",
+                "ex_date": "20260819",
+                "kind": "息",
+                "close_before": 3035.0,
+                "ref_price": 3014.11,
+                "right_plus_div": 20.881604,
+                "factor": 0.9931169686985173,
+                "source": "TWT49U",
+            },
+            {
+                "stock_id": "2383",
+                "ex_date": "20260828",
+                "kind": "息",
+                "close_before": 5500.0,
+                "ref_price": 5475.0,
+                "right_plus_div": 25.0,
+                "factor": 0.9954545454545455,
+                "source": "TWT49U",
+            },
+        ],
+    )
+    chi = recent_ex_face(
+        "3017",
+        db,
+        "20260819",
+        [
+            {"date": "20260818", "open": 3150, "close": 3035},
+            {"date": "20260819", "open": 2915, "high": 3160, "low": 2900, "close": 3095},
+        ],
+    )
+    assert chi["label"] == "08/19除息20.88元"
+    assert "08/19除息20.88元" in chi["note"]
+    assert "前收3,035" in chi["note"]
+    assert "參考價3,014" in chi["note"]
+    el = recent_ex_face(
+        "2383",
+        db,
+        "20260828",
+        [
+            {"date": "20260827", "open": 5960, "close": 5500},
+            {"date": "20260828", "open": 5480, "high": 5620, "low": 5425, "close": 5490},
+        ],
+    )
+    assert el["label"] == "08/28除息25元"
+    assert "分割" not in el["label"]
+    assert "分割" not in el["note"]
+
+
+def test_twt49u_kind_is_right_or_div_never_split():
+    from ex_rights import _event_verb, _kind, parse_twse_row, scale_ex_verb
+
+    fields = [
+        "股票代號", "股票名稱", "資料日期", "權/息",
+        "除權息前收盤價", "除權息參考價", "權值+息值",
+    ]
+    for raw, want_kind, want_verb in (("息", "息", "除息"), ("權", "權", "除權"), ("權息", "權息", "除權息")):
+        row = ["3017", "奇鋐", "115年08月19日", raw, "3035", "3014.11", "20.881604"]
+        item = parse_twse_row(fields, row)
+        assert item["kind"] == want_kind
+        assert item["source"] == "TWT49U"
+        assert scale_ex_verb(item["kind"]) == want_verb
+        assert "分割" not in scale_ex_verb(item["kind"])
+    assert _kind("息") == "息"
+    assert _kind("權") == "權"
+    assert _event_verb("息") == "除息"
+    assert _event_verb("權") == "除權"
+
+
+def test_nearest_event_skips_heuristic_split(tmp_path):
+    from ex_rights import nearest_event_label
+
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_heuristic_event(db, "2383", "20260803", 1.15, kind="分割")
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "2383",
+                "ex_date": "20260828",
+                "kind": "息",
+                "right_plus_div": 25.0,
+                "source": "TWT49U",
+            }
+        ],
+    )
+    lab = nearest_event_label("2383", db, today="20260801")
+    assert "分割" not in lab
+    assert "除息" in lab
+    only_h = nearest_event_label("2383", db, today="20260901")
+    assert "分割" not in (only_h or "")
+
+
+def test_phone_ex_verb_never_invents_split_or_cut():
+    from ex_rights import _event_verb, _kind, format_next_event_label, phone_ex_verb
+
+    assert _kind("分割") == ""
+    assert _kind("減資") == ""
+    assert _kind("") == ""
+    assert _event_verb("分割") == ""
+    assert _event_verb("減資") == ""
+    assert _event_verb("啟發式") == ""
+    assert phone_ex_verb("分割") == ""
+    assert phone_ex_verb("減資") == ""
+    assert phone_ex_verb("啟發式") == ""
+    assert phone_ex_verb("息") == "除息"
+    assert phone_ex_verb("權") == "除權"
+    assert phone_ex_verb("權息") == "除權息"
+    assert format_next_event_label("分割", "20260925", "20260924") == ""
+    assert format_next_event_label("減資", "20260925", "20260924") == ""
+    assert format_next_event_label("啟發式", "20260925", "20260924") == ""
+
+
+def test_tpex_row_kind_is_right_or_div_never_split():
+    from ex_rights import parse_tpex_row, phone_ex_verb, scale_ex_verb
+
+    fields = [
+        "代號", "名稱", "除權息日期", "權/息",
+        "除權息前收盤價", "除權息參考價", "權值+息值",
+    ]
+    row = ["6488", "環球晶", "115年08月05日", "息", "500", "495", "5"]
+    item = parse_tpex_row(fields, row)
+    assert item["stock_id"] == "6488"
+    assert item["market"] == "TWO"
+    assert item["source"] == "tpex_exDailyQ"
+    assert item["kind"] == "息"
+    assert scale_ex_verb(item["kind"]) == "除息"
+    assert phone_ex_verb(item["kind"]) == "除息"
+
+
+def test_empty_source_ex_rights_never_shown(tmp_path):
+    from ex_rights import nearest_event_label
+
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "1101",
+                "ex_date": "20260930",
+                "kind": "息",
+                "source": "",
+            }
+        ],
+    )
+    assert nearest_event_label("1101", db, today="20260924") == ""
+
+
+def test_listed_otc_emerging_heuristic_never_on_face(tmp_path):
+    """上市／上櫃／興櫃：啟發式分割不准上圖上字。"""
+    os.environ["WAYNE_SKIP_EX_FETCH"] = "1"
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    bars = [
+        {"date": "20260730", "open": 100, "high": 110, "low": 95, "close": 108},
+        {"date": "20260803", "open": 160, "high": 165, "low": 150, "close": 158},
+        {"date": "20260804", "open": 157, "high": 162, "low": 150, "close": 160},
+        {"date": "20260805", "open": 161, "high": 163, "low": 155, "close": 156},
+        {"date": "20260806", "open": 155, "high": 158, "low": 150, "close": 152},
+    ]
+    for sid in ("2330", "6488", "1260"):
+        upsert_events(
+            db,
+            [
+                {
+                    "stock_id": sid,
+                    "ex_date": "20260803",
+                    "kind": "分割",
+                    "factor": 1.5,
+                    "source": "heuristic_gap",
+                }
+            ],
+        )
+        face = recent_ex_face(sid, db, "20260806", bars)
+        blob = f"{face.get('label') or ''} {face.get('note') or ''}"
+        assert "分割" not in blob
+        assert "除權" not in blob
+        assert "除息" not in blob
+        assert face["label"] == ""
+
+
+def test_heuristic_upsert_kind_is_not_split(tmp_path):
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_heuristic_event(db, "2383", "20260803", 1.15, kind="分割")
+    import sqlite3
+
+    kind, src = sqlite3.connect(db).execute(
+        "SELECT kind, source FROM ex_rights WHERE stock_id='2383'"
+    ).fetchone()
+    assert kind == "啟發式"
+    assert src == "heuristic_gap"
+
+
+def test_vol_zone_on_ex_ignores_heuristic_split():
+    from vol_zone_chart import vol_zone_photo_caption
+
+    zone = {"date": "20260803", "high": 165, "low": 150, "volume": 1000}
+    last = {"date": "20260803", "close": 158, "high": 165, "low": 150, "volume": 1000}
+    bars = [
+        {"date": "20260730", "open": 100, "high": 110, "low": 95, "close": 108, "volume": 800},
+        {"date": "20260803", "open": 160, "high": 165, "low": 150, "close": 158, "volume": 1000},
+    ]
+    cap = vol_zone_photo_caption(
+        zone=zone,
+        last=last,
+        bars=bars,
+        ex_events=[{"ex_date": "20260803", "kind": "分割", "source": "heuristic_gap"}],
+    )
+    assert "分割" not in cap
+    assert "除息" not in cap
+    assert "除權" not in cap
+
+
