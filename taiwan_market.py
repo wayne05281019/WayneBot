@@ -1578,13 +1578,12 @@ def _market_bucket_face(bucket: str) -> str:
 
 
 def _page_kv(label: str, value_html: str) -> str:
-    """大盤小區一欄一行：標籤對齊，值從同一直欄開始。連結標籤不再補寬。"""
-    from tg_layout import pad_label
+    """大盤小區一欄一行：標籤對齊，值從同一直欄開始。連結標籤依可見字寬補齊。"""
+    from tg_layout import pad_label, pad_label_html
 
     lab = str(label or "")
-    if "<" in lab:
-        return f"{lab}　{value_html}"
-    return f"{pad_label(lab, 8)}　{value_html}"
+    left = pad_label_html(lab, 8) if "<" in lab else pad_label(lab, 8)
+    return f"{left}　{value_html}"
 
 
 def _page_pct(val: Optional[float]) -> str:
@@ -4103,7 +4102,8 @@ def format_taiwan_market_page_html(
         from tw_holidays import closed_tw_session, holiday_banner_lines
 
         tw_closed = closed_tw_session(now, db_path)
-        tw_banner = [html_escape(x) for x in holiday_banner_lines(tw_closed)]
+        bits = [html_escape(x) for x in holiday_banner_lines(tw_closed)]
+        tw_banner = ["　".join(bits)] if bits else []
         if tw_closed:
             live_px = 0.0
     except Exception:
@@ -4136,8 +4136,17 @@ def format_taiwan_market_page_html(
     from stock_links import html_index_anchor, html_named
 
     lines.extend(["", html_index_anchor("加權指數")])
+    ohlc = _ohlc_from_live_or_snap(snap, live)
+    prev_px = ohlc.get("prev_close")
     if show_px:
         lines.append(_page_kv("收盤", _page_b(f"{show_px:,.2f}")))
+    pts = None
+    if show_px and prev_px:
+        pts = float(show_px) - float(prev_px)
+    elif show_px and show_pct:
+        pts = float(show_px) * float(show_pct) / 100.0
+    if pts is not None:
+        lines.append(_page_kv("點數", _page_b(f"{pts:+,.2f}")))
     if show_pct or show_pct == 0:
         lines.append(_page_kv("漲跌", _page_b(f"{show_pct:+.2f}%")))
     if live_px > 0 and clock:
