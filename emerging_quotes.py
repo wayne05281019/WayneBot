@@ -416,7 +416,12 @@ def sync_emerging_quotes(
         time.sleep(max(0.0, float(sleep_s)))
     have = emerging_date_count(db_path)
     if have < 40:
-        today = datetime.utcnow() + timedelta(hours=8)
+        try:
+            from zoneinfo import ZoneInfo
+
+            today = datetime.now(ZoneInfo("Asia/Taipei"))
+        except Exception:
+            today = datetime.now()
         for i in range(int(lookback_days)):
             day = today - timedelta(days=i)
             if day.weekday() >= 5:

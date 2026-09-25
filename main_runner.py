@@ -26,7 +26,7 @@
 #   5. 月營收 monthly_revenue（OpenAPI 全市場同期＋公開資訊觀測站 NAS 已先公告）、季報 quarterly_income（OpenAPI 最新一期；無免驗證碼 NAS 彙總表）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
 #   7. 興櫃 emerging_quotes（櫃買當日行情表／日表；不寫進上市櫃 daily_quotes）
-#   8. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
+#   8. 匯入健康檢查；上市／上櫃／興櫃沒齊就不標成功、不覆蓋完整舊資料
 # 海選 06:30 寄給偉權與哥哥（兩人已在白名單）；12:45 尾盤只對照今早價。盤後 16:30 只融合；20:00 不寄。
 # 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
 # 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR；收盤後再看盤後（ADR／那指期續勢）。
@@ -1058,7 +1058,7 @@ class MainRunner:
         closed = closed_tw_session(db_path=self.db_path)
         if closed:
             logger.info(
-                "今日台股休市 %s %s，盤後融合改記成功、不重抓今天",
+                "今日台股休市 %s %s；先確認上一完整收盤日是否齊",
                 closed.get("ymd"),
                 closed.get("zh"),
             )
@@ -1070,11 +1070,35 @@ class MainRunner:
                 logger.info("北市停班：%s", refresh_tw_typhoon_halt(self.db_path))
             except Exception as e:
                 logger.warning("北市停班略過：%s", e)
-            self._mark_pipeline(
-                "success",
-                f"tw closed {closed.get('ymd')} {closed.get('zh')} skip increment",
+            # 休市不准直接標成功就走：上一交易日若上市／上櫃／興櫃未齊仍要補。
+            cap_closed = fuse_end_date()
+            try:
+                from emerging_quotes import sync_emerging_quotes
+
+                sync_emerging_quotes(self.db_path, cap=cap_closed)
+            except Exception as e_em:
+                logger.warning("休市日興櫃補齊略過：%s", e_em)
+            try:
+                from import_health import audit_import
+
+                health_closed = audit_import(self.db_path, cap_closed)
+            except Exception:
+                health_closed = {}
+            if self._increment_ok(health_closed):
+                self._mark_pipeline(
+                    "success",
+                    f"tw closed {closed.get('ymd')} {closed.get('zh')} skip increment "
+                    f"cap={cap_closed} tw={health_closed.get('tw')} "
+                    f"two={health_closed.get('two')} em={health_closed.get('em')}",
+                )
+                return True
+            logger.warning(
+                "休市日但上一收盤 %s 未齊（上市 %s 上櫃 %s 興櫃 %s），改補齊",
+                cap_closed,
+                health_closed.get("tw"),
+                health_closed.get("two"),
+                health_closed.get("em"),
             )
-            return True
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
             return True
@@ -1084,6 +1108,13 @@ class MainRunner:
         from import_health import audit_import, format_audit_plain
 
         cap = fuse_end_date()
+        try:
+            from emerging_quotes import emerging_rows_on, sync_emerging_quotes
+
+            ems = sync_emerging_quotes(self.db_path, cap=cap)
+            logger.info("興櫃收盤再寫：%s", ems)
+        except Exception as e_em:
+            logger.warning("興櫃收盤再寫略過：%s", e_em)
         health = audit_import(self.db_path, cap)
         try:
             wd = datetime.strptime(cap, "%Y%m%d").weekday()
@@ -1092,10 +1123,11 @@ class MainRunner:
         if wd < 5 and not self._increment_ok(health) and self.fetcher:
             for i in range(1, 9):
                 logger.warning(
-                    "%s 繼續補齊（上市 %s 上櫃 %s）第 %s 次",
+                    "%s 繼續補齊（上市 %s 上櫃 %s 興櫃 %s）第 %s 次",
                     cap,
                     health.get("tw"),
                     health.get("two"),
+                    health.get("em"),
                     i,
                 )
                 time.sleep(min(25 * i, 60))
@@ -1126,21 +1158,17 @@ class MainRunner:
             logger.error("盤後仍待補：%s", note)
             if notify:
                 try:
-                    self.send_telegram_message("🔁 盤後繼續補齊（下一輪開機／16:30 會再抓）\n" + note)
+                    self.send_telegram_message("🔁 盤後繼續補齊（下一輪開機／16:30 會再跑）\n" + note)
                 except Exception:
                     pass
             return False
+        health = dict(health or {})
         try:
-            from emerging_quotes import emerging_rows_on, sync_emerging_quotes
+            from emerging_quotes import emerging_rows_on
 
-            ems = sync_emerging_quotes(self.db_path, cap=cap)
-            logger.info("興櫃收盤再寫：%s", ems)
-            health = dict(health or {})
             health["em"] = emerging_rows_on(self.db_path, cap)
-        except Exception as e_em:
-            logger.warning("興櫃收盤再寫略過：%s", e_em)
-            health = dict(health or {})
-            health.setdefault("em", 0)
+        except Exception:
+            health.setdefault("em", int(health.get("em") or 0))
         self._mark_pipeline(
             "success",
             f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')} em={health.get('em')}",

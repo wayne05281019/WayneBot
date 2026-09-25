@@ -9,18 +9,22 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MIN_TW = 800
 MIN_TWO = 600
+MIN_EM = 50  # 興櫃獨立表；與 emerging_quotes.missing_emerging_days 門檻對齊
 MIN_CHIPS_NONZERO = 100  # total 夠多時法人非0不能是 0
 
 
 def increment_health_ok(health: Dict[str, Any]) -> bool:
-    """盤後融合是否達標：該有的數字絕不能是 0，且上市／上櫃都要過門檻。"""
+    """盤後融合是否達標：該有的數字絕不能是 0，且上市／上櫃／興櫃都要過門檻。"""
     if not health:
         return False
     total = int(health.get("total") or 0)
     tw = int(health.get("tw") or 0)
     two = int(health.get("two") or 0)
+    em = int(health.get("em") or 0)
     chips = int(health.get("chips_nonzero") or 0)
     if total == 0 or tw == 0 or two == 0:
+        return False
+    if em < MIN_EM:
         return False
     if total >= 800 and chips < MIN_CHIPS_NONZERO:
         return False
@@ -36,6 +40,7 @@ def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str
     total = int(health.get("total") or 0)
     tw = int(health.get("tw") or 0)
     two = int(health.get("two") or 0)
+    em = int(health.get("em") or 0)
     chips = int(health.get("chips_nonzero") or 0)
     if total == 0:
         reasons.append(f"{label} 日 K 合計為 0")
@@ -43,6 +48,8 @@ def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str
         reasons.append(f"{label} 上市為 0")
     if two == 0:
         reasons.append(f"{label} 上櫃為 0")
+    if em < MIN_EM:
+        reasons.append(f"{label} 興櫃 {em}/{MIN_EM} 未齊")
     if total >= 800 and chips < MIN_CHIPS_NONZERO:
         reasons.append(f"{label} 法人非0僅 {chips}（<{MIN_CHIPS_NONZERO}）")
     if total > 0 and tw > 0 and two > 0 and not sides_complete(tw, two):
@@ -228,6 +235,13 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         (yyyymmdd,),
     ).fetchone()[0]
     try:
+        em = cur.execute(
+            "SELECT COUNT(*) FROM emerging_quotes WHERE date=?",
+            (yyyymmdd,),
+        ).fetchone()[0]
+    except sqlite3.OperationalError:
+        em = 0
+    try:
         m_n = cur.execute("SELECT COUNT(*), MAX(yyyymm) FROM monthly_revenue").fetchone()
         q_n = cur.execute("SELECT COUNT(*), MAX(year), MAX(season) FROM quarterly_income").fetchone()
     except sqlite3.OperationalError:
@@ -246,6 +260,8 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         problems.append(f"待補上櫃 {two}/{MIN_TWO}（上市 {tw}）")
     if two >= MIN_TWO and tw < MIN_TW:
         problems.append(f"待補上市 {tw}/{MIN_TW}（上櫃 {two}）")
+    if int(em or 0) < MIN_EM:
+        problems.append(f"待補興櫃 {int(em or 0)}/{MIN_EM}")
     if total >= 800 and chip_n < 100:
         problems.append(f"待補法人（非0僅 {chip_n}）")
     latest_month = str(m_n[1] or "")
@@ -259,6 +275,7 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
             "date": yyyymmdd,
             "tw": int(tw or 0),
             "two": int(two or 0),
+            "em": int(em or 0),
             "total": int(total or 0),
             "chips_nonzero": int(chip_n or 0),
         }
@@ -268,6 +285,7 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         "date": yyyymmdd,
         "tw": int(tw or 0),
         "two": int(two or 0),
+        "em": int(em or 0),
         "total": int(total or 0),
         "chips_nonzero": int(chip_n or 0),
         "monthly_n": int(m_n[0] or 0),
@@ -542,7 +560,7 @@ def format_audit_plain(health: Dict[str, Any]) -> str:
     today_ok = bool(health.get("today_ok") if "today_ok" in health else increment_health_ok(health))
     head = "今天正常" if today_ok and not health.get("problems") else "今天異常"
     lines = [
-        f"盤後匯入 {date}：{head}。上市 {health.get('tw')}　上櫃 {health.get('two')}　合計 {health.get('total')}",
+        f"盤後匯入 {date}：{head}。上市 {health.get('tw')}　上櫃 {health.get('two')}　興櫃 {health.get('em', 0)}　合計 {health.get('total')}",
     ]
     month_note = health.get("monthly_note") or monthly_revenue_status(
         int(health.get("monthly_n") or 0),
@@ -569,7 +587,7 @@ def format_audit_plain(health: Dict[str, Any]) -> str:
 def verify_increment_import(db_path: str, cap: str = None) -> Dict[str, Any]:
     """盤後 increment 跑完後的硬性關卡（CI／排程）。該有的數字為 0 一律不通過。
 
-    只檢查當日上市／上櫃／合計／法人等非零門檻；Release zip 完整性另由 can_publish_release 關卡負責。
+    檢查當日上市／上櫃／興櫃／合計／法人等非零門檻；Release zip 完整性另由 can_publish_release 關卡負責。
     """
     try:
         from config import fuse_end_date
