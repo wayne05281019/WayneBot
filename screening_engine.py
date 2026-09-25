@@ -44,6 +44,7 @@ def _remember_live_judges(
 class ScreeningEngine:
     def __init__(self, db_path: str = None):
         self.db_path = db_path or get_db_path()
+        self._ex_by_sid: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
     def _get_connection(self) -> sqlite3.Connection:
         parent = os.path.dirname(self.db_path)
@@ -151,6 +152,33 @@ class ScreeningEngine:
         # 依 stock_id 分組
         stock_dfs = {sid: group.reset_index(drop=True) for sid, group in df_all.groupby('stock_id')}
         return stock_dfs
+
+    def _scale_ex_map(self) -> Dict[str, List[Dict[str, Any]]]:
+        """海選整輪共用官方除權息列，不准每檔重打庫。"""
+        if self._ex_by_sid is not None:
+            return self._ex_by_sid
+        out: Dict[str, List[Dict[str, Any]]] = {}
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=15.0)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """SELECT stock_id, ex_date, kind, close_before, ref_price, right_plus_div, source
+                   FROM ex_rights WHERE kind!=''"""
+            ).fetchall()
+            conn.close()
+            from ex_rights import is_scale_ex
+
+            for r in rows:
+                item = dict(r)
+                if not is_scale_ex(item):
+                    continue
+                sid = str(item.get("stock_id") or "")
+                if sid:
+                    out.setdefault(sid, []).append(item)
+        except sqlite3.OperationalError:
+            out = {}
+        self._ex_by_sid = out
+        return self._ex_by_sid
 
     def calculate_indicators(self, df: pd.DataFrame) -> Dict[str, Any]:
         """計算單一標的之關鍵量化與均線指標"""
@@ -281,6 +309,13 @@ class ScreeningEngine:
                 str(df["date"].iloc[-1] or "").replace("-", "")[:8]
                 if "date" in df.columns
                 else ""
+            ),
+            "ex_close_inside": _ex_close_inside_flag(
+                self.db_path,
+                str(df["stock_id"].iloc[-1] or ""),
+                df,
+                float(latest_close),
+                cache=self._scale_ex_map(),
             ),
         }
 
@@ -1057,7 +1092,13 @@ class ScreeningEngine:
                 live_px = None
                 if item.get("live"):
                     live_px = item["live"].get("price")
-                info = _leave_zero_now_trend_info(df, last_close=live_px)
+                info = _leave_zero_now_trend_info(
+                    df,
+                    last_close=live_px,
+                    stock_id=sid,
+                    db_path=self.db_path,
+                    cache=self._scale_ex_map(),
+                )
                 info["stock_id"] = sid
                 ok = bool(info) and _leave_zero_trend_ok(info)
                 item["trend_up_now"] = bool(ok)
@@ -1365,6 +1406,40 @@ def _skip_long_term_high_push(info: Dict[str, Any]) -> bool:
     return bool(break480 and q >= 3.0 and pct >= 4.0)
 
 
+def _ex_close_inside_flag(
+    db_path: str,
+    stock_id: str,
+    bars: Any,
+    close: float,
+    *,
+    cache: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> bool:
+    """收還在最近一次官方除息／除權當日高低裡。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return False
+    try:
+        from ex_rights import bar_ymd, close_inside_ex_bar, latest_scale_ex, load_scale_ex_events
+
+        events = (
+            list((cache or {}).get(sid) or [])
+            if cache is not None
+            else (load_scale_ex_events(sid, db_path) if db_path else [])
+        )
+        last = ""
+        try:
+            if bars is not None and hasattr(bars, "iloc") and "date" in getattr(bars, "columns", []):
+                last = bar_ymd(bars["date"].iloc[-1])
+        except (TypeError, ValueError, KeyError, IndexError):
+            last = ""
+        ev = latest_scale_ex(events, last)
+        if not ev:
+            return False
+        return close_inside_ex_bar(bars, ev.get("ex_date"), close)
+    except Exception:
+        return False
+
+
 def html_escape(val) -> str:
     return (
         str(val if val is not None else "")
@@ -1384,9 +1459,11 @@ def _regime_label(item: Dict[str, Any]) -> str:
         d20 = float(item.get("d20") or 0)
     except (TypeError, ValueError):
         return "整理格局"
-    if low20 and c > 0 and c <= low20 * 1.008:
+    # 官方除息／除權當日高低裡的收＝息差，不准當破底／貼20低
+    ex_inside = bool(item.get("ex_close_inside"))
+    if (not ex_inside) and low20 and c > 0 and c <= low20 * 1.008:
         return "弱勢破底"
-    if d20 <= 1.2:
+    if (not ex_inside) and d20 <= 1.2:
         return "貼近20日低"
     if ma20 and ma60 and c >= ma20 and ma20 >= ma60:
         return "多頭排列"
@@ -1651,7 +1728,12 @@ def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
 
 
 def _leave_zero_now_trend_info(
-    df: pd.DataFrame, *, last_close: Optional[float] = None
+    df: pd.DataFrame,
+    *,
+    last_close: Optional[float] = None,
+    stock_id: str = "",
+    db_path: str = "",
+    cache: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """剛離1–3「現在」趨勢欄：同一條 _leave_zero_trend_ok，不改海選公式。資料不足＝還沒過關。"""
     if df is None or len(df) < 5:
@@ -1697,6 +1779,15 @@ def _leave_zero_now_trend_info(
         info["monthly_stage_kind"] = mk
     except Exception:
         info["monthly_stage_kind"] = ""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        try:
+            sid = str(df["stock_id"].iloc[-1] or "")
+        except Exception:
+            sid = ""
+    info["ex_close_inside"] = _ex_close_inside_flag(
+        db_path, sid, df, c, cache=cache
+    )
     return info
 
 

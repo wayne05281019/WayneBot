@@ -57,3 +57,32 @@ def test_normalize_mild_split_gap():
     out, notes = normalize_ohlc(df, None)
     assert any("分割" in n or "還原" in n for n in notes)
     assert float(out["close"].iloc[0]) > 150
+
+
+def test_heuristic_does_not_clobber_official_ex(tmp_path):
+    from ex_rights import upsert_events
+
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "2542",
+                "ex_date": "20260923",
+                "kind": "息",
+                "close_before": 45.45,
+                "ref_price": 41.45,
+                "right_plus_div": 4.0,
+                "factor": 41.45 / 45.45,
+                "source": "TWT49U",
+            }
+        ],
+    )
+    upsert_heuristic_event(db, "2542", "20260923", 0.87, kind="減資")
+    kind, amt, src = sqlite3.connect(db).execute(
+        "SELECT kind, right_plus_div, source FROM ex_rights WHERE stock_id='2542' AND ex_date='20260923'"
+    ).fetchone()
+    assert kind == "息"
+    assert float(amt) == 4.0
+    assert src == "TWT49U"

@@ -349,6 +349,13 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     return out, notes
 
 
+def _close_inside_ex_bar(raw_bars, ex_date: str, close: float) -> bool:
+    """收盤還在官方除息／除權當日高低裡（息差帶，不是破底）。"""
+    from ex_rights import close_inside_ex_bar
+
+    return close_inside_ex_bar(raw_bars, ex_date, close)
+
+
 def pink_warning_note(card: dict) -> str:
     """粉紅預警＝從最新一根往回連續 K20高的天數（滿 2 日才提紀律賣出，數字用實際連幾日）。"""
     n = int(card.get("k20_high_streak") or 0)
@@ -467,6 +474,11 @@ class NavigatorEngine:
         if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
             is_live = True
             live_time = str(df["_live_time"].iloc[-1] or "") if "_live_time" in df.columns else ""
+        raw_for_ex = df.copy()
+        if "is_live" in raw_for_ex.columns:
+            raw_for_ex = raw_for_ex[~raw_for_ex["is_live"].fillna(False).astype(bool)]
+        keep = [c for c in ("date", "open", "high", "low", "close") if c in raw_for_ex.columns]
+        raw_for_ex = raw_for_ex[keep].tail(40)
         df, xq_notes = normalize_ohlc(df, self.db_path)
         # 小額除息不要改高低卡 20 日表（6770 8/27 除息 0.23 元，Cary 仍寫 70.20）。
         # 大額除權／減資才用還原列，避免 6669 那種 7800／-200%。
@@ -914,6 +926,36 @@ class NavigatorEngine:
                 )
         except Exception:
             face_name = raw_name or str(stock_id)
+        ex_gap_note = ""
+        ex_gap_label = ""
+        try:
+            from ex_rights import recent_ex_face
+
+            face = recent_ex_face(
+                str(stock_id),
+                self.db_path,
+                str(latest.get("date") or ""),
+                raw_for_ex,
+                voice="card",
+            )
+            ex_gap_note = str(face.get("note") or "").strip()
+            ex_gap_label = str(face.get("label") or "").strip()
+            if ex_gap_label and ex_gap_label not in badges:
+                badges.insert(0, ex_gap_label)
+            exd = str(face.get("ex_date") or "")
+            if ex_gap_label and _close_inside_ex_bar(raw_for_ex, exd, float(latest["close"])):
+                # 除息把原柱 20 低印在除息日，收還在當日高低裡＝息差不是破底
+                badges = [b for b in badges if b != "弱勢破底"]
+            if ex_gap_label and "除息" in ex_gap_label and "除權息" not in ex_gap_label:
+                badges = ["已除息還原" if b == "已除權還原" else b for b in badges]
+        except Exception:
+            import logging
+
+            logging.getLogger("WayneBot.Navigator").exception(
+                "官方除息除權面失敗 sid=%s", stock_id
+            )
+            ex_gap_note = ""
+            ex_gap_label = ""
         payload = {
             "stock_id": str(stock_id),
             "stock_name": face_name,
@@ -923,6 +965,8 @@ class NavigatorEngine:
             "asset_type": asset_type,
             "etf_kind": etf_kind,
             "next_event": next_event,
+            "ex_gap_note": ex_gap_note,
+            "ex_gap_label": ex_gap_label,
             "news_label": "",
             "quote_source": quote_source,
             "latest_date": latest["date"],
@@ -2288,6 +2332,8 @@ def _badge_style(text: str):
     """徽章：狀態用實心白字；已除權這類事實才白底描邊。"""
     C = _CARD
     t = str(text or "")
+    if any(k in t for k in ("除息", "除權", "減資", "分割", "已除權")):
+        return C["white"], C["neutral_fg"]
     if t.startswith("月K"):
         return C["navy"], C["white"]
     hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破", "注意", "背離")
@@ -2483,6 +2529,11 @@ def _title_listing_and_industry(card: dict):
     elif fine and fine in listing:
         industry = ""
     return listing, industry, etf_kind
+
+
+def _title_event_text(card: dict) -> str:
+    """標題列：剛發生的官方除息／除權優先，其次才是下次事件。"""
+    return str((card or {}).get("ex_gap_label") or (card or {}).get("next_event") or "").strip()
 
 
 def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8, news: str = "", lead: str = ""):
@@ -2929,7 +2980,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     listing, industry, etf_kind = _title_listing_and_industry(card)
-    event = str(card.get("next_event") or "").strip()
+    event = _title_event_text(card)
     news = str(card.get("news_label") or "").strip()
     if not news:
         from money_flow import industry_flow_tag
@@ -3297,7 +3348,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         extra = kind_lead or industry
         if extra and extra not in listing:
             head = f"{head}　{html_escape(extra)}"
-    event = str(card.get("next_event") or "").strip()
+    event = _title_event_text(card)
     if event:
         head = f"{head}　{html_escape(event)}"
     title_block = f"{head}\n{html_escape(badge)}" if badge else head
@@ -3490,7 +3541,10 @@ def render_first_glance_png(
         footer_src = [f"高低卡要{sa}，現在不要加碼。"]
         if pink_note:
             footer_src.append(pink_note)
-    footer_src = [n for n in footer_src if n][:2]
+    exn = str((card or {}).get("ex_gap_note") or "").strip()
+    if exn:
+        footer_src = [exn] + [n for n in footer_src if n != exn]
+    footer_src = [n for n in footer_src if n][:3]
 
     last = (tape or {}).get("last") or {}
     C = _CARD
@@ -3645,7 +3699,7 @@ def render_first_glance_png(
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     listing, industry, etf_kind = _title_listing_and_industry(card)
-    event = str(card.get("next_event") or "").strip()
+    event = _title_event_text(card)
     news = str(card.get("news_label") or "").strip()
     if not news:
         from money_flow import industry_flow_tag
