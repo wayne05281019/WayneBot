@@ -245,6 +245,7 @@ def test_old_inbox_not_counted_as_unread(tmp_path):
     db = str(tmp_path / "w.db")
     uid = "9001"
     tz = ZoneInfo("Asia/Taipei")
+    as_of = datetime(2026, 9, 11, 22, 3, tzinfo=tz)
     record_ingest_events(
         db,
         [
@@ -258,7 +259,7 @@ def test_old_inbox_not_counted_as_unread(tmp_path):
         ],
         now=datetime(2026, 9, 11, 22, 0, tzinfo=tz),
     )
-    assert unread_count(uid, db) == 0
+    assert unread_count(uid, db, now=as_of) == 0
     record_ingest_events(
         db,
         [
@@ -272,7 +273,7 @@ def test_old_inbox_not_counted_as_unread(tmp_path):
         ],
         now=datetime(2026, 9, 11, 22, 1, tzinfo=tz),
     )
-    html = take_unread_digest(uid, db, now=datetime(2026, 9, 11, 22, 3, tzinfo=tz))
+    html = take_unread_digest(uid, db, now=as_of)
     assert "46506" in html
     assert "45000" not in html
     assert "17:49" in html
