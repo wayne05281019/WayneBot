@@ -539,6 +539,9 @@ def vol_zone_photo_caption(
                     for r in work.to_dict("records")
                 ]
                 last = bars[-1] if bars else last
+    elif bars:
+        recent = bars[-8:] if len(bars) > 8 else bars
+        gaps = unexplained_gap_dates(recent, way="down")
     on_ex = False
     last_d = _bar_ymd((last or {}).get("date"))
     zd = _bar_ymd((zone or {}).get("date"))
@@ -565,34 +568,30 @@ def _candle_up(close: float, prev_close: Optional[float], open_: float) -> bool:
         return float(close) >= float(prev_close)
 
 
-def render_volume_zone_png(
+def prepare_volume_zone(
     stock_id: str,
     stock_name: str = "",
     db_path: str = None,
     save_path: str = None,
     df=None,
     *,
-    already_normalized: bool = False,  # 保留參數相容；大量區一律當官方原柱處理
     lookback: int = VOL_ZONE_LOOKBACK,
     bars: int = VOL_ZONE_BARS,
-) -> str:
-    """畫大量區專圖。有 db 就只吃官方原柱；失敗回空字串。"""
-    del already_normalized  # 相容舊呼叫；不准用還原柱
+) -> Optional[Dict[str, Any]]:
+    """官方原柱＋除權息完成稿＋壓撐窗。HTTP 補抓在畫布鎖外。"""
     sid = str(stock_id or "").strip()
     if not sid:
-        return ""
+        return None
     work = None
-    # 有庫＝強制官方原柱，忽略決策卡還原／盤中合併的 df
     if db_path:
         raw = load_official_ohlc(sid, db_path, max(int(bars) + int(lookback) + 5, 120))
         work = official_work(raw)
     if work is None or work.empty:
         if df is None or getattr(df, "empty", True):
-            return ""
-        # 測試／無庫：仍不准走除權還原，只做官方整理
+            return None
         work = official_work(df)
     if work is None or work.empty:
-        return ""
+        return None
     ex_events: List[Dict[str, Any]] = []
     if db_path:
         start_d = _bar_ymd(work["date"].iloc[0])
@@ -602,10 +601,9 @@ def render_volume_zone_png(
         ex_events = hydrate_official_ex_for_gaps(sid, str(db_path), recent, ex_events)
     zone = find_volume_zone(work, lookback=lookback, ex_events=ex_events)
     if not zone:
-        return ""
+        return None
     n_all = len(work)
     show_n = min(max(int(bars or VOL_ZONE_BARS), 30), n_all)
-    # 爆大量日一定要進畫面
     spike_i_all = int(zone["i"])
     start = max(0, n_all - show_n)
     if spike_i_all < start:
@@ -613,12 +611,10 @@ def render_volume_zone_png(
     view = work.iloc[start:].reset_index(drop=True)
     spike_i = int(zone["i"]) - start
     if spike_i < 0 or spike_i >= len(view):
-        return ""
-
+        return None
     name = stock_name or str(view["stock_name"].iloc[-1] if "stock_name" in view.columns else sid)
     out = save_path or os.path.join(".", f"{sid}_vol_zone.png")
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-
     hi = float(zone["high"])
     lo = float(zone["low"])
     spike_date = str(zone["date"] or "")
@@ -629,11 +625,106 @@ def render_volume_zone_png(
         if "is_halt" in view.columns
         else pd.Series(False, index=view.index)
     )
+    bars_face = [
+        {
+            "date": r.get("date"),
+            "open": r.get("open"),
+            "high": r.get("high"),
+            "low": r.get("low"),
+            "close": r.get("close"),
+            "volume": r.get("volume"),
+        }
+        for r in work.to_dict("records")
+    ]
+    return {
+        "sid": sid,
+        "name": name,
+        "view": view,
+        "zone": zone,
+        "spike_i": spike_i,
+        "spike_date": spike_date,
+        "hi": hi,
+        "lo": lo,
+        "halt": halt,
+        "xs": xs,
+        "n": n,
+        "ex_events": ex_events,
+        "out": out,
+        "bars": bars_face,
+        "last": bars_face[-1] if bars_face else None,
+    }
 
+
+def render_volume_zone_result(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: str = None,
+    save_path: str = None,
+    df=None,
+    *,
+    already_normalized: bool = False,
+    lookback: int = VOL_ZONE_LOOKBACK,
+    bars: int = VOL_ZONE_BARS,
+    card: Optional[Dict[str, Any]] = None,
+) -> tuple[str, str]:
+    """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。"""
+    del already_normalized
+    pack = prepare_volume_zone(
+        stock_id, stock_name, db_path, save_path, df, lookback=lookback, bars=bars
+    )
+    if not pack:
+        return "", ""
+    cap = vol_zone_photo_caption(
+        pack["sid"],
+        str(db_path or ""),
+        card,
+        zone=pack["zone"],
+        last=pack["last"],
+        bars=pack["bars"],
+        ex_events=pack["ex_events"],
+    )
     with mpl_render():
-        return _paint_volume_zone(
-            sid, name, view, zone, spike_i, spike_date, hi, lo, halt, xs, n, ex_events, out
+        path = _paint_volume_zone(
+            pack["sid"],
+            pack["name"],
+            pack["view"],
+            pack["zone"],
+            pack["spike_i"],
+            pack["spike_date"],
+            pack["hi"],
+            pack["lo"],
+            pack["halt"],
+            pack["xs"],
+            pack["n"],
+            pack["ex_events"],
+            pack["out"],
         )
+    return str(path or ""), str(cap or "")
+
+
+def render_volume_zone_png(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: str = None,
+    save_path: str = None,
+    df=None,
+    *,
+    already_normalized: bool = False,
+    lookback: int = VOL_ZONE_LOOKBACK,
+    bars: int = VOL_ZONE_BARS,
+) -> str:
+    """畫大量區專圖。有 db 就只吃官方原柱；失敗回空字串。"""
+    path, _cap = render_volume_zone_result(
+        stock_id,
+        stock_name,
+        db_path,
+        save_path,
+        df,
+        already_normalized=already_normalized,
+        lookback=lookback,
+        bars=bars,
+    )
+    return path
 
 
 def _paint_volume_zone(
@@ -880,6 +971,12 @@ def _paint_volume_zone(
         color=_MUTED,
     )
     fig.subplots_adjust(left=0.04, right=0.96, top=0.90, bottom=0.10)
-    fig.savefig(out, dpi=VOL_ZONE_DPI, facecolor=_BG)
+    fig.savefig(
+        out,
+        format="jpeg",
+        dpi=VOL_ZONE_DPI,
+        facecolor=_BG,
+        pil_kwargs={"quality": 82, "optimize": False, "subsampling": 2},
+    )
     plt.close(fig)
     return out

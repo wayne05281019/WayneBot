@@ -95,6 +95,12 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("Ai建議", out)
         self.assertNotIn("紀律　", out)
         self.assertIn("先出一點、不要追", out)
+        etf = _decision_card_photo_caption(
+            {"stock_id": "00706L", "stock_name": "期元大S&P日圓正2", "sell_action": ""},
+            "00706L",
+        )
+        self.assertIn("S&amp;P", etf)
+        self.assertNotIn("S&P日圓", etf)
         self.assertNotIn("買訊", out)
         self.assertEqual(_photo_sell_caption("高低決策卡", {"sell_action": ""}, fallback="高低決策卡"), "高低決策卡")
         flow_card = {
@@ -214,8 +220,8 @@ class LookupImageTests(unittest.TestCase):
             ), patch.object(
                 WayneTelegramBot, "_prepare_album_cell", side_effect=lambda p, box=None: p
             ), patch(
-                "vol_zone_chart.render_volume_zone_png",
-                side_effect=lambda *_a, **_k: _png("vz.png"),
+                "vol_zone_chart.render_volume_zone_result",
+                side_effect=lambda *_a, **_k: (_png("vz.png"), "大量區專圖"),
             ):
                 await bot._send_card_to_locked(
                     message,
@@ -448,8 +454,8 @@ class LookupImageTests(unittest.TestCase):
                 "wayne_navigator.render_decision_card_png",
                 side_effect=lambda *_a, **_k: _png("c.png"),
             ), patch(
-                "vol_zone_chart.render_volume_zone_png",
-                side_effect=lambda *_a, **_k: _png("vz.png"),
+                "vol_zone_chart.render_volume_zone_result",
+                side_effect=lambda *_a, **_k: (_png("vz.png"), "大量區專圖"),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
