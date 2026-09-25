@@ -449,7 +449,8 @@ def test_index_performance_hides_zero_yahoo_volume():
     joined = "\n".join(lines)
     assert "量比 0.00" not in joined
     assert "量縮 100" not in joined
-    assert "全日量" not in joined
+    assert "量未齊" in joined
+    assert "0.0萬張" not in joined
     note = _market_read_note({**perf, "vs_ma20_pct": 0.9, "vs_high52_pct": -4.0, "chg5_pct": 0.1})
     assert "量比 0.00" not in note
 
@@ -520,6 +521,146 @@ def test_sync_index_daily_keeps_volume_when_yahoo_zero(mock_twse, mock_yahoo, tm
     conn.close()
     assert vol == 3_800_000.0
     assert op == 46325.0
+
+
+@patch("taiwan_market._fetch_index_daily")
+@patch("taiwan_market._fetch_twse_index_close")
+@patch("official_snapshots.fetch_json")
+def test_sync_index_daily_fills_zero_volume_from_fmtqik(
+    mock_fmt, mock_twse, mock_yahoo, tmp_path
+):
+    """Yahoo 當日量從未寫入正數時，用 FMTQIK 官方全日量補上，不准留 0。"""
+    import sqlite3
+
+    db = str(tmp_path / "idx_fmt.db")
+    mock_twse.return_value = None
+    mock_yahoo.return_value = pd.DataFrame(
+        {
+            "date": ["20260923", "20260924"],
+            "open": [48000.0, 48100.0],
+            "high": [48200.0, 48250.0],
+            "low": [47800.0, 47900.0],
+            "close": [48157.29, 48024.60],
+            "volume": [10_473_893.0, 0.0],
+            "pct_change": [0.75, -0.28],
+        }
+    )
+    mock_fmt.return_value = [
+        {
+            "Date": "1150923",
+            "TradeVolume": "10473893046",
+            "TAIEX": "48157.29",
+            "Change": "357.12",
+        },
+        {
+            "Date": "1150924",
+            "TradeVolume": "8626109510",
+            "TAIEX": "48024.60",
+            "Change": "-132.69",
+        },
+    ]
+    r = sync_index_daily(db)
+    assert r["ok"]
+    assert r.get("fmtqik_volume_fill", 0) >= 1
+    conn = sqlite3.connect(db)
+    vol = conn.execute(
+        "SELECT volume FROM index_daily WHERE date=?",
+        ("20260924",),
+    ).fetchone()[0]
+    conn.close()
+    assert vol == 8_626_110.0
+
+
+def test_format_performance_marks_volume_missing():
+    from taiwan_market import _format_performance_lines
+
+    lines = _format_performance_lines(
+        {"volume": None, "vs_ma20_pct": 1.2, "vs_high52_pct": -3.0}
+    )
+    joined = "\n".join(lines)
+    assert "量未齊" in joined
+    assert "0.0萬張" not in joined
+    assert "0張" not in joined
+
+
+def test_us_cache_fresh_enough_one_session():
+    from taiwan_market import _us_cache_fresh_enough
+
+    assert _us_cache_fresh_enough("20260924", "20260924") is True
+    assert _us_cache_fresh_enough("20260923", "20260924") is True
+    assert _us_cache_fresh_enough("20260908", "20260924") is False
+    assert _us_cache_fresh_enough("", "20260924") is False
+
+
+def test_overnight_lines_refuse_stale_us_with_live_phase(tmp_path):
+    """快取停在舊交易日時，不准並列現況時段＋舊％。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from taiwan_market import _format_overnight_watch_lines, ensure_index_daily_table
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "us_stale.db")
+    ensure_index_daily_table(db)
+    save_us_overnight(
+        db,
+        "20260908",
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": "20260908",
+            "us_phase": "overnight",
+            "vix": 14.0,
+            "vix_pct": -1.0,
+            "dji_pct": 1.5,
+            "spx_pct": 1.2,
+            "ixic_pct": 1.8,
+            "sox_pct": 2.0,
+        },
+    )
+    # 紐約現金盤中：若誤用牆鐘時段會顯示「現金盤中」
+    now = datetime(2026, 9, 24, 11, 0, tzinfo=ZoneInfo("America/New_York"))
+    lines = _format_overnight_watch_lines(db, "20260924", {}, now=now)
+    joined = "\n".join(lines)
+    assert "美股收盤尚未接到" in joined
+    assert "2026/09/08" in joined
+    assert "現金盤中" not in joined
+    assert "+1.50%" not in joined
+    assert "+1.5%" not in joined
+
+
+def test_overnight_lines_aligned_keeps_quotes(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from taiwan_market import _format_overnight_watch_lines, ensure_index_daily_table
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "us_ok.db")
+    ensure_index_daily_table(db)
+    save_us_overnight(
+        db,
+        "20260924",
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": "20260923",
+            "us_phase": "overnight",
+            "vix": 14.0,
+            "vix_pct": -1.0,
+            "dji_pct": 0.55,
+            "spx_pct": 0.40,
+            "ixic_pct": 0.70,
+            "sox_pct": 0.80,
+        },
+    )
+    now = datetime(2026, 9, 24, 8, 0, tzinfo=ZoneInfo("America/New_York"))
+    lines = _format_overnight_watch_lines(db, "20260924", {}, now=now)
+    joined = "\n".join(lines)
+    assert "美股收盤尚未接到" not in joined
+    assert "交易日" in joined
+    assert "2026/09/23" in joined
+    assert "時段" in joined
 
 
 @patch("taiwan_market._fetch_twse_index_breadth")

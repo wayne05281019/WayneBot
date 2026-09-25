@@ -1499,6 +1499,38 @@ def _format_futures_night_line(
     return line
 
 
+def _norm_us_ymd(val: Optional[str]) -> str:
+    return str(val or "").replace("-", "").strip()[:8]
+
+
+def _us_cache_fresh_enough(us_as_of: str, tw_as_of: str, db_path: Optional[str] = None) -> bool:
+    """快取 as_of 與台股頁基準日相差超過 1 個美股交易日＝過舊，不准當現況。"""
+    ua = _norm_us_ymd(us_as_of)
+    ta = _norm_us_ymd(tw_as_of)
+    if len(ua) != 8 or len(ta) != 8:
+        return False
+    if ua == ta:
+        return True
+    if ua > ta:
+        return False
+    try:
+        from us_holidays import lookup_us_session
+
+        cur = datetime.strptime(ua, "%Y%m%d")
+        end = datetime.strptime(ta, "%Y%m%d")
+    except ValueError:
+        return False
+    sessions = 0
+    while cur < end:
+        cur += timedelta(days=1)
+        kind = (lookup_us_session(cur.strftime("%Y%m%d"), db_path) or {}).get("kind")
+        if kind in ("open", "early_close"):
+            sessions += 1
+            if sessions > 1:
+                return False
+    return True
+
+
 def _latest_us_overnight(db_path: str, as_of: str) -> Dict[str, Any]:
     try:
         from us_overnight import load_us_overnight
@@ -1517,7 +1549,12 @@ def _latest_us_overnight(db_path: str, as_of: str) -> Dict[str, Any]:
         if row:
             from us_overnight import load_us_overnight
 
-            return load_us_overnight(db_path, str(row[0]))
+            fb = load_us_overnight(db_path, str(row[0]))
+            if fb:
+                fb = dict(fb)
+                fb["_fallback"] = True
+                fb["_requested_as_of"] = _norm_us_ymd(as_of)
+            return fb
     except Exception:
         logger.debug("美股隔夜快取讀不到", exc_info=True)
     return us or {}
@@ -1641,7 +1678,11 @@ def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
 def _format_overnight_watch_lines(
     db_path: str, as_of: str, snap: Dict[str, Any], now: Optional[datetime] = None
 ) -> List[str]:
-    """美股一欄一行。台指期夜盤歸台指期區，不塞在美股底下。盤中期貨不看。"""
+    """美股一欄一行。台指期夜盤歸台指期區，不塞在美股底下。盤中期貨不看。
+
+    時段與交易日必須一致：快取過舊時只標「尚未接到／資料停在」，
+    不准並列現況時段＋舊％。
+    """
     from tg_layout import html_escape
 
     us = _latest_us_overnight(db_path, as_of)
@@ -1655,6 +1696,27 @@ def _format_overnight_watch_lines(
         logger.debug("美股休市年曆讀不到", exc_info=True)
     if holiday_lines:
         bits.extend(html_escape(x) for x in holiday_lines)
+
+    us_as_of = _norm_us_ymd(us.get("as_of") if us else "")
+    tw_as_of = _norm_us_ymd(as_of)
+    has_nums = bool(us) and (us.get("ok") or us.get("vix") is not None)
+    fresh = bool(has_nums and _us_cache_fresh_enough(us_as_of, tw_as_of, db_path))
+
+    if has_nums and not fresh:
+        stop = us_as_of
+        if len(stop) == 8:
+            stop_s = f"{stop[:4]}/{stop[4:6]}/{stop[6:]}"
+        else:
+            from us_overnight import _session_label
+
+            stop_s = _session_label(us)
+        bits.append(html_escape("美股收盤尚未接到"))
+        if stop_s and stop_s != "—":
+            bits.append(_page_kv("資料停在", html_escape(stop_s)))
+        from stock_links import html_named
+
+        return ["", _TG_SECTION, html_named("美股"), *bits]
+
     live_phase = ""
     try:
         from us_overnight import us_tape_phase
@@ -1663,7 +1725,7 @@ def _format_overnight_watch_lines(
     except Exception:
         live_phase = ""
     skip_post = live_phase == "regular"
-    if us.get("ok") or us.get("vix") is not None:
+    if fresh:
         from us_overnight import (
             _ADR_CASH_ITEMS,
             _ADR_ITEMS,
@@ -1673,7 +1735,12 @@ def _format_overnight_watch_lines(
         )
 
         cached_phase = str(us.get("us_phase") or "")
-        phase_s = _US_PHASE_SHORT.get(live_phase or cached_phase, "")
+        # 僅在 as_of 對齊當日才用牆鐘時段；否則吃快取，避免「現在＋舊日」混讀。
+        if us_as_of == tw_as_of and live_phase:
+            phase_key = live_phase
+        else:
+            phase_key = cached_phase or live_phase
+        phase_s = _US_PHASE_SHORT.get(phase_key, "")
         if phase_s:
             bits.append(_page_kv("時段", phase_s))
         sess = _session_label(us)
@@ -1699,6 +1766,8 @@ def _format_overnight_watch_lines(
             bits.extend(_us_quote_rows(us, adr_items))
         else:
             bits.extend(_us_quote_rows(us, _ADR_ITEMS))
+    elif not bits:
+        bits.append(html_escape("美股收盤尚未接到"))
     if not bits:
         return []
     from stock_links import html_named
@@ -1851,6 +1920,36 @@ def _fetch_index_daily(range_: str = "2y") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _backfill_zero_index_volumes(db_path: str) -> int:
+    """近窗 volume≤0 時用 FMTQIK 官方全日量（張）補上。沒真數不寫假量。"""
+    ensure_index_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        zeros = conn.execute(
+            """
+            SELECT date FROM index_daily
+            WHERE symbol=? AND (volume IS NULL OR volume <= 0)
+            ORDER BY date DESC LIMIT ?
+            """,
+            (_INDEX_SYMBOL, _OFFICIAL_LOOKBACK_DAYS),
+        ).fetchall()
+    finally:
+        conn.close()
+    if not zeros:
+        return 0
+    need = {str(r[0]) for r in zeros}
+    try:
+        from official_snapshots import TWSE_FMTQIK, fetch_json, overlay_fmtqik, parse_fmtqik
+
+        rows = [r for r in parse_fmtqik(fetch_json(TWSE_FMTQIK) or []) if str(r.get("date") or "") in need]
+        if not rows:
+            return 0
+        return int(overlay_fmtqik(db_path, rows) or 0)
+    except Exception as exc:
+        logger.warning("FMTQIK 補加權量失敗: %s", exc)
+        return 0
+
+
 def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
     """盤後融合：官方 MI_INDEX 優先、Yahoo 補洞 → index_daily UPSERT。"""
     ensure_index_daily_table(db_path)
@@ -1909,6 +2008,9 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
         out["alerts"] = alerts
     last_src = str(df["source"].iloc[-1]) if "source" in df.columns else "yahoo"
     out["latest_source"] = last_src
+    filled = _backfill_zero_index_volumes(db_path)
+    if filled:
+        out["fmtqik_volume_fill"] = filled
     return out
 
 
@@ -3461,15 +3563,17 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
     vol_r = snap.get("vol_ratio")
     if vol_r is not None:
         lines.append(_page_kv("量比", _page_b(f"{float(vol_r):.2f}")))
-    last_vol = snap.get("volume")
-    if last_vol is not None:
+    if "volume" in snap:
+        last_vol = snap.get("volume")
         try:
-            lots = float(last_vol)
+            lots = float(last_vol) if last_vol is not None else 0.0
         except (TypeError, ValueError):
             lots = 0.0
         if lots > 0:
             vol_s = f"{lots / 10000.0:.1f}萬張" if lots >= 10000 else f"{lots:,.0f}張"
             lines.append(_page_kv("全日量", _page_b(vol_s)))
+        else:
+            lines.append(_page_kv("全日量", "量未齊"))
     vs20 = snap.get("vs_ma20_pct")
     if vs20 is not None:
         lines.append(_page_kv("距月線", _page_b(_fmt_signed_pct(vs20))))
