@@ -349,6 +349,28 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     return out, notes
 
 
+def _close_inside_ex_bar(raw_bars, ex_date: str, close: float) -> bool:
+    """收盤還在官方除息／除權當日高低裡（息差帶，不是破底）。"""
+    d0 = str(ex_date or "").replace("-", "")[:8]
+    if not d0 or close <= 0 or raw_bars is None:
+        return False
+    try:
+        if hasattr(raw_bars, "empty"):
+            if getattr(raw_bars, "empty", True) or "date" not in raw_bars.columns:
+                return False
+            days = raw_bars["date"].astype(str).str.replace("-", "", regex=False)
+            hit = raw_bars.loc[days == d0]
+            if hit.empty:
+                return False
+            lo = float(hit["low"].iloc[-1] or 0)
+            hi = float(hit["high"].iloc[-1] or 0)
+        else:
+            return False
+    except (TypeError, ValueError, KeyError):
+        return False
+    return lo > 0 and hi >= lo and lo * 0.998 <= float(close) <= hi * 1.002
+
+
 def pink_warning_note(card: dict) -> str:
     """粉紅預警＝從最新一根往回連續 K20高的天數（滿 2 日才提紀律賣出，數字用實際連幾日）。"""
     n = int(card.get("k20_high_streak") or 0)
@@ -935,6 +957,12 @@ class NavigatorEngine:
             ex_gap_label = str(face.get("label") or "").strip()
             if ex_gap_label and ex_gap_label not in badges:
                 badges.insert(0, ex_gap_label)
+            exd = str(face.get("ex_date") or "")
+            if ex_gap_label and _close_inside_ex_bar(raw_for_ex, exd, float(latest["close"])):
+                # 除息把原柱 20 低印在除息日，收還在當日高低裡＝息差不是破底
+                badges = [b for b in badges if b != "弱勢破底"]
+            if ex_gap_label and "除息" in ex_gap_label and "除權息" not in ex_gap_label:
+                badges = ["已除息還原" if b == "已除權還原" else b for b in badges]
         except Exception:
             import logging
 

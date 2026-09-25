@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from ex_rights import ensure_ex_rights_table, recent_ex_face, upsert_events, upsert_heuristic_event
 
 
@@ -88,6 +90,57 @@ def test_heuristic_still_cannot_cover_official(tmp_path):
     face = recent_ex_face("2542", db, "20260924", bars)
     assert "除息" in face["label"]
     assert "減資" not in face["label"]
+
+
+@pytest.mark.production_db
+def test_2542_zone_matches_twse_ex_div_bar():
+    """大量區壓撐＝除息日官方高低，不准漂。"""
+    import pytest
+
+    from tests.conftest import require_production_db
+    from vol_zone_chart import find_volume_zone, load_official_ohlc, official_work
+
+    db = require_production_db()
+    work = official_work(load_official_ohlc("2542", db, 80))
+    if work is None or len(work) < 5:
+        pytest.skip("no 2542 bars")
+    last = str(work["date"].iloc[-1])
+    if last < "20260924":
+        pytest.skip("need 9/24 close")
+    ev = {
+        "ex_date": "20260923",
+        "kind": "息",
+        "close_before": 45.45,
+        "ref_price": 41.45,
+        "right_plus_div": 4.0,
+        "source": "TWT49U",
+    }
+    zone = find_volume_zone(work, ex_events=[ev])
+    assert zone["date"] == "20260923"
+    assert float(zone["high"]) == 40.45
+    assert float(zone["low"]) == 39.0
+    row = work.loc[work["date"] == "20260924"].iloc[-1]
+    assert float(row["open"]) == 38.9
+    assert float(row["high"]) == 39.5
+    assert float(row["low"]) == 38.8
+    assert float(row["close"]) == 39.5
+
+
+@pytest.mark.production_db
+def test_2542_card_does_not_call_ex_div_a_breakdown():
+    import os
+
+    os.environ["WAYNE_SKIP_EX_FETCH"] = "1"
+    from tests.conftest import require_production_db
+    from wayne_navigator import NavigatorEngine
+
+    db = require_production_db()
+    card = NavigatorEngine(db).get_decision_card("2542", merge_live=False)
+    assert card.get("ex_gap_label") == "09/23除息4元"
+    assert "弱勢破底" not in (card.get("badges") or [])
+    assert "已除權還原" not in (card.get("badges") or [])
+    assert "已除息還原" in (card.get("badges") or [])
+    assert "原柱" not in (card.get("ex_gap_note") or "")
 
 
 def test_old_ex_div_not_pasted_on_later_week(tmp_path):
