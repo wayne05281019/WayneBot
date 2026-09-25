@@ -312,3 +312,21 @@ def test_render_mentions_ex_div_not_crash():
     src = inspect.getsource(render_volume_zone_png) + inspect.getsource(_paint_volume_zone)
     assert "息差不是崩" in src
     assert "原柱不還原" in src
+    assert "official_scale_events" in src
+
+
+def test_vol_zone_cut_ignores_heuristic_split():
+    from vol_zone_chart import _scale_cut_date
+
+    events = [
+        {"ex_date": "20260803", "kind": "分割", "source": "heuristic_gap"},
+        {
+            "ex_date": "20260828",
+            "kind": "息",
+            "source": "TWT49U",
+            "right_plus_div": 25.0,
+        },
+    ]
+    assert _scale_cut_date(events, "20260924") == "20260828"
+    assert _scale_cut_date([events[0]], "20260924") == ""
+

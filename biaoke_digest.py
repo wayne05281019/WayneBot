@@ -121,11 +121,12 @@ def unread_events(
     if not uid or not db_path:
         return []
     ensure_biaoke_digest_tables(db_path)
-    ref = now or taipei_now()
-    if getattr(ref, "tzinfo", None) is None:
-        ref = ref.replace(tzinfo=TAIPEI)
+    clock = now if now is not None else taipei_now()
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=TAIPEI)
     else:
-        ref = ref.astimezone(TAIPEI)
+        clock = clock.astimezone(TAIPEI)
+    floor = (clock - timedelta(days=14)).strftime("%Y-%m-%d")
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         row = conn.execute(
@@ -133,7 +134,6 @@ def unread_events(
             (uid,),
         ).fetchone()
         last = str(row[0] or "") if row else ""
-        floor = (ref - timedelta(days=14)).strftime("%Y-%m-%d")
         if last:
             rows = conn.execute(
                 """
@@ -174,7 +174,12 @@ def unread_events(
     return out
 
 
-def unread_count(user_id: str, db_path: str, *, now: Optional[datetime] = None) -> int:
+def unread_count(
+    user_id: str,
+    db_path: str,
+    *,
+    now: Optional[datetime] = None,
+) -> int:
     return len(unread_events(user_id, db_path, now=now))
 
 

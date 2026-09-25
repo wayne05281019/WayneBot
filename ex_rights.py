@@ -102,16 +102,15 @@ def _month_windows(start_ymd: str, end_ymd: str) -> List[Tuple[str, str]]:
 
 
 def _kind(raw: str) -> str:
+    """TWT49U／櫃買／TWT48U 的 權/息 只有 權、息、權息。其餘空白，不准發明分割。"""
     s = str(raw or "")
-    if "權息" in s:
-        return "權息"
-    if "除權息" in s:
+    if "權息" in s or "除權息" in s:
         return "權息"
     if "權" in s:
         return "權"
     if "息" in s:
         return "息"
-    return s[:8]
+    return ""
 
 
 def parse_twse_row(fields: Sequence[str], row: Sequence[Any]) -> Optional[Dict[str, Any]]:
@@ -321,7 +320,7 @@ def upsert_heuristic_event(
     *,
     kind: str = "啟發式",
 ) -> None:
-    """跳空偵測到的減資／分割寫回 ex_rights，下次還原走官方路徑。"""
+    """跳空偵測只寫還原因子。kind 參數保留相容，實際固定啟發式。"""
     if not stock_id or len(str(ex_date)) != 8:
         return
     try:
@@ -347,7 +346,7 @@ def upsert_heuristic_event(
             {
                 "stock_id": str(stock_id),
                 "ex_date": str(ex_date),
-                "kind": kind,
+                "kind": "啟發式",
                 "factor": f,
                 "source": "heuristic_gap",
             }
@@ -364,7 +363,8 @@ def load_ex_rights(stock_id: str, db_path: str = None) -> List[Dict[str, Any]]:
         conn = sqlite3.connect(path)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            """SELECT stock_id, ex_date, stock_name, kind, close_before, ref_price, factor
+            """SELECT stock_id, ex_date, stock_name, kind, close_before, ref_price, factor,
+                      ifnull(source,'') AS source
                FROM ex_rights WHERE stock_id=? AND factor>0 ORDER BY ex_date ASC""",
             (sid,),
         ).fetchall()
@@ -387,11 +387,11 @@ def _event_verb(kind: str) -> str:
         return mapped[s]
     if "權" in s and "息" in s:
         return "除權息"
-    if "息" in s:
+    if "息" in s and "分割" not in s and "減資" not in s:
         return "除息"
-    if "權" in s:
+    if "權" in s and "分割" not in s:
         return "除權"
-    return "除權息"
+    return ""
 
 
 def _event_kind_rank(kind: str) -> int:
@@ -418,7 +418,11 @@ def format_next_event_label(kind: str, ex_date: str, today: str) -> str:
     delta = (b - a).days
     if delta < 0:
         return ""
+    if any(x in str(kind or "") for x in ("分割", "減資", "啟發式")):
+        return ""
     verb = _event_verb(kind)
+    if not verb:
+        return ""
     if delta == 0:
         return f"今日{verb}"
     return f"{delta}天後{verb}"
@@ -505,13 +509,20 @@ def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> 
     try:
         conn = sqlite3.connect(path)
         try:
-            for kind, ex in conn.execute(
+            for kind, ex, src in conn.execute(
                 """
-                SELECT kind, replace(ex_date,'-','') FROM ex_rights
+                SELECT kind, replace(ex_date,'-','') , ifnull(source,'')
+                FROM ex_rights
                 WHERE stock_id=? AND replace(ex_date,'-','') >= ?
                 """,
                 (sid, day),
             ):
+                if str(src) not in {"TWT49U", "tpex_exDailyQ", "TWT48U"}:
+                    continue
+                if any(x in str(kind or "") for x in ("分割", "減資", "啟發式")):
+                    continue
+                if not _event_verb(str(kind or "")):
+                    continue
                 cands.append((str(ex or ""), str(kind or "")))
         except sqlite3.OperationalError:
             pass
@@ -557,8 +568,36 @@ def scale_ex_verb(kind: Any) -> str:
     return _event_verb(s)
 
 
+PHONE_EX_VERBS = frozenset({"除息", "除權", "除權息"})
+
+
+def phone_ex_verb(kind: Any) -> str:
+    """上市櫃／興櫃話筒只寫官方 權／息／權息。沒有分割、沒有減資、沒有啟發式。"""
+    s = str(kind or "")
+    if any(x in s for x in ("分割", "減資", "啟發式")):
+        return ""
+    v = scale_ex_verb(s)
+    return v if v in PHONE_EX_VERBS else ""
+
+
 def is_scale_ex(ev: Dict[str, Any]) -> bool:
     return scale_ex_verb((ev or {}).get("kind")) in ("除息", "除權", "除權息", "減資", "分割")
+
+
+def is_official_ex(ev: Optional[Dict[str, Any]]) -> bool:
+    """已發生的除權息只認證交所 TWT49U、櫃買 exDailyQ。"""
+    return str((ev or {}).get("source") or "") in OFFICIAL_EX_SRC
+
+
+def official_scale_events(events: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for e in events or []:
+        if not is_official_ex(e):
+            continue
+        if not phone_ex_verb((e or {}).get("kind")):
+            continue
+        out.append(e)
+    return out
 
 
 def _fmt_px(p: Any) -> str:
@@ -782,14 +821,14 @@ def ex_gap_note(
 
     voice=zone：大量區原柱圖。voice=card：介紹圖／高低卡（可能已還原），不准寫原柱／測壓。
     """
-    ev = latest_scale_ex(events, last_date)
+    ev = latest_scale_ex(official_scale_events(events), last_date)
     last = bar_ymd(last_date)
     zd = bar_ymd(zone_date)
     zone = str(voice or "card") == "zone"
     if ev:
         d = bar_ymd(ev.get("ex_date"))
-        if d and (d == zd or d == last or (gaps and d in gaps)):
-            verb = scale_ex_verb(ev.get("kind")) or "除權息"
+        verb = phone_ex_verb(ev.get("kind"))
+        if verb and d and (d == zd or d == last or (gaps and d in gaps)):
             md = _md_ex(d)
             amt = 0.0
             before = 0.0
@@ -805,14 +844,9 @@ def ex_gap_note(
                 bit += f"{_fmt_px(amt)}元"
             if before > 0 and ref > 0:
                 bit += f"（前收{_fmt_px(before)}、參考價{_fmt_px(ref)}）"
-            src = str(ev.get("source") or "")
-            if src in OFFICIAL_EX_SRC:
-                if zone:
-                    return f"{bit}。圖是官方原柱，缺口是息差不是崩。"
-                return f"{bit}。缺口是息差不是崩。"
             if zone:
-                return f"{bit}。圖是官方原柱；這列還不是證交所／櫃買完成稿，缺口先不當崩。"
-            return f"{bit}。這列還不是證交所／櫃買完成稿，缺口先不當崩。"
+                return f"{bit}。圖是官方原柱，缺口是息差不是崩。"
+            return f"{bit}。缺口是息差不是崩。"
     for d in gaps or []:
         if d:
             extra = "、也不拿來當測壓理由。" if zone else "。"
@@ -842,6 +876,7 @@ def recent_ex_face(
     events = load_scale_ex_events(sid, path, start, last) if sid and path else []
     if rows and sid and path:
         events = hydrate_official_ex_for_gaps(sid, path, rows[-5:], events)
+    events = official_scale_events(events)
     recent = rows[-5:] if rows else []
     win0 = bar_ymd(recent[0].get("date")) if recent else last
     events_r = [e for e in events if bar_ymd(e.get("ex_date")) >= win0] if win0 else events
@@ -851,7 +886,9 @@ def recent_ex_face(
     label = ""
     if ev and note and _md_ex(ev.get("ex_date")) in note:
         d = bar_ymd(ev.get("ex_date"))
-        verb = scale_ex_verb(ev.get("kind")) or "除權息"
+        verb = phone_ex_verb(ev.get("kind"))
+        if not verb:
+            return {"note": note, "label": "", "ex_date": ""}
         amt = 0.0
         try:
             amt = float(ev.get("right_plus_div") or 0)
