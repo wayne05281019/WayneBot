@@ -330,3 +330,75 @@ def test_ensure_wave_inputs_skips_under_pytest(tmp_path, monkeypatch):
     out = ensure_wave_inputs(str(tmp_path / "w.db"), "20260918")
     assert out.get("skipped") == "pytest"
     assert called == []
+
+
+def test_chi_tue_gate_sep24_wick_stays_pending(tmp_path):
+    from biaoke_forecast import glance_forecast, record_spoken_path, score_line, verify_due
+
+    rows = []
+    for d, o, h, l, c, v in [
+        ("20260826", 2880, 3155, 2850, 3155, 5242),
+        ("20260827", 3305, 3440, 3265, 3340, 6114),
+        ("20260828", 3360, 3450, 3320, 3360, 4035),
+        ("20260831", 3280, 3425, 3250, 3425, 4468),
+        ("20260901", 3435, 3465, 3350, 3410, 3084),
+        ("20260902", 3365, 3490, 3280, 3310, 3136),
+        ("20260903", 3395, 3525, 3290, 3300, 4418),
+        ("20260904", 3465, 3570, 3410, 3570, 4515),
+        ("20260907", 3595, 3595, 3410, 3420, 3303),
+        ("20260908", 3455, 3455, 3245, 3285, 3350),
+        ("20260915", 3265, 3300, 3100, 3115, 3217),
+        ("20260917", 3285, 3350, 3175, 3185, 3034),
+        ("20260923", 3425, 3590, 3410, 3470, 2649),
+    ]:
+        rows.append(
+            {
+                "date": d,
+                "stock_id": "3017",
+                "stock_name": "奇鋐",
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+            }
+        )
+    db = str(tmp_path / "chi.db")
+    _seed_quotes(db, rows)
+    rec = record_spoken_path(
+        db,
+        "3017",
+        spoken="奇鋐已經出現股票噴出前 關前整理量價結構確認完成訊號，下星期就開啟主升段。",
+        bar=rows[-1],
+        bars=rows,
+    )
+    assert rec.get("key") == "tue_gate"
+    assert rec.get("target") == 3595
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,0)",
+        ("20260924", "3017", "奇鋐", 3460, 3600, 3455, 3555, 2261),
+    )
+    conn.commit()
+    conn.close()
+    verify_due(db, "3017")
+    g = glance_forecast(db, "3017")
+    assert "3600" in g
+    assert "碰到" in g
+    assert "還沒走完" in g
+    assert "待驗證" in g
+    assert "對得上" not in g
+    line = score_line(db)
+    assert "還沒走完" in line
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,0)",
+        ("20260929", "3017", "奇鋐", 3580, 3620, 3570, 3610, 2800),
+    )
+    conn.commit()
+    conn.close()
+    verify_due(db, "3017")
+    g1 = glance_forecast(db, "3017")
+    assert "對得上" in g1
+    assert "3610" in g1
+    assert "有效過" in g1

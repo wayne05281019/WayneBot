@@ -308,3 +308,31 @@ def test_refresh_published_official_skips_before_close(tmp_path):
         db, now=datetime(2026, 9, 15, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     )
     assert st.get("skipped") == "session"
+
+
+def test_chi_sep24_wick_is_not_main_rise():
+    from biaoke_tape import structure_vs_spoken
+
+    bars = _chi_bars() + [
+        {
+            "date": "20260924",
+            "open": 3460,
+            "high": 3600,
+            "low": 3455,
+            "close": 3555,
+            "volume": 2261,
+        }
+    ]
+    extra = structure_vs_spoken(
+        "奇鋐已經出現股票噴出前 關前整理量價結構確認完成訊號，下星期就開啟主升段。",
+        "3017",
+        bars,
+    )
+    assert "3595" in extra
+    assert "3600" in extra
+    assert "3555" in extra
+    assert "碰到" in extra
+    assert "不是主升" in extra
+    assert "待驗證" in extra
+    assert "9/24 高碰到≠確認" in extra
+    assert "不是保證" in extra

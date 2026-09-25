@@ -20,6 +20,9 @@ KIND_TWII = "twii"
 KIND_TWII_TRY = "twii_try"
 TWII_TRY_HORIZON = 10
 TWII_WORST = 43500.0
+# 他 9/24 改口：教師節周一放假，下星期二有效過近高才算主升。
+CHI_TUE_DUE = "20260929"
+CHI_GATE = 3595.0
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_forecast (
@@ -152,6 +155,16 @@ def _upsert(db_path: str, row: Dict[str, Any]) -> None:
     ensure_forecast_table(db_path)
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
+        old = conn.execute(
+            "SELECT key FROM biaoke_forecast WHERE kind=? AND stock_id=? AND as_of=?",
+            (
+                row.get("kind") or "stock",
+                row.get("stock_id") or "",
+                row.get("as_of") or "",
+            ),
+        ).fetchone()
+        if old and old[0] == "tue_gate" and str(row.get("key") or "") != "tue_gate":
+            return
         conn.execute(
             """
             INSERT OR REPLACE INTO biaoke_forecast
@@ -388,6 +401,70 @@ def record_twii_try(
     return rec
 
 
+def _chi_tue_gate(row: Dict[str, Any]) -> bool:
+    if str(row.get("stock_id") or "") != "3017":
+        return False
+    if str(row.get("key") or "") == "tue_gate":
+        return True
+    blob = str(row.get("label") or "") + str(row.get("mark") or "")
+    return "下星期二" in blob
+
+
+def _judge_chi_tue(
+    row: Dict[str, Any], later: Sequence[Dict[str, Any]], *, need: int, done: bool, head: str
+) -> str:
+    """9/24 高碰到近高≠主升。下星期二收盤有效過才算對。"""
+    try:
+        tgt = float(row.get("target") or CHI_GATE)
+    except (TypeError, ValueError):
+        tgt = CHI_GATE
+    if tgt <= 0:
+        tgt = CHI_GATE
+    hi = max(float(b.get("high") or 0) for b in later)
+    lo = min(float(b.get("low") or 0) for b in later)
+    close = float(later[-1].get("close") or 0)
+    wick_d = ""
+    wick_h = 0.0
+    due_close_d = ""
+    due_c = 0.0
+    due_seen = False
+    for b in later:
+        d = _ymd(b.get("date"))
+        try:
+            h = float(b.get("high") or 0)
+            c = float(b.get("close") or 0)
+        except (TypeError, ValueError):
+            continue
+        if h >= tgt * 0.997 and h > wick_h:
+            wick_h = h
+            wick_d = d
+        if d >= CHI_TUE_DUE:
+            due_seen = True
+            if c >= tgt * 0.997:
+                due_close_d = d
+                due_c = c
+                break
+    if due_close_d:
+        return (
+            f"對得上：{due_close_d} 收{_px(due_c)}有效過關前高{_px(tgt)}。"
+            "不是買訊。"
+        )
+    bits = []
+    if wick_d:
+        bits.append(
+            f"高碰到近高（{wick_d} 高{_px(wick_h)}），不是下星期二收盤有效過"
+        )
+    else:
+        bits.append(f"還沒碰到關前高{_px(tgt)}：後來高{_px(hi)}低{_px(lo)}收{_px(close)}")
+    bits.append(f"主升要等 {CHI_TUE_DUE} 收盤有效過{_px(tgt)}")
+    bit = "；".join(bits)
+    if due_seen and done:
+        return f"偏了：下星期二沒有效過近高{_px(tgt)}。後來高{_px(hi)}收{_px(close)}。不是買訊。"
+    if not done:
+        return head + bit + "。還沒走完，待驗證，不是買訊。"
+    return bit + "。還沒走完，待驗證，不是買訊。"
+
+
 def _judge_stock(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
     need = int(row.get("horizon") or 0)
     if not later:
@@ -402,6 +479,8 @@ def _judge_stock(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
     slo = row.get("spike_low")
     done = len(later) >= max(1, need)
     head = "" if done else f"已走{len(later)}/{need}根，"
+    if _chi_tue_gate(row):
+        return _judge_chi_tue(row, later, need=need, done=done, head=head)
 
     def hit_tgt() -> bool:
         try:
@@ -772,13 +851,16 @@ def record_spoken_path(
             "stock_id": sid,
             "as_of": as_of,
             "horizon": 5,
-            "key": "gate_break",
+            "key": "tue_gate",
             "last_close": last_c or None,
             "target": gate_h,
             "spike_high": gate_h,
             "spike_low": gate_l or None,
-            "mark": "關前近高待有效過",
-            "label": "他原文關前整理完成、下星期二主升。待驗證有效過近高，不是保證、不是買訊。",
+            "mark": "關前近高、下星期二才算主升",
+            "label": (
+                "他原文關前整理完成、下星期二有效過近高才算主升。"
+                "9/24 高碰到近高不算確認。待驗證，不是保證、不是買訊。"
+            ),
         }
     elif sid == "6274" and re.search(r"(前高|聯發科|噴)", blob) and gate_h > 0:
         rec = {
