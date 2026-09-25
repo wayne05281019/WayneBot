@@ -1855,9 +1855,10 @@ class LookupCardTest(unittest.TestCase):
             render_first_glance_png,
         )
 
-        self.assertGreaterEqual(CARD_PNG_DPI, 320)
+        self.assertGreaterEqual(CARD_PNG_DPI, 200)
+        self.assertLessEqual(CARD_PNG_DPI, 220)
         self.assertEqual(GLANCE_PNG_DPI, CARD_PNG_DPI)
-        self.assertGreaterEqual(GLANCE_PNG_DPI, 320)
+        self.assertGreaterEqual(GLANCE_PNG_DPI, 200)
         table = pd.DataFrame(
             [
                 {
@@ -1957,7 +1958,8 @@ class LookupCardTest(unittest.TestCase):
             gout = render_first_glance_png("2330", card, {}, gpath)
             self.assertTrue(gout)
             with Image.open(gout) as gim:
-                self.assertGreaterEqual(gim.size[0], 2000)
+                self.assertGreaterEqual(gim.size[0], 1500)
+                self.assertEqual(gim.size[0], int(round(7.1 * GLANCE_PNG_DPI)))
                 self.assertLess(sum(gim.size), 10000)
         finally:
             if os.path.exists(path):

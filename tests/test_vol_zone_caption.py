@@ -307,8 +307,8 @@ def test_unexplained_gap_up_is_not_called_crash():
 def test_render_mentions_ex_div_not_crash():
     import inspect
 
-    from vol_zone_chart import render_volume_zone_png
+    from vol_zone_chart import _paint_volume_zone, render_volume_zone_png
 
-    src = inspect.getsource(render_volume_zone_png)
+    src = inspect.getsource(render_volume_zone_png) + inspect.getsource(_paint_volume_zone)
     assert "息差不是崩" in src
     assert "原柱不還原" in src

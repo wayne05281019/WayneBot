@@ -77,12 +77,12 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
-# 排版（figsize／字級）鎖定。320 DPI 原像素送出（不准再縮成 1200 格）。
-# PNG 快存（compress 1）只為加快，點開畫質走原像素 JPEG。
+# 排版（figsize／字級）鎖定。相簿格上限 1920×2400；查股 DPI 對齊格高，
+# 不准再畫 320DPI 再 Lanczos 砍掉 40%（那一步在 Render 上一檔會多等好幾秒）。
 # 介紹圖與高低卡同寬。用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）。
 # 180 日高低導航改獨立鈕，不畫在介紹圖下半。
-CARD_PNG_DPI = 320
-GLANCE_PNG_DPI = 320
+CARD_PNG_DPI = 220
+GLANCE_PNG_DPI = 220
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
 GLANCE_FIG_H = 12.4
@@ -102,7 +102,7 @@ def _savefig_lookup_png(fig, save_path: str, dpi: int) -> str:
         format="jpeg",
         dpi=dpi,
         facecolor=fig.get_facecolor(),
-        pil_kwargs={"quality": 88, "optimize": False, "subsampling": 0},
+        pil_kwargs={"quality": 82, "optimize": False, "subsampling": 2},
     )
     return save_path
 

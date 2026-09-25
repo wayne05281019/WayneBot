@@ -115,7 +115,9 @@ def test_lookup_sends_volzone_third_photo():
     assert "vol_zone_photo_caption" in src
     assert "volzone" in src
     assert "大量區" in src
-    assert src.find("_send_lookup_album") < src.find("await volzone_task")
+    assert src.find("_send_lookup_album") < src.find("create_task(_volzone_item")
+    assert src.find("create_task(_volzone_item") < src.find("await volzone_task")
+    assert src.find("packed = await asyncio.gather") < src.find("_send_lookup_album")
     # 不准把決策卡還原 ohlc 塞進大量區
     assert "already_normalized=True" not in src
     assert "不准用決策卡除權還原" in src or "只吃官方原柱" in src
@@ -127,6 +129,17 @@ def test_lookup_sends_volzone_third_photo():
     nav = open("wayne_navigator.py", encoding="utf-8").read()
     assert "_paint_nav_volume_zone" not in nav
     assert "大量區壓" not in nav
+
+
+def test_vol_zone_http_not_inside_mpl_lock():
+    import inspect
+
+    from vol_zone_chart import render_volume_zone_png
+
+    src = inspect.getsource(render_volume_zone_png)
+    assert src.find("hydrate_official_ex_for_gaps") < src.find("mpl_render")
+    assert src.find("load_official_ohlc") < src.find("mpl_render")
+    assert "_paint_volume_zone" in src
 
 
 def test_vol_zone_ignores_adjusted_card_ohlc():
@@ -240,10 +253,10 @@ def test_vol_zone_press_hold_tags_are_large():
     """話筒紅圈：大量區壓／撐要比標題更容易讀。"""
     import inspect
 
-    from vol_zone_chart import VOL_ZONE_TAG_PT, render_volume_zone_png
+    from vol_zone_chart import VOL_ZONE_TAG_PT, _paint_volume_zone, render_volume_zone_png
 
     assert VOL_ZONE_TAG_PT >= 14
-    src = inspect.getsource(render_volume_zone_png)
+    src = inspect.getsource(render_volume_zone_png) + inspect.getsource(_paint_volume_zone)
     assert "VOL_ZONE_TAG_PT" in src
     assert src.count("VOL_ZONE_TAG_PT") >= 2
 

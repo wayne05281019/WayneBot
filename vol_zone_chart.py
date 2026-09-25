@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import patches
 
-from wayne_navigator import _fp, _fmt_price, _mpl_serial
+from wayne_navigator import _fp, _fmt_price, mpl_render
 from ex_rights import (
     OFFICIAL_EX_SRC as _OFFICIAL_EX_SRC,
     bar_ymd as _bar_ymd,
@@ -527,8 +527,8 @@ def vol_zone_photo_caption(
                 start = _bar_ymd(work["date"].iloc[0])
                 end = _bar_ymd(work["date"].iloc[-1])
                 events = load_scale_ex_events(sid, path, start, end)
-                events = hydrate_official_ex_for_gaps(sid, path, work, events)
-                recent = work.tail(5) if hasattr(work, "tail") else work
+                recent = work.tail(8) if hasattr(work, "tail") else work
+                events = hydrate_official_ex_for_gaps(sid, path, recent, events)
                 gaps = unexplained_gap_dates(recent, way="down")
                 zone = find_volume_zone(work, ex_events=events)
                 bars = [
@@ -568,7 +568,6 @@ def _candle_up(close: float, prev_close: Optional[float], open_: float) -> bool:
         return float(close) >= float(prev_close)
 
 
-@_mpl_serial
 def render_volume_zone_png(
     stock_id: str,
     stock_name: str = "",
@@ -602,7 +601,8 @@ def render_volume_zone_png(
         start_d = _bar_ymd(work["date"].iloc[0])
         end_d = _bar_ymd(work["date"].iloc[-1])
         ex_events = load_scale_ex_events(sid, str(db_path), start_d, end_d)
-        ex_events = hydrate_official_ex_for_gaps(sid, str(db_path), work, ex_events)
+        recent = work.tail(8) if hasattr(work, "tail") else work
+        ex_events = hydrate_official_ex_for_gaps(sid, str(db_path), recent, ex_events)
     zone = find_volume_zone(work, lookback=lookback, ex_events=ex_events)
     if not zone:
         return ""
@@ -625,7 +625,6 @@ def render_volume_zone_png(
     hi = float(zone["high"])
     lo = float(zone["low"])
     spike_date = str(zone["date"] or "")
-    spike_md = _md(spike_date)
     n = len(view)
     xs = np.arange(n, dtype=float)
     halt = (
@@ -634,6 +633,16 @@ def render_volume_zone_png(
         else pd.Series(False, index=view.index)
     )
 
+    with mpl_render():
+        return _paint_volume_zone(
+            sid, name, view, zone, spike_i, spike_date, hi, lo, halt, xs, n, ex_events, out
+        )
+
+
+def _paint_volume_zone(
+    sid, name, view, zone, spike_i, spike_date, hi, lo, halt, xs, n, ex_events, out
+):
+    spike_md = _md(spike_date)
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,

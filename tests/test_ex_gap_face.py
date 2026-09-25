@@ -237,3 +237,16 @@ def test_regime_skips_breakdown_inside_ex_bar():
     assert _regime_label(item) != "弱勢破底"
     assert _regime_label(item) != "貼近20日低"
     assert _regime_label({**item, "ex_close_inside": False}) == "弱勢破底"
+
+
+def test_hydrate_http_timeout_is_short():
+    import inspect
+
+    from ex_rights import _HYDRATE_HTTP_TIMEOUT, hydrate_official_ex_for_gaps, recent_ex_face
+
+    assert _HYDRATE_HTTP_TIMEOUT <= 5.0
+    src = inspect.getsource(hydrate_official_ex_for_gaps)
+    assert "timeout=tout" in src
+    assert "tpex" in src
+    face_src = inspect.getsource(recent_ex_face)
+    assert "rows[-5:]" in face_src
