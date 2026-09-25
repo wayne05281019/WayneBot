@@ -505,13 +505,18 @@ def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> 
     try:
         conn = sqlite3.connect(path)
         try:
-            for kind, ex in conn.execute(
+            for kind, ex, src in conn.execute(
                 """
-                SELECT kind, replace(ex_date,'-','') FROM ex_rights
+                SELECT kind, replace(ex_date,'-','') , ifnull(source,'')
+                FROM ex_rights
                 WHERE stock_id=? AND replace(ex_date,'-','') >= ?
                 """,
                 (sid, day),
             ):
+                if str(src) == "heuristic_gap":
+                    continue
+                if str(src) and str(src) not in {"TWT49U", "tpex_exDailyQ", "TWT48U"}:
+                    continue
                 cands.append((str(ex or ""), str(kind or "")))
         except sqlite3.OperationalError:
             pass

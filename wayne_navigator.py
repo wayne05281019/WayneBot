@@ -331,13 +331,13 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
                     factor = round(factor, 2)
         idx = out.index[:i]
         out.loc[idx, ["open", "high", "low", "close"]] = out.loc[idx, ["open", "high", "low", "close"]] * factor
-        tag = "分割" if factor > 1.05 else "減資" if factor < 0.95 else "除權"
-        notes.append(f"{tag}還原 {out['date'].iloc[i]} ×{factor:.4f}")
+        notes.append(f"跳空還原 {out['date'].iloc[i]} ×{factor:.4f}")
         if sid and db_path:
             try:
                 from ex_rights import upsert_heuristic_event
 
-                upsert_heuristic_event(db_path, sid, day, factor, kind=tag)
+                # 只給還原用；話筒除權／除息／分割不准寫啟發式
+                upsert_heuristic_event(db_path, sid, day, factor, kind="啟發式")
                 official.add(day)
             except Exception:
                 pass

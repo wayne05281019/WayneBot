@@ -55,7 +55,8 @@ def test_normalize_mild_split_gap():
         }
     )
     out, notes = normalize_ohlc(df, None)
-    assert any("分割" in n or "還原" in n for n in notes)
+    assert any("跳空還原" in n or "還原" in n for n in notes)
+    assert not any("分割" in n for n in notes)
     assert float(out["close"].iloc[0]) > 150
 
 

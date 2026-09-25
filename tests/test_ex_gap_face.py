@@ -326,3 +326,49 @@ def test_official_div_date_and_amount_chi_hua_and_el(tmp_path):
     assert "分割" not in el["label"]
     assert "分割" not in el["note"]
 
+
+def test_twt49u_kind_is_right_or_div_never_split():
+    from ex_rights import _event_verb, _kind, parse_twse_row, scale_ex_verb
+
+    fields = [
+        "股票代號", "股票名稱", "資料日期", "權/息",
+        "除權息前收盤價", "除權息參考價", "權值+息值",
+    ]
+    for raw, want_kind, want_verb in (("息", "息", "除息"), ("權", "權", "除權"), ("權息", "權息", "除權息")):
+        row = ["3017", "奇鋐", "115年08月19日", raw, "3035", "3014.11", "20.881604"]
+        item = parse_twse_row(fields, row)
+        assert item["kind"] == want_kind
+        assert item["source"] == "TWT49U"
+        assert scale_ex_verb(item["kind"]) == want_verb
+        assert "分割" not in scale_ex_verb(item["kind"])
+    assert _kind("息") == "息"
+    assert _kind("權") == "權"
+    assert _event_verb("息") == "除息"
+    assert _event_verb("權") == "除權"
+
+
+def test_nearest_event_skips_heuristic_split(tmp_path):
+    from ex_rights import nearest_event_label
+
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_heuristic_event(db, "2383", "20260803", 1.15, kind="分割")
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "2383",
+                "ex_date": "20260828",
+                "kind": "息",
+                "right_plus_div": 25.0,
+                "source": "TWT49U",
+            }
+        ],
+    )
+    lab = nearest_event_label("2383", db, today="20260801")
+    assert "分割" not in lab
+    assert "除息" in lab
+    only_h = nearest_event_label("2383", db, today="20260901")
+    assert "分割" not in (only_h or "")
+
+
