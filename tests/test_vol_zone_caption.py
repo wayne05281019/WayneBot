@@ -112,7 +112,7 @@ def test_today_close_down_not_climb():
     ]
     line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("降溫"), bars=bars)
     assert "今天是第三天站在支撐線上" in line
-    assert "但今天收盤201比昨天低" in line
+    assert "但今天收盤 201 比昨天低" in line
     assert "看起來不錯" not in line
 
 
@@ -132,11 +132,12 @@ def test_tsmc_fourth_day_still_on_support_line():
     }
     line = vol_zone_position_line(zone, bars[-1], card, bars=bars)
     assert "今天是第四天站在支撐線上" in line
-    assert "但今天收盤2,475比昨天低" in line
-    assert "昨天盤中高點有碰到上緣2,505" in line
+    assert "但今天收盤 2,475 比昨天低" in line
+    assert "昨天盤中高點有碰到上緣 2,505" in line
     assert "這四天收盤價沒有持續攀高" in line
     assert "還是少了點" in line
-    assert "但溫度比昨天低" in line
+    assert "且溫度比昨天低" in line
+    assert "但溫度比昨天低" not in line
     assert "看起來不錯" not in line
 
 

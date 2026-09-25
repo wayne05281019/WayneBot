@@ -324,7 +324,7 @@ def _heat_clause(card: Optional[Dict[str, Any]], heat: str) -> str:
 
 def _vol_heat_tail(vol_c: str, heat_c: str, heat: str) -> str:
     if vol_c and heat_c and "比昨天低" in heat_c:
-        return f"{vol_c}，但{heat_c}"
+        return f"{vol_c}，且{heat_c}"
     if vol_c and heat_c and heat in ("up", "peak") and "量縮" in vol_c:
         return f"{vol_c}，但{heat_c}"
     if vol_c and heat_c and heat in ("down", "floor") and "仍真" in vol_c:
@@ -410,10 +410,10 @@ def vol_zone_position_line(
         return _end(body, nice=nice, test=test_press and not nice)
 
     if last_down:
-        body = f"今天是第{n_zh}天站在支撐線上，但今天收盤{_fmt_price(cl)}比昨天低"
+        body = f"今天是第{n_zh}天站在支撐線上，但今天收盤 {_fmt_price(cl)} 比昨天低"
         prev_hi = _px(streak[-2].get("high")) if n >= 2 else 0
         if prev_hi >= hi * _PRESS_TOUCH:
-            body += f"；昨天盤中高點有碰到上緣{hi_s}，這{n_zh}天收盤價沒有持續攀高"
+            body += f"；昨天盤中高點有碰到上緣 {hi_s}，這{n_zh}天收盤價沒有持續攀高"
             return _end(body, test=False)
         body += f"，這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
         return _end(body, test=test_press)
