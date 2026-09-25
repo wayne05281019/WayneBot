@@ -354,6 +354,33 @@ def _weekdays_after(start_ymd: str, cap: str, *, limit: int = 15) -> List[str]:
     return out
 
 
+def _weekdays_ending(cap: str, *, limit: int = 40) -> List[str]:
+    """含 cap 往回的平日（不管庫裡最新日有沒有更新）。假日抓空會自然略過。"""
+    cap = str(cap or "").replace("-", "")[:8]
+    if len(cap) != 8 or not cap.isdigit():
+        return []
+    try:
+        cur = datetime.strptime(cap, "%Y%m%d")
+    except ValueError:
+        return []
+    out: List[str] = []
+    lim = max(1, int(limit))
+    while len(out) < lim:
+        if cur.weekday() < 5:
+            out.append(cur.strftime("%Y%m%d"))
+        cur -= timedelta(days=1)
+        if cur.year < 2020:
+            break
+    out.reverse()
+    return out
+
+
+def missing_emerging_days(db_path: str, cap: str, *, lookback: int = 40, min_rows: int = 50) -> List[str]:
+    """中間缺日也要補。最新日若比 cap 新（盤中 OpenAPI）仍要回補 cap 以前的洞。"""
+    days = _weekdays_ending(cap, limit=lookback)
+    return [d for d in days if emerging_rows_on(db_path, d) < int(min_rows)]
+
+
 def sync_emerging_quotes(
     db_path: str,
     *,
@@ -374,10 +401,7 @@ def sync_emerging_quotes(
         logger.exception("興櫃 OpenAPI 當日行情失敗")
     listed = _listed_quote_cap(db_path)
     want_cap = str(cap or "").replace("-", "")[:8] or listed
-    last_em = latest_emerging_date(db_path)
-    gap_days = _weekdays_after(last_em, want_cap)
-    if want_cap and emerging_rows_on(db_path, want_cap) < 50 and want_cap not in gap_days:
-        gap_days.append(want_cap)
+    gap_days = missing_emerging_days(db_path, want_cap, lookback=max(40, int(lookback_days) // 2))
     for ymd in gap_days:
         if emerging_rows_on(db_path, ymd) >= 50:
             continue
