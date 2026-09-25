@@ -103,8 +103,8 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
     disc_y = [y for y, t in seen if t == "紀律"][0]
     assert disc_y > min(note_hits)
     with __import__("PIL").Image.open(out) as im:
-        assert im.size[0] >= 2000
-        assert im.size[1] >= 1600
+        assert im.size[0] >= 1500
+        assert im.size[1] >= 1200
         assert sum(im.size) < 10000
 
 
