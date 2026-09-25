@@ -270,6 +270,7 @@ def test_ex_div_cuts_pre_ex_volume_and_caption():
     assert "前收45.45" in cap
     assert "參考價41.45" in cap
     assert "息差不是崩" in cap
+    assert "圖是官方原柱" in cap
     assert "除息後支撐" in cap
     assert "崩盤" not in cap
 
@@ -277,9 +278,10 @@ def test_ex_div_cuts_pre_ex_volume_and_caption():
 def test_unexplained_gap_is_called_out():
     from vol_zone_chart import _ex_gap_note
 
-    note = _ex_gap_note([], ["20260923"], "20260924", "20260923")
+    note = _ex_gap_note([], ["20260923"], "20260924", "20260923", voice="zone")
     assert "跳空超過五％" in note
     assert "不當崩" in note
+    assert "測壓" in note
 
 
 def test_render_mentions_ex_div_not_crash():

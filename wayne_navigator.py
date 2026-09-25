@@ -467,6 +467,11 @@ class NavigatorEngine:
         if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
             is_live = True
             live_time = str(df["_live_time"].iloc[-1] or "") if "_live_time" in df.columns else ""
+        raw_for_ex = df.copy()
+        if "is_live" in raw_for_ex.columns:
+            raw_for_ex = raw_for_ex[~raw_for_ex["is_live"].fillna(False).astype(bool)]
+        keep = [c for c in ("date", "open", "high", "low", "close") if c in raw_for_ex.columns]
+        raw_for_ex = raw_for_ex[keep].tail(40)
         df, xq_notes = normalize_ohlc(df, self.db_path)
         # 小額除息不要改高低卡 20 日表（6770 8/27 除息 0.23 元，Cary 仍寫 70.20）。
         # 大額除權／減資才用還原列，避免 6669 那種 7800／-200%。
@@ -918,22 +923,24 @@ class NavigatorEngine:
         ex_gap_label = ""
         try:
             from ex_rights import recent_ex_face
-            from vol_zone_chart import load_official_ohlc, official_work
 
-            raw_bars = official_work(
-                load_official_ohlc(str(stock_id), self.db_path, 40)
-            )
             face = recent_ex_face(
                 str(stock_id),
                 self.db_path,
                 str(latest.get("date") or ""),
-                raw_bars,
+                raw_for_ex,
+                voice="card",
             )
             ex_gap_note = str(face.get("note") or "").strip()
             ex_gap_label = str(face.get("label") or "").strip()
             if ex_gap_label and ex_gap_label not in badges:
                 badges.insert(0, ex_gap_label)
         except Exception:
+            import logging
+
+            logging.getLogger("WayneBot.Navigator").exception(
+                "官方除息除權面失敗 sid=%s", stock_id
+            )
             ex_gap_note = ""
             ex_gap_label = ""
         payload = {

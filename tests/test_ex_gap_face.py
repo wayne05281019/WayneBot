@@ -34,6 +34,8 @@ def test_recent_ex_face_official_div_note(tmp_path):
     face = recent_ex_face("2542", db, "20260924", bars)
     assert "09/23除息4元" in face["note"]
     assert "息差不是崩" in face["note"]
+    assert "原柱" not in face["note"]
+    assert "測壓" not in face["note"]
     assert face["label"] == "09/23除息4元"
 
 
@@ -44,7 +46,7 @@ def test_title_and_captions_use_ex_gap():
     card = {
         "stock_id": "2542",
         "stock_name": "興富發",
-        "ex_gap_note": "09/23除息4元（前收45.45、參考價41.45）。圖是官方原柱，缺口是息差不是崩。",
+        "ex_gap_note": "09/23除息4元（前收45.45、參考價41.45）。缺口是息差不是崩。",
         "ex_gap_label": "09/23除息4元",
         "next_event": "3天後法說",
         "sell_action": "",

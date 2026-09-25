@@ -547,7 +547,7 @@ def vol_zone_photo_caption(
     ev = _latest_ex_event(events, last_d or zd)
     if ev and _bar_ymd(ev.get("ex_date")) in {zd, last_d}:
         on_ex = True
-    note = _ex_gap_note(events, gaps, last_d or zd, zd)
+    note = _ex_gap_note(events, gaps, last_d or zd, zd, voice="zone")
     pos = vol_zone_position_line(zone, last, card, bars=bars, on_ex=on_ex)
     if pos:
         return f"{VOL_ZONE_CAPTION_HEAD}\n{note}{pos}" if note else f"{VOL_ZONE_CAPTION_HEAD}\n{pos}"

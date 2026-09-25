@@ -706,11 +706,17 @@ def ex_gap_note(
     gaps: Optional[List[str]],
     last_date: str,
     zone_date: str = "",
+    *,
+    voice: str = "card",
 ) -> str:
-    """官方除權息先講；沒列的大跳空也要講，不准當崩 silently。"""
+    """官方除權息先講；沒列的大跳空也要講，不准當崩 silently。
+
+    voice=zone：大量區原柱圖。voice=card：介紹圖／高低卡（可能已還原），不准寫原柱／測壓。
+    """
     ev = latest_scale_ex(events, last_date)
     last = bar_ymd(last_date)
     zd = bar_ymd(zone_date)
+    zone = str(voice or "card") == "zone"
     if ev:
         d = bar_ymd(ev.get("ex_date"))
         if d and (d == zd or d == last or (gaps and d in gaps)):
@@ -732,13 +738,18 @@ def ex_gap_note(
                 bit += f"（前收{_fmt_px(before)}、參考價{_fmt_px(ref)}）"
             src = str(ev.get("source") or "")
             if src in OFFICIAL_EX_SRC:
-                return f"{bit}。圖是官方原柱，缺口是息差不是崩。"
-            return f"{bit}。圖是官方原柱；這列還不是證交所／櫃買完成稿，缺口先不當崩。"
+                if zone:
+                    return f"{bit}。圖是官方原柱，缺口是息差不是崩。"
+                return f"{bit}。缺口是息差不是崩。"
+            if zone:
+                return f"{bit}。圖是官方原柱；這列還不是證交所／櫃買完成稿，缺口先不當崩。"
+            return f"{bit}。這列還不是證交所／櫃買完成稿，缺口先不當崩。"
     for d in gaps or []:
         if d:
+            extra = "、也不拿來當測壓理由。" if zone else "。"
             return (
                 f"{_md_ex(d)}跳空超過五％，庫沒這日官方除權息列，"
-                "缺口先不當崩、也不拿來當測壓理由。"
+                f"缺口先不當崩{extra}"
             )
     return ""
 
@@ -748,6 +759,8 @@ def recent_ex_face(
     db_path: str,
     as_of: str = "",
     bars: Any = None,
+    *,
+    voice: str = "card",
 ) -> Dict[str, str]:
     """介紹圖／高低卡：先官方除息除權。回傳 note（圖說）與 label（標題）。"""
     sid = str(stock_id or "").strip()
@@ -764,7 +777,7 @@ def recent_ex_face(
     win0 = bar_ymd(recent[0].get("date")) if recent else last
     events_r = [e for e in events if bar_ymd(e.get("ex_date")) >= win0] if win0 else events
     gaps = unexplained_gap_dates(recent)
-    note = ex_gap_note(events_r, gaps, last, last)
+    note = ex_gap_note(events_r, gaps, last, last, voice=voice)
     ev = latest_scale_ex(events_r, last)
     label = ""
     if ev and note and _md_ex(ev.get("ex_date")) in note:
