@@ -294,8 +294,8 @@ def test_market_page_tw_holiday_banner(tmp_path):
     html = format_taiwan_market_page_html(
         db, as_of, now=datetime(2026, 9, 25, 10, 0, tzinfo=TW)
     )
-    assert "20260925 台股中秋節休市" in html
-    assert "上一收盤 20260924" in html
+    assert "20260925 台股中秋節休市　上一收盤 20260924" in html
+    assert html.count("上一收盤 20260924") == 1
     assert "休市上一收" in html
     open_html = format_taiwan_market_page_html(
         db, as_of, now=datetime(2026, 9, 1, 10, 0, tzinfo=TW)

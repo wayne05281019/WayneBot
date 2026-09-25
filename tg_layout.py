@@ -114,17 +114,27 @@ def wrap_cjk_lines(text: str, width: int, *, unit: str = "disp") -> List[str]:
     return [ln for ln in lines if ln]
 
 
-def pad_label(label: str, width: int = 8) -> str:
-    """寬度以半形為 1、全形為 2；不足用全形空白補齊。"""
-    raw = str(label)
-    extra = width - _disp_w(raw)
+def _pad_spaces(extra: int) -> str:
     pad = ""
     while extra >= 2:
         pad += "　"
         extra -= 2
     if extra == 1:
         pad += " "
-    return html_escape(raw) + pad
+    return pad
+
+
+def pad_label(label: str, width: int = 8) -> str:
+    """寬度以半形為 1、全形為 2；不足用全形空白補齊。"""
+    raw = str(label)
+    return html_escape(raw) + _pad_spaces(width - _disp_w(raw))
+
+
+def pad_label_html(label_html: str, width: int = 8) -> str:
+    """已含連結的標籤依可見字寬補空白，值與純文字標籤同一直欄。"""
+    raw = str(label_html or "")
+    visible = re.sub(r"<[^>]+>", "", raw)
+    return raw + _pad_spaces(width - _disp_w(visible))
 
 
 def kv(label: str, value, width: int = 10) -> str:

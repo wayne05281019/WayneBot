@@ -1682,3 +1682,97 @@ def test_sync_futures_inst_oi_writes_foreign(mock_fetch, tmp_path):
     assert r["rows"] == 2
     row = load_futures_tx_foreign_oi(db, "20260904")
     assert row and row["oi_long"] == 8153 and row["oi_short"] == 90542
+
+
+def _page_value_after_label(html_ln: str, width: int = 8) -> str:
+    from tg_layout import _disp_w, _html_plain
+
+    plain = _html_plain(html_ln)
+    i = 0
+    used = 0
+    while i < len(plain) and used < width:
+        used += 2 if ord(plain[i]) > 127 else 1
+        i += 1
+    rest = plain[i:]
+    if rest.startswith("　"):
+        rest = rest[1:]
+    elif rest.startswith(" "):
+        rest = rest[1:]
+    return rest
+
+
+def test_page_kv_html_label_aligns_with_plain():
+    from stock_links import html_named
+    from taiwan_market import _page_kv
+
+    wai = _page_kv(html_named("外資"), "+1,000張")
+    tot = _page_kv("合計", "+1,150張")
+    assert _page_value_after_label(wai) == "+1,000張"
+    assert _page_value_after_label(tot) == "+1,150張"
+
+
+def test_market_page_index_points_chips_us_align(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from taiwan_market import format_taiwan_market_page_html
+    from tests.test_market_menu_e2e import _seed_market_db
+    from tg_layout import _html_plain
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "pts.db")
+    as_of = _seed_market_db(db)
+    save_us_overnight(
+        db,
+        as_of,
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": as_of,
+            "us_phase": "overnight",
+            "vix": 14.0,
+            "dji_pct": 0.10,
+            "dji_chg": 40.0,
+            "spx_pct": 0.05,
+            "spx_chg": 3.0,
+            "ixic_pct": -0.12,
+            "ixic_chg": -20.0,
+            "sox_pct": 0.02,
+            "sox_chg": 1.0,
+        },
+    )
+    html = format_taiwan_market_page_html(
+        db,
+        as_of,
+        snap={
+            "ok": True,
+            "as_of": as_of,
+            "close": 48024.60,
+            "prev_close": 48157.29,
+            "chg1_pct": round((48024.60 - 48157.29) / 48157.29 * 100.0, 2),
+            "open": 48100.0,
+            "high": 48180.0,
+            "low": 47950.0,
+            "chips_foreign": 1000,
+            "chips_trust": 200,
+            "chips_dealer": -50,
+            "chips_net": 1150,
+            "regime": "neutral",
+            "regime_label": "盤整",
+            "falling_risk": 20,
+            "sample_n": 0,
+        },
+        now=datetime(2026, 8, 20, 16, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "-132.69" in html
+    plains = [_html_plain(ln) for ln in html.split("\n")]
+    pts = next(ln for ln in plains if ln.startswith("點數"))
+    assert "-132.69" in pts
+    wai = next(ln for ln in html.split("\n") if "外資" in _html_plain(ln) and "張" in ln)
+    tot = next(ln for ln in html.split("\n") if _html_plain(ln).startswith("合計"))
+    assert _page_value_after_label(wai).startswith("+1,000")
+    assert _page_value_after_label(tot).startswith("+1,150")
+    judge = next(ln for ln in html.split("\n") if _html_plain(ln).startswith("判斷"))
+    nasdaq = next(ln for ln in html.split("\n") if "那斯達克" in _html_plain(ln) or "那指" in _html_plain(ln))
+    assert _page_value_after_label(judge).startswith("中")
+    assert _page_value_after_label(nasdaq)[0] in "+-"
