@@ -115,7 +115,50 @@ def test_lookup_sends_volzone_third_photo():
     assert "volzone" in src
     assert "大量區" in src
     assert src.find("_send_lookup_album") < src.find("await volzone_task")
+    # 興櫃與上市櫃同一條；不准另開跳過大量區的路徑
+    assert "if is_em:" in src
+    assert src.find("if is_em:") < src.find("render_volume_zone_png")
+    assert "merge_live=not is_em" in src
     # 導航圖本身不再疊大量區
     nav = open("wayne_navigator.py", encoding="utf-8").read()
     assert "_paint_nav_volume_zone" not in nav
     assert "大量區壓" not in nav
+
+
+def test_render_volume_zone_png_markets_twse_otc_emerging():
+    """上市／上櫃／興櫃都能渲出大量區專圖（查股第三張同一條）。"""
+    from emerging_quotes import load_stock_bars
+    from vol_zone_chart import render_volume_zone_png
+    from wayne_navigator import _load_ohlc
+
+    db = get_db_path()
+    cases = [
+        ("2330", "台積電", "twse"),
+        ("6488", "環球晶", "otc"),
+        ("1260", "富味鄉", "emerging"),
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        for sid, name, kind in cases:
+            if kind == "emerging":
+                df = load_stock_bars(db, sid, 120)
+            else:
+                df = _load_ohlc(sid, db, 180)
+            assert df is not None and not df.empty, (sid, kind)
+            out = os.path.join(tmp, f"{sid}_vz.png")
+            path = render_volume_zone_png(
+                sid, name, db, out, df, already_normalized=False
+            )
+            assert path and os.path.isfile(path), (sid, kind)
+            assert os.path.getsize(path) > 15000, (sid, kind, os.path.getsize(path))
+
+
+def test_emerging_help_mentions_volzone():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._em_no_listed_html)
+    assert "大量區" in src
+    mod = open("bot_servers.py", encoding="utf-8").read(800)
+    assert "上市／上櫃／興櫃一律" in mod
+    assert "大量區專圖" in mod
