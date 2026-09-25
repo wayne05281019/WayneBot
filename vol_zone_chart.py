@@ -625,7 +625,6 @@ def render_volume_zone_png(
     hi = float(zone["high"])
     lo = float(zone["low"])
     spike_date = str(zone["date"] or "")
-    spike_md = _md(spike_date)
     n = len(view)
     xs = np.arange(n, dtype=float)
     halt = (
@@ -643,6 +642,7 @@ def render_volume_zone_png(
 def _paint_volume_zone(
     sid, name, view, zone, spike_i, spike_date, hi, lo, halt, xs, n, ex_events, out
 ):
+    spike_md = _md(spike_date)
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,

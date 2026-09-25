@@ -81,8 +81,8 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 # 不准再畫 320DPI 再 Lanczos 砍掉 40%（那一步在 Render 上一檔會多等好幾秒）。
 # 介紹圖與高低卡同寬。用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）。
 # 180 日高低導航改獨立鈕，不畫在介紹圖下半。
-CARD_PNG_DPI = 200
-GLANCE_PNG_DPI = 200
+CARD_PNG_DPI = 220
+GLANCE_PNG_DPI = 220
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
 GLANCE_FIG_H = 12.4

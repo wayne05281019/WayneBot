@@ -253,10 +253,10 @@ def test_vol_zone_press_hold_tags_are_large():
     """話筒紅圈：大量區壓／撐要比標題更容易讀。"""
     import inspect
 
-    from vol_zone_chart import VOL_ZONE_TAG_PT, render_volume_zone_png
+    from vol_zone_chart import VOL_ZONE_TAG_PT, _paint_volume_zone, render_volume_zone_png
 
     assert VOL_ZONE_TAG_PT >= 14
-    src = inspect.getsource(render_volume_zone_png)
+    src = inspect.getsource(render_volume_zone_png) + inspect.getsource(_paint_volume_zone)
     assert "VOL_ZONE_TAG_PT" in src
     assert src.count("VOL_ZONE_TAG_PT") >= 2
 
