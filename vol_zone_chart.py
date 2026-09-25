@@ -47,24 +47,34 @@ def _md(raw: Any) -> str:
 
 
 def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -> Optional[Dict[str, Any]]:
-    """近窗仍對現價有效的爆大量日。壓還在頭上才認；已全部站上才退回絕對最大量。"""
+    """近窗仍對現價有效的爆大量日。壓還在頭上才認；已全部站上才退回絕對最大量。
+
+    準則（鎖死）：
+    1. 只用官方日 K；略過停牌、略過 biaoke_stock_day 疊加柱。
+    2. 近窗＝最近 lookback 根（預設 40），不含「最後一根」（大量區＝過去參考日）。
+    3. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
+    4. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
+    5. 壓＝該日高、撐＝該日低。不是買訊、不發明 5／9。
+    """
     if work is None or getattr(work, "empty", True):
         return None
     n = len(work)
-    if n < 1:
+    if n < 2:
         return None
     halt = (
         work["is_halt"].fillna(False).astype(bool)
         if "is_halt" in work.columns
         else pd.Series(False, index=work.index)
     )
-    start = max(0, n - max(int(lookback or 0), 1))
+    # 不含最後一根：大量區是過去爆大量參考日
+    end = n - 1
+    start = max(0, end - max(int(lookback or 0), 1))
     last_close = float(work["close"].iloc[-1] or 0)
     best_i = None
     best_v = -1.0
     active_i = None
     active_v = -1.0
-    for i in range(start, n):
+    for i in range(start, end):
         if bool(halt.iloc[i]):
             continue
         if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":

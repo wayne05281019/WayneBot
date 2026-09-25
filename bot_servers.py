@@ -5788,7 +5788,7 @@ class WayneTelegramBot:
                     "volzone",
                     _render_volzone,
                     _LOOKUP_PNG_TIMEOUT,
-                    "大量區（近窗爆大量日高低＝壓／撐；非買訊）",
+                    "大量區（近窗仍有效爆大量日高低＝壓／撐；測壓≠站上；非買訊）",
                     None,
                 )
             )
