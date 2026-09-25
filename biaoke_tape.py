@@ -306,17 +306,29 @@ def structure_vs_spoken(
         gate_d, gate_h = _prior_high(bars)
         kind = "" if skip_vol else _fake_kind(bars)
         if sid == "3017" and re.search(r"(關前整理|主升段|下星期)", blob):
+            gate_d, gate_h = _prior_high(bars)
+            last_d = str(last.get("date") or "").replace("-", "")[:8]
+            wick = gate_h > 0 and last_h >= gate_h * 0.997
+            closed = gate_h > 0 and last_c >= gate_h * 0.997
             bits.append(
                 f"關前近高 {gate_d} 高{_px(gate_h)}；這根高{_px(last_h)}收{_px(last_c)}量"
-                f"{int(last_v) if last_v is not None else '—'}，還沒有效過那根高"
+                f"{int(last_v) if last_v is not None else '—'}"
             )
+            if wick and not closed:
+                bits.append("這根高碰到近高、收沒有效過，不是主升")
+            elif closed and last_d and last_d < "20260929":
+                bits.append("這根收碰到近高，仍不是下星期二有效過")
+            elif closed:
+                bits.append("收盤有效過近高＝他說的主升條件，待對質不是保證")
+            else:
+                bits.append("還沒有效過那根高")
             if kind == "dump":
                 bits.append("這根是爆量長上影＝轉弱K候選，關前完成這句對不上")
             elif kind == "pause":
                 bits.append("這根爆量收在下半＝還要整理，主升還沒")
             else:
                 bits.append("量沒爆、不是轉弱K，回測近高量縮＝他說的關前整理")
-            bits.append("下星期二主升＝待驗證有效過近高，不是保證")
+            bits.append("下星期二主升＝待驗證，9/24 高碰到≠確認。不是保證")
         elif sid == "3653" and re.search(r"(真突破|滾量上攻|整理完成)", blob):
             bits.append(
                 f"前平台高 {gate_d} 高{_px(gate_h)}；這根高{_px(last_h)}收{_px(last_c)}"
