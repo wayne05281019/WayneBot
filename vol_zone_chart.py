@@ -282,10 +282,49 @@ def _vol_clause(last_vol: float, zone_vol: float) -> str:
         return "今天成交量對比前次大量那天仍真"
     if ratio < _VOL_THIN:
         return "今天成交量對比前次大量那天是量縮"
-    return "今天成交量對比前次大量那天還沒回到那樣"
+    return "今天成交量對比前次大量那天還是少了點"
+
+
+def _today_yest_temp(card: Optional[Dict[str, Any]]) -> tuple:
+    if not card:
+        return None, None
+    try:
+        tbl = card.get("table")
+        rows: List[Dict[str, Any]] = []
+        if tbl is not None and hasattr(tbl, "columns"):
+            from sell_discipline import _chrono_table
+
+            src = _chrono_table(tbl)
+            rows = [dict(x) for x in src.to_dict("records")]
+        elif isinstance(tbl, (list, tuple)):
+            rows = [dict(x) for x in tbl if isinstance(x, dict)]
+            rows.sort(key=lambda r: str(r.get("date") or ""))
+        if len(rows) < 2:
+            return None, None
+        today = _px(rows[-1].get("temp_num"))
+        yest = _px(rows[-2].get("temp_num"))
+        if today <= 0 or yest <= 0:
+            return None, None
+        return today, yest
+    except Exception:
+        return None, None
+
+
+def _heat_clause(card: Optional[Dict[str, Any]], heat: str) -> str:
+    today, yest = _today_yest_temp(card)
+    if today is not None and yest is not None:
+        if today < yest - 0.05:
+            return "溫度比昨天低"
+        if today > yest + 0.05:
+            if heat in ("up", "peak"):
+                return "溫度上升中"
+            return "溫度比昨天高"
+    return _HEAT_CLAUSE.get(heat, "")
 
 
 def _vol_heat_tail(vol_c: str, heat_c: str, heat: str) -> str:
+    if vol_c and heat_c and "比昨天低" in heat_c:
+        return f"{vol_c}，但{heat_c}"
     if vol_c and heat_c and heat in ("up", "peak") and "量縮" in vol_c:
         return f"{vol_c}，但{heat_c}"
     if vol_c and heat_c and heat in ("down", "floor") and "仍真" in vol_c:
@@ -322,7 +361,7 @@ def vol_zone_position_line(
     if not rows:
         rows = _rows_from_last(last)
     heat = _heat_key(card)
-    heat_c = _HEAT_CLAUSE.get(heat, "")
+    heat_c = _heat_clause(card, heat)
     vol_c = _vol_clause(_px(last.get("volume")), _px(zone.get("volume")))
     tail = _vol_heat_tail(vol_c, heat_c, heat)
     last_hi = _px(last.get("high") or cl)
@@ -371,18 +410,12 @@ def vol_zone_position_line(
         return _end(body, nice=nice, test=test_press and not nice)
 
     if last_down:
-        body = (
-            f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
-            f"但今天收盤比昨天低，這{n_zh}天收盤價沒有持續攀高，"
-            f"收盤仍沒有突破{hi_s}上緣壓力"
-        )
+        body = f"今天是第{n_zh}天站在支撐線上，但今天收盤{_fmt_price(cl)}比昨天低"
         prev_hi = _px(streak[-2].get("high")) if n >= 2 else 0
         if prev_hi >= hi * _PRESS_TOUCH:
-            body = (
-                f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
-                f"但今天收盤比昨天低；昨天高有碰到{hi_s}上緣、收沒過，"
-                f"這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
-            )
+            body += f"；昨天盤中高點有碰到上緣{hi_s}，這{n_zh}天收盤價沒有持續攀高"
+            return _end(body, test=False)
+        body += f"，這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
         return _end(body, test=test_press)
 
     if near_press:
