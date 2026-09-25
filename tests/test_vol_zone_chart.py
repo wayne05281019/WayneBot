@@ -129,18 +129,20 @@ def test_render_volume_zone_png_markets_twse_otc_emerging():
     """上市／上櫃／興櫃都能渲出大量區專圖（查股第三張同一條）。"""
     from emerging_quotes import load_stock_bars
     from vol_zone_chart import render_volume_zone_png
-    from wayne_navigator import _load_ohlc
+    from wayne_navigator import _load_ohlc, _nav_work_or_none
 
     db = get_db_path()
     cases = [
         ("2330", "台積電", "twse"),
         ("6488", "環球晶", "otc"),
-        ("1260", "富味鄉", "emerging"),
+        ("1260", "FLAVOR", "emerging"),
     ]
     with tempfile.TemporaryDirectory() as tmp:
         for sid, name, kind in cases:
             if kind == "emerging":
+                # 故意傳 DESC（興櫃原樣），渲圖必須排成左舊右新
                 df = load_stock_bars(db, sid, 120)
+                assert str(df.iloc[0]["date"]) >= str(df.iloc[-1]["date"])
             else:
                 df = _load_ohlc(sid, db, 180)
             assert df is not None and not df.empty, (sid, kind)
@@ -150,6 +152,35 @@ def test_render_volume_zone_png_markets_twse_otc_emerging():
             )
             assert path and os.path.isfile(path), (sid, kind)
             assert os.path.getsize(path) > 15000, (sid, kind, os.path.getsize(path))
+            work = _nav_work_or_none(df)
+            assert work is not None and len(work) >= 2
+            assert work["dt"].iloc[0] <= work["dt"].iloc[-1], (sid, kind)
+
+
+def test_vol_zone_xaxis_matches_k_and_volume_index():
+    """底軸刻度 index＝該根 K／量；爆大量日與最後一根一定標月日。"""
+    from vol_zone_chart import VOL_ZONE_BARS, find_volume_zone, render_volume_zone_png
+    from wayne_navigator import _load_ohlc, _nav_work_or_none
+
+    db = get_db_path()
+    work = _nav_work_or_none(_load_ohlc("6274", db, 180))
+    zone = find_volume_zone(work)
+    assert zone and zone["date"] == "20260806"
+    n_all = len(work)
+    show_n = min(max(VOL_ZONE_BARS, 30), n_all)
+    start = max(0, n_all - show_n)
+    if int(zone["i"]) < start:
+        start = max(0, int(zone["i"]) - 8)
+    view = work.iloc[start:].reset_index(drop=True)
+    spike_i = int(zone["i"]) - start
+    assert str(view["date"].iloc[spike_i]) == "20260806"
+    assert str(view["date"].iloc[-1]) == str(work["date"].iloc[-1])
+    # 左舊右新
+    assert view["dt"].iloc[0] < view["dt"].iloc[-1]
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "6274_axis.png")
+        path = render_volume_zone_png("6274", "台燿", db, out)
+        assert path and os.path.isfile(path)
 
 
 def test_emerging_help_mentions_volzone():

@@ -4179,6 +4179,8 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
     work = work.dropna(subset=["dt"]).reset_index(drop=True)
     if work.empty:
         return None
+    # 左舊右新：興櫃 load 是 DESC，沒排好底軸日期會跟 K／量對錯位
+    work = work.sort_values("dt", kind="mergesort").reset_index(drop=True)
     if "is_halt" not in work.columns:
         work["is_halt"] = False
     return work

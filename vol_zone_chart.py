@@ -307,17 +307,34 @@ def render_volume_zone_png(
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(9))
 
-    # x ticks by month
-    months, mpos = [], []
+    # 底軸日期：與 K／量同一根 index；月標寫「08月」避免 08/26 被看成 8 月 26 日
+    tick_pos: list[int] = []
+    tick_lab: list[str] = []
+    tick_at: dict[int, str] = {}
+
+    def _put_tick(i: int, lab: str, *, prefer: bool = False) -> None:
+        i = int(i)
+        if i < 0 or i >= n:
+            return
+        if i in tick_at and not prefer:
+            return
+        tick_at[i] = lab
+
     prev_m = None
     for i, dt in enumerate(view["dt"]):
-        key = (dt.year, dt.month)
+        key = (int(dt.year), int(dt.month))
         if key != prev_m:
-            months.append(dt.strftime("%m/%y"))
-            mpos.append(i)
+            _put_tick(i, f"{int(dt.month):02d}月")
             prev_m = key
-    ax2.set_xticks(mpos)
-    ax2.set_xticklabels(months, fontproperties=_fp(9))
+    # 爆大量日、最後一根一定標月日，對準那一根 K／量
+    _put_tick(spike_i, _md(view["date"].iloc[spike_i]), prefer=True)
+    _put_tick(n - 1, _md(view["date"].iloc[-1]), prefer=True)
+    tick_pos = sorted(tick_at)
+    tick_lab = [tick_at[i] for i in tick_pos]
+    ax2.set_xticks(tick_pos)
+    ax2.set_xticklabels(tick_lab, fontproperties=_fp(9))
+    # sharex：上圖 K 與下圖量同一套 x；刻度只標在量圖，避免重複壓字
+    ax1.tick_params(labelbottom=False)
 
     title = (
         f"{sid} {name}　大量區專圖（非買訊）　"
@@ -336,7 +353,7 @@ def render_volume_zone_png(
         fontproperties=_fp(9, "bold"),
         color=_MUTED,
     )
-    fig.subplots_adjust(left=0.04, right=0.96, top=0.90, bottom=0.08)
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.90, bottom=0.10)
     fig.savefig(out, dpi=VOL_ZONE_DPI, facecolor=_BG)
     plt.close(fig)
     return out
