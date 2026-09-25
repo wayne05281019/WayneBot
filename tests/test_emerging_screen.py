@@ -133,6 +133,90 @@ class EmergingQuotesParseTests(unittest.TestCase):
             os.remove(path)
 
 
+    def test_sync_fills_middle_gap_even_if_newer_day_exists(self):
+        from unittest.mock import patch
+
+        from emerging_quotes import ensure_emerging_table, missing_emerging_days
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_emerging_table(path)
+            conn = sqlite3.connect(path)
+            q = (
+                "INSERT INTO emerging_quotes("
+                "date,stock_id,stock_name,market,open,high,low,close,"
+                "volume,turnover_k,pct_change,avg_price,source) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            )
+            for ymd in ("20260918", "20260921", "20260924"):
+                conn.execute(
+                    q,
+                    (ymd, "3595", "山太士", "EM", 10, 11, 9, 10, 1, 1, 0, 10, "seed"),
+                )
+            conn.execute(
+                "INSERT INTO daily_quotes("
+                "date,stock_id,stock_name,market,open,high,low,close,volume,"
+                "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260923", "2330", "台積電", "TW", 1, 1, 1, 1, 1, 1, 0, 1),
+            )
+            conn.commit()
+            conn.close()
+            self.assertEqual(latest_emerging_date(path), "20260924")
+            holes = missing_emerging_days(path, "20260923", lookback=8)
+            self.assertIn("20260922", holes)
+            self.assertIn("20260923", holes)
+            fetched = []
+
+            def fake_open(*_a, **_k):
+                return "20260924", [
+                    {
+                        "stock_id": "3595",
+                        "stock_name": "山太士",
+                        "open": 15,
+                        "high": 16,
+                        "low": 14,
+                        "close": 15,
+                        "volume": 1,
+                        "turnover_k": 15,
+                        "pct_change": 0,
+                        "avg_price": 15,
+                        "source": "tpex_esb_openapi",
+                    }
+                ]
+
+            def fake_csv(ymd, session=None):
+                fetched.append(ymd)
+                return ymd, [
+                    {
+                        "stock_id": "3595",
+                        "stock_name": "山太士",
+                        "open": 12.0,
+                        "high": 13.0,
+                        "low": 11.0,
+                        "close": 12.5,
+                        "volume": 10,
+                        "turnover_k": 12.5,
+                        "pct_change": 1.0,
+                        "avg_price": 12.5,
+                        "source": "tpex_esb_csv",
+                    }
+                ]
+
+            with patch("emerging_quotes.fetch_emerging_openapi", fake_open), patch(
+                "emerging_quotes.fetch_emerging_csv_day", fake_csv
+            ):
+                stats = sync_emerging_quotes(path, cap="20260923", sleep_s=0)
+            self.assertIn("20260922", fetched)
+            self.assertIn("20260923", fetched)
+            self.assertGreaterEqual(stats.get("gaps") or 0, 1)
+            self.assertGreaterEqual(emerging_rows_on(path, "20260922"), 1)
+            self.assertGreaterEqual(emerging_rows_on(path, "20260923"), 1)
+        finally:
+            os.remove(path)
+
+
 class EmergingScreenIsolationTests(unittest.TestCase):
     def test_listed_screen_drops_emerging_universe(self):
         from screening_engine import ScreeningEngine

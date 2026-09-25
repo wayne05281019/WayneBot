@@ -60,6 +60,24 @@ def test_fill_missing_calls_coverage_hole_refill():
     src = inspect.getsource(DataFetcher.fill_missing_market_days)
     assert "refill_coverage_holes" in src
     assert "patch_missing_equity_quotes" in src
+    assert "_fill_missing_weekdays" in src
+
+
+def test_list_missing_weekday_dates_finds_middle_blank_day(tmp_path, monkeypatch):
+    monkeypatch.setattr(DataFetcher, "_ensure_database_ready", lambda self: None)
+    db = str(tmp_path / "calgap.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    for ds, sid in (("20260921", "2330"), ("20260923", "2330"), ("20260924", "2330")):
+        _quote(conn, ds, sid, "台積電", "TW")
+    conn.commit()
+    conn.close()
+    f = DataFetcher(db_path=db)
+    holes = f._list_missing_weekday_dates("20260924", lookback=6, min_rows=1500)
+    assert "20260922" in holes
+    assert "20260923" in holes
+    assert "20260924" in holes
+    assert "20260921" in holes
 
 
 def test_parse_twse_keeps_thin_print_and_limit_up_lock():
