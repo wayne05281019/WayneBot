@@ -1373,6 +1373,26 @@ def leave_zero_screen_ok(
     return False, "未達黃金買點獲利條件"
 
 
+def leave_zero_from_quote_df(df) -> bool:
+    """官方日 K：昨／今獲利是否達黃金買點（與海選 leave_zero_screen_ok、查股同一條）。
+
+    盤中未收柱不准塞進 df。缺列／算不出＝False，不准回落海選桶快取。
+    """
+    if df is None or len(df) < 2:
+        return False
+    try:
+        profits = profit_pct_cal60_series(df)
+        if len(profits) < 2:
+            return False
+        py = float(profits.iloc[-2])
+        pt = float(profits.iloc[-1])
+        ya, ta = card_alerts_for_df(df)
+        ok, _ = leave_zero_screen_ok(py, pt, yest_alert=ya, today_alert=ta)
+        return bool(ok)
+    except Exception:
+        return False
+
+
 def card_alerts_for_df(df, today_iloc: int = -1) -> Tuple[str, str]:
     """回傳 (昨預警, 今預警)，對齊決策卡預警欄。today_iloc 可指歷史那一根。"""
     import pandas as pd
