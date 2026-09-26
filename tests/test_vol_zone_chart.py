@@ -252,7 +252,16 @@ def test_vol_zone_xaxis_matches_k_and_volume_index():
         assert path and os.path.isfile(path)
 
 
-def test_vol_zone_press_hold_tags_are_large():
+def test_vol_zone_uses_shared_volume_heights():
+    """大量區量柱與導航同一套高度映射，不准線性壓空白。"""
+    import inspect
+
+    from vol_zone_chart import _paint_volume_zone
+
+    src = inspect.getsource(_paint_volume_zone)
+    assert "nav_volume_bar_heights" in src
+    assert "view[\"volume\"]" in src or "view['volume']" in src
+
     """話筒紅圈：大量區壓／撐要比標題更容易讀。"""
     import inspect
 

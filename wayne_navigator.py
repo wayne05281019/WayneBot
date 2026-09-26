@@ -1139,10 +1139,10 @@ def nav_volume_bar_heights(volumes) -> tuple:
 
     暴量日線性全高會把低量段壓成縮圖空白。做法：
     - 軟頂（約 80 分位）裁尖峰
-    - 正量用平方根比例映射到面板 [MIN_FRAC, 1]（比例仍在，最低也佔面板 10%）
+    - 正量用平方根比例映射到面板 [MIN_FRAC, 1]（比例仍在，最低也佔面板 12%）
     - 缺欄／NaN → 柱高 0（呼叫端標缺）；真 0 量維持 0，不准抬假量
     """
-    min_frac = 0.10
+    min_frac = 0.12
     raw = pd.to_numeric(pd.Series(volumes), errors="coerce")
     missing = raw.isna().to_numpy(dtype=bool)
     vals = raw.fillna(0.0).to_numpy(dtype=float)
@@ -1162,6 +1162,11 @@ def nav_volume_bar_heights(volumes) -> tuple:
     ratio = np.sqrt(capped[pos_mask] / soft)
     heights[pos_mask] = (min_frac + (1.0 - min_frac) * ratio) * soft
     return heights, soft, missing
+
+
+def volume_bar_display_heights(volumes) -> tuple:
+    """導航／大量區共用入口（別名）。"""
+    return nav_volume_bar_heights(volumes)
 
 
 def _tw_tick(px) -> float:
@@ -3178,14 +3183,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                        f"{lab[:-1]}日低點", px, dist, high=False, hit=hit)
 
     # 過去 20 天：欄序跟作者卡同一套（預警→升降→溫度計）。升降＝溫度趨勢，不是股價漲跌。
-    # 20 日表列白底，不要斑馬紋；獲利／預警／升降／溫度用淡色 pill。
+    # 有色＝整格洗底＋字置中；不准半高 pill／方塊露白（見 docs 視覺準則）。
     y -= gap + tbl_title_h
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F",
               "預警會露出 20高／10低；升降＝溫度升降（不是股價）；最右欄＝120日量")
     headers = ["日期", "股價", "獲利", "預警", "升降", "溫度計", "月乖離", "120日量"]
     # 股價欄加寬（萬元股）、升降略加寬給雙標；日期／獲利略收。手機直向對齊作者卡。
     weights = [12.2, 12.2, 8.8, 10.6, 14.2, 11.0, 9.6, 12.4]
-    pill_cols = {2, 3, 4, 5}
+    wash_signal_cols = {2, 3, 4, 5}  # 獲利／預警／升降／溫度：整格，不准 pill
     span = 100 - 2 * pad_x
     xs = [pad_x]
     for wgt in weights:
@@ -3199,15 +3204,6 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ry = tbl_top - hdr_h
     from decision_card_signals import display_alert_cell
     _ = profit_cell_style, vol_rank_cell_style, temp_cell_style
-
-    def _status_pill(cx, cy, text, bg, fg, *, w, h, fs, rounding=None):
-        # 作者卡預警／升降／溫度是淡底深字；實心白字只留給本來就是白字的深底。
-        sbg, sfg = (bg, fg) if fg != C["white"] else _status_badge_colors(bg, fg)
-        if sfg != C["white"] and sbg in (C["white"], C["panel"], C["neutral_bg"]):
-            ax.text(cx, cy, text, fontproperties=_fp(fs), color=sfg,
-                    ha="center", va="center", zorder=3)
-            return
-        _pill(ax, cx, cy, text, sbg, sfg, w=w, h=h, fs=fs, rounding=rounding)
 
     for row_i, (_, r) in enumerate(table.iterrows()):
         y1 = ry - body_h
@@ -3239,18 +3235,21 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
         vbg, vfg = _vol_heat_draw(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
-        # 作者最高溫日：整列最深高色，一眼看清
+        # 作者最高溫日：整列最深高色；漲停／跌停股價格另色優先
         row_peak = trend == "最高溫"
         peak_wash = C["pill_hi"]
         if row_peak:
             p_bg, p_fg = peak_wash, C["white"]
-            px_bg, px_fg = peak_wash, C["white"]
+            if not limit_chip:
+                px_bg, px_fg = peak_wash, C["white"]
             al_bg, al_fg = peak_wash, C["white"]
             tbg, tfg = peak_wash, C["white"]
             tr_bg, tr_fg = peak_wash, C["white"]
             b_bg, b_fg = peak_wash, C["white"]
             if vbg not in (C["white"], C["panel"], C["neutral_bg"]):
                 vbg, vfg = peak_wash, C["white"]
+        if limit_chip:
+            px_bg, px_fg = limit_chip
         fills = [base, px_bg, p_bg, al_bg, tr_bg, tbg, b_bg, vbg]
         fgs = [C["ink_soft"], px_fg, p_fg, al_fg, tr_fg, tfg, b_fg, vfg]
         vals = [
@@ -3268,16 +3267,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         for i, val in enumerate(vals):
             col_w = xs[i + 1] - xs[i]
             wash = C["white"]
-            if row_peak and i != 0:
+            if i == 0:
+                wash = C["white"]
+            elif i == 1 and limit_chip:
+                wash = px_bg  # 漲停／跌停整格，優先於最高溫
+            elif row_peak:
                 wash = peak_wash
-            elif i == 1 and not limit_chip and px_bg not in whites:
+            elif i == 1 and px_bg not in whites:
                 wash = px_bg
-            elif i == 2 and p_bg not in whites and p_bg not in (
-                C["lo_fill"],
-                C["lo_hit_fill"],
-                C["pill_lo"],
-            ):
-                wash = p_bg
+            elif i == 2 and p_bg not in whites:
+                wash = p_bg  # 含貼零綠／剛離零／高獲利：整格
+            elif i in (3, 4, 5) and fills[i] not in whites and not is_blank_card_signal(val):
+                wash = fills[i]
             elif i == 6 and bias > 0:
                 # 月乖離正值跟獲利一樣淡粉深淺，負值仍白底綠字
                 b_heat, _ = _heat_pair(
@@ -3297,82 +3298,46 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 wash = vbg
             _cell_wash(ax, xs[i], y1, col_w, body_h, wash, C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
-            if i == 2 and fills[i] in (C["lo_fill"], C["pill_lo"]):
-                pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
-                _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=pill_w, h=body_h * 0.62, fs=11.5)
-            elif i == 2 and fills[i] == C["lo_hit_fill"]:
-                pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
-                _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w, h=body_h * 0.62, fs=11.5)
-            elif i == 2 and wash not in whites and not row_peak:
-                # 高獲利：整格熱圖底＋置中％，深淺跟％走
-                ink = _fg_on_panel(fgs[i], fills[i], wash)
-                ax.text(
-                    cx,
-                    cy,
-                    val,
-                    fontproperties=_fp(12, "bold"),
-                    ha="center",
-                    va="center",
-                    color=ink,
-                    zorder=3,
-                )
-            elif i in pill_cols:
-                if is_blank_card_signal(val):
-                    ax.text(cx, cy, "No",
-                            fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
-                elif i == 4 and dual_trend and not row_peak:
-                    note = _trend_note_short(trend_note)
-                    nbg, nfg = temp_trend_note_cell_style(trend_note, base)
-                    main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    halves = dual_trend_half_boxes(xs[i], y1, col_w, body_h)
-                    _draw_trend_half(
-                        ax, halves["main_box"], halves["main_xy"],
-                        main_lab, tr_bg, tr_fg, halves["main_fs"],
-                    )
-                    _draw_trend_half(
-                        ax, halves["note_box"], halves["note_xy"],
-                        note, nbg, nfg, halves["note_fs"],
-                    )
-                    ax.add_patch(patches.Rectangle(
-                        (xs[i], y1), col_w, body_h, facecolor="none",
-                        edgecolor=C["tbl_line"], lw=0.7, zorder=4,
-                    ))
-                elif row_peak and i in (2, 3, 4, 5, 6):
-                    ink = C["white"]
-                    ax.text(
-                        cx,
-                        cy,
-                        val,
-                        fontproperties=_fp(11.2, "bold"),
-                        ha="center",
-                        va="center",
-                        color=ink,
-                        zorder=3,
-                    )
-                else:
-                    pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.88)
-                    _status_pill(cx, cy, val, fills[i], fgs[i], w=pill_w,
-                                 h=body_h * 0.58, fs=10.8)
-            else:
-                if i == 0 and date_live:
-                    ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
-                    ax.text(cx, cy + 0.78, val, fontproperties=_fp(10.5),
-                            ha="center", va="center", color=ink, zorder=3)
-                    ax.text(cx, cy - 0.98, "盤中", fontproperties=_fp(9.0, "bold"),
-                            ha="center", va="center", color=C["pill_hi"], zorder=3)
-                    continue
-                px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else 12
-                if i == 1 and limit_chip and not row_peak:
-                    bg, fg = limit_chip
-                    _paint_limit_square_center(
-                        ax, cx, cy, val, px_fs, bg, fg, tw, h=body_h * 0.72,
-                    )
-                    continue
+            if i == 0 and date_live:
                 ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
-                if row_peak and i == 1:
-                    ink = C["white"]
-                ax.text(cx, cy, val, fontproperties=_fp(px_fs, "bold" if i != 0 else "normal"),
+                ax.text(cx, cy + 0.78, val, fontproperties=_fp(10.5),
                         ha="center", va="center", color=ink, zorder=3)
+                ax.text(cx, cy - 0.98, "盤中", fontproperties=_fp(9.0, "bold"),
+                        ha="center", va="center", color=C["pill_hi"], zorder=3)
+                continue
+            if i == 4 and dual_trend and not row_peak:
+                note = _trend_note_short(trend_note)
+                nbg, nfg = temp_trend_note_cell_style(trend_note, base)
+                main_lab = "壓縮" if trend == "溫度壓縮" else trend
+                halves = dual_trend_half_boxes(xs[i], y1, col_w, body_h)
+                _draw_trend_half(
+                    ax, halves["main_box"], halves["main_xy"],
+                    main_lab, tr_bg, tr_fg, halves["main_fs"],
+                )
+                _draw_trend_half(
+                    ax, halves["note_box"], halves["note_xy"],
+                    note, nbg, nfg, halves["note_fs"],
+                )
+                ax.add_patch(patches.Rectangle(
+                    (xs[i], y1), col_w, body_h, facecolor="none",
+                    edgecolor=C["tbl_line"], lw=0.7, zorder=4,
+                ))
+                continue
+            if i in wash_signal_cols and is_blank_card_signal(val):
+                ax.text(cx, cy, "No",
+                        fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
+                continue
+            px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else (11.2 if i in wash_signal_cols else 12)
+            # 漲停／最高溫整列：白字；其餘跟格底對比
+            if i == 1 and limit_chip:
+                ink = C["white"]
+            elif row_peak and i != 0:
+                ink = C["white"]
+            else:
+                ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
+            weight = "bold" if i != 0 else "normal"
+            ax.text(cx, cy, val, fontproperties=_fp(px_fs, weight),
+                    ha="center", va="center", color=ink, zorder=3)
         ry = y1
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))
