@@ -151,18 +151,15 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
 def _candidates(
     results: Dict[str, List[Dict[str, Any]]], db_path: str = "", *, dip_only: bool = False
 ) -> List[Dict[str, Any]]:
-    """隔夜模擬倉：第一份只買黃金買點整張表（含四星、滿五星）。不拿周帶量／營收轉強／隔日沖去隔夜。
+    """隔夜模擬倉：只買黃金買點（leave_zero）。不拿周帶量／營收轉強／隔日沖／還在零去隔夜。
 
-    dip_only：第二份只准抄低（重點觀察／黃金買點）。貼月高、美股逆風不買。
+    dip_only：第二份（超跌槽）仍只准 leave_zero；golden_buy 只觀察不進假倉。
+    參數保留給呼叫端相容，不再擴大候選桶。貼月高、美股逆風不買。
     滿五星＝表上該買；不把星星當買閘。
     """
     out, seen = [], set()
+    _ = dip_only  # 呼叫端仍傳；進場規則已統一只 leave_zero
     keys = (("leave_zero", "黃金買點：獲利離零"),)
-    if dip_only:
-        keys = (
-            ("golden_buy", "重點觀察：60低超跌"),
-            ("leave_zero", "黃金買點：獲利離零"),
-        )
     for key, reason in keys:
         if db_path:
             try:
@@ -415,7 +412,7 @@ def format_evolve_report_html(db_path: str, user_id: str = AI_USER_LEGACY) -> st
         "",
         "<b>目前編碼</b>",
         "進場＝高低卡黃金買點整張表（滿五星＝按表該買；少追降星）",
-        "第二份＝大盤偏空才買重點觀察／黃金買點",
+        "第二份＝大盤偏空才開槽，仍只買剛離零；還在零只觀察",
         f"停損 {STOP_PCT:.0f}%　停利 ＋{TAKE_PCT:.0f}%　平常 {CORE_SLOTS} 份、永遠留 1 份現金",
         f"單筆倍數 {size_mult:.2f}（0.40～1.20，依近況勝率縮放）",
     ]

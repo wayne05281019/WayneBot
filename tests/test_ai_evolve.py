@@ -66,6 +66,7 @@ def test_core_candidates_are_leave_zero_only():
 
     src = inspect.getsource(_candidates)
     assert 'keys = (("leave_zero", "黃金買點：獲利離零"),)' in src
+    assert '("golden_buy"' not in src
     assert "revenue_cross" not in src
     assert "select_01" not in src
     assert '"overnight"' not in src
@@ -85,7 +86,23 @@ def test_core_candidates_are_leave_zero_only():
         },
         dip_only=True,
     )
-    assert [x["stock_id"] for x in dip] == ["4127", "2330"]
+    # 第二份超跌槽也不准買還在零（golden_buy）
+    assert [x["stock_id"] for x in dip] == ["2330"]
+    assert all(x.get("ai_bucket") == "leave_zero" for x in dip)
+    only_gb = _candidates(
+        {"golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}]},
+        dip_only=True,
+    )
+    assert only_gb == []
+
+
+def test_evolve_report_second_slot_leave_zero_only(tmp_path):
+    path = str(tmp_path / "e2.db")
+    ensure_core_schema(path)
+    html = format_evolve_report_html(path, "ai_1")
+    assert "還在零只觀察" in html
+    assert "重點觀察／黃金買點" not in html
+    assert "紅箭頭不是買訊" in html
 
 
 def test_help_topics_cancelled():

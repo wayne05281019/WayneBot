@@ -2652,6 +2652,7 @@ class AIDeskTest(unittest.TestCase):
             os.remove(path)
 
     def test_bear_market_second_slot_is_dip_only(self):
+        """超跌開第二份槽，仍只買 leave_zero；golden_buy 不進假倉。"""
         import os
         import tempfile
         from unittest.mock import patch
@@ -2663,7 +2664,10 @@ class AIDeskTest(unittest.TestCase):
         os.close(fd)
         try:
             results = {
-                "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+                "leave_zero": [
+                    {"stock_id": "2330", "stock_name": "台積電", "close": 100.0},
+                    {"stock_id": "2303", "stock_name": "聯電", "close": 50.0},
+                ],
                 "golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}],
                 "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
             }
@@ -2676,12 +2680,46 @@ class AIDeskTest(unittest.TestCase):
             summary = eng.get_portfolio_summary(ai_user_id("1001"))
             ids = {p["stock_id"] for p in summary["positions"]}
             self.assertEqual(ai.get("max_held"), 2)
-            self.assertEqual(ids, {"2330", "4127"})
+            self.assertEqual(ids, {"2330", "2303"})
+            self.assertNotIn("4127", ids)
             self.assertNotIn("2412", ids)
             self.assertGreater(summary["cash"], 150000)
             html = ai.get("html") or ""
             self.assertIn("────────", html)
             self.assertIn("成交紀錄", html)
+        finally:
+            os.remove(path)
+
+    def test_bear_second_slot_skips_golden_buy_only(self):
+        """弱勢開兩槽但名單只有還在零 → 不買。"""
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        from ai_trader import ai_user_id, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            results = {
+                "leave_zero": [],
+                "golden_buy": [
+                    {"stock_id": "4127", "stock_name": "天鈺", "close": 50.0},
+                    {"stock_id": "2449", "stock_name": "京元電子", "close": 80.0},
+                ],
+            }
+            with patch(
+                "taiwan_market.analyze_taiwan_market",
+                return_value={"ok": True, "regime": "bear", "falling_risk": 40, "vs_ma20_pct": -2.0},
+            ):
+                ai = run_ai_desk(path, "1001", results, "20260831")
+            eng = PortfolioEngine(path)
+            summary = eng.get_portfolio_summary(ai_user_id("1001"))
+            ids = {p["stock_id"] for p in summary["positions"]}
+            self.assertEqual(ai.get("max_held"), 2)
+            self.assertFalse(ai.get("bought"))
+            self.assertEqual(ids, set())
         finally:
             os.remove(path)
 
