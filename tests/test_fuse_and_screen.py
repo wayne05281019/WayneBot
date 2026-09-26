@@ -1561,7 +1561,8 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(ink_on_fill(_CARD["up"], "#EC407A"), _CARD["white"])
         self.assertEqual(ink_on_fill(_CARD["up"], _CARD["pill_hi"]), _CARD["white"])
         self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["white"])
-        self.assertEqual(price_cell_style("20高", _CARD["white"], "最高價")[0], _CARD["hi_fill"])
+        # 股價格：最高價也不染底；只有呼叫端漲跌停整格才上色
+        self.assertEqual(price_cell_style("20高", _CARD["white"], "最高價")[0], _CARD["white"])
         from wayne_navigator import temp_trend_cell_style
 
         self.assertEqual(temp_trend_cell_style("No", _CARD["white"])[0], _CARD["white"])

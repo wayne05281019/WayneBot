@@ -2533,13 +2533,10 @@ def bias_cell_style(bias, base: str):
 
 
 def price_cell_style(hl: str, base: str, alert: str = ""):
-    """股價欄：作者多數白底；預警「最高價」那天洗高色（真漲停另走紅底白字）。"""
+    """股價格：預設白底深字。真漲停／跌停由呼叫端用 quote_limit_* 整格洗，不准最高價／最高溫染底。"""
     C = _CARD
-    base = base or C["white"]
-    if str(alert or "").strip() == "最高價":
-        return C["hi_fill"], C["pill_hi"]
-    del hl
-    return base, C["ink"]
+    del hl, alert
+    return (base or C["white"]), C["ink"]
 
 
 def _card_text_w(text, fs: float, fig_w: float) -> float:
@@ -3229,27 +3226,24 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 nxt_close = None
         limit_chip = quote_limit_chip_colors(quote_limit_side(r["close"], nxt_close), C)
         p_bg, p_fg = _profit_heat_draw(_row_profit(r), _row_profit(nxt), base)
-        px_bg, px_fg = price_cell_style(hl, base, al)
+        # 股價格：只有真漲停／跌停整格；其餘白底（最高溫／最高價不准染）
+        px_bg, px_fg = (limit_chip if limit_chip else price_cell_style(hl, base, al))
         al_bg, al_fg = alert_cell_style(al, base)
         tbg, tfg = _temp_heat_draw(temp_n, base)
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
         vbg, vfg = _vol_heat_draw(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
-        # 作者最高溫日：整列最深高色；漲停／跌停股價格另色優先
+        # 最高溫：洗其他欄；股價格維持白底（除非上面已是漲跌停）
         row_peak = trend == "最高溫"
         peak_wash = C["pill_hi"]
         if row_peak:
             p_bg, p_fg = peak_wash, C["white"]
-            if not limit_chip:
-                px_bg, px_fg = peak_wash, C["white"]
             al_bg, al_fg = peak_wash, C["white"]
             tbg, tfg = peak_wash, C["white"]
             tr_bg, tr_fg = peak_wash, C["white"]
             b_bg, b_fg = peak_wash, C["white"]
             if vbg not in (C["white"], C["panel"], C["neutral_bg"]):
                 vbg, vfg = peak_wash, C["white"]
-        if limit_chip:
-            px_bg, px_fg = limit_chip
         fills = [base, px_bg, p_bg, al_bg, tr_bg, tbg, b_bg, vbg]
         fgs = [C["ink_soft"], px_fg, p_fg, al_fg, tr_fg, tfg, b_fg, vfg]
         vals = [
@@ -3269,12 +3263,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             wash = C["white"]
             if i == 0:
                 wash = C["white"]
-            elif i == 1 and limit_chip:
-                wash = px_bg  # 漲停／跌停整格，優先於最高溫
+            elif i == 1:
+                # 股價格：漲跌停整格，否則一律白底
+                wash = px_bg if limit_chip else C["white"]
             elif row_peak:
                 wash = peak_wash
-            elif i == 1 and px_bg not in whites:
-                wash = px_bg
             elif i == 2 and p_bg not in whites:
                 wash = p_bg  # 含貼零綠／剛離零／高獲利：整格
             elif i in (3, 4, 5) and fills[i] not in whites and not is_blank_card_signal(val):
@@ -3328,9 +3321,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                         fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
                 continue
             px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else (11.2 if i in wash_signal_cols else 12)
-            # 漲停／最高溫整列：白字；其餘跟格底對比
+            # 股價格：漲跌停白字、其餘深字；最高溫整列白字不含股價格
             if i == 1 and limit_chip:
                 ink = C["white"]
+            elif i == 1:
+                ink = C["ink"]
             elif row_peak and i != 0:
                 ink = C["white"]
             else:
