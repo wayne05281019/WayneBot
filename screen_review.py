@@ -14,16 +14,9 @@ except Exception:
     def get_db_path():
         return "data/wayne_market.db"
 
-BUCKETS = (
-    ("leave_zero", "黃金買點"),
-    ("golden_buy", "重點觀察"),
-    ("revenue_cross", "優先看"),
-    ("select_01", "周突破"),
-    ("select_02", "站上季線"),
-    ("select_03", "止跌"),
-    ("day_trade", "當沖"),
-    ("overnight", "隔日沖"),
-)
+from screen_buckets import REVIEW_BUCKETS, bucket_key_from_label
+
+BUCKETS = REVIEW_BUCKETS
 BUCKET_CAP = 8
 WEAK_AVG = -1.0
 WEAK_N = 5
@@ -609,21 +602,36 @@ def ensure_ai_fills_table(db_path: str = None) -> None:
 
 def bucket_from_reason(reason: str) -> str:
     r = str(reason or "")
-    mapping = (
-        ("重點觀察", "golden_buy"),
-        ("60低超跌", "golden_buy"),
-        ("獲利離零", "leave_zero"),
-        ("起漲", "leave_zero"),
-        ("營收", "revenue_cross"),
-        ("隔日", "overnight"),
-        ("周", "select_01"),
-        ("當沖", "day_trade"),
-        ("站上季線", "select_02"),
-        ("止跌", "select_03"),
-    )
-    for needle, key in mapping:
+    # 先認完整桶名／舊別名，再認片段
+    for needle in (
+        "還在零",
+        "重點觀察",
+        "60低超跌",
+        "黃金買點",
+        "獲利離零",
+        "剛離零",
+        "起漲",
+        "營收",
+        "隔日",
+        "周",
+        "當沖",
+        "站上季線",
+        "止跌",
+    ):
         if needle in r:
-            return key
+            hit = bucket_key_from_label(needle)
+            if hit:
+                return hit
+            if needle in ("獲利離零", "起漲", "剛離零"):
+                return "leave_zero"
+            if needle == "營收":
+                return "revenue_cross"
+            if needle == "隔日":
+                return "overnight"
+            if needle == "周":
+                return "select_01"
+            if needle == "當沖":
+                return "day_trade"
     return ""
 
 

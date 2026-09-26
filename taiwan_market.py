@@ -1596,21 +1596,10 @@ def _brief_lab(label: str, *, kind: str = "twii") -> str:
 
 def _market_bucket_face(bucket: str) -> str:
     """海選桶內部鍵改畫面中文，再掛藍連結。不准把 day_trade 原文丟上話筒。"""
-    from screening_engine import LINE_BUCKET_TITLES
+    from screen_buckets import bucket_title
 
     raw = str(bucket or "").strip()
-    aliases = {
-        "重點觀察": "還在零",
-        "隔夜": "隔日沖",
-        "overnight": "隔日沖",
-        "day_trade": "當沖",
-        "golden_buy": "還在零",
-        "leave_zero": "黃金買點",
-    }
-    zh = LINE_BUCKET_TITLES.get(raw) or aliases.get(raw) or raw
-    zh = aliases.get(zh, zh)
-    if re.fullmatch(r"[A-Za-z0-9_]+", zh):
-        zh = aliases.get(zh, zh)
+    zh = bucket_title(raw)
     return _brief_lab(zh, kind="twii")
 
 
@@ -3677,14 +3666,14 @@ def _outlook_action_plain(
     if us_down and night_firm:
         return "美股弱、台指期夜盤沒跟崩。今天別追高，黃金買點仍按表。"
     if us == "caution" or fr >= 35:
-        return "偏空。黃金買點、重點觀察照表，別追高。"
+        return "偏空。黃金買點、還在零照表，別追高。"
     if us_up and night_firm:
         return "隔夜偏多，台股容易開高。黃金買點仍按表，不要追已經噴的。"
     if vs_ma20 is not None and float(vs_ma20) < -1.0:
-        return "加權還在月線下。黃金買點、重點觀察照表，別追高。"
+        return "加權還在月線下。黃金買點、還在零照表，別追高。"
     if night_weak:
-        return "台指期夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。"
-    return "黃金買點、重點觀察照表，別追高。"
+        return "台指期夜盤比日盤便宜。黃金買點、還在零照表，別追高。"
+    return "黃金買點、還在零照表，別追高。"
 
 
 def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:
@@ -3711,7 +3700,7 @@ _OUTLOOK_ACTION_BOLD = (
     "台指期夜盤比日盤便宜",
     "夜盤比日盤便宜",
     "黃金買點",
-    "重點觀察",
+    "還在零",
     "佈局先等",
     "今天別追高",
     "別追高",

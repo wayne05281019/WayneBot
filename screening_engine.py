@@ -2260,7 +2260,8 @@ def format_screening_payload(
         payload.append(
             {
                 "mark_key": "market",
-            "line_pack_id": "",
+                "screen_pack_id": "",
+                "line_pack_id": "",  # 舊鍵，等同 screen_pack_id
                 "mark_label": "大盤狀況",
                 "mark_hint": "美股＋台指期夜盤＋連動",
                 "html": outlook,
@@ -2309,7 +2310,8 @@ def format_screening_payload(
             head = f"{head}　{count_bit}"
         part: Dict[str, Any] = {
             "mark_key": key,
-            "line_pack_id": "",
+            "screen_pack_id": str(key or ""),
+            "line_pack_id": str(key or ""),  # 舊鍵
             "mark_label": f"{label} · {len(items)}檔",
             "mark_hint": subtitle,
         }
@@ -2449,17 +2451,10 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
     return bits
 
 
-LINE_BUCKET_TITLES = {
-    "leave_zero": "黃金買點",
-    "golden_buy": "還在零",
-    "revenue_cross": "優先看",
-    "select_01": "周帶量",
-    "half_year_high": "半年高",
-    "select_02": "站上季線",
-    "select_03": "止跌",
-    "day_trade": "當沖",
-    "overnight": "隔日沖",
-}
+# 舊名 LINE_BUCKET_TITLES：實際是話筒／海選桶中文（見 screen_buckets）
+from screen_buckets import BUCKET_TITLE as LINE_BUCKET_TITLES
+
+BUCKET_TITLES = LINE_BUCKET_TITLES
 
 
 def _share_bucket_block(
@@ -2508,7 +2503,10 @@ def format_line_share_packs(
     morning: bool = False,
     now: Optional[datetime] = None,
 ) -> List[Dict[str, str]]:
-    """三段海選純文字：夜盤、黃金買點（買點／還在零）、短線說明（當沖改主選單查）。"""
+    """Telegram 話筒海選純文字分段（函式名 line_share 是舊稱，產品已不傳 LINE）。
+
+    夜盤、黃金買點（買點／還在零）、短線說明（當沖改主選單查）。
+    """
     specs_layout = [
         ("leave_zero", "黃金買點　買點才切入；還在零只觀察"),
     ]

@@ -1,38 +1,37 @@
-"""海選／卡片純文字排版：直向對齊、產業可跨行。奇摩連官方報價頁。"""
+"""海選／卡片純文字排版（Telegram 手機氣泡）。直向對齊、產業可跨行。
+
+模組檔名 line_share_* 是舊稱：產品已不「傳給 LINE」，只寄話筒。
+折行寬度對齊 tg_layout 氣泡約 18 全形字。
+"""
 from __future__ import annotations
 
 import html as html_lib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-# 態度／做法列：LINE 純文字上不了色；中轉頁 HTML 與 PNG 用這組紅。
+from screen_buckets import BUCKET_HINT, BUCKET_TITLE
+
+# 態度／做法列：純文字上不了色；中轉頁 HTML 與 PNG 用這組紅。
 STANCE_RED = "#c41e3a"
 STANCE_RED_RGB = (196, 30, 58)
 STANCE_LABEL = "態度"
 
-# 手機 LINE 氣泡約 17～19 個中文字。標籤 2 字＋全形空白後，數值最多 14 字。
-# 用電腦寬螢幕對齊會看起來整齊，貼到手機就被 LINE 再折一次，直向會歪。
-LINE_PHONE_WRAP = 14
+# 與 tg_layout._PHONE_CHARS 同一套：整行約 18 全形字。
+# 標籤 2 字＋全形空白後，數值欄最多 15（18−3）。
 LINE_PHONE_LINE_MAX = 18
+LINE_PHONE_WRAP = LINE_PHONE_LINE_MAX - 3
 
-# 海選／當沖轉 LINE 共用區隔線（全形，配合手機氣泡寬）
+# 海選分段區隔線（全形，配合手機氣泡寬）
 LINE_SHARE_SEP = "────────────"
 
-# bucket_key → (標題, 副標；與 Telegram 海選 SCREEN_PUSH_SPECS 一致)
+# bucket_key → (標題, 副標)；標題唯一來源＝screen_buckets
 LINE_BUCKET_META: Dict[str, tuple] = {
-    "leave_zero": ("黃金買點", "買點＝剛離零可切入；還在零＝觀察不是買（須趨勢向上）"),
-    "golden_buy": ("還在零", "60低＋獲利≈0＋月乖離<-10%（觀察不是買）"),
-    "revenue_cross": ("優先看", "營收轉強 × 量價突破（須趨勢向上）"),
-    "select_01": ("周帶量", "突破5日高＋60日量比≥2（須趨勢向上）"),
-    "half_year_high": ("半年高", "收盤創120日新高且量比≥2.5（須趨勢向上）"),
-    "select_02": ("站上季線", "昨收在季線下、今日站上季線（須趨勢向上）"),
-    "select_03": ("止跌", "月低附近有人接、量比≥1、今日翻紅（須趨勢向上）"),
-    "day_trade": ("當沖", "盤中漲幅2%～8.5%"),
-    "overnight": ("隔日沖", "尾盤強勢紅K"),
+    k: (BUCKET_TITLE[k], BUCKET_HINT.get(k, ""))
+    for k in BUCKET_TITLE
 }
 
 def line_bucket_header(bucket_key: str, count: int) -> str:
-    """LINE 只要分類名＋檔數；長副標／說明留在 Telegram。"""
+    """分段標題：分類名＋檔數。"""
     title, _hint = LINE_BUCKET_META.get(bucket_key, (bucket_key, ""))
     return f"＝＝{title}＝＝\n共 {count} 檔"
 
