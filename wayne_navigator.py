@@ -1394,21 +1394,6 @@ def _cell(ax, x, y, w, h, facecolor="#ffffff", edge="#c5c5c5", lw=0.8):
     )
 
 
-def _heat_pair(pct, lo=0.0, hi=45.0):
-    try:
-        p = float(pct)
-    except (TypeError, ValueError):
-        return "#f4f4f5", "#111111"
-    t = max(0.0, min(1.0, (p - lo) / (hi - lo + 0.01)))
-    # 底色只淡淡標強度，文字固定近黑，反差才夠
-    r = 255
-    g = int(250 - 55 * t)
-    b = int(250 - 40 * t)
-    bg = f"#{r:02x}{g:02x}{b:02x}"
-    fg = "#000000"
-    return bg, fg
-
-
 _WARN_COLORS = {
     "60低": "#1565C0",
     "K20低": "#2E7D32",
@@ -1451,16 +1436,35 @@ def signed_pct_ink(val) -> str:
     return C["down"]
 
 
-def ink_on_fill(fg, bg) -> str:
-    """紅底夠深才改白字，只為對比。淡粉／白／綠底仍用紅字。"""
+# 深底白字門檻：相對亮度低於此 → 白字（表列有色格）
+_WASH_WHITE_INK_LUM = 0.42
+# 淺底偏好字色（漲紅／跌綠）對比下限；表列字偏大，4.0 夠讀，保住紅字在淺綠上
+_WASH_PREFER_MIN_CONTRAST = 4.0
+
+
+def cell_ink_on_wash(bg, prefer=None) -> str:
+    """淺底深字、深底白字。prefer＝欄位喜好色（漲紅／跌綠／墨）；對比不夠改墨字。"""
     C = _CARD
     bg = bg or C["white"]
     try:
-        if _lum(bg) < 0.40:
+        if _lum(bg) < _WASH_WHITE_INK_LUM:
             return C["white"]
     except Exception:
         pass
-    return fg
+    cand = prefer or C["ink"]
+    if cand in (C["white"], None, ""):
+        cand = C["ink"]
+    try:
+        if _wcag(cand, bg) >= _WASH_PREFER_MIN_CONTRAST:
+            return cand
+    except Exception:
+        pass
+    return C["ink"]
+
+
+def ink_on_fill(fg, bg) -> str:
+    """紅底夠深才改白字，只為對比。淡粉／白／綠底仍用喜好色。"""
+    return cell_ink_on_wash(bg, prefer=fg)
 
 
 def _chg_color(v) -> str:
@@ -1630,20 +1634,25 @@ def _mix(color, other, t: float) -> str:
 
 
 def _heat_pair(value, stops):
-    """依數值在色票停點之間內插，表格底色才有深淺，不是同一桶死色。"""
+    """依數值在色票停點之間內插底色；字色用深底白／淺底深，不混出髒灰字。"""
     try:
         v = float(value)
     except (TypeError, ValueError):
-        return stops[0][1], stops[0][2]
+        bg, fg = stops[0][1], stops[0][2]
+        return bg, cell_ink_on_wash(bg, fg)
     if v <= stops[0][0]:
-        return stops[0][1], stops[0][2]
+        bg, fg = stops[0][1], stops[0][2]
+        return bg, cell_ink_on_wash(bg, fg)
     for i in range(1, len(stops)):
         x0, bg0, fg0 = stops[i - 1]
         x1, bg1, fg1 = stops[i]
         if v <= x1:
             t = 0.0 if x1 == x0 else (v - x0) / (x1 - x0)
-            return _mix(bg0, bg1, t), _mix(fg0, fg1, t)
-    return stops[-1][1], stops[-1][2]
+            bg = _mix(bg0, bg1, t)
+            prefer = fg1 if t >= 0.5 else fg0
+            return bg, cell_ink_on_wash(bg, prefer)
+    bg, fg = stops[-1][1], stops[-1][2]
+    return bg, cell_ink_on_wash(bg, fg)
 
 
 def is_blank_card_signal(text) -> bool:
@@ -1652,10 +1661,7 @@ def is_blank_card_signal(text) -> bool:
 
 
 def _temp_heat_draw(temp_n, base: str):
-    """繪製用連續溫度熱圖。temp_cell_style 仍給測試分桶，這裡不改那個回傳。
-
-    作者卡溫度計幾乎格格有綠底（0.0°C 也綠）；不要低於 18°C 就留白。
-    """
+    """繪製用連續溫度熱圖：綠段淺綠→深綠，再轉粉紅→深紅（內插）。"""
     C = _CARD
     base = base or C["white"]
     try:
@@ -1667,12 +1673,16 @@ def _temp_heat_draw(temp_n, base: str):
     return _heat_pair(
         t,
         (
-            (0.0, C["lo_fill"], C["lo_ink"]),
-            (34.0, "#E8F5E9", C["lo_ink"]),
-            (52.0, C["lo_hit_fill"], C["lo_ink"]),
-            (64.0, C["temp_warm_bg"], C["temp_warm_fg"]),
-            (76.0, C["temp_hot_bg"], C["temp_hot_fg"]),
-            (90.0, "#F8BBD0", C["pill_hi"]),
+            (0.0, "#E8F5E9", C["lo_ink"]),
+            (18.0, "#C8E6C9", C["lo_ink"]),
+            (36.0, "#A5D6A7", C["lo_ink"]),
+            (48.0, "#81C784", C["lo_ink"]),
+            (58.0, "#FFF0F5", C["temp_warm_fg"]),
+            (66.0, "#F8BBD0", C["temp_hot_fg"]),
+            (74.0, "#F48FB1", C["white"]),
+            (82.0, "#EC407A", C["white"]),
+            (92.0, C["pill_hi"], C["white"]),
+            (100.0, "#880E4F", C["white"]),
         ),
     )
 
@@ -1683,43 +1693,49 @@ def _profit_heat_draw(profit, prev_profit, base: str):
     try:
         p = float(profit)
     except (TypeError, ValueError):
-        return bg, fg
-    # 0.0% 貼零、0.x% 脫離零：整格綠底畫上去，不要再熱圖洗成接近白。
+        return bg, cell_ink_on_wash(bg, fg)
+    # 0.0% 貼零、0.x% 脫離零：整格綠底，字色走對比規則。
     if bg in (C["lo_fill"], C["lo_hit_fill"], C["pill_lo"]) or p <= 0.05:
-        return bg, fg
-    # 1%～未滿 8%：作者低檔卡是白底紅字（致伸 1.5%／2.4%、越峰 3.9%），不要淡粉熱圖。
+        return bg, cell_ink_on_wash(bg, fg)
+    # 1%～未滿 8%：作者低檔卡是白底紅字，不要淡粉熱圖。
     if p < 8:
-        return bg, fg
-    # 高檔要有連續深淺（63% vs 115% 不能同一階死色）；對齊 Cary 決策卡濃淡。
-    heat_bg, _heat_fg = _heat_pair(
+        return bg, cell_ink_on_wash(bg, fg)
+    # 高檔連續粉紅→深紅（63% vs 115% 不能同一死色）。
+    heat_bg, heat_fg = _heat_pair(
         p,
         (
-            (8.0, "#FCE4EC", C["up"]),
-            (20.0, "#FFC1E0", C["up"]),
-            (40.0, "#FF98CD", C["up"]),
-            (60.0, "#F48FB1", C["up"]),
-            (80.0, "#EC407A", C["white"]),
+            (8.0, "#FFEBEE", C["up"]),
+            (16.0, "#FFCDD2", C["up"]),
+            (28.0, "#F8BBD0", C["up"]),
+            (42.0, "#F48FB1", C["up"]),
+            (58.0, "#EC407A", C["white"]),
+            (78.0, "#D81B60", C["white"]),
             (100.0, C["pill_hi"], C["white"]),
             (130.0, "#880E4F", C["white"]),
         ),
     )
-    return heat_bg, ink_on_fill(C["up"] if p > 0 else C["down"], heat_bg)
+    return heat_bg, heat_fg
 
 
 def _vol_heat_draw(rank, base: str):
+    """120日量前10名：第1最深紅、第10淺紅粉（連續）；以外白底。"""
     C = _CARD
     base = base or C["white"]
     try:
         r = int(rank)
     except (TypeError, ValueError):
         return base, C["neutral_fg"]
-    if r > 10:
+    if r > 10 or r < 1:
         return base, C["neutral_fg"]
+    # 用「熱度」= 11-rank，讓第1名落在最深停點
+    heat = 11 - max(1, min(r, 10))
     return _heat_pair(
-        max(1, min(r, 10)),
+        heat,
         (
-            (1.0, C["pill_hi"], C["white"]),
-            (10.0, "#F8BBD0", C["vol_hi_fg"]),
+            (1.0, "#FCE4EC", C["vol_hi_fg"]),
+            (4.0, "#F8BBD0", C["vol_hi_fg"]),
+            (7.0, "#F48FB1", C["white"]),
+            (10.0, C["pill_hi"], C["white"]),
         ),
     )
 
@@ -2348,23 +2364,27 @@ def compute_temp_trend_labels(
 
 
 def temp_trend_cell_style(label: str, base: str):
-    """升降欄：熱＝高色票、冷＝低色票（降溫淺綠／最低溫深綠），No＝白底灰字。"""
+    """升降欄：升溫淺紅粉、最高溫最深紅；降溫淺綠、最低溫深綠。字走深底白／淺底深。"""
     C = _CARD
     base = base or C["white"]
     lab = str(label or "No")
     if is_blank_card_signal(lab):
         return base, C["ink_mute"]
     if lab == "最高溫":
-        # 作者最高溫日整列最深：升降格也用最深高色
-        return C["pill_hi"], C["white"]
+        bg = C["pill_hi"]
+        return bg, cell_ink_on_wash(bg, C["white"])
     if lab == "升溫":
-        return C["temp_warm_bg"], C["temp_warm_fg"]
+        bg = "#F8BBD0"
+        return bg, cell_ink_on_wash(bg, C["temp_warm_fg"])
     if lab == "溫度壓縮":
-        return C["temp_compress_bg"], C["temp_compress_fg"]
+        bg = C["temp_compress_bg"]
+        return bg, cell_ink_on_wash(bg, C["temp_compress_fg"])
     if lab == "最低溫":
-        return C["pill_lo"], C["white"]
+        bg = C["pill_lo"]
+        return bg, cell_ink_on_wash(bg, C["white"])
     if lab == "降溫":
-        return C["lo_fill"], C["lo_ink"]
+        bg = "#C8E6C9"
+        return bg, cell_ink_on_wash(bg, C["lo_ink"])
     return base, C["ink_mute"]
 
 
@@ -2428,9 +2448,9 @@ def _glance_kv_pill(bg, fg):
 
 
 def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
-    """獲利格：0.0% 綠底白字、0.x% 實綠底紅字、1%～未滿 8% 白底紅字、再高紅底白字。
+    """獲利格：0.0% 深綠白字、0.x% 實綠底紅字、1%～未滿 8% 白底紅字、再高粉紅漸層。
 
-    字色＝台股漲紅跌綠，跟當天是不是最高價／最高溫無關。prev_profit 保留給呼叫端。
+    字色跟對比走；prev_profit 保留給呼叫端。高檔連續色見 _profit_heat_draw。
     """
     del prev_profit
     C = _CARD
@@ -2443,20 +2463,21 @@ def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
         from decision_card_signals import is_profit_display_zero, profit_display_leave_zero_band
 
         if is_profit_display_zero(p):
-            return C["lo_fill"], C["white"]
+            # 貼零用夠深的綠，白字才對得上「深底白字」
+            return C["pill_lo"], cell_ink_on_wash(C["pill_lo"], C["white"])
         if profit_display_leave_zero_band(p):
-            return C["lo_hit_fill"], C["up"]
+            return C["lo_hit_fill"], cell_ink_on_wash(C["lo_hit_fill"], C["up"])
     except Exception:
         if p <= 0.05:
-            return C["lo_fill"], C["white"]
+            return C["pill_lo"], cell_ink_on_wash(C["pill_lo"], C["white"])
         if 0.05 < p < 0.95:
-            return C["lo_hit_fill"], C["up"]
+            return C["lo_hit_fill"], cell_ink_on_wash(C["lo_hit_fill"], C["up"])
     if p >= 40:
-        return C["pill_hi"], C["white"]
+        return C["pill_hi"], cell_ink_on_wash(C["pill_hi"], C["white"])
     if p >= 20:
-        return C["hi_fill"], ink_on_fill(C["up"], C["hi_fill"])
+        return C["hi_fill"], cell_ink_on_wash(C["hi_fill"], C["up"])
     if p >= 8:
-        return C["temp_warm_bg"], ink_on_fill(C["up"], C["temp_warm_bg"])
+        return C["temp_warm_bg"], cell_ink_on_wash(C["temp_warm_bg"], C["up"])
     return base, signed_pct_ink(p)
 
 
@@ -2473,18 +2494,27 @@ def hl_cell_style(hl: str, base: str):
 
 
 def alert_cell_style(alert: str, base: str):
-    """預警欄底色：最高價／K20高／20高走高色；60低／10低走低色；No＝灰字。"""
+    """預警：最高價最深紅白字；K20高中粉；5高／10高淡粉深字；低檔綠階深淺。"""
     C = _CARD
     base = base or C["white"]
     a = str(alert or "")
     if is_blank_card_signal(a):
         return base, C["ink_mute"]
     if a == "最高價":
-        return C["pill_hi"], C["white"]
-    if a == "K20高" or ("高" in a and "低" not in a):
-        return C["hi_fill"], C["pill_hi"]
-    if a in ("60低", "K20低") or "低" in a:
-        return C["lo_fill"], C["lo_ink"]
+        bg = C["pill_hi"]
+        return bg, cell_ink_on_wash(bg, C["white"])
+    if a == "K20高":
+        bg = "#F48FB1"
+        return bg, cell_ink_on_wash(bg, C["white"])
+    if "高" in a and "低" not in a:
+        bg = "#FCE4EC"
+        return bg, cell_ink_on_wash(bg, C["pill_hi"])
+    if a in ("60低", "K20低"):
+        bg = "#81C784"
+        return bg, cell_ink_on_wash(bg, C["lo_ink"])
+    if "低" in a:
+        bg = "#C8E6C9"
+        return bg, cell_ink_on_wash(bg, C["lo_ink"])
     return base, C["ink_mute"]
 
 
@@ -2510,6 +2540,7 @@ def temp_cell_style(temp_n, base: str):
 
 
 def vol_rank_cell_style(rank, base: str):
+    """測試／摘要用分桶；畫面連續色走 _vol_heat_draw。"""
     C = _CARD
     base = base or C["white"]
     try:
@@ -2517,7 +2548,7 @@ def vol_rank_cell_style(rank, base: str):
     except (TypeError, ValueError):
         return base, C["neutral_fg"]
     if r <= 10:
-        return C["pill_hi"], C["white"]
+        return _vol_heat_draw(r, base)
     return C["neutral_bg"], C["neutral_fg"]
 
 
@@ -3273,26 +3304,27 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             elif i in (3, 4, 5) and fills[i] not in whites and not is_blank_card_signal(val):
                 wash = fills[i]
             elif i == 6 and bias > 0:
-                # 月乖離正值跟獲利一樣淡粉深淺，負值仍白底綠字
-                b_heat, _ = _heat_pair(
+                # 月乖離正值：粉紅連續漸層；負值仍白底綠字
+                b_heat, b_ink = _heat_pair(
                     bias,
                     (
-                        (0.0, C["white"], C["down"]),
-                        (8.0, "#FCE4EC", C["up"]),
-                        (18.0, "#FFC1E0", C["up"]),
-                        (28.0, "#F48FB1", C["up"]),
-                        (40.0, C["pill_hi"], C["white"]),
+                        (0.0, "#FFEBEE", C["up"]),
+                        (8.0, "#FFCDD2", C["up"]),
+                        (16.0, "#F8BBD0", C["up"]),
+                        (24.0, "#F48FB1", C["up"]),
+                        (32.0, "#EC407A", C["white"]),
+                        (45.0, C["pill_hi"], C["white"]),
                     ),
                 )
                 if b_heat not in whites:
                     wash = b_heat
-                    fills[6], fgs[6] = b_heat, ink_on_fill(C["up"], b_heat)
+                    fills[6], fgs[6] = b_heat, b_ink
             elif i == 7 and vbg not in whites:
                 wash = vbg
             _cell_wash(ax, xs[i], y1, col_w, body_h, wash, C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i == 0 and date_live:
-                ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
+                ink = cell_ink_on_wash(wash or C["white"], fgs[i])
                 ax.text(cx, cy + 0.78, val, fontproperties=_fp(10.5),
                         ha="center", va="center", color=ink, zorder=3)
                 ax.text(cx, cy - 0.98, "盤中", fontproperties=_fp(9.0, "bold"),
@@ -3301,11 +3333,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             if i == 4 and dual_trend and not row_peak:
                 note = _trend_note_short(trend_note)
                 nbg, nfg = temp_trend_note_cell_style(trend_note, base)
+                nfg = cell_ink_on_wash(nbg, nfg)
                 main_lab = "壓縮" if trend == "溫度壓縮" else trend
                 halves = dual_trend_half_boxes(xs[i], y1, col_w, body_h)
                 _draw_trend_half(
                     ax, halves["main_box"], halves["main_xy"],
-                    main_lab, tr_bg, tr_fg, halves["main_fs"],
+                    main_lab, tr_bg, cell_ink_on_wash(tr_bg, tr_fg), halves["main_fs"],
                 )
                 _draw_trend_half(
                     ax, halves["note_box"], halves["note_xy"],
@@ -3321,15 +3354,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                         fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
                 continue
             px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else (11.2 if i in wash_signal_cols else 12)
-            # 股價格：漲跌停白字、其餘深字；最高溫整列白字不含股價格
+            # 股價格：漲跌停白字、其餘深字；其他欄深底白／淺底深
             if i == 1 and limit_chip:
                 ink = C["white"]
             elif i == 1:
                 ink = C["ink"]
-            elif row_peak and i != 0:
-                ink = C["white"]
             else:
-                ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
+                ink = cell_ink_on_wash(wash or C["white"], fgs[i])
             weight = "bold" if i != 0 else "normal"
             ax.text(cx, cy, val, fontproperties=_fp(px_fs, weight),
                     ha="center", va="center", color=ink, zorder=3)

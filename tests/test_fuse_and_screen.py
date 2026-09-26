@@ -1503,7 +1503,8 @@ class LookupCardTest(unittest.TestCase):
         )
 
         bg0, fg0 = profit_cell_style(0.0, None, _CARD["white"])
-        self.assertEqual(bg0, _CARD["lo_fill"])
+        # 貼零：深綠底＋白字（對比清楚）
+        self.assertEqual(bg0, _CARD["pill_lo"])
         self.assertEqual(fg0, _CARD["white"])
         bg_leave, fg_leave = profit_cell_style(0.9, 0.0, _CARD["white"])
         self.assertEqual(bg_leave, _CARD["lo_hit_fill"])
@@ -1516,7 +1517,7 @@ class LookupCardTest(unittest.TestCase):
         heat03, _ = _profit_heat_draw(0.3, 1.5, _CARD["white"])
         self.assertEqual(heat03, _CARD["lo_hit_fill"])
         heat00, _ = _profit_heat_draw(0.0, 0.3, _CARD["white"])
-        self.assertEqual(heat00, _CARD["lo_fill"])
+        self.assertEqual(heat00, _CARD["pill_lo"])
         bg_run, fg_run = profit_cell_style(1.5, 0.9, _CARD["white"])
         self.assertEqual(bg_run, _CARD["white"])
         self.assertEqual(fg_run, _CARD["up"])
@@ -1539,15 +1540,24 @@ class LookupCardTest(unittest.TestCase):
         self.assertNotEqual(vol2, _CARD["white"])
         self.assertEqual(hl_cell_style("20低", _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(hl_cell_style("10高", _CARD["white"])[0], _CARD["hi_fill"])
-        self.assertEqual(alert_cell_style("K20低", _CARD["white"])[0], _CARD["lo_fill"])
-        self.assertEqual(alert_cell_style("10低", _CARD["white"])[0], _CARD["lo_fill"])
-        self.assertEqual(alert_cell_style("20高", _CARD["white"])[0], _CARD["hi_fill"])
+        # 預警綠／粉階：60低／K20低中綠、其餘低檔淺綠；最高價最深、K20高中粉、其餘高檔淡粉
+        self.assertEqual(alert_cell_style("K20低", _CARD["white"])[0].lower(), "#81c784")
+        self.assertEqual(alert_cell_style("10低", _CARD["white"])[0].lower(), "#c8e6c9")
+        self.assertEqual(alert_cell_style("20高", _CARD["white"])[0].lower(), "#fce4ec")
+        self.assertEqual(alert_cell_style("K20高", _CARD["white"])[0].lower(), "#f48fb1")
+        self.assertEqual(alert_cell_style("最高價", _CARD["white"])[0], _CARD["pill_hi"])
         self.assertEqual(alert_cell_style("No", _CARD["white"])[0], _CARD["white"])
         self.assertEqual(temp_cell_style(76, _CARD["white"])[0], _CARD["temp_hot_bg"])
         self.assertEqual(temp_cell_style(36, _CARD["white"])[0], _CARD["lo_fill"])
         self.assertNotEqual(temp_cell_style(36, _CARD["white"])[0], _CARD["temp_hot_bg"])
         self.assertEqual(temp_cell_style(2.5, _CARD["white"])[0], _CARD["lo_fill"])
-        self.assertEqual(vol_rank_cell_style(5, _CARD["white"])[0], _CARD["pill_hi"])
+        # 120日量前10：連續熱圖，第5名中粉、第1名最深
+        vol5_bg, vol5_fg = vol_rank_cell_style(5, _CARD["white"])
+        vol1_bg, _ = vol_rank_cell_style(1, _CARD["white"])
+        vol10_bg, _ = vol_rank_cell_style(10, _CARD["white"])
+        self.assertNotEqual(vol5_bg.lower(), _CARD["white"].lower())
+        self.assertNotEqual(vol1_bg.lower(), vol10_bg.lower())
+        self.assertNotEqual(vol5_bg.lower(), vol1_bg.lower())
         self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["white"])
         self.assertEqual(bias_cell_style(1.2, _CARD["white"])[1], _CARD["up"])
         self.assertEqual(bias_cell_style(-2.0, _CARD["white"])[1], _CARD["down"])
@@ -1568,12 +1578,18 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(temp_trend_cell_style("No", _CARD["white"])[0], _CARD["white"])
         self.assertEqual(temp_trend_cell_style("—", _CARD["white"])[0], _CARD["white"])
         # 降溫淺綠、最低溫／最高溫更深，不能同一色階
-        self.assertEqual(temp_trend_cell_style("降溫", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(temp_trend_cell_style("降溫", _CARD["white"])[0].lower(), "#c8e6c9")
         self.assertEqual(temp_trend_cell_style("最低溫", _CARD["white"])[0], _CARD["pill_lo"])
         self.assertEqual(temp_trend_cell_style("最高溫", _CARD["white"])[0], _CARD["pill_hi"])
-        heat63, _ = _profit_heat_draw(63.5, None, _CARD["white"])
-        heat115, _ = _profit_heat_draw(115.4, None, _CARD["white"])
+        heat63, ink63 = _profit_heat_draw(63.5, None, _CARD["white"])
+        heat115, ink115 = _profit_heat_draw(115.4, None, _CARD["white"])
         self.assertNotEqual(heat63.lower(), heat115.lower())
+        # 深底白字：高獲利深紫紅 → 白字
+        from wayne_navigator import cell_ink_on_wash, _WASH_WHITE_INK_LUM, _lum
+
+        self.assertLess(_lum(_CARD["pill_hi"]), _WASH_WHITE_INK_LUM)
+        self.assertEqual(cell_ink_on_wash(_CARD["pill_hi"], _CARD["up"]), _CARD["white"])
+        self.assertEqual(ink115, _CARD["white"])
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("profit_cell_style", src)
         self.assertIn("display_alert_cell", src)
@@ -1677,7 +1693,8 @@ class LookupCardTest(unittest.TestCase):
             with Image.open(out) as im:
                 im = im.convert("RGB")
                 self.assertGreater(count_near(im, rgb(_CARD["lo_hit_fill"])), 80)
-                self.assertGreater(count_near(im, rgb(_CARD["lo_fill"])), 40)
+                # 貼零 0.0% 用 pill_lo 深綠（深底白字），不是淺 lo_fill
+                self.assertGreater(count_near(im, rgb(_CARD["pill_lo"])), 40)
         finally:
             if os.path.exists(path):
                 os.remove(path)

@@ -172,7 +172,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(str(row["溫度計"]), "9.5 °C")
         self.assertEqual(str(row["120日量"]), "第112名")
         bg, fg = profit_cell_style(float(row["profit_pct"]), None, _CARD["white"])
-        self.assertEqual(bg, _CARD["lo_fill"])
+        self.assertEqual(bg, _CARD["pill_lo"])
         self.assertEqual(fg, _CARD["white"])
 
     def test_2408_20260903_ten_low_min_temp_vol(self):
