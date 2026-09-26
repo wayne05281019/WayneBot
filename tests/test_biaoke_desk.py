@@ -803,7 +803,8 @@ def test_shared_button_surfaces_use_same_formatters():
     assert "format_screen_market_outlook_html" in screen
     assert "from dongzhu_screen import rotation_screen_block" in screen
     dz = Path("dongzhu_screen.py").read_text(encoding="utf-8")
-    assert "from biaoke_field_scan import rotation_screen_block" in dz
+    assert "from sector_flow import rotation_screen_block" in dz
+    assert "biaoke_field_scan" not in dz
     tm = Path("taiwan_market.py").read_text(encoding="utf-8")
     assert tm.index("def _outlook_action_plain") < tm.index(
         "def format_screen_market_outlook_html"
