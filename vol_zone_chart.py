@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import patches
 
-from wayne_navigator import _fp, _fmt_price, mpl_render
+from wayne_navigator import _fp, _fmt_price, mpl_render, nav_volume_bar_heights
 from ex_rights import (
     bar_ymd as _bar_ymd,
     ex_gap_note as _ex_gap_note,
@@ -880,17 +880,20 @@ def _paint_volume_zone(
         prev = float(view["close"].iloc[i - 1]) if i else None
         up = _candle_up(float(view["close"].iloc[i]), prev, float(view["open"].iloc[i]))
         vol_colors.append("#ef5350" if up else "#26a69a")
-    ax2.bar(xs, view["volume"], color=vol_colors, width=0.72, zorder=2)
+    # 與導航同一套：有官方量必見長短比例；缺量不准假量（暴量日不把低量壓成空白）
+    vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(view["volume"])
+    ax2.bar(xs, vol_heights, color=vol_colors, width=0.72, zorder=2)
+    spike_h = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
     ax2.bar(
         [spike_i],
-        [float(view["volume"].iloc[spike_i] or 0)],
+        [spike_h],
         color=_SPIKE,
         width=0.8,
         zorder=4,
     )
     ax2.text(
         spike_i,
-        float(view["volume"].iloc[spike_i] or 0),
+        spike_h,
         f"爆大量 {spike_md}",
         ha="center",
         va="bottom",
@@ -898,6 +901,19 @@ def _paint_volume_zone(
         color="#5d4037",
         zorder=5,
     )
+    miss_i = np.flatnonzero(vol_missing)
+    if miss_i.size:
+        ax2.scatter(
+            xs[miss_i],
+            np.full(miss_i.shape, vol_ylim * 0.04),
+            marker="x",
+            s=28,
+            c="#9e9e9e",
+            linewidths=0.9,
+            zorder=5,
+            clip_on=False,
+        )
+    ax2.set_ylim(0, vol_ylim * 1.12)
     ax2.yaxis.tick_right()
     ax2.tick_params(labelsize=9)
     ax2.set_xlim(-0.8, n - 0.2)
