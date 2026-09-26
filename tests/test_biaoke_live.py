@@ -213,6 +213,11 @@ def test_live_notes_reverse_think_emc_hold():
     assert "14:52" not in SYSTEM
     assert "買跌不買漲" not in SYSTEM
     assert "尚未納入 F 系列" not in SYSTEM
+    # SYSTEM 不准背日記點位；准用數字只從材料庫注入
+    assert "43500" not in SYSTEM
+    assert "45398" not in SYSTEM
+    assert "45839" not in SYSTEM
+    assert "他原文點位" in SYSTEM or "材料裡" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note
