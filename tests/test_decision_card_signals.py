@@ -6,6 +6,7 @@ from decision_card_signals import (
     double_green_breakout,
     format_profit_pct,
     is_profit_display_zero,
+    leave_zero_from_quote_df,
     leave_zero_screen_ok,
     profit_display_leave_zero_band,
     profit_left_zero_highlight,
@@ -30,6 +31,30 @@ def test_profit_left_zero_matches_card_tests():
     assert not profit_display_leave_zero_band(0.0)
     assert not profit_display_leave_zero_band(1.2)
     assert not profit_display_leave_zero_band(2.4)
+
+
+def test_leave_zero_from_quote_df_matches_screen_ok():
+    """官方柱昨貼零、今剛離零 → True；仍貼零 → False。與海選同一條。"""
+    from datetime import datetime, timedelta
+
+    import pandas as pd
+
+    last = datetime(2026, 9, 17)
+    rows = []
+    for i in range(90):
+        d = (last - timedelta(days=89 - i)).strftime("%Y%m%d")
+        px = 101.0 if i == 89 else 100.0
+        rows.append(
+            {"date": d, "high": px, "low": px, "close": px, "volume": 1000}
+        )
+    df = pd.DataFrame(rows)
+    assert leave_zero_from_quote_df(df) is True
+    ok, reason = leave_zero_screen_ok(0.0, 1.0)
+    assert ok and "剛離零" in reason
+    flat = df.copy()
+    for col in ("high", "low", "close"):
+        flat.loc[flat.index[-1], col] = 100.0
+    assert leave_zero_from_quote_df(flat) is False
 
 
 def test_double_green_breakout():

@@ -1179,7 +1179,9 @@ def test_dongzhu_hold_uses_stock_own_fine_not_electronics(tmp_path, monkeypatch)
     assert "再打下一檔" not in html
     assert "整層電子" not in html
     assert data.get("verdict") in ("可留觀察", "可留", "還在")
-    assert data.get("buy") is False
+    # 種子 OHLC 昨貼零今約 1.7%＝與查股同一條剛離零；可留才買
+    assert data.get("leave_zero") is True
+    assert data.get("buy") is (data.get("verdict") == "可留")
     tel = dongzhu_hold(db, "2412")
     assert tel.get("layers")[-1] == "電信服務"
     assert tel.get("verdict") in ("不留", "小心", "偏晚")
@@ -1197,6 +1199,60 @@ def test_dongzhu_hold_missing_chain_does_not_invent(tmp_path, monkeypatch):
     assert "還沒" in html or "不准猜" in html
     assert "判斷單位" not in html
     assert "再打下一檔" not in html
+
+
+def test_dongzhu_hold_leave_zero_from_ohlc_not_bucket(tmp_path, monkeypatch):
+    """洞燭 leave_zero 跟查股同一套官方柱；海選桶有無不准左右結論。"""
+    db = str(tmp_path / "lz.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes ("
+        "date TEXT, stock_id TEXT, stock_name TEXT, open REAL, high REAL, "
+        "low REAL, close REAL, volume INTEGER, change_pct REAL, "
+        "foreign_net INTEGER DEFAULT 0, trust_net INTEGER DEFAULT 0, "
+        "dealer_net INTEGER DEFAULT 0)"
+    )
+    last = datetime(2026, 9, 17)
+    for i in range(90):
+        day = (last - timedelta(days=89 - i)).strftime("%Y%m%d")
+        px = 101.0 if i == 89 else 100.0
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "6257", "矽格", px, px, px, px, 5000, 0.0, 0, 0, 0),
+        )
+    conn.execute(
+        "CREATE TABLE stock_fine_industry ("
+        "stock_id TEXT PRIMARY KEY, chain TEXT NOT NULL, tags_json TEXT NOT NULL, "
+        "cat_id TEXT DEFAULT '', source TEXT NOT NULL, fetched_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO stock_fine_industry VALUES (?,?,?,?,?,?)",
+        ("6257", "電子上游-IC-封測", "[]", "", "test", "2026-09-17"),
+    )
+    # 海選桶故意空／塞別檔，不准影響 leave_zero
+    conn.execute(
+        "CREATE TABLE screen_sessions ("
+        "slot TEXT, as_of TEXT, stock_id TEXT, bucket TEXT, stock_name TEXT, "
+        "close REAL, payload TEXT, PRIMARY KEY (slot, as_of, stock_id, bucket))"
+    )
+    conn.execute(
+        "INSERT INTO screen_sessions VALUES (?,?,?,?,?,?,?)",
+        ("morning", "20260917", "2330", "leave_zero", "台積電", 1000.0, "{}"),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    monkeypatch.setattr("biaoke_field_scan._chip_cap", lambda *_a, **_k: "20260917")
+
+    def _boom(*_a, **_k):
+        raise AssertionError("dongzhu_hold 不准用海選桶判 leave_zero")
+
+    monkeypatch.setattr("biaoke_field_scan._bucket_by_id", _boom)
+    from biaoke_field_scan import _sid_leave_zero_official, dongzhu_hold
+
+    assert _sid_leave_zero_official(db, "6257", "20260917") is True
+    data = dongzhu_hold(db, "6257")
+    assert data.get("leave_zero") is True
 
 
 def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):

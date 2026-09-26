@@ -2003,6 +2003,22 @@ def _five_line(pick: Dict[str, Any], ign: Dict[str, Any], named_hot: Dict[str, A
     return "對五件（參考）：" + "".join(_five_lines(pick, ign, named_hot))
 
 
+def _sid_leave_zero_official(db_path: str, sid: str, quote_cap: str) -> bool:
+    """單檔官方收：是否黃金買點（leave_zero），與查股決策卡／海選公式同源。"""
+    if not db_path or not sid:
+        return False
+    try:
+        import pandas as pd
+        from decision_card_signals import leave_zero_from_quote_df
+    except Exception:
+        return False
+    bars = _bars_tail(db_path, sid, quote_cap, 120)
+    if len(bars) < 3:
+        return False
+    df = pd.DataFrame(bars, columns=["date", "high", "low", "close", "volume"])
+    return bool(leave_zero_from_quote_df(df))
+
+
 def _bucket_by_id(db_path: str, bucket: str) -> Dict[str, Dict[str, Any]]:
     if not db_path:
         return {}
@@ -2693,7 +2709,9 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     role = _stock_role(g, sid)
     st = _stats(_bars_tail(db_path, sid, cap, 80)) or {}
     pre_ok, best_vs20 = _chain_pre_ok(db_path, g, cap)
-    leave_zero = sid in _bucket_by_id(db_path, "leave_zero")
+    # 與查股／海選同一條官方柱算剛離零；不准用早上海選桶快取當當下結論
+    quote_cap = _cap(db_path) or cap
+    leave_zero = _sid_leave_zero_official(db_path, sid, quote_cap)
     sign = _precursor_sign(ign, has_rival=True) if ign else ""
     vs20 = st.get("vs20")
     vs60 = st.get("vs60")
