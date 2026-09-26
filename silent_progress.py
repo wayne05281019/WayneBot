@@ -109,7 +109,12 @@ def simulate_next_legs(
     last_close: float,
     rays: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """每一段還沒走完的走法。只沿他自己點過的水平，不准補新價、不准發明段號。"""
+    """每一段還沒走完的走法。只沿他自己點過的水平（rays），不准補新價、不准發明段號。
+
+    rays 空＝缺位，回空列表。不准依 tag 字串硬塞 43500／45398／45839。
+    last_tag／last_close 保留給呼叫端相容，不用來發明水平。
+    """
+    _ = (last_tag, last_close)
     out: List[Dict[str, Any]] = []
     seen = set()
     for r in rays or []:
@@ -125,14 +130,6 @@ def simulate_next_legs(
             continue
         seen.add(key)
         out.append({"y": y, "lab": lab, "kind": str(r.get("kind") or "")})
-    tag = str(last_tag or "")
-    if not out and last_close > 0:
-        if any(k in tag for k in ("逃命波C-2", "C-3", "C-1", "細微波主跌", "大A-c", "C-5低點")):
-            out.append({"y": 43500.0, "lab": "最差43500", "kind": "worst"})
-        if "C-5低點" in tag:
-            out.append({"y": 45398.43, "lab": "C-5若守45398", "kind": "fork"})
-        elif any(k in tag for k in ("第五波測底", "修正末端", "頭肩底", "逃命波C-2", "C-3")):
-            out.append({"y": 45839.36, "lab": "若守45839", "kind": "fork"})
     return out
 
 

@@ -120,7 +120,7 @@ class TgLayoutAlignTests(unittest.TestCase):
         )
         line = "黃金買點　均 +0.0%　5檔漲2檔"
         self.assertEqual(reflow_telegram_html(line, width=18), line)
-        longish = "重點觀察　均 +0.9%　15檔漲11檔"
+        longish = "還在零　均 +0.9%　15檔漲11檔"
         self.assertEqual(reflow_telegram_html(longish, width=18), longish)
         blob = "\n".join((line, longish, "優先看　均 -1.0%　11檔漲3檔"))
         out = reflow_telegram_html(blob, width=18)
@@ -129,8 +129,8 @@ class TgLayoutAlignTests(unittest.TestCase):
         for ln in out.split("\n"):
             self.assertIn("檔漲", ln)
             self.assertTrue(ln.endswith("檔"))
-        fill = fmt_review_stat_line("重點觀察", 2, -5.3, 0.0, unit="筆")
-        self.assertEqual(fill, "重點觀察　均 -5.3%　2筆漲0筆")
+        fill = fmt_review_stat_line("還在零", 2, -5.3, 0.0, unit="筆")
+        self.assertEqual(fill, "還在零　均 -5.3%　2筆漲0筆")
         self.assertEqual(reflow_telegram_html(fill, width=18), fill)
         note = "均＝隔日平均漲跌；5檔漲2檔＝5檔裡有2檔上漲。弱的類別只讓 AI 模擬倉少買。"
         noted = reflow_telegram_html(note, width=18)
@@ -173,7 +173,7 @@ class TgLayoutAlignTests(unittest.TestCase):
             plain = re.sub(r"<[^>]+>", "", html)
             self.assertIn("2筆模擬買進，隔日 0筆上漲", plain)
             self.assertIn("平均　-5.3%", plain)
-            self.assertIn("重點觀察　均 -5.3%　2筆漲0筆", plain)
+            self.assertIn("還在零　均 -5.3%　2筆漲0筆", plain)
             self.assertNotIn("勝", plain)
             self.assertNotIn("／", plain)
             self.assertNotIn("3筆漲1筆", plain)
@@ -185,7 +185,7 @@ class TgLayoutAlignTests(unittest.TestCase):
                 if "6669" in ln:
                     self.assertIn("-0.6%", ln)
                     self.assertIn("09/08", ln)
-                    self.assertNotIn("重點觀察", ln)
+                    self.assertNotIn("還在零", ln)
                 if "6949" in ln:
                     self.assertIn("-10.0%", ln)
                     self.assertIn("09/07", ln)

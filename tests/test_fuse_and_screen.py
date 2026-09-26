@@ -285,7 +285,7 @@ class FuseAndScreenTest(unittest.TestCase):
             "ma20": 98,
             "ma60": 95,
         }
-        outlook = "<b>WayneBot 海選</b>\n＝＝大盤狀況＝＝\n黃金買點、重點觀察照表，別追高。"
+        outlook = "<b>WayneBot 海選</b>\n＝＝大盤狀況＝＝\n黃金買點、還在零照表，別追高。"
         morning = format_screening_payload(
             {
                 "leave_zero": [item],

@@ -43,17 +43,20 @@ def test_speak_line_shape():
 
 
 def test_simulate_next_legs_only_his_levels():
-    legs = simulate_next_legs("逃命波C-2", 45862.0, [])
+    # rays 空＝缺位，不准依 tag 硬塞 43500／45398／45839
+    assert simulate_next_legs("逃命波C-2", 45862.0, []) == []
+    assert simulate_next_legs("C-5低點", 45511.0, []) == []
+    rays = [
+        {"y": 43500.0, "label": "最差43500", "kind": "worst"},
+        {"y": 45839.36, "label": "若守45839", "kind": "fork"},
+    ]
+    legs = simulate_next_legs("逃命波C-2", 45862.0, rays)
     ys = [float(x["y"]) for x in legs]
     assert 43500.0 in ys
     assert 45839.36 in ys
     blob = str(legs)
     assert "1-2-3-4-5" not in blob
     assert 17000 not in ys
-    c5 = simulate_next_legs("C-5低點", 45511.0, [])
-    c5y = [float(x["y"]) for x in c5]
-    assert 43500.0 in c5y
-    assert 45398.43 in c5y
 
 
 def test_night_review_does_not_speak(tmp_path):

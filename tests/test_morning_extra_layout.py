@@ -54,7 +54,7 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
         "futures_night": {"close": 26580, "date": "20260919"},
         "backtest": [
             {"regime": "neutral", "bucket": "黃金買點", "n": 20, "avg_next_pct": 0.8, "hit_rate": 0.6},
-            {"regime": "neutral", "bucket": "重點觀察", "n": 20, "avg_next_pct": 0.2, "hit_rate": 0.5},
+            {"regime": "neutral", "bucket": "還在零", "n": 20, "avg_next_pct": 0.2, "hit_rate": 0.5},
         ],
         "backtest_regime_plus": [
             {"regime_plus": "range", "bucket": "day_trade", "n": 10, "avg_next_pct": 1.0, "hit_rate": 0.55},

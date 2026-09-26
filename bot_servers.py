@@ -460,8 +460,13 @@ class WayneTelegramBot:
         ensure_user_trade_logs(self.db_path)
         self.screener = ScreeningEngine(self.db_path)
         self.portfolio_engine = PortfolioEngine(self.db_path)
-        self._pending: Dict[str, str] = {}
-        self._biaoke_hist: Dict[str, list] = {}
+        # 步驟落盤：Render 重開後按人接續（見 tg_pending）
+        from tg_pending import BiaokeHistMap, PendingMap, ensure_tg_pending_table
+
+        ensure_tg_pending_table(self.db_path)
+        self._biaoke_hist = BiaokeHistMap(self.db_path)
+        self._pending = PendingMap(self.db_path, self._biaoke_hist)
+        self._biaoke_hist._pending = self._pending
         self._last_card: Dict[str, str] = {}
         self._lookup_ctx: Dict[str, dict] = {}
         # actor_key（chat_id:uid）隔離，避免同機多用戶互相刪訊息／搶快取
@@ -1719,11 +1724,14 @@ class WayneTelegramBot:
 
     def _screening_section_keyboard(
         self,
-        line_pack_id: str = None,
+        screen_pack_id: str = None,
         include_menu: bool = False,
         picks=None,
+        *,
+        line_pack_id: str = None,
     ):
-        """海選整區：左鍵看這檔、右鍵加觀察。"""
+        """海選整區：左鍵看這檔、右鍵加觀察。line_pack_id＝舊參數名，等同 screen_pack_id。"""
+        _ = screen_pack_id or line_pack_id
         rows = []
         for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             if isinstance(pair, (list, tuple)):
@@ -1743,10 +1751,12 @@ class WayneTelegramBot:
         picks,
         include_menu: bool = False,
         topic: str = "screen",
+        screen_pack_id: str = None,
+        *,
         line_pack_id: str = None,
     ):
         rows = []
-        pack = str(line_pack_id or "").strip()
+        pack = str(screen_pack_id or line_pack_id or "").strip()
         topic_s = str(topic or "").strip()
         rhythm = pack in ("day_trade", "overnight") or topic_s in ("daytrade", "overnight")
         for i, (code, name) in enumerate((picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
@@ -2122,7 +2132,7 @@ class WayneTelegramBot:
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
-            pack_id = str(part.get("line_pack_id") or "")
+            pack_id = str(part.get("screen_pack_id") or part.get("line_pack_id") or "")
             chunks = chunk_telegram_html(part.get("html") or "", 3500)
             if not chunks:
                 continue
@@ -2130,7 +2140,7 @@ class WayneTelegramBot:
                 is_last_chunk = j == len(chunks) - 1
                 is_last_part = i == last
                 kb = self._screening_section_keyboard(
-                    line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
+                    screen_pack_id=pack_id if is_last_chunk else None,
                     include_menu=is_last_part and is_last_chunk,
                     picks=part.get("picks") if is_last_chunk else None,
                 )
@@ -2280,8 +2290,9 @@ class WayneTelegramBot:
                 for j, chunk in enumerate(chunks):
                     is_last_chunk = j == len(chunks) - 1
                     is_last_part = i == last
+                    pack = part.get("screen_pack_id") or part.get("line_pack_id")
                     kb = self._screening_section_keyboard(
-                        line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
+                        screen_pack_id=pack if is_last_chunk else None,
                         include_menu=is_last_part and is_last_chunk,
                         picks=part.get("picks") if is_last_chunk else None,
                     )
@@ -2447,7 +2458,7 @@ class WayneTelegramBot:
         if done:
             return WayneTelegramBot._wait_bubble("海選完成", elapsed_sec, now="推送名單")
         now = "掃描全市場"
-        rest = "黃金買點／重點觀察"
+        rest = "黃金買點／還在零"
         return WayneTelegramBot._wait_bubble(
             "海選進行中", elapsed_sec, now=now, rest=rest, fill_sec=300.0
         )
@@ -2924,7 +2935,7 @@ class WayneTelegramBot:
         uid = str(uid or self._menu_uid_from_message(message) or "")
         hub = self._reply_menu(uid)
         status = await message.reply_text(
-            "興櫃海選開始：抓櫃買官方日均價、只掃黃金買點／重點觀察。\n"
+            "興櫃海選開始：抓櫃買官方日均價、只掃黃金買點／還在零。\n"
             "跟上市櫃「海選」分開，不會混進那份名單。"
         )
         try:
@@ -3035,7 +3046,7 @@ class WayneTelegramBot:
             kb = self._picks_keyboard(
                 picks,
                 include_menu=is_last,
-                line_pack_id=bucket_key if is_last else None,
+                screen_pack_id=bucket_key if is_last else None,
                 topic=topic,
             )
             await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
@@ -3679,10 +3690,11 @@ class WayneTelegramBot:
                     self._send_biaoke_structure_chart(message, q, uid)
                 )
                 html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
-                bucket = self._biaoke_hist.setdefault(actor, [])
+                bucket = list(self._biaoke_hist.get(actor) or [])
                 plain = re.sub(r"<[^>]+>", "", html)
                 bucket.append({"ask": q, "answer": plain[:900]})
                 del bucket[:-16]
+                self._biaoke_hist[actor] = bucket  # 觸發落盤（list.append 不會）
                 mark_read = True
             else:
                 html = ""
@@ -6041,7 +6053,7 @@ class WayneTelegramBot:
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
                 "leave_zero": "黃金買點：獲利格剛離零且趨勢向上（按表，不是每個紅箭頭低點）",
-                "golden_buy": "重點觀察：60低超跌且趨勢向上（注意觀察，不是今天必買）",
+                "golden_buy": "還在零：60低超跌且趨勢向上（只觀察，不是今天必買）",
                 "select_01": "周帶量：短線轉強且趨勢向上，靠近20日高少追",
                 "select_02": "站上季線：昨收在季線下、今日站上；空頭反彈不進",
                 "select_03": "止跌：月低附近有人接、量沒死；空頭反彈不進",
