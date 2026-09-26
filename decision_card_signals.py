@@ -609,7 +609,11 @@ def card_daily_stance(
         b = float(bias or 0)
     except (TypeError, ValueError):
         b = 0.0
-    at_high = bool(near_high) or hl in ("20高", "10高") or alert == "K20高"
+    at_high = (
+        bool(near_high)
+        or hl in ("20高", "10高")
+        or alert in ("K20高", "最高價")
+    )
     at_60_low = alert == "60低" or hl == "60低"
     rel_kind, rel_txt = relative_buy_kind(
         profit_pct=p, hl=hl, alert=alert, prev_profit_pct=prev_profit_pct
@@ -809,7 +813,7 @@ def table_reads_as_low(card: Dict[str, Any] | None) -> bool:
     alert = facts["alert"]
     gain = facts["gain"]
     space = facts["space"]
-    at_high = hl in {"20高", "10高"} or alert == "K20高"
+    at_high = hl in {"20高", "10高"} or alert in ("K20高", "最高價")
     g = 99.0 if gain is None else gain
     if any(
         str(b).startswith(
@@ -914,7 +918,7 @@ def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool 
     g = 0.0 if gain is None else gain
     has_bias = bias is not None
     has_space = space is not None
-    at_high = hl in {"20高", "10高"} or alert == "K20高" or bool(facts.get("near_high"))
+    at_high = hl in {"20高", "10高"} or alert in ("K20高", "最高價") or bool(facts.get("near_high"))
     try:
         dist_h = facts.get("dist_h20")
         if dist_h is not None and float(dist_h) >= -1.5:
@@ -1270,13 +1274,17 @@ def hi_lo_tag(close, h20, h10, h5, l20, l10, l5) -> str:
 def display_alert_cell(alert: str, hi_lo: str) -> str:
     """預警欄呈現：No 時仍露出高低；K20 與 20高／10低重疊時優先顯示高低（CaryBot 同欄）。
 
-    5高／5低不蓋過反向 K20（6526 8/17 Cary 是 K20高，不是 5低）。
+    作者公開：最高價＝20高（如何賣）。高低格已是 20高 → 畫面寫「最高價」，
+    不要留 K20高。5高／5低不蓋過反向 K20（6526 8/17 Cary 是 K20高，不是 5低）。
     """
     a = str(alert or "").strip()
     h = str(hi_lo or "").strip()
     if a == "60低":
         return a
-    if h in ("20高", "10高", "20低", "10低"):
+    if h == "20高":
+        if a in ("", "No", "—") or a.startswith("K20") or a == "最高價":
+            return "最高價"
+    if h in ("10高", "20低", "10低"):
         if a in ("", "No", "—") or a.startswith("K20"):
             return h
     if h in ("5高", "5低"):
