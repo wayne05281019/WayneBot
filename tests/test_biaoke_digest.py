@@ -241,6 +241,60 @@ def test_latest_focus_is_oral_not_july_bwave():
     assert len(html) < 1800
 
 
+def test_focus_oral_does_not_repeat_board_in_said():
+    """大盤欄講過的，他還說不准再貼同一段（話筒不重複）。"""
+    board = (
+        "目前大盤看起來是走緩步上攻可能性比較大，但要看整理時間及拉回幅度，"
+        "有沒有破壞長線有可能產生九組推升脈動的波型才能判斷，目前證據不夠。"
+        "今天早盤要買股票，先不動作，尾盤再考慮介入。"
+    )
+    field = (
+        "目前台股最強主流是ASIC，創意、聯發科都是有效突破歷史高點，"
+        "我的判斷方式，這兩檔股票5月見高點之後竟然能整理4個月就能有效突破歷史高點。"
+    )
+    pcb = "台光電 非常適合左側交易 和 台積電一樣， 這次消息利空大跌 再一次驗證。"
+    extra = (
+        "因為南亞科其實已經漲非常多 我認為記憶體要再漲一倍 微乎其微 "
+        "反而光通訊 幾乎比較大。光通訊 我估計第一檔發動攻擊 就是 全新、大立光、聯亞這三檔。"
+    )
+    mains = [
+        {
+            "id": "m1",
+            "kind": "post",
+            "date": "2026-09-26",
+            "time": "11:50",
+            "text": f"1. {board}\n2. {field}\n3. {pcb}",
+        }
+    ]
+    replies = [
+        {
+            "id": "r1",
+            "kind": "reply",
+            "date": "2026-09-26",
+            "time": "12:10",
+            "text": board + " " + extra,
+        }
+    ]
+    html = format_focus_oral(
+        mains,
+        replies,
+        now=datetime(2026, 9, 26, 13, 12, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "<b>大盤</b>" in html
+    assert "緩步上攻" in html
+    assert "<b>族群</b>" in html
+    assert "ASIC" in html
+    assert "<b>PCB</b>" in html or "台光電" in html
+    # 他還說若有，不准整段再貼大盤；南亞科／光通訊這種補充才留
+    if "<b>他還說</b>" in html:
+        said = html.split("<b>他還說</b>", 1)[1]
+        said = said.split("<b>還能問</b>")[0] if "<b>還能問</b>" in said else said
+        assert said.count("緩步上攻") == 0
+        assert "南亞科" in said or "光通訊" in said or "全新" in said
+    assert html.count("緩步上攻") == 1
+    assert "13:12" in html
+
+
 def test_old_inbox_not_counted_as_unread(tmp_path):
     db = str(tmp_path / "w.db")
     uid = "9001"

@@ -229,11 +229,70 @@ def _oral_body(text: str, limit: int = 280) -> str:
 _NOISE = re.compile(
     r"(打錯|很有心|出書|90%\s*老師|碩哥和我|蕭明道|楊少凱)"
 )
-_BOARD = re.compile(r"(夜盤|47578|C\s*波|頭部型態|大盤要漲|前波高點|加權|逃命|45398)")
+_BOARD = re.compile(
+    r"(夜盤|47578|C\s*波|頭部型態|大盤要漲|前波高點|加權|逃命|45398|"
+    r"目前大盤|緩步上攻|推升脈動|早盤要買|尾盤再考慮|調節股票)"
+)
 _FIELD = re.compile(r"(ASIC|散熱|光通訊|記憶體|多頭格局的族群)")
 _PCB = re.compile(r"(PCB|台光電|金像電|台燿|富喬|金居|ABF)")
 _PREVIEW = re.compile(r"(星期[日天]晚上|技術分析看法)")
 _NOISE_ONLY = re.compile(r"(出書|90%\s*老師|我自己都沒|說實話|看盤當下寫|很有心)")
+
+
+def _norm_focus(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
+def _overlaps_shown(bit: str, shown: Sequence[str], *, min_chars: int = 20) -> bool:
+    """句／段是否已在大盤／族群／PCB（或已收進他還說）出現過。"""
+    n = _norm_focus(bit)
+    if len(n) < min_chars:
+        return False
+    for s in shown:
+        t = _norm_focus(s)
+        if not t:
+            continue
+        if n in t or t in n:
+            return True
+        head = min(36, len(n), len(t))
+        if head >= 20 and n[:head] == t[:head]:
+            return True
+    return False
+
+
+def _strip_shown_sentences(bit: str, shown: Sequence[str]) -> str:
+    """一則樓下前半複述大盤、後半才是新話 → 只留新句。"""
+    s = str(bit or "").strip()
+    if not s:
+        return ""
+    if not _overlaps_shown(s, shown):
+        return s
+    parts = [p.strip(" ，、") for p in re.split(r"[。！？；]", s) if p.strip()]
+    keep: List[str] = []
+    for p in parts:
+        if len(p) < 8:
+            continue
+        if _overlaps_shown(p, shown) or _overlaps_shown(p, keep):
+            continue
+        keep.append(p)
+    if not keep:
+        return ""
+    out = "。".join(keep)
+    if not out.endswith("。"):
+        out += "。"
+    return out
+
+
+def _join_said(parts: Sequence[str], *, shown: Sequence[str]) -> str:
+    keep: List[str] = []
+    seen = list(shown)
+    for x in parts:
+        s = _strip_shown_sentences(str(x or "").strip(), seen)
+        if not s:
+            continue
+        keep.append(s)
+        seen.append(s)
+    return " ".join(x.rstrip("。") + "。" for x in keep).strip()
 
 
 def _speak(text: str, limit: int = 220) -> str:
@@ -397,15 +456,14 @@ def format_focus_oral(
             "晚上改口，整理時間會比 ABF 短很多，昨天錯殺居多，下波可能還是漲的主流。"
         )
     if not board:
+        # 全文截斷當大盤時，spare 裡同段不准再進「他還說」
         board = _speak(str(latest.get("text") or ""), 260)
     latest_t = str(latest.get("text") or "")
     if board and re.search(r"(否則|如果|一定要過)", board + latest_t) and "如果句" not in board:
         board = board.rstrip("。") + "。這句還是如果句，不是已確認主升。"
-    said = " ".join(
-        x.rstrip("。") + "。"
-        for x in ([preview] + spare[:1] + extra[:2])
-        if x
-    ).strip()
+    shown = [x for x in (board, field, pcb) if x]
+    # 他還說＝主文沒進上面三欄的補充＋樓下；已講過的大盤／族群／PCB 整段丟掉
+    said = _join_said([preview] + spare[:2] + extra[:3], shown=shown)
     blocks: List[str] = [
         "<b>飆大現在在講</b>",
         html_escape(f"最新　{when}" if when else "最新"),
