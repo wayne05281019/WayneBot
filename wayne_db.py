@@ -1119,6 +1119,7 @@ PRIVATE_USER_TABLES: tuple[str, ...] = (
     "user_holdings",
     "user_trade_logs",
     "user_states",
+    "tg_actor_pending",
     "user_funds",
     "user_positions",
     "user_watchlists",
@@ -1187,6 +1188,11 @@ def export_private_user_payload(db_path: str, user_id: str) -> Dict[str, Any]:
         "issue_reports": _table_dicts(
             db_path,
             "SELECT * FROM tg_issue_reports WHERE user_id=? ORDER BY id",
+            (uid,),
+        ),
+        "pending_steps": _table_dicts(
+            db_path,
+            "SELECT * FROM tg_actor_pending WHERE user_id=? ORDER BY updated_at",
             (uid,),
         ),
         "ai_desk": {

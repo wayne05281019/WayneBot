@@ -460,8 +460,13 @@ class WayneTelegramBot:
         ensure_user_trade_logs(self.db_path)
         self.screener = ScreeningEngine(self.db_path)
         self.portfolio_engine = PortfolioEngine(self.db_path)
-        self._pending: Dict[str, str] = {}
-        self._biaoke_hist: Dict[str, list] = {}
+        # 步驟落盤：Render 重開後按人接續（見 tg_pending）
+        from tg_pending import BiaokeHistMap, PendingMap, ensure_tg_pending_table
+
+        ensure_tg_pending_table(self.db_path)
+        self._biaoke_hist = BiaokeHistMap(self.db_path)
+        self._pending = PendingMap(self.db_path, self._biaoke_hist)
+        self._biaoke_hist._pending = self._pending
         self._last_card: Dict[str, str] = {}
         self._lookup_ctx: Dict[str, dict] = {}
         # actor_key（chat_id:uid）隔離，避免同機多用戶互相刪訊息／搶快取
@@ -3685,10 +3690,11 @@ class WayneTelegramBot:
                     self._send_biaoke_structure_chart(message, q, uid)
                 )
                 html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
-                bucket = self._biaoke_hist.setdefault(actor, [])
+                bucket = list(self._biaoke_hist.get(actor) or [])
                 plain = re.sub(r"<[^>]+>", "", html)
                 bucket.append({"ask": q, "answer": plain[:900]})
                 del bucket[:-16]
+                self._biaoke_hist[actor] = bucket  # 觸發落盤（list.append 不會）
                 mark_read = True
             else:
                 html = ""

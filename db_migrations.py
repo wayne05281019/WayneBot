@@ -274,6 +274,24 @@ def _m013_taifex_tick_zips(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m014_tg_actor_pending(conn: sqlite3.Connection) -> None:
+    """話筒步驟落盤：pending＋飆大短對話，按 actor 分開。"""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tg_actor_pending (
+            actor_key TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT '',
+            purpose TEXT NOT NULL DEFAULT '',
+            hist_json TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tg_actor_pending_uid ON tg_actor_pending(user_id)"
+    )
+
+
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
     (2, "daily_sector_flow 加 top_sell_*", _m002_sector_flow_top_sell),
@@ -288,6 +306,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (11, "飆大公開文 overlay 表", _m011_biaoke_posts),
     (12, "15／60 分 K 歷史庫", _m012_minute_bars),
     (13, "期交所成交 zip 已抓紀錄", _m013_taifex_tick_zips),
+    (14, "話筒步驟落盤 tg_actor_pending", _m014_tg_actor_pending),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)
