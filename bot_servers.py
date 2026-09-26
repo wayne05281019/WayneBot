@@ -150,18 +150,36 @@ def _notified_sha_path() -> str:
     return os.path.join(parent, ".wayne_notified_sha")
 
 
+def _read_notified_record() -> tuple[str, str]:
+    """永久碟旁：已推過的 SHA＋口語。第一行 SHA，第二行 note。"""
+    try:
+        with open(_notified_sha_path(), encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except Exception:
+        return "", ""
+    sha = (lines[0] if lines else "").strip()[:40]
+    note = (lines[1] if len(lines) > 1 else "").strip()[:80]
+    return sha, note
+
+
 def notified_sha_is(sha: str) -> bool:
     s = str(sha or "").strip()[:40]
     if not s:
         return True
-    try:
-        with open(_notified_sha_path(), encoding="utf-8") as f:
-            return f.read().strip()[:40] == s
-    except Exception:
+    got, _note = _read_notified_record()
+    return got == s
+
+
+def notified_note_is(note: str) -> bool:
+    """同一句口語已推過就不重送（避免舊 note 檔每次 redeploy 洗版）。"""
+    t = str(note or "").strip()[:80]
+    if not t:
         return False
+    _sha, got = _read_notified_record()
+    return got == t
 
 
-def remember_notified_sha(sha: str) -> None:
+def remember_notified_sha(sha: str, note: str = "") -> None:
     s = str(sha or "").strip()[:40]
     if not s:
         return
@@ -169,18 +187,38 @@ def remember_notified_sha(sha: str) -> None:
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
+    spoken = str(note or "").strip()[:80]
+    if not spoken:
+        try:
+            from phone_update import phone_update_note
+
+            spoken = phone_update_note()
+        except Exception:
+            spoken = ""
     with open(path, "w", encoding="utf-8") as f:
         f.write(s + "\n")
+        if spoken:
+            f.write(spoken + "\n")
 
 
-def should_notify_phone_update(sha: str) -> bool:
-    """同一 SHA 不重送；Cursor／略過輪詢不送。pytest 也不送真訊息。"""
+def should_notify_phone_update(sha: str, note: str | None = None) -> bool:
+    """同一 SHA 或同一口語不重送；Cursor／略過輪詢不送。pytest 也不送真訊息。"""
     if skip_telegram_polling():
         return False
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return False
     s = str(sha or "").strip()[:40]
     if not s or notified_sha_is(s):
+        return False
+    spoken = str(note if note is not None else "").strip()[:80]
+    if not spoken:
+        try:
+            from phone_update import phone_update_note
+
+            spoken = phone_update_note()
+        except Exception:
+            spoken = ""
+    if spoken and notified_note_is(spoken):
         return False
     return True
 
@@ -6299,14 +6337,20 @@ class WayneTelegramBot:
             await q.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 520", reply_markup=self._keyboard())
 
     async def _notify_phones_updated(self, app) -> None:
-        """新版上線才跟偉權／哥哥說已更新。同一 SHA 重開不重送。"""
+        """新版上線才跟偉權／哥哥說已更新。同一 SHA／同一口語不重送。"""
         sha = phone_git_sha()
-        if not should_notify_phone_update(sha):
+        try:
+            from phone_update import phone_update_note
+
+            note = phone_update_note()
+        except Exception:
+            note = ""
+        if not should_notify_phone_update(sha, note=note):
             return
         uids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
         if not uids:
             return
-        text = phone_update_notice(sha)
+        text = phone_update_notice(sha, note=note or None)
         n = 0
         for uid in uids:
             try:
@@ -6317,7 +6361,7 @@ class WayneTelegramBot:
                 logger.exception("已更新通知失敗 uid 略")
         if n:
             try:
-                remember_notified_sha(sha)
+                remember_notified_sha(sha, note=note)
             except Exception:
                 logger.exception("已更新 SHA 沒寫成")
 

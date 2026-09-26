@@ -54,3 +54,38 @@ def test_notice_keeps_done_in_spoken_line():
 def test_title_does_not_force_suffix():
     assert phone_update_title("海選股名旁五角星") == "海選股名旁五角星"
     assert not phone_update_title("海選股名旁五角星").endswith("的更新")
+
+
+def test_git_note_beats_stale_file(monkeypatch, tmp_path):
+    """舊 phone_update_note.txt 不准蓋過這次合進的真改動。"""
+    import phone_update as pu
+
+    monkeypatch.delenv("WAYNE_UPDATE_NOTE", raising=False)
+    stale = tmp_path / "phone_update_note.txt"
+    stale.write_text("飆大改口語講當下重點\n", encoding="utf-8")
+    monkeypatch.setattr(pu, "_NOTE_FILE", str(stale))
+    monkeypatch.setattr(pu, "_git_head_note", lambda: "導航量柱軟頂，有官方量就畫得出")
+    assert phone_update_note() == "導航量柱軟頂，有官方量就畫得出"
+    assert "飆大" not in phone_update_notice("deadbeefcafebabe0123456789abcdef01234567")
+
+
+def test_same_note_different_sha_does_not_renotify(tmp_path, monkeypatch):
+    """#409／#411／#412 那種：SHA 不同但口語同一句 → 不准洗版。"""
+    monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr("bot_servers.skip_telegram_polling", lambda: False)
+    from bot_servers import (
+        remember_notified_sha,
+        should_notify_phone_update,
+    )
+
+    note = "飆大改口語講當下重點"
+    remember_notified_sha("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", note=note)
+    assert should_notify_phone_update(
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", note=note
+    ) is False
+    assert should_notify_phone_update(
+        "cccccccccccccccccccccccccccccccccccccccc",
+        note="高低卡對齊作者視覺",
+    ) is True
