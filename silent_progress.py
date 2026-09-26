@@ -489,6 +489,16 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
         stats["holes"] = list(ctx.get("holes") or pack_holes(ctx))
     except Exception:
         pass
+    stats["step"] = "red_arrow_sample"
+    try:
+        from red_arrow_quant import night_sample_tick
+
+        ra = night_sample_tick(db_path, as_of=day or cap) or {}
+        stats["red_arrow_wrote"] = int(ra.get("wrote") or 0)
+        stats["red_arrow_promote"] = bool(ra.get("promote"))
+    except Exception:
+        stats["red_arrow_wrote"] = 0
+        stats["red_arrow_promote"] = False
     stats["step"] = "never_speak"
     stats["speak"] = bool(
         speak_ready("twii", db_path)

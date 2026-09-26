@@ -1566,6 +1566,13 @@ class LookupCardTest(unittest.TestCase):
 
         self.assertEqual(temp_trend_cell_style("No", _CARD["white"])[0], _CARD["white"])
         self.assertEqual(temp_trend_cell_style("—", _CARD["white"])[0], _CARD["white"])
+        # 降溫淺綠、最低溫／最高溫更深，不能同一色階
+        self.assertEqual(temp_trend_cell_style("降溫", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(temp_trend_cell_style("最低溫", _CARD["white"])[0], _CARD["pill_lo"])
+        self.assertEqual(temp_trend_cell_style("最高溫", _CARD["white"])[0], _CARD["pill_hi"])
+        heat63, _ = _profit_heat_draw(63.5, None, _CARD["white"])
+        heat115, _ = _profit_heat_draw(115.4, None, _CARD["white"])
+        self.assertNotEqual(heat63.lower(), heat115.lower())
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("profit_cell_style", src)
         self.assertIn("display_alert_cell", src)
