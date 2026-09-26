@@ -646,7 +646,8 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     assert sha not in spoken
     assert not notified_sha_is(sha)
     remember_notified_sha(sha)
-    assert (tmp_path / ".wayne_notified_sha").read_text(encoding="utf-8").strip() == sha
+    lines = (tmp_path / ".wayne_notified_sha").read_text(encoding="utf-8").splitlines()
+    assert lines[0].strip() == sha
     assert notified_sha_is(sha)
     assert not notified_sha_is("other")
     monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")

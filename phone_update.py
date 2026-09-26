@@ -40,18 +40,8 @@ def _clean_note(raw: str) -> str:
     return t[:80]
 
 
-def phone_update_note() -> str:
-    """這次更新在講什麼。檔案優先，沒有再讀 git 標題。"""
-    env = _clean_note(os.getenv("WAYNE_UPDATE_NOTE") or "")
-    if env and _has_han(env):
-        return env
-    try:
-        with open(_NOTE_FILE, encoding="utf-8") as f:
-            line = _clean_note(f.readline())
-        if line and _has_han(line):
-            return line
-    except Exception:
-        pass
+def _git_head_note() -> str:
+    """這次合進的最後一筆非 merge 標題＝真口語來源。"""
     try:
         raw = subprocess.check_output(
             ["git", "log", "-1", "--format=%s", "--no-merges"],
@@ -60,11 +50,34 @@ def phone_update_note() -> str:
             text=True,
             stderr=subprocess.DEVNULL,
         )
-        line = _clean_note(raw)
-        if line and _has_han(line):
-            return line
+        return _clean_note(raw)
     except Exception:
-        pass
+        return ""
+
+
+def _file_note() -> str:
+    try:
+        with open(_NOTE_FILE, encoding="utf-8") as f:
+            return _clean_note(f.readline())
+    except Exception:
+        return ""
+
+
+def phone_update_note() -> str:
+    """這次更新在講什麼。
+
+    優先序：環境變數 → 本趟 git 標題 → 檔案備援。
+    不准讓舊檔永遠蓋過新合進的真改動（否則每次 redeploy 都推同一句「飆大…」）。
+    """
+    env = _clean_note(os.getenv("WAYNE_UPDATE_NOTE") or "")
+    if env and _has_han(env):
+        return env
+    git_note = _git_head_note()
+    if git_note and _has_han(git_note):
+        return git_note
+    file_note = _file_note()
+    if file_note and _has_han(file_note):
+        return file_note
     return ""
 
 
