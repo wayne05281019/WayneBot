@@ -1643,15 +1643,18 @@ def _profit_heat_draw(profit, prev_profit, base: str):
     # 1%～未滿 8%：作者低檔卡是白底紅字（致伸 1.5%／2.4%、越峰 3.9%），不要淡粉熱圖。
     if p < 8:
         return bg, fg
-    # Cary 獲利 pill 約 #FF98CD、16～35% 幾乎同色；不要 30% 就洗成洋紅整格。
+    # 高檔連續深淺（對齊 Cary 63%～115% 有濃淡）；仍用粉紅系，不准假數。
     heat_bg, _heat_fg = _heat_pair(
         p,
         (
             (8.0, "#FCE4EC", C["up"]),
             (16.0, "#FFC1E0", C["up"]),
-            (32.0, "#FF98CD", C["up"]),
-            (50.0, "#F48FB1", C["up"]),
-            (70.0, C["pill_hi"], C["white"]),
+            (28.0, "#FF98CD", C["up"]),
+            (40.0, "#F48FB1", C["up"]),
+            (55.0, "#EC407A", C["white"]),
+            (75.0, C["pill_hi"], C["white"]),
+            (100.0, "#880E4F", C["white"]),
+            (130.0, "#6A0B3D", C["white"]),
         ),
     )
     return heat_bg, ink_on_fill(C["up"] if p > 0 else C["down"], heat_bg)
@@ -2299,20 +2302,23 @@ def compute_temp_trend_labels(
 
 
 def temp_trend_cell_style(label: str, base: str):
-    """升降欄：熱＝高色票、冷＝低色票，No／空＝白底灰字、不畫 pill。"""
+    """升降欄：熱＝高色票、冷＝低色票，No／空＝白底灰字、不畫 pill。
+
+    降溫＝淺綠；最低溫＝更深綠（白字），讓降溫／到底一眼分得出。
+    """
     C = _CARD
     base = base or C["white"]
     lab = str(label or "No")
     if is_blank_card_signal(lab):
         return base, C["ink_mute"]
     if lab == "最高溫":
-        return C["temp_hot_bg"], C["temp_hot_fg"]
+        return C["pill_hi"], C["white"]
     if lab == "升溫":
         return C["temp_warm_bg"], C["temp_warm_fg"]
     if lab == "溫度壓縮":
         return C["temp_compress_bg"], C["temp_compress_fg"]
     if lab == "最低溫":
-        return C["lo_hit_fill"], C["lo_ink"]
+        return C["pill_lo"], C["white"]
     if lab == "降溫":
         return C["lo_fill"], C["lo_ink"]
     return base, C["ink_mute"]
@@ -2378,9 +2384,10 @@ def _glance_kv_pill(bg, fg):
 
 
 def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
-    """獲利格：0.0% 綠底白字、0.x% 實綠底紅字、1%～未滿 8% 白底紅字、再高紅底白字。
+    """獲利格：0.0% 綠底白字、0.x% 實綠底紅字、1%～未滿 8% 白底紅字、再高粉紅漸層。
 
     字色＝台股漲紅跌綠，跟當天是不是最高價／最高溫無關。prev_profit 保留給呼叫端。
+    高檔實際繪製走 `_profit_heat_draw` 連續深淺；這裡分桶給測試／退路。
     """
     del prev_profit
     C = _CARD
@@ -2401,8 +2408,14 @@ def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
             return C["lo_fill"], C["white"]
         if 0.05 < p < 0.95:
             return C["lo_hit_fill"], C["up"]
-    if p >= 40:
+    if p >= 100:
+        return "#6A0B3D", C["white"]
+    if p >= 75:
         return C["pill_hi"], C["white"]
+    if p >= 55:
+        return "#EC407A", C["white"]
+    if p >= 40:
+        return "#F48FB1", ink_on_fill(C["up"], "#F48FB1")
     if p >= 20:
         return C["hi_fill"], ink_on_fill(C["up"], C["hi_fill"])
     if p >= 8:
@@ -2423,13 +2436,13 @@ def hl_cell_style(hl: str, base: str):
 
 
 def alert_cell_style(alert: str, base: str):
-    """預警欄底色：K20高／20高／60低／10低走色票，No＝列底灰字。"""
+    """預警欄底色：最高價／K20高／20高／60低／10低走色票，No＝列底灰字。"""
     C = _CARD
     base = base or C["white"]
     a = str(alert or "")
     if is_blank_card_signal(a):
         return base, C["ink_mute"]
-    if a == "K20高" or ("高" in a and "低" not in a):
+    if a == "最高價" or a == "K20高" or ("高" in a and "低" not in a):
         return C["hi_fill"], C["pill_hi"]
     if a in ("60低", "K20低") or "低" in a:
         return C["lo_fill"], C["lo_ink"]
@@ -3192,6 +3205,15 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
         vbg, vfg = _vol_heat_draw(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
+        # 最高溫日：整列最深高色（日期／量能除外），一眼認出峰值日。
+        if trend == "最高溫":
+            peak_bg, peak_fg = C["pill_hi"], C["white"]
+            px_bg, px_fg = peak_bg, peak_fg
+            p_bg, p_fg = peak_bg, peak_fg
+            al_bg, al_fg = peak_bg, peak_fg
+            tr_bg, tr_fg = peak_bg, peak_fg
+            tbg, tfg = peak_bg, peak_fg
+            b_bg, b_fg = peak_bg, peak_fg
         fills = [base, px_bg, p_bg, al_bg, tr_bg, tbg, b_bg, vbg]
         fgs = [C["ink_soft"], px_fg, p_fg, al_fg, tr_fg, tfg, b_fg, vfg]
         vals = [
@@ -3205,10 +3227,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             str(r["120日量"]),
         ]
         dual_trend = bool(trend_note) and not is_blank_card_signal(trend)
+        peak_row = trend == "最高溫"
         for i, val in enumerate(vals):
             col_w = xs[i + 1] - xs[i]
             wash = C["white"]
-            if i == 7 and vbg not in (C["white"], C["panel"], C["neutral_bg"]):
+            if peak_row and i in (1, 2, 3, 4, 5, 6):
+                wash = C["pill_hi"]
+            elif i == 7 and vbg not in (C["white"], C["panel"], C["neutral_bg"]):
                 wash = vbg
             _cell_wash(ax, xs[i], y1, col_w, body_h, wash, C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
@@ -4382,8 +4407,13 @@ def _paint_nav_on_axes(
             pastel, ink = _NAV_TONE[kind]
             if kind[0] == "h" and tip >= h20:
                 pastel = _lerp_hex(pastel, ink, 0.28)
-            _nav_arrow(ax1, tip, x, down=True, face=pastel, ink=ink,
-                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6, hollow=hollow)
+            # 接近／脫離＝半透明 ghost 尾；當日觸發仍實心不透明。
+            ghost = hollow or kind.endswith("_near") or kind.endswith("_leave")
+            _nav_arrow(
+                ax1, tip, x, down=True, face=pastel, ink=ink,
+                arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6, hollow=hollow,
+                alpha=0.38 if ghost else 1.0,
+            )
             last_dn_i = i
         if up_pick:
             kind, sc, hollow = up_pick
@@ -4391,8 +4421,12 @@ def _paint_nav_on_axes(
             pastel, ink = _NAV_TONE[kind]
             if kind[0] == "l" and tip <= l20:
                 pastel = _lerp_hex(pastel, ink, 0.28)
-            _nav_arrow(ax1, tip, x, down=False, face=pastel, ink=ink,
-                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6, hollow=hollow)
+            ghost = hollow or kind.endswith("_near") or kind.endswith("_leave")
+            _nav_arrow(
+                ax1, tip, x, down=False, face=pastel, ink=ink,
+                arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6, hollow=hollow,
+                alpha=0.38 if ghost else 1.0,
+            )
             last_up_i = i
         if vol_low:
             ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84,

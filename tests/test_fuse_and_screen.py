@@ -1484,6 +1484,9 @@ class LookupCardTest(unittest.TestCase):
 
         bg, fg = profit_cell_style(66.6, None, _CARD["white"])
         self.assertEqual(fg, _CARD["white"])
+        # 高檔漸層：66% 應深於剛滿 40%，且白字可讀。
+        bg40, _ = profit_cell_style(40.0, None, _CARD["white"])
+        self.assertNotEqual(bg.lower(), bg40.lower())
         shown = _fg_on_panel(fg, bg)
         self.assertGreaterEqual(_wcag(shown, "#FFFFFF"), 4.5)
 

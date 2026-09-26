@@ -197,7 +197,7 @@ class CardDataAccuracyTests(unittest.TestCase):
         r901 = tbl[tbl["date"].astype(str) == "20260901"]
         if not r901.empty:
             shown = display_alert_cell(str(r901.iloc[0]["預警"]), str(r901.iloc[0]["高低"]))
-            self.assertEqual(shown, "20高")
+            self.assertEqual(shown, "最高價")
 
 
     @pytest.mark.production_db

@@ -1270,6 +1270,7 @@ def hi_lo_tag(close, h20, h10, h5, l20, l10, l5) -> str:
 def display_alert_cell(alert: str, hi_lo: str) -> str:
     """預警欄呈現：No 時仍露出高低；K20 與 20高／10低重疊時優先顯示高低（CaryBot 同欄）。
 
+    作者公開「最高價＝20高」：觸發 20高時畫面寫「最高價」，K20高留給未貼高低格。
     5高／5低不蓋過反向 K20（6526 8/17 Cary 是 K20高，不是 5低）。
     """
     a = str(alert or "").strip()
@@ -1277,8 +1278,9 @@ def display_alert_cell(alert: str, hi_lo: str) -> str:
     if a == "60低":
         return a
     if h in ("20高", "10高", "20低", "10低"):
-        if a in ("", "No", "—") or a.startswith("K20"):
-            return h
+        if a in ("", "No", "—") or a.startswith("K20") or a == h:
+            # 顯示層：20高 → 最高價（股價欄洗底也認這個字）。不改買訊／內部高低標。
+            return "最高價" if h == "20高" else h
     if h in ("5高", "5低"):
         if a in ("", "No", "—"):
             return h
