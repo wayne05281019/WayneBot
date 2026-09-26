@@ -1481,7 +1481,10 @@ class MainRunner:
 
 def main():
     try:
-        from config import job_kind
+        from config import assert_gha_screen_muted, job_kind, screen_notify_enabled
+
+        # GHA 與 Render 碟不同；防雙寄只靠 notify=0，開了就硬失敗。
+        assert_gha_screen_muted()
 
         runner = MainRunner()
         gha = bool((os.getenv("GITHUB_ACTIONS") or "").strip())
@@ -1496,7 +1499,6 @@ def main():
             skip_if_done = True
             if (os.getenv("GITHUB_EVENT_NAME") or "").strip() == "push":
                 skip_if_done = False
-            from config import screen_notify_enabled
 
             ok = runner.run_morning_screen(
                 skip_if_done=skip_if_done, notify=screen_notify_enabled()

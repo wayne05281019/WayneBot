@@ -227,14 +227,15 @@ def daily_scheduler_enabled() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
-# 每個排程只能有一個擁有者，否則兩邊各自的 pipeline_runs 讓 skip_if_done 失效，
-# 使用者會收到兩份同樣的推播。06:30 海選推播歸常駐（有效 token＋按開始的話筒）；
-# GHA morning_screen 只算名單、蓋 zip，WAYNE_SCREEN_NOTIFY=0 不寄。
+# 推播單一真相：只在 Render 常駐寄話筒。GHA 與 Render 碟不同，
+# pipeline_runs／skip_if_done 不能跨機防重——防雙寄靠 GHA 永不寄訊。
+# 06:30／12:45 推播歸常駐（WAYNE_SCHEDULER_ROLE=data＋scheduler_may_push）。
+# GHA morning_screen／increment 只算名單、蓋 zip；WAYNE_SCREEN_NOTIFY 必須 0。
 SCHEDULER_ROLES = ("data", "full", "off")
 
 
 def scheduler_role() -> str:
-    """data＝只更新本機庫（預設）；full＝連推播一起跑；off＝完全不排程。"""
+    """data＝常駐算數＋只推 morning／midday；full＝連其他推播；off＝不排程。"""
     raw = (os.getenv("WAYNE_SCHEDULER_ROLE") or "").strip().lower()
     if raw in SCHEDULER_ROLES:
         return raw
@@ -244,18 +245,24 @@ def scheduler_role() -> str:
 
 
 def scheduler_owns(job: str) -> bool:
-    """這個行程是否該執行該排程。midday 只有常駐端有，所以 data 角色也要跑。"""
+    """這個行程要不要跑該 job 的「算數」。
+
+    data／full：常駐跑 morning／midday／fuse／evening／typhoon。
+    是否寄 Telegram 另看 scheduler_may_push（與 owns 分開，避免以為 owns＝可寄）。
+    GHA 行程不設 WAYNE_SCHEDULER_ROLE=data 常駐迴圈；它走 --once 算數，靠
+    WAYNE_SCREEN_NOTIFY=0 禁寄（見 assert_gha_screen_muted）。
+    """
     role = scheduler_role()
     if role == "off":
         return False
     if role == "full":
         return True
-    # data：常駐跑 morning／midday／fuse／evening／typhoon。GHA 另跑 fuse＋morning 算數，不寄海選。
+    # data：算數全跑；推播閘在 may_push。
     return True
 
 
 def scheduler_may_push(job: str) -> bool:
-    """data 角色只推播常駐擁有的通知（06:30 海選、12:45 尾盤）。"""
+    """可不可以寄話筒。data 只准 morning／midday；GHA 必須另被 screen_notify 關掉。"""
     role = scheduler_role()
     if role == "off":
         return False
@@ -265,9 +272,24 @@ def scheduler_may_push(job: str) -> bool:
 
 
 def screen_notify_enabled() -> bool:
-    """GHA 早上海選算名單但不寄：WAYNE_SCREEN_NOTIFY=0。常駐預設寄。"""
+    """海選算出後要不要寄。GHA 必須 0；常駐預設 1。"""
     raw = (os.getenv("WAYNE_SCREEN_NOTIFY") or "1").strip().lower()
     return raw not in ("0", "false", "no", "off")
+
+
+def in_github_actions() -> bool:
+    return (os.getenv("GITHUB_ACTIONS") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def assert_gha_screen_muted() -> None:
+    """GHA 若打開 WAYNE_SCREEN_NOTIFY，會跟 Render 各寄一份——直接失敗。"""
+    if not in_github_actions():
+        return
+    if screen_notify_enabled():
+        raise RuntimeError(
+            "GHA 禁止寄海選：設 WAYNE_SCREEN_NOTIFY=0。"
+            "推播只在 Render 常駐（偉權／哥哥話筒）。"
+        )
 
 
 def _in_cursor_cloud() -> bool:

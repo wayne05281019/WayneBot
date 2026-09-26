@@ -111,6 +111,11 @@ jobs:
           fi
 
       # GHA 只算名單／蓋 zip，不寄 Telegram。不要注入 token，過期 GitHub Secret 才不會 401。
+      # 推播只在 Render；WAYNE_SCREEN_NOTIFY 必須 0（main_runner.assert_gha_screen_muted）。
+      - name: 確認 GHA 不寄海選
+        run: |
+          # 工作流程必須寫死 WAYNE_SCREEN_NOTIFY: "0"；推播只在 Render
+          grep -q 'WAYNE_SCREEN_NOTIFY: "0"' .github/workflows/daily_run.yml
       - name: 執行每日工作
         id: run_job
         env:
