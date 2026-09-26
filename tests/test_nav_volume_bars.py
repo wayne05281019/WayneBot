@@ -15,17 +15,22 @@ def test_format_nav_volume_label_missing_is_que():
     assert format_nav_volume_label(0) == "量 0張"
 
 
-def test_nav_volume_soft_cap_keeps_low_days_visible():
-    """3081 類：中間有暴量，低量日線性全高會被壓成看不到。"""
-    vols = [800.0] * 40 + [12000.0, 11000.0] + [700.0] * 40
+def test_nav_volume_every_positive_day_at_least_10pct():
+    """有官方正量＝肉眼可見（至少面板 10%）；暴量日不把低量壓沒。"""
+    vols = [294.0] * 20 + [13426.0, 12000.0] + [598.0] * 20 + [0.0, float("nan")]
     heights, ylim, missing = nav_volume_bar_heights(vols)
-    assert not missing.any()
-    assert ylim < 12000.0  # 軟頂低於尖峰
-    # 低量日柱高至少約面板 4%
-    assert float(heights[0]) >= ylim * 0.04 - 1e-9
-    # 尖峰裁到 ylim，不是發明更大的量
-    assert float(heights[40]) == ylim
-    assert float(heights[40]) <= 12000.0
+    assert ylim < 13426.0
+    pos = [i for i, v in enumerate(vols) if v == v and v > 0]
+    for i in pos:
+        assert float(heights[i]) >= ylim * 0.10 - 1e-9, (i, heights[i], ylim)
+    # 尖峰日最高（裁到頂）
+    assert float(heights[20]) == ylim
+    # 真 0／缺量不准假柱
+    assert float(heights[-2]) == 0.0
+    assert float(heights[-1]) == 0.0
+    assert bool(missing[-1]) is True
+    # 低量彼此仍有比例（更大的量柱更高）
+    assert float(heights[22]) > float(heights[0])
 
 
 def test_nav_volume_missing_no_fake_bar():
@@ -34,8 +39,8 @@ def test_nav_volume_missing_no_fake_bar():
     assert bool(missing[1]) is True
     assert float(heights[1]) == 0.0
     assert float(heights[2]) == 0.0  # 真 0 不抬假量
-    assert float(heights[0]) > 0.0
-    assert float(heights[3]) > 0.0
+    assert float(heights[0]) >= ylim * 0.10 - 1e-9
+    assert float(heights[3]) >= ylim * 0.10 - 1e-9
     assert ylim >= 1.0
 
 

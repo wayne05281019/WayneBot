@@ -1135,32 +1135,33 @@ def format_nav_volume_label(volume_lots) -> str:
 
 
 def nav_volume_bar_heights(volumes) -> tuple:
-    """導航量柱高度：有官方量就畫得出；缺量不准造假。
+    """導航量柱高度：有官方量＝必畫肉眼可見柱；缺量不准造假。
 
-    暴量日若用線性全高當 Y 頂，低量段在手機縮圖會看成空白。
-    回傳 (heights, ylim_top, missing_mask)：
-    - heights：畫柱用（正量至少佔面板 ~4%；尖峰裁到 ylim）
-    - missing：官方量缺欄／NaN（柱高 0，呼叫端可標缺）
-    - 真 0 量（停牌／無成交）維持 0，不抬成假量
+    暴量日線性全高會把低量段壓成縮圖空白。做法：
+    - 軟頂（約 80 分位）裁尖峰
+    - 正量用平方根比例映射到面板 [MIN_FRAC, 1]（比例仍在，最低也佔面板 10%）
+    - 缺欄／NaN → 柱高 0（呼叫端標缺）；真 0 量維持 0，不准抬假量
     """
+    min_frac = 0.10
     raw = pd.to_numeric(pd.Series(volumes), errors="coerce")
     missing = raw.isna().to_numpy(dtype=bool)
     vals = raw.fillna(0.0).to_numpy(dtype=float)
     vals = np.where(vals < 0, 0.0, vals)
-    pos = vals[(vals > 0) & (~missing)]
+    pos_mask = (vals > 0) & (~missing)
+    pos = vals[pos_mask]
     if pos.size == 0:
-        return vals, 1.0, missing
+        return np.zeros_like(vals), 1.0, missing
     vmax = float(pos.max())
     med = float(np.median(pos))
-    p88 = float(np.percentile(pos, 88))
-    # 軟頂：尖峰不把整段壓扁；仍保留真實正量，不准發明量
-    ylim = min(vmax, max(p88 * 1.28, med * 3.2, float(pos.min()) * 8.0))
-    ylim = max(ylim, 1.0)
-    heights = np.minimum(vals, ylim)
-    min_h = ylim * 0.04
-    heights = np.where((vals > 0) & (~missing), np.maximum(heights, min_h), heights)
-    heights = np.where(missing, 0.0, heights)
-    return heights, ylim, missing
+    p80 = float(np.percentile(pos, 80))
+    soft = min(vmax, max(p80 * 1.15, med * 2.8, float(pos.min()) * 10.0))
+    soft = max(soft, 1.0)
+    capped = np.minimum(vals, soft)
+    heights = np.zeros_like(vals)
+    # sqrt 比例：低量彼此仍分得出高低，再抬到至少 min_frac
+    ratio = np.sqrt(capped[pos_mask] / soft)
+    heights[pos_mask] = (min_frac + (1.0 - min_frac) * ratio) * soft
+    return heights, soft, missing
 
 
 def _tw_tick(px) -> float:
