@@ -34,7 +34,7 @@ def test_nav_volume_label_is_lots_not_k():
     assert format_nav_volume_label(2) == "量 2張"
     assert format_nav_volume_label(14090) == "量 14,090張"
     assert format_nav_volume_label(0) == "量 0張"
-    assert format_nav_volume_label(None) == "量 0張"
+    assert format_nav_volume_label(None) == "量 缺"
 
 
 def test_quote_limit_side_only_limit_up_down():

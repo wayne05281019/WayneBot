@@ -1119,14 +1119,49 @@ def html_escape(val) -> str:
 
 
 def format_nav_volume_label(volume_lots) -> str:
-    """導航圖量標：庫內是張。不要 /1000 寫 0.00K（冷門 2 張會變成沒量）。"""
+    """導航圖量標：庫內是張。不要 /1000 寫 0.00K（冷門 2 張會變成沒量）。缺官方量標缺，不准假 0。"""
+    if volume_lots is None:
+        return "量 缺"
     try:
-        n = int(round(float(volume_lots or 0)))
+        v = float(volume_lots)
     except (TypeError, ValueError):
-        n = 0
+        return "量 缺"
+    if v != v:  # NaN
+        return "量 缺"
+    n = int(round(v))
     if n < 0:
         n = 0
     return f"量 {n:,}張"
+
+
+def nav_volume_bar_heights(volumes) -> tuple:
+    """導航量柱高度：有官方量＝必畫肉眼可見柱；缺量不准造假。
+
+    暴量日線性全高會把低量段壓成縮圖空白。做法：
+    - 軟頂（約 80 分位）裁尖峰
+    - 正量用平方根比例映射到面板 [MIN_FRAC, 1]（比例仍在，最低也佔面板 10%）
+    - 缺欄／NaN → 柱高 0（呼叫端標缺）；真 0 量維持 0，不准抬假量
+    """
+    min_frac = 0.10
+    raw = pd.to_numeric(pd.Series(volumes), errors="coerce")
+    missing = raw.isna().to_numpy(dtype=bool)
+    vals = raw.fillna(0.0).to_numpy(dtype=float)
+    vals = np.where(vals < 0, 0.0, vals)
+    pos_mask = (vals > 0) & (~missing)
+    pos = vals[pos_mask]
+    if pos.size == 0:
+        return np.zeros_like(vals), 1.0, missing
+    vmax = float(pos.max())
+    med = float(np.median(pos))
+    p80 = float(np.percentile(pos, 80))
+    soft = min(vmax, max(p80 * 1.15, med * 2.8, float(pos.min()) * 10.0))
+    soft = max(soft, 1.0)
+    capped = np.minimum(vals, soft)
+    heights = np.zeros_like(vals)
+    # sqrt 比例：低量彼此仍分得出高低，再抬到至少 min_frac
+    ratio = np.sqrt(capped[pos_mask] / soft)
+    heights[pos_mask] = (min_frac + (1.0 - min_frac) * ratio) * soft
+    return heights, soft, missing
 
 
 def _tw_tick(px) -> float:
@@ -4627,7 +4662,22 @@ def _paint_nav_on_axes(
         ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
-    ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)
+    vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(work["volume"])
+    ax2.bar(xs, vol_heights, color=vol_colors, width=0.72, zorder=3)
+    # 缺官方量：灰 ×，不准補假量柱
+    miss_i = np.flatnonzero(vol_missing)
+    if miss_i.size:
+        ax2.scatter(
+            xs[miss_i],
+            np.full(miss_i.shape, vol_ylim * 0.04),
+            marker="x",
+            s=18 if compact else 28,
+            c="#9e9e9e",
+            linewidths=0.9,
+            zorder=5,
+            clip_on=False,
+        )
+    ax2.set_ylim(0, vol_ylim * 1.08)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     ax2.tick_params(labelsize=8 if compact else 9)
