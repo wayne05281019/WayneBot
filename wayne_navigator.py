@@ -483,7 +483,24 @@ class NavigatorEngine:
             raw_for_ex = raw_for_ex[~raw_for_ex["is_live"].fillna(False).astype(bool)]
         keep = [c for c in ("date", "open", "high", "low", "close") if c in raw_for_ex.columns]
         raw_for_ex = raw_for_ex[keep].tail(40)
-        df, xq_notes = normalize_ohlc(df, self.db_path)
+        # 興櫃日均價波動大、無上市櫃除權息語意：不准跳空還原把歷史乘歪。
+        # 只標無量停價列，保留官方開高低收量原值。
+        if quote_source == "emerging_quotes":
+            df = df.copy()
+            for col in ("open", "high", "low", "close", "volume"):
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+            if "volume" not in df.columns:
+                df["volume"] = 0.0
+            else:
+                df["volume"] = df["volume"].fillna(0.0)
+            flat = (df["volume"] <= 0) & ((df["high"] - df["low"]).abs() <= 1e-8)
+            df["is_halt"] = flat.fillna(False)
+            xq_notes: list = []
+            if int(df["is_halt"].sum()) >= 2:
+                xq_notes.append(f"略過 {int(df['is_halt'].sum())} 根無量停價")
+        else:
+            df, xq_notes = normalize_ohlc(df, self.db_path)
         # 小額除息不要改高低卡 20 日表（6770 8/27 除息 0.23 元，Cary 仍寫 70.20）。
         # 大額除權／減資才用還原列，避免 6669 那種 7800／-200%。
         raw_px = close_raw.astype(float)
@@ -540,12 +557,13 @@ class NavigatorEngine:
         df["high_60"] = hl_src.rolling(60, min_periods=1).max()
         df["low_60"] = hl_src.rolling(60, min_periods=1).min()
         df["ma60_hl"] = hl_src.rolling(60, min_periods=1).mean()
-        df["low_120"] = hl_src.rolling(120, min_periods=20).min()
-        df["low_240"] = hl_src.rolling(240, min_periods=40).min()
-        df["low_480"] = hl_src.rolling(480, min_periods=80).min()
-        df["high_120"] = hl_src.rolling(120, min_periods=20).max()
-        df["high_240"] = hl_src.rolling(240, min_periods=40).max()
-        df["high_480"] = hl_src.rolling(480, min_periods=80).max()
+        # 120／240／480 必須湊滿窗才標；用 40 根冒充 240 低＝假資料（興櫃短史全印同一價）。
+        df["low_120"] = hl_src.rolling(120, min_periods=120).min()
+        df["low_240"] = hl_src.rolling(240, min_periods=240).min()
+        df["low_480"] = hl_src.rolling(480, min_periods=480).min()
+        df["high_120"] = hl_src.rolling(120, min_periods=120).max()
+        df["high_240"] = hl_src.rolling(240, min_periods=240).max()
+        df["high_480"] = hl_src.rolling(480, min_periods=480).max()
         df["bias_monthly"] = (((px - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(
             df["volume"], window=120, closes=close_s,
@@ -708,9 +726,12 @@ class NavigatorEngine:
         l240 = _pos_px(latest["low_240"] if pd.notna(latest.get("low_240")) else 0.0)
         l480 = _pos_px(latest["low_480"] if pd.notna(latest.get("low_480")) else 0.0)
         if hl_display_adjusted:
-            l120 = _pos_px(close_s.rolling(120, min_periods=20).min().iloc[-1])
-            l240 = _pos_px(close_s.rolling(240, min_periods=40).min().iloc[-1])
-            l480 = _pos_px(close_s.rolling(480, min_periods=80).min().iloc[-1])
+            if len(close_s.dropna()) >= 120:
+                l120 = _pos_px(close_s.rolling(120, min_periods=120).min().iloc[-1])
+            if len(close_s.dropna()) >= 240:
+                l240 = _pos_px(close_s.rolling(240, min_periods=240).min().iloc[-1])
+            if len(close_s.dropna()) >= 480:
+                l480 = _pos_px(close_s.rolling(480, min_periods=480).min().iloc[-1])
         c0 = float(latest["close"])
         if h480 and c0 >= h480 * 0.998:
             badges.append("創480日新高")
