@@ -92,6 +92,7 @@ NAMED_URLS = {
     "比日盤收便宜": TX_NIGHT_URL,
     "產業法人": T86_URL,
     "布蘭特": _YQ + "BZ%3DF",
+    "布蘭特原油": _YQ + "BZ%3DF",
     "美元指數": _YQ + "DX-Y.NYB",
     "美元期貨": _YQ + "DX-Y.NYB",
     "美元兌台幣": _YQ + "TWD%3DX",

@@ -3965,7 +3965,7 @@ class WayneTelegramBot:
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        status = await self._transient_status(update.message, "讀取當日資金移動…")
+        status = await self._transient_status(update.message, "讀取當日資金輪動…")
         try:
             await self._enter_main_menu(update.message, uid)
             from money_flow import format_flow_html, resolve_flow_as_of, sector_flow_ready
@@ -3976,7 +3976,7 @@ class WayneTelegramBot:
                 ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
                 if not ready:
                     lag = (lag or "") + (
-                        "\n<i>今日產業輪動表尚未寫入（盤後融合後會有）；以下可能是前一交易日快取。</i>"
+                        "\n<i>今日資金輪動尚未寫入（盤後融合後會有）；以下可能是前一交易日快取。</i>"
                     )
             html = await asyncio.wait_for(
                 asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
@@ -3985,21 +3985,21 @@ class WayneTelegramBot:
             if lag and lag not in html:
                 html = lag + "\n" + html
         except asyncio.TimeoutError:
-            logger.warning("資金移動逾時，改送精簡版")
+            logger.warning("資金輪動逾時，改送精簡版")
             await self._delete_message(status)
             from trading_calendar import is_tw_equity_session
 
             if is_tw_equity_session():
-                hint = "資金頁載入逾時（盤中即時較慢），請 30 秒後再按一次「資金」。"
+                hint = "資金輪動載入逾時（盤中即時較慢），請 30 秒後再按一次「資金輪動」。"
             else:
-                hint = "資金頁載入逾時，請稍後再按一次「資金」。"
+                hint = "資金輪動載入逾時，請稍後再按一次「資金輪動」。"
             await update.message.reply_text(
                 hint,
                 reply_markup=self._keyboard(),
             )
             return
         except Exception:
-            logger.exception("資金移動失敗")
+            logger.exception("資金輪動失敗")
             await self._delete_message(status)
             await update.message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
             return

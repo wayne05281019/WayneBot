@@ -45,7 +45,7 @@ FUTURES = (
 )
 # 海選／台股大盤外圍：布蘭特原油、美元指數、美元兌台幣。沒真數不上。
 OUTER_SYMBOLS = (
-    ("brent", "BZ=F", "布蘭特"),
+    ("brent", "BZ=F", "布蘭特原油"),
     ("dx_f", "DX-Y.NYB", "美元指數"),
     ("usdtwd", "TWD=X", "美元兌台幣"),
 )
@@ -302,7 +302,7 @@ def _fetch_post_last(sym: str) -> Optional[Dict[str, Any]]:
 
 
 def fetch_outer_tape(*, force: bool = False) -> Dict[str, Any]:
-    """布蘭特／美元指數／美元兌台幣。15 分鐘內沿用；沒真數就空。"""
+    """布蘭特原油／美元指數／美元兌台幣。15 分鐘內沿用；沒真數就空。"""
     now = time.monotonic()
     cached = _OUTER_CACHE.get("data") or {}
     if (
@@ -337,7 +337,7 @@ def outer_rows(snap: Optional[Dict[str, Any]]) -> List[tuple]:
         bit = f"{px:.2f}美元/桶"
         if pct is not None:
             bit += f"　{pct:+.2f}%"
-        rows.append(("布蘭特", bit))
+        rows.append(("布蘭特原油", bit))
     px = _as_float(snap.get("dx_f_px"))
     pct = _as_float(snap.get("dx_f_pct"))
     if px is not None and px > 0:

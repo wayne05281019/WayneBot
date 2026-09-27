@@ -1,6 +1,6 @@
 """WayneBot 分類用小型動態表情（跟字一樣大，不是大圖）。
 
-海選只在黃金買點／重點觀察送一顆脈衝動圖（閃一下讓人知道這區重要）。
+海選只在黃金買點／還在零送一顆脈衝動圖（閃一下讓人知道這區重要）。
 周帶量等其餘桶不再送椅子形旋轉柱，太多會亂。
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFilter
 MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "revenue_cross": ("📈", (232, 140, 50), "bars", "優先看"),
     "leave_zero": ("🌱", (60, 170, 90), "sprout", "黃金買點"),
-    "golden_buy": ("✨", (220, 160, 40), "star", "重點觀察"),
+    "golden_buy": ("✨", (220, 160, 40), "star", "還在零"),
     "select_01": ("🔥", (230, 80, 50), "flame", "周帶量"),
     "select_02": ("🏆", (220, 180, 50), "cup", "季線"),
     "select_03": ("💎", (140, 100, 210), "diamond", "止跌"),
@@ -219,7 +219,7 @@ def render_pulse_gif(
             sy = cy + math.sin(ang) * spark_a
             _spark(d, sx, sy, 3.2 + 2.2 * blink, rgb + (int(80 + 175 * blink),))
         if kind == "star":
-            # 重點觀察：多一點金閃，仍維持同一套圓形語言。
+            # 還在零：多一點金閃，仍維持同一套圓形語言。
             _spark(d, cx, cy - 28 * pulse, 2.4, (255, 230, 120, int(120 + 80 * pulse)))
         frames_im.append(im)
     frames_im[0].save(

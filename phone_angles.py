@@ -214,7 +214,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
     if lens == "error_no_traceback":
         leaks = [
             "大盤讀取失敗：{e}",
-            "資金移動失敗：{e}",
+            "資金輪動失敗：{e}",
             "海選失敗：{e}",
             "聽寫失敗：",
             "AI 操盤失敗：{e}",
@@ -266,7 +266,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         needles = {
             "海選": "海選逾時",
             "大盤": "大盤讀取逾時",
-            "資金": "資金頁載入逾時",
+            "資金": "資金輪動載入逾時",
             "當沖": "查詢逾時",
             "隔日沖": "查詢逾時",
             "興櫃海選": "興櫃海選逾時",

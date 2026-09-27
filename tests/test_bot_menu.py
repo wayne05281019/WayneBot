@@ -551,7 +551,7 @@ def test_flow_timeout_hint_not_always_intraday_mis():
 
     src = inspect.getsource(WayneTelegramBot.flow_cmd)
     assert "is_tw_equity_session" in src
-    assert "請稍後再按一次「資金」" in src
+    assert "請稍後再按一次「資金輪動」" in src
 
 
 def test_market_button_always_opens_market_page():
