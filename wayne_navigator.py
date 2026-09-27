@@ -3065,12 +3065,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     table = card["table"]
     n = max(len(table), 1)
     extra_lows = []
-    for _lab, _px, dist in horizon_low_cells(card):
-        try:
-            if float(dist) <= 5.0:
-                extra_lows.append((_lab, _px, dist))
-        except (TypeError, ValueError):
-            pass
+    for lab, px, dist in horizon_low_cells(card):
+        # 有數字就畫第二排（horizon_low_cells 註解）；不准用「離低 ≤5%」把 240 低藏掉。
+        # 短史塌窗時使用者要一眼看出長窗；長史時 240 低與 10 低不同也要看得到。
+        extra_lows.append((lab, px, dist))
     low_rows = 2 if extra_lows else 1
     C = _CARD
 

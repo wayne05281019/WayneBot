@@ -667,13 +667,6 @@ class EmergingScreenIsolationTests(unittest.TestCase):
         try:
             ensure_core_schema(path)
             ensure_emerging_table(path)
-            rows = []
-            # 只有 80 根：10／20／60 可算；120／240 不准冒充
-            px = 100.0
-            for i in range(80):
-                ymd = f"20260{406 + i // 30:1d}{(i % 28) + 1:02d}"
-                # simpler: sequential weekdays via upsert helper payload
-                rows.append((i, px + (i % 7)))
             conn = sqlite3.connect(path)
             from datetime import datetime, timedelta
 
@@ -715,6 +708,13 @@ class EmergingScreenIsolationTests(unittest.TestCase):
             self.assertFalse(card.get("l240"))
         finally:
             os.remove(path)
+
+    def test_decision_card_png_always_paints_horizon_lows_when_present(self):
+        """120／240 低有數字就要上第二排，不准用離低≤5% 藏掉。"""
+        src = open("wayne_navigator.py", encoding="utf-8").read()
+        chunk = src.split("extra_lows = []", 1)[1].split("low_rows =", 1)[0]
+        self.assertNotIn("float(dist) <= 5.0", chunk)
+        self.assertIn("extra_lows.append", chunk)
 
 
 if __name__ == "__main__":
