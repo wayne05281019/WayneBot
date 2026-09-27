@@ -1965,7 +1965,7 @@ def _stock_card_html(
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
     if item.get("golden_buy") and not item.get("entry_stage"):
-        notices.append(_hot("重點觀察"))
+        notices.append(_hot("還在零"))
     if item.get("at_60_low") and not item.get("golden_buy"):
         notices.append(_hot("60低"))
     if item.get("beta_downweighted"):
@@ -2433,7 +2433,7 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
     if item.get("revenue_hot"):
         bits.append("營收轉強")
     if item.get("golden_buy"):
-        bits.append("重點觀察")
+        bits.append("還在零")
     if item.get("at_60_low"):
         bits.append("60低")
     if item.get("sector_inflow"):

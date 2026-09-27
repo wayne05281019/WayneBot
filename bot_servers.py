@@ -766,9 +766,9 @@ class WayneTelegramBot:
             title = f"{sid} {name}".strip()
         return (
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
-            "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
-            "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡／大量區專圖（非買訊）；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
+            "線圖用櫃買官方<b>日均價</b>／日最高／日最低（無集合競價開收）。"
+            "盤後 16:30 寫獨立表，不混上市櫃海選；無三大法人就不顯示。"
+            "有日均價就出介紹圖／高低卡／大量區（非買訊）；圖下「導航圖」＝180日高低，「K線」＝奇摩日K。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -993,9 +993,9 @@ class WayneTelegramBot:
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
         text = (
-            "兩排已更新：第一排海選…資金輪動，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新。點輸入列旁四格 ⌨️。"
             if silent
-            else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
+            else "主選單已掛上。點輸入列旁四格 ⌨️ 展開兩排。"
         )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
@@ -3490,9 +3490,8 @@ class WayneTelegramBot:
             ]
             title = "剛脫離零"
             subtitle = (
-                "高低卡昨獲利貼零、今天離開 0（實綠第一天），上市櫃興櫃都算。"
-                "趨勢已向上的排前面。滿五星＝按表該買。四星＝趨勢已向上且獲利還在帶、沒少追。"
-                "還沒向上最高兩星。只列前8檔。未收盤不寫進官方收。"
+                "昨獲利貼零、今天離開 0（實綠第一天；上市櫃／興櫃，不限海選桶）。"
+                "趨勢已向上排前；滿五星＝按表該買。只列前8檔。"
             )
             empty = (
                 "此刻沒有昨零今離的檔。" if live_on else "最近完整收沒有昨零今離的檔。"
@@ -3965,7 +3964,7 @@ class WayneTelegramBot:
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        status = await self._transient_status(update.message, "讀取當日資金移動…")
+        status = await self._transient_status(update.message, "讀取資金輪動…")
         try:
             await self._enter_main_menu(update.message, uid)
             from money_flow import format_flow_html, resolve_flow_as_of, sector_flow_ready
@@ -3976,7 +3975,7 @@ class WayneTelegramBot:
                 ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
                 if not ready:
                     lag = (lag or "") + (
-                        "\n<i>今日產業輪動表尚未寫入（盤後融合後會有）；以下可能是前一交易日快取。</i>"
+                        "\n<i>今日資金輪動尚未寫入（盤後融合後會有）；以下可能是前一交易日快取。</i>"
                     )
             html = await asyncio.wait_for(
                 asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
@@ -3985,21 +3984,21 @@ class WayneTelegramBot:
             if lag and lag not in html:
                 html = lag + "\n" + html
         except asyncio.TimeoutError:
-            logger.warning("資金移動逾時，改送精簡版")
+            logger.warning("資金輪動逾時，改送精簡版")
             await self._delete_message(status)
             from trading_calendar import is_tw_equity_session
 
             if is_tw_equity_session():
-                hint = "資金頁載入逾時（盤中即時較慢），請 30 秒後再按一次「資金」。"
+                hint = "資金輪動載入逾時（盤中較慢），請 30 秒後再按一次「資金輪動」。"
             else:
-                hint = "資金頁載入逾時，請稍後再按一次「資金」。"
+                hint = "資金輪動載入逾時，請稍後再按一次「資金輪動」。"
             await update.message.reply_text(
                 hint,
                 reply_markup=self._keyboard(),
             )
             return
         except Exception:
-            logger.exception("資金移動失敗")
+            logger.exception("資金輪動失敗")
             await self._delete_message(status)
             await update.message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
             return
@@ -6090,8 +6089,8 @@ class WayneTelegramBot:
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
-                "leave_zero": "黃金買點：獲利格剛離零且趨勢向上（按表，不是每個紅箭頭低點）",
-                "golden_buy": "還在零：60低超跌且趨勢向上（只觀察，不是今天必買）",
+                "leave_zero": "黃金買點：剛離零且趨勢向上（按表；紅箭頭不是買訊）",
+                "golden_buy": "還在零：60低超跌觀察，不是買",
                 "select_01": "周帶量：短線轉強且趨勢向上，靠近20日高少追",
                 "select_02": "站上季線：昨收在季線下、今日站上；空頭反彈不進",
                 "select_03": "止跌：月低附近有人接、量沒死；空頭反彈不進",

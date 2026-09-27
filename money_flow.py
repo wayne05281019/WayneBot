@@ -1248,7 +1248,7 @@ def format_flow_html(
         ymd, lag = resolve_flow_as_of(path, now=now)
     if not ymd:
         conn.close()
-        return "⚠️ 還沒有日 K，無法看資金移動。"
+        return "⚠️ 還沒有日 K，無法看資金輪動。"
 
     from import_health import audit_import
     from stock_links import html_named
