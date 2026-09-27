@@ -1531,6 +1531,54 @@ def _us_cache_fresh_enough(us_as_of: str, tw_as_of: str, db_path: Optional[str] 
     return True
 
 
+def _us_has_nums(us: Optional[Dict[str, Any]]) -> bool:
+    return bool(us) and (us.get("ok") or us.get("vix") is not None)
+
+
+def _us_stop_label(us: Dict[str, Any]) -> str:
+    """美股快取停在哪一天（US session／as_of），給話筒「資料停在」。"""
+    stop = _norm_us_ymd(us.get("as_of") if us else "")
+    if len(stop) == 8:
+        return f"{stop[:4]}/{stop[4:6]}/{stop[6:]}"
+    try:
+        from us_overnight import _session_label
+
+        sess = _session_label(us)
+        return sess if sess and sess != "—" else ""
+    except Exception:
+        return ""
+
+
+def _us_snap_fresh_for_tw(
+    us: Optional[Dict[str, Any]], tw_as_of: str, db_path: Optional[str] = None
+) -> bool:
+    """大盤頁與海選共用：過舊美股不准當現況。
+
+    呼叫方明確傳入、且沒帶 as_of 的快照（單測／剛抓尚未寫庫）視為對齊台股基準日。
+    庫內 fallback 舊列一定走交易日新鮮度。
+    """
+    if not _us_has_nums(us):
+        return False
+    us_as_of = _norm_us_ymd((us or {}).get("as_of"))
+    if not us_as_of:
+        return not bool((us or {}).get("_fallback"))
+    return _us_cache_fresh_enough(us_as_of, tw_as_of, db_path)
+
+
+def _resolve_us_for_display(
+    db_path: str, tw_as_of: str, us_snap: Optional[Dict[str, Any]] = None
+) -> tuple:
+    """回傳 (us, fresh)。海選／大盤同一套官方 us_overnight。"""
+    if isinstance(us_snap, dict) and us_snap:
+        us = dict(us_snap)
+        if not _norm_us_ymd(us.get("as_of")) and not us.get("_fallback"):
+            # 剛 refresh／單測沒寫 as_of：對齊台股基準日，免被誤判過舊。
+            us["as_of"] = _norm_us_ymd(tw_as_of)
+    else:
+        us = _latest_us_overnight(db_path, tw_as_of)
+    return us, _us_snap_fresh_for_tw(us, tw_as_of, db_path)
+
+
 def _latest_us_overnight(db_path: str, as_of: str) -> Dict[str, Any]:
     try:
         from us_overnight import load_us_overnight
@@ -1674,7 +1722,7 @@ def _format_overnight_watch_lines(
     """
     from tg_layout import html_escape
 
-    us = _latest_us_overnight(db_path, as_of)
+    us, fresh = _resolve_us_for_display(db_path, as_of)
     bits: List[str] = []
     holiday_lines: List[str] = []
     try:
@@ -1688,17 +1736,10 @@ def _format_overnight_watch_lines(
 
     us_as_of = _norm_us_ymd(us.get("as_of") if us else "")
     tw_as_of = _norm_us_ymd(as_of)
-    has_nums = bool(us) and (us.get("ok") or us.get("vix") is not None)
-    fresh = bool(has_nums and _us_cache_fresh_enough(us_as_of, tw_as_of, db_path))
+    has_nums = _us_has_nums(us)
 
     if has_nums and not fresh:
-        stop = us_as_of
-        if len(stop) == 8:
-            stop_s = f"{stop[:4]}/{stop[4:6]}/{stop[6:]}"
-        else:
-            from us_overnight import _session_label
-
-            stop_s = _session_label(us)
+        stop_s = _us_stop_label(us)
         bits.append(html_escape("美股收盤尚未接到"))
         if stop_s and stop_s != "—":
             bits.append(_page_kv("資料停在", html_escape(stop_s)))
@@ -1734,7 +1775,7 @@ def _format_overnight_watch_lines(
             bits.append(_page_kv("時段", phase_s))
         sess = _session_label(us)
         if sess and sess != "—":
-            bits.append(_page_kv("交易日", sess))
+            bits.append(_page_kv("美股交易日", sess))
         bits.append(_page_kv("判斷", _page_b(_us_face_short(us))))
         cash = _us_quote_rows(us, _CASH_ITEMS)
         if cash:
@@ -3936,12 +3977,18 @@ def format_screen_market_outlook_html(
             snap = {"ok": False}
     snap = snap or {}
     ref = str(snap.get("as_of") or as_of or "")
-    us = us_snap if isinstance(us_snap, dict) and us_snap else _latest_us_overnight(db_path, ref)
-    us_ok = bool(us.get("ok") or us.get("vix") is not None)
+    us, us_fresh = _resolve_us_for_display(db_path, ref, us_snap)
+    us_ok = _us_has_nums(us)
     if not snap.get("ok") and not us_ok:
         return ""
 
-    from us_overnight import _fmt_vix, electronics_night_side, format_quote_move, format_us_lead_line, regime_face_label
+    from us_overnight import (
+        _fmt_vix,
+        _session_label,
+        electronics_night_side,
+        format_quote_move,
+        format_us_lead_line,
+    )
 
     holiday_lines: List[str] = []
     try:
@@ -3962,9 +4009,9 @@ def format_screen_market_outlook_html(
         tw_closed = None
         tw_banner = []
 
-    us_regime = str(us.get("regime") or "unknown")
-    us_label = regime_face_label(us)
-    ixic = us.get("ixic_pct")
+    # 動作句只用新鮮美股；過舊快取不准影響「今天怎麼看」。
+    us_regime = str(us.get("regime") or "unknown") if us_fresh else "unknown"
+    ixic = us.get("ixic_pct") if us_fresh else None
     night_vs = _night_vs_day_pct(snap) if snap.get("ok") else None
     vs20 = snap.get("vs_ma20_pct") if snap.get("ok") else None
     action = _outlook_action_plain(
@@ -4011,8 +4058,18 @@ def format_screen_market_outlook_html(
                 pct_bits.append("貼著月線")
         if pct_bits:
             body.append("　".join(pct_bits))
-    if us_ok:
+    if us_ok and not us_fresh:
+        # 與大盤鈕同一官方快取、同一新鮮度閘：過舊不准當現況％。
+        body.append(html_escape("美股收盤尚未接到"))
+        stop_s = _us_stop_label(us)
+        if stop_s and stop_s != "—":
+            body.append(f"資料停在　{html_escape(stop_s)}")
+    elif us_fresh:
+        us_label = _us_face_short(us)
         body.append(f"美股　{_outlook_b(us_label)}")
+        sess = _session_label(us)
+        if sess and sess != "—":
+            body.append(f"美股交易日　{html_escape(sess)}")
         if ixic is not None:
             body.append(f"{html_named('那斯達克')} {_outlook_b(f'{float(ixic):+.2f}%')}")
         sox = us.get("sox_pct")
@@ -4048,7 +4105,8 @@ def format_screen_market_outlook_html(
         label="電子期夜盤",
     )
     body.extend(te_night_lines)
-    body.extend(_outlook_outer_lines(_resolve_outer_snap(us, outer_snap)))
+    # 外圍油匯：過舊美股列不准當現況；有給 outer_snap／可即時補再上。
+    body.extend(_outlook_outer_lines(_resolve_outer_snap(us if us_fresh else {}, outer_snap)))
     body.extend(_outlook_tx_foreign_lines(db_path, ref, snap))
     flow_lines = _outlook_flow_plain_lines(
         db_path, ref, flow_maps=flow_maps, rotated_names=rotated_names
@@ -4056,7 +4114,7 @@ def format_screen_market_outlook_html(
     body.extend(flow_lines)
     flow_blob = "".join(flow_lines)
     if (
-        us_ok
+        us_fresh
         and electronics_night_side(us) == "跌"
         and any(k in flow_blob for k in ("半導體", "電子零組件", "電子"))
         and "剛到" in flow_blob
@@ -4312,7 +4370,12 @@ def format_taiwan_market_page_html(
             lines.append("")
             lines.extend(te_rows)
     lines.extend(_format_overnight_watch_lines(db_path, ref, snap, now=now))
-    lines.extend(_page_outer_lines(_resolve_outer_snap(_latest_us_overnight(db_path, ref), outer_snap)))
+    us_for_outer, us_outer_fresh = _resolve_us_for_display(db_path, ref)
+    lines.extend(
+        _page_outer_lines(
+            _resolve_outer_snap(us_for_outer if us_outer_fresh else {}, outer_snap)
+        )
+    )
     plus_light = _regime_plus_traffic_light(snap.get("regime_plus"))
     plus_lab = str(snap.get("regime_plus_label") or "—")
     lines.extend(

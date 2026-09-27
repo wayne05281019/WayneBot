@@ -658,9 +658,128 @@ def test_overnight_lines_aligned_keeps_quotes(tmp_path):
     lines = _format_overnight_watch_lines(db, "20260924", {}, now=now)
     joined = "\n".join(lines)
     assert "美股收盤尚未接到" not in joined
-    assert "交易日" in joined
+    assert "美股交易日" in joined
     assert "2026/09/23" in joined
     assert "時段" in joined
+
+
+def test_screen_outlook_refuses_stale_us_like_market_page(tmp_path):
+    """海選大盤狀況與大盤鈕：同一過舊 us_overnight，都不准當現況％。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from taiwan_market import (
+        _format_overnight_watch_lines,
+        ensure_index_daily_table,
+        format_screen_market_outlook_html,
+    )
+    from tg_layout import _html_plain
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "us_stale_both.db")
+    ensure_index_daily_table(db)
+    save_us_overnight(
+        db,
+        "20260908",
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": "20260908",
+            "us_phase": "overnight",
+            "vix": 15.72,
+            "vix_pct": 2.75,
+            "dji_pct": 0.1,
+            "spx_pct": -0.2,
+            "ixic_pct": -0.32,
+            "sox_pct": 1.30,
+            "tsm_pct": 2.35,
+            "brent_px": 80.0,
+            "brent_pct": 0.5,
+        },
+    )
+    now = datetime(2026, 9, 25, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    page_us = "\n".join(_format_overnight_watch_lines(db, "20260924", {}, now=now))
+    screen = format_screen_market_outlook_html(
+        db,
+        "20260924",
+        snap={
+            "ok": True,
+            "as_of": "20260924",
+            "close": 48024.6,
+            "chg1_pct": -0.28,
+            "vs_ma20_pct": 2.7,
+            "regime": "bull",
+            "falling_risk": 0,
+        },
+        now=now,
+    )
+    plain_page = _html_plain(page_us)
+    plain_screen = _html_plain(screen)
+    assert "美股收盤尚未接到" in plain_page
+    assert "美股收盤尚未接到" in plain_screen
+    assert "2026/09/08" in plain_page
+    assert "2026/09/08" in plain_screen
+    assert "-0.32%" not in plain_page
+    assert "-0.32%" not in plain_screen
+    assert "+1.30%" not in plain_screen
+    assert "大盤中性" not in plain_screen
+    assert "布蘭特" not in plain_screen  # 過舊美股列的油匯也不准當現況
+
+
+def test_screen_and_market_us_face_align_when_fresh(tmp_path):
+    """新鮮美股：海選判斷短語與大盤頁判斷一致（不准一邊大盤中性、一邊中性）。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from taiwan_market import (
+        _format_overnight_watch_lines,
+        ensure_index_daily_table,
+        format_screen_market_outlook_html,
+    )
+    from tg_layout import _html_plain
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "us_fresh_both.db")
+    ensure_index_daily_table(db)
+    save_us_overnight(
+        db,
+        "20260924",
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": "20260923",
+            "us_phase": "overnight",
+            "vix": 14.0,
+            "vix_pct": -1.0,
+            "dji_pct": 0.10,
+            "spx_pct": 0.05,
+            "ixic_pct": -0.12,
+            "sox_pct": 0.02,
+        },
+    )
+    now = datetime(2026, 9, 24, 16, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    page = "\n".join(_format_overnight_watch_lines(db, "20260924", {}, now=now))
+    screen = format_screen_market_outlook_html(
+        db,
+        "20260924",
+        snap={
+            "ok": True,
+            "as_of": "20260924",
+            "close": 48024.6,
+            "chg1_pct": -0.28,
+            "vs_ma20_pct": 2.7,
+            "regime": "neutral",
+            "falling_risk": 20,
+        },
+        now=now,
+    )
+    assert "中性" in _html_plain(page)
+    assert "<code>中性</code>" in screen
+    assert "大盤中性" not in screen
+    assert "美股交易日" in _html_plain(page)
+    assert "美股交易日" in _html_plain(screen)
+    assert "-0.12%" in _html_plain(page)
+    assert "-0.12%" in _html_plain(screen)
 
 
 @patch("taiwan_market._fetch_twse_index_breadth")
@@ -1385,8 +1504,9 @@ def test_screen_outlook_us_strong_says_firm_not_neutral():
             "vix": 15.0,
         },
     )
-    assert "美股" in html and "<code>大盤偏多</code>" in html
+    assert "美股" in html and "<code>偏多</code>" in html
     assert "大盤中性" not in html
+    assert "大盤偏多" not in html
     assert "台指期夜盤比日盤便宜" in html or (
         "台指期夜盤" in html and "比日盤收便宜" in html
     )
@@ -1483,7 +1603,8 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "<code>+0.32%</code>" in html
     assert "<code>月線上</code>" in html
     assert "那斯達克" in html
-    assert "美股" in html and "<code>大盤中性</code>" in html
+    assert "美股" in html and "<code>中性</code>" in html
+    assert "大盤中性" not in html
     assert "台指期夜盤" in html
     assert "恐慌指數" in html
     assert "剛到" in html
@@ -1574,7 +1695,8 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     assert "周帶量" not in html
     assert "加權收盤" in html and "<code>46,288.00</code>" in html
     assert "<code>+0.96%</code>　貼著月線" in html
-    assert "美股" in html and "<code>大盤偏空</code>" in html
+    assert "美股" in html and "<code>偏空</code>" in html
+    assert "大盤偏空" not in html
     assert any("那斯達克" in ln and "<code>-0.01%</code>" in ln for ln in lines)
     assert any("費半" in ln and "<code>+0.63%</code>" in ln for ln in lines)
     panic = [ln for ln in lines if "恐慌指數" in ln]
@@ -1713,16 +1835,16 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
             "outflow_rows": [],
         },
     )
-    assert "指數還中性，電子鏈逆風" in html
+    assert "中性、費半弱" in html
     assert "大盤中性" not in html
-    assert "電子鏈逆風" in html
+    assert "指數還中性，電子鏈逆風" not in html
     assert "昨天剛輪到、隔夜費半跌" in html
     assert "今天別追電子高檔" in html
     lines = html.split("\n")
     assert any("買多 <code>8,153口</code>" in ln for ln in lines)
     assert any("買空 <code>90,542口</code>" in ln for ln in lines)
     assert any("跳升" in ln for ln in lines)
-    assert "美股" in html and "<code>指數還中性，電子鏈逆風</code>" in html
+    assert "美股" in html and "<code>中性、費半弱</code>" in html
 
 
 def test_outlook_keeps_tsm_cash_and_us_lead_group():
