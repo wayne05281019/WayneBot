@@ -3924,7 +3924,12 @@ def format_screen_market_outlook_html(
     flow_maps: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
 ) -> str:
-    """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。"""
+    """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。
+
+    美股新鮮度與大盤頁同一把尺：過舊只寫「尚未接到／資料停在」，
+    不准海選出舊％、大盤寫尚未接到。判斷句走 `_us_face_short`，
+    不准美股欄再寫「大盤偏多」。有真數就標美股交易日。
+    """
     from stock_links import html_named
     from tg_layout import headline_lines, html_escape
     from trading_calendar import format_trading_date_zh, taipei_calendar_ymd
@@ -3937,11 +3942,26 @@ def format_screen_market_outlook_html(
     snap = snap or {}
     ref = str(snap.get("as_of") or as_of or "")
     us = us_snap if isinstance(us_snap, dict) and us_snap else _latest_us_overnight(db_path, ref)
-    us_ok = bool(us.get("ok") or us.get("vix") is not None)
-    if not snap.get("ok") and not us_ok:
+    has_us_nums = bool(us) and (us.get("ok") or us.get("vix") is not None)
+    us_as_of = _norm_us_ymd(us.get("as_of") if us else "")
+    # 呼叫方給的當日 snap 常沒帶 as_of：綁台股基準日，不當 fallback。
+    if not us_as_of and has_us_nums and not us.get("_fallback"):
+        us_as_of = _norm_us_ymd(ref)
+    tw_as_of = _norm_us_ymd(ref)
+    us_fresh = bool(
+        has_us_nums and _us_cache_fresh_enough(us_as_of, tw_as_of, db_path)
+    )
+    us_stale = bool(has_us_nums and not us_fresh)
+    if not snap.get("ok") and not has_us_nums:
         return ""
 
-    from us_overnight import _fmt_vix, electronics_night_side, format_quote_move, format_us_lead_line, regime_face_label
+    from us_overnight import (
+        _fmt_vix,
+        _session_label,
+        electronics_night_side,
+        format_quote_move,
+        format_us_lead_line,
+    )
 
     holiday_lines: List[str] = []
     try:
@@ -3962,9 +3982,10 @@ def format_screen_market_outlook_html(
         tw_closed = None
         tw_banner = []
 
-    us_regime = str(us.get("regime") or "unknown")
-    us_label = regime_face_label(us)
-    ixic = us.get("ixic_pct")
+    # 過舊美股不准參與「今天該不該積極」與報價。
+    us_regime = str(us.get("regime") or "unknown") if us_fresh else "unknown"
+    us_label = _us_face_short(us) if us_fresh else ""
+    ixic = us.get("ixic_pct") if us_fresh else None
     night_vs = _night_vs_day_pct(snap) if snap.get("ok") else None
     vs20 = snap.get("vs_ma20_pct") if snap.get("ok") else None
     action = _outlook_action_plain(
@@ -4011,8 +4032,22 @@ def format_screen_market_outlook_html(
                 pct_bits.append("貼著月線")
         if pct_bits:
             body.append("　".join(pct_bits))
-    if us_ok:
+    if us_stale:
+        stop = us_as_of
+        if len(stop) == 8:
+            stop_s = f"{stop[:4]}/{stop[4:6]}/{stop[6:]}"
+        else:
+            stop_s = _session_label(us)
+        body.append(html_escape("美股收盤尚未接到"))
+        if stop_s and stop_s != "—":
+            body.append(f"資料停在　{html_escape(stop_s)}")
+    elif us_fresh:
         body.append(f"美股　{_outlook_b(us_label)}")
+        sess = _session_label(us)
+        if (not sess or sess == "—") and len(us_as_of) == 8:
+            sess = f"{us_as_of[:4]}/{us_as_of[4:6]}/{us_as_of[6:]}"
+        if sess and sess != "—":
+            body.append(f"美股交易日　{html_escape(sess)}")
         if ixic is not None:
             body.append(f"{html_named('那斯達克')} {_outlook_b(f'{float(ixic):+.2f}%')}")
         sox = us.get("sox_pct")
@@ -4048,7 +4083,9 @@ def format_screen_market_outlook_html(
         label="電子期夜盤",
     )
     body.extend(te_night_lines)
-    body.extend(_outlook_outer_lines(_resolve_outer_snap(us, outer_snap)))
+    body.extend(
+        _outlook_outer_lines(_resolve_outer_snap(us if us_fresh else None, outer_snap))
+    )
     body.extend(_outlook_tx_foreign_lines(db_path, ref, snap))
     flow_lines = _outlook_flow_plain_lines(
         db_path, ref, flow_maps=flow_maps, rotated_names=rotated_names
@@ -4056,7 +4093,7 @@ def format_screen_market_outlook_html(
     body.extend(flow_lines)
     flow_blob = "".join(flow_lines)
     if (
-        us_ok
+        us_fresh
         and electronics_night_side(us) == "跌"
         and any(k in flow_blob for k in ("半導體", "電子零組件", "電子"))
         and "剛到" in flow_blob

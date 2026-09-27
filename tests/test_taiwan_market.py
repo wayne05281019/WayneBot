@@ -663,6 +663,98 @@ def test_overnight_lines_aligned_keeps_quotes(tmp_path):
     assert "時段" in joined
 
 
+def test_screen_outlook_refuses_stale_us_same_as_market_page(tmp_path):
+    """海選與大盤同一把新鮮度尺：舊美股只寫尚未接到／資料停在，不准出舊％。"""
+    from taiwan_market import (
+        _format_overnight_watch_lines,
+        ensure_index_daily_table,
+        format_screen_market_outlook_html,
+    )
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "screen_us_stale.db")
+    ensure_index_daily_table(db)
+    save_us_overnight(
+        db,
+        "20260908",
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": "20260908",
+            "us_phase": "overnight",
+            "vix": 14.0,
+            "vix_pct": -1.0,
+            "dji_pct": 1.5,
+            "spx_pct": 1.2,
+            "ixic_pct": 1.8,
+            "sox_pct": 2.0,
+        },
+    )
+    snap = {
+        "ok": True,
+        "as_of": "20260924",
+        "close": 26500.0,
+        "chg1_pct": 0.4,
+        "vs_ma20_pct": 1.2,
+        "regime": "neutral",
+        "falling_risk": 10,
+    }
+    now = datetime(2026, 9, 24, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    html = format_screen_market_outlook_html(db, "20260924", snap=snap, now=now)
+    mkt = "\n".join(_format_overnight_watch_lines(db, "20260924", {}, now=now))
+    assert "美股收盤尚未接到" in html
+    assert "資料停在" in html and "2026/09/08" in html
+    assert "+1.80%" not in html
+    assert "+1.8%" not in html
+    assert "大盤偏多" not in html
+    assert "美股收盤尚未接到" in mkt
+    assert "2026/09/08" in mkt
+    assert "+1.50%" not in mkt
+
+
+def test_screen_outlook_fresh_us_short_face_and_session(tmp_path):
+    """對齊當日：海選美股判斷句不寫「大盤…」，並標美股交易日。"""
+    from taiwan_market import ensure_index_daily_table, format_screen_market_outlook_html
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "screen_us_ok.db")
+    ensure_index_daily_table(db)
+    save_us_overnight(
+        db,
+        "20260924",
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": "20260923",
+            "us_phase": "overnight",
+            "vix": 14.0,
+            "dji_pct": 0.8,
+            "spx_pct": 1.0,
+            "ixic_pct": 1.4,
+            "sox_pct": 1.2,
+        },
+    )
+    html = format_screen_market_outlook_html(
+        db,
+        "20260924",
+        snap={
+            "ok": True,
+            "as_of": "20260924",
+            "close": 26500.0,
+            "chg1_pct": 0.4,
+            "vs_ma20_pct": 1.2,
+            "regime": "neutral",
+            "falling_risk": 10,
+        },
+        now=datetime(2026, 9, 24, 10, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "美股收盤尚未接到" not in html
+    assert "<code>偏多</code>" in html
+    assert "大盤偏多" not in html
+    assert "美股交易日　2026/09/23" in html
+    assert "+1.40%" in html
+
+
 @patch("taiwan_market._fetch_twse_index_breadth")
 def test_sync_index_breadth_daily_writes_table(mock_fetch, tmp_path):
     import sqlite3
@@ -1385,8 +1477,10 @@ def test_screen_outlook_us_strong_says_firm_not_neutral():
             "vix": 15.0,
         },
     )
-    assert "美股" in html and "<code>大盤偏多</code>" in html
+    assert "美股" in html and "<code>偏多</code>" in html
+    assert "大盤偏多" not in html
     assert "大盤中性" not in html
+    assert "美股交易日" in html
     assert "台指期夜盤比日盤便宜" in html or (
         "台指期夜盤" in html and "比日盤收便宜" in html
     )
@@ -1483,7 +1577,9 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "<code>+0.32%</code>" in html
     assert "<code>月線上</code>" in html
     assert "那斯達克" in html
-    assert "美股" in html and "<code>大盤中性</code>" in html
+    assert "美股" in html and "<code>中性</code>" in html
+    assert "大盤中性" not in html
+    assert "美股交易日" in html
     assert "台指期夜盤" in html
     assert "恐慌指數" in html
     assert "剛到" in html
@@ -1574,7 +1670,9 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     assert "周帶量" not in html
     assert "加權收盤" in html and "<code>46,288.00</code>" in html
     assert "<code>+0.96%</code>　貼著月線" in html
-    assert "美股" in html and "<code>大盤偏空</code>" in html
+    assert "美股" in html and "<code>偏空</code>" in html
+    assert "大盤偏空" not in html
+    assert "美股交易日" in html
     assert any("那斯達克" in ln and "<code>-0.01%</code>" in ln for ln in lines)
     assert any("費半" in ln and "<code>+0.63%</code>" in ln for ln in lines)
     panic = [ln for ln in lines if "恐慌指數" in ln]
@@ -1713,16 +1811,16 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
             "outflow_rows": [],
         },
     )
-    assert "指數還中性，電子鏈逆風" in html
+    assert "中性、費半弱" in html
+    assert "指數還中性，電子鏈逆風" not in html
     assert "大盤中性" not in html
-    assert "電子鏈逆風" in html
     assert "昨天剛輪到、隔夜費半跌" in html
     assert "今天別追電子高檔" in html
     lines = html.split("\n")
     assert any("買多 <code>8,153口</code>" in ln for ln in lines)
     assert any("買空 <code>90,542口</code>" in ln for ln in lines)
     assert any("跳升" in ln for ln in lines)
-    assert "美股" in html and "<code>指數還中性，電子鏈逆風</code>" in html
+    assert "美股" in html and "<code>中性、費半弱</code>" in html
 
 
 def test_outlook_keeps_tsm_cash_and_us_lead_group():
