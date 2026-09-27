@@ -1396,14 +1396,37 @@ def etf_div_plain_rows(
     return out
 
 
-def valuation_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tuple[str, str]]:
-    """介紹圖／查股：有官方數才上列。ETF 不上公司本益／股價淨值比。"""
+def valuation_plain_rows(
+    stock_id: str,
+    db_path: str | None = None,
+    *,
+    quote_as_of: str | None = None,
+) -> List[Tuple[str, str]]:
+    """介紹圖／查股：有官方數才上列。ETF 不上公司本益／股價淨值比。
+
+    估值／資券日若落後收盤日，列尾標「（資料日 M/D）」，不准把昨官方當今日。
+    """
     from universe import is_etf_asset
 
     rows: List[Tuple[str, str]] = []
     etf = is_etf_asset(stock_id=str(stock_id).strip())
     if etf:
         rows.extend(etf_nav_plain_rows(stock_id, db_path))
+    quote = str(quote_as_of or "").replace("-", "")[:8]
+    if len(quote) != 8:
+        try:
+            from quote_integrity import db_as_of_trading_date
+
+            quote = str(db_as_of_trading_date(db_path or get_db_path()) or "").replace("-", "")[:8]
+        except Exception:
+            quote = ""
+
+    def _lag_note(data_ymd: str) -> str:
+        d = str(data_ymd or "").replace("-", "")[:8]
+        if len(d) != 8 or len(quote) != 8 or d == quote:
+            return ""
+        return f"（資料日 {int(d[4:6])}/{int(d[6:8])}）"
+
     val = latest_valuation(stock_id, db_path)
     if val:
         bits = []
@@ -1415,7 +1438,8 @@ def valuation_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tupl
         if val.get("dividend_yield") is not None:
             bits.append(f"殖利率 {val['dividend_yield']:.2f}%")
         if bits:
-            rows.append(("估值", "　".join(bits)))
+            note = _lag_note(str(val.get("date") or ""))
+            rows.append(("估值", "　".join(bits) + note))
     mar = latest_margin(stock_id, db_path)
     if mar:
         mbits = []
@@ -1426,7 +1450,8 @@ def valuation_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tupl
             util = f"（{mar['short_util']:.1f}%）" if mar.get("short_util") is not None else ""
             mbits.append(f"融券 {int(mar['short_bal']):,}張{util}")
         if mbits:
-            rows.append(("資券餘額", "　".join(mbits)))
+            note = _lag_note(str(mar.get("date") or ""))
+            rows.append(("資券餘額", "　".join(mbits) + note))
     return rows
 
 

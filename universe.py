@@ -642,10 +642,10 @@ def listing_industry_face(
         face_ind = ""
     elif industry != "ETF":
         try:
-            from industry_fine import membership_face, peek_cached_fine_chain
+            from industry_fine import CACHE_DAYS, membership_face, peek_cached_fine_chain
 
             # 只讀庫：開機／ensure 已灌櫃買 overlay。這裡不准 seed，否則空測庫會被 1929 列蓋掉證交所備援。
-            chain = peek_cached_fine_chain(path, sid, max_age_days=365)
+            chain = peek_cached_fine_chain(path, sid, max_age_days=CACHE_DAYS)
             face_ind = membership_face(sid, chain=chain)
         except Exception:
             chain = ""

@@ -10,6 +10,7 @@ import logging
 import os
 import sqlite3
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger("WayneBot.TpexIndustry")
@@ -31,7 +32,9 @@ def is_catchall_label(name: str) -> bool:
     return s.startswith("其他")
 
 
+@lru_cache(maxsize=1)
 def load_tpex_seed() -> Dict[str, Dict[str, Any]]:
+    """seed JSON 進記憶體一次；查股／ensure 不准每次重讀整包。"""
     if not os.path.isfile(SEED_PATH):
         return {}
     try:
@@ -59,6 +62,11 @@ def load_tpex_seed() -> Dict[str, Dict[str, Any]]:
             "source": SOURCE,
         }
     return out
+
+
+def clear_tpex_seed_cache() -> None:
+    load_tpex_seed.cache_clear()
+    _OVERLAID.clear()
 
 
 def _emerging_ids(conn: sqlite3.Connection) -> set:
@@ -106,13 +114,14 @@ def apply_tpex_overlay(
 
     path = str(db_path or "")
     stats = {"seed": 0, "write": 0, "keep": 0, "em_skip": 0, "em_clear": 0}
+    key = os.path.abspath(path) if path else ""
+    # 已 overlay 過就直接回；不准先重讀整包 seed JSON 再 skip。
+    if not force and ids is None and key and key in _OVERLAID:
+        stats["skip"] = 1
+        return stats
     seed = load_tpex_seed()
     stats["seed"] = len(seed)
     if not path or not seed:
-        return stats
-    key = os.path.abspath(path)
-    if not force and ids is None and key in _OVERLAID:
-        stats["skip"] = 1
         return stats
     want = [str(s).strip() for s in (ids or seed.keys()) if str(s).strip()]
     conn = sqlite3.connect(path)

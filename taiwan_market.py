@@ -2044,6 +2044,25 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
     return out
 
 
+_INDEX_VOL_TRY_AT: Dict[str, float] = {}
+
+
+def _maybe_fill_zero_index_volumes(db_path: str) -> int:
+    """讀大盤時若最新日量≤0，節流打一次 FMTQIK 補官方張數。沒真數不寫。"""
+    key = os.path.abspath(str(db_path or ""))
+    if not key:
+        return 0
+    now = time.monotonic()
+    if key in _INDEX_VOL_TRY_AT and now - float(_INDEX_VOL_TRY_AT[key]) < 600.0:
+        return 0
+    _INDEX_VOL_TRY_AT[key] = now
+    try:
+        return int(_backfill_zero_index_volumes(db_path) or 0)
+    except Exception as exc:
+        logger.warning("讀路徑補加權量失敗: %s", exc)
+        return 0
+
+
 def load_index_daily(db_path: str, as_of: Optional[str] = None, *, db_only: bool = False) -> pd.DataFrame:
     ensure_index_daily_table(db_path)
     conn = sqlite3.connect(db_path)
@@ -2064,6 +2083,12 @@ def load_index_daily(db_path: str, as_of: Optional[str] = None, *, db_only: bool
         if ohlc:
             names.extend(["open", "high", "low"])
         df = pd.DataFrame(rows, columns=names)
+        try:
+            last_vol = float(df["volume"].iloc[-1] or 0) if len(df) else 0.0
+        except (TypeError, ValueError, IndexError):
+            last_vol = 0.0
+        if last_vol <= 0 and _maybe_fill_zero_index_volumes(db_path) > 0:
+            return load_index_daily(db_path, as_of=as_of, db_only=db_only)
         if as_of:
             sub = df[df["date"] <= str(as_of)]
             if not sub.empty:
