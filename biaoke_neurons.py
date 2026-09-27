@@ -362,49 +362,53 @@ def latest_bundle(db_path: str, sid: str = "", *, n: int = 3) -> Dict[str, str]:
     picked: Dict[str, List[str]] = {nid: [] for nid in NEURON_IDS}
     conn = sqlite3.connect(db_path, timeout=8.0)
     try:
-        for nid in NEURON_IDS:
-            try:
-                if nid == "nest":
-                    rows = conn.execute(
-                        """
-                        SELECT stock_id, post_date, post_time, snippet
+        # 一輪 SQL：每顆各自取最近 lim 句，避免六次往返，也不准被別顆擠掉。
+        try:
+            if want:
+                rows = conn.execute(
+                    """
+                    SELECT neuron_id, stock_id, post_date, post_time, snippet FROM (
+                        SELECT neuron_id, stock_id, post_date, post_time, snippet,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY neuron_id
+                                   ORDER BY post_date DESC, post_time DESC
+                               ) AS rn
                         FROM biaoke_neuron_hits
-                        WHERE neuron_id='nest' AND (stock_id='' OR stock_id='TWII')
-                        ORDER BY post_date DESC, post_time DESC
-                        LIMIT ?
-                        """,
-                        (lim,),
-                    ).fetchall()
-                elif want:
-                    rows = conn.execute(
-                        """
-                        SELECT stock_id, post_date, post_time, snippet
+                        WHERE (neuron_id='nest' AND (stock_id='' OR stock_id='TWII'))
+                           OR (neuron_id!='nest' AND stock_id=?)
+                    ) WHERE rn <= ?
+                    ORDER BY neuron_id, post_date DESC, post_time DESC
+                    """,
+                    (want, lim),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT neuron_id, stock_id, post_date, post_time, snippet FROM (
+                        SELECT neuron_id, stock_id, post_date, post_time, snippet,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY neuron_id
+                                   ORDER BY post_date DESC, post_time DESC
+                               ) AS rn
                         FROM biaoke_neuron_hits
-                        WHERE neuron_id=? AND stock_id=?
-                        ORDER BY post_date DESC, post_time DESC
-                        LIMIT ?
-                        """,
-                        (nid, want, lim),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        """
-                        SELECT stock_id, post_date, post_time, snippet
-                        FROM biaoke_neuron_hits
-                        WHERE neuron_id=? AND IFNULL(stock_id,'')=''
-                        ORDER BY post_date DESC, post_time DESC
-                        LIMIT ?
-                        """,
-                        (nid, lim),
-                    ).fetchall()
-            except sqlite3.Error:
-                rows = []
-            for _stock, day, hm, snip in rows:
-                snip = _SPACE.sub(" ", str(snip or "")).strip()
-                if not snip:
-                    continue
-                stamp = " ".join(x for x in (str(day or ""), str(hm or "")) if x)
-                picked[nid].append(f"{stamp} {snip}".strip() if stamp else snip)
+                        WHERE (neuron_id='nest' AND (stock_id='' OR stock_id='TWII'))
+                           OR (neuron_id!='nest' AND IFNULL(stock_id,'')='')
+                    ) WHERE rn <= ?
+                    ORDER BY neuron_id, post_date DESC, post_time DESC
+                    """,
+                    (lim,),
+                ).fetchall()
+        except sqlite3.Error:
+            rows = []
+        for nid, _stock, day, hm, snip in rows:
+            nid = str(nid or "")
+            if nid not in picked:
+                continue
+            snip = _SPACE.sub(" ", str(snip or "")).strip()
+            if not snip:
+                continue
+            stamp = " ".join(x for x in (str(day or ""), str(hm or "")) if x)
+            picked[nid].append(f"{stamp} {snip}".strip() if stamp else snip)
     finally:
         conn.close()
     return {k: "；".join(v) for k, v in picked.items() if v}

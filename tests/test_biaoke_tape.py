@@ -336,3 +336,60 @@ def test_chi_sep24_wick_is_not_main_rise():
     assert "待驗證" in extra
     assert "9/24 高碰到≠確認" in extra
     assert "不是保證" in extra
+
+
+def test_official_for_post_skips_unclosed_today_bar(tmp_path):
+    """盤中庫裡若已有今日未收柱，不准當官方收；改對昨日並標未收盤。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_tape import official_for_post, record_events
+
+    db = str(tmp_path / "unclosed.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+        ("20260915", "3105", "穩懋", 450.0, 470.0, 440.0, 460.0, 8000, 3.6),
+    )
+    conn.commit()
+    conn.close()
+    mid = datetime(2026, 9, 15, 10, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    bar, pinned = official_for_post(db, "3105", "2026-09-15", now=mid)
+    assert pinned is True
+    assert bar is not None
+    assert str(bar.get("date") or "").replace("-", "")[:8] == "20260914"
+    assert float(bar.get("close") or 0) == 444.0
+    after = datetime(2026, 9, 15, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    bar2, pinned2 = official_for_post(db, "3105", "2026-09-15", now=after)
+    assert pinned2 is False
+    assert str(bar2.get("date") or "").replace("-", "")[:8] == "20260915"
+    n = record_events(
+        db,
+        [
+            {
+                "id": "mid-1",
+                "date": "2026-09-15",
+                "time": "10:30",
+                "kind": "reply",
+                "text": "穩懋昨天跌破支撐立刻站回",
+            }
+        ],
+        now=mid,
+    )
+    assert n >= 1
+    conn = sqlite3.connect(db)
+    note = conn.execute(
+        "SELECT bar_date, note FROM biaoke_tape WHERE post_id='mid-1' AND stock_id='3105'"
+    ).fetchone()
+    conn.close()
+    assert note[0] == "20260914"
+    assert "未收盤" in (note[1] or "")
+
+
+def test_named_pairs_tags_do_not_pull_quoted_bystander_stock():
+    """引號裡路人點的檔＋tags，不准當成他自己點名。"""
+    pairs = named_pairs('"健策要跌停了" 沒有，大盤還好', ["健策"])
+    assert all(s != "3653" for s, _n in pairs)
+    spoken = named_pairs("健策爆大量跌破平台", ["健策"])
+    assert any(s == "3653" for s, _n in spoken)

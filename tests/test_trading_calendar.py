@@ -317,3 +317,15 @@ def test_taipei_calendar_ymd_is_today_not_last_close():
     assert taipei_calendar_ymd(mon) == "20260914"
     sun = datetime(2026, 9, 13, 23, 10, tzinfo=taipei)
     assert taipei_calendar_ymd(sun) == "20260913"
+
+
+def test_is_official_daily_bar_today_needs_close():
+    from trading_calendar import is_official_daily_bar
+
+    taipei = ZoneInfo("Asia/Taipei")
+    mid = datetime(2026, 9, 15, 10, 0, tzinfo=taipei)
+    after = datetime(2026, 9, 15, 13, 30, tzinfo=taipei)
+    assert is_official_daily_bar("20260914", now=mid)
+    assert not is_official_daily_bar("20260915", now=mid)
+    assert is_official_daily_bar("20260915", now=after)
+    assert not is_official_daily_bar("20260916", now=after)

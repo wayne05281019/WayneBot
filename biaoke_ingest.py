@@ -953,11 +953,13 @@ def parse_api_thread(
 ) -> List[Dict[str, Any]]:
     """JSON 留言：他自己回、別人回他、他回別人。路人 kind=bystander，不當他的判斷。
 
-    一／二／三層都收。第四層起不往下走。
+    主文樓下凡是他自己回的都收（含回在別人留言裡、回文裡再回）。
+    層數上限只防 API 環，不准為了省事砍掉深樓自回。
     """
     nested_by_id = nested_by_id or {}
     out: List[Dict[str, Any]] = []
     seen = set()
+    max_layer = 12
 
     def walk(items: Sequence[Any], layer: int, parent_cm: Optional[Dict[str, Any]] = None) -> None:
         for cm in items:
@@ -996,7 +998,7 @@ def parse_api_thread(
                     if sid and sid in have:
                         continue
                     kids.append(sub)
-            if kids and layer < 3:
+            if kids and layer < max_layer:
                 walk(kids, layer + 1, cm)
 
     walk(_comment_list(payload), 1, None)
@@ -1010,7 +1012,7 @@ def parse_api_author_replies(
     now: Optional[datetime] = None,
     nested_by_id: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
-    """JSON 留言只收飆大本人。路人樓裡的自回、回文裡的回文都收，層數最多三。"""
+    """JSON 留言只收飆大本人。路人樓裡的自回、回文裡的回文都收，不准因層深漏掉。"""
     rows = parse_api_thread(
         payload,
         parent_id=parent_id,

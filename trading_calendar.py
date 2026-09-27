@@ -150,6 +150,29 @@ def morning_screen_pipeline_key(db_path: str, now=None) -> str:
     return f"screen-{as_of or 'none'}"
 
 
+def is_official_daily_bar(ymd: str, *, now=None) -> bool:
+    """這根日 K 算不算已收官方柱。當天 13:30 前那根不算官方收。
+
+    飆大 tape／對質共用：盤中未收不當官方收。
+    """
+    day = normalize_ymd(ymd)
+    if len(day) != 8 or not day.isdigit():
+        return False
+    from config import taipei_now
+
+    stamp = now or taipei_now()
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=TAIPEI)
+    else:
+        stamp = stamp.astimezone(TAIPEI)
+    today = stamp.strftime("%Y%m%d")
+    if day < today:
+        return True
+    if day > today:
+        return False
+    return (stamp.hour, stamp.minute) >= (13, 30)
+
+
 def is_tw_equity_session(now=None) -> bool:
     """台股現股連續撮合：交易日 09:00–13:30。國定假日平日不當盤中。"""
     from config import taipei_now
