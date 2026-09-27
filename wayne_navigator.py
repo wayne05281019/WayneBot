@@ -1119,7 +1119,10 @@ def html_escape(val) -> str:
 
 
 def format_nav_volume_label(volume_lots) -> str:
-    """導航圖量標：庫內是張。不要 /1000 寫 0.00K（冷門 2 張會變成沒量）。缺官方量標缺，不准假 0。"""
+    """導航圖量標：庫內是張（興櫃可小數）。缺官方量標缺，不准假 0。
+
+    薄量日（<1 張）改標股數，避免 round 成「量 0張」看起來像沒成交。
+    """
     if volume_lots is None:
         return "量 缺"
     try:
@@ -1128,10 +1131,129 @@ def format_nav_volume_label(volume_lots) -> str:
         return "量 缺"
     if v != v:  # NaN
         return "量 缺"
+    if v < 0:
+        v = 0.0
+    if v == 0:
+        return "量 0張"
+    if v < 1:
+        shares = int(round(v * 1000.0))
+        if shares <= 0:
+            shares = 1
+        return f"量 {shares:,}股"
     n = int(round(v))
-    if n < 0:
-        n = 0
     return f"量 {n:,}張"
+
+
+def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
+    """開市日軸連續：有官方列用真開高低收量；缺列＝前收停價＋量 0＋is_halt。
+
+    週末／國定假不進軸。不准編高低振幅、不准填假量柱。只做圖上展示對齊，不寫庫。
+    """
+    if df is None or getattr(df, "empty", True):
+        return df
+    work = df.copy()
+    work["date"] = work["date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    for col in ("open", "high", "low", "close", "volume"):
+        if col not in work.columns:
+            return df
+        work[col] = pd.to_numeric(work[col], errors="coerce")
+    work = work.dropna(subset=["date", "close"]).reset_index(drop=True)
+    if work.empty:
+        return work
+    work = work.sort_values("date", kind="mergesort").drop_duplicates("date", keep="last")
+    work = work.reset_index(drop=True)
+    from trading_calendar import iter_tw_open_days
+
+    days = iter_tw_open_days(str(work["date"].iloc[0]), str(work["date"].iloc[-1]))
+    if not days:
+        return work
+    by_d = {str(r["date"]): r for _, r in work.iterrows()}
+    name = ""
+    if "stock_name" in work.columns:
+        try:
+            name = str(work["stock_name"].dropna().iloc[-1] or "")
+        except Exception:
+            name = ""
+    sid = ""
+    if "stock_id" in work.columns:
+        try:
+            sid = str(work["stock_id"].dropna().iloc[-1] or "")
+        except Exception:
+            sid = ""
+    src = ""
+    if "quote_source" in work.columns:
+        try:
+            src = str(work["quote_source"].dropna().iloc[-1] or "")
+        except Exception:
+            src = ""
+    rows = []
+    prev_close = None
+    n_fill = 0
+    for d in days:
+        raw = by_d.get(d)
+        if raw is not None:
+            try:
+                o = float(raw["open"])
+                h = float(raw["high"])
+                l = float(raw["low"])
+                c = float(raw["close"])
+                v = float(raw["volume"] if raw["volume"] == raw["volume"] else 0.0)
+            except (TypeError, ValueError):
+                o = h = l = c = 0.0
+                v = 0.0
+            if c <= 0 and prev_close and prev_close > 0:
+                o = h = l = c = float(prev_close)
+                v = 0.0
+                halt = True
+                n_fill += 1
+            else:
+                if h <= 0:
+                    h = max(o, c, l) if max(o, c, l) > 0 else c
+                if l <= 0:
+                    l = min(x for x in (o, c, h) if x > 0) if h > 0 else c
+                # 真無成交或官方停價：無量且高低同價 → halt；有量不准當假停
+                halt = bool(v <= 0 and abs(h - l) <= 1e-8)
+                if c > 0:
+                    prev_close = c
+            row = {
+                "date": d,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": max(0.0, v),
+                "is_halt": halt,
+                "no_trade_fill": False,
+            }
+        elif prev_close and prev_close > 0:
+            # 開市日庫無列：展示停在前一日真收，量 0。不是新假行情。
+            px = float(prev_close)
+            row = {
+                "date": d,
+                "open": px,
+                "high": px,
+                "low": px,
+                "close": px,
+                "volume": 0.0,
+                "is_halt": True,
+                "no_trade_fill": True,
+            }
+            n_fill += 1
+        else:
+            continue
+        if name:
+            row["stock_name"] = name
+        if sid:
+            row["stock_id"] = sid
+        if src:
+            row["quote_source"] = src
+        rows.append(row)
+    if not rows:
+        return work
+    out = pd.DataFrame(rows)
+    out.attrs["no_trade_fill_n"] = int(n_fill)
+    out.attrs["no_trade_n"] = int(out["is_halt"].fillna(False).astype(bool).sum())
+    return out
 
 
 def nav_volume_bar_heights(volumes) -> tuple:
@@ -4126,18 +4248,47 @@ def _draw_nav_legend(ax1) -> None:
 
 
 def _set_staggered_month_ticks(ax, months: list, mpos: list, *, compact: bool = False) -> None:
-    """月份標奇偶上下兩行錯開，避免相鄰月字互疊。月都保留，不准省略來省事。"""
+    """月份標：預設單排；只有會互壓的那幾個才下移，其餘保持同一排。月都保留。"""
     from matplotlib.transforms import blended_transform_factory
 
     ax.set_xticks(list(mpos))
-    ax.set_xticklabels([])  # 自畫兩行，不用預設互相擠的單行
+    ax.set_xticklabels([])  # 自畫，避免預設擠成互壓
     ax.tick_params(axis="x", pad=1.0, length=3.5)
+    if not months or not mpos:
+        return
     trans = blended_transform_factory(ax.transData, ax.transAxes)
     fp = _fp(7.5 if compact else 8.5)
-    # 軸下方：偶數行較近、奇數行較遠（兩行）
     y_near, y_far = (-0.055, -0.155) if compact else (-0.07, -0.20)
+    try:
+        x0, x1 = ax.get_xlim()
+        span = float(x1 - x0) if x1 > x0 else float(max(mpos) - min(mpos) + 1)
+    except Exception:
+        span = float(max(mpos) - min(mpos) + 1) if mpos else 1.0
+    span = max(span, 1.0)
+    # 全形月標字寬估軸寬 1.2%（略鬆）；半寬相加 ≥ 間距＝會壓
+    char_data = span * (0.011 if compact else 0.012)
+
+    def _half_w(lab: str) -> float:
+        return 0.5 * char_data * max(len(str(lab)), 4)
+
+    def _overlap(i: int, j: int) -> bool:
+        gap = abs(float(mpos[i]) - float(mpos[j]))
+        return gap < (_half_w(months[i]) + _half_w(months[j]))
+
+    # 逐顆放：能跟已在近排的不互壓就近排；否則下排。不准整排無腦雙排。
+    row: list[int] = []
+    for i in range(len(mpos)):
+        place = 0
+        for j in range(i):
+            if row[j] != 0:
+                continue
+            if _overlap(i, j):
+                place = 1
+                break
+        row.append(place)
+
     for i, (x, lab) in enumerate(zip(mpos, months)):
-        y = y_near if i % 2 == 0 else y_far
+        y = y_far if row[i] else y_near
         ax.text(
             float(x), y, str(lab),
             transform=trans, ha="center", va="top",
@@ -4386,6 +4537,7 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
         work = sanitize_ohlc_frame(work)
     except Exception:
         pass
+    work["date"] = work["date"].astype(str).str.replace("-", "", regex=False).str[:8]
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
     if work["dt"].isna().all():
         work["dt"] = pd.to_datetime(work["date"].astype(str), errors="coerce")
@@ -4394,6 +4546,12 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
         return None
     # 左舊右新：興櫃 load 是 DESC，沒排好底軸日期會跟 K／量對錯位
     work = work.sort_values("dt", kind="mergesort").reset_index(drop=True)
+    # 開市日軸連續：缺列＝前收停價＋無量（標 halt），週末假日不進軸
+    work = align_ohlc_to_tw_open_days(work)
+    if work is None or work.empty:
+        return None
+    work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
+    work = work.dropna(subset=["dt"]).reset_index(drop=True)
     if "is_halt" not in work.columns:
         work["is_halt"] = False
     return work
@@ -4475,21 +4633,27 @@ def _paint_nav_on_axes(
         x = xs[i]
         is_halt = bool(halt.iloc[i])
         color = "#e53935" if candle_up[i] else "#00897b"
-        ax1.plot([x, x], [lo, hi], color="#bdbdbd" if is_halt else color, linewidth=1.05, zorder=3, solid_capstyle="round")
+        if is_halt:
+            # 無成交停價：可見灰短橫線，不准隱形挖洞；不准編振幅
+            ax1.plot(
+                [x - 0.38, x + 0.38], [cl, cl],
+                color="#9e9e9e", linewidth=1.7, zorder=4, solid_capstyle="round",
+            )
+            ax1.plot([x, x], [cl - span * 0.004, cl + span * 0.004], color="#9e9e9e", linewidth=1.2, zorder=4)
+            ax_sig.add_patch(patches.Rectangle((x - 0.42, 0.05), 0.84, 0.9, facecolor="#eceff1", edgecolor="#ffffff", lw=0.15, zorder=2))
+            continue
+        ax1.plot([x, x], [lo, hi], color=color, linewidth=1.05, zorder=3, solid_capstyle="round")
         body = max(abs(cl - op), span * 0.0018)
         ax1.add_patch(
             patches.Rectangle(
                 (x - 0.32, min(op, cl)),
                 0.64,
                 body,
-                facecolor="#eeeeee" if is_halt else color,
-                edgecolor="#eeeeee" if is_halt else color,
+                facecolor=color,
+                edgecolor=color,
                 zorder=3,
             )
         )
-        if is_halt:
-            ax_sig.add_patch(patches.Rectangle((x - 0.42, 0.05), 0.84, 0.9, facecolor="#eceff1", edgecolor="#ffffff", lw=0.15, zorder=2))
-            continue
 
         wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
         wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
@@ -4780,10 +4944,24 @@ def draw_from_ohlc(
         "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍",
         ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
+    halt_n = int(work["is_halt"].fillna(False).astype(bool).sum()) if "is_halt" in work.columns else 0
+    fill_n = 0
+    if "no_trade_fill" in work.columns:
+        fill_n = int(work["no_trade_fill"].fillna(False).astype(bool).sum())
+    else:
+        fill_n = int(getattr(work, "attrs", {}).get("no_trade_fill_n") or 0)
+    no_trade_note = ""
+    if halt_n > 0:
+        no_trade_note = (
+            f"　無成交／停價 {halt_n} 日＝灰K＋量0"
+            + (f"（其中開市缺列補前收 {fill_n}）" if fill_n else "")
+            + "，非假行情"
+        )
     fig.text(
         0.50, 0.018,
         "量能列：紫↑量能異常　紅↑警告（粉底）　藍↑月波動低（藍底＝同義，非裝飾）　"
-        "圖內文字／標籤／箭頭不准壓到 K、量柱、數字或其他字",
+        "開市日軸連續；週末假日不進軸。"
+        f"{no_trade_note}",
         ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
     plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
