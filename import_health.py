@@ -9,7 +9,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MIN_TW = 800
 MIN_TWO = 600
-MIN_EM = 50  # 興櫃獨立表；與 emerging_quotes.missing_emerging_days 門檻對齊
+# 櫃買興櫃 OpenAPI 全日約 360（含無成交停價列）。半套 ~250 不准當齊、不准停補。
+MIN_EM = 300
+MIN_EM_MONTHLY = 200  # t187ap05_R 同期約 360；介紹卡讀 monthly_revenue.market=EM
 MIN_CHIPS_NONZERO = 100  # total 夠多時法人非0不能是 0
 
 
@@ -17,18 +19,7 @@ def increment_health_ok(health: Dict[str, Any]) -> bool:
     """盤後融合是否達標：該有的數字絕不能是 0，且上市／上櫃／興櫃都要過門檻。"""
     if not health:
         return False
-    total = int(health.get("total") or 0)
-    tw = int(health.get("tw") or 0)
-    two = int(health.get("two") or 0)
-    em = int(health.get("em") or 0)
-    chips = int(health.get("chips_nonzero") or 0)
-    if total == 0 or tw == 0 or two == 0:
-        return False
-    if em < MIN_EM:
-        return False
-    if total >= 800 and chips < MIN_CHIPS_NONZERO:
-        return False
-    return sides_complete(tw, two)
+    return not increment_health_failures(health)
 
 
 def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str]:
@@ -42,6 +33,8 @@ def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str
     two = int(health.get("two") or 0)
     em = int(health.get("em") or 0)
     chips = int(health.get("chips_nonzero") or 0)
+    monthly_n = int(health.get("monthly_n") or 0)
+    em_m = int(health.get("em_monthly_n") or 0)
     if total == 0:
         reasons.append(f"{label} 日 K 合計為 0")
     if tw == 0:
@@ -54,6 +47,13 @@ def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str
         reasons.append(f"{label} 法人非0僅 {chips}（<{MIN_CHIPS_NONZERO}）")
     if total > 0 and tw > 0 and two > 0 and not sides_complete(tw, two):
         reasons.append(f"{label} 上市 {tw}/{MIN_TW} 上櫃 {two}/{MIN_TWO} 未齊")
+    # 上市櫃月營收已進庫卻沒興櫃同期＝介紹卡只畫不存／沒寫庫
+    if monthly_n >= 200 and em_m < MIN_EM_MONTHLY:
+        ym = str(health.get("em_monthly_latest") or health.get("latest_month") or "").strip()
+        reasons.append(
+            f"{label} 興櫃月營收 {em_m}/{MIN_EM_MONTHLY}"
+            + (f"（{ym}）" if ym else "")
+        )
     return reasons
 MIN_TOTAL = 1500
 _COMPLETE_DATE_CACHE: Dict[str, Any] = {}
@@ -243,9 +243,40 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         em = 0
     try:
         m_n = cur.execute("SELECT COUNT(*), MAX(yyyymm) FROM monthly_revenue").fetchone()
-        q_n = cur.execute("SELECT COUNT(*), MAX(year), MAX(season) FROM quarterly_income").fetchone()
+        # 不准 MAX(year), MAX(season) 各自取——會拼出不存在的 2026Q4。
+        q_latest = cur.execute(
+            "SELECT year, season FROM quarterly_income ORDER BY year DESC, season DESC LIMIT 1"
+        ).fetchone()
+        q_count = cur.execute("SELECT COUNT(*) FROM quarterly_income").fetchone()
+        q_n = (
+            int(q_count[0] or 0) if q_count else 0,
+            int(q_latest[0]) if q_latest else 0,
+            int(q_latest[1]) if q_latest else 0,
+        )
     except sqlite3.OperationalError:
         m_n, q_n = (0, ""), (0, 0, 0)
+    em_monthly_n = 0
+    em_monthly_latest = ""
+    try:
+        latest_month_probe = str(m_n[1] or "")
+        if latest_month_probe:
+            em_monthly_n = int(
+                cur.execute(
+                    "SELECT COUNT(*) FROM monthly_revenue WHERE market=? AND yyyymm=?",
+                    ("EM", latest_month_probe),
+                ).fetchone()[0]
+                or 0
+            )
+            em_monthly_latest = latest_month_probe
+        else:
+            row_em = cur.execute(
+                "SELECT COUNT(*), MAX(yyyymm) FROM monthly_revenue WHERE market=?",
+                ("EM",),
+            ).fetchone()
+            em_monthly_n = int(row_em[0] or 0)
+            em_monthly_latest = str(row_em[1] or "")
+    except sqlite3.OperationalError:
+        em_monthly_n, em_monthly_latest = 0, ""
     try:
         x_n = cur.execute(
             "SELECT COUNT(*), MAX(CASE WHEN factor>0 THEN ex_date END) FROM ex_rights"
@@ -268,6 +299,10 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
     monthly_note = monthly_revenue_status(int(m_n[0] or 0), latest_month, today_ymd=yyyymmdd)
     if monthly_note.get("missing"):
         problems.append(monthly_note["problem"])
+    if latest_month and em_monthly_n < MIN_EM_MONTHLY:
+        problems.append(
+            f"待補興櫃月營收 {em_monthly_n}/{MIN_EM_MONTHLY}（{latest_month}；介紹卡讀此表）"
+        )
     if int(x_n[0] or 0) < 50:
         problems.append("待補除權息")
     today_ok = increment_health_ok(
@@ -291,6 +326,8 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         "monthly_n": int(m_n[0] or 0),
         "latest_month": latest_month,
         "monthly_note": monthly_note,
+        "em_monthly_n": int(em_monthly_n or 0),
+        "em_monthly_latest": em_monthly_latest or "",
         "income_n": int(q_n[0] or 0),
         "latest_quarter": f"{q_n[1]}Q{q_n[2]}" if q_n[1] else "",
         "ex_rights_n": int(x_n[0] or 0),
@@ -448,6 +485,7 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
     counts: Dict[str, int] = {}
     for t in (
         "daily_quotes",
+        "emerging_quotes",
         "monthly_revenue",
         "quarterly_income",
         "ex_rights",
@@ -462,6 +500,20 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
     span = cur.execute(
         "SELECT MIN(date), MAX(date), COUNT(DISTINCT date) FROM daily_quotes"
     ).fetchone() if "daily_quotes" in tables else ("", "", 0)
+    em_day = ""
+    em_day_n = 0
+    if "emerging_quotes" in tables:
+        try:
+            em_row = cur.execute(
+                "SELECT date, COUNT(*) FROM emerging_quotes GROUP BY date ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+            if em_row:
+                em_day = str(em_row[0] or "")
+                em_day_n = int(em_row[1] or 0)
+        except sqlite3.Error:
+            em_day, em_day_n = "", 0
+    em_m_n = int(health.get("em_monthly_n") or 0)
+    em_m_latest = str(health.get("em_monthly_latest") or "")
     conn.close()
     gaps = health.get("history_issues") or []
     disk: Dict[str, Any] = {"path": str(db_path or ""), "bytes": 0, "mb": 0.0}
@@ -489,10 +541,21 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
             "to": span[1] or "",
             "tw": int(health.get("tw") or 0),
             "two": int(health.get("two") or 0),
+            "em": int(health.get("em") or 0),
             "total": int(health.get("total") or 0),
             "chips_nonzero": int(health.get("chips_nonzero") or 0),
         },
-        "monthly_revenue": {"rows": counts.get("monthly_revenue") or 0, "latest": health.get("latest_month") or ""},
+        "emerging_quotes": {
+            "rows": counts.get("emerging_quotes") or 0,
+            "latest_date": em_day,
+            "latest_n": em_day_n,
+        },
+        "monthly_revenue": {
+            "rows": counts.get("monthly_revenue") or 0,
+            "latest": health.get("latest_month") or "",
+            "em_rows": em_m_n,
+            "em_latest": em_m_latest,
+        },
         "quarterly_income": {"rows": counts.get("quarterly_income") or 0, "latest": health.get("latest_quarter") or ""},
         "ex_rights": {"rows": counts.get("ex_rights_n") or counts.get("ex_rights") or 0, "latest": health.get("latest_ex") or ""},
         "stock_universe": {"rows": counts.get("stock_universe") or 0},

@@ -44,6 +44,39 @@ def test_increment_health_ok_rejects_thin_emerging():
     assert any("興櫃" in r for r in increment_health_failures(health, cap="20260902"))
 
 
+def test_increment_health_ok_rejects_half_emerging_day():
+    """半套 ~250 列不准當齊（舊門檻 50 會誤放行）。"""
+    health = {
+        "total": 2000,
+        "tw": max(MIN_TW, 900),
+        "two": max(MIN_TWO, 700),
+        "chips_nonzero": max(MIN_CHIPS_NONZERO, 500),
+        "em": 259,
+    }
+    assert MIN_EM > 259
+    assert increment_health_ok(health) is False
+    assert any("興櫃 259" in r for r in increment_health_failures(health, cap="20260924"))
+
+
+def test_increment_health_ok_rejects_listed_monthly_without_emerging():
+    """上市櫃月營收進了、興櫃同期 0＝介紹卡沒寫庫。"""
+    from import_health import MIN_EM_MONTHLY
+
+    health = {
+        "total": 2000,
+        "tw": max(MIN_TW, 900),
+        "two": max(MIN_TWO, 700),
+        "chips_nonzero": max(MIN_CHIPS_NONZERO, 500),
+        "em": MIN_EM,
+        "monthly_n": 4000,
+        "em_monthly_n": 0,
+        "latest_month": "202608",
+    }
+    assert increment_health_ok(health) is False
+    assert any("興櫃月營收" in r for r in increment_health_failures(health, cap="20260924"))
+    assert MIN_EM_MONTHLY >= 200
+
+
 def test_increment_health_ok_passes_complete():
     health = {
         "total": 2000,

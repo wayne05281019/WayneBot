@@ -393,9 +393,12 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
     listing = listing_zh(u.get("market_type"))
 
     latest_m = conn.execute("SELECT MAX(yyyymm) FROM monthly_revenue").fetchone()[0] or ""
-    latest_q = conn.execute("SELECT MAX(year), MAX(season) FROM quarterly_income").fetchone()
-    q_year = int(latest_q[0] or 0)
-    q_season = int(latest_q[1] or 0)
+    # 真最新一季：同一列的 year+season，不准 MAX(year)×MAX(season) 拼假季。
+    latest_q = conn.execute(
+        "SELECT year, season FROM quarterly_income ORDER BY year DESC, season DESC LIMIT 1"
+    ).fetchone()
+    q_year = int(latest_q[0] or 0) if latest_q else 0
+    q_season = int(latest_q[1] or 0) if latest_q else 0
 
     my_m = conn.execute(
         "SELECT * FROM monthly_revenue WHERE stock_id=? ORDER BY yyyymm DESC LIMIT 1",

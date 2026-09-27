@@ -824,7 +824,15 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
     months = sorted({r["yyyymm"] for r in monthly_rows})
     quarters = sorted({f"{r['year']}Q{r['season']}" for r in income_rows})
     m_max = conn.execute("SELECT COUNT(*), MAX(yyyymm) FROM monthly_revenue").fetchone()
-    q_max = conn.execute("SELECT COUNT(*), MAX(year), MAX(season) FROM quarterly_income").fetchone()
+    q_latest = conn.execute(
+        "SELECT year, season FROM quarterly_income ORDER BY year DESC, season DESC LIMIT 1"
+    ).fetchone()
+    q_count = conn.execute("SELECT COUNT(*) FROM quarterly_income").fetchone()
+    q_max = (
+        int(q_count[0] or 0) if q_count else 0,
+        int(q_latest[0]) if q_latest else 0,
+        int(q_latest[1]) if q_latest else 0,
+    )
     conn.close()
     stats = {
         "monthly_rows": m_n,

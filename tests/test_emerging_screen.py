@@ -282,6 +282,47 @@ BODY,"2758  ","LOUISA COFFEE       ","68.80  ","70.50  ","-      ","69.11  ","- 
         finally:
             os.remove(path)
 
+    def test_half_filled_emerging_day_still_counts_as_gap(self):
+        """庫裡已有 259 列半套日仍要重抓，不准因舊門檻 50 停補。"""
+        from emerging_quotes import ensure_emerging_table, missing_emerging_days
+        from import_health import MIN_EM
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_emerging_table(path)
+            conn = sqlite3.connect(path)
+            for i in range(259):
+                conn.execute(
+                    "INSERT INTO emerging_quotes("
+                    "date,stock_id,stock_name,market,open,high,low,close,"
+                    "volume,turnover_k,pct_change,avg_price,source) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        "20260924",
+                        f"{7000+i:04d}",
+                        "半套",
+                        "EM",
+                        10,
+                        11,
+                        9,
+                        10,
+                        0.185,
+                        1,
+                        0,
+                        10,
+                        "seed",
+                    ),
+                )
+            conn.commit()
+            conn.close()
+            self.assertLess(259, MIN_EM)
+            holes = missing_emerging_days(path, "20260924", lookback=3)
+            self.assertIn("20260924", holes)
+        finally:
+            os.remove(path)
+
 
 class EmergingScreenIsolationTests(unittest.TestCase):
     def test_listed_screen_drops_emerging_universe(self):

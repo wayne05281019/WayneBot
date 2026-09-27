@@ -485,10 +485,28 @@ def _weekdays_ending(cap: str, *, limit: int = 40) -> List[str]:
     return out
 
 
-def missing_emerging_days(db_path: str, cap: str, *, lookback: int = 40, min_rows: int = 50) -> List[str]:
-    """中間缺日也要補。最新日若比 cap 新（盤中 OpenAPI）仍要回補 cap 以前的洞。"""
+def _em_day_min_rows(min_rows: int = 0) -> int:
+    """與 import_health.MIN_EM 同一門檻：半套日（~250）仍要重抓到全日。"""
+    if int(min_rows or 0) > 0:
+        return int(min_rows)
+    try:
+        from import_health import MIN_EM
+
+        return int(MIN_EM)
+    except Exception:
+        return 300
+
+
+def missing_emerging_days(
+    db_path: str, cap: str, *, lookback: int = 40, min_rows: int = 0
+) -> List[str]:
+    """中間缺日也要補。最新日若比 cap 新（盤中 OpenAPI）仍要回補 cap 以前的洞。
+
+    min_rows 預設跟 MIN_EM（300）：庫裡已有 50～299 列的半套日仍算缺口，不准停補。
+    """
+    need = _em_day_min_rows(min_rows)
     days = _weekdays_ending(cap, limit=lookback)
-    return [d for d in days if emerging_rows_on(db_path, d) < int(min_rows)]
+    return [d for d in days if emerging_rows_on(db_path, d) < need]
 
 
 def sync_emerging_quotes(
@@ -502,7 +520,8 @@ def sync_emerging_quotes(
     """補齊官方興櫃日表到上市櫃已收那日。庫裡已有很多天時，缺的近期日仍要抓。"""
     ensure_emerging_table(db_path)
     sess = session or _session()
-    stats = {"latest": 0, "hist": 0, "days": 0, "gaps": 0}
+    need = _em_day_min_rows()
+    stats = {"latest": 0, "hist": 0, "days": 0, "gaps": 0, "min_rows": need}
     try:
         as_of, rows = fetch_emerging_openapi(sess)
         if as_of and rows:
@@ -511,9 +530,11 @@ def sync_emerging_quotes(
         logger.exception("興櫃 OpenAPI 當日行情失敗")
     listed = _listed_quote_cap(db_path)
     want_cap = str(cap or "").replace("-", "")[:8] or listed
-    gap_days = missing_emerging_days(db_path, want_cap, lookback=max(40, int(lookback_days) // 2))
+    gap_days = missing_emerging_days(
+        db_path, want_cap, lookback=max(40, int(lookback_days) // 2), min_rows=need
+    )
     for ymd in gap_days:
-        if emerging_rows_on(db_path, ymd) >= 50:
+        if emerging_rows_on(db_path, ymd) >= need:
             continue
         try:
             as_of, rows = fetch_emerging_csv_day(ymd, sess)
@@ -537,7 +558,7 @@ def sync_emerging_quotes(
             if day.weekday() >= 5:
                 continue
             ymd = day.strftime("%Y%m%d")
-            if emerging_rows_on(db_path, ymd) >= 50:
+            if emerging_rows_on(db_path, ymd) >= need:
                 continue
             try:
                 as_of, rows = fetch_emerging_csv_day(ymd, sess)
