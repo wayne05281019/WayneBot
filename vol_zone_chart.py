@@ -311,15 +311,26 @@ def _is_zone_bar(row: Dict[str, Any], zone: Dict[str, Any]) -> bool:
     return False
 
 
-def _stand_streak(rows: List[Dict[str, Any]], lo: float, hi: float) -> List[Dict[str, Any]]:
+def _stand_streak(
+    rows: List[Dict[str, Any]],
+    lo: float,
+    hi: float,
+    *,
+    since: str = "",
+) -> List[Dict[str, Any]]:
     """連站＝從最新收往回，連續收盤 ≥ 撐。
 
     人在壓之上仍算站在這條撐上（收仍 ≥ 撐）；只有收盤跌破撐才斷。
+    since＝除權息尺度切開日（含當日）：更早的柱是另一把尺，不准拿來數「除息後撐」天數。
     hi 留給呼叫端簽名對齊；是否已過壓由 vol_zone_position_line 先分流。
     """
     _ = hi
+    cut = _trade_day(since)
     streak: List[Dict[str, Any]] = []
     for row in reversed(rows):
+        d = _trade_day(row.get("date"))
+        if cut and d and d < cut:
+            break
         c = _px(row.get("close"))
         if c >= lo:
             streak.append(row)
@@ -456,7 +467,9 @@ def vol_zone_position_line(
     if cl >= hi:
         return _end(f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊")
 
-    streak = _stand_streak(rows, lo, hi)
+    # 有官方除權息切開才卡 since；沒有則仍用全序列（同尺價可含爆大量日前）。
+    since = _trade_day(zone.get("ex_cut") or "")
+    streak = _stand_streak(rows, lo, hi, since=since)
     n = len(streak) or 1
     n_zh = _zh_days(n)
     n_ord = _zh_days(n, ordinal=True)

@@ -286,6 +286,7 @@ def test_ex_div_cuts_pre_ex_volume_and_caption():
     assert raw["date"] == "20260910"
     zone = find_volume_zone(work, ex_events=[ev])
     assert zone["date"] == "20260923"
+    assert zone["ex_cut"] == "20260923"
     assert float(zone["high"]) == 40.45
     assert float(zone["low"]) == 39.0
     bars = work.to_dict("records")
@@ -299,6 +300,32 @@ def test_ex_div_cuts_pre_ex_volume_and_caption():
     assert "圖是官方原柱" in cap
     assert "除息後支撐" in cap
     assert "崩盤" not in cap
+    # 除息前收 45 數值 ≥ 除息後撐 39，不准算進「除息後撐」天數
+    assert "第二天" in cap
+    assert "第107" not in cap
+    assert "第4" not in cap and "第四天" not in cap
+    assert "第3" not in cap and "第三天" not in cap
+
+
+def test_ex_cut_streak_ignores_pre_ex_closes_above_new_support():
+    """真實 2542 類：長序列除息前高價 ≥ 新撐，連站只能從 ex_cut 起算。"""
+    zone = {
+        "date": "20260923",
+        "high": 40.45,
+        "low": 39.0,
+        "volume": 47140,
+        "ex_cut": "20260923",
+    }
+    bars = [{"high": 48.0, "low": 47.0, "close": 47.5, "volume": 8000, "date": f"20260{i:03d}"} for i in range(101, 123)]
+    # overwrite last pre-ex and ex day / after
+    bars[-3] = {"date": "20260922", "high": 46.8, "low": 45.4, "close": 45.45, "volume": 22311}
+    bars[-2] = {"date": "20260923", "high": 40.45, "low": 39.0, "close": 39.55, "volume": 47140}
+    bars[-1] = {"date": "20260924", "high": 39.5, "low": 38.8, "close": 39.5, "volume": 12468}
+    line = vol_zone_position_line(zone, bars[-1], _card_heat("持平"), bars=bars)
+    assert "第二天" in line
+    assert "107" not in line
+    assert "22天" not in line
+    assert "看起來不錯" not in line
 
 
 def test_unexplained_gap_is_called_out():
