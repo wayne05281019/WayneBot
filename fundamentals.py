@@ -997,7 +997,7 @@ def _month_face_label(yyyymm: str) -> str:
 
 def _months_jan_through_latest(months: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    最新月所屬西元年的 1–12 月槽（顯示時新→舊＝12→1）。
+    最新月所屬西元年的 1–12 月槽（顯示時上→下＝1→12，與折線左→右同向）。
     有官方營收才填金額；尚未公告的月留空槽（不造假），之後同步直接補進同槽。
     """
     if not months:
@@ -1012,7 +1012,7 @@ def _months_jan_through_latest(months: List[Dict[str, Any]]) -> List[Dict[str, A
         if len(ym) == 6 and ym.isdigit() and ym.startswith(year):
             by_ym[ym] = m
     out: List[Dict[str, Any]] = []
-    for mon in range(12, 0, -1):
+    for mon in range(1, 13):
         ym = f"{year}{mon:02d}"
         if ym in by_ym:
             row = dict(by_ym[ym])
@@ -1032,10 +1032,11 @@ def _months_jan_through_latest(months: List[Dict[str, Any]]) -> List[Dict[str, A
     return out
 
 
-def _quarter_right_label(
+def _quarter_qoq_short(
     qq: Dict[str, Any],
     by_key: Dict[Tuple[int, int], Dict[str, Any]],
 ) -> str:
+    """季框第三行：短句，不准拖到「・越來越好」把格子撐爆。"""
     y, s = int(qq["year"]), int(qq["season"])
     rev = float(qq.get("revenue") or 0)
     if s == 1:
@@ -1047,11 +1048,36 @@ def _quarter_right_label(
     if qoq_q and float(qoq_q.get("revenue") or 0) > 0:
         qoq_pct = (rev - float(qoq_q["revenue"])) / float(qoq_q["revenue"]) * 100.0
     tag = revenue_trend_label(qoq_pct, kind="qoq")
-    # 第 n 季合計　x.xx億元　較上季…
+    if not tag or tag == "—":
+        return ""
+    # 框內只留「較上季…」主句；去掉・後續，避免溢出
+    return tag.split("・", 1)[0].strip()
+
+
+def _quarter_right_label(
+    qq: Dict[str, Any],
+    by_key: Dict[Tuple[int, int], Dict[str, Any]],
+) -> str:
+    s = int(qq["season"])
+    rev = float(qq.get("revenue") or 0)
     body = f"第{s}季合計　{format_yi(rev)}"
-    if tag and tag != "—":
+    tag = _quarter_qoq_short(qq, by_key)
+    if tag:
         return f"{body}　{tag}"
     return body
+
+
+def _quarter_box_parts(
+    qq: Dict[str, Any],
+    by_key: Dict[Tuple[int, int], Dict[str, Any]],
+) -> Dict[str, str]:
+    """季框三行分開：標／金額／較上季，畫圖時可各自對齊、縮字。"""
+    s = int(qq["season"])
+    return {
+        "title": f"第{s}季合計",
+        "amount": format_yi(float(qq.get("revenue") or 0)),
+        "trend": _quarter_qoq_short(qq, by_key),
+    }
 
 
 def month_quarter_split_rows(
@@ -1060,7 +1086,7 @@ def month_quarter_split_rows(
 ) -> Dict[str, Any]:
     """
     介紹卡基本面左右分欄：
-    左＝該年 12→1 月槽（有數填數、無數留 —）；右＝完整季各一個框（滿三個月才有）。
+    左＝該年 1→12 月槽（有數填數、無數留 —）；右＝完整季各一個框（滿三個月才有）。
     回傳 {month_rows, quarter_boxes}。
     """
     win = _months_jan_through_latest(months)
@@ -1083,15 +1109,20 @@ def month_quarter_split_rows(
             continue
         if not all(m in data_ym for m in ms):
             continue
+        parts = _quarter_box_parts(qq, by_key)
         quarter_boxes.append(
             {
                 "year": int(qq["year"]),
                 "season": int(qq["season"]),
                 "yyyymms": ms,
                 "text": _quarter_right_label(qq, by_key),
+                "title": parts["title"],
+                "amount": parts["amount"],
+                "trend": parts["trend"],
             }
         )
-    quarter_boxes.sort(key=lambda b: (b["year"], b["season"]), reverse=True)
+    # 與左列 1→12 同向：Q1 在上、Q2 在下
+    quarter_boxes.sort(key=lambda b: (b["year"], b["season"]))
     month_rows: List[Dict[str, Any]] = []
     for m in win:
         yyyymm = str(m.get("yyyymm") or "").replace("-", "")[:6]
@@ -1178,7 +1209,7 @@ def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12
 
 def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dict[str, Any]]:
     """
-    僅興櫃介紹卡：月營收折線（該年 1–12 月槽）＋左月列／右季合計＋底列毛利／營益／淨利／EPS。
+    僅興櫃介紹卡：月營收折線（該年 1–12 月槽）＋左月列 1→12／右季合計＋底列季別＋毛利／營益／淨利／EPS。
     尚未公告的月留空槽，之後同步直接補進；上市櫃回 None。
     """
     path = db_path or get_db_path()
@@ -1207,9 +1238,9 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
     month_rows = list((split or {}).get("month_rows") or [])
     if not month_rows:
         return None
-    # 折線圖點：該年 1→12（左→右），空槽 revenue=None 供後續補月
+    # 折線圖點：與左列同向 1→12（左→右），空槽 revenue=None 供後續補月
     chart_points: List[Dict[str, Any]] = []
-    for mr in reversed(month_rows):
+    for mr in month_rows:
         yyyymm = str(mr.get("yyyymm") or "")
         has = bool(mr.get("has_data"))
         rev = None
@@ -1230,7 +1261,9 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
         )
     q = get_latest_income(path, sid)
     bottom: List[Tuple[str, str]] = []
+    bottom_season = ""
     if q:
+        bottom_season = f"{int(q['year'])}年第{int(q['season'])}季"
         rev_q = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev_q * 100.0, 1) if rev_q else None
         npm = round(float(q.get("net_income") or 0) / rev_q * 100.0, 1) if rev_q else None
@@ -1249,6 +1282,7 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
         "quarter_boxes": list((split or {}).get("quarter_boxes") or []),
         "chart_points": chart_points,
         "bottom": bottom,
+        "bottom_season": bottom_season,
         "incomplete_quarter": bool(not q_from_m),
     }
 

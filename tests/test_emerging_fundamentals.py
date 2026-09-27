@@ -231,21 +231,26 @@ def test_month_quarter_split_rows_boxes():
     rows = split["month_rows"]
     boxes = split["quarter_boxes"]
     assert [r["yyyymm"] for r in rows] == [
-        "202612", "202611", "202610", "202609",
-        "202608", "202607", "202606", "202605", "202604", "202603", "202602", "202601",
+        "202601", "202602", "202603", "202604", "202605", "202606",
+        "202607", "202608", "202609", "202610", "202611", "202612",
     ]
-    assert rows[0]["has_data"] is False and rows[0]["yi_lab"] == "—"  # 12月空槽
-    assert rows[4]["date_lab"].startswith("8月'26")
-    assert rows[4]["yi_lab"] == "0.30億元"
-    assert rows[4]["mom_tone"] == "down"
-    assert "月減68.1%" in rows[4]["mom_phrase"]
-    assert rows[5]["mom_tone"] == "up"
+    assert rows[8]["has_data"] is False and rows[8]["yi_lab"] == "—"  # 9月空槽
+    assert rows[7]["date_lab"].startswith("8月'26")
+    assert rows[7]["yi_lab"] == "0.30億元"
+    assert rows[7]["mom_tone"] == "down"
+    assert "月減68.1%" in rows[7]["mom_phrase"]
+    assert rows[6]["mom_tone"] == "up"
     seasons = {(b["year"], b["season"]) for b in boxes}
     assert (2026, 2) in seasons and (2026, 1) in seasons
     assert (2026, 3) not in seasons  # 7–8 月未滿季；9–12 空槽
     q2 = next(b for b in boxes if b["season"] == 2)
     assert "第2季合計" in q2["text"] and "0.82億元" in q2["text"]
+    assert q2.get("title") == "第2季合計"
+    assert "0.82億元" in (q2.get("amount") or "")
+    assert "・" not in (q2.get("trend") or "")  # 框內短句，不准拖・後續
     assert q2["yyyymms"] == ["202604", "202605", "202606"]
+    # 1→12：Q1 在前
+    assert boxes[0]["season"] <= boxes[-1]["season"]
 
 
 def test_glance_split_layout_emerging_only(tmp_path):
@@ -263,8 +268,13 @@ def test_glance_split_layout_emerging_only(tmp_path):
     assert lay["chart_points"][8]["has_data"] is False
     assert lay["chart_points"][8]["revenue"] is None
     assert any(a == "EPS" for a, _ in lay["bottom"])
+    assert lay.get("bottom_season")
+    assert "第" in lay["bottom_season"] and "季" in lay["bottom_season"]
     assert len(lay["quarter_boxes"]) >= 2
     assert any(b["season"] == 2 for b in lay["quarter_boxes"])
+    # 左列 1→12
+    assert lay["month_rows"][0]["yyyymm"] == "202601"
+    assert lay["month_rows"][-1]["yyyymm"] == "202612"
     # 上市櫃不走這套
     conn = sqlite3.connect(db)
     conn.execute(
