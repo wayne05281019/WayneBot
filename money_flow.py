@@ -412,9 +412,9 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
     if not ids:
         return
     del ymd
-    from industry_fine import load_cached_fine_industry, membership_face
+    from industry_fine import CACHE_DAYS, load_cached_fine_industry, membership_face
 
-    fine = load_cached_fine_industry(db_path, ids, max_age_days=365)
+    fine = load_cached_fine_industry(db_path, ids, max_age_days=CACHE_DAYS)
     conn = sqlite3.connect(db_path)
     try:
         for lst in lists:

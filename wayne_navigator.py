@@ -5,6 +5,7 @@ WayneBot 核心模組：買低賣高決策卡與 180 日 K 線趨勢圖引擎
 """
 
 import itertools
+import copy
 import os
 import sqlite3
 import time
@@ -282,46 +283,55 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
         except Exception:
             official = set()
 
-    def _scale_row(i, factor):
-        for col in ("open", "high", "low", "close"):
-            if col in out.columns and pd.notna(out.at[out.index[i], col]):
-                out.at[out.index[i], col] = float(out.at[out.index[i], col]) * factor
+    # 熱路徑：用 numpy 掃，不准每根 .iloc／.at 打 pandas。
+    o = out["open"].to_numpy(dtype=float, copy=True)
+    h = out["high"].to_numpy(dtype=float, copy=True)
+    lo = out["low"].to_numpy(dtype=float, copy=True)
+    c = out["close"].to_numpy(dtype=float, copy=True)
+    vol = out["volume"].to_numpy(dtype=float, copy=True)
+    date_arr = dates.to_numpy(dtype=str)
+
+    def _scale_i(i: int, factor: float) -> None:
+        o[i] *= factor
+        h[i] *= factor
+        lo[i] *= factor
+        c[i] *= factor
 
     # 1) 單日 8～12 倍錯價（前後都在正常尺度）
     for i in range(1, n - 1):
-        p, c, nxt = float(out["close"].iloc[i - 1] or 0), float(out["close"].iloc[i] or 0), float(out["close"].iloc[i + 1] or 0)
-        if p <= 0 or c <= 0 or nxt <= 0:
+        p, cur, nxt = float(c[i - 1] or 0), float(c[i] or 0), float(c[i + 1] or 0)
+        if p <= 0 or cur <= 0 or nxt <= 0:
             continue
-        if c / p >= 8 and nxt / c <= 0.15:
-            factor = ((p + nxt) / 2.0) / c
-            _scale_row(i, factor)
-            notes.append(f"修正 {out['date'].iloc[i]} 錯價×{1/factor:.0f}")
-        elif c / p <= 0.15 and nxt / c >= 8:
-            factor = ((p + nxt) / 2.0) / c
-            _scale_row(i, factor)
-            notes.append(f"修正 {out['date'].iloc[i]} 錯價")
+        if cur / p >= 8 and nxt / cur <= 0.15:
+            factor = ((p + nxt) / 2.0) / cur
+            _scale_i(i, factor)
+            notes.append(f"修正 {date_arr[i]} 錯價×{1/factor:.0f}")
+        elif cur / p <= 0.15 and nxt / cur >= 8:
+            factor = ((p + nxt) / 2.0) / cur
+            _scale_i(i, factor)
+            notes.append(f"修正 {date_arr[i]} 錯價")
 
     # 2) 持續跳空：當天整根離開前收。只做還原，不准寫分割／減資／除權息。
     for i in range(1, n):
-        day = str(dates.iloc[i] if i < len(dates) else "").replace("-", "")
+        day = str(date_arr[i] if i < len(date_arr) else "").replace("-", "")
         if day in official:
             continue
-        p = float(out["close"].iloc[i - 1] or 0)
-        c = float(out["close"].iloc[i] or 0)
-        hi = float(out["high"].iloc[i] or 0)
-        lo = float(out["low"].iloc[i] or 0)
-        vol_p = float(out["volume"].iloc[i - 1] or 0)
-        vol_c = float(out["volume"].iloc[i] or 0)
-        if p <= 0 or c <= 0:
+        p = float(c[i - 1] or 0)
+        cur = float(c[i] or 0)
+        hi = float(h[i] or 0)
+        low_i = float(lo[i] or 0)
+        vol_p = float(vol[i - 1] or 0)
+        vol_c = float(vol[i] or 0)
+        if p <= 0 or cur <= 0:
             continue
-        r = c / p
+        r = cur / p
         down = r < 0.82 and hi < p * 0.86 and hi > 0
-        up = r > 1.38 and lo > p * 1.22
+        up = r > 1.38 and low_i > p * 1.22
         mild_down = 0.72 <= r < 0.88 and hi < p * 0.92
-        mild_up = 1.15 <= r <= 1.65 and lo > p * 1.08
+        mild_up = 1.15 <= r <= 1.65 and low_i > p * 1.08
         if not (down or up or mild_down or mild_up):
             continue
-        factor = c / p
+        factor = cur / p
         if not (0.05 <= factor <= 20):
             continue
         # 量縮／量增與價格跳動同向時，較像分割或減資
@@ -333,9 +343,11 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
                 inv = 1.0 / factor if factor > 0 else 1.0
                 if abs(vr - inv) / max(inv, 1.0) < 0.45:
                     factor = round(factor, 2)
-        idx = out.index[:i]
-        out.loc[idx, ["open", "high", "low", "close"]] = out.loc[idx, ["open", "high", "low", "close"]] * factor
-        notes.append(f"跳空還原 {out['date'].iloc[i]} ×{factor:.4f}")
+        o[:i] *= factor
+        h[:i] *= factor
+        lo[:i] *= factor
+        c[:i] *= factor
+        notes.append(f"跳空還原 {date_arr[i]} ×{factor:.4f}")
         if sid and db_path:
             try:
                 from ex_rights import upsert_heuristic_event
@@ -346,6 +358,10 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
             except Exception:
                 pass
 
+    out["open"] = o
+    out["high"] = h
+    out["low"] = lo
+    out["close"] = c
     flat = (out["volume"] <= 0) & ((out["high"] - out["low"]).abs() <= 1e-8)
     out["is_halt"] = flat.fillna(False)
     if int(out["is_halt"].sum()) >= 2:
@@ -381,8 +397,39 @@ def pink_warning_note(card: dict) -> str:
 class NavigatorEngine:
     """WayneBot 買低賣高決策卡、多空溫度計與雙綠脫離海選引擎"""
 
+    # 同檔連按：鍵含 as_of／live 價桶，短 TTL；不准跨日或跨現價重用舊卡。
+    _CARD_MEMO: dict = {}
+    _CARD_MEMO_TTL_S = 45.0
+    _CARD_MEMO_MAX = 64
+
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
+
+    @classmethod
+    def clear_card_memo(cls) -> None:
+        cls._CARD_MEMO.clear()
+
+    @classmethod
+    def _card_memo_get(cls, key: tuple):
+        hit = cls._CARD_MEMO.get(key)
+        if not hit:
+            return None
+        ts, payload = hit
+        if time.monotonic() - float(ts) > cls._CARD_MEMO_TTL_S:
+            cls._CARD_MEMO.pop(key, None)
+            return None
+        return copy.deepcopy(payload)
+
+    @classmethod
+    def _card_memo_put(cls, key: tuple, card: dict) -> None:
+        if not isinstance(card, dict) or card.get("error"):
+            return
+        memo = cls._CARD_MEMO
+        if len(memo) >= cls._CARD_MEMO_MAX:
+            # 丟掉最舊一筆
+            oldest = min(memo.items(), key=lambda kv: float(kv[1][0]))
+            memo.pop(oldest[0], None)
+        memo[key] = (time.monotonic(), copy.deepcopy(card))
 
     @staticmethod
     def _calc_rolling_rank(
@@ -425,6 +472,31 @@ class NavigatorEngine:
             merge_live = False
         else:
             db_as_of = db_as_of_trading_date(self.db_path)
+        live_bucket = None
+        if merge_live and live_quote:
+            try:
+                live_bucket = round(
+                    float(
+                        live_quote.get("price")
+                        or live_quote.get("close")
+                        or live_quote.get("last")
+                        or 0
+                    ),
+                    2,
+                ) or None
+            except (TypeError, ValueError):
+                live_bucket = None
+        memo_key = (
+            os.path.abspath(str(self.db_path or "")),
+            str(stock_id),
+            int(lookback),
+            str(db_as_of or ""),
+            bool(merge_live),
+            live_bucket,
+        )
+        cached = self._card_memo_get(memo_key)
+        if cached is not None:
+            return cached
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.execute("PRAGMA busy_timeout=10000;")
         df = pd.read_sql_query("""
@@ -1080,6 +1152,7 @@ class NavigatorEngine:
             attach_industry_flow(payload, self.db_path, ymd=str(as_of or ""))
         except Exception:
             pass
+        self._card_memo_put(memo_key, payload)
         return payload
 
     def scan_double_green_breakout(self) -> list:

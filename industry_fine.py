@@ -287,7 +287,7 @@ def chain_peer_ids(db_path: str, stock_id: str) -> List[str]:
     if not sid or not db_path:
         return []
     ensure_fine_industry_table(db_path)
-    mine = load_cached_fine_industry(db_path, [sid], max_age_days=365).get(sid) or {}
+    mine = load_cached_fine_industry(db_path, [sid], max_age_days=CACHE_DAYS).get(sid) or {}
     mine_keys = membership_keys(sid, str(mine.get("finest") or ""))
     if not mine_keys:
         return []
@@ -394,7 +394,18 @@ def _create_fine_industry_table(db_path: str) -> None:
     conn.close()
 
 
+_ENSURED_FINE: set = set()
+
+
+def clear_fine_industry_ensure_cache() -> None:
+    _ENSURED_FINE.clear()
+
+
 def ensure_fine_industry_table(db_path: str) -> None:
+    """同一行程同一顆庫只 ensure／overlay 一次；查股熱路徑不准每檔重跑。"""
+    key = os.path.abspath(str(db_path or ""))
+    if key and key in _ENSURED_FINE:
+        return
     _create_fine_industry_table(db_path)
     conn = sqlite3.connect(db_path)
     n = conn.execute("SELECT COUNT(*) FROM stock_fine_industry").fetchone()[0]
@@ -407,6 +418,8 @@ def ensure_fine_industry_table(db_path: str) -> None:
         apply_tpex_overlay(db_path)
     except Exception:
         logger.info("櫃買產業鏈 overlay 略過", exc_info=True)
+    if key:
+        _ENSURED_FINE.add(key)
 
 
 def seed_fine_industry_table(db_path: str) -> int:
