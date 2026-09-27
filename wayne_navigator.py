@@ -4015,51 +4015,82 @@ def render_first_glance_png(
     return save_path
 
 
-# 導航箭頭配色：(淡底, 尖端墨水)——決策卡溫度計那套：淡色底＋同色系深字。
-# 高點用洋紅／紫（不要跟 20 高粉紅底帶同一碼），低點用綠、60 低用青。
+# 導航箭頭配色：(淡底, 尖端墨水)。各 kind 墨水必須色相可辨（勿近紫／近綠互撞）。
+# 高：紫＝觸發、橙＝脫離、洋紅空心＝接近；低：綠＝20低、深藍＝60低、青绿＝脫離。
+# 殘影（仍貼高低）單獨灰藍，不准跟觸發／脫離同色半透明混。
 
 
 _NAV_TONE = {
-    "h20": ("#F3E5F5", "#6A1B9A"),
-    "h20_near": ("#F8EAF9", "#7B1FA2"),
-    "h20_leave": ("#EDE7F6", "#4527A0"),
-    "l20": ("#E8F5E9", "#1B5E20"),
-    "l20_near": ("#F1F8E9", "#2E7D32"),
-    "l20_leave": ("#E0F2F1", "#004D40"),
-    "l60": ("#E0F7FA", "#006064"),
+    "h20": ("#F3E5F5", "#6A1B9A"),       # 紫：20 高觸發
+    "h20_near": ("#FCE4EC", "#AD1457"),   # 洋紅空心：接近 20 高
+    "h20_leave": ("#FFF3E0", "#E65100"),  # 橙：20 高脫離（跟紫拉開）
+    "l20": ("#E8F5E9", "#2E7D32"),        # 綠：20 低觸發
+    "l20_near": ("#F1F8E9", "#558B2F"),   # 橄欖空心：接近 20 低
+    "l20_leave": ("#E0F2F1", "#00838F"),  # 青：20 低脫離
+    "l60": ("#E3F2FD", "#1565C0"),        # 藍：60 低（跟綠／青拉開）
 }
 
+# 殘影尾：仍貼 20/60 高低、不當新觸發。灰藍半透明，圖例必標。
+_NAV_GHOST = ("#ECEFF1", "#607D8B")
 
-def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False):
-    face = _NAV_TONE[kind][1] if kind in _NAV_TONE else "#546e7a"
+# 量能列：三角＋底帶同一語意；藍底＝月波動低（不是裝飾）。
+_NAV_SIG = {
+    "vol_a": "#6A1B9A",
+    "warn": "#E53935",
+    "warn_band": "#FFCDD2",
+    "vol_low": "#0288D1",       # 藍三角：跟 60 低／買點深藍分開一點
+    "vol_low_band": "#90CAF9",  # 藍底＝月波動低本體，必進圖例
+}
+
+# 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。不是紅箭頭買訊。
+_NAV_TRADE_BUY = "#1565C0"
+_NAV_TRADE_SELL = "#E64A19"
+
+
+def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False,
+                    alpha: float = 1.0):
+    if kind == "ghost":
+        face = _NAV_GHOST[1]
+    else:
+        face = _NAV_TONE[kind][1] if kind in _NAV_TONE else "#546e7a"
     if hollow:
         return Line2D(
             [], [], linestyle="none", marker=marker, markerfacecolor="none",
-            markeredgecolor=face, markeredgewidth=1.2, markersize=ms,
+            markeredgecolor=face, markeredgewidth=1.2, markersize=ms, alpha=alpha,
         )
     return Line2D(
         [], [], linestyle="none", marker=marker, markerfacecolor=face,
-        markeredgecolor=face, markeredgewidth=0.0, markersize=ms,
+        markeredgecolor=face, markeredgewidth=0.0, markersize=ms, alpha=alpha,
     )
 
 
 def _draw_nav_legend(ax1) -> None:
-    """圖例放在座標軸上方（title pad），不要壓在 K 棒中間。"""
+    """圖例放在座標軸上方（title pad），不要壓在 K 棒中間。畫過的標都要進圖例。"""
     row1 = [
         (_nav_legend_key("h20", "v"), "20高"),
         (_nav_legend_key("h20_leave", "v"), "20高脫離"),
         (_nav_legend_key("l20", "^"), "20低"),
         (_nav_legend_key("l20_leave", "^"), "20低脫離"),
         (_nav_legend_key("l60", "^"), "60低"),
-        (_nav_legend_key("h20_near", "v", ms=10, hollow=True), "接近高低（空心）"),
+        (_nav_legend_key("h20_near", "v", ms=10, hollow=True), "接近高（空心）"),
+        (_nav_legend_key("l20_near", "^", ms=10, hollow=True), "接近低（空心）"),
+        (_nav_legend_key("ghost", "^", ms=10, alpha=0.45), "殘影（仍貼）"),
     ]
     row2 = [
-        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#6a1b9a",
-                markeredgecolor="#6a1b9a", markeredgewidth=0.0, markersize=12), "量能異常"),
-        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#e53935",
-                markeredgecolor="#e53935", markeredgewidth=0.0, markersize=12), "警告"),
-        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#ce93d8",
-                markeredgecolor="#ce93d8", markeredgewidth=0.0, markersize=11), "月波動低"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_a"],
+                markeredgecolor=_NAV_SIG["vol_a"], markeredgewidth=0.0, markersize=12), "量能異常"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["warn"],
+                markeredgecolor=_NAV_SIG["warn"], markeredgewidth=0.0, markersize=12), "警告"),
+        (patches.Patch(facecolor=_NAV_SIG["warn_band"], edgecolor="#e57373", linewidth=0.6), "警告底"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_low"],
+                markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=11), "月波動低"),
+        (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
+                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=11), "買點↑藍"),
+        (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
+                markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=11), "賣點↓橙"),
+    ]
+    row3 = [
         (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
         (Line2D([], [], color="#f48fb1", lw=1.75), "季高點線"),
         (Line2D([], [], color="#81c784", lw=1.75), "季低點線"),
@@ -4070,23 +4101,29 @@ def _draw_nav_legend(ax1) -> None:
         loc="lower left",
         handlelength=1.15,
         handletextpad=0.32,
-        columnspacing=0.85,
-        borderpad=0.35,
-        labelspacing=0.22,
+        columnspacing=0.72,
+        borderpad=0.32,
+        labelspacing=0.18,
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(8.6, "bold"),
+        prop=_fp(8.2, "bold"),
     )
     leg1 = ax1.legend(
         [h for h, _ in row1], [t for _, t in row1],
-        bbox_to_anchor=(0.0, 1.058), ncol=6, **kw,
+        bbox_to_anchor=(0.0, 1.108), ncol=8, **kw,
     )
     leg1.set_zorder(10)
     ax1.add_artist(leg1)
-    ax1.legend(
+    leg2 = ax1.legend(
         [h for h, _ in row2], [t for _, t in row2],
-        bbox_to_anchor=(0.0, 1.004), ncol=8, **kw,
+        bbox_to_anchor=(0.0, 1.054), ncol=7, **kw,
+    )
+    leg2.set_zorder(10)
+    ax1.add_artist(leg2)
+    ax1.legend(
+        [h for h, _ in row3], [t for _, t in row3],
+        bbox_to_anchor=(0.0, 1.000), ncol=5, **kw,
     )
 
 
@@ -4344,11 +4381,6 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
     return work
 
 
-# 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。比高低卡紫綠標清楚一點，不要巨大。
-_NAV_TRADE_BUY = "#1565C0"
-_NAV_TRADE_SELL = "#E64A19"
-
-
 def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
     """只標黃金買點進出，不是每個綠低／紫高。無卡片就不算獲利（查股才快）。"""
     n = 0 if work is None else len(work)
@@ -4485,8 +4517,7 @@ def _paint_nav_on_axes(
             pastel, ink = _NAV_TONE[kind]
             if kind[0] == "h" and tip >= h20:
                 pastel = _lerp_hex(pastel, ink, 0.28)
-            # 接近＝空心；脫離／近窗尾＝半透明 ghost（對齊 Cary 導航殘影）
-            alpha = 0.34 if (hollow or kind.endswith("_leave")) else 1.0
+            # 接近＝空心；脫離＝實心異色（不半透明，免得跟殘影糊）；殘影另畫灰藍
             _nav_arrow(
                 ax1,
                 tip,
@@ -4498,13 +4529,13 @@ def _paint_nav_on_axes(
                 hw=arrow_hw * sc,
                 z=6,
                 hollow=hollow,
-                alpha=alpha,
+                alpha=1.0,
             )
             last_dn_i = i
         elif is_20h and was_20h and i - last_dn_i <= 6:
-            # 仍貼 20 高：半透明尾，不當新觸發
+            # 仍貼 20 高：灰藍殘影，不當新觸發
             tip = hi + arrow_gap
-            pastel, ink = _NAV_TONE["h20"]
+            pastel, ink = _NAV_GHOST
             _nav_arrow(
                 ax1,
                 tip,
@@ -4515,7 +4546,7 @@ def _paint_nav_on_axes(
                 arrow_h=arrow_h * 0.78,
                 hw=arrow_hw * 0.78,
                 z=5,
-                alpha=0.28,
+                alpha=0.42,
             )
         if up_pick:
             kind, sc, hollow = up_pick
@@ -4523,7 +4554,6 @@ def _paint_nav_on_axes(
             pastel, ink = _NAV_TONE[kind]
             if kind[0] == "l" and tip <= l20:
                 pastel = _lerp_hex(pastel, ink, 0.28)
-            alpha = 0.34 if (hollow or kind.endswith("_leave")) else 1.0
             _nav_arrow(
                 ax1,
                 tip,
@@ -4535,13 +4565,12 @@ def _paint_nav_on_axes(
                 hw=arrow_hw * sc,
                 z=6,
                 hollow=hollow,
-                alpha=alpha,
+                alpha=1.0,
             )
             last_up_i = i
         elif (is_20l or is_60l) and (was_20l or was_60l) and i - last_up_i <= 6:
             tip = lo - arrow_gap
-            kind_g = "l60" if is_60l else "l20"
-            pastel, ink = _NAV_TONE[kind_g]
+            pastel, ink = _NAV_GHOST
             _nav_arrow(
                 ax1,
                 tip,
@@ -4552,19 +4581,23 @@ def _paint_nav_on_axes(
                 arrow_h=arrow_h * 0.78,
                 hw=arrow_hw * 0.78,
                 z=5,
-                alpha=0.28,
+                alpha=0.42,
             )
         if vol_low:
-            ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84,
-                                               facecolor="#90caf9", edgecolor="none", zorder=2))
+            ax_sig.add_patch(patches.Rectangle(
+                (x - 0.45, 0.08), 0.9, 0.84,
+                facecolor=_NAV_SIG["vol_low_band"], edgecolor="none", zorder=2,
+            ))
         if warn:
-            ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.52), 0.9, 0.42,
-                                               facecolor="#ffcdd2", edgecolor="none", alpha=0.62, zorder=1))
-            _sig_arrow(ax_sig, x, 0.72, "#e53935", "#7f0000", scale=1.05, z=5)
+            ax_sig.add_patch(patches.Rectangle(
+                (x - 0.45, 0.52), 0.9, 0.42,
+                facecolor=_NAV_SIG["warn_band"], edgecolor="none", alpha=0.62, zorder=1,
+            ))
+            _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.05, z=5)
         if vol_a:
-            _sig_arrow(ax_sig, x, 0.38, "#6a1b9a", "#311b92", scale=1.22, z=6)
+            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.22, z=6)
         elif vol_low:
-            _sig_arrow(ax_sig, x, 0.38, "#ce93d8", "#6a1b9a", scale=0.78, z=4)
+            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=0.78, z=4)
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
@@ -4615,11 +4648,11 @@ def _paint_nav_on_axes(
         except Exception:
             stamp = ""
     title = (
-        f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠{trade_note}"
+        f"180日高低導航{live_note}　實心觸發／空心接近／灰藍殘影／高紫橙／低綠青藍{trade_note}"
         if compact
         else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}{trade_note}   WayneBot ® 2026"
     )
-    ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 38)
+    ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 52)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
     if not compact:
         _draw_nav_legend(ax1)
@@ -4709,17 +4742,19 @@ def draw_from_ohlc(
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig, (ax1, ax_sig, ax2) = plt.subplots(
-        3, 1, figsize=(12.8, 7.55), dpi=NAV_CHART_DPI, sharex=True,
+        3, 1, figsize=(12.8, 8.05), dpi=NAV_CHART_DPI, sharex=True,
         gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
         facecolor="#ffffff",
     )
     _paint_nav_on_axes(ax1, ax_sig, ax2, work, stock_id, stock_name, compact=False)
-    fig.subplots_adjust(left=0.03, right=0.96, top=0.80, bottom=0.11)
+    fig.subplots_adjust(left=0.03, right=0.96, top=0.76, bottom=0.12)
     fig.text(
-        0.50, 0.015,
-        "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列箭頭見圖上方圖例；實心＝當日觸發、空心＝接近、半透明＝殘影尾；高點紫／低點青綠，不跟底帶同色　　"
-        "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低",
-        ha="center", va="bottom", fontproperties=_fp(9, "bold"), color="#263238",
+        0.50, 0.012,
+        "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
+        "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；"
+        "高紫／脫離橙／低綠／脫離青／60低藍　　"
+        "量能列：紫↑量能異常　紅↑警告（粉底）　藍↑月波動低（藍底＝同義，非裝飾）",
+        ha="center", va="bottom", fontproperties=_fp(8.6, "bold"), color="#263238",
     )
     plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
     plt.close()

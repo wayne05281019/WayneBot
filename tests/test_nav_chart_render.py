@@ -59,6 +59,38 @@ class NavChartRenderTests(unittest.TestCase):
         self.assertIn("shaft_h", src)
         self.assertNotIn("_fill_triangle_gradient", src)
 
+    def test_nav_legend_covers_drawn_markers(self):
+        """每個實際畫出的標都要進圖例，且色相可辨（勿近紫／近綠互撞）。"""
+        import inspect
+
+        from wayne_navigator import (
+            _NAV_GHOST,
+            _NAV_SIG,
+            _NAV_TONE,
+            _draw_nav_legend,
+            _paint_nav_on_axes,
+        )
+
+        leg = inspect.getsource(_draw_nav_legend)
+        for label in (
+            "20高", "20高脫離", "20低", "20低脫離", "60低",
+            "接近高（空心）", "接近低（空心）", "殘影（仍貼）",
+            "量能異常", "警告", "警告底", "月波動低", "月波動低底",
+            "買點↑藍", "賣點↓橙",
+        ):
+            self.assertIn(label, leg, label)
+        paint = inspect.getsource(_paint_nav_on_axes)
+        self.assertIn("_NAV_GHOST", paint)
+        self.assertIn("_NAV_SIG", paint)
+        self.assertIn("vol_low_band", paint)
+        # 脫離／觸發墨水必須拉開色相（不要兩個近紫或兩個近綠）
+        self.assertNotEqual(_NAV_TONE["h20"][1].upper(), _NAV_TONE["h20_leave"][1].upper())
+        self.assertNotEqual(_NAV_TONE["l20"][1].upper()[:3], _NAV_TONE["l60"][1].upper()[:3])
+        self.assertEqual(_NAV_GHOST[1].upper(), "#607D8B")
+        self.assertEqual(_NAV_SIG["vol_low_band"].upper(), "#90CAF9")
+        # 脫離不再用半透明糊成殘影
+        self.assertNotIn('alpha = 0.34 if (hollow or kind.endswith("_leave"))', paint)
+
 
 if __name__ == "__main__":
     unittest.main()
