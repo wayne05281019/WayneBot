@@ -780,18 +780,28 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         logger.warning(msg)
     em_hist_n = 0
     try:
-        # 興櫃 OpenAPI 只有最新一期；rotc 缺口月才往回補
+        # 興櫃 OpenAPI 只有最新一期；rotc 缺口月往回補。
+        # 本檔期＋上一月每天強制重抓：月初公司陸續公告，不能因筆數夠就停。
         gap_m = emerging_monthly_gap_months(conn, filing_month, months=12)
-        if gap_m:
+        force = [filing_month]
+        prev2 = _shift_yyyymm(filing_month, 1)
+        if prev2:
+            force.append(prev2)
+        refresh_ym = list(dict.fromkeys([*force, *gap_m]))
+        if refresh_ym:
             em_rows, em_err = fetch_mops_emerging_monthly_history(
-                filing_month, only_yyyymm=gap_m
+                filing_month, only_yyyymm=refresh_ym
             )
             errors.extend(em_err)
             if em_rows:
                 em_hist_n = _upsert_monthly(conn, em_rows)
                 conn.commit()
                 monthly_rows.extend(em_rows)
-                logger.info("興櫃月營收歷史 rotc 寫入 %s 筆（缺口 %s）", em_hist_n, gap_m[:4])
+                logger.info(
+                    "興櫃月營收 rotc 寫入 %s 筆（強制近窗 %s＋缺口）",
+                    em_hist_n,
+                    force,
+                )
     except Exception as e:
         msg = f"mops EM history: {e}"
         errors.append(msg)
@@ -1020,22 +1030,42 @@ def _quarter_right_label(
 def month_quarter_split_rows(
     months: List[Dict[str, Any]],
     q_from_m: Optional[List[Dict[str, Any]]] = None,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
     介紹卡基本面左右分欄：
-    左＝月（新→舊，到該年1月）；右＝同季合計（對齊該季最上方那一個月）。
+    左＝月列（新→舊，到該年1月）；右＝完整季各一個框（滿三個月才有；文字置中）。
+    回傳 {month_rows, quarter_boxes}。
     """
     win = _months_jan_through_latest(months)
     by_key = {(int(x["year"]), int(x["season"])): x for x in (q_from_m or [])}
-    # 每個完整季：在「該季月份裡最新的那一列」掛右欄
-    right_on: Dict[str, str] = {}
+    win_set = {
+        str(m.get("yyyymm") or "").replace("-", "")[:6]
+        for m in win
+        if len(str(m.get("yyyymm") or "")) >= 6
+    }
+    quarter_boxes: List[Dict[str, Any]] = []
     for qq in q_from_m or []:
-        ms = [str(x) for x in (qq.get("months") or []) if str(x)]
+        ms = sorted(
+            str(x).replace("-", "")[:6]
+            for x in (qq.get("months") or [])
+            if len(str(x).replace("-", "")[:6]) == 6
+        )
         if len(ms) < 3:
             continue
-        top = max(ms)  # 新→舊表上該季第一列
-        right_on[top] = _quarter_right_label(qq, by_key)
-    out: List[Dict[str, Any]] = []
+        # 該季三個月都在顯示窗內才畫框（未滿季／跨年窗外不畫）
+        if not all(m in win_set for m in ms):
+            continue
+        quarter_boxes.append(
+            {
+                "year": int(qq["year"]),
+                "season": int(qq["season"]),
+                "yyyymms": ms,
+                "text": _quarter_right_label(qq, by_key),
+            }
+        )
+    # 顯示序：新季在上（跟月列新→舊一致）
+    quarter_boxes.sort(key=lambda b: (b["year"], b["season"]), reverse=True)
+    month_rows: List[Dict[str, Any]] = []
     for m in win:
         yyyymm = str(m.get("yyyymm") or "").replace("-", "")[:6]
         mom = m.get("mom_pct")
@@ -1044,18 +1074,21 @@ def month_quarter_split_rows(
         except (TypeError, ValueError):
             mom_f = None
         phrase, tone = _mom_phrase_and_tone(mom_f)
-        left_head = f"{_month_face_label(yyyymm)}　{format_yi(m.get('revenue') or 0)}"
-        out.append(
+        date_lab = _month_face_label(yyyymm)
+        yi_lab = format_yi(m.get("revenue") or 0)
+        month_rows.append(
             {
                 "yyyymm": yyyymm,
-                "left_head": left_head,
+                "date_lab": date_lab,
+                "yi_lab": yi_lab,
+                "left_head": f"{date_lab}　{yi_lab}",
                 "mom_phrase": phrase,
                 "mom_tone": tone,
-                "left": f"{left_head}　{phrase}",
-                "right": right_on.get(yyyymm, ""),
+                "left": f"{date_lab}　{yi_lab}　{phrase}",
+                "right": "",  # 右欄改畫季框，不再掛單列
             }
         )
-    return out
+    return {"month_rows": month_rows, "quarter_boxes": quarter_boxes}
 
 
 def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12) -> List[Tuple[str, str]]:
@@ -1101,8 +1134,8 @@ def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12
 
 def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dict[str, Any]]:
     """
-    興櫃（或有完整月窗）介紹卡：左右分欄月／季＋底列毛利營益淨利EPS。
-    不適用就回 None，PNG 退回舊的一列一標。
+    僅興櫃介紹卡：左月營收列＋右月營收折線圖＋底列毛利／營益／淨利／EPS。
+    上市櫃回 None（維持原本一列一標）。
     """
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
@@ -1120,22 +1153,40 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
         emerging = bool(stock_is_emerging(sid, path))
     except Exception:
         emerging = False
+    if not emerging:
+        return None
     months = list_monthly_revenue(path, sid, limit=36)
     if not months:
         return None
-    # 興櫃一定走分欄；上市櫃有 ≥3 個月也走（對齊同一張臉）
-    if not emerging and len(months) < 3:
-        return None
     q_from_m = quarterly_revenue_from_monthly(months)
     split = month_quarter_split_rows(months, q_from_m)
-    if not split:
+    month_rows = list((split or {}).get("month_rows") or [])
+    if not month_rows:
         return None
+    # 折線圖點：舊→新（左→右），金額用官方千元
+    chart_points: List[Dict[str, Any]] = []
+    for mr in reversed(month_rows):
+        yyyymm = str(mr.get("yyyymm") or "")
+        rev = 0.0
+        for src in months:
+            if str(src.get("yyyymm") or "").replace("-", "")[:6] == yyyymm:
+                rev = float(src.get("revenue") or 0)
+                break
+        chart_points.append(
+            {
+                "yyyymm": yyyymm,
+                "date_lab": str(mr.get("date_lab") or _month_face_label(yyyymm)),
+                "month_lab": f"{int(yyyymm[4:6])}月" if len(yyyymm) >= 6 else "",
+                "revenue": rev,
+                "yi_lab": str(mr.get("yi_lab") or format_yi(rev)),
+            }
+        )
     q = get_latest_income(path, sid)
     bottom: List[Tuple[str, str]] = []
     if q:
-        rev = float(q.get("revenue") or 0)
-        opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else None
-        npm = round(float(q.get("net_income") or 0) / rev * 100.0, 1) if rev else None
+        rev_q = float(q.get("revenue") or 0)
+        opm = round(float(q.get("operating_income") or 0) / rev_q * 100.0, 1) if rev_q else None
+        npm = round(float(q.get("net_income") or 0) / rev_q * 100.0, 1) if rev_q else None
         if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
             bottom.append(("毛利", format_yi(q.get("gross_profit") or 0)))
         if opm is not None:
@@ -1143,14 +1194,17 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
         if npm is not None:
             bottom.append(("淨利", f"{npm:.1f}%"))
         bottom.append(("EPS", f"{float(q['eps']):.2f}"))
-    elif emerging:
+    else:
         bottom.append(("季毛利／EPS", "觀測站尚未見此檔綜合損益列"))
     return {
-        "emerging": emerging,
-        "month_rows": split,
+        "emerging": True,
+        "month_rows": month_rows,
+        "quarter_boxes": list((split or {}).get("quarter_boxes") or []),
+        "chart_points": chart_points,
         "bottom": bottom,
-        "incomplete_quarter": bool(emerging and not q_from_m),
+        "incomplete_quarter": bool(not q_from_m),
     }
+
 
 
 def prior_income(db_path: str, latest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1263,11 +1317,11 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     except Exception:
         split = None
     if split and split.get("month_rows"):
-        # 文字／舊路徑：左月｜右季；不再寫「月營收近窗／月營收2」
+        # 文字路徑：月列＋季框文案（不再寫近窗標籤）
         for mr in split["month_rows"]:
-            left = str(mr.get("left") or "")
-            right = str(mr.get("right") or "").strip()
-            rows.append((left, right if right else "　"))
+            rows.append((str(mr.get("left") or ""), "　"))
+        for qb in split.get("quarter_boxes") or []:
+            rows.append((f"第{qb.get('season')}季", str(qb.get("text") or "")))
         if split.get("incomplete_quarter"):
             rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
         for lab, val in split.get("bottom") or []:

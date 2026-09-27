@@ -33,7 +33,7 @@ def test_em_hub_omits_empty_chip_buttons():
     texts = [b.text for r in kb.inline_keyboard for b in r]
     assert "籌碼" not in texts
     assert "營收" not in texts
-    assert "產業" in texts
+    assert "產業" not in texts  # 興櫃專用拿掉；上市櫃仍有
     assert "觀察" in texts
     assert "記買入" in texts
     assert "說明" not in texts

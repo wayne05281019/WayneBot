@@ -1560,7 +1560,7 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """興櫃兩排：K線／導航圖／產業，再觀察／記買入。上市櫃最多三顆一排。"""
+        """興櫃兩排：K線／導航圖，再觀察／記買入（無產業）。上市櫃最多三顆一排。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
@@ -1584,7 +1584,7 @@ class WayneTelegramBot:
             if k_url:
                 top.append(InlineKeyboardButton("K線", url=k_url))
             top.append(nav)
-            top.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
+            # 興櫃介紹卡已含月營收／折線／毛利EPS，不再放「產業」鈕（上市櫃仍有）
             return InlineKeyboardMarkup(
                 [
                     top[:3],

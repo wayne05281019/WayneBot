@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""興櫃營收／綜合損益：櫃買 OpenAPI＋觀測站 rotc／ajax_t163sb04。"""
+"""興櫃營收／綜合損益：櫃買 OpenAPI＋觀測站 rotc／ajax_t163sb04；介紹卡左右分欄＋折線。"""
 import sqlite3
 
 from fundamentals import (
     emerging_income_seasons,
     ensure_fundamentals_tables,
+    glance_fund_split_layout,
     glance_fundamentals_plain,
     monthly_revenue_window_rows,
     parse_mops_income_html,
@@ -12,6 +13,7 @@ from fundamentals import (
     parse_t21sc03_html,
     quarterly_revenue_from_monthly,
     revenue_trend_label,
+    month_quarter_split_rows,
 )
 from wayne_db import ensure_core_schema
 
@@ -43,6 +45,63 @@ FIXTURE_ROTC_MONTHLY_7853 = """
 <td align=left></td></tr>
 </table></html>
 """
+
+
+def _seed_emerging_7853(db: str) -> None:
+    ensure_core_schema(db)
+    ensure_fundamentals_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
+        "VALUES (?,?,?,?,?,1,?)",
+        ("7853", "政美應用", "EM", "STOCK", "半導體業", "2026-09-27"),
+    )
+    # 讓 stock_is_emerging 認得興櫃日均價表
+    try:
+        from emerging_quotes import ensure_emerging_table
+
+        ensure_emerging_table(db)
+    except Exception:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS emerging_quotes ("
+            "date TEXT, stock_id TEXT, stock_name TEXT, market TEXT, "
+            "open REAL, high REAL, low REAL, close REAL, volume INTEGER, "
+            "PRIMARY KEY(date, stock_id))"
+        )
+    for i, d in enumerate(
+        ["20260917", "20260918", "20260919", "20260922", "20260923", "20260924"]
+    ):
+        close = 310 + i
+        conn.execute(
+            "INSERT OR REPLACE INTO emerging_quotes"
+            "(date,stock_id,stock_name,market,open,high,low,close,volume,"
+            "turnover_k,pct_change,avg_price) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (d, "7853", "政美應用", "EM", 300, 320, 290, close, 100 + i, 31.0, 1.0, float(close)),
+        )
+    for ym, rev, mom, yoy, ytd in (
+        ("202608", 30300, -68.12, 10.87, 47.5),
+        ("202607", 95049, 149.3, 136.4, 52.0),
+        ("202606", 38125, -9.2, -31.9, 33.6),
+        ("202605", 42009, 100.0, 39.7, 62.1),
+        ("202604", 1787, -90.0, -97.2, 68.9),
+        ("202603", 129541, 200.0, 100.0, 382.1),
+        ("202602", 34905, 10.0, 10.0, 100.0),
+        ("202601", 1110, -5.0, 10.0, 10.0),
+    ):
+        conn.execute(
+            "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("7853", ym, "政美應用", "EM", "半導體業", rev, mom, yoy, ytd),
+        )
+    conn.execute(
+        "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,cogs,"
+        "gross_profit,gross_margin_pct,operating_income,net_income,eps) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("7853", 2025, 2, "政美應用", "EM", 185166, 104999, 80167, 43.29, -42198, -54199, -1.37),
+    )
+    conn.commit()
+    conn.close()
 
 
 def test_revenue_trend_label_buckets():
@@ -151,14 +210,12 @@ def test_parse_rotc_income_html_7853():
 
 def test_emerging_income_seasons_skip_unfiled_q4():
     seasons = emerging_income_seasons("20260927")
-    assert (2026, 4) not in seasons  # 當年 Q4 還沒
-    assert (2026, 2) in seasons  # 9 月已過 8 月門檻
+    assert (2026, 4) not in seasons
+    assert (2026, 2) in seasons
     assert (2025, 4) in seasons
 
 
-def test_month_quarter_split_rows_aligns_right():
-    from fundamentals import month_quarter_split_rows, quarterly_revenue_from_monthly
-
+def test_month_quarter_split_rows_boxes():
     months = [
         {"yyyymm": "202608", "revenue": 30300, "mom_pct": -68.12},
         {"yyyymm": "202607", "revenue": 95049, "mom_pct": 149.3},
@@ -170,62 +227,62 @@ def test_month_quarter_split_rows_aligns_right():
         {"yyyymm": "202601", "revenue": 1110, "mom_pct": -5.0},
     ]
     qs = quarterly_revenue_from_monthly(months)
-    rows = month_quarter_split_rows(months, qs)
+    split = month_quarter_split_rows(months, qs)
+    rows = split["month_rows"]
+    boxes = split["quarter_boxes"]
     assert [r["yyyymm"] for r in rows] == [
         "202608", "202607", "202606", "202605", "202604", "202603", "202602", "202601"
     ]
-    assert "月營收" not in rows[0]["left"]
-    assert rows[0]["left"].startswith("8月'26")
+    assert rows[0]["date_lab"].startswith("8月'26")
+    assert rows[0]["yi_lab"] == "0.30億元"
     assert rows[0]["mom_tone"] == "down"
     assert "月減68.1%" in rows[0]["mom_phrase"]
     assert rows[1]["mom_tone"] == "up"
-    assert "月增+149.3%" in rows[1]["mom_phrase"]
-    # 右欄掛在該季最上方月：Q2→6月、Q1→3月
-    by = {r["yyyymm"]: r["right"] for r in rows}
-    assert "第2季合計" in by["202606"] and "0.82億元" in by["202606"]
-    assert by["202605"] == "" and by["202604"] == ""
-    assert "第1季合計" in by["202603"] and "1.66億元" in by["202603"]
-    assert by["202608"] == ""  # Q3 未滿三個月
+    seasons = {(b["year"], b["season"]) for b in boxes}
+    assert (2026, 2) in seasons and (2026, 1) in seasons
+    assert (2026, 3) not in seasons  # 7–8 月未滿季
+    q2 = next(b for b in boxes if b["season"] == 2)
+    assert "第2季合計" in q2["text"] and "0.82億元" in q2["text"]
+    assert q2["yyyymms"] == ["202604", "202605", "202606"]
 
 
-def test_glance_shows_eps_when_rotc_income(tmp_path):
+def test_glance_split_layout_emerging_only(tmp_path):
     db = str(tmp_path / "em.db")
-    ensure_core_schema(db)
-    ensure_fundamentals_tables(db)
+    _seed_emerging_7853(db)
+    lay = glance_fund_split_layout("7853", db)
+    assert lay and lay["emerging"] is True
+    assert len(lay["month_rows"]) == 8
+    assert len(lay["chart_points"]) == 8
+    # 折線舊→新
+    assert lay["chart_points"][0]["yyyymm"] == "202601"
+    assert lay["chart_points"][-1]["yyyymm"] == "202608"
+    assert abs(lay["chart_points"][-1]["revenue"] - 30300) < 1e-6
+    assert any(a == "EPS" for a, _ in lay["bottom"])
+    # 上市櫃不走這套
     conn = sqlite3.connect(db)
     conn.execute(
         "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
         "VALUES (?,?,?,?,?,1,?)",
-        ("7853", "政美應用", "EMERGING", "STOCK", "半導體業", "2026-09-27"),
+        ("2330", "台積電", "TWSE", "STOCK", "半導體業", "2026-09-27"),
     )
-    for ym, rev, mom, yoy, ytd in (
-        ("202608", 30300, -68.12, 10.87, 47.5),
-        ("202607", 95049, 149.3, 136.4, 52.0),
-        ("202606", 38125, -9.2, -31.9, 33.6),
-        ("202605", 42009, 100.0, 39.7, 62.1),
-        ("202604", 1787, -90.0, -97.2, 68.9),
-        ("202603", 129541, 200.0, 100.0, 382.1),
-        ("202602", 34905, 10.0, 10.0, 100.0),
-        ("202601", 1110, -5.0, 10.0, 10.0),
-    ):
+    for ym in ("202606", "202607", "202608"):
         conn.execute(
             "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            ("7853", ym, "政美應用", "EM", "半導體業", rev, mom, yoy, ytd),
+            ("2330", ym, "台積電", "TW", "半導體業", 1000, 1.0, 1.0, 1.0),
         )
-    conn.execute(
-        "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,cogs,"
-        "gross_profit,gross_margin_pct,operating_income,net_income,eps) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("7853", 2025, 2, "政美應用", "EM", 185166, 104999, 80167, 43.29, -42198, -54199, -1.37),
-    )
     conn.commit()
     conn.close()
+    assert glance_fund_split_layout("2330", db) is None
+
+
+def test_glance_shows_eps_when_rotc_income(tmp_path):
+    db = str(tmp_path / "em2.db")
+    _seed_emerging_7853(db)
     rows = glance_fundamentals_plain("7853", db)
     blob = " ".join(f"{a} {b}" for a, b in rows)
     assert "月營收近窗" not in blob
     assert "月營收2" not in blob
     assert "8月'26" in blob and "月減68.1%" in blob
-    assert "第2季合計" in blob
     assert "EPS" in blob
     assert "無免驗證" not in blob
