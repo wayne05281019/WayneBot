@@ -302,7 +302,7 @@ def _fetch_post_last(sym: str) -> Optional[Dict[str, Any]]:
 
 
 def fetch_outer_tape(*, force: bool = False) -> Dict[str, Any]:
-    """布蘭特／美元指數／美元兌台幣。15 分鐘內沿用；沒真數就空。"""
+    """布蘭特原油／美元指數／美元兌台幣。15 分鐘內沿用；沒真數就空。"""
     now = time.monotonic()
     cached = _OUTER_CACHE.get("data") or {}
     if (
