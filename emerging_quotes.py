@@ -549,9 +549,9 @@ def sync_emerging_quotes(
     ensure_emerging_table(db_path)
     sess = session or _session()
     need = _em_day_full_rows()
-    lb = max(90, int(lookback_days or DEFAULT_EMERGING_LOOKBACK_DAYS))
-    # 平日窗 ≈ 曆日 × 5/7；至少蓋住 240 開市日
-    weekday_window = max(MIN_EMERGING_DEPTH_DAYS + 20, int(lb * 5 / 7) + 5)
+    lb = max(40, int(lookback_days or DEFAULT_EMERGING_LOOKBACK_DAYS))
+    # 平日窗 ≈ 曆日 × 5/7。預設 400 曆日 → ~290 開市日 ≥ 240 低窗。
+    weekday_window = max(40, int(lb * 5 / 7) + 5)
     stats = {
         "latest": 0,
         "hist": 0,

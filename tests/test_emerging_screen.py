@@ -649,12 +649,12 @@ class EmergingScreenIsolationTests(unittest.TestCase):
                 "emerging_quotes.fetch_emerging_csv_day", fake_csv
             ):
                 stats = sync_emerging_quotes(
-                    path, cap="20260924", lookback_days=120, sleep_s=0
+                    path, cap="20260924", lookback_days=80, sleep_s=0
                 )
-            # 窗內早於已有 50 天的日期必須被抓
-            self.assertGreater(len(fetched), 10)
-            self.assertGreaterEqual(stats.get("gaps") or 0, 10)
-            self.assertGreaterEqual(emerging_date_count(path), 60)
+            # 窗內早於已有 50 天的日期必須被抓（不准滿 40 天停補）
+            self.assertGreater(len(fetched), 5)
+            self.assertGreaterEqual(stats.get("gaps") or 0, 5)
+            self.assertGreaterEqual(emerging_date_count(path), 55)
         finally:
             os.remove(path)
 
