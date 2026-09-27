@@ -541,7 +541,7 @@ def quarterly_revenue_from_monthly(months: List[Dict[str, Any]]) -> List[Dict[st
 
 
 def revenue_trend_label(pct: Optional[float], *, kind: str = "yoy") -> str:
-    """營收增減白話標：越來越好／走弱／持平等。不准發明假％。"""
+    """營收增減白話標。kind=mom／yoy／qoq／yoy_q。不准發明假％。"""
     if pct is None:
         return "—"
     try:
@@ -550,16 +550,72 @@ def revenue_trend_label(pct: Optional[float], *, kind: str = "yoy") -> str:
         return "—"
     if p != p:  # NaN
         return "—"
-    stem = "年增" if kind == "yoy" else ("季增" if kind == "qoq" else "月增")
+    prefix = {
+        "mom": "較上月",
+        "yoy": "較去年同月",
+        "qoq": "較上季",
+        "yoy_q": "較去年同季",
+    }.get(kind, "較去年同月")
     if p >= 20:
-        return f"{stem}大增・越來越好"
+        return f"{prefix}大增・越來越好"
     if p >= 5:
-        return f"{stem}改善"
+        return f"{prefix}改善"
     if p > -5:
-        return f"{stem}持平"
+        return f"{prefix}持平"
     if p > -20:
-        return f"{stem}走弱"
-    return f"{stem}大減"
+        return f"{prefix}走弱"
+    return f"{prefix}大減"
+
+
+def _fmt_signed_pct(pct) -> str:
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return "—"
+    if p != p:
+        return "—"
+    return f"{p:+.1f}%"
+
+
+def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12) -> List[Tuple[str, str]]:
+    """近窗月營收表列（新→舊）：年月｜億｜月增%｜年增%｜累年增%｜狀態。一行一列。"""
+    out: List[Tuple[str, str]] = []
+    for i, m in enumerate((months or [])[: max(1, int(limit))]):
+        yyyymm = str(m.get("yyyymm") or "")
+        if len(yyyymm) >= 6:
+            lab_m = f"{yyyymm[4:6]}月'{yyyymm[2:4]}"
+        else:
+            lab_m = yyyymm or "—"
+        mom = m.get("mom_pct")
+        yoy = m.get("yoy_pct")
+        ytd = m.get("ytd_yoy_pct")
+        try:
+            mom_f = float(mom) if mom is not None else None
+        except (TypeError, ValueError):
+            mom_f = None
+        try:
+            yoy_f = float(yoy) if yoy is not None else None
+        except (TypeError, ValueError):
+            yoy_f = None
+        status = "；".join(
+            t
+            for t in (
+                revenue_trend_label(mom_f, kind="mom"),
+                revenue_trend_label(yoy_f, kind="yoy"),
+            )
+            if t and t != "—"
+        )
+        val = (
+            f"{lab_m}　{format_yi(m.get('revenue') or 0)}　"
+            f"月增{_fmt_signed_pct(mom)}　年增{_fmt_signed_pct(yoy)}　"
+            f"累年增{_fmt_signed_pct(ytd)}"
+        )
+        if status and i == 0:
+            # 狀態只掛最新月，避免每列過長互壓
+            val = f"{val}　{status}"
+        lab = "月營收近窗" if i == 0 else f"月營收{i + 1}"
+        out.append((lab, val))
+    return out
 
 
 def prior_income(db_path: str, latest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -666,41 +722,14 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     months = list_monthly_revenue(path, sid, limit=36)
     q_from_m = quarterly_revenue_from_monthly(months)
     rows = []
-    if m:
-        yyyymm = str(m.get("yyyymm") or "")
-        try:
-            from industry_brief import format_month_zh
-
-            label = format_month_zh(yyyymm) if len(yyyymm) >= 6 else yyyymm
-        except Exception:
-            label = f"{yyyymm[:4]}/{yyyymm[4:]}" if len(yyyymm) >= 6 else yyyymm
-        rows.append(
-            (
-                "月營收",
-                f"{label}　{format_yi(m.get('revenue') or 0)}",
-            )
-        )
-        mom = float(m.get("mom_pct") or 0)
-        yoy = float(m.get("yoy_pct") or 0)
-        rows.append(
-            (
-                "較上月／去年",
-                f"{format_yi(_mom_delta_k(m), signed=True, unit=False)}　"
-                f"{format_yi(_yoy_delta_k(m), signed=True, unit=False)}",
-            )
-        )
-        rows.append(
-            (
-                "月營收狀態",
-                f"{revenue_trend_label(mom, kind='mom')}；{revenue_trend_label(yoy, kind='yoy')}",
-            )
-        )
-        rows.append(
-            (
-                "較去年累計",
-                format_yi(_ytd_yoy_delta_k(m), signed=True),
-            )
-        )
+    # 月營收近窗（對齊參考表：億／月增／年增／累年增＋狀態）；有幾月列幾月
+    if months:
+        # 介紹卡高度有限：近窗最多 6 列，單位對齊一行；多月靠每日同步累積
+        win_n = 6 if emerging else 4
+        rows.extend(monthly_revenue_window_rows(months, limit=win_n))
+    elif m:
+        # 理論上 list 會含 latest；保底
+        rows.extend(monthly_revenue_window_rows([m], limit=1))
     # 近兩年季營收：有完整三個月才列；標同季年增／較上季
     if q_from_m:
         by_key = {(int(x["year"]), int(x["season"])): x for x in q_from_m}
@@ -729,15 +758,16 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
             tag = "；".join(
                 t
                 for t in (
-                    revenue_trend_label(yoy_pct, kind="yoy"),
+                    revenue_trend_label(yoy_pct, kind="yoy_q"),
                     revenue_trend_label(qoq_pct, kind="qoq"),
                 )
                 if t and t != "—"
             ) or "—"
             lab = "季營收" if i == 0 else f"季營收{i + 1}"
             rows.append((lab, f"{q_lab}　{format_yi(rev)}　{tag}"))
-    elif emerging and m:
+    elif emerging and (months or m):
         rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
+        rows.append(("季毛利／EPS", "興櫃無免驗證季報源，不上卡"))
     if q:
         rev = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0

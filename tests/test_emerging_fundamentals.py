@@ -9,11 +9,37 @@ from fundamentals import (
 
 def test_revenue_trend_label_buckets():
     assert "越來越好" in revenue_trend_label(25.0, kind="yoy")
-    assert "改善" in revenue_trend_label(8.0, kind="yoy")
-    assert "持平" in revenue_trend_label(1.0, kind="mom")
-    assert "走弱" in revenue_trend_label(-8.0, kind="mom")
-    assert "大減" in revenue_trend_label(-30.0, kind="yoy")
+    assert "較去年同月改善" == revenue_trend_label(8.0, kind="yoy")
+    assert "較上月持平" == revenue_trend_label(1.0, kind="mom")
+    assert "較上月走弱" == revenue_trend_label(-8.0, kind="mom")
+    assert "較去年同月大減" == revenue_trend_label(-30.0, kind="yoy")
+    assert "較去年同季" in revenue_trend_label(10.0, kind="yoy_q")
     assert revenue_trend_label(None) == "—"
+
+
+def test_monthly_revenue_window_rows_one_line():
+    from fundamentals import monthly_revenue_window_rows
+
+    rows = monthly_revenue_window_rows(
+        [
+            {
+                "yyyymm": "202608",
+                "revenue": 30300,
+                "mom_pct": -68.12,
+                "yoy_pct": 10.87,
+                "ytd_yoy_pct": 47.5,
+            }
+        ]
+    )
+    assert len(rows) == 1
+    lab, val = rows[0]
+    assert lab == "月營收近窗"
+    assert "0.30億元" in val
+    assert "月增-68.1%" in val
+    assert "年增+10.9%" in val
+    assert "累年增+47.5%" in val
+    assert "較上月大減" in val
+    assert "較去年同月改善" in val
 
 
 def test_quarterly_from_monthly_needs_three_months():
