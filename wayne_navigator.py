@@ -3622,24 +3622,39 @@ def _paint_emerging_revenue_line(
 ) -> None:
     """
     興櫃月營收折線：佔原「空間／熱度」高度。
-    質感＝淡底帶＋細格線＋漸層面積＋圓點白邊＋峰谷標值，不准糊成幼稚園折線。
+    質感＝淡底帶＋細格線＋面積＋白邊圓點；每月都標短數字（單位見標題），標在點上方不壓月份。
     """
     if not pts or w < 8 or h < 6:
         return
-    # 內緣留白：左給縱軸標、下給月份、上給數值
-    pad_l, pad_r, pad_b, pad_t = 9.2, 2.4, 4.2, 3.6
+    # 內緣留白：左縱軸、下月份、上數值（數值永不踩月份列）
+    pad_l, pad_r, pad_b, pad_t = 9.2, 2.4, 5.2, 4.2
     plot_l = x0 + pad_l
     plot_r = x0 + w - pad_r
     plot_b = y0 + pad_b
     plot_t = y0 + h - pad_t
     if plot_r - plot_l < 6 or plot_t - plot_b < 4:
         return
-    revs = [float(p.get("revenue") or 0) for p in pts]
+    revs_raw = [p.get("revenue") for p in pts]
+    revs = [float(v) for v in revs_raw if v is not None]
+    if not revs:
+        # 全年尚無營收：只畫 1–12 月標
+        month_y = y0 + 1.65
+        n_p = len(pts)
+        for i, p in enumerate(pts):
+            if n_p == 1:
+                px = (x0 + w) / 2
+            else:
+                px = (x0 + 9.2) + ((x0 + w - 2.4) - (x0 + 9.2)) * (i / (n_p - 1))
+            ax.text(
+                px, month_y, str(p.get("month_lab") or ""),
+                fontproperties=_fp(8.0, "bold"), color=C["ink_mute"],
+                ha="center", va="center", zorder=5,
+            )
+        return
     rmin, rmax = min(revs), max(revs)
     if rmax <= rmin:
         rmax = rmin + 1.0
-    pad_rev = (rmax - rmin) * 0.14
-    # 營收不畫負軸；格線用真實低／中／高，不拿 pad 假值當刻度
+    pad_rev = (rmax - rmin) * 0.12
     rlo = max(0.0, rmin - pad_rev) if rmin >= 0 else rmin - pad_rev
     rhi = rmax + pad_rev
     if rhi <= rlo:
@@ -3653,25 +3668,25 @@ def _paint_emerging_revenue_line(
         except Exception:
             return f"{v / 100000:.2f}億元" if abs(v) >= 100 else f"{v:.0f}"
 
-    def _yi_tick(v: float) -> str:
-        # 標題已寫「單位億元」，軸上只留數字，避免三行都掛「億元」變吵
-        s = _yi(v)
-        return s.replace("億元", "").strip() or s
+    def _yi_short(v: float) -> str:
+        return _yi(v).replace("億元", "").strip()
+
+    # 畫面上下再各留一截，最低點不會貼月份、最高點不會貼頂
+    y_span = plot_t - plot_b
+    map_b = plot_b + y_span * 0.16
+    map_t = plot_t - y_span * 0.10
 
     def _py(rv: float) -> float:
-        return plot_b + (plot_t - plot_b) * ((float(rv) - rlo) / (rhi - rlo))
+        return map_b + (map_t - map_b) * ((float(rv) - rlo) / (rhi - rlo))
 
     n_p = len(pts)
-    xs, ys = [], []
-    for i, p in enumerate(pts):
+    xs: list = []
+    for i in range(n_p):
         if n_p == 1:
-            px = (plot_l + plot_r) / 2
+            xs.append((plot_l + plot_r) / 2)
         else:
-            px = plot_l + (plot_r - plot_l) * (i / (n_p - 1))
-        xs.append(px)
-        ys.append(_py(float(p.get("revenue") or 0)))
+            xs.append(plot_l + (plot_r - plot_l) * (i / (n_p - 1)))
 
-    # 底帶：極淡 navy，讓折線有「紙上曲線」而不是漂在白板上
     ax.add_patch(
         patches.FancyBboxPatch(
             (x0 + 0.35, y0 + 0.25),
@@ -3683,10 +3698,10 @@ def _paint_emerging_revenue_line(
             zorder=2,
         )
     )
-    # 三條水平格線＋左軸：真實低／中／高（不是 pad 假值）
     mid_v = (rmin + rmax) / 2.0
+    # 點上都有短數字時，軸只留中／高兩檔，避免最低點跟軸標黏在一起
     guide_vals = []
-    for gv in (rmin, mid_v, rmax):
+    for gv in (mid_v, rmax):
         if not guide_vals or abs(gv - guide_vals[-1]) > (rmax - rmin) * 0.08 + 1e-9:
             guide_vals.append(gv)
     for gv in guide_vals:
@@ -3702,14 +3717,13 @@ def _paint_emerging_revenue_line(
         ax.text(
             plot_l - 0.55,
             gy,
-            _yi_tick(gv),
+            _yi_short(gv),
             fontproperties=_fp(7.6),
             color=C["ink_mute"],
             ha="right",
             va="center",
             zorder=4,
         )
-    # 零軸底線（營收 ≥0 時）
     if rlo <= 0 <= rhi:
         ax.plot(
             [plot_l, plot_r],
@@ -3719,13 +3733,38 @@ def _paint_emerging_revenue_line(
             solid_capstyle="round",
             zorder=3,
         )
-    # 面積填色（折線下方）
-    if len(xs) >= 2:
-        poly_x = [xs[0], *xs, xs[-1]]
-        poly_y = [plot_b, *ys, plot_b]
+    # 折線只連有數的點；空槽（9–12）佔位不連線、不造假
+    seg_x, seg_y = [], []
+    area_done = False
+    for i, raw in enumerate(revs_raw):
+        if raw is None:
+            if len(seg_x) >= 2:
+                if not area_done:
+                    ax.fill(
+                        [seg_x[0], *seg_x, seg_x[-1]],
+                        [map_b, *seg_y, map_b],
+                        facecolor="#1E293B",
+                        edgecolor="none",
+                        alpha=0.07,
+                        zorder=3,
+                        linewidth=0,
+                    )
+                    area_done = True
+                ax.plot(
+                    seg_x, seg_y, color=C["navy"], lw=2.35,
+                    solid_capstyle="round", solid_joinstyle="round",
+                    zorder=5, antialiased=True,
+                )
+            elif len(seg_x) == 1:
+                pass
+            seg_x, seg_y = [], []
+            continue
+        seg_x.append(xs[i])
+        seg_y.append(_py(float(raw)))
+    if len(seg_x) >= 2:
         ax.fill(
-            poly_x,
-            poly_y,
+            [seg_x[0], *seg_x, seg_x[-1]],
+            [map_b, *seg_y, map_b],
             facecolor="#1E293B",
             edgecolor="none",
             alpha=0.07,
@@ -3733,58 +3772,52 @@ def _paint_emerging_revenue_line(
             linewidth=0,
         )
         ax.plot(
-            xs,
-            ys,
-            color=C["navy"],
-            lw=2.35,
-            solid_capstyle="round",
-            solid_joinstyle="round",
-            zorder=5,
-            antialiased=True,
+            seg_x, seg_y, color=C["navy"], lw=2.35,
+            solid_capstyle="round", solid_joinstyle="round",
+            zorder=5, antialiased=True,
         )
-    # 峰／谷／首尾才標數值，避免擠成一團
-    label_idx = {0, n_p - 1}
-    if n_p >= 3:
-        label_idx.add(int(max(range(n_p), key=lambda i: revs[i])))
-        label_idx.add(int(min(range(n_p), key=lambda i: revs[i])))
-    for i, (px, py) in enumerate(zip(xs, ys)):
-        ax.plot(
-            px,
-            py,
-            "o",
-            color=C["navy"],
-            markersize=6.2,
-            markerfacecolor="#FFFFFF",
-            markeredgecolor=C["navy"],
-            markeredgewidth=1.35,
-            zorder=6,
-            antialiased=True,
-        )
-        if i in label_idx:
-            yi_s = str(pts[i].get("yi_lab") or _yi(revs[i]))
-            # 峰往上、谷往下，其餘預設上
-            above = revs[i] >= (rmin + rmax) / 2
-            ty = min(py + 1.55, plot_t + 0.15) if above else max(py - 1.55, plot_b - 0.1)
-            ax.text(
-                px,
-                ty,
-                yi_s,
-                fontproperties=_fp(8.0, "bold"),
-                color=C["navy"],
-                ha="center",
-                va="bottom" if above else "top",
-                zorder=7,
-            )
+    # 每月都標短數字（有數才標）；一律點上方，不壓月份；空槽只留淡月標
+    month_y = y0 + 1.65
+    label_floor = plot_b + 0.35
+    for i, (px, raw) in enumerate(zip(xs, revs_raw)):
         mlab = str(pts[i].get("month_lab") or "")
+        if raw is None:
+            ax.text(
+                px, month_y, mlab,
+                fontproperties=_fp(8.0, "bold"), color=C["ink_mute"],
+                ha="center", va="center", zorder=5,
+            )
+            continue
+        py = _py(float(raw))
+        ax.plot(
+            px, py, "o",
+            color=C["navy"], markersize=6.2,
+            markerfacecolor="#FFFFFF", markeredgecolor=C["navy"],
+            markeredgewidth=1.35, zorder=6, antialiased=True,
+        )
+        yi_s = _yi_short(float(raw))
+        # 點上方；貼頂改下方。首尾點略往內偏，避免跟軸／圖邊黏
+        if py + 1.35 <= plot_t + 0.2:
+            ty, va = py + 1.35, "bottom"
+        else:
+            ty, va = max(py - 1.35, label_floor), "top"
+        tx = px
+        tha = "center"
+        if i == 0:
+            tx = px + 0.55
+            tha = "left"
+        elif i == n_p - 1:
+            tx = px - 0.55
+            tha = "right"
         ax.text(
-            px,
-            y0 + 1.55,
-            mlab,
-            fontproperties=_fp(8.4, "bold"),
-            color=C["ink_soft"],
-            ha="center",
-            va="center",
-            zorder=5,
+            tx, ty, yi_s,
+            fontproperties=_fp(7.8, "bold"), color=C["navy"],
+            ha=tha, va=va, zorder=7,
+        )
+        ax.text(
+            px, month_y, mlab,
+            fontproperties=_fp(8.4, "bold"), color=C["ink_soft"],
+            ha="center", va="center", zorder=5,
         )
 
 
@@ -4255,8 +4288,8 @@ def render_first_glance_png(
         fw = 100 - 2 * inner_x
         # 興櫃專用：左對齊月列｜右季合計框（折線已移到上方月營收區）
         if split_month_rows and (fund_split or {}).get("emerging"):
-            left_w = fw * 0.50
-            q_gap = 1.0
+            left_w = fw * 0.56
+            q_gap = 0.9
             q_x = inner_x + left_w + q_gap
             q_w = fw - left_w - q_gap
             n_m = len(split_month_rows)
@@ -4269,9 +4302,10 @@ def render_first_glance_png(
                     (inner_x, block_bot), left_w, block_h,
                     boxstyle="round,pad=0,rounding_size=0.45",
                     facecolor=C["white"], edgecolor=C["line"], linewidth=0.9, zorder=2))
-                date_x = inner_x + 1.1
-                yi_right = inner_x + left_w * 0.52
-                mom_x = inner_x + left_w * 0.56
+                # 左欄：日期｜億元｜月增減 — 三欄拉開；空槽淡字 —
+                date_x = inner_x + 0.95
+                yi_right = inner_x + left_w * 0.40
+                mom_x = inner_x + left_w * 0.66
                 ym_to_i = {}
                 for i, mr in enumerate(split_month_rows):
                     row_top = block_top - i * (split_row_h + split_gap)
@@ -4286,13 +4320,18 @@ def render_first_glance_png(
                     yi_lab = str(mr.get("yi_lab") or "")
                     phrase = str(mr.get("mom_phrase") or "")
                     tone = str(mr.get("mom_tone") or "flat")
-                    mom_c = C["up"] if tone == "up" else (C["ink"] if tone == "down" else C["ink_soft"])
+                    has = bool(mr.get("has_data", True))
+                    ink = C["ink"] if has else C["ink_mute"]
+                    mom_c = (
+                        C["up"] if tone == "up" else (C["ink"] if tone == "down" else C["ink_soft"])
+                    ) if has else C["ink_mute"]
                     ax.text(date_x, cy, date_lab, fontproperties=_fp(10.8, "bold"),
-                            color=C["ink"], va="center", ha="left", zorder=4)
+                            color=ink, va="center", ha="left", zorder=4)
                     ax.text(yi_right, cy, yi_lab, fontproperties=_fp(10.8, "bold"),
-                            color=C["ink"], va="center", ha="right", zorder=4)
-                    ax.text(mom_x, cy, phrase, fontproperties=_fp(10.6, "bold"),
-                            color=mom_c, va="center", ha="left", zorder=4)
+                            color=ink, va="center", ha="right", zorder=4)
+                    if phrase:
+                        ax.text(mom_x, cy, phrase, fontproperties=_fp(10.6, "bold"),
+                                color=mom_c, va="center", ha="left", zorder=4)
                     ym = str(mr.get("yyyymm") or "")
                     if ym:
                         ym_to_i[ym] = i
@@ -4301,6 +4340,7 @@ def render_first_glance_png(
                     (q_x, block_bot), q_w, block_h,
                     boxstyle="round,pad=0,rounding_size=0.45",
                     facecolor="#FBFCFD", edgecolor=C["line"], linewidth=0.9, zorder=2))
+                covered = set()
                 for qb in split_quarter_boxes:
                     ms = [str(m) for m in (qb.get("yyyymms") or []) if str(m) in ym_to_i]
                     if len(ms) < 3:
@@ -4310,50 +4350,64 @@ def render_first_glance_png(
                     # 必須連號三個月（同一季列在一起）
                     if idxs != list(range(i0, i1 + 1)) or (i1 - i0 + 1) != 3:
                         continue
+                    for m in ms:
+                        covered.add(m)
                     box_top = block_top - i0 * (split_row_h + split_gap)
                     box_bot = block_top - i1 * (split_row_h + split_gap) - split_row_h
                     bh = box_top - box_bot
                     ax.add_patch(patches.FancyBboxPatch(
-                        (q_x + 0.55, box_bot + 0.25), q_w - 1.1, bh - 0.5,
+                        (q_x + 0.55, box_bot + 0.35), q_w - 1.1, bh - 0.7,
                         boxstyle="round,pad=0,rounding_size=0.4",
                         facecolor=C["white"], edgecolor="#D7DEE8", linewidth=0.85, zorder=3))
                     text = str(qb.get("text") or "").strip()
-                    # 置中：季標｜金額｜較上季（有才畫第三行）
+                    # 置中三行拉開：季標｜金額｜較上季（行距跟框高走，不准黏）
                     chunks = [c for c in text.split("　") if c]
                     cy = (box_top + box_bot) / 2
                     if len(chunks) >= 3:
-                        ax.text(q_x + q_w / 2, cy + 1.25, chunks[0],
-                                fontproperties=_fp(10.0, "bold"), color=C["navy"],
+                        # 三行均分框高，上下留邊，不准黏成一團
+                        edge = 1.1
+                        usable = max(bh - 2 * edge, 4.5)
+                        gap_y = usable / 2.0
+                        ax.text(q_x + q_w / 2, cy + gap_y, chunks[0],
+                                fontproperties=_fp(9.6, "bold"), color=C["navy"],
                                 ha="center", va="center", zorder=4)
                         ax.text(q_x + q_w / 2, cy, chunks[1],
-                                fontproperties=_fp(11.0, "bold"), color=C["ink"],
+                                fontproperties=_fp(10.6, "bold"), color=C["ink"],
                                 ha="center", va="center", zorder=4)
-                        ax.text(q_x + q_w / 2, cy - 1.25, chunks[2],
-                                fontproperties=_fp(9.4, "bold"), color=C["ink_soft"],
+                        ax.text(q_x + q_w / 2, cy - gap_y, chunks[2],
+                                fontproperties=_fp(9.0, "bold"), color=C["ink_soft"],
                                 ha="center", va="center", zorder=4)
                     elif len(chunks) == 2:
-                        ax.text(q_x + q_w / 2, cy + 0.85, chunks[0],
-                                fontproperties=_fp(10.2, "bold"), color=C["navy"],
+                        gap_y = max(2.0, (bh - 2.2) / 2.8)
+                        ax.text(q_x + q_w / 2, cy + gap_y * 0.55, chunks[0],
+                                fontproperties=_fp(10.0, "bold"), color=C["navy"],
                                 ha="center", va="center", zorder=4)
-                        ax.text(q_x + q_w / 2, cy - 0.95, chunks[1],
-                                fontproperties=_fp(11.0, "bold"), color=C["ink"],
+                        ax.text(q_x + q_w / 2, cy - gap_y * 0.55, chunks[1],
+                                fontproperties=_fp(10.6, "bold"), color=C["ink"],
                                 ha="center", va="center", zorder=4)
                     else:
                         ax.text(q_x + q_w / 2, cy, text,
                                 fontproperties=_fp(10.4, "bold"), color=C["navy"],
                                 ha="center", va="center", zorder=4)
-                # 未滿三個月的列：右欄淡字說明，不造假季合計
-                covered = set()
-                for qb in split_quarter_boxes:
-                    for m in qb.get("yyyymms") or []:
-                        covered.add(str(m))
-                orphan = [
-                    i
-                    for i, mr in enumerate(split_month_rows)
-                    if str(mr.get("yyyymm") or "") not in covered
-                ]
-                if orphan:
-                    i0, i1 = min(orphan), max(orphan)
+                # 未滿三個月的季：有任一官方月才淡字；全年空槽季（如 Q4）留白等補
+                for season in (4, 3, 2, 1):
+                    idxs = []
+                    any_data = False
+                    for i, mr in enumerate(split_month_rows):
+                        ym = str(mr.get("yyyymm") or "")
+                        if len(ym) < 6:
+                            continue
+                        mon = int(ym[4:6])
+                        if (mon - 1) // 3 + 1 != season:
+                            continue
+                        idxs.append(i)
+                        if mr.get("has_data"):
+                            any_data = True
+                    if not idxs or not any_data:
+                        continue
+                    if all(str(split_month_rows[i].get("yyyymm") or "") in covered for i in idxs):
+                        continue
+                    i0, i1 = min(idxs), max(idxs)
                     box_top = block_top - i0 * (split_row_h + split_gap)
                     box_bot = block_top - i1 * (split_row_h + split_gap) - split_row_h
                     cy = (box_top + box_bot) / 2

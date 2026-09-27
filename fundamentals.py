@@ -988,21 +988,40 @@ def _month_face_label(yyyymm: str) -> str:
 
 
 def _months_jan_through_latest(months: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """最新月所屬西元年的 1 月→最新月（顯示時新→舊）。缺月不造假。"""
+    """
+    最新月所屬西元年的 1–12 月槽（顯示時新→舊＝12→1）。
+    有官方營收才填金額；尚未公告的月留空槽（不造假），之後同步直接補進同槽。
+    """
     if not months:
         return []
     latest = str(months[0].get("yyyymm") or "").replace("-", "")[:6]
     if len(latest) != 6 or not latest.isdigit():
         return list(months)[:12]
     year = latest[:4]
-    jan = f"{year}01"
-    kept = [
-        m
-        for m in months
-        if len(str(m.get("yyyymm") or "")) >= 6
-        and jan <= str(m.get("yyyymm")).replace("-", "")[:6] <= latest
-    ]
-    return kept
+    by_ym: Dict[str, Dict[str, Any]] = {}
+    for m in months:
+        ym = str(m.get("yyyymm") or "").replace("-", "")[:6]
+        if len(ym) == 6 and ym.isdigit() and ym.startswith(year):
+            by_ym[ym] = m
+    out: List[Dict[str, Any]] = []
+    for mon in range(12, 0, -1):
+        ym = f"{year}{mon:02d}"
+        if ym in by_ym:
+            row = dict(by_ym[ym])
+            row["placeholder"] = False
+            out.append(row)
+        else:
+            out.append(
+                {
+                    "yyyymm": ym,
+                    "revenue": None,
+                    "mom_pct": None,
+                    "yoy_pct": None,
+                    "ytd_yoy_pct": None,
+                    "placeholder": True,
+                }
+            )
+    return out
 
 
 def _quarter_right_label(
@@ -1033,15 +1052,17 @@ def month_quarter_split_rows(
 ) -> Dict[str, Any]:
     """
     介紹卡基本面左右分欄：
-    左＝月列（新→舊，到該年1月）；右＝完整季各一個框（滿三個月才有；文字置中）。
+    左＝該年 12→1 月槽（有數填數、無數留 —）；右＝完整季各一個框（滿三個月才有）。
     回傳 {month_rows, quarter_boxes}。
     """
     win = _months_jan_through_latest(months)
     by_key = {(int(x["year"]), int(x["season"])): x for x in (q_from_m or [])}
-    win_set = {
+    # 季框只認「有官方營收」的月；空槽不算齊季
+    data_ym = {
         str(m.get("yyyymm") or "").replace("-", "")[:6]
         for m in win
-        if len(str(m.get("yyyymm") or "")) >= 6
+        if not m.get("placeholder") and m.get("revenue") is not None
+        and len(str(m.get("yyyymm") or "")) >= 6
     }
     quarter_boxes: List[Dict[str, Any]] = []
     for qq in q_from_m or []:
@@ -1052,8 +1073,7 @@ def month_quarter_split_rows(
         )
         if len(ms) < 3:
             continue
-        # 該季三個月都在顯示窗內才畫框（未滿季／跨年窗外不畫）
-        if not all(m in win_set for m in ms):
+        if not all(m in data_ym for m in ms):
             continue
         quarter_boxes.append(
             {
@@ -1063,18 +1083,33 @@ def month_quarter_split_rows(
                 "text": _quarter_right_label(qq, by_key),
             }
         )
-    # 顯示序：新季在上（跟月列新→舊一致）
     quarter_boxes.sort(key=lambda b: (b["year"], b["season"]), reverse=True)
     month_rows: List[Dict[str, Any]] = []
     for m in win:
         yyyymm = str(m.get("yyyymm") or "").replace("-", "")[:6]
+        date_lab = _month_face_label(yyyymm)
+        has_data = (not m.get("placeholder")) and m.get("revenue") is not None
+        if not has_data:
+            month_rows.append(
+                {
+                    "yyyymm": yyyymm,
+                    "date_lab": date_lab,
+                    "yi_lab": "—",
+                    "left_head": f"{date_lab}　—",
+                    "mom_phrase": "",
+                    "mom_tone": "flat",
+                    "left": f"{date_lab}　—",
+                    "right": "",
+                    "has_data": False,
+                }
+            )
+            continue
         mom = m.get("mom_pct")
         try:
             mom_f = float(mom) if mom is not None else None
         except (TypeError, ValueError):
             mom_f = None
         phrase, tone = _mom_phrase_and_tone(mom_f)
-        date_lab = _month_face_label(yyyymm)
         yi_lab = format_yi(m.get("revenue") or 0)
         month_rows.append(
             {
@@ -1085,7 +1120,8 @@ def month_quarter_split_rows(
                 "mom_phrase": phrase,
                 "mom_tone": tone,
                 "left": f"{date_lab}　{yi_lab}　{phrase}",
-                "right": "",  # 右欄改畫季框，不再掛單列
+                "right": "",
+                "has_data": True,
             }
         )
     return {"month_rows": month_rows, "quarter_boxes": quarter_boxes}
@@ -1134,8 +1170,8 @@ def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12
 
 def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dict[str, Any]]:
     """
-    僅興櫃介紹卡：月營收折線（佔空間／熱度位）＋左月列／右季合計＋底列毛利／營益／淨利／EPS。
-    上市櫃回 None（維持原本一列一標）。
+    僅興櫃介紹卡：月營收折線（該年 1–12 月槽）＋左月列／右季合計＋底列毛利／營益／淨利／EPS。
+    尚未公告的月留空槽，之後同步直接補進；上市櫃回 None。
     """
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
@@ -1163,22 +1199,25 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
     month_rows = list((split or {}).get("month_rows") or [])
     if not month_rows:
         return None
-    # 折線圖點：舊→新（左→右），金額用官方千元
+    # 折線圖點：該年 1→12（左→右），空槽 revenue=None 供後續補月
     chart_points: List[Dict[str, Any]] = []
     for mr in reversed(month_rows):
         yyyymm = str(mr.get("yyyymm") or "")
-        rev = 0.0
-        for src in months:
-            if str(src.get("yyyymm") or "").replace("-", "")[:6] == yyyymm:
-                rev = float(src.get("revenue") or 0)
-                break
+        has = bool(mr.get("has_data"))
+        rev = None
+        if has:
+            for src in months:
+                if str(src.get("yyyymm") or "").replace("-", "")[:6] == yyyymm:
+                    rev = float(src.get("revenue") or 0)
+                    break
         chart_points.append(
             {
                 "yyyymm": yyyymm,
                 "date_lab": str(mr.get("date_lab") or _month_face_label(yyyymm)),
                 "month_lab": f"{int(yyyymm[4:6])}月" if len(yyyymm) >= 6 else "",
                 "revenue": rev,
-                "yi_lab": str(mr.get("yi_lab") or format_yi(rev)),
+                "yi_lab": str(mr.get("yi_lab") or "") if has else "",
+                "has_data": has,
             }
         )
     q = get_latest_income(path, sid)

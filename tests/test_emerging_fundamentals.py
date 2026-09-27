@@ -231,16 +231,18 @@ def test_month_quarter_split_rows_boxes():
     rows = split["month_rows"]
     boxes = split["quarter_boxes"]
     assert [r["yyyymm"] for r in rows] == [
-        "202608", "202607", "202606", "202605", "202604", "202603", "202602", "202601"
+        "202612", "202611", "202610", "202609",
+        "202608", "202607", "202606", "202605", "202604", "202603", "202602", "202601",
     ]
-    assert rows[0]["date_lab"].startswith("8月'26")
-    assert rows[0]["yi_lab"] == "0.30億元"
-    assert rows[0]["mom_tone"] == "down"
-    assert "月減68.1%" in rows[0]["mom_phrase"]
-    assert rows[1]["mom_tone"] == "up"
+    assert rows[0]["has_data"] is False and rows[0]["yi_lab"] == "—"  # 12月空槽
+    assert rows[4]["date_lab"].startswith("8月'26")
+    assert rows[4]["yi_lab"] == "0.30億元"
+    assert rows[4]["mom_tone"] == "down"
+    assert "月減68.1%" in rows[4]["mom_phrase"]
+    assert rows[5]["mom_tone"] == "up"
     seasons = {(b["year"], b["season"]) for b in boxes}
     assert (2026, 2) in seasons and (2026, 1) in seasons
-    assert (2026, 3) not in seasons  # 7–8 月未滿季
+    assert (2026, 3) not in seasons  # 7–8 月未滿季；9–12 空槽
     q2 = next(b for b in boxes if b["season"] == 2)
     assert "第2季合計" in q2["text"] and "0.82億元" in q2["text"]
     assert q2["yyyymms"] == ["202604", "202605", "202606"]
@@ -251,12 +253,15 @@ def test_glance_split_layout_emerging_only(tmp_path):
     _seed_emerging_7853(db)
     lay = glance_fund_split_layout("7853", db)
     assert lay and lay["emerging"] is True
-    assert len(lay["month_rows"]) == 8
-    assert len(lay["chart_points"]) == 8
-    # 折線舊→新
+    assert len(lay["month_rows"]) == 12
+    assert len(lay["chart_points"]) == 12
+    # 折線 1→12；9–12 空槽
     assert lay["chart_points"][0]["yyyymm"] == "202601"
-    assert lay["chart_points"][-1]["yyyymm"] == "202608"
-    assert abs(lay["chart_points"][-1]["revenue"] - 30300) < 1e-6
+    assert lay["chart_points"][-1]["yyyymm"] == "202612"
+    assert lay["chart_points"][7]["yyyymm"] == "202608"
+    assert abs(lay["chart_points"][7]["revenue"] - 30300) < 1e-6
+    assert lay["chart_points"][8]["has_data"] is False
+    assert lay["chart_points"][8]["revenue"] is None
     assert any(a == "EPS" for a, _ in lay["bottom"])
     assert len(lay["quarter_boxes"]) >= 2
     assert any(b["season"] == 2 for b in lay["quarter_boxes"])
