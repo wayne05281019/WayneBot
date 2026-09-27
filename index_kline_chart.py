@@ -318,15 +318,16 @@ def render_index_kline_png(
             months.append(f"{dt.month}月'{dt.year % 100:02d}")
             mpos.append(i)
             prev_m = key
-    ax2.set_xticks(mpos)
-    ax2.set_xticklabels(months, fontproperties=_fp(9))
+    from wayne_navigator import _set_staggered_month_ticks
+
+    _set_staggered_month_ticks(ax2, months, mpos, compact=False)
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(9))
     for side in ("top", "left"):
         ax1.spines[side].set_visible(False)
         ax2.spines[side].set_visible(False)
 
-    fig.subplots_adjust(left=0.03, right=0.96, top=0.78, bottom=0.11)
+    fig.subplots_adjust(left=0.03, right=0.96, top=0.78, bottom=0.15)
     fig.text(
         0.03,
         0.955,
