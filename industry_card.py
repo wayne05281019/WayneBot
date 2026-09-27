@@ -415,7 +415,7 @@ def render_industry_png(
             items.append(("p", _vs_peer(snap["my_yoy"], snap["yoy_med"], "%")))
         else:
             if listing == "興櫃":
-                items.append(("p", "興櫃月營收走櫃買 OpenAPI（t187ap05_R）；沒官方列就不顯示。"))
+                items.append(("p", "興櫃月營收：櫃買 OpenAPI＋觀測站 rotc；季報走 ajax_t163sb04。沒官方列就不顯示。"))
             else:
                 items.append(("p", "這檔還沒有月營收列"))
                 latest_m = str(snap.get("latest_month") or "")
