@@ -168,13 +168,17 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "此刻推薦" in html
     assert "主產業" in html and "電子上游" in html
     assert "次產業" in html and "IC" in html
-    assert "資金輪動要注意" in html
-    assert "不是整層電子" in html
-    assert "人去樓空" in html
+    # 教戰／規則清單／「資金輪動要注意」不准再塞每次正文
+    assert "資金輪動要注意" not in html
+    assert "不是整層電子" not in html
+    assert "他教過怎麼找" not in html
+    assert "① " not in html
+    assert "佔比如實主判" not in html
+    assert "每檔先寫買或不買" not in html
+    assert "盤中未收不當官方收" not in html
+    assert "誰先過前高" not in html
+    assert "官方收" in html
     assert "黃金買點" in html
-    assert "誰先過前高" in html
-    assert "盤中未收不當官方收" in html
-    assert "每檔先寫買或不買" in html
 
 
 def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
@@ -188,18 +192,18 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     html = dongzhu_page(db)
     assert DASH_LINE in html
     parts = [p.strip() for p in html.split(DASH_LINE) if p.strip()]
-    assert len(parts) >= 6
+    assert len(parts) >= 4
     heads = [p.split("\n", 1)[0] for p in parts]
     blob = "\n".join(heads)
     assert "洞燭先機" in blob
-    assert "資金輪動要注意" in html
-    assert "資金進哪條" in html
-    assert "追漲不追跌" in html
+    assert "資金輪動要注意" not in html
+    assert "資金進哪條" not in html
+    assert "追漲不追跌" not in html
     assert "此刻最像" in html
     assert "此刻推薦" in html
-    assert "① " in html
-    assert "② " in html
-    assert "③ " in html
+    assert "① " not in html
+    assert "② " not in html
+    assert "③ " not in html
     assert "每天流入第一名：" not in html
     assert "這族黃金買點" not in html
     assert "還在零・嚴重低估" not in html
@@ -243,11 +247,14 @@ def test_dongzhu_page_phone_reflow_does_not_split_numbers(tmp_path, monkeypatch)
         assert s not in ("IC／", "電子上游／IC／")
         assert len(re.sub(r"<[^>]+>", "", s)) <= 18 or s.startswith("┈")
     assert "對五件" not in phone
-    assert "誰先過前高" in phone
+    assert "他教過怎麼找" not in phone
+    assert "誰先過前高" not in phone
+    assert "資金輪動要注意" not in phone
+    assert "佔比如實主判" not in phone
     assert "第一名還沒過前高" not in phone
-    assert "捕捉・最落後次級" in phone or "捕捉" in phone
-    assert "佔比如實主判" in phone
-    assert "可買" in phone or "不買" in phone
+    assert "此刻最像" in phone
+    assert "官方收" in phone
+    assert "此刻推薦" in phone
     assert "落後·次級" not in phone
     assert "電子上游 / IC /" not in phone
     assert "電子上游／IC／" not in phone
@@ -429,7 +436,10 @@ def test_dongzhu_records_slow_inflow_skips_named_hot(tmp_path, monkeypatch):
     assert "資金進出" in html or "佔當日" in html or "產業鏈" in html or "封測" in html
     assert "這族黃金買點" not in html
     assert "3443" not in html
-    assert "只參考" in html or "主戰場" in html
+    assert "他教過怎麼找" not in html
+    assert "資金輪動要注意" not in html
+    assert "官方收" in html
+    assert "此刻最像" in html
 
 
 def test_ignite_share_in_not_lots_size():
@@ -595,7 +605,9 @@ def test_dongzhu_share_beats_his_named_field(tmp_path, monkeypatch):
     assert data.get("field") == "PCB"
     html = dongzhu_page(db, spoken=spoken)
     assert "PCB" in html
-    assert "主判佔比" in html or "只參考" in html
+    assert "佔當日法人買超" in html or "佔比" in html
+    assert "他教過怎麼找" not in html
+    assert "資金輪動要注意" not in html
     assert "3443" not in html
     assert "主產業" in html
     assert "次產業" in html
@@ -1526,5 +1538,9 @@ def test_dongzhu_skips_holding_company_parking(tmp_path, monkeypatch):
     assert data.get("pre_ok") is True
     html = dongzhu_page(db, spoken="")
     assert "高階測試／封測" in html
-    assert "停車格" in html
-    assert "金控／銀行當停車格" in html or "不拿來當先機" in html
+    assert "停車格" in html or "金控／銀行當停車格" in str(data.get("why") or "")
+    assert "他教過怎麼找" not in html
+    assert "資金輪動要注意" not in html
+    assert "金控／銀行當停車格" in html or "略過" in html or "不拿來當先機" in str(
+        data.get("why") or ""
+    )

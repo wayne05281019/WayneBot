@@ -255,14 +255,14 @@ _HOW = (
 _HOW_LINES = (
     "他教過怎麼找：",
     "① 次族群還沒熱",
-    "② 誰先過前高",
-    "不比絕對漲跌",
-    "③ 從底部找落後",
-    "不是猜新聞。",
+    "② 誰先過前高，不比絕對漲跌",
+    "③ 從底部找落後，不是猜新聞。",
 )
 _PAGE_RULES = (
-    "佔比如實主判。",
+    "佔比如實主判：主／次／細項佔當日法人買超％升降。",
     "每天資金進哪條主／次／細項。",
+    "輪動寫清到哪一層，再分龍頭與次級。",
+    "不比張數、不發明一族。",
     "微弱可察也算進駐。",
     "每檔先寫買或不買。",
     "已持有寫留或不加碼。",
@@ -1759,12 +1759,15 @@ def _share_path_lines(ign: Dict[str, Any]) -> List[str]:
     if len(shares) >= 2:
         body = f"{shares[0]:.1f}%→{shares[-1]:.1f}%"
         pt = _pt_txt(shares[-1] - shares[0])
-        one = f"佔比 {body}（{pt}）"
+        one = f"佔當日法人買超 {body}（{pt}）"
         if len(one) <= _PHONE_W:
             return [one]
-        return [f"佔比 {body}", pt]
+        short = f"佔當日法人買超 {body}"
+        if len(short) <= _PHONE_W:
+            return [short, pt]
+        return [f"佔當日法人買超", body, pt]
     if shares:
-        return [f"佔比 {_share_txt(shares[-1])}"]
+        return [f"佔當日法人買超 {_share_txt(shares[-1])}"]
     return []
 
 
@@ -1807,7 +1810,7 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
     last_sh = float(ign.get("share_last") or 0)
     chg = float(ign.get("share_chg") or 0)
     if shares:
-        one = f"佔當日買超 {_share_txt(last_sh)}"
+        one = f"佔當日法人買超 {_share_txt(last_sh)}"
         pt = _pt_txt(chg)
         if len(f"{one}（{pt}）") <= _PHONE_W:
             lines.append(f"{one}（{pt}）")
@@ -1817,6 +1820,7 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
         lines.append(f"近{len(shares)}日佔比")
         lines.extend(_pack_phone([f"{x:.1f}%" for x in shares]))
     if nets:
+        lines.append("張數只佐證，不排名")
         lines.append(f"近{len(nets)}日法人")
         lines.extend(_lots_txt(n) for n in nets)
         lines.append(f"累計 {_lots_txt(int(ign.get('cum5') or 0))}")
@@ -2531,6 +2535,23 @@ def _stock_action_lines(item: Dict[str, Any], tag: str, *, held: bool = False) -
     return ["不買", "只觀察"]
 
 
+def _face_already_in_title(title: str, face: str) -> bool:
+    """標題已帶上市／上櫃＋產業標時，不准再孤一行蓋同樣字。"""
+    face = str(face or "").strip()
+    if not face:
+        return True
+    plain = re.sub(r"<[^>]+>", "", str(title or ""))
+    plain = plain.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    if face in plain:
+        return True
+    # 標題寫電子上游-IC-通路、face 只寫通路 → 同層，不重複。
+    if "-" in plain and plain.rstrip("　 ").endswith(face):
+        return True
+    if "／" in face:
+        return all(part in plain for part in face.split("／") if part)
+    return False
+
+
 def _stock_line(
     item: Dict[str, Any],
     idx: int,
@@ -2552,7 +2573,7 @@ def _stock_line(
         rows = [f"{idx}. {html_face('龍頭')} {title}"]
     else:
         rows = [f"{idx}. {title}"]
-    if face:
+    if face and not _face_already_in_title(title, face):
         rows.append(_esc(face))
     rows.extend(_esc(x) for x in _stock_action_lines(item, tag, held=held))
     if str(tag or "").startswith("買點"):
@@ -2904,17 +2925,15 @@ def dongzhu_page(
     held_sids: Optional[Sequence[str]] = None,
     data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """主選單洞燭先機頁。每檔先寫買或不買；已持有寫留或不加碼。"""
+    """主選單洞燭先機頁。只出實況：官方收、層級、佔比、名單。不准每次背教戰。"""
     from tg_layout import join_dashed
 
     if data is None:
         data = dongzhu_picks(db_path, spoken=spoken)
     held_sids = [str(x) for x in (held_sids or ()) if str(x)]
+    # 標題＋官方收起頭；①②③教戰／規則清單／「資金輪動要注意」整段不准再塞正文。
+    blocks: List[str] = [_blk("<b>洞燭先機</b>")]
     cap = _esc(data.get("cap") or "")
-    blocks: List[str] = [
-        _blk("<b>洞燭先機</b>", *(_esc(x) for x in _HOW_LINES)),
-        _blk(*(_esc(x) for x in _PAGE_RULES)),
-    ]
     if cap:
         chip = _esc(data.get("chip_cap") or "")
         date_rows = [f"官方收 {_day_zh(cap)}"]
@@ -2930,7 +2949,6 @@ def dongzhu_page(
                 *(_esc(x) for x in _split_bar(board)),
             )
         )
-    blocks.append(_blk("<b>資金輪動要注意</b>", *(_esc(x) for x in _PAGE_NOTES)))
     field = str(data.get("field") or "")
     if not field:
         blocks.append(
@@ -2946,10 +2964,11 @@ def dongzhu_page(
     ign = data.get("flow") or {}
     lead_n = int(data.get("in_lead_n") or 0)
     pos_n = int(data.get("share_pos_n") or 0)
+    win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
     if lead_n:
         now_rows.append(_esc(f"流入第一 {lead_n}天"))
     if pos_n:
-        now_rows.append(_esc(f"買超佔比 {pos_n}天"))
+        now_rows.append(_esc(f"近{win_n}日有佔比 {pos_n}天"))
     now_rows.extend(_esc(x) for x in _share_path_lines(ign))
     if data.get("pre_sign") == "pre":
         now_rows.append(_esc("佔比升還沒第一＝先機"))
@@ -2969,7 +2988,15 @@ def dongzhu_page(
     named = [str(x) for x in (data.get("named") or []) if x]
     if field not in named:
         now_rows.append(_esc("還沒點名"))
+    why = str(data.get("why") or "")
+    if "金控／銀行當停車格" in why or "停車格" in why and "不拿來當先機" in why:
+        now_rows.append(_esc("金控／銀行當停車格，略過"))
+    if "航運／塑化／建築" in why and "不拿來當先機" in why:
+        now_rows.append(_esc("航運／塑化／建築略過"))
     blocks.append(_blk(*now_rows))
+    parity = str(data.get("parity") or "").strip()
+    if parity:
+        blocks.append(_blk("<b>龍頭／次級</b>", *(_esc(x) for x in _break_sentences(parity))))
     sib_lines = _sibling_phone_lines(str(data.get("sibling_txt") or ""))
     if sib_lines:
         blocks.append(_blk("<b>同主產業佔比</b>", *(_esc(x) for x in sib_lines)))
@@ -2985,7 +3012,7 @@ def dongzhu_page(
         rec_rows.append(_esc("這型最落後次級兩到三檔"))
         rec_rows.append(_esc("不是單檔保證"))
         rec_rows.append(_esc("點左邊選"))
-        rec_rows.append(_esc("剛好剛離零才標買點"))
+        rec_rows.append(_esc("剛好剛離零才標黃金買點"))
         rec_bits: List[str] = []
         for i, item in enumerate(recs, start=1):
             tag = "買點" if str(item.get("sid") or "") in buy_sids else "先機"
@@ -3017,5 +3044,5 @@ def dongzhu_page(
             )
         )
     if alt_bits:
-        blocks.append(_blk("<b>次熱</b>", *alt_bits))
+        blocks.append(_blk("<b>次熱（佔當日法人買超％）</b>", *alt_bits))
     return join_dashed(*blocks)
