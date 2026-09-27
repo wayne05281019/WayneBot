@@ -268,7 +268,7 @@ def test_industry_mix_volume_and_lag_month(tmp_path, monkeypatch):
     em = industry_snapshot(db, "3644")
     assert em["listing"] == "興櫃"
     html_em = format_industry_html("3644", db)
-    assert "興櫃沒有免登入的全市場月營收彙總" in html_em
+    assert "興櫃月營收走櫃買 OpenAPI" in html_em or "t187ap05_R" in html_em
 
 
 def test_mops_urls_stay_listed_otc_no_rot_guess():

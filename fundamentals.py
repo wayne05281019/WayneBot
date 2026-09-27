@@ -27,12 +27,13 @@ HEADERS = {
 
 TWSE_MONTHLY = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
 TPEX_MONTHLY = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O"
+TPEX_EMERGING_MONTHLY = "https://www.tpex.org.tw/openapi/v1/t187ap05_R"
 TWSE_INCOME = "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"
 TPEX_INCOME = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap06_O_ci"
 # 公開資訊觀測站「已公告」月營收彙總（無驗證碼）。OpenAPI 月營收是全市場同一期，
 # 10 號前仍停在上上月時，先公告的公司（例如緯穎 8 月）只出現在這份表。
-# 興櫃 NAS rot（t21/rot/t21sc03）2026-09 回 404；個股 t05st10 要驗證碼，不抓。
-# 沒有免登入興櫃月營收彙總就不寫庫、產業頁明寫尚未公告。
+# 興櫃月營收：櫃買 OpenAPI t187ap05_R（免驗證碼）。NAS rot／emg 彙總 404；個股頁要驗證碼不抓。
+# 興櫃季報綜合損益尚無免驗證碼 OpenAPI；有月營收歷史就彙成季營收看兩年。
 MOPS_NAS_MONTHLY = "https://mopsov.twse.com.tw/nas/t21/{ex}/t21sc03_{roc}_{month}_{kind}.html"
 
 
@@ -405,6 +406,7 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
     for url, market, kind in (
         (TWSE_MONTHLY, "TW", "monthly"),
         (TPEX_MONTHLY, "TWO", "monthly"),
+        (TPEX_EMERGING_MONTHLY, "EM", "monthly"),
         (TWSE_INCOME, "TW", "income"),
         (TPEX_INCOME, "TWO", "income"),
     ):
@@ -455,7 +457,7 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         "db_latest_month": m_max[1] or "",
         "db_income": int(q_max[0] or 0),
         "db_latest_quarter": f"{q_max[1]}Q{q_max[2]}" if q_max[1] else "",
-        "note": "OpenAPI 月營收是全市場同一期快照；已先公告的公司另從公開資訊觀測站 NAS 彙總表每天補入。季報 OpenAPI 亦為最新一期（無免驗證碼 NAS 彙總表，不抓驗證碼頁）。",
+        "note": "OpenAPI 月營收是全市場同一期快照（含櫃買興櫃 t187ap05_R）；已先公告的上市櫃另從公開資訊觀測站 NAS 彙總表補入。季報 OpenAPI 僅上市櫃最新一期；興櫃無免驗證碼季報源，有月歷史就彙成季。",
     }
     logger.info("基本面同步完成 %s", stats)
     return stats
@@ -483,6 +485,81 @@ def get_latest_income(db_path: str, stock_id: str) -> Optional[Dict[str, Any]]:
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def list_monthly_revenue(db_path: str, stock_id: str, *, limit: int = 36) -> List[Dict[str, Any]]:
+    """近 N 個月營收列（新→舊）。興櫃靠每天同步 t187ap05_R 累積。"""
+    ensure_fundamentals_tables(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT * FROM monthly_revenue
+        WHERE stock_id=?
+        ORDER BY yyyymm DESC
+        LIMIT ?
+        """,
+        (str(stock_id).strip(), int(limit)),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def _yyyymm_to_quarter(yyyymm: str) -> Optional[Tuple[int, int]]:
+    s = str(yyyymm or "").replace("-", "")[:6]
+    if len(s) != 6 or not s.isdigit():
+        return None
+    y, m = int(s[:4]), int(s[4:6])
+    if m < 1 or m > 12:
+        return None
+    return y, (m - 1) // 3 + 1
+
+
+def quarterly_revenue_from_monthly(months: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """月營收合成季營收。三個月齊才算完整季；缺月不硬湊假數。"""
+    buckets: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
+    for row in months or []:
+        key = _yyyymm_to_quarter(str(row.get("yyyymm") or ""))
+        if not key:
+            continue
+        buckets.setdefault(key, []).append(row)
+    out: List[Dict[str, Any]] = []
+    for (year, season), rows in sorted(buckets.items(), reverse=True):
+        if len(rows) < 3:
+            continue  # 未滿季不准當完整季營收
+        rev = sum(float(r.get("revenue") or 0) for r in rows)
+        out.append(
+            {
+                "year": year,
+                "season": season,
+                "revenue": rev,
+                "months": sorted(str(r.get("yyyymm") or "") for r in rows),
+                "complete": True,
+            }
+        )
+    return out
+
+
+def revenue_trend_label(pct: Optional[float], *, kind: str = "yoy") -> str:
+    """營收增減白話標：越來越好／走弱／持平等。不准發明假％。"""
+    if pct is None:
+        return "—"
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return "—"
+    if p != p:  # NaN
+        return "—"
+    stem = "年增" if kind == "yoy" else ("季增" if kind == "qoq" else "月增")
+    if p >= 20:
+        return f"{stem}大增・越來越好"
+    if p >= 5:
+        return f"{stem}改善"
+    if p > -5:
+        return f"{stem}持平"
+    if p > -20:
+        return f"{stem}走弱"
+    return f"{stem}大減"
 
 
 def prior_income(db_path: str, latest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -577,8 +654,17 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
             return rows
     except Exception:
         pass
+    emerging = False
+    try:
+        from universe import stock_is_emerging
+
+        emerging = bool(stock_is_emerging(sid, path))
+    except Exception:
+        emerging = False
     m = get_latest_monthly(path, sid)
     q = get_latest_income(path, sid)
+    months = list_monthly_revenue(path, sid, limit=36)
+    q_from_m = quarterly_revenue_from_monthly(months)
     rows = []
     if m:
         yyyymm = str(m.get("yyyymm") or "")
@@ -594,6 +680,8 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
                 f"{label}　{format_yi(m.get('revenue') or 0)}",
             )
         )
+        mom = float(m.get("mom_pct") or 0)
+        yoy = float(m.get("yoy_pct") or 0)
         rows.append(
             (
                 "較上月／去年",
@@ -603,10 +691,53 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         )
         rows.append(
             (
+                "月營收狀態",
+                f"{revenue_trend_label(mom, kind='mom')}；{revenue_trend_label(yoy, kind='yoy')}",
+            )
+        )
+        rows.append(
+            (
                 "較去年累計",
                 format_yi(_ytd_yoy_delta_k(m), signed=True),
             )
         )
+    # 近兩年季營收：有完整三個月才列；標同季年增／較上季
+    if q_from_m:
+        by_key = {(int(x["year"]), int(x["season"])): x for x in q_from_m}
+        show = q_from_m[:8]  # 最多 8 季＝兩年
+        for i, qq in enumerate(show):
+            y, s = int(qq["year"]), int(qq["season"])
+            rev = float(qq.get("revenue") or 0)
+            try:
+                from industry_brief import format_season_zh
+
+                q_lab = format_season_zh(y, s)
+            except Exception:
+                q_lab = f"{y}Q{s}"
+            yoy_q = by_key.get((y - 1, s))
+            if s == 1:
+                prev_key = (y - 1, 4)
+            else:
+                prev_key = (y, s - 1)
+            qoq_q = by_key.get(prev_key)
+            yoy_pct = None
+            qoq_pct = None
+            if yoy_q and float(yoy_q.get("revenue") or 0) > 0:
+                yoy_pct = (rev - float(yoy_q["revenue"])) / float(yoy_q["revenue"]) * 100.0
+            if qoq_q and float(qoq_q.get("revenue") or 0) > 0:
+                qoq_pct = (rev - float(qoq_q["revenue"])) / float(qoq_q["revenue"]) * 100.0
+            tag = "；".join(
+                t
+                for t in (
+                    revenue_trend_label(yoy_pct, kind="yoy"),
+                    revenue_trend_label(qoq_pct, kind="qoq"),
+                )
+                if t and t != "—"
+            ) or "—"
+            lab = "季營收" if i == 0 else f"季營收{i + 1}"
+            rows.append((lab, f"{q_lab}　{format_yi(rev)}　{tag}"))
+    elif emerging and m:
+        rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
     if q:
         rev = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
@@ -616,7 +747,11 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
             q_lab = format_season_zh(q["year"], q["season"])
         except Exception:
             q_lab = f"{q['year']}Q{q['season']}"
-        rows.append(("季報", f"{q_lab}　營收 {format_yi(q.get('revenue') or 0)}"))
+        # 已有月彙季時，官方季報列毛利／EPS，避免營收重複
+        if not q_from_m:
+            rows.append(("季報", f"{q_lab}　營收 {format_yi(q.get('revenue') or 0)}"))
+        else:
+            rows.append(("季報", f"{q_lab}（綜合損益）"))
         rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
         rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
         if rev:
@@ -635,7 +770,10 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     except Exception:
         pass
     if not rows:
-        rows.append(("基本面", "尚無月營收／季報"))
+        if emerging:
+            rows.append(("基本面", "興櫃月營收尚未同步到庫（櫃買 OpenAPI）"))
+        else:
+            rows.append(("基本面", "尚無月營收／季報"))
     return rows
 
 

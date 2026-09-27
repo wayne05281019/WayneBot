@@ -1216,8 +1216,11 @@ def _limit_band_px(prev, band: float):
     return out
 
 
-def quote_limit_side(close, prev=None, pct=None):
-    """只認漲停／跌停。普通漲跌回 None，畫面維持原本紅綠字。"""
+def quote_limit_side(close, prev=None, pct=None, *, emerging: bool = False):
+    """只認漲停／跌停。普通漲跌回 None，畫面維持原本紅綠字。
+    興櫃無漲跌幅限制＝不准當漲停／跌停洗底。"""
+    if emerging:
+        return None
     try:
         c = float(close)
     except (TypeError, ValueError):
@@ -1269,6 +1272,27 @@ def quote_limit_side(close, prev=None, pct=None):
     if 9.85 <= a <= 10.55 or 19.50 <= a <= 21.0:
         return "up" if pct_f > 0 else "down"
     return None
+
+
+def _card_is_emerging(card) -> bool:
+    """卡片／查股是否興櫃：無漲跌停、營收走櫃買興櫃 OpenAPI。"""
+    if not isinstance(card, dict):
+        return False
+    if str(card.get("quote_source") or "").strip() == "emerging_quotes":
+        return True
+    if str(card.get("listing") or "").startswith("興櫃"):
+        return True
+    try:
+        from universe import stock_is_emerging
+
+        return bool(
+            stock_is_emerging(
+                str(card.get("stock_id") or ""),
+                quote_source=str(card.get("quote_source") or ""),
+            )
+        )
+    except Exception:
+        return False
 
 
 def quote_limit_chip_colors(side, C=None):
@@ -1821,7 +1845,7 @@ def _card_quote_limit_side(card, last=None, close=None, chg=None, prev=None):
         pct = card.get("change_pct")
     if pct is None and src:
         pct = src.get("pct_change") or src.get("change_pct")
-    return quote_limit_side(c, p, pct)
+    return quote_limit_side(c, p, pct, emerging=_card_is_emerging(card))
 
 
 def _paint_limit_square_right(ax, x_right, y_mid, text, fs, bg, fg, tw, *, pad_x=0.55):
@@ -3255,7 +3279,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 nxt_close = float(nxt["close"])
             except (TypeError, ValueError, KeyError):
                 nxt_close = None
-        limit_chip = quote_limit_chip_colors(quote_limit_side(r["close"], nxt_close), C)
+        limit_chip = quote_limit_chip_colors(
+            quote_limit_side(r["close"], nxt_close, emerging=_card_is_emerging(card)), C
+        )
         p_bg, p_fg = _profit_heat_draw(_row_profit(r), _row_profit(nxt), base)
         # 股價格：只有真漲停／跌停整格；其餘白底（最高溫／最高價不准染）
         px_bg, px_fg = (limit_chip if limit_chip else price_cell_style(hl, base, al))
@@ -4818,7 +4844,9 @@ def render_decision_summary_png(card: dict, save_path: str) -> str:
     ax.text(0.08, 0.86, f"{code}  {name}", transform=ax.transAxes, fontproperties=_fp(20, "bold"),
             color="#111827", ha="left", va="center")
     close_s = _fmt_num(close, 2)
-    chip = quote_limit_chip_colors(quote_limit_side(close, card.get("prev_close"), chg))
+    chip = quote_limit_chip_colors(
+        quote_limit_side(close, card.get("prev_close"), chg, emerging=_card_is_emerging(card))
+    )
     if chip:
         bg, fg = chip
         fw, fh = float(fig.get_figwidth() or 4.4), float(fig.get_figheight() or 3.7)
@@ -4927,7 +4955,11 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
             _, warn_fg = alert_cell_style(warn, base)
             nxt = rows[r + 1] if r + 1 < len(rows) else None
             prev_px = nxt.get("close") if nxt else None
-            chip = quote_limit_chip_colors(quote_limit_side(row.get("close"), prev_px))
+            chip = quote_limit_chip_colors(
+                quote_limit_side(
+                    row.get("close"), prev_px, emerging=_card_is_emerging(card)
+                )
+            )
             close_txt = _fmt_num(row.get("close"), 2)
             close_fg = chip[1] if chip else _CARD["ink"]
             vals = [
