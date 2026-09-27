@@ -695,6 +695,83 @@ def _rank_exact_name_hits(hits: List[Dict[str, Any]], q: str) -> List[Dict[str, 
     return hits
 
 
+def _lookup_prefer_name(existing: str, incoming: str, sid: str = "") -> str:
+    """查股顯示名：漢字優於英文代號／CSV 殘渣。"""
+    from universe import prefer_display_stock_name
+
+    return prefer_display_stock_name(existing, incoming, sid) or str(
+        existing or incoming or sid or ""
+    ).strip()
+
+
+def _merge_lookup_name_rows(
+    rows: List[Any], *, prefer_market: bool = True
+) -> Dict[str, Dict[str, Any]]:
+    """同代號只留一列；漢字股名蓋英文。"""
+    out: Dict[str, Dict[str, Any]] = {}
+    for raw in rows:
+        item = dict(raw)
+        sid = str(item.get("stock_id") or "").strip()
+        if not sid:
+            continue
+        name = str(item.get("stock_name") or "").strip()
+        mkt = str(item.get("market") or item.get("market_type") or "").strip()
+        prev = out.get(sid)
+        if prev is None:
+            out[sid] = {"stock_id": sid, "stock_name": name, "market": mkt}
+            continue
+        prev["stock_name"] = _lookup_prefer_name(
+            str(prev.get("stock_name") or ""), name, sid
+        )
+        if prefer_market and mkt and not str(prev.get("market") or "").strip():
+            prev["market"] = mkt
+        elif prefer_market and mkt.upper() in ("EM", "EMERGING", "興櫃"):
+            # 興櫃名冊標市別，避免被空 market 蓋掉
+            if str(prev.get("market") or "").strip().upper() not in (
+                "TW",
+                "TWO",
+                "TWSE",
+                "TPEX",
+            ):
+                prev["market"] = mkt
+    return out
+
+
+def _load_lookup_name_catalog(conn: sqlite3.Connection, latest: Optional[str]) -> List[Dict[str, Any]]:
+    """上市櫃當日日K＋名冊（含興櫃），給字形／讀音一起掃。"""
+    rows: List[Any] = []
+    if latest:
+        try:
+            rows.extend(
+                conn.execute(
+                    """SELECT stock_id, stock_name, market FROM daily_quotes
+                       WHERE date=? AND stock_name IS NOT NULL AND stock_name != ''""",
+                    (latest,),
+                ).fetchall()
+            )
+        except sqlite3.OperationalError:
+            pass
+    try:
+        rows.extend(
+            conn.execute(
+                """SELECT stock_id, stock_name, market FROM stock_directory
+                   WHERE stock_name IS NOT NULL AND stock_name != ''"""
+            ).fetchall()
+        )
+    except sqlite3.OperationalError:
+        pass
+    try:
+        rows.extend(
+            conn.execute(
+                """SELECT stock_id, stock_name, market_type AS market FROM stock_universe
+                   WHERE is_active=1 AND stock_name IS NOT NULL AND stock_name != ''"""
+            ).fetchall()
+        )
+    except sqlite3.OperationalError:
+        pass
+    return list(_merge_lookup_name_rows(rows).values())
+
+
 def _lookup_etf_div_ids(conn) -> set:
     """證交所 etfDiv 有除息日的代號。沒表或沒列＝沒有配息型名單，不拿股名猜。"""
     try:
@@ -794,11 +871,131 @@ def _lookup_etf_by_kinds(
     return out
 
 
+def _lookup_name_like_hits(
+    db_path: str, like_q: str, latest: Optional[str], cap: int
+) -> List[Dict[str, Any]]:
+    """字形 LIKE：上市櫃日K＋興櫃名冊／母體，漢字名優先。"""
+    ensure_stock_directory(db_path)
+    like_rows: List[Any] = []
+    with get_db_connection(db_path, write=False) as conn:
+        if latest:
+            try:
+                like_rows.extend(
+                    conn.execute(
+                        """SELECT stock_id, stock_name, close, pct_change, volume, market
+                           FROM daily_quotes
+                           WHERE date=? AND stock_name LIKE ?
+                           ORDER BY volume DESC LIMIT ?;""",
+                        (latest, f"%{like_q}%", cap * 3),
+                    ).fetchall()
+                )
+            except sqlite3.OperationalError:
+                like_rows.extend(
+                    conn.execute(
+                        """SELECT stock_id, stock_name, close, pct_change, volume
+                           FROM daily_quotes
+                           WHERE date=? AND stock_name LIKE ?
+                           ORDER BY volume DESC LIMIT ?;""",
+                        (latest, f"%{like_q}%", cap * 3),
+                    ).fetchall()
+                )
+        try:
+            like_rows.extend(
+                conn.execute(
+                    """SELECT stock_id, stock_name, market FROM stock_directory
+                       WHERE stock_name LIKE ? ORDER BY stock_id LIMIT ?;""",
+                    (f"%{like_q}%", cap * 3),
+                ).fetchall()
+            )
+        except sqlite3.OperationalError:
+            pass
+        try:
+            like_rows.extend(
+                conn.execute(
+                    """SELECT stock_id, stock_name, market_type AS market
+                       FROM stock_universe
+                       WHERE is_active=1 AND stock_name LIKE ?
+                       ORDER BY stock_id LIMIT ?;""",
+                    (f"%{like_q}%", cap * 3),
+                ).fetchall()
+            )
+        except sqlite3.OperationalError:
+            pass
+        merged = list(_merge_lookup_name_rows(like_rows).values())
+        exact = _hydrate_lookup_hits(conn, merged[: cap * 2], latest, fuzzy=False)
+    for h in exact:
+        h["quote_date"] = latest
+        h["fuzzy"] = False
+        if h.get("stock_name"):
+            h["stock_name"] = _lookup_prefer_name(
+                str(h.get("stock_name") or ""), "", str(h.get("stock_id") or "")
+            )
+    return exact
+
+
+def _lookup_ticker_directory_hits(
+    db_path: str, raw: str, latest: Optional[str], cap: int
+) -> List[Dict[str, Any]]:
+    """代號不在上市櫃日K時，改查名冊／母體（興櫃）。"""
+    ensure_stock_directory(db_path)
+    with get_db_connection(db_path, write=False) as conn:
+        pref: List[Dict[str, Any]] = []
+        if latest and len(raw) >= 4:
+            try:
+                from universe import classify_target
+
+                prow = conn.execute(
+                    """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
+                       WHERE date=? AND UPPER(stock_id) LIKE ?
+                       ORDER BY volume DESC LIMIT ?;""",
+                    (latest, raw.upper() + "%", cap),
+                ).fetchall()
+                for r in prow:
+                    item = dict(r)
+                    kind, ok = classify_target(
+                        str(item.get("stock_id") or ""),
+                        str(item.get("stock_name") or ""),
+                    )
+                    if not ok or not str(kind).startswith("ETF"):
+                        continue
+                    item["quote_date"] = latest
+                    item["fuzzy"] = str(item.get("stock_id") or "").upper() != raw.upper()
+                    pref.append(item)
+            except sqlite3.OperationalError:
+                pref = []
+        if pref:
+            return pref
+        drows: List[Any] = []
+        try:
+            drows = conn.execute(
+                "SELECT stock_id, stock_name, market FROM stock_directory WHERE UPPER(stock_id)=? LIMIT 1;",
+                (raw.upper(),),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            drows = []
+        if not drows:
+            try:
+                drows = conn.execute(
+                    """SELECT stock_id, stock_name, market_type AS market
+                       FROM stock_universe WHERE UPPER(stock_id)=? LIMIT 1;""",
+                    (raw.upper(),),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                return []
+        hits = _hydrate_lookup_hits(conn, drows, latest, fuzzy=False)
+        for h in hits:
+            h["stock_name"] = _lookup_prefer_name(
+                str(h.get("stock_name") or ""), "", str(h.get("stock_id") or "")
+            )
+        return hits
+
+
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
     """用代號、中文名或 ETF 分類詞查標的（兩倍槓桿／主被動ETF／配息型／月配／高股息／0050／00631L）。
 
     名稱多檔（南亞／南亞科）原樣列出。字形對不到或只對到別檔子字串時，
-    再用讀音／近似拼音補候選；fuzzy 列必須請使用者點確認，不可直接出圖。
+    再用讀音／近似拼音補候選；fuzzy／partial 列必須請使用者點確認，不可直接出圖。
+    興櫃與上市櫃同一套入口：代號精確、名稱／簡稱、常見錯字。
     """
     from lookup_fuzzy import (
         FUZZY_MIN_SCORE,
@@ -857,61 +1054,25 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
                 has_div=bool(spec.get("has_div")),
                 label=str(spec.get("label") or ""),
             )
+
     exact: List[Dict[str, Any]] = []
-    with get_db_connection(db_path, write=False) as conn:
-        if latest and ticker:
-            rows = conn.execute(
-                """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
-                   WHERE date=? AND UPPER(stock_id)=? LIMIT 1;""",
-                (latest, raw.upper()),
-            ).fetchall()
-            exact = [dict(r) for r in rows]
-        elif latest and not ticker:
-            rows = conn.execute(
-                """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
-                   WHERE date=? AND stock_name LIKE ?
-                   ORDER BY volume DESC LIMIT ?;""",
-                (latest, f"%{like_q}%", cap),
-            ).fetchall()
-            exact = [dict(r) for r in rows]
-        for h in exact:
-            h["quote_date"] = latest
-            h["fuzzy"] = False
     if ticker:
+        if latest:
+            with get_db_connection(db_path, write=False) as conn:
+                rows = conn.execute(
+                    """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
+                       WHERE date=? AND UPPER(stock_id)=? LIMIT 1;""",
+                    (latest, raw.upper()),
+                ).fetchall()
+                exact = [dict(r) for r in rows]
+                for h in exact:
+                    h["quote_date"] = latest
+                    h["fuzzy"] = False
         if exact:
             return exact
-        with get_db_connection(db_path, write=False) as conn:
-            pref: List[Dict[str, Any]] = []
-            if latest and len(raw) >= 4:
-                try:
-                    from universe import classify_target
+        return _lookup_ticker_directory_hits(db_path, raw, latest, cap)
 
-                    prow = conn.execute(
-                        """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
-                           WHERE date=? AND UPPER(stock_id) LIKE ?
-                           ORDER BY volume DESC LIMIT ?;""",
-                        (latest, raw.upper() + "%", cap),
-                    ).fetchall()
-                    for r in prow:
-                        item = dict(r)
-                        kind, ok = classify_target(str(item.get("stock_id") or ""), str(item.get("stock_name") or ""))
-                        if not ok or not str(kind).startswith("ETF"):
-                            continue
-                        item["quote_date"] = latest
-                        item["fuzzy"] = str(item.get("stock_id") or "").upper() != raw.upper()
-                        pref.append(item)
-                except sqlite3.OperationalError:
-                    pref = []
-            if pref:
-                return pref
-            try:
-                drows = conn.execute(
-                    "SELECT stock_id, stock_name, market FROM stock_directory WHERE UPPER(stock_id)=? LIMIT 1;",
-                    (raw.upper(),),
-                ).fetchall()
-            except sqlite3.OperationalError:
-                return []
-            return _hydrate_lookup_hits(conn, drows, latest, fuzzy=False)
+    exact = _lookup_name_like_hits(db_path, like_q, latest, cap)
     want_fuzzy = len(cjk_only(like_q)) >= 2
     if exact:
         exact = _rank_exact_name_hits(exact, like_q)
@@ -926,59 +1087,44 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
         have = {str(h.get("stock_id")) for h in exact}
         scored: List[tuple] = []
         for row in catalog:
-            sid = str(row["stock_id"])
+            sid = str(row["stock_id"] if hasattr(row, "keys") else row.get("stock_id"))
             if sid in have:
                 continue
-            score = name_match_score(like_q, str(row["stock_name"] or ""))
+            name = str(
+                row["stock_name"] if hasattr(row, "keys") else row.get("stock_name") or ""
+            )
+            score = name_match_score(like_q, name)
             if score >= min_score:
-                scored.append((score, row))
+                scored.append((score, row if isinstance(row, dict) else dict(row)))
         scored.sort(key=lambda x: (-x[0], str(x[1]["stock_id"])))
         room = max(0, cap - len(exact))
         return _hydrate_lookup_hits(
             conn, [row for _s, row in scored[:room]], latest, fuzzy=True
         )
 
-    extra: List[Dict[str, Any]] = []
-    if want_fuzzy and latest:
-        with get_db_connection(db_path, write=False) as conn:
-            catalog = conn.execute(
-                """SELECT stock_id, stock_name, market FROM daily_quotes
-                   WHERE date=? AND stock_name IS NOT NULL AND stock_name != ''""",
-                (latest,),
-            ).fetchall()
-            extra = _fuzzy_from_catalog(
-                conn, catalog, 90 if exact else FUZZY_MIN_SCORE
-            )
-        if exact or extra:
-            return (exact + extra)[:cap]
     if not want_fuzzy:
-        return exact
-    ensure_stock_directory(db_path)
+        return exact[:cap]
     with get_db_connection(db_path, write=False) as conn:
-        if not exact:
-            drows = conn.execute(
-                """SELECT stock_id, stock_name, market FROM stock_directory
-                   WHERE stock_name LIKE ? ORDER BY stock_id LIMIT ?;""",
-                (f"%{like_q}%", cap),
-            ).fetchall()
-            if drows:
-                exact = _rank_exact_name_hits(
-                    _hydrate_lookup_hits(conn, drows, latest, fuzzy=False),
-                    like_q,
-                )
-                if any(name_is_exact_hit(like_q, str(h.get("stock_name") or "")) for h in exact):
-                    return exact[:cap]
-        catalog = conn.execute(
-            "SELECT stock_id, stock_name, market FROM stock_directory"
-        ).fetchall()
+        catalog = _load_lookup_name_catalog(conn, latest)
         extra = _fuzzy_from_catalog(
             conn, catalog, 90 if exact else FUZZY_MIN_SCORE
         )
-    return (exact + extra)[:cap]
+    out = (exact + extra)[:cap]
+    # 少字／錯字／讀音猜：即使只剩一檔也要點確認，不准默默選錯。
+    if out and not any(
+        name_is_exact_hit(like_q, str(h.get("stock_name") or "")) for h in out
+    ):
+        for h in out:
+            if h.get("fuzzy"):
+                continue
+            h["partial"] = True
+    return out
 
 
 def ensure_stock_directory(db_path: str) -> None:
-    """名稱目錄：日K裡有的＋興櫃 ISIN，讓山太士這種興櫃打得到。"""
+    """名稱目錄：日K＋興櫃行情／母體漢字名，讓東佑達／政美應用打得到。"""
+    from universe import has_cjk, prefer_display_stock_name
+
     with get_db_connection(db_path) as conn:
         conn.execute(
             """CREATE TABLE IF NOT EXISTS stock_directory (
@@ -995,20 +1141,73 @@ def ensure_stock_directory(db_path: str) -> None:
                    WHERE date = ?;""",
                 (as_of,),
             )
-        n_em = conn.execute(
-            "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
-        ).fetchone()[0]
         try:
+            # 興櫃 CSV 有時寫英文代碼；先 IGNORE 補缺，再以漢字覆寫。
             conn.execute(
                 """INSERT OR IGNORE INTO stock_directory (stock_id, stock_name, market)
                    SELECT stock_id, stock_name, 'EM' FROM emerging_quotes
                    WHERE date=(SELECT MAX(date) FROM emerging_quotes);"""
             )
-            n_em = conn.execute(
-                "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
-            ).fetchone()[0]
         except sqlite3.OperationalError:
             pass
+        try:
+            for sid, name, mkt in conn.execute(
+                """SELECT stock_id, stock_name, market_type
+                   FROM stock_universe
+                   WHERE is_active=1 AND market_type='EM'"""
+            ).fetchall():
+                cur = conn.execute(
+                    "SELECT stock_name, market FROM stock_directory WHERE stock_id=?",
+                    (sid,),
+                ).fetchone()
+                prefer = prefer_display_stock_name(
+                    (cur["stock_name"] if cur else ""), name or "", sid
+                )
+                if cur is None:
+                    conn.execute(
+                        """INSERT INTO stock_directory (stock_id, stock_name, market)
+                           VALUES (?, ?, ?)""",
+                        (sid, prefer or name or sid, mkt or "EM"),
+                    )
+                else:
+                    conn.execute(
+                        """UPDATE stock_directory
+                           SET stock_name=?, market=CASE
+                             WHEN market='' OR market IS NULL THEN ?
+                             ELSE market END
+                           WHERE stock_id=?""",
+                        (prefer or cur["stock_name"], mkt or "EM", sid),
+                    )
+        except sqlite3.OperationalError:
+            pass
+        # 最新興櫃日若已是漢字，仍覆寫英文殘渣
+        try:
+            for sid, name in conn.execute(
+                """SELECT stock_id, stock_name FROM emerging_quotes
+                   WHERE date=(SELECT MAX(date) FROM emerging_quotes)"""
+            ).fetchall():
+                if not has_cjk(name or ""):
+                    continue
+                cur = conn.execute(
+                    "SELECT stock_name FROM stock_directory WHERE stock_id=?",
+                    (sid,),
+                ).fetchone()
+                if cur is None:
+                    conn.execute(
+                        """INSERT INTO stock_directory (stock_id, stock_name, market)
+                           VALUES (?, ?, 'EM')""",
+                        (sid, name),
+                    )
+                elif not has_cjk(cur["stock_name"] or ""):
+                    conn.execute(
+                        "UPDATE stock_directory SET stock_name=? WHERE stock_id=?",
+                        (name, sid),
+                    )
+        except sqlite3.OperationalError:
+            pass
+        n_em = conn.execute(
+            "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
+        ).fetchone()[0]
     if n_em >= 20:
         return
     try:
@@ -1021,7 +1220,9 @@ def ensure_stock_directory(db_path: str) -> None:
                     """INSERT INTO stock_directory (stock_id, stock_name, market)
                        VALUES (?, ?, ?)
                        ON CONFLICT(stock_id) DO UPDATE SET
-                         stock_name=excluded.stock_name,
+                         stock_name=CASE
+                           WHEN excluded.stock_name != '' THEN excluded.stock_name
+                           ELSE stock_directory.stock_name END,
                          market=CASE WHEN stock_directory.market='' THEN excluded.market
                                      ELSE stock_directory.market END;""",
                     (u["stock_id"], u["stock_name"], u.get("market_type") or ""),
@@ -1034,6 +1235,7 @@ def ensure_stock_directory(db_path: str) -> None:
             """INSERT OR IGNORE INTO stock_directory (stock_id, stock_name, market)
                VALUES ('3595', '山太士', 'EM');"""
         )
+
 
 
 def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: str = "") -> None:
