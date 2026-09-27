@@ -148,7 +148,7 @@ def hits_need_picker(hits: Sequence[Dict[str, Any]] | None) -> bool:
     rows = list(hits or [])
     if not rows:
         return False
-    if any(h.get("fuzzy") for h in rows):
+    if any(h.get("fuzzy") or h.get("partial") for h in rows):
         return True
     return len(rows) > 1
 
@@ -164,4 +164,8 @@ def lookup_picker_lead(hits: Sequence[Dict[str, Any]] | None) -> str:
         if len(rows) == 1:
             return "沒打準，是不是這一檔？點左邊確認。"
         return "沒打準，是不是要找這些？點左邊確認。"
+    if any(h.get("partial") for h in rows):
+        if len(rows) == 1:
+            return "名稱還不完整，是不是這一檔？點左邊確認。"
+        return "名稱還不完整，請選要看哪一檔。藍字＝奇摩；按鈕＝看這檔。"
     return "名稱相近，請選要看哪一檔。藍字＝奇摩；按鈕＝看這檔。"

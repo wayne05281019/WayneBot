@@ -49,7 +49,11 @@ def test_picker_rules():
         ]
     )
     assert hits_need_picker([{"stock_id": "6515", "stock_name": "穎崴", "fuzzy": True}])
+    assert hits_need_picker([{"stock_id": "7853", "partial": True}])
     assert "沒打準" in lookup_picker_lead([{"fuzzy": True, "stock_name": "穎崴"}])
+    assert "還不完整" in lookup_picker_lead(
+        [{"partial": True, "stock_name": "政美應用"}]
+    )
     assert "名稱相近" in lookup_picker_lead(
         [{"fuzzy": False, "stock_name": "南亞"}, {"fuzzy": False, "stock_name": "南亞科"}]
     )
