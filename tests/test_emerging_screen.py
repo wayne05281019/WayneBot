@@ -490,7 +490,46 @@ class EmergingScreenIsolationTests(unittest.TestCase):
         self.assertIn("NOT IN ('EM', 'EMERGING')", chunk)
         self.assertNotIn("emerging_quotes", chunk)
 
-    def test_csv_upsert_not_overwritten_by_openapi(self):
+    def test_thin_complete_day_still_refetched_for_no_trade_rows(self):
+        """350 列看似齊，仍可能缺無成交列；同步門檻 355 要再抓。"""
+        from emerging_quotes import missing_emerging_days, EM_DAY_FULL_ROWS, ensure_emerging_table
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_emerging_table(path)
+            conn = sqlite3.connect(path)
+            # 350 列 ≥ MIN_EM(300) 但 < FULL(355)
+            for i in range(350):
+                conn.execute(
+                    "INSERT INTO emerging_quotes("
+                    "date,stock_id,stock_name,market,open,high,low,close,"
+                    "volume,turnover_k,pct_change,avg_price,source) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        "20260813",
+                        f"{1000 + i}",
+                        f"T{i}",
+                        "EM",
+                        10,
+                        11,
+                        9,
+                        10,
+                        1,
+                        1,
+                        0,
+                        10,
+                        "seed",
+                    ),
+                )
+            conn.commit()
+            conn.close()
+            holes = missing_emerging_days(path, "20260813", lookback=5)
+            self.assertIn("20260813", holes)
+            self.assertGreaterEqual(EM_DAY_FULL_ROWS, 355)
+        finally:
+            os.remove(path)
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         try:

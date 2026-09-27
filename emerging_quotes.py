@@ -488,6 +488,13 @@ def _weekdays_ending(cap: str, *, limit: int = 40) -> List[str]:
     return out
 
 
+# 高低卡要 240 根收盤低；約 280 開市日 ≈ 400 曆日。滿 40 天就停補＝10～240 低塌成同一價。
+DEFAULT_EMERGING_LOOKBACK_DAYS = 400
+MIN_EMERGING_DEPTH_DAYS = 240
+# 全日約 360；350 仍可能缺無成交停價列（2758 20260813 等）。同步補齊用這個，健康半套關卡仍 MIN_EM=300。
+EM_DAY_FULL_ROWS = 355
+
+
 def _em_day_min_rows(min_rows: int = 0) -> int:
     """與 import_health.MIN_EM 同一門檻：半套日（~250）仍要重抓到全日。"""
     if int(min_rows or 0) > 0:
@@ -500,14 +507,22 @@ def _em_day_min_rows(min_rows: int = 0) -> int:
         return 300
 
 
+def _em_day_full_rows(min_rows: int = 0) -> int:
+    """同步寫滿用：比 MIN_EM 嚴，避免 350 列就停、漏掉無成交列。"""
+    if int(min_rows or 0) > 0:
+        return max(int(min_rows), EM_DAY_FULL_ROWS)
+    return EM_DAY_FULL_ROWS
+
+
 def missing_emerging_days(
     db_path: str, cap: str, *, lookback: int = 40, min_rows: int = 0
 ) -> List[str]:
     """中間缺日也要補。最新日若比 cap 新（盤中 OpenAPI）仍要回補 cap 以前的洞。
 
-    min_rows 預設跟 MIN_EM（300）：庫裡已有 50～299 列的半套日仍算缺口，不准停補。
+    預設用 EM_DAY_FULL_ROWS（355）：庫裡 300～354 列的「看起來夠」日仍重抓，
+    把無成交停價列補齊。import_health 半套關卡仍看 MIN_EM=300。
     """
-    need = _em_day_min_rows(min_rows)
+    need = _em_day_full_rows(min_rows)
     days = _weekdays_ending(cap, limit=lookback)
     return [d for d in days if emerging_rows_on(db_path, d) < need]
 
@@ -533,7 +548,7 @@ def sync_emerging_quotes(
     """
     ensure_emerging_table(db_path)
     sess = session or _session()
-    need = _em_day_min_rows()
+    need = _em_day_full_rows()
     lb = max(90, int(lookback_days or DEFAULT_EMERGING_LOOKBACK_DAYS))
     # 平日窗 ≈ 曆日 × 5/7；至少蓋住 240 開市日
     weekday_window = max(MIN_EMERGING_DEPTH_DAYS + 20, int(lb * 5 / 7) + 5)
