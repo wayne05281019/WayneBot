@@ -46,6 +46,20 @@ def test_close_above_press_not_nice():
     assert "看起來不錯" not in line
 
 
+def test_close_equals_press_is_touch_not_breakout():
+    """收＝壓＝碰到上緣還沒過，不准寫已過壓。"""
+    bars = [
+        {"high": 208, "low": 196, "close": 203, "volume": 8000},
+        {"high": 210, "low": 198, "close": 210, "volume": 5000},
+    ]
+    line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
+    assert "已過壓" not in line
+    assert "站在支撐線上" in line
+    assert "沒過" in line or "沒有突破" in line
+    assert "測壓不是站上" in line
+    assert "看起來不錯" not in line
+
+
 def test_broke_support_no_nice():
     last = {"high": 194, "low": 188, "close": 190, "volume": 4000}
     line = vol_zone_position_line(_ZONE, last, None, bars=[last])
@@ -151,8 +165,8 @@ def test_wick_test_press_not_breakout():
     assert "看起來不錯" not in line
 
 
-def test_gap_into_zone_does_not_count_days_above_band():
-    """2542 類：人在 45 不算站 39 撐；缺口砸進帶才開始數。"""
+def test_gap_into_zone_still_counts_days_above_support():
+    """收 ≥ 撐就連算：人在帶上方仍是站在這條撐上，缺口砸進帶不重數。"""
     zone = {"date": "20260923", "high": 40.45, "low": 39.0, "volume": 47140}
     bars = [{"high": 46.8, "low": 45.4, "close": 45.45, "volume": 22311}]
     bars.extend(
@@ -165,12 +179,38 @@ def test_gap_into_zone_does_not_count_days_above_band():
         {"date": "20260924", "high": 39.5, "low": 38.8, "close": 39.5, "volume": 12468}
     )
     line = vol_zone_position_line(zone, bars[-1], _card_heat("持平"), bars=bars)
-    assert "今天是第二天站在支撐線上" in line
-    assert "106" not in line
-    assert "第百" not in line
+    assert "今天是第43天站在支撐線上" in line
     assert "但今天收盤 39.5 比昨天低" in line
-    assert "碰到上緣" not in line
-    assert "這兩天收盤價沒有持續攀高" in line
+    assert "這43天收盤價沒有持續攀高" in line
+    assert "看起來不錯" not in line
+
+
+def test_above_resistance_day_does_not_reset_support_streak():
+    """2455：中間有一天收過壓，仍連續收 ≥ 撐，不准重數成『第三天』。"""
+    zone = {"date": "20260917", "high": 566.0, "low": 515.0, "volume": 28618}
+    bars = [
+        {"date": "20260907", "high": 525, "low": 491, "close": 500, "volume": 3476},
+        {"date": "20260908", "high": 535, "low": 506, "close": 515, "volume": 4653},
+        {"date": "20260909", "high": 552, "low": 523, "close": 533, "volume": 2499},
+        {"date": "20260910", "high": 545, "low": 527, "close": 532, "volume": 1564},
+        {"date": "20260911", "high": 527, "low": 499.5, "close": 515, "volume": 1842},
+        {"date": "20260914", "high": 535, "low": 493, "close": 535, "volume": 1719},
+        {"date": "20260915", "high": 536, "low": 506, "close": 520, "volume": 1671},
+        {"date": "20260916", "high": 534, "low": 506, "close": 515, "volume": 19718},
+        {"date": "20260917", "high": 566, "low": 515, "close": 534, "volume": 28618},
+        {"date": "20260918", "high": 563, "low": 520, "close": 556, "volume": 20026},
+        {"date": "20260921", "high": 590, "low": 545, "close": 572, "volume": 15658},
+        {"date": "20260922", "high": 570, "low": 537, "close": 547, "volume": 18755},
+        {"date": "20260923", "high": 552, "low": 535, "close": 552, "volume": 3310},
+        {"date": "20260924", "high": 555, "low": 542, "close": 554, "volume": 1640},
+    ]
+    line = vol_zone_position_line(zone, bars[-1], _card_heat("升溫"), bars=bars)
+    assert "今天是第13天站在支撐線上" in line
+    assert "第三天" not in line
+    assert "收盤價持續攀高" not in line
+    assert "沒有持續攀高" in line
+    assert "收盤仍沒有突破566上緣壓力" in line
+    assert "今天成交量對比前次大量那天是量縮" in line
     assert "看起來不錯" not in line
 
 
@@ -185,7 +225,7 @@ def test_photo_caption_keeps_zone_date_skips_own_rim():
     ]
     cap = vol_zone_photo_caption(zone=zone, last=bars[-1], bars=bars, card=_card_heat("持平"))
     assert cap.startswith(VOL_ZONE_CAPTION_HEAD)
-    assert "第二天" in cap
+    assert "第三天" in cap
     assert "碰到上緣" not in cap
 
 
@@ -260,6 +300,7 @@ def test_ex_div_cuts_pre_ex_volume_and_caption():
     assert raw["date"] == "20260910"
     zone = find_volume_zone(work, ex_events=[ev])
     assert zone["date"] == "20260923"
+    assert zone["ex_cut"] == "20260923"
     assert float(zone["high"]) == 40.45
     assert float(zone["low"]) == 39.0
     bars = work.to_dict("records")
@@ -273,6 +314,32 @@ def test_ex_div_cuts_pre_ex_volume_and_caption():
     assert "圖是官方原柱" in cap
     assert "除息後支撐" in cap
     assert "崩盤" not in cap
+    # 除息前收 45 數值 ≥ 除息後撐 39，不准算進「除息後撐」天數
+    assert "第二天" in cap
+    assert "第107" not in cap
+    assert "第4" not in cap and "第四天" not in cap
+    assert "第3" not in cap and "第三天" not in cap
+
+
+def test_ex_cut_streak_ignores_pre_ex_closes_above_new_support():
+    """真實 2542 類：長序列除息前高價 ≥ 新撐，連站只能從 ex_cut 起算。"""
+    zone = {
+        "date": "20260923",
+        "high": 40.45,
+        "low": 39.0,
+        "volume": 47140,
+        "ex_cut": "20260923",
+    }
+    bars = [{"high": 48.0, "low": 47.0, "close": 47.5, "volume": 8000, "date": f"20260{i:03d}"} for i in range(101, 123)]
+    # overwrite last pre-ex and ex day / after
+    bars[-3] = {"date": "20260922", "high": 46.8, "low": 45.4, "close": 45.45, "volume": 22311}
+    bars[-2] = {"date": "20260923", "high": 40.45, "low": 39.0, "close": 39.55, "volume": 47140}
+    bars[-1] = {"date": "20260924", "high": 39.5, "low": 38.8, "close": 39.5, "volume": 12468}
+    line = vol_zone_position_line(zone, bars[-1], _card_heat("持平"), bars=bars)
+    assert "第二天" in line
+    assert "107" not in line
+    assert "22天" not in line
+    assert "看起來不錯" not in line
 
 
 def test_unexplained_gap_is_called_out():

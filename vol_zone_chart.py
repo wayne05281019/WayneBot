@@ -311,12 +311,28 @@ def _is_zone_bar(row: Dict[str, Any], zone: Dict[str, Any]) -> bool:
     return False
 
 
-def _stand_streak(rows: List[Dict[str, Any]], lo: float, hi: float) -> List[Dict[str, Any]]:
-    """連站＝收還在桃色帶裡。人在帶上方時不算站在這條撐上。"""
+def _stand_streak(
+    rows: List[Dict[str, Any]],
+    lo: float,
+    hi: float,
+    *,
+    since: str = "",
+) -> List[Dict[str, Any]]:
+    """連站＝從最新收往回，連續收盤 ≥ 撐。
+
+    人在壓之上仍算站在這條撐上（收仍 ≥ 撐）；只有收盤跌破撐才斷。
+    since＝除權息尺度切開日（含當日）：更早的柱是另一把尺，不准拿來數「除息後撐」天數。
+    hi 留給呼叫端簽名對齊；是否已過壓由 vol_zone_position_line 先分流。
+    """
+    _ = hi
+    cut = _trade_day(since)
     streak: List[Dict[str, Any]] = []
     for row in reversed(rows):
+        d = _trade_day(row.get("date"))
+        if cut and d and d < cut:
+            break
         c = _px(row.get("close"))
-        if lo <= c < hi:
+        if c >= lo:
             streak.append(row)
         else:
             break
@@ -428,8 +444,9 @@ def vol_zone_position_line(
     vol_c = _vol_clause(_px(last.get("volume")), _px(zone.get("volume")))
     tail = _vol_heat_tail(vol_c, heat_c, heat)
     last_hi = _px(last.get("high") or cl)
-    test_press = last_hi >= hi * _PRESS_TOUCH and cl < hi
-    near_press = cl < hi and hi > 0 and (hi - cl) / hi <= 0.015
+    # 收＝壓＝碰到上緣還沒過；只有收＞壓才算過壓
+    test_press = last_hi >= hi * _PRESS_TOUCH and cl <= hi
+    near_press = hi > 0 and cl <= hi and (hi - cl) / hi <= 0.015
 
     def _end(body: str, *, nice: bool = False, test: bool = False) -> str:
         if on_ex:
@@ -448,10 +465,12 @@ def vol_zone_position_line(
 
     if cl < lo:
         return _end(f"收盤跌破撐{lo_s}，這根大量區撐先不當還在")
-    if cl >= hi:
+    if cl > hi:
         return _end(f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊")
 
-    streak = _stand_streak(rows, lo, hi)
+    # 有官方除權息切開才卡 since；沒有則仍用全序列（同尺價可含爆大量日前）。
+    since = _trade_day(zone.get("ex_cut") or "")
+    streak = _stand_streak(rows, lo, hi, since=since)
     n = len(streak) or 1
     n_zh = _zh_days(n)
     n_ord = _zh_days(n, ordinal=True)
