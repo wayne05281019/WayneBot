@@ -12,7 +12,6 @@ import re
 import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from zoneinfo import ZoneInfo
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_watch (
@@ -298,20 +297,9 @@ def record_watch_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
 
 def _bar_is_official_close(ymd: str, *, now: Optional[datetime] = None) -> bool:
     """只有已收的官方日K才對質。當天 13:30 前那根不算官方收。"""
-    day = str(ymd or "").replace("-", "")[:8]
-    if len(day) != 8 or not day.isdigit():
-        return False
-    stamp = now or datetime.now(ZoneInfo("Asia/Taipei"))
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=ZoneInfo("Asia/Taipei"))
-    else:
-        stamp = stamp.astimezone(ZoneInfo("Asia/Taipei"))
-    today = stamp.strftime("%Y%m%d")
-    if day < today:
-        return True
-    if day > today:
-        return False
-    return (stamp.hour, stamp.minute) >= (13, 30)
+    from trading_calendar import is_official_daily_bar
+
+    return is_official_daily_bar(ymd, now=now)
 
 
 def _he_pointed_escape(conn: sqlite3.Connection) -> bool:

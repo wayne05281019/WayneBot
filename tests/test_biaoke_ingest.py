@@ -1050,3 +1050,45 @@ def test_parse_api_thread_keeps_bystander_and_his_nested_reply():
     only_him = parse_api_author_replies(payload, parent_id="184601742")
     assert all(r["kind"] == "reply" for r in only_him)
     assert not any("健策跌停" in r["text"] for r in only_him)
+
+
+def test_parse_api_author_replies_keeps_layer4_self_reply():
+    """AGENTS：樓中樓不管第幾層，他自己回的都收。"""
+    from biaoke_ingest import parse_api_author_replies
+
+    payload = [
+        {
+            "id": "c1",
+            "memberId": 111,
+            "nickname": "路人甲",
+            "content": {"text": "請問夜盤"},
+            "replies": [
+                {
+                    "id": "c2",
+                    "memberId": 222,
+                    "nickname": "另一人",
+                    "content": {"text": "跟著問"},
+                    "replies": [
+                        {
+                            "id": "c3",
+                            "memberId": 333,
+                            "nickname": "第三人",
+                            "content": {"text": "再問一次"},
+                            "replies": [
+                                {
+                                    "id": "deep4",
+                                    "memberId": 25263,
+                                    "nickname": "期股多空雙飆客",
+                                    "content": {"text": "第四層自回：短線築底先看量"},
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    rows = parse_api_author_replies(payload, parent_id="184578674")
+    assert len(rows) == 1
+    assert rows[0]["layer"] == 4
+    assert "第四層自回" in rows[0]["text"]

@@ -91,12 +91,22 @@ def _snip(text: str, needle: str, n: int = 80) -> str:
 
 def named_pairs(text: str, tags: Optional[Sequence[Any]] = None) -> List[Tuple[str, str]]:
     """只收他點過、表裡有代號的檔。IET＝IET-KY 4971。"""
+    from biaoke_ingest import split_author_cite
     from biaoke_why import _NAME_SID, named_stocks
 
-    spoken = _spoken(text)
+    cite, spoken = split_author_cite(text)
+    spoken = spoken or _spoken(text)
+    # 有引號路人句時，tags 不准把只出現在引號裡的檔當成他點名。
+    use_tags: Optional[Sequence[Any]] = tags
+    if cite:
+        use_tags = [
+            t
+            for t in (tags or [])
+            if str(t or "").strip() and str(t).strip() in spoken
+        ]
     out: List[Tuple[str, str]] = []
     seen = set()
-    for name in named_stocks(spoken, tags):
+    for name in named_stocks(spoken, use_tags):
         sid = str(_NAME_SID.get(name) or "")
         if not sid or sid in seen:
             continue
@@ -122,9 +132,12 @@ def named_pairs(text: str, tags: Optional[Sequence[Any]] = None) -> List[Tuple[s
     return out
 
 
-def last_official_bar(db_path: str, sid: str) -> Optional[Dict[str, Any]]:
-    """庫裡最後一根完整官方柱。沒這列就空，不編。"""
+def last_official_bar(
+    db_path: str, sid: str, *, now: Optional[datetime] = None
+) -> Optional[Dict[str, Any]]:
+    """庫裡最後一根完整官方柱。盤中未收的今日柱跳過。沒這列就空，不編。"""
     from biaoke_link import bar_on
+    from trading_calendar import is_official_daily_bar
 
     if not db_path or not os.path.isfile(db_path) or not sid:
         return None
@@ -132,45 +145,58 @@ def last_official_bar(db_path: str, sid: str) -> Optional[Dict[str, Any]]:
     try:
         if sid == "TWII":
             try:
-                row = conn.execute(
+                rows = conn.execute(
                     "SELECT date FROM index_daily "
                     "WHERE symbol='TWII' OR symbol='^TWII' "
-                    "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1"
-                ).fetchone()
+                    "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 8"
+                ).fetchall()
             except sqlite3.Error:
-                row = None
+                rows = []
         else:
             try:
-                row = conn.execute(
+                rows = conn.execute(
                     "SELECT date FROM daily_quotes WHERE stock_id=? "
-                    "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1",
+                    "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 8",
                     (sid,),
-                ).fetchone()
+                ).fetchall()
             except sqlite3.Error:
-                row = None
+                rows = []
     finally:
         conn.close()
-    if not row:
-        return None
-    return bar_on(db_path, sid, str(row[0]))
+    for row in rows:
+        day = _ymd(row[0])
+        if day and is_official_daily_bar(day, now=now):
+            return bar_on(db_path, sid, day)
+    return None
 
 
-def official_for_post(db_path: str, sid: str, post_date: str) -> Tuple[Optional[Dict[str, Any]], bool]:
-    """發文當天有完整官方柱就用當天；沒有就對最後一根，並標未收盤。"""
+def official_for_post(
+    db_path: str,
+    sid: str,
+    post_date: str,
+    *,
+    now: Optional[datetime] = None,
+) -> Tuple[Optional[Dict[str, Any]], bool]:
+    """發文當天有完整官方柱就用當天；沒有／盤中未收就對最後一根，並標未收盤。"""
     from biaoke_link import bar_on
+    from trading_calendar import is_official_daily_bar
 
     day = _ymd(post_date)
     bar = bar_on(db_path, sid, day) if day else None
-    if bar:
+    if bar and is_official_daily_bar(day, now=now):
         return bar, False
-    last = last_official_bar(db_path, sid)
+    last = last_official_bar(db_path, sid, now=now)
     if last:
         return last, True
     return None, bool(day)
 
 
-def recent_quote_bars(db_path: str, sid: str, n: int = 30) -> List[Dict[str, Any]]:
-    """舊→新官方日 K。缺日不編。櫃買量欄失真的檔仍回高低收。"""
+def recent_quote_bars(
+    db_path: str, sid: str, n: int = 30, *, now: Optional[datetime] = None
+) -> List[Dict[str, Any]]:
+    """舊→新官方日 K。缺日不編。櫃買量欄失真的檔仍回高低收。盤中未收今日柱不進近窗。"""
+    from trading_calendar import is_official_daily_bar
+
     if not db_path or not os.path.isfile(db_path) or not sid or sid == "TWII":
         return []
     conn = sqlite3.connect(db_path, timeout=15.0)
@@ -178,7 +204,7 @@ def recent_quote_bars(db_path: str, sid: str, n: int = 30) -> List[Dict[str, Any
         rows = conn.execute(
             "SELECT date, open, high, low, close, volume FROM daily_quotes "
             "WHERE stock_id=? ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT ?",
-            (sid, max(8, int(n))),
+            (sid, max(8, int(n) + 2)),
         ).fetchall()
     except sqlite3.Error:
         rows = []
@@ -187,9 +213,12 @@ def recent_quote_bars(db_path: str, sid: str, n: int = 30) -> List[Dict[str, Any
     out: List[Dict[str, Any]] = []
     for r in reversed(rows):
         try:
+            day = str(r[0] or "")
+            if not is_official_daily_bar(_ymd(day) or day, now=now):
+                continue
             out.append(
                 {
-                    "date": str(r[0] or ""),
+                    "date": day,
                     "open": float(r[1] or 0),
                     "high": float(r[2] or 0),
                     "low": float(r[3] or 0),
@@ -199,6 +228,8 @@ def recent_quote_bars(db_path: str, sid: str, n: int = 30) -> List[Dict[str, Any
             )
         except (TypeError, ValueError):
             continue
+    if len(out) > int(n):
+        out = out[-int(n) :]
     return out
 
 
@@ -409,7 +440,12 @@ def _note(
     return "；".join(bits)
 
 
-def record_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
+def record_events(
+    db_path: str,
+    events: Sequence[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+) -> int:
     """新抓到的主文／樓下立刻對官方圖建檔。"""
     if not db_path or not events:
         return 0
@@ -433,8 +469,12 @@ def record_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
         day = str(ev.get("date") or "")
         hm = str(ev.get("time") or "")
         for sid, name in pairs:
-            bar, pinned = official_for_post(db_path, sid, day)
-            hist = recent_quote_bars(db_path, sid, 30) if sid != "TWII" else []
+            bar, pinned = official_for_post(db_path, sid, day, now=now)
+            hist = (
+                recent_quote_bars(db_path, sid, 30, now=now)
+                if sid != "TWII"
+                else []
+            )
             extra = structure_vs_spoken(
                 spoken, sid, hist, skip_vol=(sid == "6274")
             )
