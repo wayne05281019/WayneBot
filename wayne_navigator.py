@@ -4026,12 +4026,12 @@ _NAV_TONE = {
     "h20_leave": ("#FFF3E0", "#E65100"),  # 橙：20 高脫離（跟紫拉開）
     "l20": ("#E8F5E9", "#2E7D32"),        # 綠：20 低觸發
     "l20_near": ("#F1F8E9", "#558B2F"),   # 橄欖空心：接近 20 低
-    "l20_leave": ("#E0F2F1", "#00838F"),  # 青：20 低脫離
-    "l60": ("#E3F2FD", "#1565C0"),        # 藍：60 低（跟綠／青拉開）
+    "l20_leave": ("#E0F7FA", "#006064"),  # 深青：20 低脫離（跟綠明顯分開）
+    "l60": ("#E3F2FD", "#0D47A1"),        # 深藍：60 低（跟綠／青／量能藍拉開）
 }
 
-# 殘影尾：仍貼 20/60 高低、不當新觸發。灰藍半透明，圖例必標。
-_NAV_GHOST = ("#ECEFF1", "#607D8B")
+# 殘影尾：仍貼 20/60 高低、不當新觸發。石板藍半透明（勿洗成淺綠），圖例必標。
+_NAV_GHOST = ("#CFD8DC", "#37474F")
 
 # 量能列：三角＋底帶同一語意；藍底＝月波動低（不是裝飾）。
 _NAV_SIG = {
@@ -4074,7 +4074,7 @@ def _draw_nav_legend(ax1) -> None:
         (_nav_legend_key("l60", "^"), "60低"),
         (_nav_legend_key("h20_near", "v", ms=10, hollow=True), "接近高（空心）"),
         (_nav_legend_key("l20_near", "^", ms=10, hollow=True), "接近低（空心）"),
-        (_nav_legend_key("ghost", "^", ms=10, alpha=0.45), "殘影（仍貼）"),
+        (_nav_legend_key("ghost", "^", ms=10, alpha=0.62), "灰藍殘影（仍貼）"),
     ]
     row2 = [
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_a"],
@@ -4546,7 +4546,7 @@ def _paint_nav_on_axes(
                 arrow_h=arrow_h * 0.78,
                 hw=arrow_hw * 0.78,
                 z=5,
-                alpha=0.42,
+                alpha=0.58,
             )
         if up_pick:
             kind, sc, hollow = up_pick
@@ -4581,7 +4581,7 @@ def _paint_nav_on_axes(
                 arrow_h=arrow_h * 0.78,
                 hw=arrow_hw * 0.78,
                 z=5,
-                alpha=0.42,
+                alpha=0.58,
             )
         if vol_low:
             ax_sig.add_patch(patches.Rectangle(
