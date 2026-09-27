@@ -46,6 +46,20 @@ def test_close_above_press_not_nice():
     assert "看起來不錯" not in line
 
 
+def test_close_equals_press_is_touch_not_breakout():
+    """收＝壓＝碰到上緣還沒過，不准寫已過壓。"""
+    bars = [
+        {"high": 208, "low": 196, "close": 203, "volume": 8000},
+        {"high": 210, "low": 198, "close": 210, "volume": 5000},
+    ]
+    line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
+    assert "已過壓" not in line
+    assert "站在支撐線上" in line
+    assert "沒過" in line or "沒有突破" in line
+    assert "測壓不是站上" in line
+    assert "看起來不錯" not in line
+
+
 def test_broke_support_no_nice():
     last = {"high": 194, "low": 188, "close": 190, "volume": 4000}
     line = vol_zone_position_line(_ZONE, last, None, bars=[last])

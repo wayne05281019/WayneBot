@@ -444,8 +444,9 @@ def vol_zone_position_line(
     vol_c = _vol_clause(_px(last.get("volume")), _px(zone.get("volume")))
     tail = _vol_heat_tail(vol_c, heat_c, heat)
     last_hi = _px(last.get("high") or cl)
-    test_press = last_hi >= hi * _PRESS_TOUCH and cl < hi
-    near_press = cl < hi and hi > 0 and (hi - cl) / hi <= 0.015
+    # 收＝壓＝碰到上緣還沒過；只有收＞壓才算過壓
+    test_press = last_hi >= hi * _PRESS_TOUCH and cl <= hi
+    near_press = hi > 0 and cl <= hi and (hi - cl) / hi <= 0.015
 
     def _end(body: str, *, nice: bool = False, test: bool = False) -> str:
         if on_ex:
@@ -464,7 +465,7 @@ def vol_zone_position_line(
 
     if cl < lo:
         return _end(f"收盤跌破撐{lo_s}，這根大量區撐先不當還在")
-    if cl >= hi:
+    if cl > hi:
         return _end(f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊")
 
     # 有官方除權息切開才卡 since；沒有則仍用全序列（同尺價可含爆大量日前）。
