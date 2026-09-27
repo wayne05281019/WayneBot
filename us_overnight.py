@@ -45,7 +45,7 @@ FUTURES = (
 )
 # 海選／台股大盤外圍：布蘭特原油、美元指數、美元兌台幣。沒真數不上。
 OUTER_SYMBOLS = (
-    ("brent", "BZ=F", "布蘭特"),
+    ("brent", "BZ=F", "布蘭特原油"),
     ("dx_f", "DX-Y.NYB", "美元指數"),
     ("usdtwd", "TWD=X", "美元兌台幣"),
 )
