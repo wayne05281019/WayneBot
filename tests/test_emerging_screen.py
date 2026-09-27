@@ -41,6 +41,72 @@ class EmergingQuotesParseTests(unittest.TestCase):
         self.assertEqual(r["volume"], 12)
         self.assertEqual(r["source"], "tpex_esb_csv")
 
+    def test_thin_share_volume_not_rounded_to_zero(self):
+        """官方 185 股不准 round(/1000) 成 0 張，否則圖上挖成假無量洞。"""
+        csv = """TITLE,Daily Trading Table
+DATADATE,Date:2026/06/17
+HEADER,Security Code,Security Name,Last Best Bid Quote,Last Best Ask Quote,Avg.,Prev. Average,Change,Change (%),Highest,Lowest,Last,Trading Volume(Shares),Trading Value (NTD)
+BODY,"2758  ","LOUISA COFFEE       ","66.80  ","68.90  ","67.98  ","67.36  ","+0.62    ","+0.92    ","68.90  ","67.20  ","67.20  ","185           ","12,576        "
+"""
+        as_of, rows = parse_emerging_csv(csv)
+        self.assertEqual(as_of, "20260617")
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0]["volume"], 0.185, places=5)
+        self.assertFalse(rows[0].get("no_trade"))
+
+    def test_upsert_allows_open_outside_high_low(self):
+        """興櫃開＝前日均價可在高低外；不准因此拒寫薄量。"""
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            n = upsert_emerging_rows(
+                path,
+                "20260818",
+                [
+                    {
+                        "stock_id": "2758",
+                        "stock_name": "路易莎",
+                        "open": 69.3,
+                        "high": 70.4,
+                        "low": 70.4,
+                        "close": 70.4,
+                        "volume": 0.03,
+                        "turnover_k": 2.11,
+                        "pct_change": 1.59,
+                        "avg_price": 70.4,
+                        "source": "tpex_esb_csv",
+                    }
+                ],
+            )
+            self.assertGreater(n, 0)
+            conn = sqlite3.connect(path)
+            row = conn.execute(
+                "SELECT volume, typeof(volume), open, high FROM emerging_quotes WHERE stock_id='2758'"
+            ).fetchone()
+            conn.close()
+            self.assertAlmostEqual(float(row[0]), 0.03, places=5)
+            self.assertEqual(str(row[1]).lower(), "real")
+        finally:
+            os.unlink(path)
+
+    def test_official_dash_avg_is_no_trade_stop_price(self):
+        """均價「-」＝無成交：前日均價停價，不准編高低。"""
+        csv = """TITLE,Daily Trading Table
+DATADATE,Date:2026/08/13
+HEADER,Security Code,Security Name,Last Best Bid Quote,Last Best Ask Quote,Avg.,Prev. Average,Change,Change (%),Highest,Lowest,Last,Trading Volume(Shares),Trading Value (NTD)
+BODY,"2758  ","LOUISA COFFEE       ","68.80  ","70.50  ","-      ","69.11  ","-        ","-        ","-      ","-      ","-      ","-","-"
+"""
+        as_of, rows = parse_emerging_csv(csv)
+        self.assertEqual(as_of, "20260813")
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertTrue(r.get("no_trade"))
+        self.assertEqual(r["close"], 69.11)
+        self.assertEqual(r["high"], 69.11)
+        self.assertEqual(r["low"], 69.11)
+        self.assertEqual(r["volume"], 0.0)
+
     def test_openapi_maps_chinese_name_and_average(self):
         as_of, rows = parse_emerging_openapi(
             [

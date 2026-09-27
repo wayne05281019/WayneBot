@@ -97,6 +97,8 @@ class NavChartRenderTests(unittest.TestCase):
         stag = inspect.getsource(_set_staggered_month_ticks)
         self.assertIn("blended_transform_factory", stag)
         self.assertIn("y_far", stag)
+        self.assertIn("_overlap", stag)
+        self.assertIn("單排", stag)
 
 
 if __name__ == "__main__":

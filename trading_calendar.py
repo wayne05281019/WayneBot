@@ -248,6 +248,29 @@ def daytrade_closed_message(phase: str) -> str:
     )
 
 
+def iter_tw_open_days(start_ymd: str, end_ymd: str) -> list[str]:
+    """台股開市日連續序列（含端點）。週末／國定假不進軸，不算缺洞。"""
+    a = normalize_ymd(start_ymd)
+    b = normalize_ymd(end_ymd)
+    if len(a) != 8 or len(b) != 8:
+        return []
+    try:
+        d0 = datetime.strptime(a, "%Y%m%d")
+        d1 = datetime.strptime(b, "%Y%m%d")
+    except ValueError:
+        return []
+    if d1 < d0:
+        d0, d1 = d1, d0
+    out: list[str] = []
+    cur = d0
+    while cur <= d1:
+        s = cur.strftime("%Y%m%d")
+        if is_tw_open_calendar_day(s):
+            out.append(s)
+        cur += timedelta(days=1)
+    return out
+
+
 def daytrade_list_heading(kind: str) -> tuple[str, str]:
     """盤中／尾盤當沖標題與「現在要做什麼」。數字怎麼讀寫在卡片上。"""
     if kind == "tail":

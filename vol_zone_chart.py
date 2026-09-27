@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import patches
 
-from wayne_navigator import _fp, _fmt_price, mpl_render, nav_volume_bar_heights
+from wayne_navigator import _fp, _fmt_price, mpl_render, nav_volume_bar_heights, _set_staggered_month_ticks
 from ex_rights import (
     bar_ymd as _bar_ymd,
     ex_gap_note as _ex_gap_note,
@@ -153,9 +153,20 @@ def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     work = work.loc[ok].reset_index(drop=True)
     if work.empty:
         return None
+    # 開市日軸連續（與導航同一套）：缺列＝前收停價＋量0，不准編振幅／假量
+    from wayne_navigator import align_ohlc_to_tw_open_days
+
+    work = align_ohlc_to_tw_open_days(work)
+    if work is None or work.empty:
+        return None
+    work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
+    work = work.dropna(subset=["dt"]).reset_index(drop=True)
     vol = work["volume"].fillna(0.0)
     flat = (vol <= 0) & ((work["high"] - work["low"]).abs() <= 1e-8)
-    work["is_halt"] = flat.fillna(False)
+    if "is_halt" in work.columns:
+        work["is_halt"] = work["is_halt"].fillna(False).astype(bool) | flat.fillna(False)
+    else:
+        work["is_halt"] = flat.fillna(False)
     return work
 
 
@@ -817,8 +828,22 @@ def _paint_volume_zone(
         # 興櫃：開＝前日均價，可能落在當日高低外；影線用官方高低，不改價
         prev = float(view["close"].iloc[i - 1]) if i else None
         up = _candle_up(cl, prev, op)
-        color = "#bdbdbd" if bool(halt.iloc[i]) else (_UP if up else _DN)
         x = xs[i]
+        if bool(halt.iloc[i]):
+            # 無成交停價：可見灰短橫，不准隱形挖洞
+            ax1.plot(
+                [x - 0.38, x + 0.38], [cl, cl],
+                color="#9e9e9e", linewidth=1.7, zorder=4, solid_capstyle="round",
+            )
+            ax1.plot(
+                [x, x],
+                [cl - max((hi - lo) * 0.004, 0.05), cl + max((hi - lo) * 0.004, 0.05)],
+                color="#9e9e9e",
+                linewidth=1.2,
+                zorder=4,
+            )
+            continue
+        color = _UP if up else _DN
         ax1.plot([x, x], [l, h], color=color, linewidth=1.15, zorder=3, solid_capstyle="round")
         body = max(abs(cl - op), (hi - lo) * 0.002 if hi > lo else 0.01)
         ax1.add_patch(
@@ -962,8 +987,8 @@ def _paint_volume_zone(
     _put_tick(n - 1, _md(view["date"].iloc[-1]), prefer=True)
     tick_pos = sorted(tick_at)
     tick_lab = [tick_at[i] for i in tick_pos]
-    ax2.set_xticks(tick_pos)
-    ax2.set_xticklabels(tick_lab, fontproperties=_fp(9))
+    # 與導航同一套：能排下單排；會互壓才錯開
+    _set_staggered_month_ticks(ax2, tick_lab, tick_pos, compact=False)
     ax1.tick_params(labelbottom=False)
 
     src = str(view["quote_source"].iloc[-1] if "quote_source" in view.columns else "")
@@ -999,7 +1024,8 @@ def _paint_volume_zone(
         0.5,
         0.012,
         "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
-        "高觸壓、收未過＝測壓，不是站上、不是買訊。導航圖另按。",
+        "高觸壓、收未過＝測壓，不是站上、不是買訊。"
+        "開市日軸連續；無成交＝灰K＋量0（前收停價，非假行情）。導航圖另按。",
         ha="center",
         va="bottom",
         fontproperties=_fp(9, "bold"),

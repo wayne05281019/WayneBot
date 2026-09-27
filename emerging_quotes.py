@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS emerging_quotes (
     high REAL NOT NULL,
     low REAL NOT NULL,
     close REAL NOT NULL,
-    volume INTEGER NOT NULL,
+    volume REAL NOT NULL,
     turnover_k REAL NOT NULL,
     pct_change REAL NOT NULL,
     avg_price REAL NOT NULL,
@@ -106,9 +106,32 @@ def parse_emerging_csv(text: str) -> Tuple[str, List[dict]]:
         high = _f(fields[8])
         low = _f(fields[9])
         last = _f(fields[10])
-        shares = _i(fields[11])
+        shares = max(0, _i(fields[11]))
         turnover = _f(fields[12])
-        if not sid or avg <= 0:
+        if not sid:
+            continue
+        # 官方股數／1000＝張（可小數）。不准 round 成 0 把薄量當天畫成無量洞。
+        vol_lots = round(shares / 1000.0, 6) if shares > 0 else 0.0
+        if avg <= 0:
+            # 官方有列、均價「-」＝當日無成交；前日均價當停價參考，不准編高低振幅
+            if prev <= 0:
+                continue
+            rows.append(
+                {
+                    "stock_id": sid,
+                    "stock_name": name,
+                    "open": prev,
+                    "high": prev,
+                    "low": prev,
+                    "close": prev,
+                    "volume": 0.0,
+                    "turnover_k": 0.0,
+                    "pct_change": 0.0,
+                    "avg_price": prev,
+                    "no_trade": True,
+                    "source": "tpex_esb_csv",
+                }
+            )
             continue
         if high <= 0:
             high = max(avg, last, prev)
@@ -125,10 +148,11 @@ def parse_emerging_csv(text: str) -> Tuple[str, List[dict]]:
                 "high": high,
                 "low": low,
                 "close": avg,
-                "volume": max(0, int(round(shares / 1000.0))),
+                "volume": vol_lots,
                 "turnover_k": round(turnover / 1000.0, 2),
                 "pct_change": pct,
                 "avg_price": avg,
+                "no_trade": False,
                 "source": "tpex_esb_csv",
             }
         )
@@ -149,8 +173,29 @@ def parse_emerging_openapi(items: Iterable[dict]) -> Tuple[str, List[dict]]:
         high = _f(it.get("Highest"))
         low = _f(it.get("Lowest"))
         last = _f(it.get("LatestPrice"))
-        shares = _i(it.get("TransactionVolume"))
-        if not sid or avg <= 0:
+        shares = max(0, _i(it.get("TransactionVolume")))
+        if not sid:
+            continue
+        vol_lots = round(shares / 1000.0, 6) if shares > 0 else 0.0
+        if avg <= 0:
+            if prev <= 0:
+                continue
+            rows.append(
+                {
+                    "stock_id": sid,
+                    "stock_name": name,
+                    "open": prev,
+                    "high": prev,
+                    "low": prev,
+                    "close": prev,
+                    "volume": 0.0,
+                    "turnover_k": 0.0,
+                    "pct_change": 0.0,
+                    "avg_price": prev,
+                    "no_trade": True,
+                    "source": "tpex_esb_openapi",
+                }
+            )
             continue
         if high <= 0:
             high = max(avg, last, prev)
@@ -171,10 +216,11 @@ def parse_emerging_openapi(items: Iterable[dict]) -> Tuple[str, List[dict]]:
                 "high": high,
                 "low": low,
                 "close": avg,
-                "volume": max(0, int(round(shares / 1000.0))),
+                "volume": vol_lots,
                 "turnover_k": round(turnover / 1000.0, 2),
                 "pct_change": pct,
                 "avg_price": avg,
+                "no_trade": False,
                 "source": "tpex_esb_openapi",
             }
         )
@@ -189,9 +235,74 @@ def ensure_emerging_table(db_path: str) -> None:
             "CREATE INDEX IF NOT EXISTS idx_em_stock_date ON emerging_quotes(stock_id, date);"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_em_date ON emerging_quotes(date);")
+        # 舊庫 volume 曾是 INTEGER affinity，薄量 0.03 可能被存壞；遷成 REAL 後重抓才準
+        _migrate_emerging_volume_real(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def _migrate_emerging_volume_real(conn: sqlite3.Connection) -> None:
+    """把 emerging_quotes.volume 確實變成 REAL affinity（SQLite 不能 ALTER TYPE）。"""
+    try:
+        cols = conn.execute("PRAGMA table_info(emerging_quotes)").fetchall()
+    except sqlite3.OperationalError:
+        return
+    if not cols:
+        return
+    vol_decl = ""
+    for _cid, name, ctype, *_rest in cols:
+        if str(name) == "volume":
+            vol_decl = str(ctype or "").upper()
+            break
+    if "REAL" in vol_decl or "FLOAT" in vol_decl or "DOUBLE" in vol_decl:
+        return
+    conn.execute(
+        """
+        CREATE TABLE emerging_quotes__real (
+            date TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            stock_name TEXT NOT NULL,
+            market TEXT NOT NULL DEFAULT 'EM',
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume REAL NOT NULL,
+            turnover_k REAL NOT NULL,
+            pct_change REAL NOT NULL,
+            avg_price REAL NOT NULL,
+            foreign_net INTEGER DEFAULT 0,
+            trust_net INTEGER DEFAULT 0,
+            dealer_net INTEGER DEFAULT 0,
+            source TEXT DEFAULT '',
+            PRIMARY KEY (date, stock_id)
+        );
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO emerging_quotes__real
+        SELECT date, stock_id, stock_name, market, open, high, low, close,
+               CAST(volume AS REAL), turnover_k, pct_change, avg_price,
+               foreign_net, trust_net, dealer_net, source
+        FROM emerging_quotes;
+        """
+    )
+    conn.execute("DROP TABLE emerging_quotes;")
+    conn.execute("ALTER TABLE emerging_quotes__real RENAME TO emerging_quotes;")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_em_stock_date ON emerging_quotes(stock_id, date);"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_em_date ON emerging_quotes(date);")
+
+
+def _emerging_bar_ok(open_p: float, high: float, low: float, close: float) -> bool:
+    """興櫃開＝前日均價，可落在當日高低外；只要求高低收官方一致，不准拒寫薄量日。"""
+    o, h, l, c = float(open_p or 0), float(high or 0), float(low or 0), float(close or 0)
+    if c <= 0 or h <= 0 or l <= 0:
+        return False
+    return h >= l - 1e-6 and h >= c - 1e-6 and l <= c + 1e-6
 
 
 def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
@@ -201,8 +312,6 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
     conn = sqlite3.connect(db_path)
     n = 0
     try:
-        from quote_integrity import ohlc_consistent
-
         payload = []
         for r in rows:
             try:
@@ -210,9 +319,10 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
                 h = float(r["high"] or 0)
                 l = float(r["low"] or 0)
                 c = float(r["close"] or 0)
+                v = float(r["volume"] or 0)
             except (TypeError, ValueError, KeyError):
                 continue
-            if not ohlc_consistent(o, h, l, c):
+            if not _emerging_bar_ok(o, h, l, c):
                 continue
             payload.append(
                 (
@@ -224,7 +334,7 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
                     h,
                     l,
                     c,
-                    r["volume"],
+                    v,
                     r["turnover_k"],
                     r["pct_change"],
                     r["avg_price"],
