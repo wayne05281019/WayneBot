@@ -47,6 +47,10 @@ def test_quote_limit_side_only_limit_up_down():
     assert quote_limit_side(8.34, 7.59, 9.88) == "up"
     assert quote_limit_side(143, None, 10.0) == "up"
     assert quote_limit_side(143, None, 3.2) is None
+    # 興櫃無漲跌停：即使 ±10% 也不洗底
+    assert quote_limit_side(143, 130, 10.0, emerging=True) is None
+    assert quote_limit_side(117, 130, -10.0, emerging=True) is None
+    assert quote_limit_side(321.7, 290, 10.9, emerging=True) is None
 
 
 def test_quote_limit_chip_colors_square_fill():

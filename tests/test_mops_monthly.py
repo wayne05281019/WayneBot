@@ -37,8 +37,9 @@ def test_mops_urls_cover_listed_otc_and_ky():
     urls = mops_monthly_urls("202608")
     blob = " ".join(u for u, _m in urls)
     assert "t21sc03_115_8_0.html" in blob
-    assert "/sii/" in blob and "/otc/" in blob
+    assert "/sii/" in blob and "/otc/" in blob and "/rotc/" in blob
     assert any(m == "TW" for _u, m in urls) and any(m == "TWO" for _u, m in urls)
+    assert any(m == "EM" for _u, m in urls)
 
 
 def test_parse_t21sc03_huatong_august():
@@ -119,6 +120,14 @@ def test_sync_merges_mops_when_openapi_still_july(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "fundamentals.fetch_mops_monthly_filings",
         lambda yyyymm: (parse_t21sc03_html(FIXTURE_6669_AUG, yyyymm, "TW"), []),
+    )
+    monkeypatch.setattr(
+        "fundamentals.emerging_monthly_gap_months",
+        lambda *a, **k: [],
+    )
+    monkeypatch.setattr(
+        "fundamentals.emerging_income_gap_seasons",
+        lambda *a, **k: [],
     )
     stats = sync_fundamentals(db)
     assert stats["mops_rows"] == 1

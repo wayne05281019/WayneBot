@@ -126,7 +126,8 @@ def test_em_hub_has_kline_and_nav_industry():
     nav = next(b for b in kb.inline_keyboard[0] if b.text == "導航圖")
     assert nav.url is None
     assert nav.callback_data == "g:3595"
-    assert "產業" in labels0
+    # 興櫃介紹卡已含營收，圖下不再放產業；上市櫃仍有
+    assert "產業" not in labels0
     assert "K線" in labels0
     assert labels1 == ["觀察", "記買入"]
     texts = labels0 + labels1

@@ -1391,7 +1391,7 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         rev_rows.append(_vs_peer(snap["my_yoy"], snap["yoy_med"], "%"))
     else:
         if listing == "興櫃":
-            rev_rows.append("興櫃沒有免登入的全市場月營收彙總，沒官方列就不顯示。")
+            rev_rows.append("興櫃月營收：櫃買 OpenAPI＋觀測站 rotc；季報走 ajax_t163sb04。沒官方列就不顯示。")
         else:
             rev_rows.append("這檔還沒有月營收列")
             latest_m = str(snap.get("latest_month") or "")
