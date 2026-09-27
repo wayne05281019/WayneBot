@@ -4524,7 +4524,11 @@ def nav_overlay_from_bars(bars: list) -> dict:
 
 
 def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
-    """整理 180 日 OHLC；沒有可畫的列就回 None。"""
+    """整理 180 日 OHLC；沒有可畫的列就回 None。
+
+    開市日軸對齊只在畫導航圖時做（draw_from_ohlc），這裡不改長度，
+    免得 /k/ overlay 與合成 weekday 測資被國定假切短。
+    """
     if df is None or getattr(df, "empty", True):
         return None
     if already_normalized or "is_halt" in df.columns:
@@ -4546,12 +4550,6 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
         return None
     # 左舊右新：興櫃 load 是 DESC，沒排好底軸日期會跟 K／量對錯位
     work = work.sort_values("dt", kind="mergesort").reset_index(drop=True)
-    # 開市日軸連續：缺列＝前收停價＋無量（標 halt），週末假日不進軸
-    work = align_ohlc_to_tw_open_days(work)
-    if work is None or work.empty:
-        return None
-    work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
-    work = work.dropna(subset=["dt"]).reset_index(drop=True)
     if "is_halt" not in work.columns:
         work["is_halt"] = False
     return work
@@ -4929,6 +4927,16 @@ def draw_from_ohlc(
     work = _nav_work_or_none(df, already_normalized)
     if work is None:
         return ""
+    # 畫圖才對開市日軸：缺列＝前收停價＋量0；週末／國定假不進軸
+    work = align_ohlc_to_tw_open_days(work)
+    if work is None or work.empty:
+        return ""
+    work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
+    work = work.dropna(subset=["dt"]).reset_index(drop=True)
+    if work.empty:
+        return ""
+    if "is_halt" not in work.columns:
+        work["is_halt"] = False
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig, (ax1, ax_sig, ax2) = plt.subplots(
         3, 1, figsize=(12.8, 8.85), dpi=NAV_CHART_DPI, sharex=True,
