@@ -3769,7 +3769,7 @@ def _paint_emerging_revenue_line(
                 px = (x0 + 9.2) + ((x0 + w - 2.4) - (x0 + 9.2)) * (i / (n_p - 1))
             ax.text(
                 px, month_y, str(p.get("month_lab") or ""),
-                fontproperties=_fp(8.0, "bold"), color=C["ink_mute"],
+                fontproperties=_fp(9.6, "bold"), color=C["ink_mute"],
                 ha="center", va="center", zorder=5,
             )
         return
@@ -3840,7 +3840,7 @@ def _paint_emerging_revenue_line(
             plot_l - 0.55,
             gy,
             _yi_short(gv),
-            fontproperties=_fp(7.6),
+            fontproperties=_fp(9.0),
             color=C["ink_mute"],
             ha="right",
             va="center",
@@ -3898,8 +3898,8 @@ def _paint_emerging_revenue_line(
             solid_capstyle="round", solid_joinstyle="round",
             zorder=5, antialiased=True,
         )
-    # 每月都標短數字（有數才標）；一律點上方，不壓月份；空槽只留淡月標
-    month_y = y0 + 1.85
+    # 每月都標短數字（有數才標）；字級對齊高低卡副標 9.6；空槽淡月標
+    month_y = y0 + 1.95
     label_floor = plot_b + 0.45
     for i, (px, raw) in enumerate(zip(xs, revs_raw)):
         mlab = str(pts[i].get("month_lab") or "")
@@ -3913,7 +3913,7 @@ def _paint_emerging_revenue_line(
             )
             ax.text(
                 px, month_y, mlab,
-                fontproperties=_fp(8.2, "bold"), color=C["ink_mute"],
+                fontproperties=_fp(9.6, "bold"), color=C["ink_mute"],
                 ha="center", va="center", zorder=5,
             )
             continue
@@ -3926,10 +3926,10 @@ def _paint_emerging_revenue_line(
         )
         yi_s = _yi_short(float(raw))
         # 點上方；貼頂改下方。首尾點略往內偏，避免跟軸／圖邊黏
-        if py + 1.45 <= plot_t + 0.2:
-            ty, va = py + 1.45, "bottom"
+        if py + 1.55 <= plot_t + 0.2:
+            ty, va = py + 1.55, "bottom"
         else:
-            ty, va = max(py - 1.45, label_floor), "top"
+            ty, va = max(py - 1.55, label_floor), "top"
         tx = px
         tha = "center"
         if i == 0:
@@ -3940,12 +3940,12 @@ def _paint_emerging_revenue_line(
             tha = "right"
         ax.text(
             tx, ty, yi_s,
-            fontproperties=_fp(8.2, "bold"), color=C["navy"],
+            fontproperties=_fp(9.6, "bold"), color=C["navy"],
             ha=tha, va=va, zorder=7,
         )
         ax.text(
             px, month_y, mlab,
-            fontproperties=_fp(8.6, "bold"), color=C["ink_soft"],
+            fontproperties=_fp(9.6, "bold"), color=C["ink_soft"],
             ha="center", va="center", zorder=5,
         )
 
@@ -4148,14 +4148,14 @@ def render_first_glance_png(
     fund_body = 0.0
     if conflict_lines:
         fund_body += 2.6 * len(conflict_lines)
-    # 左月列行高／行距拉開，對齊高低卡「字不壓線、單位齊」
-    split_row_h = 3.85
-    split_gap = 0.48
+    # 左月列行高／行距：字級對齊高低卡表（11.2），行距跟著拉開
+    split_row_h = 4.15
+    split_gap = 0.52
     if split_month_rows:
         # 左月列｜右季合計框（折線已上移，這裡不再排 chart）
         fund_body += len(split_month_rows) * (split_row_h + split_gap) + 1.6
         if split_bottom:
-            fund_body += 7.4 + 1.2  # 底列季標＋毛利／營益／淨利／EPS
+            fund_body += 8.2 + 1.2  # 底列季標＋毛利／營益／淨利／EPS（字級對齊高低卡）
     fund_box_hs = [lr_box_h if len(vlines) > 1 else 5.8 for _, vlines, _, _ in fund_drawn]
     if fund_box_hs:
         fund_body += sum(fund_box_hs) + 0.7 * (len(fund_box_hs) - 1)
@@ -4456,15 +4456,15 @@ def render_first_glance_png(
                     mom_c = (
                         C["up"] if tone == "up" else (C["ink"] if tone == "down" else C["ink_soft"])
                     ) if has else C["ink_mute"]
-                    ax.text(date_x, cy, date_lab, fontproperties=_fp(11.0, "bold"),
+                    ax.text(date_x, cy, date_lab, fontproperties=_fp(11.2, "bold"),
                             color=ink, va="center", ha="left", zorder=4)
-                    ax.text(yi_right, cy, yi_lab, fontproperties=_fp(11.0, "bold"),
+                    ax.text(yi_right, cy, yi_lab, fontproperties=_fp(11.2, "bold"),
                             color=ink, va="center", ha="right", zorder=4)
                     if phrase:
-                        # 月增減欄：超出右欄寬就縮字，不准壓進季框
+                        # 月增減欄：字級跟高低卡表內同階；超出才縮
                         mom_avail = max(6.0, left_w - (mom_x - inner_x) - 0.9)
-                        mom_fs = 10.4
-                        while mom_fs > 8.2 and tw(phrase, mom_fs) > mom_avail:
+                        mom_fs = 11.0
+                        while mom_fs > 9.0 and tw(phrase, mom_fs) > mom_avail:
                             mom_fs -= 0.25
                         ax.text(mom_x, cy, phrase, fontproperties=_fp(mom_fs, "bold"),
                                 color=mom_c, va="center", ha="left", zorder=4)
@@ -4520,16 +4520,16 @@ def render_first_glance_png(
                     ih = max(box_inner_top - box_inner_bot, 4.0)
                     lines = [x for x in (title, amount, trend) if x]
                     if len(lines) >= 3:
-                        # 上中下三等分內緣，上下各留足邊，第三行不准貼框底
+                        # 上中下三等分內緣；字級對齊高低卡：表頭／主數字／註
                         ys = (
                             box_inner_bot + ih * 0.78,
                             box_inner_bot + ih * 0.50,
                             box_inner_bot + ih * 0.22,
                         )
                         fss = (
-                            _fit_center(title, 9.8, avail),
-                            _fit_center(amount, 11.2, avail),
-                            _fit_center(trend, 8.6, avail, fs_min=7.0),
+                            _fit_center(title, 11.2, avail),
+                            _fit_center(amount, 13.0, avail),
+                            _fit_center(trend, 10.5, avail, fs_min=9.0),
                         )
                         cols = (C["navy"], C["ink"], C["ink_soft"])
                         for yy, lab, fs, col in zip(ys, (title, amount, trend), fss, cols):
@@ -4541,14 +4541,14 @@ def render_first_glance_png(
                             box_inner_bot + ih * 0.34,
                         )
                         ax.text(cx, ys[0], lines[0],
-                                fontproperties=_fp(_fit_center(lines[0], 10.4, avail), "bold"),
+                                fontproperties=_fp(_fit_center(lines[0], 11.2, avail), "bold"),
                                 color=C["navy"], ha="center", va="center", zorder=4)
                         ax.text(cx, ys[1], lines[1],
-                                fontproperties=_fp(_fit_center(lines[1], 11.2, avail), "bold"),
+                                fontproperties=_fp(_fit_center(lines[1], 13.0, avail), "bold"),
                                 color=C["ink"], ha="center", va="center", zorder=4)
                     elif lines:
                         ax.text(cx, (box_inner_top + box_inner_bot) / 2, lines[0],
-                                fontproperties=_fp(_fit_center(lines[0], 10.4, avail), "bold"),
+                                fontproperties=_fp(_fit_center(lines[0], 11.2, avail), "bold"),
                                 color=C["navy"], ha="center", va="center", zorder=4)
                 # 未滿三個月的季：有任一官方月才淡字；全年空槽季留白等補
                 for season in (1, 2, 3, 4):
@@ -4584,7 +4584,7 @@ def render_first_glance_png(
                         q_x + q_w / 2,
                         cy + 1.15,
                         "未滿三月",
-                        fontproperties=_fp(9.2, "bold"),
+                        fontproperties=_fp(10.5, "bold"),
                         color=C["ink_mute"],
                         ha="center",
                         va="center",
@@ -4594,7 +4594,7 @@ def render_first_glance_png(
                         q_x + q_w / 2,
                         cy - 1.15,
                         "暫不彙季",
-                        fontproperties=_fp(9.2, "bold"),
+                        fontproperties=_fp(10.5, "bold"),
                         color=C["ink_mute"],
                         ha="center",
                         va="center",
@@ -4607,13 +4607,13 @@ def render_first_glance_png(
                 if split_bottom_season:
                     ax.text(
                         inner_x + 0.2, fy - 0.15, split_bottom_season,
-                        fontproperties=_fp(9.6, "bold"), color=C["ink_soft"],
+                        fontproperties=_fp(11.2, "bold"), color=C["tbl_ink"],
                         ha="left", va="top", zorder=3,
                     )
-                    fy -= 2.35
+                    fy -= 2.45
                 n_b = len(split_bottom)
                 bw = (fw - (n_b - 1) * 1.05) / float(max(n_b, 1))
-                bh = 5.8
+                bh = 6.2
                 fy -= bh
                 for i, (blab, bval) in enumerate(split_bottom):
                     bx = inner_x + i * (bw + 1.05)
@@ -4621,12 +4621,13 @@ def render_first_glance_png(
                         (bx, fy), bw, bh,
                         boxstyle="round,pad=0,rounding_size=0.45",
                         facecolor=C["white"], edgecolor=C["line"], linewidth=0.9, zorder=2))
+                    # 對齊高低卡左右格：標籤 normal、數字 bold
                     ax.text(bx + bw / 2, fy + bh * 0.68, str(blab),
-                            fontproperties=_fp(10.0), color=C["ink_soft"],
+                            fontproperties=_fp(11.0, "normal"), color=C["ink_soft"],
                             ha="center", va="center", zorder=3)
                     val_s = str(bval)
-                    vfs = 12.2
-                    while vfs > 8.5 and tw(val_s, vfs) > max(4.0, bw - 1.2):
+                    vfs = 13.0
+                    while vfs > 10.0 and tw(val_s, vfs) > max(4.0, bw - 1.2):
                         vfs -= 0.25
                     ax.text(bx + bw / 2, fy + bh * 0.32, val_s,
                             fontproperties=_fp(vfs, "bold"), color=C["ink"],
