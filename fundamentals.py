@@ -1139,9 +1139,9 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
         if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
             bottom.append(("毛利", format_yi(q.get("gross_profit") or 0)))
         if opm is not None:
-            bottom.append(("營益率", f"{opm:.1f}%"))
+            bottom.append(("營益", f"{opm:.1f}%"))
         if npm is not None:
-            bottom.append(("淨利率", f"{npm:.1f}%"))
+            bottom.append(("淨利", f"{npm:.1f}%"))
         bottom.append(("EPS", f"{float(q['eps']):.2f}"))
     elif emerging:
         bottom.append(("季毛利／EPS", "觀測站尚未見此檔綜合損益列"))

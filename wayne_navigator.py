@@ -3766,7 +3766,7 @@ def render_first_glance_png(
             and not str(a).startswith("8月")
             and not str(a).startswith("7月")
             and "月'" not in str(a)
-            and a not in ("毛利", "毛利率", "營益率", "淨利率", "EPS", "季營收", "季報", "季毛利／EPS")
+                    and a not in ("毛利", "毛利率", "營益", "營益率", "淨利", "淨利率", "EPS", "季營收", "季報", "季毛利／EPS")
             and not str(a).startswith("季營收")
         ]
     fund_drawn = []
@@ -4088,7 +4088,7 @@ def render_first_glance_png(
                             ha="center", va="center", zorder=3)
                     ink = C["ink"]
                     try:
-                        if str(blab) in ("營益率", "淨利率", "EPS") and float(
+                        if str(blab) in ("營益", "營益率", "淨利", "淨利率", "EPS") and float(
                             str(bval).replace("%", "").replace("+", "")
                         ) < 0:
                             ink = C["ink"]  # 虧損維持黑，不洗紅底誤導買訊
