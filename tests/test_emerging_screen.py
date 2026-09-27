@@ -474,15 +474,247 @@ class EmergingScreenIsolationTests(unittest.TestCase):
         self.assertIn("興櫃收盤再寫", src)
         emsrc = open("emerging_quotes.py", encoding="utf-8").read()
         self.assertNotIn("if have >= 40:", emsrc)
+        self.assertNotIn("if have < 40:", emsrc)
+        self.assertIn("DEFAULT_EMERGING_LOOKBACK_DAYS", emsrc)
+        self.assertIn("MIN_EMERGING_DEPTH_DAYS", emsrc)
         self.assertIn("_weekdays_after", emsrc)
+        self.assertIn("instr(lower(excluded.source), 'csv')", emsrc)
         nav = open("wayne_navigator.py", encoding="utf-8").read()
         self.assertIn("load_stock_bars", nav)
         self.assertIn("興櫃官方日均價", nav)
+        self.assertIn("min_periods=240", nav)
+        self.assertIn('quote_source == "emerging_quotes"', nav)
         load_fn = open("screening_engine.py", encoding="utf-8").read()
         start = load_fn.index("def load_market_data")
         chunk = load_fn[start : start + 1800]
         self.assertIn("NOT IN ('EM', 'EMERGING')", chunk)
         self.assertNotIn("emerging_quotes", chunk)
+
+    def test_thin_complete_day_still_refetched_for_no_trade_rows(self):
+        """350 列看似齊，仍可能缺無成交列；同步門檻 355 要再抓。"""
+        from emerging_quotes import missing_emerging_days, EM_DAY_FULL_ROWS, ensure_emerging_table
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_emerging_table(path)
+            conn = sqlite3.connect(path)
+            # 350 列 ≥ MIN_EM(300) 但 < FULL(355)
+            for i in range(350):
+                conn.execute(
+                    "INSERT INTO emerging_quotes("
+                    "date,stock_id,stock_name,market,open,high,low,close,"
+                    "volume,turnover_k,pct_change,avg_price,source) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        "20260813",
+                        f"{1000 + i}",
+                        f"T{i}",
+                        "EM",
+                        10,
+                        11,
+                        9,
+                        10,
+                        1,
+                        1,
+                        0,
+                        10,
+                        "seed",
+                    ),
+                )
+            conn.commit()
+            conn.close()
+            holes = missing_emerging_days(path, "20260813", lookback=5)
+            self.assertIn("20260813", holes)
+            self.assertGreaterEqual(EM_DAY_FULL_ROWS, 355)
+        finally:
+            os.remove(path)
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            upsert_emerging_rows(
+                path,
+                "20260924",
+                [
+                    {
+                        "stock_id": "3595",
+                        "stock_name": "山太士",
+                        "open": 1577.06,
+                        "high": 1600.0,
+                        "low": 1425.0,
+                        "close": 1507.42,
+                        "volume": 987.671,
+                        "turnover_k": 1489.0,
+                        "pct_change": -4.4,
+                        "avg_price": 1507.42,
+                        "source": "tpex_esb_csv",
+                    }
+                ],
+            )
+            upsert_emerging_rows(
+                path,
+                "20260924",
+                [
+                    {
+                        "stock_id": "3595",
+                        "stock_name": "山太士",
+                        "open": 1577.06,
+                        "high": 1600.0,
+                        "low": 1425.0,
+                        "close": 1507.42,
+                        "volume": 988.0,
+                        "turnover_k": 1489.0,
+                        "pct_change": -4.4,
+                        "avg_price": 1507.42,
+                        "source": "tpex_esb_openapi",
+                    }
+                ],
+            )
+            conn = sqlite3.connect(path)
+            row = conn.execute(
+                "SELECT volume, source FROM emerging_quotes WHERE stock_id='3595' AND date='20260924'"
+            ).fetchone()
+            conn.close()
+            self.assertAlmostEqual(float(row[0]), 987.671, places=3)
+            self.assertIn("csv", str(row[1]))
+        finally:
+            os.remove(path)
+
+    def test_sync_backfills_depth_even_when_already_over_40_days(self):
+        """滿 40 天不准停補；lookback 窗內缺日仍要抓（否則 240 低塌成同一價）。"""
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+
+        from emerging_quotes import ensure_emerging_table, emerging_date_count
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_emerging_table(path)
+            conn = sqlite3.connect(path)
+            d = datetime(2026, 9, 24)
+            n = 0
+            while n < 50:
+                if d.weekday() < 5:
+                    ymd = d.strftime("%Y%m%d")
+                    conn.execute(
+                        "INSERT INTO emerging_quotes("
+                        "date,stock_id,stock_name,market,open,high,low,close,"
+                        "volume,turnover_k,pct_change,avg_price,source) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (ymd, "3595", "山太士", "EM", 10, 11, 9, 10, 1, 1, 0, 10, "seed"),
+                    )
+                    n += 1
+                d -= timedelta(days=1)
+            conn.execute(
+                "INSERT INTO daily_quotes("
+                "date,stock_id,stock_name,market,open,high,low,close,volume,"
+                "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260924", "2330", "台積電", "TW", 1, 1, 1, 1, 1, 1, 0, 1),
+            )
+            conn.commit()
+            conn.close()
+            self.assertGreaterEqual(emerging_date_count(path), 40)
+            fetched = []
+
+            def fake_open(*_a, **_k):
+                return "", []
+
+            def fake_csv(ymd, session=None):
+                fetched.append(ymd)
+                # 回傳夠多列，讓該日不再被當半套
+                rows = []
+                for i in range(320):
+                    rows.append(
+                        {
+                            "stock_id": f"{1000 + i}",
+                            "stock_name": f"T{i}",
+                            "open": 10.0,
+                            "high": 11.0,
+                            "low": 9.0,
+                            "close": 10.5,
+                            "volume": 1.0,
+                            "turnover_k": 10.0,
+                            "pct_change": 0.0,
+                            "avg_price": 10.5,
+                            "source": "tpex_esb_csv",
+                        }
+                    )
+                return ymd, rows
+
+            with patch("emerging_quotes.fetch_emerging_openapi", fake_open), patch(
+                "emerging_quotes.fetch_emerging_csv_day", fake_csv
+            ):
+                stats = sync_emerging_quotes(
+                    path, cap="20260924", lookback_days=80, sleep_s=0
+                )
+            # 窗內早於已有 50 天的日期必須被抓（不准滿 40 天停補）
+            self.assertGreater(len(fetched), 5)
+            self.assertGreaterEqual(stats.get("gaps") or 0, 5)
+            self.assertGreaterEqual(emerging_date_count(path), 55)
+        finally:
+            os.remove(path)
+
+    def test_decision_card_hides_240_low_until_full_window(self):
+        from wayne_navigator import NavigatorEngine
+        from emerging_quotes import ensure_emerging_table
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_emerging_table(path)
+            conn = sqlite3.connect(path)
+            from datetime import datetime, timedelta
+
+            d = datetime(2026, 9, 24)
+            n = 0
+            while n < 80:
+                if d.weekday() < 5:
+                    c = 100.0 + (n % 17)
+                    conn.execute(
+                        "INSERT INTO emerging_quotes("
+                        "date,stock_id,stock_name,market,open,high,low,close,"
+                        "volume,turnover_k,pct_change,avg_price,source) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            d.strftime("%Y%m%d"),
+                            "3595",
+                            "山太士",
+                            "EM",
+                            c,
+                            c + 5,
+                            c - 5,
+                            c,
+                            10,
+                            10,
+                            0,
+                            c,
+                            "seed",
+                        ),
+                    )
+                    n += 1
+                d -= timedelta(days=1)
+            conn.commit()
+            conn.close()
+            card = NavigatorEngine(path).get_decision_card("3595", merge_live=False)
+            self.assertEqual(card.get("quote_source"), "emerging_quotes")
+            self.assertTrue(card.get("l10"))
+            self.assertTrue(card.get("l60"))
+            self.assertFalse(card.get("l120"))
+            self.assertFalse(card.get("l240"))
+        finally:
+            os.remove(path)
+
+    def test_decision_card_png_always_paints_horizon_lows_when_present(self):
+        """120／240 低有數字就要上第二排，不准用離低≤5% 藏掉。"""
+        src = open("wayne_navigator.py", encoding="utf-8").read()
+        chunk = src.split("extra_lows = []", 1)[1].split("low_rows =", 1)[0]
+        self.assertNotIn("float(dist) <= 5.0", chunk)
+        self.assertIn("extra_lows.append", chunk)
 
 
 if __name__ == "__main__":

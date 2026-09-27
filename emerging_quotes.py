@@ -343,6 +343,7 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
             )
         if not payload:
             return 0
+        # CSV 永遠可覆寫；OpenAPI 只能覆寫非 CSV（或缺列）。半套 OpenAPI 不准蓋掉全日 CSV。
         conn.executemany(
             """
             INSERT INTO emerging_quotes(
@@ -360,7 +361,9 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
                 turnover_k=excluded.turnover_k,
                 pct_change=excluded.pct_change,
                 avg_price=excluded.avg_price,
-                source=excluded.source;
+                source=excluded.source
+            WHERE instr(lower(excluded.source), 'csv') > 0
+               OR instr(lower(COALESCE(emerging_quotes.source, '')), 'csv') = 0;
             """,
             payload,
         )
@@ -485,6 +488,13 @@ def _weekdays_ending(cap: str, *, limit: int = 40) -> List[str]:
     return out
 
 
+# 高低卡要 240 根收盤低；約 280 開市日 ≈ 400 曆日。滿 40 天就停補＝10～240 低塌成同一價。
+DEFAULT_EMERGING_LOOKBACK_DAYS = 400
+MIN_EMERGING_DEPTH_DAYS = 240
+# 全日約 360；350 仍可能缺無成交停價列（2758 20260813 等）。同步補齊用這個，健康半套關卡仍 MIN_EM=300。
+EM_DAY_FULL_ROWS = 355
+
+
 def _em_day_min_rows(min_rows: int = 0) -> int:
     """與 import_health.MIN_EM 同一門檻：半套日（~250）仍要重抓到全日。"""
     if int(min_rows or 0) > 0:
@@ -497,31 +507,59 @@ def _em_day_min_rows(min_rows: int = 0) -> int:
         return 300
 
 
+def _em_day_full_rows(min_rows: int = 0) -> int:
+    """同步寫滿用：比 MIN_EM 嚴，避免 350 列就停、漏掉無成交列。"""
+    if int(min_rows or 0) > 0:
+        return max(int(min_rows), EM_DAY_FULL_ROWS)
+    return EM_DAY_FULL_ROWS
+
+
 def missing_emerging_days(
     db_path: str, cap: str, *, lookback: int = 40, min_rows: int = 0
 ) -> List[str]:
     """中間缺日也要補。最新日若比 cap 新（盤中 OpenAPI）仍要回補 cap 以前的洞。
 
-    min_rows 預設跟 MIN_EM（300）：庫裡已有 50～299 列的半套日仍算缺口，不准停補。
+    預設用 EM_DAY_FULL_ROWS（355）：庫裡 300～354 列的「看起來夠」日仍重抓，
+    把無成交停價列補齊。import_health 半套關卡仍看 MIN_EM=300。
     """
-    need = _em_day_min_rows(min_rows)
+    need = _em_day_full_rows(min_rows)
     days = _weekdays_ending(cap, limit=lookback)
     return [d for d in days if emerging_rows_on(db_path, d) < need]
+
+
+# 高低卡要 240 根收盤低；約 280 開市日 ≈ 400 曆日。滿 40 天就停補＝10～240 低塌成同一價。
+DEFAULT_EMERGING_LOOKBACK_DAYS = 400
+MIN_EMERGING_DEPTH_DAYS = 240
 
 
 def sync_emerging_quotes(
     db_path: str,
     *,
-    lookback_days: int = 90,
+    lookback_days: int = DEFAULT_EMERGING_LOOKBACK_DAYS,
     session: Optional[requests.Session] = None,
     sleep_s: float = 0.2,
     cap: str = "",
 ) -> Dict[str, int]:
-    """補齊官方興櫃日表到上市櫃已收那日。庫裡已有很多天時，缺的近期日仍要抓。"""
+    """補齊官方興櫃日表到上市櫃已收那日。
+
+    - 半套日（列數 < MIN_EM）一律重抓 CSV。
+    - 深度不足（開市日數 < 240）或 lookback 窗內缺日：永遠往回補，不准「已有 40 天就停」。
+    - 當日 OpenAPI 先寫；同日 CSV 可覆寫（量／列較齊）。
+    """
     ensure_emerging_table(db_path)
     sess = session or _session()
-    need = _em_day_min_rows()
-    stats = {"latest": 0, "hist": 0, "days": 0, "gaps": 0, "min_rows": need}
+    need = _em_day_full_rows()
+    lb = max(40, int(lookback_days or DEFAULT_EMERGING_LOOKBACK_DAYS))
+    # 平日窗 ≈ 曆日 × 5/7。預設 400 曆日 → ~290 開市日 ≥ 240 低窗。
+    weekday_window = max(40, int(lb * 5 / 7) + 5)
+    stats = {
+        "latest": 0,
+        "hist": 0,
+        "days": 0,
+        "gaps": 0,
+        "min_rows": need,
+        "lookback_weekdays": weekday_window,
+    }
     try:
         as_of, rows = fetch_emerging_openapi(sess)
         if as_of and rows:
@@ -530,8 +568,15 @@ def sync_emerging_quotes(
         logger.exception("興櫃 OpenAPI 當日行情失敗")
     listed = _listed_quote_cap(db_path)
     want_cap = str(cap or "").replace("-", "")[:8] or listed
+    if not want_cap:
+        try:
+            from zoneinfo import ZoneInfo
+
+            want_cap = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y%m%d")
+        except Exception:
+            want_cap = datetime.now().strftime("%Y%m%d")
     gap_days = missing_emerging_days(
-        db_path, want_cap, lookback=max(40, int(lookback_days) // 2), min_rows=need
+        db_path, want_cap, lookback=weekday_window, min_rows=need
     )
     for ymd in gap_days:
         if emerging_rows_on(db_path, ymd) >= need:
@@ -545,31 +590,118 @@ def sync_emerging_quotes(
             stats["hist"] += upsert_emerging_rows(db_path, as_of, rows)
             stats["gaps"] += 1
         time.sleep(max(0.0, float(sleep_s)))
-    have = emerging_date_count(db_path)
-    if have < 40:
+    # 最新完整日若只靠 OpenAPI 半套，強制再用 CSV 覆寫一次
+    if want_cap and emerging_rows_on(db_path, want_cap) < need:
         try:
-            from zoneinfo import ZoneInfo
-
-            today = datetime.now(ZoneInfo("Asia/Taipei"))
+            as_of, rows = fetch_emerging_csv_day(want_cap, sess)
+            if as_of and rows:
+                stats["hist"] += upsert_emerging_rows(db_path, as_of, rows)
+                stats["gaps"] += 1
         except Exception:
-            today = datetime.now()
-        for i in range(int(lookback_days)):
-            day = today - timedelta(days=i)
-            if day.weekday() >= 5:
-                continue
-            ymd = day.strftime("%Y%m%d")
-            if emerging_rows_on(db_path, ymd) >= need:
-                continue
+            logger.info("興櫃 CSV cap %s 失敗", want_cap)
+    stats["days"] = emerging_date_count(db_path)
+    return stats
+
+
+def compare_stock_to_official_csv(
+    db_path: str,
+    stock_id: str,
+    *,
+    lookback: int = 120,
+    session: Optional[requests.Session] = None,
+    sleep_s: float = 0.05,
+) -> Dict[str, object]:
+    """逐日對質：庫內 emerging_quotes vs 櫃買官方日表 CSV（開高低收量）。"""
+    sid = str(stock_id or "").strip()
+    out: Dict[str, object] = {
+        "stock_id": sid,
+        "checked": 0,
+        "matched": 0,
+        "missing_in_db": [],
+        "price_mismatch": [],
+        "volume_mismatch": [],
+        "false_halt": [],
+        "official_empty": [],
+    }
+    if not sid or not db_path:
+        return out
+    listed = _listed_quote_cap(db_path) or latest_emerging_date(db_path)
+    days = _weekdays_ending(listed, limit=max(20, int(lookback)))
+    sess = session or _session()
+    conn = sqlite3.connect(db_path)
+    try:
+        for ymd in days:
             try:
                 as_of, rows = fetch_emerging_csv_day(ymd, sess)
             except Exception:
-                logger.info("興櫃 CSV %s 失敗", ymd)
+                out["official_empty"] = list(out["official_empty"]) + [ymd]  # type: ignore
                 continue
-            if as_of and rows:
-                stats["hist"] += upsert_emerging_rows(db_path, as_of, rows)
             time.sleep(max(0.0, float(sleep_s)))
-    stats["days"] = emerging_date_count(db_path)
-    return stats
+            if not as_of or not rows:
+                # 平日無檔＝假日／尚未公布，不算缺庫
+                continue
+            official = next((r for r in rows if str(r.get("stock_id")) == sid), None)
+            if official is None:
+                continue
+            out["checked"] = int(out["checked"]) + 1  # type: ignore
+            db_row = conn.execute(
+                """
+                SELECT open, high, low, close, volume, source
+                FROM emerging_quotes WHERE stock_id=? AND date=?
+                """,
+                (sid, ymd),
+            ).fetchone()
+            if not db_row:
+                out["missing_in_db"] = list(out["missing_in_db"]) + [ymd]  # type: ignore
+                continue
+            o_o, o_h, o_l, o_c = (
+                float(official["open"]),
+                float(official["high"]),
+                float(official["low"]),
+                float(official["close"]),
+            )
+            o_v = float(official["volume"])
+            d_o, d_h, d_l, d_c, d_v = (
+                float(db_row[0] or 0),
+                float(db_row[1] or 0),
+                float(db_row[2] or 0),
+                float(db_row[3] or 0),
+                float(db_row[4] or 0),
+            )
+            no_trade = bool(official.get("no_trade"))
+            flat_db = (
+                abs(d_h - d_l) <= 1e-8
+                and abs(d_o - d_c) <= 1e-8
+                and d_v <= 0
+            )
+            if (not no_trade) and o_v > 0 and flat_db:
+                out["false_halt"] = list(out["false_halt"]) + [ymd]  # type: ignore
+            price_ok = (
+                abs(d_o - o_o) <= 0.06
+                and abs(d_h - o_h) <= 0.06
+                and abs(d_l - o_l) <= 0.06
+                and abs(d_c - o_c) <= 0.06
+            )
+            # 量：CSV 小數張；OpenAPI 可能整數張。允許 1 張內差，或相對 0.5%
+            vol_tol = max(1.0, o_v * 0.005)
+            vol_ok = abs(d_v - o_v) <= vol_tol
+            if not price_ok:
+                out["price_mismatch"] = list(out["price_mismatch"]) + [  # type: ignore
+                    {
+                        "date": ymd,
+                        "db": (d_o, d_h, d_l, d_c),
+                        "csv": (o_o, o_h, o_l, o_c),
+                    }
+                ]
+            elif not vol_ok:
+                out["volume_mismatch"] = list(out["volume_mismatch"]) + [  # type: ignore
+                    {"date": ymd, "db": d_v, "csv": o_v}
+                ]
+            else:
+                out["matched"] = int(out["matched"]) + 1  # type: ignore
+    finally:
+        conn.close()
+    return out
 
 
 def load_stock_bars(db_path: str, stock_id: str, limit: int = 520):

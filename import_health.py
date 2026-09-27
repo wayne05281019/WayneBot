@@ -283,6 +283,13 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         ).fetchone()
     except sqlite3.OperationalError:
         x_n = (0, "")
+    try:
+        em_depth = int(
+            cur.execute("SELECT COUNT(DISTINCT date) FROM emerging_quotes").fetchone()[0]
+            or 0
+        )
+    except sqlite3.OperationalError:
+        em_depth = 0
     conn.close()
     problems: List[str] = []
     if total == 0:
@@ -321,6 +328,7 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         "tw": int(tw or 0),
         "two": int(two or 0),
         "em": int(em or 0),
+        "em_days": int(em_depth or 0),
         "total": int(total or 0),
         "chips_nonzero": int(chip_n or 0),
         "monthly_n": int(m_n[0] or 0),
@@ -549,6 +557,7 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
             "rows": counts.get("emerging_quotes") or 0,
             "latest_date": em_day,
             "latest_n": em_day_n,
+            "days": int(health.get("em_days") or 0),
         },
         "monthly_revenue": {
             "rows": counts.get("monthly_revenue") or 0,
