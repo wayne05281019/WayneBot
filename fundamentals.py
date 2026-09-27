@@ -1134,7 +1134,7 @@ def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12
 
 def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dict[str, Any]]:
     """
-    僅興櫃介紹卡：左月營收列＋右月營收折線圖＋底列毛利／營益／淨利／EPS。
+    僅興櫃介紹卡：月營收折線（佔空間／熱度位）＋左月列／右季合計＋底列毛利／營益／淨利／EPS。
     上市櫃回 None（維持原本一列一標）。
     """
     path = db_path or get_db_path()

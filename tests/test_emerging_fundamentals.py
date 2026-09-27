@@ -258,6 +258,8 @@ def test_glance_split_layout_emerging_only(tmp_path):
     assert lay["chart_points"][-1]["yyyymm"] == "202608"
     assert abs(lay["chart_points"][-1]["revenue"] - 30300) < 1e-6
     assert any(a == "EPS" for a, _ in lay["bottom"])
+    assert len(lay["quarter_boxes"]) >= 2
+    assert any(b["season"] == 2 for b in lay["quarter_boxes"])
     # 上市櫃不走這套
     conn = sqlite3.connect(db)
     conn.execute(
