@@ -987,14 +987,14 @@ def _paint_volume_zone(
                 ex_title += f" {_fmt_price(amt)}元"
             ex_title += "（原柱不還原）"
     title = (
-        f"{sid} {name}　大量區專圖（非買訊・{src_note}）　"
+        f"{sid} {name}　大量區專圖（非買訊・{src_note}）\n"
         f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
         f"最近 {_md(last.get('date'))} "
         f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
         f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
         f"{ex_title}"
     )
-    ax1.set_title(title, fontproperties=_fp(12, "bold"), pad=10, color=_TEXT)
+    ax1.set_title(title, fontproperties=_fp(11, "bold"), pad=14, color=_TEXT)
     fig.text(
         0.5,
         0.012,
@@ -1005,7 +1005,7 @@ def _paint_volume_zone(
         fontproperties=_fp(9, "bold"),
         color=_MUTED,
     )
-    fig.subplots_adjust(left=0.04, right=0.96, top=0.90, bottom=0.10)
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.88, bottom=0.10)
     fig.savefig(
         out,
         format="jpeg",

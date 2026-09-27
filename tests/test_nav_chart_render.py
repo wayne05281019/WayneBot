@@ -69,6 +69,7 @@ class NavChartRenderTests(unittest.TestCase):
             _NAV_TONE,
             _draw_nav_legend,
             _paint_nav_on_axes,
+            _set_staggered_month_ticks,
         )
 
         leg = inspect.getsource(_draw_nav_legend)
@@ -79,17 +80,23 @@ class NavChartRenderTests(unittest.TestCase):
             "買點↑藍", "賣點↓橙",
         ):
             self.assertIn(label, leg, label)
+        # 圖例底邊必須 > 1（整塊在軸上方，不准壓 K）
+        self.assertIn("1.032", leg)
+        self.assertIn("1.168", leg)
         paint = inspect.getsource(_paint_nav_on_axes)
         self.assertIn("_NAV_GHOST", paint)
         self.assertIn("_NAV_SIG", paint)
         self.assertIn("vol_low_band", paint)
-        # 脫離／觸發墨水必須拉開色相（不要兩個近紫或兩個近綠）
+        self.assertIn("chip_head", paint)
+        self.assertIn("_set_staggered_month_ticks", paint)
         self.assertNotEqual(_NAV_TONE["h20"][1].upper(), _NAV_TONE["h20_leave"][1].upper())
         self.assertNotEqual(_NAV_TONE["l20"][1].upper()[:3], _NAV_TONE["l60"][1].upper()[:3])
         self.assertEqual(_NAV_GHOST[1].upper(), "#607D8B")
         self.assertEqual(_NAV_SIG["vol_low_band"].upper(), "#90CAF9")
-        # 脫離不再用半透明糊成殘影
         self.assertNotIn('alpha = 0.34 if (hollow or kind.endswith("_leave"))', paint)
+        stag = inspect.getsource(_set_staggered_month_ticks)
+        self.assertIn("blended_transform_factory", stag)
+        self.assertIn("y_far", stag)
 
 
 if __name__ == "__main__":
