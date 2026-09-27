@@ -954,6 +954,110 @@ def _fmt_signed_pct(pct) -> str:
     return f"{p:+.1f}%"
 
 
+def _mom_phrase_and_tone(pct) -> Tuple[str, str]:
+    """月增紅／月減黑。回傳 (文案, tone=up|down|flat)。"""
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return ("月增—", "flat")
+    if p != p:
+        return ("月增—", "flat")
+    if p > 0:
+        return (f"月增+{p:.1f}%", "up")
+    if p < 0:
+        return (f"月減{abs(p):.1f}%", "down")
+    return ("月增+0.0%", "flat")
+
+
+def _month_face_label(yyyymm: str) -> str:
+    """8月'26（月營收用，不是日）。"""
+    s = str(yyyymm or "").replace("-", "")[:6]
+    if len(s) < 6 or not s.isdigit():
+        return s or "—"
+    return f"{int(s[4:6])}月'{s[2:4]}"
+
+
+def _months_jan_through_latest(months: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """最新月所屬西元年的 1 月→最新月（顯示時新→舊）。缺月不造假。"""
+    if not months:
+        return []
+    latest = str(months[0].get("yyyymm") or "").replace("-", "")[:6]
+    if len(latest) != 6 or not latest.isdigit():
+        return list(months)[:12]
+    year = latest[:4]
+    jan = f"{year}01"
+    kept = [
+        m
+        for m in months
+        if len(str(m.get("yyyymm") or "")) >= 6
+        and jan <= str(m.get("yyyymm")).replace("-", "")[:6] <= latest
+    ]
+    return kept
+
+
+def _quarter_right_label(
+    qq: Dict[str, Any],
+    by_key: Dict[Tuple[int, int], Dict[str, Any]],
+) -> str:
+    y, s = int(qq["year"]), int(qq["season"])
+    rev = float(qq.get("revenue") or 0)
+    if s == 1:
+        prev_key = (y - 1, 4)
+    else:
+        prev_key = (y, s - 1)
+    qoq_q = by_key.get(prev_key)
+    qoq_pct = None
+    if qoq_q and float(qoq_q.get("revenue") or 0) > 0:
+        qoq_pct = (rev - float(qoq_q["revenue"])) / float(qoq_q["revenue"]) * 100.0
+    tag = revenue_trend_label(qoq_pct, kind="qoq")
+    # 第 n 季合計　x.xx億元　較上季…
+    body = f"第{s}季合計　{format_yi(rev)}"
+    if tag and tag != "—":
+        return f"{body}　{tag}"
+    return body
+
+
+def month_quarter_split_rows(
+    months: List[Dict[str, Any]],
+    q_from_m: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    介紹卡基本面左右分欄：
+    左＝月（新→舊，到該年1月）；右＝同季合計（對齊該季最上方那一個月）。
+    """
+    win = _months_jan_through_latest(months)
+    by_key = {(int(x["year"]), int(x["season"])): x for x in (q_from_m or [])}
+    # 每個完整季：在「該季月份裡最新的那一列」掛右欄
+    right_on: Dict[str, str] = {}
+    for qq in q_from_m or []:
+        ms = [str(x) for x in (qq.get("months") or []) if str(x)]
+        if len(ms) < 3:
+            continue
+        top = max(ms)  # 新→舊表上該季第一列
+        right_on[top] = _quarter_right_label(qq, by_key)
+    out: List[Dict[str, Any]] = []
+    for m in win:
+        yyyymm = str(m.get("yyyymm") or "").replace("-", "")[:6]
+        mom = m.get("mom_pct")
+        try:
+            mom_f = float(mom) if mom is not None else None
+        except (TypeError, ValueError):
+            mom_f = None
+        phrase, tone = _mom_phrase_and_tone(mom_f)
+        left_head = f"{_month_face_label(yyyymm)}　{format_yi(m.get('revenue') or 0)}"
+        out.append(
+            {
+                "yyyymm": yyyymm,
+                "left_head": left_head,
+                "mom_phrase": phrase,
+                "mom_tone": tone,
+                "left": f"{left_head}　{phrase}",
+                "right": right_on.get(yyyymm, ""),
+            }
+        )
+    return out
+
+
 def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12) -> List[Tuple[str, str]]:
     """近窗月營收表列（新→舊）：年月｜億｜月增%｜年增%｜累年增%｜狀態。一行一列。"""
     out: List[Tuple[str, str]] = []
@@ -993,6 +1097,60 @@ def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12
         lab = "月營收近窗" if i == 0 else f"月營收{i + 1}"
         out.append((lab, val))
     return out
+
+
+def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dict[str, Any]]:
+    """
+    興櫃（或有完整月窗）介紹卡：左右分欄月／季＋底列毛利營益淨利EPS。
+    不適用就回 None，PNG 退回舊的一列一標。
+    """
+    path = db_path or get_db_path()
+    sid = str(stock_id).strip()
+    try:
+        from universe import card_asset_type, is_etf_asset
+
+        if is_etf_asset(card_asset_type(sid, path), sid):
+            return None
+    except Exception:
+        pass
+    emerging = False
+    try:
+        from universe import stock_is_emerging
+
+        emerging = bool(stock_is_emerging(sid, path))
+    except Exception:
+        emerging = False
+    months = list_monthly_revenue(path, sid, limit=36)
+    if not months:
+        return None
+    # 興櫃一定走分欄；上市櫃有 ≥3 個月也走（對齊同一張臉）
+    if not emerging and len(months) < 3:
+        return None
+    q_from_m = quarterly_revenue_from_monthly(months)
+    split = month_quarter_split_rows(months, q_from_m)
+    if not split:
+        return None
+    q = get_latest_income(path, sid)
+    bottom: List[Tuple[str, str]] = []
+    if q:
+        rev = float(q.get("revenue") or 0)
+        opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else None
+        npm = round(float(q.get("net_income") or 0) / rev * 100.0, 1) if rev else None
+        if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
+            bottom.append(("毛利", format_yi(q.get("gross_profit") or 0)))
+        if opm is not None:
+            bottom.append(("營益率", f"{opm:.1f}%"))
+        if npm is not None:
+            bottom.append(("淨利率", f"{npm:.1f}%"))
+        bottom.append(("EPS", f"{float(q['eps']):.2f}"))
+    elif emerging:
+        bottom.append(("季毛利／EPS", "觀測站尚未見此檔綜合損益列"))
+    return {
+        "emerging": emerging,
+        "month_rows": split,
+        "bottom": bottom,
+        "incomplete_quarter": bool(emerging and not q_from_m),
+    }
 
 
 def prior_income(db_path: str, latest: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1099,75 +1257,91 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     months = list_monthly_revenue(path, sid, limit=36)
     q_from_m = quarterly_revenue_from_monthly(months)
     rows = []
-    # 月營收近窗（對齊參考表：億／月增／年增／累年增＋狀態）；有幾月列幾月
-    if months:
-        # 介紹卡高度有限：近窗最多 6 列，單位對齊一行；多月靠每日同步累積
-        win_n = 6 if emerging else 4
-        rows.extend(monthly_revenue_window_rows(months, limit=win_n))
-    elif m:
-        # 理論上 list 會含 latest；保底
-        rows.extend(monthly_revenue_window_rows([m], limit=1))
-    # 近兩年季營收：有完整三個月才列；標同季年增／較上季
-    if q_from_m:
-        by_key = {(int(x["year"]), int(x["season"])): x for x in q_from_m}
-        show = q_from_m[:8]  # 最多 8 季＝兩年
-        for i, qq in enumerate(show):
-            y, s = int(qq["year"]), int(qq["season"])
-            rev = float(qq.get("revenue") or 0)
+    split = None
+    try:
+        split = glance_fund_split_layout(sid, path)
+    except Exception:
+        split = None
+    if split and split.get("month_rows"):
+        # 文字／舊路徑：左月｜右季；不再寫「月營收近窗／月營收2」
+        for mr in split["month_rows"]:
+            left = str(mr.get("left") or "")
+            right = str(mr.get("right") or "").strip()
+            rows.append((left, right if right else "　"))
+        if split.get("incomplete_quarter"):
+            rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
+        for lab, val in split.get("bottom") or []:
+            rows.append((lab, val))
+    else:
+        # 上市櫃短窗：維持舊近窗列
+        if months:
+            win_n = 6 if emerging else 4
+            rows.extend(monthly_revenue_window_rows(months, limit=win_n))
+        elif m:
+            rows.extend(monthly_revenue_window_rows([m], limit=1))
+        if q_from_m:
+            by_key = {(int(x["year"]), int(x["season"])): x for x in q_from_m}
+            show = q_from_m[:8]
+            for i, qq in enumerate(show):
+                y, s = int(qq["year"]), int(qq["season"])
+                rev = float(qq.get("revenue") or 0)
+                try:
+                    from industry_brief import format_season_zh
+
+                    q_lab = format_season_zh(y, s)
+                except Exception:
+                    q_lab = f"{y}Q{s}"
+                yoy_q = by_key.get((y - 1, s))
+                if s == 1:
+                    prev_key = (y - 1, 4)
+                else:
+                    prev_key = (y, s - 1)
+                qoq_q = by_key.get(prev_key)
+                yoy_pct = None
+                qoq_pct = None
+                if yoy_q and float(yoy_q.get("revenue") or 0) > 0:
+                    yoy_pct = (rev - float(yoy_q["revenue"])) / float(yoy_q["revenue"]) * 100.0
+                if qoq_q and float(qoq_q.get("revenue") or 0) > 0:
+                    qoq_pct = (rev - float(qoq_q["revenue"])) / float(qoq_q["revenue"]) * 100.0
+                tag = "；".join(
+                    t
+                    for t in (
+                        revenue_trend_label(yoy_pct, kind="yoy_q"),
+                        revenue_trend_label(qoq_pct, kind="qoq"),
+                    )
+                    if t and t != "—"
+                ) or "—"
+                lab = "季營收" if i == 0 else f"季營收{i + 1}"
+                rows.append((lab, f"{q_lab}　{format_yi(rev)}　{tag}"))
+        elif emerging and (months or m):
+            rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
+        if q:
+            rev = float(q.get("revenue") or 0)
+            opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
+            npm = round(float(q.get("net_income") or 0) / rev * 100.0, 1) if rev else 0.0
             try:
                 from industry_brief import format_season_zh
 
-                q_lab = format_season_zh(y, s)
+                q_lab = format_season_zh(q["year"], q["season"])
             except Exception:
-                q_lab = f"{y}Q{s}"
-            yoy_q = by_key.get((y - 1, s))
-            if s == 1:
-                prev_key = (y - 1, 4)
+                q_lab = f"{q['year']}Q{q['season']}"
+            if not q_from_m:
+                rows.append(("季報", f"{q_lab}　營收 {format_yi(q.get('revenue') or 0)}"))
             else:
-                prev_key = (y, s - 1)
-            qoq_q = by_key.get(prev_key)
-            yoy_pct = None
-            qoq_pct = None
-            if yoy_q and float(yoy_q.get("revenue") or 0) > 0:
-                yoy_pct = (rev - float(yoy_q["revenue"])) / float(yoy_q["revenue"]) * 100.0
-            if qoq_q and float(qoq_q.get("revenue") or 0) > 0:
-                qoq_pct = (rev - float(qoq_q["revenue"])) / float(qoq_q["revenue"]) * 100.0
-            tag = "；".join(
-                t
-                for t in (
-                    revenue_trend_label(yoy_pct, kind="yoy_q"),
-                    revenue_trend_label(qoq_pct, kind="qoq"),
-                )
-                if t and t != "—"
-            ) or "—"
-            lab = "季營收" if i == 0 else f"季營收{i + 1}"
-            rows.append((lab, f"{q_lab}　{format_yi(rev)}　{tag}"))
-    elif emerging and (months or m):
-        rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
-    if q:
-        rev = float(q.get("revenue") or 0)
-        opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
-        npm = round(float(q.get("net_income") or 0) / rev * 100.0, 1) if rev else 0.0
-        try:
-            from industry_brief import format_season_zh
-
-            q_lab = format_season_zh(q["year"], q["season"])
-        except Exception:
-            q_lab = f"{q['year']}Q{q['season']}"
-        # 已有月彙季時，官方季報列毛利／EPS，避免營收重複
-        if not q_from_m:
-            rows.append(("季報", f"{q_lab}　營收 {format_yi(q.get('revenue') or 0)}"))
-        else:
-            rows.append(("季報", f"{q_lab}（綜合損益）"))
-        if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
-            rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
-            rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
-        if rev:
-            rows.append(("營益率", f"{opm:.1f}%"))
-            rows.append(("淨利率", f"{npm:.1f}%"))
+                rows.append(("季報", f"{q_lab}（綜合損益）"))
+            if float(q.get("gross_profit") or 0) or float(q.get("gross_margin_pct") or 0):
+                rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
+                rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
+            if rev:
+                rows.append(("營益率", f"{opm:.1f}%"))
+                rows.append(("淨利率", f"{npm:.1f}%"))
+            rows.append(("EPS", f"{float(q['eps']):.2f}"))
+        elif emerging and (months or m):
+            rows.append(("季毛利／EPS", "觀測站尚未見此檔綜合損益列"))
+    # split 路徑已含底列；非 split 才補官方季報（上面 else 已處理）
+    if split and q and not any(a == "EPS" for a, _ in rows):
+        # 保底
         rows.append(("EPS", f"{float(q['eps']):.2f}"))
-    elif emerging and (months or m):
-        rows.append(("季毛利／EPS", "觀測站尚未見此檔綜合損益列"))
     try:
         from official_snapshots import valuation_plain_rows
 

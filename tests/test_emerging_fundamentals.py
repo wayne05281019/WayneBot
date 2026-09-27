@@ -156,6 +156,38 @@ def test_emerging_income_seasons_skip_unfiled_q4():
     assert (2025, 4) in seasons
 
 
+def test_month_quarter_split_rows_aligns_right():
+    from fundamentals import month_quarter_split_rows, quarterly_revenue_from_monthly
+
+    months = [
+        {"yyyymm": "202608", "revenue": 30300, "mom_pct": -68.12},
+        {"yyyymm": "202607", "revenue": 95049, "mom_pct": 149.3},
+        {"yyyymm": "202606", "revenue": 38125, "mom_pct": -9.2},
+        {"yyyymm": "202605", "revenue": 42009, "mom_pct": 100.0},
+        {"yyyymm": "202604", "revenue": 1787, "mom_pct": -90.0},
+        {"yyyymm": "202603", "revenue": 129541, "mom_pct": 200.0},
+        {"yyyymm": "202602", "revenue": 34905, "mom_pct": 10.0},
+        {"yyyymm": "202601", "revenue": 1110, "mom_pct": -5.0},
+    ]
+    qs = quarterly_revenue_from_monthly(months)
+    rows = month_quarter_split_rows(months, qs)
+    assert [r["yyyymm"] for r in rows] == [
+        "202608", "202607", "202606", "202605", "202604", "202603", "202602", "202601"
+    ]
+    assert "月營收" not in rows[0]["left"]
+    assert rows[0]["left"].startswith("8月'26")
+    assert rows[0]["mom_tone"] == "down"
+    assert "月減68.1%" in rows[0]["mom_phrase"]
+    assert rows[1]["mom_tone"] == "up"
+    assert "月增+149.3%" in rows[1]["mom_phrase"]
+    # 右欄掛在該季最上方月：Q2→6月、Q1→3月
+    by = {r["yyyymm"]: r["right"] for r in rows}
+    assert "第2季合計" in by["202606"] and "0.82億元" in by["202606"]
+    assert by["202605"] == "" and by["202604"] == ""
+    assert "第1季合計" in by["202603"] and "1.66億元" in by["202603"]
+    assert by["202608"] == ""  # Q3 未滿三個月
+
+
 def test_glance_shows_eps_when_rotc_income(tmp_path):
     db = str(tmp_path / "em.db")
     ensure_core_schema(db)
@@ -166,11 +198,21 @@ def test_glance_shows_eps_when_rotc_income(tmp_path):
         "VALUES (?,?,?,?,?,1,?)",
         ("7853", "政美應用", "EMERGING", "STOCK", "半導體業", "2026-09-27"),
     )
-    conn.execute(
-        "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        ("7853", "202608", "政美應用", "EM", "半導體業", 30300, -68.12, 10.87, 47.5),
-    )
+    for ym, rev, mom, yoy, ytd in (
+        ("202608", 30300, -68.12, 10.87, 47.5),
+        ("202607", 95049, 149.3, 136.4, 52.0),
+        ("202606", 38125, -9.2, -31.9, 33.6),
+        ("202605", 42009, 100.0, 39.7, 62.1),
+        ("202604", 1787, -90.0, -97.2, 68.9),
+        ("202603", 129541, 200.0, 100.0, 382.1),
+        ("202602", 34905, 10.0, 10.0, 100.0),
+        ("202601", 1110, -5.0, 10.0, 10.0),
+    ):
+        conn.execute(
+            "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("7853", ym, "政美應用", "EM", "半導體業", rev, mom, yoy, ytd),
+        )
     conn.execute(
         "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,cogs,"
         "gross_profit,gross_margin_pct,operating_income,net_income,eps) "
@@ -181,7 +223,9 @@ def test_glance_shows_eps_when_rotc_income(tmp_path):
     conn.close()
     rows = glance_fundamentals_plain("7853", db)
     blob = " ".join(f"{a} {b}" for a, b in rows)
+    assert "月營收近窗" not in blob
+    assert "月營收2" not in blob
+    assert "8月'26" in blob and "月減68.1%" in blob
+    assert "第2季合計" in blob
+    assert "EPS" in blob
     assert "無免驗證" not in blob
-    assert "EPS" in blob and "-1.37" in blob
-    assert "毛利率" in blob and "43.3%" in blob
-    assert "淨利率" in blob
