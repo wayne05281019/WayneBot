@@ -109,7 +109,8 @@ def test_kline_includes_emerging(tmp_path):
     texts = [b.text for r in kb.inline_keyboard for b in r]
     assert "K線" in texts
     assert "導航圖" in texts
-    assert "產業" in texts
+    assert "產業" not in texts  # 興櫃圖下無產業；上市櫃仍有
+    assert "籌碼" not in texts
     page = render_kline_html("3595", db_path=db)
     assert "興櫃" in page
     assert '"D":[' in page

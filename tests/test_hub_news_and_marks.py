@@ -53,8 +53,11 @@ def test_em_hub_has_industry_omits_chips():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("3595", em=True)
     texts = [b.text for r in kb.inline_keyboard for b in r]
-    assert "產業" in texts
+    # 興櫃圖下無產業／籌碼／營收；上市櫃仍有產業
+    assert "產業" not in texts
     assert "籌碼" not in texts
     assert "營收" not in texts
+    assert "K線" in texts
     assert "導航圖" in texts
+    assert [b.text for b in kb.inline_keyboard[0]] == ["K線", "導航圖"]
     assert [b.text for b in kb.inline_keyboard[1]] == ["觀察", "記買入"]
