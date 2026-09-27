@@ -1691,7 +1691,6 @@ _US_NAME_SHORT = {
     "輝達盤後": "輝達後",
     "費半盤後": "費半後",
     "台積美股": "台積",
-    "恐慌指數": "恐慌",
 }
 _US_PHASE_SHORT = {
     "regular": "現金盤中",
@@ -1785,7 +1784,9 @@ def _format_overnight_watch_lines(
 
             mood = _vix_mood(us.get("vix"), us.get("vix_pct"))
             vix_s = f"{float(us['vix']):.2f}"
-            bits.append(_page_kv("恐慌", f"{_page_b(vix_s)}" + (f"　{mood}" if mood else "")))
+            bits.append(
+                _page_kv("恐慌指數", f"{_page_b(vix_s)}" + (f"　{mood}" if mood else ""))
+            )
         if not skip_post:
             fut = _us_quote_rows(us, _FUTURES_ITEMS)
             bits.extend(fut)

@@ -78,8 +78,8 @@ def test_outer_rows_brent_dx_twd():
             }
         )
     )
-    assert rows["布蘭特"].startswith("78.50美元/桶")
-    assert "+1.20%" in rows["布蘭特"]
+    assert rows["布蘭特原油"].startswith("78.50美元/桶")
+    assert "+1.20%" in rows["布蘭特原油"]
     assert "104.20" in rows["美元指數"]
     assert "台幣貶" in rows["美元兌台幣"]
     assert outer_rows({}) == []

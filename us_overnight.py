@@ -337,7 +337,7 @@ def outer_rows(snap: Optional[Dict[str, Any]]) -> List[tuple]:
         bit = f"{px:.2f}美元/桶"
         if pct is not None:
             bit += f"　{pct:+.2f}%"
-        rows.append(("布蘭特", bit))
+        rows.append(("布蘭特原油", bit))
     px = _as_float(snap.get("dx_f_px"))
     pct = _as_float(snap.get("dx_f_pct"))
     if px is not None and px > 0:

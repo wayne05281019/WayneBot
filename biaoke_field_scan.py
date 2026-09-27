@@ -2529,9 +2529,9 @@ def _stock_action_lines(item: Dict[str, Any], tag: str, *, held: bool = False) -
             lines.append("不加碼")
         return lines
     if is_buy:
-        return ["可買"]
+        return ["可買", "點左邊選"]
     if str(tag or "").startswith("先機"):
-        return ["可看"]
+        return ["可看", "點左邊選"]
     return ["不買", "只觀察"]
 
 
@@ -3009,8 +3009,10 @@ def dongzhu_page(
     recs = list(data.get("recs") or [])
     buy_sids = {str(x.get("sid") or "") for x in buys if x.get("sid")}
     if recs:
-        rec_rows.append(_esc("次級落後兩到三檔・點左邊選"))
-        rec_rows.append(_esc("剛離零才標黃金買點（非保證）"))
+        rec_rows.append(_esc("這型最落後次級兩到三檔"))
+        rec_rows.append(_esc("不是單檔保證"))
+        rec_rows.append(_esc("點左邊選"))
+        rec_rows.append(_esc("剛好剛離零才標黃金買點"))
         rec_bits: List[str] = []
         for i, item in enumerate(recs, start=1):
             tag = "買點" if str(item.get("sid") or "") in buy_sids else "先機"
