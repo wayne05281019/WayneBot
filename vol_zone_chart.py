@@ -312,11 +312,16 @@ def _is_zone_bar(row: Dict[str, Any], zone: Dict[str, Any]) -> bool:
 
 
 def _stand_streak(rows: List[Dict[str, Any]], lo: float, hi: float) -> List[Dict[str, Any]]:
-    """連站＝收還在桃色帶裡。人在帶上方時不算站在這條撐上。"""
+    """連站＝從最新收往回，連續收盤 ≥ 撐。
+
+    人在壓之上仍算站在這條撐上（收仍 ≥ 撐）；只有收盤跌破撐才斷。
+    hi 留給呼叫端簽名對齊；是否已過壓由 vol_zone_position_line 先分流。
+    """
+    _ = hi
     streak: List[Dict[str, Any]] = []
     for row in reversed(rows):
         c = _px(row.get("close"))
-        if lo <= c < hi:
+        if c >= lo:
             streak.append(row)
         else:
             break
