@@ -4065,7 +4065,7 @@ def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = 
 
 
 def _draw_nav_legend(ax1) -> None:
-    """圖例放在座標軸上方（title pad），不要壓在 K 棒中間。畫過的標都要進圖例。"""
+    """圖例全部在座標軸上方（bbox 底邊 > 1），不准壓進 K 區。畫過的標都要進圖例。"""
     row1 = [
         (_nav_legend_key("h20", "v"), "20高"),
         (_nav_legend_key("h20_leave", "v"), "20高脫離"),
@@ -4099,32 +4099,50 @@ def _draw_nav_legend(ax1) -> None:
     ]
     kw = dict(
         loc="lower left",
-        handlelength=1.15,
-        handletextpad=0.32,
-        columnspacing=0.72,
-        borderpad=0.32,
-        labelspacing=0.18,
+        handlelength=1.05,
+        handletextpad=0.28,
+        columnspacing=0.65,
+        borderpad=0.28,
+        labelspacing=0.16,
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(8.2, "bold"),
+        prop=_fp(8.0, "bold"),
     )
-    leg1 = ax1.legend(
-        [h for h, _ in row1], [t for _, t in row1],
-        bbox_to_anchor=(0.0, 1.108), ncol=8, **kw,
+    # loc=lower left → bbox_to_anchor 是圖例底邊；三列底邊都 > 1，整塊在軸上方
+    rows = (
+        (row1, 1.168, 8),
+        (row2, 1.100, 7),
+        (row3, 1.032, 5),
     )
-    leg1.set_zorder(10)
-    ax1.add_artist(leg1)
-    leg2 = ax1.legend(
-        [h for h, _ in row2], [t for _, t in row2],
-        bbox_to_anchor=(0.0, 1.054), ncol=7, **kw,
-    )
-    leg2.set_zorder(10)
-    ax1.add_artist(leg2)
-    ax1.legend(
-        [h for h, _ in row3], [t for _, t in row3],
-        bbox_to_anchor=(0.0, 1.000), ncol=5, **kw,
-    )
+    for i, (row, y, ncol) in enumerate(rows):
+        leg = ax1.legend(
+            [h for h, _ in row], [t for _, t in row],
+            bbox_to_anchor=(0.0, y), ncol=ncol, **kw,
+        )
+        leg.set_zorder(10)
+        if i < len(rows) - 1:
+            ax1.add_artist(leg)
+
+
+def _set_staggered_month_ticks(ax, months: list, mpos: list, *, compact: bool = False) -> None:
+    """月份標奇偶上下兩行錯開，避免相鄰月字互疊。月都保留，不准省略來省事。"""
+    from matplotlib.transforms import blended_transform_factory
+
+    ax.set_xticks(list(mpos))
+    ax.set_xticklabels([])  # 自畫兩行，不用預設互相擠的單行
+    ax.tick_params(axis="x", pad=1.0, length=3.5)
+    trans = blended_transform_factory(ax.transData, ax.transAxes)
+    fp = _fp(7.5 if compact else 8.5)
+    # 軸下方：偶數行較近、奇數行較遠（兩行）
+    y_near, y_far = (-0.055, -0.155) if compact else (-0.07, -0.20)
+    for i, (x, lab) in enumerate(zip(mpos, months)):
+        y = y_near if i % 2 == 0 else y_far
+        ax.text(
+            float(x), y, str(lab),
+            transform=trans, ha="center", va="top",
+            fontproperties=fp, color="#37474f", clip_on=False, zorder=5,
+        )
 
 
 def _nav_tone(kind: str, y: float, h20: float, l20: float) -> str:
@@ -4426,10 +4444,12 @@ def _paint_nav_on_axes(
     last = work.iloc[-1]
     span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
     arrow_h = span * 0.048
-    arrow_gap = span * 0.022
+    # 箭頭尖端離影線留空，不准箭頭／圖例／Op 框壓到 K
+    arrow_gap = span * 0.034
     arrow_hw = 0.72
-    ymin = float(lo_s.min()) - arrow_gap - arrow_h - span * 0.02
-    ymax = float(hi_s.max()) + arrow_gap + arrow_h + span * 0.03
+    chip_head = span * 0.11  # 軸內上方留給 Op/Hi 框，K／箭頭不進這帶
+    ymin = float(lo_s.min()) - arrow_gap - arrow_h - span * 0.03
+    ymax = float(hi_s.max()) + arrow_gap + arrow_h + chip_head
     ax1.set_facecolor("#ffffff")
     ax_sig.set_facecolor("#ffffff")
     ax2.set_facecolor("#ffffff")
@@ -4650,9 +4670,12 @@ def _paint_nav_on_axes(
     title = (
         f"180日高低導航{live_note}　實心觸發／空心接近／灰藍殘影／高紫橙／低綠青藍{trade_note}"
         if compact
-        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}{trade_note}   WayneBot ® 2026"
+        else (
+            f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航\n"
+            f"{live_note.strip()}{stamp}{trade_note}   WayneBot ® 2026".strip()
+        )
     )
-    ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 52)
+    ax1.set_title(title, fontproperties=_fp(10 if compact else 13, "bold"), pad=8 if compact else 68)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
     if not compact:
         _draw_nav_legend(ax1)
@@ -4668,14 +4691,16 @@ def _paint_nav_on_axes(
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(8 if compact else 9))
     if not compact:
+        # 放在軸內最上空白帶（chip_head），有底框但不壓 K／箭頭
         ax1.text(
-            0.004, 0.985,
+            0.004, 0.992,
             f"Op:{_fmt_price(last['open'])}  Hi:{_fmt_price(last['high'])}  "
             f"Lo:{_fmt_price(last['low'])}  Cl:{_fmt_price(last['close'])}"
             f"    SMA(20): {_fmt_price(last['ma20'])}",
             transform=ax1.transAxes, ha="left", va="top",
             fontproperties=_fp(10, "bold"), color="#1b5e20", zorder=9,
             bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
+            clip_on=False,
         )
     ax_sig.set_yticks([])
     ax_sig.set_ylim(0, 1)
@@ -4701,16 +4726,17 @@ def _paint_nav_on_axes(
             zorder=5,
             clip_on=False,
         )
-    ax2.set_ylim(0, vol_ylim * 1.08)
+    ax2.set_ylim(0, vol_ylim * 1.14)  # 上方留空給「量 xxx張」，不准壓量柱頂
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     ax2.tick_params(labelsize=8 if compact else 9)
     ax2.set_xlim(-0.8, n - 0.2)
     ax2.text(
-        0.006, 0.92, format_nav_volume_label(last["volume"]),
+        0.006, 0.96, format_nav_volume_label(last["volume"]),
         transform=ax2.transAxes, fontproperties=_fp(9 if compact else 10, "bold"),
         va="top", zorder=4,
         bbox=dict(boxstyle="round,pad=0.2", facecolor="#eceff1", edgecolor="none"),
+        clip_on=False,
     )
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
     months, mpos = [], []
@@ -4718,11 +4744,10 @@ def _paint_nav_on_axes(
     for i, dt in enumerate(work["dt"]):
         key = (dt.year, dt.month)
         if key != prev_m:
-            months.append(dt.strftime("%b '%y"))
+            months.append(f"{int(dt.month)}月'{int(dt.year) % 100:02d}")
             mpos.append(i)
             prev_m = key
-    ax2.set_xticks(mpos)
-    ax2.set_xticklabels(months, fontproperties=_fp(8 if compact else 9))
+    _set_staggered_month_ticks(ax2, months, mpos, compact=compact)
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(8 if compact else 9))
 
@@ -4742,19 +4767,24 @@ def draw_from_ohlc(
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig, (ax1, ax_sig, ax2) = plt.subplots(
-        3, 1, figsize=(12.8, 8.05), dpi=NAV_CHART_DPI, sharex=True,
-        gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
+        3, 1, figsize=(12.8, 8.85), dpi=NAV_CHART_DPI, sharex=True,
+        gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.45), hspace=0.05),
         facecolor="#ffffff",
     )
     _paint_nav_on_axes(ax1, ax_sig, ax2, work, stock_id, stock_name, compact=False)
-    fig.subplots_adjust(left=0.03, right=0.96, top=0.76, bottom=0.12)
+    # 上緣留給兩行標題＋三列圖例；下緣留給錯開月標＋兩行腳註
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.70, bottom=0.16)
     fig.text(
-        0.50, 0.012,
+        0.50, 0.045,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
-        "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；"
-        "高紫／脫離橙／低綠／脫離青／60低藍　　"
-        "量能列：紫↑量能異常　紅↑警告（粉底）　藍↑月波動低（藍底＝同義，非裝飾）",
-        ha="center", va="bottom", fontproperties=_fp(8.6, "bold"), color="#263238",
+        "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍",
+        ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
+    )
+    fig.text(
+        0.50, 0.018,
+        "量能列：紫↑量能異常　紅↑警告（粉底）　藍↑月波動低（藍底＝同義，非裝飾）　"
+        "圖內文字／標籤／箭頭不准壓到 K、量柱、數字或其他字",
+        ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
     plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
     plt.close()
