@@ -51,6 +51,44 @@ def test_looks_like_share_as_lot_2724_style():
     assert _looks_like_share_as_lot(8, 0) is False
     assert _looks_like_share_as_lot(5000, -382) is False
     assert _looks_like_share_as_lot(8, -2000) is False
+    assert _looks_like_share_as_lot(8, -382, vol_mult=20) is True
+    # 真張數 500、量 200：嚴門檻不誤殺
+    assert _looks_like_share_as_lot(200, 500, vol_mult=20) is False
+
+
+def test_scrub_share_as_lot_residue_offline_zeros_2724_style(tmp_path):
+    from chips import scrub_share_as_lot_residue_offline
+
+    db = str(tmp_path / "t.db")
+    conn = __import__("sqlite3").connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes(
+            date TEXT, stock_id TEXT, volume INTEGER,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO daily_quotes VALUES ('20260915','2724',8,0,0,-382)"
+    )
+    conn.execute(
+        "INSERT INTO daily_quotes VALUES ('20260915','2330',50000,100,0,-50)"
+    )
+    conn.commit()
+    conn.close()
+    n = scrub_share_as_lot_residue_offline(db)
+    assert n == 1
+    conn = __import__("sqlite3").connect(db)
+    row = conn.execute(
+        "SELECT foreign_net, trust_net, dealer_net FROM daily_quotes WHERE stock_id='2724'"
+    ).fetchone()
+    keep = conn.execute(
+        "SELECT dealer_net FROM daily_quotes WHERE stock_id='2330'"
+    ).fetchone()
+    conn.close()
+    assert row == (0, 0, 0)
+    assert keep == (-50,)
 
 
 def test_parse_twse_t86_6526_20260917_dealer_is_zero_lots():

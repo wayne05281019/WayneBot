@@ -387,11 +387,19 @@ class MainRunner:
                 ).fetchone()[0]
             conn.close()
             # 股→張公式修好後，庫裡若已有「股當張」殘值，chip_sum≠0 不會觸發回補。
-            # 每晚重抓近 60 交易日，把殘值蓋成張。
+            # 每晚重抓近 90 交易日＋殘值日，把錯單位蓋成張。
             why = "最近交易日籌碼仍為 0" if chip_sum == 0 else "重抓近窗蓋掉股當張殘值"
-            logger.info("%s，回補近 60 個交易日法人…", why)
-            bf = backfill_chips(self.db_path, days=60)
+            logger.info("%s，回補近 90 個交易日法人…", why)
+            bf = backfill_chips(self.db_path, days=90)
             logger.info(f"法人回補：{bf}")
+            try:
+                from chips import rebake_share_as_lot_chip_dates, scrub_share_as_lot_residue_offline
+
+                n_zero = scrub_share_as_lot_residue_offline(self.db_path)
+                rb = rebake_share_as_lot_chip_dates(self.db_path, since_ymd="20260101")
+                logger.info("法人殘值離線歸零 %s；殘值日重抓 %s", n_zero, rb)
+            except Exception as e_rb:
+                logger.warning("法人殘值重抓略過：%s", e_rb)
         except Exception as e:
             logger.error(f"法人籌碼更新失敗: {e}", exc_info=True)
 
@@ -1140,7 +1148,7 @@ class MainRunner:
                     from chips import backfill_chips, update_chips_for_date
 
                     update_chips_for_date(self.db_path, cap)
-                    backfill_chips(self.db_path, days=45)
+                    backfill_chips(self.db_path, days=90)
                 except Exception as e_chip:
                     logger.warning("補齊輪法人再抓略過：%s", e_chip)
                 try:
