@@ -574,11 +574,23 @@ def screen_pressure_support(
 ) -> List[Dict[str, Any]]:
     """掃活躍 STOCK，回傳符合標籤的觀察名單（非買訊）。
 
-    話筒排序固定 ``rank_key_current``＋截 ``MAX_ROWS``；靜默對質另走
-    ``pressure_rank_verify``，未過關不准改這條。
+    預設 ``rank_key_current``＋截 ``MAX_ROWS``。
+    靜默對質 ``first`` 贏 ``current`` 且 n≥20（``promote_ready``）時，
+    話筒**直接**改第一次優化鍵；飆大軌永不觸發改碼。
     """
+    tag = normalize_tag(tag)
     out = collect_pressure_pool(db_path, tag, as_of=as_of, enrich=False)
-    out.sort(key=rank_key_current)
+    use_first = False
+    try:
+        from pressure_rank_verify import phone_uses_first, rank_key_first
+
+        use_first = bool(phone_uses_first(db_path))
+        if use_first:
+            out.sort(key=lambda r, t=tag: rank_key_first(t, r))
+        else:
+            out.sort(key=rank_key_current)
+    except Exception:
+        out.sort(key=rank_key_current)
     return out[: max(1, int(max_rows or MAX_ROWS))]
 
 
