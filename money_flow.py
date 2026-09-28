@@ -810,10 +810,16 @@ def sector_representative_stocks_live(
 
 
 def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
-    """獲利％＝近 60 曆日收盤低。只抓最近 90 根，不要整份日 K（一族上百檔會把資金頁卡死）。"""
+    """獲利％＝近 60 曆日收盤低（與高低卡同一套還原判斷）。
+
+    只抓最近 90 根，不要整份日 K（一族上百檔會把資金頁卡死）。
+    必須帶 stock_id＋OHLC；大額除權用官方還原（#435），小額除息近窗跟卡一樣用未還原。
+    不准只抓 close 讓 6669 假顯 0.x%。
+    """
     rows = conn.execute(
         """
-        SELECT date, close FROM daily_quotes
+        SELECT stock_id, date, open, high, low, close, volume
+        FROM daily_quotes
         WHERE stock_id=? AND date <= ?
         ORDER BY date DESC
         LIMIT 90
@@ -825,10 +831,34 @@ def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
     import pandas as pd
 
     from decision_card_signals import profit_pct_cal60_series
+    from wayne_navigator import normalize_ohlc
 
-    df = pd.DataFrame(list(reversed(rows)), columns=["date", "close"])
+    df = pd.DataFrame(
+        list(reversed(rows)),
+        columns=["stock_id", "date", "open", "high", "low", "close", "volume"],
+    )
     try:
-        return float(profit_pct_cal60_series(df).iloc[-1])
+        db_path = ""
+        try:
+            db_path = str(conn.execute("PRAGMA database_list").fetchone()[2] or "")
+        except Exception:
+            db_path = ""
+        if not db_path:
+            from config import get_db_path
+
+            db_path = get_db_path()
+        raw_px = pd.to_numeric(df["close"], errors="coerce")
+        adj, _notes = normalize_ohlc(df, db_path)
+        adj_px = pd.to_numeric(adj["close"], errors="coerce")
+        # 跟 get_decision_card(lookback=20) 同一近窗：大額除權才切還原列
+        tail_n = min(20, len(df))
+        tail_raw = raw_px.iloc[-tail_n:]
+        denom = tail_raw.mask(tail_raw == 0)
+        rel = ((adj_px.iloc[-tail_n:] - tail_raw).abs() / denom).fillna(0.0)
+        use_raw = float(rel.max() or 0) < 0.02
+        out = df.copy()
+        out["close"] = raw_px if use_raw else adj_px
+        return float(profit_pct_cal60_series(out).iloc[-1])
     except (TypeError, ValueError, IndexError):
         return 0.0
 
