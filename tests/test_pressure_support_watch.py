@@ -177,14 +177,14 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "left=0.04" in src
     assert "left=0.16" not in src
     # 爆大量貼柱頂
-    assert "xytext=(0, 5)" in src
+    assert "xytext=(0, 2)" in src
     assert "1.04" not in src
     assert "stub_h" not in src
     assert "#90a4ae" not in src
     # 標題／開高低收緊貼圖例
-    assert "0.992" in src and "0.972" in src
+    assert "0.995" in src and "0.978" in src and "top=0.915" in src
     leg = inspect.getsource(_draw_nav_legend)
-    assert "1.118" in leg and "1.068" in leg
+    assert "1.095" in leg and "1.055" in leg
     # 量能列上下三角同尺寸
     for fn in (overlay_nav_marks_on_zone, _paint_nav_on_axes):
         s = inspect.getsource(fn)

@@ -4886,11 +4886,11 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
     )
     # loc=lower left → bbox_to_anchor 是圖例底邊；三列底邊都 > 1，整塊在軸上方
     if zone_mode:
-        # 貼軸頂、行距緊，標題／開高低收緊貼在上，中間留給 K
+        # 三行貼軸頂、更緊，緊接標題／開高低收，不准中間留大空白
         rows = (
-            (row1, 1.118, 8),
-            (row2, 1.068, 7),
-            (row3, 1.018, 5),
+            (row1, 1.095, 8),
+            (row2, 1.055, 7),
+            (row3, 1.015, 5),
         )
     else:
         rows = (

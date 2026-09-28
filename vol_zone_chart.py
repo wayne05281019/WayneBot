@@ -1018,12 +1018,12 @@ def _paint_volume_zone(
         zorder=4,
         linewidth=0,
     )
-    # 爆大量標貼柱頂上方一點，不准飛太高、不准壓住柱身
-    ax2.set_ylim(0, max(vol_ylim * 1.18, spike_h * 1.22 if spike_h > 0 else vol_ylim * 1.18))
+    # 爆大量標貼柱頂，微抬一點即可，不准飛高
+    ax2.set_ylim(0, max(vol_ylim * 1.14, spike_h * 1.16 if spike_h > 0 else vol_ylim * 1.14))
     ax2.annotate(
         f"爆大量 {spike_md}",
         xy=(float(spike_i), spike_h),
-        xytext=(0, 5),
+        xytext=(0, 2),
         textcoords="offset points",
         ha="center",
         va="bottom",
@@ -1032,7 +1032,7 @@ def _paint_volume_zone(
         zorder=6,
         clip_on=False,
         bbox=dict(
-            boxstyle="round,pad=0.18",
+            boxstyle="round,pad=0.16",
             facecolor="#fffde7",
             edgecolor="#f9a825",
             linewidth=0.65,
@@ -1118,11 +1118,11 @@ def _paint_volume_zone(
             head,
             fontproperties=_fp(13.5, "bold"),
             color=_TEXT,
-            y=0.992,
+            y=0.995,
         )
         fig.text(
             0.5,
-            0.972,
+            0.978,
             intro,
             ha="center",
             va="top",
@@ -1165,10 +1165,10 @@ def _paint_volume_zone(
         color=_MUTED,
     )
     fig.subplots_adjust(
-        # K 佔滿寬；頂只留標題＋緊貼圖例；底兩行注
+        # K 佔滿寬；頂＝標題＋開高低收＋緊貼圖例（不准大空白）；底兩行注
         left=0.04,
         right=0.96,
-        top=0.86 if with_nav_signals else 0.88,
+        top=0.915 if with_nav_signals else 0.88,
         bottom=0.08,
     )
     fig.savefig(
