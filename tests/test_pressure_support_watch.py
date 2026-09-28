@@ -180,9 +180,12 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "left=0.16" not in src
     assert "xytext=(0, 2)" in src
     assert "stub_h" not in src
-    assert "#90a4ae" not in src
+    # 分隔線用 #90a4ae；不准再畫灰假柱（stub_h 已禁）
+    assert 'axhline(0.70, color="#90a4ae"' in src
     leg = inspect.getsource(_draw_nav_legend)
-    assert "panel" in leg and "0.48" in leg
+    assert "panel" in leg
+    assert 'loc="upper left" if panel' in leg
+    assert "0.66" in leg  # 圖例頂在分隔線下，往下長
     assert "0.70" in src  # 介紹／圖例分隔
     assert "0.84" in src  # 開高低收在分隔線上方
     # 量能列上下三角同尺寸

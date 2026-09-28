@@ -4872,7 +4872,7 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         (Line2D([], [], color="#80deea", lw=1.15, linestyle="--"), "月低點線"),
     ]
     kw = dict(
-        loc="lower left",
+        loc="upper left" if panel else "lower left",
         handlelength=1.05,
         handletextpad=0.28,
         columnspacing=0.48 if (zone_mode or panel) else 0.65,
@@ -4884,11 +4884,11 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         prop=_fp(8.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 標題列下半三行（底邊 ≤0.48）；上半 0.72+ 留給股票介紹，不准互壓
+        # 標題列：upper left 從分隔線下往下長；上半 0.72+ 只放股票介紹，不准互壓
         rows = (
-            (row1, 0.48, 8),
-            (row2, 0.25, 7),
-            (row3, 0.02, 5),
+            (row1, 0.66, 8),
+            (row2, 0.44, 7),
+            (row3, 0.22, 5),
         )
     elif zone_mode:
         rows = (
