@@ -246,6 +246,9 @@ def test_industry_html_one_metric_per_line():
         assert "半導體業含代工、記憶體、設計" not in html
         assert "同業＝同一官方產業別全組" not in html
         assert "同一產業鏈才比" in html
+        assert "本鏈法人超" in html
+        assert "不是本檔成交量" in html
+        assert "不是季營收" in html
         lines = html.split("\n")
         for line in lines:
             plain = re.sub(r"<[^>]+>", "", line)

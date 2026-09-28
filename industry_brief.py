@@ -1465,7 +1465,8 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         section(
             "<b>本族群產業狀況簡述</b>",
             kv_compact("基準日", as_s),
-            kv_html_compact("法人合計", html_qty_tight(three)),
+            kv_html_compact("本鏈法人超", html_qty_tight(three)),
+            kv_compact("說明", "同鏈加總張數，不是本檔成交量／不是季營收"),
             kv_compact("資金", overlay) if overlay else flow_story,
             streak_line or "—",
         )

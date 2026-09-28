@@ -458,7 +458,7 @@ def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
     lines = [
         f"📊 <b>【三大法人買賣超】{title}</b>",
         "完整虛線格子見下一則圖（外資／投信／自營分欄，避免對不齊）。",
-        "買賣超＝三大法人合計（張）；超比＝合計／成交量。",
+        "買賣超＝本檔三大法人合計（張），不是成交量、不是季營收；超比＝法人合計／成交量。",
     ]
     return "\n".join(lines)
 
@@ -600,10 +600,10 @@ def render_chips_png(
                 fontproperties=_fp(10.4, "bold"), color="#C5D0E8", ha="right", va="center", zorder=3)
 
         y -= gap + sub_h
-        ax.text(pad_x + 0.4, y + sub_h / 2, "買賣超＝三大法人合計　超比＝合計／成交量　單位：張",
+        ax.text(pad_x + 0.4, y + sub_h / 2, "法人超＝本檔三大法人合計　超比＝法人／成交量　單位：張（不是季營收）",
                 fontproperties=_fp(10), color=C["ink_soft"], va="center", zorder=3)
 
-        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "法人超", "超比", "10日累"]
         numeric = {1, 2, 3, 4, 5, 6, 7, 8}
         table = []
         signed = []

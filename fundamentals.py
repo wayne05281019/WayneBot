@@ -1613,7 +1613,7 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
         blocks.append(
             section(
                 kv_compact("季報", q_lab),
-                kv_compact("營收", format_yi(q.get("revenue") or 0)),
+                kv_compact("季營收", format_yi(q.get("revenue") or 0)),
                 kv_compact("毛利", format_yi(q.get("gross_profit") or 0)),
                 kv_compact("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
                 kv_compact("營益率", f"{(q['operating_income'] / q['revenue'] * 100.0) if q.get('revenue') else 0:.1f}%"),
