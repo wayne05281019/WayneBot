@@ -4873,24 +4873,24 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
     ]
     kw = dict(
         loc="lower left",
-        handlelength=1.15 if zone_mode else 1.05,
-        handletextpad=0.32 if zone_mode else 0.28,
-        columnspacing=0.48 if zone_mode else 0.65,
-        borderpad=0.28 if zone_mode else 0.28,
-        labelspacing=0.14 if zone_mode else 0.16,
+        handlelength=1.05,
+        handletextpad=0.28,
+        columnspacing=0.50 if zone_mode else 0.65,
+        borderpad=0.22 if zone_mode else 0.28,
+        labelspacing=0.10 if zone_mode else 0.16,
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        # zone_mode 圖例加字：話筒縮圖也要讀得懂箭頭介紹
-        prop=_fp(9.5 if zone_mode else 8.0, "bold"),
+        # zone_mode：字夠大可讀，但三行貼緊標題下方，不准拉開空白擠掉 K
+        prop=_fp(9.0 if zone_mode else 8.0, "bold"),
     )
     # loc=lower left → bbox_to_anchor 是圖例底邊；三列底邊都 > 1，整塊在軸上方
-    # zone_mode：三行加高字級，列距略拉開；上方留給放大後的標題＋開高低收
     if zone_mode:
+        # 貼軸頂、行距緊，標題／開高低收緊貼在上，中間留給 K
         rows = (
-            (row1, 1.175, 8),
-            (row2, 1.095, 7),
-            (row3, 1.022, 5),
+            (row1, 1.118, 8),
+            (row2, 1.068, 7),
+            (row3, 1.018, 5),
         )
     else:
         rows = (
@@ -5272,11 +5272,11 @@ def overlay_nav_marks_on_zone(
     arrow_h = span * 0.048
     arrow_gap = span * 0.034
     arrow_hw = 0.72
-    # 抬高／壓低軸：箭頭＋圖例不壓 K／壓撐標；上方留帶給除息標（不准壓 K）
+    # 抬高／壓低軸：箭頭不壓 K；上方只留一小截，不准大抬把 K 壓扁
     ymin, ymax = ax1.get_ylim()
-    chip_head = span * 0.16
+    chip_head = span * 0.08
     ax1.set_ylim(
-        min(ymin, float(lo_s.min()) - arrow_gap - arrow_h - span * 0.03),
+        min(ymin, float(lo_s.min()) - arrow_gap - arrow_h - span * 0.025),
         max(ymax, float(hi_s.max()) + arrow_gap + arrow_h + chip_head),
     )
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False

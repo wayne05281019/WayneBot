@@ -162,8 +162,8 @@ def test_vol_zone_with_nav_signals_flag(tmp_path):
     assert os.path.getsize(path) > 50_000
 
 
-def test_vol_zone_labels_no_fake_halt_bars():
-    """除息／壓撐／爆大量標不准壓圖；無成交不准畫灰假K／假量。"""
+def test_vol_zone_layout_k_first_no_fake_bars():
+    """中間 K 為主：壓撐回圖內角、爆大量貼柱頂、標題貼圖例、無灰假柱。"""
     import inspect
 
     from vol_zone_chart import _paint_volume_zone
@@ -172,17 +172,20 @@ def test_vol_zone_labels_no_fake_halt_bars():
     src = inspect.getsource(_paint_volume_zone)
     assert "ex_labels" in src
     assert "left_guard" in src
-    assert "tip_ceil" in src
-    assert "不准畫灰假 K" in src or "不准造灰假量柱" in src
+    # 壓撐回圖內左上／左下，不准軸外擠掉 K
+    assert "0.012" in src and "0.975" in src and "0.025" in src
+    assert "left=0.04" in src
+    assert "left=0.16" not in src
+    # 爆大量貼柱頂
+    assert "xytext=(0, 5)" in src
+    assert "1.04" not in src
     assert "stub_h" not in src
     assert "#90a4ae" not in src
-    assert "大量區壓" in src and "transAxes" in src and "transData" in src
-    assert "爆大量" in src and "1.04" in src
-    # 標題／圖例放大
-    assert "_fp(15" in src and "_fp(13" in src
+    # 標題／開高低收緊貼圖例
+    assert "0.992" in src and "0.972" in src
     leg = inspect.getsource(_draw_nav_legend)
-    assert "9.5 if zone_mode" in leg
-    # 量能列上下三角同尺寸（不准藍三角比紅三角小）
+    assert "1.118" in leg and "1.068" in leg
+    # 量能列上下三角同尺寸
     for fn in (overlay_nav_marks_on_zone, _paint_nav_on_axes):
         s = inspect.getsource(fn)
         assert s.count("scale=1.12") >= 3
