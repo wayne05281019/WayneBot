@@ -671,7 +671,8 @@ def render_chips_png(
 
 def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = None, limit: int = 15) -> str:
     path = db_path or get_db_path()
-    rows = load_major_player_rows(path, str(stock_id).strip(), limit=limit, allow_fetch=False)
+    sid = str(stock_id or "").strip()
+    rows = load_major_player_rows(path, sid, limit=limit, allow_fetch=False)
     if not rows:
         return ""
     try:
@@ -679,8 +680,39 @@ def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = No
         charts = get_charts_dir()
     except Exception:
         charts = os.path.join("data", "charts")
-    out = save_path or os.path.join(charts, f"{stock_id}_chips.png")
-    return render_chips_png(rows, out, stock_id=str(stock_id).strip())
+    out = save_path or os.path.join(charts, f"{sid}_chips.png")
+    # 短快取：同分點列指紋＋查股 JPEG 參數
+    try:
+        from wayne_navigator import (
+            LOOKUP_JPEG_QUALITY,
+            CARD_PNG_DPI,
+            _lookup_render_memo_get,
+            _lookup_render_memo_put,
+        )
+
+        as_of = str(rows[0].get("date") or rows[0].get("as_of") or "")
+        broker0 = str(rows[0].get("broker") or rows[0].get("name") or "")
+        buy0 = str(rows[0].get("buy") or rows[0].get("buy_lots") or "")
+        key = (
+            "chips",
+            sid,
+            as_of,
+            int(limit or 15),
+            len(rows),
+            broker0,
+            buy0,
+            int(CARD_PNG_DPI),
+            int(LOOKUP_JPEG_QUALITY),
+        )
+        hit = _lookup_render_memo_get(key, out)
+        if hit:
+            return hit
+        path_out = render_chips_png(rows, out, stock_id=sid)
+        if path_out:
+            _lookup_render_memo_put(key, path_out)
+        return path_out
+    except Exception:
+        return render_chips_png(rows, out, stock_id=sid)
 
 
 if __name__ == "__main__":

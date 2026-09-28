@@ -32,8 +32,8 @@ _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_REN
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
-_LOOKUP_JPEG_QUALITY = 82
-_LOOKUP_JPEG_QUALITY_FLOOR = 72
+_LOOKUP_JPEG_QUALITY = 90
+_LOOKUP_JPEG_QUALITY_FLOOR = 78
 # 兩張同尺寸 4:5 才並排。格上限 1920×2400：手機點開夠銳，檔比 3390 格小很多所以傳得快。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
@@ -3380,12 +3380,18 @@ class WayneTelegramBot:
                 im.close()
                 return path
             if (nw, nh) != (w, h):
-                im = im.resize((nw, nh), Image.Resampling.BILINEAR)
+                im = im.resize((nw, nh), Image.Resampling.LANCZOS)
             canvas = Image.new("RGB", (cw, ch), _LOOKUP_ALBUM_BG)
             canvas.paste(im, ((cw - nw) // 2, (ch - nh) // 2))
             im.close()
             out = path + ".album.jpg"
-            canvas.save(out, "JPEG", quality=_LOOKUP_JPEG_QUALITY, subsampling=2, optimize=False)
+            canvas.save(
+                out,
+                "JPEG",
+                quality=_LOOKUP_JPEG_QUALITY,
+                subsampling=0,
+                optimize=False,
+            )
             if os.path.isfile(out) and os.path.getsize(out) > 0:
                 return out
         except Exception:
@@ -3416,20 +3422,20 @@ class WayneTelegramBot:
                 im.close()
                 return path
             if (tw, th) != (w, h):
-                im = im.resize((tw, th), Image.Resampling.BILINEAR)
+                im = im.resize((tw, th), Image.Resampling.LANCZOS)
             out = path + ".hq.jpg"
             limit = _LOOKUP_TG_MAX_BYTES - 64
             for q in (
                 _LOOKUP_JPEG_QUALITY,
-                78,
-                74,
+                84,
+                80,
                 _LOOKUP_JPEG_QUALITY_FLOOR,
             ):
                 im.save(
                     out,
                     "JPEG",
                     quality=int(q),
-                    subsampling=2,
+                    subsampling=0 if int(q) >= 84 else 2,
                     optimize=False,
                 )
                 if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:

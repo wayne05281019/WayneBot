@@ -88,12 +88,114 @@ CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
 GLANCE_FIG_H = 12.4
 NAV_CHART_DPI = 320
+# 查股 JPEG：對齊壓力區提質路線；q90＋無色度抽樣，縮圖清晰、點開仍 <TG 上限。
+LOOKUP_JPEG_QUALITY = 90
 # 上下疊字行距（資料座標）。13pt 字高約 2.54，舊 2.25 會黏成一行。
 _OHLC_STACK = 2.95
 _NAV_STACK = 2.80
 _STANCE_NOTE_STACK = 2.58
 _LR_PRIM_DY = 1.78
 _LR_SEC_DY = 1.92
+
+_LOOKUP_RENDER_TTL_SEC = 45.0
+_LOOKUP_RENDER_LOCK = Lock()
+_LOOKUP_RENDER_MEMO: dict = {}
+_LOOKUP_RENDER_MEMO_MAX = 96
+
+
+def clear_lookup_render_cache() -> None:
+    with _LOOKUP_RENDER_LOCK:
+        _LOOKUP_RENDER_MEMO.clear()
+
+
+def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
+    if not isinstance(card, dict):
+        return ()
+    close = 0.0
+    try:
+        close = float(card.get("close") or card.get("last_close") or 0)
+    except (TypeError, ValueError):
+        close = 0.0
+    profit = card.get("profit_pct")
+    try:
+        profit_r = round(float(profit), 3) if profit is not None else None
+    except (TypeError, ValueError):
+        profit_r = None
+    # 表首列升降／升降註會畫藥丸；漏掉會讓雙標／單標 memo 互撞（CI png_layout 紅）。
+    trend = trend_note = ""
+    nrows = 0
+    try:
+        tbl = card.get("table")
+        if tbl is not None and len(tbl):
+            nrows = int(len(tbl))
+            row0 = tbl.iloc[0]
+            trend = str(row0.get("升降") or "")
+            trend_note = str(row0.get("升降註") or "")
+    except Exception:
+        trend = trend_note = ""
+        nrows = 0
+    return (
+        str(card.get("stock_id") or ""),
+        str(card.get("latest_date") or card.get("as_of") or ""),
+        round(close, 4),
+        profit_r,
+        str(card.get("stance") or ""),
+        str(card.get("query_date") or ""),
+        str(card.get("query_clock") or ""),
+        str(card.get("heat") or card.get("temp_label") or ""),
+        str(card.get("buy_verdict") or ""),
+        str(card.get("sell_action") or ""),
+        trend,
+        trend_note,
+        nrows,
+    )
+
+
+def _lookup_tape_fingerprint(tape: Optional[dict]) -> tuple:
+    if not isinstance(tape, dict):
+        return ()
+    return (
+        str(tape.get("as_of") or tape.get("date") or ""),
+        str(tape.get("volume") or tape.get("vol") or ""),
+        str(tape.get("foreign") or ""),
+        str(tape.get("trust") or ""),
+        str(tape.get("headline") or tape.get("vol_rank") or ""),
+    )
+
+
+def _lookup_render_memo_get(key: tuple, save_path: str) -> str:
+    import shutil
+
+    now = time.monotonic()
+    with _LOOKUP_RENDER_LOCK:
+        hit = _LOOKUP_RENDER_MEMO.get(key)
+        if not hit:
+            return ""
+        ts, src = hit
+        if now - float(ts) > _LOOKUP_RENDER_TTL_SEC or not src or not os.path.isfile(src):
+            _LOOKUP_RENDER_MEMO.pop(key, None)
+            return ""
+    out = str(save_path or src)
+    try:
+        if os.path.abspath(src) != os.path.abspath(out):
+            os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+            shutil.copy2(src, out)
+        return out
+    except Exception:
+        return ""
+
+
+def _lookup_render_memo_put(key: tuple, path: str) -> None:
+    if not path or not os.path.isfile(path):
+        return
+    with _LOOKUP_RENDER_LOCK:
+        if len(_LOOKUP_RENDER_MEMO) >= _LOOKUP_RENDER_MEMO_MAX:
+            oldest = sorted(_LOOKUP_RENDER_MEMO.items(), key=lambda kv: kv[1][0])[
+                : _LOOKUP_RENDER_MEMO_MAX // 2
+            ]
+            for k, _ in oldest:
+                _LOOKUP_RENDER_MEMO.pop(k, None)
+        _LOOKUP_RENDER_MEMO[key] = (time.monotonic(), str(path))
 
 
 def _savefig_lookup_png(fig, save_path: str, dpi: int) -> str:
@@ -103,7 +205,12 @@ def _savefig_lookup_png(fig, save_path: str, dpi: int) -> str:
         format="jpeg",
         dpi=dpi,
         facecolor=fig.get_facecolor(),
-        pil_kwargs={"quality": 82, "optimize": False, "subsampling": 2},
+        # 無色度抽樣：細線／灰短柱／小字在縮圖比較保得住
+        pil_kwargs={
+            "quality": int(LOOKUP_JPEG_QUALITY),
+            "optimize": False,
+            "subsampling": 0,
+        },
     )
     return save_path
 
@@ -3173,6 +3280,15 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。"""
     if not card or card.get("error"):
         return ""
+    memo_key = (
+        "card",
+        _lookup_card_fingerprint(card),
+        int(CARD_PNG_DPI),
+        int(LOOKUP_JPEG_QUALITY),
+    )
+    hit = _lookup_render_memo_get(memo_key, save_path)
+    if hit:
+        return hit
     try:
         attach_etf_price_nav(card)
     except Exception:
@@ -3653,6 +3769,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
     save_path = _savefig_lookup_png(fig, save_path, CARD_PNG_DPI)
     plt.close(fig)
+    _lookup_render_memo_put(memo_key, save_path)
     return save_path
 
 def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFrame:
@@ -4098,6 +4215,17 @@ def render_first_glance_png(
     _ = ohlc
     if not card or card.get("error"):
         return ""
+    memo_key = (
+        "glance",
+        str(stock_id or ""),
+        _lookup_card_fingerprint(card),
+        _lookup_tape_fingerprint(tape if isinstance(tape, dict) else {}),
+        int(GLANCE_PNG_DPI),
+        int(LOOKUP_JPEG_QUALITY),
+    )
+    hit = _lookup_render_memo_get(memo_key, save_path)
+    if hit:
+        return hit
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     try:
         attach_etf_price_nav(card, db_path)
@@ -4801,6 +4929,7 @@ def render_first_glance_png(
 
     save_path = _savefig_lookup_png(fig, save_path, GLANCE_PNG_DPI)
     plt.close(fig)
+    _lookup_render_memo_put(memo_key, save_path)
     return save_path
 
 
