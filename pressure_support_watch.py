@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -53,6 +55,15 @@ TAG_SUBTITLES = {
 # 名單上限：話筒可讀、不塞爆
 MAX_ROWS = 12
 _LOOKBACK_CAL_DAYS = 120
+# 同標籤短快取：連按／雙人不會重掃兩千檔（門檻／排序不變）
+_SCREEN_TTL_SEC = 45.0
+_SCREEN_LOCK = threading.Lock()
+_SCREEN_CACHE: Dict[Tuple[str, str, str, int], Tuple[float, List[Dict[str, Any]]]] = {}
+
+
+def clear_pressure_screen_cache() -> None:
+    with _SCREEN_LOCK:
+        _SCREEN_CACHE.clear()
 
 
 def tag_label(tag: str) -> str:
@@ -410,6 +421,13 @@ def screen_pressure_support(
     as_of = _ymd(as_of)
     if not as_of:
         return []
+    cache_key = (str(db_path), tag, as_of, int(max_rows or MAX_ROWS))
+    now = time.monotonic()
+    with _SCREEN_LOCK:
+        hit = _SCREEN_CACHE.get(cache_key)
+        if hit and now - hit[0] <= _SCREEN_TTL_SEC:
+            # 淺拷貝列，避免呼叫端改到快取
+            return [dict(r) for r in hit[1]]
     universe = _universe_ids(db_path)
     if not universe:
         return []
@@ -419,11 +437,11 @@ def screen_pressure_support(
     out: List[Dict[str, Any]] = []
     for sid, df in frames.items():
         try:
-            hit = classify_frame(df, tag=tag, db_path=db_path, sid=sid)
+            hit_row = classify_frame(df, tag=tag, db_path=db_path, sid=sid)
         except Exception:
             logger.debug("pressure classify fail %s", sid, exc_info=True)
-            hit = None
-        if not hit:
+            hit_row = None
+        if not hit_row:
             continue
         name = str(name_map.get(sid) or "")
         if not name and "stock_name" in df.columns:
@@ -433,22 +451,22 @@ def screen_pressure_support(
             "code": sid,
             "stock_name": name,
             "name": name,
-            "close": hit.get("close"),
-            "volume": hit.get("volume"),
-            "as_of": hit.get("as_of") or as_of,
+            "close": hit_row.get("close"),
+            "volume": hit_row.get("volume"),
+            "as_of": hit_row.get("as_of") or as_of,
             "bucket_key": f"pressure_{tag}",
             "entry_stage_label": tag_label(tag),
             "tag": tag,
             "tag_label": tag_label(tag),
-            "pressure": hit.get("pressure"),
-            "support": hit.get("support"),
-            "zone_date": hit.get("zone_date"),
-            "dist_to_press_pct": hit.get("dist_to_press_pct"),
-            "vol_ratio": hit.get("vol_ratio"),
-            "vol_thin_bonus": hit.get("vol_thin_bonus"),
-            "streak": hit.get("streak"),
-            "why": hit.get("why"),
-            "pattern": hit.get("why"),
+            "pressure": hit_row.get("pressure"),
+            "support": hit_row.get("support"),
+            "zone_date": hit_row.get("zone_date"),
+            "dist_to_press_pct": hit_row.get("dist_to_press_pct"),
+            "vol_ratio": hit_row.get("vol_ratio"),
+            "vol_thin_bonus": hit_row.get("vol_thin_bonus"),
+            "streak": hit_row.get("streak"),
+            "why": hit_row.get("why"),
+            "pattern": hit_row.get("why"),
             # 明確不是買訊：不給進場星等／買門
             "entry_stars": 0,
             "buy_gate": "no",
@@ -462,7 +480,10 @@ def screen_pressure_support(
         return (dist, thin, str(r.get("stock_id") or ""))
 
     out.sort(key=_key)
-    return out[: max(1, int(max_rows or MAX_ROWS))]
+    out = out[: max(1, int(max_rows or MAX_ROWS))]
+    with _SCREEN_LOCK:
+        _SCREEN_CACHE[cache_key] = (time.monotonic(), [dict(r) for r in out])
+    return out
 
 
 def pressure_card_html(item: Dict[str, Any], idx: int) -> str:

@@ -1294,7 +1294,17 @@ def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
     days = iter_tw_open_days(str(work["date"].iloc[0]), str(work["date"].iloc[-1]))
     if not days:
         return work
-    by_d = {str(r["date"]): r for _, r in work.iterrows()}
+    # 用 dict of tuples／tolist，不准 iterrows（壓撐名單會對齊上千檔）
+    dates = [str(x) for x in work["date"].tolist()]
+    opens = pd.to_numeric(work["open"], errors="coerce").tolist()
+    highs = pd.to_numeric(work["high"], errors="coerce").tolist()
+    lows = pd.to_numeric(work["low"], errors="coerce").tolist()
+    closes = pd.to_numeric(work["close"], errors="coerce").tolist()
+    vols = pd.to_numeric(work["volume"], errors="coerce").tolist()
+    by_d = {
+        d: (opens[i], highs[i], lows[i], closes[i], vols[i])
+        for i, d in enumerate(dates)
+    }
     name = ""
     if "stock_name" in work.columns:
         try:
@@ -1320,11 +1330,11 @@ def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
         raw = by_d.get(d)
         if raw is not None:
             try:
-                o = float(raw["open"])
-                h = float(raw["high"])
-                l = float(raw["low"])
-                c = float(raw["close"])
-                v = float(raw["volume"] if raw["volume"] == raw["volume"] else 0.0)
+                o = float(raw[0]) if raw[0] == raw[0] else 0.0
+                h = float(raw[1]) if raw[1] == raw[1] else 0.0
+                l = float(raw[2]) if raw[2] == raw[2] else 0.0
+                c = float(raw[3]) if raw[3] == raw[3] else 0.0
+                v = float(raw[4]) if raw[4] == raw[4] else 0.0
             except (TypeError, ValueError):
                 o = h = l = c = 0.0
                 v = 0.0

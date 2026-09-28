@@ -193,7 +193,8 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "panel_rows" in leg
     assert "0.26" in leg  # 箭頭＋均線同一排
     assert "10.5 if panel" in leg  # 圖例放大
-    assert "14.0" in src and "12.0" in src  # 股票介紹放大
+    assert "14.0" not in src or "15.0" in src  # 股票介紹放大（≥15）
+    assert "15.0" in src and "13.0" in src  # 標題／介紹字級
     ov = inspect.getsource(overlay_nav_marks_on_zone)
     assert 'rotation=0' in ov and "量能\\n訊號" in ov  # 量能訊號翻正
     assert 'ax_sig.set_ylabel("")' in ov or "set_ylabel(\"\")" in ov
@@ -245,6 +246,9 @@ def test_pressure_bot_paths_share_nav_volzone_layout():
     assert "tag_label" in trio
     # 查股大量區也套同一套，不准退回舊空白／無圖例版
     assert "with_nav_signals=True" in bot_src
-    # 名單壓力區圖平行渲（asyncio.gather），不准退回串行 for＋await
+    # 名單壓力區：平行 prepare（gather）→ 串行 paint；不准退回逐檔串行 await 重渲
     assert "asyncio.gather" in src
-    assert "_render_one" in src
+    assert "prepare_volume_zone" in src
+    assert "_paint_volume_zone" in src
+    assert "_prep_one" in src
+    assert src.find("prepare_volume_zone") < src.find("_paint_volume_zone")

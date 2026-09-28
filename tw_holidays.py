@@ -11,10 +11,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sqlite3
+import threading
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import requests
@@ -28,6 +30,31 @@ except Exception:
 logger = logging.getLogger("WayneBot.TWHolidays")
 
 TW = ZoneInfo("Asia/Taipei")
+
+# 休市表整包進記憶體：align／出圖會連問上百個開市日，不准每問重開 SQLite。
+_DB_ROWS_LOCK = threading.Lock()
+_DB_ROWS_CACHE: Dict[str, Tuple[Optional[float], Dict[str, Dict[str, str]]]] = {}
+
+
+def clear_tw_holiday_row_cache(db_path: str = None) -> None:
+    """寫入 tw_holidays 後清快取；測／refresh 也走這條。"""
+    with _DB_ROWS_LOCK:
+        if db_path is None:
+            _DB_ROWS_CACHE.clear()
+        else:
+            path = str(db_path or "").strip() or get_db_path()
+            _DB_ROWS_CACHE.pop(path, None)
+            # 相對／絕對路徑可能並存
+            try:
+                _DB_ROWS_CACHE.pop(os.path.abspath(path), None)
+            except Exception:
+                pass
+    try:
+        from trading_calendar import clear_tw_open_days_cache
+
+        clear_tw_open_days_cache()
+    except Exception:
+        pass
 TWSE_HOLIDAY_URL = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
 DGPA_NDS_URL = "https://www.dgpa.gov.tw/typh/daily/nds.html"
 
@@ -215,14 +242,24 @@ def ensure_tw_holidays_table(db_path: str = None) -> None:
 
 
 def _load_db_rows(db_path: str = None) -> Dict[str, Dict[str, str]]:
-    path = db_path or get_db_path()
+    path = str(db_path or get_db_path() or "").strip() or "data/wayne_market.db"
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    with _DB_ROWS_LOCK:
+        hit = _DB_ROWS_CACHE.get(path)
+        if hit is not None and hit[0] == mtime:
+            return hit[1]
     try:
         ensure_tw_holidays_table(path)
         conn = sqlite3.connect(path)
-        rows = conn.execute(
-            "SELECT ymd, kind, name_zh, source FROM tw_holidays"
-        ).fetchall()
-        conn.close()
+        try:
+            rows = conn.execute(
+                "SELECT ymd, kind, name_zh, source FROM tw_holidays"
+            ).fetchall()
+        finally:
+            conn.close()
     except Exception:
         return {}
     out: Dict[str, Dict[str, str]] = {}
@@ -232,6 +269,8 @@ def _load_db_rows(db_path: str = None) -> Dict[str, Dict[str, str]]:
             "zh": str(zh or ""),
             "source": str(src or ""),
         }
+    with _DB_ROWS_LOCK:
+        _DB_ROWS_CACHE[path] = (mtime, out)
     return out
 
 
@@ -372,6 +411,7 @@ def refresh_tw_holiday_calendar(db_path: str = None, rows: List[Any] = None) -> 
         conn.commit()
     finally:
         conn.close()
+    clear_tw_holiday_row_cache(path)
     return {"ok": True, "full": len(parsed)}
 
 
@@ -398,6 +438,7 @@ def refresh_tw_typhoon_halt(db_path: str = None, html: str = None) -> Dict[str, 
             conn.commit()
         finally:
             conn.close()
+        clear_tw_holiday_row_cache(path)
         return {"ok": True, "halt": False, "ymd": ymd, "zh": ""}
     existing = lookup_tw_session(ymd, path)
     if existing.get("source") in ("twse", "seed"):
@@ -414,4 +455,5 @@ def refresh_tw_typhoon_halt(db_path: str = None, html: str = None) -> Dict[str, 
         conn.commit()
     finally:
         conn.close()
+    clear_tw_holiday_row_cache(path)
     return {"ok": True, "halt": True, "ymd": ymd, "zh": parsed.get("zh") or "北市停班"}
