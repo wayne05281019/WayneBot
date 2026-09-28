@@ -4839,29 +4839,30 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
 
     zone_mode＝大量區專圖：圖例貼軸頂、標題／開高低收另留在更上方，不准三行圖例壓住基本介紹。
     """
+    ms_z = 12 if zone_mode else 10
     row1 = [
-        (_nav_legend_key("h20", "v"), "20高"),
-        (_nav_legend_key("h20_leave", "v"), "20高脫離"),
-        (_nav_legend_key("l20", "^"), "20低"),
-        (_nav_legend_key("l20_leave", "^"), "20低脫離"),
-        (_nav_legend_key("l60", "^"), "60低"),
-        (_nav_legend_key("h20_near", "v", ms=10, hollow=True), "接近高（空心）"),
-        (_nav_legend_key("l20_near", "^", ms=10, hollow=True), "接近低（空心）"),
-        (_nav_legend_key("ghost", "^", ms=10, alpha=0.45), "殘影（仍貼）"),
+        (_nav_legend_key("h20", "v", ms=ms_z + 2), "20高"),
+        (_nav_legend_key("h20_leave", "v", ms=ms_z + 2), "20高脫離"),
+        (_nav_legend_key("l20", "^", ms=ms_z + 2), "20低"),
+        (_nav_legend_key("l20_leave", "^", ms=ms_z + 2), "20低脫離"),
+        (_nav_legend_key("l60", "^", ms=ms_z + 2), "60低"),
+        (_nav_legend_key("h20_near", "v", ms=ms_z, hollow=True), "接近高（空心）"),
+        (_nav_legend_key("l20_near", "^", ms=ms_z, hollow=True), "接近低（空心）"),
+        (_nav_legend_key("ghost", "^", ms=ms_z, alpha=0.45), "殘影（仍貼）"),
     ]
     row2 = [
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_a"],
-                markeredgecolor=_NAV_SIG["vol_a"], markeredgewidth=0.0, markersize=12), "量能異常"),
+                markeredgecolor=_NAV_SIG["vol_a"], markeredgewidth=0.0, markersize=ms_z + 2), "量能異常"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["warn"],
-                markeredgecolor=_NAV_SIG["warn"], markeredgewidth=0.0, markersize=12), "警告"),
+                markeredgecolor=_NAV_SIG["warn"], markeredgewidth=0.0, markersize=ms_z + 2), "警告"),
         (patches.Patch(facecolor=_NAV_SIG["warn_band"], edgecolor="#e57373", linewidth=0.6), "警告底"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_low"],
-                markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=11), "月波動低"),
+                markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 1), "月波動低"),
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=11), "買點↑藍"),
+                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=ms_z + 1), "買點↑藍"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
-                markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=11), "賣點↓橙"),
+                markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 1), "賣點↓橙"),
     ]
     row3 = [
         (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
@@ -4872,23 +4873,24 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
     ]
     kw = dict(
         loc="lower left",
-        handlelength=1.05,
-        handletextpad=0.28,
-        columnspacing=0.55 if zone_mode else 0.65,
-        borderpad=0.22 if zone_mode else 0.28,
-        labelspacing=0.12 if zone_mode else 0.16,
+        handlelength=1.15 if zone_mode else 1.05,
+        handletextpad=0.32 if zone_mode else 0.28,
+        columnspacing=0.48 if zone_mode else 0.65,
+        borderpad=0.28 if zone_mode else 0.28,
+        labelspacing=0.14 if zone_mode else 0.16,
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(7.5 if zone_mode else 8.0, "bold"),
+        # zone_mode 圖例加字：話筒縮圖也要讀得懂箭頭介紹
+        prop=_fp(9.5 if zone_mode else 8.0, "bold"),
     )
     # loc=lower left → bbox_to_anchor 是圖例底邊；三列底邊都 > 1，整塊在軸上方
-    # zone_mode：三行貼近軸頂（1.02～1.14），上方留給標題＋開高低收，不准互壓
+    # zone_mode：三行加高字級，列距略拉開；上方留給放大後的標題＋開高低收
     if zone_mode:
         rows = (
-            (row1, 1.145, 8),
-            (row2, 1.082, 7),
-            (row3, 1.020, 5),
+            (row1, 1.175, 8),
+            (row2, 1.095, 7),
+            (row3, 1.022, 5),
         )
     else:
         rows = (
@@ -5291,18 +5293,7 @@ def overlay_nav_marks_on_zone(
     for i in range(n):
         x = xs[i]
         if bool(halt.iloc[i]):
-            if ax_sig is not None:
-                ax_sig.add_patch(
-                    patches.Rectangle(
-                        (x - 0.42, 0.05),
-                        0.84,
-                        0.9,
-                        facecolor="#eceff1",
-                        edgecolor="#ffffff",
-                        lw=0.15,
-                        zorder=2,
-                    )
-                )
+            # 無成交：不准畫灰假帶／假訊號；量欄由呼叫端標 ×
             continue
         cl = float(work["close"].iloc[i])
         hi = float(work["high"].iloc[i])

@@ -162,20 +162,26 @@ def test_vol_zone_with_nav_signals_flag(tmp_path):
     assert os.path.getsize(path) > 50_000
 
 
-def test_vol_zone_ex_label_and_halt_volume_stub():
-    """除息標掛軸頂空白帶不准壓K；無成交日量欄要有灰短柱佔位，不准少一根。"""
+def test_vol_zone_labels_no_fake_halt_bars():
+    """除息／壓撐／爆大量標不准壓圖；無成交不准畫灰假K／假量。"""
     import inspect
 
     from vol_zone_chart import _paint_volume_zone
+    from wayne_navigator import _draw_nav_legend
 
     src = inspect.getsource(_paint_volume_zone)
     assert "ex_labels" in src
     assert "left_guard" in src
-    assert "stub_h" in src
-    assert "blended_transform_factory" in src
     assert "tip_ceil" in src
-    assert "0.78" in src
-    assert "#90a4ae" in src
+    assert "不准畫灰假 K" in src or "不准造灰假量柱" in src
+    assert "stub_h" not in src
+    assert "#90a4ae" not in src
+    assert "大量區壓" in src and "transAxes" in src and "transData" in src
+    assert "爆大量" in src and "1.04" in src
+    # 標題／圖例放大
+    assert "_fp(15" in src and "_fp(13" in src
+    leg = inspect.getsource(_draw_nav_legend)
+    assert "9.5 if zone_mode" in leg
 
 
 def test_pressure_not_buy_signal_in_rows():
