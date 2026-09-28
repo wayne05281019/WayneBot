@@ -796,11 +796,14 @@ class ScreeningEngine:
             if df is None or len(df) < 2:
                 continue
             try:
-                profits = profit_pct_cal60_series(df)
-                floor = float(cal60_low_close_at(df, -1) or 0)
+                from wayne_navigator import frame_for_cal60_profit
+
+                profit_df = frame_for_cal60_profit(df, self.db_path)
+                profits = profit_pct_cal60_series(profit_df)
+                floor = float(cal60_low_close_at(profit_df, -1) or 0)
                 official_pt = float(profits.iloc[-1])
                 official_py = float(profits.iloc[-2]) if len(profits) >= 2 else 99.0
-                ya, ta_off = card_alerts_for_df(df)
+                ya, ta_off = card_alerts_for_df(profit_df)
             except Exception:
                 continue
             last_close = float(df["close"].iloc[-1] or 0)
@@ -980,8 +983,11 @@ class ScreeningEngine:
             if df is None or len(df) < 2:
                 continue
             try:
-                profits = profit_pct_cal60_series(df)
-                floor = float(cal60_low_close_at(df, -1) or 0)
+                from wayne_navigator import frame_for_cal60_profit
+
+                profit_df = frame_for_cal60_profit(df, self.db_path)
+                profits = profit_pct_cal60_series(profit_df)
+                floor = float(cal60_low_close_at(profit_df, -1) or 0)
                 official_pt = float(profits.iloc[-1])
             except Exception:
                 continue
@@ -1487,14 +1493,20 @@ def _cal60_low_close(df: pd.DataFrame, idx: int = -1) -> float:
 def _enrich_decision_fields(df: pd.DataFrame, info: Dict[str, Any]) -> Dict[str, Any]:
     """對齊高低決策卡：獲利、月乖離、60低（邏輯層，不動出圖色票）。"""
     from decision_card_signals import cal60_profit_bundle, profit_floor_at
+    from wayne_navigator import frame_for_cal60_profit
 
     out = dict(info)
+    dbp = out.get("_db_path") or get_db_path()
+    try:
+        profit_df = frame_for_cal60_profit(df, dbp)
+    except Exception:
+        profit_df = df
     close_s = df["close"].astype(float)
     c = float(out.get("close") or 0)
     l60 = float(close_s.rolling(60, min_periods=20).min().iloc[-1] or 0)
-    floors, profits = cal60_profit_bundle(df)
+    floors, profits = cal60_profit_bundle(profit_df)
     cal60 = float(floors[-1]) if len(floors) else 0.0
-    floor = profit_floor_at(df, cal60_lows=floors)
+    floor = profit_floor_at(profit_df, cal60_lows=floors)
     ma20 = float(out.get("ma20") or 0)
     out["low_60_close"] = round(l60, 4) if l60 else 0.0
     out["cal60_low"] = round(cal60, 4) if cal60 else 0.0
@@ -1576,13 +1588,18 @@ def _golden_buy_ok(info: Dict[str, Any]) -> bool:
     return len(sid) == 4 and sid.isdigit()
 
 
-def _yesterday_profit_pct(df: pd.DataFrame) -> float:
+def _yesterday_profit_pct(df: pd.DataFrame, db_path: str = None) -> float:
     """昨收獲利%，對齊決策卡前一列（60 曆日低）。"""
     from decision_card_signals import profit_pct_cal60_series
+    from wayne_navigator import frame_for_cal60_profit
 
     if len(df) < 2:
         return 99.0
-    profits = profit_pct_cal60_series(df)
+    try:
+        profit_df = frame_for_cal60_profit(df, db_path or get_db_path())
+    except Exception:
+        profit_df = df
+    profits = profit_pct_cal60_series(profit_df)
     return float(profits.iloc[-2])
 
 
