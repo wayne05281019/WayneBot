@@ -369,6 +369,27 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     return out, notes
 
 
+def frame_for_cal60_profit(df: pd.DataFrame, db_path: str = None) -> pd.DataFrame:
+    """海選／決策卡共用：算 cal60 獲利要用哪一套收盤。
+
+    小額除息（還原前後相對差 <2%）→ 還原前（CaryBot）。
+    大額除權／減資 → 還原後，避免新面額被當成「新 60 低」假顯 0%。
+    """
+    if df is None or getattr(df, "empty", True):
+        return df
+    raw = df.copy()
+    close_raw = pd.to_numeric(raw["close"], errors="coerce")
+    adj, _notes = normalize_ohlc(raw, db_path)
+    adj_close = pd.to_numeric(adj["close"], errors="coerce")
+    denom = close_raw.mask(close_raw == 0)
+    rel = ((adj_close - close_raw).abs() / denom).fillna(0.0)
+    if float(rel.max() or 0) < 0.02:
+        out = df.copy()
+        out["close"] = close_raw
+        return out
+    return adj
+
+
 def _close_inside_ex_bar(raw_bars, ex_date: str, close: float) -> bool:
     """收盤還在官方除息／除權當日高低裡（息差帶，不是破底）。"""
     from ex_rights import close_inside_ex_bar
@@ -610,15 +631,18 @@ class NavigatorEngine:
         if is_live and not _in_cash_session(taipei_now()):
             is_live = False
 
-        # 獲利：決策卡／顯示一律 60 曆日低（對齊 CaryBot）；貼 20 日低不歸零。
+        # 獲利：近 60 曆日收盤低（貼 20 日低不歸零）。
+        # 小額除息 → 還原前收盤（CaryBot）；大額除權／減資時表已切還原列（use_raw_table
+        # 為假，如 6669 20260902 ×0.3353），獲利必須跟表同一套 px，否則未還原低點
+        # 被新面額當成「新 60 低」→ 假 0%／0.x%，跟上方還原「距60低」對不上。
         profit_src = df.copy()
-        profit_src["close"] = close_raw.reindex(df.index).astype(float)
+        profit_src["close"] = px.reindex(df.index).astype(float)
         cal60_floors, profit_pct = cal60_profit_bundle(profit_src)
         df["profit_pct"] = profit_pct
         cal60_low = float(cal60_floors[-1]) if len(cal60_floors) else 0.0
         profit_floor = profit_floor_at(profit_src, -1, cal60_lows=cal60_floors)
-        # 高低點窗口：用除權前收盤算溫度／預警（對齊作者卡）。高點資訊盒子若跟還原現價
-        # 差超過一倍（除權後 7800／-204% 那種），改用還原序列，避免哥哥看不懂。
+        # 高低點／溫度／預警：仍用除權前收盤對齊作者卡；高點資訊盒子若跟還原現價
+        # 差超過一倍（除權後 7800／-204% 那種），後面改用還原序列顯示。
         hl_src = close_raw.where(~df["is_halt"]) if "is_halt" in df.columns else close_raw
         df["high_5"] = hl_src.rolling(5, min_periods=1).max()
         df["low_5"] = hl_src.rolling(5, min_periods=1).min()
