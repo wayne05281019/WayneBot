@@ -181,13 +181,14 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "xytext=(0, 2)" in src
     assert "stub_h" not in src
     # 分隔線用 #90a4ae；不准再畫灰假柱（stub_h 已禁）
-    assert 'axhline(0.70, color="#90a4ae"' in src
+    assert 'axhline(0.62, color="#90a4ae"' in src
     leg = inspect.getsource(_draw_nav_legend)
     assert "panel" in leg
-    assert 'loc="upper left" if panel' in leg
-    assert "0.66" in leg  # 圖例頂在分隔線下，往下長
-    assert "0.70" in src  # 介紹／圖例分隔
-    assert "0.84" in src  # 開高低收在分隔線上方
+    assert "panel_rows" in leg
+    assert "0.62" in leg  # 下右＝原第三行（均線）併到箭頭列
+    assert "0.30" in leg  # 箭頭＋均線同一排
+    assert "0.62" in src  # 介紹／圖例分隔
+    assert "14.0" in src and "12.0" in src  # 股票介紹放大
     # 量能列上下三角同尺寸
     for fn in (overlay_nav_marks_on_zone, _paint_nav_on_axes):
         s = inspect.getsource(fn)

@@ -4884,13 +4884,26 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         prop=_fp(8.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 標題列：upper left 從分隔線下往下長；上半 0.72+ 只放股票介紹，不准互壓
-        rows = (
-            (row1, 0.66, 8),
-            (row2, 0.44, 7),
-            (row3, 0.22, 5),
+        # 標題列圖例收成兩行：上＝原第二行（量能／買賣）；
+        # 下左＝原第一行（箭頭）、下右＝原第三行（均線），騰一行給股票介紹放大
+        # (handles, labels, x, y, ncol)
+        panel_rows = (
+            (row2, 0.0, 0.58, 7),
+            (row1, 0.0, 0.30, 8),
+            (row3, 0.62, 0.30, 5),
         )
-    elif zone_mode:
+        artists = []
+        for row, x, y, ncol in panel_rows:
+            leg = ax1.legend(
+                [h for h, _ in row], [t for _, t in row],
+                bbox_to_anchor=(x, y), ncol=ncol, **kw,
+            )
+            leg.set_zorder(10)
+            artists.append(leg)
+        for leg in artists[:-1]:
+            ax1.add_artist(leg)
+        return
+    if zone_mode:
         rows = (
             (row1, 1.095, 8),
             (row2, 1.055, 7),

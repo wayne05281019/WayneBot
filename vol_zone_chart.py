@@ -796,7 +796,8 @@ def _paint_volume_zone(
             4,
             1,
             figure=fig,
-            height_ratios=[0.90, 3.70, 0.42, 1.02],
+            # 圖例收兩行後，多出的高度給標題列（股票介紹放大）
+            height_ratios=[1.05, 3.55, 0.42, 1.02],
             hspace=0.035,
             left=0.04,
             right=0.96,
@@ -1118,7 +1119,7 @@ def _paint_volume_zone(
                 ex_title += f" {_fmt_price(amt)}元"
             ex_title += "（原柱不還原）"
     if with_nav_signals and ax_head is not None:
-        # 標題列內：兩行介紹＋三行圖例同一塊，緊接 K，不准中間空白
+        # 標題列：兩行介紹放大＋兩行圖例（箭頭與均線併一排），緊接 K
         head = f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
         intro = (
             f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
@@ -1127,30 +1128,30 @@ def _paint_volume_zone(
             f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
             f"{ex_title}"
         )
-        # 上半只放股票名＋開高低收（佔 0.72 以上）；下半才放圖例
+        # 上半股票介紹（分隔線 0.62）；下半兩行圖例
         ax_head.text(
             0.5,
-            0.97,
+            0.96,
             head,
             transform=ax_head.transAxes,
             ha="center",
             va="top",
-            fontproperties=_fp(12.5, "bold"),
+            fontproperties=_fp(14.0, "bold"),
             color=_TEXT,
         )
         ax_head.text(
             0.5,
-            0.84,
+            0.78,
             intro,
             transform=ax_head.transAxes,
             ha="center",
             va="top",
-            fontproperties=_fp(10.5, "bold"),
+            fontproperties=_fp(12.0, "bold"),
             color=_TEXT,
             zorder=12,
         )
-        # 分隔：介紹底／圖例頂，圖例底邊最高 0.48，不准上衝壓字
-        ax_head.axhline(0.70, color="#90a4ae", linewidth=0.8, xmin=0.02, xmax=0.98, zorder=5)
+        # 分隔：介紹底／圖例頂；圖例兩行在 0.62 以下，不准上衝壓字
+        ax_head.axhline(0.62, color="#90a4ae", linewidth=0.8, xmin=0.02, xmax=0.98, zorder=5)
         try:
             from wayne_navigator import _draw_nav_legend
 
