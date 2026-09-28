@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """T86 股→張：對官方列、對齊籌碼K線四捨五入。"""
-from chips import _shares_to_lots, parse_twse_t86
+from chips import (
+    _looks_like_share_as_lot,
+    _shares_to_lots,
+    parse_tpex_t86,
+    parse_twse_t86,
+)
 
 _T86_FIELDS = [
     "證券代號",
@@ -37,6 +42,15 @@ def test_shares_to_lots_rounds_t86_shares():
     assert _shares_to_lots(99951) == 100
     assert _shares_to_lots(-1680) == -2
     assert _shares_to_lots(0) == 0
+    assert _shares_to_lots(-382) == 0
+
+
+def test_looks_like_share_as_lot_2724_style():
+    """成交 8 張、合計 -382＝舊股當張殘值；合計 0 或真張數不誤判。"""
+    assert _looks_like_share_as_lot(8, -382) is True
+    assert _looks_like_share_as_lot(8, 0) is False
+    assert _looks_like_share_as_lot(5000, -382) is False
+    assert _looks_like_share_as_lot(8, -2000) is False
 
 
 def test_parse_twse_t86_6526_20260917_dealer_is_zero_lots():
@@ -107,3 +121,65 @@ def test_parse_twse_t86_6526_20260908_dealer_not_minus_402_lots():
     assert got["trust_net"] == 0
     assert got["dealer_net"] == 0
     assert got["three_net"] == 67
+
+
+def test_parse_tpex_2724_20260915_dealer_minus_382_shares_is_zero_lots():
+    """櫃買官方 2724 20260915：自營／三大法人 -382 股＝0 張，不是 -382 張。"""
+    fields = [
+        "代號",
+        "名稱",
+        "買進股數",
+        "賣出股數",
+        "買賣超股數",
+        "買進股數",
+        "賣出股數",
+        "買賣超股數",
+        "買進股數",
+        "賣出股數",
+        "買賣超股數",
+        "買進股數",
+        "賣出股數",
+        "買賣超股數",
+        "買進股數",
+        "賣出股數",
+        "買賣超股數",
+        "買進股數",
+        "賣出股數",
+        "買賣超股數",
+        "買進股數",
+        "賣出股數",
+        "買賣超股數",
+        "三大法人買賣超股數合計",
+    ]
+    row = [
+        "2724",
+        "藝舍-KY",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "382",
+        "-382",
+        "0",
+        "382",
+        "-382",
+        "-382",
+    ]
+    payload = {"tables": [{"fields": fields, "data": [row]}]}
+    got = parse_tpex_t86(payload)["2724"]
+    assert got["foreign_net"] == 0
+    assert got["trust_net"] == 0
+    assert got["dealer_net"] == 0
+    assert got["three_net"] == 0

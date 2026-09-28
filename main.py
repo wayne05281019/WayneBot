@@ -854,6 +854,14 @@ def run_web():
                 logger.info("啟動清假資料：%s", stats)
             logger.info("背景：資料庫索引完成")
             try:
+                # 股→張修好後盤上仍可能留「股當張」殘值（例如 2724 自營 -382 股被畫成 -382 張）。
+                from chips import backfill_chips
+
+                bf = backfill_chips(get_db_path(), days=45)
+                logger.info("啟動法人近窗重抓（蓋股當張）：%s", bf)
+            except Exception:
+                logger.exception("啟動法人近窗重抓失敗")
+            try:
                 from biaoke_archive import seed_biaoke_archive
 
                 n_bk = seed_biaoke_archive(get_db_path())

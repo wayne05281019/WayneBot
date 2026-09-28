@@ -386,10 +386,12 @@ class MainRunner:
                     (str(latest).replace("-", ""),),
                 ).fetchone()[0]
             conn.close()
-            if chip_sum == 0:
-                logger.info("最近交易日籌碼仍為 0，回補近 60 個交易日法人…")
-                bf = backfill_chips(self.db_path, days=60)
-                logger.info(f"法人回補：{bf}")
+            # 股→張公式修好後，庫裡若已有「股當張」殘值，chip_sum≠0 不會觸發回補。
+            # 每晚重抓近 60 交易日，把殘值蓋成張。
+            why = "最近交易日籌碼仍為 0" if chip_sum == 0 else "重抓近窗蓋掉股當張殘值"
+            logger.info("%s，回補近 60 個交易日法人…", why)
+            bf = backfill_chips(self.db_path, days=60)
+            logger.info(f"法人回補：{bf}")
         except Exception as e:
             logger.error(f"法人籌碼更新失敗: {e}", exc_info=True)
 
@@ -1138,7 +1140,7 @@ class MainRunner:
                     from chips import backfill_chips, update_chips_for_date
 
                     update_chips_for_date(self.db_path, cap)
-                    backfill_chips(self.db_path, days=5)
+                    backfill_chips(self.db_path, days=45)
                 except Exception as e_chip:
                     logger.warning("補齊輪法人再抓略過：%s", e_chip)
                 try:

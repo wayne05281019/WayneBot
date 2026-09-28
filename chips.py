@@ -282,20 +282,40 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
     return built[:limit]
 
 
+def _looks_like_share_as_lot(volume: int, three_net: int) -> bool:
+    """舊寫法把 |股|<1000 原樣當張：合計約 50–999 且遠大於當日成交量。"""
+    three = abs(int(three_net or 0))
+    vol = int(volume or 0)
+    return 50 <= three <= 999 and three > max(vol, 1) * 3
+
+
 def load_major_player_rows(db_path: str, stock_id: str, limit: int = 15, allow_fetch: bool = True) -> List[Dict[str, Any]]:
-    """讀籌碼列；近日全 0 且允許連網時才回補當日 T86。看這檔出圖不要連網，否則會卡住後面的圖。"""
+    """讀籌碼列；近日全 0、或列上仍像「股當張」殘值時，允許連網才回補 T86。
+
+    看這檔出圖不要連網（allow_fetch=False），否則會卡住後面的圖。
+    """
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
     rows = major_player_rows(path, sid, limit=limit)
     if allow_fetch and rows:
         recent = rows[:5]
-        if all(int(r.get("three_net") or 0) == 0 for r in recent):
+        need_latest = all(int(r.get("three_net") or 0) == 0 for r in recent)
+        stale_days = [
+            str(r.get("date") or "").replace("-", "")[:8]
+            for r in rows
+            if _looks_like_share_as_lot(int(r.get("volume") or 0), int(r.get("three_net") or 0))
+        ]
+        stale_days = [d for d in dict.fromkeys(stale_days) if len(d) == 8]
+        if need_latest or stale_days:
             try:
-                from quote_integrity import db_as_of_trading_date
+                if need_latest:
+                    from quote_integrity import db_as_of_trading_date
 
-                latest = db_as_of_trading_date(path)
-                if latest:
-                    update_chips_for_date(path, str(latest))
+                    latest = db_as_of_trading_date(path)
+                    if latest:
+                        update_chips_for_date(path, str(latest))
+                for day in stale_days[:8]:
+                    update_chips_for_date(path, day)
             except Exception as e:
                 logger.warning("即時回補籌碼失敗: %s", e)
             rows = major_player_rows(path, sid, limit=limit)
