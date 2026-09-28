@@ -1105,15 +1105,27 @@ class WayneTelegramBot:
                 )
                 return
             await message.reply_html(head, disable_web_page_preview=True)
-            # 先出壓力區圖（含導航箭頭／量能）；每檔一張
+            # 先出壓力區圖（含導航箭頭／量能；版面與點股三張同一套 with_nav_signals）
+            from pressure_support_watch import pressure_card_html
             from vol_zone_chart import render_volume_zone_result
 
             sent = 0
-            for r in rows[:MAX_PICK_INLINE_ROWS]:
+            picks: list = []
+            card_lines: list = []
+            show = list(rows[:MAX_PICK_INLINE_ROWS])
+            for idx, r in enumerate(show, start=1):
                 code = str(r.get("code") or r.get("stock_id") or "").strip()
                 name = str(r.get("name") or r.get("stock_name") or "")
                 if not code:
                     continue
+                picks.append((code, name))
+                try:
+                    card_lines.append(pressure_card_html(r, idx))
+                except Exception:
+                    card_lines.append(
+                        f"<b>{idx}.</b> {html_escape(code)} {html_escape(name)}"
+                        f"　{html_escape(label)}\n<i>只觀察，不是買訊。</i>"
+                    )
                 out = self._scratch_chart_path(
                     self.charts_dir, code, f"ps_{tag}", uid
                 )
@@ -1157,10 +1169,16 @@ class WayneTelegramBot:
                     reply_markup=kb,
                     disable_web_page_preview=True,
                 )
+            # 名單卡＋三子鈕／點股列：觀察說明與換標籤一次齊
+            roster = (
+                f"<i>共 {sent}/{len(show)} 張壓力區圖（含導航指標）。"
+                "點股名一次三張；換標籤按最下一排。</i>"
+            )
+            if card_lines:
+                roster = roster + "\n\n" + "\n\n".join(card_lines)
             await message.reply_html(
-                f"<i>共 {sent}/{len(rows[:MAX_PICK_INLINE_ROWS])} 張壓力區圖。"
-                "換標籤按下面三鈕。</i>",
-                reply_markup=self._pressure_tag_keyboard(tag),
+                roster[:3900],
+                reply_markup=self._pressure_section_keyboard(picks, tag),
                 disable_web_page_preview=True,
             )
         except Exception:
@@ -1175,6 +1193,7 @@ class WayneTelegramBot:
 
     async def _send_pressure_stock_trio(self, message, code: str, tag: str = "") -> None:
         """點股票一次三張：①壓力區（含導航指標）②高低溫度卡 ③籌碼。"""
+        from pressure_support_watch import normalize_tag, tag_label
         from vol_zone_chart import render_volume_zone_result
         from wayne_navigator import NavigatorEngine, render_decision_card_png
 
@@ -1184,7 +1203,8 @@ class WayneTelegramBot:
             or getattr(getattr(message, "from_user", None), "id", "")
             or ""
         )
-        del tag
+        tag = normalize_tag(tag)
+        tag_l = tag_label(tag) if tag else "壓撐觀察"
         if not code:
             return
         hits = lookup_stocks(self.db_path, code)
@@ -1285,7 +1305,10 @@ class WayneTelegramBot:
                     with open(send_path, "rb") as f:
                         await message.reply_photo(
                             photo=f,
-                            caption=(vz_cap or f"{code} 壓力區（只觀察，不是買訊）")[:900],
+                            caption=(
+                                vz_cap
+                                or f"{code} 壓力區・{tag_l}（只觀察，不是買訊）"
+                            )[:900],
                         )
                 except Exception:
                     logger.exception("壓撐三張・壓力區送出失敗")

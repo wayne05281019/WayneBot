@@ -220,3 +220,22 @@ def test_pressure_not_buy_signal_in_rows():
     assert "只觀察，不是買訊" in html
     assert "★" not in html
     assert "黃金買點" not in html
+
+
+def test_pressure_bot_paths_share_nav_volzone_layout():
+    """子鈕先出圖與點股三張，都走同一套 with_nav_signals 壓力區圖。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._run_pressure_support)
+    trio = inspect.getsource(WayneTelegramBot._send_pressure_stock_trio)
+    assert src.count("with_nav_signals=True") >= 1
+    assert trio.count("with_nav_signals=True") >= 1
+    assert "pressure_card_html" in src
+    assert "_pressure_section_keyboard" in src
+    assert "tag_label" in trio
+    # 查股大量區不帶導航版面，不准混
+    lookup = inspect.getsource(WayneTelegramBot)
+    # 只要求壓力兩路徑有 True；查股 render 預設 False（不寫 True）
+    assert "with_nav_signals=True" in src and "with_nav_signals=True" in trio
