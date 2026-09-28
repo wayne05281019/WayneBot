@@ -1,13 +1,24 @@
 """台股收盤基準日：跳過週末；國定假日／北市停班見 tw_holidays。"""
 from __future__ import annotations
 
+import threading
 from datetime import datetime, time as dt_time, timedelta
-from typing import Optional
+from typing import Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 _WEEKDAY_ZH = "一二三四五六日"
+
+# 開市日序列：同區間重問很多次（壓撐名單／對齊），記住結果。
+_OPEN_DAYS_LOCK = threading.Lock()
+_OPEN_DAYS_CACHE: Dict[Tuple[str, str], list] = {}
+_OPEN_DAYS_CACHE_MAX = 256
+
+
+def clear_tw_open_days_cache() -> None:
+    with _OPEN_DAYS_LOCK:
+        _OPEN_DAYS_CACHE.clear()
 
 
 def is_tw_market_holiday(ymd: str) -> bool:
@@ -284,6 +295,12 @@ def iter_tw_open_days(start_ymd: str, end_ymd: str) -> list[str]:
         return []
     if d1 < d0:
         d0, d1 = d1, d0
+        a, b = b, a
+    key = (a, b)
+    with _OPEN_DAYS_LOCK:
+        hit = _OPEN_DAYS_CACHE.get(key)
+        if hit is not None:
+            return list(hit)
     out: list[str] = []
     cur = d0
     while cur <= d1:
@@ -291,7 +308,13 @@ def iter_tw_open_days(start_ymd: str, end_ymd: str) -> list[str]:
         if is_tw_open_calendar_day(s):
             out.append(s)
         cur += timedelta(days=1)
-    return out
+    with _OPEN_DAYS_LOCK:
+        if len(_OPEN_DAYS_CACHE) >= _OPEN_DAYS_CACHE_MAX:
+            # 丟最舊一半，避免無限長
+            for old in list(_OPEN_DAYS_CACHE.keys())[: _OPEN_DAYS_CACHE_MAX // 2]:
+                _OPEN_DAYS_CACHE.pop(old, None)
+        _OPEN_DAYS_CACHE[key] = list(out)
+    return list(out)
 
 
 def daytrade_list_heading(kind: str) -> tuple[str, str]:

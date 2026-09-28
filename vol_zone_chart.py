@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import sqlite3
-from typing import Any, Dict, List, Optional
+import threading
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 
@@ -21,6 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import patches
+from matplotlib.collections import LineCollection
 
 from wayne_navigator import _fp, _fmt_price, mpl_render, nav_volume_bar_heights, _set_staggered_month_ticks
 from ex_rights import (
@@ -36,10 +40,20 @@ from ex_rights import (
 
 logger = logging.getLogger("WayneBot.VolZone")
 
-VOL_ZONE_DPI = 200
+# 對齊高低卡 220DPI；字級／figsize 讓話筒縮圖仍清晰，點開高畫質。
+VOL_ZONE_DPI = 220
 VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
-VOL_ZONE_TAG_PT = 15  # 壓／撐標要比標題更容易讀（話筒紅圈）
+VOL_ZONE_TAG_PT = 16  # 壓／撐標要比標題更容易讀（話筒紅圈）
+VOL_ZONE_JPEG_QUALITY = 94
+VOL_ZONE_FIG_W = 12.0
+VOL_ZONE_FIG_H_NAV = 9.2
+VOL_ZONE_FIG_H_PLAIN = 7.6
+# 同檔同 as_of 壓力區圖短快取（名單→點股三張可複用）
+_VZ_RENDER_TTL_SEC = 45.0
+_VZ_RENDER_LOCK = threading.Lock()
+_VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
+_VZ_RENDER_MEMO_MAX = 64
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -598,6 +612,69 @@ def _candle_up(close: float, prev_close: Optional[float], open_: float) -> bool:
         return float(close) >= float(prev_close)
 
 
+def clear_vol_zone_render_cache() -> None:
+    with _VZ_RENDER_LOCK:
+        _VZ_RENDER_MEMO.clear()
+
+
+def _vz_memo_key(
+    sid: str,
+    zone: Dict[str, Any],
+    last: Optional[Dict[str, Any]],
+    *,
+    with_nav_signals: bool,
+    lookback: int,
+    bars: int,
+) -> Tuple[Any, ...]:
+    last_d = _bar_ymd((last or {}).get("date"))
+    return (
+        str(sid),
+        last_d,
+        _bar_ymd(zone.get("date")),
+        round(float(zone.get("high") or 0), 4),
+        round(float(zone.get("low") or 0), 4),
+        bool(with_nav_signals),
+        int(lookback),
+        int(bars),
+        int(VOL_ZONE_DPI),
+        int(VOL_ZONE_JPEG_QUALITY),
+    )
+
+
+def _vz_memo_get(key: Tuple[Any, ...], save_path: str) -> Optional[Tuple[str, str]]:
+    now = time.monotonic()
+    with _VZ_RENDER_LOCK:
+        hit = _VZ_RENDER_MEMO.get(key)
+        if not hit:
+            return None
+        ts, src, cap = hit
+        if now - ts > _VZ_RENDER_TTL_SEC or not src or not os.path.isfile(src):
+            _VZ_RENDER_MEMO.pop(key, None)
+            return None
+    out = str(save_path or src)
+    try:
+        if os.path.abspath(src) != os.path.abspath(out):
+            os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+            shutil.copy2(src, out)
+        return out, str(cap or "")
+    except Exception:
+        logger.debug("vol zone memo copy fail", exc_info=True)
+        return None
+
+
+def _vz_memo_put(key: Tuple[Any, ...], path: str, cap: str) -> None:
+    if not path or not os.path.isfile(path):
+        return
+    with _VZ_RENDER_LOCK:
+        if len(_VZ_RENDER_MEMO) >= _VZ_RENDER_MEMO_MAX:
+            oldest = sorted(_VZ_RENDER_MEMO.items(), key=lambda kv: kv[1][0])[
+                : _VZ_RENDER_MEMO_MAX // 2
+            ]
+            for k, _ in oldest:
+                _VZ_RENDER_MEMO.pop(k, None)
+        _VZ_RENDER_MEMO[key] = (time.monotonic(), str(path), str(cap or ""))
+
+
 def prepare_volume_zone(
     stock_id: str,
     stock_name: str = "",
@@ -708,6 +785,19 @@ def render_volume_zone_result(
     )
     if not pack:
         return "", ""
+    memo_key = _vz_memo_key(
+        pack["sid"],
+        pack["zone"],
+        pack["last"],
+        with_nav_signals=with_nav_signals,
+        lookback=lookback,
+        bars=bars,
+    )
+    # card 會進圖說／導航；有卡就不走無卡快取，避免圖說漂移
+    if not card:
+        hit = _vz_memo_get(memo_key, pack["out"])
+        if hit:
+            return hit
     cap = vol_zone_photo_caption(
         pack["sid"],
         str(db_path or ""),
@@ -735,7 +825,10 @@ def render_volume_zone_result(
             with_nav_signals=with_nav_signals,
             card=card,
         )
-    return str(path or ""), str(cap or "")
+    out_path, out_cap = str(path or ""), str(cap or "")
+    if out_path and not card:
+        _vz_memo_put(memo_key, out_path, out_cap)
+    return out_path, out_cap
 
 
 def render_volume_zone_png(
@@ -791,7 +884,11 @@ def _paint_volume_zone(
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
         from matplotlib.gridspec import GridSpec
 
-        fig = plt.figure(figsize=(11.2, 8.7), dpi=VOL_ZONE_DPI, facecolor=_BG)
+        fig = plt.figure(
+            figsize=(VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV),
+            dpi=VOL_ZONE_DPI,
+            facecolor=_BG,
+        )
         gs = GridSpec(
             4,
             1,
@@ -815,7 +912,7 @@ def _paint_volume_zone(
         fig, (ax1, ax2) = plt.subplots(
             2,
             1,
-            figsize=(11.2, 7.2),
+            figsize=(VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_PLAIN),
             dpi=VOL_ZONE_DPI,
             sharex=True,
             gridspec_kw=dict(height_ratios=(3.4, 1.05), hspace=0.055),
@@ -833,9 +930,9 @@ def _paint_volume_zone(
 
     # 桃色大量區（略透，K／箭頭更清楚）
     ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
-    ax1.axhline(hi, color=_PRESS, linewidth=2.15, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=2.15, zorder=5, solid_capstyle="round")
-    ax1.axvline(spike_i, color=_SPIKE, linewidth=1.15, alpha=0.65, zorder=1)
+    ax1.axhline(hi, color=_PRESS, linewidth=2.25, zorder=5, solid_capstyle="round")
+    ax1.axhline(lo, color=_HOLD, linewidth=2.25, zorder=5, solid_capstyle="round")
+    ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.65, zorder=1)
 
     # 除息／除權：先畫豎線與參考價；文字標等 ylim／疊箭頭後掛軸頂，不准壓 K
     ex_by_date = {_bar_ymd(e.get("ex_date")): e for e in official_scale_events(ex_events)}
@@ -869,45 +966,75 @@ def _paint_volume_zone(
         float(hi - lo) if hi > lo else 0.0,
         1.0,
     )
+    # 批次畫 K：LineCollection 影線＋bar 實體，比逐根 Rectangle 快
+    opens = pd.to_numeric(view["open"], errors="coerce").to_numpy(dtype=float)
+    closes = pd.to_numeric(view["close"], errors="coerce").to_numpy(dtype=float)
+    highs = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
+    lows = pd.to_numeric(view["low"], errors="coerce").to_numpy(dtype=float)
+    halt_arr = (
+        halt.fillna(False).astype(bool).to_numpy()
+        if hasattr(halt, "fillna")
+        else np.asarray(halt, dtype=bool)
+    )
+    prev_closes = np.empty(n, dtype=float)
+    prev_closes[0] = np.nan
+    if n > 1:
+        prev_closes[1:] = closes[:-1]
+    up_mask = np.zeros(n, dtype=bool)
     for i in range(n):
-        op = float(view["open"].iloc[i])
-        cl = float(view["close"].iloc[i])
-        h = float(view["high"].iloc[i])
-        l = float(view["low"].iloc[i])
-        # 興櫃：開＝前日均價，可能落在當日高低外；影線用官方高低，不改價
-        prev = float(view["close"].iloc[i - 1]) if i else None
-        up = _candle_up(cl, prev, op)
-        x = xs[i]
-        if bool(halt.iloc[i]):
-            ax1.plot(
-                [x - 0.38, x + 0.38],
-                [cl, cl],
-                color="#9e9e9e",
-                linewidth=1.7,
-                zorder=4,
-                solid_capstyle="round",
-            )
-            ax1.plot(
-                [x, x],
-                [cl - _span_est * 0.004, cl + _span_est * 0.004],
-                color="#9e9e9e",
-                linewidth=1.2,
-                zorder=4,
-            )
+        if bool(halt_arr[i]):
             continue
-        color = _UP if up else _DN
-        ax1.plot([x, x], [l, h], color=color, linewidth=1.2, zorder=3, solid_capstyle="round")
-        body = max(abs(cl - op), (hi - lo) * 0.002 if hi > lo else 0.01)
-        ax1.add_patch(
-            patches.Rectangle(
-                (x - 0.30, min(op, cl)),
-                0.60,
-                body,
-                facecolor=color,
-                edgecolor=color,
-                linewidth=0.35,
+        prev = None if i == 0 or not np.isfinite(prev_closes[i]) else float(prev_closes[i])
+        up_mask[i] = _candle_up(float(closes[i]), prev, float(opens[i]))
+    colors = np.where(up_mask, _UP, _DN)
+    trade_i = np.flatnonzero(~halt_arr)
+    if trade_i.size:
+        wick_segs = [
+            [(float(xs[i]), float(lows[i])), (float(xs[i]), float(highs[i]))]
+            for i in trade_i
+        ]
+        ax1.add_collection(
+            LineCollection(
+                wick_segs,
+                colors=[colors[i] for i in trade_i],
+                linewidths=1.25,
                 zorder=3,
+                capstyle="round",
             )
+        )
+        body_h = np.maximum(
+            np.abs(closes[trade_i] - opens[trade_i]),
+            (hi - lo) * 0.002 if hi > lo else 0.01,
+        )
+        body_bot = np.minimum(opens[trade_i], closes[trade_i])
+        ax1.bar(
+            xs[trade_i],
+            body_h,
+            bottom=body_bot,
+            width=0.60,
+            color=[colors[i] for i in trade_i],
+            edgecolor=[colors[i] for i in trade_i],
+            linewidth=0.35,
+            zorder=3,
+            align="center",
+        )
+    for i in np.flatnonzero(halt_arr):
+        cl = float(closes[i])
+        x = float(xs[i])
+        ax1.plot(
+            [x - 0.38, x + 0.38],
+            [cl, cl],
+            color="#9e9e9e",
+            linewidth=1.7,
+            zorder=4,
+            solid_capstyle="round",
+        )
+        ax1.plot(
+            [x, x],
+            [cl - _span_est * 0.004, cl + _span_est * 0.004],
+            color="#9e9e9e",
+            linewidth=1.2,
+            zorder=4,
         )
 
     last = view.iloc[-1]
@@ -923,7 +1050,7 @@ def _paint_volume_zone(
             textcoords="offset points",
             ha="right",
             va="bottom",
-            fontproperties=_fp(10, "bold"),
+            fontproperties=_fp(10.5, "bold"),
             color=_CALL,
             zorder=8,
             arrowprops=dict(arrowstyle="->", color=_CALL, lw=1.15, shrinkB=2),
@@ -942,10 +1069,10 @@ def _paint_volume_zone(
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
     ax1.yaxis.tick_right()
-    ax1.tick_params(labelbottom=False, labelsize=9)
+    ax1.tick_params(labelbottom=False, labelsize=10)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, zorder=0, alpha=0.85)
     for lab in ax1.get_yticklabels():
-        lab.set_fontproperties(_fp(9))
+        lab.set_fontproperties(_fp(10))
 
     # 壓／撐標：回圖內左上／左下原位（微調內縮），不准挪到軸外把 K 擠小
     _tag_box = dict(
@@ -1034,11 +1161,6 @@ def _paint_volume_zone(
         up = _candle_up(float(view["close"].iloc[i]), prev, float(view["open"].iloc[i]))
         vol_colors.append("#ef5350" if up else "#26a69a")
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(view["volume"])
-    halt_arr = (
-        halt.fillna(False).astype(bool).to_numpy()
-        if hasattr(halt, "fillna")
-        else np.asarray(halt, dtype=bool)
-    )
     vol_vals = pd.to_numeric(view["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
     # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽（bar 偶發不著墨）
     zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | vol_missing)
@@ -1083,7 +1205,7 @@ def _paint_volume_zone(
         textcoords="offset points",
         ha="center",
         va="bottom",
-        fontproperties=_fp(9.5, "bold"),
+        fontproperties=_fp(10.0, "bold"),
         color="#5d4037",
         zorder=6,
         clip_on=False,
@@ -1096,11 +1218,11 @@ def _paint_volume_zone(
         ),
     )
     ax2.yaxis.tick_right()
-    ax2.tick_params(labelsize=9)
+    ax2.tick_params(labelsize=10)
     ax2.set_xlim(-0.8, n - 0.2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, alpha=0.85)
     for lab in ax2.get_yticklabels():
-        lab.set_fontproperties(_fp(9))
+        lab.set_fontproperties(_fp(10))
 
     # 底軸日期：與 K／量同一根 index；月標寫「08月」避免 08/26 被看成 8 月 26 日
     tick_at: dict[int, str] = {}
@@ -1166,7 +1288,7 @@ def _paint_volume_zone(
             transform=ax_head.transAxes,
             ha="center",
             va="top",
-            fontproperties=_fp(14.0, "bold"),
+            fontproperties=_fp(15.0, "bold"),
             color=_TEXT,
         )
         ax_head.text(
@@ -1176,7 +1298,7 @@ def _paint_volume_zone(
             transform=ax_head.transAxes,
             ha="center",
             va="top",
-            fontproperties=_fp(12.0, "bold"),
+            fontproperties=_fp(13.0, "bold"),
             color=_TEXT,
             zorder=12,
         )
@@ -1197,7 +1319,7 @@ def _paint_volume_zone(
             f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
             f"{ex_title}"
         )
-        ax1.set_title(title, fontproperties=_fp(12, "bold"), pad=14, color=_TEXT)
+        ax1.set_title(title, fontproperties=_fp(13, "bold"), pad=14, color=_TEXT)
     if with_nav_signals:
         foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
         foot2 = "高觸壓、收未過＝測壓（非買訊）。箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
@@ -1210,7 +1332,7 @@ def _paint_volume_zone(
         foot1,
         ha="center",
         va="bottom",
-        fontproperties=_fp(8.0, "bold"),
+        fontproperties=_fp(8.5, "bold"),
         color=_MUTED,
     )
     fig.text(
@@ -1219,7 +1341,7 @@ def _paint_volume_zone(
         foot2,
         ha="center",
         va="bottom",
-        fontproperties=_fp(8.0, "bold"),
+        fontproperties=_fp(8.5, "bold"),
         color=_MUTED,
     )
     if not with_nav_signals:
@@ -1230,7 +1352,11 @@ def _paint_volume_zone(
         dpi=VOL_ZONE_DPI,
         facecolor=_BG,
         # 停價灰短柱要保得住，不准被 JPEG 抽樣吃成空白
-        pil_kwargs={"quality": 92, "optimize": False, "subsampling": 0},
+        pil_kwargs={
+            "quality": VOL_ZONE_JPEG_QUALITY,
+            "optimize": False,
+            "subsampling": 0,
+        },
     )
     plt.close(fig)
     return out
