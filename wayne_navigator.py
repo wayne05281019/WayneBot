@@ -121,6 +121,19 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
         profit_r = round(float(profit), 3) if profit is not None else None
     except (TypeError, ValueError):
         profit_r = None
+    # 表首列升降／升降註會畫藥丸；漏掉會讓雙標／單標 memo 互撞（CI png_layout 紅）。
+    trend = trend_note = ""
+    nrows = 0
+    try:
+        tbl = card.get("table")
+        if tbl is not None and len(tbl):
+            nrows = int(len(tbl))
+            row0 = tbl.iloc[0]
+            trend = str(row0.get("升降") or "")
+            trend_note = str(row0.get("升降註") or "")
+    except Exception:
+        trend = trend_note = ""
+        nrows = 0
     return (
         str(card.get("stock_id") or ""),
         str(card.get("latest_date") or card.get("as_of") or ""),
@@ -132,6 +145,9 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
         str(card.get("heat") or card.get("temp_label") or ""),
         str(card.get("buy_verdict") or ""),
         str(card.get("sell_action") or ""),
+        trend,
+        trend_note,
+        nrows,
     )
 
 

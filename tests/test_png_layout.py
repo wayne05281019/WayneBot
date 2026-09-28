@@ -36,6 +36,9 @@ def test_dual_trend_pill_geom_splits_halves():
 
 
 def test_decision_card_dual_pills_do_not_overlap(tmp_path, monkeypatch):
+    from wayne_navigator import clear_lookup_render_cache
+
+    clear_lookup_render_cache()
     texts = []
     boxes = []
     orig_text = matplotlib.axes.Axes.text
@@ -81,6 +84,9 @@ def test_decision_card_dual_pills_do_not_overlap(tmp_path, monkeypatch):
 
 
 def test_decision_card_single_trend_stays_one_pill(tmp_path, monkeypatch):
+    from wayne_navigator import clear_lookup_render_cache
+
+    clear_lookup_render_cache()
     texts = []
     orig_text = matplotlib.axes.Axes.text
 
