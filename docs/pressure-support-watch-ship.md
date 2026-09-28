@@ -1,5 +1,7 @@
 # 壓撐觀察・上話筒說明
 
+**狀態：已上話筒**（#436 合進 `main`；Render `/health` `git_sha`＝`36ed780ea2af921d5de60a77843526f6b73b0b34`）
+
 ## 做了什麼
 
 - 主選單第二排「隔日沖」後加 **壓撐觀察**（上六下七）。
@@ -15,4 +17,5 @@
 
 ## 核對
 
-合進 `main` 後對 `https://waynebot-service.onrender.com/health` 的 `git_sha`。
+- PR：https://github.com/wayne05281019/WayneBot/pull/436（merged）
+- 服務：`https://waynebot-service.onrender.com/health` → `git_sha` 已對上 `36ed780…`

@@ -1,5 +1,6 @@
 # 壓撐觀察（話筒）
 
+**狀態：已上話筒**（#436；`git_sha` `36ed780…`）  
 **數據：** [`pressure-support-three-tags-recommend.md`](./pressure-support-three-tags-recommend.md)  
 **上線：** [`pressure-support-watch-ship.md`](./pressure-support-watch-ship.md)
 
