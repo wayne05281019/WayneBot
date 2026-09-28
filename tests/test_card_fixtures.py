@@ -106,8 +106,9 @@ def test_2438_fake_zero_bar_does_not_zero_profit_column():
 def test_2383_near_l20_profit_matches_cal60_carybot():
     """台光電獲利＝相對 60 曆日低 4100，貼 20 日低不歸零。
 
-    盤中 5295 → 29.1% 是公式驗收（``format_profit_pct``）；16:30 後列上是官方收盤，
-    不得再要求 MIS 5295 蓋掉今天。
+    盤中 5295 → 29.1% 是公式驗收（``format_profit_pct``）；公式本身不准改。
+    永久場景釘在 2026-09-24（含 7/29 收 4100 的 60 曆日窗）；用「今天」跑會
+    因日曆窗滾出 4100（例 9/29 → 低變 4695）而誤紅，不是公式壞掉。
     """
     from unittest.mock import patch
 
@@ -126,9 +127,14 @@ def test_2383_near_l20_profit_matches_cal60_carybot():
         "yesterday_close": 5290.0,
         "update_time": "11:46:00",
     }
+    # 庫截到 9/23、盤中日釘 9/24：MIS 合進 5295，60 曆日窗仍含 7/29＝4100。
     with patch("live_quote.fetch_lookup_quote", return_value=rt), patch(
         "live_quote.fetch_mis_quote", return_value=rt
-    ), patch("live_quote.is_live_merge_window", return_value=True):
+    ), patch("live_quote.is_live_merge_window", return_value=True), patch(
+        "live_quote.taipei_today_str", return_value="20260924"
+    ), patch(
+        "quote_integrity.db_as_of_trading_date", return_value="20260923"
+    ):
         card = NavigatorEngine(get_db_path()).get_decision_card("2383", merge_live=True)
     assert float(card["cal60_low"]) == 4100.0
     close = float(card["close"])
