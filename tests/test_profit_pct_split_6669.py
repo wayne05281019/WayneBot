@@ -92,6 +92,32 @@ def test_frame_for_cal60_profit_matches_card_on_6669():
 
 
 @pytest.mark.production_db
+def test_frame_for_cal60_profit_near_window_matches_card_2383():
+    """近窗無大額除權：frame 必須跟卡一樣用未還原（不准全歷史 rel 切成 7.6%）。"""
+    import pandas as pd
+    from config import get_db_path
+    from decision_card_signals import cal60_profit_bundle, format_profit_pct
+
+    db = get_db_path()
+    conn = sqlite3.connect(db)
+    df = pd.read_sql_query(
+        "SELECT stock_id, date, open, high, low, close, volume FROM daily_quotes "
+        "WHERE stock_id='2383' AND date<='20260924' ORDER BY date",
+        conn,
+    )
+    conn.close()
+    if df.empty:
+        pytest.skip("no 2383")
+    profit_df = frame_for_cal60_profit(df, db, lookback=20)
+    _floors, pct = cal60_profit_bundle(profit_df)
+    card = NavigatorEngine(db).get_decision_card("2383", as_of="20260924", merge_live=False)
+    assert abs(float(pct.iloc[-1]) - float(card["gain_pct"])) < 0.15
+    assert abs(float(pct.iloc[-1]) - 23.2) < 0.15
+    # 永久驗收公式仍過（與近窗顯示無關）
+    assert format_profit_pct((5295.0 - 4100.0) / 4100.0 * 100.0) == "29.1%"
+
+
+@pytest.mark.production_db
 def test_money_flow_gain_matches_card_after_big_split():
     """資金輪動代表股獲利須跟高低卡同一套還原；不准再假顯 0.5%。"""
     from config import get_db_path

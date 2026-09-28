@@ -369,11 +369,18 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     return out, notes
 
 
-def frame_for_cal60_profit(df: pd.DataFrame, db_path: str = None) -> pd.DataFrame:
-    """海選／決策卡共用：算 cal60 獲利要用哪一套收盤。
+def frame_for_cal60_profit(
+    df: pd.DataFrame,
+    db_path: str = None,
+    *,
+    lookback: int = 20,
+) -> pd.DataFrame:
+    """海選／決策卡／資金輪動共用：算 cal60 獲利要用哪一套收盤。
 
-    小額除息（還原前後相對差 <2%）→ 還原前（CaryBot）。
-    大額除權／減資 → 還原後，避免新面額被當成「新 60 低」假顯 0%。
+    跟 get_decision_card 同一近窗判斷（預設 lookback=20）：
+    近窗還原前後相對差 <2% → 還原前（CaryBot／小額除息）；
+    近窗出現大額除權／減資 → 還原後，避免新面額假顯 0%。
+    不准用全歷史 rel.max()（會把 2383 這類卡上未還原獲利誤切成還原列）。
     """
     if df is None or getattr(df, "empty", True):
         return df
@@ -381,8 +388,10 @@ def frame_for_cal60_profit(df: pd.DataFrame, db_path: str = None) -> pd.DataFram
     close_raw = pd.to_numeric(raw["close"], errors="coerce")
     adj, _notes = normalize_ohlc(raw, db_path)
     adj_close = pd.to_numeric(adj["close"], errors="coerce")
-    denom = close_raw.mask(close_raw == 0)
-    rel = ((adj_close - close_raw).abs() / denom).fillna(0.0)
+    tail_n = min(max(int(lookback or 20), 1), len(raw))
+    tail_raw = close_raw.iloc[-tail_n:]
+    denom = tail_raw.mask(tail_raw == 0)
+    rel = ((adj_close.iloc[-tail_n:] - tail_raw).abs() / denom).fillna(0.0)
     if float(rel.max() or 0) < 0.02:
         out = df.copy()
         out["close"] = close_raw

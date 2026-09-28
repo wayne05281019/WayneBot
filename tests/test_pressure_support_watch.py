@@ -245,3 +245,6 @@ def test_pressure_bot_paths_share_nav_volzone_layout():
     assert "tag_label" in trio
     # 查股大量區也套同一套，不准退回舊空白／無圖例版
     assert "with_nav_signals=True" in bot_src
+    # 名單壓力區圖平行渲（asyncio.gather），不准退回串行 for＋await
+    assert "asyncio.gather" in src
+    assert "_render_one" in src

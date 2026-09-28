@@ -810,7 +810,7 @@ def sector_representative_stocks_live(
 
 
 def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
-    """獲利％＝近 60 曆日收盤低（與高低卡同一套還原判斷）。
+    """獲利％＝近 60 曆日收盤低（與高低卡同一套 frame_for_cal60_profit）。
 
     只抓最近 90 根，不要整份日 K（一族上百檔會把資金頁卡死）。
     必須帶 stock_id＋OHLC；大額除權用官方還原（#435），小額除息近窗跟卡一樣用未還原。
@@ -831,7 +831,7 @@ def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
     import pandas as pd
 
     from decision_card_signals import profit_pct_cal60_series
-    from wayne_navigator import normalize_ohlc
+    from wayne_navigator import frame_for_cal60_profit
 
     df = pd.DataFrame(
         list(reversed(rows)),
@@ -847,18 +847,8 @@ def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
             from config import get_db_path
 
             db_path = get_db_path()
-        raw_px = pd.to_numeric(df["close"], errors="coerce")
-        adj, _notes = normalize_ohlc(df, db_path)
-        adj_px = pd.to_numeric(adj["close"], errors="coerce")
-        # 跟 get_decision_card(lookback=20) 同一近窗：大額除權才切還原列
-        tail_n = min(20, len(df))
-        tail_raw = raw_px.iloc[-tail_n:]
-        denom = tail_raw.mask(tail_raw == 0)
-        rel = ((adj_px.iloc[-tail_n:] - tail_raw).abs() / denom).fillna(0.0)
-        use_raw = float(rel.max() or 0) < 0.02
-        out = df.copy()
-        out["close"] = raw_px if use_raw else adj_px
-        return float(profit_pct_cal60_series(out).iloc[-1])
+        profit_df = frame_for_cal60_profit(df, db_path, lookback=20)
+        return float(profit_pct_cal60_series(profit_df).iloc[-1])
     except (TypeError, ValueError, IndexError):
         return 0.0
 

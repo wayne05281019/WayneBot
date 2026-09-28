@@ -153,9 +153,8 @@ def test_flow_html_finishes_before_telegram_timeout():
 
     src = inspect.getsource(_gain_pct_cal60)
     assert "LIMIT 90" in src
-    assert "normalize_ohlc" in src
+    assert "frame_for_cal60_profit" in src
     assert "stock_id" in src
-    assert "tail_n" in src
     db = require_production_db()
     t0 = time.time()
     html = format_flow_html(db)
