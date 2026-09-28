@@ -796,7 +796,7 @@ def _paint_volume_zone(
             4,
             1,
             figure=fig,
-            height_ratios=[0.72, 3.85, 0.42, 1.02],
+            height_ratios=[0.82, 3.75, 0.42, 1.02],
             hspace=0.035,
             left=0.04,
             right=0.96,
@@ -1127,6 +1127,7 @@ def _paint_volume_zone(
             f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
             f"{ex_title}"
         )
+        # 上半：股票名＋開高低收；下半：箭頭圖例。兩區切開，不准互壓
         ax_head.text(
             0.5,
             0.98,
@@ -1147,6 +1148,8 @@ def _paint_volume_zone(
             fontproperties=_fp(11.0, "bold"),
             color=_TEXT,
         )
+        # 分隔線：介紹在上、圖例在下
+        ax_head.axhline(0.62, color="#cfd8dc", linewidth=0.7, xmin=0.02, xmax=0.98)
         try:
             from wayne_navigator import _draw_nav_legend
 

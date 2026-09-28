@@ -4884,10 +4884,10 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         prop=_fp(8.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 標題列內三行：跟股票介紹同一區塊，不准漂到 K 上方留白
+        # 標題列下半三行；上半留給股票名／開高低收，不准圖例壓住介紹
         rows = (
-            (row1, 0.66, 8),
-            (row2, 0.34, 7),
+            (row1, 0.50, 8),
+            (row2, 0.26, 7),
             (row3, 0.02, 5),
         )
     elif zone_mode:

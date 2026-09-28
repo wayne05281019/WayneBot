@@ -182,7 +182,8 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "stub_h" not in src
     assert "#90a4ae" not in src
     leg = inspect.getsource(_draw_nav_legend)
-    assert "panel" in leg and "0.66" in leg
+    assert "panel" in leg and "0.50" in leg
+    assert "0.62" in src  # 介紹／圖例分隔
     # 量能列上下三角同尺寸
     for fn in (overlay_nav_marks_on_zone, _paint_nav_on_axes):
         s = inspect.getsource(fn)
