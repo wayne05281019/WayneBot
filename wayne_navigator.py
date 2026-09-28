@@ -4839,7 +4839,7 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
 
     zone_mode＝大量區；panel＝畫在獨立標題列內（跟股票介紹同一塊，不准跟 K 之間留大空白）。
     """
-    ms_z = 11 if (zone_mode or panel) else 10
+    ms_z = 14 if panel else (11 if zone_mode else 10)
     row1 = [
         (_nav_legend_key("h20", "v", ms=ms_z + 2), "20高"),
         (_nav_legend_key("h20_leave", "v", ms=ms_z + 2), "20高脫離"),
@@ -4865,32 +4865,32 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
                 markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
     row3 = [
-        (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
-        (Line2D([], [], color="#f48fb1", lw=1.75), "季高點線"),
-        (Line2D([], [], color="#81c784", lw=1.75), "季低點線"),
-        (Line2D([], [], color="#f8bbd0", lw=1.15, linestyle="--"), "月高點線"),
-        (Line2D([], [], color="#80deea", lw=1.15, linestyle="--"), "月低點線"),
+        (Line2D([], [], color="#f9a825", lw=2.6 if panel else 2.25), "SMA(20)"),
+        (Line2D([], [], color="#f48fb1", lw=2.1 if panel else 1.75), "季高點線"),
+        (Line2D([], [], color="#81c784", lw=2.1 if panel else 1.75), "季低點線"),
+        (Line2D([], [], color="#f8bbd0", lw=1.45 if panel else 1.15, linestyle="--"), "月高點線"),
+        (Line2D([], [], color="#80deea", lw=1.45 if panel else 1.15, linestyle="--"), "月低點線"),
     ]
     kw = dict(
         loc="upper left" if panel else "lower left",
-        handlelength=1.05,
-        handletextpad=0.28,
-        columnspacing=0.48 if (zone_mode or panel) else 0.65,
-        borderpad=0.18 if panel else (0.22 if zone_mode else 0.28),
-        labelspacing=0.08 if panel else (0.10 if zone_mode else 0.16),
+        handlelength=1.25 if panel else 1.05,
+        handletextpad=0.32 if panel else 0.28,
+        columnspacing=0.42 if panel else (0.48 if zone_mode else 0.65),
+        borderpad=0.22 if panel else (0.22 if zone_mode else 0.28),
+        labelspacing=0.10 if panel else (0.10 if zone_mode else 0.16),
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(8.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
+        prop=_fp(10.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
         # 標題列圖例收成兩行：上＝原第二行（量能／買賣）；
-        # 下左＝原第一行（箭頭）、下右＝原第三行（均線），騰一行給股票介紹放大
+        # 下左＝原第一行（箭頭）、下右＝原第三行（均線）；無分隔線，圖例能大就大
         # (handles, labels, x, y, ncol)
         panel_rows = (
-            (row2, 0.0, 0.58, 7),
-            (row1, 0.0, 0.30, 8),
-            (row3, 0.62, 0.30, 5),
+            (row2, 0.0, 0.56, 7),
+            (row1, 0.0, 0.26, 8),
+            (row3, 0.60, 0.26, 5),
         )
         artists = []
         for row, x, y, ncol in panel_rows:
@@ -5304,7 +5304,22 @@ def overlay_nav_marks_on_zone(
         ax_sig.set_yticks([])
         ax_sig.set_ylim(0, 1)
         ax_sig.set_xlim(-0.8, n - 0.2)
-        ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
+        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺
+        ax_sig.set_ylabel("")
+        ax_sig.text(
+            -0.045,
+            0.5,
+            "量能\n訊號",
+            transform=ax_sig.transAxes,
+            ha="right",
+            va="center",
+            rotation=0,
+            fontproperties=_fp(8.5, "bold"),
+            color="#37474f",
+            clip_on=False,
+            linespacing=1.15,
+            zorder=8,
+        )
         ax_sig.tick_params(axis="x", labelbottom=False, length=0)
 
     for i in range(n):
@@ -5790,7 +5805,21 @@ def _paint_nav_on_axes(
     if compact:
         ax_sig.set_ylabel("")
     else:
-        ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
+        ax_sig.set_ylabel("")
+        ax_sig.text(
+            -0.045,
+            0.5,
+            "量能\n訊號",
+            transform=ax_sig.transAxes,
+            ha="right",
+            va="center",
+            rotation=0,
+            fontproperties=_fp(8.5, "bold"),
+            color="#37474f",
+            clip_on=False,
+            linespacing=1.15,
+            zorder=8,
+        )
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(work["volume"])

@@ -799,7 +799,7 @@ def _paint_volume_zone(
             # 圖例收兩行後，多出的高度給標題列（股票介紹放大）
             height_ratios=[1.05, 3.55, 0.42, 1.02],
             hspace=0.035,
-            left=0.04,
+            left=0.055,
             right=0.96,
             top=0.985,
             bottom=0.07,
@@ -1032,12 +1032,12 @@ def _paint_volume_zone(
         zorder=4,
         linewidth=0,
     )
-    # 爆大量標貼柱頂，微抬一點即可，不准飛高
-    ax2.set_ylim(0, max(vol_ylim * 1.14, spike_h * 1.16 if spike_h > 0 else vol_ylim * 1.14))
+    # 爆大量標貼柱頂略抬，不准飛高、不准壓到量柱本身
+    ax2.set_ylim(0, max(vol_ylim * 1.18, spike_h * 1.22 if spike_h > 0 else vol_ylim * 1.18))
     ax2.annotate(
         f"爆大量 {spike_md}",
         xy=(float(spike_i), spike_h),
-        xytext=(0, 2),
+        xytext=(0, 8),
         textcoords="offset points",
         ha="center",
         va="bottom",
@@ -1150,8 +1150,7 @@ def _paint_volume_zone(
             color=_TEXT,
             zorder=12,
         )
-        # 分隔：介紹底／圖例頂；圖例兩行在 0.62 以下，不准上衝壓字
-        ax_head.axhline(0.62, color="#90a4ae", linewidth=0.8, xmin=0.02, xmax=0.98, zorder=5)
+        # 介紹與圖例之間不加分隔線；圖例兩行貼在介紹下方
         try:
             from wayne_navigator import _draw_nav_legend
 
