@@ -163,7 +163,7 @@ def test_vol_zone_with_nav_signals_flag(tmp_path):
 
 
 def test_vol_zone_layout_k_first_no_fake_bars():
-    """中間 K 為主：壓撐回圖內角、爆大量貼柱頂、標題貼圖例、無灰假柱。"""
+    """中間 K 為主：標題列含圖例、壓撐圖內角、爆大量貼柱頂、無灰假柱。"""
     import inspect
 
     from vol_zone_chart import _paint_volume_zone
@@ -172,23 +172,21 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     src = inspect.getsource(_paint_volume_zone)
     assert "ex_labels" in src
     assert "left_guard" in src
-    # 壓撐回圖內左上／左下，不准軸外擠掉 K
+    assert "GridSpec" in src and "ax_head" in src
+    assert "panel=True" in src
+    assert "draw_legend=False" in src
+    # 壓撐回圖內左上／左下
     assert "0.012" in src and "0.975" in src and "0.025" in src
-    assert "left=0.04" in src
     assert "left=0.16" not in src
-    # 爆大量貼柱頂
     assert "xytext=(0, 2)" in src
-    assert "1.04" not in src
     assert "stub_h" not in src
     assert "#90a4ae" not in src
-    # 標題／開高低收緊貼圖例
-    assert "0.995" in src and "0.978" in src and "top=0.915" in src
     leg = inspect.getsource(_draw_nav_legend)
-    assert "1.095" in leg and "1.055" in leg
+    assert "panel" in leg and "0.66" in leg
     # 量能列上下三角同尺寸
     for fn in (overlay_nav_marks_on_zone, _paint_nav_on_axes):
         s = inspect.getsource(fn)
-        assert s.count("scale=1.12") >= 3
+        assert s.count("scale=1.15") >= 2
         assert "scale=0.78" not in s
 
 

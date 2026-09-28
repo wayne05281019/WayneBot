@@ -786,18 +786,30 @@ def _paint_volume_zone(
     card: Optional[Dict[str, Any]] = None,
 ):
     spike_md = _md(spike_date)
+    ax_head = None
     if with_nav_signals:
-        # 中間 K 為主：價格列佔大頭；標題／圖例貼緊，不准擠掉 K
-        fig, (ax1, ax_sig, ax2) = plt.subplots(
-            3,
+        # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
+        from matplotlib.gridspec import GridSpec
+
+        fig = plt.figure(figsize=(11.2, 8.7), dpi=VOL_ZONE_DPI, facecolor=_BG)
+        gs = GridSpec(
+            4,
             1,
-            figsize=(11.2, 9.0),
-            dpi=VOL_ZONE_DPI,
-            sharex=True,
-            gridspec_kw=dict(height_ratios=(3.55, 0.42, 1.05), hspace=0.055),
-            facecolor=_BG,
+            figure=fig,
+            height_ratios=[0.95, 3.55, 0.44, 1.05],
+            hspace=0.045,
+            left=0.04,
+            right=0.96,
+            top=0.985,
+            bottom=0.07,
         )
+        ax_head = fig.add_subplot(gs[0])
+        ax1 = fig.add_subplot(gs[1])
+        ax_sig = fig.add_subplot(gs[2], sharex=ax1)
+        ax2 = fig.add_subplot(gs[3], sharex=ax1)
         ax_sig.set_facecolor(_BG)
+        ax_head.set_facecolor(_BG)
+        ax_head.set_axis_off()
     else:
         fig, (ax1, ax2) = plt.subplots(
             2,
@@ -953,7 +965,8 @@ def _paint_volume_zone(
         try:
             from wayne_navigator import overlay_nav_marks_on_zone
 
-            overlay_nav_marks_on_zone(ax1, ax_sig, view, card=card, draw_legend=True)
+            # 圖例改畫在標題列，不准掛在 K 上方留白
+            overlay_nav_marks_on_zone(ax1, ax_sig, view, card=card, draw_legend=False)
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
@@ -1104,8 +1117,8 @@ def _paint_volume_zone(
             if amt > 0:
                 ex_title += f" {_fmt_price(amt)}元"
             ex_title += "（原柱不還原）"
-    if with_nav_signals:
-        # 標題＋開高低收緊貼；下方緊接圖例，不准拉開大空白
+    if with_nav_signals and ax_head is not None:
+        # 標題列內：兩行介紹＋三行圖例同一塊，緊接 K，不准中間空白
         head = f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
         intro = (
             f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
@@ -1114,21 +1127,32 @@ def _paint_volume_zone(
             f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
             f"{ex_title}"
         )
-        fig.suptitle(
-            head,
-            fontproperties=_fp(13.5, "bold"),
-            color=_TEXT,
-            y=0.995,
-        )
-        fig.text(
+        ax_head.text(
             0.5,
-            0.978,
-            intro,
+            0.98,
+            head,
+            transform=ax_head.transAxes,
             ha="center",
             va="top",
-            fontproperties=_fp(11.5, "bold"),
+            fontproperties=_fp(13.0, "bold"),
             color=_TEXT,
         )
+        ax_head.text(
+            0.5,
+            0.78,
+            intro,
+            transform=ax_head.transAxes,
+            ha="center",
+            va="top",
+            fontproperties=_fp(11.0, "bold"),
+            color=_TEXT,
+        )
+        try:
+            from wayne_navigator import _draw_nav_legend
+
+            _draw_nav_legend(ax_head, panel=True)
+        except Exception:
+            logger.exception("標題列圖例失敗 sid=%s", sid)
         ax1.set_title("")
     else:
         title = (
@@ -1148,7 +1172,7 @@ def _paint_volume_zone(
         foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交不畫假K／假量（×）。導航圖另按。"
     fig.text(
         0.5,
-        0.026,
+        0.022,
         foot1,
         ha="center",
         va="bottom",
@@ -1157,20 +1181,15 @@ def _paint_volume_zone(
     )
     fig.text(
         0.5,
-        0.009,
+        0.006,
         foot2,
         ha="center",
         va="bottom",
         fontproperties=_fp(8.0, "bold"),
         color=_MUTED,
     )
-    fig.subplots_adjust(
-        # K 佔滿寬；頂＝標題＋開高低收＋緊貼圖例（不准大空白）；底兩行注
-        left=0.04,
-        right=0.96,
-        top=0.915 if with_nav_signals else 0.88,
-        bottom=0.08,
-    )
+    if not with_nav_signals:
+        fig.subplots_adjust(left=0.04, right=0.96, top=0.88, bottom=0.08)
     fig.savefig(
         out,
         format="jpeg",

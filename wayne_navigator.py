@@ -4834,12 +4834,12 @@ def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = 
     )
 
 
-def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
-    """圖例全部在座標軸上方（bbox 底邊 > 1），不准壓進 K 區。畫過的標都要進圖例。
+def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> None:
+    """圖例。預設在座標軸上方（bbox 底邊 > 1），不准壓進 K 區。
 
-    zone_mode＝大量區專圖：圖例貼軸頂、標題／開高低收另留在更上方，不准三行圖例壓住基本介紹。
+    zone_mode＝大量區；panel＝畫在獨立標題列內（跟股票介紹同一塊，不准跟 K 之間留大空白）。
     """
-    ms_z = 12 if zone_mode else 10
+    ms_z = 11 if (zone_mode or panel) else 10
     row1 = [
         (_nav_legend_key("h20", "v", ms=ms_z + 2), "20高"),
         (_nav_legend_key("h20_leave", "v", ms=ms_z + 2), "20高脫離"),
@@ -4857,12 +4857,12 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
                 markeredgecolor=_NAV_SIG["warn"], markeredgewidth=0.0, markersize=ms_z + 2), "警告"),
         (patches.Patch(facecolor=_NAV_SIG["warn_band"], edgecolor="#e57373", linewidth=0.6), "警告底"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_low"],
-                markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 1), "月波動低"),
+                markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 2), "月波動低"),
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=ms_z + 1), "買點↑藍"),
+                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=ms_z + 2), "買點↑藍"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
-                markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 1), "賣點↓橙"),
+                markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
     row3 = [
         (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
@@ -4875,18 +4875,22 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
         loc="lower left",
         handlelength=1.05,
         handletextpad=0.28,
-        columnspacing=0.50 if zone_mode else 0.65,
-        borderpad=0.22 if zone_mode else 0.28,
-        labelspacing=0.10 if zone_mode else 0.16,
+        columnspacing=0.48 if (zone_mode or panel) else 0.65,
+        borderpad=0.18 if panel else (0.22 if zone_mode else 0.28),
+        labelspacing=0.08 if panel else (0.10 if zone_mode else 0.16),
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        # zone_mode：字夠大可讀，但三行貼緊標題下方，不准拉開空白擠掉 K
-        prop=_fp(9.0 if zone_mode else 8.0, "bold"),
+        prop=_fp(8.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
-    # loc=lower left → bbox_to_anchor 是圖例底邊；三列底邊都 > 1，整塊在軸上方
-    if zone_mode:
-        # 三行貼軸頂、更緊，緊接標題／開高低收，不准中間留大空白
+    if panel:
+        # 標題列內三行：跟股票介紹同一區塊，不准漂到 K 上方留白
+        rows = (
+            (row1, 0.66, 8),
+            (row2, 0.34, 7),
+            (row3, 0.02, 5),
+        )
+    elif zone_mode:
         rows = (
             (row1, 1.095, 8),
             (row2, 1.055, 7),
@@ -5410,35 +5414,35 @@ def overlay_nav_marks_on_zone(
                 alpha=0.42,
             )
         if ax_sig is not None:
-            if vol_low:
-                ax_sig.add_patch(
-                    patches.Rectangle(
-                        (x - 0.45, 0.08),
-                        0.9,
-                        0.84,
-                        facecolor=_NAV_SIG["vol_low_band"],
-                        edgecolor="none",
-                        zorder=2,
-                    )
-                )
+            # 上下兩排等高底＋同尺寸三角（上排中心 0.75、下排 0.25）
             if warn:
                 ax_sig.add_patch(
                     patches.Rectangle(
                         (x - 0.45, 0.52),
                         0.9,
-                        0.42,
+                        0.44,
                         facecolor=_NAV_SIG["warn_band"],
                         edgecolor="none",
                         alpha=0.62,
                         zorder=1,
                     )
                 )
-                # 上下兩排三角同一尺寸，不准第二行（藍）比第一行（紅）小
-                _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.12, z=5)
+                _sig_arrow(ax_sig, x, 0.75, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.15, z=5)
+            if vol_low:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (x - 0.45, 0.04),
+                        0.9,
+                        0.44,
+                        facecolor=_NAV_SIG["vol_low_band"],
+                        edgecolor="none",
+                        zorder=2,
+                    )
+                )
             if vol_a:
-                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.12, z=6)
+                _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.15, z=6)
             elif vol_low:
-                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.12, z=4)
+                _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.15, z=4)
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
@@ -5668,22 +5672,21 @@ def _paint_nav_on_axes(
                 z=5,
                 alpha=0.42,
             )
-        if vol_low:
-            ax_sig.add_patch(patches.Rectangle(
-                (x - 0.45, 0.08), 0.9, 0.84,
-                facecolor=_NAV_SIG["vol_low_band"], edgecolor="none", zorder=2,
-            ))
         if warn:
             ax_sig.add_patch(patches.Rectangle(
-                (x - 0.45, 0.52), 0.9, 0.42,
+                (x - 0.45, 0.52), 0.9, 0.44,
                 facecolor=_NAV_SIG["warn_band"], edgecolor="none", alpha=0.62, zorder=1,
             ))
-            # 上下兩排三角同一尺寸，不准第二行（藍）比第一行（紅）小
-            _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.12, z=5)
+            _sig_arrow(ax_sig, x, 0.75, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.15, z=5)
+        if vol_low:
+            ax_sig.add_patch(patches.Rectangle(
+                (x - 0.45, 0.04), 0.9, 0.44,
+                facecolor=_NAV_SIG["vol_low_band"], edgecolor="none", zorder=2,
+            ))
         if vol_a:
-            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.12, z=6)
+            _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.15, z=6)
         elif vol_low:
-            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.12, z=4)
+            _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.15, z=4)
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
