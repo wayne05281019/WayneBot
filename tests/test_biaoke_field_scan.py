@@ -179,6 +179,11 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "誰先過前高" not in html
     assert "官方收" in html
     assert "黃金買點" in html
+    assert "點左邊選" not in html
+    # 這測例未必有可捕捉次級；有推薦時才會寫「點圖下鈕選檔」（見下方有 recs 的測）
+    if "這型最落後次級" in html:
+        assert "點圖下鈕選檔" in html
+        assert html.count("點圖下鈕選檔") == 1
 
 
 def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
@@ -998,7 +1003,9 @@ def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
     assert "不准發明切入" not in html
     assert "這型最落後次級" in html
     assert "次熱" in html
-    assert "點左邊選" in html or "打股名" in html
+    assert "點圖下鈕選檔" in html
+    assert "點左邊選" not in html
+    assert html.count("點圖下鈕選檔") == 1
 
 
 def test_dongzhu_100d_skips_telecom_at_20high_for_test_laggards(tmp_path, monkeypatch):

@@ -3274,7 +3274,7 @@ class WayneTelegramBot:
         if hits_need_picker(hits):
             self._pending[actor] = "dongzhu"
             await message.reply_html(
-                self._hits_list_html(hits, lead="打股名沒打準。點左邊選這檔能不能留。"),
+                self._hits_list_html(hits, lead="打股名沒打準。點下面選這檔能不能留。"),
                 reply_markup=self._dongzhu_hits_keyboard(hits),
                 disable_web_page_preview=True,
             )
