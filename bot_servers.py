@@ -1958,6 +1958,7 @@ class WayneTelegramBot:
         lines = [
             "<b>觀察清單（自選，還沒買也可以）</b>",
             "加入：打股名按 ➕，或海選名單旁的 ➕。刪除：按該檔「刪」。",
+            "每檔：加入日→最近官方收　損益％",
         ]
         if not shown:
             lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
@@ -1972,15 +1973,33 @@ class WayneTelegramBot:
             )
         except Exception:
             flows = {}
+        pnls = {}
+        try:
+            from wayne_db import watchlist_join_pnl
+
+            if self.db_path:
+                pnls = watchlist_join_pnl(self.db_path, shown) or {}
+        except Exception:
+            pnls = {}
         for r in shown:
             c = str(r.get("stock_code") or "")
             n = str(r.get("stock_name") or "")
             try:
                 from stock_links import html_stock_anchor
 
-                lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
+                title = html_stock_anchor(c, n, self.db_path)
             except Exception:
-                lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
+                title = f"{html_escape(c)} {html_escape(n)}".rstrip()
+            try:
+                from wayne_db import format_watch_join_pnl_line
+
+                pnl_bit = format_watch_join_pnl_line((pnls or {}).get(c))
+            except Exception:
+                pnl_bit = ""
+            if pnl_bit:
+                lines.append(f"• {title}　{pnl_bit}")
+            else:
+                lines.append(f"• {title}")
             flow = str((flows or {}).get(c) or "").strip()
             if flow:
                 from tg_layout import kv_compact
@@ -4964,7 +4983,22 @@ class WayneTelegramBot:
         name = hits[0].get("stock_name") or code
         if pending == "watch":
             add_to_watchlist(self.db_path, uid, code, name)
-            await message.reply_text(f"已加入觀察 {code} {name}", reply_markup=self._keyboard())
+            join_bit = ""
+            try:
+                from wayne_db import format_watch_join_md, get_user_watchlist, parse_watch_join_ymd
+
+                for wr in get_user_watchlist(self.db_path, uid) or []:
+                    if str(wr.get("stock_code") or "") == str(code):
+                        jy = parse_watch_join_ymd(wr.get("created_at"))
+                        if jy:
+                            join_bit = f"　加入日 {format_watch_join_md(jy)}"
+                        break
+            except Exception:
+                join_bit = ""
+            await message.reply_text(
+                f"已加入觀察 {code} {name}{join_bit}",
+                reply_markup=self._keyboard(),
+            )
             return True
         if pending == "card":
             await self._send_card_to(message, code, uid)
@@ -6188,9 +6222,22 @@ class WayneTelegramBot:
             code = data[2:]
             uid = str(q.from_user.id)
             add_to_watchlist(self.db_path, uid, code, code)
+            join_bit = ""
+            try:
+                from wayne_db import format_watch_join_md, get_user_watchlist, parse_watch_join_ymd
+
+                for wr in get_user_watchlist(self.db_path, uid) or []:
+                    if str(wr.get("stock_code") or "") == str(code):
+                        jy = parse_watch_join_ymd(wr.get("created_at"))
+                        if jy:
+                            join_bit = f"加入日 {html_escape(format_watch_join_md(jy))}。"
+                        break
+            except Exception:
+                join_bit = ""
             await q.message.reply_html(
-                f"已加入<b>觀察</b> {html_escape(code)}（自選，還不是持股）。\n"
-                "要記真實買入請按「記買入」。",
+                f"已加入<b>觀察</b> {html_escape(code)}（自選，還不是持股）。"
+                + (f"{join_bit}" if join_bit else "")
+                + "要記真實買入請按「記買入」。",
                 reply_markup=self._hub_keyboard(code),
             )
             return
