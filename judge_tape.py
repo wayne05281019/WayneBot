@@ -437,6 +437,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
             stats[key] = remember_rows(
                 market_db, key, [], as_of=day, pick=tag, src="radar"
             )
+    # 靜默對質：現況 vs 第一次優化（改碼候選）；飆大另軌只記不 promote。失敗不擋。
+    try:
+        from pressure_rank_verify import night_tick
+
+        night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 
