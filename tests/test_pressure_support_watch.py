@@ -167,7 +167,7 @@ def test_vol_zone_labels_no_fake_halt_bars():
     import inspect
 
     from vol_zone_chart import _paint_volume_zone
-    from wayne_navigator import _draw_nav_legend
+    from wayne_navigator import _draw_nav_legend, overlay_nav_marks_on_zone, _paint_nav_on_axes
 
     src = inspect.getsource(_paint_volume_zone)
     assert "ex_labels" in src
@@ -182,6 +182,11 @@ def test_vol_zone_labels_no_fake_halt_bars():
     assert "_fp(15" in src and "_fp(13" in src
     leg = inspect.getsource(_draw_nav_legend)
     assert "9.5 if zone_mode" in leg
+    # 量能列上下三角同尺寸（不准藍三角比紅三角小）
+    for fn in (overlay_nav_marks_on_zone, _paint_nav_on_axes):
+        s = inspect.getsource(fn)
+        assert s.count("scale=1.12") >= 3
+        assert "scale=0.78" not in s
 
 
 def test_pressure_not_buy_signal_in_rows():

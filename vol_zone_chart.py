@@ -794,7 +794,7 @@ def _paint_volume_zone(
             figsize=(11.6, 10.4),
             dpi=VOL_ZONE_DPI,
             sharex=True,
-            gridspec_kw=dict(height_ratios=(3.35, 0.38, 1.15), hspace=0.08),
+            gridspec_kw=dict(height_ratios=(3.30, 0.48, 1.15), hspace=0.10),
             facecolor=_BG,
         )
         ax_sig.set_facecolor(_BG)

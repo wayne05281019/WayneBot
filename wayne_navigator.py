@@ -5433,11 +5433,12 @@ def overlay_nav_marks_on_zone(
                         zorder=1,
                     )
                 )
-                _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.05, z=5)
+                # 上下兩排三角同一尺寸，不准第二行（藍）比第一行（紅）小
+                _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.12, z=5)
             if vol_a:
-                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.22, z=6)
+                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.12, z=6)
             elif vol_low:
-                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=0.78, z=4)
+                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.12, z=4)
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
@@ -5677,11 +5678,12 @@ def _paint_nav_on_axes(
                 (x - 0.45, 0.52), 0.9, 0.42,
                 facecolor=_NAV_SIG["warn_band"], edgecolor="none", alpha=0.62, zorder=1,
             ))
-            _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.05, z=5)
+            # 上下兩排三角同一尺寸，不准第二行（藍）比第一行（紅）小
+            _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.12, z=5)
         if vol_a:
-            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.22, z=6)
+            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.12, z=6)
         elif vol_low:
-            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=0.78, z=4)
+            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.12, z=4)
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
