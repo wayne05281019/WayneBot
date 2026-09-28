@@ -1107,18 +1107,8 @@ class WayneTelegramBot:
             await message.reply_html(head, disable_web_page_preview=True)
             # 先出壓力區圖（含導航箭頭／量能；版面與點股三張同一套 with_nav_signals）
             from pressure_support_watch import pressure_card_html
-            # 先出壓力區圖（含導航箭頭／量能；版面與點股三張同一套 with_nav_signals）
-            # 平行準備（假日快取後 DB／對齊可重疊）→ 再串行 paint（mpl 鎖）
-            from vol_zone_chart import (
-                prepare_volume_zone,
-                vol_zone_photo_caption,
-                _paint_volume_zone,
-                _vz_memo_key,
-                _vz_memo_put,
-                VOL_ZONE_LOOKBACK,
-                VOL_ZONE_BARS,
-            )
-            from wayne_navigator import mpl_render
+            # 平行準備（假日／對齊快取後可重疊）→ 串行 paint（mpl 鎖）
+            from chart_batch import render_volume_zones_two_phase
 
             sent = 0
             picks: list = []
@@ -1143,81 +1133,16 @@ class WayneTelegramBot:
                 )
                 jobs.append((code, name, out))
 
-            async def _prep_one(code: str, name: str, out: str):
-                try:
-                    return await asyncio.wait_for(
-                        asyncio.to_thread(
-                            prepare_volume_zone, code, name, self.db_path, out
-                        ),
-                        timeout=20.0,
-                    )
-                except Exception:
-                    logger.exception("壓撐壓力區準備失敗 code=%s", code)
-                    return None
-
-            packs = await asyncio.gather(
-                *[_prep_one(c, n, p) for c, n, p in jobs]
-            )
-
-            def _paint_all():
-                outs: list = []
-                for pack in packs:
-                    if not pack:
-                        outs.append(("", ""))
-                        continue
-                    try:
-                        cap = vol_zone_photo_caption(
-                            pack["sid"],
-                            str(self.db_path or ""),
-                            None,
-                            zone=pack["zone"],
-                            last=pack["last"],
-                            bars=pack["bars"],
-                            ex_events=pack["ex_events"],
-                        )
-                        with mpl_render():
-                            path = _paint_volume_zone(
-                                pack["sid"],
-                                pack["name"],
-                                pack["view"],
-                                pack["zone"],
-                                pack["spike_i"],
-                                pack["spike_date"],
-                                pack["hi"],
-                                pack["lo"],
-                                pack["halt"],
-                                pack["xs"],
-                                pack["n"],
-                                pack["ex_events"],
-                                pack["out"],
-                                with_nav_signals=True,
-                                card=None,
-                            )
-                        path_s, cap_s = str(path or ""), str(cap or "")
-                        if path_s:
-                            _vz_memo_put(
-                                _vz_memo_key(
-                                    pack["sid"],
-                                    pack["zone"],
-                                    pack["last"],
-                                    with_nav_signals=True,
-                                    lookback=VOL_ZONE_LOOKBACK,
-                                    bars=VOL_ZONE_BARS,
-                                ),
-                                path_s,
-                                cap_s,
-                            )
-                        outs.append((path_s, cap_s))
-                    except Exception:
-                        logger.exception(
-                            "壓撐壓力區圖失敗 code=%s", pack.get("sid")
-                        )
-                        outs.append(("", ""))
-                return outs
-
             try:
                 rendered = await asyncio.wait_for(
-                    asyncio.to_thread(_paint_all), timeout=120.0
+                    asyncio.to_thread(
+                        render_volume_zones_two_phase,
+                        jobs,
+                        self.db_path,
+                        with_nav_signals=True,
+                        max_workers=8,
+                    ),
+                    timeout=120.0,
                 )
             except Exception:
                 logger.exception("壓撐名單平行出圖失敗")
