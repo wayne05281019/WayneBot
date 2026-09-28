@@ -229,19 +229,19 @@ def test_pressure_not_buy_signal_in_rows():
 
 
 def test_pressure_bot_paths_share_nav_volzone_layout():
-    """子鈕先出圖與點股三張，都走同一套 with_nav_signals 壓力區圖。"""
+    """話筒上凡出壓力區／大量區專圖，都走同一套 with_nav_signals 完美版面。"""
     import inspect
 
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._run_pressure_support)
     trio = inspect.getsource(WayneTelegramBot._send_pressure_stock_trio)
+    bot_src = inspect.getsource(WayneTelegramBot)
     assert src.count("with_nav_signals=True") >= 1
     assert trio.count("with_nav_signals=True") >= 1
+    assert bot_src.count("with_nav_signals=True") >= 3  # 子鈕＋三張＋查股大量區
     assert "pressure_card_html" in src
     assert "_pressure_section_keyboard" in src
     assert "tag_label" in trio
-    # 查股大量區不帶導航版面，不准混
-    lookup = inspect.getsource(WayneTelegramBot)
-    # 只要求壓力兩路徑有 True；查股 render 預設 False（不寫 True）
-    assert "with_nav_signals=True" in src and "with_nav_signals=True" in trio
+    # 查股大量區也套同一套，不准退回舊空白／無圖例版
+    assert "with_nav_signals=True" in bot_src

@@ -6271,13 +6271,15 @@ class WayneTelegramBot:
             def _render_volzone():
                 from vol_zone_chart import render_volume_zone_result
 
-                # 大量區只吃官方原柱；不准用決策卡除權還原／盤中合併的 ohlc
+                # 大量區只吃官方原柱；不准用決策卡除權還原／盤中合併的 ohlc。
+                # 與壓撐觀察同一套完美版面（導航箭頭／量能／圖例；停價不准挖洞）。
                 path, cap = render_volume_zone_result(
                     code,
                     _stock_caption_name(card, code),
                     self.db_path,
                     vol_path_f,
                     card=card,
+                    with_nav_signals=True,
                 )
                 if cap:
                     vz_face[0] = cap
