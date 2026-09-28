@@ -55,6 +55,12 @@ def clear_tw_holiday_row_cache(db_path: str = None) -> None:
         clear_tw_open_days_cache()
     except Exception:
         pass
+    try:
+        from wayne_navigator import clear_align_ohlc_cache
+
+        clear_align_ohlc_cache()
+    except Exception:
+        pass
 TWSE_HOLIDAY_URL = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
 DGPA_NDS_URL = "https://www.dgpa.gov.tw/typh/daily/nds.html"
 

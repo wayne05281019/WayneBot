@@ -56,10 +56,11 @@ def test_pressure_list_two_phase_prepare_then_paint():
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._run_pressure_support)
-    assert "prepare_volume_zone" in src
-    assert "_paint_volume_zone" in src
-    assert "asyncio.gather" in src
-    assert src.find("prepare_volume_zone") < src.find("_paint_volume_zone")
+    assert "render_volume_zones_two_phase" in src or "chart_batch" in src
+    batch = open("chart_batch.py", encoding="utf-8").read()
+    assert "prepare_volume_zone" in batch
+    assert "_paint_volume_zone" in batch
+    assert batch.find("prepare_volume_zones_parallel") < batch.find("paint_volume_zones_serial")
 
 
 def test_vol_zone_render_memo_reuses_file(tmp_path):

@@ -168,9 +168,15 @@ def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     if work.empty:
         return None
     # 開市日軸連續（與導航同一套）：缺列＝前收停價＋量0，不准編振幅／假量
-    from wayne_navigator import align_ohlc_to_tw_open_days
+    from wayne_navigator import align_ohlc_cached
 
-    work = align_ohlc_to_tw_open_days(work)
+    sid_hint = ""
+    if "stock_id" in work.columns:
+        try:
+            sid_hint = str(work["stock_id"].dropna().iloc[-1] or "")
+        except Exception:
+            sid_hint = ""
+    work = align_ohlc_cached(work, sid_hint)
     if work is None or work.empty:
         return None
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")

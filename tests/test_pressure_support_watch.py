@@ -246,9 +246,8 @@ def test_pressure_bot_paths_share_nav_volzone_layout():
     assert "tag_label" in trio
     # 查股大量區也套同一套，不准退回舊空白／無圖例版
     assert "with_nav_signals=True" in bot_src
-    # 名單壓力區：平行 prepare（gather）→ 串行 paint；不准退回逐檔串行 await 重渲
-    assert "asyncio.gather" in src
-    assert "prepare_volume_zone" in src
-    assert "_paint_volume_zone" in src
-    assert "_prep_one" in src
-    assert src.find("prepare_volume_zone") < src.find("_paint_volume_zone")
+    # 名單壓力區：兩段式 chart_batch（prepare∥→paint）；不准退回逐檔串行 await 重渲
+    assert "asyncio.to_thread" in src or "asyncio.gather" in src
+    assert "render_volume_zones_two_phase" in src or "chart_batch" in src
+    assert "prepare_volume_zone" in open("chart_batch.py", encoding="utf-8").read()
+    assert "_paint_volume_zone" in open("chart_batch.py", encoding="utf-8").read()

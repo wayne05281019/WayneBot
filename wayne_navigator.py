@@ -1500,6 +1500,67 @@ def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# 開市日對齊結果短快取：導航／大量區／多檔名單共用，不准每檔重算假日軸
+_ALIGN_OHLC_TTL_SEC = 45.0
+_ALIGN_OHLC_LOCK = Lock()
+_ALIGN_OHLC_CACHE: dict = {}
+_ALIGN_OHLC_CACHE_MAX = 96
+
+
+def clear_align_ohlc_cache() -> None:
+    with _ALIGN_OHLC_LOCK:
+        _ALIGN_OHLC_CACHE.clear()
+
+
+def _align_cache_key(work: pd.DataFrame, sid: str = "") -> tuple:
+    if work is None or getattr(work, "empty", True):
+        return ("", "", 0, "", "")
+    d0 = str(work["date"].iloc[0]) if "date" in work.columns else ""
+    d1 = str(work["date"].iloc[-1]) if "date" in work.columns else ""
+    # 指紋含整段高低收，避免同長度／同尾價但中間柱被改過還命中
+    try:
+        import hashlib
+
+        blob = b"".join(
+            pd.to_numeric(work[c], errors="coerce")
+            .fillna(0.0)
+            .to_numpy(dtype=float)
+            .tobytes()
+            for c in ("open", "high", "low", "close", "volume")
+            if c in work.columns
+        )
+        digest = hashlib.blake2b(blob, digest_size=8).hexdigest()
+    except Exception:
+        digest = str(len(work))
+    return (str(sid or ""), str(d0)[:8], str(d1)[:8], int(len(work)), digest)
+
+
+def align_ohlc_cached(work: pd.DataFrame, sid: str = "") -> pd.DataFrame:
+    """align_ohlc_to_tw_open_days ＋短快取。回傳副本，呼叫端可改。"""
+    if work is None or getattr(work, "empty", True):
+        return work
+    key = _align_cache_key(work, sid)
+    now = time.monotonic()
+    with _ALIGN_OHLC_LOCK:
+        hit = _ALIGN_OHLC_CACHE.get(key)
+        if hit is not None:
+            ts, cached = hit
+            if now - float(ts) <= _ALIGN_OHLC_TTL_SEC and cached is not None:
+                return cached.copy(deep=True)
+    aligned = align_ohlc_to_tw_open_days(work)
+    if aligned is None or getattr(aligned, "empty", True):
+        return aligned
+    with _ALIGN_OHLC_LOCK:
+        if len(_ALIGN_OHLC_CACHE) >= _ALIGN_OHLC_CACHE_MAX:
+            oldest = sorted(_ALIGN_OHLC_CACHE.items(), key=lambda kv: kv[1][0])[
+                : _ALIGN_OHLC_CACHE_MAX // 2
+            ]
+            for k, _ in oldest:
+                _ALIGN_OHLC_CACHE.pop(k, None)
+        _ALIGN_OHLC_CACHE[key] = (time.monotonic(), aligned.copy(deep=True))
+    return aligned.copy(deep=True)
+
+
 def nav_volume_bar_heights(volumes) -> tuple:
     """導航量柱高度：有官方量＝必畫肉眼可見柱；缺量不准造假。
 
@@ -5720,40 +5781,83 @@ def _paint_nav_on_axes(
         candle_up.append(
             candle_up_taiwan(float(work["close"].iloc[i]), prev_c, float(work["open"].iloc[i]))
         )
-    for i in range(n):
-        op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
-        hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
-        x = xs[i]
-        is_halt = bool(halt.iloc[i])
-        color = "#e53935" if candle_up[i] else "#00897b"
-        if is_halt:
-            # 無成交停價：可見灰短橫線，不准隱形挖洞；不准編振幅
-            ax1.plot(
-                [x - 0.38, x + 0.38], [cl, cl],
-                color="#9e9e9e", linewidth=1.7, zorder=4, solid_capstyle="round",
-            )
-            ax1.plot([x, x], [cl - span * 0.004, cl + span * 0.004], color="#9e9e9e", linewidth=1.2, zorder=4)
-            ax_sig.add_patch(patches.Rectangle((x - 0.42, 0.05), 0.84, 0.9, facecolor="#eceff1", edgecolor="#ffffff", lw=0.15, zorder=2))
-            continue
-        ax1.plot([x, x], [lo, hi], color=color, linewidth=1.05, zorder=3, solid_capstyle="round")
-        body = max(abs(cl - op), span * 0.0018)
-        ax1.add_patch(
-            patches.Rectangle(
-                (x - 0.32, min(op, cl)),
-                0.64,
-                body,
-                facecolor=color,
-                edgecolor=color,
+    # 批次畫 K：LineCollection 影線＋bar 實體（同壓力區）
+    from matplotlib.collections import LineCollection
+
+    opens = work["open"].to_numpy(dtype=float)
+    closes = work["close"].to_numpy(dtype=float)
+    highs = work["high"].to_numpy(dtype=float)
+    lows = work["low"].to_numpy(dtype=float)
+    halt_arr = halt.fillna(False).astype(bool).to_numpy()
+    colors = np.where(np.asarray(candle_up, dtype=bool), "#e53935", "#00897b")
+    trade_i = np.flatnonzero(~halt_arr)
+    if trade_i.size:
+        wick_segs = [
+            [(float(xs[i]), float(lows[i])), (float(xs[i]), float(highs[i]))]
+            for i in trade_i
+        ]
+        ax1.add_collection(
+            LineCollection(
+                wick_segs,
+                colors=[colors[i] for i in trade_i],
+                linewidths=1.05,
                 zorder=3,
+                capstyle="round",
+            )
+        )
+        body_h = np.maximum(np.abs(closes[trade_i] - opens[trade_i]), span * 0.0018)
+        body_bot = np.minimum(opens[trade_i], closes[trade_i])
+        ax1.bar(
+            xs[trade_i],
+            body_h,
+            bottom=body_bot,
+            width=0.64,
+            color=[colors[i] for i in trade_i],
+            edgecolor=[colors[i] for i in trade_i],
+            linewidth=0.35,
+            zorder=3,
+            align="center",
+        )
+    for i in np.flatnonzero(halt_arr):
+        cl = float(closes[i])
+        x = float(xs[i])
+        ax1.plot(
+            [x - 0.38, x + 0.38], [cl, cl],
+            color="#9e9e9e", linewidth=1.7, zorder=4, solid_capstyle="round",
+        )
+        ax1.plot([x, x], [cl - span * 0.004, cl + span * 0.004], color="#9e9e9e", linewidth=1.2, zorder=4)
+        ax_sig.add_patch(
+            patches.Rectangle(
+                (x - 0.42, 0.05), 0.84, 0.9,
+                facecolor="#eceff1", edgecolor="#ffffff", lw=0.15, zorder=2,
             )
         )
 
-        wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
-        wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
-        close_h20 = float(cl_s.iloc[max(0, i - 19) : i + 1].max())
-        close_l20 = float(cl_s.iloc[max(0, i - 19) : i + 1].min())
-        wick_l60 = float(lo_s.iloc[max(0, i - 59) : i + 1].min())
-        ma20_i = float(work["ma20"].iloc[i] or 0)
+    # 箭頭用 rolling 高低一次算完（pandas C 實作），不准每根重切片
+    wick_h20_a = hi_s.rolling(20, min_periods=1).max().to_numpy(dtype=float)
+    wick_l20_a = lo_s.rolling(20, min_periods=1).min().to_numpy(dtype=float)
+    close_h20_a = cl_s.rolling(20, min_periods=1).max().to_numpy(dtype=float)
+    close_l20_a = cl_s.rolling(20, min_periods=1).min().to_numpy(dtype=float)
+    wick_l60_a = lo_s.rolling(60, min_periods=1).min().to_numpy(dtype=float)
+    ma20_a = work["ma20"].to_numpy(dtype=float)
+    vol_a_arr = pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    vol_ma_a = pd.to_numeric(work["vol_ma"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    atr_a = pd.to_numeric(work["atr20"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+
+    for i in range(n):
+        op, cl = float(opens[i]), float(closes[i])
+        hi, lo = float(highs[i]), float(lows[i])
+        x = xs[i]
+        is_halt = bool(halt_arr[i])
+        if is_halt:
+            continue
+
+        wick_h20 = float(wick_h20_a[i]) if np.isfinite(wick_h20_a[i]) else hi
+        wick_l20 = float(wick_l20_a[i]) if np.isfinite(wick_l20_a[i]) else lo
+        close_h20 = float(close_h20_a[i]) if np.isfinite(close_h20_a[i]) else cl
+        close_l20 = float(close_l20_a[i]) if np.isfinite(close_l20_a[i]) else cl
+        wick_l60 = float(wick_l60_a[i]) if np.isfinite(wick_l60_a[i]) else lo
+        ma20_i = float(ma20_a[i] or 0)
         bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
         hh, ll = close_h20, close_l20
         rsv = ((cl - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
@@ -5762,8 +5866,8 @@ def _paint_nav_on_axes(
         is_60l = lo <= wick_l60 * 1.001
         leave_h = was_20h and not is_20h
         leave_l = was_20l and not is_20l
-        vol_a = float(work["volume"].iloc[i] or 0) >= float(work["vol_ma"].iloc[i] or 1) * 2.0
-        atr = float(work["atr20"].iloc[i] or 0)
+        vol_a = float(vol_a_arr[i] or 0) >= float(vol_ma_a[i] or 1) * 2.0
+        atr = float(atr_a[i] or 0)
         vol_low = bool(cl > 0 and atr / cl < 0.018)
         warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
         near_h = not is_20h and hi >= wick_h20 * 0.985
@@ -6042,8 +6146,8 @@ def draw_from_ohlc(
     work = _nav_work_or_none(df, already_normalized)
     if work is None:
         return ""
-    # 畫圖才對開市日軸：缺列＝前收停價＋量0；週末／國定假不進軸
-    work = align_ohlc_to_tw_open_days(work)
+    # 畫圖才對開市日軸：缺列＝前收停價＋量0；週末／國定假不進軸（短快取）
+    work = align_ohlc_cached(work, str(stock_id or ""))
     if work is None or work.empty:
         return ""
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
@@ -6052,6 +6156,25 @@ def draw_from_ohlc(
         return ""
     if "is_halt" not in work.columns:
         work["is_halt"] = False
+    # 同檔同 as_of 短 memo（點導航鈕連按）
+    last_d = str(work["date"].iloc[-1])[:8]
+    last_c = 0.0
+    try:
+        last_c = float(work["close"].iloc[-1])
+    except Exception:
+        last_c = 0.0
+    memo_key = (
+        "nav180",
+        str(stock_id or ""),
+        last_d,
+        round(last_c, 4),
+        int(len(work)),
+        int(NAV_CHART_DPI),
+        bool(already_normalized),
+    )
+    hit = _lookup_render_memo_get(memo_key, save_path)
+    if hit:
+        return hit
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig, (ax1, ax_sig, ax2) = plt.subplots(
         3, 1, figsize=(12.8, 8.85), dpi=NAV_CHART_DPI, sharex=True,
@@ -6089,6 +6212,7 @@ def draw_from_ohlc(
     )
     plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
     plt.close()
+    _lookup_render_memo_put(memo_key, save_path)
     return save_path
 
 
