@@ -2529,9 +2529,9 @@ def _stock_action_lines(item: Dict[str, Any], tag: str, *, held: bool = False) -
             lines.append("不加碼")
         return lines
     if is_buy:
-        return ["可買", "點左邊選"]
+        return ["可買"]
     if str(tag or "").startswith("先機"):
-        return ["可看", "點左邊選"]
+        return ["可看"]
     return ["不買", "只觀察"]
 
 
@@ -2594,7 +2594,7 @@ def _rec_why(pick: Dict[str, Any], item: Dict[str, Any]) -> str:
     vs_s = f"、距20高 {_pct(float(vs20))}" if vs20 is not None else ""
     return (
         f"{field}佔比升還沒當第一（回測這型後10日漲停或≥8% {PRE_BUY_WIN_LABEL}）。"
-        f"{role}{vs_s}。這檔是黃金買點，點左邊選。"
+        f"{role}{vs_s}。這檔是黃金買點。"
     )
 
 
@@ -2876,7 +2876,6 @@ def dongzhu_hold_page(
     act_rows.append(f"<b>{_esc(verdict)}</b>")
     if buy:
         act_rows.append(_esc("可買"))
-        act_rows.append(_esc("點左邊選"))
     elif held:
         act_rows.append(_esc("不買"))
         act_rows.append(_esc("不加碼"))
@@ -3011,7 +3010,7 @@ def dongzhu_page(
     if recs:
         rec_rows.append(_esc("這型最落後次級兩到三檔"))
         rec_rows.append(_esc("不是單檔保證"))
-        rec_rows.append(_esc("點左邊選"))
+        rec_rows.append(_esc("點圖下鈕選檔"))
         rec_rows.append(_esc("剛好剛離零才標黃金買點"))
         rec_bits: List[str] = []
         for i, item in enumerate(recs, start=1):
