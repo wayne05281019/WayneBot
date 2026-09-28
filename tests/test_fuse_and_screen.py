@@ -1730,7 +1730,7 @@ class LookupCardTest(unittest.TestCase):
         from chips import fit_table_cols
         from wayne_navigator import _CARD, _text_w
 
-        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "法人超", "超比", "10日累"]
         col_vals = [
             ["8/31", "8/28"],
             ["1,234.00", "12.50"],

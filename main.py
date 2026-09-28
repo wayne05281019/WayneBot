@@ -854,6 +854,52 @@ def run_web():
                 logger.info("啟動清假資料：%s", stats)
             logger.info("背景：資料庫索引完成")
             try:
+                # 股→張修好後盤上仍可能留「股當張」殘值（例如 2724 自營 -382 股被畫成 -382 張）。
+                from chips import (
+                    backfill_chips,
+                    rebake_share_as_lot_chip_dates,
+                    scrub_share_as_lot_residue_offline,
+                )
+
+                n_zero = scrub_share_as_lot_residue_offline(get_db_path())
+                if n_zero:
+                    logger.warning("啟動籌碼股當張離線歸零 %s 列", n_zero)
+                bf = backfill_chips(get_db_path(), days=90)
+                logger.info("啟動法人近窗重抓（蓋股當張）：%s", bf)
+                rb = rebake_share_as_lot_chip_dates(get_db_path(), since_ymd="20260101")
+                logger.info("啟動法人殘值日重抓：%s", rb)
+            except Exception:
+                logger.exception("啟動法人近窗重抓失敗")
+            try:
+                import sqlite3
+
+                from emerging_quotes import sync_emerging_quotes
+                from import_health import MIN_EM
+
+                dbp = get_db_path()
+                conn = sqlite3.connect(dbp, timeout=8.0)
+                try:
+                    thin = [
+                        str(d)
+                        for d, n in conn.execute(
+                            """
+                            SELECT date, COUNT(*) FROM emerging_quotes
+                            WHERE date >= '20260801'
+                            GROUP BY date
+                            HAVING COUNT(*) < ?
+                            ORDER BY date
+                            """,
+                            (int(MIN_EM),),
+                        ).fetchall()
+                    ]
+                finally:
+                    conn.close()
+                for day in thin[-10:]:
+                    em = sync_emerging_quotes(dbp, cap=day)
+                    logger.info("啟動興櫃半套補齊 %s：%s", day, em)
+            except Exception:
+                logger.exception("啟動興櫃半套補齊失敗")
+            try:
                 from biaoke_archive import seed_biaoke_archive
 
                 n_bk = seed_biaoke_archive(get_db_path())

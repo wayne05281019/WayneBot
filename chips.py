@@ -8,7 +8,7 @@ import logging
 import os
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -193,7 +193,13 @@ def apply_chips_to_quotes(db_path: str, yyyymmdd: str, chips: Dict[str, Dict[str
         cur.execute(
             """UPDATE daily_quotes SET foreign_net=?, trust_net=?, dealer_net=?
                WHERE replace(date,'-','')=? AND stock_id=?""",
-            (c.get("foreign_net", 0), c.get("trust_net", 0), c.get("dealer_net", 0), day, sid),
+            (
+                int(c.get("foreign_net", 0) or 0),
+                int(c.get("trust_net", 0) or 0),
+                int(c.get("dealer_net", 0) or 0),
+                day,
+                sid,
+            ),
         )
         updated += cur.rowcount
     conn.commit()
@@ -282,20 +288,150 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
     return built[:limit]
 
 
+def _looks_like_share_as_lot(volume: int, three_net: int, *, vol_mult: int = 3) -> bool:
+    """舊寫法把 |股|<1000 原樣當張：合計約 50–999 且遠大於當日成交量。
+
+    vol_mult=3：掃描／重抓門檻。vol_mult=20：離線先歸零的嚴門檻（避免誤清真張數）。
+    """
+    three = abs(int(three_net or 0))
+    vol = int(volume or 0)
+    return 50 <= three <= 999 and three > max(vol, 1) * max(1, int(vol_mult))
+
+
+def dates_with_share_as_lot_residue(
+    db_path: str,
+    *,
+    since_ymd: str = "20260101",
+) -> List[str]:
+    """回傳仍有「股當張」列的交易日（上市＋上櫃 daily_quotes）。"""
+    path = db_path or get_db_path()
+    since = str(since_ymd or "20260101").replace("-", "")[:8]
+    if not path or not os.path.isfile(path):
+        return []
+    conn = sqlite3.connect(path, timeout=8.0)
+    try:
+        rows = conn.execute(
+            """
+            SELECT replace(date,'-',''), volume,
+                   COALESCE(foreign_net,0)+COALESCE(trust_net,0)+COALESCE(dealer_net,0)
+            FROM daily_quotes
+            WHERE replace(date,'-','') >= ?
+            """,
+            (since,),
+        ).fetchall()
+    finally:
+        conn.close()
+    days: List[str] = []
+    seen = set()
+    for d, vol, three in rows:
+        day = str(d or "").replace("-", "")[:8]
+        if len(day) != 8 or day in seen:
+            continue
+        if _looks_like_share_as_lot(int(vol or 0), int(three or 0)):
+            seen.add(day)
+            days.append(day)
+    days.sort()
+    return days
+
+
+def scrub_share_as_lot_residue_offline(db_path: str) -> int:
+    """離線先把「幾乎不可能是真張數」的法人欄歸零，避免話筒再秀 -382 張這種錯。
+
+    嚴門檻（合計 ≫ 量×20）。真張數近窗仍靠官方重抓覆寫。
+    """
+    path = db_path or get_db_path()
+    if not path or not os.path.isfile(path):
+        return 0
+    conn = sqlite3.connect(path, timeout=30.0)
+    n = 0
+    try:
+        rows = conn.execute(
+            """
+            SELECT rowid, volume,
+                   COALESCE(foreign_net,0)+COALESCE(trust_net,0)+COALESCE(dealer_net,0)
+            FROM daily_quotes
+            WHERE ABS(COALESCE(foreign_net,0))+ABS(COALESCE(trust_net,0))+ABS(COALESCE(dealer_net,0)) > 0
+            """
+        ).fetchall()
+        for rowid, vol, three in rows:
+            if not _looks_like_share_as_lot(int(vol or 0), int(three or 0), vol_mult=20):
+                continue
+            conn.execute(
+                """
+                UPDATE daily_quotes
+                SET foreign_net=0, trust_net=0, dealer_net=0
+                WHERE rowid=?
+                """,
+                (rowid,),
+            )
+            n += 1
+        if n:
+            conn.commit()
+    finally:
+        conn.close()
+    if n:
+        logger.warning("籌碼股當張殘值離線歸零 %s 列（待官方重抓覆寫）", n)
+    return n
+
+
+def rebake_share_as_lot_chip_dates(
+    db_path: str = None,
+    *,
+    since_ymd: str = "20260101",
+    sleep_s: float = 0.45,
+    max_dates: int = 120,
+) -> Dict[str, Any]:
+    """對仍有股當張殘值的交易日，整日重抓上市＋上櫃 T86 覆寫成張。"""
+    path = db_path or get_db_path()
+    days = dates_with_share_as_lot_residue(path, since_ymd=since_ymd)
+    if max_dates > 0:
+        days = days[-int(max_dates) :]
+    sess = requests.Session()
+    sess.headers.update(HEADERS)
+    total = 0
+    done: List[Tuple[str, int]] = []
+    for i, d in enumerate(days):
+        n = update_chips_for_date(path, d, sess)
+        total += n
+        done.append((d, n))
+        if i < len(days) - 1:
+            time.sleep(max(0.0, float(sleep_s)))
+    left = dates_with_share_as_lot_residue(path, since_ymd=since_ymd)
+    return {
+        "dates": len(days),
+        "updated_rows": total,
+        "detail": done[:12],
+        "still_residue_dates": len(left),
+    }
+
+
 def load_major_player_rows(db_path: str, stock_id: str, limit: int = 15, allow_fetch: bool = True) -> List[Dict[str, Any]]:
-    """讀籌碼列；近日全 0 且允許連網時才回補當日 T86。看這檔出圖不要連網，否則會卡住後面的圖。"""
+    """讀籌碼列；近日全 0、或列上仍像「股當張」殘值時，允許連網才回補 T86。
+
+    看這檔出圖不要連網（allow_fetch=False），否則會卡住後面的圖。
+    """
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
     rows = major_player_rows(path, sid, limit=limit)
     if allow_fetch and rows:
         recent = rows[:5]
-        if all(int(r.get("three_net") or 0) == 0 for r in recent):
+        need_latest = all(int(r.get("three_net") or 0) == 0 for r in recent)
+        stale_days = [
+            str(r.get("date") or "").replace("-", "")[:8]
+            for r in rows
+            if _looks_like_share_as_lot(int(r.get("volume") or 0), int(r.get("three_net") or 0))
+        ]
+        stale_days = [d for d in dict.fromkeys(stale_days) if len(d) == 8]
+        if need_latest or stale_days:
             try:
-                from quote_integrity import db_as_of_trading_date
+                if need_latest:
+                    from quote_integrity import db_as_of_trading_date
 
-                latest = db_as_of_trading_date(path)
-                if latest:
-                    update_chips_for_date(path, str(latest))
+                    latest = db_as_of_trading_date(path)
+                    if latest:
+                        update_chips_for_date(path, str(latest))
+                for day in stale_days[:8]:
+                    update_chips_for_date(path, day)
             except Exception as e:
                 logger.warning("即時回補籌碼失敗: %s", e)
             rows = major_player_rows(path, sid, limit=limit)
@@ -322,7 +458,7 @@ def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
     lines = [
         f"📊 <b>【三大法人買賣超】{title}</b>",
         "完整虛線格子見下一則圖（外資／投信／自營分欄，避免對不齊）。",
-        "買賣超＝三大法人合計（張）；超比＝合計／成交量。",
+        "買賣超＝本檔三大法人合計（張），不是成交量、不是季營收；超比＝法人合計／成交量。",
     ]
     return "\n".join(lines)
 
@@ -464,10 +600,10 @@ def render_chips_png(
                 fontproperties=_fp(10.4, "bold"), color="#C5D0E8", ha="right", va="center", zorder=3)
 
         y -= gap + sub_h
-        ax.text(pad_x + 0.4, y + sub_h / 2, "買賣超＝三大法人合計　超比＝合計／成交量　單位：張",
+        ax.text(pad_x + 0.4, y + sub_h / 2, "法人超＝本檔三大法人合計　超比＝法人／成交量　單位：張（不是季營收）",
                 fontproperties=_fp(10), color=C["ink_soft"], va="center", zorder=3)
 
-        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "法人超", "超比", "10日累"]
         numeric = {1, 2, 3, 4, 5, 6, 7, 8}
         table = []
         signed = []

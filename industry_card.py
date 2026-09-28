@@ -318,7 +318,13 @@ def _flow_lines(snap: Dict[str, Any]) -> List[str]:
     lines = [f"基準日：{as_s}"]
     if produced:
         lines.append(f"產出：{produced}")
-    lines.extend([f"法人合計：{sign}{three:,}張", overlay or flow_story])
+    lines.extend(
+        [
+            f"本鏈法人超：{sign}{three:,}張",
+            "同鏈加總張數，不是本檔成交量／不是季營收",
+            overlay or flow_story,
+        ]
+    )
     extra = str(snap.get("share_line") or "").strip()
     if extra and extra.rstrip("。") not in (overlay or flow_story):
         lines.append(extra.rstrip("。"))
