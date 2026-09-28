@@ -416,6 +416,13 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
     if not os.getenv("PYTEST_CURRENT_TEST"):
         stats.update(_snapshot_leave_zero_picks(market_db, day))
         stats.update(_snapshot_pressure_support(market_db, day))
+    # 全鈕缺縫骨架：資金輪動／個人本／AI倉／飆大點名。失敗不擋。
+    try:
+        from button_silent_verify import snapshot_all_button_gaps
+
+        stats.update(snapshot_all_button_gaps(market_db, day))
+    except Exception:
+        pass
     return stats
 
 
