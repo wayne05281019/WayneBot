@@ -5325,7 +5325,19 @@ def overlay_nav_marks_on_zone(
     for i in range(n):
         x = xs[i]
         if bool(halt.iloc[i]):
-            # 無成交：不准畫灰假帶／假訊號；量欄由呼叫端標 ×
+            # 無成交：量能列留灰底佔槽，不准挖洞；K／量柱由呼叫端畫
+            if ax_sig is not None:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (x - 0.42, 0.05),
+                        0.84,
+                        0.9,
+                        facecolor="#eceff1",
+                        edgecolor="#ffffff",
+                        lw=0.15,
+                        zorder=2,
+                    )
+                )
             continue
         cl = float(work["close"].iloc[i])
         hi = float(work["high"].iloc[i])
@@ -5823,19 +5835,22 @@ def _paint_nav_on_axes(
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(work["volume"])
-    ax2.bar(xs, vol_heights, color=vol_colors, width=0.72, zorder=3)
-    # 缺官方量：灰 ×，不准補假量柱
-    miss_i = np.flatnonzero(vol_missing)
-    if miss_i.size:
-        ax2.scatter(
-            xs[miss_i],
-            np.full(miss_i.shape, vol_ylim * 0.04),
-            marker="x",
-            s=18 if compact else 28,
-            c="#9e9e9e",
-            linewidths=0.9,
+    vol_vals = pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    # 正量先畫；停價／0 量／缺量第二遍強制貼底灰短柱佔槽，不准挖洞
+    zero_i = np.flatnonzero(halt.to_numpy(dtype=bool) | (vol_vals <= 0) | vol_missing)
+    floor_h = max(float(vol_ylim) * 0.22, 1e-9)
+    vol_draw = np.asarray(vol_heights, dtype=float).copy()
+    vol_draw[zero_i] = 0.0
+    ax2.bar(xs, vol_draw, color=vol_colors, width=0.72, zorder=3)
+    if zero_i.size:
+        ax2.bar(
+            xs[zero_i],
+            np.full(zero_i.shape, floor_h),
+            facecolor="#546e7a",
+            edgecolor="#37474f",
+            width=0.78,
             zorder=5,
-            clip_on=False,
+            linewidth=0.7,
         )
     ax2.set_ylim(0, vol_ylim * 1.14)  # 上方留空給「量 xxx張」，不准壓量柱頂
     ax2.yaxis.tick_right()
@@ -5910,7 +5925,7 @@ def draw_from_ohlc(
     no_trade_note = ""
     if halt_n > 0:
         no_trade_note = (
-            f"　無成交／停價 {halt_n} 日＝灰K＋量0"
+            f"　無成交／停價 {halt_n} 日＝灰短K＋量柱貼底（不准挖洞）"
             + (f"（其中開市缺列補前收 {fill_n}）" if fill_n else "")
             + "，非假行情"
         )

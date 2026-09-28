@@ -163,7 +163,7 @@ def test_vol_zone_with_nav_signals_flag(tmp_path):
 
 
 def test_vol_zone_layout_k_first_no_fake_bars():
-    """中間 K 為主：標題列含圖例、壓撐圖內角、爆大量貼柱頂、無灰假柱。"""
+    """中間 K 為主：標題列含圖例、壓撐圖內角、爆大量貼柱頂；停價不准挖洞。"""
     import inspect
 
     from vol_zone_chart import _paint_volume_zone
@@ -179,7 +179,12 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "0.012" in src and "0.975" in src and "0.025" in src
     assert "left=0.16" not in src
     assert "xytext=(0, 8)" in src
-    assert "stub_h" not in src
+    # 停價＝灰短 K＋量柱貼底（第二遍強制畫），不准 × 挖洞、不准編振幅假柱
+    assert 'color="#9e9e9e"' in src
+    assert "floor_h" in src
+    assert 'color="#546e7a"' in src
+    assert "marker=\"x\"" not in src and "marker='x'" not in src
+    assert "不准挖洞" in src
     # 介紹與圖例之間不加分隔線
     assert "ax_head.axhline" not in src
     leg = inspect.getsource(_draw_nav_legend)

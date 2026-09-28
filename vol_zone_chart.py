@@ -863,6 +863,12 @@ def _paint_volume_zone(
         if ref > 0:
             ax1.axhline(ref, color="#6a1b9a", linewidth=0.9, linestyle=(0, (3, 2)), alpha=0.65, zorder=2)
 
+    # 停價日也要可見 K／量槽，不准挖洞；對齊導航灰短橫，不准編振幅假柱
+    _span_est = max(
+        float(view["high"].max()) - float(view["low"].min()),
+        float(hi - lo) if hi > lo else 0.0,
+        1.0,
+    )
     for i in range(n):
         op = float(view["open"].iloc[i])
         cl = float(view["close"].iloc[i])
@@ -873,7 +879,21 @@ def _paint_volume_zone(
         up = _candle_up(cl, prev, op)
         x = xs[i]
         if bool(halt.iloc[i]):
-            # 無成交停價：不准畫灰假 K／假柱；軸位保留，量欄用 × 標缺
+            ax1.plot(
+                [x - 0.38, x + 0.38],
+                [cl, cl],
+                color="#9e9e9e",
+                linewidth=1.7,
+                zorder=4,
+                solid_capstyle="round",
+            )
+            ax1.plot(
+                [x, x],
+                [cl - _span_est * 0.004, cl + _span_est * 0.004],
+                color="#9e9e9e",
+                linewidth=1.2,
+                zorder=4,
+            )
             continue
         color = _UP if up else _DN
         ax1.plot([x, x], [l, h], color=color, linewidth=1.2, zorder=3, solid_capstyle="round")
@@ -1020,18 +1040,37 @@ def _paint_volume_zone(
         else np.asarray(halt, dtype=bool)
     )
     vol_vals = pd.to_numeric(view["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
-    # 停價／真 0 量：不畫灰假柱，只標 ×
-    zero_i = np.flatnonzero((~vol_missing) & (halt_arr | (vol_vals <= 0)))
-    ax2.bar(xs, vol_heights, color=vol_colors, width=0.70, zorder=2, linewidth=0)
+    # 正量先畫；停價／0 量／缺量第二遍強制貼底灰短柱佔槽，不准挖洞
+    zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | vol_missing)
+    floor_h = max(float(vol_ylim) * 0.22, 1e-9)
+    vol_draw = np.asarray(vol_heights, dtype=float).copy()
+    vol_draw[zero_i] = 0.0  # 正量列先留空，灰短柱第二遍畫
+    ax2.bar(xs, vol_draw, color=vol_colors, width=0.70, zorder=2, linewidth=0)
+    if zero_i.size:
+        ax2.bar(
+            xs[zero_i],
+            np.full(zero_i.shape, floor_h),
+            facecolor="#546e7a",
+            edgecolor="#37474f",
+            width=0.78,
+            zorder=5,
+            linewidth=0.7,
+        )
     spike_h = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
-    ax2.bar(
-        [spike_i],
-        [spike_h],
-        color=_SPIKE,
-        width=0.78,
-        zorder=4,
-        linewidth=0,
-    )
+    if (
+        spike_i < len(halt_arr)
+        and not bool(halt_arr[spike_i])
+        and float(vol_vals[spike_i]) > 0
+        and spike_h > 0
+    ):
+        ax2.bar(
+            [spike_i],
+            [spike_h],
+            color=_SPIKE,
+            width=0.78,
+            zorder=4,
+            linewidth=0,
+        )
     # 爆大量標貼柱頂略抬，不准飛高、不准壓到量柱本身
     ax2.set_ylim(0, max(vol_ylim * 1.18, spike_h * 1.22 if spike_h > 0 else vol_ylim * 1.18))
     ax2.annotate(
@@ -1053,18 +1092,6 @@ def _paint_volume_zone(
             alpha=0.95,
         ),
     )
-    mark_i = np.unique(np.concatenate([np.flatnonzero(vol_missing), zero_i]))
-    if mark_i.size:
-        ax2.scatter(
-            xs[mark_i],
-            np.full(mark_i.shape, vol_ylim * 0.05),
-            marker="x",
-            s=32,
-            c="#78909c",
-            linewidths=1.0,
-            zorder=5,
-            clip_on=False,
-        )
     ax2.yaxis.tick_right()
     ax2.tick_params(labelsize=9)
     ax2.set_xlim(-0.8, n - 0.2)
@@ -1170,10 +1197,10 @@ def _paint_volume_zone(
         ax1.set_title(title, fontproperties=_fp(12, "bold"), pad=14, color=_TEXT)
     if with_nav_signals:
         foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
-        foot2 = "高觸壓、收未過＝測壓（非買訊）。箭頭／殘影＝導航同一套。無成交不畫假K／假量（×）。"
+        foot2 = "高觸壓、收未過＝測壓（非買訊）。箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
     else:
         foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
-        foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交不畫假K／假量（×）。導航圖另按。"
+        foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
     fig.text(
         0.5,
         0.022,
