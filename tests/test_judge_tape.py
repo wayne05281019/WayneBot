@@ -445,7 +445,7 @@ def test_snapshot_outer_and_market_without_yahoo(tmp_path):
 
 def test_agents_silent_record_is_rank_three():
     text = Path("AGENTS.md").read_text(encoding="utf-8")
-    assert "默默落檔（2026-09-21 鎖死）" in text
+    assert "默默落檔（2026-09-21 鎖死" in text
     assert "沒按也一樣" in text
     assert "佐證同時留（數字，不是每檔截圖）" in text
     assert "每檔每天 K 圖 PNG" in text
@@ -458,10 +458,16 @@ def test_agents_silent_record_is_rank_three():
     assert "空名單／空代號不算有記" in text
     assert "對後續判斷／對質有幫助的官方收才凍" in text
     assert "對質結果要講" not in text
+    assert "1→13 的名次" in text
+    assert "13. 靜默對質贏了就換並再生下一版" in text
+    assert "## 13. 靜默對質贏了就換並再生下一版" in text
+    assert "同 PR／同件" in text or "同件必須再生下一版" in text
     i3 = text.find("## 3. 能量化就直接量化")
     i4 = text.find("## 4. 不准假資料")
     i_silent = text.find("### 默默落檔")
+    i13 = text.find("## 13. 靜默對質贏了就換並再生下一版")
     assert 0 < i3 < i_silent < i4
+    assert i13 > i4
 
 
 def test_empty_list_is_not_a_recorded_day(tmp_path):
