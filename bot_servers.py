@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 上市／上櫃／興櫃一律介紹圖＋高低溫度卡一次兩張、再送大量區專圖（非買訊）；點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
-- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
+- 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -378,6 +378,14 @@ MENU_BTN_LEAVE_DONGZHU_ALIASES = (
     "退出洞燭先機",
     "跳出洞燭先機",
 )
+MENU_BTN_PRESSURE = "壓撐觀察"
+MENU_BTN_PRESSURE_ALIASES = (
+    MENU_BTN_PRESSURE,
+    "壓撐",
+    "壓力支撐",
+    "壓力觀察",
+    "撐壓觀察",
+)
 MENU_BTN_LEAVE_ZERO = "剛脫離零"
 MENU_BTN_LEAVE_ZERO_ALIASES = (
     MENU_BTN_LEAVE_ZERO,
@@ -438,6 +446,7 @@ MENU_ROW1 = (
 MENU_ROW2 = (
     "當沖",
     "隔日沖",
+    MENU_BTN_PRESSURE,
     MENU_BTN_AI,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
@@ -470,7 +479,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v28：第一排「大盤」改「台股大盤」。
 # v29：下排「剛脫離零」改「獲利為零」；進去先出獲利 0；下方鍵盤左到右脫離1／2／3。上排「資金」改「資金輪動」。
 # v30：下排改回「剛脫離零」＝昨獲利貼零、今離開 0。子鍵獲利為零／脫離1／2／3取消。
-MENU_LAYOUT_VERSION = "30"
+# v31：下排「隔日沖」後加「壓撐觀察」＝上六下七；三標籤自選，只觀察不是買訊。
+MENU_LAYOUT_VERSION = "31"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -834,7 +844,7 @@ class WayneTelegramBot:
         return
 
     def _reply_menu(self, uid: str = ""):
-        """兩排各六格；下排最右洞燭先機。偉權與哥哥同一套，沒有精簡。"""
+        """上六下七；下排隔日沖後壓撐觀察，最右洞燭先機。偉權與哥哥同一套，沒有精簡。"""
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
         try:
@@ -918,6 +928,407 @@ class WayneTelegramBot:
     def _leave_zero_reply_menu(self, uid: str = ""):
         """子鍵已取消；剛脫離零用主選單兩排。"""
         return self._reply_menu(uid)
+
+    def _pressure_tag_keyboard(self, selected: str = ""):
+        """壓撐觀察：三種標籤使用者自選（Inline）。"""
+        from pressure_support_watch import TAG_LABELS, TAG_ORDER
+
+        row = []
+        for tag in TAG_ORDER:
+            label = TAG_LABELS[tag]
+            mark = "·" if selected and selected == tag else ""
+            row.append(
+                InlineKeyboardButton(
+                    f"{mark}{label}" if mark else label,
+                    callback_data=f"ps:{tag}",
+                )
+            )
+        return InlineKeyboardMarkup([row])
+
+    def _pressure_pick_row(self, code: str, name: str = "", tag: str = ""):
+        """點股票＝一次三張（壓力區／高低卡／籌碼）；不是一般查股兩張＋大量區。"""
+        from tg_layout import stock_btn_label
+
+        c = str(code or "").strip()[:6]
+        t = str(tag or "").strip()[:16]
+        label = stock_btn_label(c, name or "")
+        cb = f"psk:{c}:{t}" if t else f"psk:{c}"
+        if len(cb.encode("utf-8")) > 64:
+            cb = f"psk:{c}"
+        return [
+            InlineKeyboardButton(label, callback_data=cb),
+            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+        ]
+
+    def _pressure_hub_keyboard(self, code: str, *, em: bool = False):
+        """三張之後圖下鈕：介紹／產業／導航／營收／K線自選，不要一次全塞。"""
+        c = str(code or "").strip()[:6]
+        k_url = ""
+        try:
+            from stock_links import kline_page_url
+
+            k_url = _http_url(kline_page_url(c, getattr(self, "db_path", None)))
+        except Exception:
+            k_url = ""
+        if em:
+            top = []
+            if k_url:
+                top.append(InlineKeyboardButton("K線", url=k_url))
+            top.append(InlineKeyboardButton("導航圖", callback_data=f"g:{c}"))
+            return InlineKeyboardMarkup(
+                [
+                    top[:3],
+                    [
+                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                        InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                    ],
+                ]
+            )
+        row1 = [
+            InlineKeyboardButton("介紹圖", callback_data=f"k:{c}"),
+            InlineKeyboardButton("產業", callback_data=f"n:{c}"),
+            InlineKeyboardButton("導航圖", callback_data=f"g:{c}"),
+        ]
+        row2 = []
+        if k_url:
+            row2.append(InlineKeyboardButton("K線", url=k_url))
+        try:
+            from universe import is_etf_asset
+
+            if not is_etf_asset(stock_id=c):
+                row2.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+        except Exception:
+            row2.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+        row2.extend(
+            [
+                InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+            ]
+        )
+        return InlineKeyboardMarkup([row1, row2[:3] if len(row2) > 3 else row2])
+
+    def _pressure_section_keyboard(self, picks=None, selected: str = ""):
+        rows = []
+        for pair in list(picks or [])[:MAX_PICK_INLINE_ROWS]:
+            if isinstance(pair, (list, tuple)):
+                code = str((pair[0] if pair else "") or "").strip()
+                name = str((pair[1] if len(pair) > 1 else "") or "")
+            else:
+                code = str(pair or "").strip()
+                name = ""
+            if code:
+                rows.append(self._pressure_pick_row(code, name, selected))
+        tag_row = self._pressure_tag_keyboard(selected).inline_keyboard[0]
+        rows.append(tag_row)
+        return InlineKeyboardMarkup(rows)
+
+    async def _show_pressure_hub(self, message, uid: str = "") -> None:
+        """進壓撐觀察先選標籤；不改黃金買點。"""
+        uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
+        await self._enter_main_menu(message, uid)
+        body = (
+            "<b>壓撐觀察</b>\n"
+            "<i>接大量壓力區框選。三種標籤自選，只觀察，不是買訊。"
+            "不准當進場、不改黃金買點。</i>\n"
+            "選標籤後先出壓力區圖（含導航箭頭／量能訊號）。"
+            "點股票一次三張：壓力區／高低溫度卡／籌碼；介紹／產業／導航圖下自選。"
+        )
+        await message.reply_html(
+            body,
+            reply_markup=self._pressure_tag_keyboard(),
+            disable_web_page_preview=True,
+        )
+
+    async def _run_pressure_support(self, message, tag: str) -> None:
+        from pressure_support_watch import TAG_SUBTITLES, normalize_tag, tag_label
+
+        tag = normalize_tag(tag)
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        actor = self._actor_key(message, uid=uid)
+        if not hasattr(self, "_trade_running"):
+            self._trade_running = set()
+        if actor in self._trade_running:
+            await message.reply_text(
+                "壓撐觀察進行中，請稍候完成後再按。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        if not tag:
+            await self._show_pressure_hub(message, uid)
+            return
+        self._trade_running.add(actor)
+        wait_h = (None, None, None)
+        label = tag_label(tag) or "壓撐觀察"
+        try:
+            await self._enter_main_menu(message, uid)
+            wait_h = await self._start_plain_wait(
+                message,
+                text_fn=lambda s: self._wait_bubble(
+                    "壓撐觀察進行中",
+                    s,
+                    now=f"掃{label}",
+                    rest="渲壓力區圖",
+                    fill_sec=30.0,
+                ),
+            )
+            try:
+                rows = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: self.screener.screen_pressure_support(tag)
+                    ),
+                    timeout=75.0,
+                )
+            except asyncio.TimeoutError:
+                await message.reply_text(
+                    "⚠️ 壓撐觀察查詢逾時。請稍後再按一次；若持續發生請回報。",
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
+            await self._stop_plain_wait(*wait_h)
+            wait_h = (None, None, None)
+            subtitle = TAG_SUBTITLES.get(tag, "只觀察，不是買訊。")
+            head = (
+                f"<b>壓撐觀察・{html_escape(label)}</b>\n"
+                f"<i>{html_escape(subtitle)}</i>\n"
+                "<i>以下先出壓力區圖（含導航指標）。點股名一次三張。</i>"
+            )
+            if not rows:
+                body = head + "\n<i>最近完整收沒有符合這標籤的檔。</i>"
+                await message.reply_html(
+                    body,
+                    reply_markup=self._pressure_tag_keyboard(tag),
+                    disable_web_page_preview=True,
+                )
+                return
+            await message.reply_html(head, disable_web_page_preview=True)
+            # 先出壓力區圖（含導航箭頭／量能）；每檔一張
+            from vol_zone_chart import render_volume_zone_result
+
+            sent = 0
+            for r in rows[:MAX_PICK_INLINE_ROWS]:
+                code = str(r.get("code") or r.get("stock_id") or "").strip()
+                name = str(r.get("name") or r.get("stock_name") or "")
+                if not code:
+                    continue
+                out = self._scratch_chart_path(
+                    self.charts_dir, code, f"ps_{tag}", uid
+                )
+
+                def _render(_c=code, _n=name, _p=out):
+                    return render_volume_zone_result(
+                        _c,
+                        _n,
+                        self.db_path,
+                        _p,
+                        with_nav_signals=True,
+                    )
+
+                try:
+                    path, cap = await asyncio.wait_for(
+                        asyncio.to_thread(_render), timeout=35.0
+                    )
+                except Exception:
+                    logger.exception("壓撐壓力區圖失敗 code=%s", code)
+                    path, cap = "", ""
+                kb = InlineKeyboardMarkup(
+                    [self._pressure_pick_row(code, name, tag)]
+                )
+                if path and os.path.isfile(path):
+                    try:
+                        send_path = self._prepare_lookup_album_photo(path)
+                        caption = (cap or f"{code} {name}　{label}（只觀察，不是買訊）")[
+                            :900
+                        ]
+                        with open(send_path, "rb") as f:
+                            await message.reply_photo(
+                                photo=f, caption=caption, reply_markup=kb
+                            )
+                        sent += 1
+                        continue
+                    except Exception:
+                        logger.exception("壓撐壓力區圖送出失敗 code=%s", code)
+                await message.reply_html(
+                    f"<b>{html_escape(code)} {html_escape(name)}</b>　"
+                    f"{html_escape(label)}\n<i>壓力區圖暫無法出，仍可點檔看三張。</i>",
+                    reply_markup=kb,
+                    disable_web_page_preview=True,
+                )
+            await message.reply_html(
+                f"<i>共 {sent}/{len(rows[:MAX_PICK_INLINE_ROWS])} 張壓力區圖。"
+                "換標籤按下面三鈕。</i>",
+                reply_markup=self._pressure_tag_keyboard(tag),
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            logger.exception("壓撐觀察查詢失敗")
+            await message.reply_text(
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
+            )
+        finally:
+            self._trade_running.discard(actor)
+            await self._stop_plain_wait(*wait_h)
+
+    async def _send_pressure_stock_trio(self, message, code: str, tag: str = "") -> None:
+        """點股票一次三張：①壓力區（含導航指標）②高低溫度卡 ③籌碼。"""
+        from vol_zone_chart import render_volume_zone_result
+        from wayne_navigator import NavigatorEngine, render_decision_card_png
+
+        code = str(code or "").strip()
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        del tag
+        if not code:
+            return
+        hits = lookup_stocks(self.db_path, code)
+        is_em = self._hit_is_emerging(code, hits)
+        self._remember_card(uid, code)
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "壓撐三張進行中",
+                s,
+                now="壓力區",
+                rest="高低卡＋籌碼",
+                fill_sec=35.0,
+            ),
+        )
+        hub = self._pressure_hub_keyboard(code, em=is_em)
+        try:
+            name = ""
+            if hits:
+                name = str(hits[0].get("stock_name") or "")
+
+            def _build_card():
+                engine = NavigatorEngine(self.db_path)
+                card = engine.get_decision_card(
+                    code, lookback=20, merge_live=False, live_quote=None
+                )
+                if isinstance(card, dict):
+                    try:
+                        from broker_points import attach_main_cost
+
+                        attach_main_cost(card, self.db_path, fetch=False)
+                    except Exception:
+                        pass
+                    card.pop("_ohlc", None)
+                return card
+
+            card = {}
+            try:
+                card = await asyncio.wait_for(
+                    asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT
+                )
+            except Exception:
+                logger.exception("壓撐高低卡失敗 code=%s", code)
+                card = {}
+            if not isinstance(card, dict) or card.get("error"):
+                card = {}
+            name = _stock_caption_name(card, code) if card else (name or code)
+            vol_path = self._scratch_chart_path(
+                self.charts_dir, code, "ps_trio_vz", uid
+            )
+            card_path = self._scratch_chart_path(
+                self.charts_dir, code, "ps_trio_card", uid
+            )
+            chips_path = self._scratch_chart_path(
+                self.charts_dir, code, "ps_trio_chips", uid
+            )
+
+            def _vz():
+                return render_volume_zone_result(
+                    code,
+                    name,
+                    self.db_path,
+                    vol_path,
+                    card=card or None,
+                    with_nav_signals=True,
+                )
+
+            def _card_png():
+                if not card:
+                    return ""
+                return render_decision_card_png(card, card_path) or ""
+
+            def _chips():
+                if is_em:
+                    return ""
+                return generate_chips_image(code, self.db_path, chips_path) or ""
+
+            vz_f = asyncio.create_task(asyncio.to_thread(_vz))
+            card_f = asyncio.create_task(asyncio.to_thread(_card_png))
+            chips_f = asyncio.create_task(asyncio.to_thread(_chips))
+            try:
+                vz_path, vz_cap = await asyncio.wait_for(vz_f, timeout=40.0)
+            except Exception:
+                vz_path, vz_cap = "", ""
+            try:
+                cpath = await asyncio.wait_for(card_f, timeout=_LOOKUP_PNG_TIMEOUT)
+            except Exception:
+                cpath = ""
+            try:
+                chip_img = await asyncio.wait_for(chips_f, timeout=25.0)
+            except Exception:
+                chip_img = ""
+            await self._stop_plain_wait(*wait_h)
+            wait_h = (None, None, None)
+            if vz_path and os.path.isfile(vz_path):
+                try:
+                    send_path = self._prepare_lookup_album_photo(vz_path)
+                    with open(send_path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f,
+                            caption=(vz_cap or f"{code} 壓力區（只觀察，不是買訊）")[:900],
+                        )
+                except Exception:
+                    logger.exception("壓撐三張・壓力區送出失敗")
+            else:
+                await message.reply_text(f"{code} 壓力區圖暫無法出。")
+            if cpath and os.path.isfile(cpath):
+                try:
+                    send_path = self._prepare_lookup_album_photo(cpath)
+                    with open(send_path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f, caption=f"{name}　高低溫度卡"
+                        )
+                except Exception:
+                    logger.exception("壓撐三張・高低卡送出失敗")
+            else:
+                await message.reply_text(f"{code} 高低溫度卡暫無法出。")
+            if chip_img and os.path.isfile(chip_img):
+                try:
+                    send_path = self._prepare_lookup_album_photo(chip_img)
+                    with open(send_path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f,
+                            caption="籌碼（張）",
+                            reply_markup=hub,
+                        )
+                except Exception:
+                    await message.reply_text("籌碼圖送出失敗", reply_markup=hub)
+            else:
+                note = "興櫃無三大法人籌碼圖。" if is_em else "查無籌碼。"
+                await message.reply_text(note, reply_markup=hub)
+        except Exception:
+            logger.exception("壓撐三張失敗 code=%s", code)
+            await message.reply_text(PHONE_BUSY, reply_markup=self._reply_menu(uid))
+        finally:
+            await self._stop_plain_wait(*wait_h)
+
+    async def pressure_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(update, "effective_user", None), "id", "")
+            or ""
+        )
+        await self._show_pressure_hub(update.message, uid)
 
     async def _show_leave_zero_keys(self, message, uid: str) -> None:
         del message, uid
@@ -4407,6 +4818,9 @@ class WayneTelegramBot:
         if kind == "overnight":
             await self.overnight_cmd(upd, ctx)
             return
+        if kind == "pressure":
+            await self.pressure_cmd(upd, ctx)
+            return
         if kind == "leave_zero":
             await self.leave_zero_cmd(upd, ctx)
             return
@@ -4689,6 +5103,11 @@ class WayneTelegramBot:
             logger.info("主選單：隔日沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.overnight_cmd(update, context)
+            return
+        if text in MENU_BTN_PRESSURE_ALIASES:
+            logger.info("主選單：壓撐觀察 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.pressure_cmd(update, context)
             return
         if text in MENU_BTN_LEAVE_ZERO_ALIASES or leave_zero_pick_from_text(text):
             logger.info("主選單：剛脫離零 uid=%s", uid)
@@ -6141,6 +6560,26 @@ class WayneTelegramBot:
                 pass
             await self._run_leave_zero_now(q.message)
             return
+        if data.startswith("ps:"):
+            tag = data[3:].strip()
+            try:
+                await q.answer("壓撐觀察")
+            except Exception:
+                pass
+            await self._run_pressure_support(q.message, tag)
+            return
+        if data.startswith("psk:"):
+            rest = data[4:].strip()
+            parts = rest.split(":", 1)
+            code = (parts[0] if parts else "").strip()
+            tag = (parts[1] if len(parts) > 1 else "").strip()
+            try:
+                await q.answer("壓力區三張")
+            except Exception:
+                pass
+            if code:
+                await self._send_pressure_stock_trio(q.message, code, tag)
+            return
         if data.startswith("rw:"):
             await self._remove_watch_clicked(q, data[3:].strip())
             return
@@ -6493,6 +6932,7 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("screen", self._wrap_cmd(self.screen_cmd)))
         app.add_handler(CommandHandler("daytrade", self._wrap_cmd(self.daytrade_cmd)))
         app.add_handler(CommandHandler("overnight", self._wrap_cmd(self.overnight_cmd)))
+        app.add_handler(CommandHandler("pressure", self._wrap_cmd(self.pressure_cmd)))
         app.add_handler(CommandHandler("portfolio", self._wrap_cmd(self.portfolio_cmd)))
         app.add_handler(CommandHandler("watch", self._wrap_cmd(self.watch_cmd)))
         app.add_handler(CommandHandler("flow", self._wrap_cmd(self.flow_cmd)))

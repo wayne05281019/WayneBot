@@ -415,6 +415,28 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
     stats["us"] = _snapshot_us_lead(market_db, day)
     if not os.getenv("PYTEST_CURRENT_TEST"):
         stats.update(_snapshot_leave_zero_picks(market_db, day))
+        stats.update(_snapshot_pressure_support(market_db, day))
+    return stats
+
+
+def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
+    """壓撐觀察沒按也落檔：三標籤各自一列。不是買訊、不改黃金買點。"""
+    stats: Dict[str, int] = {}
+    try:
+        from pressure_support_watch import TAG_ORDER, screen_pressure_support
+    except Exception:
+        return stats
+    for tag in TAG_ORDER:
+        key = f"pressure_{tag}"
+        try:
+            rows = screen_pressure_support(market_db, tag, as_of=day)
+            stats[key] = remember_rows(
+                market_db, key, rows or [], as_of=day, pick=tag, src="radar"
+            )
+        except Exception:
+            stats[key] = remember_rows(
+                market_db, key, [], as_of=day, pick=tag, src="radar"
+            )
     return stats
 
 

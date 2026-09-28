@@ -18,6 +18,7 @@ MENU_BUTTONS = [
     ("海選", "screen_cmd"),
     (MENU_BTN_AI, "_send_ai_desk_view"),
     ("隔日沖", "overnight_cmd"),
+    ("壓撐觀察", "pressure_cmd"),
     (MENU_BTN_FLOW, "flow_cmd"),
     ("資金", "flow_cmd"),
     (MENU_BTN_STREAK, "streak_cmd"),

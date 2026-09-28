@@ -696,8 +696,12 @@ def render_volume_zone_result(
     lookback: int = VOL_ZONE_LOOKBACK,
     bars: int = VOL_ZONE_BARS,
     card: Optional[Dict[str, Any]] = None,
+    with_nav_signals: bool = False,
 ) -> tuple[str, str]:
-    """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。"""
+    """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
+
+    with_nav_signals＝疊導航箭頭／量能訊號（壓撐觀察用；仍非買訊）。
+    """
     del already_normalized
     pack = prepare_volume_zone(
         stock_id, stock_name, db_path, save_path, df, lookback=lookback, bars=bars
@@ -728,6 +732,8 @@ def render_volume_zone_result(
             pack["n"],
             pack["ex_events"],
             pack["out"],
+            with_nav_signals=with_nav_signals,
+            card=card,
         )
     return str(path or ""), str(cap or "")
 
@@ -742,6 +748,8 @@ def render_volume_zone_png(
     already_normalized: bool = False,
     lookback: int = VOL_ZONE_LOOKBACK,
     bars: int = VOL_ZONE_BARS,
+    with_nav_signals: bool = False,
+    card: Optional[Dict[str, Any]] = None,
 ) -> str:
     """畫大量區專圖。有 db 就只吃官方原柱；失敗回空字串。"""
     path, _cap = render_volume_zone_result(
@@ -753,23 +761,53 @@ def render_volume_zone_png(
         already_normalized=already_normalized,
         lookback=lookback,
         bars=bars,
+        card=card,
+        with_nav_signals=with_nav_signals,
     )
     return path
 
 
 def _paint_volume_zone(
-    sid, name, view, zone, spike_i, spike_date, hi, lo, halt, xs, n, ex_events, out
+    sid,
+    name,
+    view,
+    zone,
+    spike_i,
+    spike_date,
+    hi,
+    lo,
+    halt,
+    xs,
+    n,
+    ex_events,
+    out,
+    *,
+    with_nav_signals: bool = False,
+    card: Optional[Dict[str, Any]] = None,
 ):
     spike_md = _md(spike_date)
-    fig, (ax1, ax2) = plt.subplots(
-        2,
-        1,
-        figsize=(11.2, 7.2),
-        dpi=VOL_ZONE_DPI,
-        sharex=True,
-        gridspec_kw=dict(height_ratios=(3.35, 1.05), hspace=0.06),
-        facecolor=_BG,
-    )
+    if with_nav_signals:
+        fig, (ax1, ax_sig, ax2) = plt.subplots(
+            3,
+            1,
+            figsize=(11.2, 8.4),
+            dpi=VOL_ZONE_DPI,
+            sharex=True,
+            gridspec_kw=dict(height_ratios=(3.2, 0.42, 1.0), hspace=0.05),
+            facecolor=_BG,
+        )
+        ax_sig.set_facecolor(_BG)
+    else:
+        fig, (ax1, ax2) = plt.subplots(
+            2,
+            1,
+            figsize=(11.2, 7.2),
+            dpi=VOL_ZONE_DPI,
+            sharex=True,
+            gridspec_kw=dict(height_ratios=(3.35, 1.05), hspace=0.06),
+            facecolor=_BG,
+        )
+        ax_sig = None
     ax1.set_facecolor(_BG)
     ax2.set_facecolor(_BG)
 
@@ -919,6 +957,18 @@ def _paint_volume_zone(
         bbox=dict(boxstyle="round,pad=0.38", facecolor="#ffffff", edgecolor=_HOLD, linewidth=1.15),
     )
 
+    if with_nav_signals:
+        # 確保有 dt 給疊加參考；導航箭頭／量能列與導航圖同一套
+        if "dt" not in view.columns:
+            view = view.copy()
+            view["dt"] = pd.to_datetime(view["date"].astype(str), format="%Y%m%d", errors="coerce")
+        try:
+            from wayne_navigator import overlay_nav_marks_on_zone
+
+            overlay_nav_marks_on_zone(ax1, ax_sig, view, card=card, draw_legend=True)
+        except Exception:
+            logger.exception("大量區疊導航指標失敗 sid=%s", sid)
+
     vol_colors = []
     for i in range(n):
         prev = float(view["close"].iloc[i - 1]) if i else None
@@ -1012,26 +1062,41 @@ def _paint_volume_zone(
                 ex_title += f" {_fmt_price(amt)}元"
             ex_title += "（原柱不還原）"
     title = (
-        f"{sid} {name}　大量區專圖（非買訊・{src_note}）\n"
+        f"{sid} {name}　大量區專圖（非買訊・{src_note}"
+        + ("・含導航指標" if with_nav_signals else "")
+        + "）\n"
         f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
         f"最近 {_md(last.get('date'))} "
         f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
         f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
         f"{ex_title}"
     )
-    ax1.set_title(title, fontproperties=_fp(11, "bold"), pad=14, color=_TEXT)
+    ax1.set_title(
+        title,
+        fontproperties=_fp(11, "bold"),
+        pad=58 if with_nav_signals else 14,
+        color=_TEXT,
+    )
+    foot = (
+        "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
+        "高觸壓、收未過＝測壓，不是站上、不是買訊。"
+    )
+    if with_nav_signals:
+        foot += "上下箭頭／量能列＝導航同一套指標（圖例在上，不准互壓）。"
+    else:
+        foot += "開市日軸連續；無成交＝灰K＋量0（前收停價，非假行情）。導航圖另按。"
     fig.text(
         0.5,
         0.012,
-        "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
-        "高觸壓、收未過＝測壓，不是站上、不是買訊。"
-        "開市日軸連續；無成交＝灰K＋量0（前收停價，非假行情）。導航圖另按。",
+        foot,
         ha="center",
         va="bottom",
         fontproperties=_fp(9, "bold"),
         color=_MUTED,
     )
-    fig.subplots_adjust(left=0.04, right=0.96, top=0.88, bottom=0.10)
+    fig.subplots_adjust(
+        left=0.04, right=0.96, top=0.82 if with_nav_signals else 0.88, bottom=0.10
+    )
     fig.savefig(
         out,
         format="jpeg",

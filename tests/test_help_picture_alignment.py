@@ -10,6 +10,7 @@ from bot_servers import (
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_DONGZHU,
+    MENU_BTN_PRESSURE,
     MENU_BTN_STREAK,
     MENU_LAYOUT_VERSION,
     WayneTelegramBot,
@@ -17,7 +18,7 @@ from bot_servers import (
 from picture_guide import PAGE_SLUGS, page_copy_blob
 
 ROW1 = ["海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-ROW2_LABELS = ["當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
+ROW2_LABELS = ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
 GUIDE_PAGE_ORDER = (
     "cover",
     "menu",
@@ -39,11 +40,12 @@ def test_reply_keyboard_matches_picture_copy():
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ROW1
     assert row2 == ROW2_LABELS
-    assert row2[5] == MENU_BTN_DONGZHU
-    assert MENU_LAYOUT_VERSION == "30"
+    assert row2[2] == MENU_BTN_PRESSURE
+    assert row2[-1] == MENU_BTN_DONGZHU
+    assert MENU_LAYOUT_VERSION == "31"
     blob = page_copy_blob()
     assert "海選　持股　觀察　飆大　台股大盤　資金輪動" in blob
-    assert "當沖　隔日沖　AI倉　連買區　剛脫離零　洞燭先機" in blob
+    assert "當沖　隔日沖　壓撐觀察　AI倉　連買區　剛脫離零　洞燭先機" in blob
     assert "一張圖卡" in blob
     assert "講人話" not in blob
 

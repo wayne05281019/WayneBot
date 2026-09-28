@@ -613,6 +613,26 @@ class ScreeningEngine:
         target_date = target_date or self.get_latest_trading_date()
         return self._screen_trade_bucket_from_cache("overnight", target_date)
 
+    def screen_pressure_support(
+        self, tag: str, target_date: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """主選單壓撐觀察：三標籤自選；只觀察不是買訊。官方收、未收不當收。"""
+        from pressure_support_watch import screen_pressure_support as _screen
+
+        as_of = str(target_date or self.get_latest_trading_date() or "").replace("-", "")[:8]
+        rows = _screen(self.db_path, tag, as_of=as_of)
+        bot_rows = [self._row_for_bot(x) for x in rows]
+        try:
+            _remember_live_judges(
+                self.db_path,
+                f"pressure_{str(tag or '').strip()}",
+                bot_rows,
+                as_of=as_of,
+            )
+        except Exception:
+            pass
+        return bot_rows
+
     def _load_close_frames(
         self, codes: Sequence[str], as_of: str
     ) -> Dict[str, pd.DataFrame]:

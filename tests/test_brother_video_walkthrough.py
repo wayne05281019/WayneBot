@@ -16,6 +16,7 @@ from bot_servers import (
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
     MENU_BTN_DONGZHU,
+    MENU_BTN_PRESSURE,
     MENU_BTN_STREAK,
     WayneTelegramBot,
 )
@@ -30,6 +31,7 @@ MENU_BUTTONS = [
     ("海選", "screen_cmd"),
     (MENU_BTN_AI, "_send_ai_desk_view"),
     ("隔日沖", "overnight_cmd"),
+    ("壓撐觀察", "pressure_cmd"),
     ("資金輪動", "flow_cmd"),
     ("資金", "flow_cmd"),
     (MENU_BTN_STREAK, "streak_cmd"),
@@ -91,13 +93,13 @@ def _bot():
     return bot
 
 
-def test_twelve_menu_buttons_exist_in_order():
+def test_menu_buttons_exist_in_order_six_plus_seven():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ["海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-    assert row2 == ["當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
+    assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
 
 
 def test_help_script_ready_for_brother_video():

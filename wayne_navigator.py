@@ -5225,6 +5225,220 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
     return buy_i, sell_i
 
 
+def overlay_nav_marks_on_zone(
+    ax1,
+    ax_sig,
+    work: pd.DataFrame,
+    *,
+    card: Optional[dict] = None,
+    draw_legend: bool = True,
+) -> None:
+    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號。不准重畫蠟燭、不准當買訊。"""
+    if work is None or getattr(work, "empty", True) or ax1 is None:
+        return
+    n = len(work)
+    xs = np.arange(n, dtype=float)
+    halt = (
+        work["is_halt"].fillna(False).astype(bool)
+        if "is_halt" in work.columns
+        else pd.Series(False, index=work.index)
+    )
+    hi_s = work["high"].where(~halt)
+    lo_s = work["low"].where(~halt)
+    cl_s = work["close"].where(~halt)
+    work = work.copy()
+    work["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    work["vol_ma"] = work["volume"].where(~halt).rolling(20, min_periods=1).mean()
+    tr = (work["high"] - work["low"]).where(~halt)
+    work["atr20"] = tr.rolling(20, min_periods=5).mean()
+    span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
+    arrow_h = span * 0.048
+    arrow_gap = span * 0.034
+    # 抬高／壓低軸：箭頭＋圖例不壓 K／壓撐標
+    ymin, ymax = ax1.get_ylim()
+    chip_head = span * 0.14
+    ax1.set_ylim(
+        min(ymin, float(lo_s.min()) - arrow_gap - arrow_h - span * 0.03),
+        max(ymax, float(hi_s.max()) + arrow_gap + arrow_h + chip_head),
+    )
+    was_20h = was_20l = was_60l = was_near_h = was_near_l = False
+    last_dn_i = last_up_i = -9
+    from decision_card_signals import candle_up_taiwan
+
+    if ax_sig is not None:
+        ax_sig.set_facecolor("#ffffff")
+        ax_sig.set_yticks([])
+        ax_sig.set_ylim(0, 1)
+        ax_sig.set_xlim(-0.8, n - 0.2)
+        ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
+        ax_sig.tick_params(axis="x", labelbottom=False, length=0)
+
+    for i in range(n):
+        if bool(halt.iloc[i]):
+            if ax_sig is not None:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (xs[i] - 0.42, 0.05),
+                        0.84,
+                        0.9,
+                        facecolor="#eceff1",
+                        edgecolor="#ffffff",
+                        lw=0.15,
+                        zorder=2,
+                    )
+                )
+            continue
+        cl = float(work["close"].iloc[i])
+        hi = float(work["high"].iloc[i])
+        lo = float(work["low"].iloc[i])
+        wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
+        wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
+        close_h20 = float(cl_s.iloc[max(0, i - 19) : i + 1].max())
+        close_l20 = float(cl_s.iloc[max(0, i - 19) : i + 1].min())
+        wick_l60 = float(lo_s.iloc[max(0, i - 59) : i + 1].min())
+        ma20_i = float(work["ma20"].iloc[i] or 0)
+        bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
+        hh, ll = close_h20, close_l20
+        rsv = ((cl - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
+        is_20h = hi >= wick_h20 * 0.999 or cl >= close_h20 * 0.998
+        is_20l = lo <= wick_l20 * 1.001 or cl <= close_l20 * 1.002
+        is_60l = lo <= wick_l60 * 1.001
+        leave_h = was_20h and not is_20h
+        leave_l = was_20l and not is_20l
+        vol_a = float(work["volume"].iloc[i] or 0) >= float(work["vol_ma"].iloc[i] or 1) * 2.0
+        atr = float(work["atr20"].iloc[i] or 0)
+        vol_low = bool(cl > 0 and atr / cl < 0.018)
+        warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
+        near_h = not is_20h and hi >= wick_h20 * 0.985
+        near_l = not is_20l and lo <= wick_l20 * 1.015
+        dn_pick = None
+        if is_20h and not was_20h:
+            dn_pick = ("h20", 1.0, False)
+        elif leave_h:
+            dn_pick = ("h20_leave", 1.06, False)
+        elif near_h and not was_near_h:
+            dn_pick = ("h20_near", 0.72, True)
+        up_pick = None
+        if is_60l and not was_60l:
+            up_pick = ("l60", 1.06, False)
+        elif is_20l and not was_20l:
+            up_pick = ("l20", 1.0, False)
+        elif leave_l:
+            up_pick = ("l20_leave", 1.06, False)
+        elif near_l and not was_near_l:
+            up_pick = ("l20_near", 0.72, True)
+        if dn_pick and dn_pick[0] in ("h20_near", "h20_leave") and i - last_dn_i < 2:
+            dn_pick = None
+        if up_pick and up_pick[0] in ("l20_near", "l20_leave") and i - last_up_i < 2:
+            up_pick = None
+        if dn_pick:
+            kind, sc, hollow = dn_pick
+            pastel, ink = _NAV_TONE[kind]
+            _nav_arrow(
+                ax1,
+                hi + arrow_gap,
+                xs[i],
+                down=True,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * sc * (0.78 if hollow else 1.0),
+                hw=0.72 * sc * (0.78 if hollow else 1.0),
+                hollow=hollow,
+                z=7,
+            )
+            last_dn_i = i
+        if up_pick:
+            kind, sc, hollow = up_pick
+            pastel, ink = _NAV_TONE[kind]
+            _nav_arrow(
+                ax1,
+                lo - arrow_gap,
+                xs[i],
+                down=False,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * sc * (0.78 if hollow else 1.0),
+                hw=0.72 * sc * (0.78 if hollow else 1.0),
+                hollow=hollow,
+                z=7,
+            )
+            last_up_i = i
+        if ax_sig is not None:
+            if vol_low:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (xs[i] - 0.42, 0.05),
+                        0.84,
+                        0.9,
+                        facecolor=_NAV_SIG["vol_low_band"],
+                        edgecolor="none",
+                        zorder=2,
+                    )
+                )
+            if warn:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (xs[i] - 0.42, 0.05),
+                        0.84,
+                        0.9,
+                        facecolor=_NAV_SIG["warn_band"],
+                        edgecolor="none",
+                        alpha=0.62,
+                        zorder=1,
+                    )
+                )
+            if warn:
+                _sig_arrow(ax_sig, xs[i], 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.05, z=5)
+            if vol_a:
+                _sig_arrow(ax_sig, xs[i], 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.22, z=6)
+            elif vol_low:
+                _sig_arrow(ax_sig, xs[i], 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=0.78, z=4)
+        was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
+        was_near_h, was_near_l = near_h, near_l
+        _ = candle_up_taiwan  # keep import used for parity; candles already drawn
+
+    # SMA／月季線：跟導航同一套參考線
+    h20 = float(hi_s.tail(20).max())
+    l20 = float(lo_s.tail(20).min())
+    h60 = float(hi_s.tail(60).max())
+    l60 = float(lo_s.tail(60).min())
+    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.6, zorder=4)
+    ax1.axhline(h60, color="#f48fb1", linewidth=1.2, zorder=2)
+    ax1.axhline(l60, color="#81c784", linewidth=1.2, zorder=2)
+    ax1.axhline(h20, color="#f8bbd0", linewidth=0.95, linestyle="--", zorder=2)
+    ax1.axhline(l20, color="#80deea", linewidth=0.95, linestyle="--", zorder=2)
+
+    buy_i, sell_i = _nav_trade_marks(work, card)
+    if buy_i is not None:
+        i = int(buy_i)
+        _nav_arrow(
+            ax1,
+            float(work["low"].iloc[i]) - arrow_gap,
+            xs[i],
+            down=False,
+            face=_NAV_TRADE_BUY,
+            ink=_NAV_TRADE_BUY,
+            arrow_h=arrow_h * 1.12,
+            hw=0.88,
+            z=8,
+        )
+    if sell_i is not None:
+        i = int(sell_i)
+        _nav_arrow(
+            ax1,
+            float(work["high"].iloc[i]) + arrow_gap,
+            xs[i],
+            down=True,
+            face=_NAV_TRADE_SELL,
+            ink=_NAV_TRADE_SELL,
+            arrow_h=arrow_h * 1.12,
+            hw=0.88,
+            z=8,
+        )
+    if draw_legend:
+        _draw_nav_legend(ax1)
+
+
 def _paint_nav_on_axes(
     ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str,
     *, compact: bool = False, card: Optional[dict] = None,
