@@ -2,9 +2,9 @@
 
 排程、抓文、彙整、建檔時戳、話筒說明，全部用 `Asia/Taipei`。美股欄位本身是美國時區的，標清楚來源，不准把台股排程改成 UTC。
 
-下面 **1→13 的名次**才是最高指令。後面各節是做法與已落地細節，**不准再寫「壓過後面所有最高指令」去搶順位**。名次高的壓過名次低的。所有之後的指令、排程、動作都照這份走。
+下面 **1→14 的名次**才是最高指令。後面各節是做法與已落地細節，**不准再寫「壓過後面所有最高指令」去搶順位**。名次高的壓過名次低的。所有之後的指令、排程、動作都照這份走。
 
-## 最高指令序（2026-09-19 鎖死；2026-09-28 補 13）
+## 最高指令序（2026-09-19 鎖死；2026-09-28 補 13；2026-09-29 補 14）
 
 1. 只用 Cursor Models
 2. 最低耗能、最高效能、最正確答案
@@ -19,6 +19,7 @@
 11. 該合就合
 12. 飆大規則
 13. 靜默對質贏了就換並再生下一版
+14. 開市日必寄海選早報（兩支話筒）
 
 ---
 
@@ -181,6 +182,15 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 - **對話：** 過程／％不准報；只有明確優化狀態可講一句（n 夠不夠、有沒有贏現況、要不要／已經換那一條）。
 - **通則 vs 已鎖特例：** 通則＝過閘就換並再生。壓撐觀察：第一次優化贏現況 → 直接改話筒；飆大概念軌過關也不自動上，除非另令。
 
+## 14. 開市日必寄海選早報（2026-09-29 鎖死）
+
+台股**開市日**台北 06:30 海選／早報**一定要推到偉權與哥哥兩支話筒**。錯過＝做錯，發現就立刻補寄，不准隔天再說。名次 14 壓不過 1–13，但排程／休市鍵／skip 邏輯都要照做。
+
+- **只休市才准不寄：** 週末、國定假、北市停班才跳過 06:30／12:45。開市日不准因連假、deploy、boot、假 success、GHA 算過而略過真推播。
+- **休市紀錄不准擋開市日：** 休市 skip 只准寫 `screen-closed-{休市日}`；不准把 `screen-{as_of}` 標 success 讓開市日 `skip_if_done` 誤以為已寄。已誤標的要降成 computed 再寄。
+- **兩人全寄：** 白名單＝偉權（`TELEGRAM_CHAT_ID`）＋哥哥 `8772209416`（`WAYNE_FAMILY_CHAT_IDS`；2026-09-29 使用者鎖進最高指令）。早報／海選推播兩人都要收到；只寄一人＝沒做完。
+- **推播在 Render 常駐：** GHA `WAYNE_SCREEN_NOTIFY=0` 只算名單不寄。核對以話筒實際收到＋`pipeline_runs` 真寄 success 為準。
+
 ---
 
 ## 回掃節奏（2026-09-04 起）
@@ -195,7 +205,7 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 
 - **Render 永久碟**：`wayne-data` 5GB，掛在 `/opt/render/project/src/data`（對到 `data/wayne_market.db`）。
 - **飆大 overlay**：公開文寫進同一顆 `wayne_market.db` 的 `biaoke_posts`，不進 `PRIVATE_USER_TABLES`，不進海選。**融合／匯入唯一底圖＝雲端硬碟那一千七百多則**（`archive_1709.json.gz`，`n >= 1700`），[Drive 資料夾](https://drive.google.com/drive/folders/1z4iNeBhO2-r1tlOLmv_vS-oNaAMaatXG)。**不准**用 `corpus_index.json` 520 篇當融合起點或寫回那檔。沒 1709 包就空，不要退回 520。開機 `seed_biaoke_archive`，盤中 ingest 也先補缺再 overlay 新文。社團 20 篇與社團 72 篇是雲端另外兩檔，只進 `archive_club.json.gz` 對價建檔／內化，**不進公開庫、不進話筒原文**。按飆大＝對話（無裡面選單、按鈕兩個字沒有圈）。樓下凡是他自己回的都收（含回在別人留言裡、回文裡再回）；路人正文不當他的判斷。樓下自回走同學會公開訪客 grant 打 Comments JSON；Render `CMONEY_AUTH_TOKEN` 只當備援（不要進 git、不要貼聊天）。
-- **私人 Bot 白名單**：只認 Render 環境變數裡的兩個 Telegram uid（`TELEGRAM_CHAT_ID`＝偉權，`WAYNE_FAMILY_CHAT_IDS` 或逗號後＝哥哥）。真人 id 不准寫進 git。陌生人按開始回「這是私人 Bot」然後不理，也不進 `tg_users`。早報／AI 倉排程只寄白名單。沒設任何 uid＝關門。
+- **私人 Bot 白名單**：兩個 Telegram uid——`TELEGRAM_CHAT_ID`＝偉權；哥哥 **`8772209416`**（最高指令 §14 鎖死，環境變數 `WAYNE_FAMILY_CHAT_IDS`／逗號後也要有）。陌生人按開始回「這是私人 Bot」然後不理，也不進 `tg_users`。早報／AI 倉／開市日海選只寄白名單兩人。沒設任何 uid＝關門。其他人 id 仍不准寫進 git。
 - **公開 Release zip**：只准日 K／財報這類公開行情。GHA 上傳前 `strip_private_user_data` 清持股／觀察／成交／AI 倉／`tg_users`。不要把 Render 正式碟整顆上傳。
 - **Token 當密碼**：正式 `TELEGRAM_BOT_TOKEN` 只放 Render 環境變數。不准貼聊天、不准進 git、不准給 GHA 注入。GitHub 上那顆已 401＝作廢。Cursor My Secrets 給新代理人寄訊，同樣不要貼出來。
 - **私人備份**：行情可用公開 zip 救災。持股／日記／AI 倉公開 zip 救不回。白名單帳號打「備份」會拿到自己那份 JSON；或本機 `scripts/backup_private_user_data.py`。拷到自己電腦或加密雲端，不要上傳 GitHub。

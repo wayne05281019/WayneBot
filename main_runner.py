@@ -195,6 +195,46 @@ class MainRunner:
         finally:
             conn.close()
 
+    def demote_holiday_skip_morning_screens(self) -> int:
+        """休市日曾把 screen-{as_of} 標 success（tw closed skip），開市日會誤略過真早報。
+
+        連假後基準日不變（例中秋＋教師節仍 screen-20260924），必須降成 computed 才能補寄。
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT run_date, notes
+                FROM pipeline_runs
+                WHERE run_date LIKE 'screen-%'
+                  AND run_date NOT LIKE 'screen-closed-%'
+                  AND status = 'success'
+                  AND notes LIKE '%tw closed%skip morning%'
+                """
+            ).fetchall()
+            n = 0
+            for run_date, notes in rows:
+                as_of = str(run_date or "").replace("screen-", "", 1)
+                if not (as_of.isdigit() and len(as_of) == 8):
+                    continue
+                note = str(notes or "")
+                if "holiday-skip-demote" not in note:
+                    note = (note + " holiday-skip-demote").strip()
+                conn.execute(
+                    """
+                    UPDATE pipeline_runs
+                    SET status = 'computed', notes = ?
+                    WHERE run_date = ? AND status = 'success'
+                    """,
+                    (note, run_date),
+                )
+                n += 1
+            if n:
+                conn.commit()
+            return n
+        finally:
+            conn.close()
+
     @staticmethod
     def _pipeline_finished_tw_ymd(finished_at) -> str:
         """pipeline finished_at → 台北 YYYYMMDD；解析失敗回空字串。"""
@@ -1284,9 +1324,9 @@ class MainRunner:
             logger.warning("今早北市停班略過：%s", e)
         closed = closed_tw_session(db_path=self.db_path)
         if closed:
-            from trading_calendar import morning_screen_pipeline_key
-
-            key = morning_screen_pipeline_key(self.db_path)
+            # 休市紀錄用獨立鍵，不准寫進 screen-{as_of}，否則連假後開市日 skip_if_done 誤擋。
+            ymd = str(closed.get("ymd") or "").strip() or "none"
+            key = f"screen-closed-{ymd}"
             logger.info(
                 "今日台股休市 %s %s，不寄今早海選（%s）",
                 closed.get("ymd"),
@@ -1304,6 +1344,12 @@ class MainRunner:
             demoted = self.demote_premature_morning_screens()
             if demoted:
                 logger.info("過早海選 success 已降級 %s 筆，改為可重寄", demoted)
+            holiday_demoted = self.demote_holiday_skip_morning_screens()
+            if holiday_demoted:
+                logger.info(
+                    "休市 skip 誤標的 screen-* success 已降級 %s 筆，改為可重寄",
+                    holiday_demoted,
+                )
 
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
