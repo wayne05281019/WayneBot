@@ -22,7 +22,18 @@ jobs:
       - name: 安裝依賴
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.lock pytest
+          # PyPI 偶發回 versions: none；整段重跑才會再打 index
+          ok=0
+          for i in 1 2 3 4 5; do
+            if pip install --retries 10 --timeout 60 -r requirements.lock pytest; then
+              ok=1
+              break
+            fi
+            echo "pip install failed attempt=$i; retrying..."
+            sleep $((i * 4))
+          done
+          test "$ok" = 1
+          python -c "import kiwisolver, matplotlib; print('deps ok', kiwisolver.__version__)"
 
       - name: 不需資料庫的全部測試
         run: python -m pytest -q --strict-markers -m "not production_db"
@@ -42,7 +53,17 @@ jobs:
       - name: 安裝依賴
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.lock pytest
+          ok=0
+          for i in 1 2 3 4 5; do
+            if pip install --retries 10 --timeout 60 -r requirements.lock pytest; then
+              ok=1
+              break
+            fi
+            echo "pip install failed attempt=$i; retrying..."
+            sleep $((i * 4))
+          done
+          test "$ok" = 1
+          python -c "import kiwisolver, matplotlib; print('deps ok', kiwisolver.__version__)"
 
       - name: 從 Releases 下載核心資料庫
         run: |

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""正向雙人長時壓力：偉權＋哥哥同時按十二顆、寫庫、疊排程雷達。
+"""正向雙人長時壓力：偉權＋哥哥同時按上六下七主鈕、寫庫、疊排程雷達。
 
 與既有 dual_user_concurrent／persona_grid／cross_feature 不同：
 - 真 sqlite（不是只 Mock pending）
 - 觀察鈕的 user_watchlist 必須出現在 06:30 自選雷達
-- 執行緒寫庫 ＋ asyncio 十二顆 ＋ MainRunner 家人廣播同時跑
+- 執行緒寫庫 ＋ asyncio 主鈕輪按 ＋ MainRunner 家人廣播同時跑
 - 其中一人行情列壞掉，不能擋住另一人的早報附帶雷達
 """
 from __future__ import annotations
@@ -27,6 +27,7 @@ from bot_servers import (
     MENU_BTN_FLOW,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
+    MENU_BTN_PRESSURE,
     MENU_BTN_STREAK,
     MENU_FULL_ALIASES,
     MENU_ROW1,
@@ -152,6 +153,7 @@ def _bot(db: str) -> WayneTelegramBot:
     bot.flow_cmd = _bind_hit(hits, "資金")
     bot.daytrade_cmd = _bind_hit(hits, "當沖")
     bot.overnight_cmd = _bind_hit(hits, "隔日沖")
+    bot.pressure_cmd = _bind_hit(hits, "壓撐觀察")
     bot.leave_zero_cmd = _bind_hit(hits, "剛脫離零")
     bot.dongzhu_cmd = _bind_hit(hits, MENU_BTN_DONGZHU)
     bot.streak_cmd = _bind_hit(hits, "連買區")
@@ -326,6 +328,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_FLOW,
         "當沖",
         "隔日沖",
+        MENU_BTN_PRESSURE,
         MENU_BTN_AI,
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
@@ -355,7 +358,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("海選", "持股", "觀察", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
+        for need in ("海選", "持股", "觀察", "飆客", "大盤", "資金", "當沖", "隔日沖", "壓撐觀察", "AI倉", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

@@ -4834,57 +4834,87 @@ def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = 
     )
 
 
-def _draw_nav_legend(ax1) -> None:
-    """圖例全部在座標軸上方（bbox 底邊 > 1），不准壓進 K 區。畫過的標都要進圖例。"""
+def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> None:
+    """圖例。預設在座標軸上方（bbox 底邊 > 1），不准壓進 K 區。
+
+    zone_mode＝大量區；panel＝畫在獨立標題列內（跟股票介紹同一塊，不准跟 K 之間留大空白）。
+    """
+    ms_z = 14 if panel else (11 if zone_mode else 10)
     row1 = [
-        (_nav_legend_key("h20", "v"), "20高"),
-        (_nav_legend_key("h20_leave", "v"), "20高脫離"),
-        (_nav_legend_key("l20", "^"), "20低"),
-        (_nav_legend_key("l20_leave", "^"), "20低脫離"),
-        (_nav_legend_key("l60", "^"), "60低"),
-        (_nav_legend_key("h20_near", "v", ms=10, hollow=True), "接近高（空心）"),
-        (_nav_legend_key("l20_near", "^", ms=10, hollow=True), "接近低（空心）"),
-        (_nav_legend_key("ghost", "^", ms=10, alpha=0.45), "殘影（仍貼）"),
+        (_nav_legend_key("h20", "v", ms=ms_z + 2), "20高"),
+        (_nav_legend_key("h20_leave", "v", ms=ms_z + 2), "20高脫離"),
+        (_nav_legend_key("l20", "^", ms=ms_z + 2), "20低"),
+        (_nav_legend_key("l20_leave", "^", ms=ms_z + 2), "20低脫離"),
+        (_nav_legend_key("l60", "^", ms=ms_z + 2), "60低"),
+        (_nav_legend_key("h20_near", "v", ms=ms_z, hollow=True), "接近高（空心）"),
+        (_nav_legend_key("l20_near", "^", ms=ms_z, hollow=True), "接近低（空心）"),
+        (_nav_legend_key("ghost", "^", ms=ms_z, alpha=0.45), "殘影（仍貼）"),
     ]
     row2 = [
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_a"],
-                markeredgecolor=_NAV_SIG["vol_a"], markeredgewidth=0.0, markersize=12), "量能異常"),
+                markeredgecolor=_NAV_SIG["vol_a"], markeredgewidth=0.0, markersize=ms_z + 2), "量能異常"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["warn"],
-                markeredgecolor=_NAV_SIG["warn"], markeredgewidth=0.0, markersize=12), "警告"),
+                markeredgecolor=_NAV_SIG["warn"], markeredgewidth=0.0, markersize=ms_z + 2), "警告"),
         (patches.Patch(facecolor=_NAV_SIG["warn_band"], edgecolor="#e57373", linewidth=0.6), "警告底"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_low"],
-                markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=11), "月波動低"),
+                markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 2), "月波動低"),
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=11), "買點↑藍"),
+                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=ms_z + 2), "買點↑藍"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
-                markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=11), "賣點↓橙"),
+                markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
     row3 = [
-        (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
-        (Line2D([], [], color="#f48fb1", lw=1.75), "季高點線"),
-        (Line2D([], [], color="#81c784", lw=1.75), "季低點線"),
-        (Line2D([], [], color="#f8bbd0", lw=1.15, linestyle="--"), "月高點線"),
-        (Line2D([], [], color="#80deea", lw=1.15, linestyle="--"), "月低點線"),
+        (Line2D([], [], color="#f9a825", lw=2.6 if panel else 2.25), "SMA(20)"),
+        (Line2D([], [], color="#f48fb1", lw=2.1 if panel else 1.75), "季高點線"),
+        (Line2D([], [], color="#81c784", lw=2.1 if panel else 1.75), "季低點線"),
+        (Line2D([], [], color="#f8bbd0", lw=1.45 if panel else 1.15, linestyle="--"), "月高點線"),
+        (Line2D([], [], color="#80deea", lw=1.45 if panel else 1.15, linestyle="--"), "月低點線"),
     ]
     kw = dict(
-        loc="lower left",
-        handlelength=1.05,
-        handletextpad=0.28,
-        columnspacing=0.65,
-        borderpad=0.28,
-        labelspacing=0.16,
+        loc="upper left" if panel else "lower left",
+        handlelength=1.25 if panel else 1.05,
+        handletextpad=0.32 if panel else 0.28,
+        columnspacing=0.42 if panel else (0.48 if zone_mode else 0.65),
+        borderpad=0.22 if panel else (0.22 if zone_mode else 0.28),
+        labelspacing=0.10 if panel else (0.10 if zone_mode else 0.16),
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(8.0, "bold"),
+        prop=_fp(10.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
-    # loc=lower left → bbox_to_anchor 是圖例底邊；三列底邊都 > 1，整塊在軸上方
-    rows = (
-        (row1, 1.168, 8),
-        (row2, 1.100, 7),
-        (row3, 1.032, 5),
-    )
+    if panel:
+        # 標題列圖例收成兩行：上＝原第二行（量能／買賣）；
+        # 下左＝原第一行（箭頭）、下右＝原第三行（均線）；無分隔線，圖例能大就大
+        # (handles, labels, x, y, ncol)
+        panel_rows = (
+            (row2, 0.0, 0.56, 7),
+            (row1, 0.0, 0.26, 8),
+            (row3, 0.60, 0.26, 5),
+        )
+        artists = []
+        for row, x, y, ncol in panel_rows:
+            leg = ax1.legend(
+                [h for h, _ in row], [t for _, t in row],
+                bbox_to_anchor=(x, y), ncol=ncol, **kw,
+            )
+            leg.set_zorder(10)
+            artists.append(leg)
+        for leg in artists[:-1]:
+            ax1.add_artist(leg)
+        return
+    if zone_mode:
+        rows = (
+            (row1, 1.095, 8),
+            (row2, 1.055, 7),
+            (row3, 1.015, 5),
+        )
+    else:
+        rows = (
+            (row1, 1.168, 8),
+            (row2, 1.100, 7),
+            (row3, 1.032, 5),
+        )
     for i, (row, y, ncol) in enumerate(rows):
         leg = ax1.legend(
             [h for h, _ in row], [t for _, t in row],
@@ -5225,6 +5255,275 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
     return buy_i, sell_i
 
 
+def overlay_nav_marks_on_zone(
+    ax1,
+    ax_sig,
+    work: pd.DataFrame,
+    *,
+    card: Optional[dict] = None,
+    draw_legend: bool = True,
+) -> None:
+    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。"""
+    if work is None or getattr(work, "empty", True) or ax1 is None:
+        return
+    n = len(work)
+    xs = np.arange(n, dtype=float)
+    halt = (
+        work["is_halt"].fillna(False).astype(bool)
+        if "is_halt" in work.columns
+        else pd.Series(False, index=work.index)
+    )
+    hi_s = work["high"].where(~halt)
+    lo_s = work["low"].where(~halt)
+    cl_s = work["close"].where(~halt)
+    h20 = float(hi_s.tail(20).max())
+    l20 = float(lo_s.tail(20).min())
+    h60 = float(hi_s.tail(60).max())
+    l60 = float(lo_s.tail(60).min())
+    work = work.copy()
+    work["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    work["vol_ma"] = work["volume"].where(~halt).rolling(20, min_periods=1).mean()
+    tr = (work["high"] - work["low"]).where(~halt)
+    work["atr20"] = tr.rolling(20, min_periods=5).mean()
+    span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
+    arrow_h = span * 0.048
+    arrow_gap = span * 0.034
+    arrow_hw = 0.72
+    # 抬高／壓低軸：箭頭不壓 K；上方只留一小截，不准大抬把 K 壓扁
+    ymin, ymax = ax1.get_ylim()
+    chip_head = span * 0.08
+    ax1.set_ylim(
+        min(ymin, float(lo_s.min()) - arrow_gap - arrow_h - span * 0.025),
+        max(ymax, float(hi_s.max()) + arrow_gap + arrow_h + chip_head),
+    )
+    was_20h = was_20l = was_60l = was_near_h = was_near_l = False
+    last_dn_i = last_up_i = -9
+
+    if ax_sig is not None:
+        ax_sig.set_facecolor("#ffffff")
+        ax_sig.set_yticks([])
+        ax_sig.set_ylim(0, 1)
+        ax_sig.set_xlim(-0.8, n - 0.2)
+        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺
+        ax_sig.set_ylabel("")
+        ax_sig.text(
+            -0.045,
+            0.5,
+            "量能\n訊號",
+            transform=ax_sig.transAxes,
+            ha="right",
+            va="center",
+            rotation=0,
+            fontproperties=_fp(8.5, "bold"),
+            color="#37474f",
+            clip_on=False,
+            linespacing=1.15,
+            zorder=8,
+        )
+        ax_sig.tick_params(axis="x", labelbottom=False, length=0)
+
+    for i in range(n):
+        x = xs[i]
+        if bool(halt.iloc[i]):
+            # 無成交：量能列留灰底佔槽，不准挖洞；K／量柱由呼叫端畫
+            if ax_sig is not None:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (x - 0.42, 0.05),
+                        0.84,
+                        0.9,
+                        facecolor="#eceff1",
+                        edgecolor="#ffffff",
+                        lw=0.15,
+                        zorder=2,
+                    )
+                )
+            continue
+        cl = float(work["close"].iloc[i])
+        hi = float(work["high"].iloc[i])
+        lo = float(work["low"].iloc[i])
+        wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
+        wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
+        close_h20 = float(cl_s.iloc[max(0, i - 19) : i + 1].max())
+        close_l20 = float(cl_s.iloc[max(0, i - 19) : i + 1].min())
+        wick_l60 = float(lo_s.iloc[max(0, i - 59) : i + 1].min())
+        ma20_i = float(work["ma20"].iloc[i] or 0)
+        bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
+        hh, ll = close_h20, close_l20
+        rsv = ((cl - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
+        is_20h = hi >= wick_h20 * 0.999 or cl >= close_h20 * 0.998
+        is_20l = lo <= wick_l20 * 1.001 or cl <= close_l20 * 1.002
+        is_60l = lo <= wick_l60 * 1.001
+        leave_h = was_20h and not is_20h
+        leave_l = was_20l and not is_20l
+        vol_a = float(work["volume"].iloc[i] or 0) >= float(work["vol_ma"].iloc[i] or 1) * 2.0
+        atr = float(work["atr20"].iloc[i] or 0)
+        vol_low = bool(cl > 0 and atr / cl < 0.018)
+        warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
+        near_h = not is_20h and hi >= wick_h20 * 0.985
+        near_l = not is_20l and lo <= wick_l20 * 1.015
+        dn_pick = None
+        if is_20h and not was_20h:
+            dn_pick = ("h20", 1.0, False)
+        elif leave_h:
+            dn_pick = ("h20_leave", 1.06, False)
+        elif near_h and not was_near_h:
+            dn_pick = ("h20_near", 0.72, True)
+        up_pick = None
+        if is_60l and not was_60l:
+            up_pick = ("l60", 1.06, False)
+        elif is_20l and not was_20l:
+            up_pick = ("l20", 1.0, False)
+        elif leave_l:
+            up_pick = ("l20_leave", 1.06, False)
+        elif near_l and not was_near_l:
+            up_pick = ("l20_near", 0.72, True)
+        if dn_pick and dn_pick[0] in ("h20_near", "h20_leave") and i - last_dn_i < 2:
+            dn_pick = None
+        if up_pick and up_pick[0] in ("l20_near", "l20_leave") and i - last_up_i < 2:
+            up_pick = None
+        if dn_pick:
+            kind, sc, hollow = dn_pick
+            tip = hi + arrow_gap
+            pastel, ink = _NAV_TONE[kind]
+            if kind[0] == "h" and tip >= h20:
+                pastel = _lerp_hex(pastel, ink, 0.28)
+            _nav_arrow(
+                ax1,
+                tip,
+                x,
+                down=True,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * sc,
+                hw=arrow_hw * sc,
+                hollow=hollow,
+                z=6,
+                alpha=1.0,
+            )
+            last_dn_i = i
+        elif is_20h and was_20h and i - last_dn_i <= 6:
+            # 仍貼 20 高：灰藍殘影，不當新觸發（跟導航圖同一套）
+            tip = hi + arrow_gap
+            pastel, ink = _NAV_GHOST
+            _nav_arrow(
+                ax1,
+                tip,
+                x,
+                down=True,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * 0.78,
+                hw=arrow_hw * 0.78,
+                z=5,
+                alpha=0.42,
+            )
+        if up_pick:
+            kind, sc, hollow = up_pick
+            tip = lo - arrow_gap
+            pastel, ink = _NAV_TONE[kind]
+            if kind[0] == "l" and tip <= l20:
+                pastel = _lerp_hex(pastel, ink, 0.28)
+            _nav_arrow(
+                ax1,
+                tip,
+                x,
+                down=False,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * sc,
+                hw=arrow_hw * sc,
+                hollow=hollow,
+                z=6,
+                alpha=1.0,
+            )
+            last_up_i = i
+        elif (is_20l or is_60l) and (was_20l or was_60l) and i - last_up_i <= 6:
+            tip = lo - arrow_gap
+            pastel, ink = _NAV_GHOST
+            _nav_arrow(
+                ax1,
+                tip,
+                x,
+                down=False,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * 0.78,
+                hw=arrow_hw * 0.78,
+                z=5,
+                alpha=0.42,
+            )
+        if ax_sig is not None:
+            # 上下兩排等高底＋同尺寸三角（上排中心 0.75、下排 0.25）
+            if warn:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (x - 0.45, 0.52),
+                        0.9,
+                        0.44,
+                        facecolor=_NAV_SIG["warn_band"],
+                        edgecolor="none",
+                        alpha=0.62,
+                        zorder=1,
+                    )
+                )
+                _sig_arrow(ax_sig, x, 0.75, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.15, z=5)
+            if vol_low:
+                ax_sig.add_patch(
+                    patches.Rectangle(
+                        (x - 0.45, 0.04),
+                        0.9,
+                        0.44,
+                        facecolor=_NAV_SIG["vol_low_band"],
+                        edgecolor="none",
+                        zorder=2,
+                    )
+                )
+            if vol_a:
+                _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.15, z=6)
+            elif vol_low:
+                _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.15, z=4)
+        was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
+        was_near_h, was_near_l = near_h, near_l
+
+    # SMA／月季線：跟導航同一套參考線
+    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
+    ax1.axhline(h60, color="#f48fb1", linewidth=1.25, zorder=2)
+    ax1.axhline(l60, color="#81c784", linewidth=1.25, zorder=2)
+    ax1.axhline(h20, color="#f8bbd0", linewidth=1.0, linestyle="--", zorder=2)
+    ax1.axhline(l20, color="#80deea", linewidth=1.0, linestyle="--", zorder=2)
+
+    buy_i, sell_i = _nav_trade_marks(work, card)
+    if buy_i is not None:
+        i = int(buy_i)
+        _nav_arrow(
+            ax1,
+            float(work["low"].iloc[i]) - arrow_gap,
+            xs[i],
+            down=False,
+            face=_NAV_TRADE_BUY,
+            ink=_NAV_TRADE_BUY,
+            arrow_h=arrow_h * 1.12,
+            hw=0.88,
+            z=8,
+        )
+    if sell_i is not None:
+        i = int(sell_i)
+        _nav_arrow(
+            ax1,
+            float(work["high"].iloc[i]) + arrow_gap,
+            xs[i],
+            down=True,
+            face=_NAV_TRADE_SELL,
+            ink=_NAV_TRADE_SELL,
+            arrow_h=arrow_h * 1.12,
+            hw=0.88,
+            z=8,
+        )
+    if draw_legend:
+        _draw_nav_legend(ax1, zone_mode=True)
+
+
 def _paint_nav_on_axes(
     ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str,
     *, compact: bool = False, card: Optional[dict] = None,
@@ -5413,21 +5712,21 @@ def _paint_nav_on_axes(
                 z=5,
                 alpha=0.42,
             )
-        if vol_low:
-            ax_sig.add_patch(patches.Rectangle(
-                (x - 0.45, 0.08), 0.9, 0.84,
-                facecolor=_NAV_SIG["vol_low_band"], edgecolor="none", zorder=2,
-            ))
         if warn:
             ax_sig.add_patch(patches.Rectangle(
-                (x - 0.45, 0.52), 0.9, 0.42,
+                (x - 0.45, 0.52), 0.9, 0.44,
                 facecolor=_NAV_SIG["warn_band"], edgecolor="none", alpha=0.62, zorder=1,
             ))
-            _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.05, z=5)
+            _sig_arrow(ax_sig, x, 0.75, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.15, z=5)
+        if vol_low:
+            ax_sig.add_patch(patches.Rectangle(
+                (x - 0.45, 0.04), 0.9, 0.44,
+                facecolor=_NAV_SIG["vol_low_band"], edgecolor="none", zorder=2,
+            ))
         if vol_a:
-            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.22, z=6)
+            _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.15, z=6)
         elif vol_low:
-            _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=0.78, z=4)
+            _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.15, z=4)
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
@@ -5518,23 +5817,43 @@ def _paint_nav_on_axes(
     if compact:
         ax_sig.set_ylabel("")
     else:
-        ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
+        ax_sig.set_ylabel("")
+        ax_sig.text(
+            -0.045,
+            0.5,
+            "量能\n訊號",
+            transform=ax_sig.transAxes,
+            ha="right",
+            va="center",
+            rotation=0,
+            fontproperties=_fp(8.5, "bold"),
+            color="#37474f",
+            clip_on=False,
+            linespacing=1.15,
+            zorder=8,
+        )
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(work["volume"])
-    ax2.bar(xs, vol_heights, color=vol_colors, width=0.72, zorder=3)
-    # 缺官方量：灰 ×，不准補假量柱
-    miss_i = np.flatnonzero(vol_missing)
-    if miss_i.size:
-        ax2.scatter(
-            xs[miss_i],
-            np.full(miss_i.shape, vol_ylim * 0.04),
-            marker="x",
-            s=18 if compact else 28,
-            c="#9e9e9e",
-            linewidths=0.9,
-            zorder=5,
-            clip_on=False,
+    vol_vals = pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽，不准挖洞
+    zero_i = np.flatnonzero(halt.to_numpy(dtype=bool) | (vol_vals <= 0) | vol_missing)
+    floor_h = max(float(vol_ylim) * 0.32, 1e-9)
+    vol_draw = np.asarray(vol_heights, dtype=float).copy()
+    vol_draw[zero_i] = 0.0
+    ax2.bar(xs, vol_draw, color=vol_colors, width=0.72, zorder=3)
+    for i in zero_i:
+        ax2.add_patch(
+            patches.Rectangle(
+                (float(xs[i]) - 0.36, 0.0),
+                0.72,
+                floor_h,
+                facecolor="#546e7a",
+                edgecolor="#37474f",
+                linewidth=0.8,
+                zorder=6,
+                clip_on=True,
+            )
         )
     ax2.set_ylim(0, vol_ylim * 1.14)  # 上方留空給「量 xxx張」，不准壓量柱頂
     ax2.yaxis.tick_right()
@@ -5609,7 +5928,7 @@ def draw_from_ohlc(
     no_trade_note = ""
     if halt_n > 0:
         no_trade_note = (
-            f"　無成交／停價 {halt_n} 日＝灰K＋量0"
+            f"　無成交／停價 {halt_n} 日＝灰短K＋量柱貼底（不准挖洞）"
             + (f"（其中開市缺列補前收 {fill_n}）" if fill_n else "")
             + "，非假行情"
         )

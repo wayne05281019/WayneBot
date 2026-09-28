@@ -30,21 +30,22 @@ def test_reply_menu_is_two_rows_not_three():
         MENU_BTN_DONGZHU,
         MENU_BTN_FLOW,
         MENU_BTN_STREAK,
+        MENU_BTN_PRESSURE,
         MENU_LAYOUT_VERSION,
         WayneTelegramBot,
     )
 
     assert MENU_BTN_MARKET == "台股大盤"
     assert MENU_BTN_AI == "AI倉"
-    assert MENU_LAYOUT_VERSION == "30"
+    assert MENU_LAYOUT_VERSION == "31"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
-    assert len(row1) == 6 and len(row2) == 6
+    assert len(row1) == 6 and len(row2) == 7
     assert row1 == ["海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-    assert row2 == ["當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
+    assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
     assert "刷新" not in row1 + row2
     assert "回報" not in row1 + row2
     assert row1[0] == "海選"
