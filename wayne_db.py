@@ -578,10 +578,272 @@ def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
     ensure_core_schema(db_path)
     with get_db_connection(db_path, write=False) as conn:
         rows = conn.execute(
-            "SELECT stock_code, stock_name FROM user_watchlist WHERE user_id = ? ORDER BY stock_code;",
+            "SELECT stock_code, stock_name, created_at FROM user_watchlist "
+            "WHERE user_id = ? ORDER BY stock_code;",
             (str(user_id),),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def parse_watch_join_ymd(created_at: Any) -> Optional[str]:
+    """觀察加入日（Asia/Taipei 日曆日 YYYYMMDD）。空／無法解析＝無加入日。"""
+    raw = str(created_at or "").strip()
+    if not raw:
+        return None
+    try:
+        from trading_calendar import normalize_ymd
+        from zoneinfo import ZoneInfo
+
+        taipei = ZoneInfo("Asia/Taipei")
+        if "T" in raw or " " in raw:
+            text = raw.replace("Z", "+00:00")
+            try:
+                dt = datetime.fromisoformat(text)
+            except ValueError:
+                digits = re.sub(r"\D", "", raw)[:8]
+                return normalize_ymd(digits) if len(digits) == 8 else None
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=taipei)
+            else:
+                dt = dt.astimezone(taipei)
+            return dt.strftime("%Y%m%d")
+        return normalize_ymd(raw) or None
+    except Exception:
+        digits = re.sub(r"\D", "", raw)[:8]
+        return digits if len(digits) == 8 and digits.isdigit() else None
+
+
+def _watch_close_on(conn: sqlite3.Connection, stock_id: str, day: str) -> Optional[float]:
+    """該日官方收；上市櫃 daily_quotes，沒有再查興櫃 emerging_quotes。0／缺＝無。"""
+    from trading_calendar import normalize_ymd
+
+    sid = str(stock_id or "").strip()
+    ymd = normalize_ymd(day)
+    if not sid or len(ymd) != 8:
+        return None
+    for table in ("daily_quotes", "emerging_quotes"):
+        try:
+            row = conn.execute(
+                f"SELECT close FROM {table} WHERE stock_id=? "
+                f"AND REPLACE(CAST(date AS TEXT),'-','')=? AND close > 0 LIMIT 1",
+                (sid, ymd),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            continue
+        if not row:
+            continue
+        try:
+            px = float(row[0])
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            return px
+    return None
+
+
+def _watch_first_official_close_on_or_after(
+    conn: sqlite3.Connection, stock_id: str, day: str, *, now=None
+) -> Tuple[Optional[str], Optional[float]]:
+    """加入日當日或之後第一根「已收」官方收。盤中未收不當收。"""
+    from trading_calendar import is_official_daily_bar, normalize_ymd
+
+    sid = str(stock_id or "").strip()
+    ymd = normalize_ymd(day)
+    if not sid or len(ymd) != 8:
+        return None, None
+    for table in ("daily_quotes", "emerging_quotes"):
+        try:
+            rows = conn.execute(
+                f"SELECT date, close FROM {table} WHERE stock_id=? "
+                f"AND REPLACE(CAST(date AS TEXT),'-','') >= ? AND close > 0 "
+                f"ORDER BY REPLACE(CAST(date AS TEXT),'-','') ASC LIMIT 12",
+                (sid, ymd),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            continue
+        for row in rows or []:
+            d = normalize_ymd(row[0])
+            if not d or not is_official_daily_bar(d, now=now):
+                continue
+            try:
+                px = float(row[1])
+            except (TypeError, ValueError):
+                continue
+            if px > 0:
+                return d, px
+    return None, None
+
+
+def _watch_latest_official_close_on_or_before(
+    conn: sqlite3.Connection, stock_id: str, day: str, *, now=None
+) -> Tuple[Optional[str], Optional[float]]:
+    """查看基準日（含）以前最近一根已收官方收。"""
+    from trading_calendar import is_official_daily_bar, normalize_ymd
+
+    sid = str(stock_id or "").strip()
+    ymd = normalize_ymd(day)
+    if not sid or len(ymd) != 8:
+        return None, None
+    for table in ("daily_quotes", "emerging_quotes"):
+        try:
+            rows = conn.execute(
+                f"SELECT date, close FROM {table} WHERE stock_id=? "
+                f"AND REPLACE(CAST(date AS TEXT),'-','') <= ? AND close > 0 "
+                f"ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 12",
+                (sid, ymd),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            continue
+        for row in rows or []:
+            d = normalize_ymd(row[0])
+            if not d or not is_official_daily_bar(d, now=now):
+                continue
+            try:
+                px = float(row[1])
+            except (TypeError, ValueError):
+                continue
+            if px > 0:
+                return d, px
+    return None, None
+
+
+def format_watch_join_md(ymd: str, *, with_year: bool = False) -> str:
+    """20260915 → 9/15；跨年或必要時 2025/12/30。"""
+    from trading_calendar import normalize_ymd
+
+    s = normalize_ymd(ymd)
+    if len(s) != 8:
+        return str(ymd or "")
+    md = f"{int(s[4:6])}/{int(s[6:8])}"
+    if with_year:
+        return f"{s[:4]}/{md}"
+    return md
+
+
+def watchlist_join_pnl(
+    db_path: str,
+    rows: List[Dict[str, Any]],
+    *,
+    now=None,
+) -> Dict[str, Dict[str, Any]]:
+    """觀察股：加入日官方收 → 最近完整官方收的損益％。
+
+    回傳 {stock_code: {join_ymd, view_ymd, join_close, view_close, pnl_pct, status}}。
+    status: ok / no_join / no_join_close / no_view_close。
+    不准假數：缺官方收就不算％。
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    codes = [str(r.get("stock_code") or "").strip() for r in (rows or [])]
+    codes = [c for c in codes if c]
+    if not db_path or not codes:
+        return out
+    as_of = None
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        as_of = db_as_of_trading_date(db_path, now=now)
+    except Exception:
+        as_of = None
+    if not as_of:
+        try:
+            from trading_calendar import fuse_end_trading_date
+
+            as_of = fuse_end_trading_date(now)
+        except Exception:
+            as_of = None
+    ensure_core_schema(db_path)
+    with get_db_connection(db_path, write=False) as conn:
+        for r in rows or []:
+            code = str(r.get("stock_code") or "").strip()
+            if not code:
+                continue
+            join_ymd = parse_watch_join_ymd(r.get("created_at"))
+            if not join_ymd:
+                out[code] = {
+                    "join_ymd": "",
+                    "view_ymd": "",
+                    "join_close": None,
+                    "view_close": None,
+                    "pnl_pct": None,
+                    "status": "no_join",
+                }
+                continue
+            j_day, j_px = _watch_first_official_close_on_or_after(
+                conn, code, join_ymd, now=now
+            )
+            # 優先用加入日當天收；若加入日尚無完整收（盤中／假日）則用之後第一根已收
+            same_day = _watch_close_on(conn, code, join_ymd)
+            from trading_calendar import is_official_daily_bar
+
+            if same_day is not None and is_official_daily_bar(join_ymd, now=now):
+                j_day, j_px = join_ymd, same_day
+            if j_px is None or not j_day:
+                out[code] = {
+                    "join_ymd": join_ymd,
+                    "view_ymd": "",
+                    "join_close": None,
+                    "view_close": None,
+                    "pnl_pct": None,
+                    "status": "no_join_close",
+                }
+                continue
+            view_cap = as_of or j_day
+            v_day, v_px = _watch_latest_official_close_on_or_before(
+                conn, code, view_cap, now=now
+            )
+            if v_px is None or not v_day:
+                out[code] = {
+                    "join_ymd": join_ymd,
+                    "view_ymd": "",
+                    "join_close": j_px,
+                    "view_close": None,
+                    "pnl_pct": None,
+                    "status": "no_view_close",
+                }
+                continue
+            pnl = (float(v_px) / float(j_px) - 1.0) * 100.0
+            out[code] = {
+                "join_ymd": join_ymd,
+                "view_ymd": v_day,
+                "join_close": float(j_px),
+                "view_close": float(v_px),
+                "pnl_pct": round(pnl, 2),
+                "status": "ok",
+            }
+    return out
+
+
+def format_watch_join_pnl_line(info: Optional[Dict[str, Any]]) -> str:
+    """觀察清單一行：9/15→9/24　+3.2%／無加入日／尚無官方收。"""
+    from tg_layout import html_escape, html_pct_tight
+
+    if not info:
+        return ""
+    status = str(info.get("status") or "")
+    join_ymd = str(info.get("join_ymd") or "")
+    view_ymd = str(info.get("view_ymd") or "")
+    if status == "no_join" or not join_ymd:
+        return html_escape("無加入日")
+    need_year = False
+    if view_ymd and join_ymd[:4] != view_ymd[:4]:
+        need_year = True
+    try:
+        from config import taipei_now
+
+        now_y = (taipei_now()).strftime("%Y")
+        if join_ymd[:4] != now_y:
+            need_year = True
+    except Exception:
+        pass
+    left = format_watch_join_md(join_ymd, with_year=need_year)
+    if status == "ok" and view_ymd and info.get("pnl_pct") is not None:
+        right = format_watch_join_md(view_ymd, with_year=need_year and join_ymd[:4] != view_ymd[:4])
+        return f"{html_escape(left)}→{html_escape(right)}　{html_pct_tight(info.get('pnl_pct'))}"
+    if status == "no_join_close":
+        return f"{html_escape(left)}→—　{html_escape('尚無官方收')}"
+    if status == "no_view_close":
+        return f"{html_escape(left)}→—　{html_escape('尚無查看收')}"
+    return f"{html_escape(left)}→—"
 
 
 def _resolve_lookup_quote_date(db_path: str) -> Optional[str]:
@@ -1246,7 +1508,12 @@ def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: st
         hits = lookup_stocks(db_path, code, limit=1)
         if hits:
             name = hits[0].get("stock_name") or code
-    now = datetime.now().isoformat(timespec="seconds")
+    try:
+        from config import taipei_now
+
+        now = taipei_now().isoformat(timespec="seconds")
+    except Exception:
+        now = datetime.now().isoformat(timespec="seconds")
     with get_db_connection(db_path) as conn:
         conn.execute(
             """
