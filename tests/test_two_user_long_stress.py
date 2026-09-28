@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""正向雙人長時壓力：偉權＋哥哥同時按十二顆、寫庫、疊排程雷達。
+"""正向雙人長時壓力：偉權＋哥哥同時按上六下七主鈕、寫庫、疊排程雷達。
 
 與既有 dual_user_concurrent／persona_grid／cross_feature 不同：
 - 真 sqlite（不是只 Mock pending）
 - 觀察鈕的 user_watchlist 必須出現在 06:30 自選雷達
-- 執行緒寫庫 ＋ asyncio 十二顆 ＋ MainRunner 家人廣播同時跑
+- 執行緒寫庫 ＋ asyncio 主鈕輪按 ＋ MainRunner 家人廣播同時跑
 - 其中一人行情列壞掉，不能擋住另一人的早報附帶雷達
 """
 from __future__ import annotations
@@ -27,6 +27,7 @@ from bot_servers import (
     MENU_BTN_FLOW,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
+    MENU_BTN_PRESSURE,
     MENU_BTN_STREAK,
     MENU_FULL_ALIASES,
     MENU_ROW1,
@@ -327,6 +328,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_FLOW,
         "當沖",
         "隔日沖",
+        MENU_BTN_PRESSURE,
         MENU_BTN_AI,
         MENU_BTN_STREAK,
         MENU_BTN_LEAVE_ZERO,
