@@ -140,7 +140,16 @@ def test_menu_six_plus_seven_pressure_after_overnight():
 
 def test_vol_zone_with_nav_signals_flag(tmp_path):
     from vol_zone_chart import render_volume_zone_png
+    import inspect
     import os
+
+    from wayne_navigator import overlay_nav_marks_on_zone
+
+    # 疊加必須含殘影（跟導航圖同一套），不准只有觸發／接近
+    ov = inspect.getsource(overlay_nav_marks_on_zone)
+    assert "_NAV_GHOST" in ov
+    assert "仍貼 20 高" in ov or "殘影" in ov
+    assert "alpha=0.42" in ov
 
     db = "/workspace/data/wayne_market.db"
     if not os.path.isfile(db):
@@ -151,6 +160,22 @@ def test_vol_zone_with_nav_signals_flag(tmp_path):
     )
     assert path and os.path.isfile(path)
     assert os.path.getsize(path) > 50_000
+
+
+def test_vol_zone_ex_label_and_halt_volume_stub():
+    """除息標掛軸頂空白帶不准壓K；無成交日量欄要有灰短柱佔位，不准少一根。"""
+    import inspect
+
+    from vol_zone_chart import _paint_volume_zone
+
+    src = inspect.getsource(_paint_volume_zone)
+    assert "ex_labels" in src
+    assert "left_guard" in src
+    assert "stub_h" in src
+    assert "blended_transform_factory" in src
+    assert "tip_ceil" in src
+    assert "0.78" in src
+    assert "#90a4ae" in src
 
 
 def test_pressure_not_buy_signal_in_rows():

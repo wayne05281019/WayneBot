@@ -790,10 +790,10 @@ def _paint_volume_zone(
         fig, (ax1, ax_sig, ax2) = plt.subplots(
             3,
             1,
-            figsize=(11.2, 8.4),
+            figsize=(11.4, 9.6),
             dpi=VOL_ZONE_DPI,
             sharex=True,
-            gridspec_kw=dict(height_ratios=(3.2, 0.42, 1.0), hspace=0.05),
+            gridspec_kw=dict(height_ratios=(3.35, 0.40, 1.05), hspace=0.045),
             facecolor=_BG,
         )
         ax_sig.set_facecolor(_BG)
@@ -801,23 +801,31 @@ def _paint_volume_zone(
         fig, (ax1, ax2) = plt.subplots(
             2,
             1,
-            figsize=(11.2, 7.2),
+            figsize=(11.4, 7.4),
             dpi=VOL_ZONE_DPI,
             sharex=True,
-            gridspec_kw=dict(height_ratios=(3.35, 1.05), hspace=0.06),
+            gridspec_kw=dict(height_ratios=(3.4, 1.05), hspace=0.055),
             facecolor=_BG,
         )
         ax_sig = None
     ax1.set_facecolor(_BG)
     ax2.set_facecolor(_BG)
+    for _spine in ax1.spines.values():
+        _spine.set_color("#cfd8dc")
+        _spine.set_linewidth(0.7)
+    for _spine in ax2.spines.values():
+        _spine.set_color("#cfd8dc")
+        _spine.set_linewidth(0.7)
 
-    # 桃色大量區
-    ax1.axhspan(lo, hi, color=_FILL, alpha=0.55, zorder=0)
-    ax1.axhline(hi, color=_PRESS, linewidth=2.0, zorder=5)
-    ax1.axhline(lo, color=_HOLD, linewidth=2.0, zorder=5)
-    ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.7, zorder=1)
+    # 桃色大量區（略透，K／箭頭更清楚）
+    ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
+    ax1.axhline(hi, color=_PRESS, linewidth=2.15, zorder=5, solid_capstyle="round")
+    ax1.axhline(lo, color=_HOLD, linewidth=2.15, zorder=5, solid_capstyle="round")
+    ax1.axvline(spike_i, color=_SPIKE, linewidth=1.15, alpha=0.65, zorder=1)
 
+    # 除息／除權：先畫豎線與參考價；文字標等 ylim／疊箭頭後掛軸頂，不准壓 K
     ex_by_date = {_bar_ymd(e.get("ex_date")): e for e in official_scale_events(ex_events)}
+    ex_labels: list[tuple[int, str]] = []
     for i in range(n):
         ev = ex_by_date.get(_bar_ymd(view["date"].iloc[i]))
         if not ev:
@@ -831,32 +839,15 @@ def _paint_volume_zone(
         except (TypeError, ValueError):
             amt = 0.0
         lab = verb if amt <= 0 else f"{verb}{_fmt_price(amt)}元"
-        ax1.axvline(xs[i], color="#6a1b9a", linewidth=1.0, alpha=0.55, zorder=1)
-        ax1.annotate(
-            lab,
-            xy=(xs[i], float(view["high"].iloc[i])),
-            xytext=(8, 16),
-            textcoords="offset points",
-            ha="left",
-            va="bottom",
-            fontproperties=_fp(10, "bold"),
-            color="#6a1b9a",
-            zorder=8,
-            bbox=dict(
-                boxstyle="round,pad=0.28",
-                facecolor="#f3e5f5",
-                edgecolor="#6a1b9a",
-                linewidth=0.9,
-                alpha=0.96,
-            ),
-        )
+        ax1.axvline(xs[i], color="#6a1b9a", linewidth=1.05, alpha=0.5, zorder=1, linestyle=(0, (2.5, 1.8)))
+        ex_labels.append((i, lab))
         ref = 0.0
         try:
             ref = float(ev.get("ref_price") or 0)
         except (TypeError, ValueError):
             ref = 0.0
         if ref > 0:
-            ax1.axhline(ref, color="#6a1b9a", linewidth=0.9, linestyle=(0, (3, 2)), alpha=0.7, zorder=2)
+            ax1.axhline(ref, color="#6a1b9a", linewidth=0.9, linestyle=(0, (3, 2)), alpha=0.65, zorder=2)
 
     for i in range(n):
         op = float(view["open"].iloc[i])
@@ -882,15 +873,16 @@ def _paint_volume_zone(
             )
             continue
         color = _UP if up else _DN
-        ax1.plot([x, x], [l, h], color=color, linewidth=1.15, zorder=3, solid_capstyle="round")
+        ax1.plot([x, x], [l, h], color=color, linewidth=1.2, zorder=3, solid_capstyle="round")
         body = max(abs(cl - op), (hi - lo) * 0.002 if hi > lo else 0.01)
         ax1.add_patch(
             patches.Rectangle(
-                (x - 0.32, min(op, cl)),
-                0.64,
+                (x - 0.30, min(op, cl)),
+                0.60,
                 body,
                 facecolor=color,
                 edgecolor=color,
+                linewidth=0.35,
                 zorder=3,
             )
         )
@@ -923,12 +915,13 @@ def _paint_volume_zone(
 
     ypad = max((hi - lo) * 0.18, float(view["high"].max() - view["low"].min()) * 0.04)
     ymin = min(float(view["low"].min()), lo) - ypad
-    ymax = max(float(view["high"].max()), hi) + ypad * 1.35
+    # 上方多留一截給除息標／箭頭，標籤掛軸頂不准壓進 K
+    ymax = max(float(view["high"].max()), hi) + ypad * (1.55 if with_nav_signals else 1.45)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
     ax1.yaxis.tick_right()
     ax1.tick_params(labelbottom=False, labelsize=9)
-    ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=0)
+    ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, zorder=0, alpha=0.85)
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(9))
 
@@ -941,8 +934,14 @@ def _paint_volume_zone(
         va="top",
         fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
         color=_PRESS,
-        zorder=8,
-        bbox=dict(boxstyle="round,pad=0.38", facecolor="#ffffff", edgecolor=_PRESS, linewidth=1.15),
+        zorder=10,
+        bbox=dict(
+            boxstyle="round,pad=0.36",
+            facecolor="#ffffff",
+            edgecolor=_PRESS,
+            linewidth=1.2,
+            alpha=0.97,
+        ),
     )
     ax1.text(
         0.01,
@@ -953,12 +952,18 @@ def _paint_volume_zone(
         va="bottom",
         fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
         color=_HOLD,
-        zorder=8,
-        bbox=dict(boxstyle="round,pad=0.38", facecolor="#ffffff", edgecolor=_HOLD, linewidth=1.15),
+        zorder=10,
+        bbox=dict(
+            boxstyle="round,pad=0.36",
+            facecolor="#ffffff",
+            edgecolor=_HOLD,
+            linewidth=1.2,
+            alpha=0.97,
+        ),
     )
 
     if with_nav_signals:
-        # 確保有 dt 給疊加參考；導航箭頭／量能列與導航圖同一套
+        # 確保有 dt 給疊加參考；導航箭頭／殘影／量能列與導航圖同一套
         if "dt" not in view.columns:
             view = view.copy()
             view["dt"] = pd.to_datetime(view["date"].astype(str), format="%Y%m%d", errors="coerce")
@@ -969,6 +974,52 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
+    # 除息／除權標：軸頂空白帶（axes y）；先抬 ylim 讓最高影線只到 ~0.78，標掛 0.88+ 不准壓 K
+    if ex_labels:
+        from matplotlib.transforms import blended_transform_factory
+
+        y0, y1 = ax1.get_ylim()
+        hi_max = float(view["high"].max())
+        # 箭頭尖端約再高出影線一截；最高價對應 axes y≤0.78，上方留給除息標
+        tip_ceil = hi_max + max(hi_max - float(view["low"].min()), 1.0) * 0.06
+        # y0 + 0.78*(y1-y0) >= tip_ceil  →  y1 >= y0 + (tip_ceil-y0)/0.78
+        y1_need = float(y0) + (tip_ceil - float(y0)) / 0.78
+        y1 = max(float(y1), y1_need)
+        ax1.set_ylim(y0, y1)
+        trans = blended_transform_factory(ax1.transData, ax1.transAxes)
+        left_guard = max(n * 0.18, 12.0)
+        used_x: list[float] = []
+        for i, lab in ex_labels:
+            near = sum(1 for ux in used_x if abs(ux - float(xs[i])) < 5.0)
+            x_pos = float(xs[i])
+            ha = "center"
+            y_ax = 0.935 - 0.04 * (near % 3)
+            if x_pos < left_guard:
+                # 左上「大量區壓」框約佔軸寬 18%：標改掛框右緣外側
+                x_pos = left_guard
+                ha = "left"
+                y_ax = 0.90 - 0.035 * (near % 3)
+            ax1.text(
+                x_pos,
+                y_ax,
+                lab,
+                transform=trans,
+                ha=ha,
+                va="top",
+                fontproperties=_fp(9, "bold"),
+                color="#6a1b9a",
+                zorder=9,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle="round,pad=0.26",
+                    facecolor="#f3e5f5",
+                    edgecolor="#6a1b9a",
+                    linewidth=0.85,
+                    alpha=0.97,
+                ),
+            )
+            used_x.append(float(xs[i]))
+
     vol_colors = []
     for i in range(n):
         prev = float(view["close"].iloc[i - 1]) if i else None
@@ -976,14 +1027,30 @@ def _paint_volume_zone(
         vol_colors.append("#ef5350" if up else "#26a69a")
     # 與導航同一套：有官方量必見長短比例；缺量不准假量（暴量日不把低量壓成空白）
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(view["volume"])
-    ax2.bar(xs, vol_heights, color=vol_colors, width=0.72, zorder=2)
+    # 無成交停價日量＝0：補可見灰短柱，量欄不准少一根（不是假量）
+    halt_arr = (
+        halt.fillna(False).astype(bool).to_numpy()
+        if hasattr(halt, "fillna")
+        else np.asarray(halt, dtype=bool)
+    )
+    vol_vals = pd.to_numeric(view["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    # 與導航低量可見度對齊：停價日至少佔面板 ~12%，一眼能數到每一根
+    stub_h = float(vol_ylim) * 0.12
+    for i in range(n):
+        if vol_missing[i]:
+            continue
+        if halt_arr[i] or vol_vals[i] <= 0:
+            vol_heights[i] = max(float(vol_heights[i]), stub_h)
+            vol_colors[i] = "#90a4ae"
+    ax2.bar(xs, vol_heights, color=vol_colors, width=0.70, zorder=2, linewidth=0)
     spike_h = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
     ax2.bar(
         [spike_i],
         [spike_h],
         color=_SPIKE,
-        width=0.8,
+        width=0.78,
         zorder=4,
+        linewidth=0,
     )
     ax2.text(
         spike_i,
@@ -994,6 +1061,7 @@ def _paint_volume_zone(
         fontproperties=_fp(9, "bold"),
         color="#5d4037",
         zorder=5,
+        bbox=dict(boxstyle="round,pad=0.18", facecolor="#fffde7", edgecolor="none", alpha=0.92),
     )
     miss_i = np.flatnonzero(vol_missing)
     if miss_i.size:
@@ -1007,11 +1075,11 @@ def _paint_volume_zone(
             zorder=5,
             clip_on=False,
         )
-    ax2.set_ylim(0, vol_ylim * 1.12)
+    ax2.set_ylim(0, vol_ylim * 1.16)
     ax2.yaxis.tick_right()
     ax2.tick_params(labelsize=9)
     ax2.set_xlim(-0.8, n - 0.2)
-    ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
+    ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, alpha=0.85)
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(9))
 
@@ -1061,30 +1129,55 @@ def _paint_volume_zone(
             if amt > 0:
                 ex_title += f" {_fmt_price(amt)}元"
             ex_title += "（原柱不還原）"
-    title = (
-        f"{sid} {name}　大量區專圖（非買訊・{src_note}"
-        + ("・含導航指標" if with_nav_signals else "")
-        + "）\n"
-        f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
-        f"最近 {_md(last.get('date'))} "
-        f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
-        f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
-        f"{ex_title}"
-    )
-    ax1.set_title(
-        title,
-        fontproperties=_fp(11, "bold"),
-        pad=58 if with_nav_signals else 14,
-        color=_TEXT,
-    )
+    if with_nav_signals:
+        # 標題／基本介紹放 fig 頂，圖例貼軸上方三行；兩區分開，不准互壓
+        head = (
+            f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
+        )
+        intro = (
+            f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
+            f"最近 {_md(last.get('date'))} "
+            f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
+            f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
+            f"{ex_title}"
+        )
+        fig.suptitle(
+            head,
+            fontproperties=_fp(12, "bold"),
+            color=_TEXT,
+            y=0.985,
+        )
+        fig.text(
+            0.5,
+            0.955,
+            intro,
+            ha="center",
+            va="top",
+            fontproperties=_fp(10, "bold"),
+            color=_TEXT,
+        )
+        ax1.set_title("")
+    else:
+        title = (
+            f"{sid} {name}　大量區專圖（非買訊・{src_note}）\n"
+            f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
+            f"最近 {_md(last.get('date'))} "
+            f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
+            f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
+            f"{ex_title}"
+        )
+        ax1.set_title(title, fontproperties=_fp(11, "bold"), pad=14, color=_TEXT)
     foot = (
         "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
         "高觸壓、收未過＝測壓，不是站上、不是買訊。"
     )
     if with_nav_signals:
-        foot += "上下箭頭／量能列＝導航同一套指標（圖例在上，不准互壓）。"
+        foot += (
+            "上下箭頭／灰藍殘影／量能列＝導航同一套（圖例在軸上方，標題另列；"
+            "除息標掛軸頂不准壓K；無成交量欄灰短柱佔位）。"
+        )
     else:
-        foot += "開市日軸連續；無成交＝灰K＋量0（前收停價，非假行情）。導航圖另按。"
+        foot += "開市日軸連續；無成交＝灰K＋量欄灰短柱（前收停價，非假行情）。導航圖另按。"
     fig.text(
         0.5,
         0.012,
@@ -1095,7 +1188,7 @@ def _paint_volume_zone(
         color=_MUTED,
     )
     fig.subplots_adjust(
-        left=0.04, right=0.96, top=0.82 if with_nav_signals else 0.88, bottom=0.10
+        left=0.04, right=0.96, top=0.78 if with_nav_signals else 0.88, bottom=0.10
     )
     fig.savefig(
         out,

@@ -4834,8 +4834,11 @@ def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = 
     )
 
 
-def _draw_nav_legend(ax1) -> None:
-    """圖例全部在座標軸上方（bbox 底邊 > 1），不准壓進 K 區。畫過的標都要進圖例。"""
+def _draw_nav_legend(ax1, *, zone_mode: bool = False) -> None:
+    """圖例全部在座標軸上方（bbox 底邊 > 1），不准壓進 K 區。畫過的標都要進圖例。
+
+    zone_mode＝大量區專圖：圖例貼軸頂、標題／開高低收另留在更上方，不准三行圖例壓住基本介紹。
+    """
     row1 = [
         (_nav_legend_key("h20", "v"), "20高"),
         (_nav_legend_key("h20_leave", "v"), "20高脫離"),
@@ -4871,20 +4874,28 @@ def _draw_nav_legend(ax1) -> None:
         loc="lower left",
         handlelength=1.05,
         handletextpad=0.28,
-        columnspacing=0.65,
-        borderpad=0.28,
-        labelspacing=0.16,
+        columnspacing=0.55 if zone_mode else 0.65,
+        borderpad=0.22 if zone_mode else 0.28,
+        labelspacing=0.12 if zone_mode else 0.16,
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(8.0, "bold"),
+        prop=_fp(7.5 if zone_mode else 8.0, "bold"),
     )
     # loc=lower left → bbox_to_anchor 是圖例底邊；三列底邊都 > 1，整塊在軸上方
-    rows = (
-        (row1, 1.168, 8),
-        (row2, 1.100, 7),
-        (row3, 1.032, 5),
-    )
+    # zone_mode：三行貼近軸頂（1.02～1.14），上方留給標題＋開高低收，不准互壓
+    if zone_mode:
+        rows = (
+            (row1, 1.145, 8),
+            (row2, 1.082, 7),
+            (row3, 1.020, 5),
+        )
+    else:
+        rows = (
+            (row1, 1.168, 8),
+            (row2, 1.100, 7),
+            (row3, 1.032, 5),
+        )
     for i, (row, y, ncol) in enumerate(rows):
         leg = ax1.legend(
             [h for h, _ in row], [t for _, t in row],
@@ -5233,7 +5244,7 @@ def overlay_nav_marks_on_zone(
     card: Optional[dict] = None,
     draw_legend: bool = True,
 ) -> None:
-    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號。不准重畫蠟燭、不准當買訊。"""
+    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。"""
     if work is None or getattr(work, "empty", True) or ax1 is None:
         return
     n = len(work)
@@ -5246,6 +5257,10 @@ def overlay_nav_marks_on_zone(
     hi_s = work["high"].where(~halt)
     lo_s = work["low"].where(~halt)
     cl_s = work["close"].where(~halt)
+    h20 = float(hi_s.tail(20).max())
+    l20 = float(lo_s.tail(20).min())
+    h60 = float(hi_s.tail(60).max())
+    l60 = float(lo_s.tail(60).min())
     work = work.copy()
     work["ma20"] = cl_s.rolling(20, min_periods=1).mean()
     work["vol_ma"] = work["volume"].where(~halt).rolling(20, min_periods=1).mean()
@@ -5254,16 +5269,16 @@ def overlay_nav_marks_on_zone(
     span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
     arrow_h = span * 0.048
     arrow_gap = span * 0.034
-    # 抬高／壓低軸：箭頭＋圖例不壓 K／壓撐標
+    arrow_hw = 0.72
+    # 抬高／壓低軸：箭頭＋圖例不壓 K／壓撐標；上方留帶給除息標（不准壓 K）
     ymin, ymax = ax1.get_ylim()
-    chip_head = span * 0.14
+    chip_head = span * 0.16
     ax1.set_ylim(
         min(ymin, float(lo_s.min()) - arrow_gap - arrow_h - span * 0.03),
         max(ymax, float(hi_s.max()) + arrow_gap + arrow_h + chip_head),
     )
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     last_dn_i = last_up_i = -9
-    from decision_card_signals import candle_up_taiwan
 
     if ax_sig is not None:
         ax_sig.set_facecolor("#ffffff")
@@ -5274,11 +5289,12 @@ def overlay_nav_marks_on_zone(
         ax_sig.tick_params(axis="x", labelbottom=False, length=0)
 
     for i in range(n):
+        x = xs[i]
         if bool(halt.iloc[i]):
             if ax_sig is not None:
                 ax_sig.add_patch(
                     patches.Rectangle(
-                        (xs[i] - 0.42, 0.05),
+                        (x - 0.42, 0.05),
                         0.84,
                         0.9,
                         facecolor="#eceff1",
@@ -5333,43 +5349,82 @@ def overlay_nav_marks_on_zone(
             up_pick = None
         if dn_pick:
             kind, sc, hollow = dn_pick
+            tip = hi + arrow_gap
             pastel, ink = _NAV_TONE[kind]
+            if kind[0] == "h" and tip >= h20:
+                pastel = _lerp_hex(pastel, ink, 0.28)
             _nav_arrow(
                 ax1,
-                hi + arrow_gap,
-                xs[i],
+                tip,
+                x,
                 down=True,
                 face=pastel,
                 ink=ink,
-                arrow_h=arrow_h * sc * (0.78 if hollow else 1.0),
-                hw=0.72 * sc * (0.78 if hollow else 1.0),
+                arrow_h=arrow_h * sc,
+                hw=arrow_hw * sc,
                 hollow=hollow,
-                z=7,
+                z=6,
+                alpha=1.0,
             )
             last_dn_i = i
-        if up_pick:
-            kind, sc, hollow = up_pick
-            pastel, ink = _NAV_TONE[kind]
+        elif is_20h and was_20h and i - last_dn_i <= 6:
+            # 仍貼 20 高：灰藍殘影，不當新觸發（跟導航圖同一套）
+            tip = hi + arrow_gap
+            pastel, ink = _NAV_GHOST
             _nav_arrow(
                 ax1,
-                lo - arrow_gap,
-                xs[i],
+                tip,
+                x,
+                down=True,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * 0.78,
+                hw=arrow_hw * 0.78,
+                z=5,
+                alpha=0.42,
+            )
+        if up_pick:
+            kind, sc, hollow = up_pick
+            tip = lo - arrow_gap
+            pastel, ink = _NAV_TONE[kind]
+            if kind[0] == "l" and tip <= l20:
+                pastel = _lerp_hex(pastel, ink, 0.28)
+            _nav_arrow(
+                ax1,
+                tip,
+                x,
                 down=False,
                 face=pastel,
                 ink=ink,
-                arrow_h=arrow_h * sc * (0.78 if hollow else 1.0),
-                hw=0.72 * sc * (0.78 if hollow else 1.0),
+                arrow_h=arrow_h * sc,
+                hw=arrow_hw * sc,
                 hollow=hollow,
-                z=7,
+                z=6,
+                alpha=1.0,
             )
             last_up_i = i
+        elif (is_20l or is_60l) and (was_20l or was_60l) and i - last_up_i <= 6:
+            tip = lo - arrow_gap
+            pastel, ink = _NAV_GHOST
+            _nav_arrow(
+                ax1,
+                tip,
+                x,
+                down=False,
+                face=pastel,
+                ink=ink,
+                arrow_h=arrow_h * 0.78,
+                hw=arrow_hw * 0.78,
+                z=5,
+                alpha=0.42,
+            )
         if ax_sig is not None:
             if vol_low:
                 ax_sig.add_patch(
                     patches.Rectangle(
-                        (xs[i] - 0.42, 0.05),
-                        0.84,
+                        (x - 0.45, 0.08),
                         0.9,
+                        0.84,
                         facecolor=_NAV_SIG["vol_low_band"],
                         edgecolor="none",
                         zorder=2,
@@ -5378,35 +5433,29 @@ def overlay_nav_marks_on_zone(
             if warn:
                 ax_sig.add_patch(
                     patches.Rectangle(
-                        (xs[i] - 0.42, 0.05),
-                        0.84,
+                        (x - 0.45, 0.52),
                         0.9,
+                        0.42,
                         facecolor=_NAV_SIG["warn_band"],
                         edgecolor="none",
                         alpha=0.62,
                         zorder=1,
                     )
                 )
-            if warn:
-                _sig_arrow(ax_sig, xs[i], 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.05, z=5)
+                _sig_arrow(ax_sig, x, 0.72, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.05, z=5)
             if vol_a:
-                _sig_arrow(ax_sig, xs[i], 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.22, z=6)
+                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.22, z=6)
             elif vol_low:
-                _sig_arrow(ax_sig, xs[i], 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=0.78, z=4)
+                _sig_arrow(ax_sig, x, 0.38, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=0.78, z=4)
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
-        _ = candle_up_taiwan  # keep import used for parity; candles already drawn
 
     # SMA／月季線：跟導航同一套參考線
-    h20 = float(hi_s.tail(20).max())
-    l20 = float(lo_s.tail(20).min())
-    h60 = float(hi_s.tail(60).max())
-    l60 = float(lo_s.tail(60).min())
-    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.6, zorder=4)
-    ax1.axhline(h60, color="#f48fb1", linewidth=1.2, zorder=2)
-    ax1.axhline(l60, color="#81c784", linewidth=1.2, zorder=2)
-    ax1.axhline(h20, color="#f8bbd0", linewidth=0.95, linestyle="--", zorder=2)
-    ax1.axhline(l20, color="#80deea", linewidth=0.95, linestyle="--", zorder=2)
+    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
+    ax1.axhline(h60, color="#f48fb1", linewidth=1.25, zorder=2)
+    ax1.axhline(l60, color="#81c784", linewidth=1.25, zorder=2)
+    ax1.axhline(h20, color="#f8bbd0", linewidth=1.0, linestyle="--", zorder=2)
+    ax1.axhline(l20, color="#80deea", linewidth=1.0, linestyle="--", zorder=2)
 
     buy_i, sell_i = _nav_trade_marks(work, card)
     if buy_i is not None:
@@ -5436,7 +5485,7 @@ def overlay_nav_marks_on_zone(
             z=8,
         )
     if draw_legend:
-        _draw_nav_legend(ax1)
+        _draw_nav_legend(ax1, zone_mode=True)
 
 
 def _paint_nav_on_axes(
