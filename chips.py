@@ -190,29 +190,16 @@ def apply_chips_to_quotes(db_path: str, yyyymmdd: str, chips: Dict[str, Dict[str
     cur = conn.cursor()
     updated = 0
     for sid, c in chips.items():
-        f_n = int(c.get("foreign_net", 0) or 0)
-        t_n = int(c.get("trust_net", 0) or 0)
-        d_n = int(c.get("dealer_net", 0) or 0)
-        # 寫入前再擋：解析後仍像股當張＝來源單位錯，不准落庫。
-        vol_row = cur.execute(
-            "SELECT volume FROM daily_quotes WHERE replace(date,'-','')=? AND stock_id=?",
-            (day, sid),
-        ).fetchone()
-        vol = int(vol_row[0] or 0) if vol_row else 0
-        three = f_n + t_n + d_n
-        if _looks_like_share_as_lot(vol, three, vol_mult=20):
-            logger.error(
-                "法人 %s %s 解析後仍像股當張 vol=%s three=%s，跳過寫入",
-                day,
-                sid,
-                vol,
-                three,
-            )
-            continue
         cur.execute(
             """UPDATE daily_quotes SET foreign_net=?, trust_net=?, dealer_net=?
                WHERE replace(date,'-','')=? AND stock_id=?""",
-            (f_n, t_n, d_n, day, sid),
+            (
+                int(c.get("foreign_net", 0) or 0),
+                int(c.get("trust_net", 0) or 0),
+                int(c.get("dealer_net", 0) or 0),
+                day,
+                sid,
+            ),
         )
         updated += cur.rowcount
     conn.commit()
