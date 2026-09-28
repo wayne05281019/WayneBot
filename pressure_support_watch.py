@@ -590,19 +590,50 @@ def screen_pressure_support(
     話筒**直接**改第一次優化鍵；飆大軌永不觸發改碼。
     """
     tag = normalize_tag(tag)
-    out = collect_pressure_pool(db_path, tag, as_of=as_of, enrich=False)
+    if not tag or not db_path:
+        return []
+    as_of_key = _ymd(as_of)
+    if not as_of_key:
+        try:
+            from import_health import latest_complete_quote_date
+
+            as_of_key = _ymd(latest_complete_quote_date(db_path) or "")
+        except Exception:
+            as_of_key = ""
     use_first = False
+    try:
+        from pressure_rank_verify import phone_uses_first
+
+        use_first = bool(phone_uses_first(db_path))
+    except Exception:
+        use_first = False
+    cache_key = (
+        str(db_path),
+        tag,
+        as_of_key,
+        int(max_rows or MAX_ROWS),
+        bool(use_first),
+    )
+    now = time.monotonic()
+    with _SCREEN_LOCK:
+        hit = _SCREEN_CACHE.get(cache_key)
+        if hit and now - hit[0] <= _SCREEN_TTL_SEC:
+            return [dict(r) for r in hit[1]]
+
+    out = collect_pressure_pool(db_path, tag, as_of=as_of, enrich=False)
     try:
         from pressure_rank_verify import phone_uses_first, rank_key_first
 
-        use_first = bool(phone_uses_first(db_path))
-        if use_first:
+        if bool(phone_uses_first(db_path)):
             out.sort(key=lambda r, t=tag: rank_key_first(t, r))
         else:
             out.sort(key=rank_key_current)
     except Exception:
         out.sort(key=rank_key_current)
-    return out[: max(1, int(max_rows or MAX_ROWS))]
+    out = out[: max(1, int(max_rows or MAX_ROWS))]
+    with _SCREEN_LOCK:
+        _SCREEN_CACHE[cache_key] = (time.monotonic(), [dict(r) for r in out])
+    return out
 
 
 def pressure_card_html(item: Dict[str, Any], idx: int) -> str:
