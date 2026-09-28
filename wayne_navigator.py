@@ -5836,21 +5836,24 @@ def _paint_nav_on_axes(
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(work["volume"])
     vol_vals = pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
-    # 正量先畫；停價／0 量／缺量第二遍強制貼底灰短柱佔槽，不准挖洞
+    # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽，不准挖洞
     zero_i = np.flatnonzero(halt.to_numpy(dtype=bool) | (vol_vals <= 0) | vol_missing)
-    floor_h = max(float(vol_ylim) * 0.22, 1e-9)
+    floor_h = max(float(vol_ylim) * 0.32, 1e-9)
     vol_draw = np.asarray(vol_heights, dtype=float).copy()
     vol_draw[zero_i] = 0.0
     ax2.bar(xs, vol_draw, color=vol_colors, width=0.72, zorder=3)
-    if zero_i.size:
-        ax2.bar(
-            xs[zero_i],
-            np.full(zero_i.shape, floor_h),
-            facecolor="#546e7a",
-            edgecolor="#37474f",
-            width=0.78,
-            zorder=5,
-            linewidth=0.7,
+    for i in zero_i:
+        ax2.add_patch(
+            patches.Rectangle(
+                (float(xs[i]) - 0.36, 0.0),
+                0.72,
+                floor_h,
+                facecolor="#546e7a",
+                edgecolor="#37474f",
+                linewidth=0.8,
+                zorder=6,
+                clip_on=True,
+            )
         )
     ax2.set_ylim(0, vol_ylim * 1.14)  # 上方留空給「量 xxx張」，不准壓量柱頂
     ax2.yaxis.tick_right()

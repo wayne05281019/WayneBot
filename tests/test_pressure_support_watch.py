@@ -182,7 +182,8 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     # 停價＝灰短 K＋量柱貼底（第二遍強制畫），不准 × 挖洞、不准編振幅假柱
     assert 'color="#9e9e9e"' in src
     assert "floor_h" in src
-    assert 'color="#546e7a"' in src
+    assert 'facecolor="#546e7a"' in src
+    assert "Rectangle" in src
     assert "marker=\"x\"" not in src and "marker='x'" not in src
     assert "不准挖洞" in src
     # 介紹與圖例之間不加分隔線

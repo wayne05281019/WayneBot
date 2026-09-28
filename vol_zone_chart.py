@@ -1040,21 +1040,24 @@ def _paint_volume_zone(
         else np.asarray(halt, dtype=bool)
     )
     vol_vals = pd.to_numeric(view["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
-    # 正量先畫；停價／0 量／缺量第二遍強制貼底灰短柱佔槽，不准挖洞
+    # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽（bar 偶發不著墨）
     zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | vol_missing)
-    floor_h = max(float(vol_ylim) * 0.22, 1e-9)
+    floor_h = max(float(vol_ylim) * 0.32, 1e-9)
     vol_draw = np.asarray(vol_heights, dtype=float).copy()
-    vol_draw[zero_i] = 0.0  # 正量列先留空，灰短柱第二遍畫
+    vol_draw[zero_i] = 0.0
     ax2.bar(xs, vol_draw, color=vol_colors, width=0.70, zorder=2, linewidth=0)
-    if zero_i.size:
-        ax2.bar(
-            xs[zero_i],
-            np.full(zero_i.shape, floor_h),
-            facecolor="#546e7a",
-            edgecolor="#37474f",
-            width=0.78,
-            zorder=5,
-            linewidth=0.7,
+    for i in zero_i:
+        ax2.add_patch(
+            patches.Rectangle(
+                (float(xs[i]) - 0.35, 0.0),
+                0.70,
+                floor_h,
+                facecolor="#546e7a",
+                edgecolor="#37474f",
+                linewidth=0.8,
+                zorder=6,
+                clip_on=True,
+            )
         )
     spike_h = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
     if (
@@ -1226,7 +1229,8 @@ def _paint_volume_zone(
         format="jpeg",
         dpi=VOL_ZONE_DPI,
         facecolor=_BG,
-        pil_kwargs={"quality": 82, "optimize": False, "subsampling": 2},
+        # 停價灰短柱要保得住，不准被 JPEG 抽樣吃成空白
+        pil_kwargs={"quality": 92, "optimize": False, "subsampling": 0},
     )
     plt.close(fig)
     return out
