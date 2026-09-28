@@ -389,14 +389,102 @@ def classify_frame(
     return classify_bars(work, zone, tag=tag)
 
 
-def screen_pressure_support(
+def rank_key_current(r: Dict[str, Any]) -> Tuple[Any, ...]:
+    """現況話筒排序：離壓近 → 量縮加分 → 代號。"""
+    dist = float(r.get("dist_to_press_pct") or 99)
+    thin = 0 if r.get("vol_thin_bonus") else 1
+    return (dist, thin, str(r.get("stock_id") or ""))
+
+
+def _attach_rank_features(df: pd.DataFrame, hit: Dict[str, Any]) -> Dict[str, Any]:
+    """給靜默對質用的可重跑特徵；話筒排序不讀這些欄。"""
+    work = light_work(df)
+    if work is None or work.empty:
+        return hit
+    i = len(work) - 1
+    o = float(pd.to_numeric(work["open"], errors="coerce").iloc[i] or 0)
+    h = float(pd.to_numeric(work["high"], errors="coerce").iloc[i] or 0)
+    l = float(pd.to_numeric(work["low"], errors="coerce").iloc[i] or 0)
+    c = float(hit.get("close") or 0)
+    press = float(hit.get("pressure") or 0)
+    support = float(hit.get("support") or 0)
+    vol_ratio = float(hit.get("vol_ratio") or 0)
+    rng = h - l
+    upper = h - max(o, c) if rng > 0 else 0.0
+    weak_k = bool(rng > 0 and (upper / rng) >= 0.55 and ((min(o, c) - l) / rng) <= 0.25)
+    dump_pause = bool(vol_ratio >= 0.8 and weak_k)
+    past_pct = ((c - press) / press * 100.0) if press > 0 else 0.0
+    half_mountain = bool(past_pct >= 2.0 and vol_ratio >= 0.5)
+    vol_asphyx = bool(0 < vol_ratio < 0.35 and c >= support > 0)
+    # 區內振幅（橫盤連站窗）
+    streak = int(hit.get("streak") or 1)
+    start = max(0, i - max(1, streak) + 1)
+    hi_w = float(pd.to_numeric(work["high"], errors="coerce").iloc[start : i + 1].max() or 0)
+    lo_w = float(pd.to_numeric(work["low"], errors="coerce").iloc[start : i + 1].min() or 0)
+    mid = (press + support) / 2.0 if press > 0 and support > 0 else max(c, 1e-9)
+    band_amp_pct = ((hi_w - lo_w) / mid * 100.0) if mid > 0 else 99.0
+    # 洗盤站回：近窗曾收破撐、之後收站回
+    wash = False
+    closes = pd.to_numeric(work["close"], errors="coerce")
+    for k in range(max(0, i - 10), i):
+        ck = float(closes.iloc[k] or 0)
+        if support > 0 and ck < support:
+            later = [float(closes.iloc[j] or 0) for j in range(k + 1, i + 1)]
+            if later and all(x >= support for x in later if x > 0):
+                wash = True
+                break
+    # 無整理爆量追：量噴但近窗區內整理不足 3 根
+    zd = _ymd(hit.get("zone_date"))
+    dates = work["date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    in_band = 0
+    for k in range(i - 1, max(-1, i - 12), -1):
+        dk = _ymd(dates.iloc[k])
+        if not dk or (zd and dk <= zd):
+            break
+        ck = float(closes.iloc[k] or 0)
+        if support > 0 and press > 0 and support <= ck <= press:
+            in_band += 1
+        else:
+            break
+    chase_no_consol = bool(vol_ratio >= 0.8 and in_band < 3 and c > press > 0)
+    # 關前／歷史高附近：近 60 根高點 3% 內且無 wash／窒息
+    look = work.iloc[max(0, i - 59) : i + 1]
+    hist_hi = float(pd.to_numeric(look["high"], errors="coerce").max() or 0)
+    near_hist_high = bool(hist_hi > 0 and c >= hist_hi * 0.97)
+    # 攻擊量：整理≥3 後突破轉強第一根（收近高、量相對爆）
+    attack_vol = bool(
+        in_band >= 3
+        and vol_ratio >= 0.8
+        and rng > 0
+        and c >= o
+        and ((c - l) / rng) >= 0.7
+    )
+    dead_weak = bool(vol_ratio > 0 and vol_ratio < 0.15 and weak_k)
+    hit["weak_k"] = weak_k
+    hit["dump_pause"] = dump_pause
+    hit["half_mountain"] = half_mountain
+    hit["vol_asphyx"] = vol_asphyx
+    hit["band_amp_pct"] = round(band_amp_pct, 4)
+    hit["wash"] = wash
+    hit["chase_no_consol"] = chase_no_consol
+    hit["near_hist_high"] = near_hist_high
+    hit["attack_vol"] = attack_vol
+    hit["dead_weak"] = dead_weak
+    hit["past_press_pct"] = round(past_pct, 4)
+    hit["vol_thin_bonus"] = bool(
+        hit.get("vol_thin_bonus") or (0 < vol_ratio < 0.35)
+    )
+    return hit
+
+
+def collect_pressure_pool(
     db_path: str,
     tag: str,
     *,
     as_of: str = "",
-    max_rows: int = MAX_ROWS,
+    enrich: bool = False,
 ) -> List[Dict[str, Any]]:
-    """掃活躍 STOCK，回傳符合標籤的觀察名單（非買訊）。"""
+    """資格池：結構門檻過關的全部列（未排序、未截斷）。不是買訊。"""
     tag = normalize_tag(tag)
     if not tag or not db_path:
         return []
@@ -425,6 +513,11 @@ def screen_pressure_support(
             hit = None
         if not hit:
             continue
+        if enrich:
+            try:
+                hit = _attach_rank_features(df, hit)
+            except Exception:
+                pass
         name = str(name_map.get(sid) or "")
         if not name and "stock_name" in df.columns:
             name = str(df["stock_name"].iloc[-1] or "")
@@ -449,19 +542,55 @@ def screen_pressure_support(
             "streak": hit.get("streak"),
             "why": hit.get("why"),
             "pattern": hit.get("why"),
-            # 明確不是買訊：不給進場星等／買門
             "entry_stars": 0,
             "buy_gate": "no",
             "buy_gate_note": "壓撐觀察不是買訊",
         }
+        for fk in (
+            "weak_k",
+            "dump_pause",
+            "half_mountain",
+            "vol_asphyx",
+            "band_amp_pct",
+            "wash",
+            "chase_no_consol",
+            "near_hist_high",
+            "attack_vol",
+            "dead_weak",
+            "past_press_pct",
+        ):
+            if fk in hit:
+                item[fk] = hit.get(fk)
         out.append(item)
-    # 排序：測壓貼壓近的優先；橫盤／站上撐按離壓近、量縮
-    def _key(r: Dict[str, Any]):
-        dist = float(r.get("dist_to_press_pct") or 99)
-        thin = 0 if r.get("vol_thin_bonus") else 1
-        return (dist, thin, str(r.get("stock_id") or ""))
+    return out
 
-    out.sort(key=_key)
+
+def screen_pressure_support(
+    db_path: str,
+    tag: str,
+    *,
+    as_of: str = "",
+    max_rows: int = MAX_ROWS,
+) -> List[Dict[str, Any]]:
+    """掃活躍 STOCK，回傳符合標籤的觀察名單（非買訊）。
+
+    預設 ``rank_key_current``＋截 ``MAX_ROWS``。
+    靜默對質 ``first`` 贏 ``current`` 且 n≥20（``promote_ready``）時，
+    話筒**直接**改第一次優化鍵；飆大軌永不觸發改碼。
+    """
+    tag = normalize_tag(tag)
+    out = collect_pressure_pool(db_path, tag, as_of=as_of, enrich=False)
+    use_first = False
+    try:
+        from pressure_rank_verify import phone_uses_first, rank_key_first
+
+        use_first = bool(phone_uses_first(db_path))
+        if use_first:
+            out.sort(key=lambda r, t=tag: rank_key_first(t, r))
+        else:
+            out.sort(key=rank_key_current)
+    except Exception:
+        out.sort(key=rank_key_current)
     return out[: max(1, int(max_rows or MAX_ROWS))]
 
 
