@@ -1113,6 +1113,7 @@ class WayneTelegramBot:
             picks: list = []
             card_lines: list = []
             show = list(rows[:MAX_PICK_INLINE_ROWS])
+            jobs: list = []
             for idx, r in enumerate(show, start=1):
                 code = str(r.get("code") or r.get("stock_id") or "").strip()
                 name = str(r.get("name") or r.get("stock_name") or "")
@@ -1129,23 +1130,31 @@ class WayneTelegramBot:
                 out = self._scratch_chart_path(
                     self.charts_dir, code, f"ps_{tag}", uid
                 )
+                jobs.append((code, name, out))
 
-                def _render(_c=code, _n=name, _p=out):
+            # 平行準備＋渲圖（matplotlib 走 mpl_render 鎖；DB／算區可重疊）
+            async def _render_one(code: str, name: str, out: str):
+                def _render():
                     return render_volume_zone_result(
-                        _c,
-                        _n,
+                        code,
+                        name,
                         self.db_path,
-                        _p,
+                        out,
                         with_nav_signals=True,
                     )
 
                 try:
-                    path, cap = await asyncio.wait_for(
+                    return await asyncio.wait_for(
                         asyncio.to_thread(_render), timeout=35.0
                     )
                 except Exception:
                     logger.exception("壓撐壓力區圖失敗 code=%s", code)
-                    path, cap = "", ""
+                    return "", ""
+
+            rendered = await asyncio.gather(
+                *[_render_one(c, n, p) for c, n, p in jobs]
+            )
+            for (code, name, _out), (path, cap) in zip(jobs, rendered):
                 kb = InlineKeyboardMarkup(
                     [self._pressure_pick_row(code, name, tag)]
                 )
