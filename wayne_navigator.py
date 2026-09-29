@@ -5117,8 +5117,9 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_low"],
                 markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 2), "月波動低"),
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
+        # 買點＝藍三角＋紅細框（跟 60 低純藍三角分開）；圖例邊線加粗遠看才讀得到
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=1.35, markersize=ms_z + 2), "買點↑藍紅框"),
+                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=2.2, markersize=ms_z + 3), "買點↑藍▲紅框"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
                 markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
@@ -6082,7 +6083,7 @@ def _paint_nav_on_axes(
             arrow_h=buy_h, hw=_NAV_BUY_ARROW_HW, z=8,
             edge=_NAV_BUY_ARROW_EDGE, edgewidth=_NAV_BUY_ARROW_EDGE_W,
         )
-        trade_note = "　買↑藍紅框"
+        trade_note = "　買↑藍▲紅框"
     if sell_i is not None:
         i = int(sell_i)
         hi = float(work["high"].iloc[i])

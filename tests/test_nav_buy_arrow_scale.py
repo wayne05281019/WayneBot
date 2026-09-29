@@ -21,3 +21,6 @@ def test_buy_arrow_scale_is_1_5x_original():
     assert "arrow_h * 1.12" in paint
     arrow_src = inspect.getsource(wn._nav_arrow)
     assert "edgewidth" in arrow_src
+    leg = inspect.getsource(wn._draw_nav_legend)
+    assert "買點↑藍▲紅框" in leg
+    assert "_NAV_BUY_ARROW_EDGE" in leg

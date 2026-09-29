@@ -59,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 6
+_VZ_PAINT_VER = 7
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -1580,7 +1580,10 @@ def _paint_volume_zone(
         ax1.set_title(title, fontproperties=_fp(13, "bold"), pad=14, color=_TEXT)
     if with_nav_signals:
         foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。黃＝月線(MA20)、藍紫＝季線(MA60)。除權／除息缺口是息差不是崩。"
-        foot2 = "高觸壓、收未過＝測壓（非買訊）。箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
+        foot2 = (
+            "高觸壓、收未過＝測壓（非買訊）。買點＝藍▲紅框、60低＝純藍▲。"
+            "箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
+        )
     else:
         foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。黃＝月線(MA20)、藍紫＝季線(MA60)。除權／除息缺口是息差不是崩。"
         foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
