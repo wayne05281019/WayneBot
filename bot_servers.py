@@ -28,6 +28,12 @@ _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
+# 名單／頁面：盤中慢路徑＋冷啟，短逾時會逼使用者重按。
+_FLOW_HTML_TIMEOUT = float(os.getenv("WAYNE_FLOW_HTML_TIMEOUT", "30"))
+_MARKET_PAGE_TIMEOUT = float(os.getenv("WAYNE_MARKET_PAGE_TIMEOUT", "45"))
+_DONGZHU_TIMEOUT = float(os.getenv("WAYNE_DONGZHU_TIMEOUT", "45"))
+_TRADE_BUCKET_TIMEOUT = float(os.getenv("WAYNE_TRADE_BUCKET_TIMEOUT", "75"))
+_LEAVE_ZERO_TIMEOUT = float(os.getenv("WAYNE_LEAVE_ZERO_TIMEOUT", "120"))
 # Telegram 相簿點開上限：寬+高 ≤10000、檔 ≤10MB、長寬比 ≤20。源圖原尺寸送，超過才縮小。
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
@@ -40,6 +46,9 @@ _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_MAX = (1920, 2400)
 _LOOKUP_ALBUM_BG = (12, 18, 28)
 _LOOKUP_MIS_TIMEOUT = 2.0
+# 大盤／資金頁短 memo（鍵含 as_of／現價桶；雙人共用公開頁）
+_PAGE_HTML_TTL_SEC = 45.0
+_PAGE_HTML_CACHE: Dict[Tuple[Any, ...], Tuple[float, Any]] = {}
 
 from config import (
     allowed_telegram_uids,
@@ -3610,7 +3619,7 @@ class WayneTelegramBot:
                 effective_live_bucket = None
                 display_title, effective_subtitle = overnight_list_heading(phase)
             try:
-                rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=45.0)
+                rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=_TRADE_BUCKET_TIMEOUT)
             except asyncio.TimeoutError:
                 await message.reply_text(
                     f"⚠️ {menu_label}查詢逾時（名單讀取較久）。"
@@ -3757,7 +3766,7 @@ class WayneTelegramBot:
                 held = sid in set(self._dongzhu_held_sids(uid))
                 html = await asyncio.wait_for(
                     asyncio.to_thread(dongzhu_hold_page, self.db_path, sid, held=held),
-                    timeout=20.0,
+                    timeout=_DONGZHU_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 await message.reply_text(
@@ -3835,7 +3844,7 @@ class WayneTelegramBot:
 
                 html, data = await asyncio.wait_for(
                     asyncio.to_thread(_bundle),
-                    timeout=20.0,
+                    timeout=_DONGZHU_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 await message.reply_text(
@@ -3931,7 +3940,7 @@ class WayneTelegramBot:
                     asyncio.to_thread(
                         lambda: self.screener.screen_leave_zero_pick(pick="0")
                     ),
-                    timeout=60.0,
+                    timeout=_LEAVE_ZERO_TIMEOUT,
                 )
             except asyncio.TimeoutError:
                 await message.reply_text(
@@ -4028,10 +4037,25 @@ class WayneTelegramBot:
                     )
                     live = live_f.result()
                     snap = snap_f.result()
+                as_of = str((snap or {}).get("as_of") or "")[:8]
+                live_px = None
+                try:
+                    live_px = round(float((live or {}).get("price") or (live or {}).get("close") or 0), 0)
+                except (TypeError, ValueError):
+                    live_px = None
+                memo_key = ("market", str(self.db_path), as_of, live_px)
+                now = time.monotonic()
+                hit = _PAGE_HTML_CACHE.get(memo_key)
+                if hit and (now - float(hit[0])) < _PAGE_HTML_TTL_SEC:
+                    return hit[1], live
                 html = format_taiwan_market_page_html(self.db_path, live=live, snap=snap)
+                _PAGE_HTML_CACHE[memo_key] = (now, html)
+                if len(_PAGE_HTML_CACHE) > 32:
+                    oldest = min(_PAGE_HTML_CACHE.items(), key=lambda kv: float(kv[1][0]))
+                    _PAGE_HTML_CACHE.pop(oldest[0], None)
                 return html, live
 
-            html, live_quote = await asyncio.wait_for(asyncio.to_thread(_build), timeout=28.0)
+            html, live_quote = await asyncio.wait_for(asyncio.to_thread(_build), timeout=_MARKET_PAGE_TIMEOUT)
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await self._delete_message(status)
@@ -4441,7 +4465,7 @@ class WayneTelegramBot:
                     )
             html = await asyncio.wait_for(
                 asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
-                timeout=12.0,
+                timeout=_FLOW_HTML_TIMEOUT,
             )
             if lag and lag not in html:
                 html = lag + "\n" + html
@@ -6945,7 +6969,7 @@ class WayneTelegramBot:
             .token(self.token)
             .concurrent_updates(True)
             .connect_timeout(30.0)
-            .read_timeout(30.0)
+            .read_timeout(60.0)
             .write_timeout(120.0)
             .pool_timeout(30.0)
             .get_updates_connect_timeout(30.0)

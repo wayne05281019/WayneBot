@@ -9,12 +9,29 @@
 #   5. 中小型股流動性雙防護（日量 >= 1,000張 且 日額 >= 3,000萬）
 # ==============================================================================
 
+import copy
 import os
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Sequence, Set, Tuple
 import pandas as pd
 import numpy as np
+
+# 剛脫離零：盤中不准對兩千檔打 MIS；官方候選／非盤中結果短快取。
+_LEAVE_ZERO_PICK_TTL_SEC = 45.0
+_LEAVE_ZERO_PICK_LOCK = threading.Lock()
+_LEAVE_ZERO_PICK_CACHE: Dict[Tuple[Any, ...], Tuple[float, List[Dict[str, Any]]]] = {}
+_LEAVE_ZERO_OFFICIAL_TTL_SEC = 45.0
+_LEAVE_ZERO_OFFICIAL_CACHE: Dict[Tuple[Any, ...], Tuple[float, List[Dict[str, Any]]]] = {}
+
+
+def clear_leave_zero_pick_cache() -> None:
+    with _LEAVE_ZERO_PICK_LOCK:
+        _LEAVE_ZERO_PICK_CACHE.clear()
+        _LEAVE_ZERO_OFFICIAL_CACHE.clear()
+
 
 
 try:
@@ -919,12 +936,33 @@ class ScreeningEngine:
     ) -> List[Dict[str, Any]]:
         """剛脫離零：昨獲利貼零、今離開 0。掃高低卡（含興櫃），不改海選黃金買點公式。未收盤不寫庫。"""
         del pick
-        return self._screen_leave_zero_from_profit(
+        from live_quote import is_live_merge_window
+
+        as_of = str(target_date or self.get_latest_trading_date() or "").replace("-", "")[:8]
+        live_on = bool(is_live_merge_window())
+        cache_key = (str(self.db_path), as_of, "0", False)
+        # 盤中現價會變，不准快取最終名單；只快取非盤中窗。
+        if not live_on:
+            now = time.monotonic()
+            with _LEAVE_ZERO_PICK_LOCK:
+                hit = _LEAVE_ZERO_PICK_CACHE.get(cache_key)
+                if hit and (now - float(hit[0])) < _LEAVE_ZERO_PICK_TTL_SEC:
+                    return copy.deepcopy(hit[1])
+        rows = self._screen_leave_zero_from_profit(
             target_date,
             days_ago=0,
             mode="ago",
             star_key="leave_zero",
         )
+        if not live_on:
+            with _LEAVE_ZERO_PICK_LOCK:
+                _LEAVE_ZERO_PICK_CACHE[cache_key] = (time.monotonic(), copy.deepcopy(rows))
+                if len(_LEAVE_ZERO_PICK_CACHE) > 16:
+                    oldest = min(
+                        _LEAVE_ZERO_PICK_CACHE.items(), key=lambda kv: float(kv[1][0])
+                    )
+                    _LEAVE_ZERO_PICK_CACHE.pop(oldest[0], None)
+        return rows
 
     def _screen_leave_zero_from_profit(
         self,
@@ -983,102 +1021,175 @@ class ScreeningEngine:
                 self.db_path, "leave_zero", [], as_of=as_of, pick=pick
             )
             return []
-        quotes: Dict[str, Dict[str, Any]] = {}
-        live_skipped = False
+        # 盤中只對「官方柱已過剛離零閘」的候選打 MIS，不准對全市場兩千檔逐批。
         live_on = bool(is_live_merge_window())
-        listed_codes = [c for c in codes if c not in em_ids]
-        if live_on and listed_codes:
+        out: List[Dict[str, Any]] = []
+        n_ago = int(days_ago or 0)
+        ex_cache = self._scale_ex_map() if str(mode or "") == "ago" else None
+        official_key = (
+            str(self.db_path),
+            as_of,
+            str(mode or ""),
+            int(days_ago or 0),
+            str(star_key or ""),
+        )
+        official_hit = None
+        now_m = time.monotonic()
+        with _LEAVE_ZERO_PICK_LOCK:
+            hit = _LEAVE_ZERO_OFFICIAL_CACHE.get(official_key)
+            if hit and (now_m - float(hit[0])) < _LEAVE_ZERO_OFFICIAL_TTL_SEC:
+                official_hit = copy.deepcopy(hit[1])
+        if official_hit is not None:
+            out = official_hit
+        else:
+            for sid in codes:
+                df = frames.get(sid)
+                if df is None or len(df) < 2:
+                    continue
+                try:
+                    from wayne_navigator import frame_for_cal60_profit
+
+                    profit_df = frame_for_cal60_profit(df, self.db_path)
+                    profits = profit_pct_cal60_series(profit_df)
+                    floor = float(cal60_low_close_at(profit_df, -1) or 0)
+                    official_pt = float(profits.iloc[-1])
+                except Exception:
+                    continue
+                if mode == "ago" and not _leave_zero_left_n_ago(profits, n_ago, df=df):
+                    continue
+                last_close = float(df["close"].iloc[-1] or 0)
+                prev_close = float(df["close"].iloc[-2] or 0) if len(df) >= 2 else last_close
+                try:
+                    ma20 = float(
+                        pd.to_numeric(df["close"], errors="coerce")
+                        .rolling(20, min_periods=5)
+                        .mean()
+                        .iloc[-1]
+                        or 0
+                    )
+                except Exception:
+                    ma20 = 0.0
+                try:
+                    last_vol_chk = float(df["volume"].iloc[-1] or 0)
+                except Exception:
+                    last_vol_chk = 0.0
+                if not _leave_zero_radar_row_ok(
+                    close=last_close,
+                    prev_close=prev_close,
+                    ma20=ma20,
+                    volume=last_vol_chk,
+                ):
+                    continue
+                last_vol = 0.0
+                leave_date = as_of
+                if n_ago > 0 and len(df) >= n_ago + 1:
+                    leave_date = str(df["date"].iloc[-(n_ago + 1)] or "")[:8] or as_of
+                try:
+                    hi20 = float(pd.to_numeric(df["close"], errors="coerce").iloc[-20:].max() or 0)
+                except Exception:
+                    hi20 = 0.0
+                item: Dict[str, Any] = {
+                    "stock_id": sid,
+                    "stock_name": names.get(sid) or "",
+                    "chase_warning": bool(hi20 > 0 and last_close >= hi20 * 0.985),
+                    "cal60_low": floor,
+                    "close": last_close,
+                    "leave_days": n_ago,
+                    "src_as_of": leave_date,
+                    "quote_source": "emerging_quotes" if sid in em_ids else "daily_quotes",
+                    "bias_monthly": (
+                        round((last_close - ma20) / ma20 * 100.0, 1) if ma20 > 0 else 0.0
+                    ),
+                    "ma20": ma20,
+                }
+                try:
+                    vols = df["volume"].astype(float)
+                    base = (
+                        float(vols.iloc[-61:-1].mean())
+                        if len(vols) >= 61
+                        else float(vols.iloc[:-1].mean())
+                        if len(vols) > 1
+                        else 0.0
+                    )
+                    last_vol = float(vols.iloc[-1] or 0)
+                    item["volume"] = int(last_vol)
+                    item["q60r"] = (last_vol / base) if base > 0 else 0.0
+                    if "turnover_k" in df.columns:
+                        item["turnover_k"] = float(df["turnover_k"].iloc[-1] or 0)
+                except Exception:
+                    item["q60r"] = 0.0
+                if not _leave_zero_pick_ok(mode, official_pt):
+                    continue
+                item["profit"] = official_pt
+                item["profit_pct"] = official_pt
+                if mode == "ago":
+                    info = _leave_zero_now_trend_info(
+                        df,
+                        last_close=None,
+                        stock_id=sid,
+                        db_path=self.db_path,
+                        cache=ex_cache if ex_cache is not None else self._scale_ex_map(),
+                    )
+                    info["stock_id"] = sid
+                    ok = bool(info) and _leave_zero_trend_ok(info)
+                    item["trend_up_now"] = bool(ok)
+                    item["trend_now_label"] = "趨勢已向上" if ok else "趨勢還沒向上"
+                    for key in ("ma20", "ma60", "low20", "d20", "monthly_stage_kind"):
+                        if key in info:
+                            item[key] = info[key]
+                try:
+                    from hold_prior_wave import stamp_buy_gate
+
+                    stamp_buy_gate(item, df)
+                except Exception:
+                    pass
+                out.append(item)
+            with _LEAVE_ZERO_PICK_LOCK:
+                _LEAVE_ZERO_OFFICIAL_CACHE[official_key] = (
+                    time.monotonic(),
+                    copy.deepcopy(out),
+                )
+                if len(_LEAVE_ZERO_OFFICIAL_CACHE) > 16:
+                    oldest = min(
+                        _LEAVE_ZERO_OFFICIAL_CACHE.items(),
+                        key=lambda kv: float(kv[1][0]),
+                    )
+                    _LEAVE_ZERO_OFFICIAL_CACHE.pop(oldest[0], None)
+        if live_on and out:
+            listed = [
+                str(x.get("stock_id") or "")
+                for x in out
+                if str(x.get("stock_id") or "") not in em_ids
+            ]
+            listed = [c for c in listed if c]
+            quotes: Dict[str, Dict[str, Any]] = {}
             try:
                 from midday_review import fetch_mis_batch
 
-                quotes = fetch_mis_batch(listed_codes, self.db_path) or {}
+                if listed:
+                    quotes = fetch_mis_batch(listed, self.db_path) or {}
             except Exception:
                 quotes = {}
             if not quotes:
-                live_skipped = True
-        out: List[Dict[str, Any]] = []
-        n_ago = int(days_ago or 0)
-        for sid in codes:
-            df = frames.get(sid)
-            if df is None or len(df) < 2:
-                continue
-            try:
-                from wayne_navigator import frame_for_cal60_profit
-
-                profit_df = frame_for_cal60_profit(df, self.db_path)
-                profits = profit_pct_cal60_series(profit_df)
-                floor = float(cal60_low_close_at(profit_df, -1) or 0)
-                official_pt = float(profits.iloc[-1])
-            except Exception:
-                continue
-            if mode == "ago" and not _leave_zero_left_n_ago(profits, n_ago, df=df):
-                continue
-            last_close = float(df["close"].iloc[-1] or 0)
-            prev_close = float(df["close"].iloc[-2] or 0) if len(df) >= 2 else last_close
-            try:
-                ma20 = float(
-                    pd.to_numeric(df["close"], errors="coerce")
-                    .rolling(20, min_periods=5)
-                    .mean()
-                    .iloc[-1]
-                    or 0
-                )
-            except Exception:
-                ma20 = 0.0
-            try:
-                last_vol_chk = float(df["volume"].iloc[-1] or 0)
-            except Exception:
-                last_vol_chk = 0.0
-            if not _leave_zero_radar_row_ok(
-                close=last_close,
-                prev_close=prev_close,
-                ma20=ma20,
-                volume=last_vol_chk,
-            ):
-                continue
-            last_vol = 0.0
-            leave_date = as_of
-            if n_ago > 0 and len(df) >= n_ago + 1:
-                leave_date = str(df["date"].iloc[-(n_ago + 1)] or "")[:8] or as_of
-            try:
-                hi20 = float(pd.to_numeric(df["close"], errors="coerce").iloc[-20:].max() or 0)
-            except Exception:
-                hi20 = 0.0
-            item: Dict[str, Any] = {
-                "stock_id": sid,
-                "stock_name": names.get(sid) or "",
-                "chase_warning": bool(hi20 > 0 and last_close >= hi20 * 0.985),
-                "cal60_low": floor,
-                "close": last_close,
-                "leave_days": n_ago,
-                "src_as_of": leave_date,
-                "quote_source": "emerging_quotes" if sid in em_ids else "daily_quotes",
-                "bias_monthly": (
-                    round((last_close - ma20) / ma20 * 100.0, 1) if ma20 > 0 else 0.0
-                ),
-                "ma20": ma20,
-            }
-            try:
-                vols = df["volume"].astype(float)
-                base = (
-                    float(vols.iloc[-61:-1].mean())
-                    if len(vols) >= 61
-                    else float(vols.iloc[:-1].mean())
-                    if len(vols) > 1
-                    else 0.0
-                )
-                last_vol = float(vols.iloc[-1] or 0)
-                item["volume"] = int(last_vol)
-                item["q60r"] = (last_vol / base) if base > 0 else 0.0
-                if "turnover_k" in df.columns:
-                    item["turnover_k"] = float(df["turnover_k"].iloc[-1] or 0)
-            except Exception:
-                item["q60r"] = 0.0
-            used_live = False
-            if live_on and not live_skipped and sid not in em_ids:
-                q = quotes.get(sid) or {}
-                raw_px = q.get("price") if q.get("price") is not None else q.get("close")
-                if raw_px is not None and floor > 0:
+                for item in out:
+                    if str(item.get("stock_id") or "") not in em_ids:
+                        item["_live_skipped"] = True
+            else:
+                kept: List[Dict[str, Any]] = []
+                for item in out:
+                    sid = str(item.get("stock_id") or "")
+                    if not sid or sid in em_ids:
+                        kept.append(item)
+                        continue
+                    q = quotes.get(sid) or {}
+                    raw_px = (
+                        q.get("price") if q.get("price") is not None else q.get("close")
+                    )
+                    floor = float(item.get("cal60_low") or 0)
+                    if raw_px is None or floor <= 0:
+                        item["_live_skipped"] = True
+                        kept.append(item)
+                        continue
                     price = float(raw_px)
                     live_profit = round((price - floor) / floor * 100.0, 1)
                     if not _leave_zero_pick_ok(mode, live_profit):
@@ -1091,10 +1202,11 @@ class ScreeningEngine:
                     except (TypeError, ValueError, ZeroDivisionError):
                         pct = q.get("pct")
                     live_vol = int(q.get("volume") or 0)
+                    last_vol = float(item.get("volume") or 0)
                     if live_vol > 0:
                         item["volume"] = live_vol
                         if item.get("q60r") and last_vol > 0:
-                            item["q60r"] = item["q60r"] * (live_vol / last_vol)
+                            item["q60r"] = float(item["q60r"]) * (live_vol / last_vol)
                     item["profit"] = live_profit
                     item["profit_pct"] = live_profit
                     item["live"] = {
@@ -1104,41 +1216,46 @@ class ScreeningEngine:
                         "update_time": q.get("update_time", ""),
                         "yesterday_close": yest_c,
                     }
-                    used_live = True
+                    try:
+                        hi20 = float(
+                            pd.to_numeric(frames[sid]["close"], errors="coerce")
+                            .iloc[-20:]
+                            .max()
+                            or 0
+                        )
+                    except Exception:
+                        hi20 = 0.0
                     if hi20 > 0:
                         item["chase_warning"] = bool(price >= hi20 * 0.985)
-            if not used_live:
-                if not _leave_zero_pick_ok(mode, official_pt):
-                    continue
-                item["profit"] = official_pt
-                item["profit_pct"] = official_pt
-                if live_skipped and sid not in em_ids:
-                    item["_live_skipped"] = True
-            if mode == "ago":
-                live_px = None
-                if item.get("live"):
-                    live_px = item["live"].get("price")
-                info = _leave_zero_now_trend_info(
-                    df,
-                    last_close=live_px,
-                    stock_id=sid,
-                    db_path=self.db_path,
-                    cache=self._scale_ex_map(),
-                )
-                info["stock_id"] = sid
-                ok = bool(info) and _leave_zero_trend_ok(info)
-                item["trend_up_now"] = bool(ok)
-                item["trend_now_label"] = "趨勢已向上" if ok else "趨勢還沒向上"
-                for key in ("ma20", "ma60", "low20", "d20", "monthly_stage_kind"):
-                    if key in info:
-                        item[key] = info[key]
-            try:
-                from hold_prior_wave import stamp_buy_gate
-
-                stamp_buy_gate(item, df)
-            except Exception:
-                pass
-            out.append(item)
+                    if mode == "ago":
+                        df = frames.get(sid)
+                        if df is not None:
+                            info = _leave_zero_now_trend_info(
+                                df,
+                                last_close=price,
+                                stock_id=sid,
+                                db_path=self.db_path,
+                                cache=ex_cache
+                                if ex_cache is not None
+                                else self._scale_ex_map(),
+                            )
+                            info["stock_id"] = sid
+                            ok = bool(info) and _leave_zero_trend_ok(info)
+                            item["trend_up_now"] = bool(ok)
+                            item["trend_now_label"] = (
+                                "趨勢已向上" if ok else "趨勢還沒向上"
+                            )
+                            for key in (
+                                "ma20",
+                                "ma60",
+                                "low20",
+                                "d20",
+                                "monthly_stage_kind",
+                            ):
+                                if key in info:
+                                    item[key] = info[key]
+                    kept.append(item)
+                out = kept
         if mode == "zero":
             out.sort(
                 key=lambda x: (
