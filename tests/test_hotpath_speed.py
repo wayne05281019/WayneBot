@@ -28,9 +28,13 @@ def test_flow_sector_rows_use_indexed_date():
 
 def test_lookup_gc_once_after_all_pngs():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    loop = src[src.index("for kind, fn") : src.index("try:\n                gc.collect")]
-    assert "gc.collect" not in loop
+    # 兩卡改 asyncio.gather 真並行後，不再有 for kind, fn 串行迴圈；
+    # 仍只准在全部 PNG 就緒後 gc 一次。
+    assert "asyncio.gather" in src
     assert src.count("gc.collect") == 1
+    gc_at = src.index("gc.collect")
+    gather_at = src.index("packed = await asyncio.gather")
+    assert gather_at < gc_at
 
 
 def test_decision_card_quick_shares_lookup_timeouts():
