@@ -3105,16 +3105,19 @@ class WayneTelegramBot:
             "volzone": "大量區",
             "both": "介紹圖＋高低卡",
             "chart": "導航圖",
+            "quote": "現價",
             "table": "讀高低卡",
             "album": "一次送出",
         }
-        order = ("both", "album", "volzone")
+        order = ("quote", "both", "album", "volzone")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
             now = next((labels[k] for k in order if k not in sent_ks), "出圖")
         if str(current or "") == "both":
             rest = labels["album"]
+        elif str(current or "") == "quote":
+            rest = "讀高低卡、出圖"
         else:
             rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
         return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
@@ -5974,12 +5977,18 @@ class WayneTelegramBot:
         wait_msg = None
         try:
             wait_msg = await message.reply_text(
-                self._chart_progress_text(0, current="table"),
+                self._chart_progress_text(0, current="quote"),
                 parse_mode="HTML",
             )
             self._track_lookup_fade(actor, wait_msg, "wait")
         except Exception:
             wait_msg = None
+        try:
+            chat = getattr(message, "chat", None)
+            if chat is not None and hasattr(chat, "send_action"):
+                await chat.send_action("typing")
+        except Exception:
+            pass
         hits = lookup_stocks(self.db_path, code)
         if hits and (
             hits[0].get("category_choice")
@@ -6051,16 +6060,56 @@ class WayneTelegramBot:
         progress_task = None
         volzone_task = None
         op_t0 = time.monotonic()
-        self._op_state_map()[actor] = {"sent": [], "current": "table", "t0": op_t0}
+        # 先進度／typing，再等 MIS；不然盤中現價 1～2s 泡泡停在 0 秒像當掉。
+        self._op_state_map()[actor] = {"sent": [], "current": "quote", "t0": op_t0}
         if wait_msg is None:
             try:
                 wait_msg = await message.reply_text(
-                    self._chart_progress_text(0, current="table"),
+                    self._chart_progress_text(0, current="quote"),
                     parse_mode="HTML",
                 )
                 self._track_lookup_fade(actor, wait_msg, "wait")
             except Exception:
                 wait_msg = None
+        try:
+            chat = getattr(message, "chat", None)
+            if chat is not None and hasattr(chat, "send_action"):
+                await chat.send_action("typing")
+        except Exception:
+            pass
+
+        async def _progress_tick():
+            while not progress_stop.is_set():
+                if wait_msg is None:
+                    break
+                st = self._op_state_map().get(actor) or {}
+                elapsed = int(time.monotonic() - op_t0)
+                try:
+                    await wait_msg.edit_text(
+                        self._chart_progress_text(
+                            elapsed,
+                            sent=st.get("sent") or [],
+                            current=str(st.get("current") or ""),
+                        ),
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+                try:
+                    chat = getattr(message, "chat", None)
+                    if chat is not None and hasattr(chat, "send_action"):
+                        await chat.send_action("typing")
+                except Exception:
+                    pass
+                try:
+                    await asyncio.wait_for(progress_stop.wait(), timeout=2.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
+        if wait_msg is not None:
+            progress_task = asyncio.create_task(_progress_tick())
+
         news_stats = None
         live_rt = None
 
@@ -6093,6 +6142,8 @@ class WayneTelegramBot:
 
         news_task = asyncio.create_task(_fetch_news())
         live_rt = await _fetch_mis()
+        st0 = self._op_state_map().setdefault(actor, {"sent": [], "current": "table", "t0": op_t0})
+        st0["current"] = "table"
 
         def _news_ready():
             if not news_task.done():
@@ -6160,32 +6211,6 @@ class WayneTelegramBot:
                         except Exception:
                             logger.exception("送圖失敗 kind=%s path=%s attempt=%s", kind, path, attempt + 1)
             return False
-
-        async def _progress_tick():
-            while not progress_stop.is_set():
-                if wait_msg is None:
-                    break
-                st = self._op_state_map().get(actor) or {}
-                elapsed = int(time.monotonic() - op_t0)
-                try:
-                    await wait_msg.edit_text(
-                        self._chart_progress_text(
-                            elapsed,
-                            sent=st.get("sent") or [],
-                            current=str(st.get("current") or ""),
-                        ),
-                        parse_mode="HTML",
-                    )
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(progress_stop.wait(), timeout=2.0)
-                    break
-                except asyncio.TimeoutError:
-                    continue
-
-        if wait_msg is not None:
-            progress_task = asyncio.create_task(_progress_tick())
 
         hub_on = False
 
