@@ -5067,6 +5067,9 @@ _NAV_SIG = {
 # 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。不是紅箭頭買訊。
 _NAV_TRADE_BUY = "#1565C0"
 _NAV_TRADE_SELL = "#E64A19"
+# 買點藍箭＝原尺寸 1.5 倍（原 arrow_h×1.12／hw 0.88）
+_NAV_BUY_ARROW_H_MULT = 1.68
+_NAV_BUY_ARROW_HW = 1.32
 
 
 def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False,
@@ -5748,9 +5751,9 @@ def overlay_nav_marks_on_zone(
     buy_i, sell_i = _nav_trade_marks(work, card)
     if buy_i is not None:
         i = int(buy_i)
-        # 買點藍向上：兩倍大小，一眼看到；先留底邊空間不准切箭
-        buy_h = arrow_h * 2.24
-        buy_hw = 1.76
+        # 買點藍向上：原尺寸 1.5 倍；先留底邊空間不准切箭
+        buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
+        buy_hw = _NAV_BUY_ARROW_HW
         tip = float(work["low"].iloc[i]) - arrow_gap
         y0, y1 = ax1.get_ylim()
         ax1.set_ylim(min(y0, tip - buy_h - span * 0.02), y1)
@@ -6036,10 +6039,14 @@ def _paint_nav_on_axes(
     if buy_i is not None:
         i = int(buy_i)
         lo = float(work["low"].iloc[i])
+        buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
+        tip = lo - arrow_gap
+        y0, y1 = ax1.get_ylim()
+        ax1.set_ylim(min(y0, tip - buy_h - span * 0.02), y1)
         _nav_arrow(
-            ax1, lo - arrow_gap, xs[i], down=False,
+            ax1, tip, xs[i], down=False,
             face=_NAV_TRADE_BUY, ink=_NAV_TRADE_BUY,
-            arrow_h=arrow_h * 1.12, hw=0.88, z=8,
+            arrow_h=buy_h, hw=_NAV_BUY_ARROW_HW, z=8,
         )
         trade_note = "　買↑藍"
     if sell_i is not None:
