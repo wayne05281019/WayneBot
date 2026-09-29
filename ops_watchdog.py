@@ -41,7 +41,8 @@ JOB_SPECS: Dict[str, Dict[str, Any]] = {
 }
 
 HEARTBEAT_POLLING = "telegram_polling"
-_POLLING_STALE_SECONDS = 900
+# 心跳每 60s；逾 5 分鐘（約 5 拍）判死。舊值 900 會讓迴圈卡 8 分仍顯示 alive。
+_POLLING_STALE_SECONDS = 300
 
 # watchdog kind → main.py 排程名（與 config.scheduler_owns 對齊）
 _WATCHDOG_SCHEDULER_JOB = {

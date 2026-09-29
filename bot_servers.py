@@ -13,6 +13,7 @@ import os
 import re
 import struct
 import tempfile
+import threading
 import time
 import unicodedata
 from contextvars import ContextVar
@@ -5332,7 +5333,7 @@ class WayneTelegramBot:
             )
             if handled:
                 return
-            hits = lookup_stocks(self.db_path, text)
+            hits = await asyncio.to_thread(lookup_stocks, self.db_path, text)
             if hits_need_picker(hits):
                 await update.message.reply_html(
                     self._hits_list_html(hits),
@@ -5676,9 +5677,12 @@ class WayneTelegramBot:
         return title
 
     def _prefetch_mis_quote(self, code: str, hits: list | None = None):
-        from live_quote import fetch_lookup_quote, is_lookup_trading_day
+        from live_quote import fetch_lookup_quote, is_live_merge_window, is_lookup_trading_day
 
         if not is_lookup_trading_day():
+            return None
+        # 非合併窗（台北 16:30 後／08:50 前）MIS 不會併進日K，不准空等擋出圖。
+        if not is_live_merge_window():
             return None
         mkt = ""
         db_hit = hits[0] if hits else None
@@ -5989,7 +5993,7 @@ class WayneTelegramBot:
                 await chat.send_action("typing")
         except Exception:
             pass
-        hits = lookup_stocks(self.db_path, code)
+        hits = await asyncio.to_thread(lookup_stocks, self.db_path, code)
         if hits and (
             hits[0].get("category_choice")
             or (
@@ -6414,7 +6418,8 @@ class WayneTelegramBot:
                 card_render_task,
             )
             png_items = [item for item in packed if item]
-            # 介紹／高低卡已畫完，mpl 鎖空了。大量區跟相簿傳送同時走，少等一輪重抓日K。
+            # 大量區已改獨立 Agg；仍等介紹／高低卡先畫完再開，避開 FreeType 多執行緒踩字型。
+            # 跟相簿傳送同時走，牆鐘吃傳圖不是再加一輪重抓日K。
             volzone_task = asyncio.create_task(_volzone_item())
             pair_box = await asyncio.to_thread(
                 self._album_pair_box, [p for _k, p, _c, _m in png_items]
@@ -6960,13 +6965,47 @@ class WayneTelegramBot:
                     await asyncio.to_thread(record_heartbeat, self.db_path, HEARTBEAT_POLLING, "run_polling")
                 except Exception:
                     logger.debug("輪詢心跳失敗", exc_info=True)
-                await asyncio.sleep(120)
+                await asyncio.sleep(60)
+
+        def _start_loop_stall_watch(loop) -> None:
+            """背景執行緒戳事件迴圈：卡住就寫警告，心跳不再被假活蓋掉。"""
+
+            def _watch():
+                while True:
+                    time.sleep(45)
+                    if loop.is_closed():
+                        return
+                    try:
+                        done = threading.Event()
+
+                        def _mark():
+                            done.set()
+
+                        loop.call_soon_threadsafe(_mark)
+                        if not done.wait(timeout=12.0):
+                            logger.error(
+                                "Telegram 事件迴圈卡住超過 12s（查股／排程可能同步阻塞主迴圈）"
+                            )
+                    except Exception:
+                        logger.debug("事件迴圈探針失敗", exc_info=True)
+
+            threading.Thread(target=_watch, name="tg-loop-watch", daemon=True).start()
 
         async def _on_start(app):
             try:
                 asyncio.create_task(_heartbeat_loop())
             except Exception:
                 logger.exception("輪詢心跳啟動失敗")
+            try:
+                _start_loop_stall_watch(asyncio.get_running_loop())
+            except Exception:
+                logger.exception("事件迴圈探針啟動失敗")
+            try:
+                from wayne_db import ensure_core_schema
+
+                await asyncio.to_thread(ensure_core_schema, self.db_path)
+            except Exception:
+                logger.exception("核心 schema 預熱失敗")
             try:
                 if not skip_chart_warmup():
                     from wayne_navigator import prewarm_card_fonts

@@ -781,8 +781,10 @@ def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
     page = __import__("inspect").getsource(WayneTelegramBot._send_biaoke_page)
     assert page.index("_start_plain_wait") < page.index("stock_picker_hits")
     card = __import__("inspect").getsource(WayneTelegramBot._send_card_to)
-    assert card.index("_chart_progress_text") < card.index("lookup_stocks(")
-
+    # 進度泡泡先於查庫；查名改 to_thread，不准再同步 lookup_stocks( 卡住事件迴圈
+    assert "await asyncio.to_thread(lookup_stocks" in card
+    assert card.index("_chart_progress_text") < card.index("await asyncio.to_thread(lookup_stocks")
+    assert "lookup_stocks(self.db_path" not in card
 
 def test_shared_button_surfaces_use_same_formatters():
     """同一資訊只走一顆最新函式：大盤頁／海選末段輪動／資金頁不各寫一套。"""
