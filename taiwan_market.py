@@ -3364,9 +3364,11 @@ def _regime_traffic_light(regime: str) -> str:
 
 
 def _regime_plus_traffic_light(regime_plus: str) -> str:
+    # 風險／操作姿態燈（綠＝可操作／風險低，黃＝觀察，紅＝偏空），
+    # 不是台股 K 線漲紅跌綠。repair＝跌後修復、文案「不急追」→ 黃。
     return {
         "trend_up": "🟢",
-        "repair": "🟢",
+        "repair": "🟡",
         "range": "🟡",
         "trend_up_late": "🟡",
         "down_exhaust": "🟡",
@@ -4189,6 +4191,41 @@ def _brief_note_tail(note: str) -> str:
     return raw
 
 
+def _falling_risk_level_word(score: int) -> str:
+    if score >= 60:
+        return "高"
+    if score >= 35:
+        return "中"
+    return "低"
+
+
+def _brief_state_explain_lines(snap: Dict[str, Any]) -> List[str]:
+    """虛線分隔的對照說明：欄位意思＋為何現在是這狀態，供核對。"""
+    from tg_layout import pack_phone_bits, wrap_phone_html_lines
+
+    fr = int(snap.get("falling_risk") or 0)
+    fr_lv = _falling_risk_level_word(fr)
+    regime_lab = str(snap.get("regime_label") or "—")
+    plus_lab = str(snap.get("regime_plus_label") or "—")
+    zone_lab = _risk_zone_label(snap.get("risk_zone"))
+    conf = snap.get("confidence")
+    action = _brief_note_tail(market_screening_note(snap))
+    why = f"現在＝{_page_b(regime_lab)}底下的{_page_b(plus_lab)}"
+    if conf is not None:
+        why += f"（把握 {_page_b(str(conf) + '%')}）"
+    why += f"；風險{_page_b(fr_lv)}{_page_b(str(fr))}；{_page_b(zone_lab)}。"
+    lines = [
+        "<b>對照說明</b>",
+        *pack_phone_bits("盤勢＝整體方向", "細分＝細狀態"),
+        *pack_phone_bits("風險＝下跌風險分", "高檔區＝相對高低"),
+        *wrap_phone_html_lines(why),
+        "燈＝綠可操作／黃觀察／紅偏空。",
+    ]
+    if action:
+        lines.extend(wrap_phone_html_lines(action))
+    return lines
+
+
 def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -> str:
     from tg_layout import join_dashed, pack_phone_bits, wrap_phone_html_lines
 
@@ -4243,14 +4280,19 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
             else []
         ),
     ]
+    # 狀態列只留位階判斷；姿態白話進虛線「對照說明」欄，方便核對。
     regime = [
         f"{_brief_lab('盤勢')}　{_page_b(snap['regime_label'])}（把握 {_page_b(str(snap['confidence']) + '%')}）",
         f"{_brief_lab('細分盤勢')}　{_regime_plus_traffic_light(snap.get('regime_plus'))} {_page_b(snap.get('regime_plus_label', '—'))}",
         f"{_brief_lab('下跌風險')}　{fr_light} {_page_b(snap.get('falling_risk', 0))}",
         f"{_brief_lab('高檔區')}　{_risk_zone_label(snap.get('risk_zone'))}",
-        *wrap_phone_html_lines(_brief_note_tail(market_screening_note(snap))),
     ]
-    blocks = ["\n".join(x for x in nums if x), "\n".join(x for x in regime if x)]
+    explain = _brief_state_explain_lines(snap)
+    blocks = [
+        "\n".join(x for x in nums if x),
+        "\n".join(x for x in regime if x),
+        "\n".join(x for x in explain if x),
+    ]
     bt = snap.get("backtest") or []
     cur = snap.get("regime")
     hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
