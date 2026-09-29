@@ -59,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 5
+_VZ_PAINT_VER = 6
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -1301,7 +1301,7 @@ def _paint_volume_zone(
         bbox={**_tag_box, "edgecolor": _HOLD},
     )
 
-    # 查詢時間：右上（台北）；不蓋左壓標、不蓋量柱、不蓋右軸價位數字
+    # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位
     try:
         from decision_card_signals import format_card_query_stamp
 
@@ -1317,22 +1317,21 @@ def _paint_volume_zone(
     except Exception:
         stamp = ""
     if stamp:
-        ax1.text(
-            0.988,
-            0.975,
+        fig.text(
+            0.985,
+            0.992,
             stamp,
-            transform=ax1.transAxes,
             ha="right",
             va="top",
-            fontproperties=_fp(10.5, "bold"),
+            fontproperties=_fp(10.0, "bold"),
             color=_MUTED,
-            zorder=10,
+            zorder=20,
             bbox=dict(
-                boxstyle="round,pad=0.22",
+                boxstyle="round,pad=0.20",
                 facecolor="#ffffff",
                 edgecolor="#cfd8dc",
-                linewidth=0.8,
-                alpha=0.92,
+                linewidth=0.75,
+                alpha=0.94,
             ),
         )
 

@@ -5070,6 +5070,9 @@ _NAV_TRADE_SELL = "#E64A19"
 # 買點藍箭＝原設定全面 ×1.5（原 arrow_h×1.12／hw 0.88）；只動買點，60 低仍原尺寸
 _NAV_BUY_ARROW_H_MULT = 1.68  # 1.12 * 1.5
 _NAV_BUY_ARROW_HW = 1.05  # 略收寬，避免右緣看起來「單一巨箭」
+# 買點紅細框：跟同色「60低」藍箭分開
+_NAV_BUY_ARROW_EDGE = "#C62828"
+_NAV_BUY_ARROW_EDGE_W = 1.15
 
 
 def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False,
@@ -5115,7 +5118,7 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
                 markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 2), "月波動低"),
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=ms_z + 2), "買點↑藍"),
+                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=1.35, markersize=ms_z + 2), "買點↑藍紅框"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
                 markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
@@ -5242,9 +5245,26 @@ def _lerp_hex(a, b, t: float):
     return (ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t)
 
 
-def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.70,
-               z=7, alpha=1.0, hollow=False, ink=None):
-    """短粗箭頭（寬頭＋短柄）：遠看是標示，不會跟 K 棒糊成一排直棍。"""
+def _nav_arrow(
+    ax,
+    y_tip,
+    x,
+    *,
+    down: bool,
+    face: str,
+    arrow_h: float,
+    hw=0.70,
+    z=7,
+    alpha=1.0,
+    hollow=False,
+    ink=None,
+    edge: Optional[str] = None,
+    edgewidth: float = 0.0,
+):
+    """短粗箭頭（寬頭＋短柄）：遠看是標示，不會跟 K 棒糊成一排直棍。
+
+    edge／edgewidth＝外框（買點用紅細框，跟 60 低藍箭分開）。
+    """
     tip_ink = ink or face
     head_h = arrow_h * 0.70
     shaft_h = arrow_h * 0.30
@@ -5261,13 +5281,19 @@ def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.70,
         (x - sw, head_y),
         (x - hw, head_y),
     ]
+    if hollow:
+        ec, lw = tip_ink, 1.2
+    elif edge and edgewidth > 0:
+        ec, lw = edge, float(edgewidth)
+    else:
+        ec, lw = tip_ink, 0.0
     ax.add_patch(
         patches.Polygon(
             verts,
             closed=True,
             facecolor="none" if hollow else tip_ink,
-            edgecolor=tip_ink,
-            linewidth=1.2 if hollow else 0.0,
+            edgecolor=ec,
+            linewidth=lw,
             joinstyle="miter",
             alpha=alpha,
             zorder=z,
@@ -5772,6 +5798,8 @@ def overlay_nav_marks_on_zone(
             arrow_h=buy_h,
             hw=buy_hw,
             z=8,
+            edge=_NAV_BUY_ARROW_EDGE,
+            edgewidth=_NAV_BUY_ARROW_EDGE_W,
         )
     if sell_i is not None:
         i = int(sell_i)
@@ -6052,8 +6080,9 @@ def _paint_nav_on_axes(
             ax1, tip, xs[i], down=False,
             face=_NAV_TRADE_BUY, ink=_NAV_TRADE_BUY,
             arrow_h=buy_h, hw=_NAV_BUY_ARROW_HW, z=8,
+            edge=_NAV_BUY_ARROW_EDGE, edgewidth=_NAV_BUY_ARROW_EDGE_W,
         )
-        trade_note = "　買↑藍"
+        trade_note = "　買↑藍紅框"
     if sell_i is not None:
         i = int(sell_i)
         hi = float(work["high"].iloc[i])
