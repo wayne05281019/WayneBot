@@ -796,6 +796,26 @@ def format_quote_move(snap: Dict[str, Any], pct_k: str, chg_k: str) -> str:
     return _fmt_move(snap.get(pct_k), snap.get(chg_k), px=px, unit=unit)
 
 
+def cash_index_moves(snap: Optional[Dict[str, Any]]) -> List[tuple]:
+    """美股收盤四大指數唯一出口：[(道瓊, ％＋點), ...]。
+
+    只認 `_CASH_ITEMS`（dji/spx/ixic/sox 的 pct＋chg）。
+    不准混入期貨／盤後欄。缺官方 pct 不上；缺 chg 只留％。
+    海選與台股大盤必須都走這裡，％與點數逐檔相同。
+    """
+    out: List[tuple] = []
+    if not isinstance(snap, dict):
+        return out
+    for pct_k, chg_k, name in _CASH_ITEMS:
+        if snap.get(pct_k) is None:
+            continue
+        move = format_quote_move(snap, pct_k, chg_k)
+        if not move or move == "—":
+            continue
+        out.append((name, move))
+    return out
+
+
 def _vix_mood(level, pct=None) -> str:
     v = _as_float(level)
     if v is None:
