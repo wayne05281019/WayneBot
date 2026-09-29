@@ -3335,9 +3335,11 @@ def _regime_traffic_light(regime: str) -> str:
 
 
 def _regime_plus_traffic_light(regime_plus: str) -> str:
+    # 風險／操作姿態燈（綠＝可操作／風險低，黃＝觀察，紅＝偏空），
+    # 不是台股 K 線漲紅跌綠。repair＝跌後修復、文案「不急追」→ 黃。
     return {
         "trend_up": "🟢",
-        "repair": "🟢",
+        "repair": "🟡",
         "range": "🟡",
         "trend_up_late": "🟡",
         "down_exhaust": "🟡",

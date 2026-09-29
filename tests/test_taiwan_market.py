@@ -121,6 +121,23 @@ def test_regime_plus_screening_note_repair():
     assert "修復" in note
 
 
+def test_regime_plus_traffic_light_repair_is_caution_not_go():
+    """跌後修復＝觀察不急追 → 黃燈；不是台股跌色綠，也不是放行綠。"""
+    from taiwan_market import (
+        _falling_risk_light,
+        _regime_plus_traffic_light,
+        _regime_traffic_light,
+    )
+
+    assert _regime_plus_traffic_light("repair") == "🟡"
+    assert _regime_plus_traffic_light("trend_up") == "🟢"
+    assert _regime_plus_traffic_light("trend_down") == "🔴"
+    assert _falling_risk_light(0) == "🟢"
+    assert _falling_risk_light(40) == "🟡"
+    assert _falling_risk_light(60) == "🔴"
+    assert _regime_traffic_light("bull") == "🟢"
+
+
 def test_beta_sort_multiplier_high_beta_down():
     from taiwan_market import beta_sort_multiplier
 
