@@ -643,6 +643,93 @@ def test_demote_premature_morning_screens_same_day(tmp_path):
     assert rows["screen-20260908"][0] == "success"
 
 
+def test_demote_holiday_skip_morning_screens(tmp_path):
+    """連假休市誤標 screen-{as_of} success 必須降級，開市日才能補寄。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    import sqlite3
+
+    path = str(tmp_path / "holiday_skip.db")
+    ensure_core_schema(path)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "screen-20260924",
+            "2026-09-28T01:03:00",
+            "success",
+            "tw closed 20260928 教師節 skip morning",
+        ),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "screen-closed-20260928",
+            "2026-09-28T01:03:00",
+            "success",
+            "tw closed 20260928 教師節 skip morning",
+        ),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20260923", "2026-09-24T22:35:00", "success", "morning"),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.demote_holiday_skip_morning_screens() == 1
+    rows = {
+        r[0]: r[1:]
+        for r in sqlite3.connect(path).execute(
+            "SELECT run_date, status, notes FROM pipeline_runs"
+        )
+    }
+    assert rows["screen-20260924"][0] == "computed"
+    assert "holiday-skip-demote" in rows["screen-20260924"][1]
+    assert rows["screen-closed-20260928"][0] == "success"
+    assert rows["screen-20260923"][0] == "success"
+
+
+def test_morning_closed_uses_screen_closed_key(tmp_path, monkeypatch):
+    """休市不寫 screen-{as_of}，改記 screen-closed-{休市日}。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    import sqlite3
+
+    path = str(tmp_path / "closed_key.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    marks = []
+
+    monkeypatch.setattr(
+        "tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {"ok": True}
+    )
+    monkeypatch.setattr(
+        "tw_holidays.closed_tw_session",
+        lambda **_k: {"ymd": "20260928", "zh": "教師節", "kind": "full_close"},
+    )
+
+    def _mark(status, notes="", run_date=None):
+        marks.append((status, notes, run_date))
+
+    runner._mark_pipeline = _mark  # type: ignore
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+    assert marks == [
+        (
+            "success",
+            "tw closed 20260928 教師節 skip morning",
+            "screen-closed-20260928",
+        )
+    ]
+    assert not any(
+        (m[2] or "").startswith("screen-2026") and "closed" not in (m[2] or "")
+        for m in marks
+    )
+
+
 def test_catch_up_skips_morning_on_as_of_day(monkeypatch):
     """基準日當日補跑不可提早寄早上海選。"""
     import main as main_mod

@@ -458,16 +458,22 @@ def test_agents_silent_record_is_rank_three():
     assert "空名單／空代號不算有記" in text
     assert "對後續判斷／對質有幫助的官方收才凍" in text
     assert "對質結果要講" not in text
-    assert "1→13 的名次" in text
+    assert "1→14 的名次" in text
     assert "13. 靜默對質贏了就換並再生下一版" in text
     assert "## 13. 靜默對質贏了就換並再生下一版" in text
+    assert "14. 開市日必寄海選早報" in text
+    assert "## 14. 開市日必寄海選早報" in text
+    assert "8772209416" in text
+    assert "screen-closed-" in text
     assert "同 PR／同件" in text or "同件必須再生下一版" in text
     i3 = text.find("## 3. 能量化就直接量化")
     i4 = text.find("## 4. 不准假資料")
     i_silent = text.find("### 默默落檔")
     i13 = text.find("## 13. 靜默對質贏了就換並再生下一版")
+    i14 = text.find("## 14. 開市日必寄海選早報")
     assert 0 < i3 < i_silent < i4
     assert i13 > i4
+    assert i14 > i13
 
 
 def test_empty_list_is_not_a_recorded_day(tmp_path):
