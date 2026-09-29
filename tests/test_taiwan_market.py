@@ -2049,6 +2049,78 @@ def test_market_page_index_points_chips_us_align(tmp_path):
     assert "+0.02%（+1.00點）" in _html_plain(sox)
 
 
+def test_screen_and_market_four_us_indices_same_numbers(tmp_path):
+    """海選與台股大盤四大指數必須同源同數（％＋點數）；不准一邊兩檔一邊四檔。"""
+    import re
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from taiwan_market import (
+        _format_overnight_watch_lines,
+        ensure_index_daily_table,
+        format_screen_market_outlook_html,
+    )
+    from tg_layout import _html_plain
+    from us_overnight import save_us_overnight
+
+    db = str(tmp_path / "us_four_both.db")
+    ensure_index_daily_table(db)
+    us = {
+        "ok": True,
+        "regime": "caution",
+        "us_session": "20260926",
+        "us_phase": "overnight",
+        "vix": 16.3,
+        "dji_pct": -0.67,
+        "dji_chg": -347.11,
+        "spx_pct": -0.77,
+        "spx_chg": -59.72,
+        "ixic_pct": -0.92,
+        "ixic_chg": -248.34,
+        "sox_pct": -1.61,
+        "sox_chg": -203.69,
+    }
+    save_us_overnight(db, "20260929", us)
+    now = datetime(2026, 9, 29, 8, 20, tzinfo=ZoneInfo("Asia/Taipei"))
+    page = "\n".join(
+        _html_plain(x) for x in _format_overnight_watch_lines(db, "20260929", {}, now=now)
+    )
+    screen = _html_plain(
+        format_screen_market_outlook_html(
+            db,
+            "20260929",
+            snap={
+                "ok": True,
+                "as_of": "20260929",
+                "close": 48000.0,
+                "chg1_pct": 0.1,
+                "vs_ma20_pct": 1.0,
+                "regime": "neutral",
+                "falling_risk": 20,
+            },
+            now=now,
+        )
+    )
+
+    def _moves(text: str) -> dict:
+        out = {}
+        for name in ("道瓊", "標普", "那斯達克", "費半"):
+            for ln in text.splitlines():
+                if name not in ln or "%" not in ln:
+                    continue
+                m = re.search(r"([+-]\d+\.\d+%（[+-]?[\d.]+點）|[+-]\d+\.\d+%)", ln)
+                if m:
+                    out[name] = m.group(1)
+                    break
+        return out
+
+    pm, sm = _moves(page), _moves(screen)
+    assert set(pm) == {"道瓊", "標普", "那斯達克", "費半"}
+    assert pm == sm
+    assert pm["道瓊"] == "-0.67%（-347.11點）"
+    assert pm["費半"] == "-1.61%（-203.69點）"
+
+
 def test_screen_outlook_four_us_indices_pct_and_points():
     """海選美股一律四大指數：道瓊／標普／那斯達克／費半；％＋點數；缺 chg 不硬填。"""
     import re
