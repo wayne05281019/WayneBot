@@ -84,6 +84,15 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
     assert re.search(r"還在零.*隔日", _plain(html))
     assert "重點觀察" not in _plain(html)
     assert "箱型震盪：偏選股，不賭方向。" in html
+    assert "<b>對照說明</b>" in html
+    assert "盤勢＝整體方向" in _plain(html)
+    assert "細分＝細狀態" in _plain(html)
+    assert "綠可操作" in html
+    # 狀態列與對照說明以虛線分隔（至少出現在兩段之間）
+    parts = html.split(DASH_LINE)
+    assert len(parts) >= 3
+    assert any("對照說明" in p for p in parts)
+    assert any(">盤勢</a>" in p and "對照說明" not in p for p in parts)
     assert sum(1 for ln in html.split("\n") if ">盤勢</a>" in ln) == 1
     joined = html.replace("\n", "")
     assert "（勝60%）" in joined
