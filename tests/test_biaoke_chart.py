@@ -515,14 +515,17 @@ def test_locator_inset_marks_window():
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=_FIG_RIGHT" in rsrc
-    assert "_paint_spot(ov, quote" in rsrc
-    assert "chip_y - 3.35" in rsrc or "標籤下面" in inspect.getsource(_paint_spot)
+    assert "_paint_spot(ov, quote)" in rsrc
+    assert "_SPOT_X" in inspect.getsource(_paint_spot) or "_SPOT_Y" in inspect.getsource(_paint_spot)
+    assert 'x=_HEADER_X, y=chip_y' not in rsrc
     assert "quote=quote" not in rsrc.split("paint_locator_inset")[1][:400]
+    assert "x_right - 0.35" in rsrc
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
-    assert "標籤下面" in spot or "ha=\"left\"" in spot
-    assert "較昨日" in inspect.getsource(_paint_spot)
+    assert "縮圖外框左側" in spot or 'align: str = "right"' in spot
+    assert "較昨日" in spot
+    assert 'ha="right"' in spot
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
@@ -535,14 +538,15 @@ def test_locator_inset_marks_window():
     assert "uniq_tags" not in wsrc
     assert "_place_right_notes" in wsrc
     assert "_paint_abc_on_ax" in wsrc
-    spot = inspect.getsource(_paint_spot)
-    assert 'ha="left"' in spot
-    assert "較昨日" in spot
-    assert 'ha="right"' not in spot
     assert "compact" in spot
     assert "window_forecast_seams" in wsrc or "paint_forecast_span" in wsrc
     assert "right=_FIG_RIGHT" in wsrc
     assert "_style_frame" in wsrc
+    from biaoke_chart import _place_right_notes
+
+    notes = inspect.getsource(_place_right_notes)
+    assert 'ha="right"' in notes
+    assert "clip=True" in notes
 
 
 def test_locator_window_matches_main_time():

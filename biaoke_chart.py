@@ -68,8 +68,12 @@ _STOCK_LOCATOR_RECT = (
     _LOCATOR_WIDTH,
     _STOCK_LOCATOR_HEIGHT,
 )
-_HEADER_X = 5.50
-_HEADER_CHIP_MAX = 36.0
+_HEADER_X = 5.20
+# 今K／漲跌：縮圖外框左邊空白上緣（直排貼框，overlay 0–100）
+_SPOT_X = _LOCATOR_LEFT * 100.0 - 0.70
+_SPOT_Y = (_STOCK_LOCATOR_BOTTOM + _STOCK_LOCATOR_HEIGHT * 0.78) * 100.0
+# 左上頭牌可佔到縮圖左側空白前（今K已直排貼縮圖，不橫佔中間）
+_HEADER_CHIP_MAX = 44.0
 
 
 def _style_frame(ax, *, hide_top=False) -> None:
@@ -1152,8 +1156,12 @@ def _leader_note(
     size=11,
     ha="left",
     va="center",
+    clip: bool = False,
 ) -> None:
-    """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。"""
+    """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
+
+    clip=True：標籤必須落在軸內（演算區右側／最可能），不准跳出底圖。
+    """
     ax.annotate(
         str(text),
         xy=(float(x), float(y)),
@@ -1163,7 +1171,8 @@ def _leader_note(
         ha=ha,
         va=va,
         zorder=12,
-        annotation_clip=False,
+        annotation_clip=bool(clip),
+        clip_on=bool(clip),
         bbox=dict(
             boxstyle="round,pad=0.28",
             facecolor="#ffffff",
@@ -1248,11 +1257,11 @@ def _place_right_notes(
     ymax: float,
     min_gap: float,
 ) -> None:
-    """演算區右側空白：虛線拉到右溝，字錯開，不壓延伸線。"""
+    """演算區內右側：字右對齊、強制 clip，不准跳出底圖外。"""
     if not notes:
         return
-    lo = ymin + min_gap * 0.4
-    hi = ymax - min_gap * 0.4
+    lo = ymin + min_gap * 0.45
+    hi = ymax - min_gap * 0.45
     tys = _spread_ys_around(
         [float(n.get("y") or 0) for n in notes],
         [],
@@ -1270,8 +1279,9 @@ def _place_right_notes(
             tx=x_text,
             ty=ty,
             size=int(note.get("size") or 11),
-            ha="left",
+            ha="right",
             va="center",
+            clip=True,
         )
 
 
@@ -2211,7 +2221,7 @@ def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, 
     return x + _ow(f" {label} ", size) + 1.15
 
 
-def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: float = 96.35) -> None:
+def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: float = 96.55) -> None:
     sid = str(plate.get("sid") or "")
     name = str(plate.get("name") or "")
     title = f"{sid} {name}".strip() or "官方日K"
@@ -2220,31 +2230,31 @@ def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: floa
         y,
         title,
         color=_TEXT,
-        fontproperties=_fp(17, "bold"),
+        fontproperties=_fp(21, "bold"),
         va="center",
         ha="left",
         zorder=22,
     )
-    cx = x + _ow(title, 17) + 1.35
+    cx = x + _ow(title, 21) + 1.45
     industry = str(plate.get("industry") or "").strip()
     if industry:
         cx = _draw_chip(
-            ax, cx, y, industry, fc="#eef3f8", ec="#607d8b", tc="#37474f", size=10
+            ax, cx, y, industry, fc="#eef3f8", ec="#607d8b", tc="#37474f", size=12
         )
     if str(plate.get("leader") or "").strip() == "龍頭":
-        _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=10)
+        _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=12)
 
 
 def _paint_spot(
     ax,
     quote: Dict[str, Any],
     *,
-    x: float = 4.15,
-    y: float = 92.55,
-    align: str = "left",
+    x: float = _SPOT_X,
+    y: float = _SPOT_Y,
+    align: str = "right",
     compact: bool = False,
 ) -> None:
-    """今K／現價／漲跌。個股畫在左上文字與標籤下面，不擋縮圖。"""
+    """今K／現價／漲跌。預設置於縮圖外框左側空白，右對齊，不擋縮圖、不壓左上頭牌。"""
     close = quote.get("close")
     if close is None:
         return
@@ -2299,32 +2309,63 @@ def _paint_spot(
                 fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
             )
         return
+    # 右對齊貼縮圖外框左邊空白：第一排今K｜小K｜現價／價，第二排漲跌
+    if str(align or "right") == "right":
+        cursor = float(x)
+        ax.text(
+            cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
+            va="center", ha="right", zorder=22, **px_kw,
+        )
+        cursor -= _ow(px, 22) + 0.40
+        ax.text(
+            cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
+            va="center", ha="right", zorder=22,
+        )
+        cursor -= _ow(label, 11) + 0.40
+        if ohlc_ok:
+            cw, ch = 2.2, 4.2
+            _draw_mini_candle(
+                ax, cursor - cw, y - ch * 0.5, cw, ch,
+                float(o), float(hi), float(lo), float(close), prev,
+            )
+            cursor -= cw + 0.35
+        ax.text(
+            cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
+            va="center", ha="right", zorder=22,
+        )
+        if move and move != "—":
+            ax.text(
+                x, y - 3.05, "較昨日　" + move, color=color,
+                fontproperties=_fp(12, "bold"), va="center", ha="right", zorder=22,
+            )
+        return
+    # 左對齊備援（測試／舊呼叫）
     cursor = float(x)
     ax.text(
-        cursor, y, "今K", color="#546e7a", fontproperties=_fp(8, "bold"),
+        cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
         va="center", ha="left", zorder=22,
     )
-    cursor += _ow("今K", 8) + 0.35
+    cursor += _ow("今K", 9) + 0.35
     if ohlc_ok:
-        cw, ch = 2.2, 4.1
+        cw, ch = 2.35, 4.4
         _draw_mini_candle(
             ax, cursor, y - ch * 0.5, cw, ch,
             float(o), float(hi), float(lo), float(close), prev,
         )
         cursor += cw + 0.4
     ax.text(
-        cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
+        cursor, y, label, color="#546e7a", fontproperties=_fp(12, "bold"),
         va="center", ha="left", zorder=22,
     )
-    cursor += _ow(label, 11) + 0.4
+    cursor += _ow(label, 12) + 0.4
     ax.text(
-        cursor, y, px, color=px_color, fontproperties=_fp(20, "bold"),
+        cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
         va="center", ha="left", zorder=22, **px_kw,
     )
     if move and move != "—":
         ax.text(
-            x, y - 2.85, "較昨日　" + move, color=color,
-            fontproperties=_fp(11, "bold"), va="center", ha="left", zorder=22,
+            x, y - 3.15, "較昨日　" + move, color=color,
+            fontproperties=_fp(12, "bold"), va="center", ha="left", zorder=22,
         )
 
 
@@ -2648,7 +2689,8 @@ def render_biaoke_structure_png(
     _place_right_notes(
         ax1,
         right_notes,
-        x_text=x_gutter,
+        # 右對齊貼近軸右緣內側，長句往左長，不准跳出底圖
+        x_text=x_right - 0.35,
         ymin=ymin,
         ymax=ymax,
         min_gap=span * 0.13,
@@ -2688,10 +2730,10 @@ def render_biaoke_structure_png(
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     ov.text(
         _HEADER_X,
-        92.55,
+        93.05,
         date_line,
         color=_TEXT,
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(13, "bold"),
         va="center",
         ha="left",
     )
@@ -2704,47 +2746,48 @@ def render_biaoke_structure_png(
             f"量 {_vol(last_bar.get('volume'))}"
         ),
         color=_TEXT,
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(12, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        87.35,
+        86.85,
         (
             f"爆大量日 {_ymd_full(spike_date)}　高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
             f"量 {_vol(spike_bar.get('volume'))}"
         ),
         color=_PRESS,
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(12, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        84.85,
+        83.95,
         "不是15分、不是介紹圖／決策卡",
         color=_MUTED,
-        fontproperties=_fp(9, "bold"),
+        fontproperties=_fp(11, "bold"),
         va="center",
         ha="left",
     )
-    chip_x, chip_y = _HEADER_X, 81.9
+    chip_x, chip_y = _HEADER_X, 80.55
     if mark:
-        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=9)
-        chip_x, chip_y = _HEADER_X, 78.6
+        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=11)
+        chip_x, chip_y = _HEADER_X, 76.85
     for bit in banner_bits:
-        need = _ow(f" {bit} ", 9) + 1.2
+        need = _ow(f" {bit} ", 11) + 1.25
         if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
-            if chip_y - 2.9 < 75:
+            if chip_y - 3.35 < 70.5:
                 break
             chip_x = _HEADER_X
-            chip_y -= 2.9
+            chip_y -= 3.35
         chip_x = _draw_chip(
-            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=9
+            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=11
         )
+    # 今K／漲跌：縮圖外框左邊空白（預設 _SPOT_X／_SPOT_Y），不佔左上頭牌
     if quote:
-        _paint_spot(ov, quote, x=_HEADER_X, y=chip_y - 3.35, align="left")
+        _paint_spot(ov, quote)
     if len(rows) >= n + 8:
         loc_legs: List[Dict[str, Any]] = []
         loc_marks: List[Dict[str, Any]] = []
