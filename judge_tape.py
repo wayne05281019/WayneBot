@@ -451,6 +451,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         night_tick(market_db, day)
     except Exception:
         pass
+    # 大量區×季線上升另軌：與壓撐／海選勝率分開；過閘也不自動改買訊。失敗不擋。
+    try:
+        from volzone_ma60_verify import night_tick as volzone_ma60_night_tick
+
+        volzone_ma60_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 

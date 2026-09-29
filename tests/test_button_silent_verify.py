@@ -78,6 +78,7 @@ def test_catalog_covers_full_keyboard():
         "當沖",
         "隔日沖",
         "壓撐觀察",
+        "大量區×季線",
         "AI倉",
         "連買區",
         "剛脫離零",
