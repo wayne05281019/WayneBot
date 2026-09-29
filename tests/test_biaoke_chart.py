@@ -871,7 +871,8 @@ def test_major_swings_and_locator_legs():
 def test_biaoke_chart_dpi_is_lighter_than_nav():
     from wayne_navigator import NAV_CHART_DPI
 
-    assert BIAOKE_CHART_DPI <= 180
+    # 提畫質到 200；仍須明顯輕於導航 320，冷渲才負擔得起
+    assert 160 <= BIAOKE_CHART_DPI <= 220
     assert BIAOKE_CHART_DPI < NAV_CHART_DPI
     import inspect
     from biaoke_chart import render_biaoke_structure_png
@@ -881,8 +882,56 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     assert "NAV_CHART_DPI" not in src
     assert "_add_ohlc_wicks" in src
     assert "_savefig_lookup_png" in src
+    assert "演算區（不是保證・不是買訊）" in src or "不是買訊" in src
     from biaoke_chart import paint_locator_inset
 
     lsrc = inspect.getsource(paint_locator_inset)
     assert "_add_ohlc_wicks" in lsrc
     assert "ax.vlines" not in lsrc
+
+
+def test_broken_up_rail_not_projected_to_forecast():
+    """上升軌已壞／過陡：不准把虛線延長進演算區當還有效。"""
+    import inspect
+
+    from biaoke_chart import analyze_structure, project_next, render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "up_broken" in src
+    assert "已壞" in src
+    assert "rail_hi" in src
+    # 合成：上升連點後跌破
+    from datetime import date, timedelta
+
+    day = date(2026, 7, 1)
+    rows = []
+    for i in range(40):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        if i == 10:
+            o, h, l, c, v = 100, 120, 96, 118, 18000
+        elif i == 18:
+            o, h, l, c, v = 110, 112, 100, 105, 2000
+        elif i == 26:
+            o, h, l, c, v = 108, 110, 104, 106, 1800
+        elif i == 39:
+            o, h, l, c, v = 90, 92, 80, 82, 2200
+        else:
+            px = 100 + i * 0.3
+            o, h, l, c, v = px, px + 2, px - 2, px, 1100
+        rows.append(
+            {
+                "date": d,
+                "stock_id": "9999",
+                "stock_name": "測",
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+            }
+        )
+    info = analyze_structure(rows)
+    if info.get("up_pts") and info.get("up_broken"):
+        proj = project_next(info)
+        assert proj.get("up_fut") in (None, 0) or "up_fut" not in proj or proj.get("up_fut") is None
+

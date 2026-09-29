@@ -25,7 +25,7 @@ from matplotlib.collections import LineCollection, PolyCollection
 
 from wayne_navigator import _fp, _mpl_serial
 
-BIAOKE_CHART_DPI = 160
+BIAOKE_CHART_DPI = 200
 
 logger = logging.getLogger("WayneBot.BiaokeChart")
 
@@ -186,9 +186,35 @@ def _asc_low_pair(lo_p: Sequence[int], lows: Sequence[float]) -> Optional[Tuple[
     i, j = int(lo_p[-2]), int(lo_p[-1])
     if j - i < 3:
         return None
-    if lows[j] > lows[i] * 1.001:
-        return i, j
-    return None
+    if lows[j] <= lows[i] * 1.001:
+        return None
+    mid = lows[i + 1 : j]
+    if mid and min(mid) < lows[i] - 1e-9:
+        return None
+    return i, j
+
+
+def _rail_broken(last: float, y_now: float, *, above_is_ok: bool) -> bool:
+    """上升撐：收在線下＝壞；下降壓：收在線上＝已過（不算『還壓著』）。"""
+    if not y_now:
+        return False
+    if above_is_ok:
+        return float(last) < float(y_now)
+    return float(last) > float(y_now)
+
+
+def _rail_slope_too_steep(
+    x1: float, y1: float, x2: float, y2: float, *, span: float, n: int
+) -> bool:
+    """斜率過陡＝連點不可當有效撐／壓延長（例如兩點價差吃掉整段高低幅）。"""
+    dx = float(x2) - float(x1)
+    if dx < 3:
+        return True
+    dy = abs(float(y2) - float(y1))
+    if span <= 0:
+        return False
+    # 每根漲超過全日高低幅 4% 就當過陡（2383 3930→5255 會觸發）
+    return (dy / dx) > (span * 0.04)
 
 
 def _line_at(x1: float, y1: float, x2: float, y2: float, x: float) -> float:
@@ -383,17 +409,22 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             (a, lows[a], str(rows[a].get("date") or "")),
             (b, lows[b], str(rows[b].get("date") or "")),
         )
-        if last > y_now:
+        broken = _rail_broken(last, y_now, above_is_ok=True)
+        out["up_broken"] = broken
+        span_u = max(max(highs) - min(lows), 1.0) if highs and lows else 1.0
+        out["up_steep"] = _rail_slope_too_steep(a, lows[a], b, lows[b], span=span_u, n=n)
+        if broken:
             notes.append(
                 f"上升連點 {_md(rows[a].get('date'))}低{_px(lows[a])}～"
                 f"{_md(rows[b].get('date'))}低{_px(lows[b])}，"
-                f"延長到最近約 {_px(y_now)}，收在上面；破這條才像軌壞掉"
+                f"延長到最近約 {_px(y_now)}，收在下面，這條上升軌先當壞了；"
+                f"壞掉就不往演算區延長當還有效"
             )
         else:
             notes.append(
                 f"上升連點 {_md(rows[a].get('date'))}低{_px(lows[a])}～"
                 f"{_md(rows[b].get('date'))}低{_px(lows[b])}，"
-                f"延長到最近約 {_px(y_now)}，收在下面，這條上升軌先當壞了"
+                f"延長到最近約 {_px(y_now)}，收在上面；破這條才像軌壞掉"
             )
     if out["wash"]:
         notes.append("破撐之後又站回，比較像破線洗盤，不是保證")
@@ -439,9 +470,15 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
         (x1, y1, _d1), (x2, y2, _d2) = down_pts
         down_fut = _line_at(x1, y1, x2, y2, x_end)
     up_pts = info.get("up_pts")
-    if up_pts:
+    if up_pts and not info.get("up_broken"):
         (x1, y1, _d1), (x2, y2, _d2) = up_pts
-        up_fut = _line_at(x1, y1, x2, y2, x_end)
+        # 過陡的上升連點不拿去演算未來價（會飛出圖外當假支撐）
+        if not info.get("up_steep"):
+            up_fut = _line_at(x1, y1, x2, y2, x_end)
+        else:
+            up_fut = None
+    elif up_pts:
+        up_fut = None
     key = "wait"
     target = last
     label = "量價壓撐不齊，不演算後續。"
@@ -1886,6 +1923,25 @@ def render_biaoke_structure_png(
     closes = info.get("closes") or [float(r.get("close") or 0) for r in work]
     opens = [float(r.get("open") or r.get("close") or 0) for r in work]
     vols = info.get("vols") or [float(r.get("volume") or 0) for r in work]
+    last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1])
+    last_d = str(last_bar0.get("date") or "")[:8]
+    last_c0 = float(last_bar0.get("close") or 0)
+    memo_key = (
+        "biaoke_struct",
+        str(sid or ""),
+        last_d,
+        round(last_c0, 4),
+        int(n),
+        int(len(rows)),
+        int(BIAOKE_CHART_DPI),
+        round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
+        round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
+    )
+    from wayne_navigator import _lookup_render_memo_get, _lookup_render_memo_put
+
+    hit = _lookup_render_memo_get(memo_key, save_path)
+    if hit:
+        return hit
     xs = list(range(n))
     span = max(max(highs) - min(lows), 1.0)
     proj = info.get("project") or {}
@@ -1961,12 +2017,12 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     if spike_hi:
-        ax1.axhline(spike_hi, color=_PRESS, linewidth=1.55, zorder=4, alpha=0.92)
+        ax1.axhline(spike_hi, color=_PRESS, linewidth=1.15, zorder=4, alpha=0.92)
         right_notes.append(
             {"x": float(n - 1), "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
         )
     if spike_lo:
-        ax1.axhline(spike_lo, color=_HOLD, linewidth=1.55, zorder=4, alpha=0.92)
+        ax1.axhline(spike_lo, color=_HOLD, linewidth=1.15, zorder=4, alpha=0.92)
         right_notes.append(
             {"x": float(n - 1), "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
@@ -2022,6 +2078,11 @@ def render_biaoke_structure_png(
     if up_pts:
         (x1, y1, d1), (x2, y2, d2) = up_pts
         y_end = _line_at(x1, y1, x2, y2, x_fut)
+        y_now = _line_at(x1, y1, x2, y2, float(n - 1))
+        up_broken = bool(last_c and y_now and last_c < y_now)
+        up_steep = _rail_slope_too_steep(x1, y1, x2, y2, span=span, n=n)
+        # 已壞／過陡：只畫歷史實線到最近一根，不准虛線進演算區假裝還有效
+        rail_hi = float(n - 1) if (up_broken or up_steep) else x_fut
         _paint_extended_rail(
             ax1,
             x1,
@@ -2030,28 +2091,41 @@ def render_biaoke_structure_png(
             y2,
             seam=float(n - 1),
             x_lo=0.0,
-            x_hi=x_fut,
+            x_hi=rail_hi,
             y_lo=ymin,
             y_hi=ymax,
-            color=_UP_TRACK,
+            color=_UP_TRACK if not up_broken else "#90a4ae",
         )
         ax1.scatter(
             [x1, x2],
             [y1, y2],
-            color=_UP_TRACK,
+            color=_UP_TRACK if not up_broken else "#90a4ae",
             s=42,
             zorder=6,
             edgecolors="white",
             linewidths=0.8,
         )
+        lab_suffix = "（已壞）" if up_broken else ("（過陡僅參考）" if up_steep else "")
         band_lo.append(
-            {"x": float(x1), "y": float(y1), "text": f"上升撐 {_md(d1)}低{_px(y1)}", "color": _UP_TRACK, "size": 10}
+            {
+                "x": float(x1),
+                "y": float(y1),
+                "text": f"上升撐 {_md(d1)}低{_px(y1)}{lab_suffix}",
+                "color": _UP_TRACK if not up_broken else "#607d8b",
+                "size": 10,
+            }
         )
         if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
             band_lo.append(
-                {"x": float(x2), "y": float(y2), "text": f"上升撐 {_md(d2)}低{_px(y2)}", "color": _UP_TRACK, "size": 10}
+                {
+                    "x": float(x2),
+                    "y": float(y2),
+                    "text": f"上升撐 {_md(d2)}低{_px(y2)}{lab_suffix}",
+                    "color": _UP_TRACK if not up_broken else "#607d8b",
+                    "size": 10,
+                }
             )
-        if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
+        if not up_broken and not up_steep and abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
             right_notes.append(
                 {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
             )
@@ -2117,7 +2191,7 @@ def render_biaoke_structure_png(
     ax1.text(
         n + _FUTURE * 0.45,
         ymin + span * 0.012,
-        "演算區（不是保證）",
+        "演算區（不是保證・不是買訊）",
         color="#546e7a",
         fontproperties=_fp(10, "bold"),
         ha="center",
@@ -2304,11 +2378,31 @@ def render_biaoke_structure_png(
     fig.subplots_adjust(
         left=_FIG_LEFT, right=_FIG_RIGHT, top=_STOCK_MAIN_TOP, bottom=_FIG_BOTTOM
     )
+    # 查詢時間：整圖右上（台北）；不壓左上頭牌、不壓縮圖
+    try:
+        from decision_card_signals import format_card_query_stamp
+
+        date_s, clock_s = format_card_query_stamp(is_live=False, latest_date=last_d)
+        fig.text(
+            0.985,
+            0.985,
+            f"{date_s} {clock_s}",
+            ha="right",
+            va="top",
+            fontproperties=_fp(11, "bold"),
+            color="#455a64",
+            zorder=14,
+        )
+    except Exception:
+        pass
     from wayne_navigator import _savefig_lookup_png
 
     _savefig_lookup_png(fig, save_path, BIAOKE_CHART_DPI)
     plt.close(fig)
-    return save_path if os.path.isfile(save_path) else ""
+    if os.path.isfile(save_path):
+        _lookup_render_memo_put(memo_key, save_path)
+        return save_path
+    return ""
 
 
 def _short(text: str, n: int) -> str:

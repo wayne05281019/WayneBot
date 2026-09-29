@@ -6094,10 +6094,11 @@ def _paint_nav_on_axes(
         trade_note += "　賣↓橙"
 
     ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.85, zorder=4)
-    ax1.axhline(h60, color="#f48fb1", linewidth=1.35)
-    ax1.axhline(l60, color="#81c784", linewidth=1.35)
-    ax1.axhline(h20, color="#f8bbd0", linewidth=1.05, linestyle="--")
-    ax1.axhline(l20, color="#80deea", linewidth=1.05, linestyle="--")
+    # 壓撐參考線宜細
+    ax1.axhline(h60, color="#f48fb1", linewidth=0.95)
+    ax1.axhline(l60, color="#81c784", linewidth=0.95)
+    ax1.axhline(h20, color="#f8bbd0", linewidth=0.80, linestyle="--")
+    ax1.axhline(l20, color="#80deea", linewidth=0.80, linestyle="--")
     live_note = ""
     if "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1]):
         t = str(work["_live_time"].iloc[-1] or "") if "_live_time" in work.columns else ""
@@ -6107,23 +6108,13 @@ def _paint_nav_on_axes(
             live_note = f"  ·{mis_session_label(t)}" + (f" {t[:5]}" if t else "")
         except Exception:
             live_note = "  ·盤中即時"
-    stamp = ""
-    if not compact:
-        try:
-            from decision_card_signals import format_card_query_stamp
-
-            last_d = str(work["date"].iloc[-1] or "")
-            is_live = "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1])
-            date_s, clock_s = format_card_query_stamp(is_live=is_live, latest_date=last_d)
-            stamp = f"　{date_s} {clock_s}"
-        except Exception:
-            stamp = ""
+    # 時間戳改由 draw_from_ohlc 整圖右上畫；標題不再塞日時
     title = (
         f"180日高低導航{live_note}　實心觸發／空心接近／灰藍殘影／高紫橙／低綠青藍{trade_note}"
         if compact
         else (
             f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航\n"
-            f"{live_note.strip()}{stamp}{trade_note}   WayneBot ® 2026".strip()
+            f"{live_note.strip()}{trade_note}　WayneBot ® 2026".strip()
         )
     )
     ax1.set_title(title, fontproperties=_fp(10 if compact else 13, "bold"), pad=8 if compact else 68)
@@ -6274,6 +6265,24 @@ def draw_from_ohlc(
     _paint_nav_on_axes(ax1, ax_sig, ax2, work, stock_id, stock_name, compact=False)
     # 上緣留給兩行標題＋三列圖例；下緣留給錯開月標＋兩行腳註
     fig.subplots_adjust(left=0.04, right=0.96, top=0.70, bottom=0.16)
+    # 查詢時間：整圖右上（台北）；不塞進標題、不壓 K
+    try:
+        from decision_card_signals import format_card_query_stamp
+
+        is_live = "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1])
+        date_s, clock_s = format_card_query_stamp(is_live=is_live, latest_date=last_d)
+        fig.text(
+            0.985,
+            0.985,
+            f"{date_s} {clock_s}",
+            ha="right",
+            va="top",
+            fontproperties=_fp(10, "bold"),
+            color="#455a64",
+            zorder=12,
+        )
+    except Exception:
+        pass
     fig.text(
         0.50, 0.045,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
@@ -6300,7 +6309,7 @@ def draw_from_ohlc(
         f"{no_trade_note}",
         ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
-    plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
+    _savefig_lookup_png(fig, save_path, NAV_CHART_DPI)
     plt.close()
     _lookup_render_memo_put(memo_key, save_path)
     return save_path
