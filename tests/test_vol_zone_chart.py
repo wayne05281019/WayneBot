@@ -118,6 +118,8 @@ def test_lookup_sends_volzone_third_photo():
     assert src.find("packed = await asyncio.gather") < src.find("create_task(_volzone_item")
     assert src.find("create_task(_volzone_item") < src.find("_send_lookup_album")
     assert src.find("create_task(_volzone_item") < src.find("await volzone_task")
+    # 大量區改獨立 Agg（可與相簿傳圖重疊）；不准跟介紹／高低卡同刻搶 FreeType
+    assert "FreeType" in src or "_new_lookup_figure" in open("vol_zone_chart.py", encoding="utf-8").read()
     # 不准把決策卡還原 ohlc 塞進大量區
     assert "already_normalized=True" not in src
     assert "不准用決策卡除權還原" in src or "只吃官方原柱" in src

@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import patches
@@ -928,14 +927,14 @@ def _paint_volume_zone(
 ):
     spike_md = _md(spike_date)
     ax_head = None
+    # 獨立 Figure＋Agg：可與介紹／高低卡真並行，不准再用 pyplot 全域搶鎖。
+    from matplotlib.gridspec import GridSpec
+    from wayne_navigator import _close_lookup_figure, _new_lookup_figure
+
     if with_nav_signals:
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
-        from matplotlib.gridspec import GridSpec
-
-        fig = plt.figure(
-            figsize=(VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV),
-            dpi=VOL_ZONE_DPI,
-            facecolor=_BG,
+        fig = _new_lookup_figure(
+            (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV), VOL_ZONE_DPI, _BG
         )
         gs = GridSpec(
             4,
@@ -957,15 +956,22 @@ def _paint_volume_zone(
         ax_head.set_facecolor(_BG)
         ax_head.set_axis_off()
     else:
-        fig, (ax1, ax2) = plt.subplots(
+        fig = _new_lookup_figure(
+            (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_PLAIN), VOL_ZONE_DPI, _BG
+        )
+        gs = GridSpec(
             2,
             1,
-            figsize=(VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_PLAIN),
-            dpi=VOL_ZONE_DPI,
-            sharex=True,
-            gridspec_kw=dict(height_ratios=(3.4, 1.05), hspace=0.055),
-            facecolor=_BG,
+            figure=fig,
+            height_ratios=[3.4, 1.05],
+            hspace=0.055,
+            left=0.04,
+            right=0.96,
+            top=0.88,
+            bottom=0.08,
         )
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
         ax_sig = None
     ax1.set_facecolor(_BG)
     ax2.set_facecolor(_BG)
@@ -1480,8 +1486,6 @@ def _paint_volume_zone(
         fontproperties=_fp(8.5, "bold"),
         color=_MUTED,
     )
-    if not with_nav_signals:
-        fig.subplots_adjust(left=0.04, right=0.96, top=0.88, bottom=0.08)
     fig.savefig(
         out,
         format="jpeg",
@@ -1494,5 +1498,5 @@ def _paint_volume_zone(
             "subsampling": 0,
         },
     )
-    plt.close(fig)
+    _close_lookup_figure(fig)
     return out
