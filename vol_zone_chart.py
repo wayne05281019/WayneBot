@@ -119,9 +119,7 @@ def _label_ma_left(
     color: str,
     face: str,
 ) -> None:
-    """月線／季線標在大圖偏左：x 用軸分數（避開壓／撐盒），y 貼均線價；不准壓 K。"""
-    from matplotlib.transforms import blended_transform_factory
-
+    """月線／季線標在大圖偏左：貼均線、不壓 K、避開撐壓盒。"""
     ok = np.flatnonzero(np.isfinite(vals) & (vals > 0))
     if ok.size == 0 or len(xs) == 0:
         return
@@ -138,23 +136,42 @@ def _label_ma_left(
         if yj < lo or yj > hi:
             i_anchor, y = jj, yj
             break
-    # 軸分數 x：在壓／撐標右側一點，不跟「大量區撐／壓」搶位
-    x_ax = 0.118 if lab == "月線" else 0.118
-    # 撐盒在軸底、壓盒在軸頂 → 均線價若貼邊，微撥 y 離開盒
-    y0, y1 = ax.get_ylim()
-    span = max(float(y1 - y0), 1.0)
-    y_frac = (y - y0) / span
-    if lab == "季線" and y_frac < 0.18:
-        y = y0 + span * 0.22
-    if lab == "月線" and y_frac > 0.88:
-        y = y0 + span * 0.82
-    trans = blended_transform_factory(ax.transAxes, ax.transData)
+    # 在近窗左側 8～18% 處找「均線不穿 K」的點，標貼在線上（偏左、不壓 K／撐壓盒）
+    n = len(xs)
+    lo_i = max(1, int(n * 0.06))
+    hi_i = max(lo_i + 1, int(n * 0.20))
+    placed = False
+    x_lab, y_lab = float(xs[i_anchor]), y
+    for j in ok:
+        jj = int(j)
+        if jj < lo_i or jj > hi_i:
+            continue
+        hi = float(highs[jj]) if np.isfinite(highs[jj]) else np.nan
+        lo = float(lows[jj]) if np.isfinite(lows[jj]) else np.nan
+        yj = float(vals[jj])
+        if not (np.isfinite(hi) and np.isfinite(lo) and np.isfinite(yj)):
+            continue
+        if lo <= yj <= hi:
+            continue
+        # 避開軸底撐盒／軸頂壓盒對應價帶
+        y0, y1 = ax.get_ylim()
+        span = max(float(y1 - y0), 1.0)
+        yf = (yj - y0) / span
+        if yf < 0.14 or yf > 0.90:
+            continue
+        x_lab, y_lab = float(xs[jj]), yj
+        placed = True
+        break
+    if not placed:
+        y0, y1 = ax.get_ylim()
+        span = max(float(y1 - y0), 1.0)
+        y_lab = min(max(y, y0 + span * 0.20), y0 + span * 0.80)
+        x_lab = float(xs[min(int(ok[0]) + 2, n - 1)])
     ax.text(
-        x_ax,
-        y,
+        x_lab,
+        y_lab,
         lab,
-        transform=trans,
-        ha="left",
+        ha="center",
         va="center",
         fontproperties=_fp(11.0, "bold"),
         color=color,
