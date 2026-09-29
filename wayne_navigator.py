@@ -5067,9 +5067,9 @@ _NAV_SIG = {
 # 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。不是紅箭頭買訊。
 _NAV_TRADE_BUY = "#1565C0"
 _NAV_TRADE_SELL = "#E64A19"
-# 買點藍箭＝原尺寸 1.5 倍（原 arrow_h×1.12／hw 0.88）
-_NAV_BUY_ARROW_H_MULT = 1.68
-_NAV_BUY_ARROW_HW = 1.32
+# 買點藍箭＝原設定全面 ×1.5（原 arrow_h×1.12／hw 0.88）；只動買點，60 低仍原尺寸
+_NAV_BUY_ARROW_H_MULT = 1.68  # 1.12 * 1.5
+_NAV_BUY_ARROW_HW = 1.05  # 略收寬，避免右緣看起來「單一巨箭」
 
 
 def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False,
@@ -5562,11 +5562,11 @@ def overlay_nav_marks_on_zone(
         ax_sig.set_facecolor("#ffffff")
         ax_sig.set_yticks([])
         ax_sig.set_ylim(0, 1)
-        ax_sig.set_xlim(-0.8, n - 0.2)
+        # 與價格軸同 xlim（由呼叫端 set）；此處不硬塞舊 -0.8
         # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺；靠軸左側、不切字
         ax_sig.set_ylabel("")
         ax_sig.text(
-            -0.012,
+            -0.018,
             0.5,
             "量能\n訊號",
             transform=ax_sig.transAxes,

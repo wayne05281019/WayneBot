@@ -198,7 +198,7 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     ov = inspect.getsource(overlay_nav_marks_on_zone)
     assert 'rotation=0' in ov and "量能\\n訊號" in ov  # 量能訊號翻正
     assert 'ax_sig.set_ylabel("")' in ov or "set_ylabel(\"\")" in ov
-    assert "-0.012" in ov  # 量能訊號靠軸、不切字
+    assert "-0.018" in ov  # 量能訊號靠軸、不切字
     assert "_NAV_BUY_ARROW_H_MULT" in ov  # 買點藍箭＝原 1.5 倍
     # 量能列上下三角同尺寸
     for fn in (overlay_nav_marks_on_zone, _paint_nav_on_axes):

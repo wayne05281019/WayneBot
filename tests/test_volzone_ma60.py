@@ -52,7 +52,7 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "linewidth=1.35" in src
     assert "_label_ma_left" in src
     assert 'lab="月線"' in src and 'lab="季線"' in src
-    assert "left=0.064" in src  # 左側回收空白放大 K 區；量能訊號仍可讀
+    assert "left=0.050" in src  # 左縮右鬆放大 K 區
     assert "draw_ma20=False" in src
 
 

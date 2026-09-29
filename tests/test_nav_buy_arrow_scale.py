@@ -9,11 +9,11 @@ import wayne_navigator as wn
 
 def test_buy_arrow_scale_is_1_5x_original():
     assert wn._NAV_BUY_ARROW_H_MULT == 1.68  # 1.12 * 1.5
-    assert wn._NAV_BUY_ARROW_HW == 1.32  # 0.88 * 1.5
+    assert wn._NAV_BUY_ARROW_HW == 1.05  # 寬略收，高仍 1.5×
     ov = inspect.getsource(wn.overlay_nav_marks_on_zone)
     paint = inspect.getsource(wn._paint_nav_on_axes)
     assert "_NAV_BUY_ARROW_H_MULT" in ov and "_NAV_BUY_ARROW_HW" in ov
     assert "_NAV_BUY_ARROW_H_MULT" in paint and "_NAV_BUY_ARROW_HW" in paint
-    # 賣箭維持原尺寸
+    # 賣箭／60 低維持原尺寸公式；買點只走常數
     assert "arrow_h * 1.12" in ov
     assert "arrow_h * 1.12" in paint

@@ -59,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 4
+_VZ_PAINT_VER = 5
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -119,14 +119,16 @@ def _label_ma_left(
     color: str,
     face: str,
 ) -> None:
-    """月線／季線標在大圖偏左：可貼所屬均線，不准壓 K 棒實體／影線。"""
+    """月線／季線標在大圖偏左：x 用軸分數（避開壓／撐盒），y 貼均線價；不准壓 K。"""
+    from matplotlib.transforms import blended_transform_factory
+
     ok = np.flatnonzero(np.isfinite(vals) & (vals > 0))
     if ok.size == 0 or len(xs) == 0:
         return
-    # 近窗左側找「均線價不落在 K 高低內」的錨點；可貼線、不壓 K
+    # 左側找均線不穿 K 高低的點；找不到就用第一點均線價
     i_anchor = int(ok[0])
     y = float(vals[i_anchor])
-    for j in ok[: min(int(ok.size), 10)]:
+    for j in ok[: min(int(ok.size), 14)]:
         jj = int(j)
         hi = float(highs[jj]) if np.isfinite(highs[jj]) else np.nan
         lo = float(lows[jj]) if np.isfinite(lows[jj]) else np.nan
@@ -136,19 +138,22 @@ def _label_ma_left(
         if yj < lo or yj > hi:
             i_anchor, y = jj, yj
             break
-    else:
-        # 左側都貼在 K 裡 → 微撥到影線外，仍貼該線價位附近
-        jj = int(ok[0])
-        hi = float(highs[jj]) if np.isfinite(highs[jj]) else y
-        lo = float(lows[jj]) if np.isfinite(lows[jj]) else y
-        span = max(hi - lo, abs(y) * 0.002, 1.0)
-        y = hi + span * 0.14 if lab == "月線" else lo - span * 0.14
-        i_anchor = jj
-    x_lab = float(xs[i_anchor]) + 0.35
+    # 軸分數 x：在壓／撐標右側一點，不跟「大量區撐／壓」搶位
+    x_ax = 0.118 if lab == "月線" else 0.118
+    # 撐盒在軸底、壓盒在軸頂 → 均線價若貼邊，微撥 y 離開盒
+    y0, y1 = ax.get_ylim()
+    span = max(float(y1 - y0), 1.0)
+    y_frac = (y - y0) / span
+    if lab == "季線" and y_frac < 0.18:
+        y = y0 + span * 0.22
+    if lab == "月線" and y_frac > 0.88:
+        y = y0 + span * 0.82
+    trans = blended_transform_factory(ax.transAxes, ax.transData)
     ax.text(
-        x_lab,
+        x_ax,
         y,
         lab,
+        transform=trans,
         ha="left",
         va="center",
         fontproperties=_fp(11.0, "bold"),
@@ -1022,9 +1027,9 @@ def _paint_volume_zone(
             # 圖例收兩行後，多出的高度給標題列（股票介紹放大）
             height_ratios=[1.05, 3.55, 0.42, 1.02],
             hspace=0.035,
-            # 左側回收空白給 K 區等比放大；量能訊號仍靠軸可讀
-            left=0.064,
-            right=0.968,
+            # 左縮右鬆：回收左空白放大 K；右邊留給價軸＋最後一根呼吸
+            left=0.050,
+            right=0.935,
             top=0.985,
             bottom=0.065,
         )
@@ -1239,8 +1244,8 @@ def _paint_volume_zone(
     ymin = min(y_lo, lo) - ypad
     ymax = max(y_hi, hi) + ypad * (1.35 if with_nav_signals else 1.25)
     ax1.set_ylim(ymin, ymax)
-    # 左緣略收：空白回收給 K；月／季線從 xs[0] 起畫滿
-    ax1.set_xlim(-0.25, n - 0.15)
+    # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
+    ax1.set_xlim(-0.05, n + 1.65)
     ax1.yaxis.tick_right()
     ax1.tick_params(labelbottom=False, labelsize=10)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, zorder=0, alpha=0.85)
@@ -1365,11 +1370,12 @@ def _paint_volume_zone(
             near = sum(1 for ux in used_x if abs(ux - float(xs[i])) < 5.0)
             x_pos = float(xs[i])
             ha = "center"
-            y_ax = 0.90 - 0.05 * (near % 2)
+            # 除息標貼軸頂，避開 K 頂／壓標
+            y_ax = 0.965 - 0.055 * (near % 3)
             if x_pos < left_guard:
                 x_pos = left_guard
                 ha = "left"
-                y_ax = 0.86 - 0.04 * (near % 2)
+                y_ax = 0.94 - 0.05 * (near % 3)
             ax1.text(
                 x_pos,
                 y_ax,
@@ -1379,7 +1385,7 @@ def _paint_volume_zone(
                 va="top",
                 fontproperties=_fp(9, "bold"),
                 color="#6a1b9a",
-                zorder=9,
+                zorder=11,
                 clip_on=False,
                 bbox=dict(
                     boxstyle="round,pad=0.22",
