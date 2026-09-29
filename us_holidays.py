@@ -241,6 +241,45 @@ def ensure_us_holidays_table(db_path: str = None) -> None:
     conn.close()
 
 
+def persist_us_seed_holidays(db_path: str = None) -> Dict[str, Any]:
+    """把 NYSE 官方表種子寫進庫（只補缺，不蓋已抓到的官頁列）。不准發明假日。"""
+    path = db_path or get_db_path()
+    ensure_us_holidays_table(path)
+    now = datetime.now(NY).isoformat()
+    n = 0
+    conn = sqlite3.connect(path)
+    try:
+        for ymd, rec in _SEED_FULL.items():
+            cur = conn.execute(
+                """
+                INSERT INTO us_holidays(ymd, kind, name_en, name_zh, source, fetched_at)
+                VALUES(?, 'full_close', ?, ?, 'seed', ?)
+                ON CONFLICT(ymd) DO NOTHING
+                """,
+                (ymd, rec.get("en") or "", rec.get("zh") or "", now),
+            )
+            n += int(cur.rowcount or 0)
+        for ymd, rec in _SEED_EARLY.items():
+            cur = conn.execute(
+                """
+                INSERT INTO us_holidays(ymd, kind, name_en, name_zh, source, fetched_at)
+                VALUES(?, 'early_close', ?, ?, 'seed', ?)
+                ON CONFLICT(ymd) DO NOTHING
+                """,
+                (ymd, rec.get("en") or "", rec.get("zh") or "", now),
+            )
+            n += int(cur.rowcount or 0)
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "inserted": n,
+        "seed_full": len(_SEED_FULL),
+        "seed_early": len(_SEED_EARLY),
+    }
+
+
 def _load_db_rows(db_path: str = None) -> Dict[str, Dict[str, str]]:
     path = db_path or get_db_path()
     try:

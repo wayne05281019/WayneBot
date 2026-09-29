@@ -755,6 +755,10 @@ def test_catch_up_skips_morning_on_as_of_day(monkeypatch):
         def run_evening_screen(self, **kw):
             calls.append(("evening", kw))
 
+        def run_nightly_open_check(self, **kw):
+            calls.append(("open_check", kw))
+            return True
+
     monkeypatch.setattr(main_runner, "MainRunner", FakeRunner)
     monkeypatch.setattr(config, "scheduler_owns", lambda job: True)
     monkeypatch.setattr(config, "scheduler_may_push", lambda job: True)

@@ -243,8 +243,245 @@ def ensure_tw_holidays_table(db_path: str = None) -> None:
         );
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tw_open_checks (
+            target_ymd TEXT PRIMARY KEY,
+            checked_at TEXT NOT NULL,
+            is_open INTEGER NOT NULL,
+            kind TEXT DEFAULT '',
+            name_zh TEXT DEFAULT '',
+            source TEXT DEFAULT '',
+            notes TEXT DEFAULT ''
+        );
+        """
+    )
     conn.commit()
     conn.close()
+
+
+def persist_tw_seed_holidays(db_path: str = None) -> Dict[str, Any]:
+    """把已對過證交所的種子休市日寫進庫（只補缺，不蓋 twse／dgpa）。不准發明假日。"""
+    path = db_path or get_db_path()
+    ensure_tw_holidays_table(path)
+    now = datetime.now(TW).strftime("%Y-%m-%d %H:%M:%S")
+    n = 0
+    conn = sqlite3.connect(path)
+    try:
+        for ymd, zh in _SEED_CLOSED.items():
+            cur = conn.execute(
+                """
+                INSERT INTO tw_holidays(ymd, kind, name_zh, source, fetched_at)
+                VALUES (?, 'full_close', ?, 'seed', ?)
+                ON CONFLICT(ymd) DO NOTHING
+                """,
+                (ymd, zh, now),
+            )
+            n += int(cur.rowcount or 0)
+        conn.commit()
+    finally:
+        conn.close()
+    if n:
+        clear_tw_holiday_row_cache(path)
+    return {"ok": True, "inserted": n, "seed_n": len(_SEED_CLOSED)}
+
+
+def record_tw_open_check(
+    target_ymd: str,
+    *,
+    is_open: bool,
+    kind: str = "",
+    name_zh: str = "",
+    source: str = "",
+    notes: str = "",
+    checked_at: str = "",
+    db_path: str = None,
+) -> Dict[str, Any]:
+    """深夜查「明日台股開否」結果落檔；開市日早報／休市 skip 可對質。"""
+    path = db_path or get_db_path()
+    ensure_tw_holidays_table(path)
+    ymd = _norm_ymd(target_ymd)
+    stamp = checked_at or datetime.now(TW).strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO tw_open_checks(
+                target_ymd, checked_at, is_open, kind, name_zh, source, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(target_ymd) DO UPDATE SET
+                checked_at=excluded.checked_at,
+                is_open=excluded.is_open,
+                kind=excluded.kind,
+                name_zh=excluded.name_zh,
+                source=excluded.source,
+                notes=excluded.notes
+            """,
+            (
+                ymd,
+                stamp,
+                1 if is_open else 0,
+                str(kind or ""),
+                str(name_zh or ""),
+                str(source or ""),
+                str(notes or ""),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "target_ymd": ymd,
+        "is_open": bool(is_open),
+        "kind": str(kind or ""),
+        "name_zh": str(name_zh or ""),
+        "source": str(source or ""),
+        "checked_at": stamp,
+    }
+
+
+def load_tw_open_check(target_ymd: str, db_path: str = None) -> Optional[Dict[str, Any]]:
+    path = db_path or get_db_path()
+    ymd = _norm_ymd(target_ymd)
+    if len(ymd) != 8:
+        return None
+    try:
+        ensure_tw_holidays_table(path)
+        conn = sqlite3.connect(path)
+        try:
+            row = conn.execute(
+                """
+                SELECT target_ymd, checked_at, is_open, kind, name_zh, source, notes
+                FROM tw_open_checks WHERE target_ymd=?
+                """,
+                (ymd,),
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return {
+        "target_ymd": str(row[0]),
+        "checked_at": str(row[1] or ""),
+        "is_open": bool(row[2]),
+        "kind": str(row[3] or ""),
+        "name_zh": str(row[4] or ""),
+        "source": str(row[5] or ""),
+        "notes": str(row[6] or ""),
+    }
+
+
+def tomorrow_tw_open_status(
+    now: Optional[datetime] = None, db_path: str = None
+) -> Dict[str, Any]:
+    """依年曆＋北市停班判斷「明日」台股是否開市（週末／國定／停班＝休）。"""
+    if now is None:
+        dt = datetime.now(TW)
+    elif now.tzinfo is None:
+        dt = now.replace(tzinfo=TW)
+    else:
+        dt = now.astimezone(TW)
+    target = (dt + timedelta(days=1)).strftime("%Y%m%d")
+    st = lookup_tw_session(target, db_path)
+    kind = str(st.get("kind") or "open")
+    is_open = kind == "open"
+    return {
+        "target_ymd": target,
+        "is_open": is_open,
+        "kind": kind,
+        "name_zh": str(st.get("zh") or ""),
+        "source": str(st.get("source") or ("weekday" if is_open else kind)),
+        "checked_from": dt.strftime("%Y%m%d"),
+    }
+
+
+def refresh_yearly_holiday_calendars(db_path: str = None) -> Dict[str, Any]:
+    """刷新台股＋美股年曆並落種子。任一來源失敗不擋，回傳各段結果。"""
+    path = db_path or get_db_path()
+    out: Dict[str, Any] = {"ok": True, "tw": {}, "us": {}, "seed": {}}
+    try:
+        out["seed"] = persist_tw_seed_holidays(path)
+    except Exception as e:
+        out["ok"] = False
+        out["seed"] = {"ok": False, "error": str(e)}
+        logger.warning("台股休市種子落檔略過：%s", e)
+    try:
+        out["tw"] = refresh_tw_holiday_calendar(path)
+        if not out["tw"].get("ok"):
+            out["ok"] = False
+    except Exception as e:
+        out["ok"] = False
+        out["tw"] = {"ok": False, "error": str(e)}
+        logger.warning("台股開休市年曆略過：%s", e)
+    try:
+        from us_holidays import persist_us_seed_holidays, refresh_us_holiday_calendar
+
+        try:
+            out["us_seed"] = persist_us_seed_holidays(path)
+        except Exception as e_seed:
+            out["us_seed"] = {"ok": False, "error": str(e_seed)}
+            logger.warning("美股休市種子落檔略過：%s", e_seed)
+        out["us"] = refresh_us_holiday_calendar(path)
+        if not out["us"].get("ok"):
+            out["ok"] = False
+    except Exception as e:
+        out["ok"] = False
+        out["us"] = {"ok": False, "error": str(e)}
+        logger.warning("美股休市年曆略過：%s", e)
+    return out
+
+
+def run_nightly_tomorrow_open_check(
+    db_path: str = None, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """台北約 03:00：刷新年曆、查明日台股開否、落檔。失敗不擋 bot。"""
+    path = db_path or get_db_path()
+    if now is None:
+        dt = datetime.now(TW)
+    elif now.tzinfo is None:
+        dt = now.replace(tzinfo=TW)
+    else:
+        dt = now.astimezone(TW)
+    out: Dict[str, Any] = {
+        "ok": True,
+        "checked_at": dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "calendars": {},
+        "typhoon": {},
+        "status": {},
+        "recorded": {},
+    }
+    try:
+        out["calendars"] = refresh_yearly_holiday_calendars(path)
+    except Exception as e:
+        out["ok"] = False
+        out["calendars"] = {"ok": False, "error": str(e)}
+        logger.warning("深夜年曆刷新略過：%s", e)
+    try:
+        out["typhoon"] = refresh_tw_typhoon_halt(path)
+    except Exception as e:
+        out["typhoon"] = {"ok": False, "error": str(e)}
+        logger.warning("深夜北市停班略過：%s", e)
+    try:
+        status = tomorrow_tw_open_status(dt, path)
+        out["status"] = status
+        out["recorded"] = record_tw_open_check(
+            status["target_ymd"],
+            is_open=bool(status.get("is_open")),
+            kind=str(status.get("kind") or ""),
+            name_zh=str(status.get("name_zh") or ""),
+            source=str(status.get("source") or ""),
+            notes="nightly-03:00",
+            checked_at=out["checked_at"],
+            db_path=path,
+        )
+    except Exception as e:
+        out["ok"] = False
+        out["error"] = str(e)
+        logger.warning("深夜明日開盤查核略過：%s", e, exc_info=True)
+    return out
 
 
 def _load_db_rows(db_path: str = None) -> Dict[str, Dict[str, str]]:
