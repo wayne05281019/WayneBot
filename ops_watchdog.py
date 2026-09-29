@@ -29,7 +29,8 @@ JOB_SPECS: Dict[str, Dict[str, Any]] = {
     "morning_screen": {
         "label": "早上海選",
         "scheduled": "06:30",
-        "due_minutes": 8 * 60,
+        # 開市日漏寄要快補（§14）；08:00 才判 miss 會空窗太久。
+        "due_minutes": 6 * 60 + 40,
         "key": "screen",
     },
     "midday_review": {

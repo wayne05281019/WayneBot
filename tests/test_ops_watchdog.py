@@ -76,11 +76,19 @@ def test_missed_jobs_before_deadline_is_empty(tmp_path, monkeypatch):
     assert missed_jobs(path, now=now) == []
 
 
+def test_missed_jobs_morning_not_due_at_0635(tmp_path, monkeypatch):
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    now = datetime(2026, 9, 2, 6, 35)
+    assert missed_jobs(path, now=now) == []
+
+
 def test_missed_jobs_flags_morning_screen(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    now = datetime(2026, 9, 2, 9, 0)  # 過了 08:00 死線
+    now = datetime(2026, 9, 2, 6, 45)  # 過了 06:40 死線
     missed = missed_jobs(path, now=now)
     kinds = {m["kind"] for m in missed}
     assert kinds == {"morning_screen"}

@@ -263,6 +263,16 @@ def test_scheduler_log_says_resident_sends_morning():
     assert "常駐寄 06:30 海選" in src
 
 
+def test_scheduler_loop_catch_up_each_slice():
+    """長睡切片＋每輪 catch_up，避免前一檔拖過 06:30 就整早漏寄。"""
+    import inspect
+
+    src = inspect.getsource(main.start_daily_scheduler)
+    assert "catch_up_missed_jobs()" in src
+    assert "每 %.0f 秒核對補跑" in src or "核對補跑" in src
+    assert "_slice_s" in src
+
+
 def test_watchdog_loop_retries_before_alert():
     import inspect
 
