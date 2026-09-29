@@ -5556,10 +5556,10 @@ def overlay_nav_marks_on_zone(
         ax_sig.set_yticks([])
         ax_sig.set_ylim(0, 1)
         ax_sig.set_xlim(-0.8, n - 0.2)
-        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺
+        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺；靠軸左側、不切字
         ax_sig.set_ylabel("")
         ax_sig.text(
-            -0.045,
+            -0.012,
             0.5,
             "量能\n訊號",
             transform=ax_sig.transAxes,
@@ -5748,15 +5748,21 @@ def overlay_nav_marks_on_zone(
     buy_i, sell_i = _nav_trade_marks(work, card)
     if buy_i is not None:
         i = int(buy_i)
+        # 買點藍向上：兩倍大小，一眼看到；先留底邊空間不准切箭
+        buy_h = arrow_h * 2.24
+        buy_hw = 1.76
+        tip = float(work["low"].iloc[i]) - arrow_gap
+        y0, y1 = ax1.get_ylim()
+        ax1.set_ylim(min(y0, tip - buy_h - span * 0.02), y1)
         _nav_arrow(
             ax1,
-            float(work["low"].iloc[i]) - arrow_gap,
+            tip,
             xs[i],
             down=False,
             face=_NAV_TRADE_BUY,
             ink=_NAV_TRADE_BUY,
-            arrow_h=arrow_h * 1.12,
-            hw=0.88,
+            arrow_h=buy_h,
+            hw=buy_hw,
             z=8,
         )
     if sell_i is not None:

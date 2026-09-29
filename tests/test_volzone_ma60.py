@@ -49,6 +49,10 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "format_card_query_stamp" in src
     assert "0.988" in src  # 右上時間
     assert "大量區壓" in src and "大量區撐" in src
+    # 壓／撐色線微細；中間不准標「季線」二字
+    assert "linewidth=1.35" in src
+    assert 'f"季線{arrow}"' not in src
+    assert "left=0.088" in src  # 量能訊號左側不被切
 
 
 def test_prepare_loads_ma60_warm_bars():

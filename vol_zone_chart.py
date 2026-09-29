@@ -57,8 +57,8 @@ _VZ_RENDER_TTL_SEC = 45.0
 _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
-# 畫面上線／戳後 bump，避免舊快取缺季線
-_VZ_PAINT_VER = 2
+# 畫面上線／戳後 bump，避免舊快取缺季線／舊壓線粗／舊買點箭
+_VZ_PAINT_VER = 3
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -944,7 +944,8 @@ def _paint_volume_zone(
             # 圖例收兩行後，多出的高度給標題列（股票介紹放大）
             height_ratios=[1.05, 3.55, 0.42, 1.02],
             hspace=0.035,
-            left=0.055,
+            # 左側多留：量能訊號兩字豎排不被切
+            left=0.088,
             right=0.96,
             top=0.985,
             bottom=0.07,
@@ -978,8 +979,9 @@ def _paint_volume_zone(
 
     # 桃色大量區（略透，K／箭頭更清楚）
     ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
-    ax1.axhline(hi, color=_PRESS, linewidth=2.25, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=2.25, zorder=5, solid_capstyle="round")
+    # 壓／撐色線微細：仍清楚，不搶 K／季線
+    ax1.axhline(hi, color=_PRESS, linewidth=1.35, zorder=5, solid_capstyle="round")
+    ax1.axhline(lo, color=_HOLD, linewidth=1.35, zorder=5, solid_capstyle="round")
     ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.65, zorder=1)
 
     # 季線 MA60：官方收盤均線；線本身看出升／降，不改買訊
@@ -1212,35 +1214,7 @@ def _paint_volume_zone(
             ),
         )
 
-    # 季線末端小標：貼線尾左側，避開右上時間戳與左壓標
-    if ma60_vals is not None:
-        ok_i = np.flatnonzero(np.isfinite(ma60_vals) & (ma60_vals > 0))
-        if ok_i.size:
-            i_end = int(ok_i[-1])
-            rising = ma60_is_rising(ma60_vals[ok_i], slope_bars=5)
-            arrow = "↑" if rising is True else ("↓" if rising is False else "")
-            lab = f"季線{arrow}".strip()
-            # 尾在右半 → 標在線左；尾偏左 → 標在線右，避開壓標區
-            ha = "right" if float(xs[i_end]) > n * 0.55 else "left"
-            x_off = -6 if ha == "right" else 6
-            ax1.annotate(
-                lab,
-                xy=(float(xs[i_end]), float(ma60_vals[i_end])),
-                xytext=(x_off, 10),
-                textcoords="offset points",
-                ha=ha,
-                va="bottom",
-                fontproperties=_fp(10.5, "bold"),
-                color=_MA60,
-                zorder=9,
-                bbox=dict(
-                    boxstyle="round,pad=0.16",
-                    facecolor="#e8eaf6",
-                    edgecolor=_MA60,
-                    linewidth=0.7,
-                    alpha=0.94,
-                ),
-            )
+    # 季線只畫線：中間／線尾不准標「季線」二字，避免亂
 
     if with_nav_signals:
         if "dt" not in view.columns:
