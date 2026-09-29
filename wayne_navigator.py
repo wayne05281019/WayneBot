@@ -5070,9 +5070,9 @@ _NAV_TRADE_SELL = "#E64A19"
 # 買點藍箭＝原設定全面 ×1.5（原 arrow_h×1.12／hw 0.88）；只動買點，60 低仍原尺寸
 _NAV_BUY_ARROW_H_MULT = 1.68  # 1.12 * 1.5
 _NAV_BUY_ARROW_HW = 1.05  # 略收寬，避免右緣看起來「單一巨箭」
-# 買點紅細框：跟同色「60低」藍箭分開
+# 買點紅框：跟同色「60低」藍箭分開；手機縮圖要夠粗才看得出
 _NAV_BUY_ARROW_EDGE = "#C62828"
-_NAV_BUY_ARROW_EDGE_W = 1.15
+_NAV_BUY_ARROW_EDGE_W = 2.05
 
 
 def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False,
@@ -5117,9 +5117,9 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_low"],
                 markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 2), "月波動低"),
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
-        # 買點＝藍三角＋紅細框（跟 60 低純藍三角分開）；圖例邊線加粗遠看才讀得到
+        # 買點＝藍三角＋紅框（跟 60 低純藍三角分開）；圖例邊線再粗，手機才分得清
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=2.2, markersize=ms_z + 3), "買點↑藍▲紅框"),
+                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=2.85, markersize=ms_z + 3), "買點↑藍▲紅框"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
                 markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
@@ -5134,22 +5134,21 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         loc="upper left" if panel else "lower left",
         handlelength=1.25 if panel else 1.05,
         handletextpad=0.32 if panel else 0.28,
-        columnspacing=0.42 if panel else (0.48 if zone_mode else 0.65),
+        columnspacing=0.58 if panel else (0.48 if zone_mode else 0.65),
         borderpad=0.22 if panel else (0.22 if zone_mode else 0.28),
         labelspacing=0.10 if panel else (0.10 if zone_mode else 0.16),
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(10.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
+        prop=_fp(10.0 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 標題列圖例收成兩行：上＝原第二行（量能／買賣）；
-        # 下左＝原第一行（箭頭）、下右＝原第三行（均線）；無分隔線，圖例能大就大
+        # 標題列圖例三整排（不准左右互壓）：上量能／買賣、中高低箭、下均線
         # (handles, labels, x, y, ncol)
         panel_rows = (
-            (row2, 0.0, 0.56, 7),
-            (row1, 0.0, 0.26, 8),
-            (row3, 0.60, 0.26, 5),
+            (row2, 0.0, 0.58, 7),
+            (row1, 0.0, 0.34, 8),
+            (row3, 0.0, 0.10, 5),
         )
         artists = []
         for row, x, y, ncol in panel_rows:

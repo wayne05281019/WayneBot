@@ -178,7 +178,7 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     # 壓撐回圖內左上／左下
     assert "0.012" in src and "0.975" in src and "0.025" in src
     assert "left=0.16" not in src
-    assert "xytext=(0, 8)" in src
+    assert "xytext=(0, 18)" in src  # 爆大量標再上移
     # 停價＝灰短 K＋量柱貼底（第二遍強制畫），不准 × 挖洞、不准編振幅假柱
     assert 'color="#9e9e9e"' in src
     assert "floor_h" in src
@@ -191,8 +191,8 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     leg = inspect.getsource(_draw_nav_legend)
     assert "panel" in leg
     assert "panel_rows" in leg
-    assert "0.26" in leg  # 箭頭＋均線同一排
-    assert "10.5 if panel" in leg  # 圖例放大
+    assert "0.34" in leg and "0.10" in leg  # 圖例三整排，不准左右互壓
+    assert "10.0 if panel" in leg  # 圖例字級
     assert "14.0" not in src or "15.0" in src  # 股票介紹放大（≥15）
     assert "15.0" in src and "13.0" in src  # 標題／介紹字級
     ov = inspect.getsource(overlay_nav_marks_on_zone)

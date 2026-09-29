@@ -59,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 7
+_VZ_PAINT_VER = 8
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -1041,8 +1041,8 @@ def _paint_volume_zone(
             4,
             1,
             figure=fig,
-            # 圖例收兩行後，多出的高度給標題列（股票介紹放大）
-            height_ratios=[1.05, 3.55, 0.42, 1.02],
+            # 標題列加高：圖例改三整排（不准互壓），略從 K 區挪
+            height_ratios=[1.28, 3.38, 0.40, 0.98],
             hspace=0.035,
             # 左縮右鬆：回收左空白放大 K；右邊留給價軸＋最後一根呼吸
             left=0.050,
@@ -1454,12 +1454,12 @@ def _paint_volume_zone(
             zorder=4,
             linewidth=0,
         )
-    # 爆大量標貼柱頂略抬，不准飛高、不准壓到量柱本身
-    ax2.set_ylim(0, max(vol_ylim * 1.18, spike_h * 1.22 if spike_h > 0 else vol_ylim * 1.18))
+    # 爆大量標貼柱頂再上移一截，右下不貼底軸
+    ax2.set_ylim(0, max(vol_ylim * 1.30, spike_h * 1.38 if spike_h > 0 else vol_ylim * 1.30))
     ax2.annotate(
         f"爆大量 {spike_md}",
         xy=(float(spike_i), spike_h),
-        xytext=(0, 8),
+        xytext=(0, 18),
         textcoords="offset points",
         ha="center",
         va="bottom",
