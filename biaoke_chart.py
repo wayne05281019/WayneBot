@@ -4,7 +4,8 @@
 只給按了「飆大」之後的對話。不是介紹圖、不是決策卡、不進海選。
 個股主圖＝日 K：爆大量那一天最高當壓、最低當撐。
 15／60 分只拿來看大盤／台指期，不准畫在這張個股圖上。
-連點軌道是輔助（兩個更低的高／兩個更高的低）；不夠兩點就不畫。
+連點軌道是輔助（兩個更低的高＝下降壓／兩個更高的低或 2–4 低＝上升軌）；不夠兩點就不畫。
+通道＝主連點＋平行另一緣（二擇一），升／降軌道破壞才算轉折。
 1～5 只准從已確認的錨往前推（大盤＝他自己的第五波高；個股＝下降壓的前高），不准亂數。
 不准把「三日底點不破」畫成他的固定公式。
 """
@@ -39,6 +40,8 @@ _PRESS = "#ad1457"
 _HOLD = "#1b5e20"
 _DOWN_TRACK = "#6a1b9a"
 _UP_TRACK = "#0277bd"
+_CH_ASC = "#00897b"  # 上升通道雙線（對齊附圖青綠色調，白底可讀）
+_CH_DESC = "#00838f"  # 下降通道雙線
 _WASH = "#ef6c00"
 _SPIKE_VOL = "#f9a825"
 _BARS = 168
@@ -215,6 +218,426 @@ def _rail_slope_too_steep(
         return False
     # 每根漲超過全日高低幅 4% 就當過陡（2383 3930→5255 會觸發）
     return (dy / dx) > (span * 0.04)
+
+
+def _pivot_pairs(
+    pivots: Sequence[int],
+    values: Sequence[float],
+    *,
+    ascending: bool,
+    min_gap: int = 5,
+    look: int = 10,
+) -> List[Tuple[int, int]]:
+    """從近窗樞紐找可用連點：升＝後低更高；降＝後高更低。中間不准被反向極端打穿。"""
+    pts = [int(p) for p in pivots if 0 <= int(p) < len(values)]
+    if len(pts) < 2:
+        return []
+    recent = pts[-look:] if len(pts) > look else pts
+    out: List[Tuple[int, int]] = []
+    for ai in range(len(recent)):
+        for bi in range(ai + 1, len(recent)):
+            i, j = recent[ai], recent[bi]
+            if j - i < min_gap:
+                continue
+            yi, yj = float(values[i]), float(values[j])
+            if yi <= 0 or yj <= 0:
+                continue
+            if ascending:
+                if yj <= yi * 1.001:
+                    continue
+                mid = [float(values[k]) for k in range(i + 1, j)]
+                if mid and min(mid) < yi - 1e-9:
+                    continue
+            else:
+                if yj >= yi * 0.999:
+                    continue
+                mid = [float(values[k]) for k in range(i + 1, j)]
+                if mid and max(mid) > yi + 1e-9:
+                    continue
+            out.append((i, j))
+    return out
+
+
+def _channel_width_touch(
+    base_i: int,
+    base_j: int,
+    base_y1: float,
+    base_y2: float,
+    touch_pivots: Sequence[int],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    *,
+    above: bool,
+    span: float,
+    n: int,
+) -> Optional[Tuple[int, float, float]]:
+    """以他的主連點為底線，找平行寬度觸點（升軌找高；降壓找低）。用官方高低核對包覆。"""
+    best: Optional[Tuple[int, float, float]] = None
+    x1, x2 = float(base_i), float(base_j)
+    for k in touch_pivots:
+        kk = int(k)
+        if kk < base_i or kk >= n:
+            continue
+        # 觸點最好落在兩連點之間或稍後，太遠就不像同一條通道
+        if kk > base_j + max(18, (base_j - base_i) * 2):
+            continue
+        base_at = _line_at(x1, base_y1, x2, base_y2, float(kk))
+        tv = float(highs[kk] if above else lows[kk])
+        if tv <= 0:
+            continue
+        width = (tv - base_at) if above else (base_at - tv)
+        if width < span * 0.035 or width > span * 0.85:
+            continue
+        inside = 0
+        total = 0
+        breach = 0
+        for t in range(base_i, n):
+            b = _line_at(x1, base_y1, x2, base_y2, float(t))
+            hi = float(highs[t])
+            lo = float(lows[t])
+            if hi <= 0 or lo <= 0:
+                continue
+            total += 1
+            if above:
+                lo_b, hi_b = b, b + width
+            else:
+                lo_b, hi_b = b - width, b
+            # 柱體有重疊通道才算「在裡面」
+            if lo <= hi_b + span * 0.01 and hi >= lo_b - span * 0.01:
+                inside += 1
+            if above and hi > hi_b + span * 0.05:
+                breach += 1
+            if (not above) and lo < lo_b - span * 0.05:
+                breach += 1
+        if total < 8:
+            continue
+        ratio = inside / max(total, 1)
+        if ratio < 0.55:
+            continue
+        freshness = 1.0 - (n - 1 - kk) / max(n, 1)
+        score = ratio * 2.0 + freshness * 0.8 - breach * 0.12
+        score -= abs(width / span - 0.28) * 0.45
+        # 觸點靠近第二連點加分（跟他畫法：通道寬度常由近段極端定）
+        score += max(0.0, 1.0 - abs(kk - base_j) / max(n * 0.25, 1)) * 0.35
+        if best is None or score > best[2]:
+            best = (kk, width, score)
+    return best
+
+
+def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """依飆大連點長上升／下降通道（二擇一、兩條平行線）。
+
+    桌面規則原文精神：
+    - 高連更低高＝下降壓（上軌）；平行下緣貼合理低＝通道下軌
+    - 同次級／更高低連點＝上升軌（下軌）；平行上緣貼合理高＝通道上軌
+    - 升／降軌道破壞才算轉折；個股不數 5／9 當操作
+    - 兩種不准同時畫；不是買訊
+    """
+    rows = list(rows or [])
+    n = len(rows)
+    if n < 24:
+        return {}
+    highs = [float(r.get("high") or 0) for r in rows]
+    lows = [float(r.get("low") or 0) for r in rows]
+    closes = [float(r.get("close") or 0) for r in rows]
+    last = float(closes[-1] or 0)
+    pos_lows = [v for v in lows if v > 0]
+    if not pos_lows:
+        return {}
+    span = max(max(highs) - min(pos_lows), 1.0)
+    hi_p, lo_p = _pivots(highs, lows, left=3)
+    cands: List[Dict[str, Any]] = []
+
+    def _pack_desc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        touch = _channel_width_touch(
+            i, j, highs[i], highs[j], lo_p, highs, lows, above=False, span=span, n=n
+        )
+        if not touch or _rail_slope_too_steep(i, highs[i], j, highs[j], span=span, n=n):
+            return
+        k, width, score = touch
+        top_now = _line_at(i, highs[i], j, highs[j], n - 1)
+        base_now = top_now - width
+        if last > top_now + span * 0.02:
+            pos, alive = "過下降壓", False
+        elif last < base_now - span * 0.02:
+            pos, alive = "破平行撐", True
+        elif last >= base_now + width * 0.66:
+            pos, alive = "靠近下降壓", True
+        elif last <= base_now + width * 0.34:
+            pos, alive = "靠近平行撐", True
+        else:
+            pos, alive = "下降通道中段", True
+        cands.append(
+            {
+                "kind": "desc",
+                "score": float(score) + bonus + (0.35 if alive and last < top_now else 0.0),
+                "alive": alive,
+                "pos": pos,
+                "width": width,
+                "base": (
+                    (i, highs[i], str(rows[i].get("date") or "")),
+                    (j, highs[j], str(rows[j].get("date") or "")),
+                ),
+                "touch": (k, lows[k], str(rows[k].get("date") or "")),
+                "base_now": base_now,
+                "rail_now": top_now,
+            }
+        )
+
+    def _pack_asc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        touch = _channel_width_touch(
+            i, j, lows[i], lows[j], hi_p, highs, lows, above=True, span=span, n=n
+        )
+        if not touch or _rail_slope_too_steep(i, lows[i], j, lows[j], span=span, n=n):
+            return
+        k, width, score = touch
+        base_now = _line_at(i, lows[i], j, lows[j], n - 1)
+        top_now = base_now + width
+        if last < base_now - span * 0.02:
+            pos, alive = "破上升軌", False
+        elif last > top_now + span * 0.02:
+            pos, alive = "過平行壓", True
+        elif last >= base_now + width * 0.66:
+            pos, alive = "靠近平行壓", True
+        elif last <= base_now + width * 0.34:
+            pos, alive = "靠近上升軌", True
+        else:
+            pos, alive = "上升通道中段", True
+        cands.append(
+            {
+                "kind": "asc",
+                "score": float(score) + bonus + (0.35 if alive and last > base_now else -0.35),
+                "alive": alive,
+                "pos": pos,
+                "width": width,
+                "base": (
+                    (i, lows[i], str(rows[i].get("date") or "")),
+                    (j, lows[j], str(rows[j].get("date") or "")),
+                ),
+                "touch": (k, highs[k], str(rows[k].get("date") or "")),
+                "base_now": base_now,
+                "rail_now": top_now,
+            }
+        )
+
+    # 1) 他的標準下降壓：最近兩樞紐高、後高更低、中間不高過前高
+    down = _desc_high_pair(hi_p, highs)
+    if down:
+        _pack_desc(int(down[0]), int(down[1]), bonus=0.55)
+    # 備援：近窗其他合格更低高連點（仍要過包覆閘）
+    for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=5, look=8):
+        if down and (i, j) == (int(down[0]), int(down[1])):
+            continue
+        _pack_desc(i, j, bonus=0.05)
+
+    # 2) 上升軌：優先同段 2 低連 4 低（下降壓確認後）；否則更高低連點
+    up = None
+    if down:
+        up = _impulse_support_pair(rows, int(down[0]))
+    if up is None:
+        up = _asc_low_pair(lo_p, lows)
+    if up:
+        _pack_asc(int(up[0]), int(up[1]), bonus=0.55)
+    for i, j in _pivot_pairs(lo_p, lows, ascending=True, min_gap=5, look=8):
+        if up and (i, j) == (int(up[0]), int(up[1])):
+            continue
+        _pack_asc(i, j, bonus=0.05)
+
+    if not cands:
+        return {}
+
+    # 二擇一：還壓著的下降壓優先於已破的上升軌；兩邊都活就比分＋近端
+    for c in cands:
+        j = int(c["base"][1][0])
+        c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
+        if c["kind"] == "desc" and last < float(c["rail_now"]):
+            c["score"] += 0.45  # 收在下降壓下＝他還在講「還壓著」
+        if c["kind"] == "asc" and last > float(c["base_now"]):
+            c["score"] += 0.35
+
+    best = max(cands, key=lambda c: float(c["score"]))
+    # 若最佳是升、但同時有明顯還壓著的降，改採降（兩種不准並存）
+    if best["kind"] == "asc":
+        pressed = [
+            c
+            for c in cands
+            if c["kind"] == "desc" and last < float(c["rail_now"]) and c.get("alive")
+        ]
+        if pressed:
+            best = max(pressed, key=lambda c: float(c["score"]))
+    elif best["kind"] == "desc" and last > float(best["rail_now"]):
+        held = [
+            c
+            for c in cands
+            if c["kind"] == "asc" and last > float(c["base_now"]) and c.get("alive")
+        ]
+        if held and float(held[0]["score"]) > float(best["score"]) - 0.2:
+            best = max(held, key=lambda c: float(c["score"]))
+
+    kind = str(best["kind"])
+    (x1, y1, d1), (x2, y2, d2) = best["base"]
+    tk, ty, td = best["touch"]
+    width = float(best["width"])
+    if kind == "asc":
+        upper = ((x1, y1 + width, d1), (x2, y2 + width, d2))
+        lower = ((x1, y1, d1), (x2, y2, d2))
+        label = f"上升軌通道　{best['pos']}"
+        tip = (
+            f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+            f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
+            f"破上升軌才像轉折。不是買訊。"
+        )
+        name_u, name_l = "平行壓", "上升軌"
+    else:
+        upper = ((x1, y1, d1), (x2, y2, d2))
+        lower = ((x1, y1 - width, d1), (x2, y2 - width, d2))
+        label = f"下降壓通道　{best['pos']}"
+        tip = (
+            f"下降壓：{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
+            f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
+            f"過下降壓才像準備突破機會，不是保證、不是買訊。"
+        )
+        name_u, name_l = "下降壓", "平行撐"
+    return {
+        "kind": kind,
+        "label": label,
+        "tip": tip,
+        "pos": best["pos"],
+        "alive": bool(best["alive"]),
+        "width": width,
+        "upper": upper,
+        "lower": lower,
+        "touch": (tk, ty, td),
+        "base_now": float(best["base_now"]),
+        "rail_now": float(best["rail_now"]),
+        "score": float(best["score"]),
+        "name_u": name_u,
+        "name_l": name_l,
+    }
+
+
+def _paint_parallel_channel(
+    ax,
+    ch: Dict[str, Any],
+    *,
+    seam: float,
+    x_lo: float,
+    x_hi: float,
+    y_lo: float,
+    y_hi: float,
+    n: int,
+) -> None:
+    """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。"""
+    if not ch:
+        return
+    kind = str(ch.get("kind") or "")
+    # 顏色跟他用語對齊：下降壓紫、上升軌藍
+    color = _UP_TRACK if kind == "asc" else _DOWN_TRACK
+    alive = bool(ch.get("alive"))
+    if not alive:
+        color = "#90a4ae"
+    upper = ch.get("upper") or ()
+    lower = ch.get("lower") or ()
+    if len(upper) < 2 or len(lower) < 2:
+        return
+    (ux1, uy1, _ud1), (ux2, uy2, _ud2) = upper
+    (lx1, ly1, _ld1), (lx2, ly2, _ld2) = lower
+    # 有效才延長進演算區；已壞／已過只畫到最近一根
+    rail_hi = float(x_hi) if alive else float(seam)
+    for x1, y1, x2, y2 in (
+        (ux1, uy1, ux2, uy2),
+        (lx1, ly1, lx2, ly2),
+    ):
+        _paint_extended_rail(
+            ax,
+            float(x1),
+            float(y1),
+            float(x2),
+            float(y2),
+            seam=float(seam),
+            x_lo=float(x_lo),
+            x_hi=rail_hi,
+            y_lo=float(y_lo),
+            y_hi=float(y_hi),
+            color=color,
+        )
+    touch = ch.get("touch")
+    if touch:
+        ax.scatter(
+            [float(touch[0])],
+            [float(touch[1])],
+            color=color,
+            s=36,
+            zorder=7,
+            edgecolors="white",
+            linewidths=0.7,
+        )
+    ax.scatter(
+        [float(ux1), float(ux2), float(lx1), float(lx2)],
+        [float(uy1), float(uy2), float(ly1), float(ly2)],
+        color=color,
+        s=28,
+        zorder=6,
+        edgecolors="white",
+        linewidths=0.6,
+    )
+    pad_x = max(1.2, (n) * 0.02)
+    x_lab_r = min(max(float(seam) - pad_x * 2.5, x_lo + pad_x), seam - 0.4)
+    y_top = _line_at(ux1, uy1, ux2, uy2, x_lab_r)
+    y_bot = _line_at(lx1, ly1, lx2, ly2, x_lab_r)
+    y_top = min(max(y_top, y_lo + (y_hi - y_lo) * 0.04), y_hi - (y_hi - y_lo) * 0.04)
+    y_bot = min(max(y_bot, y_lo + (y_hi - y_lo) * 0.04), y_hi - (y_hi - y_lo) * 0.04)
+    if abs(y_top - y_bot) < (y_hi - y_lo) * 0.08:
+        mid = (y_top + y_bot) / 2.0
+        y_top = mid + (y_hi - y_lo) * 0.05
+        y_bot = mid - (y_hi - y_lo) * 0.05
+    name_u = str(ch.get("name_u") or ("平行壓" if kind == "asc" else "下降壓"))
+    name_l = str(ch.get("name_l") or ("上升軌" if kind == "asc" else "平行撐"))
+    if not alive:
+        name_u += "（已壞）"
+        name_l += "（已壞）"
+    for txt, xx, yy in (
+        (f"{name_u} {_px(ch.get('rail_now'))}", x_lab_r, y_top),
+        (f"{name_l} {_px(ch.get('base_now'))}", x_lab_r, y_bot),
+    ):
+        ax.text(
+            xx,
+            yy,
+            txt,
+            color=color,
+            fontproperties=_fp(9, "bold"),
+            ha="right",
+            va="center",
+            zorder=11,
+            clip_on=True,
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor="#ffffff",
+                edgecolor=color,
+                linewidth=0.9,
+                alpha=0.96,
+            ),
+        )
+    status = str(ch.get("label") or "")
+    if status:
+        ax.text(
+            x_lo + pad_x,
+            y_lo + (y_hi - y_lo) * 0.035,
+            status + "　不是買訊",
+            color=color,
+            fontproperties=_fp(10, "bold"),
+            ha="left",
+            va="bottom",
+            zorder=11,
+            clip_on=True,
+            bbox=dict(
+                boxstyle="round,pad=0.25",
+                facecolor="#ffffff",
+                edgecolor=color,
+                linewidth=1.0,
+                alpha=0.96,
+            ),
+        )
 
 
 def _line_at(x1: float, y1: float, x2: float, y2: float, x: float) -> float:
@@ -434,6 +857,11 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         notes.append("收在爆大量日低之下，他這套先放棄這次量價")
     elif out["over_press"]:
         notes.append("已過爆大量日高，比較像半山腰／突破，不是落後補漲")
+    # 上升／下降通道二擇一（平行雙線）；與單軌連點並行記錄，畫圖時通道優先
+    ch = infer_parallel_channel(rows)
+    if ch:
+        out["channel"] = ch
+        notes.append(str(ch.get("tip") or ch.get("label") or ""))
     out["highs"] = highs
     out["lows"] = lows
     out["closes"] = closes
@@ -2031,6 +2459,7 @@ def render_biaoke_structure_png(
         ax1.axvline(spike_i, color="#90a4ae", linewidth=1.05, linestyle="--", zorder=2)
     down_pts = info.get("down_pts")
     up_pts = info.get("up_pts")
+    channel = dict(info.get("channel") or {})
     five: Dict[str, Any] = {}
     if down_pts and len(rows) >= n + 8:
         off0 = len(rows) - n
@@ -2038,97 +2467,133 @@ def render_biaoke_structure_png(
         mapped = _map_five_support(work, rows, five)
         if mapped:
             up_pts = mapped
+    # 有通道時以通道為準重算（含完整 bars 窗），避免 work 窗與全列不一致
+    if not channel:
+        channel = infer_parallel_channel(work) or {}
     x_fut = n - 1 + _FUTURE
-    if down_pts:
-        (x1, y1, d1), (x2, y2, d2) = down_pts
-        y_end = _line_at(x1, y1, x2, y2, x_fut)
-        _paint_extended_rail(
+    # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
+    if channel.get("kind"):
+        _paint_parallel_channel(
             ax1,
-            x1,
-            y1,
-            x2,
-            y2,
+            channel,
             seam=float(n - 1),
             x_lo=0.0,
-            x_hi=x_fut,
+            x_hi=float(x_fut),
             y_lo=ymin,
             y_hi=ymax,
-            color=_DOWN_TRACK,
+            n=n,
         )
-        ax1.scatter(
-            [x1, x2],
-            [y1, y2],
-            color=_DOWN_TRACK,
-            s=42,
-            zorder=6,
-            edgecolors="white",
-            linewidths=0.8,
-        )
-        band_hi.append(
-            {"x": float(x1), "y": float(y1), "text": f"下降壓 {_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
-        )
-        if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
-            band_hi.append(
-                {"x": float(x2), "y": float(y2), "text": f"下降壓 {_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
-            )
-        if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
+        # 右溝只留通道現價位，標籤已在軸內
+        if channel.get("rail_now"):
             right_notes.append(
-                {"x": float(x_fut), "y": float(y_end), "text": f"下降壓 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
+                {
+                    "x": float(n - 1),
+                    "y": float(channel["rail_now"]),
+                    "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
+                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
+                    "size": 10,
+                }
             )
-    if up_pts:
-        (x1, y1, d1), (x2, y2, d2) = up_pts
-        y_end = _line_at(x1, y1, x2, y2, x_fut)
-        y_now = _line_at(x1, y1, x2, y2, float(n - 1))
-        up_broken = bool(last_c and y_now and last_c < y_now)
-        up_steep = _rail_slope_too_steep(x1, y1, x2, y2, span=span, n=n)
-        # 已壞／過陡：只畫歷史實線到最近一根，不准虛線進演算區假裝還有效
-        rail_hi = float(n - 1) if (up_broken or up_steep) else x_fut
-        _paint_extended_rail(
-            ax1,
-            x1,
-            y1,
-            x2,
-            y2,
-            seam=float(n - 1),
-            x_lo=0.0,
-            x_hi=rail_hi,
-            y_lo=ymin,
-            y_hi=ymax,
-            color=_UP_TRACK if not up_broken else "#90a4ae",
-        )
-        ax1.scatter(
-            [x1, x2],
-            [y1, y2],
-            color=_UP_TRACK if not up_broken else "#90a4ae",
-            s=42,
-            zorder=6,
-            edgecolors="white",
-            linewidths=0.8,
-        )
-        lab_suffix = "（已壞）" if up_broken else ("（過陡僅參考）" if up_steep else "")
-        band_lo.append(
-            {
-                "x": float(x1),
-                "y": float(y1),
-                "text": f"上升撐 {_md(d1)}低{_px(y1)}{lab_suffix}",
-                "color": _UP_TRACK if not up_broken else "#607d8b",
-                "size": 10,
-            }
-        )
-        if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
+        if channel.get("base_now"):
+            right_notes.append(
+                {
+                    "x": float(n - 1),
+                    "y": float(channel["base_now"]),
+                    "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
+                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
+                    "size": 10,
+                }
+            )
+    else:
+        if down_pts:
+            (x1, y1, d1), (x2, y2, d2) = down_pts
+            y_end = _line_at(x1, y1, x2, y2, x_fut)
+            _paint_extended_rail(
+                ax1,
+                x1,
+                y1,
+                x2,
+                y2,
+                seam=float(n - 1),
+                x_lo=0.0,
+                x_hi=x_fut,
+                y_lo=ymin,
+                y_hi=ymax,
+                color=_DOWN_TRACK,
+            )
+            ax1.scatter(
+                [x1, x2],
+                [y1, y2],
+                color=_DOWN_TRACK,
+                s=42,
+                zorder=6,
+                edgecolors="white",
+                linewidths=0.8,
+            )
+            band_hi.append(
+                {"x": float(x1), "y": float(y1), "text": f"下降壓 {_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
+            )
+            if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
+                band_hi.append(
+                    {"x": float(x2), "y": float(y2), "text": f"下降壓 {_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
+                )
+            if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
+                right_notes.append(
+                    {"x": float(x_fut), "y": float(y_end), "text": f"下降壓 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
+                )
+        if up_pts:
+            (x1, y1, d1), (x2, y2, d2) = up_pts
+            y_end = _line_at(x1, y1, x2, y2, x_fut)
+            y_now = _line_at(x1, y1, x2, y2, float(n - 1))
+            up_broken = bool(last_c and y_now and last_c < y_now)
+            up_steep = _rail_slope_too_steep(x1, y1, x2, y2, span=span, n=n)
+            rail_hi = float(n - 1) if (up_broken or up_steep) else x_fut
+            _paint_extended_rail(
+                ax1,
+                x1,
+                y1,
+                x2,
+                y2,
+                seam=float(n - 1),
+                x_lo=0.0,
+                x_hi=rail_hi,
+                y_lo=ymin,
+                y_hi=ymax,
+                color=_UP_TRACK if not up_broken else "#90a4ae",
+            )
+            ax1.scatter(
+                [x1, x2],
+                [y1, y2],
+                color=_UP_TRACK if not up_broken else "#90a4ae",
+                s=42,
+                zorder=6,
+                edgecolors="white",
+                linewidths=0.8,
+            )
+            lab_suffix = "（已壞）" if up_broken else ("（過陡僅參考）" if up_steep else "")
             band_lo.append(
                 {
-                    "x": float(x2),
-                    "y": float(y2),
-                    "text": f"上升撐 {_md(d2)}低{_px(y2)}{lab_suffix}",
+                    "x": float(x1),
+                    "y": float(y1),
+                    "text": f"上升撐 {_md(d1)}低{_px(y1)}{lab_suffix}",
                     "color": _UP_TRACK if not up_broken else "#607d8b",
                     "size": 10,
                 }
             )
-        if not up_broken and not up_steep and abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
-            right_notes.append(
-                {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
-            )
+            if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
+                band_lo.append(
+                    {
+                        "x": float(x2),
+                        "y": float(y2),
+                        "text": f"上升撐 {_md(d2)}低{_px(y2)}{lab_suffix}",
+                        "color": _UP_TRACK if not up_broken else "#607d8b",
+                        "size": 10,
+                    }
+                )
+            if not up_broken and not up_steep and abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
+                right_notes.append(
+                    {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
+                )
     path = list(proj.get("path") or [])
     if len(path) >= 2:
         _halo_line(

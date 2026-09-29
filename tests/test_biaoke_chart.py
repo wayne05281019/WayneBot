@@ -890,6 +890,36 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     assert "ax.vlines" not in lsrc
 
 
+def test_parallel_channel_follows_biaoke_rails():
+    """通道用語／邏輯對齊飆大：下降壓＋平行撐 或 上升軌＋平行壓，二擇一。"""
+    import inspect
+
+    from biaoke_chart import infer_parallel_channel, _paint_parallel_channel
+
+    src = inspect.getsource(infer_parallel_channel)
+    assert "下降壓" in src
+    assert "上升軌" in src
+    assert "_desc_high_pair" in src
+    assert "_impulse_support_pair" in src
+    assert "不是買訊" in src
+    psrc = inspect.getsource(_paint_parallel_channel)
+    assert "clip_on=True" in psrc
+    assert "name_u" in psrc
+
+    from biaoke_brain import load_bars
+    from biaoke_chart import _BARS
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
+    bars = load_bars(db, "2345", n=360)
+    assert bars
+    ch = infer_parallel_channel(bars[-_BARS:])
+    assert ch.get("kind") == "desc"
+    assert ch.get("name_u") == "下降壓"
+    assert ch.get("name_l") == "平行撐"
+    assert "買訊" in (ch.get("tip") or "")
+
+
 def test_broken_up_rail_not_projected_to_forecast():
     """上升軌已壞／過陡：不准把虛線延長進演算區當還有效。"""
     import inspect
