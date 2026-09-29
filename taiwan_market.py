@@ -1699,13 +1699,38 @@ _US_PHASE_SHORT = {
 }
 
 
-def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
-    """美股指數／期貨／ADR 一欄一行：％＋點數（有官方 chg 才併陳；缺點數不硬填）。"""
-    from stock_links import html_named
-    from us_overnight import format_quote_move
+def _us_cash_close_lines(snap: Dict[str, Any], *, style: str) -> List[str]:
+    """美股收盤四大指數顯示唯一入口（海選 outlook／大盤 page 共用）。
 
+    數字只來自 `us_overnight.cash_index_moves`；不准另算、不准混期貨。
+    style=page → 大盤 `_page_kv`；style=outlook → 海選一行。
+    """
+    from stock_links import html_named
+    from us_overnight import cash_index_moves
+
+    lines: List[str] = []
+    for name, move in cash_index_moves(snap):
+        if style == "page":
+            lines.append(_page_kv(html_named(name), _page_b(move)))
+        else:
+            lines.append(f"{html_named(name)} {_outlook_b(move)}")
+    return lines
+
+
+def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
+    """美股期貨／ADR 一欄一行：％＋點數（有官方 chg 才併陳；缺點數不硬填）。
+
+    收盤四大指數請用 `_us_cash_close_lines`，不准走這條以免跟海選分叉。
+    """
+    from stock_links import html_named
+    from us_overnight import _CASH_ITEMS, format_quote_move
+
+    cash_keys = {t[0] for t in _CASH_ITEMS}
     rows: List[str] = []
     for pct_k, chg_k, name in items:
+        if pct_k in cash_keys:
+            # 防呆：收盤指數誤傳進來時改走唯一出口，避免兩套格式。
+            continue
         if snap.get(pct_k) is None:
             continue
         label = _US_NAME_SHORT.get(name, name)
@@ -1763,7 +1788,6 @@ def _format_overnight_watch_lines(
         from us_overnight import (
             _ADR_CASH_ITEMS,
             _ADR_ITEMS,
-            _CASH_ITEMS,
             _FUTURES_ITEMS,
             _session_label,
         )
@@ -1781,7 +1805,7 @@ def _format_overnight_watch_lines(
         if sess and sess != "—":
             bits.append(_page_kv("美股交易日", sess))
         bits.append(_page_kv("判斷", _page_b(_us_face_short(us))))
-        cash = _us_quote_rows(us, _CASH_ITEMS)
+        cash = _us_cash_close_lines(us, style="page")
         if cash:
             bits.extend(cash)
         if us.get("vix") is not None:
@@ -4014,7 +4038,6 @@ def format_screen_market_outlook_html(
         return ""
 
     from us_overnight import (
-        _CASH_ITEMS,
         _fmt_vix,
         _session_label,
         electronics_night_side,
@@ -4102,14 +4125,8 @@ def format_screen_market_outlook_html(
         sess = _session_label(us)
         if sess and sess != "—":
             body.append(f"美股交易日　{html_escape(sess)}")
-        # 四大指數（道瓊／標普／那斯達克／費半）：％＋點數；缺官方 chg 只顯示％。
-        for pct_k, chg_k, name in _CASH_ITEMS:
-            if us.get(pct_k) is None:
-                continue
-            move = format_quote_move(us, pct_k, chg_k)
-            if not move or move == "—":
-                continue
-            body.append(f"{html_named(name)} {_outlook_b(move)}")
+        # 收盤四大：與大盤同一 `cash_index_moves`／`_us_cash_close_lines`。
+        body.extend(_us_cash_close_lines(us, style="outlook"))
         if us.get("vix") is not None:
             vix_s = _fmt_vix(us)
             if "　" in vix_s:

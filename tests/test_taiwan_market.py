@@ -2049,22 +2049,43 @@ def test_market_page_index_points_chips_us_align(tmp_path):
     assert "+0.02%（+1.00點）" in _html_plain(sox)
 
 
-def test_screen_and_market_four_us_indices_same_numbers(tmp_path):
-    """海選與台股大盤四大指數必須同源同數（％＋點數）；不准一邊兩檔一邊四檔。"""
+def _extract_us_cash_moves(text: str) -> dict:
+    """從話筒字串抽出收盤四大％＋點；略過那指期／標指期／道指期／費半盤後。"""
     import re
+
+    out = {}
+    skip = ("那指期", "標指期", "道指期", "那斯達克期貨", "標普期貨", "道瓊期貨", "費半盤後", "費半後")
+    for name in ("道瓊", "標普", "那斯達克", "費半"):
+        for ln in str(text or "").splitlines():
+            if name not in ln or "%" not in ln:
+                continue
+            if any(s in ln for s in skip):
+                continue
+            # 費半列不要誤吃「費半盤後」
+            if name == "費半" and "盤後" in ln:
+                continue
+            m = re.search(r"([+-]\d+\.\d+%（[+-]?[\d.]+點）|[+-]\d+\.\d+%)", ln)
+            if m:
+                out[name] = m.group(1)
+                break
+    return out
+
+
+def test_us_cash_close_identical_screen_market_and_helper(tmp_path):
+    """硬鎖：同一 payload → cash_index_moves＝_us_cash_close_lines＝海選字串＝大盤字串。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
     from taiwan_market import (
         _format_overnight_watch_lines,
+        _us_cash_close_lines,
+        _us_quote_rows,
         ensure_index_daily_table,
         format_screen_market_outlook_html,
     )
     from tg_layout import _html_plain
-    from us_overnight import save_us_overnight
+    from us_overnight import _CASH_ITEMS, _FUTURES_ITEMS, cash_index_moves, save_us_overnight
 
-    db = str(tmp_path / "us_four_both.db")
-    ensure_index_daily_table(db)
     us = {
         "ok": True,
         "regime": "caution",
@@ -2079,7 +2100,37 @@ def test_screen_and_market_four_us_indices_same_numbers(tmp_path):
         "ixic_chg": -248.34,
         "sox_pct": -1.61,
         "sox_chg": -203.69,
+        # 期貨故意給極端值：不准寫進收盤指數列
+        "nq_f_pct": -9.99,
+        "nq_f_chg": -9999.0,
+        "es_f_pct": -9.99,
+        "es_f_chg": -9999.0,
+        "ym_f_pct": -9.99,
+        "ym_f_chg": -9999.0,
     }
+    expected = {
+        "道瓊": "-0.67%（-347.11點）",
+        "標普": "-0.77%（-59.72點）",
+        "那斯達克": "-0.92%（-248.34點）",
+        "費半": "-1.61%（-203.69點）",
+    }
+    helper = dict(cash_index_moves(us))
+    assert helper == expected
+    assert [n for n, _ in cash_index_moves(us)] == ["道瓊", "標普", "那斯達克", "費半"]
+
+    page_lines = "\n".join(_html_plain(x) for x in _us_cash_close_lines(us, style="page"))
+    outlook_lines = "\n".join(_html_plain(x) for x in _us_cash_close_lines(us, style="outlook"))
+    assert _extract_us_cash_moves(page_lines) == expected
+    assert _extract_us_cash_moves(outlook_lines) == expected
+
+    # _us_quote_rows 誤傳 _CASH_ITEMS 必須空（收盤只走 _us_cash_close_lines）
+    assert _us_quote_rows(us, _CASH_ITEMS) == []
+    fut_rows = "\n".join(_html_plain(x) for x in _us_quote_rows(us, _FUTURES_ITEMS))
+    assert "-9.99%" in fut_rows
+    assert _extract_us_cash_moves(fut_rows) == {}  # 期貨列不准當收盤四大
+
+    db = str(tmp_path / "us_four_lock.db")
+    ensure_index_daily_table(db)
     save_us_overnight(db, "20260929", us)
     now = datetime(2026, 9, 29, 8, 20, tzinfo=ZoneInfo("Asia/Taipei"))
     page = "\n".join(
@@ -2098,27 +2149,19 @@ def test_screen_and_market_four_us_indices_same_numbers(tmp_path):
                 "regime": "neutral",
                 "falling_risk": 20,
             },
+            us_snap=us,
             now=now,
         )
     )
-
-    def _moves(text: str) -> dict:
-        out = {}
-        for name in ("道瓊", "標普", "那斯達克", "費半"):
-            for ln in text.splitlines():
-                if name not in ln or "%" not in ln:
-                    continue
-                m = re.search(r"([+-]\d+\.\d+%（[+-]?[\d.]+點）|[+-]\d+\.\d+%)", ln)
-                if m:
-                    out[name] = m.group(1)
-                    break
-        return out
-
-    pm, sm = _moves(page), _moves(screen)
-    assert set(pm) == {"道瓊", "標普", "那斯達克", "費半"}
-    assert pm == sm
-    assert pm["道瓊"] == "-0.67%（-347.11點）"
-    assert pm["費半"] == "-1.61%（-203.69點）"
+    pm, sm = _extract_us_cash_moves(page), _extract_us_cash_moves(screen)
+    assert pm == expected
+    assert sm == expected
+    assert pm == sm == helper
+    # 大盤可有期貨欄，但收盤四檔仍是 expected，不是 -9.99
+    assert "那指期" in page or "那斯達克期貨" in page
+    assert "-9.99%" not in "\n".join(
+        ln for ln in page.splitlines() if any(n in ln for n in expected)
+    )
 
 
 def test_screen_outlook_four_us_indices_pct_and_points():
