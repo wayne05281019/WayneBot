@@ -138,6 +138,36 @@ def test_regime_plus_traffic_light_repair_is_caution_not_go():
     assert _regime_traffic_light("bull") == "🟢"
 
 
+def test_brief_state_explain_lines_separates_judgment():
+    from taiwan_market import _brief_state_explain_lines
+    from tg_layout import _html_plain
+
+    lines = _brief_state_explain_lines(
+        {
+            "ok": True,
+            "regime": "bull",
+            "regime_label": "多頭帶動",
+            "confidence": 88.0,
+            "regime_plus": "repair",
+            "regime_plus_label": "跌後修復",
+            "falling_risk": 0,
+            "risk_zone": "elevated",
+        }
+    )
+    blob = "\n".join(lines)
+    plain = _html_plain(blob)
+    assert "<b>對照說明</b>" in blob
+    assert "盤勢＝整體方向" in plain
+    assert "細分＝細狀態" in plain
+    assert "風險＝下跌風險分" in plain
+    assert "高檔區＝相對高低" in plain
+    assert "多頭帶動" in plain and "跌後修復" in plain
+    assert "風險低0" in plain.replace(" ", "")
+    assert "相對高檔" in plain
+    assert "不急追" in plain
+    assert "綠可操作" in plain
+
+
 def test_beta_sort_multiplier_high_beta_down():
     from taiwan_market import beta_sort_multiplier
 
