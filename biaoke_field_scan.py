@@ -9,9 +9,12 @@
 """
 from __future__ import annotations
 
+import copy
 import json
 import re
 import sqlite3
+import threading
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -24,6 +27,16 @@ SHARE_ASK = re.compile(
     r"(哪族|哪個族群|現在哪族|什麼族|先機|資金輪動|佔比|洞燭|"
     r"還沒當第一|升還沒第一)"
 )
+
+_DONGZHU_PICKS_TTL = 45.0
+_DONGZHU_PICKS_LOCK = threading.Lock()
+_DONGZHU_PICKS_CACHE: Dict[Tuple[Any, ...], Tuple[float, Dict[str, Any]]] = {}
+
+
+def clear_dongzhu_picks_cache() -> None:
+    with _DONGZHU_PICKS_LOCK:
+        _DONGZHU_PICKS_CACHE.clear()
+
 
 def _gmem(tag: str) -> Tuple[Tuple[str, str], ...]:
     return tuple((str(sid), "") for sid in (TAUGHT_GROUPS.get(tag) or ()))
@@ -2126,6 +2139,12 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bo
     if spoken is None:
         spoken = latest_spoken(db_path) if db_path else ""
     spoken = str(spoken or "")
+    memo_key = (str(db_path or ""), spoken)
+    now = time.monotonic()
+    with _DONGZHU_PICKS_LOCK:
+        hit = _DONGZHU_PICKS_CACHE.get(memo_key)
+        if hit and (now - float(hit[0])) < _DONGZHU_PICKS_TTL:
+            return copy.deepcopy(hit[1])
     pick = pick_unnamed_field(db_path, spoken=spoken)
     cap = str(pick.get("cap") or _cap(db_path) or "")
     chip_cap = _chip_cap(db_path, cap) if db_path else cap
@@ -2484,7 +2503,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bo
     pick["recs"] = recs
     pick["alts"] = alts
     pick["alt_laggards"] = alt_lags
-    return {
+    payload = {
         **pick,
         "members": members,
         "buys": buys[:5],
@@ -2495,6 +2514,12 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bo
         "alts": alts,
         "alt_laggards": alt_lags,
     }
+    with _DONGZHU_PICKS_LOCK:
+        _DONGZHU_PICKS_CACHE[memo_key] = (time.monotonic(), copy.deepcopy(payload))
+        if len(_DONGZHU_PICKS_CACHE) > 16:
+            oldest = min(_DONGZHU_PICKS_CACHE.items(), key=lambda kv: float(kv[1][0]))
+            _DONGZHU_PICKS_CACHE.pop(oldest[0], None)
+    return payload
 
 
 def _esc(val: Any) -> str:

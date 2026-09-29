@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
@@ -16,6 +18,14 @@ except Exception:
 
 _LIVE_SECTOR_CACHE: Dict[str, Any] = {}
 _LIVE_SECTOR_TTL = 45.0
+_FLOW_HTML_CACHE: Dict[Tuple[Any, ...], Tuple[float, str]] = {}
+_FLOW_HTML_TTL = 45.0
+_FLOW_HTML_LOCK = threading.Lock()
+
+
+def clear_flow_html_cache() -> None:
+    with _FLOW_HTML_LOCK:
+        _FLOW_HTML_CACHE.clear()
 
 
 def ensure_sector_flow_table(conn: sqlite3.Connection) -> None:
@@ -1259,16 +1269,22 @@ def format_flow_html(
     """盤後資金輪動＋當日三大法人排行；不含持股／觀察（各走自己的選單）。"""
     del user_id
     path = db_path or get_db_path()
-    conn = sqlite3.connect(path, timeout=30.0)
-    conn.execute("PRAGMA busy_timeout=10000;")
     lag = None
     if yyyymmdd:
         ymd = str(yyyymmdd).replace("-", "")
     else:
         ymd, lag = resolve_flow_as_of(path, now=now)
     if not ymd:
-        conn.close()
         return "⚠️ 還沒有日 K，無法看資金輪動。"
+    memo_key = (str(path), str(ymd), str(lag or ""))
+    ts_now = time.monotonic()
+    with _FLOW_HTML_LOCK:
+        hit = _FLOW_HTML_CACHE.get(memo_key)
+        if hit and (ts_now - float(hit[0])) < _FLOW_HTML_TTL:
+            return hit[1]
+
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout=10000;")
 
     from import_health import audit_import
     from stock_links import html_named
@@ -1359,5 +1375,11 @@ def format_flow_html(
             )
         blocks.append(section("<b>短線熱（量大＋波動，對照當沖／隔日沖節奏，不是買訊）</b>", *_flow_stock_lines(bits)))
 
-    return join_dashed(*blocks)
+    html = join_dashed(*blocks)
+    with _FLOW_HTML_LOCK:
+        _FLOW_HTML_CACHE[memo_key] = (time.monotonic(), html)
+        if len(_FLOW_HTML_CACHE) > 24:
+            oldest = min(_FLOW_HTML_CACHE.items(), key=lambda kv: float(kv[1][0]))
+            _FLOW_HTML_CACHE.pop(oldest[0], None)
+    return html
 
