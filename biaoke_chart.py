@@ -53,12 +53,13 @@ _WINDOW_BG = "#ffe0b2"
 _HALO = "#ffffff"
 _FRAME = "#90a4ae"
 _MUTED = "#607d8b"
-_FIG_LEFT = 0.055
-_FIG_RIGHT = 0.940
+# 左右都留股價刻度：左邊略寬、右邊對稱可比對
+_FIG_LEFT = 0.072
+_FIG_RIGHT = 0.918
 _FIG_BOTTOM = 0.072
 _STOCK_MAIN_TOP = 0.658
 _LOCATOR_LEFT = 0.500
-_LOCATOR_WIDTH = 0.440
+_LOCATOR_WIDTH = _FIG_RIGHT - _LOCATOR_LEFT
 _STOCK_LOCATOR_BOTTOM = 0.690
 _STOCK_LOCATOR_HEIGHT = 0.278
 # 縮圖右緣＝主圖右緣，上下一條線。
@@ -68,12 +69,12 @@ _STOCK_LOCATOR_RECT = (
     _LOCATOR_WIDTH,
     _STOCK_LOCATOR_HEIGHT,
 )
-_HEADER_X = 5.20
-# 今K／漲跌：縮圖外框左邊空白上緣（直排貼框，overlay 0–100）
+_HEADER_X = 4.60
+# 今K／漲跌：縮圖外框左邊空白上緣（overlay 0–100）
 _SPOT_X = _LOCATOR_LEFT * 100.0 - 0.70
 _SPOT_Y = (_STOCK_LOCATOR_BOTTOM + _STOCK_LOCATOR_HEIGHT * 0.78) * 100.0
-# 左上頭牌可佔到縮圖左側空白前（今K已直排貼縮圖，不橫佔中間）
-_HEADER_CHIP_MAX = 44.0
+# 左上頭牌可佔到縮圖左側空白前（今K已移走）
+_HEADER_CHIP_MAX = 45.0
 
 
 def _style_frame(ax, *, hide_top=False) -> None:
@@ -585,63 +586,7 @@ def _paint_parallel_channel(
         edgecolors="white",
         linewidths=0.6,
     )
-    pad_x = max(1.2, (n) * 0.02)
-    x_lab_r = min(max(float(seam) - pad_x * 2.5, x_lo + pad_x), seam - 0.4)
-    y_top = _line_at(ux1, uy1, ux2, uy2, x_lab_r)
-    y_bot = _line_at(lx1, ly1, lx2, ly2, x_lab_r)
-    y_top = min(max(y_top, y_lo + (y_hi - y_lo) * 0.04), y_hi - (y_hi - y_lo) * 0.04)
-    y_bot = min(max(y_bot, y_lo + (y_hi - y_lo) * 0.04), y_hi - (y_hi - y_lo) * 0.04)
-    if abs(y_top - y_bot) < (y_hi - y_lo) * 0.08:
-        mid = (y_top + y_bot) / 2.0
-        y_top = mid + (y_hi - y_lo) * 0.05
-        y_bot = mid - (y_hi - y_lo) * 0.05
-    name_u = str(ch.get("name_u") or ("平行壓" if kind == "asc" else "下降壓"))
-    name_l = str(ch.get("name_l") or ("上升軌" if kind == "asc" else "平行撐"))
-    if not alive:
-        name_u += "（已壞）"
-        name_l += "（已壞）"
-    for txt, xx, yy in (
-        (f"{name_u} {_px(ch.get('rail_now'))}", x_lab_r, y_top),
-        (f"{name_l} {_px(ch.get('base_now'))}", x_lab_r, y_bot),
-    ):
-        ax.text(
-            xx,
-            yy,
-            txt,
-            color=color,
-            fontproperties=_fp(9, "bold"),
-            ha="right",
-            va="center",
-            zorder=11,
-            clip_on=True,
-            bbox=dict(
-                boxstyle="round,pad=0.22",
-                facecolor="#ffffff",
-                edgecolor=color,
-                linewidth=0.9,
-                alpha=0.96,
-            ),
-        )
-    status = str(ch.get("label") or "")
-    if status:
-        ax.text(
-            x_lo + pad_x,
-            y_lo + (y_hi - y_lo) * 0.035,
-            status + "　不是買訊",
-            color=color,
-            fontproperties=_fp(10, "bold"),
-            ha="left",
-            va="bottom",
-            zorder=11,
-            clip_on=True,
-            bbox=dict(
-                boxstyle="round,pad=0.25",
-                facecolor="#ffffff",
-                edgecolor=color,
-                linewidth=1.0,
-                alpha=0.96,
-            ),
-        )
+    # 軌價標籤走右溝；通道狀態改上頭牌晶片，不准壓在 K 棒上
 
 
 def _line_at(x1: float, y1: float, x2: float, y2: float, x: float) -> float:
@@ -1248,6 +1193,41 @@ def _place_band_notes(
         )
 
 
+def _note_priority(text: str) -> int:
+    t = str(text or "")
+    if "最可能" in t:
+        return 0
+    if t.startswith("壓") or t.startswith("撐"):
+        return 1
+    if any(k in t for k in ("下降壓", "上升軌", "平行壓", "平行撐")):
+        return 2
+    return 3
+
+
+def _dedupe_right_notes(
+    notes: Sequence[Dict[str, Any]],
+    *,
+    span: float,
+    near_frac: float = 0.022,
+) -> List[Dict[str, Any]]:
+    """價位太近只留優先標籤，避免壓／軌／最可能互蓋。"""
+    if not notes:
+        return []
+    ordered = sorted(
+        notes,
+        key=lambda n: (_note_priority(str(n.get("text") or "")), -float(n.get("y") or 0)),
+    )
+    kept: List[Dict[str, Any]] = []
+    thr = max(float(span) * float(near_frac), 1.0)
+    for note in ordered:
+        y = float(note.get("y") or 0)
+        if any(abs(y - float(k.get("y") or 0)) < thr for k in kept):
+            continue
+        kept.append(dict(note))
+    kept.sort(key=lambda n: -float(n.get("y") or 0))
+    return kept
+
+
 def _place_right_notes(
     ax,
     notes: Sequence[Dict[str, Any]],
@@ -1256,30 +1236,36 @@ def _place_right_notes(
     ymin: float,
     ymax: float,
     min_gap: float,
+    span: float = 0.0,
+    seam: Optional[float] = None,
 ) -> None:
-    """演算區內右側：字右對齊、強制 clip，不准跳出底圖外。"""
-    if not notes:
+    """演算區內：去重＋錯開＋左對齊往右長，字只落在演算空白，不准壓 K。"""
+    cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
+    if not cleaned:
         return
-    lo = ymin + min_gap * 0.45
-    hi = ymax - min_gap * 0.45
+    gap = max(float(min_gap), (ymax - ymin) * 0.06)
+    lo = ymin + gap * 0.55
+    hi = ymax - gap * 0.55
     tys = _spread_ys_around(
-        [float(n.get("y") or 0) for n in notes],
+        [float(n.get("y") or 0) for n in cleaned],
         [],
-        min_gap,
+        gap,
         lo=lo,
         hi=hi,
     )
-    for note, ty in zip(notes, tys):
+    pin_x = float(seam) if seam is not None else None
+    for note, ty in zip(cleaned, tys):
+        ax_x = float(pin_x if pin_x is not None else note.get("x") or 0)
         _leader_note(
             ax,
-            float(note.get("x") or 0),
+            ax_x,
             float(note.get("y") or 0),
             str(note.get("text") or ""),
             str(note.get("color") or _TEXT),
             tx=x_text,
             ty=ty,
             size=int(note.get("size") or 11),
-            ha="right",
+            ha="left",
             va="center",
             clip=True,
         )
@@ -2221,7 +2207,7 @@ def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, 
     return x + _ow(f" {label} ", size) + 1.15
 
 
-def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: float = 96.55) -> None:
+def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: float = 96.70) -> None:
     sid = str(plate.get("sid") or "")
     name = str(plate.get("name") or "")
     title = f"{sid} {name}".strip() or "官方日K"
@@ -2230,19 +2216,19 @@ def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: floa
         y,
         title,
         color=_TEXT,
-        fontproperties=_fp(21, "bold"),
+        fontproperties=_fp(28, "bold"),
         va="center",
         ha="left",
         zorder=22,
     )
-    cx = x + _ow(title, 21) + 1.45
+    cx = x + _ow(title, 28) + 1.55
     industry = str(plate.get("industry") or "").strip()
     if industry:
         cx = _draw_chip(
-            ax, cx, y, industry, fc="#eef3f8", ec="#607d8b", tc="#37474f", size=12
+            ax, cx, y, industry, fc="#eef3f8", ec="#607d8b", tc="#37474f", size=15
         )
     if str(plate.get("leader") or "").strip() == "龍頭":
-        _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=12)
+        _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=15)
 
 
 def _paint_spot(
@@ -2446,7 +2432,8 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    x_right = n + _FUTURE + 3.15
+    # 演算區右側留足標籤寬，避免「最可能」被裁成半句
+    x_right = n + _FUTURE + 7.2
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     candle_up = []
@@ -2689,11 +2676,13 @@ def render_biaoke_structure_png(
     _place_right_notes(
         ax1,
         right_notes,
-        # 右對齊貼近軸右緣內側，長句往左長，不准跳出底圖
-        x_text=x_right - 0.35,
+        # 錨在最近一根，字從演算區左緣往右長，不准壓歷史 K
+        x_text=float(n - 1) + 0.65,
         ymin=ymin,
         ymax=ymax,
-        min_gap=span * 0.13,
+        min_gap=span * 0.16,
+        span=span,
+        seam=float(n - 1),
     )
     ax1.text(
         n + _FUTURE * 0.45,
@@ -2730,60 +2719,73 @@ def render_biaoke_structure_png(
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     ov.text(
         _HEADER_X,
-        93.05,
+        92.85,
         date_line,
         color=_TEXT,
-        fontproperties=_fp(13, "bold"),
+        fontproperties=_fp(16, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        89.95,
+        89.15,
         (
             f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
             f"低 {_px(last_bar.get('low'))}　收 {_px(last_bar.get('close'))}　"
             f"量 {_vol(last_bar.get('volume'))}"
         ),
         color=_TEXT,
-        fontproperties=_fp(12, "bold"),
+        fontproperties=_fp(15, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        86.85,
+        85.45,
         (
             f"爆大量日 {_ymd_full(spike_date)}　高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
             f"量 {_vol(spike_bar.get('volume'))}"
         ),
         color=_PRESS,
-        fontproperties=_fp(12, "bold"),
+        fontproperties=_fp(15, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        83.95,
+        82.05,
         "不是15分、不是介紹圖／決策卡",
         color=_MUTED,
-        fontproperties=_fp(11, "bold"),
+        fontproperties=_fp(13, "bold"),
         va="center",
         ha="left",
     )
-    chip_x, chip_y = _HEADER_X, 80.55
+    chip_x, chip_y = _HEADER_X, 78.85
     if mark:
-        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=11)
-        chip_x, chip_y = _HEADER_X, 76.85
+        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=13)
+        chip_x, chip_y = _HEADER_X, 74.75
+    ch_lab = str((channel or {}).get("label") or "").strip()
+    if ch_lab:
+        ch_color = _UP_TRACK if str((channel or {}).get("kind") or "") == "asc" else _DOWN_TRACK
+        ch_bits = [b for b in ch_lab.replace("　", " ").split() if b] + ["不是買訊"]
+        for bit in ch_bits:
+            need = _ow(f" {bit} ", 12) + 1.3
+            if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
+                chip_x = _HEADER_X
+                chip_y -= 3.6
+            chip_x = _draw_chip(
+                ov, chip_x, chip_y, bit, fc="#ffffff", ec=ch_color, tc=ch_color, size=12
+            )
+        chip_x, chip_y = _HEADER_X, chip_y - 3.6
     for bit in banner_bits:
-        need = _ow(f" {bit} ", 11) + 1.25
+        need = _ow(f" {bit} ", 12) + 1.3
         if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
-            if chip_y - 3.35 < 70.5:
+            if chip_y - 3.6 < 69.0:
                 break
             chip_x = _HEADER_X
-            chip_y -= 3.35
+            chip_y -= 3.6
         chip_x = _draw_chip(
-            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=11
+            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=12
         )
     # 今K／漲跌：縮圖外框左邊空白（預設 _SPOT_X／_SPOT_Y），不佔左上頭牌
     if quote:
@@ -2836,18 +2838,29 @@ def render_biaoke_structure_png(
             marks=loc_marks,
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
-    ax1.yaxis.tick_left()
-    ax1.yaxis.set_label_position("left")
-    ax1.tick_params(labelsize=11, left=True, right=False, bottom=False, labelbottom=False, length=5, width=0.8)
+    # 左右同刻度股價，方便對照右邊標籤
+    ax1.yaxis.set_ticks_position("both")
+    ax1.tick_params(
+        labelsize=12,
+        left=True,
+        right=True,
+        labelleft=True,
+        labelright=True,
+        bottom=False,
+        labelbottom=False,
+        length=5,
+        width=0.8,
+    )
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
     for lab in ax1.get_yticklabels():
-        lab.set_fontproperties(_fp(11, "bold"))
+        lab.set_fontproperties(_fp(12, "bold"))
     vol_colors = [_SPIKE_VOL if i == spike_i else (_UP if candle_up[i] else _DN) for i in range(n)]
     ax2.bar(xs, vols, color=vol_colors, width=0.68, zorder=3, edgecolor="#ffffff", linewidth=0.2)
     vmax = max(vols) if vols else 1.0
     ax2.set_ylim(0, vmax * 1.45)
     if 0 <= spike_i < n and vols[spike_i]:
-        vol_tx = min(n - 1.2, spike_i + 5.2) if spike_i < n - 6 else max(0.8, spike_i - 5.2)
+        # 量標拉到空白帶，避開量柱本體
+        vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
         _leader_note(
             ax2,
             float(spike_i),
@@ -2855,18 +2868,25 @@ def render_biaoke_structure_png(
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             _TEXT,
             tx=vol_tx,
-            ty=vmax * 1.22,
+            ty=vmax * 1.28,
             size=11,
             ha="left" if vol_tx >= spike_i else "right",
             va="center",
         )
     ax2.set_ylabel("日成交量（張）", fontproperties=_fp(11, "bold"), color=_TEXT)
-    ax2.yaxis.tick_left()
-    ax2.yaxis.set_label_position("left")
-    ax2.tick_params(labelsize=11, left=True, right=False, length=5, width=0.8)
+    ax2.yaxis.set_ticks_position("both")
+    ax2.tick_params(
+        labelsize=11,
+        left=True,
+        right=True,
+        labelleft=True,
+        labelright=True,
+        length=5,
+        width=0.8,
+    )
     ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{int(round(v)):,}"))
     for lab in ax2.get_yticklabels():
-        lab.set_fontproperties(_fp(10, "bold"))
+        lab.set_fontproperties(_fp(11, "bold"))
     ax2.set_xlim(-0.55, x_right)
     paint_forecast_span(ax2, n - 1, _FUTURE, line=False)
     ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)

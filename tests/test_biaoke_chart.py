@@ -509,7 +509,7 @@ def test_locator_inset_marks_window():
 
     assert _BARS >= 140
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
-    assert _STOCK_LOCATOR_RECT[2] >= 0.44
+    assert _STOCK_LOCATOR_RECT[2] >= 0.40
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
     assert abs(_STOCK_LOCATOR_RECT[0] + _STOCK_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
@@ -519,7 +519,23 @@ def test_locator_inset_marks_window():
     assert "_SPOT_X" in inspect.getsource(_paint_spot) or "_SPOT_Y" in inspect.getsource(_paint_spot)
     assert 'x=_HEADER_X, y=chip_y' not in rsrc
     assert "quote=quote" not in rsrc.split("paint_locator_inset")[1][:400]
-    assert "x_right - 0.35" in rsrc
+    assert "seam=float(n - 1)" in rsrc or "seam=" in rsrc
+    assert "labelright=True" in rsrc
+    from biaoke_chart import _dedupe_right_notes, _place_right_notes
+
+    assert "_dedupe_right_notes" in inspect.getsource(_place_right_notes)
+    assert 'ha="left"' in inspect.getsource(_place_right_notes)
+    kept = _dedupe_right_notes(
+        [
+            {"y": 100.0, "text": "壓 100"},
+            {"y": 101.0, "text": "下降壓 101"},
+            {"y": 80.0, "text": "最可能＝看壓 100"},
+        ],
+        span=100.0,
+    )
+    assert any("最可能" in str(k.get("text")) for k in kept)
+    assert any(str(k.get("text") or "").startswith("壓") for k in kept)
+    assert not any("下降壓" in str(k.get("text")) for k in kept)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
@@ -545,8 +561,9 @@ def test_locator_inset_marks_window():
     from biaoke_chart import _place_right_notes
 
     notes = inspect.getsource(_place_right_notes)
-    assert 'ha="right"' in notes
+    assert 'ha="left"' in notes
     assert "clip=True" in notes
+    assert "seam" in notes
 
 
 def test_locator_window_matches_main_time():
@@ -907,8 +924,10 @@ def test_parallel_channel_follows_biaoke_rails():
     assert "_impulse_support_pair" in src
     assert "不是買訊" in src
     psrc = inspect.getsource(_paint_parallel_channel)
-    assert "clip_on=True" in psrc
-    assert "name_u" in psrc
+    # 軌價／狀態都不畫在 K 上：價走右溝、狀態上頭牌
+    assert "不是買訊" not in psrc
+    assert "name_u" not in psrc
+    assert "name_u" in src
 
     from biaoke_brain import load_bars
     from biaoke_chart import _BARS
