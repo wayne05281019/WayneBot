@@ -161,6 +161,15 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "note": "與 #439 並存；不重發明；first 過閘才考慮改話筒排序",
     },
     {
+        "btn": "大量區×季線",
+        "kinds": ("volzone_ma60",),
+        "class": CLASS_PRESSURE,
+        "status": "external",
+        "pipe": "volzone_ma60_verify current／ma60_rising",
+        "window": "前瞻 5 交易日；與壓撐三軌／海選勝率分開",
+        "note": "靜默對質；過閘也不自動改黃金買點／海選／買訊",
+    },
+    {
         "btn": "AI倉",
         "kinds": ("ai_desk",),
         "class": CLASS_AI,

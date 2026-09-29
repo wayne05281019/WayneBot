@@ -49,11 +49,16 @@ VOL_ZONE_JPEG_QUALITY = 94
 VOL_ZONE_FIG_W = 12.0
 VOL_ZONE_FIG_H_NAV = 9.2
 VOL_ZONE_FIG_H_PLAIN = 7.6
+# 季線＝官方收盤 MA60；畫圖前多抓暖機柱，近窗線才準
+VOL_ZONE_MA60 = 60
+VOL_ZONE_MA60_WARM = 65
 # 同檔同 as_of 壓力區圖短快取（名單→點股三張可複用）
 _VZ_RENDER_TTL_SEC = 45.0
 _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
+# 畫面上線／戳後 bump，避免舊快取缺季線
+_VZ_PAINT_VER = 2
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -62,6 +67,7 @@ _FILL = "#ffe0b2"
 _PRESS = "#ad1457"
 _HOLD = "#1b5e20"
 _SPIKE = "#f9a825"
+_MA60 = "#5c6bc0"  # 季線：藍紫，不跟壓洋紅／撐綠／量黃搶
 _GRID = "#cfd8dc"
 _TEXT = "#1f2933"
 _MUTED = "#607d8b"
@@ -73,6 +79,39 @@ def _md(raw: Any) -> str:
     if len(t) == 8 and t.isdigit():
         return f"{int(t[4:6]):02d}/{int(t[6:8]):02d}"
     return str(raw or "").strip()
+
+
+def attach_official_ma60(work: pd.DataFrame, *, window: int = VOL_ZONE_MA60) -> pd.DataFrame:
+    """官方收盤 SMA60（季線）。缺柱／停牌收不當正量時仍用當日官方收。"""
+    if work is None or getattr(work, "empty", True):
+        return work
+    out = work
+    if "ma60" not in out.columns:
+        out = out.copy()
+    closes = pd.to_numeric(out["close"], errors="coerce")
+    # min_periods=window：不滿 60 根不畫假季線
+    out["ma60"] = closes.rolling(int(window), min_periods=int(window)).mean()
+    return out
+
+
+def ma60_is_rising(
+    ma60: Any,
+    *,
+    slope_bars: int = 5,
+) -> Optional[bool]:
+    """近 slope_bars 交易日季線是否上升。柱不足回 None（不算假上升）。"""
+    try:
+        s = pd.to_numeric(pd.Series(ma60), errors="coerce").dropna()
+    except Exception:
+        return None
+    n = max(int(slope_bars or 0), 1)
+    if len(s) < n + 1:
+        return None
+    now = float(s.iloc[-1])
+    prev = float(s.iloc[-(n + 1)])
+    if not (now > 0 and prev > 0):
+        return None
+    return now > prev
 
 
 def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataFrame:
@@ -644,6 +683,7 @@ def _vz_memo_key(
         int(bars),
         int(VOL_ZONE_DPI),
         int(VOL_ZONE_JPEG_QUALITY),
+        int(_VZ_PAINT_VER),
     )
 
 
@@ -696,8 +736,9 @@ def prepare_volume_zone(
     if not sid:
         return None
     work = None
+    need = max(int(bars) + int(lookback) + VOL_ZONE_MA60_WARM, 180)
     if db_path:
-        raw = load_official_ohlc(sid, db_path, max(int(bars) + int(lookback) + 5, 120))
+        raw = load_official_ohlc(sid, db_path, need)
         work = official_work(raw)
     if work is None or work.empty:
         if df is None or getattr(df, "empty", True):
@@ -705,6 +746,7 @@ def prepare_volume_zone(
         work = official_work(df)
     if work is None or work.empty:
         return None
+    work = attach_official_ma60(work)
     ex_events: List[Dict[str, Any]] = []
     if db_path:
         start_d = _bar_ymd(work["date"].iloc[0])
@@ -940,6 +982,22 @@ def _paint_volume_zone(
     ax1.axhline(lo, color=_HOLD, linewidth=2.25, zorder=5, solid_capstyle="round")
     ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.65, zorder=1)
 
+    # 季線 MA60：官方收盤均線；線本身看出升／降，不改買訊
+    ma60_vals = None
+    if "ma60" in view.columns:
+        ma60_vals = pd.to_numeric(view["ma60"], errors="coerce").to_numpy(dtype=float)
+        ok_ma = np.isfinite(ma60_vals) & (ma60_vals > 0)
+        if ok_ma.any():
+            ax1.plot(
+                xs[ok_ma],
+                ma60_vals[ok_ma],
+                color=_MA60,
+                linewidth=1.85,
+                zorder=4,
+                solid_capstyle="round",
+                label="季線",
+            )
+
     # 除息／除權：先畫豎線與參考價；文字標等 ylim／疊箭頭後掛軸頂，不准壓 K
     ex_by_date = {_bar_ymd(e.get("ex_date")): e for e in official_scale_events(ex_events)}
     ex_labels: list[tuple[int, str]] = []
@@ -1070,8 +1128,15 @@ def _paint_volume_zone(
         )
 
     ypad = max((hi - lo) * 0.16, float(view["high"].max() - view["low"].min()) * 0.035)
-    ymin = min(float(view["low"].min()), lo) - ypad
-    ymax = max(float(view["high"].max()), hi) + ypad * (1.35 if with_nav_signals else 1.25)
+    y_hi = float(view["high"].max())
+    y_lo = float(view["low"].min())
+    if ma60_vals is not None:
+        ok_ma = np.isfinite(ma60_vals) & (ma60_vals > 0)
+        if ok_ma.any():
+            y_hi = max(y_hi, float(np.nanmax(ma60_vals[ok_ma])))
+            y_lo = min(y_lo, float(np.nanmin(ma60_vals[ok_ma])))
+    ymin = min(y_lo, lo) - ypad
+    ymax = max(y_hi, hi) + ypad * (1.35 if with_nav_signals else 1.25)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
     ax1.yaxis.tick_right()
@@ -1111,6 +1176,71 @@ def _paint_volume_zone(
         zorder=10,
         bbox={**_tag_box, "edgecolor": _HOLD},
     )
+
+    # 查詢時間：右上（台北）；不蓋左壓標、不蓋量柱、不蓋右軸價位數字
+    try:
+        from decision_card_signals import format_card_query_stamp
+
+        last_d = _bar_ymd(last.get("date"))
+        is_live = False
+        if "is_live" in view.columns:
+            try:
+                is_live = bool(pd.Series(view["is_live"]).fillna(False).iloc[-1])
+            except Exception:
+                is_live = False
+        date_s, clock_s = format_card_query_stamp(is_live=is_live, latest_date=last_d)
+        stamp = f"{date_s}　{clock_s}".strip()
+    except Exception:
+        stamp = ""
+    if stamp:
+        ax1.text(
+            0.988,
+            0.975,
+            stamp,
+            transform=ax1.transAxes,
+            ha="right",
+            va="top",
+            fontproperties=_fp(10.5, "bold"),
+            color=_MUTED,
+            zorder=10,
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor="#ffffff",
+                edgecolor="#cfd8dc",
+                linewidth=0.8,
+                alpha=0.92,
+            ),
+        )
+
+    # 季線末端小標：貼線尾左側，避開右上時間戳與左壓標
+    if ma60_vals is not None:
+        ok_i = np.flatnonzero(np.isfinite(ma60_vals) & (ma60_vals > 0))
+        if ok_i.size:
+            i_end = int(ok_i[-1])
+            rising = ma60_is_rising(ma60_vals[ok_i], slope_bars=5)
+            arrow = "↑" if rising is True else ("↓" if rising is False else "")
+            lab = f"季線{arrow}".strip()
+            # 尾在右半 → 標在線左；尾偏左 → 標在線右，避開壓標區
+            ha = "right" if float(xs[i_end]) > n * 0.55 else "left"
+            x_off = -6 if ha == "right" else 6
+            ax1.annotate(
+                lab,
+                xy=(float(xs[i_end]), float(ma60_vals[i_end])),
+                xytext=(x_off, 10),
+                textcoords="offset points",
+                ha=ha,
+                va="bottom",
+                fontproperties=_fp(10.5, "bold"),
+                color=_MA60,
+                zorder=9,
+                bbox=dict(
+                    boxstyle="round,pad=0.16",
+                    facecolor="#e8eaf6",
+                    edgecolor=_MA60,
+                    linewidth=0.7,
+                    alpha=0.94,
+                ),
+            )
 
     if with_nav_signals:
         if "dt" not in view.columns:
@@ -1327,10 +1457,10 @@ def _paint_volume_zone(
         )
         ax1.set_title(title, fontproperties=_fp(13, "bold"), pad=14, color=_TEXT)
     if with_nav_signals:
-        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
+        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。藍線＝季線(MA60)。除權／除息缺口是息差不是崩。"
         foot2 = "高觸壓、收未過＝測壓（非買訊）。箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
     else:
-        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
+        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。藍線＝季線(MA60)。除權／除息缺口是息差不是崩。"
         foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
     fig.text(
         0.5,
