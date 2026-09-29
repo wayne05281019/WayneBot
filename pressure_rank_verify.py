@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """壓撐觀察・排序靜默對質（不是買訊）。
 
-主線（改碼候選只認這條）：
+主線（話筒閘）：
   A 現況碼：離壓近 → 量縮加分 → 代號；截 12
   B 第一次優化：三鈕不同「強」定義＋順序（見 rank_key_first）
-  再擠：暫不開改碼候選（缺獨立掃檔證明能贏 B）
+    → n≥20 且贏 A → 話筒改 B（已鎖特例）
+  C 第二次優化（再生下一版）：B 主鍵＋量價品質軟序、截 10
+    → n≥20 且贏話筒現況（B 已上則贏 B，否則贏 A）→ 話筒改 C；同時續收
 
-另軌（只靜默／之後，不准當現階段改碼候選、不准建議上話筒）：
+另軌（只靜默，不准自動上話筒）：
   biaoke_silent：第一次優化主鍵上再疊飆大硬砍／加分、截 5～8
 
-結構門檻不動（N=2／≤0.5%／W=5）。未過 n≥20 獨立交易日且贏現況 → 不准改話筒。
+結構門檻不動（N=2／≤0.5%／W=5）。未過 n≥20 獨立交易日且贏該功能現況 → 不准改話筒。
 失敗不准打斷出卡／海選。過程／％不准進對話。
 """
 from __future__ import annotations
@@ -34,16 +36,23 @@ from pressure_support_watch import (
 KIND = "pressure_rank"
 VARIANT_CURRENT = "current"
 VARIANT_FIRST = "first"  # 第一次優化＝勝率優化層
+VARIANT_SECOND = "second"  # 第二次優化＝first 再生下一版（§13）
 VARIANT_BIAOKE_SILENT = "biaoke_silent"  # 飆大概念選：真測真落；不准自動改話筒
-# 靜默對質每日必須三軌都跑／都落檔／都對前瞻窗打分
-TRACK_VARIANTS = (VARIANT_CURRENT, VARIANT_FIRST, VARIANT_BIAOKE_SILENT)
-PROMOTE_VARIANTS = (VARIANT_CURRENT, VARIANT_FIRST)  # 話筒閘只認 first 贏 current
+# 靜默對質每日四軌都跑／都落檔／都對前瞻窗打分
+TRACK_VARIANTS = (
+    VARIANT_CURRENT,
+    VARIANT_FIRST,
+    VARIANT_SECOND,
+    VARIANT_BIAOKE_SILENT,
+)
+PROMOTE_VARIANTS = (VARIANT_CURRENT, VARIANT_FIRST, VARIANT_SECOND)
 SILENT_ONLY_VARIANTS = (VARIANT_BIAOKE_SILENT,)
 FORWARD_H = 5
 # 剛站上撐「離壓適中」錨：離壓約 2%（太貼像又測壓；太遠像半山／區外）
 STAND_MODERATE_DIST_ANCHOR = 2.0
 BIAOKE_TOP_LO = 5
 BIAOKE_TOP_HI = 8
+SECOND_MAX_ROWS = 10  # 比現況 12 緊，減少尾端噪音
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 
 
@@ -100,6 +109,29 @@ def rank_key_first(tag: str, r: Dict[str, Any]) -> Tuple[Any, ...]:
     return (in_band, moderate, vr, sid)
 
 
+def rank_key_second(tag: str, r: Dict[str, Any]) -> Tuple[Any, ...]:
+    """第二次優化（靜默再生）：第一次主鍵＋量價品質軟序。
+
+    在 first 已鎖的「強」定義上，同分再擠：
+    - 弱 K／無洗盤也無窒息 → 往後
+    - 剛站上撐：量縮優先（站穩後縮量較像真站）
+    名單截 ``SECOND_MAX_ROWS``。不是買訊。
+    """
+    tag = normalize_tag(tag) or str(tag or "")
+    sid = str(r.get("stock_id") or r.get("code") or "")
+    base = rank_key_first(tag, r)
+    # 去掉尾端 sid，後面接品質鍵再掛 sid
+    stem = tuple(base[:-1]) if base else ()
+    q = 0
+    if r.get("weak_k"):
+        q += 2
+    if not (r.get("vol_asphyx") or r.get("wash") or r.get("vol_thin_bonus") or _thin(r) == 0):
+        q += 1
+    if tag == TAG_STAND_SUPPORT:
+        return stem + (_thin(r), q, sid)
+    return stem + (q, sid)
+
+
 def biaoke_hard_cut(r: Dict[str, Any], tag: str) -> bool:
     """飆大草案硬砍（只靜默軌）。砍＝True 不進起手。"""
     if r.get("dump_pause") or r.get("half_mountain") or r.get("chase_no_consol"):
@@ -143,6 +175,9 @@ def rank_pool(
     if variant == VARIANT_FIRST:
         rows.sort(key=lambda r: rank_key_first(tag, r))
         return rows[:MAX_ROWS]
+    if variant == VARIANT_SECOND:
+        rows.sort(key=lambda r: rank_key_second(tag, r))
+        return rows[:SECOND_MAX_ROWS]
     if variant == VARIANT_BIAOKE_SILENT:
         kept = [r for r in rows if not biaoke_hard_cut(r, tag)]
         # 主鍵仍是第一次優化；同分再用飆大加分（降序）
@@ -594,9 +629,20 @@ def unique_days(db_path: str, variant: str = VARIANT_FIRST) -> int:
 
 
 def phone_uses_first(db_path: str) -> bool:
-    """話筒是否改用第一次優化排序。只認 first 贏 current＋n≥20；飆大永不觸發。"""
+    """話筒是否改用第一次優化排序（尚未升到第二次時）。"""
     try:
-        return bool(gate_status(db_path).get("promote_ready"))
+        g = gate_status(db_path)
+        if g.get("second_promote_ready"):
+            return False
+        return bool(g.get("promote_ready"))
+    except Exception:
+        return False
+
+
+def phone_uses_second(db_path: str) -> bool:
+    """話筒是否改用第二次優化排序。n≥20 且贏話筒現況才 True；飆大永不觸發。"""
+    try:
+        return bool(gate_status(db_path).get("second_promote_ready"))
     except Exception:
         return False
 
@@ -604,9 +650,9 @@ def phone_uses_first(db_path: str) -> bool:
 def gate_status(db_path: str) -> Dict[str, Any]:
     """明確優化狀態：n 夠不夠、誰贏現況、要不要改碼。
 
-    三軌分數都落 rates；話筒閘**只認** first 贏 current。
+    四軌分數都落 rates。話筒閘：first 贏 current → 改 first；
+    second 贏話筒現況（first 已上則贏 first）→ 改 second。
     biaoke_silent 永遠 ``biaoke_promote_ready=False``。
-    靜默通過（promote_ready）→ 話筒直接改第一次優化排序鍵。
     """
     store = ensure_tables(db_path)
     by: Dict[str, Dict[str, Any]] = {}
@@ -640,14 +686,24 @@ def gate_status(db_path: str) -> Dict[str, Any]:
         return sum(vals) / len(vals) if vals else None
 
     n = unique_days(db_path, VARIANT_FIRST)
+    n_second = unique_days(db_path, VARIANT_SECOND)
     n_biaoke = unique_days(db_path, VARIANT_BIAOKE_SILENT)
     n_ok = n >= MIN_UNIQUE_DAYS
+    n_second_ok = n_second >= MIN_UNIQUE_DAYS
     cur = _mean_win(VARIANT_CURRENT)
     first = _mean_win(VARIANT_FIRST)
+    second = _mean_win(VARIANT_SECOND)
     biaoke = _mean_win(VARIANT_BIAOKE_SILENT)
     beats = bool(n_ok and cur is not None and first is not None and first > cur)
-    # 再擠：現階段不開；飆大永不 promote
     promote = bool(beats)
+    # 第二次要比話筒現況好：first 已過閘則比 first，否則比 current
+    baseline = first if promote and first is not None else cur
+    second_beats = bool(
+        n_second_ok
+        and baseline is not None
+        and second is not None
+        and second > baseline
+    )
     return {
         "n_days": n,
         "n_ok": n_ok,
@@ -655,23 +711,32 @@ def gate_status(db_path: str) -> Dict[str, Any]:
         "current_win": cur,
         "first_win": first,
         "first_beats_current": beats,
+        "second_n_days": n_second,
+        "second_n_ok": n_second_ok,
+        "second_win": second,
+        "second_beats_baseline": second_beats,
+        "second_promote_ready": second_beats,
         "biaoke_n_days": n_biaoke,
         "biaoke_win": biaoke,
         "biaoke_silent_only": True,
         "biaoke_promote_ready": False,
-        "squeeze_candidate": False,
+        "squeeze_candidate": True,
         "promote_ready": promote,
         "tracks": list(TRACK_VARIANTS),
         "note": (
-            "第一次優化贏現況且 n 夠 → 話筒直接改第一次優化排序；飆大只靜默不改話筒"
-            if promote
-            else "繼續收集／尚未改碼；三軌（含飆大）持續落檔對質"
+            "第二次優化贏話筒現況且 n 夠 → 話筒改第二次優化排序；飆大只靜默"
+            if second_beats
+            else (
+                "第一次優化贏現況且 n 夠 → 話筒改第一次；第二次靜默再生續收；飆大只靜默"
+                if promote
+                else "繼續收集／尚未改碼；四軌（含第二次／飆大）持續落檔對質"
+            )
         ),
     }
 
 
 def night_tick(db_path: str, as_of: str = "") -> Dict[str, Any]:
-    """接默默落檔節奏：三軌落排名＋同窗對質＋重算。失敗吞掉。"""
+    """接默默落檔節奏：四軌落排名＋同窗對質＋重算。失敗吞掉。"""
     out: Dict[str, Any] = {
         "wrote": {},
         "scored": 0,
@@ -701,17 +766,23 @@ def optimize_status_one_liner(db_path: str) -> str:
     n = int(g.get("n_days") or 0)
     need = int(g.get("min_n") or MIN_UNIQUE_DAYS)
     nb = int(g.get("biaoke_n_days") or 0)
+    ns = int(g.get("second_n_days") or 0)
+    if g.get("second_promote_ready"):
+        return (
+            f"明確優化狀態：第二次優化 n={ns} 夠且贏話筒現況 → 話筒改第二次排序；"
+            f"飆大靜默軌 n={nb} 只紀錄不改話筒。"
+        )
     if not g.get("n_ok"):
         return (
-            f"明確優化狀態：n={n}/{need} 不夠（飆大靜默軌 n={nb} 同步收集），"
+            f"明確優化狀態：n={n}/{need} 不夠（第二次 n={ns}、飆大 n={nb} 同步收集），"
             "第一次優化尚未贏現況可證，繼續收集／尚未改碼。"
         )
     if g.get("first_beats_current") and g.get("promote_ready"):
         return (
             f"明確優化狀態：n={n} 夠且第一次優化贏現況 → 話筒改第一次優化排序；"
-            f"飆大靜默軌 n={nb} 只紀錄不改話筒。"
+            f"第二次再生軌 n={ns} 續收；飆大靜默軌 n={nb} 只紀錄不改話筒。"
         )
     return (
         f"明確優化狀態：n={n} 夠但第一次優化未贏現況，不改碼；"
-        f"飆大靜默軌 n={nb} 持續對質不當改碼候選。"
+        f"第二次 n={ns}、飆大 n={nb} 持續對質。"
     )

@@ -6,10 +6,12 @@ import sqlite3
 
 from pressure_rank_verify import (
     FORWARD_H,
+    SECOND_MAX_ROWS,
     TRACK_VARIANTS,
     VARIANT_BIAOKE_SILENT,
     VARIANT_CURRENT,
     VARIANT_FIRST,
+    VARIANT_SECOND,
     biaoke_hard_cut,
     ensure_tables,
     gate_status,
@@ -17,7 +19,9 @@ from pressure_rank_verify import (
     outcome_win,
     persist_ranked,
     phone_uses_first,
+    phone_uses_second,
     rank_key_first,
+    rank_key_second,
     rank_pool,
     recompute_rates,
     score_pending,
@@ -133,6 +137,21 @@ def test_outcome_win_defs():
     assert bad["broke_support"] == 1 and bad["win"] == 0
 
 
+def test_second_rank_caps_and_prefers_quality():
+    weak = _row(stock_id="W", vol_ratio=0.2, dist_to_press_pct=0.1, weak_k=True)
+    strong = _row(
+        stock_id="S",
+        vol_ratio=0.2,
+        dist_to_press_pct=0.1,
+        wash=True,
+        vol_asphyx=True,
+    )
+    ranked = rank_pool([weak, strong], TAG_SIDEWAYS, VARIANT_SECOND)
+    assert ranked[0]["stock_id"] == "S"
+    assert len(ranked) <= SECOND_MAX_ROWS
+    assert rank_key_second(TAG_SIDEWAYS, strong) < rank_key_second(TAG_SIDEWAYS, weak)
+
+
 def test_gate_biaoke_never_promote_without_first(tmp_path):
     db = str(tmp_path / "m.db")
     # empty evolve → n=0
@@ -140,17 +159,20 @@ def test_gate_biaoke_never_promote_without_first(tmp_path):
     assert g["n_ok"] is False
     assert g["biaoke_silent_only"] is True
     assert g["biaoke_promote_ready"] is False
-    assert g["squeeze_candidate"] is False
+    assert g["squeeze_candidate"] is True
+    assert g["second_promote_ready"] is False
     assert g["promote_ready"] is False
     assert list(g["tracks"]) == list(TRACK_VARIANTS)
+    assert VARIANT_SECOND in g["tracks"]
     assert phone_uses_first(db) is False
+    assert phone_uses_second(db) is False
     line = optimize_status_one_liner(db)
     assert "尚未改碼" in line or "繼續收集" in line
     assert VARIANT_CURRENT and VARIANT_FIRST
 
 
 def test_three_tracks_persist_score_and_biaoke_n(tmp_path):
-    """三軌同池落檔＋同窗打分；飆大有獨立 n，永不 promote。"""
+    """四軌同池落檔＋同窗打分；飆大有獨立 n，永不 promote。"""
     market = str(tmp_path / "wayne_market.db")
     conn = sqlite3.connect(market)
     # as_of 20260102 + 5 交易日
@@ -209,13 +231,17 @@ def test_three_tracks_persist_score_and_biaoke_n(tmp_path):
     recompute_rates(market)
     assert unique_days(market, VARIANT_CURRENT) >= 1
     assert unique_days(market, VARIANT_FIRST) >= 1
+    assert unique_days(market, VARIANT_SECOND) >= 1
     assert unique_days(market, VARIANT_BIAOKE_SILENT) >= 1
     g = gate_status(market)
     assert g["biaoke_n_days"] >= 1
     assert g["biaoke_promote_ready"] is False
+    assert g["second_n_days"] >= 1
+    assert g["second_promote_ready"] is False
     # n 不夠 20 → 不改話筒
     assert g["promote_ready"] is False
     assert phone_uses_first(market) is False
+    assert phone_uses_second(market) is False
     store = ensure_tables(market)
     c = sqlite3.connect(store)
     variants = {

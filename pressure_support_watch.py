@@ -586,8 +586,7 @@ def screen_pressure_support(
     """掃活躍 STOCK，回傳符合標籤的觀察名單（非買訊）。
 
     預設 ``rank_key_current``＋截 ``MAX_ROWS``。
-    靜默對質 ``first`` 贏 ``current`` 且 n≥20（``promote_ready``）時，
-    話筒**直接**改第一次優化鍵；飆大軌永不觸發改碼。
+    靜默對質過閘時話筒改對應排序鍵（first／second）；飆大軌永不觸發改碼。
     """
     tag = normalize_tag(tag)
     if not tag or not db_path:
@@ -601,18 +600,22 @@ def screen_pressure_support(
         except Exception:
             as_of_key = ""
     use_first = False
+    use_second = False
     try:
-        from pressure_rank_verify import phone_uses_first
+        from pressure_rank_verify import phone_uses_first, phone_uses_second
 
-        use_first = bool(phone_uses_first(db_path))
+        use_second = bool(phone_uses_second(db_path))
+        use_first = bool(phone_uses_first(db_path)) and not use_second
     except Exception:
         use_first = False
+        use_second = False
     cache_key = (
         str(db_path),
         tag,
         as_of_key,
         int(max_rows or MAX_ROWS),
         bool(use_first),
+        bool(use_second),
     )
     now = time.monotonic()
     with _SCREEN_LOCK:
@@ -622,15 +625,27 @@ def screen_pressure_support(
 
     out = collect_pressure_pool(db_path, tag, as_of=as_of, enrich=False)
     try:
-        from pressure_rank_verify import phone_uses_first, rank_key_first
+        from pressure_rank_verify import (
+            SECOND_MAX_ROWS,
+            phone_uses_first,
+            phone_uses_second,
+            rank_key_first,
+            rank_key_second,
+        )
 
-        if bool(phone_uses_first(db_path)):
+        if bool(phone_uses_second(db_path)):
+            out.sort(key=lambda r, t=tag: rank_key_second(t, r))
+            cap = min(int(max_rows or MAX_ROWS), int(SECOND_MAX_ROWS))
+            out = out[: max(1, cap)]
+        elif bool(phone_uses_first(db_path)):
             out.sort(key=lambda r, t=tag: rank_key_first(t, r))
+            out = out[: max(1, int(max_rows or MAX_ROWS))]
         else:
             out.sort(key=rank_key_current)
+            out = out[: max(1, int(max_rows or MAX_ROWS))]
     except Exception:
         out.sort(key=rank_key_current)
-    out = out[: max(1, int(max_rows or MAX_ROWS))]
+        out = out[: max(1, int(max_rows or MAX_ROWS))]
     with _SCREEN_LOCK:
         _SCREEN_CACHE[cache_key] = (time.monotonic(), [dict(r) for r in out])
     return out

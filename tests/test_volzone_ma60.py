@@ -123,7 +123,9 @@ def test_volzone_ma60_verify_gate_never_promotes_buy(tmp_path):
         TRACK_VARIANTS,
         VARIANT_CURRENT,
         VARIANT_MA60_RISING,
+        VARIANT_MA60_RISING_THIN,
         ensure_tables,
+        filter_ma60_rising_thin,
         gate_status,
         rank_pool,
     )
@@ -131,6 +133,9 @@ def test_volzone_ma60_verify_gate_never_promotes_buy(tmp_path):
 
     assert VARIANT_CURRENT in TRACK_VARIANTS
     assert VARIANT_MA60_RISING in TRACK_VARIANTS
+    assert VARIANT_MA60_RISING_THIN in TRACK_VARIANTS
+    # 無庫／空池 → 再生軌空名單（不算有記）
+    assert filter_ma60_rising_thin([], db_path="", as_of="") == []
     ranked = rank_pool(
         [
             {
@@ -189,11 +194,16 @@ def test_volzone_ma60_verify_persist_and_gate(tmp_path):
             "ma60_rising": 1,
         }
     ]
+    from volzone_ma60_verify import VARIANT_MA60_RISING_THIN
+
     assert persist_ranked(db, "20260901", "sideways", VARIANT_CURRENT, rows) == 1
     assert persist_ranked(db, "20260901", "sideways", VARIANT_MA60_RISING, rows) == 1
+    thin_rows = [dict(rows[0], vol_ratio=0.2, vol_thin=1)]
+    assert persist_ranked(db, "20260901", "sideways", VARIANT_MA60_RISING_THIN, thin_rows) == 1
     g = gate_status(db)
     assert g["promote_buy_signals"] is False
     assert g["promote_ready"] is False
+    assert VARIANT_MA60_RISING_THIN in g.get("tracks", [])
     assert "季線" in optimize_status_one_liner(db) or "大量區" in optimize_status_one_liner(db)
 
 

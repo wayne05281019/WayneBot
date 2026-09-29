@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """大量區 × 季線上升・靜默對質（不是買訊）。
 
-兩軌同一資格池、同一前瞻窗：
-  current    ＝壓撐觀察結構門檻過關（大量區語境基線）
-  ma60_rising＝同池 ∩ 官方收盤 MA60 近 5 交易日上升
+三軌同一資格池、同一前瞻窗：
+  current           ＝壓撐觀察結構門檻過關（大量區語境基線）
+  ma60_rising       ＝同池 ∩ 官方收盤 MA60 近 5 交易日上升
+  ma60_rising_thin  ＝季線上升再生下一版：再 ∩ 量縮（vol_ratio<0.35）
 
 分軌記、分軌算；勝率不准混進海選／黃金買點／其他鈕。
 獨立交易日 n≥20 且贏 current 才算過閘；過閘也不自動改黃金買點／海選／話筒買訊
@@ -29,9 +30,12 @@ from vol_zone_chart import VOL_ZONE_MA60, attach_official_ma60, ma60_is_rising, 
 KIND = "volzone_ma60"
 VARIANT_CURRENT = "current"
 VARIANT_MA60_RISING = "ma60_rising"
-TRACK_VARIANTS = (VARIANT_CURRENT, VARIANT_MA60_RISING)
+VARIANT_MA60_RISING_THIN = "ma60_rising_thin"  # 再生下一版：季線升＋量縮
+TRACK_VARIANTS = (VARIANT_CURRENT, VARIANT_MA60_RISING, VARIANT_MA60_RISING_THIN)
 MA60_SLOPE_BARS = 5
 MAX_ROWS = 12
+THIN_MAX_ROWS = 10
+THIN_VOL_RATIO = 0.35
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 
 
@@ -124,14 +128,43 @@ def filter_ma60_rising(
     return out
 
 
-def rank_pool(pool: Sequence[Dict[str, Any]], tag: str) -> List[Dict[str, Any]]:
+def _is_vol_thin(r: Dict[str, Any]) -> bool:
+    if r.get("vol_thin_bonus"):
+        return True
+    vr = _num(r.get("vol_ratio"), 99.0)
+    return 0 < vr < THIN_VOL_RATIO
+
+
+def filter_ma60_rising_thin(
+    pool: Sequence[Dict[str, Any]],
+    db_path: str,
+    as_of: str,
+) -> List[Dict[str, Any]]:
+    """季線上升再生軌：再 ∩ 量縮。無真量比不准假裝量縮。"""
+    rising = filter_ma60_rising(pool, db_path, as_of)
+    out: List[Dict[str, Any]] = []
+    for r in rising:
+        if not _is_vol_thin(r):
+            continue
+        item = dict(r)
+        item["vol_thin"] = 1
+        out.append(item)
+    return out
+
+
+def rank_pool(
+    pool: Sequence[Dict[str, Any]],
+    tag: str,
+    *,
+    max_rows: int = MAX_ROWS,
+) -> List[Dict[str, Any]]:
     """基線排序：離壓近 → 量縮加分 → 代號（對齊壓撐現況鍵）。"""
     from pressure_support_watch import rank_key_current
 
     tag = normalize_tag(tag) or str(tag or "")
     rows = [dict(r) for r in pool if isinstance(r, dict)]
     rows.sort(key=rank_key_current)
-    return rows[:MAX_ROWS]
+    return rows[: max(1, int(max_rows or MAX_ROWS))]
 
 
 def ensure_tables(db_path: str) -> str:
@@ -272,15 +305,21 @@ def snapshot_day(db_path: str, as_of: str = "") -> Dict[str, int]:
                 # 空名單不算有記：仍寫 0，不灌假代號
                 stats[f"{VARIANT_CURRENT}_{tag}"] = 0
                 stats[f"{VARIANT_MA60_RISING}_{tag}"] = 0
+                stats[f"{VARIANT_MA60_RISING_THIN}_{tag}"] = 0
                 continue
             cur = rank_pool(pool, tag)
             rising_pool = filter_ma60_rising(pool, db_path, day)
             rising = rank_pool(rising_pool, tag)
+            thin_pool = filter_ma60_rising_thin(pool, db_path, day)
+            thin = rank_pool(thin_pool, tag, max_rows=THIN_MAX_ROWS)
             stats[f"{VARIANT_CURRENT}_{tag}"] = persist_ranked(
                 db_path, day, tag, VARIANT_CURRENT, cur
             )
             stats[f"{VARIANT_MA60_RISING}_{tag}"] = persist_ranked(
                 db_path, day, tag, VARIANT_MA60_RISING, rising
+            )
+            stats[f"{VARIANT_MA60_RISING_THIN}_{tag}"] = persist_ranked(
+                db_path, day, tag, VARIANT_MA60_RISING_THIN, thin
             )
         stats["tracks"] = len(TRACK_VARIANTS)
     except Exception:
@@ -461,10 +500,21 @@ def gate_status(db_path: str) -> Dict[str, Any]:
         return sum(vals) / len(vals) if vals else None
 
     n = unique_days(db_path, VARIANT_MA60_RISING)
+    n_thin = unique_days(db_path, VARIANT_MA60_RISING_THIN)
     n_ok = n >= MIN_UNIQUE_DAYS
+    n_thin_ok = n_thin >= MIN_UNIQUE_DAYS
     cur = _mean_win(VARIANT_CURRENT)
     rising = _mean_win(VARIANT_MA60_RISING)
+    thin = _mean_win(VARIANT_MA60_RISING_THIN)
     beats = bool(n_ok and cur is not None and rising is not None and rising > cur)
+    # 再生軌要比季線升軌好（升軌已贏基線時），否則先要比 current
+    thin_baseline = rising if beats and rising is not None else cur
+    thin_beats = bool(
+        n_thin_ok
+        and thin_baseline is not None
+        and thin is not None
+        and thin > thin_baseline
+    )
     return {
         "n_days": n,
         "n_ok": n_ok,
@@ -472,15 +522,22 @@ def gate_status(db_path: str) -> Dict[str, Any]:
         "current_win": cur,
         "ma60_rising_win": rising,
         "ma60_beats_current": beats,
+        "ma60_thin_n_days": n_thin,
+        "ma60_thin_win": thin,
+        "ma60_thin_beats_baseline": thin_beats,
         # 永久：本軌過閘也不自動改買訊／海選／黃金買點
         "promote_buy_signals": False,
         "promote_ready": False,
-        "gate_ready_for_review": beats,
+        "gate_ready_for_review": beats or thin_beats,
         "tracks": list(TRACK_VARIANTS),
         "note": (
-            "季線上升軌勝率贏基線且 n 夠 → 僅可人工複審；不准自動改黃金買點／海選"
-            if beats
-            else "繼續收集／尚未改碼；大量區×季線上升靜默對質中"
+            "季線升＋量縮再生軌贏基線且 n 夠 → 僅可人工複審；不准自動改買訊"
+            if thin_beats
+            else (
+                "季線上升軌勝率贏基線且 n 夠 → 僅可人工複審；再生量縮軌續收"
+                if beats
+                else "繼續收集／尚未改碼；大量區×季線上升／量縮三軌靜默對質中"
+            )
         ),
     }
 
@@ -501,12 +558,24 @@ def optimize_status_one_liner(db_path: str) -> str:
     """報告結論唯一准講的一句（明確優化狀態）。"""
     g = gate_status(db_path)
     n = int(g.get("n_days") or 0)
+    nt = int(g.get("ma60_thin_n_days") or 0)
     need = int(g.get("min_n") or MIN_UNIQUE_DAYS)
-    if n < need:
-        return f"大量區×季線上升靜默對質：獨立日 n={n}/{need}，繼續收集／尚未改碼。"
-    if g.get("gate_ready_for_review"):
+    if n < need and nt < need:
         return (
-            f"大量區×季線上升靜默對質：n≥{need} 且贏基線 → "
+            f"大量區×季線上升靜默對質：升軌 n={n}/{need}、量縮再生 n={nt}/{need}，"
+            "繼續收集／尚未改碼。"
+        )
+    if g.get("ma60_thin_beats_baseline"):
+        return (
+            f"大量區×季線升＋量縮再生：n={nt} 夠且贏基線 → "
             "可複審；未自動改黃金買點／海選／買訊。"
         )
-    return f"大量區×季線上升靜默對質：n≥{need} 尚未贏基線 → 繼續收集／尚未改碼。"
+    if g.get("ma60_beats_current"):
+        return (
+            f"大量區×季線上升靜默對質：n≥{need} 且贏基線 → "
+            f"可複審；量縮再生 n={nt} 續收；未自動改買訊。"
+        )
+    return (
+        f"大量區×季線上升靜默對質：升軌 n={n}、量縮再生 n={nt} 尚未贏基線 → "
+        "繼續收集／尚未改碼。"
+    )
