@@ -136,7 +136,11 @@ def _quote_datetimes(df) -> pd.Series:
 
 
 def _cal60_lows_array(df, *, close_col: str = "close") -> np.ndarray:
-    """逐日 60 曆日收盤低。只 parse 一次日期，結果須與逐列 cal60_low_close_at 相同。"""
+    """逐日 60 曆日收盤低。只 parse 一次日期，結果須與逐列 cal60_low_close_at 相同。
+
+    窗是日曆日不是交易日：連假後（例如 2026 中秋＋教師節，表列 9/24→9/29）
+    舊谷底滾出窗外會讓獲利％斷崖，這是正確行為，不准改成 20 日低或 60 根低去「修」。
+    """
     dts = _quote_datetimes(df)
     closes = pd.to_numeric(df[close_col], errors="coerce").to_numpy(dtype=float)
     n = len(closes)
