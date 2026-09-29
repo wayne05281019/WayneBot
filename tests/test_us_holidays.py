@@ -134,6 +134,7 @@ def test_market_page_holiday_keeps_prior_close(tmp_path):
     assert "前一晚該看" not in html
     assert "道瓊" in html
     assert "+0.40%" in html
+    assert "+80.00點" in html
     assert "現金盤中" not in html
     assert "電子鏈夜盤" not in html
     open_html = format_taiwan_market_page_html(
@@ -141,6 +142,10 @@ def test_market_page_holiday_keeps_prior_close(tmp_path):
     )
     assert "勞動節休市" not in open_html
     assert "道瓊" in open_html
+    assert "+0.40%（+80.00點）" in open_html
+    assert "+0.30%（+12.00點）" in open_html
+    assert "+0.50%（+90.00點）" in open_html
+    assert "+0.20%（+5.00點）" in open_html
 
 
 def test_format_us_html_holiday_then_prior_tape():

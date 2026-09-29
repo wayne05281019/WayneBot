@@ -2039,3 +2039,91 @@ def test_market_page_index_points_chips_us_align(tmp_path):
     nasdaq = next(ln for ln in html.split("\n") if "那斯達克" in _html_plain(ln) or "那指" in _html_plain(ln))
     assert _page_value_after_label(judge).startswith("中")
     assert _page_value_after_label(nasdaq)[0] in "+-"
+    # 四大指數％＋點數（有官方 chg 才併陳）
+    dji = next(ln for ln in html.split("\n") if "道瓊" in _html_plain(ln))
+    spx = next(ln for ln in html.split("\n") if "標普" in _html_plain(ln))
+    sox = next(ln for ln in html.split("\n") if "費半" in _html_plain(ln))
+    assert "+0.10%（+40.00點）" in _html_plain(dji)
+    assert "+0.05%（+3.00點）" in _html_plain(spx)
+    assert "-0.12%（-20.00點）" in _html_plain(nasdaq)
+    assert "+0.02%（+1.00點）" in _html_plain(sox)
+
+
+def test_screen_outlook_four_us_indices_pct_and_points():
+    """海選美股一律四大指數：道瓊／標普／那斯達克／費半；％＋點數；缺 chg 不硬填。"""
+    import re
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from taiwan_market import format_screen_market_outlook_html
+    from tg_layout import _disp_w
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260917",
+        snap={
+            "ok": True,
+            "as_of": "20260917",
+            "close": 46288.0,
+            "chg1_pct": 0.96,
+            "vs_ma20_pct": 0.2,
+            "regime": "neutral",
+            "falling_risk": 40,
+        },
+        us_snap={
+            "ok": True,
+            "regime": "caution",
+            "us_session": "20260916",
+            "dji_pct": -0.79,
+            "dji_chg": -419.11,
+            "spx_pct": -0.51,
+            "spx_chg": -33.95,
+            "ixic_pct": -1.03,
+            "ixic_chg": -271.09,
+            "sox_pct": -1.42,
+            "sox_chg": -72.35,
+            "vix": 16.3,
+        },
+        now=datetime(2026, 9, 17, 10, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    plain = re.sub(r"<[^>]+>", "", html)
+    assert "道瓊" in plain and "-0.79%（-419.11點）" in plain
+    assert "標普" in plain and "-0.51%（-33.95點）" in plain
+    assert "那斯達克" in plain and "-1.03%（-271.09點）" in plain
+    assert "費半" in plain and "-1.42%（-72.35點）" in plain
+    # 順序：道瓊 → 標普 → 那斯達克 → 費半
+    assert plain.index("道瓊") < plain.index("標普") < plain.index("那斯達克") < plain.index("費半")
+    for ln in html.split("\n"):
+        assert _disp_w(re.sub(r"<[^>]+>", "", ln)) <= 40, ln
+
+    # 缺官方點數：只顯示％，不准空白點數欄
+    no_pts = format_screen_market_outlook_html(
+        ":memory:",
+        "20260917",
+        snap={
+            "ok": True,
+            "as_of": "20260917",
+            "close": 46288.0,
+            "chg1_pct": 0.1,
+            "vs_ma20_pct": 0.2,
+            "regime": "neutral",
+            "falling_risk": 20,
+        },
+        us_snap={
+            "ok": True,
+            "regime": "ok",
+            "dji_pct": 0.10,
+            "spx_pct": 0.05,
+            "ixic_pct": 0.20,
+            "sox_pct": 0.30,
+            "vix": 14.0,
+        },
+        now=datetime(2026, 9, 17, 10, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    plain2 = re.sub(r"<[^>]+>", "", no_pts)
+    assert "道瓊" in plain2 and "+0.10%" in plain2
+    assert "標普" in plain2 and "+0.05%" in plain2
+    assert "那斯達克" in plain2 and "+0.20%" in plain2
+    assert "費半" in plain2 and "+0.30%" in plain2
+    assert "點）" not in plain2
+    assert "（—" not in plain2

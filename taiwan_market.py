@@ -1700,14 +1700,19 @@ _US_PHASE_SHORT = {
 
 
 def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
+    """美股指數／期貨／ADR 一欄一行：％＋點數（有官方 chg 才併陳；缺點數不硬填）。"""
+    from stock_links import html_named
+    from us_overnight import format_quote_move
+
     rows: List[str] = []
-    for pct_k, _chg_k, name in items:
+    for pct_k, chg_k, name in items:
         if snap.get(pct_k) is None:
             continue
         label = _US_NAME_SHORT.get(name, name)
-        from stock_links import html_named
-
-        rows.append(_page_kv(html_named(label), _page_pct(snap.get(pct_k))))
+        move = format_quote_move(snap, pct_k, chg_k)
+        if not move or move == "—":
+            continue
+        rows.append(_page_kv(html_named(label), _page_b(move)))
     return rows
 
 
@@ -4009,6 +4014,7 @@ def format_screen_market_outlook_html(
         return ""
 
     from us_overnight import (
+        _CASH_ITEMS,
         _fmt_vix,
         _session_label,
         electronics_night_side,
@@ -4096,11 +4102,14 @@ def format_screen_market_outlook_html(
         sess = _session_label(us)
         if sess and sess != "—":
             body.append(f"美股交易日　{html_escape(sess)}")
-        if ixic is not None:
-            body.append(f"{html_named('那斯達克')} {_outlook_b(f'{float(ixic):+.2f}%')}")
-        sox = us.get("sox_pct")
-        if sox is not None:
-            body.append(f"{html_named('費半')} {_outlook_b(f'{float(sox):+.2f}%')}")
+        # 四大指數（道瓊／標普／那斯達克／費半）：％＋點數；缺官方 chg 只顯示％。
+        for pct_k, chg_k, name in _CASH_ITEMS:
+            if us.get(pct_k) is None:
+                continue
+            move = format_quote_move(us, pct_k, chg_k)
+            if not move or move == "—":
+                continue
+            body.append(f"{html_named(name)} {_outlook_b(move)}")
         if us.get("vix") is not None:
             vix_s = _fmt_vix(us)
             if "　" in vix_s:
