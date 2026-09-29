@@ -59,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 11
+_VZ_PAINT_VER = 12
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -119,19 +119,19 @@ def _label_ma_left(
     color: str,
     face: str,
 ) -> None:
-    """月線／季線標在大圖偏左：可貼均線；標盒與覆蓋的每一根 K 高低都不准相交。"""
+    """月線／季線標在大圖偏左：y 一律貼在所屬均線上；只挪 x 找不壓 K 的空檔。"""
     ok = np.flatnonzero(np.isfinite(vals) & (vals > 0))
     if ok.size == 0 or len(xs) == 0:
         return
     n = len(xs)
     y0, y1 = ax.get_ylim()
     span = max(float(y1 - y0), 1.0)
-    # 標盒半高按實渲偏大估（字級 11＋round pad）；左右約蓋 2.0 根
-    half_h = span * 0.052
-    pad = span * 0.014
-    x_half = 2.0
+    # 標盒半高（字級 11＋round pad）；左右約蓋 1.6 根，方便在線上找空檔
+    half_h = span * 0.045
+    pad = span * 0.012
+    x_half = 1.6
     lo_i = max(0, int(n * 0.03))
-    hi_i = max(lo_i + 1, int(n * 0.32))
+    hi_i = max(lo_i + 1, int(n * 0.36))
 
     def _cover_range(x_lab: float) -> tuple[int, int]:
         j0 = max(0, int(np.floor(x_lab - x_half)))
@@ -139,7 +139,6 @@ def _label_ma_left(
         return j0, j1
 
     def _clear_of_bars(x_lab: float, y_lab: float) -> bool:
-        """標盒 [y±half_h] 與覆蓋區間內每一根 K 都不相交。"""
         j0, j1 = _cover_range(x_lab)
         y_bot, y_top = y_lab - half_h, y_lab + half_h
         for k in range(j0, j1 + 1):
@@ -151,84 +150,57 @@ def _label_ma_left(
                 return False
         return True
 
-    def _min_gap(x_lab: float, y_lab: float) -> float:
+    def _signed_gap(x_lab: float, y_lab: float) -> float:
+        """線在 K 外的最小空隙；穿進 K 回負值（越負越糟）。"""
         j0, j1 = _cover_range(x_lab)
-        gap = span
         y_bot, y_top = y_lab - half_h, y_lab + half_h
+        best = span
         for k in range(j0, j1 + 1):
             hk = float(highs[k]) if np.isfinite(highs[k]) else np.nan
             lk = float(lows[k]) if np.isfinite(lows[k]) else np.nan
             if not (np.isfinite(hk) and np.isfinite(lk)):
                 continue
             if y_lab >= hk:
-                gap = min(gap, y_bot - hk)
+                best = min(best, y_bot - hk)
             elif y_lab <= lk:
-                gap = min(gap, lk - y_top)
+                best = min(best, lk - y_top)
             else:
-                return -1.0
-        return float(gap)
+                # 穿進影線：負穿透深度
+                best = min(best, -(min(y_top, hk) - max(y_bot, lk)))
+        return float(best)
 
-    def _trials_for(jj: int, yj: float, xj: float) -> list[float]:
-        """貼線優先；否則推到覆蓋區最低／最高外側（季線那種空檔）。"""
-        j0, j1 = _cover_range(xj)
-        hi_w = highs[j0 : j1 + 1]
-        lo_w = lows[j0 : j1 + 1]
-        loc_hi = float(np.nanmax(hi_w)) if np.isfinite(hi_w).any() else np.nan
-        loc_lo = float(np.nanmin(lo_w)) if np.isfinite(lo_w).any() else np.nan
-        out = [yj]
-        if np.isfinite(loc_lo):
-            out.append(loc_lo - half_h - pad)
-        if np.isfinite(loc_hi):
-            out.append(loc_hi + half_h + pad)
-        return out
-
-    best = None  # (score, x, y)
+    # 只認貼線：y = 該根均線價；在左側挑最不壓 K 的 x
+    clear_best = None  # (score, x, y)
+    soft_best = None
     for j in ok:
         jj = int(j)
         if jj < lo_i or jj > hi_i:
             continue
-        yj = float(vals[jj])
-        if not np.isfinite(yj):
+        y_lab = float(vals[jj])
+        if not np.isfinite(y_lab):
             continue
-        xj = float(xs[jj])
-        for y_lab in _trials_for(jj, yj, xj):
-            # 准許離線稍遠，優先不壓 K（月線常貼價）
-            if abs(y_lab - yj) > span * 0.18:
-                continue
-            yf = (y_lab - y0) / span
-            if yf < 0.11 or yf > 0.90:
-                continue
-            if not _clear_of_bars(xj, y_lab):
-                continue
-            gap = _min_gap(xj, y_lab)
-            if gap < pad:
-                continue
-            left_bonus = (hi_i - jj) / max(hi_i - lo_i, 1)
-            on_line = 0.30 if abs(y_lab - yj) < span * 0.010 else 0.0
-            score = gap / span + 0.28 * left_bonus + on_line
-            cand = (score, xj, float(y_lab))
-            if best is None or cand[0] > best[0]:
-                best = cand
+        yf = (y_lab - y0) / span
+        if yf < 0.10 or yf > 0.92:
+            continue
+        x_lab = float(xs[jj])
+        gap = _signed_gap(x_lab, y_lab)
+        left_bonus = (hi_i - jj) / max(hi_i - lo_i, 1)
+        score = gap / span + 0.22 * left_bonus
+        cand = (score, x_lab, y_lab)
+        if _clear_of_bars(x_lab, y_lab) and gap >= pad:
+            if clear_best is None or cand[0] > clear_best[0]:
+                clear_best = cand
+        if soft_best is None or cand[0] > soft_best[0]:
+            soft_best = cand
 
-    if best is None:
-        # 最後手段：左端往覆蓋區外側推到不撞 K
-        jj = int(ok[min(4, ok.size - 1)])
-        yj = float(vals[jj])
-        xj = float(xs[jj])
-        j0, j1 = _cover_range(xj)
-        loc_lo = float(np.nanmin(lows[j0 : j1 + 1]))
-        loc_hi = float(np.nanmax(highs[j0 : j1 + 1]))
-        y_lab = loc_lo - half_h - pad * 2.0
-        if not _clear_of_bars(xj, y_lab):
-            y_lab = loc_hi + half_h + pad * 2.0
-        for _ in range(10):
-            if _clear_of_bars(xj, y_lab):
-                break
-            y_lab += (-half_h * 0.6 if y_lab < yj else half_h * 0.6)
-        y_lab = min(max(y_lab, y0 + span * 0.12), y0 + span * 0.88)
-        x_lab = xj
+    if clear_best is not None:
+        _, x_lab, y_lab = clear_best
+    elif soft_best is not None:
+        # 左側線上仍難完全淨空：仍貼線，取空隙最大處（不准離線）
+        _, x_lab, y_lab = soft_best
     else:
-        _, x_lab, y_lab = best
+        jj = int(ok[min(3, ok.size - 1)])
+        x_lab, y_lab = float(xs[jj]), float(vals[jj])
 
     ax.text(
         x_lab,

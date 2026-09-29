@@ -55,12 +55,12 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "left=0.050" in src  # 左縮右鬆放大 K 區
     assert "draw_ma20=False" in src
     lab_src = inspect.getsource(_label_ma_left)
-    assert "_clear_of_bars" in lab_src  # 逐根 K 避讓
-    assert "half_h" in lab_src
+    assert "_clear_of_bars" in lab_src
+    assert "一律貼在所屬均線上" in lab_src or "y 一律貼" in lab_src
 
 
-def test_label_ma_left_stays_clear_of_candle_envelope():
-    """月線／季線標盒不准與覆蓋區間內任何一根 K 高低相交。"""
+def test_label_ma_left_stays_on_ma_line():
+    """月線／季線標的 y 必須等於該 x 上的均線價（貼線，不准離線漂）。"""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -69,27 +69,18 @@ def test_label_ma_left_stays_clear_of_candle_envelope():
 
     n = 40
     xs = np.arange(n, dtype=float)
-    # 左段均線穿 K；中左均線掉到低點下方（像真實月線空檔）
-    highs = np.full(n, 110.0)
-    lows = np.full(n, 100.0)
-    vals = np.full(n, 105.0)
-    highs[6:16] = 120.0
-    lows[6:16] = 110.0
-    vals[6:16] = 100.0  # 明確在低點下方
+    highs = np.full(n, 120.0)
+    lows = np.full(n, 110.0)
+    vals = np.linspace(95.0, 108.0, n)  # 全程在低點下方＝貼線可淨空
     fig, ax = plt.subplots()
     ax.set_ylim(80, 140)
     ax.set_xlim(-1, n)
     _label_ma_left(ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7")
     texts = [t for t in ax.texts if t.get_text() == "月線"]
     assert texts
-    y = float(texts[0].get_position()[1])
-    x = float(texts[0].get_position()[0])
-    half_h = (140 - 80) * 0.052
-    pad = (140 - 80) * 0.014
-    j0 = max(0, int(np.floor(x - 2.0)))
-    j1 = min(n - 1, int(np.ceil(x + 2.0)))
-    for k in range(j0, j1 + 1):
-        assert y + half_h <= lows[k] - pad + 1e-6 or y - half_h >= highs[k] + pad - 1e-6
+    x, y = texts[0].get_position()
+    j = int(round(x))
+    assert abs(float(y) - float(vals[j])) < 1e-6
     plt.close(fig)
 
 
