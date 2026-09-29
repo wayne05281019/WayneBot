@@ -5517,8 +5517,12 @@ def overlay_nav_marks_on_zone(
     *,
     card: Optional[dict] = None,
     draw_legend: bool = True,
+    draw_ma20: bool = True,
 ) -> None:
-    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。"""
+    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。
+
+    draw_ma20＝False 時略過黃 SMA20（大量區已自畫月線／季線，避免畫兩次）。
+    """
     if work is None or getattr(work, "empty", True) or ax1 is None:
         return
     n = len(work)
@@ -5741,8 +5745,9 @@ def overlay_nav_marks_on_zone(
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
-    # SMA／月季線：跟導航同一套參考線
-    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
+    # 高低參考線；SMA20 可由呼叫端自畫（大量區月線／季線）
+    if draw_ma20:
+        ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
     ax1.axhline(h60, color="#f48fb1", linewidth=1.25, zorder=2)
     ax1.axhline(l60, color="#81c784", linewidth=1.25, zorder=2)
     ax1.axhline(h20, color="#f8bbd0", linewidth=1.0, linestyle="--", zorder=2)

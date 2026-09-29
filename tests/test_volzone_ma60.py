@@ -45,14 +45,15 @@ def test_paint_draws_ma60_and_query_stamp():
     from vol_zone_chart import _paint_volume_zone
 
     src = inspect.getsource(_paint_volume_zone)
-    assert "_MA60" in src or "季線" in src
+    assert "_MA60" in src and "_MA20" in src
     assert "format_card_query_stamp" in src
     assert "0.988" in src  # 右上時間
     assert "大量區壓" in src and "大量區撐" in src
-    # 壓／撐色線微細；中間不准標「季線」二字
     assert "linewidth=1.35" in src
-    assert 'f"季線{arrow}"' not in src
-    assert "left=0.088" in src  # 量能訊號左側不被切
+    assert "_label_ma_left" in src
+    assert 'lab="月線"' in src and 'lab="季線"' in src
+    assert "left=0.064" in src  # 左側回收空白放大 K 區；量能訊號仍可讀
+    assert "draw_ma20=False" in src
 
 
 def test_prepare_loads_ma60_warm_bars():
@@ -61,6 +62,7 @@ def test_prepare_loads_ma60_warm_bars():
     src = inspect.getsource(prepare_volume_zone)
     assert "VOL_ZONE_MA60_WARM" in src or "attach_official_ma60" in src
     assert "attach_official_ma60" in src
+    assert "attach_official_ma20" in src
 
 
 def test_render_volume_zone_includes_ma60_column(tmp_path):
@@ -75,8 +77,14 @@ def test_render_volume_zone_includes_ma60_column(tmp_path):
     pack = prepare_volume_zone("2330", "台積電", db, str(tmp_path / "x.jpg"))
     assert pack is not None
     assert "ma60" in pack["view"].columns
-    ma = pd.to_numeric(pack["view"]["ma60"], errors="coerce")
-    assert ma.notna().sum() >= 10
+    assert "ma20" in pack["view"].columns
+    ma60 = pd.to_numeric(pack["view"]["ma60"], errors="coerce")
+    ma20 = pd.to_numeric(pack["view"]["ma20"], errors="coerce")
+    assert ma60.notna().sum() >= 10
+    assert ma20.notna().sum() >= 10
+    # 近窗第一根就要有線（暖機）
+    assert pd.notna(ma20.iloc[0])
+    assert pd.notna(ma60.iloc[0])
     out = render_volume_zone_png("2330", "台積電", db, str(tmp_path / "2330_vz.jpg"))
     assert out and os.path.isfile(out)
     assert os.path.getsize(out) > 20000
