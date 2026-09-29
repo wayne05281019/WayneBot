@@ -188,6 +188,20 @@ def _lookup_render_memo_get(key: tuple, save_path: str) -> str:
 def _lookup_render_memo_put(key: tuple, path: str) -> None:
     if not path or not os.path.isfile(path):
         return
+    # 穩定副本：scratch 檔名每次不同且可能被清；暖路徑要靠這份活過 45s。
+    try:
+        memo_dir = os.path.join(OUTPUT_DIR, "_lookup_memo")
+        os.makedirs(memo_dir, exist_ok=True)
+        digest = abs(hash(key)) % (10**12)
+        kind = str(key[0]) if key else "x"
+        stable = os.path.join(memo_dir, f"{kind}_{digest}.jpg")
+        if os.path.abspath(path) != os.path.abspath(stable):
+            import shutil
+
+            shutil.copy2(path, stable)
+            path = stable
+    except Exception:
+        pass
     with _LOOKUP_RENDER_LOCK:
         if len(_LOOKUP_RENDER_MEMO) >= _LOOKUP_RENDER_MEMO_MAX:
             oldest = sorted(_LOOKUP_RENDER_MEMO.items(), key=lambda kv: kv[1][0])[
@@ -213,6 +227,29 @@ def _savefig_lookup_png(fig, save_path: str, dpi: int) -> str:
         },
     )
     return save_path
+
+
+def _new_lookup_figure(figsize, dpi: int, facecolor: str):
+    """獨立 Figure＋Agg canvas：介紹／高低卡可真並行，不吃 pyplot 全域鎖。"""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    fig = Figure(figsize=figsize, dpi=dpi, facecolor=facecolor)
+    FigureCanvasAgg(fig)
+    return fig
+
+
+def _close_lookup_figure(fig) -> None:
+    try:
+        fig.clear()
+    except Exception:
+        pass
+    try:
+        import matplotlib.pyplot as plt
+
+        plt.close(fig)
+    except Exception:
+        pass
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -3336,9 +3373,12 @@ def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor
     return out, ua, ub
 
 
-@_mpl_serial
 def render_decision_card_png(card: dict, save_path: str) -> str:
-    """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。"""
+    """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。
+
+    不用 @_mpl_serial：Figure＋Agg 獨立 canvas，可與介紹圖真並行。
+    memo 在進畫布前先查，暖路徑不碰 Agg。
+    """
     if not card or card.get("error"):
         return ""
     memo_key = (
@@ -3442,7 +3482,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         m_top + head_h + gap + price_h + gap + stance_h + gap + hi_pane_h + gap + lo_pane_h
         + gap + tbl_title_h + hdr_h + n * body_h + m_bot
     )
-    fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=CARD_PNG_DPI, facecolor=C["page"])
+    fig = _new_lookup_figure((fig_w, H * 0.076), CARD_PNG_DPI, C["page"])
+    ax = fig.add_subplot(111)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
@@ -3829,7 +3870,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))
 
     save_path = _savefig_lookup_png(fig, save_path, CARD_PNG_DPI)
-    plt.close(fig)
+    _close_lookup_figure(fig)
     _lookup_render_memo_put(memo_key, save_path)
     return save_path
 
@@ -4263,7 +4304,6 @@ def _paint_emerging_revenue_line(
         )
 
 
-@_mpl_serial
 def render_first_glance_png(
     stock_id: str,
     card: dict,
@@ -4272,7 +4312,10 @@ def render_first_glance_png(
     db_path: str = None,
     ohlc=None,
 ) -> str:
-    """高低卡同一套堆疊（高度跟內容走，字不壓線）。180日導航改獨立鈕。"""
+    """高低卡同一套堆疊（高度跟內容走，字不壓線）。180日導航改獨立鈕。
+
+    不用 @_mpl_serial：與高低卡真並行；memo 先查再進 Agg。
+    """
     _ = ohlc
     if not card or card.get("error"):
         return ""
@@ -4499,7 +4542,7 @@ def render_first_glance_png(
         + m_bot
     )
     info_inch = max(H * inch, 4.8)
-    fig = plt.figure(figsize=(fig_w, info_inch), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
+    fig = _new_lookup_figure((fig_w, info_inch), GLANCE_PNG_DPI, C["page"])
     ax = fig.add_subplot(111)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
@@ -4989,7 +5032,7 @@ def render_first_glance_png(
             ny -= 2.55
 
     save_path = _savefig_lookup_png(fig, save_path, GLANCE_PNG_DPI)
-    plt.close(fig)
+    _close_lookup_figure(fig)
     _lookup_render_memo_put(memo_key, save_path)
     return save_path
 

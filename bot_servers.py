@@ -3105,16 +3105,19 @@ class WayneTelegramBot:
             "volzone": "大量區",
             "both": "介紹圖＋高低卡",
             "chart": "導航圖",
+            "quote": "現價",
             "table": "讀高低卡",
             "album": "一次送出",
         }
-        order = ("both", "album", "volzone")
+        order = ("quote", "both", "album", "volzone")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
             now = next((labels[k] for k in order if k not in sent_ks), "出圖")
         if str(current or "") == "both":
             rest = labels["album"]
+        elif str(current or "") == "quote":
+            rest = "讀高低卡、出圖"
         else:
             rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
         return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
@@ -5974,12 +5977,18 @@ class WayneTelegramBot:
         wait_msg = None
         try:
             wait_msg = await message.reply_text(
-                self._chart_progress_text(0, current="table"),
+                self._chart_progress_text(0, current="quote"),
                 parse_mode="HTML",
             )
             self._track_lookup_fade(actor, wait_msg, "wait")
         except Exception:
             wait_msg = None
+        try:
+            chat = getattr(message, "chat", None)
+            if chat is not None and hasattr(chat, "send_action"):
+                await chat.send_action("typing")
+        except Exception:
+            pass
         hits = lookup_stocks(self.db_path, code)
         if hits and (
             hits[0].get("category_choice")
@@ -6051,16 +6060,56 @@ class WayneTelegramBot:
         progress_task = None
         volzone_task = None
         op_t0 = time.monotonic()
-        self._op_state_map()[actor] = {"sent": [], "current": "table", "t0": op_t0}
+        # 先進度／typing，再等 MIS；不然盤中現價 1～2s 泡泡停在 0 秒像當掉。
+        self._op_state_map()[actor] = {"sent": [], "current": "quote", "t0": op_t0}
         if wait_msg is None:
             try:
                 wait_msg = await message.reply_text(
-                    self._chart_progress_text(0, current="table"),
+                    self._chart_progress_text(0, current="quote"),
                     parse_mode="HTML",
                 )
                 self._track_lookup_fade(actor, wait_msg, "wait")
             except Exception:
                 wait_msg = None
+        try:
+            chat = getattr(message, "chat", None)
+            if chat is not None and hasattr(chat, "send_action"):
+                await chat.send_action("typing")
+        except Exception:
+            pass
+
+        async def _progress_tick():
+            while not progress_stop.is_set():
+                if wait_msg is None:
+                    break
+                st = self._op_state_map().get(actor) or {}
+                elapsed = int(time.monotonic() - op_t0)
+                try:
+                    await wait_msg.edit_text(
+                        self._chart_progress_text(
+                            elapsed,
+                            sent=st.get("sent") or [],
+                            current=str(st.get("current") or ""),
+                        ),
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+                try:
+                    chat = getattr(message, "chat", None)
+                    if chat is not None and hasattr(chat, "send_action"):
+                        await chat.send_action("typing")
+                except Exception:
+                    pass
+                try:
+                    await asyncio.wait_for(progress_stop.wait(), timeout=2.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
+        if wait_msg is not None:
+            progress_task = asyncio.create_task(_progress_tick())
+
         news_stats = None
         live_rt = None
 
@@ -6093,6 +6142,8 @@ class WayneTelegramBot:
 
         news_task = asyncio.create_task(_fetch_news())
         live_rt = await _fetch_mis()
+        st0 = self._op_state_map().setdefault(actor, {"sent": [], "current": "table", "t0": op_t0})
+        st0["current"] = "table"
 
         def _news_ready():
             if not news_task.done():
@@ -6160,32 +6211,6 @@ class WayneTelegramBot:
                         except Exception:
                             logger.exception("送圖失敗 kind=%s path=%s attempt=%s", kind, path, attempt + 1)
             return False
-
-        async def _progress_tick():
-            while not progress_stop.is_set():
-                if wait_msg is None:
-                    break
-                st = self._op_state_map().get(actor) or {}
-                elapsed = int(time.monotonic() - op_t0)
-                try:
-                    await wait_msg.edit_text(
-                        self._chart_progress_text(
-                            elapsed,
-                            sent=st.get("sent") or [],
-                            current=str(st.get("current") or ""),
-                        ),
-                        parse_mode="HTML",
-                    )
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(progress_stop.wait(), timeout=2.0)
-                    break
-                except asyncio.TimeoutError:
-                    continue
-
-        if wait_msg is not None:
-            progress_task = asyncio.create_task(_progress_tick())
 
         hub_on = False
 
@@ -6271,12 +6296,6 @@ class WayneTelegramBot:
                     markup=hub,
                 )
                 return
-            try:
-                tape = await tape_task
-            except Exception:
-                tape = {}
-            if not isinstance(tape, dict):
-                tape = {}
             os.makedirs(self.charts_dir, exist_ok=True)
             uid_key = uid or self._uid_from_message(message)
             glance_path = self._scratch_chart_path(self.charts_dir, code, "glance", uid_key)
@@ -6285,11 +6304,6 @@ class WayneTelegramBot:
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
             self._cache_lookup_ctx(uid_key, code, ohlc)
-
-            def _render_glance():
-                return render_first_glance_png(
-                    code, card, tape, glance_path, self.db_path, ohlc=ohlc
-                )
 
             ns = _news_ready()
             if ns is not None:
@@ -6317,11 +6331,8 @@ class WayneTelegramBot:
                     vz_face[0] = cap
                 return path
 
-            render_plan = [
-                ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
-                ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
-            ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "volzone": "大量區"}
+            render_plan_kinds = ("glance", "card")
             sent_kinds: list[str] = []
             ready_items: list = []
 
@@ -6374,11 +6385,33 @@ class WayneTelegramBot:
             st["current"] = "both"
             st["sent"] = []
             logger.info("查股階段 current=both sent=[] code=%s", code)
+            # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape／介紹圖重疊；Agg 真並行。
+            card_render_task = asyncio.create_task(
+                _render_ready(
+                    "card",
+                    lambda: render_decision_card_png(card, card_path_f),
+                    _LOOKUP_PNG_TIMEOUT,
+                    card_cap,
+                    hub,
+                )
+            )
+            try:
+                tape = await tape_task
+            except Exception:
+                tape = {}
+            if not isinstance(tape, dict):
+                tape = {}
+
+            def _render_glance():
+                return render_first_glance_png(
+                    code, card, tape, glance_path, self.db_path, ohlc=ohlc
+                )
+
             packed = await asyncio.gather(
-                *[
-                    _render_ready(kind, fn, timeout_s, cap, mk)
-                    for kind, fn, timeout_s, cap, mk in render_plan
-                ]
+                _render_ready(
+                    "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None
+                ),
+                card_render_task,
             )
             png_items = [item for item in packed if item]
             # 介紹／高低卡已畫完，mpl 鎖空了。大量區跟相簿傳送同時走，少等一輪重抓日K。
@@ -6444,12 +6477,12 @@ class WayneTelegramBot:
                 st["sent"] = list(sent_kinds)
 
             if sent_any and not hub_on:
-                if len(sent_kinds) >= len(render_plan):
+                if len(sent_kinds) >= len(render_plan_kinds):
                     done_txt = html_escape(_stock_caption_name(card, code) or code)
                 else:
-                    miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
+                    miss = [kind_labels[k] for k in render_plan_kinds if k not in sent_kinds]
                     done_txt = (
-                        f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
+                        f"已送 {len(sent_kinds)}/{len(render_plan_kinds)} 張"
                         f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
                     )
                 await _reply_visible(done_txt, html=True, markup=hub)

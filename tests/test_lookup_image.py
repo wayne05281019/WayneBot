@@ -139,6 +139,9 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("_render_ready", src)
         self.assertIn("_album_pair_box", src)
         self.assertNotIn("_render_then_cell", src)
+        # 高低卡先開渲，再等 tape／介紹圖；不准先 await tape 才開始兩張。
+        self.assertIn("card_render_task", src)
+        self.assertLess(src.find("card_render_task"), src.find("await tape_task"))
 
     def test_glance_and_card_render_start_together(self):
         """介紹圖與高低卡同一拍開始畫，不准等介紹圖畫完才開高低卡。"""
