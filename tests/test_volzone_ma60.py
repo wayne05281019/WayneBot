@@ -42,7 +42,7 @@ def test_attach_official_ma60_needs_60_bars():
 
 
 def test_paint_draws_ma60_and_query_stamp():
-    from vol_zone_chart import _paint_volume_zone
+    from vol_zone_chart import _paint_volume_zone, _label_ma_left
 
     src = inspect.getsource(_paint_volume_zone)
     assert "_MA60" in src and "_MA20" in src
@@ -54,6 +54,43 @@ def test_paint_draws_ma60_and_query_stamp():
     assert 'lab="月線"' in src and 'lab="季線"' in src
     assert "left=0.050" in src  # 左縮右鬆放大 K 區
     assert "draw_ma20=False" in src
+    lab_src = inspect.getsource(_label_ma_left)
+    assert "_local_hl" in lab_src  # 附近 K 包絡避讓
+    assert "half_h" in lab_src
+
+
+def test_label_ma_left_stays_clear_of_candle_envelope():
+    """月線／季線標盒不准落在附近 K 高低包絡內。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from vol_zone_chart import _label_ma_left
+
+    n = 40
+    xs = np.arange(n, dtype=float)
+    # 左段均線穿進 K；中左才離開高點上方
+    highs = np.full(n, 110.0)
+    lows = np.full(n, 90.0)
+    vals = np.full(n, 100.0)
+    highs[8:14] = 105.0
+    lows[8:14] = 95.0
+    vals[8:14] = 112.0  # 明確在高點上方
+    fig, ax = plt.subplots()
+    ax.set_ylim(80, 130)
+    ax.set_xlim(-1, n)
+    _label_ma_left(ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7")
+    texts = [t for t in ax.texts if t.get_text() == "月線"]
+    assert texts
+    y = float(texts[0].get_position()[1])
+    x = float(texts[0].get_position()[0])
+    j = int(round(x))
+    i0, i1 = max(0, j - 2), min(n - 1, j + 2)
+    loc_hi = float(np.nanmax(highs[i0 : i1 + 1]))
+    loc_lo = float(np.nanmin(lows[i0 : i1 + 1]))
+    half_h = (130 - 80) * 0.028
+    assert y - half_h >= loc_hi - 1e-6 or y + half_h <= loc_lo + 1e-6
+    plt.close(fig)
 
 
 def test_prepare_loads_ma60_warm_bars():
