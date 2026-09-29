@@ -6296,12 +6296,6 @@ class WayneTelegramBot:
                     markup=hub,
                 )
                 return
-            try:
-                tape = await tape_task
-            except Exception:
-                tape = {}
-            if not isinstance(tape, dict):
-                tape = {}
             os.makedirs(self.charts_dir, exist_ok=True)
             uid_key = uid or self._uid_from_message(message)
             glance_path = self._scratch_chart_path(self.charts_dir, code, "glance", uid_key)
@@ -6310,11 +6304,6 @@ class WayneTelegramBot:
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
             self._cache_lookup_ctx(uid_key, code, ohlc)
-
-            def _render_glance():
-                return render_first_glance_png(
-                    code, card, tape, glance_path, self.db_path, ohlc=ohlc
-                )
 
             ns = _news_ready()
             if ns is not None:
@@ -6342,11 +6331,8 @@ class WayneTelegramBot:
                     vz_face[0] = cap
                 return path
 
-            render_plan = [
-                ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
-                ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
-            ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "volzone": "大量區"}
+            render_plan_kinds = ("glance", "card")
             sent_kinds: list[str] = []
             ready_items: list = []
 
@@ -6399,11 +6385,33 @@ class WayneTelegramBot:
             st["current"] = "both"
             st["sent"] = []
             logger.info("查股階段 current=both sent=[] code=%s", code)
+            # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape／介紹圖重疊；Agg 真並行。
+            card_render_task = asyncio.create_task(
+                _render_ready(
+                    "card",
+                    lambda: render_decision_card_png(card, card_path_f),
+                    _LOOKUP_PNG_TIMEOUT,
+                    card_cap,
+                    hub,
+                )
+            )
+            try:
+                tape = await tape_task
+            except Exception:
+                tape = {}
+            if not isinstance(tape, dict):
+                tape = {}
+
+            def _render_glance():
+                return render_first_glance_png(
+                    code, card, tape, glance_path, self.db_path, ohlc=ohlc
+                )
+
             packed = await asyncio.gather(
-                *[
-                    _render_ready(kind, fn, timeout_s, cap, mk)
-                    for kind, fn, timeout_s, cap, mk in render_plan
-                ]
+                _render_ready(
+                    "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None
+                ),
+                card_render_task,
             )
             png_items = [item for item in packed if item]
             # 介紹／高低卡已畫完，mpl 鎖空了。大量區跟相簿傳送同時走，少等一輪重抓日K。
@@ -6469,12 +6477,12 @@ class WayneTelegramBot:
                 st["sent"] = list(sent_kinds)
 
             if sent_any and not hub_on:
-                if len(sent_kinds) >= len(render_plan):
+                if len(sent_kinds) >= len(render_plan_kinds):
                     done_txt = html_escape(_stock_caption_name(card, code) or code)
                 else:
-                    miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
+                    miss = [kind_labels[k] for k in render_plan_kinds if k not in sent_kinds]
                     done_txt = (
-                        f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
+                        f"已送 {len(sent_kinds)}/{len(render_plan_kinds)} 張"
                         f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
                     )
                 await _reply_visible(done_txt, html=True, markup=hub)
