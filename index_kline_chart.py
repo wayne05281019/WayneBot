@@ -14,8 +14,15 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import requests
+from matplotlib.collections import LineCollection
 
-from wayne_navigator import NAV_CHART_DPI, _fp, _mpl_serial
+from wayne_navigator import (
+    NAV_CHART_DPI,
+    _fp,
+    _lookup_render_memo_get,
+    _lookup_render_memo_put,
+    _mpl_serial,
+)
 from decision_card_signals import candle_up_taiwan
 
 logger = logging.getLogger(__name__)
@@ -166,7 +173,6 @@ def render_index_kline_png(
     if df is None or df.empty:
         return ""
     from live_quote import sanitize_ohlc_frame
-    from matplotlib import patches
 
     full = sanitize_ohlc_frame(df.copy())
     full["ma5"] = full["close"].rolling(5, min_periods=1).mean()
@@ -197,6 +203,21 @@ def render_index_kline_png(
     ymin = float(lo_s.min()) - span * 0.04
     ymax = float(hi_s.max()) + span * 0.10
 
+    last_d = str(last.get("date") or "")[:8]
+    memo_key = (
+        "index_kline",
+        last_d,
+        round(float(close), 2),
+        round(float(last.get("volume") or 0), 0),
+        int(n),
+        int(NAV_CHART_DPI),
+        1 if live_px > 0 else 0,
+        round(live_px, 2) if live_px > 0 else 0,
+    )
+    hit = _lookup_render_memo_get(memo_key, save_path)
+    if hit:
+        return hit
+
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig, (ax1, ax2) = plt.subplots(
         2,
@@ -209,43 +230,57 @@ def render_index_kline_png(
     )
     ax1.set_facecolor(_PANEL)
     ax2.set_facecolor(_PANEL)
-    ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.16, zorder=0)
-    ax1.axhspan(l20, h20, color="#fffde7", alpha=0.28, zorder=0)
-    ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.16, zorder=0)
+    # 高低帶淡一點、線細一點：不准粉／綠帶搶過 K 與月季線
+    ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.12, zorder=0)
+    ax1.axhspan(l20, h20, color="#fffde7", alpha=0.22, zorder=0)
+    ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.12, zorder=0)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
 
+    opens = work["open"].to_numpy(dtype=float)
+    closes = work["close"].to_numpy(dtype=float)
+    highs = work["high"].to_numpy(dtype=float)
+    lows = work["low"].to_numpy(dtype=float)
     candle_up = []
     for i in range(n):
-        prev_c = float(work["close"].iloc[i - 1]) if i else None
-        candle_up.append(
-            candle_up_taiwan(float(work["close"].iloc[i]), prev_c, float(work["open"].iloc[i]))
+        prev_c = float(closes[i - 1]) if i else None
+        candle_up.append(candle_up_taiwan(float(closes[i]), prev_c, float(opens[i])))
+    colors = [_tw_color(bool(candle_up[i])) for i in range(n)]
+    wick_segs = [
+        [(float(xs[i]), float(lows[i])), (float(xs[i]), float(highs[i]))]
+        for i in range(n)
+    ]
+    ax1.add_collection(
+        LineCollection(
+            wick_segs,
+            colors=colors,
+            linewidths=1.05,
+            zorder=3,
+            capstyle="round",
         )
-    for i in range(n):
-        op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
-        hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
-        x = xs[i]
-        c = _tw_color(candle_up[i])
-        ax1.plot([x, x], [lo, hi], color=c, linewidth=1.05, zorder=3, solid_capstyle="round")
-        body = max(abs(cl - op), span * 0.0018)
-        ax1.add_patch(
-            patches.Rectangle(
-                (x - 0.32, min(op, cl)),
-                0.64,
-                body,
-                facecolor=c,
-                edgecolor=c,
-                zorder=3,
-            )
-        )
+    )
+    body_h = np.maximum(np.abs(closes - opens), span * 0.0018)
+    body_bot = np.minimum(opens, closes)
+    ax1.bar(
+        xs,
+        body_h,
+        bottom=body_bot,
+        width=0.64,
+        color=colors,
+        edgecolor=colors,
+        linewidth=0.35,
+        zorder=3,
+        align="center",
+    )
 
     ax1.plot(xs, work["ma5"], color=_MA5, linewidth=1.15, zorder=4, label=f"5日均 {float(last['ma5']):,.0f}")
     ax1.plot(xs, work["ma20"], color=_MA20, linewidth=1.85, zorder=4, label=f"月線 {float(last['ma20']):,.0f}")
     ax1.plot(xs, work["ma60"], color=_MA60, linewidth=1.35, zorder=4, label=f"季線 {float(last['ma60']):,.0f}")
-    ax1.axhline(h60, color="#f48fb1", linewidth=1.35, zorder=2)
-    ax1.axhline(l60, color="#81c784", linewidth=1.35, zorder=2)
-    ax1.axhline(h20, color="#f8bbd0", linewidth=1.05, linestyle="--", zorder=2)
-    ax1.axhline(l20, color="#80deea", linewidth=1.05, linestyle="--", zorder=2)
+    # 壓撐參考線宜細（對齊偏好）
+    ax1.axhline(h60, color="#f48fb1", linewidth=0.95, zorder=2)
+    ax1.axhline(l60, color="#81c784", linewidth=0.95, zorder=2)
+    ax1.axhline(h20, color="#f8bbd0", linewidth=0.80, linestyle="--", zorder=2)
+    ax1.axhline(l20, color="#80deea", linewidth=0.80, linestyle="--", zorder=2)
     live_note = ""
     if live_px > 0:
         t = str((live or {}).get("update_time") or "")
@@ -254,13 +289,13 @@ def render_index_kline_png(
     try:
         from decision_card_signals import format_card_query_stamp
 
-        last_d = str(last.get("date") or "")
         date_s, clock_s = format_card_query_stamp(is_live=bool(live_px > 0), latest_date=last_d)
-        stamp = f"  {date_s} {clock_s}"
+        stamp = f"{date_s} {clock_s}"
     except Exception:
         stamp = ""
+    # 標題一行：時間戳改放整圖右上，不准塞進標題互壓
     ax1.set_title(
-        f"{title} (日K線) {n}日區間  高低帶＝近20日高／低{live_note}{stamp}   WayneBot ® 2026",
+        f"{title} (日K線) {n}日區間　高低帶＝近20日高／低{live_note}　WayneBot ® 2026",
         fontproperties=_fp(14, "bold"),
         pad=38,
         color=_TEXT,
@@ -288,7 +323,7 @@ def render_index_kline_png(
     ohlc_line = (
         f"Op:{float(last['open']):,.2f}  Hi:{float(last['high']):,.2f}  "
         f"Lo:{float(last['low']):,.2f}  Cl:{close:,.2f}  {sign}{chg:+,.2f}（{chg_pct:+.2f}%）"
-        f"    月線: {float(last['ma20']):,.2f}"
+        f"　月線:{float(last['ma20']):,.2f}"
     )
 
     vol_colors = [_vol_color(candle_up[i]) for i in range(n)]
@@ -339,6 +374,17 @@ def render_index_kline_png(
         zorder=9,
         bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
     )
+    if stamp:
+        fig.text(
+            0.985,
+            0.985,
+            stamp,
+            ha="right",
+            va="top",
+            fontproperties=_fp(10, "bold"),
+            color="#455a64",
+            zorder=12,
+        )
     as_of = work["dt"].iloc[-1].strftime("%Y/%m/%d")
     fig.text(
         0.50,
@@ -353,7 +399,10 @@ def render_index_kline_png(
 
     _savefig_lookup_png(fig, save_path, NAV_CHART_DPI)
     plt.close(fig)
-    return save_path if os.path.isfile(save_path) else ""
+    if os.path.isfile(save_path):
+        _lookup_render_memo_put(memo_key, save_path)
+        return save_path
+    return ""
 
 
 def build_market_kline_chart(

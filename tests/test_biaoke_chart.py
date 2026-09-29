@@ -509,20 +509,39 @@ def test_locator_inset_marks_window():
 
     assert _BARS >= 140
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
-    assert _STOCK_LOCATOR_RECT[2] >= 0.44
+    assert _STOCK_LOCATOR_RECT[2] >= 0.40
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
     assert abs(_STOCK_LOCATOR_RECT[0] + _STOCK_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=_FIG_RIGHT" in rsrc
-    assert "_paint_spot(ov, quote" in rsrc
-    assert "chip_y - 3.35" in rsrc or "標籤下面" in inspect.getsource(_paint_spot)
+    assert "_paint_spot(ov, quote)" in rsrc
+    assert "_SPOT_X" in inspect.getsource(_paint_spot) or "_SPOT_Y" in inspect.getsource(_paint_spot)
+    assert 'x=_HEADER_X, y=chip_y' not in rsrc
     assert "quote=quote" not in rsrc.split("paint_locator_inset")[1][:400]
+    assert "seam=float(n - 1)" in rsrc or "seam=" in rsrc
+    assert "labelright=True" in rsrc
+    from biaoke_chart import _dedupe_right_notes, _place_right_notes
+
+    assert "_dedupe_right_notes" in inspect.getsource(_place_right_notes)
+    assert 'ha="left"' in inspect.getsource(_place_right_notes)
+    kept = _dedupe_right_notes(
+        [
+            {"y": 100.0, "text": "壓 100"},
+            {"y": 101.0, "text": "下降壓 101"},
+            {"y": 80.0, "text": "最可能＝看壓 100"},
+        ],
+        span=100.0,
+    )
+    assert any("最可能" in str(k.get("text")) for k in kept)
+    assert any(str(k.get("text") or "").startswith("壓") for k in kept)
+    assert not any("下降壓" in str(k.get("text")) for k in kept)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
-    assert "標籤下面" in spot or "ha=\"left\"" in spot
-    assert "較昨日" in inspect.getsource(_paint_spot)
+    assert "縮圖外框左側" in spot or 'align: str = "right"' in spot
+    assert "較昨日" in spot
+    assert 'ha="right"' in spot
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
@@ -535,14 +554,16 @@ def test_locator_inset_marks_window():
     assert "uniq_tags" not in wsrc
     assert "_place_right_notes" in wsrc
     assert "_paint_abc_on_ax" in wsrc
-    spot = inspect.getsource(_paint_spot)
-    assert 'ha="left"' in spot
-    assert "較昨日" in spot
-    assert 'ha="right"' not in spot
     assert "compact" in spot
     assert "window_forecast_seams" in wsrc or "paint_forecast_span" in wsrc
     assert "right=_FIG_RIGHT" in wsrc
     assert "_style_frame" in wsrc
+    from biaoke_chart import _place_right_notes
+
+    notes = inspect.getsource(_place_right_notes)
+    assert 'ha="left"' in notes
+    assert "clip=True" in notes
+    assert "seam" in notes
 
 
 def test_locator_window_matches_main_time():
@@ -871,7 +892,8 @@ def test_major_swings_and_locator_legs():
 def test_biaoke_chart_dpi_is_lighter_than_nav():
     from wayne_navigator import NAV_CHART_DPI
 
-    assert BIAOKE_CHART_DPI <= 180
+    # 提畫質到 200；仍須明顯輕於導航 320，冷渲才負擔得起
+    assert 160 <= BIAOKE_CHART_DPI <= 220
     assert BIAOKE_CHART_DPI < NAV_CHART_DPI
     import inspect
     from biaoke_chart import render_biaoke_structure_png
@@ -881,8 +903,88 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     assert "NAV_CHART_DPI" not in src
     assert "_add_ohlc_wicks" in src
     assert "_savefig_lookup_png" in src
+    assert "演算區（不是保證・不是買訊）" in src or "不是買訊" in src
     from biaoke_chart import paint_locator_inset
 
     lsrc = inspect.getsource(paint_locator_inset)
     assert "_add_ohlc_wicks" in lsrc
     assert "ax.vlines" not in lsrc
+
+
+def test_parallel_channel_follows_biaoke_rails():
+    """通道用語／邏輯對齊飆大：下降壓＋平行撐 或 上升軌＋平行壓，二擇一。"""
+    import inspect
+
+    from biaoke_chart import infer_parallel_channel, _paint_parallel_channel
+
+    src = inspect.getsource(infer_parallel_channel)
+    assert "下降壓" in src
+    assert "上升軌" in src
+    assert "_desc_high_pair" in src
+    assert "_impulse_support_pair" in src
+    assert "不是買訊" in src
+    psrc = inspect.getsource(_paint_parallel_channel)
+    # 軌價／狀態都不畫在 K 上：價走右溝、狀態上頭牌
+    assert "不是買訊" not in psrc
+    assert "name_u" not in psrc
+    assert "name_u" in src
+
+    from biaoke_brain import load_bars
+    from biaoke_chart import _BARS
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
+    bars = load_bars(db, "2345", n=360)
+    assert bars
+    ch = infer_parallel_channel(bars[-_BARS:])
+    assert ch.get("kind") == "desc"
+    assert ch.get("name_u") == "下降壓"
+    assert ch.get("name_l") == "平行撐"
+    assert "買訊" in (ch.get("tip") or "")
+
+
+def test_broken_up_rail_not_projected_to_forecast():
+    """上升軌已壞／過陡：不准把虛線延長進演算區當還有效。"""
+    import inspect
+
+    from biaoke_chart import analyze_structure, project_next, render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "up_broken" in src
+    assert "已壞" in src
+    assert "rail_hi" in src
+    # 合成：上升連點後跌破
+    from datetime import date, timedelta
+
+    day = date(2026, 7, 1)
+    rows = []
+    for i in range(40):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        if i == 10:
+            o, h, l, c, v = 100, 120, 96, 118, 18000
+        elif i == 18:
+            o, h, l, c, v = 110, 112, 100, 105, 2000
+        elif i == 26:
+            o, h, l, c, v = 108, 110, 104, 106, 1800
+        elif i == 39:
+            o, h, l, c, v = 90, 92, 80, 82, 2200
+        else:
+            px = 100 + i * 0.3
+            o, h, l, c, v = px, px + 2, px - 2, px, 1100
+        rows.append(
+            {
+                "date": d,
+                "stock_id": "9999",
+                "stock_name": "測",
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+            }
+        )
+    info = analyze_structure(rows)
+    if info.get("up_pts") and info.get("up_broken"):
+        proj = project_next(info)
+        assert proj.get("up_fut") in (None, 0) or "up_fut" not in proj or proj.get("up_fut") is None
+

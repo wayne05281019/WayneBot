@@ -4,7 +4,8 @@
 只給按了「飆大」之後的對話。不是介紹圖、不是決策卡、不進海選。
 個股主圖＝日 K：爆大量那一天最高當壓、最低當撐。
 15／60 分只拿來看大盤／台指期，不准畫在這張個股圖上。
-連點軌道是輔助（兩個更低的高／兩個更高的低）；不夠兩點就不畫。
+連點軌道是輔助（兩個更低的高＝下降壓／兩個更高的低或 2–4 低＝上升軌）；不夠兩點就不畫。
+通道＝主連點＋平行另一緣（二擇一），升／降軌道破壞才算轉折。
 1～5 只准從已確認的錨往前推（大盤＝他自己的第五波高；個股＝下降壓的前高），不准亂數。
 不准把「三日底點不破」畫成他的固定公式。
 """
@@ -25,7 +26,7 @@ from matplotlib.collections import LineCollection, PolyCollection
 
 from wayne_navigator import _fp, _mpl_serial
 
-BIAOKE_CHART_DPI = 160
+BIAOKE_CHART_DPI = 200
 
 logger = logging.getLogger("WayneBot.BiaokeChart")
 
@@ -39,6 +40,8 @@ _PRESS = "#ad1457"
 _HOLD = "#1b5e20"
 _DOWN_TRACK = "#6a1b9a"
 _UP_TRACK = "#0277bd"
+_CH_ASC = "#00897b"  # 上升通道雙線（對齊附圖青綠色調，白底可讀）
+_CH_DESC = "#00838f"  # 下降通道雙線
 _WASH = "#ef6c00"
 _SPIKE_VOL = "#f9a825"
 _BARS = 168
@@ -50,12 +53,13 @@ _WINDOW_BG = "#ffe0b2"
 _HALO = "#ffffff"
 _FRAME = "#90a4ae"
 _MUTED = "#607d8b"
-_FIG_LEFT = 0.055
-_FIG_RIGHT = 0.940
+# 左右都留股價刻度：左邊略寬、右邊對稱可比對
+_FIG_LEFT = 0.072
+_FIG_RIGHT = 0.918
 _FIG_BOTTOM = 0.072
 _STOCK_MAIN_TOP = 0.658
 _LOCATOR_LEFT = 0.500
-_LOCATOR_WIDTH = 0.440
+_LOCATOR_WIDTH = _FIG_RIGHT - _LOCATOR_LEFT
 _STOCK_LOCATOR_BOTTOM = 0.690
 _STOCK_LOCATOR_HEIGHT = 0.278
 # 縮圖右緣＝主圖右緣，上下一條線。
@@ -65,8 +69,12 @@ _STOCK_LOCATOR_RECT = (
     _LOCATOR_WIDTH,
     _STOCK_LOCATOR_HEIGHT,
 )
-_HEADER_X = 5.50
-_HEADER_CHIP_MAX = 36.0
+_HEADER_X = 4.60
+# 今K／漲跌：縮圖外框左邊空白上緣（overlay 0–100）
+_SPOT_X = _LOCATOR_LEFT * 100.0 - 0.70
+_SPOT_Y = (_STOCK_LOCATOR_BOTTOM + _STOCK_LOCATOR_HEIGHT * 0.78) * 100.0
+# 左上頭牌可佔到縮圖左側空白前（今K已移走）
+_HEADER_CHIP_MAX = 45.0
 
 
 def _style_frame(ax, *, hide_top=False) -> None:
@@ -186,9 +194,399 @@ def _asc_low_pair(lo_p: Sequence[int], lows: Sequence[float]) -> Optional[Tuple[
     i, j = int(lo_p[-2]), int(lo_p[-1])
     if j - i < 3:
         return None
-    if lows[j] > lows[i] * 1.001:
-        return i, j
-    return None
+    if lows[j] <= lows[i] * 1.001:
+        return None
+    mid = lows[i + 1 : j]
+    if mid and min(mid) < lows[i] - 1e-9:
+        return None
+    return i, j
+
+
+def _rail_broken(last: float, y_now: float, *, above_is_ok: bool) -> bool:
+    """上升撐：收在線下＝壞；下降壓：收在線上＝已過（不算『還壓著』）。"""
+    if not y_now:
+        return False
+    if above_is_ok:
+        return float(last) < float(y_now)
+    return float(last) > float(y_now)
+
+
+def _rail_slope_too_steep(
+    x1: float, y1: float, x2: float, y2: float, *, span: float, n: int
+) -> bool:
+    """斜率過陡＝連點不可當有效撐／壓延長（例如兩點價差吃掉整段高低幅）。"""
+    dx = float(x2) - float(x1)
+    if dx < 3:
+        return True
+    dy = abs(float(y2) - float(y1))
+    if span <= 0:
+        return False
+    # 每根漲超過全日高低幅 4% 就當過陡（2383 3930→5255 會觸發）
+    return (dy / dx) > (span * 0.04)
+
+
+def _pivot_pairs(
+    pivots: Sequence[int],
+    values: Sequence[float],
+    *,
+    ascending: bool,
+    min_gap: int = 5,
+    look: int = 10,
+) -> List[Tuple[int, int]]:
+    """從近窗樞紐找可用連點：升＝後低更高；降＝後高更低。中間不准被反向極端打穿。"""
+    pts = [int(p) for p in pivots if 0 <= int(p) < len(values)]
+    if len(pts) < 2:
+        return []
+    recent = pts[-look:] if len(pts) > look else pts
+    out: List[Tuple[int, int]] = []
+    for ai in range(len(recent)):
+        for bi in range(ai + 1, len(recent)):
+            i, j = recent[ai], recent[bi]
+            if j - i < min_gap:
+                continue
+            yi, yj = float(values[i]), float(values[j])
+            if yi <= 0 or yj <= 0:
+                continue
+            if ascending:
+                if yj <= yi * 1.001:
+                    continue
+                mid = [float(values[k]) for k in range(i + 1, j)]
+                if mid and min(mid) < yi - 1e-9:
+                    continue
+            else:
+                if yj >= yi * 0.999:
+                    continue
+                mid = [float(values[k]) for k in range(i + 1, j)]
+                if mid and max(mid) > yi + 1e-9:
+                    continue
+            out.append((i, j))
+    return out
+
+
+def _channel_width_touch(
+    base_i: int,
+    base_j: int,
+    base_y1: float,
+    base_y2: float,
+    touch_pivots: Sequence[int],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    *,
+    above: bool,
+    span: float,
+    n: int,
+) -> Optional[Tuple[int, float, float]]:
+    """以他的主連點為底線，找平行寬度觸點（升軌找高；降壓找低）。用官方高低核對包覆。"""
+    best: Optional[Tuple[int, float, float]] = None
+    x1, x2 = float(base_i), float(base_j)
+    for k in touch_pivots:
+        kk = int(k)
+        if kk < base_i or kk >= n:
+            continue
+        # 觸點最好落在兩連點之間或稍後，太遠就不像同一條通道
+        if kk > base_j + max(18, (base_j - base_i) * 2):
+            continue
+        base_at = _line_at(x1, base_y1, x2, base_y2, float(kk))
+        tv = float(highs[kk] if above else lows[kk])
+        if tv <= 0:
+            continue
+        width = (tv - base_at) if above else (base_at - tv)
+        if width < span * 0.035 or width > span * 0.85:
+            continue
+        inside = 0
+        total = 0
+        breach = 0
+        for t in range(base_i, n):
+            b = _line_at(x1, base_y1, x2, base_y2, float(t))
+            hi = float(highs[t])
+            lo = float(lows[t])
+            if hi <= 0 or lo <= 0:
+                continue
+            total += 1
+            if above:
+                lo_b, hi_b = b, b + width
+            else:
+                lo_b, hi_b = b - width, b
+            # 柱體有重疊通道才算「在裡面」
+            if lo <= hi_b + span * 0.01 and hi >= lo_b - span * 0.01:
+                inside += 1
+            if above and hi > hi_b + span * 0.05:
+                breach += 1
+            if (not above) and lo < lo_b - span * 0.05:
+                breach += 1
+        if total < 8:
+            continue
+        ratio = inside / max(total, 1)
+        if ratio < 0.55:
+            continue
+        freshness = 1.0 - (n - 1 - kk) / max(n, 1)
+        score = ratio * 2.0 + freshness * 0.8 - breach * 0.12
+        score -= abs(width / span - 0.28) * 0.45
+        # 觸點靠近第二連點加分（跟他畫法：通道寬度常由近段極端定）
+        score += max(0.0, 1.0 - abs(kk - base_j) / max(n * 0.25, 1)) * 0.35
+        if best is None or score > best[2]:
+            best = (kk, width, score)
+    return best
+
+
+def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """依飆大連點長上升／下降通道（二擇一、兩條平行線）。
+
+    桌面規則原文精神：
+    - 高連更低高＝下降壓（上軌）；平行下緣貼合理低＝通道下軌
+    - 同次級／更高低連點＝上升軌（下軌）；平行上緣貼合理高＝通道上軌
+    - 升／降軌道破壞才算轉折；個股不數 5／9 當操作
+    - 兩種不准同時畫；不是買訊
+    """
+    rows = list(rows or [])
+    n = len(rows)
+    if n < 24:
+        return {}
+    highs = [float(r.get("high") or 0) for r in rows]
+    lows = [float(r.get("low") or 0) for r in rows]
+    closes = [float(r.get("close") or 0) for r in rows]
+    last = float(closes[-1] or 0)
+    pos_lows = [v for v in lows if v > 0]
+    if not pos_lows:
+        return {}
+    span = max(max(highs) - min(pos_lows), 1.0)
+    hi_p, lo_p = _pivots(highs, lows, left=3)
+    cands: List[Dict[str, Any]] = []
+
+    def _pack_desc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        touch = _channel_width_touch(
+            i, j, highs[i], highs[j], lo_p, highs, lows, above=False, span=span, n=n
+        )
+        if not touch or _rail_slope_too_steep(i, highs[i], j, highs[j], span=span, n=n):
+            return
+        k, width, score = touch
+        top_now = _line_at(i, highs[i], j, highs[j], n - 1)
+        base_now = top_now - width
+        if last > top_now + span * 0.02:
+            pos, alive = "過下降壓", False
+        elif last < base_now - span * 0.02:
+            pos, alive = "破平行撐", True
+        elif last >= base_now + width * 0.66:
+            pos, alive = "靠近下降壓", True
+        elif last <= base_now + width * 0.34:
+            pos, alive = "靠近平行撐", True
+        else:
+            pos, alive = "下降通道中段", True
+        cands.append(
+            {
+                "kind": "desc",
+                "score": float(score) + bonus + (0.35 if alive and last < top_now else 0.0),
+                "alive": alive,
+                "pos": pos,
+                "width": width,
+                "base": (
+                    (i, highs[i], str(rows[i].get("date") or "")),
+                    (j, highs[j], str(rows[j].get("date") or "")),
+                ),
+                "touch": (k, lows[k], str(rows[k].get("date") or "")),
+                "base_now": base_now,
+                "rail_now": top_now,
+            }
+        )
+
+    def _pack_asc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        touch = _channel_width_touch(
+            i, j, lows[i], lows[j], hi_p, highs, lows, above=True, span=span, n=n
+        )
+        if not touch or _rail_slope_too_steep(i, lows[i], j, lows[j], span=span, n=n):
+            return
+        k, width, score = touch
+        base_now = _line_at(i, lows[i], j, lows[j], n - 1)
+        top_now = base_now + width
+        if last < base_now - span * 0.02:
+            pos, alive = "破上升軌", False
+        elif last > top_now + span * 0.02:
+            pos, alive = "過平行壓", True
+        elif last >= base_now + width * 0.66:
+            pos, alive = "靠近平行壓", True
+        elif last <= base_now + width * 0.34:
+            pos, alive = "靠近上升軌", True
+        else:
+            pos, alive = "上升通道中段", True
+        cands.append(
+            {
+                "kind": "asc",
+                "score": float(score) + bonus + (0.35 if alive and last > base_now else -0.35),
+                "alive": alive,
+                "pos": pos,
+                "width": width,
+                "base": (
+                    (i, lows[i], str(rows[i].get("date") or "")),
+                    (j, lows[j], str(rows[j].get("date") or "")),
+                ),
+                "touch": (k, highs[k], str(rows[k].get("date") or "")),
+                "base_now": base_now,
+                "rail_now": top_now,
+            }
+        )
+
+    # 1) 他的標準下降壓：最近兩樞紐高、後高更低、中間不高過前高
+    down = _desc_high_pair(hi_p, highs)
+    if down:
+        _pack_desc(int(down[0]), int(down[1]), bonus=0.55)
+    # 備援：近窗其他合格更低高連點（仍要過包覆閘）
+    for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=5, look=8):
+        if down and (i, j) == (int(down[0]), int(down[1])):
+            continue
+        _pack_desc(i, j, bonus=0.05)
+
+    # 2) 上升軌：優先同段 2 低連 4 低（下降壓確認後）；否則更高低連點
+    up = None
+    if down:
+        up = _impulse_support_pair(rows, int(down[0]))
+    if up is None:
+        up = _asc_low_pair(lo_p, lows)
+    if up:
+        _pack_asc(int(up[0]), int(up[1]), bonus=0.55)
+    for i, j in _pivot_pairs(lo_p, lows, ascending=True, min_gap=5, look=8):
+        if up and (i, j) == (int(up[0]), int(up[1])):
+            continue
+        _pack_asc(i, j, bonus=0.05)
+
+    if not cands:
+        return {}
+
+    # 二擇一：還壓著的下降壓優先於已破的上升軌；兩邊都活就比分＋近端
+    for c in cands:
+        j = int(c["base"][1][0])
+        c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
+        if c["kind"] == "desc" and last < float(c["rail_now"]):
+            c["score"] += 0.45  # 收在下降壓下＝他還在講「還壓著」
+        if c["kind"] == "asc" and last > float(c["base_now"]):
+            c["score"] += 0.35
+
+    best = max(cands, key=lambda c: float(c["score"]))
+    # 若最佳是升、但同時有明顯還壓著的降，改採降（兩種不准並存）
+    if best["kind"] == "asc":
+        pressed = [
+            c
+            for c in cands
+            if c["kind"] == "desc" and last < float(c["rail_now"]) and c.get("alive")
+        ]
+        if pressed:
+            best = max(pressed, key=lambda c: float(c["score"]))
+    elif best["kind"] == "desc" and last > float(best["rail_now"]):
+        held = [
+            c
+            for c in cands
+            if c["kind"] == "asc" and last > float(c["base_now"]) and c.get("alive")
+        ]
+        if held and float(held[0]["score"]) > float(best["score"]) - 0.2:
+            best = max(held, key=lambda c: float(c["score"]))
+
+    kind = str(best["kind"])
+    (x1, y1, d1), (x2, y2, d2) = best["base"]
+    tk, ty, td = best["touch"]
+    width = float(best["width"])
+    if kind == "asc":
+        upper = ((x1, y1 + width, d1), (x2, y2 + width, d2))
+        lower = ((x1, y1, d1), (x2, y2, d2))
+        label = f"上升軌通道　{best['pos']}"
+        tip = (
+            f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+            f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
+            f"破上升軌才像轉折。不是買訊。"
+        )
+        name_u, name_l = "平行壓", "上升軌"
+    else:
+        upper = ((x1, y1, d1), (x2, y2, d2))
+        lower = ((x1, y1 - width, d1), (x2, y2 - width, d2))
+        label = f"下降壓通道　{best['pos']}"
+        tip = (
+            f"下降壓：{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
+            f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
+            f"過下降壓才像準備突破機會，不是保證、不是買訊。"
+        )
+        name_u, name_l = "下降壓", "平行撐"
+    return {
+        "kind": kind,
+        "label": label,
+        "tip": tip,
+        "pos": best["pos"],
+        "alive": bool(best["alive"]),
+        "width": width,
+        "upper": upper,
+        "lower": lower,
+        "touch": (tk, ty, td),
+        "base_now": float(best["base_now"]),
+        "rail_now": float(best["rail_now"]),
+        "score": float(best["score"]),
+        "name_u": name_u,
+        "name_l": name_l,
+    }
+
+
+def _paint_parallel_channel(
+    ax,
+    ch: Dict[str, Any],
+    *,
+    seam: float,
+    x_lo: float,
+    x_hi: float,
+    y_lo: float,
+    y_hi: float,
+    n: int,
+) -> None:
+    """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。"""
+    if not ch:
+        return
+    kind = str(ch.get("kind") or "")
+    # 顏色跟他用語對齊：下降壓紫、上升軌藍
+    color = _UP_TRACK if kind == "asc" else _DOWN_TRACK
+    alive = bool(ch.get("alive"))
+    if not alive:
+        color = "#90a4ae"
+    upper = ch.get("upper") or ()
+    lower = ch.get("lower") or ()
+    if len(upper) < 2 or len(lower) < 2:
+        return
+    (ux1, uy1, _ud1), (ux2, uy2, _ud2) = upper
+    (lx1, ly1, _ld1), (lx2, ly2, _ld2) = lower
+    # 有效才延長進演算區；已壞／已過只畫到最近一根
+    rail_hi = float(x_hi) if alive else float(seam)
+    for x1, y1, x2, y2 in (
+        (ux1, uy1, ux2, uy2),
+        (lx1, ly1, lx2, ly2),
+    ):
+        _paint_extended_rail(
+            ax,
+            float(x1),
+            float(y1),
+            float(x2),
+            float(y2),
+            seam=float(seam),
+            x_lo=float(x_lo),
+            x_hi=rail_hi,
+            y_lo=float(y_lo),
+            y_hi=float(y_hi),
+            color=color,
+        )
+    touch = ch.get("touch")
+    if touch:
+        ax.scatter(
+            [float(touch[0])],
+            [float(touch[1])],
+            color=color,
+            s=36,
+            zorder=7,
+            edgecolors="white",
+            linewidths=0.7,
+        )
+    ax.scatter(
+        [float(ux1), float(ux2), float(lx1), float(lx2)],
+        [float(uy1), float(uy2), float(ly1), float(ly2)],
+        color=color,
+        s=28,
+        zorder=6,
+        edgecolors="white",
+        linewidths=0.6,
+    )
+    # 軌價標籤走右溝；通道狀態改上頭牌晶片，不准壓在 K 棒上
 
 
 def _line_at(x1: float, y1: float, x2: float, y2: float, x: float) -> float:
@@ -383,17 +781,22 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             (a, lows[a], str(rows[a].get("date") or "")),
             (b, lows[b], str(rows[b].get("date") or "")),
         )
-        if last > y_now:
+        broken = _rail_broken(last, y_now, above_is_ok=True)
+        out["up_broken"] = broken
+        span_u = max(max(highs) - min(lows), 1.0) if highs and lows else 1.0
+        out["up_steep"] = _rail_slope_too_steep(a, lows[a], b, lows[b], span=span_u, n=n)
+        if broken:
             notes.append(
                 f"上升連點 {_md(rows[a].get('date'))}低{_px(lows[a])}～"
                 f"{_md(rows[b].get('date'))}低{_px(lows[b])}，"
-                f"延長到最近約 {_px(y_now)}，收在上面；破這條才像軌壞掉"
+                f"延長到最近約 {_px(y_now)}，收在下面，這條上升軌先當壞了；"
+                f"壞掉就不往演算區延長當還有效"
             )
         else:
             notes.append(
                 f"上升連點 {_md(rows[a].get('date'))}低{_px(lows[a])}～"
                 f"{_md(rows[b].get('date'))}低{_px(lows[b])}，"
-                f"延長到最近約 {_px(y_now)}，收在下面，這條上升軌先當壞了"
+                f"延長到最近約 {_px(y_now)}，收在上面；破這條才像軌壞掉"
             )
     if out["wash"]:
         notes.append("破撐之後又站回，比較像破線洗盤，不是保證")
@@ -403,6 +806,11 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         notes.append("收在爆大量日低之下，他這套先放棄這次量價")
     elif out["over_press"]:
         notes.append("已過爆大量日高，比較像半山腰／突破，不是落後補漲")
+    # 上升／下降通道二擇一（平行雙線）；與單軌連點並行記錄，畫圖時通道優先
+    ch = infer_parallel_channel(rows)
+    if ch:
+        out["channel"] = ch
+        notes.append(str(ch.get("tip") or ch.get("label") or ""))
     out["highs"] = highs
     out["lows"] = lows
     out["closes"] = closes
@@ -439,9 +847,15 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
         (x1, y1, _d1), (x2, y2, _d2) = down_pts
         down_fut = _line_at(x1, y1, x2, y2, x_end)
     up_pts = info.get("up_pts")
-    if up_pts:
+    if up_pts and not info.get("up_broken"):
         (x1, y1, _d1), (x2, y2, _d2) = up_pts
-        up_fut = _line_at(x1, y1, x2, y2, x_end)
+        # 過陡的上升連點不拿去演算未來價（會飛出圖外當假支撐）
+        if not info.get("up_steep"):
+            up_fut = _line_at(x1, y1, x2, y2, x_end)
+        else:
+            up_fut = None
+    elif up_pts:
+        up_fut = None
     key = "wait"
     target = last
     label = "量價壓撐不齊，不演算後續。"
@@ -687,8 +1101,12 @@ def _leader_note(
     size=11,
     ha="left",
     va="center",
+    clip: bool = False,
 ) -> None:
-    """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。"""
+    """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
+
+    clip=True：標籤必須落在軸內（演算區右側／最可能），不准跳出底圖。
+    """
     ax.annotate(
         str(text),
         xy=(float(x), float(y)),
@@ -698,7 +1116,8 @@ def _leader_note(
         ha=ha,
         va=va,
         zorder=12,
-        annotation_clip=False,
+        annotation_clip=bool(clip),
+        clip_on=bool(clip),
         bbox=dict(
             boxstyle="round,pad=0.28",
             facecolor="#ffffff",
@@ -774,6 +1193,41 @@ def _place_band_notes(
         )
 
 
+def _note_priority(text: str) -> int:
+    t = str(text or "")
+    if "最可能" in t:
+        return 0
+    if t.startswith("壓") or t.startswith("撐"):
+        return 1
+    if any(k in t for k in ("下降壓", "上升軌", "平行壓", "平行撐")):
+        return 2
+    return 3
+
+
+def _dedupe_right_notes(
+    notes: Sequence[Dict[str, Any]],
+    *,
+    span: float,
+    near_frac: float = 0.022,
+) -> List[Dict[str, Any]]:
+    """價位太近只留優先標籤，避免壓／軌／最可能互蓋。"""
+    if not notes:
+        return []
+    ordered = sorted(
+        notes,
+        key=lambda n: (_note_priority(str(n.get("text") or "")), -float(n.get("y") or 0)),
+    )
+    kept: List[Dict[str, Any]] = []
+    thr = max(float(span) * float(near_frac), 1.0)
+    for note in ordered:
+        y = float(note.get("y") or 0)
+        if any(abs(y - float(k.get("y") or 0)) < thr for k in kept):
+            continue
+        kept.append(dict(note))
+    kept.sort(key=lambda n: -float(n.get("y") or 0))
+    return kept
+
+
 def _place_right_notes(
     ax,
     notes: Sequence[Dict[str, Any]],
@@ -782,23 +1236,29 @@ def _place_right_notes(
     ymin: float,
     ymax: float,
     min_gap: float,
+    span: float = 0.0,
+    seam: Optional[float] = None,
 ) -> None:
-    """演算區右側空白：虛線拉到右溝，字錯開，不壓延伸線。"""
-    if not notes:
+    """演算區內：去重＋錯開＋左對齊往右長，字只落在演算空白，不准壓 K。"""
+    cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
+    if not cleaned:
         return
-    lo = ymin + min_gap * 0.4
-    hi = ymax - min_gap * 0.4
+    gap = max(float(min_gap), (ymax - ymin) * 0.06)
+    lo = ymin + gap * 0.55
+    hi = ymax - gap * 0.55
     tys = _spread_ys_around(
-        [float(n.get("y") or 0) for n in notes],
+        [float(n.get("y") or 0) for n in cleaned],
         [],
-        min_gap,
+        gap,
         lo=lo,
         hi=hi,
     )
-    for note, ty in zip(notes, tys):
+    pin_x = float(seam) if seam is not None else None
+    for note, ty in zip(cleaned, tys):
+        ax_x = float(pin_x if pin_x is not None else note.get("x") or 0)
         _leader_note(
             ax,
-            float(note.get("x") or 0),
+            ax_x,
             float(note.get("y") or 0),
             str(note.get("text") or ""),
             str(note.get("color") or _TEXT),
@@ -807,6 +1267,7 @@ def _place_right_notes(
             size=int(note.get("size") or 11),
             ha="left",
             va="center",
+            clip=True,
         )
 
 
@@ -1746,7 +2207,7 @@ def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, 
     return x + _ow(f" {label} ", size) + 1.15
 
 
-def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: float = 96.35) -> None:
+def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: float = 96.70) -> None:
     sid = str(plate.get("sid") or "")
     name = str(plate.get("name") or "")
     title = f"{sid} {name}".strip() or "官方日K"
@@ -1755,31 +2216,31 @@ def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: floa
         y,
         title,
         color=_TEXT,
-        fontproperties=_fp(17, "bold"),
+        fontproperties=_fp(28, "bold"),
         va="center",
         ha="left",
         zorder=22,
     )
-    cx = x + _ow(title, 17) + 1.35
+    cx = x + _ow(title, 28) + 1.55
     industry = str(plate.get("industry") or "").strip()
     if industry:
         cx = _draw_chip(
-            ax, cx, y, industry, fc="#eef3f8", ec="#607d8b", tc="#37474f", size=10
+            ax, cx, y, industry, fc="#eef3f8", ec="#607d8b", tc="#37474f", size=15
         )
     if str(plate.get("leader") or "").strip() == "龍頭":
-        _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=10)
+        _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=15)
 
 
 def _paint_spot(
     ax,
     quote: Dict[str, Any],
     *,
-    x: float = 4.15,
-    y: float = 92.55,
-    align: str = "left",
+    x: float = _SPOT_X,
+    y: float = _SPOT_Y,
+    align: str = "right",
     compact: bool = False,
 ) -> None:
-    """今K／現價／漲跌。個股畫在左上文字與標籤下面，不擋縮圖。"""
+    """今K／現價／漲跌。預設置於縮圖外框左側空白，右對齊，不擋縮圖、不壓左上頭牌。"""
     close = quote.get("close")
     if close is None:
         return
@@ -1834,32 +2295,63 @@ def _paint_spot(
                 fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
             )
         return
+    # 右對齊貼縮圖外框左邊空白：第一排今K｜小K｜現價／價，第二排漲跌
+    if str(align or "right") == "right":
+        cursor = float(x)
+        ax.text(
+            cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
+            va="center", ha="right", zorder=22, **px_kw,
+        )
+        cursor -= _ow(px, 22) + 0.40
+        ax.text(
+            cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
+            va="center", ha="right", zorder=22,
+        )
+        cursor -= _ow(label, 11) + 0.40
+        if ohlc_ok:
+            cw, ch = 2.2, 4.2
+            _draw_mini_candle(
+                ax, cursor - cw, y - ch * 0.5, cw, ch,
+                float(o), float(hi), float(lo), float(close), prev,
+            )
+            cursor -= cw + 0.35
+        ax.text(
+            cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
+            va="center", ha="right", zorder=22,
+        )
+        if move and move != "—":
+            ax.text(
+                x, y - 3.05, "較昨日　" + move, color=color,
+                fontproperties=_fp(12, "bold"), va="center", ha="right", zorder=22,
+            )
+        return
+    # 左對齊備援（測試／舊呼叫）
     cursor = float(x)
     ax.text(
-        cursor, y, "今K", color="#546e7a", fontproperties=_fp(8, "bold"),
+        cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
         va="center", ha="left", zorder=22,
     )
-    cursor += _ow("今K", 8) + 0.35
+    cursor += _ow("今K", 9) + 0.35
     if ohlc_ok:
-        cw, ch = 2.2, 4.1
+        cw, ch = 2.35, 4.4
         _draw_mini_candle(
             ax, cursor, y - ch * 0.5, cw, ch,
             float(o), float(hi), float(lo), float(close), prev,
         )
         cursor += cw + 0.4
     ax.text(
-        cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
+        cursor, y, label, color="#546e7a", fontproperties=_fp(12, "bold"),
         va="center", ha="left", zorder=22,
     )
-    cursor += _ow(label, 11) + 0.4
+    cursor += _ow(label, 12) + 0.4
     ax.text(
-        cursor, y, px, color=px_color, fontproperties=_fp(20, "bold"),
+        cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
         va="center", ha="left", zorder=22, **px_kw,
     )
     if move and move != "—":
         ax.text(
-            x, y - 2.85, "較昨日　" + move, color=color,
-            fontproperties=_fp(11, "bold"), va="center", ha="left", zorder=22,
+            x, y - 3.15, "較昨日　" + move, color=color,
+            fontproperties=_fp(12, "bold"), va="center", ha="left", zorder=22,
         )
 
 
@@ -1886,6 +2378,25 @@ def render_biaoke_structure_png(
     closes = info.get("closes") or [float(r.get("close") or 0) for r in work]
     opens = [float(r.get("open") or r.get("close") or 0) for r in work]
     vols = info.get("vols") or [float(r.get("volume") or 0) for r in work]
+    last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1])
+    last_d = str(last_bar0.get("date") or "")[:8]
+    last_c0 = float(last_bar0.get("close") or 0)
+    memo_key = (
+        "biaoke_struct",
+        str(sid or ""),
+        last_d,
+        round(last_c0, 4),
+        int(n),
+        int(len(rows)),
+        int(BIAOKE_CHART_DPI),
+        round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
+        round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
+    )
+    from wayne_navigator import _lookup_render_memo_get, _lookup_render_memo_put
+
+    hit = _lookup_render_memo_get(memo_key, save_path)
+    if hit:
+        return hit
     xs = list(range(n))
     span = max(max(highs) - min(lows), 1.0)
     proj = info.get("project") or {}
@@ -1921,7 +2432,8 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    x_right = n + _FUTURE + 3.15
+    # 演算區右側留足標籤寬，避免「最可能」被裁成半句
+    x_right = n + _FUTURE + 7.2
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     candle_up = []
@@ -1961,12 +2473,12 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     if spike_hi:
-        ax1.axhline(spike_hi, color=_PRESS, linewidth=1.55, zorder=4, alpha=0.92)
+        ax1.axhline(spike_hi, color=_PRESS, linewidth=1.15, zorder=4, alpha=0.92)
         right_notes.append(
             {"x": float(n - 1), "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
         )
     if spike_lo:
-        ax1.axhline(spike_lo, color=_HOLD, linewidth=1.55, zorder=4, alpha=0.92)
+        ax1.axhline(spike_lo, color=_HOLD, linewidth=1.15, zorder=4, alpha=0.92)
         right_notes.append(
             {"x": float(n - 1), "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
@@ -1975,6 +2487,7 @@ def render_biaoke_structure_png(
         ax1.axvline(spike_i, color="#90a4ae", linewidth=1.05, linestyle="--", zorder=2)
     down_pts = info.get("down_pts")
     up_pts = info.get("up_pts")
+    channel = dict(info.get("channel") or {})
     five: Dict[str, Any] = {}
     if down_pts and len(rows) >= n + 8:
         off0 = len(rows) - n
@@ -1982,79 +2495,133 @@ def render_biaoke_structure_png(
         mapped = _map_five_support(work, rows, five)
         if mapped:
             up_pts = mapped
+    # 有通道時以通道為準重算（含完整 bars 窗），避免 work 窗與全列不一致
+    if not channel:
+        channel = infer_parallel_channel(work) or {}
     x_fut = n - 1 + _FUTURE
-    if down_pts:
-        (x1, y1, d1), (x2, y2, d2) = down_pts
-        y_end = _line_at(x1, y1, x2, y2, x_fut)
-        _paint_extended_rail(
+    # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
+    if channel.get("kind"):
+        _paint_parallel_channel(
             ax1,
-            x1,
-            y1,
-            x2,
-            y2,
+            channel,
             seam=float(n - 1),
             x_lo=0.0,
-            x_hi=x_fut,
+            x_hi=float(x_fut),
             y_lo=ymin,
             y_hi=ymax,
-            color=_DOWN_TRACK,
+            n=n,
         )
-        ax1.scatter(
-            [x1, x2],
-            [y1, y2],
-            color=_DOWN_TRACK,
-            s=42,
-            zorder=6,
-            edgecolors="white",
-            linewidths=0.8,
-        )
-        band_hi.append(
-            {"x": float(x1), "y": float(y1), "text": f"下降壓 {_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
-        )
-        if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
+        # 右溝只留通道現價位，標籤已在軸內
+        if channel.get("rail_now"):
+            right_notes.append(
+                {
+                    "x": float(n - 1),
+                    "y": float(channel["rail_now"]),
+                    "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
+                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
+                    "size": 10,
+                }
+            )
+        if channel.get("base_now"):
+            right_notes.append(
+                {
+                    "x": float(n - 1),
+                    "y": float(channel["base_now"]),
+                    "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
+                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
+                    "size": 10,
+                }
+            )
+    else:
+        if down_pts:
+            (x1, y1, d1), (x2, y2, d2) = down_pts
+            y_end = _line_at(x1, y1, x2, y2, x_fut)
+            _paint_extended_rail(
+                ax1,
+                x1,
+                y1,
+                x2,
+                y2,
+                seam=float(n - 1),
+                x_lo=0.0,
+                x_hi=x_fut,
+                y_lo=ymin,
+                y_hi=ymax,
+                color=_DOWN_TRACK,
+            )
+            ax1.scatter(
+                [x1, x2],
+                [y1, y2],
+                color=_DOWN_TRACK,
+                s=42,
+                zorder=6,
+                edgecolors="white",
+                linewidths=0.8,
+            )
             band_hi.append(
-                {"x": float(x2), "y": float(y2), "text": f"下降壓 {_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
+                {"x": float(x1), "y": float(y1), "text": f"下降壓 {_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
             )
-        if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
-            right_notes.append(
-                {"x": float(x_fut), "y": float(y_end), "text": f"下降壓 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
+            if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
+                band_hi.append(
+                    {"x": float(x2), "y": float(y2), "text": f"下降壓 {_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
+                )
+            if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
+                right_notes.append(
+                    {"x": float(x_fut), "y": float(y_end), "text": f"下降壓 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
+                )
+        if up_pts:
+            (x1, y1, d1), (x2, y2, d2) = up_pts
+            y_end = _line_at(x1, y1, x2, y2, x_fut)
+            y_now = _line_at(x1, y1, x2, y2, float(n - 1))
+            up_broken = bool(last_c and y_now and last_c < y_now)
+            up_steep = _rail_slope_too_steep(x1, y1, x2, y2, span=span, n=n)
+            rail_hi = float(n - 1) if (up_broken or up_steep) else x_fut
+            _paint_extended_rail(
+                ax1,
+                x1,
+                y1,
+                x2,
+                y2,
+                seam=float(n - 1),
+                x_lo=0.0,
+                x_hi=rail_hi,
+                y_lo=ymin,
+                y_hi=ymax,
+                color=_UP_TRACK if not up_broken else "#90a4ae",
             )
-    if up_pts:
-        (x1, y1, d1), (x2, y2, d2) = up_pts
-        y_end = _line_at(x1, y1, x2, y2, x_fut)
-        _paint_extended_rail(
-            ax1,
-            x1,
-            y1,
-            x2,
-            y2,
-            seam=float(n - 1),
-            x_lo=0.0,
-            x_hi=x_fut,
-            y_lo=ymin,
-            y_hi=ymax,
-            color=_UP_TRACK,
-        )
-        ax1.scatter(
-            [x1, x2],
-            [y1, y2],
-            color=_UP_TRACK,
-            s=42,
-            zorder=6,
-            edgecolors="white",
-            linewidths=0.8,
-        )
-        band_lo.append(
-            {"x": float(x1), "y": float(y1), "text": f"上升撐 {_md(d1)}低{_px(y1)}", "color": _UP_TRACK, "size": 10}
-        )
-        if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
+            ax1.scatter(
+                [x1, x2],
+                [y1, y2],
+                color=_UP_TRACK if not up_broken else "#90a4ae",
+                s=42,
+                zorder=6,
+                edgecolors="white",
+                linewidths=0.8,
+            )
+            lab_suffix = "（已壞）" if up_broken else ("（過陡僅參考）" if up_steep else "")
             band_lo.append(
-                {"x": float(x2), "y": float(y2), "text": f"上升撐 {_md(d2)}低{_px(y2)}", "color": _UP_TRACK, "size": 10}
+                {
+                    "x": float(x1),
+                    "y": float(y1),
+                    "text": f"上升撐 {_md(d1)}低{_px(y1)}{lab_suffix}",
+                    "color": _UP_TRACK if not up_broken else "#607d8b",
+                    "size": 10,
+                }
             )
-        if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
-            right_notes.append(
-                {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
-            )
+            if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
+                band_lo.append(
+                    {
+                        "x": float(x2),
+                        "y": float(y2),
+                        "text": f"上升撐 {_md(d2)}低{_px(y2)}{lab_suffix}",
+                        "color": _UP_TRACK if not up_broken else "#607d8b",
+                        "size": 10,
+                    }
+                )
+            if not up_broken and not up_steep and abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
+                right_notes.append(
+                    {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
+                )
     path = list(proj.get("path") or [])
     if len(path) >= 2:
         _halo_line(
@@ -2109,15 +2676,18 @@ def render_biaoke_structure_png(
     _place_right_notes(
         ax1,
         right_notes,
-        x_text=x_gutter,
+        # 錨在最近一根，字從演算區左緣往右長，不准壓歷史 K
+        x_text=float(n - 1) + 0.65,
         ymin=ymin,
         ymax=ymax,
-        min_gap=span * 0.13,
+        min_gap=span * 0.16,
+        span=span,
+        seam=float(n - 1),
     )
     ax1.text(
         n + _FUTURE * 0.45,
         ymin + span * 0.012,
-        "演算區（不是保證）",
+        "演算區（不是保證・不是買訊）",
         color="#546e7a",
         fontproperties=_fp(10, "bold"),
         ha="center",
@@ -2149,63 +2719,77 @@ def render_biaoke_structure_png(
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     ov.text(
         _HEADER_X,
-        92.55,
+        92.85,
         date_line,
         color=_TEXT,
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(16, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        89.95,
+        89.15,
         (
             f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
             f"低 {_px(last_bar.get('low'))}　收 {_px(last_bar.get('close'))}　"
             f"量 {_vol(last_bar.get('volume'))}"
         ),
         color=_TEXT,
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(15, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        87.35,
+        85.45,
         (
             f"爆大量日 {_ymd_full(spike_date)}　高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
             f"量 {_vol(spike_bar.get('volume'))}"
         ),
         color=_PRESS,
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(15, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         _HEADER_X,
-        84.85,
+        82.05,
         "不是15分、不是介紹圖／決策卡",
         color=_MUTED,
-        fontproperties=_fp(9, "bold"),
+        fontproperties=_fp(13, "bold"),
         va="center",
         ha="left",
     )
-    chip_x, chip_y = _HEADER_X, 81.9
+    chip_x, chip_y = _HEADER_X, 78.85
     if mark:
-        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=9)
-        chip_x, chip_y = _HEADER_X, 78.6
+        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=13)
+        chip_x, chip_y = _HEADER_X, 74.75
+    ch_lab = str((channel or {}).get("label") or "").strip()
+    if ch_lab:
+        ch_color = _UP_TRACK if str((channel or {}).get("kind") or "") == "asc" else _DOWN_TRACK
+        ch_bits = [b for b in ch_lab.replace("　", " ").split() if b] + ["不是買訊"]
+        for bit in ch_bits:
+            need = _ow(f" {bit} ", 12) + 1.3
+            if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
+                chip_x = _HEADER_X
+                chip_y -= 3.6
+            chip_x = _draw_chip(
+                ov, chip_x, chip_y, bit, fc="#ffffff", ec=ch_color, tc=ch_color, size=12
+            )
+        chip_x, chip_y = _HEADER_X, chip_y - 3.6
     for bit in banner_bits:
-        need = _ow(f" {bit} ", 9) + 1.2
+        need = _ow(f" {bit} ", 12) + 1.3
         if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
-            if chip_y - 2.9 < 75:
+            if chip_y - 3.6 < 69.0:
                 break
             chip_x = _HEADER_X
-            chip_y -= 2.9
+            chip_y -= 3.6
         chip_x = _draw_chip(
-            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=9
+            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=12
         )
+    # 今K／漲跌：縮圖外框左邊空白（預設 _SPOT_X／_SPOT_Y），不佔左上頭牌
     if quote:
-        _paint_spot(ov, quote, x=_HEADER_X, y=chip_y - 3.35, align="left")
+        _paint_spot(ov, quote)
     if len(rows) >= n + 8:
         loc_legs: List[Dict[str, Any]] = []
         loc_marks: List[Dict[str, Any]] = []
@@ -2254,18 +2838,29 @@ def render_biaoke_structure_png(
             marks=loc_marks,
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
-    ax1.yaxis.tick_left()
-    ax1.yaxis.set_label_position("left")
-    ax1.tick_params(labelsize=11, left=True, right=False, bottom=False, labelbottom=False, length=5, width=0.8)
+    # 左右同刻度股價，方便對照右邊標籤
+    ax1.yaxis.set_ticks_position("both")
+    ax1.tick_params(
+        labelsize=12,
+        left=True,
+        right=True,
+        labelleft=True,
+        labelright=True,
+        bottom=False,
+        labelbottom=False,
+        length=5,
+        width=0.8,
+    )
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
     for lab in ax1.get_yticklabels():
-        lab.set_fontproperties(_fp(11, "bold"))
+        lab.set_fontproperties(_fp(12, "bold"))
     vol_colors = [_SPIKE_VOL if i == spike_i else (_UP if candle_up[i] else _DN) for i in range(n)]
     ax2.bar(xs, vols, color=vol_colors, width=0.68, zorder=3, edgecolor="#ffffff", linewidth=0.2)
     vmax = max(vols) if vols else 1.0
     ax2.set_ylim(0, vmax * 1.45)
     if 0 <= spike_i < n and vols[spike_i]:
-        vol_tx = min(n - 1.2, spike_i + 5.2) if spike_i < n - 6 else max(0.8, spike_i - 5.2)
+        # 量標拉到空白帶，避開量柱本體
+        vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
         _leader_note(
             ax2,
             float(spike_i),
@@ -2273,18 +2868,25 @@ def render_biaoke_structure_png(
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             _TEXT,
             tx=vol_tx,
-            ty=vmax * 1.22,
+            ty=vmax * 1.28,
             size=11,
             ha="left" if vol_tx >= spike_i else "right",
             va="center",
         )
     ax2.set_ylabel("日成交量（張）", fontproperties=_fp(11, "bold"), color=_TEXT)
-    ax2.yaxis.tick_left()
-    ax2.yaxis.set_label_position("left")
-    ax2.tick_params(labelsize=11, left=True, right=False, length=5, width=0.8)
+    ax2.yaxis.set_ticks_position("both")
+    ax2.tick_params(
+        labelsize=11,
+        left=True,
+        right=True,
+        labelleft=True,
+        labelright=True,
+        length=5,
+        width=0.8,
+    )
     ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{int(round(v)):,}"))
     for lab in ax2.get_yticklabels():
-        lab.set_fontproperties(_fp(10, "bold"))
+        lab.set_fontproperties(_fp(11, "bold"))
     ax2.set_xlim(-0.55, x_right)
     paint_forecast_span(ax2, n - 1, _FUTURE, line=False)
     ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
@@ -2304,11 +2906,31 @@ def render_biaoke_structure_png(
     fig.subplots_adjust(
         left=_FIG_LEFT, right=_FIG_RIGHT, top=_STOCK_MAIN_TOP, bottom=_FIG_BOTTOM
     )
+    # 查詢時間：整圖右上（台北）；不壓左上頭牌、不壓縮圖
+    try:
+        from decision_card_signals import format_card_query_stamp
+
+        date_s, clock_s = format_card_query_stamp(is_live=False, latest_date=last_d)
+        fig.text(
+            0.985,
+            0.985,
+            f"{date_s} {clock_s}",
+            ha="right",
+            va="top",
+            fontproperties=_fp(11, "bold"),
+            color="#455a64",
+            zorder=14,
+        )
+    except Exception:
+        pass
     from wayne_navigator import _savefig_lookup_png
 
     _savefig_lookup_png(fig, save_path, BIAOKE_CHART_DPI)
     plt.close(fig)
-    return save_path if os.path.isfile(save_path) else ""
+    if os.path.isfile(save_path):
+        _lookup_render_memo_put(memo_key, save_path)
+        return save_path
+    return ""
 
 
 def _short(text: str, n: int) -> str:
