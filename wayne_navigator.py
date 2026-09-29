@@ -5067,6 +5067,12 @@ _NAV_SIG = {
 # 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。不是紅箭頭買訊。
 _NAV_TRADE_BUY = "#1565C0"
 _NAV_TRADE_SELL = "#E64A19"
+# 買點藍箭＝原設定全面 ×1.5（原 arrow_h×1.12／hw 0.88）；只動買點，60 低仍原尺寸
+_NAV_BUY_ARROW_H_MULT = 1.68  # 1.12 * 1.5
+_NAV_BUY_ARROW_HW = 1.05  # 略收寬，避免右緣看起來「單一巨箭」
+# 買點紅框：跟同色「60低」藍箭分開；手機縮圖要夠粗才看得出
+_NAV_BUY_ARROW_EDGE = "#C62828"
+_NAV_BUY_ARROW_EDGE_W = 2.05
 
 
 def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False,
@@ -5111,8 +5117,9 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_SIG["vol_low"],
                 markeredgecolor=_NAV_SIG["vol_low"], markeredgewidth=0.0, markersize=ms_z + 2), "月波動低"),
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
+        # 買點＝藍三角＋紅框（跟 60 低純藍三角分開）；圖例邊線再粗，手機才分得清
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_TRADE_BUY, markeredgewidth=0.0, markersize=ms_z + 2), "買點↑藍"),
+                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=2.85, markersize=ms_z + 3), "買點↑藍▲紅框"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
                 markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
@@ -5127,22 +5134,21 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         loc="upper left" if panel else "lower left",
         handlelength=1.25 if panel else 1.05,
         handletextpad=0.32 if panel else 0.28,
-        columnspacing=0.42 if panel else (0.48 if zone_mode else 0.65),
+        columnspacing=0.58 if panel else (0.48 if zone_mode else 0.65),
         borderpad=0.22 if panel else (0.22 if zone_mode else 0.28),
         labelspacing=0.10 if panel else (0.10 if zone_mode else 0.16),
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(10.5 if panel else (9.0 if zone_mode else 8.0), "bold"),
+        prop=_fp(10.0 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 標題列圖例收成兩行：上＝原第二行（量能／買賣）；
-        # 下左＝原第一行（箭頭）、下右＝原第三行（均線）；無分隔線，圖例能大就大
+        # 標題列圖例三整排（不准左右互壓）：上量能／買賣、中高低箭、下均線
         # (handles, labels, x, y, ncol)
         panel_rows = (
-            (row2, 0.0, 0.56, 7),
-            (row1, 0.0, 0.26, 8),
-            (row3, 0.60, 0.26, 5),
+            (row2, 0.0, 0.58, 7),
+            (row1, 0.0, 0.34, 8),
+            (row3, 0.0, 0.10, 5),
         )
         artists = []
         for row, x, y, ncol in panel_rows:
@@ -5239,9 +5245,26 @@ def _lerp_hex(a, b, t: float):
     return (ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t)
 
 
-def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.70,
-               z=7, alpha=1.0, hollow=False, ink=None):
-    """短粗箭頭（寬頭＋短柄）：遠看是標示，不會跟 K 棒糊成一排直棍。"""
+def _nav_arrow(
+    ax,
+    y_tip,
+    x,
+    *,
+    down: bool,
+    face: str,
+    arrow_h: float,
+    hw=0.70,
+    z=7,
+    alpha=1.0,
+    hollow=False,
+    ink=None,
+    edge: Optional[str] = None,
+    edgewidth: float = 0.0,
+):
+    """短粗箭頭（寬頭＋短柄）：遠看是標示，不會跟 K 棒糊成一排直棍。
+
+    edge／edgewidth＝外框（買點用紅細框，跟 60 低藍箭分開）。
+    """
     tip_ink = ink or face
     head_h = arrow_h * 0.70
     shaft_h = arrow_h * 0.30
@@ -5258,13 +5281,19 @@ def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.70,
         (x - sw, head_y),
         (x - hw, head_y),
     ]
+    if hollow:
+        ec, lw = tip_ink, 1.2
+    elif edge and edgewidth > 0:
+        ec, lw = edge, float(edgewidth)
+    else:
+        ec, lw = tip_ink, 0.0
     ax.add_patch(
         patches.Polygon(
             verts,
             closed=True,
             facecolor="none" if hollow else tip_ink,
-            edgecolor=tip_ink,
-            linewidth=1.2 if hollow else 0.0,
+            edgecolor=ec,
+            linewidth=lw,
             joinstyle="miter",
             alpha=alpha,
             zorder=z,
@@ -5514,8 +5543,12 @@ def overlay_nav_marks_on_zone(
     *,
     card: Optional[dict] = None,
     draw_legend: bool = True,
+    draw_ma20: bool = True,
 ) -> None:
-    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。"""
+    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。
+
+    draw_ma20＝False 時略過黃 SMA20（大量區已自畫月線／季線，避免畫兩次）。
+    """
     if work is None or getattr(work, "empty", True) or ax1 is None:
         return
     n = len(work)
@@ -5555,11 +5588,11 @@ def overlay_nav_marks_on_zone(
         ax_sig.set_facecolor("#ffffff")
         ax_sig.set_yticks([])
         ax_sig.set_ylim(0, 1)
-        ax_sig.set_xlim(-0.8, n - 0.2)
-        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺
+        # 與價格軸同 xlim（由呼叫端 set）；此處不硬塞舊 -0.8
+        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺；靠軸左側、不切字
         ax_sig.set_ylabel("")
         ax_sig.text(
-            -0.045,
+            -0.018,
             0.5,
             "量能\n訊號",
             transform=ax_sig.transAxes,
@@ -5738,8 +5771,9 @@ def overlay_nav_marks_on_zone(
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
-    # SMA／月季線：跟導航同一套參考線
-    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
+    # 高低參考線；SMA20 可由呼叫端自畫（大量區月線／季線）
+    if draw_ma20:
+        ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
     ax1.axhline(h60, color="#f48fb1", linewidth=1.25, zorder=2)
     ax1.axhline(l60, color="#81c784", linewidth=1.25, zorder=2)
     ax1.axhline(h20, color="#f8bbd0", linewidth=1.0, linestyle="--", zorder=2)
@@ -5748,16 +5782,24 @@ def overlay_nav_marks_on_zone(
     buy_i, sell_i = _nav_trade_marks(work, card)
     if buy_i is not None:
         i = int(buy_i)
+        # 買點藍向上：原尺寸 1.5 倍；先留底邊空間不准切箭
+        buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
+        buy_hw = _NAV_BUY_ARROW_HW
+        tip = float(work["low"].iloc[i]) - arrow_gap
+        y0, y1 = ax1.get_ylim()
+        ax1.set_ylim(min(y0, tip - buy_h - span * 0.02), y1)
         _nav_arrow(
             ax1,
-            float(work["low"].iloc[i]) - arrow_gap,
+            tip,
             xs[i],
             down=False,
             face=_NAV_TRADE_BUY,
             ink=_NAV_TRADE_BUY,
-            arrow_h=arrow_h * 1.12,
-            hw=0.88,
+            arrow_h=buy_h,
+            hw=buy_hw,
             z=8,
+            edge=_NAV_BUY_ARROW_EDGE,
+            edgewidth=_NAV_BUY_ARROW_EDGE_W,
         )
     if sell_i is not None:
         i = int(sell_i)
@@ -6030,12 +6072,17 @@ def _paint_nav_on_axes(
     if buy_i is not None:
         i = int(buy_i)
         lo = float(work["low"].iloc[i])
+        buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
+        tip = lo - arrow_gap
+        y0, y1 = ax1.get_ylim()
+        ax1.set_ylim(min(y0, tip - buy_h - span * 0.02), y1)
         _nav_arrow(
-            ax1, lo - arrow_gap, xs[i], down=False,
+            ax1, tip, xs[i], down=False,
             face=_NAV_TRADE_BUY, ink=_NAV_TRADE_BUY,
-            arrow_h=arrow_h * 1.12, hw=0.88, z=8,
+            arrow_h=buy_h, hw=_NAV_BUY_ARROW_HW, z=8,
+            edge=_NAV_BUY_ARROW_EDGE, edgewidth=_NAV_BUY_ARROW_EDGE_W,
         )
-        trade_note = "　買↑藍"
+        trade_note = "　買↑藍▲紅框"
     if sell_i is not None:
         i = int(sell_i)
         hi = float(work["high"].iloc[i])

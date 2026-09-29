@@ -42,13 +42,46 @@ def test_attach_official_ma60_needs_60_bars():
 
 
 def test_paint_draws_ma60_and_query_stamp():
-    from vol_zone_chart import _paint_volume_zone
+    from vol_zone_chart import _paint_volume_zone, _label_ma_left
 
     src = inspect.getsource(_paint_volume_zone)
-    assert "_MA60" in src or "季線" in src
+    assert "_MA60" in src and "_MA20" in src
     assert "format_card_query_stamp" in src
-    assert "0.988" in src  # 右上時間
+    assert "fig.text" in src and "0.985" in src  # 整圖右上時間戳
     assert "大量區壓" in src and "大量區撐" in src
+    assert "linewidth=1.35" in src
+    assert "_label_ma_left" in src
+    assert 'lab="月線"' in src and 'lab="季線"' in src
+    assert "left=0.050" in src  # 左縮右鬆放大 K 區
+    assert "draw_ma20=False" in src
+    lab_src = inspect.getsource(_label_ma_left)
+    assert "_clear_of_bars" in lab_src
+    assert "一律貼在所屬均線上" in lab_src or "y 一律貼" in lab_src
+
+
+def test_label_ma_left_stays_on_ma_line():
+    """月線／季線標的 y 必須等於該 x 上的均線價（貼線，不准離線漂）。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from vol_zone_chart import _label_ma_left
+
+    n = 40
+    xs = np.arange(n, dtype=float)
+    highs = np.full(n, 120.0)
+    lows = np.full(n, 110.0)
+    vals = np.linspace(95.0, 108.0, n)  # 全程在低點下方＝貼線可淨空
+    fig, ax = plt.subplots()
+    ax.set_ylim(80, 140)
+    ax.set_xlim(-1, n)
+    _label_ma_left(ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7")
+    texts = [t for t in ax.texts if t.get_text() == "月線"]
+    assert texts
+    x, y = texts[0].get_position()
+    j = int(round(x))
+    assert abs(float(y) - float(vals[j])) < 1e-6
+    plt.close(fig)
 
 
 def test_prepare_loads_ma60_warm_bars():
@@ -57,6 +90,7 @@ def test_prepare_loads_ma60_warm_bars():
     src = inspect.getsource(prepare_volume_zone)
     assert "VOL_ZONE_MA60_WARM" in src or "attach_official_ma60" in src
     assert "attach_official_ma60" in src
+    assert "attach_official_ma20" in src
 
 
 def test_render_volume_zone_includes_ma60_column(tmp_path):
@@ -71,8 +105,14 @@ def test_render_volume_zone_includes_ma60_column(tmp_path):
     pack = prepare_volume_zone("2330", "台積電", db, str(tmp_path / "x.jpg"))
     assert pack is not None
     assert "ma60" in pack["view"].columns
-    ma = pd.to_numeric(pack["view"]["ma60"], errors="coerce")
-    assert ma.notna().sum() >= 10
+    assert "ma20" in pack["view"].columns
+    ma60 = pd.to_numeric(pack["view"]["ma60"], errors="coerce")
+    ma20 = pd.to_numeric(pack["view"]["ma20"], errors="coerce")
+    assert ma60.notna().sum() >= 10
+    assert ma20.notna().sum() >= 10
+    # 近窗第一根就要有線（暖機）
+    assert pd.notna(ma20.iloc[0])
+    assert pd.notna(ma60.iloc[0])
     out = render_volume_zone_png("2330", "台積電", db, str(tmp_path / "2330_vz.jpg"))
     assert out and os.path.isfile(out)
     assert os.path.getsize(out) > 20000

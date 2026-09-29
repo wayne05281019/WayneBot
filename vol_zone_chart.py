@@ -45,19 +45,20 @@ VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
 VOL_ZONE_TAG_PT = 16  # 壓／撐標要比標題更容易讀（話筒紅圈）
 VOL_ZONE_JPEG_QUALITY = 94
-VOL_ZONE_FIG_W = 12.0
-VOL_ZONE_FIG_H_NAV = 9.2
-VOL_ZONE_FIG_H_PLAIN = 7.6
-# 季線＝官方收盤 MA60；畫圖前多抓暖機柱，近窗線才準
+VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
+VOL_ZONE_FIG_H_NAV = 9.35
+VOL_ZONE_FIG_H_PLAIN = 7.7
+# 月線／季線＝官方收盤 MA20／MA60；畫圖前多抓暖機柱，近窗第一根就要有線
+VOL_ZONE_MA20 = 20
 VOL_ZONE_MA60 = 60
-VOL_ZONE_MA60_WARM = 65
+VOL_ZONE_MA60_WARM = 70
 # 同檔同 as_of 壓力區圖短快取（名單→點股三張可複用）
 _VZ_RENDER_TTL_SEC = 45.0
 _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
-# 畫面上線／戳後 bump，避免舊快取缺季線
-_VZ_PAINT_VER = 2
+# 畫面上線／戳後 bump
+_VZ_PAINT_VER = 12
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -66,7 +67,8 @@ _FILL = "#ffe0b2"
 _PRESS = "#ad1457"
 _HOLD = "#1b5e20"
 _SPIKE = "#f9a825"
-_MA60 = "#5c6bc0"  # 季線：藍紫，不跟壓洋紅／撐綠／量黃搶
+_MA20 = "#f9a825"  # 月線：黃（對齊導航 SMA20）
+_MA60 = "#5c6bc0"  # 季線：藍紫，不跟壓洋紅／撐綠搶
 _GRID = "#cfd8dc"
 _TEXT = "#1f2933"
 _MUTED = "#607d8b"
@@ -80,6 +82,18 @@ def _md(raw: Any) -> str:
     return str(raw or "").strip()
 
 
+def attach_official_ma20(work: pd.DataFrame, *, window: int = VOL_ZONE_MA20) -> pd.DataFrame:
+    """官方收盤 SMA20（月線）。不滿窗不畫假線。"""
+    if work is None or getattr(work, "empty", True):
+        return work
+    out = work if "ma20" in work.columns else work.copy()
+    if "ma20" not in out.columns:
+        out = out.copy()
+    closes = pd.to_numeric(out["close"], errors="coerce")
+    out["ma20"] = closes.rolling(int(window), min_periods=int(window)).mean()
+    return out
+
+
 def attach_official_ma60(work: pd.DataFrame, *, window: int = VOL_ZONE_MA60) -> pd.DataFrame:
     """官方收盤 SMA60（季線）。缺柱／停牌收不當正量時仍用當日官方收。"""
     if work is None or getattr(work, "empty", True):
@@ -91,6 +105,120 @@ def attach_official_ma60(work: pd.DataFrame, *, window: int = VOL_ZONE_MA60) -> 
     # min_periods=window：不滿 60 根不畫假季線
     out["ma60"] = closes.rolling(int(window), min_periods=int(window)).mean()
     return out
+
+
+def _label_ma_left(
+    ax,
+    xs,
+    highs,
+    lows,
+    *,
+    lab: str,
+    vals: np.ndarray,
+    color: str,
+    face: str,
+) -> None:
+    """月線／季線標在大圖偏左：y 一律貼在所屬均線上；只挪 x 找不壓 K 的空檔。"""
+    ok = np.flatnonzero(np.isfinite(vals) & (vals > 0))
+    if ok.size == 0 or len(xs) == 0:
+        return
+    n = len(xs)
+    y0, y1 = ax.get_ylim()
+    span = max(float(y1 - y0), 1.0)
+    # 標盒半高（字級 11＋round pad）；左右約蓋 1.6 根，方便在線上找空檔
+    half_h = span * 0.045
+    pad = span * 0.012
+    x_half = 1.6
+    lo_i = max(0, int(n * 0.03))
+    hi_i = max(lo_i + 1, int(n * 0.36))
+
+    def _cover_range(x_lab: float) -> tuple[int, int]:
+        j0 = max(0, int(np.floor(x_lab - x_half)))
+        j1 = min(n - 1, int(np.ceil(x_lab + x_half)))
+        return j0, j1
+
+    def _clear_of_bars(x_lab: float, y_lab: float) -> bool:
+        j0, j1 = _cover_range(x_lab)
+        y_bot, y_top = y_lab - half_h, y_lab + half_h
+        for k in range(j0, j1 + 1):
+            hk = float(highs[k]) if np.isfinite(highs[k]) else np.nan
+            lk = float(lows[k]) if np.isfinite(lows[k]) else np.nan
+            if not (np.isfinite(hk) and np.isfinite(lk)):
+                continue
+            if y_bot < hk + pad and y_top > lk - pad:
+                return False
+        return True
+
+    def _signed_gap(x_lab: float, y_lab: float) -> float:
+        """線在 K 外的最小空隙；穿進 K 回負值（越負越糟）。"""
+        j0, j1 = _cover_range(x_lab)
+        y_bot, y_top = y_lab - half_h, y_lab + half_h
+        best = span
+        for k in range(j0, j1 + 1):
+            hk = float(highs[k]) if np.isfinite(highs[k]) else np.nan
+            lk = float(lows[k]) if np.isfinite(lows[k]) else np.nan
+            if not (np.isfinite(hk) and np.isfinite(lk)):
+                continue
+            if y_lab >= hk:
+                best = min(best, y_bot - hk)
+            elif y_lab <= lk:
+                best = min(best, lk - y_top)
+            else:
+                # 穿進影線：負穿透深度
+                best = min(best, -(min(y_top, hk) - max(y_bot, lk)))
+        return float(best)
+
+    # 只認貼線：y = 該根均線價；在左側挑最不壓 K 的 x
+    clear_best = None  # (score, x, y)
+    soft_best = None
+    for j in ok:
+        jj = int(j)
+        if jj < lo_i or jj > hi_i:
+            continue
+        y_lab = float(vals[jj])
+        if not np.isfinite(y_lab):
+            continue
+        yf = (y_lab - y0) / span
+        if yf < 0.10 or yf > 0.92:
+            continue
+        x_lab = float(xs[jj])
+        gap = _signed_gap(x_lab, y_lab)
+        left_bonus = (hi_i - jj) / max(hi_i - lo_i, 1)
+        score = gap / span + 0.22 * left_bonus
+        cand = (score, x_lab, y_lab)
+        if _clear_of_bars(x_lab, y_lab) and gap >= pad:
+            if clear_best is None or cand[0] > clear_best[0]:
+                clear_best = cand
+        if soft_best is None or cand[0] > soft_best[0]:
+            soft_best = cand
+
+    if clear_best is not None:
+        _, x_lab, y_lab = clear_best
+    elif soft_best is not None:
+        # 左側線上仍難完全淨空：仍貼線，取空隙最大處（不准離線）
+        _, x_lab, y_lab = soft_best
+    else:
+        jj = int(ok[min(3, ok.size - 1)])
+        x_lab, y_lab = float(xs[jj]), float(vals[jj])
+
+    ax.text(
+        x_lab,
+        y_lab,
+        lab,
+        ha="center",
+        va="center",
+        fontproperties=_fp(11.0, "bold"),
+        color=color,
+        zorder=12,
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.28",
+            facecolor=face,
+            edgecolor=color,
+            linewidth=1.05,
+            alpha=0.96,
+        ),
+    )
 
 
 def ma60_is_rising(
@@ -745,6 +873,7 @@ def prepare_volume_zone(
         work = official_work(df)
     if work is None or work.empty:
         return None
+    work = attach_official_ma20(work)
     work = attach_official_ma60(work)
     ex_events: List[Dict[str, Any]] = []
     if db_path:
@@ -762,6 +891,12 @@ def prepare_volume_zone(
     start = max(0, n_all - show_n)
     if spike_i_all < start:
         start = max(0, spike_i_all - 8)
+    # 近窗第一根就要有月線／季線：能暖機就讓 start 落在 MA60 窗後（仍保住爆大量日在窗內）
+    warm = int(VOL_ZONE_MA60)
+    if start < warm and spike_i_all >= warm and (n_all - warm) >= 30:
+        start = warm
+        if spike_i_all < start:
+            start = max(0, spike_i_all - 8)
     view = work.iloc[start:].reset_index(drop=True)
     spike_i = int(zone["i"]) - start
     if spike_i < 0 or spike_i >= len(view):
@@ -940,13 +1075,14 @@ def _paint_volume_zone(
             4,
             1,
             figure=fig,
-            # 圖例收兩行後，多出的高度給標題列（股票介紹放大）
-            height_ratios=[1.05, 3.55, 0.42, 1.02],
+            # 標題列加高：圖例改三整排（不准互壓），略從 K 區挪
+            height_ratios=[1.28, 3.38, 0.40, 0.98],
             hspace=0.035,
-            left=0.055,
-            right=0.96,
+            # 左縮右鬆：回收左空白放大 K；右邊留給價軸＋最後一根呼吸
+            left=0.050,
+            right=0.935,
             top=0.985,
-            bottom=0.07,
+            bottom=0.065,
         )
         ax_head = fig.add_subplot(gs[0])
         ax1 = fig.add_subplot(gs[1])
@@ -984,19 +1120,39 @@ def _paint_volume_zone(
 
     # 桃色大量區（略透，K／箭頭更清楚）
     ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
-    ax1.axhline(hi, color=_PRESS, linewidth=2.25, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=2.25, zorder=5, solid_capstyle="round")
+    # 壓／撐色線微細：仍清楚，不搶 K／均線
+    ax1.axhline(hi, color=_PRESS, linewidth=1.35, zorder=5, solid_capstyle="round")
+    ax1.axhline(lo, color=_HOLD, linewidth=1.35, zorder=5, solid_capstyle="round")
     ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.65, zorder=1)
 
-    # 季線 MA60：官方收盤均線；線本身看出升／降，不改買訊
+    # 月線 MA20＋季線 MA60：近窗第一根起就要畫滿（暖機在 prepare）
+    closes_v = pd.to_numeric(view["close"], errors="coerce")
+    if "ma20" in view.columns:
+        ma20_vals = pd.to_numeric(view["ma20"], errors="coerce").to_numpy(dtype=float)
+    else:
+        ma20_vals = closes_v.rolling(VOL_ZONE_MA20, min_periods=VOL_ZONE_MA20).mean().to_numpy(
+            dtype=float
+        )
     ma60_vals = None
     if "ma60" in view.columns:
         ma60_vals = pd.to_numeric(view["ma60"], errors="coerce").to_numpy(dtype=float)
-        ok_ma = np.isfinite(ma60_vals) & (ma60_vals > 0)
-        if ok_ma.any():
+    ok20 = np.isfinite(ma20_vals) & (ma20_vals > 0)
+    if ok20.any():
+        ax1.plot(
+            xs[ok20],
+            ma20_vals[ok20],
+            color=_MA20,
+            linewidth=1.75,
+            zorder=4,
+            solid_capstyle="round",
+            label="月線",
+        )
+    if ma60_vals is not None:
+        ok60 = np.isfinite(ma60_vals) & (ma60_vals > 0)
+        if ok60.any():
             ax1.plot(
-                xs[ok_ma],
-                ma60_vals[ok_ma],
+                xs[ok60],
+                ma60_vals[ok60],
                 color=_MA60,
                 linewidth=1.85,
                 zorder=4,
@@ -1136,15 +1292,18 @@ def _paint_volume_zone(
     ypad = max((hi - lo) * 0.16, float(view["high"].max() - view["low"].min()) * 0.035)
     y_hi = float(view["high"].max())
     y_lo = float(view["low"].min())
-    if ma60_vals is not None:
-        ok_ma = np.isfinite(ma60_vals) & (ma60_vals > 0)
+    for _arr in (ma20_vals, ma60_vals):
+        if _arr is None:
+            continue
+        ok_ma = np.isfinite(_arr) & (_arr > 0)
         if ok_ma.any():
-            y_hi = max(y_hi, float(np.nanmax(ma60_vals[ok_ma])))
-            y_lo = min(y_lo, float(np.nanmin(ma60_vals[ok_ma])))
+            y_hi = max(y_hi, float(np.nanmax(_arr[ok_ma])))
+            y_lo = min(y_lo, float(np.nanmin(_arr[ok_ma])))
     ymin = min(y_lo, lo) - ypad
     ymax = max(y_hi, hi) + ypad * (1.35 if with_nav_signals else 1.25)
     ax1.set_ylim(ymin, ymax)
-    ax1.set_xlim(-0.8, n - 0.2)
+    # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
+    ax1.set_xlim(-0.05, n + 1.65)
     ax1.yaxis.tick_right()
     ax1.tick_params(labelbottom=False, labelsize=10)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, zorder=0, alpha=0.85)
@@ -1183,7 +1342,7 @@ def _paint_volume_zone(
         bbox={**_tag_box, "edgecolor": _HOLD},
     )
 
-    # 查詢時間：右上（台北）；不蓋左壓標、不蓋量柱、不蓋右軸價位數字
+    # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位
     try:
         from decision_card_signals import format_card_query_stamp
 
@@ -1199,54 +1358,23 @@ def _paint_volume_zone(
     except Exception:
         stamp = ""
     if stamp:
-        ax1.text(
-            0.988,
-            0.975,
+        fig.text(
+            0.985,
+            0.992,
             stamp,
-            transform=ax1.transAxes,
             ha="right",
             va="top",
-            fontproperties=_fp(10.5, "bold"),
+            fontproperties=_fp(10.0, "bold"),
             color=_MUTED,
-            zorder=10,
+            zorder=20,
             bbox=dict(
-                boxstyle="round,pad=0.22",
+                boxstyle="round,pad=0.20",
                 facecolor="#ffffff",
                 edgecolor="#cfd8dc",
-                linewidth=0.8,
-                alpha=0.92,
+                linewidth=0.75,
+                alpha=0.94,
             ),
         )
-
-    # 季線末端小標：貼線尾左側，避開右上時間戳與左壓標
-    if ma60_vals is not None:
-        ok_i = np.flatnonzero(np.isfinite(ma60_vals) & (ma60_vals > 0))
-        if ok_i.size:
-            i_end = int(ok_i[-1])
-            rising = ma60_is_rising(ma60_vals[ok_i], slope_bars=5)
-            arrow = "↑" if rising is True else ("↓" if rising is False else "")
-            lab = f"季線{arrow}".strip()
-            # 尾在右半 → 標在線左；尾偏左 → 標在線右，避開壓標區
-            ha = "right" if float(xs[i_end]) > n * 0.55 else "left"
-            x_off = -6 if ha == "right" else 6
-            ax1.annotate(
-                lab,
-                xy=(float(xs[i_end]), float(ma60_vals[i_end])),
-                xytext=(x_off, 10),
-                textcoords="offset points",
-                ha=ha,
-                va="bottom",
-                fontproperties=_fp(10.5, "bold"),
-                color=_MA60,
-                zorder=9,
-                bbox=dict(
-                    boxstyle="round,pad=0.16",
-                    facecolor="#e8eaf6",
-                    edgecolor=_MA60,
-                    linewidth=0.7,
-                    alpha=0.94,
-                ),
-            )
 
     if with_nav_signals:
         if "dt" not in view.columns:
@@ -1255,10 +1383,38 @@ def _paint_volume_zone(
         try:
             from wayne_navigator import overlay_nav_marks_on_zone
 
-            # 圖例改畫在標題列，不准掛在 K 上方留白
-            overlay_nav_marks_on_zone(ax1, ax_sig, view, card=card, draw_legend=False)
+            # 圖例改畫在標題列，不准掛在 K 上方留白；均線已在上方畫好
+            overlay_nav_marks_on_zone(
+                ax1, ax_sig, view, card=card, draw_legend=False, draw_ma20=False
+            )
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
+
+    # 月線／季線左標：偏左、可貼均線，不准壓 K
+    highs_a = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
+    lows_a = pd.to_numeric(view["low"], errors="coerce").to_numpy(dtype=float)
+    if ma20_vals is not None and np.isfinite(ma20_vals).any():
+        _label_ma_left(
+            ax1,
+            xs,
+            highs_a,
+            lows_a,
+            lab="月線",
+            vals=ma20_vals,
+            color=_MA20,
+            face="#fffde7",
+        )
+    if ma60_vals is not None and np.isfinite(ma60_vals).any():
+        _label_ma_left(
+            ax1,
+            xs,
+            highs_a,
+            lows_a,
+            lab="季線",
+            vals=ma60_vals,
+            color=_MA60,
+            face="#e8eaf6",
+        )
 
     # 除息標：貼豎線上方、避開左上壓標；不准大抬 ylim 把 K 壓扁
     if ex_labels:
@@ -1271,11 +1427,12 @@ def _paint_volume_zone(
             near = sum(1 for ux in used_x if abs(ux - float(xs[i])) < 5.0)
             x_pos = float(xs[i])
             ha = "center"
-            y_ax = 0.90 - 0.05 * (near % 2)
+            # 除息標貼軸頂，避開 K 頂／壓標
+            y_ax = 0.965 - 0.055 * (near % 3)
             if x_pos < left_guard:
                 x_pos = left_guard
                 ha = "left"
-                y_ax = 0.86 - 0.04 * (near % 2)
+                y_ax = 0.94 - 0.05 * (near % 3)
             ax1.text(
                 x_pos,
                 y_ax,
@@ -1285,7 +1442,7 @@ def _paint_volume_zone(
                 va="top",
                 fontproperties=_fp(9, "bold"),
                 color="#6a1b9a",
-                zorder=9,
+                zorder=11,
                 clip_on=False,
                 bbox=dict(
                     boxstyle="round,pad=0.22",
@@ -1338,12 +1495,12 @@ def _paint_volume_zone(
             zorder=4,
             linewidth=0,
         )
-    # 爆大量標貼柱頂略抬，不准飛高、不准壓到量柱本身
-    ax2.set_ylim(0, max(vol_ylim * 1.18, spike_h * 1.22 if spike_h > 0 else vol_ylim * 1.18))
+    # 爆大量標貼柱頂再上移一截，右下不貼底軸
+    ax2.set_ylim(0, max(vol_ylim * 1.30, spike_h * 1.38 if spike_h > 0 else vol_ylim * 1.30))
     ax2.annotate(
         f"爆大量 {spike_md}",
         xy=(float(spike_i), spike_h),
-        xytext=(0, 8),
+        xytext=(0, 18),
         textcoords="offset points",
         ha="center",
         va="bottom",
@@ -1463,10 +1620,13 @@ def _paint_volume_zone(
         )
         ax1.set_title(title, fontproperties=_fp(13, "bold"), pad=14, color=_TEXT)
     if with_nav_signals:
-        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。藍線＝季線(MA60)。除權／除息缺口是息差不是崩。"
-        foot2 = "高觸壓、收未過＝測壓（非買訊）。箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
+        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。黃＝月線(MA20)、藍紫＝季線(MA60)。除權／除息缺口是息差不是崩。"
+        foot2 = (
+            "高觸壓、收未過＝測壓（非買訊）。買點＝藍▲紅框、60低＝純藍▲。"
+            "箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
+        )
     else:
-        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。藍線＝季線(MA60)。除權／除息缺口是息差不是崩。"
+        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。黃＝月線(MA20)、藍紫＝季線(MA60)。除權／除息缺口是息差不是崩。"
         foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
     fig.text(
         0.5,
