@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config  # noqa: E402
 import main  # noqa: E402
 
-ALL_JOBS = ("morning", "midday", "fuse", "evening", "typhoon")
+ALL_JOBS = ("morning", "midday", "fuse", "evening", "typhoon", "open_check")
 
 
 def test_default_role_is_data(monkeypatch):
@@ -56,7 +56,7 @@ def test_data_role_keeps_midday_because_gha_has_no_such_cron(monkeypatch):
 
 def test_data_role_refreshes_silently(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    for job in ("fuse", "evening", "typhoon"):
+    for job in ("fuse", "evening", "typhoon", "open_check"):
         assert config.scheduler_owns(job) is True
         assert config.scheduler_may_push(job) is False
 
@@ -83,6 +83,7 @@ def test_every_job_has_exactly_one_pusher(monkeypatch):
     assert local_pushers & gha_telegram_jobs == set()
     assert "morning" in local_pushers
     assert "midday" in local_pushers
+    assert "open_check" not in local_pushers
 
 
 class _Recorder:
@@ -107,6 +108,10 @@ class _Recorder:
 
     def run_typhoon_peek(self, **kw):
         self.calls.append(("typhoon", kw))
+        return True
+
+    def run_nightly_open_check(self, **kw):
+        self.calls.append(("open_check", kw))
         return True
 
 
@@ -180,7 +185,7 @@ def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     now = datetime(2026, 9, 4, 20, 16, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
     kinds = [c[0] for c in recorder.calls]
-    assert kinds == ["fuse", "morning", "evening"]
+    assert kinds == ["open_check", "fuse", "morning", "evening"]
     eve = [c for c in recorder.calls if c[0] == "evening"][0]
     assert eve[1]["skip_if_done"] is True
     assert eve[1]["notify"] is False
@@ -199,9 +204,9 @@ def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 4, 19, 50, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
-    assert [c[0] for c in recorder.calls] == ["fuse", "morning"]
-    assert recorder.calls[0][1]["skip_if_done"] is True
+    assert [c[0] for c in recorder.calls] == ["open_check", "fuse", "morning"]
     assert recorder.calls[1][1]["skip_if_done"] is True
+    assert recorder.calls[2][1]["skip_if_done"] is True
 
 
 def test_catch_up_morning_only_before_midday(monkeypatch, recorder):
@@ -211,17 +216,24 @@ def test_catch_up_morning_only_before_midday(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 4, 7, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
-    assert [c[0] for c in recorder.calls] == ["morning"]
+    assert [c[0] for c in recorder.calls] == ["open_check", "morning"]
 
 
-def test_catch_up_weekend_runs_nothing(monkeypatch, recorder):
+def test_catch_up_weekend_still_runs_open_check(monkeypatch, recorder):
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 5, 21, 0, tzinfo=ZoneInfo("Asia/Taipei"))  # Saturday
     main.catch_up_missed_jobs(now)
-    assert recorder.calls == []
+    assert [c[0] for c in recorder.calls] == ["open_check"]
+
+
+def test_dispatch_runs_open_check_on_data_role(monkeypatch, recorder):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    main.run_scheduled_job("open_check")
+    assert [c[0] for c in recorder.calls] == ["open_check"]
+    assert config.scheduler_may_push("open_check") is False
 
 
 def test_scheduler_thread_not_started_when_off(monkeypatch):
@@ -332,7 +344,7 @@ def test_catch_up_midday_only_in_tail_window(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 22, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
-    assert [c[0] for c in recorder.calls] == ["morning", "midday"]
+    assert [c[0] for c in recorder.calls] == ["open_check", "morning", "midday"]
     assert recorder.calls[-1][1]["skip_if_done"] is True
 
 

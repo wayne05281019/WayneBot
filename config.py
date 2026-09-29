@@ -247,7 +247,7 @@ def scheduler_role() -> str:
 def scheduler_owns(job: str) -> bool:
     """這個行程要不要跑該 job 的「算數」。
 
-    data／full：常駐跑 morning／midday／fuse／evening／typhoon。
+    data／full：常駐跑 morning／midday／fuse／evening／typhoon／open_check。
     是否寄 Telegram 另看 scheduler_may_push（與 owns 分開，避免以為 owns＝可寄）。
     GHA 行程不設 WAYNE_SCHEDULER_ROLE=data 常駐迴圈；它走 --once 算數，靠
     WAYNE_SCREEN_NOTIFY=0 禁寄（見 assert_gha_screen_muted）。

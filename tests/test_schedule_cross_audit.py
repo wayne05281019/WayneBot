@@ -75,6 +75,7 @@ def test_render_data_role_pushes_morning(monkeypatch):
 
 def test_main_scheduler_slots_match_clocks():
     src = _read("main.py")
+    assert '(3, 0, "open_check")' in src
     assert '(6, 30, "morning")' in src
     assert '(12, 45, "midday")' in src
     assert '(16, 30, "fuse")' in src

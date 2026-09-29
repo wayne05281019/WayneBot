@@ -476,9 +476,18 @@ def catch_up_missed_jobs(now=None) -> None:
     from main_runner import MainRunner
 
     now = now or _taipei_now()
-    if now.weekday() >= 5:
-        return
     mins = now.hour * 60 + now.minute
+    need_open_check = scheduler_owns("open_check") and mins >= 3 * 60
+    if now.weekday() >= 5:
+        # 週末仍補深夜開盤查核（查週一／週日），其他盤中排程略過。
+        if need_open_check:
+            runner = MainRunner()
+            logger.info("補跑：已過台灣 03:00，若深夜開盤查核沒落檔就補跑")
+            try:
+                runner.run_nightly_open_check(now=now)
+            except Exception:
+                logger.exception("補跑深夜開盤查核失敗（不擋）")
+        return
     need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
     # 尾盤只在 12:45–13:30 補寄。過了尾盤「現在要做的事」已過期；晚上重開不准再丟。
@@ -487,9 +496,15 @@ def catch_up_missed_jobs(now=None) -> None:
         and (12 * 60 + 45) <= mins < (13 * 60 + 30)
     )
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
-    if not any((need_fuse, need_morning, need_midday, need_evening)):
+    if not any((need_fuse, need_morning, need_midday, need_evening, need_open_check)):
         return
     runner = MainRunner()
+    if need_open_check:
+        logger.info("補跑：已過台灣 03:00，若深夜開盤查核沒落檔就補跑")
+        try:
+            runner.run_nightly_open_check(now=now)
+        except Exception:
+            logger.exception("補跑深夜開盤查核失敗（不擋）")
     if need_fuse:
         logger.info("補跑：已過台灣 16:30，若盤後融合沒成功就補跑")
         runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
@@ -590,9 +605,14 @@ def run_scheduled_job(kind: str) -> None:
         runner.run_evening_screen(skip_if_done=True, notify=False)
     elif kind == "typhoon":
         runner.run_typhoon_peek()
+    elif kind == "open_check":
+        try:
+            runner.run_nightly_open_check()
+        except Exception:
+            logger.exception("排程 open_check 失敗（不擋）")
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
-    if kind in ("morning", "midday", "fuse", "evening", "typhoon"):
+    if kind in ("morning", "midday", "fuse", "evening", "typhoon", "open_check"):
         try:
             from biaoke_ingest import run_biaoke_ingest_quiet
 
@@ -629,6 +649,7 @@ def start_daily_scheduler():
 
         now = _taipei_now()
         slots = (
+            (3, 0, "open_check"),
             (6, 30, "morning"),
             (12, 45, "midday"),
             (16, 30, "fuse"),
@@ -640,7 +661,10 @@ def start_daily_scheduler():
         for day_off in range(0, 8):
             day = now + timedelta(days=day_off)
             for hour, minute, kind in slots:
-                if kind == "typhoon":
+                if kind == "open_check":
+                    # 每天都查明日開否（含週末：週日查週一、週六查週日休市）。
+                    pass
+                elif kind == "typhoon":
                     if day.weekday() == 5:
                         continue
                 elif day.weekday() >= 5:
@@ -669,7 +693,9 @@ def start_daily_scheduler():
             time.sleep(wait)
             try:
                 now = _taipei_now()
-                if kind == "typhoon":
+                if kind == "open_check":
+                    pass
+                elif kind == "typhoon":
                     if now.weekday() == 5:
                         continue
                 elif now.weekday() >= 5:

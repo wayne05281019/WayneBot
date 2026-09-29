@@ -1315,7 +1315,11 @@ class MainRunner:
 
     def run_morning_screen(self, skip_if_done: bool = False, notify: bool = True) -> bool:
         from import_health import latest_complete_quote_date
-        from tw_holidays import closed_tw_session, refresh_tw_typhoon_halt
+        from tw_holidays import (
+            closed_tw_session,
+            load_tw_open_check,
+            refresh_tw_typhoon_halt,
+        )
 
         try:
             typh = refresh_tw_typhoon_halt(self.db_path)
@@ -1323,6 +1327,27 @@ class MainRunner:
         except Exception as e:
             logger.warning("今早北市停班略過：%s", e)
         closed = closed_tw_session(db_path=self.db_path)
+        try:
+            # 對質深夜 03:00 落檔：休市日不寄；開市日（含連假後第一天）必走推播路徑。
+            today_ymd = self.today_str
+            prior = load_tw_open_check(today_ymd, self.db_path)
+            if prior is not None:
+                prior_open = bool(prior.get("is_open"))
+                live_open = closed is None
+                if prior_open != live_open:
+                    logger.info(
+                        "今早開市對質：深夜查核 is_open=%s 與現況 closed=%s 不一致，以現況為準",
+                        prior_open,
+                        bool(closed),
+                    )
+                elif not prior_open:
+                    logger.info(
+                        "今早開市對質：深夜已記 %s 休市（%s），與現況一致",
+                        today_ymd,
+                        prior.get("name_zh") or prior.get("kind"),
+                    )
+        except Exception as e:
+            logger.warning("今早開市對質略過：%s", e)
         if closed:
             # 休市紀錄用獨立鍵，不准寫進 screen-{as_of}，否則連假後開市日 skip_if_done 誤擋。
             ymd = str(closed.get("ymd") or "").strip() or "none"
@@ -1528,6 +1553,61 @@ class MainRunner:
 
         out = refresh_tw_typhoon_halt(self.db_path)
         logger.info("人事行政總處北市停班：%s", out)
+        return bool(out.get("ok"))
+
+    def run_nightly_open_check(self, now=None, skip_if_done: bool = True) -> bool:
+        """台北約 03:00：刷新年曆、查明日台股開否、落檔。失敗不擋 bot。
+
+        開市日早報仍靠 06:30 run_morning_screen；休市用 screen-closed-*。
+        這裡只預先對齊年曆與明日開否，讓連假後第一個開市日不會靠人提醒。
+        """
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+
+        from tw_holidays import load_tw_open_check, run_nightly_tomorrow_open_check
+
+        tw = ZoneInfo("Asia/Taipei")
+        if now is None:
+            from config import taipei_now
+
+            dt = taipei_now()
+        elif getattr(now, "tzinfo", None) is None:
+            dt = now.replace(tzinfo=tw)
+        else:
+            dt = now.astimezone(tw)
+        target = (dt + timedelta(days=1)).strftime("%Y%m%d")
+        key = f"open-check-{target}"
+        if skip_if_done:
+            try:
+                if self.pipeline_status(key) == "success" and load_tw_open_check(
+                    target, self.db_path
+                ):
+                    logger.info("深夜開盤查核 %s 已落檔，略過", key)
+                    return True
+            except Exception:
+                pass
+        try:
+            out = run_nightly_tomorrow_open_check(self.db_path, now=dt)
+        except Exception as e:
+            logger.warning("深夜明日開盤查核失敗（不擋）：%s", e, exc_info=True)
+            return False
+        status = out.get("status") or {}
+        target = str(status.get("target_ymd") or target).strip() or "none"
+        key = f"open-check-{target}"
+        try:
+            note = (
+                f"tomorrow {target} "
+                f"{'open' if status.get('is_open') else 'closed'} "
+                f"{status.get('kind') or ''} {status.get('name_zh') or ''}"
+            ).strip()
+            self._mark_pipeline(
+                "success" if out.get("ok") else "incomplete",
+                note[:500],
+                run_date=key,
+            )
+        except Exception as e:
+            logger.warning("深夜開盤查核落 pipeline 略過：%s", e)
+        logger.info("深夜明日開盤查核：%s", out)
         return bool(out.get("ok"))
 
     def run_pipeline(self, skip_if_done: bool = False) -> bool:
