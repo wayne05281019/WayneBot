@@ -678,17 +678,30 @@ def start_daily_scheduler():
         return best
 
     def _loop():
-        try:
-            catch_up_missed_jobs()
-        except Exception:
-            logger.exception("補跑錯過的排程失敗")
-
+        # 長睡若被前一檔拖過 06:30，下一檔要到 12:45 才醒，開市日早報會漏。
+        # 每輪先補跑、睡眠切片，漏了就在下一分鐘內補寄（§14）。
+        _slice_s = 60.0
         while True:
+            try:
+                catch_up_missed_jobs()
+            except Exception:
+                logger.exception("補跑錯過的排程失敗")
+
             nxt = _next_slot()
             if not nxt:
-                time.sleep(3600)
+                time.sleep(_slice_s)
                 continue
             wait, kind, when = nxt
+            if wait > _slice_s + 5.0:
+                logger.info(
+                    "排程：約 %.0f 秒後台灣 %s %s（每 %.0f 秒核對補跑）",
+                    wait,
+                    when.strftime("%m/%d %H:%M"),
+                    kind,
+                    _slice_s,
+                )
+                time.sleep(_slice_s)
+                continue
             logger.info("排程：約 %.0f 秒後台灣 %s %s", wait, when.strftime("%m/%d %H:%M"), kind)
             time.sleep(wait)
             try:
