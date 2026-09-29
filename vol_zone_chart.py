@@ -59,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 9
+_VZ_PAINT_VER = 11
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -119,29 +119,70 @@ def _label_ma_left(
     color: str,
     face: str,
 ) -> None:
-    """月線／季線標在大圖偏左：可貼均線，但標盒不准壓到附近 K 高低。"""
+    """月線／季線標在大圖偏左：可貼均線；標盒與覆蓋的每一根 K 高低都不准相交。"""
     ok = np.flatnonzero(np.isfinite(vals) & (vals > 0))
     if ok.size == 0 or len(xs) == 0:
         return
     n = len(xs)
     y0, y1 = ax.get_ylim()
     span = max(float(y1 - y0), 1.0)
-    # 標盒大約佔軸高 5.5%；左右各約 2.5 根，附近 K 包絡要讓得出這塊空
-    half_h = span * 0.028
-    pad = span * 0.012
-    lo_i = max(0, int(n * 0.04))
-    hi_i = max(lo_i + 1, int(n * 0.28))
+    # 標盒半高按實渲偏大估（字級 11＋round pad）；左右約蓋 2.0 根
+    half_h = span * 0.052
+    pad = span * 0.014
+    x_half = 2.0
+    lo_i = max(0, int(n * 0.03))
+    hi_i = max(lo_i + 1, int(n * 0.32))
 
-    def _local_hl(jj: int) -> tuple[float, float]:
-        i0 = max(0, jj - 2)
-        i1 = min(n - 1, jj + 2)
-        hi_w = highs[i0 : i1 + 1]
-        lo_w = lows[i0 : i1 + 1]
+    def _cover_range(x_lab: float) -> tuple[int, int]:
+        j0 = max(0, int(np.floor(x_lab - x_half)))
+        j1 = min(n - 1, int(np.ceil(x_lab + x_half)))
+        return j0, j1
+
+    def _clear_of_bars(x_lab: float, y_lab: float) -> bool:
+        """標盒 [y±half_h] 與覆蓋區間內每一根 K 都不相交。"""
+        j0, j1 = _cover_range(x_lab)
+        y_bot, y_top = y_lab - half_h, y_lab + half_h
+        for k in range(j0, j1 + 1):
+            hk = float(highs[k]) if np.isfinite(highs[k]) else np.nan
+            lk = float(lows[k]) if np.isfinite(lows[k]) else np.nan
+            if not (np.isfinite(hk) and np.isfinite(lk)):
+                continue
+            if y_bot < hk + pad and y_top > lk - pad:
+                return False
+        return True
+
+    def _min_gap(x_lab: float, y_lab: float) -> float:
+        j0, j1 = _cover_range(x_lab)
+        gap = span
+        y_bot, y_top = y_lab - half_h, y_lab + half_h
+        for k in range(j0, j1 + 1):
+            hk = float(highs[k]) if np.isfinite(highs[k]) else np.nan
+            lk = float(lows[k]) if np.isfinite(lows[k]) else np.nan
+            if not (np.isfinite(hk) and np.isfinite(lk)):
+                continue
+            if y_lab >= hk:
+                gap = min(gap, y_bot - hk)
+            elif y_lab <= lk:
+                gap = min(gap, lk - y_top)
+            else:
+                return -1.0
+        return float(gap)
+
+    def _trials_for(jj: int, yj: float, xj: float) -> list[float]:
+        """貼線優先；否則推到覆蓋區最低／最高外側（季線那種空檔）。"""
+        j0, j1 = _cover_range(xj)
+        hi_w = highs[j0 : j1 + 1]
+        lo_w = lows[j0 : j1 + 1]
         loc_hi = float(np.nanmax(hi_w)) if np.isfinite(hi_w).any() else np.nan
         loc_lo = float(np.nanmin(lo_w)) if np.isfinite(lo_w).any() else np.nan
-        return loc_hi, loc_lo
+        out = [yj]
+        if np.isfinite(loc_lo):
+            out.append(loc_lo - half_h - pad)
+        if np.isfinite(loc_hi):
+            out.append(loc_hi + half_h + pad)
+        return out
 
-    best = None  # (score, x, y) 分數越大越好：空隙大、偏左
+    best = None  # (score, x, y)
     for j in ok:
         jj = int(j)
         if jj < lo_i or jj > hi_i:
@@ -149,52 +190,43 @@ def _label_ma_left(
         yj = float(vals[jj])
         if not np.isfinite(yj):
             continue
-        loc_hi, loc_lo = _local_hl(jj)
-        if not (np.isfinite(loc_hi) and np.isfinite(loc_lo)):
-            continue
-        # 標貼在均線上：均線必須整段離開附近 K，且標盒半高不侵入
-        if yj >= loc_hi + half_h + pad:
-            y_lab = yj
-            gap = yj - loc_hi
-        elif yj <= loc_lo - half_h - pad:
-            y_lab = yj
-            gap = loc_lo - yj
-        elif yj > (loc_hi + loc_lo) * 0.5:
-            # 均線穿 K：把標推到附近高點上方空隙（仍偏左）
-            y_lab = loc_hi + half_h + pad
-            gap = y_lab - loc_hi
-            if abs(y_lab - yj) > span * 0.10:
+        xj = float(xs[jj])
+        for y_lab in _trials_for(jj, yj, xj):
+            # 准許離線稍遠，優先不壓 K（月線常貼價）
+            if abs(y_lab - yj) > span * 0.18:
                 continue
-        else:
-            y_lab = loc_lo - half_h - pad
-            gap = loc_lo - y_lab
-            if abs(y_lab - yj) > span * 0.10:
+            yf = (y_lab - y0) / span
+            if yf < 0.11 or yf > 0.90:
                 continue
-        yf = (y_lab - y0) / span
-        if yf < 0.12 or yf > 0.90:
-            continue
-        # 再確認標盒不壓附近 K
-        if (y_lab - half_h) < loc_hi and (y_lab + half_h) > loc_lo:
-            continue
-        left_bonus = (hi_i - jj) / max(hi_i - lo_i, 1)
-        score = gap / span + 0.35 * left_bonus
-        cand = (score, float(xs[jj]), float(y_lab))
-        if best is None or cand[0] > best[0]:
-            best = cand
+            if not _clear_of_bars(xj, y_lab):
+                continue
+            gap = _min_gap(xj, y_lab)
+            if gap < pad:
+                continue
+            left_bonus = (hi_i - jj) / max(hi_i - lo_i, 1)
+            on_line = 0.30 if abs(y_lab - yj) < span * 0.010 else 0.0
+            score = gap / span + 0.28 * left_bonus + on_line
+            cand = (score, xj, float(y_lab))
+            if best is None or cand[0] > best[0]:
+                best = cand
 
     if best is None:
-        # 最後手段：左端均線價，硬推到左窗第一段 K 包絡外側
-        jj = int(ok[min(3, ok.size - 1)])
+        # 最後手段：左端往覆蓋區外側推到不撞 K
+        jj = int(ok[min(4, ok.size - 1)])
         yj = float(vals[jj])
-        loc_hi, loc_lo = _local_hl(jj)
-        if np.isfinite(loc_hi) and yj >= (loc_hi + loc_lo) * 0.5:
-            y_lab = float(loc_hi + half_h + pad * 1.4)
-        elif np.isfinite(loc_lo):
-            y_lab = float(loc_lo - half_h - pad * 1.4)
-        else:
-            y_lab = yj
-        y_lab = min(max(y_lab, y0 + span * 0.14), y0 + span * 0.86)
-        x_lab = float(xs[jj])
+        xj = float(xs[jj])
+        j0, j1 = _cover_range(xj)
+        loc_lo = float(np.nanmin(lows[j0 : j1 + 1]))
+        loc_hi = float(np.nanmax(highs[j0 : j1 + 1]))
+        y_lab = loc_lo - half_h - pad * 2.0
+        if not _clear_of_bars(xj, y_lab):
+            y_lab = loc_hi + half_h + pad * 2.0
+        for _ in range(10):
+            if _clear_of_bars(xj, y_lab):
+                break
+            y_lab += (-half_h * 0.6 if y_lab < yj else half_h * 0.6)
+        y_lab = min(max(y_lab, y0 + span * 0.12), y0 + span * 0.88)
+        x_lab = xj
     else:
         _, x_lab, y_lab = best
 
