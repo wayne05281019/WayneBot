@@ -5816,6 +5816,9 @@ class WayneTelegramBot:
                             is_live=True,
                             latest_date=card.get("latest_date"),
                             generated_at=card.get("generated_at"),
+                            quote_source=str(card.get("quote_source") or ""),
+                            listing=str(card.get("listing") or ""),
+                            stock_id=str(card.get("stock_id") or code or ""),
                         )
                     live_note = f"（{clock_line}）" if clock_line else "（盤中即時）"
                 with open(card_path, "rb") as f:

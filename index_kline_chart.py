@@ -289,7 +289,10 @@ def render_index_kline_png(
     try:
         from decision_card_signals import format_card_query_stamp
 
-        date_s, clock_s = format_card_query_stamp(is_live=bool(live_px > 0), latest_date=last_d)
+        date_s, clock_s = format_card_query_stamp(
+            is_live=bool(live_px > 0),
+            latest_date=last_d,
+        )
         stamp = f"{date_s} {clock_s}"
     except Exception:
         stamp = ""

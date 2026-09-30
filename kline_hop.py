@@ -775,7 +775,13 @@ def render_kline_html(
         daily = packed.get("D") or []
         if daily:
             last_t = str(daily[-1].get("t") or "")[:8]
-        date_s, clock_s = format_card_query_stamp(is_live=bool(live), latest_date=last_t)
+        date_s, clock_s = format_card_query_stamp(
+            is_live=bool(live),
+            latest_date=last_t,
+            emerging=(market == "興櫃"),
+            market=str(market or ""),
+            stock_id=str(sid or ""),
+        )
         stamp = f"{date_s} {clock_s}　"
     except Exception:
         stamp = ""

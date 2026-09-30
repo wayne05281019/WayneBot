@@ -470,7 +470,7 @@ def _fmt_ymd_short(date_val) -> str:
     return d
 
 
-def _chips_header_stamp(date_val, *, generated_at=None) -> str:
+def _chips_header_stamp(date_val, *, generated_at=None, stock_id: str = "") -> str:
     """資料日＋星期＋這張圖產出時刻。"""
     try:
         from trading_calendar import format_md_weekday
@@ -481,7 +481,7 @@ def _chips_header_stamp(date_val, *, generated_at=None) -> str:
     try:
         from decision_card_signals import format_produced_clock
 
-        clock = format_produced_clock(generated_at=generated_at)
+        clock = format_produced_clock(generated_at=generated_at, stock_id=str(stock_id or ""))
     except Exception:
         clock = ""
     return f"{date_s}  {clock}".strip() if clock else date_s
@@ -596,7 +596,7 @@ def render_chips_png(
                 color="#FFFFFF", ha="center", va="center", zorder=4)
         ax.text(100 - pad_x - 2.6, y + head_h - 2.9, "WayneBot", fontproperties=_fp(11.5, "bold"),
                 color=C["navy_soft"], ha="right", va="center", zorder=3)
-        ax.text(100 - pad_x - 2.6, y + 2.78, _chips_header_stamp(rows[0].get("date"), generated_at=generated_at),
+        ax.text(100 - pad_x - 2.6, y + 2.78, _chips_header_stamp(rows[0].get("date"), generated_at=generated_at, stock_id=sid),
                 fontproperties=_fp(10.4, "bold"), color="#C5D0E8", ha="right", va="center", zorder=3)
 
         y -= gap + sub_h

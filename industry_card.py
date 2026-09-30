@@ -308,7 +308,10 @@ def _flow_lines(snap: Dict[str, Any]) -> List[str]:
     try:
         from decision_card_signals import format_produced_clock
 
-        produced = format_produced_clock()
+        produced = format_produced_clock(
+            stock_id=str(snap.get("stock_id") or ""),
+            listing=str(snap.get("listing") or ""),
+        )
     except Exception:
         produced = ""
     three = int(snap["three_net"] or 0)

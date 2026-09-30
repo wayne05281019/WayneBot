@@ -1353,7 +1353,21 @@ def _paint_volume_zone(
                 is_live = bool(pd.Series(view["is_live"]).fillna(False).iloc[-1])
             except Exception:
                 is_live = False
-        date_s, clock_s = format_card_query_stamp(is_live=is_live, latest_date=last_d)
+        qs = ""
+        if "quote_source" in view.columns:
+            try:
+                qs = str(view["quote_source"].dropna().iloc[-1] or "")
+            except Exception:
+                qs = ""
+        if not qs and isinstance(card, dict):
+            qs = str(card.get("quote_source") or "")
+        date_s, clock_s = format_card_query_stamp(
+            is_live=is_live,
+            latest_date=last_d,
+            quote_source=qs,
+            listing=str((card or {}).get("listing") or "") if isinstance(card, dict) else "",
+            stock_id=str(sid or ""),
+        )
         stamp = f"{date_s}　{clock_s}".strip()
     except Exception:
         stamp = ""

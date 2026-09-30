@@ -89,8 +89,50 @@ def _parse_stamp_dt(generated_at: datetime | str | None) -> datetime:
     return taipei_now()
 
 
-def _in_cash_session(dt: datetime) -> bool:
-    """上市櫃現股 09:00～13:30；13:30 當下已收盤。"""
+# 上市／上櫃現股 13:30 收；興櫃 15:00 收。圖戳收盤標籤分開，不准互套。
+_REGULAR_CLOSE_LABEL = "13:30收盤"
+_EMERGING_CLOSE_LABEL = "15:00收盤"
+
+
+def stamp_emerging_flag(
+    *,
+    emerging: bool | None = None,
+    quote_source: str = "",
+    listing: str = "",
+    market: str = "",
+    stock_id: str = "",
+    db_path: str | None = None,
+) -> bool:
+    """共用：這張有股價的圖要不要走興櫃收盤規則。線索優先於布林預設。"""
+    qs = str(quote_source or "").strip().lower()
+    if qs in ("emerging_quotes", "em", "emerging", "esb"):
+        return True
+    face = str(listing or market or "").strip()
+    if face.startswith("興櫃") or face.upper() in ("EM", "EMERGING", "ESB"):
+        return True
+    if emerging is True:
+        return True
+    sid = str(stock_id or "").strip()
+    if sid:
+        try:
+            from universe import stock_is_emerging
+
+            if stock_is_emerging(sid, db_path, quote_source=quote_source):
+                return True
+        except Exception:
+            pass
+    if emerging is False:
+        return False
+    return False
+
+
+def board_close_clock_label(*, emerging: bool = False) -> str:
+    """收盤後圖戳：一般股 13:30；興櫃 15:00。"""
+    return _EMERGING_CLOSE_LABEL if emerging else _REGULAR_CLOSE_LABEL
+
+
+def _in_board_session(dt: datetime, *, emerging: bool = False) -> bool:
+    """上市櫃 09:00～未滿 13:30；興櫃 09:00～未滿 15:00。收盤當下不算盤中。"""
     dt = taipei_now(dt)
     ymd = dt.strftime("%Y%m%d")
     try:
@@ -102,7 +144,13 @@ def _in_cash_session(dt: datetime) -> bool:
         if dt.weekday() >= 5:
             return False
     hm = dt.hour * 60 + dt.minute
-    return 9 * 60 <= hm < 13 * 60 + 30
+    end = 15 * 60 if emerging else 13 * 60 + 30
+    return 9 * 60 <= hm < end
+
+
+def _in_cash_session(dt: datetime) -> bool:
+    """上市櫃現股 09:00～13:30；13:30 當下已收盤。"""
+    return _in_board_session(dt, emerging=False)
 
 
 def format_card_query_stamp(
@@ -110,24 +158,61 @@ def format_card_query_stamp(
     is_live: bool,
     latest_date="",
     generated_at: datetime | str | None = None,
+    emerging: bool = False,
+    quote_source: str = "",
+    listing: str = "",
+    market: str = "",
+    stock_id: str = "",
+    db_path: str | None = None,
 ) -> Tuple[str, str]:
-    """高低卡／介紹圖右上角：日期帶星期，永遠配產出時刻。
+    """有股價的出圖右上角／頭欄：日期帶星期，永遠配查詢產出時刻（Asia/Taipei）。
 
-    盤中查詢（有即時列、台北 09:00～未滿 13:30）寫當下 HH:MM。
-    已過收盤、週末、或卡上是官方收盤列：一律「13:30收盤」，不要寫晚上查詢的時鐘。
+    該板盤中一律寫當下 HH:MM（一般股未滿 13:30；興櫃未滿 15:00），
+    與 is_live（價欄是不是即時列）分開：盤中不准改成收盤標籤。
+    興櫃 15:00 前不准套「13:30收盤」。
+    已過該板收盤或週末：寫該板收盤標籤，不要寫晚上牆鐘。
     """
+    em = stamp_emerging_flag(
+        emerging=emerging,
+        quote_source=quote_source,
+        listing=listing,
+        market=market,
+        stock_id=stock_id,
+        db_path=db_path,
+    )
     dt = _parse_stamp_dt(generated_at)
     date_s = format_ymd_slash_weekday(latest_date)
     if not date_s:
         date_s = format_ymd_slash_weekday(dt.strftime("%Y%m%d"))
-    if is_live and _in_cash_session(dt):
+    in_sess = _in_board_session(dt, emerging=em)
+    if in_sess:
+        # 該板盤中：一律查詢當下（一般股未滿 13:30；興櫃未滿 15:00）。
+        # is_live 只影響價欄是不是即時列，不准把盤中查詢時間改成收盤標籤。
         return date_s, f"盤中 {dt.strftime('%H:%M')}"
-    return date_s, "13:30收盤"
+    return date_s, board_close_clock_label(emerging=em)
 
 
-def format_produced_clock(*, generated_at: datetime | str | None = None) -> str:
-    """這張圖產出時刻：盤中 HH:MM，否則 13:30收盤。"""
-    _, clock = format_card_query_stamp(is_live=True, generated_at=generated_at)
+def format_produced_clock(
+    *,
+    generated_at: datetime | str | None = None,
+    emerging: bool = False,
+    quote_source: str = "",
+    listing: str = "",
+    market: str = "",
+    stock_id: str = "",
+    db_path: str | None = None,
+) -> str:
+    """這張圖產出時刻：盤中 HH:MM，否則該板收盤標籤。"""
+    _, clock = format_card_query_stamp(
+        is_live=True,
+        generated_at=generated_at,
+        emerging=emerging,
+        quote_source=quote_source,
+        listing=listing,
+        market=market,
+        stock_id=stock_id,
+        db_path=db_path,
+    )
     return clock
 
 

@@ -1124,6 +1124,9 @@ class NavigatorEngine:
             is_live=is_live,
             latest_date=latest["date"],
             generated_at=generated_at,
+            quote_source=quote_source,
+            stock_id=str(stock_id or ""),
+            db_path=self.db_path,
         )
         streak = 0
         for a in reversed(alert_tags):
@@ -3417,6 +3420,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             is_live=bool(card.get("is_live")),
             latest_date=card.get("latest_date"),
             generated_at=card.get("generated_at"),
+            emerging=_card_is_emerging(card),
+            quote_source=str(card.get("quote_source") or ""),
+            listing=str(card.get("listing") or ""),
+            stock_id=str(card.get("stock_id") or ""),
         )
     head_h = 5.7
     title_band, box_h, box_gap, pane_pad = 3.4, 7.4, 0.95, 1.05
@@ -4408,6 +4415,10 @@ def render_first_glance_png(
             is_live=bool(card.get("is_live")),
             latest_date=card.get("latest_date"),
             generated_at=card.get("generated_at"),
+            emerging=_card_is_emerging(card),
+            quote_source=str(card.get("quote_source") or ""),
+            listing=str(card.get("listing") or ""),
+            stock_id=str(card.get("stock_id") or ""),
         )
     badges = []
     for b in list(card.get("badges") or []):
@@ -6310,7 +6321,18 @@ def draw_from_ohlc(
         from decision_card_signals import format_card_query_stamp
 
         is_live = "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1])
-        date_s, clock_s = format_card_query_stamp(is_live=is_live, latest_date=last_d)
+        qs = ""
+        if "quote_source" in work.columns:
+            try:
+                qs = str(work["quote_source"].dropna().iloc[-1] or "")
+            except Exception:
+                qs = ""
+        date_s, clock_s = format_card_query_stamp(
+            is_live=is_live,
+            latest_date=last_d,
+            quote_source=qs,
+            stock_id=str(stock_id or ""),
+        )
         fig.text(
             0.985,
             0.985,
