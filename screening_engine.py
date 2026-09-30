@@ -2459,6 +2459,14 @@ def format_screening_payload(
                 head,
                 count_bit,
             )
+            # 三尺時間：早報昨收＋流動性 vs 查股／剛脫離零（不改公式）
+            if morning or key == "leave_zero":
+                try:
+                    from sanchi_clocks import sanchi_note_html
+
+                    head = head + "\n" + sanchi_note_html()
+                except Exception:
+                    pass
             first = False
         else:
             head = f"{head}　{count_bit}"

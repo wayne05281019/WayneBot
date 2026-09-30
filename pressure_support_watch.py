@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 
 from vol_zone_chart import VOL_ZONE_LOOKBACK, find_volume_zone, official_work
@@ -59,11 +60,15 @@ _LOOKBACK_CAL_DAYS = 120
 _SCREEN_TTL_SEC = 45.0
 _SCREEN_LOCK = threading.Lock()
 _SCREEN_CACHE: Dict[Tuple[Any, ...], Tuple[float, List[Dict[str, Any]]]] = {}
+# 同 as_of 日Ｋ框快取：換標籤不重讀庫（正確性不變）
+_FRAME_TTL_SEC = 60.0
+_FRAME_CACHE: Dict[Tuple[Any, ...], Tuple[float, Dict[str, pd.DataFrame]]] = {}
 
 
 def clear_pressure_screen_cache() -> None:
     with _SCREEN_LOCK:
         _SCREEN_CACHE.clear()
+        _FRAME_CACHE.clear()
 
 
 def tag_label(tag: str) -> str:
@@ -278,7 +283,11 @@ def _universe_ids(db_path: str) -> List[Tuple[str, str]]:
 def _load_frames(
     db_path: str, as_of: str, codes: Sequence[str]
 ) -> Dict[str, pd.DataFrame]:
-    """批量讀官方日Ｋ（daily_quotes + emerging_quotes），不含未收／假柱。"""
+    """批量讀官方日Ｋ（daily_quotes + emerging_quotes），不含未收／假柱。
+
+    庫內 date 已是 YYYYMMDD 字串；直接比對、略過 REPLACE，掃檔更快。
+    同 as_of 短快取：換標籤不重讀。
+    """
     codes = [str(c).strip() for c in codes if str(c).strip()]
     as_of = _ymd(as_of)
     if not codes or not as_of:
@@ -290,15 +299,22 @@ def _load_frames(
         ).strftime("%Y%m%d")
     except ValueError:
         lo = ""
+    cache_key = (str(db_path), as_of, lo)
+    now = time.monotonic()
+    with _SCREEN_LOCK:
+        hit = _FRAME_CACHE.get(cache_key)
+        if hit and now - hit[0] <= _FRAME_TTL_SEC and hit[1]:
+            return hit[1]
     conn = sqlite3.connect(db_path, timeout=60.0)
     frames: Dict[str, pd.DataFrame] = {}
     try:
         conn.execute("PRAGMA busy_timeout=15000;")
         placeholders = ",".join("?" * len(codes))
         params: List[Any] = list(codes) + [as_of]
-        extra = " AND REPLACE(date,'-','') <= ?"
+        # 官方庫 date＝YYYYMMDD；不用 REPLACE 才能吃到索引／少掃字
+        extra = " AND date <= ?"
         if lo:
-            extra += " AND REPLACE(date,'-','') >= ?"
+            extra += " AND date >= ?"
             params.append(lo)
         for table in ("daily_quotes", "emerging_quotes"):
             try:
@@ -317,7 +333,7 @@ def _load_frames(
             if df is None or df.empty:
                 continue
             df["date"] = df["date"].astype(str).str.replace("-", "", regex=False).str[:8]
-            for sid, g in df.groupby("stock_id"):
+            for sid, g in df.groupby("stock_id", sort=False):
                 key = str(sid)
                 if key in frames:
                     continue  # 已有上市櫃就不用興櫃撞號
@@ -327,7 +343,229 @@ def _load_frames(
                 frames[key] = g
     finally:
         conn.close()
+    with _SCREEN_LOCK:
+        _FRAME_CACHE[cache_key] = (time.monotonic(), frames)
     return frames
+
+
+def _bars_from_frame(
+    df: pd.DataFrame,
+) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+    """篩選用：一次抽出 numpy 柱，避開 pandas 逐格取值。"""
+    if df is None or getattr(df, "empty", True):
+        return None
+    need = ("open", "high", "low", "close", "volume", "date")
+    if any(c not in df.columns for c in need):
+        return None
+    dates = df["date"].astype(str).str.replace("-", "", regex=False).str[:8].to_numpy()
+    o = pd.to_numeric(df["open"], errors="coerce").to_numpy(dtype=float, copy=False)
+    h = pd.to_numeric(df["high"], errors="coerce").to_numpy(dtype=float, copy=False)
+    l = pd.to_numeric(df["low"], errors="coerce").to_numpy(dtype=float, copy=False)
+    c = pd.to_numeric(df["close"], errors="coerce").to_numpy(dtype=float, copy=False)
+    v = pd.to_numeric(df["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float, copy=False)
+    if "is_live" in df.columns:
+        live = df["is_live"].fillna(False).astype(bool).to_numpy()
+    else:
+        live = np.zeros(len(df), dtype=bool)
+    if "source" in df.columns:
+        src = df["source"].astype(str).to_numpy()
+        bad_src = src == "biaoke_stock_day"
+    else:
+        bad_src = np.zeros(len(df), dtype=bool)
+    ok = (
+        (c > 0)
+        & (h > 0)
+        & (l > 0)
+        & (h >= l)
+        & np.isfinite(o)
+        & np.isfinite(h)
+        & np.isfinite(l)
+        & np.isfinite(c)
+        & (~live)
+        & (~bad_src)
+    )
+    dates, o, h, l, c, v = dates[ok], o[ok], h[ok], l[ok], c[ok], v[ok]
+    if len(c) == 0:
+        return None
+    order = np.argsort(dates, kind="mergesort")
+    dates, o, h, l, c, v = dates[order], o[order], h[order], l[order], c[order], v[order]
+    halt = (v <= 0) & (np.abs(h - l) <= 1e-8)
+    return dates, o, h, l, c, v, halt
+
+
+def _find_volume_zone_np(
+    dates: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    closes: np.ndarray,
+    vols: np.ndarray,
+    halt: np.ndarray,
+    *,
+    lookback: int = VOL_ZONE_LOOKBACK,
+) -> Optional[Dict[str, Any]]:
+    """與 vol_zone_chart.find_volume_zone 同準則（篩選略過除權切窗＝fast 路徑）。"""
+    n = len(closes)
+    if n < 2:
+        return None
+    end = n - 1
+    start = max(0, end - max(int(lookback or 0), 1))
+    last_close = float(closes[-1] or 0)
+    best_i = None
+    best_v = -1.0
+    active_i = None
+    active_v = -1.0
+    for i in range(start, end):
+        if bool(halt[i]):
+            continue
+        vv = float(vols[i] or 0)
+        if vv <= 0:
+            continue
+        hi = float(highs[i] or 0)
+        lo = float(lows[i] or 0)
+        if hi <= 0 or lo <= 0 or hi < lo:
+            continue
+        if vv > best_v:
+            best_v = vv
+            best_i = i
+        if hi >= last_close and vv > active_v:
+            active_v = vv
+            active_i = i
+    pick = active_i if active_i is not None else best_i
+    if pick is None:
+        return None
+    hi = float(highs[pick] or 0)
+    lo = float(lows[pick] or 0)
+    if hi <= 0 or lo <= 0 or hi < lo:
+        return None
+    return {
+        "i": int(pick),
+        "date": str(dates[pick] or ""),
+        "high": hi,
+        "low": lo,
+        "volume": float(vols[pick] or 0),
+        "active": bool(active_i is not None and pick == active_i),
+    }
+
+
+def _classify_bars_np(
+    dates: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    closes: np.ndarray,
+    vols: np.ndarray,
+    halt: np.ndarray,
+    zone: Dict[str, Any],
+    *,
+    tag: str,
+) -> Optional[Dict[str, Any]]:
+    """classify_bars 的 numpy 版；門檻與話筒排序欄一致。"""
+    if not zone:
+        return None
+    tag = normalize_tag(tag) or str(tag or "").strip()
+    hi = _px(zone.get("high"))
+    lo = _px(zone.get("low"))
+    zd = _ymd(zone.get("date"))
+    if hi <= 0 or lo <= 0 or hi < lo or not zd:
+        return None
+    n = len(closes)
+    i = n - 1
+    if bool(halt[i]):
+        return None
+    cl = float(closes[i] or 0)
+    hi_bar = float(highs[i] or 0)
+    last_d = _ymd(dates[i])
+    if cl <= 0 or not last_d or last_d <= zd:
+        return None
+
+    def _same_zone_streak_in_band() -> int:
+        streak = 0
+        for k in range(i, -1, -1):
+            if bool(halt[k]):
+                break
+            dk = _ymd(dates[k])
+            if not dk or dk <= zd:
+                break
+            ck = float(closes[k] or 0)
+            if lo <= ck <= hi:
+                streak += 1
+            else:
+                break
+        return streak
+
+    def _stand_streak() -> Tuple[int, bool]:
+        streak = 0
+        for k in range(i, -1, -1):
+            if bool(halt[k]):
+                break
+            dk = _ymd(dates[k])
+            if not dk or dk <= zd:
+                break
+            ck = float(closes[k] or 0)
+            if ck >= lo:
+                streak += 1
+            else:
+                break
+        if streak <= 0:
+            return 0, False
+        start = i - streak + 1
+        ok = True
+        if start - 1 >= 0:
+            prev_d = _ymd(dates[start - 1])
+            if prev_d and prev_d > zd and not bool(halt[start - 1]):
+                if float(closes[start - 1] or 0) >= lo:
+                    ok = False
+        return streak, ok
+
+    zone_vol = _px(zone.get("volume"))
+    last_vol = float(vols[i] or 0)
+    vol_ratio = (last_vol / zone_vol) if zone_vol > 0 and last_vol > 0 else 0.0
+    dist_pct = ((hi - cl) / hi * 100.0) if hi > 0 else 99.0
+    meta: Dict[str, Any] = {
+        "tag": tag,
+        "tag_label": tag_label(tag) or tag,
+        "zone_date": zd,
+        "pressure": hi,
+        "support": lo,
+        "close": cl,
+        "high": hi_bar,
+        "volume": int(last_vol),
+        "vol_ratio": round(vol_ratio, 4),
+        "dist_to_press_pct": round(dist_pct, 4),
+        "as_of": last_d,
+        "zone_active": bool(zone.get("active")),
+    }
+    if tag == TAG_SIDEWAYS:
+        if not (lo <= cl <= hi):
+            return None
+        streak = _same_zone_streak_in_band()
+        if streak != SIDEWAYS_N:
+            return None
+        meta["streak"] = streak
+        meta["why"] = f"同區橫盤滿{SIDEWAYS_N}根"
+        return meta
+    if tag == TAG_TEST_PRESS:
+        if hi_bar < hi * TEST_PRESS_TOUCH_MULT:
+            return None
+        if cl > hi or cl < lo:
+            return None
+        if dist_pct > TEST_PRESS_DIST_PCT + 1e-9:
+            return None
+        meta["streak"] = 1
+        thin = vol_ratio > 0 and vol_ratio < 0.35
+        meta["vol_thin_bonus"] = bool(thin)
+        meta["why"] = (
+            f"測壓貼壓{dist_pct:.2f}%" + ("、量縮加分" if thin else "")
+        )
+        return meta
+    if tag == TAG_STAND_SUPPORT:
+        streak, came = _stand_streak()
+        if streak != STAND_SUPPORT_W or not came:
+            return None
+        meta["streak"] = streak
+        meta["in_band"] = bool(cl <= hi)
+        meta["why"] = f"破撐回來連站{STAND_SUPPORT_W}根"
+        return meta
+    return None
 
 
 def _ex_events_for(sid: str, db_path: str, d0: str, d1: str) -> List[Dict[str, Any]]:
@@ -383,14 +621,32 @@ def classify_frame(
     sid: str = "",
     fast: bool = True,
 ) -> Optional[Dict[str, Any]]:
-    work = light_work(df) if fast else official_work(df)
+    """掃檔預設 numpy 快路徑（與舊 pandas 路徑門檻一致）；fast=False 才走除權切窗。"""
+    tag = normalize_tag(tag) or str(tag or "").strip()
+    if fast:
+        bars = _bars_from_frame(df)
+        if bars is None:
+            return None
+        dates, _o, highs, lows, closes, vols, halt = bars
+        if len(closes) < VOL_ZONE_LOOKBACK + SIDEWAYS_N + 2:
+            return None
+        zone = _find_volume_zone_np(
+            dates, highs, lows, closes, vols, halt, lookback=VOL_ZONE_LOOKBACK
+        )
+        if not zone:
+            return None
+        if _ymd(zone.get("date")) >= _ymd(dates[-1]):
+            return None
+        return _classify_bars_np(
+            dates, highs, lows, closes, vols, halt, zone, tag=tag
+        )
+    work = official_work(df)
     if work is None or work.empty or len(work) < VOL_ZONE_LOOKBACK + SIDEWAYS_N + 2:
         return None
     d0 = _ymd(work["date"].iloc[0])
     d1 = _ymd(work["date"].iloc[-1])
-    # 篩選預設略過逐檔除權息 HTTP；尺度切窗仍可用庫內已有事件（空列表＝不切）
     ex: List[Dict[str, Any]] = []
-    if sid and db_path and not fast:
+    if sid and db_path:
         ex = _ex_events_for(sid, db_path, d0, d1)
     zone = find_volume_zone(work, ex_events=ex or None)
     if not zone:

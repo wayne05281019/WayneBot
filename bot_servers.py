@@ -285,12 +285,24 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
 
 def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:
     title = f"{_stock_caption_name(card, code)}{live_note}"
-    return html_escape(_photo_sell_caption(title, card, fallback=title))
+    cap = html_escape(_photo_sell_caption(title, card, fallback=title))
+    try:
+        from sanchi_clocks import append_sanchi_to_caption
+
+        return append_sanchi_to_caption(cap, card)
+    except Exception:
+        return cap
 
 
 def _glance_photo_caption(base: str, card: dict | None) -> str:
-    """介紹圖圖說：只留如何賣；不要網頁走勢／點縮圖講義。"""
-    return _photo_sell_caption(base, card, fallback="")
+    """介紹圖圖說：只留如何賣；有藍▲時附三尺一句。"""
+    cap = _photo_sell_caption(base, card, fallback="")
+    try:
+        from sanchi_clocks import append_sanchi_to_caption
+
+        return append_sanchi_to_caption(cap, card)
+    except Exception:
+        return cap
 
 
 def _buy_holdings_prompt(code: str, lots=None) -> str:
@@ -3972,8 +3984,15 @@ class WayneTelegramBot:
                 "此刻沒有昨零今離的檔。" if live_on else "最近完整收沒有昨零今離的檔。"
             )
             extra = ""
+            try:
+                from sanchi_clocks import sanchi_note_html
+
+                extra = sanchi_note_html()
+            except Exception:
+                extra = ""
             if not is_tw_equity_session():
-                extra = f"<i>{leave_zero_closed_message()}</i>"
+                closed = f"<i>{leave_zero_closed_message()}</i>"
+                extra = f"{extra}\n{closed}" if extra else closed
             if not rows:
                 await message.reply_html(
                     self._leave_zero_case_html(
@@ -6318,6 +6337,12 @@ class WayneTelegramBot:
                 hub = self._hub_keyboard(code, em=is_em, news=news_stats)
             glance_cap = ""
             card_cap = _stock_caption_name(card, code)
+            try:
+                from sanchi_clocks import append_sanchi_to_caption
+
+                card_cap = append_sanchi_to_caption(card_cap, card)
+            except Exception:
+                pass
             vol_path_f = self._scratch_chart_path(self.charts_dir, code, "volzone", uid_key)
             vz_face = [VOL_ZONE_CAPTION_HEAD]
 
@@ -6335,7 +6360,12 @@ class WayneTelegramBot:
                     with_nav_signals=True,
                 )
                 if cap:
-                    vz_face[0] = cap
+                    try:
+                        from sanchi_clocks import append_sanchi_to_caption
+
+                        vz_face[0] = append_sanchi_to_caption(cap, card)
+                    except Exception:
+                        vz_face[0] = cap
                 return path
 
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "volzone": "大量區"}
