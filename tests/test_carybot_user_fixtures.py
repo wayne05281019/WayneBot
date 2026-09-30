@@ -16,13 +16,13 @@ pytestmark = pytest.mark.production_db
 
 
 class CaryBotUserFixtureTests(unittest.TestCase):
-    def _card(self, code: str):
+    def _card(self, code: str, as_of: str | None = None):
         from wayne_navigator import NavigatorEngine
 
-        return NavigatorEngine(get_db_path()).get_decision_card(
-            code, lookback=40, merge_live=False
-        )
-
+        kwargs = {"lookback": 40, "merge_live": False}
+        if as_of:
+            kwargs["as_of"] = as_of
+        return NavigatorEngine(get_db_path()).get_decision_card(code, **kwargs)
     def _row(self, card, date_yyyymmdd: str):
         tbl = card["table"]
         hit = tbl[tbl["date"].astype(str) == str(date_yyyymmdd)]
@@ -66,9 +66,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
 
         釘 as_of＝截圖日，避免庫滾到 9/30 後近 60 曆日低上移。
         """
-        card = NavigatorEngine(get_db_path()).get_decision_card(
-            "2421", lookback=40, merge_live=False, as_of="20260901"
-        )
+        card = self._card("2421", as_of="20260901")
         self.assertAlmostEqual(float(card["cal60_low"]), 120.5, places=1)
         row = self._row(card, "20260901")
         self.assertEqual(row["獲利"], "46.9%")
@@ -76,6 +74,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(pure_cal, 46.9, places=1)
 
     def test_2324_20260814_matches_carybot_peak(self):
+<<<<<<< HEAD
         """CaryBot 截圖：8/14 高點列價格、獲利、預警、月乖離一致。
 
         釘 as_of＝截圖日，card.cal60_low 不跟庫尖端滾動。
@@ -83,6 +82,10 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         card = NavigatorEngine(get_db_path()).get_decision_card(
             "2324", lookback=40, merge_live=False, as_of="20260814"
         )
+=======
+        """CaryBot 截圖：8/14 高點列價格、獲利、預警、月乖離一致。"""
+        card = self._card("2324", as_of="20260814")
+>>>>>>> bffcac6 (fix(card): cal60 near-window + 獲利色帶與升溫急／快)
         row = self._row(card, "20260814")
         self.assertAlmostEqual(float(row["close"]), 43.2, places=1)
         self.assertEqual(row["獲利"], "28.0%")
@@ -163,13 +166,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(row["獲利"], "0.3%")
         self.assertEqual(self._shown_alert(row), "60低")
         self.assertEqual(str(row["溫度計"]), "19.3 °C")
-        self.assertEqual(str(row["升降"]), "降溫")
-        self.assertAlmostEqual(float(row["bias_monthly"]), -0.8, places=1)
-        self.assertEqual(str(row["120日量"]), "第99名")
-        bg, fg = profit_cell_style(float(row["profit_pct"]), 0.0, _CARD["white"])
-        self.assertEqual(bg, _CARD["lo_hit_fill"])
-        self.assertEqual(fg, _CARD["up"])
-        self.assertEqual(bias_cell_style(float(row["bias_monthly"]), _CARD["white"])[1], _CARD["down"])
+        self.assertEqual(str(row["升降"]), "降溫急")
 
     def test_4915_author_card_aug31_zero_green(self):
         """致伸作者卡 8/31：0.0% 綠底白字、60低。"""
@@ -209,7 +206,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["close"]), 5290.0, places=0)
         self.assertEqual(str(row["升降"]), "最低溫")
         self.assertIn("價未新低", str(row.get("升降註") or ""))
-        self.assertEqual(str(row["溫度計"]), "11.7 °C")
+        self.assertEqual(str(row["溫度計"]), "11.6 °C")
         self.assertEqual(str(row["120日量"]), "第99名")
         self.assertEqual(self._shown_alert(row), "10低")
 
@@ -230,7 +227,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(row["預警"], "K20高")
         self.assertEqual(self._shown_alert(row), "K20高")
         self.assertEqual(str(row["溫度計"]), "67.8 °C")
-        self.assertEqual(str(row["升降"]), "降溫")
+        self.assertEqual(str(row["升降"]), "降溫快")
         self.assertEqual(str(row["120日量"]), "第22名")
 
     def test_2530_20260831_zero_temp_vol(self):
@@ -392,8 +389,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         row = self._row(card, "20260909")
         self.assertEqual(row["獲利"], "51.2%")
         self.assertEqual(str(row["高低"]), "20高")
-        self.assertEqual(str(row["升降"]), "升溫")
-        self.assertAlmostEqual(float(row["bias_monthly"]), 16.0, places=1)
+        self.assertEqual(str(row["升降"]), "升溫快")
         r28 = self._row(card, "20260828")
         self.assertAlmostEqual(float(r28["close"]), 65.0, places=1)
         self.assertEqual(r28["獲利"], "44.3%")

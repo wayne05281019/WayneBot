@@ -118,6 +118,32 @@ def test_frame_for_cal60_profit_near_window_matches_card_2383():
 
 
 @pytest.mark.production_db
+def test_2383_lookback40_still_cal60_not_false_adj():
+    """表列 lookback=40 仍用近窗 20 判還原；不准啟發式跳空把 4100 抬成假 7.6%。"""
+    from config import get_db_path
+
+    db = get_db_path()
+    conn = sqlite3.connect(db)
+    n = conn.execute(
+        "SELECT COUNT(*) FROM daily_quotes WHERE stock_id='2383' AND date='20260924'"
+    ).fetchone()[0]
+    conn.close()
+    if not n:
+        pytest.skip("no 2383 20260924")
+    card20 = NavigatorEngine(db).get_decision_card(
+        "2383", lookback=20, as_of="20260924", merge_live=False
+    )
+    card40 = NavigatorEngine(db).get_decision_card(
+        "2383", lookback=40, as_of="20260924", merge_live=False
+    )
+    assert abs(float(card20["gain_pct"]) - 23.2) < 0.15
+    assert abs(float(card40["gain_pct"]) - 23.2) < 0.15
+    assert abs(float(card40["cal60_low"]) - 4100.0) < 0.5
+    row = card40["table"].iloc[0]
+    assert str(row["獲利"]) == "23.2%"
+
+
+@pytest.mark.production_db
 def test_money_flow_gain_matches_card_after_big_split():
     """資金輪動代表股獲利須跟高低卡同一套還原；不准再假顯 0.5%。"""
     from config import get_db_path

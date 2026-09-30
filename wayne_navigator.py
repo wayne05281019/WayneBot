@@ -513,15 +513,20 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     return out, notes
 
 
+# 還原／未還原近窗：跟表列 lookback 脫鉤。看太長會吃到啟發式跳空（非官方除權），
+# 把舊谷底抬高 → 獲利假顯成貼月低（2383 lookback=40 → 7.6% 而非 cal60 23.2%）。
+CAL60_RAW_NEAR_WINDOW = 20
+
+
 def frame_for_cal60_profit(
     df: pd.DataFrame,
     db_path: str = None,
     *,
-    lookback: int = 20,
+    lookback: int = CAL60_RAW_NEAR_WINDOW,
 ) -> pd.DataFrame:
     """海選／決策卡／資金輪動共用：算 cal60 獲利要用哪一套收盤。
 
-    跟 get_decision_card 同一近窗判斷（預設 lookback=20）：
+    跟 get_decision_card 同一近窗判斷（固定 CAL60_RAW_NEAR_WINDOW＝20）：
     近窗還原前後相對差 <2% → 還原前（CaryBot／小額除息）；
     近窗出現大額除權／減資 → 還原後，避免新面額假顯 0%。
     不准用全歷史 rel.max()（會把 2383 這類卡上未還原獲利誤切成還原列）。
@@ -532,7 +537,10 @@ def frame_for_cal60_profit(
     close_raw = pd.to_numeric(raw["close"], errors="coerce")
     adj, _notes = normalize_ohlc(raw, db_path)
     adj_close = pd.to_numeric(adj["close"], errors="coerce")
-    tail_n = min(max(int(lookback or 20), 1), len(raw))
+    near = int(lookback or CAL60_RAW_NEAR_WINDOW)
+    tail_n = min(max(near, 1), len(raw))
+    # 呼叫端若誤傳表列 lookback（40），仍鎖近窗上限，避免假還原。
+    tail_n = min(tail_n, int(CAL60_RAW_NEAR_WINDOW))
     tail_raw = close_raw.iloc[-tail_n:]
     denom = tail_raw.mask(tail_raw == 0)
     rel = ((adj_close.iloc[-tail_n:] - tail_raw).abs() / denom).fillna(0.0)
@@ -749,11 +757,14 @@ class NavigatorEngine:
             df, xq_notes = normalize_ohlc(df, self.db_path)
         # 小額除息不要改高低卡 20 日表（6770 8/27 除息 0.23 元，Cary 仍寫 70.20）。
         # 大額除權／減資才用還原列，避免 6669 那種 7800／-200%。
+        # 近窗判斷必須跟 frame_for_cal60_profit 同一把（固定 20 根），不准綁表列
+        # lookback：lookback=40 會吃到更早的啟發式跳空（2383 20260803 ×1.1541），
+        # 把 7/29 官方 4100 抬成 ~4732 → 獲利假顯 7.6%（真 cal60＝23.2%）。
         raw_px = close_raw.astype(float)
         adj_px = df["close"].astype(float)
-        tail_n = min(int(lookback), len(df))
-        tail_raw = raw_px.iloc[-tail_n:]
-        tail_adj = adj_px.iloc[-tail_n:]
+        near_n = min(int(CAL60_RAW_NEAR_WINDOW), len(df))
+        tail_raw = raw_px.iloc[-near_n:]
+        tail_adj = adj_px.iloc[-near_n:]
         denom = tail_raw.mask(tail_raw == 0)
         rel = ((tail_adj - tail_raw).abs() / denom).fillna(0.0)
         use_raw_table = float(rel.max() or 0) < 0.02
@@ -2186,6 +2197,11 @@ def _temp_heat_draw(temp_n, base: str):
 
 
 def _profit_heat_draw(profit, prev_profit, base: str):
+    """獲利格繪製色：數字仍走 cal60；色帶連續讓同一欄讀起來比較順。
+
+    0.0% 貼零綠、0.x% 剛離零實綠；1%～未滿 8% 極淡粉漸層（不再整段死白）；
+    ≥8% 粉紅→深紅連續熱圖。不准為好看改％。
+    """
     C = _CARD
     bg, fg = profit_cell_style(profit, prev_profit, base)
     try:
@@ -2195,9 +2211,18 @@ def _profit_heat_draw(profit, prev_profit, base: str):
     # 0.0% 貼零、0.x% 脫離零：整格綠底，字色走對比規則。
     if bg in (C["lo_fill"], C["lo_hit_fill"], C["pill_lo"]) or p <= 0.05:
         return bg, cell_ink_on_wash(bg, fg)
-    # 1%～未滿 8%：作者低檔卡是白底紅字，不要淡粉熱圖。
+    # 1%～未滿 8%：極淡粉連續（對齊作者卡「有漲幅就看得出深淺」），仍紅字。
     if p < 8:
-        return bg, cell_ink_on_wash(bg, fg)
+        heat_bg, heat_fg = _heat_pair(
+            p,
+            (
+                (1.0, "#FFF8F9", C["up"]),
+                (3.0, "#FFF0F3", C["up"]),
+                (5.5, "#FFE4EC", C["up"]),
+                (7.9, "#FFEBEE", C["up"]),
+            ),
+        )
+        return heat_bg, heat_fg
     # 高檔連續粉紅→深紅（63% vs 115% 不能同一死色）。
     heat_bg, heat_fg = _heat_pair(
         p,
@@ -2810,6 +2835,13 @@ def _price_at_window_high(i: int, closes: list, w0: int, tol: float = 0.002) -> 
         return False
 
 
+# 溫度升降：日對日 °C 變化分階（顯示用，不是買訊）。
+# 門檻取樣自多檔決策卡 Δ 分布：升溫中位≈5.7、p80≈13.4。
+TEMP_WARM_EPS = 0.25
+TEMP_WARM_FAST_DELTA = 5.0
+TEMP_WARM_SHARP_DELTA = 12.0
+
+
 def compute_temp_trend_labels(
     temp_nums: list,
     closes: list | None = None,
@@ -2819,6 +2851,7 @@ def compute_temp_trend_labels(
 
     低檔：溫度創窗內低 → 主標「最低溫」；股價未創低則註記「價未新低」。
     高檔：股價創窗內高但溫度已降、未創新高 → 降溫＋價溫背離（領先指標，少追）。
+    升溫／降溫依日對日 °C 變化分「急／快／普通」（見 TEMP_WARM_* 常數）。
     """
     labels: list = []
     notes: list = []
@@ -2839,6 +2872,7 @@ def compute_temp_trend_labels(
         tol = 0.2
         at_max = t >= wmax - tol
         at_min = t <= wmin + tol
+        delta = float(t) - float(prev)
         if at_max and not at_min:
             labels.append("最高溫")
             notes.append("")
@@ -2846,10 +2880,28 @@ def compute_temp_trend_labels(
             # CaryBot 這格寫「最低溫」；價未新低只當註記，不另造「溫度壓縮」主標。
             labels.append("最低溫")
             notes.append("價未新低" if closes and not _price_at_window_low(i, closes, w0) else "")
-        elif t > prev + 0.25:
+        elif delta >= TEMP_WARM_SHARP_DELTA:
+            labels.append("升溫急")
+            notes.append("")
+        elif delta >= TEMP_WARM_FAST_DELTA:
+            labels.append("升溫快")
+            notes.append("")
+        elif delta > TEMP_WARM_EPS:
             labels.append("升溫")
             notes.append("")
-        elif t < prev - 0.25:
+        elif delta <= -TEMP_WARM_SHARP_DELTA:
+            labels.append("降溫急")
+            note = ""
+            if closes and _price_at_window_high(i, closes, w0):
+                note = "價溫背離"
+            notes.append(note)
+        elif delta <= -TEMP_WARM_FAST_DELTA:
+            labels.append("降溫快")
+            note = ""
+            if closes and _price_at_window_high(i, closes, w0):
+                note = "價溫背離"
+            notes.append(note)
+        elif delta < -TEMP_WARM_EPS:
             labels.append("降溫")
             note = ""
             if closes and _price_at_window_high(i, closes, w0):
@@ -2862,7 +2914,7 @@ def compute_temp_trend_labels(
 
 
 def temp_trend_cell_style(label: str, base: str):
-    """升降欄：升溫淺紅粉、最高溫最深紅；降溫淺綠、最低溫深綠。字走深底白／淺底深。"""
+    """升降欄：升溫／升溫快／升溫急粉紅分階；最高溫最深紅；降溫綠分階。字走深底白／淺底深。"""
     C = _CARD
     base = base or C["white"]
     lab = str(label or "No")
@@ -2871,6 +2923,12 @@ def temp_trend_cell_style(label: str, base: str):
     if lab == "最高溫":
         bg = C["pill_hi"]
         return bg, cell_ink_on_wash(bg, C["white"])
+    if lab == "升溫急":
+        bg = "#EC407A"
+        return bg, cell_ink_on_wash(bg, C["white"])
+    if lab == "升溫快":
+        bg = "#F48FB1"
+        return bg, cell_ink_on_wash(bg, C["temp_hot_fg"])
     if lab == "升溫":
         bg = "#F8BBD0"
         return bg, cell_ink_on_wash(bg, C["temp_warm_fg"])
@@ -2880,6 +2938,12 @@ def temp_trend_cell_style(label: str, base: str):
     if lab == "最低溫":
         bg = C["pill_lo"]
         return bg, cell_ink_on_wash(bg, C["white"])
+    if lab == "降溫急":
+        bg = "#2E7D32"
+        return bg, cell_ink_on_wash(bg, C["white"])
+    if lab == "降溫快":
+        bg = "#66BB6A"
+        return bg, cell_ink_on_wash(bg, C["lo_ink"])
     if lab == "降溫":
         bg = "#C8E6C9"
         return bg, cell_ink_on_wash(bg, C["lo_ink"])

@@ -890,7 +890,7 @@ def test_cary_2383_2408_3008_20260904_rows():
 
 @pytest.mark.production_db
 def test_6547_20260909_author_desync_matches_gold_note():
-    """6547 9/9：作者圈最高價＋升溫＝不同步，金句必須熱度在升不是最高溫。"""
+    """6547 9/9：作者圈最高價＋升溫（Δ 夠大→升溫快）＝不同步，金句必須熱度在升不是最高溫。"""
     from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
@@ -900,7 +900,7 @@ def test_6547_20260909_author_desync_matches_gold_note():
     assert str(card.get("latest_date")) == "20260909"
     row = card["table"].iloc[0]
     assert str(row["高低"]) == "20高"
-    assert str(row["升降"]) == "升溫"
+    assert str(row["升降"]) == "升溫快"
     attach_sell(card)
     assert card.get("sell_action") == "直接減碼"
     assert "最高價但非最高溫" in str(card.get("sell_why") or "")

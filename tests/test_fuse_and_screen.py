@@ -1523,9 +1523,13 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(fg_run, _CARD["up"])
         self.assertNotEqual(bg_run, _CARD["hi_fill"])
         heat15, _ = _profit_heat_draw(1.5, 0.9, _CARD["white"])
-        self.assertEqual(heat15, _CARD["white"])
+        # 1%～未滿 8%：極淡粉連續（讀起來較順），不是死白、也不是高檔 hi_fill
+        self.assertNotEqual(heat15.lower(), _CARD["white"].lower())
+        self.assertNotEqual(heat15.lower(), _CARD["hi_fill"].lower())
         heat24, _ = _profit_heat_draw(2.4, 0.3, _CARD["white"])
-        self.assertEqual(heat24, _CARD["white"])
+        self.assertNotEqual(heat24.lower(), _CARD["white"].lower())
+        # 2.4% 應比 1.5% 略深（同段淡粉漸層）
+        self.assertNotEqual(heat24.lower(), heat15.lower())
         heat22, _ = _profit_heat_draw(22.1, None, _CARD["white"])
         self.assertNotEqual(heat22.lower(), _CARD["white"].lower())
         self.assertNotEqual(heat22.lower(), "#fff0ff")

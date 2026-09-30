@@ -370,9 +370,9 @@ def card_discipline_face(card: Dict[str, Any] | None) -> Dict[str, str]:
         heat = "peak"
     elif trend == "最低溫":
         heat = "floor"
-    elif trend == "升溫":
+    elif trend in ("升溫", "升溫快", "升溫急"):
         heat = "up"
-    elif trend == "降溫":
+    elif trend in ("降溫", "降溫快", "降溫急"):
         heat = "down"
     elif trend in ("No", "—"):
         heat = "flat"
