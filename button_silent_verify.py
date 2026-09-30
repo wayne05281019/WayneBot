@@ -46,6 +46,7 @@ SCREEN_KINDS = frozenset(
         "money_flow",
         "ai_desk",
         "biaoke_named",
+        "intraday_leave_zero",
     }
 )
 
@@ -168,6 +169,15 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "pipe": "volzone_ma60_verify current／ma60_rising／ma60_rising_thin",
         "window": "前瞻 5 交易日；與壓撐／海選勝率分開",
         "note": "靜默對質；過閘也不自動改黃金買點／海選／買訊",
+    },
+    {
+        "btn": "盤中剛離零→收盤",
+        "kinds": ("intraday_leave_zero",),
+        "class": CLASS_SCREEN,
+        "status": "external",
+        "pipe": "intraday_leave_zero_verify lookup／MIS hit → close_hold／next_1",
+        "window": "當日官方收是否仍 leave_zero；選填隔日報酬",
+        "note": "靜默對質；不是新鈕；過閘也不自動改黃金買點／買訊",
     },
     {
         "btn": "AI倉",

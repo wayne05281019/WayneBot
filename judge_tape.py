@@ -458,6 +458,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         volzone_ma60_night_tick(market_db, day)
     except Exception:
         pass
+    # 盤中剛離零→收盤站得住另軌：查股／MIS hit 對質；不准改買訊。失敗不擋。
+    try:
+        from intraday_leave_zero_verify import night_tick as intraday_lz_night_tick
+
+        intraday_lz_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 
