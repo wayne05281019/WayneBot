@@ -53,3 +53,44 @@ def test_temp_trend_styles_for_speed_labels():
     assert warm_bg == "#F8BBD0"
     assert cool_sharp_bg == "#2E7D32"
     assert sharp_bg != warm_bg != fast_bg
+
+
+def test_temp_trend_heat_bucket_maps_speed_labels():
+    """態度／大量區 caption：急／快與普通同一桶；不准當買訊。"""
+    from wayne_navigator import temp_trend_heat_bucket
+    from sell_discipline import attach_sell, card_discipline_face
+    from vol_zone_chart import _heat_key
+
+    assert temp_trend_heat_bucket("升溫急") == "up"
+    assert temp_trend_heat_bucket("升溫快") == "up"
+    assert temp_trend_heat_bucket("升溫") == "up"
+    assert temp_trend_heat_bucket("降溫急") == "down"
+    assert temp_trend_heat_bucket("降溫快") == "down"
+    assert temp_trend_heat_bucket("降溫") == "down"
+    assert temp_trend_heat_bucket("最高溫") == "peak"
+    assert temp_trend_heat_bucket("最低溫") == "floor"
+    assert temp_trend_heat_bucket("No") == "flat"
+    assert temp_trend_heat_bucket("升溫", note="價溫背離") == "diverge"
+
+    for lab, expect in (
+        ("升溫急", "up"),
+        ("升溫快", "up"),
+        ("降溫急", "down"),
+        ("降溫快", "down"),
+    ):
+        card = {
+            "table": [
+                {
+                    "高低": "No",
+                    "預警": "No",
+                    "升降": lab,
+                    "升降註": "",
+                    "profit_pct": 12.0,
+                    "temp_num": 40.0,
+                }
+            ],
+            "gain_pct": 12.0,
+        }
+        attach_sell(card)
+        assert card_discipline_face(card)["heat"] == expect
+        assert _heat_key(card) == expect

@@ -2913,6 +2913,28 @@ def compute_temp_trend_labels(
     return labels, notes
 
 
+def temp_trend_heat_bucket(label: str, *, note: str = "") -> str:
+    """升降主標 → 態度／大量區 caption 用的 heat 桶。
+
+    升溫急／快／普通都算 ``up``；降溫急／快／普通都算 ``down``。
+    顯示分階不准變成第二套買訊；靜默對質也不用這桶改勝率。
+    """
+    if str(note or "").strip() == "價溫背離":
+        return "diverge"
+    lab = str(label or "").strip()
+    if lab == "最高溫":
+        return "peak"
+    if lab == "最低溫":
+        return "floor"
+    if lab in ("升溫", "升溫快", "升溫急"):
+        return "up"
+    if lab in ("降溫", "降溫快", "降溫急"):
+        return "down"
+    if lab in ("No", "—", ""):
+        return "flat"
+    return ""
+
+
 def temp_trend_cell_style(label: str, base: str):
     """升降欄：升溫／升溫快／升溫急粉紅分階；最高溫最深紅；降溫綠分階。字走深底白／淺底深。"""
     C = _CARD
