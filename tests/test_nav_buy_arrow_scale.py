@@ -12,10 +12,13 @@ def test_buy_arrow_scale_is_1_5x_original():
     assert wn._NAV_BUY_ARROW_HW == 1.05  # 寬略收，高仍 1.5×
     assert wn._NAV_BUY_ARROW_EDGE == "#C62828"
     assert wn._NAV_BUY_ARROW_EDGE_W >= 2.0  # 手機縮圖紅框要夠粗
+    # 導航／大量區共用 _paint_nav_buy_arrows；兩端只呼叫不再各寫常數
+    shared = inspect.getsource(wn._paint_nav_buy_arrows)
+    assert "_NAV_BUY_ARROW_H_MULT" in shared and "_NAV_BUY_ARROW_EDGE" in shared
     ov = inspect.getsource(wn.overlay_nav_marks_on_zone)
     paint = inspect.getsource(wn._paint_nav_on_axes)
-    assert "_NAV_BUY_ARROW_H_MULT" in ov and "_NAV_BUY_ARROW_EDGE" in ov
-    assert "_NAV_BUY_ARROW_H_MULT" in paint and "_NAV_BUY_ARROW_EDGE" in paint
+    assert "_paint_nav_buy_arrows" in ov
+    assert "_paint_nav_buy_arrows" in paint
     # 賣箭／60 低維持原尺寸公式；買點只走常數
     assert "arrow_h * 1.12" in ov
     assert "arrow_h * 1.12" in paint
@@ -24,3 +27,6 @@ def test_buy_arrow_scale_is_1_5x_original():
     leg = inspect.getsource(wn._draw_nav_legend)
     assert "買點↑藍▲紅框" in leg
     assert "_NAV_BUY_ARROW_EDGE" in leg
+    marks = inspect.getsource(wn._nav_trade_marks)
+    assert "leave_zero_bar_indices" in marks
+    assert "buy_is" in marks
