@@ -1332,6 +1332,13 @@ class NavigatorEngine:
             attach_industry_flow(payload, self.db_path, ymd=str(as_of or ""))
         except Exception:
             pass
+        # 靜默：盤中亮剛離零買點標 → 記 hit；收盤另軌對質。失敗不擋出卡。
+        try:
+            from intraday_leave_zero_verify import maybe_note_from_card
+
+            maybe_note_from_card(self.db_path, payload)
+        except Exception:
+            pass
         self._card_memo_put(memo_key, payload)
         return payload
 
