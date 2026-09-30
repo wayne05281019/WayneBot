@@ -27,6 +27,8 @@ from matplotlib.collections import LineCollection, PolyCollection
 from wayne_navigator import _fp, _mpl_serial
 
 BIAOKE_CHART_DPI = 200
+# 偏好用語＝演化區（圖上連點／壓撐延長空白）；不是保證、不是買訊
+EVOLUTION_ZONE_LABEL = "演化區（不是保證・不是買訊）"
 
 logger = logging.getLogger("WayneBot.BiaokeChart")
 
@@ -547,7 +549,7 @@ def _paint_parallel_channel(
         return
     (ux1, uy1, _ud1), (ux2, uy2, _ud2) = upper
     (lx1, ly1, _ld1), (lx2, ly2, _ld2) = lower
-    # 有效才延長進演算區；已壞／已過只畫到最近一根
+    # 有效才延長進演化區；已壞／已過只畫到最近一根
     rail_hi = float(x_hi) if alive else float(seam)
     for x1, y1, x2, y2 in (
         (ux1, uy1, ux2, uy2),
@@ -668,7 +670,7 @@ def _paint_extended_rail(
     y_hi: float,
     color: str,
 ) -> None:
-    """實線拉到最近一根，虛線進演算區。左緣有空間就延長，跟上升撐同一套。"""
+    """實線拉到最近一根，虛線進演化區。左緣有空間就延長，跟上升撐同一套。"""
     clipped = _clip_line(
         x1, y1, x2, y2, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi
     )
@@ -790,7 +792,7 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
                 f"上升連點 {_md(rows[a].get('date'))}低{_px(lows[a])}～"
                 f"{_md(rows[b].get('date'))}低{_px(lows[b])}，"
                 f"延長到最近約 {_px(y_now)}，收在下面，這條上升軌先當壞了；"
-                f"壞掉就不往演算區延長當還有效"
+                f"壞掉就不往演化區延長當還有效"
             )
         else:
             notes.append(
@@ -1105,7 +1107,7 @@ def _leader_note(
 ) -> None:
     """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
 
-    clip=True：標籤必須落在軸內（演算區右側／最可能），不准跳出底圖。
+    clip=True：標籤必須落在軸內（演化區右側／最可能），不准跳出底圖。
     """
     ax.annotate(
         str(text),
@@ -1239,7 +1241,7 @@ def _place_right_notes(
     span: float = 0.0,
     seam: Optional[float] = None,
 ) -> None:
-    """演算區內：去重＋錯開＋左對齊往右長，字只落在演算空白，不准壓 K。"""
+    """演化區內：去重＋錯開＋左對齊往右長，字只落在演化空白，不准壓 K。"""
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
         return
@@ -2432,7 +2434,7 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    # 演算區右側留足標籤寬，避免「最可能」被裁成半句
+    # 演化區右側留足標籤寬，避免「最可能」被裁成半句
     x_right = n + _FUTURE + 7.2
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
@@ -2676,7 +2678,7 @@ def render_biaoke_structure_png(
     _place_right_notes(
         ax1,
         right_notes,
-        # 錨在最近一根，字從演算區左緣往右長，不准壓歷史 K
+        # 錨在最近一根，字從演化區左緣往右長，不准壓歷史 K
         x_text=float(n - 1) + 0.65,
         ymin=ymin,
         ymax=ymax,
@@ -2687,7 +2689,7 @@ def render_biaoke_structure_png(
     ax1.text(
         n + _FUTURE * 0.45,
         ymin + span * 0.012,
-        "演算區（不是保證・不是買訊）",
+        EVOLUTION_ZONE_LABEL,
         color="#546e7a",
         fontproperties=_fp(10, "bold"),
         ha="center",
@@ -3013,6 +3015,7 @@ def chart_caption(
     name: str = "",
     glance: Optional[Dict[str, str]] = None,
     plate: Optional[Dict[str, str]] = None,
+    surface: Optional[Dict[str, Any]] = None,
 ) -> str:
     head = f"{sid} {name}".strip()
     plate = plate or {}
@@ -3044,15 +3047,57 @@ def chart_caption(
         elif info.get("over_press"):
             tape += "已過爆大量日高，比較像半山腰。"
         lines.append(tape)
+    ch = info.get("channel") or {}
+    tip = str(ch.get("tip") or "").strip()
+    if tip:
+        lines.append(tip)
+    else:
+        try:
+            close_f = float(last_bar.get("close") or 0)
+        except (TypeError, ValueError):
+            close_f = 0.0
+        try:
+            down_now = float(info.get("down_now") or 0)
+        except (TypeError, ValueError):
+            down_now = 0.0
+        try:
+            up_now = float(info.get("up_now") or 0)
+        except (TypeError, ValueError):
+            up_now = 0.0
+        if down_now:
+            lines.append(
+                f"下降壓延長約 {_px(down_now)}"
+                + ("還壓著。" if close_f and close_f < down_now else "收在上。")
+            )
+        if up_now and not info.get("up_broken"):
+            lines.append(f"上升撐延長約 {_px(up_now)}。")
     proj = info.get("project") or {}
     if proj.get("label"):
         lines.append("圖上演算：" + str(proj.get("label")))
+    if surface:
+        try:
+            from biaoke_chain import desk_caption_judgment
+
+            bit = desk_caption_judgment(surface)
+            if bit:
+                for ln in bit.splitlines():
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    if ln in lines:
+                        continue
+                    if any(ln[:16] in x for x in lines):
+                        continue
+                    lines.append(ln)
+        except Exception:
+            pass
     if g.get("hold"):
         lines.append(g["hold"])
     if g.get("doubt"):
         lines.append(g["doubt"])
     else:
         lines.append("沒疊滿就不講死。")
+    lines.append("圖右演化區＝壓撐／連點延長，不是保證、不是買訊。個股不數浪。")
     return "\n".join(x for x in lines if x)[:1100]
 
 
@@ -3073,18 +3118,19 @@ def build_biaoke_structure_chart(
         return {"ok": False, "path": "", "caption": ""}
     nm = name or str(bars[-1].get("stock_name") or sid)
     info = analyze_structure(bars[-_BARS:])
-    fired = None
-    q = (ask or "").strip()
-    # 代號出圖不重跑神經元：文字回覆已經跑過，這裡重跑會拖慢出圖。
-    if q and not re.fullmatch(r"\d{3,6}[A-Za-z]?", q):
-        try:
-            from biaoke_chain import fire_chain
+    # 代號出圖也走串接表達面：文字桌與圖說同一條判斷／官方結構
+    q = (ask or "").strip() or sid
+    surface: Dict[str, Any] = {}
+    glance: Dict[str, str] = {}
+    try:
+        from biaoke_chain import desk_surface
 
-            fired = fire_chain(db_path, q, uid=uid)
-        except Exception:
-            logger.debug("飆大結構圖神經元略過", exc_info=True)
-            fired = None
-    glance = neuron_glance(fired)
+        surface = desk_surface(db_path, q, uid=uid) or {}
+        glance = dict(surface.get("glance") or {})
+    except Exception:
+        logger.debug("飆大結構圖神經元略過", exc_info=True)
+        surface = {}
+        glance = {}
     plate = stock_nameplate(sid, nm, db_path)
     prev = bars[-2] if len(bars) >= 2 else {}
     last = info.get("last_bar") or bars[-1]
@@ -3109,7 +3155,9 @@ def build_biaoke_structure_chart(
     return {
         "ok": bool(path),
         "path": path or "",
-        "caption": chart_caption(info, sid=sid, name=nm, glance=glance, plate=plate),
+        "caption": chart_caption(
+            info, sid=sid, name=nm, glance=glance, plate=plate, surface=surface
+        ),
         "sid": sid,
         "name": nm,
         "wash": bool(info.get("wash")),
@@ -3117,4 +3165,9 @@ def build_biaoke_structure_chart(
         "project": dict(info.get("project") or {}),
         "notes": list(info.get("notes") or []),
         "glance": glance,
+        "surface": {
+            "lead": str(surface.get("lead") or ""),
+            "judge": str(surface.get("judge") or ""),
+            "rail": str(surface.get("rail") or ""),
+        },
     }

@@ -393,8 +393,18 @@ def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
         from biaoke_brain import is_market_question, resolve_stock
 
         hits = resolve_stock(db_path, ask) if ask else []
-        if is_market_question(ask) and not hits:
-            return "", ""
+        # 純大盤／位階問句：「大盤」不准模糊撞成「大研生醫」等個股
+        if is_market_question(ask):
+            try:
+                from biaoke_wave import is_twii_plain_ask, is_wave_question
+
+                plain_mkt = is_twii_plain_ask(ask) or is_wave_question(ask)
+            except Exception:
+                plain_mkt = False
+            if plain_mkt or all(bool(h.get("fuzzy")) for h in (hits or []) if h):
+                hits = [h for h in (hits or []) if h and not h.get("fuzzy")]
+            if not hits:
+                return "", ""
         if hits:
             sid = str(hits[0].get("stock_id") or "")
             name = str(hits[0].get("stock_name") or "")
@@ -1978,10 +1988,101 @@ def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
         lines.append(reread)
     lines.append(
         "圖只解釋第 4 顆量價；問一檔要讀他的公開附圖對官方日K。"
-        "右灰區是壓撐＋連點延長演算，不是保證、不是買訊。"
+        "右灰區是壓撐＋連點延長演化，不是保證、不是買訊。"
         "社團附圖只對價，不進話筒原文。"
     )
     return "\n".join(lines)
+
+
+def desk_surface(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
+    """飆大按鍵共用表達面：文字桌／個股圖／大盤圖同一條開口＋判斷＋官方結構。
+
+    六顆仍只歸檔。不准新價、不准發明 5／9、個股不數浪。不是買訊。
+    """
+    q = (ask or "").strip()
+    if not q:
+        return {
+            "fired": {},
+            "lead": "",
+            "judge": "",
+            "rail": "",
+            "glance": {},
+            "think": "",
+            "named": False,
+            "sid": "",
+            "name": "",
+        }
+    fired = fire_chain(db_path, q, uid=uid)
+    glance: Dict[str, str] = {}
+    try:
+        from biaoke_chart import neuron_glance
+
+        glance = neuron_glance(fired) or {}
+    except Exception:
+        glance = {}
+    return {
+        "fired": fired,
+        "lead": str(fired.get("lead") or ""),
+        "judge": str(fired.get("judge") or ""),
+        "rail": str(fired.get("rail") or ""),
+        "glance": glance,
+        "think": str(fired.get("think") or ""),
+        "named": bool(fired.get("named")),
+        "sid": str(fired.get("sid") or ""),
+        "name": str(fired.get("name") or ""),
+    }
+
+
+def desk_caption_judgment(surface: Optional[Dict[str, Any]]) -> str:
+    """圖說尾巴：一條判斷＋官方結構 overlay。與 format_chain_notes 嘴巴同源。"""
+    surf = surface or {}
+    lines: List[str] = []
+    lead = str(surf.get("lead") or surf.get("judge") or "").strip()
+    lead = re.sub(r"。?〔[^〕]*〕\s*$", "", lead).strip()
+    if lead:
+        lines.append(lead if lead.endswith("。") else lead + "。")
+    rail = str(surf.get("rail") or "").strip()
+    if rail and rail not in "".join(lines):
+        lines.append(rail if rail.endswith("。") else rail + "。")
+    return "\n".join(lines)
+
+
+def desk_market_rail_tip(db_path: str) -> str:
+    """大盤圖／短句共用：加權官方柱上的下降壓／上升撐／通道一句。不准發明段號。"""
+    if not db_path:
+        return ""
+    try:
+        from biaoke_chart import infer_parallel_channel
+        from biaoke_wave import _load_twii_bars
+
+        bars = _load_twii_bars(db_path, n=168)
+        if len(bars) < 16:
+            return ""
+        ch = infer_parallel_channel(bars) or {}
+        tip = str(ch.get("tip") or "").strip()
+        if tip:
+            return _clip(tip, 140)
+        # 無合格通道：單報活著的上升撐／下降壓延長
+        from biaoke_chart import analyze_structure
+
+        info = analyze_structure(bars[-120:]) or {}
+        bits: List[str] = []
+        down_now = float(info.get("down_now") or 0)
+        up_now = float(info.get("up_now") or 0)
+        last = float((info.get("closes") or [0])[-1] or 0) if info.get("closes") else 0.0
+        if down_now:
+            bits.append(
+                "下降壓約 "
+                + _px(down_now)
+                + ("還壓著" if last and last < down_now else "收在上")
+            )
+        if up_now and not info.get("up_broken"):
+            bits.append("上升撐約 " + _px(up_now))
+        if not bits:
+            return ""
+        return _clip("加權連點：" + "，".join(bits) + "。不是買訊。", 140)
+    except Exception:
+        return ""
 
 
 def chain_order_ok(text: str) -> bool:

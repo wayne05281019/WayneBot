@@ -903,7 +903,8 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     assert "NAV_CHART_DPI" not in src
     assert "_add_ohlc_wicks" in src
     assert "_savefig_lookup_png" in src
-    assert "演算區（不是保證・不是買訊）" in src or "不是買訊" in src
+    assert "演化區（不是保證・不是買訊）" in src or "演算區（不是保證・不是買訊）" in src or "不是買訊" in src
+    assert "EVOLUTION_ZONE_LABEL" in src or "演化區" in src or "演算區" in src
     from biaoke_chart import paint_locator_inset
 
     lsrc = inspect.getsource(paint_locator_inset)
@@ -944,7 +945,7 @@ def test_parallel_channel_follows_biaoke_rails():
 
 
 def test_broken_up_rail_not_projected_to_forecast():
-    """上升軌已壞／過陡：不准把虛線延長進演算區當還有效。"""
+    """上升軌已壞／過陡：不准把虛線延長進演化區當還有效。"""
     import inspect
 
     from biaoke_chart import analyze_structure, project_next, render_biaoke_structure_png

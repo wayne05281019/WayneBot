@@ -317,18 +317,27 @@ def _md(ymd: str) -> str:
 
 
 def format_twii_plain(db_path: str = "") -> str:
-    """話筒大盤：四句。未收不當收。"""
+    """話筒大盤：四句。未收不當收。劃線用語與個股圖同一套（演化區／升撐／降壓）。"""
     bars = _load_twii_bars(db_path, n=8)
     if bars:
         b = bars[-1]
         close_bit = f"官方加權最近完整收是 {_md(b.get('date'))}，收 {_px(b.get('close'))}。"
     else:
         close_bit = "官方加權還沒有完整收。"
+    rail_tip = ""
+    try:
+        from biaoke_chain import desk_market_rail_tip
+
+        rail_tip = desk_market_rail_tip(db_path)
+    except Exception:
+        rail_tip = ""
+    if not rail_tip:
+        rail_tip = "圖上演化區：上升撐／下降壓依他自己點過的連點延長，不是保證。"
     return "\n".join(
         [
             close_bit,
-            "C-5低點要收盤不破 45398 才算，現在還是如果句。",
-            "C-3 和 43500 都還沒確認。",
+            "C-5低點要收盤不破 45398 才算，現在還是如果句。C-3 和 43500 都還沒確認。",
+            rail_tip,
             "這不是買訊。看圖上綠A藍B；紫C虛線還沒走完。",
         ]
     )
@@ -1720,7 +1729,8 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         lows = [float(r.get("low") or r.get("close") or 0) for r in bars]
         closes = [float(r.get("close") or 0) for r in bars]
         ys = highs + lows
-        keep_lv = {"他原文C波最差", "9/3低右肩"}
+        # 他自己點過且官方對得上的水平：最差／右肩低／前波高／大一級前高
+        keep_lv = {"他原文C波最差", "9/3低右肩", "9/8前波高", "6/23大一級前高"}
         for lv, lab, _d in _TWII_LEVELS:
             if lab in keep_lv:
                 ys.append(lv)
@@ -1791,9 +1801,12 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         colors = {
             "他原文C波最差": "#90a4ae",
             "9/3低右肩": "#546e7a",
+            "9/8前波高": "#ad1457",
+            "6/23大一級前高": "#6a1b9a",
         }
         styles = {
             "他原文C波最差": (0, (4, 3)),
+            "6/23大一級前高": (0, (3, 2)),
         }
         right_notes: list = []
         for lv, lab, _d in _TWII_LEVELS:
@@ -1806,7 +1819,12 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 linestyle=styles.get(lab, "-"),
                 zorder=2,
             )
-            short_lv = lab.replace("他原文C波最差", "最差43500").replace("9/3低右肩", "9/3低")
+            short_lv = (
+                lab.replace("他原文C波最差", "最差43500")
+                .replace("9/3低右肩", "9/3低")
+                .replace("9/8前波高", "9/8前高")
+                .replace("6/23大一級前高", "6/23前高")
+            )
             right_notes.append(
                 {
                     "x": float(n - 1),
@@ -1838,6 +1856,116 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                     "size": 8,
                 }
             )
+        # 與個股飆大圖同一套：通道／下降壓／上升撐（官方柱連點，不准發明段號）
+        try:
+            from biaoke_chart import (
+                EVOLUTION_ZONE_LABEL,
+                _DOWN_TRACK,
+                _UP_TRACK,
+                _line_at,
+                _paint_extended_rail,
+                _paint_parallel_channel,
+                analyze_structure,
+                infer_parallel_channel,
+            )
+
+            struct = analyze_structure(bars) or {}
+            channel = dict(struct.get("channel") or {}) or (infer_parallel_channel(bars) or {})
+            x_fut = float(n - 1 + _TWII_FUTURE)
+            if channel.get("kind"):
+                _paint_parallel_channel(
+                    ax,
+                    channel,
+                    seam=float(n - 1),
+                    x_lo=0.0,
+                    x_hi=x_fut,
+                    y_lo=ymin,
+                    y_hi=ymax,
+                    n=n,
+                )
+                if channel.get("rail_now"):
+                    right_notes.append(
+                        {
+                            "x": float(n - 1),
+                            "y": float(channel["rail_now"]),
+                            "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
+                            "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
+                            "size": 9,
+                        }
+                    )
+                if channel.get("base_now"):
+                    right_notes.append(
+                        {
+                            "x": float(n - 1),
+                            "y": float(channel["base_now"]),
+                            "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
+                            "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
+                            "size": 9,
+                        }
+                    )
+            else:
+                down_pts = struct.get("down_pts")
+                up_pts = struct.get("up_pts")
+                if down_pts:
+                    (x1, y1, _d1), (x2, y2, _d2) = down_pts
+                    _paint_extended_rail(
+                        ax,
+                        float(x1),
+                        float(y1),
+                        float(x2),
+                        float(y2),
+                        seam=float(n - 1),
+                        x_lo=0.0,
+                        x_hi=x_fut,
+                        y_lo=ymin,
+                        y_hi=ymax,
+                        color=_DOWN_TRACK,
+                    )
+                    right_notes.append(
+                        {
+                            "x": float(n - 1),
+                            "y": float(_line_at(x1, y1, x2, y2, n - 1)),
+                            "text": f"下降壓 {_px(_line_at(x1, y1, x2, y2, n - 1))}",
+                            "color": _DOWN_TRACK,
+                            "size": 9,
+                        }
+                    )
+                if up_pts and not struct.get("up_broken"):
+                    (x1, y1, _d1), (x2, y2, _d2) = up_pts
+                    _paint_extended_rail(
+                        ax,
+                        float(x1),
+                        float(y1),
+                        float(x2),
+                        float(y2),
+                        seam=float(n - 1),
+                        x_lo=0.0,
+                        x_hi=x_fut,
+                        y_lo=ymin,
+                        y_hi=ymax,
+                        color=_UP_TRACK,
+                    )
+                    right_notes.append(
+                        {
+                            "x": float(n - 1),
+                            "y": float(_line_at(x1, y1, x2, y2, n - 1)),
+                            "text": f"上升撐 {_px(_line_at(x1, y1, x2, y2, n - 1))}",
+                            "color": _UP_TRACK,
+                            "size": 9,
+                        }
+                    )
+            ax.text(
+                n + _TWII_FUTURE * 0.42,
+                ymin + (ymax - ymin) * 0.012,
+                EVOLUTION_ZONE_LABEL,
+                fontproperties=_fp(9, "bold"),
+                color="#546e7a",
+                ha="center",
+                va="bottom",
+                zorder=8,
+            )
+        except Exception:
+            pass
         _place_right_notes(ax, right_notes, x_text=x_gutter, ymin=ymin, ymax=ymax, min_gap=520)
         last = bars[-1]
         as_of = _ymd(last.get("date"))
@@ -1971,8 +2099,22 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
     except Exception:
         pass
     cap = format_twii_plain(db_path)
+    rail_tip = ""
+    try:
+        from biaoke_chain import desk_caption_judgment, desk_market_rail_tip, desk_surface
+
+        rail_tip = desk_market_rail_tip(db_path)
+        surf = desk_surface(db_path, "大盤")
+        bit = desk_caption_judgment(surf)
+        if bit:
+            head = bit.splitlines()[0].strip()
+            if head and head not in cap:
+                cap = head + "\n" + cap
+    except Exception:
+        rail_tip = ""
     return {
         "ok": bool(path),
         "path": path or "",
-        "caption": _clip(cap, 400),
+        "caption": _clip(cap, 420),
+        "rail_tip": rail_tip,
     }
