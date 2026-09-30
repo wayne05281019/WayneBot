@@ -135,7 +135,10 @@ def test_2542_card_does_not_call_ex_div_a_breakdown():
     from wayne_navigator import NavigatorEngine
 
     db = require_production_db()
-    card = NavigatorEngine(db).get_decision_card("2542", merge_live=False)
+    # 釘除息後完整收日：測除息臉，不跟庫尖端格局徽章（弱勢破底）綁死
+    card = NavigatorEngine(db).get_decision_card(
+        "2542", merge_live=False, as_of="20260924"
+    )
     assert card.get("ex_gap_label") == "09/23除息4元"
     assert "弱勢破底" not in (card.get("badges") or [])
     assert "已除權還原" not in (card.get("badges") or [])
