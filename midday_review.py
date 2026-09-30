@@ -146,7 +146,7 @@ def morning_ref_price(row: Dict[str, Any]) -> float:
 def format_midday_stock_line(
     row: Dict[str, Any], live: Dict[str, Any], *, dual: bool = False, db_path: str = None
 ) -> str:
-    """現在價、今早名單價、比今早差幾元。例：4915 致伸　上市　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）"""
+    """純文字列（測試／非 HTML）。例：4915 致伸　上市　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）"""
     sid = str(row.get("stock_id") or "").strip()
     name = str(row.get("stock_name") or "").strip()
     tag = "【雙時段】" if dual else ""
@@ -163,6 +163,32 @@ def format_midday_stock_line(
         listing = ""
     listing_bit = f"　{listing}" if listing else ""
     prefix = f"{tag}{sid} {name}{listing_bit}".strip()
+    return _midday_price_suffix(prefix, row, live)
+
+
+def format_midday_stock_line_html(
+    row: Dict[str, Any], live: Dict[str, Any], *, dual: bool = False, db_path: str = None
+) -> str:
+    """Telegram HTML：代號＋股名＝奇摩手機報價頁藍字（上市 TW／上櫃 TWO）。"""
+    sid = str(row.get("stock_id") or "").strip()
+    name = str(row.get("stock_name") or "").strip()
+    tag = html_escape("【雙時段】") if dual else ""
+    try:
+        from stock_links import html_stock_anchor
+
+        anchor = html_stock_anchor(sid, name, db_path) if sid else html_escape(name or "")
+    except Exception:
+        anchor = html_escape(f"{sid} {name}".strip())
+    prefix = f"{tag}{anchor}".strip()
+    # 價位段無標籤，跳過 escape 後再拼（數字／全形空白安全）。
+    rest = _midday_price_suffix("", row, live)
+    if not rest:
+        return prefix
+    # _midday_price_suffix("", ...) 仍以「　現在」開頭
+    return f"{prefix}{html_escape(rest)}"
+
+
+def _midday_price_suffix(prefix: str, row: Dict[str, Any], live: Dict[str, Any]) -> str:
     try:
         px = float((live or {}).get("close") or 0)
     except (TypeError, ValueError):
@@ -171,13 +197,15 @@ def format_midday_stock_line(
         return prefix
     morning = morning_ref_price(row)
     if morning <= 0:
-        return f"{prefix}　現在 {_px_txt(px)}"
+        bit = f"　現在 {_px_txt(px)}"
+        return f"{prefix}{bit}" if prefix else bit
     diff = px - morning
     pct = (px - morning) / morning * 100.0
-    return (
-        f"{prefix}　現在 {_px_txt(px)}　今早 {_px_txt(morning)}　"
+    bit = (
+        f"　現在 {_px_txt(px)}　今早 {_px_txt(morning)}　"
         f"比今早 {_signed_txt(diff)} 元（{_signed_txt(pct, 1)}%）"
     )
+    return f"{prefix}{bit}" if prefix else bit
 
 
 def classify_row(row: Dict[str, Any], live: Dict[str, Any]) -> str:
@@ -225,7 +253,8 @@ def format_midday_html(as_of: str, groups: Dict[str, List[str]]) -> str:
     from trading_calendar import format_trading_date_zh
 
     def block(title: str, rows: List[str], empty: str) -> str:
-        body = "\n".join(html_escape(x) for x in rows) if rows else f"<i>{html_escape(empty)}</i>"
+        # rows 已是 HTML（含 <a>）；空區才 escape。
+        body = "\n".join(rows) if rows else f"<i>{html_escape(empty)}</i>"
         return f"<b>{html_escape(title)}</b>\n{body}"
 
     as_of_label = format_trading_date_zh(as_of) or as_of
@@ -266,7 +295,7 @@ def run_midday_review(db_path: str, as_of: str) -> Dict[str, Any]:
         sid = str(r["stock_id"])
         q = live.get(sid) or {}
         kind = classify_row(r, q)
-        line = format_midday_stock_line(r, q, dual=sid in both, db_path=db_path)
+        line = format_midday_stock_line_html(r, q, dual=sid in both, db_path=db_path)
         groups[kind].append(line)
     return {
         "html": format_midday_html(as_of, groups),

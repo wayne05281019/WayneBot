@@ -490,10 +490,11 @@ def catch_up_missed_jobs(now=None) -> None:
         return
     need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
-    # 尾盤只在 12:45–13:30 補寄。過了尾盤「現在要做的事」已過期；晚上重開不准再丟。
+    # 尾盤補寄：準點 12:45 歸排程；補跑從 12:46 起，避免與準點同一分鐘雙寄。
+    # 過了 13:30「現在要做的事」已過期；晚上重開不准再丟。
     need_midday = (
         scheduler_owns("midday")
-        and (12 * 60 + 45) <= mins < (13 * 60 + 30)
+        and (12 * 60 + 46) <= mins < (13 * 60 + 30)
     )
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
     if not any((need_fuse, need_morning, need_midday, need_evening, need_open_check)):

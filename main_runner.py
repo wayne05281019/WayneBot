@@ -155,6 +155,63 @@ class MainRunner:
         conn.close()
         return str(row[0] or "") if row else ""
 
+    def try_claim_pipeline(
+        self, run_date: str, *, notes: str = "claim", stale_running_sec: int = 600
+    ) -> bool:
+        """搶尾盤／早報推播鎖：同一 run_date 同時只准一個路徑寄。
+
+        success＝已寄過；running 且未逾時＝別條路徑進行中。
+        回 True＝本行程取得所有權，必須寄完標 success，或失敗改掉 running。
+        """
+        key = str(run_date or "").strip()
+        if not key:
+            return False
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=5000;")
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT status, finished_at FROM pipeline_runs WHERE run_date = ?",
+                (key,),
+            ).fetchone()
+            if row:
+                st = str(row[0] or "")
+                if st == "success":
+                    conn.commit()
+                    return False
+                if st == "running":
+                    fin = str(row[1] or "")
+                    age_ok = False
+                    try:
+                        age_ok = (
+                            datetime.now() - datetime.fromisoformat(fin)
+                        ).total_seconds() > float(stale_running_sec)
+                    except Exception:
+                        age_ok = True
+                    if not age_ok:
+                        conn.commit()
+                        return False
+            conn.execute(
+                "INSERT OR REPLACE INTO pipeline_runs "
+                "(run_date, finished_at, status, notes) VALUES (?, ?, ?, ?)",
+                (
+                    key,
+                    datetime.now().isoformat(timespec="seconds"),
+                    "running",
+                    str(notes or "claim")[:500],
+                ),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            conn.close()
+
     def demote_premature_morning_screens(self) -> int:
         """盤後當日補跑若先標 screen-{as_of} success，隔天 06:30 會略過、吃不到美股隔夜。
 
@@ -1527,12 +1584,14 @@ class MainRunner:
                 run_date=key,
             )
             return True
-        if skip_if_done and as_of and self.already_completed_today(key):
-            logger.info("尾盤可切 %s 已寄過，略過。", key)
-            return True
         if not as_of:
             logger.error("無完整交易日可做尾盤複核")
             return False
+        # 準點排程＋每分補跑＋死人開關會同時搶；先搶鎖再寄，一開市日只准一封。
+        if skip_if_done:
+            if not self.try_claim_pipeline(key, notes="midday-claim"):
+                logger.info("尾盤可切 %s 已寄過或進行中，略過。", key)
+                return True
         logger.info("🌤️ 12:45 尾盤可切，對照今早 06:30 基準日 %s", as_of)
         from midday_review import run_midday_review
 
@@ -1544,6 +1603,8 @@ class MainRunner:
         if sent_ok:
             self._mark_pipeline("success", "midday", run_date=key)
         else:
+            # 放掉 running，讓 12:46–13:30 補跑可再寄；不准假 success。
+            self._mark_pipeline("computed", "midday send-failed", run_date=key)
             logger.error("尾盤可切已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
         return bool(sent_ok)
 

@@ -37,7 +37,10 @@ def test_midday_html_has_no_line_share_hint():
     html = format_midday_html(
         "20260908",
         {
-            "ok": ["4915 致伸　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）"],
+            "ok": [
+                '<a href="https://tw.stock.yahoo.com/quote/4915.TW">4915 致伸</a>'
+                "　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）"
+            ],
             "chase": [],
             "above_entry": [],
             "no_quote": [],
@@ -50,7 +53,8 @@ def test_midday_html_has_no_line_share_hint():
     assert "沒買：只看第一區" in html
     assert "現在＝此刻成交價" in html
     assert "現在還能看" in html
-    assert "4915 致伸　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）" in html
+    assert "tw.stock.yahoo.com/quote/4915.TW" in html
+    assert "現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）" in html
     assert "建議切入" not in html
     assert "現價旁＝" not in html
 
@@ -82,6 +86,25 @@ def test_run_midday_review_uses_pick_close_and_skips_line_share(tmp_path):
     assert "現在 62.1　今早 60.8" in out["html"]
     assert "比今早 +1.3 元" in out["html"]
     assert "現在要做的事" in out["html"]
+    assert 'href="https://tw.stock.yahoo.com/quote/4915.TW"' in out["html"]
+    assert ">4915 致伸</a>" in out["html"]
+
+
+def test_midday_stock_line_html_uses_two_for_otc(monkeypatch):
+    from midday_review import format_midday_stock_line_html
+
+    monkeypatch.setattr("stock_links.yahoo_exchange", lambda *_a, **_k: "TWO")
+    monkeypatch.setattr(
+        "stock_links.html_stock_anchor",
+        lambda sid, name="", db_path=None: (
+            f'<a href="https://tw.stock.yahoo.com/quote/{sid}.TWO">{sid} {name}</a>'
+        ),
+    )
+    row = {"stock_id": "3105", "stock_name": "穩懋", "pick_close": 100.0}
+    html = format_midday_stock_line_html(row, {"close": 101.0}, db_path="unused.db")
+    assert "tw.stock.yahoo.com/quote/3105.TWO" in html
+    assert ">3105 穩懋</a>" in html
+    assert "現在 101　今早 100" in html
 
 
 def test_main_runner_midday_does_not_send_copy_paste():
