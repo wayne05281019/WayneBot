@@ -3761,7 +3761,7 @@ class WayneTelegramBot:
                 text_fn=lambda s: self._wait_bubble(
                     "洞燭先機進行中",
                     s,
-                    now="讀這檔產業鏈",
+                    now="讀這檔三層佔比",
                     rest="能不能留",
                     fill_sec=16.0,
                 ),
@@ -3831,8 +3831,8 @@ class WayneTelegramBot:
                 text_fn=lambda s: self._wait_bubble(
                     "洞燭先機進行中",
                     s,
-                    now="讀產業鏈佔比",
-                    rest="排出推薦",
+                    now="讀佔比升降",
+                    rest="分層排次級",
                     fill_sec=20.0,
                 ),
             )
@@ -3898,6 +3898,15 @@ class WayneTelegramBot:
                 reply_markup=self._dongzhu_reply_menu(uid),
             )
             self._pending[actor] = "dongzhu"
+            # 靜默落檔：失敗不擋話筒、不准把％講進對話。
+            try:
+                from dongzhu_tape import snapshot_dongzhu_picks
+
+                asyncio.create_task(
+                    asyncio.to_thread(snapshot_dongzhu_picks, self.db_path)
+                )
+            except Exception:
+                pass
         finally:
             await self._stop_plain_wait(*wait_h)
             self._trade_running.discard(actor)
