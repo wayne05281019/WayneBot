@@ -1876,6 +1876,22 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             ha="left",
             va="top",
         )
+        try:
+            from decision_card_signals import format_card_query_stamp
+
+            date_s, clock_s = format_card_query_stamp(is_live=False, latest_date=as_of)
+            fig.text(
+                0.985,
+                0.985,
+                f"{date_s} {clock_s}",
+                fontproperties=_fp(10, "bold"),
+                color="#455a64",
+                ha="right",
+                va="top",
+                zorder=14,
+            )
+        except Exception:
+            pass
         ax.set_xlim(-0.6, n + 14)
         axv.set_xlim(-0.6, n + 14)
         ax.set_ylim(ymin, ymax)

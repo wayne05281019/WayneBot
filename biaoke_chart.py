@@ -2910,7 +2910,11 @@ def render_biaoke_structure_png(
     try:
         from decision_card_signals import format_card_query_stamp
 
-        date_s, clock_s = format_card_query_stamp(is_live=False, latest_date=last_d)
+        date_s, clock_s = format_card_query_stamp(
+            is_live=False,
+            latest_date=last_d,
+            stock_id=str(sid or ""),
+        )
         fig.text(
             0.985,
             0.985,

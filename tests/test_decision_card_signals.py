@@ -195,16 +195,15 @@ def test_card_query_stamp_live_includes_seconds():
     assert date_s == "2026/09/04（五）"
     assert clock_s == "盤中 10:15"
     date_s, clock_s = format_card_query_stamp(
-        is_live=True,
-        latest_date="20260904",
-        generated_at="2026-09-04 13:25:18",
+        is_live=True, latest_date="20260904", generated_at="2026-09-04 13:25:18",
     )
     assert clock_s == "盤中 13:25"
     date_s, clock_s = format_card_query_stamp(
         is_live=False, latest_date="20260904", generated_at=dt
     )
     assert date_s == "2026/09/04（五）"
-    assert clock_s == "13:30收盤"
+    # 盤中查詢時間＝當下；is_live 不影響時鐘標籤
+    assert clock_s == "盤中 10:15"
 
 
 def test_card_query_stamp_after_close_is_fixed():
@@ -255,6 +254,68 @@ def test_evening_lookup_stamp_is_close_not_wall_clock():
         is_live=False, latest_date="20260908", generated_at=night
     )
     assert clock_s == "13:30收盤"
+
+
+def test_emerging_stamp_keeps_query_time_until_1500():
+    """興櫃到 15:00 才收；13:30～15:00 仍寫查詢當下，不准套 13:30收盤。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from decision_card_signals import (
+        board_close_clock_label,
+        format_card_query_stamp,
+        format_produced_clock,
+        stamp_emerging_flag,
+    )
+
+    assert stamp_emerging_flag(quote_source="emerging_quotes") is True
+    assert stamp_emerging_flag(listing="興櫃 電子") is True
+    assert stamp_emerging_flag(market="EM") is True
+    assert stamp_emerging_flag(emerging=False, listing="上市 半導體") is False
+    assert board_close_clock_label(emerging=False) == "13:30收盤"
+    assert board_close_clock_label(emerging=True) == "15:00收盤"
+
+    mid = datetime(2026, 9, 4, 14, 20, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    # 一般股 14:20 已過 13:30 → 收盤標籤
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20260904", generated_at=mid, emerging=False
+    )
+    assert clock_s == "13:30收盤"
+    # 興櫃 14:20 仍盤中 → 查詢當下
+    _, clock_s = format_card_query_stamp(
+        is_live=True,
+        latest_date="20260904",
+        generated_at=mid,
+        emerging=True,
+    )
+    assert clock_s == "盤中 14:20"
+    _, clock_s = format_card_query_stamp(
+        is_live=False,
+        latest_date="20260904",
+        generated_at=mid,
+        quote_source="emerging_quotes",
+    )
+    assert clock_s == "盤中 14:20"
+    assert "13:30" not in clock_s
+
+    # 一般股盤中即使 is_live=False 也寫查詢當下（有股價＝查詢時間）
+    day = datetime(2026, 9, 4, 10, 15, tzinfo=ZoneInfo("Asia/Taipei"))
+    _, clock_s = format_card_query_stamp(
+        is_live=False, latest_date="20260904", generated_at=day, emerging=False
+    )
+    assert clock_s == "盤中 10:15"
+    at_close = datetime(2026, 9, 4, 15, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20260904", generated_at=at_close, emerging=True
+    )
+    assert clock_s == "15:00收盤"
+    after = datetime(2026, 9, 4, 16, 5, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20260904", generated_at=after, emerging=True
+    )
+    assert clock_s == "15:00收盤"
+    assert format_produced_clock(generated_at=mid, emerging=True) == "盤中 14:20"
+    assert format_produced_clock(generated_at=after, emerging=True) == "15:00收盤"
 
 
 def test_stamp_and_dual_pill_do_not_reuse_live_clock_or_round_dots():
