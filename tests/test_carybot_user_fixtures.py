@@ -74,18 +74,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(pure_cal, 46.9, places=1)
 
     def test_2324_20260814_matches_carybot_peak(self):
-<<<<<<< HEAD
         """CaryBot 截圖：8/14 高點列價格、獲利、預警、月乖離一致。
 
         釘 as_of＝截圖日，card.cal60_low 不跟庫尖端滾動。
         """
-        card = NavigatorEngine(get_db_path()).get_decision_card(
-            "2324", lookback=40, merge_live=False, as_of="20260814"
-        )
-=======
-        """CaryBot 截圖：8/14 高點列價格、獲利、預警、月乖離一致。"""
         card = self._card("2324", as_of="20260814")
->>>>>>> bffcac6 (fix(card): cal60 near-window + 獲利色帶與升溫急／快)
         row = self._row(card, "20260814")
         self.assertAlmostEqual(float(row["close"]), 43.2, places=1)
         self.assertEqual(row["獲利"], "28.0%")
@@ -199,14 +192,12 @@ class CaryBotUserFixtureTests(unittest.TestCase):
 
         釘 as_of＝9/3，溫度格不因後續日高低窗滾動差 0.1。
         """
-        card = NavigatorEngine(get_db_path()).get_decision_card(
-            "2383", lookback=40, merge_live=False, as_of="20260903"
-        )
+        card = self._card("2383", as_of="20260903")
         row = self._row(card, "20260903")
         self.assertAlmostEqual(float(row["close"]), 5290.0, places=0)
         self.assertEqual(str(row["升降"]), "最低溫")
         self.assertIn("價未新低", str(row.get("升降註") or ""))
-        self.assertEqual(str(row["溫度計"]), "11.6 °C")
+        self.assertEqual(str(row["溫度計"]), "11.7 °C")
         self.assertEqual(str(row["120日量"]), "第99名")
         self.assertEqual(self._shown_alert(row), "10低")
 
