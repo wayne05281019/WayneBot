@@ -6,6 +6,7 @@ from decision_card_signals import (
     double_green_breakout,
     format_profit_pct,
     is_profit_display_zero,
+    leave_zero_bar_indices,
     leave_zero_from_quote_df,
     leave_zero_screen_ok,
     profit_display_leave_zero_band,
@@ -55,6 +56,40 @@ def test_leave_zero_from_quote_df_matches_screen_ok():
     for col in ("high", "low", "close"):
         flat.loc[flat.index[-1], col] = 100.0
     assert leave_zero_from_quote_df(flat) is False
+
+
+def test_leave_zero_bar_indices_marks_all_history_hits():
+    """時間軸內多段剛離零都要回 index，不准只留最後一根。"""
+    from datetime import datetime, timedelta
+
+    import pandas as pd
+
+    last = datetime(2026, 9, 17)
+    rows = []
+    for i in range(100):
+        d = (last - timedelta(days=99 - i)).strftime("%Y%m%d")
+        # 兩段 leave_zero：i=70（101）與 i=90（102）；其餘貼 100 或已噴
+        if i == 70:
+            px = 101.0
+        elif i == 90:
+            px = 102.0
+        elif 71 <= i < 85:
+            px = 110.0
+        elif 85 <= i < 90:
+            px = 100.0
+        elif i > 90:
+            px = 108.0
+        else:
+            px = 100.0
+        rows.append(
+            {"date": d, "high": px, "low": px, "close": px, "volume": 1000}
+        )
+    df = pd.DataFrame(rows)
+    idxs = leave_zero_bar_indices(df)
+    assert 70 in idxs
+    assert 90 in idxs
+    assert len(idxs) >= 2
+    assert leave_zero_from_quote_df(df) is False  # 最後一根已噴，不是剛離零
 
 
 def test_double_green_breakout():

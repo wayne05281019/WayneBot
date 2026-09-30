@@ -205,18 +205,57 @@ def test_nav_trade_marks_buy_up_sell_down_from_card():
         }
     )
     b, s = _nav_trade_marks(work, {"relative_buy_kind": "just_left"})
-    assert b == 1 and s is None
+    assert b == [1] and s is None
     b, s = _nav_trade_marks(work, {"sell_action": "直接減碼"})
-    assert s == 1 and b is None
+    assert s == 1 and b == []
     b, s = _nav_trade_marks(work, {"relative_buy_kind": "just_left", "buy_verdict": "no"})
-    assert b is None and s is None
+    assert b == [] and s is None
     b, s = _nav_trade_marks(work, {"buy_verdict": "buy"})
-    assert b == 1 and s is None
+    assert b == [1] and s is None
     b, s = _nav_trade_marks(
         work, {"relative_buy_kind": "just_left", "entry_stage": "watch"}
     )
-    assert b is None and s is None
+    assert b == [] and s is None
     b, s = _nav_trade_marks(work, None)
-    assert b is None and s is None
+    assert b == [] and s is None
     assert _NAV_TRADE_BUY.startswith("#15")
     assert _NAV_TRADE_SELL.startswith("#E6")
+
+
+def test_nav_trade_marks_history_leave_zero_indices():
+    """可見窗內多根 leave_zero 都要進買點標，不准只留最後一根。"""
+    from datetime import datetime, timedelta
+
+    import pandas as pd
+    from wayne_navigator import _nav_trade_marks
+
+    last = datetime(2026, 9, 17)
+    # 兩段 leave_zero：貼 100 → 103，噴高後再貼 100 → 102.5
+    closes = [100.0] * 60 + [100.0, 103.0] + [110.0] * 10 + [100.0, 102.5] + [105.0] * 5
+    dates = [
+        (last - timedelta(days=len(closes) - 1 - i)).strftime("%Y%m%d")
+        for i in range(len(closes))
+    ]
+    work = pd.DataFrame(
+        {
+            "date": dates,
+            "close": closes,
+            "high": [c * 1.01 for c in closes],
+            "low": [c * 0.99 for c in closes],
+            "volume": [1000] * len(closes),
+            "is_halt": [False] * len(closes),
+        }
+    )
+    b, s = _nav_trade_marks(work, None)
+    assert s is None
+    assert isinstance(b, list)
+    assert len(b) >= 2, b
+    assert 61 in b
+    assert any(i > 70 for i in b), b
+    last_i = len(work) - 1
+    b2, _ = _nav_trade_marks(work, {"buy_verdict": "buy"})
+    assert last_i in b2
+    b3, _ = _nav_trade_marks(work, {"buy_verdict": "buy", "entry_stage": "watch"})
+    assert last_i not in b3
+    assert any(i != last_i for i in b3)
+

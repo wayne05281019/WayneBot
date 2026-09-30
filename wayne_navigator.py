@@ -5515,25 +5515,92 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
 
 
 def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
-    """只標黃金買點進出，不是每個綠低／紫高。無卡片就不算獲利（查股才快）。"""
+    """黃金買點進出標：買＝可見窗內每根 leave_zero；賣＝最後一根直接減碼。
+
+    導航圖／大量區／壓力區共用。藍▲紅框不是紅箭頭買訊；還在零不畫買箭。
+    有卡時最後一根另對齊 buy_verdict／entry_stage／just_left（watch／no 清最後）。
+    """
     n = 0 if work is None else len(work)
-    buy_i = sell_i = None
-    if n < 2 or not card:
-        return buy_i, sell_i
-    if str(card.get("sell_action") or "") == "直接減碼":
-        sell_i = n - 1
-    verdict = str(card.get("buy_verdict") or "")
-    if verdict == "buy":
-        buy_i = n - 1
-    elif verdict in ("watch", "no"):
-        buy_i = None
-    elif str(card.get("relative_buy_kind") or "") == "just_left":
-        buy_i = n - 1
-    if str(card.get("entry_stage") or "") == "watch":
-        buy_i = None
-    if buy_i is not None and buy_i == sell_i:
-        buy_i = None
-    return buy_i, sell_i
+    buy_is: list = []
+    sell_i = None
+    if n < 2:
+        return buy_is, sell_i
+    try:
+        from decision_card_signals import leave_zero_bar_indices
+
+        buy_is = [int(i) for i in leave_zero_bar_indices(work)]
+    except Exception:
+        buy_is = []
+    if buy_is and "is_halt" in work.columns:
+        halt = work["is_halt"].fillna(False).astype(bool)
+        buy_is = [i for i in buy_is if 0 <= i < n and not bool(halt.iloc[i])]
+    if card:
+        if str(card.get("sell_action") or "") == "直接減碼":
+            sell_i = n - 1
+        verdict = str(card.get("buy_verdict") or "")
+        entry = str(card.get("entry_stage") or "")
+        last = n - 1
+        if entry == "watch" or verdict in ("watch", "no"):
+            buy_is = [i for i in buy_is if i != last]
+        elif verdict == "buy" or (
+            verdict not in ("watch", "no")
+            and str(card.get("relative_buy_kind") or "") == "just_left"
+        ):
+            if last not in buy_is:
+                buy_is.append(last)
+                buy_is.sort()
+    if sell_i is not None:
+        buy_is = [i for i in buy_is if i != sell_i]
+    return buy_is, sell_i
+
+
+def _paint_nav_buy_arrows(
+    ax1,
+    work: pd.DataFrame,
+    buy_is,
+    xs,
+    *,
+    arrow_h: float,
+    arrow_gap: float,
+    span: float,
+) -> bool:
+    """在多根買點柱畫藍▲紅框。導航／大量區共用。有畫回 True。"""
+    if ax1 is None or not buy_is:
+        return False
+    buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
+    buy_hw = _NAV_BUY_ARROW_HW
+    tips = []
+    idxs = []
+    for i in buy_is:
+        try:
+            ii = int(i)
+        except (TypeError, ValueError):
+            continue
+        if ii < 0 or ii >= len(work):
+            continue
+        tip = float(work["low"].iloc[ii]) - arrow_gap
+        tips.append(tip)
+        idxs.append(ii)
+    if not tips:
+        return False
+    # 先留底邊空間再畫，不准切箭
+    y0, y1 = ax1.get_ylim()
+    ax1.set_ylim(min(y0, min(tips) - buy_h - span * 0.02), y1)
+    for ii, tip in zip(idxs, tips):
+        _nav_arrow(
+            ax1,
+            tip,
+            xs[ii],
+            down=False,
+            face=_NAV_TRADE_BUY,
+            ink=_NAV_TRADE_BUY,
+            arrow_h=buy_h,
+            hw=buy_hw,
+            z=8,
+            edge=_NAV_BUY_ARROW_EDGE,
+            edgewidth=_NAV_BUY_ARROW_EDGE_W,
+        )
+    return True
 
 
 def overlay_nav_marks_on_zone(
@@ -5779,28 +5846,11 @@ def overlay_nav_marks_on_zone(
     ax1.axhline(h20, color="#f8bbd0", linewidth=1.0, linestyle="--", zorder=2)
     ax1.axhline(l20, color="#80deea", linewidth=1.0, linestyle="--", zorder=2)
 
-    buy_i, sell_i = _nav_trade_marks(work, card)
-    if buy_i is not None:
-        i = int(buy_i)
-        # 買點藍向上：原尺寸 1.5 倍；先留底邊空間不准切箭
-        buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
-        buy_hw = _NAV_BUY_ARROW_HW
-        tip = float(work["low"].iloc[i]) - arrow_gap
-        y0, y1 = ax1.get_ylim()
-        ax1.set_ylim(min(y0, tip - buy_h - span * 0.02), y1)
-        _nav_arrow(
-            ax1,
-            tip,
-            xs[i],
-            down=False,
-            face=_NAV_TRADE_BUY,
-            ink=_NAV_TRADE_BUY,
-            arrow_h=buy_h,
-            hw=buy_hw,
-            z=8,
-            edge=_NAV_BUY_ARROW_EDGE,
-            edgewidth=_NAV_BUY_ARROW_EDGE_W,
-        )
+    buy_is, sell_i = _nav_trade_marks(work, card)
+    # 時間軸內凡買點都畫藍▲紅框（不只最後一根）；導航／大量區同一路徑
+    _paint_nav_buy_arrows(
+        ax1, work, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
+    )
     if sell_i is not None:
         i = int(sell_i)
         _nav_arrow(
@@ -6067,21 +6117,11 @@ def _paint_nav_on_axes(
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
-    buy_i, sell_i = _nav_trade_marks(work, card)
+    buy_is, sell_i = _nav_trade_marks(work, card)
     trade_note = ""
-    if buy_i is not None:
-        i = int(buy_i)
-        lo = float(work["low"].iloc[i])
-        buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
-        tip = lo - arrow_gap
-        y0, y1 = ax1.get_ylim()
-        ax1.set_ylim(min(y0, tip - buy_h - span * 0.02), y1)
-        _nav_arrow(
-            ax1, tip, xs[i], down=False,
-            face=_NAV_TRADE_BUY, ink=_NAV_TRADE_BUY,
-            arrow_h=buy_h, hw=_NAV_BUY_ARROW_HW, z=8,
-            edge=_NAV_BUY_ARROW_EDGE, edgewidth=_NAV_BUY_ARROW_EDGE_W,
-        )
+    if _paint_nav_buy_arrows(
+        ax1, work, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
+    ):
         trade_note = "　買↑藍▲紅框"
     if sell_i is not None:
         i = int(sell_i)

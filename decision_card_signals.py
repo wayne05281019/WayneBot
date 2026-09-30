@@ -1390,19 +1390,72 @@ def leave_zero_from_quote_df(df) -> bool:
 
     盤中未收柱不准塞進 df。缺列／算不出＝False，不准回落海選桶快取。
     """
-    if df is None or len(df) < 2:
+    idxs = leave_zero_bar_indices(df)
+    if not idxs:
         return False
+    n = len(df)
+    return bool(idxs and int(idxs[-1]) == n - 1)
+
+
+def leave_zero_bar_indices(df) -> List[int]:
+    """可見窗內每根達黃金買點（leave_zero_screen_ok）的柱 index。
+
+    與 leave_zero_from_quote_df／海選同一條公式；還在零不算。空／不足回 []。
+    盤中未收柱不准塞進 df。
+    """
+    if df is None or len(df) < 2:
+        return []
     try:
         profits = profit_pct_cal60_series(df)
-        if len(profits) < 2:
-            return False
-        py = float(profits.iloc[-2])
-        pt = float(profits.iloc[-1])
-        ya, ta = card_alerts_for_df(df)
-        ok, _ = leave_zero_screen_ok(py, pt, yest_alert=ya, today_alert=ta)
-        return bool(ok)
     except Exception:
-        return False
+        return []
+    if profits is None or len(profits) < 2:
+        return []
+    close_s = df["close"].astype(float)
+    n = len(close_s)
+    low60 = close_s.rolling(60, min_periods=20).min()
+    high20 = close_s.rolling(20, min_periods=5).max()
+    low20 = close_s.rolling(20, min_periods=5).min()
+    ma20 = close_s.rolling(20, min_periods=1).mean()
+    bias = pd.Series(0.0, index=close_s.index)
+    ok_ma = ma20 > 0
+    bias.loc[ok_ma] = (
+        (close_s.loc[ok_ma] - ma20.loc[ok_ma]) / ma20.loc[ok_ma] * 100.0
+    ).round(1)
+    span = (high20 - low20).clip(lower=close_s * 0.002)
+    rsv = ((close_s - low20) / span * 100.0).clip(0, 100).round(1)
+
+    def tag_at(i: int) -> str:
+        return alert_tag(
+            float(close_s.iloc[i]),
+            low60=float(low60.iloc[i] or 0),
+            high20=float(high20.iloc[i] or 0),
+            low20=float(low20.iloc[i] or 0),
+            bias_monthly=float(bias.iloc[i] if pd.notna(bias.iloc[i]) else 0),
+            rsv=float(rsv.iloc[i]) if pd.notna(rsv.iloc[i]) else None,
+        )
+
+    tags = [tag_at(i) for i in range(n)]
+    halt = None
+    if "is_halt" in df.columns:
+        halt = df["is_halt"].fillna(False).astype(bool)
+    out: List[int] = []
+    for i in range(1, n):
+        if halt is not None and bool(halt.iloc[i]):
+            continue
+        try:
+            py = float(profits.iloc[i - 1])
+            pt = float(profits.iloc[i])
+        except (TypeError, ValueError):
+            continue
+        if py != py or pt != pt:  # NaN
+            continue
+        ok, _ = leave_zero_screen_ok(
+            py, pt, yest_alert=tags[i - 1], today_alert=tags[i]
+        )
+        if ok:
+            out.append(i)
+    return out
 
 
 def card_alerts_for_df(df, today_iloc: int = -1) -> Tuple[str, str]:
