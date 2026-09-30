@@ -142,7 +142,8 @@ def test_chain_mediatek_is_not_april16_hold():
     assert "IC 設計" in blob or "尚未納入" in blob or "不在" in blob
     notes = format_chain_notes("", "聯發科他有看好嗎")
     assert chain_order_ok(notes)
-    assert "演算" in notes
+    assert "演化" in notes or "演算" in notes
+    assert "不是買訊" in notes
 
 
 def test_chain_lianya_is_vane_not_april16_hold():
@@ -1002,3 +1003,53 @@ def test_mouth_is_one_judgment_drawers_not_six_texts():
     mkt = format_chain_notes("", "目前大盤是屬於哪個位階 以波浪來看的話")
     assert "判斷｜" in mkt
     assert "這句沒點檔" in mkt or "大盤" in mkt
+
+
+def test_desk_surface_shared_across_stock_and_market():
+    """飆大按鍵文字／圖說共用 desk_surface；大盤劃線用語走同一 rail tip。"""
+    from biaoke_chain import desk_caption_judgment, desk_market_rail_tip, desk_surface
+    from biaoke_chart import EVOLUTION_ZONE_LABEL, chart_caption
+    import inspect
+    from biaoke_chart import build_biaoke_structure_chart
+
+    surf = desk_surface("", "2383")
+    assert surf.get("named") is True
+    assert "2383" in (surf.get("sid") or "")
+    assert "不數浪" in (surf.get("judge") or "") or "不數浪" in (surf.get("lead") or "")
+    bit = desk_caption_judgment(surf)
+    assert "2383" in bit
+    mkt = desk_surface("", "大盤")
+    assert mkt.get("named") is False
+    assert desk_caption_judgment(mkt)
+    # 個股出圖一定走 desk_surface（代號也算）
+    src = inspect.getsource(build_biaoke_structure_chart)
+    assert "desk_surface" in src
+    assert "re.fullmatch" not in src
+    assert "EVOLUTION_ZONE_LABEL" in EVOLUTION_ZONE_LABEL or "演化區" in EVOLUTION_ZONE_LABEL
+    # chart_caption 吃 surface
+    cap_src = inspect.getsource(chart_caption)
+    assert "desk_caption_judgment" in cap_src
+    assert "演化區" in cap_src
+    # rail tip helper 存在（有庫才有內容）
+    tip = desk_market_rail_tip("")
+    assert tip == "" or "不是買訊" in tip
+
+
+def test_market_ask_does_not_fuzzy_to_stock(tmp_path):
+    """「大盤」不准模糊對到大研生醫等個股，大盤圖說才不會串錯檔。"""
+    from biaoke_chain import _resolve_sid, desk_surface, fire_chain
+    from tests.conftest import has_production_db, production_db_path
+
+    assert _resolve_sid("", "大盤") == ("", "")
+    assert desk_surface("", "大盤").get("named") is False
+    if not has_production_db():
+        return
+    db = production_db_path()
+    assert _resolve_sid(db, "大盤") == ("", "")
+    surf = desk_surface(db, "大盤")
+    assert surf.get("named") is False
+    assert "7780" not in (surf.get("lead") or "")
+    assert "大研" not in (surf.get("lead") or "")
+    fired = fire_chain(db, "大盤")
+    assert not fired.get("named")
+    assert not fired.get("sid")

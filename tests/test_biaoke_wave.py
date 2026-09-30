@@ -195,6 +195,9 @@ def test_twii_degree_chart_when_db_present(tmp_path):
     assert "paint_forecast_span" in src_w
     assert "right=_FIG_RIGHT" in src_w
     assert "_style_frame" in src_w
+    assert "infer_parallel_channel" in src_w
+    assert "EVOLUTION_ZONE_LABEL" in src_w
+    assert "_paint_parallel_channel" in src_w
     src = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "is_wave_question" in src
     assert "_send_biaoke_twii_degree_chart" in src
