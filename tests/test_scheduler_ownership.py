@@ -358,6 +358,29 @@ def test_catch_up_midday_only_in_tail_window(monkeypatch, recorder):
     assert recorder.calls[-1][1]["skip_if_done"] is True
 
 
+def test_catch_up_skips_midday_at_exact_1245(monkeypatch, recorder):
+    """12:45 準點歸排程；補跑從 12:46 才開，避免與準點同一分鐘雙寄。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 22, 12, 45, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    kinds = [c[0] for c in recorder.calls]
+    assert "midday" not in kinds
+    assert "morning" in kinds
+
+
+def test_catch_up_midday_from_1246(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 22, 12, 46, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    assert "midday" in [c[0] for c in recorder.calls]
+
+
 def test_watchdog_retry_skips_release(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     monkeypatch.setattr("config.get_db_path", lambda: "unused.db")

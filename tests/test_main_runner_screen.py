@@ -605,6 +605,63 @@ def test_midday_does_not_mark_when_telegram_rejects(tmp_path, monkeypatch):
     )
     assert runner.run_midday_review(skip_if_done=False) is False
     assert runner.already_completed_today("midday-20260908") is False
+    assert runner.pipeline_status("midday-20260908") == "computed"
+
+
+def test_midday_claim_blocks_second_push(tmp_path, monkeypatch):
+    """準點＋補跑＋死人開關並行時，第二個路徑不得再寄。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "claim.db")
+    ensure_core_schema(path)
+    sent = []
+
+    def _mk():
+        r = MainRunner.__new__(MainRunner)
+        r.db_path = path
+        r.today_str = "20260909"
+        r.chat_id = "9001"
+        r.bot = object()
+        r.token = "x"
+        r._broadcast_family = lambda t: sent.append(t) or True
+        return r
+
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr(
+        "midday_review.run_midday_review",
+        lambda *_a, **_k: {"html": "<b>尾盤一次</b>", "line_share": ""},
+    )
+    a = _mk()
+    b = _mk()
+    assert a.run_midday_review(skip_if_done=True) is True
+    assert b.run_midday_review(skip_if_done=True) is True
+    assert sent == ["<b>尾盤一次</b>"]
+    assert a.already_completed_today("midday-20260908") is True
+
+
+def test_midday_claim_running_blocks_until_stale(tmp_path):
+    from datetime import datetime, timedelta
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    import sqlite3
+
+    path = str(tmp_path / "run.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.try_claim_pipeline("midday-20260908", notes="a") is True
+    assert runner.try_claim_pipeline("midday-20260908", notes="b") is False
+    conn = sqlite3.connect(path)
+    old = (datetime.now() - timedelta(seconds=700)).isoformat(timespec="seconds")
+    conn.execute(
+        "UPDATE pipeline_runs SET finished_at=? WHERE run_date=?",
+        (old, "midday-20260908"),
+    )
+    conn.commit()
+    conn.close()
+    assert runner.try_claim_pipeline("midday-20260908", notes="c") is True
 
 
 
