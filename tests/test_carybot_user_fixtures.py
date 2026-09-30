@@ -62,8 +62,13 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         # 建準溫度尺度與 Cary 截圖不完全同一把尺；只鎖量／預警／月乖離／升降。
 
     def test_2421_profit_matches_carybot_cal60_floor(self):
-        """CaryBot 9/1 列獲利 46.9%＝只用 60曆日低 120.5。"""
-        card = self._card("2421")
+        """CaryBot 9/1 列獲利 46.9%＝只用 60曆日低 120.5。
+
+        釘 as_of＝截圖日，避免庫滾到 9/30 後近 60 曆日低上移。
+        """
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "2421", lookback=40, merge_live=False, as_of="20260901"
+        )
         self.assertAlmostEqual(float(card["cal60_low"]), 120.5, places=1)
         row = self._row(card, "20260901")
         self.assertEqual(row["獲利"], "46.9%")
@@ -71,8 +76,13 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(pure_cal, 46.9, places=1)
 
     def test_2324_20260814_matches_carybot_peak(self):
-        """CaryBot 截圖：8/14 高點列價格、獲利、預警、月乖離一致。"""
-        card = self._card("2324")
+        """CaryBot 截圖：8/14 高點列價格、獲利、預警、月乖離一致。
+
+        釘 as_of＝截圖日，card.cal60_low 不跟庫尖端滾動。
+        """
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "2324", lookback=40, merge_live=False, as_of="20260814"
+        )
         row = self._row(card, "20260814")
         self.assertAlmostEqual(float(row["close"]), 43.2, places=1)
         self.assertEqual(row["獲利"], "28.0%")
@@ -188,8 +198,14 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["bias_monthly"]), -6.3, places=1)
 
     def test_2383_20260903_min_temp_vol(self):
-        """台光電 9/3：最低溫＋價未新低；鎖溫度／量排名。"""
-        row = self._row(self._card("2383"), "20260903")
+        """台光電 9/3：最低溫＋價未新低；鎖溫度／量排名。
+
+        釘 as_of＝9/3，溫度格不因後續日高低窗滾動差 0.1。
+        """
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "2383", lookback=40, merge_live=False, as_of="20260903"
+        )
+        row = self._row(card, "20260903")
         self.assertAlmostEqual(float(row["close"]), 5290.0, places=0)
         self.assertEqual(str(row["升降"]), "最低溫")
         self.assertIn("價未新低", str(row.get("升降註") or ""))
