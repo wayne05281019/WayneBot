@@ -72,11 +72,103 @@ def test_save_load_roster_and_empty_sentinel(tmp_path):
     assert rows[0]["stock_id"] == "2330"
     assert float(rows[0]["pick_close"]) == 900.0
     assert latest_roster_as_of(db) == "20260930"
+    assert str(rows[0]["quote_source"]).startswith("card_lz|")
 
     n0 = save_winrate_roster(db, "20261001", [])
     assert n0 == 0
     assert load_winrate_roster(db, "20261001") == []
     assert latest_roster_as_of(db) == "20261001"
+    from winrate_buypoint import roster_is_current
+
+    assert roster_is_current(db, "20261001") is True
+
+
+def test_resolve_button_rows_ensures_missing_roster(tmp_path, monkeypatch):
+    """當日完整收有、roster 缺 → 按鈕路徑當場補掃，不准空回。"""
+    from winrate_buypoint import resolve_button_rows, roster_is_current
+
+    db = str(tmp_path / "e.db")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20261001",
+    )
+
+    def _fake_ensure(db_path, *, as_of=None, force=False):
+        save_winrate_roster(
+            db_path,
+            as_of or "20261001",
+            [{"stock_id": "7892", "stock_name": "元鈦科", "close": 500.0, "profit_pct": 2.3}],
+        )
+        return "20261001", load_winrate_roster(db_path, "20261001")
+
+    monkeypatch.setattr("winrate_buypoint.ensure_winrate_roster", _fake_ensure)
+    monkeypatch.setattr(
+        "winrate_buypoint.should_apply_intraday_filter",
+        lambda **kw: False,
+    )
+    as_of, rows, mode = resolve_button_rows(db)
+    assert as_of == "20261001" and mode == "full"
+    assert [r["stock_id"] for r in rows] == ["7892"]
+    assert roster_is_current(db, "20261001")
+
+
+def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
+    """藍▲＝leave_zero_from_quote_df；不走 screen_leave_zero_pick 雷達閘。"""
+    import pandas as pd
+    from winrate_buypoint import scan_winrate_leave_zero
+
+    db = str(tmp_path / "s.db")
+
+    class _Eng:
+        def get_latest_trading_date(self):
+            return "20260930"
+
+        def _load_profit_scan_frames(self, day):
+            dates = [f"202609{d:02d}" for d in range(1, 30)] + ["20260930"]
+            closes = [100.0] * 29 + [102.0]
+            df = pd.DataFrame(
+                {
+                    "date": dates,
+                    "stock_id": ["7892"] * 30,
+                    "stock_name": ["元鈦科"] * 30,
+                    "close": closes,
+                    "volume": [1000.0] * 30,
+                    "open": closes,
+                    "high": closes,
+                    "low": closes,
+                }
+            )
+            return {"7892": df}, {"7892"}
+
+    monkeypatch.setattr("screening_engine.ScreeningEngine", lambda *a, **k: _Eng())
+    monkeypatch.setattr("universe.is_screen_equity", lambda *a, **k: True)
+    monkeypatch.setattr(
+        "wayne_navigator.frame_for_cal60_profit",
+        lambda df, db_path: df,
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.leave_zero_from_quote_df",
+        lambda df: True,
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.profit_pct_cal60_series",
+        lambda df: pd.Series([0.0] * (len(df) - 1) + [2.3]),
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.cal60_low_close_at",
+        lambda df, i: 100.0,
+    )
+    day, rows = scan_winrate_leave_zero(db, as_of="20260930")
+    assert day == "20260930"
+    assert len(rows) == 1 and rows[0]["stock_id"] == "7892"
+    assert float(rows[0]["close"]) == 102.0
+
+
+def test_pipeline_run_key_bp_prefix():
+    from winrate_buypoint import PIPELINE_KEY_PREFIX, pipeline_run_key
+
+    assert PIPELINE_KEY_PREFIX == "winrate-bp"
+    assert pipeline_run_key("20261001") == "winrate-bp-20261001"
 
 
 def test_page_slice_and_callback():
@@ -132,6 +224,10 @@ def test_filter_intraday_keeps_lower_price_with_leave_zero(tmp_path, monkeypatch
 
 def test_resolve_button_rows_full_vs_empty(tmp_path, monkeypatch):
     db = str(tmp_path / "r.db")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "",
+    )
     as_of, rows, mode = resolve_button_rows(db)
     assert mode == "empty" and rows == [] and as_of == ""
 
@@ -139,6 +235,10 @@ def test_resolve_button_rows_full_vs_empty(tmp_path, monkeypatch):
         db,
         "20260930",
         [{"stock_id": "2330", "stock_name": "台積電", "close": 900.0}],
+    )
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20260930",
     )
     monkeypatch.setattr(
         "winrate_buypoint.should_apply_intraday_filter",
