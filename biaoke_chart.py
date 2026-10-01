@@ -58,6 +58,8 @@ _MUTED = "#607d8b"
 # 左右都留股價刻度：左邊略寬、右邊對稱可比對
 _FIG_LEFT = 0.072
 _FIG_RIGHT = 0.918
+# 結構圖右溝要塞「最可能＝看壓 ####」整盒＋邊框；右緣再留 y 刻度，不准貼齊裁切
+_STRUCTURE_FIG_RIGHT = 0.948
 _FIG_BOTTOM = 0.072
 _STOCK_MAIN_TOP = 0.658
 _LOCATOR_LEFT = 0.500
@@ -356,6 +358,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     cands: List[Dict[str, Any]] = []
 
     def _pack_desc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        # 通道主軌至少約兩週：過短兩點延長上話筒會像假錨
+        if int(j) - int(i) < 10:
+            return
         touch = _channel_width_touch(
             i, j, highs[i], highs[j], lo_p, highs, lows, above=False, span=span, n=n
         )
@@ -374,10 +379,15 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             pos, alive = "靠近平行撐", True
         else:
             pos, alive = "下降通道中段", True
+        # 較長真連點加分（兩點距離夠才像他畫的軌道）
+        span_bonus = min((int(j) - int(i)) / 24.0, 1.0) * 0.45
         cands.append(
             {
                 "kind": "desc",
-                "score": float(score) + bonus + (0.35 if alive and last < top_now else 0.0),
+                "score": float(score)
+                + bonus
+                + span_bonus
+                + (0.35 if alive and last < top_now else 0.0),
                 "alive": alive,
                 "pos": pos,
                 "width": width,
@@ -392,6 +402,8 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
     def _pack_asc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        if int(j) - int(i) < 10:
+            return
         touch = _channel_width_touch(
             i, j, lows[i], lows[j], hi_p, highs, lows, above=True, span=span, n=n
         )
@@ -410,10 +422,14 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             pos, alive = "靠近上升軌", True
         else:
             pos, alive = "上升通道中段", True
+        span_bonus = min((int(j) - int(i)) / 24.0, 1.0) * 0.45
         cands.append(
             {
                 "kind": "asc",
-                "score": float(score) + bonus + (0.35 if alive and last > base_now else -0.35),
+                "score": float(score)
+                + bonus
+                + span_bonus
+                + (0.35 if alive and last > base_now else -0.35),
                 "alive": alive,
                 "pos": pos,
                 "width": width,
@@ -431,8 +447,8 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     down = _desc_high_pair(hi_p, highs)
     if down:
         _pack_desc(int(down[0]), int(down[1]), bonus=0.55)
-    # 備援：近窗其他合格更低高連點（仍要過包覆閘）
-    for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=5, look=8):
+    # 備援：近窗其他合格更低高連點（仍要過包覆閘；min_gap=10＝有長度的兩點）
+    for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=10, look=8):
         if down and (i, j) == (int(down[0]), int(down[1])):
             continue
         _pack_desc(i, j, bonus=0.05)
@@ -445,7 +461,7 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         up = _asc_low_pair(lo_p, lows)
     if up:
         _pack_asc(int(up[0]), int(up[1]), bonus=0.55)
-    for i, j in _pivot_pairs(lo_p, lows, ascending=True, min_gap=5, look=8):
+    for i, j in _pivot_pairs(lo_p, lows, ascending=True, min_gap=10, look=8):
         if up and (i, j) == (int(up[0]), int(up[1])):
             continue
         _pack_asc(i, j, bonus=0.05)
@@ -512,6 +528,7 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "pos": best["pos"],
         "alive": bool(best["alive"]),
         "width": width,
+        "base": best["base"],
         "upper": upper,
         "lower": lower,
         "touch": (tk, ty, td),
@@ -534,7 +551,10 @@ def _paint_parallel_channel(
     y_hi: float,
     n: int,
 ) -> None:
-    """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。"""
+    """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。
+
+    真連點只標主軌兩點＋平行寬度觸點。平行緣是主軌平移，不准再撒假樞紐點。
+    """
     if not ch:
         return
     kind = str(ch.get("kind") or "")
@@ -579,15 +599,27 @@ def _paint_parallel_channel(
             edgecolors="white",
             linewidths=0.7,
         )
-    ax.scatter(
-        [float(ux1), float(ux2), float(lx1), float(lx2)],
-        [float(uy1), float(uy2), float(ly1), float(ly2)],
-        color=color,
-        s=28,
-        zorder=6,
-        edgecolors="white",
-        linewidths=0.6,
-    )
+    # 主軌兩點＝真樞紐；升＝下緣低點、降＝上緣高點。不准把平行緣端點當連點。
+    if kind == "asc":
+        ax.scatter(
+            [float(lx1), float(lx2)],
+            [float(ly1), float(ly2)],
+            color=color,
+            s=28,
+            zorder=6,
+            edgecolors="white",
+            linewidths=0.6,
+        )
+    else:
+        ax.scatter(
+            [float(ux1), float(ux2)],
+            [float(uy1), float(uy2)],
+            color=color,
+            s=28,
+            zorder=6,
+            edgecolors="white",
+            linewidths=0.6,
+        )
     # 軌價標籤走右溝；通道狀態改上頭牌晶片，不准壓在 K 棒上
 
 
@@ -1104,6 +1136,7 @@ def _leader_note(
     ha="left",
     va="center",
     clip: bool = False,
+    shrink_b: float = 4.0,
 ) -> None:
     """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
 
@@ -1133,7 +1166,7 @@ def _leader_note(
             lw=0.95,
             linestyle="--",
             shrinkA=0,
-            shrinkB=4,
+            shrinkB=float(shrink_b),
         ),
     )
 
@@ -1195,6 +1228,16 @@ def _place_band_notes(
         )
 
 
+def _approx_note_width(text: str, size: float = 12) -> float:
+    """結構圖右溝標籤約略資料座標寬（含 bbox pad＋邊框）。偏寬估，整盒必須在畫布內。"""
+    s = str(text or "")
+    units = 0.0
+    for ch in s:
+        units += 1.0 if ord(ch) > 0x2E80 else 0.72
+    # 實測 size12「最可能＝看壓 5255」約 19；邊框＋內邊距刻意估高
+    return units * (float(size) / 12.0) * 2.35 + 6.8
+
+
 def _note_priority(text: str) -> int:
     t = str(text or "")
     if "最可能" in t:
@@ -1210,7 +1253,7 @@ def _dedupe_right_notes(
     notes: Sequence[Dict[str, Any]],
     *,
     span: float,
-    near_frac: float = 0.022,
+    near_frac: float = 0.028,
 ) -> List[Dict[str, Any]]:
     """價位太近只留優先標籤，避免壓／軌／最可能互蓋。"""
     if not notes:
@@ -1240,37 +1283,115 @@ def _place_right_notes(
     min_gap: float,
     span: float = 0.0,
     seam: Optional[float] = None,
+    avoid_ys: Sequence[float] = (),
+    x_max: Optional[float] = None,
+    bottom_pad: float = 0.0,
 ) -> None:
-    """演化區內：去重＋錯開＋左對齊往右長，字只落在演化空白，不准壓 K。"""
+    """右溝標籤欄：去重＋垂直錯開；字落在軌線末端右側，不准壓軌／壓 K。
+
+    x_text 應在演化帶／軌虛線右緣之外；x_max 保證「最可能」整句入軸。
+    """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
         return
-    gap = max(float(min_gap), (ymax - ymin) * 0.06)
-    lo = ymin + gap * 0.55
-    hi = ymax - gap * 0.55
-    tys = _spread_ys_around(
-        [float(n.get("y") or 0) for n in cleaned],
-        [],
+    # 盒高約 span*0.04；gap 太大會全擠到上下緣互壓
+    gap = max(float(min_gap), (ymax - ymin) * 0.045)
+    gap = min(gap, (ymax - ymin) * 0.09)
+    lo = ymin + max(float(bottom_pad), gap * 1.1)
+    hi = ymax - gap * 0.9
+    pin_x = float(seam) if seam is not None else None
+    tx = float(x_text)
+    if x_max is not None:
+        need = max(
+            (
+                _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+                for n in cleaned
+            ),
+            default=16.0,
+        )
+        # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
+        fit_tx = float(x_max) - need - 8.5
+        if pin_x is not None:
+            tx = max(float(pin_x) + 0.8, min(tx, fit_tx))
+        else:
+            tx = min(tx, fit_tx)
+    most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
+    others = [n for n in cleaned if "最可能" not in str(n.get("text") or "")]
+    # 上緣專留給「最可能」一整句，下方才排壓／撐／軌
+    reserve = gap * 1.45
+    hi_others = hi - reserve
+    taken: List[float] = [float(y) for y in avoid_ys if y is not None]
+    placed: List[Tuple[Dict[str, Any], float]] = []
+    if most:
+        my = hi - gap * 0.2
+        placed.append((most[0], my))
+        taken.append(my)
+    other_ys = _spread_ys_around(
+        [float(n.get("y") or 0) for n in others],
+        taken,
         gap,
         lo=lo,
-        hi=hi,
+        hi=hi_others,
     )
-    pin_x = float(seam) if seam is not None else None
-    for note, ty in zip(cleaned, tys):
-        ax_x = float(pin_x if pin_x is not None else note.get("x") or 0)
+    for note, ty in zip(others, other_ys):
+        placed.append((note, ty))
+        taken.append(ty)
+    # 畫圖時上面的「最可能」先畫，後面的不准蓋住它（z 一樣時後畫壓前畫）
+    placed.sort(key=lambda p: -float(p[1]))
+    for note, ty in placed:
+        ny = float(note.get("y") or 0)
+        # 字中心必須離開釘點價，否則虛線引線會橫穿盒子（看起來像壓在軌上）
+        if abs(ty - ny) < gap * 0.65:
+            ty = ny + gap * 0.85 if ty >= ny else ny - gap * 0.85
+            ty = min(max(ty, lo), hi)
+            # 再避開已佔位
+            for _ in range(8):
+                hit = next((t for t in taken if abs(ty - t) < gap * 0.9), None)
+                if hit is None:
+                    break
+                ty = hit + gap if ty >= hit else hit - gap
+                ty = min(max(ty, lo), hi)
+        # 短 stub：只從標籤左側一小段連進來。不准從軌末端拉長虛線穿盒
+        # （長虛線顏色跟軌一樣，看起來就像軌穿進盒子）
+        stub_x = float(tx) - 1.25
         _leader_note(
             ax,
-            ax_x,
-            float(note.get("y") or 0),
+            stub_x,
+            ty,
             str(note.get("text") or ""),
             str(note.get("color") or _TEXT),
-            tx=x_text,
+            tx=tx,
             ty=ty,
             size=int(note.get("size") or 11),
             ha="left",
             va="center",
             clip=True,
+            shrink_b=1.5,
         )
+        # 價位對照：在 stub 左端畫小點，對齊原本釘價（不畫長引線）
+        ax.plot(
+            [stub_x],
+            [ny],
+            marker="o",
+            markersize=3.8,
+            color=str(note.get("color") or _TEXT),
+            markeredgecolor="white",
+            markeredgewidth=0.55,
+            zorder=13,
+            linestyle="None",
+            clip_on=True,
+        )
+        if abs(ty - ny) > gap * 0.25:
+            ax.plot(
+                [stub_x, stub_x],
+                [ny, ty],
+                color=str(note.get("color") or _TEXT),
+                linewidth=0.65,
+                linestyle=":",
+                zorder=11,
+                alpha=0.7,
+                clip_on=True,
+            )
 
 
 def _spread_ys_around(
@@ -2422,7 +2543,7 @@ def render_biaoke_structure_png(
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
-        figsize=(16.4, 10.8),
+        figsize=(18.6, 10.8),
         dpi=BIAOKE_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
@@ -2434,8 +2555,8 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    # 演化區右側留足標籤寬，避免「最可能」被裁成半句
-    x_right = n + _FUTURE + 7.2
+    # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬
+    x_right = n + _FUTURE + 28.0
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     candle_up = []
@@ -2474,15 +2595,35 @@ def render_biaoke_structure_png(
     band_hi: List[Dict[str, Any]] = []
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
+    x_fut = float(n - 1 + _FUTURE)
+    # 標籤欄左緣；軌虛線／水平壓撐必須停在這條左側，不准穿盒
+    label_col_left = float(x_fut) + 4.2
+    hline_xmax = float(label_col_left) - 1.2
     if spike_hi:
-        ax1.axhline(spike_hi, color=_PRESS, linewidth=1.15, zorder=4, alpha=0.92)
+        ax1.hlines(
+            spike_hi,
+            xmin=-0.55,
+            xmax=hline_xmax,
+            color=_PRESS,
+            linewidth=1.15,
+            zorder=4,
+            alpha=0.92,
+        )
         right_notes.append(
-            {"x": float(n - 1), "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
+            {"x": float(label_col_left) - 0.6, "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
         )
     if spike_lo:
-        ax1.axhline(spike_lo, color=_HOLD, linewidth=1.15, zorder=4, alpha=0.92)
+        ax1.hlines(
+            spike_lo,
+            xmin=-0.55,
+            xmax=hline_xmax,
+            color=_HOLD,
+            linewidth=1.15,
+            zorder=4,
+            alpha=0.92,
+        )
         right_notes.append(
-            {"x": float(n - 1), "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
+            {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
     last_c = float(last_bar.get("close") or 0)
     if 0 <= spike_i < n:
@@ -2500,7 +2641,9 @@ def render_biaoke_structure_png(
     # 有通道時以通道為準重算（含完整 bars 窗），避免 work 窗與全列不一致
     if not channel:
         channel = infer_parallel_channel(work) or {}
-    x_fut = n - 1 + _FUTURE
+    # 軌虛線停在標籤欄左側（明顯空隙），不准穿進標籤盒
+    rail_end = min(float(n - 1) + float(_FUTURE) * 0.22, float(label_col_left) - 5.5)
+    rail_end = max(float(n - 1) + 1.0, rail_end)
     # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
     if channel.get("kind"):
         _paint_parallel_channel(
@@ -2508,16 +2651,16 @@ def render_biaoke_structure_png(
             channel,
             seam=float(n - 1),
             x_lo=0.0,
-            x_hi=float(x_fut),
+            x_hi=float(rail_end),
             y_lo=ymin,
             y_hi=ymax,
             n=n,
         )
-        # 右溝只留通道現價位，標籤已在軸內
+        # 釘在軌末端（標籤欄左側），引線短、不准穿盒
         if channel.get("rail_now"):
             right_notes.append(
                 {
-                    "x": float(n - 1),
+                    "x": float(rail_end),
                     "y": float(channel["rail_now"]),
                     "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
@@ -2527,7 +2670,7 @@ def render_biaoke_structure_png(
         if channel.get("base_now"):
             right_notes.append(
                 {
-                    "x": float(n - 1),
+                    "x": float(rail_end),
                     "y": float(channel["base_now"]),
                     "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
@@ -2546,7 +2689,7 @@ def render_biaoke_structure_png(
                 y2,
                 seam=float(n - 1),
                 x_lo=0.0,
-                x_hi=x_fut,
+                x_hi=rail_end,
                 y_lo=ymin,
                 y_hi=ymax,
                 color=_DOWN_TRACK,
@@ -2577,7 +2720,7 @@ def render_biaoke_structure_png(
             y_now = _line_at(x1, y1, x2, y2, float(n - 1))
             up_broken = bool(last_c and y_now and last_c < y_now)
             up_steep = _rail_slope_too_steep(x1, y1, x2, y2, span=span, n=n)
-            rail_hi = float(n - 1) if (up_broken or up_steep) else x_fut
+            rail_hi = float(n - 1) if (up_broken or up_steep) else float(rail_end)
             _paint_extended_rail(
                 ax1,
                 x1,
@@ -2665,7 +2808,7 @@ def render_biaoke_structure_png(
             continue
         _halo_line(
             ax1,
-            [n - 1, x_fut],
+            [n - 1, float(rail_end)],
             [last_c or closes[-1], fy],
             _FORK,
             lw=1.05,
@@ -2675,26 +2818,71 @@ def render_biaoke_structure_png(
         )
     _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
+    # 標籤欄：軌虛線已停在 label_col_left 左側。
+    # 右溝用軸寬比例留白（勿只估固定 data 寬：xlim 一加寬，同字點徑佔更多 data，會又貼齊右緣）。
+    max_note_w = max(
+        (
+            _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 12))
+            for nt in right_notes
+        ),
+        default=22.0,
+    )
+    label_frac = 0.26  # 軸寬約 1/4 給標籤欄（含邊框＋右內邊距）
+    content_right = float(label_col_left)
+    need_by_frac = content_right / max(1.0 - label_frac, 0.5)
+    need_by_text = content_right + max_note_w * 1.35 + 8.0
+    x_right = max(float(x_right), need_by_frac, need_by_text)
+    ax1.set_xlim(-0.55, x_right)
+    # 字靠標籤欄左側，右側整段留白給邊框，不准貼齊軸脊
+    gutter = float(x_right) - content_right
+    x_text = content_right + max(2.2, gutter * 0.10)
+    # 水平壓撐＋通道現價都要垂直讓開，盒子中心不准落在線上
+    avoid_ys: List[float] = []
+    if spike_hi:
+        avoid_ys.append(float(spike_hi))
+    if spike_lo:
+        avoid_ys.append(float(spike_lo))
+    if channel.get("rail_now"):
+        avoid_ys.append(float(channel["rail_now"]))
+    if channel.get("base_now"):
+        avoid_ys.append(float(channel["base_now"]))
+    evo_pad = span * 0.13
     _place_right_notes(
         ax1,
         right_notes,
-        # 錨在最近一根，字從演化區左緣往右長，不准壓歷史 K
-        x_text=float(n - 1) + 0.65,
+        x_text=x_text,
         ymin=ymin,
         ymax=ymax,
-        min_gap=span * 0.16,
+        min_gap=span * 0.065,
         span=span,
         seam=float(n - 1),
+        avoid_ys=avoid_ys,
+        x_max=float(x_right),
+        bottom_pad=evo_pad,
     )
+    # 演化區說明留在米色帶內（標籤欄左側），兩行短句
+    evo_cx = float(n - 1) + float(_FUTURE) * 0.50
     ax1.text(
-        n + _FUTURE * 0.45,
-        ymin + span * 0.012,
-        EVOLUTION_ZONE_LABEL,
+        evo_cx,
+        ymin + span * 0.042,
+        "演化區",
         color="#546e7a",
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(9, "bold"),
         ha="center",
         va="bottom",
         zorder=8,
+        clip_on=True,
+    )
+    ax1.text(
+        evo_cx,
+        ymin + span * 0.008,
+        "（不是保證・不是買訊）",
+        color="#546e7a",
+        fontproperties=_fp(8, "bold"),
+        ha="center",
+        va="bottom",
+        zorder=8,
+        clip_on=True,
     )
     mark = ""
     mc = _TEXT
@@ -2906,7 +3094,10 @@ def render_biaoke_structure_png(
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
     fig.subplots_adjust(
-        left=_FIG_LEFT, right=_FIG_RIGHT, top=_STOCK_MAIN_TOP, bottom=_FIG_BOTTOM
+        left=_FIG_LEFT,
+        right=_STRUCTURE_FIG_RIGHT,
+        top=_STOCK_MAIN_TOP,
+        bottom=_FIG_BOTTOM,
     )
     # 查詢時間：整圖右上（台北）；不壓左上頭牌、不壓縮圖
     try:
