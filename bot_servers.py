@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 上市／上櫃／興櫃一律介紹圖＋高低溫度卡一次兩張、再送大量區專圖（非買訊）；點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
-- 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
+- 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -367,7 +367,14 @@ LOOKUP_CODE_EXAMPLES_HTML = (
 
 HELP_TOPICS = {}
 # 說明／圖文／介紹已取消。舊氣泡 ?:／pg:／/help／打「說明」「圖文」靜音。
-# 主選單兩排：拿掉刷新／回報後整排往前，平均 6+6；下排最右洞燭先機。圈已拿掉。
+# 主選單兩排：拿掉刷新／回報後整排往前；下排最右洞燭先機。圈已拿掉。
+MENU_BTN_WINRATE = "勝率買點"
+MENU_BTN_WINRATE_ALIASES = (
+    MENU_BTN_WINRATE,
+    "勝率",
+    "勝率買",
+    "winrate",
+)
 MENU_BTN_MARKET = "台股大盤"
 MENU_BTN_MARKET_ALIASES = (
     MENU_BTN_MARKET,
@@ -463,6 +470,7 @@ MENU_BTN_BACK_STEP = "上一步"
 MENU_BTN_NEXT_PAGE = "下一批"
 MENU_BTN_PREV_PAGE = "上一批"
 MENU_ROW1 = (
+    MENU_BTN_WINRATE,
     "海選",
     "持股",
     MENU_BTN_WATCH,
@@ -508,7 +516,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v30：下排改回「剛脫離零」＝昨獲利貼零、今離開 0。子鍵獲利為零／脫離1／2／3取消。
 # v31：下排「隔日沖」後加「壓撐觀察」＝上六下七；三標籤自選，只觀察不是買訊。
 # v32：上排「觀察」改「加入觀察」；舊「觀察」仍認。
-MENU_LAYOUT_VERSION = "32"
+# v33：第一排最左「勝率買點」；海選右移成第 2；上七下七。訊號＝leave_zero 藍▲紅框。
+MENU_LAYOUT_VERSION = "33"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -1457,7 +1466,7 @@ class WayneTelegramBot:
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
         text = (
-            "兩排已更新：第一排海選…資金輪動，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排勝率買點…資金輪動，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
             else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
         )
@@ -3745,6 +3754,232 @@ class WayneTelegramBot:
         del context, pick
         await self._run_leave_zero_now(update.message)
 
+    async def winrate_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        del context
+        await self._run_winrate_buypoint(update.message, offset=0)
+
+    async def _run_winrate_buypoint(self, message, *, offset: int = 0) -> None:
+        """勝率買點：盤後名單重看；隔日盤中只留買點仍在且現價更低。"""
+        from winrate_buypoint import (
+            EMPTY_MSG,
+            PAGE_SIZE,
+            header_html,
+            next_page_callback,
+            page_slice,
+            render_stock_pair,
+            resolve_button_rows,
+        )
+
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        actor = self._actor_key(message, uid=uid)
+        if not hasattr(self, "_trade_running"):
+            self._trade_running = set()
+        if actor in self._trade_running:
+            await message.reply_text(
+                "勝率買點進行中，請稍候完成後再按。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        self._trade_running.add(actor)
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "勝率買點進行中",
+                s,
+                now="篩名單",
+                rest="壓力區＋高低卡",
+                fill_sec=40.0,
+            ),
+        )
+        try:
+            as_of, rows, mode = await asyncio.wait_for(
+                asyncio.to_thread(resolve_button_rows, self.db_path),
+                timeout=_LEAVE_ZERO_TIMEOUT,
+            )
+            if mode == "filter" and rows:
+                try:
+                    from winrate_buypoint import silent_remember_filter
+
+                    await asyncio.to_thread(
+                        silent_remember_filter,
+                        self.db_path,
+                        roster_as_of=as_of,
+                        kept=rows,
+                    )
+                except Exception:
+                    logger.debug("勝率買點篩結果靜默落檔略過", exc_info=True)
+            if not rows:
+                await self._stop_plain_wait(*wait_h)
+                wait_h = (None, None, None)
+                await message.reply_text(EMPTY_MSG, reply_markup=self._reply_menu(uid))
+                return
+            chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
+            head = header_html(as_of, len(rows), mode=mode, offset=off)
+            await message.reply_html(head, disable_web_page_preview=True)
+            for i, row in enumerate(chunk):
+                sid = str(row.get("stock_id") or "").strip()
+                name = str(row.get("stock_name") or "")
+                if not sid:
+                    continue
+                is_last = i == len(chunk) - 1
+                markup = None
+                if is_last and has_next:
+                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                    from winrate_buypoint import NEXT_PAGE_LABEL
+
+                    markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton(
+                                    NEXT_PAGE_LABEL,
+                                    callback_data=next_page_callback(off + PAGE_SIZE),
+                                )
+                            ]
+                        ]
+                    )
+
+                def _pair(code=sid, nm=name):
+                    return render_stock_pair(
+                        self.db_path,
+                        code,
+                        nm,
+                        charts_dir=self.charts_dir,
+                        uid=uid or "wr",
+                    )
+
+                try:
+                    vpath, cpath, cap_name = await asyncio.wait_for(
+                        asyncio.to_thread(_pair), timeout=45.0
+                    )
+                except Exception:
+                    logger.exception("勝率買點出圖失敗 code=%s", sid)
+                    vpath, cpath, cap_name = "", "", name or sid
+                label = html_escape(cap_name or name or sid)
+                if vpath and os.path.isfile(vpath):
+                    try:
+                        send_path = self._prepare_lookup_album_photo(vpath)
+                        with open(send_path, "rb") as f:
+                            await message.reply_photo(
+                                photo=f,
+                                caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
+                                parse_mode="HTML",
+                            )
+                    except Exception:
+                        logger.exception("勝率買點壓力區送出失敗 code=%s", sid)
+                if cpath and os.path.isfile(cpath):
+                    try:
+                        send_path = self._prepare_lookup_album_photo(cpath)
+                        with open(send_path, "rb") as f:
+                            await message.reply_photo(
+                                photo=f,
+                                caption=f"<b>{html_escape(sid)}</b> {label}　高低溫度卡",
+                                parse_mode="HTML",
+                                reply_markup=markup,
+                            )
+                        continue
+                    except Exception:
+                        logger.exception("勝率買點高低卡送出失敗 code=%s", sid)
+                if markup is not None:
+                    await message.reply_html(
+                        f"<b>{html_escape(sid)}</b> {label}",
+                        reply_markup=markup,
+                        disable_web_page_preview=True,
+                    )
+            await self._stop_plain_wait(*wait_h)
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                "⚠️ 勝率買點查詢逾時。請稍後再按一次。",
+                reply_markup=self._reply_menu(uid),
+            )
+        except Exception:
+            logger.exception("勝率買點查詢失敗")
+            await message.reply_text(PHONE_BUSY, reply_markup=self._reply_menu(uid))
+        finally:
+            self._trade_running.discard(actor)
+            await self._stop_plain_wait(*wait_h)
+
+    def push_winrate_buypoint_page(
+        self,
+        chat_id: str,
+        rows: List[Dict[str, Any]],
+        *,
+        as_of: str,
+        offset: int = 0,
+        mode: str = "full",
+        uid: str = "",
+    ) -> bool:
+        """21:00 同步推播一頁（≤15）。回傳是否至少送出開頭／空文。"""
+        from winrate_buypoint import (
+            EMPTY_MSG,
+            PAGE_SIZE,
+            NEXT_PAGE_LABEL,
+            header_html,
+            next_page_callback,
+            page_slice,
+            render_stock_pair,
+        )
+
+        dest = str(chat_id or "").strip()
+        if not dest or not self.token:
+            return False
+        if not rows:
+            return bool(self._send_html(dest, EMPTY_MSG, attach_menu=False))
+        chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
+        head = header_html(as_of, len(rows), mode=mode, offset=off)
+        ok = bool(self._send_html(dest, head, attach_menu=False))
+        for i, row in enumerate(chunk):
+            sid = str(row.get("stock_id") or "").strip()
+            name = str(row.get("stock_name") or "")
+            if not sid:
+                continue
+            vpath, cpath, cap_name = render_stock_pair(
+                self.db_path,
+                sid,
+                name,
+                charts_dir=self.charts_dir,
+                uid=uid or str(dest),
+            )
+            label = html_escape(cap_name or name or sid)
+            markup = None
+            if i == len(chunk) - 1 and has_next:
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+                markup = InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                NEXT_PAGE_LABEL,
+                                callback_data=next_page_callback(off + PAGE_SIZE),
+                            )
+                        ]
+                    ]
+                )
+            if vpath and os.path.isfile(vpath):
+                self._send_photo(
+                    dest,
+                    vpath,
+                    caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
+                )
+            if cpath and os.path.isfile(cpath):
+                self._send_photo(
+                    dest,
+                    cpath,
+                    caption=f"<b>{html_escape(sid)}</b> {label}　高低溫度卡",
+                    reply_markup=markup,
+                )
+            elif markup is not None:
+                self._send_html(
+                    dest,
+                    f"<b>{html_escape(sid)}</b> {label}",
+                    extra_keyboard=markup,
+                    attach_menu=False,
+                )
+        return ok
+
     async def dongzhu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE, code: str = ""):
         del context
         q = str(code or "").strip()
@@ -5232,6 +5467,11 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self.decision_card_btn(update, context)
             return
+        if text in MENU_BTN_WINRATE_ALIASES:
+            logger.info("主選單：勝率買點 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.winrate_cmd(update, context)
+            return
         if text == "海選":
             logger.info("主選單：海選 uid=%s", uid)
             self._pending.pop(actor, None)
@@ -6708,6 +6948,18 @@ class WayneTelegramBot:
                 "overnight": "隔日沖：盤中節奏，不是黃金買點",
             }
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
+            return
+        if data.startswith("wr:"):
+            from winrate_buypoint import parse_next_page_callback
+
+            nxt = parse_next_page_callback(data)
+            try:
+                await q.answer("下一個 15 檔")
+            except Exception:
+                pass
+            if nxt is None:
+                return
+            await self._run_winrate_buypoint(q.message, offset=int(nxt))
             return
         if data.startswith("lz:"):
             try:

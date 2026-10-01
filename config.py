@@ -262,13 +262,13 @@ def scheduler_owns(job: str) -> bool:
 
 
 def scheduler_may_push(job: str) -> bool:
-    """可不可以寄話筒。data 只准 morning／midday；GHA 必須另被 screen_notify 關掉。"""
+    """可不可以寄話筒。data 只准 morning／midday／winrate；GHA 必須另被 screen_notify 關掉。"""
     role = scheduler_role()
     if role == "off":
         return False
     if role == "full":
         return True
-    return str(job or "").strip().lower() in ("morning", "midday")
+    return str(job or "").strip().lower() in ("morning", "midday", "winrate")
 
 
 def screen_notify_enabled() -> bool:

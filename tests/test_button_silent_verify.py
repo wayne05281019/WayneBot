@@ -69,6 +69,7 @@ def _seed(db: str, last: dict[str, float], as_of: str = "20260915") -> None:
 def test_catalog_covers_full_keyboard():
     names = {r["btn"] for r in BUTTON_CATALOG}
     want = {
+        "勝率買點",
         "海選",
         "持股",
         "加入觀察",
@@ -99,6 +100,8 @@ def test_personal_vs_screen_kinds_do_not_mix():
         assert not is_screen_kind(k)
     assert is_screen_kind("money_flow")
     assert is_screen_kind("leave_zero")
+    assert is_screen_kind("winrate_buypoint")
+    assert is_screen_kind("winrate_filter")
     assert not is_screen_kind("book_hold")
     assert not is_screen_kind("market")
 

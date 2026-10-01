@@ -8,9 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot_servers import MENU_BTN_AI, MENU_BTN_BIAOKE_FACE, MENU_BTN_CARD, MENU_BTN_DONGZHU, MENU_BTN_FLOW, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_STREAK, WayneTelegramBot
+from bot_servers import MENU_BTN_AI, MENU_BTN_BIAOKE_FACE, MENU_BTN_CARD, MENU_BTN_DONGZHU, MENU_BTN_FLOW, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_STREAK, MENU_BTN_WINRATE, WayneTelegramBot
 
 MENU_BUTTONS = [
+    (MENU_BTN_WINRATE, "winrate_cmd"),
     (MENU_BTN_CARD, "decision_card_btn"),
     ("當沖", "daytrade_cmd"),
     ("持股", "_send_portfolio"),

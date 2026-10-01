@@ -1577,6 +1577,100 @@ class MainRunner:
         self._mark_pipeline("success", "evening", run_date=key)
         return True
 
+    def run_winrate_buypoint(self, skip_if_done: bool = False, notify: bool = True) -> bool:
+        """21:00 勝率買點：盤後 leave_zero 名單落檔並推播壓力區＋高低卡。"""
+        from import_health import latest_complete_quote_date
+        from tw_holidays import closed_tw_session
+        from winrate_buypoint import (
+            EMPTY_MSG,
+            save_winrate_roster,
+            scan_winrate_leave_zero,
+        )
+
+        closed = closed_tw_session(db_path=self.db_path)
+        if closed:
+            ymd = str(closed.get("ymd") or "").strip() or "none"
+            key = f"winrate-closed-{ymd}"
+            logger.info(
+                "今日台股休市 %s %s，不寄勝率買點（%s）",
+                closed.get("ymd"),
+                closed.get("zh"),
+                key,
+            )
+            self._mark_pipeline(
+                "success",
+                f"tw closed {closed.get('ymd')} {closed.get('zh')} skip winrate",
+                run_date=key,
+            )
+            return True
+
+        as_of = latest_complete_quote_date(self.db_path)
+        key = f"winrate-{as_of or 'none'}"
+        if skip_if_done and as_of:
+            status = self.pipeline_status(key)
+            if status == "success":
+                logger.info("勝率買點 %s 已寄過，略過。", key)
+                return True
+            if status == "computed" and not notify:
+                logger.info("勝率買點 %s 已算出（不寄），略過。", key)
+                return True
+        if not as_of:
+            logger.error("無完整交易日可寫勝率買點")
+            return False
+        logger.info("🎯 21:00 勝率買點掃 leave_zero，基準日 %s", as_of)
+        try:
+            day, rows = scan_winrate_leave_zero(self.db_path, as_of=as_of)
+        except Exception as e:
+            logger.error("勝率買點掃描失敗: %s", e, exc_info=True)
+            return False
+        as_of = day or as_of
+        key = f"winrate-{as_of}"
+        n = save_winrate_roster(self.db_path, as_of, rows)
+        logger.info("勝率買點名單 %s 檔 as_of=%s", n, as_of)
+        try:
+            from winrate_buypoint import silent_remember_roster
+
+            silent_remember_roster(self.db_path, as_of, rows)
+        except Exception:
+            logger.debug("勝率買點靜默落檔略過", exc_info=True)
+        sent_ok = True
+        if notify:
+            ids = self._family_chat_ids()
+            dests = ids or ([str(self.chat_id)] if getattr(self, "chat_id", None) else [])
+            dests = [d for d in dests if d]
+            if not dests:
+                logger.warning("勝率買點無白名單收件人")
+                sent_ok = False
+            elif self.bot and hasattr(self.bot, "push_winrate_buypoint_page"):
+                ok_n = 0
+                for cid in dests:
+                    try:
+                        if self.bot.push_winrate_buypoint_page(
+                            cid, rows, as_of=as_of, offset=0, mode="full", uid=str(cid)
+                        ):
+                            ok_n += 1
+                    except Exception as e:
+                        logger.warning("勝率買點寄出失敗 dest=%s: %s", cid, e)
+                sent_ok = ok_n == len(dests) and ok_n > 0
+            else:
+                if not rows:
+                    sent_ok = bool(self._broadcast_family(EMPTY_MSG))
+                else:
+                    from winrate_buypoint import header_html
+
+                    sent_ok = bool(self._broadcast_family(header_html(as_of, len(rows))))
+                    logger.info("勝率買點無 bot 圖推，只寄標題（%s 檔）", len(rows))
+        else:
+            logger.info("勝率買點不寄 Telegram（notify=0），只寫名單")
+
+        if notify and sent_ok:
+            self._mark_pipeline("success", f"winrate n={n}", run_date=key)
+        elif not notify:
+            self._mark_pipeline("computed", "winrate notify-off", run_date=key)
+        else:
+            logger.error("勝率買點已算出但 Telegram 沒送到，不標已寄過 %s", key)
+        return bool((not notify) or sent_ok)
+
     def run_midday_review(self, skip_if_done: bool = True) -> bool:
         """開市日 12:45 尾盤可切：白名單只寄一次。
 

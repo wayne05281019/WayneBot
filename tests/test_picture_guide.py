@@ -57,7 +57,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "紅圈" in blob
     assert "連買區" in blob
     assert "說明　海選　持股" not in blob
-    assert "海選　持股　觀察　飆大　台股大盤　資金輪動" in blob
+    assert "勝率買點　海選　持股　觀察　飆大　台股大盤　資金輪動" in blob
     assert "如何賣" in blob
     assert "如何低買" in blob
     assert "趨勢向上" in blob
@@ -68,6 +68,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
+    assert "21:00 勝率買點" in blob
     assert "左邊三條槓" not in blob
     assert "進化" in blob
     assert "直接打代號" in blob

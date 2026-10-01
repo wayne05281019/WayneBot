@@ -165,6 +165,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
     bot._send_watch = AsyncMock()
     bot._ensure_reply_menu_if_needed = AsyncMock()
     bot.screen_cmd = AsyncMock()
+    bot.winrate_cmd = AsyncMock()
     bot.help_cmd = AsyncMock()
     bot.menu_cmd = AsyncMock()
     bot.streak_cmd = AsyncMock()
@@ -173,6 +174,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
 
     async def run():
         for label, checker in (
+            ("勝率買點", bot.winrate_cmd),
             ("持股", bot._send_portfolio),
             ("加入觀察", bot._send_watch),
             ("海選", bot.screen_cmd),

@@ -32,24 +32,36 @@ def test_reply_menu_is_two_rows_not_three():
         MENU_BTN_STREAK,
         MENU_BTN_PRESSURE,
         MENU_BTN_WATCH,
+        MENU_BTN_WINRATE,
         MENU_LAYOUT_VERSION,
         WayneTelegramBot,
     )
 
     assert MENU_BTN_MARKET == "台股大盤"
     assert MENU_BTN_AI == "AI倉"
-    assert MENU_LAYOUT_VERSION == "32"
+    assert MENU_BTN_WINRATE == "勝率買點"
+    assert MENU_BTN_WATCH == "加入觀察"
+    assert MENU_LAYOUT_VERSION == "33"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
-    assert len(row1) == 6 and len(row2) == 7
-    assert row1 == ["海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
+    assert len(row1) == 7 and len(row2) == 7
+    assert row1 == [
+        MENU_BTN_WINRATE,
+        "海選",
+        "持股",
+        MENU_BTN_WATCH,
+        MENU_BTN_BIAOKE_FACE,
+        MENU_BTN_MARKET,
+        MENU_BTN_FLOW,
+    ]
     assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
     assert "刷新" not in row1 + row2
     assert "回報" not in row1 + row2
-    assert row1[0] == "海選"
+    assert row1[0] == MENU_BTN_WINRATE
+    assert row1[1] == "海選"
     assert row1[-1] == MENU_BTN_FLOW
     assert row2[-1] == MENU_BTN_DONGZHU
     assert row2[-2] == MENU_BTN_LEAVE_ZERO
@@ -225,7 +237,8 @@ def test_pin_reply_menu_keeps_keyboard_message():
     assert row1[-1] == MENU_BTN_FLOW
     assert row1[-2] == MENU_BTN_MARKET
     assert row1[-3] == MENU_BTN_BIAOKE_FACE
-    assert row1[0] == "海選"
+    assert row1[0] == "勝率買點"
+    assert row1[1] == "海選"
     assert row2[-2] == MENU_BTN_LEAVE_ZERO
     assert row2[-1] == MENU_BTN_DONGZHU
 
@@ -267,7 +280,8 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert row1[-1] == MENU_BTN_FLOW
     assert row1[-2] == MENU_BTN_MARKET
     assert row1[-3] == MENU_BTN_BIAOKE_FACE
-    assert row1[0] == "海選"
+    assert row1[0] == "勝率買點"
+    assert row1[1] == "海選"
     assert row2[-2] == MENU_BTN_LEAVE_ZERO
     assert row2[-1] == MENU_BTN_DONGZHU
     assert row2[0] == "當沖"
