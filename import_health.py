@@ -22,6 +22,43 @@ def increment_health_ok(health: Dict[str, Any]) -> bool:
     return not increment_health_failures(health)
 
 
+def emerging_monthly_gate_month(latest_month: str, today_ymd: str = "") -> str:
+    """興櫃月營收完整性要對的年月：對齊上市櫃 10 號前寬限。
+
+    上市／上櫃 NAS 常在月初先公告，把庫內 MAX(yyyymm) 推到上曆月；
+    興櫃同期往往還沒整期。10 號前只要求 expected_latest_revenue_month，
+    不准用搶先的 MAX 硬卡盤後融合。
+    """
+    latest = str(latest_month or "").replace("-", "")[:6]
+    expected = expected_latest_revenue_month(today_ymd)
+    if latest and latest > expected:
+        return expected
+    return latest or expected
+
+
+def emerging_monthly_revenue_failure(
+    *,
+    monthly_n: int,
+    em_monthly_n: int,
+    latest_month: str = "",
+    today_ymd: str = "",
+    em_monthly_latest: str = "",
+) -> str:
+    """興櫃月營收未達標原因；月初換期寬限內回空字串（不擋 fuse）。"""
+    if int(monthly_n or 0) < 200:
+        return ""
+    ym = str(em_monthly_latest or latest_month or "").replace("-", "")[:6]
+    expected = expected_latest_revenue_month(today_ymd)
+    # 庫內 MAX／計數是「還在公告中的新月」且筆數不足 → 寬限，不算缺
+    if ym and ym > expected and int(em_monthly_n or 0) < MIN_EM_MONTHLY:
+        return ""
+    if int(em_monthly_n or 0) < MIN_EM_MONTHLY:
+        return f"興櫃月營收 {int(em_monthly_n or 0)}/{MIN_EM_MONTHLY}" + (
+            f"（{ym}）" if ym else ""
+        )
+    return ""
+
+
 def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str]:
     """回傳盤後未達標原因（給 CI／日誌）；零就是錯。"""
     label = str(cap or health.get("date") or "").strip()
@@ -48,12 +85,16 @@ def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str
     if total > 0 and tw > 0 and two > 0 and not sides_complete(tw, two):
         reasons.append(f"{label} 上市 {tw}/{MIN_TW} 上櫃 {two}/{MIN_TWO} 未齊")
     # 上市櫃月營收已進庫卻沒興櫃同期＝介紹卡只畫不存／沒寫庫
-    if monthly_n >= 200 and em_m < MIN_EM_MONTHLY:
-        ym = str(health.get("em_monthly_latest") or health.get("latest_month") or "").strip()
-        reasons.append(
-            f"{label} 興櫃月營收 {em_m}/{MIN_EM_MONTHLY}"
-            + (f"（{ym}）" if ym else "")
-        )
+    # 月初寬限：對齊 expected_latest_revenue_month，不准用搶先 MAX 卡興櫃
+    em_fail = emerging_monthly_revenue_failure(
+        monthly_n=monthly_n,
+        em_monthly_n=em_m,
+        latest_month=str(health.get("latest_month") or ""),
+        today_ymd=label,
+        em_monthly_latest=str(health.get("em_monthly_latest") or ""),
+    )
+    if em_fail:
+        reasons.append(f"{label} {em_fail}" if label else em_fail)
     return reasons
 MIN_TOTAL = 1500
 _COMPLETE_DATE_CACHE: Dict[str, Any] = {}
@@ -257,26 +298,44 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         m_n, q_n = (0, ""), (0, 0, 0)
     em_monthly_n = 0
     em_monthly_latest = ""
+    em_monthly_head_n = 0
+    em_monthly_head = ""
     try:
         latest_month_probe = str(m_n[1] or "")
-        if latest_month_probe:
+        gate_ym = emerging_monthly_gate_month(latest_month_probe, yyyymmdd)
+        if gate_ym:
             em_monthly_n = int(
+                cur.execute(
+                    "SELECT COUNT(*) FROM monthly_revenue WHERE market=? AND yyyymm=?",
+                    ("EM", gate_ym),
+                ).fetchone()[0]
+                or 0
+            )
+            em_monthly_latest = gate_ym
+        if latest_month_probe and latest_month_probe != gate_ym:
+            em_monthly_head = latest_month_probe
+            em_monthly_head_n = int(
                 cur.execute(
                     "SELECT COUNT(*) FROM monthly_revenue WHERE market=? AND yyyymm=?",
                     ("EM", latest_month_probe),
                 ).fetchone()[0]
                 or 0
             )
-            em_monthly_latest = latest_month_probe
-        else:
+        elif latest_month_probe:
+            em_monthly_head = latest_month_probe
+            em_monthly_head_n = int(em_monthly_n or 0)
+        elif not gate_ym:
             row_em = cur.execute(
                 "SELECT COUNT(*), MAX(yyyymm) FROM monthly_revenue WHERE market=?",
                 ("EM",),
             ).fetchone()
             em_monthly_n = int(row_em[0] or 0)
             em_monthly_latest = str(row_em[1] or "")
+            em_monthly_head = em_monthly_latest
+            em_monthly_head_n = int(em_monthly_n or 0)
     except sqlite3.OperationalError:
         em_monthly_n, em_monthly_latest = 0, ""
+        em_monthly_head_n, em_monthly_head = 0, ""
     try:
         x_n = cur.execute(
             "SELECT COUNT(*), MAX(CASE WHEN factor>0 THEN ex_date END) FROM ex_rights"
@@ -306,10 +365,16 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
     monthly_note = monthly_revenue_status(int(m_n[0] or 0), latest_month, today_ymd=yyyymmdd)
     if monthly_note.get("missing"):
         problems.append(monthly_note["problem"])
-    if latest_month and em_monthly_n < MIN_EM_MONTHLY:
-        problems.append(
-            f"待補興櫃月營收 {em_monthly_n}/{MIN_EM_MONTHLY}（{latest_month}；介紹卡讀此表）"
-        )
+    # 閘門對齊 gate_ym（10 號前＝expected），不准用上市櫃搶先 MAX 卡興櫃
+    em_fail = emerging_monthly_revenue_failure(
+        monthly_n=int(m_n[0] or 0),
+        em_monthly_n=int(em_monthly_n or 0),
+        latest_month=latest_month,
+        today_ymd=yyyymmdd,
+        em_monthly_latest=em_monthly_latest,
+    )
+    if em_fail:
+        problems.append(f"待補{em_fail}；介紹卡讀此表")
     if int(x_n[0] or 0) < 50:
         problems.append("待補除權息")
     today_ok = increment_health_ok(
@@ -336,6 +401,8 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
         "monthly_note": monthly_note,
         "em_monthly_n": int(em_monthly_n or 0),
         "em_monthly_latest": em_monthly_latest or "",
+        "em_monthly_head_n": int(em_monthly_head_n or 0),
+        "em_monthly_head": em_monthly_head or "",
         "income_n": int(q_n[0] or 0),
         "latest_quarter": f"{q_n[1]}Q{q_n[2]}" if q_n[1] else "",
         "ex_rights_n": int(x_n[0] or 0),
@@ -564,6 +631,8 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
             "latest": health.get("latest_month") or "",
             "em_rows": em_m_n,
             "em_latest": em_m_latest,
+            "em_head_rows": int(health.get("em_monthly_head_n") or 0),
+            "em_head": str(health.get("em_monthly_head") or ""),
         },
         "quarterly_income": {"rows": counts.get("quarterly_income") or 0, "latest": health.get("latest_quarter") or ""},
         "ex_rights": {"rows": counts.get("ex_rights_n") or counts.get("ex_rights") or 0, "latest": health.get("latest_ex") or ""},
