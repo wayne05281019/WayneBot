@@ -156,12 +156,20 @@ class MainRunner:
         return str(row[0] or "") if row else ""
 
     def try_claim_pipeline(
-        self, run_date: str, *, notes: str = "claim", stale_running_sec: int = 600
+        self,
+        run_date: str,
+        *,
+        notes: str = "claim",
+        stale_running_sec: int = 600,
+        allow_stale_running: bool = True,
     ) -> bool:
         """搶尾盤／早報推播鎖：同一 run_date 同時只准一個路徑寄。
 
-        success＝已寄過；running 且未逾時＝別條路徑進行中。
-        回 True＝本行程取得所有權，必須寄完標 success，或失敗改掉 running。
+        success＝已寄過，永不重搶。
+        running＝別條進行中；allow_stale_running=False 時連逾時也不重搶
+        （尾盤用：Render 重開不准把「可能已寄出的 running」再寄一次）。
+        computed＝明確寄失敗，可重搶補寄。
+        回 True＝本行程取得所有權，必須寄完立刻標 success，或失敗改 computed。
         """
         key = str(run_date or "").strip()
         if not key:
@@ -180,6 +188,10 @@ class MainRunner:
                     conn.commit()
                     return False
                 if st == "running":
+                    if not allow_stale_running:
+                        # 可能已送到 Telegram 但殺行程來不及標 success；重搶＝連寄。
+                        conn.commit()
+                        return False
                     fin = str(row[1] or "")
                     age_ok = False
                     try:
@@ -1565,7 +1577,13 @@ class MainRunner:
         self._mark_pipeline("success", "evening", run_date=key)
         return True
 
-    def run_midday_review(self, skip_if_done: bool = False) -> bool:
+    def run_midday_review(self, skip_if_done: bool = True) -> bool:
+        """開市日 12:45 尾盤可切：白名單只寄一次。
+
+        準點／catch-up／watchdog／CLI／重開都走這裡。無論 skip_if_done，
+        都必須先原子搶 midday-{as_of}；已 success 或未明確失敗的 running 一律不寄。
+        skip_if_done 保留相容，尾盤不再允許無鎖強寄。
+        """
         from import_health import latest_complete_quote_date
         from tw_holidays import closed_tw_session
 
@@ -1587,11 +1605,14 @@ class MainRunner:
         if not as_of:
             logger.error("無完整交易日可做尾盤複核")
             return False
-        # 準點排程＋每分補跑＋死人開關會同時搶；先搶鎖再寄，一開市日只准一封。
-        if skip_if_done:
-            if not self.try_claim_pipeline(key, notes="midday-claim"):
-                logger.info("尾盤可切 %s 已寄過或進行中，略過。", key)
-                return True
+        # 無論參數：寄前必搶鎖。不准 stale running 重搶（重開連寄）。
+        # 只有 computed（明確寄失敗）才能再搶；success／running 一律略過。
+        _ = skip_if_done  # 相容舊呼叫；尾盤不再因 False 跳過 claim
+        if not self.try_claim_pipeline(
+            key, notes="midday-claim", allow_stale_running=False
+        ):
+            logger.info("尾盤可切 %s 已寄過或進行中，略過。", key)
+            return True
         logger.info("🌤️ 12:45 尾盤可切，對照今早 06:30 基準日 %s", as_of)
         from midday_review import run_midday_review
 
@@ -1601,9 +1622,10 @@ class MainRunner:
         if html:
             sent_ok = bool(self._broadcast_family(html)) and sent_ok
         if sent_ok:
+            # 寄成功立刻落 success，避免重開時卡在 running 被誤判可補。
             self._mark_pipeline("success", "midday", run_date=key)
         else:
-            # 放掉 running，讓 12:46–13:30 補跑可再寄；不准假 success。
+            # 明確寄失敗才放 computed，讓 12:46–13:30 補跑可再寄；不准假 success。
             self._mark_pipeline("computed", "midday send-failed", run_date=key)
             logger.error("尾盤可切已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
         return bool(sent_ok)
