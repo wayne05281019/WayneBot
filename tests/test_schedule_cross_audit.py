@@ -71,6 +71,8 @@ def test_render_data_role_pushes_morning(monkeypatch):
     assert config.scheduler_may_push("fuse") is False
     assert config.scheduler_owns("evening") is True
     assert config.scheduler_may_push("evening") is False
+    assert config.scheduler_owns("winrate") is True
+    assert config.scheduler_may_push("winrate") is True
 
 
 def test_main_scheduler_slots_match_clocks():
@@ -80,13 +82,14 @@ def test_main_scheduler_slots_match_clocks():
     assert '(12, 45, "midday")' in src
     assert '(16, 30, "fuse")' in src
     assert '(20, 0, "evening")' in src
+    assert '(21, 0, "winrate")' in src
     assert '(5, 10, "typhoon")' in src
     assert '(22, 15, "typhoon")' in src
     header = _read("main_runner.py")[:2800]
     assert "WAYNE_SCREEN_NOTIFY=0 不寄" in header
     assert "Render 常駐 06:30" not in header
     blob = page_copy_blob()
-    for clock in ("06:30", "12:45", "16:30", "20:00"):
+    for clock in ("06:30", "12:45", "16:30", "20:00", "21:00"):
         assert clock in blob
     assert "不是海選" in _read("main_runner.py")
     assert HELP_TOPICS == {}

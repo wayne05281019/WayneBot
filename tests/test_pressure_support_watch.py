@@ -111,17 +111,20 @@ def test_stand_support_exactly_five_from_below():
 
 
 
-def test_menu_six_plus_seven_pressure_after_overnight():
+def test_menu_seven_plus_seven_pressure_after_overnight():
     from bot_servers import (
         MENU_BTN_PRESSURE,
+        MENU_BTN_WINRATE,
         MENU_LAYOUT_VERSION,
         MENU_ROW1,
         MENU_ROW2,
         WayneTelegramBot,
     )
 
-    assert MENU_LAYOUT_VERSION == "32"
-    assert len(MENU_ROW1) == 6 and len(MENU_ROW2) == 7
+    assert MENU_LAYOUT_VERSION == "33"
+    assert len(MENU_ROW1) == 7 and len(MENU_ROW2) == 7
+    assert MENU_ROW1[0] == MENU_BTN_WINRATE
+    assert MENU_ROW1[1] == "海選"
     assert MENU_ROW2[0] == "當沖"
     assert MENU_ROW2[1] == "隔日沖"
     assert MENU_ROW2[2] == MENU_BTN_PRESSURE

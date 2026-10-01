@@ -47,6 +47,8 @@ SCREEN_KINDS = frozenset(
         "ai_desk",
         "biaoke_named",
         "intraday_leave_zero",
+        "winrate_buypoint",
+        "winrate_filter",
     }
 )
 
@@ -82,9 +84,18 @@ def _watch_as_of(market_db: str, hint: str = "") -> str:
         return _as_of(market_db, hint)
 
 
-# 話筒完整鍵盤清點（上六下七）＋記買入子路徑
+# 話筒完整鍵盤清點（上七下七）＋記買入子路徑
 # status: present=已有管線；gap_filled=本檔補骨架；external=他模組（壓撐三軌／飆大 tape／AI fills）
 BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
+    {
+        "btn": "勝率買點",
+        "kinds": ("winrate_buypoint", "winrate_filter"),
+        "class": CLASS_SCREEN,
+        "status": "present",
+        "pipe": "winrate_buypoint 21:00 roster＋隔日篩 → live_judge；button_silent_verify.snapshot_winrate_buypoint",
+        "window": "盤後 leave_zero 官方柱 1／5；隔日篩結果另 kind",
+        "note": "選股對質；只認藍▲紅框 leave_zero；未過關不准改黃金買點／買訊",
+    },
     {
         "btn": "海選",
         "kinds": (
@@ -547,6 +558,19 @@ def snapshot_biaoke_named(market_db: str, as_of: str = "") -> int:
     return _remember(market_db, "biaoke_named", rows, as_of=day, pick="rule", src="biaoke")
 
 
+def snapshot_winrate_buypoint(market_db: str, as_of: str = "") -> int:
+    """勝率買點盤後名單靜默凍（讀 winrate_buypoint_roster；空名單不算）。"""
+    day = _as_of(market_db, as_of)
+    if not market_db or not day:
+        return 0
+    try:
+        from winrate_buypoint import silent_remember_roster
+
+        return int(silent_remember_roster(market_db, day) or 0)
+    except Exception:
+        return 0
+
+
 def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
     """補缺鈕骨架一輪。一條失敗不擋其他。"""
     day = _as_of(market_db, as_of)
@@ -560,6 +584,7 @@ def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
         ("book_buy", snapshot_book_buy),
         ("ai_desk", snapshot_ai_desk),
         ("biaoke_named", snapshot_biaoke_named),
+        ("winrate_buypoint", snapshot_winrate_buypoint),
     )
     for key, fn in runners:
         try:

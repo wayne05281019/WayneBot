@@ -94,12 +94,14 @@ def _bot():
     return bot
 
 
-def test_menu_buttons_exist_in_order_six_plus_seven():
+def test_menu_buttons_exist_in_order_seven_plus_seven():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
-    assert row1 == ["海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
+    from bot_servers import MENU_BTN_WINRATE, MENU_BTN_WATCH
+
+    assert row1 == [MENU_BTN_WINRATE, "海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
     assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
 
 

@@ -1,0 +1,264 @@
+# -*- coding: utf-8 -*-
+"""勝率買點：鍵盤、落檔、分頁、隔日盤中篩。不准改黃金買點公式。"""
+from __future__ import annotations
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from bot_servers import (
+    MENU_BTN_WINRATE,
+    MENU_LAYOUT_VERSION,
+    MENU_ROW1,
+    MENU_ROW2,
+    WayneTelegramBot,
+)
+from winrate_buypoint import (
+    EMPTY_MSG,
+    NEXT_PAGE_LABEL,
+    PAGE_SIZE,
+    filter_intraday_from_roster,
+    header_html,
+    latest_roster_as_of,
+    load_winrate_roster,
+    next_page_callback,
+    page_slice,
+    parse_next_page_callback,
+    resolve_button_rows,
+    save_winrate_roster,
+    should_apply_intraday_filter,
+)
+
+
+def test_menu_winrate_first_hai_xuan_second():
+    assert MENU_BTN_WINRATE == "勝率買點"
+    assert MENU_LAYOUT_VERSION == "33"
+    assert MENU_ROW1[0] == MENU_BTN_WINRATE
+    assert MENU_ROW1[1] == "海選"
+    assert len(MENU_ROW1) == 7 and len(MENU_ROW2) == 7
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    row1 = [b.text for b in bot._reply_menu().keyboard[0]]
+    assert row1[0] == "勝率買點"
+    assert row1[1] == "海選"
+
+
+def test_screen_aliases_still_route_after_winrate_shift():
+    """海選右移後，舊標「海選」與別名仍走 screen_cmd（不是勝率買點）。"""
+    import inspect
+
+    from bot_servers import MENU_BTN_SCREEN, MENU_BTN_SCREEN_ALIASES, WayneTelegramBot
+
+    assert MENU_BTN_SCREEN == "海選"
+    assert "海選" in MENU_BTN_SCREEN_ALIASES
+    assert "海選名單" in MENU_BTN_SCREEN_ALIASES
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    assert "MENU_BTN_SCREEN_ALIASES" in src
+    assert src.index("MENU_BTN_WINRATE_ALIASES") < src.index("MENU_BTN_SCREEN_ALIASES")
+    assert "screen_cmd" in src
+
+
+def test_save_load_roster_and_empty_sentinel(tmp_path):
+    db = str(tmp_path / "w.db")
+    n = save_winrate_roster(
+        db,
+        "20260930",
+        [
+            {"stock_id": "2330", "stock_name": "台積電", "close": 900.0, "profit_pct": 0.5},
+            {"stock_id": "2330", "stock_name": "dup", "close": 901.0},  # 去重
+        ],
+    )
+    assert n == 1
+    rows = load_winrate_roster(db, "20260930")
+    assert len(rows) == 1
+    assert rows[0]["stock_id"] == "2330"
+    assert float(rows[0]["pick_close"]) == 900.0
+    assert latest_roster_as_of(db) == "20260930"
+
+    n0 = save_winrate_roster(db, "20261001", [])
+    assert n0 == 0
+    assert load_winrate_roster(db, "20261001") == []
+    assert latest_roster_as_of(db) == "20261001"
+
+
+def test_page_slice_and_callback():
+    rows = [{"stock_id": str(i)} for i in range(37)]
+    chunk, off, has_next = page_slice(rows, 0)
+    assert len(chunk) == PAGE_SIZE == 15
+    assert has_next is True
+    chunk2, off2, has_next2 = page_slice(rows, 15)
+    assert len(chunk2) == 15 and has_next2 is True
+    chunk3, off3, has_next3 = page_slice(rows, 30)
+    assert len(chunk3) == 7 and has_next3 is False
+    assert parse_next_page_callback(next_page_callback(15)) == 15
+    assert NEXT_PAGE_LABEL == "下一個 15 檔"
+    assert EMPTY_MSG in header_html("20260930", 0)
+
+
+def test_should_apply_intraday_filter_same_day_false():
+    now = datetime(2026, 9, 30, 21, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert should_apply_intraday_filter(as_of="20260930", now=now) is False
+
+
+def test_filter_intraday_keeps_lower_price_with_leave_zero(tmp_path, monkeypatch):
+    db = str(tmp_path / "f.db")
+    roster = [
+        {"as_of": "20260930", "stock_id": "1111", "stock_name": "甲", "pick_close": 100.0},
+        {"as_of": "20260930", "stock_id": "2222", "stock_name": "乙", "pick_close": 50.0},
+        {"as_of": "20260930", "stock_id": "3333", "stock_name": "丙", "pick_close": 80.0},
+    ]
+
+    class _Eng:
+        def get_latest_trading_date(self):
+            return "20260930"
+
+        def _load_close_frames(self, codes, as_of):
+            return {c: object() for c in codes}
+
+    monkeypatch.setattr(
+        "screening_engine.ScreeningEngine", lambda *a, **k: _Eng()
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint._still_leave_zero_live",
+        lambda db_path, sid, live_price, frames: sid in ("1111", "2222"),
+    )
+    quotes = {
+        "1111": {"price": 95.0},  # 更低＋買點在 → 留
+        "2222": {"price": 55.0},  # 更高 → 丟
+        "3333": {"price": 70.0},  # 更低但買點沒了 → 丟
+    }
+    out = filter_intraday_from_roster(db, roster, quotes=quotes)
+    assert [r["stock_id"] for r in out] == ["1111"]
+    assert float(out[0]["live_price"]) == 95.0
+
+
+def test_resolve_button_rows_full_vs_empty(tmp_path, monkeypatch):
+    db = str(tmp_path / "r.db")
+    as_of, rows, mode = resolve_button_rows(db)
+    assert mode == "empty" and rows == [] and as_of == ""
+
+    save_winrate_roster(
+        db,
+        "20260930",
+        [{"stock_id": "2330", "stock_name": "台積電", "close": 900.0}],
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint.should_apply_intraday_filter",
+        lambda **kw: False,
+    )
+    as_of, rows, mode = resolve_button_rows(db)
+    assert as_of == "20260930" and mode == "full" and len(rows) == 1
+
+
+def test_bot_wires_winrate_handler():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    assert "MENU_BTN_WINRATE_ALIASES" in src
+    assert "winrate_cmd" in src
+    cb = inspect.getsource(WayneTelegramBot._on_callback_bound)
+    assert 'data.startswith("wr:")' in cb
+    assert hasattr(WayneTelegramBot, "push_winrate_buypoint_page")
+    assert hasattr(WayneTelegramBot, "_run_winrate_buypoint")
+
+
+def test_runner_has_winrate_job():
+    import inspect
+
+    from main_runner import MainRunner
+
+    assert hasattr(MainRunner, "run_winrate_buypoint")
+    sig = inspect.signature(MainRunner.run_winrate_buypoint)
+    assert "notify" in sig.parameters
+    src = open("main.py", encoding="utf-8").read()
+    assert '(21, 0, "winrate")' in src
+    assert "run_winrate_buypoint" in src
+
+
+def test_silent_remember_roster_and_filter(tmp_path, monkeypatch):
+    from judge_tape import store_path
+    from winrate_buypoint import (
+        KIND_FILTER,
+        KIND_ROSTER,
+        save_winrate_roster,
+        silent_remember_filter,
+        silent_remember_roster,
+    )
+    from wayne_db import ensure_core_schema
+    import json
+    import sqlite3
+
+    db = str(tmp_path / "wayne_market.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT OR REPLACE INTO daily_quotes("
+        "date,stock_id,stock_name,market,open,high,low,close,volume,"
+        "turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "20260930",
+            "2330",
+            "台積電",
+            "TW",
+            900,
+            910,
+            890,
+            900,
+            8000,
+            400000,
+            1.0,
+            900,
+            0,
+            0,
+            0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    save_winrate_roster(
+        db,
+        "20260930",
+        [{"stock_id": "2330", "stock_name": "台積電", "close": 900.0, "profit_pct": 0.4}],
+    )
+    n = silent_remember_roster(db, "20260930")
+    assert n == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    row = conn.execute(
+        "SELECT kind, sid, px, extra FROM live_judge WHERE kind=? AND as_of='20260930'",
+        (KIND_ROSTER,),
+    ).fetchone()
+    conn.close()
+    assert row and row[1] == "2330"
+    extra = json.loads(row[3] or "{}")
+    assert extra.get("why") == "leave_zero"
+    assert extra.get("bucket_key") == KIND_ROSTER
+    assert "o" in extra or "c" in extra
+
+    nf = silent_remember_filter(
+        db,
+        roster_as_of="20260930",
+        kept=[{"stock_id": "2330", "stock_name": "台積電", "live_price": 880.0}],
+        filter_as_of="20261001",
+    )
+    assert nf == 1
+    conn = sqlite3.connect(store)
+    frow = conn.execute(
+        "SELECT kind, sid, pick, extra FROM live_judge WHERE kind=? AND as_of='20261001'",
+        (KIND_FILTER,),
+    ).fetchone()
+    conn.close()
+    assert frow and frow[1] == "2330" and frow[2] == "20260930"
+    fextra = json.loads(frow[3] or "{}")
+    assert fextra.get("src_as_of") == "20260930"
+    assert fextra.get("why") == "leave_zero_still"
+
+
+def test_silent_catalog_lists_winrate():
+    from button_silent_verify import BUTTON_CATALOG, snapshot_winrate_buypoint
+
+    row = next(r for r in BUTTON_CATALOG if r["btn"] == "勝率買點")
+    assert "winrate_buypoint" in row["kinds"]
+    assert "winrate_filter" in row["kinds"]
+    assert callable(snapshot_winrate_buypoint)

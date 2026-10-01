@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config  # noqa: E402
 import main  # noqa: E402
 
-ALL_JOBS = ("morning", "midday", "fuse", "evening", "typhoon", "open_check")
+ALL_JOBS = ("morning", "midday", "fuse", "evening", "winrate", "typhoon", "open_check")
 
 
 def test_default_role_is_data(monkeypatch):
@@ -54,6 +54,12 @@ def test_data_role_keeps_midday_because_gha_has_no_such_cron(monkeypatch):
     assert config.scheduler_may_push("midday") is True
 
 
+def test_data_role_pushes_winrate_at_2100(monkeypatch):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    assert config.scheduler_owns("winrate") is True
+    assert config.scheduler_may_push("winrate") is True
+
+
 def test_data_role_refreshes_silently(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     for job in ("fuse", "evening", "typhoon", "open_check"):
@@ -83,6 +89,7 @@ def test_every_job_has_exactly_one_pusher(monkeypatch):
     assert local_pushers & gha_telegram_jobs == set()
     assert "morning" in local_pushers
     assert "midday" in local_pushers
+    assert "winrate" in local_pushers
     assert "open_check" not in local_pushers
 
 
@@ -100,6 +107,10 @@ class _Recorder:
 
     def run_evening_screen(self, **kw):
         self.calls.append(("evening", kw))
+        return True
+
+    def run_winrate_buypoint(self, **kw):
+        self.calls.append(("winrate", kw))
         return True
 
     def run_increment_job(self, **kw):
@@ -177,6 +188,20 @@ def test_evening_stays_silent_in_every_role(monkeypatch, recorder):
         assert recorder.calls[0][1]["notify"] is False
 
 
+def test_catch_up_after_2100_runs_winrate_on_data_role(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 4, 21, 16, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    kinds = [c[0] for c in recorder.calls]
+    assert kinds == ["open_check", "fuse", "morning", "evening", "winrate"]
+    wr = [c for c in recorder.calls if c[0] == "winrate"][0]
+    assert wr[1]["skip_if_done"] is True
+    assert wr[1]["notify"] is True
+
+
 def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -195,6 +220,7 @@ def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     assert fuse[1]["skip_if_done"] is True
     assert fuse[1]["notify"] is False
     assert "midday" not in kinds
+    assert "winrate" not in kinds
 
 
 def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):

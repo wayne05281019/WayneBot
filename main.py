@@ -497,7 +497,10 @@ def catch_up_missed_jobs(now=None) -> None:
         and (12 * 60 + 46) <= mins < (13 * 60 + 30)
     )
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
-    if not any((need_fuse, need_morning, need_midday, need_evening, need_open_check)):
+    need_winrate = scheduler_owns("winrate") and mins >= 21 * 60
+    if not any(
+        (need_fuse, need_morning, need_midday, need_evening, need_winrate, need_open_check)
+    ):
         return
     runner = MainRunner()
     if need_open_check:
@@ -532,6 +535,11 @@ def catch_up_missed_jobs(now=None) -> None:
     if need_evening:
         logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
         runner.run_evening_screen(skip_if_done=True, notify=False)
+    if need_winrate:
+        logger.info("補跑：已過台灣 21:00，若勝率買點沒寄過就補寄")
+        runner.run_winrate_buypoint(
+            skip_if_done=True, notify=scheduler_may_push("winrate")
+        )
 
 
 _RETRYABLE_WATCHDOG = {
@@ -604,6 +612,8 @@ def run_scheduled_job(kind: str) -> None:
         runner.run_midday_review(skip_if_done=True)
     elif kind == "evening":
         runner.run_evening_screen(skip_if_done=True, notify=False)
+    elif kind == "winrate":
+        runner.run_winrate_buypoint(skip_if_done=True, notify=push)
     elif kind == "typhoon":
         runner.run_typhoon_peek()
     elif kind == "open_check":
@@ -613,7 +623,7 @@ def run_scheduled_job(kind: str) -> None:
             logger.exception("排程 open_check 失敗（不擋）")
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
-    if kind in ("morning", "midday", "fuse", "evening", "typhoon", "open_check"):
+    if kind in ("morning", "midday", "fuse", "evening", "winrate", "typhoon", "open_check"):
         try:
             from biaoke_ingest import run_biaoke_ingest_quiet
 
@@ -655,6 +665,7 @@ def start_daily_scheduler():
             (12, 45, "midday"),
             (16, 30, "fuse"),
             (20, 0, "evening"),
+            (21, 0, "winrate"),
             (5, 10, "typhoon"),
             (22, 15, "typhoon"),
         )
