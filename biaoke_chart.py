@@ -1134,6 +1134,7 @@ def _leader_note(
     ha="left",
     va="center",
     clip: bool = False,
+    shrink_b: float = 4.0,
 ) -> None:
     """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
 
@@ -1163,7 +1164,7 @@ def _leader_note(
             lw=0.95,
             linestyle="--",
             shrinkA=0,
-            shrinkB=4,
+            shrinkB=float(shrink_b),
         ),
     )
 
@@ -1226,12 +1227,13 @@ def _place_band_notes(
 
 
 def _approx_note_width(text: str, size: float = 12) -> float:
-    """結構圖右溝標籤約略資料座標寬（含 bbox pad）。用來留足「最可能」完整字。"""
+    """結構圖右溝標籤約略資料座標寬（含 bbox pad）。偏寬估，寧可多留勿裁「最可能」。"""
     s = str(text or "")
     units = 0.0
     for ch in s:
-        units += 1.0 if ord(ch) > 0x2E80 else 0.58
-    return units * (float(size) / 12.0) * 1.72 + 2.8
+        units += 1.0 if ord(ch) > 0x2E80 else 0.62
+    # 實測 size12「最可能＝看壓 5255」約 19；這裡刻意估高，避免右緣／鄰標互蓋
+    return units * (float(size) / 12.0) * 1.95 + 3.6
 
 
 def _note_priority(text: str) -> int:
@@ -1249,7 +1251,7 @@ def _dedupe_right_notes(
     notes: Sequence[Dict[str, Any]],
     *,
     span: float,
-    near_frac: float = 0.022,
+    near_frac: float = 0.028,
 ) -> List[Dict[str, Any]]:
     """價位太近只留優先標籤，避免壓／軌／最可能互蓋。"""
     if not notes:
@@ -1283,18 +1285,18 @@ def _place_right_notes(
     x_max: Optional[float] = None,
     bottom_pad: float = 0.0,
 ) -> None:
-    """演化區內：去重＋錯開＋左對齊往右長，字只落在演化空白，不准壓 K。
+    """右溝標籤欄：去重＋垂直錯開；字落在軌線末端右側，不准壓軌／壓 K。
 
-    avoid_ys＝軌／壓撐在標籤 x 的價位，字要讓開，不准蓋線。
-    x_max＝軸右緣；不夠寬就把 x_text 左移仍留在演化區，保證「最可能」整句可見。
+    x_text 應在演化帶／軌虛線右緣之外；x_max 保證「最可能」整句入軸。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
         return
-    gap = max(float(min_gap), (ymax - ymin) * 0.06)
-    lo = ymin + gap * 0.55 + max(float(bottom_pad), 0.0)
-    hi = ymax - gap * 0.55
-    fixed = [float(y) for y in avoid_ys if y is not None]
+    # 盒高約 span*0.04；gap 太大會全擠到上下緣互壓
+    gap = max(float(min_gap), (ymax - ymin) * 0.045)
+    gap = min(gap, (ymax - ymin) * 0.09)
+    lo = ymin + max(float(bottom_pad), gap * 1.1)
+    hi = ymax - gap * 0.9
     pin_x = float(seam) if seam is not None else None
     tx = float(x_text)
     if x_max is not None:
@@ -1303,28 +1305,54 @@ def _place_right_notes(
                 _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
                 for n in cleaned
             ),
-            default=14.0,
+            default=16.0,
         )
-        # 整句＋邊距必須落在軸內；不夠就把錨點往左（仍在 seam 右側）
-        fit_tx = float(x_max) - need - 0.85
+        fit_tx = float(x_max) - need - 1.2
         if pin_x is not None:
-            tx = max(float(pin_x) + 0.55, min(tx, fit_tx))
+            tx = max(float(pin_x) + 0.8, min(tx, fit_tx))
         else:
             tx = min(tx, fit_tx)
-    # 去重後再把「最可能」往上緣空白靠，不准為搶位改掉去重用的原價
-    raw_ys: List[float] = []
-    for n in cleaned:
-        y = float(n.get("y") or 0)
-        if "最可能" in str(n.get("text") or ""):
-            y = hi - gap * 0.25
-        raw_ys.append(y)
-    tys = _spread_ys_around(raw_ys, fixed, gap, lo=lo, hi=hi)
-    for note, ty in zip(cleaned, tys):
+    most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
+    others = [n for n in cleaned if "最可能" not in str(n.get("text") or "")]
+    # 上緣專留給「最可能」一整句，下方才排壓／撐／軌
+    reserve = gap * 1.45
+    hi_others = hi - reserve
+    taken: List[float] = [float(y) for y in avoid_ys if y is not None]
+    placed: List[Tuple[Dict[str, Any], float]] = []
+    if most:
+        my = hi - gap * 0.2
+        placed.append((most[0], my))
+        taken.append(my)
+    other_ys = _spread_ys_around(
+        [float(n.get("y") or 0) for n in others],
+        taken,
+        gap,
+        lo=lo,
+        hi=hi_others,
+    )
+    for note, ty in zip(others, other_ys):
+        placed.append((note, ty))
+        taken.append(ty)
+    # 畫圖時上面的「最可能」先畫，後面的不准蓋住它（z 一樣時後畫壓前畫）
+    placed.sort(key=lambda p: -float(p[1]))
+    for note, ty in placed:
+        ny = float(note.get("y") or 0)
+        # 字中心必須離開釘點價，否則虛線引線會橫穿盒子（看起來像壓在軌上）
+        if abs(ty - ny) < gap * 0.65:
+            ty = ny + gap * 0.85 if ty >= ny else ny - gap * 0.85
+            ty = min(max(ty, lo), hi)
+            # 再避開已佔位
+            for _ in range(8):
+                hit = next((t for t in taken if abs(ty - t) < gap * 0.9), None)
+                if hit is None:
+                    break
+                ty = hit + gap if ty >= hit else hit - gap
+                ty = min(max(ty, lo), hi)
         ax_x = float(pin_x if pin_x is not None else note.get("x") or 0)
         _leader_note(
             ax,
             ax_x,
-            float(note.get("y") or 0),
+            ny,
             str(note.get("text") or ""),
             str(note.get("color") or _TEXT),
             tx=tx,
@@ -1332,7 +1360,8 @@ def _place_right_notes(
             size=int(note.get("size") or 11),
             ha="left",
             va="center",
-            clip=True,
+            clip=False,
+            shrink_b=14.0,
         )
 
 
@@ -2497,9 +2526,8 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    # 演化區右側留足標籤寬，避免「最可能＝看壓 ####」被裁成半句
-    # 實測 size12「最可能＝看壓 5255」約 19 data-x；舊 gutter 7.2 只剩 ~17.5 → 右緣切斷
-    x_right = n + _FUTURE + 15.5
+    # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬
+    x_right = n + _FUTURE + 18.0
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     candle_up = []
@@ -2565,6 +2593,8 @@ def render_biaoke_structure_png(
     if not channel:
         channel = infer_parallel_channel(work) or {}
     x_fut = n - 1 + _FUTURE
+    # 軌虛線只畫到演化帶前段，末端右側留給標籤欄，不准字壓在軌上
+    rail_end = float(n - 1) + float(_FUTURE) * 0.55
     # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
     if channel.get("kind"):
         _paint_parallel_channel(
@@ -2572,7 +2602,7 @@ def render_biaoke_structure_png(
             channel,
             seam=float(n - 1),
             x_lo=0.0,
-            x_hi=float(x_fut),
+            x_hi=float(rail_end),
             y_lo=ymin,
             y_hi=ymax,
             n=n,
@@ -2610,7 +2640,7 @@ def render_biaoke_structure_png(
                 y2,
                 seam=float(n - 1),
                 x_lo=0.0,
-                x_hi=x_fut,
+                x_hi=rail_end,
                 y_lo=ymin,
                 y_hi=ymax,
                 color=_DOWN_TRACK,
@@ -2641,7 +2671,7 @@ def render_biaoke_structure_png(
             y_now = _line_at(x1, y1, x2, y2, float(n - 1))
             up_broken = bool(last_c and y_now and last_c < y_now)
             up_steep = _rail_slope_too_steep(x1, y1, x2, y2, span=span, n=n)
-            rail_hi = float(n - 1) if (up_broken or up_steep) else x_fut
+            rail_hi = float(n - 1) if (up_broken or up_steep) else float(rail_end)
             _paint_extended_rail(
                 ax1,
                 x1,
@@ -2739,57 +2769,45 @@ def render_biaoke_structure_png(
         )
     _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
-    # 右溝標籤：字放在演化帶中後段，避開 K 與軌虛線；依最長「最可能」動態加寬
+    # 標籤欄放在軌虛線末端（x_fut）右側，盒子不准壓在上升軌／下降壓上
     max_note_w = max(
         (
             _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 12))
             for nt in right_notes
         ),
-        default=16.0,
+        default=18.0,
     )
-    # 從演化帶中段起筆往右長，減少壓在 seam 附近的軌／K
-    x_text = float(n - 1) + max(float(_FUTURE) * 0.42, 3.2)
-    need_right = x_text + max_note_w + 1.0
+    x_text = float(x_fut) + 6.0
+    need_right = x_text + max_note_w + 3.0
     if need_right > x_right:
         x_right = need_right
         ax1.set_xlim(-0.55, x_right)
+    # 水平壓撐＋通道現價都要垂直讓開，盒子中心不准落在線上
     avoid_ys: List[float] = []
     if spike_hi:
         avoid_ys.append(float(spike_hi))
     if spike_lo:
         avoid_ys.append(float(spike_lo))
-    # 只避開標籤 x 上的軌價，過多 fixed 會把字擠成一疊互壓
-    if channel.get("kind"):
-        if channel.get("rail_now"):
-            avoid_ys.append(float(channel["rail_now"]))
-        if channel.get("base_now"):
-            avoid_ys.append(float(channel["base_now"]))
-    else:
-        if down_pts:
-            (dx1, dy1, _), (dx2, dy2, _) = down_pts
-            avoid_ys.append(_line_at(float(dx1), float(dy1), float(dx2), float(dy2), x_text))
-        if up_pts:
-            (ux1, uy1, _), (ux2, uy2, _) = up_pts
-            avoid_ys.append(_line_at(float(ux1), float(uy1), float(ux2), float(uy2), x_text))
-    if tgt:
-        avoid_ys.append(float(tgt))
-    # 底下留給演化區兩行說明
-    evo_pad = span * 0.10
+    if channel.get("rail_now"):
+        avoid_ys.append(float(channel["rail_now"]))
+    if channel.get("base_now"):
+        avoid_ys.append(float(channel["base_now"]))
+    evo_pad = span * 0.13
     _place_right_notes(
         ax1,
         right_notes,
         x_text=x_text,
         ymin=ymin,
         ymax=ymax,
-        min_gap=span * 0.175,
+        min_gap=span * 0.065,
         span=span,
         seam=float(n - 1),
         avoid_ys=avoid_ys,
         x_max=float(x_right),
         bottom_pad=evo_pad,
     )
-    # 演化區說明改兩行短句，單行全文比演化帶還寬會壓線／被裁
-    evo_cx = float(n - 1) + float(_FUTURE) * 0.55
+    # 演化區說明留在米色帶內（標籤欄左側），兩行短句
+    evo_cx = float(n - 1) + float(_FUTURE) * 0.50
     ax1.text(
         evo_cx,
         ymin + span * 0.042,
