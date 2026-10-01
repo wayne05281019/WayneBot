@@ -516,7 +516,7 @@ def test_locator_inset_marks_window():
     assert abs(_STOCK_LOCATOR_RECT[0] + _STOCK_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
-    assert "right=_FIG_RIGHT" in rsrc
+    assert "right=_FIG_RIGHT" in rsrc or "right=_STRUCTURE_FIG_RIGHT" in rsrc or "_STRUCTURE_FIG_RIGHT" in rsrc
     assert "_paint_spot(ov, quote)" in rsrc
     assert "_SPOT_X" in inspect.getsource(_paint_spot) or "_SPOT_Y" in inspect.getsource(_paint_spot)
     assert 'x=_HEADER_X, y=chip_y' not in rsrc
@@ -564,7 +564,7 @@ def test_locator_inset_marks_window():
 
     notes = inspect.getsource(_place_right_notes)
     assert 'ha="left"' in notes
-    assert "clip=False" in notes
+    assert "clip=True" in notes
     assert "seam" in notes
     assert "x_max" in notes
     assert "最可能" in notes
@@ -975,20 +975,26 @@ def test_structure_right_notes_fit_most_likely_full_text():
     )
 
     w = _approx_note_width("最可能＝看壓 5255", 12)
-    assert w >= 18.0
+    assert w >= 24.0
     notes = inspect.getsource(_place_right_notes)
     assert "x_max" in notes
     assert "avoid_ys" in notes
     assert "_approx_note_width" in notes
-    assert "clip=False" in notes
+    assert "clip=True" in notes
+    assert "stub_x" in notes
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "x_fut" in rsrc
+    assert "label_col_left" in rsrc
+    assert "rail_end" in rsrc
+    assert "hlines" in rsrc
     assert "max_note_w" in rsrc or "_approx_note_width" in rsrc
     assert "bottom_pad" in rsrc
     assert "（不是保證・不是買訊）" in rsrc
-    # 標籤欄必須在軌末端右側
-    assert "rail_end" in rsrc
-    assert "x_fut) + 6" in rsrc or "float(x_fut) + 6" in rsrc
+    assert "_STRUCTURE_FIG_RIGHT" in rsrc
+    # 軌虛線停在標籤欄左側（明顯空隙）；右溝用軸寬比例留白
+    assert "label_col_left) - 5.5" in rsrc or "label_col_left - 5.5" in rsrc
+    assert "label_frac" in rsrc
+    assert "need_by_frac" in rsrc
 
 
 @pytest.mark.production_db
