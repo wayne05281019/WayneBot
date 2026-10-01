@@ -125,10 +125,14 @@ def test_lookup_sends_volzone_third_photo():
     # 不准把決策卡還原 ohlc 塞進大量區
     assert "already_normalized=True" not in src
     assert "不准用決策卡除權還原" in src or "只吃官方原柱" in src
-    # 興櫃與上市櫃同一條；不准另開跳過大量區的路徑
-    assert "if is_em:" in src
-    assert src.find("if is_em:") < src.find("render_volume_zone_result")
-    assert "merge_live=not is_em" in src
+    # 興櫃與上市櫃同一條大量區；不准另開跳過路徑。is_em 只給鍵盤／標籤。
+    assert "is_em = self._hit_is_emerging" in src
+    assert src.find("is_em = self._hit_is_emerging") < src.find("render_volume_zone_result")
+    assert "if is_em:\n                return None" not in src
+    # 興櫃也合併現價（櫃買／Yahoo）；不准再寫死 merge_live=not is_em
+    assert "merge_live=True" in src
+    assert "merge_live=not is_em" not in src
+    assert "live_quote=None if is_em" not in src
     # 導航圖本身不再疊大量區
     nav = open("wayne_navigator.py", encoding="utf-8").read()
     assert "_paint_nav_volume_zone" not in nav

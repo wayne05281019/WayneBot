@@ -698,7 +698,9 @@ class NavigatorEngine:
             if em is not None and len(em) >= 5:
                 df = em
                 quote_source = "emerging_quotes"
-                merge_live = False
+                # 興櫃現價走櫃買／Yahoo；沒有 live_quote 才關掉合併，不准硬套上市櫃 MIS。
+                if live_quote is None:
+                    merge_live = False
                 if len(str(cap)) != 8:
                     em_max = str(df["date"].astype(str).str.replace("-", "", regex=False).max() or "")[:8]
                     if len(em_max) == 8:
@@ -720,7 +722,11 @@ class NavigatorEngine:
             from live_quote import append_live_bar
 
             df = append_live_bar(
-                df, str(stock_id), merge_live=merge_live, live_quote=live_quote
+                df,
+                str(stock_id),
+                market="EM" if quote_source == "emerging_quotes" else "",
+                merge_live=merge_live,
+                live_quote=live_quote,
             )
         except Exception:
             pass
@@ -728,10 +734,15 @@ class NavigatorEngine:
         high_raw = df["high"].astype(float).copy() if "high" in df.columns else close_raw
         low_raw = df["low"].astype(float).copy() if "low" in df.columns else close_raw
         live_time = ""
+        live_source = ""
         is_live = False
         if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
             is_live = True
             live_time = str(df["_live_time"].iloc[-1] or "") if "_live_time" in df.columns else ""
+            if live_quote:
+                live_source = str(live_quote.get("source") or "")
+            elif "_live_source" in df.columns:
+                live_source = str(df["_live_source"].iloc[-1] or "")
         raw_for_ex = df.copy()
         if "is_live" in raw_for_ex.columns:
             raw_for_ex = raw_for_ex[~raw_for_ex["is_live"].fillna(False).astype(bool)]
@@ -775,7 +786,7 @@ class NavigatorEngine:
         df["_table_close"] = px
         from decision_card_signals import (
             TEMP_ATH_WATCH,
-            _in_cash_session,
+            _in_board_session,
             alert_tag,
             cal60_profit_bundle,
             card_daily_stance,
@@ -792,7 +803,9 @@ class NavigatorEngine:
             volume_headline_rank,
         )
         generated_at = taipei_now().strftime("%Y-%m-%d %H:%M:%S")
-        if is_live and not _in_cash_session(taipei_now()):
+        emerging_board = quote_source == "emerging_quotes"
+        if is_live and not _in_board_session(taipei_now(), emerging=emerging_board):
+            # 興櫃 15:00 前仍盤中；不准用上市櫃 13:30 把現價清掉。
             is_live = False
 
         # 獲利：近 60 曆日收盤低（貼 20 日低不歸零）。
@@ -960,10 +973,10 @@ class NavigatorEngine:
             badges.append("興櫃官方日均價")
         if is_live:
             try:
-                from live_quote import mis_session_label
+                from live_quote import board_session_label
 
                 clock = live_time[:5] if live_time else ""
-                tag = mis_session_label(live_time)
+                tag = board_session_label(live_time, emerging=emerging_board)
                 badges.append(f"{tag} {clock}".strip() if clock else tag)
             except Exception:
                 badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
@@ -1258,6 +1271,7 @@ class NavigatorEngine:
             "db_as_of": db_as_of,
             "is_live": is_live,
             "live_time": live_time,
+            "live_source": live_source,
             "generated_at": generated_at,
             "query_date": query_date,
             "query_clock": query_clock,
@@ -4144,7 +4158,11 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     try:
         from live_quote import live_clock_suffix
 
-        date_note = live_clock_suffix(bool(card.get("is_live")), str(card.get("live_time") or ""))
+        date_note = live_clock_suffix(
+            bool(card.get("is_live")),
+            str(card.get("live_time") or ""),
+            emerging=_card_is_emerging(card),
+        )
     except Exception:
         date_note = " 盤中" + (f" {card.get('live_time')}" if card.get("live_time") else "") if card.get("is_live") else ""
     return join_sections(

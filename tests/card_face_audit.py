@@ -227,7 +227,12 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
             out.append(f"興櫃列成 {listing}")
         if "興櫃官方日均價" not in badges:
             out.append("興櫃沒有官方日均價徽章")
-        if live:
+        # 興櫃現價只認櫃買 OpenAPI／Yahoo .TWO 合併列；不准冒充證交所 MIS。
+        if live and str(card.get("live_source") or "").strip().lower() in (
+            "mis",
+            "twse",
+            "tse",
+        ):
             out.append("興櫃不該走上市櫃盤中現價")
     if listing and not listing_face_ok(listing):
         out.append(f"市場標異常 {listing}")
