@@ -17,11 +17,11 @@ REASON_BEAR_MA = "bear_ma_stack"
 REASON_BEAR_BREAK_LOW = "bear_break_lows"
 REASON_SAME_BAR_SELL = "same_bar_sell"
 REASON_SAME_BAR_WARN = "same_bar_warn"
+REASON_THIN_VOL = "thin_vol"  # 量 < 近20日均量
 
 # 靜默對質 kind（與勝率／剛脫離零分開記；不准混勝率）
-KIND_EXCLUDE = "buy_exclude_v1"
-# 再生下一版候選鍵（第 13 條：換了才開；現況先收 v1）
-KIND_EXCLUDE_NEXT = "buy_exclude_v2_candidate"
+KIND_EXCLUDE = "buy_exclude_v2"  # v1＋量縮；銅板～超高價＋興櫃對質過
+KIND_EXCLUDE_NEXT = "buy_exclude_v3_candidate"  # 再生：收紅／收在振幅中上半等
 
 
 def _f(v: Any) -> Optional[float]:
@@ -269,6 +269,30 @@ def is_same_bar_sell_or_warn(df, i: int = -1) -> Tuple[bool, str]:
     return False, ""
 
 
+def is_thin_volume(df, i: int = -1, *, mult: float = 0.5) -> bool:
+    """量縮：當日量 < 近 20 日均量 × mult。柱不足／無真量＝不排除。
+
+    官方 volume；興櫃／上市櫃同一套。mult 預設 0.5（兩萬以下全母體對質過關；
+    1.0 保留率過低不採用）。
+    """
+    if df is None or "volume" not in getattr(df, "columns", []):
+        return False
+    idx = i if i >= 0 else len(df) + i
+    if idx < 20:
+        return False
+    try:
+        import pandas as pd
+
+        vol = pd.to_numeric(df["volume"], errors="coerce")
+        v = _f(vol.iloc[idx])
+        base = _f(vol.iloc[idx - 20 : idx].mean())
+    except Exception:
+        return False
+    if v is None or base is None or base <= 0:
+        return False
+    return bool(v < base * float(mult))
+
+
 def buy_exclude_reasons(
     df,
     i: int = -1,
@@ -283,12 +307,14 @@ def buy_exclude_reasons(
         out.append(REASON_LIMIT_DOWN_LOCK)
     elif is_open_locked_limit_down(df, i, emerging=em):
         out.append(REASON_LIMIT_DOWN_OPEN)
-    # 現況只認結構破底（連破低＋破近20低）；空頭排列改下一版靜默對質
+    # 結構破底（連破低＋破近20低）；空頭排列仍為下一軌候選
     if is_bear_break_lows(df, i):
         out.append(REASON_BEAR_BREAK_LOW)
     sell, why = is_same_bar_sell_or_warn(df, i)
     if sell and why:
         out.append(why)
+    if is_thin_volume(df, i, mult=0.5):
+        out.append(REASON_THIN_VOL)
     # 去重保序
     seen = set()
     uniq: List[str] = []

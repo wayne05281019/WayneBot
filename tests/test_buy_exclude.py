@@ -13,6 +13,7 @@ from buy_exclude import (
     REASON_LIMIT_DOWN_OPEN,
     REASON_SAME_BAR_SELL,
     REASON_SAME_BAR_WARN,
+    REASON_THIN_VOL,
     buy_exclude_reasons,
     filter_leave_zero_rows,
     is_bear_break_lows,
@@ -20,6 +21,7 @@ from buy_exclude import (
     is_locked_limit_down,
     is_open_locked_limit_down,
     is_same_bar_sell_or_warn,
+    is_thin_volume,
     sample_exclude_stats,
     should_exclude_buy,
 )
@@ -155,9 +157,32 @@ def test_screening_engine_imports_exclude_hook():
     assert "buy_exclude" in src
 
 
+def test_thin_volume_excludes():
+    # 前 20 日量 1000，今日量 400 → <0.5x 均量
+    closes = [80.0 + i * 0.1 for i in range(25)]
+    df = _ohlc_df(closes)
+    df["volume"] = [1000.0] * 24 + [400.0]
+    assert is_thin_volume(df) is True
+    assert REASON_THIN_VOL in buy_exclude_reasons(df)
+
+
+def test_thin_volume_ok_when_at_least_half_avg():
+    closes = [80.0 + i * 0.1 for i in range(25)]
+    df = _ohlc_df(closes)
+    df["volume"] = [1000.0] * 24 + [500.0]
+    assert is_thin_volume(df, mult=0.5) is False
+    assert REASON_THIN_VOL not in buy_exclude_reasons(df)
+
+
+def test_kind_is_v2():
+    assert KIND_EXCLUDE == "buy_exclude_v2"
+    assert "v3" in KIND_EXCLUDE_NEXT
+
+
 def test_winrate_scan_mentions_exclude():
     import inspect
     import winrate_buypoint as wr
 
     src = inspect.getsource(wr.scan_winrate_leave_zero)
     assert "buy_exclude" in src or "filter_leave_zero_rows" in src
+
