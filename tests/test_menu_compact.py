@@ -19,14 +19,15 @@ from bot_servers import (
     MENU_ROW1,
     MENU_ROW2,
     WayneTelegramBot,
+    MENU_BTN_WATCH,
 )
 from intent_router import parse_intent
 from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "31"
-    assert MENU_ROW1 == ("海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW)
+    assert MENU_LAYOUT_VERSION == "32"
+    assert MENU_ROW1 == ("海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW)
     assert MENU_ROW2 == ("當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU)
     assert "刷新" not in MENU_ROW1 + MENU_ROW2
     assert "回報" not in MENU_ROW1 + MENU_ROW2
@@ -61,6 +62,13 @@ def test_holdings_intent_not_ai():
     assert parse_intent("大盤").kind == "market"
     assert parse_intent("資金輪動").kind == "flow"
     assert parse_intent("資金").kind == "flow"
+    # 主選單「加入觀察」不可被「觀察」子字拆成 lookup「加入」
+    hit_watch = parse_intent("加入觀察")
+    assert hit_watch is not None
+    assert hit_watch.kind == "watch"
+    assert hit_watch.query == ""
+    assert parse_intent("觀察").kind == "watch"
+    assert parse_intent("觀察清單").kind == "watch"
 
 
 def test_typed_compact_alias_still_hangs_full_keyboard(tmp_path):

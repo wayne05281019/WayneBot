@@ -14,7 +14,7 @@ MENU_BUTTONS = [
     (MENU_BTN_CARD, "decision_card_btn"),
     ("當沖", "daytrade_cmd"),
     ("持股", "_send_portfolio"),
-    ("觀察", "_send_watch"),
+    ("加入觀察", "_send_watch"),
     ("海選", "screen_cmd"),
     (MENU_BTN_AI, "_send_ai_desk_view"),
     ("隔日沖", "overnight_cmd"),

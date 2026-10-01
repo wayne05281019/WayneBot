@@ -255,7 +255,7 @@ def test_lookup_like_row_has_watch_and_buy():
     row = bot._lookup_like_action_row("1101", "台泥")
     texts = [b.text for b in row]
     assert any("1101" in t or "台泥" in t for t in texts)
-    assert "觀察" in texts
+    assert "加入觀察" in texts
     assert "記買入" in texts
     assert [b.callback_data for b in row] == ["k:1101", "w:1101", "b:1101"]
     kb = bot._leave_zero_section_keyboard([("1101", "台泥")], include_menu=True)
@@ -280,7 +280,7 @@ def test_dongzhu_keyboard_is_industry_temp_intro():
     texts = [b.text for r in rows for b in r]
     assert any("2449" in t for t in texts)
     assert any("勝71%" in t for t in texts)
-    assert "觀察" not in texts
+    assert "加入觀察" not in texts
     assert "記買入" not in texts
     assert texts[1:] == ["產業", "高低溫度卡", "介紹卡"]
     data = [b.callback_data for r in rows for b in r]
