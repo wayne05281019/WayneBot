@@ -1348,7 +1348,10 @@ def _place_right_notes(
                     break
                 ty = hit + gap if ty >= hit else hit - gap
                 ty = min(max(ty, lo), hi)
-        ax_x = float(pin_x if pin_x is not None else note.get("x") or 0)
+        # 釘點：優先用 note.x（軌末端／演化帶右緣），否則 seam；引線短才不像壓軌
+        ax_x = float(note.get("x") or 0)
+        if pin_x is not None and ax_x < float(pin_x):
+            ax_x = float(pin_x)
         _leader_note(
             ax,
             ax_x,
@@ -2566,15 +2569,16 @@ def render_biaoke_structure_png(
     band_hi: List[Dict[str, Any]] = []
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
+    x_fut = float(n - 1 + _FUTURE)
     if spike_hi:
         ax1.axhline(spike_hi, color=_PRESS, linewidth=1.15, zorder=4, alpha=0.92)
         right_notes.append(
-            {"x": float(n - 1), "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
+            {"x": float(x_fut), "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
         )
     if spike_lo:
         ax1.axhline(spike_lo, color=_HOLD, linewidth=1.15, zorder=4, alpha=0.92)
         right_notes.append(
-            {"x": float(n - 1), "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
+            {"x": float(x_fut), "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
     last_c = float(last_bar.get("close") or 0)
     if 0 <= spike_i < n:
@@ -2592,7 +2596,6 @@ def render_biaoke_structure_png(
     # 有通道時以通道為準重算（含完整 bars 窗），避免 work 窗與全列不一致
     if not channel:
         channel = infer_parallel_channel(work) or {}
-    x_fut = n - 1 + _FUTURE
     # 軌虛線只畫到演化帶前段，末端右側留給標籤欄，不准字壓在軌上
     rail_end = float(n - 1) + float(_FUTURE) * 0.55
     # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
@@ -2607,11 +2610,11 @@ def render_biaoke_structure_png(
             y_hi=ymax,
             n=n,
         )
-        # 右溝只留通道現價位，標籤已在軸內
+        # 右溝只留通道現價位；釘在軌末端外側，引線短、不准看起來像壓在軌上
         if channel.get("rail_now"):
             right_notes.append(
                 {
-                    "x": float(n - 1),
+                    "x": float(rail_end) + 0.4,
                     "y": float(channel["rail_now"]),
                     "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
@@ -2621,7 +2624,7 @@ def render_biaoke_structure_png(
         if channel.get("base_now"):
             right_notes.append(
                 {
-                    "x": float(n - 1),
+                    "x": float(rail_end) + 0.4,
                     "y": float(channel["base_now"]),
                     "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
