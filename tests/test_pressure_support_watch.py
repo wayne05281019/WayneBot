@@ -120,7 +120,7 @@ def test_menu_six_plus_seven_pressure_after_overnight():
         WayneTelegramBot,
     )
 
-    assert MENU_LAYOUT_VERSION == "31"
+    assert MENU_LAYOUT_VERSION == "32"
     assert len(MENU_ROW1) == 6 and len(MENU_ROW2) == 7
     assert MENU_ROW2[0] == "當沖"
     assert MENU_ROW2[1] == "隔日沖"

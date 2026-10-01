@@ -19,6 +19,7 @@ from bot_servers import (
     MENU_BTN_PRESSURE,
     MENU_BTN_STREAK,
     WayneTelegramBot,
+    MENU_BTN_WATCH,
 )
 from persona_grid import PERSONAS_10
 
@@ -27,7 +28,7 @@ MENU_BUTTONS = [
     (MENU_BTN_CARD, "decision_card_btn"),
     ("當沖", "daytrade_cmd"),
     ("持股", "_send_portfolio"),
-    ("觀察", "_send_watch"),
+    ("加入觀察", "_send_watch"),
     ("海選", "screen_cmd"),
     (MENU_BTN_AI, "_send_ai_desk_view"),
     ("隔日沖", "overnight_cmd"),
@@ -98,7 +99,7 @@ def test_menu_buttons_exist_in_order_six_plus_seven():
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
-    assert row1 == ["海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
+    assert row1 == ["海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
     assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
 
 
@@ -109,7 +110,7 @@ def test_help_script_ready_for_brother_video():
     assert "籌碼" in texts and "營收" in texts
     assert "產業" in texts
     assert "導航圖" in texts
-    assert "觀察" in texts and "記買入" in texts
+    assert "加入觀察" in texts and "記買入" in texts
     assert "K線" in texts
     kline = next(b for r in hub.inline_keyboard for b in r if b.text == "K線")
     assert (kline.url or "").endswith("/quote/2330.TW/technical-analysis")

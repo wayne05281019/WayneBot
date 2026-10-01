@@ -13,21 +13,38 @@ from zoneinfo import ZoneInfo
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
+def _seed_complete_day(conn: sqlite3.Connection, day: str, *, tw_close: float = 100.0) -> None:
+    """上市＋上櫃過門檻，讓 latest_complete_quote_date 認這日。"""
+    for i in range(800):
+        sid = "2330" if i == 0 else f"T{i:04d}"
+        px = tw_close if sid == "2330" else 10.0
+        conn.execute(
+            """INSERT OR REPLACE INTO daily_quotes
+               (date, stock_id, stock_name, market, open, high, low, close, volume,
+                turnover_k, pct_change, avg_price)
+               VALUES (?, ?, ?, 'TW', ?, ?, ?, ?, 1000, 1000, 0, ?)""",
+            (day, sid, "台積電" if sid == "2330" else "x", px, px, px, px, px),
+        )
+    for i in range(600):
+        px = 10.0
+        conn.execute(
+            """INSERT OR REPLACE INTO daily_quotes
+               (date, stock_id, stock_name, market, open, high, low, close, volume,
+                turnover_k, pct_change, avg_price)
+               VALUES (?, ?, 'y', 'TWO', ?, ?, ?, ?, 1, 1, 0, ?)""",
+            (day, f"O{i:04d}", px, px, px, px, px),
+        )
+
+
 def _seed(db: str) -> None:
     from wayne_db import ensure_core_schema
 
     ensure_core_schema(db)
     conn = sqlite3.connect(db, timeout=30)
     conn.execute("PRAGMA busy_timeout=30000;")
-    conn.execute("DELETE FROM daily_quotes WHERE stock_id='2330'")
+    conn.execute("DELETE FROM daily_quotes WHERE stock_id='2330' OR stock_id LIKE 'T%' OR stock_id LIKE 'O%'")
     for day, px in (("20260915", 100.0), ("20260922", 105.0), ("20260924", 110.0)):
-        conn.execute(
-            """INSERT INTO daily_quotes
-               (date, stock_id, stock_name, market, open, high, low, close, volume,
-                turnover_k, pct_change, avg_price)
-               VALUES (?, '2330', '台積電', 'TW', ?, ?, ?, ?, 1000, 1000, 0, ?)""",
-            (day, px, px, px, px, px),
-        )
+        _seed_complete_day(conn, day, tw_close=px)
     try:
         conn.execute("DELETE FROM emerging_quotes WHERE stock_id='3595'")
     except sqlite3.OperationalError:
@@ -91,7 +108,7 @@ class WatchlistJoinPnlTest(unittest.TestCase):
                 "created_at": "2026-09-15T10:00:00+08:00",
             }
         ]
-        with patch("quote_integrity.db_as_of_trading_date", return_value="20260924"):
+        with patch("wayne_db.resolve_watch_view_as_of", return_value=("20260924", None)):
             info = watchlist_join_pnl(self.db, rows, now=now)["2330"]
         self.assertEqual(info["status"], "ok")
         self.assertEqual(info["join_ymd"], "20260915")
@@ -111,7 +128,7 @@ class WatchlistJoinPnlTest(unittest.TestCase):
                 "created_at": "2026-09-15T10:00:00+08:00",
             }
         ]
-        with patch("quote_integrity.db_as_of_trading_date", return_value="20260924"):
+        with patch("wayne_db.resolve_watch_view_as_of", return_value=("20260924", None)):
             info = watchlist_join_pnl(self.db, rows, now=now)["3595"]
         self.assertEqual(info["status"], "ok")
         self.assertAlmostEqual(info["pnl_pct"], 10.0)
@@ -136,10 +153,72 @@ class WatchlistJoinPnlTest(unittest.TestCase):
                 "created_at": "2026-09-24T10:00:00+08:00",
             }
         ]
-        with patch("quote_integrity.db_as_of_trading_date", return_value="20260922"):
+        with patch("wayne_db.resolve_watch_view_as_of", return_value=("20260922", None)):
             info = watchlist_join_pnl(self.db, rows, now=now)["2330"]
         self.assertEqual(info["status"], "no_join_close")
         self.assertIsNone(info["pnl_pct"])
+
+    def test_after_close_before_1630_uses_today_if_complete(self):
+        """13:30–16:30：fuse 仍卡昨日，觀察清單要用今日完整收（不卡 16:30）。"""
+        from wayne_db import resolve_watch_view_as_of, watch_display_cap, watchlist_join_pnl
+
+        conn = sqlite3.connect(self.db)
+        _seed_complete_day(conn, "20261001", tw_close=120.0)
+        conn.commit()
+        conn.close()
+        now = datetime(2026, 10, 1, 14, 30, tzinfo=TAIPEI)
+        self.assertEqual(watch_display_cap(now), "20261001")
+        as_of, lag = resolve_watch_view_as_of(self.db, now=now)
+        self.assertEqual(as_of, "20261001")
+        self.assertIsNone(lag)
+        rows = [
+            {
+                "stock_code": "2330",
+                "stock_name": "台積電",
+                "created_at": "2026-09-15T10:00:00+08:00",
+            }
+        ]
+        info = watchlist_join_pnl(self.db, rows, now=now)["2330"]
+        self.assertEqual(info["view_ymd"], "20261001")
+        self.assertAlmostEqual(info["view_close"], 120.0)
+        self.assertAlmostEqual(info["pnl_pct"], 20.0)
+
+    def test_after_close_sync_lag_honest_message(self):
+        """收盤後今日尚未進庫：查看日停在上一完整日，並如實寫 lag。"""
+        from wayne_db import resolve_watch_view_as_of, watchlist_join_pnl
+
+        # seed already has complete through 20260924 only
+        now = datetime(2026, 10, 1, 14, 30, tzinfo=TAIPEI)
+        as_of, lag = resolve_watch_view_as_of(self.db, now=now)
+        self.assertEqual(as_of, "20260924")
+        self.assertIsNotNone(lag)
+        self.assertIn("2026/10/01", lag)
+        self.assertIn("2026/09/24", lag)
+        self.assertIn("尚未寫入", lag)
+        rows = [
+            {
+                "stock_code": "2330",
+                "stock_name": "台積電",
+                "created_at": "2026-09-15T10:00:00+08:00",
+            }
+        ]
+        info = watchlist_join_pnl(self.db, rows, now=now)["2330"]
+        self.assertEqual(info["view_ymd"], "20260924")
+
+    def test_midday_incomplete_not_used_as_view(self):
+        """盤中 11:00：即使庫裡已有今日列，也不當官方查看日。"""
+        from wayne_db import resolve_watch_view_as_of, watch_display_cap
+
+        conn = sqlite3.connect(self.db)
+        _seed_complete_day(conn, "20260930", tw_close=115.0)
+        _seed_complete_day(conn, "20261001", tw_close=120.0)
+        conn.commit()
+        conn.close()
+        now = datetime(2026, 10, 1, 11, 0, tzinfo=TAIPEI)
+        self.assertEqual(watch_display_cap(now), "20260930")
+        as_of, lag = resolve_watch_view_as_of(self.db, now=now)
+        self.assertEqual(as_of, "20260930")
+        self.assertIsNone(lag)
 
     def test_users_isolated(self):
         from wayne_db import add_to_watchlist, get_user_watchlist
@@ -166,18 +245,19 @@ class WatchlistJoinPnlTest(unittest.TestCase):
         bot.db_path = self.db
         bot.WATCH_LIST_LIMIT = 30
         with patch("money_flow.industry_flows_for_stocks", return_value={}):
-            with patch("wayne_db.watchlist_join_pnl") as mock_pnl:
-                mock_pnl.return_value = {
-                    "2330": {
-                        "join_ymd": "20260915",
-                        "view_ymd": "20260924",
-                        "join_close": 100.0,
-                        "view_close": 110.0,
-                        "pnl_pct": 10.0,
-                        "status": "ok",
+            with patch("wayne_db.resolve_watch_view_as_of", return_value=("20260924", None)):
+                with patch("wayne_db.watchlist_join_pnl") as mock_pnl:
+                    mock_pnl.return_value = {
+                        "2330": {
+                            "join_ymd": "20260915",
+                            "view_ymd": "20260924",
+                            "join_close": 100.0,
+                            "view_close": 110.0,
+                            "pnl_pct": 10.0,
+                            "status": "ok",
+                        }
                     }
-                }
-                html, kb = bot._render_watch(get_user_watchlist(self.db, "9001"))
+                    html, kb = bot._render_watch(get_user_watchlist(self.db, "9001"))
         self.assertIn("9/15→9/24", html)
         self.assertIn("+10.0%", html)
         stock_lines = [ln for ln in html.splitlines() if ln.startswith("•")]
@@ -188,6 +268,21 @@ class WatchlistJoinPnlTest(unittest.TestCase):
         datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         self.assertIn("k:2330", datas)
         self.assertIn("rw:2330", datas)
+
+    def test_render_watch_shows_lag_when_sync_behind(self):
+        from bot_servers import WayneTelegramBot
+        from wayne_db import get_user_watchlist
+
+        bot = object.__new__(WayneTelegramBot)
+        bot.db_path = self.db
+        bot.WATCH_LIST_LIMIT = 30
+        lag = "<i>應顯示 2026/10/01（四）收盤，目前僅有 2026/09/24（四）（盤後更新中或尚未寫入）。</i>"
+        with patch("money_flow.industry_flows_for_stocks", return_value={}):
+            with patch("wayne_db.resolve_watch_view_as_of", return_value=("20260924", lag)):
+                with patch("wayne_db.watchlist_join_pnl", return_value={}):
+                    html, _kb = bot._render_watch([])
+        self.assertIn("尚未寫入", html)
+        self.assertIn("2026/10/01", html)
 
 
 if __name__ == "__main__":

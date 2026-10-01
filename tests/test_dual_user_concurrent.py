@@ -272,7 +272,7 @@ def test_menu_layout_cache_per_uid():
 def test_interleaved_main_menu_buttons(round_i):
     """十輪交錯按主選單：各自 handler，pending 不串。"""
     bot = _bot()
-    labels = [MENU_BTN_MARKET, MENU_BTN_STREAK, "持股", "觀察", "資金"]
+    labels = [MENU_BTN_MARKET, MENU_BTN_STREAK, "持股", "加入觀察", "資金"]
     w_label = labels[round_i % len(labels)]
     b_label = labels[(round_i + 2) % len(labels)]
     for attr in ("market_cmd", "streak_cmd", "portfolio_cmd", "watch_cmd", "flow_cmd"):

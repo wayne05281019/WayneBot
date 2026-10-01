@@ -71,7 +71,7 @@ def test_catalog_covers_full_keyboard():
     want = {
         "海選",
         "持股",
-        "觀察",
+        "加入觀察",
         "飆大",
         "台股大盤",
         "資金輪動",

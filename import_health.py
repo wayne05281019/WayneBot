@@ -126,11 +126,18 @@ def latest_complete_quote_date(
     min_tw: int = MIN_TW,
     min_two: int = MIN_TWO,
     now=None,
+    cap: Optional[str] = None,
 ) -> Optional[str]:
-    """海選／決策用的基準日：上市＋上櫃同一天都進庫、週一～五、且不晚於 fuse 上限。"""
+    """海選／決策用的基準日：上市＋上櫃同一天都進庫、週一～五、且不晚於上限。
+
+    預設上限＝fuse_end（16:30 前不算今日）。觀察清單等盤後顯示可傳 cap＝今日（13:30 後）。
+    """
     from trading_calendar import fuse_end_trading_date, is_trading_weekday, normalize_ymd
 
-    cap = fuse_end_trading_date(now)
+    if cap:
+        cap = normalize_ymd(cap)
+    if not cap or len(cap) != 8:
+        cap = fuse_end_trading_date(now)
     stamp = None
     try:
         st = os.stat(db_path)

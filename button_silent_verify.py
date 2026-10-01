@@ -99,7 +99,7 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "note": "個人本對照；不是選股",
     },
     {
-        "btn": "觀察",
+        "btn": "加入觀察",
         "kinds": ("book_watch",),
         "class": CLASS_PERSONAL,
         "status": "gap_filled",

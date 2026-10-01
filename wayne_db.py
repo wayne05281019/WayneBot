@@ -720,6 +720,69 @@ def format_watch_join_md(ymd: str, *, with_year: bool = False) -> str:
     return md
 
 
+def watch_display_cap(now=None) -> str:
+    """觀察清單可顯示的最新日。
+
+    上市收盤後（13:30，is_official_daily_bar）開市日可到今日；
+    未收／休市仍走 fuse_end（16:30 前不算今日）。不准用盤中未收當完整日。
+    """
+    from config import taipei_now
+    from trading_calendar import (
+        fuse_end_trading_date,
+        is_official_daily_bar,
+        is_tw_open_calendar_day,
+    )
+
+    stamp = now or taipei_now()
+    today = stamp.strftime("%Y%m%d")
+    if is_tw_open_calendar_day(today) and is_official_daily_bar(today, now=stamp):
+        return today
+    return fuse_end_trading_date(stamp)
+
+
+def resolve_watch_view_as_of(
+    db_path: str, now=None
+) -> Tuple[str, Optional[str]]:
+    """觀察清單查看基準日＋落後說明。
+
+    回傳 (as_of, lag_html)。as_of＝庫內最近完整官方收（上市＋上櫃齊），
+    上限＝watch_display_cap（收盤後可到今日，不卡 16:30 fuse）。
+    收盤後若今日尚未進庫＝如實寫 lag，不准假數。
+    """
+    from config import taipei_now
+    from trading_calendar import format_trading_date_zh, is_official_daily_bar
+
+    stamp = now or taipei_now()
+    want = watch_display_cap(stamp)
+    complete = ""
+    try:
+        from import_health import latest_complete_quote_date
+
+        complete = str(latest_complete_quote_date(db_path, now=stamp, cap=want) or "")
+    except Exception:
+        complete = ""
+    as_of = complete or want
+    if want and as_of > want:
+        as_of = want
+    lag: Optional[str] = None
+    if (
+        want
+        and is_official_daily_bar(want, now=stamp)
+        and (not complete or complete < want)
+    ):
+        have = complete or "—"
+        have_s = (
+            format_trading_date_zh(complete)
+            if complete and len(complete) == 8
+            else str(have)
+        )
+        lag = (
+            f"<i>應顯示 {format_trading_date_zh(want)} 收盤，"
+            f"目前僅有 {have_s}（盤後更新中或尚未寫入）。</i>"
+        )
+    return as_of, lag
+
+
 def watchlist_join_pnl(
     db_path: str,
     rows: List[Dict[str, Any]],
@@ -739,16 +802,12 @@ def watchlist_join_pnl(
         return out
     as_of = None
     try:
-        from quote_integrity import db_as_of_trading_date
-
-        as_of = db_as_of_trading_date(db_path, now=now)
+        as_of, _lag = resolve_watch_view_as_of(db_path, now=now)
     except Exception:
         as_of = None
     if not as_of:
         try:
-            from trading_calendar import fuse_end_trading_date
-
-            as_of = fuse_end_trading_date(now)
+            as_of = watch_display_cap(now)
         except Exception:
             as_of = None
     ensure_core_schema(db_path)

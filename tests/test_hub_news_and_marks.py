@@ -60,4 +60,4 @@ def test_em_hub_has_industry_omits_chips():
     assert "K線" in texts
     assert "導航圖" in texts
     assert [b.text for b in kb.inline_keyboard[0]] == ["K線", "導航圖"]
-    assert [b.text for b in kb.inline_keyboard[1]] == ["觀察", "記買入"]
+    assert [b.text for b in kb.inline_keyboard[1]] == ["加入觀察", "記買入"]

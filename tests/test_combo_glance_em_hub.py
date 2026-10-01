@@ -129,7 +129,7 @@ def test_em_hub_has_kline_and_nav_industry():
     # 興櫃介紹卡已含營收，圖下不再放產業；上市櫃仍有
     assert "產業" not in labels0
     assert "K線" in labels0
-    assert labels1 == ["觀察", "記買入"]
+    assert labels1 == ["加入觀察", "記買入"]
     texts = labels0 + labels1
     assert "籌碼" not in texts
     assert "營收" not in texts
@@ -147,7 +147,7 @@ def test_listed_hub_has_nav_and_industry():
     assert "K線" in labels
     assert "籌碼" in labels
     assert "營收" in labels
-    assert "觀察" in labels
+    assert "加入觀察" in labels
     assert "記買入" in labels
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 

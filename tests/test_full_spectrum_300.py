@@ -463,11 +463,11 @@ def test_l3_em_hub_omits_chips_fund_industry():
     assert "籌碼" not in labels
     assert "營收" not in labels
     assert "產業" not in labels
-    assert "觀察" in labels
+    assert "加入觀察" in labels
     assert "K線" in labels
     assert "導航圖" in labels
     assert [b.text for b in kb.inline_keyboard[0]] == ["K線", "導航圖"]
-    assert [b.text for b in kb.inline_keyboard[1]] == ["觀察", "記買入"]
+    assert [b.text for b in kb.inline_keyboard[1]] == ["加入觀察", "記買入"]
 
 
 def test_l3_listed_hub_has_chips():
@@ -1220,7 +1220,7 @@ def test_l9c_help_topics_cancelled():
 
 @pytest.mark.parametrize(
     "label",
-    ["海選", "持股", "觀察", "台股大盤", "資金輪動", "當沖", "隔日沖", "壓撐觀察", "AI倉", "連買區", "飆大", "剛脫離零", "洞燭先機"],
+    ["海選", "持股", "加入觀察", "台股大盤", "資金輪動", "當沖", "隔日沖", "壓撐觀察", "AI倉", "連買區", "飆大", "剛脫離零", "洞燭先機"],
 )
 def test_l9c_menu_buttons_named_on_menu(label):
     from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text

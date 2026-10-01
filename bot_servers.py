@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 上市／上櫃／興櫃一律介紹圖＋高低溫度卡一次兩張、再送大量區專圖（非買訊）；點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
-- 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
+- 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -408,6 +408,11 @@ MENU_BTN_PRESSURE_ALIASES = (
     "壓力觀察",
     "撐壓觀察",
 )
+MENU_BTN_WATCH = "加入觀察"
+MENU_BTN_WATCH_ALIASES = (
+    MENU_BTN_WATCH,
+    "觀察",  # 舊鍵盤仍認，直到版面刷新
+)
 MENU_BTN_LEAVE_ZERO = "剛脫離零"
 MENU_BTN_LEAVE_ZERO_ALIASES = (
     MENU_BTN_LEAVE_ZERO,
@@ -460,7 +465,7 @@ MENU_BTN_PREV_PAGE = "上一批"
 MENU_ROW1 = (
     "海選",
     "持股",
-    "觀察",
+    MENU_BTN_WATCH,
     MENU_BTN_BIAOKE_FACE,
     MENU_BTN_MARKET,
     MENU_BTN_FLOW,
@@ -502,11 +507,12 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v29：下排「剛脫離零」改「獲利為零」；進去先出獲利 0；下方鍵盤左到右脫離1／2／3。上排「資金」改「資金輪動」。
 # v30：下排改回「剛脫離零」＝昨獲利貼零、今離開 0。子鍵獲利為零／脫離1／2／3取消。
 # v31：下排「隔日沖」後加「壓撐觀察」＝上六下七；三標籤自選，只觀察不是買訊。
-MENU_LAYOUT_VERSION = "31"
+# v32：上排「觀察」改「加入觀察」；舊「觀察」仍認。
+MENU_LAYOUT_VERSION = "32"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
-# 兩排已有海選／持股／觀察／大盤／資金，橫槓不再放 screen／portfolio／watch／market／flow。
+# 兩排已有海選／持股／加入觀察／大盤／資金，橫槓不再放 screen／portfolio／watch／market／flow。
 TELEGRAM_BOT_COMMANDS = (
     ("menu", "回到主選單（下方兩排）"),
     ("industry", "產業說明（先打代號）"),
@@ -979,7 +985,7 @@ class WayneTelegramBot:
             cb = f"psk:{c}"
         return [
             InlineKeyboardButton(label, callback_data=cb),
-            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+            InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
         ]
 
     def _pressure_hub_keyboard(self, code: str, *, em: bool = False):
@@ -1001,7 +1007,7 @@ class WayneTelegramBot:
                 [
                     top[:3],
                     [
-                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                        InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
                         InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
                     ],
                 ]
@@ -1023,7 +1029,7 @@ class WayneTelegramBot:
             row2.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
         row2.extend(
             [
-                InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
                 InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
             ]
         )
@@ -2034,7 +2040,7 @@ class WayneTelegramBot:
             k_url = ""
         nav = InlineKeyboardButton("導航圖", callback_data=f"g:{c}")
         actions = [
-            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+            InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
             InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
         ]
         if em:
@@ -2047,7 +2053,7 @@ class WayneTelegramBot:
                 [
                     top[:3],
                     [
-                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                        InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
                         InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
                     ],
                 ]
@@ -2108,7 +2114,7 @@ class WayneTelegramBot:
         label = stock_btn_label(c, name or "")
         return [
             InlineKeyboardButton(label, callback_data=f"k:{c}"),
-            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+            InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
             InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
         ]
 
@@ -2418,6 +2424,16 @@ class WayneTelegramBot:
             "加入：打股名按 ➕，或海選名單旁的 ➕。刪除：按該檔「刪」。",
             "每檔：加入日→最近官方收　損益％",
         ]
+        lag_html = ""
+        try:
+            from wayne_db import resolve_watch_view_as_of
+
+            if self.db_path:
+                _as_of, lag_html = resolve_watch_view_as_of(self.db_path)
+        except Exception:
+            lag_html = ""
+        if lag_html:
+            lines.append(str(lag_html))
         if not shown:
             lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
             return "\n".join(lines), None
@@ -5241,8 +5257,8 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self._send_trade_journal(update.message, uid, review=True)
             return
-        if text == "觀察":
-            logger.info("主選單：觀察 uid=%s", uid)
+        if text in MENU_BTN_WATCH_ALIASES:
+            logger.info("主選單：加入觀察 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.watch_cmd(update, context)
             return

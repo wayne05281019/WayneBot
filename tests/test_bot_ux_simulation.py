@@ -174,7 +174,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
     async def run():
         for label, checker in (
             ("持股", bot._send_portfolio),
-            ("觀察", bot._send_watch),
+            ("加入觀察", bot._send_watch),
             ("海選", bot.screen_cmd),
             ("連買區", bot.streak_cmd),
             ("AI倉", bot._send_ai_desk_view),
@@ -186,7 +186,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
             ctx = MagicMock()
             await bot.on_text(upd, ctx)
             checker.assert_awaited_once()
-            if label in ("持股", "觀察"):
+            if label in ("持股", "加入觀察"):
                 texts = [str(c[0][0]) for c in msg.reply_text.await_args_list if c[0]]
                 assert texts and any("讀取" in t for t in texts)
             else:
