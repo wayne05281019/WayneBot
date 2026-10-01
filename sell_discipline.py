@@ -366,18 +366,10 @@ def card_discipline_face(card: Dict[str, Any] | None) -> Dict[str, str]:
 
     if tnote == "價溫背離":
         heat = "diverge"
-    elif trend == "最高溫":
-        heat = "peak"
-    elif trend == "最低溫":
-        heat = "floor"
-    elif trend == "升溫":
-        heat = "up"
-    elif trend == "降溫":
-        heat = "down"
-    elif trend in ("No", "—"):
-        heat = "flat"
     else:
-        heat = ""
+        from wayne_navigator import temp_trend_heat_bucket
+
+        heat = temp_trend_heat_bucket(trend, note=tnote)
 
     why = _WHY_CODE.get(_why_short(card.get("sell_why") or ""), "")
     if why == "hi_price" and pos == "hi20" and heat == "up" and temp is not None and temp >= 80:
