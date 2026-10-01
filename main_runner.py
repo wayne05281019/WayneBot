@@ -9,7 +9,7 @@
 # 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
 #   - 常駐 data 角色 06:30 寄出（有效 token＋按開始的話筒）
 #   - GHA cron 30 22 * * 0-4 仍跑 morning_screen 算名單、蓋 zip；WAYNE_SCREEN_NOTIFY=0 不寄
-# 12:45 尾盤：只複核今早名單＋高低卡；現在／今早價分開寫，先講現在要做什麼
+# 12:45 雙時段比價：只對照今早剛離零＋還在零；開盤 vs 約 12:45 現價
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
 # 22:15 抓人事行政總處北市停班（週日也跑）；05:10 再抓一次涵蓋 04:30 補發；06:30 海選前再確認
 # 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
@@ -27,7 +27,7 @@
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
 #   7. 興櫃 emerging_quotes（櫃買當日行情表／日表；不寫進上市櫃 daily_quotes）
 #   8. 匯入健康檢查；上市／上櫃／興櫃沒齊就不標成功、不覆蓋完整舊資料
-# 海選 06:30 寄給偉權與哥哥（兩人已在白名單）；12:45 尾盤只對照今早價。盤後 16:30 只融合；20:00 不寄。
+# 海選 06:30 寄給偉權與哥哥（兩人已在白名單）；12:45 只比剛離零＋還在零開盤／現價。盤後 16:30 只融合；20:00 不寄。
 # 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
 # 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR；收盤後再看盤後（ADR／那指期續勢）。
 # 盤中期貨不看。大跌會在 06:30 海選前先單獨通知。逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
@@ -1672,11 +1672,12 @@ class MainRunner:
         return bool((not notify) or sent_ok)
 
     def run_midday_review(self, skip_if_done: bool = True) -> bool:
-        """開市日 12:45 尾盤可切：白名單只寄一次。
+        """開市日 12:45 雙時段比價：白名單只寄一次。
 
+        內容＝今早 06:30 剛離零＋還在零，開盤 vs 約 12:45 現價。
         準點／catch-up／watchdog／CLI／重開都走這裡。無論 skip_if_done，
         都必須先原子搶 midday-{as_of}；已 success 或未明確失敗的 running 一律不寄。
-        skip_if_done 保留相容，尾盤不再允許無鎖強寄。
+        skip_if_done 保留相容，不再允許無鎖強寄（#469 鎖死）。
         """
         from import_health import latest_complete_quote_date
         from tw_holidays import closed_tw_session
@@ -1686,7 +1687,7 @@ class MainRunner:
         key = f"midday-{as_of or 'none'}"
         if closed:
             logger.info(
-                "今日台股休市 %s %s，不寄尾盤可切",
+                "今日台股休市 %s %s，不寄 12:45 比價",
                 closed.get("ymd"),
                 closed.get("zh"),
             )
@@ -1697,17 +1698,17 @@ class MainRunner:
             )
             return True
         if not as_of:
-            logger.error("無完整交易日可做尾盤複核")
+            logger.error("無完整交易日可做 12:45 比價")
             return False
         # 無論參數：寄前必搶鎖。不准 stale running 重搶（重開連寄）。
         # 只有 computed（明確寄失敗）才能再搶；success／running 一律略過。
-        _ = skip_if_done  # 相容舊呼叫；尾盤不再因 False 跳過 claim
+        _ = skip_if_done  # 相容舊呼叫；不再因 False 跳過 claim
         if not self.try_claim_pipeline(
             key, notes="midday-claim", allow_stale_running=False
         ):
-            logger.info("尾盤可切 %s 已寄過或進行中，略過。", key)
+            logger.info("12:45 比價 %s 已寄過或進行中，略過。", key)
             return True
-        logger.info("🌤️ 12:45 尾盤可切，對照今早 06:30 基準日 %s", as_of)
+        logger.info("🌤️ 12:45 雙時段比價，對照今早 06:30 剛離零＋還在零，基準日 %s", as_of)
         from midday_review import run_midday_review
 
         out = run_midday_review(self.db_path, as_of)
@@ -1721,7 +1722,7 @@ class MainRunner:
         else:
             # 明確寄失敗才放 computed，讓 12:46–13:30 補跑可再寄；不准假 success。
             self._mark_pipeline("computed", "midday send-failed", run_date=key)
-            logger.error("尾盤可切已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
+            logger.error("12:45 比價已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
         return bool(sent_ok)
 
     def run_typhoon_peek(self) -> bool:

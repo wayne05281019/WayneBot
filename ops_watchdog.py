@@ -34,7 +34,7 @@ JOB_SPECS: Dict[str, Dict[str, Any]] = {
         "key": "screen",
     },
     "midday_review": {
-        "label": "尾盤可切",
+        "label": "12:45 比價",
         "scheduled": "12:45",
         "due_minutes": 13 * 60 + 15,
         "key": "midday",
