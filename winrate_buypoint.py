@@ -18,9 +18,14 @@ EMPTY_MSG = "今天無勝率買點股票出現"
 NEXT_PAGE_LABEL = "下一個 15 檔"
 BTN_LABEL = "勝率買點"
 CALLBACK_PREFIX = "wr:"
+# 掃版本：藍▲紅框＝leave_zero_from_quote_df（與導航／壓力圖同一條；含雙綠脫離）。
+# 舊版走 screen_leave_zero_pick（更嚴的剛離零＋雷達閘）會漏圖上有標的檔。
+SCAN_KIND = "card_lz"
 # 靜默對質 kind（與 button_silent_verify／live_judge 對齊；勝率不准混海選／剛脫離零）
 KIND_ROSTER = "winrate_buypoint"
 KIND_FILTER = "winrate_filter"
+# pipeline_runs 鍵前綴；換鍵＝今日可再推一次（#472 晚於 21:00 上線後補掃）
+PIPELINE_KEY_PREFIX = "winrate-bp"
 
 try:
     from config import get_db_path
@@ -104,7 +109,7 @@ def save_winrate_roster(
                 profit_f = float(profit) if profit is not None else None
             except (TypeError, ValueError):
                 profit_f = None
-            src = str(it.get("quote_source") or "")
+            src = _tag_scan_source(it.get("quote_source") or "")
             conn.execute(
                 """
                 INSERT OR REPLACE INTO winrate_buypoint_roster(
@@ -123,7 +128,7 @@ def save_winrate_roster(
                     quote_source, created_at
                 ) VALUES (?,?,?,?,?,?,?)
                 """,
-                (day, "__empty__", "", None, None, "empty", stamp),
+                (day, "__empty__", "", None, None, _tag_scan_source("empty"), stamp),
             )
         conn.commit()
         return n
@@ -177,6 +182,13 @@ def latest_roster_as_of(db_path: str) -> str:
     return _ymd(row[0] if row else "")
 
 
+def _tag_scan_source(raw: str) -> str:
+    src = str(raw or "").strip()
+    if src.startswith(f"{SCAN_KIND}|"):
+        return src
+    return f"{SCAN_KIND}|{src or 'daily'}"
+
+
 def roster_marked(db_path: str, as_of: str) -> bool:
     """當日已掃過（含空名單）就算有檔。"""
     day = _ymd(as_of)
@@ -185,8 +197,6 @@ def roster_marked(db_path: str, as_of: str) -> bool:
     ensure_winrate_table(db_path)
     conn = sqlite3.connect(db_path)
     try:
-        # 空名單：save 仍 DELETE 後 0 insert；用 pipeline 或 sentinel？
-        # 改：另查是否有任何列；空名單靠 pipeline_runs。這裡只答「有代號列」。
         row = conn.execute(
             "SELECT 1 FROM winrate_buypoint_roster WHERE as_of=? LIMIT 1",
             (day,),
@@ -196,30 +206,151 @@ def roster_marked(db_path: str, as_of: str) -> bool:
         conn.close()
 
 
+def roster_is_current(db_path: str, as_of: str) -> bool:
+    """當日名單已是現行掃版本（藍▲＝card_lz）。舊版／缺檔＝False → 應重掃。"""
+    day = _ymd(as_of)
+    if not day:
+        return False
+    ensure_winrate_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT quote_source FROM winrate_buypoint_roster WHERE as_of=? LIMIT 1",
+            (day,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return False
+    return str(row[0] or "").startswith(f"{SCAN_KIND}|")
+
+
+def pipeline_run_key(as_of: str) -> str:
+    day = _ymd(as_of) or "none"
+    return f"{PIPELINE_KEY_PREFIX}-{day}"
+
+
 def scan_winrate_leave_zero(
     db_path: str,
     *,
     as_of: Optional[str] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    """盤後官方母體：上市／上櫃／興櫃 leave_zero only。不改黃金買點公式。"""
+    """盤後官方母體：上市／上櫃／興櫃，今日收盤柱＝藍▲紅框（leave_zero_from_quote_df）。
+
+    與導航／壓力圖買點標同一條公式；不准改黃金買點本身。盤中未收不當收。
+    不走 screen_leave_zero_pick 雷達閘（那條會濾掉圖上仍有藍▲的雙綠脫離）。
+    """
+    from decision_card_signals import (
+        cal60_low_close_at,
+        leave_zero_from_quote_df,
+        profit_pct_cal60_series,
+    )
     from screening_engine import ScreeningEngine
+    from universe import is_screen_equity
+    from wayne_navigator import frame_for_cal60_profit
 
     engine = ScreeningEngine(db_path)
     day = _ymd(as_of) or _ymd(engine.get_latest_trading_date())
-    rows = engine.screen_leave_zero_pick(target_date=day, pick="0") or []
-    # 盤後掃：丟掉盤中 live 欄，只留官方收。
+    if not day:
+        return "", []
+    frames, em_ids = engine._load_profit_scan_frames(day)
+    em_ids = em_ids or set()
+    types: Dict[str, str] = {}
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            types = {
+                str(sid): str(atype or "")
+                for sid, atype in conn.execute(
+                    "SELECT stock_id, asset_type FROM stock_universe"
+                )
+            }
+        finally:
+            conn.close()
+    except Exception:
+        types = {}
+
     cleaned: List[Dict[str, Any]] = []
-    for it in rows:
-        if not isinstance(it, dict):
+    for sid, df in (frames or {}).items():
+        sid = str(sid or "").strip()
+        if not sid or df is None or len(df) < 2:
             continue
-        sid = str(it.get("stock_id") or it.get("code") or "").strip()
-        if not sid:
+        name = ""
+        try:
+            name = str(df["stock_name"].iloc[-1] or "")
+        except Exception:
+            name = ""
+        if not is_screen_equity(sid, name, types.get(sid)):
             continue
-        item = dict(it)
-        item.pop("live", None)
-        item["_live_skipped"] = False
-        cleaned.append(item)
+        last_day = _ymd(df["date"].iloc[-1] if "date" in df.columns else "")
+        if last_day and last_day != day:
+            continue
+        try:
+            profit_df = frame_for_cal60_profit(df, db_path)
+        except Exception:
+            profit_df = df
+        if not leave_zero_from_quote_df(profit_df):
+            continue
+        try:
+            profits = profit_pct_cal60_series(profit_df)
+            profit_f = float(profits.iloc[-1])
+        except Exception:
+            profit_f = None
+        try:
+            close_f = float(df["close"].iloc[-1] or 0)
+        except Exception:
+            continue
+        if close_f <= 0:
+            continue
+        try:
+            floor = float(cal60_low_close_at(profit_df, -1) or 0)
+        except Exception:
+            floor = 0.0
+        src = "emerging_quotes" if sid in em_ids else "daily_quotes"
+        cleaned.append(
+            {
+                "stock_id": sid,
+                "stock_name": name,
+                "close": close_f,
+                "pick_close": close_f,
+                "profit_pct": profit_f,
+                "cal60_low": floor,
+                "quote_source": src,
+                "_live_skipped": False,
+            }
+        )
+    cleaned.sort(key=lambda r: str(r.get("stock_id") or ""))
     return day, cleaned
+
+
+def ensure_winrate_roster(
+    db_path: str,
+    *,
+    as_of: Optional[str] = None,
+    force: bool = False,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """基準日 roster 缺檔或掃版本舊 → 用最新官方收重掃 leave_zero（藍▲）再建檔。"""
+    day = _ymd(as_of)
+    if not day:
+        try:
+            from import_health import latest_complete_quote_date
+
+            day = _ymd(latest_complete_quote_date(db_path))
+        except Exception:
+            day = ""
+    if not day:
+        return "", []
+    if not force and roster_is_current(db_path, day):
+        return day, load_winrate_roster(db_path, day)
+    day2, rows = scan_winrate_leave_zero(db_path, as_of=day)
+    if not day2:
+        return "", []
+    save_winrate_roster(db_path, day2, rows)
+    try:
+        silent_remember_roster(db_path, day2, rows)
+    except Exception:
+        logger.debug("勝率買點 ensure 靜默落檔略過", exc_info=True)
+    return day2, load_winrate_roster(db_path, day2)
 
 
 def page_slice(
@@ -366,11 +497,26 @@ def resolve_button_rows(
     now=None,
     quotes: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[str, List[Dict[str, Any]], str]:
-    """按鈕按下：回 (as_of, rows, mode)。mode＝full|filter|empty。"""
-    as_of = latest_roster_as_of(db_path)
+    """按鈕按下：回 (as_of, rows, mode)。mode＝full|filter|empty。
+
+    優先用最新完整官方收基準日；當日 roster 缺／掃版本舊就當場補掃再建檔。
+    """
+    complete = ""
+    try:
+        from import_health import latest_complete_quote_date
+
+        complete = _ymd(latest_complete_quote_date(db_path))
+    except Exception:
+        complete = ""
+    as_of = complete or latest_roster_as_of(db_path)
     if not as_of:
         return "", [], "empty"
-    roster = load_winrate_roster(db_path, as_of)
+    if complete and not roster_is_current(db_path, complete):
+        as_of, roster = ensure_winrate_roster(db_path, as_of=complete)
+    else:
+        roster = load_winrate_roster(db_path, as_of)
+    if not as_of:
+        return "", [], "empty"
     if should_apply_intraday_filter(as_of=as_of, now=now):
         filtered = filter_intraday_from_roster(db_path, roster, quotes=quotes)
         return as_of, filtered, "filter"
