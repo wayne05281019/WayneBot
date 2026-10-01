@@ -1143,6 +1143,17 @@ class ScreeningEngine:
                     stamp_buy_gate(item, df)
                 except Exception:
                     pass
+                # 買點排除層（勝率／剛脫離零共用）：不改 leave_zero 公式本體
+                try:
+                    from buy_exclude import should_exclude_buy
+
+                    if should_exclude_buy(
+                        profit_df,
+                        quote_source=str(item.get("quote_source") or ""),
+                    ):
+                        continue
+                except Exception:
+                    pass
                 out.append(item)
             with _LEAVE_ZERO_PICK_LOCK:
                 _LEAVE_ZERO_OFFICIAL_CACHE[official_key] = (

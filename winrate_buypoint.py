@@ -201,7 +201,11 @@ def scan_winrate_leave_zero(
     *,
     as_of: Optional[str] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    """盤後官方母體：上市／上櫃／興櫃 leave_zero only。不改黃金買點公式。"""
+    """盤後官方母體：上市／上櫃／興櫃 leave_zero only。不改黃金買點公式。
+
+    另套 buy_exclude（與剛脫離零同一套）：鎖跌停／明顯空頭／同根賣點警告不推薦。
+    不改圖標畫法；#478 圖上藍▲一致邏輯合進 main 後以此為準再 rebase。
+    """
     from screening_engine import ScreeningEngine
 
     engine = ScreeningEngine(db_path)
@@ -219,6 +223,14 @@ def scan_winrate_leave_zero(
         item.pop("live", None)
         item["_live_skipped"] = False
         cleaned.append(item)
+    # 雙保險：剛脫離零路徑已排除；此處再濾一次，#478 改掃法時勿拿掉。
+    try:
+        from buy_exclude import filter_leave_zero_rows
+
+        frames, _em = engine._load_profit_scan_frames(day)
+        cleaned = filter_leave_zero_rows(cleaned, frames or {}, db_path=db_path)
+    except Exception:
+        pass
     return day, cleaned
 
 
