@@ -641,13 +641,152 @@ def test_midday_claim_blocks_second_push(tmp_path, monkeypatch):
     assert a.already_completed_today("midday-20260908") is True
 
 
-def test_midday_claim_running_blocks_until_stale(tmp_path):
+def test_midday_always_claims_even_when_skip_if_done_false(tmp_path, monkeypatch):
+    """skip_if_done=False 也必須先 claim；已 success 絕對不可再寄（重開／強跑）。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "force.db")
+    ensure_core_schema(path)
+    sent = []
+
+    def _mk():
+        r = MainRunner.__new__(MainRunner)
+        r.db_path = path
+        r.today_str = "20260909"
+        r.chat_id = "9001"
+        r.bot = object()
+        r.token = "x"
+        r._broadcast_family = lambda t: sent.append(t) or True
+        return r
+
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr(
+        "midday_review.run_midday_review",
+        lambda *_a, **_k: {"html": "<b>尾盤一次</b>", "line_share": ""},
+    )
+    assert _mk().run_midday_review(skip_if_done=False) is True
+    assert sent == ["<b>尾盤一次</b>"]
+    # 模擬 Render 重開後 catch-up／watchdog／CLI 再進來
+    assert _mk().run_midday_review(skip_if_done=False) is True
+    assert _mk().run_midday_review(skip_if_done=True) is True
+    assert sent == ["<b>尾盤一次</b>"]
+
+
+def test_midday_stale_running_does_not_resend(tmp_path, monkeypatch):
+    """deploy 殺行程後卡住的 running（逾時）不准被補跑重搶再寄。"""
+    from datetime import datetime, timedelta
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    import sqlite3
+
+    path = str(tmp_path / "stale.db")
+    ensure_core_schema(path)
+    sent = []
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = object()
+    runner.token = "x"
+    runner._broadcast_family = lambda t: sent.append(t) or True
+
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr(
+        "midday_review.run_midday_review",
+        lambda *_a, **_k: {"html": "<b>不該再寄</b>", "line_share": ""},
+    )
+    # 模擬 12:45 已 claim＋可能已寄，殺行程來不及標 success
+    old = (datetime.now() - timedelta(seconds=3600)).isoformat(timespec="seconds")
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("midday-20260908", old, "running", "midday-claim"),
+    )
+    conn.commit()
+    conn.close()
+    assert runner.run_midday_review(skip_if_done=True) is True
+    assert sent == []
+    assert runner.pipeline_status("midday-20260908") == "running"
+
+
+def test_midday_computed_allows_one_retry(tmp_path, monkeypatch):
+    """明確寄失敗（computed）才准補跑再搶一次；成功後仍只一封。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    import sqlite3
+
+    path = str(tmp_path / "retry.db")
+    ensure_core_schema(path)
+    sent = []
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = object()
+    runner.token = "x"
+    runner._broadcast_family = lambda t: sent.append(t) or True
+
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr(
+        "midday_review.run_midday_review",
+        lambda *_a, **_k: {"html": "<b>補寄一封</b>", "line_share": ""},
+    )
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("midday-20260908", "2026-09-09T12:46:00", "computed", "midday send-failed"),
+    )
+    conn.commit()
+    conn.close()
+    assert runner.run_midday_review(skip_if_done=True) is True
+    assert sent == ["<b>補寄一封</b>"]
+    assert runner.already_completed_today("midday-20260908") is True
+    assert runner.run_midday_review(skip_if_done=True) is True
+    assert sent == ["<b>補寄一封</b>"]
+
+
+def test_midday_claim_running_blocks_even_when_stale(tmp_path):
+    """尾盤 allow_stale_running=False：逾時 running 仍不可重搶。"""
     from datetime import datetime, timedelta
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema
     import sqlite3
 
     path = str(tmp_path / "run.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.try_claim_pipeline("midday-20260908", notes="a", allow_stale_running=False) is True
+    assert (
+        runner.try_claim_pipeline("midday-20260908", notes="b", allow_stale_running=False) is False
+    )
+    conn = sqlite3.connect(path)
+    old = (datetime.now() - timedelta(seconds=700)).isoformat(timespec="seconds")
+    conn.execute(
+        "UPDATE pipeline_runs SET finished_at=? WHERE run_date=?",
+        (old, "midday-20260908"),
+    )
+    conn.commit()
+    conn.close()
+    assert (
+        runner.try_claim_pipeline("midday-20260908", notes="c", allow_stale_running=False) is False
+    )
+    # 舊行為：允許 stale 時仍可重搶（非尾盤路徑）
+    assert runner.try_claim_pipeline("midday-20260908", notes="d", allow_stale_running=True) is True
+
+
+def test_midday_claim_blocks_until_stale_when_allowed(tmp_path):
+    """allow_stale_running=True 時：未逾時擋、逾時可重搶（相容舊測）。"""
+    from datetime import datetime, timedelta
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    import sqlite3
+
+    path = str(tmp_path / "run-compat.db")
     ensure_core_schema(path)
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
