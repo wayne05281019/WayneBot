@@ -104,6 +104,7 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("自營成本", "no_cost"),
     ("黃金買點", "screen"),
     ("重點觀察", "screen"),
+    ("加入觀察", "watch"),  # 主選單新標；須在「觀察」前（較長先配）
     ("觀察清單", "watch"),
     ("自選清單", "watch"),
     ("自選股", "watch"),

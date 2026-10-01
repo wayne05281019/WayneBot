@@ -68,6 +68,20 @@ def _as_of(market_db: str, hint: str = "") -> str:
         return ""
 
 
+def _watch_as_of(market_db: str, hint: str = "") -> str:
+    """加入觀察個人本對照日：收盤後可到今日，不卡 fuse 16:30（對齊話筒 as_of）。"""
+    day = _ymd(hint)
+    if day:
+        return day
+    try:
+        from wayne_db import resolve_watch_view_as_of
+
+        as_of, _lag = resolve_watch_view_as_of(market_db)
+        return _ymd(as_of)
+    except Exception:
+        return _as_of(market_db, hint)
+
+
 # 話筒完整鍵盤清點（上六下七）＋記買入子路徑
 # status: present=已有管線；gap_filled=本檔補骨架；external=他模組（壓撐三軌／飆大 tape／AI fills）
 BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
@@ -103,9 +117,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "kinds": ("book_watch",),
         "class": CLASS_PERSONAL,
         "status": "gap_filled",
-        "pipe": "button_silent_verify.snapshot_book_watch",
-        "window": "1／5 日官方收（個人本對照，不進選股勝率）",
-        "note": "個人本對照；不是選股",
+        "pipe": "button_silent_verify.snapshot_book_watch（as_of＝watch_display_cap／resolve_watch_view_as_of）",
+        "window": "1／5 日官方收（個人本對照，不進選股勝率；收盤後不卡 16:30）",
+        "note": "個人本對照；不是選股；勝率不准混",
     },
     {
         "btn": "飆大",
@@ -379,8 +393,8 @@ def snapshot_book_hold(market_db: str, as_of: str = "") -> int:
 
 
 def snapshot_book_watch(market_db: str, as_of: str = "") -> int:
-    """觀察＝個人本對照。有真代號才記。"""
-    day = _as_of(market_db, as_of)
+    """加入觀察＝個人本對照。有真代號才記。as_of 對齊話筒收盤後 cap。"""
+    day = _watch_as_of(market_db, as_of)
     if not day:
         return 0
     n = 0

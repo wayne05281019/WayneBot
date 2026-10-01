@@ -62,6 +62,13 @@ def test_holdings_intent_not_ai():
     assert parse_intent("大盤").kind == "market"
     assert parse_intent("資金輪動").kind == "flow"
     assert parse_intent("資金").kind == "flow"
+    # 主選單「加入觀察」不可被「觀察」子字拆成 lookup「加入」
+    hit_watch = parse_intent("加入觀察")
+    assert hit_watch is not None
+    assert hit_watch.kind == "watch"
+    assert hit_watch.query == ""
+    assert parse_intent("觀察").kind == "watch"
+    assert parse_intent("觀察清單").kind == "watch"
 
 
 def test_typed_compact_alias_still_hangs_full_keyboard(tmp_path):

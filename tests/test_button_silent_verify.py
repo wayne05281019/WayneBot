@@ -159,6 +159,24 @@ def test_book_hold_and_watch_remember_with_uid_pick(tmp_path):
     assert watch == ("u1", "2330")
 
 
+def test_book_watch_as_of_uses_watch_display_cap_not_fuse(tmp_path, monkeypatch):
+    """加入觀察靜默對質：收盤後 as_of 不卡 fuse 16:30（對齊話筒）。"""
+    from button_silent_verify import _watch_as_of
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"2330": 900.0}, "20261001")
+    calls = {"n": 0}
+
+    def _fake_resolve(market_db, now=None):
+        calls["n"] += 1
+        return "20261001", None
+
+    monkeypatch.setattr("wayne_db.resolve_watch_view_as_of", _fake_resolve)
+    assert _watch_as_of(db) == "20261001"
+    assert calls["n"] == 1
+    # 明示 hint 仍優先
+    assert _watch_as_of(db, "20260915") == "20260915"
+
 def test_ai_and_biaoke_snapshots(tmp_path):
     db = str(tmp_path / "wayne_market.db")
     _seed(db, {"2454": 100.0}, "20260915")
