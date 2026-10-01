@@ -77,6 +77,108 @@ def test_increment_health_ok_rejects_listed_monthly_without_emerging():
     assert MIN_EM_MONTHLY >= 200
 
 
+def test_increment_health_ok_early_month_emerging_revenue_grace():
+    """月初 1–10：上市櫃搶先寫入新月，興櫃同月還在公告 → 不准擋 fuse。"""
+    health = {
+        "date": "20261001",
+        "total": 2200,
+        "tw": max(MIN_TW, 900),
+        "two": max(MIN_TWO, 700),
+        "chips_nonzero": max(MIN_CHIPS_NONZERO, 500),
+        "em": MIN_EM,
+        "monthly_n": 7852,
+        "em_monthly_n": 4,
+        "em_monthly_latest": "202609",
+        "latest_month": "202609",
+    }
+    # 10 號前 expected=202608；4 筆是還在公告的 202609，寬限
+    assert increment_health_failures(health, cap="20261001") == []
+    assert increment_health_ok(health) is True
+
+
+def test_increment_health_ok_after_tenth_still_requires_emerging_month():
+    """10 號後：興櫃上曆月仍 <200 ＝真缺，仍要擋。"""
+    health = {
+        "date": "20261011",
+        "total": 2200,
+        "tw": max(MIN_TW, 900),
+        "two": max(MIN_TWO, 700),
+        "chips_nonzero": max(MIN_CHIPS_NONZERO, 500),
+        "em": MIN_EM,
+        "monthly_n": 7852,
+        "em_monthly_n": 4,
+        "em_monthly_latest": "202609",
+        "latest_month": "202609",
+    }
+    reasons = increment_health_failures(health, cap="20261011")
+    assert any("興櫃月營收" in r for r in reasons)
+    assert increment_health_ok(health) is False
+
+
+def test_emerging_monthly_gate_month_before_tenth():
+    from import_health import emerging_monthly_gate_month
+
+    # 庫 MAX 已到 202609，但 10/1 閘門仍對 202608
+    assert emerging_monthly_gate_month("202609", "20261001") == "202608"
+    assert emerging_monthly_gate_month("202608", "20261001") == "202608"
+    assert emerging_monthly_gate_month("202609", "20261011") == "202609"
+
+
+def test_audit_import_early_month_emerging_revenue_grace():
+    """日 K 齊＋興櫃 expected 月營收齊＋新月僅少數先公告 → audit 不列待補、fuse 過。"""
+    from import_health import audit_import
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        conn = sqlite3.connect(path)
+        _seed_complete_day(conn, "20261001")
+        # 上市櫃＋興櫃 202608 齊；上市櫃搶先 202609；興櫃 202609 只有 4 家
+        for i in range(300):
+            conn.execute(
+                "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+                (f"{1000+i:04d}", "202608", "TW", "TW", "", 1_000_000, 0, 0, 0),
+            )
+        for i in range(250):
+            conn.execute(
+                "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+                (f"{6000+i:04d}", "202608", "TWO", "TWO", "", 1_000_000, 0, 0, 0),
+            )
+        for i in range(220):
+            conn.execute(
+                "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+                (f"{7000+i:04d}", "202608", "EM", "EM", "", 1_000_000, 0, 0, 0),
+            )
+        for i in range(50):
+            conn.execute(
+                "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+                (f"{1100+i:04d}", "202609", "TW", "TW", "", 1_000_000, 0, 0, 0),
+            )
+        for i in range(4):
+            conn.execute(
+                "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+                (f"{7100+i:04d}", "202609", "EM", "EM", "", 1_000_000, 0, 0, 0),
+            )
+        for i in range(60):
+            conn.execute(
+                "INSERT INTO ex_rights(stock_id,ex_date,factor,source) VALUES (?,?,?,?)",
+                (f"{1000+i:04d}", "20260915", 1.0, "test"),
+            )
+        conn.commit()
+        conn.close()
+        health = audit_import(path, "20261001", history=False)
+        assert health["latest_month"] == "202609"
+        assert health["em_monthly_latest"] == "202608"
+        assert int(health["em_monthly_n"] or 0) >= 200
+        assert int(health.get("em_monthly_head_n") or 0) == 4
+        assert not any("興櫃月營收" in str(p) for p in (health.get("problems") or []))
+        assert increment_health_failures(health, cap="20261001") == []
+        assert health["today_ok"] is True
+    finally:
+        os.remove(path)
+
+
 def test_increment_health_ok_passes_complete():
     health = {
         "total": 2000,
