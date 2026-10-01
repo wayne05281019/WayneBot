@@ -179,6 +179,31 @@ def test_kind_is_v2():
     assert "v3" in KIND_EXCLUDE_NEXT
 
 
+def test_paint_indices_drop_excluded_bars():
+    from buy_exclude import paint_leave_zero_indices
+
+    head = [150.0 - i * 0.5 for i in range(40)]
+    base = [120.0] * 40 + [118.0, 117.0, 116.0, 115.0, 114.0]
+    closes = head + base + [112.0, 110.0, 108.0]
+    lows = [c - 0.3 for c in closes]
+    lows[-1], lows[-2], lows[-3] = 107.0, 109.0, 111.0
+    closes[-1], closes[-2], closes[-3] = 107.5, 109.5, 111.5
+    highs = [max(c, l) + 0.5 for c, l in zip(closes, lows)]
+    df = _ohlc_df(closes, lows=lows, highs=highs)
+    # 結構破底日不准進畫標
+    assert should_exclude_buy(df) is True
+    assert (len(df) - 1) not in set(paint_leave_zero_indices(df))
+
+
+def test_nav_trade_marks_uses_paint_exclude():
+    import inspect
+    import wayne_navigator as wn
+
+    src = inspect.getsource(wn._nav_trade_marks)
+    assert "paint_leave_zero_indices" in src
+    assert "should_exclude_buy" in src
+
+
 def test_winrate_scan_mentions_exclude():
     import inspect
     import winrate_buypoint as wr

@@ -332,12 +332,55 @@ def should_exclude_buy(
     emerging: bool = False,
     quote_source: str = "",
 ) -> bool:
-    """True＝兩邊都不推薦（勝率買點／剛脫離零）。"""
+    """True＝不推薦／不畫藍▲（勝率買點／剛脫離零／導航壓力圖同一套）。"""
     return bool(
         buy_exclude_reasons(
             df, i, emerging=emerging, quote_source=quote_source
         )
     )
+
+
+def paint_leave_zero_indices(
+    df,
+    *,
+    emerging: bool = False,
+    quote_source: str = "",
+) -> List[int]:
+    """可畫藍▲紅框的 leave_zero 柱：公式命中後再過排除層。
+
+    不准改 leave_zero_bar_indices 公式本體；畫標／名單推薦都走這層。
+    """
+    try:
+        from decision_card_signals import leave_zero_bar_indices
+    except Exception:
+        return []
+    out: List[int] = []
+    for i in leave_zero_bar_indices(df) or []:
+        try:
+            ii = int(i)
+        except (TypeError, ValueError):
+            continue
+        if should_exclude_buy(
+            df, ii, emerging=emerging, quote_source=quote_source
+        ):
+            continue
+        out.append(ii)
+    return out
+
+
+def leave_zero_paint_today(
+    df,
+    *,
+    emerging: bool = False,
+    quote_source: str = "",
+) -> bool:
+    """今日收盤是否仍應畫／推藍▲（公式＋排除層）。"""
+    if df is None or len(df) < 2:
+        return False
+    idxs = paint_leave_zero_indices(
+        df, emerging=emerging, quote_source=quote_source
+    )
+    return bool(idxs and int(idxs[-1]) == len(df) - 1)
 
 
 def filter_leave_zero_rows(

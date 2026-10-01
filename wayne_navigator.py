@@ -5637,10 +5637,12 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
 
 
 def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
-    """黃金買點進出標：買＝可見窗內每根 leave_zero；賣＝最後一根直接減碼。
+    """黃金買點進出標：買＝可見窗內 leave_zero 且過排除層；賣＝最後一根直接減碼。
 
-    導航圖／大量區／壓力區共用。藍▲紅框不是紅箭頭買訊；還在零不畫買箭。
-    有卡時最後一根另對齊 buy_verdict／entry_stage／just_left（watch／no 清最後）。
+    導航圖／大量區／壓力區／查股高低卡共用。藍▲紅框不是紅箭頭買訊；還在零不畫買箭。
+    排除層與勝率買點／剛脫離零名單同一套（結構破底／鎖跌停／量縮等）。
+    有卡時最後一根另對齊 buy_verdict／entry_stage／just_left（watch／no 清最後）；
+    卡加進來的最後一根仍要過排除層，不准圖上畫、名單卻濾掉。
     """
     n = 0 if work is None else len(work)
     buy_is: list = []
@@ -5648,11 +5650,16 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
     if n < 2:
         return buy_is, sell_i
     try:
-        from decision_card_signals import leave_zero_bar_indices
+        from buy_exclude import paint_leave_zero_indices
 
-        buy_is = [int(i) for i in leave_zero_bar_indices(work)]
+        buy_is = [int(i) for i in paint_leave_zero_indices(work)]
     except Exception:
-        buy_is = []
+        try:
+            from decision_card_signals import leave_zero_bar_indices
+
+            buy_is = [int(i) for i in leave_zero_bar_indices(work)]
+        except Exception:
+            buy_is = []
     if buy_is and "is_halt" in work.columns:
         halt = work["is_halt"].fillna(False).astype(bool)
         buy_is = [i for i in buy_is if 0 <= i < n and not bool(halt.iloc[i])]
@@ -5673,6 +5680,18 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
                 buy_is.sort()
     if sell_i is not None:
         buy_is = [i for i in buy_is if i != sell_i]
+    # 卡或賣點邏輯之後再濾一次，保證畫標＝推薦排除同源
+    if buy_is:
+        try:
+            from buy_exclude import should_exclude_buy
+
+            buy_is = [
+                i
+                for i in buy_is
+                if 0 <= int(i) < n and not should_exclude_buy(work, int(i))
+            ]
+        except Exception:
+            pass
     return buy_is, sell_i
 
 
