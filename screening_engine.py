@@ -1156,12 +1156,34 @@ class ScreeningEngine:
                     )
                     _LEAVE_ZERO_OFFICIAL_CACHE.pop(oldest[0], None)
         if live_on and out:
+            # 先按官方欄排序，再只對前段打 MIS（避免候選變多時一次打百檔）
+            if mode == "zero":
+                out.sort(
+                    key=lambda x: (
+                        float(x.get("bias_monthly") or 0),
+                        -float(x.get("turnover_k") or 0),
+                    )
+                )
+            else:
+                out.sort(
+                    key=lambda x: (
+                        0 if x.get("trend_up_now") else 1,
+                        1 if x.get("chase_warning") else 0,
+                        float(
+                            x.get("profit_pct")
+                            if x.get("profit_pct") is not None
+                            else 99
+                        ),
+                        -(float(x.get("q60r") or 0)),
+                    )
+                )
             listed = [
                 str(x.get("stock_id") or "")
                 for x in out
                 if str(x.get("stock_id") or "") not in em_ids
             ]
-            listed = [c for c in listed if c]
+            listed = [c for c in listed if c][: int(LEAVE_ZERO_MIS_CAP)]
+            mis_ids = set(listed)
             quotes: Dict[str, Dict[str, Any]] = {}
             try:
                 from midday_review import fetch_mis_batch
@@ -1180,6 +1202,8 @@ class ScreeningEngine:
                     sid = str(item.get("stock_id") or "")
                     if not sid or sid in em_ids:
                         kept.append(item)
+                        continue
+                    if sid not in mis_ids:
                         continue
                     q = quotes.get(sid) or {}
                     raw_px = (
@@ -1312,6 +1336,8 @@ class ScreeningEngine:
 ENTRY_STAR_N = 5
 LEAVE_ZERO_STAR_N = ENTRY_STAR_N
 LEAVE_ZERO_RADAR_CAP = 8
+# 盤中 MIS 只打官方候選前段；話筒只列 8 檔，留足 live 被濾掉的餘裕。不准兩千檔全打。
+LEAVE_ZERO_MIS_CAP = 64
 
 _BUCKET_FROM_LABEL = {
     "黃金買點": "leave_zero",

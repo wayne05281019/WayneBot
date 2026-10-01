@@ -1625,6 +1625,7 @@ def _group_layers(db_path: str, group: Optional[Dict[str, Any]]) -> List[str]:
 
 
 def _layer_lines(layers: Sequence[str]) -> List[str]:
+    """三層標籤固定：主產業／次產業／產業鏈（＝CMoney 細項那層）。"""
     labs = ("主產業", "次產業", "產業鏈")
     bits = []
     for i, part in enumerate(list(layers)[:3]):
@@ -1639,6 +1640,85 @@ def _layer_line(layers: Sequence[str]) -> str:
 
 def _layer_short(layers: Sequence[str]) -> str:
     return "／".join(str(x) for x in layers if x)
+
+
+def _rotation_layer_lines(
+    layers: Sequence[str],
+    ign: Optional[Dict[str, Any]] = None,
+    hot: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """寫清輪動進哪一層。佔比數字留給 _share_path_lines；不准發明一族。"""
+    labs = ("主產業", "次產業", "產業鏈")
+    parts = [str(x) for x in layers if str(x)][:3]
+    if not parts:
+        return []
+    depth = len(parts) - 1
+    lab = labs[depth] if depth < len(labs) else "層"
+    fine = parts[-1]
+    lines = [f"輪動進{lab} {fine}"]
+    ign = ign or {}
+    up = float(ign.get("share_up") or 0)
+    hot = hot or {}
+    hot_f = str(hot.get("field") or "").strip()
+    hot_up = float(hot.get("share_up") or 0)
+    if hot_f and hot_f != fine and hot_up < -1e-9 and up > 1e-9:
+        # 不點名停車格／傳產族名，避免話筒以為那是此刻推薦。
+        lines.append("佔比最高退→這鏈升")
+    return lines
+
+
+def _leader_ref_lines(data: Dict[str, Any]) -> List[str]:
+    """龍頭只對照，不是推薦買訊；切入仍只認 leave_zero。"""
+    lead = data.get("leader") if isinstance(data.get("leader"), dict) else None
+    if (not lead or not lead.get("sid")) and isinstance(data.get("group"), dict):
+        leads = list((data.get("group") or {}).get("leaders") or ())
+        if leads:
+            sid0, name0 = str(leads[0][0] or ""), str(leads[0][1] or "")
+            if sid0:
+                lead = {"sid": sid0, "name": name0}
+    if not lead or not lead.get("sid"):
+        return []
+    sid = str(lead.get("sid") or "")
+    name = str(lead.get("name") or sid)
+    lines = [f"{sid} {name}", "龍頭・只對照"]
+    if lead.get("vs20") is not None:
+        try:
+            vs = float(lead["vs20"])
+            lines.append(f"距20高 {_pct(vs)}")
+            if lead.get("broke") or vs >= 0:
+                lines.append("已先過前高")
+            else:
+                lines.append("還沒過前高")
+        except (TypeError, ValueError):
+            pass
+    buy_sids = {
+        str(x.get("sid") or "")
+        for x in list(data.get("buys") or [])
+        if x.get("sid")
+    }
+    if sid in buy_sids:
+        lines.append("這檔剛好黃金買點")
+    return lines
+
+
+def _dongzhu_query_stamp_line(cap: str = "") -> str:
+    """有股價／距高％時寫查詢戳（Asia/Taipei）；失敗就空。"""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from decision_card_signals import format_card_query_stamp
+
+        now = datetime.now(ZoneInfo("Asia/Taipei"))
+        _, clock = format_card_query_stamp(
+            is_live=False,
+            latest_date=str(cap or ""),
+            generated_at=now,
+        )
+        clock = str(clock or "").strip()
+        return f"查詢 {clock}" if clock else ""
+    except Exception:
+        return ""
 
 
 def _stock_role(group: Optional[Dict[str, Any]], sid: str) -> str:
@@ -1768,20 +1848,27 @@ def _pack_phone(bits: Sequence[str], sep: str = "→") -> List[str]:
 
 
 def _share_path_lines(ign: Dict[str, Any]) -> List[str]:
+    """近窗路徑＋單日升降分開標，不准把單日當近窗。"""
     shares = list(ign.get("shares") or [])
+    out: List[str] = []
     if len(shares) >= 2:
         body = f"{shares[0]:.1f}%→{shares[-1]:.1f}%"
-        pt = _pt_txt(shares[-1] - shares[0])
-        one = f"佔當日法人買超 {body}（{pt}）"
+        win_pt = _pt_txt(shares[-1] - shares[0])
+        n = len(shares)
+        one = f"近{n}日佔比 {body}"
         if len(one) <= _PHONE_W:
-            return [one]
-        short = f"佔當日法人買超 {body}"
-        if len(short) <= _PHONE_W:
-            return [short, pt]
-        return [f"佔當日法人買超", body, pt]
-    if shares:
-        return [f"佔當日法人買超 {_share_txt(shares[-1])}"]
-    return []
+            out.append(one)
+        else:
+            out.append(f"近{n}日佔比")
+            out.append(body)
+        out.append(f"近窗 {win_pt}")
+        out.append(f"佔當日 {_share_txt(shares[-1])}")
+    elif shares:
+        out.append(f"佔當日 {_share_txt(shares[-1])}")
+    chg = float(ign.get("share_chg") or 0)
+    if abs(chg) > 1e-9:
+        out.append(f"單日 {_pt_txt(chg)}")
+    return out
 
 
 def _sibling_phone_lines(txt: str) -> List[str]:
@@ -1822,14 +1909,13 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
         lines.append(fine)
     last_sh = float(ign.get("share_last") or 0)
     chg = float(ign.get("share_chg") or 0)
+    up = float(ign.get("share_up") or 0)
     if shares:
-        one = f"佔當日法人買超 {_share_txt(last_sh)}"
-        pt = _pt_txt(chg)
-        if len(f"{one}（{pt}）") <= _PHONE_W:
-            lines.append(f"{one}（{pt}）")
-        else:
-            lines.append(one)
-            lines.append(pt)
+        lines.append(f"佔當日 {_share_txt(last_sh)}")
+        if abs(chg) > 1e-9:
+            lines.append(f"單日 {_pt_txt(chg)}")
+        if abs(up) > 1e-9 and abs(up - chg) > 1e-9:
+            lines.append(f"近窗 {_pt_txt(up)}")
         lines.append(f"近{len(shares)}日佔比")
         lines.extend(_pack_phone([f"{x:.1f}%" for x in shares]))
     if nets:
@@ -2917,14 +3003,26 @@ def dongzhu_hold_page(
         head.append(f"官方收 {_day_zh(cap)}")
         if chip and chip != cap:
             head.append(f"法人日 {_day_zh(chip)}")
+        stamp = _dongzhu_query_stamp_line(str(data.get("cap") or ""))
+        if stamp and (
+            data.get("close") is not None
+            or data.get("vs20") is not None
+            or data.get("vs60") is not None
+        ):
+            head.append(_esc(stamp))
     blocks = [_blk(*head)]
     parts = list(data.get("layers") or [])
     if parts:
-        blocks.append(_blk(*(_esc(x) for x in _layer_lines(parts))))
+        rot = _rotation_layer_lines(parts, data.get("flow") or {})
+        layer_rows = list(_layer_lines(parts))
+        if rot:
+            blocks.append(_blk(*(_esc(x) for x in rot), *(_esc(x) for x in layer_rows)))
+        else:
+            blocks.append(_blk(*(_esc(x) for x in layer_rows)))
     px_rows: List[str] = []
     role = str(data.get("role") or "")
     if role:
-        px_rows.append(_esc(role))
+        px_rows.append(_esc(role if role != "龍頭" else "龍頭・只對照"))
     if data.get("vs20") is not None:
         px_rows.append(_esc(f"距20高 {_pct(float(data['vs20']))}"))
     if data.get("vs60") is not None:
@@ -2958,11 +3056,21 @@ def dongzhu_page(
     # 標題＋官方收起頭；①②③教戰／規則清單／「資金輪動要注意」整段不准再塞正文。
     blocks: List[str] = [_blk("<b>洞燭先機</b>")]
     cap = _esc(data.get("cap") or "")
+    priced = bool(
+        list(data.get("recs") or [])
+        or list(data.get("buys") or [])
+        or list(data.get("laggards") or [])
+        or (isinstance(data.get("leader"), dict) and data["leader"].get("sid"))
+    )
     if cap:
         chip = _esc(data.get("chip_cap") or "")
         date_rows = [f"官方收 {_day_zh(cap)}"]
         if chip and chip != cap:
             date_rows.append(f"法人日 {_day_zh(chip)}")
+        if priced:
+            stamp = _dongzhu_query_stamp_line(str(data.get("cap") or ""))
+            if stamp:
+                date_rows.append(_esc(stamp))
         blocks.append(_blk(*date_rows))
     board = str(data.get("inflow_board") or "").strip()
     if board:
@@ -2983,9 +3091,11 @@ def dongzhu_page(
         return join_dashed(*blocks)
     now_rows = ["<b>此刻最像</b>", _esc(field)]
     parts = list(data.get("layers") or [])
-    if parts:
-        now_rows.extend(_esc(x) for x in _layer_lines(parts))
     ign = data.get("flow") or {}
+    hot = data.get("flow_named_hot") or {}
+    if parts:
+        now_rows.extend(_esc(x) for x in _rotation_layer_lines(parts, ign, hot))
+        now_rows.extend(_esc(x) for x in _layer_lines(parts))
     lead_n = int(data.get("in_lead_n") or 0)
     pos_n = int(data.get("share_pos_n") or 0)
     win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
@@ -3018,6 +3128,9 @@ def dongzhu_page(
     if "航運／塑化／建築" in why and "不拿來當先機" in why:
         now_rows.append(_esc("航運／塑化／建築略過"))
     blocks.append(_blk(*now_rows))
+    lead_ref = _leader_ref_lines(data)
+    if lead_ref:
+        blocks.append(_blk("<b>龍頭對照</b>", *(_esc(x) for x in lead_ref)))
     parity = str(data.get("parity") or "").strip()
     if parity:
         blocks.append(_blk("<b>龍頭／次級</b>", *(_esc(x) for x in _break_sentences(parity))))
@@ -3037,8 +3150,11 @@ def dongzhu_page(
         rec_rows.append(_esc("不是單檔保證"))
         rec_rows.append(_esc("點圖下鈕選檔"))
         rec_rows.append(_esc("剛好剛離零才標黃金買點"))
+        if lead_ref:
+            rec_rows.append(_esc("龍頭見上方對照"))
         rec_bits: List[str] = []
         for i, item in enumerate(recs, start=1):
+            # 買點＝leave_zero 桶交集；其餘只標先機，不准發明買訊。
             tag = "買點" if str(item.get("sid") or "") in buy_sids else "先機"
             rec_bits.append(
                 _stock_line(

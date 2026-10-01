@@ -685,6 +685,81 @@ def test_dongzhu_layers_and_parity_roles():
     assert "高階測試／封測" in board
 
 
+def test_dongzhu_rotation_layer_and_leader_ref_clarity():
+    """輪動進哪一層要寫清；龍頭只對照；單日／近窗佔比分開標。"""
+    from biaoke_field_scan import (
+        _dongzhu_query_stamp_line,
+        _leader_ref_lines,
+        _rotation_layer_lines,
+        _share_path_lines,
+    )
+
+    rot = _rotation_layer_lines(
+        ("電子上游", "IC", "封測"),
+        {"share_up": 1.6, "share_chg": 0.8},
+        {"field": "金控", "share_up": -2.0},
+    )
+    assert rot[0] == "輪動進產業鏈 封測"
+    assert any("佔比最高退→這鏈升" in x for x in rot)
+    assert "金控" not in "\n".join(rot)
+    assert "細項" not in "\n".join(rot)
+    assert not any("近窗佔比" in x for x in rot)  # 數字留給 share_path
+
+    lead = _leader_ref_lines(
+        {
+            "leader": {"sid": "6515", "name": "穎崴", "vs20": -12.0, "broke": False},
+            "buys": [],
+        }
+    )
+    assert "6515 穎崴" in lead
+    assert "龍頭・只對照" in lead
+    assert any("距20高" in x for x in lead)
+    assert "還沒過前高" in lead
+
+    path = _share_path_lines(
+        {"shares": [0.0, 0.4, 1.6], "share_chg": 1.2, "share_up": 1.6}
+    )
+    blob = "\n".join(path)
+    assert "近3日佔比" in blob or "0.0%→1.6%" in blob
+    assert "近窗" in blob
+    assert "單日" in blob
+    assert "佔當日" in blob
+
+    stamp = _dongzhu_query_stamp_line("20260917")
+    assert stamp.startswith("查詢 ")
+
+
+def test_dongzhu_page_shows_rotation_leader_and_stamp(tmp_path, monkeypatch):
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db, spoken="")
+    assert "輪動進產業鏈" in html or "輪動進" in html
+    assert "主產業" in html and "次產業" in html and "產業鏈" in html
+    assert "細項" not in html
+    assert "龍頭對照" in html or "此刻推薦" in html
+    # 有股價／距高時寫查詢戳（種子頁有官方收日期）
+    assert "查詢" in html
+    assert "資金輪動要注意" not in html
+    assert "佔比如實主判" not in html
+    # 單日／近窗標籤：有佔比列才出；單元測已鎖格式
+    assert "佔比如實" not in html
+
+
+def test_dongzhu_button_failsoft_silent_snapshot_hook():
+    """洞燭鈕送完後靜默落檔；失敗不擋話筒、對話不准講％。"""
+    from pathlib import Path
+
+    src = Path("bot_servers.py").read_text(encoding="utf-8")
+    page_i = src.find("async def _send_dongzhu_page")
+    page_end = src.find("\n    async def ", page_i + 10)
+    body = src[page_i:page_end]
+    assert "snapshot_dongzhu_picks" in body
+    assert "asyncio.create_task" in body
+    assert "讀佔比升降" in body
+    assert "分層排次級" in body
+
+
 def test_dongzhu_flow_hooks_fuse_not_money_flow():
     from pathlib import Path
 

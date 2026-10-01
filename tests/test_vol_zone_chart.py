@@ -95,9 +95,11 @@ def test_render_volume_zone_png_6274():
     assert zone and zone["date"] == "20260806"
     assert float(zone["high"]) == 1530.0
     assert float(zone["low"]) == 1365.0
+    # 末柱隨庫滾動（9/24 高1530／9/30 高1550）；只鎖有官方收、不跟壓同高綁死
     last = work.iloc[-1]
-    assert float(last["high"]) == 1530.0
-    assert float(last["close"]) == 1495.0
+    assert str(last["date"])[:8] >= "20260924"
+    assert float(last["close"]) > 0
+    assert float(last["high"]) >= float(last["close"])
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "6274_vz.png")
         path = render_volume_zone_png("6274", "台燿", db, out)
