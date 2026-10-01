@@ -375,6 +375,12 @@ MENU_BTN_WINRATE_ALIASES = (
     "勝率買",
     "winrate",
 )
+MENU_BTN_SCREEN = "海選"
+MENU_BTN_SCREEN_ALIASES = (
+    MENU_BTN_SCREEN,
+    "海選名單",
+    "盤後海選",
+)
 MENU_BTN_MARKET = "台股大盤"
 MENU_BTN_MARKET_ALIASES = (
     MENU_BTN_MARKET,
@@ -471,7 +477,7 @@ MENU_BTN_NEXT_PAGE = "下一批"
 MENU_BTN_PREV_PAGE = "上一批"
 MENU_ROW1 = (
     MENU_BTN_WINRATE,
-    "海選",
+    MENU_BTN_SCREEN,
     "持股",
     MENU_BTN_WATCH,
     MENU_BTN_BIAOKE_FACE,
@@ -515,9 +521,15 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v29：下排「剛脫離零」改「獲利為零」；進去先出獲利 0；下方鍵盤左到右脫離1／2／3。上排「資金」改「資金輪動」。
 # v30：下排改回「剛脫離零」＝昨獲利貼零、今離開 0。子鍵獲利為零／脫離1／2／3取消。
 # v31：下排「隔日沖」後加「壓撐觀察」＝上六下七；三標籤自選，只觀察不是買訊。
+<<<<<<< HEAD
 # v32：上排「觀察」改「加入觀察」；舊「觀察」仍認。
 # v33：第一排最左「勝率買點」；海選右移成第 2；上七下七。訊號＝leave_zero 藍▲紅框。
 MENU_LAYOUT_VERSION = "33"
+=======
+# v32：第一排最左「勝率買點」；海選右移成第 2；上七下七。訊號＝leave_zero 藍▲紅框。
+# （#471 合主後若已佔 v32＝加入觀察，本軌 rebase 遞增 v33，並接 MENU_BTN_WATCH。）
+MENU_LAYOUT_VERSION = "32"
+>>>>>>> d1bd197 (fix(winrate): 海選別名仍認；備註 #471 合主後 layout 遞增)
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -5472,7 +5484,7 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self.winrate_cmd(update, context)
             return
-        if text == "海選":
+        if text in MENU_BTN_SCREEN_ALIASES:
             logger.info("主選單：海選 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.screen_cmd(update, context)

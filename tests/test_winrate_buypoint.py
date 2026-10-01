@@ -41,6 +41,21 @@ def test_menu_winrate_first_hai_xuan_second():
     assert row1[1] == "海選"
 
 
+def test_screen_aliases_still_route_after_winrate_shift():
+    """海選右移後，舊標「海選」與別名仍走 screen_cmd（不是勝率買點）。"""
+    import inspect
+
+    from bot_servers import MENU_BTN_SCREEN, MENU_BTN_SCREEN_ALIASES, WayneTelegramBot
+
+    assert MENU_BTN_SCREEN == "海選"
+    assert "海選" in MENU_BTN_SCREEN_ALIASES
+    assert "海選名單" in MENU_BTN_SCREEN_ALIASES
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    assert "MENU_BTN_SCREEN_ALIASES" in src
+    assert src.index("MENU_BTN_WINRATE_ALIASES") < src.index("MENU_BTN_SCREEN_ALIASES")
+    assert "screen_cmd" in src
+
+
 def test_save_load_roster_and_empty_sentinel(tmp_path):
     db = str(tmp_path / "w.db")
     n = save_winrate_roster(
