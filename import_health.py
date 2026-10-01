@@ -44,23 +44,20 @@ def emerging_monthly_revenue_failure(
     today_ymd: str = "",
     em_monthly_latest: str = "",
 ) -> str:
-    """興櫃月營收未達標原因；月初換期寬限內回空字串（不擋 fuse）。"""
-    if int(monthly_n or 0) < 200:
-        return ""
-    ym = str(em_monthly_latest or latest_month or "").replace("-", "")[:6]
-    expected = expected_latest_revenue_month(today_ymd)
-    # 庫內 MAX／計數是「還在公告中的新月」且筆數不足 → 寬限，不算缺
-    if ym and ym > expected and int(em_monthly_n or 0) < MIN_EM_MONTHLY:
-        return ""
-    if int(em_monthly_n or 0) < MIN_EM_MONTHLY:
-        return f"興櫃月營收 {int(em_monthly_n or 0)}/{MIN_EM_MONTHLY}" + (
-            f"（{ym}）" if ym else ""
-        )
+    """月營收永遠不擋 fuse／不進 incomplete 原因（固定回空）。
+
+    使用者鎖死：月營收＝靜態補齊；十月十號前抓不全沒關係，每天公式續抓到滿。
+    不准因月營收未滿標 incomplete、推提醒、或擋盤後融合。保留函式簽名給舊測試／呼叫端。
+    """
+    _ = (monthly_n, em_monthly_n, latest_month, today_ymd, em_monthly_latest)
     return ""
 
 
 def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str]:
-    """回傳盤後未達標原因（給 CI／日誌）；零就是錯。"""
+    """回傳盤後未達標原因（給 CI／日誌）；只認日 K／興櫃日／法人。
+
+    月營收不進這份清單（靜態補齊，不擋 fuse、不推提醒）。
+    """
     label = str(cap or health.get("date") or "").strip()
     reasons: List[str] = []
     if not health:
@@ -70,8 +67,6 @@ def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str
     two = int(health.get("two") or 0)
     em = int(health.get("em") or 0)
     chips = int(health.get("chips_nonzero") or 0)
-    monthly_n = int(health.get("monthly_n") or 0)
-    em_m = int(health.get("em_monthly_n") or 0)
     if total == 0:
         reasons.append(f"{label} 日 K 合計為 0")
     if tw == 0:
@@ -84,17 +79,6 @@ def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str
         reasons.append(f"{label} 法人非0僅 {chips}（<{MIN_CHIPS_NONZERO}）")
     if total > 0 and tw > 0 and two > 0 and not sides_complete(tw, two):
         reasons.append(f"{label} 上市 {tw}/{MIN_TW} 上櫃 {two}/{MIN_TWO} 未齊")
-    # 上市櫃月營收已進庫卻沒興櫃同期＝介紹卡只畫不存／沒寫庫
-    # 月初寬限：對齊 expected_latest_revenue_month，不准用搶先 MAX 卡興櫃
-    em_fail = emerging_monthly_revenue_failure(
-        monthly_n=monthly_n,
-        em_monthly_n=em_m,
-        latest_month=str(health.get("latest_month") or ""),
-        today_ymd=label,
-        em_monthly_latest=str(health.get("em_monthly_latest") or ""),
-    )
-    if em_fail:
-        reasons.append(f"{label} {em_fail}" if label else em_fail)
     return reasons
 MIN_TOTAL = 1500
 _COMPLETE_DATE_CACHE: Dict[str, Any] = {}
@@ -369,22 +353,12 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
     if total >= 800 and chip_n < 100:
         problems.append(f"待補法人（非0僅 {chip_n}）")
     latest_month = str(m_n[1] or "")
+    # 月營收只記狀態、不進 problems／不擋 today_ok（靜態補齊；不准提醒／incomplete）
     monthly_note = monthly_revenue_status(int(m_n[0] or 0), latest_month, today_ymd=yyyymmdd)
-    if monthly_note.get("missing"):
-        problems.append(monthly_note["problem"])
-    # 閘門對齊 gate_ym（10 號前＝expected），不准用上市櫃搶先 MAX 卡興櫃
-    em_fail = emerging_monthly_revenue_failure(
-        monthly_n=int(m_n[0] or 0),
-        em_monthly_n=int(em_monthly_n or 0),
-        latest_month=latest_month,
-        today_ymd=yyyymmdd,
-        em_monthly_latest=em_monthly_latest,
-    )
-    if em_fail:
-        problems.append(f"待補{em_fail}；介紹卡讀此表")
     if int(x_n[0] or 0) < 50:
         problems.append("待補除權息")
-    today_ok = increment_health_ok(
+    # today_ok＝日資料閘（上市／上櫃／興櫃日 K＋法人）；月營收／除權息不卡 fuse
+    day_ok = increment_health_ok(
         {
             "date": yyyymmdd,
             "tw": int(tw or 0),
@@ -393,7 +367,9 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
             "total": int(total or 0),
             "chips_nonzero": int(chip_n or 0),
         }
-    ) and not problems
+    )
+    # problems 仍可含除權息等軟缺，但今天日資料齊＝today_ok（月營收永不拉垮）
+    today_ok = day_ok
     hist = list_coverage_issues(db_path) if history else []
     return {
         "date": yyyymmdd,
@@ -703,10 +679,11 @@ def can_publish_release(db_path: str, cap: str = None) -> Dict[str, Any]:
 
 
 def format_audit_plain(health: Dict[str, Any]) -> str:
-    """人話報告：先講今天正不正常，再講真的缺什麼。官方還沒公布的不要當成故障。"""
+    """人話報告：先講今天日資料正不正常；月營收只報標籤、不當故障／不提醒。"""
     date = health.get("date") or ""
     today_ok = bool(health.get("today_ok") if "today_ok" in health else increment_health_ok(health))
-    head = "今天正常" if today_ok and not health.get("problems") else "今天異常"
+    day_reasons = [] if today_ok else increment_health_failures(health, cap=str(date))
+    head = "今天正常" if today_ok else "今天異常"
     lines = [
         f"盤後匯入 {date}：{head}。上市 {health.get('tw')}　上櫃 {health.get('two')}　興櫃 {health.get('em', 0)}　合計 {health.get('total')}",
     ]
@@ -720,8 +697,12 @@ def format_audit_plain(health: Dict[str, Any]) -> str:
         f"　季報 {health.get('income_n')}（{health.get('latest_quarter')}）"
         f"　除權息 {health.get('ex_rights_n')}（{health.get('latest_ex')}）"
     )
-    if health.get("problems"):
-        lines.append("今天真的缺：" + "；".join(health["problems"]))
+    # 月營收永不進「今天真的缺」（靜態補齊；不准提醒）
+    soft = [p for p in (health.get("problems") or []) if "月營收" not in str(p)]
+    if day_reasons:
+        lines.append("今天真的缺：" + "；".join(day_reasons))
+    elif soft:
+        lines.append("其他待補（不擋融合）：" + "；".join(soft))
     n = int(health.get("history_issue_n") or 0)
     if n:
         sample = health.get("history_issues") or []
