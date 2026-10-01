@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from datetime import date, timedelta
 
+import pytest
+
 from biaoke_chart import (
     BIAOKE_CHART_DPI,
     _axis_ticks,
@@ -912,7 +914,8 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     assert "ax.vlines" not in lsrc
 
 
-def test_parallel_channel_follows_biaoke_rails():
+@pytest.mark.production_db
+def test_parallel_channel_follows_biaoke_rails(production_db):
     """通道用語／邏輯對齊飆大：下降壓＋平行撐 或 上升軌＋平行壓，二擇一。"""
     import inspect
 
@@ -924,24 +927,78 @@ def test_parallel_channel_follows_biaoke_rails():
     assert "_desc_high_pair" in src
     assert "_impulse_support_pair" in src
     assert "不是買訊" in src
+    assert "min_gap=10" in src
     psrc = inspect.getsource(_paint_parallel_channel)
     # 軌價／狀態都不畫在 K 上：價走右溝、狀態上頭牌
     assert "不是買訊" not in psrc
     assert "name_u" not in psrc
     assert "name_u" in src
+    # 只標主軌兩點＋觸點，不准把平行緣端點當假連點
+    assert "假樞紐" in psrc or "不准把平行緣" in psrc
+    assert "lx1" in psrc and "ux1" in psrc
 
     from biaoke_brain import load_bars
     from biaoke_chart import _BARS
-    from tests.conftest import require_production_db
 
-    db = require_production_db()
-    bars = load_bars(db, "2345", n=360)
+    bars = load_bars(production_db, "2345", n=360)
     assert bars
     ch = infer_parallel_channel(bars[-_BARS:])
     assert ch.get("kind") == "desc"
     assert ch.get("name_u") == "下降壓"
     assert ch.get("name_l") == "平行撐"
     assert "買訊" in (ch.get("tip") or "")
+    base = ch.get("base")
+    assert base and len(base) == 2
+    (i, y1, _d1), (j, y2, _d2) = base
+    assert int(j) - int(i) >= 10
+    upper = ch["upper"]
+    lower = ch["lower"]
+    (ux1, uy1, _), (ux2, uy2, _) = upper
+    (lx1, ly1, _), (lx2, ly2, _) = lower
+    # 兩點連成一線＋上下平行
+    assert (ux1, ux2) == (lx1, lx2) == (i, j)
+    us = (uy2 - uy1) / (ux2 - ux1)
+    ls = (ly2 - ly1) / (lx2 - lx1)
+    assert abs(us - ls) < 1e-9
+
+
+def test_structure_right_notes_fit_most_likely_full_text():
+    """「最可能＝看壓 ####」整句必須落在軸右緣內，不准裁成 320／525。"""
+    import inspect
+
+    from biaoke_chart import (
+        _approx_note_width,
+        _place_right_notes,
+        render_biaoke_structure_png,
+    )
+
+    w = _approx_note_width("最可能＝看壓 5255", 12)
+    assert w >= 16.0
+    notes = inspect.getsource(_place_right_notes)
+    assert "x_max" in notes
+    assert "avoid_ys" in notes
+    assert "_approx_note_width" in notes
+    rsrc = inspect.getsource(render_biaoke_structure_png)
+    assert "max_note_w" in rsrc or "_approx_note_width" in rsrc
+    assert "bottom_pad" in rsrc
+    assert "（不是保證・不是買訊）" in rsrc
+
+
+@pytest.mark.production_db
+def test_channel_rejects_stub_two_point_span(production_db):
+    """過短兩點（例如只隔一週）不准當通道主軌。"""
+    from biaoke_brain import load_bars
+    from biaoke_chart import _BARS, infer_parallel_channel
+
+    work = load_bars(production_db, "3017", n=360)[-_BARS:]
+    ch = infer_parallel_channel(work)
+    assert ch.get("kind") == "asc"
+    (i, _y1, _d1), (j, _y2, _d2) = ch["base"]
+    assert int(j) - int(i) >= 10
+    # 平行兩線斜率相同
+    (ux1, uy1, _), (ux2, uy2, _) = ch["upper"]
+    (lx1, ly1, _), (lx2, ly2, _) = ch["lower"]
+    assert abs((uy2 - uy1) / (ux2 - ux1) - (ly2 - ly1) / (lx2 - lx1)) < 1e-9
 
 
 def test_broken_up_rail_not_projected_to_forecast():

@@ -356,6 +356,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     cands: List[Dict[str, Any]] = []
 
     def _pack_desc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        # 通道主軌至少約兩週：過短兩點延長上話筒會像假錨
+        if int(j) - int(i) < 10:
+            return
         touch = _channel_width_touch(
             i, j, highs[i], highs[j], lo_p, highs, lows, above=False, span=span, n=n
         )
@@ -374,10 +377,15 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             pos, alive = "靠近平行撐", True
         else:
             pos, alive = "下降通道中段", True
+        # 較長真連點加分（兩點距離夠才像他畫的軌道）
+        span_bonus = min((int(j) - int(i)) / 24.0, 1.0) * 0.45
         cands.append(
             {
                 "kind": "desc",
-                "score": float(score) + bonus + (0.35 if alive and last < top_now else 0.0),
+                "score": float(score)
+                + bonus
+                + span_bonus
+                + (0.35 if alive and last < top_now else 0.0),
                 "alive": alive,
                 "pos": pos,
                 "width": width,
@@ -392,6 +400,8 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
     def _pack_asc(i: int, j: int, *, bonus: float = 0.0) -> None:
+        if int(j) - int(i) < 10:
+            return
         touch = _channel_width_touch(
             i, j, lows[i], lows[j], hi_p, highs, lows, above=True, span=span, n=n
         )
@@ -410,10 +420,14 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             pos, alive = "靠近上升軌", True
         else:
             pos, alive = "上升通道中段", True
+        span_bonus = min((int(j) - int(i)) / 24.0, 1.0) * 0.45
         cands.append(
             {
                 "kind": "asc",
-                "score": float(score) + bonus + (0.35 if alive and last > base_now else -0.35),
+                "score": float(score)
+                + bonus
+                + span_bonus
+                + (0.35 if alive and last > base_now else -0.35),
                 "alive": alive,
                 "pos": pos,
                 "width": width,
@@ -431,8 +445,8 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     down = _desc_high_pair(hi_p, highs)
     if down:
         _pack_desc(int(down[0]), int(down[1]), bonus=0.55)
-    # 備援：近窗其他合格更低高連點（仍要過包覆閘）
-    for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=5, look=8):
+    # 備援：近窗其他合格更低高連點（仍要過包覆閘；min_gap=10＝有長度的兩點）
+    for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=10, look=8):
         if down and (i, j) == (int(down[0]), int(down[1])):
             continue
         _pack_desc(i, j, bonus=0.05)
@@ -445,7 +459,7 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         up = _asc_low_pair(lo_p, lows)
     if up:
         _pack_asc(int(up[0]), int(up[1]), bonus=0.55)
-    for i, j in _pivot_pairs(lo_p, lows, ascending=True, min_gap=5, look=8):
+    for i, j in _pivot_pairs(lo_p, lows, ascending=True, min_gap=10, look=8):
         if up and (i, j) == (int(up[0]), int(up[1])):
             continue
         _pack_asc(i, j, bonus=0.05)
@@ -512,6 +526,7 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "pos": best["pos"],
         "alive": bool(best["alive"]),
         "width": width,
+        "base": best["base"],
         "upper": upper,
         "lower": lower,
         "touch": (tk, ty, td),
@@ -534,7 +549,10 @@ def _paint_parallel_channel(
     y_hi: float,
     n: int,
 ) -> None:
-    """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。"""
+    """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。
+
+    真連點只標主軌兩點＋平行寬度觸點。平行緣是主軌平移，不准再撒假樞紐點。
+    """
     if not ch:
         return
     kind = str(ch.get("kind") or "")
@@ -579,15 +597,27 @@ def _paint_parallel_channel(
             edgecolors="white",
             linewidths=0.7,
         )
-    ax.scatter(
-        [float(ux1), float(ux2), float(lx1), float(lx2)],
-        [float(uy1), float(uy2), float(ly1), float(ly2)],
-        color=color,
-        s=28,
-        zorder=6,
-        edgecolors="white",
-        linewidths=0.6,
-    )
+    # 主軌兩點＝真樞紐；升＝下緣低點、降＝上緣高點。不准把平行緣端點當連點。
+    if kind == "asc":
+        ax.scatter(
+            [float(lx1), float(lx2)],
+            [float(ly1), float(ly2)],
+            color=color,
+            s=28,
+            zorder=6,
+            edgecolors="white",
+            linewidths=0.6,
+        )
+    else:
+        ax.scatter(
+            [float(ux1), float(ux2)],
+            [float(uy1), float(uy2)],
+            color=color,
+            s=28,
+            zorder=6,
+            edgecolors="white",
+            linewidths=0.6,
+        )
     # 軌價標籤走右溝；通道狀態改上頭牌晶片，不准壓在 K 棒上
 
 
@@ -1195,6 +1225,15 @@ def _place_band_notes(
         )
 
 
+def _approx_note_width(text: str, size: float = 12) -> float:
+    """結構圖右溝標籤約略資料座標寬（含 bbox pad）。用來留足「最可能」完整字。"""
+    s = str(text or "")
+    units = 0.0
+    for ch in s:
+        units += 1.0 if ord(ch) > 0x2E80 else 0.58
+    return units * (float(size) / 12.0) * 1.72 + 2.8
+
+
 def _note_priority(text: str) -> int:
     t = str(text or "")
     if "最可能" in t:
@@ -1240,22 +1279,46 @@ def _place_right_notes(
     min_gap: float,
     span: float = 0.0,
     seam: Optional[float] = None,
+    avoid_ys: Sequence[float] = (),
+    x_max: Optional[float] = None,
+    bottom_pad: float = 0.0,
 ) -> None:
-    """演化區內：去重＋錯開＋左對齊往右長，字只落在演化空白，不准壓 K。"""
+    """演化區內：去重＋錯開＋左對齊往右長，字只落在演化空白，不准壓 K。
+
+    avoid_ys＝軌／壓撐在標籤 x 的價位，字要讓開，不准蓋線。
+    x_max＝軸右緣；不夠寬就把 x_text 左移仍留在演化區，保證「最可能」整句可見。
+    """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
         return
     gap = max(float(min_gap), (ymax - ymin) * 0.06)
-    lo = ymin + gap * 0.55
+    lo = ymin + gap * 0.55 + max(float(bottom_pad), 0.0)
     hi = ymax - gap * 0.55
-    tys = _spread_ys_around(
-        [float(n.get("y") or 0) for n in cleaned],
-        [],
-        gap,
-        lo=lo,
-        hi=hi,
-    )
+    fixed = [float(y) for y in avoid_ys if y is not None]
     pin_x = float(seam) if seam is not None else None
+    tx = float(x_text)
+    if x_max is not None:
+        need = max(
+            (
+                _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+                for n in cleaned
+            ),
+            default=14.0,
+        )
+        # 整句＋邊距必須落在軸內；不夠就把錨點往左（仍在 seam 右側）
+        fit_tx = float(x_max) - need - 0.85
+        if pin_x is not None:
+            tx = max(float(pin_x) + 0.55, min(tx, fit_tx))
+        else:
+            tx = min(tx, fit_tx)
+    # 去重後再把「最可能」往上緣空白靠，不准為搶位改掉去重用的原價
+    raw_ys: List[float] = []
+    for n in cleaned:
+        y = float(n.get("y") or 0)
+        if "最可能" in str(n.get("text") or ""):
+            y = hi - gap * 0.25
+        raw_ys.append(y)
+    tys = _spread_ys_around(raw_ys, fixed, gap, lo=lo, hi=hi)
     for note, ty in zip(cleaned, tys):
         ax_x = float(pin_x if pin_x is not None else note.get("x") or 0)
         _leader_note(
@@ -1264,7 +1327,7 @@ def _place_right_notes(
             float(note.get("y") or 0),
             str(note.get("text") or ""),
             str(note.get("color") or _TEXT),
-            tx=x_text,
+            tx=tx,
             ty=ty,
             size=int(note.get("size") or 11),
             ha="left",
@@ -2434,8 +2497,9 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    # 演化區右側留足標籤寬，避免「最可能」被裁成半句
-    x_right = n + _FUTURE + 7.2
+    # 演化區右側留足標籤寬，避免「最可能＝看壓 ####」被裁成半句
+    # 實測 size12「最可能＝看壓 5255」約 19 data-x；舊 gutter 7.2 只剩 ~17.5 → 右緣切斷
+    x_right = n + _FUTURE + 15.5
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     candle_up = []
@@ -2675,26 +2739,78 @@ def render_biaoke_structure_png(
         )
     _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
+    # 右溝標籤：字放在演化帶中後段，避開 K 與軌虛線；依最長「最可能」動態加寬
+    max_note_w = max(
+        (
+            _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 12))
+            for nt in right_notes
+        ),
+        default=16.0,
+    )
+    # 從演化帶中段起筆往右長，減少壓在 seam 附近的軌／K
+    x_text = float(n - 1) + max(float(_FUTURE) * 0.42, 3.2)
+    need_right = x_text + max_note_w + 1.0
+    if need_right > x_right:
+        x_right = need_right
+        ax1.set_xlim(-0.55, x_right)
+    avoid_ys: List[float] = []
+    if spike_hi:
+        avoid_ys.append(float(spike_hi))
+    if spike_lo:
+        avoid_ys.append(float(spike_lo))
+    # 只避開標籤 x 上的軌價，過多 fixed 會把字擠成一疊互壓
+    if channel.get("kind"):
+        if channel.get("rail_now"):
+            avoid_ys.append(float(channel["rail_now"]))
+        if channel.get("base_now"):
+            avoid_ys.append(float(channel["base_now"]))
+    else:
+        if down_pts:
+            (dx1, dy1, _), (dx2, dy2, _) = down_pts
+            avoid_ys.append(_line_at(float(dx1), float(dy1), float(dx2), float(dy2), x_text))
+        if up_pts:
+            (ux1, uy1, _), (ux2, uy2, _) = up_pts
+            avoid_ys.append(_line_at(float(ux1), float(uy1), float(ux2), float(uy2), x_text))
+    if tgt:
+        avoid_ys.append(float(tgt))
+    # 底下留給演化區兩行說明
+    evo_pad = span * 0.10
     _place_right_notes(
         ax1,
         right_notes,
-        # 錨在最近一根，字從演化區左緣往右長，不准壓歷史 K
-        x_text=float(n - 1) + 0.65,
+        x_text=x_text,
         ymin=ymin,
         ymax=ymax,
-        min_gap=span * 0.16,
+        min_gap=span * 0.175,
         span=span,
         seam=float(n - 1),
+        avoid_ys=avoid_ys,
+        x_max=float(x_right),
+        bottom_pad=evo_pad,
     )
+    # 演化區說明改兩行短句，單行全文比演化帶還寬會壓線／被裁
+    evo_cx = float(n - 1) + float(_FUTURE) * 0.55
     ax1.text(
-        n + _FUTURE * 0.45,
-        ymin + span * 0.012,
-        EVOLUTION_ZONE_LABEL,
+        evo_cx,
+        ymin + span * 0.042,
+        "演化區",
         color="#546e7a",
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(9, "bold"),
         ha="center",
         va="bottom",
         zorder=8,
+        clip_on=True,
+    )
+    ax1.text(
+        evo_cx,
+        ymin + span * 0.008,
+        "（不是保證・不是買訊）",
+        color="#546e7a",
+        fontproperties=_fp(8, "bold"),
+        ha="center",
+        va="bottom",
+        zorder=8,
+        clip_on=True,
     )
     mark = ""
     mc = _TEXT
