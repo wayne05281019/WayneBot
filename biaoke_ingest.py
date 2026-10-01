@@ -1747,7 +1747,10 @@ def _carry_parent_names(
 
 
 def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> None:
-    """抓到就存官方 tape、六顆神經元、緊急推播、輔助匣。彙整窗還會再跑 why／觀察。"""
+    """抓到就存官方 tape、六顆神經元、觀察、急推（出清／到底／碰已點位）、輔助匣。
+
+    一般新文／自回只進未讀匣，不另推 Telegram。彙整窗還會再跑 why／觀察。
+    """
     try:
         from biaoke_desk import load_corpus_cache_clear
 
@@ -1775,6 +1778,12 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大神經元即時分類失敗")
     try:
+        from biaoke_watch import record_watch_events
+
+        record_watch_events(db_path, packed)
+    except Exception:
+        logger.exception("飆大觀察即時寫入失敗")
+    try:
         from biaoke_why import ingest_why_events
 
         ingest_why_events(packed, db_path)
@@ -1787,9 +1796,10 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大輔助匣寫入失敗")
     try:
-        from biaoke_alert import maybe_push_drop_alert
+        from biaoke_alert import maybe_push_drop_alert, maybe_push_marked_level_hits
 
         maybe_push_drop_alert(db_path, packed)
+        maybe_push_marked_level_hits(db_path)
     except Exception:
         logger.exception("飆大緊急推播略過")
 

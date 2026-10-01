@@ -643,6 +643,12 @@ def refresh_published_official(
         conn.close()
     if events:
         stats["tape"] = record_events(path, events)
+    try:
+        from biaoke_alert import maybe_push_marked_level_hits
+
+        stats["level_push"] = maybe_push_marked_level_hits(path, now=dt)
+    except Exception:
+        stats["level_push_err"] = True
     stats.update({"ok": True, "date": ymd, "close": off.get("close")})
     return stats
 
