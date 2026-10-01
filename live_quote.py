@@ -66,6 +66,31 @@ def _last_price(item: dict, yesterday: float) -> float:
 
 
 _OTC_MARKETS = {"TWO", "OTC", "TPEX", "ROCO", "ROCC", "上櫃"}
+_EMERGING_MARKETS = {"EM", "EMERGING", "ESB", "興櫃"}
+
+# 櫃買興櫃當日行情 OpenAPI（含 LatestPrice）；全日表快取，不准每檔重抓。
+_TPEX_ESB_URL = "https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics"
+_TPEX_ESB_LOCK = threading.Lock()
+_TPEX_ESB_CACHE: Tuple[float, Dict[str, Dict[str, Any]]] = (0.0, {})
+_TPEX_ESB_TTL_SEC = 20.0
+
+
+def is_emerging_market(market: str = "", *, db_hit: Optional[Dict[str, Any]] = None) -> bool:
+    """查股／報價用：市場碼或 lookup hit 是否興櫃。MIS 不含興櫃頻道。"""
+    m = str(market or "").strip().upper()
+    if m in _EMERGING_MARKETS or m == "興櫃":
+        return True
+    if db_hit:
+        try:
+            from wayne_db import listing_is_emerging
+
+            if listing_is_emerging(db_hit):
+                return True
+        except Exception:
+            hm = str(db_hit.get("market") or "").strip().upper()
+            if hm in _EMERGING_MARKETS or hm == "興櫃":
+                return True
+    return False
 
 
 def mis_ex_ch(stock_id: str, market: str = "") -> str:
@@ -226,8 +251,8 @@ def live_vol_rank_120(
     return calc_vol_rank_120(vols, window)
 
 
-def mis_session_label(update_time: str) -> str:
-    """上市櫃現股 13:30 收。MIS 停在 13:30:00 就是收盤價，不要再寫盤中。"""
+def board_session_label(update_time: str, *, emerging: bool = False) -> str:
+    """報價時間戳：上市櫃 13:30 收；興櫃 15:00 收。停在收盤鐘點＝收盤價。"""
     t = str(update_time or "").strip().replace("：", ":")
     if not t:
         return "盤中"
@@ -237,9 +262,15 @@ def mis_session_label(update_time: str) -> str:
         minute = int(parts[1]) if len(parts) > 1 else 0
     except (TypeError, ValueError):
         return "盤中"
-    if (hour, minute) >= (13, 30) or hour < 9:
+    end = (15, 0) if emerging else (13, 30)
+    if (hour, minute) >= end or hour < 9:
         return "收盤"
     return "盤中"
+
+
+def mis_session_label(update_time: str) -> str:
+    """上市櫃現股 13:30 收。MIS 停在 13:30:00 就是收盤價，不要再寫盤中。"""
+    return board_session_label(update_time, emerging=False)
 
 
 def format_mis_clock_line(update_time: str) -> str:
@@ -249,12 +280,35 @@ def format_mis_clock_line(update_time: str) -> str:
     return f"{mis_session_label(t)}　{t}　證交所即時"
 
 
-def live_clock_suffix(is_live: bool, update_time: str = "") -> str:
-    """決策卡／介紹圖日期旁：盤中 13:25 或 收盤 13:30。"""
+def format_quote_clock_line(
+    update_time: str,
+    *,
+    source: str = "",
+    emerging: bool = False,
+) -> str:
+    """查股現價列時鐘：證交所 MIS／櫃買興櫃 OpenAPI／奇摩備援。"""
+    t = str(update_time or "").strip()
+    if not t:
+        return ""
+    label = board_session_label(t, emerging=emerging)
+    src = str(source or "").strip().lower()
+    if src in ("tpex_esb", "tpex_esb_openapi", "emerging"):
+        return f"{label}　{t}　櫃買興櫃"
+    if src == "yahoo":
+        if emerging:
+            return f"{label}　{t}　奇摩（興櫃）"
+        return f"收盤　{t}　奇摩（16:30 融合後以官方庫為準）"
+    if emerging:
+        return f"{label}　{t}　興櫃即時"
+    return f"{label}　{t}　證交所即時"
+
+
+def live_clock_suffix(is_live: bool, update_time: str = "", *, emerging: bool = False) -> str:
+    """決策卡／介紹圖日期旁：盤中 HH:MM 或該板收盤鐘點。"""
     if not is_live:
         return ""
     t = str(update_time or "").strip()
-    label = mis_session_label(t)
+    label = board_session_label(t, emerging=emerging)
     clock = t[:5] if len(t) >= 5 else t
     if clock:
         return f" {label} {clock}"
@@ -496,6 +550,159 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
         return None
 
 
+def _format_tpex_esb_time(raw: str) -> str:
+    """163004 → 16:30:04；已含冒號就原樣。"""
+    s = str(raw or "").strip().replace("：", ":")
+    if not s:
+        return ""
+    if ":" in s:
+        return s
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) >= 6:
+        return f"{digits[0:2]}:{digits[2:4]}:{digits[4:6]}"
+    if len(digits) == 4:
+        return f"{digits[0:2]}:{digits[2:4]}:00"
+    return s
+
+
+def _tpex_esb_as_of(item: dict) -> str:
+    try:
+        from emerging_quotes import roc_yyyymmdd
+
+        return roc_yyyymmdd(item.get("Date") or "")
+    except Exception:
+        s = str(item.get("Date") or "").strip().replace("/", "").replace("-", "")
+        if len(s) == 7 and s.isdigit():
+            return f"{int(s[:3]) + 1911:04d}{s[3:]}"
+        return s[:8]
+
+
+def _load_tpex_esb_map() -> Dict[str, Dict[str, Any]]:
+    """櫃買興櫃最新統計表 → stock_id 索引（TTL 快取）。"""
+    global _TPEX_ESB_CACHE
+    now = time.time()
+    with _TPEX_ESB_LOCK:
+        ts, cached = _TPEX_ESB_CACHE
+        if cached and now - ts < _TPEX_ESB_TTL_SEC:
+            return cached
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        resp = _SESSION.get(
+            _TPEX_ESB_URL,
+            timeout=(_MIS_CONNECT_TIMEOUT, max(_MIS_TIMEOUT, 4.0)),
+            headers={
+                "User-Agent": _SESSION.headers.get("User-Agent", ""),
+                "Accept": "application/json,*/*;q=0.8",
+                "Referer": "https://www.tpex.org.tw/",
+            },
+        )
+        if resp.status_code != 200:
+            return cached or out
+        data = resp.json()
+        if not isinstance(data, list):
+            return cached or out
+        for it in data:
+            if not isinstance(it, dict):
+                continue
+            sid = str(it.get("SecuritiesCompanyCode") or "").strip()
+            if sid:
+                out[sid] = it
+    except Exception:
+        logger.debug("櫃買興櫃 OpenAPI 失敗", exc_info=True)
+        return cached or out
+    with _TPEX_ESB_LOCK:
+        _TPEX_ESB_CACHE = (time.time(), out)
+    return out
+
+
+def fetch_emerging_tpex_quote(stock_id: str) -> Optional[Dict[str, Any]]:
+    """櫃買 OpenAPI tpex_esb_latest_statistics：只在 Date＝台北今日才當現價／當日收。
+
+    LatestPrice＝當下成交／收盤最後一筆；Average＝日均價（日K 仍用均價）。
+    盤中若表還停在昨收日，回 None，改走 Yahoo .TWO。
+    """
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return None
+    today = taipei_today_str()
+    item = _load_tpex_esb_map().get(sid)
+    if not item:
+        return None
+    as_of = _tpex_esb_as_of(item)
+    if as_of != today:
+        return None
+    px = _num(item.get("LatestPrice"))
+    if px <= 0:
+        # 無成交：官方用前日均價當停價參考，不准發明假成交價
+        return None
+    prev = _num(item.get("PreviousAveragePrice"))
+    high = _num(item.get("Highest")) or px
+    low = _num(item.get("Lowest")) or px
+    avg = _num(item.get("Average"))
+    open_px = prev if prev > 0 else (avg if avg > 0 else px)
+    o, h, l, c = sanitize_ohlc(open_px, high, low, px)
+    shares = max(0, int(round(_num(item.get("TransactionVolume")))))
+    vol = int(round(shares / 1000.0)) if shares > 0 else 0
+    pct = round((px - prev) / prev * 100.0, 2) if prev > 0 else 0.0
+    chg = round(px - prev, 2) if prev > 0 else 0.0
+    return {
+        "stock_id": sid,
+        "stock_name": str(item.get("CompanyName") or ""),
+        "open": o,
+        "high": h,
+        "low": l,
+        "close": c,
+        "volume": vol,
+        "pct_change": pct,
+        "change": chg,
+        "yesterday_close": prev,
+        "avg_price": avg if avg > 0 else c,
+        "update_time": _format_tpex_esb_time(item.get("Time") or ""),
+        "is_realtime": True,
+        "source": "tpex_esb",
+        "as_of": as_of,
+    }
+
+
+def fetch_emerging_live_quote(
+    stock_id: str,
+    db_path: str = None,
+    *,
+    now=None,
+    db_hit: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """興櫃現價：櫃買 OpenAPI（今日列）→ Yahoo .TWO。不准走上市櫃 MIS。"""
+    now = now or taipei_now()
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return None
+    rt = fetch_emerging_tpex_quote(sid)
+    if rt and float(rt.get("close") or 0) > 0:
+        return reconcile_lookup_quote(rt, db_path, sid, db_hit=db_hit)
+    if is_lookup_trading_day(now):
+        y = fetch_yahoo_tw_quote(sid, db_path)
+        if y and float(y.get("close") or 0) > 0:
+            y = dict(y)
+            y["emerging"] = True
+            return reconcile_lookup_quote(y, db_path, sid, db_hit=db_hit)
+    return None
+
+
+def lookup_price_label(rt: Optional[Dict[str, Any]], *, emerging: bool = False, now=None) -> str:
+    """查股現價列大標：興櫃盤中＝現價；15:00 後＝收盤。上市櫃奇摩備援仍標收盤。"""
+    if not rt:
+        return "現價"
+    src = str(rt.get("source") or "").strip().lower()
+    if emerging or bool(rt.get("emerging")) or src in ("tpex_esb", "tpex_esb_openapi"):
+        from decision_card_signals import _in_board_session
+
+        return "現價" if _in_board_session(now or taipei_now(), emerging=True) else "收盤"
+    if src == "yahoo":
+        return "收盤"
+    t = str(rt.get("update_time") or "")
+    return "現價" if board_session_label(t, emerging=False) == "盤中" else "收盤"
+
+
 def fetch_lookup_quote(
     stock_id: str,
     market: str = "",
@@ -504,9 +711,11 @@ def fetch_lookup_quote(
     now=None,
     db_hit: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """查股用：MIS → Yahoo；交易日 MIS 空白必走外源，不拿過期庫當現價。"""
+    """查股用：興櫃→櫃買／Yahoo；上市櫃→MIS→Yahoo。交易日空白不拿過期庫當現價。"""
     now = now or taipei_now()
     sid = str(stock_id or "").strip()
+    if is_emerging_market(market, db_hit=db_hit):
+        return fetch_emerging_live_quote(sid, db_path, now=now, db_hit=db_hit)
     rt = fetch_mis_quote(sid, market)
     if rt and float(rt.get("close") or 0) > 0:
         return rt
@@ -616,6 +825,7 @@ def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
         out["avg_price"] = out["close"]
     out["is_live"] = True
     out["_live_time"] = sess.get("update_time") or rt.get("update_time") or ""
+    out["_live_source"] = str(rt.get("source") or "")
     return out
 
 

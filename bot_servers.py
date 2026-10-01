@@ -5634,9 +5634,13 @@ class WayneTelegramBot:
         except Exception:
             title = f"{html_escape(code)} {html_escape(name)}".strip()
         from tg_layout import html_move, html_qty, price_change
+        from wayne_db import listing_is_emerging
 
         rt = live_quote
         db_hit = hits[0] if hits else None
+        emerging = listing_is_emerging(db_hit) if db_hit else False
+        if not emerging:
+            emerging = str(mkt or "").strip().upper() in ("EM", "EMERGING", "ESB", "興櫃")
         if rt is None:
             try:
                 from live_quote import fetch_lookup_quote
@@ -5651,8 +5655,9 @@ class WayneTelegramBot:
             if chg is None:
                 chg = price_change(rt.get("close"), rt.get("pct_change"), rt.get("yesterday_close"))
             from tg_layout import headline_lines, html_price, kv_html_compact
+            from live_quote import format_quote_clock_line, lookup_price_label
 
-            price_label = "現價" if rt.get("source") != "yahoo" else "收盤"
+            price_label = lookup_price_label(rt, emerging=emerging)
             rows = [
                 title,
                 kv_html_compact(price_label, html_price(rt.get("close"))),
@@ -5661,14 +5666,13 @@ class WayneTelegramBot:
             if vol > 0:
                 rows.append(kv_html_compact("成交", html_qty(vol, signed=False)))
             if t:
-                if rt.get("source") == "yahoo":
-                    rows.append(
-                        html_escape(f"收盤　{t}　奇摩（16:30 融合後以官方庫為準）")
+                rows.append(
+                    html_escape(
+                        format_quote_clock_line(
+                            t, source=str(rt.get("source") or ""), emerging=emerging
+                        )
                     )
-                else:
-                    from live_quote import format_mis_clock_line
-
-                    rows.append(html_escape(format_mis_clock_line(t)))
+                )
             return headline_lines(*rows)
         close = hits[0].get("close") if hits else None
         pct = hits[0].get("pct_change") if hits else None
@@ -6165,8 +6169,7 @@ class WayneTelegramBot:
                 return None
 
         async def _fetch_mis():
-            if is_em:
-                return None
+            # 興櫃也抓現價（櫃買 OpenAPI／Yahoo .TWO）；不准再用上市櫃 MIS 空結果略過。
             try:
                 return await asyncio.wait_for(
                     asyncio.to_thread(self._prefetch_mis_quote, code, hits),
@@ -6292,7 +6295,7 @@ class WayneTelegramBot:
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
                 card = engine.get_decision_card(
-                    code, lookback=20, merge_live=not is_em, live_quote=None if is_em else live_rt
+                    code, lookback=20, merge_live=True, live_quote=live_rt
                 )
                 if isinstance(card, dict):
                     try:
@@ -6311,8 +6314,8 @@ class WayneTelegramBot:
                     return build_tape(
                         self.db_path,
                         code,
-                        merge_live=not is_em,
-                        live_quote=None if is_em else live_rt,
+                        merge_live=True,
+                        live_quote=live_rt,
                     ) or {}
                 except Exception:
                     return {}
