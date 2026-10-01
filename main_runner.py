@@ -649,13 +649,16 @@ class MainRunner:
                     self.fetcher.update_daily_market_data(ds)
                     time.sleep(0.4)
                 health = audit_import(self.db_path)
-            if health.get("problems"):
+            if not self._increment_ok(health):
+                # 只在日資料閘失敗時推提醒；月營收／除權息等軟缺不進 incomplete、不推告警
                 logger.warning("匯入今天異常：%s", format_audit_plain(health))
                 if notify:
                     try:
                         self.send_telegram_message("⚠️ " + format_audit_plain(health))
                     except Exception:
                         pass
+            elif health.get("problems"):
+                logger.info("日資料齊、其他待補（不擋融合／不推）：%s", format_audit_plain(health))
             elif health.get("history_issue_n"):
                 logger.info("今天日K正常，舊日缺邊：%s", format_audit_plain(health))
             else:
