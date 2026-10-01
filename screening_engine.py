@@ -752,9 +752,11 @@ class ScreeningEngine:
             em_as_of = str(row[0] or "").replace("-", "")[:8] if row and row[0] else ""
         except Exception:
             em_as_of = ""
+        # 興櫃窗上緣用 as_of（與上市櫃同一基準日）。不准用落後的 em_as_of
+        # 當「今日」去判 leave_zero，否則勝率會把舊日藍▲當成今日推播。
         if em_as_of:
             try:
-                sql, params = _window_sql("emerging_quotes", em_as_of)
+                sql, params = _window_sql("emerging_quotes", as_of)
                 edf = pd.read_sql_query(sql, conn, params=params)
             except Exception:
                 edf = pd.DataFrame()
@@ -762,7 +764,7 @@ class ScreeningEngine:
                 edf["date"] = edf["date"].astype(str).str.replace("-", "", regex=False)
                 for sid, g in edf.groupby("stock_id"):
                     g = g.reset_index(drop=True)
-                    if str(g["date"].iloc[-1] or "")[:8] != em_as_of:
+                    if str(g["date"].iloc[-1] or "")[:8] != as_of:
                         continue
                     key = str(sid)
                     frames[key] = g

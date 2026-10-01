@@ -18,9 +18,9 @@ EMPTY_MSG = "今天無勝率買點股票出現"
 NEXT_PAGE_LABEL = "下一個 15 檔"
 BTN_LABEL = "勝率買點"
 CALLBACK_PREFIX = "wr:"
-# 掃版本：藍▲紅框＝leave_zero_from_quote_df（與導航／壓力圖同一條；含雙綠脫離）。
-# 舊版走 screen_leave_zero_pick（更嚴的剛離零＋雷達閘）會漏圖上有標的檔。
-SCAN_KIND = "card_lz"
+# 掃版本：圖上今日藍▲紅框＝leave_zero_from_quote_df 且 _nav_trade_marks 最後一根仍畫買點。
+# 舊版 screen_leave_zero_pick／只認公式不認出圖，會推「公式剛離零但圖被 watch／賣點剝掉紅框」的檔。
+SCAN_KIND = "card_lz_paint"
 # 靜默對質 kind（與 button_silent_verify／live_judge 對齊；勝率不准混海選／剛脫離零）
 KIND_ROSTER = "winrate_buypoint"
 KIND_FILTER = "winrate_filter"
@@ -230,15 +230,31 @@ def pipeline_run_key(as_of: str) -> str:
     return f"{PIPELINE_KEY_PREFIX}-{day}"
 
 
+def _chart_paints_buy_mark_today(profit_df, card: Optional[Dict[str, Any]]) -> bool:
+    """壓力區／導航出圖最後一根是否畫藍▲紅框（含 card 剝 watch／no／賣點）。"""
+    if profit_df is None or len(profit_df) < 2:
+        return False
+    try:
+        from wayne_navigator import _nav_trade_marks
+
+        use_card = card if isinstance(card, dict) and not card.get("error") else None
+        buy_is, _sell_i = _nav_trade_marks(profit_df, use_card)
+        last = len(profit_df) - 1
+        return last in {int(i) for i in (buy_is or [])}
+    except Exception:
+        return False
+
+
 def scan_winrate_leave_zero(
     db_path: str,
     *,
     as_of: Optional[str] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    """盤後官方母體：上市／上櫃／興櫃，今日收盤柱＝藍▲紅框（leave_zero_from_quote_df）。
+    """盤後官方母體：上市／上櫃／興櫃，今日收盤圖會畫藍▲紅框者。
 
-    與導航／壓力圖買點標同一條公式；不准改黃金買點本身。盤中未收不當收。
-    不走 screen_leave_zero_pick 雷達閘（那條會濾掉圖上仍有藍▲的雙綠脫離）。
+    1) 柱公式＝leave_zero_from_quote_df（與導航買點標同一條；含雙綠脫離）
+    2) 出圖＝_nav_trade_marks 最後一根仍留買點（watch／no／直接減碼會剝紅框→不准進名單）
+    不准改黃金買點本身。盤中未收不當收。最後一根 date 必須＝as_of。
     """
     from decision_card_signals import (
         cal60_low_close_at,
@@ -247,7 +263,7 @@ def scan_winrate_leave_zero(
     )
     from screening_engine import ScreeningEngine
     from universe import is_screen_equity
-    from wayne_navigator import frame_for_cal60_profit
+    from wayne_navigator import NavigatorEngine, frame_for_cal60_profit
 
     engine = ScreeningEngine(db_path)
     day = _ymd(as_of) or _ymd(engine.get_latest_trading_date())
@@ -270,6 +286,11 @@ def scan_winrate_leave_zero(
     except Exception:
         types = {}
 
+    try:
+        nav = NavigatorEngine(db_path)
+    except Exception:
+        nav = None
+
     cleaned: List[Dict[str, Any]] = []
     for sid, df in (frames or {}).items():
         sid = str(sid or "").strip()
@@ -283,7 +304,8 @@ def scan_winrate_leave_zero(
         if not is_screen_equity(sid, name, types.get(sid)):
             continue
         last_day = _ymd(df["date"].iloc[-1] if "date" in df.columns else "")
-        if last_day and last_day != day:
+        # 興櫃／上市櫃一律要求最後一根＝基準日，避免 em_as_of 落後時拿舊日當今日。
+        if last_day != day:
             continue
         try:
             profit_df = frame_for_cal60_profit(df, db_path)
@@ -291,6 +313,21 @@ def scan_winrate_leave_zero(
             profit_df = df
         if not leave_zero_from_quote_df(profit_df):
             continue
+        card: Dict[str, Any] = {}
+        if nav is not None:
+            try:
+                card = (
+                    nav.get_decision_card(
+                        sid, lookback=20, merge_live=False, live_quote=None
+                    )
+                    or {}
+                )
+            except Exception:
+                card = {}
+        if not _chart_paints_buy_mark_today(profit_df, card):
+            continue
+        if isinstance(card, dict) and not card.get("error"):
+            name = str(card.get("stock_name") or card.get("name") or name or sid)
         try:
             profits = profit_pct_cal60_series(profit_df)
             profit_f = float(profits.iloc[-1])

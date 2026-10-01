@@ -72,7 +72,7 @@ def test_save_load_roster_and_empty_sentinel(tmp_path):
     assert rows[0]["stock_id"] == "2330"
     assert float(rows[0]["pick_close"]) == 900.0
     assert latest_roster_as_of(db) == "20260930"
-    assert str(rows[0]["quote_source"]).startswith("card_lz|")
+    assert str(rows[0]["quote_source"]).startswith("card_lz_paint|")
 
     n0 = save_winrate_roster(db, "20261001", [])
     assert n0 == 0
@@ -113,7 +113,7 @@ def test_resolve_button_rows_ensures_missing_roster(tmp_path, monkeypatch):
 
 
 def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
-    """藍▲＝leave_zero_from_quote_df；不走 screen_leave_zero_pick 雷達閘。"""
+    """藍▲＝leave_zero_from_quote_df＋出圖仍畫買點；不走 screen_leave_zero_pick。"""
     import pandas as pd
     from winrate_buypoint import scan_winrate_leave_zero
 
@@ -140,7 +140,12 @@ def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
             )
             return {"7892": df}, {"7892"}
 
+    class _Nav:
+        def get_decision_card(self, *a, **k):
+            return {"stock_name": "元鈦科", "buy_verdict": "buy"}
+
     monkeypatch.setattr("screening_engine.ScreeningEngine", lambda *a, **k: _Eng())
+    monkeypatch.setattr("wayne_navigator.NavigatorEngine", lambda *a, **k: _Nav())
     monkeypatch.setattr("universe.is_screen_equity", lambda *a, **k: True)
     monkeypatch.setattr(
         "wayne_navigator.frame_for_cal60_profit",
@@ -158,10 +163,109 @@ def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
         "decision_card_signals.cal60_low_close_at",
         lambda df, i: 100.0,
     )
+    monkeypatch.setattr(
+        "winrate_buypoint._chart_paints_buy_mark_today",
+        lambda df, card: True,
+    )
     day, rows = scan_winrate_leave_zero(db, as_of="20260930")
     assert day == "20260930"
     assert len(rows) == 1 and rows[0]["stock_id"] == "7892"
     assert float(rows[0]["close"]) == 102.0
+
+
+def test_scan_excludes_when_chart_strips_buy_mark(tmp_path, monkeypatch):
+    """公式 leave_zero 但出圖 watch／賣點剝掉今日藍▲紅框 → 不准進勝率名單。"""
+    import pandas as pd
+    from winrate_buypoint import scan_winrate_leave_zero
+
+    db = str(tmp_path / "strip.db")
+
+    class _Eng:
+        def get_latest_trading_date(self):
+            return "20261001"
+
+        def _load_profit_scan_frames(self, day):
+            dates = [f"202609{d:02d}" for d in range(1, 31)] + ["20261001"]
+            df = pd.DataFrame(
+                {
+                    "date": dates,
+                    "stock_id": ["6637"] * len(dates),
+                    "stock_name": ["醫影"] * len(dates),
+                    "close": [50.0] * (len(dates) - 1) + [50.1],
+                    "volume": [1000.0] * len(dates),
+                    "open": [50.0] * len(dates),
+                    "high": [50.0] * len(dates),
+                    "low": [50.0] * len(dates),
+                }
+            )
+            return {"6637": df}, set()
+
+    class _Nav:
+        def get_decision_card(self, *a, **k):
+            return {"stock_name": "醫影", "buy_verdict": "buy", "sell_action": "直接減碼"}
+
+    monkeypatch.setattr("screening_engine.ScreeningEngine", lambda *a, **k: _Eng())
+    monkeypatch.setattr("wayne_navigator.NavigatorEngine", lambda *a, **k: _Nav())
+    monkeypatch.setattr("universe.is_screen_equity", lambda *a, **k: True)
+    monkeypatch.setattr(
+        "wayne_navigator.frame_for_cal60_profit",
+        lambda df, db_path: df,
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.leave_zero_from_quote_df",
+        lambda df: True,
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.profit_pct_cal60_series",
+        lambda df: pd.Series([0.0] * (len(df) - 1) + [0.2]),
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.cal60_low_close_at",
+        lambda df, i: 50.0,
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint._chart_paints_buy_mark_today",
+        lambda df, card: False,
+    )
+    day, rows = scan_winrate_leave_zero(db, as_of="20261001")
+    assert day == "20261001"
+    assert rows == []
+
+
+def test_chart_paints_buy_mark_respects_nav_strip(monkeypatch):
+    """直接減碼／watch 會剝最後一根買點標。"""
+    import pandas as pd
+    from winrate_buypoint import _chart_paints_buy_mark_today
+
+    df = pd.DataFrame(
+        {
+            "date": ["20260930", "20261001"],
+            "close": [50.0, 50.1],
+            "open": [50.0, 50.0],
+            "high": [50.0, 50.2],
+            "low": [50.0, 49.9],
+            "volume": [1.0, 1.0],
+        }
+    )
+
+    def _marks(work, card):
+        last = len(work) - 1
+        if card and (
+            str(card.get("sell_action") or "") == "直接減碼"
+            or str(card.get("buy_verdict") or "") in ("watch", "no")
+        ):
+            return [], last if str(card.get("sell_action") or "") == "直接減碼" else None
+        return [last], None
+
+    monkeypatch.setattr("wayne_navigator._nav_trade_marks", _marks)
+    assert _chart_paints_buy_mark_today(df, {"buy_verdict": "buy"}) is True
+    assert _chart_paints_buy_mark_today(df, {"buy_verdict": "watch"}) is False
+    assert (
+        _chart_paints_buy_mark_today(
+            df, {"buy_verdict": "buy", "sell_action": "直接減碼"}
+        )
+        is False
+    )
 
 
 def test_pipeline_run_key_bp_prefix():
