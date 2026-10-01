@@ -92,10 +92,14 @@ def test_render_volume_zone_png_6274():
     db = get_db_path()
     work = official_work(load_official_ohlc("6274", db, 180))
     zone = find_volume_zone(work)
-    assert zone and zone["date"] == "20260806"
-    assert float(zone["high"]) == 1530.0
-    assert float(zone["low"]) == 1365.0
-    # 末柱隨庫滾動（9/24 高1530／9/30 高1550）；只鎖有官方收、不跟壓同高綁死
+    # 爆大量日隨近窗／新收滾動，只鎖結構：有區、高低合理、對得上該根官方柱
+    assert zone and str(zone["date"]).isdigit() and len(str(zone["date"])) == 8
+    assert float(zone["high"]) > float(zone["low"]) > 0
+    zi = int(zone["i"])
+    assert 0 <= zi < len(work)
+    assert str(work["date"].iloc[zi])[:8] == str(zone["date"])[:8]
+    assert abs(float(work["high"].iloc[zi]) - float(zone["high"])) < 1e-6
+    assert abs(float(work["low"].iloc[zi]) - float(zone["low"])) < 1e-6
     last = work.iloc[-1]
     assert str(last["date"])[:8] >= "20260924"
     assert float(last["close"]) > 0
@@ -160,20 +164,23 @@ def test_vol_zone_ignores_adjusted_card_ohlc():
     db = get_db_path()
     work = official_work(load_official_ohlc("2330", db, 180))
     zone = find_volume_zone(work)
-    assert zone and zone["date"] == "20260908"
-    assert float(zone["high"]) == 2505.0
-    assert float(zone["low"]) == 2460.0
-    # 假還原價：高改成非整數
+    assert zone and str(zone["date"]).isdigit()
+    z_date = str(zone["date"])[:8]
+    z_hi, z_lo = float(zone["high"]), float(zone["low"])
+    assert z_hi > z_lo > 0
+    # 假還原價：把爆大量日高低改成非整數
     fake = work.copy()
-    fake.loc[fake["date"] == "20260908", "high"] = 2497.637
-    fake.loc[fake["date"] == "20260908", "low"] = 2452.769
+    fake.loc[fake["date"].astype(str).str.replace("-", "").str[:8] == z_date, "high"] = z_hi - 7.363
+    fake.loc[fake["date"].astype(str).str.replace("-", "").str[:8] == z_date, "low"] = z_lo - 7.231
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "2330_vz.png")
         path = render_volume_zone_png("2330", "台積電", db, out, fake)
         assert path and os.path.isfile(path)
-    # 選區仍以官方為準
+    # 選區仍以官方為準（不吃假還原）
     z2 = find_volume_zone(official_work(load_official_ohlc("2330", db, 180)))
-    assert float(z2["high"]) == 2505.0
+    assert str(z2["date"])[:8] == z_date
+    assert abs(float(z2["high"]) - z_hi) < 1e-6
+    assert abs(float(z2["low"]) - z_lo) < 1e-6
 
 
 def test_vol_zone_bars_match_db_exactly():
@@ -243,7 +250,8 @@ def test_vol_zone_xaxis_matches_k_and_volume_index():
     db = get_db_path()
     work = official_work(load_official_ohlc("6274", db, 180))
     zone = find_volume_zone(work)
-    assert zone and zone["date"] == "20260806"
+    assert zone and str(zone["date"]).isdigit()
+    z_date = str(zone["date"])[:8]
     n_all = len(work)
     show_n = min(max(VOL_ZONE_BARS, 30), n_all)
     start = max(0, n_all - show_n)
@@ -251,7 +259,7 @@ def test_vol_zone_xaxis_matches_k_and_volume_index():
         start = max(0, int(zone["i"]) - 8)
     view = work.iloc[start:].reset_index(drop=True)
     spike_i = int(zone["i"]) - start
-    assert str(view["date"].iloc[spike_i]) == "20260806"
+    assert str(view["date"].iloc[spike_i])[:8] == z_date
     assert str(view["date"].iloc[-1]) == str(work["date"].iloc[-1])
     assert view["dt"].iloc[0] < view["dt"].iloc[-1]
     with tempfile.TemporaryDirectory() as tmp:
