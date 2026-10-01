@@ -161,7 +161,7 @@ def test_escape_wave_caution_is_not_exit_command():
     assert "研判：" not in html
     assert "沒過按鈕" not in html
     assert "怕錯過" not in html
-    assert "飆大盤中補充" in html
+    assert "飆大急推" in html
     assert "對原文用" in html
     assert "程式標籤（不是他原文）" not in html
     assert "官方加權盤中現價" not in html
@@ -246,3 +246,126 @@ def test_screenshot_old_replies_are_inbox_not_push():
     assert "幾乎全部賣光" in html
     assert "官方加權盤中現價" not in html
     assert "程式標籤" not in html
+
+
+def test_routine_new_post_never_calls_send(monkeypatch):
+    """一般新文／自回：進未讀匣路徑，不准急推。"""
+    from biaoke_alert import maybe_push_drop_alert
+
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda html: sent.append(html) or 1)
+    move = {"ok": False, "drop": 0, "pct": 0}
+    stats = maybe_push_drop_alert(
+        "",
+        [
+            {
+                "id": "r1",
+                "kind": "post",
+                "date": "2026-10-01",
+                "time": "10:00",
+                "text": "目前台股長線主流股族群目前就是散熱族群最為強勢。",
+            },
+            {
+                "id": "r2",
+                "kind": "reply",
+                "date": "2026-10-01",
+                "time": "10:05",
+                "text": "奇鋐、健策應該是第一批創新高的長線主流股。",
+            },
+        ],
+        move=move,
+    )
+    assert stats["pushed"] == 0
+    assert stats["routine"] >= 2
+    assert sent == []
+
+
+def test_emergency_exit_pushes_full_text(monkeypatch, tmp_path):
+    """出清急推：完整原文，不准截成 420 字。"""
+    from biaoke_alert import format_alert, maybe_push_drop_alert
+
+    long = "有矽光子股票下星期全面出清一股不留。" + ("續抱龍頭觀察位階量價結構。" * 80)
+    assert len(long) > 420
+    html = format_alert(
+        {"kind": "post", "date": "2026-10-01", "time": "11:00", "text": long},
+        {"push": True, "score": 4, "reasons": ["出清／逃命／先回收"]},
+        {"ok": False},
+    )
+    assert "飆大急推" in html
+    assert "全面出清一股不留" in html
+    assert long[:200] in html.replace("&", "") or "全面出清" in html
+    # HTML escape keeps CJK intact
+    assert "一股不留" in html
+    assert html.count("…") == 0 or len(long) > 3800
+
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+    db = str(tmp_path / "w.db")
+    stats = maybe_push_drop_alert(
+        db,
+        [{"id": "e1", "kind": "post", "date": "2026-10-01", "time": "11:00", "text": long}],
+        move={"ok": False, "drop": 0, "pct": 0},
+    )
+    assert stats["pushed"] == 1
+    assert sent and "一股不留" in sent[0]
+    assert "飆大急推" in sent[0]
+
+
+def test_marked_level_hit_pushes_full_text(monkeypatch, tmp_path):
+    """官方收盤柱碰到他已點過的大盤位 → 急推完整原文；同一位不重推。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db = str(tmp_path / "w.db")
+    ensure_biaoke_posts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    # 官方收：碰到 46747
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20260930','TWII',46600,46800,46500,46750)"
+    )
+    body = (
+        "台指期觀察：高點能穿刺 46747 才擺脫持續高檔震盪第一要件，"
+        "否則再測 45398。這段要完整推到手機。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p1','2026-09-28','09:00','post',?)",
+        (body,),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20260930",
+    )
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+
+    a = maybe_push_marked_level_hits(
+        db, now=datetime(2026, 9, 30, 15, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert a["pushed"] >= 1
+    assert sent
+    assert "官方碰到已點位" in sent[0]
+    assert "46747" in sent[0]
+    assert "完整推到手機" in sent[0]
+    assert body in sent[0] or "穿刺 46747" in sent[0]
+
+    sent.clear()
+    b = maybe_push_marked_level_hits(db)
+    assert b["pushed"] == 0
+    assert sent == []

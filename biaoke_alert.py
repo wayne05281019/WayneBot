@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""盤中／夜盤緊急：自己研判要不要跳過飆大鈕，直接推進偉權＋哥哥對話框。
+"""飆大急推 vs 一般抓文（2026-10-01 鎖死）。
 
-抓到的主文／自回一律先進未讀匣，按「飆大」才一口看。
-直推只留兩類：現在差不多到底／抄底窗口，或現在就要出清。
-如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點，都不直推。
+一般新文／自回：只進未讀匣＋飆大鈕彙整／融合，不准另推 Telegram。
+急推才推偉權＋哥哥兩支手機，且要完整原文：
+  1) 現在就要出清
+  2) 現在差不多到底／抄底窗口
+  3) 官方收盤柱碰到他已點過的位
+如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點＝一般，不急推。
 確認低點仍要主音疊輔助；單講趨勢向上、初步止訊號、右肩有守＝還不到確認。
-不是買訊。同一則不重覆推。社團不推。
+不是買訊。同一則／同一位不重覆推。社團不推。盤中未收不當收。
 """
 from __future__ import annotations
 
@@ -20,11 +23,21 @@ from tg_layout import html_escape
 logger = logging.getLogger("WayneBot.BiaokeAlert")
 
 DROP_POINTS = 700.0
+# Telegram HTML 上限 4096；預留標題行，急推正文要完整。
+_TG_BODY_MAX = 3800
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_alerts (
     post_id TEXT PRIMARY KEY,
     score INTEGER NOT NULL DEFAULT 0,
+    reasons TEXT NOT NULL DEFAULT '',
+    sent_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS biaoke_level_alerts (
+    alert_key TEXT PRIMARY KEY,
+    post_id TEXT NOT NULL DEFAULT '',
+    level REAL,
+    bar_date TEXT NOT NULL DEFAULT '',
     reasons TEXT NOT NULL DEFAULT '',
     sent_at TEXT NOT NULL DEFAULT ''
 );
@@ -360,7 +373,11 @@ def judge_emergency(
     prev_text: str = "",
     kind: str = "post",
 ) -> Dict[str, Any]:
-    """自己研判。回 push / score / reasons。直推只留出清／到底。"""
+    """自己研判新文／自回。回 push / score / reasons。
+
+    急推只認出清／到底（含確認末端）。一般新文 push=False → 只進未讀匣。
+    「官方碰到已點位」另走 maybe_push_marked_level_hits，不在這條。
+    """
     blob = str(text or "").strip()
     if not blob:
         return {"push": False, "score": 0, "reasons": []}
@@ -446,15 +463,52 @@ def _mark(db_path: str, post_id: str, score: int, reasons: Sequence[str]) -> Non
 
 
 def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, Any]) -> str:
-    """手機上只留他原文。加權現價、程式標籤不進對話框。"""
+    """急推：完整他原文到兩支手機。加權現價、程式標籤不進對話框。"""
     kind = "樓下" if (event.get("kind") or "") == "reply" else "主文"
+    body = str(event.get("text") or "").strip()
+    if len(body) > _TG_BODY_MAX:
+        body = body[: _TG_BODY_MAX - 1] + "…"
     bits = [
-        "<b>飆大盤中補充</b>",
+        "<b>飆大急推</b>",
         (
             f"他原文 {html_escape(str(event.get('date') or ''))} "
             f"{html_escape(str(event.get('time') or ''))} {kind}："
         ),
-        html_escape(_clip(str(event.get("text") or ""), 420)),
+        html_escape(body),
+        "對原文用。不是買訊。",
+    ]
+    return "\n".join(bits)
+
+
+def format_level_hit_alert(
+    *,
+    post_id: str,
+    date: str,
+    time_s: str,
+    kind: str,
+    text: str,
+    level: float,
+    bar_date: str,
+    note: str,
+) -> str:
+    """官方柱碰到他已點過的位：完整原文＋碰到說明。"""
+    body = str(text or "").strip()
+    if len(body) > _TG_BODY_MAX:
+        body = body[: _TG_BODY_MAX - 1] + "…"
+    face = "樓下" if kind == "reply" else "主文"
+    lv = f"{level:.0f}" if abs(level - round(level)) < 1e-6 else f"{level:g}"
+    bits = [
+        "<b>飆大急推·官方碰到已點位</b>",
+        (
+            f"官方 {html_escape(str(bar_date or ''))} "
+            f"碰到他自己點的 {html_escape(lv)}"
+            + (f"（{html_escape(note)}）" if note else "")
+        ),
+        (
+            f"他原文 {html_escape(str(date or ''))} "
+            f"{html_escape(str(time_s or ''))} {face}："
+        ),
+        html_escape(body),
         "對原文用。不是買訊。",
     ]
     return "\n".join(bits)
@@ -509,8 +563,8 @@ def maybe_push_drop_alert(
     move: Optional[Dict[str, Any]] = None,
     prev_text: str = "",
 ) -> Dict[str, Any]:
-    """ingest 抓到新文後呼叫。該推才推兩人對話框。"""
-    stats = {"checked": 0, "pushed": 0, "skipped": 0}
+    """ingest 抓到新文後：只有出清／到底急推；一般新文／自回不推。"""
+    stats = {"checked": 0, "pushed": 0, "skipped": 0, "routine": 0}
     rows = [dict(e) for e in (events or []) if e.get("text")]
     if not rows:
         return stats
@@ -532,6 +586,7 @@ def maybe_push_drop_alert(
             kind=str(ev.get("kind") or "post"),
         )
         if not judged.get("push"):
+            stats["routine"] += 1
             continue
         html = format_alert(ev, judged, mkt if isinstance(mkt, dict) else {})
         sent = _send_family(html)
@@ -546,6 +601,212 @@ def maybe_push_drop_alert(
                 judged.get("reasons"),
                 sent,
             )
+    return stats
+
+
+def _level_already(db_path: str, alert_key: str) -> bool:
+    if not db_path or not alert_key:
+        return False
+    _ensure(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM biaoke_level_alerts WHERE alert_key=?", (alert_key,)
+        ).fetchone()
+        return bool(row)
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
+def _mark_level(
+    db_path: str,
+    alert_key: str,
+    *,
+    post_id: str,
+    level: float,
+    bar_date: str,
+    reasons: Sequence[str],
+) -> None:
+    if not db_path or not alert_key:
+        return
+    _ensure(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO biaoke_level_alerts"
+            "(alert_key, post_id, level, bar_date, reasons, sent_at) "
+            "VALUES(?,?,?,?,?,datetime('now'))",
+            (
+                alert_key,
+                str(post_id or ""),
+                float(level),
+                str(bar_date or ""),
+                "／".join(reasons)[:400],
+            ),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.debug("位階急推記號寫不進", exc_info=True)
+    finally:
+        conn.close()
+
+
+def _last_official_twii(db_path: str) -> Optional[Dict[str, Any]]:
+    if not db_path:
+        return None
+    try:
+        from trading_calendar import is_official_daily_bar
+    except Exception:
+        return None
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        rows = conn.execute(
+            """
+            SELECT date, open, high, low, close FROM index_daily
+            WHERE symbol IN ('TWII','^TWII')
+              AND high IS NOT NULL AND low IS NOT NULL
+            ORDER BY date DESC LIMIT 8
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    for raw_d, o, h, lo, c in rows:
+        day = str(raw_d or "").replace("-", "")[:8]
+        if not day or not is_official_daily_bar(day):
+            continue
+        try:
+            return {
+                "date": day,
+                "open": float(o) if o is not None else None,
+                "high": float(h),
+                "low": float(lo),
+                "close": float(c) if c is not None else None,
+            }
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _load_marked_index_posts(
+    db_path: str, *, lookback_days: int = 90
+) -> List[Dict[str, Any]]:
+    """他點過的大盤位＋原文。路人／社團不算。"""
+    if not db_path:
+        return []
+    try:
+        from biaoke_walk import extract_index_levels
+    except Exception:
+        return []
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    floor = (datetime.now(ZoneInfo("Asia/Taipei")) - timedelta(days=lookback_days)).strftime(
+        "%Y-%m-%d"
+    )
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, date, time, kind, text FROM biaoke_posts
+            WHERE IFNULL(kind,'post') != 'bystander'
+              AND date >= ?
+              AND IFNULL(text,'') != ''
+            ORDER BY date DESC, time DESC
+            """,
+            (floor,),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    out: List[Dict[str, Any]] = []
+    for pid, day, hm, kind, text in rows:
+        levels = extract_index_levels(str(text or ""))
+        if not levels:
+            continue
+        out.append(
+            {
+                "post_id": str(pid or ""),
+                "date": str(day or ""),
+                "time": str(hm or ""),
+                "kind": str(kind or "post"),
+                "text": str(text or ""),
+                "levels": levels,
+            }
+        )
+    return out
+
+
+def maybe_push_marked_level_hits(
+    db_path: str,
+    *,
+    now: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """官方已收柱碰到他已點過的大盤位 → 急推完整原文到兩人。
+
+    未收盤不當收。一般新文不走這條。同一 (post, level, bar_date) 不重推。
+    """
+    stats = {"checked": 0, "pushed": 0, "skipped": 0}
+    if not db_path:
+        return stats
+    bar = _last_official_twii(db_path)
+    if not bar:
+        return {**stats, "skipped": "no_official"}
+    bar_ymd = str(bar["date"])
+    hi = float(bar["high"])
+    lo = float(bar["low"])
+    posts = _load_marked_index_posts(db_path)
+    for post in posts:
+        post_day = str(post.get("date") or "").replace("-", "")[:8]
+        # 他點位那天或之後才對質；當日柱若未收不算，已收才進 bar。
+        if post_day and post_day > bar_ymd:
+            continue
+        for hit in post.get("levels") or []:
+            try:
+                level = float(hit.get("level"))
+            except (TypeError, ValueError):
+                continue
+            if not (lo <= level <= hi):
+                continue
+            stats["checked"] += 1
+            pid = str(post.get("post_id") or "")
+            key = f"idx:{pid}:{level:g}:{bar_ymd}"
+            if _level_already(db_path, key):
+                stats["skipped"] += 1
+                continue
+            role = str(hit.get("role") or "點位")
+            html = format_level_hit_alert(
+                post_id=pid,
+                date=str(post.get("date") or ""),
+                time_s=str(post.get("time") or ""),
+                kind=str(post.get("kind") or "post"),
+                text=str(post.get("text") or ""),
+                level=level,
+                bar_date=bar_ymd,
+                note=f"加權{role}",
+            )
+            sent = _send_family(html)
+            if sent or os.environ.get("PYTEST_CURRENT_TEST"):
+                _mark_level(
+                    db_path,
+                    key,
+                    post_id=pid,
+                    level=level,
+                    bar_date=bar_ymd,
+                    reasons=[f"官方{bar_ymd}碰到{level:g}", role],
+                )
+                stats["pushed"] += 1
+                logger.info(
+                    "飆大位階急推 post=%s level=%s bar=%s sent=%s",
+                    pid,
+                    level,
+                    bar_ymd,
+                    sent,
+                )
     return stats
 
 
