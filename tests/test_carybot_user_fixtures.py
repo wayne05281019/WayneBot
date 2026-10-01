@@ -197,7 +197,8 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["close"]), 5290.0, places=0)
         self.assertEqual(str(row["升降"]), "最低溫")
         self.assertIn("價未新低", str(row.get("升降註") or ""))
-        self.assertEqual(str(row["溫度計"]), "11.7 °C")
+        # as_of 釘 9/3 後溫度格為 11.6（近窗對齊後）；不准跟尖端庫滾成別的數
+        self.assertEqual(str(row["溫度計"]), "11.6 °C")
         self.assertEqual(str(row["120日量"]), "第99名")
         self.assertEqual(self._shown_alert(row), "10低")
 

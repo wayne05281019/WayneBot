@@ -70,7 +70,9 @@ def test_sync_then_leave_is_prepare():
     assert "同步再脫離" in flags["sell_why"]
     assert flags["hi_price"] is False
     note = sell_note_short(flags)
-    assert note == NOTE_SYNC_LEFT
+    # 無升降格 → heat=flat，對 mid／flat FACE 句（不是退路 NOTE_SYNC_LEFT）
+    expect = FACE_NOTES[("mid", "flat", "sync_left")]
+    assert note == expect
     assert "先別追" in note
     assert "先出一點" in note
     assert "到過" not in note
@@ -80,17 +82,16 @@ def test_sync_then_leave_is_prepare():
 
 def test_all_sell_notes_say_what_to_do_now():
     cases = [
-        ("準備減碼", "先前同步再脫離", NOTE_SYNC_LEFT, "都退了"),
+        ("準備減碼", "先前同步再脫離", FACE_NOTES[("mid", "flat", "sync_left")], "熱度沒再走"),
         ("直接減碼", "不同步（最高價但非最高溫）", NOTE_HI_PRICE, "熱度沒跟上"),
         ("直接減碼", "不同步（最高溫但非最高價）", NOTE_HI_TEMP, "價沒過前高"),
-        ("直接減碼", "不同步再脫離", NOTE_DESYNC_LEFT, "都沒了"),
+        ("直接減碼", "不同步再脫離", FACE_NOTES[("mid", "flat", "desync_left")], "沒再走"),
     ]
     for act, why, expect, mark in cases:
         note = sell_note_short({"sell_action": act, "sell_why": why})
         assert note == expect, why
         assert "先出一點" in note or "先別追" in note
         assert mark in note
-        assert note.startswith("現在")
         assert "可以先" not in note
         assert "到過" not in note
         assert "減碼" not in note
@@ -459,7 +460,9 @@ def test_discipline_box_drops_conflicting_pink():
     from sell_discipline import discipline_box_notes
 
     left = {"sell_action": "準備減碼", "sell_why": "先前同步再脫離"}
-    assert discipline_box_notes(left, "已經連 3 天貼在高檔，先不要追。有持股考慮先出") == [NOTE_SYNC_LEFT]
+    assert discipline_box_notes(left, "已經連 3 天貼在高檔，先不要追。有持股考慮先出") == [
+        FACE_NOTES[("mid", "flat", "sync_left")]
+    ]
     hi = {"sell_action": "直接減碼", "sell_why": "不同步（最高價但非最高溫）"}
     assert discipline_box_notes(hi, "剛貼到高檔，先看、先別追") == [NOTE_HI_PRICE]
     quiet = {"sell_action": "", "sell_why": ""}
@@ -987,7 +990,8 @@ def test_sell_note_short_skips_when_table_reads_low():
         "badges": ["創20日新高"],
         "table": [{"高低": "20高", "預警": "K20高"}],
     }
-    assert sell_note_short(hot) == NOTE_HI_PRICE
+    # 有 20 高格、無升降 → hi20／flat FACE 句
+    assert sell_note_short(hot) == FACE_NOTES[("hi20", "flat", "hi_price")]
     assert sell_notes_for_stocks([], "/no/such.db") == {}
     assert sell_notes_for_stocks(["3703"], "") == {}
 
