@@ -951,6 +951,10 @@ def test_catch_up_skips_morning_on_as_of_day(monkeypatch):
         def run_evening_screen(self, **kw):
             calls.append(("evening", kw))
 
+        def run_winrate_buypoint(self, **kw):
+            calls.append(("winrate", kw))
+            return True
+
         def run_nightly_open_check(self, **kw):
             calls.append(("open_check", kw))
             return True
@@ -961,9 +965,14 @@ def test_catch_up_skips_morning_on_as_of_day(monkeypatch):
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date", lambda *_a, **_k: "20260909"
     )
+    # 本測只驗基準日當日不提早寄早報；名單現行 → 17:00 不觸發勝率補掃。
+    monkeypatch.setattr(
+        "winrate_buypoint.roster_is_current", lambda *_a, **_k: True
+    )
     now = datetime(2026, 9, 9, 17, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     main_mod.catch_up_missed_jobs(now)
     kinds = [c[0] for c in calls]
     assert "morning" not in kinds
     assert "fuse" in kinds
     assert "midday" not in kinds
+    assert "winrate" not in kinds
