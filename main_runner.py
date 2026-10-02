@@ -1581,11 +1581,13 @@ class MainRunner:
         return True
 
     def run_winrate_buypoint(self, skip_if_done: bool = False, notify: bool = True) -> bool:
-        """21:00 勝率買點：盤後 leave_zero 名單落檔並推播壓力區＋高低卡。"""
+        """21:00 勝率買點：盤後 leave_zero（藍▲）名單落檔並推播壓力區＋高低卡。"""
         from import_health import latest_complete_quote_date
         from tw_holidays import closed_tw_session
         from winrate_buypoint import (
             EMPTY_MSG,
+            pipeline_run_key,
+            roster_is_current,
             save_winrate_roster,
             scan_winrate_leave_zero,
         )
@@ -1608,26 +1610,27 @@ class MainRunner:
             return True
 
         as_of = latest_complete_quote_date(self.db_path)
-        key = f"winrate-{as_of or 'none'}"
+        key = pipeline_run_key(as_of or "none")
         if skip_if_done and as_of:
             status = self.pipeline_status(key)
-            if status == "success":
-                logger.info("勝率買點 %s 已寄過，略過。", key)
+            # 舊鍵 winrate-{as_of} 或掃版本未對齊藍▲ → 不略過，重掃並可再推。
+            if status == "success" and roster_is_current(self.db_path, as_of):
+                logger.info("勝率買點 %s 已寄過且名單現行，略過。", key)
                 return True
-            if status == "computed" and not notify:
+            if status == "computed" and not notify and roster_is_current(self.db_path, as_of):
                 logger.info("勝率買點 %s 已算出（不寄），略過。", key)
                 return True
         if not as_of:
             logger.error("無完整交易日可寫勝率買點")
             return False
-        logger.info("🎯 21:00 勝率買點掃 leave_zero，基準日 %s", as_of)
+        logger.info("🎯 21:00 勝率買點掃 leave_zero（藍▲），基準日 %s", as_of)
         try:
             day, rows = scan_winrate_leave_zero(self.db_path, as_of=as_of)
         except Exception as e:
             logger.error("勝率買點掃描失敗: %s", e, exc_info=True)
             return False
         as_of = day or as_of
-        key = f"winrate-{as_of}"
+        key = pipeline_run_key(as_of)
         n = save_winrate_roster(self.db_path, as_of, rows)
         logger.info("勝率買點名單 %s 檔 as_of=%s", n, as_of)
         try:
@@ -1638,6 +1641,21 @@ class MainRunner:
             logger.debug("勝率買點靜默落檔略過", exc_info=True)
         sent_ok = True
         if notify:
+            # 舊鍵 winrate-{as_of} 曾錯推（公式有剛離零但圖無藍▲紅框）→ 先更正再寄正確名單。
+            old_key = f"winrate-{as_of}"
+            if self.pipeline_status(old_key) == "success" and self.pipeline_status(key) != "success":
+                day_disp = (
+                    f"{as_of[4:6]}/{as_of[6:8]}" if len(str(as_of)) == 8 else str(as_of)
+                )
+                fix_msg = (
+                    f"更正：稍早「勝率買點」混進圖上沒有今日藍▲紅框的檔。"
+                    f"以下改寄基準日 {day_disp} 正確名單"
+                    f"（只含收盤圖會畫藍▲紅框；共 {n} 檔）。"
+                )
+                try:
+                    self._broadcast_family(fix_msg)
+                except Exception:
+                    logger.debug("勝率買點更正說明寄出略過", exc_info=True)
             ids = self._family_chat_ids()
             dests = ids or ([str(self.chat_id)] if getattr(self, "chat_id", None) else [])
             dests = [d for d in dests if d]
@@ -1667,9 +1685,9 @@ class MainRunner:
             logger.info("勝率買點不寄 Telegram（notify=0），只寫名單")
 
         if notify and sent_ok:
-            self._mark_pipeline("success", f"winrate n={n}", run_date=key)
+            self._mark_pipeline("success", f"winrate-bp n={n}", run_date=key)
         elif not notify:
-            self._mark_pipeline("computed", "winrate notify-off", run_date=key)
+            self._mark_pipeline("computed", "winrate-bp notify-off", run_date=key)
         else:
             logger.error("勝率買點已算出但 Telegram 沒送到，不標已寄過 %s", key)
         return bool((not notify) or sent_ok)

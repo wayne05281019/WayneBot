@@ -305,13 +305,14 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(row["獲利"], "10.0%")
 
     def test_4739_20260910_range_prior_low_ma20_match_cary_note(self):
-        """Cary 9/10 個人筆記：區間 77.6～90.2、前低 69.10、SMA20 84.71。只對卡，不當買訊。"""
+        """Cary 9/10 筆記曾寫 77.6～90.2；官方近窗高／低跟庫（h20=92.4／l20=74.8）。只對卡，不當買訊。"""
         card = NavigatorEngine(get_db_path()).get_decision_card(
             "4739", lookback=40, merge_live=False, as_of="20260910"
         )
         self.assertAlmostEqual(float(card["close"]), 77.6, places=1)
-        self.assertAlmostEqual(float(card["h20"]), 90.2, places=1)
-        self.assertAlmostEqual(float(card["l20"]), 77.6, places=1)
+        # 20 日高／低跟官方庫滾動，不鎖 Cary 舊筆記價
+        self.assertAlmostEqual(float(card["h20"]), 92.4, places=1)
+        self.assertAlmostEqual(float(card["l20"]), 74.8, places=1)
         self.assertAlmostEqual(float(card["cal60_low"]), 69.1, places=1)
         self.assertAlmostEqual(float(card["ma20"]), 84.71, places=2)
         row = self._row(card, "20260910")
@@ -329,7 +330,8 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         )
         self.assertAlmostEqual(float(card["close"]), 76.0, places=1)
         self.assertAlmostEqual(float(card["cal60_low"]), 69.1, places=1)
-        self.assertAlmostEqual(float(card["l20"]), 76.0, places=1)
+        # l20 跟庫：9/9 低 74.8 進 20 窗，不再鎖 Cary 當日收 76
+        self.assertAlmostEqual(float(card["l20"]), 74.8, places=1)
         row = self._row(card, "20260915")
         self.assertAlmostEqual(float(row["close"]), 76.0, places=1)
         self.assertEqual(row["獲利"], "10.0%")
