@@ -20,12 +20,13 @@ BTN_LABEL = "勝率買點"
 CALLBACK_PREFIX = "wr:"
 # 掃版本：圖上今日藍▲紅框＝leave_zero_from_quote_df 且 _nav_trade_marks 最後一根仍畫買點。
 # 舊版 screen_leave_zero_pick／只認公式不認出圖，會推「公式剛離零但圖被 watch／賣點剝掉紅框」的檔。
-# ex4＝buy_exclude_v4（#481 結構＋#483 當天額＜500萬／距20高＜5%）。換鍵→roster_is_current
-# 失敗→按鈕／開機 catch-up 強制重掃；否則合進三刀後仍吃合進前寫死的舊名單（話筒仍約 70+）。
-SCAN_KIND = "card_lz_paint_ex4"
+# ex5＝buy_exclude_v5（#481 結構＋當天額＜500萬；拿掉 live near_h20）＋**AI 生態系 ONLY**。
+# 換鍵→roster_is_current 失敗→按鈕／開機 catch-up 強制重掃（同 #484 教訓）。
+SCAN_KIND = "card_lz_paint_ex5"
 # 靜默對質 kind（與 button_silent_verify／live_judge 對齊；勝率不准混海選／剛脫離零）
 KIND_ROSTER = "winrate_buypoint"
 KIND_FILTER = "winrate_filter"
+KIND_NON_AI_CTRL = "winrate_non_ai_ctrl"  # 非 AI 生態系靜默對照；不進推播／按鈕
 # pipeline_runs 鍵前綴；換鍵＝今日可再推一次（#472 晚於 21:00 上線後補掃）
 PIPELINE_KEY_PREFIX = "winrate-bp"
 
@@ -169,11 +170,11 @@ def load_winrate_roster(db_path: str, as_of: str) -> List[Dict[str, Any]]:
                 "quote_source": str(src or ""),
             }
         )
-    # 電子＋AI 寬鏈優先（其他產業仍保留）；按鈕／推播／翻頁同一套順序
+    # AI 生態系 ONLY（生技／醫療／傳產／非 AI 刪）；按鈕／推播／翻頁同一套
     try:
-        from winrate_ai_priority import sort_winrate_rows_ai_first
+        from winrate_ai_priority import filter_winrate_rows_ai_only
 
-        return sort_winrate_rows_ai_first(out, db_path)
+        return filter_winrate_rows_ai_only(out, db_path)
     except Exception:
         return out
 
@@ -262,7 +263,8 @@ def scan_winrate_leave_zero(
 
     1) 柱公式＝leave_zero_from_quote_df（與導航買點標同一條；含雙綠脫離）
     2) 出圖＝_nav_trade_marks 最後一根仍留買點（watch／no／直接減碼會剝紅框→不准進名單）
-    3) 另套 buy_exclude（與剛脫離零／導航藍▲ paint 同一套）：鎖跌停／結構破底／量縮等
+    3) 另套 buy_exclude（與剛脫離零／導航藍▲ paint 同一套）：鎖跌停／結構破底／量縮／當天額等
+    4) AI 生態系＋電機機械＋光電 ONLY（生技／醫療／傳產刪）
     不准改黃金買點本身。盤中未收不當收。最後一根 date 必須＝as_of。
     """
     from decision_card_signals import (
@@ -372,11 +374,17 @@ def scan_winrate_leave_zero(
         cleaned = filter_leave_zero_rows(cleaned, frames or {}, db_path=db_path)
     except Exception:
         pass
-    # 電子＋AI 用得到寬鏈排前面；其他產業仍保留排後（不准只推電子；不改 leave_zero）
+    # AI 生態系 ONLY：非 AI（生技／醫療／傳產等）刪除不推；對照臂靜默記
     try:
-        from winrate_ai_priority import sort_winrate_rows_ai_first
+        from winrate_ai_priority import partition_winrate_ai_rows
 
-        cleaned = sort_winrate_rows_ai_first(cleaned, db_path)
+        ai_rows, non_ai = partition_winrate_ai_rows(cleaned, db_path)
+        if non_ai:
+            try:
+                silent_remember_non_ai_ctrl(db_path, day, non_ai)
+            except Exception:
+                logger.debug("勝率非 AI 對照落檔略過", exc_info=True)
+        cleaned = ai_rows
     except Exception:
         cleaned.sort(key=lambda r: str(r.get("stock_id") or ""))
     return day, cleaned
@@ -742,6 +750,45 @@ def silent_remember_filter(
                 as_of=day,
                 pick=roster_day or "rule",
                 src="winrate_filter",
+            )
+            or 0
+        )
+    except Exception:
+        return 0
+
+
+def silent_remember_non_ai_ctrl(
+    db_path: str,
+    as_of: str,
+    rows: Sequence[Dict[str, Any]],
+) -> int:
+    """非 AI 生態系靜默對照（live 已刪不推）。空不算。失敗吞掉。不准改買訊。"""
+    day = _ymd(as_of)
+    payload: List[Dict[str, Any]] = []
+    for it in rows or []:
+        if not isinstance(it, dict):
+            continue
+        sid = str(it.get("stock_id") or it.get("code") or "").strip()
+        if not sid or sid == "__empty__":
+            continue
+        row = dict(it)
+        row["stock_id"] = sid
+        row["bucket_key"] = KIND_NON_AI_CTRL
+        row["why"] = "non_ai_ctrl"
+        payload.append(row)
+    if not day or not payload:
+        return 0
+    try:
+        from judge_tape import remember_rows
+
+        return int(
+            remember_rows(
+                db_path,
+                KIND_NON_AI_CTRL,
+                payload,
+                as_of=day,
+                pick="rule",
+                src="winrate_non_ai",
             )
             or 0
         )

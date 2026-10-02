@@ -209,9 +209,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "kinds": ("buy_exclude",),
         "class": CLASS_SCREEN,
         "status": "external",
-        "pipe": "buy_exclude_verify lz_raw／lz_v2／… → night_tick；paint 同源 v4（當天額＋距20高）",
+        "pipe": "buy_exclude_verify lz_raw／lz_v2／…／lz_ctrl_near_h20 → night_tick；paint＝v5（結構＋當天額；live 不含 near_h20）；勝率名單另砍非 AI",
         "window": "前瞻 1／5／10 日官方收；母體收<20000＋興櫃；分價層落檔",
-        "note": "靜默對質；v3 過閘才准擴 paint；不准改黃金買點公式",
+        "note": "靜默對質；near_h20／非 AI 只當對照臂；不准改黃金買點公式",
     },
     {
         "btn": "AI倉",

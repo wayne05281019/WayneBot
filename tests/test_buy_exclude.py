@@ -157,6 +157,8 @@ def test_sample_exclude_stats_shape():
     assert st["n_leave_zero"] == 2
     assert st["n_excluded"] >= 1
     assert isinstance(st["by_reason"], dict)
+    assert isinstance(st["by_silent_control"], dict)
+    assert "silent_ctrl_kind" in st
 
 
 def test_screening_engine_imports_exclude_hook():
@@ -185,9 +187,9 @@ def test_thin_volume_ok_when_at_least_half_avg():
     assert REASON_THIN_VOL not in buy_exclude_reasons(df)
 
 
-def test_kind_is_v4():
-    assert KIND_EXCLUDE == "buy_exclude_v4"
-    assert "v5" in KIND_EXCLUDE_NEXT
+def test_kind_is_v5_live_without_near_h20():
+    assert KIND_EXCLUDE == "buy_exclude_v5"
+    assert "v6" in KIND_EXCLUDE_NEXT
     assert DAY_TURNOVER_K_MIN == 5000.0
     assert NEAR_H20_MAX == 0.05
 
@@ -216,23 +218,30 @@ def test_day_turnover_missing_column_not_excluded():
     assert REASON_DAY_TURNOVER_LOW not in buy_exclude_reasons(df)
 
 
-def test_near_h20_excludes():
+def test_near_h20_silent_only_not_live_exclude():
+    """距20高＜5%：函式仍可算；live 不排除；靜默對照臂有記。"""
+    from buy_exclude import silent_control_reasons
+
     # 近 20 高在 100，收 97 → 距高 3% ＜5%
     closes = [100.0] * 20 + [97.0]
     df = _ohlc_df(closes)
     df["turnover_k"] = [20000.0] * len(df)
     assert is_near_h20(df) is True
-    assert REASON_NEAR_H20 in buy_exclude_reasons(df)
-    assert should_exclude_buy(df) is True
+    assert REASON_NEAR_H20 not in buy_exclude_reasons(df)
+    assert should_exclude_buy(df) is False
+    assert REASON_NEAR_H20 in silent_control_reasons(df)
 
 
 def test_near_h20_ok_when_room_at_least_5pct():
+    from buy_exclude import silent_control_reasons
+
     # 高 100、收 94 → 距高約 6.4% ≥5%
     closes = [100.0] * 20 + [94.0]
     df = _ohlc_df(closes)
     df["turnover_k"] = [20000.0] * len(df)
     assert is_near_h20(df) is False
     assert REASON_NEAR_H20 not in buy_exclude_reasons(df)
+    assert REASON_NEAR_H20 not in silent_control_reasons(df)
 
 
 def test_paint_indices_drop_excluded_bars():

@@ -11,6 +11,7 @@ import pandas as pd
 from buy_exclude_verify import (
     CLOSE_CAP,
     KIND,
+    TAG_CTRL_NEAR_H20,
     TAG_RAW,
     TAG_V2,
     TAG_V3_CLOSE_UP,
@@ -161,6 +162,19 @@ def test_catalog_has_buy_exclude():
     assert "buy_exclude" in kinds
 
 
-def test_tag_constants_cover_v3():
+def test_tag_constants_cover_v3_and_near_h20_ctrl():
     assert TAG_RAW in TAGS and TAG_V2 in TAGS
     assert TAG_V3_CLOSE_UP in TAGS and TAG_V3_RANGE in TAGS
+    assert TAG_CTRL_NEAR_H20 in TAGS
+
+
+def test_catalog_near_h20_is_silent_ctrl_not_live():
+    from button_silent_verify import BUTTON_CATALOG
+
+    row = next(r for r in BUTTON_CATALOG if "buy_exclude" in (r.get("kinds") or ()))
+    pipe = str(row.get("pipe") or "")
+    note = str(row.get("note") or "")
+    assert "lz_ctrl_near_h20" in pipe
+    assert "near_h20" in note or "對照" in note
+    assert "不含 near_h20" in pipe or "live 不含" in pipe
+    assert "非 AI" in pipe or "非 AI" in note
