@@ -407,6 +407,58 @@ def test_catch_up_midday_from_1246(monkeypatch, recorder):
     assert "midday" in [c[0] for c in recorder.calls]
 
 
+def test_catch_up_winrate_after_2100(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261001"
+    )
+    monkeypatch.setattr("winrate_buypoint.roster_is_current", lambda *_a, **_k: True)
+    now = datetime(2026, 10, 2, 21, 5, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    kinds = [c[0] for c in recorder.calls]
+    assert "winrate" in kinds
+    wr = [c for c in recorder.calls if c[0] == "winrate"][0]
+    assert wr[1]["skip_if_done"] is True
+    assert wr[1]["notify"] is True
+
+
+def test_catch_up_winrate_stale_roster_before_2100(monkeypatch, recorder):
+    """錯推更正／部署後：名單不是現行藍▲掃 → 中午重開也立刻補寄。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261001"
+    )
+    monkeypatch.setattr("winrate_buypoint.roster_is_current", lambda *_a, **_k: False)
+    now = datetime(2026, 10, 2, 12, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    kinds = [c[0] for c in recorder.calls]
+    assert "winrate" in kinds
+    wr = [c for c in recorder.calls if c[0] == "winrate"][0]
+    assert wr[1]["notify"] is True
+
+
+def test_catch_up_skips_winrate_when_roster_current_before_2100(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261001"
+    )
+    monkeypatch.setattr("winrate_buypoint.roster_is_current", lambda *_a, **_k: True)
+    now = datetime(2026, 10, 2, 12, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    assert "winrate" not in [c[0] for c in recorder.calls]
+
+
 def test_watchdog_retry_skips_release(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
