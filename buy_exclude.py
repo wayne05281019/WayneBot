@@ -18,10 +18,14 @@ REASON_BEAR_BREAK_LOW = "bear_break_lows"
 REASON_SAME_BAR_SELL = "same_bar_sell"
 REASON_SAME_BAR_WARN = "same_bar_warn"
 REASON_THIN_VOL = "thin_vol"  # 量 < 近20日均量
+REASON_DAY_TURNOVER_LOW = "day_turnover_low"  # 訊號當天成交額 < 500萬
+
+# 官方 turnover_k＝千元；5000＝500萬新台幣（使用者 2026-10-02 定案：當天額，不是均額）
+DAY_TURNOVER_K_MIN = 5000.0
 
 # 靜默對質 kind（與勝率／剛脫離零分開記；不准混勝率）
-KIND_EXCLUDE = "buy_exclude_v2"  # v1＋量縮；銅板～超高價＋興櫃對質過
-KIND_EXCLUDE_NEXT = "buy_exclude_v3_candidate"  # 再生：收紅／收在振幅中上半等
+KIND_EXCLUDE = "buy_exclude_v3"  # v2＋當天成交額＜500萬
+KIND_EXCLUDE_NEXT = "buy_exclude_v4_candidate"  # 再生：距前高空間等
 
 
 def _f(v: Any) -> Optional[float]:
@@ -293,6 +297,34 @@ def is_thin_volume(df, i: int = -1, *, mult: float = 0.5) -> bool:
     return bool(v < base * float(mult))
 
 
+def is_low_day_turnover(
+    df,
+    i: int = -1,
+    *,
+    min_turnover_k: float = DAY_TURNOVER_K_MIN,
+) -> bool:
+    """訊號當天成交額過低：官方 turnover_k（千元）＜ min_turnover_k。
+
+    預設 5000＝500 萬新台幣。是**當日額**，不是近 20 日均額。
+    缺 turnover_k 欄／當日額算不出＝不排除（不准假額）。興櫃／上市櫃同一套。
+    """
+    if df is None or "turnover_k" not in getattr(df, "columns", []):
+        return False
+    idx = i if i >= 0 else len(df) + i
+    if idx < 0:
+        return False
+    try:
+        import pandas as pd
+
+        turn = pd.to_numeric(df["turnover_k"], errors="coerce")
+        t = _f(turn.iloc[idx])
+    except Exception:
+        return False
+    if t is None or t < 0:
+        return False
+    return bool(t < float(min_turnover_k))
+
+
 def buy_exclude_reasons(
     df,
     i: int = -1,
@@ -315,6 +347,8 @@ def buy_exclude_reasons(
         out.append(why)
     if is_thin_volume(df, i, mult=0.5):
         out.append(REASON_THIN_VOL)
+    if is_low_day_turnover(df, i):
+        out.append(REASON_DAY_TURNOVER_LOW)
     # 去重保序
     seen = set()
     uniq: List[str] = []

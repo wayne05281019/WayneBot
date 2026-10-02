@@ -5,10 +5,12 @@ from __future__ import annotations
 import pandas as pd
 
 from buy_exclude import (
+    DAY_TURNOVER_K_MIN,
     KIND_EXCLUDE,
     KIND_EXCLUDE_NEXT,
     REASON_BEAR_BREAK_LOW,
     REASON_BEAR_MA,
+    REASON_DAY_TURNOVER_LOW,
     REASON_LIMIT_DOWN_LOCK,
     REASON_LIMIT_DOWN_OPEN,
     REASON_SAME_BAR_SELL,
@@ -19,6 +21,7 @@ from buy_exclude import (
     is_bear_break_lows,
     is_bear_ma_stack,
     is_locked_limit_down,
+    is_low_day_turnover,
     is_open_locked_limit_down,
     is_same_bar_sell_or_warn,
     is_thin_volume,
@@ -174,9 +177,37 @@ def test_thin_volume_ok_when_at_least_half_avg():
     assert REASON_THIN_VOL not in buy_exclude_reasons(df)
 
 
-def test_kind_is_v2():
-    assert KIND_EXCLUDE == "buy_exclude_v2"
-    assert "v3" in KIND_EXCLUDE_NEXT
+def test_kind_is_v3():
+    assert KIND_EXCLUDE == "buy_exclude_v3"
+    assert "v4" in KIND_EXCLUDE_NEXT
+    assert DAY_TURNOVER_K_MIN == 5000.0
+
+
+def test_day_turnover_low_excludes():
+    """訊號當天 turnover_k＜5000（＝500萬）→ 排除；是當日額不是均額。"""
+    closes = [80.0 + i * 0.1 for i in range(25)]
+    df = _ohlc_df(closes)
+    # 前幾日很大、當日很小 → 若誤用均額會不排除；當日額必須排除
+    df["turnover_k"] = [20000.0] * 24 + [1000.0]
+    assert is_low_day_turnover(df) is True
+    assert REASON_DAY_TURNOVER_LOW in buy_exclude_reasons(df)
+    assert should_exclude_buy(df) is True
+
+
+def test_day_turnover_ok_at_or_above_500万():
+    closes = [80.0 + i * 0.1 for i in range(25)]
+    df = _ohlc_df(closes)
+    df["turnover_k"] = [100.0] * 24 + [5000.0]  # 當天剛好 500萬
+    assert is_low_day_turnover(df) is False
+    assert REASON_DAY_TURNOVER_LOW not in buy_exclude_reasons(df)
+
+
+def test_day_turnover_missing_column_not_excluded():
+    closes = [80.0 + i * 0.1 for i in range(25)]
+    df = _ohlc_df(closes)
+    assert "turnover_k" not in df.columns
+    assert is_low_day_turnover(df) is False
+    assert REASON_DAY_TURNOVER_LOW not in buy_exclude_reasons(df)
 
 
 def test_paint_indices_drop_excluded_bars():
