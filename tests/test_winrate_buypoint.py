@@ -2,6 +2,7 @@
 """勝率買點：鍵盤、落檔、分頁、隔日盤中篩。不准改黃金買點公式。"""
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -27,6 +28,25 @@ from winrate_buypoint import (
     save_winrate_roster,
     should_apply_intraday_filter,
 )
+
+
+def _seed_elec_universe(db: str, rows) -> None:
+    """測試庫補粗分產業，讓 AI-only 讀檔不過濾掉電子檔。"""
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS stock_universe("
+            "stock_id TEXT PRIMARY KEY, stock_name TEXT, market_type TEXT,"
+            "asset_type TEXT, industry TEXT, is_active INTEGER, updated_at TEXT)"
+        )
+        for sid, name, ind in rows:
+            conn.execute(
+                "INSERT OR REPLACE INTO stock_universe VALUES (?,?,?,?,?,?,?)",
+                (sid, name, "TW", "STOCK", ind, 1, ""),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def test_menu_winrate_first_hai_xuan_second():
@@ -58,6 +78,7 @@ def test_screen_aliases_still_route_after_winrate_shift():
 
 def test_save_load_roster_and_empty_sentinel(tmp_path):
     db = str(tmp_path / "w.db")
+    _seed_elec_universe(db, [("2330", "台積電", "半導體業")])
     n = save_winrate_roster(
         db,
         "20260930",
@@ -84,8 +105,8 @@ def test_save_load_roster_and_empty_sentinel(tmp_path):
     assert roster_is_current(db, "20261001") is True
 
 
-def test_roster_is_current_rejects_pre_ex4_scan_kind(tmp_path):
-    """#483 合進後舊 quote_source 仍是 card_lz_paint|… → 不准當現行（要重掃）。"""
+def test_roster_is_current_rejects_pre_ex5_scan_kind(tmp_path):
+    """合進 ex5 後舊 quote_source（ex4／更早）不准當現行（要重掃）。"""
     import sqlite3
 
     from winrate_buypoint import ensure_winrate_table, roster_is_current
@@ -107,7 +128,7 @@ def test_roster_is_current_rejects_pre_ex4_scan_kind(tmp_path):
                 "台積電",
                 900.0,
                 1.0,
-                "card_lz_paint|daily_quotes",
+                "card_lz_paint_ex4|daily_quotes",
                 "2026-10-02 12:00:00",
             ),
         )
@@ -122,6 +143,7 @@ def test_resolve_button_rows_ensures_missing_roster(tmp_path, monkeypatch):
     from winrate_buypoint import resolve_button_rows, roster_is_current
 
     db = str(tmp_path / "e.db")
+    _seed_elec_universe(db, [("7892", "元鈦科", "電子零組件業")])
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date",
         lambda *_a, **_k: "20261001",
@@ -152,6 +174,7 @@ def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
     from winrate_buypoint import scan_winrate_leave_zero
 
     db = str(tmp_path / "s.db")
+    _seed_elec_universe(db, [("7892", "元鈦科", "電子零組件業")])
 
     class _Eng:
         def get_latest_trading_date(self):
@@ -159,7 +182,7 @@ def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
 
         def _load_profit_scan_frames(self, day):
             dates = [f"202609{d:02d}" for d in range(1, 30)] + ["20260930"]
-            # 前高 110、收 102 → 距20高約 7.8%≥5%；成交額夠 → 不被新排除層誤殺
+            # 成交額夠 → 不被當天額刀誤殺；near_h20 已不進 live
             closes = [110.0] * 29 + [102.0]
             df = pd.DataFrame(
                 {
@@ -207,6 +230,72 @@ def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
     assert day == "20260930"
     assert len(rows) == 1 and rows[0]["stock_id"] == "7892"
     assert float(rows[0]["close"]) == 102.0
+
+
+def test_scan_drops_non_ai_even_if_leave_zero(tmp_path, monkeypatch):
+    """生技 leave_zero 也不進勝率推播名單（AI-only keep-set）。"""
+    import pandas as pd
+    from winrate_buypoint import scan_winrate_leave_zero
+
+    db = str(tmp_path / "bio.db")
+    _seed_elec_universe(db, [("4743", "合一", "生技醫療業")])
+
+    class _Eng:
+        def get_latest_trading_date(self):
+            return "20260930"
+
+        def _load_profit_scan_frames(self, day):
+            dates = [f"202609{d:02d}" for d in range(1, 30)] + ["20260930"]
+            closes = [50.0] * 30
+            df = pd.DataFrame(
+                {
+                    "date": dates,
+                    "stock_id": ["4743"] * 30,
+                    "stock_name": ["合一"] * 30,
+                    "close": closes,
+                    "volume": [1000.0] * 30,
+                    "turnover_k": [20000.0] * 30,
+                    "open": closes,
+                    "high": [c + 1 for c in closes],
+                    "low": [c - 1 for c in closes],
+                }
+            )
+            return {"4743": df}, set()
+
+    class _Nav:
+        def get_decision_card(self, *a, **k):
+            return {"stock_name": "合一", "buy_verdict": "buy"}
+
+    monkeypatch.setattr("screening_engine.ScreeningEngine", lambda *a, **k: _Eng())
+    monkeypatch.setattr("wayne_navigator.NavigatorEngine", lambda *a, **k: _Nav())
+    monkeypatch.setattr("universe.is_screen_equity", lambda *a, **k: True)
+    monkeypatch.setattr(
+        "wayne_navigator.frame_for_cal60_profit",
+        lambda df, db_path: df,
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.leave_zero_from_quote_df",
+        lambda df: True,
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.profit_pct_cal60_series",
+        lambda df: pd.Series([0.0] * 29 + [1.0]),
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.cal60_low_close_at",
+        lambda df, i: 45.0,
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint._chart_paints_buy_mark_today",
+        lambda df, card: True,
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint.silent_remember_non_ai_ctrl",
+        lambda *a, **k: 1,
+    )
+    day, rows = scan_winrate_leave_zero(db, as_of="20260930")
+    assert day == "20260930"
+    assert rows == []
 
 
 def test_scan_excludes_when_chart_strips_buy_mark(tmp_path, monkeypatch):
@@ -364,6 +453,7 @@ def test_filter_intraday_keeps_lower_price_with_leave_zero(tmp_path, monkeypatch
 
 def test_resolve_button_rows_full_vs_empty(tmp_path, monkeypatch):
     db = str(tmp_path / "r.db")
+    _seed_elec_universe(db, [("2330", "台積電", "半導體業")])
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date",
         lambda *_a, **_k: "",
@@ -430,6 +520,7 @@ def test_silent_remember_roster_and_filter(tmp_path, monkeypatch):
 
     db = str(tmp_path / "wayne_market.db")
     ensure_core_schema(db)
+    _seed_elec_universe(db, [("2330", "台積電", "半導體業")])
     conn = sqlite3.connect(db)
     conn.execute(
         "INSERT OR REPLACE INTO daily_quotes("

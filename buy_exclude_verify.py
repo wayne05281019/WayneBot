@@ -21,7 +21,15 @@ TAG_RAW = "lz_raw"
 TAG_V2 = "lz_v2"
 TAG_V3_CLOSE_UP = "lz_v3_close_up"
 TAG_V3_RANGE = "lz_v3_range_upper"
-TAGS: Tuple[str, ...] = (TAG_RAW, TAG_V2, TAG_V3_CLOSE_UP, TAG_V3_RANGE)
+# 靜默對照：live 已不排除 near_h20；仍記 cohort 便宜對質
+TAG_CTRL_NEAR_H20 = "lz_ctrl_near_h20"
+TAGS: Tuple[str, ...] = (
+    TAG_RAW,
+    TAG_V2,
+    TAG_V3_CLOSE_UP,
+    TAG_V3_RANGE,
+    TAG_CTRL_NEAR_H20,
+)
 SCORE_HORIZONS: Tuple[int, ...] = (1, 5, 10)
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 CLOSE_CAP = 20000.0
@@ -161,7 +169,7 @@ def tags_for_frame(
 ) -> List[str]:
     """當日最後一根若 leave_zero 且收 < CLOSE_CAP，回傳應記的 tag 列表。"""
     from decision_card_signals import leave_zero_from_quote_df
-    from buy_exclude import should_exclude_buy
+    from buy_exclude import is_near_h20, should_exclude_buy
 
     if df is None or len(df) < 2:
         return []
@@ -177,6 +185,9 @@ def tags_for_frame(
     except Exception:
         return []
     out = [TAG_RAW]
+    # 靜默對照臂：near_h20 命中仍記，不擋 live paint／v2
+    if is_near_h20(df):
+        out.append(TAG_CTRL_NEAR_H20)
     if should_exclude_buy(df, emerging=emerging, quote_source=quote_source):
         return out
     out.append(TAG_V2)

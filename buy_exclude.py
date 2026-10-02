@@ -19,16 +19,19 @@ REASON_SAME_BAR_SELL = "same_bar_sell"
 REASON_SAME_BAR_WARN = "same_bar_warn"
 REASON_THIN_VOL = "thin_vol"  # 量 < 近20日均量
 REASON_DAY_TURNOVER_LOW = "day_turnover_low"  # 訊號當天成交額 < 500萬
-REASON_NEAR_H20 = "near_h20"  # 收盤距近20日高 < 5%
+REASON_NEAR_H20 = "near_h20"  # 收盤距近20日高 < 5%（僅靜默對照；live 不排除）
 
 # 官方 turnover_k＝千元；5000＝500萬新台幣（使用者 2026-10-02 定案：當天額，不是均額）
 DAY_TURNOVER_K_MIN = 5000.0
-# 收盤相對近 20 根收盤高距離；(h20-c)/c ＜ 此值 → 上檔太近不推薦
+# 收盤相對近 20 根收盤高距離；(h20-c)/c ＜ 此值 → 靜默對照臂（live 已拿掉）
 NEAR_H20_MAX = 0.05
 
 # 靜默對質 kind（與勝率／剛脫離零分開記；不准混勝率）
-KIND_EXCLUDE = "buy_exclude_v4"  # v3＋距20高＜5%
-KIND_EXCLUDE_NEXT = "buy_exclude_v5_candidate"  # 再生：距60高等
+# v5＝結構＋當天額＜500萬＋量縮等；不含 live near_h20（使用者要動能淺回）
+KIND_EXCLUDE = "buy_exclude_v5"
+KIND_EXCLUDE_NEXT = "buy_exclude_v6_candidate"  # 再生：距60高等
+# near_h20 靜默對照臂（不進 paint／勝率名單）
+KIND_NEAR_H20_CTRL = "buy_exclude_near_h20_ctrl"
 
 
 def _f(v: Any) -> Optional[float]:
@@ -337,8 +340,8 @@ def is_near_h20(
 ) -> bool:
     """上檔太近：收盤距近 window 根收盤高 ＜ max_dist（預設 5%）。
 
-    距離＝(近窗收盤高 − 收)/收。柱不足／算不出＝不排除（不准假前高）。
-    使用者 2026-10-02 定案：要真的有效買訊 → 貼近 20 高不推薦。
+    距離＝(近窗收盤高 − 收)/收。柱不足／算不出＝不算命中（不准假前高）。
+    2026-10-02 曾上 live；使用者改口要動能淺回 → **live 不排除**，只留靜默對照。
     """
     if df is None or "close" not in getattr(df, "columns", []):
         return False
@@ -363,6 +366,17 @@ def is_near_h20(
     return bool(dist < float(max_dist))
 
 
+def silent_control_reasons(df, i: int = -1) -> List[str]:
+    """靜默對照臂 reason（不准餵 paint／should_exclude_buy／勝率名單）。
+
+    目前只記 near_h20：便宜可重複算；live 已拿掉這刀。
+    """
+    out: List[str] = []
+    if is_near_h20(df, i):
+        out.append(REASON_NEAR_H20)
+    return out
+
+
 def buy_exclude_reasons(
     df,
     i: int = -1,
@@ -370,7 +384,10 @@ def buy_exclude_reasons(
     emerging: bool = False,
     quote_source: str = "",
 ) -> List[str]:
-    """回傳觸發的排除 reason 列表；空＝可推薦（仍須先過 leave_zero）。"""
+    """回傳觸發的排除 reason 列表；空＝可推薦（仍須先過 leave_zero）。
+
+    live 不含 near_h20（動能淺回要留）；near_h20 見 silent_control_reasons。
+    """
     em = bool(emerging) or _is_emerging_frame(df, quote_source=quote_source)
     out: List[str] = []
     if is_locked_limit_down(df, i, emerging=em):
@@ -387,8 +404,6 @@ def buy_exclude_reasons(
         out.append(REASON_THIN_VOL)
     if is_low_day_turnover(df, i):
         out.append(REASON_DAY_TURNOVER_LOW)
-    if is_near_h20(df, i):
-        out.append(REASON_NEAR_H20)
     # 去重保序
     seen = set()
     uniq: List[str] = []
@@ -502,6 +517,7 @@ def sample_exclude_stats(
     n_lz = 0
     n_ex = 0
     by_reason: Dict[str, int] = {}
+    by_silent: Dict[str, int] = {}
     for sid in pool:
         df = (frames or {}).get(sid)
         if df is None or len(df) < 2:
@@ -521,11 +537,15 @@ def sample_exclude_stats(
             n_ex += 1
             for r in reasons:
                 by_reason[r] = int(by_reason.get(r) or 0) + 1
+        for r in silent_control_reasons(df):
+            by_silent[r] = int(by_silent.get(r) or 0) + 1
     return {
         "kind": KIND_EXCLUDE,
         "n_leave_zero": n_lz,
         "n_excluded": n_ex,
         "exclude_rate": (round(n_ex / n_lz, 4) if n_lz else None),
         "by_reason": by_reason,
+        "by_silent_control": by_silent,
+        "silent_ctrl_kind": KIND_NEAR_H20_CTRL,
         "next_kind": KIND_EXCLUDE_NEXT,
     }

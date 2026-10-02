@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
-"""勝率買點名單排序：電子＋AI 用得到寬鏈優先（其他產業仍保留、排後面）。
+"""勝率買點名單：電子＋AI 用得到寬鏈（live 只推這組）。
 
-使用者 2026-10-02 選「優先比較好」＝只改排序，不准改 leave_zero／黃金買點，
-不准變成只推電子。
+使用者 2026-10-02 改口：推播／按鈕名單＝**AI 生態系 ONLY**（怕名單太多難讀）。
+生技、醫療、傳產、非 AI 生態系 → **直接刪**，不是排後面。
+不准改 leave_zero／黃金買點。
 
-AI 寬鏈近似（現有標籤；不限股名帶 AI）：
+分類器（現有標籤；不限股名帶 AI）：
 - 證交所／櫃買粗分產業 ∈ 電子族群（見 ELEC_INDUSTRIES）
 - 或 CMoney／細項鏈、tags 命中「AI 用得到」供應鏈關鍵字
   （設備／材料／散熱／電力／PCB／先進封裝／伺服器／IC／記憶體／網通等）
 - 刻意不含「電子商務-*」（零售／電商，不是算力供應鏈）
 
 標籤誤差：細項缺檔時只靠粗分；粗分「電機機械」偏寬可能含非 AI 用得到；
-「電子商務」若被標成其他電子粗分仍會進優先（粗分限制）。缺標＝不優先（不准假標）。
+「電子商務」若被標成其他電子粗分仍會進（粗分限制）。缺標＝不進名單（不准假標）。
+非 AI 可靜默對照落檔，不准回寫買訊。
 """
 from __future__ import annotations
 
@@ -19,11 +21,13 @@ import json
 import os
 import re
 import sqlite3
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-# 證交所／櫃買粗分：電子＋數位相關（勝率排序用）
+# 證交所／櫃買粗分：電子＋數位＋電機機械＋光電（勝率名單入選＝AI 生態系 keep-set）
+# 生技／醫療／傳產等不在此集合 → live 刪。
 ELEC_INDUSTRIES: Set[str] = {
     "光電業",
+    "光電",  # 別名／部分來源省略「業」
     "其他電子業",
     "半導體業",
     "數位雲端",
@@ -33,7 +37,16 @@ ELEC_INDUSTRIES: Set[str] = {
     "電子零組件業",
     "電腦及週邊設備業",
     "電機機械",
+    "電機機械業",  # 別名
     "電器電纜",
+}
+
+# 正規化：來源標籤 → keep-set 鍵（缺＝原樣）
+_INDUSTRY_ALIASES = {
+    "光電": "光電業",
+    "光電業": "光電業",
+    "電機機械業": "電機機械",
+    "電機機械": "電機機械",
 }
 
 # AI 用得到寬鏈：細項鏈／tags（設備／材料／散熱／電力／PCB／封裝／伺服器…）
@@ -71,7 +84,13 @@ def _blob_from_fine(chain: Any, tags_json: Any) -> str:
 
 
 def is_elec_industry(industry: Any) -> bool:
-    return str(industry or "").strip() in ELEC_INDUSTRIES
+    raw = str(industry or "").strip()
+    if not raw:
+        return False
+    if raw in ELEC_INDUSTRIES:
+        return True
+    canon = _INDUSTRY_ALIASES.get(raw, raw)
+    return canon in ELEC_INDUSTRIES
 
 
 def is_ai_wide_chain(chain_or_blob: Any, tags_json: Any = None) -> bool:
@@ -94,14 +113,14 @@ def is_winrate_priority(
     chain: Any = "",
     tags_json: Any = None,
 ) -> bool:
-    """電子粗分或 AI 寬鏈細項 → 勝率名單排前面。"""
+    """電子粗分或 AI 寬鏈細項 → live 勝率名單可進（否則刪）。"""
     if is_elec_industry(industry):
         return True
     return is_ai_wide_chain(chain, tags_json)
 
 
 def load_priority_flags(db_path: str, stock_ids: Sequence[str]) -> Dict[str, bool]:
-    """批次查粗分＋細項，回傳 sid → 是否優先。缺庫／缺列＝False。"""
+    """批次查粗分＋細項，回傳 sid → 是否屬 AI／電子生態系。缺庫／缺列＝False。"""
     sids = [str(s).strip() for s in stock_ids if str(s or "").strip()]
     if not sids or not db_path or not os.path.isfile(db_path):
         return {s: False for s in sids}
@@ -137,43 +156,65 @@ def load_priority_flags(db_path: str, stock_ids: Sequence[str]) -> Dict[str, boo
     return out
 
 
+def _row_is_ai(row: Dict[str, Any], flags: Dict[str, bool], *, db_path: str) -> bool:
+    sid = str(row.get("stock_id") or row.get("code") or "").strip()
+    if db_path:
+        return bool(flags.get(sid))
+    return is_winrate_priority(
+        row.get("industry"),
+        chain=row.get("fine_chain") or row.get("chain") or "",
+        tags_json=row.get("tags_json"),
+    )
+
+
+def partition_winrate_ai_rows(
+    rows: Sequence[Dict[str, Any]],
+    db_path: str = "",
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """拆成（AI 生態系可推, 非 AI 對照／應刪）。同組內代號升冪。"""
+    items = [r for r in (rows or []) if isinstance(r, dict)]
+    if not items:
+        return [], []
+    sids = [str(r.get("stock_id") or r.get("code") or "").strip() for r in items]
+    flags = load_priority_flags(db_path, sids) if db_path else {}
+    kept: List[Dict[str, Any]] = []
+    dropped: List[Dict[str, Any]] = []
+    for r in items:
+        if _row_is_ai(r, flags, db_path=db_path):
+            kept.append(r)
+        else:
+            dropped.append(r)
+    kept.sort(key=lambda r: str(r.get("stock_id") or r.get("code") or ""))
+    dropped.sort(key=lambda r: str(r.get("stock_id") or r.get("code") or ""))
+    return kept, dropped
+
+
+def filter_winrate_rows_ai_only(
+    rows: Sequence[Dict[str, Any]],
+    db_path: str = "",
+) -> List[Dict[str, Any]]:
+    """只留電子＋AI 寬鏈；生技／醫療／傳產／非 AI 生態系直接刪。"""
+    kept, _dropped = partition_winrate_ai_rows(rows, db_path)
+    return kept
+
+
 def sort_winrate_rows_ai_first(
     rows: Sequence[Dict[str, Any]],
     db_path: str = "",
 ) -> List[Dict[str, Any]]:
-    """電子＋AI 寬鏈在前，其餘在後；同組內代號升冪。不刪列。"""
-    items = [r for r in (rows or []) if isinstance(r, dict)]
-    if not items:
-        return []
-    sids = [str(r.get("stock_id") or r.get("code") or "").strip() for r in items]
-    flags = load_priority_flags(db_path, sids) if db_path else {}
-    decorated = []
-    for r, sid in zip(items, sids):
-        if db_path:
-            pri = 0 if flags.get(sid) else 1
-        else:
-            # 無 DB：用列上 industry／chain（單元測試）
-            pri = (
-                0
-                if is_winrate_priority(
-                    r.get("industry"),
-                    chain=r.get("fine_chain") or r.get("chain") or "",
-                    tags_json=r.get("tags_json"),
-                )
-                else 1
-            )
-        decorated.append((pri, sid or "~", r))
-    decorated.sort(key=lambda t: (t[0], t[1]))
-    return [t[2] for t in decorated]
+    """相容舊名：現改為 AI-only（刪非 AI），組內代號升冪。"""
+    return filter_winrate_rows_ai_only(rows, db_path)
 
 
 def priority_mapping_zh() -> str:
     """給 PR／註解用的短對照說明。"""
-    inds = "、".join(sorted(ELEC_INDUSTRIES))
     return (
-        "優先＝證交所粗分（"
-        + inds
-        + "）或細項鏈／tags 命中 AI 用得到寬鏈"
-        "（電子上中下游、半導體、人工智慧、雲端運算、PCB、散熱、電源、記憶體、"
-        "IC 代工／封測／設計、伺服器／網通等）；不含電子商務。其他產業仍保留排後。"
+        "勝率買點 live keep-set＝AI 生態系＋電機機械＋光電"
+        "（證交所粗分：光電業／光電、電機機械／電機機械業、半導體、電子零組件、"
+        "電腦週邊、通信網路、資訊服務、數位雲端、電子通路、其他電子、電器電纜；"
+        "或細項鏈／tags 命中 AI 用得到寬鏈："
+        "電子上中下游、半導體、人工智慧、雲端運算、PCB、散熱、電源、記憶體、"
+        "IC 代工／封測／設計、伺服器／網通等；不含電子商務）。"
+        "生技／醫療／傳產／非此範圍刪除不推；非 AI 可靜默對照。"
+        "另刪訊號當天成交額＜500萬；live 不含 near_h20。"
     )
