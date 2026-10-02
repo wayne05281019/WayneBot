@@ -940,14 +940,23 @@ class NavigatorEngine:
         l10, l20, l60 = _pos_px(latest["low_10"]), _pos_px(latest["low_20"]), _pos_px(latest["low_60"])
         close_now = float(latest["close"] or 0)
         hl_display_adjusted = False
+        adj_hi_s = None
+        adj_lo_s = None
         if close_now > 0 and h60 > close_now * 1.6:
+            # 近窗小額息用 raw 表時，60 窗仍可能吃到更早的大額除權（6669 7800）。
+            # 顯示高／低必須改走還原後 high/low，不准再用 raw close_s 重算（會仍是 7800）。
             hl_display_adjusted = True
-            h10 = float(close_s.rolling(10, min_periods=1).max().iloc[-1])
-            h20 = float(close_s.rolling(20, min_periods=1).max().iloc[-1])
-            h60 = float(close_s.rolling(60, min_periods=1).max().iloc[-1])
-            l10 = float(close_s.rolling(10, min_periods=1).min().iloc[-1])
-            l20 = float(close_s.rolling(20, min_periods=1).min().iloc[-1])
-            l60 = float(close_s.rolling(60, min_periods=1).min().iloc[-1])
+            adj_hi_s = df["high"].astype(float)
+            adj_lo_s = df["low"].astype(float)
+            if "is_halt" in df.columns:
+                adj_hi_s = adj_hi_s.where(~df["is_halt"])
+                adj_lo_s = adj_lo_s.where(~df["is_halt"])
+            h10 = float(adj_hi_s.rolling(10, min_periods=1).max().iloc[-1])
+            h20 = float(adj_hi_s.rolling(20, min_periods=1).max().iloc[-1])
+            h60 = float(adj_hi_s.rolling(60, min_periods=1).max().iloc[-1])
+            l10 = float(adj_lo_s.rolling(10, min_periods=1).min().iloc[-1])
+            l20 = float(adj_lo_s.rolling(20, min_periods=1).min().iloc[-1])
+            l60 = float(adj_lo_s.rolling(60, min_periods=1).min().iloc[-1])
 
         def _dist_h(h):
             c = float(latest["close"])
@@ -998,13 +1007,14 @@ class NavigatorEngine:
         l120 = _pos_px(latest["low_120"] if pd.notna(latest.get("low_120")) else 0.0)
         l240 = _pos_px(latest["low_240"] if pd.notna(latest.get("low_240")) else 0.0)
         l480 = _pos_px(latest["low_480"] if pd.notna(latest.get("low_480")) else 0.0)
-        if hl_display_adjusted:
-            if len(close_s.dropna()) >= 120:
-                l120 = _pos_px(close_s.rolling(120, min_periods=120).min().iloc[-1])
-            if len(close_s.dropna()) >= 240:
-                l240 = _pos_px(close_s.rolling(240, min_periods=240).min().iloc[-1])
-            if len(close_s.dropna()) >= 480:
-                l480 = _pos_px(close_s.rolling(480, min_periods=480).min().iloc[-1])
+        if hl_display_adjusted and adj_lo_s is not None:
+            # 長窗低點也要同一套還原，否則 l120(raw) > l60(adj) 會倒掛
+            if int(adj_lo_s.notna().sum()) >= 120:
+                l120 = _pos_px(adj_lo_s.rolling(120, min_periods=120).min().iloc[-1])
+            if int(adj_lo_s.notna().sum()) >= 240:
+                l240 = _pos_px(adj_lo_s.rolling(240, min_periods=240).min().iloc[-1])
+            if int(adj_lo_s.notna().sum()) >= 480:
+                l480 = _pos_px(adj_lo_s.rolling(480, min_periods=480).min().iloc[-1])
         c0 = float(latest["close"])
         if h480 and c0 >= h480 * 0.998:
             badges.append("創480日新高")
