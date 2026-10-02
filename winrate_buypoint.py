@@ -254,6 +254,7 @@ def scan_winrate_leave_zero(
 
     1) 柱公式＝leave_zero_from_quote_df（與導航買點標同一條；含雙綠脫離）
     2) 出圖＝_nav_trade_marks 最後一根仍留買點（watch／no／直接減碼會剝紅框→不准進名單）
+    3) 另套 buy_exclude（與剛脫離零／導航藍▲ paint 同一套）：鎖跌停／結構破底／量縮等
     不准改黃金買點本身。盤中未收不當收。最後一根 date 必須＝as_of。
     """
     from decision_card_signals import (
@@ -357,6 +358,13 @@ def scan_winrate_leave_zero(
             }
         )
     cleaned.sort(key=lambda r: str(r.get("stock_id") or ""))
+    # 雙保險：導航 paint 已走 buy_exclude；名單再濾一次
+    try:
+        from buy_exclude import filter_leave_zero_rows
+
+        cleaned = filter_leave_zero_rows(cleaned, frames or {}, db_path=db_path)
+    except Exception:
+        pass
     return day, cleaned
 
 

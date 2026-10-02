@@ -28,5 +28,6 @@ def test_buy_arrow_scale_is_1_5x_original():
     assert "買點↑藍▲紅框" in leg
     assert "_NAV_BUY_ARROW_EDGE" in leg
     marks = inspect.getsource(wn._nav_trade_marks)
-    assert "leave_zero_bar_indices" in marks
+    assert "paint_leave_zero_indices" in marks or "leave_zero_bar_indices" in marks
+    assert "should_exclude_buy" in marks or "paint_leave_zero_indices" in marks
     assert "buy_is" in marks

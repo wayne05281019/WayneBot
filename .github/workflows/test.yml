@@ -7,10 +7,17 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 同分支／同 PR 新推碼就取消舊跑，避免多 agent 疊滿 runner 把合主卡住
+concurrency:
+  group: unit-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # 快速訊號：完全不需要資料庫，幾十秒內告訴你有沒有明顯壞掉。
   smoke-no-db:
     runs-on: ubuntu-latest
+    # 與 full-suite 同量級（非 production_db 仍含大量出圖）；120 仍誤殺 full-suite；放寬到 180
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +49,7 @@ jobs:
   # 只跑煙霧測試的話，回歸會安靜地合併進 main 再部署上去。
   full-suite:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 

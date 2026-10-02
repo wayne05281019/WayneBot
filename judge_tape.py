@@ -465,6 +465,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         intraday_lz_night_tick(market_db, day)
     except Exception:
         pass
+    # 買點排除層另軌：lz_raw／v2／v3 候選前瞻對質；過閘才准擴 paint。失敗不擋。
+    try:
+        from buy_exclude_verify import night_tick as buy_exclude_night_tick
+
+        buy_exclude_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 
