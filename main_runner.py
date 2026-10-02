@@ -1617,6 +1617,10 @@ class MainRunner:
             if status == "success" and roster_is_current(self.db_path, as_of):
                 logger.info("勝率買點 %s 已寄過且名單現行，略過。", key)
                 return True
+            # 當日已寄過、僅掃版失效→重掃刷新名單，不准再推一次（避免換鍵當夜洗版）
+            if status == "success" and notify and not roster_is_current(self.db_path, as_of):
+                notify = False
+                logger.info("勝率買點 %s 已寄過但名單非現行→重掃不重寄", key)
             if status == "computed" and not notify and roster_is_current(self.db_path, as_of):
                 logger.info("勝率買點 %s 已算出（不寄），略過。", key)
                 return True
