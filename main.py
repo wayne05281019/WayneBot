@@ -497,7 +497,22 @@ def catch_up_missed_jobs(now=None) -> None:
         and (12 * 60 + 46) <= mins < (13 * 60 + 30)
     )
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
+    # 準點／過 21:00：補寄。另：盤後基準日名單不是現行藍▲掃（card_lz_paint）
+    # → 重開立刻補掃並推，不必空等 21:00（錯推更正／部署後重推）。
     need_winrate = scheduler_owns("winrate") and mins >= 21 * 60
+    winrate_stale = False
+    if scheduler_owns("winrate") and not need_winrate:
+        try:
+            from config import get_db_path
+            from import_health import latest_complete_quote_date
+            from winrate_buypoint import roster_is_current
+
+            _as_of = latest_complete_quote_date(get_db_path())
+            if _as_of and not roster_is_current(get_db_path(), _as_of):
+                need_winrate = True
+                winrate_stale = True
+        except Exception:
+            logger.debug("勝率買點名單是否現行略過", exc_info=True)
     if not any(
         (need_fuse, need_morning, need_midday, need_evening, need_winrate, need_open_check)
     ):
@@ -536,7 +551,10 @@ def catch_up_missed_jobs(now=None) -> None:
         logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
         runner.run_evening_screen(skip_if_done=True, notify=False)
     if need_winrate:
-        logger.info("補跑：已過台灣 21:00，若勝率買點沒寄過就補寄")
+        if winrate_stale:
+            logger.info("補跑：勝率買點名單非現行藍▲掃，立刻重掃並補寄")
+        else:
+            logger.info("補跑：已過台灣 21:00，若勝率買點沒寄過就補寄")
         runner.run_winrate_buypoint(
             skip_if_done=True, notify=scheduler_may_push("winrate")
         )
