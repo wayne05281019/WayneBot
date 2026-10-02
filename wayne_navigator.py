@@ -1644,14 +1644,11 @@ def align_ohlc_cached(work: pd.DataFrame, sid: str = "") -> pd.DataFrame:
 
 
 def nav_volume_bar_heights(volumes) -> tuple:
-    """導航量柱高度：有官方量＝必畫肉眼可見柱；缺量不准造假。
+    """視窗內量柱高度 ∝ 官方成交量（張）。
 
-    暴量日線性全高會把低量段壓成縮圖空白。做法：
-    - 軟頂（約 80 分位）裁尖峰
-    - 正量用平方根比例映射到面板 [MIN_FRAC, 1]（比例仍在，最低也佔面板 12%）
-    - 缺欄／NaN → 柱高 0（呼叫端標缺）；真 0 量維持 0，不准抬假量
+    - 最高正量＝面板滿高（ylim = vmax）
+    - 其餘正量線性比例；真 0／缺欄＝0，不准抬假量、不准 soft-cap／平方根變形
     """
-    min_frac = 0.12
     raw = pd.to_numeric(pd.Series(volumes), errors="coerce")
     missing = raw.isna().to_numpy(dtype=bool)
     vals = raw.fillna(0.0).to_numpy(dtype=float)
@@ -1661,16 +1658,11 @@ def nav_volume_bar_heights(volumes) -> tuple:
     if pos.size == 0:
         return np.zeros_like(vals), 1.0, missing
     vmax = float(pos.max())
-    med = float(np.median(pos))
-    p80 = float(np.percentile(pos, 80))
-    soft = min(vmax, max(p80 * 1.15, med * 2.8, float(pos.min()) * 10.0))
-    soft = max(soft, 1.0)
-    capped = np.minimum(vals, soft)
+    if vmax <= 0:
+        return np.zeros_like(vals), 1.0, missing
     heights = np.zeros_like(vals)
-    # sqrt 比例：低量彼此仍分得出高低，再抬到至少 min_frac
-    ratio = np.sqrt(capped[pos_mask] / soft)
-    heights[pos_mask] = (min_frac + (1.0 - min_frac) * ratio) * soft
-    return heights, soft, missing
+    heights[pos_mask] = vals[pos_mask]
+    return heights, vmax, missing
 
 
 def volume_bar_display_heights(volumes) -> tuple:
@@ -6360,25 +6352,11 @@ def _paint_nav_on_axes(
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(work["volume"])
     vol_vals = pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
-    # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽，不准挖洞
+    # 正量線性比例；真 0／缺量／停價＝平坦（不准抬假地板冒充量）
     zero_i = np.flatnonzero(halt.to_numpy(dtype=bool) | (vol_vals <= 0) | vol_missing)
-    floor_h = max(float(vol_ylim) * 0.32, 1e-9)
     vol_draw = np.asarray(vol_heights, dtype=float).copy()
     vol_draw[zero_i] = 0.0
     ax2.bar(xs, vol_draw, color=vol_colors, width=0.72, zorder=3)
-    for i in zero_i:
-        ax2.add_patch(
-            patches.Rectangle(
-                (float(xs[i]) - 0.36, 0.0),
-                0.72,
-                floor_h,
-                facecolor="#546e7a",
-                edgecolor="#37474f",
-                linewidth=0.8,
-                zorder=6,
-                clip_on=True,
-            )
-        )
     ax2.set_ylim(0, vol_ylim * 1.14)  # 上方留空給「量 xxx張」，不准壓量柱頂
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")

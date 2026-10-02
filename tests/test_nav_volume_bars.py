@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""導航圖量柱：有官方量要畫得出；缺量不准造假。"""
+"""導航／壓力圖量柱：視窗內高度 ∝ 官方量；缺量不准造假。"""
 import math
 
 import numpy as np
@@ -15,22 +15,23 @@ def test_format_nav_volume_label_missing_is_que():
     assert format_nav_volume_label(0) == "量 0張"
 
 
-def test_nav_volume_every_positive_day_at_least_12pct():
-    """有官方正量＝肉眼可見（至少面板 12%）；暴量日不把低量壓沒。"""
+def test_nav_volume_linear_to_window_max():
+    """視窗內柱高 ∝ 官方量；最高＝滿高；真 0／缺＝平坦。"""
     vols = [294.0] * 20 + [13426.0, 12000.0] + [598.0] * 20 + [0.0, float("nan")]
     heights, ylim, missing = nav_volume_bar_heights(vols)
-    assert ylim < 13426.0
-    pos = [i for i, v in enumerate(vols) if v == v and v > 0]
-    for i in pos:
-        assert float(heights[i]) >= ylim * 0.12 - 1e-9, (i, heights[i], ylim)
-    # 尖峰日最高（裁到頂）
-    assert float(heights[20]) == ylim
+    assert ylim == 13426.0
+    assert float(heights[20]) == 13426.0
+    assert abs(float(heights[21]) / ylim - 12000.0 / 13426.0) < 1e-9
+    assert abs(float(heights[0]) / ylim - 294.0 / 13426.0) < 1e-9
+    assert abs(float(heights[22]) / ylim - 598.0 / 13426.0) < 1e-9
+    # 低量彼此仍有比例（更大的量柱更高）
+    assert float(heights[22]) > float(heights[0])
     # 真 0／缺量不准假柱
     assert float(heights[-2]) == 0.0
     assert float(heights[-1]) == 0.0
     assert bool(missing[-1]) is True
-    # 低量彼此仍有比例（更大的量柱更高）
-    assert float(heights[22]) > float(heights[0])
+    # 不准 soft-cap／平方根把尖峰裁矮或把低量抬高
+    assert float(heights[0]) < ylim * 0.12
 
 
 def test_nav_volume_missing_no_fake_bar():
@@ -39,9 +40,9 @@ def test_nav_volume_missing_no_fake_bar():
     assert bool(missing[1]) is True
     assert float(heights[1]) == 0.0
     assert float(heights[2]) == 0.0  # 真 0 不抬假量
-    assert float(heights[0]) >= ylim * 0.12 - 1e-9
-    assert float(heights[3]) >= ylim * 0.12 - 1e-9
-    assert ylim >= 1.0
+    assert ylim == 1000.0
+    assert float(heights[0]) == 1000.0
+    assert float(heights[3]) == 500.0
 
 
 def test_nav_volume_all_missing():
@@ -49,3 +50,12 @@ def test_nav_volume_all_missing():
     assert missing.all()
     assert float(heights.sum()) == 0.0
     assert ylim == 1.0
+
+
+def test_nav_volume_proportional_pair():
+    """兩倍量＝兩倍柱高。"""
+    heights, ylim, _ = nav_volume_bar_heights([100.0, 200.0, 50.0])
+    assert ylim == 200.0
+    assert float(heights[1]) == 200.0
+    assert float(heights[0]) == 100.0
+    assert float(heights[2]) == 50.0
