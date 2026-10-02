@@ -203,8 +203,8 @@ def scan_winrate_leave_zero(
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """盤後官方母體：上市／上櫃／興櫃 leave_zero only。不改黃金買點公式。
 
-    另套 buy_exclude（與剛脫離零同一套）：鎖跌停／明顯空頭／同根賣點警告不推薦。
-    不改圖標畫法；#478 圖上藍▲一致邏輯合進 main 後以此為準再 rebase。
+    另套 buy_exclude（與剛脫離零／導航藍▲ paint 同一套）：鎖跌停／結構破底／量縮等。
+    圖標走 paint_leave_zero_indices；不搶 #478，合進 main 後若衝突再 rebase。
     """
     from screening_engine import ScreeningEngine
 
