@@ -20,7 +20,9 @@ BTN_LABEL = "勝率買點"
 CALLBACK_PREFIX = "wr:"
 # 掃版本：圖上今日藍▲紅框＝leave_zero_from_quote_df 且 _nav_trade_marks 最後一根仍畫買點。
 # 舊版 screen_leave_zero_pick／只認公式不認出圖，會推「公式剛離零但圖被 watch／賣點剝掉紅框」的檔。
-SCAN_KIND = "card_lz_paint"
+# ex4＝buy_exclude_v4（#481 結構＋#483 當天額＜500萬／距20高＜5%）。換鍵→roster_is_current
+# 失敗→按鈕／開機 catch-up 強制重掃；否則合進三刀後仍吃合進前寫死的舊名單（話筒仍約 70+）。
+SCAN_KIND = "card_lz_paint_ex4"
 # 靜默對質 kind（與 button_silent_verify／live_judge 對齊；勝率不准混海選／剛脫離零）
 KIND_ROSTER = "winrate_buypoint"
 KIND_FILTER = "winrate_filter"

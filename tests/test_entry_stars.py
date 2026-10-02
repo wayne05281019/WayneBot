@@ -230,8 +230,16 @@ def test_nav_trade_marks_history_leave_zero_indices():
     from wayne_navigator import _nav_trade_marks
 
     last = datetime(2026, 9, 17)
-    # 兩段 leave_zero：貼 100 → 103，噴高後再貼 100 → 102.5
-    closes = [100.0] * 60 + [100.0, 103.0] + [110.0] * 10 + [100.0, 102.5] + [105.0] * 5
+    # 兩段 leave_zero：貼 100 → 103，噴高後再貼 100 → 102.5。
+    # 前段掺 120＝近窗上檔空間（#483 near_h20）；尾段收 104 距 115 高 >5%。
+    closes = (
+        [100.0] * 50
+        + [120.0] * 10
+        + [100.0, 103.0]
+        + [115.0] * 10
+        + [100.0, 102.5]
+        + [104.0] * 5
+    )
     dates = [
         (last - timedelta(days=len(closes) - 1 - i)).strftime("%Y%m%d")
         for i in range(len(closes))
@@ -243,6 +251,7 @@ def test_nav_trade_marks_history_leave_zero_indices():
             "high": [c * 1.01 for c in closes],
             "low": [c * 0.99 for c in closes],
             "volume": [1000] * len(closes),
+            "turnover_k": [8000.0] * len(closes),
             "is_halt": [False] * len(closes),
         }
     )

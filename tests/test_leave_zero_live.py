@@ -32,6 +32,17 @@ NAMES = {
     "1303": "南亞",
     "1402": "遠東新",
 }
+# #483 near_h20：近 20 收盤高須比訊號收 ≥5%。平底柱會誤殺；先高台再回 50 貼零再離。
+_FLOOR_FROM_YMD = "20260904"  # 起貼 cal60 低（0%）
+_HEADROOM_PX = 56.0
+
+
+def _seed_base_close(ymd: str, *, last: bool, last_close: float, floor: float = 50.0) -> float:
+    if last:
+        return float(last_close)
+    if ymd >= _FLOOR_FROM_YMD:
+        return float(floor)
+    return float(_HEADROOM_PX)
 
 
 def _seed_quotes(db: str, last_close: dict[str, float]) -> int:
@@ -45,7 +56,9 @@ def _seed_quotes(db: str, last_close: dict[str, float]) -> int:
         ymd = d.strftime("%Y%m%d")
         last = d == end
         for sid, name in NAMES.items():
-            close = float(last_close.get(sid, 50.0) if last else 50.0)
+            close = _seed_base_close(
+                ymd, last=last, last_close=float(last_close.get(sid, 50.0))
+            )
             conn.execute(
                 "INSERT OR REPLACE INTO daily_quotes("
                 "date,stock_id,stock_name,market,open,high,low,close,volume,"
@@ -718,8 +731,10 @@ def _seed_emerging_leave_yesterday(db: str) -> None:
         ymd = d.strftime("%Y%m%d")
         if ymd == AS_OF:
             close = 10.08
-        else:
+        elif ymd >= _FLOOR_FROM_YMD:
             close = 10.00
+        else:
+            close = 11.2  # 近窗上檔空間（≥5%），且勿單根暴衝觸發還原
         conn.execute(
             "INSERT OR REPLACE INTO emerging_quotes("
             "date,stock_id,stock_name,market,open,high,low,close,volume,"
@@ -733,8 +748,8 @@ def _seed_emerging_leave_yesterday(db: str) -> None:
                 close,
                 close,
                 close,
-                120,
                 1200,
+                8000,  # ≥5000 千元，過當天額刀
                 0.0,
                 close,
                 "tpex_esb_csv",
@@ -849,7 +864,12 @@ def _seed_close_series(db: str, sid: str, name: str, closes_by_ymd: dict[str, fl
     d = start
     while d <= end:
         ymd = d.strftime("%Y%m%d")
-        close = float(closes_by_ymd.get(ymd, default))
+        if ymd in closes_by_ymd:
+            close = float(closes_by_ymd[ymd])
+        elif ymd >= _FLOOR_FROM_YMD:
+            close = float(default)
+        else:
+            close = float(default) * 1.12  # 近窗上檔空間，過 near_h20（緩台階免還原）
         conn.execute(
             "INSERT OR REPLACE INTO daily_quotes("
             "date,stock_id,stock_name,market,open,high,low,close,volume,"
