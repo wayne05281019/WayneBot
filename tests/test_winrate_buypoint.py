@@ -72,15 +72,49 @@ def test_save_load_roster_and_empty_sentinel(tmp_path):
     assert rows[0]["stock_id"] == "2330"
     assert float(rows[0]["pick_close"]) == 900.0
     assert latest_roster_as_of(db) == "20260930"
-    assert str(rows[0]["quote_source"]).startswith("card_lz_paint|")
+    from winrate_buypoint import SCAN_KIND, roster_is_current
+
+    assert str(rows[0]["quote_source"]).startswith(f"{SCAN_KIND}|")
 
     n0 = save_winrate_roster(db, "20261001", [])
     assert n0 == 0
     assert load_winrate_roster(db, "20261001") == []
     assert latest_roster_as_of(db) == "20261001"
-    from winrate_buypoint import roster_is_current
 
     assert roster_is_current(db, "20261001") is True
+
+
+def test_roster_is_current_rejects_pre_ex4_scan_kind(tmp_path):
+    """#483 合進後舊 quote_source 仍是 card_lz_paint|… → 不准當現行（要重掃）。"""
+    import sqlite3
+
+    from winrate_buypoint import ensure_winrate_table, roster_is_current
+
+    db = str(tmp_path / "old.db")
+    ensure_winrate_table(db)
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            """
+            INSERT INTO winrate_buypoint_roster(
+                as_of, stock_id, stock_name, pick_close, profit_pct,
+                quote_source, created_at
+            ) VALUES (?,?,?,?,?,?,?)
+            """,
+            (
+                "20261002",
+                "2330",
+                "台積電",
+                900.0,
+                1.0,
+                "card_lz_paint|daily_quotes",
+                "2026-10-02 12:00:00",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    assert roster_is_current(db, "20261002") is False
 
 
 def test_resolve_button_rows_ensures_missing_roster(tmp_path, monkeypatch):
