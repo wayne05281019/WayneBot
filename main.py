@@ -551,13 +551,41 @@ def catch_up_missed_jobs(now=None) -> None:
         logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
         runner.run_evening_screen(skip_if_done=True, notify=False)
     if need_winrate:
+        wr_notify = scheduler_may_push("winrate")
+        try:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+
+            if datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y%m%d") == "20261002":
+                wr_notify = False
+                logger.info("補跑：2026-10-02 使用者鎖今晚不推勝率買點→只重掃")
+        except Exception:
+            logger.debug("勝率買點當晚不推判斷略過", exc_info=True)
+        # 當日若已寄過（pipeline success）但掃版鍵失效→只重掃不重寄（使用者鎖：今晚不補推）
+        try:
+            from import_health import latest_complete_quote_date
+            from winrate_buypoint import pipeline_run_key, roster_is_current
+
+            _as_of = latest_complete_quote_date(runner.db_path)
+            _key = pipeline_run_key(_as_of or "none")
+            if (
+                wr_notify
+                and _as_of
+                and runner.pipeline_status(_key) == "success"
+                and not roster_is_current(runner.db_path, _as_of)
+            ):
+                wr_notify = False
+                logger.info("補跑：勝率買點當日已寄過、名單非現行→重掃不重寄")
+        except Exception:
+            logger.debug("勝率買點是否已寄判斷略過", exc_info=True)
         if winrate_stale:
-            logger.info("補跑：勝率買點名單非現行藍▲掃，立刻重掃並補寄")
+            logger.info(
+                "補跑：勝率買點名單非現行藍▲掃，立刻重掃%s",
+                "並補寄" if wr_notify else "（不寄）",
+            )
         else:
             logger.info("補跑：已過台灣 21:00，若勝率買點沒寄過就補寄")
-        runner.run_winrate_buypoint(
-            skip_if_done=True, notify=scheduler_may_push("winrate")
-        )
+        runner.run_winrate_buypoint(skip_if_done=True, notify=wr_notify)
 
 
 _RETRYABLE_WATCHDOG = {
