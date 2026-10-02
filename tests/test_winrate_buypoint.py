@@ -125,7 +125,8 @@ def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
 
         def _load_profit_scan_frames(self, day):
             dates = [f"202609{d:02d}" for d in range(1, 30)] + ["20260930"]
-            closes = [100.0] * 29 + [102.0]
+            # 前高 110、收 102 → 距20高約 7.8%≥5%；成交額夠 → 不被新排除層誤殺
+            closes = [110.0] * 29 + [102.0]
             df = pd.DataFrame(
                 {
                     "date": dates,
@@ -133,6 +134,7 @@ def test_scan_uses_card_leave_zero_not_screen_pick(tmp_path, monkeypatch):
                     "stock_name": ["元鈦科"] * 30,
                     "close": closes,
                     "volume": [1000.0] * 30,
+                    "turnover_k": [20000.0] * 30,
                     "open": closes,
                     "high": closes,
                     "low": closes,

@@ -167,7 +167,13 @@ def load_winrate_roster(db_path: str, as_of: str) -> List[Dict[str, Any]]:
                 "quote_source": str(src or ""),
             }
         )
-    return out
+    # 電子＋AI 寬鏈優先（其他產業仍保留）；按鈕／推播／翻頁同一套順序
+    try:
+        from winrate_ai_priority import sort_winrate_rows_ai_first
+
+        return sort_winrate_rows_ai_first(out, db_path)
+    except Exception:
+        return out
 
 
 def latest_roster_as_of(db_path: str) -> str:
@@ -357,7 +363,6 @@ def scan_winrate_leave_zero(
                 "_live_skipped": False,
             }
         )
-    cleaned.sort(key=lambda r: str(r.get("stock_id") or ""))
     # 雙保險：導航 paint 已走 buy_exclude；名單再濾一次
     try:
         from buy_exclude import filter_leave_zero_rows
@@ -365,6 +370,13 @@ def scan_winrate_leave_zero(
         cleaned = filter_leave_zero_rows(cleaned, frames or {}, db_path=db_path)
     except Exception:
         pass
+    # 電子＋AI 用得到寬鏈排前面；其他產業仍保留排後（不准只推電子；不改 leave_zero）
+    try:
+        from winrate_ai_priority import sort_winrate_rows_ai_first
+
+        cleaned = sort_winrate_rows_ai_first(cleaned, db_path)
+    except Exception:
+        cleaned.sort(key=lambda r: str(r.get("stock_id") or ""))
     return day, cleaned
 
 

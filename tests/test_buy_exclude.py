@@ -5,12 +5,16 @@ from __future__ import annotations
 import pandas as pd
 
 from buy_exclude import (
+    DAY_TURNOVER_K_MIN,
     KIND_EXCLUDE,
     KIND_EXCLUDE_NEXT,
+    NEAR_H20_MAX,
     REASON_BEAR_BREAK_LOW,
     REASON_BEAR_MA,
+    REASON_DAY_TURNOVER_LOW,
     REASON_LIMIT_DOWN_LOCK,
     REASON_LIMIT_DOWN_OPEN,
+    REASON_NEAR_H20,
     REASON_SAME_BAR_SELL,
     REASON_SAME_BAR_WARN,
     REASON_THIN_VOL,
@@ -19,12 +23,19 @@ from buy_exclude import (
     is_bear_break_lows,
     is_bear_ma_stack,
     is_locked_limit_down,
+    is_low_day_turnover,
+    is_near_h20,
     is_open_locked_limit_down,
     is_same_bar_sell_or_warn,
     is_thin_volume,
     sample_exclude_stats,
     should_exclude_buy,
 )
+
+
+def _closes_with_h20_room(n: int = 25):
+    """尾端離近 20 收盤高 >5%，避免測其他閘時被 near_h20 誤傷。"""
+    return [100.0] * (n - 5) + [94.0, 93.0, 92.0, 91.0, 90.0]
 
 
 def _ohlc_df(
@@ -159,24 +170,69 @@ def test_screening_engine_imports_exclude_hook():
 
 def test_thin_volume_excludes():
     # 前 20 日量 1000，今日量 400 → <0.5x 均量
-    closes = [80.0 + i * 0.1 for i in range(25)]
-    df = _ohlc_df(closes)
+    df = _ohlc_df(_closes_with_h20_room())
     df["volume"] = [1000.0] * 24 + [400.0]
+    df["turnover_k"] = [20000.0] * 25
     assert is_thin_volume(df) is True
     assert REASON_THIN_VOL in buy_exclude_reasons(df)
 
 
 def test_thin_volume_ok_when_at_least_half_avg():
-    closes = [80.0 + i * 0.1 for i in range(25)]
-    df = _ohlc_df(closes)
+    df = _ohlc_df(_closes_with_h20_room())
     df["volume"] = [1000.0] * 24 + [500.0]
+    df["turnover_k"] = [20000.0] * 25
     assert is_thin_volume(df, mult=0.5) is False
     assert REASON_THIN_VOL not in buy_exclude_reasons(df)
 
 
-def test_kind_is_v2():
-    assert KIND_EXCLUDE == "buy_exclude_v2"
-    assert "v3" in KIND_EXCLUDE_NEXT
+def test_kind_is_v4():
+    assert KIND_EXCLUDE == "buy_exclude_v4"
+    assert "v5" in KIND_EXCLUDE_NEXT
+    assert DAY_TURNOVER_K_MIN == 5000.0
+    assert NEAR_H20_MAX == 0.05
+
+
+def test_day_turnover_low_excludes():
+    """訊號當天 turnover_k＜5000（＝500萬）→ 排除；是當日額不是均額。"""
+    df = _ohlc_df(_closes_with_h20_room())
+    # 前幾日很大、當日很小 → 若誤用均額會不排除；當日額必須排除
+    df["turnover_k"] = [20000.0] * 24 + [1000.0]
+    assert is_low_day_turnover(df) is True
+    assert REASON_DAY_TURNOVER_LOW in buy_exclude_reasons(df)
+    assert should_exclude_buy(df) is True
+
+
+def test_day_turnover_ok_at_or_above_500万():
+    df = _ohlc_df(_closes_with_h20_room())
+    df["turnover_k"] = [100.0] * 24 + [5000.0]  # 當天剛好 500萬
+    assert is_low_day_turnover(df) is False
+    assert REASON_DAY_TURNOVER_LOW not in buy_exclude_reasons(df)
+
+
+def test_day_turnover_missing_column_not_excluded():
+    df = _ohlc_df(_closes_with_h20_room())
+    assert "turnover_k" not in df.columns
+    assert is_low_day_turnover(df) is False
+    assert REASON_DAY_TURNOVER_LOW not in buy_exclude_reasons(df)
+
+
+def test_near_h20_excludes():
+    # 近 20 高在 100，收 97 → 距高 3% ＜5%
+    closes = [100.0] * 20 + [97.0]
+    df = _ohlc_df(closes)
+    df["turnover_k"] = [20000.0] * len(df)
+    assert is_near_h20(df) is True
+    assert REASON_NEAR_H20 in buy_exclude_reasons(df)
+    assert should_exclude_buy(df) is True
+
+
+def test_near_h20_ok_when_room_at_least_5pct():
+    # 高 100、收 94 → 距高約 6.4% ≥5%
+    closes = [100.0] * 20 + [94.0]
+    df = _ohlc_df(closes)
+    df["turnover_k"] = [20000.0] * len(df)
+    assert is_near_h20(df) is False
+    assert REASON_NEAR_H20 not in buy_exclude_reasons(df)
 
 
 def test_paint_indices_drop_excluded_bars():

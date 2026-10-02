@@ -209,7 +209,7 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "kinds": ("buy_exclude",),
         "class": CLASS_SCREEN,
         "status": "external",
-        "pipe": "buy_exclude_verify lz_raw／lz_v2／lz_v3_* → night_tick；paint 同源 v2",
+        "pipe": "buy_exclude_verify lz_raw／lz_v2／… → night_tick；paint 同源 v4（當天額＋距20高）",
         "window": "前瞻 1／5／10 日官方收；母體收<20000＋興櫃；分價層落檔",
         "note": "靜默對質；v3 過閘才准擴 paint；不准改黃金買點公式",
     },
