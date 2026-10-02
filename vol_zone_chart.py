@@ -22,7 +22,6 @@ import matplotlib
 matplotlib.use("Agg")
 import numpy as np
 import pandas as pd
-from matplotlib import patches
 from matplotlib.collections import LineCollection
 
 from wayne_navigator import _fp, _fmt_price, mpl_render, nav_volume_bar_heights, _set_staggered_month_ticks
@@ -1475,25 +1474,11 @@ def _paint_volume_zone(
         vol_colors.append("#ef5350" if up else "#26a69a")
     vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(view["volume"])
     vol_vals = pd.to_numeric(view["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
-    # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽（bar 偶發不著墨）
+    # 正量線性比例；真 0／缺量／停價＝平坦（不准抬假地板冒充量）
     zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | vol_missing)
-    floor_h = max(float(vol_ylim) * 0.32, 1e-9)
     vol_draw = np.asarray(vol_heights, dtype=float).copy()
     vol_draw[zero_i] = 0.0
     ax2.bar(xs, vol_draw, color=vol_colors, width=0.70, zorder=2, linewidth=0)
-    for i in zero_i:
-        ax2.add_patch(
-            patches.Rectangle(
-                (float(xs[i]) - 0.35, 0.0),
-                0.70,
-                floor_h,
-                facecolor="#546e7a",
-                edgecolor="#37474f",
-                linewidth=0.8,
-                zorder=6,
-                clip_on=True,
-            )
-        )
     spike_h = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
     if (
         spike_i < len(halt_arr)
