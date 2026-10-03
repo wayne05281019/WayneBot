@@ -3785,7 +3785,7 @@ class WayneTelegramBot:
             header_html,
             next_page_callback,
             page_slice,
-            render_page_pairs,
+            render_stock_pair,
             resolve_button_rows,
         )
 
@@ -3804,13 +3804,14 @@ class WayneTelegramBot:
             )
             return
         self._trade_running.add(actor)
+        prog = {"now": "篩名單", "rest": "壓力區＋高低卡"}
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
                 "勝率買點進行中",
                 s,
-                now="篩名單",
-                rest="壓力區＋高低卡",
+                now=prog["now"],
+                rest=prog["rest"],
                 fill_sec=40.0,
             ),
         )
@@ -3839,32 +3840,19 @@ class WayneTelegramBot:
             chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
             head = header_html(as_of, len(rows), mode=mode, offset=off)
             await message.reply_html(head, disable_web_page_preview=True)
-            # 整頁一次出圖（快取／平行準備），再依序送 Telegram
-            try:
-                # 算卡／讀庫走一般 thread；每張圖內層 run_mpl_paint。
-                # 不准整頁 submit_mpl_paint（會獨占 paint worker，查股出圖被堵住）。
-                pairs = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        render_page_pairs,
-                        self.db_path,
-                        chunk,
-                        charts_dir=self.charts_dir,
-                        uid=uid or "wr",
-                        as_of=as_of,
-                        reuse_cache=True,
-                    ),
-                    timeout=max(45.0, 12.0 * max(1, len(chunk))),
-                )
-            except Exception:
-                logger.exception("勝率買點整頁出圖失敗")
-                pairs = [("", "", "")] * len(chunk)
-            if len(pairs) < len(chunk):
-                pairs = list(pairs) + [("", "", "")] * (len(chunk) - len(pairs))
+            # 逐檔渲＋送：不准整頁 wait_for（Render 慢時逾時→後面檔空白；
+            # 也不准整頁占住 to_thread 才開始送，查股會一直卡）。
+            # 每檔內層仍 run_mpl_paint；檔與檔之間 event loop 可插查股。
+            # 單檔兩張圖；冷啟／量字慢時給足，但不拖垮整頁。
+            per_stock_timeout = max(90.0, float(_LOOKUP_PNG_TIMEOUT))
+            total = max(1, len(chunk))
             for i, row in enumerate(chunk):
                 sid = str(row.get("stock_id") or "").strip()
                 name = str(row.get("stock_name") or "")
                 if not sid:
                     continue
+                prog["now"] = f"{sid} {i + 1}/{total}"
+                prog["rest"] = "壓力區＋高低卡"
                 is_last = i == len(chunk) - 1
                 markup = None
                 if is_last and has_next:
@@ -3881,7 +3869,54 @@ class WayneTelegramBot:
                             ]
                         ]
                     )
-                vpath, cpath, cap_name = pairs[i]
+                vpath = cpath = ""
+                cap_name = name or sid
+                try:
+                    vpath, cpath, cap_name = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            render_stock_pair,
+                            self.db_path,
+                            sid,
+                            name,
+                            charts_dir=self.charts_dir,
+                            uid=uid or "wr",
+                            as_of=as_of,
+                            reuse_cache=True,
+                        ),
+                        timeout=per_stock_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "勝率買點單檔逾時 code=%s i=%s/%s", sid, i + 1, total
+                    )
+                except Exception:
+                    logger.exception(
+                        "勝率買點單檔出圖失敗 code=%s i=%s/%s", sid, i + 1, total
+                    )
+                # 壓力區缺圖時再試一次（Render 偶發 Agg／記憶體抖動）
+                if not (vpath and os.path.isfile(vpath)):
+                    try:
+                        v2, c2, n2 = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                render_stock_pair,
+                                self.db_path,
+                                sid,
+                                name,
+                                charts_dir=self.charts_dir,
+                                uid=uid or "wr",
+                                as_of=as_of,
+                                reuse_cache=False,
+                            ),
+                            timeout=per_stock_timeout,
+                        )
+                        if v2 and os.path.isfile(v2):
+                            vpath = v2
+                        if (not cpath or not os.path.isfile(cpath)) and c2 and os.path.isfile(c2):
+                            cpath = c2
+                        if n2:
+                            cap_name = n2
+                    except Exception:
+                        logger.exception("勝率買點單檔重試失敗 code=%s", sid)
                 label = html_escape(cap_name or name or sid)
                 if vpath and os.path.isfile(vpath):
                     try:
@@ -3894,6 +3929,13 @@ class WayneTelegramBot:
                             )
                     except Exception:
                         logger.exception("勝率買點壓力區送出失敗 code=%s", sid)
+                else:
+                    try:
+                        await message.reply_text(
+                            f"{sid} {cap_name or name} 壓力區圖暫無法出，續送溫度卡。"
+                        )
+                    except Exception:
+                        pass
                 if cpath and os.path.isfile(cpath):
                     try:
                         send_path = self._prepare_lookup_album_photo(cpath)
@@ -3904,15 +3946,26 @@ class WayneTelegramBot:
                                 parse_mode="HTML",
                                 reply_markup=markup,
                             )
-                        continue
                     except Exception:
                         logger.exception("勝率買點高低卡送出失敗 code=%s", sid)
-                if markup is not None:
+                        if markup is not None:
+                            await message.reply_html(
+                                f"<b>{html_escape(sid)}</b> {label}",
+                                reply_markup=markup,
+                                disable_web_page_preview=True,
+                            )
+                elif markup is not None:
                     await message.reply_html(
                         f"<b>{html_escape(sid)}</b> {label}",
                         reply_markup=markup,
                         disable_web_page_preview=True,
                     )
+                # 讓出 event loop；順便收圖形記憶體，降低 Render OOM→502
+                try:
+                    gc.collect()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.05)
             await self._stop_plain_wait(*wait_h)
         except asyncio.TimeoutError:
             await message.reply_text(

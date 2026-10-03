@@ -153,6 +153,9 @@ def test_bot_chart_entries_use_submit_mpl_paint():
         assert "submit_mpl_paint(" not in src, (
             f"{label} 不准整頁 submit_mpl_paint（會獨占 worker）"
         )
+    wr = inspect.getsource(WayneTelegramBot._run_winrate_buypoint)
+    assert "render_stock_pair" in wr
+    assert "render_page_pairs" not in wr
 
 
 def test_page_prep_outside_worker_does_not_block_lookup_paint():
