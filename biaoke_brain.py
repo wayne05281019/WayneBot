@@ -533,7 +533,7 @@ def overlay_market(
     if risk == "risk_off" or (sox is not None and float(sox) < -1.5):
         lines.append("現在費半／美股還在逆風，夜盤若再破，日盤先當擴延，不談止跌完成。")
     elif tsmc_low and tw_down <= 1:
-        lines.append("台積電這腳比較像低檔量縮站上，大盤仍要夜盤確認。還不是買訊。")
+        lines.append("台積電這腳比較像低檔量縮站上，大盤仍要夜盤確認。")
     else:
         lines.append("條件還沒齊。若夜盤先止穩、費半不再破低，日盤才有機會談反彈——這不是日期保證。")
     return "\n".join(lines)
@@ -650,16 +650,27 @@ def answer_biaoke(
         from biaoke_wave import format_twii_plain, is_twii_plain_ask
 
         if is_twii_plain_ask(q):
+            # 大盤短答維持四句；智囊活用改走一般對話線，不准把短答撐成長講義
             return format_twii_plain(db_path)
     except Exception:
         pass
 
     def _done(html: str) -> str:
         try:
+            from biaoke_advisor import format_advisor_html, want_advisor
             from biaoke_chain import attach_five_lead
             from biaoke_mind import strip_boilerplate
 
-            return strip_boilerplate(attach_five_lead(html, db_path, q, uid))
+            body = str(html or "")
+            if (
+                want_advisor(q)
+                and "智囊團活用" not in body
+                and "脈絡黃金" not in body
+            ):
+                adv = format_advisor_html(db_path, q)
+                if adv:
+                    body = body + "\n\n" + adv if body else adv
+            return strip_boilerplate(attach_five_lead(body, db_path, q, uid))
         except Exception:
             try:
                 from biaoke_mind import strip_boilerplate

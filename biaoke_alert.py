@@ -2,10 +2,10 @@
 """飆大急推 vs 一般抓文（2026-10-01 鎖死）。
 
 一般新文／自回：只進未讀匣＋飆大鈕彙整／融合，不准另推 Telegram。
-急推才推偉權＋哥哥兩支手機，且要完整原文：
-  1) 現在就要出清
-  2) 現在差不多到底／抄底窗口
-  3) 官方收盤柱碰到他已點過的位
+急推才推偉權＋哥哥兩支手機：
+  1) 現在就要出清 → 完整原文
+  2) 現在差不多到底／抄底窗口 → 完整原文
+  3) 官方收盤柱碰到他已點過的位 → 去蕪存菁判斷（不准堆幾月幾號舊文讓人自己讀）
 如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點＝一般，不急推。
 確認低點仍要主音疊輔助；單講趨勢向上、初步止訊號、右肩有守＝還不到確認。
 不是買訊。同一則／同一位不重覆推。社團不推。盤中未收不當收。
@@ -475,9 +475,72 @@ def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, 
             f"{html_escape(str(event.get('time') or ''))} {kind}："
         ),
         html_escape(body),
-        "對原文用。不是買訊。",
+        "對原文用。",
     ]
     return "\n".join(bits)
+
+
+def _level_face(level: float) -> str:
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return str(level or "")
+    if abs(lv - round(lv)) < 1e-6:
+        return f"{lv:.0f}"
+    return f"{lv:g}"
+
+
+def _essence_around_level(text: str, level: float) -> str:
+    """含該點位的一句立場；去蕪存菁，不准整篇貼文。"""
+    blob = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not blob:
+        return ""
+    face = _level_face(level)
+    # 先切句，找含點位且帶判斷詞的
+    parts = [p.strip() for p in re.split(r"(?<=[。！？；\n])", blob) if p and p.strip()]
+    if not parts:
+        parts = [blob]
+    ranked: List[Tuple[int, str]] = []
+    for p in parts:
+        if face not in p and (not face.isdigit() or face not in p.replace(",", "")):
+            # 容許 46,747 寫法
+            if face not in p.replace(",", ""):
+                continue
+        score = 0
+        for w in (
+            "穿刺",
+            "突破",
+            "回測",
+            "支撐",
+            "壓力",
+            "否則",
+            "出清",
+            "守",
+            "破",
+            "過",
+            "整理",
+            "反彈",
+            "下殺",
+            "抄底",
+        ):
+            if w in p:
+                score += 2
+        score += 1
+        ranked.append((score, p))
+    if not ranked:
+        # 退回 extract 的短 ctx
+        return blob[:72] + ("…" if len(blob) > 72 else "")
+    ranked.sort(key=lambda x: -x[0])
+    best = ranked[0][1]
+    if len(best) > 96:
+        # 以點位為中心裁
+        idx = best.find(face)
+        if idx < 0:
+            idx = 0
+        a = max(0, idx - 36)
+        b = min(len(best), idx + len(face) + 48)
+        best = ("…" if a else "") + best[a:b] + ("…" if b < len(best) else "")
+    return best.strip(" ，、；")
 
 
 def format_level_hit_alert(
@@ -491,27 +554,123 @@ def format_level_hit_alert(
     bar_date: str,
     note: str,
 ) -> str:
-    """官方柱碰到他已點過的位：完整原文＋碰到說明。"""
-    body = str(text or "").strip()
-    if len(body) > _TG_BODY_MAX:
-        body = body[: _TG_BODY_MAX - 1] + "…"
-    face = "樓下" if kind == "reply" else "主文"
-    lv = f"{level:.0f}" if abs(level - round(level)) < 1e-6 else f"{level:g}"
+    """單則相容入口 → 去蕪存菁判斷（不再整篇貼文）。"""
+    return format_level_hit_synthesis(
+        level=level,
+        bar_date=bar_date,
+        bar_high=None,
+        bar_low=None,
+        bar_close=None,
+        note=note,
+        sources=[
+            {
+                "date": date,
+                "time": time_s,
+                "kind": kind,
+                "text": text,
+                "post_id": post_id,
+                "role": note,
+            }
+        ],
+    )
+
+
+def format_level_hit_synthesis(
+    *,
+    level: float,
+    bar_date: str,
+    bar_high: Optional[float],
+    bar_low: Optional[float],
+    bar_close: Optional[float],
+    note: str = "",
+    sources: Sequence[Dict[str, Any]],
+) -> str:
+    """官方柱碰到已點位：融會判斷一句，不准堆幾月幾號原文清單。"""
+    lv = _level_face(level)
+    rows = [dict(s) for s in (sources or []) if s]
+    # 最近的優先
+    rows.sort(
+        key=lambda r: (
+            str(r.get("date") or ""),
+            str(r.get("time") or ""),
+        ),
+        reverse=True,
+    )
+    essence = ""
+    for r in rows:
+        essence = _essence_around_level(str(r.get("text") or ""), level)
+        if essence:
+            break
+        ctx = str(r.get("ctx") or "").strip()
+        if ctx:
+            essence = ctx
+            break
+    bar_bit = f"官方 {html_escape(str(bar_date or ''))}"
+    try:
+        if bar_low is not None and bar_high is not None:
+            bar_bit += (
+                f" 加權高低 {html_escape(_level_face(float(bar_low)))}"
+                f"–{html_escape(_level_face(float(bar_high)))}"
+            )
+    except (TypeError, ValueError):
+        pass
+    bar_bit += f" 碰到他自己點的 {html_escape(lv)}"
+    if note:
+        bar_bit += f"（{html_escape(str(note))}）"
+    close_bit = ""
+    try:
+        if bar_close is not None:
+            c = float(bar_close)
+            lv_f = float(level)
+            if c > lv_f:
+                close_bit = f"收 {_level_face(c)} 在這位之上"
+            elif c < lv_f:
+                close_bit = f"收 {_level_face(c)} 在這位之下"
+            else:
+                close_bit = f"收在 {_level_face(c)}"
+    except (TypeError, ValueError):
+        close_bit = ""
     bits = [
         "<b>飆大急推·官方碰到已點位</b>",
-        (
-            f"官方 {html_escape(str(bar_date or ''))} "
-            f"碰到他自己點的 {html_escape(lv)}"
-            + (f"（{html_escape(note)}）" if note else "")
-        ),
-        (
-            f"他原文 {html_escape(str(date or ''))} "
-            f"{html_escape(str(time_s or ''))} {face}："
-        ),
-        html_escape(body),
-        "對原文用。不是買訊。",
+        bar_bit + ("；" + html_escape(close_bit) if close_bit else ""),
     ]
+    oral = _oral_level_thesis(essence, lv)
+    if oral:
+        bits.append("中心思想：" + html_escape(oral))
+    elif essence:
+        bits.append("判斷：" + html_escape(essence))
+    else:
+        bits.append("判斷：柱已碰到他點過的這位；近窗沒抽出更細立場。")
+    n = len(rows)
+    if n > 1:
+        bits.append(f"同點另有 {n - 1} 則已併入，不逐則貼舊文。")
+    bits.append("對原文用。不准補新價。圖隨近窗改口重畫，不准鎖死舊ABC。")
     return "\n".join(bits)
+
+
+def _oral_level_thesis(essence: str, level_face: str) -> str:
+    """把含點位的句子收成口語中心思想，不是複誦日期目錄。"""
+    s = str(essence or "").strip()
+    if not s:
+        return ""
+    lv = str(level_face or "")
+    if any(k in s for k in ("穿刺", "突破", "有效過", "過前")) and any(
+        k in s for k in ("否則", "再測", "要不然")
+    ):
+        return f"他要 {lv} 這位有效過才算脫離震盪；過不了還得再測更低——柱碰到只是提醒對原文，不是自動突破。"
+    if "最後整理" in s or "整理完" in s or "整理完成" in s:
+        return f"他近窗把 {lv} 當最後整理關；過了才談主升，不是一碰到就改劇本。"
+    if "回測" in s:
+        return f"他點 {lv} 是回測／關前觀察位；柱碰到＝對質提醒，不是叫你追。"
+    if "支撐" in s or "守" in s:
+        return f"他點 {lv} 當守住才像多頭結構未壞；碰到要看收有沒有守住。"
+    if "壓力" in s or "關" in s:
+        return f"他點 {lv} 當關卡／壓力；碰到是觀察能不能過，不是已過。"
+    # 去蕪：去掉多餘標點，壓成一句口語
+    t = re.sub(r"^[…\s]+", "", s)
+    if len(t) > 80:
+        t = t[:79] + "…"
+    return t
 
 
 def _send_family(html: str) -> int:
@@ -746,9 +905,10 @@ def maybe_push_marked_level_hits(
     *,
     now: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """官方已收柱碰到他已點過的大盤位 → 急推完整原文到兩人。
+    """官方已收柱碰到他已點過的大盤位 → 同一點位只推一則融會判斷。
 
-    未收盤不當收。一般新文不走這條。同一 (post, level, bar_date) 不重推。
+    未收盤不當收。一般新文不走這條。不准逐則堆幾月幾號舊文。
+    同一 (level, bar_date) 不重推。
     """
     stats = {"checked": 0, "pushed": 0, "skipped": 0}
     if not db_path:
@@ -760,6 +920,8 @@ def maybe_push_marked_level_hits(
     hi = float(bar["high"])
     lo = float(bar["low"])
     posts = _load_marked_index_posts(db_path)
+    # 同一點位併源，最近文優先進判斷
+    by_lv: Dict[float, List[Dict[str, Any]]] = {}
     for post in posts:
         post_day = str(post.get("date") or "").replace("-", "")[:8]
         # 他點位那天或之後才對質；當日柱若未收不算，已收才進 bar。
@@ -773,40 +935,79 @@ def maybe_push_marked_level_hits(
             if not (lo <= level <= hi):
                 continue
             stats["checked"] += 1
-            pid = str(post.get("post_id") or "")
-            key = f"idx:{pid}:{level:g}:{bar_ymd}"
-            if _level_already(db_path, key):
-                stats["skipped"] += 1
-                continue
-            role = str(hit.get("role") or "點位")
-            html = format_level_hit_alert(
-                post_id=pid,
-                date=str(post.get("date") or ""),
-                time_s=str(post.get("time") or ""),
-                kind=str(post.get("kind") or "post"),
-                text=str(post.get("text") or ""),
+            by_lv.setdefault(level, []).append(
+                {
+                    "post_id": str(post.get("post_id") or ""),
+                    "date": str(post.get("date") or ""),
+                    "time": str(post.get("time") or ""),
+                    "kind": str(post.get("kind") or "post"),
+                    "text": str(post.get("text") or ""),
+                    "role": str(hit.get("role") or "點位"),
+                    "ctx": str(hit.get("ctx") or ""),
+                }
+            )
+    for level, sources in by_lv.items():
+        key = f"idx:lv:{level:g}:{bar_ymd}"
+        if _level_already(db_path, key):
+            stats["skipped"] += 1
+            continue
+        # 舊鍵（逐則）若已推過其中任一則，仍略過免洗版
+        if any(
+            _level_already(
+                db_path, f"idx:{s.get('post_id')}:{level:g}:{bar_ymd}"
+            )
+            for s in sources
+            if s.get("post_id")
+        ):
+            _mark_level(
+                db_path,
+                key,
+                post_id=str(sources[0].get("post_id") or ""),
                 level=level,
                 bar_date=bar_ymd,
-                note=f"加權{role}",
+                reasons=[f"官方{bar_ymd}碰到{level:g}", "舊鍵已推"],
             )
-            sent = _send_family(html)
-            if sent or os.environ.get("PYTEST_CURRENT_TEST"):
-                _mark_level(
-                    db_path,
-                    key,
-                    post_id=pid,
-                    level=level,
-                    bar_date=bar_ymd,
-                    reasons=[f"官方{bar_ymd}碰到{level:g}", role],
-                )
-                stats["pushed"] += 1
-                logger.info(
-                    "飆大位階急推 post=%s level=%s bar=%s sent=%s",
-                    pid,
-                    level,
-                    bar_ymd,
-                    sent,
-                )
+            stats["skipped"] += 1
+            continue
+        roles = sorted(
+            {
+                str(s.get("role") or "點位")
+                for s in sources
+                if str(s.get("role") or "").strip()
+            }
+        )
+        note = "加權" + ("／".join(roles) if roles else "點位")
+        html = format_level_hit_synthesis(
+            level=level,
+            bar_date=bar_ymd,
+            bar_high=hi,
+            bar_low=lo,
+            bar_close=bar.get("close"),
+            note=note,
+            sources=sources,
+        )
+        sent = _send_family(html)
+        if sent or os.environ.get("PYTEST_CURRENT_TEST"):
+            _mark_level(
+                db_path,
+                key,
+                post_id=str(sources[0].get("post_id") or ""),
+                level=level,
+                bar_date=bar_ymd,
+                reasons=[
+                    f"官方{bar_ymd}碰到{level:g}",
+                    note,
+                    f"n={len(sources)}",
+                ],
+            )
+            stats["pushed"] += 1
+            logger.info(
+                "飆大位階急推 level=%s bar=%s sources=%s sent=%s",
+                level,
+                bar_ymd,
+                len(sources),
+                sent,
+            )
     return stats
 
 

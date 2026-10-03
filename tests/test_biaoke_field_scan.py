@@ -1628,6 +1628,310 @@ def test_dongzhu_skips_holding_company_parking(tmp_path, monkeypatch):
     )
 
 
+def test_optical_tier_insight_inp_vs_connect():
+    """觸類旁通：點到光通訊／InP → 展開整組教過成員，不是只記點名。"""
+    from biaoke_field_scan import optical_tier_insight
+    from industry_fine import TAUGHT_GROUPS
+
+    spoken = (
+        "目前主流是InP，不是CPO。"
+        "InP：聯亞、全新、IET、穩懋。"
+        "上詮更弱，建議專注聯亞、全新。"
+    )
+    hit = optical_tier_insight(spoken, db_path="")
+    assert hit.get("ok") is True
+    lines = " ".join(hit.get("lines") or [])
+    assert "InP" in lines
+    assert "黃金買點" in lines or "整組展開" in lines
+    assert "整組展開" in lines
+    roster = hit.get("roster") or []
+    taught = set(TAUGHT_GROUPS.get("光通訊") or ())
+    assert taught
+    assert {str(r.get("sid")) for r in roster} >= taught
+    assert any(x.get("name") == "聯亞" for x in (hit.get("inp") or []))
+    assert any(x.get("name") == "上詮" for x in (hit.get("connect") or []))
+    # 只講「光通訊」沒點名個股 → 仍展開整組
+    bare = optical_tier_insight("光通訊這兩天要注意", db_path="")
+    assert bare.get("ok") is True
+    assert len(bare.get("roster") or []) >= len(taught)
+
+
+def test_optical_tier_insight_judges_bars(tmp_path):
+    """整組展開後用官方柱判 InP 層是否強過連接側。"""
+    from biaoke_field_scan import optical_tier_insight
+
+    db = str(tmp_path / "opt.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (date TEXT, stock_id TEXT, stock_name TEXT, "
+        "open REAL, high REAL, low REAL, close REAL, volume INTEGER, pct_change REAL, "
+        "PRIMARY KEY (date, stock_id))"
+    )
+    # 6 根：近5日％＝(last/first-1)*100；InP 強、連接弱
+    series = {
+        "3081": [100, 102, 105, 108, 110, 120],  # 聯亞 +20%
+        "2455": [100, 101, 103, 106, 108, 115],  # 全新 +15%
+        "4971": [100, 100, 101, 102, 104, 110],  # IET +10%
+        "3105": [100, 100, 101, 102, 103, 108],  # 穩懋 +8%
+        "4991": [100, 100, 100, 101, 102, 105],  # 環宇 +5%
+        "3363": [100, 99, 98, 97, 96, 90],  # 上詮 -10%
+        "3163": [100, 99, 98, 97, 96, 92],  # 波若威 -8%
+        "6442": [100, 99, 98, 97, 95, 93],  # 光聖 -7%
+        "3234": [100, 100, 100, 100, 100, 101],
+        "4979": [100, 100, 100, 100, 100, 100],
+        "4977": [100, 100, 100, 100, 100, 99],
+        "3450": [100, 100, 100, 100, 100, 100],
+    }
+    base = datetime(2026, 9, 20)
+    for sid, closes in series.items():
+        name = {
+            "3081": "聯亞",
+            "2455": "全新",
+            "3363": "上詮",
+        }.get(sid, sid)
+        for i, c in enumerate(closes):
+            day = (base + timedelta(days=i)).strftime("%Y%m%d")
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+                (day, sid, name, c, c, c, c, 1000, 0.0),
+            )
+    conn.commit()
+    conn.close()
+    hit = optical_tier_insight(
+        "光通訊主流是InP不是CPO，聯亞、全新先看。上詮更弱。",
+        db_path=db,
+    )
+    assert hit.get("ok") is True
+    assert hit.get("inp_avg_5d") is not None
+    assert hit.get("connect_avg_5d") is not None
+    assert float(hit["inp_avg_5d"]) > float(hit["connect_avg_5d"]) + 1.0
+    blob = " ".join(hit.get("lines") or [])
+    assert "印證主流InP" in blob or "InP 均" in blob
+    assert "整組展開" in blob
+
+
+def test_spoken_field_roster_judge_cooling(tmp_path):
+    """點到散熱 → 展開教過成員股＋近5日柱強弱。"""
+    from biaoke_field_scan import spoken_field_roster_judge
+
+    db = str(tmp_path / "cool.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (date TEXT, stock_id TEXT, stock_name TEXT, "
+        "open REAL, high REAL, low REAL, close REAL, volume INTEGER, pct_change REAL, "
+        "PRIMARY KEY (date, stock_id))"
+    )
+    series = {
+        "3653": [100, 102, 104, 106, 108, 120],  # 健策強
+        "3017": [100, 100, 101, 102, 103, 105],  # 奇鋐
+        "3324": [100, 99, 98, 97, 96, 90],  # 雙鴻弱
+        "6933": [100, 100, 100, 100, 100, 100],
+    }
+    base = datetime(2026, 9, 20)
+    for sid, closes in series.items():
+        for i, c in enumerate(closes):
+            day = (base + timedelta(days=i)).strftime("%Y%m%d")
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+                (day, sid, sid, c, c, c, c, 1000, 0.0),
+            )
+    conn.commit()
+    conn.close()
+    hit = spoken_field_roster_judge("真正主流為ASIC、散熱、光通訊", db_path=db)
+    assert hit.get("ok") is True
+    cool = (hit.get("fields") or {}).get("散熱") or {}
+    assert cool.get("ok") is True
+    assert len(cool.get("members") or []) >= 3
+    blob = " ".join(hit.get("lines") or [])
+    assert "散熱整組" in blob
+    assert "類股展開對質" in blob
+
+
+def test_asic_ic_peer_insight_from_week_speech(tmp_path):
+    """炒ASIC不是其他IC設計 → 錨定台積／創意／聯發，展開相關IC設計對位階連動。"""
+    from biaoke_field_scan import asic_ic_peer_insight
+
+    db = str(tmp_path / "asic.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (date TEXT, stock_id TEXT, stock_name TEXT, "
+        "open REAL, high REAL, low REAL, close REAL, volume INTEGER, pct_change REAL, "
+        "PRIMARY KEY (date, stock_id))"
+    )
+    conn.execute(
+        "CREATE TABLE stock_fine_industry (stock_id TEXT PRIMARY KEY, chain TEXT)"
+    )
+    for sid, chain in (
+        ("2330", "電子上游-IC-代工"),
+        ("3443", "電子上游-IP/ASIC"),
+        ("2454", "電子上游-IC-設計"),
+        ("3035", "電子上游-IP/ASIC"),
+        ("3661", "電子上游-IP/ASIC"),
+        ("4966", "電子上游-IC-設計"),
+        ("6531", "電子上游-記憶體IC設計"),
+    ):
+        conn.execute(
+            "INSERT INTO stock_fine_industry VALUES (?,?)", (sid, chain)
+        )
+    # 21+ 根：錨定偏強；智原落後有空間；譜瑞跟漲
+    base = datetime(2026, 8, 20)
+    series = {
+        "2330": [100 + i * 0.3 for i in range(25)],
+        "3443": [100 + i * 0.8 for i in range(25)],
+        "2454": [100 + i * 0.5 for i in range(25)],
+        "3035": [100 + (0.1 if i < 20 else 0.05) * i for i in range(25)],  # 弱
+        "3661": [100 + i * 0.7 for i in range(25)],
+        "4966": [100 + i * 0.55 for i in range(25)],
+        "6531": [100 + i * 0.2 for i in range(25)],
+    }
+    # 製造距20高：智原最後收在低位
+    series["3035"] = [120] * 20 + [100, 101, 102, 103, 104]
+    for sid, closes in series.items():
+        for i, c in enumerate(closes):
+            day = (base + timedelta(days=i)).strftime("%Y%m%d")
+            h = max(c, closes[max(0, i - 1)]) * 1.01
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+                (day, sid, sid, c, h, c * 0.99, c, 2000, 0.0),
+            )
+    conn.commit()
+    conn.close()
+    spoken = (
+        "目前市場主力是在炒ASIC而不是其他IC設計股或IP股要搞清楚。"
+        "二軍IC設計要找ASIC、台積電、創意、聯發科相關的IC設計。"
+        "愛普應該和記憶體相關不是主流。"
+    )
+    hit = asic_ic_peer_insight(spoken, db_path=db)
+    assert hit.get("ok") is True
+    blob = " ".join(hit.get("lines") or [])
+    assert "台積電" in blob and "創意" in blob and "聯發科" in blob
+    assert "記憶體" in blob or "愛普" in blob
+    peers = hit.get("peers") or []
+    assert any(p.get("sid") == "3035" for p in peers)
+    assert not any(p.get("sid") == "6531" for p in peers)  # 記憶體排除主流池
+    assert any("黃金買點" in x for x in (hit.get("lines") or []))
+
+
+def test_recent_spoken_range_falls_back(tmp_path):
+    """本自然週沒文 → 用庫內最新主文往回一週，才能推論。"""
+    from biaoke_field_scan import recent_spoken_range, week_spoken, biaoke_week_link
+    from zoneinfo import ZoneInfo
+
+    db = str(tmp_path / "fb.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE biaoke_posts (id TEXT PRIMARY KEY, n INTEGER, date TEXT, time TEXT, "
+        "kind TEXT, tags TEXT, text TEXT, parent TEXT DEFAULT '')"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "p1",
+            1,
+            "2026-09-23",
+            "08:39",
+            "post",
+            "[]",
+            "目前台股最強主流是ASIC，創意、聯發科都有效突破。炒ASIC而不是其他IC設計。",
+            "",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    a, b = recent_spoken_range(db, now=now)
+    assert b == "2026-09-23"
+    assert a <= b
+    spoken = week_spoken(db, now=now)
+    assert "ASIC" in spoken
+    ref = biaoke_week_link(db, now=now)
+    assert ref.get("ok") is True
+    assert any("ASIC" in x or "引領" in x for x in (ref.get("lines") or []))
+
+
+def test_record_spoken_field_expand_from_reply_thread(tmp_path):
+    """樓中樓只講『上詮更弱』→ 拼父文光通訊 → 整組展開並凍 live_judge。"""
+    from biaoke_field_scan import record_spoken_field_expand, spoken_blob_from_events
+    from industry_fine import TAUGHT_GROUPS
+
+    db = str(tmp_path / "thread.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (date TEXT, stock_id TEXT, stock_name TEXT, "
+        "open REAL, high REAL, low REAL, close REAL, volume INTEGER, pct_change REAL, "
+        "PRIMARY KEY (date, stock_id))"
+    )
+    conn.execute(
+        "CREATE TABLE biaoke_posts (id TEXT PRIMARY KEY, n INTEGER, date TEXT, time TEXT, "
+        "kind TEXT, tags TEXT, text TEXT, parent TEXT DEFAULT '')"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "p1",
+            1,
+            "2026-10-02",
+            "10:00",
+            "post",
+            "[]",
+            "光通訊主流是InP不是CPO，聯亞、全新先看。",
+            "",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "p1:c1",
+            2,
+            "2026-10-02",
+            "11:00",
+            "reply",
+            "[]",
+            "上詮更弱，專注聯亞、全新。",
+            "p1",
+        ),
+    )
+    # 最少柱：聯亞／上詮各 6 根
+    base = datetime(2026, 9, 20)
+    for sid, closes in (
+        ("3081", [100, 102, 105, 108, 110, 120]),
+        ("3363", [100, 99, 98, 97, 96, 90]),
+        ("2455", [100, 101, 102, 103, 104, 110]),
+    ):
+        for i, c in enumerate(closes):
+            day = (base + timedelta(days=i)).strftime("%Y%m%d")
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+                (day, sid, sid, c, c, c, c, 1000, 0.0),
+            )
+    conn.commit()
+    conn.close()
+
+    events = [
+        {
+            "id": "p1:c1",
+            "kind": "reply",
+            "parent": "p1",
+            "text": "上詮更弱，專注聯亞、全新。",
+            "reply_to_text": "",
+        }
+    ]
+    blob = spoken_blob_from_events(events, db)
+    assert "光通訊" in blob or "InP" in blob
+    assert "上詮更弱" in blob
+    hit = record_spoken_field_expand(db, events, as_of="20260925")
+    assert hit.get("ok") is True
+    assert len((hit.get("optical") or {}).get("roster") or []) >= len(
+        TAUGHT_GROUPS.get("光通訊") or ()
+    )
+    assert any("整組展開" in x for x in (hit.get("lines") or []))
+    # live_judge 有凍（同庫或旁路 store）
+    assert int(hit.get("n") or 0) >= 1 or any(
+        (r.get("chg5") is not None)
+        for r in ((hit.get("optical") or {}).get("roster") or [])
+    )
+
+
 def test_biaoke_week_link_on_dongzhu_page(tmp_path, monkeypatch):
     """本週飆大聯動上洞燭頁：只參考，不改佔比主判／不准當買訊。"""
     from biaoke_field_scan import (
@@ -1653,7 +1957,8 @@ def test_biaoke_week_link_on_dongzhu_page(tmp_path, monkeypatch):
             "post",
             '["創意","健策","聯亞","台光電"]',
             "大盤在過9/22 48601的最後整理，而且已經有完成6/23 48218回測的跡象。"
-            "真正主流為ASIC、散熱、光通訊、CCL。觀察創意、健策。IET 二軍漲停。",
+            "真正主流為ASIC、散熱、光通訊、CCL。觀察創意、健策。IET 二軍漲停。"
+            "光通訊主流是InP不是CPO，聯亞、全新先看。",
         ),
     )
     conn.execute(
@@ -1665,7 +1970,7 @@ def test_biaoke_week_link_on_dongzhu_page(tmp_path, monkeypatch):
             "09:42",
             "reply",
             "[]",
-            "南亞科站穩531就是整理完成。奇鋐還在關前。",
+            "南亞科站穩531就是整理完成。奇鋐還在關前。上詮更弱，專注聯亞、全新。",
         ),
     )
     # parent 欄：_seed 表沒 parent；補欄以免 week_spoken 查 reply parent 失敗
@@ -1691,6 +1996,11 @@ def test_biaoke_week_link_on_dongzhu_page(tmp_path, monkeypatch):
     assert ref.get("replies") >= 1
     assert "ASIC" in (ref.get("fields") or []) or "散熱" in (ref.get("fields") or [])
     assert any("切入只認黃金買點" in x for x in (ref.get("lines") or []))
+    assert any("InP" in x for x in (ref.get("lines") or []))
+    assert any("整組展開" in x for x in (ref.get("lines") or []))
+    assert isinstance(ref.get("optical"), dict)
+    assert isinstance(ref.get("field_expand"), dict)
+    assert len((ref.get("optical") or {}).get("roster") or []) >= 8
 
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
     monkeypatch.setattr(
@@ -1703,7 +2013,7 @@ def test_biaoke_week_link_on_dongzhu_page(tmp_path, monkeypatch):
     assert isinstance(data.get("biaoke_week"), dict)
     assert data["biaoke_week"].get("ok") is True
     html = dongzhu_page(db, spoken="", data=data)
-    assert "本週飆大聯動（參考）" in html
+    assert "近窗飆大聯想（引領找股）" in html or "本週飆大聯動" in html
     assert "不是買訊" in html or "切入只認黃金買點" in html
     # 推薦買點邏輯未被本週聯動改成亂標
     assert "不准發明切入" not in html

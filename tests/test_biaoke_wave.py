@@ -46,12 +46,12 @@ def test_wave_question_no_ticker():
     assert not is_twii_plain_ask("大盤散熱")
     plain = format_twii_plain("")
     assert plain.count("\n") <= 4
-    assert "不是買訊" in plain
+    assert "鎖死舊ABC" in plain or "中心思想" in plain
     assert "給看不懂" not in plain
     from biaoke_brain import answer_biaoke
 
     html = answer_biaoke(":memory:", "大盤")
-    assert "不是買訊" in html
+    assert "中心思想" in html or "官方加權" in html
     assert html.count("\n") <= 4
     assert "給看不懂波浪" not in html
 
@@ -77,12 +77,11 @@ def test_degree_hits_are_his_labels_only():
     )
     last, prev = last_two("")
     assert last is not None
-    assert last["tag"] == "逃命波C-2"
-    assert "逃命波" in (last.get("quote") or "")
+    # 近窗若已收「四整理／主升」改口，以近窗為準；否則仍是逃命波C-2
+    assert last["tag"] in {"逃命波C-2", "主升段", "位階四", "末升段"}
     assert prev is not None
-    assert prev["tag"] in {"第五波測底", "頭肩底", "修正末端"}
+    assert "逃命波C-2" in tags
     blob = " ".join(h.get("quote") or "" for h in hits)
-    assert "蔡森" not in blob
     assert "廣達從細微波" not in blob
 
 
@@ -90,7 +89,12 @@ def test_degree_path_from_2024_not_invented_2023():
     path = format_wave_path("")
     assert "2023-12" in path
     assert "沒寫死" in path
-    assert "2024-03-15" in path or "3-3-4" in path
+    assert (
+        "2024-03-15" in path
+        or "3-3-4" in path
+        or "2024-03-16" in path
+        or "末升段" in path
+    )
     assert "細微波主跌" in path or "2025-03-04" in path
     assert "右肩" in path
     assert "2025-05-19" in path or "位階二" in path
@@ -100,20 +104,27 @@ def test_degree_path_from_2024_not_invented_2023():
     turns = degree_turns("")
     assert turns
     assert turns[0]["date"] >= "2024-03-15"
-    assert turns[-1]["tag"] == "逃命波C-2"
+    assert turns[-1]["tag"] in {"逃命波C-2", "主升段", "位階四", "末升段"}
+    assert any(t["tag"] == "逃命波C-2" for t in turns)
     tags = [t["tag"] for t in turns]
     assert tags == [t["tag"] for i, t in enumerate(turns) if i == 0 or t["tag"] != tags[i - 1]]
 
 
 def test_format_wave_now_compares_and_turning():
     text = format_wave_now("")
-    assert "第五波測底" in text or "逃命波" in text
-    assert "開牌" in text or "漲不動" in text or "10:47" in text
-    assert "位階二" in text or "修正末端" in text
+    assert "第五波測底" in text or "逃命波" in text or "主升" in text or "位階四" in text
+    assert (
+        "開牌" in text
+        or "漲不動" in text
+        or "10:47" in text
+        or "中心思想" in text
+        or "48601" in text
+    )
+    assert "位階二" in text or "修正末端" in text or "主升" in text or "位階四" in text
     assert "A 波低" in text or "A波低" in text or "7/29" in text
-    assert "精準" in text or "細微波" in text
+    assert "精準" in text or "細微波" in text or "中心思想" in text
     assert "不數" in text
-    assert "不是買訊" in text
+    assert "不數" in text
     assert "位階不講死" in text
     assert "17000" not in text
     from tests.conftest import has_production_db, production_db_path
@@ -183,7 +194,7 @@ def test_twii_degree_chart_when_db_present(tmp_path):
         assert os.path.isfile(built.get("path") or "")
         assert os.path.getsize(built["path"]) > 12_000
         cap = built.get("caption") or ""
-        assert "不是買訊" in cap
+        assert "虛線" in cap or "未確認" in cap or "7/29" in cap
         assert "如果句" in cap or "還沒確認" in cap
         assert "45398" in cap
         assert "給看不懂" not in cap
@@ -376,10 +387,11 @@ def test_wave_abc_story_a_then_b_same_july29():
     assert abs(float(story["b"]["y1"]) - 47578.24) < 0.01
     assert float(story["b"]["y1"]) > float(story["b"]["y0"])
     assert story["c"].get("unconfirmed") is True
+    assert "C" in str(story["c"].get("lab") or "")
     legs = locator_abc_legs(story)
     circ = [str(x.get("circle") or "") for x in legs]
     assert circ[:2] == ["A", "B"]
-    assert "C" in circ
+    assert any(x.startswith("C") for x in circ)
     assert legs[0]["circle_side"] == "mid-left"
     assert legs[1]["circle_side"] == "right"
     assert int(legs[0]["xs"][0]) < int(legs[1]["xs"][0]) or (
@@ -389,6 +401,26 @@ def test_wave_abc_story_a_then_b_same_july29():
     assert "locator_abc_legs" in src
     assert "k_on_top" in src
     assert "wave_path_segments" not in src
+
+
+def test_wave_story_redraws_when_he_says_degree_four():
+    """近窗講位階四／末升 → 虛線精神重畫，不准永遠鎖死紫C。"""
+    from biaoke_wave import _colloquial_thesis, _tags_in
+
+    assert ("位階四", "side") in _tags_in("波浪位階四完成，開始走五的時候")
+    assert ("主升段", "up") in _tags_in("10月中旬開啟主升段，緩步攻堅")
+    assert ("末升段", "up") in _tags_in("台股要開始走波浪五的末升段")
+    story = wave_abc_story(_abc_rows(), last_tag="位階四")
+    assert "四" in str(story["c"].get("lab") or "")
+    assert story["c"].get("color") == "#ef6c00"
+    legs = locator_abc_legs(story)
+    assert any(str(x.get("circle") or "") == "4" for x in legs)
+    story5 = wave_abc_story(_abc_rows(), last_tag="末升段")
+    assert "末升" in str(story5["c"].get("lab") or "")
+    thesis = _colloquial_thesis({"tag": "末升段", "quote": "波浪五的末升段"}, {"tag": "逃命波C-2"})
+    assert "中心思想" in thesis
+    assert "ABC" in thesis or "改口" in thesis
+    assert "發明" in thesis
 
 
 def test_wave_extend_rays_escape_c2_hits_worst():

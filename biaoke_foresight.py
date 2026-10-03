@@ -358,14 +358,46 @@ def case_for(sid: str) -> Optional[Dict[str, str]]:
     return _CASES.get(str(sid or "").strip())
 
 
+_DRONE_SIDS = frozenset({"5371", "8033", "4916", "2645", "2634"})
+
+
+def _drone_retired() -> bool:
+    """近窗沒再講無人機＝已退場，不准當現在建議。"""
+    try:
+        from biaoke_advisor import theme_is_live
+        from config import get_db_path
+
+        return not theme_is_live(get_db_path(), "無人機")
+    except Exception:
+        return True
+
+
 def field_line(sid: str) -> str:
     hit = case_for(sid)
-    return str(hit.get("field") or "") if hit else ""
+    if not hit:
+        return ""
+    body = str(hit.get("field") or "")
+    if str(sid) in _DRONE_SIDS and _drone_retired():
+        note = (
+            "近窗沒再講無人機，這組已退場，"
+            "不准當現在建議（當年半山腰隔日沖／9/5 不要再碰）。"
+        )
+        return f"{body}｜{note}" if body else note
+    return body
 
 
 def hold_line(sid: str) -> str:
     hit = case_for(sid)
-    return str(hit.get("hold") or "") if hit else ""
+    if not hit:
+        return ""
+    body = str(hit.get("hold") or "")
+    if str(sid) in _DRONE_SIDS and _drone_retired():
+        note = (
+            "近窗沒再講無人機，已退場，不准建議買；"
+            "只留歷史對質，不是現在可接。"
+        )
+        return f"{body}｜{note}" if body else note
+    return body
 
 
 def doubt_line(sid: str) -> str:

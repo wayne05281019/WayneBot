@@ -1796,6 +1796,20 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大輔助匣寫入失敗")
     try:
+        # 回文不是存檔就算：點到類股→展開所屬股＋官方柱對質（失敗不擋抓文）
+        from biaoke_field_scan import record_spoken_field_expand
+
+        record_spoken_field_expand(db_path, packed)
+    except Exception:
+        logger.exception("飆大類股展開對質略過")
+    try:
+        # 抓到就重織近四月思考網：活人找脈絡黃金，不准只記不活
+        from biaoke_reweave import record_reweave
+
+        record_reweave(db_path, packed)
+    except Exception:
+        logger.exception("飆大近四月活化串聯略過")
+    try:
         from biaoke_alert import maybe_push_drop_alert, maybe_push_marked_level_hits
 
         maybe_push_drop_alert(db_path, packed)

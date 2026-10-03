@@ -391,8 +391,9 @@ def format_focus_oral(
     replies: Sequence[Dict[str, Any]],
     *,
     now: Optional[datetime] = None,
+    db_path: str = "",
 ) -> str:
-    """空白按飆大：口語重述最新重點。不准倒原文、不准時間跳來跳去。"""
+    """空白按飆大：口語重述最新重點＋智囊團活用。不准倒原文、不准時間跳來跳去。"""
     mains = [dict(p) for p in mains if str(p.get("text") or "").strip()]
     if not mains:
         return ""
@@ -480,6 +481,45 @@ def format_focus_oral(
     _add("族群", field)
     _add("PCB", pcb)
     _add("他還說", said)
+    # 近四月活化＋智囊：有傳主庫才跨庫查；真人對真人不秀買訊套話
+    try:
+        from biaoke_advisor import advisor_focus_lines
+        from biaoke_reweave import reweave_focus_lines
+
+        db_hint = str(db_path or "")
+        adv_lines: List[str] = []
+        if db_hint:
+            adv_lines.extend(reweave_focus_lines(db_hint, limit=3))
+            for x in advisor_focus_lines(db_hint):
+                if x not in adv_lines:
+                    adv_lines.append(x)
+        cleaned: List[str] = []
+        for x in adv_lines:
+            t = (
+                str(x)
+                .replace("不是買訊", "")
+                .replace("非買訊", "")
+                .strip(" ；。")
+            )
+            if t and "不是買訊" not in t:
+                cleaned.append(t)
+        if cleaned:
+            blocks.append("")
+            blocks.append("<b>脈絡黃金</b>")
+            blocks.extend(html_escape(x) for x in cleaned[:4])
+    except Exception:
+        pass
+    # 你幾乎不問：空白進場也要主動建議怎麼做，且每句有憑據
+    try:
+        from biaoke_advisor import format_action_advice_html
+
+        if db_path:
+            advice = format_action_advice_html(str(db_path), limit=3)
+            if advice:
+                blocks.append("")
+                blocks.append(advice)
+    except Exception:
+        pass
     asks = _likely_asks(list(mains[:2]) + replies[:8])
     if asks:
         blocks.append("")
@@ -489,7 +529,7 @@ def format_focus_oral(
     if now is not None:
         dt = now if now.tzinfo else now.replace(tzinfo=TAIPEI)
         clock = dt.astimezone(TAIPEI).strftime("%H:%M")
-    tail = "直接打字或語音。"
+    tail = "直接打字或語音。可跨庫查閱，不是答錄機。"
     if clock:
         tail = f"看到這裡是 {clock}。{tail}"
     blocks.append("")
@@ -501,6 +541,7 @@ def format_unread_digest(
     events: Sequence[Dict[str, Any]],
     *,
     now: Optional[datetime] = None,
+    db_path: str = "",
 ) -> str:
     """未讀期間同一篇抓很多次，只留最新再口語重述。按飆大才看。"""
     uniq: Dict[str, Dict[str, Any]] = {}
@@ -520,7 +561,7 @@ def format_unread_digest(
         replies = replies[1:]
     if not mains:
         return ""
-    return format_focus_oral(mains, replies, now=now)
+    return format_focus_oral(mains, replies, now=now, db_path=db_path or "")
 
 
 _ASK_SKIP = {
@@ -599,7 +640,9 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
         return ""
     latest = list(reversed(mains[-max(1, int(n_main)) :]))
     latest_replies = list(reversed(replies[-max(0, int(n_reply)) :])) if n_reply else []
-    return format_focus_oral(latest, latest_replies, now=taipei_now())
+    return format_focus_oral(
+        latest, latest_replies, now=taipei_now(), db_path=db_path or ""
+    )
 
 
 def take_unread_digest(user_id: str, db_path: str, *, now: Optional[datetime] = None) -> str:
@@ -607,4 +650,4 @@ def take_unread_digest(user_id: str, db_path: str, *, now: Optional[datetime] = 
     events = unread_events(user_id, db_path, now=now)
     if not events:
         return ""
-    return format_unread_digest(events, now=now)
+    return format_unread_digest(events, now=now, db_path=db_path or "")
