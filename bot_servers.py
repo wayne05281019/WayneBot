@@ -1177,13 +1177,18 @@ class WayneTelegramBot:
                 jobs.append((code, name, out))
 
             try:
+                from wayne_navigator import submit_mpl_paint
+
                 rendered = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        render_volume_zones_two_phase,
-                        jobs,
-                        self.db_path,
-                        with_nav_signals=True,
-                        max_workers=8,
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            lambda: render_volume_zones_two_phase(
+                                jobs,
+                                self.db_path,
+                                with_nav_signals=True,
+                                max_workers=8,
+                            )
+                        )
                     ),
                     timeout=120.0,
                 )
@@ -1307,6 +1312,11 @@ class WayneTelegramBot:
                 self.charts_dir, code, "ps_trio_chips", uid
             )
 
+            # 壓力區／高低卡／籌碼共用一把 FreeType 鎖＋單一 paint worker。
+            # 不准 create_task 三線並行：等鎖時間會被 wait_for 算進逾時，
+            # 逾時後執行緒仍占鎖，下一檔（含查股）全面掛。
+            from wayne_navigator import submit_mpl_paint
+
             def _vz():
                 return render_volume_zone_result(
                     code,
@@ -1327,21 +1337,17 @@ class WayneTelegramBot:
                     return ""
                 return generate_chips_image(code, self.db_path, chips_path) or ""
 
-            vz_f = asyncio.create_task(asyncio.to_thread(_vz))
-            card_f = asyncio.create_task(asyncio.to_thread(_card_png))
-            chips_f = asyncio.create_task(asyncio.to_thread(_chips))
+            async def _paint_one(fn, timeout_s):
+                fut = submit_mpl_paint(fn)
+                return await asyncio.wait_for(
+                    asyncio.wrap_future(fut), timeout=timeout_s
+                )
+
             try:
-                vz_path, vz_cap = await asyncio.wait_for(vz_f, timeout=40.0)
+                vz_path, vz_cap = await _paint_one(_vz, _LOOKUP_PNG_TIMEOUT)
             except Exception:
+                logger.exception("壓撐三張・壓力區產圖失敗 code=%s", code)
                 vz_path, vz_cap = "", ""
-            try:
-                cpath = await asyncio.wait_for(card_f, timeout=_LOOKUP_PNG_TIMEOUT)
-            except Exception:
-                cpath = ""
-            try:
-                chip_img = await asyncio.wait_for(chips_f, timeout=25.0)
-            except Exception:
-                chip_img = ""
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
             if vz_path and os.path.isfile(vz_path):
@@ -1359,6 +1365,11 @@ class WayneTelegramBot:
                     logger.exception("壓撐三張・壓力區送出失敗")
             else:
                 await message.reply_text(f"{code} 壓力區圖暫無法出。")
+            try:
+                cpath = await _paint_one(_card_png, _LOOKUP_PNG_TIMEOUT)
+            except Exception:
+                logger.exception("壓撐三張・高低卡產圖失敗 code=%s", code)
+                cpath = ""
             if cpath and os.path.isfile(cpath):
                 try:
                     send_path = self._prepare_lookup_album_photo(cpath)
@@ -1370,6 +1381,11 @@ class WayneTelegramBot:
                     logger.exception("壓撐三張・高低卡送出失敗")
             else:
                 await message.reply_text(f"{code} 高低溫度卡暫無法出。")
+            try:
+                chip_img = await _paint_one(_chips, _LOOKUP_PNG_TIMEOUT)
+            except Exception:
+                logger.exception("壓撐三張・籌碼產圖失敗 code=%s", code)
+                chip_img = ""
             if chip_img and os.path.isfile(chip_img):
                 try:
                     send_path = self._prepare_lookup_album_photo(chip_img)
@@ -3828,15 +3844,20 @@ class WayneTelegramBot:
             await message.reply_html(head, disable_web_page_preview=True)
             # 整頁一次出圖（快取／平行準備），再依序送 Telegram
             try:
+                from wayne_navigator import submit_mpl_paint
+
                 pairs = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        render_page_pairs,
-                        self.db_path,
-                        chunk,
-                        charts_dir=self.charts_dir,
-                        uid=uid or "wr",
-                        as_of=as_of,
-                        reuse_cache=True,
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            lambda: render_page_pairs(
+                                self.db_path,
+                                chunk,
+                                charts_dir=self.charts_dir,
+                                uid=uid or "wr",
+                                as_of=as_of,
+                                reuse_cache=True,
+                            )
+                        )
                     ),
                     timeout=max(45.0, 12.0 * max(1, len(chunk))),
                 )
@@ -4414,13 +4435,15 @@ class WayneTelegramBot:
         chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "kline", uid)
         try:
             from index_kline_chart import build_market_kline_chart
+            from wayne_navigator import submit_mpl_paint
 
             path = await asyncio.wait_for(
-                asyncio.to_thread(
-                    build_market_kline_chart,
-                    chart_path,
-                    live=live,
-                    db_path=self.db_path,
+                asyncio.wrap_future(
+                    submit_mpl_paint(
+                        lambda: build_market_kline_chart(
+                            chart_path, live=live, db_path=self.db_path
+                        )
+                    )
                 ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )
@@ -4613,16 +4636,20 @@ class WayneTelegramBot:
             pass
         try:
             from biaoke_chart import build_biaoke_structure_chart
+            from wayne_navigator import submit_mpl_paint
 
             built = await asyncio.wait_for(
-                asyncio.to_thread(
-                    build_biaoke_structure_chart,
-                    self.db_path,
-                    sid,
-                    path,
-                    name=name,
-                    ask=q,
-                    uid=uid,
+                asyncio.wrap_future(
+                    submit_mpl_paint(
+                        lambda: build_biaoke_structure_chart(
+                            self.db_path,
+                            sid,
+                            path,
+                            name=name,
+                            ask=q,
+                            uid=uid,
+                        )
+                    )
                 ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )
@@ -4658,12 +4685,11 @@ class WayneTelegramBot:
             pass
         try:
             from biaoke_wave import build_twii_degree_chart
+            from wayne_navigator import submit_mpl_paint
 
             built = await asyncio.wait_for(
-                asyncio.to_thread(
-                    build_twii_degree_chart,
-                    self.db_path,
-                    path,
+                asyncio.wrap_future(
+                    submit_mpl_paint(build_twii_degree_chart, self.db_path, path)
                 ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )
@@ -4941,11 +4967,16 @@ class WayneTelegramBot:
             text_fn=lambda s: self._wait_bubble("籌碼圖進行中", s, now="法人張數", fill_sec=20.0),
         )
         try:
-            chip_img = await asyncio.to_thread(
-                generate_chips_image,
-                code,
-                self.db_path,
-                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
+            from wayne_navigator import submit_mpl_paint
+
+            _chips_out = self._scratch_chart_path(self.charts_dir, code, "chips", uid)
+            chip_img = await asyncio.wait_for(
+                asyncio.wrap_future(
+                    submit_mpl_paint(
+                        generate_chips_image, code, self.db_path, _chips_out
+                    )
+                ),
+                timeout=_LOOKUP_PNG_TIMEOUT,
             )
             if chip_img:
                 try:
@@ -5788,11 +5819,16 @@ class WayneTelegramBot:
             await self._send_decision_card_quick(message, code, uid)
             return True
         if pending == "chips":
-            chip_img = await asyncio.to_thread(
-                generate_chips_image,
-                code,
-                self.db_path,
-                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
+            from wayne_navigator import submit_mpl_paint
+
+            _chips_out = self._scratch_chart_path(self.charts_dir, code, "chips", uid)
+            chip_img = await asyncio.wait_for(
+                asyncio.wrap_future(
+                    submit_mpl_paint(
+                        generate_chips_image, code, self.db_path, _chips_out
+                    )
+                ),
+                timeout=_LOOKUP_PNG_TIMEOUT,
             )
             if chip_img:
                 try:
@@ -6103,11 +6139,12 @@ class WayneTelegramBot:
                 )
                 return
             os.makedirs(self.charts_dir, exist_ok=True)
+            from wayne_navigator import submit_mpl_paint
+
+            _dcard_path = self._scratch_chart_path(self.charts_dir, code, "dcard", uid)
             card_path = await asyncio.wait_for(
-                asyncio.to_thread(
-                    render_decision_card_png,
-                    card,
-                    self._scratch_chart_path(self.charts_dir, code, "dcard", uid),
+                asyncio.wrap_future(
+                    submit_mpl_paint(render_decision_card_png, card, _dcard_path)
                 ),
                 timeout=_LOOKUP_PNG_TIMEOUT,
             )
@@ -6210,17 +6247,19 @@ class WayneTelegramBot:
         os.makedirs(self.charts_dir, exist_ok=True)
         chart_path = self._scratch_chart_path(self.charts_dir, code, "nav", uid)
         try:
-            from wayne_navigator import generate_chart
+            from wayne_navigator import generate_chart, submit_mpl_paint
 
             path = await asyncio.wait_for(
-                asyncio.to_thread(
-                    generate_chart,
-                    code,
-                    "",
-                    self.db_path,
-                    chart_path,
-                    ohlc,
-                    already_normalized=True,
+                asyncio.wrap_future(
+                    submit_mpl_paint(
+                        generate_chart,
+                        code,
+                        "",
+                        self.db_path,
+                        chart_path,
+                        ohlc,
+                        already_normalized=True,
+                    )
                 ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )
@@ -6683,12 +6722,18 @@ class WayneTelegramBot:
             sent_kinds: list[str] = []
             ready_items: list = []
 
+            from wayne_navigator import submit_mpl_paint
+
             async def _render_one(kind, fn, timeout_s) -> str:
                 attempts = 2
                 path = ""
                 for attempt in range(attempts):
                     try:
-                        path = await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout_s)
+                        # 單一 paint worker：雙人同時查／壓撐並行時不准互踩 FreeType
+                        fut = submit_mpl_paint(fn)
+                        path = await asyncio.wait_for(
+                            asyncio.wrap_future(fut), timeout=timeout_s
+                        )
                     except asyncio.TimeoutError:
                         logger.warning("看這檔 %s 逾時 code=%s attempt=%s", kind, code, attempt + 1)
                         return ""
@@ -7363,9 +7408,9 @@ class WayneTelegramBot:
                 logger.exception("核心 schema 預熱失敗")
             try:
                 if not skip_chart_warmup():
-                    from wayne_navigator import prewarm_card_fonts
+                    from wayne_navigator import prewarm_card_fonts, submit_mpl_paint
 
-                    await asyncio.to_thread(prewarm_card_fonts)
+                    await asyncio.wrap_future(submit_mpl_paint(prewarm_card_fonts))
             except Exception:
                 logger.exception("字型預熱失敗")
             try:

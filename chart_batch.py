@@ -59,7 +59,7 @@ def paint_volume_zones_serial(
         _vz_memo_put,
         vol_zone_photo_caption,
     )
-    from wayne_navigator import mpl_render
+    from wayne_navigator import run_mpl_paint
 
     outs: List[Tuple[str, str]] = []
     for pack in packs:
@@ -76,24 +76,25 @@ def paint_volume_zones_serial(
                 bars=pack["bars"],
                 ex_events=pack["ex_events"],
             )
-            with mpl_render():
-                path = _paint_volume_zone(
-                    pack["sid"],
-                    pack["name"],
-                    pack["view"],
-                    pack["zone"],
-                    pack["spike_i"],
-                    pack["spike_date"],
-                    pack["hi"],
-                    pack["lo"],
-                    pack["halt"],
-                    pack["xs"],
-                    pack["n"],
-                    pack["ex_events"],
-                    pack["out"],
-                    with_nav_signals=with_nav_signals,
-                    card=card,
-                )
+            # 單一 paint worker＋_paint 內 savefig 的 mpl_render；不准 ThreadPool 重疊畫
+            path = run_mpl_paint(
+                _paint_volume_zone,
+                pack["sid"],
+                pack["name"],
+                pack["view"],
+                pack["zone"],
+                pack["spike_i"],
+                pack["spike_date"],
+                pack["hi"],
+                pack["lo"],
+                pack["halt"],
+                pack["xs"],
+                pack["n"],
+                pack["ex_events"],
+                pack["out"],
+                with_nav_signals=with_nav_signals,
+                card=card,
+            )
             path_s, cap_s = str(path or ""), str(cap or "")
             if path_s and not card:
                 _vz_memo_put(
@@ -164,7 +165,7 @@ def paint_nav_charts_serial(
     save_paths: Sequence[str],
 ) -> List[str]:
     """串行 generate_chart（已載入 df，走對齊快取＋渲圖 memo）。"""
-    from wayne_navigator import generate_chart
+    from wayne_navigator import generate_chart, run_mpl_paint
 
     outs: List[str] = []
     for (code, name, df), path in zip(prepared, save_paths):
@@ -173,7 +174,15 @@ def paint_nav_charts_serial(
             continue
         try:
             outs.append(
-                generate_chart(code, name, None, path, df, already_normalized=False)
+                run_mpl_paint(
+                    generate_chart,
+                    code,
+                    name,
+                    None,
+                    path,
+                    df,
+                    already_normalized=False,
+                )
                 or ""
             )
         except Exception:

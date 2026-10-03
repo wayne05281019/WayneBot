@@ -2070,6 +2070,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             fontproperties=_fp(8),
             color="#546e7a",
         )
+        # 外層 @_mpl_serial＝mpl_render；此處保持 PNG（不要走查股 JPEG 存檔）
         fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
         plt.close(fig)
         return save_path if os.path.isfile(save_path) else ""
