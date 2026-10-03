@@ -860,58 +860,80 @@ def start_market_backfill(delay_s: float = 0):
 
 
 def ensure_market_db() -> None:
-    """Render 磁碟沒有 Git 裡的 sqlite；沒有日K時打南亞不會出圖。損壞則從 Release 重建。"""
-    import os
-    import shutil
-    import sqlite3
-    import tempfile
-    import zipfile
-    import urllib.request
+    """確保行情庫可讀：清錯位 wal/shm → 優先救 .corrupt-*（biaoke≥1700）→ 再 Release。
 
-    from config import get_db_path, get_github_release_url
+    不准只搬 .db 留下 -wal／-shm（會讓新庫套舊 WAL 永遠 quick_check 紅）。
+    不准留下 health 長期 db_ok=false 卻不再重試。
+    """
+    from config import get_db_path
+    from db_recover import ensure_market_db_recoverable
     from import_health import db_quick_check_ok
 
     path = get_db_path()
     try:
-        if db_quick_check_ok(path):
-            logger.info("行情庫已存在且通過 integrity（%.0f MB）", os.path.getsize(path) / 1e6)
-            return
-    except OSError:
-        pass
-    if os.path.isfile(path):
-        corrupt = f"{path}.corrupt-{int(time.time())}"
-        try:
-            shutil.move(path, corrupt)
-            logger.error("行情庫 quick_check 失敗，已搬至 %s，改從 Release 重建", corrupt)
-        except OSError:
-            logger.exception("搬移損壞行情庫失敗")
-    url = get_github_release_url()
-    logger.info("雲端尚無行情庫，開始下載公開 Release（可能要幾分鐘）")
-    tmpdir = tempfile.mkdtemp(prefix="wayne-db-")
-    zpath = os.path.join(tmpdir, "db.zip")
-    try:
-        urllib.request.urlretrieve(url, zpath)
-        with zipfile.ZipFile(zpath) as zf:
-            zf.extractall(tmpdir)
-        found = None
-        for root, _, files in os.walk(tmpdir):
-            for name in files:
-                if name.endswith(".db"):
-                    cand = os.path.join(root, name)
-                    if found is None or os.path.getsize(cand) > os.path.getsize(found):
-                        found = cand
-        if not found:
-            logger.warning("Release zip 內找不到 .db")
-            return
-        parent = os.path.dirname(path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        shutil.copy2(found, path)
-        logger.info("已安裝行情庫 %.0f MB", os.path.getsize(path) / 1e6)
+        result = ensure_market_db_recoverable(path)
     except Exception:
-        logger.exception("下載行情庫失敗（Telegram 仍可回 /start，但單檔看這檔沒有日K）")
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        logger.exception("行情庫復原失敗")
+        return
+    if result.get("ok"):
+        try:
+            size_mb = os.path.getsize(path) / 1e6
+        except OSError:
+            size_mb = 0
+        logger.info(
+            "行情庫就緒 source=%s biaoke_n=%s（%.0f MB）actions=%s",
+            result.get("source"),
+            result.get("biaoke_n"),
+            size_mb,
+            result.get("actions"),
+        )
+        # Release 重建後通常沒有 1709 overlay；立刻 seed，不等索引背景延遲。
+        try:
+            n_bk = int(result.get("biaoke_n") or 0)
+            if n_bk < 1700 and db_quick_check_ok(path, min_bytes=1):
+                from biaoke_archive import seed_biaoke_archive
+
+                seeded = seed_biaoke_archive(path)
+                if seeded:
+                    logger.info("復原後 seed_biaoke_archive 補進 %s 列", seeded)
+        except Exception:
+            logger.exception("復原後 seed_biaoke_archive 失敗")
+        return
+    logger.error(
+        "行情庫仍無法讀取 path=%s actions=%s（將由背景重試）",
+        path,
+        result.get("actions"),
+    )
+
+
+def start_market_db_recovery_loop() -> threading.Thread:
+    """db_ok 紅就重試 ensure_market_db，不准開機失敗後永遠停在 unread。"""
+
+    def _loop():
+        from config import get_db_path
+        from import_health import db_quick_check_ok
+
+        delays = (15, 30, 60, 120, 180, 300)
+        idx = 0
+        while True:
+            path = get_db_path()
+            try:
+                if db_quick_check_ok(path, min_bytes=1):
+                    return
+            except Exception:
+                pass
+            wait = delays[min(idx, len(delays) - 1)]
+            idx += 1
+            logger.warning("行情庫仍不可讀，%.0f 秒後重試 ensure_market_db", wait)
+            time.sleep(wait)
+            try:
+                ensure_market_db()
+            except Exception:
+                logger.exception("背景 ensure_market_db 重試失敗")
+
+    t = threading.Thread(target=_loop, daemon=True, name="db-recover-loop")
+    t.start()
+    return t
 
 
 def run_once():
@@ -940,11 +962,15 @@ def run_web():
         logger.info("行情庫已就緒，背景確認 Release 更新後啟動聽筒")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
     elif os.getenv("RENDER") or render_lite_boot():
-        logger.info("Render 冷啟：背景下載行情庫，先開聽筒（避免阻塞健檢與 deploy）")
+        logger.info("Render 冷啟：背景下載／救回行情庫，先開聽筒（避免阻塞健檢與 deploy）")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
+        # 不准開機一次失敗就永遠 db_ok=false（wal 殘留／下載中斷）
+        start_market_db_recovery_loop()
     else:
-        logger.info("行情庫尚未就緒，先下載再啟動聽筒")
+        logger.info("行情庫尚未就緒，先下載／救回再啟動聽筒")
         ensure_market_db()
+        if not db_quick_check_ok(db_path):
+            start_market_db_recovery_loop()
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 
     index_delay_s = 600 if render_lite_boot() else 0
