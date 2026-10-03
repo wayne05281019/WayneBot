@@ -1645,17 +1645,18 @@ def _paint_volume_zone(
         fontproperties=_fp(8.5, "bold"),
         color=_MUTED,
     )
-    fig.savefig(
-        out,
-        format="jpeg",
-        dpi=VOL_ZONE_DPI,
-        facecolor=_BG,
-        # 停價灰短柱要保得住，不准被 JPEG 抽樣吃成空白
-        pil_kwargs={
-            "quality": VOL_ZONE_JPEG_QUALITY,
-            "optimize": False,
-            "subsampling": 0,
-        },
-    )
+    with mpl_render():
+        fig.savefig(
+            out,
+            format="jpeg",
+            dpi=VOL_ZONE_DPI,
+            facecolor=_BG,
+            # 停價灰短柱要保得住，不准被 JPEG 抽樣吃成空白
+            pil_kwargs={
+                "quality": VOL_ZONE_JPEG_QUALITY,
+                "optimize": False,
+                "subsampling": 0,
+            },
+        )
     _close_lookup_figure(fig)
     return out
