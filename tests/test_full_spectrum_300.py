@@ -845,13 +845,13 @@ def test_l7_flow_sector_indexed():
 
 def test_l7_lookup_gc_once():
     src = _src(WayneTelegramBot._send_card_to_locked)
-    # 兩卡改 asyncio.gather 真並行後，不再有 for kind, fn 串行迴圈；
-    # 仍只准在全部 PNG 就緒後 gc 一次。
+    # 高低卡→介紹圖串行出圖；相簿 cell 仍 gather。只准在全部 PNG 就緒後 gc 一次。
+    assert "card_item = await card_render_task" in src
     assert "asyncio.gather" in src
     assert src.count("gc.collect") == 1
     gc_at = src.index("gc.collect")
-    gather_at = src.index("packed = await asyncio.gather")
-    assert gather_at < gc_at
+    pair_at = src.index("card_item = await card_render_task")
+    assert pair_at < gc_at
 
 
 def test_l7_card_timeouts_shared():

@@ -26,11 +26,10 @@ from threading import Lock, RLock
 import pandas as pd
 import numpy as np
 
-# FT2Font 是共用物件，量字寬要改 size／text，併發產圖時得排隊。
-_FT_LOCK = Lock()
 # pyplot 全域狀態非 thread-safe；四圖並行會畫出空白／殘缺檔（標題在、K 線不見）。
-# FreeType／Agg 畫字非執行緒安全。RLock：chips／導航已在外層 mpl_render 時，
-# _savefig_lookup_png 仍可再進（巢狀），查股介紹∥高低卡與勝率壓區∥卡才不會互踩。
+# FreeType／Agg 畫字非執行緒安全。量字（_glyph_w_pt）與 savefig／draw 必須同一把鎖，
+# 不准再分 _FT_LOCK／mpl_render 兩把——兩鎖並行會 malloc Abort（上詮／大立光查股）。
+# RLock：chips／導航已在外層 mpl_render 時，_savefig_lookup_png／量字仍可巢狀再進。
 _MPL_RENDER_LOCK = RLock()
 
 
@@ -376,7 +375,7 @@ def prewarm_card_fonts() -> None:
         return
     _weight_font_path(_WEIGHT_TEXT)
     _weight_font_path(_WEIGHT_BOLD)
-    with _FT_LOCK:
+    with mpl_render():
         _ft_font(_WEIGHT_TEXT)
         _ft_font(_WEIGHT_BOLD)
     _FONTS_WARMED = True
@@ -3188,7 +3187,8 @@ def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
     """字串的前進寬度（點）。matplotlib 對齊用的是前進寬度，
     用墨跡寬度算會少 10% 以上，右對齊的數字就會往左吃掉間距。"""
     try:
-        with _FT_LOCK:
+        # 必須跟 savefig／Agg draw 同一把 mpl_render；分鎖會踩爆 FreeType。
+        with mpl_render():
             font = _ft_font(weight)
             font.set_size(fs, 72)
             font.set_text(text)
@@ -3495,7 +3495,7 @@ def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor
 def render_decision_card_png(card: dict, save_path: str) -> str:
     """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。
 
-    不用 @_mpl_serial：Figure＋Agg 獨立 canvas，可與介紹圖真並行。
+    Figure＋Agg 獨立 canvas；量字／savefig 仍走同一把 mpl_render（不准跟介紹圖真並行踩 FreeType）。
     memo 在進畫布前先查，暖路徑不碰 Agg。
     """
     if not card or card.get("error"):
@@ -4441,7 +4441,7 @@ def render_first_glance_png(
 ) -> str:
     """高低卡同一套堆疊（高度跟內容走，字不壓線）。180日導航改獨立鈕。
 
-    不用 @_mpl_serial：與高低卡真並行；memo 先查再進 Agg。
+    量字／savefig 與高低卡共用 mpl_render；memo 先查再進 Agg。
     """
     _ = ohlc
     if not card or card.get("error"):
