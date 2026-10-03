@@ -84,17 +84,13 @@ def test_ensure_disk_headroom_force_cleans(tmp_path: Path, monkeypatch):
     charts = tmp_path / "charts"
     memo = charts / "_lookup_memo"
     memo.mkdir(parents=True)
-    (memo / "b.jpg").write_bytes(b"m" * 4000)
+    aged = memo / "b.jpg"
+    aged.write_bytes(b"m" * 4000)
+    os.utime(aged, (time.time() - 25 * 3600, time.time() - 25 * 3600))
     db = tmp_path / "wayne_market.db"
     db.write_bytes(b"db")
 
     monkeypatch.setattr(dg, "disk_usage_mb", lambda _p: {"total": 5000, "used": 100, "free": 4900})
-    monkeypatch.setattr(
-        "config.get_charts_dir",
-        lambda: str(charts),
-        raising=False,
-    )
-    # ensure imports config inside — patch via injecting paths
     out = dg.ensure_disk_headroom(
         data_dir=str(tmp_path),
         charts_dir=str(charts),
@@ -104,7 +100,28 @@ def test_ensure_disk_headroom_force_cleans(tmp_path: Path, monkeypatch):
     )
     assert out["cleaned"] is True
     assert out["stats"]["files"] >= 1
-    assert not (memo / "b.jpg").exists()
+    assert not aged.exists()
+
+
+def test_low_free_aggressive_clears_fresh_memo(tmp_path: Path, monkeypatch):
+    charts = tmp_path / "charts"
+    memo = charts / "_lookup_memo"
+    memo.mkdir(parents=True)
+    fresh = memo / "c.jpg"
+    fresh.write_bytes(b"m" * 4000)
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"db")
+    monkeypatch.setattr(dg, "disk_usage_mb", lambda _p: {"total": 5000, "used": 4900, "free": 50})
+    out = dg.ensure_disk_headroom(
+        data_dir=str(tmp_path),
+        charts_dir=str(charts),
+        db_path=str(db),
+        force=True,
+        min_free_mb=400,
+    )
+    assert out["cleaned"] is True
+    assert "aggressive" in out["reason"]
+    assert not fresh.exists()
 
 
 def test_run_web_starts_disk_guard():
