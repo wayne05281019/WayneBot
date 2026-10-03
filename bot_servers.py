@@ -4559,7 +4559,9 @@ class WayneTelegramBot:
                         adv = await asyncio.to_thread(
                             format_action_advice_html, self.db_path, q
                         )
-                        if adv and "建議怎麼做" not in (html or ""):
+                        if adv and "該怎麼做" not in (html or "") and "建議怎麼做" not in (
+                            html or ""
+                        ):
                             html = (html or "") + ("\n\n" if html else "") + adv
                     except Exception:
                         logger.exception("飆大類股建議文字略過")
@@ -4683,10 +4685,10 @@ class WayneTelegramBot:
             png = str((built or {}).get("path") or "")
             if not png or not self._png_looks_ok(png, min_bytes=24_000, min_w=800, min_h=500):
                 continue
-            # 圖下一句：建議怎麼做＋有憑有據
+            # 圖下一句：該怎麼做＋有憑有據（對官方柱）
             cap = (
                 f"{name} {sid}\n"
-                f"建議怎麼做：{do}。{how}\n"
+                f"該怎麼做：{do}。{how}\n"
                 f"憑據：{basis}；官方{evidence}"
             )
             try:

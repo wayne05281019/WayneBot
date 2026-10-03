@@ -709,10 +709,34 @@ _OPT_CONNECT = {
     "3163": "波若威",
     "6442": "光聖",
 }
+# FAU＝微光學／連接對準通道；話筒英文族名用 FAU，成員同連接側
+_OPT_FAU = dict(_OPT_CONNECT)
 _OPT_CPO_FACE = {
     "3008": "大立光",  # 他近窗 CPO 敘事主角；光學≠光通訊，不進光通訊名冊
 }
+_OPT_CPO = dict(_OPT_CPO_FACE)
 _OPT_TRIGGER = ("InP", "CPO", "FAU", "光通訊", "矽光子", "聯亞", "全新", "上詮")
+
+# 飆大介紹：ASIC 年到主軸＝三龍頭＋同鏈相關（不要只列龍頭）
+# 近窗主文釘創意／聯發；世芯仍是教過 IP/ASIC 龍頭；智原／達發／巨有走相關鏈
+_ASIC_LEADERS = (
+    ("3443", "創意"),
+    ("3661", "世芯-KY"),
+    ("2454", "聯發科"),
+)
+_ASIC_RELATED = (
+    ("3035", "智原"),  # IP/ASIC 同鏈；教過龍頭，近窗當相關鏈補齊
+    ("6526", "達發"),  # 聯發科子公司（IC 設計）
+    ("8227", "巨有科技"),  # IP/ASIC 同鏈
+    ("3529", "力旺"),
+    ("6643", "M31"),
+    ("6533", "晶心科"),
+)
+_ASIC_CHAIN_NOTE = {
+    "6526": "聯發科子公司",
+    "8227": "IP/ASIC同鏈",
+    "3035": "IP/ASIC同鏈",
+}
 
 
 def _pct_chg_n(db_path: str, sid: str, n: int = 5) -> Optional[float]:
@@ -1232,6 +1256,7 @@ def optical_tier_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
 
 
 # 二軍 IC 設計聯想：錨定台積／創意／聯發；愛普＝記憶體IC≠這主流（他說過）
+# 話筒 ASIC 介紹龍頭／相關鏈見 _ASIC_LEADERS／_ASIC_RELATED（不含台積平台）
 _ASIC_IC_ANCHORS = (
     ("2330", "台積電"),
     ("3443", "創意"),

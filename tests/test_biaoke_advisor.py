@@ -239,7 +239,7 @@ def test_field_advice_charts_give_all_with_how(tmp_path):
     pack = action_advice_pack(db, ask="光通訊 InP")
     assert pack.get("ok")
     blob = "\n".join(pack.get("lines") or [])
-    assert "建議怎麼做" in blob
+    assert "該怎麼做" in blob or "建議怎麼做" in blob
     assert "憑：" in blob or "官方" in blob
     targets = advice_chart_targets(db, ask="InP")
     # 不截 2～3：名冊該給的都進清單
@@ -248,3 +248,87 @@ def test_field_advice_charts_give_all_with_how(tmp_path):
     )
     assert len(targets) == n_rows
     assert all(t.get("do") and t.get("how") for t in targets)
+
+
+def test_intro_asic_then_optical_yahoo_layout(tmp_path):
+    """空白／類股：先 ASIC 三龍頭＋相關鏈，再 InP／FAU／CPO，股名連奇摩。"""
+    from biaoke_advisor import action_advice_pack, format_action_advice_html
+
+    db = _mk_db(tmp_path)
+    # 補 ASIC 相關鏈柱，讓名冊分層有官方數
+    conn = __import__("sqlite3").connect(db)
+    for sid, base in (
+        ("2454", 1200.0),
+        ("3661", 4000.0),
+        ("3035", 400.0),
+        ("6526", 600.0),
+        ("8227", 80.0),
+        ("3363", 650.0),
+        ("3008", 6000.0),
+    ):
+        for d in range(1, 26):
+            day = f"202609{d:02d}"
+            c = base * (1 + 0.001 * d)
+            conn.execute(
+                "INSERT OR IGNORE INTO daily_quotes"
+                "(date,stock_id,stock_name,market,open,high,low,close,volume) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (day, sid, sid, "TW", c, c * 1.01, c * 0.99, c, 1000),
+            )
+    conn.commit()
+    conn.close()
+
+    pack = action_advice_pack(db, ask="")
+    assert pack.get("ok")
+    live = pack.get("live") or {}
+    assert live.get("asic")
+    assert live.get("opt")
+    leader_sids = {str(r.get("sid")) for r in (pack.get("asic_leaders") or [])}
+    related_sids = {str(r.get("sid")) for r in (pack.get("asic_related") or [])}
+    assert "3443" in leader_sids  # 創意
+    assert "2454" in leader_sids  # 聯發科
+    assert "3661" in leader_sids  # 世芯
+    assert "3035" in related_sids  # 智原＝相關鏈
+    assert "6526" in related_sids  # 達發＝聯發科子公司
+    assert "8227" in related_sids  # 巨有科技＝IP/ASIC 同鏈
+    assert pack.get("inp_rows")
+    assert pack.get("fau_rows")
+    assert pack.get("cpo_rows")
+
+    html = format_action_advice_html(db, ask="")
+    assert "ASIC｜到年前主軸" in html
+    assert "三龍頭" in html
+    assert "相關鏈" in html
+    assert "光通訊｜InP／FAU／CPO" in html
+    assert "InP　" in html
+    assert "FAU　" in html
+    assert "CPO　" in html
+    assert "該怎麼做" in html
+    assert "tw.stock.yahoo.com/quote/" in html
+    assert "3443" in html and "8227" in html and "6526" in html
+    assert "不是買訊" not in html
+
+
+def test_intro_skips_fields_not_spoken_in_near_window(tmp_path):
+    """近窗 14 日沒再講的族群不准建議。"""
+    import sqlite3
+    from biaoke_advisor import action_advice_pack, format_action_advice_html
+
+    db = _mk_db(tmp_path)
+    conn = sqlite3.connect(db)
+    # 清掉雙箭頭近窗，只留無關句
+    conn.execute("DELETE FROM biaoke_posts")
+    conn.execute(
+        "INSERT INTO biaoke_posts(id,date,time,text,kind) VALUES(?,?,?,?,?)",
+        ("p-mem", "2026-10-03", "10:00:00", "南亞科量價變好，記憶體製造先看。", "post"),
+    )
+    conn.commit()
+    conn.close()
+    pack = action_advice_pack(db, ask="")
+    live = pack.get("live") or {}
+    assert not live.get("asic")
+    assert not live.get("opt")
+    html = format_action_advice_html(db, ask="")
+    assert "ASIC｜" not in html
+    assert "光通訊｜" not in html
+    assert "8227" not in html
