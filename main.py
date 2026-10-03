@@ -249,7 +249,23 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
                 "serving_reasons": live.get("serving_reasons") or [],
+                # 碟滿早警：欄位露出 free／警訊；不准因此把 /health 變 503（會空轉重開）
+                "disk_free_mb": None,
+                "disk_used_mb": None,
+                "disk_total_mb": None,
+                "disk_min_free_mb": None,
+                "disk_target_free_mb": None,
+                "disk_ok": None,
+                "disk_alert": "unknown",
+                "disk_alert_zh": "",
             }
+            try:
+                from disk_guard import disk_health_fields
+
+                payload.update(disk_health_fields())
+            except Exception as exc:
+                payload["disk_alert"] = "unknown"
+                payload["disk_alert_zh"] = f"磁碟用量讀不到：{exc}"
             try:
                 from phone_update import phone_health_fields
 

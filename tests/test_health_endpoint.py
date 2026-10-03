@@ -94,6 +94,18 @@ def test_health_200_when_process_can_serve(serve):
     assert "tx_zip_n" in body
     assert "tx_night_high" in body
     assert body["tx_15_n"] == 0
+    # 碟滿早警：欄位必露；低空位不准把本測的 200／serving 弄紅
+    assert "disk_free_mb" in body
+    assert "disk_alert" in body
+    assert body["disk_min_free_mb"] == 2000
+    assert body["disk_target_free_mb"] == 2500
+    assert body["disk_alert"] in (
+        "ok",
+        "below_target",
+        "below_floor",
+        "critical",
+        "unknown",
+    )
 
 
 def test_health_cmoney_ok_follows_env_without_leaking_token(serve, monkeypatch):
