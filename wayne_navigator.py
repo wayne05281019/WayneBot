@@ -20,9 +20,10 @@ import matplotlib.patches as patches
 import matplotlib.font_manager as fm
 import matplotlib.colors as mcolors
 from matplotlib.lines import Line2D
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import lru_cache, wraps
-from threading import Lock, RLock
+from threading import Lock, RLock, local
 import pandas as pd
 import numpy as np
 
@@ -31,6 +32,11 @@ import numpy as np
 # 不准再分 _FT_LOCK／mpl_render 兩把——兩鎖並行會 malloc Abort（上詮／大立光查股）。
 # RLock：chips／導航已在外層 mpl_render 時，_savefig_lookup_png／量字仍可巢狀再進。
 _MPL_RENDER_LOCK = RLock()
+# 全進程單一 paint worker：查股／壓撐三張／勝率／大盤／飆大結構若用 to_thread
+# 並行開多條，wait_for 會把「等鎖時間」算進逾時，且逾時後執行緒仍占鎖拖垮下一檔。
+# 量字／savefig 仍走 mpl_render；此 executor 是入口排隊，不准互踩。
+_MPL_PAINT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wayne-mpl")
+_MPL_PAINT_TLS = local()
 
 
 @contextmanager
@@ -40,6 +46,40 @@ def mpl_render():
         yield
     finally:
         _MPL_RENDER_LOCK.release()
+
+
+def _mpl_paint_worker_active() -> bool:
+    return bool(getattr(_MPL_PAINT_TLS, "active", False))
+
+
+def submit_mpl_paint(fn, /, *args, **kwargs):
+    """把產圖丟進單一 worker，回 concurrent.futures.Future。
+
+    已在 paint worker 內呼叫時改同步跑（避免巢狀 run_mpl_paint 死鎖）。
+    """
+    if _mpl_paint_worker_active():
+        from concurrent.futures import Future
+
+        fut: Future = Future()
+        try:
+            fut.set_result(fn(*args, **kwargs))
+        except BaseException as exc:
+            fut.set_exception(exc)
+        return fut
+
+    def _wrapped():
+        _MPL_PAINT_TLS.active = True
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _MPL_PAINT_TLS.active = False
+
+    return _MPL_PAINT_EXECUTOR.submit(_wrapped)
+
+
+def run_mpl_paint(fn, /, *args, **kwargs):
+    """同步：在單一 paint worker 跑完才回（腳本／批次用）。"""
+    return submit_mpl_paint(fn, *args, **kwargs).result()
 
 
 def _mpl_serial(fn):

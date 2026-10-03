@@ -691,7 +691,7 @@ def render_page_pairs(
     同 as_of＋SCAN_KIND 的官方日圖跨人共用磁碟快取；uid 只影響工作檔名，不拆內容。
     """
     from vol_zone_chart import render_volume_zone_result
-    from wayne_navigator import render_decision_card_png
+    from wayne_navigator import render_decision_card_png, run_mpl_paint
 
     charts = charts_dir or os.path.join(os.path.dirname(db_path) or ".", "charts")
     os.makedirs(charts, exist_ok=True)
@@ -781,7 +781,8 @@ def render_page_pairs(
         )
         vpath = ""
         try:
-            vpath, _cap = render_volume_zone_result(
+            vpath, _cap = run_mpl_paint(
+                render_volume_zone_result,
                 sid,
                 name,
                 db_path,
@@ -795,7 +796,9 @@ def render_page_pairs(
         cpath = ""
         if card:
             try:
-                cpath = str(render_decision_card_png(card, job["card_work"]) or "")
+                cpath = str(
+                    run_mpl_paint(render_decision_card_png, card, job["card_work"]) or ""
+                )
             except Exception:
                 logger.exception("勝率買點決策卡 PNG 失敗 code=%s", sid)
                 cpath = ""
