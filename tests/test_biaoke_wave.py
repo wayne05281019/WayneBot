@@ -194,8 +194,20 @@ def test_twii_degree_chart_when_db_present(tmp_path):
         assert os.path.isfile(built.get("path") or "")
         assert os.path.getsize(built["path"]) > 12_000
         cap = built.get("caption") or ""
-        assert "虛線" in cap or "未確認" in cap or "7/29" in cap
-        assert "如果句" in cap or "還沒確認" in cap
+        # 近窗改口後 caption 走上升軌／平行壓；舊 ABC 虛線句仍算過關。
+        assert (
+            "虛線" in cap
+            or "未確認" in cap
+            or "7/29" in cap
+            or "上升軌" in cap
+            or "近窗改口" in cap
+        )
+        assert (
+            "如果句" in cap
+            or "還沒確認" in cap
+            or "不准永遠鎖死舊ABC" in cap
+            or "平行壓" in cap
+        )
         assert "45398" in cap
         assert "給看不懂" not in cap
         assert "不是一路大B" not in cap

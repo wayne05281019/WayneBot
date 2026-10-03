@@ -3,8 +3,9 @@
 
 不需 production_db，進 smoke-no-db。對齊 #491／#492／全面出圖：
 量字與存檔必進同一把 mpl_render；不准再分 _FT_LOCK。
-話筒產圖入口走單一 paint worker；壓撐三張不准三線並行 wait_for。
-勝率整頁冷路徑不准 ThreadPool 重疊 paint。
+真正 savefig 走單一 paint worker；壓撐三張不准三線並行 wait_for。
+勝率／壓撐名單外層不准整頁 submit（會獨占 worker 堵住查股）。
+勝率冷路徑不准 ThreadPool 重疊 paint。
 """
 from __future__ import annotations
 
@@ -116,25 +117,80 @@ def test_pressure_trio_paints_serial_not_parallel_wait_for():
 
 
 def test_bot_chart_entries_use_submit_mpl_paint():
-    """話筒所有 matplotlib 出圖入口必走 submit_mpl_paint（產業＝PIL 除外）。"""
+    """真正 savefig 必走 submit／run_mpl_paint；整頁算卡不准獨占 worker。
+
+    壓撐名單／勝率買點：外層 to_thread 算卡，內層 chart_batch／winrate
+    已 run_mpl_paint。查股／三張／大盤／飆大／籌碼：外層 submit_mpl_paint。
+    """
     from bot_servers import WayneTelegramBot
 
-    checks = {
+    # 外層必進 paint worker（單張／少數圖）
+    direct = {
         "_send_pressure_stock_trio": "壓撐三張",
-        "_run_pressure_support": "壓撐名單",
-        "_run_winrate_buypoint": "勝率買點",
         "_send_card_to_locked": "查股",
         "_send_decision_card_quick": "決策卡",
         "_send_navigation_chart": "導航圖",
         "_send_market_kline": "大盤日K",
         "_send_biaoke_structure_chart": "飆大結構",
         "_send_biaoke_twii_degree_chart": "飆大加權",
+        "_send_biaoke_advice_charts": "飆大建議圖",
         "_send_chips_to": "籌碼",
     }
-    for meth, label in checks.items():
+    for meth, label in direct.items():
         assert hasattr(WayneTelegramBot, meth), label
         src = inspect.getsource(getattr(WayneTelegramBot, meth))
         assert "submit_mpl_paint" in src, f"{label} ({meth}) 未走 submit_mpl_paint"
+
+    # 整頁：不准外層 submit_mpl_paint（會堵住查股）；內層 run_mpl_paint
+    page = {
+        "_run_pressure_support": "壓撐名單",
+        "_run_winrate_buypoint": "勝率買點",
+    }
+    for meth, label in page.items():
+        assert hasattr(WayneTelegramBot, meth), label
+        src = inspect.getsource(getattr(WayneTelegramBot, meth))
+        assert "asyncio.to_thread" in src, f"{label} 應 to_thread 算卡"
+        assert "submit_mpl_paint(" not in src, (
+            f"{label} 不准整頁 submit_mpl_paint（會獨占 worker）"
+        )
+
+
+def test_page_prep_outside_worker_does_not_block_lookup_paint():
+    """勝率／壓撐整頁若外層 submit，查股 paint 會卡在算卡後面；算卡必須在 worker 外。"""
+    import threading
+    import time
+
+    from wayne_navigator import run_mpl_paint, submit_mpl_paint
+
+    events: list[tuple[float, str]] = []
+    lock = threading.Lock()
+
+    def log(msg: str) -> None:
+        with lock:
+            events.append((time.perf_counter(), msg))
+
+    def page_scoped() -> None:
+        log("prep")
+        time.sleep(0.4)
+        run_mpl_paint(lambda: (log("wr_paint"), None))
+
+    def lookup() -> None:
+        def _p():
+            log("lk_paint")
+            return "ok"
+
+        submit_mpl_paint(_p).result()
+
+    t0 = time.perf_counter()
+    th = threading.Thread(target=page_scoped)
+    th.start()
+    time.sleep(0.05)
+    lookup()
+    th.join()
+    named = {m: t - t0 for t, m in events}
+    assert "lk_paint" in named and "wr_paint" in named
+    # 查股 paint 必須在長 prep 結束前就能進 worker
+    assert named["lk_paint"] < 0.35, named
 
 
 def test_chart_batch_paint_uses_single_worker():
