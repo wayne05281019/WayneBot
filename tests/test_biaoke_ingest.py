@@ -204,7 +204,8 @@ def test_ingest_hook_is_on_product_clocks():
     boot = inspect.getsource(main.run_web)
     assert "start_biaoke_poller" in boot
     assert "restore_universe_if_wiped" in boot
-    assert "seed_biaoke_archive" in boot
+    assert "force_seed_biaoke_baseline" in boot
+    assert "start_early_biaoke_seed" in boot
     assert "link_biaoke_db" in boot
     assert "walk_biaoke_posts" in boot
     assert "enqueue_missing_quote_months" in boot

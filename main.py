@@ -47,6 +47,8 @@ _BIAOKE_SEED_STATUS: dict = {
     "biaoke_seed_at": "",
     "private_n": 0,
     "private_merged_tables": 0,
+    "biaoke_ingest_ok": None,
+    "biaoke_ingest_error": "",
 }
 
 
@@ -190,7 +192,6 @@ def _cheap_health_data() -> dict:
                 )
                 latest_post = conn.execute(
                     "SELECT id, date, time FROM biaoke_posts "
-                    "WHERE IFNULL(kind,'post')!='reply' "
                     "ORDER BY date DESC, time DESC, id DESC LIMIT 1"
                 ).fetchone()
                 if latest_post:
@@ -281,6 +282,10 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "private_n": int(_BIAOKE_SEED_STATUS.get("private_n") or 0),
                 "private_merged_tables": int(
                     _BIAOKE_SEED_STATUS.get("private_merged_tables") or 0
+                ),
+                "biaoke_ingest_ok": _BIAOKE_SEED_STATUS.get("biaoke_ingest_ok"),
+                "biaoke_ingest_error": str(
+                    _BIAOKE_SEED_STATUS.get("biaoke_ingest_error") or ""
                 ),
             }
             try:
@@ -898,6 +903,11 @@ def _record_biaoke_seed_status(result: dict) -> None:
     _BIAOKE_SEED_STATUS["private_n"] = int(result.get("private_n") or 0)
     merged = result.get("private_merged") or {}
     _BIAOKE_SEED_STATUS["private_merged_tables"] = int(len(merged))
+    if "biaoke_ingest_ok" in result:
+        _BIAOKE_SEED_STATUS["biaoke_ingest_ok"] = result.get("biaoke_ingest_ok")
+        _BIAOKE_SEED_STATUS["biaoke_ingest_error"] = str(
+            result.get("biaoke_ingest_error") or ""
+        )
     # 清 health 快取，立刻露出新 biaoke_n
     _HEALTH_DATA_CACHE["at"] = 0.0
     _HEALTH_DATA_CACHE["payload"] = None
@@ -923,11 +933,36 @@ def force_seed_biaoke_baseline() -> dict:
     _record_biaoke_seed_status(result)
     if result.get("ok"):
         logger.info(
-            "飆大底圖就緒 source=%s biaoke_n=%s steps=%s",
+            "飆大底圖就緒 source=%s biaoke_n=%s private_n=%s steps=%s",
             result.get("source"),
             result.get("biaoke_n"),
+            result.get("private_n"),
             result.get("steps"),
         )
+        # archive 只到舊窗；10/3 晚間主文／自回要立刻抓，不准等 poller 90 秒
+        try:
+            from biaoke_ingest import ingest_public_posts
+
+            ing = ingest_public_posts(db_path=path, max_ids=12, refresh_latest=3)
+            ok_ing = bool(ing.get("ok", True))
+            result["biaoke_ingest_ok"] = ok_ing
+            result["biaoke_ingest_error"] = str(ing.get("reason") or "")
+            from db_recover import biaoke_post_count
+
+            result["biaoke_n"] = biaoke_post_count(path)
+            _record_biaoke_seed_status(result)
+            logger.info(
+                "開機立刻抓文 overlay fetched=%s added=%s replies=%s ok=%s",
+                ing.get("fetched"),
+                ing.get("added"),
+                ing.get("replies"),
+                ok_ing,
+            )
+        except Exception as exc:
+            logger.exception("開機立刻抓文失敗")
+            result["biaoke_ingest_ok"] = False
+            result["biaoke_ingest_error"] = f"ingest_exception:{exc}"
+            _record_biaoke_seed_status(result)
     else:
         logger.error(
             "飆大底圖未就緒 error=%s biaoke_n=%s steps=%s",

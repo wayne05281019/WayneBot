@@ -253,6 +253,63 @@ def test_force_biaoke_baseline_seeds_archive(tmp_path):
     assert out["source"] in ("seed", "salvage", "corrupt", "already")
 
 
+def test_seeded_db_format_latest_focus_has_locked_intro(tmp_path):
+    """seed 後空白進場必須產出鎖定結構，不准空字串當修好。"""
+    from biaoke_digest import format_latest_focus
+    from biaoke_desk import upsert_biaoke_posts
+    from db_recover import force_biaoke_baseline
+
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=0)
+    out = force_biaoke_baseline(db)
+    assert out["ok"] is True
+    # 盤中 overlay：10/3 19:20 台虹／PTFE（archive 底圖沒有這則）
+    upsert_biaoke_posts(
+        db,
+        [
+            {
+                "id": "1851oct3",
+                "n": 99999,
+                "date": "2026-10-03",
+                "time": "19:20",
+                "kind": "post",
+                "tags": ["台虹", "PTFE", "ASIC"],
+                "text": (
+                    "1. 大盤：台虹當 2nd supplier，PTFE 轉 Hybrid，M9/M10 CCL。"
+                    "2. 族群：散熱到 InP 再到 PCB/CCL、ASIC、CPO/FAU。"
+                    "3. ASIC 全鏈創意世芯聯發科。InP 聯亞。FAU 大立光。CPO 台積訊芯。"
+                    "該怎麼做先等回測，偏熱先不追。"
+                ),
+            }
+        ],
+    )
+    html = format_latest_focus(db)
+    assert html
+    assert html.startswith("<b>飆大現在在講</b>")
+    assert "最新" in html
+    assert "10/3" in html or "19:20" in html
+    assert "<b>大盤</b>" in html
+    assert "台虹" in html
+    assert "PTFE" in html or "Hybrid" in html or "CCL" in html
+    assert "直接打字或語音" in html
+    assert "<b>還能問</b>" in html
+
+
+def test_boot_force_seed_calls_ingest():
+    src = open(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.py"),
+        encoding="utf-8",
+    ).read()
+    assert "ingest_public_posts" in src
+    assert "開機立刻抓文" in src
+    ingest_src = open(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "biaoke_ingest.py"),
+        encoding="utf-8",
+    ).read()
+    assert "_time.sleep(5)" in ingest_src
+    assert "_time.sleep(90)" not in ingest_src
+
+
 def test_main_wires_recoverable_and_retry_loop():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     main_src = open(os.path.join(root, "main.py"), encoding="utf-8").read()
