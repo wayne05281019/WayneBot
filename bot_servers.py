@@ -1177,18 +1177,15 @@ class WayneTelegramBot:
                 jobs.append((code, name, out))
 
             try:
-                from wayne_navigator import submit_mpl_paint
-
+                # 整頁 prepare／算卡走一般 thread；真正 savefig 才進 paint worker
+                # （不准把整頁 submit_mpl_paint，否則查股會卡在勝率算卡後面）。
                 rendered = await asyncio.wait_for(
-                    asyncio.wrap_future(
-                        submit_mpl_paint(
-                            lambda: render_volume_zones_two_phase(
-                                jobs,
-                                self.db_path,
-                                with_nav_signals=True,
-                                max_workers=8,
-                            )
-                        )
+                    asyncio.to_thread(
+                        render_volume_zones_two_phase,
+                        jobs,
+                        self.db_path,
+                        with_nav_signals=True,
+                        max_workers=8,
                     ),
                     timeout=120.0,
                 )
@@ -3844,20 +3841,17 @@ class WayneTelegramBot:
             await message.reply_html(head, disable_web_page_preview=True)
             # 整頁一次出圖（快取／平行準備），再依序送 Telegram
             try:
-                from wayne_navigator import submit_mpl_paint
-
+                # 算卡／讀庫走一般 thread；每張圖內層 run_mpl_paint。
+                # 不准整頁 submit_mpl_paint（會獨占 paint worker，查股出圖被堵住）。
                 pairs = await asyncio.wait_for(
-                    asyncio.wrap_future(
-                        submit_mpl_paint(
-                            lambda: render_page_pairs(
-                                self.db_path,
-                                chunk,
-                                charts_dir=self.charts_dir,
-                                uid=uid or "wr",
-                                as_of=as_of,
-                                reuse_cache=True,
-                            )
-                        )
+                    asyncio.to_thread(
+                        render_page_pairs,
+                        self.db_path,
+                        chunk,
+                        charts_dir=self.charts_dir,
+                        uid=uid or "wr",
+                        as_of=as_of,
+                        reuse_cache=True,
                     ),
                     timeout=max(45.0, 12.0 * max(1, len(chunk))),
                 )
@@ -4666,16 +4660,20 @@ class WayneTelegramBot:
                 pass
             try:
                 from biaoke_chart import build_biaoke_structure_chart
+                from wayne_navigator import submit_mpl_paint
 
                 built = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        build_biaoke_structure_chart,
-                        self.db_path,
-                        sid,
-                        path,
-                        name=name,
-                        ask=tip,
-                        uid=uid,
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            lambda: build_biaoke_structure_chart(
+                                self.db_path,
+                                sid,
+                                path,
+                                name=name,
+                                ask=tip,
+                                uid=uid,
+                            )
+                        )
                     ),
                     timeout=_CHART_RENDER_TIMEOUT,
                 )
