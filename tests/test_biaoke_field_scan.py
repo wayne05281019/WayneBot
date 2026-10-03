@@ -1626,3 +1626,84 @@ def test_dongzhu_skips_holding_company_parking(tmp_path, monkeypatch):
     assert "金控／銀行當停車格" in html or "略過" in html or "不拿來當先機" in str(
         data.get("why") or ""
     )
+
+
+def test_biaoke_week_link_on_dongzhu_page(tmp_path, monkeypatch):
+    """本週飆大聯動上洞燭頁：只參考，不改佔比主判／不准當買訊。"""
+    from biaoke_field_scan import (
+        biaoke_week_link,
+        clear_dongzhu_picks_cache,
+        dongzhu_page,
+        dongzhu_picks,
+        week_range_taipei,
+        week_spoken,
+    )
+
+    db = str(tmp_path / "week.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    # 本週（相對固定假日 2026-10-03 週六→週一 09-28）
+    conn.execute(
+        "INSERT INTO biaoke_posts VALUES (?,?,?,?,?,?,?)",
+        (
+            "185072783",
+            2,
+            "2026-10-02",
+            "10:28",
+            "post",
+            '["創意","健策","聯亞","台光電"]',
+            "大盤在過9/22 48601的最後整理，而且已經有完成6/23 48218回測的跡象。"
+            "真正主流為ASIC、散熱、光通訊、CCL。觀察創意、健策。IET 二軍漲停。",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts VALUES (?,?,?,?,?,?,?)",
+        (
+            "185072783:c1",
+            3,
+            "2026-10-03",
+            "09:42",
+            "reply",
+            "[]",
+            "南亞科站穩531就是整理完成。奇鋐還在關前。",
+        ),
+    )
+    # parent 欄：_seed 表沒 parent；補欄以免 week_spoken 查 reply parent 失敗
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(biaoke_posts)").fetchall()]
+    if "parent" not in cols:
+        conn.execute("ALTER TABLE biaoke_posts ADD COLUMN parent TEXT DEFAULT ''")
+    conn.execute(
+        "UPDATE biaoke_posts SET parent='185072783' WHERE id='185072783:c1'"
+    )
+    conn.commit()
+    conn.close()
+
+    clear_dongzhu_picks_cache()
+    start, end = week_range_taipei(datetime(2026, 10, 3, 12, 0, tzinfo=__import__("zoneinfo").ZoneInfo("Asia/Taipei")))
+    assert start == "2026-09-28"
+    assert end == "2026-10-03"
+    spoken = week_spoken(db, start=start, end=end)
+    assert "48601" in spoken
+    assert "南亞科" in spoken
+    ref = biaoke_week_link(db, start=start, end=end)
+    assert ref.get("ok") is True
+    assert ref.get("mains") >= 1
+    assert ref.get("replies") >= 1
+    assert "ASIC" in (ref.get("fields") or []) or "散熱" in (ref.get("fields") or [])
+    assert any("切入只認黃金買點" in x for x in (ref.get("lines") or []))
+
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    monkeypatch.setattr(
+        "biaoke_field_scan.week_range_taipei",
+        lambda now=None: ("2026-09-28", "2026-10-03"),
+    )
+    clear_dongzhu_picks_cache()
+    data = dongzhu_picks(db, spoken="")
+    # spoken="" 時主判不吃本週正文；聯動層仍附加
+    assert isinstance(data.get("biaoke_week"), dict)
+    assert data["biaoke_week"].get("ok") is True
+    html = dongzhu_page(db, spoken="", data=data)
+    assert "本週飆大聯動（參考）" in html
+    assert "不是買訊" in html or "切入只認黃金買點" in html
+    # 推薦買點邏輯未被本週聯動改成亂標
+    assert "不准發明切入" not in html
