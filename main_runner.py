@@ -1668,10 +1668,34 @@ class MainRunner:
                 sent_ok = False
             elif self.bot and hasattr(self.bot, "push_winrate_buypoint_page"):
                 ok_n = 0
+                # 雙人同一份名單：整頁只渲一次，再各寄一次（省第二輪出圖）
+                page_pairs = None
+                if rows:
+                    try:
+                        from winrate_buypoint import PAGE_SIZE, page_slice, render_page_pairs
+
+                        chunk, _off, _more = page_slice(rows, 0, limit=PAGE_SIZE)
+                        page_pairs = render_page_pairs(
+                            self.db_path,
+                            chunk,
+                            charts_dir=getattr(self.bot, "charts_dir", "") or "",
+                            uid="wr_push",
+                            as_of=as_of,
+                            reuse_cache=True,
+                        )
+                    except Exception:
+                        logger.exception("勝率買點整頁預渲失敗，改逐人出圖")
+                        page_pairs = None
                 for cid in dests:
                     try:
                         if self.bot.push_winrate_buypoint_page(
-                            cid, rows, as_of=as_of, offset=0, mode="full", uid=str(cid)
+                            cid,
+                            rows,
+                            as_of=as_of,
+                            offset=0,
+                            mode="full",
+                            uid=str(cid),
+                            pairs=page_pairs,
                         ):
                             ok_n += 1
                     except Exception as e:

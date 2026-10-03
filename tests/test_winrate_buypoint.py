@@ -490,6 +490,11 @@ def test_bot_wires_winrate_handler():
     assert 'data.startswith("wr:")' in cb
     assert hasattr(WayneTelegramBot, "push_winrate_buypoint_page")
     assert hasattr(WayneTelegramBot, "_run_winrate_buypoint")
+    run_src = inspect.getsource(WayneTelegramBot._run_winrate_buypoint)
+    assert "render_page_pairs" in run_src
+    push_src = inspect.getsource(WayneTelegramBot.push_winrate_buypoint_page)
+    assert "pairs" in push_src
+    assert "render_page_pairs" in push_src
 
 
 def test_runner_has_winrate_job():
@@ -503,6 +508,110 @@ def test_runner_has_winrate_job():
     src = open("main.py", encoding="utf-8").read()
     assert '(21, 0, "winrate")' in src
     assert "run_winrate_buypoint" in src
+    runner_src = inspect.getsource(MainRunner.run_winrate_buypoint)
+    assert "render_page_pairs" in runner_src
+    assert "page_pairs" in runner_src
+
+
+def test_render_page_pairs_cache_and_align(tmp_path, monkeypatch):
+    """整頁出圖：同序對齊、磁碟快取二次極快；不准改買訊。"""
+    import os
+    import time
+
+    from winrate_buypoint import render_page_pairs
+
+    calls = {"n": 0}
+
+    class _FakeEng:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def get_decision_card(self, sid, **_k):
+            return {
+                "stock_id": sid,
+                "stock_name": f"名{sid}",
+                "table": [],
+            }
+
+    def _fake_vz(sid, name, db_path, save_path, df=None, **kw):
+        calls["n"] += 1
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        with open(save_path, "wb") as f:
+            f.write(b"x" * 25_000)
+        return save_path, "cap"
+
+    def _fake_card_png(card, path):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(b"y" * 12_000)
+        return path
+
+    monkeypatch.setattr("wayne_navigator.NavigatorEngine", _FakeEng)
+    monkeypatch.setattr("vol_zone_chart.render_volume_zone_result", _fake_vz)
+    monkeypatch.setattr("wayne_navigator.render_decision_card_png", _fake_card_png)
+
+    charts = str(tmp_path / "charts")
+    rows = [
+        {"stock_id": "2330", "stock_name": "台積電", "as_of": "20261002"},
+        {"stock_id": "", "stock_name": "空"},
+        {"stock_id": "2454", "stock_name": "聯發科", "as_of": "20261002"},
+    ]
+    t0 = time.perf_counter()
+    a = render_page_pairs(
+        str(tmp_path / "x.db"),
+        rows,
+        charts_dir=charts,
+        uid="u1",
+        as_of="20261002",
+        reuse_cache=True,
+    )
+    cold = time.perf_counter() - t0
+    assert len(a) == 3
+    assert a[1] == ("", "", "空")
+    assert a[0][0] and os.path.isfile(a[0][0]) and os.path.getsize(a[0][0]) >= 20000
+    assert a[2][0] and a[2][1]
+    assert calls["n"] == 2
+    t0 = time.perf_counter()
+    b = render_page_pairs(
+        str(tmp_path / "x.db"),
+        rows,
+        charts_dir=charts,
+        uid="u2",
+        as_of="20261002",
+        reuse_cache=True,
+    )
+    warm = time.perf_counter() - t0
+    assert calls["n"] == 2  # 快取命中不再 prepare
+    assert b[0][0] and b[2][1]
+    assert warm < cold
+    assert warm < 0.25
+
+
+def test_live_rules_scan_kind_and_exclude_gates():
+    """現行規則：ex5、無 live near_h20、空文、分頁 callback。"""
+    from buy_exclude import REASON_NEAR_H20, buy_exclude_reasons
+    from winrate_buypoint import (
+        EMPTY_MSG,
+        SCAN_KIND,
+        next_page_callback,
+        parse_next_page_callback,
+    )
+    from winrate_ai_priority import ELEC_INDUSTRIES
+
+    assert SCAN_KIND == "card_lz_paint_ex5"
+    assert EMPTY_MSG == "今天無勝率買點股票出現"
+    assert "光電業" in ELEC_INDUSTRIES and "電機機械" in ELEC_INDUSTRIES
+    # live 排除清單不准含 near_h20（靜默對照另軌）
+    assert REASON_NEAR_H20 == "near_h20"
+    import inspect
+
+    src = inspect.getsource(buy_exclude_reasons)
+    assert "REASON_DAY_TURNOVER_LOW" in src
+    assert "REASON_NEAR_H20" not in src or "silent" in src.lower()
+    # 更硬：函式體不 append near_h20
+    assert "out.append(REASON_NEAR_H20)" not in src
+    cb = next_page_callback(15)
+    assert parse_next_page_callback(cb) == 15
 
 
 def test_silent_remember_roster_and_filter(tmp_path, monkeypatch):
