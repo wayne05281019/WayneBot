@@ -3889,34 +3889,12 @@ class WayneTelegramBot:
                     logger.warning(
                         "勝率買點單檔逾時 code=%s i=%s/%s", sid, i + 1, total
                     )
+                    # wait_for 不殺 to_thread：孤兒仍可能在 paint；不准立刻再冷渲一輪
+                    # （雙倍 RSS → Render OOM→502）。缺圖就跳過壓力區、續送溫度卡。
                 except Exception:
                     logger.exception(
                         "勝率買點單檔出圖失敗 code=%s i=%s/%s", sid, i + 1, total
                     )
-                # 壓力區缺圖時再試一次（Render 偶發 Agg／記憶體抖動）
-                if not (vpath and os.path.isfile(vpath)):
-                    try:
-                        v2, c2, n2 = await asyncio.wait_for(
-                            asyncio.to_thread(
-                                render_stock_pair,
-                                self.db_path,
-                                sid,
-                                name,
-                                charts_dir=self.charts_dir,
-                                uid=uid or "wr",
-                                as_of=as_of,
-                                reuse_cache=False,
-                            ),
-                            timeout=per_stock_timeout,
-                        )
-                        if v2 and os.path.isfile(v2):
-                            vpath = v2
-                        if (not cpath or not os.path.isfile(cpath)) and c2 and os.path.isfile(c2):
-                            cpath = c2
-                        if n2:
-                            cap_name = n2
-                    except Exception:
-                        logger.exception("勝率買點單檔重試失敗 code=%s", sid)
                 label = html_escape(cap_name or name or sid)
                 if vpath and os.path.isfile(vpath):
                     try:
@@ -3961,6 +3939,12 @@ class WayneTelegramBot:
                         disable_web_page_preview=True,
                     )
                 # 讓出 event loop；順便收圖形記憶體，降低 Render OOM→502
+                try:
+                    import matplotlib.pyplot as plt
+
+                    plt.close("all")
+                except Exception:
+                    pass
                 try:
                     gc.collect()
                 except Exception:
