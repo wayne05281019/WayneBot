@@ -139,12 +139,18 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("_render_ready", src)
         self.assertIn("_album_pair_box", src)
         self.assertNotIn("_render_then_cell", src)
-        # 高低卡先開渲，再等 tape／介紹圖；不准先 await tape 才開始兩張。
+        # 高低卡先開渲（跟 tape 重疊），介紹圖等卡畫完再開，避免同鎖 wait_for 誤判逾時。
         self.assertIn("card_render_task", src)
         self.assertLess(src.find("card_render_task"), src.find("await tape_task"))
+        self.assertIn("card_item = await card_render_task", src)
+        self.assertIn("glance_item = await _render_ready", src)
+        self.assertLess(
+            src.find("card_item = await card_render_task"),
+            src.find("glance_item = await _render_ready"),
+        )
 
     def test_glance_and_card_render_start_together(self):
-        """介紹圖與高低卡同一拍開始畫，不准等介紹圖畫完才開高低卡。"""
+        """高低卡先開渲；介紹圖等卡畫完再開（FreeType 同鎖，不准 gather 搶逾時計時）。"""
         from PIL import Image
 
         td = tempfile.mkdtemp()
@@ -237,7 +243,8 @@ class LookupImageTests(unittest.TestCase):
         asyncio.run(_run())
         self.assertIn("glance", started)
         self.assertIn("card", started)
-        self.assertLess(abs(started["glance"] - started["card"]), 0.12)
+        # 卡先、介紹後；卡 sleep 0.25 後才開 glance
+        self.assertGreaterEqual(started["glance"] - started["card"], 0.2)
         self.assertGreaterEqual(message.reply_media_group.await_count, 1)
         self.assertGreaterEqual(message.reply_photo.await_count, 1)
         caps = [

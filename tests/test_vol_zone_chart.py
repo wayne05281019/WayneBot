@@ -121,7 +121,7 @@ def test_lookup_sends_volzone_third_photo():
     assert "render_volume_zone_png" in src or "大量區" in src
     assert "volzone" in src
     assert "大量區" in src
-    assert src.find("packed = await asyncio.gather") < src.find("create_task(_volzone_item")
+    assert src.find("glance_item = await _render_ready") < src.find("create_task(_volzone_item")
     assert src.find("create_task(_volzone_item") < src.find("_send_lookup_album")
     assert src.find("create_task(_volzone_item") < src.find("await volzone_task")
     # 大量區改獨立 Agg（可與相簿傳圖重疊）；不准跟介紹／高低卡同刻搶 FreeType

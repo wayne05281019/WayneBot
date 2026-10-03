@@ -6303,7 +6303,30 @@ class WayneTelegramBot:
                 await chat.send_action("typing")
         except Exception:
             pass
-        hits = await asyncio.to_thread(lookup_stocks, self.db_path, code)
+        hits = []
+        for _attempt in range(3):
+            try:
+                hits = await asyncio.to_thread(lookup_stocks, self.db_path, code)
+                break
+            except Exception as exc:
+                # boot 建索引／法人回填時 SQLite 可能 locked；重試後仍失敗才丟給使用者。
+                msg = str(exc).lower()
+                locked = "locked" in msg or "busy" in msg
+                logger.warning(
+                    "查股 lookup 失敗 code=%s attempt=%s locked=%s err=%s",
+                    code,
+                    _attempt + 1,
+                    locked,
+                    exc,
+                )
+                if _attempt >= 2 or not locked:
+                    await self._delete_message(wait_msg)
+                    await message.reply_text(
+                        "查詢暫時卡住（雲端剛醒或資料庫忙碌）。請先按 /start，稍後再試。",
+                        reply_markup=self._keyboard(),
+                    )
+                    return
+                await asyncio.sleep(0.4 * (_attempt + 1))
         if hits and (
             hits[0].get("category_choice")
             or (
@@ -6709,7 +6732,9 @@ class WayneTelegramBot:
             st["current"] = "both"
             st["sent"] = []
             logger.info("查股階段 current=both sent=[] code=%s", code)
-            # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape／介紹圖重疊；Agg 真並行。
+            # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
+            # 介紹圖等卡畫完再開：量字／savefig 共用一把 mpl_render，
+            # 若 gather 並行等鎖，後者 wait_for 會把排隊時間算進逾時。
             card_render_task = asyncio.create_task(
                 _render_ready(
                     "card",
@@ -6731,13 +6756,11 @@ class WayneTelegramBot:
                     code, card, tape, glance_path, self.db_path, ohlc=ohlc
                 )
 
-            packed = await asyncio.gather(
-                _render_ready(
-                    "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None
-                ),
-                card_render_task,
+            card_item = await card_render_task
+            glance_item = await _render_ready(
+                "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None
             )
-            png_items = [item for item in packed if item]
+            png_items = [item for item in (glance_item, card_item) if item]
             # 大量區已改獨立 Agg；仍等介紹／高低卡先畫完再開，避開 FreeType 多執行緒踩字型。
             # 跟相簿傳送同時走，牆鐘吃傳圖不是再加一輪重抓日K。
             volzone_task = asyncio.create_task(_volzone_item())

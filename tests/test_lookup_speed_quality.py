@@ -135,7 +135,7 @@ def test_glance_render_memo(tmp_path):
 
 
 def test_lookup_renders_use_independent_agg_figures():
-    """介紹／高低卡用獨立 Agg Figure，才可真並行；不准再 @_mpl_serial 串起來。"""
+    """介紹／高低卡用獨立 Agg Figure；函式開頭不准 @_mpl_serial（memo 先查）。"""
     import wayne_navigator as wn
 
     card_src = inspect.getsource(wn.render_decision_card_png)
@@ -144,7 +144,7 @@ def test_lookup_renders_use_independent_agg_figures():
     assert "_new_lookup_figure" in glance_src
     assert "_close_lookup_figure" in card_src
     assert "_close_lookup_figure" in glance_src
-    # 函式本體開頭不准再掛序列鎖（memo 先查、Agg 可並行）
+    # 函式本體開頭不准再掛序列鎖（memo 先查；量字／savefig 進同一把 mpl_render）
     assert not card_src.strip().startswith("@_mpl_serial")
     assert not glance_src.strip().startswith("@_mpl_serial")
     helper = inspect.getsource(wn._new_lookup_figure)
@@ -152,7 +152,8 @@ def test_lookup_renders_use_independent_agg_figures():
     assert "Figure(" in helper
 
 
-def test_lookup_pair_parallel_not_slower_than_serial(tmp_path):
+def test_lookup_pair_threaded_safe_under_shared_ft_lock(tmp_path):
+    """執行緒並發呼叫仍要出齊圖；量字／savefig 同鎖後牆鐘約等於序列。"""
     from concurrent.futures import ThreadPoolExecutor
 
     from chip_tape import build_tape
@@ -192,8 +193,8 @@ def test_lookup_pair_parallel_not_slower_than_serial(tmp_path):
     parallel = time.perf_counter() - t0
     assert g and c and os.path.isfile(g) and os.path.isfile(c)
     assert os.path.getsize(g) > 80000 and os.path.getsize(c) > 80000
-    # 允許誤差；真並行應不大於序列（GIL／字寬鎖下仍應 ≤ serial*1.15）
-    assert parallel <= serial * 1.15 + 0.05, (serial, parallel)
+    # 同鎖序列化後，並行牆鐘不應明顯快過序列，也不准暴衝（死鎖／重試）
+    assert parallel <= serial * 1.35 + 0.15, (serial, parallel)
 
 
 def test_lookup_memo_survives_scratch_delete(tmp_path):
