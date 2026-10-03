@@ -24,7 +24,7 @@ _EYES_ASK = re.compile(
     r"大盤對比類股|類股對比個股)"
 )
 _SKIP_FIFTH = re.compile(r"抱到.?2027|第五波漲勢結束")
-_INDEX_CTX = re.compile(r"(大盤|加權|台指|指數|TWA00)")
+_INDEX_CTX = re.compile(r"(大盤|加權|台指|指數|TWA00|台股|波浪位階)")
 _NEG_FIFTH = re.compile(
     r"(不會產生|不會有|有沒有|沒辦法).{0,16}(第五波|末升段第五波)"
 )
@@ -40,6 +40,24 @@ _TAGGERS: Tuple[Tuple[str, str, re.Pattern[str]], ...] = (
     ("第五波測底", "retest", re.compile(r"第五波.{0,8}測底|再一次測底|短線築底")),
     ("修正末端", "retest", re.compile(r"修正的?末端")),
     ("3-3-4調整", "down", re.compile(r"3-3-3-4調整|3-3-4浪即將結束|進入3-3-3-4")),
+    # 近窗大盤改口（字要準，不准拿個股「緩步攻堅／主升段」洗掉位階）
+    (
+        "位階四",
+        "side",
+        re.compile(
+            r"波浪位階四完成|位階四完成|四整理完成|"
+            r"波浪位階到四整理|大盤開始進入四整理|進入四整理可能性"
+        ),
+    ),
+    (
+        "主升段",
+        "up",
+        re.compile(
+            r"開啟主升段|"
+            r"大盤應該緩步攻堅|大盤就是緩步攻堅|大盤看起來是走緩步上攻|"
+            r"10月中旬開啟主升|非常有可能10月中旬開啟主升"
+        ),
+    ),
     ("位階二", "side", re.compile(r"波浪位階二|位階二|波浪位階的\s*2")),
     ("右肩", "side", re.compile(r"做右肩|右肩型態|持續做右肩|就是做右肩|做型態右肩")),
     ("A波低", "down_done", re.compile(r"A波低點|就是A波低|見A波低")),
@@ -48,7 +66,15 @@ _TAGGERS: Tuple[Tuple[str, str, re.Pattern[str]], ...] = (
     ("頭肩底", "retest", re.compile(r"頭肩底")),
     ("第五波失敗", "down", re.compile(r"第五波.{0,10}(沒了|失敗|開始做頭)")),
     ("邪惡第五波", "up", re.compile(r"邪惡第五波")),
-    ("末升段", "up", re.compile(r"3-5末升|末升段推動|末升段第五波|第五波擴延")),
+    (
+        "末升段",
+        "up",
+        re.compile(
+            r"3-5末升|末升段推動|末升段第五波|第五波擴延|"
+            r"波浪五的末升段|開始走五的時候|台股要開始走.{0,24}波浪五|"
+            r"開始走2025年開始走波浪五"
+        ),
+    ),
     ("大A-c", "down", re.compile(r"大A-c|走大A-c|改\s*A-c")),
     ("細微波主跌", "down", re.compile(r"主跌段跌完|細微波.{0,12}主跌")),
     ("第4浪", "down", re.compile(r"要走第4浪|第4浪\s*abc|4浪\s*abc修正")),
@@ -57,6 +83,9 @@ _TAG_PAT = {name: pat for name, _d, pat in _TAGGERS}
 _TAG_RANK = {
     "C-5低點": 95,
     "逃命波C-2": 90,
+    "末升段": 88,
+    "主升段": 86,
+    "位階四": 84,
     "第五波測底": 80,
     "修正末端": 70,
     "頭肩底": 60,
@@ -66,7 +95,6 @@ _TAG_RANK = {
     "3-3-4調整": 22,
     "C-1": 20,
     "邪惡第五波": 18,
-    "末升段": 16,
     "大B波": 15,
     "大A-c": 14,
     "A波低": 12,
@@ -256,6 +284,7 @@ _TWII_LEVELS: Tuple[Tuple[float, str, str], ...] = (
     (45839.36, "9/3低右肩", "20260903"),
     (47578.24, "9/8前波高", "20260908"),
     (48218.87, "6/23大一級前高", "20260623"),
+    (48601.53, "9/22高最後整理", "20260922"),
 )
 
 EYES = (
@@ -316,14 +345,78 @@ def _md(ymd: str) -> str:
     return f"{int(s[4:6])}/{int(s[6:8])}"
 
 
+def _colloquial_thesis(
+    last: Optional[Dict[str, str]],
+    prev: Optional[Dict[str, str]] = None,
+) -> str:
+    """口語講出近窗中心思想；隨他改口換，不准鎖死舊 ABC。"""
+    if not last:
+        return "近窗還沒接到他自己改口的大盤位階，不准發明浪。"
+    tag = str(last.get("tag") or "")
+    prev_t = str((prev or {}).get("tag") or "")
+    if tag == "位階四":
+        return (
+            "中心思想：他近窗講波浪位階四整理完成、要開始走五——"
+            "重點是整理完往上推，不是還停在舊的ABC下殺劇本。"
+            "五段還是九段他自己說還看不出，不准發明段數。"
+        )
+    if tag == "主升段":
+        return (
+            "中心思想：過 9/22 48601 這關的最後整理後，他看往主升／緩步攻堅；"
+            "先行還是看創意、健策有沒有重新展開攻擊。不是買訊。"
+        )
+    if tag == "末升段":
+        return (
+            "中心思想：他近窗把大一級往波浪五／末升段推——是他自己改口，不是程式發明 5。"
+            "全波段大ABC總修正他點在更後面（約2027），現在不是那個劇本。"
+        )
+    if tag == "逃命波C-2":
+        bit = "中心思想：當時他怕強彈是逃命波C-2，不是已確認下殺；C-3要他自己發文才算。"
+        if prev_t in {"位階四", "主升段", "末升段"}:
+            bit += "若近窗已改口，以近窗為準。"
+        return bit
+    if tag in {"位階二", "右肩"}:
+        return (
+            "中心思想：大一級他還用右肩／位階二講高檔震盪整理、趨勢向上；"
+            "過他點的前高才比較像維持型態，不是一碰到就改畫C浪。"
+        )
+    if tag == "第五波測底":
+        return "中心思想：他點的是再一次測底／短線築底等反彈，不是已確認主升，也不是已確認C-3。"
+    if tag in {"C-3", "C-1"}:
+        return "中心思想：這是最差情境下的如果句，不是已確認；沒發文升浪不要替他改圖。"
+    if tag == "C-5低點":
+        return "中心思想：C-5低點要收盤不破45398才算，還是如果句；盤中未收不當官方。"
+    q = _clip(last.get("quote") or "", 72)
+    return f"中心思想：近窗他點「{tag}」" + (f"——{q}" if q else "。") + "不是買訊。"
+
+
+def _chart_spirit_line(last: Optional[Dict[str, str]]) -> str:
+    """圖怎麼讀：跟近窗標籤走，不准永遠念紫C。"""
+    tag = str((last or {}).get("tag") or "")
+    if tag in {"位階四", "主升段", "末升段"}:
+        return "圖隨近窗修正：綠A藍B是已走完的骨架；虛線改跟四整理→五／主升精神，不是永遠鎖死舊C。"
+    if tag in {"位階二", "右肩"}:
+        return "圖跟右肩／位階二震盪整理走；過前高才像維持，不是一碰到就畫死C浪。"
+    if tag in {"逃命波C-2", "C-3", "C-1", "C-5低點"}:
+        return "圖上綠A藍B是骨架；紫虛線是最差情境如果句，還沒收成才叫未確認。"
+    return "圖上連線只跟他點過、官方柱對得上的走；改口就要重畫精神，不准永遠ABC。"
+
+
 def format_twii_plain(db_path: str = "") -> str:
-    """話筒大盤：四句。未收不當收。劃線用語與個股圖同一套（演化區／升撐／降壓）。"""
+    """話筒大盤：四句。未收不當收。中心思想隨近窗改口，不准鎖死舊ABC。"""
     bars = _load_twii_bars(db_path, n=8)
     if bars:
         b = bars[-1]
         close_bit = f"官方加權最近完整收是 {_md(b.get('date'))}，收 {_px(b.get('close'))}。"
     else:
         close_bit = "官方加權還沒有完整收。"
+    last, prev = (None, None)
+    if db_path:
+        try:
+            last, prev = last_two(db_path)
+        except Exception:
+            last, prev = None, None
+    thesis = _colloquial_thesis(last, prev)
     rail_tip = ""
     try:
         from biaoke_chain import desk_market_rail_tip
@@ -331,14 +424,14 @@ def format_twii_plain(db_path: str = "") -> str:
         rail_tip = desk_market_rail_tip(db_path)
     except Exception:
         rail_tip = ""
-    if not rail_tip:
-        rail_tip = "圖上演化區：上升撐／下降壓依他自己點過的連點延長，不是保證。"
+    spirit = _chart_spirit_line(last)
+    third = str(rail_tip).strip() if rail_tip else spirit
     return "\n".join(
         [
             close_bit,
-            "C-5低點要收盤不破 45398 才算，現在還是如果句。C-3 和 43500 都還沒確認。",
-            rail_tip,
-            "這不是買訊。看圖上綠A藍B；紫C虛線還沒走完。",
+            thesis,
+            third,
+            "這不是買訊。圖隨近窗改口重畫精神，不准永遠鎖死舊ABC。",
         ]
     )
 
@@ -426,6 +519,12 @@ def _from_rows(posts: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
         when = str(p.get("time") or "")
         aid = str(p.get("id") or p.get("parent") or "")
         for tag, direc in tags:
+            # 近窗專用標：舊文大量「主升／四浪」字會洗掉現在位階，2026-09-20 前不收
+            if tag in {"主升段", "位階四"} and day and day < "2026-09-20":
+                continue
+            # 「波浪五的末升／開始走五」近窗句；舊 3-5末升 仍走原標
+            if tag == "末升段" and day and day >= "2026-09-20":
+                pass
             _merge(
                 out,
                 {
@@ -525,6 +624,18 @@ def _compare(prev: Optional[Dict[str, str]], last: Optional[Dict[str, str]]) -> 
         return (
             f"{last.get('date')} 收盤不破45398才是C-5低點確認，還是如果句；"
             "盤中未收不當官方。不是已確認C-5，也不是主升段。"
+        )
+    if b in {"位階四", "主升段", "末升段"} and a in {
+        "逃命波C-2",
+        "第五波測底",
+        "位階二",
+        "右肩",
+        "C-3",
+        "C-1",
+    }:
+        return (
+            f"先前 {prev.get('date')} 還在{a}，後來 {last.get('date')} 改口{b}："
+            "中心思想已往四整理完成／主升或末升推，圖要跟著重畫，不准再鎖死舊ABC下殺。"
         )
     if pair == ("第五波測底", "逃命波C-2") or pair == ("頭肩底", "逃命波C-2"):
         return (
@@ -950,11 +1061,25 @@ def format_wave_path(db_path: str = "", *, n: int = 14) -> str:
 def _direc_line(last: Dict[str, str]) -> str:
     tag = last.get("tag") or ""
     direc = last.get("direc") or ""
+    if tag == "位階四":
+        return (
+            "方向：近窗他點位階四整理完成、要走五——精神往上推，不是還停在ABC下殺。"
+            "五／九他自己說還看不出，不准發明段數。"
+        )
+    if tag == "主升段":
+        return (
+            "方向：他看過48601最後整理後往主升／緩步攻堅；"
+            "創意、健策沒先攻就不要替他喊已開主升。"
+        )
+    if tag == "末升段":
+        return (
+            "方向：他近窗改口大一級往波浪五／末升；這是他嘴上的標，不是程式發明5。"
+            "總修正他點更後面，現在不准提早畫崩。"
+        )
     if tag == "逃命波C-2":
         return (
             "方向：他點的是最差情境下小心逃命波 C-2，不是已確認下降浪。"
-            "10:47 樓下：漲不動反而比較好；怕開牌前作 C-2、開牌後變 C-3。沒發文確認就不要替他升浪。"
-            "強彈不追高。創意還沒連續漲勢，就不能說沒有下殺 43500 的危機。"
+            "沒發文確認就不要替他升浪。近窗若已改口，以近窗為準。"
         )
     if direc == "retest" or tag in {"第五波測底", "修正末端", "頭肩底"}:
         return (
@@ -964,7 +1089,7 @@ def _direc_line(last: Dict[str, str]) -> str:
     if direc == "side" or tag in {"位階二", "右肩"}:
         return (
             "方向：大一級他點高檔震盪／右肩／位階二，趨勢他仍說向上整理。"
-            "還沒過 47578 不要當成突破；破他點的右肩低才先當覆巢。"
+            "過他點的前高才比較像維持型態。"
         )
     if direc == "up" or tag == "大B波":
         return "方向：他點的是反彈／B 波向上，時間可以很長，他自己說不要急著買。"
@@ -974,15 +1099,17 @@ def _direc_line(last: Dict[str, str]) -> str:
 
 
 def format_wave_head(db_path: str = "") -> str:
-    """巢穴／推論用短句，不吃掉官方四路。"""
+    """巢穴／推論用短句，不吃掉官方四路。隨近窗改口，不准鎖死舊句。"""
     last, prev = last_two(db_path)
     if not last:
         return "還沒接到他自己點名的大盤位階，不准發明浪。位階不講死。"
     stamp = " ".join(x for x in (last.get("date") or "", last.get("time") or "") if x)
     prev_t = f"；再前 {prev.get('date')} {prev.get('tag')}" if prev else ""
+    thesis = _colloquial_thesis(last, prev)
     return (
         f"現在位階 {stamp} {last.get('tag')}{prev_t}。"
-        "大一級還在位階二／右肩，C-3 沒發文。位階不講死。不數 5／9 段。"
+        f"{thesis}"
+        "位階不講死。不數他沒點過的 5／9 段。"
     )
 
 
@@ -1064,6 +1191,8 @@ _PATH_SHORT = {
     "修正末端": "末端",
     "A波低": "A波低",
     "位階二": "位階二",
+    "位階四": "位階四",
+    "主升段": "主升",
     "右肩": "右肩",
     "C-3": "小心C-3",
     "C-1": "C-1",
@@ -1076,7 +1205,6 @@ _PATH_SHORT = {
     "大A-c": "A-c",
     "第五波失敗": "五波失敗",
     "頭肩底": "頭肩底",
-    "C-5低點": "C-5低",
     "3-3-4調整": "3-3-4",
 }
 
@@ -1343,11 +1471,24 @@ def wave_abc_story(
     if last_i > i_b:
         y_now = _ohlc_f(bars[last_i], "close") or _ohlc_f(bars[last_i], "low")
         tag = str(last_tag or "")
-        c_lab = "C未確認"
-        if "C-2" in tag:
-            c_lab = "C-2未確認"
+        # 近窗改口就要重畫精神：不是永遠紫C
+        if tag in {"位階四", "主升段", "末升段"}:
+            if tag == "位階四":
+                c_lab, color = "四→五未確認", "#ef6c00"
+            elif tag == "主升段":
+                c_lab, color = "主升未確認", "#ef6c00"
+            else:
+                c_lab, color = "末升未確認", "#ef6c00"
+        elif tag in {"位階二", "右肩"}:
+            c_lab, color = "右肩整理", "#455a64"
+        elif "C-2" in tag:
+            c_lab, color = "C-2未確認", "#6a1b9a"
         elif "C-3" in tag:
-            c_lab = "C-3未確認"
+            c_lab, color = "C-3未確認", "#6a1b9a"
+        elif tag in {"C-1", "C-5低點", "逃命波C-2"}:
+            c_lab, color = "C未確認", "#6a1b9a"
+        else:
+            c_lab, color = "近窗整理未確認", "#6a1b9a"
         out["c"] = {
             "xs": [float(i_b), float(last_i)],
             "ys": [y_b, y_now],
@@ -1357,7 +1498,7 @@ def wave_abc_story(
             "y1": y_now,
             "d0": str(bars[i_b].get("date") or ""),
             "d1": str(bars[last_i].get("date") or ""),
-            "color": "#6a1b9a",
+            "color": color,
             "unconfirmed": True,
             "lab": c_lab,
         }
@@ -1365,14 +1506,32 @@ def wave_abc_story(
 
 
 def locator_abc_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """縮圖：A↓ B↑ C虛。圈字離開 K；線要細，K 才看得清。"""
+    """縮圖：A↓ B↑；第三段虛線標籤跟近窗精神走，不准永遠寫死C。"""
     legs: List[Dict[str, Any]] = []
+    c_leg = story.get("c") or {}
+    c_color = str(c_leg.get("color") or "#6a1b9a")
+    c_lab = str(c_leg.get("lab") or "C")
+    # 圈字縮短：四→五／主升／末升／右肩／C
+    if "四" in c_lab:
+        circ = "4"
+    elif "主升" in c_lab:
+        circ = "↑"
+    elif "末升" in c_lab:
+        circ = "5"
+    elif "右肩" in c_lab:
+        circ = "2"
+    elif "C-2" in c_lab:
+        circ = "C2"
+    elif "C-3" in c_lab:
+        circ = "C3"
+    else:
+        circ = "C"
     spec = (
         ("a", "#2e7d32", "A", "mid-left", "-", 0.95),
         ("b", "#1565c0", "B", "right", "-", 0.95),
-        ("c", "#6a1b9a", "C", "mid", (0, (3.2, 2.2)), 0.85),
+        ("c", c_color, circ, "mid", (0, (3.2, 2.2)), 0.85),
     )
-    for key, color, circ, side, ls, lw in spec:
+    for key, color, circ_m, side, ls, lw in spec:
         leg = story.get(key) or {}
         xs = list(leg.get("xs") or [])
         ys = list(leg.get("ys") or [])
@@ -1383,10 +1542,10 @@ def locator_abc_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "xs": xs,
                 "ys": ys,
                 "color": color,
-                "lab": "",
+                "lab": str(leg.get("lab") or "") if key == "c" else "",
                 "lw": lw,
                 "ls": ls,
-                "circle": circ,
+                "circle": circ_m,
                 "circle_side": side,
                 "dots": False,
             }
@@ -1560,8 +1719,26 @@ def wave_extend_rays(
     return []
 
 
+def _c_circle_mark(lab: str) -> str:
+    """第三段圈字：跟近窗精神，不准永遠C。"""
+    t = str(lab or "")
+    if "四" in t:
+        return "4"
+    if "主升" in t:
+        return "↑"
+    if "末升" in t:
+        return "5"
+    if "右肩" in t:
+        return "2"
+    if "C-2" in t:
+        return "C2"
+    if "C-3" in t:
+        return "C3"
+    return "C"
+
+
 def _paint_abc_on_ax(ax, story: Dict[str, Any], *, n: int, y_top: float, y_bot: float) -> None:
-    """主圖只畫一條連好的 A↓B↑C虛。圈 A 在下降線左邊。"""
+    """主圖 A↓B↑＋近窗第三段虛線。圈字跟改口走，不准永遠鎖C。"""
     from biaoke_chart import _circled_letter, _halo_line, _leader_note
 
     span = max(y_top - y_bot, 1.0)
@@ -1624,7 +1801,11 @@ def _paint_abc_on_ax(ax, story: Dict[str, Any], *, n: int, y_top: float, y_bot: 
     if c.get("xs"):
         mx = (float(c["xs"][0]) + float(c["xs"][-1])) / 2.0
         my = (float(c["ys"][0]) + float(c["ys"][-1])) / 2.0
-        _circled_letter(ax, mx, my, "C", "#6a1b9a", dx=0.0, dy=-span * 0.06, size=14)
+        c_mark = _c_circle_mark(str(c.get("lab") or ""))
+        c_color = str(c.get("color") or "#6a1b9a")
+        _circled_letter(
+            ax, mx, my, c_mark, c_color, dx=0.0, dy=-span * 0.06, size=14
+        )
     fifth = story.get("fifth_high") or {}
     if fifth:
         _leader_note(
@@ -1730,7 +1911,13 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         closes = [float(r.get("close") or 0) for r in bars]
         ys = highs + lows
         # 他自己點過且官方對得上的水平：最差／右肩低／前波高／大一級前高
-        keep_lv = {"他原文C波最差", "9/3低右肩", "9/8前波高", "6/23大一級前高"}
+        keep_lv = {
+            "他原文C波最差",
+            "9/3低右肩",
+            "9/8前波高",
+            "6/23大一級前高",
+            "9/22高最後整理",
+        }
         for lv, lab, _d in _TWII_LEVELS:
             if lab in keep_lv:
                 ys.append(lv)
@@ -1970,10 +2157,11 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         last = bars[-1]
         as_of = _ymd(last.get("date"))
         as_show = f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}" if len(as_of) == 8 else as_of
+        c_lab = str((story.get("c") or {}).get("lab") or "近窗未確認")
         fig.text(
             _FIG_LEFT,
             0.968,
-            "加權官方日K　2026 ABC（給看不懂波浪的人）",
+            "加權官方日K　近窗改口重畫（不是永遠ABC）",
             fontproperties=_fp(13, "bold"),
             color="#1f2933",
             ha="left",
@@ -1998,7 +2186,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig.text(
             _FIG_LEFT,
             0.908,
-            "綠A＝5高→7/29　藍B＝同低→9/8　紫C虛線未確認",
+            f"綠A＝5高→7/29　藍B＝同低→B高　虛線＝{c_lab}（隨近窗）",
             fontproperties=_fp(9, "bold"),
             color="#37474f",
             ha="left",

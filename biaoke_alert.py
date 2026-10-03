@@ -634,15 +634,43 @@ def format_level_hit_synthesis(
         "<b>飆大急推·官方碰到已點位</b>",
         bar_bit + ("；" + html_escape(close_bit) if close_bit else ""),
     ]
-    if essence:
+    oral = _oral_level_thesis(essence, lv)
+    if oral:
+        bits.append("中心思想：" + html_escape(oral))
+    elif essence:
         bits.append("判斷：" + html_escape(essence))
     else:
         bits.append("判斷：柱已碰到他點過的這位；近窗沒抽出更細立場。")
     n = len(rows)
     if n > 1:
         bits.append(f"同點另有 {n - 1} 則已併入，不逐則貼舊文。")
-    bits.append("對原文用。不是買訊，不准補新價。")
+    bits.append("對原文用。不是買訊，不准補新價。圖隨近窗改口重畫，不准鎖死舊ABC。")
     return "\n".join(bits)
+
+
+def _oral_level_thesis(essence: str, level_face: str) -> str:
+    """把含點位的句子收成口語中心思想，不是複誦日期目錄。"""
+    s = str(essence or "").strip()
+    if not s:
+        return ""
+    lv = str(level_face or "")
+    if any(k in s for k in ("穿刺", "突破", "有效過", "過前")) and any(
+        k in s for k in ("否則", "再測", "要不然")
+    ):
+        return f"他要 {lv} 這位有效過才算脫離震盪；過不了還得再測更低——柱碰到只是提醒對原文，不是自動突破。"
+    if "最後整理" in s or "整理完" in s or "整理完成" in s:
+        return f"他近窗把 {lv} 當最後整理關；過了才談主升，不是一碰到就改劇本。"
+    if "回測" in s:
+        return f"他點 {lv} 是回測／關前觀察位；柱碰到＝對質提醒，不是叫你追。"
+    if "支撐" in s or "守" in s:
+        return f"他點 {lv} 當守住才像多頭結構未壞；碰到要看收有沒有守住。"
+    if "壓力" in s or "關" in s:
+        return f"他點 {lv} 當關卡／壓力；碰到是觀察能不能過，不是已過。"
+    # 去蕪：去掉多餘標點，壓成一句口語
+    t = re.sub(r"^[…\s]+", "", s)
+    if len(t) > 80:
+        t = t[:79] + "…"
+    return t
 
 
 def _send_family(html: str) -> int:

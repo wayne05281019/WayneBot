@@ -372,8 +372,8 @@ def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
     html = sent[0]
     assert "官方碰到已點位" in html
     assert "46747" in html
-    assert "判斷：" in html
-    assert "穿刺" in html and "45398" in html
+    assert "中心思想：" in html or "判斷：" in html
+    assert "46747" in html and ("穿刺" in html or "脫離震盪" in html)
     # 同一點位只一則；舊長文不整篇塞
     assert html.count("官方碰到已點位") == 1
     assert "以前也講過震盪" not in html
@@ -412,7 +412,7 @@ def test_format_level_hit_synthesis_no_date_catalog():
             },
         ],
     )
-    assert "判斷：" in html
+    assert "中心思想：" in html or "判斷：" in html
     assert "48601" in html
     assert "收" in html and "之上" in html
     assert "他原文 2026-09-22" not in html
