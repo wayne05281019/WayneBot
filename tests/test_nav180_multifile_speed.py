@@ -73,8 +73,10 @@ def test_chart_batch_two_phase_api():
     assert callable(prepare_volume_zones_parallel)
     assert callable(paint_volume_zones_serial)
     assert callable(render_volume_zones_two_phase)
+    # 話筒壓撐名單改逐檔串流；two_phase API 仍保留給批次腳本
     bot = open("bot_servers.py", encoding="utf-8").read()
-    assert "render_volume_zones_two_phase" in bot
+    assert "render_volume_zone_result" in bot
+    assert "submit_mpl_paint" in bot
 
 
 def test_vol_zone_uses_align_cache():
