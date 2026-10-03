@@ -251,11 +251,11 @@ def test_field_advice_charts_give_all_with_how(tmp_path):
 
 
 def test_intro_asic_then_optical_yahoo_layout(tmp_path):
-    """空白／類股：先 ASIC 三龍頭＋相關鏈，再 InP／FAU／CPO，股名連奇摩。"""
+    """空白／類股：ASIC 全鏈 → InP／FAU／CPO 粗體表頭 → 該怎麼做；橘標龍頭。"""
     from biaoke_advisor import action_advice_pack, format_action_advice_html
 
     db = _mk_db(tmp_path)
-    # 補 ASIC 相關鏈柱，讓名冊分層有官方數
+    # 補 ASIC／光通訊名冊柱，讓分層有官方數
     conn = __import__("sqlite3").connect(db)
     for sid, base in (
         ("2454", 1200.0),
@@ -265,6 +265,15 @@ def test_intro_asic_then_optical_yahoo_layout(tmp_path):
         ("8227", 80.0),
         ("3363", 650.0),
         ("3008", 6000.0),
+        ("2330", 1000.0),
+        ("6451", 200.0),
+        ("3711", 180.0),
+        ("3450", 90.0),
+        ("4977", 120.0),
+        ("6442", 300.0),
+        ("3163", 80.0),
+        ("4991", 150.0),
+        ("3105", 400.0),
     ):
         for d in range(1, 26):
             day = f"202609{d:02d}"
@@ -294,19 +303,54 @@ def test_intro_asic_then_optical_yahoo_layout(tmp_path):
     assert pack.get("inp_rows")
     assert pack.get("fau_rows")
     assert pack.get("cpo_rows")
+    fau_sids = {str(r.get("sid")) for r in (pack.get("fau_rows") or [])}
+    cpo_sids = {str(r.get("sid")) for r in (pack.get("cpo_rows") or [])}
+    assert "3008" in fau_sids  # 大立光鎖 FAU
+    assert "3008" not in cpo_sids
+    assert "2330" in cpo_sids and "6451" in cpo_sids and "3450" in cpo_sids
 
     html = format_action_advice_html(db, ask="")
-    assert "ASIC｜到年前主軸" in html
-    assert "三龍頭" in html
-    assert "相關鏈" in html
-    assert "光通訊｜InP／FAU／CPO" in html
-    assert "InP　" in html
-    assert "FAU　" in html
-    assert "CPO　" in html
+    assert "ASIC｜IC設計全鏈" in html
+    assert "InP（磷化銦）" in html
+    assert "FAU（光纖陣列）" in html
+    assert "CPO（共同封裝光學）" in html
+    assert "光通訊｜InP／FAU／CPO" not in html
+    assert "三龍頭" not in html
+    assert "上市" not in html and "上櫃" not in html
+    assert "<code>龍頭</code>" in html
     assert "該怎麼做" in html
+    assert "可接" in html or "等回測" in html or "偏熱先不追" in html
     assert "tw.stock.yahoo.com/quote/" in html
     assert "3443" in html and "8227" in html and "6526" in html
+    assert "3008" in html and "2330" in html and "6451" in html
+    assert "另有低軌衛星題材" in html
+    # 順序：ASIC → InP → FAU → CPO → 該怎麼做
+    i_asic = html.find("ASIC｜")
+    i_inp = html.find("InP（磷化銦）")
+    i_fau = html.find("FAU（光纖陣列）")
+    i_cpo = html.find("CPO（共同封裝光學）")
+    i_how = html.find("該怎麼做")
+    assert 0 <= i_asic < i_inp < i_fau < i_cpo < i_how
+    # InP 鎖死序：聯亞 → IET → 全新 → 環宇 → 穩懋
+    inp_chunk = html[i_inp:i_fau]
+    assert (
+        inp_chunk.find("3081")
+        < inp_chunk.find("4971")
+        < inp_chunk.find("2455")
+        < inp_chunk.find("4991")
+        < inp_chunk.find("3105")
+    )
+    # ASIC 龍頭序：創意 → 世芯 → 聯發科
+    asic_chunk = html[i_asic:i_inp]
+    assert asic_chunk.find("3443") < asic_chunk.find("3661") < asic_chunk.find("2454")
     assert "不是買訊" not in html
+    # 名單區：大立光只在 FAU、不在 CPO；光聖只列一檔
+    fau_chunk = html[i_fau:i_cpo]
+    cpo_chunk = html[i_cpo:i_how]
+    assert "quote/3008." in fau_chunk and "quote/3008." not in cpo_chunk
+    assert fau_chunk.count("quote/6442.") == 1
+    # 介紹區不准夾產業／上市後綴
+    assert "光通訊／低軌衛星" not in html
 
 
 def test_intro_skips_fields_not_spoken_in_near_window(tmp_path):
@@ -330,5 +374,7 @@ def test_intro_skips_fields_not_spoken_in_near_window(tmp_path):
     assert not live.get("opt")
     html = format_action_advice_html(db, ask="")
     assert "ASIC｜" not in html
-    assert "光通訊｜" not in html
+    assert "InP（" not in html
+    assert "FAU（" not in html
+    assert "CPO（" not in html
     assert "8227" not in html
