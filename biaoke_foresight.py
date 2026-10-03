@@ -378,10 +378,11 @@ def field_line(sid: str) -> str:
         return ""
     body = str(hit.get("field") or "")
     if str(sid) in _DRONE_SIDS and _drone_retired():
-        return (
-            f"{hit.get('name') or sid}：近窗沒再講無人機，這組已退場，"
+        note = (
+            "近窗沒再講無人機，這組已退場，"
             "不准當現在建議（當年半山腰隔日沖／9/5 不要再碰）。"
         )
+        return f"{body}｜{note}" if body else note
     return body
 
 
@@ -389,12 +390,14 @@ def hold_line(sid: str) -> str:
     hit = case_for(sid)
     if not hit:
         return ""
+    body = str(hit.get("hold") or "")
     if str(sid) in _DRONE_SIDS and _drone_retired():
-        return (
-            f"{hit.get('name') or sid}：近窗沒再講無人機，已退場，不准建議買；"
-            "只留歷史對質（9/5 不要再碰／出清條件），不是現在可接。"
+        note = (
+            "近窗沒再講無人機，已退場，不准建議買；"
+            "只留歷史對質，不是現在可接。"
         )
-    return str(hit.get("hold") or "")
+        return f"{body}｜{note}" if body else note
+    return body
 
 
 def doubt_line(sid: str) -> str:

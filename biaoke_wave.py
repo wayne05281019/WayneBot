@@ -601,10 +601,25 @@ def degree_turns(db_path: str = "") -> List[Dict[str, str]]:
     return out
 
 
-def last_two(db_path: str = "") -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]:
+def last_two(
+    db_path: str = "",
+    *,
+    as_of: str = "",
+) -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]:
+    """最近兩筆他自己點名的位階。as_of 有給時，不准用當日之後的改口倒灌試畫。"""
     hits = _one_per_stamp(degree_hits(db_path))
     if not hits:
         return None, None
+    cap = str(as_of or "").strip().replace("-", "")[:8]
+    if len(cap) == 8 and cap.isdigit():
+        capped = []
+        for h in hits:
+            d = str(h.get("date") or "").replace("-", "")[:8]
+            if d and d.isdigit() and d <= cap:
+                capped.append(h)
+        hits = capped
+        if not hits:
+            return None, None
     last = hits[-1]
     prev = None
     for h in reversed(hits[:-1]):

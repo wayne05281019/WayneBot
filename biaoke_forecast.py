@@ -623,8 +623,13 @@ def _judge_twii_try(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str
             else:
                 bits.append(f"還沒碰到目標{_px(t)}：後來高{_px(hi)}收{_px(close)}")
     elif a:
-        going_down = key in {"down", "retest"} or "C-" in key or "逃命" in key
-        going_up = key in {"up"} or "大B" in key or "末升" in key
+        going_down = (
+            key in {"down", "retest", "down_done"}
+            or "C-" in key
+            or "逃命" in key
+            or "A波低" in key
+        )
+        going_up = key in {"up"} or "大B" in key or "末升" in key or "主升" in key
         if going_down:
             if close < a:
                 bits.append(f"對得上往下：收{_px(close)}")
@@ -1136,7 +1141,8 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
                 "cap": cap_ymd or complete,
                 "skipped": "zero_close",
             }
-        last_turn, _prev = last_two(db_path)
+        bar_as_of = _ymd(last.get("date")) or cap_ymd
+        last_turn, _prev = last_two(db_path, as_of=bar_as_of)
         tag = str((last_turn or {}).get("tag") or "")
         direc = str((last_turn or {}).get("direc") or "")
         pts = wave_path_points(db_path, bars)
@@ -1158,7 +1164,7 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
             "legs": legs,
         }
         try:
-            capture_review_context(db_path, as_of=_ymd(last.get("date")) or cap_ymd, extra=extra)
+            capture_review_context(db_path, as_of=bar_as_of, extra=extra)
         except Exception:
             pass
         try_rec = record_twii_try(db_path, bars, last_tag=tag, direc=direc) or {}
