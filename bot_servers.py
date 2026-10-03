@@ -3772,7 +3772,7 @@ class WayneTelegramBot:
             header_html,
             next_page_callback,
             page_slice,
-            render_stock_pair,
+            render_page_pairs,
             resolve_button_rows,
         )
 
@@ -3826,6 +3826,25 @@ class WayneTelegramBot:
             chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
             head = header_html(as_of, len(rows), mode=mode, offset=off)
             await message.reply_html(head, disable_web_page_preview=True)
+            # 整頁一次出圖（快取／平行準備），再依序送 Telegram
+            try:
+                pairs = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        render_page_pairs,
+                        self.db_path,
+                        chunk,
+                        charts_dir=self.charts_dir,
+                        uid=uid or "wr",
+                        as_of=as_of,
+                        reuse_cache=True,
+                    ),
+                    timeout=max(45.0, 12.0 * max(1, len(chunk))),
+                )
+            except Exception:
+                logger.exception("勝率買點整頁出圖失敗")
+                pairs = [("", "", "")] * len(chunk)
+            if len(pairs) < len(chunk):
+                pairs = list(pairs) + [("", "", "")] * (len(chunk) - len(pairs))
             for i, row in enumerate(chunk):
                 sid = str(row.get("stock_id") or "").strip()
                 name = str(row.get("stock_name") or "")
@@ -3847,23 +3866,7 @@ class WayneTelegramBot:
                             ]
                         ]
                     )
-
-                def _pair(code=sid, nm=name):
-                    return render_stock_pair(
-                        self.db_path,
-                        code,
-                        nm,
-                        charts_dir=self.charts_dir,
-                        uid=uid or "wr",
-                    )
-
-                try:
-                    vpath, cpath, cap_name = await asyncio.wait_for(
-                        asyncio.to_thread(_pair), timeout=45.0
-                    )
-                except Exception:
-                    logger.exception("勝率買點出圖失敗 code=%s", sid)
-                    vpath, cpath, cap_name = "", "", name or sid
+                vpath, cpath, cap_name = pairs[i]
                 label = html_escape(cap_name or name or sid)
                 if vpath and os.path.isfile(vpath):
                     try:
@@ -3917,8 +3920,12 @@ class WayneTelegramBot:
         offset: int = 0,
         mode: str = "full",
         uid: str = "",
+        pairs: List[Tuple[str, str, str]] | None = None,
     ) -> bool:
-        """21:00 同步推播一頁（≤15）。回傳是否至少送出開頭／空文。"""
+        """21:00 同步推播一頁（≤15）。回傳是否至少送出開頭／空文。
+
+        pairs：可傳已渲好的 (vz, card, name) 同序清單，雙人推播只渲一次。
+        """
         from winrate_buypoint import (
             EMPTY_MSG,
             PAGE_SIZE,
@@ -3926,7 +3933,7 @@ class WayneTelegramBot:
             header_html,
             next_page_callback,
             page_slice,
-            render_stock_pair,
+            render_page_pairs,
         )
 
         dest = str(chat_id or "").strip()
@@ -3937,18 +3944,24 @@ class WayneTelegramBot:
         chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
         head = header_html(as_of, len(rows), mode=mode, offset=off)
         ok = bool(self._send_html(dest, head, attach_menu=False))
+        rendered = pairs
+        if rendered is None:
+            rendered = render_page_pairs(
+                self.db_path,
+                chunk,
+                charts_dir=self.charts_dir,
+                uid=uid or "wr_push",
+                as_of=as_of,
+                reuse_cache=True,
+            )
+        if len(rendered) < len(chunk):
+            rendered = list(rendered) + [("", "", "")] * (len(chunk) - len(rendered))
         for i, row in enumerate(chunk):
             sid = str(row.get("stock_id") or "").strip()
             name = str(row.get("stock_name") or "")
             if not sid:
                 continue
-            vpath, cpath, cap_name = render_stock_pair(
-                self.db_path,
-                sid,
-                name,
-                charts_dir=self.charts_dir,
-                uid=uid or str(dest),
-            )
+            vpath, cpath, cap_name = rendered[i]
             label = html_escape(cap_name or name or sid)
             markup = None
             if i == len(chunk) - 1 and has_next:

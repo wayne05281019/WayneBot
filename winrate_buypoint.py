@@ -8,10 +8,17 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
+
+# 一頁出圖：準備階段平行（DB／對齊）；paint 仍受 mpl 鎖。
+_PAGE_PREPARE_WORKERS = 8
+# 盤後日圖快取：同 SCAN_KIND＋as_of＋代號可跨人／跨次重用（內容相同）。
+_PAIR_CACHE_DIRNAME = "wr_pair_cache"
 
 PAGE_SIZE = 15
 EMPTY_MSG = "今天無勝率買點股票出現"
@@ -590,6 +597,250 @@ def resolve_button_rows(
     return as_of, roster, "full"
 
 
+def _pair_cache_dir(charts_dir: str, as_of: str) -> str:
+    day = _ymd(as_of)
+    return os.path.join(
+        charts_dir or ".",
+        _PAIR_CACHE_DIRNAME,
+        SCAN_KIND,
+        day or "none",
+    )
+
+
+def _cache_pair_paths(cache_dir: str, stock_id: str) -> Tuple[str, str]:
+    sid = str(stock_id or "").strip()
+    return (
+        os.path.join(cache_dir, f"{sid}_vz.jpg"),
+        os.path.join(cache_dir, f"{sid}_card.jpg"),
+    )
+
+
+def _cache_file_ok(path: str, *, min_bytes: int = 20_000) -> bool:
+    try:
+        return bool(path) and os.path.isfile(path) and os.path.getsize(path) >= int(min_bytes)
+    except OSError:
+        return False
+
+
+def _copy_into(src: str, dest: str) -> str:
+    if not src or not os.path.isfile(src):
+        return ""
+    if os.path.abspath(src) == os.path.abspath(dest):
+        return dest
+    parent = os.path.dirname(dest)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    try:
+        shutil.copy2(src, dest)
+        return dest if os.path.isfile(dest) else src
+    except Exception:
+        return src
+
+
+def warm_winrate_cards(
+    db_path: str,
+    rows: Sequence[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """平行預熱高低卡（掃完／出圖前）。掃版過程 memo 可能被擠掉，這裡補回本頁。"""
+    from wayne_navigator import NavigatorEngine
+
+    items = [
+        str(r.get("stock_id") or "").strip()
+        for r in (rows or [])
+        if isinstance(r, dict) and str(r.get("stock_id") or "").strip()
+    ]
+    if not items:
+        return {}
+
+    def _one(sid: str) -> Tuple[str, Dict[str, Any]]:
+        try:
+            eng = NavigatorEngine(db_path)
+            card = eng.get_decision_card(
+                sid, lookback=20, merge_live=False, live_quote=None
+            ) or {}
+            if isinstance(card, dict):
+                card.pop("_ohlc", None)
+                if card.get("error"):
+                    return sid, {}
+                return sid, card
+        except Exception:
+            logger.exception("勝率買點預熱高低卡失敗 code=%s", sid)
+        return sid, {}
+
+    out: Dict[str, Dict[str, Any]] = {}
+    workers = max(1, min(_PAGE_PREPARE_WORKERS, len(items)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for sid, card in pool.map(_one, items):
+            out[sid] = card if isinstance(card, dict) else {}
+    return out
+
+
+def render_page_pairs(
+    db_path: str,
+    rows: Sequence[Dict[str, Any]],
+    *,
+    charts_dir: str = "",
+    uid: str = "winrate",
+    as_of: str = "",
+    reuse_cache: bool = True,
+) -> List[Tuple[str, str, str]]:
+    """一頁（≤15）壓力區＋高低卡：快取重用／平行準備／卡圖與壓力區重疊出圖。
+
+    回傳與 rows 同序的 (vz_path, card_path, caption_name)；失敗格空字串。
+    同 as_of＋SCAN_KIND 的官方日圖跨人共用磁碟快取；uid 只影響工作檔名，不拆內容。
+    """
+    from vol_zone_chart import render_volume_zone_result
+    from wayne_navigator import render_decision_card_png
+
+    charts = charts_dir or os.path.join(os.path.dirname(db_path) or ".", "charts")
+    os.makedirs(charts, exist_ok=True)
+    safe_uid = str(uid or "winrate").replace("/", "_")[:32]
+    day = _ymd(as_of) or _ymd((rows[0] or {}).get("as_of") if rows else "")
+    cache_dir = _pair_cache_dir(charts, day) if day else ""
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
+
+    jobs: List[Dict[str, Any]] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            jobs.append({"sid": "", "name": "", "skip": True})
+            continue
+        sid = str(row.get("stock_id") or "").strip()
+        name = str(row.get("stock_name") or row.get("name") or "")
+        if not sid:
+            jobs.append({"sid": "", "name": name, "skip": True})
+            continue
+        vz_work = os.path.join(charts, f"{sid}_wr_vz_{safe_uid}.jpg")
+        card_work = os.path.join(charts, f"{sid}_wr_card_{safe_uid}.jpg")
+        cvz = ccard = ""
+        if reuse_cache and cache_dir:
+            cvz, ccard = _cache_pair_paths(cache_dir, sid)
+        jobs.append(
+            {
+                "sid": sid,
+                "name": name,
+                "vz_work": vz_work,
+                "card_work": card_work,
+                "cache_vz": cvz,
+                "cache_card": ccard,
+                "skip": False,
+            }
+        )
+    if not jobs:
+        return []
+
+    out: List[Tuple[str, str, str]] = [("", "", "")] * len(jobs)
+    need_idx: List[int] = []
+    for i, job in enumerate(jobs):
+        if job.get("skip"):
+            out[i] = ("", "", str(job.get("name") or ""))
+            continue
+        cvz, ccard = job["cache_vz"], job["cache_card"]
+        if (
+            reuse_cache
+            and _cache_file_ok(cvz)
+            and _cache_file_ok(ccard, min_bytes=8_000)
+        ):
+            vpath = _copy_into(cvz, job["vz_work"])
+            cpath = _copy_into(ccard, job["card_work"])
+            out[i] = (vpath, cpath, job["name"] or job["sid"])
+        else:
+            need_idx.append(i)
+
+    if not need_idx:
+        return out
+
+    # 冷路徑用串行（mpl 鎖下平行準備幾乎省不到，還多開銷）；
+    # 高低卡 PNG 與下一檔壓力區準備可重疊一點點。
+    from wayne_navigator import NavigatorEngine
+
+    eng = NavigatorEngine(db_path)
+    with ThreadPoolExecutor(max_workers=1) as card_pool:
+        prev_card_fut = None
+        prev_i = None
+        prev_meta: Tuple[str, str, str] = ("", "", "")
+        for i in need_idx:
+            job = jobs[i]
+            sid = job["sid"]
+            card: Dict[str, Any] = {}
+            try:
+                card = eng.get_decision_card(
+                    sid, lookback=20, merge_live=False, live_quote=None
+                ) or {}
+                if isinstance(card, dict):
+                    card.pop("_ohlc", None)
+                    if card.get("error"):
+                        card = {}
+                else:
+                    card = {}
+            except Exception:
+                logger.exception("勝率買點高低卡失敗 code=%s", sid)
+                card = {}
+            name = str(
+                (card.get("stock_name") or card.get("name") or job["name"] or sid)
+                if card
+                else (job["name"] or sid)
+            )
+            vpath = ""
+            try:
+                vpath, _cap = render_volume_zone_result(
+                    sid,
+                    name,
+                    db_path,
+                    job["vz_work"],
+                    card=card or None,
+                    with_nav_signals=True,
+                )
+            except Exception:
+                logger.exception("勝率買點壓力區失敗 code=%s", sid)
+                vpath = ""
+            # 收前一檔高低卡
+            if prev_card_fut is not None and prev_i is not None:
+                cpath_prev = ""
+                try:
+                    cpath_prev = str(prev_card_fut.result() or "")
+                except Exception:
+                    logger.exception(
+                        "勝率買點決策卡 PNG 失敗 code=%s", jobs[prev_i]["sid"]
+                    )
+                pv, _pc, pn = prev_meta
+                if reuse_cache and cache_dir:
+                    if _cache_file_ok(pv):
+                        _copy_into(pv, jobs[prev_i]["cache_vz"])
+                    if _cache_file_ok(cpath_prev, min_bytes=8_000):
+                        _copy_into(cpath_prev, jobs[prev_i]["cache_card"])
+                out[prev_i] = (pv, cpath_prev, pn)
+            if card:
+                prev_card_fut = card_pool.submit(
+                    render_decision_card_png, card, job["card_work"]
+                )
+            else:
+                prev_card_fut = None
+            prev_i = i
+            prev_meta = (str(vpath or ""), "", name)
+        if prev_card_fut is not None and prev_i is not None:
+            cpath_prev = ""
+            try:
+                cpath_prev = str(prev_card_fut.result() or "")
+            except Exception:
+                logger.exception(
+                    "勝率買點決策卡 PNG 失敗 code=%s", jobs[prev_i]["sid"]
+                )
+            pv, _pc, pn = prev_meta
+            if reuse_cache and cache_dir:
+                if _cache_file_ok(pv):
+                    _copy_into(pv, jobs[prev_i]["cache_vz"])
+                if _cache_file_ok(cpath_prev, min_bytes=8_000):
+                    _copy_into(cpath_prev, jobs[prev_i]["cache_card"])
+            out[prev_i] = (pv, cpath_prev, pn)
+        elif prev_i is not None:
+            pv, _pc, pn = prev_meta
+            if reuse_cache and cache_dir and _cache_file_ok(pv):
+                _copy_into(pv, jobs[prev_i]["cache_vz"])
+            out[prev_i] = (pv, "", pn)
+    return out
+
+
 def render_stock_pair(
     db_path: str,
     stock_id: str,
@@ -597,56 +848,21 @@ def render_stock_pair(
     *,
     charts_dir: str = "",
     uid: str = "winrate",
+    as_of: str = "",
+    reuse_cache: bool = True,
 ) -> Tuple[str, str, str]:
     """壓力區間圖＋高低溫度卡。回 (vol_path, card_path, caption_name)。"""
-    from vol_zone_chart import render_volume_zone_result
-    from wayne_navigator import NavigatorEngine, render_decision_card_png
-
-    sid = str(stock_id or "").strip()
-    if not sid:
+    pairs = render_page_pairs(
+        db_path,
+        [{"stock_id": stock_id, "stock_name": stock_name, "as_of": as_of}],
+        charts_dir=charts_dir,
+        uid=uid,
+        as_of=as_of,
+        reuse_cache=reuse_cache,
+    )
+    if not pairs:
         return "", "", ""
-    charts = charts_dir or os.path.join(os.path.dirname(db_path) or ".", "charts")
-    os.makedirs(charts, exist_ok=True)
-    safe_uid = str(uid or "winrate").replace("/", "_")[:32]
-    vz_path = os.path.join(charts, f"{sid}_wr_vz_{safe_uid}.jpg")
-    card_path = os.path.join(charts, f"{sid}_wr_card_{safe_uid}.jpg")
-    card: Dict[str, Any] = {}
-    try:
-        engine = NavigatorEngine(db_path)
-        card = engine.get_decision_card(
-            sid, lookback=20, merge_live=False, live_quote=None
-        ) or {}
-        if isinstance(card, dict):
-            card.pop("_ohlc", None)
-    except Exception:
-        logger.exception("勝率買點高低卡失敗 code=%s", sid)
-        card = {}
-    name = str(stock_name or "")
-    if isinstance(card, dict) and not card.get("error"):
-        name = str(card.get("stock_name") or card.get("name") or name or sid)
-    else:
-        card = {}
-        name = name or sid
-    try:
-        vpath, _cap = render_volume_zone_result(
-            sid,
-            name,
-            db_path,
-            vz_path,
-            card=card or None,
-            with_nav_signals=True,
-        )
-    except Exception:
-        logger.exception("勝率買點壓力區失敗 code=%s", sid)
-        vpath = ""
-    cpath = ""
-    if card:
-        try:
-            cpath = render_decision_card_png(card, card_path) or ""
-        except Exception:
-            logger.exception("勝率買點決策卡 PNG 失敗 code=%s", sid)
-            cpath = ""
-    return str(vpath or ""), str(cpath or ""), name
+    return pairs[0]
 
 
 def header_html(as_of: str, total: int, *, mode: str = "full", offset: int = 0) -> str:
