@@ -1842,7 +1842,7 @@ def start_biaoke_poller() -> Optional[Any]:
         return None
 
     def _loop() -> None:
-        _time.sleep(90)
+        _time.sleep(5)
         try:
             from biaoke_alert import wipe_biaoke_phone_pushes_once
 
