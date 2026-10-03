@@ -311,8 +311,8 @@ def test_emergency_exit_pushes_full_text(monkeypatch, tmp_path):
     assert "飆大急推" in sent[0]
 
 
-def test_marked_level_hit_pushes_full_text(monkeypatch, tmp_path):
-    """官方收盤柱碰到他已點過的大盤位 → 急推完整原文；同一位不重推。"""
+def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
+    """官方收盤柱碰到已點位 → 去蕪存菁判斷；不准堆幾月幾號整篇舊文。"""
     import sqlite3
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -336,14 +336,23 @@ def test_marked_level_hit_pushes_full_text(monkeypatch, tmp_path):
         "INSERT INTO index_daily(date, symbol, open, high, low, close) "
         "VALUES ('20260930','TWII',46600,46800,46500,46750)"
     )
-    body = (
+    body_old = (
+        "大盤觀察 46747，這則很長只是舊回憶："
+        + ("以前也講過震盪。" * 40)
+    )
+    body_new = (
         "台指期觀察：高點能穿刺 46747 才擺脫持續高檔震盪第一要件，"
-        "否則再測 45398。這段要完整推到手機。"
+        "否則再測 45398。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p0','2026-09-10','09:00','post',?)",
+        (body_old,),
     )
     conn.execute(
         "INSERT INTO biaoke_posts(id, date, time, kind, text) "
         "VALUES ('p1','2026-09-28','09:00','post',?)",
-        (body,),
+        (body_new,),
     )
     conn.commit()
     conn.close()
@@ -358,14 +367,54 @@ def test_marked_level_hit_pushes_full_text(monkeypatch, tmp_path):
     a = maybe_push_marked_level_hits(
         db, now=datetime(2026, 9, 30, 15, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     )
-    assert a["pushed"] >= 1
+    assert a["pushed"] == 1
     assert sent
-    assert "官方碰到已點位" in sent[0]
-    assert "46747" in sent[0]
-    assert "完整推到手機" in sent[0]
-    assert body in sent[0] or "穿刺 46747" in sent[0]
+    html = sent[0]
+    assert "官方碰到已點位" in html
+    assert "46747" in html
+    assert "判斷：" in html
+    assert "穿刺" in html and "45398" in html
+    # 同一點位只一則；舊長文不整篇塞
+    assert html.count("官方碰到已點位") == 1
+    assert "以前也講過震盪" not in html
+    assert "同點另有" in html
+    assert "不是買訊" in html
 
     sent.clear()
     b = maybe_push_marked_level_hits(db)
     assert b["pushed"] == 0
     assert sent == []
+
+
+def test_format_level_hit_synthesis_no_date_catalog():
+    """融會判斷不准變成幾月幾號原文目錄。"""
+    from biaoke_alert import format_level_hit_synthesis
+
+    html = format_level_hit_synthesis(
+        level=48601,
+        bar_date="20261002",
+        bar_high=48700,
+        bar_low=48400,
+        bar_close=48650,
+        note="加權點位",
+        sources=[
+            {
+                "date": "2026-09-22",
+                "time": "10:00",
+                "kind": "post",
+                "text": "大盤在過 9/22 48601 的最後整理。",
+            },
+            {
+                "date": "2026-09-28",
+                "time": "11:00",
+                "kind": "reply",
+                "text": "48601 若有效過才算整理完，否則還在關前。",
+            },
+        ],
+    )
+    assert "判斷：" in html
+    assert "48601" in html
+    assert "收" in html and "之上" in html
+    assert "他原文 2026-09-22" not in html
+    assert "他原文 2026-09-28" not in html
+    assert "同點另有 1 則已併入" in html
