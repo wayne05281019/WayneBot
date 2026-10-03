@@ -1148,7 +1148,8 @@ class WayneTelegramBot:
                 )
                 return
             await message.reply_html(head, disable_web_page_preview=True)
-            # 逐檔渲＋送：不准整頁 wait_for(two_phase)——逾時／OOM 會讓後面檔整批消失。
+            # 還原 bdda259 舊好：逐檔畫完就送。外層改走 submit_mpl_paint
+            #（保留 #492／#493 FreeType 單一 worker）；不准整頁 two_phase。
             from pressure_support_watch import pressure_card_html
             from vol_zone_chart import render_volume_zone_result
             from wayne_navigator import submit_mpl_paint
@@ -1157,8 +1158,6 @@ class WayneTelegramBot:
             picks: list = []
             card_lines: list = []
             show = list(rows[:MAX_PICK_INLINE_ROWS])
-            total = max(1, len(show))
-            per_stock_timeout = max(90.0, float(_LOOKUP_PNG_TIMEOUT))
             for idx, r in enumerate(show, start=1):
                 code = str(r.get("code") or r.get("stock_id") or "").strip()
                 name = str(r.get("name") or r.get("stock_name") or "")
@@ -1175,39 +1174,30 @@ class WayneTelegramBot:
                 out = self._scratch_chart_path(
                     self.charts_dir, code, f"ps_{tag}", uid
                 )
+
+                def _render(_c=code, _n=name, _p=out):
+                    return render_volume_zone_result(
+                        _c,
+                        _n,
+                        self.db_path,
+                        _p,
+                        with_nav_signals=True,
+                    )
+
+                try:
+                    path, cap = await asyncio.wait_for(
+                        asyncio.wrap_future(submit_mpl_paint(_render)),
+                        timeout=60.0,
+                    )
+                except Exception:
+                    logger.exception("壓撐壓力區圖失敗 code=%s", code)
+                    path, cap = "", ""
                 kb = InlineKeyboardMarkup(
                     [self._pressure_pick_row(code, name, tag)]
                 )
-                path = ""
-                cap = ""
-                try:
-                    fut = submit_mpl_paint(
-                        render_volume_zone_result,
-                        code,
-                        name,
-                        self.db_path,
-                        out,
-                        with_nav_signals=True,
-                    )
-                    path, cap = await asyncio.wait_for(
-                        asyncio.wrap_future(fut),
-                        timeout=per_stock_timeout,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "壓撐名單單檔逾時 code=%s i=%s/%s", code, idx, total
-                    )
-                    path, cap = "", ""
-                except Exception:
-                    logger.exception(
-                        "壓撐名單單檔出圖失敗 code=%s i=%s/%s", code, idx, total
-                    )
-                    path, cap = "", ""
                 if path and os.path.isfile(path):
                     try:
-                        send_path = await asyncio.to_thread(
-                            self._prepare_lookup_album_photo, path
-                        )
+                        send_path = self._prepare_lookup_album_photo(path)
                         caption = (cap or f"{code} {name}　{label}（只觀察，不是買訊）")[
                             :900
                         ]
@@ -1216,31 +1206,30 @@ class WayneTelegramBot:
                                 photo=f, caption=caption, reply_markup=kb
                             )
                         sent += 1
+                        try:
+                            import matplotlib.pyplot as plt
+
+                            plt.close("all")
+                        except Exception:
+                            pass
+                        gc.collect()
+                        await asyncio.sleep(0.05)
+                        continue
                     except Exception:
                         logger.exception("壓撐壓力區圖送出失敗 code=%s", code)
-                        await message.reply_html(
-                            f"<b>{html_escape(code)} {html_escape(name)}</b>　"
-                            f"{html_escape(label)}\n<i>壓力區圖暫無法出，仍可點檔看三張。</i>",
-                            reply_markup=kb,
-                            disable_web_page_preview=True,
-                        )
-                else:
-                    await message.reply_html(
-                        f"<b>{html_escape(code)} {html_escape(name)}</b>　"
-                        f"{html_escape(label)}\n<i>壓力區圖暫無法出，仍可點檔看三張。</i>",
-                        reply_markup=kb,
-                        disable_web_page_preview=True,
-                    )
+                await message.reply_html(
+                    f"<b>{html_escape(code)} {html_escape(name)}</b>　"
+                    f"{html_escape(label)}\n<i>壓力區圖暫無法出，仍可點檔看三張。</i>",
+                    reply_markup=kb,
+                    disable_web_page_preview=True,
+                )
                 try:
                     import matplotlib.pyplot as plt
 
                     plt.close("all")
                 except Exception:
                     pass
-                try:
-                    gc.collect()
-                except Exception:
-                    pass
+                gc.collect()
                 await asyncio.sleep(0.05)
             # 名單卡＋三子鈕／點股列：觀察說明與換標籤一次齊
             roster = (
@@ -3866,19 +3855,14 @@ class WayneTelegramBot:
             chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
             head = header_html(as_of, len(rows), mode=mode, offset=off)
             await message.reply_html(head, disable_web_page_preview=True)
-            # 逐檔渲＋送：不准整頁 wait_for（Render 慢時逾時→後面檔空白；
-            # 也不准整頁占住 to_thread 才開始送，查股會一直卡）。
-            # 每檔內層仍 run_mpl_paint；檔與檔之間 event loop 可插查股。
-            # 單檔兩張圖；冷啟／量字慢時給足，但不拖垮整頁。
-            per_stock_timeout = max(90.0, float(_LOOKUP_PNG_TIMEOUT))
-            total = max(1, len(chunk))
+            # 還原 #489 前舊好：逐檔 to_thread(render_stock_pair)→立刻送。
+            # 內層 run_mpl_paint 鎖仍留（#492／#493 FreeType）；不准整頁批次 pairs。
             for i, row in enumerate(chunk):
                 sid = str(row.get("stock_id") or "").strip()
                 name = str(row.get("stock_name") or "")
                 if not sid:
                     continue
-                prog["now"] = f"{sid} {i + 1}/{total}"
-                prog["rest"] = "壓力區＋高低卡"
+                prog["now"] = f"{sid} {i + 1}/{len(chunk)}"
                 is_last = i == len(chunk) - 1
                 markup = None
                 if is_last and has_next:
@@ -3895,32 +3879,26 @@ class WayneTelegramBot:
                             ]
                         ]
                     )
-                vpath = cpath = ""
-                cap_name = name or sid
+
+                def _pair(code=sid, nm=name):
+                    return render_stock_pair(
+                        self.db_path,
+                        code,
+                        nm,
+                        charts_dir=self.charts_dir,
+                        uid=uid or "wr",
+                        as_of=as_of,
+                        reuse_cache=True,
+                    )
+
                 try:
+                    # 舊好 timeout=45；Render 冷啟略放寬，仍是「單檔」不是整頁
                     vpath, cpath, cap_name = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            render_stock_pair,
-                            self.db_path,
-                            sid,
-                            name,
-                            charts_dir=self.charts_dir,
-                            uid=uid or "wr",
-                            as_of=as_of,
-                            reuse_cache=True,
-                        ),
-                        timeout=per_stock_timeout,
+                        asyncio.to_thread(_pair), timeout=60.0
                     )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "勝率買點單檔逾時 code=%s i=%s/%s", sid, i + 1, total
-                    )
-                    # wait_for 不殺 to_thread：孤兒仍可能在 paint；不准立刻再冷渲一輪
-                    # （雙倍 RSS → Render OOM→502）。缺圖就跳過壓力區、續送溫度卡。
                 except Exception:
-                    logger.exception(
-                        "勝率買點單檔出圖失敗 code=%s i=%s/%s", sid, i + 1, total
-                    )
+                    logger.exception("勝率買點出圖失敗 code=%s", sid)
+                    vpath, cpath, cap_name = "", "", name or sid
                 label = html_escape(cap_name or name or sid)
                 if vpath and os.path.isfile(vpath):
                     try:
@@ -3933,13 +3911,6 @@ class WayneTelegramBot:
                             )
                     except Exception:
                         logger.exception("勝率買點壓力區送出失敗 code=%s", sid)
-                else:
-                    try:
-                        await message.reply_text(
-                            f"{sid} {cap_name or name} 壓力區圖暫無法出，續送溫度卡。"
-                        )
-                    except Exception:
-                        pass
                 if cpath and os.path.isfile(cpath):
                     try:
                         send_path = self._prepare_lookup_album_photo(cpath)
@@ -3950,31 +3921,30 @@ class WayneTelegramBot:
                                 parse_mode="HTML",
                                 reply_markup=markup,
                             )
+                        try:
+                            import matplotlib.pyplot as plt
+
+                            plt.close("all")
+                        except Exception:
+                            pass
+                        gc.collect()
+                        await asyncio.sleep(0.05)
+                        continue
                     except Exception:
                         logger.exception("勝率買點高低卡送出失敗 code=%s", sid)
-                        if markup is not None:
-                            await message.reply_html(
-                                f"<b>{html_escape(sid)}</b> {label}",
-                                reply_markup=markup,
-                                disable_web_page_preview=True,
-                            )
-                elif markup is not None:
+                if markup is not None:
                     await message.reply_html(
                         f"<b>{html_escape(sid)}</b> {label}",
                         reply_markup=markup,
                         disable_web_page_preview=True,
                     )
-                # 讓出 event loop；順便收圖形記憶體，降低 Render OOM→502
                 try:
                     import matplotlib.pyplot as plt
 
                     plt.close("all")
                 except Exception:
                     pass
-                try:
-                    gc.collect()
-                except Exception:
-                    pass
+                gc.collect()
                 await asyncio.sleep(0.05)
             await self._stop_plain_wait(*wait_h)
         except asyncio.TimeoutError:

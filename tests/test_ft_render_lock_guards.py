@@ -152,7 +152,7 @@ def test_bot_chart_entries_use_submit_mpl_paint():
     assert "asyncio.to_thread" in wr
     assert "submit_mpl_paint(" not in wr
     assert "render_stock_pair" in wr
-    assert "render_page_pairs" not in wr
+    assert "render_page_pairs(" not in wr
 
 
 def test_page_prep_outside_worker_does_not_block_lookup_paint():

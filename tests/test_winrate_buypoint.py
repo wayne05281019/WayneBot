@@ -492,9 +492,9 @@ def test_bot_wires_winrate_handler():
     assert hasattr(WayneTelegramBot, "_run_winrate_buypoint")
     run_src = inspect.getsource(WayneTelegramBot._run_winrate_buypoint)
     assert "render_stock_pair" in run_src
-    assert "per_stock_timeout" in run_src or "單檔" in run_src
-    # 不准再整頁 wait_for(render_page_pairs)（逾時會讓後面檔空白）
-    assert "render_page_pairs" not in run_src
+    assert "to_thread(_pair)" in run_src or "asyncio.to_thread(_pair)" in run_src
+    # 不准再整頁 wait_for(render_page_pairs)（#489 加速後變壞）
+    assert "render_page_pairs(" not in run_src
     push_src = inspect.getsource(WayneTelegramBot.push_winrate_buypoint_page)
     assert "pairs" in push_src
     assert "render_page_pairs" in push_src
