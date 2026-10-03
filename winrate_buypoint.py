@@ -15,9 +15,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
-# 一頁出圖：準備階段平行（DB／對齊）；paint 仍受 mpl 鎖。
+# 一頁出圖：預熱高低卡可平行；paint（壓區＋卡）必須串行，不准搶 FreeType。
 _PAGE_PREPARE_WORKERS = 8
 # 盤後日圖快取：同 SCAN_KIND＋as_of＋代號可跨人／跨次重用（內容相同）。
+# 整頁加速靠這份快取，不靠畫布執行緒重疊。
 _PAIR_CACHE_DIRNAME = "wr_pair_cache"
 
 PAGE_SIZE = 15
@@ -684,7 +685,7 @@ def render_page_pairs(
     as_of: str = "",
     reuse_cache: bool = True,
 ) -> List[Tuple[str, str, str]]:
-    """一頁（≤15）壓力區＋高低卡：快取重用／平行準備／卡圖與壓力區重疊出圖。
+    """一頁（≤15）壓力區＋高低卡：快取重用；冷路徑串行 paint。
 
     回傳與 rows 同序的 (vz_path, card_path, caption_name)；失敗格空字串。
     同 as_of＋SCAN_KIND 的官方日圖跨人共用磁碟快取；uid 只影響工作檔名，不拆內容。
@@ -750,94 +751,60 @@ def render_page_pairs(
     if not need_idx:
         return out
 
-    # 冷路徑用串行（mpl 鎖下平行準備幾乎省不到，還多開銷）；
-    # 高低卡 PNG 與下一檔壓力區準備可重疊一點點。
+    # 冷路徑串行 paint：壓力區與高低卡不准執行緒重疊搶 FreeType
+    #（#489 曾讓「下一檔壓區∥上一檔卡」互踩，查股上詮／大立光等同業列多的圖較易中）。
+    # 整頁加速靠磁碟 wr_pair_cache，不靠畫布並行。
     from wayne_navigator import NavigatorEngine
 
     eng = NavigatorEngine(db_path)
-    with ThreadPoolExecutor(max_workers=1) as card_pool:
-        prev_card_fut = None
-        prev_i = None
-        prev_meta: Tuple[str, str, str] = ("", "", "")
-        for i in need_idx:
-            job = jobs[i]
-            sid = job["sid"]
-            card: Dict[str, Any] = {}
-            try:
-                card = eng.get_decision_card(
-                    sid, lookback=20, merge_live=False, live_quote=None
-                ) or {}
-                if isinstance(card, dict):
-                    card.pop("_ohlc", None)
-                    if card.get("error"):
-                        card = {}
-                else:
+    for i in need_idx:
+        job = jobs[i]
+        sid = job["sid"]
+        card: Dict[str, Any] = {}
+        try:
+            card = eng.get_decision_card(
+                sid, lookback=20, merge_live=False, live_quote=None
+            ) or {}
+            if isinstance(card, dict):
+                card.pop("_ohlc", None)
+                if card.get("error"):
                     card = {}
-            except Exception:
-                logger.exception("勝率買點高低卡失敗 code=%s", sid)
-                card = {}
-            name = str(
-                (card.get("stock_name") or card.get("name") or job["name"] or sid)
-                if card
-                else (job["name"] or sid)
-            )
-            vpath = ""
-            try:
-                vpath, _cap = render_volume_zone_result(
-                    sid,
-                    name,
-                    db_path,
-                    job["vz_work"],
-                    card=card or None,
-                    with_nav_signals=True,
-                )
-            except Exception:
-                logger.exception("勝率買點壓力區失敗 code=%s", sid)
-                vpath = ""
-            # 收前一檔高低卡
-            if prev_card_fut is not None and prev_i is not None:
-                cpath_prev = ""
-                try:
-                    cpath_prev = str(prev_card_fut.result() or "")
-                except Exception:
-                    logger.exception(
-                        "勝率買點決策卡 PNG 失敗 code=%s", jobs[prev_i]["sid"]
-                    )
-                pv, _pc, pn = prev_meta
-                if reuse_cache and cache_dir:
-                    if _cache_file_ok(pv):
-                        _copy_into(pv, jobs[prev_i]["cache_vz"])
-                    if _cache_file_ok(cpath_prev, min_bytes=8_000):
-                        _copy_into(cpath_prev, jobs[prev_i]["cache_card"])
-                out[prev_i] = (pv, cpath_prev, pn)
-            if card:
-                prev_card_fut = card_pool.submit(
-                    render_decision_card_png, card, job["card_work"]
-                )
             else:
-                prev_card_fut = None
-            prev_i = i
-            prev_meta = (str(vpath or ""), "", name)
-        if prev_card_fut is not None and prev_i is not None:
-            cpath_prev = ""
+                card = {}
+        except Exception:
+            logger.exception("勝率買點高低卡失敗 code=%s", sid)
+            card = {}
+        name = str(
+            (card.get("stock_name") or card.get("name") or job["name"] or sid)
+            if card
+            else (job["name"] or sid)
+        )
+        vpath = ""
+        try:
+            vpath, _cap = render_volume_zone_result(
+                sid,
+                name,
+                db_path,
+                job["vz_work"],
+                card=card or None,
+                with_nav_signals=True,
+            )
+        except Exception:
+            logger.exception("勝率買點壓力區失敗 code=%s", sid)
+            vpath = ""
+        cpath = ""
+        if card:
             try:
-                cpath_prev = str(prev_card_fut.result() or "")
+                cpath = str(render_decision_card_png(card, job["card_work"]) or "")
             except Exception:
-                logger.exception(
-                    "勝率買點決策卡 PNG 失敗 code=%s", jobs[prev_i]["sid"]
-                )
-            pv, _pc, pn = prev_meta
-            if reuse_cache and cache_dir:
-                if _cache_file_ok(pv):
-                    _copy_into(pv, jobs[prev_i]["cache_vz"])
-                if _cache_file_ok(cpath_prev, min_bytes=8_000):
-                    _copy_into(cpath_prev, jobs[prev_i]["cache_card"])
-            out[prev_i] = (pv, cpath_prev, pn)
-        elif prev_i is not None:
-            pv, _pc, pn = prev_meta
-            if reuse_cache and cache_dir and _cache_file_ok(pv):
-                _copy_into(pv, jobs[prev_i]["cache_vz"])
-            out[prev_i] = (pv, "", pn)
+                logger.exception("勝率買點決策卡 PNG 失敗 code=%s", sid)
+                cpath = ""
+        if reuse_cache and cache_dir:
+            if _cache_file_ok(vpath):
+                _copy_into(vpath, job["cache_vz"])
+            if _cache_file_ok(cpath, min_bytes=8_000):
+                _copy_into(cpath, job["cache_card"])
+        out[i] = (str(vpath or ""), cpath, name)
     return out
 
 
