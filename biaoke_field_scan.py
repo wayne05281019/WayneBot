@@ -69,10 +69,11 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
     {
         "key": "inp",
         "field": "光通訊",
-        "names": ("光通訊", "矽光子", "InP", "聯亞", "光聖", "波若威", "穩懋"),
+        # 近窗主流他釘 InP；光聖／波若威屬連接／舊題材側，仍認字但不當第一領袖
+        "names": ("光通訊", "矽光子", "InP", "聯亞", "全新", "IET", "光聖", "波若威", "穩懋", "上詮"),
         "needles": (),
         "layers": (),
-        "leaders": (("3081", "聯亞"), ("2455", "全新"), ("6442", "光聖")),
+        "leaders": (("3081", "聯亞"), ("2455", "全新"), ("4971", "IET-KY")),
         "members": _gmem("光通訊"),
     },
     {
@@ -633,6 +634,518 @@ def week_spoken(
         conn.close()
 
 
+# 光通訊次層：教過的整組成員展開＋他回文次層（觸類旁通；不是買訊）
+# 名冊＝industry_fine.TAUGHT_GROUPS["光通訊"]；次層只拆 InP／連接／其他。
+_OPT_ROSTER_NAMES = {
+    "3081": "聯亞",
+    "2455": "全新",
+    "3105": "穩懋",
+    "6442": "光聖",
+    "3163": "波若威",
+    "3234": "光環",
+    "4979": "華星光",
+    "4991": "環宇-KY",
+    "4971": "IET-KY",
+    "3363": "上詮",
+    "4977": "眾達-KY",
+    "3450": "聯鈞",
+}
+_OPT_INP = {
+    "3081": "聯亞",
+    "2455": "全新",
+    "4971": "IET-KY",
+    "3105": "穩懋",
+    "4991": "環宇-KY",
+}
+_OPT_CONNECT = {
+    "3363": "上詮",
+    "3163": "波若威",
+    "6442": "光聖",
+}
+_OPT_CPO_FACE = {
+    "3008": "大立光",  # 他近窗 CPO 敘事主角；光學≠光通訊，不進光通訊名冊
+}
+_OPT_TRIGGER = ("InP", "CPO", "FAU", "光通訊", "矽光子", "聯亞", "全新", "上詮")
+
+
+def _pct_chg_n(db_path: str, sid: str, n: int = 5) -> Optional[float]:
+    """近 n 根官方收相對％；缺柱＝None。"""
+    if not db_path or not sid:
+        return None
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            rows = conn.execute(
+                "SELECT close FROM daily_quotes WHERE stock_id=? "
+                "ORDER BY date DESC LIMIT ?",
+                (str(sid), int(n) + 1),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    if len(rows) <= n:
+        return None
+    try:
+        a = float(rows[0][0] or 0)
+        b = float(rows[n][0] or 0)
+    except (TypeError, ValueError):
+        return None
+    if b <= 0 or a <= 0:
+        return None
+    return round((a / b - 1.0) * 100.0, 1)
+
+
+def _avg_chg(rows: Sequence[Any], key: str = "chg5") -> Optional[float]:
+    xs: List[float] = []
+    for r in rows:
+        if isinstance(r, dict):
+            p = r.get(key)
+        elif isinstance(r, (tuple, list)) and len(r) >= 3:
+            p = r[2]
+        else:
+            p = None
+        if p is not None:
+            try:
+                xs.append(float(p))
+            except (TypeError, ValueError):
+                pass
+    if not xs:
+        return None
+    return round(sum(xs) / len(xs), 1)
+
+
+def _rank_by_chg5(
+    rows: Sequence[Dict[str, Any]], *, top: int = 3
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    scored = [r for r in rows if r.get("chg5") is not None]
+    scored = sorted(scored, key=lambda x: float(x["chg5"]), reverse=True)
+    if not scored:
+        return [], []
+    return scored[:top], list(reversed(scored[-top:]))
+
+
+def field_roster_bars(
+    db_path: str,
+    field: str,
+    *,
+    members: Optional[Sequence[Tuple[str, str]]] = None,
+    n5: int = 5,
+    n20: int = 20,
+) -> Dict[str, Any]:
+    """類股→教過的成員股＋近窗官方柱。缺柱仍留檔號，不准假數。"""
+    field = str(field or "").strip()
+    out: Dict[str, Any] = {
+        "ok": False,
+        "field": field,
+        "members": [],
+        "avg_5d": None,
+        "avg_20d": None,
+        "strong": [],
+        "weak": [],
+    }
+    if not field:
+        return out
+    pairs: List[Tuple[str, str]] = []
+    if members:
+        pairs = [(str(s), str(n or "")) for s, n in members if s]
+    else:
+        for sid in TAUGHT_GROUPS.get(field) or ():
+            pairs.append((str(sid), ""))
+        if not pairs:
+            for g in _GROUPS:
+                if str(g.get("field") or "") == field:
+                    for sid, name in list(g.get("leaders") or ()) + list(
+                        g.get("members") or ()
+                    ):
+                        if sid:
+                            pairs.append((str(sid), str(name or "")))
+                    break
+    seen: Dict[str, str] = {}
+    for sid, name in pairs:
+        if sid and sid not in seen:
+            seen[sid] = name
+    rows: List[Dict[str, Any]] = []
+    for sid, name in seen.items():
+        nm = name or _OPT_ROSTER_NAMES.get(sid) or _stock_name(db_path, sid, sid)
+        rows.append(
+            {
+                "sid": sid,
+                "name": nm,
+                "chg5": _pct_chg_n(db_path, sid, n5),
+                "chg20": _pct_chg_n(db_path, sid, n20),
+            }
+        )
+    strong, weak = _rank_by_chg5(rows)
+    out.update(
+        {
+            "ok": bool(rows),
+            "members": rows,
+            "avg_5d": _avg_chg(rows, "chg5"),
+            "avg_20d": _avg_chg(rows, "chg20"),
+            "strong": strong,
+            "weak": weak,
+        }
+    )
+    return out
+
+
+def spoken_field_roster_judge(
+    spoken: str,
+    db_path: str = "",
+    *,
+    fields: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    """他點到某一類股 → 展開所屬股票＋近5日柱，判斷近窗誰強誰弱。不是買訊。
+
+    光通訊另走 optical_tier_insight（InP／連接次層）。這裡處理散熱／PCB／ASIC 等。
+    """
+    text = str(spoken or "")
+    out: Dict[str, Any] = {"ok": False, "fields": {}, "lines": []}
+    if not text and not fields:
+        return out
+    want: List[str] = []
+    if fields:
+        want = [str(f) for f in fields if f]
+    else:
+        for g in _GROUPS:
+            fld = str(g.get("field") or "")
+            if not fld or fld == "光通訊":
+                continue
+            needles = [fld]
+            needles.extend(str(x) for x in (g.get("names") or ()) if x)
+            if any(n and n in text for n in needles):
+                want.append(fld)
+    # 去重保序
+    seen_f: List[str] = []
+    for f in want:
+        if f and f not in seen_f and f != "光通訊":
+            seen_f.append(f)
+    lines: List[str] = []
+    pack: Dict[str, Any] = {}
+    for fld in seen_f[:6]:
+        g = next((x for x in _GROUPS if str(x.get("field") or "") == fld), None)
+        mem = None
+        if g:
+            mem = list(g.get("leaders") or ()) + list(g.get("members") or ())
+        hit = field_roster_bars(db_path, fld, members=mem)
+        pack[fld] = hit
+        if not hit.get("ok"):
+            continue
+        n = len(hit.get("members") or [])
+        avg = hit.get("avg_5d")
+        bits = [f"{fld}整組 {n} 檔"]
+        if avg is not None:
+            bits.append(f"近5日均 {avg:+.1f}%")
+        st = hit.get("strong") or []
+        wk = hit.get("weak") or []
+        if st:
+            bits.append(
+                "強 "
+                + "、".join(
+                    f"{r['name']}{float(r['chg5']):+.1f}%" for r in st[:2]
+                )
+            )
+        if wk:
+            st_ids = {str(r.get("sid") or "") for r in st[:2]}
+            wk_show = [r for r in wk[:2] if str(r.get("sid") or "") not in st_ids]
+            if wk_show:
+                bits.append(
+                    "弱 "
+                    + "、".join(
+                        f"{r['name']}{float(r['chg5']):+.1f}%" for r in wk_show
+                    )
+                )
+        lines.append("；".join(bits) + "（類股展開對質，非買訊）")
+    out.update({"ok": bool(lines), "fields": pack, "lines": lines})
+    return out
+
+
+def spoken_blob_from_events(
+    events: Sequence[Dict[str, Any]], db_path: str = ""
+) -> str:
+    """主文＋自回＋reply_to／父文拼成聯想用正文（路人楼不當判斷）。"""
+    parts: List[str] = []
+    parent_ids: List[str] = []
+    for ev in events or ():
+        if not isinstance(ev, dict):
+            continue
+        t = str(ev.get("text") or "").strip()
+        if t:
+            parts.append(t)
+        rt = str(ev.get("reply_to_text") or "").strip()
+        if rt:
+            parts.append(rt)
+        if str(ev.get("kind") or "post") == "reply":
+            par = str(ev.get("parent") or "").strip()
+            if par:
+                parent_ids.append(par)
+    # 補父文：回文只講「上詮更弱」時，父文的光通訊／InP 才能觸發整組展開
+    if db_path and parent_ids:
+        uniq = list(dict.fromkeys(parent_ids))[:40]
+        try:
+            conn = sqlite3.connect(db_path, timeout=8.0)
+            try:
+                q = ",".join("?" * len(uniq))
+                rows = conn.execute(
+                    f"SELECT text FROM biaoke_posts WHERE id IN ({q})",
+                    tuple(uniq),
+                ).fetchall()
+                for r in rows:
+                    blob = str(r[0] or "").strip()
+                    if blob:
+                        parts.append(blob)
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass
+    return "\n".join(p for p in parts if p).strip()
+
+
+def record_spoken_field_expand(
+    db_path: str,
+    events: Sequence[Dict[str, Any]] | None = None,
+    *,
+    spoken: str = "",
+    as_of: str = "",
+) -> Dict[str, Any]:
+    """抓到主文／自回後：聯想類股→展開成員→凍官方柱＋判斷句。失敗吞掉。不是買訊。"""
+    out: Dict[str, Any] = {
+        "ok": False,
+        "n": 0,
+        "optical": {},
+        "field_expand": {},
+        "lines": [],
+    }
+    if not db_path:
+        return out
+    blob = str(spoken or "").strip() or spoken_blob_from_events(events or (), db_path)
+    if not blob:
+        return out
+    optical = optical_tier_insight(blob, db_path)
+    field_expand = spoken_field_roster_judge(blob, db_path)
+    lines: List[str] = []
+    for ol in optical.get("lines") or []:
+        if ol and ol not in lines:
+            lines.append(str(ol))
+    for fl in field_expand.get("lines") or []:
+        if fl and fl not in lines:
+            lines.append(str(fl))
+    rows: List[Dict[str, Any]] = []
+    # 光通訊整組
+    for r in optical.get("roster") or []:
+        sid = str(r.get("sid") or "").strip()
+        if not sid:
+            continue
+        rows.append(
+            {
+                "sid": sid,
+                "stock_id": sid,
+                "name": str(r.get("name") or ""),
+                "stock_name": str(r.get("name") or ""),
+                "pct_change": r.get("chg5"),
+                "field": "光通訊",
+                "role": str(r.get("tier") or "other"),
+                "why": "類股展開對質",
+            }
+        )
+    for r in optical.get("cpo") or []:
+        sid = str(r.get("sid") or "").strip()
+        if not sid:
+            continue
+        rows.append(
+            {
+                "sid": sid,
+                "stock_id": sid,
+                "name": str(r.get("name") or ""),
+                "stock_name": str(r.get("name") or ""),
+                "pct_change": r.get("chg5"),
+                "field": "CPO敘事",
+                "role": "cpo",
+                "why": "類股展開對質",
+            }
+        )
+    # 其他點到的類股
+    for fld, pack in (field_expand.get("fields") or {}).items():
+        for r in (pack or {}).get("members") or []:
+            sid = str(r.get("sid") or "").strip()
+            if not sid:
+                continue
+            rows.append(
+                {
+                    "sid": sid,
+                    "stock_id": sid,
+                    "name": str(r.get("name") or ""),
+                    "stock_name": str(r.get("name") or ""),
+                    "pct_change": r.get("chg5"),
+                    "field": str(fld),
+                    "role": "member",
+                    "why": "類股展開對質",
+                }
+            )
+    n = 0
+    if rows:
+        try:
+            from judge_tape import remember_rows
+
+            # 同一日同一檔只留最後一筆：先去重保序
+            seen: Dict[str, Dict[str, Any]] = {}
+            for r in rows:
+                seen[str(r["sid"])] = r
+            n = int(
+                remember_rows(
+                    db_path,
+                    "biaoke_field",
+                    list(seen.values()),
+                    as_of=as_of,
+                    pick="expand",
+                    src="biaoke_field",
+                )
+                or 0
+            )
+        except Exception:
+            n = 0
+    out.update(
+        {
+            "ok": bool(lines or n),
+            "n": n,
+            "optical": optical,
+            "field_expand": field_expand,
+            "lines": lines,
+        }
+    )
+    return out
+
+
+def optical_tier_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
+    """點到光通訊／InP／CPO → 展開整組教過成員＋近窗柱，對質次層說法。
+
+    聯想規則：不是只記他點名的兩三檔；要把光通訊所屬股票全抓出來算官方柱，
+    再判 InP／連接／其他誰強，對不對得上「主流是 InP 不是 CPO」。不准當買訊。
+    """
+    text = str(spoken or "")
+    out: Dict[str, Any] = {
+        "ok": False,
+        "inp": [],
+        "connect": [],
+        "other": [],
+        "cpo": [],
+        "roster": [],
+        "inp_avg_5d": None,
+        "connect_avg_5d": None,
+        "roster_avg_5d": None,
+        "lines": [],
+    }
+    if not text:
+        return out
+    if not any(k in text for k in _OPT_TRIGGER):
+        return out
+
+    # 整組展開：TAUGHT 光通訊名冊，不是只抓正文點名
+    roster_hit = field_roster_bars(
+        db_path,
+        "光通訊",
+        members=[(sid, _OPT_ROSTER_NAMES.get(sid, "")) for sid in (TAUGHT_GROUPS.get("光通訊") or ())],
+    )
+    roster = list(roster_hit.get("members") or [])
+    for r in roster:
+        sid = str(r.get("sid") or "")
+        if sid in _OPT_INP:
+            r["tier"] = "inp"
+            if not r.get("name") or r["name"] == sid:
+                r["name"] = _OPT_INP[sid]
+        elif sid in _OPT_CONNECT:
+            r["tier"] = "connect"
+            if not r.get("name") or r["name"] == sid:
+                r["name"] = _OPT_CONNECT[sid]
+        else:
+            r["tier"] = "other"
+
+    inp = [r for r in roster if r.get("tier") == "inp"]
+    conn_l = [r for r in roster if r.get("tier") == "connect"]
+    other = [r for r in roster if r.get("tier") == "other"]
+
+    cpo: List[Dict[str, Any]] = []
+    if "CPO" in text or "大立光" in text or "FAU" in text:
+        for sid, name in _OPT_CPO_FACE.items():
+            cpo.append(
+                {
+                    "sid": sid,
+                    "name": name,
+                    "chg5": _pct_chg_n(db_path, sid, 5),
+                    "chg20": _pct_chg_n(db_path, sid, 20),
+                    "tier": "cpo",
+                }
+            )
+
+    inp_avg = _avg_chg(inp, "chg5")
+    conn_avg = _avg_chg(conn_l, "chg5")
+    roster_avg = roster_hit.get("avg_5d")
+    strong, weak = _rank_by_chg5(roster)
+
+    lines: List[str] = []
+    n_all = len(roster)
+    if n_all:
+        avg_bit = f"；近5日均 {roster_avg:+.1f}%" if roster_avg is not None else ""
+        lines.append(f"光通訊整組展開 {n_all} 檔{avg_bit}（教過名冊，非買訊）")
+    if inp or "InP" in text:
+        names = "、".join(str(r.get("name") or "") for r in inp[:5]) or "聯亞／全新／IET"
+        lines.append(f"次層 InP＝{names}≠組裝／記憶體長相清楚票（參考）")
+    if cpo or ("CPO" in text and "大立光" in text):
+        lines.append("CPO 敘事近窗他點大立光；主流他說過是 InP 不是 CPO（參考）")
+    if conn_l:
+        names = "、".join(str(r.get("name") or "") for r in conn_l[:3])
+        weak_claim = "上詮" in text and (
+            "更弱" in text or "專注聯亞" in text or "聯亞、全新" in text
+        )
+        extra = "；他近窗叫上詮更弱、先看聯亞全新" if weak_claim else ""
+        lines.append(f"連接／舊矽光子側 {names}{extra}（參考）")
+    if strong:
+        lines.append(
+            "近5日柱強 "
+            + "、".join(f"{r['name']}{float(r['chg5']):+.1f}%" for r in strong[:3])
+            + "（整組對質）"
+        )
+    if weak:
+        lines.append(
+            "近5日柱弱 "
+            + "、".join(f"{r['name']}{float(r['chg5']):+.1f}%" for r in weak[:3])
+            + "（整組對質）"
+        )
+    if inp_avg is not None and conn_avg is not None:
+        if inp_avg > conn_avg + 1.0:
+            lines.append(
+                f"近5日官方柱 InP 均 {inp_avg:+.1f}%＞連接側 {conn_avg:+.1f}%（印證主流InP，非買訊）"
+            )
+        elif conn_avg > inp_avg + 1.0:
+            lines.append(
+                f"近5日官方柱連接側 {conn_avg:+.1f}%＞InP 均 {inp_avg:+.1f}%（與主流InP句對質，非買訊）"
+            )
+        else:
+            lines.append(
+                f"近5日官方柱 InP 均 {inp_avg:+.1f}%／連接側 {conn_avg:+.1f}%（接近，非買訊）"
+            )
+    elif inp_avg is not None:
+        lines.append(f"近5日官方柱 InP 層均 {inp_avg:+.1f}%（參考，非買訊）")
+    if lines:
+        lines.append("觸類：點到類股就展開所屬股對柱；切入只認黃金買點")
+    out.update(
+        {
+            "ok": bool(lines),
+            "inp": inp,
+            "connect": conn_l,
+            "other": other,
+            "cpo": cpo,
+            "roster": roster,
+            "inp_avg_5d": inp_avg,
+            "connect_avg_5d": conn_avg,
+            "roster_avg_5d": roster_avg,
+            "lines": lines,
+        }
+    )
+    return out
+
+
 def biaoke_week_link(
     db_path: str,
     *,
@@ -651,6 +1164,8 @@ def biaoke_week_link(
         "names": [],
         "sids": [],
         "levels": [],
+        "optical": {},
+        "field_expand": {},
         "lines": [],
     }
     if not db_path:
@@ -790,6 +1305,15 @@ def biaoke_week_link(
         lines.append("點名檔 " + "、".join(names[:6]) + "（參考）")
     if levels:
         lines.append("他點大盤位 " + "、".join(levels[:5]) + "（官方柱對質，不准補新價）")
+    # 觸類旁通：點到類股→展開所屬股＋官方柱對質；光通訊另拆 InP／連接
+    optical = optical_tier_insight(spoken, db_path)
+    for ol in optical.get("lines") or []:
+        if ol and ol not in lines:
+            lines.append(str(ol))
+    field_expand = spoken_field_roster_judge(spoken, db_path, fields=fields)
+    for fl in field_expand.get("lines") or []:
+        if fl and fl not in lines:
+            lines.append(str(fl))
     lines.append("佔比仍主判；飆大只聯動參考，不是買訊")
     lines.append("切入只認黃金買點")
     return {
@@ -802,6 +1326,8 @@ def biaoke_week_link(
         "names": names,
         "sids": sids,
         "levels": levels,
+        "optical": optical,
+        "field_expand": field_expand,
         "lines": lines,
     }
 
