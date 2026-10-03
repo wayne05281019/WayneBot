@@ -475,7 +475,7 @@ def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, 
             f"{html_escape(str(event.get('time') or ''))} {kind}："
         ),
         html_escape(body),
-        "對原文用。不是買訊。",
+        "對原文用。",
     ]
     return "\n".join(bits)
 
@@ -644,7 +644,7 @@ def format_level_hit_synthesis(
     n = len(rows)
     if n > 1:
         bits.append(f"同點另有 {n - 1} 則已併入，不逐則貼舊文。")
-    bits.append("對原文用。不是買訊，不准補新價。圖隨近窗改口重畫，不准鎖死舊ABC。")
+    bits.append("對原文用。不准補新價。圖隨近窗改口重畫，不准鎖死舊ABC。")
     return "\n".join(bits)
 
 

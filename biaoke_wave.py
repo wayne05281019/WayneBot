@@ -356,14 +356,15 @@ def _colloquial_thesis(
     prev_t = str((prev or {}).get("tag") or "")
     if tag == "位階四":
         return (
-            "中心思想：他近窗講波浪位階四整理完成、要開始走五——"
+            "中心思想：量價看籌碼意圖，長期大盤規劃靠波浪；"
+            "位階四整理完成、開始走五時位階特別清楚——"
             "重點是整理完往上推，不是還停在舊的ABC下殺劇本。"
             "五段還是九段他自己說還看不出，不准發明段數。"
         )
     if tag == "主升段":
         return (
             "中心思想：過 9/22 48601 這關的最後整理後，他看往主升／緩步攻堅；"
-            "先行還是看創意、健策有沒有重新展開攻擊。不是買訊。"
+            "先行還是看創意、健策有沒有重新展開攻擊。"
         )
     if tag == "末升段":
         return (
@@ -387,7 +388,7 @@ def _colloquial_thesis(
     if tag == "C-5低點":
         return "中心思想：C-5低點要收盤不破45398才算，還是如果句；盤中未收不當官方。"
     q = _clip(last.get("quote") or "", 72)
-    return f"中心思想：近窗他點「{tag}」" + (f"——{q}" if q else "。") + "不是買訊。"
+    return f"中心思想：近窗他點「{tag}」" + (f"——{q}" if q else "。")
 
 
 def _chart_spirit_line(last: Optional[Dict[str, str]]) -> str:
@@ -431,7 +432,7 @@ def format_twii_plain(db_path: str = "") -> str:
             close_bit,
             thesis,
             third,
-            "這不是買訊。圖隨近窗改口重畫精神，不准永遠鎖死舊ABC。",
+            "圖隨近窗改口重畫精神，不准永遠鎖死舊ABC。",
         ]
     )
 
@@ -1135,7 +1136,7 @@ def format_wave_now(db_path: str = "", *, n: int = 900) -> str:
     if n >= 500:
         bits.extend(_hist_bits(db_path))
         bits.append(format_wave_path(db_path, n=14))
-    bits.append("同一晚可並存多標籤，用點數一驗再驗。不是買訊。")
+    bits.append("同一晚可並存多標籤，用點數一驗再驗。")
     return _clip("。".join(b.rstrip("。") for b in bits if b), n)
 
 
@@ -2254,7 +2255,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig.text(
             _FIG_LEFT,
             0.028,
-            "圈Ａ在綠線中間偏左。7/29 同一點接Ｂ，Ｂ在藍線右手邊。Ｃ是虛線＝未確認。不是 15 分、不是買訊。43500 是他原文最差。",
+            "圈Ａ在綠線中間偏左。7/29 同一點接Ｂ，Ｂ在藍線右手邊。Ｃ是虛線＝未確認。不是 15 分。43500 是他原文最差。",
             fontproperties=_fp(8),
             color="#546e7a",
         )

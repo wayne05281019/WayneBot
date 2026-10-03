@@ -378,7 +378,7 @@ def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
     assert html.count("官方碰到已點位") == 1
     assert "以前也講過震盪" not in html
     assert "同點另有" in html
-    assert "不是買訊" in html
+    assert "中心思想" in html or "判斷" in html
 
     sent.clear()
     b = maybe_push_marked_level_hits(db)

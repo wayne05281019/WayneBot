@@ -903,7 +903,7 @@ def spoken_field_roster_judge(
                         f"{r['name']}{float(r['chg5']):+.1f}%" for r in wk_show
                     )
                 )
-        lines.append("；".join(bits) + "（類股展開對質，非買訊）")
+        lines.append("；".join(bits) + "（類股展開對質）")
     out.update({"ok": bool(lines), "fields": pack, "lines": lines})
     return out
 
@@ -1172,7 +1172,7 @@ def optical_tier_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
     n_all = len(roster)
     if n_all:
         avg_bit = f"；近5日均 {roster_avg:+.1f}%" if roster_avg is not None else ""
-        lines.append(f"光通訊整組展開 {n_all} 檔{avg_bit}（教過名冊，非買訊）")
+        lines.append(f"光通訊整組展開 {n_all} 檔{avg_bit}（教過名冊）")
     if inp or "InP" in text:
         names = "、".join(str(r.get("name") or "") for r in inp[:5]) or "聯亞／全新／IET"
         lines.append(f"次層 InP＝{names}≠組裝／記憶體長相清楚票（參考）")
@@ -1200,18 +1200,18 @@ def optical_tier_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
     if inp_avg is not None and conn_avg is not None:
         if inp_avg > conn_avg + 1.0:
             lines.append(
-                f"近5日官方柱 InP 均 {inp_avg:+.1f}%＞連接側 {conn_avg:+.1f}%（印證主流InP，非買訊）"
+                f"近5日官方柱 InP 均 {inp_avg:+.1f}%＞連接側 {conn_avg:+.1f}%（印證主流InP）"
             )
         elif conn_avg > inp_avg + 1.0:
             lines.append(
-                f"近5日官方柱連接側 {conn_avg:+.1f}%＞InP 均 {inp_avg:+.1f}%（與主流InP句對質，非買訊）"
+                f"近5日官方柱連接側 {conn_avg:+.1f}%＞InP 均 {inp_avg:+.1f}%（與主流InP句對質）"
             )
         else:
             lines.append(
-                f"近5日官方柱 InP 均 {inp_avg:+.1f}%／連接側 {conn_avg:+.1f}%（接近，非買訊）"
+                f"近5日官方柱 InP 均 {inp_avg:+.1f}%／連接側 {conn_avg:+.1f}%（接近）"
             )
     elif inp_avg is not None:
-        lines.append(f"近5日官方柱 InP 層均 {inp_avg:+.1f}%（參考，非買訊）")
+        lines.append(f"近5日官方柱 InP 層均 {inp_avg:+.1f}%（參考）")
     if lines:
         lines.append("觸類：點到類股就展開所屬股對柱；切入只認黃金買點")
     out.update(
@@ -1504,7 +1504,7 @@ def asic_ic_peer_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
             + (f"{float(a['chg5']):+.1f}%" if a.get("chg5") is not None else "")
             for a in anchors
         )
-        lines.append(f"錨定 {bits}；{drive}（{a_avg:+.1f}%，非買訊）")
+        lines.append(f"錨定 {bits}；{drive}（{a_avg:+.1f}%）")
     linked = [p for p in peers if p.get("max_corr") is not None and float(p["max_corr"]) >= 0.35]
     if linked:
         lines.append(
@@ -1512,7 +1512,7 @@ def asic_ic_peer_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
             + "、".join(
                 f"{p['name']}ρ{float(p['max_corr']):.2f}" for p in linked[:4]
             )
-            + "（對質，非買訊）"
+            + "（對質）"
         )
     space = [p for p in peers if p.get("room") == "space" and p.get("vs20") is not None]
     thin = [p for p in peers if p.get("room") == "thin" and p.get("vs20") is not None]
@@ -1526,7 +1526,7 @@ def asic_ic_peer_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
         lines.append(
             "已近20高、空間薄 "
             + "、".join(f"{p['name']}距20高{float(p['vs20']):+.1f}%" for p in thin[:3])
-            + "（參考，非買訊）"
+            + "（參考）"
         )
     # 跟漲：近5日％相對龍頭
     if a_avg is not None:
@@ -1562,7 +1562,7 @@ def asic_ic_peer_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
     for m in mem_note:
         lines.append(f"{m['name']}＝{m['note']}（參考）")
     if lines:
-        lines.append("聯想對質不是買訊；切入只認黃金買點")
+        lines.append("聯想對質；切入只認黃金買點")
     out.update(
         {
             "ok": bool(lines),
@@ -1756,8 +1756,30 @@ def biaoke_week_link(
     for il in infer:
         if il and il not in lines:
             lines.append(il)
-    lines.append("佔比仍主判；飆大引領找股方向，不是買訊")
-    lines.append("切入只認黃金買點")
+    # 智囊團活用句（直接抽 why／分層，不准回呼 advisor_pack→week_link）
+    try:
+        from biaoke_advisor import (
+            cross_db_glance,
+            dual_arrow_why,
+            inp_asic_tiers,
+            wave_why,
+        )
+
+        for il in (dual_arrow_why(spoken) or []) + (wave_why(spoken, db_path) or []):
+            if il and il not in lines and il not in infer:
+                infer.append(il)
+                lines.append(il)
+        for il in ((inp_asic_tiers(db_path, spoken) or {}).get("lines") or [])[:2]:
+            if il and il not in lines and il not in infer:
+                infer.append(il)
+                lines.append(il)
+        for il in ((cross_db_glance(db_path, "", sids=sids) or {}).get("lines") or [])[:2]:
+            if il and il not in lines:
+                lines.append(il)
+    except Exception:
+        pass
+    lines.append("佔比仍主判；飆大引領找股方向")
+    lines.append("切入只認黃金買點；智囊可跨庫查閱，不准只記不活用")
     return {
         "ok": True,
         "start": start,
@@ -1806,7 +1828,7 @@ def _week_inference_lines(
         if space:
             bit += "；位階仍低 "
             bit += "、".join(str(p.get("name") or "") for p in space)
-        out.append(bit + "（引領找股，非買訊）")
+        out.append(bit + "（引領找股）")
     # 光通訊次層
     if optical.get("ok"):
         ia, ca = optical.get("inp_avg_5d"), optical.get("connect_avg_5d")
@@ -1884,10 +1906,10 @@ def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
     """結構化找法。對不上就空 field，不准猜。spoken=None 才讀最新主文；空字＝他沒開口。"""
     del ask
     if not db_path:
-        return _empty_pick(_HOW + " 官方日 K 還沒這列，不准猜。不是買訊。")
+        return _empty_pick(_HOW + " 官方日 K 還沒這列，不准猜。")
     cap = _cap(db_path)
     if not cap:
-        return _empty_pick(_HOW + " 官方完整日還沒，盤中未收不當官方收。不是買訊。")
+        return _empty_pick(_HOW + " 官方完整日還沒，盤中未收不當官方收。")
     if spoken is None:
         spoken = latest_spoken(db_path)
     named = _named_keys(spoken)
@@ -1922,13 +1944,13 @@ def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
             line = (
                 _HOW
                 + extra
-                + f" 官方收 {cap} 還沒對上「還沒熱＋贴近20高＋量起來＋第一名還沒先過前高」的次族群，不准發明。不是買訊。"
+                + f" 官方收 {cap} 還沒對上「還沒熱＋贴近20高＋量起來＋第一名還沒先過前高」的次族群，不准發明。"
             )
         else:
             line = (
                 _HOW
                 + extra
-                + f" 官方收 {cap} 還沒對上底部蠢蠢的次族群，不准發明。不是買訊。"
+                + f" 官方收 {cap} 還沒對上底部蠢蠢的次族群，不准發明。"
             )
         return _empty_pick(line, cap=cap, named=named, missing=missing)
     hits.sort(key=lambda x: -x[0])

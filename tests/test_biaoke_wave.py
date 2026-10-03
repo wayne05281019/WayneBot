@@ -46,12 +46,12 @@ def test_wave_question_no_ticker():
     assert not is_twii_plain_ask("大盤散熱")
     plain = format_twii_plain("")
     assert plain.count("\n") <= 4
-    assert "不是買訊" in plain
+    assert "鎖死舊ABC" in plain or "中心思想" in plain
     assert "給看不懂" not in plain
     from biaoke_brain import answer_biaoke
 
     html = answer_biaoke(":memory:", "大盤")
-    assert "不是買訊" in html
+    assert "中心思想" in html or "官方加權" in html
     assert html.count("\n") <= 4
     assert "給看不懂波浪" not in html
 
@@ -124,7 +124,7 @@ def test_format_wave_now_compares_and_turning():
     assert "A 波低" in text or "A波低" in text or "7/29" in text
     assert "精準" in text or "細微波" in text or "中心思想" in text
     assert "不數" in text
-    assert "不是買訊" in text
+    assert "不數" in text
     assert "位階不講死" in text
     assert "17000" not in text
     from tests.conftest import has_production_db, production_db_path
@@ -194,7 +194,7 @@ def test_twii_degree_chart_when_db_present(tmp_path):
         assert os.path.isfile(built.get("path") or "")
         assert os.path.getsize(built["path"]) > 12_000
         cap = built.get("caption") or ""
-        assert "不是買訊" in cap
+        assert "虛線" in cap or "未確認" in cap or "7/29" in cap
         assert "如果句" in cap or "還沒確認" in cap
         assert "45398" in cap
         assert "給看不懂" not in cap
