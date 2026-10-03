@@ -904,11 +904,11 @@ def run_once():
 
 
 def run_web():
+    # 健檢必須比任何 DB／重模組 import 更早綁埠。
+    # wayne_db 等 import 若卡住或炸，Render /live 會一直 502 → update_failed 空轉。
+    start_health_server(get_port())
     from wayne_db import ensure_core_schema
     from config import get_db_path, get_telegram_chat_id
-
-    # 先開 /health，避免 Render 冷啟動下載 DB 時健檢逾時被反覆重啟
-    start_health_server(get_port())
     from import_health import db_quick_check_ok
 
     db_path = get_db_path()

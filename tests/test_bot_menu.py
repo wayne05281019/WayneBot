@@ -505,6 +505,16 @@ def test_health_server_is_threaded():
     assert "ThreadingHTTPServer" in src
 
 
+def test_run_web_binds_health_before_db_import():
+    """Render /live 健檢必須比 wayne_db import 更早，否則 import 卡住會整段 502。"""
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.run_web)
+    assert src.find("start_health_server") < src.find("from wayne_db import")
+
+
 def test_sell_holdings_prompt_shows_odd_lots():
     import inspect
 
