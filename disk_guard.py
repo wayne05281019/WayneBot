@@ -1,8 +1,8 @@
 """永久碟空間守衛：清可重建出圖快取，不准動官方柱／私人表／飆大必要材料。
 
 目標結果：
-- 開機立刻回收 `_lookup_memo`、scratch PNG／JPG、過期勝率 pair cache
-- 排程週期掃：設 TTL／上限，滿前回收；日誌記清了多少 MB／檔數
+- 開機＋每 30 分清可重建出圖快取／暫存；**超過 24 小時就刪**
+- 容量上限滿前回收；日誌記清了多少 MB／檔數
 - 從不刪 `wayne_market.db`、私人表、biaoke 語料／圖檔索引必要材料
 """
 
@@ -14,23 +14,17 @@ import shutil
 import sqlite3
 import threading
 import time
-from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("WayneBot.disk_guard")
-
-_TAIPEI = ZoneInfo("Asia/Taipei")
 
 # 剩餘空間低於此值（MB）就全力清可重建檔
 DEFAULT_MIN_FREE_MB = 400
 # 週期掃間隔（秒）
 DEFAULT_INTERVAL_SEC = 30 * 60
-# scratch／memo 圖檔 TTL（秒）；過期就刪（可重建）
-DEFAULT_CHART_TTL_SEC = 6 * 60 * 60
-# wr_pair_cache 保留最近幾個台北曆日（含今天）
-DEFAULT_PAIR_CACHE_KEEP_DAYS = 2
-# charts 根目錄圖檔總量上限（MB）；超過就依 mtime 刪最舊
+# 可重建出圖快取／暫存：超過 24 小時就刪（使用者 2026-10-03 鎖死）
+DEFAULT_CHART_TTL_SEC = 24 * 60 * 60
+# charts 圖檔總量上限（MB）；超過就依 mtime 刪最舊（仍只動可重建）
 DEFAULT_CHARTS_CAP_MB = 800
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".gif")
@@ -45,10 +39,6 @@ _PROTECTED_NAME_FRAGMENTS = (
 
 _started = False
 _lock = threading.Lock()
-
-
-def _now_taipei() -> datetime:
-    return datetime.now(_TAIPEI)
 
 
 def disk_usage_mb(path: str) -> Dict[str, float]:
@@ -211,41 +201,39 @@ def _purge_scratch_images(
 
 
 def _purge_old_pair_cache(
-    charts_dir: str, *, keep_days: int, today: Optional[datetime] = None
+    charts_dir: str, *, ttl_sec: float = DEFAULT_CHART_TTL_SEC
 ) -> Tuple[int, float]:
-    """刪 wr_pair_cache 裡超過保留日的日資料夾。"""
+    """刪 wr_pair_cache 裡 mtime 超過 TTL（預設 24h）的可重建圖。"""
     n = 0
     mb = 0.0
     root = os.path.join(charts_dir, "wr_pair_cache")
     if not os.path.isdir(root):
         return n, mb
-    base = today or _now_taipei()
-    keep = set()
-    for i in range(max(1, int(keep_days))):
-        keep.add((base - timedelta(days=i)).strftime("%Y-%m-%d"))
-        keep.add((base - timedelta(days=i)).strftime("%Y%m%d"))
-    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
-        day_name = os.path.basename(dirpath)
-        # 日資料夾名是 YYYY-MM-DD 或 YYYYMMDD
-        is_day = (
-            len(day_name) == 10
-            and day_name[4:5] == "-"
-            and day_name[7:8] == "-"
-        ) or (len(day_name) == 8 and day_name.isdigit())
-        if not is_day:
+    cutoff = time.time() - max(60.0, float(ttl_sec))
+    for path in _iter_files(root):
+        if _is_protected(path):
             continue
-        if day_name in keep:
-            continue
-        for fn in filenames:
-            freed = _unlink(os.path.join(dirpath, fn))
-            if freed > 0:
-                n += 1
-                mb += freed
         try:
-            if not os.listdir(dirpath):
-                os.rmdir(dirpath)
+            if os.path.getmtime(path) >= cutoff:
+                continue
         except OSError:
-            pass
+            continue
+        freed = _unlink(path)
+        if freed > 0:
+            n += 1
+            mb += freed
+    # 空日資料夾清掉
+    try:
+        for dirpath, _dirnames, _filenames in os.walk(root, topdown=False):
+            if dirpath == root:
+                continue
+            try:
+                if not os.listdir(dirpath):
+                    os.rmdir(dirpath)
+            except OSError:
+                pass
+    except OSError:
+        pass
     return n, mb
 
 
@@ -327,14 +315,15 @@ def cleanup_rebuildable_charts(
     charts_dir: str,
     *,
     ttl_sec: float = DEFAULT_CHART_TTL_SEC,
-    pair_keep_days: int = DEFAULT_PAIR_CACHE_KEEP_DAYS,
     cap_mb: float = DEFAULT_CHARTS_CAP_MB,
     aggressive: bool = False,
 ) -> Dict[str, Any]:
-    """清可重建出圖快取。aggressive=True 時 memo／scratch 不看 TTL 全清。"""
+    """清可重建出圖快取。預設超過 24h 刪；aggressive 時 memo／scratch 全清。"""
     charts_dir = charts_dir or ""
+    ttl = float(ttl_sec if ttl_sec is not None else DEFAULT_CHART_TTL_SEC)
     stats: Dict[str, Any] = {
         "charts_dir": charts_dir,
+        "ttl_sec": ttl,
         "files": 0,
         "mb": 0.0,
         "parts": {},
@@ -342,15 +331,22 @@ def cleanup_rebuildable_charts(
     if not charts_dir:
         return stats
 
-    # memo＝查股暖路徑副本，可整夾重建
-    n, mb = _purge_lookup_memo(charts_dir)
+    if aggressive:
+        # 碟過滿：memo 可整夾重建
+        n, mb = _purge_lookup_memo(charts_dir)
+    else:
+        # 一般／週期：memo 也只刪超過 TTL（24h）的
+        n, mb = _purge_tree_files(
+            os.path.join(charts_dir, "_lookup_memo"),
+            older_than=time.time() - max(60.0, ttl),
+        )
     stats["parts"]["lookup_memo"] = {"files": n, "mb": round(mb, 2)}
     stats["files"] += n
     stats["mb"] += mb
 
     n, mb = _purge_scratch_images(
         charts_dir,
-        ttl_sec=float(ttl_sec),
+        ttl_sec=ttl,
         now=time.time(),
         all_images=bool(aggressive),
     )
@@ -358,9 +354,7 @@ def cleanup_rebuildable_charts(
     stats["files"] += n
     stats["mb"] += mb
 
-    n, mb = _purge_old_pair_cache(
-        charts_dir, keep_days=1 if aggressive else pair_keep_days
-    )
+    n, mb = _purge_old_pair_cache(charts_dir, ttl_sec=ttl)
     stats["parts"]["wr_pair_cache"] = {"files": n, "mb": round(mb, 2)}
     stats["files"] += n
     stats["mb"] += mb
