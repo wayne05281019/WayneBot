@@ -37,6 +37,54 @@ _WAVE_FIVE = re.compile(
 )
 _METHOD = re.compile(r"量價結構|波浪理論|主力籌碼|長期的大盤規劃")
 
+# 建議只用近窗還在講的族群。已退場主題近窗沒再講＝不准推那些檔。
+NEAR_ADVICE_DAYS = 14
+_RETIRED_THEME_SIDS: Dict[str, Tuple[str, ...]] = {
+    # 無人機：2025-09-05 不要再碰；近窗（14日）沒再講就不准建議
+    "無人機": ("5371", "8033", "4916", "2645", "2634"),  # 中光電／雷虎／事欣科／長榮航太／亞航
+}
+_RETIRED_NEEDLES: Dict[str, Tuple[str, ...]] = {
+    "無人機": ("無人機",),
+}
+
+
+def near_spoken_text(db_path: str, *, days: int = NEAR_ADVICE_DAYS) -> str:
+    """近 N 日他自己主文＋自回正文。建議只認這窗，不准翻舊題材。"""
+    if not db_path or not os.path.isfile(db_path):
+        return ""
+    try:
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        tp = ZoneInfo("Asia/Taipei")
+        end = datetime.now(tp).strftime("%Y-%m-%d")
+        start = (datetime.now(tp) - timedelta(days=max(1, int(days) - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        from biaoke_field_scan import week_spoken
+
+        return week_spoken(db_path, start, end) or ""
+    except Exception:
+        return ""
+
+
+def theme_is_live(db_path: str, theme: str, *, days: int = NEAR_ADVICE_DAYS) -> bool:
+    """主題近窗還有沒有他自己再講。沒講＝已退場，不准建議那組。"""
+    needles = _RETIRED_NEEDLES.get(theme) or (theme,)
+    blob = near_spoken_text(db_path, days=days)
+    return any(n and n in blob for n in needles)
+
+
+def advice_sid_blocked(db_path: str, sid: str, *, days: int = NEAR_ADVICE_DAYS) -> bool:
+    """已退場主題的檔，近窗沒再講該主題＝封鎖建議。"""
+    sid = str(sid or "").strip()
+    if not sid:
+        return True
+    for theme, sids in _RETIRED_THEME_SIDS.items():
+        if sid in sids and not theme_is_live(db_path, theme, days=days):
+            return True
+    return False
+
 
 def want_advisor(ask: str = "", *, spoken: str = "") -> bool:
     """空白進飆大、近窗有改口、或問句碰到活用主題 → 智囊團要開口。"""
@@ -460,17 +508,27 @@ def _classify_roster(
 def _inp_asic_tiers(db_path: str, spoken: str) -> Dict[str, Any]:
     from biaoke_field_scan import _OPT_INP, _ASIC_IC_ANCHORS
 
-    text = str(spoken or "")
+    # 建議只認近窗正文；沒近窗才退回傳入 spoken（測試用）
+    near = near_spoken_text(db_path) if db_path else ""
+    text = near or str(spoken or "")
     want_opt = any(k in text for k in ("InP", "光通訊", "矽光子", "CPO", "聯亞", "全新"))
     want_asic = any(
         k in text for k in ("ASIC", "創意", "聯發", "IC設計", "雙箭頭", "兩大最強")
     )
     out: Dict[str, Any] = {"inp": [], "asic": [], "lines": []}
-    # 近窗沒點到就不硬塞名冊（空白進場靠 week_spoken 有雙箭頭才展開）
+    # 近窗沒點到就不硬塞名冊；已退場主題檔一律剔除
     if want_opt:
-        out["inp"] = _classify_roster(db_path, list(_OPT_INP.items()))
+        out["inp"] = [
+            r
+            for r in _classify_roster(db_path, list(_OPT_INP.items()))
+            if not advice_sid_blocked(db_path, str(r.get("sid") or ""))
+        ]
     if want_asic:
-        out["asic"] = _classify_roster(db_path, list(_ASIC_IC_ANCHORS))
+        out["asic"] = [
+            r
+            for r in _classify_roster(db_path, list(_ASIC_IC_ANCHORS))
+            if not advice_sid_blocked(db_path, str(r.get("sid") or ""))
+        ]
     for label, rows in (("InP", out["inp"]), ("ASIC錨", out["asic"])):
         if not rows:
             continue
@@ -624,6 +682,205 @@ def advisor_focus_lines(db_path: str = "") -> List[str]:
     """空白按飆大：插在口語重點後面的活用句。"""
     pack = advisor_pack(db_path, ask="")
     return [str(x) for x in (pack.get("lines") or [])[:5] if str(x).strip()]
+
+
+def _evidence_bit(row: Dict[str, Any]) -> str:
+    """官方柱憑據一句：近5日／vs20／剛離零。"""
+    bits: List[str] = []
+    chg5 = row.get("chg5")
+    vs20 = row.get("vs20")
+    if chg5 is not None:
+        try:
+            bits.append(f"近5日{float(chg5):+.1f}%")
+        except (TypeError, ValueError):
+            pass
+    if vs20 is not None:
+        try:
+            bits.append(f"距20高{float(vs20):+.1f}%")
+        except (TypeError, ValueError):
+            pass
+    if row.get("leave_zero"):
+        bits.append("剛脫離零")
+    elif "還不能買" in str(row.get("action") or ""):
+        bits.append("還在零")
+    elif row.get("broke"):
+        bits.append("近窗已攻")
+    return "、".join(bits) if bits else "官方柱不足"
+
+
+_FIELD_ADVICE_ASK = re.compile(
+    r"(InP|光通訊|矽光子|CPO|FAU|ASIC|雙箭頭|"
+    r"可買|該買|怎麼做|建議|哪些可以|哪些能)",
+    re.I,
+)
+
+
+def is_field_advice_ask(ask: str) -> bool:
+    """問類股／雙箭頭／怎麼做 → 走多檔建議圖；單檔名仍一張結構圖。"""
+    q = (ask or "").strip()
+    if not q:
+        return True  # 空白進場＝主動建議
+    # 純單一代號／單一股名優先走單檔結構圖
+    if re.fullmatch(r"\d{3,6}[A-Za-z]?", q):
+        return False
+    if re.fullmatch(r"[\u4e00-\u9fffA-Za-z\-]+", q) and not _FIELD_ADVICE_ASK.search(q):
+        # 「聯亞」「創意」這種單檔名
+        return False
+    return bool(_FIELD_ADVICE_ASK.search(q))
+
+
+def action_advice_pack(db_path: str = "", ask: str = "") -> Dict[str, Any]:
+    """建議怎麼做＋憑據。只認近窗還在講的族群；已退場（如無人機）不准推。"""
+    q = (ask or "").strip()
+    pack = advisor_pack(db_path, ask=q or "")
+    near = near_spoken_text(db_path) if db_path else ""
+    spoken = near or str(pack.get("spoken") or "")
+    why_field = ""
+    if "雙箭頭" in spoken or ("ASIC" in spoken and "InP" in spoken):
+        why_field = "他近窗改口 ASIC＋光通訊(InP) 雙箭頭到過年前"
+    elif "InP" in spoken or "光通訊" in spoken:
+        why_field = "他近窗釘光通訊／InP 主流"
+    else:
+        why_field = "近窗還在講的主軸（活化）"
+    # 問句可以收窄，但最終仍要近窗正文有講才展開
+    ask_inp = (not q) or bool(
+        re.search(r"(InP|光通訊|矽光子|CPO|FAU|聯亞|全新|IET|雙箭頭|怎麼做|建議)", q, re.I)
+    )
+    ask_asic = (not q) or bool(
+        re.search(r"(ASIC|創意|聯發|雙箭頭|IC設計|怎麼做|建議)", q, re.I)
+    )
+    live_inp = any(k in spoken for k in ("InP", "光通訊", "矽光子", "CPO", "聯亞", "全新"))
+    live_asic = any(k in spoken for k in ("ASIC", "創意", "聯發", "雙箭頭", "兩大最強"))
+    want_inp = ask_inp and live_inp
+    want_asic = ask_asic and live_asic
+    rows: List[Dict[str, Any]] = []
+    if want_inp:
+        rows.extend(pack.get("inp_rows") or [])
+    if want_asic:
+        rows.extend(pack.get("asic_rows") or [])
+    # 去重＋封鎖已退場檔（無人機中光電／雷虎等）
+    seen: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        sid = str(r.get("sid") or "")
+        if not sid or sid in seen:
+            continue
+        if advice_sid_blocked(db_path, sid):
+            continue
+        seen[sid] = r
+    ordered = list(seen.values())
+    do_now: List[Dict[str, Any]] = []
+    wait: List[Dict[str, Any]] = []
+    skip: List[Dict[str, Any]] = []
+    for r in ordered:
+        act = str(r.get("action") or "")
+        item = {
+            **r,
+            "evidence": _evidence_bit(r),
+            "basis": why_field,
+        }
+        if r.get("leave_zero") or act.startswith("可買（"):
+            item["do"] = "可接"
+            item["how"] = "剛脫離零可接；昨收附近接，半山腰不追。"
+            do_now.append(item)
+        elif "還不能買" in act or "位階仍低" in act or "等回測" in act:
+            item["do"] = "等回測再接"
+            item["how"] = "方向對、切入未到；等回測／整理末端或剛離零再接。"
+            wait.append(item)
+        elif "偏晚" in act or "偏熱" in act:
+            item["do"] = "偏熱先不追"
+            item["how"] = "已攻／贴近前高，追價差；量縮回測再說。"
+            skip.append(item)
+        else:
+            item["do"] = "等回測再接"
+            item["how"] = "族群對得上，等官方柱把切入條件走清楚。"
+            wait.append(item)
+    lines: List[str] = []
+    if do_now:
+        bits = [
+            f"{r.get('name')}可接（憑：{r['basis']}；官方{r['evidence']}）"
+            for r in do_now
+        ]
+        lines.append("建議怎麼做｜" + "；".join(bits))
+    if wait:
+        bits = [
+            f"{r.get('name')}等回測再接（憑：{r['basis']}；官方{r['evidence']}）"
+            for r in wait
+        ]
+        lines.append("建議怎麼做｜" + "；".join(bits))
+    if skip:
+        bits = [
+            f"{r.get('name')}偏熱先不追（憑：官方{r['evidence']}）"
+            for r in skip
+        ]
+        lines.append("建議怎麼做｜" + "；".join(bits))
+    if not lines and pack.get("ok"):
+        lines.append(
+            "建議怎麼做｜近窗雙箭頭方向在，但官方柱還沒排出可接檔；"
+            "先跟節奏巢，等剛脫離零／回測再動。"
+        )
+    return {
+        "ok": bool(lines),
+        "lines": lines,
+        "do_now": do_now,
+        "wait": wait,
+        "skip": skip,
+        "basis": why_field,
+    }
+
+
+def format_action_advice_html(
+    db_path: str = "", ask: str = "", *, limit: int = 4
+) -> str:
+    """建議怎麼做＋憑據（空白或問類股）。"""
+    pack = action_advice_pack(db_path, ask=ask)
+    if not pack.get("ok"):
+        return ""
+    blocks = ["<b>建議怎麼做</b>"]
+    for line in (pack.get("lines") or [])[: max(1, int(limit))]:
+        t = str(line).replace("不是買訊", "").replace("非買訊", "").strip()
+        if t:
+            blocks.append(html_escape(t))
+    return "\n".join(blocks)
+
+
+def advice_chart_targets(
+    db_path: str = "",
+    ask: str = "",
+    *,
+    n_do: int = 0,
+    n_wait: int = 0,
+    n_skip: int = 0,
+) -> List[Dict[str, Any]]:
+    """類股／空白進場附結構圖：名冊該給的都給（可接／等回測／偏熱），每檔帶怎麼做。
+
+    n_*=0 表示不截斷；若呼叫端硬設上限才截。
+    """
+    pack = action_advice_pack(db_path, ask=ask)
+    out: List[Dict[str, Any]] = []
+    buckets = (
+        (pack.get("do_now") or [], int(n_do)),
+        (pack.get("wait") or [], int(n_wait)),
+        (pack.get("skip") or [], int(n_skip)),
+    )
+    seen: set = set()
+    for rows, lim in buckets:
+        take = rows if lim <= 0 else rows[:lim]
+        for r in take:
+            sid = str(r.get("sid") or "")
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            out.append(
+                {
+                    "sid": sid,
+                    "name": str(r.get("name") or sid),
+                    "do": str(r.get("do") or ""),
+                    "how": str(r.get("how") or ""),
+                    "evidence": str(r.get("evidence") or ""),
+                    "basis": str(r.get("basis") or ""),
+                }
+            )
+    return out
 
 
 # 公開別名：給 week_link／洞燭餵句用（避免他模組 import 底線私函）

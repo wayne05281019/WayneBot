@@ -4511,10 +4511,35 @@ class WayneTelegramBot:
                     )
                     await self._show_biaoke_leave_key(message, uid)
                     return
-                chart_task = asyncio.create_task(
-                    self._send_biaoke_structure_chart(message, q, uid)
-                )
+                # 問類股／怎麼做：多檔建議圖；單檔名才走一張結構圖
+                field_advice = False
+                try:
+                    from biaoke_advisor import is_field_advice_ask
+
+                    field_advice = bool(is_field_advice_ask(q))
+                except Exception:
+                    field_advice = False
+                if field_advice:
+                    chart_task = asyncio.create_task(
+                        self._send_biaoke_advice_charts(message, uid, ask=q)
+                    )
+                else:
+                    chart_task = asyncio.create_task(
+                        self._send_biaoke_structure_chart(message, q, uid)
+                    )
                 html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
+                # 問類股時文字也補「建議怎麼做＋憑據」
+                if field_advice:
+                    try:
+                        from biaoke_advisor import format_action_advice_html
+
+                        adv = await asyncio.to_thread(
+                            format_action_advice_html, self.db_path, q
+                        )
+                        if adv and "建議怎麼做" not in (html or ""):
+                            html = (html or "") + ("\n\n" if html else "") + adv
+                    except Exception:
+                        logger.exception("飆大類股建議文字略過")
                 bucket = list(self._biaoke_hist.get(actor) or [])
                 plain = re.sub(r"<[^>]+>", "", html)
                 bucket.append({"ask": q, "answer": plain[:900]})
@@ -4571,10 +4596,85 @@ class WayneTelegramBot:
                     await chart_task
                 except Exception:
                     logger.exception("飆大結構圖並行失敗")
+            # 空白進場：幾乎不問也主動附全部建議檔結構圖（每檔一句怎麼做）
+            if not q:
+                try:
+                    await self._send_biaoke_advice_charts(message, uid, ask="")
+                except Exception:
+                    logger.exception("飆大建議結構圖略過")
             # 內容／大盤用 Inline；離開鈕用 ReplyKeyboard 另發（Telegram edit 換不了兩排）。
             await self._show_biaoke_leave_key(message, uid)
         finally:
             await self._stop_plain_wait(*wait_h)
+
+    async def _send_biaoke_advice_charts(
+        self, message, uid: str, *, ask: str = ""
+    ) -> None:
+        """類股／空白進飆大：名冊該給的都出結構圖，圖下一句建議怎麼做＋憑據。"""
+        targets: list = []
+        try:
+            from biaoke_advisor import advice_chart_targets
+
+            targets = await asyncio.to_thread(
+                advice_chart_targets, self.db_path, ask or ""
+            )
+        except Exception:
+            logger.exception("飆大建議檔清單略過")
+            return
+        for t in targets or []:
+            sid = str((t or {}).get("sid") or "")
+            if not sid:
+                continue
+            name = str(t.get("name") or sid)
+            do = str(t.get("do") or "")
+            how = str(t.get("how") or "")
+            evidence = str(t.get("evidence") or "")
+            basis = str(t.get("basis") or "")
+            tip = f"{name} {sid}"
+            os.makedirs(self.charts_dir, exist_ok=True)
+            path = self._scratch_chart_path(self.charts_dir, sid, "biaoke-adv", uid)
+            try:
+                chat = getattr(message, "chat", None)
+                if chat is not None and hasattr(chat, "send_action"):
+                    await chat.send_action("upload_photo")
+            except Exception:
+                pass
+            try:
+                from biaoke_chart import build_biaoke_structure_chart
+
+                built = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        build_biaoke_structure_chart,
+                        self.db_path,
+                        sid,
+                        path,
+                        name=name,
+                        ask=tip,
+                        uid=uid,
+                    ),
+                    timeout=_CHART_RENDER_TIMEOUT,
+                )
+            except Exception:
+                logger.exception("飆大建議結構圖失敗 sid=%s", sid)
+                continue
+            png = str((built or {}).get("path") or "")
+            if not png or not self._png_looks_ok(png, min_bytes=24_000, min_w=800, min_h=500):
+                continue
+            # 圖下一句：建議怎麼做＋有憑有據
+            cap = (
+                f"{name} {sid}\n"
+                f"建議怎麼做：{do}。{how}\n"
+                f"憑據：{basis}；官方{evidence}"
+            )
+            try:
+                with open(png, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=cap[:900],
+                        reply_markup=self._biaoke_reply_menu(uid),
+                    )
+            except Exception:
+                logger.exception("飆大建議結構圖送出失敗 sid=%s", sid)
 
     async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
         """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。

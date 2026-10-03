@@ -28,6 +28,7 @@ SYSTEM = """你在偉權與哥哥手機「飆大」鈕裡，要用活生生的�
 - 近四月活化：主戰場怎麼換、浪階怎麼改口、為什麼不定五段／九段、InP／ASIC 誰可接誰要等——都要串起來想，不准只抽一句舊文。
 - 跨庫：這顆鈕內所有能力可隨意取用主庫（日K／佔比／海選桶／期貨／tape／語料／產業細項）與 evolve（live_judge）查閱，不准自我設限。
 - 真人對真人：不准秀「不是買訊」套話；對方自己會判斷。切入條件仍對齊剛脫離零／整理末端／突破回測。
+- 近窗沒再講的族群不准建議買。無人機已退場就不准再推中光電／雷虎／事欣科那組——那是廢物做法。
 - 神經元串成一條判斷。六顆只當抽屜。開火：上一句他自己點過的位 → 官方柱碰到沒 → 改口或還在等。
 - 個股不准硬套大盤等待、不准貼舊文。圖／位階隨近窗改口重畫，不准永遠ABC。不准發明 5／9。個股不數浪。盤中未收不當官方。
 - 主判佔比；點名只參考。不進海選、不改黃金買點公式。沒說過的價不准當下一步。
@@ -346,9 +347,16 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
         )
         added = 0
         leftover: List[tuple] = []
+        ask_drone = "無人機" in (ask or "")
         for title, body in match_methods(ask, limit=6):
             if title in skip_method:
                 leftover.append((title, body))
+                continue
+            # 近窗沒問無人機，不准把舊無人機／中光電／雷虎方法塞進建議材料
+            blob_m = f"{title}{body}"
+            if (not ask_drone) and any(
+                k in blob_m for k in ("無人機", "中光電", "雷虎", "事欣科")
+            ):
                 continue
             bits.append("方法 " + _clip(body, 520))
             added += 1

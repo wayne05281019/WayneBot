@@ -506,7 +506,18 @@ def format_focus_oral(
         if cleaned:
             blocks.append("")
             blocks.append("<b>脈絡黃金</b>")
-            blocks.extend(html_escape(x) for x in cleaned[:5])
+            blocks.extend(html_escape(x) for x in cleaned[:4])
+    except Exception:
+        pass
+    # 你幾乎不問：空白進場也要主動建議怎麼做，且每句有憑據
+    try:
+        from biaoke_advisor import format_action_advice_html
+
+        if db_path:
+            advice = format_action_advice_html(str(db_path), limit=3)
+            if advice:
+                blocks.append("")
+                blocks.append(advice)
     except Exception:
         pass
     asks = _likely_asks(list(mains[:2]) + replies[:8])

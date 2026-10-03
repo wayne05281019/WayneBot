@@ -189,3 +189,62 @@ def test_advisor_html_no_buy_disclaimer(tmp_path):
     html = format_advisor_html(db, "InP哪些可以買")
     assert "不是買訊" not in html
     assert "非買訊" not in html
+
+
+def test_advice_never_pushes_retired_drone(tmp_path):
+    """近窗沒講無人機，不准建議中光電／雷虎。"""
+    import sqlite3
+    from biaoke_advisor import action_advice_pack, advice_chart_targets, advice_sid_blocked
+
+    db = _mk_db(tmp_path)
+    conn = sqlite3.connect(db)
+    # 舊文有無人機，近窗（今天）沒有
+    conn.execute(
+        "INSERT INTO biaoke_posts(id,date,time,text,kind) VALUES(?,?,?,?,?)",
+        (
+            "old-drone",
+            "2025-09-05",
+            "10:00:00",
+            "無人機族群長榮航、中光電、事欣科不要再碰。亞航、雷虎風險大。",
+            "post",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    assert advice_sid_blocked(db, "5371") is True
+    assert advice_sid_blocked(db, "8033") is True
+    pack = action_advice_pack(db, ask="怎麼做")
+    sids = {str(r.get("sid")) for r in (pack.get("do_now") or []) + (pack.get("wait") or []) + (pack.get("skip") or [])}
+    assert "5371" not in sids
+    assert "8033" not in sids
+    targets = advice_chart_targets(db, ask="光通訊")
+    assert not any(str(t.get("sid")) in {"5371", "8033", "4916"} for t in targets)
+    blob = "\n".join(pack.get("lines") or [])
+    assert "中光電" not in blob
+    assert "雷虎" not in blob
+
+
+def test_field_advice_charts_give_all_with_how(tmp_path):
+    from biaoke_advisor import (
+        action_advice_pack,
+        advice_chart_targets,
+        is_field_advice_ask,
+    )
+
+    db = _mk_db(tmp_path)
+    assert is_field_advice_ask("InP哪些可以買")
+    assert is_field_advice_ask("")
+    assert not is_field_advice_ask("3081")
+    assert not is_field_advice_ask("聯亞")
+    pack = action_advice_pack(db, ask="光通訊 InP")
+    assert pack.get("ok")
+    blob = "\n".join(pack.get("lines") or [])
+    assert "建議怎麼做" in blob
+    assert "憑：" in blob or "官方" in blob
+    targets = advice_chart_targets(db, ask="InP")
+    # 不截 2～3：名冊該給的都進清單
+    n_rows = len(pack.get("do_now") or []) + len(pack.get("wait") or []) + len(
+        pack.get("skip") or []
+    )
+    assert len(targets) == n_rows
+    assert all(t.get("do") and t.get("how") for t in targets)

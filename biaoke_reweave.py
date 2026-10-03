@@ -143,6 +143,14 @@ def _field_arc(rows: Sequence[Dict[str, Any]]) -> List[str]:
         lines.append(
             "改口脈絡：記憶體曾是主戰場，近窗已被光通訊／ASIC 敘事蓋過——不准死背舊年底記憶體稿。"
         )
+    # 已退場主題：四月窗內提過、但最近沒再講＝不准建議買
+    recent = list(rows)[-min(40, len(rows)) :]
+    drone_recent = any("無人機" in str(r.get("text") or "") for r in recent)
+    drone_ever = any("無人機" in str(r.get("text") or "") for r in rows)
+    if drone_ever and not drone_recent:
+        lines.append(
+            "已退場：無人機近窗沒再講——不准再建議中光電／雷虎／事欣科那組，那是廢物做法。"
+        )
     return lines
 
 
