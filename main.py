@@ -249,7 +249,23 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
                 "serving_reasons": live.get("serving_reasons") or [],
+                # 碟滿早警：欄位露出 free／警訊；不准因此把 /health 變 503（會空轉重開）
+                "disk_free_mb": None,
+                "disk_used_mb": None,
+                "disk_total_mb": None,
+                "disk_min_free_mb": None,
+                "disk_target_free_mb": None,
+                "disk_ok": None,
+                "disk_alert": "unknown",
+                "disk_alert_zh": "",
             }
+            try:
+                from disk_guard import disk_health_fields
+
+                payload.update(disk_health_fields())
+            except Exception as exc:
+                payload["disk_alert"] = "unknown"
+                payload["disk_alert_zh"] = f"磁碟用量讀不到：{exc}"
             try:
                 from phone_update import phone_health_fields
 
@@ -907,6 +923,14 @@ def run_web():
     # 健檢必須比任何 DB／重模組 import 更早綁埠。
     # wayne_db 等 import 若卡住或炸，Render /live 會一直 502 → update_failed 空轉。
     start_health_server(get_port())
+    # 碟滿會讓 SQLite「database or disk is full」→ Failed。先清可重建出圖快取並排程週期掃。
+    try:
+        from disk_guard import ensure_disk_headroom, start_disk_guard
+
+        ensure_disk_headroom(force=True)
+        start_disk_guard()
+    except Exception:
+        logger.exception("磁碟守衛啟動失敗")
     from wayne_db import ensure_core_schema
     from config import get_db_path, get_telegram_chat_id
     from import_health import db_quick_check_ok
