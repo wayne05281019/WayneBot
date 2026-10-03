@@ -906,25 +906,39 @@ def ensure_market_db() -> None:
     )
 
 
+def _biaoke_ready(db_path: str, *, min_n: int = 1700) -> bool:
+    try:
+        from db_recover import biaoke_post_count
+        from import_health import db_quick_check_ok
+
+        if not db_quick_check_ok(db_path, min_bytes=1):
+            return False
+        return int(biaoke_post_count(db_path) or 0) >= int(min_n)
+    except Exception:
+        return False
+
+
 def start_market_db_recovery_loop() -> threading.Thread:
-    """db_ok 紅就重試 ensure_market_db，不准開機失敗後永遠停在 unread。"""
+    """db 不可讀或 biaoke 空就重試 ensure_market_db（含 corrupt 救回＋seed）。
+
+    不准開機失敗後永遠停在 unread／空 overlay。
+    """
 
     def _loop():
         from config import get_db_path
-        from import_health import db_quick_check_ok
 
-        delays = (15, 30, 60, 120, 180, 300)
+        delays = (5, 15, 30, 60, 120, 180, 300)
         idx = 0
         while True:
             path = get_db_path()
-            try:
-                if db_quick_check_ok(path, min_bytes=1):
-                    return
-            except Exception:
-                pass
+            if _biaoke_ready(path):
+                logger.info("行情庫＋飆大底圖已就緒，停止復原重試")
+                return
             wait = delays[min(idx, len(delays) - 1)]
             idx += 1
-            logger.warning("行情庫仍不可讀，%.0f 秒後重試 ensure_market_db", wait)
+            logger.warning(
+                "行情庫／飆大底圖未就緒，%.0f 秒後重試 ensure_market_db", wait
+            )
             time.sleep(wait)
             try:
                 ensure_market_db()
@@ -932,6 +946,33 @@ def start_market_db_recovery_loop() -> threading.Thread:
                 logger.exception("背景 ensure_market_db 重試失敗")
 
     t = threading.Thread(target=_loop, daemon=True, name="db-recover-loop")
+    t.start()
+    return t
+
+
+def start_early_biaoke_seed() -> threading.Thread:
+    """不要等索引背景 60s＋schema：庫可讀就立刻種 1709／救 corrupt overlay。"""
+
+    def _run():
+        from config import get_db_path
+        from import_health import db_quick_check_ok
+
+        path = get_db_path()
+        for delay in (0, 3, 10, 20):
+            if delay:
+                time.sleep(delay)
+            try:
+                if not db_quick_check_ok(path, min_bytes=1):
+                    continue
+                if _biaoke_ready(path):
+                    return
+                ensure_market_db()
+                if _biaoke_ready(path):
+                    return
+            except Exception:
+                logger.exception("提早 seed／救 biaoke 失敗")
+
+    t = threading.Thread(target=_run, daemon=True, name="biaoke-early-seed")
     t.start()
     return t
 
@@ -959,17 +1000,23 @@ def run_web():
 
     db_path = get_db_path()
     if db_quick_check_ok(db_path):
-        logger.info("行情庫已就緒，背景確認 Release 更新後啟動聽筒")
+        logger.info("行情庫已就緒，背景確認／救回飆大 overlay 後啟動聽筒")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
+        # Release 空表常見：立刻 seed＋corrupt 救回，不准等索引延遲
+        start_early_biaoke_seed()
+        if not _biaoke_ready(db_path):
+            start_market_db_recovery_loop()
     elif os.getenv("RENDER") or render_lite_boot():
         logger.info("Render 冷啟：背景下載／救回行情庫，先開聽筒（避免阻塞健檢與 deploy）")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
-        # 不准開機一次失敗就永遠 db_ok=false（wal 殘留／下載中斷）
+        start_early_biaoke_seed()
+        # 不准開機一次失敗就永遠 db_ok=false／biaoke 空（wal 殘留／下載中斷）
         start_market_db_recovery_loop()
     else:
         logger.info("行情庫尚未就緒，先下載／救回再啟動聽筒")
         ensure_market_db()
-        if not db_quick_check_ok(db_path):
+        start_early_biaoke_seed()
+        if not _biaoke_ready(db_path):
             start_market_db_recovery_loop()
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 

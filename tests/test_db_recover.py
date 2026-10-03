@@ -184,13 +184,30 @@ def test_main_ensure_market_db_uses_recoverable(monkeypatch, tmp_path):
     assert biaoke_post_count(db) >= 1700
 
 
+def test_salvage_biaoke_from_corrupt_without_replacing_db(tmp_path):
+    from db_recover import salvage_biaoke_from_corrupts
+
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=0)
+    corrupt = f"{db}.corrupt-77"
+    _make_db(corrupt, biaoke_n=1720)
+    # 正式路徑留下可讀空表；corrupt 不整檔覆蓋也能救回
+    out = salvage_biaoke_from_corrupts(db)
+    assert out["after"] >= 1700
+    assert out["before"] == 0
+    assert os.path.isfile(corrupt)  # 不准刪 corrupt
+
+
 def test_main_wires_recoverable_and_retry_loop():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     main_src = open(os.path.join(root, "main.py"), encoding="utf-8").read()
     recover_src = open(os.path.join(root, "db_recover.py"), encoding="utf-8").read()
     assert "ensure_market_db_recoverable" in main_src
     assert "start_market_db_recovery_loop" in main_src
+    assert "start_early_biaoke_seed" in main_src
+    assert "_biaoke_ready" in main_src
     assert "move_db_with_sidecars" in recover_src
     assert "best_corrupt_restore" in recover_src
+    assert "salvage_biaoke_from_corrupts" in recover_src
     # 舊坑：只 shutil.move .db、不管 -wal/-shm
     assert "shutil.move(path, corrupt)" not in main_src

@@ -129,6 +129,16 @@ def list_corrupt_candidates(db_path: str) -> List[str]:
     return out
 
 
+def _candidate_readable(cand: str, check) -> bool:
+    """corrupt 可讀才整檔救回；先清它自己的錯位 wal/shm 再驗。"""
+    if check(cand):
+        return True
+    if has_sidecars(cand):
+        remove_sidecars(cand)
+        return bool(check(cand))
+    return False
+
+
 def best_corrupt_restore(
     db_path: str,
     *,
@@ -141,7 +151,7 @@ def best_corrupt_restore(
     check = quick_check or (lambda p: db_quick_check_ok(p, min_bytes=1))
     ranked: List[Tuple[int, float, str]] = []
     for cand in list_corrupt_candidates(db_path):
-        if not check(cand):
+        if not _candidate_readable(cand, check):
             continue
         n = biaoke_post_count(cand)
         if n < int(min_biaoke):
@@ -155,6 +165,108 @@ def best_corrupt_restore(
         return None
     ranked.sort(key=lambda x: (x[0], x[1]), reverse=True)
     return ranked[0][2]
+
+
+def _shared_columns(
+    conn: sqlite3.Connection,
+    main_table: str,
+    *,
+    src_schema: str,
+    src_table: str,
+) -> List[str]:
+    main_cols = [str(r[1]) for r in conn.execute(f"PRAGMA table_info({main_table})")]
+    # ATTACH schema 要用 PRAGMA schema.table_info(name)，不能 table_info(schema.name)
+    src_cols = {
+        str(r[1])
+        for r in conn.execute(f"PRAGMA {src_schema}.table_info({src_table})")
+    }
+    return [c for c in main_cols if c in src_cols]
+
+
+def salvage_biaoke_from_corrupts(
+    db_path: str,
+    *,
+    min_gain: int = 1,
+) -> dict:
+    """正式庫可讀但 biaoke 空／偏少時：ATTACH 各 .corrupt-* 把 biaoke 列 INSERT OR IGNORE 回來。
+
+    不用整檔覆蓋（保留已裝好的官方柱）；也不刪 corrupt。
+    quick_check 紅但仍能 SELECT 的 corrupt 也試。
+    """
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    ensure_biaoke_posts_table(db_path)
+    try:
+        from biaoke_neurons import ensure_neuron_hits_table
+
+        ensure_neuron_hits_table(db_path)
+    except Exception:
+        pass
+    before = biaoke_post_count(db_path)
+    merged = 0
+    sources: List[str] = []
+    for cand in list_corrupt_candidates(db_path):
+        if has_sidecars(cand):
+            remove_sidecars(cand)
+        n = biaoke_post_count(cand)
+        if n < int(min_gain):
+            continue
+        alias = "bk_salvage"
+        try:
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            try:
+                conn.execute(f"ATTACH DATABASE ? AS {alias}", (cand,))
+                hit = conn.execute(
+                    f"SELECT 1 FROM {alias}.sqlite_master "
+                    "WHERE type='table' AND name='biaoke_posts'"
+                ).fetchone()
+                if not hit:
+                    conn.execute(f"DETACH DATABASE {alias}")
+                    continue
+                cols = _shared_columns(
+                    conn, "biaoke_posts", src_schema=alias, src_table="biaoke_posts"
+                )
+                if cols:
+                    col_list = ", ".join(cols)
+                    cur = conn.execute(
+                        f"INSERT OR IGNORE INTO biaoke_posts ({col_list}) "
+                        f"SELECT {col_list} FROM {alias}.biaoke_posts"
+                    )
+                    merged += int(cur.rowcount or 0)
+                try:
+                    nh = conn.execute(
+                        f"SELECT 1 FROM {alias}.sqlite_master "
+                        "WHERE type='table' AND name='biaoke_neuron_hits'"
+                    ).fetchone()
+                    if nh:
+                        ncols = _shared_columns(
+                            conn,
+                            "biaoke_neuron_hits",
+                            src_schema=alias,
+                            src_table="biaoke_neuron_hits",
+                        )
+                        if ncols:
+                            nlist = ", ".join(ncols)
+                            conn.execute(
+                                f"INSERT OR IGNORE INTO biaoke_neuron_hits ({nlist}) "
+                                f"SELECT {nlist} FROM {alias}.biaoke_neuron_hits"
+                            )
+                except sqlite3.Error:
+                    pass
+                conn.commit()
+                conn.execute(f"DETACH DATABASE {alias}")
+                sources.append(os.path.basename(cand))
+            finally:
+                conn.close()
+        except Exception:
+            logger.exception("ATTACH 救 biaoke 失敗 cand=%s", cand)
+    after = biaoke_post_count(db_path)
+    return {
+        "before": before,
+        "after": after,
+        "merged_rows": merged,
+        "sources": sources,
+    }
 
 
 def restore_corrupt_to_path(corrupt_path: str, db_path: str) -> bool:
@@ -277,15 +389,35 @@ def ensure_market_db_recoverable(
                     return result
                 actions.append("sidecar_strip_ok_low_biaoke")
 
-    # 3) 優先從 .corrupt-* 救回（含 overlay）
+    # 3) 優先從 .corrupt-* 整檔救回（含 overlay／自回；比空 Release＋只種 1709 完整）
+    current_n = biaoke_post_count(path) if os.path.isfile(path) else 0
     best = best_corrupt_restore(path, min_biaoke=min_biaoke)
     if best:
-        actions.append(f"restore_corrupt:{os.path.basename(best)}")
-        if restore_corrupt_to_path(best, path) and _ok():
-            n = biaoke_post_count(path)
-            result.update(ok=True, source="corrupt", biaoke_n=n)
-            return result
-        actions.append("restore_corrupt_failed")
+        best_n = biaoke_post_count(best)
+        # 只有 corrupt 明顯更完整（或本尊不可讀／空）才整檔換回
+        if (not _ok()) or best_n > current_n:
+            actions.append(f"restore_corrupt:{os.path.basename(best)}")
+            if restore_corrupt_to_path(best, path):
+                if has_sidecars(path):
+                    remove_sidecars(path)
+                    actions.append("strip_after_corrupt_restore")
+                if _ok():
+                    n = biaoke_post_count(path)
+                    result.update(ok=True, source="corrupt", biaoke_n=n)
+                    return result
+            actions.append("restore_corrupt_failed")
+
+    # 3b) 本尊可讀但 biaoke 仍少：ATTACH 合併 corrupt 的 overlay（不丟 corrupt、不蓋官方柱）
+    if _ok() and biaoke_post_count(path) < int(min_biaoke):
+        salv = salvage_biaoke_from_corrupts(path)
+        if int(salv.get("after") or 0) > int(salv.get("before") or 0):
+            actions.append(
+                f"salvage_biaoke:{salv.get('before')}->{salv.get('after')}"
+            )
+            n = int(salv.get("after") or 0)
+            if n >= int(min_biaoke):
+                result.update(ok=True, source="salvage", biaoke_n=n)
+                return result
 
     # 4) 現況已可讀（只是 biaoke 低、沒有更好 corrupt）→ 留給 seed，不准再 Release 蓋掉
     if _ok():
