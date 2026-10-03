@@ -15,10 +15,14 @@ import re
 import sqlite3
 import threading
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
 
 from industry_fine import TAUGHT_GROUPS
+
+_TP = ZoneInfo("Asia/Taipei")
 
 WANT_ASK = re.compile(
     r"(新族群|蠢蠢欲動|怎麼找|根據我的指引|找族群|還沒點名|底部蠢蠢|指引去找)"
@@ -559,6 +563,247 @@ def latest_spoken(db_path: str) -> str:
     finally:
         conn.close()
     return str(row[0] or "") if row else ""
+
+
+def week_range_taipei(now: Optional[datetime] = None) -> Tuple[str, str]:
+    """本自然週一～今天（Asia/Taipei）。週日算上一週一～日。"""
+    dt = now.astimezone(_TP) if now and now.tzinfo else (now or datetime.now(_TP))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_TP)
+    else:
+        dt = dt.astimezone(_TP)
+    monday = dt - timedelta(days=dt.weekday())
+    return monday.strftime("%Y-%m-%d"), dt.strftime("%Y-%m-%d")
+
+
+def week_spoken(
+    db_path: str,
+    *,
+    start: str = "",
+    end: str = "",
+    now: Optional[datetime] = None,
+) -> str:
+    """本週主文＋他自己回文正文串起來（路人楼不當判斷）。供聯動參考，不改佔比主判。"""
+    if not db_path:
+        return ""
+    a, b = week_range_taipei(now)
+    start = str(start or a)[:10]
+    end = str(end or b)[:10]
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_posts'"
+        ).fetchone()
+        if not hit:
+            return ""
+        mains = conn.execute(
+            "SELECT id, text FROM biaoke_posts "
+            "WHERE IFNULL(kind,'post')!='reply' AND date>=? AND date<=? "
+            "ORDER BY date ASC, time ASC, id ASC",
+            (start, end),
+        ).fetchall()
+        if not mains:
+            return ""
+        root_ids = [str(r[0]) for r in mains if r and r[0]]
+        texts = [str(r[1] or "") for r in mains if r and r[1]]
+        # 樓中樓：自回 parent 可能是主文或上一層自回 id
+        parents = set(root_ids)
+        for _ in range(4):
+            if not parents:
+                break
+            q = ",".join("?" * len(parents))
+            kids = conn.execute(
+                f"SELECT id, text FROM biaoke_posts "
+                f"WHERE kind='reply' AND parent IN ({q})",
+                tuple(parents),
+            ).fetchall()
+            nxt = set()
+            for kid in kids:
+                kid_id = str(kid[0] or "")
+                if kid_id and kid_id not in parents:
+                    nxt.add(kid_id)
+                blob = str(kid[1] or "").strip()
+                if blob:
+                    texts.append(blob)
+            parents |= nxt
+        return "\n".join(t for t in texts if t).strip()
+    except sqlite3.Error:
+        return ""
+    finally:
+        conn.close()
+
+
+def biaoke_week_link(
+    db_path: str,
+    *,
+    start: str = "",
+    end: str = "",
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """洞燭聯動層：本週飆大點名族群／個股／他已點位階摘要。只參考，不准當買訊。"""
+    empty: Dict[str, Any] = {
+        "ok": False,
+        "start": "",
+        "end": "",
+        "mains": 0,
+        "replies": 0,
+        "fields": [],
+        "names": [],
+        "sids": [],
+        "levels": [],
+        "lines": [],
+    }
+    if not db_path:
+        return empty
+    a, b = week_range_taipei(now)
+    start = str(start or a)[:10]
+    end = str(end or b)[:10]
+    spoken = week_spoken(db_path, start=start, end=end, now=now)
+    if not spoken:
+        return {**empty, "start": start, "end": end}
+    # 聯動族群：認族名／針字／他本週點名的主流詞，不因單一檔跨族別名誤觸（如穩懋→低軌）。
+    fields: List[str] = []
+    for g in _GROUPS:
+        needles = [str(g.get("field") or "")]
+        needles.extend(str(x) for x in (g.get("needles") or ()) if x)
+        for n in g.get("names") or ():
+            if n in (
+                "ASIC",
+                "散熱",
+                "光通訊",
+                "InP",
+                "PCB",
+                "CCL",
+                "ABF",
+                "記憶體製造",
+                "記憶體",
+                "封測",
+                "低軌衛星",
+                "低軌",
+            ):
+                needles.append(str(n))
+        if any(n and n in spoken for n in needles):
+            fields.append(str(g["field"]))
+    # 點名檔：tags＋正文 named_pairs（IET＝4971）
+    names: List[str] = []
+    sids: List[str] = []
+    try:
+        from biaoke_tape import named_pairs
+    except Exception:
+        named_pairs = None  # type: ignore
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        mains = conn.execute(
+            "SELECT id, tags, text FROM biaoke_posts "
+            "WHERE IFNULL(kind,'post')!='reply' AND date>=? AND date<=?",
+            (start, end),
+        ).fetchall()
+        main_n = len(mains)
+        parents = {str(r[0]) for r in mains if r and r[0]}
+        reply_n = 0
+        rows = list(mains)
+        seen = set(parents)
+        frontier = set(parents)
+        for _ in range(4):
+            if not frontier:
+                break
+            q = ",".join("?" * len(frontier))
+            kids = conn.execute(
+                f"SELECT id, tags, text FROM biaoke_posts "
+                f"WHERE kind='reply' AND parent IN ({q})",
+                tuple(frontier),
+            ).fetchall()
+            nxt = set()
+            for kid in kids:
+                reply_n += 1
+                kid_id = str(kid[0] or "")
+                if kid_id and kid_id not in seen:
+                    seen.add(kid_id)
+                    nxt.add(kid_id)
+                    rows.append(kid)
+            frontier = nxt
+    except sqlite3.Error:
+        return {**empty, "start": start, "end": end}
+    finally:
+        conn.close()
+    name_c: Counter = Counter()
+    sid_c: Counter = Counter()
+    for _id, tags_raw, text in rows:
+        tags = tags_raw
+        if isinstance(tags, str):
+            try:
+                tags = json.loads(tags)
+            except Exception:
+                tags = []
+        if named_pairs is not None:
+            try:
+                pairs = named_pairs(str(text or ""), tags)
+            except Exception:
+                pairs = []
+            for sid, name in pairs or []:
+                if sid:
+                    sid_c[str(sid)] += 1
+                if name:
+                    name_c[str(name)] += 1
+        for t in tags or []:
+            if t:
+                name_c[str(t)] += 1
+    names = [n for n, _ in name_c.most_common(8)]
+    sids = [s for s, _ in sid_c.most_common(8)]
+    # 他已點過的大盤位（只摘原文出現的數字＋關／破／回測語境；不准補新價）
+    levels: List[str] = []
+    level_pat = re.compile(
+        r"(?:突破|過|回測|關卡|關前|穿刺)?\s*([9／/]?\d{1,2}[/／]\d{1,2}\s*)?(\d{4,5})"
+    )
+    for m in level_pat.finditer(spoken):
+        num = m.group(2)
+        if not num:
+            continue
+        try:
+            v = int(num)
+        except ValueError:
+            continue
+        if v < 40000 or v > 60000:
+            continue  # 只要大盤萬點級，個股價另在 names
+        ctx = spoken[max(0, m.start() - 8) : m.end() + 4]
+        label = f"{v}"
+        if "48601" in label or v == 48601:
+            label = "9/22 48601"
+        elif v == 48218:
+            label = "6/23 48218"
+        elif v in (48373, 48602, 48647, 47500, 47400, 48200):
+            label = str(v)
+        else:
+            label = str(v)
+        if label not in levels and any(
+            k in ctx for k in ("破", "關", "回測", "穿刺", "過", "整理")
+        ):
+            levels.append(label)
+        if len(levels) >= 6:
+            break
+    lines: List[str] = [
+        f"本週主文 {main_n}／自回 {reply_n}（{start[5:].replace('-','/')}–{end[5:].replace('-','/')}）",
+    ]
+    if fields:
+        lines.append("點名族群 " + "、".join(fields[:6]) + "（參考）")
+    if names:
+        lines.append("點名檔 " + "、".join(names[:6]) + "（參考）")
+    if levels:
+        lines.append("他點大盤位 " + "、".join(levels[:5]) + "（官方柱對質，不准補新價）")
+    lines.append("佔比仍主判；飆大只聯動參考，不是買訊")
+    lines.append("切入只認黃金買點")
+    return {
+        "ok": True,
+        "start": start,
+        "end": end,
+        "mains": main_n,
+        "replies": reply_n,
+        "fields": fields,
+        "names": names,
+        "sids": sids,
+        "levels": levels,
+        "lines": lines,
+    }
 
 
 def _named_keys(spoken: str) -> set:
@@ -2480,6 +2725,12 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bo
     pick["flow_named_hot"] = named_hot
     pick["hot_ref"] = _hot_ref_line(named_hot, pick.get("named") or [])
     pick["five"] = _five_line(pick, pick.get("flow") or {}, named_hot)
+    # 本週飆大聯動：附加參考層，不回寫 cand.named、不改佔比主判／黃金買點。
+    try:
+        week_ref = biaoke_week_link(db_path) if db_path else {}
+    except Exception:
+        week_ref = {}
+    pick["biaoke_week"] = week_ref if isinstance(week_ref, dict) else {}
     pick["chip_cap"] = chip_cap
     pick["flow_window"] = FLOW_LOOKBACK
     pick["pre_ok"] = bool(flow_hit.get("pre_ok")) if flow_hit else False
@@ -3088,6 +3339,15 @@ def dongzhu_page(
                 f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。')}</i>"
             )
         )
+        week0 = data.get("biaoke_week") if isinstance(data.get("biaoke_week"), dict) else {}
+        week0_lines = [str(x) for x in (week0.get("lines") or []) if str(x).strip()]
+        if week0_lines:
+            blocks.append(
+                _blk(
+                    "<b>本週飆大聯動（參考）</b>",
+                    *(_esc(x) for x in week0_lines),
+                )
+            )
         return join_dashed(*blocks)
     now_rows = ["<b>此刻最像</b>", _esc(field)]
     parts = list(data.get("layers") or [])
@@ -3185,4 +3445,13 @@ def dongzhu_page(
         )
     if alt_bits:
         blocks.append(_blk("<b>次熱（佔當日法人買超％）</b>", *alt_bits))
+    week = data.get("biaoke_week") if isinstance(data.get("biaoke_week"), dict) else {}
+    week_lines = [str(x) for x in (week.get("lines") or []) if str(x).strip()]
+    if week_lines:
+        blocks.append(
+            _blk(
+                "<b>本週飆大聯動（參考）</b>",
+                *(_esc(x) for x in week_lines),
+            )
+        )
     return join_dashed(*blocks)
