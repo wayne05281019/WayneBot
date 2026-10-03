@@ -52,11 +52,14 @@ def test_vol_zone_dpi_and_jpeg_quality_floor():
     assert "VOL_ZONE_JPEG_QUALITY" in src or "pil_kwargs" in src
 
 
-def test_pressure_list_two_phase_prepare_then_paint():
+def test_pressure_list_streams_per_stock_not_whole_page():
+    """壓撐名單逐檔送；不准整頁 two_phase 逾時讓後面檔消失。"""
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._run_pressure_support)
-    assert "render_volume_zones_two_phase" in src or "chart_batch" in src
+    assert "submit_mpl_paint" in src
+    assert "render_volume_zone_result" in src
+    assert "render_volume_zones_two_phase" not in src
     batch = open("chart_batch.py", encoding="utf-8").read()
     assert "prepare_volume_zone" in batch
     assert "_paint_volume_zone" in batch

@@ -117,10 +117,11 @@ def test_pressure_trio_paints_serial_not_parallel_wait_for():
 
 
 def test_bot_chart_entries_use_submit_mpl_paint():
-    """真正 savefig 必走 submit／run_mpl_paint；整頁算卡不准獨占 worker。
+    """真正 savefig 必走 submit／run_mpl_paint；多檔必須逐檔送。
 
-    壓撐名單／勝率買點：外層 to_thread 算卡，內層 chart_batch／winrate
-    已 run_mpl_paint。查股／三張／大盤／飆大／籌碼：外層 submit_mpl_paint。
+    壓撐名單：逐檔 submit_mpl_paint(render_volume_zone_result)。
+    勝率買點：逐檔 to_thread(render_stock_pair)，內層 run_mpl_paint。
+    查股／三張／大盤／飆大／籌碼：外層 submit_mpl_paint。
     """
     from bot_servers import WayneTelegramBot
 
@@ -141,19 +142,15 @@ def test_bot_chart_entries_use_submit_mpl_paint():
         src = inspect.getsource(getattr(WayneTelegramBot, meth))
         assert "submit_mpl_paint" in src, f"{label} ({meth}) 未走 submit_mpl_paint"
 
-    # 整頁：不准外層 submit_mpl_paint（會堵住查股）；內層 run_mpl_paint
-    page = {
-        "_run_pressure_support": "壓撐名單",
-        "_run_winrate_buypoint": "勝率買點",
-    }
-    for meth, label in page.items():
-        assert hasattr(WayneTelegramBot, meth), label
-        src = inspect.getsource(getattr(WayneTelegramBot, meth))
-        assert "asyncio.to_thread" in src, f"{label} 應 to_thread 算卡"
-        assert "submit_mpl_paint(" not in src, (
-            f"{label} 不准整頁 submit_mpl_paint（會獨占 worker）"
-        )
+    # 壓撐名單／勝率：逐檔送；不准整頁 two_phase／render_page_pairs
+    pressure = inspect.getsource(WayneTelegramBot._run_pressure_support)
+    assert "submit_mpl_paint(" in pressure
+    assert "render_volume_zones_two_phase" not in pressure
+    assert "asyncio.to_thread" in pressure or "wrap_future" in pressure
+
     wr = inspect.getsource(WayneTelegramBot._run_winrate_buypoint)
+    assert "asyncio.to_thread" in wr
+    assert "submit_mpl_paint(" not in wr
     assert "render_stock_pair" in wr
     assert "render_page_pairs" not in wr
 

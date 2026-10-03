@@ -1148,16 +1148,17 @@ class WayneTelegramBot:
                 )
                 return
             await message.reply_html(head, disable_web_page_preview=True)
-            # 先出壓力區圖（含導航箭頭／量能；版面與點股三張同一套 with_nav_signals）
+            # 逐檔渲＋送：不准整頁 wait_for(two_phase)——逾時／OOM 會讓後面檔整批消失。
             from pressure_support_watch import pressure_card_html
-            # 平行準備（假日／對齊快取後可重疊）→ 串行 paint（mpl 鎖）
-            from chart_batch import render_volume_zones_two_phase
+            from vol_zone_chart import render_volume_zone_result
+            from wayne_navigator import submit_mpl_paint
 
             sent = 0
             picks: list = []
             card_lines: list = []
             show = list(rows[:MAX_PICK_INLINE_ROWS])
-            jobs: list = []
+            total = max(1, len(show))
+            per_stock_timeout = max(90.0, float(_LOOKUP_PNG_TIMEOUT))
             for idx, r in enumerate(show, start=1):
                 code = str(r.get("code") or r.get("stock_id") or "").strip()
                 name = str(r.get("name") or r.get("stock_name") or "")
@@ -1174,31 +1175,39 @@ class WayneTelegramBot:
                 out = self._scratch_chart_path(
                     self.charts_dir, code, f"ps_{tag}", uid
                 )
-                jobs.append((code, name, out))
-
-            try:
-                # 整頁 prepare／算卡走一般 thread；真正 savefig 才進 paint worker
-                # （不准把整頁 submit_mpl_paint，否則查股會卡在勝率算卡後面）。
-                rendered = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        render_volume_zones_two_phase,
-                        jobs,
-                        self.db_path,
-                        with_nav_signals=True,
-                        max_workers=8,
-                    ),
-                    timeout=120.0,
-                )
-            except Exception:
-                logger.exception("壓撐名單平行出圖失敗")
-                rendered = [("", "")] * len(jobs)
-            for (code, name, _out), (path, cap) in zip(jobs, rendered):
                 kb = InlineKeyboardMarkup(
                     [self._pressure_pick_row(code, name, tag)]
                 )
+                path = ""
+                cap = ""
+                try:
+                    fut = submit_mpl_paint(
+                        render_volume_zone_result,
+                        code,
+                        name,
+                        self.db_path,
+                        out,
+                        with_nav_signals=True,
+                    )
+                    path, cap = await asyncio.wait_for(
+                        asyncio.wrap_future(fut),
+                        timeout=per_stock_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "壓撐名單單檔逾時 code=%s i=%s/%s", code, idx, total
+                    )
+                    path, cap = "", ""
+                except Exception:
+                    logger.exception(
+                        "壓撐名單單檔出圖失敗 code=%s i=%s/%s", code, idx, total
+                    )
+                    path, cap = "", ""
                 if path and os.path.isfile(path):
                     try:
-                        send_path = self._prepare_lookup_album_photo(path)
+                        send_path = await asyncio.to_thread(
+                            self._prepare_lookup_album_photo, path
+                        )
                         caption = (cap or f"{code} {name}　{label}（只觀察，不是買訊）")[
                             :900
                         ]
@@ -1207,15 +1216,32 @@ class WayneTelegramBot:
                                 photo=f, caption=caption, reply_markup=kb
                             )
                         sent += 1
-                        continue
                     except Exception:
                         logger.exception("壓撐壓力區圖送出失敗 code=%s", code)
-                await message.reply_html(
-                    f"<b>{html_escape(code)} {html_escape(name)}</b>　"
-                    f"{html_escape(label)}\n<i>壓力區圖暫無法出，仍可點檔看三張。</i>",
-                    reply_markup=kb,
-                    disable_web_page_preview=True,
-                )
+                        await message.reply_html(
+                            f"<b>{html_escape(code)} {html_escape(name)}</b>　"
+                            f"{html_escape(label)}\n<i>壓力區圖暫無法出，仍可點檔看三張。</i>",
+                            reply_markup=kb,
+                            disable_web_page_preview=True,
+                        )
+                else:
+                    await message.reply_html(
+                        f"<b>{html_escape(code)} {html_escape(name)}</b>　"
+                        f"{html_escape(label)}\n<i>壓力區圖暫無法出，仍可點檔看三張。</i>",
+                        reply_markup=kb,
+                        disable_web_page_preview=True,
+                    )
+                try:
+                    import matplotlib.pyplot as plt
+
+                    plt.close("all")
+                except Exception:
+                    pass
+                try:
+                    gc.collect()
+                except Exception:
+                    pass
+                await asyncio.sleep(0.05)
             # 名單卡＋三子鈕／點股列：觀察說明與換標籤一次齊
             roster = (
                 f"<i>共 {sent}/{len(show)} 張壓力區圖（含導航指標）。"
