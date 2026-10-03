@@ -577,6 +577,52 @@ def week_range_taipei(now: Optional[datetime] = None) -> Tuple[str, str]:
     return monday.strftime("%Y-%m-%d"), dt.strftime("%Y-%m-%d")
 
 
+def recent_spoken_range(
+    db_path: str,
+    *,
+    now: Optional[datetime] = None,
+    days: int = 7,
+) -> Tuple[str, str]:
+    """近窗有他正文的區間：先本自然週；空了就用庫內最新主文日往回 days 天。
+
+    休市／還沒抓到本週文時，仍要用最近一週主文＋自回去推論，不准空轉只記。
+    """
+    a, b = week_range_taipei(now)
+    if not db_path:
+        return a, b
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            hit = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_posts'"
+            ).fetchone()
+            if not hit:
+                return a, b
+            n = conn.execute(
+                "SELECT COUNT(*) FROM biaoke_posts "
+                "WHERE IFNULL(kind,'post')!='reply' AND date>=? AND date<=?",
+                (a, b),
+            ).fetchone()
+            if n and int(n[0] or 0) > 0:
+                return a, b
+            row = conn.execute(
+                "SELECT MAX(date) FROM biaoke_posts WHERE IFNULL(kind,'post')!='reply'"
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return a, b
+    last = str((row or (None,))[0] or "").strip()[:10]
+    if not last or len(last) < 10:
+        return a, b
+    try:
+        end_dt = datetime.strptime(last[:10], "%Y-%m-%d").replace(tzinfo=_TP)
+    except ValueError:
+        return a, b
+    start_dt = end_dt - timedelta(days=max(1, int(days) - 1))
+    return start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
+
+
 def week_spoken(
     db_path: str,
     *,
@@ -584,12 +630,13 @@ def week_spoken(
     end: str = "",
     now: Optional[datetime] = None,
 ) -> str:
-    """本週主文＋他自己回文正文串起來（路人楼不當判斷）。供聯動參考，不改佔比主判。"""
+    """近窗主文＋他自己回文正文串起來（路人楼不當判斷）。給聯想推論用。"""
     if not db_path:
         return ""
-    a, b = week_range_taipei(now)
-    start = str(start or a)[:10]
-    end = str(end or b)[:10]
+    if start and end:
+        a, b = str(start)[:10], str(end)[:10]
+    else:
+        a, b = recent_spoken_range(db_path, now=now)
     conn = sqlite3.connect(db_path, timeout=8.0)
     try:
         hit = conn.execute(
@@ -601,7 +648,7 @@ def week_spoken(
             "SELECT id, text FROM biaoke_posts "
             "WHERE IFNULL(kind,'post')!='reply' AND date>=? AND date<=? "
             "ORDER BY date ASC, time ASC, id ASC",
-            (start, end),
+            (a, b),
         ).fetchall()
         if not mains:
             return ""
@@ -924,6 +971,7 @@ def record_spoken_field_expand(
         return out
     optical = optical_tier_insight(blob, db_path)
     field_expand = spoken_field_roster_judge(blob, db_path)
+    asic_ic = asic_ic_peer_insight(blob, db_path)
     lines: List[str] = []
     for ol in optical.get("lines") or []:
         if ol and ol not in lines:
@@ -931,6 +979,9 @@ def record_spoken_field_expand(
     for fl in field_expand.get("lines") or []:
         if fl and fl not in lines:
             lines.append(str(fl))
+    for al in asic_ic.get("lines") or []:
+        if al and al not in lines:
+            lines.append(str(al))
     rows: List[Dict[str, Any]] = []
     # 光通訊整組
     for r in optical.get("roster") or []:
@@ -983,6 +1034,39 @@ def record_spoken_field_expand(
                     "why": "類股展開對質",
                 }
             )
+    # 二軍 IC 設計：錨定＋相關池
+    for r in asic_ic.get("anchors") or []:
+        sid = str(r.get("sid") or "").strip()
+        if not sid:
+            continue
+        rows.append(
+            {
+                "sid": sid,
+                "stock_id": sid,
+                "name": str(r.get("name") or ""),
+                "stock_name": str(r.get("name") or ""),
+                "pct_change": r.get("chg5"),
+                "field": "ASIC錨定",
+                "role": "anchor",
+                "why": "二軍IC設計聯想",
+            }
+        )
+    for r in asic_ic.get("peers") or []:
+        sid = str(r.get("sid") or "").strip()
+        if not sid:
+            continue
+        rows.append(
+            {
+                "sid": sid,
+                "stock_id": sid,
+                "name": str(r.get("name") or ""),
+                "stock_name": str(r.get("name") or ""),
+                "pct_change": r.get("chg5"),
+                "field": "二軍IC設計",
+                "role": str(r.get("chain") or "peer"),
+                "why": "二軍IC設計聯想",
+            }
+        )
     n = 0
     if rows:
         try:
@@ -1011,6 +1095,7 @@ def record_spoken_field_expand(
             "n": n,
             "optical": optical,
             "field_expand": field_expand,
+            "asic_ic": asic_ic,
             "lines": lines,
         }
     )
@@ -1146,6 +1231,350 @@ def optical_tier_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
     return out
 
 
+# 二軍 IC 設計聯想：錨定台積／創意／聯發；愛普＝記憶體IC≠這主流（他說過）
+_ASIC_IC_ANCHORS = (
+    ("2330", "台積電"),
+    ("3443", "創意"),
+    ("2454", "聯發科"),
+)
+_ASIC_IC_MEM = {
+    "6531": "愛普",
+    "3006": "晶豪科",
+    "3014": "聯陽",
+    "5351": "鈺創",
+    "8299": "群聯",
+}
+_ASIC_IC_ASK = re.compile(
+    r"(二軍.{0,12}IC|IC設計.{0,24}(ASIC|台積|創意|聯發)|"
+    r"(ASIC|台積電?|創意|聯發科?).{0,24}(相關.?IC|IC設計|IC 設計)|"
+    r"相關的IC設計|愛普.{0,16}記憶體|主流就是和這三|"
+    r"二軍IC設計|重中之重.{0,12}IC|"
+    r"炒ASIC.{0,20}IC設計|ASIC\s*/\s*IC設計|最強主流是ASIC|"
+    r"不是其他\s*IC設計|主流.{0,8}IC設計)"
+)
+
+
+def _close_by_date(db_path: str, sid: str, n: int = 22) -> List[Tuple[str, float]]:
+    if not db_path or not sid:
+        return []
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            rows = conn.execute(
+                "SELECT date, close FROM daily_quotes WHERE stock_id=? "
+                "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT ?",
+                (str(sid), int(n)),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return []
+    out: List[Tuple[str, float]] = []
+    for d, c in reversed(rows or ()):
+        try:
+            px = float(c or 0)
+        except (TypeError, ValueError):
+            continue
+        if px > 0:
+            out.append((_ymd(d), px))
+    return out
+
+
+def _rets_aligned(
+    a: Sequence[Tuple[str, float]], b: Sequence[Tuple[str, float]]
+) -> Tuple[List[float], List[float]]:
+    mb = {d: c for d, c in b}
+    ra: List[float] = []
+    rb: List[float] = []
+    prev_a: Optional[float] = None
+    prev_b: Optional[float] = None
+    for d, ca in a:
+        cb = mb.get(d)
+        if cb is None:
+            prev_a = ca
+            continue
+        if prev_a and prev_b and prev_a > 0 and prev_b > 0:
+            ra.append(ca / prev_a - 1.0)
+            rb.append(cb / prev_b - 1.0)
+        prev_a = ca
+        prev_b = cb
+    return ra, rb
+
+
+def _pearson(xs: Sequence[float], ys: Sequence[float]) -> Optional[float]:
+    n = min(len(xs), len(ys))
+    if n < 5:
+        return None
+    x = list(xs[:n])
+    y = list(ys[:n])
+    mx = sum(x) / n
+    my = sum(y) / n
+    num = sum((a - mx) * (b - my) for a, b in zip(x, y))
+    denx = sum((a - mx) ** 2 for a in x) ** 0.5
+    deny = sum((b - my) ** 2 for b in y) ** 0.5
+    if denx <= 1e-12 or deny <= 1e-12:
+        return None
+    return round(num / (denx * deny), 2)
+
+
+def _ic_design_peer_ids(db_path: str) -> List[Tuple[str, str, str]]:
+    """相關 IC 設計池＝IP/ASIC＋IC-設計；排除記憶體IC設計與三錨。"""
+    anchor_ids = {s for s, _ in _ASIC_IC_ANCHORS}
+    out: Dict[str, Tuple[str, str]] = {}
+    # 沒庫時仍有 ASIC 教過名冊
+    for sid in TAUGHT_GROUPS.get("ASIC") or ():
+        if sid not in anchor_ids and sid not in _ASIC_IC_MEM:
+            out[str(sid)] = (_OPT_ROSTER_NAMES.get(str(sid), ""), "IP/ASIC")
+    # 固定旁名：他提過、且屬 ASIC／IC 設計聯想（非記憶體）
+    for sid, name, chain in (
+        ("3035", "智原", "IP/ASIC"),
+        ("3661", "世芯-KY", "IP/ASIC"),
+        ("3529", "力旺", "IP/ASIC"),
+        ("6643", "M31", "IP/ASIC"),
+        ("6533", "晶心科", "IP/ASIC"),
+        ("4966", "譜瑞-KY", "IC-設計"),
+        ("5274", "信驊", "IC-設計"),
+        ("2379", "瑞昱", "IC-設計"),
+        ("3034", "聯詠", "IC-設計"),
+    ):
+        if sid not in anchor_ids:
+            out[sid] = (name, chain)
+    if db_path:
+        try:
+            conn = sqlite3.connect(db_path, timeout=8.0)
+            try:
+                hit = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' "
+                    "AND name='stock_fine_industry'"
+                ).fetchone()
+                if hit:
+                    rows = conn.execute(
+                        "SELECT stock_id, chain FROM stock_fine_industry "
+                        "WHERE chain IN ('電子上游-IP/ASIC','電子上游-IC-設計') "
+                        "OR chain LIKE '%IP/ASIC%' OR chain LIKE '%IC-設計%'"
+                    ).fetchall()
+                    for sid, chain in rows:
+                        sid = str(sid or "").strip()
+                        ch = str(chain or "")
+                        if not sid or sid in anchor_ids or sid in _ASIC_IC_MEM:
+                            continue
+                        if "記憶體" in ch:
+                            continue
+                        if "IP/ASIC" in ch or ch.endswith("IC-設計") or "IC-設計" in ch:
+                            tag = "IP/ASIC" if "ASIC" in ch or "IP/" in ch else "IC-設計"
+                            nm = out.get(sid, ("", tag))[0]
+                            out[sid] = (nm or _stock_name(db_path, sid, sid), tag)
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass
+    return [(s, n or s, c) for s, (n, c) in sorted(out.items())]
+
+
+def asic_ic_peer_insight(spoken: str, db_path: str = "") -> Dict[str, Any]:
+    """他說二軍 IC 設計要找跟台積／創意／聯發相關的 → 展開池、對位階／連動／空間。
+
+    愛普＝記憶體IC設計，他說過不是這主流。不准當買訊；切入只認黃金買點。
+    """
+    text = str(spoken or "")
+    out: Dict[str, Any] = {
+        "ok": False,
+        "anchors": [],
+        "peers": [],
+        "memory_note": [],
+        "lines": [],
+    }
+    if not text or not _ASIC_IC_ASK.search(text):
+        # 弱觸發：同時點 ASIC＋IC設計／二軍
+        weak = (
+            ("ASIC" in text or "創意" in text)
+            and ("IC設計" in text or "IC 設計" in text or "二軍" in text)
+        )
+        if not weak:
+            return out
+
+    anchors: List[Dict[str, Any]] = []
+    for sid, name in _ASIC_IC_ANCHORS:
+        st = _stats(_bars(db_path, sid, "")) if db_path else None
+        anchors.append(
+            {
+                "sid": sid,
+                "name": name,
+                "chg5": _pct_chg_n(db_path, sid, 5),
+                "chg20": _pct_chg_n(db_path, sid, 20),
+                "vs20": None if not st else round(float(st["vs20"]), 1),
+                "vs60": None if not st else round(float(st["vs60"]), 1),
+                "broke": bool(st.get("broke")) if st else None,
+            }
+        )
+    anchor_series = {
+        sid: _close_by_date(db_path, sid, 22) for sid, _n in _ASIC_IC_ANCHORS
+    }
+    peers_raw = _ic_design_peer_ids(db_path)
+    peers: List[Dict[str, Any]] = []
+    for sid, name, chain in peers_raw:
+        st = _stats(_bars(db_path, sid, "")) if db_path else None
+        series = _close_by_date(db_path, sid, 22)
+        corrs: Dict[str, Optional[float]] = {}
+        for aid, aname in _ASIC_IC_ANCHORS:
+            ra, rb = _rets_aligned(series, anchor_series.get(aid) or [])
+            corrs[aname] = _pearson(ra, rb)
+        corr_vals = [c for c in corrs.values() if c is not None]
+        max_corr = max(corr_vals) if corr_vals else None
+        vs20 = None if not st else round(float(st["vs20"]), 1)
+        room = None
+        if vs20 is not None:
+            if vs20 <= -8.0 and not (st or {}).get("broke"):
+                room = "space"  # 相對還有空間（參考）
+            elif vs20 >= -2.0:
+                room = "thin"
+            else:
+                room = "mid"
+        peers.append(
+            {
+                "sid": sid,
+                "name": name or sid,
+                "chain": chain,
+                "chg5": _pct_chg_n(db_path, sid, 5),
+                "chg20": _pct_chg_n(db_path, sid, 20),
+                "vs20": vs20,
+                "vs60": None if not st else round(float(st["vs60"]), 1),
+                "broke": bool(st.get("broke")) if st else None,
+                "corr": corrs,
+                "max_corr": max_corr,
+                "room": room,
+            }
+        )
+
+    # 排序：連動高優先，其次位階仍低
+    def _peer_key(p: Dict[str, Any]) -> Tuple[float, float]:
+        mc = p.get("max_corr")
+        vs = p.get("vs20")
+        return (
+            -(float(mc) if mc is not None else -1.0),
+            float(vs) if vs is not None else 0.0,
+        )
+
+    peers.sort(key=_peer_key)
+    peers = peers[:16]
+
+    mem_note: List[Dict[str, Any]] = []
+    if "愛普" in text or "6531" in text or "記憶體" in text:
+        for sid, name in _ASIC_IC_MEM.items():
+            if name in text or sid in text or name == "愛普":
+                if name != "愛普" and name not in text and sid not in text:
+                    continue
+                mem_note.append(
+                    {
+                        "sid": sid,
+                        "name": name,
+                        "chg5": _pct_chg_n(db_path, sid, 5),
+                        "vs20": None,
+                        "note": "記憶體IC設計，他說過不是台積／創意／聯發這主流",
+                    }
+                )
+                if name == "愛普":
+                    break
+        if not mem_note and ("愛普" in text or "記憶體" in text):
+            mem_note.append(
+                {
+                    "sid": "6531",
+                    "name": "愛普",
+                    "chg5": _pct_chg_n(db_path, "6531", 5),
+                    "vs20": None,
+                    "note": "記憶體IC設計，他說過不是台積／創意／聯發這主流",
+                }
+            )
+
+    lines: List[str] = []
+    lines.append(
+        "二軍IC設計聯想＝跟台積電／創意／聯發科相關（IP/ASIC＋IC設計）；"
+        "愛普屬記憶體IC≠這主流（參考）"
+    )
+    a_avg = _avg_chg(
+        [{"chg5": a.get("chg5")} for a in anchors],
+        "chg5",
+    )
+    if a_avg is not None:
+        drive = "龍頭近5日均偏多、有帶動條件" if a_avg > 0.5 else (
+            "龍頭近5日均偏弱、二軍跟漲宜慎" if a_avg < -0.5 else "龍頭近5日均不強不弱"
+        )
+        bits = "、".join(
+            f"{a['name']}"
+            + (f"{float(a['chg5']):+.1f}%" if a.get("chg5") is not None else "")
+            for a in anchors
+        )
+        lines.append(f"錨定 {bits}；{drive}（{a_avg:+.1f}%，非買訊）")
+    linked = [p for p in peers if p.get("max_corr") is not None and float(p["max_corr"]) >= 0.35]
+    if linked:
+        lines.append(
+            "近窗與龍頭連動較高 "
+            + "、".join(
+                f"{p['name']}ρ{float(p['max_corr']):.2f}" for p in linked[:4]
+            )
+            + "（對質，非買訊）"
+        )
+    space = [p for p in peers if p.get("room") == "space" and p.get("vs20") is not None]
+    thin = [p for p in peers if p.get("room") == "thin" and p.get("vs20") is not None]
+    if space:
+        lines.append(
+            "位階相對低、空間較厚 "
+            + "、".join(f"{p['name']}距20高{float(p['vs20']):+.1f}%" for p in space[:4])
+            + "（參考，切入只認黃金買點）"
+        )
+    if thin:
+        lines.append(
+            "已近20高、空間薄 "
+            + "、".join(f"{p['name']}距20高{float(p['vs20']):+.1f}%" for p in thin[:3])
+            + "（參考，非買訊）"
+        )
+    # 跟漲：近5日％相對龍頭
+    if a_avg is not None:
+        lag = [
+            p
+            for p in peers
+            if p.get("chg5") is not None
+            and float(p["chg5"]) < a_avg - 2.0
+            and p.get("max_corr") is not None
+            and float(p["max_corr"]) >= 0.25
+        ]
+        lead_p = [
+            p
+            for p in peers
+            if p.get("chg5") is not None and float(p["chg5"]) > a_avg + 2.0
+        ]
+        if lag:
+            lines.append(
+                "連動在、漲幅落後龍頭 "
+                + "、".join(
+                    f"{p['name']}{float(p['chg5']):+.1f}%" for p in lag[:3]
+                )
+                + "（跟不跟得上待對質）"
+            )
+        if lead_p:
+            lines.append(
+                "近5日強過錨定均 "
+                + "、".join(
+                    f"{p['name']}{float(p['chg5']):+.1f}%" for p in lead_p[:3]
+                )
+                + "（是否透支另看位階）"
+            )
+    for m in mem_note:
+        lines.append(f"{m['name']}＝{m['note']}（參考）")
+    if lines:
+        lines.append("聯想對質不是買訊；切入只認黃金買點")
+    out.update(
+        {
+            "ok": bool(lines),
+            "anchors": anchors,
+            "peers": peers,
+            "memory_note": mem_note,
+            "lines": lines,
+        }
+    )
+    return out
+
+
 def biaoke_week_link(
     db_path: str,
     *,
@@ -1166,13 +1595,17 @@ def biaoke_week_link(
         "levels": [],
         "optical": {},
         "field_expand": {},
+        "asic_ic": {},
+        "infer": [],
         "lines": [],
     }
     if not db_path:
         return empty
-    a, b = week_range_taipei(now)
-    start = str(start or a)[:10]
-    end = str(end or b)[:10]
+    if start and end:
+        a, b = str(start)[:10], str(end)[:10]
+    else:
+        a, b = recent_spoken_range(db_path, now=now)
+    start, end = a, b
     spoken = week_spoken(db_path, start=start, end=end, now=now)
     if not spoken:
         return {**empty, "start": start, "end": end}
@@ -1314,7 +1747,16 @@ def biaoke_week_link(
     for fl in field_expand.get("lines") or []:
         if fl and fl not in lines:
             lines.append(str(fl))
-    lines.append("佔比仍主判；飆大只聯動參考，不是買訊")
+    asic_ic = asic_ic_peer_insight(spoken, db_path)
+    for al in asic_ic.get("lines") or []:
+        if al and al not in lines:
+            lines.append(str(al))
+    # 融會：從近窗正文抽出「引領找股」判斷句（不是存檔清單）
+    infer = _week_inference_lines(spoken, optical, field_expand, asic_ic, fields)
+    for il in infer:
+        if il and il not in lines:
+            lines.append(il)
+    lines.append("佔比仍主判；飆大引領找股方向，不是買訊")
     lines.append("切入只認黃金買點")
     return {
         "ok": True,
@@ -1328,8 +1770,65 @@ def biaoke_week_link(
         "levels": levels,
         "optical": optical,
         "field_expand": field_expand,
+        "asic_ic": asic_ic,
+        "infer": infer,
         "lines": lines,
     }
+
+
+def _week_inference_lines(
+    spoken: str,
+    optical: Dict[str, Any],
+    field_expand: Dict[str, Any],
+    asic_ic: Dict[str, Any],
+    fields: Sequence[str],
+) -> List[str]:
+    """把近窗正文＋柱對質收成可餵洞燭精神的推論句。"""
+    text = str(spoken or "")
+    out: List[str] = []
+    if not text:
+        return out
+    # ASIC 主流＋二軍 IC 設計引領
+    if asic_ic.get("ok"):
+        peers = asic_ic.get("peers") or []
+        space = [p for p in peers if p.get("room") == "space"][:3]
+        linked = [
+            p
+            for p in peers
+            if p.get("max_corr") is not None and float(p["max_corr"]) >= 0.35
+        ][:3]
+        bit = "近窗他釘 ASIC／創意／聯發為主流→二軍往相關 IC 設計找"
+        if "不是其他" in text and "IC設計" in text.replace(" ", ""):
+            bit += "；他說過炒 ASIC 不是其他 IC／IP"
+        if linked:
+            bit += "；連動 "
+            bit += "、".join(str(p.get("name") or "") for p in linked)
+        if space:
+            bit += "；位階仍低 "
+            bit += "、".join(str(p.get("name") or "") for p in space)
+        out.append(bit + "（引領找股，非買訊）")
+    # 光通訊次層
+    if optical.get("ok"):
+        ia, ca = optical.get("inp_avg_5d"), optical.get("connect_avg_5d")
+        if ia is not None and ca is not None:
+            if float(ia) > float(ca) + 1:
+                out.append("近窗柱印證光通訊次層 InP＞連接側（他主流 InP 句）")
+            elif float(ca) > float(ia) + 1:
+                out.append("近窗柱連接側強過 InP＝與其主流 InP 句對質中")
+    # 類股展開強弱
+    for fld, pack in (field_expand.get("fields") or {}).items():
+        avg = pack.get("avg_5d")
+        st = pack.get("strong") or []
+        if avg is None:
+            continue
+        if fld in (fields or []) or fld in text:
+            nm = "、".join(str(x.get("name") or "") for x in st[:2])
+            out.append(
+                f"近窗「{fld}」整組均 {float(avg):+.1f}%"
+                + (f"、強 {nm}" if nm else "")
+                + "（類股展開）"
+            )
+    return out[:6]
 
 
 def _named_keys(spoken: str) -> set:
@@ -3251,12 +3750,34 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bo
     pick["flow_named_hot"] = named_hot
     pick["hot_ref"] = _hot_ref_line(named_hot, pick.get("named") or [])
     pick["five"] = _five_line(pick, pick.get("flow") or {}, named_hot)
-    # 本週飆大聯動：附加參考層，不回寫 cand.named、不改佔比主判／黃金買點。
+    # 近窗飆大聯想：推論餵進 why 精神；佔比仍主判、不准改黃金買點。
     try:
         week_ref = biaoke_week_link(db_path) if db_path else {}
     except Exception:
         week_ref = {}
     pick["biaoke_week"] = week_ref if isinstance(week_ref, dict) else {}
+    infer_bits = [
+        str(x)
+        for x in ((week_ref or {}).get("infer") or [])
+        if str(x).strip()
+    ]
+    if not infer_bits:
+        # 沒有收成 infer 時，仍抽 asic／optical 關鍵句進精神
+        for key in ("asic_ic", "optical"):
+            pack = (week_ref or {}).get(key) or {}
+            for x in (pack.get("lines") or [])[:2]:
+                if x and str(x) not in infer_bits:
+                    infer_bits.append(str(x))
+    if infer_bits and pick.get("why"):
+        pick["why"] = (
+            str(pick["why"])
+            + "聯想："
+            + "；".join(infer_bits[:3])
+            + "。"
+        )
+    # ASIC 族被佔比或近窗釘到時：把連動高／位階低的二軍 IC 設計併入 laggard 候選精神
+    asic_pack = (week_ref or {}).get("asic_ic") or {}
+    pick["asic_ic_peers"] = list(asic_pack.get("peers") or [])[:8]
     pick["chip_cap"] = chip_cap
     pick["flow_window"] = FLOW_LOOKBACK
     pick["pre_ok"] = bool(flow_hit.get("pre_ok")) if flow_hit else False
@@ -3866,12 +4387,15 @@ def dongzhu_page(
             )
         )
         week0 = data.get("biaoke_week") if isinstance(data.get("biaoke_week"), dict) else {}
-        week0_lines = [str(x) for x in (week0.get("lines") or []) if str(x).strip()]
+        week0_infer = [str(x) for x in (week0.get("infer") or []) if str(x).strip()]
+        week0_lines = week0_infer or [
+            str(x) for x in (week0.get("lines") or []) if str(x).strip()
+        ]
         if week0_lines:
             blocks.append(
                 _blk(
-                    "<b>本週飆大聯動（參考）</b>",
-                    *(_esc(x) for x in week0_lines),
+                    "<b>近窗飆大聯想（引領找股）</b>",
+                    *(_esc(x) for x in week0_lines[:8]),
                 )
             )
         return join_dashed(*blocks)
@@ -3972,12 +4496,43 @@ def dongzhu_page(
     if alt_bits:
         blocks.append(_blk("<b>次熱（佔當日法人買超％）</b>", *alt_bits))
     week = data.get("biaoke_week") if isinstance(data.get("biaoke_week"), dict) else {}
-    week_lines = [str(x) for x in (week.get("lines") or []) if str(x).strip()]
+    week_infer = [str(x) for x in (week.get("infer") or []) if str(x).strip()]
+    week_lines = week_infer or [
+        str(x) for x in (week.get("lines") or []) if str(x).strip()
+    ]
     if week_lines:
         blocks.append(
             _blk(
-                "<b>本週飆大聯動（參考）</b>",
-                *(_esc(x) for x in week_lines),
+                "<b>近窗飆大聯想（引領找股）</b>",
+                *(_esc(x) for x in week_lines[:8]),
+            )
+        )
+    # 二軍 IC 設計位階／連動：有柱才列，準進場仍只認黃金買點
+    peers = list(data.get("asic_ic_peers") or [])
+    if not peers:
+        peers = list((week.get("asic_ic") or {}).get("peers") or [])
+    peer_rows: List[str] = []
+    for p in peers[:5]:
+        if not isinstance(p, dict) or not p.get("name"):
+            continue
+        bits = [str(p.get("name"))]
+        if p.get("vs20") is not None:
+            bits.append(f"距20高{float(p['vs20']):+.1f}%")
+        if p.get("chg5") is not None:
+            bits.append(f"5日{float(p['chg5']):+.1f}%")
+        if p.get("max_corr") is not None:
+            bits.append(f"連動ρ{float(p['max_corr']):.2f}")
+        if p.get("room") == "space":
+            bits.append("空間較厚")
+        elif p.get("room") == "thin":
+            bits.append("空間薄")
+        peer_rows.append(" ".join(bits))
+    if peer_rows:
+        blocks.append(
+            _blk(
+                "<b>相關IC設計對質</b>",
+                *(_esc(x) for x in peer_rows),
+                _esc("引領找股；切入只認黃金買點"),
             )
         )
     return join_dashed(*blocks)
