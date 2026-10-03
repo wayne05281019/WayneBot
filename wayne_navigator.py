@@ -22,14 +22,16 @@ import matplotlib.colors as mcolors
 from matplotlib.lines import Line2D
 from contextlib import contextmanager
 from functools import lru_cache, wraps
-from threading import Lock
+from threading import Lock, RLock
 import pandas as pd
 import numpy as np
 
 # FT2Font 是共用物件，量字寬要改 size／text，併發產圖時得排隊。
 _FT_LOCK = Lock()
 # pyplot 全域狀態非 thread-safe；四圖並行會畫出空白／殘缺檔（標題在、K 線不見）。
-_MPL_RENDER_LOCK = Lock()
+# FreeType／Agg 畫字非執行緒安全。RLock：chips／導航已在外層 mpl_render 時，
+# _savefig_lookup_png 仍可再進（巢狀），查股介紹∥高低卡與勝率壓區∥卡才不會互踩。
+_MPL_RENDER_LOCK = RLock()
 
 
 @contextmanager
@@ -213,19 +215,24 @@ def _lookup_render_memo_put(key: tuple, path: str) -> None:
 
 
 def _savefig_lookup_png(fig, save_path: str, dpi: int) -> str:
-    """查股直出 JPEG（路徑可仍叫 .png）。少一趟 PNG 壓縮，相簿再裁 4:5。"""
-    fig.savefig(
-        save_path,
-        format="jpeg",
-        dpi=dpi,
-        facecolor=fig.get_facecolor(),
-        # 無色度抽樣：細線／灰短柱／小字在縮圖比較保得住
-        pil_kwargs={
-            "quality": int(LOOKUP_JPEG_QUALITY),
-            "optimize": False,
-            "subsampling": 0,
-        },
-    )
+    """查股直出 JPEG（路徑可仍叫 .png）。少一趟 PNG 壓縮，相簿再裁 4:5。
+
+    存檔＝Agg draw＝FreeType 量字；必須進 mpl_render，否則介紹∥高低卡
+    或勝率壓區∥卡會互踩（上詮／大立光等同業列多、圖較高較易中）。
+    """
+    with mpl_render():
+        fig.savefig(
+            save_path,
+            format="jpeg",
+            dpi=dpi,
+            facecolor=fig.get_facecolor(),
+            # 無色度抽樣：細線／灰短柱／小字在縮圖比較保得住
+            pil_kwargs={
+                "quality": int(LOOKUP_JPEG_QUALITY),
+                "optimize": False,
+                "subsampling": 0,
+            },
+        )
     return save_path
 
 

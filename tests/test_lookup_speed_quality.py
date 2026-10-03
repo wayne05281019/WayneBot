@@ -23,6 +23,59 @@ def test_lookup_jpeg_quality_floor():
     assert "LOOKUP_JPEG_QUALITY" in src
     assert "subsampling" in src
     assert "0" in src
+    # 存檔＝FreeType draw；必須進 mpl_render，介紹∥高低卡才不互踩
+    assert "mpl_render" in src
+
+
+def test_optical_lookup_pair_under_contention(tmp_path):
+    """上詮／大立光：介紹∥高低卡＋旁路勝率壓區同刻，不准 FreeType 踩爆。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from chip_tape import build_tape
+    from vol_zone_chart import render_volume_zone_result
+    from wayne_navigator import (
+        NavigatorEngine,
+        clear_lookup_render_cache,
+        prewarm_card_fonts,
+        render_decision_card_png,
+        render_first_glance_png,
+    )
+
+    prewarm_card_fonts()
+    clear_lookup_render_cache()
+    db = get_db_path()
+
+    def _pair(sid: str):
+        card = NavigatorEngine(db).get_decision_card(sid, lookback=20, merge_live=False)
+        assert isinstance(card, dict) and not card.get("error")
+        ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
+        tape = build_tape(db, sid, merge_live=False) or {}
+        g_path = str(tmp_path / f"{sid}_g.jpg")
+        c_path = str(tmp_path / f"{sid}_c.jpg")
+        v_path = str(tmp_path / f"{sid}_v.jpg")
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            fg = ex.submit(
+                render_first_glance_png, sid, card, tape, g_path, db, ohlc
+            )
+            fc = ex.submit(render_decision_card_png, card, c_path)
+            fv = ex.submit(
+                render_volume_zone_result,
+                sid,
+                card.get("stock_name") or sid,
+                db,
+                v_path,
+                card=card,
+                with_nav_signals=True,
+            )
+            g, c = fg.result(timeout=90), fc.result(timeout=90)
+            v, _cap = fv.result(timeout=90)
+        assert g and c and v
+        assert os.path.isfile(g) and os.path.getsize(g) > 50_000
+        assert os.path.isfile(c) and os.path.getsize(c) > 50_000
+        assert os.path.isfile(v) and os.path.getsize(v) > 50_000
+
+    _pair("3363")
+    _pair("3008")
 
 
 def test_album_resize_uses_lanczos():
