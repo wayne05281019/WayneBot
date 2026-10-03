@@ -506,13 +506,21 @@ def _classify_roster(
 
 
 def _filter_live_rows(
-    db_path: str, members: Sequence[Tuple[str, str]]
+    db_path: str,
+    members: Sequence[Tuple[str, str]],
+    *,
+    preserve_order: bool = False,
 ) -> List[Dict[str, Any]]:
-    return [
+    """preserve_order＝照名冊鎖死序（介紹排版）；否則維持可接優先排序。"""
+    rows = [
         r
         for r in _classify_roster(db_path, list(members))
         if not advice_sid_blocked(db_path, str(r.get("sid") or ""))
     ]
+    if preserve_order and members:
+        order = {str(sid): i for i, (sid, _n) in enumerate(members)}
+        rows.sort(key=lambda r: order.get(str(r.get("sid") or ""), 999))
+    return rows
 
 
 def _tier_summary_line(label: str, rows: Sequence[Dict[str, Any]]) -> str:
@@ -570,11 +578,29 @@ def _live_field_flags(text: str) -> Dict[str, bool]:
     )
     opt = any(
         k in t
-        for k in ("InP", "光通訊", "矽光子", "CPO", "FAU", "聯亞", "全新", "上詮")
+        for k in (
+            "InP",
+            "光通訊",
+            "矽光子",
+            "CPO",
+            "FAU",
+            "聯亞",
+            "全新",
+            "上詮",
+            "訊芯",
+            "眾達",
+        )
     )
     inp = any(k in t for k in ("InP", "聯亞", "全新", "IET", "穩懋", "光通訊", "矽光子"))
-    fau = any(k in t for k in ("FAU", "上詮", "波若威", "光聖", "光通訊", "矽光子"))
-    cpo = any(k in t for k in ("CPO", "大立光", "光通訊", "矽光子"))
+    # 大立光鎖在 FAU／微光學，不准再當 CPO 觸發
+    fau = any(
+        k in t
+        for k in ("FAU", "上詮", "波若威", "光聖", "大立光", "光通訊", "矽光子")
+    )
+    cpo = any(
+        k in t
+        for k in ("CPO", "訊芯", "眾達", "日月光", "聯鈞", "台積", "光通訊", "矽光子")
+    )
     return {
         "asic": asic,
         "opt": opt,
@@ -608,15 +634,26 @@ def _inp_asic_tiers(db_path: str, spoken: str) -> Dict[str, Any]:
         "live": flags,
     }
     # 近窗沒點到就不硬塞名冊；已退場主題檔一律剔除
+    # 介紹名單照鎖死序；該怎麼做分桶仍用 action 內容，不靠這裡排序
     if flags.get("inp"):
-        out["inp"] = _filter_live_rows(db_path, list(_OPT_INP.items()))
+        out["inp"] = _filter_live_rows(
+            db_path, list(_OPT_INP.items()), preserve_order=True
+        )
     if flags.get("fau"):
-        out["fau"] = _filter_live_rows(db_path, list(_OPT_FAU.items()))
+        out["fau"] = _filter_live_rows(
+            db_path, list(_OPT_FAU.items()), preserve_order=True
+        )
     if flags.get("cpo"):
-        out["cpo"] = _filter_live_rows(db_path, list(_OPT_CPO.items()))
+        out["cpo"] = _filter_live_rows(
+            db_path, list(_OPT_CPO.items()), preserve_order=True
+        )
     if flags.get("asic"):
-        leaders = _filter_live_rows(db_path, list(_ASIC_LEADERS))
-        related = _filter_live_rows(db_path, list(_ASIC_RELATED))
+        leaders = _filter_live_rows(
+            db_path, list(_ASIC_LEADERS), preserve_order=True
+        )
+        related = _filter_live_rows(
+            db_path, list(_ASIC_RELATED), preserve_order=True
+        )
         out["asic_leaders"] = leaders
         out["asic_related"] = related
         # 合併給舊呼叫端：龍頭優先，再相關鏈（去重）
@@ -929,36 +966,66 @@ def action_advice_pack(db_path: str = "", ask: str = "") -> Dict[str, Any]:
     }
 
 
+def _bare_yahoo_anchor(sid: str, name: str, db_path: str = "") -> str:
+    """介紹區專用：只連奇摩股名，不帶上市／上櫃／產業後綴。"""
+    sid = str(sid or "").strip()
+    name = str(name or "").strip()
+    label = f"{sid} {name}".strip() or sid
+    try:
+        from stock_links import yahoo_urls
+
+        web, _m = yahoo_urls(sid, db_path or None)
+        href = str(web or "").replace("&", "&amp;")
+        if href:
+            return f'<a href="{href}">{html_escape(label)}</a>'
+    except Exception:
+        pass
+    return html_escape(label)
+
+
 def _yahoo_join(
     rows: Sequence[Dict[str, Any]],
     db_path: str,
     *,
     limit: int = 6,
     notes: Optional[Dict[str, str]] = None,
+    leaders: Optional[set] = None,
 ) -> str:
-    """股名＝奇摩報價藍字；能一行就一行。"""
+    """股名＝奇摩報價藍字；能一行就一行。龍頭只橘標，不准寫上市／上櫃。"""
     if not rows:
         return ""
     try:
-        from stock_links import html_stock_anchor
+        from tg_layout import html_face
     except Exception:
-        html_stock_anchor = None  # type: ignore
+        html_face = None  # type: ignore
     bits: List[str] = []
     note_map = notes or {}
+    lead_ids = {str(x) for x in (leaders or set()) if str(x)}
     for r in list(rows)[: max(1, int(limit))]:
         sid = str(r.get("sid") or "")
         name = str(r.get("name") or sid)
         if not sid:
             continue
-        if html_stock_anchor:
-            bit = html_stock_anchor(sid, name, db_path)
-        else:
-            bit = html_escape(f"{sid} {name}".strip())
+        bit = _bare_yahoo_anchor(sid, name, db_path)
+        if sid in lead_ids and html_face:
+            bit = f"{html_face('龍頭')} {bit}"
+        elif sid in lead_ids:
+            bit = f"<code>龍頭</code> {bit}"
         note = str(note_map.get(sid) or "").strip()
         if note:
             bit = f"{bit}（{html_escape(note)}）"
         bits.append(bit)
     return "、".join(bits)
+
+
+def _how_label_pad(label: str, *, width: int = 6) -> str:
+    """該怎麼做欄位標籤對齊（全形寬約 18 字手機氣泡）。"""
+    t = str(label or "").strip()
+    # 全形字當 1 欄寬；不足用全形空白補
+    n = len(t)
+    if n >= width:
+        return t
+    return t + ("　" * (width - n))
 
 
 def _how_plain_line(label: str, rows: Sequence[Dict[str, Any]], *, n: int = 4) -> str:
@@ -974,52 +1041,78 @@ def _how_plain_line(label: str, rows: Sequence[Dict[str, Any]], *, n: int = 4) -
 def format_action_advice_html(
     db_path: str = "", ask: str = "", *, limit: int = 4
 ) -> str:
-    """空白／類股：先 ASIC 全鏈，再光通訊 InP／FAU／CPO，再該怎麼做分層。
+    """空白／類股：先 ASIC 全鏈，再 InP→FAU→CPO，再該怎麼做。
 
-    排版：能一行就一行；股名連 Yahoo 奇摩；近窗 14 日沒再講的族群不出現。
+    鎖死排版：粗體表頭、下一行名單；只橘標龍頭；不寫上市／上櫃；
+    股名連 Yahoo 奇摩；近窗 14 日沒再講的族群不出現。
     """
     pack = action_advice_pack(db_path, ask=ask)
     live = pack.get("live") or {}
     if not pack.get("ok") and not live.get("asic") and not live.get("opt"):
         return ""
     try:
-        from biaoke_field_scan import _ASIC_CHAIN_NOTE
+        from biaoke_field_scan import (
+            _ASIC_CHAIN_NOTE,
+            _ASIC_INTRO_HEADER,
+            _OPT_CPO_HEADER,
+            _OPT_FAU_HEADER,
+            _OPT_INP_HEADER,
+            _OPT_INP_LEADERS,
+            _OPT_INP_NOTES,
+        )
     except Exception:
         _ASIC_CHAIN_NOTE = {}
+        _ASIC_INTRO_HEADER = "ASIC｜IC設計全鏈（到年前主軸）"
+        _OPT_INP_HEADER = "InP（磷化銦）：發光光源與晶片磊晶材料"
+        _OPT_FAU_HEADER = "FAU（光纖陣列）與微光學元件"
+        _OPT_CPO_HEADER = "CPO（共同封裝光學）與先進封測族群"
+        _OPT_INP_LEADERS = frozenset({"3081"})
+        _OPT_INP_NOTES = {"3105": "另有低軌衛星題材"}
     blocks: List[str] = []
-    # 1) ASIC 到年前主軸：三龍頭＋相關鏈
+    # 1) ASIC 全鏈：粗體表頭 → 橘標龍頭 → 相關鏈
     if live.get("asic"):
-        blocks.append("<b>ASIC｜到年前主軸</b>")
+        blocks.append(f"<b>{html_escape(_ASIC_INTRO_HEADER)}</b>")
         leaders = pack.get("asic_leaders") or []
         related = pack.get("asic_related") or []
-        lead_line = _yahoo_join(leaders, db_path, limit=3)
+        lead_ids = {str(r.get("sid") or "") for r in leaders if r.get("sid")}
+        lead_line = _yahoo_join(
+            leaders, db_path, limit=3, leaders=lead_ids
+        )
         if lead_line:
-            blocks.append("三龍頭　" + lead_line)
+            blocks.append(lead_line)
         rel_line = _yahoo_join(
             related, db_path, limit=6, notes=dict(_ASIC_CHAIN_NOTE or {})
         )
         if rel_line:
-            blocks.append("相關鏈　" + rel_line)
+            blocks.append(rel_line)
         if not lead_line and not rel_line:
             blocks.append(html_escape("近窗有講 ASIC，官方柱名冊暫不足"))
         blocks.append("")
-    # 2) 光通訊三英文族
+    # 2) 光通訊三族：各自粗體表頭＋下一行名單（InP→FAU→CPO）
     if live.get("opt"):
-        blocks.append("<b>光通訊｜InP／FAU／CPO</b>")
         if live.get("inp"):
-            line = _yahoo_join(pack.get("inp_rows") or [], db_path, limit=5)
+            line = _yahoo_join(
+                pack.get("inp_rows") or [],
+                db_path,
+                limit=5,
+                notes=dict(_OPT_INP_NOTES or {}),
+                leaders=set(_OPT_INP_LEADERS or ()),
+            )
             if line:
-                blocks.append("InP　" + line)
+                blocks.append(f"<b>{html_escape(_OPT_INP_HEADER)}</b>")
+                blocks.append(line)
         if live.get("fau"):
             line = _yahoo_join(pack.get("fau_rows") or [], db_path, limit=4)
             if line:
-                blocks.append("FAU　" + line)
+                blocks.append(f"<b>{html_escape(_OPT_FAU_HEADER)}</b>")
+                blocks.append(line)
         if live.get("cpo"):
-            line = _yahoo_join(pack.get("cpo_rows") or [], db_path, limit=3)
+            line = _yahoo_join(pack.get("cpo_rows") or [], db_path, limit=5)
             if line:
-                blocks.append("CPO　" + line)
+                blocks.append(f"<b>{html_escape(_OPT_CPO_HEADER)}</b>")
+                blocks.append(line)
         blocks.append("")
-    # 3) 該怎麼做：可接／等回測／偏熱
+    # 3) 該怎麼做殿後：可接／等回測／偏熱先不追（標籤對齊）
     blocks.append("<b>該怎麼做</b>")
     how_n = max(1, int(limit))
     added = False
@@ -1031,24 +1124,22 @@ def format_action_advice_html(
         rows = list(pack.get(key) or [])[:how_n]
         if not rows:
             continue
-        # 一行一欄：標籤＋股名奇摩＋官方憑據（單位％對齊在括號內）
         bits = []
         for r in rows:
             sid = str(r.get("sid") or "")
             name = str(r.get("name") or sid)
-            try:
-                from stock_links import html_stock_anchor
-
-                anchor = html_stock_anchor(sid, name, db_path) if sid else html_escape(name)
-            except Exception:
-                anchor = html_escape(name)
+            anchor = (
+                _bare_yahoo_anchor(sid, name, db_path) if sid else html_escape(name)
+            )
             ev = str(r.get("evidence") or "").strip()
             bits.append(f"{anchor}（{html_escape(ev)}）" if ev else anchor)
-        blocks.append(f"{html_escape(label)}　" + "、".join(bits))
+        blocks.append(_how_label_pad(label) + "、".join(bits))
         added = True
     if not added:
         for line in (pack.get("lines") or [])[:how_n]:
             t = str(line).replace("不是買訊", "").replace("非買訊", "").strip()
+            # 舊句若夾上市／上櫃標，介紹區一律剝掉
+            t = t.replace("上市", "").replace("上櫃", "").strip(" 　｜|")
             if t:
                 blocks.append(html_escape(t))
                 added = True
@@ -1059,7 +1150,11 @@ def format_action_advice_html(
     # 清尾空白行
     while blocks and blocks[-1] == "":
         blocks.pop()
-    return "\n".join(blocks)
+    # 整段再擋一次：介紹區不准出現上市／上櫃字樣
+    out = "\n".join(blocks)
+    if "上市" in out or "上櫃" in out:
+        out = out.replace("上市", "").replace("上櫃", "")
+    return out
 
 
 def advice_chart_targets(
