@@ -302,12 +302,26 @@ def test_boot_force_seed_calls_ingest():
     ).read()
     assert "ingest_public_posts" in src
     assert "開機立刻抓文" in src
+    assert "private_row_total" in src
     ingest_src = open(
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "biaoke_ingest.py"),
         encoding="utf-8",
     ).read()
     assert "_time.sleep(5)" in ingest_src
     assert "_time.sleep(90)" not in ingest_src
+
+
+def test_ensure_always_force_seeds_for_private_even_when_biaoke_ok():
+    """biaoke 已 ≥1700 仍要 force_seed（ATTACH 救私人），不准跳過。"""
+    src = open(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main.py"),
+        encoding="utf-8",
+    ).read()
+    # 舊寫法：biaoke 夠就只 record、不 force → 私人永遠空
+    assert "force_seed_biaoke_baseline()" in src
+    chunk = src[src.find("def ensure_market_db") : src.find("def _biaoke_ready")]
+    assert "force_seed_biaoke_baseline()" in chunk
+    assert 'if int(result.get("biaoke_n") or 0) < 1700:' not in chunk
 
 
 def test_main_wires_recoverable_and_retry_loop():

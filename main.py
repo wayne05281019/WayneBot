@@ -209,6 +209,13 @@ def _cheap_health_data() -> dict:
         out.update(tx_health_stats(path))
     except Exception:
         pass
+    # 私人本列數（合計，不含 uid／內容）——換庫後要看得出有沒有從 corrupt 救回
+    try:
+        from db_recover import private_row_total
+
+        out["private_n"] = int(private_row_total(path) or 0)
+    except Exception:
+        out["private_n"] = int(_BIAOKE_SEED_STATUS.get("private_n") or 0)
     _HEALTH_DATA_CACHE["at"] = now
     _HEALTH_DATA_CACHE["payload"] = out
     return out
@@ -332,6 +339,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                     payload["tx_night_high"] = str(data.get("tx_night_high") or "")
                     payload["tx_night_low"] = str(data.get("tx_night_low") or "")
                     payload["tx_night_date"] = str(data.get("tx_night_date") or "")
+                    if data.get("private_n") is not None:
+                        payload["private_n"] = int(data.get("private_n") or 0)
                 except Exception as e:
                     payload["data_ok"] = False
                     payload["data_error"] = str(e)
@@ -1001,19 +1010,8 @@ def ensure_market_db() -> None:
             size_mb,
             result.get("actions"),
         )
-        # Release 空表／overlay 缺：強制 seed；失敗寫 health
-        if int(result.get("biaoke_n") or 0) < 1700:
-            force_seed_biaoke_baseline()
-        else:
-            _record_biaoke_seed_status(
-                {
-                    "ok": True,
-                    "biaoke_n": result.get("biaoke_n"),
-                    "source": result.get("source") or "recover",
-                    "error": "",
-                    "steps": list(result.get("actions") or []),
-                }
-            )
+        # 飆大已夠也要再跑 force（裡面會 ATTACH 救私人）；空 overlay 則 seed＋ingest
+        force_seed_biaoke_baseline()
         return
     logger.error(
         "行情庫仍無法讀取 path=%s actions=%s（將由背景重試）",
