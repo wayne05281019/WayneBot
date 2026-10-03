@@ -37,6 +37,17 @@ logger = logging.getLogger("WayneBot")
 _PROCESS_STARTED_AT = time.time()
 _HEALTH_DATA_CACHE: dict = {"at": 0.0, "payload": None}
 _HEALTH_DATA_TTL_S = 45.0
+# 開機強制種飆大底圖的狀態（失敗不准吞；/health 要看得到）
+_BIAOKE_SEED_STATUS: dict = {
+    "biaoke_seed_ok": None,
+    "biaoke_seed_n": 0,
+    "biaoke_seed_source": "",
+    "biaoke_seed_error": "",
+    "biaoke_seed_steps": [],
+    "biaoke_seed_at": "",
+    "private_n": 0,
+    "private_merged_tables": 0,
+}
 
 
 def _boot_grace_seconds() -> int:
@@ -258,6 +269,19 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "disk_ok": None,
                 "disk_alert": "unknown",
                 "disk_alert_zh": "",
+                "biaoke_seed_ok": _BIAOKE_SEED_STATUS.get("biaoke_seed_ok"),
+                "biaoke_seed_n": int(_BIAOKE_SEED_STATUS.get("biaoke_seed_n") or 0),
+                "biaoke_seed_source": str(
+                    _BIAOKE_SEED_STATUS.get("biaoke_seed_source") or ""
+                ),
+                "biaoke_seed_error": str(
+                    _BIAOKE_SEED_STATUS.get("biaoke_seed_error") or ""
+                ),
+                "biaoke_seed_at": str(_BIAOKE_SEED_STATUS.get("biaoke_seed_at") or ""),
+                "private_n": int(_BIAOKE_SEED_STATUS.get("private_n") or 0),
+                "private_merged_tables": int(
+                    _BIAOKE_SEED_STATUS.get("private_merged_tables") or 0
+                ),
             }
             try:
                 from disk_guard import disk_health_fields
@@ -859,21 +883,76 @@ def start_market_backfill(delay_s: float = 0):
     return t
 
 
+def _record_biaoke_seed_status(result: dict) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    _BIAOKE_SEED_STATUS["biaoke_seed_ok"] = bool(result.get("ok"))
+    _BIAOKE_SEED_STATUS["biaoke_seed_n"] = int(result.get("biaoke_n") or 0)
+    _BIAOKE_SEED_STATUS["biaoke_seed_source"] = str(result.get("source") or "")
+    _BIAOKE_SEED_STATUS["biaoke_seed_error"] = str(result.get("error") or "")
+    _BIAOKE_SEED_STATUS["biaoke_seed_steps"] = list(result.get("steps") or [])
+    _BIAOKE_SEED_STATUS["biaoke_seed_at"] = datetime.now(
+        ZoneInfo("Asia/Taipei")
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    _BIAOKE_SEED_STATUS["private_n"] = int(result.get("private_n") or 0)
+    merged = result.get("private_merged") or {}
+    _BIAOKE_SEED_STATUS["private_merged_tables"] = int(len(merged))
+    # 清 health 快取，立刻露出新 biaoke_n
+    _HEALTH_DATA_CACHE["at"] = 0.0
+    _HEALTH_DATA_CACHE["payload"] = None
+
+
+def force_seed_biaoke_baseline() -> dict:
+    """開機強制：corrupt 優先 → seed archive_1709；狀態寫入 /health。"""
+    from config import get_db_path
+    from db_recover import force_biaoke_baseline
+
+    path = get_db_path()
+    try:
+        result = force_biaoke_baseline(path)
+    except Exception as exc:
+        logger.exception("force_biaoke_baseline 炸了")
+        result = {
+            "ok": False,
+            "biaoke_n": 0,
+            "source": "",
+            "error": f"force_exception:{exc}",
+            "steps": [],
+        }
+    _record_biaoke_seed_status(result)
+    if result.get("ok"):
+        logger.info(
+            "飆大底圖就緒 source=%s biaoke_n=%s steps=%s",
+            result.get("source"),
+            result.get("biaoke_n"),
+            result.get("steps"),
+        )
+    else:
+        logger.error(
+            "飆大底圖未就緒 error=%s biaoke_n=%s steps=%s",
+            result.get("error"),
+            result.get("biaoke_n"),
+            result.get("steps"),
+        )
+    return result
+
+
 def ensure_market_db() -> None:
     """確保行情庫可讀：清錯位 wal/shm → 優先救 .corrupt-*（biaoke≥1700）→ 再 Release。
 
     不准只搬 .db 留下 -wal／-shm（會讓新庫套舊 WAL 永遠 quick_check 紅）。
-    不准留下 health 長期 db_ok=false 卻不再重試。
+    不准留下 health 長期 db_ok=false／biaoke 空卻不再重試。
     """
     from config import get_db_path
     from db_recover import ensure_market_db_recoverable
-    from import_health import db_quick_check_ok
 
     path = get_db_path()
     try:
         result = ensure_market_db_recoverable(path)
     except Exception:
         logger.exception("行情庫復原失敗")
+        force_seed_biaoke_baseline()
         return
     if result.get("ok"):
         try:
@@ -887,22 +966,33 @@ def ensure_market_db() -> None:
             size_mb,
             result.get("actions"),
         )
-        # Release 重建後通常沒有 1709 overlay；立刻 seed，不等索引背景延遲。
-        try:
-            n_bk = int(result.get("biaoke_n") or 0)
-            if n_bk < 1700 and db_quick_check_ok(path, min_bytes=1):
-                from biaoke_archive import seed_biaoke_archive
-
-                seeded = seed_biaoke_archive(path)
-                if seeded:
-                    logger.info("復原後 seed_biaoke_archive 補進 %s 列", seeded)
-        except Exception:
-            logger.exception("復原後 seed_biaoke_archive 失敗")
+        # Release 空表／overlay 缺：強制 seed；失敗寫 health
+        if int(result.get("biaoke_n") or 0) < 1700:
+            force_seed_biaoke_baseline()
+        else:
+            _record_biaoke_seed_status(
+                {
+                    "ok": True,
+                    "biaoke_n": result.get("biaoke_n"),
+                    "source": result.get("source") or "recover",
+                    "error": "",
+                    "steps": list(result.get("actions") or []),
+                }
+            )
         return
     logger.error(
         "行情庫仍無法讀取 path=%s actions=%s（將由背景重試）",
         path,
         result.get("actions"),
+    )
+    _record_biaoke_seed_status(
+        {
+            "ok": False,
+            "biaoke_n": 0,
+            "source": "",
+            "error": "db_unreadable",
+            "steps": list(result.get("actions") or []),
+        }
     )
 
 
@@ -951,26 +1041,25 @@ def start_market_db_recovery_loop() -> threading.Thread:
 
 
 def start_early_biaoke_seed() -> threading.Thread:
-    """不要等索引背景 60s＋schema：庫可讀就立刻種 1709／救 corrupt overlay。"""
+    """不要等索引背景 60s＋schema：庫可讀就立刻種 1709／救 corrupt overlay＋私人。"""
 
     def _run():
         from config import get_db_path
         from import_health import db_quick_check_ok
 
         path = get_db_path()
-        for delay in (0, 3, 10, 20):
+        for delay in (0, 2, 5, 15, 30):
             if delay:
                 time.sleep(delay)
             try:
                 if not db_quick_check_ok(path, min_bytes=1):
+                    ensure_market_db()
                     continue
-                if _biaoke_ready(path):
-                    return
-                ensure_market_db()
+                force_seed_biaoke_baseline()
                 if _biaoke_ready(path):
                     return
             except Exception:
-                logger.exception("提早 seed／救 biaoke 失敗")
+                logger.exception("提早 seed／救 biaoke／私人失敗")
 
     t = threading.Thread(target=_run, daemon=True, name="biaoke-early-seed")
     t.start()
@@ -1028,6 +1117,11 @@ def run_web():
 
     def _db_index_background():
         try:
+            # 先強制種飆大／救私人，不准卡在 60s sleep＋schema 之後才做
+            try:
+                force_seed_biaoke_baseline()
+            except Exception:
+                logger.exception("索引背景開頭 force_seed 失敗")
             if index_delay_s > 0:
                 logger.info("Render：延後 %.0f 秒再建資料庫索引", index_delay_s)
                 time.sleep(index_delay_s)
@@ -1094,11 +1188,7 @@ def run_web():
             except Exception:
                 logger.exception("啟動興櫃半套補齊失敗")
             try:
-                from biaoke_archive import seed_biaoke_archive
-
-                n_bk = seed_biaoke_archive(get_db_path())
-                if n_bk:
-                    logger.info("飆大公開文 overlay 補進 %s 列", n_bk)
+                force_seed_biaoke_baseline()
                 from biaoke_link import link_biaoke_db
 
                 n_link = link_biaoke_db(get_db_path())
@@ -1121,7 +1211,7 @@ def run_web():
                     n_q,
                 )
             except Exception:
-                logger.exception("飆大 1709 overlay 補進失敗")
+                logger.exception("飆大 1709 overlay／私人救回失敗")
             try:
                 from company_events import ensure_events_loaded
 

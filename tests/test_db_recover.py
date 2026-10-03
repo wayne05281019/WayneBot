@@ -198,6 +198,61 @@ def test_salvage_biaoke_from_corrupt_without_replacing_db(tmp_path):
     assert os.path.isfile(corrupt)  # 不准刪 corrupt
 
 
+def test_salvage_private_tables_from_corrupt(tmp_path):
+    from db_recover import private_row_total, salvage_private_from_corrupts
+
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=0)
+    corrupt = f"{db}.corrupt-88"
+    _make_db(corrupt, biaoke_n=1720)
+    conn = sqlite3.connect(corrupt)
+    conn.execute(
+        "CREATE TABLE user_holdings (user_id TEXT, stock_id TEXT, PRIMARY KEY(user_id, stock_id))"
+    )
+    conn.execute("INSERT INTO user_holdings VALUES ('u1','2330')")
+    conn.execute("INSERT INTO user_holdings VALUES ('u2','2317')")
+    conn.execute(
+        "CREATE TABLE tg_actor_pending (user_id TEXT PRIMARY KEY, payload TEXT)"
+    )
+    conn.execute("INSERT INTO tg_actor_pending VALUES ('u1','x')")
+    conn.commit()
+    conn.close()
+
+    assert private_row_total(db) == 0
+    out = salvage_private_from_corrupts(db)
+    assert out["after"] >= 3
+    assert private_row_total(db) >= 3
+    assert os.path.isfile(corrupt)
+
+
+def test_readable_db_never_replaced_by_release(tmp_path, monkeypatch):
+    """可讀正式庫（即使 biaoke 空）不准再被空 Release 整檔蓋掉。"""
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=0)
+    called = {"n": 0}
+
+    def _boom(*a, **k):
+        called["n"] += 1
+        raise AssertionError("install_release_db must not run on readable db")
+
+    monkeypatch.setattr("db_recover.install_release_db", _boom)
+    result = ensure_market_db_recoverable(db, allow_release=True)
+    assert result["ok"] is True
+    assert called["n"] == 0
+    assert os.path.isfile(db)
+
+
+def test_force_biaoke_baseline_seeds_archive(tmp_path):
+    from db_recover import force_biaoke_baseline
+
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=0)
+    out = force_biaoke_baseline(db)
+    assert out["ok"] is True
+    assert int(out["biaoke_n"]) >= 1700
+    assert out["source"] in ("seed", "salvage", "corrupt", "already")
+
+
 def test_main_wires_recoverable_and_retry_loop():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     main_src = open(os.path.join(root, "main.py"), encoding="utf-8").read()
@@ -205,9 +260,13 @@ def test_main_wires_recoverable_and_retry_loop():
     assert "ensure_market_db_recoverable" in main_src
     assert "start_market_db_recovery_loop" in main_src
     assert "start_early_biaoke_seed" in main_src
+    assert "force_seed_biaoke_baseline" in main_src
+    assert "force_biaoke_baseline" in recover_src
     assert "_biaoke_ready" in main_src
     assert "move_db_with_sidecars" in recover_src
     assert "best_corrupt_restore" in recover_src
     assert "salvage_biaoke_from_corrupts" in recover_src
+    assert "salvage_private_from_corrupts" in recover_src
+    assert "PRIVATE_USER_TABLES" in recover_src
     # 舊坑：只 shutil.move .db、不管 -wal/-shm
     assert "shutil.move(path, corrupt)" not in main_src

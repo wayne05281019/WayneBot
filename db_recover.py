@@ -269,6 +269,125 @@ def salvage_biaoke_from_corrupts(
     }
 
 
+def table_row_count(db_path: str, table: str) -> int:
+    if not db_path or not os.path.isfile(db_path) or not table:
+        return 0
+    try:
+        conn = sqlite3.connect(db_path, timeout=2.0)
+        try:
+            hit = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if not hit:
+                return 0
+            row = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()
+            return int((row or [0])[0] or 0)
+        finally:
+            conn.close()
+    except Exception:
+        return 0
+
+
+def private_row_counts(db_path: str) -> dict:
+    """PRIVATE_USER_TABLES 各表列數（只回數字，不含 uid／內容）。"""
+    from wayne_db import PRIVATE_USER_TABLES
+
+    out: dict = {}
+    for table in PRIVATE_USER_TABLES:
+        n = table_row_count(db_path, table)
+        if n:
+            out[table] = n
+    return out
+
+
+def private_row_total(db_path: str) -> int:
+    return int(sum(private_row_counts(db_path).values()))
+
+
+def salvage_private_from_corrupts(db_path: str) -> dict:
+    """從 .corrupt-* ATTACH 救回 PRIVATE_USER_TABLES（持股／觀察／AI倉／pending／tg…）。
+
+    INSERT OR IGNORE；不刪 corrupt；不把 uid 寫進 log（只記表名＋列數）。
+    """
+    from wayne_db import PRIVATE_USER_TABLES
+
+    before = private_row_total(db_path)
+    merged_by_table: dict = {}
+    sources: List[str] = []
+    for cand in list_corrupt_candidates(db_path):
+        if has_sidecars(cand):
+            remove_sidecars(cand)
+        if private_row_total(cand) <= 0:
+            continue
+        alias = "priv_salvage"
+        try:
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            try:
+                conn.execute(f"ATTACH DATABASE ? AS {alias}", (cand,))
+                src_tables = {
+                    str(r[0])
+                    for r in conn.execute(
+                        f"SELECT name FROM {alias}.sqlite_master WHERE type='table'"
+                    )
+                }
+                main_tables = {
+                    str(r[0])
+                    for r in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                for table in PRIVATE_USER_TABLES:
+                    if table not in src_tables:
+                        continue
+                    if table not in main_tables:
+                        ddl = conn.execute(
+                            f"SELECT sql FROM {alias}.sqlite_master "
+                            "WHERE type='table' AND name=?",
+                            (table,),
+                        ).fetchone()
+                        if not ddl or not ddl[0]:
+                            continue
+                        try:
+                            conn.execute(str(ddl[0]))
+                            main_tables.add(table)
+                        except sqlite3.Error:
+                            logger.exception("建立私人表失敗 table=%s", table)
+                            continue
+                    cols = _shared_columns(
+                        conn, table, src_schema=alias, src_table=table
+                    )
+                    if not cols:
+                        continue
+                    col_list = ", ".join(f'"{c}"' for c in cols)
+                    try:
+                        cur = conn.execute(
+                            f'INSERT OR IGNORE INTO "{table}" ({col_list}) '
+                            f'SELECT {col_list} FROM {alias}."{table}"'
+                        )
+                        got = int(cur.rowcount or 0)
+                        if got > 0:
+                            merged_by_table[table] = int(
+                                merged_by_table.get(table, 0)
+                            ) + got
+                    except sqlite3.Error:
+                        logger.exception("合併私人表失敗 table=%s", table)
+                conn.commit()
+                conn.execute(f"DETACH DATABASE {alias}")
+                sources.append(os.path.basename(cand))
+            finally:
+                conn.close()
+        except Exception:
+            logger.exception("ATTACH 救私人表失敗 cand=%s", cand)
+    after = private_row_total(db_path)
+    return {
+        "before": before,
+        "after": after,
+        "merged_by_table": merged_by_table,
+        "sources": sources,
+    }
+
+
 def restore_corrupt_to_path(corrupt_path: str, db_path: str) -> bool:
     """把選定的 .corrupt-*（含 sidecar）移回正式路徑。"""
     if not corrupt_path or not os.path.isfile(corrupt_path):
@@ -342,6 +461,136 @@ def install_release_db(
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def _ensure_biaoke_posts_columns(db_path: str) -> None:
+    """CREATE IF NOT EXISTS 補不了缺欄；Release／半套表要 ALTER 才能 seed。"""
+    needed = (
+        ("n", "INTEGER NOT NULL DEFAULT 0"),
+        ("date", "TEXT NOT NULL DEFAULT ''"),
+        ("time", "TEXT NOT NULL DEFAULT ''"),
+        ("parent", "TEXT NOT NULL DEFAULT ''"),
+        ("layer", "INTEGER NOT NULL DEFAULT 0"),
+        ("kind", "TEXT NOT NULL DEFAULT 'post'"),
+        ("tags", "TEXT NOT NULL DEFAULT '[]'"),
+        ("text", "TEXT NOT NULL DEFAULT ''"),
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+    )
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        cols = {
+            str(r[1]) for r in conn.execute("PRAGMA table_info(biaoke_posts)")
+        }
+        if not cols:
+            return
+        for name, decl in needed:
+            if name in cols:
+                continue
+            conn.execute(f'ALTER TABLE biaoke_posts ADD COLUMN "{name}" {decl}')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def force_biaoke_baseline(
+    db_path: str,
+    *,
+    min_biaoke: int = MIN_BIAOKE_RESTORE,
+) -> dict:
+    """強制讓 biaoke 主文 ≥ min：先 corrupt 救回，再 seed_biaoke_archive。
+
+    失敗不吞——回傳 ok／error／biaoke_n／steps，供 /health 與 log。
+    """
+    from import_health import db_quick_check_ok
+
+    steps: List[str] = []
+    out = {
+        "ok": False,
+        "biaoke_n": 0,
+        "seeded_rows": 0,
+        "source": "",
+        "error": "",
+        "steps": steps,
+    }
+    if not db_path or not os.path.isfile(db_path):
+        out["error"] = "db_missing"
+        return out
+    if not db_quick_check_ok(db_path, min_bytes=1):
+        out["error"] = "db_unreadable"
+        return out
+
+    n = biaoke_post_count(db_path)
+    out["biaoke_n"] = n
+    out["private_n"] = private_row_total(db_path)
+
+    def _finish(source: str, *, ok: bool, error: str = "") -> dict:
+        # 無論 biaoke 是否已夠，都嘗試從 corrupt 救私人表（Release 常把私人洗空）
+        priv = salvage_private_from_corrupts(db_path)
+        out["private_n"] = int(priv.get("after") or 0)
+        out["private_merged"] = dict(priv.get("merged_by_table") or {})
+        if int(priv.get("after") or 0) > int(priv.get("before") or 0):
+            steps.append(
+                f"private:{priv.get('before')}->{priv.get('after')}"
+            )
+        out["biaoke_n"] = biaoke_post_count(db_path)
+        out.update(ok=ok, source=source, error=error)
+        return out
+
+    if n >= int(min_biaoke):
+        return _finish("already", ok=True)
+
+    # 1) corrupt 整檔（更完整 overlay／自回／私人）
+    best = best_corrupt_restore(db_path, min_biaoke=min_biaoke)
+    if best and biaoke_post_count(best) > n:
+        steps.append(f"restore:{os.path.basename(best)}")
+        if restore_corrupt_to_path(best, db_path):
+            remove_sidecars(db_path)
+            if db_quick_check_ok(db_path, min_bytes=1):
+                n = biaoke_post_count(db_path)
+                out["biaoke_n"] = n
+                if n >= int(min_biaoke):
+                    return _finish("corrupt", ok=True)
+            else:
+                steps.append("restore_unreadable")
+        else:
+            steps.append("restore_failed")
+
+    # 2) ATTACH salvage biaoke（保留官方柱）
+    if biaoke_post_count(db_path) < int(min_biaoke):
+        salv = salvage_biaoke_from_corrupts(db_path)
+        steps.append(f"salvage:{salv.get('before')}->{salv.get('after')}")
+        n = int(salv.get("after") or 0)
+        out["biaoke_n"] = n
+        if n >= int(min_biaoke):
+            return _finish("salvage", ok=True)
+
+    # 3) 強制種 archive_1709（先補齊缺欄，Release 空表／舊 schema 常缺 n／tags）
+    try:
+        from biaoke_archive import load_bundled_archive, seed_biaoke_archive
+        from biaoke_desk import ensure_biaoke_posts_table
+
+        ensure_biaoke_posts_table(db_path)
+        _ensure_biaoke_posts_columns(db_path)
+        blob = load_bundled_archive()
+        archive_n = int(blob.get("n") or 0)
+        posts = [r for r in (blob.get("posts") or []) if not r.get("club")]
+        steps.append(f"archive_bundle:n={archive_n}:posts={len(posts)}")
+        if not posts:
+            return _finish("seed", ok=False, error="archive_1709_empty")
+        seeded = int(seed_biaoke_archive(db_path) or 0)
+        out["seeded_rows"] = seeded
+        steps.append(f"seed_rows={seeded}")
+        n = biaoke_post_count(db_path)
+        out["biaoke_n"] = n
+        if n >= int(min_biaoke):
+            return _finish("seed", ok=True)
+        return _finish(
+            "seed", ok=False, error=f"seed_below_min:n={n}:seeded={seeded}"
+        )
+    except Exception as exc:
+        logger.exception("force_biaoke_baseline seed 失敗")
+        out["biaoke_n"] = biaoke_post_count(db_path)
+        return _finish("seed", ok=False, error=f"seed_exception:{exc}")
+
+
 def ensure_market_db_recoverable(
     db_path: Optional[str] = None,
     *,
@@ -369,12 +618,28 @@ def ensure_market_db_recoverable(
     def _ok() -> bool:
         return bool(path and os.path.isfile(path) and db_quick_check_ok(path, min_bytes=1))
 
-    # 1) 已可讀且飆大底圖夠 → 完成
+    def _enrich_and_return(source: str) -> dict:
+        """可讀後一律合併 corrupt 的私人表；不准留空私人本。"""
+        n = biaoke_post_count(path)
+        priv = salvage_private_from_corrupts(path)
+        if int(priv.get("after") or 0) > int(priv.get("before") or 0):
+            actions.append(
+                f"private:{priv.get('before')}->{priv.get('after')}"
+            )
+        result.update(
+            ok=True,
+            source=source,
+            biaoke_n=n,
+            private_n=int(priv.get("after") or 0),
+            private_merged=dict(priv.get("merged_by_table") or {}),
+        )
+        return result
+
+    # 1) 已可讀且飆大底圖夠 → 仍救私人，不准 Release 蓋掉
     if _ok():
         n = biaoke_post_count(path)
         if n >= int(min_biaoke):
-            result.update(ok=True, source="current", biaoke_n=n)
-            return result
+            return _enrich_and_return("current")
         actions.append("current_ok_low_biaoke")
     else:
         # 2) 錯位 wal/shm：先清再驗
@@ -385,29 +650,28 @@ def ensure_market_db_recoverable(
             if _ok():
                 n = biaoke_post_count(path)
                 if n >= int(min_biaoke):
-                    result.update(ok=True, source="sidecar_strip", biaoke_n=n)
-                    return result
+                    return _enrich_and_return("sidecar_strip")
                 actions.append("sidecar_strip_ok_low_biaoke")
 
-    # 3) 優先從 .corrupt-* 整檔救回（含 overlay／自回；比空 Release＋只種 1709 完整）
+    # 3) 優先從 .corrupt-* 整檔救回（含 overlay／自回／私人；不准空 Release 蓋完整庫）
     current_n = biaoke_post_count(path) if os.path.isfile(path) else 0
+    current_priv = private_row_total(path) if os.path.isfile(path) else 0
     best = best_corrupt_restore(path, min_biaoke=min_biaoke)
     if best:
         best_n = biaoke_post_count(best)
-        # 只有 corrupt 明顯更完整（或本尊不可讀／空）才整檔換回
-        if (not _ok()) or best_n > current_n:
+        best_priv = private_row_total(best)
+        richer = (best_n > current_n) or (best_priv > current_priv)
+        if (not _ok()) or richer:
             actions.append(f"restore_corrupt:{os.path.basename(best)}")
             if restore_corrupt_to_path(best, path):
                 if has_sidecars(path):
                     remove_sidecars(path)
                     actions.append("strip_after_corrupt_restore")
                 if _ok():
-                    n = biaoke_post_count(path)
-                    result.update(ok=True, source="corrupt", biaoke_n=n)
-                    return result
+                    return _enrich_and_return("corrupt")
             actions.append("restore_corrupt_failed")
 
-    # 3b) 本尊可讀但 biaoke 仍少：ATTACH 合併 corrupt 的 overlay（不丟 corrupt、不蓋官方柱）
+    # 3b) 本尊可讀但 biaoke 仍少：ATTACH 合併 corrupt overlay（不丟 corrupt、不蓋官方柱）
     if _ok() and biaoke_post_count(path) < int(min_biaoke):
         salv = salvage_biaoke_from_corrupts(path)
         if int(salv.get("after") or 0) > int(salv.get("before") or 0):
@@ -416,16 +680,13 @@ def ensure_market_db_recoverable(
             )
             n = int(salv.get("after") or 0)
             if n >= int(min_biaoke):
-                result.update(ok=True, source="salvage", biaoke_n=n)
-                return result
+                return _enrich_and_return("salvage")
 
-    # 4) 現況已可讀（只是 biaoke 低、沒有更好 corrupt）→ 留給 seed，不准再 Release 蓋掉
+    # 4) 現況已可讀 → 留給 seed／合併私人，**禁止**再 Release 整檔蓋掉
     if _ok():
-        n = biaoke_post_count(path)
-        result.update(ok=True, source="current", biaoke_n=n)
-        return result
+        return _enrich_and_return("current")
 
-    # 5) 壞本尊搬走（含 sidecar），再 Release
+    # 5) 本尊真的不可讀：才准 Release；裝完立刻從所有 .corrupt-* 合併 biaoke＋私人
     if os.path.isfile(path) or has_sidecars(path):
         dest = quarantine_db(path)
         if dest:
@@ -439,9 +700,12 @@ def ensure_market_db_recoverable(
 
     if install_release_db(path, urlretrieve=urlretrieve):
         actions.append("release_install")
-        n = biaoke_post_count(path)
-        result.update(ok=True, source="release", biaoke_n=n)
-        return result
+        salv = salvage_biaoke_from_corrupts(path)
+        if int(salv.get("after") or 0) > int(salv.get("before") or 0):
+            actions.append(
+                f"post_release_biaoke:{salv.get('before')}->{salv.get('after')}"
+            )
+        return _enrich_and_return("release")
 
     actions.append("release_failed")
     result.update(ok=False, source="none", biaoke_n=0)
