@@ -223,8 +223,10 @@ def test_pin_reply_menu_keeps_keyboard_message():
     msg.reply_text = AsyncMock(return_value=pin)
 
     asyncio.run(bot._pin_reply_menu(msg))
+    asyncio.run(bot._pin_reply_menu(msg))
     asyncio.run(asyncio.sleep(0.45))
     pin.delete.assert_not_called()
+    assert msg.reply_text.await_count == 1
     sent = msg.reply_text.await_args.args[0]
     assert sent == "主選單已掛上"
     assert sent.strip() not in ("", "·")

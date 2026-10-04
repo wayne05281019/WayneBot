@@ -1011,10 +1011,12 @@ def _bare_screen_bot():
     bot._screening_running = set()
     bot._screening_gate = asyncio.Lock()
     bot._screening_global_owner = ""
+    bot._screening_build_task = None
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
     bot._actor_bg_tasks = {}
+    bot._menu_pin_at = {}
     bot._dismiss_menu_transients = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
     bot._dismiss_progress_now = AsyncMock()
@@ -1086,11 +1088,11 @@ def test_screen_then_flow_without_restore_main_menu(monkeypatch):
             await asyncio.sleep(0.01)
         assert order, "海選沒有第一則"
         assert "LOADING" in order[0]
-        # 進行中不准先釘空白「·」；鍵盤在 LOADING 後立刻釘看得見的字。
+        # 進行中不准釘空白「·」，也不准 LOADING 後立刻再刷主選單。
         first = order[0]
         assert first.strip() not in ("", "·")
         assert "逾時" not in first
-        bot._pin_reply_menu.assert_awaited()
+        bot._pin_reply_menu.assert_not_awaited()
         await bot._on_text_bound(
             update, MagicMock(), raw="資金輪動", text="資金輪動", uid="1001"
         )
@@ -1202,11 +1204,12 @@ def test_pin_and_screen_first_reply_never_blank_dot():
     assert "_speak_screen_timeout" in src_screen
     assert "keep_msg=status" in src_screen
     load_i = src_screen.index("self._screening_progress_text(0)")
-    pin_i = src_screen.index("await asyncio.wait_for(self._pin_reply_menu")
     begin_i = src_screen.index("await self._begin_actor_op")
-    wait_i = src_screen.index("asyncio.shield(build_task)")
-    assert load_i < pin_i < begin_i
-    assert pin_i < wait_i
+    assert load_i < begin_i
+    assert "await asyncio.wait_for(self._pin_reply_menu" not in src_screen
+    busy = src_screen.split("if actor in self._screening_running")[1].split("async with self._screening_gate")[0]
+    assert busy.count("請稍候完成後再按") == 1
+    assert "_pin_reply_menu" not in busy
 
 
 def test_cancel_skips_keep_msg(monkeypatch):
@@ -1338,7 +1341,7 @@ def test_first_screen_reply_never_timeout_copy(monkeypatch):
 
 
 def test_second_screen_press_joins_inflight_loading(monkeypatch):
-    """上一輪背景還在算：第二次按仍先 LOADING，跟同一輪建檔，不准直接逾時句。"""
+    """上一輪背景還在算：第二次按仍先 LOADING，改口一句請稍候，不准再釘主選單。"""
     import time as _t
 
     monkeypatch.setattr(
@@ -1381,14 +1384,63 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
         first2 = str(msg2.reply_text.await_args_list[0].args[0])
         assert "LOADING" in first2
         assert "逾時" not in first2
-        edited2 = " ".join(
-            str(c.args[0]) for c in st2.edit_text.await_args_list if c.args
-        )
-        assert "已超過 3 分鐘" not in edited2
+        wait2 = [
+            str(c.args[0])
+            for c in list(msg2.reply_text.await_args_list) + list(st2.edit_text.await_args_list)
+            if c.args
+        ]
+        assert sum("請稍候完成後再按" in t for t in wait2) == 1
+        assert all("主選單已掛上" not in t for t in wait2)
         release.set()
         await asyncio.wait_for(t1, timeout=3.0)
         await asyncio.wait_for(t2, timeout=3.0)
         assert n["build"] == 1
 
     asyncio.run(run())
+
+
+def test_busy_screen_one_wait_and_no_pin(monkeypatch):
+    """進行中再按：第一則 LOADING，只一句請稍候，不准再釘主選單。"""
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    bot = _bare_screen_bot()
+    bot._screening_running.add("u1")
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    asyncio.run(bot._run_manual_screening(msg, "u1"))
+    first = str(msg.reply_text.await_args_list[0].args[0])
+    assert "LOADING" in first
+    wait_texts = [
+        str(c.args[0])
+        for c in list(msg.reply_text.await_args_list) + list(status.edit_text.await_args_list)
+        if c.args
+    ]
+    assert sum("請稍候完成後再按" in t for t in wait_texts) == 1
+    assert all("主選單已掛上" not in t for t in wait_texts)
+    bot._pin_reply_menu.assert_not_awaited()
+
+
+def test_refresh_then_pin_is_one_menu_message():
+    """/menu 已掛上後，海選不准再釘一則短「主選單已掛上」。"""
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._menu_pin_at = {}
+    bot._menu_pin_msgs = {}
+    bot._menu_fade_msgs = {}
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._mark_menu_layout_ok = MagicMock()
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot._menu_uid_from_message = MagicMock(return_value="1")
+    bot._reply_menu = MagicMock(return_value=None)
+    msg = MagicMock()
+    msg.reply_text = AsyncMock(return_value=MagicMock())
+
+    asyncio.run(bot._refresh_reply_menu(msg, uid="1", silent=False))
+    asyncio.run(bot._pin_reply_menu(msg))
+    texts = [str(c.args[0]) for c in msg.reply_text.await_args_list if c.args]
+    assert len(texts) == 1
+    assert "主選單已掛上" in texts[0]
 
