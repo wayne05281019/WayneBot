@@ -80,7 +80,10 @@ def _in_boot_grace() -> bool:
 
 
 def _liveness_snapshot() -> dict:
-    """行程能不能服務：庫可讀、輪詢心跳沒過舊。資料新鮮度不列入。"""
+    """行程能不能服務：庫可讀、輪詢心跳沒過舊。資料新鮮度不列入。
+
+    庫檢查必須便宜（SELECT 1）。不准 PRAGMA quick_check——會卡過 Render 5s。
+    """
     from config import get_db_path
 
     db_path = get_db_path()
@@ -88,9 +91,9 @@ def _liveness_snapshot() -> dict:
 
     db_ok = False
     try:
-        from import_health import db_quick_check_ok
+        from import_health import db_liveness_ok
 
-        db_ok = bool(db_quick_check_ok(db_path, min_bytes=1))
+        db_ok = bool(db_liveness_ok(db_path, min_bytes=1))
     except Exception as exc:
         detail["db_error"] = str(exc)
     detail["db_ok"] = db_ok
@@ -1112,16 +1115,19 @@ def run_web():
     try:
         from disk_guard import ensure_disk_headroom, start_disk_guard
 
-        ensure_disk_headroom(force=True)
+        # 開機只做緊急線巡檢；不准白天追高 free（午夜才例行清白名單）
+        ensure_disk_headroom(force=False, mode="boot")
         start_disk_guard()
     except Exception:
         logger.exception("磁碟守衛啟動失敗")
     from wayne_db import ensure_core_schema
     from config import get_db_path, get_telegram_chat_id
-    from import_health import db_quick_check_ok
 
     db_path = get_db_path()
-    if db_quick_check_ok(db_path):
+    # 開機閘只用便宜 SELECT 1；完整 quick_check 丟背景，避免卡死 /live（Render 5s）。
+    from import_health import db_liveness_ok
+
+    if db_liveness_ok(db_path, min_bytes=1):
         logger.info("行情庫已就緒，背景確認／救回飆大 overlay 後啟動聽筒")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
         # Release 空表常見：立刻 seed＋corrupt 救回，不准等索引延遲

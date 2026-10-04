@@ -64,6 +64,9 @@ def test_menu_slow_paths_start_plain_wait():
             assert load_i < src.index("await self._dismiss_menu_transients")
             assert load_i < src.index("hub = self._reply_menu")
             assert load_i < src.index("run_full_screening")
+            assert "load_cached_full_screening" in src
+            assert "screen_timeout_s = 180.0" in src
+            assert "超過 3 分鐘" in src
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
         assert needle in src, name
@@ -188,7 +191,10 @@ def test_stop_plain_wait_clears_on_success_and_fail():
     asyncio.run(run_none())
 
 
-def test_manual_screening_fail_sends_error_not_blank():
+def test_manual_screening_fail_sends_error_not_blank(monkeypatch):
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
     bot._screening_running = set()
@@ -226,7 +232,19 @@ def test_manual_screening_fail_sends_error_not_blank():
     assert bot._screening_global_owner == ""
 
 
-def test_manual_screening_success_dismisses_loading():
+def test_manual_screening_prefers_cache(monkeypatch):
+    """有當日快照時不准打 run_full_screening。"""
+    cached = {
+        "status": "success",
+        "as_of": "20261002",
+        "date": "20261002",
+        "results": {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}]},
+        "from_cache": True,
+        "message": "cache",
+    }
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: cached
+    )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
     bot._screening_running = set()
@@ -245,7 +263,7 @@ def test_manual_screening_success_dismisses_loading():
     bot._actor_key = MagicMock(return_value="u1")
     bot._menu_uid_from_message = MagicMock(return_value="u1")
     bot.screener = MagicMock()
-    bot.screener.run_full_screening = MagicMock(return_value={"as_of": "20261004"})
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no full scan"))
     bot.db_path = "data/wayne_market.db"
     msg = MagicMock()
     status = MagicMock()
@@ -256,9 +274,11 @@ def test_manual_screening_success_dismisses_loading():
         await bot._run_manual_screening(msg, "u1")
 
     asyncio.run(run())
+    bot.screener.run_full_screening.assert_not_called()
     bot._reply_screening_payload.assert_awaited()
-    bot._dismiss_progress_now.assert_awaited()
-    assert "u1" not in bot._screening_running
+    sent = bot._reply_screening_payload.await_args.args[1]
+    assert sent.get("from_cache") is True
+    assert sent.get("as_of") == "20261002"
 
 
 def test_biaoke_entry_has_loading_and_fail_text():
@@ -328,8 +348,11 @@ def test_preboot_replay_detected():
     assert bot._message_is_preboot_replay(msg) is False
 
 
-def test_generation_cancels_stale_screen_delivery():
+def test_generation_cancels_stale_screen_delivery(monkeypatch):
     """換鍵 bump generation 後，海選過期結果不准送。"""
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
     bot._screening_running = set()

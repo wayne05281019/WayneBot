@@ -2851,6 +2851,91 @@ def _postprocess_screen(
     return snap
 
 
+def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
+    """手動海選快路徑：有當日 morning／evening 快照就組 payload，不准重掃全市場。
+
+    空快照回 None（呼叫端再走 execute_full_screening）。
+    不准假資料；只讀已落檔的 screen_sessions。
+    """
+    path = db_path or get_db_path()
+    as_of = ""
+    try:
+        from trading_calendar import resolve_screen_as_of
+
+        as_of = str(resolve_screen_as_of(path) or "").replace("-", "")[:8]
+    except Exception:
+        as_of = ""
+    if not as_of:
+        try:
+            from import_health import latest_complete_quote_date
+
+            as_of = str(latest_complete_quote_date(path) or "").replace("-", "")[:8]
+        except Exception:
+            as_of = ""
+    if not as_of:
+        return None
+    try:
+        from screen_sessions import load_session_results, screen_session_has_data
+
+        if not screen_session_has_data(path, as_of):
+            return None
+        results = load_session_results(path, as_of, "morning") or {}
+        if not any(results.values()):
+            results = load_session_results(path, as_of, "evening") or {}
+        if not any(results.values()):
+            return None
+    except Exception:
+        return None
+
+    results = drop_non_equity_picks(results, path)
+    for key, rows in list(results.items()):
+        if isinstance(rows, list) and not str(key).startswith("_"):
+            results[key] = stamp_entry_stars(rows, key)
+    outlook = ""
+    try:
+        from money_flow import just_rotated_names_in_results
+        from taiwan_market import format_screen_market_outlook_html
+
+        outlook = format_screen_market_outlook_html(
+            path,
+            as_of,
+            snap=None,
+            us_snap=None,
+            rotated_names=just_rotated_names_in_results(results, None),
+        )
+        try:
+            from dongzhu_screen import rotation_screen_block
+
+            rot = rotation_screen_block(path)
+            if rot:
+                outlook = (outlook + "\n" if outlook else "") + rot
+        except Exception:
+            pass
+    except Exception:
+        outlook = ""
+    payload = format_screening_payload(
+        results, as_of, morning=False, market_html=outlook
+    )
+    report_parts = []
+    if outlook:
+        report_parts.append(outlook)
+    report_parts.extend(p["html"] for p in payload if p.get("mark_key") != "market")
+    return {
+        "status": "success",
+        "date": as_of,
+        "as_of": as_of,
+        "total_scanned": sum(len(v or []) for v in results.values() if isinstance(v, list)),
+        "results": results,
+        "message": "\n\n".join(report_parts),
+        "payload": payload,
+        "sections": [p["html"] for p in payload],
+        "daytrade": list(results.get("day_trade") or []),
+        "overnight": list(results.get("overnight") or []),
+        "major_alerts": [],
+        "from_cache": True,
+    }
+
+
 def execute_full_screening(
     db_path: str = None,
     target_date: Optional[str] = None,
