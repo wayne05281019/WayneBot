@@ -1086,9 +1086,11 @@ def test_screen_then_flow_without_restore_main_menu(monkeypatch):
             await asyncio.sleep(0.01)
         assert order, "海選沒有第一則"
         assert "LOADING" in order[0]
-        # 進行中不准先釘空白「·」；鍵盤已在／menu，結果／逾時再釘看得懂的字。
+        # 進行中不准先釘空白「·」；鍵盤在 LOADING 後立刻釘看得見的字。
         first = order[0]
         assert first.strip() not in ("", "·")
+        assert "逾時" not in first
+        bot._pin_reply_menu.assert_awaited()
         await bot._on_text_bound(
             update, MagicMock(), raw="資金輪動", text="資金輪動", uid="1001"
         )
@@ -1200,9 +1202,11 @@ def test_pin_and_screen_first_reply_never_blank_dot():
     assert "_speak_screen_timeout" in src_screen
     assert "keep_msg=status" in src_screen
     load_i = src_screen.index("self._screening_progress_text(0)")
-    pin_i = src_screen.index("await self._pin_reply_menu")
+    pin_i = src_screen.index("await asyncio.wait_for(self._pin_reply_menu")
     begin_i = src_screen.index("await self._begin_actor_op")
-    assert load_i < begin_i < pin_i
+    wait_i = src_screen.index("asyncio.shield(build_task)")
+    assert load_i < pin_i < begin_i
+    assert pin_i < wait_i
 
 
 def test_cancel_skips_keep_msg(monkeypatch):
@@ -1297,7 +1301,94 @@ def test_screen_timeout_does_not_send_blank_then_timeout(monkeypatch):
     assert "return True" in src
     src_run = inspect.getsource(WayneTelegramBot._run_manual_screening)
     assert "status_consumed" in src_run
-    assert src_run.index("_speak_screen_timeout") < src_run.index(
-        "self._screening_late_task"
+    assert "_speak_screen_timeout" in src_run
+    assert "_screen_wait_was_long_enough" in src_run
+    assert "_screening_build_task" in src_run
+
+
+def test_screen_wait_guard_rejects_short_elapsed():
+    assert WayneTelegramBot._screen_wait_was_long_enough(180, 180)
+    assert WayneTelegramBot._screen_wait_was_long_enough(0.05, 0.05)
+    assert not WayneTelegramBot._screen_wait_was_long_enough(8, 180)
+    assert not WayneTelegramBot._screen_wait_was_long_enough(0, 180)
+
+
+def test_first_screen_reply_never_timeout_copy(monkeypatch):
+    """每次按海選：第一則必須是 LOADING，不准直接逾時句。"""
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
+
+    def _boom(_db=None):
+        raise TimeoutError("sqlite busy")
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _boom)
+    bot = _bare_screen_bot()
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    asyncio.run(bot._run_manual_screening(msg, "u1"))
+    first = str(msg.reply_text.await_args_list[0].args[0])
+    assert "LOADING" in first
+    assert "逾時" not in first
+    edited = " ".join(str(c.args[0]) for c in status.edit_text.await_args_list if c.args)
+    assert "已超過 3 分鐘" not in edited
+
+
+def test_second_screen_press_joins_inflight_loading(monkeypatch):
+    """上一輪背景還在算：第二次按仍先 LOADING，跟同一輪建檔，不准直接逾時句。"""
+    import time as _t
+
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    n = {"build": 0}
+    release = asyncio.Event()
+
+    def _slow(_db=None):
+        n["build"] += 1
+        for _ in range(400):
+            if release.is_set():
+                break
+            _t.sleep(0.01)
+        return {
+            "as_of": "20261005",
+            "results": {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電"}]},
+            "payload": [],
+        }
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
+    bot = _bare_screen_bot()
+    msg1 = MagicMock()
+    st1 = MagicMock()
+    st1.edit_text = AsyncMock()
+    msg1.reply_text = AsyncMock(return_value=st1)
+    msg2 = MagicMock()
+    st2 = MagicMock()
+    st2.edit_text = AsyncMock()
+    msg2.reply_text = AsyncMock(return_value=st2)
+
+    async def run():
+        t1 = asyncio.create_task(bot._run_manual_screening(msg1, "u1"))
+        for _ in range(80):
+            if getattr(bot, "_screening_build_task", None) is not None:
+                break
+            await asyncio.sleep(0.02)
+        t2 = asyncio.create_task(bot._run_manual_screening(msg2, "u1"))
+        await asyncio.sleep(0.15)
+        first2 = str(msg2.reply_text.await_args_list[0].args[0])
+        assert "LOADING" in first2
+        assert "逾時" not in first2
+        edited2 = " ".join(
+            str(c.args[0]) for c in st2.edit_text.await_args_list if c.args
+        )
+        assert "已超過 3 分鐘" not in edited2
+        release.set()
+        await asyncio.wait_for(t1, timeout=3.0)
+        await asyncio.wait_for(t2, timeout=3.0)
+        assert n["build"] == 1
+
+    asyncio.run(run())
 
