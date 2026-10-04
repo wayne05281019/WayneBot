@@ -27,15 +27,17 @@ BUCKETS = (
     "overnight",
 )
 
-# 與增量／飆大寫庫並發時，短 busy 等比較不易誤判「無快取」。
-_DB_TIMEOUT_S = 30.0
-_BUSY_TIMEOUT_MS = 30000
+# 讀快取用短 busy，避免話筒空白卡 30 秒；寫入才等久一點。
+_DB_TIMEOUT_S = 8.0
+_BUSY_TIMEOUT_MS = 2500
+_WRITE_BUSY_TIMEOUT_MS = 15000
 
 
-def _connect(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, timeout=_DB_TIMEOUT_S)
+def _connect(db_path: str, *, busy_ms: int | None = None) -> sqlite3.Connection:
+    wait_ms = int(_BUSY_TIMEOUT_MS if busy_ms is None else busy_ms)
+    conn = sqlite3.connect(db_path, timeout=max(1.0, wait_ms / 1000.0))
     try:
-        conn.execute(f"PRAGMA busy_timeout={int(_BUSY_TIMEOUT_MS)}")
+        conn.execute(f"PRAGMA busy_timeout={wait_ms}")
     except sqlite3.Error:
         pass
     return conn
@@ -86,7 +88,7 @@ def save_screen_session(db_path: str, as_of: str, session: str, results: Dict[st
     if not as_of or session not in ("evening", "morning"):
         return 0
     ensure_screen_session_table(db_path)
-    conn = _connect(db_path)
+    conn = _connect(db_path, busy_ms=_WRITE_BUSY_TIMEOUT_MS)
     conn.execute("DELETE FROM screen_sessions WHERE as_of=? AND session=?", (as_of, session))
     n = 0
     for key in BUCKETS:

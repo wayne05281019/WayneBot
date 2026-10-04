@@ -699,28 +699,44 @@ class MainRunner:
         return inserted_count
 
     def _load_latest_quotes_map(self) -> Dict[str, Dict[str, Any]]:
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
+        conn = sqlite3.connect(self.db_path, timeout=8.0)
         try:
-            from quote_integrity import db_as_of_trading_date
+            try:
+                conn.execute("PRAGMA busy_timeout=2500")
+            except sqlite3.Error:
+                pass
+            cur = conn.cursor()
+            latest = ""
+            try:
+                from quote_integrity import db_as_of_trading_date
 
-            latest = db_as_of_trading_date(self.db_path) or ""
-        except Exception:
-            cur.execute("SELECT MAX(date) FROM daily_quotes;")
-            latest = cur.fetchone()[0]
-        quotes: Dict[str, Dict[str, Any]] = {}
-        if latest:
-            cur.execute(
-                "SELECT stock_id, stock_name, close, pct_change, volume, turnover_k FROM daily_quotes WHERE date=?;",
-                (latest,),
-            )
-            for sid, sname, close_p, pct, vol, to_k in cur.fetchall():
-                quotes[sid] = {
-                    "stock_name": sname, "close": close_p, "pct_change": pct,
-                    "volume": vol, "turnover_k": to_k, "is_k20_warning": False, "d20": 0.0,
-                }
-        conn.close()
-        return quotes
+                latest = db_as_of_trading_date(self.db_path) or ""
+            except Exception:
+                latest = ""
+            if not latest:
+                try:
+                    cur.execute("SELECT MAX(date) FROM daily_quotes;")
+                    row = cur.fetchone()
+                    latest = str((row or [None])[0] or "")
+                except sqlite3.Error:
+                    latest = ""
+            quotes: Dict[str, Dict[str, Any]] = {}
+            if latest:
+                try:
+                    cur.execute(
+                        "SELECT stock_id, stock_name, close, pct_change, volume, turnover_k FROM daily_quotes WHERE date=?;",
+                        (latest,),
+                    )
+                    for sid, sname, close_p, pct, vol, to_k in cur.fetchall():
+                        quotes[sid] = {
+                            "stock_name": sname, "close": close_p, "pct_change": pct,
+                            "volume": vol, "turnover_k": to_k, "is_k20_warning": False, "d20": 0.0,
+                        }
+                except sqlite3.Error:
+                    quotes = {}
+            return quotes
+        finally:
+            conn.close()
 
     def _screening_fail_message(self) -> str:
         from trading_calendar import format_trading_date_zh, resolve_screen_as_of
@@ -815,7 +831,16 @@ class MainRunner:
             try:
                 from wayne_db import get_user_watchlist
 
-                for r in get_user_watchlist(db, uid) or []:
+                rows = []
+                for attempt in range(3):
+                    try:
+                        rows = get_user_watchlist(db, uid) or []
+                        break
+                    except sqlite3.OperationalError:
+                        if attempt >= 2:
+                            raise
+                        time.sleep(0.05 * (attempt + 1))
+                for r in rows:
                     sid = str((r or {}).get("stock_code") or "").strip()
                     if not sid:
                         continue
