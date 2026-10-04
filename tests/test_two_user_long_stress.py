@@ -400,6 +400,12 @@ def test_overlap_buttons_sqlite_and_scheduled_radar(tmp_path, monkeypatch):
     bot = _bot(db)
     runner = _runner(db, monkeypatch)
     _seed_quotes(db, [("2317", "鴻海", 200.0, 0.5), ("2383", "台光電", 400.0, 2.0)])
+    # 主選單鈕 LOADING 前不准 touch DB，按鈕風暴會吃光 GIL；觀察必須先落地，雷達重壓仍讀得到。
+    touch_tg_user(db, WAYNE, "偉權")
+    touch_tg_user(db, BRO, "哥哥")
+    add_to_watchlist(db, WAYNE, "2330", "台積電")
+    add_to_watchlist(db, WAYNE, "2383", "台光電")
+    add_to_watchlist(db, BRO, "2317", "鴻海")
     stop = threading.Event()
     errors: list[str] = []
     radar_ok = {"n": 0}
@@ -443,6 +449,8 @@ def test_overlap_buttons_sqlite_and_scheduled_radar(tmp_path, monkeypatch):
                 bot.on_text(_update(_msg(WAYNE_I, w)), MagicMock()),
                 bot.on_text(_update(_msg(BRO_I, b)), MagicMock()),
             )
+            if i % 8 == 0:
+                await asyncio.sleep(0)
             i += 1
         return i
 
