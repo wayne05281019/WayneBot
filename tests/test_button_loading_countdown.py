@@ -73,6 +73,8 @@ def test_menu_slow_paths_start_plain_wait():
             assert "不必再按" in src
             assert load_i < src.index("await self._pin_reply_menu")
             assert "_track_actor_bg(actor, build_task)" not in src
+            assert "keep_msg=status" in src
+            assert "_speak_screen_timeout" in src
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
         assert needle in src, name
@@ -109,7 +111,7 @@ def test_manual_screening_loading_before_screen_work(monkeypatch):
     bot._reply_screening_payload = AsyncMock()
     order: list[str] = []
 
-    async def _slow_begin(actor, kind):
+    async def _slow_begin(actor, kind, **_k):
         order.append("begin")
         await asyncio.sleep(0.05)
         bot._actor_op_gen[str(actor)] = 1
@@ -155,7 +157,9 @@ def test_manual_screening_loading_before_screen_work(monkeypatch):
 
     asyncio.run(run())
     assert order[0] == "loading"
-    assert "LOADING" in str(msg.reply_text.await_args_list[0].args[0])
+    first = str(msg.reply_text.await_args_list[0].args[0])
+    assert "LOADING" in first
+    assert first.strip() not in ("", "·")
     assert order.index("loading") < order.index("begin")
     assert order.index("loading") < order.index("reply_menu")
     assert order.index("loading") < order.index("screen")
@@ -193,7 +197,7 @@ def test_manual_screening_loading_before_gate(monkeypatch):
 
     bot._screening_gate = SlowGate()
 
-    async def _begin(actor, kind):
+    async def _begin(actor, kind, **_k):
         order.append("begin")
         bot._actor_op_gen[str(actor)] = 1
         bot._actor_op_kind[str(actor)] = str(kind)
@@ -1080,7 +1084,9 @@ def test_screen_then_flow_without_restore_main_menu(monkeypatch):
             await asyncio.sleep(0.01)
         assert order, "海選沒有第一則"
         assert "LOADING" in order[0]
-        bot._pin_reply_menu.assert_awaited()
+        # 進行中不准先釘空白「·」；鍵盤已在／menu，結果／逾時再釘看得懂的字。
+        first = order[0]
+        assert first.strip() not in ("", "·")
         await bot._on_text_bound(
             update, MagicMock(), raw="資金輪動", text="資金輪動", uid="1001"
         )
@@ -1090,6 +1096,7 @@ def test_screen_then_flow_without_restore_main_menu(monkeypatch):
         bot._touch_user.assert_not_called()
         release.set()
         await screen_t
+        bot._pin_reply_menu.assert_awaited()
 
     asyncio.run(run())
     assert "u1" not in bot._screening_running
@@ -1125,9 +1132,18 @@ def test_screen_timeout_releases_gate_and_late_pushes(monkeypatch):
         await asyncio.wait_for(screen_t, timeout=2.0)
         assert "u1" not in bot._screening_running
         assert bot._screening_global_owner == ""
-        blob = " ".join(str(c.args[0]) for c in msg.reply_text.await_args_list if c.args)
-        assert "逾時" in blob
+        first = str(msg.reply_text.await_args_list[0].args[0])
+        assert "LOADING" in first
+        assert first.strip() not in ("", "·")
+        edited = " ".join(
+            str(c.args[0]) for c in status.edit_text.await_args_list if c.args
+        )
+        blob = edited + " " + " ".join(
+            str(c.args[0]) for c in msg.reply_text.await_args_list if c.args
+        )
+        assert "逾時" in edited
         assert "自動推" in blob or "不必再按" in blob
+        bot._dismiss_progress_now.assert_not_awaited()
         await bot._begin_actor_op("u1", "flow")
         for _ in range(40):
             if bot._reply_screening_payload.await_count:
@@ -1171,4 +1187,115 @@ def test_dual_pending_stays_split_when_one_presses_screen(monkeypatch):
     )
     assert "9001:9001" not in bot._pending
     assert bot._pending["8772209416:8772209416"] == "fbuy:uni"
+
+
+def test_pin_and_screen_first_reply_never_blank_dot():
+    """#511 複測：釘鍵盤「·」在暗色 iPhone 是空白氣泡。"""
+    src_pin = inspect.getsource(WayneTelegramBot._pin_reply_menu)
+    src_screen = inspect.getsource(WayneTelegramBot._run_manual_screening)
+    assert '("·", "主選單")' not in src_pin
+    assert "主選單已掛上" in src_pin
+    assert "_speak_screen_timeout" in src_screen
+    assert "keep_msg=status" in src_screen
+    load_i = src_screen.index("self._screening_progress_text(0)")
+    pin_i = src_screen.index("await self._pin_reply_menu")
+    begin_i = src_screen.index("await self._begin_actor_op")
+    assert load_i < begin_i < pin_i
+
+
+def test_cancel_skips_keep_msg(monkeypatch):
+    """清上一件飆大殘框時不准誤刪剛送出的海選 LOADING。"""
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._actor_op_gen = {"u1": 1}
+    bot._actor_op_kind = {"u1": "biaoke"}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._screening_running = set()
+    old = MagicMock()
+    old.delete = AsyncMock()
+    old.edit_text = AsyncMock()
+    keep = MagicMock()
+    keep.delete = AsyncMock()
+    keep.edit_text = AsyncMock()
+    bot._register_actor_wait(
+        "u1", "biaoke", gen=1, wait_msg=old, stop=asyncio.Event(), task=None
+    )
+
+    async def run():
+        await bot._cancel_actor_ops("u1", dismiss=True, keep_msg=keep)
+        old.delete.assert_awaited()
+        keep.delete.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_screen_loading_ticks_during_slow_leftover_biaoke(monkeypatch):
+    """飆大 LOADING 刪不掉／RetryAfter：海選第一則仍是 LOADING，倒數不能等它刪完。"""
+    import time as _t
+
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening",
+        lambda *_a, **_k: {
+            "as_of": "20261002",
+            "from_cache": True,
+            "results": {},
+            "payload": [],
+        },
+    )
+    bot = _bare_screen_bot()
+    order: list[str] = []
+    leftover = MagicMock()
+    leftover.delete = AsyncMock()
+    leftover.edit_text = AsyncMock()
+
+    async def _slow_dismiss(msg):
+        if msg is leftover:
+            order.append("dismiss-old")
+            await asyncio.sleep(1.0)
+            return
+        order.append("dismiss-new")
+
+    bot._dismiss_progress_now = _slow_dismiss
+    bot._actor_op_gen = {"u1": 1}
+    bot._actor_op_kind = {"u1": "biaoke"}
+    bot._register_actor_wait(
+        "u1", "biaoke", gen=1, wait_msg=leftover, stop=asyncio.Event(), task=None
+    )
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+
+    async def _reply(*args, **_k):
+        order.append("loading")
+        txt = str(args[0]) if args else ""
+        assert txt.strip() not in ("", "·")
+        return status
+
+    msg.reply_text = AsyncMock(side_effect=_reply)
+
+    async def run():
+        t0 = _t.monotonic()
+        await asyncio.wait_for(bot._run_manual_screening(msg, "u1"), timeout=2.0)
+        elapsed = _t.monotonic() - t0
+        assert elapsed < 0.9
+        assert order[0] == "loading"
+        first = str(msg.reply_text.await_args_list[0].args[0])
+        assert "LOADING" in first
+        assert "海選" in first
+        assert status.edit_text.await_count >= 1
+        bot._reply_screening_payload.assert_awaited()
+
+    asyncio.run(run())
+
+
+def test_screen_timeout_does_not_send_blank_then_timeout(monkeypatch):
+    """真逾時：LOADING 上改口，不准先刪成空白再另發逾時句。"""
+    src = inspect.getsource(WayneTelegramBot._speak_screen_timeout)
+    assert "edit_text" in src
+    assert "return True" in src
+    src_run = inspect.getsource(WayneTelegramBot._run_manual_screening)
+    assert "status_consumed" in src_run
+    assert src_run.index("_speak_screen_timeout") < src_run.index(
+        "self._screening_late_task"
+    )
 
