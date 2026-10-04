@@ -6115,7 +6115,8 @@ class WayneTelegramBot:
             return
         if text in MENU_BTN_BIAOKE_ALIASES or text.lower().lstrip("/") in ("biaoke", "biaoda"):
             logger.info("主選單：飆客 uid=%s", uid)
-            # _send_biaoke_page 內 _begin_actor_op 會取消同人海選等待／作廢舊結果
+            # 先進對話 pending（即使後面出圖失敗／被 mock）；_send_biaoke_page 內再 begin generation。
+            self._enter_biaoke_chat(update.message, uid)
             await self._send_biaoke_page(update.message, uid=uid)
             return
         if text in MENU_BTN_MARKET_ALIASES or text.lower().lstrip("/") == "market":
