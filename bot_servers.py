@@ -3314,30 +3314,14 @@ class WayneTelegramBot:
 
         失敗／逾時／進度泡泡送不出：一定要有結果或清楚錯誤句；不准只留空白 LOADING。
         換鍵／開始會 bump generation：過期結果不准 edit／send。
-        主路徑第一個 await 必須是 LOADING（在 cancel／dismiss／鍵盤 DB 之前）。
+        主路徑第一個 await 必須是 LOADING（在 cancel／dismiss／gate／鍵盤 DB 之前）。
         有當日快照先讀快取（秒級）；無快取則背景全掃並 save_screen_session，
         逾時後仍繼續建檔，完成自動推名單（第一次不必再按）。
         """
         uid = str(uid or self._menu_uid_from_message(message) or "")
         actor = self._actor_key(message, uid=uid)
-        if actor in self._screening_running:
-            await message.reply_text(
-                "海選進行中，請稍候完成後再按。",
-                reply_markup=self._reply_menu(uid),
-            )
-            return
-        async with self._screening_gate:
-            if self._screening_global_owner and self._screening_global_owner != actor:
-                await message.reply_html(
-                    "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
-                    "算完會自動推名單；你也可以稍後再按「海選」讀快取。"
-                    "名單是同一份，不會和對方的持股／觀察／連買混在一起。",
-                    reply_markup=self._reply_menu(uid),
-                )
-                return
-            self._screening_global_owner = actor
+        # 第一個 await 必須是 LOADING：不准先 begin／gate／鍵盤 DB／touch。
         # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
-        # 必須先送 LOADING，再做 cancel／dismiss／_reply_menu（後者會讀未讀數打 DB）。
         status = None
         try:
             status = await message.reply_text(
@@ -3346,6 +3330,24 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("海選進度泡泡送出失敗")
             status = None
+        if actor in self._screening_running:
+            await self._dismiss_progress_now(status)
+            await message.reply_text(
+                "海選進行中，請稍候完成後再按。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        async with self._screening_gate:
+            if self._screening_global_owner and self._screening_global_owner != actor:
+                await self._dismiss_progress_now(status)
+                await message.reply_html(
+                    "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
+                    "算完會自動推名單；你也可以稍後再按「海選」讀快取。"
+                    "名單是同一份，不會和對方的持股／觀察／連買混在一起。",
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
+            self._screening_global_owner = actor
         op_kind = "screen"
         # begin 只清已登記的舊等待；本則 status 尚未 register，不會被自己消掉。
         gen = await self._begin_actor_op(actor, op_kind)
@@ -6317,9 +6319,11 @@ class WayneTelegramBot:
         raw = str(getattr(msg, "text", "") or "")
         text = _normalize_menu_text(raw)
         low = text.lower().lstrip("/")
-        if low in ("menu", "start", "flow"):
+        if low in ("menu", "start", "flow", "screen"):
             return True
         if text in MENU_BTN_FLOW_ALIASES or text in ("選單", "主選單"):
+            return True
+        if text in MENU_BTN_SCREEN_ALIASES:
             return True
         return False
 
@@ -6342,6 +6346,12 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             # 第一則必須是 LOADING：不准先 touch DB／cancel／鎖句。
             await self.flow_cmd(update, context)
+            return
+        if text in MENU_BTN_SCREEN_ALIASES or text.lower().lstrip("/") == "screen":
+            logger.info("主選單：海選 uid=%s", uid)
+            self._pending.pop(actor, None)
+            # 第一則必須是 LOADING：不准先 touch DB／cancel／鎖句（同資金輪動）。
+            await self.screen_cmd(update, context)
             return
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         if text.lower().lstrip("/") in ("start", "開始"):
@@ -6456,12 +6466,6 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.winrate_cmd(update, context)
-            return
-        if text in MENU_BTN_SCREEN_ALIASES:
-            logger.info("主選單：海選 uid=%s", uid)
-            self._pending.pop(actor, None)
-            # _run_manual_screening 內 _begin_actor_op 會取消同人飆大等待
-            await self.screen_cmd(update, context)
             return
         if text in ("興櫃", "興櫃海選", "興櫃名單"):
             logger.info("主選單：興櫃海選 uid=%s", uid)

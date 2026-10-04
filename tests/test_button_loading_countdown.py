@@ -61,6 +61,7 @@ def test_menu_slow_paths_start_plain_wait():
             # 主路徑：LOADING reply 必須早於 cancel／鍵盤 DB／掃描
             load_i = src.index("self._screening_progress_text(0)")
             assert load_i < src.index("await self._begin_actor_op")
+            assert load_i < src.index("async with self._screening_gate")
             assert load_i < src.index("await self._dismiss_menu_transients")
             assert load_i < src.index("hub = self._reply_menu")
             assert load_i < src.index("build_and_cache_full_screening")
@@ -155,6 +156,138 @@ def test_manual_screening_loading_before_screen_work(monkeypatch):
     assert order.index("loading") < order.index("reply_menu")
     assert order.index("loading") < order.index("screen")
     bot._reply_screening_payload.assert_awaited()
+
+
+def test_manual_screening_loading_before_gate(monkeypatch):
+    """空白好幾秒的根因：gate／鎖句若先於 LOADING，話筒會空白。LOADING 必須先出。"""
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_global_owner = ""
+    bot._actor_op_gen = {}
+    bot._actor_op_kind = {}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
+    bot._magic_dismiss = AsyncMock()
+    bot._reply_screening_payload = AsyncMock()
+    order: list[str] = []
+
+    class SlowGate:
+        async def __aenter__(self):
+            order.append("gate")
+            await asyncio.sleep(0.04)
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+    bot._screening_gate = SlowGate()
+
+    async def _begin(actor, kind):
+        order.append("begin")
+        bot._actor_op_gen[str(actor)] = 1
+        bot._actor_op_kind[str(actor)] = str(kind)
+        return 1
+
+    bot._begin_actor_op = _begin
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._actor_key = MagicMock(return_value="u1")
+    bot._menu_uid_from_message = MagicMock(return_value="u1")
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
+    bot.db_path = "data/wayne_market.db"
+    monkeypatch.setattr(
+        "screening_engine.build_and_cache_full_screening",
+        lambda *_a, **_k: {"as_of": "20261002", "results": {}, "payload": []},
+    )
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+
+    async def _reply_text(*args, **kwargs):
+        order.append("loading")
+        return status
+
+    msg.reply_text = AsyncMock(side_effect=_reply_text)
+
+    asyncio.run(bot._run_manual_screening(msg, "u1"))
+    assert order[0] == "loading"
+    assert order.index("loading") < order.index("gate")
+    assert order.index("loading") < order.index("begin")
+
+
+def test_screen_menu_route_does_not_touch_before_cmd():
+    """主選單按海選：不准在 screen_cmd 前 touch DB／cancel（空白好幾秒）。"""
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    idx = src.find("MENU_BTN_SCREEN_ALIASES")
+    assert idx > 0
+    chunk = src[idx : idx + 280]
+    assert "screen_cmd" in chunk
+    assert "_cancel_actor_ops" not in chunk
+    assert src.find("MENU_BTN_SCREEN_ALIASES") < src.find("self._touch_user")
+
+
+def test_screen_on_text_first_reply_is_loading_not_blank(monkeypatch):
+    """on_text 按海選：即使 touch 會卡住，第一則仍必須是 LOADING。"""
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
+    bot._actor_op_gen = {}
+    bot._actor_op_kind = {}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
+    bot._magic_dismiss = AsyncMock()
+    bot._reply_screening_payload = AsyncMock()
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._actor_key = MagicMock(return_value="u1")
+    bot._menu_uid_from_message = MagicMock(return_value="u1")
+    bot.db_path = "data/wayne_market.db"
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
+    order: list[str] = []
+
+    def _touch(*_a, **_k):
+        order.append("touch")
+        raise AssertionError("海選不准先 touch")
+
+    bot._touch_user = MagicMock(side_effect=_touch)
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.build_and_cache_full_screening",
+        lambda *_a, **_k: {"as_of": "20261002", "results": {}, "payload": []},
+    )
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+
+    async def _reply_text(*args, **kwargs):
+        order.append("loading")
+        return status
+
+    msg.reply_text = AsyncMock(side_effect=_reply_text)
+    update = MagicMock()
+    update.message = msg
+    update.effective_user = MagicMock(id=1001, first_name="u")
+
+    asyncio.run(
+        bot._on_text_bound(update, MagicMock(), raw="海選", text="海選", uid="1001")
+    )
+    assert order and order[0] == "loading"
+    assert "LOADING" in str(msg.reply_text.await_args_list[0].args[0])
+    bot._touch_user.assert_not_called()
 
 
 def test_magic_dismiss_edits_then_deletes():

@@ -486,12 +486,15 @@ def test_screening_global_gate_blocks_second_user():
     bot._screening_global_owner = "1:1"
     bot._dismiss_menu_transients = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
     bot.screener = MagicMock()
     bot.screener.run_full_screening = MagicMock()
     msg = MagicMock()
     msg.chat_id = 2
     msg.from_user = MagicMock(id=2)
-    msg.reply_text = AsyncMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
     msg.reply_html = AsyncMock()
 
     async def run():
@@ -499,6 +502,8 @@ def test_screening_global_gate_blocks_second_user():
 
     asyncio.run(run())
     bot.screener.run_full_screening.assert_not_called()
+    first = str(msg.reply_text.await_args_list[0].args[0])
+    assert "LOADING" in first
     blob = " ".join(
         str(c.args[0])
         for c in msg.reply_html.await_args_list + msg.reply_text.await_args_list

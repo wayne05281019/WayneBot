@@ -72,8 +72,10 @@ def test_screen_aliases_still_route_after_winrate_shift():
     assert "海選名單" in MENU_BTN_SCREEN_ALIASES
     src = inspect.getsource(WayneTelegramBot._on_text_bound)
     assert "MENU_BTN_SCREEN_ALIASES" in src
-    assert src.index("MENU_BTN_WINRATE_ALIASES") < src.index("MENU_BTN_SCREEN_ALIASES")
     assert "screen_cmd" in src
+    assert src.find("MENU_BTN_SCREEN_ALIASES") < src.find("self._touch_user")
+    assert "MENU_BTN_WINRATE_ALIASES" in src
+    assert "winrate_cmd" in src
 
 
 def test_save_load_roster_and_empty_sentinel(tmp_path):
