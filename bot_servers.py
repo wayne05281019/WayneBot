@@ -730,8 +730,12 @@ class WayneTelegramBot:
             pass
         await self._magic_dismiss(msg)
 
-    async def _cancel_actor_ops(self, actor: str, *, dismiss: bool = True) -> None:
-        """作廢這個人進行中的等待框／背景交付；不准碰另一人。"""
+    async def _cancel_actor_ops(self, actor: str, *, dismiss: bool = True, keep_msg=None) -> None:
+        """作廢這個人進行中的等待框／背景交付；不准碰另一人。
+
+        清舊框不准擋住下一顆鈕的第一則 LOADING：Telegram delete／RetryAfter
+        頂多等一小段，其餘背景收。keep_msg＝剛送出的新 LOADING，不准誤刪。
+        """
         self._ensure_actor_op_maps()
         key = str(actor or "")
         if not key:
@@ -749,6 +753,7 @@ class WayneTelegramBot:
                 task.cancel()
             except Exception:
                 pass
+        old_msgs = []
         for _kind, slot in slots.items():
             if not isinstance(slot, dict):
                 continue
@@ -765,16 +770,29 @@ class WayneTelegramBot:
                 except Exception:
                     pass
             if dismiss:
-                # 先讓被 cancel 的 ticker 停手，再刪泡泡，避免秒數停住卻刪不掉。
-                try:
-                    await asyncio.sleep(0)
-                except Exception:
-                    pass
-                await self._dismiss_progress_now(slot.get("wait_msg"))
+                old_msgs.append(slot.get("wait_msg"))
+        if not dismiss or not old_msgs:
+            return
 
-    async def _begin_actor_op(self, actor: str, kind: str) -> int:
+        async def _drop_old() -> None:
+            try:
+                await asyncio.sleep(0)
+            except Exception:
+                pass
+            for msg in old_msgs:
+                if msg is None or msg is keep_msg:
+                    continue
+                await self._dismiss_progress_now(msg)
+
+        drop = asyncio.create_task(_drop_old())
+        try:
+            await asyncio.wait_for(asyncio.shield(drop), timeout=0.35)
+        except Exception:
+            pass
+
+    async def _begin_actor_op(self, actor: str, kind: str, *, keep_msg=None) -> int:
         """換鍵／新開長任務：取消舊等待，發新 generation。"""
-        await self._cancel_actor_ops(actor, dismiss=True)
+        await self._cancel_actor_ops(actor, dismiss=True, keep_msg=keep_msg)
         self._ensure_actor_op_maps()
         key = str(actor or "")
         gen = int(self._actor_op_gen.get(key) or 0) + 1
@@ -1689,8 +1707,8 @@ class WayneTelegramBot:
             prev = self._menu_pin_msgs
         uid = self._menu_uid_from_message(message)
         markup = self._reply_menu(uid, fast=True)
-        # Telegram 只能用新訊息掛 ReplyKeyboard；字愈短愈好，不要再講鍵盤位置。
-        for text in ("·", "主選單"):
+        # 「·」在手機上是空白氣泡；釘鍵盤必須有看得懂的字。
+        for text in ("主選單已掛上", "主選單"):
             try:
                 pin = await message.reply_text(text, reply_markup=markup)
                 self._menu_pin_msgs[actor] = pin
@@ -3305,6 +3323,28 @@ class WayneTelegramBot:
             "海選進行中", elapsed_sec, now=now, rest=rest, fill_sec=300.0
         )
 
+    _SCREEN_TIMEOUT_ZH = (
+        "海選這次逾時了（已超過 3 分鐘）。\n"
+        "背景仍在算名單，算完會自動推給你，不必再按。\n"
+        "其他鈕可以照常按，不必先回主選單。"
+    )
+
+    async def _speak_screen_timeout(self, status, message, hub) -> bool:
+        """逾時改口：先改 LOADING，改不到才另發。回 True＝這則已是逾時句，不准再刪成空白。"""
+        txt = self._SCREEN_TIMEOUT_ZH
+        if status is not None:
+            try:
+                await status.edit_text(txt)
+                return True
+            except Exception:
+                pass
+        try:
+            await message.reply_text(txt, reply_markup=hub)
+            return False
+        except Exception:
+            logger.exception("海選逾時說明送出失敗")
+            return True
+
     async def _deliver_manual_screening_result(
         self,
         message,
@@ -3355,40 +3395,75 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("海選進度泡泡送出失敗")
             status = None
-        # LOADING 已出：立刻釘鍵盤。刪進度泡泡時兩排不准跟著消失，也不必先回主選單。
-        try:
-            await self._pin_reply_menu(message)
-        except Exception:
-            pass
+        hub = self._reply_menu(uid, fast=True)
+        op_kind = "screen"
+        stop = asyncio.Event()
+        ticker = None
+        assigned_gen = {"n": 0}
+        t0 = time.monotonic()
+        status_consumed = False
+
+        async def _tick():
+            if status is None:
+                return
+            while not stop.is_set():
+                g = int(assigned_gen["n"] or 0)
+                if g and not self._actor_op_alive(actor, op_kind, g):
+                    break
+                elapsed = int(time.monotonic() - t0)
+                try:
+                    await status.edit_text(
+                        self._screening_progress_text(elapsed), parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=5.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
+        async def _stop_ticker() -> None:
+            stop.set()
+            task = ticker
+            if task is None:
+                return
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        # LOADING 已出：立刻倒數。清上一件飆大殘框不准堵住這則。
+        ticker = asyncio.create_task(_tick())
         if actor in self._screening_running:
+            await _stop_ticker()
             await self._dismiss_progress_now(status)
             await message.reply_text(
                 "海選進行中，請稍候完成後再按。",
-                reply_markup=self._reply_menu(uid, fast=True),
+                reply_markup=hub,
             )
             return
         async with self._screening_gate:
             if self._screening_global_owner and self._screening_global_owner != actor:
+                await _stop_ticker()
                 await self._dismiss_progress_now(status)
                 await message.reply_html(
                     "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
                     "算完會自動推名單；你也可以稍後再按「海選」讀快取。"
                     "名單是同一份，不會和對方的持股／觀察／連買混在一起。",
-                    reply_markup=self._reply_menu(uid, fast=True),
+                    reply_markup=hub,
                 )
                 return
             self._screening_global_owner = actor
-        op_kind = "screen"
-        # begin 只清已登記的舊等待；本則 status 尚未 register，不會被自己消掉。
-        gen = await self._begin_actor_op(actor, op_kind)
+        # begin 只清已登記的舊等待；本則 status 用 keep_msg 保住。
+        gen = await self._begin_actor_op(actor, op_kind, keep_msg=status)
+        assigned_gen["n"] = int(gen)
         self._screening_running.add(actor)
-        hub = self._reply_menu(uid, fast=True)
-        stop = asyncio.Event()
-        ticker = None
         delivered = False
         cancelled = False
         hold_gate = False  # 逾時必須放行下一顆鈕；建檔不掛 actor cancel
-        # 快取讀／全掃前端等待：逾時只收 LOADING，建檔 thread 繼續並自動推。
+        # 快取讀／全掃前端等待：逾時只改 LOADING 口吻，建檔 thread 繼續並自動推。
         screen_timeout_s = 180.0
         try:
             override = float(getattr(self, "_screen_timeout_s", 0) or 0)
@@ -3399,28 +3474,6 @@ class WayneTelegramBot:
         build_task = None
         try:
             await self._dismiss_menu_transients(actor)
-            t0 = time.monotonic()
-
-            async def _tick():
-                if status is None:
-                    return
-                while not stop.is_set():
-                    if not self._actor_op_alive(actor, op_kind, gen):
-                        break
-                    elapsed = int(time.monotonic() - t0)
-                    try:
-                        await status.edit_text(
-                            self._screening_progress_text(elapsed), parse_mode="HTML"
-                        )
-                    except Exception:
-                        pass
-                    try:
-                        await asyncio.wait_for(stop.wait(), timeout=5.0)
-                        break
-                    except asyncio.TimeoutError:
-                        continue
-
-            ticker = asyncio.create_task(_tick())
             self._register_actor_wait(
                 actor, op_kind, gen=gen, wait_msg=status, stop=stop, task=ticker
             )
@@ -3468,17 +3521,9 @@ class WayneTelegramBot:
                 return
             except asyncio.TimeoutError:
                 logger.warning("手動海選前端逾時，背景續建並自動推名單 actor=%s", actor)
-                stop.set()
-                try:
-                    await message.reply_text(
-                        "海選這次逾時了（已超過 3 分鐘）。\n"
-                        "背景仍在算名單，算完會自動推給你，不必再按。\n"
-                        "其他鈕可以照常按，不必先回主選單。",
-                        reply_markup=hub,
-                    )
-                    delivered = True
-                except Exception:
-                    logger.exception("海選逾時說明送出失敗")
+                await _stop_ticker()
+                status_consumed = await self._speak_screen_timeout(status, message, hub)
+                delivered = True
 
                 async def _late_deliver():
                     try:
@@ -3521,14 +3566,9 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             logger.exception("手動海選讀快取逾時")
             if self._actor_op_alive(actor, op_kind, gen):
-                try:
-                    await message.reply_text(
-                        "海選這次逾時了。背景若還在算，算完會自動推給你，不必再按。其他鈕可以照常按。",
-                        reply_markup=hub,
-                    )
-                    delivered = True
-                except Exception:
-                    logger.exception("海選逾時提示送出失敗")
+                await _stop_ticker()
+                status_consumed = await self._speak_screen_timeout(status, message, hub)
+                delivered = True
             else:
                 cancelled = True
         except Exception:
@@ -3552,8 +3592,9 @@ class WayneTelegramBot:
                     if self._screening_global_owner == actor:
                         self._screening_global_owner = ""
             alive = self._actor_op_alive(actor, op_kind, gen)
-            # 取消後也要清殘框（秒數停住仍掛著＝沒做完）
-            await self._dismiss_progress_now(status)
+            # 逾時已改口的 LOADING 不准刪成空白；取消／成功才清殘框。
+            if not status_consumed:
+                await self._dismiss_progress_now(status)
             if alive and not delivered and not cancelled:
                 try:
                     await message.reply_text(PHONE_BUSY, reply_markup=hub)

@@ -226,7 +226,8 @@ def test_pin_reply_menu_keeps_keyboard_message():
     asyncio.run(asyncio.sleep(0.45))
     pin.delete.assert_not_called()
     sent = msg.reply_text.await_args.args[0]
-    assert sent == "·"
+    assert sent == "主選單已掛上"
+    assert sent.strip() not in ("", "·")
     assert "兩排主選單" not in sent
     markup = msg.reply_text.await_args.kwargs.get("reply_markup")
     assert markup is not None
@@ -250,7 +251,8 @@ def test_pin_reply_menu_does_not_explain_keyboard_location():
 
     src = inspect.getsource(WayneTelegramBot._pin_reply_menu)
     assert "兩排主選單在輸入列旁邊四格" not in src
-    assert '("·", "主選單")' in src
+    assert '("主選單已掛上", "主選單")' in src
+    assert '("·", "主選單")' not in src
 
 
 def test_refresh_silent_sends_reply_keyboard_with_streak():
