@@ -409,7 +409,7 @@ def test_refresh_reply_menu_keeps_keyboard_message():
     sent.delete.assert_not_awaited()
 
 
-def test_screening_status_bubble_has_no_reply_keyboard():
+def test_screening_status_bubble_has_no_reply_keyboard(monkeypatch):
     """海選進度泡泡不得掛 ReplyKeyboard，否則 delete 後兩排會消失。"""
     import asyncio
     import inspect
@@ -417,6 +417,9 @@ def test_screening_status_bubble_has_no_reply_keyboard():
 
     from bot_servers import WayneTelegramBot
 
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
     src = inspect.getsource(WayneTelegramBot._run_manual_screening)
     assert "reply_markup=hub" not in src.split("status = await")[1].split("ticker =")[0]
     assert "_dismiss_progress_now" in src or "_magic_dismiss" in src
