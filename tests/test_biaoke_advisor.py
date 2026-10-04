@@ -228,7 +228,9 @@ def test_field_advice_charts_give_all_with_how(tmp_path):
     from biaoke_advisor import (
         action_advice_pack,
         advice_chart_targets,
+        format_action_advice_html,
         is_field_advice_ask,
+        sids_mentioned_in_advice_html,
     )
 
     db = _mk_db(tmp_path)
@@ -242,12 +244,35 @@ def test_field_advice_charts_give_all_with_how(tmp_path):
     assert "該怎麼做" in blob or "建議怎麼做" in blob
     assert "憑：" in blob or "官方" in blob
     targets = advice_chart_targets(db, ask="InP")
-    # 不截 2～3：名冊該給的都進清單
+    # 介紹鏈＋該怎麼做：至少蓋過全部分桶
     n_rows = len(pack.get("do_now") or []) + len(pack.get("wait") or []) + len(
         pack.get("skip") or []
     )
-    assert len(targets) == n_rows
+    assert len(targets) >= n_rows
     assert all(t.get("do") and t.get("how") for t in targets)
+    html = format_action_advice_html(db, ask="InP")
+    html_sids = set(sids_mentioned_in_advice_html(html))
+    chart_sids = {str(t.get("sid")) for t in targets}
+    assert html_sids
+    assert html_sids <= chart_sids
+
+
+def test_advice_chart_targets_cover_spoken_html_extras(tmp_path):
+    """文內奇摩連有、清單漏掉的代號必須補進出圖。"""
+    from biaoke_advisor import advice_chart_targets, sids_mentioned_in_advice_html
+
+    db = _mk_db(tmp_path)
+    fake = (
+        '<a href="https://tw.stock.yahoo.com/quote/2330.TW">2330 台積電</a>'
+        '、<a href="https://tw.stock.yahoo.com/quote/3081.TWO">3081 聯亞</a>'
+    )
+    assert sids_mentioned_in_advice_html(fake) == ["2330", "3081"]
+    targets = advice_chart_targets(db, ask="InP", spoken_html=fake)
+    sids = {str(t.get("sid")) for t in targets}
+    assert "2330" in sids
+    assert "3081" in sids
+    row2330 = next(t for t in targets if t.get("sid") == "2330")
+    assert row2330.get("do") and row2330.get("how")
 
 
 def test_intro_asic_then_optical_yahoo_layout(tmp_path):

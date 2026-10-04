@@ -58,6 +58,12 @@ def test_menu_slow_paths_start_plain_wait():
         src = inspect.getsource(getattr(WayneTelegramBot, name))
         if name == "_run_manual_screening":
             assert needle in src
+            # 主路徑：LOADING reply 必須早於 cancel／鍵盤 DB／掃描
+            load_i = src.index("self._screening_progress_text(0)")
+            assert load_i < src.index("await self._begin_actor_op")
+            assert load_i < src.index("await self._dismiss_menu_transients")
+            assert load_i < src.index("hub = self._reply_menu")
+            assert load_i < src.index("build_and_cache_full_screening")
             assert "load_cached_full_screening" in src
             assert "build_and_cache_full_screening" in src
             assert "screen_timeout_s = 180.0" in src
@@ -66,6 +72,80 @@ def test_menu_slow_paths_start_plain_wait():
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
         assert needle in src, name
+        if name == "_run_emerging_screening":
+            wait_i = src.index("await self._start_plain_wait")
+            assert wait_i < src.index("hub = self._reply_menu")
+
+
+def test_manual_screening_loading_before_screen_work(monkeypatch):
+    """按海選：第一則 Telegram 回覆必須是 LOADING，且早於 begin／DB 鍵盤／掃描。"""
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
+    bot._actor_op_gen = {}
+    bot._actor_op_kind = {}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
+    bot._magic_dismiss = AsyncMock()
+    bot._reply_screening_payload = AsyncMock()
+    order: list[str] = []
+
+    async def _slow_begin(actor, kind):
+        order.append("begin")
+        await asyncio.sleep(0.05)
+        bot._actor_op_gen[str(actor)] = 1
+        bot._actor_op_kind[str(actor)] = str(kind)
+        return 1
+
+    def _slow_menu(uid=""):
+        order.append("reply_menu")
+        return None
+
+    bot._begin_actor_op = _slow_begin
+    bot._reply_menu = _slow_menu
+    bot._actor_key = MagicMock(return_value="u1")
+    bot._menu_uid_from_message = MagicMock(return_value="u1")
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock(
+        side_effect=AssertionError("no bare full")
+    )
+    bot.db_path = "data/wayne_market.db"
+
+    def _build(_db=None):
+        order.append("screen")
+        return {"as_of": "20261004", "results": {}, "payload": []}
+
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.build_and_cache_full_screening", _build
+    )
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+
+    async def _reply_text(*args, **kwargs):
+        order.append("loading")
+        return status
+
+    msg.reply_text = AsyncMock(side_effect=_reply_text)
+
+    async def run():
+        await bot._run_manual_screening(msg, "u1")
+
+    asyncio.run(run())
+    assert order[0] == "loading"
+    assert "LOADING" in str(msg.reply_text.await_args_list[0].args[0])
+    assert order.index("loading") < order.index("begin")
+    assert order.index("loading") < order.index("reply_menu")
+    assert order.index("loading") < order.index("screen")
+    bot._reply_screening_payload.assert_awaited()
 
 
 def test_magic_dismiss_edits_then_deletes():
@@ -222,6 +302,9 @@ def test_biaoke_entry_has_loading_and_fail_text():
     assert "PHONE_BUSY" in src
     assert "_begin_actor_op" in src
     assert "current=\"chart\" if q else \"reply\"" in src or 'current="chart" if q else "reply"' in src
+    wait_i = src.index("wait_h = await self._start_plain_wait")
+    assert wait_i < src.index("self._mark_menu_layout_ok")
+    assert src.index("await self._begin_actor_op") < wait_i
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
@@ -254,6 +337,92 @@ def test_biaoke_entry_has_loading_and_fail_text():
     assert any(
         "暫時沒跑完" in str(c.args[0]) for c in msg.reply_text.await_args_list if c.args
     )
+
+
+def test_biaoke_advice_charts_progress_and_skip_reason(monkeypatch, tmp_path):
+    """出圖階段 LOADING 帶 出圖中 done/total；失敗不准靜默，要講略過原因。"""
+    from pathlib import Path
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = str(tmp_path / "x.db")
+    bot.charts_dir = str(tmp_path / "charts")
+    Path(bot.charts_dir).mkdir(parents=True, exist_ok=True)
+    bot._actor_op_gen = {"u1": 1}
+    bot._actor_op_kind = {"u1": "biaoke"}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._actor_key = MagicMock(return_value="u1")
+    bot._biaoke_reply_menu = MagicMock(return_value=None)
+    bot._scratch_chart_path = MagicMock(
+        side_effect=lambda d, sid, kind, uid: str(Path(d) / f"{sid}-{kind}.png")
+    )
+    bot._png_looks_ok = MagicMock(return_value=False)
+    bot._magic_dismiss = AsyncMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    first_bubble = {"txt": ""}
+
+    async def _start_wait(message, *, text_fn, actor="", kind="", gen=0):
+        first_bubble["txt"] = text_fn(0)
+        return (status, asyncio.Event(), None)
+
+    bot._start_plain_wait = AsyncMock(side_effect=_start_wait)
+    bot._stop_plain_wait = AsyncMock()
+
+    targets = [
+        {
+            "sid": "3081",
+            "name": "聯亞",
+            "do": "可接",
+            "how": "剛脫離零",
+            "evidence": "近5日+1%",
+            "basis": "雙箭頭",
+        },
+        {
+            "sid": "2330",
+            "name": "台積電",
+            "do": "等回測再接",
+            "how": "等回測",
+            "evidence": "官方柱",
+            "basis": "雙箭頭",
+        },
+    ]
+
+    def _targets(*_a, **_k):
+        return list(targets)
+
+    monkeypatch.setattr("biaoke_advisor.advice_chart_targets", _targets)
+    msg = MagicMock()
+    msg.reply_text = AsyncMock()
+    msg.reply_photo = AsyncMock()
+    msg.chat = MagicMock()
+    msg.chat.send_action = AsyncMock()
+
+    async def run():
+        await bot._send_biaoke_advice_charts(
+            msg,
+            "u1",
+            ask="",
+            actor="u1",
+            kind="biaoke",
+            gen=1,
+            spoken_html='quote/3081.TWO quote/2330.TW',
+        )
+
+    asyncio.run(run())
+    bot._start_plain_wait.assert_awaited()
+    assert "出圖中 0/2" in first_bubble["txt"]
+    assert "LOADING" in first_bubble["txt"]
+    # 兩檔都圖檔不合格 → 各一則略過原因；不准靜默
+    skip_texts = [
+        str(c.args[0]) for c in msg.reply_text.await_args_list if c.args
+    ]
+    assert len(skip_texts) == 2
+    assert all("結構圖略過" in t for t in skip_texts)
+    assert any("3081" in t for t in skip_texts)
+    assert any("2330" in t for t in skip_texts)
+    bot._stop_plain_wait.assert_awaited()
+    msg.reply_photo.assert_not_awaited()
 
 
 def test_start_and_back_clear_only_that_actor_pending():

@@ -1157,6 +1157,47 @@ def format_action_advice_html(
     return out
 
 
+def sids_mentioned_in_advice_html(html: str) -> List[str]:
+    """從已送出的飆大介紹／該怎麼做 HTML 抽出奇摩連的代號（保序去重）。"""
+    found = re.findall(r"quote/(\d{3,6}[A-Za-z]?)\.", str(html or ""))
+    out: List[str] = []
+    seen: set = set()
+    for sid in found:
+        s = str(sid or "").strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
+# 與 format_action_advice_html 介紹區同一套上限：出圖必須蓋過話筒已點名的檔
+_INTRO_CHART_LIMITS = (
+    ("asic_leaders", 3, "asic"),
+    ("asic_related", 6, "asic"),
+    ("inp_rows", 5, "inp"),
+    ("fau_rows", 4, "fau"),
+    ("cpo_rows", 5, "cpo"),
+)
+
+
+def _row_to_chart_target(row: Dict[str, Any], *, basis: str = "") -> Dict[str, Any]:
+    """單列轉出圖目標；缺 do/how 時用分桶規則補一句，不准空白 silently 丟。"""
+    r = dict(row or {})
+    if not r.get("do") or not r.get("how"):
+        do_now, wait, skip = _bucket_advice_rows([r], basis=basis or str(r.get("basis") or ""))
+        picked = (do_now or wait or skip or [r])[0]
+        r = {**r, **picked}
+    return {
+        "sid": str(r.get("sid") or ""),
+        "name": str(r.get("name") or r.get("sid") or ""),
+        "do": str(r.get("do") or "結構參考"),
+        "how": str(r.get("how") or "對照官方柱與近窗說法；切入仍只認黃金買點。"),
+        "evidence": str(r.get("evidence") or _evidence_bit(r)),
+        "basis": str(r.get("basis") or basis or ""),
+    }
+
+
 def advice_chart_targets(
     db_path: str = "",
     ask: str = "",
@@ -1164,36 +1205,74 @@ def advice_chart_targets(
     n_do: int = 0,
     n_wait: int = 0,
     n_skip: int = 0,
+    spoken_html: str = "",
 ) -> List[Dict[str, Any]]:
-    """類股／空白進場附結構圖：名冊該給的都給（可接／等回測／偏熱），每檔帶怎麼做。
+    """類股／空白進場附結構圖：介紹區＋該怎麼做點名的檔都要進清單。
 
-    n_*=0 表示不截斷；若呼叫端硬設上限才截。
+    順序對齊話筒：ASIC 龍頭／相關 → InP／FAU／CPO → 該怎麼做分桶。
+    n_*=0 表示該怎麼做桶不截斷；介紹區沿用 HTML 同一套上限。
+    spoken_html：若有，補齊文內奇摩連但清單漏掉的代號（不准靜默少圖）。
     """
     pack = action_advice_pack(db_path, ask=ask)
+    live = pack.get("live") or {}
+    basis = str(pack.get("basis") or "")
     out: List[Dict[str, Any]] = []
+    seen: set = set()
+    by_sid: Dict[str, Dict[str, Any]] = {}
+    for key in ("do_now", "wait", "skip"):
+        for r in pack.get(key) or []:
+            sid = str((r or {}).get("sid") or "")
+            if sid:
+                by_sid[sid] = r
+
+    def _push(row: Dict[str, Any]) -> None:
+        sid = str((row or {}).get("sid") or "")
+        if not sid or sid in seen:
+            return
+        if advice_sid_blocked(db_path, sid):
+            return
+        seen.add(sid)
+        src = by_sid.get(sid) or row
+        out.append(_row_to_chart_target(src, basis=basis))
+
+    # 1) 介紹鏈：跟 format_action_advice_html 同一上限／開關
+    for key, lim, flag in _INTRO_CHART_LIMITS:
+        if flag == "asic" and not live.get("asic"):
+            continue
+        if flag != "asic" and not (live.get("opt") and live.get(flag)):
+            continue
+        for r in list(pack.get(key) or [])[: max(0, int(lim))]:
+            _push(r)
+
+    # 2) 該怎麼做分桶（可接／等回測／偏熱）— 預設全給
     buckets = (
         (pack.get("do_now") or [], int(n_do)),
         (pack.get("wait") or [], int(n_wait)),
         (pack.get("skip") or [], int(n_skip)),
     )
-    seen: set = set()
     for rows, lim in buckets:
         take = rows if lim <= 0 else rows[:lim]
         for r in take:
-            sid = str(r.get("sid") or "")
-            if not sid or sid in seen:
-                continue
-            seen.add(sid)
-            out.append(
-                {
-                    "sid": sid,
-                    "name": str(r.get("name") or sid),
-                    "do": str(r.get("do") or ""),
-                    "how": str(r.get("how") or ""),
-                    "evidence": str(r.get("evidence") or ""),
-                    "basis": str(r.get("basis") or ""),
-                }
-            )
+            _push(r)
+
+    # 3) 已送出文字裡有連、清單卻沒有 → 補進（不准少圖）
+    for sid in sids_mentioned_in_advice_html(spoken_html):
+        if sid in seen:
+            continue
+        row = by_sid.get(sid) or {"sid": sid, "name": sid}
+        if not row.get("name") or row.get("name") == sid:
+            try:
+                from biaoke_brain import resolve_stock
+
+                hits = resolve_stock(db_path, sid) or []
+                if hits:
+                    row = {
+                        **row,
+                        "name": str(hits[0].get("stock_name") or sid),
+                    }
+            except Exception:
+                pass
+        _push(row)
     return out
 
 
