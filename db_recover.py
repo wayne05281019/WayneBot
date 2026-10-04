@@ -143,28 +143,35 @@ def best_corrupt_restore(
     db_path: str,
     *,
     min_biaoke: int = MIN_BIAOKE_RESTORE,
+    min_private: int = 0,
     quick_check=None,
 ) -> Optional[str]:
-    """可 quick_check 且 biaoke 主文 ≥ min 的最佳 .corrupt-*。"""
+    """可 quick_check 且（biaoke≥min 或 private≥min_private）的最佳 .corrupt-*。
+
+    排序：biaoke 主文 → 私人列數 → mtime。換庫前用完整度比，不准空 Release 蓋較完整庫。
+    """
     from import_health import db_quick_check_ok
 
     check = quick_check or (lambda p: db_quick_check_ok(p, min_bytes=1))
-    ranked: List[Tuple[int, float, str]] = []
+    ranked: List[Tuple[int, int, float, str]] = []
     for cand in list_corrupt_candidates(db_path):
         if not _candidate_readable(cand, check):
             continue
-        n = biaoke_post_count(cand)
-        if n < int(min_biaoke):
+        n, priv = completeness_counts(cand)
+        # biaoke 達標，或（允許時）私人達標——換庫前用完整度，不准只看能不能開
+        biaoke_ok = n >= int(min_biaoke)
+        private_ok = int(min_private) > 0 and priv >= int(min_private)
+        if not biaoke_ok and not private_ok:
             continue
         try:
             mtime = os.path.getmtime(cand)
         except OSError:
             mtime = 0.0
-        ranked.append((n, mtime, cand))
+        ranked.append((n, priv, mtime, cand))
     if not ranked:
         return None
-    ranked.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    return ranked[0][2]
+    ranked.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
+    return ranked[0][3]
 
 
 def _shared_columns(
@@ -303,6 +310,23 @@ def private_row_counts(db_path: str) -> dict:
 
 def private_row_total(db_path: str) -> int:
     return int(sum(private_row_counts(db_path).values()))
+
+
+def completeness_counts(db_path: str) -> Tuple[int, int]:
+    """(biaoke 主文數, 私人表合計)。讀不到回 (0, 0)。"""
+    return biaoke_post_count(db_path), private_row_total(db_path)
+
+
+def is_richer_completeness(
+    cand_biaoke: int,
+    cand_private: int,
+    base_biaoke: int,
+    base_private: int,
+) -> bool:
+    """候選比現況「較完整」：飆大或私人任一明顯較多。"""
+    return (int(cand_biaoke) > int(base_biaoke)) or (
+        int(cand_private) > int(base_private)
+    )
 
 
 def salvage_private_from_corrupts(db_path: str) -> dict:
@@ -591,6 +615,36 @@ def force_biaoke_baseline(
         return _finish("seed", ok=False, error=f"seed_exception:{exc}")
 
 
+def _post_release_seed_and_salvage(
+    db_path: str,
+    *,
+    min_biaoke: int,
+    actions: List[str],
+) -> Tuple[int, int]:
+    """Release 裝完必做：ATTACH 救 biaoke／私人，再 seed 1709。不准留雙空。"""
+    salv = salvage_biaoke_from_corrupts(db_path)
+    if int(salv.get("after") or 0) > int(salv.get("before") or 0):
+        actions.append(
+            f"post_release_biaoke:{salv.get('before')}->{salv.get('after')}"
+        )
+    priv = salvage_private_from_corrupts(db_path)
+    if int(priv.get("after") or 0) > int(priv.get("before") or 0):
+        actions.append(f"post_release_private:{priv.get('before')}->{priv.get('after')}")
+    n = biaoke_post_count(db_path)
+    if n < int(min_biaoke):
+        seeded = force_biaoke_baseline(db_path, min_biaoke=min_biaoke)
+        actions.append(
+            f"post_release_seed:ok={seeded.get('ok')}:n={seeded.get('biaoke_n')}"
+            f":src={seeded.get('source')}"
+        )
+        n = int(seeded.get("biaoke_n") or biaoke_post_count(db_path))
+        # force_biaoke_baseline 末尾已再救私人
+        priv_n = int(seeded.get("private_n") or private_row_total(db_path))
+    else:
+        priv_n = int(priv.get("after") or private_row_total(db_path))
+    return n, priv_n
+
+
 def ensure_market_db_recoverable(
     db_path: Optional[str] = None,
     *,
@@ -598,9 +652,10 @@ def ensure_market_db_recoverable(
     allow_release: bool = True,
     urlretrieve=None,
 ) -> dict:
-    """確保正式路徑可讀；優先救回含飆大底圖的 .corrupt-*。
+    """確保正式路徑可讀；優先救回含飆大／私人的較完整 .corrupt-*。
 
-    回傳狀態給測試／log：ok / source / biaoke_n / actions。
+    壞庫時不准空 Release 整顆蓋掉較完整的私人本＋飆大 overlay。
+    回傳狀態給測試／log：ok / source / biaoke_n / private_n / actions。
     """
     from config import get_db_path
     from import_health import db_quick_check_ok
@@ -612,55 +667,99 @@ def ensure_market_db_recoverable(
         "path": path,
         "source": "",
         "biaoke_n": 0,
+        "private_n": 0,
         "actions": actions,
     }
 
     def _ok() -> bool:
         return bool(path and os.path.isfile(path) and db_quick_check_ok(path, min_bytes=1))
 
-    def _enrich_and_return(source: str) -> dict:
-        """可讀後一律合併 corrupt 的私人表；不准留空私人本。"""
+    def _enrich_and_return(source: str, *, seed_if_low: bool = False) -> dict:
+        """可讀後一律合併 corrupt 的私人表；需要時再 seed；不准留空私人本。"""
         n = biaoke_post_count(path)
+        if seed_if_low and n < int(min_biaoke):
+            seeded = force_biaoke_baseline(path, min_biaoke=min_biaoke)
+            actions.append(
+                f"seed:ok={seeded.get('ok')}:n={seeded.get('biaoke_n')}"
+                f":src={seeded.get('source')}"
+            )
+            result.update(
+                ok=True,
+                source=source,
+                biaoke_n=int(seeded.get("biaoke_n") or 0),
+                private_n=int(seeded.get("private_n") or 0),
+                private_merged=dict(seeded.get("private_merged") or {}),
+            )
+            return result
         priv = salvage_private_from_corrupts(path)
         if int(priv.get("after") or 0) > int(priv.get("before") or 0):
             actions.append(
                 f"private:{priv.get('before')}->{priv.get('after')}"
             )
+        # 有較完整 corrupt 卻仍雙空＝做錯
+        final_n = biaoke_post_count(path)
+        final_priv = int(priv.get("after") or 0)
+        richer_left = _richer_corrupt_exists(path, final_n, final_priv, min_biaoke)
+        if richer_left and final_n == 0 and final_priv == 0:
+            actions.append("guard_empty_after_rich_corrupt")
+            logger.error(
+                "有較完整 .corrupt-* 卻留下空 biaoke／空私人 path=%s", path
+            )
         result.update(
             ok=True,
             source=source,
-            biaoke_n=n,
-            private_n=int(priv.get("after") or 0),
+            biaoke_n=final_n,
+            private_n=final_priv,
             private_merged=dict(priv.get("merged_by_table") or {}),
         )
         return result
 
-    # 1) 已可讀且飆大底圖夠 → 仍救私人，不准 Release 蓋掉
-    if _ok():
-        n = biaoke_post_count(path)
-        if n >= int(min_biaoke):
-            return _enrich_and_return("current")
-        actions.append("current_ok_low_biaoke")
-    else:
-        # 2) 錯位 wal/shm：先清再驗
-        if os.path.isfile(path) and has_sidecars(path):
-            removed = remove_sidecars(path)
-            if removed:
-                actions.append("stripped_sidecars")
-            if _ok():
-                n = biaoke_post_count(path)
-                if n >= int(min_biaoke):
-                    return _enrich_and_return("sidecar_strip")
-                actions.append("sidecar_strip_ok_low_biaoke")
+    # 1) 錯位 wal/shm：先清再驗（本尊還在正式路徑）
+    if (not _ok()) and os.path.isfile(path) and has_sidecars(path):
+        removed = remove_sidecars(path)
+        if removed:
+            actions.append("stripped_sidecars")
+        if _ok():
+            n = biaoke_post_count(path)
+            if n >= int(min_biaoke):
+                return _enrich_and_return("sidecar_strip")
+            actions.append("sidecar_strip_ok_low_biaoke")
 
-    # 3) 優先從 .corrupt-* 整檔救回（含 overlay／自回／私人；不准空 Release 蓋完整庫）
-    current_n = biaoke_post_count(path) if os.path.isfile(path) else 0
-    current_priv = private_row_total(path) if os.path.isfile(path) else 0
+    # 2) 本尊仍不可讀：先搬成 .corrupt-*（含資料），再比完整度——不准直接 Release 蓋掉
+    if (not _ok()) and (os.path.isfile(path) or has_sidecars(path)):
+        dest = quarantine_db(path)
+        if dest:
+            actions.append(f"quarantine_early:{os.path.basename(dest)}")
+        else:
+            actions.append("quarantine_early_sidecars_only")
+
+    # 3) 換庫前比完整度（biaoke_n＋private）
+    current_n, current_priv = (
+        completeness_counts(path) if os.path.isfile(path) else (0, 0)
+    )
+    if _ok() and current_n >= int(min_biaoke):
+        actions.append(
+            f"compare_current:b{current_n}/p{current_priv}"
+        )
+        # 飆大已夠：私人用 ATTACH 合併（不整檔蓋行情）；不准再 Release
+        return _enrich_and_return("current")
+
+    if _ok() and current_n < int(min_biaoke):
+        actions.append(
+            f"current_ok_low_biaoke:b{current_n}/p{current_priv}"
+        )
+
+    # 4) 優先從 .corrupt-* 整檔救回（可開且 biaoke≥min；比現況完整才換）
     best = best_corrupt_restore(path, min_biaoke=min_biaoke)
     if best:
-        best_n = biaoke_post_count(best)
-        best_priv = private_row_total(best)
-        richer = (best_n > current_n) or (best_priv > current_priv)
+        best_n, best_priv = completeness_counts(best)
+        richer = is_richer_completeness(
+            best_n, best_priv, current_n, current_priv
+        )
+        actions.append(
+            f"compare_corrupt:{os.path.basename(best)}"
+            f":b{best_n}/p{best_priv}>?b{current_n}/p{current_priv}"
+        )
         if (not _ok()) or richer:
             actions.append(f"restore_corrupt:{os.path.basename(best)}")
             if restore_corrupt_to_path(best, path):
@@ -671,7 +770,7 @@ def ensure_market_db_recoverable(
                     return _enrich_and_return("corrupt")
             actions.append("restore_corrupt_failed")
 
-    # 3b) 本尊可讀但 biaoke 仍少：ATTACH 合併 corrupt overlay（不丟 corrupt、不蓋官方柱）
+    # 5) 本尊可讀但 biaoke 仍少：ATTACH 合併 corrupt overlay（不丟 corrupt、不蓋官方柱）
     if _ok() and biaoke_post_count(path) < int(min_biaoke):
         salv = salvage_biaoke_from_corrupts(path)
         if int(salv.get("after") or 0) > int(salv.get("before") or 0):
@@ -682,31 +781,120 @@ def ensure_market_db_recoverable(
             if n >= int(min_biaoke):
                 return _enrich_and_return("salvage")
 
-    # 4) 現況已可讀 → 留給 seed／合併私人，**禁止**再 Release 整檔蓋掉
+    # 6) 現況已可讀 → seed／合併私人，**禁止**再 Release 整檔蓋掉
     if _ok():
-        return _enrich_and_return("current")
+        return _enrich_and_return("current", seed_if_low=True)
 
-    # 5) 本尊真的不可讀：才准 Release；裝完立刻從所有 .corrupt-* 合併 biaoke＋私人
-    if os.path.isfile(path) or has_sidecars(path):
-        dest = quarantine_db(path)
-        if dest:
-            actions.append(f"quarantine:{os.path.basename(dest)}")
-        else:
-            actions.append("quarantine_sidecars_only")
-
+    # 7) 本尊真的不可讀：才准 Release（行情柱）；裝完必須 salvage＋seed，不准留雙空
     if not allow_release:
-        result.update(ok=_ok(), source="none", biaoke_n=biaoke_post_count(path))
+        result.update(
+            ok=_ok(),
+            source="none",
+            biaoke_n=biaoke_post_count(path) if os.path.isfile(path) else 0,
+            private_n=private_row_total(path) if os.path.isfile(path) else 0,
+        )
         return result
+
+    had_rich_corrupt = _corrupt_has_recoverable_data(path)
+    if had_rich_corrupt:
+        actions.append("release_with_rich_corrupt_will_salvage")
 
     if install_release_db(path, urlretrieve=urlretrieve):
         actions.append("release_install")
-        salv = salvage_biaoke_from_corrupts(path)
-        if int(salv.get("after") or 0) > int(salv.get("before") or 0):
-            actions.append(
-                f"post_release_biaoke:{salv.get('before')}->{salv.get('after')}"
+        n, priv_n = _post_release_seed_and_salvage(
+            path, min_biaoke=min_biaoke, actions=actions
+        )
+        # 鎖死：有較完整 corrupt 不准留下空 biaoke／空私人
+        if had_rich_corrupt and n == 0 and priv_n == 0:
+            actions.append("guard_empty_after_release")
+            logger.error(
+                "Release 後仍雙空，但 .corrupt-* 有可救資料 path=%s", path
             )
-        return _enrich_and_return("release")
+            # 再逼一次：殼＋merge（Release 檔可能沒寫上）
+            if _ensure_readable_shell(path, actions):
+                n, priv_n = _post_release_seed_and_salvage(
+                    path, min_biaoke=min_biaoke, actions=actions
+                )
+        result.update(
+            ok=True,
+            source="release",
+            biaoke_n=n,
+            private_n=priv_n,
+        )
+        return result
+
+    # Release 失敗但 corrupt 有料：建殼 merge＋seed，仍不准雙空
+    if had_rich_corrupt and _ensure_readable_shell(path, actions) and _ok():
+        actions.append("release_failed_shell_salvage")
+        n, priv_n = _post_release_seed_and_salvage(
+            path, min_biaoke=min_biaoke, actions=actions
+        )
+        result.update(
+            ok=True,
+            source="salvage_shell",
+            biaoke_n=n,
+            private_n=priv_n,
+        )
+        return result
 
     actions.append("release_failed")
-    result.update(ok=False, source="none", biaoke_n=0)
+    result.update(ok=False, source="none", biaoke_n=0, private_n=0)
     return result
+
+
+def _richer_corrupt_exists(
+    db_path: str,
+    base_biaoke: int,
+    base_private: int,
+    min_biaoke: int,
+) -> bool:
+    for cand in list_corrupt_candidates(db_path):
+        if has_sidecars(cand):
+            remove_sidecars(cand)
+        cn, cp = completeness_counts(cand)
+        if cn == 0 and cp == 0:
+            continue
+        if is_richer_completeness(cn, cp, base_biaoke, base_private):
+            return True
+    return False
+
+
+def _corrupt_has_recoverable_data(db_path: str) -> bool:
+    """任一 .corrupt-* 能讀出 biaoke 或私人列（quick_check 紅也算，給 ATTACH）。"""
+    for cand in list_corrupt_candidates(db_path):
+        if has_sidecars(cand):
+            remove_sidecars(cand)
+        n, priv = completeness_counts(cand)
+        if n > 0 or priv > 0:
+            return True
+    return False
+
+
+def _ensure_readable_shell(db_path: str, actions: List[str]) -> bool:
+    """正式路徑無庫時建最小可讀殼，好讓 ATTACH salvage／seed 有落腳點。"""
+    from import_health import db_quick_check_ok
+
+    if os.path.isfile(db_path) and db_quick_check_ok(db_path, min_bytes=1):
+        return True
+    parent = os.path.dirname(db_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS daily_quotes ("
+                "date TEXT, stock_id TEXT)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS biaoke_posts ("
+                "id TEXT PRIMARY KEY, kind TEXT, date TEXT, time TEXT, text TEXT)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        actions.append("readable_shell")
+        return db_quick_check_ok(db_path, min_bytes=1)
+    except Exception:
+        logger.exception("建立可讀殼失敗 path=%s", db_path)
+        return False
