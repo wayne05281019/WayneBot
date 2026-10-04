@@ -60,6 +60,48 @@ def pytest_configure(config):
         "markers",
         "production_db: 需要生產規模的 wayne_market.db（沒有就 skip）",
     )
+    config.addinivalue_line(
+        "markers",
+        "network: 允許打外網（預設單元測 stub ISIN／不准掛死 smoke）",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_isin_universe_offline(request, monkeypatch):
+    """單元測不准打 isin.twse.com.tw：空庫 ensure_stock_directory 會連抓 3 頁，
+    每頁 timeout=25 → 幾百個測累積就把 smoke 卡死 70 分＋（見 #501）。
+    需要真抓的測掛 @pytest.mark.network。
+    """
+    if request.node.get_closest_marker("production_db"):
+        yield
+        return
+    if request.node.get_closest_marker("network"):
+        yield
+        return
+
+    def _no_isin():
+        return []
+
+    monkeypatch.setattr("universe.fetch_isin_universe", _no_isin)
+    # 有些路徑先 from universe import fetch_isin_universe 再叫
+    try:
+        import universe as _uni
+
+        monkeypatch.setattr(_uni, "fetch_isin_universe", _no_isin)
+    except Exception:
+        pass
+    try:
+        import wayne_db as _wdb
+
+        monkeypatch.setattr(
+            _wdb,
+            "fetch_isin_universe",
+            _no_isin,
+            raising=False,
+        )
+    except Exception:
+        pass
+    yield
 
 
 @pytest.fixture(autouse=True)

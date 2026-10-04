@@ -8,9 +8,12 @@ import pytest
 
 from db_recover import (
     best_corrupt_restore,
+    completeness_counts,
     ensure_market_db_recoverable,
     has_sidecars,
+    is_richer_completeness,
     move_db_with_sidecars,
+    private_row_total,
     quarantine_db,
     remove_sidecars,
     restore_corrupt_to_path,
@@ -18,7 +21,13 @@ from db_recover import (
 )
 
 
-def _make_db(path: str, *, biaoke_n: int = 0, junk: bool = False) -> None:
+def _make_db(
+    path: str,
+    *,
+    biaoke_n: int = 0,
+    private_n: int = 0,
+    junk: bool = False,
+) -> None:
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -42,6 +51,16 @@ def _make_db(path: str, *, biaoke_n: int = 0, junk: bool = False) -> None:
         "INSERT INTO biaoke_posts(id, kind, date, time, text) VALUES (?,?,?,?,?)",
         ("r1", "reply", "20260901", "09:01", "y"),
     )
+    if int(private_n) > 0:
+        conn.execute(
+            "CREATE TABLE user_holdings ("
+            "user_id TEXT, stock_id TEXT, PRIMARY KEY(user_id, stock_id))"
+        )
+        for i in range(int(private_n)):
+            conn.execute(
+                "INSERT INTO user_holdings VALUES (?,?)",
+                (f"u{i}", f"233{i % 10}"),
+            )
     conn.commit()
     conn.close()
 
@@ -339,5 +358,121 @@ def test_main_wires_recoverable_and_retry_loop():
     assert "salvage_biaoke_from_corrupts" in recover_src
     assert "salvage_private_from_corrupts" in recover_src
     assert "PRIVATE_USER_TABLES" in recover_src
+    assert "completeness_counts" in recover_src
+    assert "_post_release_seed_and_salvage" in recover_src
+    assert "quarantine_early" in recover_src
     # 舊坑：只 shutil.move .db、不管 -wal/-shm
     assert "shutil.move(path, corrupt)" not in main_src
+
+
+def test_completeness_compare_biaoke_and_private():
+    assert is_richer_completeness(1722, 0, 0, 0) is True
+    assert is_richer_completeness(0, 5, 0, 0) is True
+    assert is_richer_completeness(100, 1, 200, 0) is True  # 私人較多
+    assert is_richer_completeness(100, 0, 200, 5) is False
+
+
+def test_junk_with_rich_corrupt_never_leaves_empty(tmp_path, monkeypatch):
+    """壞本尊＋較完整 .corrupt：不准留下空 biaoke／空私人（也不准空 Release 蓋掉）。"""
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, junk=True)
+    _write_wal_shm(db)
+    corrupt = f"{db}.corrupt-rich"
+    _make_db(corrupt, biaoke_n=1722, private_n=7)
+
+    release_db = tmp_path / "release" / "wayne_market.db"
+    release_db.parent.mkdir()
+    _make_db(str(release_db), biaoke_n=0, private_n=0)
+    zpath = tmp_path / "rel.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.write(release_db, arcname="wayne_market.db")
+
+    called = {"n": 0}
+
+    def _fake_retrieve(url, dest):
+        called["n"] += 1
+        import shutil
+
+        shutil.copy2(zpath, dest)
+        return dest, {}
+
+    result = ensure_market_db_recoverable(
+        db, allow_release=True, urlretrieve=_fake_retrieve
+    )
+    assert result["ok"] is True
+    assert result["source"] == "corrupt"
+    assert int(result["biaoke_n"]) >= 1700
+    assert int(result.get("private_n") or 0) >= 7
+    assert private_row_total(db) >= 7
+    # 有可開且較完整的 corrupt → 不准走空 Release
+    assert called["n"] == 0
+    assert "guard_empty_after_release" not in (result.get("actions") or [])
+
+
+def test_release_rebuild_seeds_and_salvages_corrupt(tmp_path, monkeypatch):
+    """本尊壞、無可開完整 corrupt：Release 後必須 seed 1709＋從 corrupt merge 私人。"""
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, junk=True)
+
+    # corrupt：quick_check 過不了的假檔不算；另放一顆可 SELECT 的低 biaoke＋私人
+    # （整檔門檻 1700 不夠 → 走 Release，再 ATTACH salvage＋seed）
+    corrupt = f"{db}.corrupt-partial"
+    _make_db(corrupt, biaoke_n=12, private_n=4)
+
+    release_db = tmp_path / "release" / "wayne_market.db"
+    release_db.parent.mkdir()
+    _make_db(str(release_db), biaoke_n=0, private_n=0)
+    zpath = tmp_path / "rel.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.write(release_db, arcname="wayne_market.db")
+
+    def _fake_retrieve(url, dest):
+        import shutil
+
+        shutil.copy2(zpath, dest)
+        return dest, {}
+
+    result = ensure_market_db_recoverable(
+        db, allow_release=True, urlretrieve=_fake_retrieve
+    )
+    assert result["ok"] is True
+    assert result["source"] == "release"
+    actions = list(result.get("actions") or [])
+    assert "release_install" in actions
+    assert any("post_release_seed" in a or a.startswith("seed:") for a in actions) or any(
+        "post_release" in a for a in actions
+    )
+    # seed 1709 底圖
+    assert int(result["biaoke_n"]) >= 1700
+    # 私人從 partial corrupt merge 回來
+    assert int(result.get("private_n") or 0) >= 4
+    assert private_row_total(db) >= 4
+    # 鎖死：不准雙空
+    assert not (
+        int(result["biaoke_n"]) == 0 and int(result.get("private_n") or 0) == 0
+    )
+
+
+def test_pre_swap_compare_prefers_richer_corrupt(tmp_path):
+    """換庫前比較：空／少的本尊 vs 較完整 corrupt → 救 corrupt。"""
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=3, private_n=0)
+    corrupt = f"{db}.corrupt-cmp"
+    _make_db(corrupt, biaoke_n=1710, private_n=9)
+    cur_b, cur_p = completeness_counts(db)
+    cor_b, cor_p = completeness_counts(corrupt)
+    assert is_richer_completeness(cor_b, cor_p, cur_b, cur_p)
+    best = best_corrupt_restore(db, min_biaoke=1700)
+    assert best == corrupt
+    result = ensure_market_db_recoverable(db, allow_release=False)
+    assert result["source"] == "corrupt"
+    assert int(result["biaoke_n"]) >= 1700
+    assert int(result.get("private_n") or 0) >= 9
+
+
+def test_unit_tests_stub_isin_universe_offline(monkeypatch):
+    """單元測不准連打 isin.twse；否則 smoke 會被 3×25s 累積卡死。"""
+    import universe
+
+    # conftest autouse 已 stub；呼叫應立刻回空、不准真 HTTP
+    assert universe.fetch_isin_universe() == []
