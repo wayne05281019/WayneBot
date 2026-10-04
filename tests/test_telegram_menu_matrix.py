@@ -122,7 +122,10 @@ def test_holdings_typed_alias_routes_to_portfolio():
 def test_instant_ack_before_slow_work(label, hint):
     """大盤／資金須先回 LOADING／倒數泡泡再跑重活。"""
     bot = _bot()
+    order = []
+
     async def _enter(*_a, **_k):
+        order.append("enter")
         await asyncio.sleep(0.05)
         return None
 
@@ -130,6 +133,7 @@ def test_instant_ack_before_slow_work(label, hint):
     calls = []
 
     async def track_wait(message, *, text_fn):
+        order.append("wait")
         calls.append(text_fn(0))
         return MagicMock(), asyncio.Event(), asyncio.create_task(asyncio.sleep(0))
 
@@ -153,6 +157,7 @@ def test_instant_ack_before_slow_work(label, hint):
     assert calls and hint in calls[0]
     assert "LOADING" in calls[0]
     bot._start_plain_wait.assert_awaited()
+    assert order and order[0] == "wait"
 
 
 def test_chaos_user_pending_buy_then_market():

@@ -5505,54 +5505,93 @@ class WayneTelegramBot:
             raise
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """資金輪動：第一個 await 必須是 LOADING；結束一定有內容或清楚中文原因。
+
+        不准在 LOADING 前 cancel／讀庫（同 #503／#505）。resolve／format 全進
+        to_thread＋逾時，避免 event loop 被 sqlite busy 卡住、逾時永不觸發。
+        """
         uid = str(update.effective_user.id)
+        message = update.message
+        # 進度泡泡絕不可掛 ReplyKeyboard；且必須先於 enter_main_menu／cancel／DB。
         wait_h = await self._start_plain_wait(
-            update.message,
+            message,
             text_fn=lambda s: self._wait_bubble(
                 "資金輪動進行中", s, now="讀產業資金", rest="推送頁面", fill_sec=20.0
             ),
         )
+        delivered = False
+        empty_zh = (
+            "目前沒有可顯示的資金輪動資料。"
+            "盤後融合寫入產業法人後再按一次「資金輪動」。"
+        )
         try:
-            await self._enter_main_menu(update.message, uid)
+            # begin／清 pending 放 LOADING 之後；本則 wait 未 register，不會被自己消掉。
+            await self._enter_main_menu(message, uid)
             from money_flow import format_flow_html, resolve_flow_as_of, sector_flow_ready
 
-            as_of, lag = resolve_flow_as_of(self.db_path)
-            # 按鈕路徑不重算產業輪動（會拖 10s+）；缺資料就直接讀庫／提示稍後。
-            if as_of:
-                ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
-                if not ready:
-                    lag = (lag or "") + (
-                        "\n<i>今日資金輪動尚未寫入（盤後融合後會有）；以下可能是前一交易日快取。</i>"
+            def _build_flow_html() -> str:
+                # 按鈕路徑不重算產業輪動（會拖 10s+）；缺資料就直接讀庫／提示稍後。
+                as_of, lag = resolve_flow_as_of(self.db_path)
+                lag_note = lag or ""
+                if as_of and not sector_flow_ready(self.db_path, as_of):
+                    lag_note = (lag_note + ("\n" if lag_note else "")) + (
+                        "<i>今日資金輪動尚未寫入（盤後融合後會有）；"
+                        "以下可能是前一交易日快取。</i>"
                     )
+                body = format_flow_html(self.db_path, user_id=uid) or ""
+                if lag_note and lag_note not in body:
+                    body = lag_note + "\n" + body
+                return body.strip()
+
             html = await asyncio.wait_for(
-                asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
+                asyncio.to_thread(_build_flow_html),
                 timeout=_FLOW_HTML_TIMEOUT,
             )
-            if lag and lag not in html:
-                html = lag + "\n" + html
+            if not html:
+                html = empty_zh
+            await self._stop_plain_wait(*wait_h)
+            wait_h = (None, None, None)
+            parts = chunk_telegram_html(html, reflow=True) or [html or empty_zh]
+            for part in parts:
+                try:
+                    await message.reply_html(part, disable_web_page_preview=True)
+                except Exception:
+                    logger.exception("資金輪動 HTML 送出失敗，改純文字")
+                    await message.reply_text(
+                        "資金輪動內容送出失敗，請稍後再按一次「資金輪動」。",
+                        reply_markup=self._keyboard(),
+                    )
+                    delivered = True
+                    return
+            delivered = True
         except asyncio.TimeoutError:
             logger.warning("資金輪動逾時，改送精簡版")
             await self._stop_plain_wait(*wait_h)
+            wait_h = (None, None, None)
             from trading_calendar import is_tw_equity_session
 
             if is_tw_equity_session():
                 hint = "資金輪動載入逾時（盤中即時較慢），請 30 秒後再按一次「資金輪動」。"
             else:
                 hint = "資金輪動載入逾時，請稍後再按一次「資金輪動」。"
-            await update.message.reply_text(
-                hint,
-                reply_markup=self._keyboard(),
-            )
-            return
+            await message.reply_text(hint, reply_markup=self._keyboard())
+            delivered = True
         except Exception:
             logger.exception("資金輪動失敗")
             await self._stop_plain_wait(*wait_h)
-            await update.message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
-            return
-        await self._stop_plain_wait(*wait_h)
-        parts = chunk_telegram_html(html, reflow=True)
-        for i, part in enumerate(parts):
-            await update.message.reply_html(part, disable_web_page_preview=True)
+            wait_h = (None, None, None)
+            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
+            delivered = True
+        finally:
+            await self._stop_plain_wait(*wait_h)
+            if not delivered:
+                try:
+                    await message.reply_text(
+                        "資金輪動這次沒送出內容，請稍後再按一次「資金輪動」。",
+                        reply_markup=self._keyboard(),
+                    )
+                except Exception:
+                    logger.exception("資金輪動補送失敗提示仍失敗")
 
     async def _send_portfolio(self, message, uid: str):
         """持股＝手記真實買入，不是觀察、也不是 AI 模擬倉。"""
@@ -6231,7 +6270,7 @@ class WayneTelegramBot:
         if text in MENU_BTN_FLOW_ALIASES or text.lower().lstrip("/") == "flow":
             logger.info("主選單：資金輪動 uid=%s", uid)
             self._pending.pop(actor, None)
-            await self._cancel_actor_ops(actor, dismiss=True)
+            # LOADING 必須是 flow_cmd 第一個 await；cancel／DB 放進 flow_cmd。
             await self.flow_cmd(update, context)
             return
         if text in MENU_BTN_BIAOKE_ALIASES or text.lower().lstrip("/") in ("biaoke", "biaoda"):
