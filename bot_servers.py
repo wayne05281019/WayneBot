@@ -3228,12 +3228,16 @@ class WayneTelegramBot:
         await update.message.reply_text(phone_code_reply())
 
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        uid = str(update.effective_user.id)
-        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
-        actor = self._actor_key(update.message, uid=uid)
-        self._clear_actor_menu_state(actor)
-        await self._cancel_actor_ops(actor, dismiss=True)
-        await self._force_reply_menu(update.message, uid)
+        """重掛兩排。失敗不准噴 PHONE_BUSY（會跟下一顆鈕的 LOADING 搶第一則）。"""
+        try:
+            uid = str(update.effective_user.id)
+            self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+            actor = self._actor_key(update.message, uid=uid)
+            self._clear_actor_menu_state(actor)
+            await self._cancel_actor_ops(actor, dismiss=True)
+            await self._force_reply_menu(update.message, uid)
+        except Exception:
+            logger.exception("/menu 重掛鍵盤失敗")
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
@@ -3528,24 +3532,17 @@ class WayneTelegramBot:
         """
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return None, None, None
-        t0 = time.monotonic()
         wait_msg = None
         try:
             wait_msg = await message.reply_text(text_fn(0), parse_mode="HTML")
         except Exception:
             return None, None, None
+        # 秒數從氣泡真的送出後算：send 卡住時不准一出現就是「已 6 秒」。
+        t0 = time.monotonic()
         stop = asyncio.Event()
 
         async def _tick() -> None:
             while not stop.is_set():
-                if actor and kind and not self._actor_op_alive(actor, kind, gen):
-                    break
-                try:
-                    await wait_msg.edit_text(
-                        text_fn(int(time.monotonic() - t0)), parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
                 try:
                     chat = getattr(message, "chat", None)
                     if chat is not None and hasattr(chat, "send_action"):
@@ -3556,7 +3553,15 @@ class WayneTelegramBot:
                     await asyncio.wait_for(stop.wait(), timeout=2.0)
                     break
                 except asyncio.TimeoutError:
-                    continue
+                    pass
+                if actor and kind and not self._actor_op_alive(actor, kind, gen):
+                    break
+                try:
+                    await wait_msg.edit_text(
+                        text_fn(int(time.monotonic() - t0)), parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
 
         task = asyncio.create_task(_tick())
         if actor and kind:
@@ -5512,7 +5517,7 @@ class WayneTelegramBot:
         """
         uid = str(update.effective_user.id)
         message = update.message
-        # 進度泡泡絕不可掛 ReplyKeyboard；且必須先於 enter_main_menu／cancel／DB。
+        # 進度泡泡絕不可掛 ReplyKeyboard；且必須先於 enter_main_menu／cancel／DB／touch。
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
@@ -5525,8 +5530,18 @@ class WayneTelegramBot:
             "盤後融合寫入產業法人後再按一次「資金輪動」。"
         )
         try:
+            try:
+                self._touch_user(
+                    uid, getattr(update.effective_user, "first_name", "") or ""
+                )
+            except Exception:
+                pass
             # begin／清 pending 放 LOADING 之後；本則 wait 未 register，不會被自己消掉。
-            await self._enter_main_menu(message, uid)
+            # 進選單失敗不准改噴鎖句當第一則——LOADING 已出，繼續讀頁。
+            try:
+                await self._enter_main_menu(message, uid)
+            except Exception:
+                logger.exception("資金輪動進主選單失敗，仍讀頁面")
             from money_flow import format_flow_html, resolve_flow_as_of, sector_flow_ready
 
             def _build_flow_html() -> str:
@@ -6199,9 +6214,29 @@ class WayneTelegramBot:
         finally:
             _ACTIVE_PHONE_UID.reset(token)
 
+    def _skip_handler_busy_ack(self, update, err) -> bool:
+        """並行 /menu＋資金輪動時，error handler 不准搶先噴 PHONE_BUSY。"""
+        if isinstance(err, asyncio.CancelledError) or type(err).__name__ in (
+            "CancelledError",
+            "ConcurrentUpdateError",
+            "TimedOut",
+            "NetworkError",
+            "RetryAfter",
+            "Conflict",
+        ):
+            return True
+        msg = getattr(update, "effective_message", None) if update else None
+        raw = str(getattr(msg, "text", "") or "")
+        text = _normalize_menu_text(raw)
+        low = text.lower().lstrip("/")
+        if low in ("menu", "start", "flow"):
+            return True
+        if text in MENU_BTN_FLOW_ALIASES or text in ("選單", "主選單"):
+            return True
+        return False
+
     async def _on_text_bound(self, update, context, *, raw, text, uid: str):
         actor = self._actor_key(update.message, uid=uid)
-        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         # 重開後重放崩潰前舊訊：作廢，不准晚跑海選／飆大。
         if self._message_is_preboot_replay(update.message):
             logger.info(
@@ -6214,6 +6249,13 @@ class WayneTelegramBot:
             except Exception:
                 pass
             return
+        if text in MENU_BTN_FLOW_ALIASES or text.lower().lstrip("/") == "flow":
+            logger.info("主選單：資金輪動 uid=%s", uid)
+            self._pending.pop(actor, None)
+            # 第一則必須是 LOADING：不准先 touch DB／cancel／鎖句。
+            await self.flow_cmd(update, context)
+            return
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         if text.lower().lstrip("/") in ("start", "開始"):
             self._clear_actor_menu_state(actor)
             await self._cancel_actor_ops(actor, dismiss=True)
@@ -6266,12 +6308,6 @@ class WayneTelegramBot:
             return
         if text == "選股":
             self._pending.pop(actor, None)
-            return
-        if text in MENU_BTN_FLOW_ALIASES or text.lower().lstrip("/") == "flow":
-            logger.info("主選單：資金輪動 uid=%s", uid)
-            self._pending.pop(actor, None)
-            # LOADING 必須是 flow_cmd 第一個 await；cancel／DB 放進 flow_cmd。
-            await self.flow_cmd(update, context)
             return
         if text in MENU_BTN_BIAOKE_ALIASES or text.lower().lstrip("/") in ("biaoke", "biaoda"):
             logger.info("主選單：飆客 uid=%s", uid)
@@ -8311,11 +8347,8 @@ class WayneTelegramBot:
 
         async def _on_error(update, context):
             err = getattr(context, "error", None)
-            # 回主選單／換鍵 cancel 任務：不准對白名單噴「請先按 /start」。
-            if isinstance(err, asyncio.CancelledError) or type(err).__name__ in (
-                "CancelledError",
-                "ConcurrentUpdateError",
-            ):
+            # 回主選單／換鍵 cancel、並行 /menu＋資金輪動：不准搶先噴鎖句。
+            if self._skip_handler_busy_ack(update, err):
                 logger.info("Telegram handler 已取消／略過: %s", type(err).__name__)
                 return
             logger.exception("Telegram handler 失敗: %s", err)

@@ -81,8 +81,11 @@ def test_menu_slow_paths_start_plain_wait():
             assert wait_i < src.index("hub = self._reply_menu")
 
 
-def test_manual_screening_loading_before_screen_work():
+def test_manual_screening_loading_before_screen_work(monkeypatch):
     """按海選：第一則 Telegram 回覆必須是 LOADING，且早於 begin／DB 鍵盤／掃描。"""
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
     bot._screening_running = set()
@@ -366,6 +369,100 @@ def test_flow_menu_route_does_not_cancel_before_cmd():
     chunk = src[idx : idx + 280]
     assert "flow_cmd" in chunk
     assert "_cancel_actor_ops" not in chunk
+    # 第一則 LOADING：資金輪動必須早於 touch DB。
+    assert src.find("MENU_BTN_FLOW_ALIASES") < src.find("self._touch_user")
+
+
+def test_flow_first_telegram_reply_is_loading_not_busy():
+    """按資金輪動：第一則氣泡必須是 LOADING，不准先出鎖／忙線句。"""
+    from unittest.mock import patch
+
+    from bot_servers import PHONE_BUSY, WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ":memory:"
+    bot._pending = {}
+    bot._keyboard = MagicMock(return_value=None)
+    bot._actor_op_gen = {}
+    bot._actor_op_kind = {}
+    bot._actor_waits = {}
+    bot._magic_dismiss = AsyncMock()
+    order: list[str] = []
+
+    msg = MagicMock()
+
+    async def reply_text(text, **_k):
+        order.append(str(text))
+        out = MagicMock()
+        out.edit_text = AsyncMock()
+        out.delete = AsyncMock()
+        return out
+
+    async def reply_html(text, **_k):
+        order.append(str(text))
+        return MagicMock()
+
+    msg.reply_text = AsyncMock(side_effect=reply_text)
+    msg.reply_html = AsyncMock(side_effect=reply_html)
+    update = MagicMock()
+    update.message = msg
+    update.effective_user = MagicMock(id=1001, first_name="u")
+
+    async def slow_touch(*_a, **_k):
+        order.append("touch")
+
+    async def slow_enter(*_a, **_k):
+        order.append("enter")
+        await asyncio.sleep(0.02)
+        return "u1"
+
+    bot._touch_user = MagicMock(side_effect=lambda *_a, **_k: order.append("touch"))
+    bot._enter_main_menu = AsyncMock(side_effect=slow_enter)
+    bot._start_plain_wait = WayneTelegramBot._start_plain_wait.__get__(bot, WayneTelegramBot)
+    bot._stop_plain_wait = WayneTelegramBot._stop_plain_wait.__get__(bot, WayneTelegramBot)
+
+    with patch("money_flow.format_flow_html", return_value="<b>資金</b>"), patch(
+        "money_flow.resolve_flow_as_of", return_value=("20261002", "")
+    ), patch("money_flow.sector_flow_ready", return_value=True):
+        asyncio.run(WayneTelegramBot.flow_cmd(bot, update, MagicMock()))
+
+    assert order, "沒有任何回覆"
+    assert "LOADING" in order[0]
+    assert "資金輪動進行中" in order[0]
+    assert "已 0 秒" in order[0] or "已 0" in order[0]
+    busy_at = next((i for i, t in enumerate(order) if "暫時沒跑完" in t), None)
+    load_at = next(i for i, t in enumerate(order) if "LOADING" in t)
+    assert busy_at is None or load_at < busy_at
+    assert order.index("touch") > load_at
+    assert order.index("enter") > load_at
+    _ = PHONE_BUSY
+
+
+def test_skip_handler_busy_ack_for_menu_and_flow():
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    menu = MagicMock()
+    menu.text = "/menu"
+    flow = MagicMock()
+    flow.text = "資金輪動"
+    timed = type("TimedOut", (Exception,), {})()
+    assert bot._skip_handler_busy_ack(
+        MagicMock(effective_message=menu), timed
+    )
+    assert bot._skip_handler_busy_ack(
+        MagicMock(effective_message=flow), RuntimeError("boom")
+    )
+    other = MagicMock()
+    other.text = "2330"
+    assert not bot._skip_handler_busy_ack(
+        MagicMock(effective_message=other), RuntimeError("boom")
+    )
+
+
+def test_plain_wait_elapsed_starts_after_send():
+    src = inspect.getsource(WayneTelegramBot._start_plain_wait)
+    send_i = src.index("await message.reply_text")
+    t0_i = src.rfind("t0 = time.monotonic()")
+    assert send_i < t0_i
 
 
 def test_biaoke_entry_has_loading_and_fail_text():
@@ -663,7 +760,10 @@ def test_cancel_dismisses_frozen_progress_and_blocks_bg_send():
 
 def test_error_handler_skips_cancelled_no_start_prompt():
     src = inspect.getsource(WayneTelegramBot.run_polling)
-    assert "CancelledError" in src
-    assert "telegram_uid_allowed" in src
+    assert "_skip_handler_busy_ack" in src
     assert "PHONE_BUSY" in src
     assert "請先按 /start" in src
+    skip = inspect.getsource(WayneTelegramBot._skip_handler_busy_ack)
+    assert "CancelledError" in skip
+    assert "ConcurrentUpdateError" in skip
+    assert "MENU_BTN_FLOW_ALIASES" in skip
