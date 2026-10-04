@@ -59,8 +59,10 @@ def test_menu_slow_paths_start_plain_wait():
         if name == "_run_manual_screening":
             assert needle in src
             assert "load_cached_full_screening" in src
+            assert "build_and_cache_full_screening" in src
             assert "screen_timeout_s = 180.0" in src
             assert "超過 3 分鐘" in src
+            assert "會自動推" in src
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
         assert needle in src, name
@@ -123,6 +125,10 @@ def test_manual_screening_fail_sends_error_not_blank(monkeypatch):
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
+    monkeypatch.setattr(
+        "screening_engine.build_and_cache_full_screening",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
     bot._screening_running = set()
@@ -140,7 +146,7 @@ def test_manual_screening_fail_sends_error_not_blank(monkeypatch):
     bot._actor_key = MagicMock(return_value="u1")
     bot._menu_uid_from_message = MagicMock(return_value="u1")
     bot.screener = MagicMock()
-    bot.screener.run_full_screening = MagicMock(side_effect=RuntimeError("boom"))
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
     bot.db_path = "data/wayne_market.db"
     msg = MagicMock()
     status = MagicMock()
@@ -310,8 +316,11 @@ def test_generation_cancels_stale_screen_delivery(monkeypatch):
             _t.sleep(0.01)
         return {"as_of": "20261004"}
 
+    monkeypatch.setattr(
+        "screening_engine.build_and_cache_full_screening", lambda *_a, **_k: _slow_screen()
+    )
     bot.screener = MagicMock()
-    bot.screener.run_full_screening = MagicMock(side_effect=_slow_screen)
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
     bot.db_path = "data/wayne_market.db"
     msg = MagicMock()
     status = MagicMock()
@@ -334,6 +343,61 @@ def test_generation_cancels_stale_screen_delivery(monkeypatch):
         bot._dismiss_progress_now.assert_awaited()
 
     asyncio.run(run())
+
+
+def test_manual_screening_cache_miss_builds_and_saves(monkeypatch):
+    """無快取時必須走 build_and_cache（會 save_screen_session），不准裸 run_full_screening。"""
+    built = {"n": 0}
+
+    def _build(_db=None):
+        built["n"] += 1
+        return {
+            "status": "success",
+            "as_of": "20261002",
+            "date": "20261002",
+            "from_cache": False,
+            "results": {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 1}]},
+            "payload": [{"html": "ok", "mark_key": "leave_zero", "picks": [("2330", "台積電")]}],
+        }
+
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.build_and_cache_full_screening", _build
+    )
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
+    bot._actor_op_gen = {}
+    bot._actor_op_kind = {}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
+    bot._magic_dismiss = AsyncMock()
+    bot._reply_screening_payload = AsyncMock()
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._actor_key = MagicMock(return_value="u1")
+    bot._menu_uid_from_message = MagicMock(return_value="u1")
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
+    bot.db_path = "data/wayne_market.db"
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    async def run():
+        await bot._run_manual_screening(msg, "u1")
+
+    asyncio.run(run())
+    assert built["n"] == 1
+    bot.screener.run_full_screening.assert_not_called()
+    bot._reply_screening_payload.assert_awaited()
 
 
 def test_screen_and_biaoke_waits_are_separate_slots():

@@ -108,6 +108,37 @@ def test_evening_skip_reruns_ai_from_snapshot(monkeypatch, tmp_path):
     assert ai[0].get("notify") is False
 
 
+def test_evening_skip_rebuilds_when_sessions_empty(monkeypatch, tmp_path):
+    """pipeline 已 success 但 screen_sessions 空 → 必須重掃補快取。"""
+    from wayne_db import ensure_core_schema
+    from main_runner import MainRunner
+
+    db = str(tmp_path / "eve_empty.db")
+    ensure_core_schema(db)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = db
+    runner.today_str = "20260904"
+    screened = []
+
+    def fake_screen(*_a, **_k):
+        screened.append(True)
+        return {
+            "status": "success",
+            "as_of": "20260904",
+            "results": {"leave_zero": [{"stock_id": "2330", "close": 1}]},
+        }
+
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda _db: "20260904")
+    runner.already_completed_today = lambda _key=None: True
+    runner._run_ai_desk = lambda *_a, **_k: {}
+    runner._maybe_send_evolve_digest = lambda *_a, **_k: None
+    runner._mark_pipeline = lambda *_a, **_k: None
+    monkeypatch.setattr("main_runner.run_full_screening", fake_screen)
+
+    assert runner.run_evening_screen(skip_if_done=True, notify=False) is True
+    assert screened == [True]
+
+
 def test_oneshot_jobs_skip_if_already_done():
     src = open("main_runner.py", encoding="utf-8").read()
     assert "skip_if_done = True" in src
