@@ -1115,7 +1115,8 @@ def run_web():
     try:
         from disk_guard import ensure_disk_headroom, start_disk_guard
 
-        ensure_disk_headroom(force=True)
+        # 開機只做緊急線巡檢；不准白天追高 free（午夜才例行清白名單）
+        ensure_disk_headroom(force=False, mode="boot")
         start_disk_guard()
     except Exception:
         logger.exception("磁碟守衛啟動失敗")
