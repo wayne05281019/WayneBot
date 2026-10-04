@@ -1065,7 +1065,13 @@ def test_l9_streak_days_does_not_reprint_number_list():
     assert markup is not None
     assert getattr(markup, "inline_keyboard", None)
     assert not getattr(markup, "keyboard", None)
-    assert msg.reply_text.await_count == 0
+    # 允許一則 LOADING／倒數等待泡泡；不准再印天數清單文字。
+    assert msg.reply_text.await_count <= 1
+    if msg.reply_text.await_count:
+        wait_txt = str(msg.reply_text.await_args.args[0])
+        assert "LOADING" in wait_txt or "連買區進行中" in wait_txt
+        assert "可選天數" not in wait_txt
+        assert "22 21 19" not in wait_txt
     src = _src(WayneTelegramBot._streak_show_days)
     assert "可選天數" not in src
     from main_runner import main

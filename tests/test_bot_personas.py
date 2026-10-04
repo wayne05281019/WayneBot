@@ -219,17 +219,15 @@ def test_decision_card_shows_status_bubble():
     bot = _bot()
     bot._last_card["9001"] = "3105"
     bot._send_decision_card_quick = AsyncMock()
-    bot._transient_status = AsyncMock(return_value=MagicMock())
-    bot._delete_message = AsyncMock()
     msg = _msg(1, 9001)
 
     async def run():
         await bot.decision_card_btn(_update(msg), MagicMock())
 
     asyncio.run(run())
-    bot._transient_status.assert_awaited_once()
-    assert "決策卡產製中" in str(bot._transient_status.await_args[0][1])
     bot._send_decision_card_quick.assert_awaited_once()
+    kwargs = bot._send_decision_card_quick.await_args.kwargs
+    assert kwargs.get("skip_wait_msg") is False
 
 
 def test_ai_desk_keyboard_has_no_sell_buttons():

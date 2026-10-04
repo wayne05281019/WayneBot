@@ -321,21 +321,21 @@ class TestMarketMenuE2E:
         msg = _message()
 
         with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
-            bot, "_transient_status", new_callable=AsyncMock
-        ) as status, patch.object(
-            bot, "_delete_message", new_callable=AsyncMock
+            bot, "_start_plain_wait", new_callable=AsyncMock
+        ) as wait_start, patch.object(
+            bot, "_stop_plain_wait", new_callable=AsyncMock
         ), patch(
             "taiwan_market._fetch_index_daily"
         ) as mock_yahoo:
 
             async def run():
-                status.return_value = MagicMock()
+                wait_start.return_value = (MagicMock(), None, None)
                 await bot.market_cmd(_update(msg), MagicMock())
 
             asyncio.run(run())
             mock_yahoo.assert_not_called()
 
-        status.assert_awaited()
+        wait_start.assert_awaited()
         msg.reply_html.assert_awaited()
         body = msg.reply_html.await_args.args[0]
         assert "台股大盤" in body
@@ -396,11 +396,11 @@ class TestMarketMenuE2E:
         async def _run(uid):
             msg = _message(uid)
             with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
-                bot, "_transient_status", new_callable=AsyncMock
+                bot, "_start_plain_wait", new_callable=AsyncMock
             ) as st, patch.object(
-                bot, "_delete_message", new_callable=AsyncMock
+                bot, "_stop_plain_wait", new_callable=AsyncMock
             ):
-                st.return_value = MagicMock()
+                st.return_value = (MagicMock(), None, None)
                 await bot.market_cmd(_update(msg), MagicMock())
             return msg
 

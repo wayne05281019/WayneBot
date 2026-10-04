@@ -31,7 +31,7 @@ MENU_BUTTONS = [
     (MENU_BTN_DONGZHU, "dongzhu_cmd"),
 ]
 
-INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "讀取台股大盤", MENU_BTN_FLOW: "讀取當日資金輪動"}
+INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "大盤進行中", MENU_BTN_FLOW: "資金輪動進行中"}
 
 
 def _msg(uid: int, text: str):
@@ -120,7 +120,7 @@ def test_holdings_typed_alias_routes_to_portfolio():
 
 @pytest.mark.parametrize("label,hint", list(INSTANT_ACK_BUTTONS.items()))
 def test_instant_ack_before_slow_work(label, hint):
-    """大盤／資金須先回「讀取…」再跑重活（PR #134 契約）。"""
+    """大盤／資金須先回 LOADING／倒數泡泡再跑重活。"""
     bot = _bot()
     async def _enter(*_a, **_k):
         await asyncio.sleep(0.05)
@@ -129,11 +129,12 @@ def test_instant_ack_before_slow_work(label, hint):
     bot._enter_main_menu = AsyncMock(side_effect=_enter)
     calls = []
 
-    async def track_status(message, text, **kw):
-        calls.append(text)
-        return MagicMock()
+    async def track_wait(message, *, text_fn):
+        calls.append(text_fn(0))
+        return MagicMock(), asyncio.Event(), asyncio.create_task(asyncio.sleep(0))
 
-    bot._transient_status = AsyncMock(side_effect=track_status)
+    bot._start_plain_wait = AsyncMock(side_effect=track_wait)
+    bot._stop_plain_wait = AsyncMock()
     bot._send_market_page = AsyncMock()
     # _bot() 會把 handler 換成 mock；此測須綁回真實 market_cmd / flow_cmd
     bot.market_cmd = WayneTelegramBot.market_cmd.__get__(bot, WayneTelegramBot)
@@ -142,7 +143,7 @@ def test_instant_ack_before_slow_work(label, hint):
         "money_flow.resolve_flow_as_of", return_value=("20260902", "")
     ), patch("money_flow.recompute_sector_flow", return_value=1), patch(
         "trading_calendar.fuse_end_trading_date", return_value="20260902"
-    ):
+    ), patch("money_flow.sector_flow_ready", return_value=True):
         msg = _msg(1001, label)
         if label == MENU_BTN_MARKET:
             asyncio.run(bot.market_cmd(_update(msg), MagicMock()))
@@ -150,7 +151,8 @@ def test_instant_ack_before_slow_work(label, hint):
             asyncio.run(bot.flow_cmd(_update(msg), MagicMock()))
 
     assert calls and hint in calls[0]
-    assert bot._transient_status.await_args_list[0] == bot._transient_status.await_args_list[0]
+    assert "LOADING" in calls[0]
+    bot._start_plain_wait.assert_awaited()
 
 
 def test_chaos_user_pending_buy_then_market():
