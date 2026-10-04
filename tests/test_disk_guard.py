@@ -28,6 +28,13 @@ def test_free_floor_and_target_locked():
     assert dg.DEFAULT_TARGET_FREE_MB >= dg.DEFAULT_MIN_FREE_MB
 
 
+def test_cap_and_interval_tightened():
+    """2026-10-04：cap 400MB、排程 15 分；TTL 仍 24h。"""
+    assert dg.DEFAULT_CHARTS_CAP_MB == 400
+    assert dg.DEFAULT_INTERVAL_SEC == 15 * 60
+    assert dg.DEFAULT_CHART_TTL_SEC == 24 * 60 * 60
+
+
 def test_allowlist_subdirs_locked():
     assert dg.ALLOW_CHART_SUBDIRS == ("_lookup_memo", "wr_pair_cache")
 
@@ -52,6 +59,8 @@ def test_is_allowlisted_deletable_paths(tmp_path: Path):
     archive.write_bytes(b"a")
     db_in_charts = charts / "wayne_market.db"
     db_in_charts.write_bytes(b"d")
+    corrupt = charts / "wayne_market.db.corrupt-20261004"
+    corrupt.write_bytes(b"c")
 
     root = str(charts)
     assert dg.is_allowlisted_deletable(str(memo_file), root)
@@ -61,6 +70,7 @@ def test_is_allowlisted_deletable_paths(tmp_path: Path):
     assert not dg.is_allowlisted_deletable(str(plain), root)
     assert not dg.is_allowlisted_deletable(str(archive), root)
     assert not dg.is_allowlisted_deletable(str(db_in_charts), root)
+    assert not dg.is_allowlisted_deletable(str(corrupt), root)
     assert not dg.is_allowlisted_deletable(str(tmp_path / "wayne_market.db"), root)
 
 
@@ -145,6 +155,59 @@ def test_below_2gb_purges_recent_allowlisted(tmp_path: Path, monkeypatch):
     assert marks.exists()  # 非白名單不動
 
 
+def test_below_target_purges_recent_allowlisted(tmp_path: Path, monkeypatch):
+    """2026-10-04：2GB≤free＜2.5GB 也要清近窗白名單直到目標（舊版只清＞24h＝卡在 below_target）。"""
+    charts = tmp_path / "charts"
+    memo = charts / "_lookup_memo"
+    memo.mkdir(parents=True)
+    fresh = memo / "fresh.jpg"
+    fresh.write_bytes(b"f" * 4000)
+    pair = charts / "wr_pair_cache" / "x" / "y.jpg"
+    pair.parent.mkdir(parents=True)
+    pair.write_bytes(b"p" * 3000)
+    marks = charts / "marks" / "keep.png"
+    marks.parent.mkdir(parents=True)
+    marks.write_bytes(b"k" * 2000)
+    corrupt = tmp_path / "wayne_market.db.corrupt-keep"
+    corrupt.write_bytes(b"c" * 8000)
+
+    free_state = {"free": 2200.0}
+
+    def fake_usage(_p):
+        return {"total": 5000.0, "used": 5000.0 - free_state["free"], "free": free_state["free"]}
+
+    def tracking_unlink(path, charts_dir):
+        mb = dg._file_mb(path) if dg.is_allowlisted_deletable(path, charts_dir) else 0.0
+        if mb <= 0:
+            return 0.0
+        try:
+            os.unlink(path)
+        except OSError:
+            return 0.0
+        free_state["free"] += 200.0  # 模擬逐步抬 free
+        return mb
+
+    monkeypatch.setattr(dg, "disk_usage_mb", fake_usage)
+    monkeypatch.setattr(dg, "_unlink_allowlisted", tracking_unlink)
+
+    stats = dg.cleanup_rebuildable_charts(
+        str(charts),
+        aggressive=False,
+        root=str(tmp_path),
+        min_free_mb=2000,
+        target_free_mb=2500,
+        disk_usage_fn=fake_usage,
+    )
+    assert "until_free" in stats["parts"]
+    assert stats["parts"]["until_free"]["files"] >= 1
+    assert stats["parts"]["until_free"]["want_free_mb"] == 2500
+    assert free_state["free"] >= 2500.0
+    assert not fresh.exists()
+    assert not pair.exists()
+    assert marks.exists()
+    assert corrupt.exists()  # .corrupt-* 絕對不動
+
+
 def test_cleanup_aggressive_clears_all_allowlisted_scratch(tmp_path: Path, monkeypatch):
     charts = tmp_path / "charts"
     charts.mkdir()
@@ -181,17 +244,25 @@ def test_protected_db_and_non_allowlist_not_deleted(tmp_path: Path):
     charts.mkdir()
     db = tmp_path / "wayne_market.db"
     db.write_bytes(b"keep")
+    corrupt = tmp_path / "wayne_market.db.corrupt-20261004"
+    corrupt.write_bytes(b"keep-corrupt")
     marks = charts / "marks" / "keep.png"
     marks.parent.mkdir()
     marks.write_bytes(b"keep")
     silent = tmp_path / "silent_verify.json"
     silent.write_bytes(b"keep")
+    archive = tmp_path / "archive_1709.json.gz"
+    archive.write_bytes(b"keep-archive")
     assert dg._unlink_allowlisted(str(db), str(charts)) == 0.0
+    assert dg._unlink_allowlisted(str(corrupt), str(charts)) == 0.0
     assert dg._unlink_allowlisted(str(marks), str(charts)) == 0.0
     assert dg._unlink_allowlisted(str(silent), str(charts)) == 0.0
+    assert dg._unlink_allowlisted(str(archive), str(charts)) == 0.0
     assert db.exists()
+    assert corrupt.exists()
     assert marks.exists()
     assert silent.exists()
+    assert archive.exists()
 
 
 def test_cleanup_never_touches_private_tables_or_ohlc(tmp_path: Path, monkeypatch):
@@ -245,6 +316,8 @@ def test_cleanup_never_touches_private_tables_or_ohlc(tmp_path: Path, monkeypatc
     corpus = tmp_path / "corpus" / "corpus_index.json"
     corpus.parent.mkdir()
     corpus.write_bytes(b"{}")
+    corrupt = tmp_path / "wayne_market.db.corrupt-keep"
+    corrupt.write_bytes(b"corrupt-backup")
 
     # free=900 → 低於下限一半 → aggressive；仍不准動私人列
     monkeypatch.setattr(
@@ -269,6 +342,8 @@ def test_cleanup_never_touches_private_tables_or_ohlc(tmp_path: Path, monkeypatc
 
     assert archive.exists()
     assert corpus.exists()
+    assert corrupt.exists()
+    assert db.exists()
     conn = sqlite3.connect(str(db))
     try:
         assert conn.execute("SELECT COUNT(*) FROM daily_ohlc").fetchone()[0] == 1
@@ -302,6 +377,11 @@ def test_disk_guard_source_has_no_table_delete():
     assert "wr_pair_cache" in src
     assert "DEFAULT_MIN_FREE_MB = 2000" in src
     assert "DEFAULT_TARGET_FREE_MB = 2500" in src
+    assert "DEFAULT_CHARTS_CAP_MB = 400" in src
+    assert "DEFAULT_INTERVAL_SEC = 15 * 60" in src
+    assert '.corrupt-' in src
+    # 近窗 until_free 必須對齊目標，不准只看下限（否則卡在 below_target）
+    assert "if free_now < float(target_free_mb):" in src
 
 
 def test_iter_allowlisted_never_walks_outside_charts(tmp_path: Path):
@@ -343,18 +423,35 @@ def test_ensure_disk_headroom_force_cleans(tmp_path: Path, monkeypatch):
 
 
 def test_below_target_triggers_cleanup(tmp_path: Path, monkeypatch):
-    """free＜2.5GB 即使 ≥2GB 也要開清（TTL）。"""
+    """free＜2.5GB 即使 ≥2GB 也要開清（TTL＋近窗 until_free）。"""
     charts = tmp_path / "charts"
     memo = charts / "_lookup_memo"
     memo.mkdir(parents=True)
     aged = memo / "d.jpg"
     aged.write_bytes(b"m" * 4000)
     os.utime(aged, (time.time() - 25 * 3600, time.time() - 25 * 3600))
+    fresh = memo / "fresh.jpg"
+    fresh.write_bytes(b"f" * 4000)
     db = tmp_path / "wayne_market.db"
     db.write_bytes(b"db")
-    monkeypatch.setattr(
-        dg, "disk_usage_mb", lambda _p: {"total": 5000, "used": 2800, "free": 2200}
-    )
+    free_state = {"free": 2200.0}
+
+    def fake_usage(_p):
+        return {"total": 5000.0, "used": 5000.0 - free_state["free"], "free": free_state["free"]}
+
+    real_unlink = dg._unlink_allowlisted
+
+    def tracking_unlink(path, charts_dir):
+        mb = real_unlink(path, charts_dir)
+        if mb > 0:
+            # 單檔不夠達標，逼出 until_free 近窗
+            free_state["free"] += 200.0
+        return mb
+
+    monkeypatch.setattr(dg, "disk_usage_mb", fake_usage)
+    monkeypatch.setattr(dg, "_unlink_allowlisted", tracking_unlink)
+    monkeypatch.setattr(dg, "_try_wal_checkpoint", lambda _p: "skip")
+    monkeypatch.setattr(dg, "_try_vacuum_if_room", lambda _p, **_k: "skip")
     out = dg.ensure_disk_headroom(
         data_dir=str(tmp_path),
         charts_dir=str(charts),
@@ -364,11 +461,13 @@ def test_below_target_triggers_cleanup(tmp_path: Path, monkeypatch):
         target_free_mb=2500,
     )
     assert out["cleaned"] is True
-    assert out["reason"] == "below_floor" or out["reason"] == "below_target"
-    # free=2200 ≥ min 2GB 但 ＜ target → below_target；若判定 below_floor 因 2200<2500 其實是 below_target
-    # 2200 >= 2000 so below_floor=False, below_target=True → reason below_target
     assert out["reason"] == "below_target"
     assert not aged.exists()
+    # below_target 必須連近窗白名單也清到目標
+    assert "until_free" in out["stats"]["parts"]
+    assert not fresh.exists()
+    assert free_state["free"] >= 2500.0
+    assert db.exists()
 
 
 def test_disk_health_fields_alerts(tmp_path: Path, monkeypatch):

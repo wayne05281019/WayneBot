@@ -1,15 +1,17 @@
 """永久碟空間守衛：只刪白名單內可重建出圖快取／暫存。
 
-使用者鎖死（2026-10-03）：
+使用者鎖死（2026-10-03；2026-10-04 加嚴達標）：
 - 安全線：5GB 永久碟隨時保留約 2～3GB 空位（目標 free ≥ 2.5GB；下限 2GB）
 - 可刪：`charts/_lookup_memo`、`charts/wr_pair_cache`、
   `charts/` 根層臨時 PNG／JPG（unique_chart_path scratch）
-  1) ＞24h 先刪
-  2) 若 free 仍＜2GB，再清更近的白名單可重建檔直到空間夠（目標拉回 ≥2.5GB）
+  1) ＞24h 先刪（TTL 維持 24h）
+  2) 若 free 仍＜目標 2.5GB，再清更近的白名單可重建檔直到 ≥2.5GB（或白名單空）
 - 絕對不准刪：靜默對質／默默落檔、持股、觀察、AI倉、pending、tg 私人狀態、
-  官方柱、飆大必要材料；偉權與哥哥兩人資料都留
+  官方柱、飆大必要材料、archive_1709、wayne_market.db、.corrupt-*；
+  偉權與哥哥兩人資料都留
 
 做法：路徑白名單鎖死；從不對 SQLite 下 DELETE／DROP；VACUUM／checkpoint 只回收空間不刪列。
+不准動 .corrupt-*（可能是唯一可 salvage 備份）。
 """
 
 from __future__ import annotations
@@ -28,12 +30,12 @@ logger = logging.getLogger("WayneBot.disk_guard")
 # 5GB 永久碟：下限 2GB；目標 2.5GB（使用者 2026-10-03 鎖死）
 DEFAULT_MIN_FREE_MB = 2000
 DEFAULT_TARGET_FREE_MB = 2500
-# 週期掃間隔（秒）
-DEFAULT_INTERVAL_SEC = 30 * 60
-# 可重建出圖快取／暫存：超過 24 小時就刪（使用者鎖死）
+# 週期掃間隔（秒）：below_target 時更勤清近窗白名單（2026-10-04 30→15 分）
+DEFAULT_INTERVAL_SEC = 15 * 60
+# 可重建出圖快取／暫存：超過 24 小時就刪（使用者鎖死；勿低於 24h）
 DEFAULT_CHART_TTL_SEC = 24 * 60 * 60
-# 白名單圖檔總量上限（MB）；超過就依 mtime 刪最舊白名單檔
-DEFAULT_CHARTS_CAP_MB = 800
+# 白名單圖檔總量上限（MB）；超過就依 mtime 刪最舊白名單檔（2026-10-04 800→400）
+DEFAULT_CHARTS_CAP_MB = 400
 
 # 只准清這些 charts 子目錄（相對 charts_dir）
 ALLOW_CHART_SUBDIRS: Tuple[str, ...] = (
@@ -126,9 +128,11 @@ def is_allowlisted_deletable(path: str, charts_dir: str) -> bool:
     root = _norm(charts_dir)
     if not ap.startswith(root.rstrip("/") + "/") and ap != root:
         return False
-    # 絕對不准動 DB／WAL／SHM
+    # 絕對不准動 DB／WAL／SHM／.corrupt-*（可能是唯一可 salvage 備份）
     base = os.path.basename(ap).lower()
     if base.startswith("wayne_market.db"):
+        return False
+    if ".corrupt-" in base:
         return False
     # 飆大 archive／corpus 即使誤掛在 charts 下也不動
     low = ap.lower()
@@ -344,7 +348,8 @@ def cleanup_rebuildable_charts(
     """只清白名單可重建出圖快取。
 
     1) 預設＞24h；aggressive 時白名單全清
-    2) 若 free 仍＜min_free（2GB），再清更近的白名單直到 ≥target（2.5GB）或白名單空
+    2) 若 free 仍＜目標（2.5GB），再清更近的白名單直到 ≥target 或白名單空
+       （含 below_target：2GB≤free＜2.5GB；舊版只在＜2GB 才清近窗＝達不成目標）
     """
     charts_dir = charts_dir or ""
     ttl = float(ttl_sec if ttl_sec is not None else DEFAULT_CHART_TTL_SEC)
@@ -355,6 +360,7 @@ def cleanup_rebuildable_charts(
         "ttl_sec": ttl,
         "min_free_mb": float(min_free_mb),
         "target_free_mb": float(target_free_mb),
+        "cap_mb": float(cap_mb),
         "allow_subdirs": list(ALLOW_CHART_SUBDIRS),
         "files": 0,
         "mb": 0.0,
@@ -380,9 +386,9 @@ def cleanup_rebuildable_charts(
     stats["files"] += n
     stats["mb"] += mb
 
-    # 規則 2：TTL／cap 後 free 仍＜2GB → 繼續清白名單近窗，目標拉回 2.5GB
+    # 規則 2：TTL／cap 後 free 仍＜目標 → 繼續清白名單近窗，拉回 ≥2.5GB
     free_now = float(usage_fn(probe).get("free") or 0.0)
-    if free_now < float(min_free_mb):
+    if free_now < float(target_free_mb):
         n, mb = _purge_allowlisted_until_free(
             charts_dir,
             probe,
@@ -413,8 +419,10 @@ def ensure_disk_headroom(
 ) -> Dict[str, Any]:
     """開機／週期：只清白名單；必要時 checkpoint／VACUUM（不刪私人列）。
 
-    - free ＜ target（2.5GB）或 force → 先清＞24h 白名單
-    - free 仍＜ min（2GB）→ 再清更近白名單直到 ≥ target 或白名單空
+    - free ＜ target（2.5GB）或 force → 先清＞24h 白名單＋cap
+    - free 仍＜ target → 再清更近白名單直到 ≥ target 或白名單空
+    - free ＜下限一半 → aggressive 一次清空白名單（仍只動白名單）
+    - 從不刪 .corrupt-*／DB／私人／官方柱／飆大 archive
     """
     try:
         from config import get_charts_dir, get_db_path
@@ -474,8 +482,8 @@ def ensure_disk_headroom(
     mid = disk_usage_mb(root)
     result["checkpoint"] = _try_wal_checkpoint(dbp)
     free_mid = float(mid.get("free") or 0.0)
-    # 仍低於下限才考慮 VACUUM（不刪列）；有空間才跑
-    if free_mid < min_free:
+    # 仍低於目標才考慮 VACUUM（不刪列）；有空間才跑
+    if free_mid < target:
         result["vacuum"] = _try_vacuum_if_room(dbp, free_mb=free_mid)
     after = disk_usage_mb(root)
     result["after"] = after
@@ -527,8 +535,9 @@ def start_disk_guard(
 
     threading.Thread(target=_loop, name="disk-guard", daemon=True).start()
     logger.info(
-        "磁碟守衛已排程：每 %.0f 分清白名單出圖快取（TTL 24h，目標 %.0f MB，下限 %.0f MB）",
+        "磁碟守衛已排程：每 %.0f 分清白名單出圖快取（TTL 24h，cap %dMB，目標 %.0f MB，下限 %.0f MB）",
         interval / 60.0,
+        int(DEFAULT_CHARTS_CAP_MB),
         float(target_free_mb),
         float(min_free_mb),
     )
