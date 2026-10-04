@@ -468,3 +468,11 @@ def test_pre_swap_compare_prefers_richer_corrupt(tmp_path):
     assert result["source"] == "corrupt"
     assert int(result["biaoke_n"]) >= 1700
     assert int(result.get("private_n") or 0) >= 9
+
+
+def test_unit_tests_stub_isin_universe_offline(monkeypatch):
+    """單元測不准連打 isin.twse；否則 smoke 會被 3×25s 累積卡死。"""
+    import universe
+
+    # conftest autouse 已 stub；呼叫應立刻回空、不准真 HTTP
+    assert universe.fetch_isin_universe() == []
