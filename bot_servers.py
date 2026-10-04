@@ -3281,6 +3281,7 @@ class WayneTelegramBot:
 
         失敗／逾時／進度泡泡送不出：一定要有結果或清楚錯誤句；不准只留空白 LOADING。
         換鍵／開始會 bump generation：過期結果不准 edit／send。
+        主路徑第一個 await 必須是 LOADING（在 cancel／dismiss／鍵盤 DB 之前）。
         有當日快照先讀快取（秒級），不准每次全市場重掃拖到被 Render 重開砍掉。
         """
         uid = str(uid or self._menu_uid_from_message(message) or "")
@@ -3301,11 +3302,21 @@ class WayneTelegramBot:
                 )
                 return
             self._screening_global_owner = actor
+        # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
+        # 必須先送 LOADING，再做 cancel／dismiss／_reply_menu（後者會讀未讀數打 DB）。
+        status = None
+        try:
+            status = await message.reply_text(
+                self._screening_progress_text(0), parse_mode="HTML"
+            )
+        except Exception:
+            logger.exception("海選進度泡泡送出失敗")
+            status = None
         op_kind = "screen"
+        # begin 只清已登記的舊等待；本則 status 尚未 register，不會被自己消掉。
         gen = await self._begin_actor_op(actor, op_kind)
         self._screening_running.add(actor)
         hub = self._reply_menu(uid)
-        status = None
         stop = asyncio.Event()
         ticker = None
         delivered = False
@@ -3314,14 +3325,6 @@ class WayneTelegramBot:
         screen_timeout_s = 180.0
         try:
             await self._dismiss_menu_transients(actor)
-            # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
-            try:
-                status = await message.reply_text(
-                    self._screening_progress_text(0), parse_mode="HTML"
-                )
-            except Exception:
-                logger.exception("海選進度泡泡送出失敗")
-                status = None
             t0 = time.monotonic()
 
             async def _tick():
@@ -3852,7 +3855,7 @@ class WayneTelegramBot:
     async def _run_emerging_screening(self, message, uid: str = ""):
         """興櫃獨立海選：不跟上市櫃海選搶同一把鎖、不寫進上市櫃快取。"""
         uid = str(uid or self._menu_uid_from_message(message) or "")
-        hub = self._reply_menu(uid)
+        # LOADING 先於 _reply_menu（未讀標籤會打 DB）。
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
@@ -3863,6 +3866,7 @@ class WayneTelegramBot:
                 fill_sec=120.0,
             ),
         )
+        hub = self._reply_menu(uid)
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(self.screener.run_emerging_screening, None, True),
@@ -4885,22 +4889,16 @@ class WayneTelegramBot:
         uid = str(uid or self._uid_from_message(message) or "")
         actor = self._actor_key(message, uid=uid)
         op_kind = "biaoke"
-        gen = await self._begin_actor_op(actor, op_kind)
-        self._enter_biaoke_chat(message, uid)
-        if uid:
-            try:
-                self._mark_menu_layout_ok(uid)
-            except Exception:
-                pass
         q = (ask or "").strip()
-        if not hasattr(self, "_biaoke_hist") or self._biaoke_hist is None:
-            self._biaoke_hist = {}
-        hist = list(self._biaoke_hist.get(actor) or [])
-        mark_read = False
-        field_advice = False
+        # begin 清舊等待後立刻 LOADING；layout／hist 等 DB 工作放後面。
+        gen = await self._begin_actor_op(actor, op_kind)
         wait_h = (None, None, None)
         delivered = False
         cancelled = False
+        mark_read = False
+        chart_task = None
+        if not hasattr(self, "_biaoke_hist") or self._biaoke_hist is None:
+            self._biaoke_hist = {}
 
         async def _stop_wait() -> None:
             nonlocal wait_h
@@ -4920,6 +4918,13 @@ class WayneTelegramBot:
                 kind=op_kind,
                 gen=gen,
             )
+            self._enter_biaoke_chat(message, uid)
+            if uid:
+                try:
+                    self._mark_menu_layout_ok(uid)
+                except Exception:
+                    pass
+            hist = list(self._biaoke_hist.get(actor) or [])
             if not self._actor_op_alive(actor, op_kind, gen):
                 cancelled = True
                 return

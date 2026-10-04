@@ -58,12 +58,84 @@ def test_menu_slow_paths_start_plain_wait():
         src = inspect.getsource(getattr(WayneTelegramBot, name))
         if name == "_run_manual_screening":
             assert needle in src
+            # 主路徑：LOADING reply 必須早於 cancel／鍵盤 DB／掃描
+            load_i = src.index("self._screening_progress_text(0)")
+            assert load_i < src.index("await self._begin_actor_op")
+            assert load_i < src.index("await self._dismiss_menu_transients")
+            assert load_i < src.index("hub = self._reply_menu")
+            assert load_i < src.index("run_full_screening")
             assert "load_cached_full_screening" in src
             assert "screen_timeout_s = 180.0" in src
             assert "超過 3 分鐘" in src
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
         assert needle in src, name
+        if name == "_run_emerging_screening":
+            wait_i = src.index("await self._start_plain_wait")
+            assert wait_i < src.index("hub = self._reply_menu")
+
+
+def test_manual_screening_loading_before_screen_work():
+    """按海選：第一則 Telegram 回覆必須是 LOADING，且早於 begin／DB 鍵盤／掃描。"""
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
+    bot._actor_op_gen = {}
+    bot._actor_op_kind = {}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
+    bot._magic_dismiss = AsyncMock()
+    bot._reply_screening_payload = AsyncMock()
+    order: list[str] = []
+
+    async def _slow_begin(actor, kind):
+        order.append("begin")
+        await asyncio.sleep(0.05)
+        bot._actor_op_gen[str(actor)] = 1
+        bot._actor_op_kind[str(actor)] = str(kind)
+        return 1
+
+    def _slow_menu(uid=""):
+        order.append("reply_menu")
+        return None
+
+    bot._begin_actor_op = _slow_begin
+    bot._reply_menu = _slow_menu
+    bot._actor_key = MagicMock(return_value="u1")
+    bot._menu_uid_from_message = MagicMock(return_value="u1")
+    bot.screener = MagicMock()
+
+    def _screen():
+        order.append("screen")
+        return {"as_of": "20261004"}
+
+    bot.screener.run_full_screening = MagicMock(side_effect=_screen)
+    bot.db_path = "data/wayne_market.db"
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+
+    async def _reply_text(*args, **kwargs):
+        order.append("loading")
+        return status
+
+    msg.reply_text = AsyncMock(side_effect=_reply_text)
+
+    async def run():
+        await bot._run_manual_screening(msg, "u1")
+
+    asyncio.run(run())
+    assert order[0] == "loading"
+    assert "LOADING" in str(msg.reply_text.await_args_list[0].args[0])
+    assert order.index("loading") < order.index("begin")
+    assert order.index("loading") < order.index("reply_menu")
+    assert order.index("loading") < order.index("screen")
+    bot._reply_screening_payload.assert_awaited()
 
 
 def test_magic_dismiss_edits_then_deletes():
@@ -216,6 +288,9 @@ def test_biaoke_entry_has_loading_and_fail_text():
     assert "PHONE_BUSY" in src
     assert "_begin_actor_op" in src
     assert "current=\"chart\" if q else \"reply\"" in src or 'current="chart" if q else "reply"' in src
+    wait_i = src.index("wait_h = await self._start_plain_wait")
+    assert wait_i < src.index("self._mark_menu_layout_ok")
+    assert src.index("await self._begin_actor_op") < wait_i
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
