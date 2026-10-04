@@ -125,8 +125,10 @@ def test_manual_screening_fail_sends_error_not_blank():
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
     bot._dismiss_menu_transients = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
     bot._magic_dismiss = AsyncMock()
     bot._reply_menu = MagicMock(return_value=None)
     bot._actor_key = MagicMock(return_value="u1")
@@ -147,7 +149,7 @@ def test_manual_screening_fail_sends_error_not_blank():
     texts = [c.args[0] for c in msg.reply_text.await_args_list if c.args]
     assert any("暫時沒跑完" in str(t) or "LOADING" in str(t) for t in texts)
     assert any("暫時沒跑完" in str(t) for t in texts)
-    bot._magic_dismiss.assert_awaited()
+    bot._dismiss_progress_now.assert_awaited()
     assert "u1" not in bot._screening_running
     assert bot._screening_global_owner == ""
 
@@ -161,8 +163,10 @@ def test_manual_screening_success_dismisses_loading():
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
     bot._dismiss_menu_transients = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
     bot._magic_dismiss = AsyncMock()
     bot._reply_screening_payload = AsyncMock()
     bot._reply_menu = MagicMock(return_value=None)
@@ -181,7 +185,7 @@ def test_manual_screening_success_dismisses_loading():
 
     asyncio.run(run())
     bot._reply_screening_payload.assert_awaited()
-    bot._magic_dismiss.assert_awaited()
+    bot._dismiss_progress_now.assert_awaited()
     assert "u1" not in bot._screening_running
 
 
@@ -259,8 +263,10 @@ def test_generation_cancels_stale_screen_delivery():
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
     bot._dismiss_menu_transients = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
+    bot._dismiss_progress_now = AsyncMock()
     bot._magic_dismiss = AsyncMock()
     bot._reply_screening_payload = AsyncMock()
     bot._reply_menu = MagicMock(return_value=None)
@@ -287,6 +293,7 @@ def test_generation_cancels_stale_screen_delivery():
     msg = MagicMock()
     status = MagicMock()
     status.edit_text = AsyncMock()
+    status.delete = AsyncMock()
     msg.reply_text = AsyncMock(return_value=status)
 
     async def run():
@@ -301,6 +308,7 @@ def test_generation_cancels_stale_screen_delivery():
         release.set()
         await task
         bot._reply_screening_payload.assert_not_awaited()
+        bot._dismiss_progress_now.assert_awaited()
 
     asyncio.run(run())
 
@@ -327,3 +335,64 @@ def test_screen_and_biaoke_waits_are_separate_slots():
 def test_drop_pending_updates_true_on_boot():
     src = inspect.getsource(WayneTelegramBot.run_polling)
     assert "drop_pending_updates=True" in src
+
+
+def test_menu_and_start_cancel_ops():
+    """ /menu／/start／回主選單 必須 cancel 並立刻清 LOADING。"""
+    for name in ("menu_cmd", "start_cmd", "_restore_main_menu"):
+        src = inspect.getsource(getattr(WayneTelegramBot, name))
+        assert "_cancel_actor_ops" in src, name
+
+
+def test_cancel_dismisses_frozen_progress_and_blocks_bg_send():
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._actor_op_gen = {"u1": 3}
+    bot._actor_op_kind = {"u1": "biaoke"}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._screening_running = set()
+    status = MagicMock()
+    status.delete = AsyncMock()
+    status.edit_text = AsyncMock()
+    stop = asyncio.Event()
+    tick_ran = {"n": 0}
+
+    async def _tick():
+        tick_ran["n"] += 1
+        await asyncio.Event().wait()
+
+    task = None
+    sent = {"photo": 0}
+
+    async def run():
+        nonlocal task
+        task = asyncio.create_task(_tick())
+        bot._register_actor_wait(
+            "u1", "biaoke", gen=3, wait_msg=status, stop=stop, task=task
+        )
+        bot._track_actor_bg("u1", task)
+        await bot._cancel_actor_ops("u1", dismiss=True)
+        # 殘框必須被清掉
+        status.delete.assert_awaited()
+        assert bot._actor_op_kind.get("u1") == ""
+        assert "u1" not in bot._actor_waits
+        assert "u1" not in bot._actor_bg_tasks
+        # 過期 generation 不准再送圖
+        assert not bot._actor_op_alive("u1", "biaoke", 3)
+
+        async def _fake_send():
+            if bot._actor_op_alive("u1", "biaoke", 3):
+                sent["photo"] += 1
+
+        await _fake_send()
+        assert sent["photo"] == 0
+
+    asyncio.run(run())
+
+
+def test_error_handler_skips_cancelled_no_start_prompt():
+    src = inspect.getsource(WayneTelegramBot.run_polling)
+    assert "CancelledError" in src
+    assert "telegram_uid_allowed" in src
+    assert "PHONE_BUSY" in src
+    assert "請先按 /start" in src

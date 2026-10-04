@@ -585,6 +585,8 @@ class WayneTelegramBot:
         self._actor_op_kind: Dict[str, str] = {}
         # actor → kind → {gen, wait_msg, stop, task}；海選／飆大各自一則進度，不准互搶。
         self._actor_waits: Dict[str, Dict[str, dict]] = {}
+        # actor → 背景出圖／長任務 Task；回主選單必須 cancel，不准晚送。
+        self._actor_bg_tasks: Dict[str, list] = {}
 
     @staticmethod
     def _actor_key(
@@ -653,18 +655,23 @@ class WayneTelegramBot:
             self._actor_op_kind = {}
         if not isinstance(getattr(self, "_actor_waits", None), dict):
             self._actor_waits = {}
+        if not isinstance(getattr(self, "_actor_bg_tasks", None), dict):
+            self._actor_bg_tasks = {}
         if not isinstance(getattr(self, "_screening_running", None), set):
             self._screening_running = set()
 
-    def _actor_op_alive(self, actor: str, kind: str, gen: int) -> bool:
+    def _actor_op_alive(self, actor: str, kind: str = "", gen: int = 0) -> bool:
+        """有 kind/gen 時核對兩者；只給 actor 時看是否仍有進行中 kind。"""
         self._ensure_actor_op_maps()
         key = str(actor or "")
-        if not key or not kind:
+        if not key:
             return False
-        return (
-            int(self._actor_op_gen.get(key) or 0) == int(gen)
-            and str(self._actor_op_kind.get(key) or "") == str(kind)
-        )
+        if kind:
+            return (
+                int(self._actor_op_gen.get(key) or 0) == int(gen)
+                and str(self._actor_op_kind.get(key) or "") == str(kind)
+            )
+        return bool(str(self._actor_op_kind.get(key) or ""))
 
     def _message_is_preboot_replay(self, message) -> bool:
         """重開後 Telegram 重放崩潰前舊訊：作廢，不准再跑海選／飆大。"""
@@ -680,6 +687,28 @@ class WayneTelegramBot:
             return False
         return ts < (boot - 1.0)
 
+    def _track_actor_bg(self, actor: str, task) -> None:
+        """登記可取消的背景 Task（飆大出圖等）。"""
+        if task is None:
+            return
+        self._ensure_actor_op_maps()
+        key = str(actor or "")
+        if not key:
+            return
+        bucket = self._actor_bg_tasks.setdefault(key, [])
+        bucket.append(task)
+
+    async def _dismiss_progress_now(self, msg) -> None:
+        """立刻清掉 LOADING：先 delete，失敗再魔法收起；不准留秒數停住的殘框。"""
+        if msg is None:
+            return
+        try:
+            await msg.delete()
+            return
+        except Exception:
+            pass
+        await self._magic_dismiss(msg)
+
     async def _cancel_actor_ops(self, actor: str, *, dismiss: bool = True) -> None:
         """作廢這個人進行中的等待框／背景交付；不准碰另一人。"""
         self._ensure_actor_op_maps()
@@ -689,8 +718,14 @@ class WayneTelegramBot:
         self._actor_op_gen[key] = int(self._actor_op_gen.get(key) or 0) + 1
         self._actor_op_kind[key] = ""
         slots = (self._actor_waits.pop(key, None) or {}).copy()
+        bg = list(self._actor_bg_tasks.pop(key, None) or [])
         # 讓還在跑的海選 finally 自己清 global owner；這裡先允許同人重按。
         self._screening_running.discard(key)
+        for task in bg:
+            try:
+                task.cancel()
+            except Exception:
+                pass
         for _kind, slot in slots.items():
             if not isinstance(slot, dict):
                 continue
@@ -707,7 +742,12 @@ class WayneTelegramBot:
                 except Exception:
                     pass
             if dismiss:
-                await self._magic_dismiss(slot.get("wait_msg"))
+                # 先讓被 cancel 的 ticker 停手，再刪泡泡，避免秒數停住卻刪不掉。
+                try:
+                    await asyncio.sleep(0)
+                except Exception:
+                    pass
+                await self._dismiss_progress_now(slot.get("wait_msg"))
 
     async def _begin_actor_op(self, actor: str, kind: str) -> int:
         """換鍵／新開長任務：取消舊等待，發新 generation。"""
@@ -3131,6 +3171,9 @@ class WayneTelegramBot:
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+        actor = self._actor_key(update.message, uid=uid)
+        self._clear_actor_menu_state(actor)
+        await self._cancel_actor_ops(actor, dismiss=True)
         await update.message.reply_html(
             reflow_telegram_html(
                 "<b>WayneBot</b>\n"
@@ -3185,6 +3228,9 @@ class WayneTelegramBot:
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+        actor = self._actor_key(update.message, uid=uid)
+        self._clear_actor_menu_state(actor)
+        await self._cancel_actor_ops(actor, dismiss=True)
         await self._force_reply_menu(update.message, uid)
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3359,8 +3405,8 @@ class WayneTelegramBot:
                 if self._screening_global_owner == actor:
                     self._screening_global_owner = ""
             alive = self._actor_op_alive(actor, op_kind, gen)
-            if alive or status is not None:
-                await self._magic_dismiss(status)
+            # 取消後也要清殘框（秒數停住仍掛著＝沒做完）
+            await self._dismiss_progress_now(status)
             if alive and not delivered and not cancelled:
                 try:
                     await message.reply_text(PHONE_BUSY, reply_markup=hub)
@@ -4885,12 +4931,17 @@ class WayneTelegramBot:
                     field_advice = False
                 if field_advice:
                     chart_task = asyncio.create_task(
-                        self._send_biaoke_advice_charts(message, uid, ask=q)
+                        self._send_biaoke_advice_charts(
+                            message, uid, ask=q, actor=actor, kind=op_kind, gen=gen
+                        )
                     )
                 else:
                     chart_task = asyncio.create_task(
-                        self._send_biaoke_structure_chart(message, q, uid)
+                        self._send_biaoke_structure_chart(
+                            message, q, uid, actor=actor, kind=op_kind, gen=gen
+                        )
                     )
+                self._track_actor_bg(actor, chart_task)
                 html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
                 if not self._actor_op_alive(actor, op_kind, gen):
                     cancelled = True
@@ -4993,17 +5044,28 @@ class WayneTelegramBot:
             if chart_task is not None:
                 try:
                     await chart_task
+                except asyncio.CancelledError:
+                    cancelled = True
+                    return
                 except Exception:
                     logger.exception("飆大結構圖並行失敗")
             # 空白進場：幾乎不問也主動附全部建議檔結構圖（每檔一句怎麼做）
             if not q and self._actor_op_alive(actor, op_kind, gen):
                 try:
-                    await self._send_biaoke_advice_charts(message, uid, ask="")
+                    await self._send_biaoke_advice_charts(
+                        message, uid, ask="", actor=actor, kind=op_kind, gen=gen
+                    )
+                except asyncio.CancelledError:
+                    cancelled = True
+                    return
                 except Exception:
                     logger.exception("飆大建議結構圖略過")
             if self._actor_op_alive(actor, op_kind, gen):
                 # 內容／大盤用 Inline；離開鈕用 ReplyKeyboard 另發（Telegram edit 換不了兩排）。
                 await self._show_biaoke_leave_key(message, uid)
+        except asyncio.CancelledError:
+            cancelled = True
+            logger.info("飆大頁取消 ask=%s", (ask or "")[:40])
         except Exception:
             logger.exception("飆大頁失敗 ask=%s", (ask or "")[:40])
             if self._actor_op_alive(actor, op_kind, gen) and not delivered:
@@ -5031,9 +5093,18 @@ class WayneTelegramBot:
                     logger.exception("飆大補送失敗提示仍失敗")
 
     async def _send_biaoke_advice_charts(
-        self, message, uid: str, *, ask: str = ""
+        self,
+        message,
+        uid: str,
+        *,
+        ask: str = "",
+        actor: str = "",
+        kind: str = "",
+        gen: int = 0,
     ) -> None:
         """類股／空白進飆大：名冊該給的都出結構圖，圖下一句建議怎麼做＋憑據。"""
+        actor = str(actor or self._actor_key(message, uid=uid) or "")
+        kind = str(kind or "biaoke")
         targets: list = []
         try:
             from biaoke_advisor import advice_chart_targets
@@ -5045,6 +5116,8 @@ class WayneTelegramBot:
             logger.exception("飆大建議檔清單略過")
             return
         for t in targets or []:
+            if gen and not self._actor_op_alive(actor, kind, gen):
+                return
             sid = str((t or {}).get("sid") or "")
             if not sid:
                 continue
@@ -5081,9 +5154,13 @@ class WayneTelegramBot:
                     ),
                     timeout=_CHART_RENDER_TIMEOUT,
                 )
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 logger.exception("飆大建議結構圖失敗 sid=%s", sid)
                 continue
+            if gen and not self._actor_op_alive(actor, kind, gen):
+                return
             png = str((built or {}).get("path") or "")
             if not png or not self._png_looks_ok(png, min_bytes=24_000, min_w=800, min_h=500):
                 continue
@@ -5100,16 +5177,31 @@ class WayneTelegramBot:
                         caption=cap[:900],
                         reply_markup=self._biaoke_reply_menu(uid),
                     )
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 logger.exception("飆大建議結構圖送出失敗 sid=%s", sid)
 
-    async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
+    async def _send_biaoke_structure_chart(
+        self,
+        message,
+        ask: str,
+        uid: str,
+        *,
+        actor: str = "",
+        kind: str = "",
+        gen: int = 0,
+    ) -> None:
         """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。
 
         點了個股就出該檔第④顆眼睛。波浪字不把個股問句改成加權圖。
         """
         q = (ask or "").strip()
         if not q:
+            return
+        actor = str(actor or self._actor_key(message, uid=uid) or "")
+        kind = str(kind or "biaoke")
+        if gen and not self._actor_op_alive(actor, kind, gen):
             return
         hits: list = []
         try:
@@ -5119,6 +5211,8 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("飆大結構圖對檔略過")
             hits = []
+        if gen and not self._actor_op_alive(actor, kind, gen):
+            return
         sid = str((hits[0] or {}).get("stock_id") or "") if hits else ""
         if not sid:
             try:
@@ -5157,11 +5251,15 @@ class WayneTelegramBot:
                 ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )
+        except asyncio.CancelledError:
+            raise
         except asyncio.TimeoutError:
             logger.warning("飆大結構圖逾時 sid=%s", sid)
             return
         except Exception:
             logger.exception("飆大結構圖失敗 sid=%s", sid)
+            return
+        if gen and not self._actor_op_alive(actor, kind, gen):
             return
         png = str((built or {}).get("path") or "")
         if not png or not self._png_looks_ok(png, min_bytes=24_000, min_w=800, min_h=500):
@@ -8051,7 +8149,15 @@ class WayneTelegramBot:
         app.add_handler(MessageHandler(filters.Document.IMAGE, self.on_document))
 
         async def _on_error(update, context):
-            logger.exception("Telegram handler 失敗: %s", context.error)
+            err = getattr(context, "error", None)
+            # 回主選單／換鍵 cancel 任務：不准對白名單噴「請先按 /start」。
+            if isinstance(err, asyncio.CancelledError) or type(err).__name__ in (
+                "CancelledError",
+                "ConcurrentUpdateError",
+            ):
+                logger.info("Telegram handler 已取消／略過: %s", type(err).__name__)
+                return
+            logger.exception("Telegram handler 失敗: %s", err)
             q = getattr(update, "callback_query", None) if update else None
             if q is not None:
                 try:
@@ -8067,8 +8173,19 @@ class WayneTelegramBot:
                 return
             msg = getattr(update, "effective_message", None) if update else None
             if msg:
+                uid = ""
                 try:
-                    await msg.reply_text("處理失敗。請先按 /start，再打南亞或 2330。")
+                    user = getattr(update, "effective_user", None) if update else None
+                    uid = str(getattr(user, "id", "") or "")
+                except Exception:
+                    uid = ""
+                try:
+                    if uid and telegram_uid_allowed(uid):
+                        await msg.reply_text(PHONE_BUSY)
+                    else:
+                        await msg.reply_text(
+                            "處理失敗。請先按 /start，再打南亞或 2330。"
+                        )
                 except Exception:
                     pass
 

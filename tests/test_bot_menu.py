@@ -419,7 +419,7 @@ def test_screening_status_bubble_has_no_reply_keyboard():
 
     src = inspect.getsource(WayneTelegramBot._run_manual_screening)
     assert "reply_markup=hub" not in src.split("status = await")[1].split("ticker =")[0]
-    assert "_magic_dismiss" in src or "await status.delete()" in src
+    assert "_dismiss_progress_now" in src or "_magic_dismiss" in src
     assert "await self._pin_reply_menu(message)" in src
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -430,6 +430,7 @@ def test_screening_status_bubble_has_no_reply_keyboard():
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
     bot._dismiss_menu_transients = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
     bot._reply_screening_payload = AsyncMock()
