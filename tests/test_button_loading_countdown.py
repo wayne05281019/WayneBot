@@ -68,9 +68,11 @@ def test_menu_slow_paths_start_plain_wait():
             assert "load_cached_full_screening" in src
             assert "build_and_cache_full_screening" in src
             assert "screen_timeout_s = 180.0" in src
-            assert "超過 3 分鐘" in src
-            assert "會自動推" in src
-            assert "不必再按" in src
+            timeout_zh = WayneTelegramBot._SCREEN_TIMEOUT_ZH
+            assert "超過 3 分鐘" in timeout_zh
+            assert "會自動推" in timeout_zh
+            assert "不必再按" in timeout_zh
+            assert "_speak_screen_timeout" in src
             assert load_i < src.index("await self._pin_reply_menu")
             assert "_track_actor_bg(actor, build_task)" not in src
             assert "keep_msg=status" in src
