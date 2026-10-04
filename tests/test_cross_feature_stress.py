@@ -53,6 +53,7 @@ def _bot():
     bot._screening_global_owner = ""
     bot._menu_fade_gen = {}
     bot._menu_pin_msgs = {}
+    bot._menu_pin_at = {}
     bot._touch_user = MagicMock()
     bot._dismiss_menu_transients = AsyncMock()
     bot._dismiss_help_msgs = AsyncMock()
@@ -104,9 +105,14 @@ def test_screening_gate_blocks_second_family_member():
             for call in m.reply_text.await_args_list + m.reply_html.await_args_list:
                 args = call.args or ()
                 texts.append(str(args[0] if args else call.kwargs.get("text") or ""))
+            status = m.reply_text.return_value
+            for call in getattr(status, "edit_text", MagicMock()).await_args_list or []:
+                args = call.args or ()
+                texts.append(str(args[0] if args else ""))
         blob = "\n".join(texts)
         assert "海選進行中" in blob
         assert "海選正在掃描全市場" in blob
+        assert blob.count("請稍候完成後再按") <= 1
         bot.screener.run_full_screening.assert_not_called()
 
     asyncio.run(run())

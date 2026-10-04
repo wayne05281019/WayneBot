@@ -600,6 +600,7 @@ class WayneTelegramBot:
         self._screening_build_task = None
         self._menu_fade_gen: Dict[str, int] = {}
         self._menu_pin_msgs: Dict[str, object] = {}
+        self._menu_pin_at: Dict[str, float] = {}
         # 重開牆鐘：Telegram 重放崩潰前舊訊時用來作廢（不准晚送海選／飆大）。
         self._boot_wall = time.time()
         # actor → 進行中操作 generation；換鍵／開始就加一，過期結果不准 edit／send。
@@ -1695,13 +1696,38 @@ class WayneTelegramBot:
         except Exception:
             return ""
 
+    _MENU_PIN_COOLDOWN_S = 12.0
+
+    def _menu_pin_is_fresh(self, actor: str) -> bool:
+        key = str(actor or "")
+        if not key:
+            return False
+        stamp = (getattr(self, "_menu_pin_at", None) or {}).get(key)
+        if stamp is None:
+            return False
+        try:
+            return (time.monotonic() - float(stamp)) < float(self._MENU_PIN_COOLDOWN_S)
+        except (TypeError, ValueError):
+            return False
+
+    def _note_menu_pin(self, actor: str) -> None:
+        key = str(actor or "")
+        if not key:
+            return
+        if not isinstance(getattr(self, "_menu_pin_at", None), dict):
+            self._menu_pin_at = {}
+        self._menu_pin_at[key] = time.monotonic()
+
     async def _pin_reply_menu(self, message) -> None:
         """把兩排主選單釘在輸入框區；訊息必須留下，刪掉會讓許多客戶端把鍵盤一起收掉。
 
         注意：Telegram editMessageText 只能改文字／Inline，不能更新 ReplyKeyboard。
         要換兩排按鈕內容，一定要新發一則帶 reply_markup 的訊息。
+        同一人冷卻內最多一則「主選單已掛上」，避免海選 LOADING 與 /menu 連刷。
         """
         actor = self._actor_key(message)
+        if self._menu_pin_is_fresh(actor):
+            return
         prev = getattr(self, "_menu_pin_msgs", None)
         if prev is None:
             self._menu_pin_msgs = {}
@@ -1713,6 +1739,7 @@ class WayneTelegramBot:
             try:
                 pin = await message.reply_text(text, reply_markup=markup)
                 self._menu_pin_msgs[actor] = pin
+                self._note_menu_pin(actor)
                 return
             except Exception:
                 continue
@@ -1753,6 +1780,7 @@ class WayneTelegramBot:
         """
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
+        actor = self._actor_key(message, uid=uid)
         text = (
             "兩排已更新：第一排勝率買點…資金輪動，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
@@ -1760,10 +1788,10 @@ class WayneTelegramBot:
         )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
-            actor = self._actor_key(message, uid=uid)
             if getattr(self, "_menu_pin_msgs", None) is None:
                 self._menu_pin_msgs = {}
             self._menu_pin_msgs[actor] = pin
+            self._note_menu_pin(actor)
         except Exception:
             logger.exception("掛上新選單失敗")
             await self._pin_reply_menu(message)
@@ -3447,28 +3475,25 @@ class WayneTelegramBot:
             except (asyncio.CancelledError, Exception):
                 pass
 
-        # LOADING 已出：立刻倒數、立刻釘看得見的鍵盤。清舊框不准堵住這則。
+        # LOADING 已出：立刻倒數。進行中再按不准再釘主選單。
         ticker = asyncio.create_task(_tick())
-        try:
-            await asyncio.wait_for(self._pin_reply_menu(message), timeout=1.5)
-        except Exception:
-            pass
         inflight0 = getattr(self, "_screening_build_task", None)
         inflight_live = isinstance(inflight0, asyncio.Task) and not inflight0.done()
-        if actor in self._screening_running and not inflight_live:
+        if actor in self._screening_running or inflight_live:
             await _stop_ticker()
+            wait_zh = "海選進行中，請稍候完成後再按。"
+            spoken = False
             try:
                 if status is not None:
-                    await status.edit_text("海選進行中，請稍候完成後再按。")
+                    await status.edit_text(wait_zh)
+                    spoken = True
             except Exception:
-                pass
-            try:
-                await message.reply_text(
-                    "海選進行中，請稍候完成後再按。",
-                    reply_markup=hub,
-                )
-            except Exception:
-                pass
+                spoken = False
+            if not spoken:
+                try:
+                    await message.reply_text(wait_zh, reply_markup=hub)
+                except Exception:
+                    pass
             return
         async with self._screening_gate:
             if self._screening_global_owner and self._screening_global_owner != actor:
@@ -3478,15 +3503,18 @@ class WayneTelegramBot:
                     "算完會自動推名單；你也可以稍後再按「海選」讀快取。"
                     "名單是同一份，不會和對方的持股／觀察／連買混在一起。"
                 )
+                spoken = False
                 try:
                     if status is not None:
                         await status.edit_text(busy)
+                        spoken = True
                 except Exception:
-                    pass
-                try:
-                    await message.reply_html(busy, reply_markup=hub)
-                except Exception:
-                    pass
+                    spoken = False
+                if not spoken:
+                    try:
+                        await message.reply_html(busy, reply_markup=hub)
+                    except Exception:
+                        pass
                 return
             self._screening_global_owner = actor
         # begin 只清已登記的舊等待；本則 status 用 keep_msg 保住。
