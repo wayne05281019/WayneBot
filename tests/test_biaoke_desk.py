@@ -278,7 +278,10 @@ def test_biaoke_page_has_no_inside_menu():
     assert "reflow=False" in src
     assert "_send_biaoke_structure_chart" in src
     assert "_send_biaoke_origin_charts" not in src
-    assert "create_task" in src
+    # 出圖改文字後同步跑＋檔數進度；不准再 create_task 並行無進度
+    assert "asyncio.create_task" not in src
+    assert "spoken_html=" in src
+    assert "_send_biaoke_advice_charts" in src
     assert "stock_picker_hits" in src
     assert "_biaoke_hits_keyboard" in src
     assert "_biaoke_hub_markup" in src
