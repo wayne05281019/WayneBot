@@ -427,6 +427,9 @@ def test_screening_status_bubble_has_no_reply_keyboard():
     bot._screening_running = set()
     bot._screening_gate = asyncio.Lock()
     bot._screening_global_owner = ""
+    bot._actor_op_gen = {}
+    bot._actor_op_kind = {}
+    bot._actor_waits = {}
     bot._dismiss_menu_transients = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
     bot._reply_screening_payload = AsyncMock()

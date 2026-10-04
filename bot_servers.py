@@ -23,6 +23,8 @@ from typing import Any, Dict, List, Optional, Tuple
 # 例外頁回鍵盤也帶這，才不會哥哥出錯把偉權的兩排蓋過去。
 _ACTIVE_PHONE_UID: ContextVar[str] = ContextVar("wayne_phone_uid", default="")
 PHONE_BUSY = "這一步暫時沒跑完，請稍後再按一次。細節已記在後台，不會影響你其他按鈕。"
+PHONE_STALE_REPLAY = "雲端剛重開，上一則操作已作廢。請再按一次該按鈕。"
+PHONE_OP_CANCELLED = "已取消上一則等待。請再按一次要用的按鈕。"
 
 # Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
 _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
@@ -576,6 +578,13 @@ class WayneTelegramBot:
         self._screening_global_owner: str = ""
         self._menu_fade_gen: Dict[str, int] = {}
         self._menu_pin_msgs: Dict[str, object] = {}
+        # 重開牆鐘：Telegram 重放崩潰前舊訊時用來作廢（不准晚送海選／飆大）。
+        self._boot_wall = time.time()
+        # actor → 進行中操作 generation；換鍵／開始就加一，過期結果不准 edit／send。
+        self._actor_op_gen: Dict[str, int] = {}
+        self._actor_op_kind: Dict[str, str] = {}
+        # actor → kind → {gen, wait_msg, stop, task}；海選／飆大各自一則進度，不准互搶。
+        self._actor_waits: Dict[str, Dict[str, dict]] = {}
 
     @staticmethod
     def _actor_key(
@@ -619,6 +628,132 @@ class WayneTelegramBot:
             self._pending_locks[actor] = lock
         return lock
 
+    def _clear_actor_menu_state(self, actor: str) -> None:
+        """只清這個人的 pending／飆大對話史；不准碰另一人。"""
+        key = str(actor or "")
+        if not key:
+            return
+        pending = getattr(self, "_pending", None)
+        if pending is not None:
+            try:
+                pending.pop(key, None)
+            except Exception:
+                pass
+        hist = getattr(self, "_biaoke_hist", None)
+        if hist is not None:
+            try:
+                hist.pop(key, None)
+            except Exception:
+                pass
+
+    def _ensure_actor_op_maps(self) -> None:
+        if not isinstance(getattr(self, "_actor_op_gen", None), dict):
+            self._actor_op_gen = {}
+        if not isinstance(getattr(self, "_actor_op_kind", None), dict):
+            self._actor_op_kind = {}
+        if not isinstance(getattr(self, "_actor_waits", None), dict):
+            self._actor_waits = {}
+        if not isinstance(getattr(self, "_screening_running", None), set):
+            self._screening_running = set()
+
+    def _actor_op_alive(self, actor: str, kind: str, gen: int) -> bool:
+        self._ensure_actor_op_maps()
+        key = str(actor or "")
+        if not key or not kind:
+            return False
+        return (
+            int(self._actor_op_gen.get(key) or 0) == int(gen)
+            and str(self._actor_op_kind.get(key) or "") == str(kind)
+        )
+
+    def _message_is_preboot_replay(self, message) -> bool:
+        """重開後 Telegram 重放崩潰前舊訊：作廢，不准再跑海選／飆大。"""
+        boot = float(getattr(self, "_boot_wall", 0.0) or 0.0)
+        if boot <= 0 or message is None:
+            return False
+        dt = getattr(message, "date", None)
+        if dt is None:
+            return False
+        try:
+            ts = float(dt.timestamp())
+        except Exception:
+            return False
+        return ts < (boot - 1.0)
+
+    async def _cancel_actor_ops(self, actor: str, *, dismiss: bool = True) -> None:
+        """作廢這個人進行中的等待框／背景交付；不准碰另一人。"""
+        self._ensure_actor_op_maps()
+        key = str(actor or "")
+        if not key:
+            return
+        self._actor_op_gen[key] = int(self._actor_op_gen.get(key) or 0) + 1
+        self._actor_op_kind[key] = ""
+        slots = (self._actor_waits.pop(key, None) or {}).copy()
+        # 讓還在跑的海選 finally 自己清 global owner；這裡先允許同人重按。
+        self._screening_running.discard(key)
+        for _kind, slot in slots.items():
+            if not isinstance(slot, dict):
+                continue
+            stop = slot.get("stop")
+            task = slot.get("task")
+            if stop is not None:
+                try:
+                    stop.set()
+                except Exception:
+                    pass
+            if task is not None:
+                try:
+                    task.cancel()
+                except Exception:
+                    pass
+            if dismiss:
+                await self._magic_dismiss(slot.get("wait_msg"))
+
+    async def _begin_actor_op(self, actor: str, kind: str) -> int:
+        """換鍵／新開長任務：取消舊等待，發新 generation。"""
+        await self._cancel_actor_ops(actor, dismiss=True)
+        self._ensure_actor_op_maps()
+        key = str(actor or "")
+        gen = int(self._actor_op_gen.get(key) or 0) + 1
+        self._actor_op_gen[key] = gen
+        self._actor_op_kind[key] = str(kind or "")
+        return gen
+
+    def _register_actor_wait(
+        self,
+        actor: str,
+        kind: str,
+        *,
+        gen: int,
+        wait_msg,
+        stop,
+        task,
+    ) -> None:
+        self._ensure_actor_op_maps()
+        key = str(actor or "")
+        if not key or not kind:
+            return
+        bucket = self._actor_waits.setdefault(key, {})
+        bucket[str(kind)] = {
+            "gen": int(gen),
+            "wait_msg": wait_msg,
+            "stop": stop,
+            "task": task,
+        }
+
+    def _unregister_actor_wait(self, actor: str, kind: str, *, gen: int) -> None:
+        self._ensure_actor_op_maps()
+        key = str(actor or "")
+        bucket = self._actor_waits.get(key) or {}
+        slot = bucket.get(str(kind))
+        if not isinstance(slot, dict):
+            return
+        if int(slot.get("gen") or 0) != int(gen):
+            return
+        bucket.pop(str(kind), None)
+        if not bucket:
+            self._actor_waits.pop(key, None)
+
     async def _enter_main_menu(
         self,
         message,
@@ -630,11 +765,8 @@ class WayneTelegramBot:
         """主選單功能入口：清 pending、刪暫態泡泡，必要時靜默刷新鍵盤（不洗版）。"""
         actor = self._actor_key(message, uid=uid)
         if clear_pending:
-            self._pending.pop(actor, None)
-            try:
-                self._biaoke_hist.pop(actor, None)
-            except Exception:
-                pass
+            self._clear_actor_menu_state(actor)
+            await self._cancel_actor_ops(actor, dismiss=True)
         await self._dismiss_menu_transients(actor)
         if not self._menu_layout_ok(uid):
             await self._refresh_reply_menu(message, uid=uid, silent=silent_keyboard)
@@ -713,7 +845,7 @@ class WayneTelegramBot:
         ]
 
     async def _magic_dismiss(self, msg) -> None:
-        """真實結果出來後：短幀動畫再刪，像魔法消逝。"""
+        """真實結果出來後：短幀動畫再刪，像魔法消逝。刪不掉時不准留下空白「·」。"""
         if msg is None:
             return
         for frame in self._magic_dismiss_frames():
@@ -727,6 +859,15 @@ class WayneTelegramBot:
                 pass
         try:
             await msg.delete()
+            return
+        except Exception:
+            pass
+        # delete 失敗時「·」看起來像沒回覆；改成可讀一句再放過。
+        try:
+            await msg.edit_text(
+                html_escape("等待框已結束（可略過這則）"),
+                parse_mode="HTML",
+            )
         except Exception:
             pass
 
@@ -1683,14 +1824,16 @@ class WayneTelegramBot:
 
     async def _restore_main_menu(self, message, uid: str) -> None:
         actor = self._actor_key(message, uid=uid)
-        self._pending.pop(actor, None)
+        self._clear_actor_menu_state(actor)
+        await self._cancel_actor_ops(actor, dismiss=True)
         text = "已回到兩排主選單。"
         await message.reply_html(text, reply_markup=self._reply_menu(uid))
 
     async def _leave_biaoke(self, message, uid: str) -> None:
         """用完飆大：清對話狀態、把鍵盤換回兩排主選單。兩人同一顆。"""
         actor = self._actor_key(message, uid=uid)
-        self._pending.pop(actor, None)
+        self._clear_actor_menu_state(actor)
+        await self._cancel_actor_ops(actor, dismiss=True)
         if uid:
             try:
                 self._mark_menu_layout_ok(uid)
@@ -3086,7 +3229,11 @@ class WayneTelegramBot:
         )
 
     async def _run_manual_screening(self, message, uid: str = ""):
-        """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。"""
+        """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。
+
+        失敗／逾時／進度泡泡送不出：一定要有結果或清楚錯誤句；不准只留空白 LOADING。
+        換鍵／開始會 bump generation：過期結果不准 edit／send。
+        """
         uid = str(uid or self._menu_uid_from_message(message) or "")
         actor = self._actor_key(message, uid=uid)
         if actor in self._screening_running:
@@ -3105,46 +3252,67 @@ class WayneTelegramBot:
                 )
                 return
             self._screening_global_owner = actor
+        op_kind = "screen"
+        gen = await self._begin_actor_op(actor, op_kind)
         self._screening_running.add(actor)
-        await self._dismiss_menu_transients(actor)
         hub = self._reply_menu(uid)
-        # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
-        status = await message.reply_text(
-            self._screening_progress_text(0), parse_mode="HTML"
-        )
+        status = None
         stop = asyncio.Event()
-        t0 = time.monotonic()
-
-        async def _tick():
-            while not stop.is_set():
-                elapsed = int(time.monotonic() - t0)
-                try:
-                    await status.edit_text(
-                        self._screening_progress_text(elapsed), parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=5.0)
-                    break
-                except asyncio.TimeoutError:
-                    continue
-
-        ticker = asyncio.create_task(_tick())
-        result = None
+        ticker = None
+        delivered = False
+        cancelled = False
         try:
+            await self._dismiss_menu_transients(actor)
+            # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
+            try:
+                status = await message.reply_text(
+                    self._screening_progress_text(0), parse_mode="HTML"
+                )
+            except Exception:
+                logger.exception("海選進度泡泡送出失敗")
+                status = None
+            t0 = time.monotonic()
+
+            async def _tick():
+                if status is None:
+                    return
+                while not stop.is_set():
+                    if not self._actor_op_alive(actor, op_kind, gen):
+                        break
+                    elapsed = int(time.monotonic() - t0)
+                    try:
+                        await status.edit_text(
+                            self._screening_progress_text(elapsed), parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        await asyncio.wait_for(stop.wait(), timeout=5.0)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
+
+            ticker = asyncio.create_task(_tick())
+            self._register_actor_wait(
+                actor, op_kind, gen=gen, wait_msg=status, stop=stop, task=ticker
+            )
             result = await asyncio.wait_for(
                 asyncio.to_thread(self.screener.run_full_screening),
                 timeout=480.0,
             )
             stop.set()
-            try:
-                await status.edit_text(
-                    self._screening_progress_text(0, done=True), parse_mode="HTML"
-                )
-            except Exception:
-                pass
+            if not self._actor_op_alive(actor, op_kind, gen):
+                cancelled = True
+                return
+            if status is not None:
+                try:
+                    await status.edit_text(
+                        self._screening_progress_text(0, done=True), parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
             await self._reply_screening_payload(message, result)
+            delivered = True
             as_of = str(result.get("as_of") or result.get("date") or "")
             try:
                 from screen_sessions import screen_session_has_data
@@ -3158,31 +3326,52 @@ class WayneTelegramBot:
                 pass
         except asyncio.TimeoutError:
             logger.exception("手動海選逾時")
-            await message.reply_text(
-                "海選逾時（超過 8 分鐘）。\n"
-                "Render 免費主機較慢時會這樣。請 5 分鐘後再按一次「海選」，"
-                "或等明早 06:30 自動海選。",
-                reply_markup=hub,
-            )
+            if self._actor_op_alive(actor, op_kind, gen):
+                try:
+                    await message.reply_text(
+                        "海選逾時（超過 8 分鐘）。\n"
+                        "Render 免費主機較慢時會這樣。請 5 分鐘後再按一次「海選」，"
+                        "或等明早 06:30 自動海選。",
+                        reply_markup=hub,
+                    )
+                    delivered = True
+                except Exception:
+                    logger.exception("海選逾時提示送出失敗")
+            else:
+                cancelled = True
         except Exception:
             logger.exception("海選失敗")
-            await message.reply_text(
-                PHONE_BUSY,
-                reply_markup=hub,
-            )
+            if self._actor_op_alive(actor, op_kind, gen):
+                try:
+                    await message.reply_text(PHONE_BUSY, reply_markup=hub)
+                    delivered = True
+                except Exception:
+                    logger.exception("海選失敗提示送出失敗")
+            else:
+                cancelled = True
         finally:
             stop.set()
-            ticker.cancel()
+            if ticker is not None:
+                ticker.cancel()
+            self._unregister_actor_wait(actor, op_kind, gen=gen)
             self._screening_running.discard(actor)
             async with self._screening_gate:
                 if self._screening_global_owner == actor:
                     self._screening_global_owner = ""
-            await self._magic_dismiss(status)
+            alive = self._actor_op_alive(actor, op_kind, gen)
+            if alive or status is not None:
+                await self._magic_dismiss(status)
+            if alive and not delivered and not cancelled:
+                try:
+                    await message.reply_text(PHONE_BUSY, reply_markup=hub)
+                except Exception:
+                    logger.exception("海選補送失敗提示仍失敗")
             # 刪進度泡泡後再釘一次，避免中途狀態讓客戶端收掉兩排。
-            try:
-                await self._pin_reply_menu(message)
-            except Exception:
-                pass
+            if alive:
+                try:
+                    await self._pin_reply_menu(message)
+                except Exception:
+                    pass
 
     _WAIT_SQUARES = 10
 
@@ -3250,8 +3439,21 @@ class WayneTelegramBot:
         rest = "回覆" if now != "回覆" else "結構圖"
         return WayneTelegramBot._wait_bubble("飆大進行中", elapsed_sec, now=now, rest=rest)
 
-    async def _start_plain_wait(self, message, *, text_fn):
-        """查股那種連續更新的方塊。不掛鍵盤，免得刪掉時把主選單收走。"""
+    async def _start_plain_wait(
+        self,
+        message,
+        *,
+        text_fn,
+        actor: str = "",
+        kind: str = "",
+        gen: int = 0,
+    ):
+        """查股那種連續更新的方塊。不掛鍵盤，免得刪掉時把主選單收走。
+
+        有 actor/kind/gen 時：過期 generation 不准再 edit；海選／飆大各自一則。
+        """
+        if actor and kind and not self._actor_op_alive(actor, kind, gen):
+            return None, None, None
         t0 = time.monotonic()
         wait_msg = None
         try:
@@ -3262,6 +3464,8 @@ class WayneTelegramBot:
 
         async def _tick() -> None:
             while not stop.is_set():
+                if actor and kind and not self._actor_op_alive(actor, kind, gen):
+                    break
                 try:
                     await wait_msg.edit_text(
                         text_fn(int(time.monotonic() - t0)), parse_mode="HTML"
@@ -3280,9 +3484,23 @@ class WayneTelegramBot:
                 except asyncio.TimeoutError:
                     continue
 
-        return wait_msg, stop, asyncio.create_task(_tick())
+        task = asyncio.create_task(_tick())
+        if actor and kind:
+            self._register_actor_wait(
+                actor, kind, gen=gen, wait_msg=wait_msg, stop=stop, task=task
+            )
+        return wait_msg, stop, task
 
-    async def _stop_plain_wait(self, wait_msg, stop, task) -> None:
+    async def _stop_plain_wait(
+        self,
+        wait_msg,
+        stop,
+        task,
+        *,
+        actor: str = "",
+        kind: str = "",
+        gen: int = 0,
+    ) -> None:
         if stop is not None:
             stop.set()
         if task is not None:
@@ -3290,6 +3508,9 @@ class WayneTelegramBot:
                 await asyncio.wait_for(asyncio.shield(task), timeout=0.4)
             except Exception:
                 task.cancel()
+        if actor and kind:
+            self._unregister_actor_wait(actor, kind, gen=gen)
+        # 過期 generation：只刪自己的等待框，不准再當成「成功收起」去蓋別鍵。
         await self._magic_dismiss(wait_msg)
 
     @staticmethod
@@ -4583,11 +4804,17 @@ class WayneTelegramBot:
         self._pending[actor] = BIAOKE_PENDING
 
     async def _send_biaoke_page(self, message, *, ask: str = "", uid: str = "") -> None:
-        """飆大＝這顆對話腦的即時窗口。問句在這邊彙整。資料庫沒寫過的檔也套官方 K。不進海選。"""
+        """飆大＝這顆對話腦的即時窗口。問句在這邊彙整。資料庫沒寫過的檔也套官方 K。不進海選。
+
+        空白進場也先出 LOADING；失敗一定有錯誤句；generation 過期不准晚送。
+        """
         from biaoke_brain import answer_biaoke
         from biaoke_desk import format_biaoke_html
 
         uid = str(uid or self._uid_from_message(message) or "")
+        actor = self._actor_key(message, uid=uid)
+        op_kind = "biaoke"
+        gen = await self._begin_actor_op(actor, op_kind)
         self._enter_biaoke_chat(message, uid)
         if uid:
             try:
@@ -4595,19 +4822,37 @@ class WayneTelegramBot:
             except Exception:
                 pass
         q = (ask or "").strip()
-        actor = self._actor_key(message, uid=uid)
         if not hasattr(self, "_biaoke_hist") or self._biaoke_hist is None:
             self._biaoke_hist = {}
         hist = list(self._biaoke_hist.get(actor) or [])
         mark_read = False
         chart_task = None
         wait_h = (None, None, None)
+        delivered = False
+        cancelled = False
+
+        async def _stop_wait() -> None:
+            nonlocal wait_h
+            wh = wait_h
+            wait_h = (None, None, None)
+            await self._stop_plain_wait(
+                *wh, actor=actor, kind=op_kind, gen=gen
+            )
+
         try:
+            wait_h = await self._start_plain_wait(
+                message,
+                text_fn=lambda s: self._biaoke_progress_text(
+                    s, current="chart" if q else "reply"
+                ),
+                actor=actor,
+                kind=op_kind,
+                gen=gen,
+            )
+            if not self._actor_op_alive(actor, op_kind, gen):
+                cancelled = True
+                return
             if q:
-                wait_h = await self._start_plain_wait(
-                    message,
-                    text_fn=lambda s: self._biaoke_progress_text(s, current="chart"),
-                )
                 picker = []
                 try:
                     from biaoke_brain import format_stock_picker_html, stock_picker_hits
@@ -4617,14 +4862,17 @@ class WayneTelegramBot:
                     logger.exception("飆大撞名選擇器略過")
                     picker = []
                 if picker:
-                    await self._stop_plain_wait(*wait_h)
-                    wait_h = (None, None, None)
+                    if not self._actor_op_alive(actor, op_kind, gen):
+                        cancelled = True
+                        return
+                    await _stop_wait()
                     html = format_stock_picker_html(picker)
                     await message.reply_html(
                         html,
                         disable_web_page_preview=True,
                         reply_markup=self._biaoke_hits_keyboard(picker),
                     )
+                    delivered = True
                     await self._show_biaoke_leave_key(message, uid)
                     return
                 # 問類股／怎麼做：多檔建議圖；單檔名才走一張結構圖
@@ -4644,6 +4892,11 @@ class WayneTelegramBot:
                         self._send_biaoke_structure_chart(message, q, uid)
                     )
                 html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
+                if not self._actor_op_alive(actor, op_kind, gen):
+                    cancelled = True
+                    if chart_task is not None:
+                        chart_task.cancel()
+                    return
                 # 問類股時文字也補「建議怎麼做＋憑據」
                 if field_advice:
                     try:
@@ -4669,15 +4922,23 @@ class WayneTelegramBot:
                 try:
                     from biaoke_digest import format_latest_focus, take_unread_digest
 
-                    html = take_unread_digest(uid, self.db_path)
+                    html = await asyncio.to_thread(take_unread_digest, uid, self.db_path)
                     if not html:
-                        html = format_latest_focus(self.db_path)
+                        html = await asyncio.to_thread(format_latest_focus, self.db_path)
                 except Exception:
+                    logger.exception("飆大進場摘要略過")
                     html = ""
+                if not self._actor_op_alive(actor, op_kind, gen):
+                    cancelled = True
+                    return
                 if html:
                     mark_read = True
                 else:
-                    html = format_biaoke_html(q)
+                    try:
+                        html = format_biaoke_html(q)
+                    except Exception:
+                        logger.exception("飆大進場底稿失敗")
+                        html = ""
             # 對話不要再切成 18 字講義行；Telegram 自己會折。
             parts = chunk_telegram_html(html, reflow=False)
             if parts and mark_read:
@@ -4688,42 +4949,86 @@ class WayneTelegramBot:
                 except Exception:
                     pass
             kb = self._biaoke_hub_markup(q)
+            if not self._actor_op_alive(actor, op_kind, gen):
+                cancelled = True
+                if chart_task is not None:
+                    chart_task.cancel()
+                return
             if not parts:
                 if chart_task is not None:
-                    try:
-                        await chart_task
-                    except Exception:
-                        logger.exception("飆大結構圖並行失敗")
-                await message.reply_text("飆客區讀取失敗。", reply_markup=self._biaoke_reply_menu(uid))
+                    chart_task.cancel()
+                await message.reply_text(
+                    "飆客區讀取失敗。", reply_markup=self._biaoke_reply_menu(uid)
+                )
+                delivered = True
                 return
             from biaoke_chain import split_lead_detail
 
-            lead_html, detail_html = split_lead_detail("\n\n".join(parts) if len(parts) == 1 else html)
+            lead_html, detail_html = split_lead_detail(
+                "\n\n".join(parts) if len(parts) == 1 else html
+            )
             if lead_html and detail_html:
                 parts = [lead_html, *chunk_telegram_html(detail_html, reflow=False)]
             n = len(parts)
             for i, part in enumerate(parts):
+                if not self._actor_op_alive(actor, op_kind, gen):
+                    cancelled = True
+                    if chart_task is not None:
+                        chart_task.cancel()
+                    return
                 markup = kb if i == n - 1 else None
                 await message.reply_html(
                     part,
                     disable_web_page_preview=True,
                     reply_markup=markup,
                 )
+            delivered = True
+            # 文字已出：先收 LOADING，長圖不要卡住等待框。
+            await _stop_wait()
+            if not self._actor_op_alive(actor, op_kind, gen):
+                cancelled = True
+                if chart_task is not None:
+                    chart_task.cancel()
+                return
             if chart_task is not None:
                 try:
                     await chart_task
                 except Exception:
                     logger.exception("飆大結構圖並行失敗")
             # 空白進場：幾乎不問也主動附全部建議檔結構圖（每檔一句怎麼做）
-            if not q:
+            if not q and self._actor_op_alive(actor, op_kind, gen):
                 try:
                     await self._send_biaoke_advice_charts(message, uid, ask="")
                 except Exception:
                     logger.exception("飆大建議結構圖略過")
-            # 內容／大盤用 Inline；離開鈕用 ReplyKeyboard 另發（Telegram edit 換不了兩排）。
-            await self._show_biaoke_leave_key(message, uid)
+            if self._actor_op_alive(actor, op_kind, gen):
+                # 內容／大盤用 Inline；離開鈕用 ReplyKeyboard 另發（Telegram edit 換不了兩排）。
+                await self._show_biaoke_leave_key(message, uid)
+        except Exception:
+            logger.exception("飆大頁失敗 ask=%s", (ask or "")[:40])
+            if self._actor_op_alive(actor, op_kind, gen) and not delivered:
+                try:
+                    await message.reply_text(
+                        PHONE_BUSY, reply_markup=self._biaoke_reply_menu(uid)
+                    )
+                    delivered = True
+                except Exception:
+                    logger.exception("飆大失敗提示送出失敗")
+            elif not self._actor_op_alive(actor, op_kind, gen):
+                cancelled = True
         finally:
-            await self._stop_plain_wait(*wait_h)
+            await _stop_wait()
+            if (
+                self._actor_op_alive(actor, op_kind, gen)
+                and not delivered
+                and not cancelled
+            ):
+                try:
+                    await message.reply_text(
+                        PHONE_BUSY, reply_markup=self._biaoke_reply_menu(uid)
+                    )
+                except Exception:
+                    logger.exception("飆大補送失敗提示仍失敗")
 
     async def _send_biaoke_advice_charts(
         self, message, uid: str, *, ask: str = ""
@@ -5639,12 +5944,26 @@ class WayneTelegramBot:
     async def _on_text_bound(self, update, context, *, raw, text, uid: str):
         actor = self._actor_key(update.message, uid=uid)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+        # 重開後重放崩潰前舊訊：作廢，不准晚跑海選／飆大。
+        if self._message_is_preboot_replay(update.message):
+            logger.info(
+                "略過重開前舊訊 uid=%s text=%s", uid, (text or "")[:24]
+            )
+            try:
+                await update.message.reply_text(
+                    PHONE_STALE_REPLAY, reply_markup=self._reply_menu(uid)
+                )
+            except Exception:
+                pass
+            return
         if text.lower().lstrip("/") in ("start", "開始"):
-            self._pending.pop(actor, None)
+            self._clear_actor_menu_state(actor)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.start_cmd(update, context)
             return
         if text in ("備份", "私人備份") or text.lower().lstrip("/") == "backup":
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.backup_cmd(update, context)
             return
         if is_phone_code_query(text):
@@ -5667,14 +5986,18 @@ class WayneTelegramBot:
             return
         if text in (MENU_BTN_STREAK, "連買區域", "外資連買區域"):
             logger.info("主選單：連買區 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.streak_cmd(update, context)
             return
         if text in MENU_COMPACT_ALIASES or text in MENU_FULL_ALIASES:
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self._force_reply_menu(update.message, uid)
             return
         if text in ("選單", "主選單") or text.lower().lstrip("/") == "menu":
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.menu_cmd(update, context)
             return
         if text in ("說明", "幫助") or text.lower().lstrip("/") == "help":
@@ -5689,86 +6012,102 @@ class WayneTelegramBot:
         if text in MENU_BTN_FLOW_ALIASES or text.lower().lstrip("/") == "flow":
             logger.info("主選單：資金輪動 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.flow_cmd(update, context)
             return
         if text in MENU_BTN_BIAOKE_ALIASES or text.lower().lstrip("/") in ("biaoke", "biaoda"):
             logger.info("主選單：飆客 uid=%s", uid)
-            self._enter_biaoke_chat(update.message, uid)
+            # _send_biaoke_page 內 _begin_actor_op 會取消同人海選等待／作廢舊結果
             await self._send_biaoke_page(update.message, uid=uid)
             return
         if text in MENU_BTN_MARKET_ALIASES or text.lower().lstrip("/") == "market":
             logger.info("主選單：台股大盤 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.market_cmd(update, context)
             return
         if text == "當沖":
             logger.info("主選單：當沖 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.daytrade_cmd(update, context)
             return
         if text in ("隔日沖", "隔沖", "隔日"):
             logger.info("主選單：隔日沖 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.overnight_cmd(update, context)
             return
         if text in MENU_BTN_PRESSURE_ALIASES:
             logger.info("主選單：壓撐觀察 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.pressure_cmd(update, context)
             return
         if text in MENU_BTN_LEAVE_ZERO_ALIASES or leave_zero_pick_from_text(text):
             logger.info("主選單：剛脫離零 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.leave_zero_cmd(update, context)
             return
         if text in MENU_BTN_DONGZHU_ALIASES:
             logger.info("主選單：洞燭先機 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.dongzhu_cmd(update, context)
             return
         if text in ("AI模擬倉", "模擬倉", "AI倉"):
             logger.info("主選單：AI模擬倉 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self._send_ai_desk_view(update.message, uid)
             return
         if text in MENU_BTN_CARD_ALIASES:
             logger.info("主選單：刷新 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.decision_card_btn(update, context)
             return
         if text in MENU_BTN_WINRATE_ALIASES:
             logger.info("主選單：勝率買點 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.winrate_cmd(update, context)
             return
         if text in MENU_BTN_SCREEN_ALIASES:
             logger.info("主選單：海選 uid=%s", uid)
             self._pending.pop(actor, None)
+            # _run_manual_screening 內 _begin_actor_op 會取消同人飆大等待
             await self.screen_cmd(update, context)
             return
         if text in ("興櫃", "興櫃海選", "興櫃名單"):
             logger.info("主選單：興櫃海選 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.emerging_screen_cmd(update, context)
             return
         if text in ("持股", "持倉"):
             logger.info("主選單：持股 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.portfolio_cmd(update, context)
             return
         if text in ("成交", "成交紀錄", "我的成交"):
             logger.info("主選單：成交 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self._send_trade_journal(update.message, uid, review=False)
             return
         if text in ("復盤", "我的復盤"):
             logger.info("主選單：復盤 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self._send_trade_journal(update.message, uid, review=True)
             return
         if text in MENU_BTN_WATCH_ALIASES:
             logger.info("主選單：加入觀察 uid=%s", uid)
             self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
             await self.watch_cmd(update, context)
             return
         if text in ("原因",) or text.lower().lstrip("/") == "why":
@@ -7242,6 +7581,13 @@ class WayneTelegramBot:
         if await self._reject_stranger(update):
             return
         self._touch_user(uid, getattr(q.from_user, "first_name", "") or "")
+        if self._message_is_preboot_replay(getattr(q, "message", None)):
+            logger.info("略過重開前舊 callback uid=%s data=%s", uid, (q.data or "")[:40])
+            try:
+                await q.answer("雲端剛重開，請再按一次", show_alert=False)
+            except Exception:
+                pass
+            return
         token = _ACTIVE_PHONE_UID.set(uid)
         try:
             await self._on_callback_bound(update, context, q, uid)
@@ -7736,8 +8082,9 @@ class WayneTelegramBot:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         try:
-            # False：下載行情庫期間使用者打的字不要被丟掉
-            app.run_polling(drop_pending_updates=False)
+            # True：重開後作廢崩潰前佇列（海選／飆大不准晚送）；使用者再按一次即可。
+            # 另有 _message_is_preboot_replay／generation token 雙保險。
+            app.run_polling(drop_pending_updates=True)
         except Exception as e:
             # python-telegram-bot 的 InvalidToken 訊息會含完整 token，不可寫進 Render Logs
             if type(e).__name__ == "InvalidToken" or "InvalidToken" in type(e).__name__:
