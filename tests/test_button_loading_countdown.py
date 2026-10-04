@@ -64,6 +64,12 @@ def test_menu_slow_paths_start_plain_wait():
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
         assert needle in src, name
+        if name == "flow_cmd":
+            # LOADING 必須先於 enter_main_menu／DB；結束不准沉默。
+            assert src.index("_start_plain_wait") < src.index("_enter_main_menu")
+            assert "to_thread(_build_flow_html)" in src or "_build_flow_html" in src
+            assert "目前沒有可顯示的資金輪動" in src
+            assert "這次沒送出內容" in src
 
 
 def test_magic_dismiss_edits_then_deletes():
@@ -207,6 +213,87 @@ def test_manual_screening_prefers_cache(monkeypatch):
     sent = bot._reply_screening_payload.await_args.args[1]
     assert sent.get("from_cache") is True
     assert sent.get("as_of") == "20261002"
+
+
+def test_flow_cmd_loading_first_and_never_silent():
+    """資金輪動：LOADING 先於重活；空／逾時／送失敗都有中文句。"""
+    from unittest.mock import patch
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ":memory:"
+    bot._pending = {}
+    bot._keyboard = MagicMock(return_value=None)
+    order: list[str] = []
+
+    async def track_wait(message, *, text_fn):
+        order.append("wait")
+        assert "LOADING" in text_fn(0)
+        assert "資金輪動進行中" in text_fn(0)
+        return MagicMock(), asyncio.Event(), asyncio.create_task(asyncio.sleep(0))
+
+    async def track_enter(*_a, **_k):
+        order.append("enter")
+        return "u1"
+
+    bot._start_plain_wait = AsyncMock(side_effect=track_wait)
+    bot._stop_plain_wait = AsyncMock()
+    bot._enter_main_menu = AsyncMock(side_effect=track_enter)
+    msg = MagicMock()
+    msg.reply_html = AsyncMock()
+    msg.reply_text = AsyncMock()
+    update = MagicMock()
+    update.message = msg
+    update.effective_user = MagicMock(id=1001)
+
+    with patch("money_flow.format_flow_html", return_value="<b>資金</b>"), patch(
+        "money_flow.resolve_flow_as_of", return_value=("20261002", "")
+    ), patch("money_flow.sector_flow_ready", return_value=True):
+        asyncio.run(WayneTelegramBot.flow_cmd(bot, update, MagicMock()))
+    assert order[:2] == ["wait", "enter"]
+    msg.reply_html.assert_awaited()
+    bot._stop_plain_wait.assert_awaited()
+
+    # 空字串 → 清楚無資料說明（不准沉默）
+    msg.reply_html.reset_mock()
+    msg.reply_text.reset_mock()
+    order.clear()
+    with patch("money_flow.format_flow_html", return_value=""), patch(
+        "money_flow.resolve_flow_as_of", return_value=("", None)
+    ), patch("money_flow.sector_flow_ready", return_value=False):
+        asyncio.run(WayneTelegramBot.flow_cmd(bot, update, MagicMock()))
+    html_blob = " ".join(str(c.args[0]) for c in msg.reply_html.await_args_list if c.args)
+    text_blob = " ".join(str(c.args[0]) for c in msg.reply_text.await_args_list if c.args)
+    assert "沒有可顯示的資金輪動" in html_blob or "沒有可顯示的資金輪動" in text_blob
+
+    # 逾時 → 中文提示
+    msg.reply_html.reset_mock()
+    msg.reply_text.reset_mock()
+
+    def _slow(*_a, **_k):
+        import time as _t
+
+        _t.sleep(0.2)
+        return "<b>慢</b>"
+
+    with patch("bot_servers._FLOW_HTML_TIMEOUT", 0.05), patch(
+        "money_flow.format_flow_html", side_effect=_slow
+    ), patch("money_flow.resolve_flow_as_of", return_value=("20261002", "")), patch(
+        "money_flow.sector_flow_ready", return_value=True
+    ), patch("trading_calendar.is_tw_equity_session", return_value=False):
+        asyncio.run(WayneTelegramBot.flow_cmd(bot, update, MagicMock()))
+    assert any(
+        "載入逾時" in str(c.args[0]) for c in msg.reply_text.await_args_list if c.args
+    )
+
+
+def test_flow_menu_route_does_not_cancel_before_cmd():
+    """主選單按資金輪動：不准在 flow_cmd 前 cancel（會拖掉立刻 LOADING）。"""
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    idx = src.find("MENU_BTN_FLOW_ALIASES")
+    assert idx > 0
+    chunk = src[idx : idx + 280]
+    assert "flow_cmd" in chunk
+    assert "_cancel_actor_ops" not in chunk
 
 
 def test_biaoke_entry_has_loading_and_fail_text():
