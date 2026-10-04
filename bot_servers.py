@@ -719,8 +719,10 @@ class WayneTelegramBot:
         self._actor_op_kind[key] = ""
         slots = (self._actor_waits.pop(key, None) or {}).copy()
         bg = list(self._actor_bg_tasks.pop(key, None) or [])
-        # 讓還在跑的海選 finally 自己清 global owner；這裡先允許同人重按。
+        # 讓還在跑的海選 finally 自己清；這裡先放行同人重按與飆大。
         self._screening_running.discard(key)
+        if getattr(self, "_screening_global_owner", "") == key:
+            self._screening_global_owner = ""
         for task in bg:
             try:
                 task.cancel()
@@ -3279,6 +3281,7 @@ class WayneTelegramBot:
 
         失敗／逾時／進度泡泡送不出：一定要有結果或清楚錯誤句；不准只留空白 LOADING。
         換鍵／開始會 bump generation：過期結果不准 edit／send。
+        有當日快照先讀快取（秒級），不准每次全市場重掃拖到被 Render 重開砍掉。
         """
         uid = str(uid or self._menu_uid_from_message(message) or "")
         actor = self._actor_key(message, uid=uid)
@@ -3307,6 +3310,8 @@ class WayneTelegramBot:
         ticker = None
         delivered = False
         cancelled = False
+        # 手動全掃上限：寧可清楚失敗，不准 LOADING 停在中途秒數被重開砍掉。
+        screen_timeout_s = 180.0
         try:
             await self._dismiss_menu_transients(actor)
             # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
@@ -3342,9 +3347,18 @@ class WayneTelegramBot:
             self._register_actor_wait(
                 actor, op_kind, gen=gen, wait_msg=status, stop=stop, task=ticker
             )
+
+            def _screen_work():
+                from screening_engine import load_cached_full_screening
+
+                cached = load_cached_full_screening(self.db_path)
+                if cached:
+                    return cached
+                return self.screener.run_full_screening()
+
             result = await asyncio.wait_for(
-                asyncio.to_thread(self.screener.run_full_screening),
-                timeout=480.0,
+                asyncio.to_thread(_screen_work),
+                timeout=screen_timeout_s,
             )
             stop.set()
             if not self._actor_op_alive(actor, op_kind, gen):
@@ -3364,10 +3378,10 @@ class WayneTelegramBot:
                 from screen_sessions import screen_session_has_data
 
                 if screen_session_has_data(self.db_path, as_of):
-                    await message.reply_text(
-                        "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。",
-                        reply_markup=hub,
-                    )
+                    note = "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。"
+                    if result.get("from_cache"):
+                        note = "今日海選已有快照，直接讀快取。可按「當沖」「隔日沖」複核。"
+                    await message.reply_text(note, reply_markup=hub)
             except Exception:
                 pass
         except asyncio.TimeoutError:
@@ -3375,9 +3389,8 @@ class WayneTelegramBot:
             if self._actor_op_alive(actor, op_kind, gen):
                 try:
                     await message.reply_text(
-                        "海選逾時（超過 8 分鐘）。\n"
-                        "Render 免費主機較慢時會這樣。請 5 分鐘後再按一次「海選」，"
-                        "或等明早 06:30 自動海選。",
+                        "海選逾時（超過 3 分鐘）。\n"
+                        "請回主選單再按一次「海選」讀快取；若仍卡住，等明早 06:30 自動海選。",
                         reply_markup=hub,
                     )
                     delivered = True

@@ -91,8 +91,13 @@ def clear_complete_date_cache(db_path: str = "") -> None:
         _COMPLETE_DATE_CACHE.clear()
 
 
-def db_quick_check_ok(db_path: str, min_bytes: int = 1_000_000) -> bool:
-    """PRAGMA quick_check；損壞庫會讓基準日／資金輪動全亂。"""
+def db_liveness_ok(db_path: str, min_bytes: int = 1) -> bool:
+    """健檢／開機閘：檔在＋SQLite 檔頭＋SELECT 1（短 busy_timeout）。
+
+    不准在 /health／/live 熱路徑跑 PRAGMA quick_check——340MB 庫可卡 5～30 秒，
+    Render 5 秒健檢超時會整段重開，海選 LOADING 停在中途秒數。
+    完整 quick_check 留給開機背景／救庫。
+    """
     path = str(db_path or "").strip()
     if not path or not os.path.isfile(path):
         return False
@@ -102,9 +107,44 @@ def db_quick_check_ok(db_path: str, min_bytes: int = 1_000_000) -> bool:
     except OSError:
         return False
     try:
-        conn = sqlite3.connect(path)
-        row = conn.execute("PRAGMA quick_check").fetchone()
-        conn.close()
+        with open(path, "rb") as fh:
+            head = fh.read(16)
+    except OSError:
+        return False
+    if not head.startswith(b"SQLite format 3"):
+        return False
+    try:
+        conn = sqlite3.connect(path, timeout=1.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=1000")
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def db_quick_check_ok(db_path: str, min_bytes: int = 1_000_000) -> bool:
+    """PRAGMA quick_check；損壞庫會讓基準日／資金輪動全亂。
+
+    重、可卡數十秒——只准開機背景／救庫用，不准塞進 /health。
+    """
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        if os.path.getsize(path) < int(min_bytes):
+            return False
+    except OSError:
+        return False
+    try:
+        conn = sqlite3.connect(path, timeout=5.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=5000")
+            row = conn.execute("PRAGMA quick_check").fetchone()
+        finally:
+            conn.close()
         return bool(row) and str(row[0]).lower() == "ok"
     except sqlite3.DatabaseError:
         return False

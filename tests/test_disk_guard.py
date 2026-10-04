@@ -470,6 +470,40 @@ def test_below_target_triggers_cleanup(tmp_path: Path, monkeypatch):
     assert db.exists()
 
 
+def test_below_floor_skips_vacuum_and_is_aggressive(tmp_path: Path, monkeypatch):
+    """＜2GB：全清白名單；不准 VACUUM（暫吃空間會讓 free 再掉）。"""
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    fresh = charts / _scratch_name("2330", "card", "fresh")
+    fresh.write_bytes(b"f" * 3000)
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"db")
+    vacuum_calls = []
+
+    monkeypatch.setattr(
+        dg, "disk_usage_mb", lambda _p: {"total": 5000, "used": 3200, "free": 1800}
+    )
+    monkeypatch.setattr(dg, "_try_wal_checkpoint", lambda _p: "ok")
+    monkeypatch.setattr(
+        dg,
+        "_try_vacuum_if_room",
+        lambda *_a, **_k: vacuum_calls.append(1) or "ok",
+    )
+    out = dg.ensure_disk_headroom(
+        data_dir=str(tmp_path),
+        charts_dir=str(charts),
+        db_path=str(db),
+        force=False,
+        min_free_mb=2000,
+        target_free_mb=2500,
+    )
+    assert out["reason"] == "below_floor"
+    assert out["vacuum"] == "skip_below_target"
+    assert vacuum_calls == []
+    assert not fresh.exists()
+    assert db.exists()
+
+
 def test_disk_health_fields_alerts(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         dg, "disk_usage_mb", lambda _p: {"total": 5000, "used": 3200, "free": 1800}

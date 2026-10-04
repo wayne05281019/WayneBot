@@ -442,8 +442,8 @@ def ensure_disk_headroom(
     below_target = free < target
     below_floor = free < min_free
     need = bool(force) or below_target
-    # 低於下限一半才一次清空白名單；否則走 TTL＋until_free 階梯
-    aggressive = free < min_free * 0.5
+    # below_floor（＜2GB）或更危：一次清空白名單 scratch；否則 TTL＋until_free
+    aggressive = below_floor
 
     result: Dict[str, Any] = {
         "root": root,
@@ -471,9 +471,7 @@ def ensure_disk_headroom(
     result["cleaned"] = True
     result["stats"] = stats
     if aggressive:
-        result["reason"] = "low_free_aggressive"
-    elif below_floor:
-        result["reason"] = "below_floor"
+        result["reason"] = "below_floor" if below_floor else "low_free_aggressive"
     elif force:
         result["reason"] = "periodic"
     else:
@@ -482,9 +480,12 @@ def ensure_disk_headroom(
     mid = disk_usage_mb(root)
     result["checkpoint"] = _try_wal_checkpoint(dbp)
     free_mid = float(mid.get("free") or 0.0)
-    # 仍低於目標才考慮 VACUUM（不刪列）；有空間才跑
-    if free_mid < target:
+    # VACUUM 會暫吃約一倍 DB 空間；碟已緊時不准跑（曾見 free 2248→1868）。
+    # 只在已達目標後才重整，且仍要有足夠剩餘。
+    if free_mid >= target:
         result["vacuum"] = _try_vacuum_if_room(dbp, free_mb=free_mid)
+    else:
+        result["vacuum"] = "skip_below_target"
     after = disk_usage_mb(root)
     result["after"] = after
     result["freed_mb_approx"] = round(
