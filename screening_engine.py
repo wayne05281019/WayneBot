@@ -2851,40 +2851,66 @@ def _postprocess_screen(
     return snap
 
 
-def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
-    """手動海選快路徑：有當日 morning／evening 快照就組 payload，不准重掃全市場。
-
-    空快照回 None（呼叫端再走 execute_full_screening）。
-    不准假資料；只讀已落檔的 screen_sessions。
-    """
-    path = db_path or get_db_path()
+def _resolve_screen_as_of_ymd(db_path: str) -> str:
     as_of = ""
     try:
         from trading_calendar import resolve_screen_as_of
 
-        as_of = str(resolve_screen_as_of(path) or "").replace("-", "")[:8]
+        as_of = str(resolve_screen_as_of(db_path) or "").replace("-", "")[:8]
     except Exception:
         as_of = ""
     if not as_of:
         try:
             from import_health import latest_complete_quote_date
 
-            as_of = str(latest_complete_quote_date(path) or "").replace("-", "")[:8]
+            as_of = str(latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
         except Exception:
             as_of = ""
+    return as_of
+
+
+def _is_db_locked_error(exc: BaseException) -> bool:
+    msg = str(exc or "").lower()
+    return "database is locked" in msg or "database is busy" in msg
+
+
+def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
+    """手動海選快路徑：有當日 morning／evening 快照就組 payload，不准重掃全市場。
+
+    空快照回 None（呼叫端再走 build_and_cache_full_screening）。
+    不准假資料；只讀已落檔的 screen_sessions。
+    DB locked 時短重試，避免誤判成無快取去全掃。
+    """
+    path = db_path or get_db_path()
+    as_of = _resolve_screen_as_of_ymd(path)
     if not as_of:
         return None
-    try:
-        from screen_sessions import load_session_results, screen_session_has_data
 
-        if not screen_session_has_data(path, as_of):
+    results: Dict[str, Any] = {}
+    last_locked: Optional[BaseException] = None
+    for attempt in range(4):
+        try:
+            from screen_sessions import load_session_results, screen_session_has_data
+
+            if not screen_session_has_data(path, as_of):
+                return None
+            results = load_session_results(path, as_of, "morning") or {}
+            if not any(results.values()):
+                results = load_session_results(path, as_of, "evening") or {}
+            if not any(results.values()):
+                return None
+            last_locked = None
+            break
+        except Exception as exc:
+            if _is_db_locked_error(exc) and attempt < 3:
+                last_locked = exc
+                time.sleep(0.35 * (attempt + 1))
+                continue
+            if _is_db_locked_error(exc):
+                logger = __import__("logging").getLogger(__name__)
+                logger.warning("讀海選快取仍 database locked，改走建檔：%s", exc)
             return None
-        results = load_session_results(path, as_of, "morning") or {}
-        if not any(results.values()):
-            results = load_session_results(path, as_of, "evening") or {}
-        if not any(results.values()):
-            return None
-    except Exception:
+    if last_locked is not None or not any(results.values()):
         return None
 
     results = drop_non_equity_picks(results, path)
@@ -2934,6 +2960,18 @@ def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
         "major_alerts": [],
         "from_cache": True,
     }
+
+
+def build_and_cache_full_screening(db_path: str = None) -> Dict[str, Any]:
+    """手動海選補建：全掃並強制寫入 screen_sessions（morning），下次／自動推可讀快取。
+
+    session 必須非空，否則 execute_full_screening 不會 save_screen_session。
+    """
+    path = db_path or get_db_path()
+    as_of = _resolve_screen_as_of_ymd(path) or None
+    return execute_full_screening(
+        path, target_date=as_of, apply_us=True, session="morning"
+    )
 
 
 def execute_full_screening(

@@ -1546,15 +1546,25 @@ class MainRunner:
         if skip_if_done and as_of and self.already_completed_today(key):
             # 16:30 融合常已寫過快照；20:00／重啟補跑仍要讓 AI 模擬倉用官方收盤再成交一次
             # （例如清掉舊 ETF 持倉）。不再略過整段。
-            logger.info("晚間海選快照 %s 已寫過，改用快照再跑 AI 模擬倉。", key)
-            from screen_sessions import load_session_results
+            # pipeline success 但 screen_sessions 空（碟事故／鎖死未寫）→ 必須重掃補檔。
+            from screen_sessions import load_session_results, screen_session_has_data
 
-            results = load_session_results(self.db_path, as_of, "evening")
-            if not any(results.values()):
-                results = load_session_results(self.db_path, as_of, "morning")
-            self._run_ai_desk(as_of, results=results, notify=False)
-            self._maybe_send_evolve_digest(as_of)
-            return True
+            if not screen_session_has_data(self.db_path, as_of):
+                logger.warning(
+                    "晚間海選 %s 已標完成但 screen_sessions 無資料，重掃補快取", key
+                )
+            else:
+                logger.info("晚間海選快照 %s 已寫過，改用快照再跑 AI 模擬倉。", key)
+                results = load_session_results(self.db_path, as_of, "evening")
+                if not any(results.values()):
+                    results = load_session_results(self.db_path, as_of, "morning")
+                if any(results.values()):
+                    self._run_ai_desk(as_of, results=results, notify=False)
+                    self._maybe_send_evolve_digest(as_of)
+                    return True
+                logger.warning(
+                    "晚間海選 %s 有列但桶空，重掃補快取", key
+                )
         if not as_of:
             logger.error("無完整交易日可寫晚間海選快照")
             return False

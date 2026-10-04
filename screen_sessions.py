@@ -27,10 +27,23 @@ BUCKETS = (
     "overnight",
 )
 
+# 與增量／飆大寫庫並發時，短 busy 等比較不易誤判「無快取」。
+_DB_TIMEOUT_S = 30.0
+_BUSY_TIMEOUT_MS = 30000
+
+
+def _connect(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=_DB_TIMEOUT_S)
+    try:
+        conn.execute(f"PRAGMA busy_timeout={int(_BUSY_TIMEOUT_MS)}")
+    except sqlite3.Error:
+        pass
+    return conn
+
 
 def ensure_screen_session_table(db_path: str = None) -> None:
     path = db_path or get_db_path()
-    conn = sqlite3.connect(path)
+    conn = _connect(path)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS screen_sessions (
@@ -73,7 +86,7 @@ def save_screen_session(db_path: str, as_of: str, session: str, results: Dict[st
     if not as_of or session not in ("evening", "morning"):
         return 0
     ensure_screen_session_table(db_path)
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     conn.execute("DELETE FROM screen_sessions WHERE as_of=? AND session=?", (as_of, session))
     n = 0
     for key in BUCKETS:
@@ -131,7 +144,7 @@ def save_screen_session(db_path: str, as_of: str, session: str, results: Dict[st
 
 def session_ids(db_path: str, as_of: str, session: str) -> Set[str]:
     ensure_screen_session_table(db_path)
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     rows = conn.execute(
         "SELECT DISTINCT stock_id FROM screen_sessions WHERE as_of=? AND session=?",
         (str(as_of or "").replace("-", ""), session),
@@ -211,7 +224,7 @@ def load_bucket_rows(
     ensure_screen_session_table(db_path)
     bucket = str(bucket or "").strip()
     as_of = str(as_of or "").replace("-", "")
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         if not as_of:
@@ -257,7 +270,7 @@ def load_bucket_rows(
 def list_session_as_of(db_path: str, limit: int = 12) -> List[str]:
     """已存海選基準日，新到舊。"""
     ensure_screen_session_table(db_path)
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     try:
         rows = conn.execute(
             "SELECT DISTINCT as_of FROM screen_sessions ORDER BY as_of DESC LIMIT ?",
@@ -278,7 +291,7 @@ def session_as_of_n_ago(db_path: str, cap: str, days: int) -> str:
     cap = str(cap or "").replace("-", "")[:8]
     want = int(days)
     dates: List[str] = []
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     try:
         if cap:
             rows = conn.execute(
@@ -313,7 +326,7 @@ def screen_session_has_data(db_path: str, as_of: str = "") -> bool:
     """該基準日是否已跑過海選（任一桶有存檔）。"""
     ensure_screen_session_table(db_path)
     as_of = str(as_of or "").replace("-", "")
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     try:
         if as_of:
             row = conn.execute(
@@ -329,7 +342,7 @@ def screen_session_has_data(db_path: str, as_of: str = "") -> bool:
 
 def load_morning_rows(db_path: str, as_of: str) -> List[Dict[str, Any]]:
     ensure_screen_session_table(db_path)
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """

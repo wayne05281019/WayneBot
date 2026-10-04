@@ -420,6 +420,10 @@ def test_screening_status_bubble_has_no_reply_keyboard(monkeypatch):
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
+    monkeypatch.setattr(
+        "screening_engine.build_and_cache_full_screening",
+        lambda *_a, **_k: {"as_of": "20260903", "results": {}, "payload": []},
+    )
     src = inspect.getsource(WayneTelegramBot._run_manual_screening)
     assert "reply_markup=hub" not in src.split("status = await")[1].split("ticker =")[0]
     assert "_dismiss_progress_now" in src or "_magic_dismiss" in src
@@ -438,7 +442,7 @@ def test_screening_status_bubble_has_no_reply_keyboard(monkeypatch):
     bot._pin_reply_menu = AsyncMock()
     bot._reply_screening_payload = AsyncMock()
     bot.screener = MagicMock()
-    bot.screener.run_full_screening = MagicMock(return_value={"as_of": "20260903"})
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
     bot.db_path = "data/wayne_market.db"
     msg = MagicMock()
     msg.chat_id = 1

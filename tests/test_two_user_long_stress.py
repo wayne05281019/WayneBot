@@ -498,7 +498,13 @@ def test_screening_gate_then_both_finish(tmp_path):
     bot._reply_screening_payload = AsyncMock()
     bot._pin_reply_menu = AsyncMock()
     bot._screening_progress_text = lambda *a, **k: "p"
-    bot.screener.run_full_screening = MagicMock(return_value={"status": "success", "payload": []})
+    bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
+    built = {"n": 0}
+
+    def _build(_db=None):
+        built["n"] += 1
+        return {"status": "success", "payload": [], "as_of": "20260903", "results": {}}
+
     bot._screening_global_owner = f"{WAYNE}:{WAYNE}"
     msg_b = _msg(BRO_I, "海選")
 
@@ -509,9 +515,12 @@ def test_screening_gate_then_both_finish(tmp_path):
         await bot._run_manual_screening(_msg(WAYNE_I, "海選"))
         await bot._run_manual_screening(_msg(BRO_I, "海選"))
 
-    asyncio.run(run())
+    with patch("screening_engine.load_cached_full_screening", return_value=None), patch(
+        "screening_engine.build_and_cache_full_screening", side_effect=_build
+    ):
+        asyncio.run(run())
     blob = " ".join(
         str(c.args[0]) for c in (msg_b.reply_html.await_args_list + msg_b.reply_text.await_args_list) if c.args
     )
     assert "海選正在掃描" in blob or "海選進行中" in blob
-    assert bot.screener.run_full_screening.call_count == 2
+    assert built["n"] == 2

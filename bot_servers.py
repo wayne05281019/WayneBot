@@ -3276,13 +3276,43 @@ class WayneTelegramBot:
             "海選進行中", elapsed_sec, now=now, rest=rest, fill_sec=300.0
         )
 
+    async def _deliver_manual_screening_result(
+        self,
+        message,
+        result: Dict[str, Any],
+        *,
+        hub,
+        status=None,
+    ) -> None:
+        """推海選名單＋快取提示（背景晚到也走這裡）。"""
+        if status is not None:
+            try:
+                await status.edit_text(
+                    self._screening_progress_text(0, done=True), parse_mode="HTML"
+                )
+            except Exception:
+                pass
+        await self._reply_screening_payload(message, result)
+        as_of = str(result.get("as_of") or result.get("date") or "")
+        try:
+            from screen_sessions import screen_session_has_data
+
+            if screen_session_has_data(self.db_path, as_of):
+                note = "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。"
+                if result.get("from_cache"):
+                    note = "今日海選已有快照，直接讀快取。可按「當沖」「隔日沖」複核。"
+                await message.reply_text(note, reply_markup=hub)
+        except Exception:
+            pass
+
     async def _run_manual_screening(self, message, uid: str = ""):
         """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。
 
         失敗／逾時／進度泡泡送不出：一定要有結果或清楚錯誤句；不准只留空白 LOADING。
         換鍵／開始會 bump generation：過期結果不准 edit／send。
         主路徑第一個 await 必須是 LOADING（在 cancel／dismiss／鍵盤 DB 之前）。
-        有當日快照先讀快取（秒級），不准每次全市場重掃拖到被 Render 重開砍掉。
+        有當日快照先讀快取（秒級）；無快取則背景全掃並 save_screen_session，
+        逾時後仍繼續建檔，完成自動推名單（第一次不必再按）。
         """
         uid = str(uid or self._menu_uid_from_message(message) or "")
         actor = self._actor_key(message, uid=uid)
@@ -3296,8 +3326,8 @@ class WayneTelegramBot:
             if self._screening_global_owner and self._screening_global_owner != actor:
                 await message.reply_html(
                     "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
-                    "完成後你再按一次「海選」讀快取即可；名單是同一份，"
-                    "不會和對方的持股／觀察／連買混在一起。",
+                    "算完會自動推名單；你也可以稍後再按「海選」讀快取。"
+                    "名單是同一份，不會和對方的持股／觀察／連買混在一起。",
                     reply_markup=self._reply_menu(uid),
                 )
                 return
@@ -3321,8 +3351,10 @@ class WayneTelegramBot:
         ticker = None
         delivered = False
         cancelled = False
-        # 手動全掃上限：寧可清楚失敗，不准 LOADING 停在中途秒數被重開砍掉。
+        hold_gate = False  # 背景建檔未完時先不放行 global owner
+        # 快取讀／全掃前端等待：逾時只收 LOADING，建檔 thread 繼續並自動推。
         screen_timeout_s = 180.0
+        build_task = None
         try:
             await self._dismiss_menu_transients(actor)
             t0 = time.monotonic()
@@ -3351,49 +3383,104 @@ class WayneTelegramBot:
                 actor, op_kind, gen=gen, wait_msg=status, stop=stop, task=ticker
             )
 
-            def _screen_work():
+            def _load_cache():
                 from screening_engine import load_cached_full_screening
 
-                cached = load_cached_full_screening(self.db_path)
-                if cached:
-                    return cached
-                return self.screener.run_full_screening()
+                return load_cached_full_screening(self.db_path)
 
-            result = await asyncio.wait_for(
-                asyncio.to_thread(_screen_work),
-                timeout=screen_timeout_s,
+            cached = await asyncio.wait_for(
+                asyncio.to_thread(_load_cache),
+                timeout=min(45.0, screen_timeout_s),
             )
+            if cached:
+                stop.set()
+                if not self._actor_op_alive(actor, op_kind, gen):
+                    cancelled = True
+                    return
+                await self._deliver_manual_screening_result(
+                    message, cached, hub=hub, status=status
+                )
+                delivered = True
+                return
+
+            def _build_and_cache():
+                from screening_engine import build_and_cache_full_screening
+
+                return build_and_cache_full_screening(self.db_path)
+
+            build_task = asyncio.create_task(asyncio.to_thread(_build_and_cache))
+            self._track_actor_bg(actor, build_task)
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.shield(build_task), timeout=screen_timeout_s
+                )
+            except asyncio.CancelledError:
+                # 回主選單／換鍵 cancel 了背景 task：不准晚送。
+                cancelled = True
+                return
+            except asyncio.TimeoutError:
+                logger.warning("手動海選前端逾時，背景續建並自動推名單 actor=%s", actor)
+                stop.set()
+                if self._actor_op_alive(actor, op_kind, gen):
+                    try:
+                        await message.reply_text(
+                            "海選快取建置中（已超過 3 分鐘）。\n"
+                            "名單算完會自動推給你；也可稍後再按「海選」讀快取。",
+                            reply_markup=hub,
+                        )
+                        delivered = True
+                    except Exception:
+                        logger.exception("海選建置中提示送出失敗")
+                else:
+                    cancelled = True
+
+                async def _late_deliver():
+                    try:
+                        late = await build_task
+                    except asyncio.CancelledError:
+                        return
+                    except Exception:
+                        logger.exception("海選背景建檔失敗")
+                        if self._actor_op_alive(actor, op_kind, gen):
+                            try:
+                                await message.reply_text(PHONE_BUSY, reply_markup=hub)
+                            except Exception:
+                                pass
+                        return
+                    finally:
+                        self._screening_running.discard(actor)
+                        async with self._screening_gate:
+                            if self._screening_global_owner == actor:
+                                self._screening_global_owner = ""
+                    if not self._actor_op_alive(actor, op_kind, gen):
+                        return
+                    try:
+                        await self._deliver_manual_screening_result(
+                            message, late, hub=hub, status=None
+                        )
+                        await self._pin_reply_menu(message)
+                    except Exception:
+                        logger.exception("海選背景完成後推播失敗")
+
+                late_task = asyncio.create_task(_late_deliver())
+                self._track_actor_bg(actor, late_task)
+                hold_gate = True
+                return
+
             stop.set()
             if not self._actor_op_alive(actor, op_kind, gen):
                 cancelled = True
                 return
-            if status is not None:
-                try:
-                    await status.edit_text(
-                        self._screening_progress_text(0, done=True), parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
-            await self._reply_screening_payload(message, result)
+            await self._deliver_manual_screening_result(
+                message, result, hub=hub, status=status
+            )
             delivered = True
-            as_of = str(result.get("as_of") or result.get("date") or "")
-            try:
-                from screen_sessions import screen_session_has_data
-
-                if screen_session_has_data(self.db_path, as_of):
-                    note = "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。"
-                    if result.get("from_cache"):
-                        note = "今日海選已有快照，直接讀快取。可按「當沖」「隔日沖」複核。"
-                    await message.reply_text(note, reply_markup=hub)
-            except Exception:
-                pass
         except asyncio.TimeoutError:
-            logger.exception("手動海選逾時")
+            logger.exception("手動海選讀快取逾時")
             if self._actor_op_alive(actor, op_kind, gen):
                 try:
                     await message.reply_text(
-                        "海選逾時（超過 3 分鐘）。\n"
-                        "請回主選單再按一次「海選」讀快取；若仍卡住，等明早 06:30 自動海選。",
+                        "海選讀取逾時。請稍後再按「海選」；若持續失敗，等明早 06:30 自動海選。",
                         reply_markup=hub,
                     )
                     delivered = True
@@ -3416,10 +3503,11 @@ class WayneTelegramBot:
             if ticker is not None:
                 ticker.cancel()
             self._unregister_actor_wait(actor, op_kind, gen=gen)
-            self._screening_running.discard(actor)
-            async with self._screening_gate:
-                if self._screening_global_owner == actor:
-                    self._screening_global_owner = ""
+            if not hold_gate:
+                self._screening_running.discard(actor)
+                async with self._screening_gate:
+                    if self._screening_global_owner == actor:
+                        self._screening_global_owner = ""
             alive = self._actor_op_alive(actor, op_kind, gen)
             # 取消後也要清殘框（秒數停住仍掛著＝沒做完）
             await self._dismiss_progress_now(status)
@@ -3429,7 +3517,7 @@ class WayneTelegramBot:
                 except Exception:
                     logger.exception("海選補送失敗提示仍失敗")
             # 刪進度泡泡後再釘一次，避免中途狀態讓客戶端收掉兩排。
-            if alive:
+            if alive and not hold_gate:
                 try:
                     await self._pin_reply_menu(message)
                 except Exception:
