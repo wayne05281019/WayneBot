@@ -90,11 +90,11 @@ def test_image_surfaces_wait_vanishes_after_photo():
     assert industry.index("_start_plain_wait") < industry.index("reply_photo")
     assert industry.index("reply_photo") < industry.index("_stop_plain_wait")
     kline = inspect.getsource(WayneTelegramBot._send_market_kline)
-    assert kline.index("_wait_bubble") < kline.index("reply_photo")
-    assert kline.index("reply_photo") < kline.rindex("wait.delete")
+    assert kline.index("_start_plain_wait") < kline.index("reply_photo")
+    assert kline.index("reply_photo") < kline.rindex("_stop_plain_wait")
     nav = inspect.getsource(WayneTelegramBot._send_navigation_chart)
-    assert nav.index("_wait_bubble") < nav.index("reply_photo")
-    assert nav.index("reply_photo") < nav.rindex("wait.delete")
+    assert nav.index("_start_plain_wait") < nav.index("reply_photo")
+    assert nav.index("reply_photo") < nav.rindex("_stop_plain_wait")
 
 
 def test_help_topics_cancelled():
@@ -419,7 +419,7 @@ def test_screening_status_bubble_has_no_reply_keyboard():
 
     src = inspect.getsource(WayneTelegramBot._run_manual_screening)
     assert "reply_markup=hub" not in src.split("status = await")[1].split("ticker =")[0]
-    assert "await status.delete()" in src
+    assert "_magic_dismiss" in src or "await status.delete()" in src
     assert "await self._pin_reply_menu(message)" in src
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)

@@ -400,9 +400,11 @@ def test_same_chat_trade_lock_is_per_person():
     b_blob = " ".join(
         str(c.args[0]) for c in (bro_msg.reply_text.await_args_list + bro_msg.reply_html.await_args_list) if c.args
     )
-    assert "進行中" in w_blob
-    assert "進行中" not in b_blob
+    # 忙碌提示含「請稍候」；LOADING 倒數泡泡標題也有「進行中」，不能用裸字判斷。
+    assert "請稍候完成後再按" in w_blob
+    assert "請稍候完成後再按" not in b_blob
     assert "休市" in b_blob or "尚未開盤" in b_blob
+    assert "LOADING" in b_blob or "當沖進行中" in b_blob
 
 
 def test_brother_ai_desk_does_not_clear_wayne_buy():
