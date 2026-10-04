@@ -126,13 +126,34 @@ def _normalize_menu_text(text: str) -> str:
 
 
 def _text_escapes_pending(text: str) -> bool:
-    """連買／記買入精靈若收到平常話或代號，不要吞掉改重問步驟。"""
+    """連買／記買入精靈若收到平常話或代號，不要吞掉改重問步驟。
+
+    主選單兩排鈕一律逃出 pending：不准逼先按「回主選單」。
+    """
     from universe import is_lookup_ticker
 
     t = _normalize_menu_text(text)
     if not t:
         return False
     if t in MENU_COMPACT_ALIASES or t in MENU_FULL_ALIASES:
+        return True
+    if t == MENU_BTN_BACK_MAIN or t == MENU_BTN_BACK_STEP:
+        return True
+    if t in MENU_ROW1 or t in MENU_ROW2:
+        return True
+    if t in MENU_BTN_SCREEN_ALIASES or t in MENU_BTN_FLOW_ALIASES:
+        return True
+    if t in MENU_BTN_MARKET_ALIASES or t in MENU_BTN_WINRATE_ALIASES:
+        return True
+    if t in MENU_BTN_WATCH_ALIASES or t in MENU_BTN_PRESSURE_ALIASES:
+        return True
+    if t in MENU_BTN_LEAVE_ZERO_ALIASES or t in MENU_BTN_DONGZHU_ALIASES:
+        return True
+    if t in MENU_BTN_BIAOKE_ALIASES or t in MENU_BTN_LEAVE_BIAOKE_ALIASES:
+        return True
+    if t in MENU_BTN_LEAVE_DONGZHU_ALIASES:
+        return True
+    if t in ("當沖", "隔日沖", "隔沖", "隔日", "持股", "持倉", "成交", "復盤"):
         return True
     if parse_intent(t) is not None:
         return True
@@ -1096,19 +1117,23 @@ class WayneTelegramBot:
         _ = uid, on
         return
 
-    def _reply_menu(self, uid: str = ""):
-        """上六下七；下排隔日沖後壓撐觀察，最右洞燭先機。偉權與哥哥同一套，沒有精簡。"""
+    def _reply_menu(self, uid: str = "", *, fast: bool = False):
+        """上六下七；下排隔日沖後壓撐觀察，最右洞燭先機。偉權與哥哥同一套，沒有精簡。
+
+        fast=True：不打未讀庫（釘鍵盤／LOADING 後立刻用），避免空白好幾秒。
+        """
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
-        try:
-            from biaoke_digest import biaoke_button_label
+        if not fast:
+            try:
+                from biaoke_digest import biaoke_button_label
 
-            biaoke_face = biaoke_button_label(
-                str(uid or ""),
-                str(getattr(self, "db_path", "") or ""),
-            ) or MENU_BTN_BIAOKE_FACE
-        except Exception:
-            biaoke_face = MENU_BTN_BIAOKE_FACE
+                biaoke_face = biaoke_button_label(
+                    str(uid or ""),
+                    str(getattr(self, "db_path", "") or ""),
+                ) or MENU_BTN_BIAOKE_FACE
+            except Exception:
+                biaoke_face = MENU_BTN_BIAOKE_FACE
         row1 = [
             KeyboardButton(biaoke_face if t == MENU_BTN_BIAOKE_FACE else t)
             for t in MENU_ROW1
@@ -1663,7 +1688,7 @@ class WayneTelegramBot:
             self._menu_pin_msgs = {}
             prev = self._menu_pin_msgs
         uid = self._menu_uid_from_message(message)
-        markup = self._reply_menu(uid)
+        markup = self._reply_menu(uid, fast=True)
         # Telegram 只能用新訊息掛 ReplyKeyboard；字愈短愈好，不要再講鍵盤位置。
         for text in ("·", "主選單"):
             try:
@@ -3330,11 +3355,16 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("海選進度泡泡送出失敗")
             status = None
+        # LOADING 已出：立刻釘鍵盤。刪進度泡泡時兩排不准跟著消失，也不必先回主選單。
+        try:
+            await self._pin_reply_menu(message)
+        except Exception:
+            pass
         if actor in self._screening_running:
             await self._dismiss_progress_now(status)
             await message.reply_text(
                 "海選進行中，請稍候完成後再按。",
-                reply_markup=self._reply_menu(uid),
+                reply_markup=self._reply_menu(uid, fast=True),
             )
             return
         async with self._screening_gate:
@@ -3344,7 +3374,7 @@ class WayneTelegramBot:
                     "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
                     "算完會自動推名單；你也可以稍後再按「海選」讀快取。"
                     "名單是同一份，不會和對方的持股／觀察／連買混在一起。",
-                    reply_markup=self._reply_menu(uid),
+                    reply_markup=self._reply_menu(uid, fast=True),
                 )
                 return
             self._screening_global_owner = actor
@@ -3352,14 +3382,20 @@ class WayneTelegramBot:
         # begin 只清已登記的舊等待；本則 status 尚未 register，不會被自己消掉。
         gen = await self._begin_actor_op(actor, op_kind)
         self._screening_running.add(actor)
-        hub = self._reply_menu(uid)
+        hub = self._reply_menu(uid, fast=True)
         stop = asyncio.Event()
         ticker = None
         delivered = False
         cancelled = False
-        hold_gate = False  # 背景建檔未完時先不放行 global owner
+        hold_gate = False  # 逾時必須放行下一顆鈕；建檔不掛 actor cancel
         # 快取讀／全掃前端等待：逾時只收 LOADING，建檔 thread 繼續並自動推。
         screen_timeout_s = 180.0
+        try:
+            override = float(getattr(self, "_screen_timeout_s", 0) or 0)
+            if override > 0:
+                screen_timeout_s = override
+        except (TypeError, ValueError):
+            pass
         build_task = None
         try:
             await self._dismiss_menu_transients(actor)
@@ -3394,10 +3430,16 @@ class WayneTelegramBot:
 
                 return load_cached_full_screening(self.db_path)
 
-            cached = await asyncio.wait_for(
-                asyncio.to_thread(_load_cache),
-                timeout=min(45.0, screen_timeout_s),
-            )
+            try:
+                cached = await asyncio.wait_for(
+                    asyncio.to_thread(_load_cache),
+                    timeout=min(8.0, screen_timeout_s),
+                )
+            except asyncio.TimeoutError:
+                cached = None
+            except Exception:
+                logger.exception("海選讀快取失敗，改背景全掃")
+                cached = None
             if cached:
                 stop.set()
                 if not self._actor_op_alive(actor, op_kind, gen):
@@ -3415,30 +3457,28 @@ class WayneTelegramBot:
                 return build_and_cache_full_screening(self.db_path)
 
             build_task = asyncio.create_task(asyncio.to_thread(_build_and_cache))
-            self._track_actor_bg(actor, build_task)
+            # 不准 _track_actor_bg：換下一顆鈕不准取消快取建檔，否則永遠要再按一次。
             try:
                 result = await asyncio.wait_for(
                     asyncio.shield(build_task), timeout=screen_timeout_s
                 )
             except asyncio.CancelledError:
-                # 回主選單／換鍵 cancel 了背景 task：不准晚送。
+                # 回主選單／換鍵 cancel 了等待：快取 thread 仍續跑；這輪不准晚送。
                 cancelled = True
                 return
             except asyncio.TimeoutError:
                 logger.warning("手動海選前端逾時，背景續建並自動推名單 actor=%s", actor)
                 stop.set()
-                if self._actor_op_alive(actor, op_kind, gen):
-                    try:
-                        await message.reply_text(
-                            "海選快取建置中（已超過 3 分鐘）。\n"
-                            "名單算完會自動推給你；也可稍後再按「海選」讀快取。",
-                            reply_markup=hub,
-                        )
-                        delivered = True
-                    except Exception:
-                        logger.exception("海選建置中提示送出失敗")
-                else:
-                    cancelled = True
+                try:
+                    await message.reply_text(
+                        "海選這次逾時了（已超過 3 分鐘）。\n"
+                        "背景仍在算名單，算完會自動推給你，不必再按。\n"
+                        "其他鈕可以照常按，不必先回主選單。",
+                        reply_markup=hub,
+                    )
+                    delivered = True
+                except Exception:
+                    logger.exception("海選逾時說明送出失敗")
 
                 async def _late_deliver():
                     try:
@@ -3447,30 +3487,27 @@ class WayneTelegramBot:
                         return
                     except Exception:
                         logger.exception("海選背景建檔失敗")
-                        if self._actor_op_alive(actor, op_kind, gen):
-                            try:
-                                await message.reply_text(PHONE_BUSY, reply_markup=hub)
-                            except Exception:
-                                pass
+                        try:
+                            await message.reply_text(PHONE_BUSY, reply_markup=hub)
+                        except Exception:
+                            pass
                         return
-                    finally:
-                        self._screening_running.discard(actor)
-                        async with self._screening_gate:
-                            if self._screening_global_owner == actor:
-                                self._screening_global_owner = ""
-                    if not self._actor_op_alive(actor, op_kind, gen):
+                    # 這人又開了新一輪海選：新輪會自己推，這裡不重送。
+                    if actor in self._screening_running:
                         return
                     try:
                         await self._deliver_manual_screening_result(
                             message, late, hub=hub, status=None
                         )
-                        await self._pin_reply_menu(message)
+                        try:
+                            await self._pin_reply_menu(message)
+                        except Exception:
+                            pass
                     except Exception:
                         logger.exception("海選背景完成後推播失敗")
 
-                late_task = asyncio.create_task(_late_deliver())
-                self._track_actor_bg(actor, late_task)
-                hold_gate = True
+                self._screening_late_task = asyncio.create_task(_late_deliver())
+                hold_gate = False
                 return
 
             stop.set()
@@ -3486,7 +3523,7 @@ class WayneTelegramBot:
             if self._actor_op_alive(actor, op_kind, gen):
                 try:
                     await message.reply_text(
-                        "海選讀取逾時。請稍後再按「海選」；若持續失敗，等明早 06:30 自動海選。",
+                        "海選這次逾時了。背景若還在算，算完會自動推給你，不必再按。其他鈕可以照常按。",
                         reply_markup=hub,
                     )
                     delivered = True
@@ -5614,6 +5651,11 @@ class WayneTelegramBot:
                 "資金輪動進行中", s, now="讀產業資金", rest="推送頁面", fill_sec=20.0
             ),
         )
+        # LOADING 已出：釘鍵盤，刪進度泡泡時不必先回主選單。
+        try:
+            await self._pin_reply_menu(message)
+        except Exception:
+            pass
         delivered = False
         empty_zh = (
             "目前沒有可顯示的資金輪動資料。"
@@ -6353,7 +6395,6 @@ class WayneTelegramBot:
             # 第一則必須是 LOADING：不准先 touch DB／cancel／鎖句（同資金輪動）。
             await self.screen_cmd(update, context)
             return
-        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         if text.lower().lstrip("/") in ("start", "開始"):
             self._clear_actor_menu_state(actor)
             await self._cancel_actor_ops(actor, dismiss=True)
@@ -6512,6 +6553,8 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
             return
+        # 主選單兩排都已路由：這才 touch DB，不准擋第一則 LOADING。
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         async with self._pending_lock(actor):
             pending = self._pending.get(actor, "")
             if pending.startswith("fbuy:"):
