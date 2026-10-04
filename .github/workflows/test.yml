@@ -32,7 +32,7 @@ jobs:
           # PyPI 偶發回 versions: none；整段重跑才會再打 index
           ok=0
           for i in 1 2 3 4 5; do
-            if pip install --retries 10 --timeout 60 -r requirements.lock pytest; then
+            if pip install --retries 10 --timeout 60 -r requirements.lock pytest pytest-timeout; then
               ok=1
               break
             fi
@@ -43,7 +43,8 @@ jobs:
           python -c "import kiwisolver, matplotlib; print('deps ok', kiwisolver.__version__)"
 
       - name: 不需資料庫的全部測試
-        run: python -m pytest -q --strict-markers -m "not production_db"
+        # 單測 >180s＝掛住（歷史全套約 35–50 分；不准再無 log 空等）
+        run: python -m pytest -q --strict-markers -m "not production_db" --timeout=180 --timeout-method=thread --durations=25
 
   # 完整訊號：抓 Release 庫，跑包含選單、決策卡、出圖、大盤頁的全套。
   # 只跑煙霧測試的話，回歸會安靜地合併進 main 再部署上去。
