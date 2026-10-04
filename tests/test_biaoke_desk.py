@@ -775,11 +775,26 @@ def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
     for ch in ("⏳", "🔄", "📊", "🔍"):
         assert ch not in txt0
         assert ch not in txt20
+    # 出圖階段：出圖中 done/total，還剩 N 檔
+    chart = WayneTelegramBot._biaoke_progress_text(5, current="chart", done=3, total=12)
+    assert "出圖中 3/12" in chart
+    assert "還剩 9 檔" in chart
+    assert "LOADING" in chart
+    done_all = WayneTelegramBot._biaoke_progress_text(8, done=12, total=12)
+    assert "出圖中 12/12" in done_all
+    assert "收尾" in done_all
     wait_src = __import__("inspect").getsource(WayneTelegramBot._start_plain_wait)
     assert "reply_markup" not in wait_src
     assert "edit_text" in wait_src
     page = __import__("inspect").getsource(WayneTelegramBot._send_biaoke_page)
     assert page.index("_start_plain_wait") < page.index("stock_picker_hits")
+    # 文字出完後才進出圖；出圖帶 spoken_html／檔數進度，不准並行無進度
+    assert "spoken_html=" in page
+    assert "asyncio.create_task" not in page
+    adv = __import__("inspect").getsource(WayneTelegramBot._send_biaoke_advice_charts)
+    assert "done=prog" in adv and "total=prog" in adv
+    assert "結構圖略過" in adv
+    assert "spoken_html" in adv
     card = __import__("inspect").getsource(WayneTelegramBot._send_card_to)
     # 進度泡泡先於查庫；查名改 to_thread，不准再同步 lookup_stocks( 卡住事件迴圈
     assert "await asyncio.to_thread(lookup_stocks" in card

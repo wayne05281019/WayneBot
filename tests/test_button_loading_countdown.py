@@ -230,6 +230,92 @@ def test_biaoke_entry_has_loading_and_fail_text():
     )
 
 
+def test_biaoke_advice_charts_progress_and_skip_reason(monkeypatch, tmp_path):
+    """出圖階段 LOADING 帶 出圖中 done/total；失敗不准靜默，要講略過原因。"""
+    from pathlib import Path
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = str(tmp_path / "x.db")
+    bot.charts_dir = str(tmp_path / "charts")
+    Path(bot.charts_dir).mkdir(parents=True, exist_ok=True)
+    bot._actor_op_gen = {"u1": 1}
+    bot._actor_op_kind = {"u1": "biaoke"}
+    bot._actor_waits = {}
+    bot._actor_bg_tasks = {}
+    bot._actor_key = MagicMock(return_value="u1")
+    bot._biaoke_reply_menu = MagicMock(return_value=None)
+    bot._scratch_chart_path = MagicMock(
+        side_effect=lambda d, sid, kind, uid: str(Path(d) / f"{sid}-{kind}.png")
+    )
+    bot._png_looks_ok = MagicMock(return_value=False)
+    bot._magic_dismiss = AsyncMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    first_bubble = {"txt": ""}
+
+    async def _start_wait(message, *, text_fn, actor="", kind="", gen=0):
+        first_bubble["txt"] = text_fn(0)
+        return (status, asyncio.Event(), None)
+
+    bot._start_plain_wait = AsyncMock(side_effect=_start_wait)
+    bot._stop_plain_wait = AsyncMock()
+
+    targets = [
+        {
+            "sid": "3081",
+            "name": "聯亞",
+            "do": "可接",
+            "how": "剛脫離零",
+            "evidence": "近5日+1%",
+            "basis": "雙箭頭",
+        },
+        {
+            "sid": "2330",
+            "name": "台積電",
+            "do": "等回測再接",
+            "how": "等回測",
+            "evidence": "官方柱",
+            "basis": "雙箭頭",
+        },
+    ]
+
+    def _targets(*_a, **_k):
+        return list(targets)
+
+    monkeypatch.setattr("biaoke_advisor.advice_chart_targets", _targets)
+    msg = MagicMock()
+    msg.reply_text = AsyncMock()
+    msg.reply_photo = AsyncMock()
+    msg.chat = MagicMock()
+    msg.chat.send_action = AsyncMock()
+
+    async def run():
+        await bot._send_biaoke_advice_charts(
+            msg,
+            "u1",
+            ask="",
+            actor="u1",
+            kind="biaoke",
+            gen=1,
+            spoken_html='quote/3081.TWO quote/2330.TW',
+        )
+
+    asyncio.run(run())
+    bot._start_plain_wait.assert_awaited()
+    assert "出圖中 0/2" in first_bubble["txt"]
+    assert "LOADING" in first_bubble["txt"]
+    # 兩檔都圖檔不合格 → 各一則略過原因；不准靜默
+    skip_texts = [
+        str(c.args[0]) for c in msg.reply_text.await_args_list if c.args
+    ]
+    assert len(skip_texts) == 2
+    assert all("結構圖略過" in t for t in skip_texts)
+    assert any("3081" in t for t in skip_texts)
+    assert any("2330" in t for t in skip_texts)
+    bot._stop_plain_wait.assert_awaited()
+    msg.reply_photo.assert_not_awaited()
+
+
 def test_start_and_back_clear_only_that_actor_pending():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {"a": "biaoke:chat", "b": "dongzhu"}
