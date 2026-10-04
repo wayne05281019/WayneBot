@@ -508,10 +508,13 @@ def test_screening_global_gate_blocks_second_user():
     assert "LOADING" in first
     blob = " ".join(
         str(c.args[0])
-        for c in msg.reply_html.await_args_list + msg.reply_text.await_args_list
+        for c in msg.reply_html.await_args_list
+        + msg.reply_text.await_args_list
+        + status.edit_text.await_args_list
         if c.args
     )
     assert "海選正在掃描" in blob
+    assert "逾時" not in blob
 
 
 def test_health_server_is_threaded():
