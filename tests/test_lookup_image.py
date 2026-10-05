@@ -122,35 +122,36 @@ class LookupImageTests(unittest.TestCase):
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330 台積電"}, "2330"), "台積電")
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330"}, "2330"), "2330")
 
-    def test_send_card_uses_lookup_album(self):
+    def test_send_card_uses_three_card_sequence(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-        self.assertIn("_send_lookup_album", src)
+        self.assertIn("render_three_in_one_result", src)
         self.assertIn("ready_items", src)
         self.assertIn("_stock_caption_name", src)
-        self.assertIn("_prepare_album_cell", src)
         self.assertNotIn("industry_task", src)
         self.assertNotIn("card_send_task", src)
         self.assertNotIn("render_industry_png", src)
         self.assertNotIn('"industry"', src)
-        self.assertNotIn("generate_chart", src)
-        self.assertIn("asyncio.gather", src)
-        self.assertNotIn("path = await _render_one(kind, fn, timeout_s)", src)
-        self.assertLess(src.find("asyncio.gather"), src.find("_send_lookup_album"))
+        # 查股主路徑不再走相簿；三張逐張 reply_photo
+        self.assertNotIn("_send_lookup_album", src)
+        self.assertNotIn("asyncio.gather", src)
         self.assertIn("_render_ready", src)
-        self.assertIn("_album_pair_box", src)
-        self.assertNotIn("_render_then_cell", src)
-        # 高低卡先開渲（跟 tape 重疊），介紹圖等卡畫完再開，避免同鎖 wait_for 誤判逾時。
+        # 高低溫度卡先開渲（跟 tape 重疊），再三合一，再介紹
         self.assertIn("card_render_task", src)
         self.assertLess(src.find("card_render_task"), src.find("await tape_task"))
         self.assertIn("card_item = await card_render_task", src)
-        self.assertIn("glance_item = await _render_ready", src)
+        self.assertIn("await _three_item()", src)
+        self.assertIn('current"] = "glance"', src)
         self.assertLess(
             src.find("card_item = await card_render_task"),
-            src.find("glance_item = await _render_ready"),
+            src.find("await _three_item()"),
+        )
+        self.assertLess(
+            src.find("await _three_item()"),
+            src.find('current"] = "glance"'),
         )
 
     def test_glance_and_card_render_start_together(self):
-        """高低卡先開渲；介紹圖等卡畫完再開（FreeType 同鎖，不准 gather 搶逾時計時）。"""
+        """高低溫度卡先開渲；三合一／介紹串行（FreeType／合成腳本不准並行）。"""
         from PIL import Image
 
         td = tempfile.mkdtemp()
@@ -184,6 +185,11 @@ class LookupImageTests(unittest.TestCase):
             time.sleep(0.25)
             return _png("c.png")
 
+        def _three(*_a, **_k):
+            started["three"] = time.monotonic()
+            time.sleep(0.05)
+            return _png("t.png"), "三合一圖（非買訊）"
+
         class _Engine:
             def __init__(self, *_a, **_k):
                 pass
@@ -208,6 +214,8 @@ class LookupImageTests(unittest.TestCase):
                 "wayne_navigator.render_first_glance_png", side_effect=_glance
             ), patch(
                 "wayne_navigator.render_decision_card_png", side_effect=_card
+            ), patch(
+                "three_in_one_chart.render_three_in_one_result", side_effect=_three
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -225,12 +233,9 @@ class LookupImageTests(unittest.TestCase):
             ), patch.object(
                 WayneTelegramBot, "_png_looks_ok", return_value=True
             ), patch.object(
-                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
+                WayneTelegramBot, "_chart_png_looks_ok", return_value=True
             ), patch.object(
-                WayneTelegramBot, "_prepare_album_cell", side_effect=lambda p, box=None: p
-            ), patch(
-                "vol_zone_chart.render_volume_zone_result",
-                side_effect=lambda *_a, **_k: (_png("vz.png"), "大量區專圖"),
+                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
             ):
                 await bot._send_card_to_locked(
                     message,
@@ -243,15 +248,17 @@ class LookupImageTests(unittest.TestCase):
         asyncio.run(_run())
         self.assertIn("glance", started)
         self.assertIn("card", started)
-        # 卡先、介紹後；卡 sleep 0.25 後才開 glance
-        self.assertGreaterEqual(started["glance"] - started["card"], 0.2)
-        self.assertGreaterEqual(message.reply_media_group.await_count, 1)
-        self.assertGreaterEqual(message.reply_photo.await_count, 1)
+        self.assertIn("three", started)
+        # 卡先、三合一、介紹後
+        self.assertGreaterEqual(started["three"] - started["card"], 0.2)
+        self.assertGreaterEqual(started["glance"] - started["three"], 0.0)
+        self.assertEqual(message.reply_media_group.await_count, 0)
+        self.assertGreaterEqual(message.reply_photo.await_count, 3)
         caps = [
             str(c.kwargs.get("caption") or "")
             for c in message.reply_photo.await_args_list
         ]
-        self.assertTrue(any("大量區" in c for c in caps), caps)
+        self.assertTrue(any("三合一" in c for c in caps), caps)
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
@@ -385,17 +392,19 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
-    def test_chart_progress_both_images_at_once(self):
-        txt = WayneTelegramBot._chart_progress_text(3, current="both")
-        self.assertIn("介紹圖＋高低卡", txt)
-        self.assertIn("一次送出", txt)
+    def test_chart_progress_three_card_sequence(self):
+        txt = WayneTelegramBot._chart_progress_text(3, current="card")
+        self.assertIn("高低溫度卡", txt)
+        self.assertIn("三合一", txt)
         self.assertNotIn("導航", txt)
         self.assertNotIn("其餘三張", txt)
-        self.assertLess(txt.index("介紹圖＋高低卡"), txt.index("一次送出"))
+        self.assertNotIn("介紹圖＋高低卡", txt)
 
     def test_chart_progress_records_sent_stage(self):
-        txt = WayneTelegramBot._chart_progress_text(8, sent=["glance", "card"], current="album")
-        self.assertIn("現在：一次送出", txt)
+        txt = WayneTelegramBot._chart_progress_text(
+            8, sent=["card", "three"], current="glance"
+        )
+        self.assertIn("現在：介紹圖", txt)
         self.assertNotIn("接著：導航圖", txt)
         self.assertNotIn("其餘三張", txt)
         self.assertIn("好了這則會消失", txt)
@@ -405,10 +414,8 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("讀高低卡", txt)
 
     def test_album_fail_still_sends_jpeg_photos(self):
-        """相簿若失敗，.album.jpg 必須能走 send_photo，不准改送文字版。"""
+        """三張逐張 reply_photo；mock 官方柱／三合一後仍能出齊，不准改送文字版。"""
         from PIL import Image
-
-        from bot_servers import _LOOKUP_ALBUM_CELL
 
         td = tempfile.mkdtemp()
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -429,13 +436,6 @@ class LookupImageTests(unittest.TestCase):
             path = os.path.join(td, name)
             Image.frombytes("RGB", (800, 900), os.urandom(800 * 900 * 3)).save(path, "PNG")
             return path
-
-        def _cell(path: str, box=None) -> str:
-            out = path + ".album.jpg"
-            Image.new("RGB", _LOOKUP_ALBUM_CELL, (20, 24, 36)).save(
-                out, "JPEG", quality=92
-            )
-            return out
 
         class _Engine:
             def __init__(self, *_a, **_k):
@@ -464,8 +464,8 @@ class LookupImageTests(unittest.TestCase):
                 "wayne_navigator.render_decision_card_png",
                 side_effect=lambda *_a, **_k: _png("c.png"),
             ), patch(
-                "vol_zone_chart.render_volume_zone_result",
-                side_effect=lambda *_a, **_k: (_png("vz.png"), "大量區專圖"),
+                "three_in_one_chart.render_three_in_one_result",
+                side_effect=lambda *_a, **_k: (_png("t.png"), "三合一圖（非買訊）"),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -481,7 +481,11 @@ class LookupImageTests(unittest.TestCase):
             ), patch.object(
                 bot, "_remember_card"
             ), patch.object(
-                WayneTelegramBot, "_prepare_album_cell", side_effect=_cell
+                WayneTelegramBot, "_png_looks_ok", return_value=True
+            ), patch.object(
+                WayneTelegramBot, "_chart_png_looks_ok", return_value=True
+            ), patch.object(
+                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
             ):
                 await bot._send_card_to_locked(
                     message,

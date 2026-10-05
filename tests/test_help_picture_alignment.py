@@ -47,7 +47,8 @@ def test_reply_keyboard_matches_picture_copy():
     blob = page_copy_blob()
     assert "勝率買點　海選　持股　觀察　飆大　台股大盤　資金輪動" in blob
     assert "當沖　隔日沖　壓撐觀察　AI倉　連買區　剛脫離零　洞燭先機" in blob
-    assert "一張圖卡" in blob
+    assert "一張圖卡" not in blob
+    assert "三合一" in blob
     assert "講人話" not in blob
 
 

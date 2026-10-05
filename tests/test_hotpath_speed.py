@@ -28,13 +28,15 @@ def test_flow_sector_rows_use_indexed_date():
 
 def test_lookup_gc_once_after_all_pngs():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    # 高低卡→介紹圖串行出圖；相簿 cell 仍 gather。只准在全部 PNG 就緒後 gc 一次。
+    # 高低溫度卡→三合一→介紹卡串行；只准在全部 PNG 就緒後 gc 一次。
     assert "card_item = await card_render_task" in src
-    assert "asyncio.gather" in src
+    assert "await _three_item()" in src
+    assert "render_three_in_one_result" in src
     assert src.count("gc.collect") == 1
     gc_at = src.index("gc.collect")
     pair_at = src.index("card_item = await card_render_task")
     assert pair_at < gc_at
+    assert src.index("await _three_item()") < gc_at
 
 
 def test_decision_card_quick_shares_lookup_timeouts():
