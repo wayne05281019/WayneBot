@@ -3463,19 +3463,14 @@ class WayneTelegramBot:
                 if g and not self._actor_op_alive(actor, op_kind, g):
                     break
                 elapsed = int(time.monotonic() - t0)
-                try:
-                    # edit_text 不通／flood 不准堵死 ticker；超時就跳過這拍繼續倒數。
-                    await asyncio.wait_for(
-                        status.edit_text(
-                            self._screening_progress_text(
-                                elapsed, phase=str(progress_phase.get("name") or "scan")
-                            ),
-                            parse_mode="HTML",
-                        ),
-                        timeout=2.0,
-                    )
-                except Exception:
-                    pass
+                # edit_text 不通／flood 不准堵死 ticker；超時就跳過這拍繼續倒數。
+                await self._safe_edit_text(
+                    status,
+                    self._screening_progress_text(
+                        elapsed, phase=str(progress_phase.get("name") or "scan")
+                    ),
+                    parse_mode="HTML",
+                )
                 try:
                     await asyncio.wait_for(stop.wait(), timeout=1.0)
                     break
@@ -4010,6 +4005,24 @@ class WayneTelegramBot:
             rest = f"還剩 {left} 檔" if left else "收尾"
         return WayneTelegramBot._wait_bubble("飆大進行中", elapsed_sec, now=now, rest=rest)
 
+    _EDIT_WAIT_TIMEOUT_S = 2.0
+
+    async def _safe_edit_text(self, msg, text: str, **kwargs) -> bool:
+        """LOADING／進度 edit：必須有硬上限，不准一則卡住凍住全部秒數。
+
+        Telegram flood／連線掛死時跳過這拍，讓 ticker 下一秒繼續。
+        """
+        if msg is None:
+            return False
+        try:
+            await asyncio.wait_for(
+                msg.edit_text(text, **kwargs),
+                timeout=float(self._EDIT_WAIT_TIMEOUT_S),
+            )
+            return True
+        except Exception:
+            return False
+
     async def _start_plain_wait(
         self,
         message,
@@ -4022,6 +4035,7 @@ class WayneTelegramBot:
         """查股那種連續更新的方塊。不掛鍵盤，免得刪掉時把主選單收走。
 
         有 actor/kind/gen 時：過期 generation 不准再 edit；海選／飆大各自一則。
+        edit_text 一律 ≤2s：海選全掃再重，飆大 LOADING 秒數也不准凍住。
         """
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return None, None, None
@@ -4039,22 +4053,21 @@ class WayneTelegramBot:
                 try:
                     chat = getattr(message, "chat", None)
                     if chat is not None and hasattr(chat, "send_action"):
-                        await chat.send_action("typing")
+                        await asyncio.wait_for(chat.send_action("typing"), timeout=1.0)
                 except Exception:
                     pass
                 try:
-                    await asyncio.wait_for(stop.wait(), timeout=2.0)
+                    await asyncio.wait_for(stop.wait(), timeout=1.0)
                     break
                 except asyncio.TimeoutError:
                     pass
                 if actor and kind and not self._actor_op_alive(actor, kind, gen):
                     break
-                try:
-                    await wait_msg.edit_text(
-                        text_fn(int(time.monotonic() - t0)), parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
+                await self._safe_edit_text(
+                    wait_msg,
+                    text_fn(int(time.monotonic() - t0)),
+                    parse_mode="HTML",
+                )
 
         task = asyncio.create_task(_tick())
         if actor and kind:
@@ -4076,10 +4089,11 @@ class WayneTelegramBot:
         if stop is not None:
             stop.set()
         if task is not None:
+            task.cancel()
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=0.4)
-            except Exception:
-                task.cancel()
+                await asyncio.wait_for(task, timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                pass
         if actor and kind:
             self._unregister_actor_wait(actor, kind, gen=gen)
         # 過期 generation：只刪自己的等待框，不准再當成「成功收起」去蓋別鍵。
@@ -5652,18 +5666,16 @@ class WayneTelegramBot:
                 return
             if gen and not self._actor_op_alive(actor, kind, gen):
                 return
-            try:
-                await wait_msg.edit_text(
-                    self._biaoke_progress_text(
-                        int(time.monotonic() - float(prog["t0"])),
-                        current="chart",
-                        done=prog["done"],
-                        total=prog["total"],
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
+            await self._safe_edit_text(
+                wait_msg,
+                self._biaoke_progress_text(
+                    int(time.monotonic() - float(prog["t0"])),
+                    current="chart",
+                    done=prog["done"],
+                    total=prog["total"],
+                ),
+                parse_mode="HTML",
+            )
 
         async def _skip(name: str, sid: str, reason: str) -> None:
             """不准靜默少圖：略過要講清楚。"""
@@ -7825,25 +7837,23 @@ class WayneTelegramBot:
                     break
                 st = self._op_state_map().get(actor) or {}
                 elapsed = int(time.monotonic() - op_t0)
-                try:
-                    await wait_msg.edit_text(
-                        self._chart_progress_text(
-                            elapsed,
-                            sent=st.get("sent") or [],
-                            current=str(st.get("current") or ""),
-                        ),
-                        parse_mode="HTML",
-                    )
-                except Exception:
-                    pass
+                await self._safe_edit_text(
+                    wait_msg,
+                    self._chart_progress_text(
+                        elapsed,
+                        sent=st.get("sent") or [],
+                        current=str(st.get("current") or ""),
+                    ),
+                    parse_mode="HTML",
+                )
                 try:
                     chat = getattr(message, "chat", None)
                     if chat is not None and hasattr(chat, "send_action"):
-                        await chat.send_action("typing")
+                        await asyncio.wait_for(chat.send_action("typing"), timeout=1.0)
                 except Exception:
                     pass
                 try:
-                    await asyncio.wait_for(progress_stop.wait(), timeout=2.0)
+                    await asyncio.wait_for(progress_stop.wait(), timeout=1.0)
                     break
                 except asyncio.TimeoutError:
                     continue

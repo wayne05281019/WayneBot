@@ -81,7 +81,8 @@ def test_menu_slow_paths_start_plain_wait():
             assert "_track_actor_bg(actor, build_task)" not in src
             assert "keep_msg=status" in src
             assert "_speak_screen_timeout" in src
-            assert "timeout=2.0" in src  # edit_text 不准堵死 ticker
+            assert "_safe_edit_text" in inspect.getsource(WayneTelegramBot)
+            assert "timeout=2.0" in src or "_safe_edit_text" in src  # edit 不准堵死 ticker
             assert 'phase=str(progress_phase.get("name")' in src or "phase=" in src
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
@@ -1703,6 +1704,106 @@ def test_light_cache_path_used_in_manual_screen():
     src = inspect.getsource(WayneTelegramBot._run_manual_screening)
     assert "light=True" in src
     assert 'progress_phase["name"] = "cache"' in src or "progress_phase" in src
+
+
+def test_plain_wait_and_safe_edit_bound_ticker():
+    """飆大／查股共用 _start_plain_wait：edit 必須走 _safe_edit_text（≤2s）。"""
+    src = inspect.getsource(WayneTelegramBot._start_plain_wait)
+    assert "_safe_edit_text" in src
+    safe = inspect.getsource(WayneTelegramBot._safe_edit_text)
+    assert "wait_for" in safe
+    assert "_EDIT_WAIT_TIMEOUT_S" in safe or "2.0" in safe
+    assert WayneTelegramBot._EDIT_WAIT_TIMEOUT_S <= 2.0
+
+
+def test_concurrent_screen_and_biaoke_tickers_keep_moving(monkeypatch):
+    """海選重掃時飆大 LOADING 仍要能跳秒，不准一起凍在 N 秒。"""
+    import time as _t
+
+    monkeypatch.setattr("screening_engine.screen_cache_ready", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+
+    def _slow(_db=None, **_k):
+        _t.sleep(4.0)
+        return {"as_of": "20261002", "results": {}, "payload": []}
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
+
+    bot = _bare_screen_bot()
+    bot._screen_timeout_s = 2.5
+    bot._actor_key = MagicMock(side_effect=lambda msg, uid="": uid or "u1")
+    bot._menu_uid_from_message = MagicMock(side_effect=lambda msg: "u1")
+    bot._magic_dismiss = AsyncMock()
+    hang_n = {"screen": 0, "biaoke": 0}
+    screen_edits = []
+    biaoke_edits = []
+
+    screen_status = MagicMock()
+    screen_msg = MagicMock()
+
+    async def _screen_edit(*args, **_k):
+        hang_n["screen"] += 1
+        if hang_n["screen"] <= 1:
+            await asyncio.sleep(5)
+        if args:
+            screen_edits.append(str(args[0]))
+        return None
+
+    screen_status.edit_text = AsyncMock(side_effect=_screen_edit)
+    screen_msg.reply_text = AsyncMock(return_value=screen_status)
+
+    biaoke_msg = MagicMock()
+    biaoke_status = MagicMock()
+
+    async def _biaoke_edit(*args, **_k):
+        hang_n["biaoke"] += 1
+        if hang_n["biaoke"] <= 1:
+            await asyncio.sleep(5)
+        if args:
+            biaoke_edits.append(str(args[0]))
+        return None
+
+    biaoke_status.edit_text = AsyncMock(side_effect=_biaoke_edit)
+    biaoke_msg.reply_text = AsyncMock(return_value=biaoke_status)
+    biaoke_msg.chat = MagicMock(send_action=AsyncMock())
+
+    async def run():
+        bot._actor_op_gen["u_biaoke"] = 1
+        bot._actor_op_kind["u_biaoke"] = "biaoke"
+        screen_t = asyncio.create_task(bot._run_manual_screening(screen_msg, "u_screen"))
+        wait_h = await bot._start_plain_wait(
+            biaoke_msg,
+            text_fn=lambda s: WayneTelegramBot._biaoke_progress_text(s, current="chart"),
+            actor="u_biaoke",
+            kind="biaoke",
+            gen=1,
+        )
+        assert wait_h[0] is not None
+        await asyncio.sleep(3.2)
+        # 兩邊都有機會跳過卡住的 edit 並再拍
+        assert hang_n["screen"] >= 1
+        assert hang_n["biaoke"] >= 1
+        await bot._stop_plain_wait(*wait_h, actor="u_biaoke", kind="biaoke", gen=1)
+        for t in (
+            screen_t,
+            getattr(bot, "_screening_late_task", None),
+            getattr(bot, "_screening_build_task", None),
+        ):
+            if isinstance(t, asyncio.Task) and not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    t0 = _t.monotonic()
+    asyncio.run(run())
+    assert (_t.monotonic() - t0) < 10.0
+    # 飆大至少送出第一則 LOADING；edit 嘗試過（即使被超時掐掉）
+    assert biaoke_msg.reply_text.await_count >= 1
+    assert hang_n["biaoke"] >= 1
 
 
 def test_refresh_then_pin_is_one_menu_message():
