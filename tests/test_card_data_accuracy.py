@@ -133,7 +133,11 @@ class CardDataAccuracyTests(unittest.TestCase):
 
     @pytest.mark.production_db
     def test_3105_official_20260903_matches_db_and_carybot_levels(self):
-        """穩懋 20260903 官方：漲跌對昨收、高低摘要、60日量前十、預警露出 10低。"""
+        """穩懋 20260903 官方：漲跌對昨收、高低摘要、60日量前十、預警露出 10低。
+
+        20 日表隨最新交易日滾動；要驗 20260903 那列必須 as_of 釘住，
+        不能假設最新卡永遠還看得到九月初。
+        """
         db = get_db_path()
         import sqlite3
 
@@ -166,29 +170,31 @@ class CardDataAccuracyTests(unittest.TestCase):
         self.assertAlmostEqual(prev_c, 469.5, places=1)
         self.assertFalse(candle_up_taiwan(c, prev_c, o))
 
-        card = NavigatorEngine(db).get_decision_card("3105", merge_live=False)
+        card = NavigatorEngine(db).get_decision_card(
+            "3105", merge_live=False, as_of="20260903"
+        )
         tbl = card["table"]
         r903 = tbl[tbl["date"].astype(str) == "20260903"]
-        self.assertFalse(r903.empty, "20 日表應含 20260903")
+        self.assertFalse(r903.empty, "as_of=20260903 的 20 日表應含當日")
         self.assertAlmostEqual(float(r903.iloc[0]["close"]), 446.5, places=1)
         latest = str(card.get("latest_date")).replace("-", "")[:8]
-        if latest == "20260903":
-            self.assertAlmostEqual(float(card["close"]), 446.5, places=1)
-            self.assertAlmostEqual(float(card["change_pct"]), -4.90, places=2)
-            self.assertAlmostEqual(float(card["h10"]), 492.0, places=1)
-            self.assertAlmostEqual(float(card["h20"]), 492.0, places=1)
-            self.assertAlmostEqual(float(card["l10"]), 355.0, places=0)
-            self.assertAlmostEqual(float(card["l60"]), 268.0, places=0)
-            self.assertAlmostEqual(float(card["gain_pct"]), 66.6, places=1)
-            lab, n = volume_headline_rank(
-                card.get("vol_rank_480") or 99,
-                card.get("vol_rank") or 99,
-                card.get("vol_rank_60") or 99,
-            )
-            self.assertEqual(lab, "60日量")
-            self.assertLessEqual(int(n), 10)
-            self.assertTrue(any("60日量" in str(b) for b in (card.get("badges") or [])))
-            self.assertTrue(any("120日第" in str(b) for b in (card.get("badges") or [])))
+        self.assertEqual(latest, "20260903")
+        self.assertAlmostEqual(float(card["close"]), 446.5, places=1)
+        self.assertAlmostEqual(float(card["change_pct"]), -4.90, places=2)
+        self.assertAlmostEqual(float(card["h10"]), 492.0, places=1)
+        self.assertAlmostEqual(float(card["h20"]), 492.0, places=1)
+        self.assertAlmostEqual(float(card["l10"]), 355.0, places=0)
+        self.assertAlmostEqual(float(card["l60"]), 268.0, places=0)
+        self.assertAlmostEqual(float(card["gain_pct"]), 66.6, places=1)
+        lab, n = volume_headline_rank(
+            card.get("vol_rank_480") or 99,
+            card.get("vol_rank") or 99,
+            card.get("vol_rank_60") or 99,
+        )
+        self.assertEqual(lab, "60日量")
+        self.assertLessEqual(int(n), 10)
+        self.assertTrue(any("60日量" in str(b) for b in (card.get("badges") or [])))
+        self.assertTrue(any("120日第" in str(b) for b in (card.get("badges") or [])))
 
         r824 = tbl[tbl["date"].astype(str) == "20260824"]
         if not r824.empty:
