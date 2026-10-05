@@ -30,6 +30,8 @@ TWSE_BWIBBU = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
 TWSE_MARGN = "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN"
 TWSE_TWTB4U = "https://openapi.twse.com.tw/v1/exchangeReport/TWTB4U"
 TWSE_FMTQIK = "https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK"
+# OpenAPI FMTQIK 常只留近兩日且換日會晚；rwd 月表與 MI_INDEX 同一官方源，盤後用來補 fuse_end。
+TWSE_FMTQIK_RWD = "https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK"
 TWSE_MI5MINS = "https://openapi.twse.com.tw/v1/indicesReport/MI_5MINS_HIST"
 TWSE_COMPANY = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_PE = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
@@ -729,6 +731,137 @@ def parse_fmtqik(rows: Sequence[dict]) -> List[dict]:
     return out
 
 
+def parse_fmtqik_rwd(payload: Any) -> List[dict]:
+    """證交所 rwd FMTQIK 月表：日期／成交股數／成交金額／筆數／加權指數／漲跌點數。"""
+    if not isinstance(payload, dict):
+        return []
+    stat = str(payload.get("stat") or "")
+    if stat and stat.upper() != "OK":
+        return []
+    fields = [str(x) for x in (payload.get("fields") or [])]
+    rows = payload.get("data") or []
+    if not fields or not isinstance(rows, list):
+        return []
+    idx = {name: i for i, name in enumerate(fields)}
+    need = ("日期", "成交股數", "發行量加權股價指數")
+    if any(k not in idx for k in need):
+        return []
+    out: List[dict] = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) <= max(idx.values()):
+            continue
+        date = roc_to_ymd(row[idx["日期"]])
+        shares = _num(row[idx["成交股數"]])
+        close = _num(row[idx["發行量加權股價指數"]])
+        change = _num(row[idx["漲跌點數"]]) if "漲跌點數" in idx else None
+        value = _num(row[idx["成交金額"]]) if "成交金額" in idx else None
+        if not date or shares is None or shares <= 0:
+            continue
+        lots = int(round(shares / 1000.0))
+        pct = None
+        if close and change is not None:
+            prev = close - change
+            if prev:
+                pct = round(change / prev * 100.0, 2)
+        out.append({
+            "date": date,
+            "volume": lots,
+            "trade_value": value,
+            "close": close,
+            "pct_change": pct,
+            "source": "twse_fmtqik_rwd",
+        })
+    return out
+
+
+def fetch_fmtqik_rwd(ymd: str, timeout: int = 45) -> List[dict]:
+    """抓 rwd 該月 FMTQIK（date=YYYYMMDD）。OpenAPI 尚未換日時用來補 fuse_end。"""
+    d = str(ymd or "").replace("-", "")[:8]
+    if len(d) != 8 or not d.isdigit():
+        return []
+    url = f"{TWSE_FMTQIK_RWD}?date={d}&response=json"
+    req = Request(url, headers=_UA)
+    with urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    return parse_fmtqik_rwd(payload)
+
+
+def merge_fmtqik_prefer_openapi(
+    openapi_rows: Sequence[dict],
+    rwd_rows: Sequence[dict],
+) -> List[dict]:
+    """同一日優先 OpenAPI；rwd 只補缺日。不准覆蓋已有官方列。"""
+    by_date: Dict[str, dict] = {}
+    for row in rwd_rows or []:
+        date = str((row or {}).get("date") or "")
+        if len(date) == 8:
+            by_date[date] = dict(row)
+    for row in openapi_rows or []:
+        date = str((row or {}).get("date") or "")
+        if len(date) == 8:
+            by_date[date] = dict(row)
+    return [by_date[k] for k in sorted(by_date)]
+
+
+def ensure_index_fmtqik_through(db_path: str, cap: str = "") -> Dict[str, Any]:
+    """保證 index_daily 有 fuse_end（或指定 cap）的收盤＋量。
+
+    Yahoo／OpenAPI 常晚於證交所 rwd；缺日就抓該月 rwd FMTQIK 寫入。沒真數不上。
+    """
+    from taiwan_market import _INDEX_SYMBOL, ensure_index_daily_table
+
+    try:
+        from trading_calendar import fuse_end_trading_date
+
+        target = str(cap or fuse_end_trading_date() or "").replace("-", "")[:8]
+    except Exception:
+        target = str(cap or "").replace("-", "")[:8]
+    if len(target) != 8:
+        return {"ok": False, "cap": target, "wrote": 0, "reason": "no_cap"}
+    ensure_index_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT close, volume FROM index_daily
+            WHERE symbol=? AND date=?
+            """,
+            (_INDEX_SYMBOL, target),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row and float(row[0] or 0) > 0 and float(row[1] or 0) > 0:
+        return {"ok": True, "cap": target, "wrote": 0, "reason": "already"}
+    try:
+        rwd_rows = fetch_fmtqik_rwd(target)
+    except Exception as exc:
+        log.warning("rwd FMTQIK %s 失敗：%s", target, exc)
+        return {"ok": False, "cap": target, "wrote": 0, "reason": str(exc)}
+    if not rwd_rows:
+        return {"ok": False, "cap": target, "wrote": 0, "reason": "empty_rwd"}
+    wrote = int(overlay_fmtqik(db_path, rwd_rows) or 0)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT close, volume FROM index_daily
+            WHERE symbol=? AND date=?
+            """,
+            (_INDEX_SYMBOL, target),
+        ).fetchone()
+    finally:
+        conn.close()
+    ok = bool(row and float(row[0] or 0) > 0 and float(row[1] or 0) > 0)
+    return {
+        "ok": ok,
+        "cap": target,
+        "wrote": wrote,
+        "close": float(row[0]) if row else None,
+        "volume": float(row[1]) if row else None,
+        "reason": "rwd" if ok else "still_missing",
+    }
+
+
 def parse_mi5mins_hist(rows: Sequence[dict]) -> List[dict]:
     """發行量加權股價指數歷史資料：開高低收。缺一欄就不上。"""
     out = []
@@ -1047,14 +1180,29 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     fmt_rows = parse_fmtqik(fetched.get("fmtqik") or [])
+    try:
+        from trading_calendar import fuse_end_trading_date
+
+        fuse_cap = str(fuse_end_trading_date() or "").replace("-", "")[:8]
+    except Exception:
+        fuse_cap = ""
+    fmt_dates = {str(r.get("date") or "") for r in fmt_rows}
+    if fuse_cap and fuse_cap not in fmt_dates:
+        try:
+            rwd_rows = fetch_fmtqik_rwd(fuse_cap)
+            if rwd_rows:
+                fmt_rows = merge_fmtqik_prefer_openapi(fmt_rows, rwd_rows)
+                log.info(
+                    "OpenAPI FMTQIK 尚未含 %s，已併入 rwd 月表 %s 日",
+                    fuse_cap,
+                    len(rwd_rows),
+                )
+        except Exception as exc:
+            errors["fmtqik_rwd"] = str(exc)
+            log.warning("rwd FMTQIK 補 %s 失敗：%s", fuse_cap, exc)
     fallback = max((r["date"] for r in fmt_rows), default="")
     if len(fallback) != 8:
-        try:
-            from trading_calendar import fuse_end_trading_date
-
-            fallback = fuse_end_trading_date()
-        except Exception:
-            fallback = ""
+        fallback = fuse_cap
     val_n = mar_n = dt_n = nav_n = div_n = 0
     conn = sqlite3.connect(path)
     try:
@@ -1078,6 +1226,14 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
 
     fmt_n = overlay_fmtqik(path, fmt_rows) if fmt_rows else 0
     ohlc_n = overlay_index_ohlc(path, parse_mi5mins_hist(fetched.get("mi5mins") or []))
+    if fuse_cap:
+        try:
+            ensured = ensure_index_fmtqik_through(path, fuse_cap)
+            if int(ensured.get("wrote") or 0) > 0:
+                fmt_n += int(ensured["wrote"])
+        except Exception as exc:
+            errors["fmtqik_ensure"] = str(exc)
+            log.warning("加權 fuse_end 補齊失敗：%s", exc)
     industry_pairs = parse_company_industry(fetched.get("twse_co") or [], source="twse")
     industry_pairs += parse_company_industry(fetched.get("tpex_co") or [], source="tpex")
     ind_n = overlay_industry(path, industry_pairs)

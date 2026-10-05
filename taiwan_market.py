@@ -1999,12 +1999,35 @@ def _backfill_zero_index_volumes(db_path: str) -> int:
         return 0
     need = {str(r[0]) for r in zeros}
     try:
-        from official_snapshots import TWSE_FMTQIK, fetch_json, overlay_fmtqik, parse_fmtqik
+        from official_snapshots import (
+            TWSE_FMTQIK,
+            ensure_index_fmtqik_through,
+            fetch_fmtqik_rwd,
+            fetch_json,
+            merge_fmtqik_prefer_openapi,
+            overlay_fmtqik,
+            parse_fmtqik,
+        )
 
-        rows = [r for r in parse_fmtqik(fetch_json(TWSE_FMTQIK) or []) if str(r.get("date") or "") in need]
-        if not rows:
-            return 0
-        return int(overlay_fmtqik(db_path, rows) or 0)
+        openapi = parse_fmtqik(fetch_json(TWSE_FMTQIK) or [])
+        rwd: list = []
+        try:
+            from trading_calendar import fuse_end_trading_date
+
+            cap = fuse_end_trading_date()
+            if cap:
+                rwd = fetch_fmtqik_rwd(cap)
+        except Exception:
+            rwd = []
+        merged = merge_fmtqik_prefer_openapi(openapi, rwd)
+        rows = [r for r in merged if str(r.get("date") or "") in need]
+        n = int(overlay_fmtqik(db_path, rows) or 0) if rows else 0
+        # 零量列補完後，再確認 fuse_end 本列有收＋量（Yahoo 缺日時 zeros 查不到）
+        try:
+            ensure_index_fmtqik_through(db_path)
+        except Exception:
+            pass
+        return n
     except Exception as exc:
         logger.warning("FMTQIK 補加權量失敗: %s", exc)
         return 0
@@ -2071,6 +2094,17 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
     filled = _backfill_zero_index_volumes(db_path)
     if filled:
         out["fmtqik_volume_fill"] = filled
+    try:
+        from official_snapshots import ensure_index_fmtqik_through
+
+        ensured = ensure_index_fmtqik_through(db_path)
+        if ensured.get("reason") not in ("already",):
+            out["fmtqik_ensure"] = ensured
+            if ensured.get("ok") and ensured.get("cap"):
+                out["latest"] = str(ensured["cap"])
+                out["latest_source"] = "twse_fmtqik_rwd"
+    except Exception as exc:
+        logger.warning("加權 fuse_end rwd 補齊略過：%s", exc)
     return out
 
 
