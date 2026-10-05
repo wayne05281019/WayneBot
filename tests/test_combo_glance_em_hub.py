@@ -117,34 +117,25 @@ def test_chip_tape_reads_emerging_quotes_not_listed_collision(tmp_path):
     assert abs(float(tape["last"]["volume"]) - 30) < 1e-6
 
 
-def test_em_hub_has_kline_and_nav_industry():
+def test_em_hub_drops_kline_nav_keeps_actions():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("3595", em=True)
-    labels0 = [b.text for b in kb.inline_keyboard[0]]
-    labels1 = [b.text for b in kb.inline_keyboard[1]]
-    assert "導航圖" in labels0
-    nav = next(b for b in kb.inline_keyboard[0] if b.text == "導航圖")
-    assert nav.url is None
-    assert nav.callback_data == "g:3595"
-    # 興櫃介紹卡已含營收，圖下不再放產業；上市櫃仍有
-    assert "產業" not in labels0
-    assert "K線" in labels0
-    assert labels1 == ["加入觀察", "記買入"]
-    texts = labels0 + labels1
-    assert "籌碼" not in texts
-    assert "營收" not in texts
+    labels = [b.text for r in kb.inline_keyboard for b in r]
+    assert "導航圖" not in labels
+    assert "K線" not in labels
+    assert "產業" not in labels
+    assert labels == ["加入觀察", "記買入"]
+    assert "籌碼" not in labels
+    assert "營收" not in labels
 
 
-def test_listed_hub_has_nav_and_industry():
+def test_listed_hub_drops_kline_nav_keeps_rest():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("2330")
     labels = [b.text for r in kb.inline_keyboard for b in r]
-    assert "導航圖" in labels
-    nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
-    assert nav.url is None
-    assert nav.callback_data == "g:2330"
+    assert "導航圖" not in labels
+    assert "K線" not in labels
     assert "產業" in labels
-    assert "K線" in labels
     assert "籌碼" in labels
     assert "營收" in labels
     assert "加入觀察" in labels
@@ -159,12 +150,15 @@ def test_lookup_album_has_no_lecture_caption():
     locked = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "點縮圖可放大" not in locked
     assert "網頁走勢" not in locked
-    assert 'kind_labels = {"glance": "介紹圖", "card": "決策卡", "volzone": "大量區"}' in locked
-    assert "render_volume_zone_result" in locked
-    assert "大量區" in locked
-    assert "generate_chart" not in locked
+    assert "render_three_in_one_result" in locked
+    assert "three" in locked
+    assert "三合一" in locked
+    # 順序：高低溫度卡 → 三合一 → 介紹卡
+    assert locked.find('current"] = "card"') < locked.find("await _three_item()")
+    assert locked.find("await _three_item()") < locked.find('current"] = "glance"')
     hub = inspect.getsource(WayneTelegramBot._hub_keyboard)
-    assert 'callback_data=f"g:{c}"' in hub
+    assert 'callback_data=f"g:{c}"' not in hub
+    assert 'InlineKeyboardButton("K線"' not in hub
     assert 'callback_data=f"n:{c}"' in hub
     assert "url=nav_url" not in hub
     assert "span=180" not in hub

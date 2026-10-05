@@ -40,13 +40,12 @@ def test_hub_news_url_button_on_top():
     assert isinstance(rows[0][1], InlineKeyboardButton)
     assert rows[0][1].text == "報導12↑"
     assert (rows[0][1].url or "").startswith("https://news.google.com")
-    assert any(b.text == "K線" for b in rows[0])
-    kline = next(b for b in rows[0] if b.text == "K線")
-    assert (kline.url or "").endswith("/quote/2330.TW/technical-analysis")
+    assert all(b.text != "K線" for b in rows[0])
     texts = [b.text for r in rows for b in r]
     assert "籌碼" in texts
     assert "產業" in texts
-    assert "導航圖" in texts
+    assert "導航圖" not in texts
+    assert "K線" not in texts
 
 
 def test_em_hub_has_industry_omits_chips():
@@ -57,7 +56,6 @@ def test_em_hub_has_industry_omits_chips():
     assert "產業" not in texts
     assert "籌碼" not in texts
     assert "營收" not in texts
-    assert "K線" in texts
-    assert "導航圖" in texts
-    assert [b.text for b in kb.inline_keyboard[0]] == ["K線", "導航圖"]
-    assert [b.text for b in kb.inline_keyboard[1]] == ["加入觀察", "記買入"]
+    assert "K線" not in texts
+    assert "導航圖" not in texts
+    assert [b.text for b in kb.inline_keyboard[0]] == ["加入觀察", "記買入"]

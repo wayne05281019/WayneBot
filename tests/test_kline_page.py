@@ -107,10 +107,11 @@ def test_kline_includes_emerging(tmp_path):
     bot.db_path = db
     kb = bot._hub_keyboard("3595", em=True)
     texts = [b.text for r in kb.inline_keyboard for b in r]
-    assert "K線" in texts
-    assert "導航圖" in texts
+    assert "K線" not in texts
+    assert "導航圖" not in texts
     assert "產業" not in texts  # 興櫃圖下無產業；上市櫃仍有
     assert "籌碼" not in texts
+    assert texts == ["加入觀察", "記買入"]
     page = render_kline_html("3595", db_path=db)
     assert "興櫃" in page
     assert '"D":[' in page
@@ -126,13 +127,11 @@ def test_hub_kline_is_https_url_button(tmp_path):
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = db
     kb = bot._hub_keyboard("2330")
-    kline = next(b for r in kb.inline_keyboard for b in r if b.text == "K線")
-    assert kline.callback_data is None
-    assert kline.url == "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
-    assert kline.url.startswith("https://")
     labels = [b.text for r in kb.inline_keyboard for b in r]
-    assert "導航圖" in labels
+    assert "K線" not in labels
+    assert "導航圖" not in labels
     assert "產業" in labels
+    assert "籌碼" in labels
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 
 

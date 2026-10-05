@@ -111,12 +111,9 @@ def test_help_script_ready_for_brother_video():
     texts = [b.text for r in hub.inline_keyboard for b in r]
     assert "籌碼" in texts and "營收" in texts
     assert "產業" in texts
-    assert "導航圖" in texts
+    assert "導航圖" not in texts
+    assert "K線" not in texts
     assert "加入觀察" in texts and "記買入" in texts
-    assert "K線" in texts
-    kline = next(b for r in hub.inline_keyboard for b in r if b.text == "K線")
-    assert (kline.url or "").endswith("/quote/2330.TW/technical-analysis")
-    assert (kline.url or "").startswith("https://")
 
 
 def test_ten_personas_help_and_menu_clear_wrong_pending():

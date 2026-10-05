@@ -90,9 +90,11 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
     assert "一律三張" in blob
-    assert "一張圖卡" in blob
-    assert "大量區專圖" in blob
-    assert "產業鏈小框" in blob
+    assert "三合一" in blob
+    assert "高低溫度卡" in blob
+    assert "介紹卡" in blob
+    assert "大量壓力" in blob or "大量區" in blob
+    assert "產業" in blob
     assert "布蘭特原油" in blob
     assert "美元/桶" in blob
     assert PAGE_WIDTH == 1080
@@ -496,7 +498,7 @@ def test_wrap_line_keeps_period_and_closing_paren():
     assert any("00981A" in ln for ln in a)
     b = _wrap_line(
         dr,
-        "上市／上櫃／興櫃一律三張：介紹圖／高低卡同一則（一張圖卡），再送大量區專圖（非買訊）。點開高畫質。產業鈕出產業圖（產業鏈小框）；導航圖鈕出 180 日高低。K線開奇摩股市同一檔日K。",
+        "上市／上櫃／興櫃一律三張：高低溫度卡→三合一圖（導航＋結構＋大量壓力）→介紹卡（非買訊）。點開高畫質。產業／籌碼／營收走圖下子鍵；K線／導航已併進三合一。",
         font,
         520,
         520,

@@ -459,15 +459,14 @@ def test_l3_em_hub_omits_chips_fund_industry():
     bot = _bot()
     kb = bot._hub_keyboard("3595", em=True)
     labels = [b.text for row in kb.inline_keyboard for b in row]
-    # 興櫃圖下＝K線／導航圖／觀察／記買入（無產業、無籌碼、無營收）
+    # 興櫃圖下＝觀察／記買入（三合一已涵蓋 K線／導航；無產業、無籌碼、無營收）
     assert "籌碼" not in labels
     assert "營收" not in labels
     assert "產業" not in labels
     assert "加入觀察" in labels
-    assert "K線" in labels
-    assert "導航圖" in labels
-    assert [b.text for b in kb.inline_keyboard[0]] == ["K線", "導航圖"]
-    assert [b.text for b in kb.inline_keyboard[1]] == ["加入觀察", "記買入"]
+    assert "K線" not in labels
+    assert "導航圖" not in labels
+    assert [b.text for b in kb.inline_keyboard[0]] == ["加入觀察", "記買入"]
 
 
 def test_l3_listed_hub_has_chips():
@@ -477,8 +476,8 @@ def test_l3_listed_hub_has_chips():
     assert "籌碼" in labels
     assert "營收" in labels
     assert "產業" in labels
-    assert "K線" in labels
-    assert "導航圖" in labels
+    assert "K線" not in labels
+    assert "導航圖" not in labels
 
 
 # ===========================================================================
