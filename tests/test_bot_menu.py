@@ -425,6 +425,9 @@ def test_screening_status_bubble_has_no_reply_keyboard(monkeypatch):
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
     monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
         "screening_engine.build_and_cache_full_screening",
         lambda *_a, **_k: {"as_of": "20260903", "results": {}, "payload": []},
     )

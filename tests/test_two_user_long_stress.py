@@ -524,6 +524,8 @@ def test_screening_gate_then_both_finish(tmp_path):
         await bot._run_manual_screening(_msg(BRO_I, "海選"))
 
     with patch("screening_engine.load_cached_full_screening", return_value=None), patch(
+        "screening_engine.screen_cache_ready", return_value=False
+    ), patch(
         "screening_engine.build_and_cache_full_screening", side_effect=_build
     ):
         asyncio.run(run())
