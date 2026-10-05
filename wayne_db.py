@@ -14,11 +14,17 @@ import json
 import re
 import sqlite3
 import threading
+import time
 import traceback
 import unicodedata
 from datetime import datetime
 from contextlib import contextmanager
 from typing import NamedTuple, Optional, Dict, Any, List, Union, Tuple
+
+
+def _is_transient_db_lock(exc: BaseException) -> bool:
+    msg = str(exc or "").lower()
+    return "database is locked" in msg or "database is busy" in msg
 
 _CODE_THEN_NAME_RE = re.compile(
     r"^(?P<code>\d{3,6}[A-Za-z]?)[\s\u3000]*(?P<name>[\u4e00-\u9fff].+)$",
@@ -389,7 +395,9 @@ def ensure_core_schema(db_path: str = None) -> None:
             );
             """
         )
-        _run_schema_steps(path)
+    # 建表步驟多數會自己開連線；必須在外層寫入連線／DB_LOCK 釋放後再跑，
+    # 否則 quote_hygiene 這類 bulk UPDATE 會撞上「database is locked」並永遠卡在 schema_errors。
+    _run_schema_steps(path)
     _SCHEMA_READY.add(path)
 
 
@@ -490,88 +498,129 @@ def _run_schema_steps(path: str) -> None:
     from db_migrations import clear_schema_error, record_schema_error, run_migrations
 
     for step, fn in _schema_steps():
-        try:
-            fn(path)
-            clear_schema_error(path, step)
-        except Exception as exc:
-            # 開機不能因為單一模組建表失敗就整個掛掉，但也不能無聲：
-            # 記下來讓 /inventory 與巡檢看得到。
-            record_schema_error(path, step, str(exc))
+        for attempt in range(3):
+            try:
+                fn(path)
+                clear_schema_error(path, step)
+                break
+            except Exception as exc:
+                # 開機不能因為單一模組建表失敗就整個掛掉，但也不能無聲：
+                # 記下來讓 /inventory 與巡檢看得到。偶發 lock 先重試再落檔。
+                if _is_transient_db_lock(exc) and attempt < 2:
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                record_schema_error(path, step, str(exc))
+                break
 
     try:
         run_migrations(path)
         clear_schema_error(path, "migrations")
     except Exception as exc:
+        if _is_transient_db_lock(exc):
+            for attempt in range(2):
+                time.sleep(0.35 * (attempt + 1))
+                try:
+                    run_migrations(path)
+                    clear_schema_error(path, "migrations")
+                    return
+                except Exception as retry_exc:
+                    exc = retry_exc
         record_schema_error(path, "migrations", str(exc))
 
 
 def normalize_quote_hygiene(db_path: str) -> Dict[str, int]:
     """本機已做過、補進程式：日期改 YYYYMMDD；量=0 時用成交金額／收盤估張數。"""
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_quotes'")
-    if not cur.fetchone():
-        conn.close()
-        return {"date_fixed": 0, "volume_filled": 0}
-    cur.execute(
-        """
-        UPDATE daily_quotes
-        SET date = replace(date, '-', '')
-        WHERE length(date) = 10 AND instr(date, '-') > 0
-          AND NOT EXISTS (
-              SELECT 1 FROM daily_quotes AS other
-              WHERE other.stock_id = daily_quotes.stock_id
-                AND other.date = replace(daily_quotes.date, '-', '')
-          );
-        """
-    )
-    date_fixed = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-    cur.execute("DELETE FROM daily_quotes WHERE length(date) = 10 AND instr(date, '-') > 0;")
-    cur.execute(
-        """
-        UPDATE daily_quotes
-        SET volume = CAST(turnover_k / close AS INTEGER)
-        WHERE (volume IS NULL OR volume = 0) AND close > 0 AND turnover_k > 0;
-        """
-    )
-    volume_filled = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-    name_scrubbed = 0
-    try:
-        from universe import clean_stock_name, name_or_sid
-
-        dirty = cur.execute(
-            """
-            SELECT DISTINCT stock_id, stock_name FROM daily_quotes
-            WHERE substr(stock_name, 1, 1) = '['
-               OR instr(stock_name, '<p') > 0
-               OR instr(stock_name, 'style=') > 0
-            """
-        ).fetchall()
-        dir_map: Dict[str, str] = {}
+    # 不用 get_db_connection：開機 ensure 可能仍在同執行緒；自行設 timeout／busy。
+    last_exc: Optional[BaseException] = None
+    for attempt in range(3):
+        conn = None
         try:
-            for sid, n in cur.execute("SELECT stock_id, stock_name FROM stock_directory"):
-                if clean_stock_name(n):
-                    dir_map[str(sid)] = n
-        except sqlite3.OperationalError:
-            dir_map = {}
-        for sid, name in dirty:
-            if clean_stock_name(name):
-                continue
-            good = dir_map.get(str(sid)) or name_or_sid(name, sid)
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            conn.execute("PRAGMA busy_timeout=15000;")
+            cur = conn.cursor()
             cur.execute(
-                "UPDATE daily_quotes SET stock_name=? WHERE stock_id=? AND stock_name=?",
-                (good, sid, name),
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_quotes'"
             )
-            name_scrubbed += int(cur.rowcount or 0)
-    except Exception:
-        name_scrubbed = 0
-    conn.commit()
-    conn.close()
-    return {
-        "date_fixed": int(date_fixed),
-        "volume_filled": int(volume_filled),
-        "name_scrubbed": int(name_scrubbed),
-    }
+            if not cur.fetchone():
+                conn.close()
+                return {"date_fixed": 0, "volume_filled": 0}
+            cur.execute(
+                """
+                UPDATE daily_quotes
+                SET date = replace(date, '-', '')
+                WHERE length(date) = 10 AND instr(date, '-') > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM daily_quotes AS other
+                      WHERE other.stock_id = daily_quotes.stock_id
+                        AND other.date = replace(daily_quotes.date, '-', '')
+                  );
+                """
+            )
+            date_fixed = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            cur.execute(
+                "DELETE FROM daily_quotes WHERE length(date) = 10 AND instr(date, '-') > 0;"
+            )
+            cur.execute(
+                """
+                UPDATE daily_quotes
+                SET volume = CAST(turnover_k / close AS INTEGER)
+                WHERE (volume IS NULL OR volume = 0) AND close > 0 AND turnover_k > 0;
+                """
+            )
+            volume_filled = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            name_scrubbed = 0
+            try:
+                from universe import clean_stock_name, name_or_sid
+
+                dirty = cur.execute(
+                    """
+                    SELECT DISTINCT stock_id, stock_name FROM daily_quotes
+                    WHERE substr(stock_name, 1, 1) = '['
+                       OR instr(stock_name, '<p') > 0
+                       OR instr(stock_name, 'style=') > 0
+                    """
+                ).fetchall()
+                dir_map: Dict[str, str] = {}
+                try:
+                    for sid, n in cur.execute(
+                        "SELECT stock_id, stock_name FROM stock_directory"
+                    ):
+                        if clean_stock_name(n):
+                            dir_map[str(sid)] = n
+                except sqlite3.OperationalError:
+                    dir_map = {}
+                for sid, name in dirty:
+                    if clean_stock_name(name):
+                        continue
+                    good = dir_map.get(str(sid)) or name_or_sid(name, sid)
+                    cur.execute(
+                        "UPDATE daily_quotes SET stock_name=? WHERE stock_id=? AND stock_name=?",
+                        (good, sid, name),
+                    )
+                    name_scrubbed += int(cur.rowcount or 0)
+            except Exception:
+                name_scrubbed = 0
+            conn.commit()
+            conn.close()
+            return {
+                "date_fixed": int(date_fixed),
+                "volume_filled": int(volume_filled),
+                "name_scrubbed": int(name_scrubbed),
+            }
+        except Exception as exc:
+            last_exc = exc
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            if _is_transient_db_lock(exc) and attempt < 2:
+                time.sleep(0.35 * (attempt + 1))
+                continue
+            raise
+    if last_exc is not None:
+        raise last_exc
+    return {"date_fixed": 0, "volume_filled": 0, "name_scrubbed": 0}
 
 
 def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:

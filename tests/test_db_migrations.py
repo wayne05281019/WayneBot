@@ -228,7 +228,22 @@ def test_schema_health_missing_db(tmp_path):
     assert health["version"] == 0
 
 
-def test_schema_health_surfaces_recorded_build_errors(fresh):
+def test_schema_health_recovers_transient_quote_hygiene_lock(tmp_path, monkeypatch):
+    """偶發 database is locked 不准永遠卡紅；巡檢時重跑 hygiene 清掉。"""
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "lock.db")
+    ensure_core_schema(path)
+    record_schema_error(path, "quote_hygiene", "database is locked")
+    assert "quote_hygiene" in schema_errors(path)
+
+    health = schema_health(path)
+    assert "quote_hygiene" not in schema_errors(path)
+    assert health["ok"] is True
+    assert health["errors"] == {}
+
+
+def test_schema_health_keeps_real_build_errors(fresh):
     run_migrations(fresh)
     record_schema_error(fresh, "ex_rights", "no such module")
     health = schema_health(fresh)
@@ -241,6 +256,46 @@ def test_ensure_migration_table_is_idempotent(fresh):
     ensure_migration_table(fresh)
     ensure_migration_table(fresh)
     assert applied_versions(fresh) == []
+
+
+def test_quote_hygiene_runs_outside_write_connection(tmp_path):
+    """ensure_core_schema 外層寫入連線釋放後才跑 hygiene，不准 nested lock。"""
+    import inspect
+
+    import wayne_db
+
+    src = inspect.getsource(wayne_db.ensure_core_schema)
+    # _run_schema_steps 必須在 with get_db_connection 區塊外
+    with_idx = src.find("with get_db_connection")
+    steps_idx = src.find("_run_schema_steps(path)")
+    assert with_idx >= 0 and steps_idx > with_idx
+    # 粗略：steps 呼叫前的縮排應與 with 同層（不在 with 內多一層）
+    line = [ln for ln in src.splitlines() if "_run_schema_steps(path)" in ln][0]
+    assert line.startswith("    _run_schema_steps") and not line.startswith("        _run_schema_steps")
+
+
+def test_normalize_quote_hygiene_retries_lock(tmp_path, monkeypatch):
+    import wayne_db
+    from wayne_db import ensure_core_schema, normalize_quote_hygiene
+
+    path = str(tmp_path / "retry.db")
+    ensure_core_schema(path)
+    import sqlite3 as _sql
+
+    calls = {"n": 0}
+    real_connect = _sql.connect
+
+    def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _sql.OperationalError("database is locked")
+        return real_connect(*a, **k)
+
+    monkeypatch.setattr(wayne_db.sqlite3, "connect", flaky)
+    monkeypatch.setattr(wayne_db.time, "sleep", lambda *_: None)
+    out = normalize_quote_hygiene(path)
+    assert calls["n"] >= 2
+    assert "date_fixed" in out
 
 
 def test_ensure_core_schema_records_step_failures(tmp_path, monkeypatch):

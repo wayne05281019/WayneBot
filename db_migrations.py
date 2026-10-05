@@ -409,6 +409,8 @@ def schema_health(db_path: str) -> Dict[str, Any]:
         }
     version = current_version(path)
     pending = pending_migrations(path)
+    # 開機偶發 lock 會永遠卡在記憶體 schema_errors；巡檢時再試一次清掉。
+    _recover_transient_schema_errors(path)
     errors = schema_errors(path)
     reasons = []
     if pending:
@@ -423,6 +425,37 @@ def schema_health(db_path: str) -> Dict[str, Any]:
         "errors": errors,
         "reasons": reasons,
     }
+
+
+def _is_transient_lock_message(msg: str) -> bool:
+    text = str(msg or "").lower()
+    return "database is locked" in text or "database is busy" in text
+
+
+def _recover_transient_schema_errors(db_path: str) -> None:
+    """只重跑「database is locked／busy」的步驟；真缺模組仍保留紅燈。"""
+    path = str(db_path or "").strip()
+    errors = schema_errors(path)
+    if not errors:
+        return
+    lock_steps = [s for s, m in errors.items() if _is_transient_lock_message(m)]
+    if not lock_steps:
+        return
+    try:
+        from wayne_db import _schema_steps, normalize_quote_hygiene
+    except Exception:
+        return
+    step_map = dict(_schema_steps())
+    step_map.setdefault("quote_hygiene", normalize_quote_hygiene)
+    for step in lock_steps:
+        fn = step_map.get(step)
+        if fn is None:
+            continue
+        try:
+            fn(path)
+            clear_schema_error(path, step)
+        except Exception as exc:
+            record_schema_error(path, step, str(exc))
 
 
 # ensure_core_schema 呼叫各模組建表時的失敗紀錄。維持開機不中斷，
