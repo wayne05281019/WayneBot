@@ -2874,12 +2874,17 @@ def _is_db_locked_error(exc: BaseException) -> bool:
     return "database is locked" in msg or "database is busy" in msg
 
 
-def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
+def load_cached_full_screening(
+    db_path: str = None, *, light: bool = False
+) -> Optional[Dict[str, Any]]:
     """手動海選快路徑：有當日 morning／evening 快照就組 payload，不准重掃全市場。
 
     空快照回 None（呼叫端再走 build_and_cache_full_screening）。
     不准假資料；只讀已落檔的 screen_sessions。
     DB locked 時短重試，避免誤判成無快取去全掃。
+
+    light=True：跳過盤面展望／洞燭輪動（那兩段常 6s+，鎖庫時會把話筒 ticker 凍住）。
+    手動海選優先 light，名單照出；展望有就加、沒有也不擋出卡。
     """
     path = db_path or get_db_path()
     as_of = _resolve_screen_as_of_ymd(path)
@@ -2918,27 +2923,28 @@ def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
         if isinstance(rows, list) and not str(key).startswith("_"):
             results[key] = stamp_entry_stars(rows, key)
     outlook = ""
-    try:
-        from money_flow import just_rotated_names_in_results
-        from taiwan_market import format_screen_market_outlook_html
-
-        outlook = format_screen_market_outlook_html(
-            path,
-            as_of,
-            snap=None,
-            us_snap=None,
-            rotated_names=just_rotated_names_in_results(results, None),
-        )
+    if not light:
         try:
-            from dongzhu_screen import rotation_screen_block
+            from money_flow import just_rotated_names_in_results
+            from taiwan_market import format_screen_market_outlook_html
 
-            rot = rotation_screen_block(path)
-            if rot:
-                outlook = (outlook + "\n" if outlook else "") + rot
+            outlook = format_screen_market_outlook_html(
+                path,
+                as_of,
+                snap=None,
+                us_snap=None,
+                rotated_names=just_rotated_names_in_results(results, None),
+            )
+            try:
+                from dongzhu_screen import rotation_screen_block
+
+                rot = rotation_screen_block(path)
+                if rot:
+                    outlook = (outlook + "\n" if outlook else "") + rot
+            except Exception:
+                pass
         except Exception:
-            pass
-    except Exception:
-        outlook = ""
+            outlook = ""
     payload = format_screening_payload(
         results, as_of, morning=False, market_html=outlook
     )
@@ -2959,6 +2965,7 @@ def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
         "overnight": list(results.get("overnight") or []),
         "major_alerts": [],
         "from_cache": True,
+        "light": bool(light),
     }
 
 
@@ -2984,17 +2991,40 @@ def build_and_cache_full_screening(db_path: str = None) -> Dict[str, Any]:
 
     session 必須非空，否則 execute_full_screening 不會 save_screen_session。
     全市場掃全域鎖：catch_up 與手動海選不准雙開把 DB 鎖死。
-    進鎖後若快取已在，直接讀回，不准重掃。
+    鎖外先讀 light 快取；等鎖時 sleep 放 GIL，避免把話筒 event loop 凍住。
     """
     path = db_path or get_db_path()
-    with _FULL_SCREEN_BUILD_LOCK:
-        cached = load_cached_full_screening(path)
+    cached = load_cached_full_screening(path, light=True)
+    if cached:
+        return cached
+    # 等鎖期間持續睡短覺放 GIL，並重試 light 快取（另一線可能剛寫完）。
+    waited = 0.0
+    while not _FULL_SCREEN_BUILD_LOCK.acquire(timeout=0.2):
+        waited += 0.2
+        cached = load_cached_full_screening(path, light=True)
+        if cached:
+            return cached
+        if waited >= 600.0:
+            logger = __import__("logging").getLogger(__name__)
+            logger.warning("海選建檔等鎖超過 10 分鐘，放棄")
+            return {
+                "status": "error",
+                "as_of": _resolve_screen_as_of_ymd(path) or "",
+                "results": {},
+                "payload": [],
+                "message": "海選建檔忙碌中",
+            }
+        time.sleep(0.05)
+    try:
+        cached = load_cached_full_screening(path, light=True)
         if cached:
             return cached
         as_of = _resolve_screen_as_of_ymd(path) or None
         return execute_full_screening(
             path, target_date=as_of, apply_us=True, session="morning"
         )
+    finally:
+        _FULL_SCREEN_BUILD_LOCK.release()
 
 
 def execute_full_screening(

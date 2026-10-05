@@ -68,6 +68,8 @@ def test_menu_slow_paths_start_plain_wait():
             assert "load_cached_full_screening" in src
             assert "build_and_cache_full_screening" in src
             assert "screen_cache_ready" in src
+            assert "light=True" in src
+            assert "deadline_hit" in src or "deadline_box" in src
             assert "screen_timeout_s = 180.0" in src
             timeout_zh = WayneTelegramBot._SCREEN_TIMEOUT_ZH
             assert "超過 3 分鐘" in timeout_zh
@@ -79,6 +81,8 @@ def test_menu_slow_paths_start_plain_wait():
             assert "_track_actor_bg(actor, build_task)" not in src
             assert "keep_msg=status" in src
             assert "_speak_screen_timeout" in src
+            assert "timeout=2.0" in src  # edit_text 不准堵死 ticker
+            assert 'phase=str(progress_phase.get("name")' in src or "phase=" in src
             continue
         assert "_start_plain_wait" in src or "_wait_bubble" in src, name
         assert needle in src, name
@@ -1492,7 +1496,7 @@ def test_timeout_retries_cache_before_speaking(monkeypatch):
 
     calls = {"n": 0}
 
-    def _load(_db=None):
+    def _load(_db=None, **_k):
         calls["n"] += 1
         if calls["n"] == 1:
             return None
@@ -1547,7 +1551,7 @@ def test_timeout_speaks_even_if_cache_reload_hangs(monkeypatch):
     monkeypatch.setattr("screening_engine.screen_cache_ready", lambda *_a, **_k: False)
     n = {"load": 0}
 
-    def _load(_db=None):
+    def _load(_db=None, **_k):
         n["load"] += 1
         if n["load"] == 1:
             return None
@@ -1633,6 +1637,72 @@ def test_existing_sessions_never_start_full_scan(monkeypatch):
         if c.args
     )
     assert "已超過 3 分鐘" not in blob
+
+
+def test_ticker_keeps_moving_when_edit_hangs(monkeypatch):
+    """edit_text 卡住時秒數仍要繼續走，不准凍在某一秒；到點仍改口逾時。"""
+    import time as _t
+
+    monkeypatch.setattr("screening_engine.screen_cache_ready", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+
+    def _slow(_db=None):
+        _t.sleep(5)
+        return {"as_of": "20261002", "results": {}, "payload": []}
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
+    bot = _bare_screen_bot()
+    bot._screen_timeout_s = 0.8
+    msg = MagicMock()
+    status = MagicMock()
+    hang = {"n": 0}
+
+    async def _hang_edit(*_a, **_k):
+        hang["n"] += 1
+        if hang["n"] <= 2:
+            await asyncio.sleep(10)  # 超過 ticker wait_for(2)
+        return None
+
+    status.edit_text = AsyncMock(side_effect=_hang_edit)
+    msg.reply_text = AsyncMock(return_value=status)
+    elapsed_seen = []
+
+    async def run():
+        t = asyncio.create_task(bot._run_manual_screening(msg, "u1"))
+        for _ in range(40):
+            for c in status.edit_text.await_args_list:
+                if c.args:
+                    elapsed_seen.append(str(c.args[0]))
+            if any("逾時" in x or "已超過" in x for x in elapsed_seen):
+                break
+            await asyncio.sleep(0.05)
+        for task in (
+            getattr(bot, "_screening_late_task", None),
+            getattr(bot, "_screening_build_task", None),
+            t,
+        ):
+            if isinstance(task, asyncio.Task) and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    t0 = _t.monotonic()
+    asyncio.run(run())
+    assert (_t.monotonic() - t0) < 6.0
+    blob = " ".join(elapsed_seen)
+    # 至少有 LOADING 進度；逾時改口或完成其中一種
+    assert "LOADING" in blob or "海選進行中" in blob
+    assert hang["n"] >= 1
+
+
+def test_light_cache_path_used_in_manual_screen():
+    src = inspect.getsource(WayneTelegramBot._run_manual_screening)
+    assert "light=True" in src
+    assert 'progress_phase["name"] = "cache"' in src or "progress_phase" in src
 
 
 def test_refresh_then_pin_is_one_menu_message():
