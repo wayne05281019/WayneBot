@@ -535,6 +535,21 @@ def catch_up_missed_jobs(now=None) -> None:
     now = now or _taipei_now()
     mins = now.hour * 60 + now.minute
     need_open_check = scheduler_owns("open_check") and mins >= 3 * 60
+
+    def _ensure_screen_cache(runner: MainRunner) -> None:
+        """最新完整日若無 screen_sessions，補建快取（不寄），避免按海選全掃逾時。"""
+        try:
+            from import_health import latest_complete_quote_date
+            from screen_sessions import screen_session_has_data
+            from screening_engine import build_and_cache_full_screening
+
+            as_of = latest_complete_quote_date(runner.db_path)
+            if as_of and not screen_session_has_data(runner.db_path, as_of):
+                logger.info("補跑：基準日 %s 無海選快取，背景補建（不寄）", as_of)
+                build_and_cache_full_screening(runner.db_path)
+        except Exception:
+            logger.exception("補跑海選快取失敗（不擋）")
+
     if now.weekday() >= 5:
         # 週末仍補深夜開盤查核（查週一／週日），其他盤中排程略過。
         # 另：若最新基準日 screen_sessions 空，補建快取（不寄），避免週末按海選全掃逾時。
@@ -546,18 +561,8 @@ def catch_up_missed_jobs(now=None) -> None:
                 runner.run_nightly_open_check(now=now)
             except Exception:
                 logger.exception("補跑深夜開盤查核失敗（不擋）")
-        try:
-            from import_health import latest_complete_quote_date
-            from screen_sessions import screen_session_has_data
-            from screening_engine import build_and_cache_full_screening
-
-            runner = runner or MainRunner()
-            as_of = latest_complete_quote_date(runner.db_path)
-            if as_of and not screen_session_has_data(runner.db_path, as_of):
-                logger.info("補跑：週末基準日 %s 無海選快取，背景補建（不寄）", as_of)
-                build_and_cache_full_screening(runner.db_path)
-        except Exception:
-            logger.exception("補跑週末海選快取失敗（不擋）")
+        runner = runner or MainRunner()
+        _ensure_screen_cache(runner)
         return
     need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
@@ -584,11 +589,13 @@ def catch_up_missed_jobs(now=None) -> None:
                 winrate_stale = True
         except Exception:
             logger.debug("勝率買點名單是否現行略過", exc_info=True)
+    runner = MainRunner()
     if not any(
         (need_fuse, need_morning, need_midday, need_evening, need_winrate, need_open_check)
     ):
+        # 平日重開也要確保最新完整日有海選快取（例如 pipeline success 但 sessions 被清掉）。
+        _ensure_screen_cache(runner)
         return
-    runner = MainRunner()
     if need_open_check:
         logger.info("補跑：已過台灣 03:00，若深夜開盤查核沒落檔就補跑")
         try:
@@ -657,6 +664,8 @@ def catch_up_missed_jobs(now=None) -> None:
         else:
             logger.info("補跑：已過台灣 21:00，若勝率買點沒寄過就補寄")
         runner.run_winrate_buypoint(skip_if_done=True, notify=wr_notify)
+    # 平日補跑之後仍確認快取在；success 但 sessions 空會被 morning 路徑補，這裡再兜一次。
+    _ensure_screen_cache(runner)
 
 
 _RETRYABLE_WATCHDOG = {

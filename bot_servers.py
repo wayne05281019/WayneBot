@@ -3360,7 +3360,7 @@ class WayneTelegramBot:
 
     @staticmethod
     def _screen_wait_was_long_enough(elapsed_s: float, need_s: float) -> bool:
-        """真逾時才准改口。內層 TimeoutError／上一輪鎖庫不准冒充「已超過 3 分鐘」。"""
+        """真逾時才准改口。內層 TimeoutError／短等待不准冒充「已超過 3 分鐘」。"""
         try:
             elapsed = float(elapsed_s)
             need = float(need_s)
@@ -3368,7 +3368,11 @@ class WayneTelegramBot:
             return False
         if need <= 0:
             return False
-        return elapsed >= (need * 0.5)
+        # 至少等到前端等待的九成，且至少 2 分鐘（預設 180 秒），才准說「已超過 3 分鐘」。
+        floor = min(need * 0.9, max(0.0, need - 5.0))
+        if need >= 120.0:
+            floor = max(floor, 120.0)
+        return elapsed >= floor
 
     async def _speak_screen_timeout(self, status, message, hub) -> bool:
         """逾時改口：只改已送出的 LOADING。不准用逾時句當第一則。"""
@@ -3475,26 +3479,8 @@ class WayneTelegramBot:
             except (asyncio.CancelledError, Exception):
                 pass
 
-        # LOADING 已出：立刻倒數。進行中再按不准再釘主選單。
+        # LOADING 已出：立刻倒數。同一人上一輪還在建檔時改跟同一輪，不准直接丟逾時／請稍候。
         ticker = asyncio.create_task(_tick())
-        inflight0 = getattr(self, "_screening_build_task", None)
-        inflight_live = isinstance(inflight0, asyncio.Task) and not inflight0.done()
-        if actor in self._screening_running or inflight_live:
-            await _stop_ticker()
-            wait_zh = "海選進行中，請稍候完成後再按。"
-            spoken = False
-            try:
-                if status is not None:
-                    await status.edit_text(wait_zh)
-                    spoken = True
-            except Exception:
-                spoken = False
-            if not spoken:
-                try:
-                    await message.reply_text(wait_zh, reply_markup=hub)
-                except Exception:
-                    pass
-            return
         async with self._screening_gate:
             if self._screening_global_owner and self._screening_global_owner != actor:
                 await _stop_ticker()
@@ -3520,6 +3506,29 @@ class WayneTelegramBot:
         # begin 只清已登記的舊等待；本則 status 用 keep_msg 保住。
         gen = await self._begin_actor_op(actor, op_kind, keep_msg=status)
         assigned_gen["n"] = int(gen)
+        # cancel 會清掉同人 owner；建檔期間必須再掛上，雙人閘才有效。
+        async with self._screening_gate:
+            if self._screening_global_owner and self._screening_global_owner != actor:
+                await _stop_ticker()
+                busy = (
+                    "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
+                    "算完會自動推名單；你也可以稍後再按「海選」讀快取。"
+                    "名單是同一份，不會和對方的持股／觀察／連買混在一起。"
+                )
+                spoken = False
+                try:
+                    if status is not None:
+                        await status.edit_text(busy)
+                        spoken = True
+                except Exception:
+                    spoken = False
+                if not spoken:
+                    try:
+                        await message.reply_html(busy, reply_markup=hub)
+                    except Exception:
+                        pass
+                return
+            self._screening_global_owner = actor
         self._screening_running.add(actor)
         delivered = False
         cancelled = False
@@ -3590,12 +3599,22 @@ class WayneTelegramBot:
                     except Exception:
                         pass
                     return
-                if actor in self._screening_running:
-                    return
+                finally:
+                    if getattr(self, "_screening_build_task", None) is build_task:
+                        if build_task.done():
+                            self._screening_build_task = None
+                # 晚推不准因「又按了一次」就吞掉；名單要以這則 message 送到。
+                payload = late
+                try:
+                    cached_late = await asyncio.to_thread(_load_cache)
+                    if cached_late:
+                        payload = cached_late
+                except Exception:
+                    pass
                 try:
                     await self._deliver_manual_screening_result(
                         message,
-                        late,
+                        payload,
                         hub=hub,
                         status=None if timeout_spoken else status,
                     )
@@ -3617,6 +3636,23 @@ class WayneTelegramBot:
                 return
             except asyncio.TimeoutError:
                 elapsed = time.monotonic() - t0
+                # 逾時前再試一次快取：晚間／補建可能剛好寫完。
+                try:
+                    cached_now = await asyncio.to_thread(_load_cache)
+                except Exception:
+                    cached_now = None
+                if cached_now:
+                    stop.set()
+                    if not self._actor_op_alive(actor, op_kind, gen):
+                        cancelled = True
+                        return
+                    await self._deliver_manual_screening_result(
+                        message, cached_now, hub=hub, status=status
+                    )
+                    delivered = True
+                    if getattr(self, "_screening_build_task", None) is build_task:
+                        self._screening_build_task = None
+                    return
                 if build_task.done() and not build_task.cancelled():
                     try:
                         result = build_task.result()
@@ -3628,6 +3664,8 @@ class WayneTelegramBot:
                                 delivered = True
                             except Exception:
                                 logger.exception("海選失敗提示送出失敗")
+                        if getattr(self, "_screening_build_task", None) is build_task:
+                            self._screening_build_task = None
                         return
                 elif not self._screen_wait_was_long_enough(elapsed, screen_timeout_s):
                     logger.warning(
@@ -3663,6 +3701,8 @@ class WayneTelegramBot:
                 message, result, hub=hub, status=status
             )
             delivered = True
+            if getattr(self, "_screening_build_task", None) is build_task and build_task.done():
+                self._screening_build_task = None
         except asyncio.TimeoutError:
             elapsed = time.monotonic() - t0
             logger.exception("手動海選等待逾時 elapsed=%.2f", elapsed)
@@ -3692,12 +3732,13 @@ class WayneTelegramBot:
             if ticker is not None:
                 ticker.cancel()
             self._unregister_actor_wait(actor, op_kind, gen=gen)
-            if not hold_gate:
+            alive = self._actor_op_alive(actor, op_kind, gen)
+            # 只放行本輪 generation：同人重按會 bump gen，不准把下一輪閘門沖掉。
+            if not hold_gate and alive:
                 self._screening_running.discard(actor)
                 async with self._screening_gate:
                     if self._screening_global_owner == actor:
                         self._screening_global_owner = ""
-            alive = self._actor_op_alive(actor, op_kind, gen)
             # 逾時已改口的 LOADING 不准刪成空白；取消／成功才清殘框。
             if not status_consumed:
                 await self._dismiss_progress_now(status)

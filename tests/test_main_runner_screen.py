@@ -453,10 +453,26 @@ def _stub_morning_deps(monkeypatch, runner):
     monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
     monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
     monkeypatch.setattr("config.fuse_end_date", lambda: "20260908")
-    monkeypatch.setattr(
-        "main_runner.run_full_screening",
-        lambda **_k: {"status": "success", "payload": [{"html": "海選"}], "results": {}},
-    )
+
+    def _fake_full(**_k):
+        try:
+            from screen_sessions import save_screen_session
+
+            save_screen_session(
+                runner.db_path,
+                "20260908",
+                "morning",
+                {
+                    "leave_zero": [
+                        {"stock_id": "2330", "stock_name": "台積電", "close": 1.0}
+                    ]
+                },
+            )
+        except Exception:
+            pass
+        return {"status": "success", "payload": [{"html": "海選"}], "results": {}}
+
+    monkeypatch.setattr("main_runner.run_full_screening", _fake_full)
     monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
     monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
     monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
@@ -516,16 +532,82 @@ def test_morning_computed_skips_when_gha_still_silent(tmp_path, monkeypatch):
     runner.token = ""
     _stub_morning_deps(monkeypatch, runner)
     screened = []
-    monkeypatch.setattr(
-        "main_runner.run_full_screening",
-        lambda **_k: screened.append(1) or {"status": "success", "payload": [{"html": "海選"}], "results": {}},
-    )
+
+    def _screen(**_k):
+        screened.append(1)
+        from screen_sessions import save_screen_session
+
+        save_screen_session(
+            path,
+            "20260908",
+            "morning",
+            {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 1.0}]},
+        )
+        return {"status": "success", "payload": [{"html": "海選"}], "results": {}}
+
+    monkeypatch.setattr("main_runner.run_full_screening", _screen)
 
     assert runner.run_morning_screen(skip_if_done=False, notify=False) is True
     assert screened == [1]
     assert runner.run_morning_screen(skip_if_done=True, notify=False) is True
     assert screened == [1]
     assert runner.already_completed_today("screen-20260908") is False
+
+
+def test_morning_success_without_sessions_rebuilds_cache(tmp_path, monkeypatch):
+    """pipeline success 但 screen_sessions 空：必須重掃補快取，不准 skip 掉。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "empty-sessions.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20260908", "2026-09-09T06:30:00", "success", "morning"),
+    )
+    conn.commit()
+    conn.close()
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    pushes = []
+    runner.bot = type(
+        "B",
+        (),
+        {"send_screening_report": staticmethod(lambda *a, **k: pushes.append(1) or True)},
+    )()
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner.send_telegram_message = lambda *a, **k: True
+    runner.token = ""
+    _stub_morning_deps(monkeypatch, runner)
+    screened = []
+
+    def _screen(**_k):
+        screened.append(1)
+        from screen_sessions import save_screen_session
+
+        save_screen_session(
+            path,
+            "20260908",
+            "morning",
+            {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 1.0}]},
+        )
+        return {"status": "success", "payload": [{"html": "海選"}], "results": {}}
+
+    monkeypatch.setattr("main_runner.run_full_screening", _screen)
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+    assert screened == [1]
+    # 已寄過只補快取，不准再推。
+    assert pushes == []
+    from screen_sessions import screen_session_has_data
+
+    assert screen_session_has_data(path, "20260908")
 
 
 def test_gha_demotes_screen_success_not_increment(tmp_path, monkeypatch):

@@ -90,29 +90,26 @@ def test_twenty_users_menu_and_help_do_not_share_state():
 
 def test_screening_gate_blocks_second_family_member():
     bot = _bot()
+    bot._screening_build_task = None
     bot._screening_global_owner = "111:9001"
     bot._screening_running.add("111:9001")
 
     async def run():
-        busy = _msg(9001, "海選")
-        busy.chat_id = 111
+        # 偉權已佔閘：哥哥按海選→第一則仍 LOADING，改口家人忙，不准開第二輪全掃。
         other = _msg(9002, "海選")
         other.chat_id = 111
-        await bot._run_manual_screening(busy)
         await bot._run_manual_screening(other)
         texts = []
-        for m in (busy, other):
-            for call in m.reply_text.await_args_list + m.reply_html.await_args_list:
-                args = call.args or ()
-                texts.append(str(args[0] if args else call.kwargs.get("text") or ""))
-            status = m.reply_text.return_value
-            for call in getattr(status, "edit_text", MagicMock()).await_args_list or []:
-                args = call.args or ()
-                texts.append(str(args[0] if args else ""))
+        for call in other.reply_text.await_args_list + other.reply_html.await_args_list:
+            args = call.args or ()
+            texts.append(str(args[0] if args else call.kwargs.get("text") or ""))
+        status = other.reply_text.return_value
+        for call in getattr(status, "edit_text", MagicMock()).await_args_list or []:
+            args = call.args or ()
+            texts.append(str(args[0] if args else ""))
         blob = "\n".join(texts)
-        assert "海選進行中" in blob
+        assert "LOADING" in blob or "海選進行中" in blob
         assert "海選正在掃描全市場" in blob
-        assert blob.count("請稍候完成後再按") <= 1
         bot.screener.run_full_screening.assert_not_called()
 
     asyncio.run(run())
