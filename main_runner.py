@@ -1476,13 +1476,25 @@ class MainRunner:
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
         if skip_if_done and as_of:
+            from screen_sessions import screen_session_has_data
+
             status = self.pipeline_status(key)
-            if status == "success":
+            has_rows = screen_session_has_data(self.db_path, as_of)
+            if status == "success" and has_rows:
                 logger.info("早上海選 %s 已寄過，略過。", key)
                 return True
-            if status == "computed" and not notify:
+            if status == "computed" and not notify and has_rows:
                 logger.info("早上海選 %s 已算出（不寄），略過。", key)
                 return True
+            if status in ("success", "computed") and not has_rows:
+                logger.warning(
+                    "早上海選 %s 已標 %s 但 screen_sessions 空，重掃補快取（不重寄）",
+                    key,
+                    status,
+                )
+                # 已寄過只補快取，不准再洗版推播。
+                if status == "success":
+                    notify = False
         logger.info("☀️ 06:30 先確認庫已齊，再寄海選")
         from config import fuse_end_date
 

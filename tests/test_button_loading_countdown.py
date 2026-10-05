@@ -1207,9 +1207,10 @@ def test_pin_and_screen_first_reply_never_blank_dot():
     begin_i = src_screen.index("await self._begin_actor_op")
     assert load_i < begin_i
     assert "await asyncio.wait_for(self._pin_reply_menu" not in src_screen
-    busy = src_screen.split("if actor in self._screening_running")[1].split("async with self._screening_gate")[0]
-    assert busy.count("請稍候完成後再按") == 1
-    assert "_pin_reply_menu" not in busy
+    # 同一人進行中改跟同一輪建檔，不准早退丟「請稍候」當第一則結果。
+    assert "請稍候完成後再按" not in src_screen.split("async with self._screening_gate")[0]
+    assert "_screening_build_task" in src_screen
+    assert "load_cached_full_screening" in src_screen or "_load_cache" in src_screen
 
 
 def test_cancel_skips_keep_msg(monkeypatch):
@@ -1311,7 +1312,10 @@ def test_screen_timeout_does_not_send_blank_then_timeout(monkeypatch):
 
 def test_screen_wait_guard_rejects_short_elapsed():
     assert WayneTelegramBot._screen_wait_was_long_enough(180, 180)
+    assert WayneTelegramBot._screen_wait_was_long_enough(162, 180)
     assert WayneTelegramBot._screen_wait_was_long_enough(0.05, 0.05)
+    assert not WayneTelegramBot._screen_wait_was_long_enough(90, 180)
+    assert not WayneTelegramBot._screen_wait_was_long_enough(119, 180)
     assert not WayneTelegramBot._screen_wait_was_long_enough(8, 180)
     assert not WayneTelegramBot._screen_wait_was_long_enough(0, 180)
 
@@ -1341,7 +1345,7 @@ def test_first_screen_reply_never_timeout_copy(monkeypatch):
 
 
 def test_second_screen_press_joins_inflight_loading(monkeypatch):
-    """上一輪背景還在算：第二次按仍先 LOADING，改口一句請稍候，不准再釘主選單。"""
+    """上一輪背景還在算：第二次按仍先 LOADING，跟同一輪建檔，不准直接逾時句。"""
     import time as _t
 
     monkeypatch.setattr(
@@ -1384,28 +1388,93 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
         first2 = str(msg2.reply_text.await_args_list[0].args[0])
         assert "LOADING" in first2
         assert "逾時" not in first2
-        wait2 = [
-            str(c.args[0])
-            for c in list(msg2.reply_text.await_args_list) + list(st2.edit_text.await_args_list)
-            if c.args
-        ]
-        assert sum("請稍候完成後再按" in t for t in wait2) == 1
-        assert all("主選單已掛上" not in t for t in wait2)
+        assert "已超過 3 分鐘" not in first2
         release.set()
         await asyncio.wait_for(t1, timeout=3.0)
         await asyncio.wait_for(t2, timeout=3.0)
         assert n["build"] == 1
+        assert bot._reply_screening_payload.await_count >= 1
 
     asyncio.run(run())
 
 
-def test_busy_screen_one_wait_and_no_pin(monkeypatch):
-    """進行中再按：第一則 LOADING，只一句請稍候，不准再釘主選單。"""
+def test_busy_screen_keeps_loading_not_timeout(monkeypatch):
+    """進行中再按：第一則仍 LOADING，不准改口成逾時句，也不准再釘主選單搶第一則。"""
+    import time as _t
+
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
+    release = asyncio.Event()
+
+    def _slow(_db=None):
+        for _ in range(400):
+            if release.is_set():
+                break
+            _t.sleep(0.01)
+        return {
+            "as_of": "20261005",
+            "results": {"leave_zero": [{"stock_id": "2330"}]},
+            "payload": [],
+        }
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
     bot = _bare_screen_bot()
-    bot._screening_running.add("u1")
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    async def run():
+        t1 = asyncio.create_task(bot._run_manual_screening(msg, "u1"))
+        for _ in range(80):
+            if "u1" in bot._screening_running:
+                break
+            await asyncio.sleep(0.02)
+        t2 = asyncio.create_task(bot._run_manual_screening(msg, "u1"))
+        await asyncio.sleep(0.1)
+        first = str(msg.reply_text.await_args_list[0].args[0])
+        assert "LOADING" in first
+        blob = " ".join(
+            str(c.args[0])
+            for c in list(msg.reply_text.await_args_list) + list(status.edit_text.await_args_list)
+            if c.args
+        )
+        assert "已超過 3 分鐘" not in blob
+        release.set()
+        await asyncio.wait_for(t1, timeout=3.0)
+        await asyncio.wait_for(t2, timeout=3.0)
+
+    asyncio.run(run())
+    bot._pin_reply_menu.assert_awaited()
+
+
+def test_timeout_retries_cache_before_speaking(monkeypatch):
+    """前端 wait_for 逾時時若快取已寫完，直接出卡，不准丟逾時句。"""
+    import time as _t
+
+    calls = {"n": 0}
+
+    def _load(_db=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return {
+            "as_of": "20261002",
+            "from_cache": True,
+            "results": {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電"}]},
+            "payload": [],
+        }
+
+    monkeypatch.setattr("screening_engine.load_cached_full_screening", _load)
+
+    def _slow(_db=None):
+        _t.sleep(0.3)
+        return {"as_of": "20261002", "results": {}, "payload": []}
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
+    bot = _bare_screen_bot()
+    bot._screen_timeout_s = 0.05
     msg = MagicMock()
     status = MagicMock()
     status.edit_text = AsyncMock()
@@ -1414,14 +1483,13 @@ def test_busy_screen_one_wait_and_no_pin(monkeypatch):
     asyncio.run(bot._run_manual_screening(msg, "u1"))
     first = str(msg.reply_text.await_args_list[0].args[0])
     assert "LOADING" in first
-    wait_texts = [
-        str(c.args[0])
-        for c in list(msg.reply_text.await_args_list) + list(status.edit_text.await_args_list)
-        if c.args
-    ]
-    assert sum("請稍候完成後再按" in t for t in wait_texts) == 1
-    assert all("主選單已掛上" not in t for t in wait_texts)
-    bot._pin_reply_menu.assert_not_awaited()
+    edited = " ".join(str(c.args[0]) for c in status.edit_text.await_args_list if c.args)
+    blob = edited + " " + " ".join(
+        str(c.args[0]) for c in msg.reply_text.await_args_list if c.args
+    )
+    assert "已超過 3 分鐘" not in blob
+    bot._reply_screening_payload.assert_awaited()
+    assert calls["n"] >= 2
 
 
 def test_refresh_then_pin_is_one_menu_message():
