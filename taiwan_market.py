@@ -1999,9 +1999,26 @@ def _backfill_zero_index_volumes(db_path: str) -> int:
         return 0
     need = {str(r[0]) for r in zeros}
     try:
-        from official_snapshots import TWSE_FMTQIK, fetch_json, overlay_fmtqik, parse_fmtqik
+        from official_snapshots import (
+            TWSE_FMTQIK,
+            fetch_fmtqik_rwd,
+            fetch_json,
+            merge_fmtqik_prefer_openapi,
+            overlay_fmtqik,
+            parse_fmtqik,
+        )
 
-        rows = [r for r in parse_fmtqik(fetch_json(TWSE_FMTQIK) or []) if str(r.get("date") or "") in need]
+        openapi = parse_fmtqik(fetch_json(TWSE_FMTQIK) or [])
+        # 只對「已有列但量=0」的日期抓 rwd；不准為 fuse_end 另開新日寫進歷史測試庫
+        rwd: list = []
+        try:
+            sample = sorted(need)[-1]
+            if sample:
+                rwd = fetch_fmtqik_rwd(sample)
+        except Exception:
+            rwd = []
+        merged = merge_fmtqik_prefer_openapi(openapi, rwd)
+        rows = [r for r in merged if str(r.get("date") or "") in need]
         if not rows:
             return 0
         return int(overlay_fmtqik(db_path, rows) or 0)
@@ -2071,6 +2088,28 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
     filled = _backfill_zero_index_volumes(db_path)
     if filled:
         out["fmtqik_volume_fill"] = filled
+    # Yahoo／OpenAPI 常晚幾日：僅當庫內最新日已貼近 fuse_end 才打 rwd 補缺日。
+    # 歷史測試匣（差很遠）不准抓當月 rwd 多寫列、也不改 latest_source。
+    try:
+        from datetime import datetime as _dt
+
+        from official_snapshots import ensure_index_fmtqik_through
+        from trading_calendar import fuse_end_trading_date
+
+        fuse_cap = str(fuse_end_trading_date() or "").replace("-", "")[:8]
+        if (
+            len(fuse_cap) == 8
+            and len(latest) == 8
+            and latest < fuse_cap
+            and (_dt.strptime(fuse_cap, "%Y%m%d") - _dt.strptime(latest, "%Y%m%d")).days <= 14
+        ):
+            ensured = ensure_index_fmtqik_through(db_path, fuse_cap)
+            out["fmtqik_ensure"] = ensured
+            if ensured.get("ok") and int(ensured.get("wrote") or 0) > 0:
+                out["latest"] = str(ensured.get("cap") or fuse_cap)
+                out["latest_source"] = "twse_fmtqik_rwd"
+    except Exception as exc:
+        logger.warning("加權 fuse_end rwd 補齊略過：%s", exc)
     return out
 
 

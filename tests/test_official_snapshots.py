@@ -259,6 +259,58 @@ def test_overlay_fmtqik_and_industry(tmp_path):
     conn.close()
 
 
+def test_parse_fmtqik_rwd_and_ensure_through(tmp_path, monkeypatch):
+    from official_snapshots import (
+        ensure_index_fmtqik_through,
+        merge_fmtqik_prefer_openapi,
+        parse_fmtqik,
+        parse_fmtqik_rwd,
+    )
+    from taiwan_market import ensure_index_daily_table
+
+    payload = {
+        "stat": "OK",
+        "fields": ["日期", "成交股數", "成交金額", "成交筆數", "發行量加權股價指數", "漲跌點數"],
+        "data": [
+            ["115/10/02", "11,017,717,304", "938,222,196,327", "4,612,433", "48,475.74", "122.25"],
+            ["115/10/05", "14,490,437,804", "1,211,041,395,113", "5,843,674", "49,712.04", "1,236.30"],
+        ],
+    }
+    rwd = parse_fmtqik_rwd(payload)
+    by = {r["date"]: r for r in rwd}
+    assert by["20261005"]["close"] == 49712.04
+    assert by["20261005"]["volume"] == 14490438
+    assert abs(by["20261005"]["pct_change"] - 2.55) < 0.01
+
+    openapi = parse_fmtqik(
+        [{"Date": "1151002", "TradeVolume": "11017717304", "TAIEX": "48475.74", "Change": "122.25"}]
+    )
+    merged = merge_fmtqik_prefer_openapi(openapi, rwd)
+    dates = [r["date"] for r in merged]
+    assert dates == ["20261002", "20261005"]
+    assert next(r for r in merged if r["date"] == "20261002")["source"] == "twse_fmtqik"
+
+    db = str(tmp_path / "ix2.db")
+    ensure_index_daily_table(db)
+    monkeypatch.setattr(
+        "official_snapshots.fetch_fmtqik_rwd",
+        lambda ymd, timeout=45: rwd,
+    )
+    out = ensure_index_fmtqik_through(db, "20261005")
+    assert out["ok"] is True
+    assert out["wrote"] >= 1
+    conn = sqlite3.connect(db)
+    close, vol = conn.execute(
+        "SELECT close, volume FROM index_daily WHERE date='20261005'"
+    ).fetchone()
+    conn.close()
+    assert close == 49712.04
+    assert int(vol) == 14490438
+    again = ensure_index_fmtqik_through(db, "20261005")
+    assert again["reason"] == "already"
+    assert again["wrote"] == 0
+
+
 def test_increment_and_glance_wire_official():
     import inspect
 
