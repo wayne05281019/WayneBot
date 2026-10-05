@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 上市／上櫃／興櫃一律介紹圖＋高低溫度卡一次兩張、再送大量區專圖（非買訊）；點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→三合一圖（T0118）→介紹卡；點開高畫質。圖下其餘子鍵（產業／籌碼／營收…）；K線／導航已併進三合一不另放
 - 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -1080,7 +1080,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡／大量區專圖（非買訊）；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出高低溫度卡＋三合一圖＋介紹卡（非買訊）；三合一已含導航／結構／大量壓力，圖下不再放 K線／導航。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1959,7 +1959,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡＋大量區。",
+            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出高低溫度卡＋三合一＋介紹卡。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -1973,7 +1973,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡＋大量區。",
+            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出高低溫度卡＋三合一＋介紹卡。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -2366,40 +2366,19 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """興櫃兩排：K線／導航圖，再觀察／記買入（無產業）。上市櫃最多三顆一排。"""
+        """查股其餘子鍵（三合一後才出）。K線／導航已併進三合一，不另放。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
         news_label = str(news.get("label") or "").strip()
         news_url = _http_url(news.get("url") or "")
-        k_url = ""
-        try:
-            from stock_links import kline_page_url
-
-            dbp = getattr(self, "db_path", None)
-            k_url = _http_url(kline_page_url(c, dbp))
-        except Exception:
-            k_url = ""
-        nav = InlineKeyboardButton("導航圖", callback_data=f"g:{c}")
         actions = [
             InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
             InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
         ]
         if em:
-            top = []
-            if k_url:
-                top.append(InlineKeyboardButton("K線", url=k_url))
-            top.append(nav)
             # 興櫃介紹卡已含月營收／折線／毛利EPS，不再放「產業」鈕（上市櫃仍有）
-            return InlineKeyboardMarkup(
-                [
-                    top[:3],
-                    [
-                        InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
-                        InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
-                    ],
-                ]
-            )
+            return InlineKeyboardMarkup([actions])
         etf = False
         try:
             from universe import is_etf_asset
@@ -2410,32 +2389,16 @@ class WayneTelegramBot:
         top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
         if news_label and news_url:
             top.append(InlineKeyboardButton(news_label[:16], url=news_url))
-        if k_url:
-            top.append(InlineKeyboardButton("K線", url=k_url))
         listed = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
         if not etf:
             listed.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
-        if len(top) >= 3:
-            listed.append(nav)
-            return InlineKeyboardMarkup([top, listed, actions])
         if len(top) >= 2:
-            top.append(nav)
             return InlineKeyboardMarkup([top, listed, actions])
-        row1 = [
-            InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
-        ]
+        row1 = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
         if not etf:
             row1.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
         row1.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
-        if etf and len(row1) < 3:
-            row1.append(nav)
-            return InlineKeyboardMarkup([row1, [actions[0], actions[1]]])
-        return InlineKeyboardMarkup(
-            [
-                row1,
-                [nav, actions[0], actions[1]],
-            ]
-        )
+        return InlineKeyboardMarkup([row1, actions])
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -3319,7 +3282,7 @@ class WayneTelegramBot:
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
                 + "\n"
-                "3　一次出介紹圖＋高低溫度卡，點開高畫質。圖下有產業／導航／籌碼／營收／K線\n"
+                "3　一次出高低溫度卡＋三合一＋介紹卡，點開高畫質。圖下有產業／籌碼／營收等\n"
                 "\n"
                 "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
@@ -4025,15 +3988,16 @@ class WayneTelegramBot:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
         labels = {
             "glance": "介紹圖",
-            "card": "決策卡",
-            "volzone": "大量區",
-            "both": "介紹圖＋高低卡",
+            "card": "高低溫度卡",
+            "three": "三合一",
+            "volzone": "三合一",
+            "both": "高低溫度卡",
             "chart": "導航圖",
             "quote": "現價",
             "table": "讀高低卡",
-            "album": "一次送出",
+            "album": "送圖",
         }
-        order = ("quote", "both", "album", "volzone")
+        order = ("quote", "card", "three", "glance")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
@@ -6378,7 +6342,7 @@ class WayneTelegramBot:
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律介紹圖、決策卡、大量區。",
+            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律高低溫度卡、三合一、介紹卡。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "industry": "產業說明：請先選一檔。會送一張圖卡。同業＝同一產業鏈才比；跨族檔另標他還有的鏈。",
@@ -7995,7 +7959,6 @@ class WayneTelegramBot:
         is_em = self._hit_is_emerging(code, hits)
         progress_stop = asyncio.Event()
         progress_task = None
-        volzone_task = None
         op_t0 = time.monotonic()
         # 先進度／typing，再等 MIS；不然盤中現價 1～2s 泡泡停在 0 秒像當掉。
         self._op_state_map()[actor] = {"sent": [], "current": "quote", "t0": op_t0}
@@ -8179,7 +8142,6 @@ class WayneTelegramBot:
 
         try:
             from chip_tape import build_tape
-            from vol_zone_chart import VOL_ZONE_CAPTION_HEAD
             from wayne_navigator import (
                 NavigatorEngine,
                 render_decision_card_png,
@@ -8248,33 +8210,30 @@ class WayneTelegramBot:
                 card_cap = append_sanchi_to_caption(card_cap, card)
             except Exception:
                 pass
-            vol_path_f = self._scratch_chart_path(self.charts_dir, code, "volzone", uid_key)
-            vz_face = [VOL_ZONE_CAPTION_HEAD]
+            vol_path_f = self._scratch_chart_path(self.charts_dir, code, "three", uid_key)
+            three_face = ["三合一圖（導航＋結構＋大量壓力；非買訊）"]
 
-            def _render_volzone():
-                from vol_zone_chart import render_volume_zone_result
+            def _render_three():
+                from three_in_one_chart import render_three_in_one_result
 
-                # 大量區只吃官方原柱；不准用決策卡除權還原／盤中合併的 ohlc。
-                # 與壓撐觀察同一套完美版面（導航箭頭／量能／圖例；停價不准挖洞）。
-                path, cap = render_volume_zone_result(
+                # 三合一只吃官方原柱；③壓力不准盤中假柱。
+                path, cap = render_three_in_one_result(
                     code,
                     _stock_caption_name(card, code),
                     self.db_path,
                     vol_path_f,
                     card=card,
-                    with_nav_signals=True,
                 )
                 if cap:
-                    try:
-                        from sanchi_clocks import append_sanchi_to_caption
-
-                        vz_face[0] = append_sanchi_to_caption(cap, card)
-                    except Exception:
-                        vz_face[0] = cap
+                    three_face[0] = cap
                 return path
 
-            kind_labels = {"glance": "介紹圖", "card": "決策卡", "volzone": "大量區"}
-            render_plan_kinds = ("glance", "card")
+            kind_labels = {
+                "glance": "介紹圖",
+                "card": "高低溫度卡",
+                "three": "三合一",
+            }
+            render_plan_kinds = ("card", "three", "glance")
             sent_kinds: list[str] = []
             ready_items: list = []
 
@@ -8298,7 +8257,7 @@ class WayneTelegramBot:
                         return ""
                     looks_ok = (
                         self._chart_png_looks_ok(path)
-                        if kind == "chart"
+                        if kind in ("chart", "three")
                         else self._png_looks_ok(path)
                     )
                     if not looks_ok:
@@ -8320,29 +8279,32 @@ class WayneTelegramBot:
                     return None
                 return (kind, png, caption, markup)
 
-            vz_cap = VOL_ZONE_CAPTION_HEAD
+            three_cap = three_face[0]
+            # 三合一較重：預設查股逾時再加寬一截（環境變數仍可蓋）
+            three_timeout = float(
+                os.getenv("WAYNE_THREE_IN_ONE_TIMEOUT", str(max(_LOOKUP_PNG_TIMEOUT, 180.0)))
+            )
 
-            async def _volzone_item():
-                png = await _render_one("volzone", _render_volzone, _LOOKUP_PNG_TIMEOUT)
-                cap = vz_face[0] if vz_face and vz_face[0] else vz_cap
+            async def _three_item():
+                png = await _render_one("three", _render_three, three_timeout)
+                cap = three_face[0] if three_face and three_face[0] else three_cap
                 if not png:
                     return None
-                return ("volzone", png, cap, None)
+                return ("three", png, cap, None)
 
-            st = self._op_state_map().setdefault(actor, {"sent": [], "current": "both"})
-            st["current"] = "both"
+            st = self._op_state_map().setdefault(actor, {"sent": [], "current": "card"})
+            st["current"] = "card"
             st["sent"] = []
-            logger.info("查股階段 current=both sent=[] code=%s", code)
+            logger.info("查股階段 current=card sent=[] code=%s", code)
             # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
-            # 介紹圖等卡畫完再開：量字／savefig 共用一把 mpl_render，
-            # 若 gather 並行等鎖，後者 wait_for 會把排隊時間算進逾時。
+            # 順序鎖死：高低溫度卡 → 三合一 → 介紹卡；子鍵等二三張後才掛。
             card_render_task = asyncio.create_task(
                 _render_ready(
                     "card",
                     lambda: render_decision_card_png(card, card_path_f),
                     _LOOKUP_PNG_TIMEOUT,
                     card_cap,
-                    hub,
+                    None,
                 )
             )
             try:
@@ -8358,72 +8320,54 @@ class WayneTelegramBot:
                 )
 
             card_item = await card_render_task
-            glance_item = await _render_ready(
-                "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None
-            )
-            png_items = [item for item in (glance_item, card_item) if item]
-            # 大量區已改獨立 Agg；仍等介紹／高低卡先畫完再開，避開 FreeType 多執行緒踩字型。
-            # 跟相簿傳送同時走，牆鐘吃傳圖不是再加一輪重抓日K。
-            volzone_task = asyncio.create_task(_volzone_item())
-            pair_box = await asyncio.to_thread(
-                self._album_pair_box, [p for _k, p, _c, _m in png_items]
-            )
+            if card_item:
+                kind, path, caption, markup = card_item
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                ok = await send_photo(prep or path, caption, None, kind=kind)
+                if ok:
+                    sent_any = True
+                    sent_kinds.append(kind)
+                    ready_items.append(card_item)
 
-            async def _to_cell(item):
-                kind, png, caption, markup = item
-                jpeg = await asyncio.to_thread(self._prepare_album_cell, png, pair_box)
-                return (kind, jpeg or png, caption, markup)
-
-            cell_items = await asyncio.gather(*[_to_cell(item) for item in png_items])
-            for item in cell_items:
-                if not item:
-                    continue
-                kind, path, caption, markup = item
-                logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
-                ready_items.append((kind, path, caption, markup))
-                sent_kinds.append(kind)
-            st = self._op_state_map().setdefault(actor, {"sent": [], "current": "album"})
+            st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "three"})
+            st["current"] = "three"
             st["sent"] = list(sent_kinds)
-            st["current"] = "album"
+            # 三合一／介紹串行：合成腳本會 patch matplotlib，不准跟介紹同刻搶 FreeType。
+            three_item = await _three_item()
+            if three_item:
+                kind, path, caption, _mk = three_item
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                # 二三張出現後才掛其餘子鍵（先掛在三合一；介紹卡再帶一次）
+                ok = await send_photo(prep or path, caption, hub, kind=kind)
+                if ok:
+                    sent_any = True
+                    sent_kinds.append(kind)
+                    hub_on = True
+                    ready_items.append(three_item)
 
-            album_ok = False
-            if len(ready_items) >= 2:
-                album_ok = await self._send_lookup_album(message, ready_items)
-            if album_ok:
-                sent_any = True
-                if not lookup_faded:
-                    lookup_faded = True
-                    await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
-            else:
-                for kind, path, caption, markup in ready_items:
-                    ok = await send_photo(path, caption, markup, kind=kind)
-                    if ok and markup is hub:
-                        hub_on = True
-                    if ok:
-                        sent_any = True
+            st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "glance"})
+            st["current"] = "glance"
+            st["sent"] = list(sent_kinds)
+            glance_item = await _render_ready(
+                "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, hub
+            )
+            if glance_item:
+                kind, path, caption, markup = glance_item
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                ok = await send_photo(prep or path, caption, markup or hub, kind=kind)
+                if ok:
+                    sent_any = True
+                    sent_kinds.append(kind)
+                    hub_on = True
+                    ready_items.append(glance_item)
 
             try:
                 gc.collect()
             except Exception:
                 pass
 
-            try:
-                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
-                st["current"] = "volzone"
-                vz = await volzone_task
-            except Exception:
-                logger.exception("大量區專圖失敗 code=%s", code)
-                vz = None
-            if vz:
-                kind, path, caption, _mk = vz
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
-                ok = await send_photo(prep or path, caption, hub, kind=kind)
-                if ok:
-                    sent_any = True
-                    sent_kinds.append(kind)
-                    hub_on = True
-                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
-                st["sent"] = list(sent_kinds)
+            st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "glance"})
+            st["sent"] = list(sent_kinds)
 
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan_kinds):
@@ -8473,8 +8417,6 @@ class WayneTelegramBot:
             progress_stop.set()
             if progress_task is not None:
                 progress_task.cancel()
-            if volzone_task is not None and not volzone_task.done():
-                volzone_task.cancel()
             await _clear_wait()
             fade_roles = {"ack", "wait"}
             if sent_any:

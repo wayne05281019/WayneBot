@@ -248,12 +248,14 @@ def test_pressure_bot_paths_share_nav_volzone_layout():
     bot_src = inspect.getsource(WayneTelegramBot)
     assert src.count("with_nav_signals=True") >= 1
     assert trio.count("with_nav_signals=True") >= 1
-    assert bot_src.count("with_nav_signals=True") >= 3  # 子鈕＋三張＋查股大量區
+    # 壓撐子鈕＋三張仍走完美版面；查股改走三合一（內部仍 with_nav_signals）
+    assert bot_src.count("with_nav_signals=True") >= 2
     assert "pressure_card_html" in src
     assert "_pressure_section_keyboard" in src
     assert "tag_label" in trio
-    # 查股大量區也套同一套，不准退回舊空白／無圖例版
-    assert "with_nav_signals=True" in bot_src
+    tio = open("three_in_one_chart.py", encoding="utf-8").read()
+    assert "with_nav_signals=True" in tio
+    assert "render_three_in_one_result" in bot_src
     # 名單壓力區：逐檔 submit_mpl_paint 畫完就送；不准整頁 two_phase 逾時吞後面檔
     assert "submit_mpl_paint" in src
     assert "render_volume_zone_result" in src

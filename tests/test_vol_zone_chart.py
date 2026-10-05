@@ -111,36 +111,34 @@ def test_render_volume_zone_png_6274():
         assert os.path.getsize(path) > 20000
 
 
-def test_lookup_sends_volzone_third_photo():
+def test_lookup_sends_three_in_one_second_photo():
     import inspect
 
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    assert "render_volume_zone_result" in src
-    assert "render_volume_zone_png" in src or "大量區" in src
-    assert "volzone" in src
-    assert "大量區" in src
-    assert src.find("glance_item = await _render_ready") < src.find("create_task(_volzone_item")
-    assert src.find("create_task(_volzone_item") < src.find("_send_lookup_album")
-    assert src.find("create_task(_volzone_item") < src.find("await volzone_task")
-    # 大量區改獨立 Agg（可與相簿傳圖重疊）；不准跟介紹／高低卡同刻搶 FreeType
-    assert "FreeType" in src or "_new_lookup_figure" in open("vol_zone_chart.py", encoding="utf-8").read()
-    # 不准把決策卡還原 ohlc 塞進大量區
+    assert "render_three_in_one_result" in src
+    assert "three" in src
+    assert "三合一" in src
+    # 順序：高低溫度卡 → 三合一 → 介紹；子鍵掛在二三張
+    assert src.find('current"] = "card"') < src.find("await _three_item()")
+    assert src.find("await _three_item()") < src.find('current"] = "glance"')
+    assert 'send_photo(prep or path, caption, hub, kind=kind)' in src
+    # 不准把決策卡還原 ohlc 當③壓力柱
     assert "already_normalized=True" not in src
-    assert "不准用決策卡除權還原" in src or "只吃官方原柱" in src
-    # 興櫃與上市櫃同一條大量區；不准另開跳過路徑。is_em 只給鍵盤／標籤。
+    assert "③壓力不准盤中假柱" in src or "只吃官方原柱" in src
+    # 興櫃與上市櫃同一條；is_em 只給鍵盤／標籤
     assert "is_em = self._hit_is_emerging" in src
-    assert src.find("is_em = self._hit_is_emerging") < src.find("render_volume_zone_result")
     assert "if is_em:\n                return None" not in src
-    # 興櫃也合併現價（櫃買／Yahoo）；不准再寫死 merge_live=not is_em
     assert "merge_live=True" in src
     assert "merge_live=not is_em" not in src
-    assert "live_quote=None if is_em" not in src
-    # 導航圖本身不再疊大量區
+    # 導航圖本身不再疊大量區；三合一內部才合成
     nav = open("wayne_navigator.py", encoding="utf-8").read()
     assert "_paint_nav_volume_zone" not in nav
     assert "大量區壓" not in nav
+    tio = open("three_in_one_chart.py", encoding="utf-8").read()
+    assert "with_nav_signals=True" in tio
+    assert "LOCK_KEY" in tio and "T0118" in tio
 
 
 def test_vol_zone_http_not_inside_mpl_lock():
@@ -289,16 +287,16 @@ def test_vol_zone_uses_shared_volume_heights():
     assert "VOL_ZONE_TAG_PT" in src
 
 
-def test_emerging_help_mentions_volzone():
+def test_emerging_help_mentions_three_in_one():
     import inspect
 
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._em_no_listed_html)
-    assert "大量區" in src
-    mod = open("bot_servers.py", encoding="utf-8").read(800)
+    assert "三合一" in src or "高低卡" in src
+    mod = open("bot_servers.py", encoding="utf-8").read(900)
     assert "上市／上櫃／興櫃一律" in mod
-    assert "大量區專圖" in mod
+    assert "三合一" in mod
 
 
 def test_official_work_drops_live_and_keeps_raw_prices():
