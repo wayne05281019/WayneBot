@@ -67,12 +67,14 @@ def test_menu_slow_paths_start_plain_wait():
             assert load_i < src.index("build_and_cache_full_screening")
             assert "load_cached_full_screening" in src
             assert "build_and_cache_full_screening" in src
+            assert "screen_cache_ready" in src
             assert "screen_timeout_s = 180.0" in src
             timeout_zh = WayneTelegramBot._SCREEN_TIMEOUT_ZH
             assert "超過 3 分鐘" in timeout_zh
             assert "會自動推" in timeout_zh
             assert "不必再按" in timeout_zh
             assert "_speak_screen_timeout" in src
+            assert "_speak_timeout_and_late" in src or "_try_cache" in src
             assert load_i < src.index("await self._pin_reply_menu")
             assert "_track_actor_bg(actor, build_task)" not in src
             assert "keep_msg=status" in src
@@ -96,6 +98,9 @@ def test_manual_screening_loading_before_screen_work(monkeypatch):
     """按海選：第一則 Telegram 回覆必須是 LOADING，且早於 begin／DB 鍵盤／掃描。"""
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
     )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
@@ -142,6 +147,9 @@ def test_manual_screening_loading_before_screen_work(monkeypatch):
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
     monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
         "screening_engine.build_and_cache_full_screening", _build
     )
     msg = MagicMock()
@@ -172,6 +180,9 @@ def test_manual_screening_loading_before_gate(monkeypatch):
     """空白好幾秒的根因：gate／鎖句若先於 LOADING，話筒會空白。LOADING 必須先出。"""
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
     )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
@@ -278,6 +289,9 @@ def test_screen_on_text_first_reply_is_loading_not_blank(monkeypatch):
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
     monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
+    )
+    monkeypatch.setattr(
         "screening_engine.build_and_cache_full_screening",
         lambda *_a, **_k: {"as_of": "20261002", "results": {}, "payload": []},
     )
@@ -358,6 +372,9 @@ def test_stop_plain_wait_clears_on_success_and_fail():
 def test_manual_screening_fail_sends_error_not_blank(monkeypatch):
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
     )
     monkeypatch.setattr(
         "screening_engine.build_and_cache_full_screening",
@@ -782,6 +799,9 @@ def test_generation_cancels_stale_screen_delivery(monkeypatch):
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
+    )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
     bot._screening_running = set()
@@ -860,6 +880,9 @@ def test_manual_screening_cache_miss_builds_and_saves(monkeypatch):
 
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
     )
     monkeypatch.setattr(
         "screening_engine.build_and_cache_full_screening", _build
@@ -1027,7 +1050,8 @@ def _bare_screen_bot():
     bot._menu_uid_from_message = MagicMock(return_value="u1")
     bot.screener = MagicMock()
     bot.screener.run_full_screening = MagicMock(side_effect=AssertionError("no bare full"))
-    bot.db_path = "data/wayne_market.db"
+    # 不准誤踩本機正式庫的 screen_sessions，否則 has_cache 會跳過全掃路徑。
+    bot.db_path = "/tmp/wayne-bare-screen-empty.db"
     return bot
 
 
@@ -1037,6 +1061,9 @@ def test_screen_then_flow_without_restore_main_menu(monkeypatch):
 
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
     )
     started = asyncio.Event()
     release = asyncio.Event()
@@ -1116,7 +1143,9 @@ def test_screen_timeout_releases_gate_and_late_pushes(monkeypatch):
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
-
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
+    )
     def _slow(_db=None):
         _t.sleep(0.25)
         return {
@@ -1325,7 +1354,9 @@ def test_first_screen_reply_never_timeout_copy(monkeypatch):
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
-
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
+    )
     def _boom(_db=None):
         raise TimeoutError("sqlite busy")
 
@@ -1350,6 +1381,9 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
 
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
     )
     n = {"build": 0}
     release = asyncio.Event()
@@ -1404,6 +1438,9 @@ def test_busy_screen_keeps_loading_not_timeout(monkeypatch):
 
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
     )
     release = asyncio.Event()
 
@@ -1467,20 +1504,31 @@ def test_timeout_retries_cache_before_speaking(monkeypatch):
         }
 
     monkeypatch.setattr("screening_engine.load_cached_full_screening", _load)
+    monkeypatch.setattr("screening_engine.screen_cache_ready", lambda *_a, **_k: False)
 
     def _slow(_db=None):
-        _t.sleep(0.3)
+        _t.sleep(2.0)
         return {"as_of": "20261002", "results": {}, "payload": []}
 
     monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
     bot = _bare_screen_bot()
-    bot._screen_timeout_s = 0.05
+    bot._screen_timeout_s = 0.2
     msg = MagicMock()
     status = MagicMock()
     status.edit_text = AsyncMock()
     msg.reply_text = AsyncMock(return_value=status)
 
-    asyncio.run(bot._run_manual_screening(msg, "u1"))
+    async def run():
+        await bot._run_manual_screening(msg, "u1")
+        late = getattr(bot, "_screening_late_task", None)
+        if isinstance(late, asyncio.Task) and not late.done():
+            late.cancel()
+            try:
+                await late
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    asyncio.run(run())
     first = str(msg.reply_text.await_args_list[0].args[0])
     assert "LOADING" in first
     edited = " ".join(str(c.args[0]) for c in status.edit_text.await_args_list if c.args)
@@ -1490,6 +1538,101 @@ def test_timeout_retries_cache_before_speaking(monkeypatch):
     assert "已超過 3 分鐘" not in blob
     bot._reply_screening_payload.assert_awaited()
     assert calls["n"] >= 2
+
+
+def test_timeout_speaks_even_if_cache_reload_hangs(monkeypatch):
+    """逾時後讀快取若卡死，仍必須先停 ticker 改口，不准一直「掃描全市場」。"""
+    import time as _t
+
+    monkeypatch.setattr("screening_engine.screen_cache_ready", lambda *_a, **_k: False)
+    n = {"load": 0}
+
+    def _load(_db=None):
+        n["load"] += 1
+        if n["load"] == 1:
+            return None
+        # 逾時後再讀：卡住超過 _try_cache(3) 預算；必須被掐掉。
+        _t.sleep(5)
+        return None
+
+    monkeypatch.setattr("screening_engine.load_cached_full_screening", _load)
+
+    def _slow(_db=None):
+        # 必須比 remain + 短試快取(3s) 更久；又不能太長拖住 asyncio.run 的 to_thread。
+        _t.sleep(5)
+        return {"as_of": "20261002", "results": {}, "payload": []}
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _slow)
+    bot = _bare_screen_bot()
+    bot._screen_timeout_s = 0.25
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    t0 = _t.monotonic()
+
+    async def run():
+        await bot._run_manual_screening(msg, "u1")
+        for t in (
+            getattr(bot, "_screening_late_task", None),
+            getattr(bot, "_screening_build_task", None),
+        ):
+            if isinstance(t, asyncio.Task) and not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    asyncio.run(run())
+    elapsed = _t.monotonic() - t0
+    assert elapsed < 8.0
+    first = str(msg.reply_text.await_args_list[0].args[0])
+    assert "LOADING" in first
+    blob = " ".join(
+        str(c.args[0])
+        for c in list(msg.reply_text.await_args_list) + list(status.edit_text.await_args_list)
+        if c.args
+    )
+    assert "已超過 3 分鐘" in blob or "逾時" in blob
+    assert "掃描全市場" not in blob.split("已超過")[-1] if "已超過" in blob else True
+
+
+def test_existing_sessions_never_start_full_scan(monkeypatch):
+    """有 screen_sessions 只讀快取出卡，不准 build_and_cache 全掃。"""
+    built = {"n": 0}
+
+    monkeypatch.setattr("screening_engine.screen_cache_ready", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        "screening_engine.load_cached_full_screening",
+        lambda *_a, **_k: {
+            "as_of": "20261002",
+            "from_cache": True,
+            "results": {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電"}]},
+            "payload": [],
+        },
+    )
+
+    def _boom(_db=None):
+        built["n"] += 1
+        raise AssertionError("不准全掃")
+
+    monkeypatch.setattr("screening_engine.build_and_cache_full_screening", _boom)
+    bot = _bare_screen_bot()
+    msg = MagicMock()
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+    asyncio.run(bot._run_manual_screening(msg, "u1"))
+    assert built["n"] == 0
+    bot._reply_screening_payload.assert_awaited()
+    blob = " ".join(
+        str(c.args[0])
+        for c in list(msg.reply_text.await_args_list) + list(status.edit_text.await_args_list)
+        if c.args
+    )
+    assert "已超過 3 分鐘" not in blob
 
 
 def test_refresh_then_pin_is_one_menu_message():

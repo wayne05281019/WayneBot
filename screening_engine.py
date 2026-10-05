@@ -2962,16 +2962,39 @@ def load_cached_full_screening(db_path: str = None) -> Optional[Dict[str, Any]]:
     }
 
 
+_FULL_SCREEN_BUILD_LOCK = threading.Lock()
+
+
+def screen_cache_ready(db_path: str = None) -> bool:
+    """最新完整日是否已有 screen_sessions（便宜 SELECT，給手動海選決定要不要全掃）。"""
+    path = db_path or get_db_path()
+    as_of = _resolve_screen_as_of_ymd(path)
+    if not as_of:
+        return False
+    try:
+        from screen_sessions import screen_session_has_data
+
+        return bool(screen_session_has_data(path, as_of))
+    except Exception:
+        return False
+
+
 def build_and_cache_full_screening(db_path: str = None) -> Dict[str, Any]:
     """手動海選補建：全掃並強制寫入 screen_sessions（morning），下次／自動推可讀快取。
 
     session 必須非空，否則 execute_full_screening 不會 save_screen_session。
+    全市場掃全域鎖：catch_up 與手動海選不准雙開把 DB 鎖死。
+    進鎖後若快取已在，直接讀回，不准重掃。
     """
     path = db_path or get_db_path()
-    as_of = _resolve_screen_as_of_ymd(path) or None
-    return execute_full_screening(
-        path, target_date=as_of, apply_us=True, session="morning"
-    )
+    with _FULL_SCREEN_BUILD_LOCK:
+        cached = load_cached_full_screening(path)
+        if cached:
+            return cached
+        as_of = _resolve_screen_as_of_ymd(path) or None
+        return execute_full_screening(
+            path, target_date=as_of, apply_us=True, session="morning"
+        )
 
 
 def execute_full_screening(
