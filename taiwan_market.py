@@ -2001,7 +2001,6 @@ def _backfill_zero_index_volumes(db_path: str) -> int:
     try:
         from official_snapshots import (
             TWSE_FMTQIK,
-            ensure_index_fmtqik_through,
             fetch_fmtqik_rwd,
             fetch_json,
             merge_fmtqik_prefer_openapi,
@@ -2010,24 +2009,19 @@ def _backfill_zero_index_volumes(db_path: str) -> int:
         )
 
         openapi = parse_fmtqik(fetch_json(TWSE_FMTQIK) or [])
+        # 只對「已有列但量=0」的日期抓 rwd；不准為 fuse_end 另開新日寫進歷史測試庫
         rwd: list = []
         try:
-            from trading_calendar import fuse_end_trading_date
-
-            cap = fuse_end_trading_date()
-            if cap:
-                rwd = fetch_fmtqik_rwd(cap)
+            sample = sorted(need)[-1]
+            if sample:
+                rwd = fetch_fmtqik_rwd(sample)
         except Exception:
             rwd = []
         merged = merge_fmtqik_prefer_openapi(openapi, rwd)
         rows = [r for r in merged if str(r.get("date") or "") in need]
-        n = int(overlay_fmtqik(db_path, rows) or 0) if rows else 0
-        # 零量列補完後，再確認 fuse_end 本列有收＋量（Yahoo 缺日時 zeros 查不到）
-        try:
-            ensure_index_fmtqik_through(db_path)
-        except Exception:
-            pass
-        return n
+        if not rows:
+            return 0
+        return int(overlay_fmtqik(db_path, rows) or 0)
     except Exception as exc:
         logger.warning("FMTQIK 補加權量失敗: %s", exc)
         return 0
@@ -2094,14 +2088,25 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
     filled = _backfill_zero_index_volumes(db_path)
     if filled:
         out["fmtqik_volume_fill"] = filled
+    # Yahoo／OpenAPI 常晚幾日：僅當庫內最新日已貼近 fuse_end 才打 rwd 補缺日。
+    # 歷史測試匣（差很遠）不准抓當月 rwd 多寫列、也不改 latest_source。
     try:
-        from official_snapshots import ensure_index_fmtqik_through
+        from datetime import datetime as _dt
 
-        ensured = ensure_index_fmtqik_through(db_path)
-        if ensured.get("reason") not in ("already",):
+        from official_snapshots import ensure_index_fmtqik_through
+        from trading_calendar import fuse_end_trading_date
+
+        fuse_cap = str(fuse_end_trading_date() or "").replace("-", "")[:8]
+        if (
+            len(fuse_cap) == 8
+            and len(latest) == 8
+            and latest < fuse_cap
+            and (_dt.strptime(fuse_cap, "%Y%m%d") - _dt.strptime(latest, "%Y%m%d")).days <= 14
+        ):
+            ensured = ensure_index_fmtqik_through(db_path, fuse_cap)
             out["fmtqik_ensure"] = ensured
-            if ensured.get("ok") and ensured.get("cap"):
-                out["latest"] = str(ensured["cap"])
+            if ensured.get("ok") and int(ensured.get("wrote") or 0) > 0:
+                out["latest"] = str(ensured.get("cap") or fuse_cap)
                 out["latest_source"] = "twse_fmtqik_rwd"
     except Exception as exc:
         logger.warning("加權 fuse_end rwd 補齊略過：%s", exc)
