@@ -149,7 +149,7 @@ def _field_arc(rows: Sequence[Dict[str, Any]]) -> List[str]:
     drone_ever = any("無人機" in str(r.get("text") or "") for r in rows)
     if drone_ever and not drone_recent:
         lines.append(
-            "已退場：無人機近窗沒再講——不准再建議中光電／雷虎／事欣科那組，那是廢物做法。"
+            "已退場：無人機近窗沒再講——不准再建議中光電／雷虎／事欣科那組。"
         )
     return lines
 

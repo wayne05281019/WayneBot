@@ -224,6 +224,73 @@ def test_advice_never_pushes_retired_drone(tmp_path):
     assert "雷虎" not in blob
 
 
+def test_retired_drone_reply_omits_insult_aside(tmp_path):
+    """已退場可標「不准再建議」；話筒不准出「廢物／廢物做法」罵句。"""
+    import sqlite3
+    from biaoke_live import SYSTEM
+    from biaoke_reweave import _field_arc, format_reweave_html, reweave_gold, reweave_live_notes
+
+    assert "廢物" not in SYSTEM
+    assert "廢物做法" not in SYSTEM
+
+    # 四月窗內提過無人機，近 40 則沒再講 → 應出已退場、不准罵
+    old = {
+        "date": "2026-06-20",
+        "text": "無人機族群中光電、雷虎、事欣科不要再碰。",
+        "kind": "post",
+    }
+    fillers = [
+        {
+            "date": f"2026-09-{(i % 28) + 1:02d}",
+            "text": f"光通訊 InP ASIC 創意雙箭頭 {i}",
+            "kind": "post",
+        }
+        for i in range(1, 45)
+    ]
+    arc = "\n".join(_field_arc([old] + fillers))
+    assert "已退場" in arc
+    assert "不准再建議" in arc
+    assert "中光電" in arc and "雷虎" in arc and "事欣科" in arc
+    assert "廢物" not in arc
+    assert "廢物做法" not in arc
+
+    db = _mk_db(tmp_path)
+    conn = sqlite3.connect(db)
+    # 仍在 REWEAVE_DAYS 窗內，但被後續 40+ 則蓋過近窗
+    conn.execute(
+        "INSERT INTO biaoke_posts(id,date,time,text,kind) VALUES(?,?,?,?,?)",
+        (
+            "old-drone-insult",
+            "2026-06-20",
+            "10:00:00",
+            "無人機族群長榮航、中光電、事欣科不要再碰。亞航、雷虎風險大。",
+            "post",
+        ),
+    )
+    for i in range(1, 45):
+        conn.execute(
+            "INSERT INTO biaoke_posts(id,date,time,text,kind) VALUES(?,?,?,?,?)",
+            (
+                f"fill-{i}",
+                f"2026-09-{(i % 28) + 1:02d}",
+                "11:00:00",
+                f"光通訊 InP ASIC 創意雙箭頭 {i}",
+                "post",
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+    pack = reweave_gold(db, force=True)
+    blob = "\n".join(pack.get("lines") or [])
+    html = format_reweave_html(db)
+    notes = reweave_live_notes(db)
+    for text in (blob, html, notes):
+        assert "已退場" in text
+        assert "廢物" not in text
+        assert "廢物做法" not in text
+
+
 def test_field_advice_charts_give_all_with_how(tmp_path):
     from biaoke_advisor import (
         action_advice_pack,
@@ -250,6 +317,14 @@ def test_field_advice_charts_give_all_with_how(tmp_path):
     )
     assert len(targets) >= n_rows
     assert all(t.get("do") and t.get("how") for t in targets)
+    by_sid = {str(t.get("sid")): t for t in targets}
+    # 介紹區短標：創意＝ASIC、聯亞＝InP（對齊表頭，供按檔鈕括號）
+    if "3443" in by_sid:
+        assert by_sid["3443"].get("theme") == "ASIC"
+    if "3081" in by_sid:
+        assert by_sid["3081"].get("theme") == "InP"
+    themed = [t for t in targets if t.get("theme")]
+    assert themed, "介紹鏈目標應帶 theme 短標"
     html = format_action_advice_html(db, ask="InP")
     html_sids = set(sids_mentioned_in_advice_html(html))
     chart_sids = {str(t.get("sid")) for t in targets}

@@ -1181,6 +1181,15 @@ _INTRO_CHART_LIMITS = (
 )
 
 
+# 與 format_action_advice_html 介紹區表頭對齊的短標（話筒按檔鈕括號用）
+_INTRO_THEME_TAG = {
+    "asic": "ASIC",
+    "inp": "InP",
+    "fau": "FAU",
+    "cpo": "CPO",
+}
+
+
 def _row_to_chart_target(row: Dict[str, Any], *, basis: str = "") -> Dict[str, Any]:
     """單列轉出圖目標；缺 do/how 時用分桶規則補一句，不准空白 silently 丟。"""
     r = dict(row or {})
@@ -1195,6 +1204,7 @@ def _row_to_chart_target(row: Dict[str, Any], *, basis: str = "") -> Dict[str, A
         "how": str(r.get("how") or "對照官方柱與近窗說法；切入仍只認黃金買點。"),
         "evidence": str(r.get("evidence") or _evidence_bit(r)),
         "basis": str(r.get("basis") or basis or ""),
+        "theme": str(r.get("theme") or "").strip(),
     }
 
 
@@ -1224,6 +1234,16 @@ def advice_chart_targets(
             sid = str((r or {}).get("sid") or "")
             if sid:
                 by_sid[sid] = r
+    # 介紹區各桶 → 短主題標（先寫先贏；ASIC 龍頭／相關同標 ASIC）
+    sid_theme: Dict[str, str] = {}
+    for key, _lim, flag in _INTRO_CHART_LIMITS:
+        tag = _INTRO_THEME_TAG.get(flag) or ""
+        if not tag:
+            continue
+        for r in pack.get(key) or []:
+            sid = str((r or {}).get("sid") or "")
+            if sid and sid not in sid_theme:
+                sid_theme[sid] = tag
 
     def _push(row: Dict[str, Any]) -> None:
         sid = str((row or {}).get("sid") or "")
@@ -1232,7 +1252,11 @@ def advice_chart_targets(
         if advice_sid_blocked(db_path, sid):
             return
         seen.add(sid)
-        src = by_sid.get(sid) or row
+        src = dict(by_sid.get(sid) or row or {})
+        if not str(src.get("theme") or "").strip():
+            th = sid_theme.get(sid) or ""
+            if th:
+                src["theme"] = th
         out.append(_row_to_chart_target(src, basis=basis))
 
     # 1) 介紹鏈：跟 format_action_advice_html 同一上限／開關

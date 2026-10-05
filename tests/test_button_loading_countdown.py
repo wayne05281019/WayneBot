@@ -690,6 +690,24 @@ def test_biaoke_entry_has_loading_and_fail_text():
     )
 
 
+def test_biaoke_advice_chart_btn_label_includes_theme():
+    """按檔鈕文案要有 (主題)；無主題時仍只顯示代號股名。"""
+    lab = WayneTelegramBot._biaoke_advice_chart_btn_label(
+        {"sid": "3443", "name": "創意", "theme": "ASIC"}
+    )
+    assert lab == "3443 創意 (ASIC)"
+    assert "(" in lab and ")" in lab
+    lab2 = WayneTelegramBot._biaoke_advice_chart_btn_label(
+        {"sid": "3081", "name": "聯亞", "theme": "InP"}
+    )
+    assert lab2 == "3081 聯亞 (InP)"
+    bare = WayneTelegramBot._biaoke_advice_chart_btn_label(
+        {"sid": "2330", "name": "台積電", "theme": ""}
+    )
+    assert bare == "2330 台積電"
+    assert "(" not in bare
+
+
 def test_biaoke_advice_charts_ondemand_no_auto_flood(monkeypatch, tmp_path):
     """多檔：只送名單＋按檔鈕，不准自動 reply_photo 洗版。"""
     from pathlib import Path
@@ -717,14 +735,16 @@ def test_biaoke_advice_charts_ondemand_no_auto_flood(monkeypatch, tmp_path):
             "how": "剛脫離零",
             "evidence": "近5日+1%",
             "basis": "雙箭頭",
+            "theme": "InP",
         },
         {
-            "sid": "2330",
-            "name": "台積電",
+            "sid": "3443",
+            "name": "創意",
             "do": "等回測再接",
             "how": "等回測",
             "evidence": "官方柱",
             "basis": "雙箭頭",
+            "theme": "ASIC",
         },
     ]
 
@@ -753,7 +773,7 @@ def test_biaoke_advice_charts_ondemand_no_auto_flood(monkeypatch, tmp_path):
             actor="u1",
             kind="biaoke",
             gen=1,
-            spoken_html="quote/3081.TWO quote/2330.TW",
+            spoken_html="quote/3081.TWO quote/3443.TW",
         )
 
     asyncio.run(run())
@@ -763,12 +783,17 @@ def test_biaoke_advice_charts_ondemand_no_auto_flood(monkeypatch, tmp_path):
     msg.reply_html.assert_awaited()
     html = str(msg.reply_html.await_args.args[0])
     assert "按檔才出" in html
-    assert "3081" in html and "2330" in html
+    assert "3081" in html and "3443" in html
+    assert "(InP)" in html and "(ASIC)" in html
     kb = msg.reply_html.await_args.kwargs.get("reply_markup")
     datas = [b.callback_data for r in kb.inline_keyboard for b in r]
-    assert datas == ["bkac:3081", "bkac:2330"]
+    labels = [b.text for r in kb.inline_keyboard for b in r]
+    assert datas == ["bkac:3081", "bkac:3443"]
+    assert "3081 聯亞 (InP)" in labels
+    assert "3443 創意 (ASIC)" in labels
+    assert all("(" in lab and ")" in lab for lab in labels)
     assert "u1" in bot._biaoke_advice_sess
-    assert set(bot._biaoke_advice_sess["u1"]["targets"]) == {"3081", "2330"}
+    assert set(bot._biaoke_advice_sess["u1"]["targets"]) == {"3081", "3443"}
 
 
 def test_biaoke_advice_chart_callback_sends_one(monkeypatch, tmp_path):
