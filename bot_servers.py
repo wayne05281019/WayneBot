@@ -3343,11 +3343,17 @@ class WayneTelegramBot:
         return f"{m}:{s:02d}" if m else f"{s} 秒"
 
     @classmethod
-    def _screening_progress_text(cls, elapsed_sec: int, *, done: bool = False) -> str:
+    def _screening_progress_text(
+        cls, elapsed_sec: int, *, done: bool = False, phase: str = "scan"
+    ) -> str:
         if done:
             return WayneTelegramBot._wait_bubble("海選完成", elapsed_sec, now="推送名單")
-        now = "掃描全市場"
-        rest = "黃金買點／還在零"
+        if str(phase or "") == "cache":
+            now = "讀取名單快取"
+            rest = "黃金買點／還在零"
+        else:
+            now = "掃描全市場"
+            rest = "黃金買點／還在零"
         return WayneTelegramBot._wait_bubble(
             "海選進行中", elapsed_sec, now=now, rest=rest, fill_sec=300.0
         )
@@ -3447,6 +3453,7 @@ class WayneTelegramBot:
         assigned_gen = {"n": 0}
         t0 = time.monotonic()
         status_consumed = False
+        progress_phase = {"name": "scan"}  # cache｜scan：LOADING 文案分開，不准有快取還寫掃描全市場
 
         async def _tick():
             if status is None:
@@ -3456,14 +3463,16 @@ class WayneTelegramBot:
                 if g and not self._actor_op_alive(actor, op_kind, g):
                     break
                 elapsed = int(time.monotonic() - t0)
+                # edit_text 不通／flood 不准堵死 ticker；超時就跳過這拍繼續倒數。
+                await self._safe_edit_text(
+                    status,
+                    self._screening_progress_text(
+                        elapsed, phase=str(progress_phase.get("name") or "scan")
+                    ),
+                    parse_mode="HTML",
+                )
                 try:
-                    await status.edit_text(
-                        self._screening_progress_text(elapsed), parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=5.0)
+                    await asyncio.wait_for(stop.wait(), timeout=1.0)
                     break
                 except asyncio.TimeoutError:
                     continue
@@ -3475,12 +3484,15 @@ class WayneTelegramBot:
                 return
             task.cancel()
             try:
-                await task
-            except (asyncio.CancelledError, Exception):
+                # 卡住的 edit_text 不准拖住逾時改口。
+                await asyncio.wait_for(task, timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                 pass
 
         # LOADING 已出：立刻倒數。同一人上一輪還在建檔時改跟同一輪，不准直接丟逾時／請稍候。
         ticker = asyncio.create_task(_tick())
+        deadline_hit = asyncio.Event()
+        deadline_box: dict = {"task": None}
         async with self._screening_gate:
             if self._screening_global_owner and self._screening_global_owner != actor:
                 await _stop_ticker()
@@ -3549,10 +3561,22 @@ class WayneTelegramBot:
                 actor, op_kind, gen=gen, wait_msg=status, stop=stop, task=ticker
             )
 
+            async def _deadline_watch() -> None:
+                left = float(screen_timeout_s) - (time.monotonic() - t0)
+                if left > 0:
+                    try:
+                        await asyncio.sleep(left)
+                    except Exception:
+                        return
+                deadline_hit.set()
+
+            deadline_box["task"] = asyncio.create_task(_deadline_watch())
+
             def _load_cache():
                 from screening_engine import load_cached_full_screening
 
-                return load_cached_full_screening(self.db_path)
+                # light：跳過展望／洞燭重活，名單秒出；鎖庫時也不准把 ticker 凍住。
+                return load_cached_full_screening(self.db_path, light=True)
 
             def _cache_ready():
                 from screening_engine import screen_cache_ready
@@ -3579,7 +3603,10 @@ class WayneTelegramBot:
                 )
             except Exception:
                 has_cache = False
-            cache_budget = 25.0 if has_cache else 8.0
+            if has_cache:
+                progress_phase["name"] = "cache"
+            # light 快取應秒級；給短預算即可（舊 25s 全量展望會在鎖庫時把 loop 拖死）。
+            cache_budget = 6.0 if has_cache else 4.0
             cached = await _try_cache(min(cache_budget, screen_timeout_s))
             if cached:
                 stop.set()
@@ -3611,7 +3638,9 @@ class WayneTelegramBot:
                 """已有 sessions：只重讀快取推卡，不准再開全掃。"""
                 for _ in range(90):
                     try:
-                        again = await asyncio.to_thread(_load_cache)
+                        again = await asyncio.wait_for(
+                            asyncio.to_thread(_load_cache), timeout=5.0
+                        )
                     except Exception:
                         again = None
                     if again:
@@ -3624,16 +3653,17 @@ class WayneTelegramBot:
                     pass
 
             if has_cache:
-                # 快取在但讀不出（多半 DB lock）：等到前端上限，改口逾時，背景續讀必推。
+                # 快取在但讀不出（多半 DB lock）：等到前端上限／deadline，改口逾時，背景續讀必推。
                 async def _poll_cache_until():
-                    while True:
-                        again = await _try_cache(3.0)
+                    while not deadline_hit.is_set():
+                        again = await _try_cache(2.0)
                         if again:
                             return again
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(0.5)
+                    return None
 
                 remain = screen_timeout_s - (time.monotonic() - t0)
-                if remain <= 0:
+                if remain <= 0 or deadline_hit.is_set():
                     cached = None
                 else:
                     try:
@@ -3747,9 +3777,9 @@ class WayneTelegramBot:
                 hold_gate = False
 
             # 不准 _track_actor_bg：換下一顆鈕不准取消快取建檔，否則永遠要再按一次。
-            # 前端等待用「自 t0 起算」的剩餘秒數，避免前置讀快取吃掉 180s 還不改口。
+            # 前端等待用「自 t0 起算」的剩餘秒數，並與 deadline_hit 競速。
             remain = screen_timeout_s - (time.monotonic() - t0)
-            if remain <= 0:
+            if remain <= 0 or deadline_hit.is_set():
                 elapsed = time.monotonic() - t0
                 if self._screen_wait_was_long_enough(elapsed, screen_timeout_s):
                     await _speak_timeout_and_late()
@@ -3761,19 +3791,47 @@ class WayneTelegramBot:
                     delivered = True
                     hold_gate = False
                 return
+            # shield 回 Future，直接丟進 wait；不准 create_task(shield(...))。
+            build_wait = asyncio.shield(build_task)
+            deadline_wait = asyncio.create_task(deadline_hit.wait())
             try:
-                result = await asyncio.wait_for(
-                    asyncio.shield(build_task), timeout=remain
+                done, pending = await asyncio.wait(
+                    {build_wait, deadline_wait},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
             except asyncio.CancelledError:
-                # 回主選單／換鍵 cancel 了等待：快取 thread 仍續跑；這輪不准晚送。
+                for p in (build_wait, deadline_wait):
+                    p.cancel()
                 cancelled = True
                 return
-            except asyncio.TimeoutError:
+            for p in pending:
+                p.cancel()
+                try:
+                    await p
+                except (asyncio.CancelledError, Exception):
+                    pass
+            if build_wait in done and not build_wait.cancelled():
+                try:
+                    result = build_wait.result()
+                except asyncio.CancelledError:
+                    cancelled = True
+                    return
+                except Exception:
+                    logger.exception("海選建檔失敗")
+                    if self._actor_op_alive(actor, op_kind, gen):
+                        try:
+                            await message.reply_text(PHONE_BUSY, reply_markup=hub)
+                            delivered = True
+                        except Exception:
+                            logger.exception("海選失敗提示送出失敗")
+                    if getattr(self, "_screening_build_task", None) is build_task:
+                        self._screening_build_task = None
+                    return
+            else:
                 elapsed = time.monotonic() - t0
                 if not self._screen_wait_was_long_enough(elapsed, screen_timeout_s):
                     logger.warning(
-                        "海選 TimeoutError 未滿前端等待 elapsed=%.2f need=%.2f，保持 LOADING actor=%s",
+                        "海選 deadline 未滿前端等待 elapsed=%.2f need=%.2f，保持 LOADING actor=%s",
                         elapsed,
                         screen_timeout_s,
                         actor,
@@ -3841,6 +3899,9 @@ class WayneTelegramBot:
                 cancelled = True
         finally:
             stop.set()
+            dt = deadline_box.get("task")
+            if isinstance(dt, asyncio.Task) and not dt.done():
+                dt.cancel()
             if ticker is not None:
                 ticker.cancel()
             self._unregister_actor_wait(actor, op_kind, gen=gen)
@@ -3944,6 +4005,24 @@ class WayneTelegramBot:
             rest = f"還剩 {left} 檔" if left else "收尾"
         return WayneTelegramBot._wait_bubble("飆大進行中", elapsed_sec, now=now, rest=rest)
 
+    _EDIT_WAIT_TIMEOUT_S = 2.0
+
+    async def _safe_edit_text(self, msg, text: str, **kwargs) -> bool:
+        """LOADING／進度 edit：必須有硬上限，不准一則卡住凍住全部秒數。
+
+        Telegram flood／連線掛死時跳過這拍，讓 ticker 下一秒繼續。
+        """
+        if msg is None:
+            return False
+        try:
+            await asyncio.wait_for(
+                msg.edit_text(text, **kwargs),
+                timeout=float(self._EDIT_WAIT_TIMEOUT_S),
+            )
+            return True
+        except Exception:
+            return False
+
     async def _start_plain_wait(
         self,
         message,
@@ -3956,6 +4035,7 @@ class WayneTelegramBot:
         """查股那種連續更新的方塊。不掛鍵盤，免得刪掉時把主選單收走。
 
         有 actor/kind/gen 時：過期 generation 不准再 edit；海選／飆大各自一則。
+        edit_text 一律 ≤2s：海選全掃再重，飆大 LOADING 秒數也不准凍住。
         """
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return None, None, None
@@ -3973,22 +4053,21 @@ class WayneTelegramBot:
                 try:
                     chat = getattr(message, "chat", None)
                     if chat is not None and hasattr(chat, "send_action"):
-                        await chat.send_action("typing")
+                        await asyncio.wait_for(chat.send_action("typing"), timeout=1.0)
                 except Exception:
                     pass
                 try:
-                    await asyncio.wait_for(stop.wait(), timeout=2.0)
+                    await asyncio.wait_for(stop.wait(), timeout=1.0)
                     break
                 except asyncio.TimeoutError:
                     pass
                 if actor and kind and not self._actor_op_alive(actor, kind, gen):
                     break
-                try:
-                    await wait_msg.edit_text(
-                        text_fn(int(time.monotonic() - t0)), parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
+                await self._safe_edit_text(
+                    wait_msg,
+                    text_fn(int(time.monotonic() - t0)),
+                    parse_mode="HTML",
+                )
 
         task = asyncio.create_task(_tick())
         if actor and kind:
@@ -4010,10 +4089,11 @@ class WayneTelegramBot:
         if stop is not None:
             stop.set()
         if task is not None:
+            task.cancel()
             try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=0.4)
-            except Exception:
-                task.cancel()
+                await asyncio.wait_for(task, timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                pass
         if actor and kind:
             self._unregister_actor_wait(actor, kind, gen=gen)
         # 過期 generation：只刪自己的等待框，不准再當成「成功收起」去蓋別鍵。
@@ -5586,18 +5666,16 @@ class WayneTelegramBot:
                 return
             if gen and not self._actor_op_alive(actor, kind, gen):
                 return
-            try:
-                await wait_msg.edit_text(
-                    self._biaoke_progress_text(
-                        int(time.monotonic() - float(prog["t0"])),
-                        current="chart",
-                        done=prog["done"],
-                        total=prog["total"],
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
+            await self._safe_edit_text(
+                wait_msg,
+                self._biaoke_progress_text(
+                    int(time.monotonic() - float(prog["t0"])),
+                    current="chart",
+                    done=prog["done"],
+                    total=prog["total"],
+                ),
+                parse_mode="HTML",
+            )
 
         async def _skip(name: str, sid: str, reason: str) -> None:
             """不准靜默少圖：略過要講清楚。"""
@@ -7759,25 +7837,23 @@ class WayneTelegramBot:
                     break
                 st = self._op_state_map().get(actor) or {}
                 elapsed = int(time.monotonic() - op_t0)
-                try:
-                    await wait_msg.edit_text(
-                        self._chart_progress_text(
-                            elapsed,
-                            sent=st.get("sent") or [],
-                            current=str(st.get("current") or ""),
-                        ),
-                        parse_mode="HTML",
-                    )
-                except Exception:
-                    pass
+                await self._safe_edit_text(
+                    wait_msg,
+                    self._chart_progress_text(
+                        elapsed,
+                        sent=st.get("sent") or [],
+                        current=str(st.get("current") or ""),
+                    ),
+                    parse_mode="HTML",
+                )
                 try:
                     chat = getattr(message, "chat", None)
                     if chat is not None and hasattr(chat, "send_action"):
-                        await chat.send_action("typing")
+                        await asyncio.wait_for(chat.send_action("typing"), timeout=1.0)
                 except Exception:
                     pass
                 try:
-                    await asyncio.wait_for(progress_stop.wait(), timeout=2.0)
+                    await asyncio.wait_for(progress_stop.wait(), timeout=1.0)
                     break
                 except asyncio.TimeoutError:
                     continue
