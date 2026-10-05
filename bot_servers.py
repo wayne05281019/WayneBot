@@ -2679,6 +2679,17 @@ class WayneTelegramBot:
             rows.append(pair)
         return InlineKeyboardMarkup(rows) if rows else None
 
+    @staticmethod
+    def _biaoke_advice_chart_btn_label(target) -> str:
+        """按檔鈕文案：代號 股名 (主題)；主題對齊介紹區表頭短標。"""
+        c = str((target or {}).get("sid") or "").strip()
+        n = str((target or {}).get("name") or "").strip()
+        theme = str((target or {}).get("theme") or "").strip()
+        base = f"{c} {n}".strip() or c
+        label = f"{base} ({theme})" if theme else base
+        # 手機可讀；Telegram 鈕文上限 64 bytes，中文約 20 字內夠用
+        return label[:28] or c
+
     def _biaoke_advice_charts_keyboard(self, targets):
         """多檔結構圖按需鈕：一檔一按才出圖；callback 含 actor 對應的代號。"""
         if not TELEGRAM_AVAILABLE:
@@ -2687,10 +2698,9 @@ class WayneTelegramBot:
         pair = []
         for t in (targets or [])[:40]:
             c = str((t or {}).get("sid") or "").strip()
-            n = str((t or {}).get("name") or "").strip()
             if not c:
                 continue
-            label = f"{c} {n}".strip()[:16] or c
+            label = self._biaoke_advice_chart_btn_label(t)
             # bkac = biaoke advice chart；與 bkq（再問飆大）分開
             pair.append(InlineKeyboardButton(label, callback_data=f"bkac:{c}"))
             if len(pair) == 2:
@@ -2701,7 +2711,7 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(rows) if rows else None
 
     def _biaoke_advice_charts_list_html(self, targets) -> str:
-        """多檔時先列代號＋股名；按下面鈕才出結構圖。"""
+        """多檔時先列代號＋股名（主題）；按下面鈕才出結構圖。"""
         try:
             from stock_links import html_stock_anchor
         except Exception:
@@ -2710,6 +2720,7 @@ class WayneTelegramBot:
         for i, t in enumerate((targets or [])[:40], start=1):
             sid = str((t or {}).get("sid") or "").strip()
             name = str((t or {}).get("name") or "").strip()
+            theme = str((t or {}).get("theme") or "").strip()
             if not sid:
                 continue
             if html_stock_anchor:
@@ -2719,6 +2730,8 @@ class WayneTelegramBot:
                     title = html_escape(f"{sid} {name}".strip())
             else:
                 title = html_escape(f"{sid} {name}".strip())
+            if theme:
+                title = f"{title} ({html_escape(theme)})"
             lines.append(f"{i}. {title}")
         return "\n".join(lines)
 
