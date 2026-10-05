@@ -134,7 +134,7 @@ def test_bot_chart_entries_use_submit_mpl_paint():
         "_send_market_kline": "大盤日K",
         "_send_biaoke_structure_chart": "飆大結構",
         "_send_biaoke_twii_degree_chart": "飆大加權",
-        "_send_biaoke_advice_charts": "飆大建議圖",
+        "_render_biaoke_advice_chart": "飆大建議圖按檔渲",
         "_send_chips_to": "籌碼",
     }
     for meth, label in direct.items():
