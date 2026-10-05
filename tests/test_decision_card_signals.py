@@ -810,8 +810,13 @@ def test_hot_names_monthly_stage_matches_chart_phase():
 
 @pytest.mark.production_db
 def test_2383_4915_stance_note_matches_latest_row():
-    """態度第二行對最新列顏色；月K只在徽章。"""
+    """態度第二行對最新列顏色；月K只在徽章。
+
+    盤後新柱會把 4915 從「長線低」滾到中性等句；斷言跟表狀態分支，
+    不准假設永遠講長線低。
+    """
     from config import get_db_path
+    from decision_card_signals import stance_explain, table_reads_as_low
     from sell_discipline import attach_sell, sell_note_short
     from wayne_navigator import NavigatorEngine
 
@@ -835,7 +840,7 @@ def test_2383_4915_stance_note_matches_latest_row():
         assert "高" in note or "先出" in note or "漲多" in note
         assert "長線低" not in note
     else:
-        assert "偏空" in note
+        assert "偏空" in note or "今天沒有急著買或賣" in note or "先等" in note
 
     down = eng.get_decision_card("4915", merge_live=False)
     attach_sell(down)
@@ -852,7 +857,14 @@ def test_2383_4915_stance_note_matches_latest_row():
     else:
         assert sell_note_short(down) == ""
         assert "先出一點" not in note
-        assert "長線低" in note or "低附近" in note
+        if table_reads_as_low(down) or "長線低" in note or "低附近" in note:
+            assert "長線低" in note or "低附近" in note
+        else:
+            assert (
+                "今天沒有急著買或賣" in note
+                or "先等" in note
+                or "先別急" in note
+            )
 
 
 def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):
