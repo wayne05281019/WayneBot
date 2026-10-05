@@ -278,7 +278,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert "reflow=False" in src
     assert "_send_biaoke_structure_chart" in src
     assert "_send_biaoke_origin_charts" not in src
-    # 出圖改文字後同步跑＋檔數進度；不准再 create_task 並行無進度
+    # 文字階段不准 create_task 並行無名單；多檔按需出圖在 advice_charts
     assert "asyncio.create_task" not in src
     assert "spoken_html=" in src
     assert "_send_biaoke_advice_charts" in src
@@ -791,13 +791,20 @@ def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
     assert "edit_text" in wait_src
     page = __import__("inspect").getsource(WayneTelegramBot._send_biaoke_page)
     assert page.index("_start_plain_wait") < page.index("stock_picker_hits")
-    # 文字出完後才進出圖；出圖帶 spoken_html／檔數進度，不准並行無進度
+    # 文字出完後才進建議圖階段；多檔按需，不准頁內 create_task 並行無名單
     assert "spoken_html=" in page
     assert "asyncio.create_task" not in page
     adv = __import__("inspect").getsource(WayneTelegramBot._send_biaoke_advice_charts)
-    assert "done=prog" in adv and "total=prog" in adv
-    assert "結構圖略過" in adv
     assert "spoken_html" in adv
+    assert "bkac:" in __import__("inspect").getsource(
+        WayneTelegramBot._biaoke_advice_charts_keyboard
+    )
+    assert "_deliver_biaoke_advice_chart" in adv
+    assert "reply_photo" not in adv  # 多檔不准在名單函式裡直接洗圖
+    deliver = __import__("inspect").getsource(WayneTelegramBot._deliver_biaoke_advice_chart)
+    assert "結構圖略過" in deliver
+    assert "出圖中" in deliver or "done=0" in deliver
+    assert "bkac:" in __import__("inspect").getsource(WayneTelegramBot._on_callback_bound)
     card = __import__("inspect").getsource(WayneTelegramBot._send_card_to)
     # 進度泡泡先於查庫；查名改 to_thread，不准再同步 lookup_stocks( 卡住事件迴圈
     assert "await asyncio.to_thread(lookup_stocks" in card

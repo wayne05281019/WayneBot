@@ -610,6 +610,8 @@ class WayneTelegramBot:
         self._actor_waits: Dict[str, Dict[str, dict]] = {}
         # actor → 背景出圖／長任務 Task；回主選單必須 cancel，不准晚送。
         self._actor_bg_tasks: Dict[str, list] = {}
+        # actor → 飆大多檔結構圖按需會話（名單／預渲快取）；按人才出圖、互不覆蓋。
+        self._biaoke_advice_sess: Dict[str, dict] = {}
 
     @staticmethod
     def _actor_key(
@@ -670,6 +672,9 @@ class WayneTelegramBot:
                 hist.pop(key, None)
             except Exception:
                 pass
+        sess = getattr(self, "_biaoke_advice_sess", None)
+        if isinstance(sess, dict):
+            sess.pop(key, None)
 
     def _ensure_actor_op_maps(self) -> None:
         if not isinstance(getattr(self, "_actor_op_gen", None), dict):
@@ -2673,6 +2678,49 @@ class WayneTelegramBot:
         if pair:
             rows.append(pair)
         return InlineKeyboardMarkup(rows) if rows else None
+
+    def _biaoke_advice_charts_keyboard(self, targets):
+        """多檔結構圖按需鈕：一檔一按才出圖；callback 含 actor 對應的代號。"""
+        if not TELEGRAM_AVAILABLE:
+            return None
+        rows = []
+        pair = []
+        for t in (targets or [])[:40]:
+            c = str((t or {}).get("sid") or "").strip()
+            n = str((t or {}).get("name") or "").strip()
+            if not c:
+                continue
+            label = f"{c} {n}".strip()[:16] or c
+            # bkac = biaoke advice chart；與 bkq（再問飆大）分開
+            pair.append(InlineKeyboardButton(label, callback_data=f"bkac:{c}"))
+            if len(pair) == 2:
+                rows.append(pair)
+                pair = []
+        if pair:
+            rows.append(pair)
+        return InlineKeyboardMarkup(rows) if rows else None
+
+    def _biaoke_advice_charts_list_html(self, targets) -> str:
+        """多檔時先列代號＋股名；按下面鈕才出結構圖。"""
+        try:
+            from stock_links import html_stock_anchor
+        except Exception:
+            html_stock_anchor = None
+        lines = ["結構圖按檔才出（沒按不出）："]
+        for i, t in enumerate((targets or [])[:40], start=1):
+            sid = str((t or {}).get("sid") or "").strip()
+            name = str((t or {}).get("name") or "").strip()
+            if not sid:
+                continue
+            if html_stock_anchor:
+                try:
+                    title = html_stock_anchor(sid, name, self.db_path)
+                except Exception:
+                    title = html_escape(f"{sid} {name}".strip())
+            else:
+                title = html_escape(f"{sid} {name}".strip())
+            lines.append(f"{i}. {title}")
+        return "\n".join(lines)
 
     def _biaoke_hub_markup(self, ask: str = ""):
         """進去就是對話，裡面沒有選單。舊訊息的查個股／官方日K 回調仍能答。"""
@@ -5559,7 +5607,7 @@ class WayneTelegramBot:
             if not self._actor_op_alive(actor, op_kind, gen):
                 cancelled = True
                 return
-            # 空白／類股：文內點名檔全出圖；單檔問句：一張結構圖。都要有出圖進度。
+            # 空白／類股：多檔改名單＋按檔鈕（沒按不出圖）；單檔問句仍一張結構圖。
             try:
                 if (not q) or field_advice:
                     await self._send_biaoke_advice_charts(
@@ -5612,6 +5660,228 @@ class WayneTelegramBot:
                 except Exception:
                     logger.exception("飆大補送失敗提示仍失敗")
 
+    @staticmethod
+    def _biaoke_advice_asof() -> str:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+
+    def _store_biaoke_advice_sess(
+        self, actor: str, targets: list, *, ask: str = "", uid: str = ""
+    ) -> dict:
+        """按人存多檔結構圖會話；換名單就整份換掉，不准混另一人。"""
+        if not isinstance(getattr(self, "_biaoke_advice_sess", None), dict):
+            self._biaoke_advice_sess = {}
+        key = str(actor or "")
+        asof = self._biaoke_advice_asof()
+        by_sid = {}
+        order = []
+        for t in targets or []:
+            sid = str((t or {}).get("sid") or "").strip()
+            if not sid or sid in by_sid:
+                continue
+            by_sid[sid] = dict(t)
+            order.append(sid)
+        sess = {
+            "asof": asof,
+            "ask": str(ask or ""),
+            "uid": str(uid or ""),
+            "targets": by_sid,
+            "order": order,
+            "warm": {},
+        }
+        if key:
+            self._biaoke_advice_sess[key] = sess
+        return sess
+
+    def _biaoke_advice_caption(self, target: dict) -> str:
+        sid = str((target or {}).get("sid") or "")
+        name = str((target or {}).get("name") or sid)
+        do = str((target or {}).get("do") or "")
+        how = str((target or {}).get("how") or "")
+        evidence = str((target or {}).get("evidence") or "")
+        basis = str((target or {}).get("basis") or "")
+        return (
+            f"{name} {sid}\n"
+            f"該怎麼做：{do}。{how}\n"
+            f"憑據：{basis}；官方{evidence}"
+        )[:900]
+
+    async def _render_biaoke_advice_chart(
+        self, uid: str, target: dict
+    ) -> tuple:
+        """渲一檔建議結構圖到每人獨立 scratch；回 (path, fail_reason)。"""
+        sid = str((target or {}).get("sid") or "").strip()
+        if not sid:
+            return "", "無代號"
+        name = str((target or {}).get("name") or sid)
+        tip = f"{name} {sid}"
+        os.makedirs(self.charts_dir, exist_ok=True)
+        path = self._scratch_chart_path(self.charts_dir, sid, "biaoke-adv", uid)
+        try:
+            from biaoke_chart import build_biaoke_structure_chart
+            from wayne_navigator import submit_mpl_paint
+
+            built = await asyncio.wait_for(
+                asyncio.wrap_future(
+                    submit_mpl_paint(
+                        lambda: build_biaoke_structure_chart(
+                            self.db_path,
+                            sid,
+                            path,
+                            name=name,
+                            ask=tip,
+                            uid=uid,
+                        )
+                    )
+                ),
+                timeout=_CHART_RENDER_TIMEOUT,
+            )
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            logger.warning("飆大建議結構圖逾時 sid=%s", sid)
+            return "", "產圖逾時"
+        except Exception:
+            logger.exception("飆大建議結構圖失敗 sid=%s", sid)
+            return "", "產圖失敗"
+        png = str((built or {}).get("path") or "")
+        if not png or not self._png_looks_ok(
+            png, min_bytes=24_000, min_w=800, min_h=500
+        ):
+            return "", "圖檔不合格或官方柱不足"
+        return png, ""
+
+    def _biaoke_advice_warm_get(self, actor: str, sid: str):
+        sess = (getattr(self, "_biaoke_advice_sess", None) or {}).get(str(actor or ""))
+        if not isinstance(sess, dict):
+            return None
+        if str(sess.get("asof") or "") != self._biaoke_advice_asof():
+            return None
+        warm = sess.get("warm") or {}
+        hit = warm.get(str(sid or ""))
+        return hit if isinstance(hit, dict) else None
+
+    def _biaoke_advice_warm_put(self, actor: str, sid: str, entry: dict) -> None:
+        sess = (getattr(self, "_biaoke_advice_sess", None) or {}).get(str(actor or ""))
+        if not isinstance(sess, dict):
+            return
+        warm = sess.setdefault("warm", {})
+        warm[str(sid)] = dict(entry or {})
+
+    async def _prewarm_biaoke_advice_charts(
+        self, actor: str, uid: str, targets: list
+    ) -> None:
+        """背景預渲名單內結構圖；只寫快取，不准上傳。"""
+        for t in targets or []:
+            sid = str((t or {}).get("sid") or "").strip()
+            if not sid:
+                continue
+            if self._biaoke_advice_warm_get(actor, sid):
+                continue
+            try:
+                png, reason = await self._render_biaoke_advice_chart(uid, t)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("飆大建議圖預渲失敗 sid=%s", sid)
+                self._biaoke_advice_warm_put(
+                    actor, sid, {"ok": False, "reason": "產圖失敗"}
+                )
+                continue
+            if png:
+                self._biaoke_advice_warm_put(
+                    actor,
+                    sid,
+                    {
+                        "ok": True,
+                        "path": png,
+                        "caption": self._biaoke_advice_caption(t),
+                    },
+                )
+            else:
+                self._biaoke_advice_warm_put(
+                    actor, sid, {"ok": False, "reason": reason or "產圖失敗"}
+                )
+
+    async def _deliver_biaoke_advice_chart(
+        self,
+        message,
+        uid: str,
+        target: dict,
+        *,
+        actor: str = "",
+    ) -> None:
+        """按一檔才送該檔結構圖；有預渲就直接送，否則 LOADING 再渲。"""
+        actor = str(actor or self._actor_key(message, uid=uid) or "")
+        sid = str((target or {}).get("sid") or "").strip()
+        if not sid:
+            return
+        name = str((target or {}).get("name") or sid)
+        warm = self._biaoke_advice_warm_get(actor, sid)
+        png = ""
+        cap = self._biaoke_advice_caption(target)
+        wait_h = (None, None, None)
+        if warm and warm.get("ok") and warm.get("path"):
+            png = str(warm.get("path") or "")
+            if warm.get("caption"):
+                cap = str(warm.get("caption"))
+        need_render = not (
+            png and self._png_looks_ok(png, min_bytes=24_000, min_w=800, min_h=500)
+        )
+        if need_render:
+            # 不 begin_actor_op：不准為按一檔取消其他人／其他檔的預渲。
+            wait_h = await self._start_plain_wait(
+                message,
+                text_fn=lambda s: self._biaoke_progress_text(
+                    s, current="chart", done=0, total=1
+                ),
+            )
+            try:
+                try:
+                    chat = getattr(message, "chat", None)
+                    if chat is not None and hasattr(chat, "send_action"):
+                        await chat.send_action("upload_photo")
+                except Exception:
+                    pass
+                png, reason = await self._render_biaoke_advice_chart(uid, target)
+                if png:
+                    self._biaoke_advice_warm_put(
+                        actor,
+                        sid,
+                        {"ok": True, "path": png, "caption": cap},
+                    )
+                else:
+                    try:
+                        await message.reply_text(
+                            f"{name} {sid} 結構圖略過：{reason or '產圖失敗'}",
+                            reply_markup=self._biaoke_reply_menu(uid),
+                        )
+                    except Exception:
+                        logger.exception("飆大略過提示送出失敗 sid=%s", sid)
+                    return
+            finally:
+                await self._stop_plain_wait(*wait_h)
+        try:
+            with open(png, "rb") as f:
+                await message.reply_photo(
+                    photo=f,
+                    caption=cap[:900],
+                    reply_markup=self._biaoke_reply_menu(uid),
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("飆大建議結構圖送出失敗 sid=%s", sid)
+            try:
+                await message.reply_text(
+                    f"{name} {sid} 結構圖略過：送出失敗",
+                    reply_markup=self._biaoke_reply_menu(uid),
+                )
+            except Exception:
+                logger.exception("飆大略過提示送出失敗 sid=%s", sid)
+
     async def _send_biaoke_advice_charts(
         self,
         message,
@@ -5623,7 +5893,10 @@ class WayneTelegramBot:
         gen: int = 0,
         spoken_html: str = "",
     ) -> None:
-        """類股／空白進飆大：文內點名檔都出結構圖；出圖前 LOADING 帶 已完成/總檔數。"""
+        """類股／空白進飆大：多檔只送名單＋按檔鈕；沒按不出圖。單檔仍直接出。
+
+        背景可預渲進每人快取，但不准在未按前 upload_photo。
+        """
         actor = str(actor or self._actor_key(message, uid=uid) or "")
         kind = str(kind or "biaoke")
         targets: list = []
@@ -5644,135 +5917,33 @@ class WayneTelegramBot:
             return
         if gen and not self._actor_op_alive(actor, kind, gen):
             return
-        total = len(targets)
-        prog = {"done": 0, "total": total, "t0": time.monotonic()}
-        wait_h = await self._start_plain_wait(
-            message,
-            text_fn=lambda s: self._biaoke_progress_text(
-                s,
-                current="chart",
-                done=prog["done"],
-                total=prog["total"],
-            ),
-            actor=actor,
-            kind=kind,
-            gen=gen,
-        )
-
-        async def _bump(done: int) -> None:
-            prog["done"] = max(0, min(int(done), total))
-            wait_msg = wait_h[0] if wait_h else None
-            if wait_msg is None:
-                return
-            if gen and not self._actor_op_alive(actor, kind, gen):
-                return
-            await self._safe_edit_text(
-                wait_msg,
-                self._biaoke_progress_text(
-                    int(time.monotonic() - float(prog["t0"])),
-                    current="chart",
-                    done=prog["done"],
-                    total=prog["total"],
-                ),
-                parse_mode="HTML",
+        self._store_biaoke_advice_sess(actor, targets, ask=ask, uid=uid)
+        # 單檔：沒有「洗版」問題，仍直接出一張（沿用 submit_mpl_paint）。
+        if len(targets) == 1:
+            await self._deliver_biaoke_advice_chart(
+                message, uid, targets[0], actor=actor
             )
-
-        async def _skip(name: str, sid: str, reason: str) -> None:
-            """不准靜默少圖：略過要講清楚。"""
-            try:
-                await message.reply_text(
-                    f"{name} {sid} 結構圖略過：{reason}",
-                    reply_markup=self._biaoke_reply_menu(uid),
-                )
-            except Exception:
-                logger.exception("飆大略過提示送出失敗 sid=%s", sid)
-
+            return
+        # 多檔：文字名單＋Inline 鈕；不准一次自動送全部結構圖。
+        list_html = self._biaoke_advice_charts_list_html(targets)
+        kb = self._biaoke_advice_charts_keyboard(targets)
         try:
-            for idx, t in enumerate(targets):
-                if gen and not self._actor_op_alive(actor, kind, gen):
-                    return
-                sid = str((t or {}).get("sid") or "")
-                if not sid:
-                    await _bump(idx + 1)
-                    continue
-                name = str(t.get("name") or sid)
-                do = str(t.get("do") or "")
-                how = str(t.get("how") or "")
-                evidence = str(t.get("evidence") or "")
-                basis = str(t.get("basis") or "")
-                tip = f"{name} {sid}"
-                os.makedirs(self.charts_dir, exist_ok=True)
-                path = self._scratch_chart_path(self.charts_dir, sid, "biaoke-adv", uid)
-                try:
-                    chat = getattr(message, "chat", None)
-                    if chat is not None and hasattr(chat, "send_action"):
-                        await chat.send_action("upload_photo")
-                except Exception:
-                    pass
-                built = None
-                try:
-                    from biaoke_chart import build_biaoke_structure_chart
-                    from wayne_navigator import submit_mpl_paint
-
-                    built = await asyncio.wait_for(
-                        asyncio.wrap_future(
-                            submit_mpl_paint(
-                                lambda: build_biaoke_structure_chart(
-                                    self.db_path,
-                                    sid,
-                                    path,
-                                    name=name,
-                                    ask=tip,
-                                    uid=uid,
-                                )
-                            )
-                        ),
-                        timeout=_CHART_RENDER_TIMEOUT,
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except asyncio.TimeoutError:
-                    logger.warning("飆大建議結構圖逾時 sid=%s", sid)
-                    await _skip(name, sid, "產圖逾時")
-                    await _bump(idx + 1)
-                    continue
-                except Exception:
-                    logger.exception("飆大建議結構圖失敗 sid=%s", sid)
-                    await _skip(name, sid, "產圖失敗")
-                    await _bump(idx + 1)
-                    continue
-                if gen and not self._actor_op_alive(actor, kind, gen):
-                    return
-                png = str((built or {}).get("path") or "")
-                if not png or not self._png_looks_ok(
-                    png, min_bytes=24_000, min_w=800, min_h=500
-                ):
-                    await _skip(name, sid, "圖檔不合格或官方柱不足")
-                    await _bump(idx + 1)
-                    continue
-                # 圖下一句：該怎麼做＋有憑有據（對官方柱）
-                cap = (
-                    f"{name} {sid}\n"
-                    f"該怎麼做：{do}。{how}\n"
-                    f"憑據：{basis}；官方{evidence}"
-                )
-                try:
-                    with open(png, "rb") as f:
-                        await message.reply_photo(
-                            photo=f,
-                            caption=cap[:900],
-                            reply_markup=self._biaoke_reply_menu(uid),
-                        )
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.exception("飆大建議結構圖送出失敗 sid=%s", sid)
-                    await _skip(name, sid, "送出失敗")
-                await _bump(idx + 1)
-        finally:
-            await self._stop_plain_wait(
-                *wait_h, actor=actor, kind=kind, gen=gen
+            await message.reply_html(
+                list_html,
+                disable_web_page_preview=True,
+                reply_markup=kb,
             )
+        except Exception:
+            logger.exception("飆大建議名單送出失敗")
+            return
+        # 背景預渲：只寫快取，不送圖；離開／換鍵會 cancel。
+        try:
+            task = asyncio.create_task(
+                self._prewarm_biaoke_advice_charts(actor, uid, targets)
+            )
+            self._track_actor_bg(actor, task)
+        except Exception:
+            logger.exception("飆大建議圖預渲排程略過")
 
     async def _send_biaoke_structure_chart(
         self,
@@ -8482,6 +8653,30 @@ class WayneTelegramBot:
                 return
             self._enter_biaoke_chat(q.message, uid)
             await self._send_biaoke_page(q.message, ask=sid, uid=uid)
+            return
+        if data.startswith("bkac:"):
+            sid = data[5:].strip()
+            await q.answer("結構圖")
+            if not sid:
+                return
+            actor = self._actor_key(q.message, uid=uid)
+            self._enter_biaoke_chat(q.message, uid)
+            sess = (getattr(self, "_biaoke_advice_sess", None) or {}).get(actor) or {}
+            target = dict((sess.get("targets") or {}).get(sid) or {})
+            if not target:
+                target = {"sid": sid, "name": sid}
+                try:
+                    from biaoke_brain import resolve_stock
+
+                    hits = await asyncio.to_thread(resolve_stock, self.db_path, sid) or []
+                    if hits:
+                        target["name"] = str(hits[0].get("stock_name") or sid)
+                except Exception:
+                    logger.exception("飆大按檔出圖對名略過 sid=%s", sid)
+            # 只送這一檔；不准一次重送名單全部圖。
+            await self._deliver_biaoke_advice_chart(
+                q.message, uid, target, actor=actor
+            )
             return
         if data.startswith("bk:"):
             kind = data[3:]
