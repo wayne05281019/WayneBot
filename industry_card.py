@@ -28,25 +28,26 @@ except Exception:
 
 
 def _card_font(size: int, *, bold: bool = False):
+    """與高低卡／介紹卡同一套 NotoSansTC 字重；不准落到 load_default。"""
     from PIL import ImageFont
 
-    try:
-        from wayne_navigator import _WEIGHT_BOLD, _WEIGHT_TEXT, _weight_font_path
+    from wayne_navigator import _WEIGHT_BOLD, _WEIGHT_TEXT, _weight_font_path
 
-        path = _weight_font_path(_WEIGHT_BOLD if bold else _WEIGHT_TEXT)
-        if path:
-            return ImageFont.truetype(path, size)
-    except Exception:
-        pass
-    for path in (
+    path = _weight_font_path(_WEIGHT_BOLD if bold else _WEIGHT_TEXT)
+    if path:
+        return ImageFont.truetype(path, size)
+    # 備援仍吃系統 Noto CJK，不准 Pillow 點陣預設字
+    for cand in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
     ):
         try:
-            return ImageFont.truetype(path, size, index=0)
+            return ImageFont.truetype(cand, size, index=0)
         except Exception:
             continue
-    return ImageFont.load_default()
+    raise RuntimeError("產業卡缺少 NotoSansTC／NotoSansCJK 字型")
 
 
 def _blend(a, b, t: float):

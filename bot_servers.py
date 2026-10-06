@@ -44,9 +44,9 @@ _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 # 三合一表頭字多：q95＋永不色度抽樣；Floor 不准掉到會糊國字的區間
 _LOOKUP_JPEG_QUALITY = 95
 _LOOKUP_JPEG_QUALITY_FLOOR = 88
-# 高低卡／介紹卡／勝率買點高低卡：原生直式像素送出（能大就大；iPhone 點開滿版）。
-# 不准再套 4:5 letterbox——會把 1562×2977 壓進 1920×2400 側邊留白，點開只剩約 6 成高。
-# 結構圖／大量撐壓／導航：橫式原版，原像素送。並排格仍可走 4:5（_prepare_album_cell）。
+# 查股相關圖一律原生像素送出（高低卡／介紹／結構／大量／籌碼／產業／導航）。
+# 不准再 4:5 letterbox 白底外框墊版——會把內容縮成細條（籌碼橫表尤甚）。
+# 並排格仍可走 4:5（_prepare_album_cell）。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_MAX = (1920, 2400)
@@ -4468,8 +4468,8 @@ class WayneTelegramBot:
 
     @staticmethod
     def _prepare_lookup_album_photo(path: str, kind: str = "") -> str:
-        """查股第1／第2張與勝率買點高低卡：原生直式像素（外框同一套）。
-        結構／大量撐壓／導航：橫式原像素。一律不准 4:5 letterbox 壓小點開。"""
+        """查股所有圖（含籌碼／產業／結構／大量／導航）：原生像素 JPEG。
+        不准 4:5 letterbox 白底墊版；一張圖＝內容本身、能大就大。"""
         _ = kind  # 呼叫端仍傳 kind；送圖路徑已統一原生
         return WayneTelegramBot._prepare_native_lookup_jpeg(path)
 
@@ -7488,8 +7488,11 @@ class WayneTelegramBot:
             )
             if chip_img:
                 try:
-                    with open(chip_img, "rb") as f:
-                        await message.reply_photo(photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code))
+                    send_path = self._prepare_lookup_album_photo(chip_img, "chips")
+                    with open(send_path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
+                        )
                 except Exception:
                     await message.reply_text("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
             else:

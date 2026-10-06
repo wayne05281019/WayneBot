@@ -24,7 +24,12 @@ import matplotlib.ticker as mticker
 from matplotlib import patches
 from matplotlib.collections import LineCollection, PolyCollection
 
-from wayne_navigator import _fp, _mpl_serial
+from wayne_navigator import (
+    _fp,
+    _mpl_serial,
+    paint_lookup_ohlc_candles,
+    paint_lookup_volume_bars,
+)
 
 BIAOKE_CHART_DPI = 200
 # 偏好用語＝演化區（圖上連點／壓撐延長空白）；不是保證、不是買訊
@@ -2600,7 +2605,6 @@ def render_biaoke_structure_png(
     ymax = max(ymax, y_top + span * 0.07)
     ymin = min(ymin, y_bot - span * 0.07)
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    from decision_card_signals import candle_up_taiwan
 
     fig, (ax1, ax2) = plt.subplots(
         2,
@@ -2621,10 +2625,6 @@ def render_biaoke_structure_png(
     x_right = n + _FUTURE + 28.0
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
-    candle_up = []
-    for i in range(n):
-        prev_c = closes[i - 1] if i else None
-        candle_up.append(candle_up_taiwan(closes[i], prev_c, opens[i]))
     st = info.get("struct") or {}
     spike_hi = float(st.get("spike_high") or 0)
     spike_lo = float(st.get("spike_low") or 0)
@@ -2639,51 +2639,22 @@ def render_biaoke_structure_png(
     if not plate.get("name"):
         plate["name"] = name
     quote = dict(quote or _spot_quote(sid, last_bar, prev_bar, db_path))
-    cols = [_HALT if _bar_is_halt(work[i]) else (_UP if candle_up[i] else _DN) for i in range(n)]
     halt_flags = [_bar_is_halt(work[i]) for i in range(n)]
-    trade_i = [i for i in range(n) if not halt_flags[i]]
-    halt_i = [i for i in range(n) if halt_flags[i]]
-    wick_lw = [1.55 if i == spike_i else 1.15 for i in trade_i]
-    _add_ohlc_wicks(
+    # 日 K＝查股共用 paint（與大量撐壓／導航同一套紅綠、柱寬、線寬）
+    candle_up = paint_lookup_ohlc_candles(
         ax1,
-        [xs[i] for i in trade_i],
-        [lows[i] for i in trade_i],
-        [highs[i] for i in trade_i],
-        [cols[i] for i in trade_i],
-        lw=wick_lw,
+        xs,
+        opens,
+        highs,
+        lows,
+        closes,
+        halt=halt_flags,
+        spike_i=spike_i,
+        span=span,
         z=3,
     )
-    _add_ohlc_bodies(
-        ax1,
-        [xs[i] for i in trade_i],
-        [opens[i] for i in trade_i],
-        [closes[i] for i in trade_i],
-        [cols[i] for i in trade_i],
-        widths=[0.58 if i == spike_i else 0.46 for i in trade_i],
-        lws=[1.35 if i == spike_i else 0.6 for i in trade_i],
-        edges=["#f9a825" if i == spike_i else cols[i] for i in trade_i],
-        min_h=span * 0.0016,
-        z=3,
-    )
-    halt_span = max(span, 1.0)
-    for i in halt_i:
-        x = float(xs[i])
-        cl = float(closes[i])
-        ax1.plot(
-            [x - 0.38, x + 0.38],
-            [cl, cl],
-            color=_HALT,
-            linewidth=1.7,
-            zorder=4,
-            solid_capstyle="round",
-        )
-        ax1.plot(
-            [x, x],
-            [cl - halt_span * 0.004, cl + halt_span * 0.004],
-            color=_HALT,
-            linewidth=1.2,
-            zorder=4,
-        )
+    candle_up = [bool(x) for x in candle_up]
+    cols = [_HALT if halt_flags[i] else (_UP if candle_up[i] else _DN) for i in range(n)]
     band_hi: List[Dict[str, Any]] = []
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
@@ -3167,11 +3138,15 @@ def render_biaoke_structure_png(
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(12, "bold"))
-    vol_colors = [_SPIKE_VOL if i == spike_i else (_UP if candle_up[i] else _DN) for i in range(n)]
-    from wayne_navigator import nav_volume_bar_heights
-
-    vol_heights, vol_ylim, _vol_missing = nav_volume_bar_heights(vols)
-    ax2.bar(xs, vol_heights, color=vol_colors, width=0.72, zorder=3, edgecolor="#ffffff", linewidth=0.15)
+    vol_heights, vol_ylim, _vol_missing = paint_lookup_volume_bars(
+        ax2,
+        xs,
+        vols,
+        candle_up,
+        halt=halt_flags,
+        spike_i=spike_i,
+        z=3,
+    )
     vmax = float(vol_ylim) if vol_ylim else 1.0
     ax2.set_ylim(0, vmax * 1.28)
     if 0 <= spike_i < n and vols[spike_i]:

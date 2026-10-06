@@ -455,7 +455,32 @@ class LookupImageTests(unittest.TestCase):
                     self.assertNotEqual(im.size[0] * 5, im.size[1] * 4)
                     self.assertLessEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
 
+    def test_chips_industry_no_white_matte_letterbox(self):
+        """籌碼／產業送原生像素，不准再 letterbox 成 4:5 白底墊版。"""
+        from PIL import Image
+
+        from bot_servers import _LOOKUP_ALBUM_MAX
+
+        with tempfile.TemporaryDirectory() as td:
+            wide = os.path.join(td, "chips.png")
+            Image.new("RGB", (1584, 1158), (245, 247, 250)).save(wide, "PNG")
+            out = WayneTelegramBot._prepare_lookup_album_photo(wide, "chips")
+            with Image.open(out) as im:
+                self.assertEqual(im.size, (1584, 1158))
+                self.assertNotEqual(im.size, _LOOKUP_ALBUM_MAX)
+            tall = os.path.join(td, "ind.png")
+            Image.new("RGB", (1080, 2400), (11, 18, 28)).save(tall, "PNG")
+            out2 = WayneTelegramBot._prepare_lookup_album_photo(tall, "industry")
+            with Image.open(out2) as im:
+                self.assertEqual(im.size, (1080, 2400))
+                self.assertNotEqual(im.size[0] * 5, im.size[1] * 4)
+
+    def test_pending_chips_uses_prepare_lookup_album_photo(self):
+        src = inspect.getsource(WayneTelegramBot._handle_pending_pick)
+        self.assertIn("_prepare_lookup_album_photo(chip_img", src)
+
     def test_two_image_album_does_not_upscale(self):
+
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("tape_task", src)
         self.assertLess(src.find("tape_task"), src.find("to_thread(_build_card)"))

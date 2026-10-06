@@ -22,9 +22,16 @@ import matplotlib
 matplotlib.use("Agg")
 import numpy as np
 import pandas as pd
-from matplotlib.collections import LineCollection
 
-from wayne_navigator import _fp, _fmt_price, mpl_render, nav_volume_bar_heights, _set_staggered_month_ticks
+from wayne_navigator import (
+    _fp,
+    _fmt_price,
+    _set_staggered_month_ticks,
+    mpl_render,
+    nav_volume_bar_heights,
+    paint_lookup_ohlc_candles,
+    paint_lookup_volume_bars,
+)
 from ex_rights import (
     bar_ymd as _bar_ymd,
     ex_gap_note as _ex_gap_note,
@@ -1352,7 +1359,7 @@ def _paint_volume_zone(
         float(hi - lo) if hi > lo else 0.0,
         1.0,
     )
-    # 批次畫 K：LineCollection 影線＋bar 實體，比逐根 Rectangle 快
+    # 日 K＝查股共用 paint（結構／大量／導航同一套紅綠、柱寬、線寬）
     opens = pd.to_numeric(view["open"], errors="coerce").to_numpy(dtype=float)
     closes = pd.to_numeric(view["close"], errors="coerce").to_numpy(dtype=float)
     highs = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
@@ -1362,66 +1369,18 @@ def _paint_volume_zone(
         if hasattr(halt, "fillna")
         else np.asarray(halt, dtype=bool)
     )
-    prev_closes = np.empty(n, dtype=float)
-    prev_closes[0] = np.nan
-    if n > 1:
-        prev_closes[1:] = closes[:-1]
-    up_mask = np.zeros(n, dtype=bool)
-    for i in range(n):
-        if bool(halt_arr[i]):
-            continue
-        prev = None if i == 0 or not np.isfinite(prev_closes[i]) else float(prev_closes[i])
-        up_mask[i] = _candle_up(float(closes[i]), prev, float(opens[i]))
-    colors = np.where(up_mask, _UP, _DN)
-    trade_i = np.flatnonzero(~halt_arr)
-    if trade_i.size:
-        wick_segs = [
-            [(float(xs[i]), float(lows[i])), (float(xs[i]), float(highs[i]))]
-            for i in trade_i
-        ]
-        ax1.add_collection(
-            LineCollection(
-                wick_segs,
-                colors=[colors[i] for i in trade_i],
-                linewidths=1.25,
-                zorder=3,
-                capstyle="round",
-            )
-        )
-        body_h = np.maximum(
-            np.abs(closes[trade_i] - opens[trade_i]),
-            (hi - lo) * 0.002 if hi > lo else 0.01,
-        )
-        body_bot = np.minimum(opens[trade_i], closes[trade_i])
-        ax1.bar(
-            xs[trade_i],
-            body_h,
-            bottom=body_bot,
-            width=0.60,
-            color=[colors[i] for i in trade_i],
-            edgecolor=[colors[i] for i in trade_i],
-            linewidth=0.35,
-            zorder=3,
-            align="center",
-        )
-    for i in np.flatnonzero(halt_arr):
-        cl = float(closes[i])
-        x = float(xs[i])
-        ax1.plot(
-            [x - 0.38, x + 0.38],
-            [cl, cl],
-            color="#9e9e9e",
-            linewidth=1.7,
-            zorder=4,
-            solid_capstyle="round",
-        )
-        ax1.plot(
-            [x, x],
-            [cl - _span_est * 0.004, cl + _span_est * 0.004],
-            color="#9e9e9e",
-            linewidth=1.2,
-            zorder=4,
-        )
+    up_mask = paint_lookup_ohlc_candles(
+        ax1,
+        xs,
+        opens,
+        highs,
+        lows,
+        closes,
+        halt=halt_arr,
+        spike_i=int(spike_i) if spike_i is not None else None,
+        span=_span_est,
+        z=3,
+    )
 
     last = view.iloc[-1]
     last_hi = float(last["high"] or 0)
@@ -1676,33 +1635,16 @@ def _paint_volume_zone(
             )
             used_x.append(float(xs[i]))
 
-    vol_colors = []
-    for i in range(n):
-        prev = float(view["close"].iloc[i - 1]) if i else None
-        up = _candle_up(float(view["close"].iloc[i]), prev, float(view["open"].iloc[i]))
-        vol_colors.append("#ef5350" if up else "#26a69a")
-    vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(view["volume"])
-    vol_vals = pd.to_numeric(view["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
-    # 正量線性比例；真 0／缺量／停價＝平坦（不准抬假地板冒充量）
-    zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | vol_missing)
-    vol_draw = np.asarray(vol_heights, dtype=float).copy()
-    vol_draw[zero_i] = 0.0
-    ax2.bar(xs, vol_draw, color=vol_colors, width=0.70, zorder=2, linewidth=0)
+    vol_heights, vol_ylim, vol_missing = paint_lookup_volume_bars(
+        ax2,
+        xs,
+        view["volume"],
+        up_mask,
+        halt=halt_arr,
+        spike_i=int(spike_i),
+        z=2,
+    )
     spike_h = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
-    if (
-        spike_i < len(halt_arr)
-        and not bool(halt_arr[spike_i])
-        and float(vol_vals[spike_i]) > 0
-        and spike_h > 0
-    ):
-        ax2.bar(
-            [spike_i],
-            [spike_h],
-            color=_SPIKE,
-            width=0.78,
-            zorder=4,
-            linewidth=0,
-        )
     # 爆大量標貼柱頂再上移一截，右下不貼底軸
     ax2.set_ylim(0, max(vol_ylim * 1.30, spike_h * 1.38 if spike_h > 0 else vol_ylim * 1.30))
     ax2.annotate(
