@@ -3532,7 +3532,9 @@ def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor
 
 def _decision_card_stack_h(card: dict) -> float:
     """高低卡內容高度（資料座標）。介紹卡外框對齊 H×0.076。"""
-    table = card.get("table") or []
+    table = card.get("table")
+    if table is None:
+        table = []
     n = max(len(table), 1)
     extra_lows = False
     try:
