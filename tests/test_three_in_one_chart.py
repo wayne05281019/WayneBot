@@ -179,7 +179,7 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     """台光電：表頭必須寫 2383／台光電；整張守 TG w+h；縮圖後表頭列高仍老花可讀。"""
     from PIL import Image
 
-    from bot_servers import WayneTelegramBot, _LOOKUP_JPEG_QUALITY
+    from bot_servers import WayneTelegramBot, _LOOKUP_ALBUM_MAX, _LOOKUP_JPEG_QUALITY
     from three_in_one_chart import (
         COMPOSE_INNER_W,
         TG_CLICK_MAX_SIDE,
@@ -203,10 +203,13 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     assert prep and os.path.isfile(prep)
     assert _LOOKUP_JPEG_QUALITY >= 95
     pim = Image.open(prep)
-    # 模擬對話框點開：最長邊已 ≤2560，再縮到氣泡寬 1113 表頭仍成列
+    # 查股四張統一直式 4:5（1920×2400）；表頭列高跟畫布寬成比
+    assert pim.size == _LOOKUP_ALBUM_MAX
+    assert pim.size[0] * 5 == pim.size[1] * 4
     chat_w = 1113
     head_chat_h = int(400 * chat_w / pim.width)
-    assert head_chat_h >= 240, head_chat_h
+    assert head_chat_h >= int(400 * chat_w / _LOOKUP_ALBUM_MAX[0]) - 1, head_chat_h
+    assert head_chat_h >= 220, head_chat_h
     assert "三合一" in (cap or "")
     bubble_w = 400
     bubble = pim.resize(
