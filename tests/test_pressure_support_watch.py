@@ -182,12 +182,17 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "0.012" in src and "0.975" in src and "0.025" in src
     assert "left=0.16" not in src
     assert "xytext=(0, 18)" in src  # 爆大量標再上移
-    # 停價＝灰短 K；量柱視窗線性、真 0／缺量平坦（不准 32% 假地板），不准 × 挖洞
-    assert 'color="#9e9e9e"' in src
-    assert "floor_h" not in src
+    # 停價＝灰短 K（共用 paint LOOKUP_CANDLE_HALT）；量柱真 0／缺量平坦，不准 × 挖洞
+    assert "paint_lookup_ohlc_candles" in src
+    assert "paint_lookup_volume_bars" in src
+    from wayne_navigator import LOOKUP_CANDLE_HALT, paint_lookup_volume_bars
+
+    assert LOOKUP_CANDLE_HALT == "#9e9e9e"
+    vol_src = inspect.getsource(paint_lookup_volume_bars)
+    assert "vol_draw[zero_i] = 0.0" in vol_src
+    assert "floor_h" not in src and "floor_h" not in vol_src
     assert 'facecolor="#546e7a"' not in src
     assert "0.32" not in src
-    assert "vol_draw[zero_i] = 0.0" in src
     assert "marker=\"x\"" not in src and "marker='x'" not in src
     assert "不准挖洞" in src
     # 介紹與圖例之間不加分隔線
