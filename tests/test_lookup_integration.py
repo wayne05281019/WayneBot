@@ -105,8 +105,8 @@ class LookupIntegrationTests(unittest.TestCase):
             self.assertLess(timings["card"], 20.0)
             self.assertLess(timings["chart"], 20.0)
 
-    def test_send_card_to_locked_posts_album_then_volzone(self):
-        """介紹圖＋高低溫度卡一次 reply_media_group，第三張大量區再用 reply_photo。"""
+    def test_send_card_to_locked_posts_three_photos(self):
+        """高低溫度卡→三合一→介紹卡：三張逐張 reply_photo，不再走相簿。"""
         bot = _bare_bot(self.db, tempfile.mkdtemp())
         message = _message(999001, 111)
 
@@ -132,12 +132,16 @@ class LookupIntegrationTests(unittest.TestCase):
 
         asyncio.run(_run())
 
-        self.assertGreaterEqual(message.reply_media_group.await_count, 1)
-        self.assertGreaterEqual(message.reply_photo.await_count, 1)
+        # 查股主路徑已改三張 reply_photo；相簿只留 helper，不再被呼叫。
+        self.assertEqual(message.reply_media_group.await_count, 0)
+        self.assertGreaterEqual(message.reply_photo.await_count, 3)
         caps = []
         for call in message.reply_photo.await_args_list:
             caps.append(str(call.kwargs.get("caption") or ""))
-        self.assertTrue(any("大量區" in c for c in caps), caps)
+        self.assertTrue(
+            any("三合一" in c or "大量壓力" in c or "大量區" in c for c in caps),
+            caps,
+        )
 
     def test_lookup_lock_blocks_same_user_not_other(self):
         """同 chat 兩個 uid：A 出圖中 B 不受阻；同一人連打才提示稍候。"""
