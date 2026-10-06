@@ -95,6 +95,29 @@ def test_agents_rank12_absorb_slots():
     assert "一／二／三層自回" not in blob
 
 
+def test_catch_up_due_after_close_slots(tmp_path, monkeypatch):
+    import biaoke_absorb
+    from biaoke_absorb import _slot_ran, catch_up_due_after_close_slots
+
+    db = str(tmp_path / "c.db")
+    seen: list[str] = []
+
+    def _fake_run(db_path, *, now=None, slot="", force=False):
+        seen.append(str(slot))
+        biaoke_absorb._mark_slot(db_path, str(slot), posts=0, aux=0, now=now)
+        return {"ok": True, "slot": slot}
+
+    monkeypatch.setattr(biaoke_absorb, "run_absorb", _fake_run)
+    now = datetime(2026, 9, 16, 19, 40, tzinfo=TAIPEI)
+    ran = catch_up_due_after_close_slots(db, now=now)
+    assert ran == ["20260916-1630", "20260916-1930"]
+    assert seen == ran
+    assert _slot_ran(db, "20260916-1630")
+    assert _slot_ran(db, "20260916-1930")
+    assert not _slot_ran(db, "20260916-2230")
+    assert catch_up_due_after_close_slots(db, now=now) == []
+
+
 def test_queue_saves_aux_before_neurons(tmp_path):
     db = str(tmp_path / "a.db")
     _seed_quotes(db)

@@ -56,10 +56,26 @@ def test_heartbeat_roundtrip(tmp_path):
 
 
 def test_heartbeat_goes_stale(tmp_path):
+    from zoneinfo import ZoneInfo
+
     path = _make_db(tmp_path)
     record_heartbeat(path, HEARTBEAT_POLLING)
-    future = datetime.now() + timedelta(hours=2)
+    future = datetime.now(ZoneInfo("Asia/Taipei")) + timedelta(hours=2)
     assert polling_alive(path, now=future) is False
+
+
+def test_taipei_stamp_used_for_heartbeat(tmp_path):
+    from config import taipei_stamp
+
+    path = _make_db(tmp_path)
+    record_heartbeat(path, HEARTBEAT_POLLING)
+    conn = sqlite3.connect(path)
+    beat = conn.execute("SELECT beat_at FROM ops_heartbeat").fetchone()[0]
+    conn.close()
+    assert "+08:00" in str(beat)
+    stamp = taipei_stamp(datetime(2026, 10, 6, 18, 49))
+    assert stamp.startswith("2026-10-06T18:49:00")
+    assert stamp.endswith("+08:00")
 
 
 def test_heartbeat_missing_db_is_quiet(tmp_path):
@@ -159,6 +175,23 @@ def test_missed_jobs_flags_both_after_evening(tmp_path, monkeypatch):
     now = datetime(2026, 9, 2, 19, 0)  # 過了 18:30
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
     assert kinds == {"increment", "morning_screen", "midday_review"}
+    midday = next(m for m in missed_jobs(path, now=now) if m["kind"] == "midday_review")
+    assert midday["calendar"] == "20260902"
+    assert midday["run_date"] == "midday-20260902"
+
+
+def test_missed_jobs_increment_quiet_when_bars_complete(tmp_path, monkeypatch):
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *a, **k: "20260902"
+    )
+    now = datetime(2026, 9, 2, 19, 0)
+    kinds = {m["kind"] for m in missed_jobs(path, now=now)}
+    assert "increment" not in kinds
+    assert "midday_review" in kinds
+    assert "morning_screen" in kinds
 
 
 def test_missed_jobs_skips_weekend(tmp_path, monkeypatch):
@@ -227,6 +260,22 @@ def test_format_watchdog_alert():
     assert "06:30" in text
     assert "screen-20260902" in text
     assert "國定假日" in text
+    midday = format_watchdog_alert(
+        [
+            {
+                "kind": "midday_review",
+                "label": "12:45 比價",
+                "scheduled": "12:45",
+                "run_date": "midday-20261005",
+                "status": "無紀錄",
+                "calendar": "20261006",
+            }
+        ]
+    )
+    assert "12:45 比價" in midday
+    assert "2026/10/06 窗" in midday
+    assert "對照今早名單" in midday
+    assert "midday-20261005" in midday
 
 
 def test_watchdog_payload_shape(tmp_path, monkeypatch):

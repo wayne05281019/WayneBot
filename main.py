@@ -913,7 +913,7 @@ def start_market_backfill(delay_s: float = 0):
             logger.info("啟動後融合官方日K／法人／財報（不推播）")
             from main_runner import MainRunner
 
-            n = MainRunner().run_daily_increment(notify=False)
+            n = MainRunner().run_increment_job(skip_if_done=True, notify=False)
             logger.info("啟動後融合完成（當日檔數／回補 %s）", n)
         except Exception:
             logger.exception("啟動後融合失敗")

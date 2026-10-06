@@ -324,6 +324,27 @@ def test_increment_job_sends_done_only_after_gate_passes():
     assert "_fuse_done_message" not in src.split("return False")[0]
 
 
+def test_increment_job_stamps_when_bars_already_complete():
+    import inspect
+
+    from main_runner import MainRunner
+
+    src = inspect.getsource(MainRunner.run_increment_job)
+    assert "already-complete" in src
+    assert "increment-claim" in src
+    assert src.index("already-complete") < src.index("盤後融合開始")
+
+
+def test_boot_backfill_uses_increment_job():
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.start_market_backfill)
+    assert "run_increment_job(skip_if_done=True, notify=False)" in src
+    assert "run_daily_increment(notify=False)" not in src
+
+
 def test_increment_job_holiday_checks_prior_cap_before_skip():
     import inspect
 
@@ -336,3 +357,23 @@ def test_increment_job_holiday_checks_prior_cap_before_skip():
     assert "sync_emerging_quotes" in closed_block
     assert "audit_import" in closed_block
     assert "_increment_ok" in closed_block
+
+
+def test_pipeline_stamp_and_finished_at_are_taipei():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner, _stamp_age_seconds
+
+    tw = ZoneInfo("Asia/Taipei")
+    naive_utc = "2026-10-06T10:47:44"
+    assert MainRunner._pipeline_finished_tw_ymd(naive_utc) == "20261006"
+    aware = "2026-10-06T18:47:44+08:00"
+    assert MainRunner._pipeline_finished_tw_ymd(aware) == "20261006"
+    from inspect import getsource
+
+    assert "taipei_stamp()" in getsource(MainRunner._mark_pipeline)
+    now = datetime(2026, 10, 6, 18, 49, tzinfo=tw)
+    assert _stamp_age_seconds("2026-10-06T18:47:44+08:00", now=now) == 76.0
+    # 舊 naive＝UTC：10:47Z＝台北 18:47
+    assert _stamp_age_seconds(naive_utc, now=now) == 76.0
