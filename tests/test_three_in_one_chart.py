@@ -203,13 +203,15 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     assert prep and os.path.isfile(prep)
     assert _LOOKUP_JPEG_QUALITY >= 95
     pim = Image.open(prep)
-    # 查股四張統一直式 4:5（1920×2400）；表頭列高跟畫布寬成比
-    assert pim.size == _LOOKUP_ALBUM_MAX
-    assert pim.size[0] * 5 == pim.size[1] * 4
+    # 送出＝原生像素（不准再套 4:5 letterbox）；表頭列高跟畫布寬成比
+    src = Image.open(path)
+    assert pim.size == src.size or pim.size == WayneTelegramBot._fit_lookup_photo_wh(*src.size)
+    assert pim.size[0] * 5 != pim.size[1] * 4 or abs(pim.size[0] / pim.size[1] - 0.8) > 0.02
     chat_w = 1113
     head_chat_h = int(400 * chat_w / pim.width)
-    assert head_chat_h >= int(400 * chat_w / _LOOKUP_ALBUM_MAX[0]) - 1, head_chat_h
-    assert head_chat_h >= 220, head_chat_h
+    # 原生寬通常 ≥1562，縮到對話框後表頭列高仍要老花可讀
+    assert head_chat_h >= int(400 * chat_w / max(pim.width, _LOOKUP_ALBUM_MAX[0])) - 1, head_chat_h
+    assert head_chat_h >= 180, head_chat_h
     assert "三合一" in (cap or "")
     bubble_w = 400
     bubble = pim.resize(

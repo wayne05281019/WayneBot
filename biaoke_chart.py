@@ -64,11 +64,16 @@ _STRUCTURE_FIG_RIGHT = 0.948
 # 直式 4:5：縮圖靠右，左邊留給頭牌，不准今K／日期壓進迷你圖
 _LOOKUP_LOCATOR_LEFT = 0.575
 _FIG_BOTTOM = 0.072
+# 舊直式：頭牌帶在圖上方。橫式滿版（對齊查股範本五）：主圖幾乎頂到上緣，頭牌疊圖上
 _STOCK_MAIN_TOP = 0.658
+_STOCK_MAIN_TOP_FULLBLEED = 0.968
 _LOCATOR_LEFT = 0.500
 _LOCATOR_WIDTH = _FIG_RIGHT - _LOCATOR_LEFT
 _STOCK_LOCATOR_BOTTOM = 0.690
 _STOCK_LOCATOR_HEIGHT = 0.278
+# 橫式滿版：迷你圖改疊在主圖右上，不准再另開上頭空白帶
+_STOCK_LOCATOR_BOTTOM_FB = 0.74
+_STOCK_LOCATOR_HEIGHT_FB = 0.20
 # 縮圖右緣＝主圖右緣，上下一條線。
 _STOCK_LOCATOR_RECT = (
     _LOCATOR_LEFT,
@@ -76,12 +81,20 @@ _STOCK_LOCATOR_RECT = (
     _LOCATOR_WIDTH,
     _STOCK_LOCATOR_HEIGHT,
 )
+_STOCK_LOCATOR_RECT_FB = (
+    _LOCATOR_LEFT,
+    _STOCK_LOCATOR_BOTTOM_FB,
+    _LOCATOR_WIDTH,
+    _STOCK_LOCATOR_HEIGHT_FB,
+)
 _HEADER_X = 4.60
 # 今K／漲跌：跟股名同一排、右對齊縮圖左緣，不准壓開高低收
 _SPOT_X = _LOCATOR_LEFT * 100.0 - 0.70
 _SPOT_Y = 96.70
 # 左上頭牌可佔到縮圖左側空白前（今K已移走）
 _HEADER_CHIP_MAX = 45.0
+# 查股結構圖橫式長寬比對齊範本五（約 1.52）；大量撐壓 figsize 不动
+_STRUCTURE_LOOKUP_FIG = (12.4, 12.4 / 1.52)
 
 
 def _style_frame(ax, *, hide_top=False) -> None:
@@ -2548,6 +2561,7 @@ def render_biaoke_structure_png(
     last_c0 = float(last_bar0.get("close") or 0)
     fig_w, fig_h = (float(figsize[0]), float(figsize[1])) if figsize else (18.6, 10.8)
     portrait = fig_h / max(fig_w, 0.01) >= 1.15
+    fullbleed = not portrait
     use_dpi = int(dpi or BIAOKE_CHART_DPI)
     memo_key = (
         "biaoke_struct",
@@ -2559,7 +2573,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-wrap2",
+        "hdr-fullbleed-v1" if fullbleed else "hdr-wrap2",
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
@@ -2983,6 +2997,23 @@ def render_biaoke_structure_png(
     ov.axis("off")
     ov.patch.set_alpha(0)
     ov.set_navigate(False)
+    # 橫式滿版：頭牌疊在 K 圖左上（附圖四基本資料併進附圖五版面），半透底避免壓線
+    if fullbleed:
+        import matplotlib.patches as mpatches
+
+        ov.add_patch(
+            mpatches.FancyBboxPatch(
+                (2.2, 66.8),
+                46.5,
+                31.6,
+                boxstyle="round,pad=0.35,rounding_size=0.9",
+                facecolor="#ffffff",
+                edgecolor="#90caf9",
+                linewidth=1.35,
+                alpha=0.92,
+                zorder=1,
+            )
+        )
     _paint_nameplate(ov, plate)
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else _HEADER_CHIP_MAX
@@ -3102,16 +3133,18 @@ def render_biaoke_structure_png(
         loc_left = _LOOKUP_LOCATOR_LEFT if portrait else _LOCATOR_LEFT
         loc_rect = (
             loc_left,
-            _STOCK_LOCATOR_BOTTOM,
+            _STOCK_LOCATOR_BOTTOM_FB if fullbleed else _STOCK_LOCATOR_BOTTOM,
             _STRUCTURE_FIG_RIGHT - loc_left,
-            _STOCK_LOCATOR_HEIGHT,
+            _STOCK_LOCATOR_HEIGHT_FB if fullbleed else _STOCK_LOCATOR_HEIGHT,
         )
         paint_locator_inset(
             fig,
             rows,
             win_from=str(work[0].get("date") or ""),
             win_to=str(work[-1].get("date") or ""),
-            rect=loc_rect if portrait else _STOCK_LOCATOR_RECT,
+            rect=loc_rect if portrait else (
+                _STOCK_LOCATOR_RECT_FB if fullbleed else _STOCK_LOCATOR_RECT
+            ),
             title="橙＝大圖區間　黃＝預估",
             legs=loc_legs,
             forecast_n=_FUTURE,
@@ -3189,7 +3222,7 @@ def render_biaoke_structure_png(
     fig.subplots_adjust(
         left=_FIG_LEFT,
         right=_STRUCTURE_FIG_RIGHT,
-        top=_STOCK_MAIN_TOP,
+        top=_STOCK_MAIN_TOP if portrait else _STOCK_MAIN_TOP_FULLBLEED,
         bottom=_FIG_BOTTOM,
     )
     # 查詢時間：直式放頭牌右上（縮圖左側），不准壓迷你圖
@@ -3202,7 +3235,9 @@ def render_biaoke_structure_png(
             stock_id=str(sid or ""),
         )
         stamp_x = (_LOOKUP_LOCATOR_LEFT - 0.012) if portrait else _STRUCTURE_FIG_RIGHT
-        stamp_y = 0.988 if portrait else (_STOCK_MAIN_TOP + 0.006)
+        stamp_y = 0.988 if portrait else (
+            _STOCK_MAIN_TOP_FULLBLEED + 0.004 if fullbleed else _STOCK_MAIN_TOP + 0.006
+        )
         fig.text(
             stamp_x,
             stamp_y,

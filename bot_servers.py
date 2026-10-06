@@ -44,8 +44,9 @@ _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 # 三合一表頭字多：q95＋永不色度抽樣；Floor 不准掉到會糊國字的區間
 _LOOKUP_JPEG_QUALITY = 95
 _LOOKUP_JPEG_QUALITY_FLOOR = 88
-# 高低卡／介紹卡：4:5 格 1920×2400（勝率買點高低卡已鎖定這尺寸）。
-# 結構圖／大量撐壓／導航：橫式原版，原像素送、不准再套 4:5。
+# 高低卡／介紹卡／勝率買點高低卡：原生直式像素送出（能大就大；iPhone 點開滿版）。
+# 不准再套 4:5 letterbox——會把 1562×2977 壓進 1920×2400 側邊留白，點開只剩約 6 成高。
+# 結構圖／大量撐壓／導航：橫式原版，原像素送。並排格仍可走 4:5（_prepare_album_cell）。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_MAX = (1920, 2400)
@@ -4467,10 +4468,10 @@ class WayneTelegramBot:
 
     @staticmethod
     def _prepare_lookup_album_photo(path: str, kind: str = "") -> str:
-        """高低卡／介紹卡：4:5 1920×2400（勝率買點高低卡同一格）。結構／大量撐壓／導航：橫式原像素。"""
-        if str(kind or "") in ("vol", "struct", "nav"):
-            return WayneTelegramBot._prepare_native_lookup_jpeg(path)
-        return WayneTelegramBot._letterbox_lookup_jpeg(path, _LOOKUP_ALBUM_MAX)
+        """查股第1／第2張與勝率買點高低卡：原生直式像素（外框同一套）。
+        結構／大量撐壓／導航：橫式原像素。一律不准 4:5 letterbox 壓小點開。"""
+        _ = kind  # 呼叫端仍傳 kind；送圖路徑已統一原生
+        return WayneTelegramBot._prepare_native_lookup_jpeg(path)
 
     @staticmethod
     def _chart_png_looks_ok(path: str) -> bool:
