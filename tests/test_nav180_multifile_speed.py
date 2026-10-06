@@ -15,11 +15,14 @@ pytestmark = pytest.mark.production_db
 
 
 def test_paint_nav_uses_linecollection():
-    from wayne_navigator import _paint_nav_on_axes
+    from wayne_navigator import _paint_nav_on_axes, paint_lookup_ohlc_candles
 
     src = inspect.getsource(_paint_nav_on_axes)
-    assert "LineCollection" in src
-    assert "add_collection" in src
+    # 導航日 K 走查股共用 paint（影線 LineCollection 在 paint 內）
+    assert "paint_lookup_ohlc_candles" in src
+    paint_src = inspect.getsource(paint_lookup_ohlc_candles)
+    assert "LineCollection" in paint_src
+    assert "add_collection" in paint_src
 
 
 def test_align_ohlc_cached_hits():

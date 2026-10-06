@@ -299,11 +299,14 @@ def test_vol_zone_uses_shared_volume_heights():
     import inspect
 
     from vol_zone_chart import _paint_volume_zone
+    from wayne_navigator import paint_lookup_volume_bars
 
     src = inspect.getsource(_paint_volume_zone)
-    assert "nav_volume_bar_heights" in src
+    assert "paint_lookup_volume_bars" in src
     assert "view[\"volume\"]" in src or "view['volume']" in src
     assert "0.32" not in src  # 不准再抬 32% 假地板
+    vol_src = inspect.getsource(paint_lookup_volume_bars)
+    assert "nav_volume_bar_heights" in vol_src
 
     """話筒紅圈：大量區壓／撐要比標題更容易讀。"""
     import inspect

@@ -48,7 +48,8 @@ def test_vol_zone_dpi_and_jpeg_quality_floor():
     assert VOL_ZONE_TAG_PT >= 15
     assert VOL_ZONE_FIG_W >= 11.2
     src = inspect.getsource(_paint_volume_zone)
-    assert "LineCollection" in src
+    # 日 K 影線 LineCollection 在共用 paint 內
+    assert "paint_lookup_ohlc_candles" in src
     assert "VOL_ZONE_JPEG_QUALITY" in src or "pil_kwargs" in src
 
 
