@@ -416,10 +416,17 @@ def _fit_telegram_click_view(im: Image.Image) -> Image.Image:
         scale = min(scale, TG_CLICK_MAX_SIDE / float(long))
     if w + h > TG_WH_BUDGET:
         scale = min(scale, TG_WH_BUDGET / float(w + h))
-    if scale >= 0.999:
+    if long <= TG_CLICK_MAX_SIDE and w + h <= TG_WH_BUDGET:
         return im
-    nw = max(1, int(round(w * scale)))
-    nh = max(1, int(round(h * scale)))
+    nw = max(1, int(w * scale))
+    nh = max(1, int(h * scale))
+    while max(nw, nh) > TG_CLICK_MAX_SIDE or nw + nh > TG_WH_BUDGET:
+        if nw >= nh and nw > 1:
+            nw -= 1
+        elif nh > 1:
+            nh -= 1
+        else:
+            break
     return im.resize((nw, nh), Image.Resampling.LANCZOS)
 
 

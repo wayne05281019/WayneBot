@@ -218,11 +218,18 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     assert dark >= 400, dark
     # 收盤非漲停：表頭價塊不准整塊紅底（抽今K欄中段）
     rgb = pim.convert("RGB")
-    hx = min(pim.width - 1, int(pim.width * 0.38))
-    hy = min(pim.height - 1, 90)
-    r, g, b = rgb.getpixel((hx, hy))
-    # 允許白／淺底；不准接近 CANDLE_UP 實心紅
-    assert not (r > 180 and g < 90 and b < 90), (r, g, b)
+    w, h = pim.size
+    band = rgb.crop((int(w * 0.26), 40, int(w * 0.50), 130))
+    red_fill = 0
+    pale = 0
+    for px in band.getdata():
+        r, g, b = px
+        if r > 180 and g < 90 and b < 90:
+            red_fill += 1
+        elif r > 220 and g > 220 and b > 220:
+            pale += 1
+    # 字／小K會有紅像素；底必須是白多過實心紅底
+    assert pale > red_fill, (pale, red_fill)
 
 
 @pytest.mark.production_db
