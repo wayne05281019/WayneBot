@@ -130,7 +130,7 @@ GLANCE_FIG_W = CARD_FIG_W
 GLANCE_FIG_H = 12.4
 NAV_CHART_DPI = 320
 # 查股 JPEG：對齊壓力區提質路線；q90＋無色度抽樣，縮圖清晰、點開仍 <TG 上限。
-LOOKUP_JPEG_QUALITY = 90
+LOOKUP_JPEG_QUALITY = 95
 # 上下疊字行距（資料座標）。13pt 字高約 2.54，舊 2.25 會黏成一行。
 _OHLC_STACK = 2.95
 _NAV_STACK = 2.80

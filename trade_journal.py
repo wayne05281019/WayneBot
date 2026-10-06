@@ -3,38 +3,37 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 
 def ensure_user_trade_logs(db_path: str) -> None:
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_trade_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            trade_date TEXT NOT NULL,
-            stock_code TEXT NOT NULL,
-            stock_name TEXT NOT NULL,
-            action TEXT NOT NULL,
-            lots REAL NOT NULL,
-            price REAL NOT NULL,
-            amount REAL NOT NULL,
-            cost_price REAL,
-            realized_pnl REAL,
-            pnl_pct REAL,
-            note TEXT DEFAULT '',
-            created_at TEXT NOT NULL
-        );
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_user_trade_logs_uid ON user_trade_logs(user_id, id DESC);"
-    )
-    conn.commit()
-    conn.close()
+    from wayne_db import get_db_connection
+
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_trade_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                stock_code TEXT NOT NULL,
+                stock_name TEXT NOT NULL,
+                action TEXT NOT NULL,
+                lots REAL NOT NULL,
+                price REAL NOT NULL,
+                amount REAL NOT NULL,
+                cost_price REAL,
+                realized_pnl REAL,
+                pnl_pct REAL,
+                note TEXT DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_trade_logs_uid ON user_trade_logs(user_id, id DESC);"
+        )
 
 
 _QTY_TOKEN = re.compile(r"^([+-]?\d+(?:\.\d+)?)(張|股)?$")
@@ -174,56 +173,57 @@ def log_user_trade(
     pnl_pct: Optional[float] = None,
     note: str = "",
 ) -> None:
+    from wayne_db import get_db_connection
+
     ensure_user_trade_logs(db_path)
     lots = float(lots or 0)
     price = float(price or 0)
     amount = round(lots * price * 1000.0, 2)
     now = datetime.now()
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
-        INSERT INTO user_trade_logs
-        (user_id, trade_date, stock_code, stock_name, action, lots, price, amount,
-         cost_price, realized_pnl, pnl_pct, note, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            str(user_id),
-            now.strftime("%Y%m%d"),
-            str(stock_code).strip(),
-            stock_name or stock_code,
-            str(action).upper(),
-            lots,
-            price,
-            amount,
-            cost_price,
-            realized_pnl,
-            pnl_pct,
-            note or "",
-            now.isoformat(timespec="seconds"),
-        ),
-    )
-    conn.commit()
-    conn.close()
+    # 必須走 DB_LOCK：雙人同時記買賣時不可繞過 wayne_db 寫鎖，否則持股累加會丟張數。
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO user_trade_logs
+            (user_id, trade_date, stock_code, stock_name, action, lots, price, amount,
+             cost_price, realized_pnl, pnl_pct, note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(user_id),
+                now.strftime("%Y%m%d"),
+                str(stock_code).strip(),
+                stock_name or stock_code,
+                str(action).upper(),
+                lots,
+                price,
+                amount,
+                cost_price,
+                realized_pnl,
+                pnl_pct,
+                note or "",
+                now.isoformat(timespec="seconds"),
+            ),
+        )
 
 
 def recent_user_trades(db_path: str, user_id: str, limit: int = 12) -> List[Dict[str, Any]]:
+    from wayne_db import get_db_connection
+
     ensure_user_trade_logs(db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        """
-        SELECT trade_date, action, stock_code, stock_name, lots, price,
-               realized_pnl, pnl_pct, note, created_at
-        FROM user_trade_logs
-        WHERE user_id=?
-        ORDER BY id DESC
-        LIMIT ?
-        """,
-        (str(user_id), int(limit)),
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with get_db_connection(db_path, write=False) as conn:
+        rows = conn.execute(
+            """
+            SELECT trade_date, action, stock_code, stock_name, lots, price,
+                   realized_pnl, pnl_pct, note, created_at
+            FROM user_trade_logs
+            WHERE user_id=?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (str(user_id), int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def format_user_trades_html(db_path: str, user_id: str, limit: int = 12) -> str:
@@ -267,22 +267,23 @@ def format_user_review_html(db_path: str, user_id: str) -> str:
     """簡要復盤：賣出勝率、近筆損益。"""
     from tg_layout import html_escape, section_eq
 
+    from wayne_db import get_db_connection
+
     ensure_user_trade_logs(db_path)
-    conn = sqlite3.connect(db_path)
-    sells = conn.execute(
-        """
-        SELECT realized_pnl, pnl_pct, stock_code, stock_name, trade_date
-        FROM user_trade_logs
-        WHERE user_id=? AND action='SELL' AND realized_pnl IS NOT NULL
-        ORDER BY id DESC LIMIT 30
-        """,
-        (str(user_id),),
-    ).fetchall()
-    buys = conn.execute(
-        "SELECT COUNT(*) FROM user_trade_logs WHERE user_id=? AND action='BUY'",
-        (str(user_id),),
-    ).fetchone()[0]
-    conn.close()
+    with get_db_connection(db_path, write=False) as conn:
+        sells = conn.execute(
+            """
+            SELECT realized_pnl, pnl_pct, stock_code, stock_name, trade_date
+            FROM user_trade_logs
+            WHERE user_id=? AND action='SELL' AND realized_pnl IS NOT NULL
+            ORDER BY id DESC LIMIT 30
+            """,
+            (str(user_id),),
+        ).fetchall()
+        buys = conn.execute(
+            "SELECT COUNT(*) FROM user_trade_logs WHERE user_id=? AND action='BUY'",
+            (str(user_id),),
+        ).fetchone()[0]
     lines = [section_eq("我的復盤"), "<i>只統計你手記的真實賣出，不含 AI 模擬倉。</i>"]
     lines.append(f"累計買進筆數　{int(buys or 0)}")
     if not sells:

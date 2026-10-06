@@ -844,15 +844,21 @@ def test_l7_flow_sector_indexed():
 
 def test_l7_lookup_gc_once():
     src = _src(WayneTelegramBot._send_card_to_locked)
-    # 高低溫度卡→三合一→介紹卡串行；只准在全部 PNG 就緒後 gc 一次。
+    # 高低溫度卡→三合一→介紹卡；三合一與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
     assert "card_item = await card_render_task" in src
-    assert "await _three_item()" in src
+    assert "create_task(_three_item())" in src
+    assert "await three_task" in src
+    assert "_bump_progress" in src
+    assert "card_queued" in src
+    assert src.index("create_task(_three_item())") < src.index(
+        "card_item = await card_render_task"
+    )
     assert "render_three_in_one_result" in src
     assert src.count("gc.collect") == 1
     gc_at = src.index("gc.collect")
     pair_at = src.index("card_item = await card_render_task")
     assert pair_at < gc_at
-    assert src.index("await _three_item()") < gc_at
+    assert src.index("await three_task") < gc_at
 
 
 def test_l7_card_timeouts_shared():

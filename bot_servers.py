@@ -41,8 +41,9 @@ _LEAVE_ZERO_TIMEOUT = float(os.getenv("WAYNE_LEAVE_ZERO_TIMEOUT", "120"))
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
-_LOOKUP_JPEG_QUALITY = 90
-_LOOKUP_JPEG_QUALITY_FLOOR = 78
+# 三合一表頭字多：q95＋永不色度抽樣；Floor 不准掉到會糊國字的區間
+_LOOKUP_JPEG_QUALITY = 95
+_LOOKUP_JPEG_QUALITY_FLOOR = 88
 # 兩張同尺寸 4:5 才並排。格上限 1920×2400：手機點開夠銳，檔比 3390 格小很多所以傳得快。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
@@ -3999,15 +4000,35 @@ class WayneTelegramBot:
         }
         order = ("quote", "card", "three", "glance")
         sent_ks = [str(k) for k in (sent or [])]
-        now = labels.get(str(current or ""), "")
+        cur = str(current or "")
+        now = labels.get(cur, "")
         if not now:
             now = next((labels[k] for k in order if k not in sent_ks), "出圖")
-        if str(current or "") == "both":
+        # 三合一合成較重：高低卡已出時寫清楚，避免 LOADING 只跳秒數像當掉
+        if cur in ("three", "volzone") and "card" in sent_ks:
+            now = "三合一（合成較重）"
+        if cur == "both":
             rest = labels["album"]
-        elif str(current or "") == "quote":
+        elif cur == "quote":
             rest = "讀高低卡、出圖"
         else:
-            rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
+            skip = set(sent_ks)
+            if cur:
+                skip.add(cur)
+            if cur in ("three", "volzone"):
+                skip.update(("three", "volzone"))
+            # 已過現價階段就不要再寫「還有現價」
+            if cur in ("card", "three", "volzone", "glance", "table", "album") or sent_ks:
+                skip.add("quote")
+            rest = "、".join(labels[k] for k in order if k not in skip)
+        sent_txt = "、".join(
+            labels[k] for k in ("card", "three", "glance") if k in sent_ks and k in labels
+        )
+        # _wait_bubble 會加「接著：」前綴；這裡只寫已送／還有，不准再疊一個接著
+        if sent_txt and rest:
+            rest = f"已送{sent_txt}；還有{rest}"
+        elif sent_txt:
+            rest = f"已送{sent_txt}"
         return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
 
     @staticmethod
@@ -4312,15 +4333,16 @@ class WayneTelegramBot:
             limit = _LOOKUP_TG_MAX_BYTES - 64
             for q in (
                 _LOOKUP_JPEG_QUALITY,
-                84,
-                80,
+                92,
+                90,
                 _LOOKUP_JPEG_QUALITY_FLOOR,
             ):
                 im.save(
                     out,
                     "JPEG",
                     quality=int(q),
-                    subsampling=0 if int(q) >= 84 else 2,
+                    # 國字／表頭：一律 4:4:4，不准掉到 4:2:0 把筆畫抽糊
+                    subsampling=0,
                     optimize=False,
                 )
                 if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
@@ -8296,17 +8318,69 @@ class WayneTelegramBot:
             st["current"] = "card"
             st["sent"] = []
             logger.info("查股階段 current=card sent=[] code=%s", code)
-            # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
-            # 順序鎖死：高低溫度卡 → 三合一 → 介紹卡；子鍵等二三張後才掛。
-            card_render_task = asyncio.create_task(
-                _render_ready(
-                    "card",
-                    lambda: render_decision_card_png(card, card_path_f),
-                    _LOOKUP_PNG_TIMEOUT,
-                    card_cap,
-                    None,
+
+            async def _bump_progress(current: str) -> None:
+                """階段一切換就改 LOADING；不准等下一秒 tick 才動（高低卡已出時尤甚）。"""
+                st_b = self._op_state_map().setdefault(
+                    actor, {"sent": list(sent_kinds), "current": current, "t0": op_t0}
                 )
-            )
+                st_b["current"] = current
+                st_b["sent"] = list(sent_kinds)
+                if wait_msg is None:
+                    return
+                elapsed = int(time.monotonic() - op_t0)
+                await self._safe_edit_text(
+                    wait_msg,
+                    self._chart_progress_text(
+                        elapsed,
+                        sent=st_b.get("sent") or [],
+                        current=current,
+                    ),
+                    parse_mode="HTML",
+                )
+
+            # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
+            # 三合一在高低卡已 submit 進 paint worker 後立刻排隊：卡一畫完 worker
+            # 馬上接三合一，與送高低卡／改 LOADING 重疊，砍掉假死空窗。
+            # 順序鎖死：高低溫度卡 → 三合一 → 介紹卡；子鍵等二三張後才掛。
+            card_queued = asyncio.Event()
+
+            async def _card_item():
+                """先 submit 再放行三合一排隊；await 完才回傳要送的高低卡。"""
+                attempts = 2
+                path = ""
+                for attempt in range(attempts):
+                    try:
+                        fut = submit_mpl_paint(
+                            lambda: render_decision_card_png(card, card_path_f)
+                        )
+                        card_queued.set()
+                        path = await asyncio.wait_for(
+                            asyncio.wrap_future(fut), timeout=_LOOKUP_PNG_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        card_queued.set()
+                        logger.warning(
+                            "看這檔 card 逾時 code=%s attempt=%s", code, attempt + 1
+                        )
+                        return None
+                    except Exception:
+                        card_queued.set()
+                        logger.exception("看這檔 card 產圖失敗 code=%s", code)
+                        return None
+                    if not self._png_looks_ok(path):
+                        logger.warning(
+                            "殘缺圖重試 kind=card code=%s attempt=%s size=%s",
+                            code,
+                            attempt + 1,
+                            os.path.getsize(path) if path and os.path.exists(path) else 0,
+                        )
+                        path = ""
+                        continue
+                    return ("card", path, card_cap, None)
+                return None
+
+            card_render_task = asyncio.create_task(_card_item())
             try:
                 tape = await tape_task
             except Exception:
@@ -8319,6 +8393,12 @@ class WayneTelegramBot:
                     code, card, tape, glance_path, self.db_path, ohlc=ohlc
                 )
 
+            # 等高低卡進 queue 再排三合一（Event；不准只靠 sleep(0) 賭排程）
+            try:
+                await asyncio.wait_for(card_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT)
+            except asyncio.TimeoutError:
+                card_queued.set()
+            three_task = asyncio.create_task(_three_item())
             card_item = await card_render_task
             if card_item:
                 kind, path, caption, markup = card_item
@@ -8328,12 +8408,18 @@ class WayneTelegramBot:
                     sent_any = True
                     sent_kinds.append(kind)
                     ready_items.append(card_item)
-
-            st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "three"})
-            st["current"] = "three"
-            st["sent"] = list(sent_kinds)
-            # 三合一／介紹串行：合成腳本會 patch matplotlib，不准跟介紹同刻搶 FreeType。
-            three_item = await _three_item()
+            # 高低卡已出：立刻改口「現在三合一」，避免秒數停住像當掉
+            await _bump_progress("three")
+            await asyncio.sleep(0)
+            # 三合一／介紹仍串行：合成腳本會 patch matplotlib，不准跟介紹同刻搶 FreeType。
+            t_three0 = time.monotonic()
+            three_item = await three_task
+            logger.info(
+                "查股階段 three done %.1fs code=%s ok=%s",
+                time.monotonic() - t_three0,
+                code,
+                bool(three_item),
+            )
             if three_item:
                 kind, path, caption, _mk = three_item
                 prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
@@ -8345,11 +8431,17 @@ class WayneTelegramBot:
                     hub_on = True
                     ready_items.append(three_item)
 
-            st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "glance"})
-            st["current"] = "glance"
-            st["sent"] = list(sent_kinds)
+            await _bump_progress("glance")
+            await asyncio.sleep(0)
+            t_glance0 = time.monotonic()
             glance_item = await _render_ready(
                 "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, hub
+            )
+            logger.info(
+                "查股階段 glance done %.1fs code=%s ok=%s",
+                time.monotonic() - t_glance0,
+                code,
+                bool(glance_item),
             )
             if glance_item:
                 kind, path, caption, markup = glance_item

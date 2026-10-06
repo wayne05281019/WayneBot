@@ -153,9 +153,15 @@ def test_lookup_album_has_no_lecture_caption():
     assert "render_three_in_one_result" in locked
     assert "three" in locked
     assert "三合一" in locked
-    # 順序：高低溫度卡 → 三合一 → 介紹卡
-    assert locked.find('current"] = "card"') < locked.find("await _three_item()")
-    assert locked.find("await _three_item()") < locked.find('current"] = "glance"')
+    # 順序：高低溫度卡 → 三合一 → 介紹卡（三合一與送卡重疊）
+    assert "create_task(_three_item())" in locked
+    assert "await three_task" in locked
+    assert "create_task(_three_item())" in locked
+    assert locked.find("create_task(_three_item())") < locked.find(
+        "card_item = await card_render_task"
+    )
+    assert locked.find('current"] = "card"') < locked.find("await three_task")
+    assert locked.find("await three_task") < locked.find('await _bump_progress("glance")')
     hub = inspect.getsource(WayneTelegramBot._hub_keyboard)
     assert 'callback_data=f"g:{c}"' not in hub
     assert 'InlineKeyboardButton("K線"' not in hub
