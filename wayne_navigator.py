@@ -119,9 +119,10 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
-# 排版（figsize／字級）鎖定。結構圖／大量撐壓／導航＝橫式原版，不准套 4:5。
-# 高低卡＝勝率買點同一套：內容高度 H×0.076，送圖 4:5。介紹卡外框對齊這格
-# （上市／上櫃／興櫃同一套），內文回流填滿同一畫布。
+# 排版（figsize／字級）鎖定。結構圖／大量撐壓／導航＝橫式原版，尺寸已滿意不准改。
+# 高低卡＝勝率買點同一套：內容高度 H×0.076、原生直式像素送出（能大就大）。
+# 介紹卡外框對齊這格（上市／上櫃／興櫃同一套），內文回流填滿同一畫布。
+# 不准再 letterbox 成 4:5——點開會變小。
 CARD_PNG_DPI = 220
 GLANCE_PNG_DPI = 220
 CARD_FIG_W = 7.1
@@ -1712,6 +1713,179 @@ def nav_volume_bar_heights(volumes) -> tuple:
 def volume_bar_display_heights(volumes) -> tuple:
     """導航／大量區共用入口（別名）。"""
     return nav_volume_bar_heights(volumes)
+
+
+# 查股凡有日 K／量柱（結構／大量撐壓／高低導航）：同一套紅綠、柱寬、線寬質感。
+LOOKUP_CANDLE_UP = "#e53935"
+LOOKUP_CANDLE_DN = "#00897b"
+LOOKUP_CANDLE_HALT = "#9e9e9e"
+LOOKUP_CANDLE_BODY_W = 0.60
+LOOKUP_CANDLE_WICK_LW = 1.25
+LOOKUP_CANDLE_BODY_LW = 0.35
+LOOKUP_VOL_BAR_W = 0.70
+LOOKUP_SPIKE_VOL = "#f9a825"
+
+
+def lookup_candle_up_mask(opens, closes, *, halt=None) -> np.ndarray:
+    """台股紅漲綠跌：收 vs 昨收（無昨收才比開）。回布林陣列，長度＝柱數。"""
+    from decision_card_signals import candle_up_taiwan
+
+    opens = np.asarray(opens, dtype=float)
+    closes = np.asarray(closes, dtype=float)
+    n = int(closes.shape[0])
+    if halt is None:
+        halt_arr = np.zeros(n, dtype=bool)
+    else:
+        halt_arr = np.asarray(halt, dtype=bool)
+        if halt_arr.shape[0] != n:
+            halt_arr = np.zeros(n, dtype=bool)
+    up = np.zeros(n, dtype=bool)
+    for i in range(n):
+        if bool(halt_arr[i]):
+            continue
+        prev = float(closes[i - 1]) if i and np.isfinite(closes[i - 1]) else None
+        up[i] = bool(candle_up_taiwan(float(closes[i]), prev, float(opens[i])))
+    return up
+
+
+def paint_lookup_ohlc_candles(
+    ax,
+    xs,
+    opens,
+    highs,
+    lows,
+    closes,
+    *,
+    halt=None,
+    spike_i: int | None = None,
+    span: float | None = None,
+    z: int = 3,
+) -> np.ndarray:
+    """結構／大量／導航共用日 K。回傳 up_mask（停牌列 False）。"""
+    from matplotlib.collections import LineCollection
+
+    xs = np.asarray(xs, dtype=float)
+    opens = np.asarray(opens, dtype=float)
+    highs = np.asarray(highs, dtype=float)
+    lows = np.asarray(lows, dtype=float)
+    closes = np.asarray(closes, dtype=float)
+    n = int(closes.shape[0])
+    if halt is None:
+        halt_arr = np.zeros(n, dtype=bool)
+    else:
+        halt_arr = np.asarray(halt, dtype=bool)
+        if halt_arr.shape[0] != n:
+            halt_arr = np.zeros(n, dtype=bool)
+    up_mask = lookup_candle_up_mask(opens, closes, halt=halt_arr)
+    colors = np.where(up_mask, LOOKUP_CANDLE_UP, LOOKUP_CANDLE_DN)
+    trade_i = np.flatnonzero(~halt_arr)
+    if span is None or not (span > 0):
+        finite = np.isfinite(highs) & np.isfinite(lows)
+        if finite.any():
+            span = float(np.nanmax(highs[finite]) - np.nanmin(lows[finite]))
+        else:
+            span = 1.0
+        span = max(span, 1e-6)
+    if trade_i.size:
+        wick_segs = [
+            [(float(xs[i]), float(lows[i])), (float(xs[i]), float(highs[i]))]
+            for i in trade_i
+        ]
+        ax.add_collection(
+            LineCollection(
+                wick_segs,
+                colors=[colors[i] for i in trade_i],
+                linewidths=LOOKUP_CANDLE_WICK_LW,
+                zorder=z,
+                capstyle="round",
+            )
+        )
+        body_h = np.maximum(np.abs(closes[trade_i] - opens[trade_i]), span * 0.002)
+        body_bot = np.minimum(opens[trade_i], closes[trade_i])
+        body_w = np.full(trade_i.size, LOOKUP_CANDLE_BODY_W, dtype=float)
+        body_lw = np.full(trade_i.size, LOOKUP_CANDLE_BODY_LW, dtype=float)
+        edge = [colors[i] for i in trade_i]
+        if spike_i is not None and 0 <= int(spike_i) < n and not bool(halt_arr[int(spike_i)]):
+            for j, i in enumerate(trade_i):
+                if int(i) == int(spike_i):
+                    body_w[j] = LOOKUP_CANDLE_BODY_W + 0.06
+                    body_lw[j] = 1.0
+                    edge[j] = LOOKUP_SPIKE_VOL
+                    break
+        ax.bar(
+            xs[trade_i],
+            body_h,
+            bottom=body_bot,
+            width=body_w,
+            color=[colors[i] for i in trade_i],
+            edgecolor=edge,
+            linewidth=body_lw,
+            zorder=z,
+            align="center",
+        )
+    for i in np.flatnonzero(halt_arr):
+        cl = float(closes[i])
+        x = float(xs[i])
+        ax.plot(
+            [x - 0.38, x + 0.38],
+            [cl, cl],
+            color=LOOKUP_CANDLE_HALT,
+            linewidth=1.7,
+            zorder=z + 1,
+            solid_capstyle="round",
+        )
+        ax.plot(
+            [x, x],
+            [cl - span * 0.004, cl + span * 0.004],
+            color=LOOKUP_CANDLE_HALT,
+            linewidth=1.2,
+            zorder=z + 1,
+        )
+    return up_mask
+
+
+def paint_lookup_volume_bars(
+    ax,
+    xs,
+    volumes,
+    candle_up,
+    *,
+    halt=None,
+    spike_i: int | None = None,
+    z: int = 3,
+) -> tuple:
+    """結構／大量／導航共用日量柱。回 (heights, ylim, missing)。"""
+    xs = np.asarray(xs, dtype=float)
+    up = np.asarray(candle_up, dtype=bool)
+    n = int(xs.shape[0])
+    if halt is None:
+        halt_arr = np.zeros(n, dtype=bool)
+    else:
+        halt_arr = np.asarray(halt, dtype=bool)
+        if halt_arr.shape[0] != n:
+            halt_arr = np.zeros(n, dtype=bool)
+    heights, ylim, missing = nav_volume_bar_heights(volumes)
+    vol_vals = pd.to_numeric(pd.Series(volumes), errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | missing)
+    vol_draw = np.asarray(heights, dtype=float).copy()
+    vol_draw[zero_i] = 0.0
+    colors = [
+        LOOKUP_CANDLE_HALT if halt_arr[i] else (LOOKUP_CANDLE_UP if up[i] else LOOKUP_CANDLE_DN)
+        for i in range(n)
+    ]
+    ax.bar(xs, vol_draw, color=colors, width=LOOKUP_VOL_BAR_W, zorder=z, linewidth=0)
+    if spike_i is not None:
+        si = int(spike_i)
+        if 0 <= si < n and not bool(halt_arr[si]) and float(vol_vals[si]) > 0 and float(heights[si]) > 0:
+            ax.bar(
+                [si],
+                [float(heights[si])],
+                color=LOOKUP_SPIKE_VOL,
+                width=LOOKUP_VOL_BAR_W + 0.08,
+                zorder=z + 1,
+                linewidth=0,
+            )
+    return heights, ylim, missing
 
 
 def _tw_tick(px) -> float:
@@ -6195,59 +6369,18 @@ def _paint_nav_on_axes(
 
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     last_dn_i = last_up_i = -9
-    from decision_card_signals import candle_up_taiwan
-
-    candle_up = []
-    for i in range(n):
-        prev_c = float(work["close"].iloc[i - 1]) if i else None
-        candle_up.append(
-            candle_up_taiwan(float(work["close"].iloc[i]), prev_c, float(work["open"].iloc[i]))
-        )
-    # 批次畫 K：LineCollection 影線＋bar 實體（同壓力區）
-    from matplotlib.collections import LineCollection
-
     opens = work["open"].to_numpy(dtype=float)
     closes = work["close"].to_numpy(dtype=float)
     highs = work["high"].to_numpy(dtype=float)
     lows = work["low"].to_numpy(dtype=float)
     halt_arr = halt.fillna(False).astype(bool).to_numpy()
-    colors = np.where(np.asarray(candle_up, dtype=bool), "#e53935", "#00897b")
-    trade_i = np.flatnonzero(~halt_arr)
-    if trade_i.size:
-        wick_segs = [
-            [(float(xs[i]), float(lows[i])), (float(xs[i]), float(highs[i]))]
-            for i in trade_i
-        ]
-        ax1.add_collection(
-            LineCollection(
-                wick_segs,
-                colors=[colors[i] for i in trade_i],
-                linewidths=1.05,
-                zorder=3,
-                capstyle="round",
-            )
-        )
-        body_h = np.maximum(np.abs(closes[trade_i] - opens[trade_i]), span * 0.0018)
-        body_bot = np.minimum(opens[trade_i], closes[trade_i])
-        ax1.bar(
-            xs[trade_i],
-            body_h,
-            bottom=body_bot,
-            width=0.64,
-            color=[colors[i] for i in trade_i],
-            edgecolor=[colors[i] for i in trade_i],
-            linewidth=0.35,
-            zorder=3,
-            align="center",
-        )
+    # 日 K＝查股共用 paint（結構／大量／導航同一套）
+    candle_up = paint_lookup_ohlc_candles(
+        ax1, xs, opens, highs, lows, closes, halt=halt_arr, span=span, z=3
+    )
+    candle_up = [bool(x) for x in candle_up]
     for i in np.flatnonzero(halt_arr):
-        cl = float(closes[i])
         x = float(xs[i])
-        ax1.plot(
-            [x - 0.38, x + 0.38], [cl, cl],
-            color="#9e9e9e", linewidth=1.7, zorder=4, solid_capstyle="round",
-        )
-        ax1.plot([x, x], [cl - span * 0.004, cl + span * 0.004], color="#9e9e9e", linewidth=1.2, zorder=4)
         ax_sig.add_patch(
             patches.Rectangle(
                 (x - 0.42, 0.05), 0.84, 0.9,
@@ -6493,14 +6626,9 @@ def _paint_nav_on_axes(
             zorder=8,
         )
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
-    vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
-    vol_heights, vol_ylim, vol_missing = nav_volume_bar_heights(work["volume"])
-    vol_vals = pd.to_numeric(work["volume"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
-    # 正量線性比例；真 0／缺量／停價＝平坦（不准抬假地板冒充量）
-    zero_i = np.flatnonzero(halt.to_numpy(dtype=bool) | (vol_vals <= 0) | vol_missing)
-    vol_draw = np.asarray(vol_heights, dtype=float).copy()
-    vol_draw[zero_i] = 0.0
-    ax2.bar(xs, vol_draw, color=vol_colors, width=0.72, zorder=3)
+    vol_heights, vol_ylim, vol_missing = paint_lookup_volume_bars(
+        ax2, xs, work["volume"], candle_up, halt=halt_arr, z=3
+    )
     ax2.set_ylim(0, vol_ylim * 1.14)  # 上方留空給「量 xxx張」，不准壓量柱頂
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")

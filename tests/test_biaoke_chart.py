@@ -913,7 +913,8 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     src = inspect.getsource(render_biaoke_structure_png)
     assert "BIAOKE_CHART_DPI" in src
     assert "NAV_CHART_DPI" not in src
-    assert "_add_ohlc_wicks" in src
+    # 結構日 K 走查股共用 paint（與大量／導航同一套）
+    assert "paint_lookup_ohlc_candles" in src
     assert "_savefig_lookup_png" in src
     assert "演化區（不是保證・不是買訊）" in src or "演算區（不是保證・不是買訊）" in src or "不是買訊" in src
     assert "EVOLUTION_ZONE_LABEL" in src or "演化區" in src or "演算區" in src

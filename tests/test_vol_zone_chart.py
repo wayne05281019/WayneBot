@@ -155,7 +155,7 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
 
 
 def test_lookup_structure_uses_vol_zone_view():
-    """結構日K＝大量撐壓同一套官方 view，停牌灰K，橫式原版。"""
+    """結構日K＝大量撐壓同一套官方 view，停牌灰K；橫式滿版對齊範本五。"""
     import inspect
 
     from three_in_one_chart import _bars_from_official, render_lookup_structure_result
@@ -163,8 +163,8 @@ def test_lookup_structure_uses_vol_zone_view():
     src = inspect.getsource(render_lookup_structure_result)
     assert "prepare_volume_zone" in src
     assert 'pack["view"]' in src
-    assert "VOL_ZONE_FIG_W" in src
-    assert "VOL_ZONE_FIG_H_NAV" in src
+    assert "_STRUCTURE_LOOKUP_FIG" in src
+    assert "VOL_ZONE_FIG_H_NAV" not in src
     bars = inspect.getsource(_bars_from_official)
     assert '"is_halt": halt' in bars
 
@@ -299,11 +299,14 @@ def test_vol_zone_uses_shared_volume_heights():
     import inspect
 
     from vol_zone_chart import _paint_volume_zone
+    from wayne_navigator import paint_lookup_volume_bars
 
     src = inspect.getsource(_paint_volume_zone)
-    assert "nav_volume_bar_heights" in src
+    assert "paint_lookup_volume_bars" in src
     assert "view[\"volume\"]" in src or "view['volume']" in src
     assert "0.32" not in src  # 不准再抬 32% 假地板
+    vol_src = inspect.getsource(paint_lookup_volume_bars)
+    assert "nav_volume_bar_heights" in vol_src
 
     """話筒紅圈：大量區壓／撐要比標題更容易讀。"""
     import inspect
@@ -401,3 +404,59 @@ def test_volume_bars_one_per_traded_day_3081():
         if float(v or 0) > 0 and not bool(sm[i]):
             assert float(sh[i]) > 0, i
     assert float(ylim) > 0
+
+
+def test_lookup_candle_paint_shared():
+    """結構／大量／導航共用同一套 K／量柱常數與 paint。"""
+    import inspect
+
+    import biaoke_chart
+    import vol_zone_chart
+    from wayne_navigator import (
+        LOOKUP_CANDLE_BODY_W,
+        LOOKUP_CANDLE_DN,
+        LOOKUP_CANDLE_UP,
+        LOOKUP_VOL_BAR_W,
+        paint_lookup_ohlc_candles,
+        paint_lookup_volume_bars,
+    )
+
+    assert LOOKUP_CANDLE_UP == "#e53935"
+    assert LOOKUP_CANDLE_DN == "#00897b"
+    assert LOOKUP_CANDLE_BODY_W == 0.60
+    assert LOOKUP_VOL_BAR_W == 0.70
+    assert biaoke_chart._UP == LOOKUP_CANDLE_UP
+    assert biaoke_chart._DN == LOOKUP_CANDLE_DN
+    vz = inspect.getsource(vol_zone_chart._paint_volume_zone)
+    assert "paint_lookup_ohlc_candles" in vz
+    assert "paint_lookup_volume_bars" in vz
+    bc = inspect.getsource(biaoke_chart.render_biaoke_structure_png)
+    assert "paint_lookup_ohlc_candles" in bc
+    assert "paint_lookup_volume_bars" in bc
+    assert paint_lookup_ohlc_candles and paint_lookup_volume_bars
+
+
+def test_industry_font_matches_card_noto():
+    from industry_card import _card_font
+
+    f = _card_font(28, bold=True)
+    path = str(getattr(f, "path", "") or "")
+    assert "NotoSansTC" in path
+
+
+@pytest.mark.production_db
+def test_cross_chart_last_close_aligned_2383():
+    """同一檔同一 as_of：高低卡收盤＝大量撐壓 view 收盤。"""
+    from vol_zone_chart import prepare_volume_zone
+    from wayne_navigator import NavigatorEngine
+
+    db = get_db_path()
+    card = NavigatorEngine(db).get_decision_card("2383", merge_live=False)
+    assert card and not card.get("error")
+    pack = prepare_volume_zone("2383", "台光電", db, "/tmp/vz-align-2383.png")
+    assert pack and pack.get("view") is not None
+    last = pack["view"].iloc[-1]
+    v_date = str(last["date"]).replace("-", "")[:8]
+    c_date = str(card.get("latest_date") or "").replace("-", "")[:8]
+    assert v_date == c_date
+    assert abs(float(last["close"]) - float(card.get("close"))) < 1e-6

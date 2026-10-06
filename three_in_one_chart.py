@@ -3254,11 +3254,13 @@ def render_lookup_structure_result(
         return "", ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     try:
-        from biaoke_chart import render_biaoke_structure_png, stock_nameplate
+        from biaoke_chart import (
+            _STRUCTURE_LOOKUP_FIG,
+            render_biaoke_structure_png,
+            stock_nameplate,
+        )
         from vol_zone_chart import (
             VOL_ZONE_DPI,
-            VOL_ZONE_FIG_H_NAV,
-            VOL_ZONE_FIG_W,
             prepare_volume_zone,
         )
 
@@ -3275,7 +3277,8 @@ def render_lookup_structure_result(
             name=name,
             plate=stock_nameplate(sid, name, db_path),
             db_path=db_path,
-            figsize=(VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV),
+            # 橫式滿版對齊範本五；大量撐壓仍用 VOL_ZONE_FIG_* 不動
+            figsize=_STRUCTURE_LOOKUP_FIG,
             dpi=VOL_ZONE_DPI,
         )
         if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
