@@ -523,6 +523,10 @@ def test_locator_inset_marks_window():
     assert "quote=quote" not in rsrc.split("paint_locator_inset")[1][:400]
     assert "seam=float(n - 1)" in rsrc or "seam=" in rsrc
     assert "labelright=True" in rsrc
+    assert "labelleft=False" in rsrc
+    assert 'set_ticks_position("right")' in rsrc
+    assert "not portrait" in rsrc
+    assert "_LOOKUP_LOCATOR_LEFT" in rsrc
     from biaoke_chart import _dedupe_right_notes, _place_right_notes
 
     assert "_dedupe_right_notes" in inspect.getsource(_place_right_notes)

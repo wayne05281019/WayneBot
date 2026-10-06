@@ -55,11 +55,13 @@ _WINDOW_BG = "#ffe0b2"
 _HALO = "#ffffff"
 _FRAME = "#90a4ae"
 _MUTED = "#607d8b"
-# 左右都留股價刻度：左邊略寬、右邊對稱可比對
-_FIG_LEFT = 0.072
+# 查股結構圖只留右邊股價／量刻度（左邊拿掉，避免雙軸互壓）
+_FIG_LEFT = 0.042
 _FIG_RIGHT = 0.918
 # 結構圖右溝要塞「最可能＝看壓 ####」整盒＋邊框；右緣再留 y 刻度，不准貼齊裁切
 _STRUCTURE_FIG_RIGHT = 0.948
+# 直式 4:5：縮圖靠右，左邊留給頭牌，不准今K／日期壓進迷你圖
+_LOOKUP_LOCATOR_LEFT = 0.575
 _FIG_BOTTOM = 0.072
 _STOCK_MAIN_TOP = 0.658
 _LOCATOR_LEFT = 0.500
@@ -2507,6 +2509,7 @@ def render_biaoke_structure_png(
     last_d = str(last_bar0.get("date") or "")[:8]
     last_c0 = float(last_bar0.get("close") or 0)
     fig_w, fig_h = (float(figsize[0]), float(figsize[1])) if figsize else (18.6, 10.8)
+    portrait = fig_h / max(fig_w, 0.01) >= 1.15
     use_dpi = int(dpi or BIAOKE_CHART_DPI)
     memo_key = (
         "biaoke_struct",
@@ -2913,6 +2916,7 @@ def render_biaoke_structure_png(
     ov.set_navigate(False)
     _paint_nameplate(ov, plate)
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
+    chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else _HEADER_CHIP_MAX
     ov.text(
         _HEADER_X,
         92.85,
@@ -2922,41 +2926,58 @@ def render_biaoke_structure_png(
         va="center",
         ha="left",
     )
-    ov.text(
-        _HEADER_X,
-        89.15,
-        (
-            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
-            f"低 {_px(last_bar.get('low'))}　收 {_px(last_bar.get('close'))}　"
-            f"量 {_vol(last_bar.get('volume'))}"
-        ),
-        color=_TEXT,
-        fontproperties=_fp(15, "bold"),
-        va="center",
-        ha="left",
+    ohlc_1 = (
+        f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
+        f"低 {_px(last_bar.get('low'))}"
     )
-    ov.text(
-        _HEADER_X,
-        85.45,
-        (
-            f"爆大量日 {_ymd_full(spike_date)}　高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
-            f"量 {_vol(spike_bar.get('volume'))}"
-        ),
-        color=_PRESS,
-        fontproperties=_fp(15, "bold"),
-        va="center",
-        ha="left",
+    ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
+    ohlc_one = f"{ohlc_1}　{ohlc_2}"
+    if portrait or (_ow(ohlc_one, 15) + _HEADER_X > chip_max):
+        ov.text(
+            _HEADER_X, 89.35, ohlc_1, color=_TEXT, fontproperties=_fp(15, "bold"),
+            va="center", ha="left",
+        )
+        ov.text(
+            _HEADER_X, 86.35, ohlc_2, color=_TEXT, fontproperties=_fp(15, "bold"),
+            va="center", ha="left",
+        )
+        spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
+    else:
+        ov.text(
+            _HEADER_X, 89.15, ohlc_one, color=_TEXT, fontproperties=_fp(15, "bold"),
+            va="center", ha="left",
+        )
+        spike_y1, spike_y2, mute_y, chip_y0 = 85.45, 85.45, 82.05, 78.85
+    spike_1 = f"爆大量日 {_ymd_full(spike_date)}"
+    spike_2 = (
+        f"高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
+        f"量 {_vol(spike_bar.get('volume'))}"
     )
+    spike_one = f"{spike_1}　{spike_2}"
+    if spike_y1 != spike_y2 or _ow(spike_one, 15) + _HEADER_X > chip_max:
+        ov.text(
+            _HEADER_X, spike_y1, spike_1, color=_PRESS, fontproperties=_fp(15, "bold"),
+            va="center", ha="left",
+        )
+        ov.text(
+            _HEADER_X, spike_y2, spike_2, color=_PRESS, fontproperties=_fp(15, "bold"),
+            va="center", ha="left",
+        )
+    else:
+        ov.text(
+            _HEADER_X, spike_y1, spike_one, color=_PRESS, fontproperties=_fp(15, "bold"),
+            va="center", ha="left",
+        )
     ov.text(
         _HEADER_X,
-        82.05,
+        mute_y,
         "不是15分、不是介紹圖／決策卡",
         color=_MUTED,
         fontproperties=_fp(13, "bold"),
         va="center",
         ha="left",
     )
-    chip_x, chip_y = _HEADER_X, 78.85
+    chip_x, chip_y = _HEADER_X, chip_y0
     if mark:
         chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=13)
         chip_x, chip_y = _HEADER_X, 74.75
@@ -2966,7 +2987,7 @@ def render_biaoke_structure_png(
         ch_bits = [b for b in ch_lab.replace("　", " ").split() if b] + ["不是買訊"]
         for bit in ch_bits:
             need = _ow(f" {bit} ", 12) + 1.3
-            if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
+            if chip_x > _HEADER_X + 0.2 and chip_x + need > chip_max:
                 chip_x = _HEADER_X
                 chip_y -= 3.6
             chip_x = _draw_chip(
@@ -2975,7 +2996,7 @@ def render_biaoke_structure_png(
         chip_x, chip_y = _HEADER_X, chip_y - 3.6
     for bit in banner_bits:
         need = _ow(f" {bit} ", 12) + 1.3
-        if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
+        if chip_x > _HEADER_X + 0.2 and chip_x + need > chip_max:
             if chip_y - 3.6 < 69.0:
                 break
             chip_x = _HEADER_X
@@ -2983,8 +3004,8 @@ def render_biaoke_structure_png(
         chip_x = _draw_chip(
             ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=12
         )
-    # 今K／漲跌：縮圖外框左邊空白（預設 _SPOT_X／_SPOT_Y），不佔左上頭牌
-    if quote:
+    # 直式查股：頭牌已有開高低收；再畫今K會壓進迷你圖。橫式才留縮圖左側今K。
+    if quote and not portrait:
         _paint_spot(ov, quote)
     if len(rows) >= n + 8:
         loc_legs: List[Dict[str, Any]] = []
@@ -3022,25 +3043,32 @@ def render_biaoke_structure_png(
                     }
                 )
         # 數得出 1～5 才標數字。數不出來不改寫升／回，那不是波浪。
+        loc_left = _LOOKUP_LOCATOR_LEFT if portrait else _LOCATOR_LEFT
+        loc_rect = (
+            loc_left,
+            _STOCK_LOCATOR_BOTTOM,
+            _STRUCTURE_FIG_RIGHT - loc_left,
+            _STOCK_LOCATOR_HEIGHT,
+        )
         paint_locator_inset(
             fig,
             rows,
             win_from=str(work[0].get("date") or ""),
             win_to=str(work[-1].get("date") or ""),
-            rect=_STOCK_LOCATOR_RECT,
+            rect=loc_rect if portrait else _STOCK_LOCATOR_RECT,
             title="橙＝大圖區間　黃＝預估",
             legs=loc_legs,
             forecast_n=_FUTURE,
             marks=loc_marks,
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
-    # 左右同刻度股價，方便對照右邊標籤
-    ax1.yaxis.set_ticks_position("both")
+    # 只留右邊股價刻度
+    ax1.yaxis.set_ticks_position("right")
     ax1.tick_params(
         labelsize=12,
-        left=True,
+        left=False,
         right=True,
-        labelleft=True,
+        labelleft=False,
         labelright=True,
         bottom=False,
         labelbottom=False,
@@ -3051,9 +3079,12 @@ def render_biaoke_structure_png(
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(12, "bold"))
     vol_colors = [_SPIKE_VOL if i == spike_i else (_UP if candle_up[i] else _DN) for i in range(n)]
-    ax2.bar(xs, vols, color=vol_colors, width=0.68, zorder=3, edgecolor="#ffffff", linewidth=0.2)
-    vmax = max(vols) if vols else 1.0
-    ax2.set_ylim(0, vmax * 1.45)
+    from wayne_navigator import nav_volume_bar_heights
+
+    vol_heights, vol_ylim, _vol_missing = nav_volume_bar_heights(vols)
+    ax2.bar(xs, vol_heights, color=vol_colors, width=0.72, zorder=3, edgecolor="#ffffff", linewidth=0.15)
+    vmax = float(vol_ylim) if vol_ylim else 1.0
+    ax2.set_ylim(0, vmax * 1.28)
     if 0 <= spike_i < n and vols[spike_i]:
         # 量標拉到空白帶，避開量柱本體
         vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
@@ -3064,18 +3095,18 @@ def render_biaoke_structure_png(
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             _TEXT,
             tx=vol_tx,
-            ty=vmax * 1.28,
+            ty=vmax * 1.12,
             size=11,
             ha="left" if vol_tx >= spike_i else "right",
             va="center",
         )
-    ax2.set_ylabel("日成交量（張）", fontproperties=_fp(11, "bold"), color=_TEXT)
-    ax2.yaxis.set_ticks_position("both")
+    ax2.set_ylabel("")
+    ax2.yaxis.set_ticks_position("right")
     ax2.tick_params(
         labelsize=11,
-        left=True,
+        left=False,
         right=True,
-        labelleft=True,
+        labelleft=False,
         labelright=True,
         length=5,
         width=0.8,
@@ -3105,7 +3136,7 @@ def render_biaoke_structure_png(
         top=_STOCK_MAIN_TOP,
         bottom=_FIG_BOTTOM,
     )
-    # 查詢時間：整圖右上（台北）；不壓左上頭牌、不壓縮圖
+    # 查詢時間：直式放頭牌右上（縮圖左側），不准壓迷你圖
     try:
         from decision_card_signals import format_card_query_stamp
 
@@ -3114,12 +3145,14 @@ def render_biaoke_structure_png(
             latest_date=last_d,
             stock_id=str(sid or ""),
         )
+        stamp_x = (_LOOKUP_LOCATOR_LEFT - 0.012) if portrait else _STRUCTURE_FIG_RIGHT
+        stamp_y = 0.988 if portrait else (_STOCK_MAIN_TOP + 0.006)
         fig.text(
-            0.985,
-            0.985,
+            stamp_x,
+            stamp_y,
             f"{date_s} {clock_s}",
             ha="right",
-            va="top",
+            va="top" if portrait else "bottom",
             fontproperties=_fp(11, "bold"),
             color="#455a64",
             zorder=14,

@@ -44,7 +44,8 @@ _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 # 三合一表頭字多：q95＋永不色度抽樣；Floor 不准掉到會糊國字的區間
 _LOOKUP_JPEG_QUALITY = 95
 _LOOKUP_JPEG_QUALITY_FLOOR = 88
-# 兩張同尺寸 4:5 才並排。格上限 1920×2400：手機點開夠銳，檔比 3390 格小很多所以傳得快。
+# 高低卡／介紹卡／結構圖：4:5 格 1920×2400（勝率買點高低卡已鎖定這尺寸）。
+# 大量撐壓：橫式原版，原像素送、不准再套 4:5。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_MAX = (1920, 2400)
@@ -4324,8 +4325,8 @@ class WayneTelegramBot:
         return WayneTelegramBot._prepare_lookup_album_photo(path)
 
     @staticmethod
-    def _prepare_lookup_album_photo(path: str) -> str:
-        """查股四張同一格 4:5 JPEG（1920×2400）。contain 置中，Telegram 縮圖寬才齊、點開解析才接近。"""
+    def _letterbox_lookup_jpeg(path: str, box: tuple[int, int]) -> str:
+        """contain 置中進指定格。襯底跟圖邊同色。"""
         from PIL import Image
 
         if not path or not os.path.isfile(path):
@@ -4341,8 +4342,9 @@ class WayneTelegramBot:
                 im = im.convert("RGB")
             w, h = im.size
             if w <= 0 or h <= 0:
+                im.close()
                 return path
-            cw, ch = _LOOKUP_ALBUM_MAX
+            cw, ch = int(box[0]), int(box[1])
             if (
                 (w, h) == (cw, ch)
                 and str(path).lower().endswith((".jpg", ".jpeg", ".album.jpg", ".hq.jpg"))
@@ -4354,7 +4356,6 @@ class WayneTelegramBot:
             nh = max(1, int(round(h * scale)))
             if (nw, nh) != (w, h):
                 im = im.resize((nw, nh), Image.Resampling.LANCZOS)
-            # 襯底跟圖邊同色，避免黑條把縮圖比成另一張
             try:
                 rgb = im.convert("RGB")
                 pts = [
@@ -4394,6 +4395,72 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("查股相簿轉高解析失敗 path=%s", path)
         return path
+
+    @staticmethod
+    def _prepare_native_lookup_jpeg(path: str) -> str:
+        """橫式原像素 JPEG。只在超過 Telegram 寬+高／檔案上限時縮小，不准套 4:5。"""
+        from PIL import Image
+
+        if not path or not os.path.isfile(path):
+            return path
+        try:
+            im = Image.open(path)
+            im.load()
+            if im.mode == "RGBA":
+                bg = Image.new("RGB", im.size, (255, 255, 255))
+                bg.paste(im, mask=im.split()[-1])
+                im = bg
+            elif im.mode != "RGB":
+                im = im.convert("RGB")
+            w, h = im.size
+            if w <= 0 or h <= 0:
+                im.close()
+                return path
+            nw, nh = WayneTelegramBot._fit_lookup_photo_wh(w, h)
+            already_jpeg = str(path).lower().endswith(
+                (".jpg", ".jpeg", ".album.jpg", ".hq.jpg")
+            )
+            if (nw, nh) == (w, h) and already_jpeg:
+                try:
+                    sz = os.path.getsize(path)
+                except OSError:
+                    sz = 0
+                if 0 < sz <= _LOOKUP_TG_MAX_BYTES - 64:
+                    im.close()
+                    return path
+            if (nw, nh) != (w, h):
+                im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+            out = path + ".hq.jpg"
+            limit = _LOOKUP_TG_MAX_BYTES - 64
+            for q in (
+                _LOOKUP_JPEG_QUALITY,
+                92,
+                90,
+                _LOOKUP_JPEG_QUALITY_FLOOR,
+            ):
+                im.save(
+                    out,
+                    "JPEG",
+                    quality=int(q),
+                    subsampling=0,
+                    optimize=False,
+                )
+                if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
+                    im.close()
+                    return out
+            im.close()
+            if os.path.isfile(out) and os.path.getsize(out) > 0:
+                return out
+        except Exception:
+            logger.exception("查股橫式原圖像轉 JPEG 失敗 path=%s", path)
+        return path
+
+    @staticmethod
+    def _prepare_lookup_album_photo(path: str, kind: str = "") -> str:
+        """高低卡／介紹卡／結構圖：4:5 1920×2400（勝率買點高低卡同一格）。大量撐壓：橫式原像素。"""
+        if str(kind or "") == "vol":
+            return WayneTelegramBot._prepare_native_lookup_jpeg(path)
+        return WayneTelegramBot._letterbox_lookup_jpeg(path, _LOOKUP_ALBUM_MAX)
 
     @staticmethod
     def _chart_png_looks_ok(path: str) -> bool:
@@ -8463,7 +8530,7 @@ class WayneTelegramBot:
             card_item = await card_render_task
             if card_item:
                 kind, path, caption, markup = card_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
                 ok = await send_photo(prep or path, caption, None, kind=kind)
                 if ok:
                     sent_any = True
@@ -8482,7 +8549,7 @@ class WayneTelegramBot:
             struct_task = asyncio.create_task(_struct_item())
             if glance_item:
                 kind, path, caption, markup = glance_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
                 ok = await send_photo(prep or path, caption, markup or hub, kind=kind)
                 if ok:
                     sent_any = True
@@ -8503,7 +8570,7 @@ class WayneTelegramBot:
             vol_task = asyncio.create_task(_vol_item())
             if struct_item:
                 kind, path, caption, _mk = struct_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
                 ok = await send_photo(prep or path, caption, hub, kind=kind)
                 if ok:
                     sent_any = True
@@ -8523,7 +8590,7 @@ class WayneTelegramBot:
             )
             if vol_item:
                 kind, path, caption, _mk = vol_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
                 ok = await send_photo(prep or path, caption, hub, kind=kind)
                 if ok:
                     sent_any = True

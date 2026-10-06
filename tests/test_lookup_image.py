@@ -261,7 +261,7 @@ class LookupImageTests(unittest.TestCase):
             ), patch.object(
                 WayneTelegramBot, "_chart_png_looks_ok", return_value=True
             ), patch.object(
-                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
+                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p, kind="": p
             ):
                 await bot._send_card_to_locked(
                     message,
@@ -395,6 +395,29 @@ class LookupImageTests(unittest.TestCase):
             ow, oh = WayneTelegramBot._fit_lookup_photo_wh(5000, 6000)
             self.assertLessEqual(ow + oh, _LOOKUP_TG_MAX_WH)
             self.assertLess(ow, 5000)
+
+    def test_card_glance_match_winrate_4x5_vol_stays_landscape(self):
+        """高低卡／介紹卡＝勝率買點同一格 4:5。大量撐壓＝橫式原像素。"""
+        from PIL import Image
+
+        from bot_servers import _LOOKUP_ALBUM_MAX, _LOOKUP_TG_MAX_WH
+
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "face.png")
+            Image.new("RGB", (1562, 3048), (245, 247, 250)).save(src, "PNG")
+            for kind in ("", "card", "glance", "struct"):
+                out = WayneTelegramBot._prepare_lookup_album_photo(src, kind)
+                with Image.open(out) as im:
+                    self.assertEqual(im.size, _LOOKUP_ALBUM_MAX)
+                    self.assertEqual(im.format, "JPEG")
+                    self.assertEqual(im.size[0] * 5, im.size[1] * 4)
+            land = os.path.join(td, "vol.jpg")
+            Image.new("RGB", (2728, 2057), (255, 255, 255)).save(land, "JPEG", quality=90)
+            native = WayneTelegramBot._prepare_lookup_album_photo(land, "vol")
+            with Image.open(native) as im:
+                self.assertEqual(im.size, (2728, 2057))
+                self.assertNotEqual(im.size[0] * 5, im.size[1] * 4)
+                self.assertLessEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
 
     def test_two_image_album_does_not_upscale(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
@@ -533,7 +556,7 @@ class LookupImageTests(unittest.TestCase):
             ), patch.object(
                 WayneTelegramBot, "_chart_png_looks_ok", return_value=True
             ), patch.object(
-                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
+                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p, kind="": p
             ):
                 await bot._send_card_to_locked(
                     message,

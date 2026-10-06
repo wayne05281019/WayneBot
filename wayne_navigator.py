@@ -119,15 +119,15 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
-# 排版（figsize／字級）鎖定。相簿格上限 1920×2400；查股 DPI 對齊格高，
-# 不准再畫 320DPI 再 Lanczos 砍掉 40%（那一步在 Render 上一檔會多等好幾秒）。
-# 介紹圖與高低卡同寬。用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）。
-# 180 日高低導航改獨立鈕，不畫在介紹圖下半。
+# 排版（figsize／字級）鎖定。結構圖相簿格 1920×2400（4:5）不要改。
+# 高低卡＝勝率買點同一套：內容高度 H×0.076，送圖 4:5。介紹卡外框對齊這格
+# （上市／上櫃／興櫃同一套），內文回流、不准壓扁。大量撐壓＝橫式原版。
+# 用決策卡同一套堆疊（禁止字疊字／字壓線）。180 日高低導航改獨立鈕。
 CARD_PNG_DPI = 220
 GLANCE_PNG_DPI = 220
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
-GLANCE_FIG_H = 12.4
+GLANCE_FIG_H = CARD_FIG_W * 5 / 4.0
 NAV_CHART_DPI = 320
 # 查股 JPEG：對齊壓力區提質路線；q90＋無色度抽樣，縮圖清晰、點開仍 <TG 上限。
 LOOKUP_JPEG_QUALITY = 95
@@ -4493,6 +4493,7 @@ def render_first_glance_png(
         _lookup_tape_fingerprint(tape if isinstance(tape, dict) else {}),
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
+        round(float(GLANCE_FIG_H), 4),
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -4702,16 +4703,39 @@ def render_first_glance_png(
     ) else 0.0
     note_h = (3.2 + 2.55 * len(wrapped_notes) + 1.0) if wrapped_notes else 0.0
 
-    H = (
-        m_top + head_h + gap + price_h
-        + (gap + rev_chart_h if rev_chart_h else 0)
-        + (gap + space_h if space_h else 0)
-        + (gap + heat_h if heat_h else 0)
-        + (gap + chips_h if show_chips else 0)
-        + (gap + fund_h if fund_h else 0)
-        + (gap + note_h if note_h else 0)
-        + m_bot
+    def _glance_stack(gap_v: float):
+        if em_rev_chart:
+            rev_h = space_h_raw + gap_v + heat_h_raw + 4.8
+            sp_h = 0.0
+            ht_h = 0.0
+        else:
+            rev_h = 0.0
+            sp_h = space_h_raw
+            ht_h = heat_h_raw
+        ch_h = (
+            title_band + pane_pad + 2 * lr_box_h + lr_gap + pane_pad
+        ) if show_chips else 0.0
+        tot = (
+            m_top + head_h + gap_v + price_h
+            + (gap_v + rev_h if rev_h else 0)
+            + (gap_v + sp_h if sp_h else 0)
+            + (gap_v + ht_h if ht_h else 0)
+            + (gap_v + ch_h if ch_h else 0)
+            + (gap_v + fund_h if fund_h else 0)
+            + (gap_v + note_h if note_h else 0)
+            + m_bot
+        )
+        return tot, rev_h, sp_h, ht_h, ch_h
+
+    H, rev_chart_h, space_h, heat_h, chips_h = _glance_stack(gap)
+    target_h = GLANCE_FIG_H / inch
+    flex = 1 + sum(
+        1 for v in (rev_chart_h, space_h, heat_h, chips_h, fund_h, note_h) if v
     )
+    if flex and abs(H - target_h) > 0.35:
+        gap = min(2.6, max(0.85, gap + (target_h - H) / flex))
+        H, rev_chart_h, space_h, heat_h, chips_h = _glance_stack(gap)
+    # 跟高低卡同一套：高度跟內容走，不准為了塞進固定框把字壓扁
     info_inch = max(H * inch, 4.8)
     fig = _new_lookup_figure((fig_w, info_inch), GLANCE_PNG_DPI, C["page"])
     ax = fig.add_subplot(111)

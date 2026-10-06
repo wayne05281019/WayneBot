@@ -343,3 +343,46 @@ def test_official_work_drops_live_and_keeps_raw_prices():
     work = official_work(df)
     assert list(work["date"]) == ["20260901"]
     assert float(work.iloc[0]["high"]) == 110.0
+
+
+def test_lookup_vol_gives_header_space_from_volume_blank():
+    import inspect
+
+    from vol_zone_chart import _paint_volume_zone, render_lookup_vol_result
+
+    src = inspect.getsource(_paint_volume_zone)
+    assert "head_ratios = [1.28, 3.38, 0.40, 0.98]" in src
+    assert "lookup_portrait=False" in inspect.getsource(render_lookup_vol_result)
+    assert "transform=ax1.transAxes" in src
+    assert "0.975" in src
+    assert "ymax = ymax + (ymax - ymin) * 0.12" in src
+    assert "0.985" in src or "0.992" in src
+    assert "set_ylim(0, max(vol_ylim * 1.30" in src
+
+
+def test_volume_bars_one_per_traded_day_3081():
+    """結構／大量撐壓：每個有量交易日都有柱，不准缺口。"""
+    from biaoke_chart import analyze_structure
+    from vol_zone_chart import load_official_ohlc, official_work
+    from wayne_navigator import nav_volume_bar_heights
+
+    db = get_db_path()
+    work = official_work(load_official_ohlc("3081", db, 180))
+    assert work is not None and len(work) >= 20
+    vols = [float(v or 0) for v in work["volume"].tolist()]
+    heights, ylim, missing = nav_volume_bar_heights(vols)
+    assert len(heights) == len(work)
+    pos = 0
+    for i, row in work.iterrows():
+        v = float(row["volume"] or 0)
+        if v > 0 and not bool(missing[pos]):
+            assert float(heights[pos]) > 0, (str(row["date"]), v)
+        pos += 1
+    info = analyze_structure(work.to_dict("records"))
+    struct_vols = info.get("vols") or vols[-len(info.get("closes") or vols) :]
+    sh, _, sm = nav_volume_bar_heights(struct_vols)
+    assert len(sh) == len(struct_vols)
+    for i, v in enumerate(struct_vols):
+        if float(v or 0) > 0 and not bool(sm[i]):
+            assert float(sh[i]) > 0, i
+    assert float(ylim) > 0

@@ -190,6 +190,12 @@ def test_glance_combo_canvas_matches_card_width():
     assert GLANCE_FIG_W == CARD_FIG_W
     assert GLANCE_PNG_DPI == CARD_PNG_DPI
     assert GLANCE_FIG_H < 16
+    assert abs(GLANCE_FIG_H / CARD_FIG_W - 5 / 4.0) < 1e-9
+    card_src = inspect.getsource(__import__("wayne_navigator").render_decision_card_png)
+    glance_src = inspect.getsource(render_first_glance_png)
+    assert "H * 0.076" in card_src
+    assert "_glance_stack" in glance_src
+    assert "GLANCE_FIG_H" in glance_src
     src = inspect.getsource(render_first_glance_png)
     assert "_paint_nav_on_axes" not in src
     assert "compact=True" not in src

@@ -59,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 13
+_VZ_PAINT_VER = 15
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -1088,7 +1088,7 @@ def render_volume_zone_result(
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
     with_nav_signals＝疊導航箭頭／量能訊號（壓撐觀察用；仍非買訊）。
-    lookup_portrait＝查股單張 4:5，對齊高低卡縮圖寬。
+    lookup_portrait＝舊直式 4:5 畫布（壓區名單仍可走）。查股第 4 張改橫式原版。
     """
     del already_normalized
     pack = prepare_volume_zone(
@@ -1181,7 +1181,7 @@ def render_lookup_vol_result(
     *,
     card: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, str]:
-    """查股第 4 張：大量撐壓圖。直式 4:5、藍▲紅框、當日撐壓句。不是買訊。"""
+    """查股第 4 張：大量撐壓＝橫式原版（VOL_ZONE_FIG_W×NAV），不是直式 4:5。不是買訊。"""
     return render_volume_zone_result(
         stock_id,
         stock_name,
@@ -1189,7 +1189,7 @@ def render_lookup_vol_result(
         save_path,
         card=card,
         with_nav_signals=True,
-        lookup_portrait=True,
+        lookup_portrait=False,
     )
 
 
@@ -1477,15 +1477,13 @@ def _paint_volume_zone(
             y_lo = min(y_lo, float(np.nanmin(_arr[ok_ma])))
     ymin = min(y_lo, lo) - ypad
     ymax = max(y_hi, hi) + ypad * (1.35 if with_nav_signals else 1.25)
+    # 當日撐壓標抬到 K 上緣空白：多留一頭，不准壓 K／量柱／其他標
+    if path_shown:
+        ymax = ymax + (ymax - ymin) * 0.12
     ax1.set_ylim(ymin, ymax)
     # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
     ax1.set_xlim(-0.05, n + 1.65)
     if path_shown:
-        ymin, ymax = ax1.get_ylim()
-        band_mid = (float(hi) + float(lo)) / 2.0 if float(hi) > float(lo) else (ymin + ymax) / 2.0
-        y_lab = min(max(band_mid, ymin + (ymax - ymin) * 0.18), ymax - (ymax - ymin) * 0.12)
-        x_lab = float(xs[-1]) - 8.0
-        x_lab = max(x_lab, float(ax1.get_xlim()[0]) + 5.0)
         ax1.axvline(
             float(xs[-1]),
             color=_CALL,
@@ -1495,11 +1493,12 @@ def _paint_volume_zone(
             zorder=8,
         )
         ax1.text(
-            x_lab,
-            y_lab,
+            0.78,
+            0.975,
             path_shown,
+            transform=ax1.transAxes,
             ha="right",
-            va="center",
+            va="top",
             fontproperties=_fp(10.5, "bold"),
             color=_CALL,
             zorder=12,
@@ -1779,7 +1778,7 @@ def _paint_volume_zone(
                 ex_title += f" {_fmt_price(amt)}元"
             ex_title += "（原柱不還原）"
     if with_nav_signals and ax_head is not None:
-        # 標題列：兩行介紹放大＋兩行圖例（箭頭與均線併一排），緊接 K
+        # 標題列：兩行介紹放大＋圖例三排，緊接 K（橫式原版）
         head = f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
         intro = (
             f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
@@ -1788,7 +1787,6 @@ def _paint_volume_zone(
             f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
             f"{ex_title}"
         )
-        # 上半股票介紹（分隔線 0.62）；下半兩行圖例
         ax_head.text(
             0.5,
             0.96,
@@ -1855,7 +1853,6 @@ def _paint_volume_zone(
             )
         except Exception:
             logger.exception("大量撐壓表頭漲停晶片失敗 sid=%s", sid)
-        # 介紹與圖例之間不加分隔線；圖例兩行貼在介紹下方
         try:
             from wayne_navigator import _draw_nav_legend
 
