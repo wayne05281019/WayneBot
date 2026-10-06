@@ -25,6 +25,11 @@ def test_three_in_one_module_lock_and_api():
     assert 'info.get("stock_id")' in src
     assert "CHROME_SCALE" in src
     assert "TG_WH_BUDGET" in src
+    assert "NotoSansTC-w860.ttf" in src
+    assert "/workspace/assets/fonts" not in src
+    assert "PANE_DPI" in src
+    assert tio.PANE_DPI == 220
+    assert "18.6, 12.6" not in src
     # 表頭今K 跟 card／① 同源；不准只死釘官方末日
     assert "_header_quote_bar" in src
     assert "merge_live=True" in src
@@ -74,6 +79,24 @@ def test_header_quote_bar_falls_back_to_official():
     assert as_of == "20261005"
     assert bar["close"] == 108
     assert bar["source"] == "official_as_of"
+
+
+def test_three_in_one_pil_font_is_bundled_cjk():
+    """聯亞真機表頭／圖例糊成點＝Pillow load_default；必須吃 repo NotoSansTC。"""
+    from PIL import ImageFont
+
+    from three_in_one_chart import _BUNDLE_BOLD, _font
+
+    assert os.path.isfile(_BUNDLE_BOLD)
+    f = _font(64, True)
+    path = str(getattr(f, "path", "") or "")
+    assert "NotoSansTC" in path or "NotoSansCJK" in path
+    default = ImageFont.load_default()
+    cjk = "聯亞"
+    fb = f.getbbox(cjk)
+    db = default.getbbox(cjk)
+    assert (fb[2] - fb[0]) >= 90
+    assert (fb[2] - fb[0]) > (db[2] - db[0]) * 4
 
 
 def test_hub_keyboard_drops_kline_and_nav():
@@ -132,3 +155,13 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     assert head_chat_h >= 280, head_chat_h
     assert chat_h > 1000
     assert "三合一" in (cap or "")
+    # 氣泡寬 400：表頭國字必須是塊狀墨，不准只剩 load_default 小點
+    bubble_w = 400
+    bubble = pim.resize(
+        (bubble_w, max(1, int(pim.height * bubble_w / pim.width))),
+        Image.Resampling.LANCZOS,
+    )
+    head_h = max(40, int(head_band.height * bubble_w / pim.width))
+    ink = bubble.crop((8, 8, bubble_w - 8, min(bubble.height, head_h))).convert("L")
+    dark = sum(1 for px in ink.getdata() if px < 80)
+    assert dark >= 400, dark
