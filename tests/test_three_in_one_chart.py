@@ -25,6 +25,55 @@ def test_three_in_one_module_lock_and_api():
     assert 'info.get("stock_id")' in src
     assert "CHROME_SCALE" in src
     assert "TG_WH_BUDGET" in src
+    # 表頭今K 跟 card／① 同源；不准只死釘官方末日
+    assert "_header_quote_bar" in src
+    assert "merge_live=True" in src
+    assert "card_live" in src
+
+
+def test_header_quote_bar_prefers_live_card():
+    from three_in_one_chart import _header_quote_bar
+    import pandas as pd
+
+    official = pd.DataFrame(
+        [
+            {"date": "20261002", "open": 100, "high": 110, "low": 90, "close": 105, "volume": 1},
+        ]
+    )
+    card = {
+        "is_live": True,
+        "latest_date": "20261006",
+        "open": 120,
+        "high": 130,
+        "low": 115,
+        "close": 125,
+        "volume": 9,
+        "prev_close": 105,
+        "change_pct": 4.0,
+    }
+    bar, live, as_of = _header_quote_bar("2383", "", official, card)
+    assert live is True
+    assert as_of == "20261006"
+    assert bar["close"] == 125
+    assert bar["source"] == "card_live"
+    assert abs(float(bar["pct"]) - 4.0) < 1e-6
+
+
+def test_header_quote_bar_falls_back_to_official():
+    from three_in_one_chart import _header_quote_bar
+    import pandas as pd
+
+    official = pd.DataFrame(
+        [
+            {"date": "20261001", "open": 100, "high": 110, "low": 90, "close": 100, "volume": 1},
+            {"date": "20261005", "open": 101, "high": 111, "low": 91, "close": 108, "volume": 2},
+        ]
+    )
+    bar, live, as_of = _header_quote_bar("9999", "", official, {"error": "x"})
+    assert live is False
+    assert as_of == "20261005"
+    assert bar["close"] == 108
+    assert bar["source"] == "official_as_of"
 
 
 def test_hub_keyboard_drops_kline_and_nav():

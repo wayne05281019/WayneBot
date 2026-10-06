@@ -50,6 +50,172 @@ TG_WH_BUDGET = 9900
 THREE_IN_ONE_JPEG_QUALITY = 95
 
 
+def _header_quote_bar(
+    sid: str,
+    db: str,
+    official,
+    card: Optional[dict],
+) -> Tuple[dict, bool, str]:
+    """表頭今K／查詢日戳用的價量。
+
+    - 盤中有即時：跟①（`_load_ohlc`／card 合併列）同源，標 is_live。
+    - 收盤後：最新官方完整柱（`load_official_ohlc` 末日），不准死釘舊日。
+    ②③ 日K／壓撐仍只用 official，不准拿這根盤中假柱去改③。
+    """
+    official_as_of = ""
+    official_bar: dict = {}
+    if official is not None and not getattr(official, "empty", True):
+        last = official.iloc[-1]
+        official_as_of = _dk(last.get("date"))
+        prev_close = None
+        if len(official) >= 2:
+            try:
+                prev_close = float(official.iloc[-2].get("close") or 0) or None
+            except Exception:
+                prev_close = None
+        close = float(last.get("close") or 0)
+        chg = (close - prev_close) if prev_close else None
+        pct = (
+            (chg / prev_close * 100.0)
+            if (prev_close and chg is not None and prev_close > 0)
+            else None
+        )
+        official_bar = {
+            "date": official_as_of,
+            "open": float(last.get("open") or 0),
+            "high": float(last.get("high") or 0),
+            "low": float(last.get("low") or 0),
+            "close": close,
+            "volume": float(last.get("volume") or 0),
+            "prev_close": prev_close,
+            "change": chg,
+            "pct": pct,
+            "source": "official_as_of",
+        }
+
+    # 1) 決策卡已帶即時／最新價 → 表頭直接用（與話筒高低卡同源）
+    if isinstance(card, dict) and not card.get("error"):
+        try:
+            close = float(card.get("close") or 0)
+        except Exception:
+            close = 0.0
+        if close > 0:
+            is_live = bool(card.get("is_live"))
+            as_of = _dk(card.get("latest_date") or card.get("as_of") or "")
+            if not as_of:
+                as_of = official_as_of
+            prev = None
+            try:
+                prev = float(card.get("prev_close") or 0) or None
+            except Exception:
+                prev = None
+            if not prev and official_bar.get("close") and not is_live:
+                prev = official_bar.get("close")
+            chg = None
+            pct = None
+            try:
+                if card.get("change") is not None:
+                    chg = float(card.get("change"))
+            except Exception:
+                chg = None
+            try:
+                raw_pct = card.get("change_pct")
+                if raw_pct is None:
+                    raw_pct = card.get("pct_change")
+                if raw_pct is not None:
+                    pct = float(raw_pct)
+            except Exception:
+                pct = None
+            # 盤中％以行情源為準；本地缺完整日柱時 prev 可能對不齊，改由％反推漲跌點
+            if pct is not None and abs(float(pct) + 100.0) > 1e-9:
+                implied_prev = close / (1.0 + float(pct) / 100.0)
+                if chg is None or (
+                    prev
+                    and abs((prev * (1.0 + float(pct) / 100.0)) - close) / max(close, 1.0) > 0.015
+                ):
+                    chg = close - implied_prev
+                    prev = implied_prev
+            elif chg is None and prev and prev > 0:
+                chg = close - float(prev)
+                pct = chg / float(prev) * 100.0
+            try:
+                o = float(card.get("open") or 0)
+                hi = float(card.get("high") or 0)
+                lo = float(card.get("low") or 0)
+                vol = float(card.get("volume") or 0)
+            except Exception:
+                o = hi = lo = vol = 0.0
+            return (
+                {
+                    "date": as_of,
+                    "open": o,
+                    "high": hi,
+                    "low": lo,
+                    "close": close,
+                    "volume": vol,
+                    "prev_close": prev,
+                    "change": chg,
+                    "pct": pct,
+                    "source": "card_live" if is_live else "card_as_of",
+                },
+                is_live,
+                as_of or official_as_of,
+            )
+
+    # 2) 與①導航同一條 `_load_ohlc`（可含盤中合併列）
+    try:
+        from wayne_navigator import _load_ohlc
+
+        nav_df = _load_ohlc(sid, db, 5)
+        if nav_df is not None and not nav_df.empty:
+            row = nav_df.iloc[-1]
+            is_live = bool(row.get("is_live")) if "is_live" in nav_df.columns else False
+            as_of = _dk(row.get("date"))
+            close = float(row.get("close") or 0)
+            prev = None
+            if len(nav_df) >= 2:
+                try:
+                    for j in range(len(nav_df) - 2, -1, -1):
+                        rj = nav_df.iloc[j]
+                        if "is_live" in nav_df.columns and bool(rj.get("is_live")):
+                            continue
+                        prev = float(rj.get("close") or 0) or None
+                        if prev:
+                            break
+                except Exception:
+                    prev = None
+            if not prev and official_bar.get("close"):
+                prev = float(official_bar["close"])
+            chg = (close - prev) if prev else None
+            pct = (
+                (chg / prev * 100.0)
+                if (prev and chg is not None and prev > 0)
+                else None
+            )
+            if close > 0 and as_of:
+                return (
+                    {
+                        "date": as_of,
+                        "open": float(row.get("open") or 0),
+                        "high": float(row.get("high") or 0),
+                        "low": float(row.get("low") or 0),
+                        "close": close,
+                        "volume": float(row.get("volume") or 0),
+                        "prev_close": prev,
+                        "change": chg,
+                        "pct": pct,
+                        "source": "nav_live" if is_live else "nav_ohlc",
+                    },
+                    is_live,
+                    as_of,
+                )
+    except Exception:
+        pass
+
+    # 3) 退回官方完整柱末日
+    return official_bar, False, official_as_of
+
+
 def _dk(raw) -> str:
     return str(raw or "").replace("-", "")[:8]
 
@@ -1329,34 +1495,22 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
     official = load_official_ohlc(sid, db, 360)
     if official is None or official.empty:
         raise RuntimeError("no official OHLC")
-    as_of = _dk(official["date"].iloc[-1])
-    last = official.iloc[-1]
-    prev_close = None
-    if len(official) >= 2:
+    # ②③ 只用官方完整柱；表頭今K 另走 card／① 同源（可含盤中）
+    if not isinstance(card, dict):
+        card = None
         try:
-            prev_close = float(official.iloc[-2].get("close") or 0) or None
+            # 與話筒查股一致：盤中 merge_live，收盤後自然落到最新完整柱
+            card = NavigatorEngine(db).get_decision_card(sid, lookback=20, merge_live=True)
+            if isinstance(card, dict):
+                card.pop("_ohlc", None)
         except Exception:
-            prev_close = None
-    last_close = float(last.get("close") or 0)
-    last_change = (last_close - prev_close) if prev_close else None
-    last_pct = (
-        (last_change / prev_close * 100.0)
-        if (prev_close and last_change is not None and prev_close > 0)
-        else None
-    )
-    last_bar = {
-        "date": as_of,
-        "open": float(last.get("open") or 0),
-        "high": float(last.get("high") or 0),
-        "low": float(last.get("low") or 0),
-        "close": last_close,
-        "volume": float(last.get("volume") or 0),
-        "prev_close": prev_close,
-        "change": last_change,
-        "pct": last_pct,
-        # 與三圖最後一根同一官方柱；盤中若改 merge_live，價／量必須同源寫進這裡
-        "source": "official_as_of",
-    }
+            card = None
+    elif isinstance(card, dict):
+        card = dict(card)
+        card.pop("_ohlc", None)
+
+    last_bar, is_live_quote, header_as_of = _header_quote_bar(sid, db, official, card)
+    as_of = header_as_of or _dk(official["date"].iloc[-1])
     pack = prepare_volume_zone(sid, name, db, os.path.join(tmp, "prep.png"))
     first_k = _dk(pack["view"]["date"].iloc[0])
     last_k = _dk(pack["view"]["date"].iloc[-1])
@@ -1392,30 +1546,19 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
     tick_pos = sorted(tick_at)
     tick_labs = [tick_at[i] for i in tick_pos]
 
-    if not isinstance(card, dict):
-        card = None
-        try:
-            card = NavigatorEngine(db).get_decision_card(sid, lookback=20, merge_live=False)
-            if isinstance(card, dict):
-                card.pop("_ohlc", None)
-        except Exception:
-            card = None
-    elif isinstance(card, dict):
-        card = dict(card)
-        card.pop("_ohlc", None)
-
-    # 表頭最右＝查詢當下戳（盤中 HH:MM／盤後收盤標籤）；不准寫死「收盤」
+    # 表頭最右＝查詢當下戳（盤中 HH:MM／盤後收盤標籤）；日期＝今K 對應日（即時＝今日）
     from decision_card_signals import format_card_query_stamp
 
     query_now = datetime.now(ZoneInfo("Asia/Taipei"))
-    # 價／K 對 as_of；若盤中即時 merge 才會改 is_live。本 mock 鎖 as_of 收盤柱。
-    is_live_quote = bool((card or {}).get("is_live")) if isinstance(card, dict) else False
     stamp_date, stamp_clock = format_card_query_stamp(
         is_live=is_live_quote,
         latest_date=as_of,
         generated_at=query_now,
         stock_id=sid,
         db_path=db,
+        quote_source=str((card or {}).get("quote_source") or ""),
+        listing=str((card or {}).get("listing") or ""),
+        market=str((card or {}).get("market") or ""),
     )
     ctx_stamp = {
         "date": stamp_date,
@@ -2402,6 +2545,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
 
     info = {
         "as_of": as_of,
+        "official_as_of": _dk(official["date"].iloc[-1]),
         "first_k": first_k,
         "last_k": last_k,
         "last_bar": last_bar,
