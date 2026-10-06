@@ -168,6 +168,30 @@ def next_absorb_at(now: Optional[datetime] = None) -> datetime:
     return best or (dt + timedelta(minutes=_OPEN_STEP_MIN))
 
 
+def catch_up_due_after_close_slots(
+    db_path: str, *, now: Optional[datetime] = None
+) -> List[str]:
+    """開機補已過的盤後彙整窗（16:30／19:30／22:30）。失敗不擋下一檔。"""
+    dt = taipei_now(now)
+    ymd = dt.strftime("%Y%m%d")
+    ran: List[str] = []
+    if not db_path or not is_tw_open_calendar_day(ymd):
+        return ran
+    for hour, minute in _AFTER_CLOSE_HMS:
+        due = dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if dt < due:
+            continue
+        slot_id = _slot_label(ymd, hour, minute)
+        if _slot_ran(db_path, slot_id):
+            continue
+        try:
+            run_absorb(db_path, now=due, slot=slot_id)
+            ran.append(slot_id)
+        except Exception:
+            logger.exception("盤後彙整補跑失敗 slot=%s", slot_id)
+    return ran
+
+
 def _slot_ran(db_path: str, slot_id: str) -> bool:
     if not db_path or not slot_id:
         return False
@@ -730,6 +754,10 @@ def start_biaoke_absorb_scheduler() -> Optional[Any]:
 
     def _loop() -> None:
         _time.sleep(120)
+        try:
+            catch_up_due_after_close_slots(get_db_path())
+        except Exception:
+            logger.exception("盤後彙整開機補跑失敗")
         while True:
             nxt = next_absorb_at()
             wait = max(5.0, (nxt - taipei_now()).total_seconds())

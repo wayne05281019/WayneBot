@@ -282,6 +282,16 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
         status = _pipeline_status(db_path, run_key)
         if status == "success":
             continue
+        if kind == "increment":
+            try:
+                from import_health import latest_complete_quote_date
+
+                complete = str(latest_complete_quote_date(db_path, now=ref) or "").strip()
+            except Exception:
+                complete = ""
+            if complete and complete == run_key:
+                # 官方柱已齊但 pipeline 還沒蓋章＝開機補跑／重開殺在寫紀錄前，不是真缺日。
+                continue
         out.append(
             {
                 "kind": kind,
@@ -289,6 +299,7 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
                 "scheduled": str(spec["scheduled"]),
                 "run_date": run_key,
                 "status": status or "無紀錄",
+                "calendar": ref.strftime("%Y%m%d"),
             }
         )
     return out
@@ -360,8 +371,15 @@ def format_watchdog_alert(missed: List[Dict[str, Any]]) -> str:
         return ""
     lines = ["⏰ <b>排程未完成</b>"]
     for m in missed:
+        extra = ""
+        if m.get("kind") == "midday_review":
+            cal = str(m.get("calendar") or "").strip()
+            key = str(m.get("run_date") or "")
+            as_of = key.split("-", 1)[-1] if "-" in key else ""
+            if cal and as_of and as_of != cal:
+                extra = f"（{cal[:4]}/{cal[4:6]}/{cal[6:8]} 窗，對照今早名單）"
         lines.append(
-            f"• {m['label']}（預定 {m['scheduled']}）：{m['status']}　<code>{m['run_date']}</code>"
+            f"• {m['label']}（預定 {m['scheduled']}）{extra}：{m['status']}　<code>{m['run_date']}</code>"
         )
     lines.append("")
     lines.append("<i>若今日為國定假日／停市，可忽略此提醒。</i>")

@@ -1249,6 +1249,36 @@ class MainRunner:
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
             return True
+        try:
+            from import_health import audit_import
+
+            cap_ready = fuse_end_date()
+            health_ready = audit_import(self.db_path, cap_ready)
+        except Exception:
+            cap_ready = ""
+            health_ready = {}
+        if (
+            skip_if_done
+            and cap_ready
+            and str(cap_ready) == str(self.today_str)
+            and self._increment_ok(health_ready)
+        ):
+            self._mark_pipeline(
+                "success",
+                f"increment already-complete cap={cap_ready} "
+                f"tw={health_ready.get('tw')} two={health_ready.get('two')} "
+                f"em={health_ready.get('em')}",
+            )
+            logger.info("ℹ️ %s 官方柱已齊，補蓋盤後融合紀錄（不重抓）", cap_ready)
+            return True
+        if not self.try_claim_pipeline(
+            self.today_str,
+            notes="increment-claim",
+            stale_running_sec=2700,
+            allow_stale_running=True,
+        ):
+            logger.info("ℹ️ %s 盤後融合進行中或已成功，略過。", self.today_str)
+            return True
         start_time = time.time()
         logger.info("🎬 === 盤後融合開始（不寄海選；海選 06:30／尾盤 12:45）===")
         self.run_daily_increment(notify=notify)
