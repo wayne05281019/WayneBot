@@ -77,9 +77,9 @@ _STOCK_LOCATOR_RECT = (
     _STOCK_LOCATOR_HEIGHT,
 )
 _HEADER_X = 4.60
-# 今K／漲跌：縮圖外框左邊空白上緣（overlay 0–100）
+# 今K／漲跌：跟股名同一排、右對齊縮圖左緣，不准壓開高低收
 _SPOT_X = _LOCATOR_LEFT * 100.0 - 0.70
-_SPOT_Y = (_STOCK_LOCATOR_BOTTOM + _STOCK_LOCATOR_HEIGHT * 0.78) * 100.0
+_SPOT_Y = 96.70
 # 左上頭牌可佔到縮圖左側空白前（今K已移走）
 _HEADER_CHIP_MAX = 45.0
 
@@ -2559,6 +2559,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
+        "hdr-wrap2",
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
@@ -2999,43 +3000,29 @@ def render_biaoke_structure_png(
         f"低 {_px(last_bar.get('low'))}"
     )
     ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
-    ohlc_one = f"{ohlc_1}　{ohlc_2}"
-    if portrait or (_ow(ohlc_one, 15) + _HEADER_X > chip_max):
-        ov.text(
-            _HEADER_X, 89.35, ohlc_1, color=_TEXT, fontproperties=_fp(15, "bold"),
-            va="center", ha="left",
-        )
-        ov.text(
-            _HEADER_X, 86.35, ohlc_2, color=_TEXT, fontproperties=_fp(15, "bold"),
-            va="center", ha="left",
-        )
-        spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
-    else:
-        ov.text(
-            _HEADER_X, 89.15, ohlc_one, color=_TEXT, fontproperties=_fp(15, "bold"),
-            va="center", ha="left",
-        )
-        spike_y1, spike_y2, mute_y, chip_y0 = 85.45, 85.45, 82.05, 78.85
+    # 開高低收／爆大量日一律兩行且不同 Y，不准跟今K同一條互壓
+    ov.text(
+        _HEADER_X, 89.35, ohlc_1, color=_TEXT, fontproperties=_fp(15, "bold"),
+        va="center", ha="left",
+    )
+    ov.text(
+        _HEADER_X, 86.35, ohlc_2, color=_TEXT, fontproperties=_fp(15, "bold"),
+        va="center", ha="left",
+    )
+    spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
     spike_1 = f"爆大量日 {_ymd_full(spike_date)}"
     spike_2 = (
         f"高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
         f"量 {_vol(spike_bar.get('volume'))}"
     )
-    spike_one = f"{spike_1}　{spike_2}"
-    if spike_y1 != spike_y2 or _ow(spike_one, 15) + _HEADER_X > chip_max:
-        ov.text(
-            _HEADER_X, spike_y1, spike_1, color=_PRESS, fontproperties=_fp(15, "bold"),
-            va="center", ha="left",
-        )
-        ov.text(
-            _HEADER_X, spike_y2, spike_2, color=_PRESS, fontproperties=_fp(15, "bold"),
-            va="center", ha="left",
-        )
-    else:
-        ov.text(
-            _HEADER_X, spike_y1, spike_one, color=_PRESS, fontproperties=_fp(15, "bold"),
-            va="center", ha="left",
-        )
+    ov.text(
+        _HEADER_X, spike_y1, spike_1, color=_PRESS, fontproperties=_fp(15, "bold"),
+        va="center", ha="left",
+    )
+    ov.text(
+        _HEADER_X, spike_y2, spike_2, color=_PRESS, fontproperties=_fp(15, "bold"),
+        va="center", ha="left",
+    )
     ov.text(
         _HEADER_X,
         mute_y,
@@ -3048,7 +3035,8 @@ def render_biaoke_structure_png(
     chip_x, chip_y = _HEADER_X, chip_y0
     if mark:
         chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=13)
-        chip_x, chip_y = _HEADER_X, 74.75
+        chip_x = _HEADER_X
+        chip_y -= 3.6
     ch_lab = str((channel or {}).get("label") or "").strip()
     if ch_lab:
         ch_color = _UP_TRACK if str((channel or {}).get("kind") or "") == "asc" else _DOWN_TRACK
@@ -3065,7 +3053,7 @@ def render_biaoke_structure_png(
     for bit in banner_bits:
         need = _ow(f" {bit} ", 12) + 1.3
         if chip_x > _HEADER_X + 0.2 and chip_x + need > chip_max:
-            if chip_y - 3.6 < 69.0:
+            if chip_y - 3.6 < 66.5:
                 break
             chip_x = _HEADER_X
             chip_y -= 3.6
