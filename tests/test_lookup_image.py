@@ -135,18 +135,19 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("_send_lookup_album", src)
         self.assertNotIn("asyncio.gather", src)
         self.assertIn("_render_ready", src)
-        # 高低溫度卡先開渲（跟 tape 重疊），再三合一，再介紹
+        # 高低溫度卡先開渲（跟 tape 重疊），再三合一（與送卡重疊），再介紹
         self.assertIn("card_render_task", src)
         self.assertLess(src.find("card_render_task"), src.find("await tape_task"))
         self.assertIn("card_item = await card_render_task", src)
-        self.assertIn("await _three_item()", src)
+        self.assertIn("create_task(_three_item())", src)
+        self.assertIn("await three_task", src)
         self.assertIn('current"] = "glance"', src)
         self.assertLess(
             src.find("card_item = await card_render_task"),
-            src.find("await _three_item()"),
+            src.find("await three_task"),
         )
         self.assertLess(
-            src.find("await _three_item()"),
+            src.find("await three_task"),
             src.find('current"] = "glance"'),
         )
 
