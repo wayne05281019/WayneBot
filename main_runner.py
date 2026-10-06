@@ -47,7 +47,7 @@ from typing import Dict, List, Any, Optional
 
 import requests
 
-from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str, fuse_end_date
+from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str, fuse_end_date, taipei_now, taipei_stamp
 from wayne_db import ensure_core_schema
 
 logging.basicConfig(
@@ -56,6 +56,27 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("WayneBotRunner")
+
+
+def _stamp_age_seconds(raw: str, *, now=None) -> float:
+    """紀錄時戳距今幾秒。含時區用該時區；舊 naive 當 UTC（Render 以前的寫法）。對比一律台北。"""
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+
+    tw = ZoneInfo("Asia/Taipei")
+    s = str(raw or "").strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    ref = now or taipei_now()
+    if getattr(ref, "tzinfo", None) is None:
+        ref = ref.replace(tzinfo=tw)
+    else:
+        ref = ref.astimezone(tw)
+    return max(0.0, (ref - dt.astimezone(tw)).total_seconds())
+
 
 try:
     from data_fetcher import DataFetcher, TaiwanMarketFetcher
@@ -195,9 +216,7 @@ class MainRunner:
                     fin = str(row[1] or "")
                     age_ok = False
                     try:
-                        age_ok = (
-                            datetime.now() - datetime.fromisoformat(fin)
-                        ).total_seconds() > float(stale_running_sec)
+                        age_ok = _stamp_age_seconds(fin) > float(stale_running_sec)
                     except Exception:
                         age_ok = True
                     if not age_ok:
@@ -208,7 +227,7 @@ class MainRunner:
                 "(run_date, finished_at, status, notes) VALUES (?, ?, ?, ?)",
                 (
                     key,
-                    datetime.now().isoformat(timespec="seconds"),
+                    taipei_stamp(),
                     "running",
                     str(notes or "claim")[:500],
                 ),
@@ -359,7 +378,7 @@ class MainRunner:
         cur = conn.cursor()
         cur.execute(
             "INSERT OR REPLACE INTO pipeline_runs (run_date, finished_at, status, notes) VALUES (?, ?, ?, ?);",
-            (run_date or self.today_str, datetime.now().isoformat(timespec="seconds"), status, notes),
+            (run_date or self.today_str, taipei_stamp(), status, notes),
         )
         conn.commit()
         conn.close()

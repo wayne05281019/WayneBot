@@ -56,10 +56,26 @@ def test_heartbeat_roundtrip(tmp_path):
 
 
 def test_heartbeat_goes_stale(tmp_path):
+    from zoneinfo import ZoneInfo
+
     path = _make_db(tmp_path)
     record_heartbeat(path, HEARTBEAT_POLLING)
-    future = datetime.now() + timedelta(hours=2)
+    future = datetime.now(ZoneInfo("Asia/Taipei")) + timedelta(hours=2)
     assert polling_alive(path, now=future) is False
+
+
+def test_taipei_stamp_used_for_heartbeat(tmp_path):
+    from config import taipei_stamp
+
+    path = _make_db(tmp_path)
+    record_heartbeat(path, HEARTBEAT_POLLING)
+    conn = sqlite3.connect(path)
+    beat = conn.execute("SELECT beat_at FROM ops_heartbeat").fetchone()[0]
+    conn.close()
+    assert "+08:00" in str(beat)
+    stamp = taipei_stamp(datetime(2026, 10, 6, 18, 49))
+    assert stamp.startswith("2026-10-06T18:49:00")
+    assert stamp.endswith("+08:00")
 
 
 def test_heartbeat_missing_db_is_quiet(tmp_path):

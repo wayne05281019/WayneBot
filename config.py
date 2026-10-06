@@ -192,6 +192,20 @@ def taipei_now():
         return datetime.now()
 
 
+def taipei_stamp(now=None) -> str:
+    """排程／紀錄時戳：台北 ISO（含 +08:00）。不准用機器 UTC 去對 06:30／12:45／16:30。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    tw = ZoneInfo("Asia/Taipei")
+    dt = now or taipei_now()
+    if getattr(dt, "tzinfo", None) is None:
+        dt = dt.replace(tzinfo=tw)
+    else:
+        dt = dt.astimezone(tw)
+    return dt.isoformat(timespec="seconds")
+
+
 def taipei_today_str() -> str:
     return taipei_now().strftime("%Y%m%d")
 

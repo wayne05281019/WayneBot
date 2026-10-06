@@ -15,6 +15,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from config import taipei_now, taipei_stamp
+
 logger = logging.getLogger(__name__)
 
 # 排程死線（台灣時間，當日 00:00 起算的分鐘數）。
@@ -115,7 +117,7 @@ def record_heartbeat(db_path: str, kind: str, note: str = "") -> None:
             conn.execute("PRAGMA busy_timeout=5000;")
             conn.execute(
                 "INSERT OR REPLACE INTO ops_heartbeat(kind, beat_at, note) VALUES (?, ?, ?)",
-                (str(kind), datetime.now().isoformat(timespec="seconds"), str(note or "")),
+                (str(kind), taipei_stamp(), str(note or "")),
             )
             conn.commit()
         finally:
@@ -141,11 +143,24 @@ def heartbeat_age_seconds(db_path: str, kind: str, *, now: Optional[datetime] = 
     if not row or not row[0]:
         return None
     try:
-        beat = datetime.fromisoformat(str(row[0]))
+        raw = str(row[0]).strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        beat = datetime.fromisoformat(raw)
     except ValueError:
         return None
-    ref = now or datetime.now()
-    return max(0.0, (ref - beat).total_seconds())
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+
+    tw = ZoneInfo("Asia/Taipei")
+    if beat.tzinfo is None:
+        beat = beat.replace(tzinfo=timezone.utc)
+    ref = now or taipei_now()
+    if getattr(ref, "tzinfo", None) is None:
+        ref = ref.replace(tzinfo=tw)
+    else:
+        ref = ref.astimezone(tw)
+    return max(0.0, (ref - beat.astimezone(tw)).total_seconds())
 
 
 def polling_alive(db_path: str, *, now: Optional[datetime] = None) -> Optional[bool]:
@@ -355,7 +370,7 @@ def claim_alert(db_path: str, kind: str, run_date: str) -> bool:
             conn.execute("PRAGMA busy_timeout=5000;")
             cur = conn.execute(
                 "INSERT OR IGNORE INTO ops_alerts(kind, run_date, alerted_at) VALUES (?, ?, ?)",
-                (str(kind), str(run_date), datetime.now().isoformat(timespec="seconds")),
+                (str(kind), str(run_date), taipei_stamp()),
             )
             conn.commit()
             return cur.rowcount > 0
@@ -397,7 +412,7 @@ def _release_missed(now: Optional[datetime]) -> List[Dict[str, Any]]:
     stale = gha_pipeline_stale(now=now)
     if not stale.get("known") or not stale.get("stale"):
         return []
-    day = (now or datetime.now()).strftime("%Y%m%d")
+    day = (now or taipei_now()).strftime("%Y%m%d")
     return [
         {
             "kind": "release_publish",
