@@ -1172,8 +1172,10 @@ def _polish_vol_figure(
     tick_labs=None,
     tick_pos=None,
     last_bar=None,
+    bars=None,
+    zone_date: str = "",
 ):
-    """圖三：壓撐標移橘虛線左、爆大量張數、量柱日期刻度、最後一根測壓說明。"""
+    """圖三：壓撐標移橘虛線左、爆大量張數、量柱日期刻度、當日走勢標（非死釘壓價）。"""
     from wayne_navigator import _fp, _fmt_price, _set_staggered_month_ticks
     import vol_zone_chart as vz
 
@@ -1407,31 +1409,38 @@ def _polish_vol_figure(
     except Exception as exc:
         print(f"[strip-left] FAIL {exc!r}", flush=True)
 
-    # 最後一根日說明：放桃色帶內、偏左，不准擋頂列箭頭
+    # 當日走勢標：官方／MIS 今開高低收對既有大量壓撐組句，不准死釘「10/05 壓 3,255」
     lb = last_bar or {}
     try:
         from matplotlib.patches import FancyArrowPatch
+        from vol_zone_chart import vol_zone_day_path_label
 
         last_hi = float(lb.get("high") or 0)
+        last_lo = float(lb.get("low") or 0)
         last_cl = float(lb.get("close") or 0)
         last_i = lb.get("_i")
-        d0 = str(lb.get("date") or "")
-        last_md = f"{d0[4:6]}/{d0[6:8]}" if len(d0) >= 8 else ""
         press = float(spike_hi)
         hold = float(spike_lo)
-        if last_i is not None and last_hi > 0 and press > 0 and last_md:
-            # 標貼圖框上緣下方；連線改藍，不准跟爆大量琥珀線同色
+        msg = vol_zone_day_path_label(
+            press, hold, lb, bars=bars, zone_date=zone_date
+        )
+        if last_i is not None and last_hi > 0 and press > 0 and msg:
             ymin, ymax = ax1.get_ylim()
-            y_lab = ymax - (ymax - ymin) * 0.035
-            x_lab = float(last_i) - 14.0
-            x_lab = max(x_lab, float(ax1.get_xlim()[0]) + 6.0)
-            if last_cl >= press:
-                msg = f"{last_md} 已過壓"
-            elif last_hi >= press * 0.997:
-                msg = f"{last_md} 測壓{_fmt_price(press)}未過"
+            # 標放在壓／撐帶中段、最後一根左側，不准再釘右上角死標
+            band_mid = (press + hold) / 2.0 if press > hold else (ymin + ymax) / 2.0
+            y_lab = min(max(band_mid, ymin + (ymax - ymin) * 0.18), ymax - (ymax - ymin) * 0.12)
+            x_lab = float(last_i) - 8.0
+            x_lab = max(x_lab, float(ax1.get_xlim()[0]) + 5.0)
+            bits = [p for p in msg.split("  ") if p]
+            if len(bits) >= 5:
+                shown = (
+                    f"{bits[0]}  {bits[1]}\n"
+                    f"{'  '.join(bits[2:5])}\n"
+                    f"{'  '.join(bits[5:])}"
+                )
             else:
-                msg = f"{last_md} 壓{_fmt_price(press)}"
-            tag = "測壓" if "測壓" in msg else ("過壓" if "過壓" in msg else "日說明")
+                shown = "\n".join(bits) if bits else msg
+            tag = "測撐" if "測大量撐" in msg else ("測壓" if "測大量壓" in msg else "日說明")
             ax1.axvline(
                 float(last_i),
                 color=CEYA_LINE_COLOR,
@@ -1443,13 +1452,14 @@ def _polish_vol_figure(
             ax1.text(
                 x_lab,
                 y_lab,
-                msg,
-                ha="center",
-                va="top",
-                fontproperties=_fp(12.0, "bold"),
+                shown,
+                ha="right",
+                va="center",
+                fontproperties=_fp(11.0, "bold"),
                 color=CEYA_LINE_COLOR,
                 zorder=32,
                 clip_on=False,
+                linespacing=1.18,
                 bbox=dict(
                     boxstyle="round,pad=0.30",
                     facecolor="#e3f2fd",
@@ -1458,9 +1468,12 @@ def _polish_vol_figure(
                     alpha=0.99,
                 ),
             )
+            tip_y = float(last_lo) if "撐" in tag else float(min(last_hi, press - 1.0) if last_hi else last_cl)
+            if tip_y <= 0:
+                tip_y = last_cl or last_hi
             arr = FancyArrowPatch(
                 (x_lab + 1.2, y_lab - (ymax - ymin) * 0.02),
-                (float(last_i) - 0.45, float(min(last_hi, press - 1.0))),
+                (float(last_i) - 0.45, tip_y),
                 arrowstyle="->",
                 mutation_scale=10,
                 color=CEYA_LINE_COLOR,
@@ -1470,8 +1483,8 @@ def _polish_vol_figure(
             )
             ax1.add_patch(arr)
             print(
-                f"[last-bar] {tag} i={last_i} hi={last_hi} cl={last_cl} press={press} "
-                f"xy=({x_lab:.1f},{y_lab:.1f}) msg={msg} color={CEYA_LINE_COLOR}",
+                f"[last-bar] {tag} i={last_i} hi={last_hi} lo={last_lo} cl={last_cl} "
+                f"press={press} hold={hold} msg={msg}",
                 flush=True,
             )
     except Exception as exc:
@@ -2569,6 +2582,35 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 i = _index_of_date(dates, first_k)
                 ctx["vz_i"] = i
                 last_row = view.iloc[-1]
+                path_last = dict(last_bar or {})
+                if not path_last.get("close"):
+                    path_last = {
+                        "date": _dk(last_row.get("date")),
+                        "open": float(last_row.get("open") or 0),
+                        "high": float(last_row.get("high") or 0),
+                        "low": float(last_row.get("low") or 0),
+                        "close": float(last_row.get("close") or 0),
+                    }
+                path_last.setdefault("open", float(last_row.get("open") or 0))
+                path_last.setdefault("high", float(last_row.get("high") or 0))
+                path_last.setdefault("low", float(last_row.get("low") or 0))
+                dates_v = [_dk(d) for d in view["date"].tolist()]
+                hd = _dk(path_last.get("date"))
+                if hd in dates_v:
+                    path_last["_i"] = dates_v.index(hd)
+                else:
+                    path_last["_i"] = len(view) - 1
+                view_bars = [
+                    {
+                        "date": _dk(r.get("date")),
+                        "open": r.get("open"),
+                        "high": r.get("high"),
+                        "low": r.get("low"),
+                        "close": r.get("close"),
+                        "volume": r.get("volume"),
+                    }
+                    for r in view.to_dict("records")
+                ]
                 _polish_vol_figure(
                     self,
                     first_i=i,
@@ -2580,12 +2622,9 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                     spike_lo=spike_lo,
                     tick_labs=tick_labs,
                     tick_pos=tick_pos,
-                    last_bar={
-                        "date": _dk(last_row.get("date")),
-                        "high": float(last_row.get("high") or 0),
-                        "close": float(last_row.get("close") or 0),
-                        "_i": len(view) - 1,
-                    },
+                    last_bar=path_last,
+                    bars=view_bars,
+                    zone_date=spike_date,
                 )
                 ax_p, ax_s, _ = _pick_vol_axes(self)
                 fr = _ax_spine_frac(ax_p)

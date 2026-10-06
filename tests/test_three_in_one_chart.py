@@ -32,6 +32,7 @@ def test_three_in_one_module_lock_and_api():
     assert "COMPOSE_INNER_W" in src
     assert "_header_price_chip_style" in src
     assert "quote_limit_chip_colors" in src
+    assert "vol_zone_day_path_label" in src
     assert "NotoSansTC-w860.ttf" in src
     assert "/workspace/assets/fonts" not in src
     assert "ymax > 1500" not in src

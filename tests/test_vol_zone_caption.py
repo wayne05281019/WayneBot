@@ -397,3 +397,58 @@ def test_vol_zone_cut_ignores_heuristic_split():
     assert _scale_cut_date(events, "20260924") == "20260828"
     assert _scale_cut_date([events[0]], "20260924") == ""
 
+
+def test_day_path_label_hold_test_not_dead_press_tag():
+    """當日測撐：組走勢句，不准死釘『10/05 壓 3,255』；不准寫死聯亞。"""
+    from vol_zone_chart import vol_zone_day_path_label
+
+    press, hold = 3255.0, 2940.0
+    prior = {
+        "date": "20261002",
+        "open": 2980,
+        "high": 3010,
+        "low": 2930,
+        "close": 2970,
+        "volume": 2000,
+    }
+    today = {
+        "date": "20261006",
+        "open": 3000,
+        "high": 3055,
+        "low": 2915,
+        "close": 2920,
+        "volume": 3260,
+    }
+    zone_day = {"date": "20260826", "open": 2500, "high": 3255, "low": 2940, "close": 3100, "volume": 6821}
+    line = vol_zone_day_path_label(
+        press, hold, today, bars=[zone_day, prior, today], zone_date="20260826"
+    )
+    assert "10月6日" in line
+    assert "撐為2,940" in line
+    assert "今最高3,055" in line
+    assert "收盤未過撐" in line
+    assert "收2,920" in line
+    assert "第二次測大量撐" in line
+    assert "聯亞" not in line
+    assert "3081" not in line
+    assert "10/05" not in line
+    assert "壓 3,255" not in line
+    assert "買訊" not in line
+
+
+def test_day_path_label_press_test_and_close_through():
+    from vol_zone_chart import vol_zone_day_path_label
+
+    press, hold = 100.0, 90.0
+    today = {"date": "20261006", "open": 98, "high": 100.2, "low": 96, "close": 97, "volume": 1}
+    line = vol_zone_day_path_label(press, hold, today, bars=[today], zone_date="20260901")
+    assert "10月6日" in line
+    assert "壓為100" in line
+    assert "今最高100" in line or "今最高100.2" in line
+    assert "收盤未過壓" in line
+    assert "測大量壓" in line
+    through = {"date": "20261006", "open": 99, "high": 106, "low": 98, "close": 104, "volume": 1}
+    up = vol_zone_day_path_label(press, hold, through, bars=[through], zone_date="20260901")
+    assert "收盤已過壓" in up
+    assert "撐為" not in up
+

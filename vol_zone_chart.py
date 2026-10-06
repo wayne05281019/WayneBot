@@ -612,6 +612,130 @@ def _closes_rising(closes: List[float]) -> bool:
     return len(closes) >= 2 and all(closes[i] > closes[i - 1] for i in range(1, len(closes)))
 
 
+def _date_zh_md(val: Any) -> str:
+    """YYYYMMDD → 10月6日（台北交易日戳，不准寫死某檔）。"""
+    s = _trade_day(val)
+    if len(s) < 8:
+        return ""
+    m, d = int(s[4:6]), int(s[6:8])
+    if m <= 0 or d <= 0:
+        return ""
+    return f"{m}月{d}日"
+
+
+def _bar_tests_hold(row: Dict[str, Any], hold: float) -> bool:
+    """當日高低穿過／碰到大量撐（近窗測撐）。"""
+    if hold <= 0:
+        return False
+    lo = _px(row.get("low"))
+    hi = _px(row.get("high"))
+    if lo <= 0 or hi <= 0:
+        return False
+    return lo <= hold * (2.0 - _PRESS_TOUCH) and hi >= hold * _PRESS_TOUCH
+
+
+def _bar_tests_press(row: Dict[str, Any], press: float) -> bool:
+    """當日高碰到大量壓且收沒過（測壓≠站上）。"""
+    if press <= 0:
+        return False
+    hi = _px(row.get("high"))
+    cl = _px(row.get("close"))
+    if hi <= 0 or cl <= 0:
+        return False
+    return hi >= press * _PRESS_TOUCH and cl <= press
+
+
+def vol_zone_day_path_label(
+    press: float,
+    hold: float,
+    last: Optional[Dict[str, Any]],
+    bars: Optional[List[Dict[str, Any]]] = None,
+    *,
+    zone_date: str = "",
+) -> str:
+    """③最後一根走勢標：對應當日官方／MIS 開高低收＋既有壓撐，不是死釘『月/日 壓價』。
+
+    例形：10月6日 撐為2,940  今最高3,055  收盤未過撐  收2,920  為近日第二次測大量撐
+    各股類推；不准寫死聯亞。不是買訊。
+    """
+    if not last:
+        return ""
+    press = _px(press)
+    hold = _px(hold)
+    cl = _px(last.get("close"))
+    hi = _px(last.get("high") or cl)
+    lo = _px(last.get("low") or cl)
+    if cl <= 0 or hi <= 0 or press <= 0 or hold <= 0 or press < hold:
+        return ""
+    day_zh = _date_zh_md(last.get("date"))
+    if not day_zh:
+        return ""
+    press_s = _fmt_price(press)
+    hold_s = _fmt_price(hold)
+    hi_s = _fmt_price(hi)
+    cl_s = _fmt_price(cl)
+    lo_s = _fmt_price(lo)
+
+    press_touch = _bar_tests_press(last, press)
+    hold_touch = _bar_tests_hold(last, hold)
+    if press_touch and not (cl < hold):
+        side = "press"
+    elif hold_touch or cl < hold:
+        side = "hold"
+    elif cl > press:
+        side = "press"
+    else:
+        side = "press" if abs(cl - press) <= abs(cl - hold) else "hold"
+
+    zone_d = _trade_day(zone_date)
+    rows = [dict(x) for x in (bars or []) if isinstance(x, dict)]
+    last_d = _trade_day(last.get("date"))
+    if last_d and last_d not in {_trade_day(r.get("date")) for r in rows}:
+        rows = list(rows) + [dict(last)]
+    if not rows:
+        rows = [dict(last)]
+    ordered = []
+    for r in rows:
+        d = _trade_day(r.get("date"))
+        if not d:
+            continue
+        if last_d and d > last_d:
+            continue
+        ordered.append(r)
+    recent = ordered[-5:]
+
+    def _count(pred) -> int:
+        n = 0
+        for r in recent:
+            d = _trade_day(r.get("date"))
+            if zone_d and d == zone_d:
+                continue
+            if pred(r):
+                n += 1
+        return n
+
+    if side == "hold":
+        n = _count(lambda r: _bar_tests_hold(r, hold))
+        passed = cl > hold
+        verb = "收盤已過撐" if passed else "收盤未過撐"
+        n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量撐" if n >= 1 else "近日尚未測大量撐"
+        low_bit = f"  今最低{lo_s}" if lo > 0 and lo <= hold * 1.01 else ""
+        line = (
+            f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
+            f"{verb}  收{cl_s}  {n_bit}"
+        )
+    else:
+        n = _count(lambda r: _bar_tests_press(r, press))
+        passed = cl > press
+        verb = "收盤已過壓" if passed else "收盤未過壓"
+        n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量壓" if n >= 1 else "近日尚未測大量壓"
+        line = (
+            f"{day_zh} 壓為{press_s}  今最高{hi_s}  "
+            f"{verb}  收{cl_s}  {n_bit}"
+        )
+    return "  ".join(line.split())
+
+
 def vol_zone_position_line(
     zone: Optional[Dict[str, Any]],
     last: Optional[Dict[str, Any]],
