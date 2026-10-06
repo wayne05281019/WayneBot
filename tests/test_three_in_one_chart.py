@@ -14,6 +14,9 @@ def test_three_in_one_module_lock_and_api():
     assert tio.LOCK_KEY == "T0118"
     assert tio.CHROME_SCALE >= 1.5
     assert tio.THREE_IN_ONE_JPEG_QUALITY >= 95
+    assert tio.TG_CLICK_MAX_SIDE <= 2560
+    assert tio.COMPOSE_INNER_W <= 1600
+    assert tio.TG_WH_BUDGET <= 4500
     assert "藍▲紅框" in (tio.THREE_IN_ONE_CAPTION_HEAD + open(tio.__file__, encoding="utf-8").read())
     src = open(tio.__file__, encoding="utf-8").read()
     assert "with_nav_signals=True" in src
@@ -25,10 +28,14 @@ def test_three_in_one_module_lock_and_api():
     assert 'info.get("stock_id")' in src
     assert "CHROME_SCALE" in src
     assert "TG_WH_BUDGET" in src
+    assert "TG_CLICK_MAX_SIDE" in src
+    assert "COMPOSE_INNER_W" in src
+    assert "_header_price_chip_style" in src
+    assert "quote_limit_chip_colors" in src
     assert "NotoSansTC-w860.ttf" in src
     assert "/workspace/assets/fonts" not in src
-    assert "PANE_DPI" in src
-    assert tio.PANE_DPI == 220
+    assert "ymax > 1500" not in src
+    assert "COMPOSE_INNER_W" in src
     assert "18.6, 12.6" not in src
     # 表頭今K 跟 card／① 同源；不准只死釘官方末日
     assert "_header_quote_bar" in src
@@ -81,6 +88,47 @@ def test_header_quote_bar_falls_back_to_official():
     assert bar["source"] == "official_as_of"
 
 
+def test_header_price_chip_only_limit_up_down():
+    """普通漲＝白底紅字；漲停才紅底。跟高低卡 quote_limit_chip_colors 同源。"""
+    from three_in_one_chart import CANDLE_UP, _header_price_chip_style
+
+    fill, ink, outline, up = _header_price_chip_style(5995, 5700, 5.18)
+    assert up is True
+    assert fill.lower() in ("#ffffff", "#fff")
+    assert ink.lower() == CANDLE_UP.lower()
+    fill_u, ink_u, outline_u, _ = _header_price_chip_style(143, 130, 10.0)
+    assert fill_u.lower() == "#c62828"
+    assert ink_u.lower() == "#ffffff"
+    fill_d, ink_d, _, _ = _header_price_chip_style(117, 130, -10.0)
+    assert fill_d.lower() == "#2e7d32"
+    fill_e, _, _, _ = _header_price_chip_style(143, 130, 10.0, emerging=True)
+    assert fill_e.lower() in ("#ffffff", "#fff")
+
+
+def test_pick_vol_axes_not_fooled_by_high_price():
+    """價 5000、量 800 張：量軸仍是最下面那條，不准用 ymax>1500。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib.figure import Figure
+
+    from three_in_one_chart import _pick_vol_axes
+
+    fig = Figure(figsize=(4, 6), dpi=80)
+    gs = fig.add_gridspec(3, 1, height_ratios=[4.8, 0.4, 1.8], hspace=0.05)
+    ax_p = fig.add_subplot(gs[0])
+    ax_s = fig.add_subplot(gs[1])
+    ax_v = fig.add_subplot(gs[2])
+    ax_p.set_ylim(4200, 7200)
+    ax_s.set_ylim(-0.2, 1.2)
+    ax_v.set_ylim(0, 800)
+    fig.canvas.draw()
+    price, sig, vol = _pick_vol_axes(fig)
+    assert price is ax_p
+    assert sig is ax_s
+    assert vol is ax_v
+
+
 def test_three_in_one_pil_font_is_bundled_cjk():
     """聯亞真機表頭／圖例糊成點＝Pillow load_default；必須吃 repo NotoSansTC。"""
     from PIL import ImageFont
@@ -131,16 +179,22 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     from PIL import Image
 
     from bot_servers import WayneTelegramBot, _LOOKUP_JPEG_QUALITY
-    from three_in_one_chart import CHROME_SCALE, TG_WH_BUDGET, render_three_in_one_result
+    from three_in_one_chart import (
+        COMPOSE_INNER_W,
+        TG_CLICK_MAX_SIDE,
+        TG_WH_BUDGET,
+        render_three_in_one_result,
+    )
 
     out = str(tmp_path / "2383-three.png")
     path, cap = render_three_in_one_result("2383", "台光電", production_db, out)
     assert path and os.path.isfile(path)
     im = Image.open(path)
-    assert im.width + im.height <= TG_WH_BUDGET + 50
-    # 表頭列高至少鎖版×CHROME 的八成（合成後含 margin）
-    head_band = im.crop((0, 0, im.width, min(im.height, int(500 * CHROME_SCALE) + 80)))
-    # 粗檢：表頭帶不可幾乎全白／全灰（有色塊才算畫出來）
+    assert max(im.size) <= TG_CLICK_MAX_SIDE + 8
+    assert im.width + im.height <= TG_WH_BUDGET + 80
+    assert im.width <= COMPOSE_INNER_W + 120
+    # 表頭列高（合成後 400px 帶）不可幾乎全白
+    head_band = im.crop((0, 0, im.width, min(im.height, 480)))
     extrema = head_band.convert("RGB").getextrema()
     assert any(hi - lo > 40 for lo, hi in extrema)
 
@@ -148,14 +202,11 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     assert prep and os.path.isfile(prep)
     assert _LOOKUP_JPEG_QUALITY >= 95
     pim = Image.open(prep)
-    # 模擬氣泡寬 ~1113：表頭帶高度應 ≥ 280px（相對鎖版放大後老花可讀）
+    # 模擬對話框點開：最長邊已 ≤2560，再縮到氣泡寬 1113 表頭仍成列
     chat_w = 1113
-    chat_h = int(pim.height * chat_w / pim.width)
-    head_chat_h = int((500 * CHROME_SCALE) * chat_w / pim.width)
-    assert head_chat_h >= 280, head_chat_h
-    assert chat_h > 1000
+    head_chat_h = int(400 * chat_w / pim.width)
+    assert head_chat_h >= 240, head_chat_h
     assert "三合一" in (cap or "")
-    # 氣泡寬 400：表頭國字必須是塊狀墨，不准只剩 load_default 小點
     bubble_w = 400
     bubble = pim.resize(
         (bubble_w, max(1, int(pim.height * bubble_w / pim.width))),
@@ -165,3 +216,53 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     ink = bubble.crop((8, 8, bubble_w - 8, min(bubble.height, head_h))).convert("L")
     dark = sum(1 for px in ink.getdata() if px < 80)
     assert dark >= 400, dark
+    # 收盤非漲停：表頭價塊不准整塊紅底（抽今K欄中段）
+    rgb = pim.convert("RGB")
+    hx = min(pim.width - 1, int(pim.width * 0.38))
+    hy = min(pim.height - 1, 90)
+    r, g, b = rgb.getpixel((hx, hy))
+    # 允許白／淺底；不准接近 CANDLE_UP 實心紅
+    assert not (r > 180 and g < 90 and b < 90), (r, g, b)
+
+
+@pytest.mark.production_db
+def test_render_three_in_one_3081_volume_bars_survive_click(tmp_path, production_db):
+    """聯亞：③日量柱在模擬 Telegram 點開壓縮後仍要有色柱，不准整條空白。"""
+    import io
+
+    from PIL import Image
+
+    from bot_servers import WayneTelegramBot
+    from three_in_one_chart import TG_CLICK_MAX_SIDE, render_three_in_one_result
+
+    out = str(tmp_path / "3081-three.png")
+    path, cap = render_three_in_one_result("3081", "聯亞", production_db, out)
+    assert path and os.path.isfile(path)
+    assert "三合一" in (cap or "")
+    prep = WayneTelegramBot._prepare_lookup_album_photo(path)
+    im = Image.open(prep).convert("RGB")
+    assert max(im.size) <= TG_CLICK_MAX_SIDE + 8
+    # 模擬點開：再 JPEG q82 4:2:0（比我們送出的還兇）
+    phone_w, phone_h = 1170, 2532
+    scale = min(phone_w / im.width, phone_h / im.height, 1.0)
+    shown = im.resize(
+        (max(1, int(im.width * scale)), max(1, int(im.height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+    buf = io.BytesIO()
+    shown.save(buf, "JPEG", quality=82, subsampling=2)
+    buf.seek(0)
+    click = Image.open(buf).convert("RGB")
+    # ③在最下約 28%
+    y0 = int(click.height * 0.72)
+    band = click.crop((int(click.width * 0.08), y0, int(click.width * 0.92), click.height - 8))
+    colored = 0
+    for px in band.getdata():
+        r, g, b = px
+        if r > 160 and g < 120 and b < 110:
+            colored += 1
+        elif g > 110 and r < 90 and b < 130:
+            colored += 1
+        elif r > 180 and g > 140 and b < 80:
+            colored += 1
+    assert colored >= 80, colored
