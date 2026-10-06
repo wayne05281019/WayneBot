@@ -2489,6 +2489,8 @@ def render_biaoke_structure_png(
     plate: Optional[Dict[str, str]] = None,
     quote: Optional[Dict[str, Any]] = None,
     db_path: str = "",
+    figsize: Optional[Tuple[float, float]] = None,
+    dpi: Optional[int] = None,
 ) -> str:
     rows = list(bars or [])
     if len(rows) < 8 or not save_path:
@@ -2504,6 +2506,8 @@ def render_biaoke_structure_png(
     last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1])
     last_d = str(last_bar0.get("date") or "")[:8]
     last_c0 = float(last_bar0.get("close") or 0)
+    fig_w, fig_h = (float(figsize[0]), float(figsize[1])) if figsize else (18.6, 10.8)
+    use_dpi = int(dpi or BIAOKE_CHART_DPI)
     memo_key = (
         "biaoke_struct",
         str(sid or ""),
@@ -2511,7 +2515,9 @@ def render_biaoke_structure_png(
         round(last_c0, 4),
         int(n),
         int(len(rows)),
-        int(BIAOKE_CHART_DPI),
+        int(use_dpi),
+        round(fig_w, 3),
+        round(fig_h, 3),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
@@ -2543,8 +2549,8 @@ def render_biaoke_structure_png(
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
-        figsize=(18.6, 10.8),
-        dpi=BIAOKE_CHART_DPI,
+        figsize=(fig_w, fig_h),
+        dpi=use_dpi,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
         facecolor=_BG,
@@ -3122,7 +3128,7 @@ def render_biaoke_structure_png(
         pass
     from wayne_navigator import _savefig_lookup_png
 
-    _savefig_lookup_png(fig, save_path, BIAOKE_CHART_DPI)
+    _savefig_lookup_png(fig, save_path, use_dpi)
     plt.close(fig)
     if os.path.isfile(save_path):
         _lookup_render_memo_put(memo_key, save_path)

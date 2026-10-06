@@ -107,6 +107,7 @@ DEFAULT_DB_PATH: str = (
 )
 DB_LOCK: threading.Lock = threading.Lock()
 _SCHEMA_READY: set = set()
+_SCHEMA_READY_LOCK: threading.Lock = threading.Lock()
 
 # 靜態股票對照表記憶體快取與保護鎖
 _STOCK_MAP_CACHE: Dict[str, Any] = {}
@@ -259,146 +260,149 @@ def ensure_core_schema(db_path: str = None) -> None:
     path = db_path or DEFAULT_DB_PATH
     if path in _SCHEMA_READY and os.path.exists(path):
         return
-    parent = os.path.dirname(path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    init_database(path)
-    with get_db_connection(path) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_quotes (
-                date TEXT NOT NULL,
-                stock_id TEXT NOT NULL,
-                stock_name TEXT NOT NULL,
-                market TEXT NOT NULL,
-                open REAL NOT NULL,
-                high REAL NOT NULL,
-                low REAL NOT NULL,
-                close REAL NOT NULL,
-                volume INTEGER NOT NULL,
-                turnover_k REAL NOT NULL,
-                pct_change REAL NOT NULL,
-                avg_price REAL NOT NULL,
-                foreign_net INTEGER DEFAULT 0,
-                trust_net INTEGER DEFAULT 0,
-                dealer_net INTEGER DEFAULT 0,
-                PRIMARY KEY (date, stock_id)
-            );
-            """
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_date ON daily_quotes(stock_id, date);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_date ON daily_quotes(date);")
-        # 溯源：index_daily 與 ex_rights 早就有 source，日K 這張核心表反而沒有，
-        # 出現可疑數字時查不出是哪個來源、哪一輪寫進來的。
-        cols = {r[1] for r in cur.execute("PRAGMA table_info(daily_quotes)")}
-        for name, spec in (
-            ("source", "TEXT DEFAULT ''"),
-            ("fetched_at", "TEXT DEFAULT ''"),
-        ):
-            if name not in cols:
-                cur.execute(f"ALTER TABLE daily_quotes ADD COLUMN {name} {spec}")
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS pipeline_runs (
-                run_date TEXT PRIMARY KEY,
-                finished_at TEXT,
-                status TEXT,
-                notes TEXT
-            );
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS stock_universe (
-                stock_id TEXT PRIMARY KEY,
-                stock_name TEXT NOT NULL,
-                market_type TEXT NOT NULL,
-                asset_type TEXT NOT NULL,
-                industry TEXT DEFAULT '',
-                is_active INTEGER DEFAULT 1,
-                updated_at TEXT NOT NULL
-            );
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_sector_flow (
-                date TEXT NOT NULL,
-                industry TEXT NOT NULL,
-                stock_n INTEGER DEFAULT 0,
-                volume INTEGER DEFAULT 0,
-                turnover_k REAL DEFAULT 0,
-                foreign_net INTEGER DEFAULT 0,
-                trust_net INTEGER DEFAULT 0,
-                dealer_net INTEGER DEFAULT 0,
-                three_net INTEGER DEFAULT 0,
-                prev_three_net INTEGER DEFAULT 0,
-                three_delta INTEGER DEFAULT 0,
-                avg_pct REAL DEFAULT 0,
-                top_buy_id TEXT DEFAULT '',
-                top_buy_name TEXT DEFAULT '',
-                top_buy_three INTEGER DEFAULT 0,
-                top_sell_id TEXT DEFAULT '',
-                top_sell_name TEXT DEFAULT '',
-                top_sell_three INTEGER DEFAULT 0,
-                PRIMARY KEY (date, industry)
-            );
-            """
-        )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_sector_flow_date ON daily_sector_flow(date);")
-        try:
-            from emerging_quotes import ensure_emerging_table
+    with _SCHEMA_READY_LOCK:
+        if path in _SCHEMA_READY and os.path.exists(path):
+            return
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        init_database(path)
+        with get_db_connection(path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_quotes (
+                    date TEXT NOT NULL,
+                    stock_id TEXT NOT NULL,
+                    stock_name TEXT NOT NULL,
+                    market TEXT NOT NULL,
+                    open REAL NOT NULL,
+                    high REAL NOT NULL,
+                    low REAL NOT NULL,
+                    close REAL NOT NULL,
+                    volume INTEGER NOT NULL,
+                    turnover_k REAL NOT NULL,
+                    pct_change REAL NOT NULL,
+                    avg_price REAL NOT NULL,
+                    foreign_net INTEGER DEFAULT 0,
+                    trust_net INTEGER DEFAULT 0,
+                    dealer_net INTEGER DEFAULT 0,
+                    PRIMARY KEY (date, stock_id)
+                );
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_date ON daily_quotes(stock_id, date);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_date ON daily_quotes(date);")
+            # 溯源：index_daily 與 ex_rights 早就有 source，日K 這張核心表反而沒有，
+            # 出現可疑數字時查不出是哪個來源、哪一輪寫進來的。
+            cols = {r[1] for r in cur.execute("PRAGMA table_info(daily_quotes)")}
+            for name, spec in (
+                ("source", "TEXT DEFAULT ''"),
+                ("fetched_at", "TEXT DEFAULT ''"),
+            ):
+                if name not in cols:
+                    cur.execute(f"ALTER TABLE daily_quotes ADD COLUMN {name} {spec}")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pipeline_runs (
+                    run_date TEXT PRIMARY KEY,
+                    finished_at TEXT,
+                    status TEXT,
+                    notes TEXT
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS stock_universe (
+                    stock_id TEXT PRIMARY KEY,
+                    stock_name TEXT NOT NULL,
+                    market_type TEXT NOT NULL,
+                    asset_type TEXT NOT NULL,
+                    industry TEXT DEFAULT '',
+                    is_active INTEGER DEFAULT 1,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_sector_flow (
+                    date TEXT NOT NULL,
+                    industry TEXT NOT NULL,
+                    stock_n INTEGER DEFAULT 0,
+                    volume INTEGER DEFAULT 0,
+                    turnover_k REAL DEFAULT 0,
+                    foreign_net INTEGER DEFAULT 0,
+                    trust_net INTEGER DEFAULT 0,
+                    dealer_net INTEGER DEFAULT 0,
+                    three_net INTEGER DEFAULT 0,
+                    prev_three_net INTEGER DEFAULT 0,
+                    three_delta INTEGER DEFAULT 0,
+                    avg_pct REAL DEFAULT 0,
+                    top_buy_id TEXT DEFAULT '',
+                    top_buy_name TEXT DEFAULT '',
+                    top_buy_three INTEGER DEFAULT 0,
+                    top_sell_id TEXT DEFAULT '',
+                    top_sell_name TEXT DEFAULT '',
+                    top_sell_three INTEGER DEFAULT 0,
+                    PRIMARY KEY (date, industry)
+                );
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_sector_flow_date ON daily_sector_flow(date);")
+            try:
+                from emerging_quotes import ensure_emerging_table
 
-            ensure_emerging_table(path)
-        except Exception:
-            pass
-        cols = {r[1] for r in cur.execute("PRAGMA table_info(daily_sector_flow)")}
-        for name, spec in (
-            ("top_sell_id", "TEXT DEFAULT ''"),
-            ("top_sell_name", "TEXT DEFAULT ''"),
-            ("top_sell_three", "INTEGER DEFAULT 0"),
-        ):
-            if name not in cols:
-                cur.execute(f"ALTER TABLE daily_sector_flow ADD COLUMN {name} {spec}")
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_watchlist (
-                user_id TEXT NOT NULL,
-                stock_code TEXT NOT NULL,
-                stock_name TEXT DEFAULT '',
-                created_at TEXT NOT NULL,
-                PRIMARY KEY (user_id, stock_code)
-            );
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_holdings (
-                user_id TEXT NOT NULL,
-                stock_code TEXT NOT NULL,
-                stock_name TEXT DEFAULT '',
-                shares REAL NOT NULL,
-                cost_price REAL NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (user_id, stock_code)
-            );
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tg_users (
-                user_id TEXT PRIMARY KEY,
-                display_name TEXT DEFAULT '',
-                first_seen TEXT NOT NULL,
-                last_seen TEXT NOT NULL
-            );
-            """
-        )
-    # 建表步驟多數會自己開連線；必須在外層寫入連線／DB_LOCK 釋放後再跑，
-    # 否則 quote_hygiene 這類 bulk UPDATE 會撞上「database is locked」並永遠卡在 schema_errors。
-    _run_schema_steps(path)
-    _SCHEMA_READY.add(path)
+                ensure_emerging_table(path)
+            except Exception:
+                pass
+            cols = {r[1] for r in cur.execute("PRAGMA table_info(daily_sector_flow)")}
+            for name, spec in (
+                ("top_sell_id", "TEXT DEFAULT ''"),
+                ("top_sell_name", "TEXT DEFAULT ''"),
+                ("top_sell_three", "INTEGER DEFAULT 0"),
+            ):
+                if name not in cols:
+                    cur.execute(f"ALTER TABLE daily_sector_flow ADD COLUMN {name} {spec}")
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_watchlist (
+                    user_id TEXT NOT NULL,
+                    stock_code TEXT NOT NULL,
+                    stock_name TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (user_id, stock_code)
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_holdings (
+                    user_id TEXT NOT NULL,
+                    stock_code TEXT NOT NULL,
+                    stock_name TEXT DEFAULT '',
+                    shares REAL NOT NULL,
+                    cost_price REAL NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (user_id, stock_code)
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tg_users (
+                    user_id TEXT PRIMARY KEY,
+                    display_name TEXT DEFAULT '',
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL
+                );
+                """
+            )
+        # 建表步驟多數會自己開連線；必須在外層寫入連線／DB_LOCK 釋放後再跑，
+        # 否則 quote_hygiene 這類 bulk UPDATE 會撞上「database is locked」並永遠卡在 schema_errors。
+        _run_schema_steps(path)
+        _SCHEMA_READY.add(path)
 
 
 def _schema_steps():

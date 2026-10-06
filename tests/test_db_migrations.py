@@ -265,13 +265,19 @@ def test_quote_hygiene_runs_outside_write_connection(tmp_path):
     import wayne_db
 
     src = inspect.getsource(wayne_db.ensure_core_schema)
-    # _run_schema_steps 必須在 with get_db_connection 區塊外
+    assert "with _SCHEMA_READY_LOCK" in src
+    # _run_schema_steps 必須在 with get_db_connection 區塊外（仍可在 schema lock 內）
     with_idx = src.find("with get_db_connection")
     steps_idx = src.find("_run_schema_steps(path)")
-    assert with_idx >= 0 and steps_idx > with_idx
-    # 粗略：steps 呼叫前的縮排應與 with 同層（不在 with 內多一層）
+    lock_idx = src.find("with _SCHEMA_READY_LOCK")
+    assert lock_idx >= 0 and with_idx > lock_idx and steps_idx > with_idx
     line = [ln for ln in src.splitlines() if "_run_schema_steps(path)" in ln][0]
-    assert line.startswith("    _run_schema_steps") and not line.startswith("        _run_schema_steps")
+    stripped = line.lstrip()
+    extra = len(line) - len(stripped)
+    conn_line = [ln for ln in src.splitlines() if "with get_db_connection" in ln][0]
+    conn_extra = len(conn_line) - len(conn_line.lstrip())
+    assert extra == conn_extra
+    assert extra < conn_extra + 4
 
 
 def test_normalize_quote_hygiene_retries_lock(tmp_path, monkeypatch):

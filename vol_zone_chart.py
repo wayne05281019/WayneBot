@@ -43,10 +43,12 @@ VOL_ZONE_DPI = 220
 VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
 VOL_ZONE_TAG_PT = 16  # 壓／撐標要比標題更容易讀（話筒紅圈）
-VOL_ZONE_JPEG_QUALITY = 94
+VOL_ZONE_JPEG_QUALITY = 95
 VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
 VOL_ZONE_FIG_H_NAV = 9.35
 VOL_ZONE_FIG_H_PLAIN = 7.7
+# 查股單張：對齊高低卡 4:5（220DPI → 1920×2400），Telegram 縮圖寬才不獨大／變窄
+VOL_ZONE_FIG_LOOKUP = (1920 / 220.0, 2400 / 220.0)
 # 月線／季線＝官方收盤 MA20／MA60；畫圖前多抓暖機柱，近窗第一根就要有線
 VOL_ZONE_MA20 = 20
 VOL_ZONE_MA60 = 60
@@ -57,7 +59,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 12
+_VZ_PAINT_VER = 13
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -612,6 +614,130 @@ def _closes_rising(closes: List[float]) -> bool:
     return len(closes) >= 2 and all(closes[i] > closes[i - 1] for i in range(1, len(closes)))
 
 
+def _date_zh_md(val: Any) -> str:
+    """YYYYMMDD → 10月6日（台北交易日戳，不准寫死某檔）。"""
+    s = _trade_day(val)
+    if len(s) < 8:
+        return ""
+    m, d = int(s[4:6]), int(s[6:8])
+    if m <= 0 or d <= 0:
+        return ""
+    return f"{m}月{d}日"
+
+
+def _bar_tests_hold(row: Dict[str, Any], hold: float) -> bool:
+    """當日高低穿過／碰到大量撐（近窗測撐）。"""
+    if hold <= 0:
+        return False
+    lo = _px(row.get("low"))
+    hi = _px(row.get("high"))
+    if lo <= 0 or hi <= 0:
+        return False
+    return lo <= hold * (2.0 - _PRESS_TOUCH) and hi >= hold * _PRESS_TOUCH
+
+
+def _bar_tests_press(row: Dict[str, Any], press: float) -> bool:
+    """當日高碰到大量壓且收沒過（測壓≠站上）。"""
+    if press <= 0:
+        return False
+    hi = _px(row.get("high"))
+    cl = _px(row.get("close"))
+    if hi <= 0 or cl <= 0:
+        return False
+    return hi >= press * _PRESS_TOUCH and cl <= press
+
+
+def vol_zone_day_path_label(
+    press: float,
+    hold: float,
+    last: Optional[Dict[str, Any]],
+    bars: Optional[List[Dict[str, Any]]] = None,
+    *,
+    zone_date: str = "",
+) -> str:
+    """③最後一根走勢標：對應當日官方／MIS 開高低收＋既有壓撐，不是死釘『月/日 壓價』。
+
+    例形：10月6日 撐為2,940  今最高3,055  收盤未過撐  收2,920  為近日第二次測大量撐
+    各股類推；不准寫死聯亞。不是買訊。
+    """
+    if not last:
+        return ""
+    press = _px(press)
+    hold = _px(hold)
+    cl = _px(last.get("close"))
+    hi = _px(last.get("high") or cl)
+    lo = _px(last.get("low") or cl)
+    if cl <= 0 or hi <= 0 or press <= 0 or hold <= 0 or press < hold:
+        return ""
+    day_zh = _date_zh_md(last.get("date"))
+    if not day_zh:
+        return ""
+    press_s = _fmt_price(press)
+    hold_s = _fmt_price(hold)
+    hi_s = _fmt_price(hi)
+    cl_s = _fmt_price(cl)
+    lo_s = _fmt_price(lo)
+
+    press_touch = _bar_tests_press(last, press)
+    hold_touch = _bar_tests_hold(last, hold)
+    if press_touch and not (cl < hold):
+        side = "press"
+    elif hold_touch or cl < hold:
+        side = "hold"
+    elif cl > press:
+        side = "press"
+    else:
+        side = "press" if abs(cl - press) <= abs(cl - hold) else "hold"
+
+    zone_d = _trade_day(zone_date)
+    rows = [dict(x) for x in (bars or []) if isinstance(x, dict)]
+    last_d = _trade_day(last.get("date"))
+    if last_d and last_d not in {_trade_day(r.get("date")) for r in rows}:
+        rows = list(rows) + [dict(last)]
+    if not rows:
+        rows = [dict(last)]
+    ordered = []
+    for r in rows:
+        d = _trade_day(r.get("date"))
+        if not d:
+            continue
+        if last_d and d > last_d:
+            continue
+        ordered.append(r)
+    recent = ordered[-5:]
+
+    def _count(pred) -> int:
+        n = 0
+        for r in recent:
+            d = _trade_day(r.get("date"))
+            if zone_d and d == zone_d:
+                continue
+            if pred(r):
+                n += 1
+        return n
+
+    if side == "hold":
+        n = _count(lambda r: _bar_tests_hold(r, hold))
+        passed = cl > hold
+        verb = "收盤已過撐" if passed else "收盤未過撐"
+        n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量撐" if n >= 1 else "近日尚未測大量撐"
+        low_bit = f"  今最低{lo_s}" if lo > 0 and lo <= hold * 1.01 else ""
+        line = (
+            f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
+            f"{verb}  收{cl_s}  {n_bit}"
+        )
+    else:
+        n = _count(lambda r: _bar_tests_press(r, press))
+        passed = cl > press
+        verb = "收盤已過壓" if passed else "收盤未過壓"
+        n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量壓" if n >= 1 else "近日尚未測大量壓"
+        line = (
+            f"{day_zh} 壓為{press_s}  今最高{hi_s}  "
+            f"{verb}  收{cl_s}  {n_bit}"
+        )
+    return "  ".join(line.split())
+
+
 def vol_zone_position_line(
     zone: Optional[Dict[str, Any]],
     last: Optional[Dict[str, Any]],
@@ -796,6 +922,7 @@ def _vz_memo_key(
     with_nav_signals: bool,
     lookback: int,
     bars: int,
+    lookup_portrait: bool = False,
 ) -> Tuple[Any, ...]:
     last_d = _bar_ymd((last or {}).get("date"))
     return (
@@ -810,6 +937,7 @@ def _vz_memo_key(
         int(VOL_ZONE_DPI),
         int(VOL_ZONE_JPEG_QUALITY),
         int(_VZ_PAINT_VER),
+        int(bool(lookup_portrait)),
     )
 
 
@@ -955,10 +1083,12 @@ def render_volume_zone_result(
     bars: int = VOL_ZONE_BARS,
     card: Optional[Dict[str, Any]] = None,
     with_nav_signals: bool = False,
+    lookup_portrait: bool = False,
 ) -> tuple[str, str]:
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
     with_nav_signals＝疊導航箭頭／量能訊號（壓撐觀察用；仍非買訊）。
+    lookup_portrait＝查股單張 4:5，對齊高低卡縮圖寬。
     """
     del already_normalized
     pack = prepare_volume_zone(
@@ -973,6 +1103,7 @@ def render_volume_zone_result(
         with_nav_signals=with_nav_signals,
         lookback=lookback,
         bars=bars,
+        lookup_portrait=lookup_portrait,
     )
     # card 會進圖說／導航；有卡就不走無卡快取，避免圖說漂移
     if not card:
@@ -1005,6 +1136,7 @@ def render_volume_zone_result(
             pack["out"],
             with_nav_signals=with_nav_signals,
             card=card,
+            lookup_portrait=lookup_portrait,
         )
     out_path, out_cap = str(path or ""), str(cap or "")
     if out_path and not card:
@@ -1041,6 +1173,26 @@ def render_volume_zone_png(
     return path
 
 
+def render_lookup_vol_result(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: str = None,
+    save_path: str = None,
+    *,
+    card: Optional[Dict[str, Any]] = None,
+) -> tuple[str, str]:
+    """查股第 4 張：大量撐壓圖。直式 4:5、藍▲紅框、當日撐壓句。不是買訊。"""
+    return render_volume_zone_result(
+        stock_id,
+        stock_name,
+        db_path,
+        save_path,
+        card=card,
+        with_nav_signals=True,
+        lookup_portrait=True,
+    )
+
+
 def _paint_volume_zone(
     sid,
     name,
@@ -1058,6 +1210,7 @@ def _paint_volume_zone(
     *,
     with_nav_signals: bool = False,
     card: Optional[Dict[str, Any]] = None,
+    lookup_portrait: bool = False,
 ):
     spike_md = _md(spike_date)
     ax_head = None
@@ -1065,23 +1218,29 @@ def _paint_volume_zone(
     from matplotlib.gridspec import GridSpec
     from wayne_navigator import _close_lookup_figure, _new_lookup_figure
 
+    if lookup_portrait:
+        fig_size = VOL_ZONE_FIG_LOOKUP
+        # 量柱列加高：高價股矮柱不准被擠沒。表頭留漲停晶片。
+        head_ratios = [0.78, 4.35, 0.38, 1.72]
+        head_bottom = 0.072
+    else:
+        fig_size = (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV)
+        head_ratios = [1.28, 3.38, 0.40, 0.98]
+        head_bottom = 0.065
+
     if with_nav_signals:
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
-        fig = _new_lookup_figure(
-            (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV), VOL_ZONE_DPI, _BG
-        )
+        fig = _new_lookup_figure(fig_size, VOL_ZONE_DPI, _BG)
         gs = GridSpec(
             4,
             1,
             figure=fig,
-            # 標題列加高：圖例改三整排（不准互壓），略從 K 區挪
-            height_ratios=[1.28, 3.38, 0.40, 0.98],
+            height_ratios=head_ratios,
             hspace=0.035,
-            # 左縮右鬆：回收左空白放大 K；右邊留給價軸＋最後一根呼吸
             left=0.050,
             right=0.935,
             top=0.985,
-            bottom=0.065,
+            bottom=head_bottom,
         )
         ax_head = fig.add_subplot(gs[0])
         ax1 = fig.add_subplot(gs[1])
@@ -1092,13 +1251,15 @@ def _paint_volume_zone(
         ax_head.set_axis_off()
     else:
         fig = _new_lookup_figure(
-            (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_PLAIN), VOL_ZONE_DPI, _BG
+            VOL_ZONE_FIG_LOOKUP if lookup_portrait else (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_PLAIN),
+            VOL_ZONE_DPI,
+            _BG,
         )
         gs = GridSpec(
             2,
             1,
             figure=fig,
-            height_ratios=[3.4, 1.05],
+            height_ratios=[4.85, 1.85] if lookup_portrait else [3.4, 1.05],
             hspace=0.055,
             left=0.04,
             right=0.96,
@@ -1266,27 +1427,43 @@ def _paint_volume_zone(
     last_hi = float(last["high"] or 0)
     last_cl = float(last["close"] or 0)
     last_md = _md(last.get("date"))
-    # 測壓未過標註
-    if hi > 0 and last_hi >= hi * 0.997 and last_cl < hi:
-        ax1.annotate(
-            f"{last_md} 高{_fmt_price(last_hi)}＝測壓　收{_fmt_price(last_cl)}未過",
-            xy=(xs[-1], last_hi),
-            xytext=(-24, 22),
-            textcoords="offset points",
-            ha="right",
-            va="bottom",
-            fontproperties=_fp(10.5, "bold"),
-            color=_CALL,
-            zorder=8,
-            arrowprops=dict(arrowstyle="->", color=_CALL, lw=1.15, shrinkB=2),
-            bbox=dict(
-                boxstyle="round,pad=0.28",
-                facecolor="#fff8e1",
-                edgecolor="#ef6c00",
-                linewidth=0.9,
-                alpha=0.96,
-            ),
+    path_shown = ""
+    try:
+        last_bar = {
+            "date": last.get("date"),
+            "open": last.get("open"),
+            "high": last.get("high"),
+            "low": last.get("low"),
+            "close": last.get("close"),
+            "volume": last.get("volume"),
+        }
+        bars_face = [
+            {
+                "date": r.get("date"),
+                "open": r.get("open"),
+                "high": r.get("high"),
+                "low": r.get("low"),
+                "close": r.get("close"),
+                "volume": r.get("volume"),
+            }
+            for r in view.to_dict("records")
+        ]
+        path_msg = vol_zone_day_path_label(
+            float(hi), float(lo), last_bar, bars=bars_face, zone_date=str(spike_date or "")
         )
+        if path_msg and last_hi > 0 and float(hi) > 0:
+            bits = [p for p in path_msg.split("  ") if p]
+            if len(bits) >= 5:
+                path_shown = (
+                    f"{bits[0]}  {bits[1]}\n"
+                    f"{'  '.join(bits[2:5])}\n"
+                    f"{'  '.join(bits[5:])}"
+                )
+            else:
+                path_shown = "\n".join(bits) if bits else path_msg
+    except Exception:
+        logger.exception("大量撐壓當日走勢標失敗 sid=%s", sid)
+        path_shown = ""
 
     ypad = max((hi - lo) * 0.16, float(view["high"].max() - view["low"].min()) * 0.035)
     y_hi = float(view["high"].max())
@@ -1303,6 +1480,39 @@ def _paint_volume_zone(
     ax1.set_ylim(ymin, ymax)
     # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
     ax1.set_xlim(-0.05, n + 1.65)
+    if path_shown:
+        ymin, ymax = ax1.get_ylim()
+        band_mid = (float(hi) + float(lo)) / 2.0 if float(hi) > float(lo) else (ymin + ymax) / 2.0
+        y_lab = min(max(band_mid, ymin + (ymax - ymin) * 0.18), ymax - (ymax - ymin) * 0.12)
+        x_lab = float(xs[-1]) - 8.0
+        x_lab = max(x_lab, float(ax1.get_xlim()[0]) + 5.0)
+        ax1.axvline(
+            float(xs[-1]),
+            color=_CALL,
+            linewidth=1.55,
+            linestyle=(0, (3.2, 2.0)),
+            alpha=0.90,
+            zorder=8,
+        )
+        ax1.text(
+            x_lab,
+            y_lab,
+            path_shown,
+            ha="right",
+            va="center",
+            fontproperties=_fp(10.5, "bold"),
+            color=_CALL,
+            zorder=12,
+            clip_on=False,
+            linespacing=1.18,
+            bbox=dict(
+                boxstyle="round,pad=0.28",
+                facecolor="#fff8e1",
+                edgecolor="#ef6c00",
+                linewidth=0.9,
+                alpha=0.96,
+            ),
+        )
     ax1.yaxis.tick_right()
     ax1.tick_params(labelbottom=False, labelsize=10)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, zorder=0, alpha=0.85)
@@ -1600,6 +1810,51 @@ def _paint_volume_zone(
             color=_TEXT,
             zorder=12,
         )
+        # 收盤晶片：只漲停紅底／跌停綠底，同高低卡 quote_limit_chip_colors
+        try:
+            from wayne_navigator import (
+                _card_is_emerging,
+                quote_limit_chip_colors,
+                quote_limit_side,
+            )
+
+            prev_c = None
+            if n >= 2:
+                try:
+                    prev_c = float(view["close"].iloc[-2])
+                except (TypeError, ValueError, IndexError):
+                    prev_c = None
+            pct = None
+            if prev_c and prev_c > 0 and last_cl > 0:
+                pct = (last_cl - prev_c) / prev_c * 100.0
+            emerging = _card_is_emerging(card) if isinstance(card, dict) else False
+            side = quote_limit_side(last_cl, prev_c, pct, emerging=emerging)
+            chip = quote_limit_chip_colors(side)
+            up = bool(last_cl >= (prev_c or last_cl))
+            if chip:
+                fill, ink = chip
+            else:
+                fill, ink = "#ffffff", (_UP if up else _DN)
+            ax_head.text(
+                0.98,
+                0.18,
+                f"收 {_fmt_price(last_cl)}",
+                transform=ax_head.transAxes,
+                ha="right",
+                va="center",
+                fontproperties=_fp(13.0, "bold"),
+                color=ink,
+                zorder=14,
+                bbox=dict(
+                    boxstyle="round,pad=0.28",
+                    facecolor=fill,
+                    edgecolor=ink,
+                    linewidth=1.15,
+                    alpha=0.97,
+                ),
+            )
+        except Exception:
+            logger.exception("大量撐壓表頭漲停晶片失敗 sid=%s", sid)
         # 介紹與圖例之間不加分隔線；圖例兩行貼在介紹下方
         try:
             from wayne_navigator import _draw_nav_legend

@@ -122,47 +122,55 @@ class LookupImageTests(unittest.TestCase):
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330 台積電"}, "2330"), "台積電")
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330"}, "2330"), "2330")
 
-    def test_send_card_uses_three_card_sequence(self):
+    def test_send_card_uses_four_card_sequence(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-        self.assertIn("render_three_in_one_result", src)
+        self.assertIn("render_lookup_structure_result", src)
+        self.assertIn("render_lookup_vol_result", src)
+        self.assertNotIn("render_three_in_one_result", src)
         self.assertIn("ready_items", src)
         self.assertIn("_stock_caption_name", src)
         self.assertNotIn("industry_task", src)
         self.assertNotIn("card_send_task", src)
         self.assertNotIn("render_industry_png", src)
         self.assertNotIn('"industry"', src)
-        # 查股主路徑不再走相簿；三張逐張 reply_photo
         self.assertNotIn("_send_lookup_album", src)
         self.assertNotIn("asyncio.gather", src)
         self.assertIn("_render_ready", src)
-        # 高低溫度卡先開渲；卡已 submit 後三合一排進 paint queue，再介紹
         self.assertIn("card_render_task", src)
         self.assertLess(src.find("card_render_task"), src.find("await tape_task"))
         self.assertIn("card_item = await card_render_task", src)
         self.assertIn("card_queued", src)
-        self.assertIn("create_task(_three_item())", src)
-        self.assertIn("await three_task", src)
+        self.assertIn("create_task(_struct_item())", src)
+        self.assertIn("create_task(_vol_item())", src)
         self.assertIn("_bump_progress", src)
-        # 三合一須在 await 高低卡完成之前就 create_task（卡 submit 後），與送卡重疊
+        # 介紹圖在 await 高低卡完成之前就排隊，與送卡重疊
         self.assertLess(
-            src.find("create_task(_three_item())"),
+            src.find("glance_task = asyncio.create_task"),
             src.find("card_item = await card_render_task"),
         )
         self.assertLess(
             src.find("card_queued"),
-            src.find("create_task(_three_item())"),
+            src.find("glance_task = asyncio.create_task"),
         )
         self.assertLess(
             src.find("card_item = await card_render_task"),
-            src.find("await three_task"),
+            src.find('await _bump_progress("glance")'),
         )
         self.assertLess(
-            src.find("await three_task"),
             src.find('await _bump_progress("glance")'),
+            src.find("create_task(_struct_item())"),
+        )
+        self.assertLess(
+            src.find("create_task(_struct_item())"),
+            src.find('await _bump_progress("struct")'),
+        )
+        self.assertLess(
+            src.find('await _bump_progress("struct")'),
+            src.find("create_task(_vol_item())"),
         )
 
     def test_glance_and_card_render_start_together(self):
-        """高低溫度卡先開渲；三合一／介紹串行（FreeType／合成腳本不准並行）。"""
+        """高低溫度卡先開渲；介紹→結構→大量撐壓一次一張，paint worker 串行。"""
         from PIL import Image
 
         td = tempfile.mkdtemp()
@@ -196,10 +204,15 @@ class LookupImageTests(unittest.TestCase):
             time.sleep(0.25)
             return _png("c.png")
 
-        def _three(*_a, **_k):
-            started["three"] = time.monotonic()
+        def _struct(*_a, **_k):
+            started["struct"] = time.monotonic()
             time.sleep(0.05)
-            return _png("t.png"), "三合一圖（非買訊）"
+            return _png("s.png"), "結構圖（非買訊）　買點只認藍▲紅框"
+
+        def _vol(*_a, **_k):
+            started["vol"] = time.monotonic()
+            time.sleep(0.05)
+            return _png("v.png"), "大量撐壓圖（非買訊）"
 
         class _Engine:
             def __init__(self, *_a, **_k):
@@ -226,7 +239,9 @@ class LookupImageTests(unittest.TestCase):
             ), patch(
                 "wayne_navigator.render_decision_card_png", side_effect=_card
             ), patch(
-                "three_in_one_chart.render_three_in_one_result", side_effect=_three
+                "three_in_one_chart.render_lookup_structure_result", side_effect=_struct
+            ), patch(
+                "vol_zone_chart.render_lookup_vol_result", side_effect=_vol
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -259,17 +274,20 @@ class LookupImageTests(unittest.TestCase):
         asyncio.run(_run())
         self.assertIn("glance", started)
         self.assertIn("card", started)
-        self.assertIn("three", started)
-        # 卡先、三合一、介紹後
-        self.assertGreaterEqual(started["three"] - started["card"], 0.2)
-        self.assertGreaterEqual(started["glance"] - started["three"], 0.0)
+        self.assertIn("struct", started)
+        self.assertIn("vol", started)
+        # 卡先、介紹、結構、大量撐壓
+        self.assertGreaterEqual(started["glance"] - started["card"], 0.2)
+        self.assertGreaterEqual(started["struct"] - started["glance"], 0.0)
+        self.assertGreaterEqual(started["vol"] - started["struct"], 0.0)
         self.assertEqual(message.reply_media_group.await_count, 0)
-        self.assertGreaterEqual(message.reply_photo.await_count, 3)
+        self.assertGreaterEqual(message.reply_photo.await_count, 4)
         caps = [
             str(c.kwargs.get("caption") or "")
             for c in message.reply_photo.await_args_list
         ]
-        self.assertTrue(any("三合一" in c for c in caps), caps)
+        self.assertTrue(any("結構圖" in c for c in caps), caps)
+        self.assertTrue(any("大量撐壓" in c or "大量區" in c for c in caps), caps)
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
@@ -345,29 +363,31 @@ class LookupImageTests(unittest.TestCase):
 
         self.assertLessEqual(bot_servers._LOOKUP_MIS_TIMEOUT, 2.0)
 
-    def test_prepare_lookup_album_photo_keeps_native_pixels(self):
+    def test_prepare_lookup_album_photo_letterbox_4x5(self):
         from PIL import Image
 
-        from bot_servers import _LOOKUP_TG_MAX_BYTES, _LOOKUP_TG_MAX_WH
+        from bot_servers import _LOOKUP_ALBUM_MAX, _LOOKUP_TG_MAX_BYTES, _LOOKUP_TG_MAX_WH
 
         with tempfile.TemporaryDirectory() as td:
             native = os.path.join(td, "n.png")
             Image.new("RGB", (1080, 1400), (12, 18, 28)).save(native, "PNG")
             out = WayneTelegramBot._prepare_lookup_album_photo(native)
             with Image.open(out) as im:
-                self.assertEqual(im.size, (1080, 1400))
+                self.assertEqual(im.size, _LOOKUP_ALBUM_MAX)
                 self.assertEqual(im.format, "JPEG")
+                self.assertEqual(im.size[0] * 5, im.size[1] * 4)
             self.assertLessEqual(os.path.getsize(out), _LOOKUP_TG_MAX_BYTES)
-            wide = os.path.join(td, "w.png")
-            Image.new("RGB", (2272, 2800), (12, 18, 28)).save(wide, "PNG")
-            out2 = WayneTelegramBot._prepare_lookup_album_photo(wide)
+            tall = os.path.join(td, "t.png")
+            Image.new("RGB", (1556, 2560), (245, 247, 250)).save(tall, "PNG")
+            out2 = WayneTelegramBot._prepare_lookup_album_photo(tall)
             with Image.open(out2) as im:
-                self.assertEqual(im.size, (2272, 2800))
+                self.assertEqual(im.size, _LOOKUP_ALBUM_MAX)
                 self.assertEqual(im.format, "JPEG")
             over = os.path.join(td, "over.png")
             Image.new("RGB", (5000, 6000), (12, 18, 28)).save(over, "PNG")
             out3 = WayneTelegramBot._prepare_lookup_album_photo(over)
             with Image.open(out3) as im:
+                self.assertEqual(im.size, _LOOKUP_ALBUM_MAX)
                 self.assertLessEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
                 self.assertEqual(im.format, "JPEG")
             nw, nh = WayneTelegramBot._fit_lookup_photo_wh(1080, 1400)
@@ -403,39 +423,43 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
-    def test_chart_progress_three_card_sequence(self):
+    def test_chart_progress_four_card_sequence(self):
         txt = WayneTelegramBot._chart_progress_text(3, current="card")
         self.assertIn("高低溫度卡", txt)
-        self.assertIn("三合一", txt)
+        self.assertIn("介紹圖", txt)
+        self.assertIn("結構圖", txt)
+        self.assertIn("大量撐壓圖", txt)
+        self.assertNotIn("三合一", txt)
         self.assertNotIn("導航", txt)
         self.assertNotIn("其餘三張", txt)
         self.assertNotIn("介紹圖＋高低卡", txt)
 
     def test_chart_progress_records_sent_stage(self):
         txt = WayneTelegramBot._chart_progress_text(
-            8, sent=["card", "three"], current="glance"
+            8, sent=["card", "glance"], current="struct"
         )
-        self.assertIn("現在：介紹圖", txt)
-        self.assertIn("已送高低溫度卡、三合一", txt)
+        self.assertIn("現在：結構圖", txt)
+        self.assertIn("已送高低溫度卡、介紹圖", txt)
         self.assertNotIn("接著：導航圖", txt)
         self.assertNotIn("其餘三張", txt)
         self.assertIn("好了這則會消失", txt)
 
-    def test_chart_progress_three_after_card_not_silent(self):
-        """高低卡已出、三合一還在渲：LOADING 要寫清楚，不准只剩空白秒數。"""
+    def test_chart_progress_glance_after_card_not_silent(self):
+        """高低卡已出、介紹還在渲：LOADING 要寫清楚，不准只剩空白秒數。"""
         txt = WayneTelegramBot._chart_progress_text(
-            12, sent=["card"], current="three"
+            12, sent=["card"], current="glance"
         )
-        self.assertIn("三合一（合成較重）", txt)
+        self.assertIn("現在：介紹圖", txt)
         self.assertIn("已送高低溫度卡", txt)
-        self.assertIn("介紹圖", txt)
+        self.assertIn("結構圖", txt)
+        self.assertIn("大量撐壓圖", txt)
 
     def test_chart_progress_table_stage(self):
         txt = WayneTelegramBot._chart_progress_text(1, current="table")
         self.assertIn("讀高低卡", txt)
 
     def test_album_fail_still_sends_jpeg_photos(self):
-        """三張逐張 reply_photo；mock 官方柱／三合一後仍能出齊，不准改送文字版。"""
+        """四張逐張 reply_photo；mock 官方柱／結構／撐壓後仍能出齊，不准改送文字版。"""
         from PIL import Image
 
         td = tempfile.mkdtemp()
@@ -485,8 +509,11 @@ class LookupImageTests(unittest.TestCase):
                 "wayne_navigator.render_decision_card_png",
                 side_effect=lambda *_a, **_k: _png("c.png"),
             ), patch(
-                "three_in_one_chart.render_three_in_one_result",
-                side_effect=lambda *_a, **_k: (_png("t.png"), "三合一圖（非買訊）"),
+                "three_in_one_chart.render_lookup_structure_result",
+                side_effect=lambda *_a, **_k: (_png("s.png"), "結構圖（非買訊）"),
+            ), patch(
+                "vol_zone_chart.render_lookup_vol_result",
+                side_effect=lambda *_a, **_k: (_png("v.png"), "大量撐壓圖（非買訊）"),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -517,7 +544,7 @@ class LookupImageTests(unittest.TestCase):
                 )
 
         asyncio.run(_run())
-        self.assertGreaterEqual(message.reply_photo.await_count, 3)
+        self.assertGreaterEqual(message.reply_photo.await_count, 4)
         texts = [
             str(c.args[0]) if c.args else str(c.kwargs)
             for c in message.reply_html.await_args_list + message.reply_text.await_args_list

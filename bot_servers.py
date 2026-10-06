@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→三合一圖（T0118）→介紹卡；點開高畫質。圖下其餘子鍵（產業／籌碼／營收…）；K線／導航已併進三合一不另放
+- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖；一次一張、好了就送。點開高畫質。圖下其餘子鍵（產業／籌碼／營收…）；不出導航、不送合成三合一
 - 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -1081,7 +1081,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出高低溫度卡＋三合一圖＋介紹卡（非買訊）；三合一已含導航／結構／大量壓力，圖下不再放 K線／導航。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖（非買訊）；導航不在這四張裡。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1960,7 +1960,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出高低溫度卡＋三合一＋介紹卡。",
+            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -1974,7 +1974,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出高低溫度卡＋三合一＋介紹卡。",
+            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -2367,7 +2367,7 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """查股其餘子鍵（三合一後才出）。K線／導航已併進三合一，不另放。"""
+        """查股其餘子鍵（第二張介紹圖後才出）。導航不在這四張裡，不另送。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
@@ -3283,7 +3283,7 @@ class WayneTelegramBot:
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
                 + "\n"
-                "3　一次出高低溫度卡＋三合一＋介紹卡，點開高畫質。圖下有產業／籌碼／營收等\n"
+                "3　一次出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖，點開高畫質。圖下有產業／籌碼／營收等\n"
                 "\n"
                 "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
@@ -3990,23 +3990,29 @@ class WayneTelegramBot:
         labels = {
             "glance": "介紹圖",
             "card": "高低溫度卡",
-            "three": "三合一",
-            "volzone": "三合一",
+            "struct": "結構圖",
+            "vol": "大量撐壓圖",
+            "three": "結構圖",
+            "volzone": "大量撐壓圖",
             "both": "高低溫度卡",
             "chart": "導航圖",
             "quote": "現價",
             "table": "讀高低卡",
             "album": "送圖",
         }
-        order = ("quote", "card", "three", "glance")
+        order = ("quote", "card", "glance", "struct", "vol")
         sent_ks = [str(k) for k in (sent or [])]
         cur = str(current or "")
         now = labels.get(cur, "")
         if not now:
             now = next((labels[k] for k in order if k not in sent_ks), "出圖")
-        # 三合一合成較重：高低卡已出時寫清楚，避免 LOADING 只跳秒數像當掉
-        if cur in ("three", "volzone") and "card" in sent_ks:
-            now = "三合一（合成較重）"
+        # 高低卡已出、後面還在渲：LOADING 寫清楚，不准只剩空白秒數
+        if cur == "glance" and "card" in sent_ks:
+            now = "介紹圖"
+        if cur in ("struct", "three") and "card" in sent_ks:
+            now = "結構圖"
+        if cur in ("vol", "volzone") and "card" in sent_ks:
+            now = "大量撐壓圖"
         if cur == "both":
             rest = labels["album"]
         elif cur == "quote":
@@ -4015,14 +4021,27 @@ class WayneTelegramBot:
             skip = set(sent_ks)
             if cur:
                 skip.add(cur)
-            if cur in ("three", "volzone"):
-                skip.update(("three", "volzone"))
+            if cur in ("struct", "three"):
+                skip.update(("struct", "three"))
+            if cur in ("vol", "volzone"):
+                skip.update(("vol", "volzone"))
             # 已過現價階段就不要再寫「還有現價」
-            if cur in ("card", "three", "volzone", "glance", "table", "album") or sent_ks:
+            if cur in (
+                "card",
+                "glance",
+                "struct",
+                "vol",
+                "three",
+                "volzone",
+                "table",
+                "album",
+            ) or sent_ks:
                 skip.add("quote")
             rest = "、".join(labels[k] for k in order if k not in skip)
         sent_txt = "、".join(
-            labels[k] for k in ("card", "three", "glance") if k in sent_ks and k in labels
+            labels[k]
+            for k in ("card", "glance", "struct", "vol")
+            if k in sent_ks and k in labels
         )
         # _wait_bubble 會加「接著：」前綴；這裡只寫已送／還有，不准再疊一個接著
         if sent_txt and rest:
@@ -4306,7 +4325,7 @@ class WayneTelegramBot:
 
     @staticmethod
     def _prepare_lookup_album_photo(path: str) -> str:
-        """點開用 JPEG。源圖像素原樣送，超過上限才縮小。optimize 關閉只為加快存檔。"""
+        """查股四張同一格 4:5 JPEG（1920×2400）。contain 置中，Telegram 縮圖寬才齊、點開解析才接近。"""
         from PIL import Image
 
         if not path or not os.path.isfile(path):
@@ -4315,7 +4334,7 @@ class WayneTelegramBot:
             im = Image.open(path)
             im.load()
             if im.mode == "RGBA":
-                bg = Image.new("RGB", im.size, (12, 18, 28))
+                bg = Image.new("RGB", im.size, (245, 247, 250))
                 bg.paste(im, mask=im.split()[-1])
                 im = bg
             elif im.mode != "RGB":
@@ -4323,12 +4342,36 @@ class WayneTelegramBot:
             w, h = im.size
             if w <= 0 or h <= 0:
                 return path
-            tw, th = WayneTelegramBot._fit_lookup_photo_wh(w, h)
-            if (tw, th) == (w, h) and str(path).lower().endswith((".jpg", ".jpeg")):
+            cw, ch = _LOOKUP_ALBUM_MAX
+            if (
+                (w, h) == (cw, ch)
+                and str(path).lower().endswith((".jpg", ".jpeg", ".album.jpg", ".hq.jpg"))
+            ):
                 im.close()
                 return path
-            if (tw, th) != (w, h):
-                im = im.resize((tw, th), Image.Resampling.LANCZOS)
+            scale = min(cw / float(w), ch / float(h))
+            nw = max(1, int(round(w * scale)))
+            nh = max(1, int(round(h * scale)))
+            if (nw, nh) != (w, h):
+                im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+            # 襯底跟圖邊同色，避免黑條把縮圖比成另一張
+            try:
+                rgb = im.convert("RGB")
+                pts = [
+                    (0, 0),
+                    (nw - 1, 0),
+                    (0, nh - 1),
+                    (nw - 1, nh - 1),
+                    (nw // 2, 0),
+                    (nw // 2, nh - 1),
+                ]
+                samples = [rgb.getpixel(p) for p in pts]
+                pad = tuple(int(sorted(s[i] for s in samples)[len(samples) // 2]) for i in range(3))
+            except Exception:
+                pad = (245, 247, 250)
+            canvas = Image.new("RGB", (cw, ch), pad)
+            canvas.paste(im, ((cw - nw) // 2, (ch - nh) // 2))
+            im.close()
             out = path + ".hq.jpg"
             limit = _LOOKUP_TG_MAX_BYTES - 64
             for q in (
@@ -4337,11 +4380,10 @@ class WayneTelegramBot:
                 90,
                 _LOOKUP_JPEG_QUALITY_FLOOR,
             ):
-                im.save(
+                canvas.save(
                     out,
                     "JPEG",
                     quality=int(q),
-                    # 國字／表頭：一律 4:4:4，不准掉到 4:2:0 把筆畫抽糊
                     subsampling=0,
                     optimize=False,
                 )
@@ -6364,7 +6406,7 @@ class WayneTelegramBot:
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律高低溫度卡、三合一、介紹卡。",
+            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律高低溫度卡、介紹圖、結構圖、大量撐壓圖。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "industry": "產業說明：請先選一檔。會送一張圖卡。同業＝同一產業鏈才比；跨族檔另標他還有的鏈。",
@@ -8232,14 +8274,30 @@ class WayneTelegramBot:
                 card_cap = append_sanchi_to_caption(card_cap, card)
             except Exception:
                 pass
-            vol_path_f = self._scratch_chart_path(self.charts_dir, code, "three", uid_key)
-            three_face = ["三合一圖（導航＋結構＋大量壓力；非買訊）"]
+            struct_path_f = self._scratch_chart_path(self.charts_dir, code, "struct", uid_key)
+            vol_path_f = self._scratch_chart_path(self.charts_dir, code, "vol", uid_key)
+            struct_face = ["結構圖（非買訊）　買點只認藍▲紅框"]
+            vol_face = ["大量撐壓圖（非買訊）"]
 
-            def _render_three():
-                from three_in_one_chart import render_three_in_one_result
+            def _render_struct():
+                from three_in_one_chart import render_lookup_structure_result
 
-                # 三合一只吃官方原柱；③壓力不准盤中假柱。
-                path, cap = render_three_in_one_result(
+                path, cap = render_lookup_structure_result(
+                    code,
+                    _stock_caption_name(card, code),
+                    self.db_path,
+                    struct_path_f,
+                    card=card,
+                )
+                if cap:
+                    struct_face[0] = cap
+                return path
+
+            def _render_vol():
+                from vol_zone_chart import render_lookup_vol_result
+
+                # 大量撐壓只吃官方原柱；不准盤中假柱。
+                path, cap = render_lookup_vol_result(
                     code,
                     _stock_caption_name(card, code),
                     self.db_path,
@@ -8247,15 +8305,16 @@ class WayneTelegramBot:
                     card=card,
                 )
                 if cap:
-                    three_face[0] = cap
+                    vol_face[0] = cap
                 return path
 
             kind_labels = {
                 "glance": "介紹圖",
                 "card": "高低溫度卡",
-                "three": "三合一",
+                "struct": "結構圖",
+                "vol": "大量撐壓圖",
             }
-            render_plan_kinds = ("card", "three", "glance")
+            render_plan_kinds = ("card", "glance", "struct", "vol")
             sent_kinds: list[str] = []
             ready_items: list = []
 
@@ -8279,7 +8338,7 @@ class WayneTelegramBot:
                         return ""
                     looks_ok = (
                         self._chart_png_looks_ok(path)
-                        if kind in ("chart", "three")
+                        if kind in ("chart", "struct", "vol", "three")
                         else self._png_looks_ok(path)
                     )
                     if not looks_ok:
@@ -8300,19 +8359,6 @@ class WayneTelegramBot:
                 if not png:
                     return None
                 return (kind, png, caption, markup)
-
-            three_cap = three_face[0]
-            # 三合一較重：預設查股逾時再加寬一截（環境變數仍可蓋）
-            three_timeout = float(
-                os.getenv("WAYNE_THREE_IN_ONE_TIMEOUT", str(max(_LOOKUP_PNG_TIMEOUT, 180.0)))
-            )
-
-            async def _three_item():
-                png = await _render_one("three", _render_three, three_timeout)
-                cap = three_face[0] if three_face and three_face[0] else three_cap
-                if not png:
-                    return None
-                return ("three", png, cap, None)
 
             st = self._op_state_map().setdefault(actor, {"sent": [], "current": "card"})
             st["current"] = "card"
@@ -8340,13 +8386,12 @@ class WayneTelegramBot:
                 )
 
             # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
-            # 三合一在高低卡已 submit 進 paint worker 後立刻排隊：卡一畫完 worker
-            # 馬上接三合一，與送高低卡／改 LOADING 重疊，砍掉假死空窗。
-            # 順序鎖死：高低溫度卡 → 三合一 → 介紹卡；子鍵等二三張後才掛。
+            # 介紹圖在高低卡已 submit 後排隊：卡一畫完 worker 馬上接介紹，與送高低卡重疊。
+            # 順序鎖死：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖。一次一張、好了就送。
             card_queued = asyncio.Event()
 
             async def _card_item():
-                """先 submit 再放行三合一排隊；await 完才回傳要送的高低卡。"""
+                """先 submit 再放行介紹圖排隊；await 完才回傳要送的高低卡。"""
                 attempts = 2
                 path = ""
                 for attempt in range(attempts):
@@ -8380,6 +8425,20 @@ class WayneTelegramBot:
                     return ("card", path, card_cap, None)
                 return None
 
+            async def _struct_item():
+                png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
+                cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
+                if not png:
+                    return None
+                return ("struct", png, cap, None)
+
+            async def _vol_item():
+                png = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
+                cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖（非買訊）"
+                if not png:
+                    return None
+                return ("vol", png, cap, None)
+
             card_render_task = asyncio.create_task(_card_item())
             try:
                 tape = await tape_task
@@ -8393,12 +8452,14 @@ class WayneTelegramBot:
                     code, card, tape, glance_path, self.db_path, ohlc=ohlc
                 )
 
-            # 等高低卡進 queue 再排三合一（Event；不准只靠 sleep(0) 賭排程）
+            # 等高低卡進 queue 再排介紹圖（Event；不准只靠 sleep(0) 賭排程）
             try:
                 await asyncio.wait_for(card_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT)
             except asyncio.TimeoutError:
                 card_queued.set()
-            three_task = asyncio.create_task(_three_item())
+            glance_task = asyncio.create_task(
+                _render_ready("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, hub)
+            )
             card_item = await card_render_task
             if card_item:
                 kind, path, caption, markup = card_item
@@ -8408,41 +8469,17 @@ class WayneTelegramBot:
                     sent_any = True
                     sent_kinds.append(kind)
                     ready_items.append(card_item)
-            # 高低卡已出：立刻改口「現在三合一」，避免秒數停住像當掉
-            await _bump_progress("three")
-            await asyncio.sleep(0)
-            # 三合一／介紹仍串行：合成腳本會 patch matplotlib，不准跟介紹同刻搶 FreeType。
-            t_three0 = time.monotonic()
-            three_item = await three_task
-            logger.info(
-                "查股階段 three done %.1fs code=%s ok=%s",
-                time.monotonic() - t_three0,
-                code,
-                bool(three_item),
-            )
-            if three_item:
-                kind, path, caption, _mk = three_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
-                # 二三張出現後才掛其餘子鍵（先掛在三合一；介紹卡再帶一次）
-                ok = await send_photo(prep or path, caption, hub, kind=kind)
-                if ok:
-                    sent_any = True
-                    sent_kinds.append(kind)
-                    hub_on = True
-                    ready_items.append(three_item)
-
             await _bump_progress("glance")
             await asyncio.sleep(0)
             t_glance0 = time.monotonic()
-            glance_item = await _render_ready(
-                "glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, hub
-            )
+            glance_item = await glance_task
             logger.info(
                 "查股階段 glance done %.1fs code=%s ok=%s",
                 time.monotonic() - t_glance0,
                 code,
                 bool(glance_item),
             )
+            struct_task = asyncio.create_task(_struct_item())
             if glance_item:
                 kind, path, caption, markup = glance_item
                 prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
@@ -8452,6 +8489,47 @@ class WayneTelegramBot:
                     sent_kinds.append(kind)
                     hub_on = True
                     ready_items.append(glance_item)
+
+            await _bump_progress("struct")
+            await asyncio.sleep(0)
+            t_struct0 = time.monotonic()
+            struct_item = await struct_task
+            logger.info(
+                "查股階段 struct done %.1fs code=%s ok=%s",
+                time.monotonic() - t_struct0,
+                code,
+                bool(struct_item),
+            )
+            vol_task = asyncio.create_task(_vol_item())
+            if struct_item:
+                kind, path, caption, _mk = struct_item
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                ok = await send_photo(prep or path, caption, hub, kind=kind)
+                if ok:
+                    sent_any = True
+                    sent_kinds.append(kind)
+                    hub_on = True
+                    ready_items.append(struct_item)
+
+            await _bump_progress("vol")
+            await asyncio.sleep(0)
+            t_vol0 = time.monotonic()
+            vol_item = await vol_task
+            logger.info(
+                "查股階段 vol done %.1fs code=%s ok=%s",
+                time.monotonic() - t_vol0,
+                code,
+                bool(vol_item),
+            )
+            if vol_item:
+                kind, path, caption, _mk = vol_item
+                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                ok = await send_photo(prep or path, caption, hub, kind=kind)
+                if ok:
+                    sent_any = True
+                    sent_kinds.append(kind)
+                    hub_on = True
+                    ready_items.append(vol_item)
 
             try:
                 gc.collect()

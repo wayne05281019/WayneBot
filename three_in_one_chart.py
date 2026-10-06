@@ -43,12 +43,19 @@ VZ_TAG_X_OFFSET = 10
 
 THREE_IN_ONE_CAPTION_HEAD = "三合一圖（導航＋結構＋大量壓力；非買訊）"
 LOCK_KEY = "T0118"
-# Telegram 氣泡約把整圖縮到 0.35–0.40×；表頭／圖例相對放大，老花不靠點開也能讀。
-# 鎖版 T0118 佈局比例保留；只加大 chrome 字級／列高，圖身略縮以保住 w+h≤TG 上限。
+# 過關＝話筒對話框點開，不是下載相簿。Telegram sendPhoto 會把「最長邊」再壓到
+# 約 2560；源圖 2800×7000 點開寬只剩 ~1000，國字被二次 JPEG 抽糊。
+# 合成直接對點開視窗：欄寬約 1480、整張最長邊 ≤2560，字級依這張設計。
 CHROME_SCALE = 1.55
-TG_WH_BUDGET = 9900
+TG_CLICK_MAX_SIDE = 2560
+TG_WH_BUDGET = 4200  # 寬+高；點開視窗約 1170×2532，不再衝 10000 讓 TG 砍最長邊
+COMPOSE_INNER_W = 1480
 THREE_IN_ONE_JPEG_QUALITY = 95
-# 合成欄寬約 2800：220DPI×12.8in＝2816，不再先畫 320 再 Lanczos 砍（慢且話筒更糊）
+LOOKUP_STRUCTURE_CAPTION = "結構圖（非買訊）　買點只認藍▲紅框"
+# 查股單張直式：對齊高低卡 4:5，220DPI → 1920×2400
+LOOKUP_PORTRAIT_FIG = (1920 / 220.0, 2400 / 220.0)
+LOOKUP_PORTRAIT_DPI = 220
+# pane 仍 220DPI 再縮進合成欄＝超採樣，細 K／量柱點開比較不毛
 PANE_DPI = 220
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BUNDLE_BOLD = os.path.join(_HERE, "fonts", "NotoSansTC-w860.ttf")
@@ -352,6 +359,79 @@ def _strip_left_edge_arrows(*axes, x_min: float = 0.35) -> int:
             except Exception:
                 continue
     return n_hide
+
+
+def _card_emerging(card) -> bool:
+    if not isinstance(card, dict):
+        return False
+    try:
+        from wayne_navigator import _card_is_emerging
+
+        return bool(_card_is_emerging(card))
+    except Exception:
+        return False
+
+
+def _header_price_chip_style(
+    close,
+    prev_close=None,
+    pct=None,
+    *,
+    emerging: bool = False,
+) -> tuple[str, str, str, bool]:
+    """表頭收盤色塊＝高低卡同一套：漲停紅底、跌停綠底；其餘白底＋漲跌字色。
+
+    回傳 (fill, ink, outline, up)。
+    """
+    from wayne_navigator import quote_limit_chip_colors, quote_limit_side
+
+    try:
+        cl = float(close or 0)
+    except (TypeError, ValueError):
+        cl = 0.0
+    prev = None
+    try:
+        if prev_close not in (None, "", 0, 0.0):
+            prev = float(prev_close)
+            if prev <= 0:
+                prev = None
+    except (TypeError, ValueError):
+        prev = None
+    up = True
+    if prev is not None:
+        up = cl >= prev
+    tone = CANDLE_UP if up else CANDLE_DN
+    side = quote_limit_side(cl, prev, pct, emerging=bool(emerging))
+    chip = quote_limit_chip_colors(side)
+    if chip:
+        fill, ink = chip
+        return str(fill), str(ink), str(fill), up
+    return "#ffffff", tone, tone, up
+
+
+def _fit_telegram_click_view(im: Image.Image) -> Image.Image:
+    """點開用：最長邊 ≤2560，避免 sendPhoto 再壓一次把國字抽糊。"""
+    w, h = im.size
+    if w <= 0 or h <= 0:
+        return im
+    long = max(w, h)
+    scale = 1.0
+    if long > TG_CLICK_MAX_SIDE:
+        scale = min(scale, TG_CLICK_MAX_SIDE / float(long))
+    if w + h > TG_WH_BUDGET:
+        scale = min(scale, TG_WH_BUDGET / float(w + h))
+    if long <= TG_CLICK_MAX_SIDE and w + h <= TG_WH_BUDGET:
+        return im
+    nw = max(1, int(w * scale))
+    nh = max(1, int(h * scale))
+    while max(nw, nh) > TG_CLICK_MAX_SIDE or nw + nh > TG_WH_BUDGET:
+        if nw >= nh and nw > 1:
+            nw -= 1
+        elif nh > 1:
+            nh -= 1
+        else:
+            break
+    return im.resize((nw, nh), Image.Resampling.LANCZOS)
 
 
 def _recolor_vol_bar(ax, idx: int, color: str = SPIKE_BAR_COLOR) -> float:
@@ -1046,20 +1126,40 @@ def _mark_axvline_at(ax, x: float, label: str, y: float = 0.985) -> None:
 
 
 def _pick_vol_axes(fig):
-    """price / momentum / volume axes on the vol-zone figure."""
-    price = sig = vol = None
-    for ax in fig.axes:
-        if not ax.axison:
+    """price / momentum / volume：用上下位置，不准用 ymax>1500。
+
+    高價股（台光電／大立光／聯亞）價軸 ymax 也 >1500，舊啟發式會把價軸
+    當成量軸，③ 量柱區對錯框再被 crop_white_tail 當留白裁掉。
+    """
+    live = [ax for ax in list(getattr(fig, "axes", []) or []) if ax.axison]
+    if not live:
+        return None, None, None
+    ordered = sorted(
+        live,
+        key=lambda ax: -float(ax.get_position().y0 + ax.get_position().height * 0.5),
+    )
+    sig = None
+    price_vol: list = []
+    for ax in ordered:
+        try:
+            pos_h = float(ax.get_position().height)
+        except Exception:
+            pos_h = 1.0
+        if pos_h < 0.028:
             continue
         ymin, ymax = ax.get_ylim()
-        if ymin >= -1.0 and ymax <= 2.6:
+        span = float(ymax) - float(ymin)
+        if ymin >= -1.5 and ymax <= 2.8 and span <= 4.5:
             sig = ax
-        elif ymin >= -1.0 and ymax > 1500:
-            vol = ax
-        elif ymax > 200:
-            price = ax
-    if price is None:
-        price = max(fig.axes, key=lambda ax: abs((ax.bbox.y1 - ax.bbox.y0) * (ax.bbox.x1 - ax.bbox.x0)))
+            continue
+        price_vol.append(ax)
+    price = price_vol[0] if price_vol else None
+    vol = price_vol[-1] if len(price_vol) >= 2 else None
+    if price is None and live:
+        price = max(
+            live,
+            key=lambda ax: abs((ax.bbox.y1 - ax.bbox.y0) * (ax.bbox.x1 - ax.bbox.x0)),
+        )
     return price, sig, vol
 
 
@@ -1076,8 +1176,10 @@ def _polish_vol_figure(
     tick_labs=None,
     tick_pos=None,
     last_bar=None,
+    bars=None,
+    zone_date: str = "",
 ):
-    """圖三：壓撐標移橘虛線左、爆大量張數、量柱日期刻度、最後一根測壓說明。"""
+    """圖三：壓撐標移橘虛線左、爆大量張數、量柱日期刻度、當日走勢標（非死釘壓價）。"""
     from wayne_navigator import _fp, _fmt_price, _set_staggered_month_ticks
     import vol_zone_chart as vz
 
@@ -1311,31 +1413,38 @@ def _polish_vol_figure(
     except Exception as exc:
         print(f"[strip-left] FAIL {exc!r}", flush=True)
 
-    # 最後一根日說明：放桃色帶內、偏左，不准擋頂列箭頭
+    # 當日走勢標：官方／MIS 今開高低收對既有大量壓撐組句，不准死釘「10/05 壓 3,255」
     lb = last_bar or {}
     try:
         from matplotlib.patches import FancyArrowPatch
+        from vol_zone_chart import vol_zone_day_path_label
 
         last_hi = float(lb.get("high") or 0)
+        last_lo = float(lb.get("low") or 0)
         last_cl = float(lb.get("close") or 0)
         last_i = lb.get("_i")
-        d0 = str(lb.get("date") or "")
-        last_md = f"{d0[4:6]}/{d0[6:8]}" if len(d0) >= 8 else ""
         press = float(spike_hi)
         hold = float(spike_lo)
-        if last_i is not None and last_hi > 0 and press > 0 and last_md:
-            # 標貼圖框上緣下方；連線改藍，不准跟爆大量琥珀線同色
+        msg = vol_zone_day_path_label(
+            press, hold, lb, bars=bars, zone_date=zone_date
+        )
+        if last_i is not None and last_hi > 0 and press > 0 and msg:
             ymin, ymax = ax1.get_ylim()
-            y_lab = ymax - (ymax - ymin) * 0.035
-            x_lab = float(last_i) - 14.0
-            x_lab = max(x_lab, float(ax1.get_xlim()[0]) + 6.0)
-            if last_cl >= press:
-                msg = f"{last_md} 已過壓"
-            elif last_hi >= press * 0.997:
-                msg = f"{last_md} 測壓{_fmt_price(press)}未過"
+            # 標放在壓／撐帶中段、最後一根左側，不准再釘右上角死標
+            band_mid = (press + hold) / 2.0 if press > hold else (ymin + ymax) / 2.0
+            y_lab = min(max(band_mid, ymin + (ymax - ymin) * 0.18), ymax - (ymax - ymin) * 0.12)
+            x_lab = float(last_i) - 8.0
+            x_lab = max(x_lab, float(ax1.get_xlim()[0]) + 5.0)
+            bits = [p for p in msg.split("  ") if p]
+            if len(bits) >= 5:
+                shown = (
+                    f"{bits[0]}  {bits[1]}\n"
+                    f"{'  '.join(bits[2:5])}\n"
+                    f"{'  '.join(bits[5:])}"
+                )
             else:
-                msg = f"{last_md} 壓{_fmt_price(press)}"
-            tag = "測壓" if "測壓" in msg else ("過壓" if "過壓" in msg else "日說明")
+                shown = "\n".join(bits) if bits else msg
+            tag = "測撐" if "測大量撐" in msg else ("測壓" if "測大量壓" in msg else "日說明")
             ax1.axvline(
                 float(last_i),
                 color=CEYA_LINE_COLOR,
@@ -1347,13 +1456,14 @@ def _polish_vol_figure(
             ax1.text(
                 x_lab,
                 y_lab,
-                msg,
-                ha="center",
-                va="top",
-                fontproperties=_fp(12.0, "bold"),
+                shown,
+                ha="right",
+                va="center",
+                fontproperties=_fp(11.0, "bold"),
                 color=CEYA_LINE_COLOR,
                 zorder=32,
                 clip_on=False,
+                linespacing=1.18,
                 bbox=dict(
                     boxstyle="round,pad=0.30",
                     facecolor="#e3f2fd",
@@ -1362,9 +1472,12 @@ def _polish_vol_figure(
                     alpha=0.99,
                 ),
             )
+            tip_y = float(last_lo) if "撐" in tag else float(min(last_hi, press - 1.0) if last_hi else last_cl)
+            if tip_y <= 0:
+                tip_y = last_cl or last_hi
             arr = FancyArrowPatch(
                 (x_lab + 1.2, y_lab - (ymax - ymin) * 0.02),
-                (float(last_i) - 0.45, float(min(last_hi, press - 1.0))),
+                (float(last_i) - 0.45, tip_y),
                 arrowstyle="->",
                 mutation_scale=10,
                 color=CEYA_LINE_COLOR,
@@ -1374,8 +1487,8 @@ def _polish_vol_figure(
             )
             ax1.add_patch(arr)
             print(
-                f"[last-bar] {tag} i={last_i} hi={last_hi} cl={last_cl} press={press} "
-                f"xy=({x_lab:.1f},{y_lab:.1f}) msg={msg} color={CEYA_LINE_COLOR}",
+                f"[last-bar] {tag} i={last_i} hi={last_hi} lo={last_lo} cl={last_cl} "
+                f"press={press} hold={hold} msg={msg}",
                 flush=True,
             )
     except Exception as exc:
@@ -1658,15 +1771,18 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 (0.05, 3.22, 0.40, 0.72),
                 (0.05, 3.28, 0.40, 0.72),
             ):
-                # ① 範本：主圖 5.15／量能 0.42／成交量 1.45
-                k["height_ratios"] = [0.04, 5.15, 0.42, 1.45]
+                # ① 範本：主圖／量能／成交量；量柱列加高，點開仍看得到日柱
+                k["height_ratios"] = [0.04, 4.85, 0.42, 1.85]
                 k["top"] = 0.995
                 k["bottom"] = 0.118
                 k["hspace"] = 0.050
                 k["left"] = FRAME_LEFT
                 k["right"] = FRAME_RIGHT
-            elif hr_t in ((5.45, 1.45), (5.15, 1.45)):
-                k["height_ratios"] = [5.15, 1.45]
+            elif hr_t in ((5.45, 1.45), (5.15, 1.45), (4.85, 1.85)):
+                k["height_ratios"] = [4.85, 1.85]
+                k.setdefault("hspace", 0.050)
+            elif hr_t in ((5.15, 0.42, 1.45), (4.85, 0.42, 1.85)):
+                k["height_ratios"] = [4.85, 0.42, 1.85]
                 k.setdefault("hspace", 0.050)
             super().__init__(*a, **k)
 
@@ -2305,8 +2421,8 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 hr_t = tuple(float(x) for x in (hr or ()))
             except (TypeError, ValueError):
                 hr_t = ()
-            if hr_t in ((5.45, 1.45), (5.15, 1.45)):
-                gs["height_ratios"] = (5.15, 1.45)
+            if hr_t in ((5.45, 1.45), (5.15, 1.45), (4.85, 1.85)):
+                gs["height_ratios"] = (4.85, 1.85)
                 gs["hspace"] = 0.05
                 k = dict(k)
                 k["gridspec_kw"] = gs
@@ -2470,6 +2586,35 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 i = _index_of_date(dates, first_k)
                 ctx["vz_i"] = i
                 last_row = view.iloc[-1]
+                path_last = dict(last_bar or {})
+                if not path_last.get("close"):
+                    path_last = {
+                        "date": _dk(last_row.get("date")),
+                        "open": float(last_row.get("open") or 0),
+                        "high": float(last_row.get("high") or 0),
+                        "low": float(last_row.get("low") or 0),
+                        "close": float(last_row.get("close") or 0),
+                    }
+                path_last.setdefault("open", float(last_row.get("open") or 0))
+                path_last.setdefault("high", float(last_row.get("high") or 0))
+                path_last.setdefault("low", float(last_row.get("low") or 0))
+                dates_v = [_dk(d) for d in view["date"].tolist()]
+                hd = _dk(path_last.get("date"))
+                if hd in dates_v:
+                    path_last["_i"] = dates_v.index(hd)
+                else:
+                    path_last["_i"] = len(view) - 1
+                view_bars = [
+                    {
+                        "date": _dk(r.get("date")),
+                        "open": r.get("open"),
+                        "high": r.get("high"),
+                        "low": r.get("low"),
+                        "close": r.get("close"),
+                        "volume": r.get("volume"),
+                    }
+                    for r in view.to_dict("records")
+                ]
                 _polish_vol_figure(
                     self,
                     first_i=i,
@@ -2481,12 +2626,9 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                     spike_lo=spike_lo,
                     tick_labs=tick_labs,
                     tick_pos=tick_pos,
-                    last_bar={
-                        "date": _dk(last_row.get("date")),
-                        "high": float(last_row.get("high") or 0),
-                        "close": float(last_row.get("close") or 0),
-                        "_i": len(view) - 1,
-                    },
+                    last_bar=path_last,
+                    bars=view_bars,
+                    zone_date=spike_date,
                 )
                 ax_p, ax_s, _ = _pick_vol_axes(self)
                 fr = _ax_spine_frac(ax_p)
@@ -2566,6 +2708,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         "st_i": ctx["st_i"],
         "vz_i": ctx["vz_i"],
         "card": bool(card),
+        "emerging": bool(_card_emerging(card)),
         "vol_caption": (vol_cap or "")[:200],
         "buy_audit": buy_audit,
         "paths": {"nav": nav_out, "struct": struct_out, "vol": vol_out},
@@ -2608,7 +2751,7 @@ def _trim_panes(info: dict) -> list[Image.Image]:
     v0, v1 = int(vh * 0.010), vh
     vol = vol.crop((0, v0, vw, v1)).convert("RGB")
     info["vz_zones_px"] = _fracs_to_px(info.get("vz_zone_fracs") or [], vh, v0, v1)
-    vol = _crop_white_tail(vol)
+    # ③量柱在最底；矮柱（相對爆大量）不准被當留白裁掉
     return [nav, st, vol]
 
 
@@ -2630,8 +2773,8 @@ def _draw_tri(d, cx, cy, color, *, up=True, size=18, hollow=False, edge=None, ed
 
 def _legend_strip(width: int, *, height: int | None = None) -> Image.Image:
     """圖例：三角／字級吃滿列高與欄內空白（老花可讀）；內容置中欄內。"""
-    sc = float(CHROME_SCALE)
-    h = int(height if height is not None else round(380 * sc))
+    h = int(height if height is not None else round(270 * min(float(CHROME_SCALE), 1.15)))
+    sc = min(float(CHROME_SCALE), max(0.85, h / 380.0))
     im = Image.new("RGB", (width, h), "#ffffff")
     d = ImageDraw.Draw(im)
     d.rectangle([0, 0, width - 1, h - 1], outline="#cfd8dc", width=2)
@@ -2747,12 +2890,12 @@ def _draw_mini_candle(d, cx, cy, *, o, h, l, c, up: bool, body_w=22, body_h=36):
 def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     """07 C-card, light shadow, short names; one header / legend / footer.
 
-    表頭／圖例依 CHROME_SCALE 放大（Telegram 氣泡縮圖後老花仍可讀）；
-    圖身必要時略縮，整張 w+h 守 TG_WH_BUDGET。
+    合成對「對話框點開」：欄寬 COMPOSE_INNER_W、最長邊 ≤2560。
+    表頭／圖例字級依這張寬設計（縮圖＋點開都要讀得懂）。
     """
     sc = float(CHROME_SCALE)
     native = max(p.width for p in panes)
-    inner_w = min(max(native, 2400), 2800)
+    inner_w = min(max(native, 1200), COMPOSE_INNER_W)
     scaled: list[Image.Image] = []
     zscaled: list[list[tuple[int, int]]] = []
     for im, key in zip(panes, ("nav_zones_px", "st_zones_px", "vz_zones_px")):
@@ -2777,38 +2920,47 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         except Exception as exc:
             print(f"[pre-align] debug skip: {exc}", flush=True)
     fitted = _align_panes_to_nav_frame(fitted0, spine_fracs=info.get("spine_fracs"))
-    margin_x, margin_y = 40, 32
-    pad = 12
-    title_h = max(52, int(round(52 * sc * 0.85)))
-    gap = 26
-    head_h = max(500, int(round(500 * sc)))
-    legend_h = max(380, int(round(380 * sc)))
+    margin_x, margin_y = 28, 22
+    pad = 10
+    title_h = 44
+    gap = 14
+    extra_last = 20
+    # 表頭／圖例固定對 1480 欄；不准 ×CHROME 拉到 775 讓整張超高被 TG 砍最長邊
+    head_h = 400
+    legend_h = 270
     foot_h = 0  # 使用者不要底部三行小字
-    # 表頭／圖例寬度鎖在合成欄寬；圖身若縮只縮 pane，不准連表頭一起變窄（否則四欄互壓）
     card_w = inner_w + pad * 2
     width = card_w + margin_x * 2
+    pane_h_sum = sum(im.height for im in fitted)
+    chrome = (
+        margin_y * 2
+        + head_h
+        + 10
+        + legend_h
+        + 12
+        + 3 * (title_h + 8)
+        + extra_last
+        + gap * 2
+        + foot_h
+        + pad * 2 * 3
+    )
+    max_pane = max(900, TG_CLICK_MAX_SIDE - chrome)
+    w_scale = min(1.0, inner_w / float(max((im.width for im in fitted), default=inner_w) or inner_w))
+    h_scale = min(1.0, max_pane / float(pane_h_sum)) if pane_h_sum else 1.0
+    body_scale = min(w_scale, h_scale)
+    if body_scale < 0.999:
+        fitted = [
+            im.resize(
+                (max(1, int(round(im.width * body_scale))), max(1, int(round(im.height * body_scale)))),
+                Image.Resampling.LANCZOS,
+            )
+            for im in fitted
+        ]
     body = 0
     for idx, im in enumerate(fitted):
-        extra = 28 if idx == 2 else 0
-        body += title_h + extra + im.height + pad * 2 + 10
-    height = margin_y + head_h + 12 + legend_h + 16 + body + gap * 2 + foot_h + margin_y
-    # 超過 TG w+h 上限就縮圖身（表頭／圖例／整圖寬不縮，優先可讀）
-    if width + height > TG_WH_BUDGET and body > 0:
-        chrome = height - body
-        max_body = max(1200, TG_WH_BUDGET - width - chrome)
-        body_scale = min(1.0, max_body / float(body))
-        if body_scale < 0.999:
-            new_fitted: list[Image.Image] = []
-            for im in fitted:
-                nw = max(1, int(round(im.width * body_scale)))
-                nh = max(1, int(round(im.height * body_scale)))
-                new_fitted.append(im.resize((nw, nh), Image.Resampling.LANCZOS))
-            fitted = new_fitted
-            body = 0
-            for idx, im in enumerate(fitted):
-                extra = 28 if idx == 2 else 0
-                body += title_h + extra + im.height + pad * 2 + 10
-            height = margin_y + head_h + 12 + legend_h + 16 + body + gap * 2 + foot_h + margin_y
+        extra = extra_last if idx == 2 else 0
+        body += title_h + extra + im.height + pad * 2 + 8
+    height = margin_y + head_h + 10 + legend_h + 12 + body + gap * 2 + foot_h + margin_y
     canvas = Image.new("RGBA", (width, height), (232, 238, 245, 255))
     d = ImageDraw.Draw(canvas)
 
@@ -2828,21 +2980,22 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     stamp_date = stamp.get("date") or f"{info['as_of'][:4]}/{info['as_of'][4:6]}/{info['as_of'][6:8]}"
     stamp_clock = stamp.get("clock") or "—"
     is_live = bool(stamp.get("is_live"))
-    col_pad = max(18, int(round(18 * sc)))
+    col_pad = 14
     inner_left = margin_x + col_pad
     inner_right = width - margin_x - col_pad
     col_w = (inner_right - inner_left) / 4.0
     cols_x = [inner_left + i * col_w for i in range(4)]
-    f_hint = _font(max(28, int(round(28 * sc))), True)
-    f_lab = _font(max(36, int(round(36 * sc))), True)
-    f_num = _font(max(52, int(round(52 * sc))), True)
-    f_chg = _font(max(36, int(round(36 * sc))), True)
-    f_title = _font(max(56, int(round(56 * sc))), True)
-    y_hint = margin_y + max(18, int(round(18 * sc)))
-    y_row1 = margin_y + max(62, int(round(62 * sc)))
-    y_row2 = margin_y + max(200, int(round(200 * sc)))
-    y_row3 = margin_y + max(330, int(round(330 * sc)))
-    chip_h = max(78, int(round(78 * sc)))
+    # 字級對 1480 欄＋點開視窗；CHROME_SCALE 不再把字拉到欄寬放不下
+    f_hint = _font(20, True)
+    f_lab = _font(26, True)
+    f_num = _font(40, True)
+    f_chg = _font(26, True)
+    f_title = _font(44, True)
+    y_hint = margin_y + 10
+    y_row1 = margin_y + 42
+    y_row2 = margin_y + 155
+    y_row3 = margin_y + 278
+    chip_h = 56
     for i in range(1, 4):
         x = int(round(cols_x[i] - 10))
         d.line([x, margin_y + 16, x, margin_y + head_h - 16], fill="#e0e6ed", width=2)
@@ -2854,14 +3007,14 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     sname = str(info.get("stock_name") or sid).strip() or sid
     nameplate = f"{sid}  {sname}"
     col_max = max(120, int(col_w) - 12)
-    d.text((cols_x[0], y_row1 + max(8, int(round(8 * sc)))), nameplate, fill="#1a237e", font=f_title)
+    d.text((cols_x[0], y_row1 + 4), nameplate, fill="#1a237e", font=f_title)
     d.text(
-        (cols_x[0], y_row1 + max(78, int(round(78 * sc)))),
+        (cols_x[0], y_row1 + 52),
         "技術面三圖合一",
         fill="#546e7a",
         font=f_lab,
     )
-    gap0 = max(10, int(round(10 * sc)))
+    gap0 = 8
     nw, _nh = _draw_chip(
         d, cols_x[0], y_row2, "非買訊",
         font=f_lab, fill="#ffebee", ink="#c62828", outline="#c62828", height=chip_h - 8,
@@ -2892,33 +3045,31 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     prev_c = lb.get("prev_close")
     chg = lb.get("change")
     pct = lb.get("pct")
-    up = True
-    if prev_c:
-        up = cl >= float(prev_c)
-    elif o:
-        up = cl >= o
+    fill_c, ink_c, outline_c, up = _header_price_chip_style(
+        cl, prev_c, pct, emerging=bool(info.get("emerging"))
+    )
     tone = CANDLE_UP if up else CANDLE_DN
     price_lab = "盤中" if is_live else "收盤"
-    d.text((cols_x[1], y_row1 + max(16, int(round(16 * sc)))), "今K", fill="#546e7a", font=f_lab)
-    candle_x = int(cols_x[1] + max(72, int(round(72 * sc))))
+    d.text((cols_x[1], y_row1 + 12), "今K", fill="#546e7a", font=f_lab)
+    candle_x = int(cols_x[1] + 58)
     _draw_mini_candle(
         d,
         candle_x,
-        y_row1 + max(40, int(round(40 * sc))),
+        y_row1 + 28,
         o=o,
         h=hi,
         l=lo,
         c=cl,
         up=up,
-        body_w=max(24, int(round(24 * sc))),
-        body_h=chip_h - max(16, int(round(16 * sc))),
+        body_w=20,
+        body_h=chip_h - 12,
     )
     price_txt = f"{cl:,.0f}" if cl >= 100 else f"{cl:.2f}"
-    price_x = int(candle_x + max(28, int(round(28 * sc))))
+    price_x = int(candle_x + 22)
     _draw_chip(
         d, price_x, y_row1, f"{price_lab}  {price_txt}",
-        font=f_num, fill=tone, ink="#ffffff", outline=tone, height=chip_h,
-        pad_x=max(14, int(round(14 * sc))),
+        font=f_num, fill=fill_c, ink=ink_c, outline=outline_c, height=chip_h,
+        pad_x=10,
         max_w=max(80, int(cols_x[1] + col_max - price_x)),
     )
     if chg is not None and pct is not None:
@@ -2928,18 +3079,18 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         _draw_chip(
             d, cols_x[1], y_row2, chg_txt,
             font=f_chg, fill="#ffffff", ink=tone, outline=tone, height=chip_h - 8,
-            pad_x=max(12, int(round(12 * sc))),
+            pad_x=10,
             max_w=col_max,
         )
     # OHLC 兩行，不准跨欄
     d.text(
-        (cols_x[1], y_row3 - max(6, int(round(6 * sc)))),
+        (cols_x[1], y_row3 - 4),
         f"開{o:.0f} 高{hi:.0f} 低{lo:.0f}",
         fill="#455a64",
         font=f_hint,
     )
     d.text(
-        (cols_x[1], y_row3 + max(28, int(round(28 * sc)))),
+        (cols_x[1], y_row3 + 22),
         f"量{vol_lots:,}張",
         fill="#455a64",
         font=f_hint,
@@ -2949,19 +3100,19 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     lo_p = float(info["lo"] or 0)
     # 壓／撐：欄內並排；預估寬度放不下就直疊，不准溢到隔壁欄
     col2_max = col_max
-    gap_ps = max(10, int(round(10 * sc)))
-    probe_p = _tw(d, f"壓  {hi_p:.0f}", f_num)[0] + 2 * max(16, int(round(16 * sc)))
-    probe_s = _tw(d, f"撐  {lo_p:.0f}", f_num)[0] + 2 * max(16, int(round(16 * sc)))
+    gap_ps = 8
+    probe_p = _tw(d, f"壓  {hi_p:.0f}", f_num)[0] + 20
+    probe_s = _tw(d, f"撐  {lo_p:.0f}", f_num)[0] + 20
     if probe_p + gap_ps + probe_s <= col2_max:
         pw, _ = _draw_chip(
             d, cols_x[2], y_row1, f"壓  {hi_p:.0f}",
             font=f_num, fill="#fce4ec", ink="#880e4f", outline="#ad1457",
-            height=chip_h, pad_x=max(14, int(round(14 * sc))), max_w=col2_max,
+            height=chip_h, pad_x=10, max_w=col2_max,
         )
         _draw_chip(
             d, cols_x[2] + pw + gap_ps, y_row1, f"撐  {lo_p:.0f}",
             font=f_num, fill="#e8f5e9", ink="#1b5e20", outline="#1b5e20",
-            height=chip_h, pad_x=max(14, int(round(14 * sc))),
+            height=chip_h, pad_x=10,
             max_w=max(60, col2_max - pw - gap_ps),
         )
     else:
@@ -2969,51 +3120,50 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         _draw_chip(
             d, cols_x[2], y_row1, f"壓  {hi_p:.0f}",
             font=f_lab, fill="#fce4ec", ink="#880e4f", outline="#ad1457",
-            height=stack_h, pad_x=max(12, int(round(12 * sc))), max_w=col2_max,
+            height=stack_h, pad_x=8, max_w=col2_max,
         )
         _draw_chip(
             d, cols_x[2], y_row1 + stack_h + 8, f"撐  {lo_p:.0f}",
             font=f_lab, fill="#e8f5e9", ink="#1b5e20", outline="#1b5e20",
-            height=stack_h, pad_x=max(12, int(round(12 * sc))), max_w=col2_max,
+            height=stack_h, pad_x=8, max_w=col2_max,
         )
     _draw_chip(
         d, cols_x[2], y_row2, f"爆大量 {spike_md}  {spike_lots:,}張",
         font=f_lab, fill="#fffde7", ink="#5d4037", outline=SPIKE_BAR_COLOR,
-        height=chip_h - 8, pad_x=max(12, int(round(12 * sc))), max_w=col2_max,
+        height=chip_h - 8, pad_x=8, max_w=col2_max,
     )
     d.text((cols_x[2], y_row3), "壓撐＝③有效大量區", fill="#78909c", font=f_hint)
 
     stamp_wall = stamp.get("query_wall") or ""
     # 日期色塊：優先完整显示；f_num 放不下就改 f_lab，不准裁成 2026/10/02 (…
     date_font = f_num
-    date_probe = _tw(d, stamp_date, date_font)[0] + 2 * max(14, int(round(14 * sc)))
+    date_probe = _tw(d, stamp_date, date_font)[0] + 20
     if date_probe > col_max:
         date_font = f_lab
     _draw_chip(
         d, cols_x[3], y_row1, stamp_date,
         font=date_font, fill="#e8eaf6", ink="#1a237e", outline="#3949ab",
-        height=chip_h, pad_x=max(12, int(round(12 * sc))), max_w=col_max,
+        height=chip_h, pad_x=8, max_w=col_max,
     )
     _draw_chip(
         d, cols_x[3], y_row2, stamp_clock,
         font=f_lab, fill="#e3f2fd", ink="#0d47a1", outline="#1565c0",
-        height=chip_h - 8, pad_x=max(12, int(round(12 * sc))), max_w=col_max,
+        height=chip_h - 8, pad_x=8, max_w=col_max,
     )
     wall_txt = f"查詢 {stamp_wall}" if stamp_wall else "—"
-    d.text((cols_x[3], y_row3 - max(28, int(round(28 * sc)))), wall_txt, fill="#37474f", font=f_hint)
-    # 虛線說明改直排兩行，不准溢出版心
-    d.text((cols_x[3], y_row3 + max(10, int(round(10 * sc)))), "橘虛線＝③窗起", fill="#e65100", font=f_hint)
+    d.text((cols_x[3], y_row3 - 18), wall_txt, fill="#37474f", font=f_hint)
+    d.text((cols_x[3], y_row3 + 8), "橘虛線＝③窗起", fill="#e65100", font=f_hint)
     d.text(
-        (cols_x[3], y_row3 + max(42, int(round(42 * sc)))),
+        (cols_x[3], y_row3 + 32),
         "藍虛線＝測壓",
         fill=CEYA_LINE_COLOR,
         font=f_hint,
     )
 
-    y = margin_y + head_h + 12
+    y = margin_y + head_h + 10
     legend = _legend_strip(card_w, height=legend_h)
     canvas.paste(legend, (margin_x, y))
-    y += legend_h + 16
+    y += legend_h + 12
 
     names = ("高低導航", "飆大結構", "大量壓力")
     subs = (
@@ -3023,13 +3173,13 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     )
     fills = ("#5c6bc0", "#26a69a", "#ef6c00")
     tints = ((247, 249, 252, 255), (245, 250, 247, 255), (255, 248, 243, 255))
-    f_t = _font(max(26, int(round(26 * sc * 0.9))), True)
-    f_b = _font(max(18, int(round(18 * sc * 0.9))), True)
-    f_s = _font(max(16, int(round(16 * sc * 0.9))), True)
+    f_t = _font(24, True)
+    f_b = _font(16, True)
+    f_s = _font(15, True)
 
     for i, im in enumerate(fitted):
         d = ImageDraw.Draw(canvas)
-        extra = 28 if i == 2 else 0
+        extra = extra_last if i == 2 else 0
         d.ellipse([margin_x + 8, y + 6, margin_x + 40, y + 38], fill=fills[i])
         d.text((margin_x + 16, y + 10), str(i + 1), fill="#ffffff", font=f_b)
         d.text((margin_x + 48, y + 8), names[i], fill="#37474f", font=f_t)
@@ -3051,7 +3201,7 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         y += ch + gap
 
     # 底部三行小字已取消（使用者不要）
-    return canvas.convert("RGB")
+    return _fit_telegram_click_view(canvas.convert("RGB"))
 
 
 def _pending_nav_window_compare(nav_pane: Image.Image, first_k: str, out_dir: str) -> str:
@@ -3082,6 +3232,55 @@ def _pending_nav_window_compare(nav_pane: Image.Image, first_k: str, out_dir: st
     canvas.save(path, optimize=True)
     return path
 
+
+def render_lookup_structure_result(
+    stock_id: str,
+    stock_name: str,
+    db_path: str,
+    save_path: str,
+    *,
+    card: Optional[dict] = None,
+) -> Tuple[str, str]:
+    """查股第 3 張：原三合一②結構圖。直式 4:5。買訊只認藍▲紅框。"""
+    sid = str(stock_id or "").strip()
+    name = str(stock_name or sid).strip() or sid
+    if not sid or not db_path or not save_path:
+        return "", ""
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    try:
+        from biaoke_chart import render_biaoke_structure_png, stock_nameplate
+        from vol_zone_chart import load_official_ohlc
+
+        official = load_official_ohlc(sid, db_path, 360)
+        if official is None or official.empty:
+            return "", ""
+        bars = _bars_from_official(official, sid, name)
+        path = render_biaoke_structure_png(
+            bars,
+            save_path,
+            sid=sid,
+            name=name,
+            plate=stock_nameplate(sid, name, db_path),
+            db_path=db_path,
+            figsize=LOOKUP_PORTRAIT_FIG,
+            dpi=LOOKUP_PORTRAIT_DPI,
+        )
+        if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
+            return "", ""
+        cap = LOOKUP_STRUCTURE_CAPTION
+        try:
+            from sanchi_clocks import append_sanchi_to_caption
+
+            if isinstance(card, dict):
+                cap = append_sanchi_to_caption(cap, card)
+        except Exception:
+            pass
+        return path, cap
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).exception("lookup structure render failed: %s", exc)
+        return "", ""
 
 
 def render_three_in_one_result(
