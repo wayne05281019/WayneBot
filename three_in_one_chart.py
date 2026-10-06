@@ -8,9 +8,9 @@
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
-import shutil
 import sys
 import tempfile
 from datetime import datetime
@@ -48,6 +48,11 @@ LOCK_KEY = "T0118"
 CHROME_SCALE = 1.55
 TG_WH_BUDGET = 9900
 THREE_IN_ONE_JPEG_QUALITY = 95
+# 合成欄寬約 2800：220DPI×12.8in＝2816，不再先畫 320 再 Lanczos 砍（慢且話筒更糊）
+PANE_DPI = 220
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_BUNDLE_BOLD = os.path.join(_HERE, "fonts", "NotoSansTC-w860.ttf")
+_BUNDLE_REG = os.path.join(_HERE, "fonts", "NotoSansTC-w560.ttf")
 
 
 def _header_quote_bar(
@@ -378,19 +383,26 @@ def _hide_texts_matching(ax, pred) -> None:
 
 
 
+@functools.lru_cache(maxsize=48)
 def _font(size: int, bold: bool = False):
-    """Prefer TTC Traditional-Chinese face (index 3) so 國字不落 DejaVu."""
-    cands = []
+    """表頭／圖例必須吃 repo 內 NotoSansTC（與高低卡同一套）。
+
+    不准先走系統 TTC、也不准硬編碼 /workspace/assets（Render WORKDIR=/app，
+    那條永遠不存在）。缺字會落到 Pillow load_default 點陣，話筒上看起來像亂碼。
+    """
+    size = max(10, int(size))
+    cands: list[str] = []
+    if bold:
+        cands.append(_BUNDLE_BOLD)
+    cands.append(_BUNDLE_REG)
     if bold:
         cands += [
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-            "/workspace/assets/fonts/NotoSansCJKtc-Bold.otf",
         ]
     cands += [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/workspace/assets/fonts/NotoSansCJKtc-Regular.otf",
     ]
     for p in cands:
         if not (p and os.path.isfile(p)):
@@ -399,12 +411,12 @@ def _font(size: int, bold: bool = False):
             for idx in (3, 2, 0):
                 try:
                     return ImageFont.truetype(p, size=size, index=idx)
-                except OSError:
+                except (OSError, ValueError):
                     continue
         else:
             try:
                 return ImageFont.truetype(p, size=size)
-            except OSError:
+            except (OSError, ValueError):
                 continue
     return ImageFont.load_default()
 
@@ -2264,12 +2276,15 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 )
             return path
 
+        orig_nav_dpi = wn.NAV_CHART_DPI
+        wn.NAV_CHART_DPI = PANE_DPI
         Figure.subplots_adjust = _adj
         wn._savefig_lookup_png = _png_save
         try:
             nav_out = generate_chart(sid, name, db, nav_p)
         finally:
             Figure.subplots_adjust = orig_adj
+            wn.NAV_CHART_DPI = orig_nav_dpi
         if not nav_out:
             raise RuntimeError("nav fail")
 
@@ -2295,10 +2310,10 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 gs["hspace"] = 0.05
                 k = dict(k)
                 k["gridspec_kw"] = gs
-                # 加高＋加 DPI，K 棒才不會細成殘線
+                # 對齊① 12.8×8.85×PANE_DPI；不准先畫超大再縮進合成欄
                 if len(a) >= 2 or "figsize" in k:
-                    k["figsize"] = (18.6, 12.6)
-                k["dpi"] = max(int(k.get("dpi") or 0), 320)
+                    k["figsize"] = (12.8, 8.85)
+                k["dpi"] = max(int(k.get("dpi") or 0), int(PANE_DPI))
             return orig_subplots(*a, **k)
 
         _wick_pending: dict = {}
@@ -2348,7 +2363,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
             )
 
         bc.plt.subplots = _subplots  # type: ignore[assignment]
-        bc.BIAOKE_CHART_DPI = 320
+        bc.BIAOKE_CHART_DPI = int(PANE_DPI)
         bc._add_ohlc_bodies = _thick_bodies  # type: ignore[assignment]
         bc._add_ohlc_wicks = _thick_wicks  # type: ignore[assignment]
         try:
@@ -2363,13 +2378,6 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
             bc._add_ohlc_wicks = orig_wicks  # type: ignore[assignment]
         if not struct_out:
             raise RuntimeError("struct fail")
-        try:
-            raw_dbg = "/opt/cursor/artifacts/raw-struct-debug.png"
-            shutil.copy(struct_out, raw_dbg)
-            print(f"[raw-struct] copied {struct_out} -> {raw_dbg}", flush=True)
-        except Exception as exc:
-            print(f"[raw-struct] copy fail {exc!r}", flush=True)
-
         wn._savefig_lookup_png = _png_save
         # ③與①同英寸高（8.85）；三區像素對齊交給 compose 對框，不准整張硬拉
         vz.VOL_ZONE_FIG_H_NAV = 8.85
@@ -2673,13 +2681,16 @@ def _legend_strip(width: int, *, height: int | None = None) -> Image.Image:
                 outline="#78909c",
                 width=max(2, int(round(2 * sc))),
             )
-            # 三角吃滿格高約 72%；字級跟著放大，整組水平置中
-            tri = max(48, min(int(round(72 * sc)), int(bh * 0.72)))
+            # 三角讓位給國字：話筒氣泡縮完要先讀到標籤，不准三角吃滿格、字變點
+            tri = max(28, min(int(round(44 * sc)), int(bh * 0.40)))
             ff = _font(base_lab, True)
             tw, th = _tw(d, lab, ff)
-            # 過長標籤略縮
-            if tw > bw - tri - int(round(28 * sc)):
+            room = bw - tri - int(round(28 * sc))
+            if tw > room:
                 ff = _font(small_lab, True)
+                tw, th = _tw(d, lab, ff)
+            if tw > room:
+                ff = _font(max(28, int(round(28 * sc))), True)
                 tw, th = _tw(d, lab, ff)
             gap_icon = max(10, int(round(12 * sc)))
             group_w = tri + gap_icon + tw
