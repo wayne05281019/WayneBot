@@ -82,7 +82,7 @@ def test_album_resize_uses_lanczos():
     from bot_servers import WayneTelegramBot
 
     cell = inspect.getsource(WayneTelegramBot._prepare_album_cell)
-    photo = inspect.getsource(WayneTelegramBot._prepare_lookup_album_photo)
+    photo = inspect.getsource(WayneTelegramBot._letterbox_lookup_jpeg)
     assert "LANCZOS" in cell
     assert "LANCZOS" in photo
     assert "BILINEAR" not in cell

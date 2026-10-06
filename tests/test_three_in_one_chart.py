@@ -148,17 +148,17 @@ def test_three_in_one_pil_font_is_bundled_cjk():
     assert (fb[2] - fb[0]) > (db[2] - db[0]) * 4
 
 
-def test_hub_keyboard_drops_kline_and_nav():
+def test_hub_keyboard_keeps_nav_and_kline():
     from bot_servers import WayneTelegramBot
 
     hub_src = inspect.getsource(WayneTelegramBot._hub_keyboard)
-    assert 'callback_data=f"g:{c}"' not in hub_src
-    assert 'InlineKeyboardButton("導航圖"' not in hub_src
-    assert 'InlineKeyboardButton("K線"' not in hub_src
-    assert "kline_page_url" not in hub_src
+    assert 'callback_data=f"g:{c}"' in hub_src
+    assert 'InlineKeyboardButton("高低導航圖"' in hub_src
+    assert 'InlineKeyboardButton("K線"' in hub_src
+    assert "kline_page_url" in hub_src
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     labels = [b.text for r in bot._hub_keyboard("2330").inline_keyboard for b in r]
-    assert "導航圖" not in labels and "K線" not in labels
+    assert "高低導航圖" in labels and "K線" in labels
 
 
 @pytest.mark.production_db

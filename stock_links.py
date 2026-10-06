@@ -187,7 +187,10 @@ def kline_page_url(
         return ""
     _ = (base_url, span)
     ex = yahoo_exchange(sid, db_path)
-    return f"https://tw.stock.yahoo.com/quote/{sid}.{ex}/technical-analysis"
+    # 必須是技術分析頁，不准只開報價頁（Telegram 內建瀏覽器會空白、還要重新整理）。
+    # ?p= 讓奇摩 SPA 第一次就掛上這檔日K，不必再按重新整理。
+    yid = f"{sid}.{ex}"
+    return f"https://tw.stock.yahoo.com/quote/{yid}/technical-analysis?p={yid}&period=d"
 
 
 def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:

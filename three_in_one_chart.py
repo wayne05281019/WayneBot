@@ -278,6 +278,11 @@ def _mark_axvline(ax, x: float, label: str) -> None:
 def _bars_from_official(df, sid: str, name: str) -> list[dict]:
     out: list[dict] = []
     for _, r in df.iterrows():
+        halt = False
+        try:
+            halt = bool(r.get("is_halt"))
+        except Exception:
+            halt = False
         out.append(
             {
                 "date": _dk(r.get("date")),
@@ -288,6 +293,7 @@ def _bars_from_official(df, sid: str, name: str) -> list[dict]:
                 "low": float(r.get("low") or r.get("close") or 0),
                 "close": float(r.get("close") or 0),
                 "volume": float(r.get("volume") or 0),
+                "is_halt": halt,
                 "pct_change": float(r.get("pct_change") or 0)
                 if r.get("pct_change") is not None
                 else None,
@@ -3241,7 +3247,7 @@ def render_lookup_structure_result(
     *,
     card: Optional[dict] = None,
 ) -> Tuple[str, str]:
-    """查股第 3 張：原三合一②結構圖。直式 4:5。買訊只認藍▲紅框。"""
+    """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。"""
     sid = str(stock_id or "").strip()
     name = str(stock_name or sid).strip() or sid
     if not sid or not db_path or not save_path:
@@ -3249,12 +3255,19 @@ def render_lookup_structure_result(
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     try:
         from biaoke_chart import render_biaoke_structure_png, stock_nameplate
-        from vol_zone_chart import load_official_ohlc
+        from vol_zone_chart import (
+            VOL_ZONE_DPI,
+            VOL_ZONE_FIG_H_NAV,
+            VOL_ZONE_FIG_W,
+            prepare_volume_zone,
+        )
 
-        official = load_official_ohlc(sid, db_path, 360)
-        if official is None or official.empty:
+        pack = prepare_volume_zone(sid, name, db_path, save_path)
+        if not pack:
             return "", ""
-        bars = _bars_from_official(official, sid, name)
+        bars = _bars_from_official(pack["view"], sid, name)
+        if len(bars) < 8:
+            return "", ""
         path = render_biaoke_structure_png(
             bars,
             save_path,
@@ -3262,8 +3275,8 @@ def render_lookup_structure_result(
             name=name,
             plate=stock_nameplate(sid, name, db_path),
             db_path=db_path,
-            figsize=LOOKUP_PORTRAIT_FIG,
-            dpi=LOOKUP_PORTRAIT_DPI,
+            figsize=(VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV),
+            dpi=VOL_ZONE_DPI,
         )
         if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
             return "", ""
