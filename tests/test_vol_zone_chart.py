@@ -154,6 +154,21 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert "render_lookup_vol_result" in vz
 
 
+def test_lookup_structure_uses_vol_zone_view():
+    """結構日K＝大量撐壓同一套官方 view，停牌灰K，橫式原版。"""
+    import inspect
+
+    from three_in_one_chart import _bars_from_official, render_lookup_structure_result
+
+    src = inspect.getsource(render_lookup_structure_result)
+    assert "prepare_volume_zone" in src
+    assert 'pack["view"]' in src
+    assert "VOL_ZONE_FIG_W" in src
+    assert "VOL_ZONE_FIG_H_NAV" in src
+    bars = inspect.getsource(_bars_from_official)
+    assert '"is_halt": halt' in bars
+
+
 def test_vol_zone_http_not_inside_mpl_lock():
     import inspect
 

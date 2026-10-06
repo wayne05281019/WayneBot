@@ -38,6 +38,7 @@ _GRID = "#cfd8dc"
 _TEXT = "#1f2933"
 _UP = "#e53935"
 _DN = "#00897b"
+_HALT = "#9e9e9e"
 _PRESS = "#ad1457"
 _HOLD = "#1b5e20"
 _DOWN_TRACK = "#6a1b9a"
@@ -89,6 +90,18 @@ def _style_frame(ax, *, hide_top=False) -> None:
         sp.set_linewidth(0.85)
     if hide_top:
         ax.spines["top"].set_visible(False)
+
+
+def _bar_is_halt(row: Dict[str, Any]) -> bool:
+    if bool(row.get("is_halt")):
+        return True
+    try:
+        vol = float(row.get("volume") or 0)
+        hi = float(row.get("high") or 0)
+        lo = float(row.get("low") or 0)
+        return vol <= 0 and abs(hi - lo) <= 1e-8
+    except (TypeError, ValueError):
+        return False
 
 
 def _md(raw: Any) -> str:
@@ -1935,25 +1948,50 @@ def paint_locator_inset(
     if not k_on_top:
         _draw_legs()
     colors = []
+    halt_flags = [_bar_is_halt(rows[i]) for i in range(m)]
     for i in range(m):
         prev_c = closes[i - 1] if i else None
-        colors.append(_UP if candle_up_taiwan(closes[i], prev_c, opens[i]) else _DN)
-    _add_ohlc_wicks(ax, range(m), lows, highs, colors, lw=lw, z=k_z)
+        if halt_flags[i]:
+            colors.append(_HALT)
+        else:
+            colors.append(_UP if candle_up_taiwan(closes[i], prev_c, opens[i]) else _DN)
+    trade_i = [i for i in range(m) if not halt_flags[i]]
+    _add_ohlc_wicks(
+        ax,
+        [float(i) for i in trade_i],
+        [lows[i] for i in trade_i],
+        [highs[i] for i in trade_i],
+        [colors[i] for i in trade_i],
+        lw=lw,
+        z=k_z,
+    )
     # 長軸縮圖 360 根：影線就看得懂，不逐根畫方塊，出圖比較快。
-    if m <= 200:
-        widths = [w] * m
-        lws = [0.15] * m
+    if m <= 200 and trade_i:
         _add_ohlc_bodies(
             ax,
-            range(m),
-            opens,
-            closes,
-            colors,
-            widths=widths,
-            lws=lws,
-            edges=colors,
+            [float(i) for i in trade_i],
+            [opens[i] for i in trade_i],
+            [closes[i] for i in trade_i],
+            [colors[i] for i in trade_i],
+            widths=[w] * len(trade_i),
+            lws=[0.15] * len(trade_i),
+            edges=[colors[i] for i in trade_i],
             min_h=(hi_max - lo_min) * 0.0015,
             z=k_z,
+        )
+    halt_span = max(hi_max - lo_min, 1.0)
+    for i in range(m):
+        if not halt_flags[i]:
+            continue
+        x = float(i)
+        cl = float(closes[i])
+        ax.plot(
+            [x - 0.38, x + 0.38],
+            [cl, cl],
+            color=_HALT,
+            linewidth=1.2,
+            zorder=k_z + 1,
+            solid_capstyle="round",
         )
     if k_on_top:
         _draw_legs()
@@ -2586,21 +2624,51 @@ def render_biaoke_structure_png(
     if not plate.get("name"):
         plate["name"] = name
     quote = dict(quote or _spot_quote(sid, last_bar, prev_bar, db_path))
-    cols = [_UP if candle_up[i] else _DN for i in range(n)]
-    wick_lw = [1.55 if i == spike_i else 1.15 for i in range(n)]
-    _add_ohlc_wicks(ax1, xs, lows, highs, cols, lw=wick_lw, z=3)
+    cols = [_HALT if _bar_is_halt(work[i]) else (_UP if candle_up[i] else _DN) for i in range(n)]
+    halt_flags = [_bar_is_halt(work[i]) for i in range(n)]
+    trade_i = [i for i in range(n) if not halt_flags[i]]
+    halt_i = [i for i in range(n) if halt_flags[i]]
+    wick_lw = [1.55 if i == spike_i else 1.15 for i in trade_i]
+    _add_ohlc_wicks(
+        ax1,
+        [xs[i] for i in trade_i],
+        [lows[i] for i in trade_i],
+        [highs[i] for i in trade_i],
+        [cols[i] for i in trade_i],
+        lw=wick_lw,
+        z=3,
+    )
     _add_ohlc_bodies(
         ax1,
-        xs,
-        opens,
-        closes,
-        cols,
-        widths=[0.58 if i == spike_i else 0.46 for i in range(n)],
-        lws=[1.35 if i == spike_i else 0.6 for i in range(n)],
-        edges=["#f9a825" if i == spike_i else cols[i] for i in range(n)],
+        [xs[i] for i in trade_i],
+        [opens[i] for i in trade_i],
+        [closes[i] for i in trade_i],
+        [cols[i] for i in trade_i],
+        widths=[0.58 if i == spike_i else 0.46 for i in trade_i],
+        lws=[1.35 if i == spike_i else 0.6 for i in trade_i],
+        edges=["#f9a825" if i == spike_i else cols[i] for i in trade_i],
         min_h=span * 0.0016,
         z=3,
     )
+    halt_span = max(span, 1.0)
+    for i in halt_i:
+        x = float(xs[i])
+        cl = float(closes[i])
+        ax1.plot(
+            [x - 0.38, x + 0.38],
+            [cl, cl],
+            color=_HALT,
+            linewidth=1.7,
+            zorder=4,
+            solid_capstyle="round",
+        )
+        ax1.plot(
+            [x, x],
+            [cl - halt_span * 0.004, cl + halt_span * 0.004],
+            color=_HALT,
+            linewidth=1.2,
+            zorder=4,
+        )
     band_hi: List[Dict[str, Any]] = []
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []

@@ -111,8 +111,8 @@ def test_help_script_ready_for_brother_video():
     texts = [b.text for r in hub.inline_keyboard for b in r]
     assert "籌碼" in texts and "營收" in texts
     assert "產業" in texts
-    assert "導航圖" not in texts
-    assert "K線" not in texts
+    assert "高低導航圖" in texts
+    assert "K線" in texts
     assert "加入觀察" in texts and "記買入" in texts
 
 

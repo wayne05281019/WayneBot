@@ -79,14 +79,14 @@ def test_kline_url_is_yahoo_daily(tmp_path):
     assert yahoo_exchange("2330", db) == "TW"
     assert listed_kline_ok("2330", db) is True
     assert kline_page_url("2330", db) == (
-        "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
+        "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis?p=2330.TW&period=d"
     )
     assert kline_page_url("2330", db, span=180) == (
-        "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
+        "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis?p=2330.TW&period=d"
     )
     assert listed_kline_ok("6488", db) is True
     assert kline_page_url("6488", db) == (
-        "https://tw.stock.yahoo.com/quote/6488.TWO/technical-analysis"
+        "https://tw.stock.yahoo.com/quote/6488.TWO/technical-analysis?p=6488.TWO&period=d"
     )
     web, extra = yahoo_urls("2330", db)
     assert web.endswith("/quote/2330.TW")
@@ -98,20 +98,21 @@ def test_kline_includes_emerging(tmp_path):
     db = _db(str(tmp_path / "m.db"))
     assert listed_kline_ok("3595", db) is True
     assert kline_page_url("3595", db) == (
-        "https://tw.stock.yahoo.com/quote/3595.TWO/technical-analysis"
+        "https://tw.stock.yahoo.com/quote/3595.TWO/technical-analysis?p=3595.TWO&period=d"
     )
     assert kline_page_url("3595", db, span=180).endswith(
-        "/quote/3595.TWO/technical-analysis"
+        "/quote/3595.TWO/technical-analysis?p=3595.TWO&period=d"
     )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = db
     kb = bot._hub_keyboard("3595", em=True)
     texts = [b.text for r in kb.inline_keyboard for b in r]
-    assert "K線" not in texts
-    assert "導航圖" not in texts
+    assert "K線" in texts
+    assert "高低導航圖" in texts
     assert "產業" not in texts  # 興櫃圖下無產業；上市櫃仍有
     assert "籌碼" not in texts
-    assert texts == ["加入觀察", "記買入"]
+    assert "加入觀察" in texts
+    assert "記買入" in texts
     page = render_kline_html("3595", db_path=db)
     assert "興櫃" in page
     assert '"D":[' in page
@@ -128,8 +129,8 @@ def test_hub_kline_is_https_url_button(tmp_path):
     bot.db_path = db
     kb = bot._hub_keyboard("2330")
     labels = [b.text for r in kb.inline_keyboard for b in r]
-    assert "K線" not in labels
-    assert "導航圖" not in labels
+    assert "K線" in labels
+    assert "高低導航圖" in labels
     assert "產業" in labels
     assert "籌碼" in labels
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
@@ -147,7 +148,7 @@ def test_etf_letter_suffix_stays_in_yahoo_k_url(tmp_path):
     conn.close()
     _EX_CACHE.clear()
     assert kline_page_url("00631L", db) == (
-        "https://tw.stock.yahoo.com/quote/00631L.TW/technical-analysis"
+        "https://tw.stock.yahoo.com/quote/00631L.TW/technical-analysis?p=00631L.TW&period=d"
     )
 
 

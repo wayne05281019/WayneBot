@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖；一次一張、好了就送。點開高畫質。圖下其餘子鍵（產業／籌碼／營收…）；不出導航、不送合成三合一
+- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖；一次一張、好了就送。點開高畫質。圖下其餘子鍵（產業／籌碼／營收／高低導航圖／K線）。導航不塞進自動四張、不送合成三合一
 - 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -44,8 +44,8 @@ _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 # 三合一表頭字多：q95＋永不色度抽樣；Floor 不准掉到會糊國字的區間
 _LOOKUP_JPEG_QUALITY = 95
 _LOOKUP_JPEG_QUALITY_FLOOR = 88
-# 高低卡／介紹卡／結構圖：4:5 格 1920×2400（勝率買點高低卡已鎖定這尺寸）。
-# 大量撐壓：橫式原版，原像素送、不准再套 4:5。
+# 高低卡／介紹卡：4:5 格 1920×2400（勝率買點高低卡已鎖定這尺寸）。
+# 結構圖／大量撐壓／導航：橫式原版，原像素送、不准再套 4:5。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_MAX = (1920, 2400)
@@ -2368,7 +2368,7 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """查股其餘子鍵（第二張介紹圖後才出）。導航不在這四張裡，不另送。"""
+        """查股其餘子鍵（四張之後才出）。自動四張不含導航；圖下有高低導航圖／K線。兩人同一套。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
@@ -2378,9 +2378,19 @@ class WayneTelegramBot:
             InlineKeyboardButton(MENU_BTN_WATCH, callback_data=f"w:{c}"),
             InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
         ]
+        k_url = ""
+        try:
+            from stock_links import kline_page_url
+
+            k_url = _http_url(kline_page_url(c, getattr(self, "db_path", None)))
+        except Exception:
+            k_url = ""
+        nav_k = [InlineKeyboardButton("高低導航圖", callback_data=f"g:{c}")]
+        if k_url:
+            nav_k.append(InlineKeyboardButton("K線", url=k_url))
         if em:
             # 興櫃介紹卡已含月營收／折線／毛利EPS，不再放「產業」鈕（上市櫃仍有）
-            return InlineKeyboardMarkup([actions])
+            return InlineKeyboardMarkup([nav_k[:3], actions])
         etf = False
         try:
             from universe import is_etf_asset
@@ -2395,12 +2405,12 @@ class WayneTelegramBot:
         if not etf:
             listed.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
         if len(top) >= 2:
-            return InlineKeyboardMarkup([top, listed, actions])
+            return InlineKeyboardMarkup([top, listed, nav_k[:3], actions])
         row1 = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
         if not etf:
             row1.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
         row1.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
-        return InlineKeyboardMarkup([row1, actions])
+        return InlineKeyboardMarkup([row1, nav_k[:3], actions])
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -4457,8 +4467,8 @@ class WayneTelegramBot:
 
     @staticmethod
     def _prepare_lookup_album_photo(path: str, kind: str = "") -> str:
-        """高低卡／介紹卡／結構圖：4:5 1920×2400（勝率買點高低卡同一格）。大量撐壓：橫式原像素。"""
-        if str(kind or "") == "vol":
+        """高低卡／介紹卡：4:5 1920×2400（勝率買點高低卡同一格）。結構／大量撐壓／導航：橫式原像素。"""
+        if str(kind or "") in ("vol", "struct", "nav"):
             return WayneTelegramBot._prepare_native_lookup_jpeg(path)
         return WayneTelegramBot._letterbox_lookup_jpeg(path, _LOOKUP_ALBUM_MAX)
 
@@ -7937,10 +7947,10 @@ class WayneTelegramBot:
                     disable_web_page_preview=True,
                 )
                 return
-            cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
+            cap = "高低導航圖：實心＝當日觸發；空心＝接近。高點紫／低點綠。不是買訊。"
             for attempt in range(3):
                 try:
-                    with open(self._prepare_lookup_album_photo(path), "rb") as f:
+                    with open(self._prepare_lookup_album_photo(path, "nav"), "rb") as f:
                         await message.reply_photo(
                             photo=f, caption=cap, parse_mode="HTML", reply_markup=hub
                         )

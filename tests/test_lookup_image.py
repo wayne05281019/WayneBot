@@ -396,6 +396,38 @@ class LookupImageTests(unittest.TestCase):
             self.assertLessEqual(ow + oh, _LOOKUP_TG_MAX_WH)
             self.assertLess(ow, 5000)
 
+    @pytest.mark.production_db
+    def test_glance_native_size_matches_winrate_card(self):
+        """介紹卡原生像素＝勝率買點高低卡；送出同 4:5 格。"""
+        from PIL import Image
+
+        from bot_servers import _LOOKUP_ALBUM_MAX
+        from config import get_db_path
+        from wayne_navigator import (
+            NavigatorEngine,
+            clear_lookup_render_cache,
+            render_decision_card_png,
+            render_first_glance_png,
+        )
+
+        clear_lookup_render_cache()
+        db = get_db_path()
+        card = NavigatorEngine(db).get_decision_card("3081", merge_live=False)
+        self.assertTrue(card and not card.get("error"))
+        with tempfile.TemporaryDirectory() as td:
+            cpath = os.path.join(td, "card.jpg")
+            gpath = os.path.join(td, "glance.jpg")
+            self.assertTrue(render_decision_card_png(card, cpath))
+            self.assertTrue(render_first_glance_png("3081", card, {}, gpath, db))
+            with Image.open(cpath) as ci, Image.open(gpath) as gi:
+                self.assertEqual(ci.size, gi.size)
+                self.assertGreater(ci.size[1], ci.size[0])
+            cs = WayneTelegramBot._prepare_lookup_album_photo(cpath, "card")
+            gs = WayneTelegramBot._prepare_lookup_album_photo(gpath, "glance")
+            with Image.open(cs) as a, Image.open(gs) as b:
+                self.assertEqual(a.size, _LOOKUP_ALBUM_MAX)
+                self.assertEqual(b.size, _LOOKUP_ALBUM_MAX)
+
     def test_card_glance_match_winrate_4x5_vol_stays_landscape(self):
         """高低卡／介紹卡＝勝率買點同一格 4:5。大量撐壓＝橫式原像素。"""
         from PIL import Image
@@ -405,7 +437,7 @@ class LookupImageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             src = os.path.join(td, "face.png")
             Image.new("RGB", (1562, 3048), (245, 247, 250)).save(src, "PNG")
-            for kind in ("", "card", "glance", "struct"):
+            for kind in ("", "card", "glance"):
                 out = WayneTelegramBot._prepare_lookup_album_photo(src, kind)
                 with Image.open(out) as im:
                     self.assertEqual(im.size, _LOOKUP_ALBUM_MAX)
@@ -413,11 +445,12 @@ class LookupImageTests(unittest.TestCase):
                     self.assertEqual(im.size[0] * 5, im.size[1] * 4)
             land = os.path.join(td, "vol.jpg")
             Image.new("RGB", (2728, 2057), (255, 255, 255)).save(land, "JPEG", quality=90)
-            native = WayneTelegramBot._prepare_lookup_album_photo(land, "vol")
-            with Image.open(native) as im:
-                self.assertEqual(im.size, (2728, 2057))
-                self.assertNotEqual(im.size[0] * 5, im.size[1] * 4)
-                self.assertLessEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
+            for kind in ("vol", "struct", "nav"):
+                native = WayneTelegramBot._prepare_lookup_album_photo(land, kind)
+                with Image.open(native) as im:
+                    self.assertEqual(im.size, (2728, 2057))
+                    self.assertNotEqual(im.size[0] * 5, im.size[1] * 4)
+                    self.assertLessEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
 
     def test_two_image_album_does_not_upscale(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)

@@ -305,13 +305,13 @@ def test_etf_hub_omits_revenue_stock_keeps_it():
     assert "營收" not in lev
     assert "籌碼" in etf
     assert "產業" in etf
-    assert "導航圖" not in etf
-    assert "K線" not in etf
+    assert "高低導航圖" in etf
+    assert "K線" in etf
     assert "營收" in stk
     assert "籌碼" in stk
     assert "產業" in stk
-    assert "導航圖" not in stk
-    assert "K線" not in stk
+    assert "高低導航圖" in stk
+    assert "K線" in stk
 
 
 def test_etf_price_nav_beside_close_not_in_fundamentals(tmp_path):

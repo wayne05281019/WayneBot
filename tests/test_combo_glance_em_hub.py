@@ -117,30 +117,38 @@ def test_chip_tape_reads_emerging_quotes_not_listed_collision(tmp_path):
     assert abs(float(tape["last"]["volume"]) - 30) < 1e-6
 
 
-def test_em_hub_drops_kline_nav_keeps_actions():
+def test_em_hub_keeps_nav_kline_and_actions():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("3595", em=True)
     labels = [b.text for r in kb.inline_keyboard for b in r]
-    assert "導航圖" not in labels
-    assert "K線" not in labels
+    assert "高低導航圖" in labels
+    assert "K線" in labels
     assert "產業" not in labels
-    assert labels == ["加入觀察", "記買入"]
+    assert "加入觀察" in labels
+    assert "記買入" in labels
     assert "籌碼" not in labels
     assert "營收" not in labels
+    urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+    assert urls and "technical-analysis" in urls[0]
+    assert "period=d" in urls[0]
 
 
-def test_listed_hub_drops_kline_nav_keeps_rest():
+def test_listed_hub_keeps_nav_kline_and_rest():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("2330")
     labels = [b.text for r in kb.inline_keyboard for b in r]
-    assert "導航圖" not in labels
-    assert "K線" not in labels
+    assert "高低導航圖" in labels
+    assert "K線" in labels
     assert "產業" in labels
     assert "籌碼" in labels
     assert "營收" in labels
     assert "加入觀察" in labels
     assert "記買入" in labels
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
+    nav_btns = [b for r in kb.inline_keyboard for b in r if b.text == "高低導航圖"]
+    assert nav_btns and nav_btns[0].callback_data == "g:2330"
+    k_btns = [b for r in kb.inline_keyboard for b in r if b.text == "K線"]
+    assert k_btns and "technical-analysis" in (k_btns[0].url or "")
 
 
 def test_lookup_album_has_no_lecture_caption():
@@ -165,8 +173,9 @@ def test_lookup_album_has_no_lecture_caption():
         'await _bump_progress("struct")'
     )
     hub = inspect.getsource(WayneTelegramBot._hub_keyboard)
-    assert 'callback_data=f"g:{c}"' not in hub
-    assert 'InlineKeyboardButton("K線"' not in hub
+    assert 'callback_data=f"g:{c}"' in hub
+    assert 'InlineKeyboardButton("K線"' in hub
+    assert 'InlineKeyboardButton("高低導航圖"' in hub
     assert 'callback_data=f"n:{c}"' in hub
     assert "url=nav_url" not in hub
     assert "span=180" not in hub
@@ -180,7 +189,6 @@ def test_glance_combo_canvas_matches_card_width():
     from wayne_navigator import (
         CARD_FIG_W,
         CARD_PNG_DPI,
-        GLANCE_FIG_H,
         GLANCE_FIG_W,
         GLANCE_PNG_DPI,
         _paint_nav_on_axes,
@@ -189,13 +197,15 @@ def test_glance_combo_canvas_matches_card_width():
 
     assert GLANCE_FIG_W == CARD_FIG_W
     assert GLANCE_PNG_DPI == CARD_PNG_DPI
-    assert GLANCE_FIG_H < 16
-    assert abs(GLANCE_FIG_H / CARD_FIG_W - 5 / 4.0) < 1e-9
     card_src = inspect.getsource(__import__("wayne_navigator").render_decision_card_png)
     glance_src = inspect.getsource(render_first_glance_png)
     assert "H * 0.076" in card_src
     assert "_glance_stack" in glance_src
-    assert "GLANCE_FIG_H" in glance_src
+    assert "_decision_card_stack_h(card) * 0.076" in glance_src
+    assert "max(_decision_card_stack_h" not in glance_src
+    assert "ax.set_ylim(0, H)" in glance_src
+    assert "max(H, target_h)" not in glance_src
+    assert "left=0.026, right=0.974, top=0.99, bottom=0.012" in glance_src
     src = inspect.getsource(render_first_glance_png)
     assert "_paint_nav_on_axes" not in src
     assert "compact=True" not in src

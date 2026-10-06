@@ -119,15 +119,13 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
-# 排版（figsize／字級）鎖定。結構圖相簿格 1920×2400（4:5）不要改。
+# 排版（figsize／字級）鎖定。結構圖／大量撐壓／導航＝橫式原版，不准套 4:5。
 # 高低卡＝勝率買點同一套：內容高度 H×0.076，送圖 4:5。介紹卡外框對齊這格
-# （上市／上櫃／興櫃同一套），內文回流、不准壓扁。大量撐壓＝橫式原版。
-# 用決策卡同一套堆疊（禁止字疊字／字壓線）。180 日高低導航改獨立鈕。
+# （上市／上櫃／興櫃同一套），內文回流填滿同一畫布。
 CARD_PNG_DPI = 220
 GLANCE_PNG_DPI = 220
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
-GLANCE_FIG_H = CARD_FIG_W * 5 / 4.0
 NAV_CHART_DPI = 320
 # 查股 JPEG：對齊壓力區提質路線；q90＋無色度抽樣，縮圖清晰、點開仍 <TG 上限。
 LOOKUP_JPEG_QUALITY = 95
@@ -3532,6 +3530,79 @@ def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor
     return out, ua, ub
 
 
+def _decision_card_stack_h(card: dict) -> float:
+    """高低卡內容高度（資料座標）。介紹卡外框對齊 H×0.076。"""
+    table = card.get("table") or []
+    n = max(len(table), 1)
+    extra_lows = False
+    try:
+        extra_lows = bool(horizon_low_cells(card))
+    except Exception:
+        extra_lows = False
+    low_rows = 2 if extra_lows else 1
+    pad_x = 2.6
+    m_top, m_bot = 1.0, 1.35
+    head_h = 5.7
+    title_band, box_h, box_gap, pane_pad = 3.4, 7.4, 0.95, 1.05
+    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 5.05
+    gap = 1.5
+    badge_h, badge_gap = 3.05, 0.95
+    sell_sub = ""
+    try:
+        from sell_discipline import apply_face_stance, sell_note_short
+
+        apply_face_stance(card)
+        sell_sub = sell_note_short(card)
+    except Exception:
+        sell_sub = ""
+    try:
+        from hold_prior_wave import attach_buy_verdict
+
+        attach_buy_verdict(card)
+    except Exception:
+        pass
+    stance_plan = _stance_pane_plan(
+        str(card.get("stance") or "今天先看表，先等"),
+        _face_stance_note(card, sell_sub),
+        lambda t, fs, weight=900: _text_w(t, fs, CARD_FIG_W, weight),
+        pad_x,
+        CARD_FIG_W,
+    )
+    stance_h = float(stance_plan["h"])
+    badges = []
+    for b in list(card.get("badges") or []):
+        b = str(b or "").strip()
+        if b and "None" not in b and b not in badges:
+            badges.append(b)
+    monthly = str(card.get("monthly_stage") or "").strip()
+    if monthly and monthly not in badges:
+        badges.append(monthly)
+    if len(badges) > 5:
+        keep_m = monthly if monthly in badges else ""
+        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
+        badges = (core + [keep_m]) if keep_m else core
+    badges = badges[:5] or ["整理格局"]
+    badge_w = [_text_w(b, 10.4, CARD_FIG_W, 900) + 3.4 for b in badges]
+    badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
+    try:
+        from broker_points import visible_main_cost
+
+        mc_val = visible_main_cost(card.get("main_cost"))
+    except Exception:
+        mc_val = None
+    mc_line_h = 2.45 if mc_val is not None else 0.0
+    price_h = (
+        8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
+        + mc_line_h + _ohlc_nav_extra_h(card)
+    )
+    hi_pane_h = title_band + pane_pad + box_h + pane_pad
+    lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
+    return (
+        m_top + head_h + gap + price_h + gap + stance_h + gap + hi_pane_h + gap + lo_pane_h
+        + gap + tbl_title_h + hdr_h + n * body_h + m_bot
+    )
+
+
 def render_decision_card_png(card: dict, save_path: str) -> str:
     """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。
 
@@ -4479,7 +4550,7 @@ def render_first_glance_png(
     db_path: str = None,
     ohlc=None,
 ) -> str:
-    """高低卡同一套堆疊（高度跟內容走，字不壓線）。180日導航改獨立鈕。
+    """介紹卡外框＝勝率買點高低卡（H×0.076）。內文回流、字不壓線。180日導航改獨立鈕。
 
     量字／savefig 與高低卡共用 mpl_render；memo 先查再進 Agg。
     """
@@ -4493,7 +4564,7 @@ def render_first_glance_png(
         _lookup_tape_fingerprint(tape if isinstance(tape, dict) else {}),
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        round(float(GLANCE_FIG_H), 4),
+        "match-card-076",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -4728,21 +4799,21 @@ def render_first_glance_png(
         return tot, rev_h, sp_h, ht_h, ch_h
 
     H, rev_chart_h, space_h, heat_h, chips_h = _glance_stack(gap)
-    target_h = GLANCE_FIG_H / inch
+    # 外框＝勝率買點高低卡：同一寬、同一 H×0.076 英吋高，不准加高底、不准 4.8 下限
+    card_inch = _decision_card_stack_h(card) * 0.076
+    target_h = card_inch / inch
     flex = 1 + sum(
         1 for v in (rev_chart_h, space_h, heat_h, chips_h, fund_h, note_h) if v
     )
     if flex and abs(H - target_h) > 0.35:
         gap = min(2.6, max(0.85, gap + (target_h - H) / flex))
         H, rev_chart_h, space_h, heat_h, chips_h = _glance_stack(gap)
-    # 跟高低卡同一套：高度跟內容走，不准為了塞進固定框把字壓扁
-    info_inch = max(H * inch, 4.8)
-    fig = _new_lookup_figure((fig_w, info_inch), GLANCE_PNG_DPI, C["page"])
+    fig = _new_lookup_figure((fig_w, card_inch), GLANCE_PNG_DPI, C["page"])
     ax = fig.add_subplot(111)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
-    fig.subplots_adjust(left=0.04, right=0.96, top=0.988, bottom=0.024)
+    fig.subplots_adjust(left=0.026, right=0.974, top=0.99, bottom=0.012)
 
     def pane(x, y, w, h, ec=C["line"], fc=C["panel"], r=0.9):
         ax.add_patch(patches.FancyBboxPatch(

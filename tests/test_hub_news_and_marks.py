@@ -44,8 +44,8 @@ def test_hub_news_url_button_on_top():
     texts = [b.text for r in rows for b in r]
     assert "籌碼" in texts
     assert "產業" in texts
-    assert "導航圖" not in texts
-    assert "K線" not in texts
+    assert "高低導航圖" in texts
+    assert "K線" in texts
 
 
 def test_em_hub_has_industry_omits_chips():
@@ -56,6 +56,7 @@ def test_em_hub_has_industry_omits_chips():
     assert "產業" not in texts
     assert "籌碼" not in texts
     assert "營收" not in texts
-    assert "K線" not in texts
-    assert "導航圖" not in texts
-    assert [b.text for b in kb.inline_keyboard[0]] == ["加入觀察", "記買入"]
+    assert "K線" in texts
+    assert "高低導航圖" in texts
+    assert [b.text for b in kb.inline_keyboard[0]] == ["高低導航圖", "K線"]
+    assert [b.text for b in kb.inline_keyboard[1]] == ["加入觀察", "記買入"]
