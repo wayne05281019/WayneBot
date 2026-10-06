@@ -12,12 +12,19 @@ def test_three_in_one_module_lock_and_api():
     import three_in_one_chart as tio
 
     assert tio.LOCK_KEY == "T0118"
+    assert tio.CHROME_SCALE >= 1.5
+    assert tio.THREE_IN_ONE_JPEG_QUALITY >= 95
     assert "藍▲紅框" in (tio.THREE_IN_ONE_CAPTION_HEAD + open(tio.__file__, encoding="utf-8").read())
     src = open(tio.__file__, encoding="utf-8").read()
     assert "with_nav_signals=True" in src
     assert "不准盤中假柱" in src or "官方" in src
     assert "as_of != \"20261002\"" not in src
     assert "render_three_in_one_result" in src
+    # 表頭股名必須吃 info，不准寫死 6526 達發
+    assert '"6526  達發"' not in src and "'6526  達發'" not in src
+    assert 'info.get("stock_id")' in src
+    assert "CHROME_SCALE" in src
+    assert "TG_WH_BUDGET" in src
 
 
 def test_hub_keyboard_drops_kline_and_nav():
@@ -44,3 +51,35 @@ def test_render_three_in_one_6526_smoke(tmp_path, production_db):
     assert "三合一" in (cap or "")
     # 買點說明不准把紅箭頭當買訊
     assert "紅箭頭" not in (cap or "") or "不是買訊" in (cap or "") or "藍▲" in (cap or "")
+
+
+@pytest.mark.production_db
+def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db):
+    """台光電：表頭必須寫 2383／台光電；整張守 TG w+h；縮圖後表頭列高仍老花可讀。"""
+    from PIL import Image
+
+    from bot_servers import WayneTelegramBot, _LOOKUP_JPEG_QUALITY
+    from three_in_one_chart import CHROME_SCALE, TG_WH_BUDGET, render_three_in_one_result
+
+    out = str(tmp_path / "2383-three.png")
+    path, cap = render_three_in_one_result("2383", "台光電", production_db, out)
+    assert path and os.path.isfile(path)
+    im = Image.open(path)
+    assert im.width + im.height <= TG_WH_BUDGET + 50
+    # 表頭列高至少鎖版×CHROME 的八成（合成後含 margin）
+    head_band = im.crop((0, 0, im.width, min(im.height, int(500 * CHROME_SCALE) + 80)))
+    # 粗檢：表頭帶不可幾乎全白／全灰（有色塊才算畫出來）
+    extrema = head_band.convert("RGB").getextrema()
+    assert any(hi - lo > 40 for lo, hi in extrema)
+
+    prep = WayneTelegramBot._prepare_lookup_album_photo(path)
+    assert prep and os.path.isfile(prep)
+    assert _LOOKUP_JPEG_QUALITY >= 95
+    pim = Image.open(prep)
+    # 模擬氣泡寬 ~1113：表頭帶高度應 ≥ 280px（相對鎖版放大後老花可讀）
+    chat_w = 1113
+    chat_h = int(pim.height * chat_w / pim.width)
+    head_chat_h = int((500 * CHROME_SCALE) * chat_w / pim.width)
+    assert head_chat_h >= 280, head_chat_h
+    assert chat_h > 1000
+    assert "三合一" in (cap or "")

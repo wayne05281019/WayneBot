@@ -41,8 +41,9 @@ _LEAVE_ZERO_TIMEOUT = float(os.getenv("WAYNE_LEAVE_ZERO_TIMEOUT", "120"))
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
-_LOOKUP_JPEG_QUALITY = 90
-_LOOKUP_JPEG_QUALITY_FLOOR = 78
+# 三合一表頭字多：q95＋永不色度抽樣；Floor 不准掉到會糊國字的區間
+_LOOKUP_JPEG_QUALITY = 95
+_LOOKUP_JPEG_QUALITY_FLOOR = 88
 # 兩張同尺寸 4:5 才並排。格上限 1920×2400：手機點開夠銳，檔比 3390 格小很多所以傳得快。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
@@ -4312,15 +4313,16 @@ class WayneTelegramBot:
             limit = _LOOKUP_TG_MAX_BYTES - 64
             for q in (
                 _LOOKUP_JPEG_QUALITY,
-                84,
-                80,
+                92,
+                90,
                 _LOOKUP_JPEG_QUALITY_FLOOR,
             ):
                 im.save(
                     out,
                     "JPEG",
                     quality=int(q),
-                    subsampling=0 if int(q) >= 84 else 2,
+                    # 國字／表頭：一律 4:4:4，不准掉到 4:2:0 把筆畫抽糊
+                    subsampling=0,
                     optimize=False,
                 )
                 if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
@@ -8320,6 +8322,8 @@ class WayneTelegramBot:
                 )
 
             card_item = await card_render_task
+            # 三合一與送高低卡重疊：合成重，先開渲再送第一張，砍掉串行空窗
+            three_task = asyncio.create_task(_three_item())
             if card_item:
                 kind, path, caption, markup = card_item
                 prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)
@@ -8332,8 +8336,8 @@ class WayneTelegramBot:
             st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "three"})
             st["current"] = "three"
             st["sent"] = list(sent_kinds)
-            # 三合一／介紹串行：合成腳本會 patch matplotlib，不准跟介紹同刻搶 FreeType。
-            three_item = await _three_item()
+            # 三合一／介紹仍串行：合成腳本會 patch matplotlib，不准跟介紹同刻搶 FreeType。
+            three_item = await three_task
             if three_item:
                 kind, path, caption, _mk = three_item
                 prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path)

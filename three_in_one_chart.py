@@ -43,6 +43,11 @@ VZ_TAG_X_OFFSET = 10
 
 THREE_IN_ONE_CAPTION_HEAD = "三合一圖（導航＋結構＋大量壓力；非買訊）"
 LOCK_KEY = "T0118"
+# Telegram 氣泡約把整圖縮到 0.35–0.40×；表頭／圖例相對放大，老花不靠點開也能讀。
+# 鎖版 T0118 佈局比例保留；只加大 chrome 字級／列高，圖身略縮以保住 w+h≤TG 上限。
+CHROME_SCALE = 1.55
+TG_WH_BUDGET = 9900
+THREE_IN_ONE_JPEG_QUALITY = 95
 
 
 def _dk(raw) -> str:
@@ -243,11 +248,32 @@ def _tw(draw, text, font):
     return b[2] - b[0], b[3] - b[1]
 
 
-def _draw_chip(d, x, y, text, *, font, fill, ink, pad_x=16, pad_y=10, radius=8, outline=None, min_w=0, height=None):
-    """數字／標籤畫在色塊正中（用 textbbox，不准字落到塊外）。"""
+def _draw_chip(d, x, y, text, *, font, fill, ink, pad_x=16, pad_y=10, radius=8, outline=None, min_w=0, height=None, max_w=None):
+    """數字／標籤畫在色塊正中（用 textbbox，不准字落到塊外）。max_w 擋溢欄。"""
     bb = d.textbbox((0, 0), text, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
     w = max(int(min_w), int(tw + pad_x * 2))
+    if max_w is not None and w > int(max_w):
+        # 縮 pad；仍超就裁字尾加…（表頭四欄不准互壓）
+        pad_x = max(8, int(pad_x * 0.7))
+        w = max(int(min_w), int(tw + pad_x * 2))
+        if w > int(max_w):
+            w = int(max_w)
+            # 二分找塞得進的字
+            lo, hi = 1, len(text)
+            fit = "…"
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                cand = text[:mid].rstrip() + ("…" if mid < len(text) else "")
+                cw = d.textbbox((0, 0), cand, font=font)
+                if (cw[2] - cw[0]) + pad_x * 2 <= w:
+                    fit = cand
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+            text = fit
+            bb = d.textbbox((0, 0), text, font=font)
+            tw, th = bb[2] - bb[0], bb[3] - bb[1]
     h = int(height) if height else int(th + pad_y * 2)
     d.rounded_rectangle(
         [x, y, x + w, y + h],
@@ -2402,6 +2428,8 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         "st_press_hold": ctx.get("st_press_hold"),
         "st_channel_tip": ctx.get("st_channel_tip"),
         "query_stamp": ctx.get("query_stamp"),
+        "stock_id": sid,
+        "stock_name": name,
         "sig_frame": {
             "nav_px": ctx.get("nav_sig_h_px"),
             "vz_px": ctx.get("vz_sig_h_px"),
@@ -2448,13 +2476,13 @@ def _draw_tri(d, cx, cy, color, *, up=True, size=18, hollow=False, edge=None, ed
             d.line(pts + [pts[0]], fill=edge, width=max(2, edge_w))
 
 
-def _legend_strip(width: int) -> Image.Image:
+def _legend_strip(width: int, *, height: int | None = None) -> Image.Image:
     """圖例：三角／字級吃滿列高與欄內空白（老花可讀）；內容置中欄內。"""
-    h = 380
+    sc = float(CHROME_SCALE)
+    h = int(height if height is not None else round(380 * sc))
     im = Image.new("RGB", (width, h), "#ffffff")
     d = ImageDraw.Draw(im)
-    d.rectangle([0, 0, width - 1, h - 1], outline="#cfd8dc", width=1)
-    f = _font(38, True)
+    d.rectangle([0, 0, width - 1, h - 1], outline="#cfd8dc", width=2)
     rows = [
         [
             ("#7e57c2", "量能異常", "up"),
@@ -2482,31 +2510,40 @@ def _legend_strip(width: int) -> Image.Image:
             ("#6a1b9a", "爆大量日", "line"),
         ],
     ]
-    pad_x = 12
-    y = 10
-    row_h = (h - 20) // 3
+    pad_x = max(12, int(round(12 * sc)))
+    y = max(10, int(round(10 * sc)))
+    row_h = (h - 2 * y) // 3
+    base_lab = max(42, int(round(42 * sc)))
+    small_lab = max(34, int(round(34 * sc)))
     for row in rows:
         n = len(row)
-        gap = 6
+        gap = max(6, int(round(6 * sc)))
         cell_w = max(110, int((width - 2 * pad_x - (n - 1) * gap) / max(n, 1)))
         x = pad_x
         for col, lab, kind in row:
-            bw, bh = cell_w, row_h - 8
+            bw, bh = cell_w, row_h - max(8, int(round(8 * sc)))
             d.rounded_rectangle(
-                [x, y, x + bw, y + bh], radius=12, fill="#f7f9fc", outline="#78909c", width=2
+                [x, y, x + bw, y + bh],
+                radius=max(12, int(round(12 * sc))),
+                fill="#f7f9fc",
+                outline="#78909c",
+                width=max(2, int(round(2 * sc))),
             )
             # 三角吃滿格高約 72%；字級跟著放大，整組水平置中
-            tri = max(48, min(72, int(bh * 0.72)))
-            ff = _font(42, True)
+            tri = max(48, min(int(round(72 * sc)), int(bh * 0.72)))
+            ff = _font(base_lab, True)
             tw, th = _tw(d, lab, ff)
             # 過長標籤略縮
-            if tw > bw - tri - 28:
-                ff = _font(34, True)
+            if tw > bw - tri - int(round(28 * sc)):
+                ff = _font(small_lab, True)
                 tw, th = _tw(d, lab, ff)
-            group_w = tri + 12 + tw
+            gap_icon = max(10, int(round(12 * sc)))
+            group_w = tri + gap_icon + tw
             gx = x + max(8, (bw - group_w) // 2)
             cx = gx + tri // 2
             cy = y + bh // 2
+            edge_w = max(6, int(round(6 * sc)))
+            line_w = max(10, int(round(10 * sc)))
             if kind == "up":
                 _draw_tri(d, cx, cy, col, up=True, size=tri)
             elif kind == "down":
@@ -2514,7 +2551,7 @@ def _legend_strip(width: int) -> Image.Image:
             elif kind == "hollow_down":
                 _draw_tri(d, cx, cy, col, up=False, size=tri, hollow=True, edge=col)
             elif kind == "buy":
-                _draw_tri(d, cx, cy, col, up=True, size=tri, edge="#c62828", edge_w=6)
+                _draw_tri(d, cx, cy, col, up=True, size=tri, edge="#c62828", edge_w=edge_w)
             elif kind == "band":
                 d.rectangle(
                     [cx - tri // 2, cy - tri // 3, cx + tri // 2, cy + tri // 3],
@@ -2522,9 +2559,9 @@ def _legend_strip(width: int) -> Image.Image:
                     outline="#e57373",
                 )
             else:
-                d.line([cx - tri // 2, cy, cx + tri // 2, cy], fill=col, width=10)
+                d.line([cx - tri // 2, cy, cx + tri // 2, cy], fill=col, width=line_w)
             d.text(
-                (gx + tri + 12, y + (bh - th) // 2 - 1),
+                (gx + tri + gap_icon, y + (bh - th) // 2 - 1),
                 lab,
                 fill="#1a237e",
                 font=ff,
@@ -2553,7 +2590,12 @@ def _draw_mini_candle(d, cx, cy, *, o, h, l, c, up: bool, body_w=22, body_h=36):
 
 
 def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
-    """07 C-card, light shadow, short names; one header / legend / footer."""
+    """07 C-card, light shadow, short names; one header / legend / footer.
+
+    表頭／圖例依 CHROME_SCALE 放大（Telegram 氣泡縮圖後老花仍可讀）；
+    圖身必要時略縮，整張 w+h 守 TG_WH_BUDGET。
+    """
+    sc = float(CHROME_SCALE)
     native = max(p.width for p in panes)
     inner_w = min(max(native, 2400), 2800)
     scaled: list[Image.Image] = []
@@ -2565,27 +2607,29 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         scaled.append(im2)
     fitted0 = _match_zone_heights_to_nav(scaled, zscaled)
     # debug：合成前各 pane 框線（確認③是否被軸外標籤拉歪）
-    try:
-        dbg = "/opt/cursor/artifacts/6526-frame-debug"
-        os.makedirs(dbg, exist_ok=True)
-        for i, im in enumerate(fitted0, start=1):
-            im.save(f"{dbg}/pre-align-p{i}.jpg", quality=90)
-            sl, sr = _pane_spine_lr(im)
-            print(
-                f"[pre-align] p{i} size={im.size} spine=({sl},{sr}) "
-                f"frac=({int(im.width*FRAME_LEFT)},{int(im.width*FRAME_RIGHT)})",
-                flush=True,
-            )
-    except Exception as exc:
-        print(f"[pre-align] debug skip: {exc}", flush=True)
+    if os.getenv("WAYNE_THREE_DEBUG", "").strip() in ("1", "true", "yes"):
+        try:
+            dbg = "/opt/cursor/artifacts/6526-frame-debug"
+            os.makedirs(dbg, exist_ok=True)
+            for i, im in enumerate(fitted0, start=1):
+                im.save(f"{dbg}/pre-align-p{i}.jpg", quality=90)
+                sl, sr = _pane_spine_lr(im)
+                print(
+                    f"[pre-align] p{i} size={im.size} spine=({sl},{sr}) "
+                    f"frac=({int(im.width*FRAME_LEFT)},{int(im.width*FRAME_RIGHT)})",
+                    flush=True,
+                )
+        except Exception as exc:
+            print(f"[pre-align] debug skip: {exc}", flush=True)
     fitted = _align_panes_to_nav_frame(fitted0, spine_fracs=info.get("spine_fracs"))
     margin_x, margin_y = 40, 32
     pad = 12
-    title_h = 52
+    title_h = max(52, int(round(52 * sc * 0.85)))
     gap = 26
-    head_h = 500
-    legend_h = 380
+    head_h = max(500, int(round(500 * sc)))
+    legend_h = max(380, int(round(380 * sc)))
     foot_h = 0  # 使用者不要底部三行小字
+    # 表頭／圖例寬度鎖在合成欄寬；圖身若縮只縮 pane，不准連表頭一起變窄（否則四欄互壓）
     card_w = inner_w + pad * 2
     width = card_w + margin_x * 2
     body = 0
@@ -2593,13 +2637,33 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         extra = 28 if idx == 2 else 0
         body += title_h + extra + im.height + pad * 2 + 10
     height = margin_y + head_h + 12 + legend_h + 16 + body + gap * 2 + foot_h + margin_y
+    # 超過 TG w+h 上限就縮圖身（表頭／圖例／整圖寬不縮，優先可讀）
+    if width + height > TG_WH_BUDGET and body > 0:
+        chrome = height - body
+        max_body = max(1200, TG_WH_BUDGET - width - chrome)
+        body_scale = min(1.0, max_body / float(body))
+        if body_scale < 0.999:
+            new_fitted: list[Image.Image] = []
+            for im in fitted:
+                nw = max(1, int(round(im.width * body_scale)))
+                nh = max(1, int(round(im.height * body_scale)))
+                new_fitted.append(im.resize((nw, nh), Image.Resampling.LANCZOS))
+            fitted = new_fitted
+            body = 0
+            for idx, im in enumerate(fitted):
+                extra = 28 if idx == 2 else 0
+                body += title_h + extra + im.height + pad * 2 + 10
+            height = margin_y + head_h + 12 + legend_h + 16 + body + gap * 2 + foot_h + margin_y
     canvas = Image.new("RGBA", (width, height), (232, 238, 245, 255))
     d = ImageDraw.Draw(canvas)
 
     # header：四欄同字級、同列高；數字畫在色塊正中
     d.rounded_rectangle(
         [margin_x, margin_y, width - margin_x, margin_y + head_h],
-        radius=14, fill="#ffffff", outline="#b0bec5", width=1,
+        radius=max(14, int(round(14 * sc))),
+        fill="#ffffff",
+        outline="#b0bec5",
+        width=2,
     )
     lb = info["last_bar"]
     vol_lots = int(round(lb["volume"]))
@@ -2609,38 +2673,61 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     stamp_date = stamp.get("date") or f"{info['as_of'][:4]}/{info['as_of'][4:6]}/{info['as_of'][6:8]}"
     stamp_clock = stamp.get("clock") or "—"
     is_live = bool(stamp.get("is_live"))
-    col_pad = 18
+    col_pad = max(18, int(round(18 * sc)))
     inner_left = margin_x + col_pad
     inner_right = width - margin_x - col_pad
     col_w = (inner_right - inner_left) / 4.0
     cols_x = [inner_left + i * col_w for i in range(4)]
-    f_hint = _font(28, True)
-    f_lab = _font(36, True)
-    f_num = _font(52, True)
-    f_chg = _font(36, True)
-    y_hint = margin_y + 18
-    y_row1 = margin_y + 62
-    y_row2 = margin_y + 200
-    y_row3 = margin_y + 330
-    chip_h = 78
+    f_hint = _font(max(28, int(round(28 * sc))), True)
+    f_lab = _font(max(36, int(round(36 * sc))), True)
+    f_num = _font(max(52, int(round(52 * sc))), True)
+    f_chg = _font(max(36, int(round(36 * sc))), True)
+    f_title = _font(max(56, int(round(56 * sc))), True)
+    y_hint = margin_y + max(18, int(round(18 * sc)))
+    y_row1 = margin_y + max(62, int(round(62 * sc)))
+    y_row2 = margin_y + max(200, int(round(200 * sc)))
+    y_row3 = margin_y + max(330, int(round(330 * sc)))
+    chip_h = max(78, int(round(78 * sc)))
     for i in range(1, 4):
         x = int(round(cols_x[i] - 10))
-        d.line([x, margin_y + 16, x, margin_y + head_h - 16], fill="#e0e6ed", width=1)
+        d.line([x, margin_y + 16, x, margin_y + head_h - 16], fill="#e0e6ed", width=2)
     titles = ("股名", "今K（對查詢日）", "大量區壓撐（③準）", "查詢當下")
     for i, t in enumerate(titles):
         d.text((cols_x[i], y_hint), t, fill="#78909c", font=f_hint)
 
-    d.text((cols_x[0], y_row1 + 8), "6526  達發", fill="#1a237e", font=_font(56, True))
-    d.text((cols_x[0], y_row1 + 78), "技術面三圖合一", fill="#546e7a", font=f_lab)
+    sid = str(info.get("stock_id") or "").strip() or "—"
+    sname = str(info.get("stock_name") or sid).strip() or sid
+    nameplate = f"{sid}  {sname}"
+    col_max = max(120, int(col_w) - 12)
+    d.text((cols_x[0], y_row1 + max(8, int(round(8 * sc)))), nameplate, fill="#1a237e", font=f_title)
+    d.text(
+        (cols_x[0], y_row1 + max(78, int(round(78 * sc)))),
+        "技術面三圖合一",
+        fill="#546e7a",
+        font=f_lab,
+    )
+    gap0 = max(10, int(round(10 * sc)))
     nw, _nh = _draw_chip(
         d, cols_x[0], y_row2, "非買訊",
         font=f_lab, fill="#ffebee", ink="#c62828", outline="#c62828", height=chip_h - 8,
+        max_w=col_max,
     )
-    _draw_chip(
-        d, cols_x[0] + nw + 12, y_row2,
-        f"③窗起 {info['first_k'][4:6]}/{info['first_k'][6:8]}",
-        font=f_lab, fill="#fff3e0", ink="#e65100", outline="#e65100", height=chip_h - 8,
-    )
+    remain0 = col_max - nw - gap0
+    if remain0 >= 80:
+        _draw_chip(
+            d, cols_x[0] + nw + gap0, y_row2,
+            f"③窗起 {info['first_k'][4:6]}/{info['first_k'][6:8]}",
+            font=f_lab, fill="#fff3e0", ink="#e65100", outline="#e65100", height=chip_h - 8,
+            max_w=remain0,
+        )
+    else:
+        _draw_chip(
+            d, cols_x[0], y_row2 + chip_h - 2,
+            f"③窗起 {info['first_k'][4:6]}/{info['first_k'][6:8]}",
+            font=f_hint, fill="#fff3e0", ink="#e65100", outline="#e65100",
+            height=max(48, chip_h - 24),
+            max_w=col_max,
+        )
     d.text((cols_x[0], y_row3), "三圖價量＝同官方柱", fill="#78909c", font=f_hint)
 
     o = float(lb.get("open") or 0)
@@ -2657,13 +2744,27 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         up = cl >= o
     tone = CANDLE_UP if up else CANDLE_DN
     price_lab = "盤中" if is_live else "收盤"
-    d.text((cols_x[1], y_row1 + 16), "今K", fill="#546e7a", font=f_lab)
-    candle_x = int(cols_x[1] + 92)
-    _draw_mini_candle(d, candle_x, y_row1 + 40, o=o, h=hi, l=lo, c=cl, up=up, body_w=28, body_h=chip_h - 16)
+    d.text((cols_x[1], y_row1 + max(16, int(round(16 * sc)))), "今K", fill="#546e7a", font=f_lab)
+    candle_x = int(cols_x[1] + max(72, int(round(72 * sc))))
+    _draw_mini_candle(
+        d,
+        candle_x,
+        y_row1 + max(40, int(round(40 * sc))),
+        o=o,
+        h=hi,
+        l=lo,
+        c=cl,
+        up=up,
+        body_w=max(24, int(round(24 * sc))),
+        body_h=chip_h - max(16, int(round(16 * sc))),
+    )
     price_txt = f"{cl:,.0f}" if cl >= 100 else f"{cl:.2f}"
+    price_x = int(candle_x + max(28, int(round(28 * sc))))
     _draw_chip(
-        d, int(candle_x + 36), y_row1, f"{price_lab}  {price_txt}",
-        font=f_num, fill=tone, ink="#ffffff", outline=tone, height=chip_h, pad_x=18,
+        d, price_x, y_row1, f"{price_lab}  {price_txt}",
+        font=f_num, fill=tone, ink="#ffffff", outline=tone, height=chip_h,
+        pad_x=max(14, int(round(14 * sc))),
+        max_w=max(80, int(cols_x[1] + col_max - price_x)),
     )
     if chg is not None and pct is not None:
         tri = "▲" if up else "▼"
@@ -2671,52 +2772,91 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         chg_txt = f"{tri} {chg:,.2f}  ({sign}{pct:.2f}%)"
         _draw_chip(
             d, cols_x[1], y_row2, chg_txt,
-            font=f_chg, fill="#ffffff", ink=tone, outline=tone, height=chip_h - 8, pad_x=14,
+            font=f_chg, fill="#ffffff", ink=tone, outline=tone, height=chip_h - 8,
+            pad_x=max(12, int(round(12 * sc))),
+            max_w=col_max,
         )
+    # OHLC 兩行，不准跨欄
     d.text(
-        (cols_x[1], y_row3),
-        f"開{o:.0f} 高{hi:.0f} 低{lo:.0f}　量{vol_lots:,}張",
+        (cols_x[1], y_row3 - max(6, int(round(6 * sc)))),
+        f"開{o:.0f} 高{hi:.0f} 低{lo:.0f}",
+        fill="#455a64",
+        font=f_hint,
+    )
+    d.text(
+        (cols_x[1], y_row3 + max(28, int(round(28 * sc)))),
+        f"量{vol_lots:,}張",
         fill="#455a64",
         font=f_hint,
     )
 
     hi_p = float(info["hi"] or 0)
     lo_p = float(info["lo"] or 0)
-    pw, _ = _draw_chip(
-        d, cols_x[2], y_row1, f"壓  {hi_p:.0f}",
-        font=f_num, fill="#fce4ec", ink="#880e4f", outline="#ad1457",
-        height=chip_h, pad_x=20,
-    )
-    _draw_chip(
-        d, cols_x[2] + pw + 14, y_row1, f"撐  {lo_p:.0f}",
-        font=f_num, fill="#e8f5e9", ink="#1b5e20", outline="#1b5e20",
-        height=chip_h, pad_x=20,
-    )
+    # 壓／撐：欄內並排；預估寬度放不下就直疊，不准溢到隔壁欄
+    col2_max = col_max
+    gap_ps = max(10, int(round(10 * sc)))
+    probe_p = _tw(d, f"壓  {hi_p:.0f}", f_num)[0] + 2 * max(16, int(round(16 * sc)))
+    probe_s = _tw(d, f"撐  {lo_p:.0f}", f_num)[0] + 2 * max(16, int(round(16 * sc)))
+    if probe_p + gap_ps + probe_s <= col2_max:
+        pw, _ = _draw_chip(
+            d, cols_x[2], y_row1, f"壓  {hi_p:.0f}",
+            font=f_num, fill="#fce4ec", ink="#880e4f", outline="#ad1457",
+            height=chip_h, pad_x=max(14, int(round(14 * sc))), max_w=col2_max,
+        )
+        _draw_chip(
+            d, cols_x[2] + pw + gap_ps, y_row1, f"撐  {lo_p:.0f}",
+            font=f_num, fill="#e8f5e9", ink="#1b5e20", outline="#1b5e20",
+            height=chip_h, pad_x=max(14, int(round(14 * sc))),
+            max_w=max(60, col2_max - pw - gap_ps),
+        )
+    else:
+        stack_h = max(56, chip_h - 22)
+        _draw_chip(
+            d, cols_x[2], y_row1, f"壓  {hi_p:.0f}",
+            font=f_lab, fill="#fce4ec", ink="#880e4f", outline="#ad1457",
+            height=stack_h, pad_x=max(12, int(round(12 * sc))), max_w=col2_max,
+        )
+        _draw_chip(
+            d, cols_x[2], y_row1 + stack_h + 8, f"撐  {lo_p:.0f}",
+            font=f_lab, fill="#e8f5e9", ink="#1b5e20", outline="#1b5e20",
+            height=stack_h, pad_x=max(12, int(round(12 * sc))), max_w=col2_max,
+        )
     _draw_chip(
         d, cols_x[2], y_row2, f"爆大量 {spike_md}  {spike_lots:,}張",
         font=f_lab, fill="#fffde7", ink="#5d4037", outline=SPIKE_BAR_COLOR,
-        height=chip_h - 8, pad_x=16,
+        height=chip_h - 8, pad_x=max(12, int(round(12 * sc))), max_w=col2_max,
     )
     d.text((cols_x[2], y_row3), "壓撐＝③有效大量區", fill="#78909c", font=f_hint)
 
     stamp_wall = stamp.get("query_wall") or ""
+    # 日期色塊：優先完整显示；f_num 放不下就改 f_lab，不准裁成 2026/10/02 (…
+    date_font = f_num
+    date_probe = _tw(d, stamp_date, date_font)[0] + 2 * max(14, int(round(14 * sc)))
+    if date_probe > col_max:
+        date_font = f_lab
     _draw_chip(
         d, cols_x[3], y_row1, stamp_date,
-        font=f_num, fill="#e8eaf6", ink="#1a237e", outline="#3949ab",
-        height=chip_h, pad_x=16,
+        font=date_font, fill="#e8eaf6", ink="#1a237e", outline="#3949ab",
+        height=chip_h, pad_x=max(12, int(round(12 * sc))), max_w=col_max,
     )
     _draw_chip(
         d, cols_x[3], y_row2, stamp_clock,
         font=f_lab, fill="#e3f2fd", ink="#0d47a1", outline="#1565c0",
-        height=chip_h - 8, pad_x=16,
+        height=chip_h - 8, pad_x=max(12, int(round(12 * sc))), max_w=col_max,
     )
     wall_txt = f"查詢 {stamp_wall}" if stamp_wall else "—"
-    d.text((cols_x[3], y_row3 - 28), wall_txt, fill="#37474f", font=f_hint)
-    d.text((cols_x[3], y_row3 + 18), "橘虛線＝③窗起", fill="#e65100", font=f_hint)
-    d.text((cols_x[3] + 280, y_row3 + 18), "藍虛線＝測壓", fill=CEYA_LINE_COLOR, font=f_hint)
+    d.text((cols_x[3], y_row3 - max(28, int(round(28 * sc)))), wall_txt, fill="#37474f", font=f_hint)
+    # 虛線說明改直排兩行，不准溢出版心
+    d.text((cols_x[3], y_row3 + max(10, int(round(10 * sc)))), "橘虛線＝③窗起", fill="#e65100", font=f_hint)
+    d.text(
+        (cols_x[3], y_row3 + max(42, int(round(42 * sc)))),
+        "藍虛線＝測壓",
+        fill=CEYA_LINE_COLOR,
+        font=f_hint,
+    )
 
     y = margin_y + head_h + 12
-    legend = _legend_strip(card_w)
+    legend = _legend_strip(card_w, height=legend_h)
     canvas.paste(legend, (margin_x, y))
     y += legend_h + 16
 
@@ -2728,9 +2868,9 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
     )
     fills = ("#5c6bc0", "#26a69a", "#ef6c00")
     tints = ((247, 249, 252, 255), (245, 250, 247, 255), (255, 248, 243, 255))
-    f_t = _font(26, True)
-    f_b = _font(18, True)
-    f_s = _font(16, True)
+    f_t = _font(max(26, int(round(26 * sc * 0.9))), True)
+    f_b = _font(max(18, int(round(18 * sc * 0.9))), True)
+    f_s = _font(max(16, int(round(16 * sc * 0.9))), True)
 
     for i, im in enumerate(fitted):
         d = ImageDraw.Draw(canvas)
@@ -2740,18 +2880,19 @@ def _compose(panes: list[Image.Image], info: dict) -> Image.Image:
         d.text((margin_x + 48, y + 8), names[i], fill="#37474f", font=f_t)
         d.text((margin_x + 48, y + 38), subs[i], fill=fills[i], font=f_s)
         y += title_h + extra
-        # light card (07 陰影減半)
+        # light card (07 陰影減半)；圖身若比表頭窄則置中，不准拉表頭變窄
         cw, ch = im.width + pad * 2, im.height + pad * 2
+        x0 = margin_x + max(0, (card_w - cw) // 2)
         shadow = Image.new("RGBA", (cw + 18, ch + 18), (0, 0, 0, 0))
         sd = ImageDraw.Draw(shadow)
         sd.rounded_rectangle([6, 8, cw + 6, ch + 10], radius=12, fill=(15, 23, 42, 28))
-        shadow = shadow.filter(ImageFilter.GaussianBlur(5))
-        canvas.alpha_composite(shadow, (margin_x - 2, y - 2))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(3))
+        canvas.alpha_composite(shadow, (x0 - 2, y - 2))
         card = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
         cd = ImageDraw.Draw(card)
         cd.rounded_rectangle([0, 0, cw - 1, ch - 1], radius=12, fill=tints[i], outline=(176, 190, 197, 255), width=2)
-        canvas.alpha_composite(card, (margin_x, y))
-        canvas.paste(im.convert("RGBA"), (margin_x + pad, y + pad))
+        canvas.alpha_composite(card, (x0, y))
+        canvas.paste(im.convert("RGBA"), (x0 + pad, y + pad))
         y += ch + gap
 
     # 底部三行小字已取消（使用者不要）
@@ -2814,7 +2955,18 @@ def render_three_in_one_result(
             info = _apply_patches_and_render(sid, name, db_path, tmp, card=card)
             panes = _trim_panes(info)
             canvas = _compose(panes, info)
-            canvas.save(save_path, format="PNG", optimize=True)
+            # PNG 快速落檔；送話筒走 _prepare_lookup_album_photo → JPEG q95 無抽樣
+            low = str(save_path).lower()
+            if low.endswith((".jpg", ".jpeg")):
+                canvas.save(
+                    save_path,
+                    format="JPEG",
+                    quality=THREE_IN_ONE_JPEG_QUALITY,
+                    subsampling=0,
+                    optimize=False,
+                )
+            else:
+                canvas.save(save_path, format="PNG", optimize=False, compress_level=2)
         if not os.path.isfile(save_path) or os.path.getsize(save_path) < 20000:
             return "", ""
         spike = info.get("spike")
