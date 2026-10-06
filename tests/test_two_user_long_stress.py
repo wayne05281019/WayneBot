@@ -44,6 +44,7 @@ from wayne_db import (
     list_tg_user_ids,
     remove_from_watchlist,
     touch_tg_user,
+    ensure_core_schema,
 )
 
 WAYNE = "9001"
@@ -270,6 +271,7 @@ def test_bad_quote_on_one_user_does_not_drop_brother_extra(tmp_path, monkeypatch
 def test_holdings_journal_watch_isolated_under_thread_hammer(tmp_path):
     db = str(tmp_path / "hammer.db")
     init_database(db)
+    ensure_core_schema(db)
     errors: list[str] = []
 
     def wayne_loop():
