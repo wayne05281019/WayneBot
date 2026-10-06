@@ -486,6 +486,13 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
+    assert "hdr-band-v2" in src
+    assert "skip_industry=" in src
+    assert "_paint_industry_chips" in src
+    from biaoke_chart import _STOCK_MAIN_TOP_FULLBLEED
+
+    # 介紹帶下緣＝主圖上緣；不准再 0.968 把头牌疊進 K
+    assert 0.58 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.68
 
 
 def test_locator_inset_marks_window():
@@ -517,10 +524,10 @@ def test_locator_inset_marks_window():
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=_FIG_RIGHT" in rsrc or "right=_STRUCTURE_FIG_RIGHT" in rsrc or "_STRUCTURE_FIG_RIGHT" in rsrc
-    assert "_paint_spot(ov, quote)" in rsrc
+    assert "_paint_spot(ov, quote" in rsrc
     assert "89.15, ohlc_one" not in rsrc
     assert "spike_y1, spike_y2, mute_y, chip_y0 = 85.45, 85.45" not in rsrc
-    assert "83.15, 80.15, 76.85, 73.55" in rsrc
+    assert "83.15, 80.15, 76.85, 73.55" in rsrc or "84.65, 82.05, 79.15, 76.05" in rsrc
     assert 'chip_y = 74.75' not in rsrc
     assert "_SPOT_X" in inspect.getsource(_paint_spot) or "_SPOT_Y" in inspect.getsource(_paint_spot)
     assert 'x=_HEADER_X, y=chip_y' not in rsrc
