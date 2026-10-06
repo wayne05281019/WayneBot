@@ -459,7 +459,7 @@ def test_l3_em_hub_omits_chips_fund_industry():
     bot = _bot()
     kb = bot._hub_keyboard("3595", em=True)
     labels = [b.text for row in kb.inline_keyboard for b in row]
-    # 興櫃圖下＝觀察／記買入（三合一已涵蓋 K線／導航；無產業、無籌碼、無營收）
+    # 興櫃圖下＝觀察／記買入（結構／撐壓已涵蓋 K線／導航；無產業、無籌碼、無營收）
     assert "籌碼" not in labels
     assert "營收" not in labels
     assert "產業" not in labels
@@ -844,21 +844,22 @@ def test_l7_flow_sector_indexed():
 
 def test_l7_lookup_gc_once():
     src = _src(WayneTelegramBot._send_card_to_locked)
-    # 高低溫度卡→三合一→介紹卡；三合一與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
+    # 高低溫度卡→介紹圖→結構圖→大量撐壓；介紹與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
     assert "card_item = await card_render_task" in src
-    assert "create_task(_three_item())" in src
-    assert "await three_task" in src
+    assert "create_task(_struct_item())" in src
+    assert "create_task(_vol_item())" in src
     assert "_bump_progress" in src
     assert "card_queued" in src
-    assert src.index("create_task(_three_item())") < src.index(
+    assert src.index("glance_task = asyncio.create_task") < src.index(
         "card_item = await card_render_task"
     )
-    assert "render_three_in_one_result" in src
+    assert "render_lookup_structure_result" in src
+    assert "render_three_in_one_result" not in src
     assert src.count("gc.collect") == 1
     gc_at = src.index("gc.collect")
     pair_at = src.index("card_item = await card_render_task")
     assert pair_at < gc_at
-    assert src.index("await three_task") < gc_at
+    assert src.index("create_task(_vol_item())") < gc_at
 
 
 def test_l7_card_timeouts_shared():

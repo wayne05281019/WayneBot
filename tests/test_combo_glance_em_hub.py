@@ -150,18 +150,20 @@ def test_lookup_album_has_no_lecture_caption():
     locked = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "點縮圖可放大" not in locked
     assert "網頁走勢" not in locked
-    assert "render_three_in_one_result" in locked
-    assert "three" in locked
-    assert "三合一" in locked
-    # 順序：高低溫度卡 → 三合一 → 介紹卡（三合一與送卡重疊）
-    assert "create_task(_three_item())" in locked
-    assert "await three_task" in locked
-    assert "create_task(_three_item())" in locked
-    assert locked.find("create_task(_three_item())") < locked.find(
+    assert "render_lookup_structure_result" in locked
+    assert "render_lookup_vol_result" in locked
+    assert "render_three_in_one_result" not in locked
+    assert "struct" in locked
+    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖
+    assert "create_task(_struct_item())" in locked
+    assert "create_task(_vol_item())" in locked
+    assert locked.find("glance_task = asyncio.create_task") < locked.find(
         "card_item = await card_render_task"
     )
-    assert locked.find('current"] = "card"') < locked.find("await three_task")
-    assert locked.find("await three_task") < locked.find('await _bump_progress("glance")')
+    assert locked.find('current"] = "card"') < locked.find("create_task(_struct_item())")
+    assert locked.find("create_task(_struct_item())") < locked.find(
+        'await _bump_progress("struct")'
+    )
     hub = inspect.getsource(WayneTelegramBot._hub_keyboard)
     assert 'callback_data=f"g:{c}"' not in hub
     assert 'InlineKeyboardButton("K線"' not in hub

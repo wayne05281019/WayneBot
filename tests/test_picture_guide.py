@@ -80,7 +80,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "不卡 5%" in blob
     assert "不限海選桶" in blob
     assert "含興櫃" in blob
-    assert CACHE_VER == "v74"
+    assert CACHE_VER == "v75"
     assert "前8檔" in blob
     assert "昨獲利貼零" in blob
     assert "今天離開 0" in blob or "今離開 0" in blob
@@ -89,11 +89,12 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "不收空頭" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
-    assert "一律三張" in blob
-    assert "三合一" in blob
+    assert "一律四張" in blob
+    assert "三合一" not in blob
     assert "高低溫度卡" in blob
-    assert "介紹卡" in blob
-    assert "大量壓力" in blob or "大量區" in blob
+    assert "介紹圖" in blob
+    assert "結構圖" in blob
+    assert "大量撐壓" in blob
     assert "產業" in blob
     assert "布蘭特原油" in blob
     assert "美元/桶" in blob
@@ -498,7 +499,7 @@ def test_wrap_line_keeps_period_and_closing_paren():
     assert any("00981A" in ln for ln in a)
     b = _wrap_line(
         dr,
-        "上市／上櫃／興櫃一律三張：高低溫度卡→三合一圖（導航＋結構＋大量壓力）→介紹卡（非買訊）。點開高畫質。產業／籌碼／營收走圖下子鍵；K線／導航已併進三合一。",
+        "上市／上櫃／興櫃一律四張：高低溫度卡→介紹圖→結構圖→大量撐壓圖（非買訊）。點開高畫質。產業／籌碼／營收走圖下子鍵；不出導航獨立張。",
         font,
         520,
         520,

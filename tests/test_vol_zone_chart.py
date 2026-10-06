@@ -111,27 +111,31 @@ def test_render_volume_zone_png_6274():
         assert os.path.getsize(path) > 20000
 
 
-def test_lookup_sends_three_in_one_second_photo():
+def test_lookup_sends_four_photos_card_glance_struct_vol():
     import inspect
 
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    assert "render_three_in_one_result" in src
-    assert "three" in src
-    assert "三合一" in src
-    # 順序：高低溫度卡 → 三合一 → 介紹；子鍵掛在二三張
-    # 三合一提早排進 paint queue，與送高低卡／改 LOADING 重疊
-    assert "create_task(_three_item())" in src
-    assert "await three_task" in src
+    assert "render_lookup_structure_result" in src
+    assert "render_lookup_vol_result" in src
+    assert "render_three_in_one_result" not in src
+    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓；一次一張、好了就送
+    assert "create_task(_struct_item())" in src
+    assert "create_task(_vol_item())" in src
     assert "_bump_progress" in src
-    assert src.find("create_task(_three_item())") < src.find(
+    assert src.find("glance_task = asyncio.create_task") < src.find(
         "card_item = await card_render_task"
     )
-    assert src.find('current"] = "card"') < src.find("await three_task")
-    assert src.find("await three_task") < src.find('await _bump_progress("glance")')
-    assert 'send_photo(prep or path, caption, hub, kind=kind)' in src
-    # 不准把決策卡還原 ohlc 當③壓力柱
+    assert src.find('current"] = "card"') < src.find("create_task(_struct_item())")
+    assert src.find("create_task(_struct_item())") < src.find(
+        'await _bump_progress("struct")'
+    )
+    assert src.find('await _bump_progress("struct")') < src.find(
+        "create_task(_vol_item())"
+    )
+    assert "kind=kind" in src
+    # 不准把決策卡還原 ohlc 當撐壓柱
     assert "already_normalized=True" not in src
     assert "③壓力不准盤中假柱" in src or "只吃官方原柱" in src
     # 興櫃與上市櫃同一條；is_em 只給鍵盤／標籤
@@ -139,13 +143,15 @@ def test_lookup_sends_three_in_one_second_photo():
     assert "if is_em:\n                return None" not in src
     assert "merge_live=True" in src
     assert "merge_live=not is_em" not in src
-    # 導航圖本身不再疊大量區；三合一內部才合成
     nav = open("wayne_navigator.py", encoding="utf-8").read()
     assert "_paint_nav_volume_zone" not in nav
     assert "大量區壓" not in nav
     tio = open("three_in_one_chart.py", encoding="utf-8").read()
     assert "with_nav_signals=True" in tio
     assert "LOCK_KEY" in tio and "T0118" in tio
+    vz = open("vol_zone_chart.py", encoding="utf-8").read()
+    assert "with_nav_signals=True" in vz
+    assert "render_lookup_vol_result" in vz
 
 
 def test_vol_zone_http_not_inside_mpl_lock():
@@ -300,10 +306,13 @@ def test_emerging_help_mentions_three_in_one():
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._em_no_listed_html)
-    assert "三合一" in src or "高低卡" in src
+    assert "高低溫度卡" in src
+    assert "結構圖" in src
+    assert "大量撐壓" in src
     mod = open("bot_servers.py", encoding="utf-8").read(900)
     assert "上市／上櫃／興櫃一律" in mod
-    assert "三合一" in mod
+    assert "結構圖" in mod
+    assert "大量撐壓" in mod
 
 
 def test_official_work_drops_live_and_keeps_raw_prices():

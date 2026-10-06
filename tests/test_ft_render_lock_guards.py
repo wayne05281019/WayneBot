@@ -95,10 +95,13 @@ def test_lookup_bot_awaits_card_before_glance():
 
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "card_item = await card_render_task" in src
-    assert "glance_item = await _render_ready" in src
+    assert "glance_item = await glance_task" in src
     assert "submit_mpl_paint" in src
     # 舊寫法：gather(glance, card) 會讓後者排隊時間算進逾時
     assert "asyncio.gather(\n                _render_ready(\n                    \"glance\"" not in src
+    assert src.find("glance_task = asyncio.create_task") < src.find(
+        "card_item = await card_render_task"
+    )
 
 
 def test_pressure_trio_paints_serial_not_parallel_wait_for():

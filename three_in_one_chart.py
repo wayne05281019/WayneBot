@@ -51,6 +51,10 @@ TG_CLICK_MAX_SIDE = 2560
 TG_WH_BUDGET = 4200  # 寬+高；點開視窗約 1170×2532，不再衝 10000 讓 TG 砍最長邊
 COMPOSE_INNER_W = 1480
 THREE_IN_ONE_JPEG_QUALITY = 95
+LOOKUP_STRUCTURE_CAPTION = "結構圖（非買訊）　買點只認藍▲紅框"
+# 查股單張直式：對齊高低卡 4:5，220DPI → 1920×2400
+LOOKUP_PORTRAIT_FIG = (1920 / 220.0, 2400 / 220.0)
+LOOKUP_PORTRAIT_DPI = 220
 # pane 仍 220DPI 再縮進合成欄＝超採樣，細 K／量柱點開比較不毛
 PANE_DPI = 220
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -3228,6 +3232,55 @@ def _pending_nav_window_compare(nav_pane: Image.Image, first_k: str, out_dir: st
     canvas.save(path, optimize=True)
     return path
 
+
+def render_lookup_structure_result(
+    stock_id: str,
+    stock_name: str,
+    db_path: str,
+    save_path: str,
+    *,
+    card: Optional[dict] = None,
+) -> Tuple[str, str]:
+    """查股第 3 張：原三合一②結構圖。直式 4:5。買訊只認藍▲紅框。"""
+    sid = str(stock_id or "").strip()
+    name = str(stock_name or sid).strip() or sid
+    if not sid or not db_path or not save_path:
+        return "", ""
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    try:
+        from biaoke_chart import render_biaoke_structure_png, stock_nameplate
+        from vol_zone_chart import load_official_ohlc
+
+        official = load_official_ohlc(sid, db_path, 360)
+        if official is None or official.empty:
+            return "", ""
+        bars = _bars_from_official(official, sid, name)
+        path = render_biaoke_structure_png(
+            bars,
+            save_path,
+            sid=sid,
+            name=name,
+            plate=stock_nameplate(sid, name, db_path),
+            db_path=db_path,
+            figsize=LOOKUP_PORTRAIT_FIG,
+            dpi=LOOKUP_PORTRAIT_DPI,
+        )
+        if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
+            return "", ""
+        cap = LOOKUP_STRUCTURE_CAPTION
+        try:
+            from sanchi_clocks import append_sanchi_to_caption
+
+            if isinstance(card, dict):
+                cap = append_sanchi_to_caption(cap, card)
+        except Exception:
+            pass
+        return path, cap
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).exception("lookup structure render failed: %s", exc)
+        return "", ""
 
 
 def render_three_in_one_result(

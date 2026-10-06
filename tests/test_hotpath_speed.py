@@ -28,20 +28,22 @@ def test_flow_sector_rows_use_indexed_date():
 
 def test_lookup_gc_once_after_all_pngs():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    # 高低溫度卡→三合一→介紹卡；三合一提早排隊與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
+    # 高低溫度卡→介紹圖→結構圖→大量撐壓；介紹提早排隊與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
     assert "card_item = await card_render_task" in src
-    assert "create_task(_three_item())" in src
-    assert "await three_task" in src
+    assert "create_task(_struct_item())" in src
+    assert "create_task(_vol_item())" in src
     assert "_bump_progress" in src
-    assert src.index("create_task(_three_item())") < src.index(
+    assert src.index("glance_task = asyncio.create_task") < src.index(
         "card_item = await card_render_task"
     )
-    assert "render_three_in_one_result" in src
+    assert "render_lookup_structure_result" in src
+    assert "render_lookup_vol_result" in src
+    assert "render_three_in_one_result" not in src
     assert src.count("gc.collect") == 1
     gc_at = src.index("gc.collect")
     pair_at = src.index("card_item = await card_render_task")
     assert pair_at < gc_at
-    assert src.index("await three_task") < gc_at
+    assert src.index("create_task(_vol_item())") < gc_at
 
 
 def test_decision_card_quick_shares_lookup_timeouts():
