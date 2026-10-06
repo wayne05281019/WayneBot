@@ -848,6 +848,11 @@ def test_l7_lookup_gc_once():
     assert "card_item = await card_render_task" in src
     assert "create_task(_three_item())" in src
     assert "await three_task" in src
+    assert "_bump_progress" in src
+    assert "card_queued" in src
+    assert src.index("create_task(_three_item())") < src.index(
+        "card_item = await card_render_task"
+    )
     assert "render_three_in_one_result" in src
     assert src.count("gc.collect") == 1
     gc_at = src.index("gc.collect")

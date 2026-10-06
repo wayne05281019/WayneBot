@@ -28,10 +28,14 @@ def test_flow_sector_rows_use_indexed_date():
 
 def test_lookup_gc_once_after_all_pngs():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    # 高低溫度卡→三合一→介紹卡；三合一與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
+    # 高低溫度卡→三合一→介紹卡；三合一提早排隊與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
     assert "card_item = await card_render_task" in src
     assert "create_task(_three_item())" in src
     assert "await three_task" in src
+    assert "_bump_progress" in src
+    assert src.index("create_task(_three_item())") < src.index(
+        "card_item = await card_render_task"
+    )
     assert "render_three_in_one_result" in src
     assert src.count("gc.collect") == 1
     gc_at = src.index("gc.collect")

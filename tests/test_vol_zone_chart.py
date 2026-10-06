@@ -121,11 +121,15 @@ def test_lookup_sends_three_in_one_second_photo():
     assert "three" in src
     assert "三合一" in src
     # 順序：高低溫度卡 → 三合一 → 介紹；子鍵掛在二三張
-    # 三合一與送高低卡重疊：create_task(_three_item) 後 await three_task
+    # 三合一提早排進 paint queue，與送高低卡／改 LOADING 重疊
     assert "create_task(_three_item())" in src
     assert "await three_task" in src
+    assert "_bump_progress" in src
+    assert src.find("create_task(_three_item())") < src.find(
+        "card_item = await card_render_task"
+    )
     assert src.find('current"] = "card"') < src.find("await three_task")
-    assert src.find("await three_task") < src.find('current"] = "glance"')
+    assert src.find("await three_task") < src.find('await _bump_progress("glance")')
     assert 'send_photo(prep or path, caption, hub, kind=kind)' in src
     # 不准把決策卡還原 ohlc 當③壓力柱
     assert "already_normalized=True" not in src

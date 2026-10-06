@@ -135,20 +135,30 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("_send_lookup_album", src)
         self.assertNotIn("asyncio.gather", src)
         self.assertIn("_render_ready", src)
-        # 高低溫度卡先開渲（跟 tape 重疊），再三合一（與送卡重疊），再介紹
+        # 高低溫度卡先開渲；卡已 submit 後三合一排進 paint queue，再介紹
         self.assertIn("card_render_task", src)
         self.assertLess(src.find("card_render_task"), src.find("await tape_task"))
         self.assertIn("card_item = await card_render_task", src)
+        self.assertIn("card_queued", src)
         self.assertIn("create_task(_three_item())", src)
         self.assertIn("await three_task", src)
-        self.assertIn('current"] = "glance"', src)
+        self.assertIn("_bump_progress", src)
+        # 三合一須在 await 高低卡完成之前就 create_task（卡 submit 後），與送卡重疊
+        self.assertLess(
+            src.find("create_task(_three_item())"),
+            src.find("card_item = await card_render_task"),
+        )
+        self.assertLess(
+            src.find("card_queued"),
+            src.find("create_task(_three_item())"),
+        )
         self.assertLess(
             src.find("card_item = await card_render_task"),
             src.find("await three_task"),
         )
         self.assertLess(
             src.find("await three_task"),
-            src.find('current"] = "glance"'),
+            src.find('await _bump_progress("glance")'),
         )
 
     def test_glance_and_card_render_start_together(self):
@@ -406,9 +416,19 @@ class LookupImageTests(unittest.TestCase):
             8, sent=["card", "three"], current="glance"
         )
         self.assertIn("現在：介紹圖", txt)
+        self.assertIn("已送高低溫度卡、三合一", txt)
         self.assertNotIn("接著：導航圖", txt)
         self.assertNotIn("其餘三張", txt)
         self.assertIn("好了這則會消失", txt)
+
+    def test_chart_progress_three_after_card_not_silent(self):
+        """高低卡已出、三合一還在渲：LOADING 要寫清楚，不准只剩空白秒數。"""
+        txt = WayneTelegramBot._chart_progress_text(
+            12, sent=["card"], current="three"
+        )
+        self.assertIn("三合一（合成較重）", txt)
+        self.assertIn("已送高低溫度卡", txt)
+        self.assertIn("介紹圖", txt)
 
     def test_chart_progress_table_stage(self):
         txt = WayneTelegramBot._chart_progress_text(1, current="table")
