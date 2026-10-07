@@ -6064,23 +6064,16 @@ def _paint_nav_buy_arrows(
     return True
 
 
-def overlay_nav_marks_on_zone(
-    ax1,
-    ax_sig,
-    work: pd.DataFrame,
-    *,
-    card: Optional[dict] = None,
-    draw_legend: bool = True,
-    draw_ma20: bool = True,
-) -> None:
-    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。
+def collect_nav_mark_events(work: pd.DataFrame) -> list:
+    """導航／大量共用：依官方柱算出三角／量能訊號事件（含殘影）。
 
-    draw_ma20＝False 時略過黃 SMA20（大量區已自畫月線／季線，避免畫兩次）。
+    回傳 list[dict]：date、role（dn/up/ghost_dn/ghost_up/warn/vol_a/vol_low）、
+    kind／scale／hollow。同一套公式；大量近窗必須用與導航相同的 180 日序列再依日期對齊，
+    不准只在短窗重算（否則同日箭頭對不起來）。
     """
-    if work is None or getattr(work, "empty", True) or ax1 is None:
-        return
+    if work is None or getattr(work, "empty", True):
+        return []
     n = len(work)
-    xs = np.arange(n, dtype=float)
     halt = (
         work["is_halt"].fillna(False).astype(bool)
         if "is_halt" in work.columns
@@ -6089,78 +6082,27 @@ def overlay_nav_marks_on_zone(
     hi_s = work["high"].where(~halt)
     lo_s = work["low"].where(~halt)
     cl_s = work["close"].where(~halt)
-    h20 = float(hi_s.tail(20).max())
-    l20 = float(lo_s.tail(20).min())
-    h60 = float(hi_s.tail(60).max())
-    l60 = float(lo_s.tail(60).min())
-    work = work.copy()
-    work["ma20"] = cl_s.rolling(20, min_periods=1).mean()
-    work["vol_ma"] = work["volume"].where(~halt).rolling(20, min_periods=1).mean()
-    tr = (work["high"] - work["low"]).where(~halt)
-    work["atr20"] = tr.rolling(20, min_periods=5).mean()
-    span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
-    arrow_h = span * 0.048
-    arrow_gap = span * 0.034
-    arrow_hw = 0.72
-    # 抬高／壓低軸：箭頭不壓 K；上方只留一小截，不准大抬把 K 壓扁
-    ymin, ymax = ax1.get_ylim()
-    chip_head = span * 0.08
-    ax1.set_ylim(
-        min(ymin, float(lo_s.min()) - arrow_gap - arrow_h - span * 0.025),
-        max(ymax, float(hi_s.max()) + arrow_gap + arrow_h + chip_head),
-    )
+    frame = work.copy()
+    frame["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    frame["vol_ma"] = frame["volume"].where(~halt).rolling(20, min_periods=1).mean()
+    tr = (frame["high"] - frame["low"]).where(~halt)
+    frame["atr20"] = tr.rolling(20, min_periods=5).mean()
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     last_dn_i = last_up_i = -9
-
-    if ax_sig is not None:
-        ax_sig.set_facecolor("#ffffff")
-        ax_sig.set_yticks([])
-        ax_sig.set_ylim(0, 1)
-        # 與價格軸同 xlim（由呼叫端 set）；此處不硬塞舊 -0.8
-        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺；靠軸左側、不切字
-        ax_sig.set_ylabel("")
-        ax_sig.text(
-            -0.018,
-            0.5,
-            "量能\n訊號",
-            transform=ax_sig.transAxes,
-            ha="right",
-            va="center",
-            rotation=0,
-            fontproperties=_fp(8.5, "bold"),
-            color="#37474f",
-            clip_on=False,
-            linespacing=1.15,
-            zorder=8,
-        )
-        ax_sig.tick_params(axis="x", labelbottom=False, length=0)
-
+    out: list = []
     for i in range(n):
-        x = xs[i]
         if bool(halt.iloc[i]):
-            # 無成交：量能列留灰底佔槽，不准挖洞；K／量柱由呼叫端畫
-            if ax_sig is not None:
-                ax_sig.add_patch(
-                    patches.Rectangle(
-                        (x - 0.42, 0.05),
-                        0.84,
-                        0.9,
-                        facecolor="#eceff1",
-                        edgecolor="#ffffff",
-                        lw=0.15,
-                        zorder=2,
-                    )
-                )
             continue
-        cl = float(work["close"].iloc[i])
-        hi = float(work["high"].iloc[i])
-        lo = float(work["low"].iloc[i])
+        d = str(frame["date"].iloc[i])
+        cl = float(frame["close"].iloc[i])
+        hi = float(frame["high"].iloc[i])
+        lo = float(frame["low"].iloc[i])
         wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
         wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
         close_h20 = float(cl_s.iloc[max(0, i - 19) : i + 1].max())
         close_l20 = float(cl_s.iloc[max(0, i - 19) : i + 1].min())
         wick_l60 = float(lo_s.iloc[max(0, i - 59) : i + 1].min())
-        ma20_i = float(work["ma20"].iloc[i] or 0)
+        ma20_i = float(frame["ma20"].iloc[i] or 0)
         bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
         hh, ll = close_h20, close_l20
         rsv = ((cl - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
@@ -6169,8 +6111,8 @@ def overlay_nav_marks_on_zone(
         is_60l = lo <= wick_l60 * 1.001
         leave_h = was_20h and not is_20h
         leave_l = was_20l and not is_20l
-        vol_a = float(work["volume"].iloc[i] or 0) >= float(work["vol_ma"].iloc[i] or 1) * 2.0
-        atr = float(work["atr20"].iloc[i] or 0)
+        vol_a = float(frame["volume"].iloc[i] or 0) >= float(frame["vol_ma"].iloc[i] or 1) * 2.0
+        atr = float(frame["atr20"].iloc[i] or 0)
         vol_low = bool(cl > 0 and atr / cl < 0.018)
         warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
         near_h = not is_20h and hi >= wick_h20 * 0.985
@@ -6197,134 +6139,253 @@ def overlay_nav_marks_on_zone(
             up_pick = None
         if dn_pick:
             kind, sc, hollow = dn_pick
-            tip = hi + arrow_gap
-            pastel, ink = _NAV_TONE[kind]
-            if kind[0] == "h" and tip >= h20:
-                pastel = _lerp_hex(pastel, ink, 0.28)
-            _nav_arrow(
-                ax1,
-                tip,
-                x,
-                down=True,
-                face=pastel,
-                ink=ink,
-                arrow_h=arrow_h * sc,
-                hw=arrow_hw * sc,
-                hollow=hollow,
-                z=6,
-                alpha=1.0,
+            out.append(
+                {
+                    "date": d,
+                    "role": "dn",
+                    "kind": kind,
+                    "scale": sc,
+                    "hollow": hollow,
+                    "hi": hi,
+                    "lo": lo,
+                }
             )
             last_dn_i = i
         elif is_20h and was_20h and i - last_dn_i <= 6:
-            # 仍貼 20 高：灰藍殘影，不當新觸發（跟導航圖同一套）
-            tip = hi + arrow_gap
-            pastel, ink = _NAV_GHOST
-            _nav_arrow(
-                ax1,
-                tip,
-                x,
-                down=True,
-                face=pastel,
-                ink=ink,
-                arrow_h=arrow_h * 0.78,
-                hw=arrow_hw * 0.78,
-                z=5,
-                alpha=0.42,
+            out.append(
+                {
+                    "date": d,
+                    "role": "ghost_dn",
+                    "kind": "ghost",
+                    "scale": 0.78,
+                    "hollow": False,
+                    "hi": hi,
+                    "lo": lo,
+                }
             )
         if up_pick:
             kind, sc, hollow = up_pick
-            tip = lo - arrow_gap
-            pastel, ink = _NAV_TONE[kind]
-            if kind[0] == "l" and tip <= l20:
-                pastel = _lerp_hex(pastel, ink, 0.28)
-            _nav_arrow(
-                ax1,
-                tip,
-                x,
-                down=False,
-                face=pastel,
-                ink=ink,
-                arrow_h=arrow_h * sc,
-                hw=arrow_hw * sc,
-                hollow=hollow,
-                z=6,
-                alpha=1.0,
+            out.append(
+                {
+                    "date": d,
+                    "role": "up",
+                    "kind": kind,
+                    "scale": sc,
+                    "hollow": hollow,
+                    "hi": hi,
+                    "lo": lo,
+                }
             )
             last_up_i = i
         elif (is_20l or is_60l) and (was_20l or was_60l) and i - last_up_i <= 6:
-            tip = lo - arrow_gap
-            pastel, ink = _NAV_GHOST
-            _nav_arrow(
-                ax1,
-                tip,
-                x,
-                down=False,
-                face=pastel,
-                ink=ink,
-                arrow_h=arrow_h * 0.78,
-                hw=arrow_hw * 0.78,
-                z=5,
-                alpha=0.42,
+            out.append(
+                {
+                    "date": d,
+                    "role": "ghost_up",
+                    "kind": "ghost",
+                    "scale": 0.78,
+                    "hollow": False,
+                    "hi": hi,
+                    "lo": lo,
+                }
             )
-        if ax_sig is not None:
-            # 上下兩排等高底＋同尺寸三角（上排中心 0.75、下排 0.25）
-            if warn:
-                ax_sig.add_patch(
-                    patches.Rectangle(
-                        (x - 0.45, 0.52),
-                        0.9,
-                        0.44,
-                        facecolor=_NAV_SIG["warn_band"],
-                        edgecolor="none",
-                        alpha=0.62,
-                        zorder=1,
-                    )
-                )
-                _sig_arrow(ax_sig, x, 0.75, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.15, z=5)
-            if vol_low:
-                ax_sig.add_patch(
-                    patches.Rectangle(
-                        (x - 0.45, 0.04),
-                        0.9,
-                        0.44,
-                        facecolor=_NAV_SIG["vol_low_band"],
-                        edgecolor="none",
-                        zorder=2,
-                    )
-                )
-            if vol_a:
-                _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.15, z=6)
-            elif vol_low:
-                _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.15, z=4)
+        if warn:
+            out.append({"date": d, "role": "warn", "kind": "warn"})
+        if vol_a:
+            out.append({"date": d, "role": "vol_a", "kind": "vol_a"})
+        elif vol_low:
+            out.append({"date": d, "role": "vol_low", "kind": "vol_low"})
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
+    return out
+
+
+def overlay_nav_marks_on_zone(
+    ax1,
+    ax_sig,
+    work: pd.DataFrame,
+    *,
+    card: Optional[dict] = None,
+    draw_legend: bool = True,
+    draw_ma20: bool = True,
+    signal_work: Optional[pd.DataFrame] = None,
+) -> None:
+    """在已畫好的大量區 K 上疊導航同一套箭頭／量能訊號／殘影。不准重畫蠟燭、不准當買訊。
+
+    draw_ma20＝False 時略過黃 SMA20（大量區已自畫月線／季線，避免畫兩次）。
+    signal_work＝與高低導航同一套 180 日官方柱；有就用它算訊號再依日期對到近窗，
+    不准只在短窗重算（同日三角／買點會漂）。
+    """
+    if work is None or getattr(work, "empty", True) or ax1 is None:
+        return
+    n = len(work)
+    xs = np.arange(n, dtype=float)
+    halt = (
+        work["is_halt"].fillna(False).astype(bool)
+        if "is_halt" in work.columns
+        else pd.Series(False, index=work.index)
+    )
+    hi_s = work["high"].where(~halt)
+    lo_s = work["low"].where(~halt)
+    cl_s = work["close"].where(~halt)
+    h20 = float(hi_s.tail(20).max())
+    l20 = float(lo_s.tail(20).min())
+    h60 = float(hi_s.tail(60).max())
+    l60 = float(lo_s.tail(60).min())
+    paint = work.copy()
+    paint["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
+    arrow_h = span * 0.048
+    arrow_gap = span * 0.034
+    arrow_hw = 0.72
+    # 抬高／壓低軸：箭頭不壓 K；上方只留一小截，不准大抬把 K 壓扁
+    ymin, ymax = ax1.get_ylim()
+    chip_head = span * 0.08
+    ax1.set_ylim(
+        min(ymin, float(lo_s.min()) - arrow_gap - arrow_h - span * 0.025),
+        max(ymax, float(hi_s.max()) + arrow_gap + arrow_h + chip_head),
+    )
+
+    if ax_sig is not None:
+        ax_sig.set_facecolor("#ffffff")
+        ax_sig.set_yticks([])
+        ax_sig.set_ylim(0, 1)
+        # 與價格軸同 xlim（由呼叫端 set）；此處不硬塞舊 -0.8
+        # 翻正：自畫直立兩行，不准 set_ylabel 預設側躺；靠軸左側、不切字
+        ax_sig.set_ylabel("")
+        ax_sig.text(
+            -0.018,
+            0.5,
+            "量能\n訊號",
+            transform=ax_sig.transAxes,
+            ha="right",
+            va="center",
+            rotation=0,
+            fontproperties=_fp(8.5, "bold"),
+            color="#37474f",
+            clip_on=False,
+            linespacing=1.15,
+            zorder=8,
+        )
+        ax_sig.tick_params(axis="x", labelbottom=False, length=0)
+
+    # 無成交：量能列留灰底佔槽，不准挖洞
+    if ax_sig is not None:
+        for i in range(n):
+            if not bool(halt.iloc[i]):
+                continue
+            x = xs[i]
+            ax_sig.add_patch(
+                patches.Rectangle(
+                    (x - 0.42, 0.05),
+                    0.84,
+                    0.9,
+                    facecolor="#eceff1",
+                    edgecolor="#ffffff",
+                    lw=0.15,
+                    zorder=2,
+                )
+            )
+
+    sig = signal_work if signal_work is not None and not getattr(signal_work, "empty", True) else paint
+    date_to_i = {str(paint["date"].iloc[i]): i for i in range(n)}
+    for ev in collect_nav_mark_events(sig):
+        i = date_to_i.get(str(ev.get("date") or ""))
+        if i is None:
+            continue
+        x = xs[i]
+        role = str(ev.get("role") or "")
+        if role in ("dn", "ghost_dn", "up", "ghost_up"):
+            hi = float(paint["high"].iloc[i])
+            lo = float(paint["low"].iloc[i])
+            sc = float(ev.get("scale") or 1.0)
+            hollow = bool(ev.get("hollow"))
+            kind = str(ev.get("kind") or "")
+            if role == "dn":
+                tip = hi + arrow_gap
+                pastel, ink = _NAV_TONE.get(kind, _NAV_GHOST)
+                if kind[:1] == "h" and tip >= h20:
+                    pastel = _lerp_hex(pastel, ink, 0.28)
+                _nav_arrow(
+                    ax1, tip, x, down=True, face=pastel, ink=ink,
+                    arrow_h=arrow_h * sc, hw=arrow_hw * sc, hollow=hollow, z=6, alpha=1.0,
+                )
+            elif role == "ghost_dn":
+                pastel, ink = _NAV_GHOST
+                _nav_arrow(
+                    ax1, hi + arrow_gap, x, down=True, face=pastel, ink=ink,
+                    arrow_h=arrow_h * 0.78, hw=arrow_hw * 0.78, z=5, alpha=0.42,
+                )
+            elif role == "up":
+                tip = lo - arrow_gap
+                pastel, ink = _NAV_TONE.get(kind, _NAV_GHOST)
+                if kind[:1] == "l" and tip <= l20:
+                    pastel = _lerp_hex(pastel, ink, 0.28)
+                _nav_arrow(
+                    ax1, tip, x, down=False, face=pastel, ink=ink,
+                    arrow_h=arrow_h * sc, hw=arrow_hw * sc, hollow=hollow, z=6, alpha=1.0,
+                )
+            else:
+                pastel, ink = _NAV_GHOST
+                _nav_arrow(
+                    ax1, lo - arrow_gap, x, down=False, face=pastel, ink=ink,
+                    arrow_h=arrow_h * 0.78, hw=arrow_hw * 0.78, z=5, alpha=0.42,
+                )
+            continue
+        if ax_sig is None:
+            continue
+        # 上下兩排等高底＋同尺寸三角（上排中心 0.75、下排 0.25）
+        if role == "warn":
+            ax_sig.add_patch(
+                patches.Rectangle(
+                    (x - 0.45, 0.52), 0.9, 0.44,
+                    facecolor=_NAV_SIG["warn_band"], edgecolor="none", alpha=0.62, zorder=1,
+                )
+            )
+            _sig_arrow(ax_sig, x, 0.75, _NAV_SIG["warn"], _NAV_SIG["warn"], scale=1.15, z=5)
+        elif role == "vol_a":
+            _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_a"], _NAV_SIG["vol_a"], scale=1.15, z=6)
+        elif role == "vol_low":
+            ax_sig.add_patch(
+                patches.Rectangle(
+                    (x - 0.45, 0.04), 0.9, 0.44,
+                    facecolor=_NAV_SIG["vol_low_band"], edgecolor="none", zorder=2,
+                )
+            )
+            _sig_arrow(ax_sig, x, 0.25, _NAV_SIG["vol_low"], _NAV_SIG["vol_low"], scale=1.15, z=4)
 
     # 高低參考線；SMA20 可由呼叫端自畫（大量區月線／季線）
     if draw_ma20:
-        ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
+        ax1.plot(xs, paint["ma20"], color="#f9a825", linewidth=1.75, zorder=4, solid_capstyle="round")
     ax1.axhline(h60, color="#f48fb1", linewidth=1.25, zorder=2)
     ax1.axhline(l60, color="#81c784", linewidth=1.25, zorder=2)
     ax1.axhline(h20, color="#f8bbd0", linewidth=1.0, linestyle="--", zorder=2)
     ax1.axhline(l20, color="#80deea", linewidth=1.0, linestyle="--", zorder=2)
 
-    buy_is, sell_i = _nav_trade_marks(work, card)
+    # 買點／賣點也跟導航同一 180 日序列算，再對日期畫進近窗（短窗會假出藍▲）
+    buy_src = sig
+    buy_is_src, sell_i_src = _nav_trade_marks(buy_src, card)
+    buy_dates = {str(buy_src["date"].iloc[i]) for i in buy_is_src if 0 <= int(i) < len(buy_src)}
+    buy_is = [i for i in range(n) if str(paint["date"].iloc[i]) in buy_dates]
     # 時間軸內凡買點都畫藍▲紅框（不只最後一根）；導航／大量區同一路徑
     _paint_nav_buy_arrows(
-        ax1, work, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
+        ax1, paint, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
     )
-    if sell_i is not None:
-        i = int(sell_i)
-        _nav_arrow(
-            ax1,
-            float(work["high"].iloc[i]) + arrow_gap,
-            xs[i],
-            down=True,
-            face=_NAV_TRADE_SELL,
-            ink=_NAV_TRADE_SELL,
-            arrow_h=arrow_h * 1.12,
-            hw=0.88,
-            z=8,
-        )
+    if sell_i_src is not None:
+        sell_d = str(buy_src["date"].iloc[int(sell_i_src)])
+        if sell_d in date_to_i:
+            i = date_to_i[sell_d]
+            _nav_arrow(
+                ax1,
+                float(paint["high"].iloc[i]) + arrow_gap,
+                xs[i],
+                down=True,
+                face=_NAV_TRADE_SELL,
+                ink=_NAV_TRADE_SELL,
+                arrow_h=arrow_h * 1.12,
+                hw=0.88,
+                z=8,
+            )
     if draw_legend:
         _draw_nav_legend(ax1, zone_mode=True)
 

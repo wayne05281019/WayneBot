@@ -66,7 +66,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 17
+_VZ_PAINT_VER = 18
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -1113,6 +1113,7 @@ def render_volume_zone_result(
             with_nav_signals=with_nav_signals,
             card=card,
             lookup_portrait=lookup_portrait,
+            db_path=str(db_path or ""),
         )
     out_path, out_cap = str(path or ""), str(cap or "")
     if out_path and not card:
@@ -1187,6 +1188,7 @@ def _paint_volume_zone(
     with_nav_signals: bool = False,
     card: Optional[Dict[str, Any]] = None,
     lookup_portrait: bool = False,
+    db_path: str = "",
 ):
     spike_md = _md(spike_date)
     ax_head = None
@@ -1567,11 +1569,25 @@ def _paint_volume_zone(
             view = view.copy()
             view["dt"] = pd.to_datetime(view["date"].astype(str), format="%Y%m%d", errors="coerce")
         try:
-            from wayne_navigator import overlay_nav_marks_on_zone
+            from wayne_navigator import _load_ohlc, overlay_nav_marks_on_zone
 
+            # 訊號＝與高低導航同一套 180 日官方柱，再依日期對到近窗；不准短窗重算
+            signal_work = None
+            if db_path:
+                try:
+                    signal_work = _load_ohlc(str(sid), str(db_path), 180)
+                except Exception:
+                    logger.exception("大量區載入導航 180 日失敗 sid=%s", sid)
+                    signal_work = None
             # 圖例改畫在標題列，不准掛在 K 上方留白；均線已在上方畫好
             overlay_nav_marks_on_zone(
-                ax1, ax_sig, view, card=card, draw_legend=False, draw_ma20=False
+                ax1,
+                ax_sig,
+                view,
+                card=card,
+                draw_legend=False,
+                draw_ma20=False,
+                signal_work=signal_work,
             )
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)

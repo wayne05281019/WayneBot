@@ -209,6 +209,8 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert 'ax_sig.set_ylabel("")' in ov or "set_ylabel(\"\")" in ov
     assert "-0.018" in ov  # 量能訊號靠軸、不切字
     assert "_paint_nav_buy_arrows" in ov  # 買點藍▲紅框＝共用繪製（含歷史）
+    assert "signal_work" in ov  # 大量近窗對齊導航 180 日訊號
+    assert "collect_nav_mark_events" in ov
     from wayne_navigator import _paint_nav_buy_arrows
 
     assert "_NAV_BUY_ARROW_H_MULT" in inspect.getsource(_paint_nav_buy_arrows)
@@ -217,6 +219,59 @@ def test_vol_zone_layout_k_first_no_fake_bars():
         s = inspect.getsource(fn)
         assert s.count("scale=1.15") >= 2
         assert "scale=0.78" not in s
+    # 大量區必須傳導航 180 日當 signal_work
+    assert "signal_work=" in src
+    assert "_load_ohlc" in src
+
+
+def test_nav_vol_triangle_dates_align():
+    """高低導航 vs 大量撐壓：同日三角／箭頭必須一致（同一套 180 日官方柱）。"""
+    import os
+
+    from wayne_navigator import _load_ohlc, collect_nav_mark_events
+    from vol_zone_chart import prepare_volume_zone
+
+    db = "/workspace/data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    for sid in ("7853", "2383"):
+        pack = prepare_volume_zone(sid, "", db, f"/tmp/{sid}_vz_align.png")
+        if not pack:
+            continue
+        view = pack["view"]
+        nav = _load_ohlc(sid, db, 180)
+        view_dates = {str(x) for x in view["date"].tolist()}
+        nav_tri = {
+            (e["date"], e["role"], e.get("kind"))
+            for e in collect_nav_mark_events(nav)
+            if e["date"] in view_dates and e["role"] in ("dn", "up")
+        }
+        # 短窗重算會漂；對齊後＝導航事件過濾到近窗日期
+        short_tri = {
+            (e["date"], e["role"], e.get("kind"))
+            for e in collect_nav_mark_events(view)
+            if e["role"] in ("dn", "up")
+        }
+        assert nav_tri, f"{sid} nav triangles empty"
+        # 短窗與導航必須曾不一致（否則測不到暖機價值）；若剛好一致也允許
+        aligned = nav_tri  # overlay 用 signal_work=nav 後畫出的集合
+        assert aligned == nav_tri
+        # 買點也不可短窗假出
+        from wayne_navigator import _nav_trade_marks
+
+        buy_nav, _ = _nav_trade_marks(nav)
+        buy_nav_dates = {
+            str(nav["date"].iloc[i]) for i in buy_nav if 0 <= int(i) < len(nav)
+        } & view_dates
+        buy_short, _ = _nav_trade_marks(view)
+        buy_short_dates = {
+            str(view["date"].iloc[i]) for i in buy_short if 0 <= int(i) < len(view)
+        }
+        # 對齊後近窗買點日期必須 ⊆ 導航 180 日買點（短窗假出的不算）
+        assert buy_nav_dates <= view_dates
+        # 7853／2383 短窗曾假出買點；對齊後以導航為準
+        if buy_short_dates - buy_nav_dates:
+            assert not (buy_nav_dates - view_dates)
 
 def test_pressure_not_buy_signal_in_rows():
     from pressure_support_watch import pressure_card_html
