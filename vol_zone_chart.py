@@ -66,7 +66,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 16
+_VZ_PAINT_VER = 17
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -664,9 +664,11 @@ def vol_zone_day_path_label(
 ) -> str:
     """③最後一根走勢標：對應當日官方／MIS 開高低收＋既有壓撐，不是死釘『月/日 壓價』。
 
-    例形：10月6日 撐為2,940  今最高3,055  收盤未過撐  收2,920  為近日第二次測大量撐
-    各股類推；不准寫死聯亞。不是買訊。
+    例形：10月6日 撐為2,940  今最高3,055  今最低2,915  收盤未過撐  收2,920
+    只留事實句；測壓次數／尚未測／壓轉撐等判斷句一律不打。不是買訊。
+    bars／zone_date 保留給呼叫端相容（判斷句已刪，不再用來計次）。
     """
+    del bars, zone_date  # 相容舊呼叫；當日標不再做近窗測次判斷
     if not last:
         return ""
     press = _px(press)
@@ -696,63 +698,18 @@ def vol_zone_day_path_label(
     else:
         side = "press" if abs(cl - press) <= abs(cl - hold) else "hold"
 
-    zone_d = _trade_day(zone_date)
-    rows = [dict(x) for x in (bars or []) if isinstance(x, dict)]
-    last_d = _trade_day(last.get("date"))
-    if last_d and last_d not in {_trade_day(r.get("date")) for r in rows}:
-        rows = list(rows) + [dict(last)]
-    if not rows:
-        rows = [dict(last)]
-    ordered = []
-    for r in rows:
-        d = _trade_day(r.get("date"))
-        if not d:
-            continue
-        if last_d and d > last_d:
-            continue
-        ordered.append(r)
-    recent = ordered[-5:]
-
-    def _count(pred) -> int:
-        n = 0
-        for r in recent:
-            d = _trade_day(r.get("date"))
-            if zone_d and d == zone_d:
-                continue
-            if pred(r):
-                n += 1
-        return n
-
     if side == "hold":
-        n = _count(lambda r: _bar_tests_hold(r, hold))
-        passed = cl > hold
-        verb = "收盤已過撐" if passed else "收盤未過撐"
-        # 測撐＝高低碰到且還在論撐；已過撐不准寫「尚未測」
-        if passed:
-            n_bit = "已過撐（非買訊）"
-        elif n >= 1:
-            n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量撐"
-        else:
-            n_bit = "近日尚未測大量撐"
+        verb = "收盤已過撐" if cl > hold else "收盤未過撐"
         low_bit = f"  今最低{lo_s}" if lo > 0 and lo <= hold * 1.01 else ""
         line = (
             f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
-            f"{verb}  收{cl_s}  {n_bit}"
+            f"{verb}  收{cl_s}"
         )
     else:
-        n = _count(lambda r: _bar_tests_press(r, press))
-        passed = cl > press
-        verb = "收盤已過壓" if passed else "收盤未過壓"
-        # 測壓＝高碰到且收≤壓；收已過壓＝過壓後原壓改看壓轉撐（非買訊），不准寫「尚未測」
-        if passed:
-            n_bit = "原壓改看壓轉撐（非買訊）"
-        elif n >= 1:
-            n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量壓"
-        else:
-            n_bit = "近日尚未測大量壓"
+        verb = "收盤已過壓" if cl > press else "收盤未過壓"
         line = (
             f"{day_zh} 壓為{press_s}  今最高{hi_s}  "
-            f"{verb}  收{cl_s}  {n_bit}"
+            f"{verb}  收{cl_s}"
         )
     return "  ".join(line.split())
 
@@ -1424,12 +1381,9 @@ def _paint_volume_zone(
         )
         if path_msg and last_hi > 0 and float(hi) > 0:
             bits = [p for p in path_msg.split("  ") if p]
-            if len(bits) >= 5:
-                path_shown = (
-                    f"{bits[0]}  {bits[1]}\n"
-                    f"{'  '.join(bits[2:5])}\n"
-                    f"{'  '.join(bits[5:])}"
-                )
+            # 兩行事實句：日＋撐／壓｜今高（今低）過未過＋收；不准再堆第三行判斷
+            if len(bits) >= 3:
+                path_shown = f"{bits[0]}  {bits[1]}\n{'  '.join(bits[2:])}"
             else:
                 path_shown = "\n".join(bits) if bits else path_msg
     except Exception:
@@ -1464,19 +1418,19 @@ def _paint_volume_zone(
             zorder=8,
         )
         ax1.text(
-            0.78,
-            0.975,
+            0.985,
+            0.968,
             path_shown,
             transform=ax1.transAxes,
             ha="right",
             va="top",
-            fontproperties=_fp(10.5, "bold"),
+            fontproperties=_fp(9.6, "bold"),
             color=_CALL,
             zorder=12,
             clip_on=False,
-            linespacing=1.18,
+            linespacing=1.22,
             bbox=dict(
-                boxstyle="round,pad=0.28",
+                boxstyle="round,pad=0.26",
                 facecolor="#fff8e1",
                 edgecolor="#ef6c00",
                 linewidth=0.9,
@@ -1520,6 +1474,45 @@ def _paint_volume_zone(
         zorder=10,
         bbox={**_tag_box, "edgecolor": _HOLD},
     )
+
+    # 右軸空位補昨收（有官方昨收、且離壓／撐／現收夠遠才標，不准互壓）
+    try:
+        prev_c = float(view["close"].iloc[-2]) if n >= 2 else 0.0
+    except (TypeError, ValueError, IndexError):
+        prev_c = 0.0
+    if prev_c > 0 and last_cl > 0:
+        y0, y1 = ax1.get_ylim()
+        span_y = max(y1 - y0, 1.0)
+        near = span_y * 0.045
+        anchors = [float(hi), float(lo), float(last_cl)]
+        if all(abs(prev_c - a) >= near for a in anchors if a > 0):
+            ax1.axhline(
+                prev_c,
+                color="#78909c",
+                linewidth=0.85,
+                linestyle=(0, (2.5, 2.0)),
+                alpha=0.75,
+                zorder=4,
+            )
+            ax1.text(
+                0.995,
+                prev_c,
+                f"昨收 {_fmt_price(prev_c)}",
+                transform=ax1.get_yaxis_transform(),
+                ha="right",
+                va="center",
+                fontproperties=_fp(9.0, "bold"),
+                color="#546e7a",
+                zorder=11,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle="round,pad=0.18",
+                    facecolor="#ffffff",
+                    edgecolor="#90a4ae",
+                    linewidth=0.8,
+                    alpha=0.94,
+                ),
+            )
 
     # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位
     try:

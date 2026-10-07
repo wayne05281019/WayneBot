@@ -1442,15 +1442,11 @@ def _polish_vol_figure(
             x_lab = float(last_i) - 8.0
             x_lab = max(x_lab, float(ax1.get_xlim()[0]) + 5.0)
             bits = [p for p in msg.split("  ") if p]
-            if len(bits) >= 5:
-                shown = (
-                    f"{bits[0]}  {bits[1]}\n"
-                    f"{'  '.join(bits[2:5])}\n"
-                    f"{'  '.join(bits[5:])}"
-                )
+            if len(bits) >= 3:
+                shown = f"{bits[0]}  {bits[1]}\n{'  '.join(bits[2:])}"
             else:
                 shown = "\n".join(bits) if bits else msg
-            tag = "測撐" if "測大量撐" in msg else ("測壓" if "測大量壓" in msg else "日說明")
+            tag = "日說明"
             ax1.axvline(
                 float(last_i),
                 color=CEYA_LINE_COLOR,
