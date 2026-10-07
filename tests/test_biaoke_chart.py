@@ -486,7 +486,7 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v3" in src
+    assert "hdr-band-v4" in src
     assert "skip_industry=" in src
     assert "_paint_industry_chips" in src
     assert "昨收" in src
@@ -494,8 +494,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "已過爆大量日高" not in src
     from biaoke_chart import _STOCK_MAIN_TOP_FULLBLEED
 
-    # 介紹帶下緣＝主圖上緣；不准再 0.968 把头牌疊進 K
-    assert 0.58 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.68
+    # 介紹帶下緣＝主圖上緣；收緊無效留白後主圖上緣約 0.75，不准再把头牌疊進 K
+    assert 0.72 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
 
 
 def test_structure_no_vol_day_judgment_and_prev_close_note():

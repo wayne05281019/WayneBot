@@ -69,18 +69,18 @@ _FIG_RIGHT = 0.918
 _STRUCTURE_FIG_RIGHT = 0.958
 # 直式 4:5：縮圖靠右，左邊留給頭牌，不准今K／日期壓進迷你圖
 _LOOKUP_LOCATOR_LEFT = 0.575
-_FIG_BOTTOM = 0.072
+_FIG_BOTTOM = 0.055
 # 舊直式：頭牌帶在圖上方。橫式：介紹帶在上方，下緣＝主圖上緣（不准浮在 K 上壓柱）
 _STOCK_MAIN_TOP = 0.658
-# 橫式介紹帶要裝得下開高低收＋爆大量＋狀態晶片；上緣留白夠才不算浮框壓 K
-_STOCK_MAIN_TOP_FULLBLEED = 0.618
+# 橫式：收緊介紹帶無效留白，主 K 拉高對齊大量撐壓質感（仍留開高低收＋爆大量＋晶片）
+_STOCK_MAIN_TOP_FULLBLEED = 0.755
 _LOCATOR_LEFT = 0.500
 _LOCATOR_WIDTH = _FIG_RIGHT - _LOCATOR_LEFT
 _STOCK_LOCATOR_BOTTOM = 0.690
 _STOCK_LOCATOR_HEIGHT = 0.278
-# 橫式介紹帶：迷你圖仍在帶內右上，不准疊進主圖 K
-_STOCK_LOCATOR_BOTTOM_FB = 0.635
-_STOCK_LOCATOR_HEIGHT_FB = 0.330
+# 橫式介紹帶縮矮：迷你圖仍在帶內右上，不准疊進主圖 K
+_STOCK_LOCATOR_BOTTOM_FB = 0.768
+_STOCK_LOCATOR_HEIGHT_FB = 0.195
 # 縮圖右緣＝主圖右緣，上下一條線。
 _STOCK_LOCATOR_RECT = (
     _LOCATOR_LEFT,
@@ -95,9 +95,10 @@ _STOCK_LOCATOR_RECT_FB = (
     _STOCK_LOCATOR_HEIGHT_FB,
 )
 _HEADER_X = 4.60
-# 今K／漲跌：右對齊縮圖左緣；橫式產業標同側右靠（見 _paint_industry_chips）
+# 今K／漲跌：右對齊縮圖左緣；無迷你圖時改靠右緣吃掉右上留白
 _SPOT_X = _LOCATOR_LEFT * 100.0 - 0.25
-_SPOT_Y = 96.70
+_SPOT_X_NO_LOCATOR = 97.35
+_SPOT_Y = 97.35
 # 左上頭牌可佔到縮圖左側空白前（今K已移走）
 _HEADER_CHIP_MAX = 48.5
 # 查股結構圖橫式長寬比對齊範本五（約 1.52）；大量撐壓 figsize 不动
@@ -2624,7 +2625,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v3" if fullbleed else "hdr-wrap3",
+        "hdr-band-v4" if fullbleed else "hdr-wrap3",
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
@@ -2658,7 +2659,10 @@ def render_biaoke_structure_png(
         figsize=(fig_w, fig_h),
         dpi=use_dpi,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
+        gridspec_kw=dict(
+            height_ratios=(5.85, 1.25) if fullbleed else (5.45, 1.45),
+            hspace=0.032 if fullbleed else 0.048,
+        ),
         facecolor=_BG,
     )
     ax1.set_facecolor(_PANEL)
@@ -3030,8 +3034,9 @@ def render_biaoke_structure_png(
     ov.patch.set_alpha(0)
     ov.set_navigate(False)
     # 橫式：介紹帶在主圖上方（下緣＝主圖上緣），不准浮框壓住 K
+    has_locator = len(rows) >= n + 8
     band_floor = (
-        float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0 + 0.8
+        float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0 + 0.55
         if fullbleed
         else 66.5
     )
@@ -3039,43 +3044,54 @@ def render_biaoke_structure_png(
         import matplotlib.patches as mpatches
 
         band_bot = float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0
+        # 無迷你圖：介紹框拉滿寬，吃掉右上無效留白；有迷你圖仍只佔左半
+        box_w = (
+            96.6
+            if not has_locator
+            else (_LOCATOR_LEFT * 100.0) - 2.2
+        )
         ov.add_patch(
             mpatches.FancyBboxPatch(
-                (1.6, band_bot + 0.25),
-                (_LOCATOR_LEFT * 100.0) - 2.2,
-                100.0 - band_bot - 0.9,
-                boxstyle="round,pad=0.22,rounding_size=0.6",
+                (1.6, band_bot + 0.18),
+                box_w,
+                100.0 - band_bot - 0.55,
+                boxstyle="round,pad=0.18,rounding_size=0.55",
                 facecolor="#ffffff",
                 edgecolor="#90caf9",
-                linewidth=1.15,
+                linewidth=1.05,
                 alpha=0.98,
                 zorder=1,
                 clip_on=False,
             )
         )
+    spot_x = float(_SPOT_X_NO_LOCATOR if (fullbleed and not has_locator) else _SPOT_X)
     # 橫式：股名左；產業／龍頭與今K／漲跌同往右靠（分列，不准互壓）
     _paint_nameplate(
         ov,
         plate,
         skip_industry=bool(fullbleed),
+        y=float(_SPOT_Y),
     )
     if fullbleed:
         _paint_industry_chips(
             ov,
             plate,
-            x=float(_SPOT_X) - 0.35,
+            x=float(spot_x) - 0.35,
             y=float(_SPOT_Y),
             align="right",
         )
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
-    chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else _HEADER_CHIP_MAX
-    # 橫式介紹帶略壓縮行距，狀態晶片不准掉進主圖
+    chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else (
+        92.0 if (fullbleed and not has_locator) else _HEADER_CHIP_MAX
+    )
+    # 橫式介紹帶壓縮行距：密度對齊大量撐壓；狀態晶片不准掉進主圖
     if fullbleed:
-        date_y, ohlc_y1, ohlc_y2 = 93.35, 90.25, 87.55
-        spike_y1, spike_y2, mute_y, chip_y0 = 84.65, 82.05, 79.15, 76.05
-        chip_step = 3.15
-        # 產業在標題列（_SPOT_Y）；現價／較昨日再下一列，垂直拉開不准互壓
-        spot_y = 91.35
+        # 介紹帶約 24.5%：比舊 38% 緊，行距仍可讀、不准互壓
+        date_y, ohlc_y1, ohlc_y2 = 94.85, 92.55, 90.55
+        spike_y1, spike_y2, mute_y, chip_y0 = 88.35, 86.45, 84.65, 82.55
+        chip_step = 2.55
+        # 產業在標題列；現價／較昨日再下一列，垂直拉開不准互壓
+        spot_y = 94.15
     else:
         date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 86.35
         spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
@@ -3086,7 +3102,7 @@ def render_biaoke_structure_png(
         date_y,
         date_line,
         color=_TEXT,
-        fontproperties=_fp(16, "bold"),
+        fontproperties=_fp(15 if fullbleed else 16, "bold"),
         va="center",
         ha="left",
     )
@@ -3101,11 +3117,13 @@ def render_biaoke_structure_png(
         ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
     # 開高低收／爆大量日一律兩行且不同 Y，不准跟今K同一條互壓
     ov.text(
-        _HEADER_X, ohlc_y1, ohlc_1, color=_TEXT, fontproperties=_fp(15, "bold"),
+        _HEADER_X, ohlc_y1, ohlc_1, color=_TEXT,
+        fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
     ov.text(
-        _HEADER_X, ohlc_y2, ohlc_2, color=_TEXT, fontproperties=_fp(15, "bold"),
+        _HEADER_X, ohlc_y2, ohlc_2, color=_TEXT,
+        fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
     spike_1 = f"爆大量日 {_ymd_full(spike_date)}"
@@ -3114,11 +3132,13 @@ def render_biaoke_structure_png(
         f"量 {_vol(spike_bar.get('volume'))}"
     )
     ov.text(
-        _HEADER_X, spike_y1, spike_1, color=_PRESS, fontproperties=_fp(15, "bold"),
+        _HEADER_X, spike_y1, spike_1, color=_PRESS,
+        fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
     ov.text(
-        _HEADER_X, spike_y2, spike_2, color=_PRESS, fontproperties=_fp(15, "bold"),
+        _HEADER_X, spike_y2, spike_2, color=_PRESS,
+        fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
     ov.text(
@@ -3126,13 +3146,13 @@ def render_biaoke_structure_png(
         mute_y,
         "不是15分、不是介紹圖／決策卡",
         color=_MUTED,
-        fontproperties=_fp(13, "bold"),
+        fontproperties=_fp(11 if fullbleed else 13, "bold"),
         va="center",
         ha="left",
     )
     chip_x, chip_y = _HEADER_X, chip_y0
     if mark:
-        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=13)
+        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=12 if fullbleed else 13)
         chip_x = _HEADER_X
         chip_y -= chip_step
     ch_lab = str((channel or {}).get("label") or "").strip()
@@ -3147,7 +3167,8 @@ def render_biaoke_structure_png(
                 chip_x = _HEADER_X
                 chip_y -= chip_step
             chip_x = _draw_chip(
-                ov, chip_x, chip_y, bit, fc="#ffffff", ec=ch_color, tc=ch_color, size=12
+                ov, chip_x, chip_y, bit, fc="#ffffff", ec=ch_color, tc=ch_color,
+                size=11 if fullbleed else 12,
             )
         chip_x, chip_y = _HEADER_X, chip_y - chip_step
     for bit in banner_bits:
@@ -3160,12 +3181,13 @@ def render_biaoke_structure_png(
         if chip_y < band_floor:
             break
         chip_x = _draw_chip(
-            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=12
+            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f",
+            size=11 if fullbleed else 12,
         )
-    # 直式查股：頭牌已有開高低收；再畫今K會壓進迷你圖。橫式才留縮圖左側今K。
+    # 直式查股：頭牌已有開高低收；再畫今K會壓進迷你圖。橫式才留今K。
     if quote and not portrait:
-        _paint_spot(ov, quote, x=_SPOT_X, y=spot_y)
-    if len(rows) >= n + 8:
+        _paint_spot(ov, quote, x=spot_x, y=spot_y)
+    if has_locator:
         loc_legs: List[Dict[str, Any]] = []
         loc_marks: List[Dict[str, Any]] = []
         if down_pts:
