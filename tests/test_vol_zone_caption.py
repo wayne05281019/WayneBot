@@ -451,4 +451,31 @@ def test_day_path_label_press_test_and_close_through():
     up = vol_zone_day_path_label(press, hold, through, bars=[through], zone_date="20260901")
     assert "收盤已過壓" in up
     assert "撐為" not in up
+    assert "尚未測大量壓" not in up
+    assert "壓轉撐" in up
+    assert "非買訊" in up
+
+
+def test_day_path_label_overbreak_no_false_untested():
+    """2383 形：收已過壓 5255，不准再寫近日尚未測大量壓。"""
+    from vol_zone_chart import vol_zone_day_path_label
+
+    press, hold = 5255.0, 4635.0
+    today = {
+        "date": "20261006",
+        "open": 6040,
+        "high": 6115,
+        "low": 5820,
+        "close": 5995,
+        "volume": 5083,
+    }
+    line = vol_zone_day_path_label(press, hold, today, bars=[today], zone_date="20260917")
+    assert "10月6日" in line
+    assert "壓為5,255" in line
+    assert "今最高6,115" in line
+    assert "收盤已過壓" in line
+    assert "收5,995" in line
+    assert "尚未測大量壓" not in line
+    assert "壓轉撐" in line
+    assert "非買訊" in line
 

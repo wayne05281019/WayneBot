@@ -66,7 +66,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 15
+_VZ_PAINT_VER = 16
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -727,7 +727,13 @@ def vol_zone_day_path_label(
         n = _count(lambda r: _bar_tests_hold(r, hold))
         passed = cl > hold
         verb = "收盤已過撐" if passed else "收盤未過撐"
-        n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量撐" if n >= 1 else "近日尚未測大量撐"
+        # 測撐＝高低碰到且還在論撐；已過撐不准寫「尚未測」
+        if passed:
+            n_bit = "已過撐（非買訊）"
+        elif n >= 1:
+            n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量撐"
+        else:
+            n_bit = "近日尚未測大量撐"
         low_bit = f"  今最低{lo_s}" if lo > 0 and lo <= hold * 1.01 else ""
         line = (
             f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
@@ -737,7 +743,13 @@ def vol_zone_day_path_label(
         n = _count(lambda r: _bar_tests_press(r, press))
         passed = cl > press
         verb = "收盤已過壓" if passed else "收盤未過壓"
-        n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量壓" if n >= 1 else "近日尚未測大量壓"
+        # 測壓＝高碰到且收≤壓；收已過壓＝過壓後原壓改看壓轉撐（非買訊），不准寫「尚未測」
+        if passed:
+            n_bit = "原壓改看壓轉撐（非買訊）"
+        elif n >= 1:
+            n_bit = f"為近日第{_zh_days(n, ordinal=True)}次測大量壓"
+        else:
+            n_bit = "近日尚未測大量壓"
         line = (
             f"{day_zh} 壓為{press_s}  今最高{hi_s}  "
             f"{verb}  收{cl_s}  {n_bit}"
