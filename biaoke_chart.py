@@ -871,10 +871,7 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         notes.append("破撐之後又站回，比較像破線洗盤，不是保證")
     elif out.get("distribution"):
         notes.append("過壓之後又掉回撐下，比較像出貨，不是洗盤")
-    elif out["under_support"]:
-        notes.append("收在爆大量日低之下，他這套先放棄這次量價")
-    elif out["over_press"]:
-        notes.append("已過爆大量日高，比較像半山腰／突破，不是落後補漲")
+    # 大量日高／低判斷句（收在低下／已過高等）全股票都不打進結構圖
     # 上升／下降通道二擇一（平行雙線）；與單軌連點並行記錄，畫圖時通道優先
     ch = infer_parallel_channel(rows)
     if ch:
@@ -1279,9 +1276,11 @@ def _note_priority(text: str) -> int:
         return 0
     if t.startswith("壓") or t.startswith("撐"):
         return 1
-    if any(k in t for k in ("下降壓", "上升軌", "平行壓", "平行撐")):
+    if t.startswith("昨收"):
         return 2
-    return 3
+    if any(k in t for k in ("下降壓", "上升軌", "平行壓", "平行撐")):
+        return 3
+    return 4
 
 
 def _dedupe_right_notes(
@@ -2526,12 +2525,13 @@ def _paint_spot(
             cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
             va="center", ha="right", zorder=22, **px_kw,
         )
-        cursor -= _ow(px, 22) + 0.40
+        # 漲停／跌停色塊會往左膨脹；標籤多留空，不准「收盤」蓋住數字
+        cursor -= _ow(px, 22) + (1.35 if px_kw else 0.55)
         ax.text(
             cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
             va="center", ha="right", zorder=22,
         )
-        cursor -= _ow(label, 11) + 0.40
+        cursor -= _ow(label, 11) + 0.45
         if ohlc_ok:
             cw, ch = 2.2, 4.2
             _draw_mini_candle(
@@ -2544,8 +2544,10 @@ def _paint_spot(
             va="center", ha="right", zorder=22,
         )
         if move and move != "—":
+            # 價有漲停晶片時多留空，不准「收／現價」與「較昨日」互壓
+            move_dy = 4.55 if px_kw else 3.95
             ax.text(
-                x, y - 3.05, "較昨日　" + move, color=color,
+                x, y - move_dy, "較昨日　" + move, color=color,
                 fontproperties=_fp(12, "bold"), va="center", ha="right", zorder=22,
             )
         return
@@ -2573,8 +2575,9 @@ def _paint_spot(
         va="center", ha="left", zorder=22, **px_kw,
     )
     if move and move != "—":
+        move_dy = 4.45 if px_kw else 3.95
         ax.text(
-            x, y - 3.15, "較昨日　" + move, color=color,
+            x, y - move_dy, "較昨日　" + move, color=color,
             fontproperties=_fp(12, "bold"), va="center", ha="left", zorder=22,
         )
 
@@ -2621,7 +2624,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v2" if fullbleed else "hdr-wrap2",
+        "hdr-band-v3" if fullbleed else "hdr-wrap3",
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
@@ -2730,6 +2733,26 @@ def render_biaoke_structure_png(
         )
         right_notes.append(
             {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
+        )
+    # 右軸空位標昨收（官方前收）；去重會避開與壓／撐太近
+    try:
+        prev_c_axis = float(
+            prev_bar.get("close")
+            or quote.get("prev")
+            or last_bar.get("yesterday_close")
+            or 0
+        )
+    except (TypeError, ValueError):
+        prev_c_axis = 0.0
+    if prev_c_axis > 0:
+        right_notes.append(
+            {
+                "x": float(label_col_left) - 0.6,
+                "y": float(prev_c_axis),
+                "text": f"昨收 {_px(prev_c_axis)}",
+                "color": "#546e7a",
+                "size": 11,
+            }
         )
     last_c = float(last_bar.get("close") or 0)
     if 0 <= spike_i < n:
@@ -2998,12 +3021,7 @@ def render_biaoke_structure_png(
     elif info.get("distribution"):
         mark = "過壓後掉回撐下＝出貨痕跡"
         mc = _PRESS
-    elif info.get("under_support"):
-        mark = "收在爆大量日低之下，這次量價先放棄"
-        mc = _PRESS
-    elif info.get("over_press"):
-        mark = "已過爆大量日高（半山腰／突破，長抱另論）"
-        mc = _WASH
+    # 大量日高／低判斷句（收在低下／已過高等）全股票都不打
     banner_bits = header_banner_lines(glance, sid=sid, plate=plate)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
     ov.set_xlim(0, 100)
@@ -3056,7 +3074,8 @@ def render_biaoke_structure_png(
         date_y, ohlc_y1, ohlc_y2 = 93.35, 90.25, 87.55
         spike_y1, spike_y2, mute_y, chip_y0 = 84.65, 82.05, 79.15, 76.05
         chip_step = 3.15
-        spot_y = 93.20  # 跟「最近收盤」列對齊右側，產業在上列
+        # 產業在標題列（_SPOT_Y）；現價／較昨日再下一列，垂直拉開不准互壓
+        spot_y = 91.35
     else:
         date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 86.35
         spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
@@ -3075,7 +3094,11 @@ def render_biaoke_structure_png(
         f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
         f"低 {_px(last_bar.get('low'))}"
     )
-    ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
+    # 橫式有右側今K／較昨日時，左欄只留量，不准「收」與「較昨日」互壓
+    if quote and not portrait:
+        ohlc_2 = f"量 {_vol(last_bar.get('volume'))}"
+    else:
+        ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
     # 開高低收／爆大量日一律兩行且不同 Y，不准跟今K同一條互壓
     ov.text(
         _HEADER_X, ohlc_y1, ohlc_1, color=_TEXT, fontproperties=_fp(15, "bold"),
@@ -3415,10 +3438,7 @@ def chart_caption(
             tape += "破撐之後又站回，比較像破線洗盤。"
         elif info.get("distribution"):
             tape += "過壓之後又掉回撐下，比較像出貨。"
-        elif info.get("under_support"):
-            tape += "收在爆大量日低之下，這次量價先放棄。"
-        elif info.get("over_press"):
-            tape += "已過爆大量日高，比較像半山腰。"
+        # 大量日高／低判斷句不上 caption
         lines.append(tape)
     ch = info.get("channel") or {}
     tip = str(ch.get("tip") or "").strip()

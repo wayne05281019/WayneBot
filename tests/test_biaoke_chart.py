@@ -486,13 +486,36 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v2" in src
+    assert "hdr-band-v3" in src
     assert "skip_industry=" in src
     assert "_paint_industry_chips" in src
+    assert "昨收" in src
+    assert "收在爆大量日低之下" not in src
+    assert "已過爆大量日高" not in src
     from biaoke_chart import _STOCK_MAIN_TOP_FULLBLEED
 
     # 介紹帶下緣＝主圖上緣；不准再 0.968 把头牌疊進 K
     assert 0.58 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.68
+
+
+def test_structure_no_vol_day_judgment_and_prev_close_note():
+    """結構圖：大量日高／低判斷句不打；右軸可標昨收。"""
+    import inspect
+
+    from biaoke_chart import _note_priority, analyze_structure, chart_caption
+
+    info = analyze_structure(_series())
+    notes = " ".join(str(x) for x in (info.get("notes") or []))
+    assert "收在爆大量日低之下" not in notes
+    assert "已過爆大量日高" not in notes
+    cap = chart_caption(info, sid="3035", name="智原")
+    assert "收在爆大量日低之下" not in cap
+    assert "已過爆大量日高" not in cap
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert 'f"昨收 {_px(prev_c_axis)}"' in src or "昨收" in src
+    assert _note_priority("昨收 443") == 2
+    spot = inspect.getsource(_paint_spot)
+    assert "move_dy" in spot
 
 
 def test_locator_inset_marks_window():

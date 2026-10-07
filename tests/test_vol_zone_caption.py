@@ -428,12 +428,15 @@ def test_day_path_label_hold_test_not_dead_press_tag():
     assert "今最高3,055" in line
     assert "收盤未過撐" in line
     assert "收2,920" in line
-    assert "第二次測大量撐" in line
+    # 判斷句全刪：只留事實
+    assert "測大量撐" not in line
+    assert "尚未測" not in line
     assert "聯亞" not in line
     assert "3081" not in line
     assert "10/05" not in line
     assert "壓 3,255" not in line
     assert "買訊" not in line
+    assert "收在爆大量" not in line
 
 
 def test_day_path_label_press_test_and_close_through():
@@ -446,18 +449,20 @@ def test_day_path_label_press_test_and_close_through():
     assert "壓為100" in line
     assert "今最高100" in line or "今最高100.2" in line
     assert "收盤未過壓" in line
-    assert "測大量壓" in line
+    assert "測大量壓" not in line
+    assert "尚未測" not in line
     through = {"date": "20261006", "open": 99, "high": 106, "low": 98, "close": 104, "volume": 1}
     up = vol_zone_day_path_label(press, hold, through, bars=[through], zone_date="20260901")
     assert "收盤已過壓" in up
     assert "撐為" not in up
     assert "尚未測大量壓" not in up
-    assert "壓轉撐" in up
-    assert "非買訊" in up
+    assert "壓轉撐" not in up
+    assert "非買訊" not in up
+    assert "收在爆大量" not in up
 
 
 def test_day_path_label_overbreak_no_false_untested():
-    """2383 形：收已過壓 5255，不准再寫近日尚未測大量壓。"""
+    """2383 形：收已過壓 5255；當日標只留事實，不准判斷句。"""
     from vol_zone_chart import vol_zone_day_path_label
 
     press, hold = 5255.0, 4635.0
@@ -476,6 +481,7 @@ def test_day_path_label_overbreak_no_false_untested():
     assert "收盤已過壓" in line
     assert "收5,995" in line
     assert "尚未測大量壓" not in line
-    assert "壓轉撐" in line
-    assert "非買訊" in line
+    assert "壓轉撐" not in line
+    assert "非買訊" not in line
+    assert "測大量" not in line
 
