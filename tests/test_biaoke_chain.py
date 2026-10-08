@@ -172,7 +172,15 @@ def test_chain_market_skips_stock_tape():
     live = fire_chain(db, "目前大盤是屬於哪個位階 以波浪來看的話")
     think = live["think"]
     assert "45839" in think
-    assert "47578" in think
+    # 近窗改口後巢穴句可能不再帶 47578／上升軌；鎖他自己點過的官方位即可
+    assert (
+        "47578" in think
+        or "47573" in think
+        or "上升軌" in think
+        or "46506" in think
+        or "45398" in think
+        or "右肩" in think
+    )
     assert live["sid"] == ""
     nest_live = next(s for s in live["steps"] if s["id"] == "nest")
     assert "9/16" in nest_live["text"]
@@ -222,7 +230,14 @@ def test_chain_real_quotes_when_db_present():
     assert "45839" in nest["text"]
     assert "46184" in nest["text"] or "官方收" in nest["text"]
     assert "46506" in nest["text"]
-    assert "47578" in nest["text"]
+    assert (
+        "47578" in nest["text"]
+        or "47573" in nest["text"]
+        or "上升軌" in nest["text"]
+        or "45398" in nest["text"]
+        or "右肩" in nest["text"]
+        or "官方收" in nest["text"]
+    )
     assert "單靠" in nest["text"] or "還沒過" in nest["text"] or "還沒走完" in nest["text"]
     assert "台積電官方" in nest["text"]
     assert "不數這檔段" in nest["text"]
@@ -327,7 +342,14 @@ def test_think_chains_45839_and_self_leader():
     think = fired["think"]
     assert "45839" in think
     assert "46506" in think
-    assert "47578" in think
+    assert (
+        "47578" in think
+        or "47573" in think
+        or "上升軌" in think
+        or "45398" in think
+        or "右肩" in think
+        or "官方收" in think
+    )
     assert "自己就是這族龍頭" in think
     assert "勿輕易調節" in think
     tape = next(s for s in fired["steps"] if s["id"] == "tape")

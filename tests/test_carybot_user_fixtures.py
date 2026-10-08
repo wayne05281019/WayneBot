@@ -54,7 +54,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
 
     def test_2421_20260831_price_alert_vol_match_carybot(self):
         """CaryBot：8/31 價格、K20高、月乖離、量排名一致；獲利/溫度尺度不同（見對照說明）。"""
-        row = self._row(self._card("2421"), "20260831")
+        row = self._row(self._card("2421", as_of="20260917"), "20260831")
         self.assertAlmostEqual(float(row["close"]), 179.5, places=1)
         self.assertEqual(row["預警"], "K20高")
         self.assertEqual(self._shown_alert(row), "最高價")

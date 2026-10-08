@@ -215,7 +215,14 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
             if not _approx(prem, want, 0.08):
                 out.append(f"折溢價 {prem} ≠ {want:.2f}")
     tbl = card.get("table")
-    if tbl is not None and hasattr(tbl, "iloc") and len(tbl):
+    listing_s = str(card.get("listing") or "")
+    # ETF 大字可能走淨值／昨收口徑，表第一列是市價；一般股票仍鎖死
+    if (
+        tbl is not None
+        and hasattr(tbl, "iloc")
+        and len(tbl)
+        and "ETF" not in listing_s
+    ):
         row0 = tbl.iloc[0]
         try:
             if abs(float(row0["close"]) - close) > 0.05:
