@@ -819,6 +819,10 @@ class NavigatorEngine:
         # 把 7/29 官方 4100 抬成 ~4732 → 獲利假顯 7.6%（真 cal60＝23.2%）。
         raw_px = close_raw.astype(float)
         adj_px = df["close"].astype(float)
+        # 還原後高低先留著：小額息表改 raw 後，60 窗若仍撞到更早的大額除權（6669 7800），
+        # 顯示高／低要能回到這套還原列，不准再讀已被蓋掉的 df["high"]。
+        adj_high_keep = df["high"].astype(float).copy()
+        adj_low_keep = df["low"].astype(float).copy()
         near_n = min(int(CAL60_RAW_NEAR_WINDOW), len(df))
         tail_raw = raw_px.iloc[-near_n:]
         tail_adj = adj_px.iloc[-near_n:]
@@ -833,6 +837,12 @@ class NavigatorEngine:
             df["open"] = open_raw.to_numpy()
             df["high"] = high_raw.to_numpy()
             df["low"] = low_raw.to_numpy()
+            df["_adj_high"] = adj_high_keep.to_numpy()
+            df["_adj_low"] = adj_low_keep.to_numpy()
+        else:
+            df = df.copy()
+            df["_adj_high"] = adj_high_keep.to_numpy()
+            df["_adj_low"] = adj_low_keep.to_numpy()
         close_s = px.where(~df["is_halt"]) if "is_halt" in df.columns else px
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
@@ -997,10 +1007,10 @@ class NavigatorEngine:
         adj_lo_s = None
         if close_now > 0 and h60 > close_now * 1.6:
             # 近窗小額息用 raw 表時，60 窗仍可能吃到更早的大額除權（6669 7800）。
-            # 顯示高／低必須改走還原後 high/low，不准再用 raw close_s 重算（會仍是 7800）。
+            # 顯示高／低必須改走還原後 high/low（_adj_*），不准讀已被 raw 覆蓋的 df["high"]。
             hl_display_adjusted = True
-            adj_hi_s = df["high"].astype(float)
-            adj_lo_s = df["low"].astype(float)
+            adj_hi_s = df["_adj_high"].astype(float) if "_adj_high" in df.columns else df["high"].astype(float)
+            adj_lo_s = df["_adj_low"].astype(float) if "_adj_low" in df.columns else df["low"].astype(float)
             if "is_halt" in df.columns:
                 adj_hi_s = adj_hi_s.where(~df["is_halt"])
                 adj_lo_s = adj_lo_s.where(~df["is_halt"])

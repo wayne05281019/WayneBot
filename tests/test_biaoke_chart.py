@@ -497,7 +497,7 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v61" in src or "hdr-band-v9c" in src or "hdr-band-v9" in src
+    assert "hdr-band-v62" in src or "hdr-band-v61" in src or "hdr-band-v9c" in src
     assert "skip_industry=" in src
     assert "_paint_nameplate" in src
     assert "_paint_structure_blue_baskets" in src
