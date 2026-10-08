@@ -155,14 +155,16 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
 
 
 def test_lookup_structure_uses_vol_zone_view():
-    """結構日K＝大量撐壓同一套官方 view，停牌灰K；橫式滿版對齊範本五。"""
+    """結構日K＝與大量撐壓同一套官方原柱（長窗）；停牌灰K；橫式滿版對齊範本五。"""
     import inspect
 
     from three_in_one_chart import _bars_from_official, render_lookup_structure_result
 
     src = inspect.getsource(render_lookup_structure_result)
     assert "prepare_volume_zone" in src
-    assert 'pack["view"]' in src
+    assert "load_official_ohlc" in src
+    assert "official_work" in src
+    assert 'pack["view"]' in src  # 長窗不足才退回 view
     assert "_STRUCTURE_LOOKUP_FIG" in src
     assert "VOL_ZONE_FIG_H_NAV" not in src
     bars = inspect.getsource(_bars_from_official)

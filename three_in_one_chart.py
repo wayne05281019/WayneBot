@@ -3251,19 +3251,28 @@ def render_lookup_structure_result(
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     try:
         from biaoke_chart import (
+            _BARS,
             _STRUCTURE_LOOKUP_FIG,
             render_biaoke_structure_png,
             stock_nameplate,
         )
         from vol_zone_chart import (
             VOL_ZONE_DPI,
+            load_official_ohlc,
+            official_work,
             prepare_volume_zone,
         )
 
+        # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖加長交易日補右白
         pack = prepare_volume_zone(sid, name, db_path, save_path)
         if not pack:
             return "", ""
-        bars = _bars_from_official(pack["view"], sid, name)
+        need = max(int(_BARS) + 20, 280)
+        long_df = official_work(load_official_ohlc(sid, db_path, need))
+        if long_df is not None and not getattr(long_df, "empty", True) and len(long_df) >= 8:
+            bars = _bars_from_official(long_df, sid, name)
+        else:
+            bars = _bars_from_official(pack["view"], sid, name)
         if len(bars) < 8:
             return "", ""
         path = render_biaoke_structure_png(

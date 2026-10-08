@@ -486,16 +486,18 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v5" in src or "hdr-band-v4" in src
+    assert "hdr-band-v6" in src or "hdr-band-v5" in src or "hdr-band-v4" in src
     assert "skip_industry=" in src
     assert "_paint_industry_chips" in src
     assert "昨收" in src
     assert "收在爆大量日低之下" not in src
     assert "已過爆大量日高" not in src
-    from biaoke_chart import _STOCK_MAIN_TOP_FULLBLEED
+    from biaoke_chart import _BARS, _STOCK_MAIN_TOP_FULLBLEED
 
-    # 介紹帶下緣＝主圖上緣；pass2 略增高介紹帶（可讀＋頂安全距），仍不准把头牌疊進 K
-    assert 0.72 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    # 介紹帶下緣＝主圖上緣；pass2b 行距拉開，仍不准把头牌疊進 K
+    assert 0.68 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    # 主圖加長交易日補右白（大量近窗仍短）
+    assert 220 <= int(_BARS) <= 260
 
 
 def test_structure_no_vol_day_judgment_and_prev_close_note():
@@ -539,7 +541,7 @@ def test_locator_inset_marks_window():
     from biaoke_chart import _BARS, _FIG_RIGHT, _STOCK_LOCATOR_RECT
     from biaoke_wave import _TWII_LOCATOR_RECT
 
-    assert _BARS >= 140
+    assert _BARS >= 220
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
     assert _STOCK_LOCATOR_RECT[2] >= 0.40
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
@@ -547,7 +549,7 @@ def test_locator_inset_marks_window():
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=_FIG_RIGHT" in rsrc or "right=_STRUCTURE_FIG_RIGHT" in rsrc or "_STRUCTURE_FIG_RIGHT" in rsrc
-    assert "_paint_spot(ov, quote" in rsrc
+    assert "_paint_spot(" in rsrc and "quote," in rsrc
     assert "89.15, ohlc_one" not in rsrc
     assert "spike_y1, spike_y2, mute_y, chip_y0 = 85.45, 85.45" not in rsrc
     assert "83.15, 80.15, 76.85, 73.55" in rsrc or "84.65, 82.05, 79.15, 76.05" in rsrc
