@@ -486,16 +486,20 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v4" in src
+    assert "hdr-band-v9c" in src or "hdr-band-v9" in src or "hdr-band-v8" in src
     assert "skip_industry=" in src
     assert "_paint_industry_chips" in src
     assert "昨收" in src
     assert "收在爆大量日低之下" not in src
     assert "已過爆大量日高" not in src
-    from biaoke_chart import _STOCK_MAIN_TOP_FULLBLEED
+    from biaoke_chart import _BARS, _BARS_MAX, _BARS_MIN, _STOCK_MAIN_TOP_FULLBLEED
 
-    # 介紹帶下緣＝主圖上緣；收緊無效留白後主圖上緣約 0.75，不准再把头牌疊進 K
-    assert 0.72 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    # 介紹帶下緣＝主圖上緣；pass2b 行距拉開，仍不准把头牌疊進 K
+    assert 0.68 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    # K 窗上限≈九個月（約 180–190）；不准再拉到一年／240
+    assert int(_BARS_MAX) <= 195
+    assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX)
+    assert 180 <= int(_BARS) <= 190
 
 
 def test_structure_no_vol_day_judgment_and_prev_close_note():
@@ -516,6 +520,12 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert _note_priority("昨收 443") == 2
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
+    # 「收盤／盤中」字距＋置中於迷你K與股價之間
+    assert "_paint_spaced_cjk" in spot
+    assert 'ha="center"' in spot
+    assert "candle_right" in spot and "price_left" in spot
+    assert "char_gap" in spot
+    assert "盤中" in inspect.getsource(_spot_quote)
 
 
 def test_locator_inset_marks_window():
@@ -539,7 +549,10 @@ def test_locator_inset_marks_window():
     from biaoke_chart import _BARS, _FIG_RIGHT, _STOCK_LOCATOR_RECT
     from biaoke_wave import _TWII_LOCATOR_RECT
 
-    assert _BARS >= 140
+    from biaoke_chart import _BARS_MAX, _BARS_MIN
+
+    assert 180 <= int(_BARS) <= 190
+    assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX) <= 195
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
     assert _STOCK_LOCATOR_RECT[2] >= 0.40
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
@@ -547,7 +560,7 @@ def test_locator_inset_marks_window():
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=_FIG_RIGHT" in rsrc or "right=_STRUCTURE_FIG_RIGHT" in rsrc or "_STRUCTURE_FIG_RIGHT" in rsrc
-    assert "_paint_spot(ov, quote" in rsrc
+    assert "_paint_spot(" in rsrc and "quote," in rsrc
     assert "89.15, ohlc_one" not in rsrc
     assert "spike_y1, spike_y2, mute_y, chip_y0 = 85.45, 85.45" not in rsrc
     assert "83.15, 80.15, 76.85, 73.55" in rsrc or "84.65, 82.05, 79.15, 76.05" in rsrc
@@ -576,6 +589,18 @@ def test_locator_inset_marks_window():
     assert any("最可能" in str(k.get("text")) for k in kept)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept)
     assert not any("下降壓" in str(k.get("text")) for k in kept)
+    # 昨收貼「最可能」釘價仍要留；只跟壓／撐極近才讓
+    kept_prev = _dedupe_right_notes(
+        [
+            {"y": 470.0, "text": "壓 470"},
+            {"y": 423.0, "text": "撐 423"},
+            {"y": 414.68, "text": "昨收 414.68"},
+            {"y": 416.64, "text": "最可能＝先放棄"},
+        ],
+        span=220.0,
+    )
+    assert any(str(k.get("text") or "").startswith("昨收") for k in kept_prev)
+    assert any("最可能" in str(k.get("text")) for k in kept_prev)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
@@ -678,6 +703,11 @@ def test_axis_ticks_drop_near_last_bar():
     assert 12 in ticks
     assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
     assert 56 not in ticks
+    # 爆量日貼最後一根：只留尾日，不准 10/05 疊 10/07
+    near = _axis_ticks(78, extra=(75,))
+    assert 77 in near
+    assert 75 not in near
+    assert 0 in near
 
 
 def test_pressure_support_use_consecutive_pivots():
