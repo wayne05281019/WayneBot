@@ -2568,27 +2568,32 @@ def _paint_spot(
                 fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
             )
         return
-    # 右對齊貼縮圖外框左邊空白：第一排今K｜小K｜現價／價，第二排漲跌
+    # 右對齊：今K｜迷你K｜收盤／現價｜數字；各段強制留白，不准「收盤」貼迷你K
+    # 間距（overlay 0–100）：價↔標 ≥1.0；標↔迷你K ≥1.85；迷你K↔今K ≥1.05
     if str(align or "right") == "right":
+        gap_px_lab = 1.55 if px_kw else 1.05
+        gap_lab_candle = 1.95
+        gap_candle_jink = 1.15
         cursor = float(x)
         ax.text(
             cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
             va="center", ha="right", zorder=22, **px_kw,
         )
         # 漲停／跌停色塊會往左膨脹；標籤多留空，不准「收盤」蓋住數字
-        cursor -= _ow(px, 22) + (1.35 if px_kw else 0.55)
+        cursor -= _ow(px, 22) + gap_px_lab
         ax.text(
             cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
             va="center", ha="right", zorder=22,
         )
-        cursor -= _ow(label, 11) + 0.45
+        # _ow 偏窄估；再加硬間距，迷你K右緣不准貼「收」左緣
+        cursor -= _ow(label, 11) + gap_lab_candle
         if ohlc_ok:
-            cw, ch = 2.2, 4.2
+            cw, ch = 1.85, 4.0
             _draw_mini_candle(
                 ax, cursor - cw, y - ch * 0.5, cw, ch,
                 float(o), float(hi), float(lo), float(close), prev,
             )
-            cursor -= cw + 0.35
+            cursor -= cw + gap_candle_jink
         ax.text(
             cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
             va="center", ha="right", zorder=22,
@@ -2606,24 +2611,27 @@ def _paint_spot(
             )
         return
     # 左對齊備援（測試／舊呼叫）
+    gap_jink_candle = 1.15
+    gap_candle_lab = 1.95
+    gap_lab_px = 1.05
     cursor = float(x)
     ax.text(
         cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
         va="center", ha="left", zorder=22,
     )
-    cursor += _ow("今K", 9) + 0.35
+    cursor += _ow("今K", 9) + gap_jink_candle
     if ohlc_ok:
-        cw, ch = 2.35, 4.4
+        cw, ch = 1.9, 4.0
         _draw_mini_candle(
             ax, cursor, y - ch * 0.5, cw, ch,
             float(o), float(hi), float(lo), float(close), prev,
         )
-        cursor += cw + 0.4
+        cursor += cw + gap_candle_lab
     ax.text(
         cursor, y, label, color="#546e7a", fontproperties=_fp(12, "bold"),
         va="center", ha="left", zorder=22,
     )
-    cursor += _ow(label, 12) + 0.4
+    cursor += _ow(label, 12) + gap_lab_px
     ax.text(
         cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
         va="center", ha="left", zorder=22, **px_kw,
@@ -2682,7 +2690,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v6" if fullbleed else "hdr-wrap3",
+        "hdr-band-v7" if fullbleed else "hdr-wrap3",
         int(_BARS),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
@@ -3156,9 +3164,9 @@ def render_biaoke_structure_png(
         date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 85.85
         spike_y1, spike_y2, mute_y, chip_y0 = 82.15, 78.75, 75.45, 72.05
         chip_step = 3.45
-        # 今K 在產業下方；較昨日再往下（_paint_spot move_dy）
-        spot_y = 90.85
-        spot_move_dy = 6.35
+        # 今K 在產業下方再拉開；較昨日再往下（不准貼產業晶片／收盤列）
+        spot_y = 90.25
+        spot_move_dy = 6.55
     else:
         date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 86.35
         spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55

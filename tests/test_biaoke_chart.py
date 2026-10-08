@@ -486,7 +486,7 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v6" in src or "hdr-band-v5" in src or "hdr-band-v4" in src
+    assert "hdr-band-v7" in src or "hdr-band-v6" in src or "hdr-band-v5" in src
     assert "skip_industry=" in src
     assert "_paint_industry_chips" in src
     assert "昨收" in src
@@ -518,6 +518,9 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert _note_priority("昨收 443") == 2
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
+    # 「收盤」與迷你K 硬間距；不准再貼成一塊
+    assert "gap_lab_candle" in spot
+    assert "1.95" in spot
 
 
 def test_locator_inset_marks_window():
