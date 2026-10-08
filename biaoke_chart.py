@@ -52,13 +52,15 @@ _CH_ASC = "#00897b"  # 上升通道雙線（對齊附圖青綠色調，白底可
 _CH_DESC = "#00838f"  # 下降通道雙線
 _WASH = "#ef6c00"
 _SPIKE_VOL = "#f9a825"
-# 查股結構橫式：交易日窗鎖下限≈八個月（可略多不可少）；大量撐壓近窗不動
-_BARS_MIN_MONTHS = 8
+# 查股結構橫式：K 窗上限≈九個月（約 180–190 根）；再長每天太密看不清
+# 大量撐壓近窗不動。清楚度／藍框左排另軌，未點頭不准合主。
+_BARS_MAX_MONTHS = 9
 _BARS_PER_MONTH = 21  # 台股約月均交易日
-_BARS_MIN = int(_BARS_MIN_MONTHS * _BARS_PER_MONTH)  # 168
-_BARS = 240  # ≈12 個月；必須 ≥ _BARS_MIN
+_BARS_MAX = int(_BARS_MAX_MONTHS * _BARS_PER_MONTH)  # 189
+_BARS = 185  # ≈九個月；必須 ≤ _BARS_MAX
+_BARS_MIN = 160  # 備援下限（短資料才縮）；不是「至少八個月」產品鎖
 _FUTURE = 10
-assert _BARS >= _BARS_MIN
+assert _BARS_MIN <= _BARS <= _BARS_MAX
 _PROJECT = "#e65100"
 _FORK = "#5d4037"
 _FUTURE_BG = "#fff6e0"

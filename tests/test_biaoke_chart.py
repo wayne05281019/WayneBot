@@ -492,14 +492,14 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "昨收" in src
     assert "收在爆大量日低之下" not in src
     assert "已過爆大量日高" not in src
-    from biaoke_chart import _BARS, _BARS_MIN, _STOCK_MAIN_TOP_FULLBLEED
+    from biaoke_chart import _BARS, _BARS_MAX, _BARS_MIN, _STOCK_MAIN_TOP_FULLBLEED
 
     # 介紹帶下緣＝主圖上緣；pass2b 行距拉開，仍不准把头牌疊進 K
     assert 0.68 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
-    # 交易日窗鎖下限≈八個月；可略多（240≈12月）
-    assert int(_BARS_MIN) >= 160
-    assert int(_BARS) >= int(_BARS_MIN)
-    assert 220 <= int(_BARS) <= 260
+    # K 窗上限≈九個月（約 180–190）；不准再拉到一年／240
+    assert int(_BARS_MAX) <= 195
+    assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX)
+    assert 180 <= int(_BARS) <= 190
 
 
 def test_structure_no_vol_day_judgment_and_prev_close_note():
@@ -549,10 +549,10 @@ def test_locator_inset_marks_window():
     from biaoke_chart import _BARS, _FIG_RIGHT, _STOCK_LOCATOR_RECT
     from biaoke_wave import _TWII_LOCATOR_RECT
 
-    assert _BARS >= 220
-    from biaoke_chart import _BARS_MIN
+    from biaoke_chart import _BARS_MAX, _BARS_MIN
 
-    assert _BARS >= _BARS_MIN >= 160
+    assert 180 <= int(_BARS) <= 190
+    assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX) <= 195
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
     assert _STOCK_LOCATOR_RECT[2] >= 0.40
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
