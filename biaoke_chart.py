@@ -80,15 +80,18 @@ _FIG_BOTTOM = 0.055
 _FIG_BOTTOM_FB = 0.062
 # 舊直式：頭牌帶在圖上方。橫式：介紹帶在上方，下緣＝主圖上緣（不准浮在 K 上壓柱）
 _STOCK_MAIN_TOP = 0.658
-# 橫式 pass2b：介紹帶再增高，左右欄行距拉開不准黏成一塊
-_STOCK_MAIN_TOP_FULLBLEED = 0.688
+# 橫式 61 範本：主圖上緣抬高＝三藍籃筐等縫＋K 區更大（頭欄鎖 v4）
+_STOCK_MAIN_TOP_FULLBLEED = 0.778
 _LOCATOR_LEFT = 0.500
 _LOCATOR_WIDTH = _FIG_RIGHT - _LOCATOR_LEFT
 _STOCK_LOCATOR_BOTTOM = 0.690
 _STOCK_LOCATOR_HEIGHT = 0.278
-# 橫式介紹帶：迷你圖仍在帶內右上，不准疊進主圖 K
-_STOCK_LOCATOR_BOTTOM_FB = 0.712
-_STOCK_LOCATOR_HEIGHT_FB = 0.248
+# 橫式頭欄較矮：長窗迷你圖若開會擠 v4；61 預設關 locator，常數仍留直式／備援
+_STOCK_LOCATOR_BOTTOM_FB = _STOCK_MAIN_TOP_FULLBLEED + 0.018
+_STOCK_LOCATOR_HEIGHT_FB = max(
+    0.14,
+    0.990 - 0.0135 - _STOCK_LOCATOR_BOTTOM_FB - 0.008,
+)
 # 縮圖右緣＝主圖右緣，上下一條線。
 _STOCK_LOCATOR_RECT = (
     _LOCATOR_LEFT,
@@ -102,11 +105,18 @@ _STOCK_LOCATOR_RECT_FB = (
     _STRUCTURE_FIG_RIGHT - _LOCATOR_LEFT,
     _STOCK_LOCATOR_HEIGHT_FB,
 )
+# 三藍籃筐（頭欄／主圖／成交量）同一左右緣；與 61-support-bluebox 對齊
+_STRUCTURE_BOX_X = 1.6
+_STRUCTURE_BOX_W = 96.6
+_STRUCTURE_BOX_EC = "#90caf9"
+_STRUCTURE_BOX_LW = 1.05
+_STRUCTURE_BOX_STYLE = "round,pad=0.18,rounding_size=0.55"
+_STRUCTURE_TOP_PAD = 1.35
 _HEADER_X = 4.60
 _HEADER_X_FB = 5.20
-# 今K／漲跌：右對齊縮圖左緣；無迷你圖時略內收，吃掉中間死白、不貼右裁
+# 今K／漲跌：右對齊藍框右內緣；有迷你圖時對齊縮圖左緣
 _SPOT_X = _LOCATOR_LEFT * 100.0 - 0.25
-_SPOT_X_NO_LOCATOR = 91.2
+_SPOT_X_NO_LOCATOR = _STRUCTURE_BOX_X + _STRUCTURE_BOX_W - 1.2
 _SPOT_Y = 97.35
 # 左上頭牌可佔到縮圖左側空白前（今K已移走）；橫式無迷你圖時拉寬晶片列
 _HEADER_CHIP_MAX = 48.5
@@ -1303,6 +1313,11 @@ def _note_priority(text: str) -> int:
     return 4
 
 
+def _is_rail_note(text: str) -> bool:
+    t = str(text or "")
+    return any(k in t for k in ("平行壓", "上升軌", "下降壓", "平行撐"))
+
+
 def _dedupe_right_notes(
     notes: Sequence[Dict[str, Any]],
     *,
@@ -1312,6 +1327,7 @@ def _dedupe_right_notes(
     """價位太近只留優先標籤，避免壓／軌／最可能互蓋。
 
     「昨收」只在幾乎貼齊壓／撐時才讓；空位要留昨收（偏好鎖死）。
+    通道軌標（平行壓／上升軌…）不准被爆大量壓／撐刪掉——改垂直錯開（61 範本）。
     """
     if not notes:
         return []
@@ -1327,6 +1343,7 @@ def _dedupe_right_notes(
         y = float(note.get("y") or 0)
         text = str(note.get("text") or "")
         is_prev = text.startswith("昨收")
+        is_rail = _is_rail_note(text)
         hit = False
         for k in kept:
             ky = float(k.get("y") or 0)
@@ -1339,6 +1356,11 @@ def _dedupe_right_notes(
             if ("最可能" in kt) and (text.startswith("壓") or text.startswith("撐")):
                 continue
             if ("最可能" in text) and (kt.startswith("壓") or kt.startswith("撐")):
+                continue
+            # 軌標 vs 壓／撐：保留兩者，後面再 nudge
+            if is_rail and (kt.startswith("壓") or kt.startswith("撐") or _is_rail_note(kt)):
+                continue
+            if _is_rail_note(kt) and (text.startswith("壓") or text.startswith("撐")):
                 continue
             if is_prev or kt.startswith("昨收"):
                 use_thr = (
@@ -1360,6 +1382,18 @@ def _dedupe_right_notes(
         if hit:
             continue
         kept.append(dict(note))
+    # 軌標若與已留標太近：只挪顯示 Y，不准刪（升軌上緣平行壓要看得到價）
+    for note in kept:
+        if not _is_rail_note(str(note.get("text") or "")):
+            continue
+        y = float(note.get("y") or 0)
+        for other in kept:
+            if other is note:
+                continue
+            oy = float(other.get("y") or 0)
+            if abs(y - oy) < thr:
+                y = oy + thr * 1.15 if y >= oy else oy - thr * 1.15
+                note["y"] = y
     kept.sort(key=lambda n: -float(n.get("y") or 0))
     return kept
 
@@ -2484,27 +2518,109 @@ def _spot_quote(
 
 
 def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, size: int = 10) -> float:
+    """藍標外框必須四邊完整（61 範本）；用 FancyBbox＋字分開畫，避免 text-bbox 缺底／缺角。"""
     label = str(text or "").strip()
     if not label:
         return x
+    s = f" {label} "
+    tw = float(_ow(s, size))
+    # overlay％：字高約 size*0.38；外框再外擴，底／角都有墨
+    th = max(2.35, float(size) * 0.38)
+    pad_x, pad_y = 0.55, 0.62
+    import matplotlib.patches as mpatches
+
+    ax.add_patch(
+        mpatches.FancyBboxPatch(
+            (float(x) - 0.12, float(y) - th * 0.5 - pad_y * 0.35),
+            tw + pad_x,
+            th + pad_y * 0.7,
+            boxstyle="round,pad=0.02,rounding_size=0.42",
+            facecolor=fc,
+            edgecolor=ec,
+            linewidth=1.45,
+            alpha=0.97,
+            zorder=21,
+            clip_on=False,
+        )
+    )
     ax.text(
         x,
         y,
-        f" {label} ",
+        s,
         color=tc,
         fontproperties=_fp(size, "bold"),
         va="center",
         ha="left",
         zorder=22,
-        bbox=dict(
-            boxstyle="round,pad=0.28",
-            facecolor=fc,
-            edgecolor=ec,
-            linewidth=1.05,
-            alpha=0.97,
-        ),
+        clip_on=False,
     )
-    return x + _ow(f" {label} ", size) + 1.15
+    return float(x) + tw + 1.15
+
+
+def _paint_structure_blue_baskets(fig, ov, ax1, ax2) -> None:
+    """頭欄／主圖／成交量三藍籃筐：左右齊、上下縫齊（61-support-bluebox）。"""
+    import matplotlib.patches as mpatches
+
+    for ax in (ax1, ax2):
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+    p1, p2 = ax1.get_position(), ax2.get_position()
+    gap_ax = float(p1.y0 - p2.y1)
+    if gap_ax < 0.001:
+        gap_ax = 0.008
+    edge_out = min(0.20, gap_ax * 100.0 * 0.12)
+
+    def _y_box(pos):
+        y0 = pos.y0 * 100.0 - edge_out
+        y1 = pos.y1 * 100.0 + edge_out
+        return y0, y1 - y0
+
+    main_y0, main_h = _y_box(p1)
+    vol_y0, vol_h = _y_box(p2)
+    vis_gap = main_y0 - (vol_y0 + vol_h)
+    if vis_gap < 0.12:
+        edge_out = 0.04
+        main_y0, main_h = _y_box(p1)
+        vol_y0, vol_h = _y_box(p2)
+        vis_gap = main_y0 - (vol_y0 + vol_h)
+    main_top = main_y0 + main_h
+    header_bot = main_top + vis_gap
+    header_top = 100.0 - float(_STRUCTURE_TOP_PAD)
+    min_bot = float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0 + 0.15
+    if header_bot < min_bot:
+        header_bot = min_bot
+    header_h = header_top - header_bot
+    if header_h < 16:
+        header_bot = header_top - 18.0
+        header_h = 18.0
+
+    def _add_box(y0: float, h: float, *, fill: bool, z: int) -> None:
+        ov.add_patch(
+            mpatches.FancyBboxPatch(
+                (_STRUCTURE_BOX_X, y0),
+                _STRUCTURE_BOX_W,
+                h,
+                boxstyle=_STRUCTURE_BOX_STYLE,
+                facecolor="#ffffff" if fill else "none",
+                edgecolor=_STRUCTURE_BOX_EC,
+                linewidth=_STRUCTURE_BOX_LW,
+                alpha=0.98 if fill else 1.0,
+                zorder=z,
+                clip_on=False,
+            )
+        )
+
+    # 先清掉舊單框頭欄，改畫三籃筐
+    for p in list(ov.patches):
+        try:
+            ec = p.get_edgecolor()
+            if len(ec) >= 3 and ec[2] > 0.75 and ec[0] < 0.75:
+                p.remove()
+        except Exception:
+            pass
+    _add_box(header_bot, header_h, fill=True, z=1)
+    _add_box(main_y0, main_h, fill=False, z=15)
+    _add_box(vol_y0, vol_h, fill=False, z=15)
 
 
 def _paint_industry_chips(
@@ -2797,7 +2913,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v9c" if fullbleed else "hdr-wrap3",
+        "hdr-band-v61" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3210,34 +3326,28 @@ def render_biaoke_structure_png(
     ov.axis("off")
     ov.patch.set_alpha(0)
     ov.set_navigate(False)
-    # 橫式：介紹帶在主圖上方（下緣＝主圖上緣），不准浮框壓住 K
-    # 長窗主圖已 ~240 根：迷你圖要真的多一段歷史才開，免得只多十根就擠掉滿寬介紹帶
-    has_locator = len(rows) >= n + (60 if fullbleed else 8)
+    # 橫式 61：頭欄滿寬三籃筐；長窗迷你圖會擠 v4，橫式關 locator（直式仍開）
+    # 直式：迷你圖要真的多一段歷史才開
+    has_locator = (not fullbleed) and len(rows) >= n + 8
     band_floor = (
-        float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0 + 0.55
+        float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0 + 0.85
         if fullbleed
         else 66.5
     )
+    # 頭欄藍框改由 _paint_structure_blue_baskets 與主圖／量柱同畫（暫占位，後清）
     if fullbleed:
         import matplotlib.patches as mpatches
 
         band_bot = float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0
-        # 無迷你圖：介紹框拉滿寬；頂緣內縮＝Telegram 點開避開靈動島
-        box_w = (
-            96.6
-            if not has_locator
-            else (_LOCATOR_LEFT * 100.0) - 2.2
-        )
-        box_top_pad = 1.35  # 頂安全距（點開滿版）
         ov.add_patch(
             mpatches.FancyBboxPatch(
-                (1.6, band_bot + 0.35),
-                box_w,
-                100.0 - band_bot - box_top_pad - 0.15,
-                boxstyle="round,pad=0.22,rounding_size=0.55",
+                (_STRUCTURE_BOX_X, band_bot + 0.35),
+                _STRUCTURE_BOX_W,
+                100.0 - band_bot - float(_STRUCTURE_TOP_PAD) - 0.15,
+                boxstyle=_STRUCTURE_BOX_STYLE,
                 facecolor="#ffffff",
-                edgecolor="#90caf9",
-                linewidth=1.05,
+                edgecolor=_STRUCTURE_BOX_EC,
+                linewidth=_STRUCTURE_BOX_LW,
                 alpha=0.98,
                 zorder=1,
                 clip_on=False,
@@ -3245,38 +3355,29 @@ def render_biaoke_structure_png(
         )
     spot_x = float(_SPOT_X_NO_LOCATOR if (fullbleed and not has_locator) else _SPOT_X)
     header_x = float(_HEADER_X_FB if fullbleed else _HEADER_X)
-    # 橫式：股名左（離頂）；產業／今K 右欄分行拉開，不准左右黏成一塊
+    # 橫式 v4：股號＋股名一次；產業貼股名右（不准壓字）
     name_y = 96.55 if fullbleed else float(_SPOT_Y)
     _paint_nameplate(
         ov,
         plate,
         x=header_x,
-        skip_industry=bool(fullbleed),
+        skip_industry=False,
         y=float(name_y),
         title_size=22 if fullbleed else 28,
     )
-    if fullbleed:
-        # 產業與股名同行右側；今K 整列下移，垂直拉開
-        _paint_industry_chips(
-            ov,
-            plate,
-            x=float(spot_x) - 0.35,
-            y=float(name_y),
-            align="right",
-        )
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else (
         float(_HEADER_CHIP_MAX_FB) if (fullbleed and not has_locator) else _HEADER_CHIP_MAX
     )
-    # 橫式介紹帶：左右欄每行再拉開；狀態晶片不准掉進主圖、不准貼帶底
+    # 橫式 v4 頭欄：量併「低」後；無灰字；晶片留在籃筐內
     if fullbleed:
-        # 介紹帶 ~31%：列距 ≥3.4，股名／價／漲跌／晶片不黏
-        date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 85.85
-        spike_y1, spike_y2, mute_y, chip_y0 = 82.15, 78.75, 75.45, 72.05
-        chip_step = 3.45
-        # 今K 在產業下方再拉開；較昨日再往下（不准貼產業晶片／收盤列）
-        spot_y = 90.25
-        spot_move_dy = 6.55
+        date_y, ohlc_y1 = 93.35, 90.15
+        spike_y1, spike_y2, chip_y0 = 86.95, 83.85, 80.85
+        chip_step = 3.15
+        spot_y = 91.55
+        spot_move_dy = 5.85
+        mute_y = None
+        ohlc_y2 = None
     else:
         date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 86.35
         spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
@@ -3292,26 +3393,36 @@ def render_biaoke_structure_png(
         va="center",
         ha="left",
     )
-    ohlc_1 = (
-        f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
-        f"低 {_px(last_bar.get('low'))}"
-    )
-    # 橫式有右側今K／較昨日時，左欄只留量，不准「收」與「較昨日」互壓
-    if quote and not portrait:
+    # 61／v4：開高低＋量同一行；直式才另列收／量
+    if fullbleed:
+        ohlc_1 = (
+            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
+            f"低 {_px(last_bar.get('low'))}　量 {_vol(last_bar.get('volume'))}"
+        )
+        ohlc_2 = ""
+    elif quote and not portrait:
+        ohlc_1 = (
+            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
+            f"低 {_px(last_bar.get('low'))}"
+        )
         ohlc_2 = f"量 {_vol(last_bar.get('volume'))}"
     else:
+        ohlc_1 = (
+            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
+            f"低 {_px(last_bar.get('low'))}"
+        )
         ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
-    # 開高低收／爆大量日一律兩行且不同 Y，不准跟今K同一條互壓
     ov.text(
         header_x, ohlc_y1, ohlc_1, color=_TEXT,
         fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
-    ov.text(
-        header_x, ohlc_y2, ohlc_2, color=_TEXT,
-        fontproperties=_fp(14 if fullbleed else 15, "bold"),
-        va="center", ha="left",
-    )
+    if ohlc_2 and ohlc_y2 is not None:
+        ov.text(
+            header_x, ohlc_y2, ohlc_2, color=_TEXT,
+            fontproperties=_fp(14 if fullbleed else 15, "bold"),
+            va="center", ha="left",
+        )
     spike_1 = f"爆大量日 {_ymd_full(spike_date)}"
     spike_2 = (
         f"高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
@@ -3327,15 +3438,17 @@ def render_biaoke_structure_png(
         fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
-    ov.text(
-        header_x,
-        mute_y,
-        "不是15分、不是介紹圖／決策卡",
-        color=_MUTED,
-        fontproperties=_fp(12 if fullbleed else 13, "bold"),
-        va="center",
-        ha="left",
-    )
+    # 橫式 61：頭欄不准灰字「不是15分…」；直式仍留
+    if mute_y is not None:
+        ov.text(
+            header_x,
+            mute_y,
+            "不是15分、不是介紹圖／決策卡",
+            color=_MUTED,
+            fontproperties=_fp(13, "bold"),
+            va="center",
+            ha="left",
+        )
     chip_x, chip_y = header_x, chip_y0
     if mark:
         chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=12 if fullbleed else 13)
@@ -3344,7 +3457,10 @@ def render_biaoke_structure_png(
     ch_lab = str((channel or {}).get("label") or "").strip()
     if ch_lab:
         ch_color = _UP_TRACK if str((channel or {}).get("kind") or "") == "asc" else _DOWN_TRACK
-        ch_bits = [b for b in ch_lab.replace("　", " ").split() if b] + ["不是買訊"]
+        # 61：通道狀態晶片只在頭欄一次；「不是買訊」併進通道列會重複，橫式不加
+        ch_bits = [b for b in ch_lab.replace("　", " ").split() if b]
+        if not fullbleed:
+            ch_bits = ch_bits + ["不是買訊"]
         for bit in ch_bits:
             need = _ow(f" {bit} ", 12) + 1.3
             if chip_x > header_x + 0.2 and chip_x + need > chip_max:
@@ -3542,6 +3658,12 @@ def render_biaoke_structure_png(
         )
     except Exception:
         pass
+    # 61：subplots_adjust 後依軸位畫三藍籃筐（頭欄／主圖／量），縫乾淨左右齊
+    if fullbleed:
+        try:
+            _paint_structure_blue_baskets(fig, ov, ax1, ax2)
+        except Exception:
+            logger.debug("結構圖三藍籃筐略過", exc_info=True)
     from wayne_navigator import _savefig_lookup_png
 
     _savefig_lookup_png(fig, save_path, use_dpi)

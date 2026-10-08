@@ -497,16 +497,29 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v9c" in src or "hdr-band-v9" in src or "hdr-band-v8" in src
+    assert "hdr-band-v61" in src or "hdr-band-v9c" in src or "hdr-band-v9" in src
     assert "skip_industry=" in src
-    assert "_paint_industry_chips" in src
+    assert "_paint_nameplate" in src
+    assert "_paint_structure_blue_baskets" in src
     assert "昨收" in src
+    from biaoke_chart import _paint_industry_chips as _ind_fn
+
+    assert callable(_ind_fn)
     assert "收在爆大量日低之下" not in src
     assert "已過爆大量日高" not in src
-    from biaoke_chart import _BARS, _BARS_MAX, _BARS_MIN, _STOCK_MAIN_TOP_FULLBLEED
+    from biaoke_chart import (
+        _BARS,
+        _BARS_MAX,
+        _BARS_MIN,
+        _STOCK_MAIN_TOP_FULLBLEED,
+        _STRUCTURE_BOX_W,
+        _paint_structure_blue_baskets,
+    )
 
-    # 介紹帶下緣＝主圖上緣；pass2b 行距拉開，仍不准把头牌疊進 K
-    assert 0.68 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    # 61：主圖上緣抬高；三藍籃筐等縫；頭欄仍不准疊進 K
+    assert 0.75 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    assert float(_STRUCTURE_BOX_W) >= 90.0
+    assert callable(_paint_structure_blue_baskets)
     # K 窗上限≈九個月（約 180–190）；不准再拉到一年／240
     assert int(_BARS_MAX) <= 195
     assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX)
@@ -599,7 +612,11 @@ def test_locator_inset_marks_window():
     )
     assert any("最可能" in str(k.get("text")) for k in kept)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept)
-    assert not any("下降壓" in str(k.get("text")) for k in kept)
+    # 61：軌標不准被壓／撐刪掉，改垂直錯開
+    assert any("下降壓" in str(k.get("text")) for k in kept)
+    rail = next(k for k in kept if "下降壓" in str(k.get("text")))
+    press = next(k for k in kept if str(k.get("text") or "").startswith("壓"))
+    assert abs(float(rail["y"]) - float(press["y"])) >= 2.0
     # 昨收貼「最可能」釘價仍要留；只跟壓／撐極近才讓
     # 最可能釘現價不准吃掉撐（7853：撐423 vs 收416；span 大時 thr 會蓋到）
     kept_prev = _dedupe_right_notes(
