@@ -66,21 +66,22 @@ _MUTED = "#607d8b"
 _FIG_LEFT = 0.028
 _FIG_RIGHT = 0.918
 # 結構圖右溝要塞「最可能＝看壓 ####」整盒＋邊框；右緣再留 y 刻度，不准貼齊裁切
-_STRUCTURE_FIG_RIGHT = 0.958
+_STRUCTURE_FIG_RIGHT = 0.948
 # 直式 4:5：縮圖靠右，左邊留給頭牌，不准今K／日期壓進迷你圖
 _LOOKUP_LOCATOR_LEFT = 0.575
 _FIG_BOTTOM = 0.055
+_FIG_BOTTOM_FB = 0.062
 # 舊直式：頭牌帶在圖上方。橫式：介紹帶在上方，下緣＝主圖上緣（不准浮在 K 上壓柱）
 _STOCK_MAIN_TOP = 0.658
-# 橫式：收緊介紹帶無效留白，主 K 拉高對齊大量撐壓質感（仍留開高低收＋爆大量＋晶片）
-_STOCK_MAIN_TOP_FULLBLEED = 0.755
+# 橫式 pass2：介紹帶略增高（可讀行距＋頂緣避開靈動島），主 K 仍占大半
+_STOCK_MAIN_TOP_FULLBLEED = 0.722
 _LOCATOR_LEFT = 0.500
 _LOCATOR_WIDTH = _FIG_RIGHT - _LOCATOR_LEFT
 _STOCK_LOCATOR_BOTTOM = 0.690
 _STOCK_LOCATOR_HEIGHT = 0.278
-# 橫式介紹帶縮矮：迷你圖仍在帶內右上，不准疊進主圖 K
-_STOCK_LOCATOR_BOTTOM_FB = 0.768
-_STOCK_LOCATOR_HEIGHT_FB = 0.195
+# 橫式介紹帶：迷你圖仍在帶內右上，不准疊進主圖 K
+_STOCK_LOCATOR_BOTTOM_FB = 0.742
+_STOCK_LOCATOR_HEIGHT_FB = 0.218
 # 縮圖右緣＝主圖右緣，上下一條線。
 _STOCK_LOCATOR_RECT = (
     _LOCATOR_LEFT,
@@ -95,12 +96,14 @@ _STOCK_LOCATOR_RECT_FB = (
     _STOCK_LOCATOR_HEIGHT_FB,
 )
 _HEADER_X = 4.60
-# 今K／漲跌：右對齊縮圖左緣；無迷你圖時改靠右緣吃掉右上留白
+_HEADER_X_FB = 5.20
+# 今K／漲跌：右對齊縮圖左緣；無迷你圖時略內收，吃掉中間死白、不貼右裁
 _SPOT_X = _LOCATOR_LEFT * 100.0 - 0.25
-_SPOT_X_NO_LOCATOR = 97.35
+_SPOT_X_NO_LOCATOR = 91.2
 _SPOT_Y = 97.35
-# 左上頭牌可佔到縮圖左側空白前（今K已移走）
+# 左上頭牌可佔到縮圖左側空白前（今K已移走）；橫式無迷你圖時拉寬晶片列
 _HEADER_CHIP_MAX = 48.5
+_HEADER_CHIP_MAX_FB = 82.0
 # 查股結構圖橫式長寬比對齊範本五（約 1.52）；大量撐壓 figsize 不动
 _STRUCTURE_LOOKUP_FIG = (12.4, 12.4 / 1.52)
 
@@ -133,28 +136,37 @@ def _md(raw: Any) -> str:
 
 
 def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
-    """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免 09/09 疊在 09/14 上。"""
+    """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免 09/09 疊在 09/14 上。
+
+    爆量日若離最後一根 <4，只留最後一根（爆量另有豎虛線＋量標），不准日刻互壓。
+    """
     n = int(n or 0)
     if n <= 0:
         return []
     if n == 1:
         return [0]
-    extras = [int(x) for x in extra if 0 <= int(x) < n]
+    last = n - 1
+    min_extra_gap = 4
+    extras = [
+        int(x)
+        for x in extra
+        if 0 <= int(x) < n and abs(int(x) - last) >= min_extra_gap
+    ]
     step = max(n // 7, 4)
     raw = list(range(0, n, step))
-    if n - 1 not in raw:
-        raw.append(n - 1)
+    if last not in raw:
+        raw.append(last)
     for x in extras:
         if x not in raw:
             raw.append(x)
     keep: List[int] = []
     for i in sorted(set(raw)):
-        if i in (0, n - 1) or i in extras:
+        if i in (0, last) or i in extras:
             keep.append(i)
             continue
         if any(abs(i - e) < 5 for e in extras):
             continue
-        if abs(i - (n - 1)) < 4:
+        if abs(i - last) < 4:
             continue
         keep.append(i)
     return keep
@@ -1290,7 +1302,10 @@ def _dedupe_right_notes(
     span: float,
     near_frac: float = 0.028,
 ) -> List[Dict[str, Any]]:
-    """價位太近只留優先標籤，避免壓／軌／最可能互蓋。"""
+    """價位太近只留優先標籤，避免壓／軌／最可能互蓋。
+
+    「昨收」只在幾乎貼齊壓／撐時才讓；空位要留昨收（偏好鎖死）。
+    """
     if not notes:
         return []
     ordered = sorted(
@@ -1299,9 +1314,38 @@ def _dedupe_right_notes(
     )
     kept: List[Dict[str, Any]] = []
     thr = max(float(span) * float(near_frac), 1.0)
+    # 昨收只跟壓／撐比窄門檻；不准跟「最可能」同價附近被誤刪（416 vs 昨收 414）
+    prev_thr = max(float(span) * 0.012, 0.8)
     for note in ordered:
         y = float(note.get("y") or 0)
-        if any(abs(y - float(k.get("y") or 0)) < thr for k in kept):
+        text = str(note.get("text") or "")
+        is_prev = text.startswith("昨收")
+        hit = False
+        for k in kept:
+            ky = float(k.get("y") or 0)
+            kt = str(k.get("text") or "")
+            if is_prev and "最可能" in kt:
+                continue
+            if (not is_prev) and "最可能" in text and kt.startswith("昨收"):
+                continue
+            if is_prev or kt.startswith("昨收"):
+                use_thr = (
+                    prev_thr
+                    if (
+                        kt.startswith("壓")
+                        or kt.startswith("撐")
+                        or kt.startswith("昨收")
+                        or text.startswith("壓")
+                        or text.startswith("撐")
+                    )
+                    else thr
+                )
+            else:
+                use_thr = thr
+            if abs(y - ky) < use_thr:
+                hit = True
+                break
+        if hit:
             continue
         kept.append(dict(note))
     kept.sort(key=lambda n: -float(n.get("y") or 0))
@@ -1352,10 +1396,10 @@ def _place_right_notes(
             tx = min(tx, fit_tx)
     most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
     others = [n for n in cleaned if "最可能" not in str(n.get("text") or "")]
-    # 上緣專留給「最可能」一整句，下方才排壓／撐／軌
-    reserve = gap * 1.45
+    # 上緣留給「最可能」一整句；下方才排壓／撐／昨收／軌（同一左緣）
+    reserve = gap * 1.35
     hi_others = hi - reserve
-    taken: List[float] = [float(y) for y in avoid_ys if y is not None]
+    taken: List[float] = []
     placed: List[Tuple[Dict[str, Any], float]] = []
     if most:
         my = hi - gap * 0.2
@@ -1363,7 +1407,7 @@ def _place_right_notes(
         taken.append(my)
     other_ys = _spread_ys_around(
         [float(n.get("y") or 0) for n in others],
-        taken,
+        taken + [float(y) for y in avoid_ys if y is not None],
         gap,
         lo=lo,
         hi=hi_others,
@@ -1371,31 +1415,33 @@ def _place_right_notes(
     for note, ty in zip(others, other_ys):
         placed.append((note, ty))
         taken.append(ty)
-    # 畫圖時上面的「最可能」先畫，後面的不准蓋住它（z 一樣時後畫壓前畫）
+    # 由上往下再強制錯開：盒與盒至少 gap，不准最可能貼壓
     placed.sort(key=lambda p: -float(p[1]))
+    enforced: List[Tuple[Dict[str, Any], float]] = []
+    for note, ty in placed:
+        for _prev, ty2 in enforced:
+            if abs(ty - ty2) < gap:
+                ty = ty2 - gap
+        ty = min(max(ty, lo), hi)
+        enforced.append((note, ty))
+    placed = enforced
+    # 同一左緣欄：所有標籤共用 tx，不准「最可能」因估寬偏右
+    col_tx = float(tx)
     for note, ty in placed:
         ny = float(note.get("y") or 0)
-        # 字中心必須離開釘點價，否則虛線引線會橫穿盒子（看起來像壓在軌上）
-        if abs(ty - ny) < gap * 0.65:
-            ty = ny + gap * 0.85 if ty >= ny else ny - gap * 0.85
-            ty = min(max(ty, lo), hi)
-            # 再避開已佔位
-            for _ in range(8):
-                hit = next((t for t in taken if abs(ty - t) < gap * 0.9), None)
-                if hit is None:
-                    break
-                ty = hit + gap if ty >= hit else hit - gap
-                ty = min(max(ty, lo), hi)
-        # 短 stub：只從標籤左側一小段連進來。不准從軌末端拉長虛線穿盒
-        # （長虛線顏色跟軌一樣，看起來就像軌穿進盒子）
-        stub_x = float(tx) - 1.25
+        # 字中心離開釘點價，但不得再擠進已佔位（最終 enforced 已錯開）
+        if abs(ty - ny) < gap * 0.45:
+            cand = ny + gap * 0.7 if ty >= ny else ny - gap * 0.7
+            if all(abs(cand - t) >= gap * 0.85 for _, t in placed if t != ty):
+                ty = min(max(cand, lo), hi)
+        stub_x = float(col_tx) - 1.35
         _leader_note(
             ax,
             stub_x,
             ty,
             str(note.get("text") or ""),
             str(note.get("color") or _TEXT),
-            tx=tx,
+            tx=col_tx,
             ty=ty,
             size=int(note.get("size") or 11),
             ha="left",
@@ -1403,12 +1449,11 @@ def _place_right_notes(
             clip=True,
             shrink_b=1.5,
         )
-        # 價位對照：在 stub 左端畫小點，對齊原本釘價（不畫長引線）
         ax.plot(
             [stub_x],
             [ny],
             marker="o",
-            markersize=3.8,
+            markersize=4.0,
             color=str(note.get("color") or _TEXT),
             markeredgecolor="white",
             markeredgewidth=0.55,
@@ -1421,10 +1466,10 @@ def _place_right_notes(
                 [stub_x, stub_x],
                 [ny, ty],
                 color=str(note.get("color") or _TEXT),
-                linewidth=0.65,
+                linewidth=0.85,
                 linestyle=":",
                 zorder=11,
-                alpha=0.7,
+                alpha=0.78,
                 clip_on=True,
             )
 
@@ -2430,16 +2475,18 @@ def _paint_nameplate(
     y: float = 96.70,
     industry_x: Optional[float] = None,
     skip_industry: bool = False,
+    title_size: int = 28,
 ) -> None:
     sid = str(plate.get("sid") or "")
     name = str(plate.get("name") or "")
     title = f"{sid} {name}".strip() or "官方日K"
+    size = int(title_size or 28)
     ax.text(
         x,
         y,
         title,
         color=_TEXT,
-        fontproperties=_fp(28, "bold"),
+        fontproperties=_fp(size, "bold"),
         va="center",
         ha="left",
         zorder=22,
@@ -2447,7 +2494,7 @@ def _paint_nameplate(
     if skip_industry:
         return
     # industry_x：橫式介紹帶把產業／龍頭標往右挪，不貼股名
-    after_title = x + _ow(title, 28) + 1.55
+    after_title = x + _ow(title, size) + 1.55
     if industry_x is None:
         cx = after_title
     else:
@@ -2625,7 +2672,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v4" if fullbleed else "hdr-wrap3",
+        "hdr-band-v5" if fullbleed else "hdr-wrap3",
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
@@ -2660,8 +2707,8 @@ def render_biaoke_structure_png(
         dpi=use_dpi,
         sharex=True,
         gridspec_kw=dict(
-            height_ratios=(5.85, 1.25) if fullbleed else (5.45, 1.45),
-            hspace=0.032 if fullbleed else 0.048,
+            height_ratios=(5.55, 1.40) if fullbleed else (5.45, 1.45),
+            hspace=0.028 if fullbleed else 0.048,
         ),
         facecolor=_BG,
     )
@@ -2960,15 +3007,15 @@ def render_biaoke_structure_png(
         ),
         default=22.0,
     )
-    label_frac = 0.26  # 軸寬約 1/4 給標籤欄（含邊框＋右內邊距）
+    label_frac = 0.205  # 右標欄收窄：主 K 變寬，標籤仍整盒入軸
     content_right = float(label_col_left)
     need_by_frac = content_right / max(1.0 - label_frac, 0.5)
-    need_by_text = content_right + max_note_w * 1.35 + 8.0
+    need_by_text = content_right + max_note_w * 1.22 + 6.5
     x_right = max(float(x_right), need_by_frac, need_by_text)
     ax1.set_xlim(-0.55, x_right)
-    # 字靠標籤欄左側，右側整段留白給邊框，不准貼齊軸脊
+    # 字靠標籤欄左側同一緣，右側留邊框＋右軸；不准貼齊軸脊、不准最可能偏右
     gutter = float(x_right) - content_right
-    x_text = content_right + max(2.2, gutter * 0.10)
+    x_text = content_right + max(1.8, gutter * 0.08)
     # 水平壓撐＋通道現價都要垂直讓開，盒子中心不准落在線上
     avoid_ys: List[float] = []
     if spike_hi:
@@ -2986,7 +3033,7 @@ def render_biaoke_structure_png(
         x_text=x_text,
         ymin=ymin,
         ymax=ymax,
-        min_gap=span * 0.065,
+        min_gap=span * 0.078,
         span=span,
         seam=float(n - 1),
         avoid_ys=avoid_ys,
@@ -3044,18 +3091,19 @@ def render_biaoke_structure_png(
         import matplotlib.patches as mpatches
 
         band_bot = float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0
-        # 無迷你圖：介紹框拉滿寬，吃掉右上無效留白；有迷你圖仍只佔左半
+        # 無迷你圖：介紹框拉滿寬；頂緣內縮＝Telegram 點開避開靈動島
         box_w = (
             96.6
             if not has_locator
             else (_LOCATOR_LEFT * 100.0) - 2.2
         )
+        box_top_pad = 1.35  # 頂安全距（點開滿版）
         ov.add_patch(
             mpatches.FancyBboxPatch(
-                (1.6, band_bot + 0.18),
+                (1.6, band_bot + 0.35),
                 box_w,
-                100.0 - band_bot - 0.55,
-                boxstyle="round,pad=0.18,rounding_size=0.55",
+                100.0 - band_bot - box_top_pad - 0.15,
+                boxstyle="round,pad=0.22,rounding_size=0.55",
                 facecolor="#ffffff",
                 edgecolor="#90caf9",
                 linewidth=1.05,
@@ -3065,40 +3113,44 @@ def render_biaoke_structure_png(
             )
         )
     spot_x = float(_SPOT_X_NO_LOCATOR if (fullbleed and not has_locator) else _SPOT_X)
-    # 橫式：股名左；產業／龍頭與今K／漲跌同往右靠（分列，不准互壓）
+    header_x = float(_HEADER_X_FB if fullbleed else _HEADER_X)
+    # 橫式：股名左（略離頂）；產業／今K 右欄內收，吃掉中間死白、不准互壓
+    name_y = 95.45 if fullbleed else float(_SPOT_Y)
     _paint_nameplate(
         ov,
         plate,
+        x=header_x,
         skip_industry=bool(fullbleed),
-        y=float(_SPOT_Y),
+        y=float(name_y),
+        title_size=24 if fullbleed else 28,
     )
     if fullbleed:
         _paint_industry_chips(
             ov,
             plate,
             x=float(spot_x) - 0.35,
-            y=float(_SPOT_Y),
+            y=float(name_y),
             align="right",
         )
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else (
-        92.0 if (fullbleed and not has_locator) else _HEADER_CHIP_MAX
+        float(_HEADER_CHIP_MAX_FB) if (fullbleed and not has_locator) else _HEADER_CHIP_MAX
     )
-    # 橫式介紹帶壓縮行距：密度對齊大量撐壓；狀態晶片不准掉進主圖
+    # 橫式介紹帶：均分行距、頂底不 choking；狀態晶片不准掉進主圖
     if fullbleed:
-        # 介紹帶約 24.5%：比舊 38% 緊，行距仍可讀、不准互壓
-        date_y, ohlc_y1, ohlc_y2 = 94.85, 92.55, 90.55
-        spike_y1, spike_y2, mute_y, chip_y0 = 88.35, 86.45, 84.65, 82.55
-        chip_step = 2.55
-        # 產業在標題列；現價／較昨日再下一列，垂直拉開不准互壓
-        spot_y = 94.15
+        # 介紹帶約 27.8%：股名→日期拉開；八列可讀、晶片離帶底
+        date_y, ohlc_y1, ohlc_y2 = 92.55, 90.15, 87.85
+        spike_y1, spike_y2, mute_y, chip_y0 = 85.25, 82.95, 80.75, 78.25
+        chip_step = 2.85
+        # 產業貼股名列；今K／較昨日在右欄中段，垂直拉開不准互壓
+        spot_y = 91.55
     else:
         date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 86.35
         spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
         chip_step = 3.6
         spot_y = float(_SPOT_Y)
     ov.text(
-        _HEADER_X,
+        header_x,
         date_y,
         date_line,
         color=_TEXT,
@@ -3117,12 +3169,12 @@ def render_biaoke_structure_png(
         ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
     # 開高低收／爆大量日一律兩行且不同 Y，不准跟今K同一條互壓
     ov.text(
-        _HEADER_X, ohlc_y1, ohlc_1, color=_TEXT,
+        header_x, ohlc_y1, ohlc_1, color=_TEXT,
         fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
     ov.text(
-        _HEADER_X, ohlc_y2, ohlc_2, color=_TEXT,
+        header_x, ohlc_y2, ohlc_2, color=_TEXT,
         fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
@@ -3132,28 +3184,28 @@ def render_biaoke_structure_png(
         f"量 {_vol(spike_bar.get('volume'))}"
     )
     ov.text(
-        _HEADER_X, spike_y1, spike_1, color=_PRESS,
+        header_x, spike_y1, spike_1, color=_PRESS,
         fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
     ov.text(
-        _HEADER_X, spike_y2, spike_2, color=_PRESS,
+        header_x, spike_y2, spike_2, color=_PRESS,
         fontproperties=_fp(14 if fullbleed else 15, "bold"),
         va="center", ha="left",
     )
     ov.text(
-        _HEADER_X,
+        header_x,
         mute_y,
         "不是15分、不是介紹圖／決策卡",
         color=_MUTED,
-        fontproperties=_fp(11 if fullbleed else 13, "bold"),
+        fontproperties=_fp(12 if fullbleed else 13, "bold"),
         va="center",
         ha="left",
     )
-    chip_x, chip_y = _HEADER_X, chip_y0
+    chip_x, chip_y = header_x, chip_y0
     if mark:
         chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=12 if fullbleed else 13)
-        chip_x = _HEADER_X
+        chip_x = header_x
         chip_y -= chip_step
     ch_lab = str((channel or {}).get("label") or "").strip()
     if ch_lab:
@@ -3161,22 +3213,22 @@ def render_biaoke_structure_png(
         ch_bits = [b for b in ch_lab.replace("　", " ").split() if b] + ["不是買訊"]
         for bit in ch_bits:
             need = _ow(f" {bit} ", 12) + 1.3
-            if chip_x > _HEADER_X + 0.2 and chip_x + need > chip_max:
+            if chip_x > header_x + 0.2 and chip_x + need > chip_max:
                 if chip_y - chip_step < band_floor:
                     break
-                chip_x = _HEADER_X
+                chip_x = header_x
                 chip_y -= chip_step
             chip_x = _draw_chip(
                 ov, chip_x, chip_y, bit, fc="#ffffff", ec=ch_color, tc=ch_color,
                 size=11 if fullbleed else 12,
             )
-        chip_x, chip_y = _HEADER_X, chip_y - chip_step
+        chip_x, chip_y = header_x, chip_y - chip_step
     for bit in banner_bits:
         need = _ow(f" {bit} ", 12) + 1.3
-        if chip_x > _HEADER_X + 0.2 and chip_x + need > chip_max:
+        if chip_x > header_x + 0.2 and chip_x + need > chip_max:
             if chip_y - chip_step < band_floor:
                 break
-            chip_x = _HEADER_X
+            chip_x = header_x
             chip_y -= chip_step
         if chip_y < band_floor:
             break
@@ -3320,9 +3372,10 @@ def render_biaoke_structure_png(
         left=_FIG_LEFT,
         right=_STRUCTURE_FIG_RIGHT,
         top=_STOCK_MAIN_TOP if portrait else _STOCK_MAIN_TOP_FULLBLEED,
-        bottom=_FIG_BOTTOM,
+        bottom=_FIG_BOTTOM_FB if fullbleed else _FIG_BOTTOM,
     )
     # 查詢時間：直式放頭牌右上（縮圖左側），不准壓迷你圖
+    # 橫式：貼介紹帶底緣內側，不准飄到頂裁／靈動島
     try:
         from decision_card_signals import format_card_query_stamp
 
@@ -3331,9 +3384,11 @@ def render_biaoke_structure_png(
             latest_date=last_d,
             stock_id=str(sid or ""),
         )
-        stamp_x = (_LOOKUP_LOCATOR_LEFT - 0.012) if portrait else _STRUCTURE_FIG_RIGHT
+        stamp_x = (_LOOKUP_LOCATOR_LEFT - 0.012) if portrait else (
+            _STRUCTURE_FIG_RIGHT - 0.012
+        )
         stamp_y = 0.988 if portrait else (
-            _STOCK_MAIN_TOP_FULLBLEED + 0.004 if fullbleed else _STOCK_MAIN_TOP + 0.006
+            _STOCK_MAIN_TOP_FULLBLEED + 0.012 if fullbleed else _STOCK_MAIN_TOP + 0.006
         )
         fig.text(
             stamp_x,

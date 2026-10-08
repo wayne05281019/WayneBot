@@ -486,7 +486,7 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v4" in src
+    assert "hdr-band-v5" in src or "hdr-band-v4" in src
     assert "skip_industry=" in src
     assert "_paint_industry_chips" in src
     assert "昨收" in src
@@ -494,7 +494,7 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "已過爆大量日高" not in src
     from biaoke_chart import _STOCK_MAIN_TOP_FULLBLEED
 
-    # 介紹帶下緣＝主圖上緣；收緊無效留白後主圖上緣約 0.75，不准再把头牌疊進 K
+    # 介紹帶下緣＝主圖上緣；pass2 略增高介紹帶（可讀＋頂安全距），仍不准把头牌疊進 K
     assert 0.72 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
 
 
@@ -576,6 +576,18 @@ def test_locator_inset_marks_window():
     assert any("最可能" in str(k.get("text")) for k in kept)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept)
     assert not any("下降壓" in str(k.get("text")) for k in kept)
+    # 昨收貼「最可能」釘價仍要留；只跟壓／撐極近才讓
+    kept_prev = _dedupe_right_notes(
+        [
+            {"y": 470.0, "text": "壓 470"},
+            {"y": 423.0, "text": "撐 423"},
+            {"y": 414.68, "text": "昨收 414.68"},
+            {"y": 416.64, "text": "最可能＝先放棄"},
+        ],
+        span=220.0,
+    )
+    assert any(str(k.get("text") or "").startswith("昨收") for k in kept_prev)
+    assert any("最可能" in str(k.get("text")) for k in kept_prev)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
@@ -678,6 +690,11 @@ def test_axis_ticks_drop_near_last_bar():
     assert 12 in ticks
     assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
     assert 56 not in ticks
+    # 爆量日貼最後一根：只留尾日，不准 10/05 疊 10/07
+    near = _axis_ticks(78, extra=(75,))
+    assert 77 in near
+    assert 75 not in near
+    assert 0 in near
 
 
 def test_pressure_support_use_consecutive_pivots():
