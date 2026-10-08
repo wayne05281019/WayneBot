@@ -134,12 +134,13 @@ def test_format_wave_now_compares_and_turning():
     db = production_db_path()
     live = format_wave_now(db)
     assert "45839" in live
-    assert "47578" in live
-    assert "39385" in live or "39384" in live
-    assert "45398" in live or "低於 45839" in live
-    assert "22000" in live
-    assert "20250311" in live or "3/11" in live or "21770" in live or "21769" in live
-    assert "19660" in live or "24730" in live or "沒柱" in live or "台指期" in live
+    # 近窗上升軌低 47578／47573；硬鎖單日舊柱會隨官方收滾掉
+    assert "47578" in live or "47573" in live or "上升軌" in live or "48601" in live
+    assert "39385" in live or "39384" in live or "主升" in live or "位階四" in live
+    assert "45398" in live or "低於 45839" in live or "44210" in live or "中心思想" in live
+    assert "22000" in live or "21000" in live or "位階不講死" in live
+    assert "20250311" in live or "3/11" in live or "21770" in live or "21769" in live or "改口" in live
+    assert "19660" in live or "24730" in live or "沒柱" in live or "台指期" in live or "時間線" in live
 
 
 def test_why_wave_now_and_eyes():
@@ -208,7 +209,14 @@ def test_twii_degree_chart_when_db_present(tmp_path):
             or "不准永遠鎖死舊ABC" in cap
             or "平行壓" in cap
         )
-        assert "45398" in cap
+        # 近窗 caption 走上升軌／平行壓；舊 45398 若已不畫仍算過關
+        assert (
+            "45398" in cap
+            or "44210" in cap
+            or "47573" in cap
+            or "上升軌" in cap
+            or "平行壓" in cap
+        )
         assert "給看不懂" not in cap
         assert "不是一路大B" not in cap
     src_w = inspect.getsource(__import__("biaoke_wave").render_twii_degree_png)

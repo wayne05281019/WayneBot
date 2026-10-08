@@ -37,7 +37,8 @@ class CaryBotUserFixtureTests(unittest.TestCase):
 
     def test_8234_20260810_matches_carybot_peak(self):
         """CaryBot 截圖：8/10 高點列應完全一致。"""
-        row = self._row(self._card("8234"), "20260810")
+        # as_of 釘住截圖窗；從今日 lookback=40 會滾掉 8/10
+        row = self._row(self._card("8234", as_of="20260917"), "20260810")
         self.assertAlmostEqual(float(row["close"]), 73.8, places=1)
         self.assertEqual(row["獲利"], "32.3%")
         self.assertEqual(row["預警"], "K20高")
@@ -51,7 +52,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
 
     def test_2421_20260831_price_alert_vol_match_carybot(self):
         """CaryBot：8/31 價格、K20高、月乖離、量排名一致；獲利/溫度尺度不同（見對照說明）。"""
-        row = self._row(self._card("2421"), "20260831")
+        row = self._row(self._card("2421", as_of="20260917"), "20260831")
         self.assertAlmostEqual(float(row["close"]), 179.5, places=1)
         self.assertEqual(row["預警"], "K20高")
         self.assertEqual(self._shown_alert(row), "最高價")
