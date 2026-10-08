@@ -1329,9 +1329,14 @@ def _dedupe_right_notes(
         for k in kept:
             ky = float(k.get("y") or 0)
             kt = str(k.get("text") or "")
+            # 最可能釘在現價附近，不准吃掉壓／撐／昨收（例：撐423 vs 收416）
             if is_prev and "最可能" in kt:
                 continue
             if (not is_prev) and "最可能" in text and kt.startswith("昨收"):
+                continue
+            if ("最可能" in kt) and (text.startswith("壓") or text.startswith("撐")):
+                continue
+            if ("最可能" in text) and (kt.startswith("壓") or kt.startswith("撐")):
                 continue
             if is_prev or kt.startswith("昨收"):
                 use_thr = (

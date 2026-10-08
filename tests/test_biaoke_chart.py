@@ -601,6 +601,7 @@ def test_locator_inset_marks_window():
     assert any(str(k.get("text") or "").startswith("壓") for k in kept)
     assert not any("下降壓" in str(k.get("text")) for k in kept)
     # 昨收貼「最可能」釘價仍要留；只跟壓／撐極近才讓
+    # 最可能釘現價不准吃掉撐（7853：撐423 vs 收416；span 大時 thr 會蓋到）
     kept_prev = _dedupe_right_notes(
         [
             {"y": 470.0, "text": "壓 470"},
@@ -608,10 +609,12 @@ def test_locator_inset_marks_window():
             {"y": 414.68, "text": "昨收 414.68"},
             {"y": 416.64, "text": "最可能＝先放棄"},
         ],
-        span=220.0,
+        span=531.0,
     )
     assert any(str(k.get("text") or "").startswith("昨收") for k in kept_prev)
     assert any("最可能" in str(k.get("text")) for k in kept_prev)
+    assert any(str(k.get("text") or "").startswith("撐") for k in kept_prev)
+    assert any(str(k.get("text") or "").startswith("壓") for k in kept_prev)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
