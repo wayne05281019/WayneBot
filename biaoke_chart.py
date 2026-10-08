@@ -2752,6 +2752,7 @@ def render_biaoke_structure_png(
     portrait = fig_h / max(fig_w, 0.01) >= 1.15
     fullbleed = not portrait
     use_dpi = int(dpi or BIAOKE_CHART_DPI)
+    _q0 = dict(quote or {})
     memo_key = (
         "biaoke_struct",
         str(sid or ""),
@@ -2764,6 +2765,9 @@ def render_biaoke_structure_png(
         round(fig_h, 3),
         "hdr-band-v8" if fullbleed else "hdr-wrap3",
         int(_BARS),
+        # 時段標（收盤／盤中）進鍵，不准互蓋快取
+        str(_q0.get("label") or ""),
+        int(bool(_q0.get("is_live"))),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
