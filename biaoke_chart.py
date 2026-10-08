@@ -2600,7 +2600,8 @@ def _paint_spot(
     # 時段標：收盤／盤中／現價 一律逐字拉開；字黏字＝沒做完
     session_labs = {"收盤", "盤中", "現價"}
     lab_size = 12
-    char_gap = 0.78
+    # overlay 單位：二字標至少空出約半個字寬，一眼不黏
+    char_gap = 1.2
     if compact:
         _paint_spaced_cjk(
             ax, x, 90, "今K", color="#546e7a", size=9, ha="left", char_gap=0.55,
