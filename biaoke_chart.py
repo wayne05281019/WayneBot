@@ -1604,7 +1604,7 @@ def _place_right_notes(
         )
         ax.plot(
             [stub_x],
-            [ny],
+            [show_ty if (text.startswith("收") and not text.startswith("昨收")) else ny],
             marker="o",
             markersize=4.0,
             color=color,
@@ -1614,7 +1614,11 @@ def _place_right_notes(
             linestyle="None",
             clip_on=True,
         )
-        if abs(show_ty - ny) > neighbor * 0.25:
+        # 72：當日收不准再畫 ny→顯示Y 的垂直虛線（末日 K 下方那條多餘）
+        if (
+            abs(show_ty - ny) > neighbor * 0.25
+            and not (text.startswith("收") and not text.startswith("昨收"))
+        ):
             ax.plot(
                 [stub_x, stub_x],
                 [ny, show_ty],
