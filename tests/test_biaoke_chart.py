@@ -498,7 +498,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v71" in src
+        "hdr-band-v72" in src
+        or "hdr-band-v71" in src
         or "hdr-band-v70" in src
         or "hdr-band-v69" in src
         or "hdr-band-v68" in src
@@ -565,10 +566,15 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "已過爆大量日高" not in cap
     src = inspect.getsource(render_biaoke_structure_png)
     assert 'f"昨收 {_px(prev_c_axis)}"' in src or "昨收" in src
-    assert 'f"收 {_px(last_c)}"' in src or 'from_last_k' in src
+    assert 'f"收 {_px(last_c)}"' in src
     assert _note_priority("收 6845") == 2
     assert _note_priority("昨收 443") == 3
     assert _is_level_note("壓 7270") and _is_level_note("撐 6865")
+    place_src = inspect.getsource(
+        __import__("biaoke_chart", fromlist=["_place_right_notes"])._place_right_notes
+    )
+    assert "neighbor" in place_src
+    assert "不准再從末日 K 斜拉" in place_src
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
     # 「收盤／盤中」字距＋置中於迷你K與股價之間
@@ -703,7 +709,7 @@ def test_locator_inset_marks_window():
     assert "x_max" in notes
     assert "最可能" in notes
     assert "_is_level_note" in notes
-    assert "from_last_k" in notes
+    assert "neighbor" in notes
     assert "貼對應水平線" in notes or "壓／撐貼" in notes
 
 

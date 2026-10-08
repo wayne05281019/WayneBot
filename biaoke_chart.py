@@ -1440,8 +1440,8 @@ def _place_right_notes(
 ) -> None:
     """右溝標籤欄：去重＋垂直錯開；字落在軌線末端右側，不准壓軌／壓 K。
 
-    71：壓／撐貼對應水平線（高價在上）；當日收自末日 K 拉虛線到空曠處，不准消失。
-    x_text 應在演化帶／軌虛線右緣之外；x_max 保證「最可能」整句入軸。
+    71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
+    不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -1552,6 +1552,29 @@ def _place_right_notes(
             ty = min(max(ty, lo), hi)
         enforced.append((note, ty))
     placed = enforced
+    # 72：鄰近標籤一律留最小垂直縫（盒高約 gap）；高價仍在上；壓／撐盡量貼線
+    neighbor = max(gap * 0.92, (ymax - ymin) * 0.038)
+    placed.sort(key=lambda p: -float(p[1]))
+    spaced: List[Tuple[Dict[str, Any], float]] = []
+    for note, ty in placed:
+        if spaced:
+            prev_note, prev_ty = spaced[-1]
+            if prev_ty - ty < neighbor:
+                # 下方標籤往下讓；保高價＞低價
+                ty = prev_ty - neighbor
+        ty = min(max(ty, lo), hi)
+        spaced.append((note, ty))
+    # 若底緣卡住，由下往上回推上方（仍保順位與最小縫）
+    spaced.sort(key=lambda p: float(p[1]))  # low → high
+    fixed_up: List[Tuple[Dict[str, Any], float]] = []
+    for note, ty in spaced:
+        if fixed_up:
+            prev_note, prev_ty = fixed_up[-1]
+            if ty - prev_ty < neighbor:
+                ty = prev_ty + neighbor
+        ty = min(max(ty, lo), hi)
+        fixed_up.append((note, ty))
+    placed = sorted(fixed_up, key=lambda p: -float(p[1]))
     # 同一左緣欄：所有標籤共用 tx，不准「最可能」因估寬偏右
     col_tx = float(tx)
     stub_x = float(col_tx) - 1.35
@@ -1560,42 +1583,11 @@ def _place_right_notes(
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
         size = int(note.get("size") or 11)
-        from_last_k = bool(note.get("from_last_k")) or (
-            _is_close_note(text) and text.startswith("收")
-        )
-        if from_last_k and pin_x is not None:
-            # 末日 K → 空曠處 → 標籤（紅框當日收）
-            _leader_note(
-                ax,
-                float(pin_x),
-                ny,
-                text,
-                color,
-                tx=col_tx,
-                ty=ty,
-                size=size,
-                ha="left",
-                va="center",
-                clip=True,
-                shrink_b=2.2,
-            )
-            ax.plot(
-                [float(pin_x)],
-                [ny],
-                marker="o",
-                markersize=4.0,
-                color=color,
-                markeredgecolor="white",
-                markeredgewidth=0.55,
-                zorder=13,
-                linestyle="None",
-                clip_on=True,
-            )
-            continue
-        # 壓／撐：字貼釘點價（高價自然在上）；其他用錯開後的 ty
-        show_ty = float(ny) if _is_level_note(text) else float(ty)
-        if _is_level_note(text) and abs(ty - ny) > gap * 0.35:
-            show_ty = float(ty)  # 互撞微挪後的位置，仍保高＞低
+        show_ty = float(ty)
+        # 壓／撐：能貼線就貼；與鄰居留縫後才偏離 ny
+        if _is_level_note(text) and abs(ty - ny) <= neighbor * 0.35:
+            show_ty = float(ny)
+        # 72：當日收用短 stub（與壓撐同欄），不准再從末日 K 斜拉一條長虛線到下方
         _leader_note(
             ax,
             stub_x,
@@ -1622,7 +1614,7 @@ def _place_right_notes(
             linestyle="None",
             clip_on=True,
         )
-        if abs(show_ty - ny) > gap * 0.25:
+        if abs(show_ty - ny) > neighbor * 0.25:
             ax.plot(
                 [stub_x, stub_x],
                 [ny, show_ty],
@@ -3061,7 +3053,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v71" if fullbleed else "hdr-wrap3",
+        "hdr-band-v72" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3184,12 +3176,11 @@ def render_biaoke_structure_png(
     if last_c > 0:
         right_notes.append(
             {
-                "x": float(n - 1),
+                "x": float(label_col_left) - 0.6,
                 "y": float(last_c),
                 "text": f"收 {_px(last_c)}",
                 "color": "#37474f",
                 "size": 11,
-                "from_last_k": True,
             }
         )
     try:
