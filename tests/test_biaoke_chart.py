@@ -498,7 +498,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v70" in src
+        "hdr-band-v71" in src
+        or "hdr-band-v70" in src
         or "hdr-band-v69" in src
         or "hdr-band-v68" in src
         or "hdr-band-v67" in src
@@ -548,7 +549,12 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     """結構圖：大量日高／低判斷句不打；右軸可標昨收。"""
     import inspect
 
-    from biaoke_chart import _note_priority, analyze_structure, chart_caption
+    from biaoke_chart import (
+        _is_level_note,
+        _note_priority,
+        analyze_structure,
+        chart_caption,
+    )
 
     info = analyze_structure(_series())
     notes = " ".join(str(x) for x in (info.get("notes") or []))
@@ -559,7 +565,10 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "已過爆大量日高" not in cap
     src = inspect.getsource(render_biaoke_structure_png)
     assert 'f"昨收 {_px(prev_c_axis)}"' in src or "昨收" in src
-    assert _note_priority("昨收 443") == 2
+    assert 'f"收 {_px(last_c)}"' in src or 'from_last_k' in src
+    assert _note_priority("收 6845") == 2
+    assert _note_priority("昨收 443") == 3
+    assert _is_level_note("壓 7270") and _is_level_note("撐 6865")
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
     # 「收盤／盤中」字距＋置中於迷你K與股價之間
@@ -650,6 +659,19 @@ def test_locator_inset_marks_window():
     assert any("最可能" in str(k.get("text")) for k in kept_prev)
     assert any(str(k.get("text") or "").startswith("撐") for k in kept_prev)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept_prev)
+    # 71：當日收貼撐仍要留（3008：收6845 vs 撐6865）
+    kept_close = _dedupe_right_notes(
+        [
+            {"y": 7270.0, "text": "壓 7270"},
+            {"y": 6865.0, "text": "撐 6865"},
+            {"y": 6845.0, "text": "收 6845"},
+            {"y": 6865.0, "text": "最可能＝往撐 6865"},
+        ],
+        span=4000.0,
+    )
+    assert any(str(k.get("text") or "").startswith("收 ") for k in kept_close)
+    assert any(str(k.get("text") or "").startswith("撐") for k in kept_close)
+    assert any(str(k.get("text") or "").startswith("壓") for k in kept_close)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
@@ -680,6 +702,9 @@ def test_locator_inset_marks_window():
     assert "seam" in notes
     assert "x_max" in notes
     assert "最可能" in notes
+    assert "_is_level_note" in notes
+    assert "from_last_k" in notes
+    assert "貼對應水平線" in notes or "壓／撐貼" in notes
 
 
 def test_locator_window_matches_main_time():
