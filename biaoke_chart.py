@@ -1552,19 +1552,17 @@ def _place_right_notes(
             ty = min(max(ty, lo), hi)
         enforced.append((note, ty))
     placed = enforced
-    # 72：鄰近標籤一律留最小垂直縫（盒高約 gap）；高價仍在上；壓／撐盡量貼線
-    neighbor = max(gap * 0.92, (ymax - ymin) * 0.038)
+    # 73：鄰近標籤最小縫 ≥ 盒高＋空隙（舊 gap≈盒高會互貼）；高價仍在上
+    neighbor = max(gap * 1.55, (ymax - ymin) * 0.062)
     placed.sort(key=lambda p: -float(p[1]))
     spaced: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in placed:
         if spaced:
             prev_note, prev_ty = spaced[-1]
             if prev_ty - ty < neighbor:
-                # 下方標籤往下讓；保高價＞低價
                 ty = prev_ty - neighbor
         ty = min(max(ty, lo), hi)
         spaced.append((note, ty))
-    # 若底緣卡住，由下往上回推上方（仍保順位與最小縫）
     spaced.sort(key=lambda p: float(p[1]))  # low → high
     fixed_up: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in spaced:
@@ -1583,11 +1581,8 @@ def _place_right_notes(
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
         size = int(note.get("size") or 11)
+        # 73：顯示 Y 一律用留縫後的 ty（不准再 snap 回 ny 把盒貼死）
         show_ty = float(ty)
-        # 壓／撐：能貼線就貼；與鄰居留縫後才偏離 ny
-        if _is_level_note(text) and abs(ty - ny) <= neighbor * 0.35:
-            show_ty = float(ny)
-        # 72：當日收用短 stub（與壓撐同欄），不准再從末日 K 斜拉一條長虛線到下方
         _leader_note(
             ax,
             stub_x,
@@ -1602,9 +1597,11 @@ def _place_right_notes(
             clip=True,
             shrink_b=1.5,
         )
+        # 壓／撐：釘點仍在水平線價；收／其他釘在顯示列（短 stub，無長虛線）
+        pin_y = float(ny) if _is_level_note(text) else float(show_ty)
         ax.plot(
             [stub_x],
-            [show_ty if (text.startswith("收") and not text.startswith("昨收")) else ny],
+            [pin_y],
             marker="o",
             markersize=4.0,
             color=color,
@@ -1614,11 +1611,8 @@ def _place_right_notes(
             linestyle="None",
             clip_on=True,
         )
-        # 72：當日收不准再畫 ny→顯示Y 的垂直虛線（末日 K 下方那條多餘）
-        if (
-            abs(show_ty - ny) > neighbor * 0.25
-            and not (text.startswith("收") and not text.startswith("昨收"))
-        ):
+        # 僅壓／撐在貼線微偏時畫短垂直點線；收／其餘不准畫
+        if _is_level_note(text) and abs(show_ty - ny) > neighbor * 0.12:
             ax.plot(
                 [stub_x, stub_x],
                 [ny, show_ty],
@@ -3057,7 +3051,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v72" if fullbleed else "hdr-wrap3",
+        "hdr-band-v73" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3378,24 +3372,8 @@ def render_biaoke_structure_png(
                 "size": 12,
             }
         )
-    for fork in proj.get("forks") or []:
-        if str(fork.get("name") or "") != "連點延長":
-            continue
-        fy = float(fork.get("y") or 0)
-        if not fy:
-            continue
-        if abs(fy - (tgt or fy)) / max(span, 1.0) < 0.02:
-            continue
-        _halo_line(
-            ax1,
-            [n - 1, float(rail_end)],
-            [last_c or closes[-1], fy],
-            _FORK,
-            lw=1.05,
-            halo=0.7,
-            ls=(0, (2, 2.5)),
-            z=4,
-        )
+    # 73：不准畫「連點延長」叉虛線（末日 K 往下甩進空曠、無對應標籤＝多餘）
+    # forks 仍可留在 proj 供演算；圖上只留有右溝標籤的線（最可能 path／壓撐／軌）
     _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     # 標籤欄：軌虛線已停在 label_col_left 左側。

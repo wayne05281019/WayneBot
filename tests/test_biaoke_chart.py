@@ -498,7 +498,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v72" in src
+        "hdr-band-v73" in src
+        or "hdr-band-v72" in src
         or "hdr-band-v71" in src
         or "hdr-band-v70" in src
         or "hdr-band-v69" in src
@@ -574,7 +575,8 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
         __import__("biaoke_chart", fromlist=["_place_right_notes"])._place_right_notes
     )
     assert "neighbor" in place_src
-    assert "不准再從末日 K 斜拉" in place_src
+    assert "不准再 snap 回 ny" in place_src or "一律用留縫後的 ty" in place_src
+    assert "連點延長" in src and "不准畫" in src
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
     # 「收盤／盤中」字距＋置中於迷你K與股價之間
