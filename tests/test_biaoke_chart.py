@@ -498,12 +498,18 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v64" in src
+        "hdr-band-v68" in src
+        or "hdr-band-v67" in src
+        or "hdr-band-v64" in src
         or "hdr-band-v63" in src
         or "hdr-band-v62" in src
         or "hdr-band-v61" in src
         or "hdr-band-v9c" in src
     )
+    assert "_STATUS_CHIP_SCALE" in src
+    assert "過壓後掉回撐下＝出貨痕跡" in src
+    # 狀態晶片不准因 band_floor 被 break 清掉（通道列）
+    assert "狀態晶片換行仍要畫完" in src
     assert "skip_industry=" in src
     assert "_paint_nameplate" in src
     assert "_paint_structure_blue_baskets" in src
@@ -1098,9 +1104,15 @@ def test_structure_right_notes_fit_most_likely_full_text():
     assert "（不是保證・不是買訊）" in rsrc
     assert "_STRUCTURE_FIG_RIGHT" in rsrc
     # 軌虛線停在標籤欄左側（明顯空隙）；右溝用軸寬比例留白
-    assert "label_col_left) - 5.5" in rsrc or "label_col_left - 5.5" in rsrc
+    assert (
+        "label_col_left) - 5.5" in rsrc
+        or "label_col_left - 5.5" in rsrc
+        or "label_col_left) - 2.8" in rsrc
+        or "label_col_left - 2.8" in rsrc
+    )
     assert "label_frac" in rsrc
     assert "need_by_frac" in rsrc
+    assert "pin_x) + 4.8" in notes or "pin_x + 4.8" in notes or "floor_tx" in notes
 
 
 @pytest.mark.production_db

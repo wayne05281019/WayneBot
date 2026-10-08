@@ -1436,9 +1436,12 @@ def _place_right_notes(
             default=16.0,
         )
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
-        fit_tx = float(x_max) - need - 8.5
+        fit_tx = float(x_max) - need - 6.0
         if pin_x is not None:
-            tx = max(float(pin_x) + 0.8, min(tx, fit_tx))
+            # 左緣至少離末日 K 一段（67：不准蓋住最後幾根縮圖）
+            floor_tx = float(pin_x) + 4.8
+            # 若右溝不夠，優先保左空隙（呼叫端應把 x_right 加夠）
+            tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
             tx = min(tx, fit_tx)
     most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
@@ -2518,7 +2521,19 @@ def _spot_quote(
     return out
 
 
-def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, size: int = 10) -> float:
+def _draw_chip(
+    ax,
+    x: float,
+    y: float,
+    text: str,
+    *,
+    fc: str,
+    ec: str,
+    tc: str,
+    size: int = 10,
+    pad: float = 0.22,
+    lw: float = 1.15,
+) -> float:
     """頭欄藍標：緊湊 text-bbox（對齊 12-v4／使用者附圖）；clip_on=False 保四邊完整。"""
     label = str(text or "").strip()
     if not label:
@@ -2535,10 +2550,10 @@ def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, 
         zorder=22,
         clip_on=False,
         bbox=dict(
-            boxstyle="round,pad=0.22",
+            boxstyle=f"round,pad={float(pad):.3f}",
             facecolor=fc,
             edgecolor=ec,
-            linewidth=1.15,
+            linewidth=float(lw),
             alpha=0.97,
         ),
     )
@@ -2933,7 +2948,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v64" if fullbleed else "hdr-wrap3",
+        "hdr-band-v68" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -2983,8 +2998,9 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬（64：收無效右白，寬度還給 K／量）
-    x_right = n + _FUTURE + 14.0
+    # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬
+    # 64 收右白加寬 K；67 標籤再右移讓開末日 K，右溝略加回可讀空隙
+    x_right = n + _FUTURE + 16.0
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     st = info.get("struct") or {}
@@ -3021,9 +3037,9 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     x_fut = float(n - 1 + _FUTURE)
-    # 標籤欄左緣：演化帶後緊接溝；收右白把寬度還給日軸（K／量同 xs），標籤仍可讀
-    label_col_left = float(n - 1) + max(float(_FUTURE) * 0.48, 4.2) + 1.3
-    hline_xmax = float(label_col_left) - 1.0
+    # 標籤欄左緣：演化帶內再右移（67），不准蓋住最後幾根／末日縮圖 K
+    label_col_left = float(n - 1) + max(float(_FUTURE) * 0.72, 6.2) + 2.2
+    hline_xmax = float(label_col_left) - 1.2
     if spike_hi:
         ax1.hlines(
             spike_hi,
@@ -3086,9 +3102,9 @@ def render_biaoke_structure_png(
     # 有通道時以通道為準重算（含完整 bars 窗），避免 work 窗與全列不一致
     if not channel:
         channel = infer_parallel_channel(work) or {}
-    # 軌虛線停在標籤欄左側（明顯空隙），不准穿進標籤盒
-    rail_end = min(float(n - 1) + float(_FUTURE) * 0.22, float(label_col_left) - 5.5)
-    rail_end = max(float(n - 1) + 1.0, rail_end)
+    # 軌／通道平行線再往右延長一點進演化區（67），仍停在標籤欄左側空隙
+    rail_end = min(float(n - 1) + float(_FUTURE) * 0.62, float(label_col_left) - 2.8)
+    rail_end = max(float(n - 1) + 2.5, rail_end)
     # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
     if channel.get("kind"):
         _paint_parallel_channel(
@@ -3272,17 +3288,18 @@ def render_biaoke_structure_png(
         ),
         default=22.0,
     )
-    # 64：右溝再收（約 0.138→0.088）；比例溝為主、字寬估從寬（點徑隨 xlim 變）
-    # K／量同日軸變寬；「最可能／壓／撐／昨收」整盒仍可讀、不准互壓
-    label_frac = 0.088
+    # 67：標籤欄再右移讓開末日 K；x_right 必須夠 _place_right_notes 的 fit_tx
+    # （fit ≈ x_max − note_w − 6），否則字會被夾回 seam 蓋住末日 K
+    label_frac = 0.108
     content_right = float(label_col_left)
     need_by_frac = content_right / max(1.0 - label_frac, 0.5)
-    need_by_text = content_right + max_note_w * 0.72 + 2.0
-    x_right = max(float(x_right), need_by_frac, need_by_text)
+    need_by_place = content_right + max_note_w + 6.0 + 3.0  # 對齊 fit_tx＋左緣空隙
+    need_by_text = content_right + max_note_w * 0.95 + 3.0
+    x_right = max(float(x_right), need_by_frac, need_by_text, need_by_place)
     ax1.set_xlim(-0.55, x_right)
-    # 字靠標籤欄左側同一緣，右側留邊框＋右軸；不准貼齊軸脊、不准最可能偏右
+    # 字落標籤欄內偏右，右側留邊框＋右軸；左緣離末日 K 有空隙
     gutter = float(x_right) - content_right
-    x_text = content_right + max(1.0, gutter * 0.05)
+    x_text = content_right + max(2.8, gutter * 0.18)
     # 水平壓撐＋通道現價都要垂直讓開，盒子中心不准落在線上
     avoid_ys: List[float] = []
     if spike_hi:
@@ -3392,10 +3409,13 @@ def render_biaoke_structure_png(
     chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else (
         float(_HEADER_CHIP_MAX_FB) if (fullbleed and not has_locator) else _HEADER_CHIP_MAX
     )
+    # 68：狀態／判斷晶片（出貨痕跡／升降通道／靠近…）放大 0.5 倍≈×1.5，必須保留
+    _STATUS_CHIP_SCALE = 1.5
     if fullbleed:
         date_y, ohlc_y1 = 93.55, 89.95
         spike_y1, spike_y2, chip_y0 = 86.35, 82.85, 80.05
         chip_step = 2.65
+        status_chip_step = 2.65 * _STATUS_CHIP_SCALE  # 約 4.0
         spot_y = 93.15
         spot_move_dy = 6.35
         mute_y = None
@@ -3404,6 +3424,7 @@ def render_biaoke_structure_png(
         date_y, ohlc_y1, ohlc_y2 = 92.85, 89.35, 86.35
         spike_y1, spike_y2, mute_y, chip_y0 = 83.15, 80.15, 76.85, 73.55
         chip_step = 3.6
+        status_chip_step = 3.6 * _STATUS_CHIP_SCALE
         spot_y = float(_SPOT_Y)
         spot_move_dy = None
     ov.text(
@@ -3472,10 +3493,18 @@ def render_biaoke_structure_png(
             ha="left",
         )
     chip_x, chip_y = header_x, chip_y0
+    # 狀態／判斷晶片（68）：出貨／洗盤痕跡＋升／降通道狀態——保留、放大，不准被 band_floor 清掉
+    status_sz = int(round((12 if fullbleed else 13) * _STATUS_CHIP_SCALE))
+    ch_sz = int(round((10 if fullbleed else 12) * _STATUS_CHIP_SCALE))
+    status_pad = 0.22 * _STATUS_CHIP_SCALE
+    status_lw = 1.15 * _STATUS_CHIP_SCALE
     if mark:
-        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=12 if fullbleed else 13)
+        chip_x = _draw_chip(
+            ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc,
+            size=status_sz, pad=status_pad, lw=status_lw,
+        )
         chip_x = header_x
-        chip_y -= chip_step
+        chip_y -= status_chip_step
     ch_lab = str((channel or {}).get("label") or "").strip()
     if ch_lab:
         ch_color = _UP_TRACK if str((channel or {}).get("kind") or "") == "asc" else _DOWN_TRACK
@@ -3484,17 +3513,16 @@ def render_biaoke_structure_png(
         if not fullbleed:
             ch_bits = ch_bits + ["不是買訊"]
         for bit in ch_bits:
-            need = _ow(f" {bit} ", 12) + 1.3
+            need = _ow(f" {bit} ", ch_sz) + 1.3
             if chip_x > header_x + 0.2 and chip_x + need > chip_max:
-                if chip_y - chip_step < band_floor:
-                    break
+                # 狀態晶片換行仍要畫完，不准 break 清掉
                 chip_x = header_x
-                chip_y -= chip_step
+                chip_y -= status_chip_step
             chip_x = _draw_chip(
                 ov, chip_x, chip_y, bit, fc="#ffffff", ec=ch_color, tc=ch_color,
-                size=10 if fullbleed else 12,
+                size=ch_sz, pad=status_pad, lw=status_lw,
             )
-        chip_x, chip_y = header_x, chip_y - chip_step
+        chip_x, chip_y = header_x, chip_y - status_chip_step
     for bit in banner_bits:
         need = _ow(f" {bit} ", 12) + 1.3
         if chip_x > header_x + 0.2 and chip_x + need > chip_max:
