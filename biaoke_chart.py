@@ -2933,7 +2933,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v62" if fullbleed else "hdr-wrap3",
+        "hdr-band-v64" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -2983,8 +2983,8 @@ def render_biaoke_structure_png(
     _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
-    # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬
-    x_right = n + _FUTURE + 28.0
+    # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬（64：收無效右白，寬度還給 K／量）
+    x_right = n + _FUTURE + 14.0
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     st = info.get("struct") or {}
@@ -3021,8 +3021,8 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     x_fut = float(n - 1 + _FUTURE)
-    # 標籤欄左緣：演化帶後緊接溝；長窗時收窄右白，仍不准擋標籤
-    label_col_left = float(n - 1) + max(float(_FUTURE) * 0.65, 5.5) + 2.4
+    # 標籤欄左緣：演化帶後緊接溝；收右白把寬度還給日軸（K／量同 xs），標籤仍可讀
+    label_col_left = float(n - 1) + max(float(_FUTURE) * 0.48, 4.2) + 1.3
     hline_xmax = float(label_col_left) - 1.0
     if spike_hi:
         ax1.hlines(
@@ -3272,16 +3272,17 @@ def render_biaoke_structure_png(
         ),
         default=22.0,
     )
-    # 長窗後主 K 變寬；標籤溝收窄但仍夠「最可能／壓／撐／昨收」整盒
-    label_frac = 0.138
+    # 64：右溝再收（約 0.138→0.088）；比例溝為主、字寬估從寬（點徑隨 xlim 變）
+    # K／量同日軸變寬；「最可能／壓／撐／昨收」整盒仍可讀、不准互壓
+    label_frac = 0.088
     content_right = float(label_col_left)
     need_by_frac = content_right / max(1.0 - label_frac, 0.5)
-    need_by_text = content_right + max_note_w * 1.18 + 5.5
+    need_by_text = content_right + max_note_w * 0.72 + 2.0
     x_right = max(float(x_right), need_by_frac, need_by_text)
     ax1.set_xlim(-0.55, x_right)
     # 字靠標籤欄左側同一緣，右側留邊框＋右軸；不准貼齊軸脊、不准最可能偏右
     gutter = float(x_right) - content_right
-    x_text = content_right + max(1.5, gutter * 0.07)
+    x_text = content_right + max(1.0, gutter * 0.05)
     # 水平壓撐＋通道現價都要垂直讓開，盒子中心不准落在線上
     avoid_ys: List[float] = []
     if spike_hi:
@@ -3376,7 +3377,8 @@ def render_biaoke_structure_png(
     spot_x = float(_SPOT_X_NO_LOCATOR if (fullbleed and not has_locator) else _SPOT_X)
     header_x = float(_HEADER_X_FB if fullbleed else _HEADER_X)
     # 橫式附圖／12-v4：股號＋股名一次；產業貼股名右（不准壓字）
-    name_y = 96.85 if fullbleed else float(_SPOT_Y)
+    # 左欄各行拉開行距（真機回饋 63）；右欄三行／藍框不動
+    name_y = 97.15 if fullbleed else float(_SPOT_Y)
     _paint_nameplate(
         ov,
         plate,
@@ -3390,10 +3392,9 @@ def render_biaoke_structure_png(
     chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else (
         float(_HEADER_CHIP_MAX_FB) if (fullbleed and not has_locator) else _HEADER_CHIP_MAX
     )
-    # 橫式附圖頭欄：量併「低」後；無灰字；左欄收緊、晶片貼爆大量列下（勿貼底邊）
     if fullbleed:
-        date_y, ohlc_y1 = 93.95, 91.05
-        spike_y1, spike_y2, chip_y0 = 88.25, 85.55, 83.05
+        date_y, ohlc_y1 = 93.55, 89.95
+        spike_y1, spike_y2, chip_y0 = 86.35, 82.85, 80.05
         chip_step = 2.65
         spot_y = 93.15
         spot_move_dy = 6.35
