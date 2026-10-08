@@ -498,7 +498,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v68" in src
+        "hdr-band-v69" in src
+        or "hdr-band-v68" in src
         or "hdr-band-v67" in src
         or "hdr-band-v64" in src
         or "hdr-band-v63" in src
@@ -508,8 +509,11 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     )
     assert "_STATUS_CHIP_SCALE" in src
     assert "過壓後掉回撐下＝出貨痕跡" in src
-    # 狀態晶片不准因 band_floor 被 break 清掉（通道列）
-    assert "狀態晶片換行仍要畫完" in src
+    assert "status_row" in src
+    assert "不准上下兩排互壓" in src
+    assert "pad_extra" in inspect.getsource(
+        __import__("biaoke_chart", fromlist=["_draw_chip"])._draw_chip
+    )
     assert "skip_industry=" in src
     assert "_paint_nameplate" in src
     assert "_paint_structure_blue_baskets" in src

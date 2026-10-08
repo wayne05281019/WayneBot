@@ -2557,7 +2557,9 @@ def _draw_chip(
             alpha=0.97,
         ),
     )
-    return float(x) + float(_ow(s, size)) + 1.15
+    # pad＞預設時 bbox 左右膨脹；間距要跟，否則×1.5 單列會邊壓邊
+    pad_extra = max(0.0, float(pad) - 0.22) * (float(size) / 11.0) * 3.2
+    return float(x) + float(_ow(s, size)) + 1.15 + pad_extra
 
 
 def _paint_structure_blue_baskets(fig, ov, ax1, ax2) -> None:
@@ -2948,7 +2950,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v68" if fullbleed else "hdr-wrap3",
+        "hdr-band-v69" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3493,18 +3495,15 @@ def render_biaoke_structure_png(
             ha="left",
         )
     chip_x, chip_y = header_x, chip_y0
-    # 狀態／判斷晶片（68）：出貨／洗盤痕跡＋升／降通道狀態——保留、放大，不准被 band_floor 清掉
+    # 狀態／判斷晶片（68×1.5；69 單列橫排）：出貨／洗盤＋升／降通道狀態
+    # 3／4 顆都從左排到右同一列、同一 y，不准上下兩排互壓；仍非買訊
     status_sz = int(round((12 if fullbleed else 13) * _STATUS_CHIP_SCALE))
     ch_sz = int(round((10 if fullbleed else 12) * _STATUS_CHIP_SCALE))
     status_pad = 0.22 * _STATUS_CHIP_SCALE
     status_lw = 1.15 * _STATUS_CHIP_SCALE
+    status_row: List[Tuple[str, str, str, int]] = []
     if mark:
-        chip_x = _draw_chip(
-            ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc,
-            size=status_sz, pad=status_pad, lw=status_lw,
-        )
-        chip_x = header_x
-        chip_y -= status_chip_step
+        status_row.append((mark, mc, mc, status_sz))
     ch_lab = str((channel or {}).get("label") or "").strip()
     if ch_lab:
         ch_color = _UP_TRACK if str((channel or {}).get("kind") or "") == "asc" else _DOWN_TRACK
@@ -3513,16 +3512,22 @@ def render_biaoke_structure_png(
         if not fullbleed:
             ch_bits = ch_bits + ["不是買訊"]
         for bit in ch_bits:
-            need = _ow(f" {bit} ", ch_sz) + 1.3
-            if chip_x > header_x + 0.2 and chip_x + need > chip_max:
-                # 狀態晶片換行仍要畫完，不准 break 清掉
-                chip_x = header_x
-                chip_y -= status_chip_step
-            chip_x = _draw_chip(
-                ov, chip_x, chip_y, bit, fc="#ffffff", ec=ch_color, tc=ch_color,
-                size=ch_sz, pad=status_pad, lw=status_lw,
-            )
-        chip_x, chip_y = header_x, chip_y - status_chip_step
+            status_row.append((bit, ch_color, ch_color, ch_sz))
+    # 單列：共用 chip_y；可排到現價左側；不准因 chip_max 換行
+    status_max = float(chip_max)
+    if fullbleed and not has_locator:
+        status_max = max(status_max, float(spot_x) - 3.5)
+    for bit, ec, tc, sz in status_row:
+        chip_x = _draw_chip(
+            ov, chip_x, chip_y, bit, fc="#ffffff", ec=ec, tc=tc,
+            size=sz, pad=status_pad, lw=status_lw,
+        )
+        if chip_x > status_max:
+            # 仍畫完本列；不換行、不刪（使用者鎖單列橫排）
+            pass
+    if status_row:
+        chip_x = header_x
+        chip_y -= status_chip_step
     for bit in banner_bits:
         need = _ow(f" {bit} ", 12) + 1.3
         if chip_x > header_x + 0.2 and chip_x + need > chip_max:
