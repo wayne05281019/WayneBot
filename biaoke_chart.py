@@ -4018,6 +4018,7 @@ def build_biaoke_structure_chart(
     prev = bars[-2] if len(bars) >= 2 else {}
     last = info.get("last_bar") or bars[-1]
     quote = _spot_quote(sid, last, prev, db_path)
+    # 74 核准：飆大／查股結構圖同一橫式滿版（不准殘留舊直式版面）
     path = render_biaoke_structure_png(
         bars,
         save_path,
@@ -4027,6 +4028,7 @@ def build_biaoke_structure_chart(
         plate=plate,
         quote=quote,
         db_path=db_path,
+        figsize=_STRUCTURE_LOOKUP_FIG,
     )
     try:
         from biaoke_forecast import record_stock, verify_due
