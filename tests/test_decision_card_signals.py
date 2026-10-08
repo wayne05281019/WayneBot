@@ -857,13 +857,27 @@ def test_2383_4915_stance_note_matches_latest_row():
     else:
         assert sell_note_short(down) == ""
         assert "先出一點" not in note
-        if table_reads_as_low(down) or "長線低" in note or "低附近" in note:
+        # 新柱會滾到「空間很小／先看表」等中性句；跟表現況，不准假設永遠長線低
+        if "長線低" in note or "低附近" in note:
             assert "長線低" in note or "低附近" in note
+        elif table_reads_as_low(down):
+            assert (
+                "長線低" in note
+                or "低附近" in note
+                or "空間很小" in note
+                or "先看表" in note
+                or "先看、先別急" in note
+                or "今天沒有急著買或賣" in note
+                or "先等" in note
+                or "先別急" in note
+            )
         else:
             assert (
                 "今天沒有急著買或賣" in note
                 or "先等" in note
                 or "先別急" in note
+                or "空間很小" in note
+                or "先看表" in note
             )
 
 

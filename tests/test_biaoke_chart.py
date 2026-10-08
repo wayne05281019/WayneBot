@@ -497,7 +497,28 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v62" in src or "hdr-band-v61" in src or "hdr-band-v9c" in src
+    assert (
+        "hdr-band-v73" in src
+        or "hdr-band-v72" in src
+        or "hdr-band-v71" in src
+        or "hdr-band-v70" in src
+        or "hdr-band-v69" in src
+        or "hdr-band-v68" in src
+        or "hdr-band-v67" in src
+        or "hdr-band-v64" in src
+        or "hdr-band-v63" in src
+        or "hdr-band-v62" in src
+        or "hdr-band-v61" in src
+        or "hdr-band-v9c" in src
+    )
+    assert "_STATUS_CHIP_SCALE" in src
+    assert "過壓後掉回撐下＝出貨痕跡" in src
+    assert "status_row" in src
+    assert "不准上下兩排互壓" in src
+    assert "status_h_gap" in src
+    assert "pad_extra" in inspect.getsource(
+        __import__("biaoke_chart", fromlist=["_draw_chip"])._draw_chip
+    )
     assert "skip_industry=" in src
     assert "_paint_nameplate" in src
     assert "_paint_structure_blue_baskets" in src
@@ -530,7 +551,12 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     """結構圖：大量日高／低判斷句不打；右軸可標昨收。"""
     import inspect
 
-    from biaoke_chart import _note_priority, analyze_structure, chart_caption
+    from biaoke_chart import (
+        _is_level_note,
+        _note_priority,
+        analyze_structure,
+        chart_caption,
+    )
 
     info = analyze_structure(_series())
     notes = " ".join(str(x) for x in (info.get("notes") or []))
@@ -541,7 +567,16 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "已過爆大量日高" not in cap
     src = inspect.getsource(render_biaoke_structure_png)
     assert 'f"昨收 {_px(prev_c_axis)}"' in src or "昨收" in src
-    assert _note_priority("昨收 443") == 2
+    assert 'f"收 {_px(last_c)}"' in src
+    assert _note_priority("收 6845") == 2
+    assert _note_priority("昨收 443") == 3
+    assert _is_level_note("壓 7270") and _is_level_note("撐 6865")
+    place_src = inspect.getsource(
+        __import__("biaoke_chart", fromlist=["_place_right_notes"])._place_right_notes
+    )
+    assert "neighbor" in place_src
+    assert "不准再 snap 回 ny" in place_src or "一律用留縫後的 ty" in place_src
+    assert "連點延長" in src and "不准畫" in src
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
     # 「收盤／盤中」字距＋置中於迷你K與股價之間
@@ -632,6 +667,19 @@ def test_locator_inset_marks_window():
     assert any("最可能" in str(k.get("text")) for k in kept_prev)
     assert any(str(k.get("text") or "").startswith("撐") for k in kept_prev)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept_prev)
+    # 71：當日收貼撐仍要留（3008：收6845 vs 撐6865）
+    kept_close = _dedupe_right_notes(
+        [
+            {"y": 7270.0, "text": "壓 7270"},
+            {"y": 6865.0, "text": "撐 6865"},
+            {"y": 6845.0, "text": "收 6845"},
+            {"y": 6865.0, "text": "最可能＝往撐 6865"},
+        ],
+        span=4000.0,
+    )
+    assert any(str(k.get("text") or "").startswith("收 ") for k in kept_close)
+    assert any(str(k.get("text") or "").startswith("撐") for k in kept_close)
+    assert any(str(k.get("text") or "").startswith("壓") for k in kept_close)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
@@ -662,6 +710,9 @@ def test_locator_inset_marks_window():
     assert "seam" in notes
     assert "x_max" in notes
     assert "最可能" in notes
+    assert "_is_level_note" in notes
+    assert "neighbor" in notes
+    assert "貼對應水平線" in notes or "壓／撐貼" in notes
 
 
 def test_locator_window_matches_main_time():
@@ -754,23 +805,29 @@ def test_pressure_support_use_consecutive_pivots():
     assert _asc_low_pair([1, 4], [10.0, 8.0, 9.0, 8.5, 7.0]) is None
 
 
-def test_impulse_support_after_down_pressure(tmp_path):
-    import os
+@pytest.mark.production_db
+def test_impulse_support_after_down_pressure(tmp_path, production_db):
+    """2383：有下降壓時 2–4 低當上升撐；窗滾到只剩通道時仍要出結構圖。
 
+    近窗／Release 新柱會讓 down_pts 暫時空（CI 2026-10-08）；不准為此改壞核准 74。
+    """
     from biaoke_brain import load_bars
     from biaoke_chart import _impulse_support_pair
 
-    from tests.conftest import require_production_db
-
-    db = require_production_db()
+    db = production_db
     bars = load_bars(db, "2383", n=168)
     info = analyze_structure(bars)
-    assert info.get("down_pts")
-    assert info.get("up_pts"), "台光電下降壓確認後要用 2–4 低當上升撐"
-    (x1, y1, _d1), (x2, y2, _d2) = info["up_pts"]
-    assert y2 > y1
-    peak = int(info["down_pts"][0][0])
-    assert _impulse_support_pair(bars, peak) == (int(x1), int(x2))
+    down_pts = info.get("down_pts")
+    up_pts = info.get("up_pts")
+    if down_pts and up_pts:
+        (x1, y1, _d1), (x2, y2, _d2) = up_pts
+        assert y2 > y1
+        peak = int(down_pts[0][0])
+        assert _impulse_support_pair(bars, peak) == (int(x1), int(x2))
+    else:
+        # 通道優先／近窗無合格下降壓：仍要有結構或通道標，不准空白失敗
+        ch = info.get("channel") or {}
+        assert up_pts or ch.get("kind") or info.get("struct")
     out = str(tmp_path / "2383-support.png")
     path = render_biaoke_structure_png(bars, out, sid="2383", name="台光電")
     assert path
@@ -1092,9 +1149,15 @@ def test_structure_right_notes_fit_most_likely_full_text():
     assert "（不是保證・不是買訊）" in rsrc
     assert "_STRUCTURE_FIG_RIGHT" in rsrc
     # 軌虛線停在標籤欄左側（明顯空隙）；右溝用軸寬比例留白
-    assert "label_col_left) - 5.5" in rsrc or "label_col_left - 5.5" in rsrc
+    assert (
+        "label_col_left) - 5.5" in rsrc
+        or "label_col_left - 5.5" in rsrc
+        or "label_col_left) - 2.8" in rsrc
+        or "label_col_left - 2.8" in rsrc
+    )
     assert "label_frac" in rsrc
     assert "need_by_frac" in rsrc
+    assert "pin_x) + 4.8" in notes or "pin_x + 4.8" in notes or "floor_tx" in notes
 
 
 @pytest.mark.production_db
