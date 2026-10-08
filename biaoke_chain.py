@@ -502,6 +502,9 @@ def _nest_compute(db_path: str) -> Dict[str, Any]:
                 hi = float(last.get("high") or 0)
             except (TypeError, ValueError):
                 hi = 0.0
+            # 最新柱高低未齊：用收當高，不准略過 47578 對質
+            if hi <= 0 and close > 0:
+                hi = close
             if hi >= 47578:
                 bits.append(
                     f"官方高 {_px(hi)} 已過他自己點的前波高 47578，才比較像維持右肩"

@@ -215,24 +215,27 @@ def test_real_daily_quotes_numbers_are_exact():
     bars = load_bars(db, "2383", n=120)
     if len(bars) < 40:
         return
+    from biaoke_brain import volume_first_price
+
     work = bars[-60:]
     info = analyze_structure(work)
     st = info.get("struct") or {}
-    lookback = min(40, len(work))
-    window = work[-lookback:]
-    spike = max(window, key=lambda r: float(r.get("volume") or 0))
+    # 與大量區同一套：近窗仍有效爆大量日，不是絕對最大量
+    expect = volume_first_price(work, lookback=min(40, len(work)))
     last = work[-1]
-    assert float(st.get("spike_high")) == float(spike["high"])
-    assert float(st.get("spike_low")) == float(spike["low"])
-    assert str(st.get("spike_date") or "").replace("-", "")[:8] == str(spike["date"]).replace("-", "")[:8]
-    assert float((info.get("spike_bar") or {}).get("volume")) == float(spike["volume"])
+    assert float(st.get("spike_high")) == float(expect["spike_high"])
+    assert float(st.get("spike_low")) == float(expect["spike_low"])
+    assert str(st.get("spike_date") or "").replace("-", "")[:8] == str(
+        expect["spike_date"] or ""
+    ).replace("-", "")[:8]
+    assert float((info.get("spike_bar") or {}).get("volume")) == float(expect["spike_vol"])
     cap = chart_caption(info, sid="2383", name="台光電")
-    assert _px_from_bar(spike["high"]) in cap
-    assert _px_from_bar(spike["low"]) in cap
+    assert _px_from_bar(expect["spike_high"]) in cap
+    assert _px_from_bar(expect["spike_low"]) in cap
     assert _px_from_bar(last["close"]) in cap
-    assert str(int(round(float(spike["volume"])))) in cap.replace(",", "")
+    assert str(int(round(float(expect["spike_vol"])))) in cap.replace(",", "")
     notes = " ".join(info.get("notes") or [])
-    assert "3930" in notes or _px_from_bar(spike["low"]) in notes
+    assert "3930" in notes or _px_from_bar(expect["spike_low"]) in notes
     proj = info.get("project") or {}
     assert proj.get("key") != "abandon"
     assert float(proj.get("target") or 0) > 0
@@ -247,7 +250,10 @@ def _px_from_bar(val):
 
 
 def _barely_over_series():
-    """剛過壓：最可能先當壓轉撐，不把連點延長當保證續漲。"""
+    """剛過壓：最可能先當壓轉撐，不把連點延長當保證續漲。
+
+    大量區邏輯：其他柱高須 < 最近收，才會退回絕對最大量日（i=8 高120）當壓。
+    """
     day = date(2026, 7, 1)
     rows = []
     for i in range(28):
@@ -255,14 +261,14 @@ def _barely_over_series():
         if i == 8:
             o, h, l, c, v = 100, 120, 96, 118, 18000
         elif i == 16:
-            o, h, l, c, v = 128, 136, 126, 130, 2200
+            o, h, l, c, v = 114, 119, 112, 116, 2200
         elif i == 22:
-            o, h, l, c, v = 126, 132, 124, 128, 1800
+            o, h, l, c, v = 115, 119, 113, 117, 1800
         elif i == 27:
-            o, h, l, c, v = 119, 123, 118, 121, 1400
+            o, h, l, c, v = 119, 122, 118, 121, 1400
         else:
-            px = 108 + i * 0.3
-            o, h, l, c, v = px, px + 2, px - 2, min(px + 0.4, 119), 1100
+            px = min(108 + i * 0.3, 118)
+            o, h, l, c, v = px, min(px + 2, 119.5), px - 2, min(px + 0.4, 118), 1100
         rows.append(
             {
                 "date": d,
@@ -280,7 +286,12 @@ def _barely_over_series():
 
 
 def _clearly_over_with_down_rail():
-    """明顯過壓但下降連點還壓著：最可能碰到連點延長，不是保證續漲。"""
+    """明顯過壓但下降連點還壓著：最可能碰到連點延長，不是保證續漲。
+
+    大量區：其餘有量柱高 < 最近收 → 退回最大量日（i=6 高110）當舊壓。
+    下降連點樞紐高須壓在收盤上（才會 last < down_now → rail／rail_cap）；
+    這兩根量=0，才不會搶走大量區選日。
+    """
     day = date(2026, 7, 1)
     rows = []
     for i in range(36):
@@ -288,14 +299,14 @@ def _clearly_over_with_down_rail():
         if i == 6:
             o, h, l, c, v = 100, 110, 90, 108, 20000
         elif i == 18:
-            o, h, l, c, v = 140, 150, 138, 145, 3000
+            o, h, l, c, v = 140, 150, 138, 145, 0
         elif i == 26:
-            o, h, l, c, v = 136, 147, 134, 140, 2500
+            o, h, l, c, v = 136, 147, 134, 140, 0
         elif i == 35:
             o, h, l, c, v = 128, 132, 126, 130, 1800
         else:
-            px = 100 + i * 0.8
-            o, h, l, c, v = px, px + 2, px - 2, px, 1200
+            px = min(100 + i * 0.8, 128)
+            o, h, l, c, v = px, min(px + 2, 129), px - 2, min(px, 128), 1200
         rows.append(
             {
                 "date": d,
@@ -486,16 +497,29 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v9c" in src or "hdr-band-v9" in src or "hdr-band-v8" in src
+    assert "hdr-band-v62" in src or "hdr-band-v61" in src or "hdr-band-v9c" in src
     assert "skip_industry=" in src
-    assert "_paint_industry_chips" in src
+    assert "_paint_nameplate" in src
+    assert "_paint_structure_blue_baskets" in src
     assert "昨收" in src
+    from biaoke_chart import _paint_industry_chips as _ind_fn
+
+    assert callable(_ind_fn)
     assert "收在爆大量日低之下" not in src
     assert "已過爆大量日高" not in src
-    from biaoke_chart import _BARS, _BARS_MAX, _BARS_MIN, _STOCK_MAIN_TOP_FULLBLEED
+    from biaoke_chart import (
+        _BARS,
+        _BARS_MAX,
+        _BARS_MIN,
+        _STOCK_MAIN_TOP_FULLBLEED,
+        _STRUCTURE_BOX_W,
+        _paint_structure_blue_baskets,
+    )
 
-    # 介紹帶下緣＝主圖上緣；pass2b 行距拉開，仍不准把头牌疊進 K
-    assert 0.68 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    # 61：主圖上緣抬高；三藍籃筐等縫；頭欄仍不准疊進 K
+    assert 0.75 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
+    assert float(_STRUCTURE_BOX_W) >= 90.0
+    assert callable(_paint_structure_blue_baskets)
     # K 窗上限≈九個月（約 180–190）；不准再拉到一年／240
     assert int(_BARS_MAX) <= 195
     assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX)
@@ -588,8 +612,13 @@ def test_locator_inset_marks_window():
     )
     assert any("最可能" in str(k.get("text")) for k in kept)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept)
-    assert not any("下降壓" in str(k.get("text")) for k in kept)
+    # 61：軌標不准被壓／撐刪掉，改垂直錯開
+    assert any("下降壓" in str(k.get("text")) for k in kept)
+    rail = next(k for k in kept if "下降壓" in str(k.get("text")))
+    press = next(k for k in kept if str(k.get("text") or "").startswith("壓"))
+    assert abs(float(rail["y"]) - float(press["y"])) >= 2.0
     # 昨收貼「最可能」釘價仍要留；只跟壓／撐極近才讓
+    # 最可能釘現價不准吃掉撐（7853：撐423 vs 收416；span 大時 thr 會蓋到）
     kept_prev = _dedupe_right_notes(
         [
             {"y": 470.0, "text": "壓 470"},
@@ -597,10 +626,12 @@ def test_locator_inset_marks_window():
             {"y": 414.68, "text": "昨收 414.68"},
             {"y": 416.64, "text": "最可能＝先放棄"},
         ],
-        span=220.0,
+        span=531.0,
     )
     assert any(str(k.get("text") or "").startswith("昨收") for k in kept_prev)
     assert any("最可能" in str(k.get("text")) for k in kept_prev)
+    assert any(str(k.get("text") or "").startswith("撐") for k in kept_prev)
+    assert any(str(k.get("text") or "").startswith("壓") for k in kept_prev)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)

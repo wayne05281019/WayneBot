@@ -166,6 +166,30 @@ def test_volume_first_price_spike_is_high_volume_day():
     assert st["down_streak"] == 2
 
 
+def test_volume_first_price_prefers_active_overhead_not_absolute_max():
+    """與大量區專圖同一套：壓還在頭上的爆大量日，不准鎖已站上的絕對最大量日。"""
+    bars = [
+        {"date": "20260917", "high": 5255, "low": 4635, "close": 4695, "volume": 5813},
+        {"date": "20261006", "high": 6115, "low": 5820, "close": 5995, "volume": 5086},
+        {"date": "20261007", "high": 6325, "low": 5950, "close": 5950, "volume": 2968},
+    ]
+    st = volume_first_price(bars, lookback=40)
+    assert st["spike_date"] == "2026-10-06"
+    assert st["spike_high"] == 6115
+    assert st["spike_low"] == 5820
+
+
+def test_volume_first_price_excludes_last_bar_even_if_max_vol():
+    bars = [
+        {"date": "20260901", "high": 120, "low": 90, "close": 110, "volume": 5000},
+        {"date": "20260902", "high": 115, "low": 105, "close": 112, "volume": 90000},
+    ]
+    st = volume_first_price(bars, lookback=40)
+    assert st["spike_date"] == "2026-09-01"
+    assert st["spike_high"] == 120
+    assert st["spike_low"] == 90
+
+
 def test_search_miss_does_not_say_wont_guess():
     html = search_biaoke("這個代號絕對不存在xyzzy")
     assert "不猜" not in html

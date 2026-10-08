@@ -1261,7 +1261,15 @@ def _paint_volume_zone(
     # 壓／撐色線微細：仍清楚，不搶 K／均線
     ax1.axhline(hi, color=_PRESS, linewidth=1.35, zorder=5, solid_capstyle="round")
     ax1.axhline(lo, color=_HOLD, linewidth=1.35, zorder=5, solid_capstyle="round")
-    ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.65, zorder=1)
+    # 爆大量日豎線：極小間距虛線，避免實線切過 K／量看不清
+    ax1.axvline(
+        spike_i,
+        color=_SPIKE,
+        linewidth=1.05,
+        alpha=0.72,
+        zorder=1,
+        linestyle=(0, (1.1, 1.35)),
+    )
 
     # 月線 MA20＋季線 MA60：近窗第一根起就要畫滿（暖機在 prepare）
     closes_v = pd.to_numeric(view["close"], errors="coerce")
@@ -1411,14 +1419,7 @@ def _paint_volume_zone(
     # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
     ax1.set_xlim(-0.05, n + 1.65)
     if path_shown:
-        ax1.axvline(
-            float(xs[-1]),
-            color=_CALL,
-            linewidth=1.55,
-            linestyle=(0, (3.2, 2.0)),
-            alpha=0.90,
-            zorder=8,
-        )
+        # 不畫最後一根橘色豎虛線：會蓋住最新收盤 K，改只留右上事實句
         ax1.text(
             0.985,
             0.968,
@@ -1711,9 +1712,21 @@ def _paint_volume_zone(
         if key != prev_m:
             _put_tick(i, f"{int(dt.month):02d}月")
             prev_m = key
-    # 爆大量日、最後一根一定標月日，對準那一根 K／量
-    _put_tick(spike_i, _md(view["date"].iloc[spike_i]), prefer=True)
-    _put_tick(n - 1, _md(view["date"].iloc[-1]), prefer=True)
+    # 爆大量日、最後一根標月日；相鄰（≤2 根）只留最後一根，避免 10/06∥10/07 互壓
+    # （爆大量日已有量柱上「爆大量 mm/dd」標，底軸不必再搶）
+    last_i = n - 1
+    if abs(int(spike_i) - int(last_i)) <= 2:
+        _put_tick(last_i, _md(view["date"].iloc[last_i]), prefer=True)
+    else:
+        _put_tick(spike_i, _md(view["date"].iloc[spike_i]), prefer=True)
+        _put_tick(last_i, _md(view["date"].iloc[last_i]), prefer=True)
+    # 月標與「mm/dd」太近（≤4 根）→ 丟掉月標，留具體日，避免 10月∥10/07 互壓
+    day_idx = {i for i, lab in tick_at.items() if "/" in str(lab)}
+    for i, lab in list(tick_at.items()):
+        if "/" in str(lab) or "月" not in str(lab):
+            continue
+        if any(abs(int(i) - int(j)) <= 4 for j in day_idx):
+            del tick_at[i]
     tick_pos = sorted(tick_at)
     tick_lab = [tick_at[i] for i in tick_pos]
     # 與導航同一套：能排下單排；會互壓才錯開

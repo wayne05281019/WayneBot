@@ -209,13 +209,14 @@ def test_twii_degree_chart_when_db_present(tmp_path):
             or "不准永遠鎖死舊ABC" in cap
             or "平行壓" in cap
         )
-        # 近窗 caption 走上升軌／平行壓；舊 45398 若已不畫仍算過關
+        # 近窗 caption 走上升軌／平行壓；舊錨若不畫仍算過關
         assert (
             "45398" in cap
             or "44210" in cap
             or "47573" in cap
             or "上升軌" in cap
             or "平行壓" in cap
+            or "近窗改口" in cap
         )
         assert "給看不懂" not in cap
         assert "不是一路大B" not in cap

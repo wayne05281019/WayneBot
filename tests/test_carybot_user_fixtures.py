@@ -36,9 +36,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         return float(row["temp_num"])
 
     def test_8234_20260810_matches_carybot_peak(self):
-        """CaryBot 截圖：8/10 高點列應完全一致。"""
-        # as_of 釘住截圖窗；從今日 lookback=40 會滾掉 8/10
-        row = self._row(self._card("8234", as_of="20260917"), "20260810")
+        """CaryBot 截圖：8/10 高點列應完全一致。
+
+        釘 as_of＝截圖日，避免 lookback=40 隨庫尖端滾掉 8/10。
+        """
+        row = self._row(self._card("8234", as_of="20260810"), "20260810")
         self.assertAlmostEqual(float(row["close"]), 73.8, places=1)
         self.assertEqual(row["獲利"], "32.3%")
         self.assertEqual(row["預警"], "K20高")

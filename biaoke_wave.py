@@ -777,6 +777,11 @@ def _official_bits(db_path: str) -> List[str]:
             lo = float(last.get("low") or 0)
         except (TypeError, ValueError):
             close = hi = lo = 0.0
+        # 最新柱若只有收、高低未齊（盤後未補完整）：對質用收當高／低，不准整段略過 47578
+        if hi <= 0 and close > 0:
+            hi = close
+        if lo <= 0 and close > 0:
+            lo = close
         if close >= 45839:
             bits.append(f"收 {_px(close)} 還在他自己點的 9/3 低 45839 之上")
         elif close > 0:
