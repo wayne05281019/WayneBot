@@ -498,7 +498,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v69" in src
+        "hdr-band-v70" in src
+        or "hdr-band-v69" in src
         or "hdr-band-v68" in src
         or "hdr-band-v67" in src
         or "hdr-band-v64" in src
@@ -511,6 +512,7 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "過壓後掉回撐下＝出貨痕跡" in src
     assert "status_row" in src
     assert "不准上下兩排互壓" in src
+    assert "status_h_gap" in src
     assert "pad_extra" in inspect.getsource(
         __import__("biaoke_chart", fromlist=["_draw_chip"])._draw_chip
     )

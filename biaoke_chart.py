@@ -2558,7 +2558,7 @@ def _draw_chip(
         ),
     )
     # pad＞預設時 bbox 左右膨脹；間距要跟，否則×1.5 單列會邊壓邊
-    pad_extra = max(0.0, float(pad) - 0.22) * (float(size) / 11.0) * 3.2
+    pad_extra = max(0.0, float(pad) - 0.22) * (float(size) / 11.0) * 4.8
     return float(x) + float(_ow(s, size)) + 1.15 + pad_extra
 
 
@@ -2950,7 +2950,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v69" if fullbleed else "hdr-wrap3",
+        "hdr-band-v70" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3415,7 +3415,8 @@ def render_biaoke_structure_png(
     _STATUS_CHIP_SCALE = 1.5
     if fullbleed:
         date_y, ohlc_y1 = 93.55, 89.95
-        spike_y1, spike_y2, chip_y0 = 86.35, 82.85, 80.05
+        # 70：chip 與爆大量日第二行拉開（單列橫排保留）
+        spike_y1, spike_y2, chip_y0 = 86.35, 82.85, 75.95
         chip_step = 2.65
         status_chip_step = 2.65 * _STATUS_CHIP_SCALE  # 約 4.0
         spot_y = 93.15
@@ -3495,12 +3496,14 @@ def render_biaoke_structure_png(
             ha="left",
         )
     chip_x, chip_y = header_x, chip_y0
-    # 狀態／判斷晶片（68×1.5；69 單列橫排）：出貨／洗盤＋升／降通道狀態
+    # 狀態／判斷晶片（68×1.5；69 單列；70 與上行／彼此留縫）：出貨／洗盤＋通道
     # 3／4 顆都從左排到右同一列、同一 y，不准上下兩排互壓；仍非買訊
     status_sz = int(round((12 if fullbleed else 13) * _STATUS_CHIP_SCALE))
     ch_sz = int(round((10 if fullbleed else 12) * _STATUS_CHIP_SCALE))
     status_pad = 0.22 * _STATUS_CHIP_SCALE
     status_lw = 1.15 * _STATUS_CHIP_SCALE
+    # 70：三標籤彼此中間留縫（單列橫排不變）
+    status_h_gap = 2.05 * _STATUS_CHIP_SCALE
     status_row: List[Tuple[str, str, str, int]] = []
     if mark:
         status_row.append((mark, mc, mc, status_sz))
@@ -3522,6 +3525,7 @@ def render_biaoke_structure_png(
             ov, chip_x, chip_y, bit, fc="#ffffff", ec=ec, tc=tc,
             size=sz, pad=status_pad, lw=status_lw,
         )
+        chip_x += status_h_gap
         if chip_x > status_max:
             # 仍畫完本列；不換行、不刪（使用者鎖單列橫排）
             pass
