@@ -52,9 +52,13 @@ _CH_ASC = "#00897b"  # 上升通道雙線（對齊附圖青綠色調，白底可
 _CH_DESC = "#00838f"  # 下降通道雙線
 _WASH = "#ef6c00"
 _SPIKE_VOL = "#f9a825"
-# 查股結構橫式：加長交易日補右白（仍留標籤溝）；大量撐壓近窗不動
-_BARS = 240
+# 查股結構橫式：交易日窗鎖下限≈八個月（可略多不可少）；大量撐壓近窗不動
+_BARS_MIN_MONTHS = 8
+_BARS_PER_MONTH = 21  # 台股約月均交易日
+_BARS_MIN = int(_BARS_MIN_MONTHS * _BARS_PER_MONTH)  # 168
+_BARS = 240  # ≈12 個月；必須 ≥ _BARS_MIN
 _FUTURE = 10
+assert _BARS >= _BARS_MIN
 _PROJECT = "#e65100"
 _FORK = "#5d4037"
 _FUTURE_BG = "#fff6e0"
@@ -2210,10 +2214,14 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
             cax, 0.18, 0.08, 0.64, 0.84,
             float(o), float(hi), float(lo), float(close), prev,
         )
+    # 縮圖旁時段標也拉開字距（收盤／盤中／現價）
+    lab = str(label or "")
+    if lab in ("收盤", "盤中", "現價") and len(lab) >= 2:
+        lab = "　".join(list(lab))
     fig.text(
         tx,
         mid_y + 0.036,
-        "今K　" + label,
+        "今Ｋ　" + lab,
         transform=fig.transFigure,
         ha="right",
         va="center",
@@ -2255,6 +2263,51 @@ def _ow(text: str, size: float = 11) -> float:
     for ch in str(text or ""):
         n += 1.0 if ord(ch) > 0x2E80 else 0.55
     return n * (float(size) / 11.0) * 1.08 + 0.15
+
+
+def _spaced_cjk_width(text: str, size: float = 12, *, char_gap: float = 0.72) -> float:
+    """收盤／盤中等二字標：字與字加硬間距後的總寬。"""
+    chars = [c for c in str(text or "") if not c.isspace()]
+    if not chars:
+        return 0.0
+    return sum(_ow(ch, size) for ch in chars) + float(char_gap) * max(len(chars) - 1, 0)
+
+
+def _paint_spaced_cjk(
+    ax,
+    x: float,
+    y: float,
+    text: str,
+    *,
+    color: str,
+    size: float = 12,
+    ha: str = "right",
+    char_gap: float = 0.72,
+    zorder: int = 22,
+) -> float:
+    """逐字畫 CJK，字與字拉開；回傳佔寬。不准「收盤／盤中」字黏字。"""
+    chars = [c for c in str(text or "") if not c.isspace()]
+    if not chars:
+        return 0.0
+    total = _spaced_cjk_width("".join(chars), size, char_gap=char_gap)
+    fp = _fp(int(size), "bold")
+    if str(ha or "right") == "right":
+        cursor = float(x)
+        for ch in reversed(chars):
+            ax.text(
+                cursor, y, ch, color=color, fontproperties=fp,
+                va="center", ha="right", zorder=zorder,
+            )
+            cursor -= _ow(ch, size) + float(char_gap)
+    else:
+        cursor = float(x)
+        for ch in chars:
+            ax.text(
+                cursor, y, ch, color=color, fontproperties=fp,
+                va="center", ha="left", zorder=zorder,
+            )
+            cursor += _ow(ch, size) + float(char_gap)
+    return total
 
 
 def _in_pytest() -> bool:
@@ -2394,10 +2447,11 @@ def _spot_quote(
         live_chg = px - yf
     if live_pct is None and yf:
         live_pct = (px - yf) / yf * 100.0
+    # 盤中／收盤依時段切換（與三合一表頭同一套用詞；不准寫現價）
     out.update(
         {
             "is_live": True,
-            "label": "現價",
+            "label": "盤中",
             "open": live.get("open") if live.get("open") is not None else out["open"],
             "high": live.get("high") if live.get("high") is not None else out["high"],
             "low": live.get("low") if live.get("low") is not None else out["low"],
@@ -2543,22 +2597,33 @@ def _paint_spot(
         bg, fg = chip
         px_color = fg
         px_kw = dict(bbox=dict(boxstyle="square,pad=0.18", facecolor=bg, edgecolor="none"))
+    # 時段標：收盤／盤中／現價 一律逐字拉開；字黏字＝沒做完
+    session_labs = {"收盤", "盤中", "現價"}
+    lab_size = 12
+    char_gap = 0.78
     if compact:
-        ax.text(
-            x, 90, "今K", color="#546e7a", fontproperties=_fp(8, "bold"),
-            va="center", ha="left", zorder=22,
+        _paint_spaced_cjk(
+            ax, x, 90, "今K", color="#546e7a", size=9, ha="left", char_gap=0.55,
         )
         if ohlc_ok:
             _draw_mini_candle(
                 ax, x + 1.0, 58, 8.0, 26,
                 float(o), float(hi), float(lo), float(close), prev,
             )
-        ax.text(
-            x, 42, label, color="#546e7a", fontproperties=_fp(9, "bold"),
-            va="center", ha="left", zorder=22,
+        lab_w = (
+            _paint_spaced_cjk(
+                ax, x, 42, label, color="#546e7a", size=10, ha="left", char_gap=char_gap,
+            )
+            if label in session_labs
+            else (_ow(label, 10) or 0.0)
         )
+        if label not in session_labs:
+            ax.text(
+                x, 42, label, color="#546e7a", fontproperties=_fp(10, "bold"),
+                va="center", ha="left", zorder=22,
+            )
         ax.text(
-            x + _ow(label, 9) + 1.2, 42, px, color=px_color,
+            x + lab_w + 1.35, 42, px, color=px_color,
             fontproperties=_fp(18, "bold"), va="center", ha="left", zorder=22,
             **px_kw,
         )
@@ -2568,25 +2633,30 @@ def _paint_spot(
                 fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
             )
         return
-    # 右對齊：今K｜迷你K｜收盤／現價｜數字；各段強制留白，不准「收盤」貼迷你K
-    # 間距（overlay 0–100）：價↔標 ≥1.0；標↔迷你K ≥1.85；迷你K↔今K ≥1.05
+    # 右對齊：今K｜迷你K｜收盤／盤中｜數字；字距＋鄰距皆拉開
+    # 間距：價↔標 ≥1.2；標↔迷你K ≥2.1；迷你K↔今K ≥1.2；標內字距 char_gap
     if str(align or "right") == "right":
-        gap_px_lab = 1.55 if px_kw else 1.05
-        gap_lab_candle = 1.95
-        gap_candle_jink = 1.15
+        gap_px_lab = 1.75 if px_kw else 1.25
+        gap_lab_candle = 2.15
+        gap_candle_jink = 1.25
         cursor = float(x)
         ax.text(
             cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
             va="center", ha="right", zorder=22, **px_kw,
         )
-        # 漲停／跌停色塊會往左膨脹；標籤多留空，不准「收盤」蓋住數字
         cursor -= _ow(px, 22) + gap_px_lab
-        ax.text(
-            cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
-            va="center", ha="right", zorder=22,
-        )
-        # _ow 偏窄估；再加硬間距，迷你K右緣不准貼「收」左緣
-        cursor -= _ow(label, 11) + gap_lab_candle
+        if label in session_labs:
+            lab_w = _paint_spaced_cjk(
+                ax, cursor, y, label, color="#546e7a", size=lab_size,
+                ha="right", char_gap=char_gap,
+            )
+            cursor -= lab_w + gap_lab_candle
+        else:
+            ax.text(
+                cursor, y, label, color="#546e7a", fontproperties=_fp(lab_size, "bold"),
+                va="center", ha="right", zorder=22,
+            )
+            cursor -= _ow(label, lab_size) + gap_lab_candle
         if ohlc_ok:
             cw, ch = 1.85, 4.0
             _draw_mini_candle(
@@ -2594,12 +2664,10 @@ def _paint_spot(
                 float(o), float(hi), float(lo), float(close), prev,
             )
             cursor -= cw + gap_candle_jink
-        ax.text(
-            cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
-            va="center", ha="right", zorder=22,
+        _paint_spaced_cjk(
+            ax, cursor, y, "今K", color="#546e7a", size=10, ha="right", char_gap=0.55,
         )
         if move and move != "—":
-            # 價有漲停晶片時多留空，不准「收／現價」與「較昨日」互壓
             dy = (
                 float(move_dy)
                 if move_dy is not None
@@ -2611,15 +2679,13 @@ def _paint_spot(
             )
         return
     # 左對齊備援（測試／舊呼叫）
-    gap_jink_candle = 1.15
-    gap_candle_lab = 1.95
-    gap_lab_px = 1.05
+    gap_jink_candle = 1.25
+    gap_candle_lab = 2.15
+    gap_lab_px = 1.25
     cursor = float(x)
-    ax.text(
-        cursor, y, "今K", color="#546e7a", fontproperties=_fp(9, "bold"),
-        va="center", ha="left", zorder=22,
-    )
-    cursor += _ow("今K", 9) + gap_jink_candle
+    cursor += _paint_spaced_cjk(
+        ax, cursor, y, "今K", color="#546e7a", size=10, ha="left", char_gap=0.55,
+    ) + gap_jink_candle
     if ohlc_ok:
         cw, ch = 1.9, 4.0
         _draw_mini_candle(
@@ -2627,11 +2693,17 @@ def _paint_spot(
             float(o), float(hi), float(lo), float(close), prev,
         )
         cursor += cw + gap_candle_lab
-    ax.text(
-        cursor, y, label, color="#546e7a", fontproperties=_fp(12, "bold"),
-        va="center", ha="left", zorder=22,
-    )
-    cursor += _ow(label, 12) + gap_lab_px
+    if label in session_labs:
+        cursor += _paint_spaced_cjk(
+            ax, cursor, y, label, color="#546e7a", size=lab_size,
+            ha="left", char_gap=char_gap,
+        ) + gap_lab_px
+    else:
+        ax.text(
+            cursor, y, label, color="#546e7a", fontproperties=_fp(lab_size, "bold"),
+            va="center", ha="left", zorder=22,
+        )
+        cursor += _ow(label, lab_size) + gap_lab_px
     ax.text(
         cursor, y, px, color=px_color, fontproperties=_fp(22, "bold"),
         va="center", ha="left", zorder=22, **px_kw,
@@ -2690,7 +2762,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v7" if fullbleed else "hdr-wrap3",
+        "hdr-band-v8" if fullbleed else "hdr-wrap3",
         int(_BARS),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),

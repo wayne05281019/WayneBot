@@ -486,17 +486,19 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
-    assert "hdr-band-v7" in src or "hdr-band-v6" in src or "hdr-band-v5" in src
+    assert "hdr-band-v8" in src or "hdr-band-v7" in src or "hdr-band-v6" in src
     assert "skip_industry=" in src
     assert "_paint_industry_chips" in src
     assert "昨收" in src
     assert "收在爆大量日低之下" not in src
     assert "已過爆大量日高" not in src
-    from biaoke_chart import _BARS, _STOCK_MAIN_TOP_FULLBLEED
+    from biaoke_chart import _BARS, _BARS_MIN, _STOCK_MAIN_TOP_FULLBLEED
 
     # 介紹帶下緣＝主圖上緣；pass2b 行距拉開，仍不准把头牌疊進 K
     assert 0.68 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
-    # 主圖加長交易日補右白（大量近窗仍短）
+    # 交易日窗鎖下限≈八個月；可略多（240≈12月）
+    assert int(_BARS_MIN) >= 160
+    assert int(_BARS) >= int(_BARS_MIN)
     assert 220 <= int(_BARS) <= 260
 
 
@@ -518,9 +520,11 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert _note_priority("昨收 443") == 2
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
-    # 「收盤」與迷你K 硬間距；不准再貼成一塊
+    # 「收盤／盤中」字距＋與迷你K 鄰距；不准字黏字、不准貼圖
+    assert "_paint_spaced_cjk" in spot
     assert "gap_lab_candle" in spot
-    assert "1.95" in spot
+    assert "char_gap" in spot
+    assert "盤中" in inspect.getsource(_spot_quote)
 
 
 def test_locator_inset_marks_window():
@@ -545,6 +549,9 @@ def test_locator_inset_marks_window():
     from biaoke_wave import _TWII_LOCATOR_RECT
 
     assert _BARS >= 220
+    from biaoke_chart import _BARS_MIN
+
+    assert _BARS >= _BARS_MIN >= 160
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
     assert _STOCK_LOCATOR_RECT[2] >= 0.40
     assert _STOCK_LOCATOR_RECT[3] >= 0.24

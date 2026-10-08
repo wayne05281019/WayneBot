@@ -3263,11 +3263,11 @@ def render_lookup_structure_result(
             prepare_volume_zone,
         )
 
-        # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖加長交易日補右白
+        # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖≥八個月交易日
         pack = prepare_volume_zone(sid, name, db_path, save_path)
         if not pack:
             return "", ""
-        need = max(int(_BARS) + 20, 280)
+        need = max(int(_BARS) + 40, 300)
         long_df = official_work(load_official_ohlc(sid, db_path, need))
         if long_df is not None and not getattr(long_df, "empty", True) and len(long_df) >= 8:
             bars = _bars_from_official(long_df, sid, name)
