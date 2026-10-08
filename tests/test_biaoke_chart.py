@@ -215,24 +215,27 @@ def test_real_daily_quotes_numbers_are_exact():
     bars = load_bars(db, "2383", n=120)
     if len(bars) < 40:
         return
+    from biaoke_brain import volume_first_price
+
     work = bars[-60:]
     info = analyze_structure(work)
     st = info.get("struct") or {}
-    lookback = min(40, len(work))
-    window = work[-lookback:]
-    spike = max(window, key=lambda r: float(r.get("volume") or 0))
+    # 與大量區同一套：近窗仍有效爆大量日，不是絕對最大量
+    expect = volume_first_price(work, lookback=min(40, len(work)))
     last = work[-1]
-    assert float(st.get("spike_high")) == float(spike["high"])
-    assert float(st.get("spike_low")) == float(spike["low"])
-    assert str(st.get("spike_date") or "").replace("-", "")[:8] == str(spike["date"]).replace("-", "")[:8]
-    assert float((info.get("spike_bar") or {}).get("volume")) == float(spike["volume"])
+    assert float(st.get("spike_high")) == float(expect["spike_high"])
+    assert float(st.get("spike_low")) == float(expect["spike_low"])
+    assert str(st.get("spike_date") or "").replace("-", "")[:8] == str(
+        expect["spike_date"] or ""
+    ).replace("-", "")[:8]
+    assert float((info.get("spike_bar") or {}).get("volume")) == float(expect["spike_vol"])
     cap = chart_caption(info, sid="2383", name="台光電")
-    assert _px_from_bar(spike["high"]) in cap
-    assert _px_from_bar(spike["low"]) in cap
+    assert _px_from_bar(expect["spike_high"]) in cap
+    assert _px_from_bar(expect["spike_low"]) in cap
     assert _px_from_bar(last["close"]) in cap
-    assert str(int(round(float(spike["volume"])))) in cap.replace(",", "")
+    assert str(int(round(float(expect["spike_vol"])))) in cap.replace(",", "")
     notes = " ".join(info.get("notes") or [])
-    assert "3930" in notes or _px_from_bar(spike["low"]) in notes
+    assert "3930" in notes or _px_from_bar(expect["spike_low"]) in notes
     proj = info.get("project") or {}
     assert proj.get("key") != "abandon"
     assert float(proj.get("target") or 0) > 0
@@ -247,7 +250,10 @@ def _px_from_bar(val):
 
 
 def _barely_over_series():
-    """剛過壓：最可能先當壓轉撐，不把連點延長當保證續漲。"""
+    """剛過壓：最可能先當壓轉撐，不把連點延長當保證續漲。
+
+    大量區邏輯：其他柱高須 < 最近收，才會退回絕對最大量日（i=8 高120）當壓。
+    """
     day = date(2026, 7, 1)
     rows = []
     for i in range(28):
@@ -255,14 +261,14 @@ def _barely_over_series():
         if i == 8:
             o, h, l, c, v = 100, 120, 96, 118, 18000
         elif i == 16:
-            o, h, l, c, v = 128, 136, 126, 130, 2200
+            o, h, l, c, v = 114, 119, 112, 116, 2200
         elif i == 22:
-            o, h, l, c, v = 126, 132, 124, 128, 1800
+            o, h, l, c, v = 115, 119, 113, 117, 1800
         elif i == 27:
-            o, h, l, c, v = 119, 123, 118, 121, 1400
+            o, h, l, c, v = 119, 122, 118, 121, 1400
         else:
-            px = 108 + i * 0.3
-            o, h, l, c, v = px, px + 2, px - 2, min(px + 0.4, 119), 1100
+            px = min(108 + i * 0.3, 118)
+            o, h, l, c, v = px, min(px + 2, 119.5), px - 2, min(px + 0.4, 118), 1100
         rows.append(
             {
                 "date": d,
@@ -280,7 +286,12 @@ def _barely_over_series():
 
 
 def _clearly_over_with_down_rail():
-    """明顯過壓但下降連點還壓著：最可能碰到連點延長，不是保證續漲。"""
+    """明顯過壓但下降連點還壓著：最可能碰到連點延長，不是保證續漲。
+
+    大量區：其餘有量柱高 < 最近收 → 退回最大量日（i=6 高110）當舊壓。
+    下降連點樞紐高須壓在收盤上（才會 last < down_now → rail／rail_cap）；
+    這兩根量=0，才不會搶走大量區選日。
+    """
     day = date(2026, 7, 1)
     rows = []
     for i in range(36):
@@ -288,14 +299,14 @@ def _clearly_over_with_down_rail():
         if i == 6:
             o, h, l, c, v = 100, 110, 90, 108, 20000
         elif i == 18:
-            o, h, l, c, v = 140, 150, 138, 145, 3000
+            o, h, l, c, v = 140, 150, 138, 145, 0
         elif i == 26:
-            o, h, l, c, v = 136, 147, 134, 140, 2500
+            o, h, l, c, v = 136, 147, 134, 140, 0
         elif i == 35:
             o, h, l, c, v = 128, 132, 126, 130, 1800
         else:
-            px = 100 + i * 0.8
-            o, h, l, c, v = px, px + 2, px - 2, px, 1200
+            px = min(100 + i * 0.8, 128)
+            o, h, l, c, v = px, min(px + 2, 129), px - 2, min(px, 128), 1200
         rows.append(
             {
                 "date": d,
