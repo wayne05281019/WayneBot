@@ -266,14 +266,24 @@ def test_render_volume_zone_png_markets_twse_otc_emerging():
 
 
 def test_vol_zone_xaxis_matches_k_and_volume_index():
-    """底軸刻度 index＝該根 K／量；爆大量日與最後一根一定標月日。"""
+    """底軸刻度 index＝該根 K／量；爆大量與最後一根相鄰時只留最後一根月日（防互壓）。"""
+    import inspect
+
     from vol_zone_chart import (
         VOL_ZONE_BARS,
+        _paint_volume_zone,
         find_volume_zone,
         load_official_ohlc,
         official_work,
         render_volume_zone_png,
     )
+
+    src = inspect.getsource(_paint_volume_zone)
+    assert "abs(int(spike_i) - int(last_i)) <= 2" in src
+    assert "linestyle=(0, (1.1, 1.35))" in src  # 爆大量豎線極小間距虛線
+    assert "不畫最後一根橘色豎虛線" in src
+    assert "axvline(\n            float(xs[-1])" not in src
+    assert "axvline(float(xs[-1])" not in src
 
     db = get_db_path()
     work = official_work(load_official_ohlc("6274", db, 180))
@@ -294,6 +304,22 @@ def test_vol_zone_xaxis_matches_k_and_volume_index():
         out = os.path.join(tmp, "6274_axis.png")
         path = render_volume_zone_png("6274", "台燿", db, out)
         assert path and os.path.isfile(path)
+
+
+def test_structure_spike_matches_vol_zone_for_2383():
+    """查股結構圖撐壓＝大量區專圖（2383：有效大量日 10/06 壓 6115／撐 5820）。"""
+    from biaoke_brain import load_bars, volume_first_price
+    from vol_zone_chart import find_volume_zone, load_official_ohlc, official_work
+
+    db = get_db_path()
+    bars = load_bars(db, "2383")
+    st = volume_first_price(bars, lookback=40)
+    work = official_work(load_official_ohlc("2383", db, 180))
+    zone = find_volume_zone(work, lookback=40)
+    assert zone
+    assert str(st["spike_date"]).replace("-", "")[:8] == str(zone["date"])[:8]
+    assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
+    assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
 
 
 def test_vol_zone_uses_shared_volume_heights():
