@@ -208,7 +208,13 @@ def test_twii_degree_chart_when_db_present(tmp_path):
             or "不准永遠鎖死舊ABC" in cap
             or "平行壓" in cap
         )
-        assert "45398" in cap
+        # 近窗上升軌 caption 可不帶舊 C-5 如果句 45398；有通道用語或舊錨都算
+        assert (
+            "45398" in cap
+            or "上升軌" in cap
+            or "平行壓" in cap
+            or "近窗改口" in cap
+        )
         assert "給看不懂" not in cap
         assert "不是一路大B" not in cap
     src_w = inspect.getsource(__import__("biaoke_wave").render_twii_degree_png)

@@ -776,6 +776,7 @@ class NavigatorEngine:
         except Exception:
             pass
         close_raw = df["close"].astype(float).copy()
+        open_raw = df["open"].astype(float).copy() if "open" in df.columns else close_raw
         high_raw = df["high"].astype(float).copy() if "high" in df.columns else close_raw
         low_raw = df["low"].astype(float).copy() if "low" in df.columns else close_raw
         live_time = ""
@@ -825,6 +826,13 @@ class NavigatorEngine:
         rel = ((tail_adj - tail_raw).abs() / denom).fillna(0.0)
         use_raw_table = float(rel.max() or 0) < 0.02
         px = raw_px if use_raw_table else adj_px
+        if use_raw_table:
+            # 小額除息：表用還原前；開高低收／大字必須同一把，不准 tip 走還原、表走原價
+            df = df.copy()
+            df["close"] = close_raw.to_numpy()
+            df["open"] = open_raw.to_numpy()
+            df["high"] = high_raw.to_numpy()
+            df["low"] = low_raw.to_numpy()
         close_s = px.where(~df["is_halt"]) if "is_halt" in df.columns else px
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
