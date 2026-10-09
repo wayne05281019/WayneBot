@@ -489,9 +489,13 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert Image.open(path).size[0] >= 1000
     assert (tmp_path / "nameplate.png").stat().st_size > 24_000
     src = inspect.getsource(render_biaoke_structure_png)
-    assert "_halo_line" in src
-    assert "_leader_note" in src
+    # 75：最可能改短 dash 直連標籤，不再在 render 裡 _halo_line 彎路徑；軌線仍走 _paint_extended_rail
+    assert "_paint_extended_rail" in src
+    assert "_leader_note" in src or "_place_right_notes" in src
     assert "_place_right_notes" in src
+    assert "from_x" in src and "_MOST_LIKELY_DASH" in inspect.getsource(
+        __import__("biaoke_chart", fromlist=["_place_right_notes"])._place_right_notes
+    )
     assert "inset_axes" not in src
     assert "if down_live" not in src
     assert "x_fut" in src
@@ -567,15 +571,26 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "已過爆大量日高" not in cap
     src = inspect.getsource(render_biaoke_structure_png)
     assert 'f"昨收 {_px(prev_c_axis)}"' in src or "昨收" in src
-    assert 'f"收 {_px(last_c)}"' in src
-    assert _note_priority("收 6845") == 2
+    assert 'f"今收 {_px(last_c)}"' in src
+    assert 'f"收 {_px(last_c)}"' not in src
+    from biaoke_chart import _is_today_close_note
+
+    assert _note_priority("今收 6845") == 2
+    assert _note_priority("收 6845") == 2  # 舊文案仍認
     assert _note_priority("昨收 443") == 3
+    assert _is_today_close_note("今收 6000") and not _is_today_close_note("昨收 5950")
     assert _is_level_note("壓 7270") and _is_level_note("撐 6865")
     place_src = inspect.getsource(
         __import__("biaoke_chart", fromlist=["_place_right_notes"])._place_right_notes
     )
     assert "neighbor" in place_src
     assert "不准再 snap 回 ny" in place_src or "一律用留縫後的 ty" in place_src
+    assert "close_pair" in place_src
+    assert "昨收＋今收同列並排" in place_src or "先昨收" in place_src
+    assert "_MOST_LIKELY_DASH" in place_src or "_MOST_LIKELY_DASH" in src
+    assert "from_x" in src and "from_y" in src
+    assert "不准再畫演化區彎路徑" in src or "短 dash 直連末日 K" in src
+    assert "(0, (7, 3))" not in src
     assert "連點延長" in src and "不准畫" in src
     spot = inspect.getsource(_paint_spot)
     assert "move_dy" in spot
@@ -667,19 +682,30 @@ def test_locator_inset_marks_window():
     assert any("最可能" in str(k.get("text")) for k in kept_prev)
     assert any(str(k.get("text") or "").startswith("撐") for k in kept_prev)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept_prev)
-    # 71：當日收貼撐仍要留（3008：收6845 vs 撐6865）
+    # 71／75：當日收貼撐仍要留（3008：今收6845 vs 撐6865）
     kept_close = _dedupe_right_notes(
         [
             {"y": 7270.0, "text": "壓 7270"},
             {"y": 6865.0, "text": "撐 6865"},
-            {"y": 6845.0, "text": "收 6845"},
+            {"y": 6845.0, "text": "今收 6845"},
             {"y": 6865.0, "text": "最可能＝往撐 6865"},
         ],
         span=4000.0,
     )
-    assert any(str(k.get("text") or "").startswith("收 ") for k in kept_close)
+    assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_close)
     assert any(str(k.get("text") or "").startswith("撐") for k in kept_close)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept_close)
+    # 75：昨收＋今收同價 Y 兩標都留（並排，不准去重互刪）
+    kept_pair = _dedupe_right_notes(
+        [
+            {"y": 6000.0, "text": "今收 6000"},
+            {"y": 6000.0, "text": "昨收 5950"},
+            {"y": 6115.0, "text": "壓 6115"},
+        ],
+        span=2000.0,
+    )
+    assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_pair)
+    assert any(str(k.get("text") or "").startswith("昨收") for k in kept_pair)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
@@ -757,10 +783,13 @@ def test_locator_window_matches_main_time():
 def test_leader_notes_use_dashed_and_stagger():
     import inspect
 
-    from biaoke_chart import _leader_note, _spread_ys_around
+    from biaoke_chart import _MOST_LIKELY_DASH, _leader_note, _spread_ys_around
 
     src = inspect.getsource(_leader_note)
-    assert 'linestyle="--"' in src or "linestyle='--'" in src
+    # 75：預設仍 --；最可能改走 ax.plot 短密 dash（_MOST_LIKELY_DASH）
+    assert 'ls: Any = "--"' in src or "ls: Any = '--'" in src or 'ls="--"' in src
+    assert "linestyle=ls" in src
+    assert _MOST_LIKELY_DASH[1][0] <= 2.5
     ys = _spread_ys_around([10.0, 10.2], [10.0], 1.0)
     assert abs(ys[0] - ys[1]) >= 0.99
 

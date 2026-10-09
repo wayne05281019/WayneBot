@@ -1186,6 +1186,10 @@ def _halo_line(ax, xs, ys, color, *, lw=1.4, ls="-", z=6, halo=1.0):
     )
 
 
+# 75：最可能引線用短密 dash（點單位）；舊 (7,3) 在演化區看起來像長段實線
+_MOST_LIKELY_DASH = (0, (1.35, 1.05))
+
+
 def _leader_note(
     ax,
     x,
@@ -1200,10 +1204,13 @@ def _leader_note(
     va="center",
     clip: bool = False,
     shrink_b: float = 4.0,
+    ls: Any = "--",
+    lw: float = 0.95,
 ) -> None:
     """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
 
     clip=True：標籤必須落在軸內（演化區右側／最可能），不准跳出底圖。
+    ls：引線線型；最可能用短 dash，其餘預設 --。
     """
     ax.annotate(
         str(text),
@@ -1226,8 +1233,8 @@ def _leader_note(
         arrowprops=dict(
             arrowstyle="-",
             color=color,
-            lw=0.95,
-            linestyle="--",
+            lw=float(lw),
+            linestyle=ls,
             shrinkA=0,
             shrinkB=float(shrink_b),
         ),
@@ -1301,16 +1308,33 @@ def _approx_note_width(text: str, size: float = 12) -> float:
     return units * (float(size) / 12.0) * 2.35 + 6.8
 
 
+def _is_today_close_note(text: str) -> bool:
+    """當日收盤標籤（今收／舊「收」）；不含昨收。"""
+    t = str(text or "")
+    if t.startswith("昨收"):
+        return False
+    return (
+        t.startswith("今收 ")
+        or t.startswith("今收\u3000")
+        or t.startswith("收 ")
+        or t.startswith("收\u3000")
+    )
+
+
+def _is_prev_close_note(text: str) -> bool:
+    return str(text or "").startswith("昨收")
+
+
 def _note_priority(text: str) -> int:
     t = str(text or "")
     if "最可能" in t:
         return 0
     if t.startswith("壓") or t.startswith("撐"):
         return 1
-    # 71：當日收優先於昨收；紅框空位要留收
-    if t.startswith("收 ") or t.startswith("收\u3000"):
+    # 71／75：當日收優先於昨收；紅框空位要留今收
+    if _is_today_close_note(t):
         return 2
-    if t.startswith("昨收"):
+    if _is_prev_close_note(t):
         return 3
     if any(k in t for k in ("下降壓", "上升軌", "平行壓", "平行撐")):
         return 4
@@ -1329,8 +1353,16 @@ def _is_level_note(text: str) -> bool:
 
 
 def _is_close_note(text: str) -> bool:
-    t = str(text or "")
-    return t.startswith("收 ") or t.startswith("收\u3000") or t.startswith("昨收")
+    return _is_today_close_note(text) or _is_prev_close_note(text)
+
+
+def _approx_note_pack_width(text: str, size: float = 12) -> float:
+    """並排標籤的前進寬（比 fit 估略緊，盒與盒之間只留小縫）。"""
+    s = str(text or "")
+    units = 0.0
+    for ch in s:
+        units += 1.0 if ord(ch) > 0x2E80 else 0.72
+    return units * (float(size) / 12.0) * 1.92 + 3.6
 
 
 def _dedupe_right_notes(
@@ -1382,13 +1414,18 @@ def _dedupe_right_notes(
                 continue
             if _is_rail_note(kt) and _is_level_note(text):
                 continue
-            # 71：當日收不准被壓／撐／昨收刪掉（紅框必留；顯示 Y 再錯開）
-            if text.startswith("收") and not text.startswith("昨收"):
+            # 71／75：當日收不准被壓／撐／昨收刪掉（紅框必留；顯示 Y 再錯開）
+            if _is_today_close_note(text):
                 if _is_level_note(kt) or _is_close_note(kt) or _is_rail_note(kt):
                     continue
-            if kt.startswith("收") and not kt.startswith("昨收"):
+            if _is_today_close_note(kt):
                 if _is_level_note(text) or is_close or is_rail:
                     continue
+            # 75：昨收＋今收同列並排，同價 Y 必須兩標都留
+            if _is_prev_close_note(text) and _is_today_close_note(kt):
+                continue
+            if _is_today_close_note(text) and _is_prev_close_note(kt):
+                continue
             if is_close or _is_close_note(kt):
                 use_thr = (
                     prev_thr
@@ -1442,6 +1479,7 @@ def _place_right_notes(
 
     71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
+    75：昨收＋今收同列並排（先昨收、右今收），垂直貼當日收那列。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -1453,14 +1491,50 @@ def _place_right_notes(
     hi = ymax - gap * 0.9
     pin_x = float(seam) if seam is not None else None
     tx = float(x_text)
+    most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
+    levels = [n for n in cleaned if _is_level_note(str(n.get("text") or ""))]
+    closes = [
+        n
+        for n in cleaned
+        if _is_close_note(str(n.get("text") or ""))
+        and "最可能" not in str(n.get("text") or "")
+    ]
+    prev_close_notes = [n for n in closes if _is_prev_close_note(str(n.get("text") or ""))]
+    today_close_notes = [n for n in closes if _is_today_close_note(str(n.get("text") or ""))]
+    # 75：兩標同列——垂直只佔一格（錨在今收價）；昨收不另開一列
+    close_pair = bool(prev_close_notes and today_close_notes)
+    if close_pair:
+        today_y = float(today_close_notes[0].get("y") or 0)
+        for pn in prev_close_notes:
+            pn["y"] = today_y
+        closes_for_slot = list(today_close_notes)
+    else:
+        closes_for_slot = list(closes)
+    others = [
+        n
+        for n in cleaned
+        if "最可能" not in str(n.get("text") or "")
+        and not _is_level_note(str(n.get("text") or ""))
+        and not _is_close_note(str(n.get("text") or ""))
+    ]
     if x_max is not None:
-        need = max(
-            (
-                _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
-                for n in cleaned
-            ),
-            default=16.0,
-        )
+        singles = [
+            _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+            for n in cleaned
+            if not (close_pair and _is_close_note(str(n.get("text") or "")))
+        ]
+        if close_pair:
+            # 並排兩盒＋小縫；fit 用偏寬估，整列必須進軸
+            pw = _approx_note_width(
+                str(prev_close_notes[0].get("text") or ""),
+                float(prev_close_notes[0].get("size") or 11),
+            )
+            tw = _approx_note_width(
+                str(today_close_notes[0].get("text") or ""),
+                float(today_close_notes[0].get("size") or 11),
+            )
+            singles.append(pw + 1.25 + tw)
+        need = max(singles, default=16.0)
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
         fit_tx = float(x_max) - need - 6.0
         if pin_x is not None:
@@ -1470,21 +1544,6 @@ def _place_right_notes(
             tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
             tx = min(tx, fit_tx)
-    most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
-    levels = [n for n in cleaned if _is_level_note(str(n.get("text") or ""))]
-    closes = [
-        n
-        for n in cleaned
-        if _is_close_note(str(n.get("text") or ""))
-        and "最可能" not in str(n.get("text") or "")
-    ]
-    others = [
-        n
-        for n in cleaned
-        if "最可能" not in str(n.get("text") or "")
-        and not _is_level_note(str(n.get("text") or ""))
-        and not _is_close_note(str(n.get("text") or ""))
-    ]
     # 上緣留給「最可能」；壓／撐釘價貼線；其餘錯開
     reserve = gap * 1.35
     hi_others = hi - reserve
@@ -1508,7 +1567,7 @@ def _place_right_notes(
         level_tys.append(ty)
         placed.append((note, ty))
         taken.append(ty)
-    soft = others + closes
+    soft = others + closes_for_slot
     # avoid 不含壓／撐釘價本身（那些已用 levels 釘住）；其餘軌／避開互壓
     avoid_soft = [
         float(y)
@@ -1574,22 +1633,95 @@ def _place_right_notes(
         fixed_up.append((note, ty))
     placed = sorted(fixed_up, key=lambda p: -float(p[1]))
     # 同一左緣欄：所有標籤共用 tx，不准「最可能」因估寬偏右
+    # 75：昨收｜今收並排時左盒仍對齊 col_tx，右盒往右一點
     col_tx = float(tx)
     stub_x = float(col_tx) - 1.35
-    for note, ty in placed:
+    pair_prev = prev_close_notes[0] if close_pair else None
+    pair_today = today_close_notes[0] if close_pair else None
+    pair_side_gap = 1.15
+
+    def _paint_close_text_only(note: Dict[str, Any], show_ty: float, text_x: float) -> None:
+        text = str(note.get("text") or "")
+        color = str(note.get("color") or _TEXT)
+        size = int(note.get("size") or 11)
+        ax.text(
+            float(text_x),
+            show_ty,
+            text,
+            color=color,
+            fontproperties=_fp(size, "bold"),
+            ha="left",
+            va="center",
+            zorder=12,
+            clip_on=True,
+            bbox=dict(
+                boxstyle="round,pad=0.28",
+                facecolor="#ffffff",
+                edgecolor=color,
+                linewidth=1.1,
+                alpha=0.97,
+            ),
+        )
+
+    def _paint_one_note(note: Dict[str, Any], show_ty: float, text_x: float, *, stub: bool) -> None:
         ny = float(note.get("y") or 0)
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
         size = int(note.get("size") or 11)
-        # 73：顯示 Y 一律用留縫後的 ty（不准再 snap 回 ny 把盒貼死）
-        show_ty = float(ty)
+        # 75：最可能＝短 dash 直連末日 K → 標籤；不准末端空曠橘點、不准長段假虛線。
+        # annotate 的 arrowprops 常吃掉自訂 dash → 改 ax.plot 短虛線＋text 盒。
+        if "最可能" in text:
+            fx = note.get("from_x")
+            fy = note.get("from_y")
+            if fx is None:
+                fx = float(pin_x) if pin_x is not None else stub_x
+            if fy is None:
+                fy = ny
+            fx = float(fx)
+            fy = float(fy)
+            tx = float(text_x)
+            # 線停在標籤盒左側一點，不准穿盒、不准再往右畫點
+            t_end = 0.90
+            x2 = fx + (tx - fx) * t_end
+            y2 = fy + (show_ty - fy) * t_end
+            ax.plot(
+                [fx, x2],
+                [fy, y2],
+                color=color,
+                linewidth=1.25,
+                linestyle=_MOST_LIKELY_DASH,
+                solid_capstyle="butt",
+                dash_capstyle="butt",
+                marker=None,
+                zorder=11,
+                clip_on=True,
+            )
+            ax.text(
+                tx,
+                show_ty,
+                text,
+                color=color,
+                fontproperties=_fp(size, "bold"),
+                ha="left",
+                va="center",
+                zorder=12,
+                clip_on=True,
+                bbox=dict(
+                    boxstyle="round,pad=0.28",
+                    facecolor="#ffffff",
+                    edgecolor=color,
+                    linewidth=1.1,
+                    alpha=0.97,
+                ),
+            )
+            return
         _leader_note(
             ax,
             stub_x,
             show_ty,
             text,
             color,
-            tx=col_tx,
+            tx=float(text_x),
             ty=show_ty,
             size=size,
             ha="left",
@@ -1597,6 +1729,8 @@ def _place_right_notes(
             clip=True,
             shrink_b=1.5,
         )
+        if not stub:
+            return
         # 壓／撐：釘點仍在水平線價；收／其他釘在顯示列（短 stub，無長虛線）
         pin_y = float(ny) if _is_level_note(text) else float(show_ty)
         ax.plot(
@@ -1623,6 +1757,19 @@ def _place_right_notes(
                 alpha=0.78,
                 clip_on=True,
             )
+
+    for note, ty in placed:
+        # 73：顯示 Y 一律用留縫後的 ty（不准再 snap 回 ny 把盒貼死）
+        show_ty = float(ty)
+        if close_pair and note is pair_today and pair_prev is not None:
+            prev_text = str(pair_prev.get("text") or "")
+            prev_size = float(pair_prev.get("size") or 11)
+            today_tx = col_tx + _approx_note_pack_width(prev_text, prev_size) + pair_side_gap
+            _paint_one_note(pair_prev, show_ty, col_tx, stub=True)
+            # 今收只畫盒，不准再從 stub 拉虛線穿過昨收
+            _paint_close_text_only(pair_today, show_ty, today_tx)
+            continue
+        _paint_one_note(note, show_ty, col_tx, stub=True)
 
 
 def _spread_ys_around(
@@ -3169,14 +3316,14 @@ def render_biaoke_structure_png(
         right_notes.append(
             {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
-    # 右軸：當日收（71 紅框必留，末日 K 拉虛線）＋昨收（去重避開壓／撐太近）
+    # 右軸：今收（71 紅框必留）＋昨收；75 同列並排（垂直貼今收價，數字＝官方真價）
     last_c = float(last_bar.get("close") or 0)
     if last_c > 0:
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": float(last_c),
-                "text": f"收 {_px(last_c)}",
+                "text": f"今收 {_px(last_c)}",
                 "color": "#37474f",
                 "size": 11,
             }
@@ -3191,10 +3338,12 @@ def render_biaoke_structure_png(
     except (TypeError, ValueError):
         prev_c_axis = 0.0
     if prev_c_axis > 0:
+        # 顯示 Y 錨在今收列（有今收時）；缺今收才退回昨收價
+        prev_y = float(last_c) if last_c > 0 else float(prev_c_axis)
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
-                "y": float(prev_c_axis),
+                "y": prev_y,
                 "text": f"昨收 {_px(prev_c_axis)}",
                 "color": "#546e7a",
                 "size": 11,
@@ -3343,48 +3492,45 @@ def render_biaoke_structure_png(
                 )
     path = list(proj.get("path") or [])
     if len(path) >= 2:
-        _halo_line(
-            ax1,
-            [p[0] for p in path],
-            [p[1] for p in path],
-            _PROJECT,
-            lw=1.55,
-            halo=0.9,
-            ls=(0, (7, 3)),
-            z=7,
-        )
-        ax1.scatter(
-            [path[-1][0]],
-            [path[-1][1]],
-            color=_PROJECT,
-            s=48,
-            zorder=9,
-            edgecolors="white",
-            linewidths=0.9,
-        )
-        mx, my = path[-1]
+        # 75：不准再畫演化區彎路徑＋右緣無意義橘點。
+        # 改由右溝「最可能」標籤短 dash 直連末日 K（見 _place_right_notes）。
         right_notes.append(
             {
-                "x": float(mx),
-                "y": float(my),
+                "x": float(path[0][0]),
+                "y": float(path[-1][1]),
+                "from_x": float(path[0][0]),
+                "from_y": float(path[0][1]),
                 "text": str(proj.get("mark") or ("最可能→" + _px(proj.get("target")))),
                 "color": _PROJECT,
                 "size": 12,
             }
         )
     # 73：不准畫「連點延長」叉虛線（末日 K 往下甩進空曠、無對應標籤＝多餘）
-    # forks 仍可留在 proj 供演算；圖上只留有右溝標籤的線（最可能 path／壓撐／軌）
+    # forks 仍可留在 proj 供演算；圖上只留有右溝標籤的線（最可能／壓撐／軌）
     _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     # 標籤欄：軌虛線已停在 label_col_left 左側。
     # 右溝用軸寬比例留白（勿只估固定 data 寬：xlim 一加寬，同字點徑佔更多 data，會又貼齊右緣）。
-    max_note_w = max(
-        (
-            _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 12))
-            for nt in right_notes
-        ),
-        default=22.0,
-    )
+    # 75：昨收｜今收並排時以兩盒合計寬估右溝，不准裁掉右邊今收。
+    _widths = [
+        _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 12))
+        for nt in right_notes
+        if not _is_close_note(str(nt.get("text") or ""))
+    ]
+    _prev_ns = [nt for nt in right_notes if _is_prev_close_note(str(nt.get("text") or ""))]
+    _today_ns = [nt for nt in right_notes if _is_today_close_note(str(nt.get("text") or ""))]
+    if _prev_ns and _today_ns:
+        _widths.append(
+            _approx_note_width(str(_prev_ns[0].get("text") or ""), float(_prev_ns[0].get("size") or 11))
+            + 1.25
+            + _approx_note_width(str(_today_ns[0].get("text") or ""), float(_today_ns[0].get("size") or 11))
+        )
+    else:
+        for nt in _prev_ns + _today_ns:
+            _widths.append(
+                _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 11))
+            )
+    max_note_w = max(_widths, default=22.0)
     # 67：標籤欄再右移讓開末日 K；x_right 必須夠 _place_right_notes 的 fit_tx
     # （fit ≈ x_max − note_w − 6），否則字會被夾回 seam 蓋住末日 K
     label_frac = 0.108
