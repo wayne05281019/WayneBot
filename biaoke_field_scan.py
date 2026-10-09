@@ -3158,6 +3158,22 @@ def _pt_txt(val: float) -> str:
     return "0.0pt"
 
 
+def _share_dir_mark(val: float) -> str:
+    """佔比升降一字標：升／退／平。手機一眼讀，不准發明數字。"""
+    n = float(val)
+    if n > 1e-9:
+        return "升"
+    if n < -1e-9:
+        return "退"
+    return "平"
+
+
+def _share_chg_line(prefix: str, val: float) -> str:
+    """單日／近窗升降：前綴＋升退＋pt。例：單日升 ＋0.8pt。"""
+    mark = _share_dir_mark(val)
+    return f"{prefix}{mark} {_pt_txt(val)}"
+
+
 def _share_path(ign: Dict[str, Any]) -> str:
     shares = list(ign.get("shares") or [])
     if len(shares) >= 2:
@@ -3188,12 +3204,12 @@ def _pack_phone(bits: Sequence[str], sep: str = "→") -> List[str]:
 
 
 def _share_path_lines(ign: Dict[str, Any]) -> List[str]:
-    """近窗路徑＋單日升降分開標，不准把單日當近窗。"""
+    """近窗路徑＋單日升降分開標，不准把單日當近窗。升降一字標升／退。"""
     shares = list(ign.get("shares") or [])
     out: List[str] = []
     if len(shares) >= 2:
         body = f"{shares[0]:.1f}%→{shares[-1]:.1f}%"
-        win_pt = _pt_txt(shares[-1] - shares[0])
+        win_delta = float(shares[-1] - shares[0])
         n = len(shares)
         one = f"近{n}日佔比 {body}"
         if len(one) <= _PHONE_W:
@@ -3201,13 +3217,13 @@ def _share_path_lines(ign: Dict[str, Any]) -> List[str]:
         else:
             out.append(f"近{n}日佔比")
             out.append(body)
-        out.append(f"近窗 {win_pt}")
+        out.append(_share_chg_line("近窗", win_delta))
         out.append(f"佔當日 {_share_txt(shares[-1])}")
     elif shares:
         out.append(f"佔當日 {_share_txt(shares[-1])}")
     chg = float(ign.get("share_chg") or 0)
     if abs(chg) > 1e-9:
-        out.append(f"單日 {_pt_txt(chg)}")
+        out.append(_share_chg_line("單日", chg))
     return out
 
 
@@ -3253,9 +3269,9 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
     if shares:
         lines.append(f"佔當日 {_share_txt(last_sh)}")
         if abs(chg) > 1e-9:
-            lines.append(f"單日 {_pt_txt(chg)}")
+            lines.append(_share_chg_line("單日", chg))
         if abs(up) > 1e-9 and abs(up - chg) > 1e-9:
-            lines.append(f"近窗 {_pt_txt(up)}")
+            lines.append(_share_chg_line("近窗", up))
         lines.append(f"近{len(shares)}日佔比")
         lines.extend(_pack_phone([f"{x:.1f}%" for x in shares]))
     if nets:
@@ -4008,9 +4024,11 @@ def _stock_action_lines(item: Dict[str, Any], tag: str, *, held: bool = False) -
             lines.append("不加碼")
         return lines
     if is_buy:
-        return ["可買"]
+        # 買點＝leave_zero 交集；切入只認黃金買點。
+        return ["買點・可切入", "可買"]
     if str(tag or "").startswith("先機"):
-        return ["可看"]
+        # 先機＝這型次級落後觀察，不是買訊。
+        return ["先機・只觀察"]
     return ["不買", "只觀察"]
 
 
@@ -4354,7 +4372,19 @@ def dongzhu_hold_page(
         act_rows.append(_esc("已持有"))
     act_rows.append(f"<b>{_esc(verdict)}</b>")
     if buy:
+        act_rows.append(_esc("買點・可切入"))
         act_rows.append(_esc("可買"))
+        act_rows.append(_esc("切入只認黃金買點"))
+    elif data.get("hold"):
+        # 鏈還是先機、檔本身未剛離零＝只觀察，不准當買訊。
+        if held:
+            act_rows.append(_esc("不買"))
+            act_rows.append(_esc("不加碼"))
+        else:
+            act_rows.append(_esc("不買"))
+        act_rows.append(_esc("鏈可留・檔未剛離零"))
+        act_rows.append(_esc("只觀察"))
+        act_rows.append(_esc("切入只認黃金買點"))
     elif held:
         act_rows.append(_esc("不買"))
         act_rows.append(_esc("不加碼"))
@@ -4522,6 +4552,10 @@ def dongzhu_page(
             _blk("<b>資金進出</b>", *(_esc(x) for x in _flow_why_lines(ign)))
         )
     rec_rows = ["<b>此刻推薦</b>"]
+    # 先機／買點銜接：有場就寫清（空名單也一樣）；不准發明買訊。
+    rec_rows.append(_esc("先機・只觀察不是買訊"))
+    rec_rows.append(_esc("買點＝剛離零才可切入"))
+    rec_rows.append(_esc("切入只認黃金買點"))
     buys = list(data.get("buys") or [])
     recs = list(data.get("recs") or [])
     buy_sids = {str(x.get("sid") or "") for x in buys if x.get("sid")}
@@ -4529,9 +4563,10 @@ def dongzhu_page(
         rec_rows.append(_esc("這型最落後次級兩到三檔"))
         rec_rows.append(_esc("不是單檔保證"))
         rec_rows.append(_esc("點圖下鈕選檔"))
-        rec_rows.append(_esc("剛好剛離零才標黃金買點"))
         if lead_ref:
-            rec_rows.append(_esc("龍頭見上方對照"))
+            rec_rows.append(_esc("龍頭見上方對照・次級見下列"))
+        else:
+            rec_rows.append(_esc("下列＝次級落後"))
         rec_bits: List[str] = []
         for i, item in enumerate(recs, start=1):
             # 買點＝leave_zero 桶交集；其餘只標先機，不准發明買訊。
@@ -4557,12 +4592,11 @@ def dongzhu_page(
         if not name:
             continue
         alt_bits.append(_esc(name))
-        alt_bits.append(
-            _esc(
-                f"{_share_txt(float(a.get('share_last') or 0))}"
-                f"（{_pt_txt(float(a.get('share_up') or 0))}）"
-            )
-        )
+        last_a = float(a.get("share_last") or 0)
+        up_a = float(a.get("share_up") or 0)
+        alt_bits.append(_esc(f"佔當日 {_share_txt(last_a)}"))
+        if abs(up_a) > 1e-9:
+            alt_bits.append(_esc(_share_chg_line("近窗", up_a)))
     if alt_bits:
         blocks.append(_blk("<b>次熱（佔當日法人買超％）</b>", *alt_bits))
     week = data.get("biaoke_week") if isinstance(data.get("biaoke_week"), dict) else {}

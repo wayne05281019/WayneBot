@@ -721,12 +721,63 @@ def test_dongzhu_rotation_layer_and_leader_ref_clarity():
     )
     blob = "\n".join(path)
     assert "近3日佔比" in blob or "0.0%→1.6%" in blob
-    assert "近窗" in blob
-    assert "單日" in blob
+    assert "近窗升" in blob
+    assert "單日升" in blob
     assert "佔當日" in blob
+    # 退／平也要一字標，不准只寫裸 pt
+    down = "\n".join(
+        _share_path_lines({"shares": [2.0, 1.0], "share_chg": -1.0, "share_up": -1.0})
+    )
+    assert "近窗退" in down
+    assert "單日退" in down
 
     stamp = _dongzhu_query_stamp_line("20260917")
     assert stamp.startswith("查詢 ")
+
+
+def test_dongzhu_page_evolve_share_buy_bridge(tmp_path, monkeypatch):
+    """進化：佔比升降標清、先機／買點銜接、切入只認黃金買點；不改編碼。"""
+    from tg_layout import reflow_telegram_html
+
+    from biaoke_field_scan import (
+        _share_chg_line,
+        _stock_action_lines,
+        dongzhu_hold_page,
+        dongzhu_page,
+    )
+
+    assert _share_chg_line("單日", 0.8) == "單日升 ＋0.8pt"
+    assert _share_chg_line("近窗", -1.2) == "近窗退 −1.2pt"
+    assert _stock_action_lines({}, "先機") == ["先機・只觀察"]
+    assert _stock_action_lines({}, "買點")[0] == "買點・可切入"
+    assert "可買" in _stock_action_lines({}, "買點")
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db)
+    phone = reflow_telegram_html(html)
+    assert "切入只認黃金買點" in html
+    assert "先機・只觀察不是買訊" in html
+    assert "買點＝剛離零才可切入" in html
+    assert "剛好剛離零才標黃金買點" not in html
+    assert "可看" not in html
+    # 層級仍寫主／次／產業鏈（＝細項那層）；不准發明「細項」字樣上話筒
+    assert "主產業" in html and "次產業" in html and "產業鏈" in html
+    assert "細項" not in html
+    assert "佔比如實主判" not in html
+    assert "資金輪動要注意" not in html
+    for ln in phone.split("\n"):
+        s = ln.strip()
+        plain = __import__("re").sub(r"<[^>]+>", "", s)
+        assert len(plain) <= 18 or s.startswith("┈")
+
+    hold = dongzhu_hold_page(db, "6257")
+    assert "輪動進" in hold or "主產業" in hold
+    assert "不買" in hold or "可買" in hold
+    if "可買" in hold:
+        assert "買點・可切入" in hold
+        assert "切入只認黃金買點" in hold
 
 
 def test_dongzhu_page_shows_rotation_leader_and_stamp(tmp_path, monkeypatch):
