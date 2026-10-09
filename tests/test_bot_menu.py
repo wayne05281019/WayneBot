@@ -93,8 +93,10 @@ def test_image_surfaces_wait_vanishes_after_photo():
     assert kline.index("_start_plain_wait") < kline.index("reply_photo")
     assert kline.index("reply_photo") < kline.rindex("_stop_plain_wait")
     nav = inspect.getsource(WayneTelegramBot._send_navigation_chart)
-    assert nav.index("_start_plain_wait") < nav.index("reply_photo")
-    assert nav.index("reply_photo") < nav.rindex("_stop_plain_wait")
+    # 導航圖改走 _reply_lookup_photo（TimedOut 視同已送達，不准假重送）
+    assert nav.index("_start_plain_wait") < nav.index("_reply_lookup_photo")
+    assert nav.index("_reply_lookup_photo") < nav.rindex("_stop_plain_wait")
+    assert "for attempt in range(3)" not in nav
 
 
 def test_help_topics_cancelled():
