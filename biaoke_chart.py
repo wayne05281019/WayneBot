@@ -2750,11 +2750,24 @@ def _spot_quote(
         live_chg = px - yf
     if live_pct is None and yf:
         live_pct = (px - yf) / yf * 100.0
-    # 盤中／收盤依時段切換（與三合一表頭同一套用詞；不准寫現價）
+    # 盤中／收盤依開市日曆＋時段切換（與三合一表頭同一套用詞；不准寫現價）
+    # 假日／補假／週末／已收盤：即使 MIS 還吐價，標籤仍是收盤，不准寫盤中。
+    try:
+        from decision_card_signals import _in_board_session, taipei_now
+        from live_quote import board_session_label
+
+        ut = str(live.get("update_time") or "")
+        in_sess = _in_board_session(taipei_now())
+        label = board_session_label(ut) if in_sess else "收盤"
+        is_live = bool(in_sess and label == "盤中")
+    except Exception:
+        label = "收盤"
+        is_live = False
+        ut = str(live.get("update_time") or "")
     out.update(
         {
-            "is_live": True,
-            "label": "盤中",
+            "is_live": is_live,
+            "label": label,
             "open": live.get("open") if live.get("open") is not None else out["open"],
             "high": live.get("high") if live.get("high") is not None else out["high"],
             "low": live.get("low") if live.get("low") is not None else out["low"],
@@ -2763,7 +2776,7 @@ def _spot_quote(
             "pct": live_pct,
             "change": live_chg,
             "volume": live.get("volume") if live.get("volume") is not None else out["volume"],
-            "update_time": live.get("update_time") or "",
+            "update_time": ut,
         }
     )
     return out

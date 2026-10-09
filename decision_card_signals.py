@@ -132,13 +132,17 @@ def board_close_clock_label(*, emerging: bool = False) -> str:
 
 
 def _in_board_session(dt: datetime, *, emerging: bool = False) -> bool:
-    """上市櫃 09:00～未滿 13:30；興櫃 09:00～未滿 15:00。收盤當下不算盤中。"""
+    """上市櫃 09:00～未滿 13:30；興櫃 09:00～未滿 15:00。收盤當下不算盤中。
+
+    須為台股開市日（週一～五且非國定假／補假／北市停班）。
+    只看 weekday 會把國慶補假等平日休市誤判成盤中。
+    """
     dt = taipei_now(dt)
     ymd = dt.strftime("%Y%m%d")
     try:
-        from trading_calendar import is_trading_weekday
+        from trading_calendar import is_tw_open_calendar_day
 
-        if not is_trading_weekday(ymd):
+        if not is_tw_open_calendar_day(ymd):
             return False
     except Exception:
         if dt.weekday() >= 5:

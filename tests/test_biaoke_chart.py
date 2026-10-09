@@ -465,6 +465,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert q["is_live"] is False
     assert q["label"] == "收盤"
     assert q["close"] == 4510
+    assert "_in_board_session" in quote_src
+    assert "board_session_label" in quote_src
     cap = chart_caption(analyze_structure(_series()), sid="2383", name="台光電", plate=lead)
     assert "電子零組件業" in cap
     assert "龍頭" in cap
@@ -600,6 +602,41 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "candle_right" in spot and "price_left" in spot
     assert "char_gap" in spot
     assert "盤中" in inspect.getsource(_spot_quote)
+
+
+def test_spot_quote_holiday_not_intraday(monkeypatch):
+    """國慶補假即使 MIS 吐價，頭欄仍標收盤，不准寫盤中。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import biaoke_chart
+
+    monkeypatch.setattr(biaoke_chart, "_in_pytest", lambda: False)
+    monkeypatch.setattr(
+        "live_quote.fetch_mis_quote",
+        lambda sid, *a, **k: {
+            "close": 4510.0,
+            "open": 4400.0,
+            "high": 4520.0,
+            "low": 4380.0,
+            "yesterday_close": 4480.0,
+            "volume": 1000,
+            "update_time": "10:30:00",
+        },
+    )
+    monkeypatch.setattr(
+        "decision_card_signals.taipei_now",
+        lambda *a, **k: datetime(2026, 10, 9, 10, 30, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    q = _spot_quote(
+        "2383",
+        {"open": 4400, "high": 4520, "low": 4380, "close": 4500, "date": "20261008"},
+        {"close": 4480},
+    )
+    assert q["is_live"] is False
+    assert q["label"] == "收盤"
+    assert "盤中" not in q["label"]
+    assert float(q["close"]) == 4510.0
 
 
 def test_locator_inset_marks_window():

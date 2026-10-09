@@ -256,6 +256,35 @@ def test_evening_lookup_stamp_is_close_not_wall_clock():
     assert clock_s == "13:30收盤"
 
 
+def test_national_day_makeup_holiday_stamp_not_intraday():
+    """2026-10-09 國慶日補假＝平日休市；白天查股／結構圖不准寫盤中。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from decision_card_signals import _in_board_session, format_card_query_stamp
+    from trading_calendar import is_tw_open_calendar_day, tw_session_phase
+
+    assert not is_tw_open_calendar_day("20261009")
+    hol = datetime(2026, 10, 9, 10, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert tw_session_phase(hol) == "weekend"
+    assert _in_board_session(hol) is False
+    _, clock_s = format_card_query_stamp(
+        is_live=False, latest_date="20261008", generated_at=hol
+    )
+    assert clock_s == "13:30收盤"
+    assert "盤中" not in clock_s
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20261008", generated_at=hol
+    )
+    assert clock_s == "13:30收盤"
+    weekend = datetime(2026, 10, 10, 11, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert _in_board_session(weekend) is False
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20261008", generated_at=weekend
+    )
+    assert clock_s == "13:30收盤"
+
+
 def test_emerging_stamp_keeps_query_time_until_1500():
     """興櫃到 15:00 才收；13:30～15:00 仍寫查詢當下，不准套 13:30收盤。"""
     from datetime import datetime
