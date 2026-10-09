@@ -1373,12 +1373,14 @@ def _is_close_note(text: str) -> bool:
 
 
 def _approx_note_pack_width(text: str, size: float = 12) -> float:
-    """並排標籤的前進寬（比 fit 估略緊，盒與盒之間只留小縫）。"""
-    s = str(text or "")
-    units = 0.0
-    for ch in s:
-        units += 1.0 if ord(ch) > 0x2E80 else 0.72
-    return units * (float(size) / 12.0) * 1.92 + 3.6
+    """並排標籤的前進寬（含 bbox pad＋邊框；須 ≥ 實測盒寬，不准今收蓋昨收）。"""
+    # 77：舊係數 1.92+3.6 估太窄（昨收3140 實測≈16.2、估≈13.5）→ 兩盒互壓。
+    # 對齊 _approx_note_width 偏寬估，右盒才有清楚小縫。
+    return _approx_note_width(text, size)
+
+
+# 昨收｜今收並排：左盒右緣 → 右盒左緣的資料座標縫（不准 < 1.8）
+_CLOSE_PAIR_SIDE_GAP = 2.35
 
 
 def _dedupe_right_notes(
@@ -1543,16 +1545,16 @@ def _place_right_notes(
             if not (close_pair and _is_close_note(str(n.get("text") or "")))
         ]
         if close_pair:
-            # 並排兩盒＋小縫；fit 用偏寬估，整列必須進軸
-            pw = _approx_note_width(
+            # 並排兩盒＋清楚小縫；fit 與繪製同一套寬估，整列必須進軸
+            pw = _approx_note_pack_width(
                 str(prev_close_notes[0].get("text") or ""),
                 float(prev_close_notes[0].get("size") or 11),
             )
-            tw = _approx_note_width(
+            tw = _approx_note_pack_width(
                 str(today_close_notes[0].get("text") or ""),
                 float(today_close_notes[0].get("size") or 11),
             )
-            singles.append(pw + 1.25 + tw)
+            singles.append(pw + float(_CLOSE_PAIR_SIDE_GAP) + tw)
         need = max(singles, default=16.0)
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
         fit_tx = float(x_max) - need - 6.0
@@ -1657,9 +1659,16 @@ def _place_right_notes(
     stub_x = float(col_tx) - 1.35
     pair_prev = prev_close_notes[0] if close_pair else None
     pair_today = today_close_notes[0] if close_pair else None
-    pair_side_gap = 1.15
+    pair_side_gap = float(_CLOSE_PAIR_SIDE_GAP)
 
-    def _paint_close_text_only(note: Dict[str, Any], show_ty: float, text_x: float) -> None:
+    def _paint_close_text_only(
+        note: Dict[str, Any],
+        show_ty: float,
+        text_x: float,
+        *,
+        pad: float = 0.22,
+        z: int = 12,
+    ) -> None:
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
         size = int(note.get("size") or 11)
@@ -1671,13 +1680,13 @@ def _place_right_notes(
             fontproperties=_fp(size, "bold"),
             ha="left",
             va="center",
-            zorder=12,
+            zorder=int(z),
             clip_on=True,
             bbox=dict(
-                boxstyle="round,pad=0.28",
+                boxstyle=f"round,pad={float(pad):.2f}",
                 facecolor="#ffffff",
                 edgecolor=color,
-                linewidth=1.1,
+                linewidth=1.05,
                 alpha=0.97,
             ),
         )
@@ -1781,12 +1790,37 @@ def _place_right_notes(
         # 73：顯示 Y 一律用留縫後的 ty（不准再 snap 回 ny 把盒貼死）
         show_ty = float(ty)
         if close_pair and note is pair_today and pair_prev is not None:
+            # 77：同列左昨收右今收；兩盒用同一 text 盒（不准 annotate 把昨收估窄）、中間清楚小縫
             prev_text = str(pair_prev.get("text") or "")
             prev_size = float(pair_prev.get("size") or 11)
-            today_tx = col_tx + _approx_note_pack_width(prev_text, prev_size) + pair_side_gap
-            _paint_one_note(pair_prev, show_ty, col_tx, stub=True)
-            # 今收只畫盒，不准再從 stub 拉虛線穿過昨收
-            _paint_close_text_only(pair_today, show_ty, today_tx)
+            today_text = str(pair_today.get("text") or "")
+            today_size = float(pair_today.get("size") or 11)
+            advance = _approx_note_pack_width(prev_text, prev_size)
+            today_tx = float(col_tx) + advance + pair_side_gap
+            if x_max is not None:
+                today_w = _approx_note_pack_width(today_text, today_size)
+                # 右緣不夠時略縮縫仍同列；縫底線 1.8，不准互壓
+                overflow = (today_tx + today_w) - (float(x_max) - 2.0)
+                if overflow > 0:
+                    today_tx = max(
+                        float(col_tx) + advance + 1.8,
+                        today_tx - overflow,
+                    )
+            # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
+            ax.plot(
+                [stub_x],
+                [show_ty],
+                marker="o",
+                markersize=4.0,
+                color=str(pair_prev.get("color") or "#546e7a"),
+                markeredgecolor="white",
+                markeredgewidth=0.55,
+                zorder=13,
+                linestyle="None",
+                clip_on=True,
+            )
+            _paint_close_text_only(pair_prev, show_ty, col_tx, pad=0.22, z=12)
+            _paint_close_text_only(pair_today, show_ty, today_tx, pad=0.22, z=13)
             continue
         _paint_one_note(note, show_ty, col_tx, stub=True)
 

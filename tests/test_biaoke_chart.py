@@ -587,6 +587,15 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "不准再 snap 回 ny" in place_src or "一律用留縫後的 ty" in place_src
     assert "close_pair" in place_src
     assert "昨收＋今收同列並排" in place_src or "先昨收" in place_src
+    assert "_CLOSE_PAIR_SIDE_GAP" in place_src
+    assert "_approx_note_pack_width" in place_src
+    from biaoke_chart import _CLOSE_PAIR_SIDE_GAP, _approx_note_pack_width, _approx_note_width
+
+    # 77：並排前進寬不准再估窄到互壓（昨收3140 實測盒≈16）
+    assert float(_CLOSE_PAIR_SIDE_GAP) >= 1.8
+    assert _approx_note_pack_width("昨收 3140", 11) >= 16.0
+    assert _approx_note_pack_width("昨收 3140", 11) >= _approx_note_width("昨收 3140", 11) * 0.98
+    assert "不准蓋昨收" in place_src or "兩盒" in place_src
     assert "_MOST_LIKELY_DASH" in place_src or "_MOST_LIKELY_DASH" in src
     assert "from_x" in src and "from_y" in src
     assert "不准再畫演化區彎路徑" in src or "短 dash 直連末日 K" in src
