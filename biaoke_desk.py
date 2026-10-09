@@ -436,18 +436,58 @@ def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) ->
 
     skip = {"飆客", "飆大", "AI飆客", "去年年底", "去年底", "年底", "年終"}
     keys = [k for k in re.split(r"[\s,，、]+", q) if k and k not in skip]
+    try:
+        from biaoke_net import _ask_stock_keys
+
+        more_keys, ask_sids = _ask_stock_keys(
+            q, db_path=str(db_path or _default_db_path() or "")
+        )
+        for k in more_keys:
+            if k and k not in skip and k not in keys:
+                keys.append(k)
+    except Exception:
+        ask_sids = []
     scored: List[tuple] = []
     for p in posts:
         if start and not _date_ok(p, start, end):
             continue
         text = str(p.get("text") or "")
+        if (p.get("kind") or "") == "reply":
+            try:
+                from biaoke_ingest import spoken_text
+
+                text = spoken_text(text)
+            except Exception:
+                pass
         tags = [str(t) for t in (p.get("tags") or [])]
         blob_l = text + " " + " ".join(tags)
         score = 2 if year_end else 0
         for k in keys:
+            if re.fullmatch(r"\d{4}", str(k) or ""):
+                continue
             if k in tags:
                 score += 6
             score += blob_l.count(k)
+        if ask_sids:
+            try:
+                from biaoke_link import extract_mentions
+
+                hit_sids = {
+                    str(h.get("stock_id") or "")
+                    for h in extract_mentions(
+                        text,
+                        tags=tags,
+                        db_path=str(db_path or _default_db_path() or ""),
+                    )
+                    if h.get("stock_id")
+                }
+            except Exception:
+                hit_sids = set()
+            for sid in ask_sids:
+                if sid in hit_sids:
+                    score += 20
+                    if (p.get("kind") or "") == "reply":
+                        score += 10
         if year_end and "記憶體" in tags:
             score += 8
         if score <= 0:

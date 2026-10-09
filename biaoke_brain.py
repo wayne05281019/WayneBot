@@ -382,19 +382,33 @@ def match_posts(ask: str, *, limit: int = 4, db_path: Optional[str] = None) -> L
 def _cite_posts(posts: Sequence[Dict[str, Any]]) -> str:
     if not posts:
         return ""
-    p = posts[0]
-    raw = str(p.get("text") or "")
-    if (p.get("kind") or "") == "reply":
-        try:
-            from biaoke_ingest import spoken_text
+    # 樓下自回優先：主文可能沒點名，看法在他自己回的那則。
+    ordered = sorted(
+        list(posts),
+        key=lambda p: (
+            0 if (p.get("kind") or "") == "reply" else 1,
+            -int(str(p.get("date") or "0").replace("-", "") or 0),
+        ),
+    )
+    lines: List[str] = []
+    seen = set()
+    for p in ordered:
+        raw = str(p.get("text") or "")
+        if (p.get("kind") or "") == "reply":
+            try:
+                from biaoke_ingest import spoken_text
 
-            raw = spoken_text(raw)
-        except Exception:
-            pass
-    snip = html_escape(re.sub(r"\s+", " ", raw)[:90])
-    if not snip:
-        return ""
-    return f"他 {html_escape(p.get('date'))} 寫過：{snip}"
+                raw = spoken_text(raw)
+            except Exception:
+                pass
+        snip = html_escape(re.sub(r"\s+", " ", raw)[:140])
+        if not snip or snip in seen:
+            continue
+        seen.add(snip)
+        lines.append(f"他 {html_escape(p.get('date'))} 寫過：{snip}")
+        if len(lines) >= 2:
+            break
+    return "\n".join(lines)
 
 
 def _us_facts(db_path: str, as_of: str = "") -> Dict[str, Any]:
@@ -805,6 +819,9 @@ def answer_biaoke(
         except Exception:
             pass
         chunks.append(body)
+        cite = _cite_posts(posts)
+        if cite:
+            chunks.append(cite)
         if extra:
             chunks.append(extra)
         if share_html:

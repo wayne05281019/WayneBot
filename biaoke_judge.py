@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
@@ -435,6 +436,24 @@ def judge_stock(db_path: str, sid: str, name: str = "") -> Dict[str, Any]:
     except Exception:
         posts = []
     out["in_corpus"] = bool(posts)
+    spoken_bits: List[str] = []
+    for p in posts or []:
+        raw = str(p.get("text") or "")
+        if (p.get("kind") or "") == "reply":
+            try:
+                from biaoke_ingest import spoken_text
+
+                raw = spoken_text(raw)
+            except Exception:
+                pass
+        snip = re.sub(r"\s+", " ", raw).strip()
+        if not snip:
+            continue
+        day = str(p.get("date") or "")
+        spoken_bits.append(f"{day} {snip[:140]}".strip())
+        if len(spoken_bits) >= 2:
+            break
+    out["spoken"] = spoken_bits
     claims = ""
     try:
         from biaoke_claims import format_stock_claims
@@ -478,6 +497,8 @@ def format_judge_notes(brief: Dict[str, Any]) -> str:
         bits.append("融會貫通審核 " + str(audit.get("verdict")))
     if not brief.get("in_corpus"):
         bits.append("公開文沒點名這檔，只用官方K套他的量價，可能看錯。")
+    for snip in brief.get("spoken") or []:
+        bits.append("他自己寫過：" + str(snip))
     cal = brief.get("cal60") or {}
     if cal.get("low"):
         bits.append(f"近60曆日收盤低{_px(cal.get('low'))} 距低{_pct(cal.get('pct'))}")
@@ -524,6 +545,8 @@ def format_judge_html(brief: Dict[str, Any]) -> str:
         )
     else:
         lines.append(f"{sid} {name}。")
+    for snip in brief.get("spoken") or []:
+        lines.append("他寫過：" + html_escape(str(snip)))
     if st:
         body = (
             f"{html_escape(st.get('date'))} 收 {_px(st.get('close')) or '—'}"
