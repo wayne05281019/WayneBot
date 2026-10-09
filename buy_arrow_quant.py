@@ -463,6 +463,7 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         "first_beats_follow": first_beats_follow,
         "first_beats_all": first_beats_all,
         "promote_ready": ready,
+        "next_presentation": NEXT_PRESENTATION,
         "min_n": OPTIMIZE_MIN_N,
         "min_unique_days": MIN_UNIQUE_DAYS,
         "min_distinct_sids": MIN_DISTINCT_SIDS,
