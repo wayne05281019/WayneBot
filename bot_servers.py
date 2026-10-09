@@ -7726,6 +7726,100 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         await self._send_card_to(update.message, code, uid)
 
+    async def _reply_lookup_photo(
+        self,
+        message,
+        send_path: str,
+        *,
+        caption: str = "",
+        markup=None,
+        kind: str = "",
+        code: str = "",
+        raw_fallback_path: str = "",
+        parse_mode: str | None = "HTML",
+    ) -> bool:
+        """查股送圖：TimedOut 當已送達，不准再重送（假逾時會連出多張高低卡）。
+
+        NetworkError／RetryAfter 最多再試一次；HTML／鍵盤失敗才降級，不再用 TimedOut 洗三輪。
+        """
+        if not send_path or not os.path.exists(send_path):
+            return False
+        html_cap = html_escape(caption) if caption and parse_mode == "HTML" else (caption or "")
+        raw_path = raw_fallback_path or send_path
+
+        async def _once(path: str, cap: str, *, mode: str | None, mk) -> str:
+            """回傳 ok／timedout／retry／fail。"""
+            try:
+                with open(path, "rb") as f:
+                    kwargs = {"photo": f, "caption": (cap or "")[:1024], "reply_markup": mk}
+                    if mode:
+                        kwargs["parse_mode"] = mode
+                    await message.reply_photo(**kwargs)
+                return "ok"
+            except Exception as exc:
+                name = type(exc).__name__
+                if name == "TimedOut":
+                    return "timedout"
+                if name == "RetryAfter":
+                    return "retry_after"
+                if name == "NetworkError":
+                    return "network"
+                return "fail"
+
+        outcome = await _once(send_path, html_cap, mode=parse_mode, mk=markup)
+        if outcome == "ok":
+            logger.info(
+                "送圖成功 kind=%s code=%s bytes=%s",
+                kind,
+                code,
+                os.path.getsize(send_path),
+            )
+            return True
+        if outcome == "timedout":
+            # Telegram 常已收下大圖，客戶端才 TimedOut；重送＝連出多張同卡。
+            logger.warning(
+                "送圖 TimedOut 視同已送達 kind=%s code=%s（不重送）",
+                kind,
+                code,
+            )
+            return True
+        if outcome == "retry_after":
+            await asyncio.sleep(1.5)
+            outcome = await _once(send_path, html_cap, mode=parse_mode, mk=markup)
+            if outcome in ("ok", "timedout"):
+                logger.info("送圖成功(RetryAfter後) kind=%s code=%s", kind, code)
+                return True
+            if outcome != "fail":
+                logger.error("送圖失敗 kind=%s path=%s after RetryAfter", kind, send_path)
+                return False
+        if outcome == "network":
+            await asyncio.sleep(1.0)
+            outcome = await _once(send_path, html_cap, mode=parse_mode, mk=markup)
+            if outcome in ("ok", "timedout"):
+                logger.info("送圖成功(NetworkError後) kind=%s code=%s", kind, code)
+                return True
+            if outcome != "fail":
+                # 仍是網路層：不准再降級重送，避免已送達又多出一張。
+                logger.error("送圖失敗 kind=%s path=%s after NetworkError", kind, send_path)
+                return False
+
+        # 只有明確內容／鍵盤錯誤才降級；TimedOut／Network 不准走這條。
+        plain = str(caption or "")[:200]
+        for path, cap, mk in (
+            (raw_path, plain, markup),
+            (raw_path, str(code or kind or "")[:64], None),
+        ):
+            if not path or not os.path.exists(path):
+                continue
+            outcome = await _once(path, cap, mode=None, mk=mk)
+            if outcome in ("ok", "timedout"):
+                logger.info("送圖成功(降級) kind=%s code=%s", kind, code)
+                return True
+            if outcome in ("network", "retry_after"):
+                break
+        logger.error("送圖失敗 kind=%s path=%s", kind, send_path)
+        return False
+
     async def _send_decision_card_quick(self, message, code: str, uid: str = "", *, skip_wait_msg: bool = False):
         """盤中快捷：MIS 現價 + 高低決策卡（不重跑導航／籌碼，較快）。"""
         code = str(code).strip()
@@ -7952,19 +8046,20 @@ class WayneTelegramBot:
                 )
                 return
             cap = "高低導航圖：實心＝當日觸發；空心＝接近。高點紫／低點綠。不是買訊。"
-            for attempt in range(3):
-                try:
-                    with open(self._prepare_lookup_album_photo(path, "nav"), "rb") as f:
-                        await message.reply_photo(
-                            photo=f, caption=cap, parse_mode="HTML", reply_markup=hub
-                        )
-                    return
-                except Exception as exc:
-                    if attempt < 2 and type(exc).__name__ in ("TimedOut", "NetworkError", "RetryAfter"):
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    logger.exception("導航圖送出失敗 code=%s", code)
-            await message.reply_html("導航圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
+            send_path = self._prepare_lookup_album_photo(path, "nav")
+            ok = await self._reply_lookup_photo(
+                message,
+                send_path,
+                caption=cap,
+                markup=hub,
+                kind="nav",
+                code=code,
+                raw_fallback_path=path,
+            )
+            if not ok:
+                await message.reply_html(
+                    "導航圖送出失敗。", reply_markup=hub, disable_web_page_preview=True
+                )
         finally:
             await self._stop_plain_wait(*wait_h)
 
@@ -7994,101 +8089,105 @@ class WayneTelegramBot:
         code = str(code).strip()
         actor = self._actor_key(message, uid=uid or self._uid_from_message(message))
         lock = self._lookup_locks.setdefault(actor, asyncio.Lock())
+        # 檢查與 acquire 之間不准 await：否則 concurrent_updates 重入會雙開查股。
         if lock.locked():
             await message.reply_text("上一檔還在出圖，請稍候再查。")
             return
+        await lock.acquire()
         wait_msg = None
         try:
-            wait_msg = await message.reply_text(
-                self._chart_progress_text(0, current="quote"),
-                parse_mode="HTML",
-            )
-            self._track_lookup_fade(actor, wait_msg, "wait")
-        except Exception:
-            wait_msg = None
-        try:
-            chat = getattr(message, "chat", None)
-            if chat is not None and hasattr(chat, "send_action"):
-                await chat.send_action("typing")
-        except Exception:
-            pass
-        hits = []
-        for _attempt in range(3):
             try:
-                hits = await asyncio.to_thread(lookup_stocks, self.db_path, code)
-                break
-            except Exception as exc:
-                # boot 建索引／法人回填時 SQLite 可能 locked；重試後仍失敗才丟給使用者。
-                msg = str(exc).lower()
-                locked = "locked" in msg or "busy" in msg
-                logger.warning(
-                    "查股 lookup 失敗 code=%s attempt=%s locked=%s err=%s",
-                    code,
-                    _attempt + 1,
-                    locked,
-                    exc,
+                wait_msg = await message.reply_text(
+                    self._chart_progress_text(0, current="quote"),
+                    parse_mode="HTML",
                 )
-                if _attempt >= 2 or not locked:
+                self._track_lookup_fade(actor, wait_msg, "wait")
+            except Exception:
+                wait_msg = None
+            try:
+                chat = getattr(message, "chat", None)
+                if chat is not None and hasattr(chat, "send_action"):
+                    await chat.send_action("typing")
+            except Exception:
+                pass
+            hits = []
+            for _attempt in range(3):
+                try:
+                    hits = await asyncio.to_thread(lookup_stocks, self.db_path, code)
+                    break
+                except Exception as exc:
+                    # boot 建索引／法人回填時 SQLite 可能 locked；重試後仍失敗才丟給使用者。
+                    msg = str(exc).lower()
+                    locked = "locked" in msg or "busy" in msg
+                    logger.warning(
+                        "查股 lookup 失敗 code=%s attempt=%s locked=%s err=%s",
+                        code,
+                        _attempt + 1,
+                        locked,
+                        exc,
+                    )
+                    if _attempt >= 2 or not locked:
+                        await self._magic_dismiss(wait_msg)
+                        await message.reply_text(
+                            "查詢暫時卡住（雲端剛醒或資料庫忙碌）。請先按 /start，稍後再試。",
+                            reply_markup=self._keyboard(),
+                        )
+                        return
+                    await asyncio.sleep(0.4 * (_attempt + 1))
+            if hits and (
+                hits[0].get("category_choice")
+                or (
+                    hits[0].get("category")
+                    and str(hits[0].get("stock_id") or "") != code
+                )
+            ):
+                if hits_need_picker(hits) or hits[0].get("category_choice"):
                     await self._magic_dismiss(wait_msg)
-                    await message.reply_text(
-                        "查詢暫時卡住（雲端剛醒或資料庫忙碌）。請先按 /start，稍後再試。",
-                        reply_markup=self._keyboard(),
+                    await message.reply_html(
+                        self._hits_list_html(hits),
+                        reply_markup=self._hits_keyboard(hits),
+                        disable_web_page_preview=True,
                     )
                     return
-                await asyncio.sleep(0.4 * (_attempt + 1))
-        if hits and (
-            hits[0].get("category_choice")
-            or (
-                hits[0].get("category")
-                and str(hits[0].get("stock_id") or "") != code
-            )
-        ):
-            if hits_need_picker(hits) or hits[0].get("category_choice"):
+            if hits and hits[0].get("close") is None:
                 await self._magic_dismiss(wait_msg)
-                await message.reply_html(
-                    self._hits_list_html(hits),
-                    reply_markup=self._hits_keyboard(hits),
-                    disable_web_page_preview=True,
-                )
-                return
-        if hits and hits[0].get("close") is None:
-            await self._magic_dismiss(wait_msg)
-            h = hits[0]
-            try:
-                from stock_links import html_stock_anchor
+                h = hits[0]
+                try:
+                    from stock_links import html_stock_anchor
 
-                title = html_stock_anchor(h["stock_id"], h.get("stock_name") or "", self.db_path)
-            except Exception:
-                title = f"{html_escape(h['stock_id'])} {html_escape(h.get('stock_name') or '')}"
-            mkt_raw = (h.get("market") or "").strip().upper()
-            mkt = html_escape(h.get("market") or "")
-            is_em = mkt_raw in ("EM", "EMERGING", "興櫃")
-            uid_em = uid or self._uid_from_message(message)
-            self._remember_card(uid_em, str(h.get("stock_id") or code))
-            if is_em:
-                body = self._em_no_listed_html(str(h.get("stock_id") or code), [h])
-            else:
-                body = (
-                    f"{title}\n這是上市櫃股票（市場 {mkt or 'TW'}），"
-                    "但<strong>雲端這台機器還沒有日K資料</strong>，所以暫時不能出決策卡。"
-                    "請等行情庫下載完成後再打一次代號。"
-                )
-            try:
-                await message.reply_html(
-                    body,
-                    reply_markup=self._hub_keyboard(h["stock_id"], em=is_em),
-                    disable_web_page_preview=True,
-                )
-            except Exception:
-                logger.exception("無日K提示失敗 code=%s", code)
-                await message.reply_text(
-                    f"{h.get('stock_id') or code} 還沒有日K，請稍後再打一次代號。"
-                )
-            return
-        async with lock:
+                    title = html_stock_anchor(h["stock_id"], h.get("stock_name") or "", self.db_path)
+                except Exception:
+                    title = f"{html_escape(h['stock_id'])} {html_escape(h.get('stock_name') or '')}"
+                mkt_raw = (h.get("market") or "").strip().upper()
+                mkt = html_escape(h.get("market") or "")
+                is_em = mkt_raw in ("EM", "EMERGING", "興櫃")
+                uid_em = uid or self._uid_from_message(message)
+                self._remember_card(uid_em, str(h.get("stock_id") or code))
+                if is_em:
+                    body = self._em_no_listed_html(str(h.get("stock_id") or code), [h])
+                else:
+                    body = (
+                        f"{title}\n這是上市櫃股票（市場 {mkt or 'TW'}），"
+                        "但<strong>雲端這台機器還沒有日K資料</strong>，所以暫時不能出決策卡。"
+                        "請等行情庫下載完成後再打一次代號。"
+                    )
+                try:
+                    await message.reply_html(
+                        body,
+                        reply_markup=self._hub_keyboard(h["stock_id"], em=is_em),
+                        disable_web_page_preview=True,
+                    )
+                except Exception:
+                    logger.exception("無日K提示失敗 code=%s", code)
+                    await message.reply_text(
+                        f"{h.get('stock_id') or code} 還沒有日K，請稍後再打一次代號。"
+                    )
+                return
             await self._send_card_to_locked(
                 message, code, uid, actor, hits, wait_msg=wait_msg
             )
+        finally:
+            lock.release()
 
     async def _send_card_to_locked(
         self,
@@ -8212,47 +8311,21 @@ class WayneTelegramBot:
             send_path = path
             if not str(path).lower().endswith((".jpg", ".jpeg")):
                 send_path = self._prepare_lookup_album_photo(path)
-            html_cap = html_escape(caption) if caption else ""
-            for attempt in range(3):
-                try:
-                    with open(send_path, "rb") as f:
-                        await message.reply_photo(
-                            photo=f, caption=html_cap, parse_mode="HTML", reply_markup=markup
-                        )
-                    logger.info(
-                        "送圖成功 kind=%s code=%s bytes=%s attempt=%s",
-                        kind,
-                        code,
-                        os.path.getsize(path),
-                        attempt + 1,
-                    )
-                    if not lookup_faded:
-                        lookup_faded = True
-                        await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
-                    return True
-                except Exception as exc:
-                    err_name = type(exc).__name__
-                    if attempt < 2 and err_name in ("TimedOut", "NetworkError", "RetryAfter"):
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    try:
-                        with open(path, "rb") as f:
-                            await message.reply_photo(photo=f, caption=caption[:200], reply_markup=markup)
-                        logger.info("送圖成功(無HTML) kind=%s code=%s", kind, code)
-                        if not lookup_faded:
-                            lookup_faded = True
-                            await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
-                        return True
-                    except Exception:
-                        try:
-                            with open(path, "rb") as f:
-                                await message.reply_photo(photo=f, caption=str(code)[:64])
-                            logger.info("送圖成功(無鍵盤) kind=%s code=%s", kind, code)
-                            sent_any = True
-                            return True
-                        except Exception:
-                            logger.exception("送圖失敗 kind=%s path=%s attempt=%s", kind, path, attempt + 1)
-            return False
+            ok = await self._reply_lookup_photo(
+                message,
+                send_path,
+                caption=caption,
+                markup=markup,
+                kind=kind,
+                code=code,
+                raw_fallback_path=path,
+            )
+            if ok:
+                sent_any = True
+                if not lookup_faded:
+                    lookup_faded = True
+                    await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
+            return ok
 
         hub_on = False
 

@@ -1450,7 +1450,24 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     want_fuzzy = len(cjk_only(like_q)) >= 2
     if exact:
         exact = _rank_exact_name_hits(exact, like_q)
-        if any(name_is_exact_hit(like_q, str(h.get("stock_name") or "")) for h in exact):
+        # 有全名命中時：全名＋前綴延伸（南亞→南亞科）可列；
+        # 中嵌子字串（聯亞→主動安聯亞半導體）不准夾帶，否則 picker／錯檔。
+        if any(
+            name_is_exact_hit(like_q, str(h.get("stock_name") or "")) for h in exact
+        ):
+            qn = strip_lookup_name(like_q)
+            qc = cjk_only(qn)
+
+            def _keep_exact_or_prefix(h: Dict[str, Any]) -> bool:
+                name = strip_lookup_name(str(h.get("stock_name") or ""))
+                if name_is_exact_hit(like_q, name):
+                    return True
+                nc = cjk_only(name)
+                if qn and name.startswith(qn):
+                    return True
+                return bool(qc) and bool(nc) and nc.startswith(qc)
+
+            exact = [h for h in exact if _keep_exact_or_prefix(h)]
             return exact[:cap]
     elif not want_fuzzy:
         return []
