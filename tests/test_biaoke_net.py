@@ -73,3 +73,65 @@ def test_related_posts_do_not_score_bystander_quote():
     ]
     rel = related_posts("南亞科", posts, limit=4)
     assert all(str(p.get("id")) != "r1" for p in rel)
+
+
+def test_ask_stock_keys_talk_core_and_ticker():
+    from biaoke_net import _ask_stock_keys
+
+    keys, sids = _ask_stock_keys("你怎麼看智邦")
+    assert "智邦" in keys
+    assert "2345" in sids or "智邦" in keys
+    keys2, sids2 = _ask_stock_keys("2345")
+    assert "2345" in sids2
+    assert "2345" in keys2
+
+
+def test_related_posts_ticker_hits_name_only_self_reply():
+    """樓下只寫「智邦」時，問 2345 也要對到作者自回，不准被「前高2345」帶走。"""
+    posts = [
+        {
+            "id": "main",
+            "kind": "post",
+            "date": "2026-10-08",
+            "tags": ["大立光"],
+            "text": "從台指期連續盤很明顯，回測完成就再拉出一波漲勢。",
+        },
+        {
+            "id": "main:c1",
+            "kind": "reply",
+            "parent": "main",
+            "date": "2026-10-08",
+            "tags": [],
+            "text": "買光聖不如買聯亞，最穩健且剛剛才在底部整理完成，未來的漲幅空間我比較有把握，就是智邦，他應該會漲到過年前，最後倒的一檔長線龍頭股，但他的缺點就是資金效率不好。",
+        },
+        {
+            "id": "main:c2",
+            "kind": "reply",
+            "parent": "main",
+            "date": "2026-10-09",
+            "tags": [],
+            "text": "下星期會找一天我對目前選股看法，且可將智邦做為防禦性長線股的原因看法",
+        },
+        {
+            "id": "old",
+            "kind": "post",
+            "date": "2026-05-18",
+            "tags": ["台積電"],
+            "text": "台積電目前幾乎已經90%確認開始橫盤整理，如果突破前高2345，也是B波假突破成分居高。",
+        },
+    ]
+    for ask in ("智邦", "2345", "你怎麼看智邦"):
+        rel = related_posts(ask, posts, limit=4)
+        joined = " ".join(str(p.get("text") or "") for p in rel)
+        assert "智邦" in joined, ask
+        assert any("過年前" in str(p.get("text") or "") or "防禦性" in str(p.get("text") or "") for p in rel), ask
+        assert all("突破前高2345" not in str(p.get("text") or "") for p in rel), ask
+
+
+def test_extract_mentions_skips_price_like_ticker():
+    from biaoke_link import extract_mentions
+
+    hits = extract_mentions("台積電如果突破前高2345，也是B波假突破")
+    assert all(h.get("stock_id") != "2345" for h in hits)
+    hits2 = extract_mentions("就是智邦，他應該會漲到過年前")
+    assert any(h.get("stock_id") == "2345" for h in hits2)

@@ -28,6 +28,7 @@ FAMILIES: List[Tuple[str, re.Pattern[str]]] = [
 ]
 
 _SKIP = {"飆客", "飆大", "AI飆客", "去年年底", "去年底", "年底", "年終"}
+_TICKER_KEY = re.compile(r"^\d{4}$")
 
 
 def family_ids(text: str) -> List[str]:
@@ -60,7 +61,62 @@ def _keys(ask: str) -> List[str]:
     return out
 
 
-def score_post(post: Dict[str, Any], keys: Sequence[str], ask_families: Sequence[str]) -> int:
+def _ask_stock_keys(
+    ask: str, *, db_path: str = ""
+) -> Tuple[List[str], List[str]]:
+    """口語「你怎麼看智邦」／「2345」→ 關鍵字＋代號。代號點名走 mentions，不靠正文撞數字。"""
+    q = (ask or "").strip()
+    keys = _keys(q)
+    sids: List[str] = []
+    core = ""
+    try:
+        from biaoke_facts import talk_core
+
+        core = talk_core(q)
+    except Exception:
+        core = ""
+    if core:
+        for k in _keys(core):
+            if k not in keys:
+                keys.append(k)
+    blobs = [q]
+    if core and core != q:
+        blobs.append(core)
+    try:
+        from biaoke_link import extract_mentions
+
+        for blob in blobs:
+            for hit in extract_mentions(blob, db_path=str(db_path or "")):
+                name = str(hit.get("stock_name") or "").strip()
+                sid = str(hit.get("stock_id") or "").strip()
+                if name and name not in keys:
+                    keys.append(name)
+                if sid and sid not in sids:
+                    sids.append(sid)
+                if sid and sid not in keys:
+                    keys.append(sid)
+    except Exception:
+        pass
+    for blob in blobs:
+        for m in re.finditer(r"(?<!\d)(\d{4})(?!\d)", blob or ""):
+            sid = m.group(1)
+            if sid.startswith(("19", "20")):
+                continue
+            if sid not in sids:
+                sids.append(sid)
+            if sid not in keys:
+                keys.append(sid)
+    return keys, sids
+
+
+def score_post(
+    post: Dict[str, Any],
+    keys: Sequence[str],
+    ask_families: Sequence[str],
+    *,
+    ask_sids: Sequence[str] = (),
+    post_sids: Sequence[str] = (),
+) -> int:
     tags = [str(t) for t in (post.get("tags") or [])]
     text = str(post.get("text") or "")
     if (post.get("kind") or "") == "reply":
@@ -73,9 +129,18 @@ def score_post(post: Dict[str, Any], keys: Sequence[str], ask_families: Sequence
     blob = text + " " + " ".join(tags)
     score = 0
     for k in keys:
+        if _TICKER_KEY.match(k):
+            # 正文「前高2345」是價位，不是點名智邦；代號只認 mentions／股名。
+            continue
         if k in tags:
             score += 8
         score += blob.count(k)
+    have = {str(s) for s in (post_sids or post.get("_sids") or []) if s}
+    for sid in ask_sids or []:
+        if sid and sid in have:
+            score += 24
+            if (post.get("kind") or "") == "reply":
+                score += 12
     if ask_families:
         fams = family_ids(blob)
         score += 12 * sum(1 for f in ask_families if f in fams)
@@ -91,16 +156,21 @@ def related_posts(
 ) -> List[Dict[str, Any]]:
     """問句 → 命中後走 2 跳：樓中樓、同代號（含最早一則）、同方法。最多 limit 則。"""
     q = (ask or "").strip()
-    keys = _keys(q)
+    keys, ask_sids = _ask_stock_keys(q, db_path=str(db_path or ""))
     if not q or not posts:
         return []
     ask_fams = family_ids(q)
-    if not keys and not ask_fams:
+    if not keys and not ask_fams and not ask_sids:
         return []
+    g = graph_for(posts, str(db_path or ""))
     scored: List[Tuple[int, Dict[str, Any]]] = []
     by_id = {str(p.get("id") or ""): p for p in posts if p.get("id")}
     for p in posts:
-        s = score_post(p, keys, ask_fams)
+        aid = str(p.get("id") or "")
+        post_sids = list(g.sids.get(aid) or p.get("_sids") or [])
+        s = score_post(
+            p, keys, ask_fams, ask_sids=ask_sids, post_sids=post_sids
+        )
         if s > 0:
             scored.append((s, p))
     scored.sort(
@@ -112,7 +182,6 @@ def related_posts(
     cap = max(1, int(limit))
     out: List[Dict[str, Any]] = []
     seen: set = set()
-    g = graph_for(posts, str(db_path or ""))
 
     def add(p: Optional[Dict[str, Any]]) -> None:
         if not p:
@@ -120,17 +189,33 @@ def related_posts(
         aid = str(p.get("id") or "")
         if not aid or aid in seen:
             return
+        gp = g.by_id.get(aid)
+        row = gp if gp is not None else p
+        if not row.get("_sids"):
+            row["_sids"] = list(
+                (gp or {}).get("_sids") or g.sids.get(aid) or []
+            )
+        if not row.get("_snames"):
+            row["_snames"] = list((gp or {}).get("_snames") or [])
         seen.add(aid)
-        out.append(p)
+        out.append(row)
 
+    # 先走問句對到的代號（樓下自回只寫「智邦」也能用 2345 問到）
+    for sid in ask_sids:
+        for p in g.newest(sid, skip=seen, limit=3):
+            add(p)
+            if len(out) >= cap:
+                return out[:cap]
     for _s, p in scored[:2]:
         add(p)
-    seed_sids = g.sids_of(out)
+    seed_sids = list(ask_sids) + [
+        s for s in g.sids_of(out) if s not in ask_sids
+    ]
     add(g.oldest(seed_sids))
     for p in list(out):
         parent = str(p.get("parent") or "")
         if parent:
-            add(by_id.get(parent))
+            add(by_id.get(parent) or g.by_id.get(parent))
         for ch in (g.children.get(str(p.get("id") or "")) or [])[:2]:
             add(ch)
         if len(out) >= cap:
@@ -154,9 +239,10 @@ def related_posts(
             aid = str(p.get("id") or "")
             if aid in have:
                 continue
-            tags = {str(t) for t in (p.get("tags") or [])}
-            names = {str(n) for n in (p.get("_snames") or [])}
-            fams = family_ids(str(p.get("text") or "") + " " + " ".join(tags))
+            gp = g.by_id.get(aid) or p
+            tags = {str(t) for t in (gp.get("tags") or [])}
+            names = {str(n) for n in (gp.get("_snames") or [])}
+            fams = family_ids(str(gp.get("text") or "") + " " + " ".join(tags))
             hop = 0
             if seed_tags and (tags | names) & seed_tags:
                 hop += 4

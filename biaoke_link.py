@@ -73,6 +73,10 @@ _ALIASES = {
 
 _TICKER = re.compile(r"(?<!\d)(\d{4})(?!\d)")
 _YEARISH = re.compile(r"^(19|20)\d{2}$")
+# 「突破前高2345」是價位，不是點名智邦。
+_TICKER_PRICE_CTX = re.compile(
+    r"(前高|前低|高點|低點|支撐|壓力|反彈至|落點|區間|點位|高\s*|低\s*)$"
+)
 
 
 def ensure_biaoke_mentions_table(db_path: str) -> None:
@@ -205,6 +209,7 @@ def name_index(db_path: str = "") -> Tuple[Tuple[str, str], ...]:
         ("華星光", "4979"),
         ("眾達", "4977"),
         ("聯鈞", "3450"),
+        ("智邦", "2345"),
         ("新應材", "4749"),
         ("藝舍", "2724"),
     ]
@@ -267,6 +272,9 @@ def extract_mentions(
         sid = m.group(1)
         if _YEARISH.match(sid):
             continue
+        prefix = blob[max(0, m.start() - 6) : m.start()]
+        if _TICKER_PRICE_CTX.search(prefix):
+            continue
         name = next((n for n, s in idx if s == sid), "")
         if sid in {s for _n, s in idx} or name:
             add(name or sid, sid)
@@ -303,8 +311,16 @@ class MentionGraph:
             aid = str(p.get("id") or "")
             if not aid:
                 continue
+            raw = str(p.get("text") or "")
+            if (p.get("kind") or "") == "reply":
+                try:
+                    from biaoke_ingest import spoken_text
+
+                    raw = spoken_text(raw)
+                except Exception:
+                    pass
             hits = extract_mentions(
-                str(p.get("text") or ""),
+                raw,
                 tags=list(p.get("tags") or []),
                 db_path=self.db_path,
             )
