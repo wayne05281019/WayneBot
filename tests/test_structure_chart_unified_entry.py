@@ -33,12 +33,25 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
     biaoke_send = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "build_biaoke_structure_chart" in biaoke_send
 
+    advice = inspect.getsource(WayneTelegramBot._render_biaoke_advice_chart)
+    assert "build_biaoke_structure_chart" in advice
+
+    # 三合一內嵌結構也要同一核准 figsize（不准殘留預設直式／舊比例）
+    import three_in_one_chart as tio
+
+    compose = inspect.getsource(tio._apply_patches_and_render)
+    assert "render_biaoke_structure_png" in compose
+    assert "_STRUCTURE_LOOKUP_FIG" in compose
+
     # 不准另開第二套結構圖渲染器
     import biaoke_chart as bc
-    import three_in_one_chart as tio
 
     assert hasattr(bc, "render_biaoke_structure_png")
     assert not hasattr(tio, "render_structure_png")
     assert "def render_biaoke_structure" not in open(
         "three_in_one_chart.py", encoding="utf-8"
     ).read()
+    # 75／76：昨收去重用文案真價，不准錨點誤刪
+    assert "_note_true_price" in inspect.getsource(bc._dedupe_right_notes) or hasattr(
+        bc, "_note_true_price"
+    )

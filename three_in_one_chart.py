@@ -1615,7 +1615,11 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         prepare_volume_zone,
     )
     from wayne_navigator import NavigatorEngine, clear_lookup_render_cache, generate_chart
-    from biaoke_chart import render_biaoke_structure_png, stock_nameplate
+    from biaoke_chart import (
+        _STRUCTURE_LOOKUP_FIG,
+        render_biaoke_structure_png,
+        stock_nameplate,
+    )
 
     clear_lookup_render_cache()
     clear_vol_zone_render_cache()
@@ -2485,9 +2489,15 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         bc._add_ohlc_bodies = _thick_bodies  # type: ignore[assignment]
         bc._add_ohlc_wicks = _thick_wicks  # type: ignore[assignment]
         try:
+            # 74 核准：與查股／飆大同一橫式滿版參數（不准殘留預設 18.6×10.8）
             struct_out = render_biaoke_structure_png(
-                bars, struct_p, sid=sid, name=name,
-                plate=stock_nameplate(sid, name, db), db_path=db,
+                bars,
+                struct_p,
+                sid=sid,
+                name=name,
+                plate=stock_nameplate(sid, name, db),
+                db_path=db,
+                figsize=_STRUCTURE_LOOKUP_FIG,
             )
         finally:
             bc.plt.subplots = orig_subplots  # type: ignore[assignment]

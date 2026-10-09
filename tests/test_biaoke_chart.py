@@ -589,6 +589,15 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "不准再 snap 回 ny" in place_src or "一律用留縫後的 ty" in place_src
     assert "close_pair" in place_src
     assert "昨收＋今收同列並排" in place_src or "先昨收" in place_src
+    assert "_CLOSE_PAIR_SIDE_GAP" in place_src
+    assert "_approx_note_pack_width" in place_src
+    from biaoke_chart import _CLOSE_PAIR_SIDE_GAP, _approx_note_pack_width, _approx_note_width
+
+    # 77：並排前進寬不准再估窄到互壓（昨收3140 實測盒≈16；話筒縮圖要留縫）
+    assert float(_CLOSE_PAIR_SIDE_GAP) >= 4.5
+    assert _approx_note_pack_width("昨收 3140", 11) >= 16.0
+    assert _approx_note_pack_width("昨收 3140", 11) >= _approx_note_width("昨收 3140", 11) * 1.05
+    assert "不准蓋昨收" in place_src or "兩盒" in place_src
     assert "_MOST_LIKELY_DASH" in place_src or "_MOST_LIKELY_DASH" in src
     assert "from_x" in src and "from_y" in src
     assert "不准再畫演化區彎路徑" in src or "短 dash 直連末日 K" in src
@@ -743,6 +752,30 @@ def test_locator_inset_marks_window():
     )
     assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_pair)
     assert any(str(k.get("text") or "").startswith("昨收") for k in kept_pair)
+    # 76／3081：昨收顯示 Y 錨今收（近撐）但文案真價遠離撐→仍要留並排
+    kept_3081 = _dedupe_right_notes(
+        [
+            {"y": 3255.0, "text": "壓 3255"},
+            {"y": 2940.0, "text": "撐 2940"},
+            {"y": 2960.0, "text": "今收 2960"},
+            {"y": 2960.0, "text": "昨收 3140"},
+            {"y": 3255.0, "text": "最可能＝看壓 3255"},
+        ],
+        span=3050.0,
+    )
+    assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_3081)
+    assert any(str(k.get("text") or "").startswith("昨收") for k in kept_3081)
+    # 昨收真價真的貼撐才讓（文案價，不是錨點）
+    kept_near = _dedupe_right_notes(
+        [
+            {"y": 2940.0, "text": "撐 2940"},
+            {"y": 2960.0, "text": "今收 2960"},
+            {"y": 2960.0, "text": "昨收 2945"},
+        ],
+        span=3050.0,
+    )
+    assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_near)
+    assert not any(str(k.get("text") or "").startswith("昨收") for k in kept_near)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
