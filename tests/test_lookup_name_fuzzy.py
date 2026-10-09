@@ -159,6 +159,35 @@ def test_lookup_exact_name_and_ticker_not_fuzzy(monkeypatch, tmp_path):
     assert not hits_need_picker(jian)
 
 
+def test_lookup_lianya_exact_excludes_midstring_etf(monkeypatch, tmp_path):
+    """打「聯亞」只出 3081；不准夾帶名稱中嵌「聯亞」的 ETF（主動安聯亞半導體）。"""
+    db = str(tmp_path / "lianya.db")
+    _seed(db, monkeypatch)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """INSERT OR REPLACE INTO daily_quotes
+           (date, stock_id, stock_name, market, open, high, low, close, volume,
+            turnover_k, pct_change, avg_price)
+           VALUES ('20260828', '3081', '聯亞', 'TWO', 100, 100, 100, 100, 500, 1000, 1.0, 100)"""
+    )
+    conn.execute(
+        """INSERT OR REPLACE INTO daily_quotes
+           (date, stock_id, stock_name, market, open, high, low, close, volume,
+            turnover_k, pct_change, avg_price)
+           VALUES ('20260828', '00412A', '主動安聯亞半導體', 'TW', 10, 10, 10, 10, 100, 1000, 1.0, 10)"""
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "quote_integrity.db_as_of_trading_date",
+        lambda dp, now=None: "20260828",
+    )
+    hits = lookup_stocks(db, "聯亞")
+    assert [h["stock_id"] for h in hits] == ["3081"]
+    assert not hits_need_picker(hits)
+    assert not hits[0].get("fuzzy")
+
+
 def test_lookup_merges_substring_and_homophone(monkeypatch, tmp_path):
     """字形子字串（普瑞森）不要蓋掉讀音命中的譜瑞-KY。"""
     db = str(tmp_path / "merge.db")
