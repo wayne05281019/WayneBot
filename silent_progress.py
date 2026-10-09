@@ -499,6 +499,16 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
     except Exception:
         stats["red_arrow_wrote"] = 0
         stats["red_arrow_promote"] = False
+    stats["step"] = "buy_arrow_band_sample"
+    try:
+        from buy_arrow_quant import night_sample_tick as buy_arrow_night_sample
+
+        ba = buy_arrow_night_sample(db_path, as_of=day or cap) or {}
+        stats["buy_arrow_wrote"] = int(ba.get("wrote") or 0)
+        stats["buy_arrow_promote"] = bool(ba.get("promote"))
+    except Exception:
+        stats["buy_arrow_wrote"] = 0
+        stats["buy_arrow_promote"] = False
     stats["step"] = "never_speak"
     stats["speak"] = bool(
         speak_ready("twii", db_path)
