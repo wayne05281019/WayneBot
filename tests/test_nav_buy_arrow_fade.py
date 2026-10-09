@@ -18,8 +18,9 @@ def test_nav_buy_band_first_full_follow_faded():
     # 後續紅框略濃於本體，仍同種藍▲紅框
     assert alphas[11][1] == wn._NAV_BUY_ARROW_EDGE_ALPHA_FOLLOW
     assert wn._NAV_BUY_ARROW_ALPHA_FOLLOW < wn._NAV_BUY_ARROW_ALPHA_FIRST
-    assert wn._NAV_BUY_ARROW_ALPHA_FOLLOW >= 0.50  # 不准淡到看不懂
+    assert wn._NAV_BUY_ARROW_ALPHA_FOLLOW >= 0.38  # 再淡仍可辨；紅框另濃
     assert wn._NAV_BUY_ARROW_EDGE_ALPHA_FOLLOW > wn._NAV_BUY_ARROW_ALPHA_FOLLOW
+    assert 0.75 <= wn._NAV_BUY_ARROW_FOLLOW_H_MULT < 1.0  # 後續略矮、首根主位
 
 
 def test_paint_nav_buy_arrows_uses_band_alphas():

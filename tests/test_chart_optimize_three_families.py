@@ -57,7 +57,7 @@ def test_nav_buy_arrow_red_frame_and_jpeg():
     assert _NAV_BUY_ARROW_EDGE.upper().startswith("#C")
     assert "edge" in inspect.signature(_nav_arrow).parameters
     leg = inspect.getsource(_draw_nav_legend)
-    assert "買點↑藍▲紅框" in leg
+    assert "買點↑首清楚／續淡" in leg or "買點↑藍▲紅框" in leg
     src = inspect.getsource(draw_from_ohlc)
     assert "_savefig_lookup_png" in src
     assert "0.985" in src

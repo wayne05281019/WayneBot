@@ -5533,10 +5533,13 @@ _NAV_BUY_ARROW_HW = 1.05  # 略收寬，避免右緣看起來「單一巨箭」
 # 買點紅框：跟同色「60低」藍箭分開；手機縮圖要夠粗才看得出
 _NAV_BUY_ARROW_EDGE = "#C62828"
 _NAV_BUY_ARROW_EDGE_W = 2.05
-# 同一段剛離零帶：第一根維持清楚；後續淡仍可辨（不是刪箭、不改 leave_zero 公式）
+# 同一段剛離零帶：第一根維持清楚；後續再淡仍可辨（不是刪箭、不改 leave_zero 公式）
+# 對質：同帶首根 h5 贏後續／全畫現況 → 再淡後續呈現（buy_arrow_quant）；不准改公式
 _NAV_BUY_ARROW_ALPHA_FIRST = 1.0
-_NAV_BUY_ARROW_ALPHA_FOLLOW = 0.58
-_NAV_BUY_ARROW_EDGE_ALPHA_FOLLOW = 0.82  # 紅框略濃於本體，縮圖仍看得出同種記號
+_NAV_BUY_ARROW_ALPHA_FOLLOW = 0.42
+_NAV_BUY_ARROW_EDGE_ALPHA_FOLLOW = 0.72  # 紅框略濃於本體，縮圖仍看得出同種記號
+# 後續箭略矮，首根視覺主位（仍同種藍▲紅框）
+_NAV_BUY_ARROW_FOLLOW_H_MULT = 0.82
 
 
 def _nav_buy_arrow_alphas(buy_is) -> dict:
@@ -5610,7 +5613,7 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         (patches.Patch(facecolor=_NAV_SIG["vol_low_band"], edgecolor="#64b5f6", linewidth=0.6), "月波動低底"),
         # 買點＝藍三角＋紅框（跟 60 低純藍三角分開）；圖例邊線再粗，手機才分得清
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor=_NAV_TRADE_BUY,
-                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=2.85, markersize=ms_z + 3), "買點↑藍▲紅框"),
+                markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=2.85, markersize=ms_z + 3), "買點↑首清楚／續淡"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
                 markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
     ]
@@ -6113,7 +6116,7 @@ def _paint_nav_buy_arrows(
 ) -> bool:
     """在多根買點柱畫藍▲紅框。導航／大量區共用。有畫回 True。
 
-    同一段剛離零帶第一根清楚、後續淡（語意＝還在買點帶也能買；不改公式）。
+    同一段剛離零帶第一根清楚、後續再淡略矮（語意＝還在買點帶也能買；不改公式）。
     """
     if ax1 is None or not buy_is:
         return False
@@ -6141,6 +6144,8 @@ def _paint_nav_buy_arrows(
         face_a, edge_a = alphas.get(
             ii, (_NAV_BUY_ARROW_ALPHA_FIRST, _NAV_BUY_ARROW_ALPHA_FIRST)
         )
+        is_follow = float(face_a) < float(_NAV_BUY_ARROW_ALPHA_FIRST) - 1e-9
+        h_i = buy_h * (_NAV_BUY_ARROW_FOLLOW_H_MULT if is_follow else 1.0)
         _nav_arrow(
             ax1,
             tip,
@@ -6148,7 +6153,7 @@ def _paint_nav_buy_arrows(
             down=False,
             face=_NAV_TRADE_BUY,
             ink=_NAV_TRADE_BUY,
-            arrow_h=buy_h,
+            arrow_h=h_i,
             hw=buy_hw,
             z=8,
             alpha=float(face_a),
