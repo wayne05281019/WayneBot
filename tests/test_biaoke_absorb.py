@@ -110,11 +110,44 @@ def test_catch_up_due_after_close_slots(tmp_path, monkeypatch):
     monkeypatch.setattr(biaoke_absorb, "run_absorb", _fake_run)
     now = datetime(2026, 9, 16, 19, 40, tzinfo=TAIPEI)
     ran = catch_up_due_after_close_slots(db, now=now)
-    assert ran == ["20260916-1630", "20260916-1930"]
+    # 開市日：已過盤後窗＋本日 01:00（前一日開市）
+    assert ran == ["20260916-1630", "20260916-1930", "20260916-0100"]
     assert seen == ran
     assert _slot_ran(db, "20260916-1630")
     assert _slot_ran(db, "20260916-1930")
+    assert _slot_ran(db, "20260916-0100")
     assert not _slot_ran(db, "20260916-2230")
+    assert catch_up_due_after_close_slots(db, now=now) == []
+
+
+def test_catch_up_on_closed_day_runs_prev_open_after_close(tmp_path, monkeypatch):
+    """國慶補假等休市：補最近開市日盤後三檔＋本日 01:00。"""
+    import biaoke_absorb
+    from biaoke_absorb import catch_up_due_after_close_slots
+
+    db = str(tmp_path / "h.db")
+    seen: list[str] = []
+
+    def _fake_run(db_path, *, now=None, slot="", force=False):
+        seen.append(str(slot))
+        biaoke_absorb._mark_slot(db_path, str(slot), posts=0, aux=0, now=now)
+        return {"ok": True, "slot": slot}
+
+    monkeypatch.setattr(biaoke_absorb, "run_absorb", _fake_run)
+    monkeypatch.setattr(
+        biaoke_absorb,
+        "is_tw_open_calendar_day",
+        lambda ymd: str(ymd) == "20261008",
+    )
+    now = datetime(2026, 10, 9, 13, 50, tzinfo=TAIPEI)
+    ran = catch_up_due_after_close_slots(db, now=now)
+    assert ran == [
+        "20261008-1630",
+        "20261008-1930",
+        "20261008-2230",
+        "20261009-0100",
+    ]
+    assert seen == ran
     assert catch_up_due_after_close_slots(db, now=now) == []
 
 

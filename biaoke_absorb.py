@@ -171,24 +171,43 @@ def next_absorb_at(now: Optional[datetime] = None) -> datetime:
 def catch_up_due_after_close_slots(
     db_path: str, *, now: Optional[datetime] = None
 ) -> List[str]:
-    """開機補已過的盤後彙整窗（16:30／19:30／22:30）。失敗不擋下一檔。"""
+    """開機補已過的盤後彙整窗（16:30／19:30／22:30）與隔日 01:00。
+
+    休市日也要補「前一個開市日」的盤後三檔，以及本日 01:00（若前一日開市）。
+    失敗不擋下一檔。
+    """
     dt = taipei_now(now)
-    ymd = dt.strftime("%Y%m%d")
     ran: List[str] = []
-    if not db_path or not is_tw_open_calendar_day(ymd):
+    if not db_path:
         return ran
-    for hour, minute in _AFTER_CLOSE_HMS:
-        due = dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+    def _run_due(day: datetime, hour: int, minute: int) -> None:
+        due = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if dt < due:
-            continue
-        slot_id = _slot_label(ymd, hour, minute)
+            return
+        slot_id = _slot_label(due.strftime("%Y%m%d"), hour, minute)
         if _slot_ran(db_path, slot_id):
-            continue
+            return
         try:
             run_absorb(db_path, now=due, slot=slot_id)
             ran.append(slot_id)
         except Exception:
             logger.exception("盤後彙整補跑失敗 slot=%s", slot_id)
+
+    ymd = dt.strftime("%Y%m%d")
+    if is_tw_open_calendar_day(ymd):
+        for hour, minute in _AFTER_CLOSE_HMS:
+            _run_due(dt, hour, minute)
+    else:
+        # 國慶補假等休市：補最近一個開市日盤後三檔，避免匣卡住到下周一。
+        for day_off in range(1, 8):
+            prev = dt - timedelta(days=day_off)
+            if is_tw_open_calendar_day(prev.strftime("%Y%m%d")):
+                for hour, minute in _AFTER_CLOSE_HMS:
+                    _run_due(prev, hour, minute)
+                break
+    if _yesterday_open(dt):
+        _run_due(dt, *_NIGHT_HM)
     return ran
 
 

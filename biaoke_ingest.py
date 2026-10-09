@@ -102,7 +102,16 @@ _META_AUTHOR_ALT = re.compile(
     re.I,
 )
 _BODY_START = re.compile(
-    r"(1[\.、．]\s*台指期|目前台股|今天盤後|大盤)",
+    r"(1[\.、．]\s*台指期|目前台股|今天盤後|大盤|從台指期|台指期|"
+    r"市場黑手|細微波|夜盤|頭肩底|主升段|回測完成)",
+)
+_META_DESC = re.compile(
+    r'<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"\']+)["\']',
+    re.I,
+)
+_META_DESC_ALT = re.compile(
+    r'<meta[^>]*content=["\']([^"\']+)["\'][^>]*name=["\']description["\']',
+    re.I,
 )
 # 別人的價值投資長文。側欄出現飆客名字不算他寫的。
 _ALIEN_MARK = re.compile(
@@ -414,11 +423,22 @@ def _strip_article_text(html_text: str) -> str:
             or ln[:2] in ("1.", "2.", "3.")
             or ln.startswith("今天")
             or ln.startswith("大盤")
+            or ln.startswith("從")
+            or (_VOICE_MARK.search(ln) and len(ln) >= 24)
         ):
             started = True
         if started:
             kept.append(ln)
     return "\n".join(kept).strip()
+
+
+def _meta_description(html_text: str) -> str:
+    """正文 DOM 抽不到時，用頁面 description 當主文備援（仍要過聲音檢查）。"""
+    raw = html_text or ""
+    m = _META_DESC.search(raw) or _META_DESC_ALT.search(raw)
+    if not m:
+        return ""
+    return html.unescape(m.group(1) or "").strip()
 
 
 def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
@@ -437,6 +457,8 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
     if not page_is_author_article(raw):
         return None
     text = _strip_article_text(raw)
+    if not text:
+        text = _meta_description(raw)
     if not date or not text or not is_biaoke_voice(text):
         return None
     main = raw
@@ -1527,7 +1549,8 @@ def ingest_public_posts(
     for i, aid in enumerate(ids):
         known = aid in by_id and (by_id[aid].get("kind") or "post") != "reply"
         if not known:
-            want_body = i < window
+            # 頂欄有 id、庫裡沒主文＝缺口。不准只吃樓下自回讓彙整停在舊主文。
+            want_body = True
             want_thread = i < window
         else:
             want_body = i == 0
