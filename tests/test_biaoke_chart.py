@@ -706,6 +706,30 @@ def test_locator_inset_marks_window():
     )
     assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_pair)
     assert any(str(k.get("text") or "").startswith("昨收") for k in kept_pair)
+    # 76／3081：昨收顯示 Y 錨今收（近撐）但文案真價遠離撐→仍要留並排
+    kept_3081 = _dedupe_right_notes(
+        [
+            {"y": 3255.0, "text": "壓 3255"},
+            {"y": 2940.0, "text": "撐 2940"},
+            {"y": 2960.0, "text": "今收 2960"},
+            {"y": 2960.0, "text": "昨收 3140"},
+            {"y": 3255.0, "text": "最可能＝看壓 3255"},
+        ],
+        span=3050.0,
+    )
+    assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_3081)
+    assert any(str(k.get("text") or "").startswith("昨收") for k in kept_3081)
+    # 昨收真價真的貼撐才讓（文案價，不是錨點）
+    kept_near = _dedupe_right_notes(
+        [
+            {"y": 2940.0, "text": "撐 2940"},
+            {"y": 2960.0, "text": "今收 2960"},
+            {"y": 2960.0, "text": "昨收 2945"},
+        ],
+        span=3050.0,
+    )
+    assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_near)
+    assert not any(str(k.get("text") or "").startswith("昨收") for k in kept_near)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)

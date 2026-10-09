@@ -1325,6 +1325,22 @@ def _is_prev_close_note(text: str) -> bool:
     return str(text or "").startswith("昨收")
 
 
+def _note_true_price(note: Dict[str, Any]) -> float:
+    """標籤比對用真價：昨收文案數字（顯示 Y 可能錨在今收）；其餘用 note['y']。"""
+    text = str(note.get("text") or "")
+    if _is_prev_close_note(text):
+        # 「昨收 3140」／「昨收　3140」→ 3140；解析失敗才退回 y
+        tail = text.replace("昨收", "", 1).strip().replace(",", "")
+        try:
+            return float(tail.split()[0])
+        except (TypeError, ValueError, IndexError):
+            pass
+    try:
+        return float(note.get("y") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _note_priority(text: str) -> int:
     t = str(text or "")
     if "最可能" in t:
@@ -1391,10 +1407,13 @@ def _dedupe_right_notes(
         text = str(note.get("text") or "")
         is_close = _is_close_note(text)
         is_rail = _is_rail_note(text)
+        # 75：昨收顯示 Y 錨今收；跟壓／撐／軌比距離要用文案真價（3081：錨2960近撐2940，真價3140）
+        cmp_y = _note_true_price(note) if _is_prev_close_note(text) else y
         hit = False
         for k in kept:
             ky = float(k.get("y") or 0)
             kt = str(k.get("text") or "")
+            cmp_ky = _note_true_price(k) if _is_prev_close_note(kt) else ky
             # 最可能釘在現價附近，不准吃掉壓／撐／收（例：撐423 vs 收416）
             if is_close and "最可能" in kt:
                 continue
@@ -1439,7 +1458,7 @@ def _dedupe_right_notes(
                 )
             else:
                 use_thr = thr
-            if abs(y - ky) < use_thr:
+            if abs(cmp_y - cmp_ky) < use_thr:
                 hit = True
                 break
         if hit:
