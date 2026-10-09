@@ -591,10 +591,10 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "_approx_note_pack_width" in place_src
     from biaoke_chart import _CLOSE_PAIR_SIDE_GAP, _approx_note_pack_width, _approx_note_width
 
-    # 77：並排前進寬不准再估窄到互壓（昨收3140 實測盒≈16）
-    assert float(_CLOSE_PAIR_SIDE_GAP) >= 1.8
+    # 77：並排前進寬不准再估窄到互壓（昨收3140 實測盒≈16；話筒縮圖要留縫）
+    assert float(_CLOSE_PAIR_SIDE_GAP) >= 4.5
     assert _approx_note_pack_width("昨收 3140", 11) >= 16.0
-    assert _approx_note_pack_width("昨收 3140", 11) >= _approx_note_width("昨收 3140", 11) * 0.98
+    assert _approx_note_pack_width("昨收 3140", 11) >= _approx_note_width("昨收 3140", 11) * 1.05
     assert "不准蓋昨收" in place_src or "兩盒" in place_src
     assert "_MOST_LIKELY_DASH" in place_src or "_MOST_LIKELY_DASH" in src
     assert "from_x" in src and "from_y" in src

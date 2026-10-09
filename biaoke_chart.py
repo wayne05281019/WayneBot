@@ -1375,12 +1375,12 @@ def _is_close_note(text: str) -> bool:
 def _approx_note_pack_width(text: str, size: float = 12) -> float:
     """並排標籤的前進寬（含 bbox pad＋邊框；須 ≥ 實測盒寬，不准今收蓋昨收）。"""
     # 77：舊係數 1.92+3.6 估太窄（昨收3140 實測≈16.2、估≈13.5）→ 兩盒互壓。
-    # 對齊 _approx_note_width 偏寬估，右盒才有清楚小縫。
-    return _approx_note_width(text, size)
+    # 對齊偏寬估再加 8%：話筒縮圖後仍要看得出小縫。
+    return _approx_note_width(text, size) * 1.08
 
 
-# 昨收｜今收並排：左盒右緣 → 右盒左緣的資料座標縫（不准 < 1.8）
-_CLOSE_PAIR_SIDE_GAP = 2.35
+# 昨收｜今收並排：左盒右緣 → 右盒左緣的資料座標縫（話筒縮圖後仍清楚）
+_CLOSE_PAIR_SIDE_GAP = 5.2
 
 
 def _dedupe_right_notes(
@@ -1799,11 +1799,11 @@ def _place_right_notes(
             today_tx = float(col_tx) + advance + pair_side_gap
             if x_max is not None:
                 today_w = _approx_note_pack_width(today_text, today_size)
-                # 右緣不夠時略縮縫仍同列；縫底線 1.8，不准互壓
+                # 右緣不夠時略縮縫仍同列；縫底線 3.2，不准互壓
                 overflow = (today_tx + today_w) - (float(x_max) - 2.0)
                 if overflow > 0:
                     today_tx = max(
-                        float(col_tx) + advance + 1.8,
+                        float(col_tx) + advance + 3.2,
                         today_tx - overflow,
                     )
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
