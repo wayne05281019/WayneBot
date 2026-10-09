@@ -231,7 +231,8 @@ _NOISE = re.compile(
 )
 _BOARD = re.compile(
     r"(夜盤|47578|C\s*波|頭部型態|大盤要漲|前波高點|加權|逃命|45398|"
-    r"目前大盤|緩步上攻|推升脈動|早盤要買|尾盤再考慮|調節股票)"
+    r"目前大盤|緩步上攻|推升脈動|早盤要買|尾盤再考慮|調節股票|"
+    r"大盤|台指期|頭肩底|主升段|中繼站|做多安全|回測)"
 )
 _FIELD = re.compile(r"(ASIC|散熱|光通訊|記憶體|多頭格局的族群)")
 _PCB = re.compile(r"(PCB|台光電|金像電|台燿|富喬|金居|ABF)")
@@ -426,14 +427,18 @@ def format_focus_oral(
             pcb = _speak(bit, 140)
         else:
             spare.append(_speak(bit, 140))
+    # 大盤欄只認最新主文；舊主文不准回填把「現在在講」鎖在更早一天。
+    if not board:
+        board = _speak(str(latest.get("text") or ""), 260)
     for p in mains[1:]:
         t = str(p.get("text") or "")
         if re.search(r"整理三個月|全面減碼", t):
             older_long = True
-        if not board and _BOARD.search(t):
-            board = _speak(t, 200)
-        if not field and _FIELD.search(t):
-            field = _speak(t, 120)
+        if not field:
+            for bit in _numbered_bits(t):
+                if _FIELD.search(bit) and not _BOARD.search(bit):
+                    field = _speak(bit, 120)
+                    break
     latest_day = str(latest.get("date") or "")
     for p in replies:
         t = str(p.get("text") or "")
@@ -456,9 +461,6 @@ def format_focus_oral(
             "前一天還說台光電至少整理三個月、PCB 全面減碼；"
             "晚上改口，整理時間會比 ABF 短很多，昨天錯殺居多，下波可能還是漲的主流。"
         )
-    if not board:
-        # 全文截斷當大盤時，spare 裡同段不准再進「他還說」
-        board = _speak(str(latest.get("text") or ""), 260)
     latest_t = str(latest.get("text") or "")
     if board and re.search(r"(否則|如果|一定要過)", board + latest_t) and "如果句" not in board:
         board = board.rstrip("。") + "。這句還是如果句，不是已確認主升。"

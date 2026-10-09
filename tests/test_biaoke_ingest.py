@@ -125,6 +125,48 @@ def test_parse_article_html_body_and_tags():
     assert "查看" not in row["text"]
 
 
+def test_parse_article_html_starts_with_cong_taizhiqi():
+    """10/8 主文不以 1.／今天／大盤起頭；舊 strip 會整篇丟掉只剩樓下。"""
+    html = """
+    <meta name="author" content="期股多空雙飆客">
+    <meta name="description" content="從台指期連續盤很明顯，市場黑手就是每次突破新高之後都會再做一次回測，昨天夜盤及今天都是在做6/23 49240的回測。">
+    <meta property="article:published_time" content="2026-10-08T9:04:00+08:00">
+    <article>
+      <div>期股多空雙飆客</div>
+      <div>追蹤</div>
+      <div>從台指期連續盤很明顯，市場黑手就是每次突破新高之後都會再做一次回測，昨天夜盤及今天都是在做6/23 49240的回測，回測完成就再拉出一波漲勢。</div>
+      <div>因此今天是拉回找買點好時機，除非是持股明顯走弱才要換股操作。</div>
+      <div>查看 230 則留言...</div>
+      <div>這行不該進來</div>
+    </article>
+    """
+    row = parse_article_html("185221508", html)
+    assert row is not None
+    assert row["id"] == "185221508"
+    assert row["date"] == "2026-10-08"
+    assert "49240" in row["text"]
+    assert "從台指期" in row["text"]
+    assert "這行不該進來" not in row["text"]
+
+
+def test_parse_article_html_falls_back_to_meta_description():
+    html = """
+    <meta name="author" content="期股多空雙飆客">
+    <meta name="description" content="從台指期連續盤很明顯，夜盤細微波回測完成就再拉出一波漲勢。">
+    <meta property="article:published_time" content="2026-10-08T9:04:00+08:00">
+    <article>
+      <div>期股多空雙飆客</div>
+      <div>追蹤</div>
+      <div>打賞</div>
+      <div>分享</div>
+    </article>
+    """
+    row = parse_article_html("185221508", html)
+    assert row is not None
+    assert "從台指期" in row["text"]
+    assert "細微波" in row["text"]
+
+
 def test_parse_article_skips_chart_unrelated_to_named_stock():
     html = """
     <meta name="author" content="期股多空雙飆客">

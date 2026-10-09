@@ -241,6 +241,48 @@ def test_latest_focus_is_oral_not_july_bwave():
     assert len(html) < 1800
 
 
+def test_focus_oral_board_prefers_latest_main_not_older():
+    """最新主文有大盤句時，不准被更早主文的「緩步上攻」蓋掉。"""
+    mains = [
+        {
+            "id": "185192837",
+            "kind": "post",
+            "date": "2026-10-07",
+            "time": "10:22",
+            "text": (
+                "1.\t大盤因為是中繼站頭肩底型態可以用等幅測距漲到56000左右(保守估計)，"
+                "因此只要沒有接近56000，都是做多安全環境。\n"
+                "2.\t今天光通訊較低位階股票紛紛大漲，最具代表性就是InP聯亞漲停。"
+            ),
+        },
+        {
+            "id": "184931175",
+            "kind": "post",
+            "date": "2026-09-24",
+            "time": "08:57",
+            "text": (
+                "目前大盤看起來是走緩步上攻可能性比較大，但要看整理時間及拉回幅度，"
+                "有沒有破壞長線有可能產生九組推升脈動的波型才能判斷，目前證據不夠。"
+            ),
+        },
+    ]
+    html = format_focus_oral(
+        mains,
+        [],
+        now=datetime(2026, 10, 8, 22, 14, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    board_html = html.split("<b>族群</b>")[0] if "<b>族群</b>" in html else html
+    assert "56000" in board_html
+    assert "頭肩底" in board_html or "中繼站" in board_html
+    assert "緩步上攻" not in board_html
+    assert "10/7" in html or "10/8" in html
+    if "<b>族群</b>" in html:
+        field_html = html.split("<b>族群</b>", 1)[1]
+        field_html = field_html.split("<b>", 1)[0]
+        assert "56000" not in field_html
+        assert "光通訊" in field_html or "聯亞" in field_html
+
+
 def test_focus_oral_does_not_repeat_board_in_said():
     """大盤欄講過的，他還說不准再貼同一段（話筒不重複）。"""
     board = (
