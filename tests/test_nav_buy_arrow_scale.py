@@ -12,9 +12,12 @@ def test_buy_arrow_scale_is_1_5x_original():
     assert wn._NAV_BUY_ARROW_HW == 1.05  # 寬略收，高仍 1.5×
     assert wn._NAV_BUY_ARROW_EDGE == "#C62828"
     assert wn._NAV_BUY_ARROW_EDGE_W >= 2.0  # 手機縮圖紅框要夠粗
+    assert wn._NAV_BUY_ARROW_ALPHA_FIRST == 1.0
+    assert 0.50 <= wn._NAV_BUY_ARROW_ALPHA_FOLLOW < 1.0
     # 導航／大量區共用 _paint_nav_buy_arrows；兩端只呼叫不再各寫常數
     shared = inspect.getsource(wn._paint_nav_buy_arrows)
     assert "_NAV_BUY_ARROW_H_MULT" in shared and "_NAV_BUY_ARROW_EDGE" in shared
+    assert "_nav_buy_arrow_alphas" in shared
     ov = inspect.getsource(wn.overlay_nav_marks_on_zone)
     paint = inspect.getsource(wn._paint_nav_on_axes)
     assert "_paint_nav_buy_arrows" in ov
