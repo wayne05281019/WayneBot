@@ -5533,6 +5533,37 @@ _NAV_BUY_ARROW_HW = 1.05  # 略收寬，避免右緣看起來「單一巨箭」
 # 買點紅框：跟同色「60低」藍箭分開；手機縮圖要夠粗才看得出
 _NAV_BUY_ARROW_EDGE = "#C62828"
 _NAV_BUY_ARROW_EDGE_W = 2.05
+# 同一段剛離零帶：第一根維持清楚；後續淡仍可辨（不是刪箭、不改 leave_zero 公式）
+_NAV_BUY_ARROW_ALPHA_FIRST = 1.0
+_NAV_BUY_ARROW_ALPHA_FOLLOW = 0.58
+_NAV_BUY_ARROW_EDGE_ALPHA_FOLLOW = 0.82  # 紅框略濃於本體，縮圖仍看得出同種記號
+
+
+def _nav_buy_arrow_alphas(buy_is) -> dict:
+    """可見窗內買點 index → (face_alpha, edge_alpha)。
+
+    同一段＝連續交易日柱（index 差 1）；每段第一根清楚，後面淡。
+    """
+    out: dict = {}
+    if not buy_is:
+        return out
+    idxs: list = []
+    for i in buy_is:
+        try:
+            idxs.append(int(i))
+        except (TypeError, ValueError):
+            continue
+    if not idxs:
+        return out
+    idxs = sorted(set(idxs))
+    prev = None
+    for ii in idxs:
+        if prev is None or ii - prev > 1:
+            out[ii] = (_NAV_BUY_ARROW_ALPHA_FIRST, _NAV_BUY_ARROW_ALPHA_FIRST)
+        else:
+            out[ii] = (_NAV_BUY_ARROW_ALPHA_FOLLOW, _NAV_BUY_ARROW_EDGE_ALPHA_FOLLOW)
+        prev = ii
+    return out
 
 
 def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False,
@@ -5720,10 +5751,12 @@ def _nav_arrow(
     ink=None,
     edge: Optional[str] = None,
     edgewidth: float = 0.0,
+    edge_alpha: Optional[float] = None,
 ):
     """短粗箭頭（寬頭＋短柄）：遠看是標示，不會跟 K 棒糊成一排直棍。
 
     edge／edgewidth＝外框（買點用紅細框，跟 60 低藍箭分開）。
+    edge_alpha＝後續淡買點時紅框略濃於本體，仍一眼同種記號。
     """
     tip_ink = ink or face
     head_h = arrow_h * 0.70
@@ -5747,6 +5780,41 @@ def _nav_arrow(
         ec, lw = edge, float(edgewidth)
     else:
         ec, lw = tip_ink, 0.0
+    ea = float(edge_alpha) if edge_alpha is not None else float(alpha)
+    # 本體與紅框透明度不同時分兩層畫，避免淡到紅框糊掉
+    if (
+        (not hollow)
+        and edge
+        and edgewidth > 0
+        and abs(ea - float(alpha)) > 1e-6
+    ):
+        ax.add_patch(
+            patches.Polygon(
+                verts,
+                closed=True,
+                facecolor=tip_ink,
+                edgecolor="none",
+                linewidth=0.0,
+                joinstyle="miter",
+                alpha=float(alpha),
+                zorder=z,
+                clip_on=False,
+            )
+        )
+        ax.add_patch(
+            patches.Polygon(
+                verts,
+                closed=True,
+                facecolor="none",
+                edgecolor=ec,
+                linewidth=lw,
+                joinstyle="miter",
+                alpha=ea,
+                zorder=z + 0.01,
+                clip_on=False,
+            )
+        )
+        return
     ax.add_patch(
         patches.Polygon(
             verts,
@@ -6043,7 +6111,10 @@ def _paint_nav_buy_arrows(
     arrow_gap: float,
     span: float,
 ) -> bool:
-    """在多根買點柱畫藍▲紅框。導航／大量區共用。有畫回 True。"""
+    """在多根買點柱畫藍▲紅框。導航／大量區共用。有畫回 True。
+
+    同一段剛離零帶第一根清楚、後續淡（語意＝還在買點帶也能買；不改公式）。
+    """
     if ax1 is None or not buy_is:
         return False
     buy_h = arrow_h * _NAV_BUY_ARROW_H_MULT
@@ -6062,10 +6133,14 @@ def _paint_nav_buy_arrows(
         idxs.append(ii)
     if not tips:
         return False
+    alphas = _nav_buy_arrow_alphas(idxs)
     # 先留底邊空間再畫，不准切箭
     y0, y1 = ax1.get_ylim()
     ax1.set_ylim(min(y0, min(tips) - buy_h - span * 0.02), y1)
     for ii, tip in zip(idxs, tips):
+        face_a, edge_a = alphas.get(
+            ii, (_NAV_BUY_ARROW_ALPHA_FIRST, _NAV_BUY_ARROW_ALPHA_FIRST)
+        )
         _nav_arrow(
             ax1,
             tip,
@@ -6076,8 +6151,10 @@ def _paint_nav_buy_arrows(
             arrow_h=buy_h,
             hw=buy_hw,
             z=8,
+            alpha=float(face_a),
             edge=_NAV_BUY_ARROW_EDGE,
             edgewidth=_NAV_BUY_ARROW_EDGE_W,
+            edge_alpha=float(edge_a),
         )
     return True
 
