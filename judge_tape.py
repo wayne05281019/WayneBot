@@ -486,6 +486,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         buy_exclude_night_tick(market_db, day)
     except Exception:
         pass
+    # 查股結構／導航出圖精確度另軌：官方柱對標籤；不准改買訊。失敗不擋。
+    try:
+        from lookup_chart_verify import night_tick as lookup_chart_night_tick
+
+        lookup_chart_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 
