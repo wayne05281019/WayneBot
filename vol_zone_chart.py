@@ -20,8 +20,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+plt.rcParams["axes.unicode_minus"] = False  # 右軸不准「− 0」孤號
 
 from wayne_navigator import (
     _fp,

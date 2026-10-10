@@ -24,6 +24,8 @@ import matplotlib.ticker as mticker
 from matplotlib import patches
 from matplotlib.collections import LineCollection, PolyCollection
 
+plt.rcParams["axes.unicode_minus"] = False  # 量軸不准出現「− 0」孤號
+
 from wayne_navigator import (
     _fp,
     _mpl_serial,
@@ -197,14 +199,49 @@ def _ymd_full(raw: Any) -> str:
     return str(raw or "").strip()
 
 
+def _twse_tick(price: float) -> float:
+    """台股現貨跳動（顯示用）；不准把演算軌價留兩位假小數蓋數字。"""
+    p = abs(float(price))
+    if p < 10:
+        return 0.01
+    if p < 50:
+        return 0.05
+    if p < 100:
+        return 0.1
+    if p < 500:
+        return 0.5
+    if p < 1000:
+        return 1.0
+    return 5.0
+
+
 def _px(val: Any) -> str:
     try:
         n = float(val)
     except (TypeError, ValueError):
         return "—"
+    if n != n:  # NaN
+        return "—"
+    tick = _twse_tick(n)
+    n = round(n / tick) * tick
+    # 消浮點尾渣（例 4580.0000002）
+    n = float(f"{n:.10f}")
     if abs(n - round(n)) < 1e-9:
-        return str(int(round(n)))
+        return f"{int(round(n))}"
+    if tick >= 0.1:
+        return f"{n:.1f}".rstrip("0").rstrip(".")
     return f"{n:.2f}".rstrip("0").rstrip(".")
+
+
+def _fmt_axis_int(v, _p=None) -> str:
+    """右軸整數：0 只寫 0，不准 unicode 負號或「- 0」。"""
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return ""
+    if abs(n) < 0.5:
+        return "0"
+    return f"{int(round(n)):,}"
 
 
 def _vol(val: Any) -> str:
@@ -1602,8 +1639,8 @@ def _place_right_notes(
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
         fit_tx = float(x_max) - need - 6.0
         if pin_x is not None:
-            # 左緣至少離末日 K 一段（67：不准蓋住最後幾根縮圖）
-            floor_tx = float(pin_x) + 4.8
+            # 左緣至少離末日 K 一段（67／精確度：不准蓋住最後幾根縮圖）
+            floor_tx = float(pin_x) + 5.6
             # 若右溝不夠，優先保左空隙（呼叫端應把 x_right 加夠）
             tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
@@ -3651,7 +3688,8 @@ def render_biaoke_structure_png(
     ax1.set_xlim(-0.55, x_right)
     # 字落標籤欄內偏右，右側留邊框＋右軸；左緣離末日 K 有空隙
     gutter = float(x_right) - content_right
-    x_text = content_right + max(2.8, gutter * 0.18)
+    # 標籤再進演化帶一點，壓／撐盒不准蓋最後一根 K
+    x_text = content_right + max(3.2, gutter * 0.24)
     # 71：壓／撐標籤貼線，不再把 spike 當 avoid；軌現價仍讓軟標籤錯開
     avoid_ys: List[float] = []
     if channel.get("rail_now"):
@@ -3672,25 +3710,14 @@ def render_biaoke_structure_png(
         x_max=float(x_right),
         bottom_pad=evo_pad,
     )
-    # 演化區說明留在米色帶內（標籤欄左側），兩行短句
+    # 演化區說明一行（不准拆成「演化區」孤字＋括號另列）
     evo_cx = float(n - 1) + float(_FUTURE) * 0.50
     ax1.text(
         evo_cx,
-        ymin + span * 0.042,
-        "演化區",
+        ymin + span * 0.018,
+        EVOLUTION_ZONE_LABEL,
         color="#546e7a",
-        fontproperties=_fp(9, "bold"),
-        ha="center",
-        va="bottom",
-        zorder=8,
-        clip_on=True,
-    )
-    ax1.text(
-        evo_cx,
-        ymin + span * 0.008,
-        "（不是保證・不是買訊）",
-        color="#546e7a",
-        fontproperties=_fp(8, "bold"),
+        fontproperties=_fp(8.5, "bold"),
         ha="center",
         va="bottom",
         zorder=8,
@@ -4032,7 +4059,7 @@ def render_biaoke_structure_png(
         length=5,
         width=0.8,
     )
-    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_axis_int))
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(12, "bold"))
     vol_heights, vol_ylim, _vol_missing = paint_lookup_volume_bars(
@@ -4072,7 +4099,7 @@ def render_biaoke_structure_png(
         length=5,
         width=0.8,
     )
-    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{int(round(v)):,}"))
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_axis_int))
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(11, "bold"))
     ax2.set_xlim(-0.55, x_right)
@@ -4080,12 +4107,13 @@ def render_biaoke_structure_png(
     ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
     tick_i = _axis_ticks(n, extra=(spike_i,))
+    # 演化帶已有 EVOLUTION_ZONE_LABEL；底軸不准再孤一個「演算」
     if n - 1 + _FUTURE not in tick_i:
         tick_i.append(n - 1 + _FUTURE)
     labels = []
     for i in tick_i:
         if i >= n:
-            labels.append("演算")
+            labels.append("")
             continue
         d = _ymd_full(work[i].get("date"))
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
