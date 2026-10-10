@@ -891,6 +891,49 @@ def silent_remember_roster(db_path: str, as_of: str = "", rows: Optional[Sequenc
         return 0
 
 
+def _roster_ohlcv_map(
+    db_path: str, roster_day: str, sids: Sequence[str]
+) -> Dict[str, Dict[str, float]]:
+    """訊號日官方開高低收＋量。盤中篩當日柱未收時用來湊齊落檔。"""
+    day = _ymd(roster_day)
+    want = [str(s).strip() for s in sids if str(s or "").strip()]
+    out: Dict[str, Dict[str, float]] = {}
+    if not db_path or not day or not want or not os.path.isfile(db_path):
+        return out
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            marks = ",".join("?" * len(want))
+            rows = conn.execute(
+                f"""
+                SELECT stock_id, open, high, low, close, volume
+                FROM daily_quotes
+                WHERE REPLACE(CAST(date AS TEXT),'-','')=? AND stock_id IN ({marks})
+                """,
+                [day, *want],
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return out
+    for sid, o, h, l, c, v in rows:
+        code = str(sid or "").strip()
+        if not code:
+            continue
+        try:
+            bar = {
+                "open": float(o),
+                "high": float(h),
+                "low": float(l),
+                "close": float(c),
+                "volume": float(v),
+            }
+        except (TypeError, ValueError):
+            continue
+        out[code] = bar
+    return out
+
+
 def silent_remember_filter(
     db_path: str,
     *,
@@ -898,7 +941,11 @@ def silent_remember_filter(
     kept: Sequence[Dict[str, Any]],
     filter_as_of: str = "",
 ) -> int:
-    """隔日盤中篩結果靜默凍：只記仍在且現價更低的真代號。失敗吞掉。"""
+    """隔日盤中篩結果靜默凍：只記仍在且現價更低的真代號。失敗吞掉。
+
+    盤中 filter 日官方柱未收：用訊號日（roster）官方開高低收＋量湊齊落檔，
+    close／px 仍用現價（live_price）。不准假數、不准改買訊。
+    """
     day = _ymd(filter_as_of)
     if not day:
         try:
@@ -925,6 +972,20 @@ def silent_remember_filter(
         payload.append(row)
     if not day or not payload:
         return 0
+    # 盤中未收不當收：filter 日可能沒完整柱 → 貼訊號日官方 OHLCV
+    if roster_day:
+        bars = _roster_ohlcv_map(
+            db_path, roster_day, [str(r.get("stock_id") or "") for r in payload]
+        )
+        for row in payload:
+            bar = bars.get(str(row.get("stock_id") or "")) or {}
+            if not bar:
+                continue
+            for key in ("open", "high", "low", "volume"):
+                if row.get(key) is None and bar.get(key) is not None:
+                    row[key] = bar[key]
+            if row.get("close") is None and bar.get("close") is not None:
+                row["close"] = bar["close"]
     try:
         from judge_tape import remember_rows
 
