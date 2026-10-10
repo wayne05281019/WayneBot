@@ -95,7 +95,8 @@ def test_catalog_covers_full_keyboard():
     assert cov["gap_filled"] >= 5
     assert cov["total"] == len(want)
     lookup = next(r for r in BUTTON_CATALOG if r["btn"] == "查股")
-    assert lookup["kinds"] == ("lookup",)
+    assert "lookup" in lookup["kinds"]
+    assert "lookup_chart" in lookup["kinds"]
     assert lookup["class"] == "lookup_query"
     assert not is_screen_kind("lookup")
     assert not is_personal_book_kind("lookup")

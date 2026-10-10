@@ -1246,7 +1246,8 @@ def test_structure_right_notes_fit_most_likely_full_text():
     assert "hlines" in rsrc
     assert "max_note_w" in rsrc or "_approx_note_width" in rsrc
     assert "bottom_pad" in rsrc
-    assert "（不是保證・不是買訊）" in rsrc
+    # 演化區說明改走模組常數一行（不准拆孤字）
+    assert "EVOLUTION_ZONE_LABEL" in rsrc or "（不是保證・不是買訊）" in rsrc
     assert "_STRUCTURE_FIG_RIGHT" in rsrc
     # 軌虛線停在標籤欄左側（明顯空隙）；右溝用軸寬比例留白
     assert (

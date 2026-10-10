@@ -261,12 +261,12 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
     },
     {
         "btn": "查股",
-        "kinds": ("lookup",),
+        "kinds": ("lookup", "lookup_chart"),
         "class": CLASS_LOOKUP,
         "status": "present",
-        "pipe": "wayne_navigator remember_rows kind=lookup → score_live_judges 1／5；盤中離零另軌 intraday_leave_zero_verify",
-        "window": "按了才記（沒打代號＝沒名單）；官方柱 1／5 報酬對照",
-        "note": "不是選股、不進選股勝率；高低卡／結構／導航「畫對了沒」尚無專軌；不准改買訊",
+        "pipe": "wayne_navigator remember_rows kind=lookup → score_live_judges 1／5；lookup_chart_verify structure_levels／stance_rel → night_tick；盤中離零另軌 intraday_leave_zero_verify",
+        "window": "按了才記（沒打代號＝沒名單）；官方柱 1／5 報酬對照＋結構壓撐／stance 精確度",
+        "note": "不是選股、不進選股勝率；結構／導航精確度專軌只對柱、不產 PNG、不准改買訊",
     },
 )
 
