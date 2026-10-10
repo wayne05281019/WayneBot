@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""飆大急推 vs 一般抓文（2026-10-01 鎖死）。
+"""飆大急推 vs 一般抓文（2026-10-01 鎖死；2026-10-10 補時效）。
 
 一般新文／自回：只進未讀匣＋飆大鈕彙整／融合，不准另推 Telegram。
 急推才推偉權＋哥哥兩支手機：
   1) 現在就要出清 → 完整原文
   2) 現在差不多到底／抄底窗口 → 完整原文
   3) 官方收盤柱碰到他已點過的位 → 去蕪存菁判斷（不准堆幾月幾號舊文讓人自己讀）
+只對「新抓到且未逾時效」的文急推；重掃／換 id／deploy 後不准把多天前舊文當急推重播。
 如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點＝一般，不急推。
 確認低點仍要主音疊輔助；單講趨勢向上、初步止訊號、右肩有守＝還不到確認。
 不是買訊。同一則／同一位不重覆推。社團不推。盤中未收不當收。
@@ -17,7 +18,9 @@ import logging
 import os
 import re
 import sqlite3
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
 
 from tg_layout import html_escape
 
@@ -26,6 +29,9 @@ logger = logging.getLogger("WayneBot.BiaokeAlert")
 DROP_POINTS = 700.0
 # Telegram HTML 上限 4096；預留標題行，急推正文要完整。
 _TG_BODY_MAX = 3800
+# 急推時效：原文時戳（台北）超過這小時數＝舊文，不准當急推（重掃／換 id 也不行）。
+URGENT_MAX_AGE_HOURS = 24
+_TAIPEI = ZoneInfo("Asia/Taipei")
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_alerts (
@@ -171,6 +177,42 @@ def _body_fingerprint(text: str) -> str:
     if not s:
         return ""
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+
+def _event_posted_at(event: Dict[str, Any]) -> Optional[datetime]:
+    """原文台北時戳。沒日期＝不當新文（不准急推）。"""
+    day = str(event.get("date") or "").strip()
+    hm = str(event.get("time") or "00:00").strip() or "00:00"
+    if not day:
+        return None
+    try:
+        return datetime.strptime(f"{day} {hm[:5]}", "%Y-%m-%d %H:%M").replace(
+            tzinfo=_TAIPEI
+        )
+    except ValueError:
+        return None
+
+
+def event_too_old_for_urgent(
+    event: Dict[str, Any],
+    *,
+    now: Optional[datetime] = None,
+    max_age_hours: float = URGENT_MAX_AGE_HOURS,
+) -> bool:
+    """True＝超過急推時效（或沒時戳）→ 不准當急推重播。"""
+    posted = _event_posted_at(event)
+    if posted is None:
+        return True
+    dt = now or datetime.now(_TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_TAIPEI)
+    else:
+        dt = dt.astimezone(_TAIPEI)
+    age = dt - posted
+    if age < timedelta(0):
+        # 時鐘誤差／未來戳：仍當可推（抓到當下）
+        return False
+    return age > timedelta(hours=max(1.0, float(max_age_hours)))
 
 
 def _alert_keys(post_id: str, text: str) -> List[str]:
@@ -807,13 +849,24 @@ def maybe_push_drop_alert(
     *,
     move: Optional[Dict[str, Any]] = None,
     prev_text: str = "",
+    now: Optional[datetime] = None,
+    max_age_hours: float = URGENT_MAX_AGE_HOURS,
 ) -> Dict[str, Any]:
     """ingest 抓到新文後：只有出清／到底急推；一般新文／自回不推。
 
     同一 post_id／同一正文指紋只推一次；先 claim 再送，TimedOut 重試不重送。
     HTML :rN 與 API :c{id} 不同列但同正文 → 併擋。
+    超過時效的舊文（重掃／換 id／deploy 回補）不准當急推；claim 指紋後略過。
+    純 updated（正文微改／欄位補齊）不准當急推；只認第一次 added。
     """
-    stats = {"checked": 0, "pushed": 0, "skipped": 0, "routine": 0}
+    stats = {
+        "checked": 0,
+        "pushed": 0,
+        "skipped": 0,
+        "routine": 0,
+        "stale": 0,
+        "updated_skip": 0,
+    }
     rows = [dict(e) for e in (events or []) if e.get("text")]
     if not rows:
         return stats
@@ -833,6 +886,29 @@ def maybe_push_drop_alert(
             continue
         if db_path and _already(db_path, pid, body):
             stats["skipped"] += 1
+            if fp:
+                seen_fp.add(fp)
+            continue
+        # 純 updated＝欄位／附圖補齊，不是新文；不准當急推
+        hit = str(ev.get("_ingest") or "").strip().lower()
+        if hit == "updated":
+            stats["updated_skip"] += 1
+            if fp:
+                seen_fp.add(fp)
+            continue
+        # 超過時效＝舊文重掃；claim 指紋以免換 id 再撞
+        if event_too_old_for_urgent(
+            ev, now=now, max_age_hours=max_age_hours
+        ):
+            stats["stale"] += 1
+            if db_path:
+                _claim_push(
+                    db_path,
+                    pid,
+                    body,
+                    0,
+                    ["超過急推時效，不重播舊文"],
+                )
             if fp:
                 seen_fp.add(fp)
             continue

@@ -1575,7 +1575,9 @@ def ingest_public_posts(
                 hit = _merge_row(posts, by_id, row)
                 if hit:
                     touched.append(str(row.get("id") or aid))
-                    events.append(dict(row))
+                    packed = dict(row)
+                    packed["_ingest"] = hit  # added／updated；急推只認 added＋未逾時
+                    events.append(packed)
                 if hit == "added":
                     added += 1
                 elif hit == "updated":
@@ -1606,7 +1608,9 @@ def ingest_public_posts(
                 rid = str(rep.get("id") or "")
                 if rid:
                     touched.append(rid)
-                events.append(dict(rep))
+                packed = dict(rep)
+                packed["_ingest"] = rhit  # added／updated；急推略過純 updated
+                events.append(packed)
         if dbp and bystanders:
             try:
                 stats["thread"] = int(stats.get("thread") or 0) + upsert_biaoke_thread(

@@ -59,6 +59,9 @@ def test_small_dip_chat_is_not_emergency():
 
 
 def test_maybe_push_dedupes(tmp_path, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     db = str(tmp_path / "w.db")
     row = {
         "id": "x1",
@@ -68,15 +71,19 @@ def test_maybe_push_dedupes(tmp_path, monkeypatch):
         "text": "如果判斷差不多，應該就是台積電最值得抄底的時間了",
     }
     move = _move(850)
-    a = maybe_push_drop_alert(db, [row], move=move)
+    now = datetime(2026, 9, 12, 11, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    a = maybe_push_drop_alert(db, [row], move=move, now=now)
     assert a["pushed"] == 1
-    b = maybe_push_drop_alert(db, [row], move=move)
+    b = maybe_push_drop_alert(db, [row], move=move, now=now)
     assert b["pushed"] == 0
     assert b["skipped"] == 1
 
 
 def test_same_body_different_ids_push_once(tmp_path, monkeypatch):
     """HTML :rN 與 API :c{id} 同正文 → 只推一次（復現 10/10 連推四次）。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     sent = []
     monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 2)
     db = str(tmp_path / "w.db")
@@ -86,6 +93,7 @@ def test_same_body_different_ids_push_once(tmp_path, monkeypatch):
         "當然聯亞是標配一股不賣。"
     )
     move = {"ok": False, "drop": 0, "pct": 0}
+    now = datetime(2026, 10, 10, 14, 20, tzinfo=ZoneInfo("Asia/Taipei"))
     rows = [
         {
             "id": "art1:r1",
@@ -116,13 +124,13 @@ def test_same_body_different_ids_push_once(tmp_path, monkeypatch):
             "text": body,
         },
     ]
-    a = maybe_push_drop_alert(db, rows, move=move)
+    a = maybe_push_drop_alert(db, rows, move=move, now=now)
     assert a["pushed"] == 1
     assert a["skipped"] >= 3
     assert len(sent) == 1
     assert "不要再介入全新及穩懋" in sent[0]
     # 下一輪 ingest（TimedOut 重試／另一 worker）也不重送
-    b = maybe_push_drop_alert(db, rows, move=move)
+    b = maybe_push_drop_alert(db, rows, move=move, now=now)
     assert b["pushed"] == 0
     assert b["skipped"] >= 4
     assert len(sent) == 1
@@ -130,6 +138,9 @@ def test_same_body_different_ids_push_once(tmp_path, monkeypatch):
 
 def test_claim_before_send_survives_timeout(tmp_path, monkeypatch):
     """先 claim 再送：Telegram TimedOut（sent=0）後重試不准再推。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     calls = {"n": 0}
 
     def boom(_html):
@@ -146,10 +157,11 @@ def test_claim_before_send_survives_timeout(tmp_path, monkeypatch):
         "text": "有矽光子股票下星期全面出清一股不留。",
     }
     move = {"ok": False, "drop": 0, "pct": 0}
-    a = maybe_push_drop_alert(db, [row], move=move)
+    now = datetime(2026, 10, 10, 14, 20, tzinfo=ZoneInfo("Asia/Taipei"))
+    a = maybe_push_drop_alert(db, [row], move=move, now=now)
     assert a["pushed"] == 1
     assert calls["n"] == 1
-    b = maybe_push_drop_alert(db, [row], move=move)
+    b = maybe_push_drop_alert(db, [row], move=move, now=now)
     assert b["pushed"] == 0
     assert b["skipped"] == 1
     assert calls["n"] == 1
@@ -330,11 +342,15 @@ def test_screenshot_old_replies_are_inbox_not_push():
 
 def test_routine_new_post_never_calls_send(monkeypatch):
     """一般新文／自回：進未讀匣路徑，不准急推。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     from biaoke_alert import maybe_push_drop_alert
 
     sent = []
     monkeypatch.setattr("biaoke_alert._send_family", lambda html: sent.append(html) or 1)
     move = {"ok": False, "drop": 0, "pct": 0}
+    now = datetime(2026, 10, 1, 10, 30, tzinfo=ZoneInfo("Asia/Taipei"))
     stats = maybe_push_drop_alert(
         "",
         [
@@ -354,6 +370,7 @@ def test_routine_new_post_never_calls_send(monkeypatch):
             },
         ],
         move=move,
+        now=now,
     )
     assert stats["pushed"] == 0
     assert stats["routine"] >= 2
@@ -362,6 +379,9 @@ def test_routine_new_post_never_calls_send(monkeypatch):
 
 def test_emergency_exit_pushes_full_text(monkeypatch, tmp_path):
     """出清急推：完整原文，不准截成 420 字。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     from biaoke_alert import format_alert, maybe_push_drop_alert
 
     long = "有矽光子股票下星期全面出清一股不留。" + ("續抱龍頭觀察位階量價結構。" * 80)
@@ -381,10 +401,12 @@ def test_emergency_exit_pushes_full_text(monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
     db = str(tmp_path / "w.db")
+    now = datetime(2026, 10, 1, 11, 30, tzinfo=ZoneInfo("Asia/Taipei"))
     stats = maybe_push_drop_alert(
         db,
         [{"id": "e1", "kind": "post", "date": "2026-10-01", "time": "11:00", "text": long}],
         move={"ok": False, "drop": 0, "pct": 0},
+        now=now,
     )
     assert stats["pushed"] == 1
     assert sent and "一股不留" in sent[0]
@@ -498,3 +520,143 @@ def test_format_level_hit_synthesis_no_date_catalog():
     assert "他原文 2026-09-22" not in html
     assert "他原文 2026-09-28" not in html
     assert "同點另有 1 則已併入" in html
+
+
+def test_old_posts_not_urgent_on_reingest(tmp_path, monkeypatch):
+    """復現 10/10 17:31：重掃把 10/05–10/07 舊文當急推灌多則 → 不准。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_drop_alert
+
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 2)
+    db = str(tmp_path / "w.db")
+    now = datetime(2026, 10, 10, 17, 31, tzinfo=ZoneInfo("Asia/Taipei"))
+    move = {"ok": False, "drop": 0, "pct": 0}
+    # 真實急推關鍵詞；時戳是多天前 → 必須 stale，不准送
+    rows = [
+        {
+            "id": "a1:r1",
+            "kind": "reply",
+            "date": "2026-10-10",
+            "time": "13:42",
+            "_ingest": "added",
+            "text": (
+                "「光通訊 InP 不在前波高點的個股」這句話好好去研究，"
+                "就是空手不要再介入全新及穩懋，要去找低位階還在底部的 InP，"
+                "當然聯亞是標配一股不賣。"
+            ),
+        },
+        {
+            "id": "a2:c77",
+            "kind": "reply",
+            "date": "2026-10-07",
+            "time": "15:47",
+            "_ingest": "added",
+            "text": (
+                "金寶、台光電是第二梯隊的調整，昨天全部出清台燿，"
+                "資金轉台光電；9/15 買的零股創意還抱著。"
+            ),
+        },
+        {
+            "id": "a3:c88",
+            "kind": "reply",
+            "date": "2026-10-07",
+            "time": "10:27",
+            "_ingest": "added",
+            "text": "清全新全部出清，加碼一檔光學通訊隱性標的。",
+        },
+        {
+            "id": "a4",
+            "kind": "post",
+            "date": "2026-10-05",
+            "time": "09:18",
+            "_ingest": "added",
+            "text": (
+                "大盤進入大波段多頭，這就是技術分析抄底位置，"
+                "第一次回測波浪四，台光電漲停。"
+            ),
+        },
+    ]
+    a = maybe_push_drop_alert(db, rows, move=move, now=now)
+    # 10/10 13:42 在 24h 內可推 1；10/05–10/07 必須 stale
+    assert a["stale"] >= 3
+    assert a["pushed"] == 1
+    assert len(sent) == 1
+    assert "不要再介入全新及穩懋" in sent[0]
+    assert "台燿" not in sent[0]
+    assert "清全新" not in sent[0]
+    # 重跑 ingest（同批舊文＋換 id）不准再灌
+    rows2 = [
+        {**rows[0], "id": "a1:c999"},
+        {**rows[1], "id": "a2:r3"},
+        {**rows[2], "id": "a3:r2"},
+        {**rows[3], "id": "a4-again"},
+    ]
+    b = maybe_push_drop_alert(db, rows2, move=move, now=now)
+    assert b["pushed"] == 0
+    assert b["stale"] + b["skipped"] >= 4
+    assert len(sent) == 1
+
+
+def test_updated_ingest_never_urgent(tmp_path, monkeypatch):
+    """純 updated（欄位／附圖補齊）不准當急推。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_drop_alert
+
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+    db = str(tmp_path / "w.db")
+    now = datetime(2026, 10, 10, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    stats = maybe_push_drop_alert(
+        db,
+        [
+            {
+                "id": "u1",
+                "kind": "reply",
+                "date": "2026-10-10",
+                "time": "13:50",
+                "_ingest": "updated",
+                "text": "有矽光子股票下星期全面出清一股不留。",
+            }
+        ],
+        move={"ok": False, "drop": 0, "pct": 0},
+        now=now,
+    )
+    assert stats["pushed"] == 0
+    assert stats["updated_skip"] == 1
+    assert sent == []
+
+
+def test_fresh_clear_still_urgent(tmp_path, monkeypatch):
+    """同日新抓到出清：仍急推（時效閘不准誤擋真新文）。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_drop_alert
+
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 2)
+    db = str(tmp_path / "w.db")
+    now = datetime(2026, 10, 10, 14, 20, tzinfo=ZoneInfo("Asia/Taipei"))
+    stats = maybe_push_drop_alert(
+        db,
+        [
+            {
+                "id": "fresh1",
+                "kind": "reply",
+                "date": "2026-10-10",
+                "time": "14:17",
+                "_ingest": "added",
+                "text": "有矽光子股票下星期全面出清一股不留。",
+            }
+        ],
+        move={"ok": False, "drop": 0, "pct": 0},
+        now=now,
+    )
+    assert stats["pushed"] == 1
+    assert stats["stale"] == 0
+    assert sent and "全面出清一股不留" in sent[0]
