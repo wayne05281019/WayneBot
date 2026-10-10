@@ -89,6 +89,28 @@ def test_vol_zone_render_memo_reuses_file(tmp_path):
     assert elapsed < 0.35, elapsed
 
 
+def test_vol_zone_memo_hits_with_lookup_card(tmp_path):
+    """查股路徑必帶 card；有卡也要暖命中，不准再整圖重渲。"""
+    from wayne_navigator import NavigatorEngine
+    from vol_zone_chart import clear_vol_zone_render_cache, render_lookup_vol_result
+
+    clear_vol_zone_render_cache()
+    db = get_db_path()
+    card = NavigatorEngine(db).get_decision_card("2330", lookback=20, merge_live=False)
+    assert isinstance(card, dict) and not card.get("error")
+    card.pop("_ohlc", None)
+    a = str(tmp_path / "card_a.jpg")
+    b = str(tmp_path / "card_b.jpg")
+    p1, c1 = render_lookup_vol_result("2330", "台積電", db, a, card=card)
+    assert p1 and os.path.isfile(p1) and os.path.getsize(p1) > 20000
+    t0 = time.perf_counter()
+    p2, c2 = render_lookup_vol_result("2330", "台積電", db, b, card=card)
+    elapsed = time.perf_counter() - t0
+    assert p2 and os.path.isfile(p2)
+    assert c1 == c2
+    assert elapsed < 0.35, elapsed
+
+
 def test_pressure_screen_cache_hit():
     from pressure_support_watch import (
         clear_pressure_screen_cache,

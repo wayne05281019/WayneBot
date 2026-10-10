@@ -902,6 +902,7 @@ def _vz_memo_key(
     lookback: int,
     bars: int,
     lookup_portrait: bool = False,
+    card_fp: Tuple[Any, ...] = (),
 ) -> Tuple[Any, ...]:
     last_d = _bar_ymd((last or {}).get("date"))
     return (
@@ -917,6 +918,7 @@ def _vz_memo_key(
         int(VOL_ZONE_JPEG_QUALITY),
         int(_VZ_PAINT_VER),
         int(bool(lookup_portrait)),
+        tuple(card_fp or ()),
     )
 
 
@@ -1075,6 +1077,21 @@ def render_volume_zone_result(
     )
     if not pack:
         return "", ""
+    # 卡指紋進鍵：查股必帶 card；舊「有卡就不 memo」讓第二次同檔仍重渲 ~0.4s。
+    # 指紋含 query_clock／stance 等，圖說／導航漂移不會互蓋。
+    card_fp: Tuple[Any, ...] = ()
+    if isinstance(card, dict) and card:
+        try:
+            from wayne_navigator import _lookup_card_fingerprint
+
+            card_fp = tuple(_lookup_card_fingerprint(card))
+        except Exception:
+            card_fp = (
+                str(card.get("stock_id") or ""),
+                str(card.get("latest_date") or card.get("as_of") or ""),
+                str(card.get("query_clock") or ""),
+                str(card.get("stance") or ""),
+            )
     memo_key = _vz_memo_key(
         pack["sid"],
         pack["zone"],
@@ -1083,12 +1100,11 @@ def render_volume_zone_result(
         lookback=lookback,
         bars=bars,
         lookup_portrait=lookup_portrait,
+        card_fp=card_fp,
     )
-    # card 會進圖說／導航；有卡就不走無卡快取，避免圖說漂移
-    if not card:
-        hit = _vz_memo_get(memo_key, pack["out"])
-        if hit:
-            return hit
+    hit = _vz_memo_get(memo_key, pack["out"])
+    if hit:
+        return hit
     cap = vol_zone_photo_caption(
         pack["sid"],
         str(db_path or ""),
@@ -1119,7 +1135,7 @@ def render_volume_zone_result(
             db_path=str(db_path or ""),
         )
     out_path, out_cap = str(path or ""), str(cap or "")
-    if out_path and not card:
+    if out_path:
         _vz_memo_put(memo_key, out_path, out_cap)
     return out_path, out_cap
 
