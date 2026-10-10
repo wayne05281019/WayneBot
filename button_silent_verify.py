@@ -23,6 +23,7 @@ CLASS_CONTEXT = "context_freeze"  # 大盤／外圍佐證凍
 CLASS_PRESSURE = "pressure_rank"  # 壓撐排序三軌（另模組）
 CLASS_BIAOKE = "biaoke_tape"  # 飆大點名／近窗
 CLASS_AI = "ai_desk"  # AI倉假錢對照
+CLASS_LOOKUP = "lookup_query"  # 查股路徑：按了才記，不是選股
 
 # kind 前綴／固定 kind：個人本對照（勝率不准混進選股）
 BOOK_KINDS = frozenset({"book_hold", "book_watch", "book_buy"})
@@ -257,6 +258,15 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "pipe": "button_silent_verify.snapshot_book_buy",
         "window": "當日手記成交代號＋官方柱 1／5 對照",
         "note": "個人本對照（子路徑）；不是選股",
+    },
+    {
+        "btn": "查股",
+        "kinds": ("lookup",),
+        "class": CLASS_LOOKUP,
+        "status": "present",
+        "pipe": "wayne_navigator remember_rows kind=lookup → score_live_judges 1／5；盤中離零另軌 intraday_leave_zero_verify",
+        "window": "按了才記（沒打代號＝沒名單）；官方柱 1／5 報酬對照",
+        "note": "不是選股、不進選股勝率；高低卡／結構／導航「畫對了沒」尚無專軌；不准改買訊",
     },
 )
 
