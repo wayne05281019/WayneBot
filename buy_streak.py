@@ -32,9 +32,9 @@ MARKET_LABEL = {MARKET_TW: "上市", MARKET_TWO: "上櫃", MARKET_ALL: "上市�
 UNI_BTN = {MARKET_ALL: "上市櫃", MARKET_EM: "興櫃"}
 EM_NO_CHIPS_HTML = (
     "<b>興櫃沒有連買</b>\n"
-    "興櫃沒有官方法人買賣超表，連買區只看上市櫃，"
-    "也不會用 0 去凑連買天數。\n"
-    "要看興櫃名單請按「海選」再選興櫃。"
+    "興櫃沒有官方法人買賣超表。\n"
+    "連買區只看上市櫃，不會用 0 去凑連買天數。\n"
+    "要看興櫃名單：按「海選」再選興櫃。"
 )
 MARKET_ALIASES = {
     "上市": MARKET_TW,
@@ -218,23 +218,35 @@ def _lots_text(n: int) -> str:
     return f"{v:,}張"
 
 
+def _streak_kv(label: str, value: str) -> str:
+    """連買列兩字標籤對齊；張／％跟在值後同一行。"""
+    from tg_layout import pad_label
+
+    return f"{pad_label(str(label or ''), 4)}　{value}"
+
+
 def format_row_lines(row: StreakRow, kind: str) -> List[str]:
     d = int(row.days)
     if kind == KIND_FOREIGN:
         return [
-            f"{d}日連買 {_lots_text(row.foreign_lots)}",
-            f"佔{d}日總成交 {_pct_text(row.foreign_pct)}",
+            _streak_kv("連買", f"{d}日　{_lots_text(row.foreign_lots)}"),
+            _streak_kv("佔比", f"{_pct_text(row.foreign_pct)}（{d}日成交）"),
         ]
     if kind == KIND_TRUST:
         return [
-            f"{d}日連買 {_lots_text(row.trust_lots)}",
-            f"佔{d}日總成交 {_pct_text(row.trust_pct)}",
+            _streak_kv("連買", f"{d}日　{_lots_text(row.trust_lots)}"),
+            _streak_kv("佔比", f"{_pct_text(row.trust_pct)}（{d}日成交）"),
         ]
+    # 雙買：天數／兩家張數／兩家佔比各一行，單位上下對齊
     return [
-        f"{d}日皆買 外資 {_lots_text(row.foreign_lots)}／投信 {_lots_text(row.trust_lots)}",
-        (
-            f"佔{d}日總成交 外資 {_pct_text(row.foreign_pct)}"
-            f" · 投信 {_pct_text(row.trust_pct)}"
+        _streak_kv("皆買", f"{d}日"),
+        _streak_kv(
+            "張數",
+            f"外資 {_lots_text(row.foreign_lots)}　投信 {_lots_text(row.trust_lots)}",
+        ),
+        _streak_kv(
+            "佔比",
+            f"外資 {_pct_text(row.foreign_pct)}　投信 {_pct_text(row.trust_pct)}",
         ),
     ]
 
@@ -274,12 +286,18 @@ def format_list_html(
     except Exception:
         as_of_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:8]}" if len(as_of) == 8 else as_of
     mkt = MARKET_LABEL.get(snap.market, snap.market)
+    # 標題／檔數／基準日各一行：手機氣泡一眼對齊，不擠成長句
+    title = f"<b>{KIND_LABEL.get(snap.kind, snap.kind)}　{days}天"
+    if mkt:
+        title += f"　{mkt}"
+    title += "</b>"
     head = (
-        f"<b>{KIND_LABEL.get(snap.kind, snap.kind)} {days} 天"
-        + (f" · {mkt}" if mkt else "")
-        + f"</b>　{total} 檔\n"
-        f"截至 {as_of_s} 官方籌碼（剛好連買 {days} 天，不是以上）。\n"
-        "股名＝看這檔；旁「籌碼」核對法人買賣超。按鈕只在這則訊息下面，輸入列維持兩排主選單。"
+        f"{title}\n"
+        f"共 {total} 檔\n"
+        f"截至 {as_of_s}　官方籌碼\n"
+        f"剛好連買 {days} 天（不是以上）\n"
+        "股名＝看這檔；旁「籌碼」核對法人買賣超。\n"
+        "按鈕只在這則訊息下面；輸入列維持兩排主選單。"
     )
     if not chunk:
         try:

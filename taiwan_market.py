@@ -1660,6 +1660,15 @@ def _page_kv(label: str, value_html: str) -> str:
     return f"{left}　{value_html}"
 
 
+def _outlook_kv(label: str, value_html: str, *, width: int = 8) -> str:
+    """海選大盤狀況一欄一行：與大盤頁同一套標籤對齊（連結標籤依可見字寬）。"""
+    from tg_layout import pad_label, pad_label_html
+
+    lab = str(label or "")
+    left = pad_label_html(lab, width) if "<" in lab else pad_label(lab, width)
+    return f"{left}　{value_html}"
+
+
 def _page_pct(val: Optional[float]) -> str:
     if val is None:
         return "—"
@@ -1713,7 +1722,7 @@ def _us_cash_close_lines(snap: Dict[str, Any], *, style: str) -> List[str]:
         if style == "page":
             lines.append(_page_kv(html_named(name), _page_b(move)))
         else:
-            lines.append(f"{html_named(name)} {_outlook_b(move)}")
+            lines.append(_outlook_kv(html_named(name), _outlook_b(move)))
     return lines
 
 
@@ -3887,17 +3896,21 @@ def _outlook_night_plain_lines(
     from stock_links import html_named
 
     close = float(night["close"])
-    lines = [f"{html_named(label)} {_outlook_b(f'{close:,.0f}')}"]
+    lines = [_outlook_kv(html_named(label), _outlook_b(f"{close:,.0f}"))]
     extra: List[str] = []
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
         mag = abs(diff)
-        extra.append(f"比日盤收{'貴' if diff >= 0 else '便宜'} {_outlook_b(f'{mag:.2f}%')}")
+        side = "貴" if diff >= 0 else "便宜"
+        extra.append(
+            _outlook_kv(f"比日盤收{side}", _outlook_b(f"{mag:.2f}%"))
+        )
     if spot_close > 0:
         diff = (close - spot_close) / spot_close * 100.0
         mag = abs(diff)
-        extra.append(f"比現貨{'貴' if diff >= 0 else '便宜'} {_outlook_b(f'{mag:.2f}%')}")
+        side = "貴" if diff >= 0 else "便宜"
+        extra.append(_outlook_kv(f"比現貨{side}", _outlook_b(f"{mag:.2f}%")))
     lines.extend(extra)
     return lines
 
@@ -3929,14 +3942,16 @@ def _outlook_tx_foreign_lines(
     ref = _norm_ymd(as_of or "")
     from stock_links import html_named
 
+    # 標題一行，買多／買空兩字標對齊（單位「口」跟數字同一格）
     out = [
-        f"{html_named('外資台指期')}　買多 {_outlook_b(f'{oi_long:,}口')}",
-        f"　　　　　　買空 {_outlook_b(f'{oi_short:,}口')}",
+        html_named("外資台指期"),
+        _outlook_kv("買多", _outlook_b(f"{oi_long:,}口"), width=4),
+        _outlook_kv("買空", _outlook_b(f"{oi_short:,}口"), width=4),
     ]
     if d and ref and d != ref:
         from trading_calendar import format_trading_date_zh
 
-        out.append(f"　　　　　　資料 {format_trading_date_zh(d)}")
+        out.append(_outlook_kv("資料", format_trading_date_zh(d), width=4))
     return out
 
 
@@ -4032,7 +4047,7 @@ def _outlook_outer_lines(outer: Optional[Dict[str, Any]]) -> List[str]:
 
     lines: List[str] = []
     for lab, val in outer_rows(outer):
-        lines.append(f"{html_named(lab)} {_outlook_b(val)}")
+        lines.append(_outlook_kv(html_named(lab), _outlook_b(val)))
     return lines
 
 
@@ -4140,7 +4155,12 @@ def format_screen_market_outlook_html(
         close = snap.get("close")
         chg1 = snap.get("chg1_pct")
         if close:
-            body.append(f"{html_named('加權收盤')} {_outlook_b(f'{float(close):,.2f}')}")
+            body.append(
+                _outlook_kv(
+                    html_named("加權收盤"),
+                    _outlook_b(f"{float(close):,.2f}"),
+                )
+            )
         pct_bits: List[str] = []
         if chg1 is not None:
             pct_bits.append(_outlook_b(_fmt_signed_pct(chg1)))
@@ -4159,25 +4179,34 @@ def format_screen_market_outlook_html(
         body.append(html_escape("美股收盤尚未接到"))
         stop_s = _us_stop_label(us)
         if stop_s and stop_s != "—":
-            body.append(f"資料停在　{html_escape(stop_s)}")
+            body.append(_outlook_kv("資料停在", html_escape(stop_s)))
     elif us_fresh:
         us_label = _us_face_short(us)
-        body.append(f"美股　{_outlook_b(us_label)}")
+        body.append(_outlook_kv("美股", _outlook_b(us_label), width=4))
         sess = _session_label(us)
         if sess and sess != "—":
-            body.append(f"美股交易日　{html_escape(sess)}")
+            body.append(_outlook_kv("美股交易日", html_escape(sess)))
         # 收盤四大：與大盤同一 `cash_index_moves`／`_us_cash_close_lines`。
         body.extend(_us_cash_close_lines(us, style="outlook"))
         if us.get("vix") is not None:
             vix_s = _fmt_vix(us)
             if "　" in vix_s:
                 num, mood = vix_s.rsplit("　", 1)
-                body.append(f"{html_named('恐慌指數')} {_outlook_b(num)}　{html_escape(mood)}")
+                body.append(
+                    _outlook_kv(
+                        html_named("恐慌指數"),
+                        f"{_outlook_b(num)}　{html_escape(mood)}",
+                    )
+                )
             else:
-                body.append(f"{html_named('恐慌指數')} {_outlook_b(vix_s)}")
+                body.append(
+                    _outlook_kv(html_named("恐慌指數"), _outlook_b(vix_s))
+                )
         tsm_move = format_quote_move(us, "tsm_pct", "tsm_chg")
         if us.get("tsm_pct") is not None:
-            body.append(f"{html_named('台積美股')}　{_outlook_b(tsm_move)}")
+            body.append(
+                _outlook_kv(html_named("台積美股"), _outlook_b(tsm_move))
+            )
         lead = format_us_lead_line(us)
         lead_name = str(us.get("us_lead_name") or "").strip()
         if lead and lead_name:

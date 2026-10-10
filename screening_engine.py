@@ -2088,6 +2088,13 @@ def _chip_html(item: Dict[str, Any]) -> str:
     return html_escape(_chip_plain(item))
 
 
+def _card_kv(label: str, value_html: str) -> str:
+    """海選／興櫃卡兩字標籤欄固定寬，值從同一直欄起（單位跟在值後）。"""
+    from tg_layout import pad_label
+
+    return f"{pad_label(str(label or ''), 4)}　{value_html}"
+
+
 def _safety_plan_plain(item: Dict[str, Any]) -> List[str]:
     """當沖／隔日沖：現在不要貴過多少、漲到哪先出、跌破哪就走。"""
     lines: List[str] = []
@@ -2208,9 +2215,7 @@ def _stock_card_html(
                 body.append(live_line)
         except Exception:
             pass
-    body.extend([
-        f"格局　{geju_left}",
-    ])
+    body.append(_card_kv("格局", geju_left))
     if stance_title:
         if item.get("chase_warning") or "別追" in stance_title:
             body.append(_flag(stance_title))
@@ -2221,12 +2226,20 @@ def _stock_card_html(
         note = note[len(stance_title) :].lstrip("。").strip()
     if note:
         body.append(html_escape(note))
-    body.extend([
-        f"收盤　{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
-        f"量能　{html_qty_tight(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}",
-    ])
+    body.extend(
+        [
+            _card_kv(
+                "收盤",
+                f"{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
+            ),
+            _card_kv(
+                "量能",
+                f"{html_qty_tight(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}",
+            ),
+        ]
+    )
     if to_s:
-        body.append(f"金額　<code>{html_escape(to_s)}</code>")
+        body.append(_card_kv("金額", f"<code>{html_escape(to_s)}</code>"))
     chip_day = "近一日"
     md = _quote_md(item)
     if md:
@@ -2240,7 +2253,12 @@ def _stock_card_html(
     except Exception:
         show_ma = True
     if show_ma:
-        body.append(f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}")
+        body.append(
+            _card_kv(
+                "均線",
+                f"月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
+            )
+        )
     try:
         from wayne_db import payload_is_emerging
 
@@ -2248,15 +2266,15 @@ def _stock_card_html(
     except Exception:
         show_chips = True
     if show_chips:
-        body.append(f"法人　{html_escape(chip_day)}　{_chip_html(item)}")
+        body.append(_card_kv("法人", f"{html_escape(chip_day)}　{_chip_html(item)}"))
     pat = str(item.get("pattern") or "")
     if pat:
-        body.append(f"型態　{html_escape(pat)}")
+        body.append(_card_kv("型態", html_escape(pat)))
     if notices:
-        body.append("注意　" + "　".join(notices))
+        body.append(_card_kv("注意", "　".join(notices)))
     profit_val = _line_profit_value(item)
     if profit_val:
-        body.append(f"獲利　{html_escape(profit_val)}")
+        body.append(_card_kv("獲利", html_escape(profit_val)))
     try:
         from decision_card_signals import leave_zero_trade_plan
 
@@ -2284,7 +2302,13 @@ def _stock_card_html(
         rank_s = f"第{rank_val}名"
         if live and live.get("vol_rank_120") is not None:
             rank_s = f"第{rank_val}名（盤中即時）"
-        body.append("120量　" + (_hot(rank_s) if rank_val <= 20 else html_escape(rank_s)))
+        # 兩字標「量榜」＝近120日量排名；舊「120量」三字會把標籤欄撐歪
+        body.append(
+            _card_kv(
+                "量榜",
+                _hot(rank_s) if rank_val <= 20 else html_escape(rank_s),
+            )
+        )
     plan = _safety_plan_html(item)
     if plan:
         body.extend(plan)

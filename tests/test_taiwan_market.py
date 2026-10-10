@@ -1661,10 +1661,13 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "對應個股已標剛輪到" not in html
     assert "────────────────" in html
     assert "外資台指期" in html
-    assert "買多 8,153口" in plain
-    assert "買空 90,542口" in plain
+    assert "買多" in plain and "8,153口" in plain
+    assert "買空" in plain and "90,542口" in plain
     assert "<code>8,153口</code>" in html
     assert "<code>90,542口</code>" in html
+    # 買多／買空兩字標對齊（全形空白分隔）
+    assert any(ln.startswith("買多") and "8,153口" in ln for ln in plain.split("\n"))
+    assert any(ln.startswith("買空") and "90,542口" in ln for ln in plain.split("\n"))
     assert "比日盤" in html
     assert "到期" not in html
     assert "領買" not in html
@@ -1757,8 +1760,8 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     assert "族群，昨天在美股是領漲" not in html
     assert "台指期夜盤" in html and "<code>46,382</code>" in html
     assert "電子期夜盤" in html and "<code>2,921</code>" in html
-    assert "買多 <code>7,805口</code>" in html
-    assert "買空 <code>84,156口</code>" in html
+    assert any("買多" in ln and "<code>7,805口</code>" in ln for ln in lines)
+    assert any("買空" in ln and "<code>84,156口</code>" in ln for ln in lines)
     assert "剛到　<code>塑膠</code>" in html
     assert "<code>電子零組件</code>" in html
     for ln in lines:
@@ -1802,7 +1805,8 @@ def test_outlook_tx_foreign_lagged_date_is_plain():
         now=datetime(2026, 9, 7, 10, 0, tzinfo=ZoneInfo("Asia/Taipei")),
     )
     assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/07")
-    assert "資料 2026/09/04（五）" in html
+    assert "資料　2026/09/04（五）" in html
+    assert "(20260904)" not in html
     assert "(20260904)" not in html
     assert "昨收" not in html.split("\n", 1)[0]
 
@@ -1888,8 +1892,8 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
     assert "昨天剛輪到、隔夜費半跌" in html
     assert "今天別追電子高檔" in html
     lines = html.split("\n")
-    assert any("買多 <code>8,153口</code>" in ln for ln in lines)
-    assert any("買空 <code>90,542口</code>" in ln for ln in lines)
+    assert any("買多" in ln and "<code>8,153口</code>" in ln for ln in lines)
+    assert any("買空" in ln and "<code>90,542口</code>" in ln for ln in lines)
     assert any("跳升" in ln for ln in lines)
     assert "美股" in html and "<code>中性、費半弱</code>" in html
 
