@@ -7,11 +7,12 @@ CaryBot 紅箭頭是人工標「可買低點」，沒有公開可複製公式。
 
 度量（可重複）：
 - 官方柱後續報酬（h1／h5／h10）
-- 假突破（後 N 日內任一根收盤跌破進場收）
-- 對照 leave_zero（黃金買點現況）與無箭頭（當日無低點首觸、亦無 leave_zero）
+- 假突破（後 N 日內任一根收盤跌破進場收；#547 口徑）
+- 對照 leave_zero（黃金買點現況）、無箭頭、以及本輪過濾候選
 
 規則（AGENTS 第 4／3／13 條）：
-- 獨立交易日 n≥20 **且** 贏黃金買點（leave_zero）基線，才 ``promote_ready``。
+- 獨立交易日 n≥20 **且** 贏黃金買點（leave_zero）基線，**且** 假突破相對
+  #547 未過濾基線明顯下降，才 ``promote_ready``（仍須人工確認才改買訊）。
 - 過關前不准改海選桶、不准當進場、不准改話筒買訊文案／leave_zero 公式。
 - 結果落 ``wayne_evolve.db``，不准進對話講過程／％。
 """
@@ -27,15 +28,19 @@ import pandas as pd
 from dongzhu_tape import OPTIMIZE_MIN_N, tape_store_path
 
 KIND = "red_arrow_proxy"
-TAG_LOW = "nav_low_first"  # l60／l20 首觸（紅箭頭代理）
+TAG_LOW = "nav_low_first"  # l60／l20 首觸（#547 未過濾基線）
 TAG_BASE = "leave_zero"  # 對照：現況買訊基線
 TAG_NONE = "no_arrow"  # 對照：當日無低點首觸且無 leave_zero
+# 本輪假突破下降候選（#547 預告 ma20_filter 本機未降反升→改收本條）
+TAG_FILTER = "nav_low_first_ma60_vol"
 SCORE_HORIZONS: Tuple[int, ...] = (1, 5, 10)
 # 獨立交易日＋夠廣母體才過關；事件筆數 alone 不准 promote
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 MIN_DISTINCT_SIDS = 100
-# §13 再生：過關後下一版候選（仍不當買訊，只開收集）
-NEXT_CANDIDATE = "nav_low_first_ma20_filter"
+# 假突破「明顯下降」：絕對降幅（h5 主閘；h1 佐證）
+MIN_FB_DROP = 0.03
+# §13 再生：本輪候選開始收集後的下一版（仍不當買訊）
+NEXT_CANDIDATE = "nav_low_first_hold_low_confirm"
 
 
 def _ymd(raw: Any) -> str:
@@ -118,7 +123,6 @@ def nav_low_arrow_first_mask(df: pd.DataFrame) -> pd.Series:
     """
     if df is None or len(df) < 60:
         return pd.Series(dtype=bool)
-    hi = pd.to_numeric(df["high"], errors="coerce")
     lo = pd.to_numeric(df["low"], errors="coerce")
     cl = pd.to_numeric(df["close"], errors="coerce")
     n = len(df)
@@ -137,6 +141,45 @@ def nav_low_arrow_first_mask(df: pd.DataFrame) -> pd.Series:
     was_60l = np.concatenate([[False], is_60l[:-1]])
     first = (is_60l & ~was_60l) | (is_20l & ~was_20l)
     return pd.Series(first, index=df.index)
+
+
+def nav_low_ma60_vol_mask(df: pd.DataFrame) -> pd.Series:
+    """假突破下降候選：低點首觸＋收盤落在 MA60 帶＋量不過熱。
+
+    條件（只用當日及以前官方 OHLC／量）：
+    - ``nav_low_arrow_first_mask`` 為真
+    - 收盤 ≥ 近 60 收盤均 × 0.95（遠離長期均＝急殺，假突破偏高）
+    - 近 5 交易日收盤跌幅 > −8%（排除瀑布）
+    - 當日量 ≤ 近 20 日均量 × 1.25（排除恐慌放量續跌）
+
+    過關前仍不是買訊；只作靜默對質候選。
+    """
+    first = nav_low_arrow_first_mask(df)
+    if first.empty or not bool(first.any()):
+        return first
+    cl = pd.to_numeric(df["close"], errors="coerce")
+    vo = pd.to_numeric(df["volume"], errors="coerce")
+    n = len(df)
+    ok = np.zeros(n, dtype=bool)
+    for i in range(n):
+        if not bool(first.iloc[i]):
+            continue
+        c = float(cl.iloc[i]) if np.isfinite(cl.iloc[i]) else 0.0
+        if c <= 0:
+            continue
+        ma60 = float(cl.iloc[max(0, i - 59) : i + 1].mean())
+        if ma60 <= 0 or c < ma60 * 0.95:
+            continue
+        if i >= 5:
+            c5 = float(cl.iloc[i - 5])
+            if c5 > 0 and (c / c5 - 1.0) * 100.0 <= -8.0:
+                continue
+        v = float(vo.iloc[i] or 0) if np.isfinite(vo.iloc[i]) else 0.0
+        v20 = float(vo.iloc[max(0, i - 19) : i + 1].mean())
+        if v20 <= 0 or v > 1.25 * v20:
+            continue
+        ok[i] = True
+    return pd.Series(ok, index=df.index)
 
 
 def _fwd_ret(closes: Sequence[float], i: int, horizon: int) -> Optional[float]:
@@ -173,7 +216,7 @@ def _false_break(
 def score_stock_day(
     df: pd.DataFrame, *, as_of: str
 ) -> List[Dict[str, Any]]:
-    """單檔截至 as_of：低點代理／leave_zero／無箭頭，產出各 horizon 分數列。"""
+    """單檔截至 as_of：低點代理／過濾候選／leave_zero／無箭頭，產出各 horizon 分數列。"""
     from decision_card_signals import leave_zero_from_quote_df
 
     as_of = _ymd(as_of)
@@ -189,9 +232,11 @@ def score_stock_day(
     if str(hist["date"].iloc[-1]) != as_of:
         return []
     lows = nav_low_arrow_first_mask(hist)
+    filtered = nav_low_ma60_vol_mask(hist)
     lz_hit = bool(leave_zero_from_quote_df(hist))
     i = len(hist) - 1
     low_hit = bool(lows.iloc[i])
+    filt_hit = bool(filtered.iloc[i]) if len(filtered) else False
     # 對齊全序列 index，才能取 as_of 之後的收盤
     full_dates = g["date"].tolist()
     try:
@@ -203,6 +248,7 @@ def score_stock_day(
     name = str(hist["stock_name"].iloc[-1] or "") if "stock_name" in hist.columns else ""
     tags: List[Tuple[str, bool]] = [
         (TAG_LOW, low_hit),
+        (TAG_FILTER, filt_hit),
         (TAG_BASE, lz_hit),
         (TAG_NONE, (not low_hit) and (not lz_hit)),
     ]
@@ -306,7 +352,7 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     try:
         conn.execute("DELETE FROM red_arrow_quant_rates WHERE kind=?", (KIND,))
-        for tag in (TAG_LOW, TAG_BASE, TAG_NONE):
+        for tag in (TAG_LOW, TAG_FILTER, TAG_BASE, TAG_NONE):
             for h in SCORE_HORIZONS:
                 row = conn.execute(
                     """
@@ -404,10 +450,10 @@ def _beats(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
 
 
 def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
-    """明確優化狀態：獨立交易日夠不夠、母體夠不夠、有沒有贏 leave_zero。
+    """明確優化狀態：獨立日／母體／贏 leave_zero／假突破是否相對 #547 基線下降。
 
     對話只准報這層；過關＝才「考慮」改編碼，仍不准自動改買訊。
-    無箭頭基線只作對照，不單獨放行。
+    無箭頭基線只作對照，不單獨放行。過濾軌假突破未明顯下降＝不當買訊。
     """
     store = ensure_red_arrow_tables(db_path)
     h = int(horizon)
@@ -446,10 +492,12 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
             return int(row[0] or 0)
 
         low_s = _pack_rate_row(_rate(TAG_LOW))
+        filt_s = _pack_rate_row(_rate(TAG_FILTER))
         base_s = _pack_rate_row(_rate(TAG_BASE))
         none_s = _pack_rate_row(_rate(TAG_NONE))
         for tag, pack in (
             (TAG_LOW, low_s),
+            (TAG_FILTER, filt_s),
             (TAG_BASE, base_s),
             (TAG_NONE, none_s),
         ):
@@ -464,18 +512,42 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         and low_s["distinct_sids"] >= MIN_DISTINCT_SIDS
         and base_s["distinct_sids"] >= MIN_DISTINCT_SIDS
     )
-    beat_lz = _beats(low_s, base_s)
-    beat_none = _beats(low_s, none_s)
-    ready = bool(n_ok and beat_lz)
+    # 買訊閘改看過濾軌（若有足夠 n）；否則仍看未過濾基線但不放行買訊
+    cand = filt_s if (filt_s.get("n") or 0) >= OPTIMIZE_MIN_N else low_s
+    beat_lz = _beats(cand, base_s)
+    beat_none = _beats(cand, none_s)
+    fb_base = low_s.get("false_break_rate")
+    fb_filt = filt_s.get("false_break_rate")
+    fb_drop = None
+    if fb_base is not None and fb_filt is not None:
+        fb_drop = float(fb_base) - float(fb_filt)
+    filt_n_ok = (
+        (filt_s.get("unique_days") or 0) >= MIN_UNIQUE_DAYS
+        and (filt_s.get("n") or 0) >= OPTIMIZE_MIN_N
+    )
+    fb_ok = bool(
+        filt_n_ok
+        and fb_drop is not None
+        and fb_drop >= MIN_FB_DROP
+        and (filt_s.get("hit_rate") is None or low_s.get("hit_rate") is None
+             or filt_s["hit_rate"] + 1e-12 >= (low_s["hit_rate"] or 0) - 0.02)
+    )
+    # 放行買訊討論：贏 leave_zero ＋ 假突破相對 #547 未過濾明顯下降
+    ready = bool(n_ok and beat_lz and fb_ok)
     return {
         "kind": KIND,
         "horizon": h,
         "low": low_s,
+        "filtered": filt_s,
+        "filter_tag": TAG_FILTER,
         "leave_zero": base_s,
         "no_arrow": none_s,
         "n_ok": n_ok,
         "beats_leave_zero": beat_lz,
         "beats_no_arrow": beat_none,
+        "false_break_drop": fb_drop,
+        "false_break_ok": fb_ok,
+        "min_fb_drop": MIN_FB_DROP,
         "promote_ready": ready,
         "next_candidate": NEXT_CANDIDATE,
         "min_n": OPTIMIZE_MIN_N,
@@ -501,7 +573,14 @@ def night_sample_tick(
     limit: int = 40,
 ) -> Dict[str, Any]:
     """盤後默默取樣：掃有限檔、寫分數、重算 rates。失敗不擋 night_review。"""
-    stats = {"wrote": 0, "promote": False, "n_low": 0, "n_lz": 0, "n_none": 0}
+    stats = {
+        "wrote": 0,
+        "promote": False,
+        "n_low": 0,
+        "n_filt": 0,
+        "n_lz": 0,
+        "n_none": 0,
+    }
     if not db_path or not os.path.isfile(db_path):
         return stats
     try:
@@ -557,6 +636,7 @@ def night_sample_tick(
         stats["wrote"] = wrote
         stats["promote"] = bool(st.get("promote_ready"))
         stats["n_low"] = int((st.get("low") or {}).get("n") or 0)
+        stats["n_filt"] = int((st.get("filtered") or {}).get("n") or 0)
         stats["n_lz"] = int((st.get("leave_zero") or {}).get("n") or 0)
         stats["n_none"] = int((st.get("no_arrow") or {}).get("n") or 0)
     except Exception:

@@ -10,10 +10,12 @@ import pytest
 from red_arrow_quant import (
     KIND,
     TAG_BASE,
+    TAG_FILTER,
     TAG_LOW,
     TAG_NONE,
     gate_status,
     nav_low_arrow_first_mask,
+    nav_low_ma60_vol_mask,
     persist_scores,
     promote_ready,
     recompute_rates,
@@ -75,6 +77,19 @@ def test_nav_low_arrow_first_on_new_low():
     assert bool(m.iloc[-2]) is False
 
 
+def test_ma60_vol_filter_rejects_freefall_below_ma60():
+    """急殺遠低於 MA60 的首觸：基線有箭、過濾候選不收。"""
+    df = _ohlc_flat_then_new_low()
+    # 末根再砸更深，確保收盤遠低於 60 均
+    df = df.copy()
+    df.loc[df.index[-1], "close"] = 70.0
+    df.loc[df.index[-1], "low"] = 69.0
+    df.loc[df.index[-1], "high"] = 71.0
+    df.loc[df.index[-1], "open"] = 72.0
+    assert bool(nav_low_arrow_first_mask(df).iloc[-1]) is True
+    assert bool(nav_low_ma60_vol_mask(df).iloc[-1]) is False
+
+
 def test_score_stock_day_records_low_tag_and_false_break(tmp_path):
     full = _with_fwd(_ohlc_flat_then_new_low(), close=96.5)
     rows = score_stock_day(full, as_of="20260917")
@@ -94,6 +109,48 @@ def test_score_stock_day_records_low_tag_and_false_break(tmp_path):
     rates = recompute_rates(db)
     assert any(k.startswith(TAG_LOW) for k in rates)
     assert rates[f"{TAG_LOW}:h5"]["false_break"] == 0
+
+
+def _ohlc_mild_new_low_near_ma60(n: int = 80) -> pd.DataFrame:
+    """窄幅震盪後輕觸 20 低，收盤仍在 MA60 帶內、量不過熱。"""
+    last = datetime(2026, 9, 17)
+    rows = []
+    for i in range(n):
+        d = (last - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        if i == n - 1:
+            px, lo = 99.2, 98.8  # 新低但靠近均線
+        else:
+            # 99.5–101 震盪，MA60≈100
+            px = 100.0 + (0.4 if i % 2 == 0 else -0.3)
+            lo = px - 0.4
+        rows.append(
+            {
+                "date": d,
+                "stock_id": "6257",
+                "stock_name": "矽格",
+                "open": px,
+                "high": px + 0.5,
+                "low": lo,
+                "close": px,
+                "volume": 3000,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def test_score_includes_filter_tag_when_ma60_vol_ok():
+    """輕觸新低且在 MA60 帶＋量不過熱 → 過濾候選也記一筆。"""
+    df = _ohlc_mild_new_low_near_ma60()
+    assert bool(nav_low_arrow_first_mask(df).iloc[-1]) is True
+    assert bool(nav_low_ma60_vol_mask(df).iloc[-1]) is True
+    full = _with_fwd(df, close=100.0)
+    rows = score_stock_day(full, as_of="20260917")
+    tags = {r["tag"] for r in rows}
+    assert TAG_LOW in tags
+    assert TAG_FILTER in tags
+    h5 = [r for r in rows if r["tag"] == TAG_FILTER and r["horizon"] == 5][0]
+    assert h5["false_break"] == 0
+    assert h5["verdict"] == "hit"
 
 
 def test_score_false_break_when_close_under_entry(tmp_path):
@@ -129,12 +186,16 @@ def test_promote_ready_false_until_gate(tmp_path):
     assert st["promote_ready"] is False
     assert st["n_ok"] is False
     assert st["beats_leave_zero"] is False
+    assert st.get("false_break_ok") is False
     assert "no_arrow" in st
+    assert "filtered" in st
+    assert st.get("filter_tag") == TAG_FILTER
     assert promote_ready(db) is False
     assert "不是買訊" in st["note"]
     assert st["min_distinct_sids"] >= 100
     assert st["min_unique_days"] >= 20
     assert st.get("next_candidate")
+    assert st.get("min_fb_drop", 0) > 0
 
 
 def test_ai_trader_still_says_red_arrow_not_entry(tmp_path):
