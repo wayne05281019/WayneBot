@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""紅箭頭代理 vs leave_zero／無箭頭：正式回測取樣（過關前不當買訊）。
+"""紅箭頭代理 vs 過濾候選／leave_zero／無箭頭：正式回測取樣（過關前不當買訊）。
 
 用法（本機／Render 碟）：
   python scripts/red_arrow_backtest.py --db data/wayne_market.db --days 40 --limit 80
 
 只寫 wayne_evolve.db；印 gate_status 一句
-（n／假突破／是否贏 leave_zero／無箭頭／能不能 promote）。
+（n／假突破前後／是否贏 leave_zero／能不能 promote）。
 不准改海選、不准改話筒買訊。
 """
 from __future__ import annotations
@@ -113,7 +113,8 @@ def main() -> int:
                 written += persist_scores(db, rows)
     rates = recompute_rates(db)
     st = gate_status(db, horizon=5)
-    low, lz, none = st["low"], st["leave_zero"], st["no_arrow"]
+    low, filt = st["low"], st.get("filtered") or {}
+    lz, none = st["leave_zero"], st["no_arrow"]
 
     def _r(p: dict) -> str:
         hr = p.get("hit_rate")
@@ -126,9 +127,12 @@ def main() -> int:
             f"avg={ar if ar is None else round(ar, 3)}"
         )
 
+    drop = st.get("false_break_drop")
     print(
         f"wrote={written} rates_keys={len(rates)} "
-        f"low[{_r(low)}] lz[{_r(lz)}] none[{_r(none)}] "
+        f"low[{_r(low)}] filt[{_r(filt)}] lz[{_r(lz)}] none[{_r(none)}] "
+        f"fb_drop={drop if drop is None else round(drop, 3)} "
+        f"fb_ok={st.get('false_break_ok')} "
         f"n_ok={st['n_ok']} beat_lz={st['beats_leave_zero']} "
         f"beat_none={st['beats_no_arrow']} "
         f"promote={st['promote_ready']} — {st['note']}"
