@@ -348,7 +348,7 @@ def _leave_zero_spec(*, scope: str, enc_id: str) -> Dict[str, Any]:
         "profit": "近60曆日收盤低",
         "just_left": "昨<=0.05今>0.05",
         "max_pct": max_pct,
-        "not": "紅箭頭不是買訊",
+        "not": "未確認紅箭頭不是買訊；ma60_lower 確認可進場",
     }
 
 

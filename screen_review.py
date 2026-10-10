@@ -840,7 +840,7 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
     lines = [
         "<b>AI 成交復盤</b>",
         "只對假錢模擬買進的隔日收；跟海選名單分開記。",
-        "進場只認黃金買點（leave_zero）。紅箭頭不是買訊。",
+        "進場認黃金買點（leave_zero）與紅箭確認（ma60_lower）。未確認紅箭頭不是買訊。",
         *[html_escape(x) for x in fmt_fill_overview_lines(n, hits, avg)],
         "弱的類別下一輪少買（調倉位與桶權重，不改高低卡公式）。",
     ]

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""紅箭頭型低點：正式量化／回測關（過關前仍不是買訊）。
+"""紅箭頭型低點：正式量化／回測關；``ma60_lower`` 已升成進場買訊。
 
 CaryBot 紅箭頭是人工標「可買低點」，沒有公開可複製公式。
 這裡量化的是高低卡編碼已對齊的 OHLC 代理：導航圖向上低點箭頭首觸
@@ -13,9 +13,11 @@ CaryBot 紅箭頭是人工標「可買低點」，沒有公開可複製公式。
 
 規則（AGENTS 第 4／3／13 條）：
 - 獨立交易日 n≥20 **且** 贏黃金買點（leave_zero）基線，**且** 假突破相對
-  #547 未過濾基線明顯下降，**且** 能量化優於 #548，才 ``promote_ready``
-  （仍須人工確認才改買訊）。
-- 過關前不准改海選桶、不准當進場、不准改話筒買訊文案／leave_zero 公式。
+  #547 未過濾基線明顯下降，**且** 能量化優於 #548，才 ``promote_ready``。
+- **使用者已確認**：``PRODUCT_ENTRY=True`` → 通過 ``ma60_lower`` 確認的紅箭頭
+  可當進場買訊，與 leave_zero 並列；未過確認的紅箭頭仍不是買訊。
+- 不准改 leave_zero 公式本身。
+- §13：升成買訊後再生下一版 ``NEXT_CANDIDATE`` 繼續收。
 - 結果落 ``wayne_evolve.db``，不准進對話講過程／％。
 """
 from __future__ import annotations
@@ -38,8 +40,12 @@ TAG_PREV = "nav_low_first_ma60_vol"
 # #556 hold_low 已度量未過關（對照／歷史軌）
 TAG_HOLD = "nav_low_first_hold_low_confirm"
 # #557 ma60_upper 已度量未過關（上半收抬假突破；函式保留對照）
-# 準再挖本輪：ma60_vol＋當日收在振幅下半（#557 上半收之反向）
+# 準再挖本輪：ma60_vol＋當日收在振幅下半（#557 上半收之反向）→ 已升成買訊
 TAG_FILTER = "nav_low_first_ma60_lower"
+# 海選／AI倉／進場編碼用的產品桶鍵（與 TAG_FILTER 規則同一條）
+ENTRY_BUCKET = "ma60_lower"
+# 使用者已確認 promote：過 ma60_lower 確認＝買訊；未確認紅箭頭仍不是
+PRODUCT_ENTRY = True
 SCORE_HORIZONS: Tuple[int, ...] = (1, 5, 10)
 # 獨立交易日＋夠廣母體才過關；事件筆數 alone 不准 promote
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
@@ -48,7 +54,7 @@ MIN_DISTINCT_SIDS = 100
 MIN_FB_DROP = 0.03
 # 相對 #548：假突破至少再降一點，且 hit／avg 不輸超過容差
 MIN_FB_DROP_VS_PREV = 0.01
-# §13：過閘／落檔後再生下一版（量再縮緊）；未改買訊前仍可繼續收
+# §13：升成買訊後再生下一版（量再縮緊）繼續靜默對質
 NEXT_CANDIDATE = "nav_low_first_ma60_lower_tight"
 ROUND_STOPPED = False
 
@@ -272,6 +278,26 @@ def nav_low_ma60_upper_mask(df: pd.DataFrame) -> pd.Series:
     return pd.Series(ok, index=df.index)
 
 
+def ma60_lower_bar_indices(df: pd.DataFrame) -> List[int]:
+    """可見窗內通過 ``ma60_lower`` 確認的柱 index（可當進場；未確認不算）。"""
+    mask = nav_low_ma60_lower_mask(df)
+    if mask is None or mask.empty:
+        return []
+    out: List[int] = []
+    for i, hit in enumerate(mask.tolist()):
+        if hit:
+            out.append(int(i))
+    return out
+
+
+def ma60_lower_entry_today(df: pd.DataFrame) -> bool:
+    """最後一根是否通過 ma60_lower 確認（PRODUCT_ENTRY 時＝可當買訊）。"""
+    if not PRODUCT_ENTRY or df is None or len(df) < 60:
+        return False
+    idxs = ma60_lower_bar_indices(df)
+    return bool(idxs) and int(idxs[-1]) == len(df) - 1
+
+
 def nav_low_ma60_lower_mask(df: pd.DataFrame) -> pd.Series:
     """準再挖：#548 ma60_vol ＋ 當日收在振幅下半（#557 上半收之反向）。
 
@@ -280,7 +306,7 @@ def nav_low_ma60_lower_mask(df: pd.DataFrame) -> pd.Series:
     - (close−low)/(high−low) ≤ 0.45（或 high≈low 時 close ≤ open）
     - **不含**收復前低／上半收（#556／#557 已證明會抬假突破）
 
-    過關前仍不是買訊；須能量化優於 #548 才 ``promote_ready``（改買訊另須確認）。
+    ``PRODUCT_ENTRY=True``：通過此確認的紅箭頭可當進場買訊；未過確認仍不是。
     """
     base = nav_low_ma60_vol_mask(df)
     if base.empty or not bool(base.any()):
@@ -719,21 +745,28 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         "min_fb_drop": MIN_FB_DROP,
         "min_fb_drop_vs_prev": MIN_FB_DROP_VS_PREV,
         "promote_ready": ready,
+        "product_entry": bool(PRODUCT_ENTRY),
+        "entry_bucket": ENTRY_BUCKET,
         "next_candidate": NEXT_CANDIDATE,
         "round_stopped": bool(ROUND_STOPPED and not ready),
         "min_n": OPTIMIZE_MIN_N,
         "min_unique_days": MIN_UNIQUE_DAYS,
         "min_distinct_sids": MIN_DISTINCT_SIDS,
         "note": (
-            "可考慮當買訊（仍須人工確認才改編碼）"
-            if ready
+            (
+                "已升成買訊：過 ma60_lower 確認可進場（與 leave_zero 並列）；"
+                "未確認紅箭頭仍不是買訊"
+                if PRODUCT_ENTRY
+                else "可考慮當買訊（仍須人工確認才改編碼）"
+            )
+            if ready or PRODUCT_ENTRY
             else "還沒過關：紅箭頭代理仍不是買訊；進場只認 leave_zero"
         ),
     }
 
 
 def promote_ready(db_path: str, *, horizon: int = 5) -> bool:
-    """唯一放行閘：True 才准討論改買訊；False＝維持紅箭頭不是買訊。"""
+    """量化閘：True＝過關；產品是否已升買訊另看 ``PRODUCT_ENTRY``。"""
     return bool(gate_status(db_path, horizon=horizon).get("promote_ready"))
 
 
