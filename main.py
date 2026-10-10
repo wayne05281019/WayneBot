@@ -1329,17 +1329,75 @@ def run_web():
 
             def _warmup_charts():
                 try:
-                    logger.info("背景預熱出圖（字型＋南亞試畫，避免第一檔查詢空等）")
-                    from wayne_navigator import prewarm_card_fonts, render_stock_pack
+                    # 字型＋輕量 Agg 必走單一 paint worker；不准裸線搶 _MPL_RENDER_LOCK
+                    # （第一檔 wait_for 會把等鎖算進逾時 → 假 TimedOut／殘缺重試）。
+                    logger.info("背景預熱出圖（字型＋Agg＋南亞卡，經 paint worker）")
+                    from wayne_navigator import (
+                        NavigatorEngine,
+                        prewarm_card_fonts,
+                        render_decision_card_png,
+                        run_mpl_paint,
+                        unique_chart_path,
+                        _close_lookup_figure,
+                        _new_lookup_figure,
+                        _savefig_lookup_png,
+                    )
 
                     prewarm_card_fonts()
-                    pack = render_stock_pack("1303", get_db_path())
+
+                    from config import get_charts_dir
+
+                    charts_dir = get_charts_dir()
+                    os.makedirs(charts_dir, exist_ok=True)
+
+                    def _tiny_agg():
+                        path = os.path.join(charts_dir, "_boot_warm.jpg")
+                        fig = _new_lookup_figure((1.2, 1.2), 72, "#ffffff")
+                        try:
+                            ax = fig.add_subplot(111)
+                            ax.plot([0, 1], [0, 1], color="#333333")
+                            ax.set_axis_off()
+                            _savefig_lookup_png(fig, path, 72)
+                        finally:
+                            _close_lookup_figure(fig)
+                        try:
+                            if os.path.isfile(path):
+                                os.remove(path)
+                        except Exception:
+                            pass
+                        return True
+
+                    run_mpl_paint(_tiny_agg)
+
+                    # 重模組／決策卡資料在 paint 外暖，不堵 worker。
+                    try:
+                        import three_in_one_chart  # noqa: F401
+                        import vol_zone_chart  # noqa: F401
+                    except Exception:
+                        logger.debug("查股重模組預熱略過", exc_info=True)
+
+                    db = get_db_path()
+                    card = NavigatorEngine(db).get_decision_card(
+                        "1303", lookback=20, merge_live=False
+                    )
+                    card_ok = False
+                    if isinstance(card, dict) and not card.get("error"):
+                        card.pop("_ohlc", None)
+                        out = unique_chart_path(charts_dir, "1303", "warm", "boot")
+
+                        def _warm_card():
+                            return render_decision_card_png(card, out)
+
+                        painted = run_mpl_paint(_warm_card)
+                        card_ok = bool(painted and os.path.isfile(painted))
+                        try:
+                            if card_ok:
+                                os.remove(painted)
+                        except Exception:
+                            pass
                     logger.info(
-                        "出圖預熱完成 glance=%s card=%s chart=%s chips=%s",
-                        bool(pack.get("glance")),
-                        bool(pack.get("card")),
-                        bool(pack.get("chart")),
-                        bool(pack.get("chips")),
+                        "出圖預熱完成 fonts=1 tiny_agg=1 card=%s",
+                        int(card_ok),
                     )
                 except Exception:
                     logger.exception("出圖預熱失敗")

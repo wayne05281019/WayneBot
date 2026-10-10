@@ -4428,9 +4428,10 @@ class WayneTelegramBot:
                 im.close()
                 return path
             nw, nh = WayneTelegramBot._fit_lookup_photo_wh(w, h)
+            # 查股 savefig 直出 JPEG、路徑常仍叫 .png；認內容／format，不准再壓一次。
             already_jpeg = str(path).lower().endswith(
                 (".jpg", ".jpeg", ".album.jpg", ".hq.jpg")
-            )
+            ) or (getattr(im, "format", None) or "").upper() == "JPEG"
             if (nw, nh) == (w, h) and already_jpeg:
                 try:
                     sz = os.path.getsize(path)
@@ -8309,8 +8310,17 @@ class WayneTelegramBot:
                 )
                 return False
             send_path = path
-            if not str(path).lower().endswith((".jpg", ".jpeg")):
-                send_path = self._prepare_lookup_album_photo(path)
+            low = str(path).lower()
+            if not low.endswith((".jpg", ".jpeg")):
+                # 查股直出 JPEG、副檔名仍可能 .png：魔術字已是 JPEG 就不再 prepare。
+                is_jpeg = False
+                try:
+                    with open(path, "rb") as fh:
+                        is_jpeg = fh.read(3) == b"\xff\xd8\xff"
+                except OSError:
+                    is_jpeg = False
+                if not is_jpeg:
+                    send_path = self._prepare_lookup_album_photo(path)
             ok = await self._reply_lookup_photo(
                 message,
                 send_path,
