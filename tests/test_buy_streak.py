@@ -183,8 +183,10 @@ def test_foreign_tw_exact_days_and_lots(db):
     assert row.volume_lots == 2000 + 2000 + 2000 + 2000 + 2500 + 2500
     assert row.foreign_pct == round(row.foreign_lots / row.volume_lots * 100, 1)
     lines = format_row_lines(row, KIND_FOREIGN)
-    assert "6日連買 750張" in lines[0]
-    assert "佔6日總成交 5.8%" in lines[1]
+    assert lines[0].startswith("連買")
+    assert "6日" in lines[0] and "750張" in lines[0]
+    assert lines[1].startswith("佔比")
+    assert "5.8%" in lines[1] and "6日成交" in lines[1]
     assert snap.stocks(3)[0].stock_id == "2317"
     assert not snap.stocks(1)
     assert find_row(snap, 6, "2454") is None
@@ -206,8 +208,10 @@ def test_trust_and_both_require_matching_days(db):
     assert b3["2317"].foreign_lots == 10 + 20 + 30
     assert b3["2317"].trust_lots == 20 + 30 + 40
     lines = format_row_lines(b3["2317"], KIND_BOTH)
-    assert "3日皆買" in lines[0]
-    assert "外資" in lines[0] and "投信" in lines[0]
+    assert lines[0].startswith("皆買") and "3日" in lines[0]
+    assert lines[1].startswith("張數")
+    assert "外資" in lines[1] and "投信" in lines[1]
+    assert lines[2].startswith("佔比")
 
 
 def test_two_market_isolated(db):
@@ -228,9 +232,11 @@ def test_all_market_merges_listed_and_otc(db):
     assert snap.label == "外資連買 · 上市櫃"
     html = format_list_html(snap, 6, db)
     assert "2330" in html
-    assert " · 上市櫃" in html
+    assert "上市櫃" in html
     assert " · 上櫃" not in html
     assert "輸入區鍵盤" not in html
+    assert "共 " in html and "檔" in html
+    assert "剛好連買 6 天" in html
 
 
 def test_etf_excluded(db):
