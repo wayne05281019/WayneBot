@@ -115,7 +115,7 @@ def main() -> int:
     st = gate_status(db, horizon=5)
     st1 = gate_status(db, horizon=1)
     low, prev = st["low"], st.get("prev_filter") or {}
-    filt = st.get("filtered") or {}
+    hold, filt = st.get("hold_filter") or {}, st.get("filtered") or {}
     lz, none = st["leave_zero"], st["no_arrow"]
 
     def _r(p: dict) -> str:
@@ -133,14 +133,15 @@ def main() -> int:
     drop_p = st.get("false_break_drop_vs_prev")
     print(
         f"wrote={written} rates_keys={len(rates)} "
-        f"low[{_r(low)}] prev[{_r(prev)}] filt[{_r(filt)}] "
+        f"low[{_r(low)}] prev[{_r(prev)}] hold[{_r(hold)}] filt[{_r(filt)}] "
         f"lz[{_r(lz)}] none[{_r(none)}] "
         f"fb_drop={drop if drop is None else round(drop, 3)} "
         f"fb_drop_vs_prev={drop_p if drop_p is None else round(drop_p, 3)} "
         f"fb_ok={st.get('false_break_ok')} beats_prev={st.get('beats_prev')} "
         f"n_ok={st['n_ok']} beat_lz={st['beats_leave_zero']} "
         f"beat_none={st['beats_no_arrow']} "
-        f"promote={st['promote_ready']} — {st['note']}"
+        f"promote={st['promote_ready']} round_stopped={st.get('round_stopped')} "
+        f"— {st['note']}"
     )
     f1 = st1.get("filtered") or {}
     l1 = st1.get("low") or {}
