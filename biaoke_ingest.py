@@ -1842,7 +1842,15 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
 
 
 def run_biaoke_ingest_quiet() -> None:
-    """排程／輪詢用：失敗不影響 16:30 融合、不進海選。"""
+    """排程／輪詢用：失敗不影響 16:30 融合、不進海選。
+
+    單元測預設略過真抓（否則 ownership／catch-up 會掛死外網數十分鐘）。
+    要測真匯入：設 WAYNE_BIAOKE_INGEST_LIVE=1，或直接呼叫 ingest_public_posts（可塞 Fake session）。
+    """
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get(
+        "WAYNE_BIAOKE_INGEST_LIVE"
+    ):
+        return
     try:
         from config import get_db_path
 

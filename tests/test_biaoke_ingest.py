@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """飆大公開頁匯入：只解析 HTML，不碰 token。"""
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -236,12 +237,41 @@ def test_parse_article_html_accepts_garbled_author_meta_if_body_is_his():
     assert decode_cmoney_html(html.encode("utf-8"), apparent="ptcp154").count("富喬") == 1
 
 
+def test_run_biaoke_ingest_quiet_skips_under_pytest(monkeypatch):
+    """排程掛鉤不准在單元測真打 CMoney（ownership 會掛死數十分鐘）。"""
+    import biaoke_ingest as bi
+
+    called = {"n": 0}
+
+    def _boom(*a, **k):
+        called["n"] += 1
+        raise AssertionError("pytest 下不准真抓")
+
+    monkeypatch.setattr(bi, "ingest_public_posts", _boom)
+    monkeypatch.delenv("WAYNE_BIAOKE_INGEST_LIVE", raising=False)
+    # PYTEST_CURRENT_TEST 在 pytest 執行時已有
+    assert os.environ.get("PYTEST_CURRENT_TEST")
+    bi.run_biaoke_ingest_quiet()
+    assert called["n"] == 0
+    monkeypatch.setenv("WAYNE_BIAOKE_INGEST_LIVE", "1")
+    try:
+        bi.run_biaoke_ingest_quiet()
+    except AssertionError:
+        pass
+    assert called["n"] == 1
+
+
 def test_ingest_hook_is_on_product_clocks():
     import inspect
     import main
 
+    import biaoke_ingest as bi
+
     src = inspect.getsource(main.run_scheduled_job)
     assert "run_biaoke_ingest_quiet" in src
+    quiet_src = inspect.getsource(bi.run_biaoke_ingest_quiet)
+    assert "PYTEST_CURRENT_TEST" in quiet_src
+    assert "WAYNE_BIAOKE_INGEST_LIVE" in quiet_src
     assert 'kind in ("morning", "midday", "fuse", "evening", "winrate", "typhoon", "open_check")' in src
     boot = inspect.getsource(main.run_web)
     assert "start_biaoke_poller" in boot
