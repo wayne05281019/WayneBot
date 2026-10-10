@@ -352,6 +352,33 @@ def prev_close_from_change_pct(close: float, change_pct: Optional[float]) -> flo
     return round(c / denom, 4)
 
 
+def display_prev_close_for_card(
+    close: float,
+    *,
+    stored_pct: Optional[float] = None,
+    bar_prev_close: float = 0.0,
+) -> float:
+    """盤後卡昨收：官方％反推為準；庫內昨收推得％同到兩位時改用庫內昨收畫金額。
+
+    缺日／還原時庫內上一根跟證交所對不上，仍用 ``prev_close_from_change_pct``。
+    連兩根官方收都在、且推得％＝官方％時，用庫內昨收，避免 6000／+0.84% 反推
+    成 5950.0198 → 畫面 ▲49.98（實際收差 50）。
+    """
+    c = float(close or 0)
+    bar = float(bar_prev_close or 0)
+    if c <= 0:
+        return 0.0
+    stored = finite_pct(stored_pct)
+    if bar > 0 and stored is not None:
+        from_bar = round((c - bar) / bar * 100.0, 2)
+        if from_bar == round(stored, 2):
+            return bar
+    official = prev_close_from_change_pct(c, stored)
+    if official > 0:
+        return official
+    return bar if bar > 0 else 0.0
+
+
 def resolve_daily_change_pct(
     close: float,
     *,

@@ -855,9 +855,9 @@ class NavigatorEngine:
             card_daily_stance,
             card_regime_label,
             compute_card_temperature,
+            display_prev_close_for_card,
             hi_lo_tag,
             monthly_stage_from_ohlc,
-            prev_close_from_change_pct,
             profit_floor_at,
             relative_buy_kind,
             resolve_daily_change_pct,
@@ -995,9 +995,11 @@ class NavigatorEngine:
             prefer_stored=not is_live,
         )
         if not is_live:
-            official_prev = prev_close_from_change_pct(float(latest["close"]), stored_pct)
-            if official_prev > 0:
-                prev_close = official_prev
+            prev_close = display_prev_close_for_card(
+                float(latest["close"]),
+                stored_pct=stored_pct,
+                bar_prev_close=float(prev_close or 0),
+            )
         # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = _pos_px(latest["high_10"]), _pos_px(latest["high_20"]), _pos_px(latest["high_60"])
         l10, l20, l60 = _pos_px(latest["low_10"]), _pos_px(latest["low_20"]), _pos_px(latest["low_60"])
