@@ -113,7 +113,9 @@ def main() -> int:
                 written += persist_scores(db, rows)
     rates = recompute_rates(db)
     st = gate_status(db, horizon=5)
-    low, filt = st["low"], st.get("filtered") or {}
+    st1 = gate_status(db, horizon=1)
+    low, prev = st["low"], st.get("prev_filter") or {}
+    filt = st.get("filtered") or {}
     lz, none = st["leave_zero"], st["no_arrow"]
 
     def _r(p: dict) -> str:
@@ -128,14 +130,26 @@ def main() -> int:
         )
 
     drop = st.get("false_break_drop")
+    drop_p = st.get("false_break_drop_vs_prev")
     print(
         f"wrote={written} rates_keys={len(rates)} "
-        f"low[{_r(low)}] filt[{_r(filt)}] lz[{_r(lz)}] none[{_r(none)}] "
+        f"low[{_r(low)}] prev[{_r(prev)}] filt[{_r(filt)}] "
+        f"lz[{_r(lz)}] none[{_r(none)}] "
         f"fb_drop={drop if drop is None else round(drop, 3)} "
-        f"fb_ok={st.get('false_break_ok')} "
+        f"fb_drop_vs_prev={drop_p if drop_p is None else round(drop_p, 3)} "
+        f"fb_ok={st.get('false_break_ok')} beats_prev={st.get('beats_prev')} "
         f"n_ok={st['n_ok']} beat_lz={st['beats_leave_zero']} "
         f"beat_none={st['beats_no_arrow']} "
         f"promote={st['promote_ready']} — {st['note']}"
+    )
+    f1 = st1.get("filtered") or {}
+    l1 = st1.get("low") or {}
+    p1 = st1.get("prev_filter") or {}
+    print(
+        f"h1_low_fb={None if l1.get('false_break_rate') is None else round(l1['false_break_rate'], 3)} "
+        f"h1_prev_fb={None if p1.get('false_break_rate') is None else round(p1['false_break_rate'], 3)} "
+        f"h1_filt_fb={None if f1.get('false_break_rate') is None else round(f1['false_break_rate'], 3)} "
+        f"h1_fb_drop={st1.get('false_break_drop') if st1.get('false_break_drop') is None else round(st1['false_break_drop'], 3)}"
     )
     return 0
 

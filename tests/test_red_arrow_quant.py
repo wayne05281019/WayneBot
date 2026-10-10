@@ -9,12 +9,15 @@ import pytest
 
 from red_arrow_quant import (
     KIND,
+    NEXT_CANDIDATE,
     TAG_BASE,
     TAG_FILTER,
     TAG_LOW,
     TAG_NONE,
+    TAG_PREV,
     gate_status,
     nav_low_arrow_first_mask,
+    nav_low_hold_low_confirm_mask,
     nav_low_ma60_vol_mask,
     persist_scores,
     promote_ready,
@@ -138,8 +141,8 @@ def _ohlc_mild_new_low_near_ma60(n: int = 80) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def test_score_includes_filter_tag_when_ma60_vol_ok():
-    """輕觸新低且在 MA60 帶＋量不過熱 → 過濾候選也記一筆。"""
+def test_score_includes_prev_tag_when_ma60_vol_ok():
+    """輕觸新低且在 MA60 帶＋量不過熱 → #548 對照軌記一筆。"""
     df = _ohlc_mild_new_low_near_ma60()
     assert bool(nav_low_arrow_first_mask(df).iloc[-1]) is True
     assert bool(nav_low_ma60_vol_mask(df).iloc[-1]) is True
@@ -147,7 +150,60 @@ def test_score_includes_filter_tag_when_ma60_vol_ok():
     rows = score_stock_day(full, as_of="20260917")
     tags = {r["tag"] for r in rows}
     assert TAG_LOW in tags
+    assert TAG_PREV in tags
+    h5 = [r for r in rows if r["tag"] == TAG_PREV and r["horizon"] == 5][0]
+    assert h5["false_break"] == 0
+    assert h5["verdict"] == "hit"
+
+
+def _ohlc_hold_low_confirm_ok(n: int = 80) -> pd.DataFrame:
+    """窄幅後首觸新低、收復前低且收在振幅上半 → hold_low_confirm 應過。"""
+    last = datetime(2026, 9, 17)
+    rows = []
+    for i in range(n):
+        d = (last - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        if i == n - 1:
+            # 前一日低≈100；刺破到 98.5，收 100.2（≥前低）；振幅上半≈0.74
+            px, lo, hi, op = 100.2, 98.5, 100.8, 99.5
+        else:
+            px = 100.0 + (0.4 if i % 2 == 0 else -0.3)
+            lo, hi, op = px - 0.4, px + 0.5, px
+        rows.append(
+            {
+                "date": d,
+                "stock_id": "6257",
+                "stock_name": "矽格",
+                "open": op,
+                "high": hi,
+                "low": lo,
+                "close": px,
+                "volume": 3000,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def test_hold_low_confirm_accepts_reclaim_and_rejects_close_on_low():
+    """收復前低＋上半收＝過；貼底收＝不過。"""
+    df = _ohlc_hold_low_confirm_ok()
+    assert bool(nav_low_arrow_first_mask(df).iloc[-1]) is True
+    assert bool(nav_low_hold_low_confirm_mask(df).iloc[-1]) is True
+    bad = df.copy()
+    bad.loc[bad.index[-1], "close"] = 98.6  # 貼當日低、也跌破前低
+    bad.loc[bad.index[-1], "open"] = 99.2
+    assert bool(nav_low_arrow_first_mask(bad).iloc[-1]) is True
+    assert bool(nav_low_hold_low_confirm_mask(bad).iloc[-1]) is False
+
+
+def test_score_includes_filter_tag_when_hold_low_ok():
+    """本輪候選 hold_low_confirm 過 → TAG_FILTER 記一筆。"""
+    df = _ohlc_hold_low_confirm_ok()
+    full = _with_fwd(df, close=100.5)
+    rows = score_stock_day(full, as_of="20260917")
+    tags = {r["tag"] for r in rows}
+    assert TAG_LOW in tags
     assert TAG_FILTER in tags
+    assert TAG_FILTER == "nav_low_first_hold_low_confirm"
     h5 = [r for r in rows if r["tag"] == TAG_FILTER and r["horizon"] == 5][0]
     assert h5["false_break"] == 0
     assert h5["verdict"] == "hit"
@@ -187,15 +243,19 @@ def test_promote_ready_false_until_gate(tmp_path):
     assert st["n_ok"] is False
     assert st["beats_leave_zero"] is False
     assert st.get("false_break_ok") is False
+    assert st.get("beats_prev") is False
     assert "no_arrow" in st
     assert "filtered" in st
+    assert "prev_filter" in st
     assert st.get("filter_tag") == TAG_FILTER
+    assert st.get("prev_tag") == TAG_PREV
     assert promote_ready(db) is False
     assert "不是買訊" in st["note"]
     assert st["min_distinct_sids"] >= 100
     assert st["min_unique_days"] >= 20
-    assert st.get("next_candidate")
+    assert st.get("next_candidate") == NEXT_CANDIDATE
     assert st.get("min_fb_drop", 0) > 0
+    assert st.get("min_fb_drop_vs_prev", 0) > 0
 
 
 def test_ai_trader_still_says_red_arrow_not_entry(tmp_path):
