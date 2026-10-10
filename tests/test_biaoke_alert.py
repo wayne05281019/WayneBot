@@ -75,6 +75,86 @@ def test_maybe_push_dedupes(tmp_path, monkeypatch):
     assert b["skipped"] == 1
 
 
+def test_same_body_different_ids_push_once(tmp_path, monkeypatch):
+    """HTML :rN 與 API :c{id} 同正文 → 只推一次（復現 10/10 連推四次）。"""
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 2)
+    db = str(tmp_path / "w.db")
+    body = (
+        "「光通訊 InP 不在前波高點的個股」這句話好好去研究，"
+        "就是空手不要再介入全新及穩懋，要去找低位階還在底部的 InP，"
+        "當然聯亞是標配一股不賣。"
+    )
+    move = {"ok": False, "drop": 0, "pct": 0}
+    rows = [
+        {
+            "id": "art1:r1",
+            "kind": "reply",
+            "date": "2026-10-10",
+            "time": "13:42",
+            "text": body,
+        },
+        {
+            "id": "art1:c999001",
+            "kind": "reply",
+            "date": "2026-10-10",
+            "time": "13:42",
+            "text": body,
+        },
+        {
+            "id": "art1:t光通訊 InP 不在前波高點的個股這句話好好",
+            "kind": "reply",
+            "date": "2026-10-10",
+            "time": "13:42",
+            "text": body,
+        },
+        {
+            "id": "art1:r1-again",
+            "kind": "reply",
+            "date": "2026-10-10",
+            "time": "13:42",
+            "text": body,
+        },
+    ]
+    a = maybe_push_drop_alert(db, rows, move=move)
+    assert a["pushed"] == 1
+    assert a["skipped"] >= 3
+    assert len(sent) == 1
+    assert "不要再介入全新及穩懋" in sent[0]
+    # 下一輪 ingest（TimedOut 重試／另一 worker）也不重送
+    b = maybe_push_drop_alert(db, rows, move=move)
+    assert b["pushed"] == 0
+    assert b["skipped"] >= 4
+    assert len(sent) == 1
+
+
+def test_claim_before_send_survives_timeout(tmp_path, monkeypatch):
+    """先 claim 再送：Telegram TimedOut（sent=0）後重試不准再推。"""
+    calls = {"n": 0}
+
+    def boom(_html):
+        calls["n"] += 1
+        return 0  # 模擬 TimedOut／失敗但訊息可能已送達
+
+    monkeypatch.setattr("biaoke_alert._send_family", boom)
+    db = str(tmp_path / "w.db")
+    row = {
+        "id": "e-to",
+        "kind": "post",
+        "date": "2026-10-10",
+        "time": "14:17",
+        "text": "有矽光子股票下星期全面出清一股不留。",
+    }
+    move = {"ok": False, "drop": 0, "pct": 0}
+    a = maybe_push_drop_alert(db, [row], move=move)
+    assert a["pushed"] == 1
+    assert calls["n"] == 1
+    b = maybe_push_drop_alert(db, [row], move=move)
+    assert b["pushed"] == 0
+    assert b["skipped"] == 1
+    assert calls["n"] == 1
+
+
 def test_yuanren_tsmc_volume_confirms_without_700():
     text = (
         "波浪理論沒辦法 100% 確認 7/29 39384 為 A 波低；"
