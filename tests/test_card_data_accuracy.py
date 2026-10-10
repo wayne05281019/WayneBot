@@ -49,6 +49,34 @@ class CardDataAccuracyTests(unittest.TestCase):
         )
         self.assertAlmostEqual(prev_close_from_change_pct(15.0, -0.66), 15.10, places=2)
 
+    def test_display_prev_close_keeps_bar_when_pct_matches(self):
+        """2383 2026/10/08：收 6000／昨收 5950／官方 +0.84% → 金額差 50，不是 49.98。"""
+        from decision_card_signals import display_prev_close_for_card, prev_close_from_change_pct
+        from tg_layout import format_move_plain
+
+        # 反推仍會得到 5950.0198（官方％兩位四捨五入）
+        self.assertAlmostEqual(prev_close_from_change_pct(6000.0, 0.84), 5950.0198, places=4)
+        prev = display_prev_close_for_card(
+            6000.0, stored_pct=0.84, bar_prev_close=5950.0
+        )
+        self.assertEqual(prev, 5950.0)
+        self.assertEqual(format_move_plain(6000.0 - prev, 0.84), "▲ 50.00（+0.84%）")
+
+    def test_display_prev_close_keeps_official_when_bar_gapped(self):
+        """缺日：庫內昨收推得％≠官方％ → 仍用反推昨收。"""
+        from decision_card_signals import display_prev_close_for_card
+
+        self.assertAlmostEqual(
+            display_prev_close_for_card(35.45, stored_pct=0.0, bar_prev_close=35.5),
+            35.45,
+            places=2,
+        )
+        self.assertAlmostEqual(
+            display_prev_close_for_card(15.0, stored_pct=-0.66, bar_prev_close=15.15),
+            15.10,
+            places=2,
+        )
+
     def test_price_move_official_flat_not_gapped_drop(self):
         from chip_tape import price_move
 
