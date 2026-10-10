@@ -681,6 +681,7 @@ def test_silent_remember_roster_and_filter(tmp_path, monkeypatch):
     assert extra.get("bucket_key") == KIND_ROSTER
     assert "o" in extra or "c" in extra
 
+    # filter 日故意不種柱（盤中未收）；應貼訊號日官方 OHLCV 仍能落檔
     nf = silent_remember_filter(
         db,
         roster_as_of="20260930",
@@ -690,14 +691,19 @@ def test_silent_remember_roster_and_filter(tmp_path, monkeypatch):
     assert nf == 1
     conn = sqlite3.connect(store)
     frow = conn.execute(
-        "SELECT kind, sid, pick, extra FROM live_judge WHERE kind=? AND as_of='20261001'",
+        "SELECT kind, sid, pick, px, extra FROM live_judge WHERE kind=? AND as_of='20261001'",
         (KIND_FILTER,),
     ).fetchone()
     conn.close()
     assert frow and frow[1] == "2330" and frow[2] == "20260930"
-    fextra = json.loads(frow[3] or "{}")
+    assert abs(float(frow[3]) - 880.0) < 0.01
+    fextra = json.loads(frow[4] or "{}")
     assert fextra.get("src_as_of") == "20260930"
     assert fextra.get("why") == "leave_zero_still"
+    assert fextra.get("o") == 900
+    assert fextra.get("h") == 910
+    assert fextra.get("l") == 890
+    assert fextra.get("v") == 8000
 
 
 def test_silent_catalog_lists_winrate():

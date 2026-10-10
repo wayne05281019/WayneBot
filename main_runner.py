@@ -1166,6 +1166,13 @@ class MainRunner:
                     text = "\n\n".join(x for x in bits if x)
                     if text:
                         self.send_telegram_message(text, chat_id=uid)
+            # 成交後才凍 AI倉名單；失敗不擋話筒／海選（海選 snapshot 常在 AI 成交前）。
+            try:
+                from button_silent_verify import snapshot_ai_desk
+
+                snapshot_ai_desk(self.db_path, as_of or "")
+            except Exception:
+                pass
             return last
         except Exception as e:
             logger.warning("AI 模擬操盤略過：%s", e, exc_info=True)

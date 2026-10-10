@@ -87,12 +87,18 @@ def test_catalog_covers_full_keyboard():
         "剛脫離零",
         "洞燭先機",
         "記買入",
+        "查股",
     }
     assert want <= names
     cov = coverage_counts()
     assert cov["missing"] == 0
     assert cov["gap_filled"] >= 5
     assert cov["total"] == len(want)
+    lookup = next(r for r in BUTTON_CATALOG if r["btn"] == "查股")
+    assert lookup["kinds"] == ("lookup",)
+    assert lookup["class"] == "lookup_query"
+    assert not is_screen_kind("lookup")
+    assert not is_personal_book_kind("lookup")
 
 
 def test_personal_vs_screen_kinds_do_not_mix():
