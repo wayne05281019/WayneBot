@@ -15,11 +15,15 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from tg_layout import html_escape
 
-# 勿追／不要介入：截到句讀或「要去找」前，避免把後面找底句當勿追對象
-_NO_CHASE = re.compile(
+# 勿追／不要介入動詞（含「勿追」）；名前／名後都要掃，見 parse_spoken_stances
+_NO_CHASE_VERB = re.compile(
     r"(?:就是)?(?:空手)?(?:不要再介入|不要再進場|不要再追|不要追|"
-    r"不要再碰|不要介入|不要再進)"
-    r"(.{0,60}?)(?=，|。|；|;|！|!|要去找|去找|$)",
+    r"不要再碰|不要介入|不要再進|勿追)",
+    re.I,
+)
+# 位階偏高：名前同句股＝降調（拿掉可點追），不是看空整族
+_HIGH_LEVEL = re.compile(
+    r"(.{0,40}?)位階偏高",
     re.I,
 )
 # 標配不賣／一股不賣／續抱：鄰近股名＝持股語意，不是新買訊
@@ -29,14 +33,17 @@ _HOLD = re.compile(
     r"(?:標配(?:一股)?不賣|一股不賣).{0,16}?([\u4e00-\u9fffA-Za-z\-KY]{2,12})",
     re.I,
 )
-# 去找低位階／底部／不在前波高
+# 去找低位階／底部／不在前波高（順序可前後：低位階…去找／去找…低位階）
 _FIND = re.compile(
     r"(?:要去找|去找|好好去研究).{0,100}?(?:低位階|還在底部|不在前波高點|底部的)"
+    r"|"
+    r"(?:低位階|還在底部|不在前波高點).{0,80}?(?:要去找|去找|好好去研究)"
     r"|"
     r"(?:低位階還在底部|不在前波高點的個股|不在前波高點)",
     re.I,
 )
-_POOL_INP = re.compile(r"\bInP\b|磷化銦|光通訊", re.I)
+# InP 常緊貼中文（「的InP當然」「是InP)」）；不准用 \b（中文也算 word）
+_POOL_INP = re.compile(r"(?<![A-Za-z0-9])InP(?![A-Za-z0-9])|磷化銦|光通訊", re.I)
 
 # 對質門檻（與 docs 三句對質一致；只排序／呈現，不是買訊分數）
 _OFF_PEAK_PCT = -10.0  # 距峰 ≤ −10% 才算離高
@@ -115,6 +122,16 @@ def _mentions_in(blob: str, db_path: str = "") -> List[Tuple[str, str]]:
     return out
 
 
+def _clause_tail(fragment: str) -> str:
+    """只留最近一個句讀之後的片段，避免跨句把標配股誤標勿追。
+
+    頓號「、」常串股名（全新、穩懋），不准當句讀切開。
+    """
+    t = str(fragment or "")
+    parts = re.split(r"[，。；;！!\n]", t)
+    return parts[-1] if parts else t
+
+
 def parse_spoken_stances(text: str, *, db_path: str = "") -> Dict[str, Any]:
     """近窗正文 → 勿追／標配不賣／去找哪一池。"""
     blob = str(text or "")
@@ -128,8 +145,17 @@ def parse_spoken_stances(text: str, *, db_path: str = "") -> Dict[str, Any]:
             "find_pools": find_pools,
             "raw": blob,
         }
-    for m in _NO_CHASE.finditer(blob):
-        chunk = str(m.group(1) or "")
+    for m in _NO_CHASE_VERB.finditer(blob):
+        # 名後：動詞後截到句讀／要去找前
+        after = blob[m.end() : m.end() + 60]
+        stop = re.search(r"[，。；;！!]|要去找|去找", after)
+        post = after[: stop.start()] if stop else after
+        # 名前：同句（句讀後）才算，覆蓋「全新及穩懋不要再介入」
+        pre = _clause_tail(blob[max(0, m.start() - 40) : m.start()])
+        for sid, name in _mentions_in(pre + post, db_path):
+            no_chase[sid] = name
+    for m in _HIGH_LEVEL.finditer(blob):
+        chunk = _clause_tail(str(m.group(1) or ""))
         for sid, name in _mentions_in(chunk, db_path):
             no_chase[sid] = name
     for m in _HOLD.finditer(blob):

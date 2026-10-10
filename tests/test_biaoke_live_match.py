@@ -102,6 +102,59 @@ def test_parse_no_chase_hold_find():
     assert "inp" in st["find_pools"]
 
 
+def test_parse_inp_glued_to_chinese_still_finds_pool():
+    """InP 緊貼中文時不准因 \\b 失效而空掉去找池（該亮環宇／IET）。"""
+    from biaoke_live_match import parse_spoken_stances
+
+    # 無逗號、InP 後直接接中文；也無「光通訊」可備援
+    blob = (
+        "空手不要再介入全新及穩懋要去找低位階還在底部的 InP當然聯亞是標配一股不賣"
+    )
+    st = parse_spoken_stances(blob)
+    assert "2455" in st["no_chase"] and "3105" in st["no_chase"]
+    assert "3081" in st["hold"]
+    assert "inp" in st["find_pools"]
+    # 常見緊貼：是InP)／的InP為
+    assert "inp" in parse_spoken_stances(
+        "要去找低位階還在底部的InP，環宇IET先看"
+    )["find_pools"]
+    assert "inp" in parse_spoken_stances(
+        "尤其是InP)為台股雙箭頭，要去找低位階還在底部的個股"
+    )["find_pools"]
+
+
+def test_parse_no_chase_names_before_and_wu_zhui():
+    """名前動詞／勿追／位階偏高都要降調拿掉可點追。"""
+    from biaoke_live_match import parse_spoken_stances
+
+    st = parse_spoken_stances(
+        "全新及穩懋不要再介入，要去找低位階還在底部的 InP。"
+    )
+    assert "2455" in st["no_chase"] and "3105" in st["no_chase"]
+    assert "inp" in st["find_pools"]
+
+    st2 = parse_spoken_stances("全新穩懋空手勿追，要去找低位階還在底部的 InP。")
+    assert "2455" in st2["no_chase"] and "3105" in st2["no_chase"]
+
+    st3 = parse_spoken_stances(
+        "全新、穩懋位階偏高不要追，低位階 InP 去找。"
+    )
+    assert "2455" in st3["no_chase"] and "3105" in st3["no_chase"]
+    assert "inp" in st3["find_pools"]
+
+
+def test_no_chase_does_not_steal_hold_across_comma():
+    """跨句不准把標配聯亞誤標勿追。"""
+    from biaoke_live_match import parse_spoken_stances
+
+    st = parse_spoken_stances(
+        "聯亞是標配一股不賣，不要再介入全新及穩懋，要去找低位階還在底部的 InP。"
+    )
+    assert "3081" in st["hold"]
+    assert "3081" not in st["no_chase"]
+    assert "2455" in st["no_chase"] and "3105" in st["no_chase"]
+
+
 def test_live_match_ranks_huan_yu_iet(tmp_path):
     from biaoke_live_match import live_match_pack, refresh_live_match
 
