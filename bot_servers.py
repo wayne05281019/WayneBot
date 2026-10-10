@@ -4414,6 +4414,16 @@ class WayneTelegramBot:
 
         if not path or not os.path.isfile(path):
             return path
+        # savefig 直出 JPEG、路徑常仍叫 .png：魔術字＋容量合格就不開 PIL（第二次送圖省重解）。
+        try:
+            with open(path, "rb") as fh:
+                magic_jpeg = fh.read(3) == b"\xff\xd8\xff"
+            sz0 = os.path.getsize(path)
+        except OSError:
+            magic_jpeg = False
+            sz0 = 0
+        if magic_jpeg and 0 < sz0 <= _LOOKUP_TG_MAX_BYTES - 64:
+            return path
         try:
             im = Image.open(path)
             im.load()
@@ -8624,10 +8634,27 @@ class WayneTelegramBot:
             glance_task = asyncio.create_task(
                 _render_ready("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, hub)
             )
+            async def _prep_for_send(path: str, kind: str) -> str:
+                """JPEG 魔術字＋容量合格直接送；真 PNG 才 to_thread 轉碼。"""
+                if not path or not os.path.isfile(path):
+                    return path
+                try:
+                    with open(path, "rb") as fh:
+                        is_jpeg = fh.read(3) == b"\xff\xd8\xff"
+                    sz = os.path.getsize(path)
+                except OSError:
+                    is_jpeg = False
+                    sz = 0
+                if is_jpeg and 0 < sz <= _LOOKUP_TG_MAX_BYTES - 64:
+                    return path
+                return await asyncio.to_thread(
+                    self._prepare_lookup_album_photo, path, kind
+                )
+
             card_item = await card_render_task
             if card_item:
                 kind, path, caption, markup = card_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
+                prep = await _prep_for_send(path, kind)
                 ok = await send_photo(prep or path, caption, None, kind=kind)
                 if ok:
                     sent_any = True
@@ -8646,7 +8673,7 @@ class WayneTelegramBot:
             struct_task = asyncio.create_task(_struct_item())
             if glance_item:
                 kind, path, caption, markup = glance_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
+                prep = await _prep_for_send(path, kind)
                 ok = await send_photo(prep or path, caption, markup or hub, kind=kind)
                 if ok:
                     sent_any = True
@@ -8667,7 +8694,7 @@ class WayneTelegramBot:
             vol_task = asyncio.create_task(_vol_item())
             if struct_item:
                 kind, path, caption, _mk = struct_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
+                prep = await _prep_for_send(path, kind)
                 ok = await send_photo(prep or path, caption, hub, kind=kind)
                 if ok:
                     sent_any = True
@@ -8687,7 +8714,7 @@ class WayneTelegramBot:
             )
             if vol_item:
                 kind, path, caption, _mk = vol_item
-                prep = await asyncio.to_thread(self._prepare_lookup_album_photo, path, kind)
+                prep = await _prep_for_send(path, kind)
                 ok = await send_photo(prep or path, caption, hub, kind=kind)
                 if ok:
                     sent_any = True

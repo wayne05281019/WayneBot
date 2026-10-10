@@ -25,6 +25,24 @@ def test_prepare_skips_reencode_when_png_named_jpeg():
         assert not os.path.isfile(path + ".hq.jpg")
 
 
+def test_prepare_magic_jpeg_skips_pil_open(monkeypatch):
+    """魔術字已是 JPEG 且容量合格：不准再 Image.open（第二次送圖熱點）。"""
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "warm.png")
+        Image.new("RGB", (900, 1100), (10, 20, 30)).save(
+            path, "JPEG", quality=95, subsampling=0
+        )
+
+        def _boom(*_a, **_k):
+            raise AssertionError("prepare 不該再開 PIL")
+
+        monkeypatch.setattr(Image, "open", _boom)
+        out = WayneTelegramBot._prepare_native_lookup_jpeg(path)
+        assert out == path
+
+
 def test_prepare_still_converts_true_png():
     from PIL import Image
 
