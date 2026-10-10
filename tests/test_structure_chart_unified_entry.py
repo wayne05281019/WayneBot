@@ -11,7 +11,11 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
     from three_in_one_chart import render_lookup_structure_result
 
     rsrc = inspect.getsource(render_biaoke_structure_png)
-    assert "hdr-band-v73" in rsrc
+    # 頭欄 memo：v74＝開高低量欄對齊；舊鍵仍可當相容備援
+    assert (
+        "hdr-band-v74-ohlc-align" in rsrc
+        or "hdr-band-v73" in rsrc
+    )
     assert "status_row" in rsrc
     assert "status_h_gap" in rsrc
     assert "neighbor" in inspect.getsource(
