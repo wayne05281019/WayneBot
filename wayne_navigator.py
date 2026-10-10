@@ -5595,9 +5595,9 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
     row1 = [
         (_nav_legend_key("h20", "v", ms=ms_z + 2), "20高"),
         (_nav_legend_key("h20_leave", "v", ms=ms_z + 2), "20高脫離"),
-        (_nav_legend_key("l20", "^", ms=ms_z + 2), "20低"),
+        (_nav_legend_key("l20", "^", ms=ms_z + 2), "20低（紅箭頭代理·未過關）"),
         (_nav_legend_key("l20_leave", "^", ms=ms_z + 2), "20低脫離"),
-        (_nav_legend_key("l60", "^", ms=ms_z + 2), "60低"),
+        (_nav_legend_key("l60", "^", ms=ms_z + 2), "60低（紅箭頭代理·未過關）"),
         (_nav_legend_key("h20_near", "v", ms=ms_z, hollow=True), "接近高（空心）"),
         (_nav_legend_key("l20_near", "^", ms=ms_z, hollow=True), "接近低（空心）"),
         (_nav_legend_key("ghost", "^", ms=ms_z, alpha=0.45), "殘影（仍貼）"),
@@ -6899,7 +6899,8 @@ def draw_from_ohlc(
     fig.text(
         0.50, 0.045,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
-        "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍",
+        "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍；"
+        "20低／60低＝紅箭頭代理·未過關不當買訊（進場只認藍▲紅框 leave_zero）",
         ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
     halt_n = int(work["is_halt"].fillna(False).astype(bool).sum()) if "is_halt" in work.columns else 0

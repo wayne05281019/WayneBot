@@ -5,9 +5,14 @@ CaryBot 紅箭頭是人工標「可買低點」，沒有公開可複製公式。
 這裡量化的是高低卡編碼已對齊的 OHLC 代理：導航圖向上低點箭頭首觸
 （``l60``／``l20``），與話筒圖上低點箭頭同一套條件。
 
-規則（AGENTS 第 4／3 條）：
+度量（可重複）：
+- 官方柱後續報酬（h1／h5／h10）
+- 假突破（後 N 日內任一根收盤跌破進場收）
+- 對照 leave_zero（黃金買點現況）與無箭頭（當日無低點首觸、亦無 leave_zero）
+
+規則（AGENTS 第 4／3／13 條）：
 - 獨立交易日 n≥20 **且** 贏黃金買點（leave_zero）基線，才 ``promote_ready``。
-- 過關前不准改海選桶、不准當進場、不准改話筒買訊文案。
+- 過關前不准改海選桶、不准當進場、不准改話筒買訊文案／leave_zero 公式。
 - 結果落 ``wayne_evolve.db``，不准進對話講過程／％。
 """
 from __future__ import annotations
@@ -22,17 +27,26 @@ import pandas as pd
 from dongzhu_tape import OPTIMIZE_MIN_N, tape_store_path
 
 KIND = "red_arrow_proxy"
-TAG_LOW = "nav_low_first"  # l60／l20 首觸
-TAG_BASE = "leave_zero"  # 對照基線
+TAG_LOW = "nav_low_first"  # l60／l20 首觸（紅箭頭代理）
+TAG_BASE = "leave_zero"  # 對照：現況買訊基線
+TAG_NONE = "no_arrow"  # 對照：當日無低點首觸且無 leave_zero
 SCORE_HORIZONS: Tuple[int, ...] = (1, 5, 10)
 # 獨立交易日＋夠廣母體才過關；事件筆數 alone 不准 promote
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 MIN_DISTINCT_SIDS = 100
+# §13 再生：過關後下一版候選（仍不當買訊，只開收集）
+NEXT_CANDIDATE = "nav_low_first_ma20_filter"
 
 
 def _ymd(raw: Any) -> str:
     t = str(raw or "").replace("-", "")[:8]
     return t if len(t) == 8 and t.isdigit() else ""
+
+
+def _ensure_col(conn: sqlite3.Connection, table: str, col: str, decl: str) -> None:
+    cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+    if col not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def ensure_red_arrow_tables(db_path: str) -> str:
@@ -66,6 +80,7 @@ def ensure_red_arrow_tables(db_path: str) -> str:
                 entry REAL,
                 exit REAL,
                 ret_pct REAL,
+                false_break INTEGER,
                 verdict TEXT NOT NULL,
                 PRIMARY KEY (kind, as_of, sid, tag, horizon)
             )
@@ -81,12 +96,15 @@ def ensure_red_arrow_tables(db_path: str) -> str:
                 hit INTEGER NOT NULL,
                 miss INTEGER NOT NULL,
                 pending INTEGER NOT NULL,
+                false_break INTEGER NOT NULL DEFAULT 0,
                 avg_ret REAL,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (kind, tag, horizon)
             )
             """
         )
+        _ensure_col(conn, "red_arrow_quant_score", "false_break", "INTEGER")
+        _ensure_col(conn, "red_arrow_quant_rates", "false_break", "INTEGER NOT NULL DEFAULT 0")
         conn.commit()
     finally:
         conn.close()
@@ -135,10 +153,27 @@ def _fwd_ret(closes: Sequence[float], i: int, horizon: int) -> Optional[float]:
     return round((b / a - 1.0) * 100.0, 3)
 
 
+def _false_break(
+    closes: Sequence[float], i: int, horizon: int, *, entry: float
+) -> Optional[int]:
+    """後 N 日內任一根收盤跌破進場收＝假突破（1）；否則 0；柱不夠＝None。"""
+    j = i + int(horizon)
+    if j >= len(closes) or entry <= 0:
+        return None
+    for k in range(i + 1, j + 1):
+        try:
+            c = float(closes[k])
+        except (TypeError, ValueError, IndexError):
+            return None
+        if c > 0 and c < entry:
+            return 1
+    return 0
+
+
 def score_stock_day(
     df: pd.DataFrame, *, as_of: str
 ) -> List[Dict[str, Any]]:
-    """單檔截至 as_of：若當日觸發低點代理或 leave_zero，產出各 horizon 分數列。"""
+    """單檔截至 as_of：低點代理／leave_zero／無箭頭，產出各 horizon 分數列。"""
     from decision_card_signals import leave_zero_from_quote_df
 
     as_of = _ymd(as_of)
@@ -156,6 +191,7 @@ def score_stock_day(
     lows = nav_low_arrow_first_mask(hist)
     lz_hit = bool(leave_zero_from_quote_df(hist))
     i = len(hist) - 1
+    low_hit = bool(lows.iloc[i])
     # 對齊全序列 index，才能取 as_of 之後的收盤
     full_dates = g["date"].tolist()
     try:
@@ -165,13 +201,19 @@ def score_stock_day(
     closes = pd.to_numeric(g["close"], errors="coerce").tolist()
     sid = str(hist["stock_id"].iloc[-1] or "") if "stock_id" in hist.columns else ""
     name = str(hist["stock_name"].iloc[-1] or "") if "stock_name" in hist.columns else ""
+    tags: List[Tuple[str, bool]] = [
+        (TAG_LOW, low_hit),
+        (TAG_BASE, lz_hit),
+        (TAG_NONE, (not low_hit) and (not lz_hit)),
+    ]
     rows: List[Dict[str, Any]] = []
-    for tag, hit in ((TAG_LOW, bool(lows.iloc[i])), (TAG_BASE, lz_hit)):
+    for tag, hit in tags:
         if not hit:
             continue
         entry = float(closes[fi] or 0)
         for h in SCORE_HORIZONS:
             ret = _fwd_ret(closes, fi, h)
+            fb = _false_break(closes, fi, h, entry=entry)
             if ret is None:
                 verdict = "pending"
             elif ret > 0:
@@ -194,6 +236,7 @@ def score_stock_day(
                     "entry": entry,
                     "exit": exit_px,
                     "ret_pct": ret,
+                    "false_break": fb,
                     "verdict": verdict,
                     "check_as_of": check_as,
                 }
@@ -228,8 +271,8 @@ def persist_scores(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
                 """
                 INSERT OR REPLACE INTO red_arrow_quant_score(
                     kind, as_of, sid, tag, horizon, check_as_of,
-                    entry, exit, ret_pct, verdict
-                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                    entry, exit, ret_pct, false_break, verdict
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     KIND,
@@ -241,6 +284,7 @@ def persist_scores(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
                     r.get("entry"),
                     r.get("exit"),
                     r.get("ret_pct"),
+                    r.get("false_break"),
                     r["verdict"],
                 ),
             )
@@ -252,7 +296,7 @@ def persist_scores(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
 
 
 def recompute_rates(db_path: str) -> Dict[str, Any]:
-    """彙總 hit／miss；寫 rates。不算 pending 進 n。"""
+    """彙總 hit／miss／假突破；寫 rates。不算 pending 進 n。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -262,7 +306,7 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     try:
         conn.execute("DELETE FROM red_arrow_quant_rates WHERE kind=?", (KIND,))
-        for tag in (TAG_LOW, TAG_BASE):
+        for tag in (TAG_LOW, TAG_BASE, TAG_NONE):
             for h in SCORE_HORIZONS:
                 row = conn.execute(
                     """
@@ -270,7 +314,9 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
                       SUM(CASE WHEN verdict='hit' THEN 1 ELSE 0 END),
                       SUM(CASE WHEN verdict='miss' THEN 1 ELSE 0 END),
                       SUM(CASE WHEN verdict='pending' THEN 1 ELSE 0 END),
-                      AVG(CASE WHEN verdict IN ('hit','miss') THEN ret_pct END)
+                      AVG(CASE WHEN verdict IN ('hit','miss') THEN ret_pct END),
+                      SUM(CASE WHEN false_break=1 AND verdict IN ('hit','miss')
+                               THEN 1 ELSE 0 END)
                     FROM red_arrow_quant_score
                     WHERE kind=? AND tag=? AND horizon=?
                     """,
@@ -280,22 +326,26 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
                 miss = int(row[1] or 0)
                 pending = int(row[2] or 0)
                 avg_ret = float(row[3]) if row[3] is not None else None
+                fb = int(row[4] or 0)
                 n = hit + miss
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO red_arrow_quant_rates(
-                        kind, tag, horizon, n, hit, miss, pending, avg_ret, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?)
+                        kind, tag, horizon, n, hit, miss, pending,
+                        false_break, avg_ret, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?)
                     """,
-                    (KIND, tag, h, n, hit, miss, pending, avg_ret, now),
+                    (KIND, tag, h, n, hit, miss, pending, fb, avg_ret, now),
                 )
                 out[f"{tag}:h{h}"] = {
                     "n": n,
                     "hit": hit,
                     "miss": miss,
                     "pending": pending,
+                    "false_break": fb,
                     "avg_ret": avg_ret,
                     "hit_rate": (hit / n) if n else None,
+                    "false_break_rate": (fb / n) if n else None,
                 }
         conn.commit()
     finally:
@@ -303,29 +353,75 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
     return out
 
 
+def _pack_rate_row(row) -> Dict[str, Any]:
+    if not row:
+        return {
+            "n": 0,
+            "hit": 0,
+            "miss": 0,
+            "avg_ret": None,
+            "hit_rate": None,
+            "false_break": 0,
+            "false_break_rate": None,
+        }
+    n, hit, miss, avg, fb = (
+        int(row[0] or 0),
+        int(row[1] or 0),
+        int(row[2] or 0),
+        row[3],
+        int(row[4] or 0),
+    )
+    return {
+        "n": n,
+        "hit": hit,
+        "miss": miss,
+        "avg_ret": float(avg) if avg is not None else None,
+        "hit_rate": (hit / n) if n else None,
+        "false_break": fb,
+        "false_break_rate": (fb / n) if n else None,
+    }
+
+
+def _beats(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    """a 贏 b：先比 hit_rate，平手比更高 avg_ret、更低假突破率。"""
+    if a.get("hit_rate") is None or b.get("hit_rate") is None:
+        return False
+    if a["n"] < OPTIMIZE_MIN_N or b["n"] < OPTIMIZE_MIN_N:
+        return False
+    if a["hit_rate"] > b["hit_rate"]:
+        return True
+    if a["hit_rate"] < b["hit_rate"]:
+        return False
+    ar, br = a.get("avg_ret"), b.get("avg_ret")
+    if ar is not None and br is not None and ar > br:
+        return True
+    if ar is not None and br is not None and ar < br:
+        return False
+    fa, fb = a.get("false_break_rate"), b.get("false_break_rate")
+    if fa is not None and fb is not None and fa < fb:
+        return True
+    return False
+
+
 def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
     """明確優化狀態：獨立交易日夠不夠、母體夠不夠、有沒有贏 leave_zero。
 
     對話只准報這層；過關＝才「考慮」改編碼，仍不准自動改買訊。
+    無箭頭基線只作對照，不單獨放行。
     """
     store = ensure_red_arrow_tables(db_path)
     h = int(horizon)
     conn = sqlite3.connect(store, timeout=8.0)
     try:
-        low = conn.execute(
-            """
-            SELECT n, hit, miss, avg_ret FROM red_arrow_quant_rates
-            WHERE kind=? AND tag=? AND horizon=?
-            """,
-            (KIND, TAG_LOW, h),
-        ).fetchone()
-        base = conn.execute(
-            """
-            SELECT n, hit, miss, avg_ret FROM red_arrow_quant_rates
-            WHERE kind=? AND tag=? AND horizon=?
-            """,
-            (KIND, TAG_BASE, h),
-        ).fetchone()
+        def _rate(tag: str):
+            return conn.execute(
+                """
+                SELECT n, hit, miss, avg_ret, COALESCE(false_break, 0)
+                FROM red_arrow_quant_rates
+                WHERE kind=? AND tag=? AND horizon=?
+                """,
+                (KIND, tag, h),
+            ).fetchone()
 
         def _days(tag: str) -> int:
             row = conn.execute(
@@ -349,60 +445,39 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
             ).fetchone()
             return int(row[0] or 0)
 
-        low_days, base_days = _days(TAG_LOW), _days(TAG_BASE)
-        low_sids, base_sids = _sids(TAG_LOW), _sids(TAG_BASE)
+        low_s = _pack_rate_row(_rate(TAG_LOW))
+        base_s = _pack_rate_row(_rate(TAG_BASE))
+        none_s = _pack_rate_row(_rate(TAG_NONE))
+        for tag, pack in (
+            (TAG_LOW, low_s),
+            (TAG_BASE, base_s),
+            (TAG_NONE, none_s),
+        ):
+            pack["unique_days"] = _days(tag)
+            pack["distinct_sids"] = _sids(tag)
     finally:
         conn.close()
 
-    def _pack(row):
-        if not row:
-            return {"n": 0, "hit": 0, "miss": 0, "avg_ret": None, "hit_rate": None}
-        n, hit, miss, avg = int(row[0] or 0), int(row[1] or 0), int(row[2] or 0), row[3]
-        return {
-            "n": n,
-            "hit": hit,
-            "miss": miss,
-            "avg_ret": float(avg) if avg is not None else None,
-            "hit_rate": (hit / n) if n else None,
-        }
-
-    low_s = _pack(low)
-    base_s = _pack(base)
-    low_s["unique_days"] = low_days
-    base_s["unique_days"] = base_days
-    low_s["distinct_sids"] = low_sids
-    base_s["distinct_sids"] = base_sids
     n_ok = (
-        low_days >= MIN_UNIQUE_DAYS
-        and base_days >= MIN_UNIQUE_DAYS
-        and low_sids >= MIN_DISTINCT_SIDS
-        and base_sids >= MIN_DISTINCT_SIDS
+        low_s["unique_days"] >= MIN_UNIQUE_DAYS
+        and base_s["unique_days"] >= MIN_UNIQUE_DAYS
+        and low_s["distinct_sids"] >= MIN_DISTINCT_SIDS
+        and base_s["distinct_sids"] >= MIN_DISTINCT_SIDS
     )
-    beat = False
-    if (
-        low_s["hit_rate"] is not None
-        and base_s["hit_rate"] is not None
-        and low_s["n"] >= OPTIMIZE_MIN_N
-        and base_s["n"] >= OPTIMIZE_MIN_N
-    ):
-        if low_s["hit_rate"] > base_s["hit_rate"]:
-            beat = True
-        elif (
-            low_s["hit_rate"] == base_s["hit_rate"]
-            and low_s["avg_ret"] is not None
-            and base_s["avg_ret"] is not None
-            and low_s["avg_ret"] > base_s["avg_ret"]
-        ):
-            beat = True
-    ready = bool(n_ok and beat)
+    beat_lz = _beats(low_s, base_s)
+    beat_none = _beats(low_s, none_s)
+    ready = bool(n_ok and beat_lz)
     return {
         "kind": KIND,
         "horizon": h,
         "low": low_s,
         "leave_zero": base_s,
+        "no_arrow": none_s,
         "n_ok": n_ok,
-        "beats_leave_zero": beat,
+        "beats_leave_zero": beat_lz,
+        "beats_no_arrow": beat_none,
         "promote_ready": ready,
+        "next_candidate": NEXT_CANDIDATE,
         "min_n": OPTIMIZE_MIN_N,
         "min_unique_days": MIN_UNIQUE_DAYS,
         "min_distinct_sids": MIN_DISTINCT_SIDS,
@@ -426,7 +501,7 @@ def night_sample_tick(
     limit: int = 40,
 ) -> Dict[str, Any]:
     """盤後默默取樣：掃有限檔、寫分數、重算 rates。失敗不擋 night_review。"""
-    stats = {"wrote": 0, "promote": False, "n_low": 0, "n_lz": 0}
+    stats = {"wrote": 0, "promote": False, "n_low": 0, "n_lz": 0, "n_none": 0}
     if not db_path or not os.path.isfile(db_path):
         return stats
     try:
@@ -483,6 +558,7 @@ def night_sample_tick(
         stats["promote"] = bool(st.get("promote_ready"))
         stats["n_low"] = int((st.get("low") or {}).get("n") or 0)
         stats["n_lz"] = int((st.get("leave_zero") or {}).get("n") or 0)
+        stats["n_none"] = int((st.get("no_arrow") or {}).get("n") or 0)
     except Exception:
         return stats
     return stats
