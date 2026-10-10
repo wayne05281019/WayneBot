@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""紅箭頭代理 vs 黃金買點：正式回測取樣（過關前不當買訊）。
+"""紅箭頭代理 vs leave_zero／無箭頭：正式回測取樣（過關前不當買訊）。
 
 用法（本機／Render 碟）：
   python scripts/red_arrow_backtest.py --db data/wayne_market.db --days 40 --limit 80
 
-只寫 wayne_evolve.db；印 gate_status 一句（n／是否贏基線／能不能 promote）。
+只寫 wayne_evolve.db；印 gate_status 一句
+（n／假突破／是否贏 leave_zero／無箭頭／能不能 promote）。
 不准改海選、不准改話筒買訊。
 """
 from __future__ import annotations
@@ -112,10 +113,24 @@ def main() -> int:
                 written += persist_scores(db, rows)
     rates = recompute_rates(db)
     st = gate_status(db, horizon=5)
+    low, lz, none = st["low"], st["leave_zero"], st["no_arrow"]
+
+    def _r(p: dict) -> str:
+        hr = p.get("hit_rate")
+        fb = p.get("false_break_rate")
+        ar = p.get("avg_ret")
+        return (
+            f"n={p.get('n')} days={p.get('unique_days')} "
+            f"hit={hr if hr is None else round(hr, 3)} "
+            f"fb={fb if fb is None else round(fb, 3)} "
+            f"avg={ar if ar is None else round(ar, 3)}"
+        )
+
     print(
         f"wrote={written} rates_keys={len(rates)} "
-        f"n_low={st['low']['n']} n_lz={st['leave_zero']['n']} "
-        f"n_ok={st['n_ok']} beat={st['beats_leave_zero']} "
+        f"low[{_r(low)}] lz[{_r(lz)}] none[{_r(none)}] "
+        f"n_ok={st['n_ok']} beat_lz={st['beats_leave_zero']} "
+        f"beat_none={st['beats_no_arrow']} "
         f"promote={st['promote_ready']} — {st['note']}"
     )
     return 0

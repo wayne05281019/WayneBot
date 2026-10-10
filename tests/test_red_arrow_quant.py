@@ -11,6 +11,7 @@ from red_arrow_quant import (
     KIND,
     TAG_BASE,
     TAG_LOW,
+    TAG_NONE,
     gate_status,
     nav_low_arrow_first_mask,
     persist_scores,
@@ -47,6 +48,26 @@ def _ohlc_flat_then_new_low(n: int = 80, *, drop_last: bool = True) -> pd.DataFr
     return pd.DataFrame(rows)
 
 
+def _with_fwd(df: pd.DataFrame, *, days: int = 12, close: float = 96.5) -> pd.DataFrame:
+    extra = []
+    last = datetime(2026, 9, 17)
+    for i in range(1, days + 1):
+        d = (last + timedelta(days=i)).strftime("%Y%m%d")
+        extra.append(
+            {
+                "date": d,
+                "stock_id": "6257",
+                "stock_name": "矽格",
+                "open": close,
+                "high": close + 1,
+                "low": close - 0.5,
+                "close": close,
+                "volume": 3000,
+            }
+        )
+    return pd.concat([df, pd.DataFrame(extra)], ignore_index=True)
+
+
 def test_nav_low_arrow_first_on_new_low():
     df = _ohlc_flat_then_new_low()
     m = nav_low_arrow_first_mask(df)
@@ -54,37 +75,51 @@ def test_nav_low_arrow_first_on_new_low():
     assert bool(m.iloc[-2]) is False
 
 
-def test_score_stock_day_records_low_tag(tmp_path):
-    df = _ohlc_flat_then_new_low()
-    # 補足夠未來柱讓 h1 可結
-    extra = []
-    last = datetime(2026, 9, 17)
-    for i in range(1, 12):
-        d = (last + timedelta(days=i)).strftime("%Y%m%d")
-        extra.append(
-            {
-                "date": d,
-                "stock_id": "6257",
-                "stock_name": "矽格",
-                "open": 96.0,
-                "high": 97.0,
-                "low": 95.5,
-                "close": 96.5,
-                "volume": 3000,
-            }
-        )
-    full = pd.concat([df, pd.DataFrame(extra)], ignore_index=True)
+def test_score_stock_day_records_low_tag_and_false_break(tmp_path):
+    full = _with_fwd(_ohlc_flat_then_new_low(), close=96.5)
     rows = score_stock_day(full, as_of="20260917")
     tags = {r["tag"] for r in rows}
     assert TAG_LOW in tags
+    assert TAG_NONE not in tags  # 當日有低點首觸，不算無箭頭
     assert all(r["kind"] == KIND for r in rows)
+    assert all("false_break" in r for r in rows)
+    # 後續收 96.5 > 進場 95 → 非假突破
+    h5 = [r for r in rows if r["tag"] == TAG_LOW and r["horizon"] == 5][0]
+    assert h5["false_break"] == 0
+    assert h5["verdict"] == "hit"
     db = str(tmp_path / "m.db")
-    # evolve 旁路：tape_store_path 會寫同目錄 wayne_evolve.db
     open(db, "a").close()
     n = persist_scores(db, rows)
     assert n > 0
     rates = recompute_rates(db)
     assert any(k.startswith(TAG_LOW) for k in rates)
+    assert rates[f"{TAG_LOW}:h5"]["false_break"] == 0
+
+
+def test_score_false_break_when_close_under_entry(tmp_path):
+    """後窗收盤跌破進場收＝假突破。"""
+    full = _with_fwd(_ohlc_flat_then_new_low(), close=90.0)
+    rows = score_stock_day(full, as_of="20260917")
+    h5 = [r for r in rows if r["tag"] == TAG_LOW and r["horizon"] == 5][0]
+    assert h5["false_break"] == 1
+    assert h5["verdict"] == "miss"
+
+
+def test_no_arrow_baseline_when_neither_signal(monkeypatch):
+    """抬高走勢無新低；leave_zero 關掉 → 記無箭頭基線。"""
+    monkeypatch.setattr(
+        "decision_card_signals.leave_zero_from_quote_df",
+        lambda df: False,
+    )
+    df = _ohlc_flat_then_new_low(drop_last=False)
+    full = _with_fwd(df, close=112.0)
+    as_of = str(df["date"].iloc[-1])
+    assert bool(nav_low_arrow_first_mask(df).iloc[-1]) is False
+    rows_scored = score_stock_day(full, as_of=as_of)
+    tags = {r["tag"] for r in rows_scored}
+    assert TAG_NONE in tags
+    assert TAG_LOW not in tags
+    assert TAG_BASE not in tags
 
 
 def test_promote_ready_false_until_gate(tmp_path):
@@ -93,10 +128,13 @@ def test_promote_ready_false_until_gate(tmp_path):
     st = gate_status(db, horizon=5)
     assert st["promote_ready"] is False
     assert st["n_ok"] is False
+    assert st["beats_leave_zero"] is False
+    assert "no_arrow" in st
     assert promote_ready(db) is False
     assert "不是買訊" in st["note"]
     assert st["min_distinct_sids"] >= 100
     assert st["min_unique_days"] >= 20
+    assert st.get("next_candidate")
 
 
 def test_ai_trader_still_says_red_arrow_not_entry(tmp_path):
@@ -110,3 +148,14 @@ def test_ai_trader_still_says_red_arrow_not_entry(tmp_path):
     assert enc["not_entry"] == "red_arrow"
     html = format_evolve_report_html(path, "ai_1")
     assert "紅箭頭不是買訊" in html
+
+
+def test_nav_legend_marks_red_arrow_proxy_not_passed():
+    """話筒圖例：低點箭頭標未過關，不當買訊。"""
+    import inspect
+
+    from wayne_navigator import _draw_nav_legend
+
+    src = inspect.getsource(_draw_nav_legend)
+    assert "紅箭頭代理·未過關" in src
+    assert "買點↑首清楚／續淡" in src or "買點↑藍▲紅框" in src
