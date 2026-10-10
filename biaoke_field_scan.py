@@ -2964,13 +2964,36 @@ def _group_layers(db_path: str, group: Optional[Dict[str, Any]]) -> List[str]:
     return parts or declared
 
 
-def _layer_lines(layers: Sequence[str]) -> List[str]:
-    """三層標籤固定：主產業／次產業／產業鏈（＝CMoney 細項那層）。"""
+def _layer_path_line(layers: Sequence[str]) -> str:
+    """層級路徑一行：主→次→鏈（話筒不准寫「細項」）。"""
+    short = ("主", "次", "鏈")
+    n = min(3, len([str(x) for x in layers if str(x)]))
+    if n < 2:
+        return ""
+    return "層級 " + "→".join(short[:n])
+
+
+def _layer_active_depth(layers: Sequence[str]) -> Optional[int]:
+    """輪動進的那一層＝鏈上最深（有幾層就停在最深）。"""
+    parts = [str(x) for x in layers if str(x)][:3]
+    if not parts:
+        return None
+    return len(parts) - 1
+
+
+def _layer_lines(
+    layers: Sequence[str], *, active_depth: Optional[int] = None
+) -> List[str]:
+    """三層標籤固定：主產業／次產業／產業鏈（＝CMoney 細項那層）。
+    active_depth 有值時在該層加「·輪動」，一眼看出進哪一層。"""
     labs = ("主產業", "次產業", "產業鏈")
     bits = []
     for i, part in enumerate(list(layers)[:3]):
         lab = labs[i] if i < len(labs) else "層"
-        bits.append(f"{lab} {part}")
+        line = f"{lab} {part}"
+        if active_depth is not None and i == int(active_depth):
+            line = f"{line} ·輪動"
+        bits.append(line)
     return bits
 
 
@@ -2987,7 +3010,7 @@ def _rotation_layer_lines(
     ign: Optional[Dict[str, Any]] = None,
     hot: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
-    """寫清輪動進哪一層。佔比數字留給 _share_path_lines；不准發明一族。"""
+    """寫清輪動進哪一層。先層級路徑，再點名進哪層；佔比數字留給 _share_path_lines。"""
     labs = ("主產業", "次產業", "產業鏈")
     parts = [str(x) for x in layers if str(x)][:3]
     if not parts:
@@ -2995,7 +3018,11 @@ def _rotation_layer_lines(
     depth = len(parts) - 1
     lab = labs[depth] if depth < len(labs) else "層"
     fine = parts[-1]
-    lines = [f"輪動進{lab} {fine}"]
+    lines: List[str] = []
+    path = _layer_path_line(parts)
+    if path:
+        lines.append(path)
+    lines.append(f"輪動進{lab} {fine}")
     ign = ign or {}
     up = float(ign.get("share_up") or 0)
     hot = hot or {}
@@ -3020,7 +3047,7 @@ def _leader_ref_lines(data: Dict[str, Any]) -> List[str]:
         return []
     sid = str(lead.get("sid") or "")
     name = str(lead.get("name") or sid)
-    lines = [f"{sid} {name}", "龍頭・只對照"]
+    lines = [f"{sid} {name}", "龍頭・只對照", "不是捕捉名單"]
     if lead.get("vs20") is not None:
         try:
             vs = float(lead["vs20"])
@@ -3038,6 +3065,22 @@ def _leader_ref_lines(data: Dict[str, Any]) -> List[str]:
     }
     if sid in buy_sids:
         lines.append("這檔剛好黃金買點")
+    return lines
+
+
+def _dongzhu_role_bridge_lines(
+    data: Dict[str, Any], *, has_leader: bool
+) -> List[str]:
+    """龍頭 vs 次級永遠寫清：對照≠捕捉；parity 有買點才補句。"""
+    lines: List[str] = []
+    if has_leader:
+        lines.append("龍頭・上方對照・非買訊")
+    else:
+        lines.append("龍頭・這鏈暫無對照")
+    lines.append("次級・下方落後捕捉")
+    parity = str(data.get("parity") or "").strip()
+    if parity:
+        lines.extend(_break_sentences(parity))
     return lines
 
 
@@ -4075,7 +4118,9 @@ def _stock_line(
     rows.extend(_esc(x) for x in _stock_action_lines(item, tag, held=held))
     if str(tag or "").startswith("買點"):
         rows.append(f"<b>{_esc(PRE_BUY_WIN_LABEL)}</b>")
-    if role and role != "龍頭":
+    if role == "次級":
+        rows.append(_esc("次級・落後捕捉"))
+    elif role and role != "龍頭":
         rows.append(_esc(role))
     if vs20 is not None:
         rows.append(f"距20高 {html_face(_pct(float(vs20)))}")
@@ -4412,15 +4457,18 @@ def dongzhu_hold_page(
     parts = list(data.get("layers") or [])
     if parts:
         rot = _rotation_layer_lines(parts, data.get("flow") or {})
-        layer_rows = list(_layer_lines(parts))
+        active = _layer_active_depth(parts)
+        layer_rows = list(_layer_lines(parts, active_depth=active))
         if rot:
             blocks.append(_blk(*(_esc(x) for x in rot), *(_esc(x) for x in layer_rows)))
         else:
             blocks.append(_blk(*(_esc(x) for x in layer_rows)))
     px_rows: List[str] = []
     role = str(data.get("role") or "")
-    if role:
-        px_rows.append(_esc(role if role != "龍頭" else "龍頭・只對照"))
+    if role == "龍頭":
+        px_rows.append(_esc("這檔＝龍頭・只對照"))
+    elif role:
+        px_rows.append(_esc(f"這檔＝{role}・落後捕捉" if role == "次級" else f"這檔＝{role}"))
     if data.get("vs20") is not None:
         px_rows.append(_esc(f"距20高 {_pct(float(data['vs20']))}"))
     if data.get("vs60") is not None:
@@ -4505,7 +4553,8 @@ def dongzhu_page(
     hot = data.get("flow_named_hot") or {}
     if parts:
         now_rows.extend(_esc(x) for x in _rotation_layer_lines(parts, ign, hot))
-        now_rows.extend(_esc(x) for x in _layer_lines(parts))
+        active = _layer_active_depth(parts)
+        now_rows.extend(_esc(x) for x in _layer_lines(parts, active_depth=active))
     lead_n = int(data.get("in_lead_n") or 0)
     pos_n = int(data.get("share_pos_n") or 0)
     win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
@@ -4541,12 +4590,12 @@ def dongzhu_page(
     lead_ref = _leader_ref_lines(data)
     if lead_ref:
         blocks.append(_blk("<b>龍頭對照</b>", *(_esc(x) for x in lead_ref)))
-    parity = str(data.get("parity") or "").strip()
-    if parity:
-        blocks.append(_blk("<b>龍頭／次級</b>", *(_esc(x) for x in _break_sentences(parity))))
+    role_bridge = _dongzhu_role_bridge_lines(data, has_leader=bool(lead_ref))
+    if role_bridge:
+        blocks.append(_blk("<b>龍頭／次級</b>", *(_esc(x) for x in role_bridge)))
     sib_lines = _sibling_phone_lines(str(data.get("sibling_txt") or ""))
     if sib_lines:
-        blocks.append(_blk("<b>同主產業佔比</b>", *(_esc(x) for x in sib_lines)))
+        blocks.append(_blk("<b>同主產業其他鏈</b>", *(_esc(x) for x in sib_lines)))
     if ign:
         blocks.append(
             _blk("<b>資金進出</b>", *(_esc(x) for x in _flow_why_lines(ign)))
@@ -4563,10 +4612,7 @@ def dongzhu_page(
         rec_rows.append(_esc("這型最落後次級兩到三檔"))
         rec_rows.append(_esc("不是單檔保證"))
         rec_rows.append(_esc("點圖下鈕選檔"))
-        if lead_ref:
-            rec_rows.append(_esc("龍頭見上方對照・次級見下列"))
-        else:
-            rec_rows.append(_esc("下列＝次級落後"))
+        rec_rows.append(_esc("下列＝次級落後捕捉"))
         rec_bits: List[str] = []
         for i, item in enumerate(recs, start=1):
             # 買點＝leave_zero 桶交集；其餘只標先機，不准發明買訊。

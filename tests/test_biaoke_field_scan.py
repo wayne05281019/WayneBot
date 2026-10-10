@@ -699,7 +699,8 @@ def test_dongzhu_rotation_layer_and_leader_ref_clarity():
         {"share_up": 1.6, "share_chg": 0.8},
         {"field": "金控", "share_up": -2.0},
     )
-    assert rot[0] == "輪動進產業鏈 封測"
+    assert rot[0] == "層級 主→次→鏈"
+    assert "輪動進產業鏈 封測" in rot
     assert any("佔比最高退→這鏈升" in x for x in rot)
     assert "金控" not in "\n".join(rot)
     assert "細項" not in "\n".join(rot)
@@ -713,6 +714,7 @@ def test_dongzhu_rotation_layer_and_leader_ref_clarity():
     )
     assert "6515 穎崴" in lead
     assert "龍頭・只對照" in lead
+    assert "不是捕捉名單" in lead
     assert any("距20高" in x for x in lead)
     assert "還沒過前高" in lead
 
@@ -778,6 +780,71 @@ def test_dongzhu_page_evolve_share_buy_bridge(tmp_path, monkeypatch):
     if "可買" in hold:
         assert "買點・可切入" in hold
         assert "切入只認黃金買點" in hold
+
+
+def test_dongzhu_layer_leader_secondary_clarity(tmp_path, monkeypatch):
+    """再進化：層級主→次→鏈＋·輪動；龍頭對照 vs 次級捕捉寫清；不改選股。"""
+    from tg_layout import reflow_telegram_html
+
+    from biaoke_field_scan import (
+        _dongzhu_role_bridge_lines,
+        _layer_active_depth,
+        _layer_lines,
+        _layer_path_line,
+        _rotation_layer_lines,
+        dongzhu_hold_page,
+        dongzhu_page,
+    )
+
+    assert _layer_path_line(("電子上游", "IC", "封測")) == "層級 主→次→鏈"
+    assert _layer_path_line(("電子上游",)) == ""
+    assert _layer_active_depth(("電子上游", "IC", "封測")) == 2
+    marked = _layer_lines(("電子上游", "IC", "封測"), active_depth=2)
+    assert marked[-1] == "產業鏈 封測 ·輪動"
+    assert "·輪動" not in marked[0]
+    rot = _rotation_layer_lines(("電子上游", "IC", "封測"))
+    assert rot[0] == "層級 主→次→鏈"
+    assert "輪動進產業鏈 封測" in rot
+    bridge = _dongzhu_role_bridge_lines({"parity": ""}, has_leader=True)
+    assert bridge[0] == "龍頭・上方對照・非買訊"
+    assert bridge[1] == "次級・下方落後捕捉"
+    no_lead = _dongzhu_role_bridge_lines({}, has_leader=False)
+    assert no_lead[0] == "龍頭・這鏈暫無對照"
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE stock_fine_industry ("
+        "stock_id TEXT PRIMARY KEY, chain TEXT NOT NULL, tags_json TEXT NOT NULL, "
+        "cat_id TEXT DEFAULT '', source TEXT NOT NULL, fetched_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO stock_fine_industry VALUES (?,?,?,?,?,?)",
+        ("6257", "電子上游-IC-封測", "[]", "", "test", "2026-09-17"),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db)
+    phone = reflow_telegram_html(html)
+    assert "層級 主→次→鏈" in html
+    assert "·輪動" in html
+    assert "龍頭／次級" in html
+    assert "次級・下方落後捕捉" in html
+    assert "細項" not in html
+    # 不准改買訊／選股公式文案以外的編碼門檻
+    assert "PRE_VS20" not in html
+    for ln in phone.split("\n"):
+        s = ln.strip()
+        plain = __import__("re").sub(r"<[^>]+>", "", s)
+        assert len(plain) <= 18 or s.startswith("┈")
+
+    hold = dongzhu_hold_page(db, "6257")
+    assert "層級 主→次→鏈" in hold
+    assert "·輪動" in hold
+    assert "這檔＝" in hold
+    assert "細項" not in hold
 
 
 def test_dongzhu_page_shows_rotation_leader_and_stamp(tmp_path, monkeypatch):
