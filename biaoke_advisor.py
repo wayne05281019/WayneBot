@@ -63,7 +63,7 @@ def near_spoken_text(db_path: str, *, days: int = NEAR_ADVICE_DAYS) -> str:
         )
         from biaoke_field_scan import week_spoken
 
-        return week_spoken(db_path, start, end) or ""
+        return week_spoken(db_path, start=start, end=end) or ""
     except Exception:
         return ""
 
@@ -790,9 +790,18 @@ def advisor_live_notes(db_path: str = "", ask: str = "") -> str:
 
 
 def advisor_focus_lines(db_path: str = "") -> List[str]:
-    """空白按飆大：插在口語重點後面的活用句。"""
+    """空白按飆大：插在口語重點後面的活用句（含近窗對質上／降調／標配）。"""
     pack = advisor_pack(db_path, ask="")
-    return [str(x) for x in (pack.get("lines") or [])[:5] if str(x).strip()]
+    lines = [str(x) for x in (pack.get("lines") or [])[:5] if str(x).strip()]
+    try:
+        from biaoke_live_match import live_match_pack, stance_focus_lines
+
+        for x in stance_focus_lines(live_match_pack(db_path)):
+            if x and x not in lines:
+                lines.append(x)
+    except Exception:
+        pass
+    return lines[:8]
 
 
 def _evidence_bit(row: Dict[str, Any]) -> str:
@@ -990,8 +999,12 @@ def _yahoo_join(
     limit: int = 6,
     notes: Optional[Dict[str, str]] = None,
     leaders: Optional[set] = None,
+    plain_sids: Optional[set] = None,
 ) -> str:
-    """股名＝奇摩報價藍字；能一行就一行。龍頭只橘標，不准寫上市／上櫃。"""
+    """股名＝奇摩報價藍字；能一行就一行。龍頭只橘標，不准寫上市／上櫃。
+
+    plain_sids：近窗勿追／位階偏高 → 保留股名、拿掉可點追藍字（不准整族砍光）。
+    """
     if not rows:
         return ""
     try:
@@ -1001,12 +1014,17 @@ def _yahoo_join(
     bits: List[str] = []
     note_map = notes or {}
     lead_ids = {str(x) for x in (leaders or set()) if str(x)}
+    plain = {str(x) for x in (plain_sids or set()) if str(x)}
     for r in list(rows)[: max(1, int(limit))]:
         sid = str(r.get("sid") or "")
         name = str(r.get("name") or sid)
         if not sid:
             continue
-        bit = _bare_yahoo_anchor(sid, name, db_path)
+        label = f"{sid} {name}".strip() or sid
+        if sid in plain:
+            bit = html_escape(label)
+        else:
+            bit = _bare_yahoo_anchor(sid, name, db_path)
         if sid in lead_ids and html_face:
             bit = f"{html_face('龍頭')} {bit}"
         elif sid in lead_ids:
@@ -1041,10 +1059,12 @@ def _how_plain_line(label: str, rows: Sequence[Dict[str, Any]], *, n: int = 4) -
 def format_action_advice_html(
     db_path: str = "", ask: str = "", *, limit: int = 4
 ) -> str:
-    """空白／類股：先 ASIC 全鏈，再 InP→FAU→CPO，再該怎麼做。
+    """空白／類股：先 ASIC 全鏈，再 InP→FAU→CPO，再該怎麼做，再對質符合。
 
     鎖死排版：粗體表頭、下一行名單；只橘標龍頭；不寫上市／上櫃；
     股名連 Yahoo 奇摩；近窗 14 日沒再講的族群不出現。
+    近窗勿追／位階偏高：保留族名與「他提過」一句，拿掉可點追藍字（不准整族砍光）。
+    對質符合「去找」的檔：下方可點＋短註；標配不賣可留連結、不是新買訊。
     """
     pack = action_advice_pack(db_path, ask=ask)
     live = pack.get("live") or {}
@@ -1068,6 +1088,38 @@ def format_action_advice_html(
         _OPT_CPO_HEADER = "CPO（共同封裝光學）與先進封測族群"
         _OPT_INP_LEADERS = frozenset({"3081"})
         _OPT_INP_NOTES = {"3105": "另有低軌衛星題材"}
+    # 預設自動化：近窗說法＋官方柱對質（每次按飆大／彙整都重算）
+    match_pack: Dict[str, Any] = {}
+    plain: set = set()
+    try:
+        from biaoke_live_match import (
+            hold_notes,
+            live_match_pack,
+            match_notes,
+            no_chase_note,
+            no_chase_sids,
+        )
+
+        match_pack = live_match_pack(db_path)
+        plain = no_chase_sids(match_pack)
+    except Exception:
+        match_pack = {}
+        plain = set()
+        hold_notes = lambda _p: {}  # noqa: E731
+        match_notes = lambda _p: {}  # noqa: E731
+        no_chase_note = lambda _s, _p=None: ""  # noqa: E731
+    inp_notes = dict(_OPT_INP_NOTES or {})
+    for sid, note in hold_notes(match_pack).items():
+        inp_notes[sid] = note
+    for sid, note in match_notes(match_pack).items():
+        # 對質短註蓋過低軌附註（可並存時優先離峰說明）
+        prev = str(inp_notes.get(sid) or "").strip()
+        inp_notes[sid] = f"{note}；{prev}" if prev and note not in prev else note
+    for sid in plain:
+        note = no_chase_note(sid, match_pack)
+        if note:
+            prev = str(inp_notes.get(sid) or "").strip()
+            inp_notes[sid] = f"{note}；{prev}" if prev and note not in prev else note
     blocks: List[str] = []
     # 1) ASIC 全鏈：粗體表頭 → 橘標龍頭 → 相關鏈
     if live.get("asic"):
@@ -1076,43 +1128,52 @@ def format_action_advice_html(
         related = pack.get("asic_related") or []
         lead_ids = {str(r.get("sid") or "") for r in leaders if r.get("sid")}
         lead_line = _yahoo_join(
-            leaders, db_path, limit=3, leaders=lead_ids
+            leaders, db_path, limit=3, leaders=lead_ids, plain_sids=plain
         )
         if lead_line:
             blocks.append(lead_line)
         rel_line = _yahoo_join(
-            related, db_path, limit=6, notes=dict(_ASIC_CHAIN_NOTE or {})
+            related,
+            db_path,
+            limit=6,
+            notes=dict(_ASIC_CHAIN_NOTE or {}),
+            plain_sids=plain,
         )
         if rel_line:
             blocks.append(rel_line)
         if not lead_line and not rel_line:
             blocks.append(html_escape("近窗有講 ASIC，官方柱名冊暫不足"))
         blocks.append("")
-    # 2) 光通訊三族：各自粗體表頭＋下一行名單（InP→FAU→CPO）
+    # 2) 光通訊三族：各自粗體表頭＋下一行名單（InP→FAU→CPO）；勿追不砍族
     if live.get("opt"):
         if live.get("inp"):
             line = _yahoo_join(
                 pack.get("inp_rows") or [],
                 db_path,
                 limit=5,
-                notes=dict(_OPT_INP_NOTES or {}),
+                notes=inp_notes,
                 leaders=set(_OPT_INP_LEADERS or ()),
+                plain_sids=plain,
             )
             if line:
                 blocks.append(f"<b>{html_escape(_OPT_INP_HEADER)}</b>")
                 blocks.append(line)
         if live.get("fau"):
-            line = _yahoo_join(pack.get("fau_rows") or [], db_path, limit=4)
+            line = _yahoo_join(
+                pack.get("fau_rows") or [], db_path, limit=4, plain_sids=plain
+            )
             if line:
                 blocks.append(f"<b>{html_escape(_OPT_FAU_HEADER)}</b>")
                 blocks.append(line)
         if live.get("cpo"):
-            line = _yahoo_join(pack.get("cpo_rows") or [], db_path, limit=5)
+            line = _yahoo_join(
+                pack.get("cpo_rows") or [], db_path, limit=5, plain_sids=plain
+            )
             if line:
                 blocks.append(f"<b>{html_escape(_OPT_CPO_HEADER)}</b>")
                 blocks.append(line)
         blocks.append("")
-    # 3) 該怎麼做殿後：可接／等回測／偏熱先不追（標籤對齊）
+    # 3) 該怎麼做殿後：可接／等回測／偏熱先不追（標籤對齊）；勿追不進可點
     blocks.append("<b>該怎麼做</b>")
     how_n = max(1, int(limit))
     added = False
@@ -1121,7 +1182,9 @@ def format_action_advice_html(
         ("等回測", "wait"),
         ("偏熱先不追", "skip"),
     ):
-        rows = list(pack.get(key) or [])[:how_n]
+        rows = [r for r in list(pack.get(key) or []) if str(r.get("sid") or "") not in plain][
+            :how_n
+        ]
         if not rows:
             continue
         bits = []
@@ -1147,6 +1210,16 @@ def format_action_advice_html(
         blocks.append(
             html_escape("近窗方向在，官方柱還沒排出可接檔；等剛脫離零／回測再動。")
         )
+    # 4) 對質符合：去找低位階可點＋標配＋勿追降調（預設每次重算）
+    try:
+        from biaoke_live_match import format_live_match_html
+
+        live_html = format_live_match_html(db_path)
+        if live_html:
+            blocks.append("")
+            blocks.append(live_html)
+    except Exception:
+        pass
     # 清尾空白行
     while blocks and blocks[-1] == "":
         blocks.pop()
@@ -1234,6 +1307,18 @@ def advice_chart_targets(
             sid = str((r or {}).get("sid") or "")
             if sid:
                 by_sid[sid] = r
+    # 近窗勿追：不准進可點出圖名單（仍可在介紹區以純文字出現）
+    plain: set = set()
+    match_rows: List[Dict[str, Any]] = []
+    try:
+        from biaoke_live_match import live_match_pack, no_chase_sids
+
+        mp = live_match_pack(db_path)
+        plain = no_chase_sids(mp)
+        match_rows = list(mp.get("matches") or [])
+    except Exception:
+        plain = set()
+        match_rows = []
     # 介紹區各桶 → 短主題標（先寫先贏；ASIC 龍頭／相關同標 ASIC）
     sid_theme: Dict[str, str] = {}
     for key, _lim, flag in _INTRO_CHART_LIMITS:
@@ -1248,6 +1333,8 @@ def advice_chart_targets(
     def _push(row: Dict[str, Any]) -> None:
         sid = str((row or {}).get("sid") or "")
         if not sid or sid in seen:
+            return
+        if sid in plain:
             return
         if advice_sid_blocked(db_path, sid):
             return
@@ -1279,9 +1366,27 @@ def advice_chart_targets(
         for r in take:
             _push(r)
 
-    # 3) 已送出文字裡有連、清單卻沒有 → 補進（不准少圖）
+    # 3) 對質符合「去找」檔必須進可點名單（預設自動化）
+    for r in match_rows:
+        sid = str(r.get("sid") or "")
+        if not sid:
+            continue
+        row = by_sid.get(sid) or {
+            "sid": sid,
+            "name": r.get("name") or sid,
+            "theme": "InP",
+            "do": "對質符合",
+            "how": str(r.get("why") or "對他近窗去找句＋官方柱；不是買訊。"),
+            "evidence": str(r.get("why") or ""),
+            "basis": basis or "近窗去找＋官方柱",
+        }
+        if not row.get("theme"):
+            row = {**row, "theme": "InP"}
+        _push(row)
+
+    # 4) 已送出文字裡有連、清單卻沒有 → 補進（不准少圖）；勿追連不補
     for sid in sids_mentioned_in_advice_html(spoken_html):
-        if sid in seen:
+        if sid in seen or sid in plain:
             continue
         row = by_sid.get(sid) or {"sid": sid, "name": sid}
         if not row.get("name") or row.get("name") == sid:

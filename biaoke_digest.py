@@ -512,6 +512,14 @@ def format_focus_oral(
     except Exception:
         pass
     # 你幾乎不問：空白進場也要主動建議怎麼做，且每句有憑據
+    # 預設每次按飆大重算近窗對質（可點／勿追／標配），不准等對話提醒
+    try:
+        if db_path:
+            from biaoke_live_match import refresh_live_match
+
+            refresh_live_match(str(db_path))
+    except Exception:
+        pass
     try:
         from biaoke_advisor import format_action_advice_html
 
