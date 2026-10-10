@@ -20,6 +20,7 @@ from red_arrow_quant import (
     gate_status,
     nav_low_arrow_first_mask,
     nav_low_hold_low_confirm_mask,
+    nav_low_ma60_lower_mask,
     nav_low_ma60_upper_mask,
     nav_low_ma60_vol_mask,
     persist_scores,
@@ -213,7 +214,7 @@ def test_score_includes_hold_tag_when_hold_low_ok():
 
 
 def test_ma60_upper_requires_ma60_vol_and_upper_half():
-    """ma60_upper＝ma60_vol 且收在振幅上半；貼底收剔除。"""
+    """#557 歷史：ma60_upper＝ma60_vol 且收在振幅上半；貼底收剔除。"""
     df = _ohlc_mild_new_low_near_ma60()
     # mild 末根 close 99.2、low 98.8 → 需抬高／收高才過上半
     df = df.copy()
@@ -228,19 +229,37 @@ def test_ma60_upper_requires_ma60_vol_and_upper_half():
     assert bool(nav_low_ma60_upper_mask(bad).iloc[-1]) is False
 
 
-def test_score_includes_filter_tag_when_ma60_upper_ok():
-    """本輪候選 ma60_upper 過 → TAG_FILTER 記一筆。"""
+def test_ma60_lower_requires_ma60_vol_and_lower_half():
+    """ma60_lower＝ma60_vol 且收在振幅下半；上半收剔除。"""
     df = _ohlc_mild_new_low_near_ma60().copy()
     df.loc[df.index[-1], "high"] = 100.0
-    df.loc[df.index[-1], "close"] = 99.6
-    df.loc[df.index[-1], "open"] = 99.0
+    df.loc[df.index[-1], "low"] = 98.8
+    df.loc[df.index[-1], "close"] = 99.1  # (99.1-98.8)/(100-98.8)=0.25
+    df.loc[df.index[-1], "open"] = 99.5
+    assert bool(nav_low_ma60_vol_mask(df).iloc[-1]) is True
+    assert bool(nav_low_ma60_lower_mask(df).iloc[-1]) is True
+    assert bool(nav_low_ma60_upper_mask(df).iloc[-1]) is False
+    bad = df.copy()
+    bad.loc[bad.index[-1], "close"] = 99.6  # (99.6-98.8)/(100-98.8)=0.667
+    bad.loc[bad.index[-1], "open"] = 99.0
+    assert bool(nav_low_ma60_vol_mask(bad).iloc[-1]) is True
+    assert bool(nav_low_ma60_lower_mask(bad).iloc[-1]) is False
+
+
+def test_score_includes_filter_tag_when_ma60_lower_ok():
+    """本輪候選 ma60_lower 過 → TAG_FILTER 記一筆。"""
+    df = _ohlc_mild_new_low_near_ma60().copy()
+    df.loc[df.index[-1], "high"] = 100.0
+    df.loc[df.index[-1], "low"] = 98.8
+    df.loc[df.index[-1], "close"] = 99.1
+    df.loc[df.index[-1], "open"] = 99.5
     full = _with_fwd(df, close=100.0)
     rows = score_stock_day(full, as_of="20260917")
     tags = {r["tag"] for r in rows}
     assert TAG_LOW in tags
     assert TAG_PREV in tags
     assert TAG_FILTER in tags
-    assert TAG_FILTER == "nav_low_first_ma60_upper"
+    assert TAG_FILTER == "nav_low_first_ma60_lower"
     h5 = [r for r in rows if r["tag"] == TAG_FILTER and r["horizon"] == 5][0]
     assert h5["false_break"] == 0
     assert h5["verdict"] == "hit"
@@ -292,9 +311,10 @@ def test_promote_ready_false_until_gate(tmp_path):
     assert st["min_distinct_sids"] >= 100
     assert st["min_unique_days"] >= 20
     assert st.get("next_candidate") == NEXT_CANDIDATE
-    assert NEXT_CANDIDATE == ""
-    assert ROUND_STOPPED is True
-    assert st.get("round_stopped") is True
+    assert NEXT_CANDIDATE == "nav_low_first_ma60_lower_tight"
+    assert ROUND_STOPPED is False
+    assert st.get("round_stopped") is False
+    assert TAG_FILTER == "nav_low_first_ma60_lower"
     assert st.get("min_fb_drop", 0) > 0
     assert st.get("min_fb_drop_vs_prev", 0) > 0
 

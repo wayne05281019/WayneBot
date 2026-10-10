@@ -9,6 +9,7 @@ CaryBot 紅箭頭是人工標「可買低點」，沒有公開可複製公式。
 - 官方柱後續報酬（h1／h5／h10）
 - 假突破（後 N 日內任一根收盤跌破進場收；#547 口徑）
 - 對照 leave_zero（黃金買點現況）、無箭頭、#548 ma60_vol、以及本輪過濾候選
+  （``ma60_lower``＝ma60_vol＋振幅下半收；#557 上半收已失敗）
 
 規則（AGENTS 第 4／3／13 條）：
 - 獨立交易日 n≥20 **且** 贏黃金買點（leave_zero）基線，**且** 假突破相對
@@ -36,8 +37,9 @@ TAG_NONE = "no_arrow"  # 對照：當日無低點首觸且無 leave_zero
 TAG_PREV = "nav_low_first_ma60_vol"
 # #556 hold_low 已度量未過關（對照／歷史軌）
 TAG_HOLD = "nav_low_first_hold_low_confirm"
-# 本輪唯一再試：ma60_vol＋當日上半收（不含收復前低）
-TAG_FILTER = "nav_low_first_ma60_upper"
+# #557 ma60_upper 已度量未過關（上半收抬假突破；函式保留對照）
+# 準再挖本輪：ma60_vol＋當日收在振幅下半（#557 上半收之反向）
+TAG_FILTER = "nav_low_first_ma60_lower"
 SCORE_HORIZONS: Tuple[int, ...] = (1, 5, 10)
 # 獨立交易日＋夠廣母體才過關；事件筆數 alone 不准 promote
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
@@ -46,9 +48,9 @@ MIN_DISTINCT_SIDS = 100
 MIN_FB_DROP = 0.03
 # 相對 #548：假突破至少再降一點，且 hit／avg 不輸超過容差
 MIN_FB_DROP_VS_PREV = 0.01
-# ①準本輪只再試這一刀；未過關＝停，不再再生下一過濾
-NEXT_CANDIDATE = ""
-ROUND_STOPPED = True
+# §13：過閘／落檔後再生下一版（量再縮緊）；未改買訊前仍可繼續收
+NEXT_CANDIDATE = "nav_low_first_ma60_lower_tight"
+ROUND_STOPPED = False
 
 
 def _ymd(raw: Any) -> str:
@@ -233,14 +235,14 @@ def nav_low_hold_low_confirm_mask(df: pd.DataFrame) -> pd.Series:
 
 
 def nav_low_ma60_upper_mask(df: pd.DataFrame) -> pd.Series:
-    """①準本輪再試一刀：#548 ma60_vol ＋ 當日收在振幅上半。
+    """#557 已度量未過關：#548 ma60_vol ＋ 當日收在振幅上半。
 
     條件（只用當日及以前官方 OHLC／量，無前視）：
     - ``nav_low_ma60_vol_mask`` 為真
     - (close−low)/(high−low) ≥ 0.55（或 high≈low 時 close ≥ open）
     - **不含**收復前低（#556 hold 已證明會抬假突破）
 
-    過關前仍不是買訊；須能量化優於 #548 才收。未過關＝①準停。
+    本輪不再當 TAG_FILTER；函式保留供對照／單測。
     """
     base = nav_low_ma60_vol_mask(df)
     if base.empty or not bool(base.any()):
@@ -265,6 +267,44 @@ def nav_low_ma60_upper_mask(df: pd.DataFrame) -> pd.Series:
             if (c - lv) / rng < 0.55:
                 continue
         elif ov > 0 and c < ov:
+            continue
+        ok[i] = True
+    return pd.Series(ok, index=df.index)
+
+
+def nav_low_ma60_lower_mask(df: pd.DataFrame) -> pd.Series:
+    """準再挖：#548 ma60_vol ＋ 當日收在振幅下半（#557 上半收之反向）。
+
+    條件（只用當日及以前官方 OHLC／量，無前視）：
+    - ``nav_low_ma60_vol_mask`` 為真
+    - (close−low)/(high−low) ≤ 0.45（或 high≈low 時 close ≤ open）
+    - **不含**收復前低／上半收（#556／#557 已證明會抬假突破）
+
+    過關前仍不是買訊；須能量化優於 #548 才 ``promote_ready``（改買訊另須確認）。
+    """
+    base = nav_low_ma60_vol_mask(df)
+    if base.empty or not bool(base.any()):
+        return base
+    cl = pd.to_numeric(df["close"], errors="coerce")
+    lo = pd.to_numeric(df["low"], errors="coerce")
+    hi = pd.to_numeric(df["high"], errors="coerce")
+    op = pd.to_numeric(df["open"], errors="coerce")
+    n = len(df)
+    ok = np.zeros(n, dtype=bool)
+    for i in range(n):
+        if not bool(base.iloc[i]):
+            continue
+        c = float(cl.iloc[i]) if np.isfinite(cl.iloc[i]) else 0.0
+        lv = float(lo.iloc[i]) if np.isfinite(lo.iloc[i]) else 0.0
+        hv = float(hi.iloc[i]) if np.isfinite(hi.iloc[i]) else 0.0
+        ov = float(op.iloc[i]) if np.isfinite(op.iloc[i]) else 0.0
+        if c <= 0 or lv <= 0:
+            continue
+        rng = hv - lv
+        if rng > 1e-9:
+            if (c - lv) / rng > 0.45:
+                continue
+        elif ov > 0 and c > ov:
             continue
         ok[i] = True
     return pd.Series(ok, index=df.index)
@@ -322,7 +362,7 @@ def score_stock_day(
     lows = nav_low_arrow_first_mask(hist)
     prev_f = nav_low_ma60_vol_mask(hist)
     hold_f = nav_low_hold_low_confirm_mask(hist)
-    filtered = nav_low_ma60_upper_mask(hist)
+    filtered = nav_low_ma60_lower_mask(hist)
     lz_hit = bool(leave_zero_from_quote_df(hist))
     i = len(hist) - 1
     low_hit = bool(lows.iloc[i])
@@ -687,7 +727,7 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         "note": (
             "可考慮當買訊（仍須人工確認才改編碼）"
             if ready
-            else "還沒過關：紅箭頭代理仍不是買訊；①準本輪停"
+            else "還沒過關：紅箭頭代理仍不是買訊；進場只認 leave_zero"
         ),
     }
 
