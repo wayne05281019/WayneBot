@@ -81,6 +81,28 @@ def test_remember_stays_off_product_db_and_scores_next_close(tmp_path):
     assert sc[3] == "up"
 
 
+def test_remember_skips_sid_without_official_ohlcv(tmp_path):
+    """缺官方開高低收＋量不算有記；空代號／只有收盤不准落檔。"""
+    db = str(tmp_path / "wayne_market.db")
+    ensure_core_schema(db)
+    # 有代號但庫裡沒當日柱
+    n = remember_rows(
+        db,
+        "day_trade",
+        [{"stock_id": "1101", "stock_name": "台泥", "close": 50.0}],
+        as_of="20260915",
+        pick="rule",
+        src="session",
+    )
+    assert n == 0
+    store = store_path(db)
+    if Path(store).is_file():
+        conn = sqlite3.connect(store)
+        cnt = conn.execute("SELECT COUNT(*) FROM live_judge").fetchone()[0]
+        conn.close()
+        assert cnt == 0
+
+
 def test_unclosed_bar_is_not_used_for_score(tmp_path):
     db = str(tmp_path / "wayne_market.db")
     _seed(db, {"1101": 50.0}, "20260915")

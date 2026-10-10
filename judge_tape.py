@@ -104,6 +104,8 @@ _SCREEN_BUCKETS = (
     "day_trade",
     "overnight",
 )
+# 大盤／外圍佐證可只有部分欄；個股選股要開高低收＋量才算有記
+_CONTEXT_KINDS = frozenset({"market", "fut", "us", "outer"})
 _BAR_KEYS = ("o", "h", "l", "c", "v")
 _CHIP_KEYS = ("fn", "tn", "dn", "pct")
 _EXTRA_KEEP = (
@@ -244,6 +246,14 @@ def _row_bar(raw: Dict[str, Any]) -> Dict[str, float]:
     return bar
 
 
+def _ohlcv_complete(bar: Dict[str, Any]) -> bool:
+    """真代號要有官方開高低收＋量才算有記。"""
+    for key in _BAR_KEYS:
+        if _num(bar.get(key)) is None:
+            return False
+    return True
+
+
 def remember_rows(
     market_db: str,
     kind: str,
@@ -297,6 +307,10 @@ def remember_rows(
                 extra["src"] = str(src)
             bar = dict(bars.get(sid) or {})
             bar.update(_row_bar(raw))
+            # 個股選股／個人本：缺官方開高低收＋量不算有記。外圍假碼／大盤佐證除外。
+            if kind not in _CONTEXT_KINDS and not sid.startswith("_"):
+                if not _ohlcv_complete(bar):
+                    continue
             for key in _BAR_KEYS + _CHIP_KEYS:
                 if key in bar:
                     extra[key] = bar[key]

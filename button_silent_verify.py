@@ -219,9 +219,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "kinds": ("ai_desk",),
         "class": CLASS_AI,
         "status": "gap_filled",
-        "pipe": "screen_review.ai_fills＋本檔當日 BUY 凍結 live_judge",
+        "pipe": "screen_review.ai_fills＋MainRunner._run_ai_desk 成交後 snapshot_ai_desk",
         "window": "ai_fills 隔日收；live_judge 1／5 另記，勝率不准混海選",
-        "note": "假錢對照組；不准真下單",
+        "note": "假錢對照組；不准真下單；成交後才凍（海選 snapshot 常在 AI 前）",
     },
     {
         "btn": "連買區",

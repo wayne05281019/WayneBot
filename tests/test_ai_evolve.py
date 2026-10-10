@@ -57,6 +57,8 @@ def test_evening_desk_stays_silent_and_digest_is_separate():
     assert "_maybe_send_evolve_digest" in src
     desk = inspect.getsource(MainRunner._run_ai_desk)
     assert "notify: bool = True" in desk
+    # 成交後才凍 AI倉；海選 snapshot 常在 AI 前，不准只靠按鈕才記
+    assert "snapshot_ai_desk" in desk
 
 
 def test_core_candidates_are_leave_zero_only():
