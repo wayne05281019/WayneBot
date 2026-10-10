@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""紅箭頭代理量化關：過關前 promote_ready=False；不改買訊。"""
+"""紅箭頭代理量化關：ma60_lower 已升成買訊；未確認仍不是。"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -307,7 +307,10 @@ def test_promote_ready_false_until_gate(tmp_path):
     assert st.get("prev_tag") == TAG_PREV
     assert st.get("hold_tag") == TAG_HOLD
     assert promote_ready(db) is False
+    assert st.get("product_entry") is True
+    assert st.get("entry_bucket") == "ma60_lower"
     assert "不是買訊" in st["note"]
+    assert "已升成買訊" in st["note"] or "ma60_lower" in st["note"]
     assert st["min_distinct_sids"] >= 100
     assert st["min_unique_days"] >= 20
     assert st.get("next_candidate") == NEXT_CANDIDATE
@@ -319,25 +322,54 @@ def test_promote_ready_false_until_gate(tmp_path):
     assert st.get("min_fb_drop_vs_prev", 0) > 0
 
 
-def test_ai_trader_still_says_red_arrow_not_entry(tmp_path):
-    """關未過：產品編碼仍鎖紅箭頭不是買訊。"""
+def test_ai_trader_promotes_ma60_lower_entry(tmp_path):
+    """使用者已確認：ma60_lower 進場；未確認紅箭頭仍不是買訊。"""
     from ai_trader import current_ai_encoding, format_evolve_report_html
+    from red_arrow_quant import ENTRY_BUCKET, PRODUCT_ENTRY
     from wayne_db import ensure_core_schema
 
+    assert PRODUCT_ENTRY is True
+    assert ENTRY_BUCKET == "ma60_lower"
     path = str(tmp_path / "e.db")
     ensure_core_schema(path)
     enc = current_ai_encoding(path, "ai_1")
-    assert enc["not_entry"] == "red_arrow"
+    assert enc["entry"] == "leave_zero+ma60_lower"
+    assert enc["not_entry"] == "red_arrow_unconfirmed"
     html = format_evolve_report_html(path, "ai_1")
-    assert "紅箭頭不是買訊" in html
+    assert "未確認紅箭頭不是買訊" in html
+    assert "ma60_lower" in html
 
 
-def test_nav_legend_marks_red_arrow_proxy_not_passed():
-    """話筒圖例：低點箭頭標未過關，不當買訊。"""
+def test_nav_legend_marks_red_arrow_proxy_confirmed_entry():
+    """話筒圖例：低點箭頭不再標未過關；買點藍▲含 ma60_lower 確認。"""
     import inspect
 
-    from wayne_navigator import _draw_nav_legend
+    from wayne_navigator import _draw_nav_legend, _nav_trade_marks
 
     src = inspect.getsource(_draw_nav_legend)
-    assert "紅箭頭代理·未過關" in src
+    assert "紅箭頭代理·未過關" not in src
+    assert "20低（紅箭頭代理）" in src
     assert "買點↑首清楚／續淡" in src or "買點↑藍▲紅框" in src
+    marks_src = inspect.getsource(_nav_trade_marks)
+    assert "paint_buy_entry_indices" in marks_src
+
+
+def test_paint_buy_entry_includes_ma60_lower_not_raw_low():
+    """藍▲進場：ma60_lower 過確認可進；僅首觸未確認不進。"""
+    from buy_exclude import paint_buy_entry_indices, paint_ma60_lower_indices
+    from red_arrow_quant import PRODUCT_ENTRY, nav_low_arrow_first_mask
+
+    assert PRODUCT_ENTRY is True
+    ok = _ohlc_mild_new_low_near_ma60().copy()
+    ok.loc[ok.index[-1], "high"] = 100.0
+    ok.loc[ok.index[-1], "low"] = 98.8
+    ok.loc[ok.index[-1], "close"] = 99.1
+    ok.loc[ok.index[-1], "open"] = 99.5
+    assert bool(nav_low_ma60_lower_mask(ok).iloc[-1]) is True
+    assert (len(ok) - 1) in paint_ma60_lower_indices(ok)
+    assert (len(ok) - 1) in paint_buy_entry_indices(ok)
+
+    raw = _ohlc_flat_then_new_low()
+    assert bool(nav_low_arrow_first_mask(raw).iloc[-1]) is True
+    assert bool(nav_low_ma60_lower_mask(raw).iloc[-1]) is False
+    assert paint_ma60_lower_indices(raw) == []
