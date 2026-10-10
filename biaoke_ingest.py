@@ -1843,6 +1843,13 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         maybe_push_marked_level_hits(db_path)
     except Exception:
         logger.exception("飆大緊急推播略過")
+    try:
+        # 預設自動化：抓文後重算近窗對質→可點／勿追名單（不准等對話提醒）
+        from biaoke_live_match import refresh_live_match
+
+        refresh_live_match(db_path)
+    except Exception:
+        logger.exception("飆大對質符合名單重算略過")
 
 
 def run_biaoke_ingest_quiet() -> None:
