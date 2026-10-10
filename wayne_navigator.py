@@ -2930,8 +2930,13 @@ def _fmt_dist_short(val) -> str:
 def _paint_lr_box(
     ax, x, y, w, h, lab, primary, secondary=None, *,
     lab_c, prim_c, sec_c=None, fc, ec, lab_fs=11.0, prim_fs=15.0, sec_fs=10.0,
+    value_ha: str = "right",
 ):
-    """一格左右齊線：標籤靠左細字，數字靠右；兩行拉開，不要黏、不要兩團置中。"""
+    """一格左右齊線：標籤靠左細字；數字預設靠右。
+
+    value_ha=\"left\"：兩行值首字對齊（資券融資／融券、估值本益／殖利率），
+    不准右對齊讓短行看起來縮進、單位錯位。
+    """
     C = _CARD
     if fc in (C["white"], C["panel"], C.get("neutral_bg"), C.get("zebra")):
         ec = C["line"]
@@ -2946,12 +2951,16 @@ def _paint_lr_box(
         fig_w = 7.2
     lab_s = str(lab or "")
     prim = str(primary or "")
-    avail = max(8.0, w - 2.9 - _text_w(lab_s, lab_fs, fig_w, 400) - 1.2)
+    lab_w = _text_w(lab_s, lab_fs, fig_w, 400)
+    avail = max(8.0, w - 2.9 - lab_w - 1.2)
     pfs = float(prim_fs)
     while _text_w(prim, pfs, fig_w, 800) > avail and pfs > 10.0:
         pfs -= 0.35
     ax.text(lx, mid, lab_s, fontproperties=_fp(lab_fs, "normal"), color=lab_c,
             ha="left", va="center", zorder=4)
+    # 兩行左對齊時，值從標籤右緣＋縫開始，融資／融券首字同 x
+    vx = lx + lab_w + 1.35
+    use_left = str(value_ha or "right").lower() == "left"
     if secondary:
         sec = str(secondary)
         sfs = float(sec_fs)
@@ -2962,14 +2971,25 @@ def _paint_lr_box(
             while cut and _text_w(cut + "…", sfs, fig_w, 400) > avail:
                 cut = cut[:-1]
             sec = (cut + "…") if cut else ""
-        ax.text(rx, mid + _LR_PRIM_DY, prim, fontproperties=_fp(pfs, "bold"),
-                color=prim_c, ha="right", va="center", zorder=4)
-        if sec:
-            ax.text(rx, mid - _LR_SEC_DY, sec, fontproperties=_fp(sfs, "normal"),
-                    color=sec_c if sec_c is not None else prim_c, ha="right", va="center", zorder=4)
+        if use_left:
+            ax.text(vx, mid + _LR_PRIM_DY, prim, fontproperties=_fp(pfs, "bold"),
+                    color=prim_c, ha="left", va="center", zorder=4)
+            if sec:
+                ax.text(vx, mid - _LR_SEC_DY, sec, fontproperties=_fp(sfs, "normal"),
+                        color=sec_c if sec_c is not None else prim_c, ha="left", va="center", zorder=4)
+        else:
+            ax.text(rx, mid + _LR_PRIM_DY, prim, fontproperties=_fp(pfs, "bold"),
+                    color=prim_c, ha="right", va="center", zorder=4)
+            if sec:
+                ax.text(rx, mid - _LR_SEC_DY, sec, fontproperties=_fp(sfs, "normal"),
+                        color=sec_c if sec_c is not None else prim_c, ha="right", va="center", zorder=4)
     else:
-        ax.text(rx, mid, prim, fontproperties=_fp(pfs, "bold"),
-                color=prim_c, ha="right", va="center", zorder=4)
+        if use_left:
+            ax.text(vx, mid, prim, fontproperties=_fp(pfs, "bold"),
+                    color=prim_c, ha="left", va="center", zorder=4)
+        else:
+            ax.text(rx, mid, prim, fontproperties=_fp(pfs, "bold"),
+                    color=prim_c, ha="right", va="center", zorder=4)
 
 
 def _vol_rank_lr_lines(text: str):
@@ -4758,7 +4778,7 @@ def render_first_glance_png(
         _lookup_tape_fingerprint(tape if isinstance(tape, dict) else {}),
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076",
+        "match-card-076-fund-left-v74",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -4924,7 +4944,17 @@ def render_first_glance_png(
         lab_fs, val_fs = 12.0, 13.0
         lab_w = tw(lab, lab_fs)
         val_avail = max(16.0, pane_w * 0.46)
-        vlines = (_wrap_fit(str(val), val_fs, val_avail, fig_w) or [str(val)])[:2]
+        raw = str(val or "").strip()
+        # 資券：融資／融券能一行就一行；放不下才拆兩行，首字對齊（不准孤字蓋％）
+        if lab == "資券餘額" and "　" in raw and ("融資" in raw and "融券" in raw):
+            parts = [p for p in raw.split("　") if p]
+            one = "　".join(parts)
+            if tw(one, val_fs) <= val_avail:
+                vlines = [one]
+            else:
+                vlines = parts[:2]
+        else:
+            vlines = (_wrap_fit(raw, val_fs, val_avail, fig_w) or [raw])[:2]
         fund_drawn.append((lab, vlines, lab_fs, val_fs))
     note = (tape or {}).get("conflict") or ""
     conflict_lines = _wrap_fit(str(note), 13, row_w, fig_w) if note else []
@@ -5465,11 +5495,13 @@ def render_first_glance_png(
             if fy - fh < fund_floor - 0.2:
                 break
             fy -= fh
+            # 兩行基本面（資券／估值）：值左對齊，融資／融券或本益／殖利率首字同欄
             _paint_lr_box(
                 ax, inner_x, fy, fw, fh, lab, vlines[0],
                 vlines[1] if len(vlines) > 1 else None,
                 lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink_soft"],
                 fc=C["white"], ec=C["line"], lab_fs=11.5, prim_fs=13.0, sec_fs=11.5,
+                value_ha="left" if len(vlines) > 1 else "right",
             )
             fy -= 0.7
 

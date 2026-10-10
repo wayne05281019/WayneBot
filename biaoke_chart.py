@@ -215,6 +215,49 @@ def _vol(val: Any) -> str:
     return f"{n:,}張"
 
 
+def _paint_aligned_kv_row(
+    ax,
+    x0: float,
+    y: float,
+    cells: Sequence[Tuple[str, str]],
+    *,
+    color: str,
+    size: float,
+    col_xs: Optional[Sequence[float]] = None,
+    gap: float = 2.35,
+) -> List[float]:
+    """頭欄開／高／低／量：同一組欄位 x 對齊，單位（張）跟數字同一欄不互壓。
+
+    cells＝[(標, 值), ...]；col_xs 有給就沿用（爆大量列對齊當日列），否則依本列量寬。
+    回傳各欄左緣，供下一列共用。
+    """
+    bits = [(str(a or "").strip(), str(b or "").strip()) for a, b in (cells or []) if str(a or "").strip()]
+    if not bits:
+        return list(col_xs or [])
+    starts: List[float] = []
+    cursor = float(x0)
+    for i, (lab, val) in enumerate(bits):
+        if col_xs is not None and i < len(col_xs):
+            cx = float(col_xs[i])
+        else:
+            cx = cursor
+        starts.append(cx)
+        text = f"{lab} {val}".strip() if val else lab
+        ax.text(
+            cx,
+            y,
+            text,
+            color=color,
+            fontproperties=_fp(size, "bold"),
+            va="center",
+            ha="left",
+            zorder=22,
+            clip_on=False,
+        )
+        cursor = cx + _ow(text, size) + float(gap)
+    return starts
+
+
 def _bar_ohlc(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "date": str(row.get("date") or ""),
@@ -3264,7 +3307,7 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v73" if fullbleed else "hdr-wrap3",
+        "hdr-band-v74-ohlc-align" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3742,50 +3785,111 @@ def render_biaoke_structure_png(
         va="center",
         ha="left",
     )
-    # 附圖／v4：開高低＋量同一行；直式才另列收／量
+    # 附圖／v4：開高低＋量同一行欄位對齊；爆大量高／低／量對齊當日高／低／量（不准飄欄）
+    ohlc_fs = 16 if fullbleed else 15
+    spike_cells = [
+        ("高", f"{_px(spike_hi)}＝壓"),
+        ("低", f"{_px(spike_lo)}＝撐"),
+        ("量", _vol(spike_bar.get("volume"))),
+    ]
+
+    def _col_starts(x0: float, rows: Sequence[Sequence[Tuple[str, str]]]) -> List[float]:
+        """多列共用欄左緣：每欄寬取各列同欄文字較寬者，避免＝壓／＝撐蓋住下一欄。"""
+        width = max((len(r) for r in rows), default=0)
+        if width <= 0:
+            return []
+        max_w = [0.0] * width
+        for row in rows:
+            for i, (lab, val) in enumerate(row):
+                text = f"{lab} {val}".strip() if val else lab
+                max_w[i] = max(max_w[i], _ow(text, ohlc_fs))
+        starts: List[float] = []
+        cursor = float(x0)
+        gap = 2.35
+        for i in range(width):
+            starts.append(cursor)
+            cursor += max_w[i] + gap
+        return starts
+
     if fullbleed:
-        ohlc_1 = (
-            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
-            f"低 {_px(last_bar.get('low'))}　量 {_vol(last_bar.get('volume'))}"
+        today_cells = [
+            ("開", _px(last_bar.get("open"))),
+            ("高", _px(last_bar.get("high"))),
+            ("低", _px(last_bar.get("low"))),
+            ("量", _vol(last_bar.get("volume"))),
+        ]
+        # 欄 0＝開（僅當日）；欄 1–3＝高／低／量（當日＋爆大量共用）
+        shared = _col_starts(
+            header_x,
+            [
+                today_cells,
+                [("開", "")] + list(spike_cells),
+            ],
         )
-        ohlc_2 = ""
+        _paint_aligned_kv_row(
+            ov, header_x, ohlc_y1, today_cells, color=_TEXT, size=ohlc_fs, col_xs=shared,
+        )
+        spike_cols = shared[1:4] if len(shared) >= 4 else shared[1:]
     elif quote and not portrait:
-        ohlc_1 = (
-            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
-            f"低 {_px(last_bar.get('low'))}"
+        today_cells = [
+            ("開", _px(last_bar.get("open"))),
+            ("高", _px(last_bar.get("high"))),
+            ("低", _px(last_bar.get("low"))),
+        ]
+        shared = _col_starts(
+            header_x,
+            [today_cells, [("開", "")] + list(spike_cells[:2])],
         )
-        ohlc_2 = f"量 {_vol(last_bar.get('volume'))}"
+        _paint_aligned_kv_row(
+            ov, header_x, ohlc_y1, today_cells, color=_TEXT, size=ohlc_fs, col_xs=shared,
+        )
+        if ohlc_y2 is not None:
+            _paint_aligned_kv_row(
+                ov, header_x, ohlc_y2,
+                [("量", _vol(last_bar.get("volume")))],
+                color=_TEXT, size=ohlc_fs,
+            )
+        spike_cols = shared[1:3] if len(shared) >= 3 else None
+        if spike_cols is not None:
+            # 量欄另起：與高／低同一列時接在低後面
+            vol_x = shared[2] + _ow(
+                f"低 {_px(spike_lo)}＝撐", ohlc_fs
+            ) + 2.35
+            spike_cols = list(spike_cols) + [vol_x]
     else:
-        ohlc_1 = (
-            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
-            f"低 {_px(last_bar.get('low'))}"
+        today_cells = [
+            ("開", _px(last_bar.get("open"))),
+            ("高", _px(last_bar.get("high"))),
+            ("低", _px(last_bar.get("low"))),
+        ]
+        shared = _col_starts(header_x, [today_cells])
+        _paint_aligned_kv_row(
+            ov, header_x, ohlc_y1, today_cells, color=_TEXT, size=ohlc_fs, col_xs=shared,
         )
-        ohlc_2 = f"收 {_px(last_bar.get('close'))}　量 {_vol(last_bar.get('volume'))}"
-    ov.text(
-        header_x, ohlc_y1, ohlc_1, color=_TEXT,
-        fontproperties=_fp(16 if fullbleed else 15, "bold"),
-        va="center", ha="left",
-    )
-    if ohlc_2 and ohlc_y2 is not None:
-        ov.text(
-            header_x, ohlc_y2, ohlc_2, color=_TEXT,
-            fontproperties=_fp(16 if fullbleed else 15, "bold"),
-            va="center", ha="left",
-        )
+        if ohlc_y2 is not None:
+            _paint_aligned_kv_row(
+                ov, header_x, ohlc_y2,
+                [
+                    ("收", _px(last_bar.get("close"))),
+                    ("量", _vol(last_bar.get("volume"))),
+                ],
+                color=_TEXT, size=ohlc_fs,
+            )
+        spike_cols = shared[1:3] if len(shared) >= 3 else None
+        if spike_cols is not None:
+            vol_x = shared[2] + _ow(
+                f"低 {_px(spike_lo)}＝撐", ohlc_fs
+            ) + 2.35
+            spike_cols = list(spike_cols) + [vol_x]
     spike_1 = f"爆大量日 {_ymd_full(spike_date)}"
-    spike_2 = (
-        f"高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
-        f"量 {_vol(spike_bar.get('volume'))}"
-    )
     ov.text(
         header_x, spike_y1, spike_1, color=_PRESS,
-        fontproperties=_fp(16 if fullbleed else 15, "bold"),
+        fontproperties=_fp(ohlc_fs, "bold"),
         va="center", ha="left",
     )
-    ov.text(
-        header_x, spike_y2, spike_2, color=_PRESS,
-        fontproperties=_fp(16 if fullbleed else 15, "bold"),
-        va="center", ha="left",
+    _paint_aligned_kv_row(
+        ov, header_x, spike_y2, spike_cells, color=_PRESS, size=ohlc_fs,
+        col_xs=spike_cols,
     )
     # 橫式 61：頭欄不准灰字「不是15分…」；直式仍留
     if mute_y is not None:
