@@ -80,12 +80,37 @@ def slot_notional(initial_capital: float, size_mult: float = 1.0) -> float:
     return cap / float(MAX_SLOTS) * max(0.4, min(1.2, mult))
 
 
+def cash_reserve_floor(initial_capital: float) -> float:
+    """第 3 份永遠留現金＝本金／3。買進預算不得吃進這筆。"""
+    try:
+        cap = float(initial_capital or 0)
+    except (TypeError, ValueError):
+        cap = 0.0
+    if cap <= 0:
+        return 0.0
+    return cap / float(MAX_SLOTS)
+
+
+def buy_budget(cash: float, initial_capital: float, size_mult: float = 1.0) -> float:
+    """單檔可動用額＝min(每槽上限, 現金−第3份保留)。假錢對照，不是真下單。"""
+    try:
+        have = float(cash or 0)
+    except (TypeError, ValueError):
+        have = 0.0
+    reserve = cash_reserve_floor(initial_capital)
+    deployable = max(0.0, have - reserve)
+    return min(slot_notional(initial_capital, size_mult), deployable)
+
+
 def market_deploy_cap(
     db_path: str,
     as_of: str,
     results: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> int:
-    """今晚最多抱幾檔。平常 1 份；大盤偏空且有抄低名單才動第 2 份。永遠留 1 份現金。"""
+    """今晚最多抱幾檔。平常 1 份；大盤偏空且有剛離零名單才動第 2 份。永遠留 1 份現金。
+
+    第二份開門只認 leave_zero（進場桶）；golden_buy 只觀察，不准用來開槽。
+    """
     cap = CORE_SLOTS
     snap: Dict[str, Any] = {}
     try:
@@ -106,7 +131,7 @@ def market_deploy_cap(
         vs20_n = float(vs20) if vs20 is not None else None
     except (TypeError, ValueError):
         vs20_n = None
-    dip_names = bool((results or {}).get("golden_buy") or (results or {}).get("leave_zero"))
+    dip_names = bool((results or {}).get("leave_zero"))
     weak = regime == "bear" or fr >= 35 or (vs20_n is not None and vs20_n < -1)
     if weak and dip_names:
         cap = CORE_SLOTS + DIP_SLOTS
@@ -317,6 +342,8 @@ def current_ai_encoding(db_path: str, user_id: str = AI_USER_LEGACY) -> Dict[str
         "core_slots": CORE_SLOTS,
         "dip_slots": DIP_SLOTS,
         "cash_slots": 1,
+        "cash_reserve": True,
+        "dip_open": "leave_zero",
         "size_mult": _load_size_mult(db_path, uid),
         "bucket_w": weights,
     }
@@ -412,9 +439,10 @@ def format_evolve_report_html(db_path: str, user_id: str = AI_USER_LEGACY) -> st
         "",
         "<b>目前編碼</b>",
         "進場＝高低卡黃金買點整張表（滿五星＝按表該買；少追降星）",
-        "第二份＝大盤偏空才開槽，仍只買剛離零；還在零只觀察",
-        f"停損 {STOP_PCT:.0f}%　停利 ＋{TAKE_PCT:.0f}%　平常 {CORE_SLOTS} 份、永遠留 1 份現金",
+        "第二份＝大盤偏空且有剛離零才開槽；還在零只觀察、不開槽",
+        f"停損 {STOP_PCT:.0f}%　停利 ＋{TAKE_PCT:.0f}%　平常 {CORE_SLOTS} 份、永遠留 1 份現金（買進不得吃保留額）",
         f"單筆倍數 {size_mult:.2f}（0.40～1.20，依近況勝率縮放）",
+        "紅箭頭不是買訊。假錢對照，不能塞進富邦真下單。",
     ]
     wbits = []
     for key, label in BUCKETS:
@@ -579,17 +607,19 @@ def format_ai_desk_pages(
 
     empty = max(0, MAX_SLOTS - used)
     dots = ("●" * used) + ("○" * empty)
+    reserve = cash_reserve_floor(initial)
     head = [
         section_eq("AI 模擬帳戶"),
         "假錢對照組，不是真下單。",
         "本金 50 萬分 3 份，平常最多用 1 份。",
-        "超跌才動第 2 份，第 3 份留現金。",
+        "超跌且有剛離零才動第 2 份，第 3 份留現金。",
         "停損 −7%、停利 ＋8%。只買黃金買點。",
         "",
         "────────────────",
         "<b>帳戶</b>",
         kv_html_compact("總資產", html_money(s["total_assets"], signed=False, compact=True)),
         kv_html_compact("現金", html_money(s["cash"], signed=False, compact=True)),
+        kv_html_compact("保留現金", html_money(reserve, signed=False, compact=True)),
         kv_html_compact("市值", html_money(s["stock_market_value"], signed=False, compact=True)),
         kv_html_compact("未實現", html_money(unreal, compact=True)),
         kv_html_compact("已實現", html_money(realized, compact=True)),
@@ -601,6 +631,7 @@ def format_ai_desk_pages(
         kv_compact("每槽上限", f"{slot:,.0f}　倍數 {size_mult:.2f}"),
         kv_compact("本金", f"{initial:,.0f}"),
         "空心＝留現金，不是三份都要買滿。",
+        "保留現金＝第 3 份，買進不得吃掉。",
     ]
     pages: List[str] = []
     if not s["positions"]:
@@ -729,21 +760,12 @@ def format_ai_desk_pages(
         pages.append("\n".join(fill_lines))
 
     try:
-        from screen_review import format_ai_review_html, format_review_html
+        # 只放 AI 成交復盤；海選復盤不准混進 AI倉（勝率分開）。
+        from screen_review import format_ai_review_html
 
-        review_bits: List[str] = []
-        for blob in (
-            format_ai_review_html(engine.db_path, user_id=user_id),
-            format_review_html(engine.db_path),
-        ):
-            txt = str(blob or "").strip()
-            if not txt:
-                continue
-            if "還沒有" in txt and len(txt) < 220:
-                continue
-            review_bits.append(txt)
-        if review_bits:
-            pages.append("\n\n────────────────\n\n".join(review_bits))
+        txt = str(format_ai_review_html(engine.db_path, user_id=user_id) or "").strip()
+        if txt and not ("還沒有" in txt and len(txt) < 220):
+            pages.append(txt)
     except Exception:
         pass
     return [p for p in pages if str(p or "").strip()]
@@ -868,7 +890,7 @@ def run_ai_desk(
             if price <= 0:
                 continue
             cash = engine.get_cash(user_id)
-            budget = min(slot_notional(initial, size_mult), cash)
+            budget = buy_budget(cash, initial, size_mult)
             shares = _shares_for_budget(price, budget)
             if shares <= 0:
                 continue
