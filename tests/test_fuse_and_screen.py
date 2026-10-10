@@ -2482,10 +2482,12 @@ class AIDeskTest(unittest.TestCase):
             self.assertIn("AI 模擬帳戶", html)
             self.assertIn("已用槽", html)
             self.assertIn("每槽上限", html)
+            self.assertIn("保留現金", html)
             self.assertIn("停損", html)
             self.assertIn("停利", html)
             self.assertIn("成交紀錄", html)
             self.assertIn("────────────────", html)
+            self.assertNotIn("海選復盤", html)
             conn = sqlite3.connect(path)
             fills = conn.execute("SELECT stock_id, action, shares, bucket FROM ai_fills ORDER BY id").fetchall()
             conn.close()
@@ -2645,6 +2647,7 @@ class AIDeskTest(unittest.TestCase):
         from ai_trader import market_deploy_cap
 
         dips = {"leave_zero": [{"stock_id": "2330"}], "golden_buy": []}
+        only_gb = {"leave_zero": [], "golden_buy": [{"stock_id": "4127"}]}
         with patch(
             "taiwan_market.analyze_taiwan_market",
             return_value={"ok": True, "regime": "bull", "falling_risk": 10, "vs_ma20_pct": 2.0},
@@ -2656,11 +2659,13 @@ class AIDeskTest(unittest.TestCase):
         ):
             self.assertEqual(market_deploy_cap("x.db", "20260907", dips), 2)
             self.assertEqual(market_deploy_cap("x.db", "20260907", {"select_01": [{"stock_id": "2412"}]}), 1)
+            # 還在零不准用來開第二份槽
+            self.assertEqual(market_deploy_cap("x.db", "20260907", only_gb), 1)
 
     def test_bull_market_does_not_fill_three_slots(self):
         import os
         import tempfile
-        from ai_trader import ai_user_id, run_ai_desk
+        from ai_trader import ai_user_id, cash_reserve_floor, run_ai_desk
         from portfolio_engine import PortfolioEngine
 
         fd, path = tempfile.mkstemp(suffix=".db")
@@ -2679,7 +2684,46 @@ class AIDeskTest(unittest.TestCase):
             self.assertEqual(summary["positions_count"], 1)
             self.assertEqual(ai.get("max_held"), 1)
             self.assertGreater(summary["cash"], 300000)
+            self.assertGreaterEqual(summary["cash"], cash_reserve_floor(500000) - 1)
             self.assertIn("留現金", ai.get("html") or "")
+            self.assertIn("保留現金", ai.get("html") or "")
+        finally:
+            os.remove(path)
+
+    def test_elevated_size_mult_keeps_third_cash(self):
+        """單筆倍數拉高＋超跌兩槽，現金仍不得低於本金／3。"""
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        from ai_trader import _save_size_mult, ai_user_id, cash_reserve_floor, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            uid = ai_user_id("1001")
+            PortfolioEngine(path).ensure_user_exists(uid)
+            _save_size_mult(path, 1.2, uid)
+            results = {
+                "leave_zero": [
+                    {"stock_id": "2330", "stock_name": "台積電", "close": 100.0},
+                    {"stock_id": "2303", "stock_name": "聯電", "close": 50.0},
+                    {"stock_id": "2454", "stock_name": "聯發科", "close": 80.0},
+                ]
+            }
+            with patch(
+                "taiwan_market.analyze_taiwan_market",
+                return_value={"ok": True, "regime": "bear", "falling_risk": 40, "vs_ma20_pct": -2.0},
+            ):
+                ai = run_ai_desk(path, "1001", results, "20260831")
+            eng = PortfolioEngine(path)
+            summary = eng.get_portfolio_summary(uid)
+            self.assertEqual(ai.get("max_held"), 2)
+            self.assertLessEqual(summary["positions_count"], 2)
+            self.assertGreaterEqual(summary["cash"], cash_reserve_floor(500000) - 1)
         finally:
             os.remove(path)
 
@@ -2723,7 +2767,7 @@ class AIDeskTest(unittest.TestCase):
             os.remove(path)
 
     def test_bear_second_slot_skips_golden_buy_only(self):
-        """弱勢開兩槽但名單只有還在零 → 不買。"""
+        """弱勢但名單只有還在零 → 不開第二份槽、不買。"""
         import os
         import tempfile
         from unittest.mock import patch
@@ -2749,7 +2793,8 @@ class AIDeskTest(unittest.TestCase):
             eng = PortfolioEngine(path)
             summary = eng.get_portfolio_summary(ai_user_id("1001"))
             ids = {p["stock_id"] for p in summary["positions"]}
-            self.assertEqual(ai.get("max_held"), 2)
+            # golden_buy 不准開第二份槽；max_held 維持平常 1
+            self.assertEqual(ai.get("max_held"), 1)
             self.assertFalse(ai.get("bought"))
             self.assertEqual(ids, set())
         finally:

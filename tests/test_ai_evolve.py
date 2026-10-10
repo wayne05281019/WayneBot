@@ -101,8 +101,30 @@ def test_evolve_report_second_slot_leave_zero_only(tmp_path):
     ensure_core_schema(path)
     html = format_evolve_report_html(path, "ai_1")
     assert "還在零只觀察" in html
+    assert "不開槽" in html
+    assert "買進不得吃保留額" in html
     assert "重點觀察／黃金買點" not in html
     assert "紅箭頭不是買訊" in html
+
+
+def test_cash_reserve_and_buy_budget():
+    from ai_trader import buy_budget, cash_reserve_floor, slot_notional
+
+    assert cash_reserve_floor(500_000) == 500_000 / 3
+    # 倍數拉高也不能吃進第 3 份
+    assert buy_budget(500_000, 500_000, 1.2) == slot_notional(500_000, 1.2)
+    assert buy_budget(200_000, 500_000, 1.2) == max(0.0, 200_000 - 500_000 / 3)
+    assert buy_budget(100_000, 500_000, 1.0) == 0.0
+
+
+def test_encoding_marks_cash_reserve(tmp_path):
+    path = str(tmp_path / "enc.db")
+    ensure_core_schema(path)
+    enc = current_ai_encoding(path, "ai_1")
+    assert enc["cash_reserve"] is True
+    assert enc["dip_open"] == "leave_zero"
+    assert enc["entry"] == "leave_zero"
+    assert enc["not_entry"] == "red_arrow"
 
 
 def test_help_topics_cancelled():
