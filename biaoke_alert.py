@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -162,6 +163,31 @@ _PCT100 = re.compile(r"(100%\s*確認|完全確認|已經\s*100%)")
 
 def _plain(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _body_fingerprint(text: str) -> str:
+    """同一原文指紋。HTML :rN 與 API :c{id} 不同列也要擋住。"""
+    s = _plain(text)
+    if not s:
+        return ""
+    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+
+def _alert_keys(post_id: str, text: str) -> List[str]:
+    keys: List[str] = []
+    pid = str(post_id or "").strip()
+    if pid:
+        keys.append(pid)
+    fp = _body_fingerprint(text)
+    if fp:
+        keys.append(f"fp:{fp}")
+    out: List[str] = []
+    seen = set()
+    for k in keys:
+        if k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
 
 
 def _clip(text: str, n: int) -> str:
@@ -428,36 +454,96 @@ def _ensure(db_path: str) -> None:
         conn.close()
 
 
-def _already(db_path: str, post_id: str) -> bool:
-    if not db_path or not post_id:
+def _already(db_path: str, post_id: str, text: str = "") -> bool:
+    """同 post_id 或同正文指紋已 claim／已送 → 不准再推。"""
+    if not db_path:
+        return False
+    keys = _alert_keys(post_id, text)
+    if not keys:
         return False
     _ensure(db_path)
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
-        row = conn.execute(
-            "SELECT 1 FROM biaoke_alerts WHERE post_id=?", (post_id,)
-        ).fetchone()
-        return bool(row)
+        for key in keys:
+            row = conn.execute(
+                "SELECT 1 FROM biaoke_alerts WHERE post_id=?", (key,)
+            ).fetchone()
+            if row:
+                return True
+        return False
     except sqlite3.Error:
         return False
     finally:
         conn.close()
 
 
-def _mark(db_path: str, post_id: str, score: int, reasons: Sequence[str]) -> None:
-    if not db_path or not post_id:
+def _mark(db_path: str, post_id: str, score: int, reasons: Sequence[str], text: str = "") -> None:
+    """寫入 post_id＋正文指紋（相容舊呼叫）。優先改走 _claim_push。"""
+    if not db_path:
+        return
+    keys = _alert_keys(post_id, text)
+    if not keys:
         return
     _ensure(db_path)
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
-        conn.execute(
-            "INSERT OR REPLACE INTO biaoke_alerts(post_id, score, reasons, sent_at) "
-            "VALUES(?,?,?,datetime('now'))",
-            (post_id, int(score), "／".join(reasons)[:400]),
-        )
+        for key in keys:
+            conn.execute(
+                "INSERT OR REPLACE INTO biaoke_alerts(post_id, score, reasons, sent_at) "
+                "VALUES(?,?,?,datetime('now'))",
+                (key, int(score), "／".join(reasons)[:400]),
+            )
         conn.commit()
     except sqlite3.Error:
         logger.debug("緊急推播已送記號寫不進", exc_info=True)
+    finally:
+        conn.close()
+
+
+def _claim_push(
+    db_path: str,
+    post_id: str,
+    text: str,
+    score: int,
+    reasons: Sequence[str],
+) -> bool:
+    """先占位再送。True＝本輪可送；False＝同 id／同指紋已占 → 不准重送。
+
+    BEGIN IMMEDIATE 擋住多 worker 競速。送失敗也不撤銷（重試不重送）。
+    """
+    if not db_path:
+        return True
+    keys = _alert_keys(post_id, text)
+    if not keys:
+        return False
+    _ensure(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for key in keys:
+            hit = conn.execute(
+                "SELECT 1 FROM biaoke_alerts WHERE post_id=?", (key,)
+            ).fetchone()
+            if hit:
+                conn.rollback()
+                return False
+        why = "／".join(reasons)[:400]
+        for key in keys:
+            conn.execute(
+                "INSERT INTO biaoke_alerts(post_id, score, reasons, sent_at) "
+                "VALUES(?,?,?,datetime('now'))",
+                (key, int(score), why),
+            )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+        logger.debug("緊急推播 claim 失敗", exc_info=True)
+        # 占位失敗＝寧可略過，不准洗版
+        return False
     finally:
         conn.close()
 
@@ -722,24 +808,36 @@ def maybe_push_drop_alert(
     move: Optional[Dict[str, Any]] = None,
     prev_text: str = "",
 ) -> Dict[str, Any]:
-    """ingest 抓到新文後：只有出清／到底急推；一般新文／自回不推。"""
+    """ingest 抓到新文後：只有出清／到底急推；一般新文／自回不推。
+
+    同一 post_id／同一正文指紋只推一次；先 claim 再送，TimedOut 重試不重送。
+    HTML :rN 與 API :c{id} 不同列但同正文 → 併擋。
+    """
     stats = {"checked": 0, "pushed": 0, "skipped": 0, "routine": 0}
     rows = [dict(e) for e in (events or []) if e.get("text")]
     if not rows:
         return stats
     mkt = move if move is not None else twii_move()
+    seen_fp: set[str] = set()
     for ev in rows:
         if ev.get("club") or ev.get("kind") == "bystander":
             continue
         pid = str(ev.get("id") or ev.get("post_id") or "").strip()
         if not pid:
             continue
+        body = str(ev.get("text") or "")
         stats["checked"] += 1
-        if db_path and _already(db_path, pid):
+        fp = _body_fingerprint(body)
+        if fp and fp in seen_fp:
             stats["skipped"] += 1
             continue
+        if db_path and _already(db_path, pid, body):
+            stats["skipped"] += 1
+            if fp:
+                seen_fp.add(fp)
+            continue
         judged = judge_emergency(
-            str(ev.get("text") or ""),
+            body,
             move=mkt,
             prev_text=prev_text,
             kind=str(ev.get("kind") or "post"),
@@ -747,19 +845,26 @@ def maybe_push_drop_alert(
         if not judged.get("push"):
             stats["routine"] += 1
             continue
+        score = int(judged.get("score") or 0)
+        reasons = judged.get("reasons") or []
+        # 先占位再送：送失敗／TimedOut 也不撤，重試不重送
+        if db_path and not _claim_push(db_path, pid, body, score, reasons):
+            stats["skipped"] += 1
+            if fp:
+                seen_fp.add(fp)
+            continue
+        if fp:
+            seen_fp.add(fp)
         html = format_alert(ev, judged, mkt if isinstance(mkt, dict) else {})
         sent = _send_family(html)
-        if sent or os.environ.get("PYTEST_CURRENT_TEST"):
-            if db_path:
-                _mark(db_path, pid, int(judged.get("score") or 0), judged.get("reasons") or [])
-            stats["pushed"] += 1
-            logger.info(
-                "飆大緊急推播 post=%s score=%s reasons=%s sent=%s",
-                pid,
-                judged.get("score"),
-                judged.get("reasons"),
-                sent,
-            )
+        stats["pushed"] += 1
+        logger.info(
+            "飆大緊急推播 post=%s score=%s reasons=%s sent=%s",
+            pid,
+            judged.get("score"),
+            judged.get("reasons"),
+            sent,
+        )
     return stats
 
 
