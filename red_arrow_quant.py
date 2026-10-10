@@ -34,8 +34,10 @@ TAG_BASE = "leave_zero"  # 對照：現況買訊基線
 TAG_NONE = "no_arrow"  # 對照：當日無低點首觸且無 leave_zero
 # #548 已收軌（對照用；本輪候選須能量化優於它才收）
 TAG_PREV = "nav_low_first_ma60_vol"
-# 本輪假突破下降候選（#548 再生 hold_low_confirm）
-TAG_FILTER = "nav_low_first_hold_low_confirm"
+# #556 hold_low 已度量未過關（對照／歷史軌）
+TAG_HOLD = "nav_low_first_hold_low_confirm"
+# 本輪唯一再試：ma60_vol＋當日上半收（不含收復前低）
+TAG_FILTER = "nav_low_first_ma60_upper"
 SCORE_HORIZONS: Tuple[int, ...] = (1, 5, 10)
 # 獨立交易日＋夠廣母體才過關；事件筆數 alone 不准 promote
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
@@ -44,8 +46,9 @@ MIN_DISTINCT_SIDS = 100
 MIN_FB_DROP = 0.03
 # 相對 #548：假突破至少再降一點，且 hit／avg 不輸超過容差
 MIN_FB_DROP_VS_PREV = 0.01
-# §13 再生：hold／ma60×hold 本機假突破均升 → 下一版改試 ma60＋上半收（仍不當買訊）
-NEXT_CANDIDATE = "nav_low_first_ma60_upper"
+# ①準本輪只再試這一刀；未過關＝停，不再再生下一過濾
+NEXT_CANDIDATE = ""
+ROUND_STOPPED = True
 
 
 def _ymd(raw: Any) -> str:
@@ -188,7 +191,7 @@ def nav_low_ma60_vol_mask(df: pd.DataFrame) -> pd.Series:
 
 
 def nav_low_hold_low_confirm_mask(df: pd.DataFrame) -> pd.Series:
-    """本輪假突破下降候選：低點首觸＋同日站穩／收復前低。
+    """#556 已度量未過關：低點首觸＋同日站穩／收復前低。
 
     條件（只用當日及以前官方 OHLC，無前視）：
     - ``nav_low_arrow_first_mask`` 為真
@@ -196,7 +199,7 @@ def nav_low_hold_low_confirm_mask(df: pd.DataFrame) -> pd.Series:
     - 同日影線確認：收盤不貼當日低——(close−low)/(high−low) ≥ 0.45
       （或 high≈low 時要求 close ≥ open）
 
-    過關前仍不是買訊；只作靜默對質候選。須能量化優於 #548 才收。
+    過關前仍不是買訊；本輪只作歷史對照軌。
     """
     first = nav_low_arrow_first_mask(df)
     if first.empty or not bool(first.any()):
@@ -222,6 +225,44 @@ def nav_low_hold_low_confirm_mask(df: pd.DataFrame) -> pd.Series:
         rng = hv - lv
         if rng > 1e-9:
             if (c - lv) / rng < 0.45:
+                continue
+        elif ov > 0 and c < ov:
+            continue
+        ok[i] = True
+    return pd.Series(ok, index=df.index)
+
+
+def nav_low_ma60_upper_mask(df: pd.DataFrame) -> pd.Series:
+    """①準本輪再試一刀：#548 ma60_vol ＋ 當日收在振幅上半。
+
+    條件（只用當日及以前官方 OHLC／量，無前視）：
+    - ``nav_low_ma60_vol_mask`` 為真
+    - (close−low)/(high−low) ≥ 0.55（或 high≈low 時 close ≥ open）
+    - **不含**收復前低（#556 hold 已證明會抬假突破）
+
+    過關前仍不是買訊；須能量化優於 #548 才收。未過關＝①準停。
+    """
+    base = nav_low_ma60_vol_mask(df)
+    if base.empty or not bool(base.any()):
+        return base
+    cl = pd.to_numeric(df["close"], errors="coerce")
+    lo = pd.to_numeric(df["low"], errors="coerce")
+    hi = pd.to_numeric(df["high"], errors="coerce")
+    op = pd.to_numeric(df["open"], errors="coerce")
+    n = len(df)
+    ok = np.zeros(n, dtype=bool)
+    for i in range(n):
+        if not bool(base.iloc[i]):
+            continue
+        c = float(cl.iloc[i]) if np.isfinite(cl.iloc[i]) else 0.0
+        lv = float(lo.iloc[i]) if np.isfinite(lo.iloc[i]) else 0.0
+        hv = float(hi.iloc[i]) if np.isfinite(hi.iloc[i]) else 0.0
+        ov = float(op.iloc[i]) if np.isfinite(op.iloc[i]) else 0.0
+        if c <= 0 or lv <= 0:
+            continue
+        rng = hv - lv
+        if rng > 1e-9:
+            if (c - lv) / rng < 0.55:
                 continue
         elif ov > 0 and c < ov:
             continue
@@ -280,11 +321,13 @@ def score_stock_day(
         return []
     lows = nav_low_arrow_first_mask(hist)
     prev_f = nav_low_ma60_vol_mask(hist)
-    filtered = nav_low_hold_low_confirm_mask(hist)
+    hold_f = nav_low_hold_low_confirm_mask(hist)
+    filtered = nav_low_ma60_upper_mask(hist)
     lz_hit = bool(leave_zero_from_quote_df(hist))
     i = len(hist) - 1
     low_hit = bool(lows.iloc[i])
     prev_hit = bool(prev_f.iloc[i]) if len(prev_f) else False
+    hold_hit = bool(hold_f.iloc[i]) if len(hold_f) else False
     filt_hit = bool(filtered.iloc[i]) if len(filtered) else False
     # 對齊全序列 index，才能取 as_of 之後的收盤
     full_dates = g["date"].tolist()
@@ -298,6 +341,7 @@ def score_stock_day(
     tags: List[Tuple[str, bool]] = [
         (TAG_LOW, low_hit),
         (TAG_PREV, prev_hit),
+        (TAG_HOLD, hold_hit),
         (TAG_FILTER, filt_hit),
         (TAG_BASE, lz_hit),
         (TAG_NONE, (not low_hit) and (not lz_hit)),
@@ -402,7 +446,7 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     try:
         conn.execute("DELETE FROM red_arrow_quant_rates WHERE kind=?", (KIND,))
-        for tag in (TAG_LOW, TAG_PREV, TAG_FILTER, TAG_BASE, TAG_NONE):
+        for tag in (TAG_LOW, TAG_PREV, TAG_HOLD, TAG_FILTER, TAG_BASE, TAG_NONE):
             for h in SCORE_HORIZONS:
                 row = conn.execute(
                     """
@@ -544,12 +588,14 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
 
         low_s = _pack_rate_row(_rate(TAG_LOW))
         prev_s = _pack_rate_row(_rate(TAG_PREV))
+        hold_s = _pack_rate_row(_rate(TAG_HOLD))
         filt_s = _pack_rate_row(_rate(TAG_FILTER))
         base_s = _pack_rate_row(_rate(TAG_BASE))
         none_s = _pack_rate_row(_rate(TAG_NONE))
         for tag, pack in (
             (TAG_LOW, low_s),
             (TAG_PREV, prev_s),
+            (TAG_HOLD, hold_s),
             (TAG_FILTER, filt_s),
             (TAG_BASE, base_s),
             (TAG_NONE, none_s),
@@ -617,6 +663,8 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         "low": low_s,
         "prev_filter": prev_s,
         "prev_tag": TAG_PREV,
+        "hold_filter": hold_s,
+        "hold_tag": TAG_HOLD,
         "filtered": filt_s,
         "filter_tag": TAG_FILTER,
         "leave_zero": base_s,
@@ -632,13 +680,14 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         "min_fb_drop_vs_prev": MIN_FB_DROP_VS_PREV,
         "promote_ready": ready,
         "next_candidate": NEXT_CANDIDATE,
+        "round_stopped": bool(ROUND_STOPPED and not ready),
         "min_n": OPTIMIZE_MIN_N,
         "min_unique_days": MIN_UNIQUE_DAYS,
         "min_distinct_sids": MIN_DISTINCT_SIDS,
         "note": (
             "可考慮當買訊（仍須人工確認才改編碼）"
             if ready
-            else "還沒過關：紅箭頭代理仍不是買訊"
+            else "還沒過關：紅箭頭代理仍不是買訊；①準本輪停"
         ),
     }
 
