@@ -156,5 +156,18 @@ def test_month_growth_token_colors_pos_red_neg_green():
     assert _month_growth_token_color("年增-3.2%", C) == C["down"]
     assert _month_growth_token_color("較上月改善；較去年同月大增", C) == C["ink_soft"]
     src = inspect.getsource(render_first_glance_png)
-    assert "_paint_right_growth_line" in src
+    assert "_paint_month_revenue_row" in src
     assert "month_growth" in src
+
+
+def test_split_month_growth_and_note_two_lines():
+    from wayne_navigator import _split_month_growth_and_note
+
+    g, n = _split_month_growth_and_note(
+        "月增+80.3%　年增+45.6%　累年增+45.6%　較上月大增・越來越好；較去年同月大增・越來越好"
+    )
+    assert g == "月增+80.3%　年增+45.6%　累年增+45.6%"
+    assert "較上月大增" in n and "較去年同月" in n
+    g2, n2 = _split_month_growth_and_note("月增-55.4%　年增-6.9%　累年增+45.7%")
+    assert g2.startswith("月增-55.4%")
+    assert n2 == ""

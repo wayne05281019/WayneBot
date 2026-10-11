@@ -2995,6 +2995,92 @@ def _paint_right_growth_line(ax, rx: float, y: float, text: str, *, fs: float, C
         cursor -= pw + sep
 
 
+def _split_month_growth_and_note(text: str) -> tuple[str, str]:
+    """月營收下半：月增／年增／累年增％一行；其餘白話說明一行。"""
+    growth: list[str] = []
+    notes: list[str] = []
+    for part in (p for p in str(text or "").split("　") if p):
+        if any(k in part for k in ("月增", "年增", "累年增", "月減")):
+            growth.append(part)
+        else:
+            notes.append(part)
+    return "　".join(growth), "　".join(notes)
+
+
+def _paint_month_revenue_row(
+    ax,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    lab: str,
+    amount: str,
+    narrative: str,
+    *,
+    C,
+    lab_fs: float = 11.5,
+    amount_fs: float = 13.0,
+    narr_fs: float = 11.5,
+) -> None:
+    """近窗月營收一列：左標｜中兩行（月增％／說明）｜最右營收框。
+
+    只有一行說明時仍用兩行高度，該行垂直置中；右側營收框維持垂直置中。
+    """
+    ax.add_patch(patches.FancyBboxPatch(
+        (x, y), w, h, boxstyle="round,pad=0,rounding_size=0.45",
+        facecolor=C["white"], edgecolor=C["line"], linewidth=0.9, zorder=3))
+    mid = y + h / 2
+    lx = x + 1.45
+    try:
+        fig_w = float(ax.figure.get_figwidth() or 7.2)
+    except Exception:
+        fig_w = 7.2
+    lab_s = str(lab or "")
+    amt = str(amount or "").strip() or "—"
+    ax.text(lx, mid, lab_s, fontproperties=_fp(lab_fs, "normal"), color=C["ink_soft"],
+            ha="left", va="center", zorder=4)
+    # 最右營收框：金額垂直置中
+    afs = float(amount_fs)
+    amt_w = _text_w(amt, afs, fig_w, 800)
+    while amt_w > max(8.0, w * 0.28) and afs > 10.0:
+        afs -= 0.3
+        amt_w = _text_w(amt, afs, fig_w, 800)
+    box_pad_x, box_pad_y = 1.15, 1.05
+    box_w = amt_w + 2 * box_pad_x
+    box_h = min(h - 1.1, max(4.2, afs * 0.42 + 2 * box_pad_y))
+    box_x = x + w - 1.05 - box_w
+    box_y = mid - box_h / 2
+    ax.add_patch(patches.FancyBboxPatch(
+        (box_x, box_y), box_w, box_h,
+        boxstyle="round,pad=0,rounding_size=0.4",
+        facecolor="#F7F9FC", edgecolor="#D7DEE8", linewidth=0.85, zorder=4))
+    ax.text(box_x + box_w / 2, mid, amt, fontproperties=_fp(afs, "bold"),
+            color=C["ink"], ha="center", va="center", zorder=5)
+    growth, note = _split_month_growth_and_note(narrative)
+    narr_rx = box_x - 1.05
+    lab_w = _text_w(lab_s, lab_fs, fig_w, 400)
+    narr_avail = max(6.0, narr_rx - (lx + lab_w + 1.2))
+
+    def _fit_narr(txt: str, fs0: float) -> float:
+        fs = float(fs0)
+        while fs > 8.5 and _text_w(txt, fs, fig_w, 400) > narr_avail:
+            fs -= 0.25
+        return fs
+
+    lines = [ln for ln in (growth, note) if ln]
+    if not lines:
+        return
+    if len(lines) == 1:
+        # 單行說明：兩行高度內垂直置中
+        fs = _fit_narr(lines[0], narr_fs)
+        _paint_right_growth_line(ax, narr_rx, mid, lines[0], fs=fs, C=C)
+    else:
+        fs_g = _fit_narr(lines[0], narr_fs)
+        fs_n = _fit_narr(lines[1], max(10.0, narr_fs - 0.5))
+        _paint_right_growth_line(ax, narr_rx, mid + _LR_PRIM_DY, lines[0], fs=fs_g, C=C)
+        _paint_right_growth_line(ax, narr_rx, mid - _LR_SEC_DY, lines[1], fs=fs_n, C=C)
+
+
 def _paint_lr_box(
     ax, x, y, w, h, lab, primary, secondary=None, *,
     lab_c, prim_c, sec_c=None, fc, ec, lab_fs=11.0, prim_fs=15.0, sec_fs=10.0,
@@ -4845,7 +4931,7 @@ def render_first_glance_png(
         _lookup_tape_fingerprint(tape if isinstance(tape, dict) else {}),
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-left-v74",
+        "match-card-076-fund-rev2line-v75",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -5064,7 +5150,14 @@ def render_first_glance_png(
         fund_body += len(split_month_rows) * (split_row_h + split_gap) + 1.6
         if split_bottom:
             fund_body += 8.2 + 1.2  # 底列季標＋毛利／營益／淨利／EPS（字級對齊高低卡）
-    fund_box_hs = [lr_box_h if len(vlines) > 1 else 5.8 for _, vlines, _, _ in fund_drawn]
+    fund_box_hs = []
+    for lab, vlines, _, _ in fund_drawn:
+        is_month = (
+            str(lab).endswith("月營收")
+            and len(vlines) > 1
+            and any(k in str(vlines[1]) for k in ("月增", "年增", "累年增", "月減"))
+        )
+        fund_box_hs.append(lr_box_h if (is_month or len(vlines) > 1) else 5.8)
     if fund_box_hs:
         fund_body += sum(fund_box_hs) + 0.7 * (len(fund_box_hs) - 1)
     fund_h = (title_band + pane_pad + max(fund_body, 3.3) + pane_pad + 1.2) if (
@@ -5565,29 +5658,29 @@ def render_first_glance_png(
                             ha="center", va="center", zorder=3)
                 fy -= 0.55
         for lab, vlines, lab_fs, val_fs in fund_drawn:
-            fh = lr_box_h if len(vlines) > 1 else 5.8
-            if fy - fh < fund_floor - 0.2:
-                break
-            fy -= fh
-            # 基本面數值欄一律靠右（與季營收／毛利同套），單位對齊；不准上半左下半右
-            # 近三月營收：上行金額；下行增減％正紅負綠（只動這幾列）
+            # 近窗月營收：一律兩行高度（月增％／說明上下；單行說明垂直置中）
             month_growth = (
                 str(lab).endswith("月營收")
                 and len(vlines) > 1
                 and any(k in str(vlines[1]) for k in ("月增", "年增", "累年增", "月減"))
             )
-            _paint_lr_box(
-                ax, inner_x, fy, fw, fh, lab, vlines[0],
-                None if month_growth else (vlines[1] if len(vlines) > 1 else None),
-                lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink_soft"],
-                fc=C["white"], ec=C["line"], lab_fs=11.5, prim_fs=13.0, sec_fs=11.5,
-                value_ha="right",
-            )
+            fh = lr_box_h if (month_growth or len(vlines) > 1) else 5.8
+            if fy - fh < fund_floor - 0.2:
+                break
+            fy -= fh
+            # 基本面數值欄一律靠右（與季營收／毛利同套），單位對齊；不准上半左下半右
             if month_growth:
-                rx = inner_x + fw - 1.45
-                mid = fy + fh / 2
-                _paint_right_growth_line(
-                    ax, rx, mid - _LR_SEC_DY, vlines[1], fs=11.5, C=C,
+                _paint_month_revenue_row(
+                    ax, inner_x, fy, fw, fh, lab, vlines[0], vlines[1],
+                    C=C, lab_fs=11.5, amount_fs=13.0, narr_fs=11.5,
+                )
+            else:
+                _paint_lr_box(
+                    ax, inner_x, fy, fw, fh, lab, vlines[0],
+                    vlines[1] if len(vlines) > 1 else None,
+                    lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink_soft"],
+                    fc=C["white"], ec=C["line"], lab_fs=11.5, prim_fs=13.0, sec_fs=11.5,
+                    value_ha="right",
                 )
             fy -= 0.7
 
