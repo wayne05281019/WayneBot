@@ -302,6 +302,31 @@ def _bars_from_official(df, sid: str, name: str) -> list[dict]:
     return out
 
 
+def _bars_from_pack_face(bars_face, sid: str, name: str) -> list[dict]:
+    """prepare_volume_zone 已附的官方柱面；查股結構暖路徑不准再 load_official_ohlc。"""
+    out: list[dict] = []
+    for r in bars_face or []:
+        if not isinstance(r, dict):
+            continue
+        out.append(
+            {
+                "date": _dk(r.get("date")),
+                "stock_id": sid,
+                "stock_name": str(r.get("stock_name") or name),
+                "open": float(r.get("open") or r.get("close") or 0),
+                "high": float(r.get("high") or r.get("close") or 0),
+                "low": float(r.get("low") or r.get("close") or 0),
+                "close": float(r.get("close") or 0),
+                "volume": float(r.get("volume") or 0),
+                "is_halt": bool(r.get("is_halt")) if r.get("is_halt") is not None else False,
+                "pct_change": float(r.get("pct_change") or 0)
+                if r.get("pct_change") is not None
+                else None,
+            }
+        )
+    return out
+
+
 def _dash_spike_vline(ax, x: float, *, lw: float = 1.7, z: int = 6) -> None:
     if ax is None:
         return
@@ -3273,16 +3298,25 @@ def render_lookup_structure_result(
             prepare_volume_zone,
         )
 
-        # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖≥八個月交易日
+        # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖吃近 _BARS（≈八個月）
         pack = prepare_volume_zone(sid, name, db_path, save_path)
         if not pack:
             return "", ""
-        need = max(int(_BARS) + 40, 300)
-        long_df = official_work(load_official_ohlc(sid, db_path, need))
-        if long_df is not None and not getattr(long_df, "empty", True) and len(long_df) >= 8:
-            bars = _bars_from_official(long_df, sid, name)
+        # prepare 已載官方柱（need≈188 ≥ _BARS）；暖路徑不准再 load_official_ohlc／iterrows。
+        face = pack.get("bars") or []
+        if len(face) >= 8:
+            bars = _bars_from_pack_face(face, sid, name)
         else:
-            bars = _bars_from_official(pack["view"], sid, name)
+            need = max(int(_BARS) + 40, 300)
+            long_df = official_work(load_official_ohlc(sid, db_path, need))
+            if (
+                long_df is not None
+                and not getattr(long_df, "empty", True)
+                and len(long_df) >= 8
+            ):
+                bars = _bars_from_official(long_df, sid, name)
+            else:
+                bars = _bars_from_official(pack["view"], sid, name)
         if len(bars) < 8:
             return "", ""
         path = render_biaoke_structure_png(

@@ -155,20 +155,28 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
 
 
 def test_lookup_structure_uses_vol_zone_view():
-    """結構日K＝與大量撐壓同一套官方原柱（長窗）；停牌灰K；橫式滿版對齊範本五。"""
+    """結構日K＝與大量撐壓同一套官方原柱；優先 pack bars，不足才長窗／view。"""
     import inspect
 
-    from three_in_one_chart import _bars_from_official, render_lookup_structure_result
+    from three_in_one_chart import (
+        _bars_from_official,
+        _bars_from_pack_face,
+        render_lookup_structure_result,
+    )
 
     src = inspect.getsource(render_lookup_structure_result)
     assert "prepare_volume_zone" in src
-    assert "load_official_ohlc" in src
+    assert "_bars_from_pack_face" in src
+    assert 'pack.get("bars")' in src or "pack.get(\"bars\")" in src
+    assert "load_official_ohlc" in src  # pack bars 不足才退回
     assert "official_work" in src
-    assert 'pack["view"]' in src  # 長窗不足才退回 view
+    assert 'pack["view"]' in src  # 長窗也不足才退回 view
     assert "_STRUCTURE_LOOKUP_FIG" in src
     assert "VOL_ZONE_FIG_H_NAV" not in src
     bars = inspect.getsource(_bars_from_official)
     assert '"is_halt": halt' in bars
+    face = inspect.getsource(_bars_from_pack_face)
+    assert "不准再 load_official_ohlc" in face
 
 
 def test_vol_zone_http_not_inside_mpl_lock():

@@ -111,6 +111,31 @@ def test_vol_zone_memo_hits_with_lookup_card(tmp_path):
     assert elapsed < 0.35, elapsed
 
 
+def test_lookup_structure_warm_reuses_pack_bars(tmp_path):
+    """#561 後：結構暖路徑吃 prepare 柱面，不准再整段 load_official_ohlc。"""
+    from three_in_one_chart import render_lookup_structure_result
+    from wayne_navigator import NavigatorEngine, clear_lookup_render_cache
+    from vol_zone_chart import clear_vol_zone_render_cache
+
+    clear_lookup_render_cache()
+    clear_vol_zone_render_cache()
+    db = get_db_path()
+    card = NavigatorEngine(db).get_decision_card("2330", lookback=20, merge_live=False)
+    assert isinstance(card, dict) and not card.get("error")
+    card.pop("_ohlc", None)
+    a = str(tmp_path / "struct_a.jpg")
+    b = str(tmp_path / "struct_b.jpg")
+    p1, c1 = render_lookup_structure_result("2330", "台積電", db, a, card=card)
+    assert p1 and os.path.isfile(p1) and os.path.getsize(p1) > 20000
+    t0 = time.perf_counter()
+    p2, c2 = render_lookup_structure_result("2330", "台積電", db, b, card=card)
+    elapsed = time.perf_counter() - t0
+    assert p2 and os.path.isfile(p2)
+    assert c1 == c2
+    # 修前暖路徑 ~35ms（二次 load＋iterrows）；修後應貼近大量撐壓暖命中
+    assert elapsed < 0.25, elapsed
+
+
 def test_pressure_screen_cache_hit():
     from pressure_support_watch import (
         clear_pressure_screen_cache,
