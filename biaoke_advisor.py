@@ -601,12 +601,15 @@ def _live_field_flags(text: str) -> Dict[str, bool]:
         k in t
         for k in ("CPO", "訊芯", "眾達", "日月光", "聯鈞", "台積", "光通訊", "矽光子")
     )
+    # 交換器：近窗點名智邦才開；不靠「光通訊」整句硬塞
+    switch = any(k in t for k in ("智邦", "交換器", "2345"))
     return {
         "asic": asic,
-        "opt": opt,
+        "opt": opt or switch,
         "inp": inp and opt,
         "fau": fau and opt,
         "cpo": cpo and opt,
+        "switch": switch,
     }
 
 
@@ -617,6 +620,7 @@ def _inp_asic_tiers(db_path: str, spoken: str) -> Dict[str, Any]:
         _OPT_CPO,
         _OPT_FAU,
         _OPT_INP,
+        _OPT_SWITCH,
     )
 
     # 建議只認近窗正文；沒近窗才退回傳入 spoken（測試用）
@@ -627,6 +631,7 @@ def _inp_asic_tiers(db_path: str, spoken: str) -> Dict[str, Any]:
         "inp": [],
         "fau": [],
         "cpo": [],
+        "switch": [],
         "asic": [],
         "asic_leaders": [],
         "asic_related": [],
@@ -646,6 +651,10 @@ def _inp_asic_tiers(db_path: str, spoken: str) -> Dict[str, Any]:
     if flags.get("cpo"):
         out["cpo"] = _filter_live_rows(
             db_path, list(_OPT_CPO.items()), preserve_order=True
+        )
+    if flags.get("switch"):
+        out["switch"] = _filter_live_rows(
+            db_path, list(_OPT_SWITCH.items()), preserve_order=True
         )
     if flags.get("asic"):
         leaders = _filter_live_rows(
@@ -669,6 +678,7 @@ def _inp_asic_tiers(db_path: str, spoken: str) -> Dict[str, Any]:
     for label, rows in (
         ("ASIC", out["asic"]),
         ("InP", out["inp"]),
+        ("交換器", out["switch"]),
         ("FAU", out["fau"]),
         ("CPO", out["cpo"]),
     ):
@@ -726,6 +736,7 @@ def advisor_pack(db_path: str = "", ask: str = "") -> Dict[str, Any]:
         "cross": cross,
         "lines": lines,
         "inp_rows": tiers.get("inp") or [],
+        "switch_rows": tiers.get("switch") or [],
         "fau_rows": tiers.get("fau") or [],
         "cpo_rows": tiers.get("cpo") or [],
         "asic_rows": tiers.get("asic") or [],
@@ -901,7 +912,7 @@ def action_advice_pack(db_path: str = "", ask: str = "") -> Dict[str, Any]:
     # 問句可以收窄，但最終仍要近窗正文有講才展開
     ask_opt = (not q) or bool(
         re.search(
-            r"(InP|光通訊|矽光子|CPO|FAU|聯亞|全新|IET|上詮|雙箭頭|怎麼做|建議)",
+            r"(InP|光通訊|矽光子|CPO|FAU|聯亞|全新|IET|上詮|智邦|交換器|雙箭頭|怎麼做|建議)",
             q,
             re.I,
         )
@@ -919,6 +930,8 @@ def action_advice_pack(db_path: str = "", ask: str = "") -> Dict[str, Any]:
         rows.extend(tiers.get("asic") or pack.get("asic_rows") or [])
     if ask_opt and flags.get("inp"):
         rows.extend(tiers.get("inp") or pack.get("inp_rows") or [])
+    if ask_opt and flags.get("switch"):
+        rows.extend(tiers.get("switch") or pack.get("switch_rows") or [])
     if ask_opt and flags.get("fau"):
         rows.extend(tiers.get("fau") or [])
     if ask_opt and flags.get("cpo"):
@@ -970,6 +983,7 @@ def action_advice_pack(db_path: str = "", ask: str = "") -> Dict[str, Any]:
         "asic_leaders": list(tiers.get("asic_leaders") or []),
         "asic_related": list(tiers.get("asic_related") or []),
         "inp_rows": list(tiers.get("inp") or pack.get("inp_rows") or []),
+        "switch_rows": list(tiers.get("switch") or pack.get("switch_rows") or []),
         "fau_rows": list(tiers.get("fau") or []),
         "cpo_rows": list(tiers.get("cpo") or []),
     }
@@ -1079,6 +1093,8 @@ def format_action_advice_html(
             _OPT_INP_HEADER,
             _OPT_INP_LEADERS,
             _OPT_INP_NOTES,
+            _OPT_SWITCH_HEADER,
+            _OPT_SWITCH_NOTES,
         )
     except Exception:
         _ASIC_CHAIN_NOTE = {}
@@ -1086,6 +1102,8 @@ def format_action_advice_html(
         _OPT_INP_HEADER = "InP（磷化銦）：發光光源與晶片磊晶材料"
         _OPT_FAU_HEADER = "FAU（光纖陣列）與微光學元件"
         _OPT_CPO_HEADER = "CPO（共同封裝光學）與先進封測族群"
+        _OPT_SWITCH_HEADER = "光通訊交換器"
+        _OPT_SWITCH_NOTES = {"2345": "年前約25%；突破季線回測再介入"}
         _OPT_INP_LEADERS = frozenset({"3081"})
         _OPT_INP_NOTES = {"3105": "另有低軌衛星題材"}
     # 預設自動化：近窗說法＋官方柱對質（每次按飆大／彙整都重算）
@@ -1157,6 +1175,19 @@ def format_action_advice_html(
             )
             if line:
                 blocks.append(f"<b>{html_escape(_OPT_INP_HEADER)}</b>")
+                blocks.append(line)
+        if live.get("switch"):
+            sw_notes = dict(_OPT_SWITCH_NOTES or {})
+            line = _yahoo_join(
+                pack.get("switch_rows") or [],
+                db_path,
+                limit=3,
+                notes=sw_notes,
+                leaders={"2345"},
+                plain_sids=plain,
+            )
+            if line:
+                blocks.append(f"<b>{html_escape(_OPT_SWITCH_HEADER)}</b>")
                 blocks.append(line)
         if live.get("fau"):
             line = _yahoo_join(
@@ -1249,6 +1280,7 @@ _INTRO_CHART_LIMITS = (
     ("asic_leaders", 3, "asic"),
     ("asic_related", 6, "asic"),
     ("inp_rows", 5, "inp"),
+    ("switch_rows", 3, "switch"),
     ("fau_rows", 4, "fau"),
     ("cpo_rows", 5, "cpo"),
 )
@@ -1258,6 +1290,7 @@ _INTRO_CHART_LIMITS = (
 _INTRO_THEME_TAG = {
     "asic": "ASIC",
     "inp": "InP",
+    "switch": "交換器",
     "fau": "FAU",
     "cpo": "CPO",
 }
