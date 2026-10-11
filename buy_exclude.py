@@ -457,6 +457,59 @@ def paint_leave_zero_indices(
     return out
 
 
+def paint_ma60_lower_indices(
+    df,
+    *,
+    emerging: bool = False,
+    quote_source: str = "",
+) -> List[int]:
+    """可畫藍▲紅框的 ma60_lower 確認柱：紅箭頭代理過確認後再過排除層。
+
+    未過 ma60_lower 的低點首觸不准進這裡。不改 leave_zero 公式。
+    """
+    try:
+        from red_arrow_quant import PRODUCT_ENTRY, ma60_lower_bar_indices
+    except Exception:
+        return []
+    if not PRODUCT_ENTRY:
+        return []
+    out: List[int] = []
+    for i in ma60_lower_bar_indices(df) or []:
+        try:
+            ii = int(i)
+        except (TypeError, ValueError):
+            continue
+        if should_exclude_buy(
+            df, ii, emerging=emerging, quote_source=quote_source
+        ):
+            continue
+        out.append(ii)
+    return out
+
+
+def paint_buy_entry_indices(
+    df,
+    *,
+    emerging: bool = False,
+    quote_source: str = "",
+) -> List[int]:
+    """進場可畫藍▲：leave_zero ∪ ma60_lower 確認（去重排序）。"""
+    seen = set()
+    out: List[int] = []
+    for i in paint_leave_zero_indices(
+        df, emerging=emerging, quote_source=quote_source
+    ) + paint_ma60_lower_indices(
+        df, emerging=emerging, quote_source=quote_source
+    ):
+        ii = int(i)
+        if ii in seen:
+            continue
+        seen.add(ii)
+        out.append(ii)
+    out.sort()
+    return out
+
+
 def leave_zero_paint_today(
     df,
     *,

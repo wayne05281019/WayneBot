@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFilter
 MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "revenue_cross": ("📈", (232, 140, 50), "bars", "優先看"),
     "leave_zero": ("🌱", (60, 170, 90), "sprout", "黃金買點"),
+    "ma60_lower": ("🔺", (220, 70, 60), "sprout", "紅箭確認"),
     "golden_buy": ("✨", (220, 160, 40), "star", "還在零"),
     "select_01": ("🔥", (230, 80, 50), "flame", "周帶量"),
     "select_02": ("🏆", (220, 180, 50), "cup", "季線"),
@@ -23,8 +24,8 @@ MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "overnight": ("🌙", (80, 130, 210), "moon", "隔日沖"),
 }
 
-# 只這兩區值得閃：進場認高低卡表。其餘區位不配動圖。
-ANIM_KEYS = frozenset({"leave_zero", "golden_buy"})
+# 進場桶＋還在零值得閃；其餘區位不配動圖。
+ANIM_KEYS = frozenset({"leave_zero", "ma60_lower", "golden_buy"})
 GIF_VER = "pulse2"
 
 SET_NAME = "waynebot_marks_by_WC_ai_trade_bot"

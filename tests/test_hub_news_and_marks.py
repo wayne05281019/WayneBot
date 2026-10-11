@@ -10,9 +10,10 @@ def test_only_entry_buckets_get_pulse_gif(tmp_path):
     out = render_pulse_gif("sprout", (60, 170, 90), path)
     assert out == path
     assert tmp_path.joinpath("pulse.gif").stat().st_size > 800
-    assert ANIM_KEYS == frozenset({"leave_zero", "golden_buy"})
+    assert ANIM_KEYS == frozenset({"leave_zero", "ma60_lower", "golden_buy"})
     assert ensure_mark_gif("select_01") == ""
     assert ensure_mark_gif("leave_zero") == ""
+    assert ensure_mark_gif("ma60_lower") == ""
     assert ensure_mark_gif("golden_buy") == ""
 
 

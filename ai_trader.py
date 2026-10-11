@@ -109,7 +109,7 @@ def market_deploy_cap(
 ) -> int:
     """今晚最多抱幾檔。平常 1 份；大盤偏空且有剛離零名單才動第 2 份。永遠留 1 份現金。
 
-    第二份開門只認 leave_zero（進場桶）；golden_buy 只觀察，不准用來開槽。
+    第二份開門只認進場桶（leave_zero／ma60_lower）；golden_buy 只觀察，不准用來開槽。
     """
     cap = CORE_SLOTS
     snap: Dict[str, Any] = {}
@@ -131,7 +131,9 @@ def market_deploy_cap(
         vs20_n = float(vs20) if vs20 is not None else None
     except (TypeError, ValueError):
         vs20_n = None
-    dip_names = bool((results or {}).get("leave_zero"))
+    dip_names = bool(
+        (results or {}).get("leave_zero") or (results or {}).get("ma60_lower")
+    )
     weak = regime == "bear" or fr >= 35 or (vs20_n is not None and vs20_n < -1)
     if weak and dip_names:
         cap = CORE_SLOTS + DIP_SLOTS
@@ -152,6 +154,7 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
     for key in (
         "revenue_cross",
         "leave_zero",
+        "ma60_lower",
         "golden_buy",
         "select_01",
         "select_02",
@@ -176,15 +179,18 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
 def _candidates(
     results: Dict[str, List[Dict[str, Any]]], db_path: str = "", *, dip_only: bool = False
 ) -> List[Dict[str, Any]]:
-    """隔夜模擬倉：只買黃金買點（leave_zero）。不拿周帶量／營收轉強／隔日沖／還在零去隔夜。
+    """隔夜模擬倉：只買進場桶（leave_zero／ma60_lower 確認）。
 
-    dip_only：第二份（超跌槽）仍只准 leave_zero；golden_buy 只觀察不進假倉。
-    參數保留給呼叫端相容，不再擴大候選桶。貼月高、美股逆風不買。
-    滿五星＝表上該買；不把星星當買閘。
+    不拿周帶量／營收轉強／隔日沖／還在零／未確認紅箭頭去隔夜。
+    dip_only：第二份仍只准進場桶；golden_buy 只觀察不進假倉。
+    貼月高、美股逆風不買。滿五星＝表上該買；不把星星當買閘。
     """
     out, seen = [], set()
-    _ = dip_only  # 呼叫端仍傳；進場規則已統一只 leave_zero
-    keys = (("leave_zero", "黃金買點：獲利離零"),)
+    _ = dip_only  # 呼叫端仍傳；進場＝leave_zero ∪ ma60_lower
+    keys = (
+        ("leave_zero", "黃金買點：獲利離零"),
+        ("ma60_lower", "紅箭確認：ma60_lower"),
+    )
     for key, reason in keys:
         if db_path:
             try:
@@ -334,16 +340,16 @@ def current_ai_encoding(db_path: str, user_id: str = AI_USER_LEGACY) -> Dict[str
     uid = str(user_id or AI_USER_LEGACY)
     weights = {key: float(bucket_weight(db_path, key)) for key, _label in BUCKETS}
     return {
-        "entry": "leave_zero",
+        "entry": "leave_zero+ma60_lower",
         "observe": "golden_buy",
-        "not_entry": "red_arrow",
+        "not_entry": "red_arrow_unconfirmed",
         "stop_pct": STOP_PCT,
         "take_pct": TAKE_PCT,
         "core_slots": CORE_SLOTS,
         "dip_slots": DIP_SLOTS,
         "cash_slots": 1,
         "cash_reserve": True,
-        "dip_open": "leave_zero",
+        "dip_open": "leave_zero+ma60_lower",
         "size_mult": _load_size_mult(db_path, uid),
         "bucket_w": weights,
     }
@@ -435,14 +441,14 @@ def format_evolve_report_html(db_path: str, user_id: str = AI_USER_LEGACY) -> st
     lines = [
         "<b>AI倉進化回報</b>",
         "表面仍是模擬買進／賣出。背後只調倉位倍數與哪類海選少買。",
-        "進場只認高低卡表的黃金買點。紅箭頭不是買訊。不會改程式，也不能塞進富邦量化積木。",
+        "進場認高低卡黃金買點，以及過 ma60_lower 確認的紅箭頭。未確認紅箭頭不是買訊。不會改程式，也不能塞進富邦量化積木。",
         "",
         "<b>目前編碼</b>",
-        "進場＝高低卡黃金買點整張表（滿五星＝按表該買；少追降星）",
-        "第二份＝大盤偏空且有剛離零才開槽；還在零只觀察、不開槽",
+        "進場＝黃金買點 leave_zero ∪ 紅箭確認 ma60_lower（滿五星＝按表該買；少追降星）",
+        "第二份＝大盤偏空且有進場名單才開槽；還在零只觀察、不開槽",
         f"停損 {STOP_PCT:.0f}%　停利 ＋{TAKE_PCT:.0f}%　平常 {CORE_SLOTS} 份、永遠留 1 份現金（買進不得吃保留額）",
         f"單筆倍數 {size_mult:.2f}（0.40～1.20，依近況勝率縮放）",
-        "紅箭頭不是買訊。假錢對照，不能塞進富邦真下單。",
+        "未過 ma60_lower 確認的紅箭頭不是買訊。假錢對照，不能塞進富邦真下單。",
     ]
     wbits = []
     for key, label in BUCKETS:

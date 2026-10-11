@@ -345,6 +345,7 @@ class ScreeningEngine:
         res_day_trade = []
         res_overnight = []
         res_leave_zero = []
+        res_ma60_lower = []
         res_golden_buy = []
         res_half_year_high = []
 
@@ -466,6 +467,30 @@ class ScreeningEngine:
                         pass
                     res_leave_zero.append(item)
 
+            # 紅箭確認（ma60_lower）＝已過關代理；與 leave_zero 並列進場。
+            # 未過確認的低點首觸不當買。不改 leave_zero 公式。
+            if len(df) >= 60:
+                try:
+                    from buy_exclude import should_exclude_buy
+                    from red_arrow_quant import PRODUCT_ENTRY, nav_low_ma60_lower_mask
+
+                    if PRODUCT_ENTRY and bool(nav_low_ma60_lower_mask(df).iloc[-1]):
+                        last_i = len(df) - 1
+                        if not should_exclude_buy(df, last_i):
+                            item = dict(info)
+                            item["ma60_lower"] = True
+                            item["entry_stage"] = "buy"
+                            item["bucket_key"] = "ma60_lower"
+                            try:
+                                from hold_prior_wave import stamp_buy_gate
+
+                                stamp_buy_gate(item, df)
+                            except Exception:
+                                pass
+                            res_ma60_lower.append(item)
+                except Exception:
+                    pass
+
             # ------------------------------------------------------------------
             # 當沖動能專區：量能放大 (Q60R >= 2.0)、5MA 向上、振幅 2.0%~8.0%
             # ------------------------------------------------------------------
@@ -520,6 +545,12 @@ class ScreeningEngine:
                 _nprofit(x),
             )
         )
+        res_ma60_lower.sort(
+            key=lambda x: (
+                1 if x.get("chase_warning") else 0,
+                _nprofit(x),
+            )
+        )
 
         res_golden_buy.sort(
             key=lambda x: (
@@ -536,6 +567,7 @@ class ScreeningEngine:
             "select_03": res_sel_03,
             "half_year_high": res_half_year_high,
             "leave_zero": res_leave_zero,
+            "ma60_lower": res_ma60_lower,
             "golden_buy": res_golden_buy,
             "day_trade": res_day_trade,
             "overnight": res_overnight,
@@ -1336,6 +1368,7 @@ class ScreeningEngine:
             as_of = str(next(iter(dfs.values()))["date"].iloc[-1] or "").replace("-", "")[:8]
         return {
             "leave_zero": list(raw.get("leave_zero") or []),
+            "ma60_lower": list(raw.get("ma60_lower") or []),
             "golden_buy": list(raw.get("golden_buy") or []),
             "as_of": as_of,
             "universe": "EM",
@@ -1355,6 +1388,8 @@ LEAVE_ZERO_MIS_CAP = 64
 _BUCKET_FROM_LABEL = {
     "黃金買點": "leave_zero",
     "買點": "leave_zero",
+    "紅箭確認": "ma60_lower",
+    "紅箭買點": "ma60_lower",
     "重點觀察": "golden_buy",
     "還在零": "golden_buy",
     "優先看": "revenue_cross",
@@ -1377,6 +1412,7 @@ _BUCKET_FROM_LABEL = {
 
 _STAR_BASE = {
     "leave_zero": 3,
+    "ma60_lower": 3,
     "golden_buy": 1,
     "revenue_cross": 2,
     "select_03": 2,
@@ -2385,19 +2421,23 @@ def _compact_line(item: Dict[str, Any]) -> str:
     return f"{title}　{stars}\n{body}"
 
 
-# 海選畫面（早報＋手動）只出黃金買點一欄（買點＋還在零）。
+# 海選畫面（早報＋手動）：黃金買點＋紅箭確認（ma60_lower 已過關）。
 # 周帶量／半年高／站上季線／止跌／優先看仍計算，不是買訊、不進海選卡片。
-# 當沖／隔日沖改主選單單獨查。
+# 當沖／隔日沖改主選單單獨查。未過確認的紅箭頭不當買。
 _ENTRY_HINT = "買點＝剛離零可切入；還在零＝觀察不是買"
+_MA60_LOWER_HINT = "20／60低首觸＋MA60帶＋振幅下半收（已過關可進場）"
 SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
+    ("ma60_lower", "🔺", "紅箭確認", _MA60_LOWER_HINT, 8, False),
 )
 MORNING_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
+    ("ma60_lower", "🔺", "紅箭確認", _MA60_LOWER_HINT, 8, False),
 )
 MORNING_LAYOUT_KEYS = tuple(s[0] for s in MORNING_PUSH_SPECS)
 EMERGING_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", "興櫃官方日均價；買點＝剛離零；還在零＝觀察不是買", 8, False),
+    ("ma60_lower", "🔺", "紅箭確認", "興櫃官方日均價；" + _MA60_LOWER_HINT, 8, False),
 )
 
 LINE_TRADE_POINTER = (

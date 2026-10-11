@@ -5629,9 +5629,9 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
     row1 = [
         (_nav_legend_key("h20", "v", ms=ms_z + 2), "20高"),
         (_nav_legend_key("h20_leave", "v", ms=ms_z + 2), "20高脫離"),
-        (_nav_legend_key("l20", "^", ms=ms_z + 2), "20低（紅箭頭代理·未過關）"),
+        (_nav_legend_key("l20", "^", ms=ms_z + 2), "20低（紅箭頭代理）"),
         (_nav_legend_key("l20_leave", "^", ms=ms_z + 2), "20低脫離"),
-        (_nav_legend_key("l60", "^", ms=ms_z + 2), "60低（紅箭頭代理·未過關）"),
+        (_nav_legend_key("l60", "^", ms=ms_z + 2), "60低（紅箭頭代理）"),
         (_nav_legend_key("h20_near", "v", ms=ms_z, hollow=True), "接近高（空心）"),
         (_nav_legend_key("l20_near", "^", ms=ms_z, hollow=True), "接近低（空心）"),
         (_nav_legend_key("ghost", "^", ms=ms_z, alpha=0.45), "殘影（仍貼）"),
@@ -6080,9 +6080,10 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
 
 
 def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
-    """黃金買點進出標：買＝可見窗內 leave_zero 且過排除層；賣＝最後一根直接減碼。
+    """進出標：買＝可見窗內 leave_zero 或 ma60_lower 確認且過排除層；賣＝最後一根直接減碼。
 
-    導航圖／大量區／壓力區／查股高低卡共用。藍▲紅框不是紅箭頭買訊；還在零不畫買箭。
+    導航圖／大量區／壓力區／查股高低卡共用。藍▲紅框＝進場買訊（leave_zero 與
+    過 ma60_lower 確認的紅箭頭代理並列）；未確認低點首觸不畫買箭；還在零不畫買箭。
     排除層與勝率買點／剛脫離零名單同一套（結構破底／鎖跌停／量縮等）。
     有卡時最後一根另對齊 buy_verdict／entry_stage／just_left（watch／no 清最後）；
     卡加進來的最後一根仍要過排除層，不准圖上畫、名單卻濾掉。
@@ -6093,16 +6094,21 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
     if n < 2:
         return buy_is, sell_i
     try:
-        from buy_exclude import paint_leave_zero_indices
+        from buy_exclude import paint_buy_entry_indices
 
-        buy_is = [int(i) for i in paint_leave_zero_indices(work)]
+        buy_is = [int(i) for i in paint_buy_entry_indices(work)]
     except Exception:
         try:
-            from decision_card_signals import leave_zero_bar_indices
+            from buy_exclude import paint_leave_zero_indices
 
-            buy_is = [int(i) for i in leave_zero_bar_indices(work)]
+            buy_is = [int(i) for i in paint_leave_zero_indices(work)]
         except Exception:
-            buy_is = []
+            try:
+                from decision_card_signals import leave_zero_bar_indices
+
+                buy_is = [int(i) for i in leave_zero_bar_indices(work)]
+            except Exception:
+                buy_is = []
     if buy_is and "is_halt" in work.columns:
         halt = work["is_halt"].fillna(False).astype(bool)
         buy_is = [i for i in buy_is if 0 <= i < n and not bool(halt.iloc[i])]
@@ -6934,7 +6940,7 @@ def draw_from_ohlc(
         0.50, 0.045,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
         "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍；"
-        "20低／60低＝紅箭頭代理·未過關不當買訊（進場只認藍▲紅框 leave_zero）",
+        "20低／60低＝紅箭頭代理；過 ma60_lower 確認才當買訊（藍▲紅框，與 leave_zero 並列）；未確認仍不當買",
         ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
     halt_n = int(work["is_halt"].fillna(False).astype(bool).sum()) if "is_halt" in work.columns else 0

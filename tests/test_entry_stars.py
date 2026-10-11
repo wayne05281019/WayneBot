@@ -136,13 +136,15 @@ def test_entry_watch_merged_one_list_two_tags():
         morning=True,
     )
     keys = [p.get("mark_key") for p in payload]
-    assert keys == ["leave_zero"]
+    assert keys == ["leave_zero", "ma60_lower"]
     html = payload[0]["html"]
     assert "＝＝重點觀察" not in html
     assert "買點" in html and "還在零" in html
     assert "不同步就直接減碼" in html
     assert html.index("台積電") < html.index("台泥")
     assert "減碼" not in html.split("台泥", 1)[1]
+    assert payload[1].get("mark_key") == "ma60_lower"
+    assert "紅箭確認" in (payload[1].get("html") or "")
 
 
 def test_stamp_sets_buy_star_only_for_five():

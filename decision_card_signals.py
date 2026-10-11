@@ -708,10 +708,10 @@ def card_daily_stance(
     near_high: bool = False,
     prev_profit_pct: float | None = None,
 ) -> Tuple[str, str]:
-    """今日態度：只認高低卡表，不複製 Cary 紅箭頭當買訊、也不是下單指令。
+    """今日態度：高低卡表為主；未確認 Cary 紅箭頭不當買訊、也不是下單指令。
 
-    回傳 (文案, kind)，kind ∈ avoid / watch / wait。
-    near_high＝貼近 20 日收盤高（少追），即使高低格還沒寫 20高。
+    進場另見 leave_zero 與 ma60_lower 確認（藍▲紅框）。回傳 (文案, kind)，
+    kind ∈ avoid / watch / wait。near_high＝貼近 20 日收盤高（少追）。
     """
     badges = [str(x) for x in (badges or [])]
     alert = str(alert or "")

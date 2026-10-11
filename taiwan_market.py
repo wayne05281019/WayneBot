@@ -27,6 +27,7 @@ _OFFICIAL_LOOKBACK_DAYS = 5
 REGIME_BUCKET_MULT: Dict[str, Dict[str, float]] = {
     "bull": {
         "leave_zero": 1.15,
+        "ma60_lower": 1.15,
         "golden_buy": 1.1,
         "revenue_cross": 1.1,
         "select_01": 1.12,
@@ -37,11 +38,12 @@ REGIME_BUCKET_MULT: Dict[str, Dict[str, float]] = {
         "overnight": 1.05,
     },
     "neutral": {k: 1.0 for k in (
-        "leave_zero", "golden_buy", "revenue_cross", "select_01", "select_02",
-        "select_03", "half_year_high", "day_trade", "overnight",
+        "leave_zero", "ma60_lower", "golden_buy", "revenue_cross", "select_01",
+        "select_02", "select_03", "half_year_high", "day_trade", "overnight",
     )},
     "bear": {
         "leave_zero": 0.9,
+        "ma60_lower": 0.9,
         "golden_buy": 1.05,
         "revenue_cross": 0.85,
         "select_01": 0.72,
@@ -54,10 +56,11 @@ REGIME_BUCKET_MULT: Dict[str, Dict[str, float]] = {
 }
 
 REGIME_BUCKET_CAP: Dict[str, Dict[str, int]] = {
-    "bull": {"leave_zero": 9, "select_01": 9, "half_year_high": 9},
+    "bull": {"leave_zero": 9, "ma60_lower": 9, "select_01": 9, "half_year_high": 9},
     "neutral": {},
     "bear": {
         "leave_zero": 6,
+        "ma60_lower": 6,
         "select_01": 5,
         "select_02": 5,
         "select_03": 5,
@@ -85,6 +88,7 @@ REGIME_PLUS_BUCKET_MULT: Dict[str, Dict[str, float]] = {
     },
     "trend_up_late": {
         "leave_zero": 1.05,
+        "ma60_lower": 1.05,
         "golden_buy": 1.05,
         "revenue_cross": 0.95,
         "select_01": 0.92,
@@ -100,11 +104,13 @@ REGIME_PLUS_BUCKET_MULT: Dict[str, Dict[str, float]] = {
         **REGIME_BUCKET_MULT["bear"],
         "golden_buy": 1.08,
         "leave_zero": 0.95,
+        "ma60_lower": 0.95,
         "day_trade": 0.5,
         "overnight": 0.5,
     },
     "repair": {
         "leave_zero": 1.08,
+        "ma60_lower": 1.08,
         "golden_buy": 1.12,
         "revenue_cross": 1.0,
         "select_01": 1.05,
@@ -117,7 +123,7 @@ REGIME_PLUS_BUCKET_MULT: Dict[str, Dict[str, float]] = {
 }
 
 REGIME_PLUS_BUCKET_CAP: Dict[str, Dict[str, int]] = {
-    "trend_up": {"leave_zero": 9, "select_01": 9, "half_year_high": 9},
+    "trend_up": {"leave_zero": 9, "ma60_lower": 9, "select_01": 9, "half_year_high": 9},
     "trend_up_late": {"select_01": 6, "half_year_high": 6, "day_trade": 5, "overnight": 5},
     "trend_down": dict(REGIME_BUCKET_CAP["bear"]),
     "down_exhaust": {"day_trade": 3, "overnight": 3, "select_01": 5},

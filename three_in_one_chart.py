@@ -4,7 +4,7 @@
 
 ①高低導航 180 日＋②飆大結構＋③大量壓力，合成一張。
 規則鎖自 media/6526-三合一圖.png（T0118）。
-官方 OHLC；③不准盤中假柱；買點只認藍▲紅框；紅箭頭不是買訊。
+官方 OHLC；③不准盤中假柱；買點＝藍▲紅框（leave_zero∪ma60_lower）；未確認紅箭頭不是買訊。
 """
 from __future__ import annotations
 
@@ -1725,7 +1725,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
     vz_raw_is, _ = _nav_trade_marks(pack["view"], card=card)
     vz_raw_dates = [_dk(pack["view"]["date"].iloc[i]) for i in vz_raw_is]
     buy_audit = {
-        "rule": "藍▲紅框＝leave_zero 且過排除層；同源=_nav_trade_marks；紅箭頭不是買訊",
+        "rule": "藍▲紅框＝leave_zero∪ma60_lower 且過排除層；同源=_nav_trade_marks；未確認紅箭頭不是買訊",
         "canon_window": "① generate_chart 180日",
         "first_k": first_k,
         "canon_buys_all": canon_buy_rows,
@@ -1741,7 +1741,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         "card_sell_action": (card or {}).get("sell_action"),
         "card_gain_pct": (card or {}).get("gain_pct"),
         "sell_date": canon_sell_date,
-        "note_buy": "藍▲紅框＝leave_zero；紅箭頭不是買訊；①③同源 _nav_trade_marks",
+        "note_buy": "藍▲紅框＝leave_zero∪ma60_lower；未確認紅箭頭不是買訊；①③同源 _nav_trade_marks",
     }
 
     # ---- shared artist tweaks before save ----

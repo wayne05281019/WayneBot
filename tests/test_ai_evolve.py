@@ -20,9 +20,9 @@ def test_persist_lesson_and_encoding_roundtrip(tmp_path):
     ensure_core_schema(path)
     persist_ai_lesson(path, "ai_1", "20260904", "縮小單筆倉位")
     enc = current_ai_encoding(path, "ai_1")
-    assert enc["entry"] == "leave_zero"
+    assert enc["entry"] == "leave_zero+ma60_lower"
     assert enc["observe"] == "golden_buy"
-    assert enc["not_entry"] == "red_arrow"
+    assert enc["not_entry"] == "red_arrow_unconfirmed"
     assert enc["cash_slots"] == 1
     assert 0.4 <= float(enc["size_mult"]) <= 1.2
     html = format_evolve_report_html(path, "ai_1")
@@ -31,7 +31,8 @@ def test_persist_lesson_and_encoding_roundtrip(tmp_path):
     assert "2026/09/04" in html
     assert "量化積木" in html
     assert "不能塞進" in html
-    assert "紅箭頭不是買訊" in html
+    assert "未確認紅箭頭不是買訊" in html
+    assert "ma60_lower" in html
     conn = sqlite3.connect(path)
     n = conn.execute("SELECT COUNT(*) FROM ai_lessons").fetchone()[0]
     conn.close()
@@ -61,13 +62,14 @@ def test_evening_desk_stays_silent_and_digest_is_separate():
     assert "snapshot_ai_desk" in desk
 
 
-def test_core_candidates_are_leave_zero_only():
+def test_core_candidates_are_entry_buckets_only():
     import inspect
 
     from ai_trader import _candidates
 
     src = inspect.getsource(_candidates)
-    assert 'keys = (("leave_zero", "黃金買點：獲利離零"),)' in src
+    assert '("leave_zero", "黃金買點：獲利離零")' in src
+    assert '("ma60_lower", "紅箭確認：ma60_lower")' in src
     assert '("golden_buy"' not in src
     assert "revenue_cross" not in src
     assert "select_01" not in src
@@ -76,21 +78,23 @@ def test_core_candidates_are_leave_zero_only():
     cands = _candidates(
         {
             "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "buy_star": False}],
+            "ma60_lower": [{"stock_id": "6257", "stock_name": "矽格", "close": 99.0, "buy_star": False}],
             "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
         }
     )
-    assert [x["stock_id"] for x in cands] == ["2330"]
+    assert [x["stock_id"] for x in cands] == ["2330", "6257"]
     dip = _candidates(
         {
             "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+            "ma60_lower": [{"stock_id": "6257", "stock_name": "矽格", "close": 99.0}],
             "golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}],
             "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
         },
         dip_only=True,
     )
     # 第二份超跌槽也不准買還在零（golden_buy）
-    assert [x["stock_id"] for x in dip] == ["2330"]
-    assert all(x.get("ai_bucket") == "leave_zero" for x in dip)
+    assert [x["stock_id"] for x in dip] == ["2330", "6257"]
+    assert {x.get("ai_bucket") for x in dip} == {"leave_zero", "ma60_lower"}
     only_gb = _candidates(
         {"golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}]},
         dip_only=True,
@@ -106,7 +110,8 @@ def test_evolve_report_second_slot_leave_zero_only(tmp_path):
     assert "不開槽" in html
     assert "買進不得吃保留額" in html
     assert "重點觀察／黃金買點" not in html
-    assert "紅箭頭不是買訊" in html
+    assert "未確認紅箭頭不是買訊" in html
+    assert "ma60_lower" in html
 
 
 def test_cash_reserve_and_buy_budget():
@@ -124,9 +129,9 @@ def test_encoding_marks_cash_reserve(tmp_path):
     ensure_core_schema(path)
     enc = current_ai_encoding(path, "ai_1")
     assert enc["cash_reserve"] is True
-    assert enc["dip_open"] == "leave_zero"
-    assert enc["entry"] == "leave_zero"
-    assert enc["not_entry"] == "red_arrow"
+    assert enc["dip_open"] == "leave_zero+ma60_lower"
+    assert enc["entry"] == "leave_zero+ma60_lower"
+    assert enc["not_entry"] == "red_arrow_unconfirmed"
 
 
 def test_help_topics_cancelled():

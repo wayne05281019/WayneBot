@@ -8892,7 +8892,8 @@ class WayneTelegramBot:
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
-                "leave_zero": "黃金買點：獲利格剛離零且趨勢向上（按表，不是每個紅箭頭低點）",
+                "leave_zero": "黃金買點：獲利格剛離零且趨勢向上（按表；未確認紅箭頭低點不算）",
+                "ma60_lower": "紅箭確認：20／60低首觸＋MA60帶＋振幅下半收（已過關可進場）",
                 "golden_buy": "還在零：60低超跌且趨勢向上（只觀察，不是今天必買）",
                 "select_01": "周帶量：短線轉強且趨勢向上，靠近20日高少追",
                 "select_02": "站上季線：昨收在季線下、今日站上；空頭反彈不進",

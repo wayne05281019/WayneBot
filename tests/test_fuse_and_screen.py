@@ -191,9 +191,10 @@ class FuseAndScreenTest(unittest.TestCase):
     def test_morning_payload_keeps_four_layout_buckets_only(self):
         from screening_engine import MORNING_PUSH_SPECS, format_line_share_packs, format_screening_payload
 
+        # 進場推播＝黃金買點＋紅箭確認；周帶量等仍不算買訊、不進早報卡片
         self.assertEqual(
             [k for k, *_ in MORNING_PUSH_SPECS],
-            ["leave_zero"],
+            ["leave_zero", "ma60_lower"],
         )
         item = {
             "stock_id": "2330",
@@ -210,6 +211,7 @@ class FuseAndScreenTest(unittest.TestCase):
         }
         results = {
             "leave_zero": [item],
+            "ma60_lower": [],
             "golden_buy": [item],
             "revenue_cross": [],
             "select_01": [item],
@@ -219,14 +221,15 @@ class FuseAndScreenTest(unittest.TestCase):
         }
         morning = format_screening_payload(results, "20260904", morning=True)
         keys = [p.get("mark_key") for p in morning]
-        self.assertEqual(keys, ["leave_zero"])
+        self.assertEqual(keys, ["leave_zero", "ma60_lower"])
         blob = "\n".join(p["html"] for p in morning)
         self.assertNotIn("＝＝半年高", blob)
         self.assertNotIn("＝＝站上季線", blob)
         self.assertNotIn("＝＝止跌", blob)
+        self.assertIn("＝＝紅箭確認", blob)
         full = format_screening_payload(results, "20260904", morning=False)
         full_keys = [p.get("mark_key") for p in full]
-        self.assertEqual(full_keys, ["leave_zero"])
+        self.assertEqual(full_keys, ["leave_zero", "ma60_lower"])
         self.assertNotIn("half_year_high", full_keys)
         self.assertNotIn("select_02", full_keys)
         self.assertNotIn("select_03", full_keys)
@@ -254,17 +257,19 @@ class FuseAndScreenTest(unittest.TestCase):
         }
         results = {
             "leave_zero": [],
+            "ma60_lower": [],
             "golden_buy": [],
             "revenue_cross": [item],
             "select_01": [item],
         }
         morning = format_screening_payload(results, "20260907", morning=True)
         keys = [p.get("mark_key") for p in morning]
-        self.assertEqual(keys, ["leave_zero"])
+        self.assertEqual(keys, ["leave_zero", "ma60_lower"])
         blob = "\n".join(p["html"] for p in morning)
         self.assertIn("＝＝黃金買點", blob)
+        self.assertIn("＝＝紅箭確認", blob)
         self.assertNotIn("＝＝重點觀察", blob)
-        self.assertGreaterEqual(blob.count("今日無符合條件標的"), 1)
+        self.assertGreaterEqual(blob.count("今日無符合條件標的"), 2)
         packs = format_line_share_packs(results, "20260907", morning=True)
         layout = next(p["text"] for p in packs if p["id"] == "layout")
         self.assertIn("＝＝黃金買點＝＝", layout)
@@ -289,6 +294,7 @@ class FuseAndScreenTest(unittest.TestCase):
         morning = format_screening_payload(
             {
                 "leave_zero": [item],
+                "ma60_lower": [],
                 "golden_buy": [item],
                 "revenue_cross": [],
                 "select_01": [item],
@@ -300,7 +306,7 @@ class FuseAndScreenTest(unittest.TestCase):
         )
         keys = [p.get("mark_key") for p in morning]
         self.assertEqual(keys[0], "market")
-        self.assertEqual(keys[1:], ["leave_zero"])
+        self.assertEqual(keys[1:], ["leave_zero", "ma60_lower"])
         self.assertIn("大盤狀況", morning[0]["html"])
         self.assertNotIn("＝＝半年高", "\n".join(p["html"] for p in morning))
 

@@ -15,6 +15,7 @@ from typing import Dict, Tuple
 # 內部鍵 → 話筒主標（短、固定）
 BUCKET_TITLE: Dict[str, str] = {
     "leave_zero": "黃金買點",
+    "ma60_lower": "紅箭確認",
     "golden_buy": "還在零",
     "revenue_cross": "優先看",
     "select_01": "周帶量",
@@ -28,6 +29,7 @@ BUCKET_TITLE: Dict[str, str] = {
 # 內部鍵 → 一句副標（觀察／買點講清楚）
 BUCKET_HINT: Dict[str, str] = {
     "leave_zero": "買點＝剛離零可切入；還在零＝觀察不是買",
+    "ma60_lower": "20／60低首觸＋MA60帶＋振幅下半收（已過關可進場）",
     "golden_buy": "60低＋獲利≈0＋月乖離超跌（觀察不是買）",
     "revenue_cross": "營收轉強 × 量價突破（須趨勢向上）",
     "select_01": "突破5日高＋60日量比≥2（須趨勢向上）",
@@ -44,6 +46,9 @@ TITLE_ALIASES: Dict[str, str] = {
     "剛離零": "leave_zero",
     "剛脫離零": "leave_zero",
     "買點": "leave_zero",
+    "紅箭確認": "ma60_lower",
+    "紅箭買點": "ma60_lower",
+    "ma60_lower": "ma60_lower",
     "還在零": "golden_buy",
     "重點觀察": "golden_buy",  # 舊名，只認不寫
     "60低超跌": "golden_buy",
@@ -63,6 +68,7 @@ REVIEW_BUCKETS: Tuple[Tuple[str, str], ...] = tuple(
     (k, BUCKET_TITLE[k])
     for k in (
         "leave_zero",
+        "ma60_lower",
         "golden_buy",
         "revenue_cross",
         "select_01",
