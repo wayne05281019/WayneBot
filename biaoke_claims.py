@@ -390,6 +390,54 @@ def spoken_next_press_band(
     return None
 
 
+def official_volume_press_band(
+    *,
+    zone_lo: float = 0.0,
+    zone_hi: float = 0.0,
+    bars: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Optional[Tuple[float, float]]:
+    """官方爆大量日高低＝下一大量壓區（與大量撐壓同一套柱）。不准發明價。"""
+    try:
+        lo = float(zone_lo or 0)
+        hi = float(zone_hi or 0)
+    except (TypeError, ValueError):
+        lo = hi = 0.0
+    if lo > 0 and hi > lo:
+        return (lo, hi)
+    rows = list(bars or ())
+    if len(rows) < 8:
+        return None
+    try:
+        from biaoke_brain import volume_first_price
+
+        st = volume_first_price(rows, lookback=min(40, len(rows))) or {}
+        hi = float(st.get("spike_high") or 0)
+        lo = float(st.get("spike_low") or 0)
+    except Exception:
+        return None
+    if lo > 0 and hi > lo:
+        return (lo, hi)
+    return None
+
+
+def resolve_next_press_band(
+    db_path: str,
+    sid: str,
+    name: str = "",
+    *,
+    bars: Optional[Sequence[Dict[str, Any]]] = None,
+    zone_lo: float = 0.0,
+    zone_hi: float = 0.0,
+) -> Optional[Tuple[float, float]]:
+    """每檔下一壓區間：飆大明確講過優先；否則官方大量壓區高低。非買訊。"""
+    spoken = spoken_next_press_band(db_path, sid, name)
+    if spoken:
+        return spoken
+    return official_volume_press_band(
+        zone_lo=zone_lo, zone_hi=zone_hi, bars=bars
+    )
+
+
 def extract_claims(
     text: str,
     *,

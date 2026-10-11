@@ -3355,7 +3355,7 @@ def render_biaoke_structure_png(
         int(bool(_q0.get("is_live"))),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
-        # 飆大明確說過的下一壓區帶（如聯亞 3255~3305）；未傳＝不疊
+        # 下一壓區帶：飆大說過／否則官方大量高低；未傳＝呼叫端已解析
         round(float((press_band or (0, 0))[0] or 0), 2),
         round(float((press_band or (0, 0))[1] or 0), 2),
     )
@@ -3479,7 +3479,7 @@ def render_biaoke_structure_png(
         right_notes.append(
             {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
-    # 飆大明確下一壓區帶（如聯亞 3255~3305）；沒講過不傳＝不疊
+    # 下一壓區帶（飆大說過或官方大量高低）；非買訊
     if band_lo_y > 0 and band_hi_y > band_lo_y:
         ax1.axhspan(
             band_lo_y,
@@ -4395,11 +4395,19 @@ def build_biaoke_structure_chart(
     last = info.get("last_bar") or bars[-1]
     quote = _spot_quote(sid, last, prev, db_path)
     band = press_band
-    if band is None and db_path and sid:
+    if band is None and sid:
         try:
-            from biaoke_claims import spoken_next_press_band
+            from biaoke_claims import resolve_next_press_band
 
-            band = spoken_next_press_band(db_path, sid, nm)
+            st = info.get("struct") or {}
+            band = resolve_next_press_band(
+                db_path,
+                sid,
+                nm,
+                bars=bars[-_BARS:] if bars else None,
+                zone_lo=float(st.get("spike_low") or 0),
+                zone_hi=float(st.get("spike_high") or 0),
+            )
         except Exception:
             logger.debug("下一壓區帶略過", exc_info=True)
             band = None

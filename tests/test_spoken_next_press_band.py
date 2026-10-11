@@ -7,7 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from biaoke_claims import press_band_from_spoken_text, spoken_next_press_band
+from biaoke_claims import (
+    official_volume_press_band,
+    press_band_from_spoken_text,
+    resolve_next_press_band,
+    spoken_next_press_band,
+)
 
 
 _LIANYA_LINE = (
@@ -87,9 +92,26 @@ def test_structure_builders_wire_spoken_band():
 
     build_src = inspect.getsource(build_biaoke_structure_chart)
     lookup_src = inspect.getsource(render_lookup_structure_result)
-    assert "spoken_next_press_band" in build_src
-    assert "spoken_next_press_band" in lookup_src
+    assert "resolve_next_press_band" in build_src
+    assert "resolve_next_press_band" in lookup_src
     assert "press_band" in lookup_src
+
+
+def test_official_volume_press_band_from_zone():
+    assert official_volume_press_band(zone_lo=2940, zone_hi=3255) == (2940.0, 3255.0)
+    assert official_volume_press_band(zone_lo=0, zone_hi=3255) is None
+
+
+def test_resolve_prefers_spoken_over_official(tmp_path):
+    db = _seed_lianya_db(tmp_path)
+    # 聯亞有說過 3255~3305，不准被官方大量高低蓋掉
+    assert resolve_next_press_band(
+        db, "3081", "聯亞", zone_lo=2940, zone_hi=3255
+    ) == (3255.0, 3305.0)
+    # 沒講過：退回官方大量高低
+    assert resolve_next_press_band(
+        db, "2330", "台積電", zone_lo=1000, zone_hi=1200
+    ) == (1000.0, 1200.0)
 
 
 def test_next_press_label_survives_dedupe_near_spike():

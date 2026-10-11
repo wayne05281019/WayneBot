@@ -504,7 +504,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v74-ohlc-align" in src
+        "hdr-band-v75-next-press" in src
+        or "hdr-band-v74-ohlc-align" in src
         or "hdr-band-v73" in src
         or "hdr-band-v72" in src
         or "hdr-band-v71" in src
