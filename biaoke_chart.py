@@ -1427,8 +1427,7 @@ def _note_priority(text: str) -> int:
     t = str(text or "")
     if "最可能" in t:
         return 0
-    # 下一壓區間與爆大量壓／撐同級，不准被去重吃掉
-    if t.startswith("下一壓") or t.startswith("壓") or t.startswith("撐"):
+    if t.startswith("壓") or t.startswith("撐"):
         return 1
     # 71／75：當日收優先於昨收；紅框空位要留今收
     if _is_today_close_note(t):
@@ -1446,9 +1445,9 @@ def _is_rail_note(text: str) -> bool:
 
 
 def _is_level_note(text: str) -> bool:
-    """爆大量壓／撐／飆大下一壓帶——必須貼線，高價在上。"""
+    """爆大量壓／撐水平線標籤——必須貼線，高價在上。"""
     t = str(text or "")
-    return t.startswith("下一壓") or t.startswith("壓") or t.startswith("撐")
+    return t.startswith("壓") or t.startswith("撐")
 
 
 def _is_close_note(text: str) -> bool:
@@ -3348,16 +3347,14 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v75-next-press" if fullbleed else "hdr-wrap3",
+        # v76：使用者定案拿掉 next-press 帶；只留原本大量壓／撐
+        "hdr-band-v76-no-next-press" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
         int(bool(_q0.get("is_live"))),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
-        # 下一壓區帶：飆大說過／否則官方大量高低；未傳＝呼叫端已解析
-        round(float((press_band or (0, 0))[0] or 0), 2),
-        round(float((press_band or (0, 0))[1] or 0), 2),
     )
     from wayne_navigator import _lookup_render_memo_get, _lookup_render_memo_put
 
@@ -3381,16 +3378,8 @@ def render_biaoke_structure_png(
             ymax = max(ymax, float(yf) + span * 0.04)
     ymax = max(ymax, y_top + span * 0.07)
     ymin = min(ymin, y_bot - span * 0.07)
-    band_lo_y = band_hi_y = 0.0
-    if press_band:
-        try:
-            a, b = float(press_band[0]), float(press_band[1])
-            if a > 0 and b > 0:
-                band_lo_y, band_hi_y = (min(a, b), max(a, b))
-                ymin = min(ymin, band_lo_y - span * 0.04)
-                ymax = max(ymax, band_hi_y + span * 0.06)
-        except (TypeError, ValueError, IndexError):
-            band_lo_y = band_hi_y = 0.0
+    # press_band 參數保留相容；使用者定案不畫 next-press 帶（只留大量壓／撐）
+    _ = press_band
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
 
     fig, (ax1, ax2) = plt.subplots(
@@ -3478,38 +3467,6 @@ def render_biaoke_structure_png(
         )
         right_notes.append(
             {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
-        )
-    # 下一壓區帶（飆大說過或官方大量高低）；非買訊
-    if band_lo_y > 0 and band_hi_y > band_lo_y:
-        ax1.axhspan(
-            band_lo_y,
-            band_hi_y,
-            xmin=0.0,
-            xmax=(hline_xmax + 0.55) / max(x_right + 0.55, 1.0),
-            facecolor=_PRESS,
-            alpha=0.10,
-            zorder=2,
-            linewidth=0,
-        )
-        ax1.hlines(
-            [band_lo_y, band_hi_y],
-            xmin=-0.55,
-            xmax=hline_xmax,
-            color=_PRESS,
-            linewidth=1.05,
-            linestyles=(0, (2.2, 1.6)),
-            zorder=4,
-            alpha=0.88,
-        )
-        # 標在帶上緣，跟爆大量「壓 lo」錯開；文案仍寫完整區間
-        right_notes.append(
-            {
-                "x": float(label_col_left) - 0.6,
-                "y": float(band_hi_y),
-                "text": f"下一壓 {_px(band_lo_y)}~{_px(band_hi_y)}",
-                "color": _PRESS,
-                "size": 11,
-            }
         )
     # 右軸：今收（71 紅框必留）＋昨收；75 同列並排（垂直貼今收價，數字＝官方真價）
     last_c = float(last_bar.get("close") or 0)
@@ -4394,23 +4351,8 @@ def build_biaoke_structure_chart(
     prev = bars[-2] if len(bars) >= 2 else {}
     last = info.get("last_bar") or bars[-1]
     quote = _spot_quote(sid, last, prev, db_path)
-    band = press_band
-    if band is None and sid:
-        try:
-            from biaoke_claims import resolve_next_press_band
-
-            st = info.get("struct") or {}
-            band = resolve_next_press_band(
-                db_path,
-                sid,
-                nm,
-                bars=bars[-_BARS:] if bars else None,
-                zone_lo=float(st.get("spike_low") or 0),
-                zone_hi=float(st.get("spike_high") or 0),
-            )
-        except Exception:
-            logger.debug("下一壓區帶略過", exc_info=True)
-            band = None
+    # 使用者定案：不畫 next-press；press_band 忽略（只留大量壓／撐）
+    _ = press_band
     # 74 核准：飆大／查股結構圖同一橫式滿版（不准殘留舊直式版面）
     path = render_biaoke_structure_png(
         bars,
@@ -4422,7 +4364,7 @@ def build_biaoke_structure_chart(
         quote=quote,
         db_path=db_path,
         figsize=_STRUCTURE_LOOKUP_FIG,
-        press_band=band,
+        press_band=None,
     )
     try:
         from biaoke_forecast import record_stock, verify_due

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""飆大明確下一壓區間 → 查股／結構圖可疊帶；不准發明、不准誤綁鄰檔。"""
+"""飆大壓力區解析仍可測；查股／結構圖定案不畫「下一壓」帶。"""
 from __future__ import annotations
 
 import sqlite3
@@ -84,17 +84,22 @@ def test_spoken_next_press_band_from_db(tmp_path):
     assert spoken_next_press_band(db, "2330", "台積電") is None
 
 
-def test_structure_builders_wire_spoken_band():
+def test_structure_builders_do_not_auto_paint_next_press():
+    """使用者定案：查股／結構圖不准自動上「下一壓」帶。"""
     import inspect
 
-    from biaoke_chart import build_biaoke_structure_chart
+    from biaoke_chart import build_biaoke_structure_chart, render_biaoke_structure_png
     from three_in_one_chart import render_lookup_structure_result
 
     build_src = inspect.getsource(build_biaoke_structure_chart)
     lookup_src = inspect.getsource(render_lookup_structure_result)
-    assert "resolve_next_press_band" in build_src
-    assert "resolve_next_press_band" in lookup_src
-    assert "press_band" in lookup_src
+    render_src = inspect.getsource(render_biaoke_structure_png)
+    assert "resolve_next_press_band" not in build_src
+    assert "resolve_next_press_band" not in lookup_src
+    assert 'f"下一壓' not in render_src
+    assert "下一壓 " not in render_src
+    assert "hdr-band-v76-no-next-press" in render_src
+    assert "axhspan" not in render_src
 
 
 def test_official_volume_press_band_from_zone():
@@ -104,27 +109,18 @@ def test_official_volume_press_band_from_zone():
 
 def test_resolve_prefers_spoken_over_official(tmp_path):
     db = _seed_lianya_db(tmp_path)
-    # 聯亞有說過 3255~3305，不准被官方大量高低蓋掉
     assert resolve_next_press_band(
         db, "3081", "聯亞", zone_lo=2940, zone_hi=3255
     ) == (3255.0, 3305.0)
-    # 沒講過：退回官方大量高低
     assert resolve_next_press_band(
         db, "2330", "台積電", zone_lo=1000, zone_hi=1200
     ) == (1000.0, 1200.0)
 
 
-def test_next_press_label_survives_dedupe_near_spike():
-    """聯亞：爆大量壓 3255 與下一壓 3255~3305 要同時留。"""
-    from biaoke_chart import _dedupe_right_notes, _is_level_note, _px
+def test_next_press_not_level_note_anymore():
+    """拿掉下一壓後，不再當壓／撐同級標籤。"""
+    from biaoke_chart import _is_level_note
 
-    assert _is_level_note("下一壓 3255~3305")
-    notes = [
-        {"y": 3255.0, "text": f"壓 {_px(3255)}"},
-        {"y": 3305.0, "text": f"下一壓 {_px(3255)}~{_px(3305)}"},
-        {"y": 3255.0, "text": "最可能＝看壓 3255"},
-        {"y": 2940.0, "text": f"撐 {_px(2940)}"},
-    ]
-    kept = {str(n.get("text") or "") for n in _dedupe_right_notes(notes, span=2000.0)}
-    assert "下一壓 3255~3305" in kept
-    assert "壓 3255" in kept
+    assert _is_level_note("壓 3255")
+    assert _is_level_note("撐 2940")
+    assert not _is_level_note("下一壓 3255~3305")
