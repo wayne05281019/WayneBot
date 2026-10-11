@@ -69,7 +69,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 19
+_VZ_PAINT_VER = 20  # 大盤大量區可疊平行軌（上升軌／下降壓）
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -948,6 +948,7 @@ def _vz_memo_key(
     lookback: int,
     bars: int,
     lookup_portrait: bool = False,
+    with_parallel_channel: bool = False,
     card_fp: Tuple[Any, ...] = (),
 ) -> Tuple[Any, ...]:
     last_d = _bar_ymd((last or {}).get("date"))
@@ -964,8 +965,152 @@ def _vz_memo_key(
         int(VOL_ZONE_JPEG_QUALITY),
         int(_VZ_PAINT_VER),
         int(bool(lookup_portrait)),
+        int(bool(with_parallel_channel)),
         tuple(card_fp or ()),
     )
+
+
+def _bars_face_records(bars_face) -> list[Dict[str, Any]]:
+    out: list[Dict[str, Any]] = []
+    for r in list(bars_face or []):
+        if not isinstance(r, dict):
+            continue
+        out.append(
+            {
+                "date": str(r.get("date") or "").replace("-", "")[:8],
+                "open": float(r.get("open") or 0),
+                "high": float(r.get("high") or 0),
+                "low": float(r.get("low") or 0),
+                "close": float(r.get("close") or 0),
+                "volume": float(r.get("volume") or 0),
+            }
+        )
+    return out
+
+
+def _channel_remap_to_view(
+    ch: Dict[str, Any], date_to_i: Dict[str, int]
+) -> Optional[Dict[str, Any]]:
+    """把長窗通道的連點 index 對到大量區近窗；對不上就空（改近窗重算）。"""
+    if not ch or not date_to_i:
+        return None
+
+    def _pt(pt) -> Optional[Tuple[int, float, str]]:
+        if not pt or len(pt) < 3:
+            return None
+        key = str(pt[2] or "").replace("-", "")[:8]
+        if key not in date_to_i:
+            return None
+        return (int(date_to_i[key]), float(pt[1]), key)
+
+    upper = ch.get("upper") or ()
+    lower = ch.get("lower") or ()
+    if len(upper) < 2 or len(lower) < 2:
+        return None
+    u1, u2 = _pt(upper[0]), _pt(upper[1])
+    l1, l2 = _pt(lower[0]), _pt(lower[1])
+    if None in (u1, u2, l1, l2):
+        return None
+    touch_raw = ch.get("touch")
+    touch = _pt(touch_raw) if touch_raw else None
+    base_raw = ch.get("base") or ()
+    base = None
+    if len(base_raw) >= 2:
+        b1, b2 = _pt(base_raw[0]), _pt(base_raw[1])
+        if b1 and b2:
+            base = (b1, b2)
+    out = dict(ch)
+    out["upper"] = (u1, u2)
+    out["lower"] = (l1, l2)
+    if touch:
+        out["touch"] = touch
+    if base:
+        out["base"] = base
+    return out
+
+
+def infer_vol_zone_parallel_channel(
+    view,
+    *,
+    bars_face=None,
+) -> Dict[str, Any]:
+    """大量區近窗可疊的平行軌：算法＝結構圖 infer_parallel_channel（可重算；不數浪）。
+
+    優先用較長官方柱面（對齊結構 _BARS）再對日期映回近窗；映不上才直接用近窗算。
+    """
+    from biaoke_chart import _BARS, infer_parallel_channel
+
+    if view is None or getattr(view, "empty", True) or len(view) < 24:
+        return {}
+    date_to_i = {
+        str(view.iloc[i].get("date") or "").replace("-", "")[:8]: i for i in range(len(view))
+    }
+    face = _bars_face_records(bars_face)
+    if len(face) >= 24:
+        work = face[-int(_BARS) :] if len(face) > int(_BARS) else face
+        ch = infer_parallel_channel(work)
+        mapped = _channel_remap_to_view(ch, date_to_i) if ch else None
+        if mapped:
+            return mapped
+    rows = _bars_face_records(view.to_dict("records"))
+    return infer_parallel_channel(rows) or {}
+
+
+def paint_vol_zone_parallel_channel(
+    ax,
+    ch: Dict[str, Any],
+    *,
+    n: int,
+    ymin: float,
+    ymax: float,
+) -> None:
+    """在大量區 K 上畫兩條平行軌＋右緣價標。不是買訊、不數 5／9。"""
+    if not ch or ax is None:
+        return
+    from biaoke_chart import _paint_parallel_channel
+
+    seam = float(max(n - 1, 0))
+    _paint_parallel_channel(
+        ax,
+        ch,
+        seam=seam,
+        x_lo=-0.05,
+        x_hi=float(n) + 0.85,
+        y_lo=float(ymin),
+        y_hi=float(ymax),
+        n=int(n),
+    )
+    # 右緣價標：上升軌／平行壓 或 下降壓／平行撐（跟結構圖用語同一套）
+    name_u = str(ch.get("name_u") or "上軌")
+    name_l = str(ch.get("name_l") or "下軌")
+    rail = float(ch.get("rail_now") or 0)
+    base = float(ch.get("base_now") or 0)
+    kind = str(ch.get("kind") or "")
+    color = "#1565c0" if kind == "asc" else "#6a1b9a"
+    if not bool(ch.get("alive")):
+        color = "#90a4ae"
+    x_lab = float(n) - 0.15
+    for y, lab in ((rail, name_u), (base, name_l)):
+        if y <= 0:
+            continue
+        ax.text(
+            x_lab,
+            y,
+            f"{lab} {_fmt_price(y)}",
+            ha="left",
+            va="center",
+            fontproperties=_fp(9.0, "bold"),
+            color=color,
+            zorder=12,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.18",
+                facecolor="#ffffff",
+                edgecolor=color,
+                linewidth=0.8,
+                alpha=0.94,
+            ),
+        )
 
 
 def _vz_memo_get(key: Tuple[Any, ...], save_path: str) -> Optional[Tuple[str, str]]:
@@ -1111,11 +1256,13 @@ def render_volume_zone_result(
     card: Optional[Dict[str, Any]] = None,
     with_nav_signals: bool = False,
     lookup_portrait: bool = False,
+    with_parallel_channel: bool = False,
 ) -> tuple[str, str]:
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
     with_nav_signals＝疊導航箭頭／量能訊號（壓撐觀察用；仍非買訊）。
     lookup_portrait＝舊直式 4:5 畫布（壓區名單仍可走）。查股第 4 張改橫式原版。
+    with_parallel_channel＝疊可重算上升軌／下降壓兩條平行線（大盤大量區用；不數浪、非買訊）。
     """
     del already_normalized
     pack = prepare_volume_zone(
@@ -1146,6 +1293,7 @@ def render_volume_zone_result(
         lookback=lookback,
         bars=bars,
         lookup_portrait=lookup_portrait,
+        with_parallel_channel=with_parallel_channel,
         card_fp=card_fp,
     )
     hit = _vz_memo_get(memo_key, pack["out"])
@@ -1160,6 +1308,16 @@ def render_volume_zone_result(
         bars=pack["bars"],
         ex_events=pack["ex_events"],
     )
+    if with_parallel_channel:
+        try:
+            ch0 = infer_vol_zone_parallel_channel(
+                pack["view"], bars_face=pack.get("bars")
+            )
+            tip = str((ch0 or {}).get("tip") or "").strip()
+            if tip and tip not in cap:
+                cap = f"{cap}\n{tip}".strip() if cap else tip
+        except Exception:
+            logger.exception("大量區平行軌圖說失敗 sid=%s", pack.get("sid"))
     with mpl_render():
         path = _paint_volume_zone(
             pack["sid"],
@@ -1179,6 +1337,8 @@ def render_volume_zone_result(
             card=card,
             lookup_portrait=lookup_portrait,
             db_path=str(db_path or ""),
+            with_parallel_channel=with_parallel_channel,
+            bars_face=pack.get("bars"),
         )
     out_path, out_cap = str(path or ""), str(cap or "")
     if out_path:
@@ -1254,9 +1414,12 @@ def _paint_volume_zone(
     card: Optional[Dict[str, Any]] = None,
     lookup_portrait: bool = False,
     db_path: str = "",
+    with_parallel_channel: bool = False,
+    bars_face=None,
 ):
     spike_md = _md(spike_date)
     ax_head = None
+    channel: Dict[str, Any] = {}
     # 獨立 Figure＋Agg：可與介紹／高低卡真並行，不准再用 pyplot 全域搶鎖。
     from matplotlib.gridspec import GridSpec
     from wayne_navigator import _close_lookup_figure, _new_lookup_figure
@@ -1480,9 +1643,33 @@ def _paint_volume_zone(
     # 當日撐壓標抬到 K 上緣空白：多留一頭，不准壓 K／量柱／其他標
     if path_shown:
         ymax = ymax + (ymax - ymin) * 0.12
+    # 平行軌現價可能高於壓／低於撐：ylim 先吃進去，線才不會被裁
+    if with_parallel_channel:
+        try:
+            channel = infer_vol_zone_parallel_channel(view, bars_face=bars_face)
+            if channel:
+                y_span = max(float(ymax) - float(ymin), 1.0)
+                for yv in (channel.get("rail_now"), channel.get("base_now")):
+                    try:
+                        yf = float(yv or 0)
+                    except (TypeError, ValueError):
+                        yf = 0.0
+                    if yf > 0:
+                        ymax = max(ymax, yf + y_span * 0.04)
+                        ymin = min(ymin, yf - y_span * 0.04)
+        except Exception:
+            logger.exception("大量區推平行軌失敗 sid=%s", sid)
+            channel = {}
     ax1.set_ylim(ymin, ymax)
     # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
     ax1.set_xlim(-0.05, n + 1.65)
+    if with_parallel_channel and channel:
+        try:
+            paint_vol_zone_parallel_channel(
+                ax1, channel, n=int(n), ymin=float(ymin), ymax=float(ymax)
+            )
+        except Exception:
+            logger.exception("大量區畫平行軌失敗 sid=%s", sid)
     if path_shown:
         # 不畫最後一根橘色豎虛線：會蓋住最新收盤 K，改只留右上事實句
         ax1.text(
@@ -1882,7 +2069,17 @@ def _paint_volume_zone(
         )
     else:
         foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。黃＝月線(MA20)、藍紫＝季線(MA60)。除權／除息缺口是息差不是崩。"
-        foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
+        if with_parallel_channel:
+            foot2 = (
+                "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）。"
+                "無成交＝灰短K＋量柱貼底，不准挖洞。"
+            )
+            if channel:
+                ch_lab = str(channel.get("label") or "").strip()
+                if ch_lab:
+                    foot1 = f"{foot1}　{ch_lab}"
+        else:
+            foot2 = "高觸壓、收未過＝測壓（非買訊）。無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
     fig.text(
         0.5,
         0.022,

@@ -188,6 +188,7 @@ class IndexDailyOfficialChartTests(unittest.TestCase):
         src = inspect.getsource(build_market_vol_zone_chart)
         self.assertIn("render_volume_zone_result", src)
         self.assertIn("with_nav_signals=False", src)
+        self.assertIn("with_parallel_channel=True", src)
         self.assertIn("TWII", src)
         self.assertIn("加權", src)
         db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
