@@ -130,5 +130,13 @@ def test_structure_top_pad_lifts_header_frame():
     assert float(bc._STRUCTURE_TOP_PAD) <= 0.35
     assert float(bc._STRUCTURE_TOP_PAD) < 1.35
     src = open(bc.__file__, encoding="utf-8").read()
-    assert "name_y = 95.70 if fullbleed" in src
-    assert "date_y, ohlc_y1 = 92.10, 88.50" in src
+    assert "name_y = 94.80 if fullbleed" in src
+    assert "date_y, ohlc_y1 = 91.20, 87.60" in src
+
+
+def test_month_revenue_splits_after_yi_for_right_edge():
+    """7／8／9 月營收：上行停億元，兩行 ha=right，右緣與毛利同套。"""
+    src = inspect.getsource(render_first_glance_png)
+    assert 'endswith("月營收")' in src
+    assert 'find("億元")' in src
+    assert 'value_ha="right"' in src

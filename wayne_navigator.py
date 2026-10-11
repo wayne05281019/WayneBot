@@ -4946,7 +4946,7 @@ def render_first_glance_png(
         lab_w = tw(lab, lab_fs)
         val_avail = max(16.0, pane_w * 0.46)
         raw = str(val or "").strip()
-        # 資券：融資／融券能一行就一行；放不下才拆兩行，首字對齊（不准孤字蓋％）
+        # 資券：融資／融券能一行就一行；放不下才拆兩行
         if lab == "資券餘額" and "　" in raw and ("融資" in raw and "融券" in raw):
             parts = [p for p in raw.split("　") if p]
             one = "　".join(parts)
@@ -4954,6 +4954,13 @@ def render_first_glance_png(
                 vlines = [one]
             else:
                 vlines = parts[:2]
+        elif str(lab).endswith("月營收") and "億元" in raw:
+            # 上行停在億元、下行增減；兩行 ha=right，7／8／9 月與毛利同右緣
+            cut = raw.find("億元")
+            head = raw[: cut + 2].strip()
+            tail = raw[cut + 2 :].lstrip("　 ").strip()
+            vlines = [head] + ([tail] if tail else [])
+            vlines = vlines[:2]
         else:
             vlines = (_wrap_fit(raw, val_fs, val_avail, fig_w) or [raw])[:2]
         fund_drawn.append((lab, vlines, lab_fs, val_fs))
