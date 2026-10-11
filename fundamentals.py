@@ -1202,7 +1202,11 @@ def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12
         if status and i == 0:
             # 狀態只掛最新月，避免每列過長互壓
             val = f"{val}　{status}"
-        lab = "月營收近窗" if i == 0 else f"月營收{i + 1}"
+        # 表頭跟資料月走：9月營收／8月營收…（不准寫死近窗／月營收2）
+        if len(yyyymm) >= 6 and yyyymm[:6].isdigit():
+            lab = f"{int(yyyymm[4:6])}月營收"
+        else:
+            lab = "月營收"
         out.append((lab, val))
     return out
 
@@ -1445,9 +1449,13 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
                         revenue_trend_label(qoq_pct, kind="qoq"),
                     )
                     if t and t != "—"
-                ) or "—"
+                )
                 lab = "季營收" if i == 0 else f"季營收{i + 1}"
-                rows.append((lab, f"{q_lab}　{format_yi(rev)}　{tag}"))
+                # 無增減標時不加「—」，避免 ha=right 時短尾把億元撐離右緣
+                q_val = f"{q_lab}　{format_yi(rev)}"
+                if tag:
+                    q_val = f"{q_val}　{tag}"
+                rows.append((lab, q_val))
         elif emerging and (months or m):
             rows.append(("季營收", "月數未滿三個月齊，暫不彙季（不造假）"))
         if q:

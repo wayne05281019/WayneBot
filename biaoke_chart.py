@@ -113,7 +113,8 @@ _STRUCTURE_BOX_W = 96.6
 _STRUCTURE_BOX_EC = "#90caf9"
 _STRUCTURE_BOX_LW = 1.05
 _STRUCTURE_BOX_STYLE = "round,pad=0.18,rounding_size=0.55"
-_STRUCTURE_TOP_PAD = 1.35
+# 頭欄藍框上緣：抬高讓股號股名與上邊框留縫（不准貼死）
+_STRUCTURE_TOP_PAD = 0.18
 _HEADER_X = 4.60
 _HEADER_X_FB = 5.20
 # 今K／漲跌：右對齊藍框右內緣；有迷你圖時對齊縮圖左緣
@@ -3771,7 +3772,8 @@ def render_biaoke_structure_png(
     header_x = float(_HEADER_X_FB if fullbleed else _HEADER_X)
     # 橫式附圖／12-v4：股號＋股名一次；產業貼股名右（不准壓字）
     # 左欄各行拉開行距（真機回饋 63）；右欄三行／藍框不動
-    name_y = 97.15 if fullbleed else float(_SPOT_Y)
+    # 橫式：藍框上緣抬高＋股號下移，上邊框與字留縫（不准貼死）
+    name_y = 95.70 if fullbleed else float(_SPOT_Y)
     _paint_nameplate(
         ov,
         plate,
@@ -3788,12 +3790,13 @@ def render_biaoke_structure_png(
     # 68：狀態／判斷晶片（出貨痕跡／升降通道／靠近…）放大 0.5 倍≈×1.5，必須保留
     _STATUS_CHIP_SCALE = 1.5
     if fullbleed:
-        date_y, ohlc_y1 = 93.55, 89.95
+        # 頭欄整塊略下移：藍框上緣抬高後，股號／開高低／爆大量與上邊框留縫
+        date_y, ohlc_y1 = 92.10, 88.50
         # 70：chip 與爆大量日第二行拉開（單列橫排保留）
-        spike_y1, spike_y2, chip_y0 = 86.35, 82.85, 75.95
+        spike_y1, spike_y2, chip_y0 = 84.90, 81.40, 74.50
         chip_step = 2.65
         status_chip_step = 2.65 * _STATUS_CHIP_SCALE  # 約 4.0
-        spot_y = 93.15
+        spot_y = 91.70
         spot_move_dy = 6.35
         mute_y = None
         ohlc_y2 = None

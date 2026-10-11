@@ -106,3 +106,29 @@ def test_glance_source_keeps_fund_right_align():
     assert "資券餘額" in src
     # 不准再依行數切 left／right
     assert 'value_ha="left" if len(vlines)' not in src
+
+
+def test_monthly_revenue_labels_follow_yyyymm():
+    from fundamentals import monthly_revenue_window_rows
+
+    rows = monthly_revenue_window_rows(
+        [
+            {"yyyymm": "202609", "revenue": 1e8, "mom_pct": 1.0, "yoy_pct": 2.0, "ytd_yoy_pct": 3.0},
+            {"yyyymm": "202608", "revenue": 1e8, "mom_pct": 1.0, "yoy_pct": 2.0, "ytd_yoy_pct": 3.0},
+            {"yyyymm": "202607", "revenue": 1e8, "mom_pct": 1.0, "yoy_pct": 2.0, "ytd_yoy_pct": 3.0},
+        ],
+        limit=3,
+    )
+    assert [lab for lab, _ in rows] == ["9月營收", "8月營收", "7月營收"]
+    assert "月營收近窗" not in "".join(lab for lab, _ in rows)
+    assert "月營收2" not in "".join(lab for lab, _ in rows)
+
+
+def test_structure_top_pad_lifts_header_frame():
+    import biaoke_chart as bc
+
+    assert float(bc._STRUCTURE_TOP_PAD) <= 0.35
+    assert float(bc._STRUCTURE_TOP_PAD) < 1.35
+    src = open(bc.__file__, encoding="utf-8").read()
+    assert "name_y = 95.70 if fullbleed" in src
+    assert "date_y, ohlc_y1 = 92.10, 88.50" in src
