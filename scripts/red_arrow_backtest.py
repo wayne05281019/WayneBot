@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""紅箭頭代理 vs 過濾候選／leave_zero／無箭頭：正式回測取樣（過關前不當買訊）。
+"""紅箭頭代理 vs 過濾候選／leave_zero／下一版 tight：正式回測取樣。
 
 用法（本機／Render 碟）：
-  python scripts/red_arrow_backtest.py --db data/wayne_market.db --days 40 --limit 80
+  .venv/bin/python scripts/red_arrow_backtest.py --db data/wayne_market.db --days 40 --limit 80
 
 只寫 wayne_evolve.db；印 gate_status 一句
-（n／假突破前後／是否贏 leave_zero／能不能 promote）。
+（n／假突破前後／是否贏 leave_zero／能不能 promote／下一版是否贏現況）。
 不准改海選、不准改話筒買訊。
 """
 from __future__ import annotations
@@ -116,6 +116,7 @@ def main() -> int:
     st1 = gate_status(db, horizon=1)
     low, prev = st["low"], st.get("prev_filter") or {}
     hold, filt = st.get("hold_filter") or {}, st.get("filtered") or {}
+    nxt = st.get("next_filter") or {}
     lz, none = st["leave_zero"], st["no_arrow"]
 
     def _r(p: dict) -> str:
@@ -134,22 +135,27 @@ def main() -> int:
     print(
         f"wrote={written} rates_keys={len(rates)} "
         f"low[{_r(low)}] prev[{_r(prev)}] hold[{_r(hold)}] filt[{_r(filt)}] "
+        f"next[{_r(nxt)}] "
         f"lz[{_r(lz)}] none[{_r(none)}] "
         f"fb_drop={drop if drop is None else round(drop, 3)} "
         f"fb_drop_vs_prev={drop_p if drop_p is None else round(drop_p, 3)} "
         f"fb_ok={st.get('false_break_ok')} beats_prev={st.get('beats_prev')} "
+        f"beats_current={st.get('beats_current_entry')} "
         f"n_ok={st['n_ok']} beat_lz={st['beats_leave_zero']} "
         f"beat_none={st['beats_no_arrow']} "
-        f"promote={st['promote_ready']} round_stopped={st.get('round_stopped')} "
+        f"promote={st['promote_ready']} next_promote={st.get('next_promote_ready')} "
+        f"round_stopped={st.get('round_stopped')} "
         f"— {st['note']}"
     )
     f1 = st1.get("filtered") or {}
+    n1 = st1.get("next_filter") or {}
     l1 = st1.get("low") or {}
     p1 = st1.get("prev_filter") or {}
     print(
         f"h1_low_fb={None if l1.get('false_break_rate') is None else round(l1['false_break_rate'], 3)} "
         f"h1_prev_fb={None if p1.get('false_break_rate') is None else round(p1['false_break_rate'], 3)} "
         f"h1_filt_fb={None if f1.get('false_break_rate') is None else round(f1['false_break_rate'], 3)} "
+        f"h1_next_fb={None if n1.get('false_break_rate') is None else round(n1['false_break_rate'], 3)} "
         f"h1_fb_drop={st1.get('false_break_drop') if st1.get('false_break_drop') is None else round(st1['false_break_drop'], 3)}"
     )
     return 0
