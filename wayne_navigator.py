@@ -2929,15 +2929,55 @@ def _fmt_dist_short(val) -> str:
     return f"{v:+.0f}%" if abs(v) >= 100 else f"{v:+.1f}%"
 
 
+def _month_growth_token_color(tok: str, C) -> str:
+    """近三月營收增減％：正＝紅（up）、負＝綠（down）；其餘維持淡墨。"""
+    s = str(tok or "").strip()
+    if not s:
+        return C["ink_soft"]
+    # 只上色月增／年增／累年增這類％，狀態句不動
+    if not any(k in s for k in ("月增", "年增", "累年增", "月減")):
+        return C["ink_soft"]
+    if "減" in s or "-" in s:
+        return C["down"]
+    if "+" in s:
+        return C["up"]
+    return C["ink_soft"]
+
+
+def _paint_right_growth_line(ax, rx: float, y: float, text: str, *, fs: float, C) -> None:
+    """近三月營收下行：全形空白切開，右對齊逐段上色（正紅負綠）。"""
+    parts = [p for p in str(text or "").split("　") if p]
+    if not parts:
+        return
+    try:
+        fig_w = float(ax.figure.get_figwidth() or 7.2)
+    except Exception:
+        fig_w = 7.2
+    sep = _text_w("　", fs, fig_w, 400)
+    cursor = float(rx)
+    for part in reversed(parts):
+        pw = _text_w(part, fs, fig_w, 400)
+        ax.text(
+            cursor,
+            y,
+            part,
+            fontproperties=_fp(fs, "normal"),
+            color=_month_growth_token_color(part, C),
+            ha="right",
+            va="center",
+            zorder=4,
+        )
+        cursor -= pw + sep
+
+
 def _paint_lr_box(
     ax, x, y, w, h, lab, primary, secondary=None, *,
     lab_c, prim_c, sec_c=None, fc, ec, lab_fs=11.0, prim_fs=15.0, sec_fs=10.0,
     value_ha: str = "right",
 ):
-    """一格左右齊線：標籤靠左細字；數字預設靠右。
+    """一格左右齊線：標籤靠左細字；數字預設靠右（單位對齊）。
 
-    value_ha=\"left\"：兩行值首字對齊（資券融資／融券、估值本益／殖利率），
-    不准右對齊讓短行看起來縮進、單位錯位。
+    value_ha=\"left\"：兩行值首字左對齊（少數特例）；介紹卡基本面一律 right。
     """
     C = _CARD
     if fc in (C["white"], C["panel"], C.get("neutral_bg"), C.get("zebra")):
@@ -4947,7 +4987,7 @@ def render_first_glance_png(
         lab_w = tw(lab, lab_fs)
         val_avail = max(16.0, pane_w * 0.46)
         raw = str(val or "").strip()
-        # 資券：融資／融券能一行就一行；放不下才拆兩行，首字對齊（不准孤字蓋％）
+        # 資券：融資／融券能一行就一行；放不下才拆兩行
         if lab == "資券餘額" and "　" in raw and ("融資" in raw and "融券" in raw):
             parts = [p for p in raw.split("　") if p]
             one = "　".join(parts)
@@ -4955,6 +4995,13 @@ def render_first_glance_png(
                 vlines = [one]
             else:
                 vlines = parts[:2]
+        elif str(lab).endswith("月營收") and "億元" in raw:
+            # 上行停在億元、下行增減；兩行 ha=right，7／8／9 月與毛利同右緣
+            cut = raw.find("億元")
+            head = raw[: cut + 2].strip()
+            tail = raw[cut + 2 :].lstrip("　 ").strip()
+            vlines = [head] + ([tail] if tail else [])
+            vlines = vlines[:2]
         else:
             vlines = (_wrap_fit(raw, val_fs, val_avail, fig_w) or [raw])[:2]
         fund_drawn.append((lab, vlines, lab_fs, val_fs))
@@ -5497,14 +5544,26 @@ def render_first_glance_png(
             if fy - fh < fund_floor - 0.2:
                 break
             fy -= fh
-            # 兩行基本面（資券／估值）：值左對齊，融資／融券或本益／殖利率首字同欄
+            # 基本面數值欄一律靠右（與季營收／毛利同套），單位對齊；不准上半左下半右
+            # 近三月營收：上行金額；下行增減％正紅負綠（只動這幾列）
+            month_growth = (
+                str(lab).endswith("月營收")
+                and len(vlines) > 1
+                and any(k in str(vlines[1]) for k in ("月增", "年增", "累年增", "月減"))
+            )
             _paint_lr_box(
                 ax, inner_x, fy, fw, fh, lab, vlines[0],
-                vlines[1] if len(vlines) > 1 else None,
+                None if month_growth else (vlines[1] if len(vlines) > 1 else None),
                 lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink_soft"],
                 fc=C["white"], ec=C["line"], lab_fs=11.5, prim_fs=13.0, sec_fs=11.5,
-                value_ha="left" if len(vlines) > 1 else "right",
+                value_ha="right",
             )
+            if month_growth:
+                rx = inner_x + fw - 1.45
+                mid = fy + fh / 2
+                _paint_right_growth_line(
+                    ax, rx, mid - _LR_SEC_DY, vlines[1], fs=11.5, C=C,
+                )
             fy -= 0.7
 
     if note_h:

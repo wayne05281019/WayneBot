@@ -128,7 +128,7 @@ def test_monthly_revenue_window_rows_one_line():
     )
     assert len(rows) == 1
     lab, val = rows[0]
-    assert lab == "月營收近窗"
+    assert lab == "8月營收"
     assert "0.30億元" in val
     assert "月增-68.1%" in val
     assert "年增+10.9%" in val

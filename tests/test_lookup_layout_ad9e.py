@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股／高低卡排版再對：結構頭欄開高低量欄對齊；介紹卡資券兩行首字對齊。"""
+"""查股／高低卡排版再對：結構頭欄爆大量左緣；介紹卡基本面數值靠右。"""
 from __future__ import annotations
 
 import inspect
@@ -9,7 +9,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.axes
 
-from tests.test_sell_discipline import _mini_card_for_png
 from wayne_navigator import (
     _paint_lr_box,
     _wrap_fit,
@@ -25,10 +24,14 @@ def test_structure_header_uses_aligned_ohlc_helper():
     mod = open(bc.__file__, encoding="utf-8").read()
     assert "_paint_aligned_kv_row" in mod
     assert "hdr-band-v74-ohlc-align" in mod
+    # 爆大量壓撐列不准再 shared[1:] 對「高」欄縮進
+    assert "spike_cols = shared[1:" not in mod
+    assert "_col_starts(header_x, [spike_cells])" in mod
 
 
-def test_aligned_kv_row_shares_column_starts(tmp_path):
-    from biaoke_chart import _paint_aligned_kv_row, _ow
+def test_aligned_kv_row_spike_shares_left_edge(tmp_path):
+    """爆大量高／低／量與當日開高低量同一 x0 左緣。"""
+    from biaoke_chart import _ow, _paint_aligned_kv_row
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -36,40 +39,20 @@ def test_aligned_kv_row_shares_column_starts(tmp_path):
     fig, ax = plt.subplots(figsize=(8, 2))
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 10)
+    x0 = 5.2
     today = [("開", "5910"), ("高", "6065"), ("低", "5745"), ("量", "1,859張")]
     spike = [("高", "6115＝壓"), ("低", "5820＝撐"), ("量", "5,086張")]
-    # 預先依較寬列算欄
-    from biaoke_chart import _fp  # noqa: F401
-
-    max_w = []
-    width = 4
-    rows = [today, [("開", "")] + list(spike)]
-    for i in range(width):
-        mw = 0.0
-        for row in rows:
-            if i < len(row):
-                lab, val = row[i]
-                text = f"{lab} {val}".strip() if val else lab
-                mw = max(mw, _ow(text, 16))
-        max_w.append(mw)
-    starts = []
-    cursor = 5.2
-    for mw in max_w:
-        starts.append(cursor)
-        cursor += mw + 2.35
-    cols1 = _paint_aligned_kv_row(ax, 5.2, 7, today, color="#111", size=16, col_xs=starts)
-    cols2 = _paint_aligned_kv_row(
-        ax, 5.2, 4, spike, color="#ad1457", size=16, col_xs=starts[1:4]
-    )
+    cols1 = _paint_aligned_kv_row(ax, x0, 7, today, color="#111", size=16)
+    cols2 = _paint_aligned_kv_row(ax, x0, 4, spike, color="#ad1457", size=16)
     plt.close(fig)
-    assert cols1[1] == starts[1]
-    assert cols2[0] == starts[1]
-    assert cols2[1] == starts[2]
-    assert cols2[2] == starts[3]
+    assert abs(cols1[0] - x0) < 1e-6
+    assert abs(cols2[0] - x0) < 1e-6
+    # 本列欄距仍依字寬，不准互壓
+    assert cols2[1] > cols2[0] + _ow("高 6115＝壓", 16) - 0.01
 
 
-def test_margin_fund_splits_rongzi_rongquan_and_left_aligns(tmp_path, monkeypatch):
-    """資券兩行：融資／融券首字同 x（value_ha=left），不准右對齊短行縮進。"""
+def test_margin_fund_right_aligns_both_lines(tmp_path, monkeypatch):
+    """資券兩行：數值 ha=right，與季營收／毛利同一右緣。"""
     clear_lookup_render_cache()
     texts = []
     orig = matplotlib.axes.Axes.text
@@ -84,7 +67,6 @@ def test_margin_fund_splits_rongzi_rongquan_and_left_aligns(tmp_path, monkeypatc
 
     monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
 
-    # 直接測 _paint_lr_box 兩行左對齊
     import matplotlib.pyplot as plt
     from wayne_navigator import _CARD
 
@@ -98,13 +80,13 @@ def test_margin_fund_splits_rongzi_rongquan_and_left_aligns(tmp_path, monkeypatc
         "融券 9張（0.0%）",
         lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink_soft"],
         fc=C["white"], ec=C["line"], lab_fs=11.5, prim_fs=13.0, sec_fs=11.5,
-        value_ha="left",
+        value_ha="right",
     )
     plt.close(fig)
     prim = [t for t in texts if t[2].startswith("融資")]
     sec = [t for t in texts if t[2].startswith("融券")]
     assert prim and sec
-    assert prim[0][3] == "left" and sec[0][3] == "left"
+    assert prim[0][3] == "right" and sec[0][3] == "right"
     assert abs(prim[0][0] - sec[0][0]) < 1e-6
 
 
@@ -118,7 +100,61 @@ def test_margin_one_line_when_fits():
     assert "融資" in lines[0] and "融券" in lines[0]
 
 
-def test_glance_source_keeps_margin_left_align():
+def test_glance_source_keeps_fund_right_align():
     src = inspect.getsource(render_first_glance_png)
-    assert 'value_ha="left"' in src
+    assert 'value_ha="right"' in src
     assert "資券餘額" in src
+    # 不准再依行數切 left／right
+    assert 'value_ha="left" if len(vlines)' not in src
+
+
+def test_monthly_revenue_labels_follow_yyyymm():
+    from fundamentals import monthly_revenue_window_rows
+
+    rows = monthly_revenue_window_rows(
+        [
+            {"yyyymm": "202609", "revenue": 1e8, "mom_pct": 1.0, "yoy_pct": 2.0, "ytd_yoy_pct": 3.0},
+            {"yyyymm": "202608", "revenue": 1e8, "mom_pct": 1.0, "yoy_pct": 2.0, "ytd_yoy_pct": 3.0},
+            {"yyyymm": "202607", "revenue": 1e8, "mom_pct": 1.0, "yoy_pct": 2.0, "ytd_yoy_pct": 3.0},
+        ],
+        limit=3,
+    )
+    assert [lab for lab, _ in rows] == ["9月營收", "8月營收", "7月營收"]
+    assert "月營收近窗" not in "".join(lab for lab, _ in rows)
+    assert "月營收2" not in "".join(lab for lab, _ in rows)
+    # 值不再重複 09月'26；上行金額以億元結尾
+    assert all("月'" not in val for _, val in rows)
+    assert all("億元" in val for _, val in rows)
+
+
+def test_structure_top_pad_lifts_header_frame():
+    import biaoke_chart as bc
+
+    assert float(bc._STRUCTURE_TOP_PAD) <= 0.35
+    assert float(bc._STRUCTURE_TOP_PAD) < 1.35
+    src = open(bc.__file__, encoding="utf-8").read()
+    assert "name_y = 94.00 if fullbleed" in src
+    assert "date_y, ohlc_y1 = 90.40, 86.80" in src
+
+
+def test_month_revenue_splits_after_yi_for_right_edge():
+    """7／8／9 月營收：上行停億元，兩行 ha=right，右緣與毛利同套。"""
+    src = inspect.getsource(render_first_glance_png)
+    assert 'endswith("月營收")' in src
+    assert 'find("億元")' in src
+    assert 'value_ha="right"' in src
+
+
+def test_month_growth_token_colors_pos_red_neg_green():
+    from wayne_navigator import _CARD, _month_growth_token_color
+
+    C = _CARD
+    assert _month_growth_token_color("月增+19.6%", C) == C["up"]
+    assert _month_growth_token_color("年增+100.0%", C) == C["up"]
+    assert _month_growth_token_color("累年增+50.3%", C) == C["up"]
+    assert _month_growth_token_color("月增-68.1%", C) == C["down"]
+    assert _month_growth_token_color("年增-3.2%", C) == C["down"]
+    assert _month_growth_token_color("較上月改善；較去年同月大增", C) == C["ink_soft"]
+    src = inspect.getsource(render_first_glance_png)
+    assert "_paint_right_growth_line" in src
+    assert "month_growth" in src

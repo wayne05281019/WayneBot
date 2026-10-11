@@ -496,3 +496,11 @@ def test_cross_chart_last_close_aligned_2383():
     c_date = str(card.get("latest_date") or "").replace("-", "")[:8]
     assert v_date == c_date
     assert abs(float(last["close"]) - float(card.get("close"))) < 1e-6
+
+
+def test_vol_zone_no_prev_close_right_tag():
+    """大量區右軸不准再畫「昨收」白底標（與今收／壓撐重複干擾）。"""
+    src = open("vol_zone_chart.py", encoding="utf-8").read()
+    assert 'f"昨收 {_fmt_price(prev_c)}"' not in src
+    assert "右軸空位補昨收" not in src
+    assert "不准再畫「昨收」白底標" in src
