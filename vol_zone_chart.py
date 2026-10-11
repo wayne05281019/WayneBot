@@ -69,7 +69,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 18
+_VZ_PAINT_VER = 19
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -1497,44 +1497,7 @@ def _paint_volume_zone(
         bbox={**_tag_box, "edgecolor": _HOLD},
     )
 
-    # 右軸空位補昨收（有官方昨收、且離壓／撐／現收夠遠才標，不准互壓）
-    try:
-        prev_c = float(view["close"].iloc[-2]) if n >= 2 else 0.0
-    except (TypeError, ValueError, IndexError):
-        prev_c = 0.0
-    if prev_c > 0 and last_cl > 0:
-        y0, y1 = ax1.get_ylim()
-        span_y = max(y1 - y0, 1.0)
-        near = span_y * 0.045
-        anchors = [float(hi), float(lo), float(last_cl)]
-        if all(abs(prev_c - a) >= near for a in anchors if a > 0):
-            ax1.axhline(
-                prev_c,
-                color="#78909c",
-                linewidth=0.85,
-                linestyle=(0, (2.5, 2.0)),
-                alpha=0.75,
-                zorder=4,
-            )
-            ax1.text(
-                0.995,
-                prev_c,
-                f"昨收 {_fmt_price(prev_c)}",
-                transform=ax1.get_yaxis_transform(),
-                ha="right",
-                va="center",
-                fontproperties=_fp(9.0, "bold"),
-                color="#546e7a",
-                zorder=11,
-                clip_on=False,
-                bbox=dict(
-                    boxstyle="round,pad=0.18",
-                    facecolor="#ffffff",
-                    edgecolor="#90a4ae",
-                    linewidth=0.8,
-                    alpha=0.94,
-                ),
-            )
+    # 大量區右軸只留今收（綠「收」）＋壓／撐；不准再畫「昨收」白底標（與收／壓撐重複干擾）
 
     # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位
     try:
