@@ -246,6 +246,198 @@ def _bind(
     return None
 
 
+# 明確「壓力區 A~B」區間（下一壓帶）；數字是價，不准把右端當代號
+_PRESS_BAND_RANGE = re.compile(
+    r"壓力(?:線|區)?\s*"
+    r"(?<![\d.])(\d{1,5}(?:\.\d+)?)\s*[~\-～至]\s*(\d{1,5}(?:\.\d+)?)(?![\d])"
+)
+_SID_TOKEN = re.compile(r"(?<![\d])(\d{4})(?![\d])")
+
+
+def _winner_sid_before(before: str, db_path: str = "") -> str:
+    """壓力區左側窗：最靠近的股名／代號贏；重疊取較長名（族群聯亞→聯亞，不是群聯）。"""
+    blob = str(before or "")
+    if not blob:
+        return ""
+    best_sid = ""
+    best_end = -1
+    best_len = -1
+    try:
+        from biaoke_link import _compiled
+
+        idx, _pat = _compiled(str(db_path or ""))
+    except Exception:
+        idx = ()
+    for name, sid in idx or ():
+        nm = str(name or "").strip()
+        sid_s = str(sid or "").strip().upper()
+        if not nm or not sid_s or len(nm) < 2:
+            continue
+        start = 0
+        while True:
+            i = blob.find(nm, start)
+            if i < 0:
+                break
+            end = i + len(nm)
+            if end > best_end or (end == best_end and len(nm) > best_len):
+                best_end = end
+                best_len = len(nm)
+                best_sid = sid_s
+            start = i + 1
+    for m in _SID_TOKEN.finditer(blob):
+        sid_s = m.group(1)
+        end = m.end()
+        # 代號權重等同長度 4；不蓋過更靠近／更長的股名
+        if end > best_end or (end == best_end and 4 > best_len):
+            best_end = end
+            best_len = 4
+            best_sid = sid_s
+    return best_sid
+
+
+def press_band_from_spoken_text(
+    text: str,
+    sid: str,
+    *,
+    db_path: str = "",
+) -> Optional[Tuple[float, float]]:
+    """正文裡這檔明確「壓力區 A~B」才回區間；沒講／講別人的＝None。不准發明。"""
+    sid_s = str(sid or "").strip().upper()
+    blob = _norm(text)
+    if not sid_s or not blob:
+        return None
+    best: Optional[Tuple[float, float]] = None
+    for m in _PRESS_BAND_RANGE.finditer(blob):
+        before = blob[max(0, m.start() - 56) : m.start()]
+        if _winner_sid_before(before, db_path) != sid_s:
+            continue
+        try:
+            a, b = float(m.group(1)), float(m.group(2))
+        except (TypeError, ValueError):
+            continue
+        if a <= 0 or b <= 0:
+            continue
+        lo, hi = (a, b) if a <= b else (b, a)
+        if hi >= 8000 and lo < 8000:
+            continue
+        best = (lo, hi)
+    return best
+
+
+def spoken_next_press_band(
+    db_path: str,
+    sid: str,
+    name: str = "",
+) -> Optional[Tuple[float, float]]:
+    """近窗他自己講過的下一壓區間（查股／結構圖用）。沒明確說過＝不畫。"""
+    sid_s = str(sid or "").strip().upper()
+    if not db_path or not sid_s:
+        return None
+    nm = str(name or "").strip()
+    like_bits = [sid_s]
+    if nm and len(nm) >= 2:
+        like_bits.append(nm)
+    # 代號對股名備援（傳空名時仍能 LIKE 聯亞）
+    if not nm:
+        try:
+            conn = sqlite3.connect(db_path, timeout=8.0)
+            try:
+                row = conn.execute(
+                    "SELECT stock_name FROM daily_quotes WHERE stock_id=? "
+                    "AND IFNULL(stock_name,'')!='' ORDER BY date DESC LIMIT 1",
+                    (sid_s,),
+                ).fetchone()
+            finally:
+                conn.close()
+            if row and str(row[0] or "").strip():
+                like_bits.append(str(row[0]).strip())
+        except sqlite3.Error:
+            pass
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_posts'"
+        ).fetchone()
+        if not hit:
+            return None
+        # 近窗優先：有壓力區＋點到這檔名／代號的主文／自回
+        where_like = " OR ".join(["text LIKE ?"] * len(like_bits))
+        params: List[Any] = [f"%{b}%" for b in like_bits]
+        rows = conn.execute(
+            "SELECT text, date, time, id FROM biaoke_posts "
+            f"WHERE text LIKE '%壓力%' AND ({where_like}) "
+            "ORDER BY date DESC, time DESC, id DESC LIMIT 40",
+            params,
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    for row in rows or ():
+        raw = str((row[0] if row else "") or "")
+        if not raw:
+            continue
+        # 樓下自回只認他自己講的正文
+        try:
+            from biaoke_ingest import spoken_text
+
+            raw = spoken_text(raw) or raw
+        except Exception:
+            pass
+        band = press_band_from_spoken_text(raw, sid_s, db_path=db_path)
+        if band:
+            return band
+    return None
+
+
+def official_volume_press_band(
+    *,
+    zone_lo: float = 0.0,
+    zone_hi: float = 0.0,
+    bars: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Optional[Tuple[float, float]]:
+    """官方爆大量日高低＝下一大量壓區（與大量撐壓同一套柱）。不准發明價。"""
+    try:
+        lo = float(zone_lo or 0)
+        hi = float(zone_hi or 0)
+    except (TypeError, ValueError):
+        lo = hi = 0.0
+    if lo > 0 and hi > lo:
+        return (lo, hi)
+    rows = list(bars or ())
+    if len(rows) < 8:
+        return None
+    try:
+        from biaoke_brain import volume_first_price
+
+        st = volume_first_price(rows, lookback=min(40, len(rows))) or {}
+        hi = float(st.get("spike_high") or 0)
+        lo = float(st.get("spike_low") or 0)
+    except Exception:
+        return None
+    if lo > 0 and hi > lo:
+        return (lo, hi)
+    return None
+
+
+def resolve_next_press_band(
+    db_path: str,
+    sid: str,
+    name: str = "",
+    *,
+    bars: Optional[Sequence[Dict[str, Any]]] = None,
+    zone_lo: float = 0.0,
+    zone_hi: float = 0.0,
+) -> Optional[Tuple[float, float]]:
+    """每檔下一壓區間：飆大明確講過優先；否則官方大量壓區高低。非買訊。"""
+    spoken = spoken_next_press_band(db_path, sid, name)
+    if spoken:
+        return spoken
+    return official_volume_press_band(
+        zone_lo=zone_lo, zone_hi=zone_hi, bars=bars
+    )
+
+
 def extract_claims(
     text: str,
     *,

@@ -1427,7 +1427,8 @@ def _note_priority(text: str) -> int:
     t = str(text or "")
     if "最可能" in t:
         return 0
-    if t.startswith("壓") or t.startswith("撐"):
+    # 下一壓區間與爆大量壓／撐同級，不准被去重吃掉
+    if t.startswith("下一壓") or t.startswith("壓") or t.startswith("撐"):
         return 1
     # 71／75：當日收優先於昨收；紅框空位要留今收
     if _is_today_close_note(t):
@@ -1445,9 +1446,9 @@ def _is_rail_note(text: str) -> bool:
 
 
 def _is_level_note(text: str) -> bool:
-    """爆大量壓／撐水平線標籤——必須貼線，高價在上。"""
+    """爆大量壓／撐／飆大下一壓帶——必須貼線，高價在上。"""
     t = str(text or "")
-    return t.startswith("壓") or t.startswith("撐")
+    return t.startswith("下一壓") or t.startswith("壓") or t.startswith("撐")
 
 
 def _is_close_note(text: str) -> bool:
@@ -3347,14 +3348,14 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        "hdr-band-v74-ohlc-align" if fullbleed else "hdr-wrap3",
+        "hdr-band-v75-next-press" if fullbleed else "hdr-wrap3",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
         int(bool(_q0.get("is_live"))),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
-        # 預覽用下一壓區帶（如聯亞 3255~3305）；未傳＝正式出圖不疊
+        # 下一壓區帶：飆大說過／否則官方大量高低；未傳＝呼叫端已解析
         round(float((press_band or (0, 0))[0] or 0), 2),
         round(float((press_band or (0, 0))[1] or 0), 2),
     )
@@ -3478,7 +3479,7 @@ def render_biaoke_structure_png(
         right_notes.append(
             {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
-    # 預覽／點名用下一壓區帶（如聯亞 3255~3305）；正式 desk 預設不傳＝不疊
+    # 下一壓區帶（飆大說過或官方大量高低）；非買訊
     if band_lo_y > 0 and band_hi_y > band_lo_y:
         ax1.axhspan(
             band_lo_y,
@@ -3500,11 +3501,11 @@ def render_biaoke_structure_png(
             zorder=4,
             alpha=0.88,
         )
-        mid_band = (band_lo_y + band_hi_y) / 2.0
+        # 標在帶上緣，跟爆大量「壓 lo」錯開；文案仍寫完整區間
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
-                "y": mid_band,
+                "y": float(band_hi_y),
                 "text": f"下一壓 {_px(band_lo_y)}~{_px(band_hi_y)}",
                 "color": _PRESS,
                 "size": 11,
@@ -4393,6 +4394,23 @@ def build_biaoke_structure_chart(
     prev = bars[-2] if len(bars) >= 2 else {}
     last = info.get("last_bar") or bars[-1]
     quote = _spot_quote(sid, last, prev, db_path)
+    band = press_band
+    if band is None and sid:
+        try:
+            from biaoke_claims import resolve_next_press_band
+
+            st = info.get("struct") or {}
+            band = resolve_next_press_band(
+                db_path,
+                sid,
+                nm,
+                bars=bars[-_BARS:] if bars else None,
+                zone_lo=float(st.get("spike_low") or 0),
+                zone_hi=float(st.get("spike_high") or 0),
+            )
+        except Exception:
+            logger.debug("下一壓區帶略過", exc_info=True)
+            band = None
     # 74 核准：飆大／查股結構圖同一橫式滿版（不准殘留舊直式版面）
     path = render_biaoke_structure_png(
         bars,
@@ -4404,7 +4422,7 @@ def build_biaoke_structure_chart(
         quote=quote,
         db_path=db_path,
         figsize=_STRUCTURE_LOOKUP_FIG,
-        press_band=press_band,
+        press_band=band,
     )
     try:
         from biaoke_forecast import record_stock, verify_due
