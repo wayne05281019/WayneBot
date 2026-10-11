@@ -1744,6 +1744,10 @@ LOOKUP_CANDLE_WICK_LW = 1.25
 LOOKUP_CANDLE_BODY_LW = 0.35
 LOOKUP_VOL_BAR_W = 0.70
 LOOKUP_SPIKE_VOL = "#f9a825"
+# 無成交／停價量柱貼底佔槽（相對視窗 max 正量）。Rectangle 強制畫，JPEG 不准吃成挖洞。
+LOOKUP_VOL_FLOOR_FRAC = 0.32
+LOOKUP_VOL_FLOOR_FACE = "#546e7a"
+LOOKUP_VOL_FLOOR_EDGE = "#37474f"
 
 
 def lookup_candle_up_mask(opens, closes, *, halt=None) -> np.ndarray:
@@ -1874,7 +1878,11 @@ def paint_lookup_volume_bars(
     spike_i: int | None = None,
     z: int = 3,
 ) -> tuple:
-    """結構／大量／導航共用日量柱。回 (heights, ylim, missing)。"""
+    """結構／大量／導航共用日量柱。回 (heights, ylim, missing)。
+
+    正量＝視窗線性比例。無成交／停價／缺量＝貼底灰短柱佔槽（不准挖洞）；
+    高度資料層仍為 0，不抬假量進 ylim／對質。
+    """
     xs = np.asarray(xs, dtype=float)
     up = np.asarray(candle_up, dtype=bool)
     n = int(xs.shape[0])
@@ -1894,6 +1902,23 @@ def paint_lookup_volume_bars(
         for i in range(n)
     ]
     ax.bar(xs, vol_draw, color=colors, width=LOOKUP_VOL_BAR_W, zorder=z, linewidth=0)
+    # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽，不准挖洞
+    if zero_i.size:
+        floor_h = max(float(ylim) * LOOKUP_VOL_FLOOR_FRAC, 1e-9)
+        half_w = LOOKUP_VOL_BAR_W * 0.5
+        for i in zero_i:
+            ax.add_patch(
+                patches.Rectangle(
+                    (float(xs[i]) - half_w, 0.0),
+                    LOOKUP_VOL_BAR_W,
+                    floor_h,
+                    facecolor=LOOKUP_VOL_FLOOR_FACE,
+                    edgecolor=LOOKUP_VOL_FLOOR_EDGE,
+                    linewidth=0.8,
+                    zorder=z + 3,
+                    clip_on=True,
+                )
+            )
     if spike_i is not None:
         si = int(spike_i)
         if 0 <= si < n and not bool(halt_arr[si]) and float(vol_vals[si]) > 0 and float(heights[si]) > 0:
