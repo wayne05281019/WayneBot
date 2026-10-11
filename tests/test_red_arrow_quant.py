@@ -15,14 +15,17 @@ from red_arrow_quant import (
     TAG_FILTER,
     TAG_HOLD,
     TAG_LOW,
+    TAG_NEXT,
     TAG_NONE,
     TAG_PREV,
     gate_status,
     nav_low_arrow_first_mask,
     nav_low_hold_low_confirm_mask,
     nav_low_ma60_lower_mask,
+    nav_low_ma60_lower_tight_mask,
     nav_low_ma60_upper_mask,
     nav_low_ma60_vol_mask,
+    optimize_status_one_liner,
     persist_scores,
     promote_ready,
     recompute_rates,
@@ -246,8 +249,24 @@ def test_ma60_lower_requires_ma60_vol_and_lower_half():
     assert bool(nav_low_ma60_lower_mask(bad).iloc[-1]) is False
 
 
+def test_ma60_lower_tight_requires_lower_and_vol_cap():
+    """下一版 tight＝ma60_lower 且量 ≤ 近20均×1.0；略放量剔除。"""
+    df = _ohlc_mild_new_low_near_ma60().copy()
+    df.loc[df.index[-1], "high"] = 100.0
+    df.loc[df.index[-1], "low"] = 98.8
+    df.loc[df.index[-1], "close"] = 99.1
+    df.loc[df.index[-1], "open"] = 99.5
+    # 基線 volume=3000 → ≤1.0×v20 → tight 過
+    assert bool(nav_low_ma60_lower_mask(df).iloc[-1]) is True
+    assert bool(nav_low_ma60_lower_tight_mask(df).iloc[-1]) is True
+    hot = df.copy()
+    hot.loc[hot.index[-1], "volume"] = 3200.0  # >1.0×v20 但仍 ≤1.25× → lower 過、tight 不過
+    assert bool(nav_low_ma60_lower_mask(hot).iloc[-1]) is True
+    assert bool(nav_low_ma60_lower_tight_mask(hot).iloc[-1]) is False
+
+
 def test_score_includes_filter_tag_when_ma60_lower_ok():
-    """本輪候選 ma60_lower 過 → TAG_FILTER 記一筆。"""
+    """本輪候選 ma60_lower 過 → TAG_FILTER；溫和量一併記 TAG_NEXT。"""
     df = _ohlc_mild_new_low_near_ma60().copy()
     df.loc[df.index[-1], "high"] = 100.0
     df.loc[df.index[-1], "low"] = 98.8
@@ -259,7 +278,9 @@ def test_score_includes_filter_tag_when_ma60_lower_ok():
     assert TAG_LOW in tags
     assert TAG_PREV in tags
     assert TAG_FILTER in tags
+    assert TAG_NEXT in tags
     assert TAG_FILTER == "nav_low_first_ma60_lower"
+    assert TAG_NEXT == NEXT_CANDIDATE == "nav_low_first_ma60_lower_tight"
     h5 = [r for r in rows if r["tag"] == TAG_FILTER and r["horizon"] == 5][0]
     assert h5["false_break"] == 0
     assert h5["verdict"] == "hit"
@@ -315,11 +336,18 @@ def test_promote_ready_false_until_gate(tmp_path):
     assert st["min_unique_days"] >= 20
     assert st.get("next_candidate") == NEXT_CANDIDATE
     assert NEXT_CANDIDATE == "nav_low_first_ma60_lower_tight"
+    assert st.get("next_tag") == TAG_NEXT
+    assert "next_filter" in st
+    assert st.get("next_promote_ready") is False
     assert ROUND_STOPPED is False
     assert st.get("round_stopped") is False
     assert TAG_FILTER == "nav_low_first_ma60_lower"
     assert st.get("min_fb_drop", 0) > 0
     assert st.get("min_fb_drop_vs_prev", 0) > 0
+    line = optimize_status_one_liner(db)
+    assert line.startswith("明確優化狀態：")
+    assert "％" not in line
+    assert "hit" not in line.lower()
 
 
 def test_ai_trader_promotes_ma60_lower_entry(tmp_path):

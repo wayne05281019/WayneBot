@@ -71,6 +71,7 @@ def test_catalog_covers_full_keyboard():
     want = {
         "勝率買點",
         "海選",
+        "紅箭確認",
         "持股",
         "加入觀察",
         "飆大",
@@ -94,6 +95,13 @@ def test_catalog_covers_full_keyboard():
     assert cov["missing"] == 0
     assert cov["gap_filled"] >= 5
     assert cov["total"] == len(want)
+    red = next(r for r in BUTTON_CATALOG if r["btn"] == "紅箭確認")
+    assert "ma60_lower" in red["kinds"]
+    assert red["class"] == "screen_verify"
+    from button_silent_verify import SCREEN_KINDS
+
+    assert "ma60_lower" in SCREEN_KINDS
+    assert "em_ma60_lower" in SCREEN_KINDS
     lookup = next(r for r in BUTTON_CATALOG if r["btn"] == "查股")
     assert "lookup" in lookup["kinds"]
     assert "lookup_chart" in lookup["kinds"]
