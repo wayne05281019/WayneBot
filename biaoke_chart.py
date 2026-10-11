@@ -3316,6 +3316,7 @@ def render_biaoke_structure_png(
     db_path: str = "",
     figsize: Optional[Tuple[float, float]] = None,
     dpi: Optional[int] = None,
+    press_band: Optional[Tuple[float, float]] = None,
 ) -> str:
     rows = list(bars or [])
     if len(rows) < 8 or not save_path:
@@ -3353,6 +3354,9 @@ def render_biaoke_structure_png(
         int(bool(_q0.get("is_live"))),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
+        # 預覽用下一壓區帶（如聯亞 3255~3305）；未傳＝正式出圖不疊
+        round(float((press_band or (0, 0))[0] or 0), 2),
+        round(float((press_band or (0, 0))[1] or 0), 2),
     )
     from wayne_navigator import _lookup_render_memo_get, _lookup_render_memo_put
 
@@ -3376,6 +3380,16 @@ def render_biaoke_structure_png(
             ymax = max(ymax, float(yf) + span * 0.04)
     ymax = max(ymax, y_top + span * 0.07)
     ymin = min(ymin, y_bot - span * 0.07)
+    band_lo_y = band_hi_y = 0.0
+    if press_band:
+        try:
+            a, b = float(press_band[0]), float(press_band[1])
+            if a > 0 and b > 0:
+                band_lo_y, band_hi_y = (min(a, b), max(a, b))
+                ymin = min(ymin, band_lo_y - span * 0.04)
+                ymax = max(ymax, band_hi_y + span * 0.06)
+        except (TypeError, ValueError, IndexError):
+            band_lo_y = band_hi_y = 0.0
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
 
     fig, (ax1, ax2) = plt.subplots(
@@ -3463,6 +3477,38 @@ def render_biaoke_structure_png(
         )
         right_notes.append(
             {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
+        )
+    # 預覽／點名用下一壓區帶（如聯亞 3255~3305）；正式 desk 預設不傳＝不疊
+    if band_lo_y > 0 and band_hi_y > band_lo_y:
+        ax1.axhspan(
+            band_lo_y,
+            band_hi_y,
+            xmin=0.0,
+            xmax=(hline_xmax + 0.55) / max(x_right + 0.55, 1.0),
+            facecolor=_PRESS,
+            alpha=0.10,
+            zorder=2,
+            linewidth=0,
+        )
+        ax1.hlines(
+            [band_lo_y, band_hi_y],
+            xmin=-0.55,
+            xmax=hline_xmax,
+            color=_PRESS,
+            linewidth=1.05,
+            linestyles=(0, (2.2, 1.6)),
+            zorder=4,
+            alpha=0.88,
+        )
+        mid_band = (band_lo_y + band_hi_y) / 2.0
+        right_notes.append(
+            {
+                "x": float(label_col_left) - 0.6,
+                "y": mid_band,
+                "text": f"下一壓 {_px(band_lo_y)}~{_px(band_hi_y)}",
+                "color": _PRESS,
+                "size": 11,
+            }
         )
     # 右軸：今收（71 紅框必留）＋昨收；75 同列並排（垂直貼今收價，數字＝官方真價）
     last_c = float(last_bar.get("close") or 0)
@@ -4320,6 +4366,7 @@ def build_biaoke_structure_chart(
     name: str = "",
     ask: str = "",
     uid: str = "",
+    press_band: Optional[Tuple[float, float]] = None,
 ) -> Dict[str, Any]:
     from biaoke_brain import load_bars
 
@@ -4357,6 +4404,7 @@ def build_biaoke_structure_chart(
         quote=quote,
         db_path=db_path,
         figsize=_STRUCTURE_LOOKUP_FIG,
+        press_band=press_band,
     )
     try:
         from biaoke_forecast import record_stock, verify_due
