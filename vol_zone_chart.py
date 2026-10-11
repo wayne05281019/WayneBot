@@ -60,6 +60,9 @@ VOL_ZONE_FIG_H_PLAIN = 7.7
 # 查股單張：對齊高低卡 4:5（220DPI → 1920×2400），Telegram 縮圖寬才不獨大／變窄
 VOL_ZONE_FIG_LOOKUP = (1920 / 220.0, 2400 / 220.0)
 # 月線／季線＝官方收盤 MA20／MA60；畫圖前多抓暖機柱，近窗第一根就要有線
+# 五日／十日＝大盤大量區另開（與壓撐／平行軌同圖）；個股大量區預設不畫
+VOL_ZONE_MA5 = 5
+VOL_ZONE_MA10 = 10
 VOL_ZONE_MA20 = 20
 VOL_ZONE_MA60 = 60
 VOL_ZONE_MA60_WARM = 70
@@ -69,7 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 20  # 大盤大量區可疊平行軌（上升軌／下降壓）
+_VZ_PAINT_VER = 21  # 大盤大量區＋五日／十日線
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -78,6 +81,8 @@ _FILL = "#ffe0b2"
 _PRESS = "#ad1457"
 _HOLD = "#1b5e20"
 _SPIKE = "#f9a825"
+_MA5 = "#ef6c00"  # 五日：橙（對齊大盤日 K）
+_MA10 = "#00838f"  # 十日：青，不跟月線黃／季線藍紫搶
 _MA20 = "#f9a825"  # 月線：黃（對齊導航 SMA20）
 _MA60 = "#5c6bc0"  # 季線：藍紫，不跟壓洋紅／撐綠搶
 _GRID = "#cfd8dc"
@@ -93,29 +98,38 @@ def _md(raw: Any) -> str:
     return str(raw or "").strip()
 
 
-def attach_official_ma20(work: pd.DataFrame, *, window: int = VOL_ZONE_MA20) -> pd.DataFrame:
-    """官方收盤 SMA20（月線）。不滿窗不畫假線。"""
+def attach_official_sma(
+    work: pd.DataFrame, *, col: str, window: int
+) -> pd.DataFrame:
+    """官方收盤 SMA；不滿窗不畫假線。"""
     if work is None or getattr(work, "empty", True):
         return work
-    out = work if "ma20" in work.columns else work.copy()
-    if "ma20" not in out.columns:
+    out = work if col in work.columns else work.copy()
+    if col not in out.columns:
         out = out.copy()
     closes = pd.to_numeric(out["close"], errors="coerce")
-    out["ma20"] = closes.rolling(int(window), min_periods=int(window)).mean()
+    out[col] = closes.rolling(int(window), min_periods=int(window)).mean()
     return out
+
+
+def attach_official_ma5(work: pd.DataFrame, *, window: int = VOL_ZONE_MA5) -> pd.DataFrame:
+    """官方收盤 SMA5（五日）。"""
+    return attach_official_sma(work, col="ma5", window=window)
+
+
+def attach_official_ma10(work: pd.DataFrame, *, window: int = VOL_ZONE_MA10) -> pd.DataFrame:
+    """官方收盤 SMA10（十日）。"""
+    return attach_official_sma(work, col="ma10", window=window)
+
+
+def attach_official_ma20(work: pd.DataFrame, *, window: int = VOL_ZONE_MA20) -> pd.DataFrame:
+    """官方收盤 SMA20（月線）。不滿窗不畫假線。"""
+    return attach_official_sma(work, col="ma20", window=window)
 
 
 def attach_official_ma60(work: pd.DataFrame, *, window: int = VOL_ZONE_MA60) -> pd.DataFrame:
     """官方收盤 SMA60（季線）。缺柱／停牌收不當正量時仍用當日官方收。"""
-    if work is None or getattr(work, "empty", True):
-        return work
-    out = work
-    if "ma60" not in out.columns:
-        out = out.copy()
-    closes = pd.to_numeric(out["close"], errors="coerce")
-    # min_periods=window：不滿 60 根不畫假季線
-    out["ma60"] = closes.rolling(int(window), min_periods=int(window)).mean()
-    return out
+    return attach_official_sma(work, col="ma60", window=window)
 
 
 def _label_ma_left(
@@ -949,6 +963,7 @@ def _vz_memo_key(
     bars: int,
     lookup_portrait: bool = False,
     with_parallel_channel: bool = False,
+    with_ma5_ma10: bool = False,
     card_fp: Tuple[Any, ...] = (),
 ) -> Tuple[Any, ...]:
     last_d = _bar_ymd((last or {}).get("date"))
@@ -966,6 +981,7 @@ def _vz_memo_key(
         int(_VZ_PAINT_VER),
         int(bool(lookup_portrait)),
         int(bool(with_parallel_channel)),
+        int(bool(with_ma5_ma10)),
         tuple(card_fp or ()),
     )
 
@@ -1172,6 +1188,8 @@ def prepare_volume_zone(
         work = official_work(df)
     if work is None or work.empty:
         return None
+    work = attach_official_ma5(work)
+    work = attach_official_ma10(work)
     work = attach_official_ma20(work)
     work = attach_official_ma60(work)
     ex_events: List[Dict[str, Any]] = []
@@ -1257,12 +1275,14 @@ def render_volume_zone_result(
     with_nav_signals: bool = False,
     lookup_portrait: bool = False,
     with_parallel_channel: bool = False,
+    with_ma5_ma10: bool = False,
 ) -> tuple[str, str]:
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
     with_nav_signals＝疊導航箭頭／量能訊號（壓撐觀察用；仍非買訊）。
     lookup_portrait＝舊直式 4:5 畫布（壓區名單仍可走）。查股第 4 張改橫式原版。
     with_parallel_channel＝疊可重算上升軌／下降壓兩條平行線（大盤大量區用；不數浪、非買訊）。
+    with_ma5_ma10＝疊官方五日／十日線（大盤大量區用；個股預設關）。
     """
     del already_normalized
     pack = prepare_volume_zone(
@@ -1294,6 +1314,7 @@ def render_volume_zone_result(
         bars=bars,
         lookup_portrait=lookup_portrait,
         with_parallel_channel=with_parallel_channel,
+        with_ma5_ma10=with_ma5_ma10,
         card_fp=card_fp,
     )
     hit = _vz_memo_get(memo_key, pack["out"])
@@ -1338,6 +1359,7 @@ def render_volume_zone_result(
             lookup_portrait=lookup_portrait,
             db_path=str(db_path or ""),
             with_parallel_channel=with_parallel_channel,
+            with_ma5_ma10=with_ma5_ma10,
             bars_face=pack.get("bars"),
         )
     out_path, out_cap = str(path or ""), str(cap or "")
@@ -1415,6 +1437,7 @@ def _paint_volume_zone(
     lookup_portrait: bool = False,
     db_path: str = "",
     with_parallel_channel: bool = False,
+    with_ma5_ma10: bool = False,
     bars_face=None,
 ):
     spike_md = _md(spike_date)
@@ -1499,8 +1522,23 @@ def _paint_volume_zone(
         linestyle=(0, (1.1, 1.35)),
     )
 
-    # 月線 MA20＋季線 MA60：近窗第一根起就要畫滿（暖機在 prepare）
+    # 均線：月線／季線一律畫；五日／十日僅大盤大量區（with_ma5_ma10）
     closes_v = pd.to_numeric(view["close"], errors="coerce")
+    ma5_vals = None
+    ma10_vals = None
+    if with_ma5_ma10:
+        if "ma5" in view.columns:
+            ma5_vals = pd.to_numeric(view["ma5"], errors="coerce").to_numpy(dtype=float)
+        else:
+            ma5_vals = closes_v.rolling(VOL_ZONE_MA5, min_periods=VOL_ZONE_MA5).mean().to_numpy(
+                dtype=float
+            )
+        if "ma10" in view.columns:
+            ma10_vals = pd.to_numeric(view["ma10"], errors="coerce").to_numpy(dtype=float)
+        else:
+            ma10_vals = closes_v.rolling(VOL_ZONE_MA10, min_periods=VOL_ZONE_MA10).mean().to_numpy(
+                dtype=float
+            )
     if "ma20" in view.columns:
         ma20_vals = pd.to_numeric(view["ma20"], errors="coerce").to_numpy(dtype=float)
     else:
@@ -1510,6 +1548,30 @@ def _paint_volume_zone(
     ma60_vals = None
     if "ma60" in view.columns:
         ma60_vals = pd.to_numeric(view["ma60"], errors="coerce").to_numpy(dtype=float)
+    if ma5_vals is not None:
+        ok5 = np.isfinite(ma5_vals) & (ma5_vals > 0)
+        if ok5.any():
+            ax1.plot(
+                xs[ok5],
+                ma5_vals[ok5],
+                color=_MA5,
+                linewidth=1.35,
+                zorder=4,
+                solid_capstyle="round",
+                label="五日",
+            )
+    if ma10_vals is not None:
+        ok10 = np.isfinite(ma10_vals) & (ma10_vals > 0)
+        if ok10.any():
+            ax1.plot(
+                xs[ok10],
+                ma10_vals[ok10],
+                color=_MA10,
+                linewidth=1.45,
+                zorder=4,
+                solid_capstyle="round",
+                label="十日",
+            )
     ok20 = np.isfinite(ma20_vals) & (ma20_vals > 0)
     if ok20.any():
         ax1.plot(
@@ -1631,7 +1693,7 @@ def _paint_volume_zone(
     ypad = max((hi - lo) * 0.16, float(view["high"].max() - view["low"].min()) * 0.035)
     y_hi = float(view["high"].max())
     y_lo = float(view["low"].min())
-    for _arr in (ma20_vals, ma60_vals):
+    for _arr in (ma5_vals, ma10_vals, ma20_vals, ma60_vals):
         if _arr is None:
             continue
         ok_ma = np.isfinite(_arr) & (_arr > 0)
@@ -1808,9 +1870,31 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
-    # 月線／季線左標：偏左、可貼均線，不准壓 K
+    # 均線左標：偏左、可貼均線，不准壓 K
     highs_a = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
     lows_a = pd.to_numeric(view["low"], errors="coerce").to_numpy(dtype=float)
+    if ma5_vals is not None and np.isfinite(ma5_vals).any():
+        _label_ma_left(
+            ax1,
+            xs,
+            highs_a,
+            lows_a,
+            lab="五日",
+            vals=ma5_vals,
+            color=_MA5,
+            face="#fff3e0",
+        )
+    if ma10_vals is not None and np.isfinite(ma10_vals).any():
+        _label_ma_left(
+            ax1,
+            xs,
+            highs_a,
+            lows_a,
+            lab="十日",
+            vals=ma10_vals,
+            color=_MA10,
+            face="#e0f7fa",
+        )
     if ma20_vals is not None and np.isfinite(ma20_vals).any():
         _label_ma_left(
             ax1,
@@ -2061,14 +2145,18 @@ def _paint_volume_zone(
             f"{ex_title}"
         )
         ax1.set_title(title, fontproperties=_fp(13, "bold"), pad=14, color=_TEXT)
+    if with_ma5_ma10:
+        ma_foot = "橙＝五日、青＝十日、黃＝月線(MA20)、藍紫＝季線(MA60)。"
+    else:
+        ma_foot = "黃＝月線(MA20)、藍紫＝季線(MA60)。"
     if with_nav_signals:
-        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。黃＝月線(MA20)、藍紫＝季線(MA60)。除權／除息缺口是息差不是崩。"
+        foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
         foot2 = (
             "高觸壓、收未過＝測壓（非買訊）。買點＝藍▲紅框、60低＝純藍▲。"
             "箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
         )
     else:
-        foot1 = "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。黃＝月線(MA20)、藍紫＝季線(MA60)。除權／除息缺口是息差不是崩。"
+        foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
         if with_parallel_channel:
             foot2 = (
                 "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）。"

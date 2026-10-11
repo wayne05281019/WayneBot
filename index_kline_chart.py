@@ -427,7 +427,7 @@ def build_market_vol_zone_chart(
     *,
     db_path: str | None = None,
 ) -> tuple[str, str]:
-    """加權大量壓／撐＋可重算平行軌：與個股大量區同一套。非買訊、不疊藍▲紅框、不數浪。"""
+    """加權大量壓／撐＋平行軌＋五日／十日：與個股大量區同一套。非買訊、不疊藍▲紅框、不數浪。"""
     from vol_zone_chart import render_volume_zone_result
 
     path = str(db_path or "").strip()
@@ -441,4 +441,5 @@ def build_market_vol_zone_chart(
         with_nav_signals=False,
         lookup_portrait=False,
         with_parallel_channel=True,
+        with_ma5_ma10=True,
     )
