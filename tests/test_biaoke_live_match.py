@@ -143,6 +143,37 @@ def test_parse_no_chase_names_before_and_wu_zhui():
     assert "inp" in st3["find_pools"]
 
 
+def test_parse_high_level_and_named_find_without_inp_token():
+    """#562 後仍錯：高位階／先別追要降調；去找點名環宇IET 無 InP 字仍進池。"""
+    from biaoke_live_match import parse_spoken_stances
+
+    st = parse_spoken_stances(
+        "全新、穩懋高位階，空手不要追，要去找低位階還在底部的 InP。"
+    )
+    assert "2455" in st["no_chase"] and "3105" in st["no_chase"]
+    assert "inp" in st["find_pools"]
+
+    st2 = parse_spoken_stances(
+        "全新高位階先別追，要去找低位階還在底部的 InP。"
+    )
+    assert "2455" in st2["no_chase"]
+    assert "inp" in st2["find_pools"]
+
+    # 去找片段直接點名環宇／IET，沒寫 InP／光通訊字 → 仍進 inp 池（該亮）
+    st3 = parse_spoken_stances(
+        "要去找低位階還在底部的環宇跟IET，空手不要再介入全新及穩懋。"
+    )
+    assert "2455" in st3["no_chase"] and "3105" in st3["no_chase"]
+    assert "inp" in st3["find_pools"]
+
+    # 高位階名後：如全新、穩懋就不要碰 → 仍要降調
+    st4 = parse_spoken_stances(
+        "高位階如全新、穩懋就不要碰了，要去找低位階還在底部的環宇跟IET。"
+    )
+    assert "2455" in st4["no_chase"] and "3105" in st4["no_chase"]
+    assert "inp" in st4["find_pools"]
+
+
 def test_no_chase_does_not_steal_hold_across_comma():
     """跨句不准把標配聯亞誤標勿追。"""
     from biaoke_live_match import parse_spoken_stances
