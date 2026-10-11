@@ -3319,21 +3319,6 @@ def render_lookup_structure_result(
                 bars = _bars_from_official(pack["view"], sid, name)
         if len(bars) < 8:
             return "", ""
-        press_band = None
-        try:
-            from biaoke_claims import resolve_next_press_band
-
-            # 優先飆大說過；否則用 prepare 同一套大量區高低（不准發明）
-            press_band = resolve_next_press_band(
-                db_path,
-                sid,
-                name,
-                bars=bars,
-                zone_lo=float(pack.get("lo") or 0),
-                zone_hi=float(pack.get("hi") or 0),
-            )
-        except Exception:
-            press_band = None
         path = render_biaoke_structure_png(
             bars,
             save_path,
@@ -3344,8 +3329,8 @@ def render_lookup_structure_result(
             # 橫式滿版對齊範本五；大量撐壓仍用 VOL_ZONE_FIG_* 不動
             figsize=_STRUCTURE_LOOKUP_FIG,
             dpi=VOL_ZONE_DPI,
-            # 每檔下一壓：飆大說過／否則官方大量高低
-            press_band=press_band,
+            # 使用者定案：不畫 next-press 帶
+            press_band=None,
         )
         if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
             return "", ""

@@ -23,11 +23,8 @@ def test_structure_header_uses_aligned_ohlc_helper():
     assert hasattr(bc, "_paint_aligned_kv_row")
     mod = open(bc.__file__, encoding="utf-8").read()
     assert "_paint_aligned_kv_row" in mod
-    # v75＝下一壓帶；v74＝開高低量欄對齊（現況鍵已升 v75）
-    assert (
-        "hdr-band-v75-next-press" in mod
-        or "hdr-band-v74-ohlc-align" in mod
-    )
+    # v76＝拿掉下一壓帶；只留原本大量壓／撐
+    assert "hdr-band-v76-no-next-press" in mod
     # 爆大量壓撐列不准再 shared[1:] 對「高」欄縮進
     assert "spike_cols = shared[1:" not in mod
     assert "_col_starts(header_x, [spike_cells])" in mod
