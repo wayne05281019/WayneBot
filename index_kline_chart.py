@@ -420,3 +420,24 @@ def build_market_kline_chart(
         logger.warning("大盤日K：庫內無官方開高低收，略過 Yahoo 圖（漲跌會跟官方差）")
         return ""
     return render_index_kline_png(df, save_path, live=live)
+
+
+def build_market_vol_zone_chart(
+    save_path: str,
+    *,
+    db_path: str | None = None,
+) -> tuple[str, str]:
+    """加權大量壓／撐：與個股同一套 find_volume_zone／出圖語意。非買訊、不疊藍▲紅框。"""
+    from vol_zone_chart import render_volume_zone_result
+
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return "", ""
+    return render_volume_zone_result(
+        "TWII",
+        "加權",
+        db_path=path,
+        save_path=save_path,
+        with_nav_signals=False,
+        lookup_portrait=False,
+    )

@@ -513,6 +513,9 @@ def test_industry_callback_passes_clicker_uid():
     assert "_scratch_chart_path" in twii
     assert "twii_kline_" not in twii
     assert "KD" not in twii
+    vz = inspect.getsource(WayneTelegramBot._send_market_vol_zone)
+    assert "_scratch_chart_path" in vz
+    assert "volzone" in vz
 
 
 def test_industry_scratch_path_uses_passed_uid_not_message_user():

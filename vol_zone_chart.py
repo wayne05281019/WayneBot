@@ -4,7 +4,7 @@
 獨立一張，不改導航圖。不是買訊、不發明 5／9。
 畫法對齊教學圖：白底雙欄、桃色帶、洋紅壓／綠撐、量柱黃標爆大量日。
 
-K 棒只認官方日表原柱（daily_quotes／emerging_quotes）：
+K 棒只認官方日表原柱（daily_quotes／emerging_quotes；加權 TWII＝index_daily）：
 不准除權還原、不准 MIS 盤中假柱、不准 sanitize 改高低、不准飆大疊加柱。
 """
 from __future__ import annotations
@@ -252,9 +252,53 @@ def ma60_is_rising(
     return now > prev
 
 
+def _load_index_daily_ohlc(db_path: str, days: int = 120) -> pd.DataFrame:
+    """加權官方日 K（index_daily TWII）。有開高低收才算；不拿 Yahoo。"""
+    path = str(db_path or "").strip()
+    lim = max(int(days or 0), 30)
+    if not path:
+        return pd.DataFrame()
+    conn = sqlite3.connect(path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=10000;")
+        try:
+            df = pd.read_sql_query(
+                """
+                SELECT date, open, high, low, close, volume
+                FROM index_daily
+                WHERE symbol = 'TWII'
+                  AND close > 0 AND open > 0 AND high > 0 AND low > 0
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                conn,
+                params=(lim,),
+            )
+        except Exception:
+            df = pd.DataFrame()
+    finally:
+        conn.close()
+    if df is None or df.empty:
+        return pd.DataFrame()
+    dnorm = df["date"].astype(str).str.replace("-", "", regex=False)
+    df = (
+        df.assign(_d=dnorm)
+        .sort_values("_d", kind="mergesort")
+        .drop(columns="_d")
+        .reset_index(drop=True)
+    )
+    if len(df) > lim:
+        df = df.iloc[-lim:].reset_index(drop=True)
+    df["stock_name"] = "加權"
+    df["stock_id"] = "TWII"
+    df["quote_source"] = "index_daily"
+    return df
+
+
 def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataFrame:
     """只讀官方日表原柱。上市櫃 daily_quotes；不足再讀興櫃 emerging_quotes。
 
+    加權 TWII／^TWII＝index_daily（大盤頁同一套官方柱）。
     不除權還原、不合併 MIS、不改開高低收。
     """
     sid = str(stock_id or "").strip()
@@ -262,6 +306,8 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
     if not sid or not path:
         return pd.DataFrame()
     lim = max(int(days or 0), 30)
+    if sid in ("TWII", "^TWII"):
+        return _load_index_daily_ohlc(path, lim)
     conn = sqlite3.connect(path, timeout=30.0)
     try:
         conn.execute("PRAGMA busy_timeout=10000;")

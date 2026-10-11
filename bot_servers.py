@@ -5416,7 +5416,7 @@ class WayneTelegramBot:
             wait_h = await self._start_plain_wait(
                 message,
                 text_fn=lambda s: self._wait_bubble(
-                    "大盤進行中", s, now="讀指數", rest="日K", fill_sec=20.0
+                    "大盤進行中", s, now="讀指數", rest="日K・大量區", fill_sec=20.0
                 ),
             )
             own_wait = True
@@ -5494,6 +5494,9 @@ class WayneTelegramBot:
             await self._send_market_kline(
                 message, live=live_quote, uid=self._uid_from_message(message)
             )
+            await self._send_market_vol_zone(
+                message, uid=self._uid_from_message(message)
+            )
         except Exception as e:
             logger.exception("大盤 HTML 送出失敗")
             plain = html.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
@@ -5555,6 +5558,58 @@ class WayneTelegramBot:
                 )
         except Exception:
             logger.exception("大盤日K圖送出失敗")
+        await self._stop_plain_wait(*wait_h)
+
+    async def _send_market_vol_zone(self, message, *, uid: str = "") -> None:
+        """大盤專頁附圖：加權大量壓／撐（與個股同一套；非買訊、不疊藍▲紅框）。"""
+        from config import skip_chart_warmup
+
+        if skip_chart_warmup():
+            return
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "大量區進行中", s, now="加權大量壓撐", fill_sec=30.0
+            ),
+        )
+        os.makedirs(self.charts_dir, exist_ok=True)
+        uid = uid or self._uid_from_message(message)
+        chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "volzone", uid)
+        try:
+            from index_kline_chart import build_market_vol_zone_chart
+            from wayne_navigator import submit_mpl_paint
+
+            path, cap = await asyncio.wait_for(
+                asyncio.wrap_future(
+                    submit_mpl_paint(
+                        lambda: build_market_vol_zone_chart(
+                            chart_path, db_path=self.db_path
+                        )
+                    )
+                ),
+                timeout=_CHART_RENDER_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            path, cap = "", ""
+            logger.warning("大盤大量區圖逾時")
+        except Exception:
+            path, cap = "", ""
+            logger.exception("大盤大量區圖失敗")
+        if not path or not self._chart_png_looks_ok(path):
+            await self._stop_plain_wait(*wait_h)
+            return
+        face = (cap or "").strip() or "加權大量區（壓／撐；非買訊）"
+        try:
+            send_path = self._prepare_lookup_album_photo(path)
+            with open(send_path, "rb") as f:
+                await message.reply_photo(
+                    photo=f,
+                    caption=face[:1024],
+                    parse_mode="HTML",
+                    reply_markup=None,
+                )
+        except Exception:
+            logger.exception("大盤大量區圖送出失敗")
         await self._stop_plain_wait(*wait_h)
 
     def _enter_biaoke_chat(self, message, uid: str = "") -> None:
