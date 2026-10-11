@@ -6,6 +6,7 @@ import os
 import sqlite3
 import tempfile
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -415,10 +416,21 @@ def test_lookup_vol_gives_header_space_from_volume_blank():
 
 
 def test_volume_bars_one_per_traded_day_3081():
-    """結構／大量撐壓：每個有量交易日都有柱，不准缺口。"""
+    """結構／大量撐壓：每個交易日都有柱；0 量也貼底，不准挖洞（3081 洞型）。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     from biaoke_chart import analyze_structure
     from vol_zone_chart import load_official_ohlc, official_work
-    from wayne_navigator import nav_volume_bar_heights
+    from wayne_navigator import (
+        LOOKUP_VOL_FLOOR_FACE,
+        LOOKUP_VOL_FLOOR_FRAC,
+        nav_volume_bar_heights,
+        paint_lookup_volume_bars,
+    )
+    from matplotlib.colors import to_rgb
 
     db = get_db_path()
     work = official_work(load_official_ohlc("3081", db, 180))
@@ -427,10 +439,13 @@ def test_volume_bars_one_per_traded_day_3081():
     heights, ylim, missing = nav_volume_bar_heights(vols)
     assert len(heights) == len(work)
     pos = 0
+    zero_days = []
     for i, row in work.iterrows():
         v = float(row["volume"] or 0)
         if v > 0 and not bool(missing[pos]):
             assert float(heights[pos]) > 0, (str(row["date"]), v)
+        if v <= 0 or bool(missing[pos]) or bool(row.get("is_halt", False)):
+            zero_days.append(pos)
         pos += 1
     info = analyze_structure(work.to_dict("records"))
     struct_vols = info.get("vols") or vols[-len(info.get("closes") or vols) :]
@@ -440,6 +455,40 @@ def test_volume_bars_one_per_traded_day_3081():
         if float(v or 0) > 0 and not bool(sm[i]):
             assert float(sh[i]) > 0, i
     assert float(ylim) > 0
+
+    # 畫圖層：每個 index 都有可見柱（正量 bar 或貼底灰短柱）
+    n = len(work)
+    xs = list(range(n))
+    opens = work["open"].to_numpy(dtype=float)
+    closes = work["close"].to_numpy(dtype=float)
+    halt = (
+        work["is_halt"].fillna(False).astype(bool).to_numpy()
+        if "is_halt" in work.columns
+        else np.zeros(n, dtype=bool)
+    )
+    from wayne_navigator import lookup_candle_up_mask
+
+    up = lookup_candle_up_mask(opens, closes, halt=halt)
+    fig, ax = plt.subplots(figsize=(8, 1.5))
+    paint_lookup_volume_bars(ax, xs, work["volume"], up, halt=halt)
+    floor_rgb = to_rgb(LOOKUP_VOL_FLOOR_FACE)
+    occupied = set()
+    floor_n = 0
+    for p in ax.patches:
+        if float(p.get_height()) <= 0:
+            continue
+        occupied.add(int(round(float(p.get_x()) + float(p.get_width()) / 2.0)))
+        fc = p.get_facecolor()
+        if isinstance(fc, tuple) and len(fc) >= 3:
+            if all(abs(a - b) < 0.02 for a, b in zip(fc[:3], floor_rgb)):
+                floor_n += 1
+                assert abs(float(p.get_height()) - float(ylim) * LOOKUP_VOL_FLOOR_FRAC) < 1e-6
+    assert occupied == set(range(n)), sorted(set(range(n)) - occupied)
+    assert floor_n == len(zero_days) or floor_n >= len(zero_days)
+    # 3081 近窗應有停價 0 量日（洞型樣本）；沒有也不准回歸回挖洞
+    if zero_days:
+        assert floor_n >= 1
+    plt.close(fig)
 
 
 def test_lookup_candle_paint_shared():
