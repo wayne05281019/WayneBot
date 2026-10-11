@@ -18,6 +18,8 @@ CaryBot 紅箭頭是人工標「可買低點」，沒有公開可複製公式。
   可當進場買訊，與 leave_zero 並列；未過確認的紅箭頭仍不是買訊。
 - 不准改 leave_zero 公式本身。
 - §13：升成買訊後再生下一版 ``NEXT_CANDIDATE`` 繼續收。
+- 準再緊 dig：``nav_low_first_ma60_lower_tight``（量×1.0）未贏現況
+  ``ma60_lower``（``TIGHT_DIG_BEATS_CURRENT=False``）→ 不准改買訊、不准降級。
 - 結果落 ``wayne_evolve.db``，不准進對話講過程／％。
 """
 from __future__ import annotations
@@ -59,6 +61,8 @@ NEXT_CANDIDATE = "nav_low_first_ma60_lower_tight"
 TAG_NEXT = NEXT_CANDIDATE  # 與現況 ma60_lower 分開記、分開對
 # tight＝現況 ma60_lower ∩ 當日量 ≤ 近 20 日均量 × 1.0（比 #548 的 1.25 再縮）
 TIGHT_VOL_MULT = 1.0
+# 準再緊 dig（h5）：n 夠；fb 僅微降、hit／avg 輸現況 ma60_lower → 不改買訊、不降級
+TIGHT_DIG_BEATS_CURRENT = False
 ROUND_STOPPED = False
 
 

@@ -339,6 +339,9 @@ def test_promote_ready_false_until_gate(tmp_path):
     assert st.get("next_tag") == TAG_NEXT
     assert "next_filter" in st
     assert st.get("next_promote_ready") is False
+    from red_arrow_quant import TIGHT_DIG_BEATS_CURRENT
+
+    assert TIGHT_DIG_BEATS_CURRENT is False
     assert ROUND_STOPPED is False
     assert st.get("round_stopped") is False
     assert TAG_FILTER == "nav_low_first_ma60_lower"
