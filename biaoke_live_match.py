@@ -15,17 +15,15 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from tg_layout import html_escape
 
-# 勿追／不要介入動詞（含「勿追」）；名前／名後都要掃，見 parse_spoken_stances
+# 勿追／不要介入動詞（含「勿追」「別追」「不要碰」）；名前／名後都要掃
 _NO_CHASE_VERB = re.compile(
     r"(?:就是)?(?:空手)?(?:不要再介入|不要再進場|不要再追|不要追|"
-    r"不要再碰|不要介入|不要再進|勿追)",
+    r"不要再碰|不要去碰|不要碰|不要介入|不要再進|先別追|別追|勿追)",
     re.I,
 )
-# 位階偏高：名前同句股＝降調（拿掉可點追），不是看空整族
-_HIGH_LEVEL = re.compile(
-    r"(.{0,40}?)位階偏高",
-    re.I,
-)
+# 位階偏高／高位階：名前或名後同句股＝降調（拿掉可點追），不是看空整族
+# 例：「全新、穩懋高位階」「高位階…如強茂、蜜旺實」
+_HIGH_LEVEL = re.compile(r"位階偏高|高位階", re.I)
 # 標配不賣／一股不賣／續抱：鄰近股名＝持股語意，不是新買訊
 _HOLD = re.compile(
     r"([\u4e00-\u9fffA-Za-z\-KY]{2,12}).{0,12}?(?:標配(?:一股)?不賣|一股不賣|續抱|長抱)"
@@ -155,8 +153,12 @@ def parse_spoken_stances(text: str, *, db_path: str = "") -> Dict[str, Any]:
         for sid, name in _mentions_in(pre + post, db_path):
             no_chase[sid] = name
     for m in _HIGH_LEVEL.finditer(blob):
-        chunk = _clause_tail(str(m.group(1) or ""))
-        for sid, name in _mentions_in(chunk, db_path):
+        # 名前同句＋名後到句讀／去找（覆蓋「高位階…如強茂」）
+        pre = _clause_tail(blob[max(0, m.start() - 40) : m.start()])
+        after = blob[m.end() : m.end() + 60]
+        stop = re.search(r"[，。；;！!]|要去找|去找", after)
+        post = after[: stop.start()] if stop else after
+        for sid, name in _mentions_in(pre + post, db_path):
             no_chase[sid] = name
     for m in _HOLD.finditer(blob):
         chunk = str(m.group(1) or m.group(2) or "")
@@ -169,6 +171,14 @@ def parse_spoken_stances(text: str, *, db_path: str = "") -> Dict[str, Any]:
     if _FIND.search(blob):
         if _POOL_INP.search(blob):
             find_pools.append("inp")
+        # 去找片段點名 InP 池成員（環宇／IET）但沒寫 InP 字 → 仍進池上榜
+        if "inp" not in find_pools:
+            inp_ids = {sid for sid, _n in _pool_members("inp")}
+            for m in _FIND.finditer(blob):
+                span = blob[m.start() : min(len(blob), m.end() + 48)]
+                if any(sid in inp_ids for sid, _n in _mentions_in(span, db_path)):
+                    find_pools.append("inp")
+                    break
         # 沒點池名但「去找…InP」已含；光通句也走 InP 池（對齊他這句）
         if not find_pools and re.search(r"個股|底部|低位階", blob):
             if _POOL_INP.search(blob):
