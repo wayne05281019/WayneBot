@@ -56,6 +56,9 @@ MIN_FB_DROP = 0.03
 MIN_FB_DROP_VS_PREV = 0.01
 # §13：升成買訊後再生下一版（量再縮緊）繼續靜默對質
 NEXT_CANDIDATE = "nav_low_first_ma60_lower_tight"
+TAG_NEXT = NEXT_CANDIDATE  # 與現況 ma60_lower 分開記、分開對
+# tight＝現況 ma60_lower ∩ 當日量 ≤ 近 20 日均量 × 1.0（比 #548 的 1.25 再縮）
+TIGHT_VOL_MULT = 1.0
 ROUND_STOPPED = False
 
 
@@ -336,6 +339,34 @@ def nav_low_ma60_lower_mask(df: pd.DataFrame) -> pd.Series:
     return pd.Series(ok, index=df.index)
 
 
+def nav_low_ma60_lower_tight_mask(df: pd.DataFrame) -> pd.Series:
+    """§13 再生下一版：現況 ``ma60_lower`` ∩ 量再縮緊。
+
+    條件（只用當日及以前官方 OHLC／量，無前視）：
+    - ``nav_low_ma60_lower_mask`` 為真
+    - 當日量 ≤ 近 20 日均量 × ``TIGHT_VOL_MULT``（1.0；比 #548 的 1.25 更嚴）
+
+    與產品買訊 ``ma60_lower``／``leave_zero`` 分開記、分開對；過閘才考慮替換編碼。
+    未過閘不准改話筒買訊。
+    """
+    base = nav_low_ma60_lower_mask(df)
+    if base.empty or not bool(base.any()):
+        return base
+    vo = pd.to_numeric(df["volume"], errors="coerce")
+    n = len(df)
+    ok = np.zeros(n, dtype=bool)
+    mult = float(TIGHT_VOL_MULT)
+    for i in range(n):
+        if not bool(base.iloc[i]):
+            continue
+        v = float(vo.iloc[i] or 0) if np.isfinite(vo.iloc[i]) else 0.0
+        v20 = float(vo.iloc[max(0, i - 19) : i + 1].mean())
+        if v20 <= 0 or v > mult * v20:
+            continue
+        ok[i] = True
+    return pd.Series(ok, index=df.index)
+
+
 def _fwd_ret(closes: Sequence[float], i: int, horizon: int) -> Optional[float]:
     j = i + int(horizon)
     if j >= len(closes):
@@ -389,12 +420,14 @@ def score_stock_day(
     prev_f = nav_low_ma60_vol_mask(hist)
     hold_f = nav_low_hold_low_confirm_mask(hist)
     filtered = nav_low_ma60_lower_mask(hist)
+    tight = nav_low_ma60_lower_tight_mask(hist)
     lz_hit = bool(leave_zero_from_quote_df(hist))
     i = len(hist) - 1
     low_hit = bool(lows.iloc[i])
     prev_hit = bool(prev_f.iloc[i]) if len(prev_f) else False
     hold_hit = bool(hold_f.iloc[i]) if len(hold_f) else False
     filt_hit = bool(filtered.iloc[i]) if len(filtered) else False
+    next_hit = bool(tight.iloc[i]) if len(tight) else False
     # 對齊全序列 index，才能取 as_of 之後的收盤
     full_dates = g["date"].tolist()
     try:
@@ -409,6 +442,7 @@ def score_stock_day(
         (TAG_PREV, prev_hit),
         (TAG_HOLD, hold_hit),
         (TAG_FILTER, filt_hit),
+        (TAG_NEXT, next_hit),
         (TAG_BASE, lz_hit),
         (TAG_NONE, (not low_hit) and (not lz_hit)),
     ]
@@ -512,7 +546,15 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     try:
         conn.execute("DELETE FROM red_arrow_quant_rates WHERE kind=?", (KIND,))
-        for tag in (TAG_LOW, TAG_PREV, TAG_HOLD, TAG_FILTER, TAG_BASE, TAG_NONE):
+        for tag in (
+            TAG_LOW,
+            TAG_PREV,
+            TAG_HOLD,
+            TAG_FILTER,
+            TAG_NEXT,
+            TAG_BASE,
+            TAG_NONE,
+        ):
             for h in SCORE_HORIZONS:
                 row = conn.execute(
                     """
@@ -656,6 +698,7 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         prev_s = _pack_rate_row(_rate(TAG_PREV))
         hold_s = _pack_rate_row(_rate(TAG_HOLD))
         filt_s = _pack_rate_row(_rate(TAG_FILTER))
+        next_s = _pack_rate_row(_rate(TAG_NEXT))
         base_s = _pack_rate_row(_rate(TAG_BASE))
         none_s = _pack_rate_row(_rate(TAG_NONE))
         for tag, pack in (
@@ -663,6 +706,7 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
             (TAG_PREV, prev_s),
             (TAG_HOLD, hold_s),
             (TAG_FILTER, filt_s),
+            (TAG_NEXT, next_s),
             (TAG_BASE, base_s),
             (TAG_NONE, none_s),
         ):
@@ -723,6 +767,15 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
     )
     # 放行買訊討論：贏 leave_zero ＋ 假突破相對 #547 明顯下降 ＋ 優於 #548
     ready = bool(n_ok and beat_lz and fb_ok and beats_prev)
+    # §13 下一版：獨立對質，贏現況 ma60_lower 才算 next_promote_ready（不自動改碼）
+    next_n_ok = (
+        (next_s.get("unique_days") or 0) >= MIN_UNIQUE_DAYS
+        and (next_s.get("n") or 0) >= OPTIMIZE_MIN_N
+        and (filt_s.get("unique_days") or 0) >= MIN_UNIQUE_DAYS
+        and (filt_s.get("n") or 0) >= OPTIMIZE_MIN_N
+    )
+    beats_current = bool(next_n_ok and _beats(next_s, filt_s))
+    next_ready = bool(PRODUCT_ENTRY and next_n_ok and beats_current)
     return {
         "kind": KIND,
         "horizon": h,
@@ -733,18 +786,22 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
         "hold_tag": TAG_HOLD,
         "filtered": filt_s,
         "filter_tag": TAG_FILTER,
+        "next_filter": next_s,
+        "next_tag": TAG_NEXT,
         "leave_zero": base_s,
         "no_arrow": none_s,
         "n_ok": n_ok,
         "beats_leave_zero": beat_lz,
         "beats_no_arrow": beat_none,
         "beats_prev": beats_prev,
+        "beats_current_entry": beats_current,
         "false_break_drop": fb_drop,
         "false_break_drop_vs_prev": fb_drop_vs_prev,
         "false_break_ok": fb_ok,
         "min_fb_drop": MIN_FB_DROP,
         "min_fb_drop_vs_prev": MIN_FB_DROP_VS_PREV,
         "promote_ready": ready,
+        "next_promote_ready": next_ready,
         "product_entry": bool(PRODUCT_ENTRY),
         "entry_bucket": ENTRY_BUCKET,
         "next_candidate": NEXT_CANDIDATE,
@@ -765,6 +822,38 @@ def gate_status(db_path: str, *, horizon: int = 5) -> Dict[str, Any]:
     }
 
 
+def optimize_status_one_liner(db_path: str, *, horizon: int = 5) -> str:
+    """明確優化狀態一句；過程／％不准進對話。"""
+    g = gate_status(db_path, horizon=horizon)
+    need = int(g.get("min_unique_days") or MIN_UNIQUE_DAYS)
+    cur = g.get("filtered") or {}
+    nxt = g.get("next_filter") or {}
+    n_cur = int(cur.get("unique_days") or 0)
+    n_next = int(nxt.get("unique_days") or 0)
+    if g.get("next_promote_ready"):
+        return (
+            f"明確優化狀態：紅箭確認現況 ma60_lower；下一版 "
+            f"{g.get('next_candidate')} n={n_next} 夠且贏現況 → 可考慮替換編碼（未自動改）。"
+        )
+    if bool(g.get("product_entry")):
+        if n_next < need:
+            return (
+                f"明確優化狀態：紅箭確認 ma60_lower 已是買訊；"
+                f"下一版 {g.get('next_candidate')} n={n_next}/{need} 不夠，繼續收集、不改碼。"
+            )
+        return (
+            f"明確優化狀態：紅箭確認 ma60_lower 已是買訊；"
+            f"下一版 n={n_next} 夠但未贏現況，不改碼。"
+        )
+    if not g.get("n_ok"):
+        return (
+            f"明確優化狀態：紅箭代理 n={n_cur}/{need} 不夠，繼續收集、尚未當買訊。"
+        )
+    if g.get("promote_ready"):
+        return "明確優化狀態：紅箭代理過閘可考慮當買訊（仍須人工確認）。"
+    return "明確優化狀態：紅箭代理未過閘，進場只認 leave_zero，不改碼。"
+
+
 def promote_ready(db_path: str, *, horizon: int = 5) -> bool:
     """量化閘：True＝過關；產品是否已升買訊另看 ``PRODUCT_ENTRY``。"""
     return bool(gate_status(db_path, horizon=horizon).get("promote_ready"))
@@ -780,9 +869,11 @@ def night_sample_tick(
     stats = {
         "wrote": 0,
         "promote": False,
+        "next_promote": False,
         "n_low": 0,
         "n_prev": 0,
         "n_filt": 0,
+        "n_next": 0,
         "n_lz": 0,
         "n_none": 0,
     }
@@ -840,9 +931,11 @@ def night_sample_tick(
         st = gate_status(db_path, horizon=5)
         stats["wrote"] = wrote
         stats["promote"] = bool(st.get("promote_ready"))
+        stats["next_promote"] = bool(st.get("next_promote_ready"))
         stats["n_low"] = int((st.get("low") or {}).get("n") or 0)
         stats["n_prev"] = int((st.get("prev_filter") or {}).get("n") or 0)
         stats["n_filt"] = int((st.get("filtered") or {}).get("n") or 0)
+        stats["n_next"] = int((st.get("next_filter") or {}).get("n") or 0)
         stats["n_lz"] = int((st.get("leave_zero") or {}).get("n") or 0)
         stats["n_none"] = int((st.get("no_arrow") or {}).get("n") or 0)
     except Exception:

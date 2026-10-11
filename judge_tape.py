@@ -96,6 +96,7 @@ def _as_of(market_db: str, hint: str = "") -> str:
 
 _SCREEN_BUCKETS = (
     "leave_zero",
+    "ma60_lower",  # 紅箭確認買訊；與 leave_zero 分開記、分開對
     "golden_buy",
     "revenue_cross",
     "select_01",
@@ -415,7 +416,11 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
 
             em = ScreeningEngine(market_db).run_emerging_screening(day, sync=False) or {}
             em_day = str(em.get("as_of") or day)
-            for bucket, kind in (("leave_zero", "em_leave_zero"), ("golden_buy", "em_golden_buy")):
+            for bucket, kind in (
+                ("leave_zero", "em_leave_zero"),
+                ("ma60_lower", "em_ma60_lower"),
+                ("golden_buy", "em_golden_buy"),
+            ):
                 rows = em.get(bucket) if isinstance(em.get(bucket), list) else []
                 stats[kind] = remember_rows(
                     market_db, kind, rows, as_of=em_day, pick="rule", src="emerging"

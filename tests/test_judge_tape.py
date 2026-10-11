@@ -153,18 +153,20 @@ def test_snapshot_button_lists_without_press_freezes_bar_not_png(tmp_path):
     from judge_tape import snapshot_button_lists
 
     db = str(tmp_path / "wayne_market.db")
-    _seed(db, {"1101": 50.4, "1102": 51.0}, "20260915")
+    _seed(db, {"1101": 50.4, "1102": 51.0, "2330": 520.0}, "20260915")
     save_screen_session(
         db,
         "20260915",
         "morning",
         {
             "leave_zero": [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}],
+            "ma60_lower": [{"stock_id": "2330", "stock_name": "台積電", "close": 520.0}],
             "day_trade": [{"stock_id": "1102", "stock_name": "亞泥", "close": 51.0}],
         },
     )
     stats = snapshot_button_lists(db, "20260915")
     assert stats.get("leave_zero") == 1
+    assert stats.get("ma60_lower") == 1
     assert stats.get("day_trade") == 1
     store = store_path(db)
     conn = sqlite3.connect(store)
@@ -174,6 +176,9 @@ def test_snapshot_button_lists_without_press_freezes_bar_not_png(tmp_path):
     conn.close()
     by_kind = {k: (sid, extra) for k, sid, extra in rows}
     assert by_kind["leave_zero"][0] == "1101"
+    assert by_kind["ma60_lower"][0] == "2330"
+    # 分開 kind：勝率不准混 leave_zero／ma60_lower
+    assert by_kind["leave_zero"][0] != by_kind["ma60_lower"][0]
     extra = json.loads(by_kind["leave_zero"][1])
     assert extra["c"] == 50.4
     assert extra["o"] == 50.4
@@ -181,6 +186,9 @@ def test_snapshot_button_lists_without_press_freezes_bar_not_png(tmp_path):
     assert extra["l"] == 50.4
     assert extra["v"] == 8000
     assert extra.get("src") == "session"
+    red_extra = json.loads(by_kind["ma60_lower"][1])
+    assert red_extra["c"] == 520.0
+    assert red_extra["v"] == 8000
     blob = json.dumps(extra)
     assert "png" not in blob.lower()
     assert "jpeg" not in blob.lower()
@@ -189,6 +197,13 @@ def test_snapshot_button_lists_without_press_freezes_bar_not_png(tmp_path):
     names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     conn.close()
     assert "live_judge" not in names
+
+
+def test_ma60_lower_screen_bucket_in_silent_list():
+    from judge_tape import _SCREEN_BUCKETS
+
+    assert "ma60_lower" in _SCREEN_BUCKETS
+    assert _SCREEN_BUCKETS.index("ma60_lower") != _SCREEN_BUCKETS.index("leave_zero")
 
 
 def test_remember_keeps_why_and_official_chips(tmp_path):
