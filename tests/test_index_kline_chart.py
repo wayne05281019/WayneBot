@@ -9,6 +9,7 @@ from PIL import Image
 
 from index_kline_chart import (
     build_market_kline_chart,
+    build_market_vol_zone_chart,
     fetch_twii_ohlc,
     load_index_daily_ohlc,
     render_index_kline_png,
@@ -178,6 +179,53 @@ class IndexDailyOfficialChartTests(unittest.TestCase):
         src = inspect.getsource(build_market_kline_chart)
         self.assertIn("load_index_daily_ohlc", src)
         self.assertNotIn("fetch_twii_ohlc", src)
+
+    def test_build_market_vol_zone_reuses_stock_zone(self):
+        import inspect
+        import sqlite3
+        import tempfile
+
+        src = inspect.getsource(build_market_vol_zone_chart)
+        self.assertIn("render_volume_zone_result", src)
+        self.assertIn("with_nav_signals=False", src)
+        self.assertIn("TWII", src)
+        self.assertIn("加權", src)
+        db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+        try:
+            con = sqlite3.connect(db)
+            con.execute(
+                """
+                CREATE TABLE index_daily (
+                    date TEXT, symbol TEXT, close REAL, volume REAL, pct_change REAL,
+                    ma20 REAL, ma60 REAL, regime TEXT, updated_at TEXT,
+                    open REAL, high REAL, low REAL,
+                    PRIMARY KEY (date, symbol)
+                )
+                """
+            )
+            # 足夠近窗：爆大量日在中段，最後一根收在壓下
+            base = 27000.0
+            for i in range(50):
+                d = f"202608{i+1:02d}" if i < 31 else f"202609{i-30:02d}"
+                vol = 2e7 if i == 35 else 5e6
+                hi = base + 200 + (50 if i == 35 else 0)
+                lo = base - 100
+                cl = base + (0 if i < 49 else -50)
+                con.execute(
+                    "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (d, "TWII", cl, vol, 0.1, None, None, "", "", base, hi, lo),
+                )
+            con.commit()
+            con.close()
+            with tempfile.TemporaryDirectory() as tmp:
+                out = os.path.join(tmp, "twii_vz.png")
+                path, cap = build_market_vol_zone_chart(out, db_path=db)
+                self.assertTrue(path and os.path.isfile(path))
+                self.assertGreater(os.path.getsize(path), 5000)
+                self.assertIn("大量區", cap)
+                self.assertIn("非買訊", cap)
+        finally:
+            os.unlink(db)
 
 
 class FakeChartDisabledTests(unittest.TestCase):

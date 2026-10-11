@@ -92,6 +92,17 @@ def test_image_surfaces_wait_vanishes_after_photo():
     kline = inspect.getsource(WayneTelegramBot._send_market_kline)
     assert kline.index("_start_plain_wait") < kline.index("reply_photo")
     assert kline.index("reply_photo") < kline.rindex("_stop_plain_wait")
+    vz = inspect.getsource(WayneTelegramBot._send_market_vol_zone)
+    assert vz.index("_start_plain_wait") < vz.index("reply_photo")
+    assert vz.index("reply_photo") < vz.rindex("_stop_plain_wait")
+    assert "build_market_vol_zone_chart" in vz
+    assert "with_nav_signals=False" in inspect.getsource(
+        __import__("index_kline_chart", fromlist=["build_market_vol_zone_chart"]).build_market_vol_zone_chart
+    )
+    page = inspect.getsource(WayneTelegramBot._send_market_page)
+    assert "_send_market_kline" in page
+    assert "_send_market_vol_zone" in page
+    assert page.index("_send_market_kline") < page.index("_send_market_vol_zone")
     nav = inspect.getsource(WayneTelegramBot._send_navigation_chart)
     # 導航圖改走 _reply_lookup_photo（TimedOut 視同已送達，不准假重送）
     assert nav.index("_start_plain_wait") < nav.index("_reply_lookup_photo")

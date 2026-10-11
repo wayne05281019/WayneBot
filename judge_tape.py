@@ -141,6 +141,12 @@ _EXTRA_KEEP = (
     "foreign_net",
     "trust_net",
     "dealer_net",
+    # 大盤大量區（與個股同一套 find_volume_zone；不混海選勝率）
+    "zone_date",
+    "zone_high",
+    "zone_low",
+    "zone_volume",
+    "zone_active",
 )
 # 話筒按鍵改名不准改 kind。pick 才分同一顆鈕底下的子名單。
 _OUTER_MARKS = (
@@ -573,8 +579,54 @@ def _snapshot_dongzhu(market_db: str, day: str) -> int:
     )
 
 
+def _market_vol_zone_fields(market_db: str, day: str) -> Dict[str, Any]:
+    """大盤大量區欄：接個股 find_volume_zone。失敗當沒有，不准擋落檔。"""
+    day = _ymd(day)
+    if not market_db or not os.path.isfile(market_db) or not day:
+        return {}
+    try:
+        from vol_zone_chart import (
+            VOL_ZONE_BARS,
+            VOL_ZONE_LOOKBACK,
+            VOL_ZONE_MA60_WARM,
+            find_volume_zone,
+            load_official_ohlc,
+            official_work,
+        )
+
+        need = max(int(VOL_ZONE_BARS) + int(VOL_ZONE_LOOKBACK) + int(VOL_ZONE_MA60_WARM), 180)
+        raw = load_official_ohlc("TWII", market_db, need)
+        work = official_work(raw)
+        if work is None or getattr(work, "empty", True):
+            return {}
+        # 落檔只認 as_of 當日及以前柱；盤中未收不當收
+        dnorm = work["date"].astype(str).str.replace("-", "", regex=False).str[:8]
+        work = work.loc[dnorm <= day].reset_index(drop=True)
+        if work.empty or len(work) < 2:
+            return {}
+        zone = find_volume_zone(work)
+        if not zone:
+            return {}
+        out: Dict[str, Any] = {}
+        zd = _ymd(zone.get("date"))
+        if zd:
+            out["zone_date"] = zd
+        for key, src in (
+            ("zone_high", "high"),
+            ("zone_low", "low"),
+            ("zone_volume", "volume"),
+        ):
+            n = _num(zone.get(src))
+            if n is not None:
+                out[key] = n
+        out["zone_active"] = bool(zone.get("active"))
+        return out
+    except Exception:
+        return {}
+
+
 def _snapshot_market(market_db: str, day: str) -> int:
-    """台股大盤沒按也落檔。只凍官方加權柱，不產圖。"""
+    """台股大盤沒按也落檔。凍官方加權柱＋大量區欄，不產圖。"""
     day = _ymd(day)
     bar: Dict[str, Any] = {}
     if market_db and os.path.isfile(market_db) and day:
@@ -607,20 +659,20 @@ def _snapshot_market(market_db: str, day: str) -> int:
                     bar[key] = n
     if not bar.get("close"):
         return remember_rows(market_db, "market", [], as_of=day, pick="rule", src="market")
+    row: Dict[str, Any] = {
+        "stock_id": "TWII",
+        "stock_name": "加權",
+        "open": bar.get("open"),
+        "high": bar.get("high"),
+        "low": bar.get("low"),
+        "close": bar.get("close"),
+        "volume": bar.get("volume"),
+    }
+    row.update(_market_vol_zone_fields(market_db, day))
     return remember_rows(
         market_db,
         "market",
-        [
-            {
-                "stock_id": "TWII",
-                "stock_name": "加權",
-                "open": bar.get("open"),
-                "high": bar.get("high"),
-                "low": bar.get("low"),
-                "close": bar.get("close"),
-                "volume": bar.get("volume"),
-            }
-        ],
+        [row],
         as_of=day,
         pick="rule",
         src="market",
