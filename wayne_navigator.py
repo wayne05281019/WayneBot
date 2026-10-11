@@ -2934,10 +2934,9 @@ def _paint_lr_box(
     lab_c, prim_c, sec_c=None, fc, ec, lab_fs=11.0, prim_fs=15.0, sec_fs=10.0,
     value_ha: str = "right",
 ):
-    """一格左右齊線：標籤靠左細字；數字預設靠右。
+    """一格左右齊線：標籤靠左細字；數字預設靠右（單位對齊）。
 
-    value_ha=\"left\"：兩行值首字對齊（資券融資／融券、估值本益／殖利率），
-    不准右對齊讓短行看起來縮進、單位錯位。
+    value_ha=\"left\"：兩行值首字左對齊（少數特例）；介紹卡基本面一律 right。
     """
     C = _CARD
     if fc in (C["white"], C["panel"], C.get("neutral_bg"), C.get("zebra")):
@@ -5497,13 +5496,13 @@ def render_first_glance_png(
             if fy - fh < fund_floor - 0.2:
                 break
             fy -= fh
-            # 兩行基本面（資券／估值）：值左對齊，融資／融券或本益／殖利率首字同欄
+            # 基本面數值欄一律靠右（與季營收／毛利同套），單位對齊；不准上半左下半右
             _paint_lr_box(
                 ax, inner_x, fy, fw, fh, lab, vlines[0],
                 vlines[1] if len(vlines) > 1 else None,
                 lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink_soft"],
                 fc=C["white"], ec=C["line"], lab_fs=11.5, prim_fs=13.0, sec_fs=11.5,
-                value_ha="left" if len(vlines) > 1 else "right",
+                value_ha="right",
             )
             fy -= 0.7
 

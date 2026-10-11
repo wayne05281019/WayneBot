@@ -265,7 +265,8 @@ def _paint_aligned_kv_row(
 ) -> List[float]:
     """頭欄開／高／低／量：同一組欄位 x 對齊，單位（張）跟數字同一欄不互壓。
 
-    cells＝[(標, 值), ...]；col_xs 有給就沿用（爆大量列對齊當日列），否則依本列量寬。
+    cells＝[(標, 值), ...]；col_xs 有給就沿用，否則依本列從 x0 量寬。
+    爆大量壓撐列應從 header_x（與最近收盤同左緣）起算，不准對當日「高」欄縮進。
     回傳各欄左緣，供下一列共用。
     """
     bits = [(str(a or "").strip(), str(b or "").strip()) for a, b in (cells or []) if str(a or "").strip()]
@@ -3812,7 +3813,7 @@ def render_biaoke_structure_png(
         va="center",
         ha="left",
     )
-    # 附圖／v4：開高低＋量同一行欄位對齊；爆大量高／低／量對齊當日高／低／量（不准飄欄）
+    # 附圖／v4：當日開高低量同一行欄位對齊；爆大量壓撐列與上方三行同一左緣（不准對「高」欄縮進）
     ohlc_fs = 16 if fullbleed else 15
     spike_cells = [
         ("高", f"{_px(spike_hi)}＝壓"),
@@ -3845,28 +3846,19 @@ def render_biaoke_structure_png(
             ("低", _px(last_bar.get("low"))),
             ("量", _vol(last_bar.get("volume"))),
         ]
-        # 欄 0＝開（僅當日）；欄 1–3＝高／低／量（當日＋爆大量共用）
-        shared = _col_starts(
-            header_x,
-            [
-                today_cells,
-                [("開", "")] + list(spike_cells),
-            ],
-        )
+        shared = _col_starts(header_x, [today_cells])
         _paint_aligned_kv_row(
             ov, header_x, ohlc_y1, today_cells, color=_TEXT, size=ohlc_fs, col_xs=shared,
         )
-        spike_cols = shared[1:4] if len(shared) >= 4 else shared[1:]
+        # 與「最近收盤／開高低量／爆大量日」同一 header_x 起算，不准 shared[1:] 縮進
+        spike_cols = _col_starts(header_x, [spike_cells])
     elif quote and not portrait:
         today_cells = [
             ("開", _px(last_bar.get("open"))),
             ("高", _px(last_bar.get("high"))),
             ("低", _px(last_bar.get("low"))),
         ]
-        shared = _col_starts(
-            header_x,
-            [today_cells, [("開", "")] + list(spike_cells[:2])],
-        )
+        shared = _col_starts(header_x, [today_cells])
         _paint_aligned_kv_row(
             ov, header_x, ohlc_y1, today_cells, color=_TEXT, size=ohlc_fs, col_xs=shared,
         )
@@ -3876,13 +3868,7 @@ def render_biaoke_structure_png(
                 [("量", _vol(last_bar.get("volume")))],
                 color=_TEXT, size=ohlc_fs,
             )
-        spike_cols = shared[1:3] if len(shared) >= 3 else None
-        if spike_cols is not None:
-            # 量欄另起：與高／低同一列時接在低後面
-            vol_x = shared[2] + _ow(
-                f"低 {_px(spike_lo)}＝撐", ohlc_fs
-            ) + 2.35
-            spike_cols = list(spike_cols) + [vol_x]
+        spike_cols = _col_starts(header_x, [spike_cells])
     else:
         today_cells = [
             ("開", _px(last_bar.get("open"))),
@@ -3902,12 +3888,7 @@ def render_biaoke_structure_png(
                 ],
                 color=_TEXT, size=ohlc_fs,
             )
-        spike_cols = shared[1:3] if len(shared) >= 3 else None
-        if spike_cols is not None:
-            vol_x = shared[2] + _ow(
-                f"低 {_px(spike_lo)}＝撐", ohlc_fs
-            ) + 2.35
-            spike_cols = list(spike_cols) + [vol_x]
+        spike_cols = _col_starts(header_x, [spike_cells])
     spike_1 = f"爆大量日 {_ymd_full(spike_date)}"
     ov.text(
         header_x, spike_y1, spike_1, color=_PRESS,
