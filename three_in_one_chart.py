@@ -3319,6 +3319,13 @@ def render_lookup_structure_result(
                 bars = _bars_from_official(pack["view"], sid, name)
         if len(bars) < 8:
             return "", ""
+        press_band = None
+        try:
+            from biaoke_claims import spoken_next_press_band
+
+            press_band = spoken_next_press_band(db_path, sid, name)
+        except Exception:
+            press_band = None
         path = render_biaoke_structure_png(
             bars,
             save_path,
@@ -3329,6 +3336,8 @@ def render_lookup_structure_result(
             # 橫式滿版對齊範本五；大量撐壓仍用 VOL_ZONE_FIG_* 不動
             figsize=_STRUCTURE_LOOKUP_FIG,
             dpi=VOL_ZONE_DPI,
+            # 飆大明確說過下一壓區間才疊（如聯亞 3255~3305）；沒講不畫
+            press_band=press_band,
         )
         if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
             return "", ""
