@@ -1194,11 +1194,13 @@ def monthly_revenue_window_rows(months: List[Dict[str, Any]], *, limit: int = 12
             )
             if t and t != "—"
         )
-        val = (
-            f"{lab_m}　{format_yi(m.get('revenue') or 0)}　"
+        # 表頭已是「9月營收」：值不再重複 09月'26，上行金額／下行增減，方便右緣對齊
+        yi = format_yi(m.get("revenue") or 0)
+        growth = (
             f"月增{_fmt_signed_pct(mom)}　年增{_fmt_signed_pct(yoy)}　"
             f"累年增{_fmt_signed_pct(ytd)}"
         )
+        val = f"{yi}　{growth}"
         if status and i == 0:
             # 狀態只掛最新月，避免每列過長互壓
             val = f"{val}　{status}"

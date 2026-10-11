@@ -122,6 +122,9 @@ def test_monthly_revenue_labels_follow_yyyymm():
     assert [lab for lab, _ in rows] == ["9月營收", "8月營收", "7月營收"]
     assert "月營收近窗" not in "".join(lab for lab, _ in rows)
     assert "月營收2" not in "".join(lab for lab, _ in rows)
+    # 值不再重複 09月'26；上行金額以億元結尾
+    assert all("月'" not in val for _, val in rows)
+    assert all("億元" in val for _, val in rows)
 
 
 def test_structure_top_pad_lifts_header_frame():
@@ -130,8 +133,8 @@ def test_structure_top_pad_lifts_header_frame():
     assert float(bc._STRUCTURE_TOP_PAD) <= 0.35
     assert float(bc._STRUCTURE_TOP_PAD) < 1.35
     src = open(bc.__file__, encoding="utf-8").read()
-    assert "name_y = 94.80 if fullbleed" in src
-    assert "date_y, ohlc_y1 = 91.20, 87.60" in src
+    assert "name_y = 94.00 if fullbleed" in src
+    assert "date_y, ohlc_y1 = 90.40, 86.80" in src
 
 
 def test_month_revenue_splits_after_yi_for_right_edge():
@@ -140,3 +143,18 @@ def test_month_revenue_splits_after_yi_for_right_edge():
     assert 'endswith("月營收")' in src
     assert 'find("億元")' in src
     assert 'value_ha="right"' in src
+
+
+def test_month_growth_token_colors_pos_red_neg_green():
+    from wayne_navigator import _CARD, _month_growth_token_color
+
+    C = _CARD
+    assert _month_growth_token_color("月增+19.6%", C) == C["up"]
+    assert _month_growth_token_color("年增+100.0%", C) == C["up"]
+    assert _month_growth_token_color("累年增+50.3%", C) == C["up"]
+    assert _month_growth_token_color("月增-68.1%", C) == C["down"]
+    assert _month_growth_token_color("年增-3.2%", C) == C["down"]
+    assert _month_growth_token_color("較上月改善；較去年同月大增", C) == C["ink_soft"]
+    src = inspect.getsource(render_first_glance_png)
+    assert "_paint_right_growth_line" in src
+    assert "month_growth" in src

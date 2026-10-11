@@ -3773,7 +3773,7 @@ def render_biaoke_structure_png(
     # 橫式附圖／12-v4：股號＋股名一次；產業貼股名右（不准壓字）
     # 左欄各行拉開行距（真機回饋 63）；右欄三行／藍框不動
     # 橫式：藍框上緣抬高＋股號再下移，上邊框與字留縫（不准貼死）
-    name_y = 94.80 if fullbleed else float(_SPOT_Y)
+    name_y = 94.00 if fullbleed else float(_SPOT_Y)
     _paint_nameplate(
         ov,
         plate,
@@ -3790,13 +3790,13 @@ def render_biaoke_structure_png(
     # 68：狀態／判斷晶片（出貨痕跡／升降通道／靠近…）放大 0.5 倍≈×1.5，必須保留
     _STATUS_CHIP_SCALE = 1.5
     if fullbleed:
-        # 頭欄再下移一截：藍框上緣與「6669 緯穎」留更明顯縫
-        date_y, ohlc_y1 = 91.20, 87.60
+        # 頭欄再下移：藍框上緣與「6669 緯穎」拉開（zoom 不准貼）
+        date_y, ohlc_y1 = 90.40, 86.80
         # 70：chip 與爆大量日第二行拉開（單列橫排保留）
-        spike_y1, spike_y2, chip_y0 = 84.00, 80.50, 73.60
+        spike_y1, spike_y2, chip_y0 = 83.20, 79.70, 72.80
         chip_step = 2.65
         status_chip_step = 2.65 * _STATUS_CHIP_SCALE  # 約 4.0
-        spot_y = 90.80
+        spot_y = 90.00
         spot_move_dy = 6.35
         mute_y = None
         ohlc_y2 = None
