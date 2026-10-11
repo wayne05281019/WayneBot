@@ -59,6 +59,7 @@ def test_market_builder_enables_parallel_channel():
 
     src = inspect.getsource(build_market_vol_zone_chart)
     assert "with_parallel_channel=True" in src
+    assert "with_ma5_ma10=True" in src
     assert "with_nav_signals=False" in src
     assert "leave_zero" not in src
     assert "ma60_lower" not in src

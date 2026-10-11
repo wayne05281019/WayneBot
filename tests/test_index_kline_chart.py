@@ -189,6 +189,7 @@ class IndexDailyOfficialChartTests(unittest.TestCase):
         self.assertIn("render_volume_zone_result", src)
         self.assertIn("with_nav_signals=False", src)
         self.assertIn("with_parallel_channel=True", src)
+        self.assertIn("with_ma5_ma10=True", src)
         self.assertIn("TWII", src)
         self.assertIn("加權", src)
         db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
