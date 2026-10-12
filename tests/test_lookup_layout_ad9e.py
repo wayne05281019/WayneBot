@@ -23,8 +23,9 @@ def test_structure_header_uses_aligned_ohlc_helper():
     assert hasattr(bc, "_paint_aligned_kv_row")
     mod = open(bc.__file__, encoding="utf-8").read()
     assert "_paint_aligned_kv_row" in mod
-    # v76＝拿掉下一壓帶；只留原本大量壓／撐
+    # v76＝拿掉下一壓帶；v77＝頭欄多款＋主圖右拉寬
     assert "hdr-band-v76-no-next-press" in mod
+    assert "hdr-v77" in mod
     # 爆大量壓撐列不准再 shared[1:] 對「高」欄縮進
     assert "spike_cols = shared[1:" not in mod
     assert "_col_starts(header_x, [spike_cells])" in mod
@@ -135,12 +136,26 @@ def test_structure_top_pad_lifts_header_frame():
     assert float(bc._STRUCTURE_TOP_PAD) >= 0.45
     assert float(bc._STRUCTURE_TOP_PAD) < 1.35
     src = open(bc.__file__, encoding="utf-8").read()
-    assert "name_y = 94.00 if fullbleed" in src
-    assert "date_y, ohlc_y1 = 90.40, 86.80" in src
+    # v77：頭欄多款；A 款仍鎖 94.00 起算
+    assert "name_y = 94.00" in src
+    assert "header_variant" in src
+    assert "_STRUCTURE_HEADER_VARIANTS" in src
+    assert float(bc._STRUCTURE_FIG_RIGHT) >= 0.96
+    assert float(bc._STRUCTURE_LABEL_FRAC) <= 0.09
+
+
+def test_structure_header_variants_include_tall():
+    import biaoke_chart as bc
+
+    src = open(bc.__file__, encoding="utf-8").read()
+    assert "A" in bc._STRUCTURE_HEADER_VARIANTS
+    assert "B" in bc._STRUCTURE_HEADER_TALL
+    assert "E" in bc._STRUCTURE_HEADER_TALL
+    assert "C" not in bc._STRUCTURE_HEADER_TALL
     assert "_STRUCTURE_SPOT_FS" in src
     assert "_STRUCTURE_TAG_SIZE" in src
     assert "bare=False" in src
-    assert 'stamp=spot_stamp' in src
+    assert "stamp=spot_stamp" in src
     assert bc._STRUCTURE_TITLE_FS == bc._STRUCTURE_SPOT_FS
     # 迷你K／主圖不准造假 OHLC；缺真數就不畫
     assert "不准造假 OHLC" in src
