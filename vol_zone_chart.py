@@ -593,6 +593,38 @@ def missing_open_quote_days(
     return [d for d in open_days if d not in have]
 
 
+# 補洞結果短記：查股暖路徑會二次 prepare，不准每次重打官方月表（CI ~2s）
+_ENSURE_VOL_TTL_SEC = 180.0
+_ENSURE_VOL_LOCK = threading.Lock()
+_ENSURE_VOL_MEMO: Dict[Tuple[Any, ...], Tuple[float, Dict[str, Any]]] = {}
+_ENSURE_VOL_MEMO_MAX = 64
+# (sid, yyyymm) → 上次成功 STOCK_DAY 的日期集合（空 frozenset＝月表確認無列）
+_ENSURE_MONTH_DATES: Dict[Tuple[str, str], frozenset] = {}
+
+
+def clear_ensure_official_volume_cache() -> None:
+    with _ENSURE_VOL_LOCK:
+        _ENSURE_VOL_MEMO.clear()
+        _ENSURE_MONTH_DATES.clear()
+
+
+def _copy_ensure_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(stats or {})
+    for k in (
+        "filled",
+        "confirmed_absent",
+        "still_missing",
+        "months_ok",
+        "months_fail",
+        "months_fetched",
+        "missing_before",
+        "filled_dates",
+    ):
+        if k in out and isinstance(out[k], list):
+            out[k] = list(out[k])
+    return out
+
+
 def ensure_official_volume_window(
     stock_id: str,
     db_path: str,
@@ -604,6 +636,7 @@ def ensure_official_volume_window(
     """畫結構／大量區前：窗內開市日缺官方量 → 證交所／櫃買 STOCK_DAY 月表補洞。
 
     不准發明 OHLC／量。官方月表抓成功但當日無列＝休市／未交易 → confirmed_absent。
+    同進程短記結果／已抓月份，暖命中不准重打網路。
     """
     sid = str(stock_id or "").strip()
     path = str(db_path or "").strip()
@@ -620,7 +653,7 @@ def ensure_official_volume_window(
         return out
     from datetime import datetime, timedelta
 
-    from trading_calendar import iter_tw_open_days, normalize_ymd
+    from trading_calendar import normalize_ymd
 
     end = normalize_ymd(end_ymd)
     if len(end) != 8:
@@ -647,11 +680,20 @@ def ensure_official_volume_window(
         return out
     # 日曆略放大，涵蓋開市日 need 根
     need = max(int(days or 0), 60)
+    memo_key = (sid, path, end, int(need))
+    now = time.monotonic()
+    with _ENSURE_VOL_LOCK:
+        hit = _ENSURE_VOL_MEMO.get(memo_key)
+        if hit is not None and now - float(hit[0]) <= _ENSURE_VOL_TTL_SEC:
+            return _copy_ensure_stats(hit[1])
+
     start_dt = datetime.strptime(end, "%Y%m%d") - timedelta(days=int(need * 1.7) + 20)
     start = start_dt.strftime("%Y%m%d")
     missing = missing_open_quote_days(sid, path, start, end)
     out["missing_before"] = list(missing)
     if not missing:
+        with _ENSURE_VOL_LOCK:
+            _ENSURE_VOL_MEMO[memo_key] = (time.monotonic(), _copy_ensure_stats(out))
         return out
     months = sorted({d[:6] for d in missing if len(d) >= 6})
     name = str(stock_name or "").strip() or sid
@@ -684,7 +726,19 @@ def ensure_official_volume_window(
 
     market = _market_of(path, sid)
     official_by_month: Dict[str, set] = {}
+    wrote_any = False
     for ym in months:
+        mk = (sid, ym)
+        cached_dates = None
+        with _ENSURE_VOL_LOCK:
+            if mk in _ENSURE_MONTH_DATES:
+                cached_dates = set(_ENSURE_MONTH_DATES[mk])
+        if cached_dates is not None:
+            # 本進程已打過此月：不再打網路／sleep（暖路徑）
+            out["months_fetched"].append(ym)
+            out["months_ok"].append(ym)
+            official_by_month[ym] = cached_dates
+            continue
         try:
             rows = fetch_stock_month(
                 sid, ym, market=market, name=name, tries=2
@@ -700,16 +754,21 @@ def ensure_official_volume_window(
             continue
         n = int(upsert_fetched_quotes(path, rows) or 0)
         out["months_ok"].append(ym)
-        official_by_month[ym] = {
+        dates = {
             str(r.get("date") or "").replace("-", "")[:8] for r in rows
         }
+        official_by_month[ym] = dates
+        with _ENSURE_VOL_LOCK:
+            _ENSURE_MONTH_DATES[mk] = frozenset(dates)
         if n:
             out["filled"].append({"yyyymm": ym, "rows": n})
+            wrote_any = True
         time.sleep(0.28)
-    try:
-        clear_align_ohlc_cache()
-    except Exception:
-        pass
+    if wrote_any:
+        try:
+            clear_align_ohlc_cache()
+        except Exception:
+            pass
     # 補完再掃：仍缺且該月官方已回＝confirmed_absent；月失敗＝still_missing
     missing_after = missing_open_quote_days(sid, path, start, end)
     for d in missing_after:
@@ -736,7 +795,15 @@ def ensure_official_volume_window(
             len(out["still_missing"]),
             out["months_ok"],
         )
-    return out
+    with _ENSURE_VOL_LOCK:
+        if len(_ENSURE_VOL_MEMO) >= _ENSURE_VOL_MEMO_MAX:
+            oldest = sorted(_ENSURE_VOL_MEMO.items(), key=lambda kv: kv[1][0])[
+                : _ENSURE_VOL_MEMO_MAX // 2
+            ]
+            for k, _ in oldest:
+                _ENSURE_VOL_MEMO.pop(k, None)
+        _ENSURE_VOL_MEMO[memo_key] = (time.monotonic(), _copy_ensure_stats(out))
+    return _copy_ensure_stats(out)
 
 
 def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataFrame:
