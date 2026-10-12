@@ -75,7 +75,7 @@ _MUTED = "#607d8b"
 _FIG_LEFT = 0.028
 _FIG_RIGHT = 0.918
 # 結構圖右緣：吃今收標籤四周空檔把主圖 K 往右拉寬；右軸刻度仍留縫不准裁
-_STRUCTURE_FIG_RIGHT = 0.962
+_STRUCTURE_FIG_RIGHT = 0.972
 # 直式 4:5：縮圖靠右，左邊留給頭牌，不准今K／日期壓進迷你圖
 _LOOKUP_LOCATOR_LEFT = 0.575
 _FIG_BOTTOM = 0.055
@@ -1484,8 +1484,10 @@ _CLOSE_PAIR_SIDE_GAP = 4.5
 _STRUCTURE_X_RIGHT_PAD = 9.0
 _STRUCTURE_LABEL_COL_EXTRA = 0.85
 _STRUCTURE_LABEL_FRAC = 0.078
-# xlim 硬頂：不准為並排今收把右白撐到 K 變瘦（標籤靠緊湊估寬＋FIG_RIGHT）
-_STRUCTURE_X_RIGHT_CAP_EXTRA = 15.5
+# xlim 硬頂：主圖加寬仍須整盒入軸（今收不准裁半）；估寬已收過
+_STRUCTURE_X_RIGHT_CAP_EXTRA = 28.0
+# 昨收→今收前進寬係數（<1＝兩盒靠緊，空檔還給 K）
+_STRUCTURE_CLOSE_PAIR_ADVANCE = 0.58
 
 
 def _dedupe_right_notes(
@@ -1650,7 +1652,7 @@ def _place_right_notes(
             if not (close_pair and _is_close_note(str(n.get("text") or "")))
         ]
         if close_pair:
-            # 並排兩盒＋清楚小縫；fit 與繪製同一套寬估，整列必須進軸
+            # 並排兩盒：前進寬用收緊係數，fit 與繪製同一套，整列必須進軸
             pw = _approx_note_pack_width(
                 str(prev_close_notes[0].get("text") or ""),
                 float(prev_close_notes[0].get("size") or 11),
@@ -1659,7 +1661,11 @@ def _place_right_notes(
                 str(today_close_notes[0].get("text") or ""),
                 float(today_close_notes[0].get("size") or 11),
             )
-            singles.append(pw + float(_CLOSE_PAIR_SIDE_GAP) + tw)
+            singles.append(
+                pw * float(_STRUCTURE_CLOSE_PAIR_ADVANCE)
+                + float(_CLOSE_PAIR_SIDE_GAP)
+                + tw
+            )
         need = max(singles, default=16.0)
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
         fit_tx = float(x_max) - need - 4.8
@@ -1896,20 +1902,23 @@ def _place_right_notes(
         # 73：顯示 Y 一律用留縫後的 ty（不准再 snap 回 ny 把盒貼死）
         show_ty = float(ty)
         if close_pair and note is pair_today and pair_prev is not None:
-            # 77：同列左昨收右今收；兩盒用同一 text 盒（不准 annotate 把昨收估窄）、中間清楚小縫
+            # 77／78：同列左昨收右今收；前進寬略收＝兩盒靠緊，空檔還主圖 K
             prev_text = str(pair_prev.get("text") or "")
             prev_size = float(pair_prev.get("size") or 11)
             today_text = str(pair_today.get("text") or "")
             today_size = float(pair_today.get("size") or 11)
-            advance = _approx_note_pack_width(prev_text, prev_size)
+            advance = (
+                _approx_note_pack_width(prev_text, prev_size)
+                * float(_STRUCTURE_CLOSE_PAIR_ADVANCE)
+            )
             today_tx = float(col_tx) + advance + pair_side_gap
             if x_max is not None:
                 today_w = _approx_note_pack_width(today_text, today_size)
-                # 右緣不夠時略縮縫仍同列；縫底線 3.2，不准互壓
-                overflow = (today_tx + today_w) - (float(x_max) - 2.0)
+                # 右緣不夠時略縮縫仍同列；今收整盒入軸，不准裁半
+                overflow = (today_tx + today_w) - (float(x_max) - 2.2)
                 if overflow > 0:
                     today_tx = max(
-                        float(col_tx) + advance + 3.2,
+                        float(col_tx) + advance + 2.4,
                         today_tx - overflow,
                     )
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
