@@ -42,7 +42,7 @@ def test_attach_official_ma60_needs_60_bars():
 
 
 def test_paint_draws_ma60_and_query_stamp():
-    from vol_zone_chart import _paint_volume_zone, _label_ma_left
+    from vol_zone_chart import _paint_volume_zone, _label_ma_blank, _paint_ma_line_labels
 
     src = inspect.getsource(_paint_volume_zone)
     assert "_MA60" in src and "_MA20" in src
@@ -50,37 +50,122 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "fig.text" in src and "0.985" in src  # 整圖右上時間戳
     assert "大量區壓" in src and "大量區撐" in src
     assert "linewidth=1.35" in src
-    assert "_label_ma_left" in src
-    assert 'lab="月線"' in src and 'lab="季線"' in src
+    assert "_paint_ma_line_labels" in src
+    assert '"月"' in src and '"季"' in src
+    assert '"5"' in src and '"10"' in src
     assert "left=0.050" in src  # 左縮右鬆放大 K 區
     assert "draw_ma20=False" in src
-    lab_src = inspect.getsource(_label_ma_left)
+    # 月／季線寬仍粗於五日／十日
+    assert "linewidth=1.75" in src and "linewidth=1.85" in src
+    assert "linewidth=1.35" in src and "linewidth=1.45" in src
+    # 標位不准碰假 OHLC／量
+    assert "不准動 OHLC" in src or "不准改 OHLC" in inspect.getsource(_paint_ma_line_labels)
+    lab_src = inspect.getsource(_label_ma_blank)
     assert "_clear_of_bars" in lab_src
-    assert "一律貼在所屬均線上" in lab_src or "y 一律貼" in lab_src
+    assert "_clear_of_other_mas" in lab_src
+    assert "_ma_x_zone_bonus" in lab_src or "中左" in lab_src
+    assert "0.68" in lab_src  # 中右靠中上限
+    assert inspect.getsource(_paint_ma_line_labels)
+    paint_src = inspect.getsource(_paint_ma_line_labels)
+    assert "other_mas" in paint_src
+    assert "自動選位" in paint_src or "自己線" in paint_src
 
 
-def test_label_ma_left_stays_on_ma_line():
-    """月線／季線標的 y 必須等於該 x 上的均線價（貼線，不准離線漂）。"""
+def test_label_ma_blank_auto_zone_own_line_no_overlap():
+    """程式自動選位（中左→中→中右靠中）；y 只貼自己線；互不壓、不壓 K。"""
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from vol_zone_chart import _label_ma_left
+    from vol_zone_chart import (
+        _label_ma_blank,
+        _ma_x_zone_bonus,
+        _paint_ma_line_labels,
+    )
+
+    assert _ma_x_zone_bonus(0.25) > _ma_x_zone_bonus(0.45) > _ma_x_zone_bonus(0.60)
+    assert _ma_x_zone_bonus(0.80) < 0  # 遠右禁
 
     n = 40
     xs = np.arange(n, dtype=float)
-    highs = np.full(n, 120.0)
-    lows = np.full(n, 110.0)
-    vals = np.linspace(95.0, 108.0, n)  # 全程在低點下方＝貼線可淨空
+    # K 帶窄，四條均線都在帶外、彼此錯開，才能驗「四標都下＋只貼己線」
+    highs = np.full(n, 112.0)
+    lows = np.full(n, 108.0)
+    vals = np.linspace(100.0, 102.0, n)  # 月：K 下方
     fig, ax = plt.subplots()
-    ax.set_ylim(80, 140)
-    ax.set_xlim(-1, n)
-    _label_ma_left(ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7")
-    texts = [t for t in ax.texts if t.get_text() == "月線"]
+    ax.set_ylim(70, 150)
+    ax.set_xlim(-0.05, n + 2.15)
+    pos = _label_ma_blank(
+        ax, xs, highs, lows, lab="月", vals=vals, color="#f9a825", face="#fffde7"
+    )
+    assert pos is not None
+    x, y = pos
+    texts = [t for t in ax.texts if t.get_text() == "月"]
     assert texts
-    x, y = texts[0].get_position()
-    j = int(round(x))
-    assert abs(float(y) - float(vals[j])) < 1e-6
+    assert float(x) <= float(n - 1) * 0.68 + 0.05
+    j = int(round(float(x)))
+    j = max(0, min(n - 1, j))
+    assert abs(float(y) - float(vals[j])) < 1e-5
+    # 不壓進 K 高低帶
+    assert float(y) <= float(lows[j]) - 1e-6 or float(y) >= float(highs[j]) + 1e-6
+    plt.close(fig)
+
+    fig2, ax2 = plt.subplots()
+    ax2.set_ylim(70, 150)
+    ax2.set_xlim(-0.05, n + 2.15)
+    series = [
+        ("5", vals + 28.0, "#ef6c00", "#fff3e0"),   # ~128–130，K 上方
+        ("10", vals + 18.0, "#00838f", "#e0f7fa"),  # ~118–120
+        ("月", vals, "#f9a825", "#fffde7"),         # ~100–102
+        ("季", vals - 18.0, "#5c6bc0", "#e8eaf6"),  # ~82–84
+    ]
+    _paint_ma_line_labels(ax2, xs, highs, lows, series=series)
+    labs = {t.get_text(): t.get_position() for t in ax2.texts}
+    assert set(labs) >= {"5", "10", "月", "季"}
+    # 各標 y 必須貼自己線
+    by_lab = {lb: arr for (lb, arr, _c, _f) in series}
+    for lb, (px, py) in labs.items():
+        assert float(px) <= float(n - 1) * 0.68 + 0.05
+        jj = max(0, min(n - 1, int(round(float(px)))))
+        assert abs(float(py) - float(by_lab[lb][jj])) < 1e-5
+    pts = list(labs.values())
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            assert abs(pts[i][0] - pts[j][0]) > 0.15 or abs(pts[i][1] - pts[j][1]) > 1.2
+    plt.close(fig2)
+
+
+def test_label_ma_skips_when_only_on_other_line_or_k():
+    """自己線全程卡在他線／K 內 → 寧可不下標，不准硬壓。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from vol_zone_chart import _label_ma_blank
+
+    n = 30
+    xs = np.arange(n, dtype=float)
+    highs = np.full(n, 110.0)
+    lows = np.full(n, 90.0)
+    # 自己線落在 K 正中
+    vals = np.full(n, 100.0)
+    other = np.full(n, 100.0)
+    fig, ax = plt.subplots()
+    ax.set_ylim(80, 120)
+    ax.set_xlim(-0.05, n + 1.0)
+    pos = _label_ma_blank(
+        ax,
+        xs,
+        highs,
+        lows,
+        lab="5",
+        vals=vals,
+        color="#ef6c00",
+        face="#fff3e0",
+        other_mas=[other],
+    )
+    assert pos is None
+    assert not [t for t in ax.texts if t.get_text() == "5"]
     plt.close(fig)
 
 

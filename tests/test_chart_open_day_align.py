@@ -52,6 +52,20 @@ def test_align_keeps_real_thin_volume():
     assert bool(thin["is_halt"]) is False
 
 
+def test_align_skip_invent_dates_no_fake_halt_bar():
+    """官方月表已確認無列（颱風休市等）→ 不准發明前收停價＋量0。"""
+    df = pd.DataFrame(
+        [
+            {"date": "20260812", "open": 69.0, "high": 70.0, "low": 68.0, "close": 69.11, "volume": 2.0},
+            {"date": "20260814", "open": 69.11, "high": 70.5, "low": 70.5, "close": 70.5, "volume": 2.0},
+        ]
+    )
+    out = align_ohlc_to_tw_open_days(df, skip_invent_dates={"20260813"})
+    dates = out["date"].tolist()
+    assert "20260813" not in dates
+    assert "20260812" in dates and "20260814" in dates
+
+
 def test_format_nav_volume_label_thin_shows_shares():
     assert format_nav_volume_label(0.185) == "量 185股"
     assert format_nav_volume_label(0) == "量 0張"

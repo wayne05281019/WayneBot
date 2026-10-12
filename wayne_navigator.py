@@ -1525,10 +1525,15 @@ def format_nav_volume_label(volume_lots) -> str:
     return f"量 {n:,}張"
 
 
-def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
+def align_ohlc_to_tw_open_days(
+    df: pd.DataFrame,
+    *,
+    skip_invent_dates: Optional[set] = None,
+) -> pd.DataFrame:
     """開市日軸連續：有官方列用真開高低收量；缺列＝前收停價＋量 0＋is_halt。
 
     週末／國定假不進軸。不准編高低振幅、不准填假量柱。只做圖上展示對齊，不寫庫。
+    skip_invent_dates：官方月表已確認當日無列（休市／該檔未交易）→ 不准發明停價柱。
     """
     if df is None or getattr(df, "empty", True):
         return df
@@ -1548,6 +1553,11 @@ def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
     days = iter_tw_open_days(str(work["date"].iloc[0]), str(work["date"].iloc[-1]))
     if not days:
         return work
+    skip_invent = {
+        str(x).replace("-", "")[:8]
+        for x in (skip_invent_dates or set())
+        if str(x).replace("-", "")[:8]
+    }
     # 用 dict of tuples／tolist，不准 iterrows（壓撐名單會對齊上千檔）
     dates = [str(x) for x in work["date"].tolist()]
     opens = pd.to_numeric(work["open"], errors="coerce").tolist()
@@ -1616,8 +1626,11 @@ def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
                 "is_halt": halt,
                 "no_trade_fill": False,
             }
+        elif d in skip_invent:
+            # 官方月表已確認無此日：週末／颱風休市／該檔未交易 → 不進軸、不准發明量
+            continue
         elif prev_close and prev_close > 0:
-            # 開市日庫無列：展示停在前一日真收，量 0。不是新假行情。
+            # 開市日庫無列且尚未官方確認：展示停在前一日真收，量 0（僅對齊；應先 ensure 補洞）
             px = float(prev_close)
             row = {
                 "date": d,
@@ -1682,11 +1695,23 @@ def _align_cache_key(work: pd.DataFrame, sid: str = "") -> tuple:
     return (str(sid or ""), str(d0)[:8], str(d1)[:8], int(len(work)), digest)
 
 
-def align_ohlc_cached(work: pd.DataFrame, sid: str = "") -> pd.DataFrame:
+def align_ohlc_cached(
+    work: pd.DataFrame,
+    sid: str = "",
+    *,
+    skip_invent_dates: Optional[set] = None,
+) -> pd.DataFrame:
     """align_ohlc_to_tw_open_days ＋短快取。回傳副本，呼叫端可改。"""
     if work is None or getattr(work, "empty", True):
         return work
-    key = _align_cache_key(work, sid)
+    skip_key = tuple(
+        sorted(
+            str(x).replace("-", "")[:8]
+            for x in (skip_invent_dates or set())
+            if str(x).replace("-", "")[:8]
+        )
+    )
+    key = _align_cache_key(work, sid) + (skip_key,)
     now = time.monotonic()
     with _ALIGN_OHLC_LOCK:
         hit = _ALIGN_OHLC_CACHE.get(key)
@@ -1694,7 +1719,7 @@ def align_ohlc_cached(work: pd.DataFrame, sid: str = "") -> pd.DataFrame:
             ts, cached = hit
             if now - float(ts) <= _ALIGN_OHLC_TTL_SEC and cached is not None:
                 return cached.copy(deep=True)
-    aligned = align_ohlc_to_tw_open_days(work)
+    aligned = align_ohlc_to_tw_open_days(work, skip_invent_dates=skip_invent_dates)
     if aligned is None or getattr(aligned, "empty", True):
         return aligned
     with _ALIGN_OHLC_LOCK:
