@@ -42,7 +42,7 @@ def test_attach_official_ma60_needs_60_bars():
 
 
 def test_paint_draws_ma60_and_query_stamp():
-    from vol_zone_chart import _paint_volume_zone, _label_ma_left
+    from vol_zone_chart import _paint_volume_zone, _label_ma_blank, _paint_ma_line_labels
 
     src = inspect.getsource(_paint_volume_zone)
     assert "_MA60" in src and "_MA20" in src
@@ -50,22 +50,26 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "fig.text" in src and "0.985" in src  # 整圖右上時間戳
     assert "大量區壓" in src and "大量區撐" in src
     assert "linewidth=1.35" in src
-    assert "_label_ma_left" in src
-    assert 'lab="月線"' in src and 'lab="季線"' in src
+    assert "_paint_ma_line_labels" in src
+    assert '"月線"' in src and '"季線"' in src
     assert "left=0.050" in src  # 左縮右鬆放大 K 區
     assert "draw_ma20=False" in src
-    lab_src = inspect.getsource(_label_ma_left)
+    # 月／季線寬仍粗於五日／十日
+    assert "linewidth=1.75" in src and "linewidth=1.85" in src
+    assert "linewidth=1.35" in src and "linewidth=1.45" in src
+    lab_src = inspect.getsource(_label_ma_blank)
     assert "_clear_of_bars" in lab_src
-    assert "一律貼在所屬均線上" in lab_src or "y 一律貼" in lab_src
+    assert "右溝" in lab_src or "空白" in lab_src
+    assert inspect.getsource(_paint_ma_line_labels)
 
 
-def test_label_ma_left_stays_on_ma_line():
-    """月線／季線標的 y 必須等於該 x 上的均線價（貼線，不准離線漂）。"""
+def test_label_ma_blank_stays_on_ma_and_prefers_gutter():
+    """貼線；有右溝空白時優先放右溝，不准擠左上壓標區。"""
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from vol_zone_chart import _label_ma_left
+    from vol_zone_chart import _label_ma_blank, _paint_ma_line_labels
 
     n = 40
     xs = np.arange(n, dtype=float)
@@ -74,14 +78,38 @@ def test_label_ma_left_stays_on_ma_line():
     vals = np.linspace(95.0, 108.0, n)  # 全程在低點下方＝貼線可淨空
     fig, ax = plt.subplots()
     ax.set_ylim(80, 140)
-    ax.set_xlim(-1, n)
-    _label_ma_left(ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7")
+    ax.set_xlim(-0.05, n + 1.65)
+    pos = _label_ma_blank(
+        ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7"
+    )
+    assert pos is not None
+    x, y = pos
     texts = [t for t in ax.texts if t.get_text() == "月線"]
     assert texts
-    x, y = texts[0].get_position()
-    j = int(round(x))
-    assert abs(float(y) - float(vals[j])) < 1e-6
+    # 右溝優先（末日之後）
+    assert float(x) >= float(n - 1)
+    # y 貼近末日均線（互避時可微上下錯開）
+    assert abs(float(y) - float(vals[-1])) < 8.0
     plt.close(fig)
+
+    # 多標互避：四條都畫得出、不疊同一點
+    fig2, ax2 = plt.subplots()
+    ax2.set_ylim(80, 140)
+    ax2.set_xlim(-0.05, n + 1.65)
+    series = [
+        ("五日", vals + 2.0, "#ef6c00", "#fff3e0"),
+        ("十日", vals + 0.5, "#00838f", "#e0f7fa"),
+        ("月線", vals, "#f9a825", "#fffde7"),
+        ("季線", vals - 8.0, "#5c6bc0", "#e8eaf6"),
+    ]
+    _paint_ma_line_labels(ax2, xs, highs, lows, series=series)
+    labs = {t.get_text(): t.get_position() for t in ax2.texts}
+    assert set(labs) >= {"五日", "十日", "月線", "季線"}
+    pts = list(labs.values())
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            assert abs(pts[i][0] - pts[j][0]) > 0.2 or abs(pts[i][1] - pts[j][1]) > 1.5
+    plt.close(fig2)
 
 
 def test_prepare_loads_ma60_warm_bars():

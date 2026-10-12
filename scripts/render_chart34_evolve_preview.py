@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""本機試渲：查股第 3 張結構更清楚、第 4 張大量區＋五日／十日。
+"""本機試渲：查股第 3 張結構細虛線、第 4 張大量區＋五日／十日空白標。
 
-只寫媒體檔，不改話筒預設。壓／撐／通道略粗、末日 K 醒目；五日／十日細線。
+只寫媒體檔，不改話筒預設。結構＝細虛線通道＋細壓撐（另 worker）；
+大量區＝五日／十日細線、月／季較粗、均線標空白處（右溝優先）。
 官方日 K 來自本地 DB，不准假柱。時區說明：檔名／圖內日期皆台北日曆日。
 """
 from __future__ import annotations
@@ -309,9 +310,9 @@ def main() -> int:
     ap.add_argument("--sids", default="3081,2330")
     ap.add_argument(
         "--mode",
-        default="thin-dash",
-        choices=("thin-dash", "before", "volzone", "all"),
-        help="thin-dash＝結構細虛線試渲（預設）；all＝含 before／大量區",
+        default="volzone-labels",
+        choices=("thin-dash", "before", "volzone", "volzone-labels", "all"),
+        help="volzone-labels＝大量區空白均線標（預設）；thin-dash＝結構細虛線；all＝全套",
     )
     args = ap.parse_args()
     out_dir = Path(args.out_dir)
@@ -320,7 +321,7 @@ def main() -> int:
     db = _db()
     sids = [s.strip() for s in str(args.sids).split(",") if s.strip()]
 
-    mode = str(getattr(args, "mode", "thin-dash") or "thin-dash")
+    mode = str(getattr(args, "mode", "volzone-labels") or "volzone-labels")
 
     def _clear_memo() -> None:
         try:
@@ -347,13 +348,24 @@ def main() -> int:
             print(f"[thin-dash] structure {sid} {name} -> {out}", flush=True)
             _render_structure(sid, name, db, out)
 
-    if mode in ("all", "volzone"):
+    if mode in ("all", "volzone", "volzone-labels"):
+        try:
+            from vol_zone_chart import clear_vol_zone_render_cache
+
+            clear_vol_zone_render_cache()
+        except Exception:
+            pass
         _patch_volzone_thin_ma5_ma10()
         for sid in sids:
             name = _name(sid, db)
-            vz_out = out_dir / f"{sid}-volzone-ma5-ma10.png"
-            print(f"[volzone+ma] {sid} {name} -> {vz_out}", flush=True)
-            _render_volzone(sid, name, db, vz_out, with_ma5_ma10=True)
+            blank = out_dir / f"{sid}-volzone-ma-labels-blank.png"
+            print(f"[volzone+ma-blank] {sid} {name} -> {blank}", flush=True)
+            _render_volzone(sid, name, db, blank, with_ma5_ma10=True)
+            legacy = out_dir / f"{sid}-volzone-ma5-ma10.png"
+            try:
+                shutil.copy2(blank, legacy)
+            except Exception:
+                pass
 
     print("done", flush=True)
     for p in sorted(out_dir.glob("*.png")):
