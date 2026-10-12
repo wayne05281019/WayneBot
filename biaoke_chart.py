@@ -293,6 +293,17 @@ def _px(val: Any) -> str:
     return f"{n:.2f}".rstrip("0").rstrip(".")
 
 
+def _px_quote(val: Any) -> str:
+    """官方開高低收／昨收顯示：與高低卡／介紹／大量區同源 ``_fmt_price``。
+
+    不准套現股跳動把 ETF（如 0050 收 114.8）改寫成 115。
+    演算軌／插值價仍用 ``_px``。
+    """
+    from wayne_navigator import _fmt_price
+
+    return _fmt_price(val)
+
+
 def _fmt_axis_int(v, _p=None) -> str:
     """右軸整數：0 只寫 0，不准 unicode 負號或「- 0」。"""
     try:
@@ -997,15 +1008,15 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     if last_bar:
         notes.append(
             f"最近收盤日 {_ymd_full(last_bar.get('date'))} "
-            f"開 {_px(last_bar.get('open'))} 高 {_px(last_bar.get('high'))} "
-            f"低 {_px(last_bar.get('low'))} 收 {_px(last_bar.get('close'))} "
+            f"開 {_px_quote(last_bar.get('open'))} 高 {_px_quote(last_bar.get('high'))} "
+            f"低 {_px_quote(last_bar.get('low'))} 收 {_px_quote(last_bar.get('close'))} "
             f"量 {_vol(last_bar.get('volume'))}"
         )
     if spike_hi and spike_lo:
         notes.append(
             f"官方日K（不是15分）量先價行：爆大量那一天 {_ymd_full(spike_date) or spike_date} "
-            f"開 {_px(spike_bar.get('open'))} 高 {_px(spike_hi)} 當壓、"
-            f"低 {_px(spike_lo)} 當撐、收 {_px(spike_bar.get('close'))} "
+            f"開 {_px_quote(spike_bar.get('open'))} 高 {_px_quote(spike_hi)} 當壓、"
+            f"低 {_px_quote(spike_lo)} 當撐、收 {_px_quote(spike_bar.get('close'))} "
             f"量 {_vol(spike_bar.get('volume'))}；站上撐後等價穩量縮才進，否則放棄。"
         )
     if down:
@@ -2690,16 +2701,27 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
     close = quote.get("close")
     if close is None:
         return
-    from decision_card_signals import candle_up_taiwan
-    from wayne_navigator import _draw_mini_candle, quote_limit_chip_colors, quote_limit_side
+    from wayne_navigator import (
+        _draw_mini_candle,
+        quote_limit_chip_colors,
+        quote_limit_side,
+        quote_move_ink,
+    )
 
     x, y, _w, h = (float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
     prev = quote.get("prev")
-    up = candle_up_taiwan(close, prev, quote.get("open"))
-    color = _UP if up else _DN
+    color = quote_move_ink(
+        quote.get("change"),
+        close=close,
+        prev=prev,
+        pct=quote.get("pct"),
+        up=_UP,
+        down=_DN,
+        flat="#455a64",
+    )
     chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
-    px = _px(close)
+    px = _px_quote(close)
     o, hi, lo = quote.get("open"), quote.get("high"), quote.get("low")
     try:
         ohlc_ok = all(float(v) > 0 for v in (o, hi, lo, close))
@@ -3245,15 +3267,26 @@ def _paint_spot(
     close = quote.get("close")
     if close is None:
         return
-    from decision_card_signals import candle_up_taiwan
-    from wayne_navigator import _draw_mini_candle, quote_limit_chip_colors, quote_limit_side
+    from wayne_navigator import (
+        _draw_mini_candle,
+        quote_limit_chip_colors,
+        quote_limit_side,
+        quote_move_ink,
+    )
 
     prev = quote.get("prev")
-    up = candle_up_taiwan(close, prev, quote.get("open"))
-    color = _UP if up else _DN
+    color = quote_move_ink(
+        quote.get("change"),
+        close=close,
+        prev=prev,
+        pct=quote.get("pct"),
+        up=_UP,
+        down=_DN,
+        flat="#455a64",
+    )
     chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
-    px = _px(close)
+    px = _px_quote(close)
     o, hi, lo = quote.get("open"), quote.get("high"), quote.get("low")
     try:
         ohlc_ok = all(float(v) > 0 for v in (o, hi, lo, close))
@@ -3527,8 +3560,8 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        # v78g：昨今相對184222再砍半；橘紫／產業／虛線／日刻同 v78f
-        "hdr-band-v78g-close-half" if fullbleed else "hdr-wrap3-vol-min",
+        # v78h：官方收走 _px_quote（ETF 不准現股跳動改寫）；漲跌字 quote_move_ink
+        "hdr-band-v78h-quote-ink" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3638,7 +3671,7 @@ def render_biaoke_structure_png(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": spike_hi,
-                "text": f"壓 {_px(spike_hi)}",
+                "text": f"壓 {_px_quote(spike_hi)}",
                 "color": _PRESS,
                 "size": _STRUCTURE_TAG_SIZE,
             }
@@ -3657,19 +3690,19 @@ def render_biaoke_structure_png(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": spike_lo,
-                "text": f"撐 {_px(spike_lo)}",
+                "text": f"撐 {_px_quote(spike_lo)}",
                 "color": _HOLD,
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    # 右軸：今收（71 紅框必留）＋昨收；75 同列並排（垂直貼今收價，數字＝官方真價）
+    # 右軸：今收（71 紅框必留）＋昨收；75 同列並排（垂直貼今收價，數字＝官方真價／_px_quote）
     last_c = float(last_bar.get("close") or 0)
     if last_c > 0:
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": float(last_c),
-                "text": f"今收 {_px(last_c)}",
+                "text": f"今收 {_px_quote(last_c)}",
                 "color": "#37474f",
                 "size": _STRUCTURE_TAG_SIZE,
             }
@@ -3690,7 +3723,7 @@ def render_biaoke_structure_png(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": prev_y,
-                "text": f"昨收 {_px(prev_c_axis)}",
+                "text": f"昨收 {_px_quote(prev_c_axis)}",
                 "color": "#546e7a",
                 "size": _STRUCTURE_TAG_SIZE,
             }
@@ -4015,8 +4048,8 @@ def render_biaoke_structure_png(
     # 開高低量／爆大量列同一小字級（不准忽大忽小）
     ohlc_fs = int(_STRUCTURE_META_FS) if fullbleed else 15
     spike_cells = [
-        ("高", f"{_px(spike_hi)}＝壓"),
-        ("低", f"{_px(spike_lo)}＝撐"),
+        ("高", f"{_px_quote(spike_hi)}＝壓"),
+        ("低", f"{_px_quote(spike_lo)}＝撐"),
         ("量", _vol(spike_bar.get("volume"))),
     ]
 
@@ -4040,9 +4073,9 @@ def render_biaoke_structure_png(
 
     if fullbleed:
         today_cells = [
-            ("開", _px(last_bar.get("open"))),
-            ("高", _px(last_bar.get("high"))),
-            ("低", _px(last_bar.get("low"))),
+            ("開", _px_quote(last_bar.get("open"))),
+            ("高", _px_quote(last_bar.get("high"))),
+            ("低", _px_quote(last_bar.get("low"))),
             ("量", _vol(last_bar.get("volume"))),
         ]
         # C：整列一次畫完，日期與「開」之間硬空白（08 開，不准 08開／不准靠 _ow 估寬）
@@ -4071,9 +4104,9 @@ def render_biaoke_structure_png(
             ha="left",
         )
         today_cells = [
-            ("開", _px(last_bar.get("open"))),
-            ("高", _px(last_bar.get("high"))),
-            ("低", _px(last_bar.get("low"))),
+            ("開", _px_quote(last_bar.get("open"))),
+            ("高", _px_quote(last_bar.get("high"))),
+            ("低", _px_quote(last_bar.get("low"))),
         ]
         shared = _col_starts(header_x, [today_cells])
         _paint_aligned_kv_row(
@@ -4097,9 +4130,9 @@ def render_biaoke_structure_png(
             ha="left",
         )
         today_cells = [
-            ("開", _px(last_bar.get("open"))),
-            ("高", _px(last_bar.get("high"))),
-            ("低", _px(last_bar.get("low"))),
+            ("開", _px_quote(last_bar.get("open"))),
+            ("高", _px_quote(last_bar.get("high"))),
+            ("低", _px_quote(last_bar.get("low"))),
         ]
         shared = _col_starts(header_x, [today_cells])
         _paint_aligned_kv_row(

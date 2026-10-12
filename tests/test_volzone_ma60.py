@@ -58,10 +58,12 @@ def test_paint_draws_ma60_and_query_stamp():
     # 月／季線寬仍粗於五日／十日
     assert "linewidth=1.75" in src and "linewidth=1.85" in src
     assert "linewidth=1.45" in src
-    # 已刪表頭右上收盤晶片；表頭「收XXXX」改紅稍大
+    # 已刪表頭右上收盤晶片；表頭「收XXXX」稍大＋漲跌色（不准寫死紅）
     assert 'f"收 {_fmt_price(last_cl)}"' not in src
     assert "quote_limit_chip_colors" not in src
     assert "close_bit" in src
+    assert "quote_move_ink" in src
+    assert "color=_UP," not in src or "close_ink" in src
     assert "離開 K 頂與末日導航箭" in src  # 狀況標離 K／末日箭
     # 標位不准碰假 OHLC／量
     assert "不准動 OHLC" in src or "不准改 OHLC" in inspect.getsource(_paint_ma_line_labels)

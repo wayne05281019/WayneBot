@@ -581,9 +581,10 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "收在爆大量日低之下" not in cap
     assert "已過爆大量日高" not in cap
     src = inspect.getsource(render_biaoke_structure_png)
-    assert 'f"昨收 {_px(prev_c_axis)}"' in src or "昨收" in src
-    assert 'f"今收 {_px(last_c)}"' in src
+    assert 'f"昨收 {_px_quote(prev_c_axis)}"' in src or "昨收" in src
+    assert 'f"今收 {_px_quote(last_c)}"' in src
     assert 'f"收 {_px(last_c)}"' not in src
+    assert 'f"今收 {_px(last_c)}"' not in src  # 官方收不准再走現股跳動
     from biaoke_chart import _is_today_close_note
 
     assert _note_priority("今收 6845") == 2
