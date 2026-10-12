@@ -61,14 +61,15 @@ def test_paint_draws_ma60_and_query_stamp():
     # 標位不准碰假 OHLC／量
     assert "不准動 OHLC" in src or "不准改 OHLC" in inspect.getsource(_paint_ma_line_labels)
     lab_src = inspect.getsource(_label_ma_blank)
-    assert "_clear_of_bars" in lab_src
-    assert "前 40%" in lab_src or "0.40" in lab_src
-    assert "右溝" not in lab_src or "禁止" in lab_src
+    assert "_clear_of_candles" in lab_src
+    assert "_clear_of_other_mas" in lab_src
+    assert "中左" in lab_src and "正中" in lab_src
+    assert "近端" in lab_src
     assert inspect.getsource(_paint_ma_line_labels)
 
 
-def test_label_ma_blank_mid_left_short_labels():
-    """短標；只放前 40% 中左淨空；不准中右／右溝。"""
+def test_label_ma_blank_tiers_on_own_line_no_overlap():
+    """自動中左→正中→中右靠中；只貼自己線；近端禁；分不清就略過。"""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -90,30 +91,56 @@ def test_label_ma_blank_mid_left_short_labels():
     x, y = pos
     texts = [t for t in ax.texts if t.get_text() == "月"]
     assert texts
+    # 中左階有淨空時應落前 40%
     assert float(x) <= float(n - 1) * 0.40 + 0.05
+    # 近端禁
+    assert float(x) < float(n - 1) * 0.78
     j = int(round(float(x)))
     j = max(0, min(n - 1, j))
     assert abs(float(y) - float(vals[j])) < 1e-5
     plt.close(fig)
 
+    # 四標互避；與其他均線分開
     fig2, ax2 = plt.subplots()
     ax2.set_ylim(80, 150)
     ax2.set_xlim(-0.05, n + 2.15)
     series = [
-        ("5", vals + 2.0, "#ef6c00", "#fff3e0"),
-        ("10", vals + 0.5, "#00838f", "#e0f7fa"),
+        ("5", vals + 6.0, "#ef6c00", "#fff3e0"),
+        ("10", vals + 3.0, "#00838f", "#e0f7fa"),
         ("月", vals, "#f9a825", "#fffde7"),
-        ("季", vals - 8.0, "#5c6bc0", "#e8eaf6"),
+        ("季", vals - 10.0, "#5c6bc0", "#e8eaf6"),
     ]
     _paint_ma_line_labels(ax2, xs, highs, lows, series=series)
     labs = {t.get_text(): t.get_position() for t in ax2.texts}
     assert set(labs) >= {"5", "10", "月", "季"}
+    by_lab = {t[0]: t[1] for t in series}
+    for lab, (px, py) in labs.items():
+        assert float(px) < float(n - 1) * 0.78
+        # 貼自己線
+        arr = by_lab[lab]
+        j = int(round(float(px)))
+        j = max(0, min(n - 1, j))
+        assert abs(float(py) - float(arr[j])) < 1e-5
     pts = list(labs.values())
     for i in range(len(pts)):
-        assert float(pts[i][0]) <= float(n - 1) * 0.40 + 0.05
         for j in range(i + 1, len(pts)):
             assert abs(pts[i][0] - pts[j][0]) > 0.15 or abs(pts[i][1] - pts[j][1]) > 1.2
     plt.close(fig2)
+
+    # 全擠在一起：可略過部分標（不准硬壓）
+    fig3, ax3 = plt.subplots()
+    ax3.set_ylim(80, 150)
+    ax3.set_xlim(-0.05, n + 2.15)
+    tight = [
+        ("5", vals, "#ef6c00", "#fff3e0"),
+        ("10", vals + 0.2, "#00838f", "#e0f7fa"),
+        ("月", vals + 0.4, "#f9a825", "#fffde7"),
+        ("季", vals + 0.6, "#5c6bc0", "#e8eaf6"),
+    ]
+    _paint_ma_line_labels(ax3, xs, highs, lows, series=tight)
+    # 全擠可全略過（不准硬壓）；有畫的仍 ≤4
+    assert 0 <= len(ax3.texts) <= 4
+    plt.close(fig3)
 
 
 def test_prepare_loads_ma60_warm_bars():
