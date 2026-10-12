@@ -21,9 +21,12 @@ def _schema(db: str) -> None:
 def test_ensure_official_volume_fills_missing_open_day(tmp_path, monkeypatch):
     """庫缺開市日 → 呼叫 STOCK_DAY 月表 upsert 真柱；不准編造。"""
     from vol_zone_chart import (
+        clear_ensure_official_volume_cache,
         ensure_official_volume_window,
         missing_open_quote_days,
     )
+
+    clear_ensure_official_volume_cache()
 
     db = str(tmp_path / "t.db")
     _schema(db)
@@ -150,8 +153,12 @@ def test_ensure_marks_confirmed_absent_when_official_month_lacks_day(
     tmp_path, monkeypatch
 ):
     """官方月表成功但無該日 → confirmed_absent，不准發明量。"""
-    from vol_zone_chart import ensure_official_volume_window
+    from vol_zone_chart import (
+        clear_ensure_official_volume_cache,
+        ensure_official_volume_window,
+    )
 
+    clear_ensure_official_volume_cache()
     db = str(tmp_path / "t2.db")
     _schema(db)
     conn = sqlite3.connect(db)
@@ -252,10 +259,123 @@ def test_ensure_marks_confirmed_absent_when_official_month_lacks_day(
     assert "20260813" in (stats.get("confirmed_absent") or [])
 
 
+def test_ensure_second_call_skips_network(tmp_path, monkeypatch):
+    """暖路徑：第二次 ensure 不准再打 STOCK_DAY。"""
+    import time
+
+    from vol_zone_chart import (
+        clear_ensure_official_volume_cache,
+        ensure_official_volume_window,
+    )
+
+    clear_ensure_official_volume_cache()
+    db = str(tmp_path / "t3.db")
+    _schema(db)
+    conn = sqlite3.connect(db)
+    conn.executemany(
+        """
+        INSERT INTO daily_quotes
+        (date, stock_id, stock_name, market, open, high, low, close, volume,
+         turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net,
+         source, fetched_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        [
+            (
+                "20260812",
+                "9083",
+                "測C",
+                "TW",
+                10,
+                11,
+                9,
+                10,
+                80,
+                0,
+                0,
+                10,
+                0,
+                0,
+                0,
+                "test",
+                "t",
+            ),
+            (
+                "20260814",
+                "9083",
+                "測C",
+                "TW",
+                10,
+                11,
+                9,
+                10.2,
+                90,
+                0,
+                0,
+                10.2,
+                0,
+                0,
+                0,
+                "test",
+                "t",
+            ),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    calls = {"n": 0}
+
+    def _fake_fetch(*a, **k):
+        calls["n"] += 1
+        return [
+            {
+                "date": "20260812",
+                "stock_id": "9083",
+                "stock_name": "測C",
+                "market": "TW",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.0,
+                "volume": 80,
+                "pct_change": 0.0,
+            },
+            {
+                "date": "20260814",
+                "stock_id": "9083",
+                "stock_name": "測C",
+                "market": "TW",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.2,
+                "volume": 90,
+                "pct_change": 2.0,
+            },
+        ]
+
+    import biaoke_walk as bw
+
+    monkeypatch.setattr(bw, "fetch_stock_month", _fake_fetch)
+    monkeypatch.setattr(bw, "_market_of", lambda *a, **k: "TW")
+    ensure_official_volume_window(
+        "9083", db, end_ymd="20260814", days=5, stock_name="測C"
+    )
+    n_first = int(calls["n"])
+    assert n_first >= 1  # 窗內多月缺列會各打一次；重點是第二次不准再打
+    t0 = time.perf_counter()
+    ensure_official_volume_window(
+        "9083", db, end_ymd="20260814", days=5, stock_name="測C"
+    )
+    assert time.perf_counter() - t0 < 0.05
+    assert calls["n"] == n_first
+
+
 def test_chart_window_no_missing_vol_when_official_has_data():
     """3081 結構／大量區近窗：開市日有官方量就不准再缺列（補洞後）。"""
     from trading_calendar import iter_tw_open_days
     from vol_zone_chart import (
+        clear_ensure_official_volume_cache,
         ensure_official_volume_window,
         load_official_ohlc,
         missing_open_quote_days,
@@ -266,6 +386,7 @@ def test_chart_window_no_missing_vol_when_official_has_data():
     db = get_db_path()
     if not Path(db).is_file():
         pytest.skip("no production db")
+    clear_ensure_official_volume_cache()
     stats = ensure_official_volume_window("3081", db, days=200, stock_name="聯亞")
     raw = load_official_ohlc("3081", db, 200)
     work = official_work(
