@@ -323,7 +323,7 @@ def _patch_volzone_thin_ma5_ma10() -> None:
             if color in (vz._PRESS, vz._HOLD):
                 kw = dict(kw)
                 # 對齊產品：壓／撐線再細一點（不准試渲又加粗回去）
-                kw["linewidth"] = min(float(kw.get("linewidth") or 0.90), 0.90)
+                kw["linewidth"] = min(float(kw.get("linewidth") or 0.78), 0.78)
                 kw["zorder"] = max(int(kw.get("zorder") or 5), 5)
             return _axhline(self, y, **kw)
 

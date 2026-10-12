@@ -1968,8 +1968,8 @@ def _paint_volume_zone(
     # 桃色大量區（略透，K／箭頭更清楚）
     ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
     # 壓／撐色線再細一點：仍清楚，不搶 K／均線
-    ax1.axhline(hi, color=_PRESS, linewidth=0.90, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=0.90, zorder=5, solid_capstyle="round")
+    ax1.axhline(hi, color=_PRESS, linewidth=0.78, zorder=5, solid_capstyle="round")
+    ax1.axhline(lo, color=_HOLD, linewidth=0.78, zorder=5, solid_capstyle="round")
     # 爆大量日豎線：極小間距虛線，避免實線切過 K／量看不清
     ax1.axvline(
         spike_i,
@@ -2160,9 +2160,9 @@ def _paint_volume_zone(
             y_lo = min(y_lo, float(np.nanmin(_arr[ok_ma])))
     ymin = min(y_lo, lo) - ypad
     ymax = max(y_hi, hi) + ypad * (1.35 if with_nav_signals else 1.25)
-    # 當日撐壓標抬到 K 上緣空白：多留一頭，不准壓 K／量柱／其他標
-    if path_shown:
-        ymax = ymax + (ymax - ymin) * 0.12
+    # 狀況簡述已改掛表頭時不再為它抬 K 頂；無表頭才略留空
+    if path_shown and not with_nav_signals:
+        ymax = ymax + (ymax - ymin) * 0.08
     # 平行軌現價可能高於壓／低於撐：ylim 先吃進去，線才不會被裁
     if with_parallel_channel:
         try:
@@ -2512,7 +2512,7 @@ def _paint_volume_zone(
         )
         # 第二排：量測實際字寬後置中，讓紅字「收XXXX」緊接在開高低後面
         _fp_intro = _fp(13.0, "bold")
-        _fp_close = _fp(15.2, "bold")  # 收XXXX 稍大一點點
+        _fp_close = _fp(15.6, "bold")  # 收XXXX 稍大一點點
         _t_left = ax_head.text(
             0.0,
             0.78,
@@ -2583,15 +2583,15 @@ def _paint_volume_zone(
             _t_close.set_position((0.50, 0.78))
             if _t_right is not None:
                 _t_right.set_position((0.62, 0.78))
-        # 狀況簡述只掛表頭右下（在圖例下方空白），完全離開 K 區
+        # 狀況簡述掛表頭中右（圖例右側／介紹列下），離開 K 頂與末日導航箭
         if path_shown:
             ax_head.text(
                 0.995,
-                0.01,
+                0.48,
                 path_shown,
                 transform=ax_head.transAxes,
                 ha="right",
-                va="bottom",
+                va="center",
                 fontproperties=_fp(8.6, "bold"),
                 color=_CALL,
                 zorder=15,
