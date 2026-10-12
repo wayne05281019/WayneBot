@@ -1968,8 +1968,8 @@ def _paint_volume_zone(
     # 桃色大量區（略透，K／箭頭更清楚）
     ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
     # 壓／撐色線再細一點：仍清楚，不搶 K／均線
-    ax1.axhline(hi, color=_PRESS, linewidth=1.05, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=1.05, zorder=5, solid_capstyle="round")
+    ax1.axhline(hi, color=_PRESS, linewidth=0.90, zorder=5, solid_capstyle="round")
+    ax1.axhline(lo, color=_HOLD, linewidth=0.90, zorder=5, solid_capstyle="round")
     # 爆大量日豎線：極小間距虛線，避免實線切過 K／量看不清
     ax1.axvline(
         spike_i,
@@ -2191,11 +2191,9 @@ def _paint_volume_zone(
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
-    path_box_artist = None
-    if path_shown:
-        # 狀況簡述先掛 K 頂緣上方（軸外）；稍後若有表頭列改掛表頭右下，
-        # 不准壓末日導航箭（例 20高脫離↓）／K／均線標
-        path_box_artist = ax1.text(
+    # 有獨立表頭時狀況簡述只掛表頭右下；無表頭才掛 K 頂外。不准壓末日導航箭。
+    if path_shown and not (with_nav_signals and ax_head is not None):
+        ax1.text(
             0.995,
             1.012,
             path_shown,
@@ -2514,7 +2512,7 @@ def _paint_volume_zone(
         )
         # 第二排：量測實際字寬後置中，讓紅字「收XXXX」緊接在開高低後面
         _fp_intro = _fp(13.0, "bold")
-        _fp_close = _fp(14.4, "bold")
+        _fp_close = _fp(15.2, "bold")  # 收XXXX 稍大一點點
         _t_left = ax_head.text(
             0.0,
             0.78,
@@ -2580,35 +2578,30 @@ def _paint_volume_zone(
             _t_close.set_alpha(1.0)
             if _t_right is not None:
                 _t_right.set_alpha(1.0)
-            # 後備：整段貼中，紅收仍緊接左段（粗估）
             _t_left.set_ha("right")
             _t_left.set_position((0.50, 0.78))
             _t_close.set_position((0.50, 0.78))
             if _t_right is not None:
                 _t_right.set_position((0.62, 0.78))
-        # 狀況簡述改掛表頭右下：離開 K 區，不再壓末日導航箭
-        if path_shown and path_box_artist is not None:
-            try:
-                path_box_artist.remove()
-            except Exception:
-                pass
+        # 狀況簡述只掛表頭右下（在圖例下方空白），完全離開 K 區
+        if path_shown:
             ax_head.text(
                 0.995,
-                0.02,
+                0.01,
                 path_shown,
                 transform=ax_head.transAxes,
                 ha="right",
                 va="bottom",
-                fontproperties=_fp(8.8, "bold"),
+                fontproperties=_fp(8.6, "bold"),
                 color=_CALL,
                 zorder=15,
-                clip_on=False,
-                linespacing=1.12,
+                clip_on=True,
+                linespacing=1.10,
                 bbox=dict(
-                    boxstyle="round,pad=0.18",
+                    boxstyle="round,pad=0.16",
                     facecolor="#fff8e1",
                     edgecolor="#ef6c00",
-                    linewidth=0.8,
+                    linewidth=0.75,
                     alpha=0.96,
                 ),
             )
