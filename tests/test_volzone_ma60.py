@@ -59,12 +59,13 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "linewidth=1.35" in src and "linewidth=1.45" in src
     lab_src = inspect.getsource(_label_ma_blank)
     assert "_clear_of_bars" in lab_src
-    assert "右溝" in lab_src or "空白" in lab_src
+    assert "左半" in lab_src or "中段" in lab_src
+    assert "近端" in lab_src
     assert inspect.getsource(_paint_ma_line_labels)
 
 
-def test_label_ma_blank_stays_on_ma_and_prefers_gutter():
-    """貼線；有右溝空白時優先放右溝，不准擠左上壓標區。"""
+def test_label_ma_blank_prefers_left_mid_away_from_near_end():
+    """貼線；優先左半／中段淨空，不准貼近端／末日 K。"""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -73,12 +74,13 @@ def test_label_ma_blank_stays_on_ma_and_prefers_gutter():
 
     n = 40
     xs = np.arange(n, dtype=float)
-    highs = np.full(n, 120.0)
-    lows = np.full(n, 110.0)
-    vals = np.linspace(95.0, 108.0, n)  # 全程在低點下方＝貼線可淨空
+    # 近端 K 抬高；左中段均線在低點下＝淨空
+    highs = np.concatenate([np.full(30, 120.0), np.full(10, 130.0)])
+    lows = np.concatenate([np.full(30, 110.0), np.full(10, 118.0)])
+    vals = np.linspace(95.0, 105.0, n)
     fig, ax = plt.subplots()
-    ax.set_ylim(80, 140)
-    ax.set_xlim(-0.05, n + 1.65)
+    ax.set_ylim(80, 150)
+    ax.set_xlim(-0.05, n + 2.15)
     pos = _label_ma_blank(
         ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7"
     )
@@ -86,16 +88,18 @@ def test_label_ma_blank_stays_on_ma_and_prefers_gutter():
     x, y = pos
     texts = [t for t in ax.texts if t.get_text() == "月線"]
     assert texts
-    # 右溝優先（末日之後）
-    assert float(x) >= float(n - 1)
-    # y 貼近末日均線（互避時可微上下錯開）
-    assert abs(float(y) - float(vals[-1])) < 8.0
+    # 不准落在近端禁區（最後 ~22%）
+    assert float(x) < float(n) * 0.72
+    # y 貼該 x 均線
+    j = int(round(float(x)))
+    j = max(0, min(n - 1, j))
+    assert abs(float(y) - float(vals[j])) < 1e-5
     plt.close(fig)
 
-    # 多標互避：四條都畫得出、不疊同一點
+    # 多標互避：四條都畫得出、不疊同一點、都離近端
     fig2, ax2 = plt.subplots()
-    ax2.set_ylim(80, 140)
-    ax2.set_xlim(-0.05, n + 1.65)
+    ax2.set_ylim(80, 150)
+    ax2.set_xlim(-0.05, n + 2.15)
     series = [
         ("五日", vals + 2.0, "#ef6c00", "#fff3e0"),
         ("十日", vals + 0.5, "#00838f", "#e0f7fa"),
@@ -107,6 +111,7 @@ def test_label_ma_blank_stays_on_ma_and_prefers_gutter():
     assert set(labs) >= {"五日", "十日", "月線", "季線"}
     pts = list(labs.values())
     for i in range(len(pts)):
+        assert float(pts[i][0]) < float(n) * 0.78
         for j in range(i + 1, len(pts)):
             assert abs(pts[i][0] - pts[j][0]) > 0.2 or abs(pts[i][1] - pts[j][1]) > 1.5
     plt.close(fig2)
