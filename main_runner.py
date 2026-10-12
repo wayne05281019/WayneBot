@@ -1258,6 +1258,9 @@ class MainRunner:
             except Exception:
                 health_closed = {}
             if self._increment_ok(health_closed):
+                # 休市仍每天對月營收／季報等官方側車：連假期間公司陸續公告，
+                # 不准因 skip increment 讓庫停在休市前的已公告子集（政美 7853 九月）。
+                self._refresh_official_sidecars()
                 self._mark_pipeline(
                     "success",
                     f"tw closed {closed.get('ymd')} {closed.get('zh')} skip increment "
@@ -1273,7 +1276,8 @@ class MainRunner:
                 health_closed.get("em"),
             )
         if skip_if_done and self.already_completed_today():
-            logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
+            logger.info("ℹ️ %s 盤後融合已成功，仍對官方側車（月營收續補）。", self.today_str)
+            self._refresh_official_sidecars()
             return True
         try:
             from import_health import audit_import
@@ -1513,11 +1517,13 @@ class MainRunner:
             ymd = str(closed.get("ymd") or "").strip() or "none"
             key = f"screen-closed-{ymd}"
             logger.info(
-                "今日台股休市 %s %s，不寄今早海選（%s）",
+                "今日台股休市 %s %s，不寄今早海選（%s）；仍對官方側車補月營收",
                 closed.get("ymd"),
                 closed.get("zh"),
                 key,
             )
+            # 連假休市仍每天對 MOPS／OpenAPI：十月十號前後陸續公告，不准空窗。
+            self._refresh_official_sidecars()
             self._mark_pipeline(
                 "success",
                 f"tw closed {closed.get('ymd')} {closed.get('zh')} skip morning",
@@ -1545,10 +1551,12 @@ class MainRunner:
             status = self.pipeline_status(key)
             has_rows = screen_session_has_data(self.db_path, as_of)
             if status == "success" and has_rows:
-                logger.info("早上海選 %s 已寄過，略過。", key)
+                logger.info("早上海選 %s 已寄過，略過寄送；仍對官方側車。", key)
+                self._refresh_official_sidecars()
                 return True
             if status == "computed" and not notify and has_rows:
-                logger.info("早上海選 %s 已算出（不寄），略過。", key)
+                logger.info("早上海選 %s 已算出（不寄），略過；仍對官方側車。", key)
+                self._refresh_official_sidecars()
                 return True
             if status in ("success", "computed") and not has_rows:
                 logger.warning(

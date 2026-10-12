@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
 import time
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
@@ -855,7 +856,324 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         ),
     }
     logger.info("基本面同步完成 %s", stats)
+    _note_filing_sync(filing_month, ok=not errors)
     return stats
+
+
+# 查股／休市略過日 K 時仍要能補已公告月營收／季報。全市場抓有成本，用進程鎖＋TTL。
+_FILING_SYNC_LOCK = threading.Lock()
+_FILING_SYNC_STATE: Dict[str, Any] = {
+    "monthly_ym": "",
+    "monthly_at": 0.0,
+    "income_at": 0.0,
+}
+_FILING_MONTHLY_TTL_SEC = 20 * 60
+_FILING_INCOME_TTL_SEC = 45 * 60
+
+
+def _note_filing_sync(yyyymm: str, *, ok: bool = True) -> None:
+    with _FILING_SYNC_LOCK:
+        if ok and yyyymm:
+            _FILING_SYNC_STATE["monthly_ym"] = str(yyyymm)
+            _FILING_SYNC_STATE["monthly_at"] = time.monotonic()
+
+
+def stock_month_row(
+    db_path: str, stock_id: str, yyyymm: str
+) -> Optional[Dict[str, Any]]:
+    ensure_fundamentals_tables(db_path)
+    ym = str(yyyymm or "").replace("-", "")[:6]
+    sid = str(stock_id or "").strip()
+    if len(ym) != 6 or not sid:
+        return None
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM monthly_revenue WHERE stock_id=? AND yyyymm=?",
+        (sid, ym),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def filing_month_coverage(db_path: str, yyyymm: str = "") -> Dict[str, Any]:
+    """靜默檢查：本檔期相對上一月列數是否明顯偏薄（連假漏抓訊號）。"""
+    ensure_fundamentals_tables(db_path)
+    ym = str(yyyymm or previous_calendar_yyyymm()).replace("-", "")[:6]
+    prev = _shift_yyyymm(ym, 1)
+    conn = sqlite3.connect(db_path)
+    cur = conn.execute(
+        "SELECT COUNT(*) FROM monthly_revenue WHERE yyyymm=?", (ym,)
+    ).fetchone()
+    n = int(cur[0] or 0) if cur else 0
+    prev_n = 0
+    if prev:
+        p = conn.execute(
+            "SELECT COUNT(*) FROM monthly_revenue WHERE yyyymm=?", (prev,)
+        ).fetchone()
+        prev_n = int(p[0] or 0) if p else 0
+    by_m: Dict[str, int] = {}
+    for market, cnt in conn.execute(
+        "SELECT market, COUNT(*) FROM monthly_revenue WHERE yyyymm=? GROUP BY market",
+        (ym,),
+    ):
+        by_m[str(market or "")] = int(cnt or 0)
+    conn.close()
+    # 上一月足夠多時，本檔期低於六成＝疑似漏同步（不准當假資料補）
+    thin = bool(prev_n >= 500 and n < int(prev_n * 0.6))
+    return {
+        "yyyymm": ym,
+        "prev_yyyymm": prev,
+        "n": n,
+        "prev_n": prev_n,
+        "by_market": by_m,
+        "thin": thin,
+        "ok": (not thin) and n > 0,
+    }
+
+
+def stock_fundamentals_fingerprint(db_path: str, stock_id: str) -> tuple:
+    """介紹圖 memo 要吃營收／季報指紋，否則補月後仍吐舊圖。"""
+    m = get_latest_monthly(db_path, stock_id) or {}
+    q = get_latest_income(db_path, stock_id) or {}
+    try:
+        rev = round(float(m.get("revenue") or 0), 2)
+    except (TypeError, ValueError):
+        rev = 0.0
+    try:
+        eps = round(float(q.get("eps") or 0), 4)
+    except (TypeError, ValueError):
+        eps = 0.0
+    return (
+        str(m.get("yyyymm") or ""),
+        rev,
+        str(m.get("updated_at") or ""),
+        int(q.get("year") or 0),
+        int(q.get("season") or 0),
+        eps,
+        str(q.get("updated_at") or ""),
+    )
+
+
+def refresh_announced_monthly(
+    db_path: str,
+    yyyymm: str = "",
+    *,
+    force: bool = False,
+    reason: str = "",
+) -> Dict[str, Any]:
+    """只補「已公告」月營收檔期（OpenAPI 當期＋MOPS NAS＋興櫃近窗）。
+
+    給查股 ensure／休市側車用；不准發明數字。
+    """
+    path = db_path or get_db_path()
+    ensure_fundamentals_tables(path)
+    filing = str(yyyymm or previous_calendar_yyyymm()).replace("-", "")[:6]
+    if len(filing) != 6:
+        return {"ok": False, "skipped": "bad_yyyymm", "yyyymm": filing}
+    now = time.monotonic()
+    with _FILING_SYNC_LOCK:
+        same = _FILING_SYNC_STATE.get("monthly_ym") == filing
+        age = now - float(_FILING_SYNC_STATE.get("monthly_at") or 0)
+        if (
+            not force
+            and same
+            and age < _FILING_MONTHLY_TTL_SEC
+        ):
+            return {
+                "ok": True,
+                "skipped": "ttl",
+                "yyyymm": filing,
+                "age_s": round(age, 1),
+                "reason": reason or "",
+            }
+    errors: List[str] = []
+    monthly_rows: List[Dict[str, Any]] = []
+    for url, market in (
+        (TWSE_MONTHLY, "TW"),
+        (TPEX_MONTHLY, "TWO"),
+        (TPEX_EMERGING_MONTHLY, "EM"),
+    ):
+        try:
+            payload = _get(url)
+            monthly_rows.extend(
+                [p for p in (parse_monthly_row(x, market) for x in payload) if p]
+            )
+        except Exception as e:
+            errors.append(f"{market}/monthly: {e}")
+            logger.warning("查股補月營收 OpenAPI %s 失敗：%s", market, e)
+    mops_n = 0
+    em_hist_n = 0
+    conn = sqlite3.connect(path)
+    try:
+        if monthly_rows:
+            _upsert_monthly(conn, monthly_rows)
+            conn.commit()
+        try:
+            mops_rows, mops_err = fetch_mops_monthly_filings(filing)
+            errors.extend(mops_err)
+            if mops_rows:
+                mops_n = _upsert_monthly(conn, mops_rows)
+                conn.commit()
+        except Exception as e:
+            errors.append(f"mops {filing}: {e}")
+            logger.warning("查股補 MOPS 月營收失敗：%s", e)
+        try:
+            force_ym = [filing]
+            prev2 = _shift_yyyymm(filing, 1)
+            if prev2:
+                force_ym.append(prev2)
+            gap_m = emerging_monthly_gap_months(conn, filing, months=12)
+            refresh_ym = list(dict.fromkeys([*force_ym, *gap_m]))
+            if refresh_ym:
+                em_rows, em_err = fetch_mops_emerging_monthly_history(
+                    filing, only_yyyymm=refresh_ym
+                )
+                errors.extend(em_err)
+                if em_rows:
+                    em_hist_n = _upsert_monthly(conn, em_rows)
+                    conn.commit()
+        except Exception as e:
+            errors.append(f"mops EM history: {e}")
+            logger.warning("查股補興櫃月營收歷史失敗：%s", e)
+    finally:
+        conn.close()
+    _note_filing_sync(filing, ok=True)
+    cover = filing_month_coverage(path, filing)
+    stats = {
+        "ok": True,
+        "yyyymm": filing,
+        "mops_rows": mops_n,
+        "openapi_rows": len(monthly_rows),
+        "emerging_monthly_history_rows": em_hist_n,
+        "errors": errors,
+        "coverage": cover,
+        "reason": reason or "",
+    }
+    logger.info("已公告月營收補齊 %s", stats)
+    return stats
+
+
+def refresh_announced_income(
+    db_path: str,
+    *,
+    force: bool = False,
+    reason: str = "",
+) -> Dict[str, Any]:
+    """補上市櫃 OpenAPI 最新季報＋興櫃缺口季。"""
+    path = db_path or get_db_path()
+    ensure_fundamentals_tables(path)
+    now = time.monotonic()
+    with _FILING_SYNC_LOCK:
+        age = now - float(_FILING_SYNC_STATE.get("income_at") or 0)
+        if not force and age < _FILING_INCOME_TTL_SEC:
+            return {
+                "ok": True,
+                "skipped": "ttl",
+                "age_s": round(age, 1),
+                "reason": reason or "",
+            }
+    errors: List[str] = []
+    income_rows: List[Dict[str, Any]] = []
+    for url, market in ((TWSE_INCOME, "TW"), (TPEX_INCOME, "TWO")):
+        try:
+            payload = _get(url)
+            income_rows.extend(
+                [p for p in (parse_income_row(x, market) for x in payload) if p]
+            )
+        except Exception as e:
+            errors.append(f"{market}/income: {e}")
+            logger.warning("查股補季報 OpenAPI %s 失敗：%s", market, e)
+    em_n = 0
+    i_n = 0
+    conn = sqlite3.connect(path)
+    try:
+        if income_rows:
+            i_n = _upsert_income(conn, income_rows)
+            conn.commit()
+        try:
+            gap_q = emerging_income_gap_seasons(conn)
+            if gap_q:
+                em_rows, em_err = fetch_mops_emerging_income(gap_q)
+                errors.extend(em_err)
+                if em_rows:
+                    em_n = _upsert_income(conn, em_rows)
+                    conn.commit()
+        except Exception as e:
+            errors.append(f"mops EM income: {e}")
+            logger.warning("查股補興櫃季報失敗：%s", e)
+    finally:
+        conn.close()
+    with _FILING_SYNC_LOCK:
+        _FILING_SYNC_STATE["income_at"] = time.monotonic()
+    stats = {
+        "ok": True,
+        "income_rows": i_n,
+        "emerging_income_rows": em_n,
+        "errors": errors,
+        "reason": reason or "",
+    }
+    logger.info("已公告季報補齊 %s", stats)
+    return stats
+
+
+def ensure_stock_fundamentals(
+    db_path: str,
+    stock_id: str,
+    *,
+    force: bool = False,
+) -> Dict[str, Any]:
+    """查股／介紹圖前：缺本檔期月營收或季報就自動對官方補，不准等使用者提醒。
+
+    只吃 OpenAPI／MOPS 已公告列；沒公告的不造假。TTL 避免每檔重抓全市場。
+    """
+    path = db_path or get_db_path()
+    sid = str(stock_id or "").strip()
+    out: Dict[str, Any] = {"stock_id": sid, "monthly": None, "income": None}
+    if not sid:
+        out["skipped"] = "empty"
+        return out
+    try:
+        from universe import card_asset_type, is_etf_asset
+
+        if is_etf_asset(card_asset_type(sid, path), sid):
+            out["skipped"] = "etf"
+            return out
+    except Exception:
+        pass
+    ensure_fundamentals_tables(path)
+    filing = previous_calendar_yyyymm()
+    has_month = stock_month_row(path, sid, filing) is not None
+    cover = filing_month_coverage(path, filing)
+    need_month = force or (not has_month) or bool(cover.get("thin"))
+    if need_month:
+        out["monthly"] = refresh_announced_monthly(
+            path,
+            filing,
+            force=force or bool(cover.get("thin")),
+            reason=f"ensure {sid} filing={filing} has={has_month} thin={cover.get('thin')}",
+        )
+        has_month = stock_month_row(path, sid, filing) is not None
+    out["has_filing_month"] = has_month
+    out["filing_month"] = filing
+    out["coverage"] = cover
+    q = get_latest_income(path, sid)
+    if force or q is None:
+        out["income"] = refresh_announced_income(
+            path,
+            force=force,
+            reason=f"ensure {sid} income missing={q is None}",
+        )
+    out["latest_month"] = (get_latest_monthly(path, sid) or {}).get("yyyymm") or ""
+    out["latest_quarter"] = (
+        f"{int(q['year'])}Q{int(q['season'])}" if q else ""
+    )
+    if out.get("income") and q is None:
+        q2 = get_latest_income(path, sid)
+        out["latest_quarter"] = (
+            f"{int(q2['year'])}Q{int(q2['season'])}" if q2 else ""
+        )
+    return out
 
 
 def get_latest_monthly(db_path: str, stock_id: str) -> Optional[Dict[str, Any]]:
@@ -1236,6 +1554,11 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
         emerging = False
     if not emerging:
         return None
+    try:
+        # 缺本檔期月營收時當場對官方補（連假漏抓／未部署也要能自癒）
+        ensure_stock_fundamentals(path, sid)
+    except Exception:
+        logger.debug("興櫃介紹卡 ensure 月營收略過", exc_info=True)
     months = list_monthly_revenue(path, sid, limit=36)
     if not months:
         return None
@@ -1386,6 +1709,10 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
             return rows
     except Exception:
         pass
+    try:
+        ensure_stock_fundamentals(path, sid)
+    except Exception:
+        logger.debug("介紹卡 ensure 月營收／季報略過", exc_info=True)
     emerging = False
     try:
         from universe import stock_is_emerging
@@ -1565,10 +1892,14 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
             return join_sections(*blocks)
     except Exception:
         pass
+    try:
+        ensure_stock_fundamentals(path, sid)
+    except Exception:
+        logger.debug("/fund ensure 月營收／季報略過", exc_info=True)
     m = get_latest_monthly(path, sid)
     q = get_latest_income(path, sid)
     if not m and not q:
-        return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（等盤後流水線寫入；按鈕路徑不再現場全市場同步）。"
+        return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（官方尚未見此檔；查股會自動對已公告月補庫）。"
     name = (m or q or {}).get("stock_name") or sid
     face = ""
     try:

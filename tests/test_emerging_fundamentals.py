@@ -253,9 +253,11 @@ def test_month_quarter_split_rows_boxes():
     assert boxes[0]["season"] <= boxes[-1]["season"]
 
 
-def test_glance_split_layout_emerging_only(tmp_path):
+def test_glance_split_layout_emerging_only(tmp_path, monkeypatch):
     db = str(tmp_path / "em.db")
     _seed_emerging_7853(db)
+    # 版面單元測故意只種到 8 月；查股 ensure 另有 test_revenue_filing_ensure 覆蓋
+    monkeypatch.setattr("fundamentals.ensure_stock_fundamentals", lambda *a, **k: {})
     lay = glance_fund_split_layout("7853", db)
     assert lay and lay["emerging"] is True
     assert len(lay["month_rows"]) == 12
@@ -293,9 +295,10 @@ def test_glance_split_layout_emerging_only(tmp_path):
     assert glance_fund_split_layout("2330", db) is None
 
 
-def test_glance_shows_eps_when_rotc_income(tmp_path):
+def test_glance_shows_eps_when_rotc_income(tmp_path, monkeypatch):
     db = str(tmp_path / "em2.db")
     _seed_emerging_7853(db)
+    monkeypatch.setattr("fundamentals.ensure_stock_fundamentals", lambda *a, **k: {})
     rows = glance_fundamentals_plain("7853", db)
     blob = " ".join(f"{a} {b}" for a, b in rows)
     assert "月營收近窗" not in blob
