@@ -442,8 +442,19 @@ def reset_ai_account(engine: PortfolioEngine, user_id: str, *, note: str = "") -
     }
 
 
+def mark_ai_restart_done(db_path: str, user_id: str) -> None:
+    """標記重跑已做完（測試／遷移用）；不影響其他功能。"""
+    uid = str(user_id or "").strip()
+    if not uid:
+        return
+    _param_set(db_path, f"{RESTART_PARAM_KEY}:{uid}", 1.0)
+
+
 def ensure_ai_restart_applied(engine: PortfolioEngine, user_id: str) -> bool:
-    """每位 AI 戶只清空重跑一次（v20261012）。回傳是否本輪有執行重置。"""
+    """每位 AI 戶只清空重跑一次（v20261012）。回傳是否本輪有執行重置。
+
+    只動該人 ai_{uid} 假錢倉；不碰真實持股／觀察／海選／勝率買點推播。
+    """
     ensure_ai_tables(engine.db_path)
     key = f"{RESTART_PARAM_KEY}:{user_id}"
     if _param_get(engine.db_path, key) is not None:

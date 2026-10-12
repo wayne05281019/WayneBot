@@ -115,23 +115,20 @@ def test_screening_gate_blocks_second_family_member():
     asyncio.run(run())
 
 
-def test_ai_deploy_cap_never_fills_all_three_slots():
-    from ai_trader import CORE_SLOTS, DIP_SLOTS, MAX_SLOTS, market_deploy_cap
+def test_ai_deploy_cap_is_max_three_active_names():
+    """操作桶最多 3 檔；抄底動保留額、不另開無限槽。不准牽連其他鈕。"""
+    from ai_trader import ACTIVE_BUDGET, DIP_RESERVE, MAX_ACTIVE_NAMES, TOTAL_CAPITAL, market_deploy_cap
 
-    assert CORE_SLOTS + DIP_SLOTS < MAX_SLOTS
-    with patch("taiwan_market.analyze_taiwan_market", return_value={"ok": False}):
-        assert market_deploy_cap("x.db", "20260907", {"leave_zero": [{"stock_id": "2330"}]}) == 1
-    with patch(
-        "taiwan_market.analyze_taiwan_market",
-        return_value={"ok": True, "regime": "bear", "falling_risk": 80, "vs_ma20_pct": -3},
-    ):
-        cap = market_deploy_cap(
+    assert TOTAL_CAPITAL == ACTIVE_BUDGET + DIP_RESERVE
+    assert market_deploy_cap("x.db", "20261013", {}) == MAX_ACTIVE_NAMES
+    assert (
+        market_deploy_cap(
             "x.db",
-            "20260907",
+            "20261013",
             {"leave_zero": [{"stock_id": "2330"}], "golden_buy": [{"stock_id": "2303"}]},
         )
-        assert cap == 2
-        assert cap < MAX_SLOTS
+        == MAX_ACTIVE_NAMES
+    )
 
 
 def test_help_and_two_guide_pages_parallel_under_deadline(tmp_path):

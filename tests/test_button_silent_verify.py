@@ -235,7 +235,8 @@ def test_ai_and_biaoke_snapshots(tmp_path):
     )
     conn.commit()
     conn.close()
-    assert snapshot_ai_desk(db, "20260915") == 1
+    # ai_desk＋ai_desk_winrate（同筆分軌；理由軌無柱則不加）
+    assert snapshot_ai_desk(db, "20260915") >= 2
     assert snapshot_biaoke_named(db, "20260915") == 1
 
 
