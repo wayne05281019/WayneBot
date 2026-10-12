@@ -74,8 +74,8 @@ _MUTED = "#607d8b"
 # 主圖左右略拉長：回收左緣空白給 K 區，右溝仍留「最可能」整盒
 _FIG_LEFT = 0.028
 _FIG_RIGHT = 0.918
-# 結構圖右溝要塞「最可能＝看壓 ####」整盒＋邊框；右緣再留 y 刻度，不准貼齊裁切
-_STRUCTURE_FIG_RIGHT = 0.948
+# 結構圖右緣：吃今收標籤四周空檔把主圖 K 往右拉寬；右軸刻度仍留縫不准裁
+_STRUCTURE_FIG_RIGHT = 0.972
 # 直式 4:5：縮圖靠右，左邊留給頭牌，不准今K／日期壓進迷你圖
 _LOOKUP_LOCATOR_LEFT = 0.575
 _FIG_BOTTOM = 0.055
@@ -111,10 +111,11 @@ _STOCK_LOCATOR_RECT_FB = (
 _STRUCTURE_BOX_X = 1.6
 _STRUCTURE_BOX_W = 96.6
 _STRUCTURE_BOX_EC = "#90caf9"
-_STRUCTURE_BOX_LW = 1.05
-_STRUCTURE_BOX_STYLE = "round,pad=0.18,rounding_size=0.55"
-# 頭欄藍框上緣：抬高讓股號股名與上邊框留縫（不准貼死）
-_STRUCTURE_TOP_PAD = 0.18
+_STRUCTURE_BOX_LW = 1.35
+# pad 過大＝上邊框被 figure 裁掉；rounding 保留圓角
+_STRUCTURE_BOX_STYLE = "round,pad=0.08,rounding_size=0.50"
+# 頭欄藍框上緣：上邊框線必須完整入鏡（pad 太小＝上線被裁掉）
+_STRUCTURE_TOP_PAD = 0.72
 _HEADER_X = 4.60
 _HEADER_X_FB = 5.20
 # 今K／漲跌：右對齊藍框右內緣；有迷你圖時對齊縮圖左緣
@@ -127,6 +128,15 @@ _HEADER_CHIP_MAX = 48.5
 _HEADER_CHIP_MAX_FB = 82.0
 # 查股結構圖橫式長寬比對齊範本五（約 1.52）；大量撐壓 figsize 不动
 _STRUCTURE_LOOKUP_FIG = (12.4, 12.4 / 1.52)
+# 右溝／通道／壓撐／昨收今收／最可能：同一字級＋同一盒 pad（不准忽大忽小）
+_STRUCTURE_TAG_SIZE = 11
+_STRUCTURE_TAG_PAD = 0.22
+# 橫式頭欄：股號／股名／當天股價同大；開高低量／爆大量列同小
+_STRUCTURE_TITLE_FS = 24
+_STRUCTURE_SPOT_FS = 24
+_STRUCTURE_META_FS = 15
+# 右上三行（今K｜較昨日｜查詢戳）等距
+_STRUCTURE_SPOT_ROW_GAP = 5.35
 
 
 def _style_frame(ax, *, hide_top=False) -> None:
@@ -1288,12 +1298,15 @@ def _leader_note(
     shrink_b: float = 4.0,
     ls: Any = "--",
     lw: float = 0.95,
+    pad: Optional[float] = None,
 ) -> None:
     """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
 
     clip=True：標籤必須落在軸內（演化區右側／最可能），不准跳出底圖。
     ls：引線線型；最可能用短 dash，其餘預設 --。
+    pad：盒內邊距；結構圖右溝統一用 _STRUCTURE_TAG_PAD。
     """
+    box_pad = float(_STRUCTURE_TAG_PAD if pad is None else pad)
     ax.annotate(
         str(text),
         xy=(float(x), float(y)),
@@ -1306,10 +1319,10 @@ def _leader_note(
         annotation_clip=bool(clip),
         clip_on=bool(clip),
         bbox=dict(
-            boxstyle="round,pad=0.28",
+            boxstyle=f"round,pad={box_pad:.2f}",
             facecolor="#ffffff",
             edgecolor=color,
-            linewidth=1.1,
+            linewidth=1.05,
             alpha=0.97,
         ),
         arrowprops=dict(
@@ -1381,13 +1394,17 @@ def _place_band_notes(
 
 
 def _approx_note_width(text: str, size: float = 12) -> float:
-    """結構圖右溝標籤約略資料座標寬（含 bbox pad＋邊框）。偏寬估，整盒必須在畫布內。"""
+    """結構圖右溝標籤約略資料座標寬（含 bbox pad＋邊框）。
+
+    78：略收估寬，讓昨收｜今收並排不再把 xlim 右白撐爆（主圖 K 變瘦）。
+    仍偏寬於真盒，整盒必須在畫布內、不准互壓。
+    """
     s = str(text or "")
     units = 0.0
     for ch in s:
         units += 1.0 if ord(ch) > 0x2E80 else 0.72
-    # 實測 size12「最可能＝看壓 5255」約 19；邊框＋內邊距刻意估高
-    return units * (float(size) / 12.0) * 2.35 + 6.8
+    # 舊 2.35+6.8 並排時 xlim≈235／182 根 → K 過瘦；收回今收空檔
+    return units * (float(size) / 12.0) * 2.05 + 5.2
 
 
 def _is_today_close_note(text: str) -> bool:
@@ -1461,8 +1478,16 @@ def _approx_note_pack_width(text: str, size: float = 12) -> float:
     return _approx_note_width(text, size) * 1.08
 
 
-# 昨收｜今收並排：左盒右緣 → 右盒左緣的資料座標縫（話筒縮圖後仍清楚）
-_CLOSE_PAIR_SIDE_GAP = 5.2
+# 昨收｜今收並排：縫收緊以把空檔還給主圖 K（仍不准兩盒互壓）
+_CLOSE_PAIR_SIDE_GAP = 4.5
+# 主圖 xlim 右白／標籤欄：收掉今收四周空檔，K 柱加寬（不准改 OHLC／量）
+_STRUCTURE_X_RIGHT_PAD = 9.0
+_STRUCTURE_LABEL_COL_EXTRA = 0.85
+_STRUCTURE_LABEL_FRAC = 0.078
+# xlim 硬頂：主圖加寬仍須整盒入軸（今收不准裁半）；估寬已收過
+_STRUCTURE_X_RIGHT_CAP_EXTRA = 28.0
+# 昨收→今收前進寬係數（<1＝兩盒靠緊，空檔還給 K）
+_STRUCTURE_CLOSE_PAIR_ADVANCE = 0.58
 
 
 def _dedupe_right_notes(
@@ -1627,7 +1652,7 @@ def _place_right_notes(
             if not (close_pair and _is_close_note(str(n.get("text") or "")))
         ]
         if close_pair:
-            # 並排兩盒＋清楚小縫；fit 與繪製同一套寬估，整列必須進軸
+            # 並排兩盒：前進寬用收緊係數，fit 與繪製同一套，整列必須進軸
             pw = _approx_note_pack_width(
                 str(prev_close_notes[0].get("text") or ""),
                 float(prev_close_notes[0].get("size") or 11),
@@ -1636,13 +1661,17 @@ def _place_right_notes(
                 str(today_close_notes[0].get("text") or ""),
                 float(today_close_notes[0].get("size") or 11),
             )
-            singles.append(pw + float(_CLOSE_PAIR_SIDE_GAP) + tw)
+            singles.append(
+                pw * float(_STRUCTURE_CLOSE_PAIR_ADVANCE)
+                + float(_CLOSE_PAIR_SIDE_GAP)
+                + tw
+            )
         need = max(singles, default=16.0)
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
-        fit_tx = float(x_max) - need - 6.0
+        fit_tx = float(x_max) - need - 4.8
         if pin_x is not None:
-            # 左緣至少離末日 K 一段（67／精確度：不准蓋住最後幾根縮圖）
-            floor_tx = float(pin_x) + 5.6
+            # 左緣離末日 K 仍留縫；略收以把空檔還主圖（不准蓋最後幾根）
+            floor_tx = float(pin_x) + 4.9
             # 若右溝不夠，優先保左空隙（呼叫端應把 x_right 加夠）
             tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
@@ -1748,12 +1777,12 @@ def _place_right_notes(
         show_ty: float,
         text_x: float,
         *,
-        pad: float = 0.22,
+        pad: float = _STRUCTURE_TAG_PAD,
         z: int = 12,
     ) -> None:
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
-        size = int(note.get("size") or 11)
+        size = int(note.get("size") or _STRUCTURE_TAG_SIZE)
         ax.text(
             float(text_x),
             show_ty,
@@ -1777,7 +1806,7 @@ def _place_right_notes(
         ny = float(note.get("y") or 0)
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
-        size = int(note.get("size") or 11)
+        size = int(note.get("size") or _STRUCTURE_TAG_SIZE)
         # 75：最可能＝短 dash 直連末日 K → 標籤；不准末端空曠橘點、不准長段假虛線。
         # annotate 的 arrowprops 常吃掉自訂 dash → 改 ax.plot 短虛線＋text 盒。
         if "最可能" in text:
@@ -1817,10 +1846,10 @@ def _place_right_notes(
                 zorder=12,
                 clip_on=True,
                 bbox=dict(
-                    boxstyle="round,pad=0.28",
+                    boxstyle=f"round,pad={float(_STRUCTURE_TAG_PAD):.2f}",
                     facecolor="#ffffff",
                     edgecolor=color,
-                    linewidth=1.1,
+                    linewidth=1.05,
                     alpha=0.97,
                 ),
             )
@@ -1838,6 +1867,7 @@ def _place_right_notes(
             va="center",
             clip=True,
             shrink_b=1.5,
+            pad=_STRUCTURE_TAG_PAD,
         )
         if not stub:
             return
@@ -1872,20 +1902,23 @@ def _place_right_notes(
         # 73：顯示 Y 一律用留縫後的 ty（不准再 snap 回 ny 把盒貼死）
         show_ty = float(ty)
         if close_pair and note is pair_today and pair_prev is not None:
-            # 77：同列左昨收右今收；兩盒用同一 text 盒（不准 annotate 把昨收估窄）、中間清楚小縫
+            # 77／78：同列左昨收右今收；前進寬略收＝兩盒靠緊，空檔還主圖 K
             prev_text = str(pair_prev.get("text") or "")
             prev_size = float(pair_prev.get("size") or 11)
             today_text = str(pair_today.get("text") or "")
             today_size = float(pair_today.get("size") or 11)
-            advance = _approx_note_pack_width(prev_text, prev_size)
+            advance = (
+                _approx_note_pack_width(prev_text, prev_size)
+                * float(_STRUCTURE_CLOSE_PAIR_ADVANCE)
+            )
             today_tx = float(col_tx) + advance + pair_side_gap
             if x_max is not None:
                 today_w = _approx_note_pack_width(today_text, today_size)
-                # 右緣不夠時略縮縫仍同列；縫底線 3.2，不准互壓
-                overflow = (today_tx + today_w) - (float(x_max) - 2.0)
+                # 右緣不夠時略縮縫仍同列；今收整盒入軸，不准裁半
+                overflow = (today_tx + today_w) - (float(x_max) - 2.2)
                 if overflow > 0:
                     today_tx = max(
-                        float(col_tx) + advance + 3.2,
+                        float(col_tx) + advance + 2.4,
                         today_tx - overflow,
                     )
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
@@ -1901,8 +1934,8 @@ def _place_right_notes(
                 linestyle="None",
                 clip_on=True,
             )
-            _paint_close_text_only(pair_prev, show_ty, col_tx, pad=0.22, z=12)
-            _paint_close_text_only(pair_today, show_ty, today_tx, pad=0.22, z=13)
+            _paint_close_text_only(pair_prev, show_ty, col_tx, pad=_STRUCTURE_TAG_PAD, z=12)
+            _paint_close_text_only(pair_today, show_ty, today_tx, pad=_STRUCTURE_TAG_PAD, z=13)
             continue
         _paint_one_note(note, show_ty, col_tx, stub=True)
 
@@ -2886,7 +2919,8 @@ def _spot_quote(
     if live_pct is None and yf:
         live_pct = (px - yf) / yf * 100.0
     # 盤中／收盤依開市日曆＋時段切換（與三合一表頭同一套用詞；不准寫現價）
-    # 假日／補假／週末／已收盤：即使 MIS 還吐價，標籤仍是收盤，不准寫盤中。
+    # 假日／補假／週末／已收盤：只認官方末日開高低收量，不准用 MIS 蓋成假收盤。
+    # 結構圖／大量圖主柱＋表頭迷你K 同一條：盤中才用 MIS；收盤＝官方。
     try:
         from decision_card_signals import _in_board_session, taipei_now
         from live_quote import board_session_label
@@ -2899,9 +2933,16 @@ def _spot_quote(
         label = "收盤"
         is_live = False
         ut = str(live.get("update_time") or "")
+    if not is_live:
+        # 收盤／非盤中：保留官方 last_bar；MIS 價不准蓋掉真收
+        out["label"] = "收盤"
+        out["is_live"] = False
+        if ut:
+            out["update_time"] = ut
+        return out
     out.update(
         {
-            "is_live": is_live,
+            "is_live": True,
             "label": label,
             "open": live.get("open") if live.get("open") is not None else out["open"],
             "high": live.get("high") if live.get("high") is not None else out["high"],
@@ -2985,7 +3026,9 @@ def _paint_structure_blue_baskets(fig, ov, ax1, ax2) -> None:
         vol_y0, vol_h = _y_box(p2)
         vis_gap = main_y0 - (vol_y0 + vol_h)
     main_top = main_y0 + main_h
-    header_bot = main_top + vis_gap
+    # 頭／主縫至少夠兩條藍線＋圓角 pad，不准上框底蓋住中框頂線
+    basket_gap = max(float(vis_gap), 0.55)
+    header_bot = main_top + basket_gap
     header_top = 100.0 - float(_STRUCTURE_TOP_PAD)
     min_bot = float(_STOCK_MAIN_TOP_FULLBLEED) * 100.0 + 0.15
     if header_bot < min_bot:
@@ -3022,6 +3065,18 @@ def _paint_structure_blue_baskets(fig, ov, ax1, ax2) -> None:
     _add_box(header_bot, header_h, fill=True, z=1)
     _add_box(main_y0, main_h, fill=False, z=15)
     _add_box(vol_y0, vol_h, fill=False, z=15)
+    # 上籃筐頂線加一筆實線保險：FancyBbox 圓角＋JPEG 常把最上緣吃掉
+    top_y = float(header_bot + header_h)
+    inset = 0.55  # 避開圓角，只補中段橫線
+    ov.plot(
+        [_STRUCTURE_BOX_X + inset, _STRUCTURE_BOX_X + _STRUCTURE_BOX_W - inset],
+        [top_y, top_y],
+        color=_STRUCTURE_BOX_EC,
+        linewidth=_STRUCTURE_BOX_LW,
+        solid_capstyle="butt",
+        zorder=16,
+        clip_on=False,
+    )
 
 
 def _paint_industry_chips(
@@ -3106,10 +3161,15 @@ def _paint_spot(
     compact: bool = False,
     move_dy: Optional[float] = None,
     bare: bool = False,
+    stamp: str = "",
+    stamp_dy: Optional[float] = None,
+    price_size: Optional[int] = None,
+    move_size: Optional[int] = None,
 ) -> None:
     """今K／現價／漲跌。預設置於縮圖外框左側空白，右對齊，不擋縮圖、不壓左上頭牌。
 
-    bare=True（結構圖橫式／使用者附圖）：只畫迷你K＋大字股價＋較昨日，不寫「今K」「收盤」。
+    bare=True：舊附圖「＋」大價（結構圖橫式已改走介紹圖今K列，不再用）。
+    stamp：第三行查詢戳（右對齊、與較昨日等距）。
     """
     close = quote.get("close")
     if close is None:
@@ -3145,15 +3205,34 @@ def _paint_spot(
     lab_size = 12
     # overlay 單位：二字標至少空出約半個字寬，一眼不黏
     char_gap = 1.2
+    stamp_s = " ".join(str(stamp or "").split())
+    row_gap = float(_STRUCTURE_SPOT_ROW_GAP)
+
+    def _paint_stamp_row(base_y: float, move_row_dy: float) -> None:
+        if not stamp_s:
+            return
+        dy3 = float(stamp_dy) if stamp_dy is not None else (move_row_dy + row_gap)
+        ax.text(
+            float(x),
+            float(base_y) - dy3,
+            stamp_s,
+            color="#455a64",
+            fontproperties=_fp(14, "bold"),
+            va="center",
+            ha="right",
+            zorder=22,
+            clip_on=False,
+        )
+
     if bare:
-        # 使用者附圖 62／12-v4：價左紅色「＋」（不是迷你K、不寫今K／收盤）；字級對齊附圖
-        price_size = 42
-        move_size = 22
+        # 舊附圖 62／12-v4：價左紅色「＋」（不是迷你K、不寫今K／收盤）
+        _price_size = int(price_size) if price_size is not None else 42
+        _move_size = int(move_size) if move_size is not None else 22
         plus_size = 36
         gap_plus = 1.55
-        price_w = _ow(px, price_size) * 1.38 + (1.05 if px_kw else 0.25)
+        price_w = _ow(px, _price_size) * 1.38 + (1.05 if px_kw else 0.25)
         ax.text(
-            float(x), y, px, color=px_color, fontproperties=_fp(price_size, "bold"),
+            float(x), y, px, color=px_color, fontproperties=_fp(_price_size, "bold"),
             va="center", ha="right", zorder=22, **px_kw,
         )
         ax.text(
@@ -3161,12 +3240,15 @@ def _paint_spot(
             fontproperties=_fp(plus_size, "bold"), va="center", ha="right",
             zorder=22, clip_on=False,
         )
+        move_row_dy = float(move_dy) if move_dy is not None else row_gap
         if move and move != "—":
-            dy = float(move_dy) if move_dy is not None else 6.35
             ax.text(
-                float(x), y - dy, "較昨日　" + move, color=color,
-                fontproperties=_fp(move_size, "bold"), va="center", ha="right", zorder=22,
+                float(x), y - move_row_dy, "較昨日　" + move, color=color,
+                fontproperties=_fp(_move_size, "bold"), va="center", ha="right", zorder=22,
             )
+        else:
+            move_row_dy = 0.0
+        _paint_stamp_row(y, move_row_dy if move_row_dy else row_gap)
         return
     if compact:
         _paint_spaced_cjk(
@@ -3200,26 +3282,32 @@ def _paint_spot(
                 fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
             )
         return
-    # 右對齊：今K｜迷你K｜【收盤／盤中置中】｜股價
+    # 右對齊：今K｜迷你K｜【收盤／盤中置中】｜股價（對齊介紹圖紅框）
     # 二字標水平置中於「迷你K右緣」與「股價左緣」之間，不准黏某一邊
+    # 迷你K 只畫 quote 真開高低收；缺真數就不畫（不准造假 OHLC）
+    _price_size = int(price_size) if price_size is not None else 22
+    _move_size = int(move_size) if move_size is not None else 12
     if str(align or "right") == "right":
-        side_pad = 1.65  # 標↔價／標↔迷你K 對稱留白
-        gap_candle_jink = 1.25
-        cw, ch = 1.85, 4.0
+        # 介紹圖紅框：緊湊右對齊，不准今K／收盤拉太開
+        side_pad = 1.05 if _price_size >= 22 else 1.65
+        gap_candle_jink = 0.85 if _price_size >= 22 else 1.25
+        # 迷你K 高度跟大字價對齊，不准縮成怪縮圖；柱體比＝真開高低收
+        cw = 1.70 if _price_size >= 22 else 1.85
+        ch = max(3.6, float(_price_size) * 0.17)
         lab_w = (
             _spaced_cjk_width(label, lab_size, char_gap=char_gap)
             if label in session_labs
             else _ow(label, lab_size)
         )
         # _ow 低估粗體數字；再乘係數＋晶片膨脹，價左緣才對得上肉眼
-        price_w = _ow(px, 22) * 1.42 + (1.05 if px_kw else 0.25)
+        price_w = _ow(px, _price_size) * 1.42 + (1.05 if px_kw else 0.25)
         price_left = float(x) - price_w
         # 槽寬＝標寬＋兩側對稱 pad；迷你K 右緣＝槽左
         slot_w = lab_w + 2.0 * side_pad
         candle_right = price_left - slot_w
         mid = (candle_right + price_left) * 0.5
         ax.text(
-            float(x), y, px, color=px_color, fontproperties=_fp(22, "bold"),
+            float(x), y, px, color=px_color, fontproperties=_fp(_price_size, "bold"),
             va="center", ha="right", zorder=22, **px_kw,
         )
         if label in session_labs:
@@ -3242,16 +3330,19 @@ def _paint_spot(
         _paint_spaced_cjk(
             ax, cursor, y, "今K", color="#546e7a", size=10, ha="right", char_gap=0.55,
         )
+        move_row_dy = (
+            float(move_dy)
+            if move_dy is not None
+            else row_gap
+        )
         if move and move != "—":
-            dy = (
-                float(move_dy)
-                if move_dy is not None
-                else (4.55 if px_kw else 3.95)
-            )
             ax.text(
-                x, y - dy, "較昨日　" + move, color=color,
-                fontproperties=_fp(12, "bold"), va="center", ha="right", zorder=22,
+                x, y - move_row_dy, "較昨日　" + move, color=color,
+                fontproperties=_fp(_move_size, "bold"), va="center", ha="right", zorder=22,
             )
+        else:
+            move_row_dy = 0.0
+        _paint_stamp_row(y, move_row_dy if move_row_dy else row_gap)
         return
     # 左對齊備援：今K｜迷你K｜【標置中】｜股價
     gap_jink_candle = 1.25
@@ -3288,18 +3379,35 @@ def _paint_spot(
         )
     price_x = candle_right + slot_w
     ax.text(
-        price_x, y, px, color=px_color, fontproperties=_fp(22, "bold"),
+        price_x, y, px, color=px_color, fontproperties=_fp(_price_size, "bold"),
         va="center", ha="left", zorder=22, **px_kw,
     )
+    move_row_dy = (
+        float(move_dy)
+        if move_dy is not None
+        else (4.45 if px_kw else 3.95)
+    )
     if move and move != "—":
-        dy = (
-            float(move_dy)
-            if move_dy is not None
-            else (4.45 if px_kw else 3.95)
+        ax.text(
+            x, y - move_row_dy, "較昨日　" + move, color=color,
+            fontproperties=_fp(_move_size, "bold"), va="center", ha="left", zorder=22,
+        )
+    else:
+        move_row_dy = 0.0
+    if stamp_s:
+        dy3 = float(stamp_dy) if stamp_dy is not None else (
+            (move_row_dy if move_row_dy else row_gap) + row_gap
         )
         ax.text(
-            x, y - dy, "較昨日　" + move, color=color,
-            fontproperties=_fp(12, "bold"), va="center", ha="left", zorder=22,
+            float(x),
+            float(y) - dy3,
+            stamp_s,
+            color="#455a64",
+            fontproperties=_fp(14, "bold"),
+            va="center",
+            ha="left",
+            zorder=22,
+            clip_on=False,
         )
 
 
@@ -3401,8 +3509,8 @@ def render_biaoke_structure_png(
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
     # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬
-    # 64 收右白加寬 K；67 標籤再右移讓開末日 K，右溝略加回可讀空隙
-    x_right = n + _FUTURE + 16.0
+    # 78：收今收四周空檔 → 主圖 K 往右拉寬（只改排版，不准造假 OHLC／量）
+    x_right = n + _FUTURE + float(_STRUCTURE_X_RIGHT_PAD)
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     st = info.get("struct") or {}
@@ -3439,9 +3547,11 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     x_fut = float(n - 1 + _FUTURE)
-    # 標籤欄左緣：演化帶內再右移（67），不准蓋住最後幾根／末日縮圖 K
-    label_col_left = float(n - 1) + max(float(_FUTURE) * 0.72, 6.2) + 2.2
-    hline_xmax = float(label_col_left) - 1.2
+    # 標籤欄左緣：演化帶右側；略左移＝主圖＋水平壓撐線往右吃空檔
+    label_col_left = (
+        float(n - 1) + max(float(_FUTURE) * 0.70, 5.9) + float(_STRUCTURE_LABEL_COL_EXTRA)
+    )
+    hline_xmax = float(label_col_left) - 0.9
     if spike_hi:
         ax1.hlines(
             spike_hi,
@@ -3453,7 +3563,13 @@ def render_biaoke_structure_png(
             alpha=0.92,
         )
         right_notes.append(
-            {"x": float(label_col_left) - 0.6, "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
+            {
+                "x": float(label_col_left) - 0.6,
+                "y": spike_hi,
+                "text": f"壓 {_px(spike_hi)}",
+                "color": _PRESS,
+                "size": _STRUCTURE_TAG_SIZE,
+            }
         )
     if spike_lo:
         ax1.hlines(
@@ -3466,7 +3582,13 @@ def render_biaoke_structure_png(
             alpha=0.92,
         )
         right_notes.append(
-            {"x": float(label_col_left) - 0.6, "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
+            {
+                "x": float(label_col_left) - 0.6,
+                "y": spike_lo,
+                "text": f"撐 {_px(spike_lo)}",
+                "color": _HOLD,
+                "size": _STRUCTURE_TAG_SIZE,
+            }
         )
     # 右軸：今收（71 紅框必留）＋昨收；75 同列並排（垂直貼今收價，數字＝官方真價）
     last_c = float(last_bar.get("close") or 0)
@@ -3477,7 +3599,7 @@ def render_biaoke_structure_png(
                 "y": float(last_c),
                 "text": f"今收 {_px(last_c)}",
                 "color": "#37474f",
-                "size": 11,
+                "size": _STRUCTURE_TAG_SIZE,
             }
         )
     try:
@@ -3498,7 +3620,7 @@ def render_biaoke_structure_png(
                 "y": prev_y,
                 "text": f"昨收 {_px(prev_c_axis)}",
                 "color": "#546e7a",
-                "size": 11,
+                "size": _STRUCTURE_TAG_SIZE,
             }
         )
     if 0 <= spike_i < n:
@@ -3539,7 +3661,7 @@ def render_biaoke_structure_png(
                     "y": float(channel["rail_now"]),
                     "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
-                    "size": 10,
+                    "size": _STRUCTURE_TAG_SIZE,
                 }
             )
         if channel.get("base_now"):
@@ -3549,7 +3671,7 @@ def render_biaoke_structure_png(
                     "y": float(channel["base_now"]),
                     "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
-                    "size": 10,
+                    "size": _STRUCTURE_TAG_SIZE,
                 }
             )
     else:
@@ -3579,15 +3701,15 @@ def render_biaoke_structure_png(
                 linewidths=0.8,
             )
             band_hi.append(
-                {"x": float(x1), "y": float(y1), "text": f"下降壓 {_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
+                {"x": float(x1), "y": float(y1), "text": f"下降壓 {_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": _STRUCTURE_TAG_SIZE}
             )
             if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
                 band_hi.append(
-                    {"x": float(x2), "y": float(y2), "text": f"下降壓 {_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
+                    {"x": float(x2), "y": float(y2), "text": f"下降壓 {_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": _STRUCTURE_TAG_SIZE}
                 )
             if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
                 right_notes.append(
-                    {"x": float(x_fut), "y": float(y_end), "text": f"下降壓 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
+                    {"x": float(x_fut), "y": float(y_end), "text": f"下降壓 {_px(y_end)}", "color": _DOWN_TRACK, "size": _STRUCTURE_TAG_SIZE}
                 )
         if up_pts:
             (x1, y1, d1), (x2, y2, d2) = up_pts
@@ -3625,7 +3747,7 @@ def render_biaoke_structure_png(
                     "y": float(y1),
                     "text": f"上升撐 {_md(d1)}低{_px(y1)}{lab_suffix}",
                     "color": _UP_TRACK if not up_broken else "#607d8b",
-                    "size": 10,
+                    "size": _STRUCTURE_TAG_SIZE,
                 }
             )
             if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
@@ -3635,12 +3757,12 @@ def render_biaoke_structure_png(
                         "y": float(y2),
                         "text": f"上升撐 {_md(d2)}低{_px(y2)}{lab_suffix}",
                         "color": _UP_TRACK if not up_broken else "#607d8b",
-                        "size": 10,
+                        "size": _STRUCTURE_TAG_SIZE,
                     }
                 )
             if not up_broken and not up_steep and abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
                 right_notes.append(
-                    {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
+                    {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": _STRUCTURE_TAG_SIZE}
                 )
     path = list(proj.get("path") or [])
     if len(path) >= 2:
@@ -3654,7 +3776,7 @@ def render_biaoke_structure_png(
                 "from_y": float(path[0][1]),
                 "text": str(proj.get("mark") or ("最可能→" + _px(proj.get("target")))),
                 "color": _PROJECT,
-                "size": 12,
+                "size": _STRUCTURE_TAG_SIZE,
             }
         )
     # 73：不准畫「連點延長」叉虛線（末日 K 往下甩進空曠、無對應標籤＝多餘）
@@ -3683,19 +3805,22 @@ def render_biaoke_structure_png(
                 _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 11))
             )
     max_note_w = max(_widths, default=22.0)
-    # 67：標籤欄再右移讓開末日 K；x_right 必須夠 _place_right_notes 的 fit_tx
-    # （fit ≈ x_max − note_w − 6），否則字會被夾回 seam 蓋住末日 K
-    label_frac = 0.108
+    # 標籤欄仍夠放今收｜昨收；多餘右白收回主圖（fit 對齊 floor_tx）
+    label_frac = float(_STRUCTURE_LABEL_FRAC)
     content_right = float(label_col_left)
     need_by_frac = content_right / max(1.0 - label_frac, 0.5)
-    need_by_place = content_right + max_note_w + 6.0 + 3.0  # 對齊 fit_tx＋左緣空隙
-    need_by_text = content_right + max_note_w * 0.95 + 3.0
+    need_by_place = content_right + max_note_w + 3.6 + 1.8
+    need_by_text = content_right + max_note_w * 0.88 + 1.8
     x_right = max(float(x_right), need_by_frac, need_by_text, need_by_place)
+    # 硬頂最後套：並排今收不准再把右白撐到 K 變瘦
+    x_cap = float(n - 1) + float(_FUTURE) + float(_STRUCTURE_X_RIGHT_CAP_EXTRA)
+    x_floor = content_right + min(max_note_w, 26.0) + 1.6
+    x_right = min(max(float(x_right), x_floor), x_cap)
     ax1.set_xlim(-0.55, x_right)
     # 字落標籤欄內偏右，右側留邊框＋右軸；左緣離末日 K 有空隙
     gutter = float(x_right) - content_right
-    # 標籤再進演化帶一點，壓／撐盒不准蓋最後一根 K
-    x_text = content_right + max(3.2, gutter * 0.24)
+    # 標籤貼右溝，把中段空檔還給 K／演化帶
+    x_text = content_right + max(1.8, gutter * 0.14)
     # 71：壓／撐標籤貼線，不再把 spike 當 avoid；軌現價仍讓軟標籤錯開
     avoid_ys: List[float] = []
     if channel.get("rail_now"):
@@ -3777,31 +3902,35 @@ def render_biaoke_structure_png(
     # 橫式附圖／12-v4：股號＋股名一次；產業貼股名右（不准壓字）
     # 左欄各行拉開行距（真機回饋 63）；右欄三行／藍框不動
     # 橫式：藍框上緣抬高＋股號再下移，上邊框與字留縫（不准貼死）
+    # 股號／股名／當天股價同大（_STRUCTURE_TITLE_FS＝_STRUCTURE_SPOT_FS）
     name_y = 94.00 if fullbleed else float(_SPOT_Y)
+    title_fs = int(_STRUCTURE_TITLE_FS) if fullbleed else 28
     _paint_nameplate(
         ov,
         plate,
         x=header_x,
         skip_industry=False,
         y=float(name_y),
-        title_size=24 if fullbleed else 28,
+        title_size=title_fs,
         industry_size=12 if fullbleed else 15,
     )
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     chip_max = (_LOOKUP_LOCATOR_LEFT * 100.0 - 2.8) if portrait else (
         float(_HEADER_CHIP_MAX_FB) if (fullbleed and not has_locator) else _HEADER_CHIP_MAX
     )
-    # 68：狀態／判斷晶片（出貨痕跡／升降通道／靠近…）放大 0.5 倍≈×1.5，必須保留
-    _STATUS_CHIP_SCALE = 1.5
+    # 橫式：通道／出貨晶片與右溝壓撐／昨收同字級同高（不准忽大忽小）
+    # 直式仍 ×1.5 保話筒可讀
+    _STATUS_CHIP_SCALE = 1.0 if fullbleed else 1.5
     if fullbleed:
         # 頭欄再下移：藍框上緣與「6669 緯穎」拉開（zoom 不准貼）
         date_y, ohlc_y1 = 90.40, 86.80
         # 70：chip 與爆大量日第二行拉開（單列橫排保留）
         spike_y1, spike_y2, chip_y0 = 83.20, 79.70, 72.80
         chip_step = 2.65
-        status_chip_step = 2.65 * _STATUS_CHIP_SCALE  # 約 4.0
-        spot_y = 90.00
-        spot_move_dy = 6.35
+        status_chip_step = 2.65 * max(_STATUS_CHIP_SCALE, 1.0)
+        # 右上三行與股名同高起算，等距靠右（對齊介紹圖）
+        spot_y = float(name_y)
+        spot_move_dy = float(_STRUCTURE_SPOT_ROW_GAP)
         mute_y = None
         ohlc_y2 = None
     else:
@@ -3811,17 +3940,19 @@ def render_biaoke_structure_png(
         status_chip_step = 3.6 * _STATUS_CHIP_SCALE
         spot_y = float(_SPOT_Y)
         spot_move_dy = None
+    meta_fs = int(_STRUCTURE_META_FS) if fullbleed else 16
     ov.text(
         header_x,
         date_y,
         date_line,
         color=_TEXT,
-        fontproperties=_fp(17 if fullbleed else 16, "bold"),
+        fontproperties=_fp(meta_fs, "bold"),
         va="center",
         ha="left",
     )
     # 附圖／v4：當日開高低量同一行欄位對齊；爆大量壓撐列與上方三行同一左緣（不准對「高」欄縮進）
-    ohlc_fs = 16 if fullbleed else 15
+    # 開高低量／爆大量列同一小字級（不准忽大忽小）
+    ohlc_fs = int(_STRUCTURE_META_FS) if fullbleed else 15
     spike_cells = [
         ("高", f"{_px(spike_hi)}＝壓"),
         ("低", f"{_px(spike_lo)}＝撐"),
@@ -3918,14 +4049,20 @@ def render_biaoke_structure_png(
             ha="left",
         )
     chip_x, chip_y = header_x, chip_y0
-    # 狀態／判斷晶片（68×1.5；69 單列；70 與上行／彼此留縫）：出貨／洗盤＋通道
-    # 3／4 顆都從左排到右同一列、同一 y，不准上下兩排互壓；仍非買訊
-    status_sz = int(round((12 if fullbleed else 13) * _STATUS_CHIP_SCALE))
-    ch_sz = int(round((10 if fullbleed else 12) * _STATUS_CHIP_SCALE))
-    status_pad = 0.22 * _STATUS_CHIP_SCALE
-    status_lw = 1.15 * _STATUS_CHIP_SCALE
-    # 70：三標籤彼此中間留縫（單列橫排不變）
-    status_h_gap = 2.05 * _STATUS_CHIP_SCALE
+    # 狀態／判斷晶片：出貨／洗盤＋通道；單列橫排，不准上下兩排互壓；仍非買訊
+    # 橫式與右溝壓／撐／昨收同字級；直式仍放大保話筒可讀
+    if fullbleed:
+        status_sz = int(_STRUCTURE_TAG_SIZE)
+        ch_sz = int(_STRUCTURE_TAG_SIZE)
+        status_pad = float(_STRUCTURE_TAG_PAD)
+        status_lw = 1.05
+        status_h_gap = 1.55
+    else:
+        status_sz = int(round(13 * _STATUS_CHIP_SCALE))
+        ch_sz = int(round(12 * _STATUS_CHIP_SCALE))
+        status_pad = 0.22 * _STATUS_CHIP_SCALE
+        status_lw = 1.15 * _STATUS_CHIP_SCALE
+        status_h_gap = 2.05 * _STATUS_CHIP_SCALE
     status_row: List[Tuple[str, str, str, int]] = []
     if mark:
         status_row.append((mark, mc, mc, status_sz))
@@ -3967,7 +4104,20 @@ def render_biaoke_structure_png(
             ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f",
             size=11 if fullbleed else 12,
         )
-    # 橫式結構圖（附圖）：bare＝迷你K＋大字價，不寫「今K／收盤」
+    # 橫式結構圖：右上對齊介紹圖（今K｜迷你K｜收盤｜大價＋較昨日＋查詢戳）
+    spot_stamp = ""
+    if quote and not portrait and fullbleed:
+        try:
+            from decision_card_signals import format_card_query_stamp
+
+            date_s, clock_s = format_card_query_stamp(
+                is_live=bool(quote.get("is_live")),
+                latest_date=last_d,
+                stock_id=str(sid or ""),
+            )
+            spot_stamp = f"{date_s} {clock_s}".strip()
+        except Exception:
+            spot_stamp = ""
     if quote and not portrait:
         _paint_spot(
             ov,
@@ -3975,7 +4125,15 @@ def render_biaoke_structure_png(
             x=spot_x,
             y=spot_y,
             move_dy=spot_move_dy,
-            bare=bool(fullbleed),
+            bare=False,
+            stamp=spot_stamp,
+            stamp_dy=(
+                float(spot_move_dy) + float(_STRUCTURE_SPOT_ROW_GAP)
+                if fullbleed and spot_move_dy is not None
+                else None
+            ),
+            price_size=int(_STRUCTURE_SPOT_FS) if fullbleed else None,
+            move_size=15 if fullbleed else None,
         )
     if has_locator:
         loc_legs: List[Dict[str, Any]] = []
@@ -4114,33 +4272,28 @@ def render_biaoke_structure_png(
         bottom=_FIG_BOTTOM_FB if fullbleed else _FIG_BOTTOM,
     )
     # 查詢時間：直式放頭牌右上（縮圖左側），不准壓迷你圖
-    # 橫式：貼介紹帶底緣內側，不准飄到頂裁／靈動島
-    try:
-        from decision_card_signals import format_card_query_stamp
+    # 橫式：已併進右上三行（_paint_spot stamp），不准再畫一份互壓
+    if portrait:
+        try:
+            from decision_card_signals import format_card_query_stamp
 
-        date_s, clock_s = format_card_query_stamp(
-            is_live=False,
-            latest_date=last_d,
-            stock_id=str(sid or ""),
-        )
-        stamp_x = (_LOOKUP_LOCATOR_LEFT - 0.012) if portrait else (
-            _STRUCTURE_FIG_RIGHT - 0.012
-        )
-        stamp_y = 0.988 if portrait else (
-            _STOCK_MAIN_TOP_FULLBLEED + 0.012 if fullbleed else _STOCK_MAIN_TOP + 0.006
-        )
-        fig.text(
-            stamp_x,
-            stamp_y,
-            f"{date_s} {clock_s}",
-            ha="right",
-            va="top" if portrait else "bottom",
-            fontproperties=_fp(18 if fullbleed else 11, "bold"),
-            color="#455a64",
-            zorder=14,
-        )
-    except Exception:
-        pass
+            date_s, clock_s = format_card_query_stamp(
+                is_live=False,
+                latest_date=last_d,
+                stock_id=str(sid or ""),
+            )
+            fig.text(
+                _LOOKUP_LOCATOR_LEFT - 0.012,
+                0.988,
+                f"{date_s} {clock_s}",
+                ha="right",
+                va="top",
+                fontproperties=_fp(11, "bold"),
+                color="#455a64",
+                zorder=14,
+            )
+        except Exception:
+            pass
     # 61：subplots_adjust 後依軸位畫三藍籃筐（頭欄／主圖／量），縫乾淨左右齊
     if fullbleed:
         try:

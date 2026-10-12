@@ -131,11 +131,24 @@ def test_monthly_revenue_labels_follow_yyyymm():
 def test_structure_top_pad_lifts_header_frame():
     import biaoke_chart as bc
 
-    assert float(bc._STRUCTURE_TOP_PAD) <= 0.35
+    # 上邊框線要完整入鏡：TOP_PAD 必須夠（過小＝上線被裁）
+    assert float(bc._STRUCTURE_TOP_PAD) >= 0.45
     assert float(bc._STRUCTURE_TOP_PAD) < 1.35
     src = open(bc.__file__, encoding="utf-8").read()
     assert "name_y = 94.00 if fullbleed" in src
     assert "date_y, ohlc_y1 = 90.40, 86.80" in src
+    assert "_STRUCTURE_SPOT_FS" in src
+    assert "_STRUCTURE_TAG_SIZE" in src
+    assert "bare=False" in src
+    assert 'stamp=spot_stamp' in src
+    assert bc._STRUCTURE_TITLE_FS == bc._STRUCTURE_SPOT_FS
+    # 迷你K／主圖不准造假 OHLC；缺真數就不畫
+    assert "不准造假 OHLC" in src
+    assert "ohlc_ok" in src
+    # 主圖往右吃今收空檔（只排版）
+    assert float(bc._STRUCTURE_FIG_RIGHT) >= 0.955
+    assert float(bc._STRUCTURE_X_RIGHT_PAD) <= 12.0
+    assert "_STRUCTURE_X_RIGHT_PAD" in src
 
 
 def test_month_revenue_splits_after_yi_for_right_edge():

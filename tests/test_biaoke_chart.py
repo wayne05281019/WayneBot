@@ -618,7 +618,7 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
 
 
 def test_spot_quote_holiday_not_intraday(monkeypatch):
-    """國慶補假即使 MIS 吐價，頭欄仍標收盤，不准寫盤中。"""
+    """國慶補假即使 MIS 吐價：標收盤，且只認官方末日柱（不准 MIS 蓋假收）。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -649,7 +649,11 @@ def test_spot_quote_holiday_not_intraday(monkeypatch):
     assert q["is_live"] is False
     assert q["label"] == "收盤"
     assert "盤中" not in q["label"]
-    assert float(q["close"]) == 4510.0
+    # 收盤＝官方 last_bar；MIS 4510 不准蓋掉真收 4500
+    assert float(q["close"]) == 4500.0
+    assert float(q["open"]) == 4400.0
+    assert float(q["high"]) == 4520.0
+    assert float(q["low"]) == 4380.0
 
 
 def test_locator_inset_marks_window():
