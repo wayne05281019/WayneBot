@@ -395,6 +395,21 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
     latest_month = str(m_n[1] or "")
     # 月營收只記狀態、不進 problems／不擋 today_ok（靜態補齊；不准提醒／incomplete）
     monthly_note = monthly_revenue_status(int(m_n[0] or 0), latest_month, today_ymd=yyyymmdd)
+    try:
+        from fundamentals import filing_month_coverage
+
+        cover = filing_month_coverage(db_path, previous_calendar_month(yyyymmdd))
+        monthly_note = dict(monthly_note or {})
+        monthly_note["coverage"] = cover
+        if cover.get("thin"):
+            # 連假漏抓訊號：只記狀態，仍不擋 fuse；排程／查股 ensure 會續補
+            monthly_note["thin_filing"] = True
+            monthly_note["label"] = (
+                str(monthly_note.get("label") or "")
+                + f"；本檔期列數偏薄 {cover.get('n')}/{cover.get('prev_n')}"
+            ).lstrip("；")
+    except Exception:
+        pass
     if int(x_n[0] or 0) < 50:
         problems.append("待補除權息")
     # today_ok＝日資料閘（上市／上櫃／興櫃日 K＋法人）；月營收／除權息不卡 fuse

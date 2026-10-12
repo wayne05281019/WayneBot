@@ -4963,14 +4963,29 @@ def render_first_glance_png(
     _ = ohlc
     if not card or card.get("error"):
         return ""
+    dbp = db_path or get_db_path()
+    try:
+        # 先 ensure 再指紋：缺九月營收時補進庫，memo 才不會鎖死舊八月圖
+        from fundamentals import ensure_stock_fundamentals
+
+        ensure_stock_fundamentals(dbp, stock_id)
+    except Exception:
+        pass
+    try:
+        from fundamentals import stock_fundamentals_fingerprint
+
+        fund_fp = stock_fundamentals_fingerprint(dbp, stock_id)
+    except Exception:
+        fund_fp = ()
     memo_key = (
         "glance",
         str(stock_id or ""),
         _lookup_card_fingerprint(card),
         _lookup_tape_fingerprint(tape if isinstance(tape, dict) else {}),
+        fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v75",
+        "match-card-076-fund-rev2line-v76",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -4986,8 +5001,8 @@ def render_first_glance_png(
     try:
         from fundamentals import glance_fundamentals_plain, glance_fund_split_layout
 
-        fund_rows = glance_fundamentals_plain(stock_id, db_path or get_db_path())
-        fund_split = glance_fund_split_layout(stock_id, db_path or get_db_path())
+        fund_rows = glance_fundamentals_plain(stock_id, dbp)
+        fund_split = glance_fund_split_layout(stock_id, dbp)
     except Exception:
         fund_rows = []
         fund_split = None
