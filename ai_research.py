@@ -84,7 +84,7 @@ def ensure_ai_research_tables(db_path: str) -> None:
 
 
 def _ohlcv_summary(db_path: str, stock_id: str, as_of: str) -> tuple[str, List[str]]:
-    """近窗官方開高低收＋量；缺＝未取得。"""
+    """近窗官方開高低收＋量（加近20日高低／量比）；缺＝未取得。"""
     day = _ymd(as_of)
     sid = str(stock_id or "").strip()
     sources: List[str] = []
@@ -97,7 +97,7 @@ def _ohlcv_summary(db_path: str, stock_id: str, as_of: str) -> tuple[str, List[s
             SELECT date, open, high, low, close, volume
             FROM daily_quotes
             WHERE stock_id=? AND date<=?
-            ORDER BY date DESC LIMIT 5
+            ORDER BY date DESC LIMIT 20
             """,
             (sid, day or "99999999"),
         ).fetchall()
@@ -109,10 +109,29 @@ def _ohlcv_summary(db_path: str, stock_id: str, as_of: str) -> tuple[str, List[s
         return MISSING, sources
     sources.append("daily_quotes")
     bits = []
-    for d, o, h, l, c, v in rows:
-        bits.append(
-            f"{d} 開{o}高{h}低{l}收{c}量{v}"
-        )
+    for d, o, h, l, c, v in rows[:5]:
+        bits.append(f"{d} 開{o}高{h}低{l}收{c}量{v}")
+    try:
+        closes = [float(r[4]) for r in rows if r[4] is not None]
+        highs = [float(r[2]) for r in rows if r[2] is not None]
+        lows = [float(r[3]) for r in rows if r[3] is not None]
+        vols = [float(r[5] or 0) for r in rows]
+        if closes:
+            last = closes[0]
+            hi20 = max(highs) if highs else None
+            lo20 = min(lows) if lows else None
+            avg_vol = (sum(vols[1:]) / max(1, len(vols) - 1)) if len(vols) > 1 else None
+            vol_ratio = (vols[0] / avg_vol) if avg_vol and avg_vol > 0 else None
+            extra = [f"近收{last}"]
+            if hi20 is not None:
+                extra.append(f"20高{hi20}")
+            if lo20 is not None:
+                extra.append(f"20低{lo20}")
+            if vol_ratio is not None:
+                extra.append(f"量比{vol_ratio:.2f}")
+            bits.append("｜".join(extra))
+    except (TypeError, ValueError):
+        pass
     return "；".join(bits), sources
 
 
@@ -378,14 +397,22 @@ def build_buy_reason_from_research(
     ind = str(research.get("industry_summary") or MISSING)
     pv = str(research.get("price_volume_summary") or MISSING)
     pub = str(research.get("public_notes") or MISSING)
-    reason = f"{signal_label}；產業{ind if ind != MISSING else MISSING}"
+    # 理由要看得出「有做比對」：訊號＋產業＋量價重點＋新聞狀態
+    pv_short = pv.split("；")[-1] if pv and pv != MISSING else MISSING
+    reason = (
+        f"{signal_label}"
+        f"；產業={ind if ind != MISSING else MISSING}"
+        f"；量價={pv_short}"
+        f"；新聞={news if news != MISSING else MISSING}"
+        f"；基本面={fund if fund != MISSING else MISSING}"
+    )
     sources_summary = (
         f"基本面={fund}｜新聞={news}｜產業={ind}｜量價={pv}｜公開={pub}"
     )
     target = "停利達標或作者公開如何賣位階協助出場；非自動賣"
     return {
-        "reason": reason[:500],
-        "sources_summary": sources_summary[:2000],
+        "reason": reason[:800],
+        "sources_summary": sources_summary[:4000],
         "target_exit": target,
         "bucket": bucket,
     }
