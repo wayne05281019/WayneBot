@@ -355,17 +355,28 @@ def main() -> int:
             clear_vol_zone_render_cache()
         except Exception:
             pass
+        # 台北時間戳：每次新檔名，不准覆寫舊 blank（瀏覽／話筒快取會看舊圖）
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        stamp = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y%m%dT%H%M%S")
         _patch_volzone_thin_ma5_ma10()
         for sid in sids:
             name = _name(sid, db)
-            blank = out_dir / f"{sid}-volzone-ma-labels-blank.png"
+            blank = out_dir / f"{sid}-volzone-ma-labels-{stamp}.png"
             print(f"[volzone+ma-blank] {sid} {name} -> {blank}", flush=True)
             _render_volzone(sid, name, db, blank, with_ma5_ma10=True)
-            legacy = out_dir / f"{sid}-volzone-ma5-ma10.png"
+            # 可選 symlink／指標檔方便找最新；仍保留時間戳主檔
+            latest = out_dir / f"{sid}-volzone-ma-labels-latest.png"
             try:
-                shutil.copy2(blank, legacy)
+                if latest.is_symlink() or latest.exists():
+                    latest.unlink()
+                latest.symlink_to(blank.name)
             except Exception:
-                pass
+                try:
+                    shutil.copy2(blank, latest)
+                except Exception:
+                    pass
 
     print("done", flush=True)
     for p in sorted(out_dir.glob("*.png")):
