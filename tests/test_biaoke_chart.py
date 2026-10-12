@@ -235,7 +235,8 @@ def test_real_daily_quotes_numbers_are_exact():
     assert _px_from_bar(last["close"]) in cap
     assert str(int(round(float(expect["spike_vol"])))) in cap.replace(",", "")
     notes = " ".join(info.get("notes") or [])
-    assert "3930" in notes or _px_from_bar(expect["spike_low"]) in notes
+    # 官方撐／收走 _px_quote（可含千分位）；舊「3930」錨只當備援
+    assert "3930" in notes.replace(",", "") or _px_from_bar(expect["spike_low"]) in notes
     proj = info.get("project") or {}
     assert proj.get("key") != "abandon"
     assert float(proj.get("target") or 0) > 0
@@ -244,9 +245,10 @@ def test_real_daily_quotes_numbers_are_exact():
 
 
 def _px_from_bar(val):
-    from biaoke_chart import _px
+    """官方開高低收文案：與結構圖同源 _px_quote（不准現股跳動改寫）。"""
+    from biaoke_chart import _px_quote
 
-    return _px(val)
+    return _px_quote(val)
 
 
 def _barely_over_series():
@@ -504,7 +506,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v78g-close-half" in src
+        "hdr-band-v78h-quote-ink" in src
+        or "hdr-band-v78g-close-half" in src
         or "hdr-band-v78f-gap-tighten" in src
         or "hdr-band-v78e-dash-rails" in src
         or "hdr-band-v78d-label-gaps" in src
@@ -581,9 +584,10 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "收在爆大量日低之下" not in cap
     assert "已過爆大量日高" not in cap
     src = inspect.getsource(render_biaoke_structure_png)
-    assert 'f"昨收 {_px(prev_c_axis)}"' in src or "昨收" in src
-    assert 'f"今收 {_px(last_c)}"' in src
+    assert 'f"昨收 {_px_quote(prev_c_axis)}"' in src or "昨收" in src
+    assert 'f"今收 {_px_quote(last_c)}"' in src
     assert 'f"收 {_px(last_c)}"' not in src
+    assert 'f"今收 {_px(last_c)}"' not in src  # 官方收不准再走現股跳動
     from biaoke_chart import _is_today_close_note
 
     assert _note_priority("今收 6845") == 2

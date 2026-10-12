@@ -1764,6 +1764,7 @@ def volume_bar_display_heights(volumes) -> tuple:
 LOOKUP_CANDLE_UP = "#e53935"
 LOOKUP_CANDLE_DN = "#00897b"
 LOOKUP_CANDLE_HALT = "#9e9e9e"
+LOOKUP_QUOTE_FLAT = "#455a64"  # 平盤字色（漲紅跌綠平灰；與 K 柱平盤當紅分開）
 LOOKUP_CANDLE_BODY_W = 0.60
 LOOKUP_CANDLE_WICK_LW = 1.25
 LOOKUP_CANDLE_BODY_LW = 0.35
@@ -2637,6 +2638,48 @@ def _close_chg_color(chg, C):
     if v < 0:
         return C["down"]
     return C["ink"]
+
+
+def quote_move_ink(
+    change=None,
+    *,
+    close=None,
+    prev=None,
+    pct=None,
+    up: str = LOOKUP_CANDLE_UP,
+    down: str = LOOKUP_CANDLE_DN,
+    flat: str = LOOKUP_QUOTE_FLAT,
+) -> str:
+    """查股四張共用：漲紅、跌綠、平灰。優先 change，否則 close−prev，再 pct。
+
+    官方收顯示走 ``_fmt_price``（不准現股跳動改寫 ETF 真收）。
+    K 柱平盤仍可當紅；這裡只定「股價數字／漲跌字」色。
+    """
+    v = None
+    try:
+        if change is not None:
+            v = float(change)
+    except (TypeError, ValueError):
+        v = None
+    if v is None:
+        try:
+            c = float(close)
+            p = float(prev)
+            if p == p and p > 0 and c == c:
+                v = c - p
+        except (TypeError, ValueError):
+            v = None
+    if v is None:
+        try:
+            if pct is not None:
+                v = float(pct)
+        except (TypeError, ValueError):
+            v = None
+    if v is None:
+        return flat
+    if abs(v) < 1e-9:
+        return flat
+    return up if v > 0 else down
 
 
 def _close_move_bits(chg, chg_amt) -> list:

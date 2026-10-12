@@ -72,8 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 29  # 話筒／勝率／壓撐／大盤預設畫五日／十日；關旗才剩月／季
-
+_VZ_PAINT_VER = 30  # 表頭收字漲跌色＋話筒路徑預設五日／十日
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2561,8 +2560,8 @@ def _paint_volume_zone(
                 ex_title += f" {_fmt_price(amt)}元"
             ex_title += "（原柱不還原）"
     if with_nav_signals and ax_head is not None:
-        # 標題列：兩行介紹放大＋圖例三排，緊接 K（橫式原版）
-        # 已刪右上綠匡白底「收 XXXX」晶片；表頭第二排「收XXXX」改紅字稍大
+        # 標題列：兩行介紹放大＋圖例三排，緊接 K（橫式原版＝render_lookup_vol_result）
+        # 已刪右上綠匡白底「收 XXXX」晶片；表頭第二排「收XXXX」稍大＋漲跌色（同源）
         head = f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
         intro_left = (
             f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
@@ -2571,6 +2570,24 @@ def _paint_volume_zone(
             f"低{_fmt_price(last['low'])} "
         )
         close_bit = f"收{_fmt_price(last['close'])}"
+        prev_close_hdr = None
+        if n >= 2:
+            try:
+                prev_close_hdr = float(view.iloc[-2]["close"])
+            except (TypeError, ValueError, KeyError, IndexError):
+                prev_close_hdr = None
+        try:
+            from wayne_navigator import quote_move_ink
+
+            close_ink = quote_move_ink(
+                close=float(last["close"]),
+                prev=prev_close_hdr,
+                up=_UP,
+                down=_DN,
+                flat="#455a64",
+            )
+        except Exception:
+            close_ink = _TEXT
         intro_right = str(ex_title or "")
         ax_head.text(
             0.5,
@@ -2582,7 +2599,7 @@ def _paint_volume_zone(
             fontproperties=_fp(15.0, "bold"),
             color=_TEXT,
         )
-        # 第二排：量測實際字寬後置中，讓紅字「收XXXX」緊接在開高低後面
+        # 第二排：量測實際字寬後置中，讓「收XXXX」稍大緊接開高低；色＝漲跌
         _fp_intro = _fp(13.0, "bold")
         _fp_close = _fp(15.6, "bold")  # 收XXXX 稍大一點點
         _t_left = ax_head.text(
@@ -2605,7 +2622,7 @@ def _paint_volume_zone(
             ha="left",
             va="top",
             fontproperties=_fp_close,
-            color=_UP,
+            color=close_ink,
             zorder=13,
             alpha=0.0,
         )
