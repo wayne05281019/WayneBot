@@ -1545,8 +1545,8 @@ def _approx_note_pack_width(text: str, size: float = 12) -> float:
     return _approx_note_width(text, size) * 1.08
 
 
-# 昨收｜今收並排：視覺縫≈182624 一半（SIDE_GAP＋ADVANCE 一併收；仍不准互壓）
-_CLOSE_PAIR_SIDE_GAP = 1.0
+# 昨收｜今收並排：相對 184222 再砍一半（SIDE_GAP＋ADVANCE；仍不准互壓）
+_CLOSE_PAIR_SIDE_GAP = 0.35
 # 主圖 xlim 右白／標籤欄：再收右溝，K 柱加寬（不准改 OHLC／量；v78）
 _STRUCTURE_X_RIGHT_PAD = 8.0
 _STRUCTURE_LABEL_COL_EXTRA = 0.70
@@ -1554,7 +1554,7 @@ _STRUCTURE_LABEL_FRAC = 0.068
 # xlim 硬頂：主圖加寬仍須整盒入軸（今收不准裁半）；估寬已收過
 _STRUCTURE_X_RIGHT_CAP_EXTRA = 26.0
 # 昨收→今收前進寬係數（≈1＝用足昨收盒寬，中間再加 SIDE_GAP）
-_STRUCTURE_CLOSE_PAIR_ADVANCE = 0.98
+_STRUCTURE_CLOSE_PAIR_ADVANCE = 0.92
 
 
 def _dedupe_right_notes(
@@ -3527,8 +3527,8 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        # v78f：三縫縮（昨今1/2、橘紫1/3、產業gap×1/3）＋通道虛線＋日刻不互壓
-        "hdr-band-v78f-gap-tighten" if fullbleed else "hdr-wrap3-vol-min",
+        # v78g：昨今相對184222再砍半；橘紫／產業／虛線／日刻同 v78f
+        "hdr-band-v78g-close-half" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),

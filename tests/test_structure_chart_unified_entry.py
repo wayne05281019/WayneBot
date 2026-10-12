@@ -13,7 +13,8 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
     rsrc = inspect.getsource(render_biaoke_structure_png)
     # 頭欄 memo：v78f＝三縫縮；舊鍵相容備援
     assert (
-        "hdr-band-v78f-gap-tighten" in rsrc
+        "hdr-band-v78g-close-half" in rsrc
+        or "hdr-band-v78f-gap-tighten" in rsrc
         or "hdr-band-v78e-dash-rails" in rsrc
         or "hdr-band-v78d-label-gaps" in rsrc
         or "hdr-band-v78c-c-polish" in rsrc

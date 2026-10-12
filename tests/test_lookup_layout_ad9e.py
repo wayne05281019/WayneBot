@@ -25,7 +25,8 @@ def test_structure_header_uses_aligned_ohlc_helper():
     assert "_paint_aligned_kv_row" in mod
     # v78f＝三縫縮；舊鍵相容備援
     assert (
-        "hdr-band-v78f-gap-tighten" in mod
+        "hdr-band-v78g-close-half" in mod
+        or "hdr-band-v78f-gap-tighten" in mod
         or "hdr-band-v78e-dash-rails" in mod
         or "hdr-band-v78d-label-gaps" in mod
         or "hdr-band-v78c-c-polish" in mod
