@@ -1118,7 +1118,7 @@ class MainRunner:
         notify: bool = True,
         telegram_uid: str = "",
     ) -> Dict[str, Any]:
-        """模擬倉真正下單（每人 ai_{uid}／50 萬）。有名單才買；平常 1 檔，超跌最多 2 檔，永遠留現金。"""
+        """模擬倉真正下單（每人 ai_{uid}／總 50 萬＝30 操作＋20 抄底）。母體＝勝率買點；最多 3 檔。"""
         try:
             from ai_trader import run_ai_desk
             from config import allowed_telegram_uids, telegram_uid_allowed
