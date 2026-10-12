@@ -23,9 +23,11 @@ def test_structure_header_uses_aligned_ohlc_helper():
     assert hasattr(bc, "_paint_aligned_kv_row")
     mod = open(bc.__file__, encoding="utf-8").read()
     assert "_paint_aligned_kv_row" in mod
-    # v78c＝選定 C polish；舊鍵相容備援
+    # v78e＝通道虛線＋標籤留縫；舊鍵相容備援
     assert (
-        "hdr-band-v78c-c-polish" in mod
+        "hdr-band-v78e-dash-rails" in mod
+        or "hdr-band-v78d-label-gaps" in mod
+        or "hdr-band-v78c-c-polish" in mod
         or "hdr-band-v77-vol-min-visible" in mod
         or "hdr-band-v76-no-next-press" in mod
     )

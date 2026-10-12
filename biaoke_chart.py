@@ -175,9 +175,10 @@ def _md(raw: Any) -> str:
 
 
 def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
-    """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免 09/09 疊在 09/14 上。
+    """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免日期標互壓。
 
     爆量日若離最後一根 <4，只留最後一根（爆量另有豎虛線＋量標），不准日刻互壓。
+    3081：08/26 爆量與 09/03 只差 6 根 → 鄰距門檻拉到 ≥8，不准 MM/DD 互壓。
     """
     n = int(n or 0)
     if n <= 0:
@@ -186,11 +187,14 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
         return [0]
     last = n - 1
     min_extra_gap = 4
+    # 標籤寬（MM/DD）約需 ≥8 根空隙才不互壓（八個月窗更密）
+    min_label_gap = max(8, n // 22)
     extras = [
         int(x)
         for x in extra
         if 0 <= int(x) < n and abs(int(x) - last) >= min_extra_gap
     ]
+    extras_set = set(extras)
     step = max(n // 7, 4)
     raw = list(range(0, n, step))
     if last not in raw:
@@ -200,15 +204,52 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
             raw.append(x)
     keep: List[int] = []
     for i in sorted(set(raw)):
-        if i in (0, last) or i in extras:
+        if i in (0, last) or i in extras_set:
             keep.append(i)
             continue
-        if any(abs(i - e) < 5 for e in extras):
+        if any(abs(i - e) < min_label_gap for e in extras_set):
             continue
-        if abs(i - last) < 4:
+        if abs(i - last) < min_label_gap:
             continue
         keep.append(i)
-    return keep
+    # 再掃一遍：任意相鄰刻度（含爆量日）不夠縫就丟中間那根（保頭尾／爆量優先）
+    thinned: List[int] = []
+    for i in keep:
+        if not thinned:
+            thinned.append(i)
+            continue
+        prev = thinned[-1]
+        if abs(i - prev) >= min_label_gap or i in (0, last) and prev in extras_set:
+            thinned.append(i)
+            continue
+        # 相鄰太近：優先留爆量／尾日，丟一般刻
+        if i in extras_set or i == last:
+            if prev not in extras_set and prev != 0:
+                thinned[-1] = i
+            elif prev == 0 or prev in extras_set:
+                # 頭或爆量已佔：若新的是尾日仍要；否則跳過
+                if i == last:
+                    thinned.append(i)
+            else:
+                thinned.append(i)
+        # else: 丟一般 i
+    # 尾日必在
+    if last not in thinned:
+        thinned.append(last)
+        thinned = sorted(set(thinned))
+        # 尾日擠到前一根一般刻 → 丟前一根
+        cleaned: List[int] = []
+        for i in thinned:
+            if cleaned and abs(i - cleaned[-1]) < min_label_gap:
+                if i == last:
+                    if cleaned[-1] not in extras_set and cleaned[-1] != 0:
+                        cleaned[-1] = i
+                    else:
+                        cleaned.append(i)
+                continue
+            cleaned.append(i)
+        thinned = cleaned
+    return thinned
 
 
 def _ymd_full(raw: Any) -> str:
@@ -736,6 +777,7 @@ def _paint_parallel_channel(
     (ux1, uy1, _ud1), (ux2, uy2, _ud2) = upper
     (lx1, ly1, _ld1), (lx2, ly2, _ld2) = lower
     # 有效才延長進演化區；已壞／已過只畫到最近一根
+    # 上升／下降區間兩條平行軌：全程細虛線（不准實線）
     rail_hi = float(x_hi) if alive else float(seam)
     for x1, y1, x2, y2 in (
         (ux1, uy1, ux2, uy2),
@@ -753,6 +795,10 @@ def _paint_parallel_channel(
             y_lo=float(y_lo),
             y_hi=float(y_hi),
             color=color,
+            ls_body=_CHANNEL_RAIL_DASH,
+            ls_fut=_CHANNEL_RAIL_DASH,
+            lw=float(_CHANNEL_RAIL_LW),
+            halo=0.55,
         )
     touch = ch.get("touch")
     if touch:
@@ -854,6 +900,11 @@ def _clip_line(
     return xa, ya, xb, yb
 
 
+# 上升／下降區間雙軌：全程細虛線（與先前討論一致）
+_CHANNEL_RAIL_DASH = (0, (3.4, 2.2))
+_CHANNEL_RAIL_LW = 1.05
+
+
 def _paint_extended_rail(
     ax,
     x1: float,
@@ -867,8 +918,12 @@ def _paint_extended_rail(
     y_lo: float,
     y_hi: float,
     color: str,
+    ls_body: Any = "-",
+    ls_fut: Any = (0, (4, 2.2)),
+    lw: float = 1.35,
+    halo: float = 0.9,
 ) -> None:
-    """實線拉到最近一根，虛線進演化區。左緣有空間就延長，跟上升撐同一套。"""
+    """預設：實線拉到最近一根，虛線進演化區。通道可改全程細虛線。"""
     clipped = _clip_line(
         x1, y1, x2, y2, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi
     )
@@ -878,11 +933,11 @@ def _paint_extended_rail(
     if xa < seam:
         xs = [xa, min(xb, seam)]
         ys = [ya, _line_at(x1, y1, x2, y2, xs[1])]
-        _halo_line(ax, xs, ys, color, lw=1.35, halo=0.9, ls="-", z=5)
+        _halo_line(ax, xs, ys, color, lw=float(lw), halo=float(halo), ls=ls_body, z=5)
     if xb > seam:
         xs = [max(xa, seam), xb]
         ys = [_line_at(x1, y1, x2, y2, xs[0]), yb]
-        _halo_line(ax, xs, ys, color, lw=1.35, halo=0.9, ls=(0, (4, 2.2)), z=5)
+        _halo_line(ax, xs, ys, color, lw=float(lw), halo=float(halo), ls=ls_fut, z=5)
 
 
 def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1262,16 +1317,19 @@ def _add_ohlc_bodies(
 
 
 def _halo_line(ax, xs, ys, color, *, lw=1.4, ls="-", z=6, halo=1.0):
+    # 虛線軌：光暈跟同一 dash，不准實線光暈把細虛線洗成實線
+    halo_ls = ls if ls not in (None, "-", "solid") else "-"
     if float(halo or 0) > 0:
         ax.plot(
             xs,
             ys,
             color=_HALO,
             linewidth=lw + float(halo),
-            linestyle="-",
+            linestyle=halo_ls,
             zorder=z,
             solid_capstyle="round",
             solid_joinstyle="round",
+            dash_capstyle="butt",
             alpha=0.92,
         )
     ax.plot(
@@ -1283,6 +1341,7 @@ def _halo_line(ax, xs, ys, color, *, lw=1.4, ls="-", z=6, halo=1.0):
         zorder=z + 1,
         solid_capstyle="round",
         solid_joinstyle="round",
+        dash_capstyle="butt",
     )
 
 
@@ -1486,16 +1545,16 @@ def _approx_note_pack_width(text: str, size: float = 12) -> float:
     return _approx_note_width(text, size) * 1.08
 
 
-# 昨收｜今收並排：縫收緊以把空檔還給主圖 K（仍不准兩盒互壓）
-_CLOSE_PAIR_SIDE_GAP = 4.5
+# 昨收｜今收並排：中間必留空白（不准互壓）；略讓右溝，優先可讀
+_CLOSE_PAIR_SIDE_GAP = 6.0
 # 主圖 xlim 右白／標籤欄：再收右溝，K 柱加寬（不准改 OHLC／量；v78）
 _STRUCTURE_X_RIGHT_PAD = 8.0
 _STRUCTURE_LABEL_COL_EXTRA = 0.70
 _STRUCTURE_LABEL_FRAC = 0.068
 # xlim 硬頂：主圖加寬仍須整盒入軸（今收不准裁半）；估寬已收過
 _STRUCTURE_X_RIGHT_CAP_EXTRA = 26.0
-# 昨收→今收前進寬係數（<1＝兩盒靠緊，空檔還給 K）
-_STRUCTURE_CLOSE_PAIR_ADVANCE = 0.58
+# 昨收→今收前進寬係數（≈1＝用足昨收盒寬，中間再加 SIDE_GAP）
+_STRUCTURE_CLOSE_PAIR_ADVANCE = 1.02
 
 
 def _dedupe_right_notes(
@@ -1922,11 +1981,11 @@ def _place_right_notes(
             today_tx = float(col_tx) + advance + pair_side_gap
             if x_max is not None:
                 today_w = _approx_note_pack_width(today_text, today_size)
-                # 右緣不夠時略縮縫仍同列；今收整盒入軸，不准裁半
+                # 右緣不夠時略縮縫仍同列；今收整盒入軸；中間至少留 4.8 不准互壓
                 overflow = (today_tx + today_w) - (float(x_max) - 2.2)
                 if overflow > 0:
                     today_tx = max(
-                        float(col_tx) + advance + 2.4,
+                        float(col_tx) + advance + 4.8,
                         today_tx - overflow,
                     )
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
@@ -3149,8 +3208,10 @@ def _paint_nameplate(
     if skip_industry:
         return
     # industry_x：橫式介紹帶把產業／龍頭標往右挪，不貼股名
-    gap = 2.35 if size <= 24 else 1.55
-    after_title = x + _ow(title, size) + gap
+    # 大字號粗體 _ow 低估 → 乘補償＋加大縫，不准產業標壓「聯亞」等股名
+    gap = 4.10 if size >= 28 else (2.80 if size <= 24 else 3.40)
+    title_w = _ow(title, size) * (1.35 if size >= 28 else 1.22)
+    after_title = float(x) + title_w + gap
     if industry_x is None:
         cx = after_title
     else:
@@ -3466,8 +3527,8 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        # v78c：選定 C＋硬空白字串＋右軸進藍框＋八個月窗
-        "hdr-band-v78c-c-polish" if fullbleed else "hdr-wrap3-vol-min",
+        # v78e：標籤留縫＋通道雙軌細虛線＋日刻不互壓
+        "hdr-band-v78e-dash-rails" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -4099,13 +4160,16 @@ def render_biaoke_structure_png(
         ch_sz = int(_STRUCTURE_TAG_SIZE)
         status_pad = float(_STRUCTURE_TAG_PAD)
         status_lw = 1.05
-        status_h_gap = 1.55
+        # 橘色破線洗盤長句與下降坡道標之間必留空，不准互壓
+        status_h_gap = 3.40
+        status_adv_scale = 1.32
     else:
         status_sz = int(round(13 * _STATUS_CHIP_SCALE))
         ch_sz = int(round(12 * _STATUS_CHIP_SCALE))
         status_pad = 0.22 * _STATUS_CHIP_SCALE
         status_lw = 1.15 * _STATUS_CHIP_SCALE
         status_h_gap = 2.05 * _STATUS_CHIP_SCALE
+        status_adv_scale = 1.0
     status_row: List[Tuple[str, str, str, int]] = []
     if mark:
         status_row.append((mark, mc, mc, status_sz))
@@ -4123,11 +4187,14 @@ def render_biaoke_structure_png(
     if fullbleed and not has_locator:
         status_max = max(status_max, float(spot_x) - 3.5)
     for bit, ec, tc, sz in status_row:
+        x_before = float(chip_x)
         chip_x = _draw_chip(
             ov, chip_x, chip_y, bit, fc="#ffffff", ec=ec, tc=tc,
             size=sz, pad=status_pad, lw=status_lw,
         )
-        chip_x += status_h_gap
+        # _draw_chip 前進寬低估長中文盒 → 補補償，橘標與坡道標才有空格
+        drawn = max(0.0, float(chip_x) - x_before)
+        chip_x = x_before + drawn * float(status_adv_scale) + float(status_h_gap)
         if chip_x > status_max:
             # 仍畫完本列；不換行、不刪（使用者鎖單列橫排）
             pass
