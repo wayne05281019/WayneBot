@@ -290,7 +290,7 @@ def test_vol_zone_xaxis_matches_k_and_volume_index():
     src = inspect.getsource(_paint_volume_zone)
     assert "abs(int(spike_i) - int(last_i)) <= 2" in src
     assert "linestyle=(0, (1.1, 1.35))" in src  # 爆大量豎線極小間距虛線
-    assert "不畫最後一根橘色豎虛線" in src
+    assert "不准壓末日導航箭" in src or "不畫最後一根橘色豎虛線" in src
     assert "axvline(\n            float(xs[-1])" not in src
     assert "axvline(float(xs[-1])" not in src
 
@@ -410,7 +410,9 @@ def test_lookup_vol_gives_header_space_from_volume_blank():
     assert "lookup_portrait=False" in inspect.getsource(render_lookup_vol_result)
     assert "transform=ax1.transAxes" in src
     assert "0.975" in src
-    assert "ymax = ymax + (ymax - ymin) * 0.12" in src
+    # 有導航表頭時狀況標掛表頭，不再抬 K 頂 0.12；無表頭才略留空
+    assert "not with_nav_signals" in src
+    assert "ymax = ymax + (ymax - ymin) * 0.08" in src
     assert "0.985" in src or "0.992" in src
     assert "set_ylim(0, max(vol_ylim * 1.30" in src
 

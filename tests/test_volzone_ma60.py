@@ -49,7 +49,7 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "format_card_query_stamp" in src
     assert "fig.text" in src and "0.985" in src  # 整圖右上時間戳
     assert "大量區壓" in src and "大量區撐" in src
-    assert "linewidth=1.35" in src
+    assert "linewidth=0.78" in src  # 壓／撐水平線再細
     assert "_paint_ma_line_labels" in src
     assert '"月"' in src and '"季"' in src
     assert '"5"' in src and '"10"' in src
@@ -57,7 +57,12 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "draw_ma20=False" in src
     # 月／季線寬仍粗於五日／十日
     assert "linewidth=1.75" in src and "linewidth=1.85" in src
-    assert "linewidth=1.35" in src and "linewidth=1.45" in src
+    assert "linewidth=1.45" in src
+    # 已刪表頭右上收盤晶片；表頭「收XXXX」改紅稍大
+    assert 'f"收 {_fmt_price(last_cl)}"' not in src
+    assert "quote_limit_chip_colors" not in src
+    assert "close_bit" in src
+    assert "離開 K 頂與末日導航箭" in src  # 狀況標離 K／末日箭
     # 標位不准碰假 OHLC／量
     assert "不准動 OHLC" in src or "不准改 OHLC" in inspect.getsource(_paint_ma_line_labels)
     lab_src = inspect.getsource(_label_ma_blank)
