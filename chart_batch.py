@@ -47,10 +47,14 @@ def paint_volume_zones_serial(
     packs: Sequence[Optional[Dict[str, Any]]],
     *,
     with_nav_signals: bool = True,
+    with_ma5_ma10: bool = True,
     db_path: str = "",
     card: Optional[Dict[str, Any]] = None,
 ) -> List[Tuple[str, str]]:
-    """在單一執行緒串行 paint（mpl_render 鎖）。回傳 (path, caption)。"""
+    """在單一執行緒串行 paint（mpl_render 鎖）。回傳 (path, caption)。
+
+    with_ma5_ma10 預設 True＝與查股／壓撐／勝率同一新臉；不准批次路徑殘留舊臉。
+    """
     from vol_zone_chart import (
         VOL_ZONE_BARS,
         VOL_ZONE_LOOKBACK,
@@ -94,6 +98,7 @@ def paint_volume_zones_serial(
                 pack["out"],
                 with_nav_signals=with_nav_signals,
                 card=card,
+                with_ma5_ma10=with_ma5_ma10,
             )
             path_s, cap_s = str(path or ""), str(cap or "")
             if path_s and not card:
@@ -105,6 +110,7 @@ def paint_volume_zones_serial(
                         with_nav_signals=with_nav_signals,
                         lookback=VOL_ZONE_LOOKBACK,
                         bars=VOL_ZONE_BARS,
+                        with_ma5_ma10=with_ma5_ma10,
                     ),
                     path_s,
                     cap_s,
@@ -121,12 +127,17 @@ def render_volume_zones_two_phase(
     db_path: str,
     *,
     with_nav_signals: bool = True,
+    with_ma5_ma10: bool = True,
     max_workers: int = 8,
 ) -> List[Tuple[str, str]]:
     """多檔壓力區／大量區：prepare∥ → paint 串行。"""
     packs = prepare_volume_zones_parallel(jobs, db_path, max_workers=max_workers)
     return paint_volume_zones_serial(
-        packs, with_nav_signals=with_nav_signals, db_path=db_path, card=None
+        packs,
+        with_nav_signals=with_nav_signals,
+        with_ma5_ma10=with_ma5_ma10,
+        db_path=db_path,
+        card=None,
     )
 
 

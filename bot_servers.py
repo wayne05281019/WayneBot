@@ -1414,7 +1414,7 @@ class WayneTelegramBot:
             # 還原 bdda259 舊好：逐檔畫完就送。外層改走 submit_mpl_paint
             #（保留 #492／#493 FreeType 單一 worker）；不准整頁 two_phase。
             from pressure_support_watch import pressure_card_html
-            from vol_zone_chart import render_volume_zone_result
+            from vol_zone_chart import render_lookup_vol_result
             from wayne_navigator import submit_mpl_paint
 
             sent = 0
@@ -1439,13 +1439,12 @@ class WayneTelegramBot:
                 )
 
                 def _render(_c=code, _n=name, _p=out):
-                    return render_volume_zone_result(
+                    # 與查股第 4 張同一入口（橫式＋導航＋5／10／月／季）
+                    return render_lookup_vol_result(
                         _c,
                         _n,
                         self.db_path,
                         _p,
-                        with_nav_signals=True,
-                        with_ma5_ma10=True,
                     )
 
                 try:
@@ -1520,7 +1519,7 @@ class WayneTelegramBot:
     async def _send_pressure_stock_trio(self, message, code: str, tag: str = "") -> None:
         """點股票一次三張：①壓力區（含導航指標）②高低溫度卡 ③籌碼。"""
         from pressure_support_watch import normalize_tag, tag_label
-        from vol_zone_chart import render_volume_zone_result
+        from vol_zone_chart import render_lookup_vol_result
         from wayne_navigator import NavigatorEngine, render_decision_card_png
 
         code = str(code or "").strip()
@@ -1594,14 +1593,13 @@ class WayneTelegramBot:
             from wayne_navigator import submit_mpl_paint
 
             def _vz():
-                return render_volume_zone_result(
+                # 與查股第 4 張同一入口（橫式＋導航＋5／10／月／季）
+                return render_lookup_vol_result(
                     code,
                     name,
                     self.db_path,
                     vol_path,
                     card=card or None,
-                    with_nav_signals=True,
-                    with_ma5_ma10=True,
                 )
 
             def _card_png():

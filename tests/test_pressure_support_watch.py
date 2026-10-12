@@ -316,20 +316,18 @@ def test_pressure_bot_paths_share_nav_volzone_layout():
     src = inspect.getsource(WayneTelegramBot._run_pressure_support)
     trio = inspect.getsource(WayneTelegramBot._send_pressure_stock_trio)
     bot_src = inspect.getsource(WayneTelegramBot)
-    assert src.count("with_nav_signals=True") >= 1
-    assert trio.count("with_nav_signals=True") >= 1
-    # 壓撐子鈕＋三張仍走完美版面；查股改走結構圖＋大量撐壓（內部仍 with_nav_signals）
-    assert bot_src.count("with_nav_signals=True") >= 2
+    # 壓撐名單／三張與查股第 4 張共用 render_lookup_vol_result（內開 nav＋5／10）
+    assert "render_lookup_vol_result" in src
+    assert "render_lookup_vol_result" in trio
+    assert bot_src.count("render_lookup_vol_result") >= 3
     assert "pressure_card_html" in src
     assert "_pressure_section_keyboard" in src
     assert "tag_label" in trio
     tio = open("three_in_one_chart.py", encoding="utf-8").read()
     assert "with_nav_signals=True" in tio
     assert "render_lookup_structure_result" in bot_src
-    assert "render_lookup_vol_result" in bot_src
     # 名單壓力區：逐檔 submit_mpl_paint 畫完就送；不准整頁 two_phase 逾時吞後面檔
     assert "submit_mpl_paint" in src
-    assert "render_volume_zone_result" in src
     assert "render_volume_zones_two_phase" not in src
     assert "prepare_volume_zone" in open("chart_batch.py", encoding="utf-8").read()
     assert "_paint_volume_zone" in open("chart_batch.py", encoding="utf-8").read()
