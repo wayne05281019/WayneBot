@@ -522,6 +522,136 @@ def test_format_level_hit_synthesis_no_date_catalog():
     assert "同點另有 1 則已併入" in html
 
 
+def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
+    """同根官方柱一次碰到多個已點位 → 只送一則，列出各位＋之上／之下。
+
+    復現 2026-10-12 14:06：49226／49333／49240 三則近重複泡泡。
+    """
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db = str(tmp_path / "w.db")
+    ensure_biaoke_posts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    # 官方柱高低跨三個已點位（對齊 20261012 實況形狀）
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20261012','TWII',49000,49412.9,48768.8,49302)"
+    )
+    # 舊回測位 49240
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('old','2026-10-08','09:00','post',?)",
+        ("昨天夜盤及今天都是在做 6/23 49240 的回測。",),
+    )
+    # 今日兩關 49226／49333
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('today','2026-10-12','08:57','post',?)",
+        (
+            "低標一定要過49226，否則一定還會再打下來；"
+            "如要確認化解止跌則要過49333為基本要求。",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261012",
+    )
+    sent = []
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+
+    a = maybe_push_marked_level_hits(
+        db, now=datetime(2026, 10, 12, 14, 6, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert a["pushed"] == 1
+    assert a.get("levels") == 3
+    assert len(sent) == 1
+    html = sent[0]
+    assert html.count("官方碰到已點位") == 1
+    assert "一次碰到" in html
+    assert "49226" in html and "49240" in html and "49333" in html
+    assert "之上" in html  # 收 49302 相對 49226／49240
+    assert "之下" in html  # 收 49302 相對 49333
+    assert "中心思想：" in html or "判斷：" in html
+    assert "併成一則" in html
+    # 不准拆三泡
+    assert sent[0].count("<b>飆大急推·官方碰到已點位</b>") == 1
+
+    # 同日再跑不重推；每位鍵已記
+    sent.clear()
+    b = maybe_push_marked_level_hits(db)
+    assert b["pushed"] == 0
+    assert sent == []
+    assert b["skipped"] >= 3
+
+
+def test_format_multi_level_hit_lists_above_below():
+    """多關合併文案：各位列之上／之下，只一句中心思想。"""
+    from biaoke_alert import format_multi_level_hit_synthesis
+
+    html = format_multi_level_hit_synthesis(
+        levels=[
+            {
+                "level": 49226,
+                "note": "加權點位",
+                "sources": [
+                    {
+                        "date": "2026-10-12",
+                        "time": "08:57",
+                        "text": "低標一定要過49226，否則一定還會再打下來。",
+                    }
+                ],
+            },
+            {
+                "level": 49240,
+                "note": "加權點位",
+                "sources": [
+                    {
+                        "date": "2026-10-08",
+                        "time": "09:00",
+                        "text": "在做 6/23 49240 的回測。",
+                    }
+                ],
+            },
+            {
+                "level": 49333,
+                "note": "加權點位",
+                "sources": [
+                    {
+                        "date": "2026-10-12",
+                        "time": "08:57",
+                        "text": "確認化解止跌則要過49333為基本要求。",
+                    }
+                ],
+            },
+        ],
+        bar_date="20261012",
+        bar_high=49412.9,
+        bar_low=48768.8,
+        bar_close=49302,
+    )
+    assert "49226" in html and "49240" in html and "49333" in html
+    assert "一次碰到" in html
+    assert html.count("中心思想：") == 1
+    assert "之上" in html and "之下" in html
+    assert "併成一則" in html
+
+
 def test_old_posts_not_urgent_on_reingest(tmp_path, monkeypatch):
     """復現 10/10 17:31：重掃把 10/05–10/07 舊文當急推灌多則 → 不准。"""
     from datetime import datetime
