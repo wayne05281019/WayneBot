@@ -789,6 +789,7 @@ def render_page_pairs(
                 job["vz_work"],
                 card=card or None,
                 with_nav_signals=True,
+                with_ma5_ma10=True,  # 與查股／壓撐同一新臉（5／10／月／季）
             )
         except Exception:
             logger.exception("勝率買點壓力區失敗 code=%s", sid)

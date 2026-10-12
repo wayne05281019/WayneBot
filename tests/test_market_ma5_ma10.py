@@ -22,10 +22,17 @@ def test_market_builder_enables_ma5_ma10():
 
 def test_stock_lookup_vol_enables_ma5_ma10():
     """查股第 4 張必須畫五日／十日（#584 標籤 refinement 前提；話筒不得只剩月／季）。"""
-    from vol_zone_chart import render_lookup_vol_result
+    from vol_zone_chart import render_lookup_vol_result, render_volume_zone_result
 
     src = inspect.getsource(render_lookup_vol_result)
     assert "with_ma5_ma10=True" in src
+    # 全面套用：底層預設也開，漏傳旗也不會冒舊臉
+    assert (
+        inspect.signature(render_volume_zone_result)
+        .parameters["with_ma5_ma10"]
+        .default
+        is True
+    )
 
 
 def test_attach_official_ma5_ma10_min_periods():

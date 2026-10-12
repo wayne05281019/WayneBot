@@ -4554,9 +4554,9 @@ def chart_caption(
     spike_lo = st.get("spike_low")
     if spike_hi and spike_lo:
         tape = (
-            f"這檔收 {_px(last_bar.get('close'))}，爆大量那一天 "
-            f"{_ymd_full(st.get('spike_date'))} 高 {_px(spike_hi)}＝壓、"
-            f"低 {_px(spike_lo)}＝撐、量 {_vol(st.get('spike_volume') or (info.get('spike_bar') or {}).get('volume'))}。"
+            f"這檔收 {_px_quote(last_bar.get('close'))}，爆大量那一天 "
+            f"{_ymd_full(st.get('spike_date'))} 高 {_px_quote(spike_hi)}＝壓、"
+            f"低 {_px_quote(spike_lo)}＝撐、量 {_vol(st.get('spike_volume') or (info.get('spike_bar') or {}).get('volume'))}。"
         )
         if info.get("wash"):
             tape += "破撐之後又站回，比較像破線洗盤。"
@@ -4655,7 +4655,11 @@ def build_biaoke_structure_chart(
     quote = _spot_quote(sid, last, prev, db_path)
     # 使用者定案：不畫 next-press；press_band 忽略（只留大量壓／撐）
     _ = press_band
-    # 74 核准：飆大／查股結構圖同一橫式滿版（不准殘留舊直式版面）
+    # 74 核准：飆大／查股結構圖同一橫式滿版＋同一 DPI（不准殘留舊直式／舊 dpi）
+    try:
+        from vol_zone_chart import VOL_ZONE_DPI as _struct_dpi
+    except Exception:
+        _struct_dpi = BIAOKE_CHART_DPI
     path = render_biaoke_structure_png(
         bars,
         save_path,
@@ -4666,6 +4670,7 @@ def build_biaoke_structure_chart(
         quote=quote,
         db_path=db_path,
         figsize=_STRUCTURE_LOOKUP_FIG,
+        dpi=int(_struct_dpi),
         press_band=None,
     )
     try:

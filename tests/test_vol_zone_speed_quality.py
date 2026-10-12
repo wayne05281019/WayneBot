@@ -59,7 +59,7 @@ def test_pressure_list_streams_per_stock_not_whole_page():
 
     src = inspect.getsource(WayneTelegramBot._run_pressure_support)
     assert "submit_mpl_paint" in src
-    assert "render_volume_zone_result" in src
+    assert "render_lookup_vol_result" in src
     assert "render_volume_zones_two_phase" not in src
     batch = open("chart_batch.py", encoding="utf-8").read()
     assert "prepare_volume_zone" in batch

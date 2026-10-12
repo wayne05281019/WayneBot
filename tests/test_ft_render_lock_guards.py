@@ -122,7 +122,7 @@ def test_pressure_trio_paints_serial_not_parallel_wait_for():
 def test_bot_chart_entries_use_submit_mpl_paint():
     """真正 savefig 必走 submit／run_mpl_paint；多檔必須逐檔送。
 
-    壓撐名單：逐檔 submit_mpl_paint(render_volume_zone_result)。
+    壓撐名單：逐檔 submit_mpl_paint(render_lookup_vol_result)。
     勝率買點：逐檔 to_thread(render_stock_pair)，內層 run_mpl_paint。
     查股／三張／大盤／飆大／籌碼：外層 submit_mpl_paint。
     """

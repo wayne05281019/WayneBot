@@ -72,8 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 29  # 表頭「收XXXX」跟漲跌上色（不准寫死紅）；稍大仍留
-
+_VZ_PAINT_VER = 30  # 表頭收字漲跌色＋話筒路徑預設五日／十日
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -1473,7 +1472,7 @@ def _vz_memo_key(
     bars: int,
     lookup_portrait: bool = False,
     with_parallel_channel: bool = False,
-    with_ma5_ma10: bool = False,
+    with_ma5_ma10: bool = True,
     card_fp: Tuple[Any, ...] = (),
 ) -> Tuple[Any, ...]:
     last_d = _bar_ymd((last or {}).get("date"))
@@ -1800,7 +1799,7 @@ def render_volume_zone_result(
     with_nav_signals: bool = False,
     lookup_portrait: bool = False,
     with_parallel_channel: bool = False,
-    with_ma5_ma10: bool = False,
+    with_ma5_ma10: bool = True,
 ) -> tuple[str, str]:
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
@@ -1808,7 +1807,7 @@ def render_volume_zone_result(
     lookup_portrait＝舊直式 4:5 畫布（壓區名單仍可走）。查股第 4 張改橫式原版。
     with_parallel_channel＝疊可重算上升軌／下降壓兩條平行線（大盤大量區用；不數浪、非買訊）。
     with_ma5_ma10＝疊官方五日／十日線（橙／青；與月／季並列；非買訊）。
-    查股／壓撐話筒路徑經 render_lookup_vol_result 或呼叫端開 True；大盤亦開。
+    預設 True＝話筒／勝率／壓撐／大盤同一新臉；測試要舊臉才顯式傳 False。
     """
     del already_normalized
     pack = prepare_volume_zone(
@@ -1967,7 +1966,7 @@ def _paint_volume_zone(
     lookup_portrait: bool = False,
     db_path: str = "",
     with_parallel_channel: bool = False,
-    with_ma5_ma10: bool = False,
+    with_ma5_ma10: bool = True,
     bars_face=None,
 ):
     spike_md = _md(spike_date)
@@ -2052,7 +2051,7 @@ def _paint_volume_zone(
         linestyle=(0, (1.1, 1.35)),
     )
 
-    # 均線：月線／季線一律畫；五日／十日由 with_ma5_ma10（查股／壓撐／大盤開）
+    # 均線：月線／季線一律畫；五日／十日由 with_ma5_ma10（預設開；關旗才略）
     closes_v = pd.to_numeric(view["close"], errors="coerce")
     ma5_vals = None
     ma10_vals = None
