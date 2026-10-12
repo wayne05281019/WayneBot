@@ -1089,3 +1089,202 @@ def test_catch_up_skips_morning_on_as_of_day(monkeypatch):
     assert "fuse" in kinds
     assert "midday" not in kinds
     assert "winrate" not in kinds
+
+
+def test_morning_claim_blocks_parallel_second_send(tmp_path, monkeypatch):
+    """準點＋catch-up／watchdog 並行：第二槍搶不到鎖，海選／加權不連寄。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "morning-claim.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    touch_tg_user(path, "8772209416", "哥哥")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "8772209416")
+
+    pushes = []
+    extras = []
+
+    def _make_runner():
+        runner = MainRunner.__new__(MainRunner)
+        runner.db_path = path
+        runner.today_str = "20260909"
+        runner.chat_id = "9001"
+        runner.bot = type(
+            "B",
+            (),
+            {
+                "send_screening_report": staticmethod(
+                    lambda *a, **k: pushes.append(("screen", k.get("chat_id"))) or True
+                )
+            },
+        )()
+        runner._run_ai_desk = lambda *a, **k: {}
+        runner._format_watch_radar_section = lambda uid="": ""
+        runner.send_telegram_message = lambda text, chat_id=None: extras.append(
+            (chat_id, text)
+        ) or True
+        runner.token = ""
+        return runner
+
+    runner_a = _make_runner()
+    _stub_morning_deps(monkeypatch, runner_a)
+    monkeypatch.setattr(
+        "taiwan_market.format_taiwan_market_brief_html",
+        lambda *_a, **_k: "＝＝台灣加權指數研究＝＝\n測試",
+    )
+    monkeypatch.setattr(
+        "taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False}
+    )
+    monkeypatch.setattr("money_flow.format_sector_rotation_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("fundamentals.format_hot_revenue_html", lambda *_a, **_k: "")
+
+    # 模擬準點已搶鎖、尚未標 success（長掃／加權附帶還在寄）
+    assert (
+        runner_a.try_claim_pipeline(
+            "screen-20260908", notes="morning-claim", allow_stale_running=False
+        )
+        is True
+    )
+    row = sqlite3.connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20260908",),
+    ).fetchone()
+    assert row[0] == "running"
+    assert "morning-claim" in row[1]
+
+    # watchdog／catch-up 第二槍：搶不到 → 零推播
+    runner_b = _make_runner()
+    assert runner_b.run_morning_screen(skip_if_done=True, notify=True) is True
+    assert pushes == []
+    assert extras == []
+    assert (
+        sqlite3.connect(path)
+        .execute(
+            "SELECT status FROM pipeline_runs WHERE run_date=?",
+            ("screen-20260908",),
+        )
+        .fetchone()[0]
+        == "running"
+    )
+
+
+def test_morning_double_call_sends_once(tmp_path, monkeypatch):
+    """連續兩次 run_morning_screen：白名單各只收到一輪海選＋加權。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "morning-once.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    touch_tg_user(path, "8772209416", "哥哥")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "8772209416")
+
+    pushes = []
+    extras = []
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = type(
+        "B",
+        (),
+        {
+            "send_screening_report": staticmethod(
+                lambda *a, **k: pushes.append(k.get("chat_id")) or True
+            )
+        },
+    )()
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner.send_telegram_message = lambda text, chat_id=None: extras.append(
+        (chat_id, text)
+    ) or True
+    runner.token = ""
+    _stub_morning_deps(monkeypatch, runner)
+
+    def _screen_with_message(**_k):
+        from screen_sessions import save_screen_session
+
+        save_screen_session(
+            path,
+            "20260908",
+            "morning",
+            {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 1.0}]},
+        )
+        # format_taiwan_market_brief_html 只在 screening 有 message 時才當附帶寄出
+        return {
+            "status": "success",
+            "payload": [{"html": "海選"}],
+            "message": "海選本文",
+            "results": {},
+        }
+
+    monkeypatch.setattr("main_runner.run_full_screening", _screen_with_message)
+    monkeypatch.setattr(
+        "taiwan_market.format_taiwan_market_brief_html",
+        lambda *_a, **_k: "＝＝台灣加權指數研究＝＝\n測試",
+    )
+    monkeypatch.setattr(
+        "taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False}
+    )
+    monkeypatch.setattr("money_flow.format_sector_rotation_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("fundamentals.format_hot_revenue_html", lambda *_a, **_k: "")
+
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+
+    assert sorted(pushes) == ["8772209416", "9001"]
+    mkt = [e for e in extras if e[1] and "加權指數研究" in e[1]]
+    assert sorted(cid for cid, _ in mkt) == ["8772209416", "9001"]
+    assert (
+        sqlite3.connect(path)
+        .execute(
+            "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+            ("screen-20260908",),
+        )
+        .fetchone()
+        == ("success", "morning")
+    )
+
+
+def test_morning_send_failed_marks_computed_for_retry(tmp_path, monkeypatch):
+    """寄失敗必須放 computed，不可卡在 running 讓 §14 補寄永遠搶不到。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "morning-fail.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: False)})()
+    _stub_morning_deps(monkeypatch, runner)
+
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is False
+    row = sqlite3.connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20260908",),
+    ).fetchone()
+    assert row[0] == "computed"
+    assert "send-failed" in row[1]
+    # 明確失敗後可再搶補寄
+    assert (
+        runner.try_claim_pipeline(
+            "screen-20260908", notes="morning-claim", allow_stale_running=False
+        )
+        is True
+    )
