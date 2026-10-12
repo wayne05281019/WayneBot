@@ -145,6 +145,10 @@ def test_structure_top_pad_lifts_header_frame():
     # 迷你K／主圖不准造假 OHLC；缺真數就不畫
     assert "不准造假 OHLC" in src
     assert "ohlc_ok" in src
+    # 主圖往右吃今收空檔（只排版）
+    assert float(bc._STRUCTURE_FIG_RIGHT) >= 0.955
+    assert float(bc._STRUCTURE_X_RIGHT_PAD) <= 12.0
+    assert "_STRUCTURE_X_RIGHT_PAD" in src
 
 
 def test_month_revenue_splits_after_yi_for_right_edge():

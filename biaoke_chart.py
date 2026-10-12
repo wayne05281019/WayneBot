@@ -74,8 +74,8 @@ _MUTED = "#607d8b"
 # 主圖左右略拉長：回收左緣空白給 K 區，右溝仍留「最可能」整盒
 _FIG_LEFT = 0.028
 _FIG_RIGHT = 0.918
-# 結構圖右溝要塞「最可能＝看壓 ####」整盒＋邊框；右緣再留 y 刻度，不准貼齊裁切
-_STRUCTURE_FIG_RIGHT = 0.948
+# 結構圖右緣：吃今收標籤四周空檔把主圖 K 往右拉寬；右軸刻度仍留縫不准裁
+_STRUCTURE_FIG_RIGHT = 0.962
 # 直式 4:5：縮圖靠右，左邊留給頭牌，不准今K／日期壓進迷你圖
 _LOOKUP_LOCATOR_LEFT = 0.575
 _FIG_BOTTOM = 0.055
@@ -1394,13 +1394,17 @@ def _place_band_notes(
 
 
 def _approx_note_width(text: str, size: float = 12) -> float:
-    """結構圖右溝標籤約略資料座標寬（含 bbox pad＋邊框）。偏寬估，整盒必須在畫布內。"""
+    """結構圖右溝標籤約略資料座標寬（含 bbox pad＋邊框）。
+
+    78：略收估寬，讓昨收｜今收並排不再把 xlim 右白撐爆（主圖 K 變瘦）。
+    仍偏寬於真盒，整盒必須在畫布內、不准互壓。
+    """
     s = str(text or "")
     units = 0.0
     for ch in s:
         units += 1.0 if ord(ch) > 0x2E80 else 0.72
-    # 實測 size12「最可能＝看壓 5255」約 19；邊框＋內邊距刻意估高
-    return units * (float(size) / 12.0) * 2.35 + 6.8
+    # 舊 2.35+6.8 並排時 xlim≈235／182 根 → K 過瘦；收回今收空檔
+    return units * (float(size) / 12.0) * 2.05 + 5.2
 
 
 def _is_today_close_note(text: str) -> bool:
@@ -1474,8 +1478,14 @@ def _approx_note_pack_width(text: str, size: float = 12) -> float:
     return _approx_note_width(text, size) * 1.08
 
 
-# 昨收｜今收並排：左盒右緣 → 右盒左緣的資料座標縫（話筒縮圖後仍清楚）
-_CLOSE_PAIR_SIDE_GAP = 5.2
+# 昨收｜今收並排：縫收緊以把空檔還給主圖 K（仍不准兩盒互壓）
+_CLOSE_PAIR_SIDE_GAP = 4.5
+# 主圖 xlim 右白／標籤欄：收掉今收四周空檔，K 柱加寬（不准改 OHLC／量）
+_STRUCTURE_X_RIGHT_PAD = 9.0
+_STRUCTURE_LABEL_COL_EXTRA = 0.85
+_STRUCTURE_LABEL_FRAC = 0.078
+# xlim 硬頂：不准為並排今收把右白撐到 K 變瘦（標籤靠緊湊估寬＋FIG_RIGHT）
+_STRUCTURE_X_RIGHT_CAP_EXTRA = 15.5
 
 
 def _dedupe_right_notes(
@@ -1652,10 +1662,10 @@ def _place_right_notes(
             singles.append(pw + float(_CLOSE_PAIR_SIDE_GAP) + tw)
         need = max(singles, default=16.0)
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
-        fit_tx = float(x_max) - need - 6.0
+        fit_tx = float(x_max) - need - 4.8
         if pin_x is not None:
-            # 左緣至少離末日 K 一段（67／精確度：不准蓋住最後幾根縮圖）
-            floor_tx = float(pin_x) + 5.6
+            # 左緣離末日 K 仍留縫；略收以把空檔還主圖（不准蓋最後幾根）
+            floor_tx = float(pin_x) + 4.9
             # 若右溝不夠，優先保左空隙（呼叫端應把 x_right 加夠）
             tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
@@ -3490,8 +3500,8 @@ def render_biaoke_structure_png(
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
     # 先留軌末端右側的標籤欄；後面依最長「最可能」再加寬
-    # 64 收右白加寬 K；67 標籤再右移讓開末日 K，右溝略加回可讀空隙
-    x_right = n + _FUTURE + 16.0
+    # 78：收今收四周空檔 → 主圖 K 往右拉寬（只改排版，不准造假 OHLC／量）
+    x_right = n + _FUTURE + float(_STRUCTURE_X_RIGHT_PAD)
     ax1.set_xlim(-0.55, x_right)
     paint_forecast_span(ax1, n - 1, _FUTURE)
     st = info.get("struct") or {}
@@ -3528,9 +3538,11 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     x_fut = float(n - 1 + _FUTURE)
-    # 標籤欄左緣：演化帶內再右移（67），不准蓋住最後幾根／末日縮圖 K
-    label_col_left = float(n - 1) + max(float(_FUTURE) * 0.72, 6.2) + 2.2
-    hline_xmax = float(label_col_left) - 1.2
+    # 標籤欄左緣：演化帶右側；略左移＝主圖＋水平壓撐線往右吃空檔
+    label_col_left = (
+        float(n - 1) + max(float(_FUTURE) * 0.70, 5.9) + float(_STRUCTURE_LABEL_COL_EXTRA)
+    )
+    hline_xmax = float(label_col_left) - 0.9
     if spike_hi:
         ax1.hlines(
             spike_hi,
@@ -3784,19 +3796,22 @@ def render_biaoke_structure_png(
                 _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 11))
             )
     max_note_w = max(_widths, default=22.0)
-    # 67：標籤欄再右移讓開末日 K；x_right 必須夠 _place_right_notes 的 fit_tx
-    # （fit ≈ x_max − note_w − 6），否則字會被夾回 seam 蓋住末日 K
-    label_frac = 0.108
+    # 標籤欄仍夠放今收｜昨收；多餘右白收回主圖（fit 對齊 floor_tx）
+    label_frac = float(_STRUCTURE_LABEL_FRAC)
     content_right = float(label_col_left)
     need_by_frac = content_right / max(1.0 - label_frac, 0.5)
-    need_by_place = content_right + max_note_w + 6.0 + 3.0  # 對齊 fit_tx＋左緣空隙
-    need_by_text = content_right + max_note_w * 0.95 + 3.0
+    need_by_place = content_right + max_note_w + 3.6 + 1.8
+    need_by_text = content_right + max_note_w * 0.88 + 1.8
     x_right = max(float(x_right), need_by_frac, need_by_text, need_by_place)
+    # 硬頂最後套：並排今收不准再把右白撐到 K 變瘦
+    x_cap = float(n - 1) + float(_FUTURE) + float(_STRUCTURE_X_RIGHT_CAP_EXTRA)
+    x_floor = content_right + min(max_note_w, 26.0) + 1.6
+    x_right = min(max(float(x_right), x_floor), x_cap)
     ax1.set_xlim(-0.55, x_right)
     # 字落標籤欄內偏右，右側留邊框＋右軸；左緣離末日 K 有空隙
     gutter = float(x_right) - content_right
-    # 標籤再進演化帶一點，壓／撐盒不准蓋最後一根 K
-    x_text = content_right + max(3.2, gutter * 0.24)
+    # 標籤貼右溝，把中段空檔還給 K／演化帶
+    x_text = content_right + max(1.8, gutter * 0.14)
     # 71：壓／撐標籤貼線，不再把 spike 當 avoid；軌現價仍讓軟標籤錯開
     avoid_ys: List[float] = []
     if channel.get("rail_now"):
