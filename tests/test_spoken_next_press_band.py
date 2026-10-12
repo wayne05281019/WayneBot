@@ -98,7 +98,7 @@ def test_structure_builders_do_not_auto_paint_next_press():
     assert "resolve_next_press_band" not in lookup_src
     assert 'f"下一壓' not in render_src
     assert "下一壓 " not in render_src
-    assert "hdr-band-v76-no-next-press" in render_src
+    assert "hdr-band-v77-vol-min-visible" in render_src
     assert "axhspan" not in render_src
 
 
