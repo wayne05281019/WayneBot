@@ -23,8 +23,12 @@ def test_structure_header_uses_aligned_ohlc_helper():
     assert hasattr(bc, "_paint_aligned_kv_row")
     mod = open(bc.__file__, encoding="utf-8").read()
     assert "_paint_aligned_kv_row" in mod
-    # v77＝量柱最低可視；v76＝拿掉下一壓帶
-    assert "hdr-band-v77-vol-min-visible" in mod
+    # v78c＝選定 C polish；舊鍵相容備援
+    assert (
+        "hdr-band-v78c-c-polish" in mod
+        or "hdr-band-v77-vol-min-visible" in mod
+        or "hdr-band-v76-no-next-press" in mod
+    )
     # 爆大量壓撐列不准再 shared[1:] 對「高」欄縮進
     assert "spike_cols = shared[1:" not in mod
     assert "_col_starts(header_x, [spike_cells])" in mod
@@ -135,20 +139,31 @@ def test_structure_top_pad_lifts_header_frame():
     assert float(bc._STRUCTURE_TOP_PAD) >= 0.45
     assert float(bc._STRUCTURE_TOP_PAD) < 1.35
     src = open(bc.__file__, encoding="utf-8").read()
-    assert "name_y = 94.00 if fullbleed" in src
-    assert "date_y, ohlc_y1 = 90.40, 86.80" in src
+    # 選定 C：單列橫帶（日期＋開高低／爆大量各併一行）＋右上三行放大
+    assert "name_y = 95.00 if fullbleed" in src
+    assert "date_y, ohlc_y1 = 87.40, 87.40" in src
+    assert "spike_y1, spike_y2, chip_y0 = 82.20, 82.20, 76.40" in src
+    assert "_STRUCTURE_DATE_OHLC_GAP" in src
+    assert "_STRUCTURE_DATE_WIDTH_SCALE" in src
     assert "_STRUCTURE_SPOT_FS" in src
     assert "_STRUCTURE_TAG_SIZE" in src
     assert "bare=False" in src
     assert 'stamp=spot_stamp' in src
     assert bc._STRUCTURE_TITLE_FS == bc._STRUCTURE_SPOT_FS
+    assert int(bc._STRUCTURE_SPOT_FS) >= 32
+    assert int(bc._STRUCTURE_SPOT_MOVE_FS) >= 20
+    assert int(bc._STRUCTURE_SPOT_STAMP_FS) >= 17
     # 迷你K／主圖不准造假 OHLC；缺真數就不畫
     assert "不准造假 OHLC" in src
     assert "ohlc_ok" in src
-    # 主圖往右吃今收空檔（只排版）
-    assert float(bc._STRUCTURE_FIG_RIGHT) >= 0.955
+    # 右軸刻度完整落在藍框內；八個月窗讓每天 K 更清楚
+    assert 0.900 <= float(bc._STRUCTURE_FIG_RIGHT) <= 0.915
     assert float(bc._STRUCTURE_X_RIGHT_PAD) <= 12.0
     assert "_STRUCTURE_X_RIGHT_PAD" in src
+    assert float(bc._STRUCTURE_LABEL_FRAC) <= 0.072
+    assert 160 <= int(bc._BARS) <= 175
+    assert 'f"{date_line}　{ohlc_bits}"' in src
+    assert 'f"{spike_1}　{spike_bits}"' in src
 
 
 def test_month_revenue_splits_after_yi_for_right_edge():

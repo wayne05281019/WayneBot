@@ -504,7 +504,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v77-vol-min-visible" in src
+        "hdr-band-v78c-c-polish" in src
+        or "hdr-band-v77-vol-min-visible" in src
         or "hdr-band-v76-no-next-press" in src
         or "hdr-band-v75-next-press" in src
         or "hdr-band-v74-ohlc-align" in src
@@ -551,10 +552,10 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert 0.75 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
     assert float(_STRUCTURE_BOX_W) >= 90.0
     assert callable(_paint_structure_blue_baskets)
-    # K 窗上限≈九個月（約 180–190）；不准再拉到一年／240
+    # K 窗≈八個月（約 168）；上限仍不准拉到一年／240
     assert int(_BARS_MAX) <= 195
     assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX)
-    assert 180 <= int(_BARS) <= 190
+    assert 160 <= int(_BARS) <= 175
 
 
 def test_structure_no_vol_day_judgment_and_prev_close_note():
@@ -679,7 +680,7 @@ def test_locator_inset_marks_window():
 
     from biaoke_chart import _BARS_MAX, _BARS_MIN
 
-    assert 180 <= int(_BARS) <= 190
+    assert 160 <= int(_BARS) <= 175
     assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX) <= 195
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
     assert _STOCK_LOCATOR_RECT[2] >= 0.40
