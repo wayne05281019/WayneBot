@@ -98,7 +98,14 @@ def test_structure_builders_do_not_auto_paint_next_press():
     assert "resolve_next_press_band" not in lookup_src
     assert 'f"下一壓' not in render_src
     assert "下一壓 " not in render_src
-    assert "hdr-band-v77-vol-min-visible" in render_src
+    assert (
+        "hdr-band-v78g-close-half" in render_src
+        or "hdr-band-v78f-gap-tighten" in render_src
+        or "hdr-band-v78e-dash-rails" in render_src
+        or "hdr-band-v78d-label-gaps" in render_src
+        or "hdr-band-v78c-c-polish" in render_src
+        or "hdr-band-v77-vol-min-visible" in render_src
+    )
     assert "axhspan" not in render_src
 
 

@@ -504,7 +504,12 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v77-vol-min-visible" in src
+        "hdr-band-v78g-close-half" in src
+        or "hdr-band-v78f-gap-tighten" in src
+        or "hdr-band-v78e-dash-rails" in src
+        or "hdr-band-v78d-label-gaps" in src
+        or "hdr-band-v78c-c-polish" in src
+        or "hdr-band-v77-vol-min-visible" in src
         or "hdr-band-v76-no-next-press" in src
         or "hdr-band-v75-next-press" in src
         or "hdr-band-v74-ohlc-align" in src
@@ -551,10 +556,10 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert 0.75 <= float(_STOCK_MAIN_TOP_FULLBLEED) <= 0.80
     assert float(_STRUCTURE_BOX_W) >= 90.0
     assert callable(_paint_structure_blue_baskets)
-    # K 窗上限≈九個月（約 180–190）；不准再拉到一年／240
+    # K 窗≈八個月（約 168）；上限仍不准拉到一年／240
     assert int(_BARS_MAX) <= 195
     assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX)
-    assert 180 <= int(_BARS) <= 190
+    assert 160 <= int(_BARS) <= 175
 
 
 def test_structure_no_vol_day_judgment_and_prev_close_note():
@@ -597,8 +602,11 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "_approx_note_pack_width" in place_src
     from biaoke_chart import _CLOSE_PAIR_SIDE_GAP, _approx_note_pack_width, _approx_note_width
 
-    # 77：並排前進寬不准再估窄到互壓（昨收3140 實測盒≈16；話筒縮圖要留縫）
-    assert float(_CLOSE_PAIR_SIDE_GAP) >= 4.5
+    # 78f：昨收｜今收留一半縫（不准互壓）
+    from biaoke_chart import _STRUCTURE_CLOSE_PAIR_ADVANCE
+
+    assert 0.2 <= float(_CLOSE_PAIR_SIDE_GAP) <= 1.0
+    assert 0.88 <= float(_STRUCTURE_CLOSE_PAIR_ADVANCE) <= 1.05
     assert _approx_note_pack_width("昨收 3140", 11) >= 16.0
     assert _approx_note_pack_width("昨收 3140", 11) >= _approx_note_width("昨收 3140", 11) * 1.05
     assert "不准蓋昨收" in place_src or "兩盒" in place_src
@@ -679,7 +687,7 @@ def test_locator_inset_marks_window():
 
     from biaoke_chart import _BARS_MAX, _BARS_MIN
 
-    assert 180 <= int(_BARS) <= 190
+    assert 160 <= int(_BARS) <= 175
     assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX) <= 195
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
     assert _STOCK_LOCATOR_RECT[2] >= 0.40
@@ -897,6 +905,15 @@ def test_axis_ticks_drop_near_last_bar():
     assert 77 in near
     assert 75 not in near
     assert 0 in near
+    # 3081 型：爆量日與 +6 一般刻不准同留（MM/DD 互壓）
+    wide = _axis_ticks(168, extra=(138,))
+    assert 138 in wide
+    assert 144 not in wide
+    assert all(
+        abs(a - b) >= 8
+        for a, b in zip(wide, wide[1:])
+        if a < 168 and b < 168
+    )
 
 
 def test_pressure_support_use_consecutive_pivots():
@@ -1202,6 +1219,14 @@ def test_parallel_channel_follows_biaoke_rails(production_db):
     # 只標主軌兩點＋觸點，不准把平行緣端點當假連點
     assert "假樞紐" in psrc or "不准把平行緣" in psrc
     assert "lx1" in psrc and "ux1" in psrc
+    # 上升／下降區間兩條軌：全程細虛線
+    assert "_CHANNEL_RAIL_DASH" in psrc
+    assert "ls_body=_CHANNEL_RAIL_DASH" in psrc
+    assert "ls_fut=_CHANNEL_RAIL_DASH" in psrc
+    from biaoke_chart import _CHANNEL_RAIL_DASH, _CHANNEL_RAIL_LW
+
+    assert _CHANNEL_RAIL_DASH != "-" and _CHANNEL_RAIL_DASH != "solid"
+    assert float(_CHANNEL_RAIL_LW) <= 1.2
 
     from biaoke_brain import load_bars
     from biaoke_chart import _BARS
