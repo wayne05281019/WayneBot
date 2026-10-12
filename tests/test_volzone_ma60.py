@@ -51,21 +51,24 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "大量區壓" in src and "大量區撐" in src
     assert "linewidth=1.35" in src
     assert "_paint_ma_line_labels" in src
-    assert '"月線"' in src and '"季線"' in src
+    assert '"月"' in src and '"季"' in src
+    assert '"5"' in src and '"10"' in src
     assert "left=0.050" in src  # 左縮右鬆放大 K 區
     assert "draw_ma20=False" in src
     # 月／季線寬仍粗於五日／十日
     assert "linewidth=1.75" in src and "linewidth=1.85" in src
     assert "linewidth=1.35" in src and "linewidth=1.45" in src
+    # 標位不准碰假 OHLC／量
+    assert "不准動 OHLC" in src or "不准改 OHLC" in inspect.getsource(_paint_ma_line_labels)
     lab_src = inspect.getsource(_label_ma_blank)
     assert "_clear_of_bars" in lab_src
-    assert "左半" in lab_src or "中段" in lab_src
-    assert "近端" in lab_src
+    assert "前 40%" in lab_src or "0.40" in lab_src
+    assert "右溝" not in lab_src or "禁止" in lab_src
     assert inspect.getsource(_paint_ma_line_labels)
 
 
-def test_label_ma_blank_prefers_left_mid_away_from_near_end():
-    """貼線；優先左半／中段淨空，不准貼近端／末日 K。"""
+def test_label_ma_blank_mid_left_short_labels():
+    """短標；只放前 40% 中左淨空；不准中右／右溝。"""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -74,7 +77,6 @@ def test_label_ma_blank_prefers_left_mid_away_from_near_end():
 
     n = 40
     xs = np.arange(n, dtype=float)
-    # 近端 K 抬高；左中段均線在低點下＝淨空
     highs = np.concatenate([np.full(30, 120.0), np.full(10, 130.0)])
     lows = np.concatenate([np.full(30, 110.0), np.full(10, 118.0)])
     vals = np.linspace(95.0, 105.0, n)
@@ -82,38 +84,35 @@ def test_label_ma_blank_prefers_left_mid_away_from_near_end():
     ax.set_ylim(80, 150)
     ax.set_xlim(-0.05, n + 2.15)
     pos = _label_ma_blank(
-        ax, xs, highs, lows, lab="月線", vals=vals, color="#f9a825", face="#fffde7"
+        ax, xs, highs, lows, lab="月", vals=vals, color="#f9a825", face="#fffde7"
     )
     assert pos is not None
     x, y = pos
-    texts = [t for t in ax.texts if t.get_text() == "月線"]
+    texts = [t for t in ax.texts if t.get_text() == "月"]
     assert texts
-    # 不准落在近端禁區（最後 ~22%）
-    assert float(x) < float(n) * 0.72
-    # y 貼該 x 均線
+    assert float(x) <= float(n - 1) * 0.40 + 0.05
     j = int(round(float(x)))
     j = max(0, min(n - 1, j))
     assert abs(float(y) - float(vals[j])) < 1e-5
     plt.close(fig)
 
-    # 多標互避：四條都畫得出、不疊同一點、都離近端
     fig2, ax2 = plt.subplots()
     ax2.set_ylim(80, 150)
     ax2.set_xlim(-0.05, n + 2.15)
     series = [
-        ("五日", vals + 2.0, "#ef6c00", "#fff3e0"),
-        ("十日", vals + 0.5, "#00838f", "#e0f7fa"),
-        ("月線", vals, "#f9a825", "#fffde7"),
-        ("季線", vals - 8.0, "#5c6bc0", "#e8eaf6"),
+        ("5", vals + 2.0, "#ef6c00", "#fff3e0"),
+        ("10", vals + 0.5, "#00838f", "#e0f7fa"),
+        ("月", vals, "#f9a825", "#fffde7"),
+        ("季", vals - 8.0, "#5c6bc0", "#e8eaf6"),
     ]
     _paint_ma_line_labels(ax2, xs, highs, lows, series=series)
     labs = {t.get_text(): t.get_position() for t in ax2.texts}
-    assert set(labs) >= {"五日", "十日", "月線", "季線"}
+    assert set(labs) >= {"5", "10", "月", "季"}
     pts = list(labs.values())
     for i in range(len(pts)):
-        assert float(pts[i][0]) < float(n) * 0.78
+        assert float(pts[i][0]) <= float(n - 1) * 0.40 + 0.05
         for j in range(i + 1, len(pts)):
-            assert abs(pts[i][0] - pts[j][0]) > 0.2 or abs(pts[i][1] - pts[j][1]) > 1.5
+            assert abs(pts[i][0] - pts[j][0]) > 0.15 or abs(pts[i][1] - pts[j][1]) > 1.2
     plt.close(fig2)
 
 

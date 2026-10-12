@@ -72,7 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 23  # 均線標離末日 K：左半／中段淨空優先
+_VZ_PAINT_VER = 24  # 均線短標 5／10／月／季；只放中左（前 40%）
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -133,14 +133,14 @@ def attach_official_ma60(work: pd.DataFrame, *, window: int = VOL_ZONE_MA60) -> 
 
 
 def _ma_label_box_half(
-    span: float, *, x_half: float = 1.05
+    span: float, *, x_half: float = 0.72
 ) -> Tuple[float, float, float]:
     """標盒半高／半寬／與 K 的最小空隙（價格單位）。
 
-    兩字標（五日／月線）視覺寬約 2 根；碰撞半寬略緊，右溝才排得下。
+    短標（5／10／月／季）視覺窄，碰撞半寬收緊，較好擠進中左淨空。
     """
-    half_h = span * 0.038
-    pad = span * 0.010
+    half_h = span * 0.032
+    pad = span * 0.009
     return half_h, float(x_half), pad
 
 
@@ -181,10 +181,9 @@ def _label_ma_blank(
     spike_i: Optional[int] = None,
     avoid_path_box: bool = False,
 ) -> Optional[Tuple[float, float]]:
-    """均線標找相對空白處：優先左半／中段線上淨空；y 貼所屬均線。
+    """均線短標找空白處：只放圖中間偏左（約前 40%）；y 貼所屬均線。
 
-    不准貼末日／近端 K 與收價標；不准蓋壓／撐數字、右上走勢盒、已放均線標。
-    右溝僅在 y 離近端 K 包絡有明顯空隙時才用。
+    禁止中右、右溝、近端 K。不准蓋壓／撐數字、已放均線標。
     """
     ok = np.flatnonzero(np.isfinite(vals) & (vals > 0))
     if ok.size == 0 or len(xs) == 0:
@@ -195,14 +194,10 @@ def _label_ma_blank(
     half_h, x_half, pad = _ma_label_box_half(span)
     if occupied is None:
         occupied = []
-    x_max = float(ax.get_xlim()[1]) if ax.get_xlim() else float(n + 1.65)
-    # 近端禁區：最後 ~22% 根（縮圖判斷區）；標不准貼這段 K
-    near_i0 = max(0, int(n * 0.78))
-    near_hi = float(np.nanmax(highs[near_i0:])) if near_i0 < n else float("nan")
-    near_lo = float(np.nanmin(lows[near_i0:])) if near_i0 < n else float("nan")
-    last_y = float(vals[int(ok[-1])])
-    # 收價／近端包絡：標 y 須離這段至少 ~半標高＋緩衝
-    near_clear = half_h * 2.2 + span * 0.02
+    # 只用前 40%（寧可更左）；硬禁中右／右溝
+    x_cap = float(n - 1) * 0.40
+    lo_i = max(0, int(n * 0.06))
+    hi_i = max(lo_i + 1, int(n * 0.40))
 
     def _cover_range(x_lab: float) -> tuple[int, int]:
         j0 = max(0, int(np.floor(x_lab - x_half)))
@@ -210,17 +205,7 @@ def _label_ma_blank(
         return j0, j1
 
     def _signed_gap(x_lab: float, y_lab: float) -> float:
-        """線在 K 外的最小空隙；右溝且 y 離近端包絡才給正分。"""
-        if (x_lab - x_half) >= float(n - 1) - 0.05:
-            if not (np.isfinite(near_hi) and np.isfinite(near_lo)):
-                return span * 0.5
-            y_bot, y_top = y_lab - half_h, y_lab + half_h
-            if y_top < near_lo - near_clear * 0.35:
-                return float(near_lo - y_top)
-            if y_bot > near_hi + near_clear * 0.35:
-                return float(y_bot - near_hi)
-            # 貼近端價區＝否決（使用者：影響判斷）
-            return -span
+        """線在 K 外的最小空隙；穿進 K 回負。"""
         j0, j1 = _cover_range(x_lab)
         y_bot, y_top = y_lab - half_h, y_lab + half_h
         best = span
@@ -240,18 +225,8 @@ def _label_ma_blank(
     def _clear_of_bars(x_lab: float, y_lab: float) -> bool:
         return _signed_gap(x_lab, y_lab) >= pad
 
-    def _in_near_end_band(x_lab: float) -> bool:
-        """標盒碰到近端禁區 x。"""
-        return (x_lab + x_half) >= float(near_i0) - 0.25
-
-    def _y_clear_of_near_k(y_lab: float) -> bool:
-        if not (np.isfinite(near_hi) and np.isfinite(near_lo)):
-            return True
-        y_bot, y_top = y_lab - half_h, y_lab + half_h
-        return (y_top < near_lo - near_clear) or (y_bot > near_hi + near_clear)
-
     def _blocked_by_tags(x_lab: float, y_lab: float) -> bool:
-        """壓／撐左標、右上走勢盒：用軸座標擋。"""
+        """壓／撐左標：用軸座標擋。"""
         try:
             xf = (x_lab - float(ax.get_xlim()[0])) / max(
                 float(ax.get_xlim()[1] - ax.get_xlim()[0]), 1e-6
@@ -260,37 +235,29 @@ def _label_ma_blank(
         except Exception:
             return False
         # 左上大量區壓、左下大量區撐
-        if xf < 0.26 and yf > 0.86:
+        if xf < 0.28 and yf > 0.86:
             return True
-        if xf < 0.26 and yf < 0.14:
+        if xf < 0.28 and yf < 0.14:
             return True
-        # 右上當日撐壓事實句／收價區
-        if avoid_path_box and xf > 0.52 and yf > 0.78:
-            return True
-        if xf > 0.72 and yf > 0.72:
-            return True
-        # 壓／撐數字：左標區＋貼水平線價
         if press_hi is not None and np.isfinite(press_hi):
-            if abs(y_lab - float(press_hi)) < half_h * 1.45 and xf < 0.32:
+            if abs(y_lab - float(press_hi)) < half_h * 1.5 and xf < 0.34:
                 return True
         if hold_lo is not None and np.isfinite(hold_lo):
-            if abs(y_lab - float(hold_lo)) < half_h * 1.45 and xf < 0.32:
+            if abs(y_lab - float(hold_lo)) < half_h * 1.5 and xf < 0.34:
                 return True
         return False
 
     def _overlap_occupied(rect: Tuple[float, float, float, float]) -> bool:
         for other in occupied:
-            if _ma_rects_overlap(rect, other, pad_x=0.35, pad_y=span * 0.008):
+            if _ma_rects_overlap(rect, other, pad_x=0.28, pad_y=span * 0.007):
                 return True
         return False
 
     spike_x = float(spike_i) if spike_i is not None else None
 
-    # 候選：左半→中段線上淨空（主）；右溝僅 y 離近端 K（備）
+    # 候選：僅中左前 40% 線上淨空
     chart_cands: List[Tuple[float, float]] = []
-    lo_i = max(0, int(n * 0.10))
-    hi_i = max(lo_i + 1, int(n * 0.62))  # 不含近端 38%
-    step = max(1, n // 32)
+    step = max(1, max(1, hi_i - lo_i) // 16)
     for j in ok:
         jj = int(j)
         if jj < lo_i or jj > hi_i:
@@ -302,92 +269,58 @@ def _label_ma_blank(
             continue
         chart_cands.append((float(xs[jj]), y_lab))
 
-    gutter_xs: List[float] = []
-    for dx in (1.75, 2.55):
-        xg = float(n - 1) + dx
-        if xg <= x_max - 0.05:
-            gutter_xs.append(xg)
-
-    def _score_at(x_lab: float, y_lab: float, *, allow_near_x: bool) -> Optional[float]:
+    def _score_at(x_lab: float, y_lab: float) -> Optional[float]:
+        if x_lab > x_cap + 0.05:
+            return None
         yf = (y_lab - y0) / span
         if yf < 0.08 or yf > 0.94:
             return None
         if _blocked_by_tags(x_lab, y_lab):
             return None
-        # 近端 x：除非明確允許且 y 離近端 K
-        if _in_near_end_band(x_lab):
-            if not allow_near_x or not _y_clear_of_near_k(y_lab):
-                return None
         rect = _ma_label_rect(x_lab, y_lab, half_h=half_h, x_half=x_half)
         if _overlap_occupied(rect):
             return None
         gap = _signed_gap(x_lab, y_lab)
         if gap < pad:
             return None
-        # 左半／中段加分；愈靠近末日愈扣
+        # 中間偏左加分（約 18%–36%）；太靠左緣（壓撐標）略扣
         frac = float(x_lab) / max(float(n - 1), 1.0)
-        if frac <= 0.45:
-            zone_bonus = 0.55 + 0.15 * (0.45 - frac) / 0.45
-        elif frac <= 0.62:
-            zone_bonus = 0.35
-        elif x_lab >= float(n - 1):
-            # 右溝且 y 已離近端：低優先
-            zone_bonus = 0.08
+        if 0.16 <= frac <= 0.36:
+            zone_bonus = 0.70
+        elif 0.08 <= frac < 0.16:
+            zone_bonus = 0.45
+        elif frac < 0.08:
+            zone_bonus = 0.20
         else:
-            zone_bonus = -0.35
+            # 接近 40% 邊界仍可，但優先更左
+            zone_bonus = 0.30 * (0.40 - frac) / 0.04
         spike_pen = 0.0
         if spike_x is not None and abs(x_lab - spike_x) < 2.8:
-            spike_pen = 0.18
+            spike_pen = 0.20
         level_pen = 0.0
         if press_hi is not None and np.isfinite(press_hi):
             if abs(y_lab - float(press_hi)) < half_h * 1.15:
-                level_pen += 0.30
+                level_pen += 0.32
         if hold_lo is not None and np.isfinite(hold_lo):
             if abs(y_lab - float(hold_lo)) < half_h * 1.15:
-                level_pen += 0.30
+                level_pen += 0.32
         return gap / span + zone_bonus - spike_pen - level_pen
 
-    # 1) 圖內左半／中段：只收淨空
     chart_best = None  # (score, x, y)
     for x_lab, y_lab in chart_cands:
-        sc = _score_at(x_lab, y_lab, allow_near_x=False)
+        sc = _score_at(x_lab, y_lab)
         if sc is None:
             continue
         cand = (sc, x_lab, y_lab)
         if chart_best is None or cand[0] > chart_best[0]:
             chart_best = cand
 
-    # 2) 右溝備援：y 必須離近端 K／收價區
-    gutter_best = None
-    if gutter_xs:
-        y_offs = (
-            0.0,
-            near_clear * 0.9,
-            -near_clear * 0.9,
-            near_clear * 1.4,
-            -near_clear * 1.4,
-        )
-        for y_off in y_offs:
-            for xg in gutter_xs:
-                y_try = last_y + y_off
-                if not _y_clear_of_near_k(y_try):
-                    continue
-                sc = _score_at(xg, y_try, allow_near_x=True)
-                if sc is None:
-                    continue
-                sc = sc - (0.05 * (abs(y_off) / max(near_clear, 1e-6)))
-                cand = (sc, xg, y_try)
-                if gutter_best is None or cand[0] > gutter_best[0]:
-                    gutter_best = cand
-
     if chart_best is not None:
         _, x_lab, y_lab = chart_best
-    elif gutter_best is not None:
-        _, x_lab, y_lab = gutter_best
     else:
-        # 最後退回：中段貼線＋找淨空最近點
-        mid_j = int(ok[min(ok.size // 3, ok.size - 1)])
-        x_lab, y_lab = float(xs[mid_j]), float(vals[mid_j])
+        # 退回：中左貼線找淨空（仍不超過 40%）
+        x_lab = float(xs[min(hi_i, n - 1)])
+        y_lab = float(vals[min(hi_i, n - 1)]) if np.isfinite(vals[min(hi_i, n - 1)]) else float(vals[int(ok[0])])
         for j in ok:
             jj = int(j)
             if jj < lo_i or jj > hi_i:
@@ -400,36 +333,37 @@ def _label_ma_blank(
                     x_lab, y_lab = x_try, y_try
                     break
 
-    # 仍重疊：沿線往左／中挪（不准往末日擠）
+    # 仍重疊：只往更左挪（不准往中右）
     for _ in range(14):
         rect = _ma_label_rect(x_lab, y_lab, half_h=half_h, x_half=x_half)
         if (
             not _overlap_occupied(rect)
             and not _blocked_by_tags(x_lab, y_lab)
-            and (not _in_near_end_band(x_lab) or _y_clear_of_near_k(y_lab))
+            and float(x_lab) <= x_cap + 0.05
         ):
             break
-        x_lab = max(float(lo_i), x_lab - 1.2)
-        j = int(np.clip(int(round(x_lab)), 0, n - 1))
+        x_lab = max(float(lo_i), min(x_lab - 1.0, x_cap))
+        j = int(np.clip(int(round(x_lab)), 0, hi_i))
         if np.isfinite(vals[j]) and vals[j] > 0:
             y_lab = float(vals[j])
 
+    # 字級：短標略小一點，更不擋底圖
     ax.text(
         x_lab,
         y_lab,
         lab,
         ha="center",
         va="center",
-        fontproperties=_fp(11.0, "bold"),
+        fontproperties=_fp(10.0, "bold"),
         color=color,
         zorder=12,
         clip_on=False,
         bbox=dict(
-            boxstyle="round,pad=0.28",
+            boxstyle="round,pad=0.18",
             facecolor=face,
             edgecolor=color,
-            linewidth=1.05,
-            alpha=0.96,
+            linewidth=0.95,
+            alpha=0.94,
         ),
     )
     placed = _ma_label_rect(x_lab, y_lab, half_h=half_h, x_half=x_half)
@@ -483,12 +417,14 @@ def _paint_ma_line_labels(
     spike_i: Optional[int] = None,
     avoid_path_box: bool = False,
 ) -> None:
-    """依序畫五日／十日／月／季標；後畫的避開已佔空白。"""
+    """依序畫短標 5／10／月／季；後畫的避開已佔空白。不准改 OHLC／量。"""
     occupied: List[Tuple[float, float, float, float]] = []
-    # 先放較疏／較粗的月季，再放五日十日，減少擠在同一空檔
+    # 先放較疏／較粗的月季，再放 5／10，減少擠在同一空檔
     order = sorted(
         series,
-        key=lambda t: {"季線": 0, "月線": 1, "十日": 2, "五日": 3}.get(t[0], 9),
+        key=lambda t: {"季": 0, "月": 1, "10": 2, "5": 3, "季線": 0, "月線": 1, "十日": 2, "五日": 3}.get(
+            t[0], 9
+        ),
     )
     for lab, vals, color, face in order:
         if vals is None or not np.isfinite(vals).any():
@@ -2135,18 +2071,18 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
-    # 均線標：空白處貼線（右溝優先）；不准壓壓／撐數字、右上走勢盒、K
+    # 均線短標：中左前 40% 空白貼線；只改標位／文案，不准動 OHLC／量柱
     highs_a = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
     lows_a = pd.to_numeric(view["low"], errors="coerce").to_numpy(dtype=float)
     ma_series: List[Tuple[str, np.ndarray, str, str]] = []
     if ma5_vals is not None and np.isfinite(ma5_vals).any():
-        ma_series.append(("五日", ma5_vals, _MA5, "#fff3e0"))
+        ma_series.append(("5", ma5_vals, _MA5, "#fff3e0"))
     if ma10_vals is not None and np.isfinite(ma10_vals).any():
-        ma_series.append(("十日", ma10_vals, _MA10, "#e0f7fa"))
+        ma_series.append(("10", ma10_vals, _MA10, "#e0f7fa"))
     if ma20_vals is not None and np.isfinite(ma20_vals).any():
-        ma_series.append(("月線", ma20_vals, _MA20, "#fffde7"))
+        ma_series.append(("月", ma20_vals, _MA20, "#fffde7"))
     if ma60_vals is not None and np.isfinite(ma60_vals).any():
-        ma_series.append(("季線", ma60_vals, _MA60, "#e8eaf6"))
+        ma_series.append(("季", ma60_vals, _MA60, "#e8eaf6"))
     if ma_series:
         _paint_ma_line_labels(
             ax1,
