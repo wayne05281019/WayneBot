@@ -1525,10 +1525,15 @@ def format_nav_volume_label(volume_lots) -> str:
     return f"量 {n:,}張"
 
 
-def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
+def align_ohlc_to_tw_open_days(
+    df: pd.DataFrame,
+    *,
+    skip_invent_dates: Optional[set] = None,
+) -> pd.DataFrame:
     """開市日軸連續：有官方列用真開高低收量；缺列＝前收停價＋量 0＋is_halt。
 
     週末／國定假不進軸。不准編高低振幅、不准填假量柱。只做圖上展示對齊，不寫庫。
+    skip_invent_dates：官方月表已確認當日無列（休市／該檔未交易）→ 不准發明停價柱。
     """
     if df is None or getattr(df, "empty", True):
         return df
@@ -1548,6 +1553,11 @@ def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
     days = iter_tw_open_days(str(work["date"].iloc[0]), str(work["date"].iloc[-1]))
     if not days:
         return work
+    skip_invent = {
+        str(x).replace("-", "")[:8]
+        for x in (skip_invent_dates or set())
+        if str(x).replace("-", "")[:8]
+    }
     # 用 dict of tuples／tolist，不准 iterrows（壓撐名單會對齊上千檔）
     dates = [str(x) for x in work["date"].tolist()]
     opens = pd.to_numeric(work["open"], errors="coerce").tolist()
@@ -1616,8 +1626,11 @@ def align_ohlc_to_tw_open_days(df: pd.DataFrame) -> pd.DataFrame:
                 "is_halt": halt,
                 "no_trade_fill": False,
             }
+        elif d in skip_invent:
+            # 官方月表已確認無此日：週末／颱風休市／該檔未交易 → 不進軸、不准發明量
+            continue
         elif prev_close and prev_close > 0:
-            # 開市日庫無列：展示停在前一日真收，量 0。不是新假行情。
+            # 開市日庫無列且尚未官方確認：展示停在前一日真收，量 0（僅對齊；應先 ensure 補洞）
             px = float(prev_close)
             row = {
                 "date": d,
@@ -1682,11 +1695,23 @@ def _align_cache_key(work: pd.DataFrame, sid: str = "") -> tuple:
     return (str(sid or ""), str(d0)[:8], str(d1)[:8], int(len(work)), digest)
 
 
-def align_ohlc_cached(work: pd.DataFrame, sid: str = "") -> pd.DataFrame:
+def align_ohlc_cached(
+    work: pd.DataFrame,
+    sid: str = "",
+    *,
+    skip_invent_dates: Optional[set] = None,
+) -> pd.DataFrame:
     """align_ohlc_to_tw_open_days ＋短快取。回傳副本，呼叫端可改。"""
     if work is None or getattr(work, "empty", True):
         return work
-    key = _align_cache_key(work, sid)
+    skip_key = tuple(
+        sorted(
+            str(x).replace("-", "")[:8]
+            for x in (skip_invent_dates or set())
+            if str(x).replace("-", "")[:8]
+        )
+    )
+    key = _align_cache_key(work, sid) + (skip_key,)
     now = time.monotonic()
     with _ALIGN_OHLC_LOCK:
         hit = _ALIGN_OHLC_CACHE.get(key)
@@ -1694,7 +1719,7 @@ def align_ohlc_cached(work: pd.DataFrame, sid: str = "") -> pd.DataFrame:
             ts, cached = hit
             if now - float(ts) <= _ALIGN_OHLC_TTL_SEC and cached is not None:
                 return cached.copy(deep=True)
-    aligned = align_ohlc_to_tw_open_days(work)
+    aligned = align_ohlc_to_tw_open_days(work, skip_invent_dates=skip_invent_dates)
     if aligned is None or getattr(aligned, "empty", True):
         return aligned
     with _ALIGN_OHLC_LOCK:
@@ -1742,12 +1767,14 @@ LOOKUP_CANDLE_HALT = "#9e9e9e"
 LOOKUP_CANDLE_BODY_W = 0.60
 LOOKUP_CANDLE_WICK_LW = 1.25
 LOOKUP_CANDLE_BODY_LW = 0.35
-LOOKUP_VOL_BAR_W = 0.70
+LOOKUP_VOL_BAR_W = 0.78
 LOOKUP_SPIKE_VOL = "#f9a825"
 # 無成交／停價量柱貼底佔槽（相對視窗 max 正量）。Rectangle 強制畫，JPEG 不准吃成挖洞。
 LOOKUP_VOL_FLOOR_FRAC = 0.32
 LOOKUP_VOL_FLOOR_FACE = "#546e7a"
 LOOKUP_VOL_FLOOR_EDGE = "#37474f"
+# 正量最低可視高度（相對視窗 max）。暴量撐軸後低量日不准縮成白洞；資料層 heights 仍線性。
+LOOKUP_VOL_MIN_VISIBLE_FRAC = 0.10
 
 
 def lookup_candle_up_mask(opens, closes, *, halt=None) -> np.ndarray:
@@ -1880,8 +1907,10 @@ def paint_lookup_volume_bars(
 ) -> tuple:
     """結構／大量／導航共用日量柱。回 (heights, ylim, missing)。
 
-    正量＝視窗線性比例。無成交／停價／缺量＝貼底灰短柱佔槽（不准挖洞）；
-    高度資料層仍為 0，不抬假量進 ylim／對質。
+    正量＝視窗線性比例，過矮抬到最低可視（不准暴量撐軸後挖白洞）。
+    無成交／停價／缺量＝貼底灰短柱佔槽（不准挖洞）；
+    高度資料層仍為真實量／0，不抬假量進 ylim／對質。
+    日曆休市不進開市日軸＝本來就沒槽；有槽的交易日必有柱。
     """
     xs = np.asarray(xs, dtype=float)
     up = np.asarray(candle_up, dtype=bool)
@@ -1896,13 +1925,22 @@ def paint_lookup_volume_bars(
     vol_vals = pd.to_numeric(pd.Series(volumes), errors="coerce").fillna(0.0).to_numpy(dtype=float)
     zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | missing)
     vol_draw = np.asarray(heights, dtype=float).copy()
+    # 正量過矮：畫圖層抬到最低可視，資料層 heights 不動（對質／ylim 仍認官方量）
+    min_h = max(float(ylim) * float(LOOKUP_VOL_MIN_VISIBLE_FRAC), 1e-9)
+    short_pos = (
+        (vol_draw > 0)
+        & (vol_draw < min_h)
+        & (~halt_arr)
+        & (~np.asarray(missing, dtype=bool))
+    )
+    vol_draw[short_pos] = min_h
     vol_draw[zero_i] = 0.0
     colors = [
         LOOKUP_CANDLE_HALT if halt_arr[i] else (LOOKUP_CANDLE_UP if up[i] else LOOKUP_CANDLE_DN)
         for i in range(n)
     ]
     ax.bar(xs, vol_draw, color=colors, width=LOOKUP_VOL_BAR_W, zorder=z, linewidth=0)
-    # 正量先畫；停價／0 量／缺量用 Rectangle 強制貼底佔槽，不准挖洞
+    # 停價／0 量／缺量用 Rectangle 強制貼底佔槽，不准挖洞（JPEG／縮圖仍見）
     if zero_i.size:
         floor_h = max(float(ylim) * LOOKUP_VOL_FLOOR_FRAC, 1e-9)
         half_w = LOOKUP_VOL_BAR_W * 0.5
@@ -1914,17 +1952,18 @@ def paint_lookup_volume_bars(
                     floor_h,
                     facecolor=LOOKUP_VOL_FLOOR_FACE,
                     edgecolor=LOOKUP_VOL_FLOOR_EDGE,
-                    linewidth=0.8,
+                    linewidth=0.9,
                     zorder=z + 3,
-                    clip_on=True,
+                    clip_on=False,
                 )
             )
     if spike_i is not None:
         si = int(spike_i)
         if 0 <= si < n and not bool(halt_arr[si]) and float(vol_vals[si]) > 0 and float(heights[si]) > 0:
+            spike_h = max(float(heights[si]), float(vol_draw[si]) if si < len(vol_draw) else 0.0)
             ax.bar(
-                [si],
-                [float(heights[si])],
+                [float(xs[si])],
+                [spike_h],
                 color=LOOKUP_SPIKE_VOL,
                 width=LOOKUP_VOL_BAR_W + 0.08,
                 zorder=z + 1,
@@ -7071,6 +7110,7 @@ def draw_from_ohlc(
         int(len(work)),
         int(NAV_CHART_DPI),
         bool(already_normalized),
+        "vol-min-v1",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:

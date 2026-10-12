@@ -427,6 +427,7 @@ def test_volume_bars_one_per_traded_day_3081():
     from wayne_navigator import (
         LOOKUP_VOL_FLOOR_FACE,
         LOOKUP_VOL_FLOOR_FRAC,
+        LOOKUP_VOL_MIN_VISIBLE_FRAC,
         nav_volume_bar_heights,
         paint_lookup_volume_bars,
     )
@@ -485,6 +486,17 @@ def test_volume_bars_one_per_traded_day_3081():
                 assert abs(float(p.get_height()) - float(ylim) * LOOKUP_VOL_FLOOR_FRAC) < 1e-6
     assert occupied == set(range(n)), sorted(set(range(n)) - occupied)
     assert floor_n == len(zero_days) or floor_n >= len(zero_days)
+    min_h = float(ylim) * LOOKUP_VOL_MIN_VISIBLE_FRAC
+    short_pos = []
+    for pos in range(len(work)):
+        v = float(work.iloc[pos]["volume"] or 0)
+        if v > 0 and float(heights[pos]) > 0 and float(heights[pos]) < min_h:
+            short_pos.append(pos)
+    if short_pos:
+        for p in ax.patches:
+            cx = int(round(float(p.get_x()) + float(p.get_width()) / 2.0))
+            if cx in short_pos:
+                assert float(p.get_height()) >= min_h - 1e-6, (cx, float(p.get_height()))
     # 3081 近窗應有停價 0 量日（洞型樣本）；沒有也不准回歸回挖洞
     if zero_days:
         assert floor_n >= 1
@@ -509,7 +521,7 @@ def test_lookup_candle_paint_shared():
     assert LOOKUP_CANDLE_UP == "#e53935"
     assert LOOKUP_CANDLE_DN == "#00897b"
     assert LOOKUP_CANDLE_BODY_W == 0.60
-    assert LOOKUP_VOL_BAR_W == 0.70
+    assert LOOKUP_VOL_BAR_W == 0.78
     assert biaoke_chart._UP == LOOKUP_CANDLE_UP
     assert biaoke_chart._DN == LOOKUP_CANDLE_DN
     vz = inspect.getsource(vol_zone_chart._paint_volume_zone)

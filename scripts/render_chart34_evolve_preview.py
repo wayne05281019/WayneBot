@@ -2,16 +2,20 @@
 """本機試渲：查股第 3 張結構細虛線、第 4 張大量區＋五日／十日空白標。
 
 只寫媒體檔，不改話筒預設。結構＝細虛線通道＋細壓撐（另 worker）；
-大量區＝五日／十日細線、月／季較粗、均線標空白處（右溝優先）。
-官方日 K 來自本地 DB，不准假柱。時區說明：檔名／圖內日期皆台北日曆日。
+大量區＝五日／十日細線、月／季較粗、均線短標中左。
+官方日 K 來自本地 DB（缺洞先 STOCK_DAY 補），不准假柱。
+檔名必含台北時分秒或 tip sha，不准覆寫同路徑。
 """
 from __future__ import annotations
 
 import argparse
 import os
 import shutil
+import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -19,6 +23,8 @@ if str(ROOT) not in sys.path:
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ.setdefault("WAYNE_SKIP_POLLING", "1")
+
+_TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 def _db() -> str:
@@ -28,6 +34,37 @@ def _db() -> str:
     if not p.is_file():
         raise SystemExit(f"missing db: {p}")
     return str(p.resolve())
+
+
+def _tip_sha() -> str:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            cwd=str(ROOT),
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        return out or "nosha"
+    except Exception:
+        return "nosha"
+
+
+def _stamp() -> str:
+    """台北 YYYYMMDD-HHMMSS＋tip sha，保證新檔名。"""
+    now = datetime.now(_TAIPEI).strftime("%Y%m%d-%H%M%S")
+    return f"{now}-{_tip_sha()}"
+
+
+def _unique_path(out_dir: Path, stem: str, *, suffix: str = ".png") -> Path:
+    """永不覆寫：若撞名再加序號。"""
+    base = out_dir / f"{stem}{suffix}"
+    if not base.exists():
+        return base
+    for i in range(2, 100):
+        cand = out_dir / f"{stem}-r{i}{suffix}"
+        if not cand.exists():
+            return cand
+    return out_dir / f"{stem}-{_stamp()}{suffix}"
 
 
 def _name(sid: str, db: str) -> str:
@@ -332,21 +369,24 @@ def main() -> int:
         except Exception:
             pass
 
+    stamp = _stamp()
+    written: list[Path] = []
+
     if mode in ("all", "before"):
         for sid in sids:
             name = _name(sid, db)
-            before = out_dir / f"{sid}-struct-before.png"
+            before = _unique_path(out_dir, f"{sid}-struct-before-{stamp}")
             print(f"[before] structure {sid} {name} -> {before}", flush=True)
-            _render_structure(sid, name, db, before)
+            written.append(_render_structure(sid, name, db, before))
 
     if mode in ("all", "thin-dash"):
         _clear_memo()
         _patch_structure_thin_dash()
         for sid in sids:
             name = _name(sid, db)
-            out = out_dir / f"{sid}-struct-thin-dash.png"
+            out = _unique_path(out_dir, f"{sid}-struct-thin-dash-{stamp}")
             print(f"[thin-dash] structure {sid} {name} -> {out}", flush=True)
-            _render_structure(sid, name, db, out)
+            written.append(_render_structure(sid, name, db, out))
 
     if mode in ("all", "volzone", "volzone-labels"):
         try:
@@ -358,18 +398,18 @@ def main() -> int:
         _patch_volzone_thin_ma5_ma10()
         for sid in sids:
             name = _name(sid, db)
-            blank = out_dir / f"{sid}-volzone-ma-labels-blank.png"
-            print(f"[volzone+ma-blank] {sid} {name} -> {blank}", flush=True)
-            _render_volzone(sid, name, db, blank, with_ma5_ma10=True)
-            legacy = out_dir / f"{sid}-volzone-ma5-ma10.png"
-            try:
-                shutil.copy2(blank, legacy)
-            except Exception:
-                pass
+            blank = _unique_path(
+                out_dir, f"{sid}-volzone-ma-short-auto-{stamp}"
+            )
+            print(f"[volzone+ma-auto] {sid} {name} -> {blank}", flush=True)
+            written.append(
+                _render_volzone(sid, name, db, blank, with_ma5_ma10=True)
+            )
 
     print("done", flush=True)
-    for p in sorted(out_dir.glob("*.png")):
-        print(f"  {p}  {p.stat().st_size}", flush=True)
+    print(f"stamp={stamp}", flush=True)
+    for p in written:
+        print(f"  NEW {p.resolve()}  {p.stat().st_size}", flush=True)
     return 0
 
 

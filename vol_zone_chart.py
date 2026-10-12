@@ -72,7 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 24  # 均線短標 5／10／月／季；只放中左（前 40%）
+_VZ_PAINT_VER = 26  # 均線短標自動位（中左→中→中右靠中）只貼己線；官方量補洞
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -135,10 +135,7 @@ def attach_official_ma60(work: pd.DataFrame, *, window: int = VOL_ZONE_MA60) -> 
 def _ma_label_box_half(
     span: float, *, x_half: float = 0.72
 ) -> Tuple[float, float, float]:
-    """標盒半高／半寬／與 K 的最小空隙（價格單位）。
-
-    短標（5／10／月／季）視覺窄，碰撞半寬收緊，較好擠進中左淨空。
-    """
+    """標盒半高／半寬／與 K 的最小空隙（價格單位）。短標視覺窄。"""
     half_h = span * 0.032
     pad = span * 0.009
     return half_h, float(x_half), pad
@@ -165,6 +162,20 @@ def _ma_rects_overlap(
     )
 
 
+def _ma_x_zone_bonus(frac: float) -> float:
+    """程式自動選 x：中左 → 正中 → 中右靠中。遠右／右溝扣到不採用。"""
+    if 0.14 <= frac <= 0.34:
+        return 1.00  # 中左（首選）
+    if 0.34 < frac <= 0.52:
+        return 0.78  # 正中
+    if 0.52 < frac <= 0.68:
+        # 中右但靠中：越靠近 0.52 越好，越靠右越差
+        return 0.48 * (0.68 - frac) / 0.16 + 0.22
+    if 0.08 <= frac < 0.14:
+        return 0.40  # 過左（壓撐區）
+    return -1.0  # 禁：太左／遠右／右溝
+
+
 def _label_ma_blank(
     ax,
     xs,
@@ -180,10 +191,11 @@ def _label_ma_blank(
     hold_lo: Optional[float] = None,
     spike_i: Optional[int] = None,
     avoid_path_box: bool = False,
+    other_mas: Optional[List[np.ndarray]] = None,
 ) -> Optional[Tuple[float, float]]:
-    """均線短標找空白處：只放圖中間偏左（約前 40%）；y 貼所屬均線。
+    """均線短標：程式自動選位（中左→中→中右靠中）；y 只貼自己均線。
 
-    禁止中右、右溝、近端 K。不准蓋壓／撐數字、已放均線標。
+    不准壓 K、不准壓他均線、不准蓋已放標／壓撐數字。找不到淨空就不畫（不准硬蓋）。
     """
     ok = np.flatnonzero(np.isfinite(vals) & (vals > 0))
     if ok.size == 0 or len(xs) == 0:
@@ -194,18 +206,19 @@ def _label_ma_blank(
     half_h, x_half, pad = _ma_label_box_half(span)
     if occupied is None:
         occupied = []
-    # 只用前 40%（寧可更左）；硬禁中右／右溝
-    x_cap = float(n - 1) * 0.40
-    lo_i = max(0, int(n * 0.06))
-    hi_i = max(lo_i + 1, int(n * 0.40))
+    others = [a for a in (other_mas or []) if a is not None and len(a) == n]
+    # 搜尋窗：約 8%～68%（中右靠中上限）；禁遠右／右溝
+    lo_i = max(0, int(n * 0.08))
+    hi_i = max(lo_i + 1, min(n - 1, int(n * 0.68)))
+    x_cap = float(n - 1) * 0.68
 
     def _cover_range(x_lab: float) -> tuple[int, int]:
         j0 = max(0, int(np.floor(x_lab - x_half)))
         j1 = min(n - 1, int(np.ceil(x_lab + x_half)))
         return j0, j1
 
-    def _signed_gap(x_lab: float, y_lab: float) -> float:
-        """線在 K 外的最小空隙；穿進 K 回負。"""
+    def _signed_gap_k(x_lab: float, y_lab: float) -> float:
+        """標盒相對 K 高低的最小空隙；穿進 K 回負。"""
         j0, j1 = _cover_range(x_lab)
         y_bot, y_top = y_lab - half_h, y_lab + half_h
         best = span
@@ -223,10 +236,25 @@ def _label_ma_blank(
         return float(best)
 
     def _clear_of_bars(x_lab: float, y_lab: float) -> bool:
-        return _signed_gap(x_lab, y_lab) >= pad
+        return _signed_gap_k(x_lab, y_lab) >= pad
+
+    def _clear_of_other_mas(x_lab: float, y_lab: float) -> bool:
+        """標盒不准壓到其他均線（自己線除外）。"""
+        if not others:
+            return True
+        j0, j1 = _cover_range(x_lab)
+        y_bot, y_top = y_lab - half_h, y_lab + half_h
+        line_pad = span * 0.006
+        for arr in others:
+            for k in range(j0, j1 + 1):
+                v = float(arr[k]) if np.isfinite(arr[k]) else np.nan
+                if not np.isfinite(v) or v <= 0:
+                    continue
+                if (y_bot - line_pad) <= v <= (y_top + line_pad):
+                    return False
+        return True
 
     def _blocked_by_tags(x_lab: float, y_lab: float) -> bool:
-        """壓／撐左標：用軸座標擋。"""
         try:
             xf = (x_lab - float(ax.get_xlim()[0])) / max(
                 float(ax.get_xlim()[1] - ax.get_xlim()[0]), 1e-6
@@ -234,80 +262,78 @@ def _label_ma_blank(
             yf = (y_lab - y0) / span
         except Exception:
             return False
-        # 左上大量區壓、左下大量區撐
-        if xf < 0.28 and yf > 0.86:
+        if xf < 0.22 and yf > 0.86:
             return True
-        if xf < 0.28 and yf < 0.14:
+        if xf < 0.22 and yf < 0.14:
             return True
         if press_hi is not None and np.isfinite(press_hi):
-            if abs(y_lab - float(press_hi)) < half_h * 1.5 and xf < 0.34:
+            if abs(y_lab - float(press_hi)) < half_h * 1.5 and xf < 0.30:
                 return True
         if hold_lo is not None and np.isfinite(hold_lo):
-            if abs(y_lab - float(hold_lo)) < half_h * 1.5 and xf < 0.34:
+            if abs(y_lab - float(hold_lo)) < half_h * 1.5 and xf < 0.30:
                 return True
         return False
 
     def _overlap_occupied(rect: Tuple[float, float, float, float]) -> bool:
         for other in occupied:
-            if _ma_rects_overlap(rect, other, pad_x=0.28, pad_y=span * 0.007):
+            if _ma_rects_overlap(rect, other, pad_x=0.32, pad_y=span * 0.008):
                 return True
         return False
 
     spike_x = float(spike_i) if spike_i is not None else None
-
-    # 候選：僅中左前 40% 線上淨空
-    chart_cands: List[Tuple[float, float]] = []
-    step = max(1, max(1, hi_i - lo_i) // 16)
-    for j in ok:
-        jj = int(j)
-        if jj < lo_i or jj > hi_i:
-            continue
-        if (jj - lo_i) % step != 0 and jj not in (lo_i, hi_i, (lo_i + hi_i) // 2):
-            continue
-        y_lab = float(vals[jj])
-        if not np.isfinite(y_lab):
-            continue
-        chart_cands.append((float(xs[jj]), y_lab))
+    # 逐根掃自己線（自動選位，不問使用者）
+    step = max(1, max(1, hi_i - lo_i) // 28)
+    chart_best = None  # (score, x, y)
 
     def _score_at(x_lab: float, y_lab: float) -> Optional[float]:
-        if x_lab > x_cap + 0.05:
+        if float(x_lab) > x_cap + 0.05:
+            return None
+        frac = float(x_lab) / max(float(n - 1), 1.0)
+        zone = _ma_x_zone_bonus(frac)
+        if zone < 0:
             return None
         yf = (y_lab - y0) / span
-        if yf < 0.08 or yf > 0.94:
+        if yf < 0.07 or yf > 0.95:
             return None
         if _blocked_by_tags(x_lab, y_lab):
             return None
         rect = _ma_label_rect(x_lab, y_lab, half_h=half_h, x_half=x_half)
         if _overlap_occupied(rect):
             return None
-        gap = _signed_gap(x_lab, y_lab)
+        gap = _signed_gap_k(x_lab, y_lab)
         if gap < pad:
             return None
-        # 中間偏左加分（約 18%–36%）；太靠左緣（壓撐標）略扣
-        frac = float(x_lab) / max(float(n - 1), 1.0)
-        if 0.16 <= frac <= 0.36:
-            zone_bonus = 0.70
-        elif 0.08 <= frac < 0.16:
-            zone_bonus = 0.45
-        elif frac < 0.08:
-            zone_bonus = 0.20
-        else:
-            # 接近 40% 邊界仍可，但優先更左
-            zone_bonus = 0.30 * (0.40 - frac) / 0.04
+        if not _clear_of_other_mas(x_lab, y_lab):
+            return None
         spike_pen = 0.0
         if spike_x is not None and abs(x_lab - spike_x) < 2.8:
-            spike_pen = 0.20
+            spike_pen = 0.22
         level_pen = 0.0
         if press_hi is not None and np.isfinite(press_hi):
             if abs(y_lab - float(press_hi)) < half_h * 1.15:
-                level_pen += 0.32
+                level_pen += 0.28
         if hold_lo is not None and np.isfinite(hold_lo):
             if abs(y_lab - float(hold_lo)) < half_h * 1.15:
-                level_pen += 0.32
-        return gap / span + zone_bonus - spike_pen - level_pen
+                level_pen += 0.28
+        return gap / span + zone - spike_pen - level_pen
 
-    chart_best = None  # (score, x, y)
-    for x_lab, y_lab in chart_cands:
+    for j in ok:
+        jj = int(j)
+        if jj < lo_i or jj > hi_i:
+            continue
+        if (jj - lo_i) % step != 0 and jj not in (
+            lo_i,
+            hi_i,
+            (lo_i + hi_i) // 2,
+            int(n * 0.25),
+            int(n * 0.50),
+            int(n * 0.62),
+        ):
+            continue
+        y_lab = float(vals[jj])
+        if not np.isfinite(y_lab) or y_lab <= 0:
+            continue
+        x_lab = float(xs[jj])
         sc = _score_at(x_lab, y_lab)
         if sc is None:
             continue
@@ -315,39 +341,41 @@ def _label_ma_blank(
         if chart_best is None or cand[0] > chart_best[0]:
             chart_best = cand
 
-    if chart_best is not None:
-        _, x_lab, y_lab = chart_best
-    else:
-        # 退回：中左貼線找淨空（仍不超過 40%）
-        x_lab = float(xs[min(hi_i, n - 1)])
-        y_lab = float(vals[min(hi_i, n - 1)]) if np.isfinite(vals[min(hi_i, n - 1)]) else float(vals[int(ok[0])])
+    if chart_best is None:
+        # 再密掃一輪；仍無淨空 → 不畫（不准硬壓 K／他線）
         for j in ok:
             jj = int(j)
             if jj < lo_i or jj > hi_i:
                 continue
-            y_try = float(vals[jj])
-            x_try = float(xs[jj])
-            if _clear_of_bars(x_try, y_try) and not _blocked_by_tags(x_try, y_try):
-                rect = _ma_label_rect(x_try, y_try, half_h=half_h, x_half=x_half)
-                if not _overlap_occupied(rect):
-                    x_lab, y_lab = x_try, y_try
-                    break
+            y_lab = float(vals[jj])
+            x_lab = float(xs[jj])
+            if not np.isfinite(y_lab) or y_lab <= 0:
+                continue
+            if not _clear_of_bars(x_lab, y_lab):
+                continue
+            if not _clear_of_other_mas(x_lab, y_lab):
+                continue
+            if _blocked_by_tags(x_lab, y_lab):
+                continue
+            rect = _ma_label_rect(x_lab, y_lab, half_h=half_h, x_half=x_half)
+            if _overlap_occupied(rect):
+                continue
+            sc = _score_at(x_lab, y_lab)
+            if sc is None:
+                continue
+            cand = (sc, x_lab, y_lab)
+            if chart_best is None or cand[0] > chart_best[0]:
+                chart_best = cand
 
-    # 仍重疊：只往更左挪（不准往中右）
-    for _ in range(14):
-        rect = _ma_label_rect(x_lab, y_lab, half_h=half_h, x_half=x_half)
-        if (
-            not _overlap_occupied(rect)
-            and not _blocked_by_tags(x_lab, y_lab)
-            and float(x_lab) <= x_cap + 0.05
-        ):
-            break
-        x_lab = max(float(lo_i), min(x_lab - 1.0, x_cap))
-        j = int(np.clip(int(round(x_lab)), 0, hi_i))
-        if np.isfinite(vals[j]) and vals[j] > 0:
-            y_lab = float(vals[j])
+    if chart_best is None:
+        return None
 
-    # 字級：短標略小一點，更不擋底圖
+    _, x_lab, y_lab = chart_best
+    # 鎖死：y 必須落在自己線上（取最近有限柱）
+    j_lock = int(np.clip(int(round(x_lab)), 0, n - 1))
+    if np.isfinite(vals[j_lock]) and vals[j_lock] > 0:
+        y_lab = float(vals[j_lock])
+        x_lab = float(xs[j_lock])
     ax.text(
         x_lab,
         y_lab,
@@ -386,8 +414,9 @@ def _label_ma_left(
     hold_lo: Optional[float] = None,
     spike_i: Optional[int] = None,
     avoid_path_box: bool = False,
+    other_mas: Optional[List[np.ndarray]] = None,
 ) -> Optional[Tuple[float, float]]:
-    """相容舊名：改走空白處貼線標（見 _label_ma_blank）。"""
+    """相容舊名：自動貼線標（見 _label_ma_blank）。"""
     return _label_ma_blank(
         ax,
         xs,
@@ -402,6 +431,7 @@ def _label_ma_left(
         hold_lo=hold_lo,
         spike_i=spike_i,
         avoid_path_box=avoid_path_box,
+        other_mas=other_mas,
     )
 
 
@@ -417,18 +447,25 @@ def _paint_ma_line_labels(
     spike_i: Optional[int] = None,
     avoid_path_box: bool = False,
 ) -> None:
-    """依序畫短標 5／10／月／季；後畫的避開已佔空白。不准改 OHLC／量。"""
+    """短標 5／10／月／季：程式自動選位；只貼自己線、互避、不壓 K。不准改 OHLC／量。"""
     occupied: List[Tuple[float, float, float, float]] = []
-    # 先放較疏／較粗的月季，再放 5／10，減少擠在同一空檔
     order = sorted(
         series,
-        key=lambda t: {"季": 0, "月": 1, "10": 2, "5": 3, "季線": 0, "月線": 1, "十日": 2, "五日": 3}.get(
-            t[0], 9
-        ),
+        key=lambda t: {
+            "季": 0,
+            "月": 1,
+            "10": 2,
+            "5": 3,
+            "季線": 0,
+            "月線": 1,
+            "十日": 2,
+            "五日": 3,
+        }.get(t[0], 9),
     )
     for lab, vals, color, face in order:
         if vals is None or not np.isfinite(vals).any():
             continue
+        siblings = [v for (lb, v, _c, _f) in order if lb != lab and v is not None]
         _label_ma_blank(
             ax,
             xs,
@@ -443,6 +480,7 @@ def _paint_ma_line_labels(
             hold_lo=hold_lo,
             spike_i=spike_i,
             avoid_path_box=avoid_path_box,
+            other_mas=siblings,
         )
 
 
@@ -507,6 +545,198 @@ def _load_index_daily_ohlc(db_path: str, days: int = 120) -> pd.DataFrame:
     df["stock_id"] = "TWII"
     df["quote_source"] = "index_daily"
     return df
+
+
+def missing_open_quote_days(
+    stock_id: str,
+    db_path: str,
+    start_ymd: str,
+    end_ymd: str,
+) -> List[str]:
+    """開市日曆日 ∩ 窗內，daily_quotes 缺列（或量欄 NULL）的日期。週末／休市不列。"""
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    start = str(start_ymd or "").replace("-", "")[:8]
+    end = str(end_ymd or "").replace("-", "")[:8]
+    if not sid or not path or len(start) != 8 or len(end) != 8 or sid in ("TWII", "^TWII"):
+        return []
+    from trading_calendar import iter_tw_open_days
+
+    open_days = iter_tw_open_days(start, end)
+    if not open_days:
+        return []
+    have: set = set()
+    conn = sqlite3.connect(path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=10000;")
+        rows = conn.execute(
+            """
+            SELECT replace(date,'-','') AS d, volume
+            FROM daily_quotes
+            WHERE stock_id = ?
+              AND replace(date,'-','') BETWEEN ? AND ?
+            """,
+            (sid, start, end),
+        ).fetchall()
+    except Exception:
+        rows = []
+    finally:
+        conn.close()
+    for d_raw, vol in rows:
+        d = str(d_raw or "").replace("-", "")[:8]
+        if len(d) != 8:
+            continue
+        # 量 NULL＝缺官方量，當洞；量 0 可能是真停價，不算缺列
+        if vol is None:
+            continue
+        have.add(d)
+    return [d for d in open_days if d not in have]
+
+
+def ensure_official_volume_window(
+    stock_id: str,
+    db_path: str,
+    *,
+    end_ymd: str = "",
+    days: int = 180,
+    stock_name: str = "",
+) -> Dict[str, Any]:
+    """畫結構／大量區前：窗內開市日缺官方量 → 證交所／櫃買 STOCK_DAY 月表補洞。
+
+    不准發明 OHLC／量。官方月表抓成功但當日無列＝休市／未交易 → confirmed_absent。
+    """
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    out: Dict[str, Any] = {
+        "sid": sid,
+        "filled": [],
+        "confirmed_absent": [],
+        "still_missing": [],
+        "months_ok": [],
+        "months_fail": [],
+        "months_fetched": [],
+    }
+    if not sid or not path or sid in ("TWII", "^TWII"):
+        return out
+    from datetime import datetime, timedelta
+
+    from trading_calendar import iter_tw_open_days, normalize_ymd
+
+    end = normalize_ymd(end_ymd)
+    if len(end) != 8:
+        conn = sqlite3.connect(path, timeout=15.0)
+        try:
+            row = conn.execute(
+                "SELECT replace(date,'-','') FROM daily_quotes WHERE stock_id=? "
+                "ORDER BY date DESC LIMIT 1",
+                (sid,),
+            ).fetchone()
+        except Exception:
+            row = None
+        finally:
+            conn.close()
+        end = str((row or [""])[0] or "").replace("-", "")[:8]
+    if len(end) != 8:
+        try:
+            from config import fuse_end_date
+
+            end = normalize_ymd(fuse_end_date())
+        except Exception:
+            end = ""
+    if len(end) != 8:
+        return out
+    # 日曆略放大，涵蓋開市日 need 根
+    need = max(int(days or 0), 60)
+    start_dt = datetime.strptime(end, "%Y%m%d") - timedelta(days=int(need * 1.7) + 20)
+    start = start_dt.strftime("%Y%m%d")
+    missing = missing_open_quote_days(sid, path, start, end)
+    out["missing_before"] = list(missing)
+    if not missing:
+        return out
+    months = sorted({d[:6] for d in missing if len(d) >= 6})
+    name = str(stock_name or "").strip() or sid
+    if not str(stock_name or "").strip():
+        conn = sqlite3.connect(path, timeout=15.0)
+        try:
+            row = conn.execute(
+                "SELECT stock_name FROM daily_quotes WHERE stock_id=? "
+                "AND stock_name IS NOT NULL AND stock_name!='' "
+                "ORDER BY date DESC LIMIT 1",
+                (sid,),
+            ).fetchone()
+            if row and row[0]:
+                name = str(row[0])
+        except Exception:
+            pass
+        finally:
+            conn.close()
+    try:
+        from biaoke_walk import (
+            _market_of,
+            fetch_stock_month,
+            upsert_fetched_quotes,
+        )
+        from wayne_navigator import clear_align_ohlc_cache
+    except Exception as e:
+        logger.warning("ensure_official_volume_window import fail sid=%s: %s", sid, e)
+        out["still_missing"] = list(missing)
+        return out
+
+    market = _market_of(path, sid)
+    official_by_month: Dict[str, set] = {}
+    for ym in months:
+        try:
+            rows = fetch_stock_month(
+                sid, ym, market=market, name=name, tries=2
+            )
+        except Exception:
+            logger.debug(
+                "ensure vol fetch fail sid=%s ym=%s", sid, ym, exc_info=True
+            )
+            rows = []
+        out["months_fetched"].append(ym)
+        if not rows:
+            out["months_fail"].append(ym)
+            continue
+        n = int(upsert_fetched_quotes(path, rows) or 0)
+        out["months_ok"].append(ym)
+        official_by_month[ym] = {
+            str(r.get("date") or "").replace("-", "")[:8] for r in rows
+        }
+        if n:
+            out["filled"].append({"yyyymm": ym, "rows": n})
+        time.sleep(0.28)
+    try:
+        clear_align_ohlc_cache()
+    except Exception:
+        pass
+    # 補完再掃：仍缺且該月官方已回＝confirmed_absent；月失敗＝still_missing
+    missing_after = missing_open_quote_days(sid, path, start, end)
+    for d in missing_after:
+        ym = d[:6]
+        if ym in official_by_month:
+            if d not in official_by_month[ym]:
+                out["confirmed_absent"].append(d)
+            else:
+                # 官方有列但 upsert 後仍缺＝異常，當 still_missing
+                out["still_missing"].append(d)
+        elif ym in out["months_fail"]:
+            out["still_missing"].append(d)
+        else:
+            out["still_missing"].append(d)
+    # 補成功的洞
+    filled_dates = [d for d in missing if d not in missing_after]
+    out["filled_dates"] = filled_dates
+    if filled_dates or out["confirmed_absent"]:
+        logger.info(
+            "official vol window sid=%s filled=%s absent=%s still=%s months_ok=%s",
+            sid,
+            len(filled_dates),
+            len(out["confirmed_absent"]),
+            len(out["still_missing"]),
+            out["months_ok"],
+        )
+    return out
 
 
 def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataFrame:
@@ -574,7 +804,11 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
     return df
 
 
-def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
+def official_work(
+    df: pd.DataFrame,
+    *,
+    skip_invent_dates: Optional[set] = None,
+) -> Optional[pd.DataFrame]:
     """整理官方柱給選區／畫圖：升冪、標停牌、丟掉缺價。不准 normalize／sanitize／live。"""
     if df is None or getattr(df, "empty", True):
         return None
@@ -604,7 +838,7 @@ def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
     work = work.loc[ok].reset_index(drop=True)
     if work.empty:
         return None
-    # 開市日軸連續（與導航同一套）：缺列＝前收停價＋量0，不准編振幅／假量
+    # 開市日軸連續（與導航同一套）：缺列先官方補洞；已確認無列不准發明停價量
     from wayne_navigator import align_ohlc_cached
 
     sid_hint = ""
@@ -613,7 +847,9 @@ def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
             sid_hint = str(work["stock_id"].dropna().iloc[-1] or "")
         except Exception:
             sid_hint = ""
-    work = align_ohlc_cached(work, sid_hint)
+    work = align_ohlc_cached(
+        work, sid_hint, skip_invent_dates=skip_invent_dates
+    )
     if work is None or work.empty:
         return None
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
@@ -1379,13 +1615,27 @@ def prepare_volume_zone(
         return None
     work = None
     need = max(int(bars) + int(lookback) + VOL_ZONE_MA60_WARM, 180)
+    skip_invent: set = set()
+    vol_ensure: Dict[str, Any] = {}
     if db_path:
+        # 結構／大量區同一 prepare：開市日缺量先官方補，不准對齊發明假量
+        try:
+            vol_ensure = ensure_official_volume_window(
+                sid,
+                str(db_path),
+                days=need,
+                stock_name=str(stock_name or ""),
+            )
+            skip_invent = set(vol_ensure.get("confirmed_absent") or [])
+        except Exception:
+            logger.debug("ensure_official_volume_window fail sid=%s", sid, exc_info=True)
+            vol_ensure = {}
         raw = load_official_ohlc(sid, db_path, need)
-        work = official_work(raw)
+        work = official_work(raw, skip_invent_dates=skip_invent or None)
     if work is None or work.empty:
         if df is None or getattr(df, "empty", True):
             return None
-        work = official_work(df)
+        work = official_work(df, skip_invent_dates=skip_invent or None)
     if work is None or work.empty:
         return None
     work = attach_official_ma5(work)
@@ -1458,6 +1708,7 @@ def prepare_volume_zone(
         "out": out,
         "bars": bars_face,
         "last": bars_face[-1] if bars_face else None,
+        "vol_ensure": vol_ensure,
     }
 
 
@@ -2071,7 +2322,7 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
-    # 均線短標：中左前 40% 空白貼線；只改標位／文案，不准動 OHLC／量柱
+    # 均線短標：程式自動選位（中左→中→中右靠中）只貼己線；不准動 OHLC／量柱
     highs_a = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
     lows_a = pd.to_numeric(view["low"], errors="coerce").to_numpy(dtype=float)
     ma_series: List[Tuple[str, np.ndarray, str, str]] = []

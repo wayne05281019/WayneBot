@@ -11,9 +11,10 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
     from three_in_one_chart import render_lookup_structure_result
 
     rsrc = inspect.getsource(render_biaoke_structure_png)
-    # 頭欄 memo：v76＝不畫下一壓；舊鍵相容備援
+    # 頭欄 memo：v77＝量柱最低可視；舊鍵相容備援
     assert (
-        "hdr-band-v76-no-next-press" in rsrc
+        "hdr-band-v77-vol-min-visible" in rsrc
+        or "hdr-band-v76-no-next-press" in rsrc
         or "hdr-band-v75-next-press" in rsrc
         or "hdr-band-v74-ohlc-align" in rsrc
         or "hdr-band-v73" in rsrc
