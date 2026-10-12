@@ -1545,8 +1545,8 @@ def _approx_note_pack_width(text: str, size: float = 12) -> float:
     return _approx_note_width(text, size) * 1.08
 
 
-# 昨收｜今收並排：中間必留空白（不准互壓）；略讓右溝，優先可讀
-_CLOSE_PAIR_SIDE_GAP = 6.0
+# 昨收｜今收並排：視覺縫≈182624 一半（SIDE_GAP＋ADVANCE 一併收；仍不准互壓）
+_CLOSE_PAIR_SIDE_GAP = 1.0
 # 主圖 xlim 右白／標籤欄：再收右溝，K 柱加寬（不准改 OHLC／量；v78）
 _STRUCTURE_X_RIGHT_PAD = 8.0
 _STRUCTURE_LABEL_COL_EXTRA = 0.70
@@ -1554,7 +1554,7 @@ _STRUCTURE_LABEL_FRAC = 0.068
 # xlim 硬頂：主圖加寬仍須整盒入軸（今收不准裁半）；估寬已收過
 _STRUCTURE_X_RIGHT_CAP_EXTRA = 26.0
 # 昨收→今收前進寬係數（≈1＝用足昨收盒寬，中間再加 SIDE_GAP）
-_STRUCTURE_CLOSE_PAIR_ADVANCE = 1.02
+_STRUCTURE_CLOSE_PAIR_ADVANCE = 0.98
 
 
 def _dedupe_right_notes(
@@ -1981,11 +1981,11 @@ def _place_right_notes(
             today_tx = float(col_tx) + advance + pair_side_gap
             if x_max is not None:
                 today_w = _approx_note_pack_width(today_text, today_size)
-                # 右緣不夠時略縮縫仍同列；今收整盒入軸；中間至少留 4.8 不准互壓
+                # 右緣不夠時略縮縫仍同列；今收整盒入軸；中間至少留一半縫不准互壓
                 overflow = (today_tx + today_w) - (float(x_max) - 2.2)
                 if overflow > 0:
                     today_tx = max(
-                        float(col_tx) + advance + 4.8,
+                        float(col_tx) + advance + float(_CLOSE_PAIR_SIDE_GAP),
                         today_tx - overflow,
                     )
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
@@ -3208,9 +3208,9 @@ def _paint_nameplate(
     if skip_industry:
         return
     # industry_x：橫式介紹帶把產業／龍頭標往右挪，不貼股名
-    # 大字號粗體 _ow 低估 → 乘補償＋加大縫，不准產業標壓「聯亞」等股名
-    gap = 4.10 if size >= 28 else (2.80 if size <= 24 else 3.40)
-    title_w = _ow(title, size) * (1.35 if size >= 28 else 1.22)
+    # gap＝182624 的 1/3；大字號 _ow 補償一併收，視覺空白約留三分之一（仍不准壓股名）
+    gap = (4.10 if size >= 28 else (2.80 if size <= 24 else 3.40)) / 3.0
+    title_w = _ow(title, size) * (1.12 if size >= 28 else 1.10)
     after_title = float(x) + title_w + gap
     if industry_x is None:
         cx = after_title
@@ -3527,8 +3527,8 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        # v78e：標籤留縫＋通道雙軌細虛線＋日刻不互壓
-        "hdr-band-v78e-dash-rails" if fullbleed else "hdr-wrap3-vol-min",
+        # v78f：三縫縮（昨今1/2、橘紫1/3、產業gap×1/3）＋通道虛線＋日刻不互壓
+        "hdr-band-v78f-gap-tighten" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -4160,9 +4160,9 @@ def render_biaoke_structure_png(
         ch_sz = int(_STRUCTURE_TAG_SIZE)
         status_pad = float(_STRUCTURE_TAG_PAD)
         status_lw = 1.05
-        # 橘色破線洗盤長句與下降坡道標之間必留空，不准互壓
-        status_h_gap = 3.40
-        status_adv_scale = 1.32
+        # 橘／紫標距＝182624 的 1/3（仍不准互壓）
+        status_h_gap = 3.40 / 3.0
+        status_adv_scale = 1.0 + (1.32 - 1.0) / 3.0
     else:
         status_sz = int(round(13 * _STATUS_CHIP_SCALE))
         ch_sz = int(round(12 * _STATUS_CHIP_SCALE))

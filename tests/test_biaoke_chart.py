@@ -504,7 +504,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v78e-dash-rails" in src
+        "hdr-band-v78f-gap-tighten" in src
+        or "hdr-band-v78e-dash-rails" in src
         or "hdr-band-v78d-label-gaps" in src
         or "hdr-band-v78c-c-polish" in src
         or "hdr-band-v77-vol-min-visible" in src
@@ -600,11 +601,11 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert "_approx_note_pack_width" in place_src
     from biaoke_chart import _CLOSE_PAIR_SIDE_GAP, _approx_note_pack_width, _approx_note_width
 
-    # 78d：昨收｜今收中間必留空白（不准互壓）
+    # 78f：昨收｜今收留一半縫（不准互壓）
     from biaoke_chart import _STRUCTURE_CLOSE_PAIR_ADVANCE
 
-    assert float(_CLOSE_PAIR_SIDE_GAP) >= 5.5
-    assert float(_STRUCTURE_CLOSE_PAIR_ADVANCE) >= 0.95
+    assert 0.5 <= float(_CLOSE_PAIR_SIDE_GAP) <= 2.0
+    assert 0.95 <= float(_STRUCTURE_CLOSE_PAIR_ADVANCE) <= 1.05
     assert _approx_note_pack_width("昨收 3140", 11) >= 16.0
     assert _approx_note_pack_width("昨收 3140", 11) >= _approx_note_width("昨收 3140", 11) * 1.05
     assert "不准蓋昨收" in place_src or "兩盒" in place_src
