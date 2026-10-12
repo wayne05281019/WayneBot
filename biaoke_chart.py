@@ -3348,7 +3348,7 @@ def render_biaoke_structure_png(
         round(fig_w, 3),
         round(fig_h, 3),
         # v76：使用者定案拿掉 next-press 帶；只留原本大量壓／撐
-        "hdr-band-v76-no-next-press" if fullbleed else "hdr-wrap3",
+        "hdr-band-v77-vol-min-visible" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),

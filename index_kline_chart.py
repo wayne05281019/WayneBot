@@ -22,6 +22,8 @@ from wayne_navigator import (
     _lookup_render_memo_get,
     _lookup_render_memo_put,
     _mpl_serial,
+    lookup_candle_up_mask,
+    paint_lookup_volume_bars,
 )
 from decision_card_signals import candle_up_taiwan
 
@@ -213,6 +215,7 @@ def render_index_kline_png(
         int(NAV_CHART_DPI),
         1 if live_px > 0 else 0,
         round(live_px, 2) if live_px > 0 else 0,
+        "vol-min-v1",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -329,8 +332,11 @@ def render_index_kline_png(
         f"　月線:{float(last['ma20']):,.2f}"
     )
 
-    vol_colors = [_vol_color(candle_up[i]) for i in range(n)]
-    ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)
+    up_mask = lookup_candle_up_mask(opens, closes)
+    vol_heights, vol_ylim, _vol_missing = paint_lookup_volume_bars(
+        ax2, xs, work["volume"], up_mask, z=3
+    )
+    ax2.set_ylim(0, max(float(vol_ylim) * 1.14, 1.0))
     ax2.plot(xs, work["vol_ma"], color="#90a4ae", linewidth=1.05, zorder=4)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")

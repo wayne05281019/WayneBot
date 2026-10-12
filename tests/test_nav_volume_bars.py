@@ -12,6 +12,7 @@ import pandas as pd
 from wayne_navigator import (
     LOOKUP_VOL_FLOOR_FACE,
     LOOKUP_VOL_FLOOR_FRAC,
+    LOOKUP_VOL_MIN_VISIBLE_FRAC,
     format_nav_volume_label,
     nav_volume_bar_heights,
     paint_lookup_volume_bars,
@@ -69,6 +70,25 @@ def test_nav_volume_proportional_pair():
     assert float(heights[1]) == 200.0
     assert float(heights[0]) == 100.0
     assert float(heights[2]) == 50.0
+
+
+def test_paint_lookup_volume_min_visible_positive_bars():
+    """暴量撐軸後低正量仍見柱；資料層 heights 仍線性。"""
+    fig, ax = plt.subplots(figsize=(4, 1.2))
+    xs = list(range(4))
+    vols = [13426.0, 426.0, 500.0, 0.0]
+    up = [True, False, True, False]
+    heights, ylim, missing = paint_lookup_volume_bars(ax, xs, vols, up, halt=[False] * 4)
+    assert float(ylim) == 13426.0
+    assert float(heights[1]) == 426.0
+    min_h = float(ylim) * LOOKUP_VOL_MIN_VISIBLE_FRAC
+    draw_at = {}
+    for p in ax.patches:
+        cx = int(round(float(p.get_x()) + float(p.get_width()) / 2.0))
+        draw_at[cx] = max(draw_at.get(cx, 0.0), float(p.get_height()))
+    assert abs(draw_at[1] - min_h) < 1e-6
+    assert abs(draw_at[0] - 13426.0) < 1e-6
+    plt.close(fig)
 
 
 def test_paint_lookup_volume_floor_bars_no_holes():

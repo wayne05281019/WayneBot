@@ -72,7 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 21  # 大盤大量區＋五日／十日線
+_VZ_PAINT_VER = 22  # 量柱正量最低可視＋停價貼底（3081 挖洞 round2）
 
 _BG = "#ffffff"
 _UP = "#e53935"
