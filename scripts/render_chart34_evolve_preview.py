@@ -87,42 +87,86 @@ def _render_volzone(
     return out
 
 
-def _patch_structure_clearer() -> None:
-    """壓／撐／通道略粗＋對比；最新一根 K 略寬＋外框。只影響本行程。"""
+def _patch_structure_thin_dash() -> None:
+    """v2 試渲：通道細虛線、壓／撐細水平線、末日 K 右側細勾（不擋影線／收價）。"""
     import biaoke_chart as bc
     import wayne_navigator as wn
 
-    def _rail_thicker(ax, x1, y1, x2, y2, *, seam, x_lo, x_hi, y_lo, y_hi, color):
+    _DASH = (0, (3.6, 2.6))
+
+    def _rail_thin_dash(ax, x1, y1, x2, y2, *, seam, x_lo, x_hi, y_lo, y_hi, color):
         clipped = bc._clip_line(
             x1, y1, x2, y2, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi
         )
         if not clipped:
             return
         xa, ya, xb, yb = clipped
-        if xa < seam:
-            xs = [xa, min(xb, seam)]
-            ys = [ya, bc._line_at(x1, y1, x2, y2, xs[1])]
-            bc._halo_line(ax, xs, ys, color, lw=2.05, halo=1.15, ls="-", z=5)
-        if xb > seam:
-            xs = [max(xa, seam), xb]
-            ys = [bc._line_at(x1, y1, x2, y2, xs[0]), yb]
-            bc._halo_line(
-                ax, xs, ys, color, lw=2.05, halo=1.15, ls=(0, (4, 2.2)), z=5
+        # 全程較細虛線（長 dash）；無粗暈、無粗實線
+        ax.plot(
+            [xa, xb],
+            [ya, yb],
+            color=color,
+            linewidth=0.70,
+            linestyle=_DASH,
+            zorder=4,
+            solid_capstyle="butt",
+            solid_joinstyle="miter",
+            alpha=0.88,
+        )
+
+    bc._paint_extended_rail = _rail_thin_dash  # type: ignore[assignment]
+
+    # 通道樞紐／觸點圓點拿掉：細虛線本身已標軌，圓點易被看成「藍圓蓋 K」
+    _orig_channel = bc._paint_parallel_channel
+
+    def _channel_no_dots(ax, ch, **kw):
+        if not ch:
+            return
+        kind = str(ch.get("kind") or "")
+        color = bc._UP_TRACK if kind == "asc" else bc._DOWN_TRACK
+        if not bool(ch.get("alive")):
+            color = "#90a4ae"
+        upper = ch.get("upper") or ()
+        lower = ch.get("lower") or ()
+        if len(upper) < 2 or len(lower) < 2:
+            return
+        (ux1, uy1, _ud1), (ux2, uy2, _ud2) = upper
+        (lx1, ly1, _ld1), (lx2, ly2, _ld2) = lower
+        seam = float(kw["seam"])
+        x_lo = float(kw["x_lo"])
+        x_hi = float(kw["x_hi"])
+        y_lo = float(kw["y_lo"])
+        y_hi = float(kw["y_hi"])
+        rail_hi = float(x_hi) if bool(ch.get("alive")) else float(seam)
+        for x1, y1, x2, y2 in (
+            (ux1, uy1, ux2, uy2),
+            (lx1, ly1, lx2, ly2),
+        ):
+            bc._paint_extended_rail(
+                ax,
+                float(x1),
+                float(y1),
+                float(x2),
+                float(y2),
+                seam=seam,
+                x_lo=x_lo,
+                x_hi=rail_hi,
+                y_lo=y_lo,
+                y_hi=y_hi,
+                color=color,
             )
+        # 刻意不画 scatter 觸點／樞紐圓
 
-    bc._paint_extended_rail = _rail_thicker  # type: ignore[assignment]
+    bc._paint_parallel_channel = _channel_no_dots  # type: ignore[assignment]
 
-    # biaoke_chart 已 from-import paint_lookup_ohlc_candles，要改它自己的綁定
     _orig_paint = bc.paint_lookup_ohlc_candles
 
-    def _paint_last_loud(ax, xs, opens, highs, lows, closes, **kw):
+    def _paint_last_tick(ax, xs, opens, highs, lows, closes, **kw):
+        """末日 K：實體細邊＋右側收價細勾；不重畫影線、不蓋收價標籤。"""
         import numpy as np
 
         up = _orig_paint(ax, xs, opens, highs, lows, closes, **kw)
         xs_a = np.asarray(xs, dtype=float)
-        opens_a = np.asarray(opens, dtype=float)
-        highs_a = np.asarray(highs, dtype=float)
-        lows_a = np.asarray(lows, dtype=float)
         closes_a = np.asarray(closes, dtype=float)
         n = int(closes_a.shape[0])
         if n < 1:
@@ -133,67 +177,69 @@ def _patch_structure_clearer() -> None:
             halt_arr = np.asarray(halt, dtype=bool)
             if halt_arr.shape[0] == n and bool(halt_arr[i]):
                 return up
+        x = float(xs_a[i])
+        c = float(closes_a[i])
+        if not (c > 0):
+            return up
+        z = int(kw.get("z") or 3)
         span = kw.get("span")
         if span is None or not (float(span) > 0):
+            highs_a = np.asarray(highs, dtype=float)
+            lows_a = np.asarray(lows, dtype=float)
             span = max(float(np.nanmax(highs_a) - np.nanmin(lows_a)), 1e-6)
-        z = int(kw.get("z") or 3)
-        col = wn.LOOKUP_CANDLE_UP if bool(up[i]) else wn.LOOKUP_CANDLE_DN
-        x = float(xs_a[i])
-        o = float(opens_a[i])
-        h = float(highs_a[i])
-        l = float(lows_a[i])
-        c = float(closes_a[i])
-        # 外框強調末日 K，不另塞標籤
+        # 只做右側收價細勾（短橫＋小三角）；不描實體外框，避免又變粗框蓋 K
+        x0 = x + float(wn.LOOKUP_CANDLE_BODY_W) * 0.55 + 0.14
+        x1 = x0 + 0.85
+        ink = "#37474f"
         ax.plot(
-            [x, x],
-            [l, h],
-            color="#212121",
-            linewidth=2.35,
-            zorder=z + 4,
-            solid_capstyle="round",
-            alpha=0.88,
+            [x0, x1],
+            [c, c],
+            color=ink,
+            linewidth=1.20,
+            zorder=z + 6,
+            solid_capstyle="butt",
+            alpha=0.96,
         )
-        body_h = max(abs(c - o), float(span) * 0.002)
-        body_bot = min(o, c)
-        ax.bar(
-            [x],
-            [body_h],
-            bottom=[body_bot],
-            width=wn.LOOKUP_CANDLE_BODY_W + 0.10,
-            color=[col],
-            edgecolor="#212121",
-            linewidth=1.55,
-            zorder=z + 5,
-            align="center",
+        tri_w = 0.32
+        tri_h = float(span) * 0.012
+        ax.fill(
+            [x1, x1 + tri_w, x1],
+            [c + tri_h * 0.55, c, c - tri_h * 0.55],
+            color=ink,
+            zorder=z + 7,
+            alpha=0.94,
+            linewidth=0,
+            clip_on=False,
         )
         return up
 
-    bc.paint_lookup_ohlc_candles = _paint_last_loud  # type: ignore[assignment]
+    bc.paint_lookup_ohlc_candles = _paint_last_tick  # type: ignore[assignment]
 
     _orig_render = bc.render_biaoke_structure_png
 
-    def _render_with_thick_sr(*args, **kwargs):
+    def _render_with_thin_sr(*args, **kwargs):
         import matplotlib.axes
 
         Axes = matplotlib.axes.Axes
         _hl = Axes.hlines
 
-        def _hl_thick(self, y, xmin, xmax, **kw):
+        def _hl_thin(self, y, xmin, xmax, **kw):
             color = str(kw.get("color") or "")
             if color in (bc._PRESS, bc._HOLD):
                 kw = dict(kw)
-                kw["linewidth"] = max(float(kw.get("linewidth") or 1.15), 1.95)
-                kw["alpha"] = max(float(kw.get("alpha") or 0.92), 0.98)
-                kw["zorder"] = max(int(kw.get("zorder") or 4), 6)
+                # 細線可辨色；zorder 低於 K，勿蓋影線
+                kw["linewidth"] = 0.70
+                kw["alpha"] = 0.82
+                kw["zorder"] = 2
             return _hl(self, y, xmin, xmax, **kw)
 
-        Axes.hlines = _hl_thick  # type: ignore[assignment]
+        Axes.hlines = _hl_thin  # type: ignore[assignment]
         try:
             return _orig_render(*args, **kwargs)
         finally:
             Axes.hlines = _hl  # type: ignore[assignment]
 
-    bc.render_biaoke_structure_png = _render_with_thick_sr  # type: ignore[assignment]
+    bc.render_biaoke_structure_png = _render_with_thin_sr  # type: ignore[assignment]
 
 
 def _patch_volzone_thin_ma5_ma10() -> None:
@@ -261,6 +307,12 @@ def main() -> int:
         help="preview png dir",
     )
     ap.add_argument("--sids", default="3081,2330")
+    ap.add_argument(
+        "--mode",
+        default="thin-dash",
+        choices=("thin-dash", "before", "volzone", "all"),
+        help="thin-dash＝結構細虛線試渲（預設）；all＝含 before／大量區",
+    )
     args = ap.parse_args()
     out_dir = Path(args.out_dir)
     # store symlink may resolve; keep requested path
@@ -268,41 +320,40 @@ def main() -> int:
     db = _db()
     sids = [s.strip() for s in str(args.sids).split(",") if s.strip()]
 
-    # 1) before：現況結構（僅主檔 3081；副檔可選）
-    for sid in sids:
-        name = _name(sid, db)
-        before = out_dir / f"{sid}-struct-before.png"
-        print(f"[before] structure {sid} {name} -> {before}", flush=True)
-        _render_structure(sid, name, db, before)
+    mode = str(getattr(args, "mode", "thin-dash") or "thin-dash")
 
-    # 2) clearer structure（清 memo，避免 before 快取蓋掉試渲）
-    try:
-        import wayne_navigator as wn
+    def _clear_memo() -> None:
+        try:
+            import wayne_navigator as wn
 
-        with wn._LOOKUP_RENDER_LOCK:
-            wn._LOOKUP_RENDER_MEMO.clear()
-    except Exception:
-        pass
-    _patch_structure_clearer()
-    for sid in sids:
-        name = _name(sid, db)
-        clearer = out_dir / (
-            "3081-struct-clearer.png" if sid == "3081" else f"{sid}-struct-clearer.png"
-        )
-        print(f"[clearer] structure {sid} {name} -> {clearer}", flush=True)
-        _render_structure(sid, name, db, clearer)
+            with wn._LOOKUP_RENDER_LOCK:
+                wn._LOOKUP_RENDER_MEMO.clear()
+        except Exception:
+            pass
 
-    # 3) volzone + MA5/MA10（細線）
-    _patch_volzone_thin_ma5_ma10()
-    for sid in sids:
-        name = _name(sid, db)
-        vz_out = out_dir / (
-            "3081-volzone-ma5-ma10.png"
-            if sid == "3081"
-            else f"{sid}-volzone-ma5-ma10.png"
-        )
-        print(f"[volzone+ma] {sid} {name} -> {vz_out}", flush=True)
-        _render_volzone(sid, name, db, vz_out, with_ma5_ma10=True)
+    if mode in ("all", "before"):
+        for sid in sids:
+            name = _name(sid, db)
+            before = out_dir / f"{sid}-struct-before.png"
+            print(f"[before] structure {sid} {name} -> {before}", flush=True)
+            _render_structure(sid, name, db, before)
+
+    if mode in ("all", "thin-dash"):
+        _clear_memo()
+        _patch_structure_thin_dash()
+        for sid in sids:
+            name = _name(sid, db)
+            out = out_dir / f"{sid}-struct-thin-dash.png"
+            print(f"[thin-dash] structure {sid} {name} -> {out}", flush=True)
+            _render_structure(sid, name, db, out)
+
+    if mode in ("all", "volzone"):
+        _patch_volzone_thin_ma5_ma10()
+        for sid in sids:
+            name = _name(sid, db)
+            vz_out = out_dir / f"{sid}-volzone-ma5-ma10.png"
+            print(f"[volzone+ma] {sid} {name} -> {vz_out}", flush=True)
+            _render_volzone(sid, name, db, vz_out, with_ma5_ma10=True)
 
     print("done", flush=True)
     for p in sorted(out_dir.glob("*.png")):
