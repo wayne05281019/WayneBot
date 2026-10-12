@@ -77,41 +77,53 @@ def test_evening_desk_stays_silent_and_digest_is_separate():
     assert "snapshot_ai_desk" in desk
 
 
-def test_core_candidates_are_winrate_only():
+def test_core_candidates_are_winrate_roster_hard_gate(tmp_path):
+    """沒進勝率買點 roster → 不准買；海選 leave_zero 後備已拔掉。"""
     import inspect
 
     from ai_trader import _candidates
+    from winrate_buypoint import ensure_winrate_table, save_winrate_roster
 
     src = inspect.getsource(_candidates)
-    assert "winrate" in src.lower() or "勝率" in src
-    assert '("golden_buy"' not in src
-    assert "revenue_cross" not in src
-    # 後備可用 leave_zero（同訊號），但母體語意是勝率買點
-    cands = _candidates(
-        {
-            "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "buy_star": False}],
-            "ma60_lower": [{"stock_id": "6257", "stock_name": "矽格", "close": 99.0, "buy_star": False}],
-            "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
-        }
+    assert "winrate_buypoint_roster" in src or "勝率買點" in src
+    assert "leave_zero" not in src or "不准" in src
+    path = str(tmp_path / "wr.db")
+    ensure_core_schema(path)
+    ensure_winrate_table(path)
+    # 無 roster：海選再多也不准買
+    assert (
+        _candidates(
+            {
+                "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+                "ma60_lower": [{"stock_id": "6257", "stock_name": "矽格", "close": 99.0}],
+            },
+            path,
+            as_of="20261012",
+        )
+        == []
     )
-    # 無 roster 時後備只吃 winrate／leave_zero，不吃 ma60_lower／select
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO stock_universe(
+            stock_id, stock_name, market_type, asset_type, industry, is_active, updated_at
+        ) VALUES (?,?,?,?,?,?,?)
+        """,
+        ("2330", "台積電", "TWSE", "STOCK", "半導體業", 1, "2026-10-12 00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+    save_winrate_roster(
+        path,
+        "20261012",
+        [{"stock_id": "2330", "stock_name": "台積電", "pick_close": 100.0, "quote_source": "test"}],
+    )
+    cands = _candidates({}, path, as_of="20261012")
     assert [x["stock_id"] for x in cands] == ["2330"]
     assert {x.get("ai_bucket") for x in cands} == {"winrate_active"}
-    dip = _candidates(
-        {
-            "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
-            "golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}],
-            "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
-        },
-        dip_only=True,
-    )
+    dip = _candidates({}, path, dip_only=True, as_of="20261012")
     assert [x["stock_id"] for x in dip] == ["2330"]
     assert {x.get("ai_bucket") for x in dip} == {"dip_add"}
-    only_gb = _candidates(
-        {"golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}]},
-        dip_only=True,
-    )
-    assert only_gb == []
 
 
 def test_evolve_report_mentions_split_and_research(tmp_path):

@@ -262,11 +262,13 @@ def _candidates(
     dip_only: bool = False,
     as_of: str = "",
 ) -> List[Dict[str, Any]]:
-    """隔夜模擬倉：只從當日勝率買點挑（操作／抄底同一母體）。
+    """隔夜模擬倉：硬閘＝只認盤後勝率買點 roster。
 
-    不准改黃金買點公式。還在零／未確認紅箭／海選雜桶不進。
-    dip_only：仍只准勝率買點母體；標記抄底桶理由。
+    沒出現在勝率買點 → 不准買（含 leave_zero 海選後備、紅箭、還在零、雜桶）。
+    有出現 → 可認真研究（庫內＋連線公開站）再挑；操作／抄底同一母體。
+    不准改黃金買點公式。
     """
+    _ = results  # 海選 results 不准當買進母體；只吃 winrate_buypoint_roster
     out, seen = [], set()
     bucket = "dip_add" if dip_only else "winrate_active"
     reason = (
@@ -274,12 +276,9 @@ def _candidates(
         if dip_only
         else "勝率買點隔日操作"
     )
-    roster = _winrate_roster_rows(db_path, as_of) if db_path else []
-    # 後備：若 roster 尚未落檔，允許 results['winrate'] 或 leave_zero（同訊號）暫代，仍不收 golden_buy
-    if not roster and results:
-        for key in ("winrate", "leave_zero"):
-            for it in results.get(key) or []:
-                roster.append(dict(it))
+    if not db_path:
+        return []
+    roster = _winrate_roster_rows(db_path, as_of)
     for it in roster:
         sid = str(it.get("stock_id") or it.get("code") or "").strip()
         if not sid or sid in seen or sid.startswith("__"):
