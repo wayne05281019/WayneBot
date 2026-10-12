@@ -4622,7 +4622,11 @@ def build_biaoke_structure_chart(
     quote = _spot_quote(sid, last, prev, db_path)
     # 使用者定案：不畫 next-press；press_band 忽略（只留大量壓／撐）
     _ = press_band
-    # 74 核准：飆大／查股結構圖同一橫式滿版（不准殘留舊直式版面）
+    # 74 核准：飆大／查股結構圖同一橫式滿版＋同一 DPI（不准殘留舊直式／舊 dpi）
+    try:
+        from vol_zone_chart import VOL_ZONE_DPI as _struct_dpi
+    except Exception:
+        _struct_dpi = BIAOKE_CHART_DPI
     path = render_biaoke_structure_png(
         bars,
         save_path,
@@ -4633,6 +4637,7 @@ def build_biaoke_structure_chart(
         quote=quote,
         db_path=db_path,
         figsize=_STRUCTURE_LOOKUP_FIG,
+        dpi=int(_struct_dpi),
         press_band=None,
     )
     try:
