@@ -521,7 +521,7 @@ def test_lookup_candle_paint_shared():
     assert LOOKUP_CANDLE_UP == "#e53935"
     assert LOOKUP_CANDLE_DN == "#00897b"
     assert LOOKUP_CANDLE_BODY_W == 0.60
-    assert LOOKUP_VOL_BAR_W == 0.70
+    assert LOOKUP_VOL_BAR_W == 0.78
     assert biaoke_chart._UP == LOOKUP_CANDLE_UP
     assert biaoke_chart._DN == LOOKUP_CANDLE_DN
     vz = inspect.getsource(vol_zone_chart._paint_volume_zone)
