@@ -1,7 +1,7 @@
 # ==============================================================================
 # WayneBot 全市場量化決策系統升級：模組三 - AI 模擬操盤手 ＆ 自選守護引擎
 # 檔案名稱：portfolio_engine.py
-# 核心功能：50萬本金模擬、多用戶隔離、股海武僧出場紀律、自選即持股守護雷達
+# 核心功能：50萬本金模擬（AI倉＝30操作＋20抄底）、多用戶隔離、出場紀律、自選守護
 # ==============================================================================
 
 import os
@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple, Any
 class PortfolioEngine:
     """WayneBot 投資組合與自選股守護核心引擎"""
 
-    DEFAULT_CAPITAL = 500000.0  # 初始本金 50 萬元 TWD
+    DEFAULT_CAPITAL = 500000.0  # 初始本金 50 萬＝AI倉可動用 30 萬＋留 20 萬抄底
     FEE_RATE = 0.001425         # 券商手續費率 0.1425% (未計折扣低消依實算)
     TAX_RATE_STOCK = 0.003      # 股票證交稅 0.3%
     TAX_RATE_ETF = 0.001        # ETF 證交稅 0.1%
@@ -108,7 +108,7 @@ class PortfolioEngine:
     # 資金與用戶初始化
     # --------------------------------------------------------------------------
     def ensure_user_exists(self, user_id: str) -> None:
-        """確保用戶存在於資料庫，若無則以 50 萬本金開戶"""
+        """確保用戶存在於資料庫，若無則以 50 萬本金開戶（AI＝30操作＋20抄底）"""
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT user_id FROM user_funds WHERE user_id = ?", (str(user_id),))

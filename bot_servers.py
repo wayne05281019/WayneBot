@@ -7649,7 +7649,7 @@ class WayneTelegramBot:
             bits = [ai.get("html") or ""]
             if not ai.get("bought") and not ai.get("sold"):
                 bits.append(
-                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。平常最多 1 份、超跌才第 2 份，第 3 份留現金；或名單被高低卡／美股濾掉。</i>"
+                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。操作最多 3 檔（30 萬）、留 20 萬抄底；或名單被高低卡／美股濾掉。</i>"
                 )
             if ai.get("bought"):
                 bits.append("<b>本次買進</b>\n" + "\n".join(html_escape(x) for x in ai["bought"]))

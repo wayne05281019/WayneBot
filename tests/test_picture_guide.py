@@ -50,8 +50,10 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "四格" in blob
     assert "第 2 張" in blob
     assert "月K還在往上" in blob
-    assert "留現金" in blob
-    assert "平常最多用 1 份" in blob
+    assert "50 萬" in blob
+    assert "30 萬" in blob
+    assert "20 萬" in blob
+    assert "勝率買點隔日最多 3 檔" in blob
     assert "這波先當結束" in blob
     assert "官方收盤掃全市場" in blob
     assert "紅圈" in blob

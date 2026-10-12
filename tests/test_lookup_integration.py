@@ -238,23 +238,45 @@ class LookupIntegrationTests(unittest.TestCase):
         msg_b.delete.assert_not_awaited()
 
     def test_ai_desk_two_users_separate_positions(self):
-        """AI 模擬倉：兩人各買各的，持倉 user_id 不混。"""
+        """AI 模擬倉：兩人各買各的，持倉 user_id 不混。只動假錢倉。"""
         import sqlite3
         import tempfile
 
         from ai_trader import ai_user_id, run_ai_desk
         from portfolio_engine import PortfolioEngine
+        from wayne_db import ensure_core_schema
+        from winrate_buypoint import ensure_winrate_table, save_winrate_roster
 
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        results = {
-            "leave_zero": [
-                {"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "chase_warning": False},
-            ],
-        }
         try:
-            run_ai_desk(path, "111", results, "20260831")
-            run_ai_desk(path, "222", results, "20260831")
+            ensure_core_schema(path)
+            ensure_winrate_table(path)
+            conn = sqlite3.connect(path)
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO stock_universe(
+                    stock_id, stock_name, market_type, asset_type, industry, is_active, updated_at
+                ) VALUES (?,?,?,?,?,?,?)
+                """,
+                ("2330", "台積電", "TWSE", "STOCK", "半導體業", 1, "2026-10-12 00:00:00"),
+            )
+            conn.commit()
+            conn.close()
+            save_winrate_roster(
+                path,
+                "20261012",
+                [
+                    {
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "pick_close": 100.0,
+                        "quote_source": "test",
+                    }
+                ],
+            )
+            run_ai_desk(path, "111", {}, "20261013")
+            run_ai_desk(path, "222", {}, "20261013")
             eng = PortfolioEngine(path)
             self.assertGreaterEqual(eng.get_portfolio_summary(ai_user_id("111"))["positions_count"], 1)
             self.assertGreaterEqual(eng.get_portfolio_summary(ai_user_id("222"))["positions_count"], 1)

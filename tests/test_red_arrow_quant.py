@@ -354,21 +354,23 @@ def test_promote_ready_false_until_gate(tmp_path):
 
 
 def test_ai_trader_promotes_ma60_lower_entry(tmp_path):
-    """使用者已確認：ma60_lower 進場；未確認紅箭頭仍不是買訊。"""
+    """紅箭產品進場仍認 ma60_lower；AI倉假錢母體改勝率買點（硬閘分離）。"""
     from ai_trader import current_ai_encoding, format_evolve_report_html
     from red_arrow_quant import ENTRY_BUCKET, PRODUCT_ENTRY
     from wayne_db import ensure_core_schema
 
+    # 話筒／畫點產品進場：ma60_lower 仍升成買訊（不准改這條）
     assert PRODUCT_ENTRY is True
     assert ENTRY_BUCKET == "ma60_lower"
     path = str(tmp_path / "e.db")
     ensure_core_schema(path)
     enc = current_ai_encoding(path, "ai_1")
-    assert enc["entry"] == "leave_zero+ma60_lower"
+    # AI倉假錢只吃勝率買點 roster；未確認紅箭頭仍不是買訊
+    assert enc["entry"] == "winrate_buypoint"
     assert enc["not_entry"] == "red_arrow_unconfirmed"
     html = format_evolve_report_html(path, "ai_1")
     assert "未確認紅箭頭不是買訊" in html
-    assert "ma60_lower" in html
+    assert "勝率買點" in html
 
 
 def test_nav_legend_marks_red_arrow_proxy_confirmed_entry():

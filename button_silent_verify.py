@@ -48,6 +48,9 @@ SCREEN_KINDS = frozenset(
         "streak_both",
         "money_flow",
         "ai_desk",
+        "ai_desk_winrate",
+        "ai_desk_dip",
+        "ai_buy_reason",
         "biaoke_named",
         "intraday_leave_zero",
         "winrate_buypoint",
@@ -229,12 +232,21 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
     },
     {
         "btn": "AI倉",
-        "kinds": ("ai_desk",),
+        "kinds": ("ai_desk", "ai_desk_winrate", "ai_desk_dip", "ai_buy_reason"),
         "class": CLASS_AI,
         "status": "gap_filled",
-        "pipe": "screen_review.ai_fills＋MainRunner._run_ai_desk 成交後 snapshot_ai_desk",
-        "window": "ai_fills 隔日收；live_judge 1／5 另記，勝率不准混海選",
-        "note": "假錢對照組；不准真下單；成交後才凍（海選 snapshot 常在 AI 前）",
+        "pipe": (
+            "screen_review.ai_fills＋ai_buy_reasons＋MainRunner._run_ai_desk "
+            "成交後 snapshot_ai_desk（分桶 winrate_active／dip_add）"
+        ),
+        "window": (
+            "ai_fills 隔日收；live_judge 1／5；理由表當日落檔對照；"
+            "各桶各自對質，不准混海選／勝率買點推播軌"
+        ),
+        "note": (
+            "假錢；總50萬＝30操作＋20抄底；硬閘只認盤後勝率買點 roster；"
+            "有買進理由必落檔；不准真下單；不准改黃金買點；n≥20且贏該軌才換並再生"
+        ),
     },
     {
         "btn": "連買區",
@@ -497,7 +509,15 @@ def snapshot_book_buy(market_db: str, as_of: str = "") -> int:
 
 
 def snapshot_ai_desk(market_db: str, as_of: str = "") -> int:
-    """AI倉當日 BUY 凍結進 live_judge（與 ai_fills 分開表，勝率不准混海選）。"""
+    """AI倉當日 BUY／理由凍結（與海選／勝率推播分開；分桶各自對質）。
+
+    kinds：
+    - ai_desk：當日全部 BUY（相容舊軌）
+    - ai_desk_winrate：bucket=winrate_active（30 萬操作桶）
+    - ai_desk_dip：bucket=dip_add（20 萬抄底桶）
+    - ai_buy_reason：當日有落檔理由的代號（空理由不算）
+    失敗吞掉，不准擋話筒／海選／查股。
+    """
     day = _as_of(market_db, as_of)
     if not market_db or not day or not os.path.isfile(market_db):
         return 0
@@ -508,40 +528,118 @@ def snapshot_ai_desk(market_db: str, as_of: str = "") -> int:
     except Exception:
         pass
     try:
+        from ai_research import ensure_ai_research_tables
+
+        ensure_ai_research_tables(market_db)
+    except Exception:
+        pass
+    try:
         conn = sqlite3.connect(market_db, timeout=8.0)
         try:
             names = {str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if "ai_fills" not in names:
-                return 0
-            hits = conn.execute(
-                """
-                SELECT user_id, stock_id, stock_name, price, bucket
-                FROM ai_fills
-                WHERE action='BUY' AND REPLACE(CAST(as_of AS TEXT),'-','')=?
-                """,
-                (day,),
-            ).fetchall()
+            hits = []
+            if "ai_fills" in names:
+                hits = conn.execute(
+                    """
+                    SELECT user_id, stock_id, stock_name, price, bucket
+                    FROM ai_fills
+                    WHERE action='BUY' AND REPLACE(CAST(as_of AS TEXT),'-','')=?
+                    """,
+                    (day,),
+                ).fetchall()
+            reason_hits = []
+            if "ai_buy_reasons" in names:
+                reason_hits = conn.execute(
+                    """
+                    SELECT user_id, stock_id, stock_name, bucket, reason
+                    FROM ai_buy_reasons
+                    WHERE REPLACE(CAST(as_of AS TEXT),'-','')=?
+                      AND TRIM(COALESCE(reason,''))!=''
+                    """,
+                    (day,),
+                ).fetchall()
         finally:
             conn.close()
     except Exception:
         return 0
     by_uid: Dict[str, List[Dict[str, Any]]] = {}
+    by_uid_wr: Dict[str, List[Dict[str, Any]]] = {}
+    by_uid_dip: Dict[str, List[Dict[str, Any]]] = {}
     for uid, sid, name, price, bucket in hits:
         code = str(sid or "").strip()
         if not code:
             continue
         key = str(uid or "").strip() or "wayne_ai"
-        by_uid.setdefault(key, []).append(
-            _row_from_quote(
-                code,
-                str(name or ""),
-                close=price,
-                bucket_key=str(bucket or ""),
-            )
+        row = _row_from_quote(
+            code,
+            str(name or ""),
+            close=price,
+            bucket_key=str(bucket or ""),
         )
+        by_uid.setdefault(key, []).append(row)
+        b = str(bucket or "").strip()
+        if b == "dip_add":
+            by_uid_dip.setdefault(key, []).append(row)
+        else:
+            # winrate_active 或舊 leave_zero 桶都歸操作軌（舊殘列相容，不混海選）
+            by_uid_wr.setdefault(key, []).append(row)
     n = 0
     for uid, items in by_uid.items():
         n += _remember(market_db, "ai_desk", items, as_of=day, pick=uid, src="ai")
+    for uid, items in by_uid_wr.items():
+        n += _remember(market_db, "ai_desk_winrate", items, as_of=day, pick=uid, src="ai_wr")
+    for uid, items in by_uid_dip.items():
+        n += _remember(market_db, "ai_desk_dip", items, as_of=day, pick=uid, src="ai_dip")
+    # 理由落檔：有真代號＋非空理由才算；補當日官方收才凍（缺柱不算有記）
+    quote_close: Dict[str, float] = {}
+    try:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            for sid, close in conn.execute(
+                """
+                SELECT stock_id, close FROM daily_quotes
+                WHERE REPLACE(CAST(date AS TEXT),'-','')=?
+                """,
+                (day,),
+            ):
+                try:
+                    px = float(close or 0)
+                except (TypeError, ValueError):
+                    px = 0.0
+                if str(sid or "").strip() and px > 0:
+                    quote_close[str(sid).strip()] = px
+        finally:
+            conn.close()
+    except Exception:
+        quote_close = {}
+    by_uid_reason: Dict[str, List[Dict[str, Any]]] = {}
+    for uid, sid, name, bucket, reason in reason_hits:
+        code = str(sid or "").strip()
+        if not code or not str(reason or "").strip():
+            continue
+        px = quote_close.get(code)
+        if px is None or px <= 0:
+            # 成交價後備（同日 BUY）
+            for u2, s2, _n2, price, _b2 in hits:
+                if str(s2 or "").strip() == code:
+                    try:
+                        px = float(price or 0)
+                    except (TypeError, ValueError):
+                        px = 0.0
+                    break
+        if not px or px <= 0:
+            continue
+        key = str(uid or "").strip() or "wayne_ai"
+        by_uid_reason.setdefault(key, []).append(
+            _row_from_quote(
+                code,
+                str(name or ""),
+                close=px,
+                bucket_key=str(bucket or ""),
+            )
+        )
+    for uid, items in by_uid_reason.items():
+        n += _remember(market_db, "ai_buy_reason", items, as_of=day, pick=uid, src="ai_why")
     return n
 
 
