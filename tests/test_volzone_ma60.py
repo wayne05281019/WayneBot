@@ -62,7 +62,7 @@ def test_paint_draws_ma60_and_query_stamp():
     assert 'f"收 {_fmt_price(last_cl)}"' not in src
     assert "quote_limit_chip_colors" not in src
     assert "close_bit" in src
-    assert "blended_transform_factory" in src  # 狀況標改右溝
+    assert "path_box_artist" in src  # 狀況標離 K／末日箭
     # 標位不准碰假 OHLC／量
     assert "不准動 OHLC" in src or "不准改 OHLC" in inspect.getsource(_paint_ma_line_labels)
     lab_src = inspect.getsource(_label_ma_blank)

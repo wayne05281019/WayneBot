@@ -2191,25 +2191,24 @@ def _paint_volume_zone(
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
+    path_box_artist = None
     if path_shown:
-        # 狀況簡述改貼右溝（末日 K 右側空白）：不准壓末日導航箭（例 20高脫離↓）／K／均線標
-        from matplotlib.transforms import blended_transform_factory
-
-        _path_trans = blended_transform_factory(ax1.transData, ax1.transAxes)
-        ax1.text(
-            float(n) + 0.08,
-            0.992,
+        # 狀況簡述先掛 K 頂緣上方（軸外）；稍後若有表頭列改掛表頭右下，
+        # 不准壓末日導航箭（例 20高脫離↓）／K／均線標
+        path_box_artist = ax1.text(
+            0.995,
+            1.012,
             path_shown,
-            transform=_path_trans,
-            ha="left",
-            va="top",
-            fontproperties=_fp(9.2, "bold"),
+            transform=ax1.transAxes,
+            ha="right",
+            va="bottom",
+            fontproperties=_fp(9.0, "bold"),
             color=_CALL,
             zorder=12,
             clip_on=False,
-            linespacing=1.18,
+            linespacing=1.15,
             bbox=dict(
-                boxstyle="round,pad=0.22",
+                boxstyle="round,pad=0.20",
                 facecolor="#fff8e1",
                 edgecolor="#ef6c00",
                 linewidth=0.85,
@@ -2513,54 +2512,105 @@ def _paint_volume_zone(
             fontproperties=_fp(15.0, "bold"),
             color=_TEXT,
         )
-
-        def _head_text_units(s: str, *, scale: float = 1.0) -> float:
-            """粗估全形寬（置中分段用）；英數略窄。"""
-            w = 0.0
-            for ch in str(s or ""):
-                w += (0.55 if ord(ch) < 128 else 1.0) * scale
-            return w
-
-        _u_left = _head_text_units(intro_left, scale=1.0)
-        _u_close = _head_text_units(close_bit, scale=1.12)  # 稍大一點
-        _u_right = _head_text_units(intro_right, scale=1.0)
-        _u_total = max(_u_left + _u_close + _u_right, 1.0)
-        # 表頭列約 18 全形字可視寬 → 軸座標換算
-        _unit = 0.92 / max(_u_total, 18.0)
-        _x0 = 0.5 - 0.5 * _u_total * _unit
-        ax_head.text(
-            _x0,
+        # 第二排：量測實際字寬後置中，讓紅字「收XXXX」緊接在開高低後面
+        _fp_intro = _fp(13.0, "bold")
+        _fp_close = _fp(14.4, "bold")
+        _t_left = ax_head.text(
+            0.0,
             0.78,
             intro_left,
             transform=ax_head.transAxes,
             ha="left",
             va="top",
-            fontproperties=_fp(13.0, "bold"),
+            fontproperties=_fp_intro,
             color=_TEXT,
             zorder=12,
+            alpha=0.0,
         )
-        ax_head.text(
-            _x0 + _u_left * _unit,
+        _t_close = ax_head.text(
+            0.0,
             0.78,
             close_bit,
             transform=ax_head.transAxes,
             ha="left",
             va="top",
-            fontproperties=_fp(14.4, "bold"),
+            fontproperties=_fp_close,
             color=_UP,
             zorder=13,
+            alpha=0.0,
         )
+        _t_right = None
         if intro_right:
-            ax_head.text(
-                _x0 + (_u_left + _u_close) * _unit,
+            _t_right = ax_head.text(
+                0.0,
                 0.78,
                 intro_right,
                 transform=ax_head.transAxes,
                 ha="left",
                 va="top",
-                fontproperties=_fp(13.0, "bold"),
+                fontproperties=_fp_intro,
                 color=_TEXT,
                 zorder=12,
+                alpha=0.0,
+            )
+        try:
+            fig.canvas.draw()
+            _ren = fig.canvas.get_renderer()
+            _bb = ax_head.get_window_extent(renderer=_ren)
+            _aw = max(float(_bb.width), 1.0)
+
+            def _ax_w(artist) -> float:
+                return float(artist.get_window_extent(renderer=_ren).width) / _aw
+
+            _w_left = _ax_w(_t_left)
+            _w_close = _ax_w(_t_close)
+            _w_right = _ax_w(_t_right) if _t_right is not None else 0.0
+            _w_total = _w_left + _w_close + _w_right
+            _x0 = 0.5 - 0.5 * _w_total
+            _t_left.set_position((_x0, 0.78))
+            _t_left.set_alpha(1.0)
+            _t_close.set_position((_x0 + _w_left, 0.78))
+            _t_close.set_alpha(1.0)
+            if _t_right is not None:
+                _t_right.set_position((_x0 + _w_left + _w_close, 0.78))
+                _t_right.set_alpha(1.0)
+        except Exception:
+            logger.exception("大量區表頭收字置中失敗 sid=%s", sid)
+            _t_left.set_alpha(1.0)
+            _t_close.set_alpha(1.0)
+            if _t_right is not None:
+                _t_right.set_alpha(1.0)
+            # 後備：整段貼中，紅收仍緊接左段（粗估）
+            _t_left.set_ha("right")
+            _t_left.set_position((0.50, 0.78))
+            _t_close.set_position((0.50, 0.78))
+            if _t_right is not None:
+                _t_right.set_position((0.62, 0.78))
+        # 狀況簡述改掛表頭右下：離開 K 區，不再壓末日導航箭
+        if path_shown and path_box_artist is not None:
+            try:
+                path_box_artist.remove()
+            except Exception:
+                pass
+            ax_head.text(
+                0.995,
+                0.02,
+                path_shown,
+                transform=ax_head.transAxes,
+                ha="right",
+                va="bottom",
+                fontproperties=_fp(8.8, "bold"),
+                color=_CALL,
+                zorder=15,
+                clip_on=False,
+                linespacing=1.12,
+                bbox=dict(
+                    boxstyle="round,pad=0.18",
+                    facecolor="#fff8e1",
+                    edgecolor="#ef6c00",
+                    linewidth=0.8,
+                    alpha=0.96,
+                ),
             )
         try:
             from wayne_navigator import _draw_nav_legend
