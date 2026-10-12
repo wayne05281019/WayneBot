@@ -290,7 +290,7 @@ def test_vol_zone_xaxis_matches_k_and_volume_index():
     src = inspect.getsource(_paint_volume_zone)
     assert "abs(int(spike_i) - int(last_i)) <= 2" in src
     assert "linestyle=(0, (1.1, 1.35))" in src  # 爆大量豎線極小間距虛線
-    assert "不畫最後一根橘色豎虛線" in src
+    assert "狀況簡述改貼右溝" in src or "不畫最後一根橘色豎虛線" in src
     assert "axvline(\n            float(xs[-1])" not in src
     assert "axvline(float(xs[-1])" not in src
 

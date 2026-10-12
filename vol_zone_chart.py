@@ -72,7 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 26  # 均線短標自動位（中左→中→中右靠中）只貼己線；官方量補洞
+_VZ_PAINT_VER = 27  # 短標縮盒讓 5 可標；狀況標右溝避箭；刪收晶片；表頭收改紅；壓撐線再細
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -133,11 +133,15 @@ def attach_official_ma60(work: pd.DataFrame, *, window: int = VOL_ZONE_MA60) -> 
 
 
 def _ma_label_box_half(
-    span: float, *, x_half: float = 0.72
+    span: float, *, x_half: float = 0.55
 ) -> Tuple[float, float, float]:
-    """標盒半高／半寬／與 K 的最小空隙（價格單位）。短標視覺窄。"""
-    half_h = span * 0.032
-    pad = span * 0.009
+    """標盒半高／半寬／與 K 的最小空隙（價格單位）。短標視覺窄。
+
+    盒略縮：高價股 span 大時舊半高易把 5 卡在 10／月之間誤判互壓；
+    有乾淨位才標，仍不准硬壓 K／他線。
+    """
+    half_h = span * 0.022
+    pad = span * 0.008
     return half_h, float(x_half), pad
 
 
@@ -244,7 +248,7 @@ def _label_ma_blank(
             return True
         j0, j1 = _cover_range(x_lab)
         y_bot, y_top = y_lab - half_h, y_lab + half_h
-        line_pad = span * 0.006
+        line_pad = span * 0.004
         for arr in others:
             for k in range(j0, j1 + 1):
                 v = float(arr[k]) if np.isfinite(arr[k]) else np.nan
@@ -265,6 +269,9 @@ def _label_ma_blank(
         if xf < 0.22 and yf > 0.86:
             return True
         if xf < 0.22 and yf < 0.14:
+            return True
+        # 右上狀況簡述（若還在軸內）：短標不准鑽進去
+        if avoid_path_box and xf > 0.72 and yf > 0.78:
             return True
         if press_hi is not None and np.isfinite(press_hi):
             if abs(y_lab - float(press_hi)) < half_h * 1.5 and xf < 0.30:
@@ -1900,7 +1907,7 @@ def _paint_volume_zone(
 
     if lookup_portrait:
         fig_size = VOL_ZONE_FIG_LOOKUP
-        # 量柱列加高：高價股矮柱不准被擠沒。表頭留漲停晶片。
+        # 量柱列加高：高價股矮柱不准被擠沒。表頭不再放收盤晶片。
         head_ratios = [0.78, 4.35, 0.38, 1.72]
         head_bottom = 0.072
     else:
@@ -1960,9 +1967,9 @@ def _paint_volume_zone(
 
     # 桃色大量區（略透，K／箭頭更清楚）
     ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
-    # 壓／撐色線微細：仍清楚，不搶 K／均線
-    ax1.axhline(hi, color=_PRESS, linewidth=1.35, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=1.35, zorder=5, solid_capstyle="round")
+    # 壓／撐色線再細一點：仍清楚，不搶 K／均線
+    ax1.axhline(hi, color=_PRESS, linewidth=1.05, zorder=5, solid_capstyle="round")
+    ax1.axhline(lo, color=_HOLD, linewidth=1.05, zorder=5, solid_capstyle="round")
     # 爆大量日豎線：極小間距虛線，避免實線切過 K／量看不清
     ax1.axvline(
         spike_i,
@@ -2185,24 +2192,27 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
     if path_shown:
-        # 不畫最後一根橘色豎虛線：會蓋住最新收盤 K，改只留右上事實句
+        # 狀況簡述改貼右溝（末日 K 右側空白）：不准壓末日導航箭（例 20高脫離↓）／K／均線標
+        from matplotlib.transforms import blended_transform_factory
+
+        _path_trans = blended_transform_factory(ax1.transData, ax1.transAxes)
         ax1.text(
-            0.985,
-            0.968,
+            float(n) + 0.08,
+            0.992,
             path_shown,
-            transform=ax1.transAxes,
-            ha="right",
+            transform=_path_trans,
+            ha="left",
             va="top",
-            fontproperties=_fp(9.6, "bold"),
+            fontproperties=_fp(9.2, "bold"),
             color=_CALL,
             zorder=12,
             clip_on=False,
-            linespacing=1.22,
+            linespacing=1.18,
             bbox=dict(
-                boxstyle="round,pad=0.26",
+                boxstyle="round,pad=0.22",
                 facecolor="#fff8e1",
                 edgecolor="#ef6c00",
-                linewidth=0.9,
+                linewidth=0.85,
                 alpha=0.96,
             ),
         )
@@ -2244,7 +2254,7 @@ def _paint_volume_zone(
         bbox={**_tag_box, "edgecolor": _HOLD},
     )
 
-    # 大量區右軸只留今收（綠「收」）＋壓／撐；不准再畫「昨收」白底標（與收／壓撐重複干擾）
+    # 大量區右軸／表頭：已刪綠匡白底「收」晶片；不准再畫「昨收」白底標
 
     # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位
     try:
@@ -2483,14 +2493,16 @@ def _paint_volume_zone(
             ex_title += "（原柱不還原）"
     if with_nav_signals and ax_head is not None:
         # 標題列：兩行介紹放大＋圖例三排，緊接 K（橫式原版）
+        # 已刪右上綠匡白底「收 XXXX」晶片；表頭第二排「收XXXX」改紅字稍大
         head = f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
-        intro = (
+        intro_left = (
             f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
             f"最近 {_md(last.get('date'))} "
             f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
-            f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
-            f"{ex_title}"
+            f"低{_fmt_price(last['low'])} "
         )
+        close_bit = f"收{_fmt_price(last['close'])}"
+        intro_right = str(ex_title or "")
         ax_head.text(
             0.5,
             0.96,
@@ -2501,62 +2513,55 @@ def _paint_volume_zone(
             fontproperties=_fp(15.0, "bold"),
             color=_TEXT,
         )
+
+        def _head_text_units(s: str, *, scale: float = 1.0) -> float:
+            """粗估全形寬（置中分段用）；英數略窄。"""
+            w = 0.0
+            for ch in str(s or ""):
+                w += (0.55 if ord(ch) < 128 else 1.0) * scale
+            return w
+
+        _u_left = _head_text_units(intro_left, scale=1.0)
+        _u_close = _head_text_units(close_bit, scale=1.12)  # 稍大一點
+        _u_right = _head_text_units(intro_right, scale=1.0)
+        _u_total = max(_u_left + _u_close + _u_right, 1.0)
+        # 表頭列約 18 全形字可視寬 → 軸座標換算
+        _unit = 0.92 / max(_u_total, 18.0)
+        _x0 = 0.5 - 0.5 * _u_total * _unit
         ax_head.text(
-            0.5,
+            _x0,
             0.78,
-            intro,
+            intro_left,
             transform=ax_head.transAxes,
-            ha="center",
+            ha="left",
             va="top",
             fontproperties=_fp(13.0, "bold"),
             color=_TEXT,
             zorder=12,
         )
-        # 收盤晶片：只漲停紅底／跌停綠底，同高低卡 quote_limit_chip_colors
-        try:
-            from wayne_navigator import (
-                _card_is_emerging,
-                quote_limit_chip_colors,
-                quote_limit_side,
-            )
-
-            prev_c = None
-            if n >= 2:
-                try:
-                    prev_c = float(view["close"].iloc[-2])
-                except (TypeError, ValueError, IndexError):
-                    prev_c = None
-            pct = None
-            if prev_c and prev_c > 0 and last_cl > 0:
-                pct = (last_cl - prev_c) / prev_c * 100.0
-            emerging = _card_is_emerging(card) if isinstance(card, dict) else False
-            side = quote_limit_side(last_cl, prev_c, pct, emerging=emerging)
-            chip = quote_limit_chip_colors(side)
-            up = bool(last_cl >= (prev_c or last_cl))
-            if chip:
-                fill, ink = chip
-            else:
-                fill, ink = "#ffffff", (_UP if up else _DN)
+        ax_head.text(
+            _x0 + _u_left * _unit,
+            0.78,
+            close_bit,
+            transform=ax_head.transAxes,
+            ha="left",
+            va="top",
+            fontproperties=_fp(14.4, "bold"),
+            color=_UP,
+            zorder=13,
+        )
+        if intro_right:
             ax_head.text(
-                0.98,
-                0.18,
-                f"收 {_fmt_price(last_cl)}",
+                _x0 + (_u_left + _u_close) * _unit,
+                0.78,
+                intro_right,
                 transform=ax_head.transAxes,
-                ha="right",
-                va="center",
+                ha="left",
+                va="top",
                 fontproperties=_fp(13.0, "bold"),
-                color=ink,
-                zorder=14,
-                bbox=dict(
-                    boxstyle="round,pad=0.28",
-                    facecolor=fill,
-                    edgecolor=ink,
-                    linewidth=1.15,
-                    alpha=0.97,
-                ),
+                color=_TEXT,
+                zorder=12,
             )
-        except Exception:
-            logger.exception("大量撐壓表頭漲停晶片失敗 sid=%s", sid)
         try:
             from wayne_navigator import _draw_nav_legend
 
