@@ -2686,7 +2686,13 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         Figure.savefig = _vz_save
         try:
             vol_out, vol_cap = vz.render_volume_zone_result(
-                sid, name, db, vol_p, card=card, with_nav_signals=True
+                sid,
+                name,
+                db,
+                vol_p,
+                card=card,
+                with_nav_signals=True,
+                with_ma5_ma10=True,
             )
         finally:
             wn._nav_trade_marks = orig_trade

@@ -1445,6 +1445,7 @@ class WayneTelegramBot:
                         self.db_path,
                         _p,
                         with_nav_signals=True,
+                        with_ma5_ma10=True,
                     )
 
                 try:
@@ -1600,6 +1601,7 @@ class WayneTelegramBot:
                     vol_path,
                     card=card or None,
                     with_nav_signals=True,
+                    with_ma5_ma10=True,
                 )
 
             def _card_png():
