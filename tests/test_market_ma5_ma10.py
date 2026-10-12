@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""大盤大量區五日／十日線：與壓撐／平行軌同圖；個股預設不畫。"""
+"""大量區五日／十日線：大盤與個股查股／壓撐話筒同開；非買訊。"""
 from __future__ import annotations
 
 import inspect
@@ -20,11 +20,12 @@ def test_market_builder_enables_ma5_ma10():
     assert "with_nav_signals=False" in src
 
 
-def test_stock_lookup_vol_default_no_ma5_ma10_flag():
+def test_stock_lookup_vol_enables_ma5_ma10():
+    """查股第 4 張必須畫五日／十日（#584 標籤 refinement 前提；話筒不得只剩月／季）。"""
     from vol_zone_chart import render_lookup_vol_result
 
     src = inspect.getsource(render_lookup_vol_result)
-    assert "with_ma5_ma10" not in src
+    assert "with_ma5_ma10=True" in src
 
 
 def test_attach_official_ma5_ma10_min_periods():

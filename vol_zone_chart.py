@@ -72,7 +72,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 27  # 短標縮盒讓 5 可標；狀況標右溝避箭；刪收晶片；表頭收改紅；壓撐線再細
+_VZ_PAINT_VER = 28  # 個股大量區也畫五日／十日（話筒與大盤同套；非買訊）
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -1807,7 +1807,8 @@ def render_volume_zone_result(
     with_nav_signals＝疊導航箭頭／量能訊號（壓撐觀察用；仍非買訊）。
     lookup_portrait＝舊直式 4:5 畫布（壓區名單仍可走）。查股第 4 張改橫式原版。
     with_parallel_channel＝疊可重算上升軌／下降壓兩條平行線（大盤大量區用；不數浪、非買訊）。
-    with_ma5_ma10＝疊官方五日／十日線（大盤大量區用；個股預設關）。
+    with_ma5_ma10＝疊官方五日／十日線（橙／青；與月／季並列；非買訊）。
+    查股／壓撐話筒路徑經 render_lookup_vol_result 或呼叫端開 True；大盤亦開。
     """
     del already_normalized
     pack = prepare_volume_zone(
@@ -1930,7 +1931,10 @@ def render_lookup_vol_result(
     *,
     card: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, str]:
-    """查股第 4 張：大量撐壓＝橫式原版（VOL_ZONE_FIG_W×NAV），不是直式 4:5。不是買訊。"""
+    """查股第 4 張：大量撐壓＝橫式原版（VOL_ZONE_FIG_W×NAV），不是直式 4:5。不是買訊。
+
+    月／季一律畫；五日／十日一併畫（橙／青），短標避讓略過時線仍在。
+    """
     return render_volume_zone_result(
         stock_id,
         stock_name,
@@ -1939,6 +1943,7 @@ def render_lookup_vol_result(
         card=card,
         with_nav_signals=True,
         lookup_portrait=False,
+        with_ma5_ma10=True,
     )
 
 
@@ -2047,7 +2052,7 @@ def _paint_volume_zone(
         linestyle=(0, (1.1, 1.35)),
     )
 
-    # 均線：月線／季線一律畫；五日／十日僅大盤大量區（with_ma5_ma10）
+    # 均線：月線／季線一律畫；五日／十日由 with_ma5_ma10（查股／壓撐／大盤開）
     closes_v = pd.to_numeric(view["close"], errors="coerce")
     ma5_vals = None
     ma10_vals = None
