@@ -261,23 +261,46 @@ def test_pending_state_per_user_not_per_chat():
 
 
 def test_ai_desk_isolated_per_telegram_user():
+    """兩人 AI 假錢倉隔離；母體＝勝率買點 roster（不准牽連真實持股）。"""
     import os
     import sqlite3
     import tempfile
 
     from ai_trader import ai_user_id, run_ai_desk
     from portfolio_engine import PortfolioEngine
+    from wayne_db import ensure_core_schema
+    from winrate_buypoint import ensure_winrate_table, save_winrate_roster
 
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     try:
-        results = {
-            "leave_zero": [
-                {"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "chase_warning": False}
+        ensure_core_schema(path)
+        ensure_winrate_table(path)
+        conn = sqlite3.connect(path)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO stock_universe(
+                stock_id, stock_name, market_type, asset_type, industry, is_active, updated_at
+            ) VALUES (?,?,?,?,?,?,?)
+            """,
+            ("2330", "台積電", "TWSE", "STOCK", "半導體業", 1, "2026-10-12 00:00:00"),
+        )
+        conn.commit()
+        conn.close()
+        save_winrate_roster(
+            path,
+            "20261012",
+            [
+                {
+                    "stock_id": "2330",
+                    "stock_name": "台積電",
+                    "pick_close": 100.0,
+                    "quote_source": "test",
+                }
             ],
-        }
-        run_ai_desk(path, "111", results, "20260831")
-        run_ai_desk(path, "222", results, "20260831")
+        )
+        run_ai_desk(path, "111", {}, "20261013")
+        run_ai_desk(path, "222", {}, "20261013")
         eng = PortfolioEngine(path)
         w = eng.get_portfolio_summary(ai_user_id("111"))
         b = eng.get_portfolio_summary(ai_user_id("222"))

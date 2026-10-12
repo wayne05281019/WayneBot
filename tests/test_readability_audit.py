@@ -128,7 +128,8 @@ def test_ai_desk_readable():
     assert "每槽上限：" in html
     assert "○" in html or "●" in html
     assert "假錢對照組" in html
-    assert "只買黃金買點" in html
+    assert "勝率買點" in html
+    assert "50 萬" in html
     assert "（勝" not in html
 
 
