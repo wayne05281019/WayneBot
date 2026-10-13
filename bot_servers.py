@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖；一次一張、好了就送。點開高畫質。圖下其餘子鍵（產業／籌碼／營收／高低導航圖／K線）。導航不塞進自動四張、不送合成三合一
+- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖；一次一張、好了就送。點開高畫質。完整圖下鈕（產業／報導／籌碼／營收／高低導航圖／K線／觀察／記買入）只掛第 4 張大量區；第 2／3 張不要重複鍵盤。導航不塞進自動四張、不送合成三合一
 - 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -2369,7 +2369,7 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """查股其餘子鍵（四張之後才出）。自動四張不含導航；圖下有高低導航圖／K線。兩人同一套。"""
+        """查股其餘子鍵：只掛第 4 張大量撐壓圖下（第 2／3 張不要重複鍵盤）。兩人同一套。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
@@ -3295,7 +3295,7 @@ class WayneTelegramBot:
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
                 + "\n"
-                "3　一次出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖，點開高畫質。圖下有產業／籌碼／營收等\n"
+                "3　一次出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖，點開高畫質。圖下鈕在最後一張大量區\n"
                 "\n"
                 "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
@@ -8728,7 +8728,8 @@ class WayneTelegramBot:
                         )
                         path = ""
                         continue
-                    return ("glance", path, glance_cap, hub)
+                    # 圖下完整鍵盤只留第 4 張大量區；介紹不附（第 2／3 張不要重複）。
+                    return ("glance", path, glance_cap, None)
                 return None
 
             async def _struct_item():
@@ -8818,13 +8819,13 @@ class WayneTelegramBot:
                 ensure_task.done(),
             )
             if glance_item:
-                kind, path, caption, markup = glance_item
+                kind, path, caption, _mk = glance_item
                 prep = await _prep_for_send(path, kind)
-                ok = await send_photo(prep or path, caption, markup or hub, kind=kind)
+                # 第 2 張介紹圖：不要附完整圖下鈕（產業／導航仍在第 4 張）。
+                ok = await send_photo(prep or path, caption, None, kind=kind)
                 if ok:
                     sent_any = True
                     sent_kinds.append(kind)
-                    hub_on = True
                     ready_items.append(glance_item)
 
             if not ensure_task.done():
@@ -8844,11 +8845,11 @@ class WayneTelegramBot:
             if struct_item:
                 kind, path, caption, _mk = struct_item
                 prep = await _prep_for_send(path, kind)
-                ok = await send_photo(prep or path, caption, hub, kind=kind)
+                # 第 3 張結構圖：不要附圖下鈕。
+                ok = await send_photo(prep or path, caption, None, kind=kind)
                 if ok:
                     sent_any = True
                     sent_kinds.append(kind)
-                    hub_on = True
                     ready_items.append(struct_item)
 
             await _bump_progress("vol")
@@ -8864,6 +8865,7 @@ class WayneTelegramBot:
             if vol_item:
                 kind, path, caption, _mk = vol_item
                 prep = await _prep_for_send(path, kind)
+                # 第 4 張大量區：保留完整圖下鈕（兩人同一套）。
                 ok = await send_photo(prep or path, caption, hub, kind=kind)
                 if ok:
                     sent_any = True

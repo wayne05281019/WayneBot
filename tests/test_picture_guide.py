@@ -82,7 +82,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "不卡 5%" in blob
     assert "不限海選桶" in blob
     assert "含興櫃" in blob
-    assert CACHE_VER == "v75"
+    assert CACHE_VER == "v76"
     assert "前8檔" in blob
     assert "昨獲利貼零" in blob
     assert "今天離開 0" in blob or "今離開 0" in blob
@@ -501,7 +501,7 @@ def test_wrap_line_keeps_period_and_closing_paren():
     assert any("00981A" in ln for ln in a)
     b = _wrap_line(
         dr,
-        "上市／上櫃／興櫃一律四張：高低溫度卡→介紹圖→結構圖→大量撐壓圖（非買訊）。點開高畫質。產業／籌碼／營收走圖下子鍵；不出導航獨立張。",
+        "上市／上櫃／興櫃一律四張：高低溫度卡→介紹圖→結構圖→大量撐壓圖（非買訊）。點開高畫質。圖下鈕只在大量區；第2／3張不重複。不出導航獨立張。",
         font,
         520,
         520,
