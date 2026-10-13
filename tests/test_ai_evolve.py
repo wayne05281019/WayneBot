@@ -226,11 +226,25 @@ def test_reset_ai_account_clears_and_sets_500k(tmp_path):
     ensure_core_schema(path)
     from portfolio_engine import PortfolioEngine
     from ai_trader import ensure_ai_restart_applied, reset_ai_account, ai_user_id
+    from screen_review import ensure_ai_fills_table, persist_ai_fill
 
     eng = PortfolioEngine(path)
     uid = ai_user_id("9001")
     eng.ensure_user_exists(uid)
     eng.buy(uid, "20261001", "2330", "台積電", 100.0, 1000, reason="舊倉")
+    ensure_ai_fills_table(path)
+    persist_ai_fill(
+        path,
+        as_of="20261001",
+        stock_id="2330",
+        stock_name="台積電",
+        action="BUY",
+        price=100.0,
+        shares=1000,
+        user_id=uid,
+        reason="舊倉",
+        bucket="leave_zero",
+    )
     assert eng.get_portfolio_summary(uid, {})["positions_count"] == 1
     out = reset_ai_account(eng, uid)
     assert out["success"] is True
@@ -238,9 +252,29 @@ def test_reset_ai_account_clears_and_sets_500k(tmp_path):
     assert s["positions_count"] == 0
     assert s["cash"] == TOTAL_CAPITAL
     assert s["initial_capital"] == TOTAL_CAPITAL
+    conn = sqlite3.connect(path)
+    n_logs = conn.execute("SELECT COUNT(*) FROM trade_logs WHERE user_id=?", (uid,)).fetchone()[0]
+    n_fills = conn.execute("SELECT COUNT(*) FROM ai_fills WHERE user_id=?", (uid,)).fetchone()[0]
+    conn.close()
+    assert n_logs == 0  # 舊買賣全刪，不留 RESET 成交
+    assert n_fills == 0
     # 重跑旗標只清一次
     assert ensure_ai_restart_applied(eng, uid) is True
     assert ensure_ai_restart_applied(eng, uid) is False
+
+
+def test_reset_refuses_non_ai_user(tmp_path):
+    path = str(tmp_path / "safe.db")
+    ensure_core_schema(path)
+    from portfolio_engine import PortfolioEngine
+    from ai_trader import reset_ai_account
+
+    eng = PortfolioEngine(path)
+    eng.ensure_user_exists("9001")  # 真實持股 uid 形狀
+    eng.buy("9001", "20261001", "2330", "台積電", 100.0, 1000, reason="真倉")
+    out = reset_ai_account(eng, "9001")
+    assert out["success"] is False
+    assert eng.get_portfolio_summary("9001", {})["positions_count"] == 1
 
 
 def test_run_ai_desk_respects_buy_gate(tmp_path):
