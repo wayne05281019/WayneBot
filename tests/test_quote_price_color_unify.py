@@ -43,8 +43,10 @@ def test_structure_spot_uses_px_quote_and_move_ink():
         assert "quote_move_ink" in src
         assert "candle_up_taiwan" not in src
     paint_src = inspect.getsource(bc.render_biaoke_structure_png)
-    assert 'f"今收 {_px_quote(last_c)}"' in paint_src
+    # 右軸當日價跟決策卡 quote 同源；盤中「現價」、收盤「今收」
+    assert 'f"{close_tag} {_px_quote(last_c)}"' in paint_src
     assert 'f"昨收 {_px_quote(prev_c_axis)}"' in paint_src
+    assert 'f"今收 {_px(last_c)}"' not in paint_src
 
 
 def test_volzone_header_close_follows_move_ink_not_hard_red():
