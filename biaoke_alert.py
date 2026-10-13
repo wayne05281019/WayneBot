@@ -5,8 +5,8 @@
 急推才推偉權＋哥哥兩支手機：
   1) 現在就要出清 → 完整原文
   2) 現在差不多到底／抄底窗口 → 完整原文
-  3) 官方收盤柱碰到他已點過的位 → 口語一句統整（碰到哪些關、收在哪邊、現在怎麼讀）；
-     同根柱一次碰到多個已點位 → 仍併成一則，不准之上／之下表、不准機器規則句上話筒
+  3) 官方收盤柱碰到他已點過的位 → 國中生口語一句（碰到關了、收大概在哪邊、還要再看）；
+     同根柱一次碰到多個已點位 → 仍併成一則；不准關卡串／收點串／機器規則句上話筒
 只對「新抓到且未逾時效」的文急推；重掃／換 id／deploy 後不准把多天前舊文當急推重播。
 如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點＝一般，不急推。
 確認低點仍要主音疊輔助；單講趨勢向上、初步止訊號、右肩有守＝還不到確認。
@@ -745,7 +745,7 @@ def _close_side_groups(
 
 
 def _key_level_mentioned(text: str, levels: Sequence[float]) -> str:
-    """口語裡已出現的關鍵已點位（若有）；沒有就空。"""
+    """近窗說法裡已出現的關鍵已點位（若有）；沒有就空。不准發明新價。"""
     s = str(text or "")
     if not s:
         return ""
@@ -757,56 +757,61 @@ def _key_level_mentioned(text: str, levels: Sequence[float]) -> str:
     return ""
 
 
-def _phone_read_clause(read_now: str) -> str:
-    """把既有中心思想收成短口語（不准發明新價）；太長就截。"""
-    s = re.sub(r"\s+", " ", str(read_now or "").strip())
-    if not s:
-        return ""
-    # 拿掉話筒不需要的技術尾巴
-    s = re.sub(r"[—－\-].*不是自動突破.*$", "", s)
-    s = re.sub(r"[—－\-].*不是叫你追.*$", "", s)
-    s = re.sub(r"[—－\-].*不是一碰到就改劇本.*$", "", s)
-    s = s.strip("；;，,。 ")
-    if len(s) > 48:
-        s = s[:47] + "…"
-    return s
-
-
-def _plain_close_side_clause(
+def _close_band_plain(
     bar_close: Optional[float], levels: Sequence[float]
 ) -> str:
-    """關鍵位口語：最多提站上哪一帶／還卡哪；不准列完整關卡。"""
-    if bar_close is None:
-        return ""
-    try:
-        c_face = _level_face(float(bar_close))
-    except (TypeError, ValueError):
-        return ""
+    """國中生口語：收在偏高／偏低／中間…；不准塞收點數字或關卡串。"""
     above, below, at = _close_side_groups(bar_close, levels)
     n = len(above) + len(below) + len(at)
     if n == 0:
-        return f"收 {c_face}"
+        return ""
     if n == 1:
         if above:
-            return f"收 {c_face}，已站上這關"
+            return "現在已經站上這關"
         if below:
-            return f"收 {c_face}，還沒過這關"
-        return f"剛好收在 {c_face}"
+            return "現在還沒過這關"
+        return "現在剛好收在這關附近"
     if above and not below and not at:
-        return f"收 {c_face}，這些關都站上了"
+        return "現在收在偏高、這些關大致站上了"
     if below and not above and not at:
-        return f"收 {c_face}，這些關都還沒過"
+        return "現在收在偏低、這些關都還沒過"
     if at and not above and not below:
-        return f"剛好收在 {c_face}"
-    # 兩邊都有：只提一個關鍵站上（最高已站）＋一個還卡（最低未過）
-    bits: List[str] = [f"收 {c_face}"]
-    if above and below:
-        bits.append(f"只站上 {above[-1]} 一帶，更高還沒過")
-    elif above:
-        bits.append(f"站上 {above[-1]} 一帶")
-    elif below:
-        bits.append(f"還沒過 {below[0]} 一帶")
-    return "，".join(bits)
+        return "現在剛好收在關卡附近"
+    # 兩邊都有：用相對位置講中間偏低／偏高，不准列關卡數字
+    try:
+        c = float(bar_close)  # type: ignore[arg-type]
+        lo = min(float(x) for x in levels)
+        hi = max(float(x) for x in levels)
+    except (TypeError, ValueError):
+        return "現在收在中間、還沒過他較高的關"
+    if hi <= lo:
+        return "現在收在關卡附近、還沒過他較高的關"
+    pos = (c - lo) / (hi - lo)
+    if pos < 0.4:
+        band = "中間偏低"
+    elif pos > 0.6:
+        band = "中間偏高"
+    else:
+        band = "中間"
+    return f"現在收在{band}、還沒過他較高的關"
+
+
+def _plain_wait_clause(
+    read_now: str,
+    levels: Sequence[float],
+    bar_close: Optional[float],
+) -> str:
+    """還要再看／還卡在哪：最多一個關鍵位（且收仍在其下），其餘白話。"""
+    key = _key_level_mentioned(read_now, levels)
+    if key and bar_close is not None:
+        try:
+            c = float(bar_close)
+            for lv in levels:
+                if _level_face(float(lv)) == key and c < float(lv):
+                    return f"還卡在 {key} 附近，還要再看大盤怎麼走"
+        except (TypeError, ValueError):
+            pass
+    return "還要再看大盤怎麼走"
 
 
 def _sources_essence(level: float, sources: Sequence[Dict[str, Any]]) -> str:
@@ -864,6 +869,9 @@ def _pick_level_thesis(rows: Sequence[Dict[str, Any]]) -> str:
     return ""
 
 
+LEVEL_HIT_TITLE = "飆大提醒·大盤碰到關卡"
+
+
 def _plain_level_hit_body(
     *,
     faces: Sequence[str],
@@ -874,43 +882,25 @@ def _plain_level_hit_body(
     levels_for_side: Sequence[float],
     read_now: str,
 ) -> str:
-    """話筒正文：真正一句人話＋下一行「不是買訊」。
+    """話筒正文：國中生也看得懂的一句＋下一行「不是買訊」。
 
-    不准括號列完整關卡、不准高低區間表、不准機器規則句。
-    詳細關卡數字只打 log（呼叫端），不上話筒主句。
+    不准收點數字串、不准完整關卡清單、不准機器規則句。
+    詳細關卡／收點只打 log；主句最多一個「還卡在Ｘ附近」。
     """
-    del bar_date, bar_high, bar_low  # 細節留 log，不上主句
-    n = len([f for f in faces if f])
-    read = _phone_read_clause(read_now)
-    key = _key_level_mentioned(read_now, levels_for_side) or _key_level_mentioned(
-        read, levels_for_side
-    )
-    side = _plain_close_side_clause(bar_close, levels_for_side)
-
-    if n <= 1 and faces:
-        hit = f"今天大盤碰到他以前點過的 {html_escape(str(faces[0]))}"
+    del faces, bar_date, bar_high, bar_low  # 細節留 log，不上主句
+    band = _close_band_plain(bar_close, levels_for_side)
+    wait = _plain_wait_clause(read_now, levels_for_side, bar_close)
+    main = "今天加權碰到飆大以前講過的關了"
+    if band:
+        main += "；" + band + "，" + wait
     else:
-        hit = "今天大盤碰到他以前點過的關了"
-
-    main = hit
-    if side:
-        main += "；" + html_escape(side)
-    # 還在等／僵在哪：織進同一句；有既有說法就用，不准另開「現在怎麼讀」段、不准列七關
-    if read:
-        if key and key not in read:
-            main += "——" + html_escape(f"還卡在 {key}，{read}")
-        else:
-            main += "——" + html_escape(read)
-    elif key:
-        main += "——" + html_escape(f"還卡在 {key}")
-    else:
-        main += "——近窗還沒抽出更細說法，先對原文"
+        main += "，" + wait
     if not main.endswith("。"):
         main += "。"
     return "\n".join(
         [
-            "<b>飆大急推·官方碰到已點位</b>",
-            main,
+            f"<b>{LEVEL_HIT_TITLE}</b>",
+            html_escape(main),
             "不是買訊",
         ]
     )
@@ -1314,11 +1304,11 @@ def maybe_push_marked_level_hits(
     *,
     now: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """官方已收柱碰到他已點過的大盤位 → 同根柱／同日併成一則口語推播。
+    """官方已收柱碰到他已點過的大盤位 → 同根柱／同日併成一則白話推播。
 
     未收盤不當收。一般新文不走這條。不准逐則堆幾月幾號舊文。
-    同根柱一次碰到多個已點位 → 口語一句講清碰到哪些關、收在哪、現在怎麼讀；
-    不准之上／之下表、不准機器規則句上話筒（2026-10-13 七關長表教訓）。
+    同根柱一次碰到多個已點位 → 國中生一句（標題「飆大提醒·大盤碰到關卡」）；
+    不准關卡串／收點串／之上之下表／機器規則句上話筒（2026-10-13 教訓）。
     每位仍記 (level, bar_date) 鍵，之後別日碰到同一位仍可再推。
     """
     stats = {"checked": 0, "pushed": 0, "skipped": 0, "levels": 0}
