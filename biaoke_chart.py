@@ -4367,13 +4367,10 @@ def render_biaoke_structure_png(
         z=3,
     )
     vmax = float(vol_ylim) if vol_ylim else 1.0
-    hinge = float(getattr(ax2, "_wayne_lookup_vol_hinge", vmax) or vmax)
     ax2.set_ylim(0, vmax * 1.28)
     if 0 <= spike_i < n and vols[spike_i]:
-        # 量標拉到空白帶；釘點用分段顯示高（字串仍真實張數）
-        spike_disp = float(
-            lookup_vol_to_display([float(vols[spike_i])], vmax, hinge=hinge)[0]
-        )
+        # 量標拉到空白帶；釘點用開方顯示高（字串仍真實張數）
+        spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
         _leader_note(
             ax2,
@@ -4399,8 +4396,8 @@ def render_biaoke_structure_png(
         width=0.8,
         pad=3.5,
     )
-    # 量軸＝一般量區均勻真張數刻度；不准線性 int／反開方擠標蓋掉
-    configure_lookup_vol_axis(ax2, vmax, hinge=hinge)
+    # 量軸＝稀疏真張數刻度（靈活級距）；不准線性 int 全列擠標蓋掉
+    configure_lookup_vol_axis(ax2, vmax)
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(11, "bold"))
         lab.set_clip_on(False)

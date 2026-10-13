@@ -488,12 +488,11 @@ def test_volume_bars_one_per_traded_day_3081():
                 assert abs(float(p.get_height()) - float(ylim) * LOOKUP_VOL_FLOOR_FRAC) < 1e-6
     assert occupied == set(range(n)), sorted(set(range(n)) - occupied)
     assert floor_n == len(zero_days) or floor_n >= len(zero_days)
-    # 分段顯示後正量柱應高於灰短柱；最低可視只擋極端貼底
-    from wayne_navigator import lookup_vol_hinge, lookup_vol_to_display
+    # 開方顯示後正量柱應高於灰短柱；最低可視只擋極端貼底
+    from wayne_navigator import lookup_vol_to_display
 
     floor_h = float(ylim) * LOOKUP_VOL_FLOOR_FRAC
     min_h = float(ylim) * LOOKUP_VOL_MIN_VISIBLE_FRAC
-    hinge = lookup_vol_hinge(heights, float(ylim))
     pos_draw = {}
     for p in ax.patches:
         cx = int(round(float(p.get_x()) + float(p.get_width()) / 2.0))
@@ -502,9 +501,7 @@ def test_volume_bars_one_per_traded_day_3081():
     for pos in range(len(work)):
         v = float(work.iloc[pos]["volume"] or 0)
         if v > 0 and float(heights[pos]) > 0 and pos not in zero_days:
-            dh = float(
-                lookup_vol_to_display([float(heights[pos])], float(ylim), hinge=hinge)[0]
-            )
+            dh = float(lookup_vol_to_display([float(heights[pos])], float(ylim))[0])
             got = float(pos_draw.get(pos, 0.0))
             assert got >= min(dh, min_h) * 0.54 - 1e-6, (pos, got, dh, min_h)
             assert got > floor_h + 1e-9
