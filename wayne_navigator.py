@@ -1734,10 +1734,11 @@ def align_ohlc_cached(
 
 
 def nav_volume_bar_heights(volumes) -> tuple:
-    """視窗內量柱高度 ∝ 官方成交量（張）。
+    """視窗內量柱資料層＝官方成交量（張）。
 
-    - 最高正量＝面板滿高（ylim = vmax）
-    - 其餘正量線性比例；真 0／缺欄＝0，不准抬假量、不准 soft-cap／平方根變形
+    - 最高正量＝ylim = vmax（軸滿高座標）
+    - 其餘正量＝真實張數；真 0／缺欄＝0，不准抬假量
+    - 畫圖層開方起伏見 lookup_vol_to_display；這裡不准改真數
     """
     raw = pd.to_numeric(pd.Series(volumes), errors="coerce")
     missing = raw.isna().to_numpy(dtype=bool)
@@ -1765,17 +1766,89 @@ LOOKUP_CANDLE_UP = "#e53935"
 LOOKUP_CANDLE_DN = "#00897b"
 LOOKUP_CANDLE_HALT = "#9e9e9e"
 LOOKUP_QUOTE_FLAT = "#455a64"  # 平盤字色（漲紅跌綠平灰；與 K 柱平盤當紅分開）
-LOOKUP_CANDLE_BODY_W = 0.60
-LOOKUP_CANDLE_WICK_LW = 1.25
-LOOKUP_CANDLE_BODY_LW = 0.35
-LOOKUP_VOL_BAR_W = 0.78
+LOOKUP_CANDLE_BODY_W = 0.70
+LOOKUP_CANDLE_WICK_LW = 1.40
+LOOKUP_CANDLE_BODY_LW = 0.40
+LOOKUP_VOL_BAR_W = 0.84
 LOOKUP_SPIKE_VOL = "#f9a825"
-# 無成交／停價量柱貼底佔槽（相對視窗 max 正量）。Rectangle 強制畫，JPEG 不准吃成挖洞。
-LOOKUP_VOL_FLOOR_FRAC = 0.32
+# 無成交／停價量柱貼底佔槽（相對視窗 max 顯示高）。Rectangle 強制畫，JPEG 不准吃成挖洞。
+# 要比一般正量開方柱矮，不准灰短柱跟低量日一樣高。
+LOOKUP_VOL_FLOOR_FRAC = 0.02
 LOOKUP_VOL_FLOOR_FACE = "#546e7a"
 LOOKUP_VOL_FLOOR_EDGE = "#37474f"
-# 正量最低可視高度（相對視窗 max）。暴量撐軸後低量日不准縮成白洞；資料層 heights 仍線性。
-LOOKUP_VOL_MIN_VISIBLE_FRAC = 0.10
+# 正量最低可視（相對視窗 max 顯示高）。開方後多數低量已可分；只擋極端貼底白洞。
+# 不准再把大半日子夾成同一高度（舊 0.10 線性夾齊＝假平線）。
+LOOKUP_VOL_MIN_VISIBLE_FRAC = 0.03
+# 畫圖層開方：爆大量仍一眼最高，一般量日彼此起伏可見；標籤／資料層仍認真實張數。
+LOOKUP_VOL_DISPLAY_POWER = 0.5
+
+
+def lookup_vol_to_display(volumes, vmax: float, *, power: float | None = None) -> np.ndarray:
+    """畫圖層柱高：h = (v/vmax)^p * vmax；最高正量仍＝vmax。真 0／負＝0。"""
+    p = float(LOOKUP_VOL_DISPLAY_POWER if power is None else power)
+    vmax = max(float(vmax), 1e-9)
+    raw = pd.to_numeric(pd.Series(volumes), errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    out = np.zeros_like(raw, dtype=float)
+    pos = raw > 0
+    if pos.any():
+        ratio = np.clip(raw[pos] / vmax, 0.0, None)
+        out[pos] = np.power(ratio, p) * vmax
+    return out
+
+
+def lookup_vol_from_display(height: float, vmax: float, *, power: float | None = None) -> float:
+    """軸座標 → 真實張數（刻度標籤用）。"""
+    p = float(LOOKUP_VOL_DISPLAY_POWER if power is None else power)
+    vmax = max(float(vmax), 1e-9)
+    h = float(height)
+    if h <= 0:
+        return 0.0
+    return float((h / vmax) ** (1.0 / p) * vmax)
+
+
+def configure_lookup_vol_axis(ax, vmax: float) -> None:
+    """量軸刻度標籤印真實張數（反開方）；爆大量標／角標仍用官方量字串。"""
+    import matplotlib.ticker as mticker
+
+    vmax = max(float(vmax), 1e-9)
+    ax._wayne_lookup_vol_vmax = vmax  # noqa: SLF001 — 給後續 formatter 覆寫時沿用
+
+    def _fmt(h, _pos=None):
+        v = lookup_vol_from_display(h, vmax)
+        if v <= 0:
+            return "0"
+        if v >= 1000:
+            return f"{int(round(v)):,}"
+        if v >= 10:
+            return f"{int(round(v))}"
+        return f"{v:.1f}"
+
+    # 在真實張數空間取整點，再映射回顯示座標 → 標籤與真量對得上
+    candidates = []
+    for step in (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000):
+        if step >= vmax * 0.08:
+            base = step
+            break
+    else:
+        base = max(1, int(round(vmax / 4)))
+    for k in range(0, 8):
+        v = base * k
+        if v > vmax * 1.01:
+            break
+        candidates.append(float(v))
+    if vmax not in candidates and vmax > 0:
+        candidates.append(float(vmax))
+    ticks = [lookup_vol_to_display([v], vmax)[0] for v in candidates]
+    # 去重過近刻度
+    kept_t, kept_v = [], []
+    for t, v in zip(ticks, candidates):
+        if kept_t and abs(t - kept_t[-1]) < vmax * 0.04:
+            continue
+        kept_t.append(float(t))
+        kept_v.append(v)
+    if kept_t:
+        ax.set_yticks(kept_t)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt))
 
 
 def lookup_candle_up_mask(opens, closes, *, halt=None) -> np.ndarray:
@@ -1908,9 +1981,9 @@ def paint_lookup_volume_bars(
 ) -> tuple:
     """結構／大量／導航共用日量柱。回 (heights, ylim, missing)。
 
-    正量＝視窗線性比例，過矮抬到最低可視（不准暴量撐軸後挖白洞）。
-    無成交／停價／缺量＝貼底灰短柱佔槽（不准挖洞）；
-    高度資料層仍為真實量／0，不抬假量進 ylim／對質。
+    資料層 heights＝官方真實張數（對質／ylim／角標）；畫圖層＝開方比例，
+    避免單根爆量把其餘日子壓成同一排平線。過矮再抬最低可視（仍保留相對起伏）。
+    無成交／停價／缺量＝貼底灰短柱佔槽（不准挖洞）；不抬假量進 heights。
     日曆休市不進開市日軸＝本來就沒槽；有槽的交易日必有柱。
     """
     xs = np.asarray(xs, dtype=float)
@@ -1925,16 +1998,26 @@ def paint_lookup_volume_bars(
     heights, ylim, missing = nav_volume_bar_heights(volumes)
     vol_vals = pd.to_numeric(pd.Series(volumes), errors="coerce").fillna(0.0).to_numpy(dtype=float)
     zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | missing)
-    vol_draw = np.asarray(heights, dtype=float).copy()
-    # 正量過矮：畫圖層抬到最低可視，資料層 heights 不動（對質／ylim 仍認官方量）
+    miss_arr = np.asarray(missing, dtype=bool)
+    # 畫圖層開方：最高仍＝ylim；低量彼此比例保留（不准全夾成同一高）
+    vol_draw = lookup_vol_to_display(heights, ylim)
     min_h = max(float(ylim) * float(LOOKUP_VOL_MIN_VISIBLE_FRAC), 1e-9)
     short_pos = (
         (vol_draw > 0)
         & (vol_draw < min_h)
         & (~halt_arr)
-        & (~np.asarray(missing, dtype=bool))
+        & (~miss_arr)
     )
-    vol_draw[short_pos] = min_h
+    # 極端貼底：按開方高度比例抬進 [min_h*0.55, min_h]，彼此仍可分，不准變齊頭平線
+    if short_pos.any():
+        short_h = vol_draw[short_pos]
+        hi = float(np.max(short_h))
+        lo = float(np.min(short_h))
+        band_lo = min_h * 0.55
+        if hi <= lo + 1e-12:
+            vol_draw[short_pos] = min_h
+        else:
+            vol_draw[short_pos] = band_lo + (short_h - lo) / (hi - lo) * (min_h - band_lo)
     vol_draw[zero_i] = 0.0
     colors = [
         LOOKUP_CANDLE_HALT if halt_arr[i] else (LOOKUP_CANDLE_UP if up[i] else LOOKUP_CANDLE_DN)
@@ -1961,7 +2044,7 @@ def paint_lookup_volume_bars(
     if spike_i is not None:
         si = int(spike_i)
         if 0 <= si < n and not bool(halt_arr[si]) and float(vol_vals[si]) > 0 and float(heights[si]) > 0:
-            spike_h = max(float(heights[si]), float(vol_draw[si]) if si < len(vol_draw) else 0.0)
+            spike_h = max(float(vol_draw[si]) if si < len(vol_draw) else 0.0, min_h)
             ax.bar(
                 [float(xs[si])],
                 [spike_h],
@@ -1970,6 +2053,7 @@ def paint_lookup_volume_bars(
                 zorder=z + 1,
                 linewidth=0,
             )
+    configure_lookup_vol_axis(ax, ylim)
     return heights, ylim, missing
 
 

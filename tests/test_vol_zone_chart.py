@@ -488,17 +488,27 @@ def test_volume_bars_one_per_traded_day_3081():
                 assert abs(float(p.get_height()) - float(ylim) * LOOKUP_VOL_FLOOR_FRAC) < 1e-6
     assert occupied == set(range(n)), sorted(set(range(n)) - occupied)
     assert floor_n == len(zero_days) or floor_n >= len(zero_days)
+    # 開方顯示後正量柱應高於灰短柱；最低可視只擋極端貼底
+    from wayne_navigator import lookup_vol_to_display
+
+    floor_h = float(ylim) * LOOKUP_VOL_FLOOR_FRAC
     min_h = float(ylim) * LOOKUP_VOL_MIN_VISIBLE_FRAC
-    short_pos = []
+    pos_draw = {}
+    for p in ax.patches:
+        cx = int(round(float(p.get_x()) + float(p.get_width()) / 2.0))
+        pos_draw[cx] = max(pos_draw.get(cx, 0.0), float(p.get_height()))
+    pos_heights = []
     for pos in range(len(work)):
         v = float(work.iloc[pos]["volume"] or 0)
-        if v > 0 and float(heights[pos]) > 0 and float(heights[pos]) < min_h:
-            short_pos.append(pos)
-    if short_pos:
-        for p in ax.patches:
-            cx = int(round(float(p.get_x()) + float(p.get_width()) / 2.0))
-            if cx in short_pos:
-                assert float(p.get_height()) >= min_h - 1e-6, (cx, float(p.get_height()))
+        if v > 0 and float(heights[pos]) > 0 and pos not in zero_days:
+            dh = float(lookup_vol_to_display([float(heights[pos])], float(ylim))[0])
+            got = float(pos_draw.get(pos, 0.0))
+            assert got >= min(dh, min_h) * 0.54 - 1e-6, (pos, got, dh, min_h)
+            assert got > floor_h + 1e-9
+            pos_heights.append(got)
+    # 一般量日彼此要看得出起伏（不准大半同一高度）
+    if len(pos_heights) >= 8:
+        assert len({round(h, 1) for h in pos_heights}) >= 5
     # 3081 近窗應有停價 0 量日（洞型樣本）；沒有也不准回歸回挖洞
     if zero_days:
         assert floor_n >= 1
@@ -522,8 +532,8 @@ def test_lookup_candle_paint_shared():
 
     assert LOOKUP_CANDLE_UP == "#e53935"
     assert LOOKUP_CANDLE_DN == "#00897b"
-    assert LOOKUP_CANDLE_BODY_W == 0.60
-    assert LOOKUP_VOL_BAR_W == 0.78
+    assert LOOKUP_CANDLE_BODY_W == 0.70
+    assert LOOKUP_VOL_BAR_W == 0.84
     assert biaoke_chart._UP == LOOKUP_CANDLE_UP
     assert biaoke_chart._DN == LOOKUP_CANDLE_DN
     vz = inspect.getsource(vol_zone_chart._paint_volume_zone)

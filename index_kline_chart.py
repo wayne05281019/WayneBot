@@ -22,7 +22,10 @@ from wayne_navigator import (
     _lookup_render_memo_get,
     _lookup_render_memo_put,
     _mpl_serial,
+    configure_lookup_vol_axis,
     lookup_candle_up_mask,
+    lookup_vol_from_display,
+    lookup_vol_to_display,
     paint_lookup_volume_bars,
 )
 from decision_card_signals import candle_up_taiwan
@@ -337,10 +340,19 @@ def render_index_kline_png(
         ax2, xs, work["volume"], up_mask, z=3
     )
     ax2.set_ylim(0, max(float(vol_ylim) * 1.14, 1.0))
-    ax2.plot(xs, work["vol_ma"], color="#90a4ae", linewidth=1.05, zorder=4)
+    # 量均線跟柱同一開方顯示座標，不准線性量對開方軸
+    vol_ma_disp = lookup_vol_to_display(work["vol_ma"], float(vol_ylim))
+    ax2.plot(xs, vol_ma_disp, color="#90a4ae", linewidth=1.05, zorder=4)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
-    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_vol))
+    # 開方顯示座標 → 真實張數再套億／萬張字樣
+    configure_lookup_vol_axis(ax2, float(vol_ylim))
+    _vmax = float(vol_ylim)
+
+    def _fmt_vol_axis(h, _pos=None):
+        return _fmt_vol(lookup_vol_from_display(h, _vmax))
+
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_vol_axis))
     ax2.tick_params(labelsize=9, left=False, right=True)
     ax2.set_xlim(-0.8, n - 0.2)
     ax2.text(
