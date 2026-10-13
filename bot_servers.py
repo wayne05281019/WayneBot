@@ -4004,6 +4004,7 @@ class WayneTelegramBot:
             "card": "高低溫度卡",
             "struct": "結構圖",
             "vol": "大量撐壓圖",
+            "volfill": "補官方量",
             "three": "結構圖",
             "volzone": "大量撐壓圖",
             "both": "高低溫度卡",
@@ -4021,6 +4022,8 @@ class WayneTelegramBot:
         # 高低卡已出、後面還在渲：LOADING 寫清楚，不准只剩空白秒數
         if cur == "glance" and "card" in sent_ks:
             now = "介紹圖"
+        if cur == "volfill" and "card" in sent_ks:
+            now = "補官方量（結構圖）"
         if cur in ("struct", "three") and "card" in sent_ks:
             now = "結構圖"
         if cur in ("vol", "volzone") and "card" in sent_ks:
@@ -4043,12 +4046,16 @@ class WayneTelegramBot:
                 "glance",
                 "struct",
                 "vol",
+                "volfill",
                 "three",
                 "volzone",
                 "table",
                 "album",
             ) or sent_ks:
                 skip.add("quote")
+            if cur == "volfill":
+                # 補量與結構同一段體感：接著只寫結構／大量，不准再堆「補官方量」
+                skip.update(("struct", "three"))
             rest = "、".join(labels[k] for k in order if k not in skip)
         sent_txt = "、".join(
             labels[k]
@@ -8616,8 +8623,45 @@ class WayneTelegramBot:
 
             # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
             # 介紹圖在高低卡已 submit 後排隊：卡一畫完 worker 馬上接介紹，與送高低卡重疊。
+            # 官方量窗 ensure：卡建完就背景跑（paint 外），與卡／介紹重疊；結構渲前 await。
             # 順序鎖死：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖。一次一張、好了就送。
             card_queued = asyncio.Event()
+            glance_queued = asyncio.Event()
+
+            from vol_zone_chart import (
+                ensure_official_volume_window,
+                lookup_vol_ensure_days,
+            )
+
+            _vol_ensure_name = _stock_caption_name(card, code)
+            _vol_ensure_days = lookup_vol_ensure_days()
+            t_ensure0 = time.monotonic()
+
+            async def _run_vol_ensure():
+                """paint 外補官方量；例外吞掉後仍回空 dict，prepare 內可再 ensure。"""
+                try:
+                    return await asyncio.to_thread(
+                        ensure_official_volume_window,
+                        code,
+                        self.db_path,
+                        days=_vol_ensure_days,
+                        stock_name=_vol_ensure_name,
+                    )
+                except Exception:
+                    logger.exception("查股提早 ensure 失敗 code=%s", code)
+                    return {}
+
+            ensure_task = asyncio.create_task(_run_vol_ensure())
+
+            async def _await_vol_ensure(*, label: str = "struct") -> None:
+                """補官方量在 paint 外等完；不准造假量／挖洞。"""
+                await ensure_task
+                logger.info(
+                    "查股階段 vol_ensure done %.1fs code=%s label=%s",
+                    time.monotonic() - t_ensure0,
+                    code,
+                    label,
+                )
 
             async def _card_item():
                 """先 submit 再放行介紹圖排隊；await 完才回傳要送的高低卡。"""
@@ -8654,7 +8698,48 @@ class WayneTelegramBot:
                     return ("card", path, card_cap, None)
                 return None
 
+            async def _glance_item():
+                """submit 後放行結構 ensure→paint；不准結構插隊搶在介紹之前。"""
+                attempts = 2
+                path = ""
+                for attempt in range(attempts):
+                    try:
+                        fut = submit_mpl_paint(_render_glance)
+                        glance_queued.set()
+                        path = await asyncio.wait_for(
+                            asyncio.wrap_future(fut), timeout=_LOOKUP_PNG_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        glance_queued.set()
+                        logger.warning(
+                            "看這檔 glance 逾時 code=%s attempt=%s", code, attempt + 1
+                        )
+                        return None
+                    except Exception:
+                        glance_queued.set()
+                        logger.exception("看這檔 glance 產圖失敗 code=%s", code)
+                        return None
+                    if not self._png_looks_ok(path):
+                        logger.warning(
+                            "殘缺圖重試 kind=glance code=%s attempt=%s size=%s",
+                            code,
+                            attempt + 1,
+                            os.path.getsize(path) if path and os.path.exists(path) else 0,
+                        )
+                        path = ""
+                        continue
+                    return ("glance", path, glance_cap, hub)
+                return None
+
             async def _struct_item():
+                # ensure 與卡／介紹重疊；paint 前必須等介紹已進 queue
+                await _await_vol_ensure(label="struct")
+                try:
+                    await asyncio.wait_for(
+                        glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    glance_queued.set()
                 png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
                 cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
                 if not png:
@@ -8662,6 +8747,8 @@ class WayneTelegramBot:
                 return ("struct", png, cap, None)
 
             async def _vol_item():
+                # 結構已 ensure；暖命中。仍 await 同一 task，不准再整窗阻塞
+                await _await_vol_ensure(label="vol")
                 png = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
                 cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖（非買訊）"
                 if not png:
@@ -8686,9 +8773,9 @@ class WayneTelegramBot:
                 await asyncio.wait_for(card_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT)
             except asyncio.TimeoutError:
                 card_queued.set()
-            glance_task = asyncio.create_task(
-                _render_ready("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, hub)
-            )
+            glance_task = asyncio.create_task(_glance_item())
+            # 結構提早跑 ensure（已在 ensure_task）；paint 等 glance_queued
+            struct_task = asyncio.create_task(_struct_item())
             async def _prep_for_send(path: str, kind: str) -> str:
                 """JPEG 魔術字＋容量合格直接送；真 PNG 才 to_thread 轉碼。"""
                 if not path or not os.path.isfile(path):
@@ -8715,17 +8802,21 @@ class WayneTelegramBot:
                     sent_any = True
                     sent_kinds.append(kind)
                     ready_items.append(card_item)
-            await _bump_progress("glance")
+            # 高低卡已出：若還在補官方量就明示，不准長沉默只跳秒
+            if not ensure_task.done():
+                await _bump_progress("volfill")
+            else:
+                await _bump_progress("glance")
             await asyncio.sleep(0)
             t_glance0 = time.monotonic()
             glance_item = await glance_task
             logger.info(
-                "查股階段 glance done %.1fs code=%s ok=%s",
+                "查股階段 glance done %.1fs code=%s ok=%s ensure_done=%s",
                 time.monotonic() - t_glance0,
                 code,
                 bool(glance_item),
+                ensure_task.done(),
             )
-            struct_task = asyncio.create_task(_struct_item())
             if glance_item:
                 kind, path, caption, markup = glance_item
                 prep = await _prep_for_send(path, kind)
@@ -8736,7 +8827,10 @@ class WayneTelegramBot:
                     hub_on = True
                     ready_items.append(glance_item)
 
-            await _bump_progress("struct")
+            if not ensure_task.done():
+                await _bump_progress("volfill")
+            else:
+                await _bump_progress("struct")
             await asyncio.sleep(0)
             t_struct0 = time.monotonic()
             struct_item = await struct_task

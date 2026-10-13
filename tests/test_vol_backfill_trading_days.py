@@ -547,3 +547,90 @@ def test_chart_window_no_missing_vol_when_official_has_data():
         if d not in set(ve.get("confirmed_absent") or [])
     ]
     assert view_holes == [], (view_holes, ve)
+
+
+def test_ensure_fetches_missing_months_in_parallel(tmp_path, monkeypatch):
+    """缺多月時並行抓 STOCK_DAY（ThreadPool），不准串行 sleep 拖死第二→第三。"""
+    import inspect
+    import threading
+    import time
+
+    from vol_zone_chart import (
+        _ENSURE_MONTH_FETCH_WORKERS,
+        clear_ensure_official_volume_cache,
+        ensure_official_volume_window,
+        lookup_vol_ensure_days,
+    )
+
+    assert _ENSURE_MONTH_FETCH_WORKERS >= 2
+    src = inspect.getsource(ensure_official_volume_window)
+    assert "ThreadPoolExecutor" in src
+    assert "as_completed" in src
+    assert lookup_vol_ensure_days() >= 180
+
+    clear_ensure_official_volume_cache()
+    db = str(tmp_path / "par.db")
+    _schema(db)
+    # 三個缺月：並行應同時進 fetch（active>=2），總牆鐘 < 串行 3×sleep
+    lock = threading.Lock()
+    active = {"n": 0, "peak": 0}
+    calls = {"ym": []}
+
+    def _slow_fetch(sid, ym, **kwargs):
+        with lock:
+            active["n"] += 1
+            active["peak"] = max(active["peak"], active["n"])
+            calls["ym"].append(str(ym))
+        time.sleep(0.35)
+        with lock:
+            active["n"] -= 1
+        y, m = int(str(ym)[:4]), int(str(ym)[4:6])
+        return [
+            {
+                "date": f"{y:04d}-{m:02d}-10",
+                "stock_id": sid,
+                "stock_name": "測並",
+                "market": "TW",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "volume": 100,
+                "pct_change": 1.0,
+            }
+        ]
+
+    import biaoke_walk as bw
+
+    monkeypatch.setattr(bw, "fetch_stock_month", _slow_fetch)
+    monkeypatch.setattr(bw, "_market_of", lambda *a, **k: "TW")
+    t0 = time.perf_counter()
+    stats = ensure_official_volume_window(
+        "9099", db, end_ymd="20260820", days=90, stock_name="測並"
+    )
+    elapsed = time.perf_counter() - t0
+    assert len(stats.get("months_fetched") or []) >= 2
+    assert active["peak"] >= 2, active
+    # 串行 3×0.35≈1.05+；並行牆鐘應明顯較短
+    assert elapsed < 0.95, elapsed
+
+
+def test_lookup_path_early_vol_ensure_outside_paint():
+    """查股：ensure 提早在 paint 外；高低卡後可顯示補官方量，不准長沉默。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    assert "ensure_official_volume_window" in src
+    assert "lookup_vol_ensure_days" in src
+    assert "volfill" in src
+    assert "_await_vol_ensure" in src
+    assert "glance_queued" in src
+    # ensure task 在 card／結構之前就 create
+    assert src.find("ensure_task = asyncio.create_task") < src.find(
+        "create_task(_struct_item())"
+    )
+    assert src.find("create_task(_struct_item())") < src.find(
+        "card_item = await card_render_task"
+    )
