@@ -473,12 +473,32 @@ def format_focus_oral(
         "<b>飆大現在在講</b>",
         html_escape(f"最新　{when}" if when else "最新"),
     ]
+    # 預設每次按飆大重算近窗對質（可點／勿追／標配），再畫文內藍／黑；不准等對話提醒
+    match_pack: Dict[str, Any] = {}
+    try:
+        if db_path:
+            from biaoke_live_match import refresh_live_match
+
+            match_pack = refresh_live_match(str(db_path)) or {}
+    except Exception:
+        match_pack = {}
 
     def _add(title: str, body: str) -> None:
         if not body:
             return
         blocks.append("")
         blocks.append(f"<b>{html_escape(title)}</b>")
+        # 文內點名：該記＝藍可點、勿追／該剔＝黑字（對齊 live_match）
+        if db_path:
+            try:
+                from biaoke_live_match import linkify_spoken_html
+
+                blocks.append(
+                    linkify_spoken_html(body, str(db_path), pack=match_pack)
+                )
+                return
+            except Exception:
+                pass
         blocks.append(html_escape(body))
 
     _add("大盤", board)
@@ -510,16 +530,18 @@ def format_focus_oral(
         if cleaned:
             blocks.append("")
             blocks.append("<b>脈絡黃金</b>")
-            blocks.extend(html_escape(x) for x in cleaned[:4])
-    except Exception:
-        pass
-    # 你幾乎不問：空白進場也要主動建議怎麼做，且每句有憑據
-    # 預設每次按飆大重算近窗對質（可點／勿追／標配），不准等對話提醒
-    try:
-        if db_path:
-            from biaoke_live_match import refresh_live_match
+            for x in cleaned[:4]:
+                if db_path:
+                    try:
+                        from biaoke_live_match import linkify_spoken_html
 
-            refresh_live_match(str(db_path))
+                        blocks.append(
+                            linkify_spoken_html(x, str(db_path), pack=match_pack)
+                        )
+                        continue
+                    except Exception:
+                        pass
+                blocks.append(html_escape(x))
     except Exception:
         pass
     try:

@@ -659,3 +659,159 @@ def no_chase_note(sid: str, pack: Optional[Dict[str, Any]] = None) -> str:
     if sid and sid in no_chase_sids(pack):
         return "他提過、現在位階偏高"
     return ""
+
+
+def _mention_spans(text: str, db_path: str = "") -> List[Tuple[int, int, str, str]]:
+    """正文 → (start, end, sid, surface)；最長檔名優先、不重疊。只認已點名股。"""
+    blob = str(text or "")
+    if not blob:
+        return []
+    try:
+        pairs = _mentions_in(blob, db_path=db_path or "")
+    except Exception:
+        pairs = []
+    if not pairs:
+        return []
+    by_sid = {sid: name for sid, name in pairs if sid}
+    # 表面字：股名、短名、別名、代號（長→短）
+    surfaces: List[Tuple[str, str]] = []
+    aliases = {
+        "2455": ("全新",),
+        "3105": ("穩懋",),
+        "3081": ("聯亞",),
+        "4971": ("IET-KY", "IET"),
+        "4991": ("環宇-KY", "環宇"),
+        "2345": ("智邦",),
+        "2330": ("台積電", "台積"),
+    }
+    for sid, name in by_sid.items():
+        if name:
+            surfaces.append((name, sid))
+            short = str(name).replace("-KY", "")
+            if short and short != name:
+                surfaces.append((short, sid))
+        for alias in aliases.get(sid, ()):
+            surfaces.append((alias, sid))
+        surfaces.append((sid, sid))
+    # 去重保序後按長度排
+    seen_name: Set[str] = set()
+    uniq: List[Tuple[str, str]] = []
+    for name, sid in surfaces:
+        if not name or name in seen_name:
+            continue
+        seen_name.add(name)
+        uniq.append((name, sid))
+    uniq.sort(key=lambda x: (-len(x[0]), x[0]))
+    # 「不是南亞科／並非聯亞」＝否認點名，不准掛可點追藍字
+    _deny_prefix = re.compile(r"(?:絕對)?(?:不是|並非|並不是|絕不是)\s*$")
+    occupied: List[Tuple[int, int]] = []
+    hits: List[Tuple[int, int, str, str]] = []
+    for name, sid in uniq:
+        start = 0
+        while True:
+            i = blob.find(name, start)
+            if i < 0:
+                break
+            j = i + len(name)
+            if any(i < b and j > a for a, b in occupied):
+                start = i + 1
+                continue
+            pre = blob[max(0, i - 8) : i]
+            if _deny_prefix.search(pre):
+                start = j
+                continue
+            occupied.append((i, j))
+            hits.append((i, j, sid, name))
+            start = j
+    hits.sort(key=lambda x: x[0])
+    return hits
+
+
+def _surface_yahoo_anchor(sid: str, surface: str, db_path: str = "") -> str:
+    """文內表面字＝奇摩藍字；失敗則純文字。"""
+    label = html_escape(str(surface or sid or "").strip() or sid)
+    try:
+        from stock_links import yahoo_urls
+
+        web, _m = yahoo_urls(str(sid or "").strip(), db_path or None)
+        href = str(web or "").replace("&", "&amp;")
+        if href:
+            return f'<a href="{href}">{label}</a>'
+    except Exception:
+        pass
+    return label
+
+
+def linkify_spoken_html(
+    text: str,
+    db_path: str = "",
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+) -> str:
+    """圖文重點／口語：該記股名＝奇摩藍字可點；勿追／該剔＝黑字。不准發明沒說過的價。
+
+    路人正文不當他的判斷（呼叫端只傳他自己的口語重述）。不是買訊。
+    """
+    raw = str(text or "")
+    if not raw.strip():
+        return ""
+    local = pack
+    if local is None and db_path:
+        try:
+            local = live_match_pack(db_path)
+        except Exception:
+            local = {}
+    plain = no_chase_sids(local)
+    spans = _mention_spans(raw, db_path)
+    if not spans:
+        return html_escape(raw)
+    out: List[str] = []
+    cursor = 0
+    for start, end, sid, surface in spans:
+        if start < cursor:
+            continue
+        if start > cursor:
+            out.append(html_escape(raw[cursor:start]))
+        if sid in plain:
+            out.append(html_escape(surface))
+        else:
+            out.append(_surface_yahoo_anchor(sid, surface, db_path))
+        cursor = end
+    if cursor < len(raw):
+        out.append(html_escape(raw[cursor:]))
+    return "".join(out)
+
+
+def sync_biaoke_inline_after_update(db_path: str) -> Dict[str, Any]:
+    """融合／更新貼文／彙整後：點名連線＋點位落檔＋可點／勿追重算。自己動作。"""
+    stats: Dict[str, Any] = {"ok": False}
+    path = str(db_path or "").strip()
+    if not path:
+        return stats
+    try:
+        from biaoke_link import link_biaoke_db
+
+        stats["link"] = link_biaoke_db(path)
+    except Exception:
+        stats["link_err"] = True
+    try:
+        from biaoke_walk import walk_biaoke_posts
+
+        stats["walk"] = walk_biaoke_posts(path, fetch_missing=False)
+    except Exception:
+        stats["walk_err"] = True
+    try:
+        pack = refresh_live_match(path)
+        walk = stats.get("walk") or {}
+        stats["live_match"] = {
+            "ok": bool(pack.get("ok")),
+            "no_chase": len(pack.get("no_chase") or {}),
+            "matches": len(pack.get("matches") or []),
+            "levels": int(walk.get("levels") or 0) if isinstance(walk, dict) else 0,
+        }
+    except Exception:
+        stats["live_match_err"] = True
+    # 連線或走讀任一成功就算有同步；live_match 失敗不擋抓文／融合
+    if stats.get("link") is not None or stats.get("walk") is not None:
+        stats["ok"] = True
+    return stats

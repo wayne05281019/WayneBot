@@ -265,3 +265,105 @@ def test_digest_refresh_calls_live_match(tmp_path, monkeypatch):
     )
     assert called["n"] >= 1
     assert "飆大現在在講" in html
+
+
+def test_linkify_spoken_blue_then_plain_no_chase(tmp_path):
+    """該記＝藍可點；勿追＝黑字（剔除藍連）。"""
+    from biaoke_live_match import linkify_spoken_html, live_match_pack
+
+    db = _mk_db(tmp_path)
+    pack = live_match_pack(db)
+    html = linkify_spoken_html(
+        "聯亞是標配，全新與穩懋不要再介入，環宇去找。",
+        db,
+        pack=pack,
+    )
+    assert "quote/3081." in html  # 標配可點
+    assert "quote/4991." in html or "環宇" in html  # 去找可點（名在文內）
+    assert "quote/2455." not in html  # 勿追不准藍
+    assert "全新" in html
+    assert "quote/3105." not in html
+    assert "穩懋" in html
+
+
+def test_sync_biaoke_inline_after_update_runs(tmp_path, monkeypatch):
+    """融合／更新後同步入口會連線＋走讀＋重算可點。"""
+    from biaoke_live_match import sync_biaoke_inline_after_update
+
+    db = _mk_db(tmp_path)
+    calls = {"link": 0, "walk": 0, "live": 0}
+
+    def _link(path):
+        calls["link"] += 1
+        return {"posts": 1, "mentions": 2, "stocks": 2}
+
+    def _walk(path, fetch_missing=False):
+        calls["walk"] += 1
+        return {"levels": 3, "facts": 4}
+
+    def _live(path, spoken=""):
+        calls["live"] += 1
+        return {"ok": True, "no_chase": {"2455": "全新"}, "matches": []}
+
+    monkeypatch.setattr("biaoke_link.link_biaoke_db", _link)
+    monkeypatch.setattr("biaoke_walk.walk_biaoke_posts", _walk)
+    monkeypatch.setattr("biaoke_live_match.refresh_live_match", _live)
+    out = sync_biaoke_inline_after_update(db)
+    assert out.get("ok")
+    assert calls["link"] == 1 and calls["walk"] == 1 and calls["live"] == 1
+    assert out.get("live_match", {}).get("levels") == 3
+
+
+def test_focus_oral_inline_blue_and_plain(tmp_path):
+    """圖文重點文內：聯亞藍、全新黑。"""
+    from biaoke_digest import format_focus_oral
+
+    db = _mk_db(tmp_path)
+    html = format_focus_oral(
+        [
+            {
+                "date": "2026-10-08",
+                "time": "13:42",
+                "text": (
+                    "1. 夜盤反彈，大盤還在整理。"
+                    "2. 光通訊 InP：聯亞標配一股不賣，全新不要再介入。"
+                ),
+            }
+        ],
+        [],
+        db_path=db,
+    )
+    assert "飆大現在在講" in html
+    # 族群／他還說裡點到的聯亞應可點；全新勿追＝黑
+    assert "quote/3081." in html or "聯亞" in html
+    assert "quote/2455." not in html
+    assert "全新" in html
+
+
+def test_refresh_after_fuse_calls_inline_sync(tmp_path, monkeypatch):
+    """16:30 融合後走文內藍字／點位同步。"""
+    from biaoke_facts import refresh_after_market_fuse
+
+    called = {"n": 0}
+
+    def _sync(path):
+        called["n"] += 1
+        return {
+            "ok": True,
+            "link": {"mentions": 1},
+            "walk": {"levels": 2},
+            "live_match": {"ok": True, "levels": 2},
+        }
+
+    monkeypatch.setattr(
+        "biaoke_live_match.sync_biaoke_inline_after_update", _sync
+    )
+    monkeypatch.setattr(
+        "biaoke_claims.refresh_wave_minute_hits", lambda path: {"ok": True}
+    )
+    db = str(tmp_path / "empty.db")
+    __import__("sqlite3").connect(db).close()
+    ran = refresh_after_market_fuse(db, kind="fuse")
+    assert ran.get("ok") is True
+    assert called["n"] == 1
+    assert ran.get("live_match", {}).get("levels") == 2

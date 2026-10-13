@@ -738,6 +738,13 @@ def run_absorb(
             load_weave.cache_clear()
         except Exception:
             pass
+        try:
+            # 彙整後重算可點／勿追（點名／點位已在抓文 walk 落檔；這裡不准空窗等提醒）
+            from biaoke_live_match import refresh_live_match
+
+            stats["live_match"] = refresh_live_match(db_path)
+        except Exception:
+            logger.exception("飆大彙整後可點／勿追重算略過")
         _mark_absorbed(db_path, [str(ev.get("id") or "") for ev in events], now=dt)
     if str(slot_id).endswith("-0100"):
         try:
