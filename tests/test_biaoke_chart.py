@@ -458,7 +458,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "今K" in inspect.getsource(_paint_spot)
     quote_src = inspect.getsource(_spot_quote)
     assert "_in_pytest" in quote_src
-    assert "fetch_mis_quote" in quote_src
+    # 興櫃也要現價：lookup（櫃買／Yahoo）優先；不准只認上市櫃 MIS
+    assert "fetch_lookup_quote" in quote_src or "fetch_mis_quote" in quote_src
     q = _spot_quote(
         "2383",
         {"open": 4400, "high": 4520, "low": 4380, "close": 4510, "date": "20260914"},
@@ -506,7 +507,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
     assert (
-        "hdr-band-v78h-quote-ink" in src
+        "hdr-band-v78i-card-sync" in src
+        or "hdr-band-v78h-quote-ink" in src
         or "hdr-band-v78g-close-half" in src
         or "hdr-band-v78f-gap-tighten" in src
         or "hdr-band-v78e-dash-rails" in src

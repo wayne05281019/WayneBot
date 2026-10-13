@@ -99,7 +99,8 @@ def test_structure_builders_do_not_auto_paint_next_press():
     assert 'f"下一壓' not in render_src
     assert "下一壓 " not in render_src
     assert (
-        "hdr-band-v78h-quote-ink" in render_src
+        "hdr-band-v78i-card-sync" in render_src
+        or "hdr-band-v78h-quote-ink" in render_src
         or "hdr-band-v78g-close-half" in render_src
         or "hdr-band-v78f-gap-tighten" in render_src
         or "hdr-band-v78e-dash-rails" in render_src
