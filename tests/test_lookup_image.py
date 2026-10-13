@@ -152,14 +152,18 @@ class LookupImageTests(unittest.TestCase):
             src.find("card_queued"),
             src.find("glance_task = asyncio.create_task"),
         )
+        # 結構提早 create（與介紹並行 ensure）；卡送出後才 bump glance／volfill
+        self.assertLess(
+            src.find("create_task(_struct_item())"),
+            src.find("card_item = await card_render_task"),
+        )
         self.assertLess(
             src.find("card_item = await card_render_task"),
             src.find('await _bump_progress("glance")'),
         )
-        self.assertLess(
-            src.find('await _bump_progress("glance")'),
-            src.find("create_task(_struct_item())"),
-        )
+        self.assertIn("volfill", src)
+        self.assertIn("ensure_official_volume_window", src)
+        self.assertIn("glance_queued", src)
         self.assertLess(
             src.find("create_task(_struct_item())"),
             src.find('await _bump_progress("struct")'),
