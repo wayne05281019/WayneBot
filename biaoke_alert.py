@@ -720,13 +720,6 @@ def _close_vs_level(bar_close: Optional[float], level: float) -> str:
         return ""
 
 
-def _bar_date_face(bar_date: str) -> str:
-    s = str(bar_date or "").replace("-", "").strip()
-    if len(s) >= 8 and s[:8].isdigit():
-        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
-    return str(bar_date or "").strip()
-
-
 def _close_side_groups(
     bar_close: Optional[float], levels: Sequence[float]
 ) -> Tuple[List[str], List[str], List[str]]:
