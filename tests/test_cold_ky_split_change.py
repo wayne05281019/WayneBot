@@ -135,7 +135,11 @@ def _table_ymd(card: dict) -> list[str]:
 
 
 def test_5276_card_table_keeps_sep2_and_sep3_when_in_db():
-    """達輝-KY：庫內有 9/2、9/3 時，20 日表不能再跳過這兩天。"""
+    """達輝-KY：庫內有 9/2、9/3 且仍在 lookback 窗內時，20 日表不能跳過。
+
+    日曆滾到 10 月中後這兩天會自然出窗——出窗就 skip，不算回歸。
+    """
+    lookback = 20
     conn = _conn()
     try:
         have = {
@@ -147,12 +151,29 @@ def test_5276_card_table_keeps_sep2_and_sep3_when_in_db():
                 """
             )
         }
+        recent = {
+            str(r[0])
+            for r in conn.execute(
+                """
+                SELECT replace(date,'-','') FROM daily_quotes
+                WHERE stock_id='5276' AND close > 0
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                (lookback,),
+            )
+        }
     finally:
         conn.close()
     if not have:
         pytest.skip("庫內尚無達輝-KY 20260902／20260903")
-    card = NavigatorEngine(get_db_path()).get_decision_card("5276", merge_live=False)
+    expect = sorted(have & recent)
+    if not expect:
+        pytest.skip("20260902／20260903 已滾出決策卡 20 日窗")
+    card = NavigatorEngine(get_db_path()).get_decision_card(
+        "5276", merge_live=False, lookback=lookback
+    )
     assert not card.get("error"), card.get("error")
     dates = _table_ymd(card)
-    for d in sorted(have):
+    for d in expect:
         assert d in dates, f"決策卡 20 日表缺 {d}，現有 {dates[:8]}"
