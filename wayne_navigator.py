@@ -1738,7 +1738,7 @@ def nav_volume_bar_heights(volumes) -> tuple:
 
     - 最高正量＝ylim = vmax（軸滿高座標）
     - 其餘正量＝真實張數；真 0／缺欄＝0，不准抬假量
-    - 畫圖層開方起伏見 lookup_vol_to_display；這裡不准改真數
+    - 畫圖層分段縮放見 lookup_vol_to_display；這裡不准改真數
     """
     raw = pd.to_numeric(pd.Series(volumes), errors="coerce")
     missing = raw.isna().to_numpy(dtype=bool)
@@ -1772,49 +1772,99 @@ LOOKUP_CANDLE_BODY_LW = 0.40
 LOOKUP_VOL_BAR_W = 0.84
 LOOKUP_SPIKE_VOL = "#f9a825"
 # 無成交／停價量柱貼底佔槽（相對視窗 max 顯示高）。Rectangle 強制畫，JPEG 不准吃成挖洞。
-# 要比一般正量開方柱矮，不准灰短柱跟低量日一樣高。
-LOOKUP_VOL_FLOOR_FRAC = 0.02
+# 要比一般正量柱矮，不准灰短柱跟低量日一樣高。
+LOOKUP_VOL_FLOOR_FRAC = 0.015
 LOOKUP_VOL_FLOOR_FACE = "#546e7a"
 LOOKUP_VOL_FLOOR_EDGE = "#37474f"
-# 正量最低可視（相對視窗 max 顯示高）。開方後多數低量已可分；只擋極端貼底白洞。
-# 不准再把大半日子夾成同一高度（舊 0.10 線性夾齊＝假平線）。
-LOOKUP_VOL_MIN_VISIBLE_FRAC = 0.03
-# 畫圖層開方：爆大量仍一眼最高，一般量日彼此起伏可見；標籤／資料層仍認真實張數。
-LOOKUP_VOL_DISPLAY_POWER = 0.5
+# 正量最低可視（相對視窗 max 顯示高）。只擋極端貼底白洞；不准齊頭夾成平線。
+# 必須明顯高於灰短柱 floor，避免正量看起來比無成交還矮。
+LOOKUP_VOL_MIN_VISIBLE_FRAC = 0.035
+# 分段縮放：一般量佔面板下段線性（軸標 0／2k／4k 均勻），爆量壓上段仍一眼最高。
+# 不准用開方反變換把 2k～7k 刻度擠一團。
+LOOKUP_VOL_HINGE_PANEL_FRAC = 0.78
+LOOKUP_VOL_HINGE_PERCENTILE = 90.0
 
 
-def lookup_vol_to_display(volumes, vmax: float, *, power: float | None = None) -> np.ndarray:
-    """畫圖層柱高：h = (v/vmax)^p * vmax；最高正量仍＝vmax。真 0／負＝0。"""
-    p = float(LOOKUP_VOL_DISPLAY_POWER if power is None else power)
+def lookup_vol_hinge(volumes, vmax: float) -> float:
+    """一般量／爆量分界（張）。無尖峰時＝vmax（整段線性）。"""
     vmax = max(float(vmax), 1e-9)
     raw = pd.to_numeric(pd.Series(volumes), errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    pos = raw[raw > 0]
+    if pos.size < 3:
+        return vmax
+    hinge = float(np.percentile(pos, float(LOOKUP_VOL_HINGE_PERCENTILE)))
+    # 尖峰不夠突出就不要分段，避免無謂壓縮
+    if hinge >= vmax * 0.92:
+        return vmax
+    return float(np.clip(hinge, vmax * 0.12, vmax * 0.85))
+
+
+def lookup_vol_to_display(
+    volumes,
+    vmax: float,
+    *,
+    hinge: float | None = None,
+    hinge_panel: float | None = None,
+) -> np.ndarray:
+    """畫圖層柱高：hinge 以下線性佔下段面板；以上壓進上段。最高正量仍＝vmax。"""
+    vmax = max(float(vmax), 1e-9)
+    hp = float(LOOKUP_VOL_HINGE_PANEL_FRAC if hinge_panel is None else hinge_panel)
+    hp = float(np.clip(hp, 0.55, 0.9))
+    raw = pd.to_numeric(pd.Series(volumes), errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    hng = float(vmax if hinge is None else hinge)
+    hng = float(np.clip(hng, 1e-9, vmax))
     out = np.zeros_like(raw, dtype=float)
     pos = raw > 0
-    if pos.any():
-        ratio = np.clip(raw[pos] / vmax, 0.0, None)
-        out[pos] = np.power(ratio, p) * vmax
+    if not pos.any():
+        return out
+    if hng >= vmax * 0.92:
+        out[pos] = np.clip(raw[pos], 0.0, None)
+        return out
+    lo = pos & (raw <= hng)
+    hi = pos & (raw > hng)
+    panel_lo = hp * vmax
+    if lo.any():
+        out[lo] = (raw[lo] / hng) * panel_lo
+    if hi.any():
+        out[hi] = panel_lo + (raw[hi] - hng) / max(vmax - hng, 1e-9) * (vmax - panel_lo)
     return out
 
 
-def lookup_vol_from_display(height: float, vmax: float, *, power: float | None = None) -> float:
-    """軸座標 → 真實張數（刻度標籤用）。"""
-    p = float(LOOKUP_VOL_DISPLAY_POWER if power is None else power)
+def lookup_vol_from_display(
+    height: float,
+    vmax: float,
+    *,
+    hinge: float | None = None,
+    hinge_panel: float | None = None,
+) -> float:
+    """軸顯示座標 → 真實張數。"""
     vmax = max(float(vmax), 1e-9)
+    hp = float(LOOKUP_VOL_HINGE_PANEL_FRAC if hinge_panel is None else hinge_panel)
+    hp = float(np.clip(hp, 0.55, 0.9))
+    hng = float(vmax if hinge is None else hinge)
+    hng = float(np.clip(hng, 1e-9, vmax))
     h = float(height)
     if h <= 0:
         return 0.0
-    return float((h / vmax) ** (1.0 / p) * vmax)
+    if hng >= vmax * 0.92:
+        return float(min(max(h, 0.0), vmax))
+    panel_lo = hp * vmax
+    if h <= panel_lo:
+        return float(h / max(panel_lo, 1e-9) * hng)
+    return float(hng + (h - panel_lo) / max(vmax - panel_lo, 1e-9) * (vmax - hng))
 
 
-def configure_lookup_vol_axis(ax, vmax: float) -> None:
-    """量軸刻度標籤印真實張數（反開方）；爆大量標／角標仍用官方量字串。"""
+def configure_lookup_vol_axis(ax, vmax: float, *, hinge: float | None = None) -> None:
+    """量軸：一般量區均勻真張數刻度（0／2k／4k…），不准反開方把標擠壞。"""
     import matplotlib.ticker as mticker
 
     vmax = max(float(vmax), 1e-9)
-    ax._wayne_lookup_vol_vmax = vmax  # noqa: SLF001 — 給後續 formatter 覆寫時沿用
+    hng = float(vmax if hinge is None else hinge)
+    hng = float(np.clip(hng, 1e-9, vmax))
+    ax._wayne_lookup_vol_vmax = vmax  # noqa: SLF001
+    ax._wayne_lookup_vol_hinge = hng  # noqa: SLF001
 
-    def _fmt(h, _pos=None):
-        v = lookup_vol_from_display(h, vmax)
+    def _fmt_true(v: float) -> str:
         if v <= 0:
             return "0"
         if v >= 1000:
@@ -1823,31 +1873,46 @@ def configure_lookup_vol_axis(ax, vmax: float) -> None:
             return f"{int(round(v))}"
         return f"{v:.1f}"
 
-    # 在真實張數空間取整點，再映射回顯示座標 → 標籤與真量對得上
-    candidates = []
+    # 刻度只取「一般量區」真張數等差＋頂端 vmax；顯示位置線性對應，標籤不擠
+    span = hng if hng < vmax * 0.92 else vmax
     for step in (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000):
-        if step >= vmax * 0.08:
+        if step >= span * 0.18:
             base = step
             break
     else:
-        base = max(1, int(round(vmax / 4)))
+        base = max(1, int(round(span / 4)))
+    true_ticks: list[float] = []
     for k in range(0, 8):
-        v = base * k
-        if v > vmax * 1.01:
+        v = float(base * k)
+        if v > span * 1.001:
             break
-        candidates.append(float(v))
-    if vmax not in candidates and vmax > 0:
-        candidates.append(float(vmax))
-    ticks = [lookup_vol_to_display([v], vmax)[0] for v in candidates]
-    # 去重過近刻度
-    kept_t, kept_v = [], []
-    for t, v in zip(ticks, candidates):
-        if kept_t and abs(t - kept_t[-1]) < vmax * 0.04:
+        true_ticks.append(v)
+    if vmax not in true_ticks:
+        true_ticks.append(float(vmax))
+    disp_ticks = [
+        float(lookup_vol_to_display([v], vmax, hinge=hng)[0]) for v in true_ticks
+    ]
+    kept_t: list[float] = []
+    kept_v: list[float] = []
+    for t, v in zip(disp_ticks, true_ticks):
+        # 顯示座標過近才丟（均勻軸上約 6%）；真量標仍對
+        if kept_t and abs(t - kept_t[-1]) < vmax * 0.06:
+            if v >= vmax and kept_v:
+                kept_t[-1] = t
+                kept_v[-1] = v
             continue
-        kept_t.append(float(t))
+        kept_t.append(t)
         kept_v.append(v)
     if kept_t:
         ax.set_yticks(kept_t)
+    label_by_tick = {round(t, 6): _fmt_true(v) for t, v in zip(kept_t, kept_v)}
+
+    def _fmt(h, _pos=None):
+        key = round(float(h), 6)
+        if key in label_by_tick:
+            return label_by_tick[key]
+        return _fmt_true(lookup_vol_from_display(h, vmax, hinge=hng))
+
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt))
 
 
@@ -1981,9 +2046,9 @@ def paint_lookup_volume_bars(
 ) -> tuple:
     """結構／大量／導航共用日量柱。回 (heights, ylim, missing)。
 
-    資料層 heights＝官方真實張數（對質／ylim／角標）；畫圖層＝開方比例，
-    避免單根爆量把其餘日子壓成同一排平線。過矮再抬最低可視（仍保留相對起伏）。
-    無成交／停價／缺量＝貼底灰短柱佔槽（不准挖洞）；不抬假量進 heights。
+    資料層 heights＝官方真實張數（對質／ylim／角標）；畫圖層＝分段縮放：
+    一般量區線性佔下段（軸標 0／2k／4k 均勻可讀），爆量壓上段仍最高。
+    過矮再抬最低可視（仍保留相對起伏）。無成交／停價／缺量＝貼底灰短柱。
     日曆休市不進開市日軸＝本來就沒槽；有槽的交易日必有柱。
     """
     xs = np.asarray(xs, dtype=float)
@@ -1999,21 +2064,25 @@ def paint_lookup_volume_bars(
     vol_vals = pd.to_numeric(pd.Series(volumes), errors="coerce").fillna(0.0).to_numpy(dtype=float)
     zero_i = np.flatnonzero(halt_arr | (vol_vals <= 0) | missing)
     miss_arr = np.asarray(missing, dtype=bool)
-    # 畫圖層開方：最高仍＝ylim；低量彼此比例保留（不准全夾成同一高）
-    vol_draw = lookup_vol_to_display(heights, ylim)
-    min_h = max(float(ylim) * float(LOOKUP_VOL_MIN_VISIBLE_FRAC), 1e-9)
+    hinge = lookup_vol_hinge(heights, ylim)
+    # 畫圖層分段：一般量線性可分；尖峰仍滿高
+    vol_draw = lookup_vol_to_display(heights, ylim, hinge=hinge)
+    floor_h = max(float(ylim) * float(LOOKUP_VOL_FLOOR_FRAC), 1e-9)
+    min_h = max(float(ylim) * float(LOOKUP_VOL_MIN_VISIBLE_FRAC), floor_h * 1.35, 1e-9)
     short_pos = (
         (vol_draw > 0)
         & (vol_draw < min_h)
         & (~halt_arr)
         & (~miss_arr)
     )
-    # 極端貼底：按開方高度比例抬進 [min_h*0.55, min_h]，彼此仍可分，不准變齊頭平線
+    # 極端貼底：按高度比例抬進 [band_lo, min_h]，彼此仍可分；band_lo 高於灰短柱
     if short_pos.any():
         short_h = vol_draw[short_pos]
         hi = float(np.max(short_h))
         lo = float(np.min(short_h))
-        band_lo = min_h * 0.55
+        band_lo = max(min_h * 0.55, floor_h * 1.15)
+        if band_lo >= min_h:
+            band_lo = min_h * 0.85
         if hi <= lo + 1e-12:
             vol_draw[short_pos] = min_h
         else:
@@ -2026,7 +2095,6 @@ def paint_lookup_volume_bars(
     ax.bar(xs, vol_draw, color=colors, width=LOOKUP_VOL_BAR_W, zorder=z, linewidth=0)
     # 停價／0 量／缺量用 Rectangle 強制貼底佔槽，不准挖洞（JPEG／縮圖仍見）
     if zero_i.size:
-        floor_h = max(float(ylim) * LOOKUP_VOL_FLOOR_FRAC, 1e-9)
         half_w = LOOKUP_VOL_BAR_W * 0.5
         for i in zero_i:
             ax.add_patch(
@@ -2053,7 +2121,7 @@ def paint_lookup_volume_bars(
                 zorder=z + 1,
                 linewidth=0,
             )
-    configure_lookup_vol_axis(ax, ylim)
+    configure_lookup_vol_axis(ax, ylim, hinge=hinge)
     return heights, ylim, missing
 
 

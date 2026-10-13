@@ -340,17 +340,18 @@ def render_index_kline_png(
         ax2, xs, work["volume"], up_mask, z=3
     )
     ax2.set_ylim(0, max(float(vol_ylim) * 1.14, 1.0))
-    # 量均線跟柱同一開方顯示座標，不准線性量對開方軸
-    vol_ma_disp = lookup_vol_to_display(work["vol_ma"], float(vol_ylim))
+    _vmax = float(vol_ylim)
+    _hinge = float(getattr(ax2, "_wayne_lookup_vol_hinge", _vmax) or _vmax)
+    # 量均線跟柱同一分段顯示座標
+    vol_ma_disp = lookup_vol_to_display(work["vol_ma"], _vmax, hinge=_hinge)
     ax2.plot(xs, vol_ma_disp, color="#90a4ae", linewidth=1.05, zorder=4)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
-    # 開方顯示座標 → 真實張數再套億／萬張字樣
-    configure_lookup_vol_axis(ax2, float(vol_ylim))
-    _vmax = float(vol_ylim)
+    # 分段顯示座標 → 真實張數再套億／萬張字樣；刻度先均勻真張數
+    configure_lookup_vol_axis(ax2, _vmax, hinge=_hinge)
 
     def _fmt_vol_axis(h, _pos=None):
-        return _fmt_vol(lookup_vol_from_display(h, _vmax))
+        return _fmt_vol(lookup_vol_from_display(h, _vmax, hinge=_hinge))
 
     ax2.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_vol_axis))
     ax2.tick_params(labelsize=9, left=False, right=True)

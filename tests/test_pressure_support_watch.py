@@ -198,13 +198,14 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "floor_h" in vol_src
     assert "Rectangle" in vol_src
     assert LOOKUP_VOL_FLOOR_FACE == "#546e7a"
-    assert LOOKUP_VOL_FLOOR_FRAC == 0.02
-    from wayne_navigator import LOOKUP_VOL_DISPLAY_POWER, LOOKUP_VOL_MIN_VISIBLE_FRAC
+    assert LOOKUP_VOL_FLOOR_FRAC == 0.015
+    from wayne_navigator import LOOKUP_VOL_HINGE_PANEL_FRAC, LOOKUP_VOL_MIN_VISIBLE_FRAC
 
-    assert LOOKUP_VOL_MIN_VISIBLE_FRAC == 0.03
-    assert LOOKUP_VOL_DISPLAY_POWER == 0.5
+    assert LOOKUP_VOL_MIN_VISIBLE_FRAC == 0.035
+    assert LOOKUP_VOL_HINGE_PANEL_FRAC == 0.78
     assert "LOOKUP_VOL_MIN_VISIBLE_FRAC" in vol_src
     assert "lookup_vol_to_display" in vol_src
+    assert "lookup_vol_hinge" in vol_src
     assert "marker=\"x\"" not in src and "marker='x'" not in src
     assert "不准挖洞" in src
     # 介紹與圖例之間不加分隔線
