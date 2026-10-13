@@ -994,7 +994,10 @@ class NavigatorEngine:
             prev_close=prev_close,
             prefer_stored=not is_live,
         )
-        if not is_live:
+        if is_live and y_close > 0:
+            # 盤中昨收＝報價源 yesterday_close，與漲跌點／％同源；不准用庫內上一根蓋掉
+            prev_close = float(y_close)
+        elif not is_live:
             prev_close = display_prev_close_for_card(
                 float(latest["close"]),
                 stored_pct=stored_pct,
@@ -5028,7 +5031,7 @@ def render_first_glance_png(
         fund_fp,
         int(GLANCE_PNG_DPI),
         int(LOOKUP_JPEG_QUALITY),
-        "match-card-076-fund-rev2line-v76",
+        "match-card-076-fund-rev2line-v77-card-price",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -5351,21 +5354,58 @@ def render_first_glance_png(
         cursor += tw(text, fs) + 1.8
     _paint_title_stamp(
         ax, tw, C, brand_x, title_cy, stamp, clock_line,
-        _card_ohlc_tuple(card, last),
+        _card_ohlc_tuple(card, None),
     )
 
     # 左：今開高低／昨收＋徽章；右：現價或收盤。兩欄分開，不要互壓。
+    # 價／昨收／漲跌一律決策卡（與高低卡同源）；tape 只補籌碼，不准用庫內昨收蓋掉盤中現價。
     y -= gap + price_h
     pane(pad_x, y, pane_w, price_h)
-    chg = float(card.get("change_pct") or 0)
+    try:
+        from live_quote import display_quote_from_card
+
+        dq = display_quote_from_card(card) or {}
+    except Exception:
+        dq = {}
+    if dq.get("close"):
+        close_v = dq["close"]
+        prev_c = float(dq.get("prev_close") or dq.get("prev") or 0)
+        chg = float(dq.get("change_pct") if dq.get("change_pct") is not None else 0)
+        chg_amt = dq.get("change")
+        if chg_amt is None and prev_c and close_v is not None:
+            chg_amt = float(close_v) - prev_c
+        price_last = {
+            "open": dq.get("open"),
+            "high": dq.get("high"),
+            "low": dq.get("low"),
+            "close": close_v,
+            "yesterday_close": prev_c if prev_c else None,
+            "prev_close": prev_c if prev_c else None,
+        }
+    else:
+        close_v = card.get("close")
+        if close_v is None and last.get("close") is not None:
+            close_v = last.get("close")
+        prev_c = float(card.get("prev_close") or last.get("yesterday_close") or 0)
+        chg = float(card.get("change_pct") or 0)
+        chg_amt = (float(close_v) - prev_c) if prev_c and close_v is not None else None
+        # 硬閘：現價＝昨收却非零％＝互打 bug
+        if prev_c and close_v is not None and abs(float(close_v) - prev_c) < 1e-9:
+            chg = 0.0
+            chg_amt = 0.0
+        price_last = {
+            "open": card.get("open") if card.get("open") is not None else last.get("open"),
+            "high": card.get("high") if card.get("high") is not None else last.get("high"),
+            "low": card.get("low") if card.get("low") is not None else last.get("low"),
+            "close": close_v,
+            "yesterday_close": prev_c if prev_c else last.get("yesterday_close"),
+            "prev_close": prev_c if prev_c else None,
+        }
     chg_c = _close_chg_color(chg, C)
-    prev_c = float(last.get("yesterday_close") or card.get("prev_close") or 0)
-    close_v = last.get("close") if last.get("close") is not None else card.get("close")
-    chg_amt = (float(close_v) - prev_c) if prev_c and close_v is not None else None
     close_s = _fmt_price(close_v)
     chg_bits = _close_move_bits(chg, chg_amt)
-    _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card, last)
-    _paint_price_left(ax, tw, C, inner_l, y, price_h, card, last, prev_c, mc)
+    _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card, price_last)
+    _paint_price_left(ax, tw, C, inner_l, y, price_h, card, price_last, prev_c, mc)
     for row_i, brow in enumerate(badge_rows):
         by = _price_badge_row_y(y, row_i, badge_h, badge_gap)
         bx = inner_l

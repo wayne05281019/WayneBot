@@ -2324,13 +2324,21 @@ def _paint_volume_zone(
 
     # 大量區右軸／表頭：已刪綠匡白底「收」晶片；不准再畫「昨收」白底標
 
-    # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位
+    # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位。
+    # 盤中有決策卡現價時，戳與高低卡／介紹同源（含興櫃）；K 主體仍只吃官方原柱。
+    hdr_quote = None
+    try:
+        from live_quote import display_quote_from_card
+
+        hdr_quote = display_quote_from_card(card if isinstance(card, dict) else None)
+    except Exception:
+        hdr_quote = None
     try:
         from decision_card_signals import format_card_query_stamp
 
         last_d = _bar_ymd(last.get("date"))
-        is_live = False
-        if "is_live" in view.columns:
+        is_live = bool(hdr_quote and hdr_quote.get("is_live"))
+        if not is_live and "is_live" in view.columns:
             try:
                 is_live = bool(pd.Series(view["is_live"]).fillna(False).iloc[-1])
             except Exception:
@@ -2343,14 +2351,25 @@ def _paint_volume_zone(
                 qs = ""
         if not qs and isinstance(card, dict):
             qs = str(card.get("quote_source") or "")
-        date_s, clock_s = format_card_query_stamp(
-            is_live=is_live,
-            latest_date=last_d,
-            quote_source=qs,
-            listing=str((card or {}).get("listing") or "") if isinstance(card, dict) else "",
-            stock_id=str(sid or ""),
-        )
-        stamp = f"{date_s}　{clock_s}".strip()
+        stamp_date = last_d
+        if hdr_quote and hdr_quote.get("is_live") and hdr_quote.get("date"):
+            stamp_date = _bar_ymd(hdr_quote.get("date"))
+        elif isinstance(card, dict) and card.get("is_live") and card.get("latest_date"):
+            stamp_date = _bar_ymd(card.get("latest_date"))
+        qd = str((hdr_quote or {}).get("query_date") or (card or {}).get("query_date") or "").strip()
+        qc = str((hdr_quote or {}).get("query_clock") or (card or {}).get("query_clock") or "").strip()
+        if qd and qc:
+            stamp = f"{qd}　{qc}".strip()
+        else:
+            date_s, clock_s = format_card_query_stamp(
+                is_live=is_live,
+                latest_date=stamp_date,
+                quote_source=qs,
+                listing=str((card or {}).get("listing") or "") if isinstance(card, dict) else "",
+                stock_id=str(sid or ""),
+                emerging=bool((hdr_quote or {}).get("emerging")),
+            )
+            stamp = f"{date_s}　{clock_s}".strip()
     except Exception:
         stamp = ""
     if stamp:
@@ -2563,24 +2582,44 @@ def _paint_volume_zone(
         # 標題列：兩行介紹放大＋圖例三排，緊接 K（橫式原版＝render_lookup_vol_result）
         # 已刪右上綠匡白底「收 XXXX」晶片；表頭第二排「收XXXX」稍大＋漲跌色（同源）
         head = f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
-        intro_left = (
-            f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
-            f"最近 {_md(last.get('date'))} "
-            f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
-            f"低{_fmt_price(last['low'])} "
-        )
-        close_bit = f"收{_fmt_price(last['close'])}"
+        # 表頭「最近」開高低收：盤中跟決策卡現價同源；無現價才用官方末日柱
+        face_row = last
+        face_md = _md(last.get("date"))
+        close_px = float(last["close"] or 0)
         prev_close_hdr = None
         if n >= 2:
             try:
                 prev_close_hdr = float(view.iloc[-2]["close"])
             except (TypeError, ValueError, KeyError, IndexError):
                 prev_close_hdr = None
+        if hdr_quote and float(hdr_quote.get("close") or 0) > 0:
+            face_row = {
+                "date": hdr_quote.get("date") or last.get("date"),
+                "open": hdr_quote.get("open") if hdr_quote.get("open") else last.get("open"),
+                "high": hdr_quote.get("high") if hdr_quote.get("high") else last.get("high"),
+                "low": hdr_quote.get("low") if hdr_quote.get("low") else last.get("low"),
+                "close": hdr_quote["close"],
+            }
+            face_md = _md(face_row.get("date"))
+            close_px = float(hdr_quote["close"])
+            if hdr_quote.get("prev") is not None:
+                try:
+                    prev_close_hdr = float(hdr_quote["prev"])
+                except (TypeError, ValueError):
+                    pass
+        intro_left = (
+            f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
+            f"最近 {face_md} "
+            f"開{_fmt_price(face_row['open'])} 高{_fmt_price(face_row['high'])} "
+            f"低{_fmt_price(face_row['low'])} "
+        )
+        close_lab = "現" if (hdr_quote and hdr_quote.get("is_live")) else "收"
+        close_bit = f"{close_lab}{_fmt_price(close_px)}"
         try:
             from wayne_navigator import quote_move_ink
 
             close_ink = quote_move_ink(
-                close=float(last["close"]),
+                close=float(close_px),
                 prev=prev_close_hdr,
                 up=_UP,
                 down=_DN,

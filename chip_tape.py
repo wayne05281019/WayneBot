@@ -346,12 +346,23 @@ def load_tape_rows(
         import pandas as pd
         from live_quote import append_live_bar
 
-        if rows and merge_live and not emerging:
+        # 興櫃也要合併現價（櫃買／Yahoo），介紹圖才不會用庫內昨收蓋掉決策卡現價。
+        # 興櫃仍無 T86：live 列 foreign／trust／dealer 維持 None，不准塞 0。
+        if rows and merge_live:
             df = pd.DataFrame(rows)
             df = append_live_bar(
                 df, str(stock_id).strip(), merge_live=True, live_quote=live_quote
             )
             extra = df.iloc[-1]
+            y_close = 0.0
+            try:
+                y_close = float(
+                    extra.get("yesterday_close")
+                    or (live_quote or {}).get("yesterday_close")
+                    or 0
+                )
+            except (TypeError, ValueError, AttributeError):
+                y_close = 0.0
             if str(extra.get("date")) != str(rows[-1]["date"]):
                 last = dict(rows[-1])
                 last.update({
@@ -362,12 +373,21 @@ def load_tape_rows(
                     "close": float(extra["close"]),
                     "volume": float(extra["volume"]),
                     "pct_change": float(extra.get("pct_change") or extra.get("change_pct") or 0),
-                    # 盤中 MIS 沒有官方 T86。0 是占位不是買賣超，連買句不要吃這列。
-                    "foreign_net": 0,
-                    "trust_net": 0,
-                    "dealer_net": 0,
-                    "chips_pending": True,
+                    "emerging": bool(emerging),
                 })
+                if y_close > 0:
+                    last["yesterday_close"] = y_close
+                if emerging:
+                    last["foreign_net"] = None
+                    last["trust_net"] = None
+                    last["dealer_net"] = None
+                    last["chips_pending"] = False
+                else:
+                    # 盤中 MIS 沒有官方 T86。0 是占位不是買賣超，連買句不要吃這列。
+                    last["foreign_net"] = 0
+                    last["trust_net"] = 0
+                    last["dealer_net"] = 0
+                    last["chips_pending"] = True
                 rows.append(last)
             else:
                 rows[-1]["open"] = float(extra["open"])
@@ -376,6 +396,10 @@ def load_tape_rows(
                 rows[-1]["close"] = float(extra["close"])
                 rows[-1]["volume"] = float(extra["volume"])
                 rows[-1]["pct_change"] = float(extra.get("pct_change") or rows[-1]["pct_change"])
+                if y_close > 0:
+                    rows[-1]["yesterday_close"] = y_close
+                if emerging:
+                    rows[-1]["emerging"] = True
     except Exception:
         pass
     return rows

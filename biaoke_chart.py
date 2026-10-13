@@ -2952,8 +2952,15 @@ def _spot_quote(
     last_bar: Optional[Dict[str, Any]] = None,
     prev_bar: Optional[Dict[str, Any]] = None,
     db_path: str = "",
+    *,
+    card: Optional[Dict[str, Any]] = None,
+    live_quote: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """右上角現價／收盤。個股改畫在左上標籤下面。pytest 不打外網；沒即時就用最後官方收。"""
+    """右上角現價／收盤。個股改畫在左上標籤下面。pytest 不打外網；沒即時就用最後官方收。
+
+    優先決策卡（與高低卡／介紹同源）→ 傳入 live_quote → fetch_lookup_quote（興櫃櫃買／Yahoo）。
+    不准只打上市櫃 MIS（興櫃永遠空）。
+    """
     last = dict(last_bar or {})
     prev = dict(prev_bar or {})
     close = last.get("close")
@@ -2980,14 +2987,54 @@ def _spot_quote(
         "date": last.get("date") or "",
         "volume": last.get("volume"),
     }
+    # 1) 決策卡已合併列＝四張圖同源
+    try:
+        from live_quote import display_quote_from_card
+
+        dq = display_quote_from_card(card)
+    except Exception:
+        dq = None
+    if dq and float(dq.get("close") or 0) > 0:
+        out.update(
+            {
+                "is_live": bool(dq.get("is_live")),
+                "label": str(dq.get("label") or ("盤中" if dq.get("is_live") else "收盤")),
+                "open": dq.get("open") if dq.get("open") is not None else out["open"],
+                "high": dq.get("high") if dq.get("high") is not None else out["high"],
+                "low": dq.get("low") if dq.get("low") is not None else out["low"],
+                "close": dq["close"],
+                "prev": dq.get("prev") if dq.get("prev") is not None else out["prev"],
+                "pct": dq.get("pct"),
+                "change": dq.get("change"),
+                "volume": dq.get("volume") if dq.get("volume") is not None else out["volume"],
+                "date": dq.get("date") or out["date"],
+                "update_time": str(dq.get("update_time") or ""),
+                "query_date": dq.get("query_date") or "",
+                "query_clock": dq.get("query_clock") or "",
+                "emerging": bool(dq.get("emerging")),
+            }
+        )
+        return out
     if _in_pytest() or not sid:
         return out
-    try:
-        from live_quote import fetch_mis_quote
+    live = dict(live_quote or {}) if isinstance(live_quote, dict) else {}
+    if not live or float(live.get("close") or 0) <= 0:
+        try:
+            from live_quote import fetch_lookup_quote, is_emerging_market
 
-        live = fetch_mis_quote(sid) or {}
-    except Exception:
-        live = {}
+            em = False
+            if isinstance(card, dict):
+                em = str(card.get("quote_source") or "") == "emerging_quotes" or str(
+                    card.get("listing") or ""
+                ).startswith("興櫃")
+            live = fetch_lookup_quote(
+                sid,
+                "EM" if em else "",
+                db_path or "",
+                db_hit=card if isinstance(card, dict) else None,
+            ) or {}
+        except Exception:
+            live = {}
     try:
         px = float(live.get("close") or 0)
     except (TypeError, ValueError):
@@ -3007,28 +3054,35 @@ def _spot_quote(
         live_chg = px - yf
     if live_pct is None and yf:
         live_pct = (px - yf) / yf * 100.0
-    # 盤中／收盤依開市日曆＋時段切換（與三合一表頭同一套用詞；不准寫現價）
-    # 假日／補假／週末／已收盤：只認官方末日開高低收量，不准用 MIS 蓋成假收盤。
-    # 結構圖／大量圖主柱＋表頭迷你K 同一條：盤中才用 MIS；收盤＝官方。
+    if yf > 0 and abs(px - yf) < 1e-9:
+        live_chg = 0.0
+        live_pct = 0.0
+    # 盤中／收盤依開市日曆＋時段；興櫃 15:00 前仍盤中。不准只打 MIS。
+    emerging = bool(live.get("emerging")) or str(live.get("source") or "") in (
+        "tpex_esb",
+        "tpex_esb_openapi",
+    )
     try:
         from decision_card_signals import _in_board_session, taipei_now
         from live_quote import board_session_label
 
         ut = str(live.get("update_time") or "")
-        in_sess = _in_board_session(taipei_now())
-        label = board_session_label(ut) if in_sess else "收盤"
+        in_sess = _in_board_session(taipei_now(), emerging=emerging)
+        label = board_session_label(ut, emerging=emerging) if in_sess else "收盤"
         is_live = bool(in_sess and label == "盤中")
     except Exception:
         label = "收盤"
         is_live = False
         ut = str(live.get("update_time") or "")
     if not is_live:
-        # 收盤／非盤中：保留官方 last_bar；MIS 價不准蓋掉真收
+        # 收盤／非盤中：保留官方 last_bar；即時價不准蓋掉真收
         out["label"] = "收盤"
         out["is_live"] = False
         if ut:
             out["update_time"] = ut
         return out
+    from live_quote import taipei_today_str
+
     out.update(
         {
             "is_live": True,
@@ -3042,6 +3096,8 @@ def _spot_quote(
             "change": live_chg,
             "volume": live.get("volume") if live.get("volume") is not None else out["volume"],
             "update_time": ut,
+            "date": str(live.get("as_of") or taipei_today_str()),
+            "emerging": emerging,
         }
     )
     return out
@@ -3530,6 +3586,8 @@ def render_biaoke_structure_png(
     figsize: Optional[Tuple[float, float]] = None,
     dpi: Optional[int] = None,
     press_band: Optional[Tuple[float, float]] = None,
+    card: Optional[Dict[str, Any]] = None,
+    live_quote: Optional[Dict[str, Any]] = None,
 ) -> str:
     rows = list(bars or [])
     if len(rows) < 8 or not save_path:
@@ -3550,18 +3608,29 @@ def render_biaoke_structure_png(
     fullbleed = not portrait
     use_dpi = int(dpi or BIAOKE_CHART_DPI)
     _q0 = dict(quote or {})
+    try:
+        _q_close = float(_q0.get("close") or 0)
+    except (TypeError, ValueError):
+        _q_close = 0.0
+    try:
+        _q_prev = float(_q0.get("prev") or _q0.get("prev_close") or 0)
+    except (TypeError, ValueError):
+        _q_prev = 0.0
     memo_key = (
         "biaoke_struct",
         str(sid or ""),
         last_d,
         round(last_c0, 4),
+        # 表頭現價／昨收進鍵：盤中決策卡價變不准互蓋舊圖
+        round(_q_close, 4),
+        round(_q_prev, 4),
         int(n),
         int(len(rows)),
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        # v78h：官方收走 _px_quote（ETF 不准現股跳動改寫）；漲跌字 quote_move_ink
-        "hdr-band-v78h-quote-ink" if fullbleed else "hdr-wrap3-vol-min",
+        # v78i：官方收走 _px_quote；表頭與決策卡同源（含興櫃）
+        "hdr-band-v78i-card-sync" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3631,7 +3700,12 @@ def render_biaoke_structure_png(
         plate["sid"] = sid
     if not plate.get("name"):
         plate["name"] = name
-    quote = dict(quote or _spot_quote(sid, last_bar, prev_bar, db_path))
+    quote = dict(
+        quote
+        or _spot_quote(
+            sid, last_bar, prev_bar, db_path, card=card, live_quote=live_quote
+        )
+    )
     halt_flags = [_bar_is_halt(work[i]) for i in range(n)]
     # 日 K＝查股共用 paint（與大量撐壓／導航同一套紅綠、柱寬、線寬）
     candle_up = paint_lookup_ohlc_candles(
@@ -4250,17 +4324,27 @@ def render_biaoke_structure_png(
     # 橫式結構圖：右上對齊介紹圖（今K｜迷你K｜收盤｜大價＋較昨日＋查詢戳）
     spot_stamp = ""
     if quote and not portrait and fullbleed:
-        try:
-            from decision_card_signals import format_card_query_stamp
+        qd = str(quote.get("query_date") or "").strip()
+        qc = str(quote.get("query_clock") or "").strip()
+        if qd and qc:
+            spot_stamp = f"{qd} {qc}".strip()
+        else:
+            try:
+                from decision_card_signals import format_card_query_stamp
 
-            date_s, clock_s = format_card_query_stamp(
-                is_live=bool(quote.get("is_live")),
-                latest_date=last_d,
-                stock_id=str(sid or ""),
-            )
-            spot_stamp = f"{date_s} {clock_s}".strip()
-        except Exception:
-            spot_stamp = ""
+                stamp_date = str(quote.get("date") or last_d)
+                date_s, clock_s = format_card_query_stamp(
+                    is_live=bool(quote.get("is_live")),
+                    latest_date=stamp_date,
+                    emerging=bool(quote.get("emerging")),
+                    quote_source=str((card or {}).get("quote_source") or "")
+                    if isinstance(card, dict)
+                    else "",
+                    stock_id=str(sid or ""),
+                )
+                spot_stamp = f"{date_s} {clock_s}".strip()
+            except Exception:
+                spot_stamp = ""
     if quote and not portrait:
         _paint_spot(
             ov,
