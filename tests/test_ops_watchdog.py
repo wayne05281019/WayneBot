@@ -158,6 +158,25 @@ def test_missed_jobs_incomplete_still_alerts(tmp_path, monkeypatch):
     assert [m["status"] for m in missed] == ["incomplete"]
 
 
+def test_missed_jobs_skips_fresh_morning_running(tmp_path, monkeypatch):
+    from zoneinfo import ZoneInfo
+
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    tw = ZoneInfo("Asia/Taipei")
+    fin = datetime(2026, 10, 13, 6, 32, tzinfo=tw).isoformat()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?, ?, ?, ?)",
+        ("screen-20260902", fin, "running", "morning-claim"),
+    )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 10, 13, 6, 55, tzinfo=tw)
+    assert missed_jobs(path, now=now) == []
+
+
 def test_missed_jobs_computed_still_alerts(tmp_path, monkeypatch):
     """GHA notify-off 的 computed 不能讓死人開關當成已寄出。"""
     path = _make_db(tmp_path, runs={"screen-20260902": "computed"})

@@ -1173,7 +1173,7 @@ def test_morning_claim_blocks_parallel_second_send(tmp_path, monkeypatch):
 
 
 def test_morning_double_call_sends_once(tmp_path, monkeypatch):
-    """連續兩次 run_morning_screen：白名單各只收到一輪海選＋加權。"""
+    """連續兩次 run_morning_screen：白名單各只收到一輪海選（加權併入彙整，不另寄）。"""
     import sqlite3
 
     from main_runner import MainRunner
@@ -1188,19 +1188,22 @@ def test_morning_double_call_sends_once(tmp_path, monkeypatch):
 
     pushes = []
     extras = []
+    screenings = []
 
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
     runner.today_str = "20260909"
     runner.chat_id = "9001"
+
+    def _send_screen(screening, chat_id=None):
+        pushes.append(chat_id)
+        screenings.append((chat_id, screening))
+        return True
+
     runner.bot = type(
         "B",
         (),
-        {
-            "send_screening_report": staticmethod(
-                lambda *a, **k: pushes.append(k.get("chat_id")) or True
-            )
-        },
+        {"send_screening_report": staticmethod(_send_screen)},
     )()
     runner._run_ai_desk = lambda *a, **k: {}
     runner._format_watch_radar_section = lambda uid="": ""
@@ -1222,7 +1225,10 @@ def test_morning_double_call_sends_once(tmp_path, monkeypatch):
         # format_taiwan_market_brief_html 只在 screening 有 message 時才當附帶寄出
         return {
             "status": "success",
-            "payload": [{"html": "海選"}],
+            "payload": [
+                {"mark_key": "market", "html": "＝＝大盤狀況＝＝", "picks": []},
+                {"mark_key": "leave_zero", "html": "海選", "picks": []},
+            ],
             "message": "海選本文",
             "results": {},
         }
@@ -1242,8 +1248,15 @@ def test_morning_double_call_sends_once(tmp_path, monkeypatch):
     assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
 
     assert sorted(pushes) == ["8772209416", "9001"]
-    mkt = [e for e in extras if e[1] and "加權指數研究" in e[1]]
-    assert sorted(cid for cid, _ in mkt) == ["8772209416", "9001"]
+    assert not any("加權指數研究" in (e[1] or "") for e in extras)
+    for uid in ("9001", "8772209416"):
+        blob = " ".join(
+            p.get("html") or ""
+            for _, scr in screenings
+            if _ == uid
+            for p in (scr.get("payload") or [])
+        )
+        assert "加權指數研究" in blob
     assert (
         sqlite3.connect(path)
         .execute(
