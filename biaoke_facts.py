@@ -582,7 +582,10 @@ def format_market_facts(db_path: str, ask: str, *, uid: str = "") -> str:
 
 
 def refresh_after_market_fuse(db_path: str, *, kind: str = "fuse") -> Dict[str, Any]:
-    """16:30 主庫融合後：用最新收盤對回飆大建檔。不改海選。"""
+    """16:30 主庫融合後：用最新收盤對回飆大建檔。不改海選。
+
+    點名連線＋點位落檔＋可點／勿追重算（話筒文內藍／黑）一併同步，不准等提醒。
+    """
     stats: Dict[str, Any] = {"kind": kind, "ok": False}
     if kind != "fuse":
         return {**stats, "skipped": kind}
@@ -590,17 +593,32 @@ def refresh_after_market_fuse(db_path: str, *, kind: str = "fuse") -> Dict[str, 
     if not path:
         return stats
     try:
-        from biaoke_link import link_biaoke_db
+        from biaoke_live_match import sync_biaoke_inline_after_update
 
-        stats["link"] = link_biaoke_db(path)
+        synced = sync_biaoke_inline_after_update(path)
+        stats["link"] = synced.get("link")
+        stats["walk"] = synced.get("walk")
+        stats["live_match"] = synced.get("live_match")
+        if synced.get("link_err"):
+            logger.warning("飆大連回行情庫略過")
+        if synced.get("walk_err"):
+            logger.warning("飆大對回收盤略過")
+        if synced.get("live_match_err"):
+            logger.warning("飆大可點／勿追重算略過")
     except Exception:
-        logger.exception("飆大連回行情庫略過")
-    try:
-        from biaoke_walk import walk_biaoke_posts
+        logger.exception("飆大融合後文內藍字／點位同步略過")
+        try:
+            from biaoke_link import link_biaoke_db
 
-        stats["walk"] = walk_biaoke_posts(path, fetch_missing=False)
-    except Exception:
-        logger.exception("飆大對回收盤略過")
+            stats["link"] = link_biaoke_db(path)
+        except Exception:
+            logger.exception("飆大連回行情庫略過")
+        try:
+            from biaoke_walk import walk_biaoke_posts
+
+            stats["walk"] = walk_biaoke_posts(path, fetch_missing=False)
+        except Exception:
+            logger.exception("飆大對回收盤略過")
     try:
         from biaoke_claims import refresh_wave_minute_hits
 
