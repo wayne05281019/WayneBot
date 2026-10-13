@@ -474,17 +474,18 @@ def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
     html = sent[0]
     assert "官方碰到已點位" in html
     assert "46747" in html
-    assert "現在怎麼讀：" in html
-    assert "46747" in html and ("穿刺" in html or "脫離震盪" in html)
+    assert "不是買訊" in html
+    assert "46747" in html and ("穿刺" in html or "脫離震盪" in html or "擺脫" in html)
     # 同一點位只一則；舊長文不整篇塞；機器規則句不上話筒
     assert html.count("官方碰到已點位") == 1
     assert "以前也講過震盪" not in html
-    assert "不是買訊" in html
     assert "不拆泡泡" not in html
     assert "不准補新價" not in html
     assert "同點另有" not in html
     assert "在這位之上" not in html
     assert "在這位之下" not in html
+    assert "現在怎麼讀：" not in html
+    assert html.count("\n") <= 3
 
     sent.clear()
     b = maybe_push_marked_level_hits(db)
@@ -518,7 +519,6 @@ def test_format_level_hit_synthesis_no_date_catalog():
             },
         ],
     )
-    assert "現在怎麼讀：" in html
     assert "48601" in html
     assert "收" in html and ("站上" in html or "已站上" in html)
     assert "他原文 2026-09-22" not in html
@@ -528,6 +528,8 @@ def test_format_level_hit_synthesis_no_date_catalog():
     assert "不准補新價" not in html
     assert "加權點位" not in html  # 內部備註不上話筒
     assert "在這位之上" not in html
+    assert "現在怎麼讀：" not in html
+    assert "共 2 關" not in html
 
 
 def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
@@ -592,15 +594,15 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
     html = sent[0]
     assert html.count("官方碰到已點位") == 1
     assert "碰到他以前點過的關" in html
-    assert "49226" in html and "49240" in html and "49333" in html
-    assert "站上" in html  # 收 49302 相對 49226／49240
-    assert "還沒過" in html  # 收 49302 相對 49333
-    assert "現在怎麼讀：" in html
+    # 話筒只提關鍵位，不准把三關完整清單灌進主句
+    assert "站上" in html and "還沒過" in html
     assert "不是買訊" in html
     assert "併成一則" not in html
     assert "不拆泡泡" not in html
     assert "在這位之上" not in html
     assert "在這位之下" not in html
+    assert "現在怎麼讀：" not in html
+    assert "49226／49240／49333" not in html
     # 不准拆三泡
     assert sent[0].count("<b>飆大急推·官方碰到已點位</b>") == 1
 
@@ -613,7 +615,7 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
 
 
 def test_format_seven_levels_one_oral_sentence_not_table():
-    """復現 2026-10-13 14:03：七關不准變之上／之下長表；口語一句＋不是買訊。"""
+    """復現 2026-10-13 14:03：真正一句人話；不准七關清單灌進話筒。"""
     from biaoke_alert import format_multi_level_hit_synthesis
 
     levels = [
@@ -647,25 +649,29 @@ def test_format_seven_levels_one_oral_sentence_not_table():
     )
     assert "<b>飆大急推·官方碰到已點位</b>" in html
     assert "碰到他以前點過的關" in html
-    assert all(str(lv) in html for lv in levels)
-    assert "現在怎麼讀：" in html
-    assert "僵在 48900" in html or "48900" in html
+    assert "48900" in html  # 關鍵卡位可提
+    assert "僵在" in html or "要等" in html
     assert "不是買訊" in html
+    # 不准把七關完整列進主句
+    listed = sum(1 for lv in levels if str(lv) in html)
+    assert listed <= 2  # 最多關鍵位（站上一帶＋還卡哪），不准七關清單
+    assert "共 7 關" not in html
+    assert "48200、48218、48373" not in html
+    assert "48066.4" not in html  # 高低區間不上主句
+    assert "現在怎麼讀：" not in html
     # 不准 14:03 那種逐位 log
     assert "在這位之上" not in html
     assert "在這位之下" not in html
     assert "不拆泡泡" not in html
     assert "不准補新價" not in html
-    assert "共 7 個已點位" not in html
     assert "加權加權" not in html
-    # 收在哪：站上前兩、其餘還沒過（半句，不是七行）
     assert "站上" in html and "還沒過" in html
     assert html.count("收 48341.3") == 1
     assert html.count("\n") <= 3
 
 
 def test_format_multi_level_hit_lists_above_below():
-    """多關合併：口語一句講清碰到哪些、收在哪、現在怎麼讀；不准之上／之下表。"""
+    """多關合併：真正一句；最多關鍵位，不准之上／之下表、不准完整關卡清單。"""
     from biaoke_alert import format_multi_level_hit_synthesis
 
     html = format_multi_level_hit_synthesis(
@@ -709,15 +715,15 @@ def test_format_multi_level_hit_lists_above_below():
         bar_low=48768.8,
         bar_close=49302,
     )
-    assert "49226" in html and "49240" in html and "49333" in html
     assert "碰到他以前點過的關" in html
-    assert html.count("現在怎麼讀：") == 1
     assert "站上" in html and "還沒過" in html
     assert "不是買訊" in html
     assert "併成一則" not in html
     assert "不拆泡泡" not in html
     assert "不准補新價" not in html
     assert "在這位之上" not in html
+    assert "現在怎麼讀：" not in html
+    assert "共 3 關" not in html
     assert html.count("\n") <= 3  # 標題＋一句＋不是買訊
 
 
