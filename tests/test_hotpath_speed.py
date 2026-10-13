@@ -36,6 +36,11 @@ def test_lookup_gc_once_after_all_pngs():
     assert src.index("glance_task = asyncio.create_task") < src.index(
         "card_item = await card_render_task"
     )
+    assert src.index("create_task(_struct_item())") < src.index(
+        "card_item = await card_render_task"
+    )
+    assert "ensure_official_volume_window" in src
+    assert "volfill" in src
     assert "render_lookup_structure_result" in src
     assert "render_lookup_vol_result" in src
     assert "render_three_in_one_result" not in src

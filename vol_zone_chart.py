@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
@@ -54,6 +55,8 @@ logger = logging.getLogger("WayneBot.VolZone")
 VOL_ZONE_DPI = 220
 VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
+# 查股結構／大量區 ensure 並行抓月表：上限 3，縮短第二→第三體感；不准跳過真量
+_ENSURE_MONTH_FETCH_WORKERS = 3
 VOL_ZONE_TAG_PT = 16  # 壓／撐標要比標題更容易讀（話筒紅圈）
 VOL_ZONE_JPEG_QUALITY = 95
 VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
@@ -68,6 +71,15 @@ VOL_ZONE_MA10 = 10
 VOL_ZONE_MA20 = 20
 VOL_ZONE_MA60 = 60
 VOL_ZONE_MA60_WARM = 70
+
+
+def lookup_vol_ensure_days(
+    *,
+    lookback: int = VOL_ZONE_LOOKBACK,
+    bars: int = VOL_ZONE_BARS,
+) -> int:
+    """查股第 3／4 張 prepare 同一窗長；提早 ensure 用這個 days。"""
+    return max(int(bars) + int(lookback) + VOL_ZONE_MA60_WARM, 180)
 # 同檔同 as_of 壓力區圖短快取（名單→點股三張可複用）
 _VZ_RENDER_TTL_SEC = 45.0
 _VZ_RENDER_LOCK = threading.Lock()
@@ -676,6 +688,7 @@ def ensure_official_volume_window(
 
     不准發明 OHLC／量。官方月表抓成功但當日無列＝休市／未交易 → confirmed_absent。
     同進程短記結果／已抓月份，暖命中不准重打網路。
+    缺月並行抓（上限 _ENSURE_MONTH_FETCH_WORKERS），縮短查股第二→第三體感。
     """
     sid = str(stock_id or "").strip()
     path = str(db_path or "").strip()
@@ -766,6 +779,7 @@ def ensure_official_volume_window(
     market = _market_of(path, sid)
     official_by_month: Dict[str, set] = {}
     wrote_any = False
+    to_fetch: List[str] = []
     for ym in months:
         mk = (sid, ym)
         month_miss = [d for d in missing if str(d).startswith(ym)]
@@ -800,6 +814,9 @@ def ensure_official_volume_window(
             out["months_ok"].append(ym)
             official_by_month[ym] = cached_dates
             continue
+        to_fetch.append(ym)
+
+    def _fetch_ym(ym: str) -> Tuple[str, List[Dict[str, Any]]]:
         try:
             rows = fetch_stock_month(
                 sid, ym, market=market, name=name, tries=2
@@ -809,7 +826,32 @@ def ensure_official_volume_window(
                 "ensure vol fetch fail sid=%s ym=%s", sid, ym, exc_info=True
             )
             rows = []
+        return ym, list(rows or [])
+
+    # 並行抓缺月（真官方月表）；upsert 仍按月序寫入，不准跳過／造假量
+    fetched_rows: Dict[str, List[Dict[str, Any]]] = {}
+    if to_fetch:
+        workers = max(1, min(int(_ENSURE_MONTH_FETCH_WORKERS), len(to_fetch)))
+        if workers == 1 or len(to_fetch) == 1:
+            for ym in to_fetch:
+                y2, rows = _fetch_ym(ym)
+                fetched_rows[y2] = rows
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futs = [pool.submit(_fetch_ym, ym) for ym in to_fetch]
+                for fut in as_completed(futs):
+                    try:
+                        y2, rows = fut.result()
+                    except Exception:
+                        logger.debug(
+                            "ensure vol pool fail sid=%s", sid, exc_info=True
+                        )
+                        continue
+                    fetched_rows[y2] = rows
+
+    for ym in to_fetch:
         out["months_fetched"].append(ym)
+        rows = fetched_rows.get(ym) or []
         if not rows:
             out["months_fail"].append(ym)
             continue
@@ -819,12 +861,12 @@ def ensure_official_volume_window(
             str(r.get("date") or "").replace("-", "")[:8] for r in rows
         }
         official_by_month[ym] = dates
+        mk = (sid, ym)
         with _ENSURE_VOL_LOCK:
             _ENSURE_MONTH_DATES[mk] = frozenset(dates)
         if n:
             out["filled"].append({"yyyymm": ym, "rows": n})
             wrote_any = True
-        time.sleep(0.28)
     if wrote_any:
         try:
             clear_align_ohlc_cache()
@@ -1742,11 +1784,12 @@ def prepare_volume_zone(
     if not sid:
         return None
     work = None
-    need = max(int(bars) + int(lookback) + VOL_ZONE_MA60_WARM, 180)
+    need = lookup_vol_ensure_days(lookback=lookback, bars=bars)
     skip_invent: set = set()
     vol_ensure: Dict[str, Any] = {}
     if db_path:
         # 結構／大量區同一 prepare：開市日缺量先官方補，不准對齊發明假量
+        # 查股路徑應已提早 ensure（paint 外）；此處暖命中＝0 網路
         try:
             vol_ensure = ensure_official_volume_window(
                 sid,
