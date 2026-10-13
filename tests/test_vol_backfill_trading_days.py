@@ -18,6 +18,125 @@ def _schema(db: str) -> None:
     ensure_core_schema(db)
 
 
+def test_missing_flags_tpex_lots_div1000_corrupt_rows(tmp_path):
+    """biaoke_stock_day 張誤÷1000 殘列（高價＋個位張）＝當洞，好重抓真張數。"""
+    from vol_zone_chart import missing_open_quote_days
+
+    db = str(tmp_path / "corrupt.db")
+    _schema(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        INSERT INTO daily_quotes
+        (date, stock_id, stock_name, market, open, high, low, close, volume,
+         turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net,
+         source, fetched_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "20260701",
+            "3081",
+            "聯亞",
+            "TWO",
+            2035,
+            2080,
+            1970,
+            1980,
+            1,  # 真是 1475 張，被÷1000
+            0,
+            -1.98,
+            1980,
+            0,
+            0,
+            0,
+            "biaoke_stock_day",
+            "t",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    holes = missing_open_quote_days("3081", db, "20260701", "20260701")
+    assert "20260701" in holes
+
+
+def test_ensure_repairs_corrupt_biaoke_stock_day_lots(tmp_path, monkeypatch):
+    """假小量 biaoke 列 → ensure 重抓月表寫回真張數。"""
+    from vol_zone_chart import (
+        clear_ensure_official_volume_cache,
+        ensure_official_volume_window,
+        missing_open_quote_days,
+    )
+
+    clear_ensure_official_volume_cache()
+    db = str(tmp_path / "repair.db")
+    _schema(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        INSERT INTO daily_quotes
+        (date, stock_id, stock_name, market, open, high, low, close, volume,
+         turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net,
+         source, fetched_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "20260701",
+            "9083",
+            "測C",
+            "TWO",
+            2000,
+            2100,
+            1900,
+            1980,
+            2,
+            0,
+            0,
+            1980,
+            0,
+            0,
+            0,
+            "biaoke_stock_day",
+            "t",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    assert "20260701" in missing_open_quote_days("9083", db, "20260701", "20260701")
+
+    fake_rows = [
+        {
+            "date": "20260701",
+            "stock_id": "9083",
+            "stock_name": "測C",
+            "market": "TWO",
+            "open": 2000.0,
+            "high": 2100.0,
+            "low": 1900.0,
+            "close": 1980.0,
+            "volume": 1475,
+            "pct_change": -1.98,
+        }
+    ]
+    import biaoke_walk as bw
+
+    monkeypatch.setattr(bw, "fetch_stock_month", lambda *a, **k: list(fake_rows))
+    monkeypatch.setattr(bw, "_market_of", lambda *a, **k: "TWO")
+    monkeypatch.setattr("vol_zone_chart.time.sleep", lambda *_a, **_k: None)
+
+    stats = ensure_official_volume_window(
+        "9083", db, end_ymd="20260701", days=5, stock_name="測C"
+    )
+    assert "202607" in stats["months_ok"]
+    conn = sqlite3.connect(db)
+    vol = conn.execute(
+        "SELECT volume FROM daily_quotes WHERE stock_id=? AND date=?",
+        ("9083", "20260701"),
+    ).fetchone()[0]
+    conn.close()
+    assert float(vol) == 1475.0
+    assert "20260701" not in missing_open_quote_days("9083", db, "20260701", "20260701")
+
+
 def test_ensure_official_volume_fills_missing_open_day(tmp_path, monkeypatch):
     """庫缺開市日 → 呼叫 STOCK_DAY 月表 upsert 真柱；不准編造。"""
     from vol_zone_chart import (
