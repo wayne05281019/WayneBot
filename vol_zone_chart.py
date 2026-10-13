@@ -31,6 +31,8 @@ from wayne_navigator import (
     _fmt_price,
     _set_staggered_month_ticks,
     mpl_render,
+    configure_lookup_vol_axis,
+    lookup_vol_to_display,
     nav_volume_bar_heights,
     paint_lookup_ohlc_candles,
     paint_lookup_volume_bars,
@@ -2491,8 +2493,11 @@ def _paint_volume_zone(
         spike_i=int(spike_i),
         z=2,
     )
-    spike_h = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
-    # 爆大量標貼柱頂再上移一截，右下不貼底軸
+    spike_raw = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
+    spike_h = (
+        float(lookup_vol_to_display([spike_raw], float(vol_ylim))[0]) if spike_raw > 0 else 0.0
+    )
+    # 爆大量標貼柱頂再上移一截，右下不貼底軸；ylim 以視窗 max 顯示高為準
     ax2.set_ylim(0, max(vol_ylim * 1.30, spike_h * 1.38 if spike_h > 0 else vol_ylim * 1.30))
     ax2.annotate(
         f"爆大量 {spike_md}",
@@ -2515,6 +2520,7 @@ def _paint_volume_zone(
     )
     ax2.yaxis.tick_right()
     ax2.tick_params(labelsize=10)
+    configure_lookup_vol_axis(ax2, float(vol_ylim))
     ax2.set_xlim(-0.8, n - 0.2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, alpha=0.85)
     for lab in ax2.get_yticklabels():
