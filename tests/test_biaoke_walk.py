@@ -49,6 +49,73 @@ def test_fetch_stock_month_parses_twse():
     assert rows[0]["date"] == "20231204"
     assert rows[0]["low"] == 374.5
     assert rows[0]["close"] == 380.0
+    assert rows[0]["volume"] == 23573  # 成交股數÷1000＝張
+
+
+def test_fetch_stock_month_parses_tpex_lots_no_div1000():
+    """櫃買 tradingStock 欄位是成交張數；不准再÷1000（3081 挖洞根因）。"""
+    from biaoke_walk import _TPEX_DAY
+
+    class _Sess:
+        def get(self, url, params=None, headers=None, timeout=18):
+            class R:
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    assert "afterTrading/tradingStock" in str(url) or str(url) == _TPEX_DAY or True
+                    return {
+                        "tables": [
+                            {
+                                "subtitle": "3081 聯亞 115年07月",
+                                "fields": [
+                                    "日 期",
+                                    "成交張數",
+                                    "成交仟元",
+                                    "開盤",
+                                    "最高",
+                                    "最低",
+                                    "收盤",
+                                    "漲跌",
+                                    "筆數",
+                                ],
+                                "data": [
+                                    [
+                                        "115/07/01",
+                                        "1,475",
+                                        "2,973,397",
+                                        "2,035.00",
+                                        "2,080.00",
+                                        "1,970.00",
+                                        "1,980.00",
+                                        "-40.00",
+                                        "7,729",
+                                    ],
+                                    [
+                                        "115/07/22",
+                                        "780",
+                                        "1,289,451",
+                                        "1,640.00",
+                                        "1,665.00",
+                                        "1,620.00",
+                                        "1,665.00",
+                                        "150.00",
+                                        "1,496",
+                                    ],
+                                ],
+                            }
+                        ],
+                        "stat": "ok",
+                    }
+
+            return R()
+
+    rows = fetch_stock_month("3081", "202607", market="TWO", name="聯亞", session=_Sess())
+    assert len(rows) == 2
+    by = {r["date"]: r for r in rows}
+    assert by["20260701"]["volume"] == 1475
+    assert by["20260722"]["volume"] == 780
+    assert by["20260701"]["close"] == 1980.0
 
 
 def test_hold_note_zhiyuan_370():
@@ -141,6 +208,16 @@ def test_extract_index_levels_skips_stock_keeps_night():
 def test_upsert_does_not_invent_when_empty():
     assert upsert_fetched_quotes("", []) == 0
     assert upsert_fetched_quotes("missing.db", []) == 0
+
+
+def test_volume_lots_from_row_units():
+    from biaoke_walk import _volume_lots_from_row
+
+    assert _volume_lots_from_row("23,573,533", volume_in_lots=False) == 23573
+    assert _volume_lots_from_row("1,475", volume_in_lots=True) == 1475
+    assert _volume_lots_from_row("780", volume_in_lots=True) == 780
+    # 舊 bug：張再÷1000 → 1；修後不准
+    assert _volume_lots_from_row("1,475", volume_in_lots=True) != 1
 
 
 def _twse_ok(date_roc="113/07/18", low="960.00", close="980.00"):

@@ -255,8 +255,32 @@ def _parse_change(raw: str, close: Optional[float]) -> float:
     return 0.0
 
 
+def _volume_lots_from_row(raw: Any, *, volume_in_lots: bool) -> int:
+    """官方量 → 張。TWSE 成交股數÷1000；TPEX 成交張數已是張，不准再÷1000。"""
+    vol_raw = str(raw or "").replace(",", "").strip()
+    if not vol_raw or vol_raw in {"--", "---", "X"}:
+        return 0
+    try:
+        qty = float(vol_raw)
+    except ValueError:
+        return 0
+    if qty < 0:
+        return 0
+    if volume_in_lots:
+        return int(round(qty))
+    # 證交所 STOCK_DAY＝成交股數
+    if qty >= 1000:
+        return int(qty // 1000)
+    return int(qty)
+
+
 def _rows_from_table(
-    data: Sequence[Sequence[Any]], *, sid: str, name: str, market: str
+    data: Sequence[Sequence[Any]],
+    *,
+    sid: str,
+    name: str,
+    market: str,
+    volume_in_lots: bool = False,
 ) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for row in data or []:
@@ -271,12 +295,7 @@ def _rows_from_table(
         c = _px(row[6])
         if c is None:
             continue
-        vol_raw = str(row[1] or "").replace(",", "")
-        try:
-            shares = float(vol_raw)
-        except ValueError:
-            shares = 0.0
-        vol = int(shares / 1000) if shares >= 1000 else int(shares)
+        vol = _volume_lots_from_row(row[1], volume_in_lots=volume_in_lots)
         chg = _parse_change(row[7] if len(row) > 7 else "", c)
         out.append(
             {
@@ -318,7 +337,11 @@ def _fetch_stock_month_once(
         title = str(payload.get("title") or "")
         nm = name or (title.split()[2] if len(title.split()) >= 3 else sid)
         return _rows_from_table(
-            payload.get("data") or [], sid=sid, name=nm, market="TW"
+            payload.get("data") or [],
+            sid=sid,
+            name=nm,
+            market="TW",
+            volume_in_lots=False,  # 成交股數
         )
     headers = dict(_UA)
     headers["Referer"] = (
@@ -344,7 +367,10 @@ def _fetch_stock_month_once(
     bits = subtitle.split()
     if len(bits) >= 2:
         nm = bits[1]
-    return _rows_from_table(data, sid=sid, name=nm, market="TWO")
+    # 櫃買 tradingStock fields＝成交張數（已是張），不准再÷1000
+    return _rows_from_table(
+        data, sid=sid, name=nm, market="TWO", volume_in_lots=True
+    )
 
 
 def fetch_stock_month(

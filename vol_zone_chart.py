@@ -561,7 +561,11 @@ def missing_open_quote_days(
     start_ymd: str,
     end_ymd: str,
 ) -> List[str]:
-    """開市日曆日 ∩ 窗內，daily_quotes 缺列（或量欄 NULL）的日期。週末／休市不列。"""
+    """開市日曆日 ∩ 窗內，daily_quotes 缺列／量 NULL／櫃買張誤÷1000殘列 的日期。
+
+    週末／休市不列。量 0＝可能真停價，不算缺列。
+    source=biaoke_stock_day 且正量卻小到像股數被當張再÷1000 → 當洞重抓（不准留假小量挖洞）。
+    """
     sid = str(stock_id or "").strip()
     path = str(db_path or "").strip()
     start = str(start_ymd or "").replace("-", "")[:8]
@@ -577,25 +581,52 @@ def missing_open_quote_days(
     conn = sqlite3.connect(path, timeout=30.0)
     try:
         conn.execute("PRAGMA busy_timeout=10000;")
-        rows = conn.execute(
-            """
-            SELECT replace(date,'-','') AS d, volume
-            FROM daily_quotes
-            WHERE stock_id = ?
-              AND replace(date,'-','') BETWEEN ? AND ?
-            """,
-            (sid, start, end),
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT replace(date,'-','') AS d, volume, IFNULL(source,''), close
+                FROM daily_quotes
+                WHERE stock_id = ?
+                  AND replace(date,'-','') BETWEEN ? AND ?
+                """,
+                (sid, start, end),
+            ).fetchall()
+        except Exception:
+            rows = conn.execute(
+                """
+                SELECT replace(date,'-','') AS d, volume, '', close
+                FROM daily_quotes
+                WHERE stock_id = ?
+                  AND replace(date,'-','') BETWEEN ? AND ?
+                """,
+                (sid, start, end),
+            ).fetchall()
     except Exception:
         rows = []
     finally:
         conn.close()
-    for d_raw, vol in rows:
+    for d_raw, vol, src, close in rows:
         d = str(d_raw or "").replace("-", "")[:8]
         if len(d) != 8:
             continue
         # 量 NULL＝缺官方量，當洞；量 0 可能是真停價，不算缺列
         if vol is None:
+            continue
+        try:
+            v = float(vol)
+        except (TypeError, ValueError):
+            continue
+        try:
+            px = float(close or 0)
+        except (TypeError, ValueError):
+            px = 0.0
+        # 櫃買補洞曾把「成交張數」再÷1000 → 留下 1～數十張假小量；高價股尤其荒謬
+        if (
+            str(src or "") == "biaoke_stock_day"
+            and v > 0
+            and v < 80
+            and px >= 50
+        ):
             continue
         have.add(d)
     return [d for d in open_days if d not in have]
@@ -737,12 +768,34 @@ def ensure_official_volume_window(
     wrote_any = False
     for ym in months:
         mk = (sid, ym)
+        month_miss = [d for d in missing if str(d).startswith(ym)]
+        # 庫內已有列仍被標 missing＝假小量／張誤÷1000 → 必須重抓，不准吃月表快取
+        force_refetch = False
+        if month_miss:
+            conn_chk = sqlite3.connect(path, timeout=15.0)
+            try:
+                for d in month_miss:
+                    hit = conn_chk.execute(
+                        "SELECT 1 FROM daily_quotes WHERE stock_id=? AND replace(date,'-','')=?",
+                        (sid, d),
+                    ).fetchone()
+                    if hit:
+                        force_refetch = True
+                        break
+            except Exception:
+                force_refetch = True
+            finally:
+                conn_chk.close()
         cached_dates = None
-        with _ENSURE_VOL_LOCK:
-            if mk in _ENSURE_MONTH_DATES:
-                cached_dates = set(_ENSURE_MONTH_DATES[mk])
+        if not force_refetch:
+            with _ENSURE_VOL_LOCK:
+                if mk in _ENSURE_MONTH_DATES:
+                    cached_dates = set(_ENSURE_MONTH_DATES[mk])
+        else:
+            with _ENSURE_VOL_LOCK:
+                _ENSURE_MONTH_DATES.pop(mk, None)
         if cached_dates is not None:
-            # 本進程已打過此月：不再打網路／sleep（暖路徑）
+            # 本進程已打過此月且無修補需求：不再打網路／sleep（暖路徑）
             out["months_fetched"].append(ym)
             out["months_ok"].append(ym)
             official_by_month[ym] = cached_dates
