@@ -20,8 +20,9 @@ MAX_ACTIVE_NAMES = 3  # 操作桶最多 3 檔（含零股）
 MAX_SLOTS = MAX_ACTIVE_NAMES  # 相容舊測試／畫面槽位語意
 CORE_SLOTS = MAX_ACTIVE_NAMES  # 操作桶可滿 3 檔
 DIP_SLOTS = 1  # 大盤超跌才動抄底（動用保留額）
-# 重跑：清空舊部位；台北 2026-10-13 起才買
-RESTART_PARAM_KEY = "ai_desk_restart_v20261012"
+# 重跑：清空舊部位＋舊成交／fills；台北 2026-10-13 起買新的
+# v20261013_wipe：使用者看到舊買賣殘留 → 再清一次（含 trade_logs／ai_fills）
+RESTART_PARAM_KEY = "ai_desk_restart_v20261013_wipe"
 RESTART_BUY_FROM = "20261013"
 STOP_PCT = -7.0
 TAKE_PCT = 8.0
@@ -378,10 +379,16 @@ def _param_set(db_path: str, key: str, value: float) -> None:
 
 
 def reset_ai_account(engine: PortfolioEngine, user_id: str, *, note: str = "") -> Dict[str, Any]:
-    """清空該 AI 戶持倉，現金／本金重設為總 50 萬。"""
+    """清空該 AI 戶：持倉＋成交日誌＋ai_fills＋淨值／理由／研究；現金重設 50 萬。
+
+    不寫 RESET 進成交（避免話筒還看到舊／假成交）。只動 ai_* 假錢倉。
+    """
     uid = str(user_id or "").strip()
     if not uid:
         return {"success": False, "msg": "無 user_id"}
+    # 硬閘：只准清 AI 模擬戶（ai_*／舊 wayne_ai），不准動真實持股 uid
+    if not (uid.startswith("ai_") or uid == AI_USER_LEGACY):
+        return {"success": False, "msg": "只清 AI 假錢倉"}
     engine.ensure_user_exists(uid)
     conn = engine._get_connection()
     try:
@@ -392,11 +399,16 @@ def reset_ai_account(engine: PortfolioEngine, user_id: str, *, note: str = "") -
         from datetime import datetime
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    n_pos = n_logs = n_fills = 0
     try:
         n_pos = conn.execute(
             "SELECT COUNT(*) FROM user_positions WHERE user_id=?", (uid,)
         ).fetchone()[0]
+        n_logs = conn.execute(
+            "SELECT COUNT(*) FROM trade_logs WHERE user_id=?", (uid,)
+        ).fetchone()[0]
         conn.execute("DELETE FROM user_positions WHERE user_id=?", (uid,))
+        conn.execute("DELETE FROM trade_logs WHERE user_id=?", (uid,))
         conn.execute(
             """
             UPDATE user_funds
@@ -405,38 +417,36 @@ def reset_ai_account(engine: PortfolioEngine, user_id: str, *, note: str = "") -
             """,
             (TOTAL_CAPITAL, TOTAL_CAPITAL, now_str, uid),
         )
-        # 日誌留一筆重置備註（0 股不影響對質母體）
-        conn.execute(
-            """
-            INSERT INTO trade_logs(
-                user_id, date, stock_id, stock_name, action, shares, price,
-                amount, fee, tax, realized_pnl, pnl_pct, reason, created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                uid,
-                RESTART_BUY_FROM,
-                "RESET",
-                "AI倉重跑",
-                "RESET",
-                0,
-                0.0,
-                TOTAL_CAPITAL,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                note or f"清空重跑 50=30+20；{RESTART_BUY_FROM}起買",
-                now_str,
-            ),
-        )
+        # 附帶清 AI 專用表（缺表略過）
+        for sql in (
+            "DELETE FROM ai_nav_log WHERE user_id=?",
+            "DELETE FROM ai_lessons WHERE user_id=?",
+            "DELETE FROM ai_fills WHERE user_id=?",
+            "DELETE FROM ai_buy_research WHERE user_id=?",
+            "DELETE FROM ai_buy_reasons WHERE user_id=?",
+        ):
+            try:
+                cur = conn.execute(sql, (uid,))
+                if "ai_fills" in sql:
+                    n_fills = int(cur.rowcount or 0)
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
     finally:
         conn.close()
+    # 重跑備註只進 ai_params，不上成交頁
+    try:
+        ensure_ai_tables(engine.db_path)
+        _param_set(engine.db_path, f"ai_wipe_note:{uid}", 1.0)
+    except Exception:
+        pass
+    _ = note  # 呼叫端可傳說明；不寫進 trade_logs
     return {
         "success": True,
         "user_id": uid,
         "cleared_positions": int(n_pos or 0),
+        "cleared_trade_logs": int(n_logs or 0),
+        "cleared_fills": int(n_fills or 0),
         "cash": TOTAL_CAPITAL,
         "buy_from": RESTART_BUY_FROM,
     }
@@ -451,7 +461,7 @@ def mark_ai_restart_done(db_path: str, user_id: str) -> None:
 
 
 def ensure_ai_restart_applied(engine: PortfolioEngine, user_id: str) -> bool:
-    """每位 AI 戶只清空重跑一次（v20261012）。回傳是否本輪有執行重置。
+    """每位 AI 戶只完整清空一次（v20261013_wipe：部位＋舊買賣紀錄）。
 
     只動該人 ai_{uid} 假錢倉；不碰真實持股／觀察／海選／勝率買點推播。
     """
@@ -462,7 +472,7 @@ def ensure_ai_restart_applied(engine: PortfolioEngine, user_id: str) -> bool:
     reset_ai_account(
         engine,
         user_id,
-        note="2026-10-12 清空；總50萬＝30操作＋20抄底；20261013起買",
+        note="2026-10-13 全清舊買賣；總50萬＝30操作＋20抄底；今日起買新的",
     )
     _param_set(engine.db_path, key, 1.0)
     return True
@@ -743,11 +753,17 @@ def _realized_pnl(engine: PortfolioEngine, user_id: str) -> float:
 
 
 def _recent_fills(engine: PortfolioEngine, user_id: str, limit: int = 8) -> List[Dict[str, Any]]:
+    """最近真買賣；略過 RESET／0 股殘列，避免話筒還看到清空備註。"""
     conn = engine._get_connection()
     rows = conn.execute(
         """
         SELECT date, action, stock_id, stock_name, shares, price, realized_pnl, pnl_pct, reason
-        FROM trade_logs WHERE user_id=? ORDER BY id DESC LIMIT ?
+        FROM trade_logs
+        WHERE user_id=?
+          AND UPPER(COALESCE(action,'')) IN ('BUY','SELL')
+          AND COALESCE(shares,0) > 0
+          AND COALESCE(stock_id,'') NOT IN ('','RESET')
+        ORDER BY id DESC LIMIT ?
         """,
         (user_id, int(limit)),
     ).fetchall()
