@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股四張圖盤中價／昨收／漲跌同源（含興櫃）；現價＝昨收不准非零％。"""
+"""查股四張圖盤中價／昨收／漲跌同源（上市／上櫃／興櫃）；現價＝昨收不准非零％。"""
 from __future__ import annotations
 
 import inspect
@@ -156,12 +156,51 @@ def test_structure_lookup_passes_card_into_spot():
     assert "quote=spot" in src
 
 
+def test_structure_axis_close_uses_quote_not_last_bar_only():
+    """右軸今收／現價必須跟決策卡 quote 同源；不准只吃官方 last_bar（上市上櫃也會分岔）。"""
+    from biaoke_chart import render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert 'quote.get("close")' in src or "quote.get('close')" in src
+    assert 'close_tag = "現價"' in src or "close_tag = '現價'" in src
+    assert "hdr-band-v78j-axis-card" in src
+    # 舊寫法：只認 last_bar.close 當今收＝回歸點
+    assert 'text": f"今收 {_px_quote(last_c)}"' not in src
+
+
 def test_volzone_header_uses_card_display_quote():
     from vol_zone_chart import _paint_volume_zone
 
     src = inspect.getsource(_paint_volume_zone)
     assert "display_quote_from_card" in src
     assert "hdr_quote" in src
+
+
+def test_display_quote_listed_and_otc_same_shape():
+    """上市／上櫃決策卡也走同一 display_quote；不准只修興櫃。"""
+    for listing, qs in (("上市", "daily_quotes"), ("上櫃", "daily_quotes")):
+        dq = display_quote_from_card(
+            {
+                "stock_id": "2330" if listing == "上市" else "3105",
+                "close": 1000.0,
+                "prev_close": 980.0,
+                "change_pct": 99.0,
+                "is_live": True,
+                "latest_date": "20261013",
+                "quote_source": qs,
+                "listing": listing,
+                "open": 990.0,
+                "high": 1010.0,
+                "low": 985.0,
+                "volume": 1000,
+            }
+        )
+        assert dq is not None
+        assert float(dq["close"]) == 1000.0
+        assert float(dq["prev"]) == 980.0
+        assert float(dq["change"]) == 20.0
+        assert abs(float(dq["pct"]) - 2.04) < 0.01
+        assert dq["emerging"] is False
 
 
 def test_spot_quote_uses_card_not_mis_for_emerging(monkeypatch):

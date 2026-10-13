@@ -1486,13 +1486,15 @@ def _approx_note_width(text: str, size: float = 12) -> float:
 
 
 def _is_today_close_note(text: str) -> bool:
-    """當日收盤標籤（今收／舊「收」）；不含昨收。"""
+    """當日收／現價標籤（今收／現價／舊「收」）；不含昨收。"""
     t = str(text or "")
     if t.startswith("昨收"):
         return False
     return (
         t.startswith("今收 ")
         or t.startswith("今收\u3000")
+        or t.startswith("現價 ")
+        or t.startswith("現價\u3000")
         or t.startswith("收 ")
         or t.startswith("收\u3000")
     )
@@ -3629,8 +3631,8 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        # v78i：官方收走 _px_quote；表頭與決策卡同源（含興櫃）
-        "hdr-band-v78i-card-sync" if fullbleed else "hdr-wrap3-vol-min",
+        # v78j：右軸今收／現價跟決策卡 quote 同源（上市上櫃興櫃）
+        "hdr-band-v78j-axis-card" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -3769,29 +3771,42 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    # 右軸：今收（71 紅框必留）＋昨收；75 同列並排（垂直貼今收價，數字＝官方真價／_px_quote）
-    last_c = float(last_bar.get("close") or 0)
+    # 右軸：今收／現價（71 紅框必留）＋昨收；75 同列並排。
+    # 數字跟左上 nameplate／高低卡／介紹同源＝決策卡 quote；K 主體仍官方柱。
+    # 不准再用 last_bar 官方末日蓋掉盤中現價（上市上櫃興櫃同一規則）。
+    try:
+        last_c = float(quote.get("close") or 0)
+    except (TypeError, ValueError):
+        last_c = 0.0
+    if last_c <= 0:
+        try:
+            last_c = float(last_bar.get("close") or 0)
+        except (TypeError, ValueError):
+            last_c = 0.0
+    close_tag = "現價" if bool(quote.get("is_live")) else "今收"
     if last_c > 0:
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": float(last_c),
-                "text": f"今收 {_px_quote(last_c)}",
+                "text": f"{close_tag} {_px_quote(last_c)}",
                 "color": "#37474f",
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
     try:
         prev_c_axis = float(
-            prev_bar.get("close")
-            or quote.get("prev")
+            quote.get("prev")
+            or quote.get("prev_close")
+            or quote.get("yesterday_close")
+            or prev_bar.get("close")
             or last_bar.get("yesterday_close")
             or 0
         )
     except (TypeError, ValueError):
         prev_c_axis = 0.0
     if prev_c_axis > 0:
-        # 顯示 Y 錨在今收列（有今收時）；缺今收才退回昨收價
+        # 顯示 Y 錨在今收／現價列（有當日價時）；缺了才退回昨收價
         prev_y = float(last_c) if last_c > 0 else float(prev_c_axis)
         right_notes.append(
             {
@@ -4213,10 +4228,11 @@ def render_biaoke_structure_png(
             ov, header_x, ohlc_y1, today_cells, color=_TEXT, size=ohlc_fs, col_xs=shared,
         )
         if ohlc_y2 is not None:
+            _face_close = quote.get("close") if quote.get("close") is not None else last_bar.get("close")
             _paint_aligned_kv_row(
                 ov, header_x, ohlc_y2,
                 [
-                    ("收", _px(last_bar.get("close"))),
+                    ("收", _px_quote(_face_close)),
                     ("量", _vol(last_bar.get("volume"))),
                 ],
                 color=_TEXT, size=ohlc_fs,
