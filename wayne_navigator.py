@@ -1865,13 +1865,19 @@ def lookup_vol_axis_true_ticks(vmax: float) -> list[float]:
                 kept.append(float(vmax))
             else:
                 kept[-1] = float(vmax)
-        # 掛上 vmax 後由上往下再清一次：7k／9k 貼窗頂時丟掉中間檔
-        if kept and abs(kept[-1] - vmax) <= 1e-6:
-            while len(kept) >= 3:
-                d_prev = float(lookup_vol_to_display([kept[-2]], vmax)[0])
-                if (float(vmax) - d_prev) >= top_need - 1e-9:
-                    break
-                kept.pop(-2)
+        # 掛上 vmax 後整段再以嚴間距清一次（含中段 5k→7k、頂端 7k→窗頂）
+        if len(kept) >= 2:
+            cleaned = [kept[0]]
+            for v in kept[1:]:
+                d = float(lookup_vol_to_display([v], vmax)[0])
+                d_prev = float(lookup_vol_to_display([cleaned[-1]], vmax)[0])
+                if d - d_prev >= top_need - 1e-9:
+                    cleaned.append(float(v))
+                elif abs(v - vmax) <= 1e-6:
+                    cleaned[-1] = float(vmax)
+            if abs(cleaned[-1] - vmax) > 1e-6:
+                cleaned[-1] = float(vmax)
+            kept = cleaned
         max_n = int(LOOKUP_VOL_AXIS_MAX_TICKS)
         if len(kept) <= max_n:
             return kept
