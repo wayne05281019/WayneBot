@@ -11,9 +11,10 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
     from three_in_one_chart import render_lookup_structure_result
 
     rsrc = inspect.getsource(render_biaoke_structure_png)
-    # 頭欄 memo：v78h＝官方收／漲跌色同源；舊鍵相容備援
+    # 頭欄 memo：v78j＝右軸今收／現價跟決策卡同源（含興櫃）；舊鍵相容備援
     assert (
-        "hdr-band-v78h-quote-ink" in rsrc
+        "hdr-band-v78j-axis-card" in rsrc
+        or "hdr-band-v78h-quote-ink" in rsrc
         or "hdr-band-v78g-close-half" in rsrc
         or "hdr-band-v78f-gap-tighten" in rsrc
         or "hdr-band-v78e-dash-rails" in rsrc

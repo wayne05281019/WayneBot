@@ -3297,6 +3297,7 @@ def render_lookup_structure_result(
         from biaoke_chart import (
             _BARS,
             _STRUCTURE_LOOKUP_FIG,
+            _spot_quote,
             render_biaoke_structure_png,
             stock_nameplate,
         )
@@ -3328,6 +3329,16 @@ def render_lookup_structure_result(
                 bars = _bars_from_official(pack["view"], sid, name)
         if len(bars) < 8:
             return "", ""
+        # 表頭現價／昨收／漲跌＝決策卡同源（含興櫃）；K 主體仍官方柱
+        spot = None
+        try:
+            last_b = bars[-1] if bars else {}
+            prev_b = bars[-2] if len(bars) >= 2 else {}
+            spot = _spot_quote(
+                sid, last_b, prev_b, db_path, card=card if isinstance(card, dict) else None
+            )
+        except Exception:
+            spot = None
         path = render_biaoke_structure_png(
             bars,
             save_path,
@@ -3340,6 +3351,8 @@ def render_lookup_structure_result(
             dpi=VOL_ZONE_DPI,
             # 使用者定案：不畫 next-press 帶
             press_band=None,
+            quote=spot,
+            card=card if isinstance(card, dict) else None,
         )
         if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
             return "", ""

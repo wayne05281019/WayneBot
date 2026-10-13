@@ -184,4 +184,7 @@ def test_glance_memo_includes_fund_fingerprint():
     src = open("wayne_navigator.py", encoding="utf-8").read()
     assert "stock_fundamentals_fingerprint" in src
     assert "ensure_stock_fundamentals" in src
-    assert "match-card-076-fund-rev2line-v76" in src
+    assert (
+        "match-card-076-fund-rev2line-v77-card-price" in src
+        or "match-card-076-fund-rev2line-v76" in src
+    )

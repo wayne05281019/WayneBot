@@ -703,6 +703,95 @@ def lookup_price_label(rt: Optional[Dict[str, Any]], *, emerging: bool = False, 
     return "現價" if board_session_label(t, emerging=False) == "盤中" else "收盤"
 
 
+def display_quote_from_card(card: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """查股四張圖共用現價／昨收／漲跌點％：只認決策卡已合併真數。
+
+    高低卡／介紹／結構／大量區表頭必須同源；沒真收／現價就回 None（不准假數）。
+    現價＝昨收時漲跌點／％強制 0，不准互打。
+    """
+    if not isinstance(card, dict) or card.get("error"):
+        return None
+    try:
+        close = float(card.get("close") or 0)
+    except (TypeError, ValueError):
+        close = 0.0
+    if close <= 0:
+        return None
+    try:
+        prev = float(card.get("prev_close") or 0)
+    except (TypeError, ValueError):
+        prev = 0.0
+    try:
+        o = float(card.get("open") or 0)
+        hi = float(card.get("high") or 0)
+        lo = float(card.get("low") or 0)
+        vol = float(card.get("volume") or 0)
+    except (TypeError, ValueError):
+        o = hi = lo = vol = 0.0
+    is_live = bool(card.get("is_live"))
+    chg = None
+    pct = None
+    if prev > 0:
+        chg = round(close - prev, 4)
+        if abs(chg) < 1e-9:
+            chg = 0.0
+            pct = 0.0
+        else:
+            pct = round(chg / prev * 100.0, 2)
+    else:
+        raw_pct = card.get("change_pct")
+        if raw_pct is None:
+            raw_pct = card.get("pct_change")
+        try:
+            if raw_pct is not None:
+                pct = float(raw_pct)
+                if pct != pct:
+                    pct = None
+        except (TypeError, ValueError):
+            pct = None
+        if pct is not None and abs(pct) < 1e-12:
+            pct = 0.0
+            chg = 0.0
+    as_of = str(card.get("latest_date") or card.get("as_of") or "").replace("-", "")[:8]
+    emerging = False
+    qs = str(card.get("quote_source") or "").strip()
+    if qs == "emerging_quotes" or str(card.get("listing") or "").startswith("興櫃"):
+        emerging = True
+    # 結構圖用「盤中／收盤」；介紹／高低卡用 session_price_label（現價／收盤）
+    try:
+        from decision_card_signals import _in_board_session
+
+        in_sess = _in_board_session(taipei_now(), emerging=emerging)
+    except Exception:
+        in_sess = is_live
+    struct_label = "盤中" if (is_live and in_sess) else "收盤"
+    return {
+        "stock_id": str(card.get("stock_id") or ""),
+        "open": o if o > 0 else close,
+        "high": hi if hi > 0 else close,
+        "low": lo if lo > 0 else close,
+        "close": close,
+        "volume": vol,
+        "prev": prev if prev > 0 else None,
+        "prev_close": prev if prev > 0 else None,
+        "yesterday_close": prev if prev > 0 else None,
+        "pct": pct,
+        "pct_change": pct,
+        "change_pct": pct,
+        "change": chg,
+        "is_live": is_live,
+        "label": struct_label,
+        "date": as_of,
+        "as_of": as_of,
+        "query_date": str(card.get("query_date") or ""),
+        "query_clock": str(card.get("query_clock") or ""),
+        "quote_source": qs,
+        "emerging": emerging,
+        "source": "decision_card",
+        "update_time": str(card.get("live_time") or card.get("query_clock") or ""),
+    }
+
+
 def fetch_lookup_quote(
     stock_id: str,
     market: str = "",
