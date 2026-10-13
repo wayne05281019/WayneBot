@@ -472,15 +472,20 @@ def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
     assert a["pushed"] == 1
     assert sent
     html = sent[0]
-    assert "官方碰到已點位" in html
-    assert "46747" in html
-    assert "中心思想：" in html or "判斷：" in html
-    assert "46747" in html and ("穿刺" in html or "脫離震盪" in html)
-    # 同一點位只一則；舊長文不整篇塞
-    assert html.count("官方碰到已點位") == 1
+    assert "飆大提醒·大盤碰到關卡" in html
+    assert "今天加權碰到飆大以前講過的關" in html
+    assert "不是買訊" in html
+    assert "站上" in html or "還沒過" in html or "還要再看" in html
+    # 同一點位只一則；舊長文不整篇塞；機器規則句不上話筒
+    assert html.count("飆大提醒·大盤碰到關卡") == 1
     assert "以前也講過震盪" not in html
-    assert "同點另有" in html
-    assert "中心思想" in html or "判斷" in html
+    assert "不拆泡泡" not in html
+    assert "不准補新價" not in html
+    assert "同點另有" not in html
+    assert "在這位之上" not in html
+    assert "官方碰到已點位" not in html
+    assert "穿刺" not in html  # 技術原句不上話筒
+    assert html.count("\n") <= 3
 
     sent.clear()
     b = maybe_push_marked_level_hits(db)
@@ -489,7 +494,7 @@ def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
 
 
 def test_format_level_hit_synthesis_no_date_catalog():
-    """融會判斷不准變成幾月幾號原文目錄。"""
+    """口語一句；不准幾月幾號原文目錄、不准機器規則句。"""
     from biaoke_alert import format_level_hit_synthesis
 
     html = format_level_hit_synthesis(
@@ -514,12 +519,17 @@ def test_format_level_hit_synthesis_no_date_catalog():
             },
         ],
     )
-    assert "中心思想：" in html or "判斷：" in html
-    assert "48601" in html
-    assert "收" in html and "之上" in html
+    assert "飆大提醒·大盤碰到關卡" in html
+    assert "今天加權碰到飆大以前講過的關" in html
+    assert "站上" in html  # 收在關上 → 白話已站上
+    assert "還要再看大盤怎麼走" in html
     assert "他原文 2026-09-22" not in html
-    assert "他原文 2026-09-28" not in html
-    assert "同點另有 1 則已併入" in html
+    assert "同點另有" not in html
+    assert "不是買訊" in html
+    assert "不准補新價" not in html
+    assert "加權點位" not in html
+    assert "在這位之上" not in html
+    assert "48650" not in html  # 收點數字不上主句
 
 
 def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
@@ -582,15 +592,18 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
     assert a.get("levels") == 3
     assert len(sent) == 1
     html = sent[0]
-    assert html.count("官方碰到已點位") == 1
-    assert "一次碰到" in html
-    assert "49226" in html and "49240" in html and "49333" in html
-    assert "之上" in html  # 收 49302 相對 49226／49240
-    assert "之下" in html  # 收 49302 相對 49333
-    assert "中心思想：" in html or "判斷：" in html
-    assert "併成一則" in html
+    assert html.count("飆大提醒·大盤碰到關卡") == 1
+    assert "今天加權碰到飆大以前講過的關" in html
+    assert "還沒過" in html or "中間" in html or "偏" in html
+    assert "還要再看大盤怎麼走" in html
+    assert "不是買訊" in html
+    assert "併成一則" not in html
+    assert "不拆泡泡" not in html
+    assert "在這位之上" not in html
+    assert "官方碰到已點位" not in html
+    assert "49226／49240／49333" not in html
     # 不准拆三泡
-    assert sent[0].count("<b>飆大急推·官方碰到已點位</b>") == 1
+    assert sent[0].count("<b>飆大提醒·大盤碰到關卡</b>") == 1
 
     # 同日再跑不重推；每位鍵已記
     sent.clear()
@@ -600,8 +613,62 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
     assert b["skipped"] >= 3
 
 
+def test_format_seven_levels_one_oral_sentence_not_table():
+    """復現 2026-10-13：國中生口語一句；最多一個還卡在Ｘ，不准七關／收點串。"""
+    from biaoke_alert import format_multi_level_hit_synthesis
+
+    levels = [
+        48200,
+        48218,
+        48373,
+        48601,
+        48602,
+        48647,
+        48900,
+    ]
+    html = format_multi_level_hit_synthesis(
+        levels=[
+            {
+                "level": lv,
+                "note": "加權加權",
+                "sources": [
+                    {
+                        "date": "2026-10-12",
+                        "time": "22:30",
+                        "text": "過了一夜，還是僵在 48900 附近，還是要等今天大盤走勢進一步研判。",
+                    }
+                ],
+            }
+            for lv in levels
+        ],
+        bar_date="20261013",
+        bar_high=49126.3,
+        bar_low=48066.4,
+        bar_close=48341.3,
+    )
+    assert "<b>飆大提醒·大盤碰到關卡</b>" in html
+    assert "今天加權碰到飆大以前講過的關了" in html
+    assert "中間偏低" in html
+    assert "還沒過他較高的關" in html
+    assert "還卡在 48900 附近" in html  # 最多一個關鍵位
+    assert "還要再看大盤怎麼走" in html
+    assert "不是買訊" in html
+    listed = sum(1 for lv in levels if str(lv) in html)
+    assert listed == 1  # 只准一個關鍵位
+    assert "48341" not in html  # 收點不上主句
+    assert "48218" not in html
+    assert "研判" not in html
+    assert "僵在" not in html
+    assert "共 7 關" not in html
+    assert "48066.4" not in html
+    assert "在這位之上" not in html
+    assert "不拆泡泡" not in html
+    assert "官方碰到已點位" not in html
+    assert html.count("\n") <= 3
+
+
 def test_format_multi_level_hit_lists_above_below():
-    """多關合併文案：各位列之上／之下，只一句中心思想。"""
+    """多關合併：國中生一句；不准之上／之下表、不准完整關卡清單。"""
     from biaoke_alert import format_multi_level_hit_synthesis
 
     html = format_multi_level_hit_synthesis(
@@ -645,11 +712,17 @@ def test_format_multi_level_hit_lists_above_below():
         bar_low=48768.8,
         bar_close=49302,
     )
-    assert "49226" in html and "49240" in html and "49333" in html
-    assert "一次碰到" in html
-    assert html.count("中心思想：") == 1
-    assert "之上" in html and "之下" in html
-    assert "併成一則" in html
+    assert "飆大提醒·大盤碰到關卡" in html
+    assert "今天加權碰到飆大以前講過的關了" in html
+    assert "還沒過他較高的關" in html or "中間" in html
+    assert "還要再看大盤怎麼走" in html
+    assert "不是買訊" in html
+    assert "併成一則" not in html
+    assert "不拆泡泡" not in html
+    assert "在這位之上" not in html
+    assert "49302" not in html
+    assert "共 3 關" not in html
+    assert html.count("\n") <= 3
 
 
 def test_old_posts_not_urgent_on_reingest(tmp_path, monkeypatch):

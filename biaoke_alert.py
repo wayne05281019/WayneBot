@@ -5,8 +5,8 @@
 急推才推偉權＋哥哥兩支手機：
   1) 現在就要出清 → 完整原文
   2) 現在差不多到底／抄底窗口 → 完整原文
-  3) 官方收盤柱碰到他已點過的位 → 去蕪存菁判斷（不准堆幾月幾號舊文讓人自己讀）；
-     同根柱一次碰到多個已點位 → 併成一則列出各位，不准拆 N 個近重複泡泡
+  3) 官方收盤柱碰到他已點過的位 → 國中生口語一句（碰到關了、收大概在哪邊、還要再看）；
+     同根柱一次碰到多個已點位 → 仍併成一則；不准關卡串／收點串／機器規則句上話筒
 只對「新抓到且未逾時效」的文急推；重掃／換 id／deploy 後不准把多天前舊文當急推重播。
 如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點＝一般，不急推。
 確認低點仍要主音疊輔助；單講趨勢向上、初步止訊號、右肩有守＝還不到確認。
@@ -705,7 +705,7 @@ def format_level_hit_alert(
 
 
 def _close_vs_level(bar_close: Optional[float], level: float) -> str:
-    """收相對該位：之上／之下／收在。"""
+    """收相對該位（內部／測試用）；話筒改走口語一句，不再逐位「之上／之下」。"""
     try:
         if bar_close is None:
             return ""
@@ -718,6 +718,100 @@ def _close_vs_level(bar_close: Optional[float], level: float) -> str:
         return f"收在 {_level_face(c)}"
     except (TypeError, ValueError):
         return ""
+
+
+def _close_side_groups(
+    bar_close: Optional[float], levels: Sequence[float]
+) -> Tuple[List[str], List[str], List[str]]:
+    """依收盤把已點位分成站上／還沒過／剛好收在（臉數字，由低到高）。"""
+    above: List[str] = []
+    below: List[str] = []
+    at: List[str] = []
+    if bar_close is None:
+        return above, below, at
+    try:
+        c = float(bar_close)
+    except (TypeError, ValueError):
+        return above, below, at
+    for lv in sorted(float(x) for x in levels):
+        face = _level_face(lv)
+        if c > lv:
+            above.append(face)
+        elif c < lv:
+            below.append(face)
+        else:
+            at.append(face)
+    return above, below, at
+
+
+def _key_level_mentioned(text: str, levels: Sequence[float]) -> str:
+    """近窗說法裡已出現的關鍵已點位（若有）；沒有就空。不准發明新價。"""
+    s = str(text or "")
+    if not s:
+        return ""
+    # 由高到低：較常是「還卡／僵在」的那關
+    for lv in sorted((float(x) for x in levels), reverse=True):
+        face = _level_face(lv)
+        if face and face in s:
+            return face
+    return ""
+
+
+def _close_band_plain(
+    bar_close: Optional[float], levels: Sequence[float]
+) -> str:
+    """國中生口語：收在偏高／偏低／中間…；不准塞收點數字或關卡串。"""
+    above, below, at = _close_side_groups(bar_close, levels)
+    n = len(above) + len(below) + len(at)
+    if n == 0:
+        return ""
+    if n == 1:
+        if above:
+            return "現在已經站上這關"
+        if below:
+            return "現在還沒過這關"
+        return "現在剛好收在這關附近"
+    if above and not below and not at:
+        return "現在收在偏高、這些關大致站上了"
+    if below and not above and not at:
+        return "現在收在偏低、這些關都還沒過"
+    if at and not above and not below:
+        return "現在剛好收在關卡附近"
+    # 兩邊都有：用相對位置講中間偏低／偏高，不准列關卡數字
+    try:
+        c = float(bar_close)  # type: ignore[arg-type]
+        lo = min(float(x) for x in levels)
+        hi = max(float(x) for x in levels)
+    except (TypeError, ValueError):
+        return "現在收在中間、還沒過他較高的關"
+    if hi <= lo:
+        return "現在收在關卡附近、還沒過他較高的關"
+    pos = (c - lo) / (hi - lo)
+    if pos < 0.4:
+        band = "中間偏低"
+    elif pos > 0.6:
+        band = "中間偏高"
+    else:
+        band = "中間"
+    return f"現在收在{band}、還沒過他較高的關"
+
+
+def _plain_wait_clause(
+    read_now: str,
+    levels: Sequence[float],
+    bar_close: Optional[float],
+) -> str:
+    """還要再看／還卡在哪：最多一個關鍵位（且收仍在其下），其餘白話。"""
+    key = _key_level_mentioned(read_now, levels)
+    if key and bar_close is not None:
+        try:
+            c = float(bar_close)
+            for lv in levels:
+                if _level_face(float(lv)) == key and c < float(lv):
+                    return f"還卡在 {key} 附近，還要再看大盤怎麼走"
+        except (TypeError, ValueError):
+            pass
+    return "還要再看大盤怎麼走"
 
 
 def _sources_essence(level: float, sources: Sequence[Dict[str, Any]]) -> str:
@@ -740,6 +834,78 @@ def _sources_essence(level: float, sources: Sequence[Dict[str, Any]]) -> str:
     return ""
 
 
+def _pick_level_thesis(rows: Sequence[Dict[str, Any]]) -> str:
+    """多關時取最近來源的既有中心思想；話筒優先近窗原句，不准發明新價。"""
+    thesis_candidates: List[Tuple[str, str, str]] = []
+    for r in rows:
+        try:
+            lv = float(r["level"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        srcs = [dict(s) for s in (r.get("sources") or []) if s]
+        srcs.sort(
+            key=lambda s: (str(s.get("date") or ""), str(s.get("time") or "")),
+            reverse=True,
+        )
+        if not srcs:
+            continue
+        top = srcs[0]
+        essence = _sources_essence(lv, srcs)
+        oral = _oral_level_thesis(essence, _level_face(lv)) if essence else ""
+        # 近窗原句較像人話；模板句當備援
+        body = (essence or oral or "").strip()
+        if not body:
+            continue
+        thesis_candidates.append(
+            (
+                str(top.get("date") or ""),
+                str(top.get("time") or ""),
+                body,
+            )
+        )
+    thesis_candidates.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    if thesis_candidates:
+        return thesis_candidates[0][2]
+    return ""
+
+
+LEVEL_HIT_TITLE = "飆大提醒·大盤碰到關卡"
+
+
+def _plain_level_hit_body(
+    *,
+    faces: Sequence[str],
+    bar_date: str,
+    bar_high: Optional[float],
+    bar_low: Optional[float],
+    bar_close: Optional[float],
+    levels_for_side: Sequence[float],
+    read_now: str,
+) -> str:
+    """話筒正文：國中生也看得懂的一句＋下一行「不是買訊」。
+
+    不准收點數字串、不准完整關卡清單、不准機器規則句。
+    詳細關卡／收點只打 log；主句最多一個「還卡在Ｘ附近」。
+    """
+    del faces, bar_date, bar_high, bar_low  # 細節留 log，不上主句
+    band = _close_band_plain(bar_close, levels_for_side)
+    wait = _plain_wait_clause(read_now, levels_for_side, bar_close)
+    main = "今天加權碰到飆大以前講過的關了"
+    if band:
+        main += "；" + band + "，" + wait
+    else:
+        main += "，" + wait
+    if not main.endswith("。"):
+        main += "。"
+    return "\n".join(
+        [
+            f"<b>{LEVEL_HIT_TITLE}</b>",
+            html_escape(main),
+            "不是買訊",
+        ]
+    )
+
+
 def format_level_hit_synthesis(
     *,
     level: float,
@@ -750,39 +916,31 @@ def format_level_hit_synthesis(
     note: str = "",
     sources: Sequence[Dict[str, Any]],
 ) -> str:
-    """官方柱碰到已點位：融會判斷一句，不准堆幾月幾號原文清單。"""
+    """官方柱碰到已點位：真正一句人話給話筒；詳細關卡不上主句。"""
+    del note  # 加權／台指備註只給內部，不上話筒
     lv = _level_face(level)
     rows = [dict(s) for s in (sources or []) if s]
     essence = _sources_essence(level, rows)
-    bar_bit = f"官方 {html_escape(str(bar_date or ''))}"
-    try:
-        if bar_low is not None and bar_high is not None:
-            bar_bit += (
-                f" 加權高低 {html_escape(_level_face(float(bar_low)))}"
-                f"–{html_escape(_level_face(float(bar_high)))}"
-            )
-    except (TypeError, ValueError):
-        pass
-    bar_bit += f" 碰到他自己點的 {html_escape(lv)}"
-    if note:
-        bar_bit += f"（{html_escape(str(note))}）"
-    close_bit = _close_vs_level(bar_close, level)
-    bits = [
-        "<b>飆大急推·官方碰到已點位</b>",
-        bar_bit + ("；" + html_escape(close_bit) if close_bit else ""),
-    ]
-    oral = _oral_level_thesis(essence, lv)
-    if oral:
-        bits.append("中心思想：" + html_escape(oral))
-    elif essence:
-        bits.append("判斷：" + html_escape(essence))
-    else:
-        bits.append("判斷：柱已碰到他點過的這位；近窗沒抽出更細立場。")
-    n = len(rows)
-    if n > 1:
-        bits.append(f"同點另有 {n - 1} 則已併入，不逐則貼舊文。")
-    bits.append("對原文用。不准補新價。圖隨近窗改口重畫，不准鎖死舊ABC。")
-    return "\n".join(bits)
+    oral = _oral_level_thesis(essence, lv) if essence else ""
+    # 話筒優先近窗原句（較像人話）；沒有再走模板
+    read_now = essence or oral or ""
+    logger.info(
+        "level_hit_plain level=%s bar=%s close=%s hi=%s lo=%s",
+        lv,
+        bar_date,
+        bar_close,
+        bar_high,
+        bar_low,
+    )
+    return _plain_level_hit_body(
+        faces=[lv],
+        bar_date=bar_date,
+        bar_high=bar_high,
+        bar_low=bar_low,
+        bar_close=bar_close,
+        levels_for_side=[float(level)],
+        read_now=read_now,
+    )
 
 
 def format_multi_level_hit_synthesis(
@@ -793,10 +951,10 @@ def format_multi_level_hit_synthesis(
     bar_low: Optional[float],
     bar_close: Optional[float],
 ) -> str:
-    """同根官方柱碰到多個已點位 → 一則列出各位＋之上／之下，只留一句中心思想。
+    """同根官方柱碰到多個已點位 → 真正一句人話；不准列完整關卡進話筒。
 
     levels 每項：{"level": float, "sources": [...], "note": str?}
-    單一位仍走 format_level_hit_synthesis。
+    單一位仍走 format_level_hit_synthesis。詳細關卡打 log。
     """
     rows = [dict(x) for x in (levels or []) if x and x.get("level") is not None]
     if not rows:
@@ -814,68 +972,26 @@ def format_multi_level_hit_synthesis(
         )
     rows.sort(key=lambda r: float(r["level"]))
     faces = [_level_face(float(r["level"])) for r in rows]
-    bar_bit = f"官方 {html_escape(str(bar_date or ''))}"
-    try:
-        if bar_low is not None and bar_high is not None:
-            bar_bit += (
-                f" 加權高低 {html_escape(_level_face(float(bar_low)))}"
-                f"–{html_escape(_level_face(float(bar_high)))}"
-            )
-    except (TypeError, ValueError):
-        pass
-    bar_bit += (
-        f" 一次碰到他自己點的 "
-        + "／".join(html_escape(f) for f in faces)
+    lv_nums = [float(r["level"]) for r in rows]
+    read_now = _pick_level_thesis(rows)
+    # 多關：話筒不要塞完整清單；完整關卡只留 log
+    logger.info(
+        "multi_level_hit_plain bar=%s close=%s hi=%s lo=%s levels=%s",
+        bar_date,
+        bar_close,
+        bar_high,
+        bar_low,
+        "／".join(faces),
     )
-    bits = [
-        "<b>飆大急推·官方碰到已點位</b>",
-        bar_bit,
-    ]
-    for r in rows:
-        lv = float(r["level"])
-        face = _level_face(lv)
-        close_bit = _close_vs_level(bar_close, lv)
-        line = html_escape(face)
-        if close_bit:
-            line += "：" + html_escape(close_bit)
-        note = str(r.get("note") or "").strip()
-        if note:
-            line += f"（{html_escape(note)}）"
-        bits.append(line)
-    # 中心思想：最近點位來源優先（日期時間最大）
-    thesis_candidates: List[Tuple[str, str, str, float]] = []
-    for r in rows:
-        lv = float(r["level"])
-        srcs = [dict(s) for s in (r.get("sources") or []) if s]
-        srcs.sort(
-            key=lambda s: (str(s.get("date") or ""), str(s.get("time") or "")),
-            reverse=True,
-        )
-        if not srcs:
-            continue
-        top = srcs[0]
-        essence = _sources_essence(lv, srcs)
-        oral = _oral_level_thesis(essence, _level_face(lv)) if essence else ""
-        thesis_candidates.append(
-            (
-                str(top.get("date") or ""),
-                str(top.get("time") or ""),
-                oral or essence,
-                lv,
-            )
-        )
-    thesis_candidates.sort(key=lambda t: (t[0], t[1]), reverse=True)
-    if thesis_candidates and thesis_candidates[0][2]:
-        bits.append("中心思想：" + html_escape(thesis_candidates[0][2]))
-    else:
-        bits.append(
-            "判斷：同根柱一次碰到多個他點過的位；近窗沒抽出更細立場。"
-        )
-    bits.append(
-        f"共 {len(rows)} 個已點位併成一則，不拆泡泡。對原文用。不准補新價。"
-        "圖隨近窗改口重畫，不准鎖死舊ABC。"
+    return _plain_level_hit_body(
+        faces=faces,
+        bar_date=bar_date,
+        bar_high=bar_high,
+        bar_low=bar_low,
+        bar_close=bar_close,
+        levels_for_side=lv_nums,
+        read_now=read_now,
     )
-    return "\n".join(bits)
 
 
 def _oral_level_thesis(essence: str, level_face: str) -> str:
@@ -1188,11 +1304,11 @@ def maybe_push_marked_level_hits(
     *,
     now: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """官方已收柱碰到他已點過的大盤位 → 同根柱／同日併成一則推播。
+    """官方已收柱碰到他已點過的大盤位 → 同根柱／同日併成一則白話推播。
 
     未收盤不當收。一般新文不走這條。不准逐則堆幾月幾號舊文。
-    同根柱一次碰到多個已點位 → 一則列出各位（之上／之下）＋一句中心思想，
-    不准拆成 N 個近重複泡泡（2026-10-12 49226／49333／49240 三泡教訓）。
+    同根柱一次碰到多個已點位 → 國中生一句（標題「飆大提醒·大盤碰到關卡」）；
+    不准關卡串／收點串／之上之下表／機器規則句上話筒（2026-10-13 教訓）。
     每位仍記 (level, bar_date) 鍵，之後別日碰到同一位仍可再推。
     """
     stats = {"checked": 0, "pushed": 0, "skipped": 0, "levels": 0}
