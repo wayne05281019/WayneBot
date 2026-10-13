@@ -30,7 +30,7 @@
 # 海選 06:30 寄給偉權與哥哥（兩人已在白名單）；12:45 只比剛離零＋還在零開盤／現價。盤後 16:30 只融合；20:00 不寄。
 # 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
 # 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR；收盤後再看盤後（ADR／那指期續勢）。
-# 盤中期貨不看。大跌會在 06:30 海選前先單獨通知。逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
+# 盤中期貨不看。大跌併入 06:30 早報彙整開頭，不另寄。逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
 # 證交所 13:30 收、盤後到 14:30；櫃買 15:00 收。兩邊絕大多數收盤最慢 16:30 齊，所以抓數排 16:30。
 # 16:30 前不把「今天」寫進庫；開機只補已經收完的交易日。
 # Render 免費碟會在每次 Deploy 重抓 GitHub Release zip；啟動後會再跑一次
@@ -987,11 +987,31 @@ class MainRunner:
             return True
         return str(screening.get("status") or "") in ("success", "empty")
 
-    def _push_screening(self, screening: Optional[Dict[str, Any]], as_of: str = "") -> bool:
+    def _push_screening(
+        self,
+        screening: Optional[Dict[str, Any]],
+        as_of: str = "",
+        *,
+        morning_digest: bool = False,
+        us_snap: Optional[Dict[str, Any]] = None,
+        pipeline_run_date: str = "",
+    ) -> bool:
         """寄出海選本文。回傳是否每個收件人都被 Telegram 接受。
 
         算出名單 ≠ 已寄到。401／空 token 必須回 False，否則 skip_if_done 會把失敗當成已完成。
+        morning_digest：06:30 把提醒＋大盤＋加權研究併入海選第一則，不再另寄加權研究。
         """
+        if morning_digest and screening:
+            try:
+                from morning_digest import apply_morning_opening_to_screening, build_morning_opening_html
+
+                opening = build_morning_opening_html(
+                    self.db_path, as_of or "", screening, us_snap=us_snap
+                )
+                if opening:
+                    screening = apply_morning_opening_to_screening(screening, opening)
+            except Exception as e:
+                logger.warning("早報彙整開頭略過：%s", e)
         delivered = self._screening_delivered(screening)
         ids = self._family_chat_ids()
         logger.info("海選收件人數 %d（payload=%s）", len(ids), "有" if delivered else "無")
@@ -1031,36 +1051,20 @@ class MainRunner:
         if not sent_ok:
             logger.error("早上海選已算出但 Telegram 沒送到，附帶區塊也不寄")
             return False
+        pkey = str(pipeline_run_date or "").strip()
+        if morning_digest and pkey:
+            # 海選＋彙整已送出即標 success，避免長掃期間 watchdog 06:55 誤報 running。
+            self._mark_pipeline("success", "morning-digest", run_date=pkey)
         extra_bits = []
-        try:
-            from taiwan_market import format_taiwan_market_brief_html
-
-            mkt = format_taiwan_market_brief_html(self.db_path, as_of or "")
-            if mkt and (screening or {}).get("message") and mkt not in (screening or {}).get("message", ""):
-                extra_bits.insert(0, mkt)
-        except Exception:
-            pass
-        try:
-            from screen_review import adapt_bucket_weights, score_ai_fills, score_screen_picks
-            from taiwan_market import analyze_taiwan_market
-
-            score_screen_picks(self.db_path, as_of or "")
-            score_ai_fills(self.db_path, as_of or "")
+        if not morning_digest:
             try:
-                from judge_tape import score_live_judges, snapshot_button_lists
+                from taiwan_market import format_taiwan_market_brief_html
 
-                snapshot_button_lists(self.db_path, as_of or "")
-                score_live_judges(self.db_path, as_of or "")
+                mkt = format_taiwan_market_brief_html(self.db_path, as_of or "")
+                if mkt and (screening or {}).get("message") and mkt not in (screening or {}).get("message", ""):
+                    extra_bits.insert(0, mkt)
             except Exception:
                 pass
-            snap = analyze_taiwan_market(self.db_path, as_of or "")
-            adapt_bucket_weights(
-                self.db_path,
-                regime=snap.get("regime") if snap.get("ok") else None,
-                regime_plus=snap.get("regime_plus") if snap.get("ok") else None,
-            )
-        except Exception as e:
-            logger.warning("海選復盤略過：%s", e)
         try:
             from money_flow import format_sector_rotation_html
 
@@ -1094,6 +1098,27 @@ class MainRunner:
                     self._send_screening_extra(html, chat_id=cid)
                 if radar:
                     self._send_screening_extra(radar, chat_id=cid)
+        try:
+            from screen_review import adapt_bucket_weights, score_ai_fills, score_screen_picks
+            from taiwan_market import analyze_taiwan_market
+
+            score_screen_picks(self.db_path, as_of or "")
+            score_ai_fills(self.db_path, as_of or "")
+            try:
+                from judge_tape import score_live_judges, snapshot_button_lists
+
+                snapshot_button_lists(self.db_path, as_of or "")
+                score_live_judges(self.db_path, as_of or "")
+            except Exception:
+                pass
+            snap = analyze_taiwan_market(self.db_path, as_of or "")
+            adapt_bucket_weights(
+                self.db_path,
+                regime=snap.get("regime") if snap.get("ok") else None,
+                regime_plus=snap.get("regime_plus") if snap.get("ok") else None,
+            )
+        except Exception as e:
+            logger.warning("海選復盤略過：%s", e)
         self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=False)
         return True
 
@@ -1619,20 +1644,18 @@ class MainRunner:
             logger.info("今早補台指期外資未平倉：%s", foi)
         except Exception as e:
             logger.warning("今早台指期外資未平倉略過：%s", e)
+        us_snap: Dict[str, Any] = {}
         try:
-            from us_overnight import (
-                format_us_drop_alert,
-                refresh_us_overnight,
-                should_alert_us_drop,
-            )
+            from us_overnight import refresh_us_overnight, should_alert_us_drop
 
             us_snap = refresh_us_overnight(self.db_path, as_of) or {}
             if should_alert_us_drop(us_snap):
-                logger.info("美股收盤偏弱，先寄一早通知 regime=%s", us_snap.get("regime"))
-                if notify:
-                    self._broadcast_family(format_us_drop_alert(us_snap))
+                logger.info(
+                    "美股收盤偏弱，併入 06:30 早報彙整（不另寄一早提醒） regime=%s",
+                    us_snap.get("regime"),
+                )
         except Exception as e:
-            logger.warning("美股大跌通知略過：%s", e)
+            logger.warning("美股隔夜略過：%s", e)
         screening = None
         if run_full_screening:
             try:
@@ -1643,7 +1666,15 @@ class MainRunner:
                 logger.error("四大選股失敗: %s", e, exc_info=True)
         sent_ok = True
         if notify:
-            sent_ok = bool(self._push_screening(screening, as_of=as_of))
+            sent_ok = bool(
+                self._push_screening(
+                    screening,
+                    as_of=as_of,
+                    morning_digest=True,
+                    us_snap=us_snap or None,
+                    pipeline_run_date=key,
+                )
+            )
         else:
             logger.info("早上海選不寄 Telegram（notify=0），只寫快照")
             if self._screening_delivered(screening):

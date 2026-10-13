@@ -171,6 +171,31 @@ def polling_alive(db_path: str, *, now: Optional[datetime] = None) -> Optional[b
     return age <= _POLLING_STALE_SECONDS
 
 
+def _stamp_age_seconds_taipei(raw: str, *, now: Optional[datetime] = None) -> Optional[float]:
+    """pipeline finished_at 距今秒數（台北對比）。"""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+
+    tw = ZoneInfo("Asia/Taipei")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    ref = now or taipei_now()
+    if getattr(ref, "tzinfo", None) is None:
+        ref = ref.replace(tzinfo=tw)
+    else:
+        ref = ref.astimezone(tw)
+    return max(0.0, (ref - dt.astimezone(tw)).total_seconds())
+
+
 def _pipeline_status(db_path: str, run_date: str) -> str:
     path = str(db_path or "").strip()
     if not path or not os.path.isfile(path):
@@ -297,6 +322,15 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
         status = _pipeline_status(db_path, run_key)
         if status == "success":
             continue
+        if kind == "morning_screen" and status == "running":
+            row = _pipeline_rows(db_path, [run_key]).get(run_key) or {}
+            notes = str(row.get("notes") or "")
+            fin = str(row.get("finished_at") or "")
+            if "morning" in notes and fin:
+                age = _stamp_age_seconds_taipei(fin, now=ref)
+                # 06:30 海選長掃＋附帶：running 兩小時內不當漏寄（修 06:55 誤報）。
+                if age is not None and age < 7200:
+                    continue
         if kind == "increment":
             try:
                 from import_health import latest_complete_quote_date
