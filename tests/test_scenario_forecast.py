@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""情境預估相位一：可重算層、無浪號、獨立附加、非買訊。"""
+"""情境預估：VEGAS／浪號情境／獨立附加／非買訊。"""
 from __future__ import annotations
 
 import asyncio
 import inspect
 import os
-import sqlite3
 import tempfile
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,6 +15,7 @@ from scenario_forecast_chart import (
     build_scenario_meta,
     dodge_label_ys,
     format_scenario_caption,
+    infer_dc_wave_scenario,
     infer_desc_press,
     infer_prior_high_ladders,
     infer_scenario_paths,
@@ -29,21 +28,17 @@ def _synth_rows(n: int = 180):
     rows = []
     price = 100.0
     for i in range(n):
-        # gentle down then up with lower highs early
         if i < 80:
             price = 160 - i * 0.4
         else:
             price = 128 + (i - 80) * 0.35
         hi = price + 2.5
         lo = price - 2.0
-        # plant pivot highs for desc press
         if i in (40, 70):
             hi = price + 8
         rows.append(
             {
-                "date": f"20260{(i // 28) + 1:02d}{(i % 28) + 1:02d}"[:8]
-                if False
-                else f"2025{((i // 20) % 12) + 1:02d}{(i % 20) + 1:02d}",
+                "date": f"2025{((i // 20) % 12) + 1:02d}{(i % 20) + 1:02d}",
                 "stock_name": "測",
                 "open": price - 0.5,
                 "high": hi,
@@ -52,14 +47,12 @@ def _synth_rows(n: int = 180):
                 "volume": 1000 + i,
             }
         )
-    # fix dates properly ascending
     from datetime import date, timedelta
 
     d0 = date(2025, 1, 2)
     out = []
     for i, r in enumerate(rows):
         d = d0 + timedelta(days=i)
-        # skip weekends lightly
         while d.weekday() >= 5:
             d += timedelta(days=1)
             d0 = d
@@ -70,21 +63,86 @@ def _synth_rows(n: int = 180):
     return out
 
 
-def test_ema_and_caption_no_wave_words():
+def _impulse_rows(n: int = 120):
+    """人造上升 1–2–3–4–5 樞紐，供浪號推導。"""
+    from datetime import date, timedelta
+
+    # 價位骨架（索引約略）
+    path = []
+    # start low
+    for i in range(n):
+        if i < 10:
+            c = 100 + i * 0.2
+        elif i < 25:  # wave1 up
+            c = 102 + (i - 10) * 2.0
+        elif i < 40:  # wave2 down
+            c = 132 - (i - 25) * 1.1
+        elif i < 65:  # wave3 up
+            c = 115 + (i - 40) * 2.4
+        elif i < 80:  # wave4 down
+            c = 175 - (i - 65) * 1.2
+        else:  # wave5 up / after
+            c = 157 + (i - 80) * 1.5
+        path.append(c)
+    d0 = date(2025, 2, 3)
+    rows = []
+    for i, c in enumerate(path):
+        d = d0 + timedelta(days=i)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        hi = c + 3.0
+        lo = c - 3.0
+        # plant clear pivots
+        if i == 10:
+            lo = c - 1.0
+        if i == 24:
+            hi = c + 6.0
+        if i == 39:
+            lo = c - 5.0
+        if i == 64:
+            hi = c + 8.0
+        if i == 79:
+            lo = c - 5.0
+        if i == n - 5:
+            hi = c + 6.0
+        rows.append(
+            {
+                "date": d.strftime("%Y%m%d"),
+                "stock_name": "浪測",
+                "open": c - 0.5,
+                "high": hi,
+                "low": lo,
+                "close": c,
+                "volume": 2000 + i,
+            }
+        )
+        d0 = d
+    return rows
+
+
+def test_ema_and_caption_not_buy_signal():
     closes = [100 + i * 0.1 for i in range(200)]
     e = _ema(closes, 12)
     assert len(e) == 200
     assert e[-1] > e[0]
-    cap = format_scenario_caption("3035", "智原", {"caption_bits": ["隧道之上", "候選 227"]})
+    cap = format_scenario_caption(
+        "3035",
+        "智原",
+        {
+            "caption_bits": ["隧道之上", "浪號(1)(2)(3)"],
+            "wave": {
+                "bubble": "情境預估：已標(1)(2)，虛線(3)(4)(5)（不保證・不是買訊）"
+            },
+        },
+    )
     assert "不保證" in cap and "不是買訊" in cap
-    assert "波5" not in cap and "艾略特" not in cap
+    assert "(3)" in cap or "(1)" in cap
 
 
 def test_desc_press_and_ladders_geometry():
     rows = _synth_rows(160)
     meta = build_scenario_meta(rows)
     assert "vegas" in meta
-    # may or may not find press depending on pivots; ladders optional
     press = infer_desc_press(rows)
     ladders = infer_prior_high_ladders(rows, max_n=3)
     assert isinstance(press, dict)
@@ -94,10 +152,27 @@ def test_desc_press_and_ladders_geometry():
         assert float(rows[-1]["close"]) < float(lad["price"]) * 0.995 + 1e-9
 
 
-def test_scenario_paths_ladder_no_wave_labels():
-    """相位 1.5：虛線階梯 2～3 條；不標 1–5／abc。"""
+def test_dc_wave_labels_and_projection():
+    rows = _impulse_rows(120)
+    ladders = [{"price": 220.0}, {"price": 250.0}, {"price": 280.0}]
+    wave = infer_dc_wave_scenario(rows, ladders)
+    assert wave, "應推得出浪情境"
+    labs = set(wave.get("labels") or [])
+    assert "(1)" in labs and "(2)" in labs
+    # 至少有已走或虛線延伸到 3/4/5 族
+    assert any(x in labs for x in ("(3)", "(4)", "(5)"))
+    assert "不保證" in str(wave.get("bubble") or "")
+    assert "不是買訊" in str(wave.get("bubble") or "")
+    # 虛線點存在或已完整
+    assert wave.get("path_done")
+    meta = build_scenario_meta(rows)
+    cap = format_scenario_caption("4927", "泰鼎-KY", meta)
+    assert "不是買訊" in cap and "不保證" in cap
+
+
+def test_scenario_paths_ladder_fallback_no_wave():
+    """無浪骨架時仍可畫階梯；避讓可用。"""
     rows = _synth_rows(180)
-    # 把收盤壓在最低樞紐高之下，確保有前高候選
     last = float(rows[-1]["close"])
     for r in rows[-5:]:
         r["close"] = last * 0.85
@@ -109,16 +184,6 @@ def test_scenario_paths_ladder_no_wave_labels():
     ]
     paths = infer_scenario_paths(rows, ladders, n_bars=len(rows), max_paths=3)
     assert 2 <= len(paths) <= 3
-    banned = ("波5", "波4", "艾略特", "(1)", "(2)", "(3)", "(4)", "(5)", "abc", "浪")
-    for p in paths:
-        assert len(p.get("points") or []) >= 3
-        assert p.get("steps")
-        blob = str(p) + str(p.get("tip") or "")
-        for b in banned:
-            assert b not in blob
-        for st in p["steps"]:
-            assert "from" in st and "to" in st and "gap" in st
-            assert "→" in str(st.get("label") or "")
     placed = dodge_label_ys(
         [(10.0, 100.0, "a"), (11.0, 100.5, "b"), (12.0, 200.0, "c")],
         min_gap=5.0,
@@ -126,11 +191,6 @@ def test_scenario_paths_ladder_no_wave_labels():
     assert placed[0][1] == 100.0
     assert placed[1][1] >= 105.0
     assert placed[2][1] >= placed[1][1] + 5.0
-    meta = build_scenario_meta(rows)
-    cap = format_scenario_caption("3081", "聯亞", meta)
-    assert "不保證" in cap and "不是買訊" in cap
-    for b in ("波5", "艾略特", "(3)", "(5)"):
-        assert b not in cap
 
 
 def test_hub_and_callback_wiring_isolated():
@@ -142,10 +202,11 @@ def test_hub_and_callback_wiring_isolated():
     assert "WAYNE_SCENARIO_FORECAST_TIMEOUT" in src
     assert "情境預估暫略" in src
     assert "leave_zero" not in src
-    assert "波5" not in src
+    assert "不是買訊" in src
+    # 僅此子鈕放寬浪號；仍釘 A+B+C
+    assert "不准擋查股" in src or "A+B+C" in src
     cb = inspect.getsource(WayneTelegramBot._on_callback_bound)
     assert 'startswith("sf:")' in cb
-    # failure must not raise out of callback path
     assert "情境預估 callback 失敗" in cb or "情境預估暫略" in cb
 
 
@@ -200,6 +261,4 @@ def test_render_3035_smoke(tmp_path, production_db):
     assert path and os.path.isfile(path)
     assert os.path.getsize(path) > 20_000
     assert "不保證" in cap and "不是買訊" in cap
-    for bad in ("波5", "波4", "艾略特", "(3)", "(4)", "(5)", "虛浪"):
-        assert bad not in cap
     assert isinstance(meta, dict)

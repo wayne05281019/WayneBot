@@ -8054,9 +8054,10 @@ class WayneTelegramBot:
                 await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
 
     async def _send_scenario_forecast(self, message, code: str, uid: str = ""):
-        """查股圖下「情境預估」：獨立附加 VEGAS／下降壓／前高＋虛線情境階梯。
+        """查股圖下「情境預估」：VEGAS／下降壓／前高＋樞紐浪號／虛線(3)(4)(5)。
 
-        非買訊、不准數浪／艾略特。短逾時；失敗只回暫略，不准擋查股四張／主選單。
+        永遠不是買訊。僅此子鈕可標浪情境（其他鈕仍守 §12）。短逾時；
+        失敗只回暫略，不准擋查股四張／主選單（A+B+C）。
         """
         code = str(code or "").strip()
         uid = uid or self._uid_from_message(message)
@@ -8068,7 +8069,7 @@ class WayneTelegramBot:
             text_fn=lambda s: self._wait_bubble(
                 "情境預估進行中",
                 s,
-                now="隧道／下降壓／前高候選",
+                now="隧道／浪號／虛線路徑",
                 rest="不保證・不是買訊",
                 fill_sec=35.0,
             ),
