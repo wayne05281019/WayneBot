@@ -2389,9 +2389,13 @@ class WayneTelegramBot:
         nav_k = [InlineKeyboardButton("高低導航圖", callback_data=f"g:{c}")]
         if k_url:
             nav_k.append(InlineKeyboardButton("K線", url=k_url))
+        # 情境預估＝獨立附加（非買訊）；失敗不擋查股。兩人同一套。
+        scenario_row = [
+            InlineKeyboardButton("情境預估", callback_data=f"sf:{c}"),
+        ]
         if em:
             # 興櫃介紹卡已含月營收／折線／毛利EPS，不再放「產業」鈕（上市櫃仍有）
-            return InlineKeyboardMarkup([nav_k[:3], actions])
+            return InlineKeyboardMarkup([nav_k[:3], scenario_row, actions])
         etf = False
         try:
             from universe import is_etf_asset
@@ -2406,12 +2410,12 @@ class WayneTelegramBot:
         if not etf:
             listed.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
         if len(top) >= 2:
-            return InlineKeyboardMarkup([top, listed, nav_k[:3], actions])
+            return InlineKeyboardMarkup([top, listed, nav_k[:3], scenario_row, actions])
         row1 = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
         if not etf:
             row1.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
         row1.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
-        return InlineKeyboardMarkup([row1, nav_k[:3], actions])
+        return InlineKeyboardMarkup([row1, nav_k[:3], scenario_row, actions])
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -8049,6 +8053,86 @@ class WayneTelegramBot:
             if not lookup_faded:
                 await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
 
+    async def _send_scenario_forecast(self, message, code: str, uid: str = ""):
+        """查股圖下「情境預估」：獨立附加 VEGAS／下降壓／前高＋虛線情境階梯。
+
+        非買訊、不准數浪／艾略特。短逾時；失敗只回暫略，不准擋查股四張／主選單。
+        """
+        code = str(code or "").strip()
+        uid = uid or self._uid_from_message(message)
+        hits = lookup_stocks(self.db_path, code)
+        hub = self._hub_keyboard(code, em=self._hit_is_emerging(code, hits))
+        # 立刻進度文案（對 C 長沉默）
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble(
+                "情境預估進行中",
+                s,
+                now="隧道／下降壓／前高候選",
+                rest="不保證・不是買訊",
+                fill_sec=35.0,
+            ),
+        )
+        # 短逾時：不准拖垮 Render（對 A）
+        _sf_timeout = float(os.getenv("WAYNE_SCENARIO_FORECAST_TIMEOUT", "45"))
+        path = ""
+        cap = "情境預估暫略。不是買訊。"
+        meta: dict = {}
+        try:
+            from wayne_navigator import submit_mpl_paint
+            from scenario_forecast_chart import render_scenario_forecast
+
+            out = self._scratch_chart_path(self.charts_dir, code, "scenario", uid)
+
+            def _render():
+                return render_scenario_forecast(code, self.db_path, out)
+
+            path, cap, meta = await asyncio.wait_for(
+                asyncio.wrap_future(submit_mpl_paint(_render)),
+                timeout=max(12.0, _sf_timeout),
+            )
+        except asyncio.TimeoutError:
+            path = ""
+            cap = "情境預估暫略（逾時）。不是買訊。"
+            logger.warning("情境預估逾時 code=%s", code)
+        except Exception:
+            path = ""
+            cap = "情境預估暫略。不是買訊。"
+            logger.exception("情境預估失敗 code=%s", code)
+        try:
+            # 靜默落檔（按了才記；失敗不擋送圖／主選單）
+            try:
+                from button_silent_verify import snapshot_scenario_forecast
+
+                snapshot_scenario_forecast(
+                    self.db_path, code, meta if isinstance(meta, dict) else {}
+                )
+            except Exception:
+                pass
+            if path and self._png_looks_ok(path, min_bytes=18_000, min_w=400, min_h=400):
+                send_path = self._prepare_lookup_album_photo(path, "scenario")
+                ok = await self._reply_lookup_photo(
+                    message,
+                    send_path,
+                    caption=str(cap or "情境預估（不保證・不是買訊）")[:900],
+                    markup=hub,
+                    kind="scenario",
+                    code=code,
+                    raw_fallback_path=path,
+                )
+                if not ok:
+                    await message.reply_text(str(cap or "情境預估暫略。不是買訊。"), reply_markup=hub)
+            else:
+                await message.reply_text(str(cap or "情境預估暫略。不是買訊。"), reply_markup=hub)
+        except Exception:
+            logger.exception("情境預估送出失敗 code=%s", code)
+            try:
+                await message.reply_text("情境預估暫略。不是買訊。", reply_markup=hub)
+            except Exception:
+                pass
+        finally:
+            await self._stop_plain_wait(*wait_h)
+
     async def _send_navigation_chart(self, message, code: str, uid: str = ""):
         """按需產 180 日高低導航（重用剛查過的 _ohlc，免重跑決策卡）。"""
         code = str(code or "").strip()
@@ -9220,6 +9304,21 @@ class WayneTelegramBot:
         if data.startswith("g:"):
             uid = str(q.from_user.id)
             await self._send_navigation_chart(q.message, data[2:].strip(), uid)
+            return
+        if data.startswith("sf:"):
+            # 情境預估：獨立附加；失敗只回暫略，不准擋查股／主選單
+            uid = str(q.from_user.id)
+            try:
+                await self._send_scenario_forecast(q.message, data[3:].strip(), uid)
+            except Exception:
+                logger.exception("情境預估 callback 失敗")
+                try:
+                    await q.message.reply_text(
+                        "情境預估暫略。不是買訊。",
+                        reply_markup=self._keyboard(),
+                    )
+                except Exception:
+                    pass
             return
         if data.startswith("d:") or data.startswith("r:"):
             uid = str(q.from_user.id)

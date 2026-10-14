@@ -90,6 +90,7 @@ def test_catalog_covers_full_keyboard():
         "洞燭先機",
         "記買入",
         "查股",
+        "情境預估",
     }
     assert want <= names
     cov = coverage_counts()

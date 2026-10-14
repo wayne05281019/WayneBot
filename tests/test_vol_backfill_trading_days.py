@@ -521,7 +521,8 @@ def test_chart_window_no_missing_vol_when_official_has_data():
     # 仍缺且官方有資料時不准過（still_missing 應空或僅網路失敗）
     holes = missing_open_quote_days("3081", db, start, end)
     invent_holes = [d for d in holes if d not in absent]
-    assert invent_holes == [] or invent_holes == list(still), (
+    # 畫窗 invent 洞 ⊆ still_missing（網路失敗／未補完）；still 可含 ensure 窗外日，不准 list 比序
+    assert set(invent_holes) <= still, (
         invent_holes,
         still,
         stats,
