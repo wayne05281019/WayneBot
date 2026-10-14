@@ -8054,9 +8054,9 @@ class WayneTelegramBot:
                 await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
 
     async def _send_scenario_forecast(self, message, code: str, uid: str = ""):
-        """查股圖下「情境預估」：獨立附加 VEGAS／下降壓／前高候選。
+        """查股圖下「情境預估」：獨立附加 VEGAS／下降壓／前高＋虛線情境階梯。
 
-        非買訊、不准浪號。短逾時；失敗只回暫略，不准擋查股四張／主選單。
+        非買訊、不准數浪／艾略特。短逾時；失敗只回暫略，不准擋查股四張／主選單。
         """
         code = str(code or "").strip()
         uid = uid or self._uid_from_message(message)

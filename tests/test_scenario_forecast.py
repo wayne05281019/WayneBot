@@ -15,9 +15,11 @@ import pytest
 from bot_servers import WayneTelegramBot
 from scenario_forecast_chart import (
     build_scenario_meta,
+    dodge_label_ys,
     format_scenario_caption,
     infer_desc_press,
     infer_prior_high_ladders,
+    infer_scenario_paths,
     render_scenario_forecast,
     _ema,
 )
@@ -90,6 +92,45 @@ def test_desc_press_and_ladders_geometry():
     assert len(ladders) <= 3
     for lad in ladders:
         assert float(rows[-1]["close"]) < float(lad["price"]) * 0.995 + 1e-9
+
+
+def test_scenario_paths_ladder_no_wave_labels():
+    """相位 1.5：虛線階梯 2～3 條；不標 1–5／abc。"""
+    rows = _synth_rows(180)
+    # 把收盤壓在最低樞紐高之下，確保有前高候選
+    last = float(rows[-1]["close"])
+    for r in rows[-5:]:
+        r["close"] = last * 0.85
+        r["high"] = max(r["high"], last * 0.86)
+    ladders = [
+        {"price": last * 1.05},
+        {"price": last * 1.12},
+        {"price": last * 1.20},
+    ]
+    paths = infer_scenario_paths(rows, ladders, n_bars=len(rows), max_paths=3)
+    assert 2 <= len(paths) <= 3
+    banned = ("波5", "波4", "艾略特", "(1)", "(2)", "(3)", "(4)", "(5)", "abc", "浪")
+    for p in paths:
+        assert len(p.get("points") or []) >= 3
+        assert p.get("steps")
+        blob = str(p) + str(p.get("tip") or "")
+        for b in banned:
+            assert b not in blob
+        for st in p["steps"]:
+            assert "from" in st and "to" in st and "gap" in st
+            assert "→" in str(st.get("label") or "")
+    placed = dodge_label_ys(
+        [(10.0, 100.0, "a"), (11.0, 100.5, "b"), (12.0, 200.0, "c")],
+        min_gap=5.0,
+    )
+    assert placed[0][1] == 100.0
+    assert placed[1][1] >= 105.0
+    assert placed[2][1] >= placed[1][1] + 5.0
+    meta = build_scenario_meta(rows)
+    cap = format_scenario_caption("3081", "聯亞", meta)
+    assert "不保證" in cap and "不是買訊" in cap
+    for b in ("波5", "艾略特", "(3)", "(5)"):
+        assert b not in cap
 
 
 def test_hub_and_callback_wiring_isolated():
