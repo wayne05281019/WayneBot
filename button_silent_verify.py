@@ -231,6 +231,18 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "note": "靜默對質；near_h20／非 AI 只當對照臂；不准改黃金買點公式",
     },
     {
+        "btn": "勝率大量區再篩",
+        "kinds": ("winrate_volzone_filter",),
+        "class": CLASS_SCREEN,
+        "status": "external",
+        "pipe": (
+            "winrate_volzone_filter_verify current／vz_mid_thin／ma60_rising／"
+            "space_h20／untangle_up／combo_vz_ma60 → night_tick"
+        ),
+        "window": "前瞻 1／3／5／10 日；母體＝勝率買點現況（leave_zero＋exclude＋AI）",
+        "note": "靜默對質；不過閘不改話筒排序／推播；不准改黃金買點公式",
+    },
+    {
         "btn": "AI倉",
         "kinds": ("ai_desk", "ai_desk_winrate", "ai_desk_dip", "ai_buy_reason"),
         "class": CLASS_AI,
