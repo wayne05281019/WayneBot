@@ -170,6 +170,59 @@ def test_dc_wave_labels_and_projection():
     assert "不是買訊" in cap and "不保證" in cap
 
 
+def test_snap_support_band_and_ending_fifth():
+    from scenario_forecast_chart import (
+        _snap_support_band_price,
+        _ending_fifth_band,
+        _retarget_first_equal_peak,
+        _wave_node,
+    )
+
+    # 長下影：釘實體／心理關，不釘 2090
+    rows = [
+        {
+            "date": "20260825",
+            "open": 2180.0,
+            "high": 2210.0,
+            "low": 2090.0,
+            "close": 2195.0,
+        }
+    ]
+    assert _snap_support_band_price(rows, 0, 2090.0) == 2200.0
+    # 無長下影：保留極值
+    rows2 = [
+        {
+            "date": "20260331",
+            "open": 836.0,
+            "high": 855.0,
+            "low": 821.0,
+            "close": 821.0,
+        }
+    ]
+    assert _snap_support_band_price(rows2, 0, 821.0) == 821.0
+    lo, hi = _ending_fifth_band(1450.0)
+    assert abs(lo - 1450.0 * 0.995) < 1e-6
+    assert 1520 <= hi <= 1540
+    # 同價再測：首峰優先
+    work = [
+        {"i": 10, "kind": "H", "price": 1245.0},
+        {"i": 40, "kind": "L", "price": 800.0},
+        {"i": 70, "kind": "H", "price": 1245.0},
+        {"i": 100, "kind": "L", "price": 821.0},
+    ]
+    lows = [700.0] * 120
+    lows[5] = 620.0
+    rows_n = [{"date": f"2025{i:04d}", "low": lows[i]} for i in range(120)]
+    start = {"i": 40.0, "price": 800.0, "kind": "L", "date": "x"}
+    confirmed = [
+        _wave_node("(1)", 70, 1245.0, "H", projected=False, date="0116"),
+        _wave_node("(2)", 100, 821.0, "L", projected=False, date="0331"),
+    ]
+    ns, nc = _retarget_first_equal_peak(work, start, confirmed, lows, rows_n)
+    assert abs(float(nc[0]["i"]) - 10.0) < 0.1
+    assert float(ns["i"]) < 10.0
+
+
 def test_scenario_paths_ladder_fallback_no_wave():
     """無浪骨架時仍可畫階梯；避讓可用。"""
     rows = _synth_rows(180)

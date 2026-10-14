@@ -294,6 +294,152 @@ def _wave_node(
     return node
 
 
+def _snap_support_band_price(
+    rows: Sequence[Dict[str, Any]], i: float, raw_low: float
+) -> float:
+    """(2) 用撐帶敘事：長下影時改釘實體底／心理關，不只釘極值。"""
+    ii = int(round(float(i)))
+    if ii < 0 or ii >= len(rows):
+        return float(raw_low)
+    r = rows[ii]
+    try:
+        o = float(r.get("open") or 0)
+        h = float(r.get("high") or 0)
+        lo = float(r.get("low") or 0)
+        c = float(r.get("close") or 0)
+    except Exception:
+        return float(raw_low)
+    if lo <= 0 or h <= 0:
+        return float(raw_low)
+    body_lo = min(o, c) if o > 0 and c > 0 else lo
+    # 無長下影＝極值就是撐，不改（避免 821→850 誤推）
+    if lo >= body_lo * 0.975:
+        return float(raw_low)
+    px = body_lo
+    # 心理關 50／100：落在影線～實體上緣＋3%
+    span_hi = max(h, body_lo) * 1.03
+    cands: List[float] = []
+    for step in (50.0, 100.0):
+        base = float(int(body_lo / step) * step)
+        for k in range(-2, 5):
+            lv = base + float(k) * step
+            if lo * 0.99 <= lv <= span_hi:
+                cands.append(lv)
+    if cands:
+        above = [x for x in cands if x >= body_lo * 0.98]
+        pool = above or cands
+        px = min(pool, key=lambda x: abs(x - body_lo))
+    return float(max(px, body_lo * 0.995))
+
+
+def _retarget_first_equal_peak(
+    work_zz: Sequence[Dict[str, Any]],
+    start: Dict[str, Any],
+    confirmed: List[Dict[str, Any]],
+    lows: Sequence[float],
+    rows: Sequence[Dict[str, Any]],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """同價再測：年線級 (1) 優先首峰（如 2404 2025-09），不鎖在再測峰。"""
+    w1 = next((c for c in confirmed if c["label"] == "(1)"), None)
+    w2 = next((c for c in confirmed if c["label"] == "(2)"), None)
+    if not w1 or not w2:
+        return start, confirmed
+    earlier = [
+        p
+        for p in work_zz
+        if p.get("kind") == "H"
+        and float(p["i"]) < float(w1["i"]) - 0.5
+        and abs(float(p["price"]) - float(w1["price"]))
+        / max(float(w1["price"]), 1e-9)
+        <= 0.025
+    ]
+    if not earlier:
+        return start, confirmed
+    e1 = min(earlier, key=lambda p: float(p["i"]))
+    if float(w2["i"]) <= float(e1["i"]):
+        return start, confirmed
+    i0 = int(e1["i"])
+    if i0 <= 0:
+        return start, confirmed
+    j = int(min(range(i0), key=lambda k: float(lows[k])))
+    new_start = {
+        "i": float(j),
+        "price": float(lows[j]),
+        "kind": "L",
+        "date": _bar_date(rows, j),
+    }
+    new_conf = [
+        _wave_node(
+            "(1)",
+            e1["i"],
+            e1["price"],
+            "H",
+            projected=False,
+            date=_bar_date(rows, e1["i"]),
+        )
+    ] + [c for c in confirmed if c["label"] != "(1)"]
+    return new_start, new_conf
+
+
+def _ending_fifth_band(src3_price: float) -> Tuple[float, float]:
+    """終端／楔形 (5) 目標帶：貼 (3) 上沿（1450→約 1530）。"""
+    lo = float(src3_price) * 0.995
+    hi = float(src3_price) * 1.055
+    return lo, hi
+
+
+def _wave_desc_press_vb(
+    rows: Sequence[Dict[str, Any]],
+    peak: Dict[str, Any],
+    b_node: Dict[str, Any],
+) -> Dict[str, Any]:
+    """abc 敘事下降壓：(v)→(b) 延伸。"""
+    n = len(rows)
+    i = int(round(float(peak["i"])))
+    j = int(round(float(b_node["i"])))
+    if j - i < 8 or i < 0 or j >= n:
+        return {}
+    y1 = float(peak["price"])
+    y2 = float(b_node["price"])
+    slope = (y2 - y1) / float(j - i)
+    y_now = y2 + slope * (float(n - 1) - float(j))
+    last = float(rows[-1].get("close") or 0)
+    if last > y_now * 1.002:
+        pos = "已過下降壓"
+    elif abs(last - y_now) / max(y_now, 1e-9) < 0.015:
+        pos = "靠近下降壓"
+    else:
+        pos = "下降壓下"
+    return {
+        "i": i,
+        "j": j,
+        "y1": y1,
+        "y2": y2,
+        "d1": str(rows[i].get("date") or ""),
+        "d2": str(rows[j].get("date") or ""),
+        "y_now": float(y_now),
+        "pos": pos,
+        "source": "wave_vb",
+        "tip": (
+            f"下降壓：(v)高{_fmt_px(y1)}～(b)高{_fmt_px(y2)}；現況{pos}。"
+            f"不保證・不是買訊。"
+        ),
+    }
+
+
+def _deadline_after_c(
+    rows: Sequence[Dict[str, Any]], c_i: float, *, bars: int = 18
+) -> Dict[str, Any]:
+    """修正 (c) 後期限豎線（約 18 根≈一個月內條件窗）。"""
+    n = len(rows)
+    ii = min(n - 1, max(0, int(round(float(c_i))) + int(bars)))
+    return {
+        "i": float(ii),
+        "date": str(rows[ii].get("date") or ""),
+        "label": _bar_date(rows, ii),
+    }
+
+
 def infer_dc_wave_scenario(
     rows: Sequence[Dict[str, Any]],
     ladders: Sequence[Dict[str, Any]],
@@ -336,6 +482,10 @@ def infer_dc_wave_scenario(
         next_cycle: Optional[List[Dict[str, Any]]] = None,
         state: str = "",
         bubble: str = "",
+        desc_press: Optional[Dict[str, Any]] = None,
+        deadline: Optional[Dict[str, Any]] = None,
+        zones: Optional[List[Dict[str, Any]]] = None,
+        wedge: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         next_cycle = list(next_cycle or [])
         path_done: List[Tuple[float, float]] = [
@@ -380,6 +530,10 @@ def infer_dc_wave_scenario(
             "state": state,
             "labels": conf_labs + [a["label"] for a in abc] + proj_labs,
             "next_cycle": next_cycle,
+            "desc_press": dict(desc_press or {}),
+            "deadline": dict(deadline or {}),
+            "zones": list(zones or []),
+            "wedge": dict(wedge or {}),
         }
 
     # ----- 候選：大級別衝動 -----
@@ -599,6 +753,31 @@ def infer_dc_wave_scenario(
             )
             for lab, p in zip(("a", "b", "c"), abc_cand["abc_nodes"])
         ]
+        b_node = abc[1] if len(abc) > 1 else None
+        c_node = abc[2] if len(abc) > 2 else None
+        press_vb = (
+            _wave_desc_press_vb(rows, confirmed[0], b_node) if b_node else {}
+        )
+        deadline = (
+            _deadline_after_c(rows, float(c_node["i"]), bars=18) if c_node else {}
+        )
+        zones: List[Dict[str, Any]] = []
+        if c_node:
+            cp = float(c_node["price"])
+            zones.append(
+                {
+                    "lo": cp * 0.97,
+                    "hi": cp * 1.04,
+                    "kind": "ok",
+                    "label": f"滿足 {_fmt_px(cp)}",
+                }
+            )
+        dl_lab = str((deadline or {}).get("label") or "").strip()
+        bubble = (
+            f"情境預估：下降壓(v)–(b)"
+            + (f"；{dl_lab}前站上才轉多敘事" if dl_lab else "")
+            + "（不保證・不是買訊）"
+        )
         return _pack(
             {
                 "i": float(st["i"]),
@@ -610,7 +789,10 @@ def infer_dc_wave_scenario(
             [],
             abc,
             state="abc",
-            bubble="情境預估：(v) 後修正 abc（樞紐重算・不保證・不是買訊）",
+            bubble=bubble,
+            desc_press=press_vb,
+            deadline=deadline,
+            zones=zones,
         )
 
     assert chosen is not None
@@ -622,6 +804,18 @@ def infer_dc_wave_scenario(
         "kind": "L",
         "date": _bar_date(rows, start_p["i"]),
     }
+    # 年線級 (1)：同價再測改釘首峰；起點移到首峰前低
+    start, confirmed = _retarget_first_equal_peak(
+        work, start, confirmed, lows, rows
+    )
+    # (2) 撐帶：長下影不釘極值
+    for idx, node in enumerate(confirmed):
+        if node.get("label") == "(2)" and node.get("kind") == "L":
+            snapped = _snap_support_band_price(
+                rows, float(node["i"]), float(node["price"])
+            )
+            confirmed[idx] = dict(node)
+            confirmed[idx]["price"] = float(snapped)
     amp1 = float(confirmed[0]["price"]) - float(start["price"])
     projected: List[Dict[str, Any]] = []
     have = {c["label"] for c in confirmed}
@@ -630,6 +824,8 @@ def infer_dc_wave_scenario(
     if ladder_lv:
         y_cap = max(y_cap, max(ladder_lv) * 1.05)
     soft_w3 = chosen.get("soft_w3")
+    zones = []
+    wedge: Dict[str, Any] = {}
     if "(3)" not in have:
         y3 = _pick_ladder_above(
             ladder_lv,
@@ -658,6 +854,7 @@ def infer_dc_wave_scenario(
     if "(5)" not in have:
         src3 = next((c for c in confirmed + projected if c["label"] == "(3)"), None)
         src4 = next((c for c in confirmed + projected if c["label"] == "(4)"), None)
+        src2 = next((c for c in confirmed if c["label"] == "(2)"), None)
         if src3 and src4:
             y5 = _pick_ladder_above(
                 ladder_lv,
@@ -667,10 +864,67 @@ def infer_dc_wave_scenario(
             )
             y5 = max(y5, float(src3["price"]) * 1.03)
             y5 = min(y5, y_cap * 1.02)
+            # 已走 (3)(4)：終端楔形 (5) 對齊 (3) 上沿帶（1450–1530）
+            if "(3)" in have and "(4)" in have:
+                blo, bhi = _ending_fifth_band(float(src3["price"]))
+                in_band = [lv for lv in ladder_lv if blo <= float(lv) <= bhi]
+                if in_band:
+                    y5 = float(max(in_band))
+                elif y5 > bhi * 1.01:
+                    y5 = float(bhi)
+                else:
+                    y5 = float(min(max(y5, blo), bhi))
+                zones.append(
+                    {
+                        "lo": float(blo),
+                        "hi": float(bhi),
+                        "kind": "tgt",
+                        "label": f"{_fmt_px(blo)}/{_fmt_px(bhi)}",
+                    }
+                )
             projected.append(
                 _wave_node("(5)", x_now + fut * 0.88, y5, "H", projected=True, date="估")
             )
-    return _pack(start, confirmed, projected, [], state="partial")
+    # 楔形雙軌：上 (1)(3)、下 (2)(4)
+    n1 = next((c for c in confirmed if c["label"] == "(1)"), None)
+    n2 = next((c for c in confirmed if c["label"] == "(2)"), None)
+    n3 = next((c for c in confirmed + projected if c["label"] == "(3)"), None)
+    n4 = next((c for c in confirmed + projected if c["label"] == "(4)"), None)
+    if n1 and n2 and n3 and n4:
+        wedge = {
+            "upper": (
+                float(n1["i"]),
+                float(n1["price"]),
+                float(n3["i"]),
+                float(n3["price"]),
+            ),
+            "lower": (
+                float(n2["i"]),
+                float(n2["price"]),
+                float(n4["i"]),
+                float(n4["price"]),
+            ),
+        }
+    # (2) 撐帶灰區
+    if n2:
+        bp = float(n2["price"])
+        zones.append(
+            {
+                "lo": bp * 0.985,
+                "hi": bp * 1.035,
+                "kind": "sup",
+                "label": f"撐 {_fmt_px(bp)}",
+            }
+        )
+    return _pack(
+        start,
+        confirmed,
+        projected,
+        [],
+        state="partial",
+        zones=zones,
+        wedge=wedge,
+    )
 
 
 
@@ -1202,22 +1456,84 @@ def _paint(
             ax.plot(xs, e676, color=_EMA_SLOW, lw=0.75, zorder=2, alpha=0.8)
 
         x_end = float(n - 1 + _FUTURE)
+        # 浪階自帶下降壓優先於通用樞紐壓
+        if wave.get("desc_press"):
+            press = dict(wave.get("desc_press") or {})
         if press and press.get("i") is not None and press.get("j") is not None:
             i = int(press["i"])
             j = int(press["j"])
             y1 = float(press["y1"])
             y2 = float(press["y2"])
-            if j - i >= 10:
+            if j - i >= 8:
                 slope = (y2 - y1) / float(j - i)
                 y_end = y2 + slope * (x_end - float(j))
                 ax.plot(
                     [float(i), x_end],
                     [y1, y_end],
                     color=_PRESS,
-                    lw=1.25,
+                    lw=1.45,
                     zorder=4,
-                    alpha=0.85,
+                    alpha=0.9,
                 )
+
+        # 滿足／目標／撐帶
+        for z in list(wave.get("zones") or []):
+            try:
+                zlo, zhi = float(z["lo"]), float(z["hi"])
+            except Exception:
+                continue
+            kind = str(z.get("kind") or "sup")
+            col = (
+                _ZONE_TGT
+                if kind == "tgt"
+                else _ZONE_OK
+                if kind == "ok"
+                else _ZONE_SUP
+            )
+            ax.axhspan(zlo, zhi, color=col, alpha=0.20 if kind != "sup" else 0.16, zorder=1)
+
+        # 楔形／平行雙軌（上 (1)(3)・下 (2)(4)）
+        wedge = wave.get("wedge") or {}
+        if wedge.get("upper") and wedge.get("lower"):
+            try:
+                ux0, uy0, ux1, uy1 = [float(x) for x in wedge["upper"]]
+                lx0, ly0, lx1, ly1 = [float(x) for x in wedge["lower"]]
+                us = (uy1 - uy0) / max(ux1 - ux0, 1e-9)
+                ls = (ly1 - ly0) / max(lx1 - lx0, 1e-9)
+                x_w0 = min(ux0, lx0)
+                x_w1 = max(x_end, ux1, lx1)
+                xs_w = np.linspace(x_w0, x_w1, 48)
+                yu = uy0 + us * (xs_w - ux0)
+                yl = ly0 + ls * (xs_w - lx0)
+                ax.plot(xs_w, yu, color=_CHANNEL, lw=1.15, alpha=0.85, zorder=3)
+                ax.plot(xs_w, yl, color=_CHANNEL, lw=1.15, alpha=0.85, zorder=3)
+                ax.fill_between(xs_w, yl, yu, color=_CHANNEL, alpha=0.10, zorder=2)
+            except Exception:
+                pass
+
+        # 期限豎線（abc 條件窗）
+        deadline = wave.get("deadline") or {}
+        if deadline.get("i") is not None:
+            try:
+                dxi = float(deadline["i"])
+                ax.axvline(dxi, color="#546e7a", lw=1.35, ls=(0, (3, 3)), alpha=0.9, zorder=4)
+                axv.axvline(dxi, color="#546e7a", lw=1.1, ls=(0, (3, 3)), alpha=0.85, zorder=4)
+                dlab = str(deadline.get("label") or "").strip()
+                if dlab:
+                    ax.text(
+                        dxi,
+                        0.98,
+                        dlab,
+                        transform=ax.get_xaxis_transform(),
+                        color="#37474f",
+                        fontproperties=_fp(7.2, "bold"),
+                        ha="center",
+                        va="top",
+                        zorder=8,
+                        clip_on=False,
+                    )
+            except Exception:
+                pass
 
         for lad in ladders:
             y = float(lad["price"])
@@ -1324,15 +1640,7 @@ def _paint(
                     color="#212121",
                 )
                 if node.get("kind") == "H":
-                    # 粉紅 pin
-                    ax.plot(
-                        float(node["i"]),
-                        float(node["price"]),
-                        marker="v",
-                        ms=9,
-                        color="#ff4081",
-                        zorder=8,
-                    )
+                    _draw_map_pin(ax, float(node["i"]), float(node["price"]))
                     _draw_price_tag(
                         ax,
                         float(node["i"]) + 0.6,
@@ -1341,6 +1649,21 @@ def _paint(
                         fp=fp_tag,
                         face=_TAG_HOT,
                     )
+            # 右軸區間灰框（目標／滿足帶）
+            for zi, z in enumerate(list(wave.get("zones") or [])):
+                try:
+                    zlo, zhi = float(z["lo"]), float(z["hi"])
+                    mid = 0.5 * (zlo + zhi)
+                    note = str(z.get("label") or _ladder_range_note(mid, zi, 3))
+                    _draw_gray_note(
+                        ax,
+                        x_end - 0.4,
+                        mid,
+                        note,
+                        fp=_fp(6.6, "bold"),
+                    )
+                except Exception:
+                    pass
             for node in list(wave.get("abc") or []):
                 _draw_wave_label(
                     ax,
@@ -1475,6 +1798,7 @@ def _paint(
                 except Exception:
                     pass
         ax.set_xlim(-0.8, x_max)
+        axv.set_xlim(-0.8, x_max)
         # y 含預估高點，但留邊
         y_hi = max(highs)
         y_lo = min(lows)
@@ -1555,6 +1879,8 @@ def render_scenario_forecast(
         ladders = infer_prior_high_ladders(rows, max_n=3)
         press = infer_desc_press(rows)
         wave = infer_dc_wave_scenario(rows, ladders)
+        if wave and wave.get("desc_press"):
+            press = dict(wave.get("desc_press") or {})
         paths = (
             []
             if wave
