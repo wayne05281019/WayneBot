@@ -310,9 +310,19 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "kinds": ("scenario_forecast",),
         "class": CLASS_LOOKUP,
         "status": "gap_filled",
-        "pipe": "button_silent_verify.snapshot_scenario_forecast（查股圖下按了才記）",
-        "window": "按了才記；凍官方柱＋隧道／下降壓／前高候選錨；1／5 對照候選壓（非買訊）",
-        "note": "獨立附加；不是選股、不准發明 5／9、不改黃金買點；失敗不准擋查股",
+        "pipe": (
+            "button_silent_verify.snapshot_scenario_forecast（查股圖下按了才記）；"
+            "dc_scenario_silent_verify.night_tick（台北 02:20／dc_sf_silent；"
+            "與飆大 01:00 錯開、專鎖隔離）"
+        ),
+        "window": (
+            "按了才記＋D.C 前日全文圖文對質（連續 30 日曆日）；"
+            "圖＋說法／文意差異落 dc_sf_*；有差當天改 dc_sf_rules 上話筒"
+        ),
+        "note": (
+            "獨立附加；不是選股、不准發明 5／9、不改黃金買點；"
+            "與飆大軌互不影響；失敗不准擋查股／飆大"
+        ),
     },
 )
 

@@ -297,7 +297,10 @@ def _wave_node(
 def _snap_support_band_price(
     rows: Sequence[Dict[str, Any]], i: float, raw_low: float
 ) -> float:
-    """(2) 用撐帶敘事：長下影時改釘實體底／心理關，不只釘極值。"""
+    """(2) 用撐帶敘事：長下影時改釘實體底／心理關，不只釘極值。
+
+    可讀 dc_sf_rules.support_band（D.C 日對質當天寫入）；讀不到用預設。
+    """
     ii = int(round(float(i)))
     if ii < 0 or ii >= len(rows):
         return float(raw_low)
@@ -311,15 +314,29 @@ def _snap_support_band_price(
         return float(raw_low)
     if lo <= 0 or h <= 0:
         return float(raw_low)
+    wick_ratio = 0.975
+    psych_steps = (50.0, 100.0)
+    try:
+        from dc_scenario_silent_verify import load_rules
+        from config import get_db_path
+
+        sb = (load_rules(str(get_db_path() or "")) or {}).get("support_band") or {}
+        if isinstance(sb, dict):
+            if sb.get("wick_ratio"):
+                wick_ratio = float(sb["wick_ratio"])
+            if sb.get("psych_steps"):
+                psych_steps = tuple(float(x) for x in sb["psych_steps"])
+    except Exception:
+        pass
     body_lo = min(o, c) if o > 0 and c > 0 else lo
     # 無長下影＝極值就是撐，不改（避免 821→850 誤推）
-    if lo >= body_lo * 0.975:
+    if lo >= body_lo * float(wick_ratio):
         return float(raw_low)
     px = body_lo
-    # 心理關 50／100：落在影線～實體上緣＋3%
+    # 心理關：落在影線～實體上緣＋3%
     span_hi = max(h, body_lo) * 1.03
     cands: List[float] = []
-    for step in (50.0, 100.0):
+    for step in psych_steps:
         base = float(int(body_lo / step) * step)
         for k in range(-2, 5):
             lv = base + float(k) * step
@@ -1102,14 +1119,31 @@ def format_scenario_caption(sid: str, name: str, meta: Dict[str, Any]) -> str:
     head = f"{sid}{name}　情境預估（不保證・不是買訊）".strip()
     bits = [str(b) for b in (meta or {}).get("caption_bits") or [] if b]
     wave = (meta or {}).get("wave") or {}
+    # D.C 日對質寫入的說法模板（dc_sf_rules）；讀不到就用預設。不准當買訊。
+    narr_suffix = ""
+    try:
+        from dc_scenario_silent_verify import load_rules
+        from config import get_db_path
+
+        rules = load_rules(str(get_db_path() or ""))
+        tmpl = rules.get("narrative_template") or {}
+        if isinstance(tmpl, dict) and tmpl.get("suffix"):
+            narr_suffix = str(tmpl.get("suffix") or "").strip()
+    except Exception:
+        narr_suffix = ""
     if wave.get("bubble"):
         # 圖說優先用浪情境句；仍硬釘不是買訊
         body = str(wave["bubble"])
+        if narr_suffix and narr_suffix not in body:
+            body = body.rstrip("。") + "；" + narr_suffix
         if "不是買訊" not in body:
             body += "。不是買訊"
         return head + "\n" + body
     if bits:
-        return head + "\n" + "；".join(bits) + "。濾網／候選不是買訊。"
+        extra = f"；{narr_suffix}" if narr_suffix else ""
+        return head + "\n" + "；".join(bits) + extra + "。濾網／候選不是買訊。"
+    if narr_suffix:
+        return head + "\n" + narr_suffix
     return head + "\n隧道／下降壓／浪號情境；不是買訊。"
 
 

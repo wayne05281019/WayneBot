@@ -550,6 +550,8 @@ def catch_up_missed_jobs(now=None) -> None:
         except Exception:
             logger.exception("補跑海選快取失敗（不擋）")
 
+    # D.C 情境預估日對質：台北 02:20 起（含週末）；與飆大 01:00 錯開、失敗不擋
+    need_dc_sf = scheduler_owns("dc_sf_silent") and mins >= (2 * 60 + 20)
     if now.weekday() >= 5:
         # 週末仍補深夜開盤查核（查週一／週日），其他盤中排程略過。
         # 另：若最新基準日 screen_sessions 空，補建快取（不寄），避免週末按海選全掃逾時。
@@ -561,6 +563,14 @@ def catch_up_missed_jobs(now=None) -> None:
                 runner.run_nightly_open_check(now=now)
             except Exception:
                 logger.exception("補跑深夜開盤查核失敗（不擋）")
+        if need_dc_sf:
+            try:
+                from dc_scenario_silent_verify import night_tick as dc_sf_night_tick
+
+                logger.info("補跑：已過台灣 02:20，D.C 情境預估日對質（不擋飆大）")
+                dc_sf_night_tick(skip_if_done=True, now=now)
+            except Exception:
+                logger.exception("補跑 dc_sf_silent 失敗（不擋）")
         runner = runner or MainRunner()
         _ensure_screen_cache(runner)
         return
@@ -590,6 +600,14 @@ def catch_up_missed_jobs(now=None) -> None:
         except Exception:
             logger.debug("勝率買點名單是否現行略過", exc_info=True)
     runner = MainRunner()
+    if need_dc_sf:
+        try:
+            from dc_scenario_silent_verify import night_tick as dc_sf_night_tick
+
+            logger.info("補跑：已過台灣 02:20，D.C 情境預估日對質（不擋飆大）")
+            dc_sf_night_tick(skip_if_done=True, now=now)
+        except Exception:
+            logger.exception("補跑 dc_sf_silent 失敗（不擋）")
     if not any(
         (need_fuse, need_morning, need_midday, need_evening, need_winrate, need_open_check)
     ):
@@ -732,6 +750,15 @@ def run_scheduled_job(kind: str) -> None:
 
     push = scheduler_may_push(kind)
     runner = MainRunner()
+    if kind == "dc_sf_silent":
+        # 與飆大互不影響：專鍵／專鎖／不呼叫 ingest／absorb；失敗不擋其他排程
+        try:
+            from dc_scenario_silent_verify import night_tick as dc_sf_night_tick
+
+            dc_sf_night_tick(skip_if_done=True)
+        except Exception:
+            logger.exception("排程 dc_sf_silent 失敗（不擋飆大／查股）")
+        return
     if kind == "morning":
         runner.run_morning_screen(skip_if_done=True, notify=push)
     elif kind == "midday":
@@ -785,7 +812,9 @@ def start_daily_scheduler():
         from datetime import timedelta
 
         now = _taipei_now()
+        # dc_sf_silent＝台北 02:20（與飆大隔日 01:00 彙整錯開；兩軌隔離互不影響）
         slots = (
+            (2, 20, "dc_sf_silent"),
             (3, 0, "open_check"),
             (6, 30, "morning"),
             (12, 45, "midday"),
@@ -799,8 +828,8 @@ def start_daily_scheduler():
         for day_off in range(0, 8):
             day = now + timedelta(days=day_off)
             for hour, minute, kind in slots:
-                if kind == "open_check":
-                    # 每天都查明日開否（含週末：週日查週一、週六查週日休市）。
+                if kind in ("open_check", "dc_sf_silent"):
+                    # 每天都跑（含週末）：開盤查核／D.C 情境預估日對質（30 日曆日窗內另判）
                     pass
                 elif kind == "typhoon":
                     if day.weekday() == 5:
@@ -844,7 +873,8 @@ def start_daily_scheduler():
             time.sleep(wait)
             try:
                 now = _taipei_now()
-                if kind == "open_check":
+                if kind in ("open_check", "dc_sf_silent"):
+                    # dc_sf_silent 含週末；與飆大隔離，失敗不擋其他排程
                     pass
                 elif kind == "typhoon":
                     if now.weekday() == 5:
