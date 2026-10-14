@@ -467,7 +467,9 @@ def test_l3_em_hub_omits_chips_fund_industry():
     assert "K線" in labels
     assert "高低導航圖" in labels
     assert [b.text for b in kb.inline_keyboard[0]] == ["高低導航圖", "K線"]
-    assert [b.text for b in kb.inline_keyboard[1]] == ["加入觀察", "記買入"]
+    assert [b.text for b in kb.inline_keyboard[1]] == ["情境預估"]
+    assert [b.text for b in kb.inline_keyboard[2]] == ["加入觀察", "記買入"]
+    assert "情境預估" in labels
 
 
 def test_l3_listed_hub_has_chips():
