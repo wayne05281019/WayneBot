@@ -123,6 +123,7 @@ def test_em_hub_keeps_nav_kline_and_actions():
     labels = [b.text for r in kb.inline_keyboard for b in r]
     assert "高低導航圖" in labels
     assert "K線" in labels
+    assert "情境預估" in labels
     assert "產業" not in labels
     assert "加入觀察" in labels
     assert "記買入" in labels
@@ -139,6 +140,7 @@ def test_listed_hub_keeps_nav_kline_and_rest():
     labels = [b.text for r in kb.inline_keyboard for b in r]
     assert "高低導航圖" in labels
     assert "K線" in labels
+    assert "情境預估" in labels
     assert "產業" in labels
     assert "籌碼" in labels
     assert "營收" in labels
@@ -149,6 +151,8 @@ def test_listed_hub_keeps_nav_kline_and_rest():
     assert nav_btns and nav_btns[0].callback_data == "g:2330"
     k_btns = [b for r in kb.inline_keyboard for b in r if b.text == "K線"]
     assert k_btns and "technical-analysis" in (k_btns[0].url or "")
+    sf = [b for r in kb.inline_keyboard for b in r if b.text == "情境預估"]
+    assert sf and sf[0].callback_data == "sf:2330"
 
 
 def test_lookup_album_has_no_lecture_caption():
@@ -177,6 +181,7 @@ def test_lookup_album_has_no_lecture_caption():
     assert 'InlineKeyboardButton("K線"' in hub
     assert 'InlineKeyboardButton("高低導航圖"' in hub
     assert 'callback_data=f"n:{c}"' in hub
+    assert 'callback_data=f"sf:{c}"' in hub
     assert "url=nav_url" not in hub
     assert "span=180" not in hub
 

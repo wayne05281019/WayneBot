@@ -293,6 +293,15 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "window": "按了才記（沒打代號＝沒名單）；官方柱 1／5 報酬對照＋結構壓撐／stance 精確度",
         "note": "不是選股、不進選股勝率；結構／導航精確度專軌只對柱、不產 PNG、不准改買訊",
     },
+    {
+        "btn": "情境預估",
+        "kinds": ("scenario_forecast",),
+        "class": CLASS_LOOKUP,
+        "status": "gap_filled",
+        "pipe": "button_silent_verify.snapshot_scenario_forecast（查股圖下按了才記）",
+        "window": "按了才記；凍官方柱＋隧道／下降壓／前高候選錨；1／5 對照候選壓（非買訊）",
+        "note": "獨立附加；不是選股、不准發明 5／9、不改黃金買點；失敗不准擋查股",
+    },
 )
 
 
@@ -737,6 +746,76 @@ def pressure_coexists() -> bool:
         return bool(VARIANT_CURRENT and VARIANT_FIRST and VARIANT_BIAOKE_SILENT and night_tick)
     except Exception:
         return False
+
+
+def snapshot_scenario_forecast(
+    market_db: str, stock_id: str, meta: Optional[Dict[str, Any]] = None, as_of: str = ""
+) -> int:
+    """查股圖下按「情境預估」才記：真代號＋官方柱＋錨點摘要。空代號＝0。失敗吞掉。"""
+    sid = str(stock_id or "").strip()
+    day = _as_of(market_db, as_of)
+    if not market_db or not sid or not day or not os.path.isfile(market_db):
+        return 0
+    meta = dict(meta or {})
+    name = ""
+    close = None
+    volume = None
+    try:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            r = conn.execute(
+                """
+                SELECT stock_name, open, high, low, close, volume
+                FROM daily_quotes
+                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')=?
+                LIMIT 1
+                """,
+                (sid, day),
+            ).fetchone()
+            if not r:
+                r = conn.execute(
+                    """
+                    SELECT stock_name, open, high, low, close, volume
+                    FROM daily_quotes
+                    WHERE stock_id=?
+                    ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC
+                    LIMIT 1
+                    """,
+                    (sid,),
+                ).fetchone()
+            if r:
+                name = str(r[0] or "")
+                close = r[4]
+                volume = r[5]
+                row = _row_from_quote(
+                    sid,
+                    name,
+                    open=r[1],
+                    high=r[2],
+                    low=r[3],
+                    close=close,
+                    volume=volume,
+                    vegas_stance=(meta.get("vegas") or {}).get("stance"),
+                    desc_press_pos=(meta.get("desc_press") or {}).get("pos"),
+                    ladder_n=len(meta.get("ladders") or []),
+                )
+            else:
+                row = _row_from_quote(sid, "", ladder_n=len(meta.get("ladders") or []))
+        finally:
+            conn.close()
+    except Exception:
+        return 0
+    if close is None and not (meta.get("vegas") or meta.get("desc_press") or meta.get("ladders")):
+        # 無官方柱且無錨＝不算有記
+        return 0
+    return _remember(
+        market_db,
+        "scenario_forecast",
+        [row],
+        as_of=day,
+        pick="button",
+        src="scenario_forecast",
+    )
 
 
 def optimize_status_one_liner(market_db: str = "") -> str:

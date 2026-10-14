@@ -59,5 +59,9 @@ def test_em_hub_has_industry_omits_chips():
     assert "營收" not in texts
     assert "K線" in texts
     assert "高低導航圖" in texts
+    assert "情境預估" in texts
     assert [b.text for b in kb.inline_keyboard[0]] == ["高低導航圖", "K線"]
-    assert [b.text for b in kb.inline_keyboard[1]] == ["加入觀察", "記買入"]
+    assert [b.text for b in kb.inline_keyboard[1]] == ["情境預估"]
+    assert [b.text for b in kb.inline_keyboard[2]] == ["加入觀察", "記買入"]
+    sf = [b for r in kb.inline_keyboard for b in r if b.text == "情境預估"][0]
+    assert (sf.callback_data or "").startswith("sf:")
