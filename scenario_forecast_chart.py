@@ -919,6 +919,13 @@ def _ymd_to_dt(s: str) -> Optional[datetime]:
         return None
 
 
+def _fmt_axis_date(dt: datetime, *, with_year: bool) -> str:
+    """軸標：帶年用 2026/11/14；同年度可 11月14日。一眼可讀。"""
+    if with_year:
+        return f"{dt.year}/{dt.month:02d}/{dt.day:02d}"
+    return f"{dt.month}月{dt.day}日"
+
+
 def _future_tick_labels(
     rows: Sequence[Dict[str, Any]],
     n: int,
@@ -926,20 +933,31 @@ def _future_tick_labels(
     *,
     wave_xs: Optional[Sequence[float]] = None,
 ):
-    """歷史日期＋未來可讀標（Asia/Taipei）。未來用 11/14 加大可辨。"""
+    """歷史＋未來軸標（Asia/Taipei）。少刻度、大字、帶年月；對齊浪號 x。"""
     last_dt = _ymd_to_dt(str(rows[-1].get("date") or "")) or datetime.now(_TZ)
     ticks: List[float] = []
     labels: List[str] = []
-    step = max(1, n // 4)
-    for i in range(0, n, step):
+    years_seen: set = set()
+
+    def _add_hist(i: int) -> None:
+        i = max(0, min(int(i), n - 1))
+        d = _ymd_to_dt(str(rows[i].get("date") or ""))
+        if d is None:
+            return
+        # 少刻度：約 3 個歷史＋現在
+        if ticks and abs(float(i) - ticks[-1]) < max(n / 8.0, 18.0):
+            return
+        with_year = d.year not in years_seen or abs(float(i) - float(n - 1)) < 0.5
+        years_seen.add(d.year)
         ticks.append(float(i))
-        d = str(rows[i].get("date") or "")
-        labels.append(f"{d[4:6]}/{d[6:8]}" if len(d) >= 8 else d[4:])
-    if float(n - 1) not in ticks:
-        ticks.append(float(n - 1))
-        d = str(rows[-1].get("date") or "")
-        labels.append(f"{d[4:6]}/{d[6:8]}" if len(d) >= 8 else d[4:])
-    # 未來軸：優先對齊浪號 (3)(4)(5) 的 x，否則 32/55/88%
+        labels.append(_fmt_axis_date(d, with_year=with_year))
+
+    # 歷史：頭／中／尾（現價），避免擠
+    for i in (0, n // 2, n - 1):
+        _add_hist(i)
+    if not any(abs(t - float(n - 1)) < 0.5 for t in ticks):
+        _add_hist(n - 1)
+
     fut_xs: List[float] = []
     if wave_xs:
         for x in wave_xs:
@@ -950,15 +968,24 @@ def _future_tick_labels(
             if xf > float(n - 1) + 0.5:
                 fut_xs.append(xf)
     if not fut_xs:
-        fut_xs = [float(n - 1) + float(_FUTURE) * f for f in (0.32, 0.55, 0.88)]
+        fut_xs = [float(n - 1) + float(_FUTURE) * f for f in (0.34, 0.62, 0.90)]
+    # 未來最多 3 個，且彼此拉開
+    fut_xs = sorted(fut_xs)
+    placed_fut: List[float] = []
+    min_gap = max(float(_FUTURE) * 0.18, 10.0)
     for xi in fut_xs:
         if xi > x_max + 0.1:
             continue
-        # 交易日近似：未來軸每單位 ~1.4 曆日
+        if placed_fut and (xi - placed_fut[-1]) < min_gap:
+            continue
         days = int(round(max(0.0, xi - float(n - 1)) * 1.4))
         d = last_dt + timedelta(days=days)
         ticks.append(float(xi))
-        labels.append(d.strftime("%m/%d"))  # 可讀 11/14；未來軸另加大加粗
+        # 未來軸一律帶年，遠看也分得清
+        labels.append(_fmt_axis_date(d, with_year=True))
+        placed_fut.append(float(xi))
+        if len(placed_fut) >= 3:
+            break
     return ticks, labels
 
 
@@ -1469,28 +1496,25 @@ def _paint(
                 except Exception:
                     pass
         ticks, labels = _future_tick_labels(rows, n, x_max, wave_xs=wave_xs)
+        # 軸標掛量能底軸（上圖會被量能面板裁掉）；字級約舊 v5 的 1.5～2×
         ax.set_xticks(ticks)
-        # 未來段（現價右側）加大加粗；歷史維持可讀
-        tick_fps = []
-        for xi, lab in zip(ticks, labels):
-            if float(xi) > float(n - 1) + 0.2:
-                tick_fps.append(_fp(10.5, "bold"))
-            else:
-                tick_fps.append(_fp(8.0))
-        ax.set_xticklabels(labels)
-        for lab, fp, xi in zip(ax.get_xticklabels(), tick_fps, ticks):
-            lab.set_fontproperties(fp)
-            if float(xi) > float(n - 1) + 0.2:
-                lab.set_color("#0d47a1")
-            else:
-                lab.set_color(_TEXT)
+        ax.set_xticklabels([])
+        ax.tick_params(axis="x", labelbottom=False, length=0)
         axv.set_xticks(ticks)
-        axv.set_xticklabels([])
+        axv.set_xticklabels(labels)
+        for lab, xi in zip(axv.get_xticklabels(), ticks):
+            is_fut = float(xi) > float(n - 1) + 0.2
+            lab.set_fontproperties(_fp(16.0 if is_fut else 14.0, "bold"))
+            lab.set_color("#0d47a1" if is_fut else "#111111")
+            lab.set_rotation(22)
+            lab.set_ha("right")
+            lab.set_clip_on(False)
+        axv.tick_params(axis="x", pad=8, length=5, width=1.2, colors="#111111", labelbottom=True)
         # 現價豎線＝歷史／未來分界（加粗＋淺底帶）
         ax.axvspan(float(n - 1), x_max, color="#ffffff", alpha=0.22, zorder=0)
-        ax.axvline(float(n - 1), color="#212121", lw=1.8, ls="-", alpha=0.9, zorder=6)
-        axv.axvline(float(n - 1), color="#212121", lw=1.4, ls="-", alpha=0.85, zorder=6)
-        fig.subplots_adjust(left=0.07, right=0.94, top=0.93, bottom=0.09)
+        ax.axvline(float(n - 1), color="#212121", lw=2.2, ls="-", alpha=0.95, zorder=6)
+        axv.axvline(float(n - 1), color="#212121", lw=1.8, ls="-", alpha=0.9, zorder=6)
+        fig.subplots_adjust(left=0.07, right=0.94, top=0.92, bottom=0.18)
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         fig.savefig(out_path, dpi=_DPI, facecolor=_BG)
         plt.close(fig)
