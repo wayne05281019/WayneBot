@@ -553,6 +553,189 @@ def _channel_width_touch(
     return best
 
 
+# 他自己寫死「M/D M/D兩天低點來畫」才收（例：上升軌道已改變，(9/16 10/13兩天低點來畫)）
+_BIAOKE_RISING_LOW_PAIR_RE = re.compile(
+    r"(\d{1,2})\s*[／/]\s*(\d{1,2})\s+(\d{1,2})\s*[／/]\s*(\d{1,2})\s*"
+    r"[兩两]?天低點來畫"
+)
+
+
+def _ymd8(raw: Any) -> str:
+    t = str(raw or "").replace("-", "")[:8]
+    return t if len(t) == 8 and t.isdigit() else ""
+
+
+def _md_pair_to_ymd(
+    m1: int, d1: int, m2: int, d2: int, *, as_of: str
+) -> Optional[Tuple[str, str]]:
+    """把 M/D×2 對成 YYYYMMDD；年從 as_of（貼文日）推，不准跨到未來。"""
+    as_of8 = _ymd8(as_of)
+    if not as_of8:
+        return None
+    y = int(as_of8[:4])
+    as_i = int(as_of8)
+
+    def _one(yy: int, m: int, d: int) -> Optional[str]:
+        if not (1 <= int(m) <= 12 and 1 <= int(d) <= 31):
+            return None
+        return f"{int(yy):04d}{int(m):02d}{int(d):02d}"
+
+    a = _one(y, m1, d1)
+    b = _one(y, m2, d2)
+    if not a or not b:
+        return None
+    # 貼文在年初、錨點跨年：第一日若晚於 as_of，退一年
+    if int(a) > as_i:
+        a = _one(y - 1, m1, d1) or a
+    if int(b) > as_i:
+        b = _one(y - 1, m2, d2) or b
+    if not a or not b or int(a) >= int(b):
+        return None
+    return a, b
+
+
+def parse_biaoke_rising_rail_low_dates(
+    text: str, *, as_of: str = ""
+) -> Optional[Tuple[str, str]]:
+    """只認他自己寫的「M/D M/D兩天低點來畫」；須同句／近窗帶到上升軌。不准發明。"""
+    blob = str(text or "")
+    if not blob:
+        return None
+    if "上升軌" not in blob and "上升軌道" not in blob:
+        return None
+    m = _BIAOKE_RISING_LOW_PAIR_RE.search(blob)
+    if not m:
+        return None
+    return _md_pair_to_ymd(
+        int(m.group(1)),
+        int(m.group(2)),
+        int(m.group(3)),
+        int(m.group(4)),
+        as_of=as_of or "",
+    )
+
+
+def latest_biaoke_named_rising_lows(
+    db_path: str,
+) -> Optional[Tuple[str, str, str]]:
+    """最新一則他自己點的加權上升軌兩低日。回 (d1,d2,post_id)；沒有就 None。"""
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(path)
+        try:
+            rows = con.execute(
+                "SELECT id, date, text FROM biaoke_posts "
+                "WHERE text LIKE '%低點來畫%' "
+                "ORDER BY date DESC, time DESC LIMIT 40"
+            ).fetchall()
+        finally:
+            con.close()
+    except Exception:
+        logger.debug("latest_biaoke_named_rising_lows fail", exc_info=True)
+        return None
+    for pid, pdate, ptext in rows:
+        pair = parse_biaoke_rising_rail_low_dates(str(ptext or ""), as_of=str(pdate or ""))
+        if pair:
+            return pair[0], pair[1], str(pid or "")
+    return None
+
+
+def build_asc_channel_from_low_dates(
+    rows: Sequence[Dict[str, Any]],
+    d1: str,
+    d2: str,
+) -> Dict[str, Any]:
+    """用他點過的兩天官方低連上升軌＋平行壓。不是買訊、不數 5／9。"""
+    rows = list(rows or [])
+    n = len(rows)
+    # 兩錨＋中間至少幾根；他點的日期對上即可，不准因窗短丟掉
+    if n < 6:
+        return {}
+    key1, key2 = _ymd8(d1), _ymd8(d2)
+    if not key1 or not key2 or key1 >= key2:
+        return {}
+    date_to_i = {
+        _ymd8(r.get("date")): i for i, r in enumerate(rows) if _ymd8(r.get("date"))
+    }
+    if key1 not in date_to_i or key2 not in date_to_i:
+        return {}
+    i, j = int(date_to_i[key1]), int(date_to_i[key2])
+    if j - i < 3:
+        return {}
+    highs = [float(r.get("high") or 0) for r in rows]
+    lows = [float(r.get("low") or 0) for r in rows]
+    closes = [float(r.get("close") or 0) for r in rows]
+    y1, y2 = float(lows[i]), float(lows[j])
+    if y1 <= 0 or y2 <= 0:
+        return {}
+    last = float(closes[-1] or 0)
+    pos_lows = [v for v in lows if v > 0]
+    if not pos_lows:
+        return {}
+    span = max(max(highs) - min(pos_lows), 1.0)
+    hi_p, _lo_p = _pivots(highs, lows, left=3)
+    touch = _channel_width_touch(
+        i, j, y1, y2, hi_p, highs, lows, above=True, span=span, n=n
+    )
+    if not touch:
+        # 他點的兩低仍要畫：寬度用兩點間（含）官方最高當觸點，不准發明假價
+        best_k, best_hi = -1, 0.0
+        for k in range(i, j + 1):
+            hv = float(highs[k] or 0)
+            if hv > best_hi:
+                best_hi, best_k = hv, k
+        if best_k < 0 or best_hi <= 0:
+            return {}
+        base_at = _line_at(float(i), y1, float(j), y2, float(best_k))
+        width = float(best_hi - base_at)
+        if width < span * 0.02:
+            return {}
+        touch = (best_k, width, 1.0)
+    tk, width, _sc = touch
+    ty = float(highs[int(tk)])
+    td = str(rows[int(tk)].get("date") or "")
+    base_now = _line_at(float(i), y1, float(j), y2, float(n - 1))
+    top_now = base_now + float(width)
+    if last < base_now - span * 0.02:
+        pos, alive = "破上升軌", False
+    elif last > top_now + span * 0.02:
+        pos, alive = "過平行壓", True
+    elif last >= base_now + float(width) * 0.66:
+        pos, alive = "靠近平行壓", True
+    elif last <= base_now + float(width) * 0.34:
+        pos, alive = "靠近上升軌", True
+    else:
+        pos, alive = "上升通道中段", True
+    # tip 用語跟自動軌同一套；不准特別標「自動／非他點名／他自己點的」
+    tip = (
+        f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
+        f"平行壓貼 {_md(td)}高{_px(ty)}；現況{pos}。"
+        f"破上升軌才像轉折。不是買訊。"
+    )
+    return {
+        "kind": "asc",
+        "label": f"上升軌通道　{pos}",
+        "tip": tip,
+        "pos": pos,
+        "alive": bool(alive),
+        "width": float(width),
+        "base": ((i, y1, key1), (j, y2, key2)),
+        "upper": ((i, y1 + float(width), key1), (j, y2 + float(width), key2)),
+        "lower": ((i, y1, key1), (j, y2, key2)),
+        "touch": (int(tk), float(ty), td),
+        "base_now": float(base_now),
+        "rail_now": float(top_now),
+        "score": 99.0,
+        "name_u": "平行壓",
+        "name_l": "上升軌",
+        "source": "biaoke_named",
+    }
+
+
 def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """依飆大連點長上升／下降通道（二擇一、兩條平行線）。
 
@@ -561,6 +744,7 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     - 同次級／更高低連點＝上升軌（下軌）；平行上緣貼合理高＝通道上軌
     - 升／降軌道破壞才算轉折；個股不數 5／9 當操作
     - 兩種不准同時畫；不是買訊
+    若他已點名兩天低點來畫，呼叫端應先走 build_asc_channel_from_low_dates。
     """
     rows = list(rows or [])
     n = len(rows)
