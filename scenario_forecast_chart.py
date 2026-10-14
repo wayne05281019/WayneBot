@@ -1240,40 +1240,22 @@ def _future_tick_labels(
         ticks.append(float(i))
         labels.append(_fmt_axis_date(d, with_year=with_year))
 
-    # 歷史：頭／中／尾（現價），避免擠
-    for i in (0, n // 2, n - 1):
+    # 歷史：略內縮頭／中／現價，避免旋轉大字被左緣切斷
+    head_i = max(0, min(n - 1, int(round(n * 0.04))))
+    for i in (head_i, n // 2, n - 1):
         _add_hist(i)
     if not any(abs(t - float(n - 1)) < 0.5 for t in ticks):
         _add_hist(n - 1)
 
-    fut_xs: List[float] = []
-    if wave_xs:
-        for x in wave_xs:
-            try:
-                xf = float(x)
-            except Exception:
-                continue
-            if xf > float(n - 1) + 0.5:
-                fut_xs.append(xf)
-    if not fut_xs:
-        fut_xs = [float(n - 1) + float(_FUTURE) * f for f in (0.34, 0.62, 0.90)]
-    # 未來最多 3 個，且彼此拉開
-    fut_xs = sorted(fut_xs)
-    placed_fut: List[float] = []
-    min_gap = max(float(_FUTURE) * 0.18, 10.0)
-    for xi in fut_xs:
-        if xi > x_max + 0.1:
-            continue
-        if placed_fut and (xi - placed_fut[-1]) < min_gap:
-            continue
+    # 未來軸只留 1 個遠刻度（大字帶年）；浪號 x 不擠進軸標，避免互壓
+    # wave_xs 僅供浪點標籤，不驅動密集日期刻度
+    min_from_now = max(float(_FUTURE) * 0.55, 28.0)
+    xi = float(n - 1) + float(_FUTURE) * 0.88
+    if xi <= x_max + 0.1 and (not ticks or (xi - ticks[-1]) >= min_from_now):
         days = int(round(max(0.0, xi - float(n - 1)) * 1.4))
         d = last_dt + timedelta(days=days)
         ticks.append(float(xi))
-        # 未來軸一律帶年，遠看也分得清
         labels.append(_fmt_axis_date(d, with_year=True))
-        placed_fut.append(float(xi))
-        if len(placed_fut) >= 3:
-            break
     return ticks, labels
 
 
@@ -1640,9 +1622,9 @@ def _paint(
                     alpha=0.95,
                 )
 
-            fp_w = _fp(8.8, "bold")
-            fp_tag = _fp(7.6, "bold")
-            fp_d = _fp(6.4)
+            fp_w = _fp(10.2, "bold")
+            fp_tag = _fp(7.8, "bold")
+            fp_d = _fp(6.6)
             for node in list(wave.get("confirmed") or []):
                 _draw_wave_label(
                     ax,
@@ -1674,30 +1656,9 @@ def _paint(
                     color="#212121",
                 )
                 if node.get("kind") == "H":
+                    # pin 在浪點；價標併右軸 dodge，避免跟 (5)／1530 互壓
                     _draw_map_pin(ax, float(node["i"]), float(node["price"]))
-                    _draw_price_tag(
-                        ax,
-                        float(node["i"]) + 0.6,
-                        float(node["price"]),
-                        _fmt_px(float(node["price"])),
-                        fp=fp_tag,
-                        face=_TAG_HOT,
-                    )
-            # 右軸區間灰框（目標／滿足帶）
-            for zi, z in enumerate(list(wave.get("zones") or [])):
-                try:
-                    zlo, zhi = float(z["lo"]), float(z["hi"])
-                    mid = 0.5 * (zlo + zhi)
-                    note = str(z.get("label") or _ladder_range_note(mid, zi, 3))
-                    _draw_gray_note(
-                        ax,
-                        x_end - 0.4,
-                        mid,
-                        note,
-                        fp=_fp(6.6, "bold"),
-                    )
-                except Exception:
-                    pass
+            # 區間帶已 axhspan；灰框改併右軸 dodge，避免跟紅價標互壓
             for node in list(wave.get("abc") or []):
                 _draw_wave_label(
                     ax,
@@ -1748,26 +1709,47 @@ def _paint(
         else:
             label_anchors = []
 
-        # 右側關鍵價：紅底白字（DC 價軸彩標）
+        # 右側關鍵價：只留紅底價標（不再重複畫「候選 xxx」字，避免互壓）
         y_span = max(highs) - min(lows) if highs and lows else 1.0
-        min_gap = max(y_span * 0.04, (max(closes) or 1.0) * 0.014)
+        min_gap = max(y_span * 0.055, (max(closes) or 1.0) * 0.02)
         right_tags: List[Tuple[float, float, str]] = []
         for lad in ladders:
             right_tags.append(
                 (x_end + 0.2, float(lad["price"]), f"{_fmt_px(float(lad['price']))}")
             )
-            label_anchors.append(
-                (
-                    x_end - 1.2,
-                    float(lad["price"]),
-                    str(lad.get("label") or f"候選 {_fmt_px(float(lad['price']))}"),
+        # 虛線峰／谷價：只走右軸紅標
+        for node in list(wave.get("projected") or []):
+            try:
+                right_tags.append(
+                    (
+                        x_end + 0.2,
+                        float(node["price"]),
+                        _fmt_px(float(node["price"])),
+                    )
                 )
-            )
+            except Exception:
+                pass
+        # 滿足／撐帶灰框；目標帶(tgt)只留 axhspan，不再重複灰字
+        for z in list(wave.get("zones") or []):
+            try:
+                if str(z.get("kind") or "") == "tgt":
+                    continue
+                mid = 0.5 * (float(z["lo"]) + float(z["hi"]))
+                note = str(z.get("label") or _ladder_range_note(mid, 0, 1))
+                near = any(
+                    abs(mid - float(t[1])) / max(abs(mid), 1e-9) < 0.045
+                    for t in right_tags
+                )
+                if near:
+                    continue
+                right_tags.append((x_end + 0.2, mid, note))
+            except Exception:
+                pass
         if press and press.get("y_now") is not None and press.get("j") is not None:
-            if int(press["j"]) - int(press["i"]) >= 10:
+            if int(press["j"]) - int(press["i"]) >= 8:
                 label_anchors.append(
                     (
-                        x_end - 1.5,
+                        float(n - 1) - 2.0,
                         float(press["y_now"]),
                         f"下降壓 {_fmt_px(float(press['y_now']))}",
                     )
@@ -1778,10 +1760,10 @@ def _paint(
             if not txt:
                 continue
             ax.text(
-                min(float(x), x_end - 0.4),
+                min(float(x), float(n - 1) - 0.8),
                 y,
                 txt,
-                color=_LADDER if txt.startswith("候選") else _PRESS if txt.startswith("下降壓") else _TEXT,
+                color=_PRESS if txt.startswith("下降壓") else _TEXT,
                 fontproperties=_fp(7.0, "bold"),
                 ha="right",
                 va="bottom",
@@ -1796,20 +1778,22 @@ def _paint(
             )
         rt = dodge_label_ys(right_tags, min_gap=min_gap)
         for x, y, txt in rt:
-            _draw_price_tag(ax, x_end + 0.15, y, txt, fp=_fp(7.4, "bold"), face=_TAG_HOT)
+            face = _TAG_HOT if str(txt).replace(".", "").isdigit() else _TAG_BG
+            _draw_price_tag(ax, x_end + 0.15, y, txt, fp=_fp(7.4, "bold"), face=face)
 
         bubble = str(wave.get("bubble") or "").strip()
         if not bubble:
             bubble = "情境預估（不保證・不是買訊）"
+        # 條件氣泡靠上緣，避開底部通道／量區互壓；縮圖仍可讀
         ax.text(
             0.015,
-            0.035,
+            0.965,
             bubble,
             transform=ax.transAxes,
             color="white",
-            fontproperties=_fp(8.0, "bold"),
+            fontproperties=_fp(8.4, "bold"),
             ha="left",
-            va="bottom",
+            va="top",
             zorder=9,
             bbox={
                 "boxstyle": "round,pad=0.38",
@@ -1862,17 +1846,20 @@ def _paint(
         axv.set_xticklabels(labels)
         for lab, xi in zip(axv.get_xticklabels(), ticks):
             is_fut = float(xi) > float(n - 1) + 0.2
-            lab.set_fontproperties(_fp(16.0 if is_fut else 14.0, "bold"))
+            is_first = abs(float(xi) - float(ticks[0])) < 0.5
+            is_last = abs(float(xi) - float(ticks[-1])) < 0.5
+            lab.set_fontproperties(_fp(15.0 if is_fut else 13.5, "bold"))
             lab.set_color("#0d47a1" if is_fut else "#111111")
-            lab.set_rotation(22)
-            lab.set_ha("right")
+            lab.set_rotation(18)
+            # 頭尾對齊，減少切斷；中間 right 對齊刻度
+            lab.set_ha("left" if is_first else ("right" if is_last or is_fut else "center"))
             lab.set_clip_on(False)
         axv.tick_params(axis="x", pad=8, length=5, width=1.2, colors="#111111", labelbottom=True)
         # 現價豎線＝歷史／未來分界（加粗＋淺底帶）
         ax.axvspan(float(n - 1), x_max, color="#ffffff", alpha=0.22, zorder=0)
         ax.axvline(float(n - 1), color="#212121", lw=2.2, ls="-", alpha=0.95, zorder=6)
         axv.axvline(float(n - 1), color="#212121", lw=1.8, ls="-", alpha=0.9, zorder=6)
-        fig.subplots_adjust(left=0.07, right=0.94, top=0.92, bottom=0.18)
+        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.20)
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         fig.savefig(out_path, dpi=_DPI, facecolor=_BG)
         plt.close(fig)
