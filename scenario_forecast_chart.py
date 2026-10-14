@@ -1,43 +1,56 @@
 # -*- coding: utf-8 -*-
-"""個股「情境預估（不保證）」圖：VEGAS＋下降壓＋前高＋DC 風格浪號／虛線路徑。
+"""個股「情境預估（不保證）」圖：DC 視覺臉＋VEGAS／浪號／虛線未來路徑。
 
-獨立附加、永遠不是買訊。使用者鎖死：僅此子鈕可標 (1)–(5)／abc 情境浪號
-（其他鈕仍守 §12 不准發明 5／9）。浪號＝樞紐重算情境，不保證、不改買訊。
-失敗回 None；呼叫端必須吞錯，不准擋查股四張／主選單。
-Asia/Taipei；只讀官方日 K。
+視覺對齊 TradingView：淺灰底、白框／黑棒 K、白／粉紅／藍路徑、
+浪號沿時間軸（未走伸右側未來）、右側彩底價標、區間帶。
+獨立附加、永遠不是買訊。僅此子鈕可標浪；其他鈕仍守 §12。
+失敗回 None；不准擋查股四張／主選單。Asia/Taipei；只讀官方日 K。
 """
 from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
 
 logger = logging.getLogger("WayneBot.ScenarioForecast")
 
-# 近窗對齊結構圖量級；不夠就不硬畫長均
+_TZ = ZoneInfo("Asia/Taipei")
+
+# 近窗對齊結構圖量級；右側留足未來時間軸給 (3)(4)(5)
 _BARS = 168
-_FUTURE = 28
-_DPI = 160
+_FUTURE = 72
+_DPI = 168
 _MIN_BARS = 40
 
-_BG = "#ffffff"
-_TUNNEL = "#1565c0"
+# DC 配色（淺灰底／B&W K／白粉藍路徑）
+_BG = "#e9e9e9"
+_GRID = "#cfd2d6"
+_TUNNEL = "#1e88e5"
 _EMA12 = "#43a047"
-_EMA_SLOW = "#90a4ae"
-_PRESS = "#6a1b9a"
-_LADDER = "#c62828"
-_TEXT = "#37474f"
-_WAVE = "#d32f2f"
-_WAVE_DASH = "#78909c"
-_TAG_BG = "#546e7a"
+_EMA_SLOW = "#ef5350"
+_PRESS = "#5c6bc0"
+_LADDER = "#e53935"
+_TEXT = "#212121"
+_WAVE_IMP = "#ff8a80"  # 已走上升浪：淺粉紅
+_WAVE_PROJ = "#fafafa"  # 未走虛線：白
+_WAVE_ABC = "#5c6bc0"  # 修正 abc：藍
+_TAG_BG = "#616161"
+_TAG_HOT = "#e53935"
 _BUBBLE = "#1565c0"
-_PATH_COLORS = ("#90a4ae", "#78909c", "#607d8b")
+_ZONE = "#90a4ae"
+_CHANNEL = "#ce93d8"
+_PATH_COLORS = ("#b0bec5", "#90a4ae", "#78909c")
+_VOL_UP = "#9e9e9e"
+_VOL_DN = "#424242"
 
 
 def _ema(closes: Sequence[float], n: int) -> List[float]:
@@ -361,17 +374,17 @@ def infer_dc_wave_scenario(
     projected: List[Dict[str, Any]] = []
     have = {c["label"] for c in confirmed}
 
-    def _x_next(prev_i: float, bars: float) -> float:
-        return float(prev_i) + float(bars)
+    # 未走浪必須沿時間軸伸進右側未來空白（對齊 DC：跟著 x 軸跑，不准擠左）
+    x_now = max(float(confirmed[-1]["i"]), float(n - 1))
+    fut = float(_FUTURE)
 
-    # 虛線價上限：避免 y 軸被 1.618 延伸撐爆（手機縮圖仍要可讀）
+    # 虛線價上限：避免 y 軸被延伸撐爆（手機縮圖仍要可讀）
     y_cap = max(float(confirmed[0]["price"]) * 1.22, last * 1.35)
     if ladder_lv:
         y_cap = max(y_cap, max(ladder_lv) * 1.03)
 
-    # 補虛線未走浪
+    # 補虛線未走浪：x 落在未來 32%／55%／88% 節奏
     if "(3)" not in have:
-        base_i = float(confirmed[-1]["i"])
         y3 = _pick_ladder_above(
             ladder_lv,
             float(confirmed[0]["price"]),
@@ -383,7 +396,7 @@ def infer_dc_wave_scenario(
         projected.append(
             {
                 "label": "(3)",
-                "i": _x_next(base_i, 8),
+                "i": x_now + fut * 0.32,
                 "price": float(y3),
                 "kind": "H",
                 "projected": True,
@@ -400,7 +413,7 @@ def infer_dc_wave_scenario(
             projected.append(
                 {
                     "label": "(4)",
-                    "i": _x_next(float(src3["i"]), 6),
+                    "i": x_now + fut * 0.55,
                     "price": float(y4),
                     "kind": "L",
                     "projected": True,
@@ -421,7 +434,7 @@ def infer_dc_wave_scenario(
             projected.append(
                 {
                     "label": "(5)",
-                    "i": _x_next(float(src4["i"]), 7),
+                    "i": x_now + fut * 0.88,
                     "price": float(y5),
                     "kind": "H",
                     "projected": True,
@@ -684,7 +697,91 @@ def format_scenario_caption(sid: str, name: str, meta: Dict[str, Any]) -> str:
     return head + "\n隧道／下降壓／浪號情境；不是買訊。"
 
 
-def _draw_price_tag(ax, x: float, y: float, text: str, *, fp) -> None:
+def _paint_bw_candles(
+    ax,
+    xs: Sequence[float],
+    opens: Sequence[float],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+) -> None:
+    """DC 底圖：上＝白心黑框、下＝實心黑（不准紅綠搶浪線）。"""
+    ink = "#111111"
+    for i, x in enumerate(xs):
+        o, h, lo, c = float(opens[i]), float(highs[i]), float(lows[i]), float(closes[i])
+        ax.plot([x, x], [lo, h], color=ink, lw=0.65, solid_capstyle="round", zorder=2)
+        body_lo, body_hi = min(o, c), max(o, c)
+        height = max(body_hi - body_lo, (h - lo) * 0.015 + 1e-6)
+        up = c >= o
+        ax.add_patch(
+            Rectangle(
+                (x - 0.32, body_lo),
+                0.64,
+                height,
+                facecolor="#ffffff" if up else ink,
+                edgecolor=ink,
+                linewidth=0.75,
+                zorder=3,
+            )
+        )
+
+
+def _paint_gray_volume(ax, xs, vols, ups) -> float:
+    vmax = max(float(v) for v in vols) if vols else 1.0
+    vmax = max(vmax, 1.0)
+    for i, x in enumerate(xs):
+        v = float(vols[i] or 0)
+        ax.add_patch(
+            Rectangle(
+                (x - 0.32, 0.0),
+                0.64,
+                v,
+                facecolor=_VOL_UP if ups[i] else _VOL_DN,
+                edgecolor="none",
+                alpha=0.85,
+                zorder=2,
+            )
+        )
+    ax.set_ylim(0, vmax * 1.15)
+    return vmax
+
+
+def _ymd_to_dt(s: str) -> Optional[datetime]:
+    s = str(s or "").replace("-", "")[:8]
+    if len(s) != 8 or not s.isdigit():
+        return None
+    try:
+        return datetime(int(s[:4]), int(s[4:6]), int(s[6:8]), tzinfo=_TZ)
+    except Exception:
+        return None
+
+
+def _future_tick_labels(rows: Sequence[Dict[str, Any]], n: int, x_max: float):
+    """歷史日期＋未來估月標（Asia/Taipei 交易日近似 +1 曆日跳週末）。"""
+    last_dt = _ymd_to_dt(str(rows[-1].get("date") or "")) or datetime.now(_TZ)
+    ticks: List[float] = []
+    labels: List[str] = []
+    step = max(1, n // 5)
+    for i in range(0, n, step):
+        ticks.append(float(i))
+        labels.append(str(rows[i].get("date") or "")[4:])
+    if float(n - 1) not in ticks:
+        ticks.append(float(n - 1))
+        labels.append(str(rows[-1].get("date") or "")[4:])
+    # 未來三個節點
+    for frac, tag in ((0.32, None), (0.55, None), (0.88, None)):
+        xi = float(n - 1) + float(_FUTURE) * frac
+        if xi > x_max + 0.1:
+            continue
+        # 約略：每根未來 ≈ 1 個交易日 → +1.4 曆日
+        days = int(round((_FUTURE * frac) * 1.4))
+        d = last_dt + timedelta(days=days)
+        ticks.append(xi)
+        labels.append(d.strftime("%m%d") + "估")
+    return ticks, labels
+
+
+def _draw_price_tag(ax, x: float, y: float, text: str, *, fp, hot: bool = False) -> None:
     ax.text(
         x,
         y,
@@ -696,23 +793,24 @@ def _draw_price_tag(ax, x: float, y: float, text: str, *, fp) -> None:
         zorder=8,
         bbox={
             "boxstyle": "round,pad=0.22",
-            "facecolor": _TAG_BG,
+            "facecolor": _TAG_HOT if hot else _TAG_BG,
             "edgecolor": "none",
-            "alpha": 0.92,
+            "alpha": 0.94,
         },
     )
 
 
-def _draw_wave_label(ax, x: float, y: float, label: str, *, kind: str, fp) -> None:
-    # 高點標上方、低點標下方
+def _draw_wave_label(
+    ax, x: float, y: float, label: str, *, kind: str, fp, color: str
+) -> None:
     va = "bottom" if kind == "H" else "top"
-    ax.plot(x, y, "o", ms=11, color=_WAVE, mfc="white", mew=1.5, zorder=7)
+    ax.plot(x, y, "o", ms=10.5, color=color, mfc="#fafafa", mew=1.6, zorder=7)
     ax.annotate(
         label,
         xy=(x, y),
-        xytext=(0, 9 if kind == "H" else -9),
+        xytext=(0, 10 if kind == "H" else -10),
         textcoords="offset points",
-        color=_WAVE,
+        color=color,
         fontproperties=fp,
         ha="center",
         va=va,
@@ -729,13 +827,7 @@ def _paint(
     sid: str,
     name: str,
 ) -> Optional[str]:
-    from wayne_navigator import (
-        _fp,
-        configure_lookup_vol_axis,
-        mpl_render,
-        paint_lookup_ohlc_candles,
-        paint_lookup_volume_bars,
-    )
+    from wayne_navigator import _fp, mpl_render
 
     rows = list(rows or [])
     n = len(rows)
@@ -758,34 +850,39 @@ def _paint(
     lows = [float(r["low"]) for r in rows]
     closes = [float(r["close"]) for r in rows]
     vols = [float(r.get("volume") or 0) for r in rows]
+    ups = [closes[i] >= opens[i] for i in range(n)]
 
     with mpl_render():
         fig, (ax, axv) = plt.subplots(
             2,
             1,
-            figsize=(10.2, 7.4),
-            gridspec_kw={"height_ratios": [3.25, 1.0], "hspace": 0.06},
+            figsize=(10.6, 7.6),
+            gridspec_kw={"height_ratios": [3.35, 0.95], "hspace": 0.05},
             facecolor=_BG,
         )
         ax.set_facecolor(_BG)
         axv.set_facecolor(_BG)
-        paint_lookup_ohlc_candles(ax, xs, opens, highs, lows, closes)
-        candle_up = [closes[i] >= opens[i] for i in range(n)]
-        _vh, vol_ylim, _vm = paint_lookup_volume_bars(axv, xs, vols, candle_up)
-        configure_lookup_vol_axis(axv, float(vol_ylim or 1.0))
+        _paint_bw_candles(ax, xs, opens, highs, lows, closes)
+        _paint_gray_volume(axv, xs, vols, ups)
+
+        # 底部支撐區間帶（近窗低區）
+        lo_band = sorted(lows)[: max(3, n // 12)]
+        if lo_band:
+            z0, z1 = float(min(lo_band)), float(max(lo_band) * 1.04)
+            ax.axhspan(z0, z1, color=_ZONE, alpha=0.18, zorder=1)
 
         if e144 and e169 and len(e144) == n and len(e169) == n:
             lo = np.minimum(np.asarray(e144), np.asarray(e169))
             hi = np.maximum(np.asarray(e144), np.asarray(e169))
-            ax.fill_between(xs, lo, hi, color=_TUNNEL, alpha=0.12, zorder=2)
-            ax.plot(xs, e144, color=_TUNNEL, lw=1.15, zorder=3)
-            ax.plot(xs, e169, color=_TUNNEL, lw=1.15, zorder=3)
+            ax.fill_between(xs, lo, hi, color=_TUNNEL, alpha=0.10, zorder=2)
+            ax.plot(xs, e144, color=_TUNNEL, lw=1.05, zorder=3)
+            ax.plot(xs, e169, color=_TUNNEL, lw=1.05, zorder=3)
         if e12 and len(e12) == n:
-            ax.plot(xs, e12, color=_EMA12, lw=0.9, zorder=3)
+            ax.plot(xs, e12, color=_EMA12, lw=0.85, zorder=3)
         if e576 and len(e576) == n:
-            ax.plot(xs, e576, color=_EMA_SLOW, lw=0.8, zorder=2, alpha=0.85)
+            ax.plot(xs, e576, color=_EMA_SLOW, lw=0.75, zorder=2, alpha=0.8)
         if e676 and len(e676) == n:
-            ax.plot(xs, e676, color=_EMA_SLOW, lw=0.8, zorder=2, alpha=0.85)
+            ax.plot(xs, e676, color=_EMA_SLOW, lw=0.75, zorder=2, alpha=0.8)
 
         x_end = float(n - 1 + _FUTURE)
         if press and press.get("i") is not None and press.get("j") is not None:
@@ -800,42 +897,85 @@ def _paint(
                     [float(i), x_end],
                     [y1, y_end],
                     color=_PRESS,
-                    lw=1.35,
+                    lw=1.25,
                     zorder=4,
+                    alpha=0.85,
                 )
 
         for lad in ladders:
             y = float(lad["price"])
-            ax.axhline(y, color=_LADDER, lw=0.95, alpha=0.75, zorder=3)
+            ax.axhline(y, color=_LADDER, lw=1.05, alpha=0.8, zorder=3)
 
-        # DC 浪號路徑：已走實線＋未走虛線
+        # 浪路徑：已走淺粉紅；未走白虛線伸右側；abc 藍
         if wave:
             done = list(wave.get("path_done") or [])
             proj = list(wave.get("path_proj") or [])
+            abc_pts = [
+                (float(a["i"]), float(a["price"])) for a in (wave.get("abc") or [])
+            ]
             if len(done) >= 2:
+                # 白描邊＋粉紅芯，避免跟灰底糊成一團
                 ax.plot(
                     [p[0] for p in done],
                     [p[1] for p in done],
-                    color=_WAVE,
-                    lw=1.45,
+                    color="#ffffff",
+                    lw=2.4,
                     zorder=5,
-                    alpha=0.9,
+                    alpha=0.95,
+                )
+                ax.plot(
+                    [p[0] for p in done],
+                    [p[1] for p in done],
+                    color=_WAVE_IMP,
+                    lw=1.55,
+                    zorder=5,
+                    alpha=0.95,
                 )
             if len(proj) >= 2:
+                # 淺紫通道帶包住預估折線
+                px = np.asarray([p[0] for p in proj], dtype=float)
+                py = np.asarray([p[1] for p in proj], dtype=float)
+                if len(px) >= 2:
+                    amp = max(float(np.nanmax(py) - np.nanmin(py)) * 0.12, float(py[-1]) * 0.03)
+                    ax.fill_between(
+                        px, py - amp, py + amp, color=_CHANNEL, alpha=0.16, zorder=4
+                    )
                 ax.plot(
-                    [p[0] for p in proj],
-                    [p[1] for p in proj],
-                    color=_WAVE_DASH,
-                    lw=1.5,
+                    px,
+                    py,
+                    color="#212121",
+                    lw=2.6,
                     ls=(0, (5, 3)),
                     zorder=5,
-                    alpha=0.9,
+                    alpha=0.55,
                 )
-            fp_w = _fp(8.5, "bold")
-            fp_tag = _fp(7.5, "bold")
-            for node in list(wave.get("confirmed") or []) + list(
-                wave.get("projected") or []
-            ) + list(wave.get("abc") or []):
+                ax.plot(
+                    px,
+                    py,
+                    color=_WAVE_PROJ,
+                    lw=1.7,
+                    ls=(0, (5, 3)),
+                    zorder=5,
+                    alpha=0.98,
+                )
+            if len(abc_pts) >= 2:
+                # 接在 (5) 後
+                if done:
+                    abc_line = [done[-1]] + abc_pts
+                else:
+                    abc_line = abc_pts
+                ax.plot(
+                    [p[0] for p in abc_line],
+                    [p[1] for p in abc_line],
+                    color=_WAVE_ABC,
+                    lw=1.45,
+                    zorder=5,
+                    alpha=0.95,
+                )
+
+            fp_w = _fp(8.8, "bold")
+            fp_tag = _fp(7.6, "bold")
+            for node in list(wave.get("confirmed") or []):
                 _draw_wave_label(
                     ax,
                     float(node["i"]),
@@ -843,17 +983,47 @@ def _paint(
                     str(node["label"]),
                     kind=str(node.get("kind") or "H"),
                     fp=fp_w,
+                    color=_WAVE_IMP,
                 )
-                if node.get("projected") and node.get("kind") == "H":
+            for node in list(wave.get("projected") or []):
+                _draw_wave_label(
+                    ax,
+                    float(node["i"]),
+                    float(node["price"]),
+                    str(node["label"]),
+                    kind=str(node.get("kind") or "H"),
+                    fp=fp_w,
+                    color="#212121",
+                )
+                if node.get("kind") == "H":
+                    # 粉紅 pin
+                    ax.plot(
+                        float(node["i"]),
+                        float(node["price"]),
+                        marker="v",
+                        ms=9,
+                        color="#ff4081",
+                        zorder=8,
+                    )
                     _draw_price_tag(
                         ax,
-                        float(node["i"]) + 0.35,
+                        float(node["i"]) + 0.6,
                         float(node["price"]),
                         _fmt_px(float(node["price"])),
                         fp=fp_tag,
+                        hot=True,
                     )
+            for node in list(wave.get("abc") or []):
+                _draw_wave_label(
+                    ax,
+                    float(node["i"]),
+                    float(node["price"]),
+                    str(node["label"]),
+                    kind=str(node.get("kind") or "L"),
+                    fp=fp_w,
+                    color=_WAVE_ABC,
+                )
 
-        # 無浪時才畫多條階梯虛線
         if not wave:
             deepest = None
             for path in paths:
@@ -869,7 +1039,7 @@ def _paint(
                     color=col,
                     lw=1.35,
                     ls=(0, (5, 3)),
-                    alpha=0.82,
+                    alpha=0.85,
                     zorder=5,
                     solid_capstyle="round",
                 )
@@ -893,90 +1063,111 @@ def _paint(
         else:
             label_anchors = []
 
+        # 右側關鍵價：紅底白字（DC 價軸彩標）
+        y_span = max(highs) - min(lows) if highs and lows else 1.0
+        min_gap = max(y_span * 0.04, (max(closes) or 1.0) * 0.014)
+        right_tags: List[Tuple[float, float, str]] = []
         for lad in ladders:
+            right_tags.append(
+                (x_end + 0.2, float(lad["price"]), f"{_fmt_px(float(lad['price']))}")
+            )
             label_anchors.append(
-                (x_end - 0.15, float(lad["price"]), str(lad.get("label") or ""))
+                (
+                    x_end - 1.2,
+                    float(lad["price"]),
+                    str(lad.get("label") or f"候選 {_fmt_px(float(lad['price']))}"),
+                )
             )
         if press and press.get("y_now") is not None and press.get("j") is not None:
             if int(press["j"]) - int(press["i"]) >= 10:
                 label_anchors.append(
                     (
-                        x_end - 0.2,
+                        x_end - 1.5,
                         float(press["y_now"]),
                         f"下降壓 {_fmt_px(float(press['y_now']))}",
                     )
                 )
 
-        y_span = max(highs) - min(lows) if highs and lows else 1.0
-        min_gap = max(y_span * 0.035, (max(closes) or 1.0) * 0.012)
         placed = dodge_label_ys(label_anchors, min_gap=min_gap)
         for x, y, txt in placed:
             if not txt:
                 continue
-            is_press = txt.startswith("下降壓")
-            is_lad = txt.startswith("候選")
-            col = _PRESS if is_press else (_LADDER if is_lad else _TEXT)
             ax.text(
-                min(float(x), x_end - 0.05),
+                min(float(x), x_end - 0.4),
                 y,
                 txt,
-                color=col,
-                fontproperties=_fp(7.2, "bold"),
+                color=_LADDER if txt.startswith("候選") else _PRESS if txt.startswith("下降壓") else _TEXT,
+                fontproperties=_fp(7.0, "bold"),
                 ha="right",
                 va="bottom",
                 zorder=6,
-                alpha=0.92,
+                alpha=0.95,
+                bbox={
+                    "boxstyle": "round,pad=0.15",
+                    "facecolor": "#eceff1",
+                    "edgecolor": "none",
+                    "alpha": 0.88,
+                },
             )
+        rt = dodge_label_ys(right_tags, min_gap=min_gap)
+        for x, y, txt in rt:
+            _draw_price_tag(ax, x_end + 0.15, y, txt, fp=_fp(7.4, "bold"), hot=True)
 
-        # 圖內說明氣泡（DC 清晰度；非買訊）
         bubble = str(wave.get("bubble") or "").strip()
         if not bubble:
             bubble = "情境預估（不保證・不是買訊）"
         ax.text(
-            0.02,
-            0.03,
+            0.015,
+            0.035,
             bubble,
             transform=ax.transAxes,
             color="white",
-            fontproperties=_fp(8.2, "bold"),
+            fontproperties=_fp(8.0, "bold"),
             ha="left",
             va="bottom",
             zorder=9,
             bbox={
-                "boxstyle": "round,pad=0.35",
+                "boxstyle": "round,pad=0.38",
                 "facecolor": _BUBBLE,
-                "edgecolor": "none",
-                "alpha": 0.92,
+                "edgecolor": "#0d47a1",
+                "alpha": 0.93,
             },
         )
 
         title = f"{sid} {name}　情境預估（不保證・不是買訊）".strip()
         ax.set_title(title, fontproperties=_fp(11, "bold"), color=_TEXT, pad=8)
-        # x 上限含虛線預估
-        x_max = x_end + 0.4
+        x_max = x_end + 3.5
         if wave:
             for p in list(wave.get("path_proj") or []) + list(wave.get("projected") or []):
                 try:
-                    x_max = max(x_max, float(p[0] if isinstance(p, (list, tuple)) else p["i"]) + 1.5)
+                    x_max = max(
+                        x_max,
+                        float(p[0] if isinstance(p, (list, tuple)) else p["i"]) + 2.0,
+                    )
                 except Exception:
                     pass
         ax.set_xlim(-0.8, x_max)
-        ax.grid(True, color="#eceff1", lw=0.6, zorder=0)
-        axv.grid(True, color="#eceff1", lw=0.6, zorder=0)
+        # y 含預估高點，但留邊
+        y_hi = max(highs)
+        y_lo = min(lows)
+        for node in list(wave.get("projected") or []) + list(wave.get("confirmed") or []):
+            y_hi = max(y_hi, float(node.get("price") or 0))
+            y_lo = min(y_lo, float(node.get("price") or y_lo))
+        pad = (y_hi - y_lo) * 0.08 + 1e-6
+        ax.set_ylim(y_lo - pad, y_hi + pad * 1.25)
+
+        ax.grid(True, color=_GRID, lw=0.55, zorder=0)
+        axv.grid(True, color=_GRID, lw=0.55, zorder=0)
         ax.tick_params(labelsize=8, colors=_TEXT)
         axv.tick_params(labelsize=7, colors=_TEXT)
-        step = max(1, n // 6)
-        ticks = list(range(0, n, step))
-        if n - 1 not in ticks:
-            ticks.append(n - 1)
+        ticks, labels = _future_tick_labels(rows, n, x_max)
         ax.set_xticks(ticks)
-        ax.set_xticklabels(
-            [str(rows[i].get("date") or "")[4:] for i in ticks],
-            fontsize=7,
-        )
+        ax.set_xticklabels(labels, fontproperties=_fp(7.0))
         axv.set_xticks(ticks)
         axv.set_xticklabels([])
-        fig.subplots_adjust(left=0.07, right=0.98, top=0.93, bottom=0.06)
+        # 現價豎虛線＝時間軸「現在」
+        ax.axvline(float(n - 1), color="#757575", lw=0.8, ls="--", alpha=0.7, zorder=2)
+        fig.subplots_adjust(left=0.07, right=0.93, top=0.93, bottom=0.06)
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         fig.savefig(out_path, dpi=_DPI, facecolor=_BG)
         plt.close(fig)
