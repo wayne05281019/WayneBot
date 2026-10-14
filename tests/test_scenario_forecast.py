@@ -117,8 +117,7 @@ def test_silent_catalog_has_scenario_kind():
     assert "不是選股" in (rows[0].get("note") or "")
 
 
-@pytest.mark.asyncio
-async def test_send_scenario_forecast_failure_does_not_raise():
+def test_send_scenario_forecast_failure_does_not_raise():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = ":memory:"
     bot.charts_dir = tempfile.mkdtemp()
@@ -136,21 +135,17 @@ async def test_send_scenario_forecast_failure_does_not_raise():
     bot._prepare_lookup_album_photo = MagicMock(side_effect=lambda p, *a, **k: p)
     bot._reply_lookup_photo = AsyncMock(return_value=False)
 
-    with patch("bot_servers.lookup_stocks", return_value=[{"stock_id": "3035"}]):
-        with patch(
-            "scenario_forecast_chart.render_scenario_forecast",
-            side_effect=RuntimeError("boom"),
-        ):
-            # call through bot method — import path uses submit_mpl_paint
+    async def _run():
+        with patch("bot_servers.lookup_stocks", return_value=[{"stock_id": "3035"}]):
             with patch("wayne_navigator.submit_mpl_paint") as smp:
-                fut = MagicMock()
-                fut.result = MagicMock(side_effect=RuntimeError("boom"))
                 from concurrent.futures import Future
 
                 bad = Future()
                 bad.set_exception(RuntimeError("boom"))
                 smp.return_value = bad
                 await bot._send_scenario_forecast(msg, "3035", "1")
+
+    asyncio.run(_run())
     assert msg.reply_text.await_count >= 1
     text = msg.reply_text.await_args.args[0]
     assert "暫略" in text
