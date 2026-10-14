@@ -445,9 +445,6 @@ def infer_dc_wave_scenario(
     abc: List[Dict[str, Any]] = []
     if "(5)" in have:
         w5c = next(c for c in confirmed if c["label"] == "(5)")
-        tail = [p for p in best["seg_tail"] if p["i"] > w5c["i"]]
-        # 對齊：H5 後應 L(a) H(b) L(c)
-        # confirmed 的 (5) 來自 seg；tail 是 seg[3:] 可能含 3,4,5 之後
         after = []
         for p in zz:
             if p["i"] > w5c["i"]:
@@ -469,6 +466,62 @@ def infer_dc_wave_scenario(
                     }
                 )
 
+    # DC：5 浪（或 abc）走完後，自最新低點再虛線新一輪 (1)…(5) 伸右側未來
+    next_cycle: List[Dict[str, Any]] = []
+    if (abc or ("(5)" in have and not projected)) and last > 0:
+        if abc:
+            base = abc[-1]  # c
+        else:
+            # 用 (5) 後最近低，或現價
+            w5c = next(c for c in confirmed if c["label"] == "(5)")
+            base = {
+                "i": max(float(w5c["i"]), float(n - 1)),
+                "price": float(last),
+                "kind": "L",
+            }
+            for p in reversed(zz):
+                if p["i"] >= w5c["i"] and p["kind"] == "L":
+                    base = {
+                        "i": float(p["i"]),
+                        "price": float(p["price"]),
+                        "kind": "L",
+                    }
+                    break
+        x0 = max(float(base["i"]), float(n - 1))
+        y0 = float(base["price"])
+        # 新循環目標錨前高候選／已完成 (5)
+        top5 = next((c for c in confirmed if c["label"] == "(5)"), None)
+        t1 = _pick_ladder_above(ladder_lv, y0, default=y0 * 1.08)
+        if top5:
+            t1 = min(max(t1, y0 * 1.05), float(top5["price"]) * 1.05)
+        t3 = _pick_ladder_above(ladder_lv, t1, default=t1 * 1.12)
+        t3 = min(float(t3), float(y_cap))
+        t5 = _pick_ladder_above(ladder_lv, t3, default=t3 * 1.08)
+        t5 = min(float(t5), float(y_cap) * 1.02)
+        t2 = y0 + (t1 - y0) * 0.38
+        t4 = t1 + (t3 - t1) * 0.45
+        seq = [
+            ("(1)", x0 + fut * 0.18, t1, "H"),
+            ("(2)", x0 + fut * 0.34, t2, "L"),
+            ("(3)", x0 + fut * 0.55, t3, "H"),
+            ("(4)", x0 + fut * 0.70, t4, "L"),
+            ("(5)", x0 + fut * 0.90, t5, "H"),
+        ]
+        for lab, xi, yi, kind in seq:
+            next_cycle.append(
+                {
+                    "label": lab,
+                    "i": float(xi),
+                    "price": float(yi),
+                    "kind": kind,
+                    "projected": True,
+                    "next_cycle": True,
+                }
+            )
+        # 若原本沒有 mid-cycle 虛線，改用 next_cycle 當 path_proj
+        if not projected:
+            projected = list(next_cycle)
+
     # 路徑點：起點 → 已走 → 虛線
     path_done: List[Tuple[float, float]] = [
         (float(start["i"]), float(start["price"]))
@@ -477,13 +530,19 @@ def infer_dc_wave_scenario(
         path_done.append((float(c["i"]), float(c["price"])))
     path_proj: List[Tuple[float, float]] = []
     if projected:
-        path_proj.append(path_done[-1])
+        if next_cycle and abc:
+            path_proj.append((float(abc[-1]["i"]), float(abc[-1]["price"])))
+        else:
+            path_proj.append(path_done[-1])
         for c in projected:
             path_proj.append((float(c["i"]), float(c["price"])))
 
     conf_labs = [c["label"] for c in confirmed]
     proj_labs = [c["label"] for c in projected]
-    if abc:
+    if abc and next_cycle:
+        bubble = "情境預估：5浪後abc，虛線新一輪(1)–(5)（不保證・不是買訊）"
+        state = "abc_next"
+    elif abc:
         bubble = "情境預估：5浪後修正 abc（樞紐重算・不保證・不是買訊）"
         state = "abc"
     elif len(conf_labs) >= 5 and not proj_labs:
@@ -508,7 +567,8 @@ def infer_dc_wave_scenario(
         "path_proj": path_proj,
         "bubble": bubble,
         "state": state,
-        "labels": conf_labs + proj_labs + [a["label"] for a in abc],
+        "labels": conf_labs + [a["label"] for a in abc] + proj_labs,
+        "next_cycle": next_cycle,
     }
 
 
@@ -1256,6 +1316,8 @@ def render_scenario_forecast(
                 "confirmed": list((wave or {}).get("confirmed") or []),
                 "projected": list((wave or {}).get("projected") or []),
                 "abc": list((wave or {}).get("abc") or []),
+                "next_cycle": list((wave or {}).get("next_cycle") or []),
+                "path_proj": list((wave or {}).get("path_proj") or []),
             }
             if wave
             else {},
