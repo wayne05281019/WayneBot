@@ -497,6 +497,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         buy_exclude_night_tick(market_db, day)
     except Exception:
         pass
+    # 勝率買點×大量區／均線再篩另軌：母體內靜默過濾對質；不過閘不改話筒。失敗不擋。
+    try:
+        from winrate_volzone_filter_verify import night_tick as wr_vz_filter_night_tick
+
+        wr_vz_filter_night_tick(market_db, day)
+    except Exception:
+        pass
     # 查股結構／導航出圖精確度另軌：官方柱對標籤；不准改買訊。失敗不擋。
     try:
         from lookup_chart_verify import night_tick as lookup_chart_night_tick

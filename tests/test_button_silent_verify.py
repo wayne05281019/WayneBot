@@ -83,6 +83,7 @@ def test_catalog_covers_full_keyboard():
         "大量區×季線",
         "盤中剛離零→收盤",
         "買點排除層",
+        "勝率大量區再篩",
         "AI倉",
         "連買區",
         "剛脫離零",
