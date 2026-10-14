@@ -710,9 +710,9 @@ def build_asc_channel_from_low_dates(
         pos, alive = "靠近上升軌", True
     else:
         pos, alive = "上升通道中段", True
+    # tip 用語跟自動軌同一套；不准特別標「自動／非他點名／他自己點的」
     tip = (
-        f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}"
-        f"（他自己點的兩天低點）；"
+        f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
         f"平行壓貼 {_md(td)}高{_px(ty)}；現況{pos}。"
         f"破上升軌才像轉折。不是買訊。"
     )

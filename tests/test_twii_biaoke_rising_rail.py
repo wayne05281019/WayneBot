@@ -64,7 +64,10 @@ def test_build_asc_channel_from_low_dates_uses_official_lows():
     assert b[2] == "20261013" and abs(float(b[1]) - 48066.0) < 0.1
     tip = str(ch.get("tip") or "")
     assert "9/16" in tip and "10/13" in tip
-    assert "他自己點的兩天低點" in tip
+    # 不准特別標自動／非他點名／他自己點的（話筒同一張臉）
+    assert "他自己點的" not in tip
+    assert "自動" not in tip
+    assert "非他點名" not in tip
     assert "第5" not in tip and "5浪" not in tip
     assert "不是買訊" in tip
 
@@ -146,5 +149,6 @@ def test_twii_prefers_biaoke_916_1013(production_db):
     assert str(base[0][2]).replace("-", "")[:8] == "20260916"
     assert str(base[1][2]).replace("-", "")[:8] == "20261013"
     tip = str(ch.get("tip") or "")
-    assert "他自己點的兩天低點" in tip
+    assert "9/16" in tip and "10/13" in tip
+    assert "他自己點的" not in tip and "自動" not in tip and "非他點名" not in tip
     assert "8/25" not in tip  # 不准再默默用自動 8/25～*
