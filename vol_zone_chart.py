@@ -86,7 +86,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 30  # 表頭收字漲跌色＋話筒路徑預設五日／十日
+_VZ_PAINT_VER = 32  # 平行軌標軸外右溝＋TWII 吃他點的兩天低點
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -1571,6 +1571,7 @@ def _vz_memo_key(
     with_parallel_channel: bool = False,
     with_ma5_ma10: bool = True,
     card_fp: Tuple[Any, ...] = (),
+    channel_fp: Tuple[Any, ...] = (),
 ) -> Tuple[Any, ...]:
     last_d = _bar_ymd((last or {}).get("date"))
     return (
@@ -1589,6 +1590,7 @@ def _vz_memo_key(
         int(bool(with_parallel_channel)),
         int(bool(with_ma5_ma10)),
         tuple(card_fp or ()),
+        tuple(channel_fp or ()),
     )
 
 
@@ -1655,12 +1657,20 @@ def infer_vol_zone_parallel_channel(
     view,
     *,
     bars_face=None,
+    db_path: str = "",
+    stock_id: str = "",
 ) -> Dict[str, Any]:
     """大量區近窗可疊的平行軌：算法＝結構圖 infer_parallel_channel（可重算；不數浪）。
 
-    優先用較長官方柱面（對齊結構 _BARS）再對日期映回近窗；映不上才直接用近窗算。
+    加權／TWII：若他自己寫過「M/D M/D兩天低點來畫」，優先用那兩天官方低連線；
+    否則長窗推算→近窗對日期。映不上才直接用近窗算。不准發明沒說過的價／浪號。
     """
-    from biaoke_chart import _BARS, infer_parallel_channel
+    from biaoke_chart import (
+        _BARS,
+        build_asc_channel_from_low_dates,
+        infer_parallel_channel,
+        latest_biaoke_named_rising_lows,
+    )
 
     if view is None or getattr(view, "empty", True) or len(view) < 24:
         return {}
@@ -1668,8 +1678,24 @@ def infer_vol_zone_parallel_channel(
         str(view.iloc[i].get("date") or "").replace("-", "")[:8]: i for i in range(len(view))
     }
     face = _bars_face_records(bars_face)
+    work = face[-int(_BARS) :] if len(face) > int(_BARS) else face
+    if len(work) < 24:
+        work = _bars_face_records(view.to_dict("records"))
+
+    sid = str(stock_id or "").strip().upper()
+    if sid in ("TWII", "TAIEX", "^TWII") and db_path:
+        named = latest_biaoke_named_rising_lows(str(db_path))
+        if named:
+            d1, d2, _pid = named
+            ch_named = build_asc_channel_from_low_dates(work, d1, d2)
+            if not ch_named:
+                rows_v = _bars_face_records(view.to_dict("records"))
+                ch_named = build_asc_channel_from_low_dates(rows_v, d1, d2)
+            if ch_named:
+                mapped = _channel_remap_to_view(ch_named, date_to_i)
+                return mapped or ch_named
+
     if len(face) >= 24:
-        work = face[-int(_BARS) :] if len(face) > int(_BARS) else face
         ch = infer_parallel_channel(work)
         mapped = _channel_remap_to_view(ch, date_to_i) if ch else None
         if mapped:
@@ -1686,18 +1712,28 @@ def paint_vol_zone_parallel_channel(
     ymin: float,
     ymax: float,
 ) -> None:
-    """在大量區 K 上畫兩條平行軌＋右緣價標。不是買訊、不數 5／9。"""
+    """在大量區 K 上畫兩條平行軌＋右緣價標。不是買訊、不數 5／9。
+
+    標籤（平行壓／上升軌）放軸外右溝（axesX×dataY），字級略縮；
+    呼叫端須把 GridSpec right 收窄留溝，整盒才不會被圖框切斷。
+    """
     if not ch or ax is None:
         return
+    from matplotlib.transforms import blended_transform_factory
+
     from biaoke_chart import _paint_parallel_channel
 
     seam = float(max(n - 1, 0))
+    # K 右略留空；線不過軸外標
+    x0, x1 = ax.get_xlim()
+    ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
+    rail_hi = float(n) + 0.35
     _paint_parallel_channel(
         ax,
         ch,
         seam=seam,
         x_lo=-0.05,
-        x_hi=float(n) + 0.85,
+        x_hi=rail_hi,
         y_lo=float(ymin),
         y_hi=float(ymax),
         n=int(n),
@@ -1711,26 +1747,49 @@ def paint_vol_zone_parallel_channel(
     color = "#1565c0" if kind == "asc" else "#6a1b9a"
     if not bool(ch.get("alive")):
         color = "#90a4ae"
-    x_lab = float(n) - 0.15
+    y_span = max(float(ymax) - float(ymin), 1.0)
+    # (顯示Y, 標名, 真價)——錯開只動顯示Y，價標仍用真價
+    items: List[Tuple[float, str, float]] = []
     for y, lab in ((rail, name_u), (base, name_l)):
-        if y <= 0:
-            continue
+        if y > 0:
+            items.append((float(y), str(lab), float(y)))
+    if len(items) == 2 and abs(items[0][0] - items[1][0]) < y_span * 0.045:
+        mid = (items[0][0] + items[1][0]) / 2.0
+        gap = y_span * 0.028
+        if items[0][0] >= items[1][0]:
+            items = [
+                (mid + gap, items[0][1], items[0][2]),
+                (mid - gap, items[1][1], items[1][2]),
+            ]
+        else:
+            items = [
+                (mid - gap, items[0][1], items[0][2]),
+                (mid + gap, items[1][1], items[1][2]),
+            ]
+    # 軸外右溝：X＝axes 分數、Y＝價；clip_on=False 才能畫進 GridSpec 預留溝
+    trans = blended_transform_factory(ax.transAxes, ax.transData)
+    for y_disp, lab, y_px in items:
+        y_draw = min(
+            max(float(y_disp), float(ymin) + y_span * 0.02),
+            float(ymax) - y_span * 0.02,
+        )
         ax.text(
-            x_lab,
-            y,
-            f"{lab} {_fmt_price(y)}",
+            1.085,
+            y_draw,
+            f"{lab} {_fmt_price(y_px)}",
+            transform=trans,
             ha="left",
             va="center",
-            fontproperties=_fp(9.0, "bold"),
+            fontproperties=_fp(7.6, "bold"),
             color=color,
             zorder=12,
             clip_on=False,
             bbox=dict(
-                boxstyle="round,pad=0.18",
+                boxstyle="round,pad=0.14",
                 facecolor="#ffffff",
                 edgecolor=color,
-                linewidth=0.8,
-                alpha=0.94,
+                linewidth=0.75,
+                alpha=0.96,
             ),
         )
 
@@ -1928,6 +1987,16 @@ def render_volume_zone_result(
                 str(card.get("query_clock") or ""),
                 str(card.get("stance") or ""),
             )
+    channel_fp: Tuple[Any, ...] = ()
+    if with_parallel_channel and str(pack["sid"]).upper() in ("TWII", "TAIEX", "^TWII"):
+        try:
+            from biaoke_chart import latest_biaoke_named_rising_lows
+
+            named = latest_biaoke_named_rising_lows(str(db_path or ""))
+            if named:
+                channel_fp = (str(named[0]), str(named[1]))
+        except Exception:
+            channel_fp = ()
     memo_key = _vz_memo_key(
         pack["sid"],
         pack["zone"],
@@ -1939,6 +2008,7 @@ def render_volume_zone_result(
         with_parallel_channel=with_parallel_channel,
         with_ma5_ma10=with_ma5_ma10,
         card_fp=card_fp,
+        channel_fp=channel_fp,
     )
     hit = _vz_memo_get(memo_key, pack["out"])
     if hit:
@@ -1955,7 +2025,10 @@ def render_volume_zone_result(
     if with_parallel_channel:
         try:
             ch0 = infer_vol_zone_parallel_channel(
-                pack["view"], bars_face=pack.get("bars")
+                pack["view"],
+                bars_face=pack.get("bars"),
+                db_path=str(db_path or ""),
+                stock_id=str(pack["sid"] or ""),
             )
             tip = str((ch0 or {}).get("tip") or "").strip()
             if tip and tip not in cap:
@@ -2084,6 +2157,8 @@ def _paint_volume_zone(
         head_ratios = [1.28, 3.38, 0.40, 0.98]
         head_bottom = 0.065
 
+    # 平行軌右緣標（平行壓／上升軌）要完整：右溝加寬（過右軸刻度），標放軸外不進 K
+    _gs_right = 0.72 if with_parallel_channel else (0.935 if with_nav_signals else 0.96)
     if with_nav_signals:
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
         fig = _new_lookup_figure(fig_size, VOL_ZONE_DPI, _BG)
@@ -2094,7 +2169,7 @@ def _paint_volume_zone(
             height_ratios=head_ratios,
             hspace=0.035,
             left=0.050,
-            right=0.935,
+            right=_gs_right,
             top=0.985,
             bottom=head_bottom,
         )
@@ -2118,7 +2193,7 @@ def _paint_volume_zone(
             height_ratios=[4.85, 1.85] if lookup_portrait else [3.4, 1.05],
             hspace=0.055,
             left=0.04,
-            right=0.96,
+            right=_gs_right,
             top=0.88,
             bottom=0.08,
         )
@@ -2335,7 +2410,12 @@ def _paint_volume_zone(
     # 平行軌現價可能高於壓／低於撐：ylim 先吃進去，線才不會被裁
     if with_parallel_channel:
         try:
-            channel = infer_vol_zone_parallel_channel(view, bars_face=bars_face)
+            channel = infer_vol_zone_parallel_channel(
+                view,
+                bars_face=bars_face,
+                db_path=str(db_path or ""),
+                stock_id=str(sid or ""),
+            )
             if channel:
                 y_span = max(float(ymax) - float(ymin), 1.0)
                 for yv in (channel.get("rail_now"), channel.get("base_now")):

@@ -2055,13 +2055,22 @@ def desk_market_rail_tip(db_path: str) -> str:
     if not db_path:
         return ""
     try:
-        from biaoke_chart import infer_parallel_channel
+        from biaoke_chart import (
+            build_asc_channel_from_low_dates,
+            infer_parallel_channel,
+            latest_biaoke_named_rising_lows,
+        )
         from biaoke_wave import _load_twii_bars
 
         bars = _load_twii_bars(db_path, n=168)
         if len(bars) < 16:
             return ""
-        ch = infer_parallel_channel(bars) or {}
+        ch: Dict[str, Any] = {}
+        named = latest_biaoke_named_rising_lows(db_path)
+        if named:
+            ch = build_asc_channel_from_low_dates(bars, named[0], named[1]) or {}
+        if not ch:
+            ch = infer_parallel_channel(bars) or {}
         tip = str(ch.get("tip") or "").strip()
         if tip:
             return _clip(tip, 140)
