@@ -3835,8 +3835,8 @@ def render_biaoke_structure_png(
         round(fig_h, 3),
         # v78j＋live-face：右軸跟決策卡；縮圖末日 K／量疊盤中真報價
         "hdr-band-v78j-axis-card-live-face" if fullbleed else "hdr-wrap3-vol-min",
-        # 止穩觀察標進鍵：命中與否不准互蓋舊圖
-        "stabilize-v2",
+        # 止穩／外資觀察標進鍵：命中與否不准互蓋舊圖
+        "stabilize-v2-fs-observe-v1",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -4773,6 +4773,33 @@ def render_biaoke_structure_png(
             )
     except Exception:
         logger.debug("結構圖止穩標略過", exc_info=True)
+    # 外資升級／確認觀察標（測試版；非買訊）：琥珀六角「觀察」；異於止穩◆／藍▲紅框
+    try:
+        if db_path and sid:
+            from foreign_sell_display import (
+                stock_observe_bar_index,
+                stock_observe_hit,
+            )
+            from wayne_navigator import _paint_foreign_sell_observe_marks
+
+            hit = stock_observe_hit(str(db_path), str(sid))
+            if hit is not None:
+                dates = [str(r.get("date") or "") for r in work]
+                fs_idxs = stock_observe_bar_index(dates, hit)
+                if fs_idxs:
+                    from stabilize_watch import frame_from_bars as _ffb
+
+                    fs_df = _ffb(work)
+                    _paint_foreign_sell_observe_marks(
+                        ax1,
+                        fs_df,
+                        fs_idxs,
+                        xs,
+                        arrow_gap=span * 0.034,
+                        span=span,
+                    )
+    except Exception:
+        logger.debug("結構圖外資觀察標略過", exc_info=True)
     from wayne_navigator import _savefig_lookup_png
 
     _savefig_lookup_png(fig, save_path, use_dpi)

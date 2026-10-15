@@ -8618,7 +8618,9 @@ class WayneTelegramBot:
                 pass
             struct_path_f = self._scratch_chart_path(self.charts_dir, code, "struct", uid_key)
             vol_path_f = self._scratch_chart_path(self.charts_dir, code, "vol", uid_key)
-            struct_face = ["結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察"]
+            struct_face = [
+                "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察　橘六角觀察＝外資預警（測試・非買）"
+            ]
             vol_face = ["大量撐壓圖（非買訊）"]
 
             def _render_struct():

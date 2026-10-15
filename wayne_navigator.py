@@ -6730,6 +6730,75 @@ def _paint_nav_buy_arrows(
     return True
 
 
+def _paint_foreign_sell_observe_marks(
+    ax1,
+    work: pd.DataFrame,
+    idxs,
+    xs,
+    *,
+    arrow_gap: float,
+    span: float,
+) -> bool:
+    """查股／大量區：外資升級／確認「觀察」六角標（測試版；永遠不是買訊）。
+
+    視覺＝琥珀橘六角形＋「觀察」字；異於藍▲紅框、止穩◆。
+    規則／命中在 foreign_sell_display；不准併入 _nav_trade_marks／買訊路徑。
+    """
+    if ax1 is None or work is None or getattr(work, "empty", True):
+        return False
+    n = len(work)
+    paint_idxs = [int(i) for i in (idxs or []) if 0 <= int(i) < n]
+    if not paint_idxs:
+        return False
+    try:
+        from foreign_sell_display import (
+            OBSERVE_EDGE,
+            OBSERVE_FACE,
+            OBSERVE_LABEL,
+            OBSERVE_MARKER,
+        )
+    except Exception:
+        OBSERVE_FACE, OBSERVE_EDGE, OBSERVE_LABEL, OBSERVE_MARKER = (
+            "#E65100",
+            "#FF8F00",
+            "觀察",
+            "h",
+        )
+    tip_ys = []
+    for ii in paint_idxs:
+        tip_ys.append(float(work["low"].iloc[ii]) - arrow_gap * 2.15)
+    y0, y1 = ax1.get_ylim()
+    mark_r = max(span * 0.028, 0.01)
+    ax1.set_ylim(min(y0, min(tip_ys) - mark_r * 3.2 - span * 0.01), y1)
+    painted = False
+    for ii, tip in zip(paint_idxs, tip_ys):
+        x = float(xs[ii])
+        ax1.scatter(
+            [x],
+            [tip],
+            marker=OBSERVE_MARKER,
+            s=110,
+            c=OBSERVE_FACE,
+            edgecolors=OBSERVE_EDGE,
+            linewidths=1.7,
+            zorder=9,
+            clip_on=False,
+        )
+        ax1.text(
+            x,
+            tip - mark_r * 1.55,
+            OBSERVE_LABEL,
+            ha="center",
+            va="top",
+            fontproperties=_fp(7.5, "bold"),
+            color=OBSERVE_FACE,
+            zorder=9,
+            clip_on=False,
+        )
+        painted = True
+    return painted
+
+
 def _paint_stabilize_marks(
     ax1,
     work: pd.DataFrame,
@@ -7129,6 +7198,15 @@ def overlay_nav_marks_on_zone(
         span=span,
         signal_work=buy_src,
     )
+    # 外資升級／確認觀察標（測試版；非買訊）：琥珀六角；異於止穩◆／藍▲紅框
+    # 呼叫端經 card["_foreign_sell_observe_idxs"] 注入（查股／大量區）
+    _fs_idxs = None
+    if isinstance(card, dict):
+        _fs_idxs = card.get("_foreign_sell_observe_idxs")
+    if _fs_idxs:
+        _paint_foreign_sell_observe_marks(
+            ax1, paint, _fs_idxs, xs, arrow_gap=arrow_gap, span=span
+        )
     if sell_i_src is not None:
         sell_d = str(buy_src["date"].iloc[int(sell_i_src)])
         if sell_d in date_to_i:

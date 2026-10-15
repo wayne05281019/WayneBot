@@ -87,7 +87,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 34  # 止穩／導航訊號列疊 #606 決策卡 live-face
+_VZ_PAINT_VER = 35  # 外資觀察標（測試版橘六角）＋止穩／#606 live-face
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2632,12 +2632,36 @@ def _paint_volume_zone(
                     logger.debug(
                         "大量區訊號列疊盤中臉柱略過 sid=%s", sid, exc_info=True
                     )
+            # 外資升級／確認觀察標（測試版）：注入 card 再疊；非買訊
+            paint_card = card
+            if db_path and sid:
+                try:
+                    from foreign_sell_display import (
+                        stock_observe_bar_index,
+                        stock_observe_hit,
+                    )
+
+                    hit = stock_observe_hit(str(db_path), str(sid))
+                    if hit is not None:
+                        dates = [
+                            str(view["date"].iloc[i])
+                            for i in range(len(view))
+                        ]
+                        idxs = stock_observe_bar_index(dates, hit)
+                        if idxs:
+                            paint_card = dict(card or {})
+                            paint_card["_foreign_sell_observe_idxs"] = idxs
+                            paint_card["stock_id"] = str(sid)
+                except Exception:
+                    logger.debug(
+                        "大量區外資觀察標略過 sid=%s", sid, exc_info=True
+                    )
             # 圖例改畫在標題列，不准掛在 K 上方留白；均線已在上方畫好
             overlay_nav_marks_on_zone(
                 ax1,
                 ax_sig,
                 view,
-                card=card,
+                card=paint_card,
                 draw_legend=False,
                 draw_ma20=False,
                 signal_work=signal_work,
@@ -2988,6 +3012,7 @@ def _paint_volume_zone(
         foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
         foot2 = (
             "高觸壓、收未過＝測壓（非買訊）。買點＝藍▲紅框、60低＝純藍▲、止穩◆＝觀察非買。"
+            "橘六角「觀察」＝外資升級／確認預警（測試・非買）。"
             "箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
         )
     else:

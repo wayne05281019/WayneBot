@@ -1,0 +1,229 @@
+# -*- coding: utf-8 -*-
+"""外資／恐懼預警測試版顯示：早報／大盤／查股標；永遠不是買訊。"""
+from __future__ import annotations
+
+import os
+import sqlite3
+import tempfile
+
+from dongzhu_tape import tape_store_path
+from foreign_sell_display import (
+    BUY_SIGNAL,
+    DISPLAY_MODE,
+    DISPLAY_TAG,
+    OBSERVE_LABEL,
+    OBSERVE_MARKER,
+    is_buy_entry_path,
+    load_env_status,
+    market_env_section_lines,
+    morning_observe_line_html,
+    stock_observe_bar_index,
+    stock_observe_hit,
+)
+from foreign_sell_escalate_verify import ensure_tables as ensure_esc
+from foreign_sell_extreme_verify import ensure_tables as ensure_ext
+from fear_preopen_verify import ensure_tables as ensure_fear
+
+
+def _mk_db() -> str:
+    td = tempfile.mkdtemp()
+    db = os.path.join(td, "wayne_market.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily(
+            date TEXT NOT NULL, symbol TEXT NOT NULL DEFAULT 'TWII',
+            open REAL, high REAL, low REAL, close REAL, volume REAL,
+            pct_change REAL, updated_at TEXT DEFAULT '',
+            PRIMARY KEY(date, symbol)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+    return db
+
+
+def test_display_hard_locks():
+    assert BUY_SIGNAL is False
+    assert DISPLAY_MODE == "test"
+    assert "測試" in DISPLAY_TAG
+    assert "觀察" in DISPLAY_TAG
+    assert OBSERVE_MARKER == "h"  # 異於止穩 D、買訊三角
+    assert OBSERVE_LABEL == "觀察"
+    assert not is_buy_entry_path("_paint_foreign_sell_observe_marks")
+    assert is_buy_entry_path("_paint_nav_buy_arrows")
+
+
+def test_morning_line_none_and_lit():
+    db = _mk_db()
+    ensure_fear(db)
+    store = tape_store_path(db)
+    # 無 tape → 今無（evaluate 也可能因缺美股不亮）
+    line = morning_observe_line_html(db, "20261014", fear_as_of="20261015")
+    assert DISPLAY_TAG in line.replace("<b>", "").replace("</b>", "") or "觀察" in line
+    assert "非買訊" in line or "今無" in line
+    assert "買進" not in line and "可買" not in line
+
+    conn = sqlite3.connect(store)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO fear_preopen_tape(
+            kind, as_of, params_key, lit, evaluable, votes, lead_sync,
+            gap_open_pct, dump_day, twii_ret_d, vote_json, skip_reason
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "fear_preopen_warn",
+            "20261015",
+            "test",
+            1,
+            1,
+            2,
+            "lead",
+            None,
+            0,
+            None,
+            "[]",
+            "",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    lit = morning_observe_line_html(db, "20261014", fear_as_of="20261015")
+    assert "恐懼" in lit
+    assert "非買訊" in lit
+    assert "買進" not in lit
+
+
+def test_market_env_section():
+    db = _mk_db()
+    ensure_fear(db)
+    store = tape_store_path(db)
+    conn = sqlite3.connect(store)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO fear_preopen_tape(
+            kind, as_of, params_key, lit, evaluable, votes, lead_sync,
+            gap_open_pct, dump_day, twii_ret_d, vote_json, skip_reason
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "fear_preopen_warn",
+            "20261014",
+            "test",
+            1,
+            1,
+            3,
+            "lead",
+            None,
+            0,
+            None,
+            "[]",
+            "",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    lines = market_env_section_lines(db, "20261014")
+    blob = "\n".join(lines)
+    assert "環境觀察" in blob
+    assert "Fear" in blob
+    assert "Confirm" in blob
+    assert "Calm" in blob
+    assert "測試" in blob
+    assert "不是買訊" in blob
+    assert "藍▲紅框" in blob
+
+
+def test_stock_observe_hit_escalate():
+    db = _mk_db()
+    ensure_esc(db)
+    store = tape_store_path(db)
+    conn = sqlite3.connect(store)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO foreign_sell_escalate_tape(
+            kind, as_of, params_key, sid, name, tag, lead_sync,
+            sell_share, pctl, foreign_net, volume
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "foreign_sell_escalate",
+            "20261013",
+            "p",
+            "2383",
+            "台光電",
+            "escalate_pre_A",
+            "lead",
+            0.2,
+            90.0,
+            -5000.0,
+            20000.0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    hit = stock_observe_hit(db, "2383")
+    assert hit is not None
+    assert hit.sid == "2383"
+    assert hit.buy_signal is False
+    assert hit.source == "escalate"
+    idxs = stock_observe_bar_index(
+        ["20261010", "20261013", "20261014"], hit
+    )
+    assert idxs == [1]
+
+
+def test_stock_observe_hit_extreme_priority():
+    db = _mk_db()
+    ensure_esc(db)
+    ensure_ext(db)
+    store = tape_store_path(db)
+    conn = sqlite3.connect(store)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO foreign_sell_escalate_tape(
+            kind, as_of, params_key, sid, name, tag
+        ) VALUES (?,?,?,?,?,?)
+        """,
+        ("foreign_sell_escalate", "20261012", "p", "2330", "台積電", "escalate_pre_A"),
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO foreign_sell_extreme_tape(
+            kind, as_of, track_key, sid, name, tag
+        ) VALUES (?,?,?,?,?,?)
+        """,
+        ("foreign_sell_extreme_dplus", "20261013", "lots_th5000", "2330", "台積電", "anchor"),
+    )
+    conn.commit()
+    conn.close()
+    hit = stock_observe_hit(db, "2330")
+    assert hit is not None
+    assert hit.source == "extreme"
+    assert hit.buy_signal is False
+
+
+def test_load_env_status_confirm_count():
+    db = _mk_db()
+    ensure_esc(db)
+    store = tape_store_path(db)
+    conn = sqlite3.connect(store)
+    for sid in ("2383", "2330", "2454"):
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO foreign_sell_escalate_tape(
+                kind, as_of, params_key, sid, name, tag
+            ) VALUES (?,?,?,?,?,?)
+            """,
+            ("foreign_sell_escalate", "20261014", "p", sid, sid, "escalate_pre_A"),
+        )
+    conn.commit()
+    conn.close()
+    st = load_env_status(db, "20261014")
+    assert st.confirm_n == 3
+    assert st.buy_signal is False
+    line = morning_observe_line_html(db, "20261014")
+    assert "外資升級" in line
+    assert "非買訊" in line

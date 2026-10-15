@@ -51,7 +51,9 @@ TG_CLICK_MAX_SIDE = 2560
 TG_WH_BUDGET = 4200  # 寬+高；點開視窗約 1170×2532，不再衝 10000 讓 TG 砍最長邊
 COMPOSE_INNER_W = 1480
 THREE_IN_ONE_JPEG_QUALITY = 95
-LOOKUP_STRUCTURE_CAPTION = "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察"
+LOOKUP_STRUCTURE_CAPTION = (
+    "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察　橘六角觀察＝外資預警（測試・非買）"
+)
 # 查股單張直式：對齊高低卡 4:5，220DPI → 1920×2400
 LOOKUP_PORTRAIT_FIG = (1920 / 220.0, 2400 / 220.0)
 LOOKUP_PORTRAIT_DPI = 220
