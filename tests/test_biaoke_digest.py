@@ -241,6 +241,107 @@ def test_latest_focus_is_oral_not_july_bwave():
     assert len(html) < 1800
 
 
+def test_focus_oral_strips_cmoney_google_chrome():
+    """話筒摘要不准出現 CMoney「要加入 google 偏好」宣傳。"""
+    mains = [
+        {
+            "id": "185883781",
+            "kind": "post",
+            "date": "2026-10-15",
+            "time": "16:45",
+            "text": (
+                "大盤波浪位階為A波拆解3-3主跌段下殺運行中\n"
+                "將網站加入你的 google 偏好搜尋來源，更容易搜尋到喜愛的內容\n"
+                "昨天夜盤及今日日盤波浪位階已經訂好了，目前為A-3-3運行中已經到修正末端。"
+            ),
+        }
+    ]
+    html = format_focus_oral(
+        mains,
+        [],
+        now=datetime(2026, 10, 15, 17, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "A-3-3" in html
+    assert "偏好" not in html
+    assert "google" not in html.lower()
+    assert "喜愛的內容" not in html
+
+
+def test_format_latest_focus_scopes_replies_to_latest_two_threads(tmp_path):
+    """按飆大只組最新兩則主文＋這兩串自回；別串舊回不准混進。"""
+    from biaoke_desk import upsert_biaoke_posts
+    from biaoke_digest import format_latest_focus
+
+    db = str(tmp_path / "w.db")
+    upsert_biaoke_posts(
+        db,
+        [
+            {
+                "id": "200000002",
+                "date": "2026-10-15",
+                "time": "16:45",
+                "kind": "post",
+                "tags": [],
+                "text": "1.大盤目前為A-3-3主跌運行中，明天會有A-3-4反彈逃命。",
+            },
+            {
+                "id": "200000001",
+                "date": "2026-10-15",
+                "time": "08:52",
+                "kind": "post",
+                "tags": [],
+                "text": "1.夜盤最差修正ABC-X-ABC，多空分界約47500，抄底看47300到47500。",
+            },
+            {
+                "id": "200000002:r1",
+                "parent": "200000002",
+                "date": "2026-10-15",
+                "time": "17:00",
+                "kind": "reply",
+                "layer": 1,
+                "tags": [],
+                "text": "他自己也會明天或下周一反彈全部出清股票。",
+            },
+            {
+                "id": "200000001:r1",
+                "parent": "200000001",
+                "date": "2026-10-15",
+                "time": "10:24",
+                "kind": "reply",
+                "layer": 1,
+                "tags": [],
+                "text": "黃框還有一段B波假突破，橘框是B波反彈不過前高後大跌。",
+            },
+            {
+                "id": "199000000:r9",
+                "parent": "199000000",
+                "date": "2026-10-14",
+                "time": "18:00",
+                "kind": "reply",
+                "layer": 1,
+                "tags": [],
+                "text": "這是更早一串的自回，不該進最新兩則摘要。",
+            },
+            {
+                "id": "199000000",
+                "date": "2026-10-14",
+                "time": "09:00",
+                "kind": "post",
+                "tags": [],
+                "text": "1.大盤昨天舊文不該當現在在講。",
+            },
+        ],
+    )
+    html = format_latest_focus(db)
+    assert "A-3-3" in html
+    # 兩則主文都要對齊：最新大盤欄＋前一則進他還說
+    assert "47500" in html or "47300" in html
+    assert "出清" in html
+    assert "黃框" in html or "橘框" in html
+    assert "更早一串" not in html
+    assert "昨天舊文" not in html
+
+
 def test_focus_oral_board_prefers_latest_main_not_older():
     """最新主文有大盤句時，不准被更早主文的「緩步上攻」蓋掉。"""
     mains = [
