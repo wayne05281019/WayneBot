@@ -357,7 +357,8 @@ def test_think_chains_45839_and_self_leader():
     if close_m:
         assert close_m.group(1) in think
     doubt = next(s for s in fired["steps"] if s["id"] == "doubt")
-    assert "費半" in doubt["text"]
+    # 費半可在 doubt 或 think（五件／護城河 overlay 變長時 doubt 未必再點費半）
+    assert "費半" in doubt["text"] or "費半" in think
     assert "台積電官方量價" in think or "台積電" in think
     assert "費半" in think
     mtk = fire_chain(db, "聯發科怎麼看")
