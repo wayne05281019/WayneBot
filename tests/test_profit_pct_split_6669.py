@@ -24,21 +24,27 @@ def test_6669_profit_not_fake_zero_after_split():
 
     db = get_db_path()
     conn = sqlite3.connect(db)
-    n = conn.execute(
-        "SELECT COUNT(*) FROM daily_quotes WHERE stock_id='6669' AND date='20260924'"
-    ).fetchone()[0]
+    row = conn.execute(
+        "SELECT close FROM daily_quotes WHERE stock_id='6669' AND date='20260924'"
+    ).fetchone()
     conn.close()
-    if not n:
+    if not row:
         pytest.skip("no 6669 20260924 quotes")
+
+    raw_close = float(row[0])
+    # 官方 raw 仍在庫；卡上 close 走大額除權還原列，後續 ex_rights 可能連動尖端
+    assert abs(raw_close - 2115.0) < 1e-6
 
     nav = NavigatorEngine(db)
     card = nav.get_decision_card("6669", as_of="20260924", merge_live=False)
-    assert float(card["close"]) == 2115.0
+    close = float(card["close"])
     gain = float(card["gain_pct"])
     cal60 = float(card["cal60_low"])
     # 未還原假地板 2105 → 0.5%；還原後 cal60 應明顯低於現價
     assert gain > 5.0, f"fake near-zero profit after split: {gain}"
-    assert abs(gain - round((2115.0 / cal60 - 1.0) * 100.0, 1)) < 0.05
+    # 獲利身分：跟卡上還原收盤同一套（不准硬編 2115；窗／後續除權會滾）
+    assert cal60 > 0
+    assert abs(gain - round((close / cal60 - 1.0) * 100.0, 1)) < 0.05
     # 獲利＝60曆日；距60根低＝60根 — 可以不同，但都不能是未還原假 0.5
     dist = float(card["dist_l60"])
     assert dist > 5.0
