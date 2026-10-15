@@ -650,6 +650,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         foreign_sell_escalate_night_tick(market_db, day)
     except Exception:
         pass
+    # 極端大賣→D+1～D+5 確認層：與 Fear／escalate 分勝率；非買訊。失敗不擋。
+    try:
+        from foreign_sell_extreme_verify import night_tick as foreign_sell_extreme_night_tick
+
+        foreign_sell_extreme_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 
