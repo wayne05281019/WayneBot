@@ -87,7 +87,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 33  # 止穩◆觀察標（非買訊）疊導航箭頭旁
+_VZ_PAINT_VER = 34  # 止穩／導航訊號列疊 #606 決策卡 live-face
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2610,6 +2610,28 @@ def _paint_volume_zone(
                 except Exception:
                     logger.exception("大量區載入導航 180 日失敗 sid=%s", sid)
                     signal_work = None
+            # 盤中：180 日訊號列末日也疊決策卡真報價（與 view 臉柱／#606 同源）
+            # 否則止穩／買箭在 signal_work 上算會看不到今日 live 低／收
+            if (
+                signal_work is not None
+                and isinstance(card, dict)
+                and card.get("is_live")
+            ):
+                try:
+                    from live_quote import overlay_live_face_from_card
+
+                    sw2 = overlay_live_face_from_card(
+                        signal_work, card, stock_id=str(sid or "")
+                    )
+                    if (
+                        isinstance(sw2, pd.DataFrame)
+                        and not getattr(sw2, "empty", True)
+                    ):
+                        signal_work = sw2.reset_index(drop=True)
+                except Exception:
+                    logger.debug(
+                        "大量區訊號列疊盤中臉柱略過 sid=%s", sid, exc_info=True
+                    )
             # 圖例改畫在標題列，不准掛在 K 上方留白；均線已在上方畫好
             overlay_nav_marks_on_zone(
                 ax1,

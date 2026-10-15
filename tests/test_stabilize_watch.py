@@ -118,3 +118,16 @@ def test_frame_from_bars():
     df = frame_from_bars(bars)
     assert len(df) == 1
     assert float(df["close"].iloc[0]) == 1.5
+
+
+def test_live_last_bar_participates_in_rule():
+    """盤中臉柱低／收變了，止穩命中也跟著變（觀察標吃 live OHLC）。"""
+    df = _ohlc_stabilize(extra_hold=4)
+    assert stabilize_fires_today(df)
+    tagged = float(df["low"].iloc[62])
+    # 模擬 live 破底
+    live = df.copy()
+    live.loc[live.index[-1], "low"] = tagged - 1.0
+    live.loc[live.index[-1], "close"] = tagged - 0.2
+    live.loc[live.index[-1], "is_live"] = True
+    assert not stabilize_fires_today(live)

@@ -126,6 +126,20 @@ def test_vol_zone_paint_calls_overlay():
     src = inspect.getsource(_paint_volume_zone)
     assert "overlay_live_face_from_card" in src
     assert "card.get(\"is_live\")" in src or "card.get('is_live')" in src
+    # 止穩／導航訊號列也要疊決策卡 live-face（#606 同源），不准只疊 view
+    nav_block = src.split("overlay_nav_marks_on_zone")[0]
+    assert nav_block.count("overlay_live_face_from_card") >= 2
+
+
+def test_structure_stabilize_after_live_face():
+    """結構圖：live-face 先疊再算止穩，盤中末日低／收才進 hold_l60。"""
+    from biaoke_chart import render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    face_i = src.find("overlay_live_face_from_card")
+    stab_i = src.find("stabilize_bar_indices")
+    assert face_i >= 0 and stab_i > face_i
+    assert "_paint_stabilize_marks" in src
 
 
 def test_lookup_vol_comment_keeps_official_zone_only():
