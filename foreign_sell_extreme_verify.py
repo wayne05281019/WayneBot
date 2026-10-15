@@ -111,16 +111,25 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
         return out
     try:
         ensure_tables(market_db)
-        days = _trading_days(market_db)
-        if not days:
+        as_of = _ymd(day)
+        if not as_of:
+            dens = _trading_days(market_db, "20200101", "20991231")
+            as_of = dens[-1] if dens else ""
+        if not as_of:
             return out
-        as_of = _ymd(day) or days[-1]
-        if as_of not in days:
+        # 近窗密日（含 as_of 前後）
+        win_days = _trading_days(market_db, "20200101", as_of)
+        if not win_days or as_of not in win_days:
             return out
-        di = days.index(as_of)
-        panel = _load_panel(market_db, days[max(0, di - 30) : di + 1])
+        di = win_days.index(as_of)
+        days = win_days[max(0, di - 30) : di + 1]
+        # 後窗（若庫已有）
+        fut_all = _trading_days(market_db, as_of, "20991231")
+        future_days = [d for d in fut_all if d > as_of][:DEFAULT_K]
+        days_load = days + future_days
+        top = _top_sids(market_db, as_of, TOP_N)
+        panel = _load_panel(market_db, days_load, top)
         ex = _ex_set(market_db, as_of)
-        top = _top_sids(market_db, as_of, n=TOP_N)
         track = DEFAULT_TRACK
         tk = track.key()
         bars_today = panel.get(as_of) or {}
@@ -134,8 +143,7 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
                 continue
             # 近窗 nets
             hist = []
-            nets10 = []
-            for d in days[max(0, di - 14) : di + 1]:
+            for d in days:
                 bb = (panel.get(d) or {}).get(sid) or {}
                 hist.append(bb.get("foreign_net"))
             nets10 = hist[-10:] if len(hist) >= 10 else hist
@@ -193,23 +201,19 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
                             0,
                         ),
                     )
-            # score pending windows when future days exist
-            future_days = days[di + 1 : di + 1 + DEFAULT_K]
             if future_days and lit_rows:
-                fut_panel = _load_panel(market_db, future_days)
                 for r in lit_rows:
                     sid = r["sid"]
                     closes = [
-                        ((fut_panel.get(d) or {}).get(sid) or {}).get("close")
+                        ((panel.get(d) or {}).get(sid) or {}).get("close")
                         for d in future_days
                     ]
                     fut_lits: List[Optional[bool]] = []
                     for d in future_days:
-                        bb = (fut_panel.get(d) or {}).get(sid) or {}
+                        bb = (panel.get(d) or {}).get(sid) or {}
                         if not bb:
                             fut_lits.append(None)
                             continue
-                        # 簡易：同軌 lots 再 lit
                         fut_lits.append(
                             lit_extreme_day(
                                 track,

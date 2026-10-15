@@ -262,30 +262,28 @@ def main() -> int:
     out_dir = args.out
     os.makedirs(out_dir, exist_ok=True)
 
-    days_all = _trading_days(args.db)
-    days = [d for d in days_all if d >= args.start and (not args.end or d <= args.end)]
+    start = args.start
+    end = args.end or "20991231"
+    days = _trading_days(args.db, start, end)
     if len(days) < 20:
         print(json.dumps({"error": "days_too_few", "n": len(days)}, ensure_ascii=False))
         return 2
 
     print(f"[extreme] 載入 panel 密日 n={len(days)} …", flush=True)
-    panel = _load_panel(args.db, days)
+    pool = _top_sids(args.db, days[-1], max(TOP_N * 5, 2500))
+    top500 = _top_sids(args.db, days[-1], TOP_N)
+    panel = _load_panel(args.db, days, pool)
     ex_by_day = {d: _ex_set(args.db, d) for d in days}
     members_by_day: Dict[str, Dict[str, List[str]]] = {}
     for d in days:
-        top = _top_sids(args.db, d, n=TOP_N)
-        members_by_day[d] = _universe_members(d, top500=top, bars=panel.get(d) or {})
+        members_by_day[d] = _universe_members(d, top500=top500, bars=panel.get(d) or {})
 
-    # 單位核：抽賣超列
-    sample_fn, sample_vol = [], []
-    for d in days[-5:]:
+    # 單位核
+    unit_rows: List[Dict[str, Any]] = []
+    for d in days:
         for b in (panel.get(d) or {}).values():
-            fn = _f(b.get("foreign_net"))
-            vol = _f(b.get("volume"))
-            if fn is not None and fn < 0 and vol:
-                sample_fn.append(fn)
-                sample_vol.append(vol)
-    units = unit_consistency_report(sample_fn, sample_vol)
+            unit_rows.append({"foreign_net": b.get("foreign_net"), "volume": b.get("volume")})
+    units = unit_consistency_report(unit_rows)
     with open(os.path.join(out_dir, "units_consistency.json"), "w", encoding="utf-8") as f:
         json.dump({"banner": units_banner(), "consistency": units}, f, ensure_ascii=False, indent=2)
 
