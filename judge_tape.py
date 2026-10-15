@@ -636,6 +636,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         biaoke_diverge_night_tick(market_db, day)
     except Exception:
         pass
+    # 開盤前恐懼複合：只觀察／預警；F→Dump 分 Lead／Sync；非買訊、不改 leave_zero。失敗不擋。
+    try:
+        from fear_preopen_verify import night_tick as fear_preopen_night_tick
+
+        fear_preopen_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 

@@ -166,12 +166,12 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
     },
     {
         "btn": "台股大盤",
-        "kinds": ("market", "fut", "us", "outer"),
+        "kinds": ("market", "fut", "us", "outer", "fear_preopen_warn"),
         "class": CLASS_CONTEXT,
         "status": "present",
-        "pipe": "judge_tape + silent_progress + biaoke_forecast",
-        "window": "加權完整柱＋日夜盤／美指已收；試畫另軌",
-        "note": "佐證凍；現在不准發明 5／9",
+        "pipe": "judge_tape + silent_progress + biaoke_forecast；fear_preopen_verify 開盤前恐懼複合（觀察 only）",
+        "window": "加權完整柱＋日夜盤／美指已收；恐懼票開盤前；試畫另軌",
+        "note": "佐證凍；恐懼軌非買訊；現在不准發明 5／9",
     },
     {
         "btn": "資金輪動",
