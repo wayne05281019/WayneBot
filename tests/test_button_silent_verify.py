@@ -115,6 +115,9 @@ def test_catalog_covers_full_keyboard():
     biaoke = next(r for r in BUTTON_CATALOG if r["btn"] == "飆大")
     assert "biaoke_named" in biaoke["kinds"]
     assert "biaoke_levels" in biaoke["kinds"]
+    market = next(r for r in BUTTON_CATALOG if r["btn"] == "台股大盤")
+    assert "fear_preopen_warn" in market["kinds"]
+    assert "market" in market["kinds"]
     sf = next(r for r in BUTTON_CATALOG if r["btn"] == "情境預估")
     assert "scenario_forecast" in sf["kinds"]
     assert "dc_sf_silent" in str(sf.get("pipe") or "")
