@@ -17,6 +17,7 @@ from button_silent_verify import (
     pressure_coexists,
     snapshot_ai_desk,
     snapshot_all_button_gaps,
+    snapshot_biaoke_levels,
     snapshot_biaoke_named,
     snapshot_book_buy,
     snapshot_book_hold,
@@ -110,6 +111,12 @@ def test_catalog_covers_full_keyboard():
     assert lookup["class"] == "lookup_query"
     assert not is_screen_kind("lookup")
     assert not is_personal_book_kind("lookup")
+    biaoke = next(r for r in BUTTON_CATALOG if r["btn"] == "飆大")
+    assert "biaoke_named" in biaoke["kinds"]
+    assert "biaoke_levels" in biaoke["kinds"]
+    sf = next(r for r in BUTTON_CATALOG if r["btn"] == "情境預估")
+    assert "scenario_forecast" in sf["kinds"]
+    assert "dc_sf_silent" in str(sf.get("pipe") or "")
 
 
 def test_personal_vs_screen_kinds_do_not_mix():
@@ -242,11 +249,81 @@ def test_ai_and_biaoke_snapshots(tmp_path):
     assert snapshot_biaoke_named(db, "20260915") == 1
 
 
+def test_snapshot_biaoke_levels_freezes_claims(tmp_path):
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"2454": 100.0}, "20260915")
+    from biaoke_claims import ensure_biaoke_claims_table
+
+    ensure_biaoke_claims_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT OR REPLACE INTO biaoke_claims("
+        "claim_key,post_id,post_date,stock_id,stock_name,role,verb,lo,hi,snippet,club) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "c1",
+            "p1",
+            "20260915",
+            "2454",
+            "聯發科",
+            "支撐",
+            "不破",
+            95.0,
+            98.0,
+            "不破95",
+            0,
+        ),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO biaoke_claims("
+        "claim_key,post_id,post_date,stock_id,stock_name,role,verb,lo,hi,snippet,club) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "c2",
+            "p2",
+            "20260915",
+            "",
+            "",
+            "壓力",
+            "穿越",
+            None,
+            46506.0,
+            "夜盤穿越46506",
+            0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    n = snapshot_biaoke_levels(db, "20260915")
+    assert n >= 2
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    kinds = {
+        str(r[0])
+        for r in conn.execute(
+            "SELECT kind FROM live_judge WHERE as_of=? AND kind='biaoke_levels'",
+            ("20260915",),
+        )
+    }
+    sids = {
+        str(r[0])
+        for r in conn.execute(
+            "SELECT sid FROM live_judge WHERE as_of=? AND kind='biaoke_levels'",
+            ("20260915",),
+        )
+    }
+    conn.close()
+    assert "biaoke_levels" in kinds
+    assert "2454" in sids
+    assert any(s.startswith("_BKLV_") for s in sids)
+
+
 def test_gap_runner_and_score_do_not_raise(tmp_path):
     db = str(tmp_path / "wayne_market.db")
     _seed(db, {"1101": 50.0}, "20260915")
     stats = snapshot_all_button_gaps(db, "20260915")
     assert "money_flow" in stats
+    assert "biaoke_levels" in stats
     remember_rows(
         db,
         "money_flow",

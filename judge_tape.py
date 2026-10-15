@@ -106,7 +106,8 @@ _SCREEN_BUCKETS = (
     "overnight",
 )
 # 大盤／外圍佐證可只有部分欄；個股選股要開高低收＋量才算有記
-_CONTEXT_KINDS = frozenset({"market", "fut", "us", "outer"})
+# biaoke_levels＝點位輔助凍（可含指數假碼 _BKLV_*）；不是選股勝率
+_CONTEXT_KINDS = frozenset({"market", "fut", "us", "outer", "biaoke_levels"})
 _BAR_KEYS = ("o", "h", "l", "c", "v")
 _CHIP_KEYS = ("fn", "tn", "dn", "pct")
 _EXTRA_KEEP = (
@@ -147,6 +148,14 @@ _EXTRA_KEEP = (
     "zone_low",
     "zone_volume",
     "zone_active",
+    # 飆大點名點位（對質輔助；不准當買訊）
+    "lo",
+    "hi",
+    "verb",
+    "snippet",
+    "claim_key",
+    "post_date",
+    "hit",
 )
 # 話筒按鍵改名不准改 kind。pick 才分同一顆鈕底下的子名單。
 _OUTER_MARKS = (
@@ -355,6 +364,88 @@ def remember_rows(
     return n
 
 
+def ensure_confront_aux(market_db: str, as_of: str = "") -> Dict[str, Any]:
+    """對質前輔助資料缺則同步補：台指／電子日夜盤、美股／美指已收。
+
+    只補官方來源；盤中未收不當收。失敗吞掉，不准擋海選／查股／飆大。
+    pytest 略過外網。
+    """
+    out: Dict[str, Any] = {"fut": 0, "us": 0, "day": ""}
+    day = _as_of(market_db, as_of)
+    out["day"] = day
+    if not market_db or not day or not os.path.isfile(market_db):
+        return out
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return out
+    # 期貨：當日台指／電子日夜盤缺柱才補
+    need_fut = False
+    try:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            names = {
+                str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            if "futures_daily" not in names:
+                need_fut = True
+            else:
+                for _sid, sym, sess, _name in _FUT_MARKS:
+                    hit = conn.execute(
+                        """
+                        SELECT close FROM futures_daily
+                        WHERE symbol=? AND session=?
+                          AND REPLACE(CAST(date AS TEXT),'-','')=?
+                        LIMIT 1
+                        """,
+                        (sym, sess, day),
+                    ).fetchone()
+                    close = _num(hit[0]) if hit else None
+                    if close is None or close <= 0:
+                        need_fut = True
+                        break
+        finally:
+            conn.close()
+    except Exception:
+        need_fut = True
+    if need_fut:
+        try:
+            from taiwan_market import sync_futures_daily
+
+            got = sync_futures_daily(market_db, dates=[day]) or {}
+            out["fut"] = int(got.get("wrote") or got.get("n") or 1)
+        except Exception:
+            out["fut"] = 0
+    # 美股／美指：當日 us_overnight 缺才補（已收才凍；盤中未收不當收）
+    need_us = False
+    try:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            names = {
+                str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            if "us_overnight" not in names:
+                need_us = True
+            else:
+                row = conn.execute(
+                    "SELECT ixic_pct, sox_pct, tsm_pct FROM us_overnight WHERE as_of=?",
+                    (day,),
+                ).fetchone()
+                if not row or all(v is None for v in row):
+                    need_us = True
+        finally:
+            conn.close()
+    except Exception:
+        need_us = True
+    if need_us:
+        try:
+            from us_overnight import refresh_us_overnight
+
+            snap = refresh_us_overnight(market_db, day) or {}
+            out["us"] = 1 if snap else 0
+        except Exception:
+            out["us"] = 0
+    return out
+
+
 def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
     """當天規則名單沒按也落檔。代號＋為什麼選＋官方柱／量／法人。不准渲圖、不推話筒。"""
     stats: Dict[str, int] = {}
@@ -363,6 +454,14 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
     day = _as_of(market_db, as_of)
     if not day:
         return stats
+    # 對質輔助：缺期貨／美股已收可同步補；未收不當收。失敗不擋。
+    try:
+        aux = ensure_confront_aux(market_db, day)
+        if aux.get("fut") or aux.get("us"):
+            stats["aux_sync_fut"] = int(aux.get("fut") or 0)
+            stats["aux_sync_us"] = int(aux.get("us") or 0)
+    except Exception:
+        pass
     results: Dict[str, Any] = {}
     src = "none"
     try:
