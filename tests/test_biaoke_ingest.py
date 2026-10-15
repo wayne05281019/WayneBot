@@ -126,6 +126,42 @@ def test_parse_article_html_body_and_tags():
     assert "查看" not in row["text"]
 
 
+def test_parse_article_html_drops_cmoney_google_preference_chrome():
+    """CMoney「加入 google 偏好」宣傳不准進正文；他真講去 google 查型態要留。"""
+    from biaoke_ingest import scrub_cmoney_chrome
+
+    html = """
+    <meta name="author" content="期股多空雙飆客">
+    <meta property="article:published_time" content="2026-10-15T16:45:00+08:00">
+    <article>
+      <div>期股多空雙飆客</div>
+      <div>追蹤</div>
+      <div>加入Google偏好</div>
+      <div>大盤波浪位階為A波拆解3-3主跌段下殺運行中</div>
+      <div>將網站加入你的 google 偏好搜尋來源，更容易搜尋到喜愛的內容</div>
+      <div>昨天夜盤及今日日盤波浪位階已經訂好了，目前為A-3-3運行中。</div>
+      <div>如果不相信我的話可去google型態大師蔡森比對一下。</div>
+      <div>查看 12 則留言...</div>
+    </article>
+    """
+    row = parse_article_html("185883781", html)
+    assert row is not None
+    assert "A-3-3" in row["text"]
+    assert "偏好搜尋" not in row["text"]
+    assert "加入Google" not in row["text"]
+    assert "喜愛的內容" not in row["text"]
+    assert "google型態大師" in row["text"] or "蔡森" in row["text"]
+    polluted = (
+        "大盤波浪位階為A波拆解3-3主跌段下殺運行中\n"
+        "將網站加入你的 google 偏好搜尋來源，更容易搜尋到喜愛的內容\n"
+        "昨天夜盤及今日日盤波浪位階已經訂好了"
+    )
+    cleaned = scrub_cmoney_chrome(polluted)
+    assert "偏好搜尋" not in cleaned
+    assert "3-3" in cleaned
+    assert "昨天夜盤" in cleaned
+
+
 def test_parse_article_html_starts_with_cong_taizhiqi():
     """10/8 主文不以 1.／今天／大盤起頭；舊 strip 會整篇丟掉只剩樓下。"""
     html = """

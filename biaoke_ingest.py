@@ -389,6 +389,40 @@ def parse_user_article_ids(html_text: str) -> List[str]:
     return ids
 
 
+# CMoney 頁面插入的「加入 Google 偏好」UI／宣傳，不是他正文。
+# 不准當判斷；他原文真講「去 google 查…」不受影響。
+_CMONEY_CHROME_LINE = re.compile(
+    r"(?i)加入\s*google\s*偏好|google\s*偏好搜尋|將網站加入你的\s*google|"
+    r"更容易搜尋到喜愛的內容"
+)
+
+
+def is_cmoney_chrome_line(text: str) -> bool:
+    s = (text or "").strip()
+    if not s:
+        return False
+    if s in {"加入Google偏好", "超級幫手"}:
+        return True
+    return bool(_CMONEY_CHROME_LINE.search(s))
+
+
+def scrub_cmoney_chrome(text: str) -> str:
+    """拿掉誤吸進庫／摘要的 CMoney Google 偏好宣傳；保留他真講 google 的句子。"""
+    raw = str(text or "")
+    if not raw:
+        return ""
+    kept: List[str] = []
+    for ln in raw.splitlines():
+        if is_cmoney_chrome_line(ln):
+            continue
+        # 同行夾雜時只挖掉宣傳子句，留下他正文
+        cleaned = _CMONEY_CHROME_LINE.sub(" ", ln)
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip(" ，、；;")
+        if cleaned and not is_cmoney_chrome_line(cleaned):
+            kept.append(cleaned)
+    return "\n".join(kept).strip()
+
+
 def _strip_article_text(html_text: str) -> str:
     m = re.search(r"<article[^>]*>(.*)</article>", html_text or "", re.S | re.I)
     inner = m.group(1) if m else (html_text or "")
@@ -412,7 +446,12 @@ def _strip_article_text(html_text: str) -> str:
     kept: List[str] = []
     started = False
     for ln in lines:
-        if ln in skip or ln.startswith("查看 ") or ln.endswith("則留言"):
+        if (
+            ln in skip
+            or is_cmoney_chrome_line(ln)
+            or ln.startswith("查看 ")
+            or ln.endswith("則留言")
+        ):
             if started and (ln.startswith("查看 ") or ln in {"打賞", "分享", "留言"}):
                 break
             continue
@@ -429,7 +468,7 @@ def _strip_article_text(html_text: str) -> str:
             started = True
         if started:
             kept.append(ln)
-    return "\n".join(kept).strip()
+    return scrub_cmoney_chrome("\n".join(kept).strip())
 
 
 def _meta_description(html_text: str) -> str:
@@ -458,7 +497,7 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
         return None
     text = _strip_article_text(raw)
     if not text:
-        text = _meta_description(raw)
+        text = scrub_cmoney_chrome(_meta_description(raw))
     if not date or not text or not is_biaoke_voice(text):
         return None
     main = raw
@@ -469,7 +508,7 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
             art.group(1),
             maxsplit=1,
         )[0]
-    text = _charts_for_body(text, main)
+    text = scrub_cmoney_chrome(_charts_for_body(text, main))
     return {
         "n": 0,
         "date": date,
@@ -1478,6 +1517,66 @@ def purge_alien_overlay(db_path: str) -> int:
     return n
 
 
+def scrub_cmoney_chrome_overlay(db_path: str) -> int:
+    """庫內已吸進的 Google 偏好宣傳清掉；他真講 google／蔡森不動。"""
+    if not db_path or not os.path.isfile(db_path):
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    n = 0
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_posts'"
+        ).fetchone()
+        if not hit:
+            return 0
+        rows = conn.execute(
+            """
+            SELECT id, text FROM biaoke_posts
+            WHERE text LIKE '%google%' OR text LIKE '%Google%'
+               OR text LIKE '%偏好搜尋%' OR text LIKE '%加入Google%'
+            """
+        ).fetchall()
+        for rid, text in rows:
+            cleaned = scrub_cmoney_chrome(str(text or ""))
+            if cleaned == str(text or ""):
+                continue
+            conn.execute(
+                "UPDATE biaoke_posts SET text=? WHERE id=?",
+                (cleaned, str(rid)),
+            )
+            n += 1
+        if n:
+            conn.commit()
+        # 未讀匣同樣清，免得按鍵先吃到舊污染
+        inbox = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_inbox'"
+        ).fetchone()
+        if inbox:
+            inbox_rows = conn.execute(
+                """
+                SELECT post_id, text FROM biaoke_inbox
+                WHERE text LIKE '%google%' OR text LIKE '%Google%'
+                   OR text LIKE '%偏好搜尋%' OR text LIKE '%加入Google%'
+                """
+            ).fetchall()
+            for pid, text in inbox_rows:
+                cleaned = scrub_cmoney_chrome(str(text or ""))
+                if cleaned == str(text or ""):
+                    continue
+                conn.execute(
+                    "UPDATE biaoke_inbox SET text=? WHERE post_id=?",
+                    (cleaned, str(pid)),
+                )
+                n += 1
+            if inbox_rows:
+                conn.commit()
+    except sqlite3.Error:
+        return n
+    finally:
+        conn.close()
+    return n
+
+
 def ingest_public_posts(
     corpus_path: str = "",
     *,
@@ -1525,6 +1624,10 @@ def ingest_public_posts(
             stats["purged"] = purge_alien_overlay(dbp)
         except Exception:
             logger.exception("飆大清掉誤抓別人的文失敗")
+        try:
+            stats["chrome_scrubbed"] = scrub_cmoney_chrome_overlay(dbp)
+        except Exception:
+            logger.exception("飆大清掉 Google 偏好宣傳失敗")
 
     blob = load_corpus(dbp if dbp and os.path.isfile(dbp) else None)
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
