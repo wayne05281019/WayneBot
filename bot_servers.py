@@ -8617,7 +8617,7 @@ class WayneTelegramBot:
             def _render_vol():
                 from vol_zone_chart import render_lookup_vol_result
 
-                # 大量撐壓只吃官方原柱；不准盤中假柱。
+                # 選區只吃官方原柱；縮圖末日 K／量可疊決策卡盤中真報價（與圖一二同源）。
                 path, cap = render_lookup_vol_result(
                     code,
                     _stock_caption_name(card, code),

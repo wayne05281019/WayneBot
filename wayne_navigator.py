@@ -174,10 +174,28 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
     except Exception:
         trend = trend_note = ""
         nrows = 0
+    vol_r = None
+    try:
+        if card.get("volume") is not None:
+            vol_r = round(float(card.get("volume") or 0), 0)
+    except (TypeError, ValueError):
+        vol_r = None
+    ohlc_r = None
+    try:
+        if card.get("is_live"):
+            ohlc_r = (
+                round(float(card.get("open") or 0), 4),
+                round(float(card.get("high") or 0), 4),
+                round(float(card.get("low") or 0), 4),
+            )
+    except (TypeError, ValueError):
+        ohlc_r = None
     return (
         str(card.get("stock_id") or ""),
         str(card.get("latest_date") or card.get("as_of") or ""),
         round(close, 4),
+        vol_r,
+        ohlc_r,
         profit_r,
         str(card.get("stance") or ""),
         str(card.get("query_date") or ""),
@@ -188,6 +206,7 @@ def _lookup_card_fingerprint(card: Optional[dict]) -> tuple:
         trend,
         trend_note,
         nrows,
+        int(bool(card.get("is_live"))),
     )
 
 

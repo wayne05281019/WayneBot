@@ -3778,6 +3778,16 @@ def render_biaoke_structure_png(
     live_quote: Optional[Dict[str, Any]] = None,
 ) -> str:
     rows = list(bars or [])
+    # 縮圖最後一根 K／量＝決策卡盤中真報價（與圖一／二同源）；選區仍官方原柱。
+    if isinstance(card, dict) and card.get("is_live"):
+        try:
+            from live_quote import overlay_live_face_from_card
+
+            rows = list(
+                overlay_live_face_from_card(rows, card, stock_id=str(sid or "")) or rows
+            )
+        except Exception:
+            pass
     if len(rows) < 8 or not save_path:
         return ""
     work = rows[-_BARS:]
@@ -3791,6 +3801,10 @@ def render_biaoke_structure_png(
     last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1])
     last_d = str(last_bar0.get("date") or "")[:8]
     last_c0 = float(last_bar0.get("close") or 0)
+    try:
+        last_v0 = float(last_bar0.get("volume") or 0)
+    except (TypeError, ValueError):
+        last_v0 = 0.0
     fig_w, fig_h = (float(figsize[0]), float(figsize[1])) if figsize else (18.6, 10.8)
     portrait = fig_h / max(fig_w, 0.01) >= 1.15
     fullbleed = not portrait
@@ -3809,6 +3823,8 @@ def render_biaoke_structure_png(
         str(sid or ""),
         last_d,
         round(last_c0, 4),
+        # 縮圖末日量進鍵：盤中量變也要重畫（與圖一二同步）
+        round(last_v0, 0),
         # 表頭現價／昨收進鍵：盤中決策卡價變不准互蓋舊圖
         round(_q_close, 4),
         round(_q_prev, 4),
@@ -3817,8 +3833,8 @@ def render_biaoke_structure_png(
         int(use_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
-        # v78j：右軸今收／現價跟決策卡 quote 同源（上市上櫃興櫃）
-        "hdr-band-v78j-axis-card" if fullbleed else "hdr-wrap3-vol-min",
+        # v78j＋live-face：右軸跟決策卡；縮圖末日 K／量疊盤中真報價
+        "hdr-band-v78j-axis-card-live-face" if fullbleed else "hdr-wrap3-vol-min",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
