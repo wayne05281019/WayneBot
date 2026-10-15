@@ -79,12 +79,16 @@ class NavChartRenderTests(unittest.TestCase):
             "接近高（空心）", "接近低（空心）", "殘影（仍貼）",
             "量能異常", "警告", "警告底", "月波動低", "月波動低底",
             "買點↑首清楚／續淡", "賣點↓橙",
+            "止穩◆觀察",
+            "橘六角觀察（外資預警・測試）",
         ):
             self.assertIn(label, leg, label)
         # 圖例底邊必須 > 1（整塊在軸上方，不准壓 K）
         self.assertIn("1.032", leg)
         self.assertIn("1.168", leg)
         paint = inspect.getsource(_paint_nav_on_axes)
+        self.assertIn("_paint_stabilize_marks", paint)
+        self.assertIn("_paint_foreign_sell_observe_marks", paint)
         self.assertIn("_NAV_GHOST", paint)
         self.assertIn("_NAV_SIG", paint)
         self.assertIn("vol_low_band", paint)

@@ -8224,7 +8224,11 @@ class WayneTelegramBot:
                     disable_web_page_preview=True,
                 )
                 return
-            cap = "高低導航圖：實心＝當日觸發；空心＝接近。高點紫／低點綠。不是買訊。"
+            cap = (
+                "高低導航圖：實心＝當日觸發；空心＝接近。高點紫／低點綠。"
+                "買點＝藍▲紅框；止穩◆＝觀察非買；橘六角「觀察」＝外資預警（測試・非買）。"
+                "不是買訊。"
+            )
             send_path = self._prepare_lookup_album_photo(path, "nav")
             ok = await self._reply_lookup_photo(
                 message,
@@ -8618,7 +8622,9 @@ class WayneTelegramBot:
                 pass
             struct_path_f = self._scratch_chart_path(self.charts_dir, code, "struct", uid_key)
             vol_path_f = self._scratch_chart_path(self.charts_dir, code, "vol", uid_key)
-            struct_face = ["結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察"]
+            struct_face = [
+                "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察　橘六角觀察＝外資預警（測試・非買）"
+            ]
             vol_face = ["大量撐壓圖（非買訊）"]
 
             def _render_struct():

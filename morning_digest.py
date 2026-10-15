@@ -90,6 +90,20 @@ def _tw_brief_drop_outlook_overlap(tw_brief: str, outlook_html: str) -> str:
     return "\n".join(out_lines).strip()
 
 
+def _foreign_sell_observe_line(db_path: str, as_of: str) -> str:
+    """外資／恐懼預警測試版：早報一行。失敗不擋早報。"""
+    try:
+        from foreign_sell_display import morning_observe_line_html
+        from trading_calendar import taipei_calendar_ymd
+
+        today = taipei_calendar_ymd()
+        return morning_observe_line_html(
+            db_path, as_of or "", fear_as_of=today or ""
+        )
+    except Exception:
+        return ""
+
+
 def build_morning_opening_html(
     db_path: str,
     as_of: str,
@@ -99,6 +113,12 @@ def build_morning_opening_html(
 ) -> str:
     """合成海選第一則前的開頭（提醒＋大盤狀況＋加權研究）。"""
     outlook = _outlook_from_screening(screening)
+    observe = _foreign_sell_observe_line(db_path, as_of or "")
+    if observe and outlook:
+        # 插在大盤狀況段首下：有亮／今無都留一行，方便每天一眼
+        outlook = outlook.rstrip() + "\n" + observe
+    elif observe and not outlook:
+        outlook = observe
     tw_brief = ""
     try:
         from taiwan_market import format_taiwan_market_brief_html

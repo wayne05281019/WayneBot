@@ -15,6 +15,10 @@ def test_build_morning_opening_merges_brief_and_outlook(monkeypatch):
         "taiwan_market.format_taiwan_market_brief_html",
         lambda *_a, **_k: brief,
     )
+    monkeypatch.setattr(
+        "morning_digest._foreign_sell_observe_line",
+        lambda *_a, **_k: "<b>觀察／預警（測試）</b>　今無",
+    )
     screening = {
         "payload": [
             {"mark_key": "market", "html": outlook, "picks": []},
@@ -25,6 +29,8 @@ def test_build_morning_opening_merges_brief_and_outlook(monkeypatch):
     assert "大盤狀況" in merged
     assert "台灣加權指數研究" in merged
     assert "收盤" in merged
+    assert "觀察／預警（測試）" in merged
+    assert "買進" not in merged
 
 
 def test_apply_morning_opening_replaces_market_part():

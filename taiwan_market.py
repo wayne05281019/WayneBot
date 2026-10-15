@@ -4452,6 +4452,15 @@ def format_taiwan_market_page_html(
     lines = ["<b>📊 台股大盤</b>", *tw_banner, as_of_note]
     if extra_note:
         lines.append(extra_note)
+    # 環境觀察（外資／恐懼預警測試版）：頂部一小段；不是買訊
+    try:
+        from foreign_sell_display import market_env_section_lines
+
+        env_lines = market_env_section_lines(db_path, ref)
+        if env_lines:
+            lines.extend(["", _TG_SECTION, *env_lines])
+    except Exception:
+        logger.debug("大盤頁環境觀察略過", exc_info=True)
     from stock_links import html_index_anchor, html_named
 
     lines.extend(["", html_index_anchor("加權指數")])

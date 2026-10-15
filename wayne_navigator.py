@@ -6176,6 +6176,9 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         # 止穩＝綠松石菱形（觀察，不是買訊；跟藍▲紅框／純藍▲60低分開）
         (Line2D([], [], linestyle="none", marker="D", markerfacecolor="#00695C",
                 markeredgecolor="#26A69A", markeredgewidth=1.4, markersize=ms_z + 1), "止穩◆觀察"),
+        # 外資升級／確認＝琥珀橘六角（測試版觀察／預警；不是買訊；異於止穩◆）
+        (Line2D([], [], linestyle="none", marker="h", markerfacecolor="#E65100",
+                markeredgecolor="#FF8F00", markeredgewidth=1.5, markersize=ms_z + 2), "橘六角觀察（外資預警・測試）"),
     ]
     row3 = [
         (Line2D([], [], color="#f9a825", lw=2.6 if panel else 2.25), "SMA(20)"),
@@ -6197,10 +6200,10 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         prop=_fp(10.0 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 標題列圖例三整排（不准左右互壓）：上量能／買賣、中高低箭、下均線
+        # 標題列圖例三整排（不准左右互壓）：上量能／買賣／觀察標、中高低箭、下均線
         # (handles, labels, x, y, ncol)
         panel_rows = (
-            (row2, 0.0, 0.58, 8),
+            (row2, 0.0, 0.58, 9),
             (row1, 0.0, 0.34, 8),
             (row3, 0.0, 0.10, 5),
         )
@@ -6218,13 +6221,13 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
     if zone_mode:
         rows = (
             (row1, 1.095, 8),
-            (row2, 1.055, 8),
+            (row2, 1.055, 9),
             (row3, 1.015, 5),
         )
     else:
         rows = (
             (row1, 1.168, 8),
-            (row2, 1.100, 8),
+            (row2, 1.100, 9),
             (row3, 1.032, 5),
         )
     for i, (row, y, ncol) in enumerate(rows):
@@ -6730,6 +6733,75 @@ def _paint_nav_buy_arrows(
     return True
 
 
+def _paint_foreign_sell_observe_marks(
+    ax1,
+    work: pd.DataFrame,
+    idxs,
+    xs,
+    *,
+    arrow_gap: float,
+    span: float,
+) -> bool:
+    """查股／大量區：外資升級／確認「觀察」六角標（測試版；永遠不是買訊）。
+
+    視覺＝琥珀橘六角形＋「觀察」字；異於藍▲紅框、止穩◆。
+    規則／命中在 foreign_sell_display；不准併入 _nav_trade_marks／買訊路徑。
+    """
+    if ax1 is None or work is None or getattr(work, "empty", True):
+        return False
+    n = len(work)
+    paint_idxs = [int(i) for i in (idxs or []) if 0 <= int(i) < n]
+    if not paint_idxs:
+        return False
+    try:
+        from foreign_sell_display import (
+            OBSERVE_EDGE,
+            OBSERVE_FACE,
+            OBSERVE_LABEL,
+            OBSERVE_MARKER,
+        )
+    except Exception:
+        OBSERVE_FACE, OBSERVE_EDGE, OBSERVE_LABEL, OBSERVE_MARKER = (
+            "#E65100",
+            "#FF8F00",
+            "觀察",
+            "h",
+        )
+    tip_ys = []
+    for ii in paint_idxs:
+        tip_ys.append(float(work["low"].iloc[ii]) - arrow_gap * 2.15)
+    y0, y1 = ax1.get_ylim()
+    mark_r = max(span * 0.028, 0.01)
+    ax1.set_ylim(min(y0, min(tip_ys) - mark_r * 3.2 - span * 0.01), y1)
+    painted = False
+    for ii, tip in zip(paint_idxs, tip_ys):
+        x = float(xs[ii])
+        ax1.scatter(
+            [x],
+            [tip],
+            marker=OBSERVE_MARKER,
+            s=110,
+            c=OBSERVE_FACE,
+            edgecolors=OBSERVE_EDGE,
+            linewidths=1.7,
+            zorder=9,
+            clip_on=False,
+        )
+        ax1.text(
+            x,
+            tip - mark_r * 1.55,
+            OBSERVE_LABEL,
+            ha="center",
+            va="top",
+            fontproperties=_fp(7.5, "bold"),
+            color=OBSERVE_FACE,
+            zorder=9,
+            clip_on=False,
+        )
+        painted = True
+    return painted
+
+
 def _paint_stabilize_marks(
     ax1,
     work: pd.DataFrame,
@@ -7129,6 +7201,15 @@ def overlay_nav_marks_on_zone(
         span=span,
         signal_work=buy_src,
     )
+    # 外資升級／確認觀察標（測試版；非買訊）：琥珀六角；異於止穩◆／藍▲紅框
+    # 呼叫端經 card["_foreign_sell_observe_idxs"] 注入（查股／大量區）
+    _fs_idxs = None
+    if isinstance(card, dict):
+        _fs_idxs = card.get("_foreign_sell_observe_idxs")
+    if _fs_idxs:
+        _paint_foreign_sell_observe_marks(
+            ax1, paint, _fs_idxs, xs, arrow_gap=arrow_gap, span=span
+        )
     if sell_i_src is not None:
         sell_d = str(buy_src["date"].iloc[int(sell_i_src)])
         if sell_d in date_to_i:
@@ -7151,6 +7232,7 @@ def overlay_nav_marks_on_zone(
 def _paint_nav_on_axes(
     ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str,
     *, compact: bool = False, card: Optional[dict] = None,
+    db_path: str = "",
 ) -> None:
     """同一套紫高／綠低箭頭。compact＝塞進介紹圖下半，圖例改一行標題，避免壓到 K。"""
     n = len(work)
@@ -7366,6 +7448,27 @@ def _paint_nav_on_axes(
         ax1, work, None, xs, arrow_gap=arrow_gap, span=span
     ):
         trade_note += "　止穩◆觀察"
+    # 外資升級／確認觀察標（測試版；非買訊）：琥珀六角；圖說見圖例
+    try:
+        fs_idxs = None
+        if isinstance(card, dict):
+            fs_idxs = card.get("_foreign_sell_observe_idxs")
+        if fs_idxs is None and db_path and stock_id:
+            from foreign_sell_display import (
+                stock_observe_bar_index,
+                stock_observe_hit,
+            )
+
+            hit = stock_observe_hit(str(db_path), str(stock_id))
+            if hit is not None:
+                dates = [str(work["date"].iloc[i]) for i in range(len(work))]
+                fs_idxs = stock_observe_bar_index(dates, hit)
+        if fs_idxs and _paint_foreign_sell_observe_marks(
+            ax1, work, fs_idxs, xs, arrow_gap=arrow_gap, span=span
+        ):
+            trade_note += "　橘六角觀察"
+    except Exception:
+        pass
     if sell_i is not None:
         i = int(sell_i)
         hi = float(work["high"].iloc[i])
@@ -7486,6 +7589,7 @@ def draw_from_ohlc(
     save_path: str,
     *,
     already_normalized: bool = False,
+    db_path: str = "",
 ) -> str:
     """橫式高低導航：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
     work = _nav_work_or_none(df, already_normalized)
@@ -7516,7 +7620,7 @@ def draw_from_ohlc(
         int(len(work)),
         int(NAV_CHART_DPI),
         bool(already_normalized),
-        "vol-min-v1",
+        "vol-min-v1-fs-observe-v1",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -7527,7 +7631,16 @@ def draw_from_ohlc(
         gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.45), hspace=0.05),
         facecolor="#ffffff",
     )
-    _paint_nav_on_axes(ax1, ax_sig, ax2, work, stock_id, stock_name, compact=False)
+    _paint_nav_on_axes(
+        ax1,
+        ax_sig,
+        ax2,
+        work,
+        stock_id,
+        stock_name,
+        compact=False,
+        db_path=str(db_path or ""),
+    )
     # 上緣留給兩行標題＋三列圖例；下緣留給錯開月標＋兩行腳註
     fig.subplots_adjust(left=0.04, right=0.96, top=0.70, bottom=0.16)
     # 查詢時間：整圖右上（台北）；不塞進標題、不壓 K
@@ -7563,7 +7676,8 @@ def draw_from_ohlc(
         0.50, 0.045,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
         "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍；"
-        "20低／60低＝紅箭頭代理；過 ma60_lower 確認才當買訊（藍▲紅框，與 leave_zero 並列）；未確認仍不當買",
+        "20低／60低＝紅箭頭代理；過 ma60_lower 確認才當買訊（藍▲紅框，與 leave_zero 並列）；未確認仍不當買；"
+        "止穩◆＝觀察非買；橘六角「觀察」＝外資預警（測試・非買）",
         ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
     halt_n = int(work["is_halt"].fillna(False).astype(bool).sum()) if "is_halt" in work.columns else 0
@@ -7612,7 +7726,12 @@ def generate_chart(
     name = stock_name or str(df["stock_name"].iloc[-1] or sid)
     out = save_path or os.path.join(get_charts_dir(), f"{sid}.png")
     return draw_from_ohlc(
-        df, sid, name, out, already_normalized=already_normalized
+        df,
+        sid,
+        name,
+        out,
+        already_normalized=already_normalized,
+        db_path=str(db_path or ""),
     )
 
 

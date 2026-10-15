@@ -51,7 +51,9 @@ TG_CLICK_MAX_SIDE = 2560
 TG_WH_BUDGET = 4200  # 寬+高；點開視窗約 1170×2532，不再衝 10000 讓 TG 砍最長邊
 COMPOSE_INNER_W = 1480
 THREE_IN_ONE_JPEG_QUALITY = 95
-LOOKUP_STRUCTURE_CAPTION = "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察"
+LOOKUP_STRUCTURE_CAPTION = (
+    "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察　橘六角觀察＝外資預警（測試・非買）"
+)
 # 查股單張直式：對齊高低卡 4:5，220DPI → 1920×2400
 LOOKUP_PORTRAIT_FIG = (1920 / 220.0, 2400 / 220.0)
 LOOKUP_PORTRAIT_DPI = 220
@@ -1864,10 +1866,31 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         _pre_save(fig)
         return orig_lookup_save(fig, path, dpi)
 
-    def _paint_nav(ax1, ax_sig, ax2, work, stock_id, stock_name, *, compact=False, card=None):
+    def _paint_nav(
+        ax1,
+        ax_sig,
+        ax2,
+        work,
+        stock_id,
+        stock_name,
+        *,
+        compact=False,
+        card=None,
+        db_path="",
+    ):
         from wayne_navigator import _fp
 
-        orig_paint_nav(ax1, ax_sig, ax2, work, stock_id, stock_name, compact=compact, card=card)
+        orig_paint_nav(
+            ax1,
+            ax_sig,
+            ax2,
+            work,
+            stock_id,
+            stock_name,
+            compact=compact,
+            card=card,
+            db_path=db_path,
+        )
         ax1.set_title("")
         dates = [_dk(d) for d in work["date"].tolist()]
         i = _index_of_date(dates, first_k)
@@ -2832,6 +2855,8 @@ def _legend_strip(width: int, *, height: int | None = None) -> Image.Image:
             ("#29b6f6", "月波動低", "up"),
             ("#1565c0", "買點↑藍▲紅框", "buy"),
             ("#ef6c00", "賣點↓橙", "down"),
+            ("#00695C", "止穩◆觀察", "diamond"),
+            ("#E65100", "橘六角觀察", "hex"),
         ],
         [
             ("#8e24aa", "20高", "down"),
@@ -2902,6 +2927,30 @@ def _legend_strip(width: int, *, height: int | None = None) -> Image.Image:
                     fill=col,
                     outline="#e57373",
                 )
+            elif kind == "diamond":
+                half = max(8, tri // 2)
+                d.polygon(
+                    [
+                        (cx, cy - half - 2),
+                        (cx + half, cy),
+                        (cx, cy + half + 2),
+                        (cx - half, cy),
+                    ],
+                    fill=col,
+                    outline="#26A69A",
+                )
+            elif kind == "hex":
+                import math as _math
+
+                half = max(8, tri // 2) + 2
+                hex_pts = [
+                    (
+                        cx + half * _math.cos(_math.radians(60 * i - 30)),
+                        cy + half * _math.sin(_math.radians(60 * i - 30)),
+                    )
+                    for i in range(6)
+                ]
+                d.polygon(hex_pts, fill=col, outline="#FF8F00")
             else:
                 d.line([cx - tri // 2, cy, cx + tri // 2, cy], fill=col, width=line_w)
             d.text(
