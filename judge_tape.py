@@ -643,6 +643,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         fear_preopen_night_tick(market_db, day)
     except Exception:
         pass
+    # 小賣→大賣升級：T86 張單位；與恐懼軌分勝率；非買訊。失敗不擋。
+    try:
+        from foreign_sell_escalate_verify import night_tick as foreign_sell_escalate_night_tick
+
+        foreign_sell_escalate_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 

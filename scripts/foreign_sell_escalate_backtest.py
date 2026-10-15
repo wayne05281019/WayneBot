@@ -2,9 +2,13 @@
 # -*- coding: utf-8 -*-
 """小賣→大賣升級｜密窗全樣本離線回測（不是買訊）。
 
-本庫優先（T86／volume／ex_rights 皆在 daily_quotes／ex_rights）；
-單位：張／張；全開市密日×Top500 全檔；網格全跑；Lead／Sync／除權息分表。
-不准抽測。
+對齊討論起點（foreign-sell-discussion-thread）：
+  母體並行：千金(收≥1000)、近半年日均量(張) Top500、上市櫃流動對照
+  大賣分軌：單日賣超張數、超比％、連續N日、10日累（單位張）
+  本件主訊號：小賣→大賣升級（超比爬升＋連賣）；三母體子報都要有
+
+本庫優先；單位張／張；密日×各宇宙全檔；網格全跑；Lead／Sync／除權息分表。
+不准抽測。見 docs checklist foreign-sell-escalate-checklist-20261015.md
 
 用法：
   .venv/bin/python scripts/foreign_sell_escalate_backtest.py \\
