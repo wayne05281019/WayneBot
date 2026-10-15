@@ -46,13 +46,25 @@ _FUT_KEEP = ("date", "symbol", "session", "open", "high", "low", "close", "pct_c
 _BIAOKE_KEEP = ("tag", "direc", "date")
 
 # 覆盤要的欄：缺完整官方收可以之後補；盤中未收不准凍。
-REVIEW_SLOTS = ("twii", "biaoke", "legs", "tx_day", "tx_night", "te_day", "te_night", "us")
+# biaoke_levels＝點名點位輔助（可空；空不算缺洞，有才凍）
+REVIEW_SLOTS = (
+    "twii",
+    "biaoke",
+    "legs",
+    "biaoke_levels",
+    "tx_day",
+    "tx_night",
+    "te_day",
+    "te_night",
+    "us",
+)
 REVIEW_STEPS = (
     "complete_as_of",
     "score_old",
     "freeze_twii",
     "freeze_biaoke",
     "freeze_legs",
+    "freeze_biaoke_levels",
     "freeze_tx_day",
     "freeze_tx_night",
     "freeze_te_day",
@@ -394,6 +406,56 @@ def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
                         us_b[key] = extra.get(key)
             if us_b:
                 out["us"] = us_b
+        # 飆大點名點位：只讀已進庫 claims；不准現場打外網；空列不寫
+        try:
+            names = {
+                str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            if day and "biaoke_claims" in names:
+                lv_rows = conn.execute(
+                    """
+                    SELECT claim_key, post_date, stock_id, stock_name, role, verb,
+                           lo, hi, snippet, hit
+                    FROM biaoke_claims
+                    WHERE (
+                        REPLACE(CAST(post_date AS TEXT),'-','')=?
+                        OR REPLACE(CAST(hit_date AS TEXT),'-','')=?
+                    )
+                      AND (lo IS NOT NULL OR hi IS NOT NULL)
+                      AND COALESCE(club, 0)=0
+                    LIMIT 200
+                    """,
+                    (day, day),
+                ).fetchall()
+                levels: List[Dict[str, Any]] = []
+                for ck, pd, sid, nm, role, verb, lo, hi, snip, hit in lv_rows:
+                    bit: Dict[str, Any] = {"claim_key": str(ck or "")}
+                    if sid:
+                        bit["stock_id"] = str(sid)
+                    if nm:
+                        bit["stock_name"] = str(nm)
+                    if role:
+                        bit["role"] = str(role)
+                    if verb:
+                        bit["verb"] = str(verb)
+                    if pd:
+                        bit["post_date"] = str(pd)
+                    if hit:
+                        bit["hit"] = str(hit)
+                    if snip:
+                        bit["snippet"] = str(snip)[:120]
+                    lo_n = _num(lo)
+                    hi_n = _num(hi)
+                    if lo_n is not None and lo_n > 0:
+                        bit["lo"] = lo_n
+                    if hi_n is not None and hi_n > 0:
+                        bit["hi"] = hi_n
+                    if bit.get("lo") or bit.get("hi"):
+                        levels.append(bit)
+                if levels:
+                    out["biaoke_levels"] = levels
+        except sqlite3.Error:
+            pass
     finally:
         conn.close()
     return out

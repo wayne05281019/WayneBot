@@ -986,6 +986,24 @@ def walk_biaoke_posts(
         filed = file_biaoke_claims(db_path, batches)
         stats["claims"] = int(filed.get("claims") or 0)
         stats["targets"] = int(filed.get("targets") or 0)
+        try:
+            # 點位落檔後必寫我說分軌（現況＋下一版）；空不算；不進話筒
+            from biaoke_diverge import ensure_biaoke_diverge_table, record_from_events
+
+            ensure_biaoke_diverge_table(db_path)
+            flat = []
+            for posts, _club in batches:
+                for p in posts or []:
+                    if int(_club or 0):
+                        continue
+                    flat.append(p)
+            if flat:
+                stats["diverge"] = int(
+                    (record_from_events(db_path, flat) or {}).get("rows") or 0
+                )
+        except Exception:
+            logger.exception("飆大分軌對質補寫失敗")
+            stats["diverge"] = 0
     except Exception:
         logger.exception("飆大目標價建檔失敗")
         stats["claims"] = 0
