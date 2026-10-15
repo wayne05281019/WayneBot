@@ -73,7 +73,7 @@ def record_ingest_events(
     try:
         for ev in events:
             pid = str(ev.get("post_id") or ev.get("id") or "").strip()
-            text = str(ev.get("text") or "").strip()
+            text = _scrub_post_text(str(ev.get("text") or "")).strip()
             if not pid or not text:
                 continue
             kind = str(ev.get("kind") or "post")
@@ -240,6 +240,28 @@ _FIELD = re.compile(r"(ASIC|散熱|光通訊|記憶體|多頭格局的族群)")
 _PCB = re.compile(r"(PCB|台光電|金像電|台燿|富喬|金居|ABF)")
 _PREVIEW = re.compile(r"(星期[日天]晚上|技術分析看法)")
 _NOISE_ONLY = re.compile(r"(出書|90%\s*老師|我自己都沒|說實話|看盤當下寫|很有心)")
+# CMoney 頁面「加入 google 偏好」宣傳；不是他正文（他真講去 google 查型態另算）
+_CMONEY_CHROME = re.compile(
+    r"(?i)加入\s*google\s*偏好|google\s*偏好搜尋|將網站加入你的\s*google|"
+    r"更容易搜尋到喜愛的內容"
+)
+
+
+def _scrub_post_text(text: str) -> str:
+    try:
+        from biaoke_ingest import scrub_cmoney_chrome
+
+        return scrub_cmoney_chrome(text)
+    except Exception:
+        s = str(text or "")
+        if not s:
+            return ""
+        kept = []
+        for ln in s.splitlines():
+            if _CMONEY_CHROME.search(ln):
+                continue
+            kept.append(ln)
+        return "\n".join(kept).strip()
 
 
 def _norm_focus(text: str) -> str:
@@ -300,7 +322,8 @@ def _join_said(parts: Sequence[str], *, shown: Sequence[str]) -> str:
 
 def _speak(text: str, limit: int = 220) -> str:
     """口語重述：像當面講一遍，重點留著，不倒時間牆、不砍條件句。"""
-    s = _CHART.sub("（有圖）", text or "")
+    s = _scrub_post_text(text or "")
+    s = _CHART.sub("（有圖）", s)
     s = _SPACE.sub(" ", s).strip()
     s = s.replace("2024/10~2025/02", "2024年10月到2025年2月")
     s = s.replace("2024/10～2025/02", "2024年10月到2025年2月")
@@ -321,6 +344,8 @@ def _speak(text: str, limit: int = 220) -> str:
     parts = [p.strip(" ，、") for p in re.split(r"[。！？；]", s) if p.strip()]
     keep: List[str] = []
     for p in parts:
+        if _CMONEY_CHROME.search(p):
+            continue
         if _NOISE_ONLY.search(p) and not re.search(r"(47578|ASIC|PCB|台光電|夜盤|頭部)", p):
             continue
         if len(p) < 6:
@@ -397,16 +422,23 @@ def format_focus_oral(
     db_path: str = "",
 ) -> str:
     """空白按飆大：口語重述最新重點＋智囊團活用。不准倒原文、不准時間跳來跳去。"""
-    mains = [dict(p) for p in mains if str(p.get("text") or "").strip()]
-    if not mains:
+    cleaned_mains: List[Dict[str, Any]] = []
+    for p in mains:
+        row = dict(p)
+        row["text"] = _scrub_post_text(str(row.get("text") or ""))
+        if str(row.get("text") or "").strip():
+            cleaned_mains.append(row)
+    if not cleaned_mains:
         return ""
-    mains = sorted(mains, key=_row_key, reverse=True)
-    replies = [
-        dict(p)
-        for p in replies
-        if str(p.get("text") or "").strip() and not _noise_reply(str(p.get("text") or ""))
-    ]
-    replies = sorted(replies, key=_row_key, reverse=True)
+    mains = sorted(cleaned_mains, key=_row_key, reverse=True)
+    cleaned_replies: List[Dict[str, Any]] = []
+    for p in replies:
+        row = dict(p)
+        row["text"] = _scrub_post_text(str(row.get("text") or ""))
+        t = str(row.get("text") or "").strip()
+        if t and not _noise_reply(t):
+            cleaned_replies.append(row)
+    replies = sorted(cleaned_replies, key=_row_key, reverse=True)
     latest = mains[0]
     when_p = latest
     if replies and _row_key(replies[0]) > _row_key(latest):
@@ -436,6 +468,10 @@ def format_focus_oral(
         t = str(p.get("text") or "")
         if re.search(r"整理三個月|全面減碼", t):
             older_long = True
+        # 最近兩則都要對齊：前一則主文重點進「他還說」，不准整則丟掉。
+        prior = _speak(t, 140)
+        if prior:
+            spare.append(prior)
         if not field:
             for bit in _numbered_bits(t):
                 if _FIELD.search(bit) and not _BOARD.search(bit):
@@ -577,12 +613,17 @@ def format_unread_digest(
     now: Optional[datetime] = None,
     db_path: str = "",
 ) -> str:
-    """未讀期間同一篇抓很多次，只留最新再口語重述。按飆大才看。"""
+    """未讀期間同一篇抓很多次，只留最新再口語重述。按飆大才看。
+
+    顯示對齊最新兩則主文＋這兩串自回；更早未讀不拿來組「現在在講」。
+    """
     uniq: Dict[str, Dict[str, Any]] = {}
     for ev in events:
         pid = str(ev.get("post_id") or "")
         if pid:
-            uniq[pid] = dict(ev)
+            row = dict(ev)
+            row["text"] = _scrub_post_text(str(row.get("text") or ""))
+            uniq[pid] = row
     rows = list(uniq.values())
     mains = [
         r
@@ -595,6 +636,10 @@ def format_unread_digest(
         replies = replies[1:]
     if not mains:
         return ""
+    mains = sorted(mains, key=_row_key, reverse=True)[:2]
+    root_ids = {_thread_root_id(p) for p in mains if _thread_root_id(p)}
+    if root_ids:
+        replies = [r for r in replies if _thread_root_id(r) in root_ids]
     return format_focus_oral(mains, replies, now=now, db_path=db_path or "")
 
 
@@ -647,8 +692,20 @@ def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
     return out
 
 
+def _thread_root_id(post: Dict[str, Any]) -> str:
+    """主文 id，或回文所屬主文（parent／id 冒號前）。"""
+    parent = str(post.get("parent") or "").strip()
+    if parent:
+        return parent.split(":", 1)[0]
+    aid = str(post.get("id") or post.get("post_id") or "").strip()
+    return aid.split(":", 1)[0] if aid else ""
+
+
 def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16) -> str:
-    """按飆大空白進去：口語重述最新重點。不准倒原文、不念課綱、不疊舊位階。"""
+    """按飆大空白進去：口語重述最新重點。不准倒原文、不念課綱、不疊舊位階。
+
+    只認最新兩則主文＋這兩串他自己的回文（含樓中樓自回）；路人不当判斷。
+    """
     try:
         from biaoke_desk import load_corpus
     except Exception:
@@ -663,17 +720,25 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
         p
         for p in posts
         if (p.get("kind") or "post") not in ("reply", "bystander")
-        and is_biaoke_voice(str(p.get("text") or ""))
+        and is_biaoke_voice(_scrub_post_text(str(p.get("text") or "")))
     ]
     replies = [
         p
         for p in posts
-        if p.get("kind") == "reply" and is_biaoke_voice(str(p.get("text") or ""))
+        if p.get("kind") == "reply"
+        and is_biaoke_voice(_scrub_post_text(str(p.get("text") or "")))
     ]
     if not mains:
         return ""
     latest = list(reversed(mains[-max(1, int(n_main)) :]))
-    latest_replies = list(reversed(replies[-max(0, int(n_reply)) :])) if n_reply else []
+    root_ids = {_thread_root_id(p) for p in latest if _thread_root_id(p)}
+    thread_replies = [
+        p for p in replies if _thread_root_id(p) in root_ids
+    ]
+    # 兩串內按時間取最近 n_reply 則自回（含樓中樓）
+    latest_replies = (
+        list(reversed(thread_replies[-max(0, int(n_reply)) :])) if n_reply else []
+    )
     return format_focus_oral(
         latest, latest_replies, now=taipei_now(), db_path=db_path or ""
     )

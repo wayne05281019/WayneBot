@@ -73,6 +73,13 @@ def upsert_biaoke_posts(db_path: str, rows: List[Dict[str, Any]]) -> int:
             tags = row.get("tags") or []
             if not isinstance(tags, str):
                 tags = json.dumps(list(tags), ensure_ascii=False)
+            body = str(row.get("text") or "")
+            try:
+                from biaoke_ingest import scrub_cmoney_chrome
+
+                body = scrub_cmoney_chrome(body)
+            except Exception:
+                pass
             conn.execute(
                 """
                 INSERT INTO biaoke_posts (
@@ -98,7 +105,7 @@ def upsert_biaoke_posts(db_path: str, rows: List[Dict[str, Any]]) -> int:
                     int(row.get("layer") or 0),
                     str(row.get("kind") or "post"),
                     tags,
-                    str(row.get("text") or ""),
+                    body,
                     now,
                 ),
             )
