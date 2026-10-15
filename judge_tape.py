@@ -106,8 +106,10 @@ _SCREEN_BUCKETS = (
     "overnight",
 )
 # 大盤／外圍佐證可只有部分欄；個股選股要開高低收＋量才算有記
-# biaoke_levels＝點位輔助凍（可含指數假碼 _BKLV_*）；不是選股勝率
-_CONTEXT_KINDS = frozenset({"market", "fut", "us", "outer", "biaoke_levels"})
+# biaoke_levels／biaoke_diverge＝點位／他說vs我說輔助凍（可含假碼）；不是選股勝率
+_CONTEXT_KINDS = frozenset(
+    {"market", "fut", "us", "outer", "biaoke_levels", "biaoke_diverge"}
+)
 _BAR_KEYS = ("o", "h", "l", "c", "v")
 _CHIP_KEYS = ("fn", "tn", "dn", "pct")
 _EXTRA_KEEP = (
@@ -156,6 +158,16 @@ _EXTRA_KEEP = (
     "claim_key",
     "post_date",
     "hit",
+    # 他說／我說分軌（靜默；不准當買訊／抬槓）
+    "our_lo",
+    "our_hi",
+    "our_basis",
+    "our_path",
+    "diverged",
+    "winner",
+    "his_verdict",
+    "our_verdict",
+    "variant",
 )
 # 話筒按鍵改名不准改 kind。pick 才分同一顆鈕底下的子名單。
 _OUTER_MARKS = (
@@ -608,6 +620,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         from lookup_chart_verify import night_tick as lookup_chart_night_tick
 
         lookup_chart_night_tick(market_db, day)
+    except Exception:
+        pass
+    # 飆大點位／走法他說＋我說分軌：§13 過閘才換該軌；不進話筒、不改買訊。失敗不擋。
+    try:
+        from biaoke_diverge import night_tick as biaoke_diverge_night_tick
+
+        biaoke_diverge_night_tick(market_db, day)
     except Exception:
         pass
     return stats

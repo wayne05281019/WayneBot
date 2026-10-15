@@ -151,16 +151,18 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
     },
     {
         "btn": "飆大",
-        "kinds": ("biaoke_named", "biaoke_levels"),
+        "kinds": ("biaoke_named", "biaoke_levels", "biaoke_diverge"),
         "class": CLASS_BIAOKE,
         "status": "gap_filled",
         "pipe": (
             "biaoke_tape（近窗柱）＋本檔每日點名凍結 live_judge；"
             "biaoke_claims 點位（lo/hi／role）→ biaoke_levels 輔助凍；"
+            "點位／大盤走法必寫他說＋可重算我說→biaoke_diverge；"
+            "§13 n≥20 且下一版贏現況才換該軌並再生；"
             "對質前 ensure_confront_aux 補台指／電子夜盤／美股已收"
         ),
         "window": "近窗官方 OHLC＋量；點位持續對質；live_judge 再對 1／5",
-        "note": "不是買訊；不准寫回黃金買點／海選；點位輔助≠買訊",
+        "note": "不是買訊；不准話筒抬槓；不准寫回黃金買點／海選；未過閘不改買訊",
     },
     {
         "btn": "台股大盤",
@@ -804,6 +806,16 @@ def snapshot_biaoke_levels(market_db: str, as_of: str = "") -> int:
     return _remember(market_db, "biaoke_levels", rows, as_of=day, pick="rule", src="biaoke_lv")
 
 
+def snapshot_biaoke_diverge(market_db: str, as_of: str = "") -> int:
+    """飆大他說／我說分軌凍（必有可重算下一步；§13 另軌；不是買訊）。"""
+    try:
+        from biaoke_diverge import snapshot_biaoke_diverge as _snap
+
+        return int(_snap(market_db, as_of=as_of) or 0)
+    except Exception:
+        return 0
+
+
 def snapshot_winrate_buypoint(market_db: str, as_of: str = "") -> int:
     """勝率買點盤後名單靜默凍（讀 winrate_buypoint_roster；空名單不算）。"""
     day = _as_of(market_db, as_of)
@@ -831,6 +843,7 @@ def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
         ("ai_desk", snapshot_ai_desk),
         ("biaoke_named", snapshot_biaoke_named),
         ("biaoke_levels", snapshot_biaoke_levels),
+        ("biaoke_diverge", snapshot_biaoke_diverge),
         ("winrate_buypoint", snapshot_winrate_buypoint),
     )
     for key, fn in runners:

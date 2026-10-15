@@ -1850,6 +1850,13 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         refresh_live_match(db_path)
     except Exception:
         logger.exception("飆大對質符合名單重算略過")
+    try:
+        # 點位／大盤走法：必有可重算我說→靜默對質；§13 過閘才換該軌；不進話筒
+        from biaoke_diverge import record_from_events as record_diverge_events
+
+        record_diverge_events(db_path, packed)
+    except Exception:
+        logger.exception("飆大他說／我說分軌對質略過")
 
 
 def run_biaoke_ingest_quiet() -> None:
