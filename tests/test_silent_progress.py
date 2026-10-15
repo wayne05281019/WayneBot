@@ -221,6 +221,51 @@ def test_capture_freezes_twii_bar_for_review(tmp_path):
     assert "us" in holes
 
 
+def test_capture_review_context_freezes_biaoke_levels(tmp_path):
+    import sqlite3
+
+    from silent_progress import capture_review_context, load_review_context
+
+    db = str(tmp_path / "lv.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE biaoke_claims (
+            claim_key TEXT PRIMARY KEY,
+            post_id TEXT, post_date TEXT, stock_id TEXT, stock_name TEXT,
+            role TEXT, verb TEXT, lo REAL, hi REAL, snippet TEXT,
+            hit TEXT, hit_date TEXT, club INTEGER DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO biaoke_claims VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "k1",
+            "p1",
+            "20260918",
+            "2330",
+            "台積電",
+            "支撐",
+            "不破",
+            900.0,
+            None,
+            "不破900",
+            "",
+            "",
+            0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    pack = capture_review_context(db, "20260918")
+    levels = pack.get("biaoke_levels") or []
+    assert levels and levels[0].get("lo") == 900.0
+    assert levels[0].get("stock_id") == "2330"
+    assert "freeze_biaoke_levels" in (pack.get("steps") or [])
+    assert load_review_context(db, "20260918").get("biaoke_levels")
+
+
 def test_silent_pack_stays_off_product_db(tmp_path):
     import sqlite3
 

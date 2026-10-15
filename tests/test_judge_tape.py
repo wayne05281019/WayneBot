@@ -606,6 +606,8 @@ def test_snapshot_skips_screenshot_and_telegram():
     assert "Image.save" not in src
     assert "send_telegram" not in src
     assert "render_twii" not in src
+    assert "ensure_confront_aux" in src
+    assert "biaoke_levels" in src
     fc = Path("biaoke_forecast.py").read_text(encoding="utf-8")
     assert "ensure_wave_inputs" in fc
     assert 'os.getenv("PYTEST_CURRENT_TEST")' in fc
@@ -617,3 +619,18 @@ def test_snapshot_skips_screenshot_and_telegram():
     assert "remember_rows" not in silent
     bot = Path("bot_servers.py").read_text(encoding="utf-8")
     assert "judge_tape" not in bot
+
+
+def test_ensure_confront_aux_skips_network_under_pytest(tmp_path):
+    from judge_tape import ensure_confront_aux
+
+    db = str(tmp_path / "wayne_market.db")
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE daily_quotes (date TEXT, stock_id TEXT)")
+    conn.commit()
+    conn.close()
+    # PYTEST_CURRENT_TEST 已由 pytest 注入 → 不准外網
+    out = ensure_confront_aux(db, "20260915")
+    assert out.get("day") == "20260915"
+    assert out.get("fut") == 0
+    assert out.get("us") == 0

@@ -151,12 +151,18 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
     },
     {
         "btn": "飆大",
-        "kinds": ("biaoke_named",),
+        "kinds": ("biaoke_named", "biaoke_levels", "biaoke_diverge"),
         "class": CLASS_BIAOKE,
         "status": "gap_filled",
-        "pipe": "biaoke_tape（近窗柱）＋本檔每日點名凍結 live_judge",
-        "window": "近窗官方 OHLC＋量；live_judge 再對 1／5",
-        "note": "不是買訊；不准寫回黃金買點／海選",
+        "pipe": (
+            "biaoke_tape（近窗柱）＋本檔每日點名凍結 live_judge；"
+            "biaoke_claims 點位（lo/hi／role）→ biaoke_levels 輔助凍；"
+            "點位／大盤走法必寫他說＋可重算我說→biaoke_diverge；"
+            "§13 n≥20 且下一版贏現況才換該軌並再生；"
+            "對質前 ensure_confront_aux 補台指／電子夜盤／美股已收"
+        ),
+        "window": "近窗官方 OHLC＋量；點位持續對質；live_judge 再對 1／5",
+        "note": "不是買訊；不准話筒抬槓；不准寫回黃金買點／海選；未過閘不改買訊",
     },
     {
         "btn": "台股大盤",
@@ -316,12 +322,12 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
             "與飆大 01:00 錯開、專鎖隔離）"
         ),
         "window": (
-            "按了才記＋D.C 前日全文圖文對質（連續 30 日曆日）；"
+            "查股圖下按了才記＋D.C 日對質沒按也跑（台北 02:20／連續 30 日曆日）；"
             "圖＋說法／文意差異落 dc_sf_*；有差當天改 dc_sf_rules 上話筒"
         ),
         "note": (
-            "獨立附加；不是選股、不准發明 5／9、不改黃金買點；"
-            "與飆大軌互不影響；失敗不准擋查股／飆大"
+            "獨立附加；D.C 日對質＝沒按也留；不是選股、浪號只在此鈕；"
+            "不改黃金買點；與飆大軌互不影響；失敗不准擋查股／飆大"
         ),
     },
 )
@@ -719,6 +725,97 @@ def snapshot_biaoke_named(market_db: str, as_of: str = "") -> int:
     return _remember(market_db, "biaoke_named", rows, as_of=day, pick="rule", src="biaoke")
 
 
+def snapshot_biaoke_levels(market_db: str, as_of: str = "") -> int:
+    """飆大點名點位凍結（讀 biaoke_claims lo/hi／role；對質輔助，不是買訊）。
+
+    當日發文點位＋當日對到 hit 的列都凍。個股要真代號＋官方柱；
+    大盤／期點用 ``_BKLV_*`` 假碼（context）。空點位不算有記。
+    """
+    day = _as_of(market_db, as_of)
+    if not market_db or not day or not os.path.isfile(market_db):
+        return 0
+    try:
+        from biaoke_claims import ensure_biaoke_claims_table
+
+        ensure_biaoke_claims_table(market_db)
+    except Exception:
+        pass
+    rows: List[Dict[str, Any]] = []
+    seen = set()
+    try:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            names = {str(r[0]) for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if "biaoke_claims" not in names:
+                return 0
+            hits = conn.execute(
+                """
+                SELECT claim_key, post_date, stock_id, stock_name, role, verb,
+                       lo, hi, snippet, hit, club
+                FROM biaoke_claims
+                WHERE (
+                    REPLACE(CAST(post_date AS TEXT),'-','')=?
+                    OR REPLACE(CAST(hit_date AS TEXT),'-','')=?
+                )
+                  AND (lo IS NOT NULL OR hi IS NOT NULL)
+                  AND COALESCE(club, 0)=0
+                """,
+                (day, day),
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return 0
+    for ck, post_date, sid, name, role, verb, lo, hi, snippet, hit, _club in hits:
+        key = str(ck or "").strip()
+        if not key or key in seen:
+            continue
+        try:
+            lo_n = float(lo) if lo is not None else None
+        except (TypeError, ValueError):
+            lo_n = None
+        try:
+            hi_n = float(hi) if hi is not None else None
+        except (TypeError, ValueError):
+            hi_n = None
+        if (lo_n is None or lo_n <= 0) and (hi_n is None or hi_n <= 0):
+            continue
+        seen.add(key)
+        code = str(sid or "").strip()
+        px = hi_n if hi_n and hi_n > 0 else lo_n
+        if not code:
+            # 指數／期點：假碼進 context，不需個股柱
+            code = f"_BKLV_{key[:24]}"
+        rows.append(
+            _row_from_quote(
+                code,
+                str(name or "") or str(role or "點位"),
+                close=px,
+                lo=lo_n,
+                hi=hi_n,
+                role=str(role or ""),
+                verb=str(verb or ""),
+                snippet=str(snippet or "")[:160],
+                claim_key=key,
+                post_date=str(post_date or ""),
+                hit=str(hit or ""),
+            )
+        )
+    if not rows:
+        return 0
+    return _remember(market_db, "biaoke_levels", rows, as_of=day, pick="rule", src="biaoke_lv")
+
+
+def snapshot_biaoke_diverge(market_db: str, as_of: str = "") -> int:
+    """飆大他說／我說分軌凍（必有可重算下一步；§13 另軌；不是買訊）。"""
+    try:
+        from biaoke_diverge import snapshot_biaoke_diverge as _snap
+
+        return int(_snap(market_db, as_of=as_of) or 0)
+    except Exception:
+        return 0
+
+
 def snapshot_winrate_buypoint(market_db: str, as_of: str = "") -> int:
     """勝率買點盤後名單靜默凍（讀 winrate_buypoint_roster；空名單不算）。"""
     day = _as_of(market_db, as_of)
@@ -745,6 +842,8 @@ def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
         ("book_buy", snapshot_book_buy),
         ("ai_desk", snapshot_ai_desk),
         ("biaoke_named", snapshot_biaoke_named),
+        ("biaoke_levels", snapshot_biaoke_levels),
+        ("biaoke_diverge", snapshot_biaoke_diverge),
         ("winrate_buypoint", snapshot_winrate_buypoint),
     )
     for key, fn in runners:
