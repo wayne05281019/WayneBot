@@ -21,6 +21,12 @@ from scenario_forecast_chart import (
     infer_scenario_paths,
     render_scenario_forecast,
     _ema,
+    _dc_mirror_leg_bars,
+    _dc_project_impulse_xs,
+    _dc_abc_future_bars,
+    _future_tick_labels,
+    _confirmed_leg_bars,
+    _CAL_PER_BAR,
 )
 
 
@@ -318,3 +324,131 @@ def test_render_3035_smoke(tmp_path, production_db):
     assert os.path.getsize(path) > 20_000
     assert "不保證" in cap and "不是買訊" in cap
     assert isinstance(meta, dict)
+
+
+def test_dc_time_symmetry_mirror_legs():
+    """未走浪段根數＝鏡射已走段（DC 根數對根數），不是固定 FUTURE 比例。"""
+    legs = {"(1)": 20.0, "(2)": 14.0}
+    assert abs(_dc_mirror_leg_bars("(3)", legs) - 20.0) < 1e-6
+    assert abs(_dc_mirror_leg_bars("(4)", legs) - 14.0) < 1e-6
+    assert abs(_dc_mirror_leg_bars("(5)", legs) - 20.0) < 1e-6
+    # 2404：已走 (3) 後虛 (5) 應鏡射 (3)
+    legs34 = {"(1)": 80.0, "(2)": 137.0, "(3)": 60.0, "(4)": 21.0}
+    assert abs(_dc_mirror_leg_bars("(5)", legs34) - 60.0) < 1e-6
+    # 短 (1)＋長前修正 → (3) 拉長
+    short = {"(1)": 8.0, "(2)": 11.0}
+    d3 = _dc_mirror_leg_bars("(3)", short, prior_corr_bars=80.0)
+    assert d3 >= 40.0
+
+
+def test_dc_project_impulse_xs_not_fixed_fraction():
+    start = {"i": 10.0, "price": 100.0, "kind": "L"}
+    confirmed = [
+        {"label": "(1)", "i": 30.0, "price": 140.0, "kind": "H"},
+        {"label": "(2)", "i": 45.0, "price": 115.0, "kind": "L"},
+    ]
+    xs_a, fut_a, durs_a = _dc_project_impulse_xs(
+        start, confirmed, x_now=100.0, n=101, prior_corr_bars=0.0
+    )
+    # 另一檔：更長 (1)(2) → 未來軸更長
+    start_b = {"i": 5.0, "price": 80.0, "kind": "L"}
+    confirmed_b = [
+        {"label": "(1)", "i": 55.0, "price": 160.0, "kind": "H"},
+        {"label": "(2)", "i": 95.0, "price": 110.0, "kind": "L"},
+    ]
+    xs_b, fut_b, durs_b = _dc_project_impulse_xs(
+        start_b, confirmed_b, x_now=120.0, n=121, prior_corr_bars=0.0
+    )
+    assert "(3)" in xs_a and "(5)" in xs_a
+    assert fut_b > fut_a + 8.0
+    assert durs_b["(3)"] > durs_a["(3)"]
+    # 不准再落在舊固定 0.32/0.55/0.88·72
+    assert abs(xs_a["(3)"] - (100.0 + 72 * 0.32)) > 1.0
+
+
+def test_dc_abc_future_shorter_than_impulse_default():
+    peak = {"i": 50.0, "price": 5000.0, "label": "(v)"}
+    abc = [
+        {"i": 70.0, "price": 3800.0, "label": "a"},
+        {"i": 85.0, "price": 4800.0, "label": "b"},
+        {"i": 100.0, "price": 2600.0, "label": "c"},
+    ]
+    deadline = {"i": 118.0, "label": "0825"}
+    fut = _dc_abc_future_bars(abc, peak=peak, deadline=deadline, n=150)
+    # 期限已過／近現價：abc 軸應明顯短於舊固定 72
+    assert fut < 55.0
+    assert fut >= 18.0
+
+
+def test_future_tick_labels_follow_wave_xs():
+    from datetime import date, timedelta
+
+    d0 = date(2026, 1, 2)
+    rows = []
+    for i in range(80):
+        d = d0 + timedelta(days=i)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        rows.append(
+            {
+                "date": d.strftime("%Y%m%d"),
+                "open": 100,
+                "high": 101,
+                "low": 99,
+                "close": 100,
+                "volume": 1,
+            }
+        )
+        d0 = d
+    n = len(rows)
+    # 短未來
+    ticks_s, labs_s = _future_tick_labels(
+        rows, n, n - 1 + 30, wave_xs=[n - 1 + 22], future_bars=28
+    )
+    # 長未來
+    ticks_l, labs_l = _future_tick_labels(
+        rows, n, n - 1 + 90, wave_xs=[n - 1 + 40, n - 1 + 80], future_bars=90
+    )
+    fut_labs_s = [lb for t, lb in zip(ticks_s, labs_s) if t > n - 1]
+    fut_labs_l = [lb for t, lb in zip(ticks_l, labs_l) if t > n - 1]
+    assert fut_labs_s and fut_labs_l
+    assert fut_labs_s[-1] != fut_labs_l[-1]
+
+
+@pytest.mark.production_db
+def test_per_stock_future_axis_differs_2404_3661_3529(production_db):
+    """三檔硬比樣：未來軸終點／future_bars 須分檔，不准再全家同一 27/01。"""
+    from datetime import timedelta
+
+    ends = {}
+    futs = {}
+    for sid in ("2404", "3661", "3529"):
+        path, cap, meta = render_scenario_forecast(
+            sid, production_db, f"/tmp/sf-axis-{sid}.png"
+        )
+        assert path and os.path.isfile(path)
+        wave = (meta or {}).get("wave") or {}
+        assert wave.get("future_bars"), sid
+        futs[sid] = float(wave["future_bars"])
+        rows = None
+        # 用 meta 推軸終日期
+        from scenario_forecast_chart import _rows_from_df, _BARS, _ymd_to_dt, _fmt_axis_date
+        import pandas as pd
+        import sqlite3
+
+        con = sqlite3.connect(production_db)
+        df = pd.read_sql_query(
+            "SELECT date, stock_name, open, high, low, close, volume "
+            "FROM daily_quotes WHERE stock_id=? ORDER BY date",
+            con,
+            params=[sid],
+        )
+        con.close()
+        rows = _rows_from_df(df.tail(_BARS))
+        last = _ymd_to_dt(rows[-1]["date"])
+        days = int(round(futs[sid] * _CAL_PER_BAR))
+        ends[sid] = _fmt_axis_date(last + timedelta(days=days), with_year=True)
+        assert "不保證" in cap and "不是買訊" in cap
+    # abc（3661）應短於長衝動投影；至少兩檔終點字串不同
+    assert futs["3661"] < futs["2404"] or futs["3661"] < futs["3529"]
+    assert len(set(ends.values())) >= 2, ends

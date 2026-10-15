@@ -26,14 +26,19 @@ logger = logging.getLogger("WayneBot.ScenarioForecast")
 
 _TZ = ZoneInfo("Asia/Taipei")
 
-# 近窗對齊結構圖量級；右側留足未來時間軸給 (3)(4)(5)
+# 近窗對齊結構圖量級；右側未來軸長度依該檔浪段根數對稱（非固定曆日終點）
 _BARS = 320
 _WAVE_LEFT = 10
 _WAVE_MIN_BARS = 14
 _WAVE_MIN_PCT = 0.10
-_FUTURE = 72
+# 未來軸上下限（交易日根數）：不夠讀／過長都裁；真正長度由 `_dc_future_horizon` 算
+_FUTURE_MIN = 18
+_FUTURE_MAX = 160
+_FUTURE_FALLBACK = 48  # 無浪骨架時的短預設（不再用固定 72→家家 27/01）
 _DPI = 168
 _MIN_BARS = 40
+# 日曆換算：交易日→約略日曆日（軸標用；與舊 _future_tick_labels 一致）
+_CAL_PER_BAR = 1.4
 
 # DC 配色鎖（v4）：白實線已走／黑線 abc／白虛線未來；禁全紅粗線壓 K
 _BG = "#e6e6e6"
@@ -295,6 +300,202 @@ def _wave_node(
     return node
 
 
+def _leg_bars(a: Dict[str, Any], b: Dict[str, Any]) -> float:
+    """兩浪點之間的交易日根數（絕對值）。"""
+    try:
+        return abs(float(b.get("i") or 0) - float(a.get("i") or 0))
+    except Exception:
+        return 0.0
+
+
+def _confirmed_leg_bars(
+    start: Dict[str, Any], confirmed: Sequence[Dict[str, Any]]
+) -> Dict[str, float]:
+    """已走浪段根數：'(1)'=start→(1)、'(2)'=(1)→(2)…。DC 時間對稱用這組。"""
+    out: Dict[str, float] = {}
+    nodes: List[Dict[str, Any]] = [dict(start or {})] + [dict(c) for c in (confirmed or [])]
+    for a, b in zip(nodes, nodes[1:]):
+        lab = str(b.get("label") or "").strip()
+        if not lab:
+            continue
+        bars = _leg_bars(a, b)
+        if bars > 0:
+            out[lab] = float(bars)
+    return out
+
+
+def _dc_mirror_leg_bars(
+    want: str,
+    legs: Dict[str, float],
+    *,
+    prior_corr_bars: float = 0.0,
+) -> float:
+    """未走浪段應佔幾根：對齊 DC「根數對根數」時間對稱（非固定 FUTURE 比例）。
+
+    對照 media/dc-style-refs 2404／3529／3661＋docs/dc-wave-drawing-logic-year-corpus.md：
+    - (3) 鏡射 (1)；若 (1) 很短且前有長修正，拉到 max(1.618·(1), 0.5·修正)
+    - (4) 鏡射 (2)（交替）
+    - (5) 鏡射已走 (3)，否則 (1)（2404：W5≈W3≈3 個月）
+    """
+    w1 = float(legs.get("(1)") or 0.0)
+    w2 = float(legs.get("(2)") or 0.0)
+    w3 = float(legs.get("(3)") or 0.0)
+    if w1 <= 0:
+        w1 = 20.0
+    if w2 <= 0:
+        w2 = max(12.0, w1 * 0.618)
+    want = str(want or "").strip()
+    if want == "(3)":
+        base = max(w1, float(_WAVE_MIN_BARS))
+        if w1 < 16.0 and float(prior_corr_bars or 0) >= 30.0:
+            base = max(base, w1 * 1.618, float(prior_corr_bars) * 0.5)
+        return float(max(base, 14.0))
+    if want == "(4)":
+        return float(max(w2, 10.0))
+    if want == "(5)":
+        src = w3 if w3 > 0 else w1
+        return float(max(src, 14.0))
+    return float(max(w1, 14.0))
+
+
+def _dc_project_impulse_xs(
+    start: Dict[str, Any],
+    confirmed: Sequence[Dict[str, Any]],
+    *,
+    x_now: float,
+    n: int,
+    prior_corr_bars: float = 0.0,
+) -> Tuple[Dict[str, float], float, Dict[str, float]]:
+    """依已走浪段根數投影 (3)(4)(5) 的 x，並回傳 future_bars（自 n-1 起算）。
+
+    回傳：(label→x, future_bars, label→Δbars)。
+    軸終點＝最遠投影點＋末段 0.35·Δ（DC 常留反應空白；不是家家拉到同一曆日）。
+    """
+    legs = _confirmed_leg_bars(start, confirmed)
+    have = {str(c.get("label") or "") for c in (confirmed or [])}
+    by_lab = {str(c.get("label") or ""): c for c in (confirmed or [])}
+    xs: Dict[str, float] = {}
+    durs: Dict[str, float] = {}
+    cursor = float(x_now)
+
+    def _anchor(lab: str) -> float:
+        node = by_lab.get(lab)
+        if node is not None:
+            return float(node.get("i") or 0)
+        return float(xs.get(lab) or cursor)
+
+    if "(3)" not in have:
+        d3 = _dc_mirror_leg_bars("(3)", legs, prior_corr_bars=prior_corr_bars)
+        durs["(3)"] = d3
+        xs["(3)"] = float(x_now) + d3
+        cursor = xs["(3)"]
+    else:
+        cursor = max(cursor, _anchor("(3)"))
+
+    if "(4)" not in have:
+        d4 = _dc_mirror_leg_bars("(4)", legs, prior_corr_bars=prior_corr_bars)
+        durs["(4)"] = d4
+        base = max(float(x_now), _anchor("(3)") if "(3)" in have or "(3)" in xs else float(x_now))
+        xs["(4)"] = base + d4
+        cursor = xs["(4)"]
+    else:
+        cursor = max(cursor, _anchor("(4)"))
+
+    if "(5)" not in have:
+        d5 = _dc_mirror_leg_bars("(5)", legs, prior_corr_bars=prior_corr_bars)
+        durs["(5)"] = d5
+        base = max(float(x_now), _anchor("(4)") if "(4)" in have or "(4)" in xs else float(x_now))
+        # (4) 已在過去：仍從 max(x_now, x4) 起算整段鏡射根數（2404：W5≈W3）
+        xs["(5)"] = base + d5
+        cursor = xs["(5)"]
+
+    # 僅「(3)(4)(5) 全虛」的早段衝動：總跨度若過短才等比拉長（3529 短 W1）。
+    # 已走長段只虛 (5)（2404）不准用 2.5·(W1+W2) 再爆開。
+    if (
+        "(3)" in durs
+        and "(4)" in durs
+        and "(5)" in durs
+        and "(1)" in legs
+        and "(2)" in legs
+    ):
+        raw_span = max(xs.values()) - float(x_now)
+        # 上限 100：對齊 DC 3529 數月窗，避免拉到半年以上假軸
+        target = max(
+            raw_span,
+            min(2.5 * (float(legs["(1)"]) + float(legs["(2)"])), 100.0),
+            48.0,
+        )
+        if raw_span > 1e-6 and target > raw_span * 1.05:
+            scale = target / raw_span
+            for lab in list(xs.keys()):
+                xs[lab] = float(x_now) + (xs[lab] - float(x_now)) * scale
+                if lab in durs:
+                    durs[lab] = float(durs[lab]) * scale
+            cursor = max(xs.values())
+
+    last_dur = 0.0
+    for lab in ("(5)", "(4)", "(3)"):
+        if lab in durs:
+            last_dur = float(durs[lab])
+            break
+    if last_dur <= 0 and legs:
+        last_dur = float(max(legs.values()))
+    pad = max(last_dur * 0.35, 8.0)
+    x_end = (max(xs.values()) if xs else float(x_now)) + pad
+    future_bars = float(x_end) - float(n - 1)
+    future_bars = max(float(_FUTURE_MIN), min(float(_FUTURE_MAX), future_bars))
+    # 投影點不得超出軸（CLAMP 後仍可能因 pad 被裁）
+    x_cap = float(n - 1) + float(future_bars)
+    for lab in list(xs.keys()):
+        if xs[lab] > x_cap:
+            xs[lab] = x_cap - max(pad * 0.25, 4.0)
+    return xs, future_bars, durs
+
+
+def _dc_abc_future_bars(
+    abc: Sequence[Dict[str, Any]],
+    *,
+    peak: Optional[Dict[str, Any]],
+    deadline: Optional[Dict[str, Any]],
+    n: int,
+) -> float:
+    """abc 修正軌：未來軸跟期限／修正跨度走，不准再灌固定 72 根到同一 27/01。
+
+    DC 3661：主敘是 (v)+abc＋斜壓期限；右側只留條件窗／盤整空白，不是五浪長軸。
+    """
+    n = int(n)
+    x_now = float(n - 1)
+    cands: List[float] = []
+    if deadline and deadline.get("i") is not None:
+        di = float(deadline["i"])
+        if di > x_now:
+            cands.append(di - x_now + 6.0)
+    span = 0.0
+    if abc and peak:
+        try:
+            span = abs(float(abc[-1].get("i") or 0) - float(peak.get("i") or 0))
+        except Exception:
+            span = 0.0
+    elif abc and len(abc) >= 2:
+        span = _leg_bars(abc[0], abc[-1])
+    if span > 0:
+        cands.append(max(span * 0.4, 18.0))
+    if not cands:
+        cands.append(float(_FUTURE_FALLBACK) * 0.55)
+    fut = max(cands)
+    return float(max(_FUTURE_MIN, min(_FUTURE_MAX, fut)))
+
+
+def _clamp_future_bars(fut: float) -> float:
+    try:
+        v = float(fut)
+    except Exception:
+        v = float(_FUTURE_FALLBACK)
+    if v <= 0:
+        v = float(_FUTURE_FALLBACK)
+    return float(max(_FUTURE_MIN, min(_FUTURE_MAX, v)))
+
+
 def _snap_support_band_price(
     rows: Sequence[Dict[str, Any]], i: float, raw_low: float
 ) -> float:
@@ -489,7 +690,6 @@ def infer_dc_wave_scenario(
     ladder_lv = sorted(
         {float(x.get("price") or 0) for x in (ladders or []) if float(x.get("price") or 0) > 0}
     )
-    fut = float(_FUTURE)
 
     def _pack(
         start: Dict[str, Any],
@@ -504,6 +704,9 @@ def infer_dc_wave_scenario(
         deadline: Optional[Dict[str, Any]] = None,
         zones: Optional[List[Dict[str, Any]]] = None,
         wedge: Optional[Dict[str, Any]] = None,
+        future_bars: Optional[float] = None,
+        leg_bars: Optional[Dict[str, float]] = None,
+        proj_durs: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         next_cycle = list(next_cycle or [])
         path_done: List[Tuple[float, float]] = [
@@ -517,7 +720,7 @@ def infer_dc_wave_scenario(
                 path_proj.append((float(abc[-1]["i"]), float(abc[-1]["price"])))
             else:
                 path_proj.append(path_done[-1])
-            for c in projected:
+        for c in projected:
                 path_proj.append((float(c["i"]), float(c["price"])))
         conf_labs = [c["label"] for c in confirmed]
         proj_labs = [c["label"] for c in projected]
@@ -537,6 +740,19 @@ def infer_dc_wave_scenario(
             else:
                 bubble = "情境預估：上升浪骨架（不保證・不是買訊）"
                 state = state or "partial"
+        # 無顯式 future_bars：從投影最遠 x 推（仍非固定 72）
+        fut = future_bars
+        if fut is None:
+            x_now = float(n - 1)
+            far = x_now
+            for c in projected:
+                try:
+                    far = max(far, float(c.get("i") or 0))
+                except Exception:
+                    pass
+            fut = _clamp_future_bars(far - x_now + 8.0)
+        else:
+            fut = _clamp_future_bars(float(fut))
         return {
             "start": start,
             "confirmed": confirmed,
@@ -552,6 +768,9 @@ def infer_dc_wave_scenario(
             "deadline": dict(deadline or {}),
             "zones": list(zones or []),
             "wedge": dict(wedge or {}),
+            "future_bars": float(fut),
+            "leg_bars": dict(leg_bars or {}),
+            "proj_durs": dict(proj_durs or {}),
         }
 
     # ----- 候選：大級別衝動 -----
@@ -796,6 +1015,9 @@ def infer_dc_wave_scenario(
             + (f"；{dl_lab}前站上才轉多敘事" if dl_lab else "")
             + "（不保證・不是買訊）"
         )
+        fut_abc = _dc_abc_future_bars(
+            abc, peak=confirmed[0] if confirmed else None, deadline=deadline, n=n
+        )
         return _pack(
             {
                 "i": float(st["i"]),
@@ -811,6 +1033,15 @@ def infer_dc_wave_scenario(
             desc_press=press_vb,
             deadline=deadline,
             zones=zones,
+            future_bars=fut_abc,
+            leg_bars=_confirmed_leg_bars(
+                {
+                    "i": float(st["i"]),
+                    "price": float(st["price"]),
+                    "kind": "L",
+                },
+                confirmed + abc,
+            ),
         )
 
     assert chosen is not None
@@ -838,6 +1069,22 @@ def infer_dc_wave_scenario(
     projected: List[Dict[str, Any]] = []
     have = {c["label"] for c in confirmed}
     x_now = max(float(confirmed[-1]["i"]), float(n - 1))
+    # 前修正跨度（Y／深低前的下降）：短 (1) 時拉長 (3) 時間對稱
+    prior_corr = 0.0
+    try:
+        si = int(round(float(start["i"])))
+        if 2 <= si < n:
+            pre_peak_i = max(range(0, si), key=lambda k: highs[k])
+            prior_corr = float(si - int(pre_peak_i))
+    except Exception:
+        prior_corr = 0.0
+    proj_xs, fut_imp, proj_durs = _dc_project_impulse_xs(
+        start,
+        confirmed,
+        x_now=x_now,
+        n=n,
+        prior_corr_bars=prior_corr,
+    )
     y_cap = max(float(confirmed[0]["price"]) * 1.35, last * 1.45)
     if ladder_lv:
         y_cap = max(y_cap, max(ladder_lv) * 1.05)
@@ -856,7 +1103,14 @@ def infer_dc_wave_scenario(
         y3 = max(y3, float(confirmed[0]["price"]) * 1.05)
         y3 = min(y3, y_cap)
         projected.append(
-            _wave_node("(3)", x_now + fut * 0.32, y3, "H", projected=True, date="估")
+            _wave_node(
+                "(3)",
+                float(proj_xs.get("(3)", x_now + 24)),
+                y3,
+                "H",
+                projected=True,
+                date="估",
+            )
         )
     if "(4)" not in have:
         src3 = next((c for c in confirmed + projected if c["label"] == "(3)"), None)
@@ -867,7 +1121,14 @@ def infer_dc_wave_scenario(
             )
             y4 = max(y4, float(start["price"]) * 1.02)
             projected.append(
-                _wave_node("(4)", x_now + fut * 0.55, y4, "L", projected=True, date="估")
+                _wave_node(
+                    "(4)",
+                    float(proj_xs.get("(4)", x_now + 36)),
+                    y4,
+                    "L",
+                    projected=True,
+                    date="估",
+                )
             )
     if "(5)" not in have:
         src3 = next((c for c in confirmed + projected if c["label"] == "(3)"), None)
@@ -901,7 +1162,14 @@ def infer_dc_wave_scenario(
                     }
                 )
             projected.append(
-                _wave_node("(5)", x_now + fut * 0.88, y5, "H", projected=True, date="估")
+                _wave_node(
+                    "(5)",
+                    float(proj_xs.get("(5)", x_now + 48)),
+                    y5,
+                    "H",
+                    projected=True,
+                    date="估",
+                )
             )
     # 楔形雙軌：上 (1)(3)、下 (2)(4)
     n1 = next((c for c in confirmed if c["label"] == "(1)"), None)
@@ -934,6 +1202,13 @@ def infer_dc_wave_scenario(
                 "label": f"撐 {_fmt_px(bp)}",
             }
         )
+    # 若投影點超出初估 future，以實際最遠點重算
+    if projected:
+        far = max(float(p["i"]) for p in projected)
+        fut_imp = _clamp_future_bars(max(fut_imp, far - float(n - 1) + max(
+            float((proj_durs or {}).get("(5)") or (proj_durs or {}).get("(3)") or 14) * 0.35,
+            8.0,
+        )))
     return _pack(
         start,
         confirmed,
@@ -942,6 +1217,9 @@ def infer_dc_wave_scenario(
         state="partial",
         zones=zones,
         wedge=wedge,
+        future_bars=fut_imp,
+        leg_bars=_confirmed_leg_bars(start, confirmed),
+        proj_durs=proj_durs,
     )
 
 
@@ -1221,12 +1499,19 @@ def _future_tick_labels(
     x_max: float,
     *,
     wave_xs: Optional[Sequence[float]] = None,
+    future_bars: Optional[float] = None,
 ):
-    """歷史＋未來軸標（Asia/Taipei）。少刻度、大字、帶年月；對齊浪號 x。"""
+    """歷史＋未來軸標（Asia/Taipei）。少刻度、大字、帶年月。
+
+    未來刻度錨在該檔投影浪點 x（DC：軸長跟情境幾何走），不是固定 0.88·72。
+    """
     last_dt = _ymd_to_dt(str(rows[-1].get("date") or "")) or datetime.now(_TZ)
     ticks: List[float] = []
     labels: List[str] = []
     years_seen: set = set()
+    fut = _clamp_future_bars(
+        float(future_bars) if future_bars is not None else float(_FUTURE_FALLBACK)
+    )
 
     def _add_hist(i: int) -> None:
         i = max(0, min(int(i), n - 1))
@@ -1241,6 +1526,21 @@ def _future_tick_labels(
         ticks.append(float(i))
         labels.append(_fmt_axis_date(d, with_year=with_year))
 
+    def _add_future(xi: float) -> None:
+        xi = float(xi)
+        if xi <= float(n - 1) + 0.5:
+            return
+        if xi > x_max + 0.5:
+            return
+        min_gap = max(fut * 0.28, 16.0)
+        if ticks and (xi - ticks[-1]) < min_gap:
+            return
+        days = int(round(max(0.0, xi - float(n - 1)) * float(_CAL_PER_BAR)))
+        d = last_dt + timedelta(days=days)
+        years_seen.add(d.year)
+        ticks.append(xi)
+        labels.append(_fmt_axis_date(d, with_year=True))
+
     # 歷史：略內縮頭／中／現價，避免旋轉大字被左緣切斷
     head_i = max(0, min(n - 1, int(round(n * 0.04))))
     for i in (head_i, n // 2, n - 1):
@@ -1248,15 +1548,30 @@ def _future_tick_labels(
     if not any(abs(t - float(n - 1)) < 0.5 for t in ticks):
         _add_hist(n - 1)
 
-    # 未來軸只留 1 個遠刻度（大字帶年）；浪號 x 不擠進軸標，避免互壓
-    # wave_xs 僅供浪點標籤，不驅動密集日期刻度
-    min_from_now = max(float(_FUTURE) * 0.55, 28.0)
-    xi = float(n - 1) + float(_FUTURE) * 0.88
-    if xi <= x_max + 0.1 and (not ticks or (xi - ticks[-1]) >= min_from_now):
-        days = int(round(max(0.0, xi - float(n - 1)) * 1.4))
-        d = last_dt + timedelta(days=days)
-        ticks.append(float(xi))
-        labels.append(_fmt_axis_date(d, with_year=True))
+    # 未來：優先錨投影浪點（遠→近挑到最多 2 個），再補軸終點
+    cand: List[float] = []
+    for x in wave_xs or []:
+        try:
+            xf = float(x)
+        except Exception:
+            continue
+        if xf > float(n - 1) + 1.0:
+            cand.append(xf)
+    cand = sorted(set(cand))
+    # 取最遠一個＋若跨度大再取中段一個（對齊 3529：(3)與(5) 兩標）
+    pick: List[float] = []
+    if cand:
+        pick.append(cand[-1])
+        if len(cand) >= 2 and (cand[-1] - cand[0]) >= max(fut * 0.35, 20.0):
+            mid = cand[len(cand) // 2]
+            if mid < cand[-1] - 8:
+                pick.insert(0, mid)
+    for xi in pick:
+        _add_future(xi)
+    # 若浪點太近或沒有投影：仍標該檔 future_bars 終點（分檔終點，非全球同一日）
+    axis_end = float(n - 1) + fut * 0.92
+    if not pick or (ticks and ticks[-1] < float(n - 1) + fut * 0.55):
+        _add_future(min(axis_end, x_max))
     return ticks, labels
 
 
@@ -1472,7 +1787,12 @@ def _paint(
         if e676 and len(e676) == n:
             ax.plot(xs, e676, color=_EMA_SLOW, lw=0.75, zorder=2, alpha=0.8)
 
-        x_end = float(n - 1 + _FUTURE)
+        fut_bars = _clamp_future_bars(
+            float(wave.get("future_bars") or _FUTURE_FALLBACK)
+            if wave
+            else float(_FUTURE_FALLBACK)
+        )
+        x_end = float(n - 1) + float(fut_bars)
         # 浪階自帶下降壓優先於通用樞紐壓
         if wave.get("desc_press"):
             press = dict(wave.get("desc_press") or {})
@@ -1838,7 +2158,13 @@ def _paint(
                     wave_xs.append(float(node.get("i") or 0))
                 except Exception:
                     pass
-        ticks, labels = _future_tick_labels(rows, n, x_max, wave_xs=wave_xs)
+        ticks, labels = _future_tick_labels(
+            rows,
+            n,
+            x_max,
+            wave_xs=wave_xs,
+            future_bars=fut_bars,
+        )
         # 軸標掛量能底軸（上圖會被量能面板裁掉）；字級約舊 v5 的 1.5～2×
         ax.set_xticks(ticks)
         ax.set_xticklabels([])
@@ -2000,6 +2326,9 @@ def render_scenario_forecast(
                 "abc": list((wave or {}).get("abc") or []),
                 "next_cycle": list((wave or {}).get("next_cycle") or []),
                 "path_proj": list((wave or {}).get("path_proj") or []),
+                "future_bars": (wave or {}).get("future_bars"),
+                "leg_bars": dict((wave or {}).get("leg_bars") or {}),
+                "proj_durs": dict((wave or {}).get("proj_durs") or {}),
             }
             if wave
             else {},
