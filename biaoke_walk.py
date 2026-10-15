@@ -143,7 +143,8 @@ def ensure_biaoke_facts_table(db_path: str) -> None:
 
 def extract_index_levels(text: str) -> List[Dict[str, Any]]:
     """文內大盤／台指期點位。個股價、年份不進這張表。"""
-    blob = str(text or "")
+    # 附圖 URL／UUID 片段不准當點位（例如 fe72…8812 → 假 8812）
+    blob = re.sub(r"https?://\S+", " ", str(text or ""))
     hits: List[Dict[str, Any]] = []
     seen = set()
     for m in _IDX_NUM.finditer(blob):
