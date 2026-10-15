@@ -657,6 +657,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         foreign_sell_extreme_night_tick(market_db, day)
     except Exception:
         pass
+    # Calm／小買→大買環境：佈局觀察 only；非買訊。失敗不擋。
+    try:
+        from foreign_sell_calm_verify import night_tick as foreign_sell_calm_night_tick
+
+        foreign_sell_calm_night_tick(market_db, day)
+    except Exception:
+        pass
     return stats
 
 
