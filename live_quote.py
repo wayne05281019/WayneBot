@@ -792,6 +792,85 @@ def display_quote_from_card(card: Optional[Dict[str, Any]]) -> Optional[Dict[str
     }
 
 
+def live_quote_from_decision_card(
+    card: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """決策卡已合併的盤中真報價 → `append_live_bar` 可用的 live_quote 形狀。
+
+    只認 `display_quote_from_card` 真數（含興櫃）；沒 is_live／沒正收＝None。
+    量單位已是張（與 daily_quotes／圖一二同源），不准再換算假量。
+    """
+    dq = display_quote_from_card(card)
+    if not dq or not dq.get("is_live"):
+        return None
+    try:
+        close = float(dq.get("close") or 0)
+    except (TypeError, ValueError):
+        close = 0.0
+    if close <= 0:
+        return None
+    try:
+        o = float(dq.get("open") or 0)
+        hi = float(dq.get("high") or 0)
+        lo = float(dq.get("low") or 0)
+        vol = float(dq.get("volume") or 0)
+    except (TypeError, ValueError):
+        o = hi = lo = vol = 0.0
+    o, hi, lo, close = sanitize_ohlc(o, hi, lo, close)
+    return {
+        "open": o,
+        "high": hi,
+        "low": lo,
+        "close": close,
+        "volume": vol if vol >= 0 else 0.0,
+        "pct_change": dq.get("pct"),
+        "yesterday_close": dq.get("prev") or dq.get("prev_close"),
+        "update_time": str(dq.get("update_time") or ""),
+        "is_realtime": True,
+        "source": str(dq.get("quote_source") or "decision_card"),
+        "emerging": bool(dq.get("emerging")),
+        "stock_name": str((card or {}).get("stock_name") or ""),
+    }
+
+
+def overlay_live_face_from_card(
+    face,
+    card: Optional[Dict[str, Any]],
+    *,
+    stock_id: str = "",
+    market: str = "",
+):
+    """圖三／圖四縮圖臉柱：疊決策卡當日真開高低收＋量（與圖一／二同源）。
+
+    壓撐選區／`official_work` 仍只吃官方原柱；此函式只給 paint 用。
+    `face` 可為 DataFrame 或 list[dict]；無真盤中報價則原樣回傳。
+    合併規則＝`append_live_bar`（開市窗、不蓋已收官方今日柱、休市不發明）。
+    """
+    rt = live_quote_from_decision_card(card)
+    if rt is None:
+        return face
+    sid = str(stock_id or (card or {}).get("stock_id") or "").strip()
+    if not sid:
+        return face
+    mkt = str(market or "").strip()
+    if not mkt:
+        listing = str((card or {}).get("listing") or "")
+        if bool(rt.get("emerging")) or listing.startswith("興櫃"):
+            mkt = "EM"
+    if isinstance(face, pd.DataFrame):
+        if face is None or getattr(face, "empty", True):
+            return face
+        return append_live_bar(face, sid, market=mkt, merge_live=True, live_quote=rt)
+    rows = list(face or [])
+    if not rows:
+        return rows
+    df = pd.DataFrame(rows)
+    out = append_live_bar(df, sid, market=mkt, merge_live=True, live_quote=rt)
+    if out is None or getattr(out, "empty", True):
+        return rows
+    return out.to_dict("records")
+
+
 def fetch_lookup_quote(
     stock_id: str,
     market: str = "",

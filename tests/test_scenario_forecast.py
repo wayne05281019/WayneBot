@@ -256,6 +256,9 @@ def test_hub_and_callback_wiring_isolated():
     assert "情境預估暫略" in src
     assert "leave_zero" not in src
     assert "不是買訊" in src
+    # 盤中與圖一二三四同源：決策卡真報價疊縮圖末日 K／趨勢
+    assert "merge_live=True" in src
+    assert "overlay_live_face_from_card" in inspect.getsource(render_scenario_forecast)
     # 僅此子鈕放寬浪號；仍釘 A+B+C
     assert "不准擋查股" in src or "A+B+C" in src
     cb = inspect.getsource(WayneTelegramBot._on_callback_bound)

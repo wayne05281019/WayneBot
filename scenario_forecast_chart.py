@@ -4,7 +4,8 @@
 視覺對齊 TradingView：淺灰底、白框／黑棒 K、白／粉紅／藍路徑、
 浪號沿時間軸（未走伸右側未來）、右側彩底價標、區間帶。
 獨立附加、永遠不是買訊。僅此子鈕可標浪；其他鈕仍守 §12。
-失敗回 None；不准擋查股四張／主選單。Asia/Taipei；只讀官方日 K。
+失敗回 None；不准擋查股四張／主選單。Asia/Taipei；官方日 K 選點；
+盤中可疊決策卡真開高低收＋量（與圖一～四同源），不准假柱。
 """
 from __future__ import annotations
 
@@ -1873,8 +1874,14 @@ def render_scenario_forecast(
     stock_id: str,
     db_path: str,
     out_path: str,
+    *,
+    card: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[str], str, Dict[str, Any]]:
-    """渲情境預估圖。回 (path|None, caption, meta)。失敗 path=None，不准拋到查股主路徑。"""
+    """渲情境預估圖。回 (path|None, caption, meta)。失敗 path=None，不准拋到查股主路徑。
+
+    官方原柱選點／浪階；盤中有決策卡真報價時，縮圖末日 K／量與趨勢（隧道／浪）
+    疊同卡（與圖一～四同源 `overlay_live_face_from_card`），不准假柱。
+    """
     sid = str(stock_id or "").strip()
     path = str(db_path or "").strip()
     out = str(out_path or "").strip()
@@ -1887,6 +1894,47 @@ def render_scenario_forecast(
         raw = load_official_ohlc(sid, path, max(_BARS + 40, 720))
         work = official_work(raw)
         all_rows = _rows_from_df(work)
+        # 查詢當下：決策卡盤中真開高低收＋量疊臉柱，趨勢線跟著最後一根走。
+        if isinstance(card, dict) and card.get("is_live"):
+            try:
+                from live_quote import overlay_live_face_from_card
+
+                over = overlay_live_face_from_card(
+                    all_rows, card, stock_id=sid
+                )
+                if isinstance(over, list) and len(over) >= len(all_rows):
+                    # 保留股名；overlay 可能帶 is_live 等欄
+                    name0 = str(all_rows[-1].get("stock_name") or "") if all_rows else ""
+                    cleaned: List[Dict[str, Any]] = []
+                    for r in over:
+                        if not isinstance(r, dict):
+                            continue
+                        try:
+                            o = float(r.get("open") or 0)
+                            h = float(r.get("high") or 0)
+                            lo = float(r.get("low") or 0)
+                            c = float(r.get("close") or 0)
+                            v = float(r.get("volume") or 0)
+                        except Exception:
+                            continue
+                        if h <= 0 or lo <= 0 or c <= 0:
+                            continue
+                        cleaned.append(
+                            {
+                                "date": str(r.get("date") or ""),
+                                "stock_name": str(r.get("stock_name") or name0),
+                                "open": o,
+                                "high": h,
+                                "low": lo,
+                                "close": c,
+                                "volume": v,
+                                "is_live": bool(r.get("is_live")),
+                            }
+                        )
+                    if len(cleaned) >= _MIN_BARS:
+                        all_rows = cleaned
+            except Exception:
+                logger.debug("情境預估疊盤中臉柱略過 sid=%s", sid, exc_info=True)
         if len(all_rows) < _MIN_BARS:
             return (
                 None,
