@@ -9,7 +9,10 @@ import tempfile
 from dongzhu_tape import tape_store_path
 from foreign_sell_display import (
     BUY_SIGNAL,
+    DISPLAY_ESCALATE_THETA,
+    DISPLAY_INCLUDE_BUY_ESCALATE,
     DISPLAY_MODE,
+    DISPLAY_SELL_SHARE_THR,
     DISPLAY_TAG,
     OBSERVE_LABEL,
     OBSERVE_MARKER,
@@ -51,8 +54,41 @@ def test_display_hard_locks():
     assert "觀察" in DISPLAY_TAG
     assert OBSERVE_MARKER == "h"  # 異於止穩 D、買訊三角
     assert OBSERVE_LABEL == "觀察"
+    assert DISPLAY_SELL_SHARE_THR == 0.20
+    assert DISPLAY_ESCALATE_THETA == 90.0
+    assert DISPLAY_INCLUDE_BUY_ESCALATE is False
     assert not is_buy_entry_path("_paint_foreign_sell_observe_marks")
     assert is_buy_entry_path("_paint_nav_buy_arrows")
+
+
+def test_share_extreme_lights_qianjin():
+    """超比 20% 軌：千金也可亮（不靠 5000 張）。"""
+    db = _mk_db()
+    ensure_ext(db)
+    store = tape_store_path(db)
+    conn = sqlite3.connect(store)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO foreign_sell_extreme_tape(
+            kind, as_of, track_key, sid, name, tag, volume, close
+        ) VALUES (?,?,?,?,?,?,?,?)
+        """,
+        (
+            "foreign_sell_extreme_dplus",
+            "20261013",
+            "share_th0.2",
+            "2330",
+            "台積電",
+            "anchor",
+            2500.0,
+            1150.0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    hit = stock_observe_hit(db, "2330")
+    assert hit is not None
+    assert hit.source == "extreme"
 
 
 def test_morning_line_none_and_lit():

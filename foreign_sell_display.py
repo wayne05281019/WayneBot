@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from dongzhu_tape import tape_store_path
 from fear_composite import _ymd
 
-# 測試版上話筒；正式過閘文案之後再收
+# 測試版上話筒；正式過閘文案之後再收；靜默對質繼續
 DISPLAY_MODE = "test"
 DISPLAY_TAG = "觀察／預警（測試）"
 BUY_SIGNAL = False  # 硬鎖：永遠不是買訊
@@ -32,6 +32,11 @@ STOCK_LOOKBACK_DAYS = 5
 QIANJIN_PX = 1000.0
 # lots_th* 極端軌：當日量至少達門檻才准當顯示（否則高價／小量股永不該靠張數亮）
 LOTS_TRACK_MIN_VOL_MULT = 1.0  # 當日量 ≥ 張數門檻 × 此倍數
+
+# 測試版先用、靜默續對（回測有 lift；賣側；買側未過關先不畫橘六角）
+DISPLAY_SELL_SHARE_THR = 0.20  # 單日賣超佔量 ≥20% → 極端超比軌
+DISPLAY_ESCALATE_THETA = 90.0  # 升級：爬向同日分位前約 10%
+DISPLAY_INCLUDE_BUY_ESCALATE = False  # 買升級回測近平基線；測試版先不亮
 
 
 @dataclass
@@ -540,27 +545,28 @@ def stock_observe_hit(
                 buy_signal=False,
             )
 
-        # 3) 小買升級（反向個股）也可標觀察——仍非買
-        try:
-            row = conn.execute(
-                f"""
-                SELECT as_of, tag FROM foreign_sell_calm_tape
-                WHERE kind=? AND sid=? AND tag=? AND as_of IN ({placeholders})
-                ORDER BY as_of DESC LIMIT 1
-                """,
-                ("foreign_sell_calm_env", sid, "buy_escalate_A", *pool),
-            ).fetchone()
-            if row:
-                return StockObserveHit(
-                    sid=sid,
-                    as_of=str(row[0]),
-                    source="calm_buy",
-                    tag=str(row[1] or ""),
-                    label=OBSERVE_LABEL,
-                    buy_signal=False,
-                )
-        except sqlite3.Error:
-            pass
+        # 3) 買升級：回測未過關；測試版預設不亮（DISPLAY_INCLUDE_BUY_ESCALATE）
+        if DISPLAY_INCLUDE_BUY_ESCALATE:
+            try:
+                row = conn.execute(
+                    f"""
+                    SELECT as_of, tag FROM foreign_sell_calm_tape
+                    WHERE kind=? AND sid=? AND tag=? AND as_of IN ({placeholders})
+                    ORDER BY as_of DESC LIMIT 1
+                    """,
+                    ("foreign_sell_calm_env", sid, "buy_escalate_A", *pool),
+                ).fetchone()
+                if row:
+                    return StockObserveHit(
+                        sid=sid,
+                        as_of=str(row[0]),
+                        source="calm_buy",
+                        tag=str(row[1] or ""),
+                        label=OBSERVE_LABEL,
+                        buy_signal=False,
+                    )
+            except sqlite3.Error:
+                pass
     finally:
         conn.close()
     return None
