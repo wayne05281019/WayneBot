@@ -4,8 +4,9 @@
 獨立一張，不改導航圖。不是買訊、不發明 5／9。
 畫法對齊教學圖：白底雙欄、桃色帶、洋紅壓／綠撐、量柱黃標爆大量日。
 
-K 棒只認官方日表原柱（daily_quotes／emerging_quotes；加權 TWII＝index_daily）：
-不准除權還原、不准 MIS 盤中假柱、不准 sanitize 改高低、不准飆大疊加柱。
+壓撐選區只認官方日表原柱（daily_quotes／emerging_quotes；加權 TWII＝index_daily）：
+不准除權還原、不准 sanitize 改高低、不准飆大疊加柱、不准發明假量。
+查股縮圖 paint 時可疊決策卡盤中真開高低收＋量（與圖一／二同源；`overlay_live_face_from_card`）。
 """
 from __future__ import annotations
 
@@ -2143,6 +2144,31 @@ def _paint_volume_zone(
     spike_md = _md(spike_date)
     ax_head = None
     channel: Dict[str, Any] = {}
+    # 縮圖最後一根 K／量＝決策卡盤中真報價（與圖一／二同源）；選區已在 prepare 吃官方。
+    if isinstance(card, dict) and card.get("is_live"):
+        try:
+            from live_quote import overlay_live_face_from_card
+
+            view2 = overlay_live_face_from_card(
+                view if isinstance(view, pd.DataFrame) else view,
+                card,
+                stock_id=str(sid or ""),
+            )
+            if (
+                isinstance(view2, pd.DataFrame)
+                and not getattr(view2, "empty", True)
+                and len(view2) >= 1
+            ):
+                view = view2.reset_index(drop=True)
+                n = len(view)
+                xs = np.arange(n, dtype=float)
+                halt = (
+                    view["is_halt"].fillna(False).astype(bool)
+                    if "is_halt" in view.columns
+                    else pd.Series(False, index=view.index)
+                )
+        except Exception:
+            logger.debug("大量區臉柱疊盤中報價略過 sid=%s", sid, exc_info=True)
     # 獨立 Figure＋Agg：可與介紹／高低卡真並行，不准再用 pyplot 全域搶鎖。
     from matplotlib.gridspec import GridSpec
     from wayne_navigator import _close_lookup_figure, _new_lookup_figure
@@ -2503,7 +2529,7 @@ def _paint_volume_zone(
     # 大量區右軸／表頭：已刪綠匡白底「收」晶片；不准再畫「昨收」白底標
 
     # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位。
-    # 盤中有決策卡現價時，戳與高低卡／介紹同源（含興櫃）；K 主體仍只吃官方原柱。
+    # 盤中有決策卡現價時，戳與高低卡／介紹同源（含興櫃）；臉柱 K／量已在上方疊同卡。
     hdr_quote = None
     try:
         from live_quote import display_quote_from_card

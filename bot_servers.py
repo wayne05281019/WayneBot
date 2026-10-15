@@ -8080,13 +8080,34 @@ class WayneTelegramBot:
         cap = "情境預估暫略。不是買訊。"
         meta: dict = {}
         try:
-            from wayne_navigator import submit_mpl_paint
+            from wayne_navigator import NavigatorEngine, submit_mpl_paint
             from scenario_forecast_chart import render_scenario_forecast
 
             out = self._scratch_chart_path(self.charts_dir, code, "scenario", uid)
+            # 與查股圖一二三四同源：盤中決策卡真報價疊縮圖末日 K／趨勢。
+            live_rt = None
+            try:
+                live_rt = await asyncio.to_thread(
+                    self._prefetch_mis_quote, code, hits
+                )
+            except Exception:
+                live_rt = None
 
             def _render():
-                return render_scenario_forecast(code, self.db_path, out)
+                card = None
+                try:
+                    card = NavigatorEngine(self.db_path).get_decision_card(
+                        code, lookback=20, merge_live=True, live_quote=live_rt
+                    )
+                    if isinstance(card, dict):
+                        card.pop("_ohlc", None)
+                        if card.get("error"):
+                            card = None
+                except Exception:
+                    card = None
+                return render_scenario_forecast(
+                    code, self.db_path, out, card=card
+                )
 
             path, cap, meta = await asyncio.wait_for(
                 asyncio.wrap_future(submit_mpl_paint(_render)),
@@ -8617,7 +8638,7 @@ class WayneTelegramBot:
             def _render_vol():
                 from vol_zone_chart import render_lookup_vol_result
 
-                # 大量撐壓只吃官方原柱；不准盤中假柱。
+                # 選區只吃官方原柱；縮圖末日 K／量可疊決策卡盤中真報價（與圖一二同源）。
                 path, cap = render_lookup_vol_result(
                     code,
                     _stock_caption_name(card, code),

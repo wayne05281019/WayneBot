@@ -4,7 +4,7 @@
 
 ①高低導航 180 日＋②飆大結構＋③大量壓力，合成一張。
 規則鎖自 media/6526-三合一圖.png（T0118）。
-官方 OHLC；③不准盤中假柱；買點＝藍▲紅框（leave_zero∪ma60_lower）；未確認紅箭頭不是買訊。
+官方 OHLC 選區；③④縮圖末日 K／量可疊決策卡盤中真報價（與圖一二同源）；買點＝藍▲紅框（leave_zero∪ma60_lower）；未確認紅箭頭不是買訊。
 """
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def _header_quote_bar(
 
     - 盤中有即時：跟①（`_load_ohlc`／card 合併列）同源，標 is_live。
     - 收盤後：最新官方完整柱（`load_official_ohlc` 末日），不准死釘舊日。
-    ②③ 日K／壓撐仍只用 official，不准拿這根盤中假柱去改③。
+    ②③ 壓撐選區仍只用 official；縮圖末日 K／量由 paint 疊決策卡真報價。
     """
     official_as_of = ""
     official_bar: dict = {}
@@ -3329,7 +3329,7 @@ def render_lookup_structure_result(
                 bars = _bars_from_official(pack["view"], sid, name)
         if len(bars) < 8:
             return "", ""
-        # 表頭現價／昨收／漲跌＝決策卡同源（含興櫃）；K 主體仍官方柱
+        # 表頭現價／昨收／漲跌＝決策卡同源；縮圖末日 K／量由 structure paint 疊同卡
         spot = None
         try:
             last_b = bars[-1] if bars else {}
