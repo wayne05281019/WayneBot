@@ -1866,10 +1866,31 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         _pre_save(fig)
         return orig_lookup_save(fig, path, dpi)
 
-    def _paint_nav(ax1, ax_sig, ax2, work, stock_id, stock_name, *, compact=False, card=None):
+    def _paint_nav(
+        ax1,
+        ax_sig,
+        ax2,
+        work,
+        stock_id,
+        stock_name,
+        *,
+        compact=False,
+        card=None,
+        db_path="",
+    ):
         from wayne_navigator import _fp
 
-        orig_paint_nav(ax1, ax_sig, ax2, work, stock_id, stock_name, compact=compact, card=card)
+        orig_paint_nav(
+            ax1,
+            ax_sig,
+            ax2,
+            work,
+            stock_id,
+            stock_name,
+            compact=compact,
+            card=card,
+            db_path=db_path,
+        )
         ax1.set_title("")
         dates = [_dk(d) for d in work["date"].tolist()]
         i = _index_of_date(dates, first_k)
