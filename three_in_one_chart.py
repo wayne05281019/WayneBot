@@ -2834,6 +2834,8 @@ def _legend_strip(width: int, *, height: int | None = None) -> Image.Image:
             ("#29b6f6", "月波動低", "up"),
             ("#1565c0", "買點↑藍▲紅框", "buy"),
             ("#ef6c00", "賣點↓橙", "down"),
+            ("#00695C", "止穩◆觀察", "diamond"),
+            ("#E65100", "橘六角觀察", "hex"),
         ],
         [
             ("#8e24aa", "20高", "down"),
@@ -2904,6 +2906,30 @@ def _legend_strip(width: int, *, height: int | None = None) -> Image.Image:
                     fill=col,
                     outline="#e57373",
                 )
+            elif kind == "diamond":
+                half = max(8, tri // 2)
+                d.polygon(
+                    [
+                        (cx, cy - half - 2),
+                        (cx + half, cy),
+                        (cx, cy + half + 2),
+                        (cx - half, cy),
+                    ],
+                    fill=col,
+                    outline="#26A69A",
+                )
+            elif kind == "hex":
+                import math as _math
+
+                half = max(8, tri // 2) + 2
+                hex_pts = [
+                    (
+                        cx + half * _math.cos(_math.radians(60 * i - 30)),
+                        cy + half * _math.sin(_math.radians(60 * i - 30)),
+                    )
+                    for i in range(6)
+                ]
+                d.polygon(hex_pts, fill=col, outline="#FF8F00")
             else:
                 d.line([cx - tri // 2, cy, cx + tri // 2, cy], fill=col, width=line_w)
             d.text(
