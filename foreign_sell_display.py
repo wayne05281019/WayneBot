@@ -28,6 +28,10 @@ OBSERVE_MARKER = "h"  # 六角形；◆＝止穩、▲＝買／60低
 
 # 個股近窗：最近幾個交易日有升級／極端確認才標
 STOCK_LOOKBACK_DAYS = 5
+# 千金：收≥1000；絕對張數極端軌對這群不公平（平常量常不到門檻）
+QIANJIN_PX = 1000.0
+# lots_th* 極端軌：當日量至少達門檻才准當顯示（否則高價／小量股永不該靠張數亮）
+LOTS_TRACK_MIN_VOL_MULT = 1.0  # 當日量 ≥ 張數門檻 × 此倍數
 
 
 @dataclass
@@ -168,22 +172,43 @@ def _count_confirm(db_path: str, as_of: str) -> Tuple[int, List[str]]:
                         tags.append(t)
         except sqlite3.Error:
             pass
-        # extreme：當日極端錨
+        # extreme：當日極端錨（張數軌對千金／量不足檔不計）
         try:
             rows = conn.execute(
                 """
-                SELECT DISTINCT sid, tag FROM foreign_sell_extreme_tape
+                SELECT sid, tag, track_key, volume, close
+                FROM foreign_sell_extreme_tape
                 WHERE kind=? AND as_of=? AND sid!='' AND sid NOT LIKE 'TWII%'
                 """,
                 ("foreign_sell_extreme_dplus", day),
             ).fetchall()
             for r in rows or []:
                 sid = str(r[0] or "").strip()
-                if sid:
-                    sids.add(sid)
-                    t = str(r[1] or "")
-                    if t and t not in tags:
-                        tags.append(t)
+                if not sid:
+                    continue
+                tkey = str(r[2] or "")
+                try:
+                    vol_t = float(r[3]) if r[3] is not None else None
+                except (TypeError, ValueError):
+                    vol_t = None
+                try:
+                    close_t = float(r[4]) if r[4] is not None else None
+                except (TypeError, ValueError):
+                    close_t = None
+                if close_t is None or vol_t is None:
+                    c2, v2 = _quote_close_vol(db_path, sid, day)
+                    if close_t is None:
+                        close_t = c2
+                    if vol_t is None:
+                        vol_t = v2
+                if not lots_extreme_ok_for_display(
+                    track_key=tkey, close=close_t, volume=vol_t
+                ):
+                    continue
+                sids.add(sid)
+                t = str(r[1] or "")
+                if t and t not in tags:
+                    tags.append(t)
         except sqlite3.Error:
             pass
     finally:
@@ -349,6 +374,71 @@ def _recent_as_ofs(conn: sqlite3.Connection, table: str, kind: str, limit: int) 
         return []
 
 
+def _parse_lots_thr(track_key: str) -> Optional[float]:
+    """lots_th5000 → 5000；非張數軌回 None。"""
+    key = str(track_key or "").strip()
+    if not key.startswith("lots_th"):
+        return None
+    try:
+        return float(key.replace("lots_th", "", 1))
+    except ValueError:
+        return None
+
+
+def _quote_close_vol(db_path: str, sid: str, day: str) -> Tuple[Optional[float], Optional[float]]:
+    """讀該日官方收／量（張）。缺回 (None, None)。"""
+    day = _ymd(day)
+    if not day or not db_path or not os.path.isfile(db_path):
+        return None, None
+    try:
+        conn = sqlite3.connect(db_path, timeout=5.0)
+        try:
+            row = conn.execute(
+                """
+                SELECT close, volume FROM daily_quotes
+                WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')=?
+                LIMIT 1
+                """,
+                (str(sid), day),
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None, None
+    if not row:
+        return None, None
+    try:
+        close = float(row[0]) if row[0] is not None else None
+    except (TypeError, ValueError):
+        close = None
+    try:
+        vol = float(row[1]) if row[1] is not None else None
+    except (TypeError, ValueError):
+        vol = None
+    return close, vol
+
+
+def lots_extreme_ok_for_display(
+    *,
+    track_key: str,
+    close: Optional[float],
+    volume: Optional[float],
+) -> bool:
+    """絕對張數極端軌能不能上橘六角。
+
+    千金（收≥1000）或當日量達不到該張數門檻 → 不准（高價股平常量常不到 5000 張）。
+    超比／分位軌（非 lots_th*）→ 准。
+    """
+    thr = _parse_lots_thr(track_key)
+    if thr is None:
+        return True  # share／streak／cum10 等相對軌
+    if close is not None and close >= float(QIANJIN_PX):
+        return False
+    if volume is None or volume < float(thr) * float(LOTS_TRACK_MIN_VOL_MULT):
+        return False
+    return True
+
+
 def stock_observe_hit(
     db_path: str,
     sid: str,
@@ -356,11 +446,12 @@ def stock_observe_hit(
     as_of: str = "",
     lookback: int = STOCK_LOOKBACK_DAYS,
 ) -> Optional[StockObserveHit]:
-    """個股近窗有升級／極端確認 → 查股可畫觀察標。永遠不是買訊。"""
+    """個股近窗有升級／極端確認 → 查股可畫觀察標。永遠不是買訊。
+
+    顯示優先：超比／分位升級（escalate）→ 相對極端軌 → 張數極端（僅非千金且量夠）。
+    千金不准靠 lots_th5000 亮燈。
+    """
     sid = str(sid or "").strip()
-    if not sid or sid.startswith("00") and len(sid) == 4:
-        # ETF 等仍可標；不過濾代號格式，只擋空
-        pass
     if not sid:
         return None
     store = _store(db_path)
@@ -371,7 +462,6 @@ def stock_observe_hit(
         days: List[str] = []
         if as_of:
             days = [_ymd(as_of)]
-        # 近窗：escalate／extreme 各自最近 as_of
         esc_days = _recent_as_ofs(
             conn, "foreign_sell_escalate_tape", "foreign_sell_escalate", lookback
         )
@@ -382,27 +472,8 @@ def stock_observe_hit(
         if not pool:
             return None
         placeholders = ",".join("?" * len(pool))
-        # 優先極端確認，其次升級
-        try:
-            row = conn.execute(
-                f"""
-                SELECT as_of, tag FROM foreign_sell_extreme_tape
-                WHERE kind=? AND sid=? AND as_of IN ({placeholders})
-                ORDER BY as_of DESC LIMIT 1
-                """,
-                ("foreign_sell_extreme_dplus", sid, *pool),
-            ).fetchone()
-            if row:
-                return StockObserveHit(
-                    sid=sid,
-                    as_of=str(row[0]),
-                    source="extreme",
-                    tag=str(row[1] or ""),
-                    label=OBSERVE_LABEL,
-                    buy_signal=False,
-                )
-        except sqlite3.Error:
-            pass
+
+        # 1) 優先：超比／分位升級（對高價／低價都公平）
         try:
             row = conn.execute(
                 f"""
@@ -423,7 +494,53 @@ def stock_observe_hit(
                 )
         except sqlite3.Error:
             pass
-        # 小買升級（反向個股）也可標觀察——仍非買
+
+        # 2) 極端：先相對軌（share／streak／cum10），再張數軌（過濾千金／量不足）
+        try:
+            rows = conn.execute(
+                f"""
+                SELECT as_of, tag, track_key, volume, close
+                FROM foreign_sell_extreme_tape
+                WHERE kind=? AND sid=? AND as_of IN ({placeholders})
+                ORDER BY as_of DESC
+                """,
+                ("foreign_sell_extreme_dplus", sid, *pool),
+            ).fetchall()
+        except sqlite3.Error:
+            rows = []
+        for r in rows or []:
+            day_r = str(r[0] or "")
+            tag = str(r[1] or "")
+            tkey = str(r[2] or "")
+            try:
+                vol_t = float(r[3]) if r[3] is not None else None
+            except (TypeError, ValueError):
+                vol_t = None
+            try:
+                close_t = float(r[4]) if len(r) > 4 and r[4] is not None else None
+            except (TypeError, ValueError):
+                close_t = None
+            # tape 缺 close 時回行情庫補（千金判定）
+            if close_t is None or vol_t is None:
+                c2, v2 = _quote_close_vol(db_path, sid, day_r)
+                if close_t is None:
+                    close_t = c2
+                if vol_t is None:
+                    vol_t = v2
+            if not lots_extreme_ok_for_display(
+                track_key=tkey, close=close_t, volume=vol_t
+            ):
+                continue
+            return StockObserveHit(
+                sid=sid,
+                as_of=day_r,
+                source="extreme",
+                tag=tag,
+                label=OBSERVE_LABEL,
+                buy_signal=False,
+            )
+
+        # 3) 小買升級（反向個股）也可標觀察——仍非買
         try:
             row = conn.execute(
                 f"""

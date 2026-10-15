@@ -175,7 +175,8 @@ def test_stock_observe_hit_escalate():
     assert idxs == [1]
 
 
-def test_stock_observe_hit_extreme_priority():
+def test_stock_observe_prefers_escalate_over_lots():
+    """顯示優先超比／分位升級，不先吃 5000 張極端。"""
     db = _mk_db()
     ensure_esc(db)
     ensure_ext(db)
@@ -192,17 +193,99 @@ def test_stock_observe_hit_extreme_priority():
     conn.execute(
         """
         INSERT OR REPLACE INTO foreign_sell_extreme_tape(
-            kind, as_of, track_key, sid, name, tag
-        ) VALUES (?,?,?,?,?,?)
+            kind, as_of, track_key, sid, name, tag, volume, close
+        ) VALUES (?,?,?,?,?,?,?,?)
         """,
-        ("foreign_sell_extreme_dplus", "20261013", "lots_th5000", "2330", "台積電", "anchor"),
+        (
+            "foreign_sell_extreme_dplus",
+            "20261013",
+            "lots_th5000",
+            "2330",
+            "台積電",
+            "anchor",
+            3000.0,
+            1200.0,
+        ),
     )
     conn.commit()
     conn.close()
     hit = stock_observe_hit(db, "2330")
     assert hit is not None
-    assert hit.source == "extreme"
+    assert hit.source == "escalate"
     assert hit.buy_signal is False
+
+
+def test_qianjin_skips_lots_th5000():
+    """千金平常量常不到 5000 張 → lots_th5000 不准亮橘六角。"""
+    from foreign_sell_display import lots_extreme_ok_for_display
+
+    assert lots_extreme_ok_for_display(
+        track_key="lots_th5000", close=1200.0, volume=3000.0
+    ) is False
+    assert lots_extreme_ok_for_display(
+        track_key="lots_th5000", close=800.0, volume=3000.0
+    ) is False  # 量也不足
+    assert lots_extreme_ok_for_display(
+        track_key="lots_th5000", close=800.0, volume=8000.0
+    ) is True
+    assert lots_extreme_ok_for_display(
+        track_key="share_th0.15", close=1200.0, volume=2000.0
+    ) is True
+
+    db = _mk_db()
+    ensure_ext(db)
+    store = tape_store_path(db)
+    conn = sqlite3.connect(store)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO foreign_sell_extreme_tape(
+            kind, as_of, track_key, sid, name, tag, volume, close
+        ) VALUES (?,?,?,?,?,?,?,?)
+        """,
+        (
+            "foreign_sell_extreme_dplus",
+            "20261013",
+            "lots_th5000",
+            "2330",
+            "台積電",
+            "anchor",
+            2500.0,
+            1150.0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    assert stock_observe_hit(db, "2330") is None
+
+
+def test_liquid_lots_extreme_can_show():
+    """非千金且當日量≥門檻 → lots 極端可顯示。"""
+    db = _mk_db()
+    ensure_ext(db)
+    store = tape_store_path(db)
+    conn = sqlite3.connect(store)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO foreign_sell_extreme_tape(
+            kind, as_of, track_key, sid, name, tag, volume, close
+        ) VALUES (?,?,?,?,?,?,?,?)
+        """,
+        (
+            "foreign_sell_extreme_dplus",
+            "20261013",
+            "lots_th5000",
+            "2603",
+            "長榮",
+            "anchor",
+            12000.0,
+            180.0,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    hit = stock_observe_hit(db, "2603")
+    assert hit is not None
+    assert hit.source == "extreme"
 
 
 def test_load_env_status_confirm_count():
