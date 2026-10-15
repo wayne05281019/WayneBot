@@ -86,7 +86,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 32  # 平行軌標軸外右溝＋TWII 吃他點的兩天低點
+_VZ_PAINT_VER = 33  # 止穩◆觀察標（非買訊）疊導航箭頭旁
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2939,7 +2939,7 @@ def _paint_volume_zone(
     if with_nav_signals:
         foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
         foot2 = (
-            "高觸壓、收未過＝測壓（非買訊）。買點＝藍▲紅框、60低＝純藍▲。"
+            "高觸壓、收未過＝測壓（非買訊）。買點＝藍▲紅框、60低＝純藍▲、止穩◆＝觀察非買。"
             "箭頭／殘影＝導航同一套。無成交＝灰短K＋量柱貼底，不准挖洞。"
         )
     else:

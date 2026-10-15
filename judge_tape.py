@@ -622,6 +622,13 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
         lookup_chart_night_tick(market_db, day)
     except Exception:
         pass
+    # 止穩／不再破底觀察標：沒按也掃母體落檔；永遠不是買訊。失敗不擋。
+    try:
+        from stabilize_verify import night_tick as stabilize_night_tick
+
+        stabilize_night_tick(market_db, day)
+    except Exception:
+        pass
     # 飆大點位／走法他說＋我說分軌：§13 過閘才換該軌；不進話筒、不改買訊。失敗不擋。
     try:
         from biaoke_diverge import night_tick as biaoke_diverge_night_tick

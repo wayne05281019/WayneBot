@@ -3819,6 +3819,8 @@ def render_biaoke_structure_png(
         round(fig_h, 3),
         # v78j：右軸今收／現價跟決策卡 quote 同源（上市上櫃興櫃）
         "hdr-band-v78j-axis-card" if fullbleed else "hdr-wrap3-vol-min",
+        # 止穩觀察標進鍵：命中與否不准互蓋舊圖
+        "stabilize-v2",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -4737,6 +4739,24 @@ def render_biaoke_structure_png(
             _paint_structure_blue_baskets(fig, ov, ax1, ax2)
         except Exception:
             logger.debug("結構圖三藍籃筐略過", exc_info=True)
+    # 止穩／不再破底觀察標（非買訊）：綠松石◆；不進藍▲紅框買訊路徑
+    try:
+        from stabilize_watch import frame_from_bars, stabilize_bar_indices
+        from wayne_navigator import _paint_stabilize_marks
+
+        stab_df = frame_from_bars(work)
+        stab_idxs = stabilize_bar_indices(stab_df) if len(stab_df) >= 62 else []
+        if stab_idxs:
+            _paint_stabilize_marks(
+                ax1,
+                stab_df,
+                stab_idxs,
+                xs,
+                arrow_gap=span * 0.034,
+                span=span,
+            )
+    except Exception:
+        logger.debug("結構圖止穩標略過", exc_info=True)
     from wayne_navigator import _savefig_lookup_png
 
     _savefig_lookup_png(fig, save_path, use_dpi)

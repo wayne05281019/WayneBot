@@ -6154,6 +6154,9 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
                 markeredgecolor=_NAV_BUY_ARROW_EDGE, markeredgewidth=2.85, markersize=ms_z + 3), "買點↑首清楚／續淡"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor=_NAV_TRADE_SELL,
                 markeredgecolor=_NAV_TRADE_SELL, markeredgewidth=0.0, markersize=ms_z + 2), "賣點↓橙"),
+        # 止穩＝綠松石菱形（觀察，不是買訊；跟藍▲紅框／純藍▲60低分開）
+        (Line2D([], [], linestyle="none", marker="D", markerfacecolor="#00695C",
+                markeredgecolor="#26A69A", markeredgewidth=1.4, markersize=ms_z + 1), "止穩◆觀察"),
     ]
     row3 = [
         (Line2D([], [], color="#f9a825", lw=2.6 if panel else 2.25), "SMA(20)"),
@@ -6178,7 +6181,7 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         # 標題列圖例三整排（不准左右互壓）：上量能／買賣、中高低箭、下均線
         # (handles, labels, x, y, ncol)
         panel_rows = (
-            (row2, 0.0, 0.58, 7),
+            (row2, 0.0, 0.58, 8),
             (row1, 0.0, 0.34, 8),
             (row3, 0.0, 0.10, 5),
         )
@@ -6196,13 +6199,13 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
     if zone_mode:
         rows = (
             (row1, 1.095, 8),
-            (row2, 1.055, 7),
+            (row2, 1.055, 8),
             (row3, 1.015, 5),
         )
     else:
         rows = (
             (row1, 1.168, 8),
-            (row2, 1.100, 7),
+            (row2, 1.100, 8),
             (row3, 1.032, 5),
         )
     for i, (row, y, ncol) in enumerate(rows):
@@ -6708,6 +6711,88 @@ def _paint_nav_buy_arrows(
     return True
 
 
+def _paint_stabilize_marks(
+    ax1,
+    work: pd.DataFrame,
+    idxs,
+    xs,
+    *,
+    arrow_gap: float,
+    span: float,
+    signal_work: Optional[pd.DataFrame] = None,
+) -> bool:
+    """查股／導航／大量區：畫「止穩」菱形觀察標（永遠不是買訊）。
+
+    視覺＝綠松石菱形＋「止穩」字，與藍▲紅框買訊、純藍▲60低分開。
+    規則在 stabilize_watch；不准併入 _nav_trade_marks。
+    """
+    if ax1 is None or work is None or getattr(work, "empty", True):
+        return False
+    n = len(work)
+    paint_idxs: list = []
+    src = signal_work if signal_work is not None and not getattr(signal_work, "empty", True) else work
+    if idxs is None:
+        try:
+            from stabilize_watch import stabilize_bar_indices
+
+            src_idxs = stabilize_bar_indices(src)
+        except Exception:
+            src_idxs = []
+        if signal_work is not None and src_idxs:
+            date_to_i = {str(work["date"].iloc[i]): i for i in range(n)}
+            for si in src_idxs:
+                try:
+                    d = str(src["date"].iloc[int(si)])
+                except Exception:
+                    continue
+                wi = date_to_i.get(d)
+                if wi is not None:
+                    paint_idxs.append(int(wi))
+        else:
+            paint_idxs = [int(i) for i in src_idxs if 0 <= int(i) < n]
+    else:
+        paint_idxs = [int(i) for i in idxs if 0 <= int(i) < n]
+    if not paint_idxs:
+        return False
+    try:
+        from stabilize_watch import STABILIZE_EDGE, STABILIZE_FACE, STABILIZE_LABEL
+    except Exception:
+        STABILIZE_FACE, STABILIZE_EDGE, STABILIZE_LABEL = "#00695C", "#26A69A", "止穩"
+    tip_ys = []
+    for ii in paint_idxs:
+        tip_ys.append(float(work["low"].iloc[ii]) - arrow_gap * 1.35)
+    y0, y1 = ax1.get_ylim()
+    mark_r = max(span * 0.028, 0.01)
+    ax1.set_ylim(min(y0, min(tip_ys) - mark_r * 3.2 - span * 0.01), y1)
+    painted = False
+    for ii, tip in zip(paint_idxs, tip_ys):
+        x = float(xs[ii])
+        ax1.scatter(
+            [x],
+            [tip],
+            marker="D",
+            s=88,
+            c=STABILIZE_FACE,
+            edgecolors=STABILIZE_EDGE,
+            linewidths=1.6,
+            zorder=9,
+            clip_on=False,
+        )
+        ax1.text(
+            x,
+            tip - mark_r * 1.55,
+            STABILIZE_LABEL,
+            ha="center",
+            va="top",
+            fontproperties=_fp(7.5, "bold"),
+            color=STABILIZE_FACE,
+            zorder=9,
+            clip_on=False,
+        )
+        painted = True
+    return painted
+
+
 def collect_nav_mark_events(work: pd.DataFrame) -> list:
     """導航／大量共用：依官方柱算出三角／量能訊號事件（含殘影）。
 
@@ -7015,6 +7100,16 @@ def overlay_nav_marks_on_zone(
     _paint_nav_buy_arrows(
         ax1, paint, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
     )
+    # 止穩觀察標（非買訊）：與藍▲紅框／純藍▲60低分開；規則見 stabilize_watch
+    _paint_stabilize_marks(
+        ax1,
+        paint,
+        None,
+        xs,
+        arrow_gap=arrow_gap,
+        span=span,
+        signal_work=buy_src,
+    )
     if sell_i_src is not None:
         sell_d = str(buy_src["date"].iloc[int(sell_i_src)])
         if sell_d in date_to_i:
@@ -7248,6 +7343,10 @@ def _paint_nav_on_axes(
         ax1, work, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
     ):
         trade_note = "　買↑藍▲紅框"
+    if _paint_stabilize_marks(
+        ax1, work, None, xs, arrow_gap=arrow_gap, span=span
+    ):
+        trade_note += "　止穩◆觀察"
     if sell_i is not None:
         i = int(sell_i)
         hi = float(work["high"].iloc[i])

@@ -210,6 +210,15 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "note": "first／second 過閘才改話筒排序；飆大軌永不自動上",
     },
     {
+        "btn": "止穩觀察",
+        "kinds": ("stabilize",),
+        "class": CLASS_LOOKUP,
+        "status": "external",
+        "pipe": "stabilize_verify.night_tick（hold_l60 畫圖＋hold_l60_tight 下一版靜默）",
+        "window": "沒按查股也掃流動母體；前瞻 1／5／10 日官方收",
+        "note": "觀察標不是買訊；不改 leave_zero／ma60_lower；n≥20 且贏該軌才換畫圖規則",
+    },
+    {
         "btn": "大量區×季線",
         "kinds": ("volzone_ma60",),
         "class": CLASS_PRESSURE,
