@@ -205,6 +205,22 @@ def test_extract_index_levels_skips_stock_keeps_night():
     assert any(abs(float(h["level"]) - 46506) < 0.1 for h in night)
 
 
+def test_extract_index_levels_strips_chart_url_uuid():
+    from biaoke_walk import extract_index_levels
+
+    text = (
+        "大盤多頭結構破壞點位在47500左右。"
+        "附圖：https://image.cmoney.tw/attachment/post/1791993600/"
+        "fe72c80d-dab5-4a39-8812-bbad0a50637e_l.png"
+    )
+    levels = {round(float(h["level"]), 2) for h in extract_index_levels(text)}
+    assert 47500.0 in levels
+    # UUID 片段不准當假點位
+    assert 8812.0 not in levels
+    assert 50637.0 not in levels
+    assert 1791993600 not in levels
+
+
 def test_upsert_does_not_invent_when_empty():
     assert upsert_fetched_quotes("", []) == 0
     assert upsert_fetched_quotes("missing.db", []) == 0
