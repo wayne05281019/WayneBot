@@ -135,6 +135,53 @@ def test_lookup_vol_comment_keeps_official_zone_only():
     assert "overlay_live_face_from_card" in open("live_quote.py", encoding="utf-8").read()
 
 
+def test_scenario_forecast_overlays_live_before_meta(monkeypatch):
+    """圖五＝情境預估：盤中決策卡疊末日 K；趨勢 meta 吃疊後 closes。"""
+    import inspect
+
+    from scenario_forecast_chart import render_scenario_forecast
+
+    src = inspect.getsource(render_scenario_forecast)
+    assert "overlay_live_face_from_card" in src
+    assert "card" in inspect.signature(render_scenario_forecast).parameters
+    bot_src = inspect.getsource(
+        __import__("bot_servers", fromlist=["WayneTelegramBot"]).WayneTelegramBot._send_scenario_forecast
+    )
+    assert "merge_live=True" in bot_src
+    assert "card=card" in bot_src
+    assert "_prefetch_mis_quote" in bot_src
+
+
+def test_scenario_overlay_appends_today_into_rows(monkeypatch):
+    import live_quote
+    from scenario_forecast_chart import _rows_from_df
+
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20261015")
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda d: True
+    )
+    df = pd.DataFrame(
+        [
+            {
+                "date": "20261013",
+                "stock_name": "台積電",
+                "open": 990.0,
+                "high": 1000.0,
+                "low": 980.0,
+                "close": 995.0,
+                "volume": 8000,
+            }
+        ]
+    )
+    rows = _rows_from_df(df)
+    out = live_quote.overlay_live_face_from_card(rows, _live_card(), stock_id="2330")
+    assert len(out) == 2
+    assert str(out[-1]["date"]).replace("-", "")[:8] == "20261015"
+    assert float(out[-1]["close"]) == 1010.0
+    assert float(out[-1]["volume"]) == 12345.0
+
+
 def test_emerging_overlay_uses_em_market(monkeypatch):
     import live_quote
 
