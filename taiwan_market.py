@@ -3735,7 +3735,7 @@ def _sector_short(name: str) -> str:
 
 
 def _market_read_note(snap: Dict[str, Any]) -> str:
-    """用數字寫解讀，避免只剩 Regime 標籤。"""
+    """燈號底下的短句。同一批數字，句號切開，不要用分號拆成孤行。"""
     bits: List[str] = []
     vs20 = snap.get("vs_ma20_pct")
     vs60 = snap.get("vs_ma60_pct")
@@ -3743,46 +3743,78 @@ def _market_read_note(snap: Dict[str, Any]) -> str:
     vs_hi = snap.get("vs_high52_pct")
     vol_r = snap.get("vol_ratio")
     breadth = snap.get("breadth_above_ma20")
-    fr = int(snap.get("falling_risk") or 0)
     if vs20 is not None:
         if vs20 >= 1.0:
-            bits.append(f"收在月線上 {vs20:.1f}%")
+            bits.append(f"月線上 {vs20:.1f}%")
         elif vs20 <= -1.0:
-            bits.append(f"收在月線下 {abs(vs20):.1f}%")
+            bits.append(f"月線下 {abs(vs20):.1f}%")
         else:
             bits.append("貼著月線")
     if vs60 is not None:
-        bits.append("季線上方" if vs60 >= 0 else "季線下方")
+        bits.append("季線上" if vs60 >= 0 else "季線下")
     if chg5 is not None:
-        if chg5 >= 1.5:
-            bits.append(f"5日偏強 {chg5:+.1f}%")
-        elif chg5 <= -1.5:
-            bits.append(f"5日轉弱 {chg5:+.1f}%")
-        else:
-            bits.append(f"5日 {chg5:+.1f}%")
+        bits.append(f"近5日 {chg5:+.1f}%")
     if vs_hi is not None:
-        if vs_hi >= -3:
-            bits.append(f"距年高僅 {abs(vs_hi):.1f}%")
-        elif vs_hi <= -12:
-            bits.append(f"距年高已遠 {abs(vs_hi):.1f}%")
-        else:
-            bits.append(f"距年高 {abs(vs_hi):.1f}%")
+        bits.append(f"離年高 {abs(vs_hi):.1f}%")
     if vol_r is not None:
-        if vol_r >= 1.2:
-            bits.append(f"量比 {vol_r:.2f} 放大")
-        elif vol_r <= 0.8:
-            bits.append(f"量比 {vol_r:.2f} 縮量")
-        else:
-            bits.append(f"量比 {vol_r:.2f}")
+        bits.append(f"量是平常的 {float(vol_r):.2f} 倍")
     if breadth is not None and float(breadth) > 0:
-        bits.append(f"站上月線 {float(breadth):.0f}%")
-    if fr >= 60:
-        bits.append("下跌風險紅燈，少追")
-    elif fr >= 35:
-        bits.append("下跌風險黃燈")
+        bits.append(f"個股站上月線 {float(breadth):.0f}%")
     if not bits:
         return ""
-    return "；".join(bits) + "。"
+    return "。".join(bits) + "。"
+
+
+_REGIME_PLUS_PLAIN: Dict[str, str] = {
+    "trend_up": "還在往上",
+    "多頭延伸": "還在往上",
+    "trend_up_late": "漲多了",
+    "多頭末端": "漲多了",
+    "range": "箱裡來回",
+    "箱型震盪": "箱裡來回",
+    "trend_down": "還在往下",
+    "空頭延伸": "還在往下",
+    "down_exhaust": "跌勢變弱",
+    "空頭衰竭": "跌勢變弱",
+    "repair": "跌完在修",
+    "跌後修復": "跌完在修",
+}
+
+
+def _falling_risk_lamp_word(score: int) -> str:
+    if score >= 60:
+        return "紅燈"
+    if score >= 35:
+        return "黃燈"
+    return "綠燈"
+
+
+def _page_regime_lines(snap: Dict[str, Any]) -> List[str]:
+    """大盤頁燈號：貼在環境觀察後。數值只用 snap，不另算。"""
+    regime = str(snap.get("regime") or "")
+    regime_lab = str(snap.get("regime_label") or "—")
+    if regime == "neutral" or regime_lab == "區間震盪":
+        regime_lab = f"{regime_lab}，沒有單邊" if regime_lab and regime_lab != "—" else "沒有單邊"
+    plus_key = str(snap.get("regime_plus") or "")
+    plus_lab = str(snap.get("regime_plus_label") or "")
+    short = _REGIME_PLUS_PLAIN.get(plus_key) or _REGIME_PLUS_PLAIN.get(plus_lab) or ""
+    if not short:
+        short = plus_lab if plus_lab and not plus_lab.isascii() else "—"
+    score = int(snap.get("falling_risk") or 0)
+    return [
+        _page_kv(
+            "大方向",
+            f"{_regime_traffic_light(regime)} {_page_b(regime_lab)}",
+        ),
+        _page_kv(
+            "短線",
+            f"{_regime_plus_traffic_light(plus_key)} {_page_b(short)}",
+        ),
+        _page_kv(
+            "下跌風險",
+            f"{_falling_risk_light(score)} {_page_b(f'{score}，{_falling_risk_lamp_word(score)}')}",
+        ),
+    ]
 
 
 def _night_vs_day_pct(snap: Dict[str, Any]) -> Optional[float]:
@@ -4413,8 +4445,6 @@ def format_taiwan_market_page_html(
         )
     ref = str(snap.get("as_of") or ref_hint)
     day_pct = _index_day_change(db_path, ref)
-    light = _regime_traffic_light(snap.get("regime"))
-    fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
     live_px = float((live or {}).get("close") or 0)
     tw_banner: List[str] = []
     try:
@@ -4452,7 +4482,7 @@ def format_taiwan_market_page_html(
     lines = ["<b>📊 台股大盤</b>", *tw_banner, as_of_note]
     if extra_note:
         lines.append(extra_note)
-    # 環境觀察（外資／恐懼預警測試版）：頂部一小段；不是買訊
+    # 環境觀察文案在 foreign_sell_display；燈號緊貼其後，中間不空行。
     try:
         from foreign_sell_display import market_env_section_lines
 
@@ -4461,6 +4491,10 @@ def format_taiwan_market_page_html(
             lines.extend(["", _TG_SECTION, *env_lines])
     except Exception:
         logger.debug("大盤頁環境觀察略過", exc_info=True)
+    lines.extend(_page_regime_lines(snap))
+    read = _market_read_note(snap)
+    if read:
+        lines.append(read)
     from stock_links import html_index_anchor, html_named
 
     lines.extend(["", html_index_anchor("加權指數")])
@@ -4553,21 +4587,6 @@ def format_taiwan_market_page_html(
             _resolve_outer_snap(us_for_outer if us_outer_fresh else {}, outer_snap)
         )
     )
-    plus_light = _regime_plus_traffic_light(snap.get("regime_plus"))
-    plus_lab = str(snap.get("regime_plus_label") or "—")
-    lines.extend(
-        [
-            "",
-            _TG_SECTION,
-            "<b>結構</b>",
-            _page_kv("盤勢", f"{light} {_page_b(str(snap.get('regime_label') or '—'))}"),
-            _page_kv("細分", f"{plus_light} {_page_b(plus_lab)}"),
-            _page_kv("風險", f"{fr_light} {_page_b(str(snap.get('falling_risk', 0)))}"),
-        ]
-    )
-    read = _market_read_note(snap)
-    if read:
-        lines.extend(["", read])
     return "\n".join(lines)
 
 

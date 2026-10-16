@@ -5490,7 +5490,8 @@ class WayneTelegramBot:
             await _end_wait()
             await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
             return
-        parts = chunk_telegram_html(html, reflow=True)
+        # 表頭＋環境觀察＋燈號同一則；超長從加權指數之前切開。
+        parts = chunk_telegram_html(html, reflow=True, cut_before="加權指數")
         if not parts:
             await _end_wait()
             await message.reply_text(

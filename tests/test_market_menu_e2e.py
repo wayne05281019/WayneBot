@@ -429,7 +429,8 @@ class TestMarketMenuE2E:
         html = format_taiwan_market_page_html(db, as_of)
         assert _TG_SECTION in html
         assert "漲跌家數" in html
-        assert "結構" in html
+        assert "大方向" in html
+        assert "<b>結構</b>" not in html
         for line in html.splitlines():
             if "上市" in line and "上櫃" in line:
                 pytest.fail(f"overlong breadth line: {line!r}")
@@ -473,9 +474,9 @@ class TestMarketMenuE2E:
         assert "+200" in xin
         assert "-50" in ying
         assert "+1,150" in tot
-        assert _row("盤勢")
-        assert _row("細分")
-        assert _row("風險")
+        assert _row("大方向")
+        assert _row("短線")
+        assert _row("下跌風險")
         assert "電子鏈夜盤" not in phone
         assert "大盤中性" not in phone
 
