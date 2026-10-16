@@ -102,6 +102,29 @@ def test_market_vol_zone_paints_parallel_channel(tmp_path, production_db):
     assert ("上升軌" in (cap or "")) or ("下降壓" in (cap or ""))
 
 
+def test_market_channel_caption_uses_anchor_dates_not_extended_price():
+    """軌標寫兩天低／貼高的那天，不寫右緣延伸價。"""
+    from vol_zone_chart import _market_channel_anchor_caption
+
+    ch = {
+        "kind": "asc",
+        "name_u": "平行壓",
+        "name_l": "上升軌",
+        "source": "biaoke_named",
+        "base": ((1, 44210.3, "20260825"), (2, 45398.4, "20260914")),
+        "lower": ((1, 44210.3, "20260825"), (2, 45398.4, "20260914")),
+        "touch": (10, 49970.0, "20261006"),
+        "rail_now": 50846.0,
+        "base_now": 49181.0,
+    }
+    low = _market_channel_anchor_caption(ch, upper=False)
+    up = _market_channel_anchor_caption(ch, upper=True)
+    assert "上升軌" in low and "8/25" in low and "44,210" in low
+    assert "9/14" in low and "45,398" in low
+    assert "平行壓" in up and "10/6" in up and "49,970" in up
+    assert "50,846" not in up and "49,181" not in low
+
+
 def test_channel_label_blank_avoids_candles_and_ma():
     """軌標找空白：盒子不准壓 K、不准壓均線。"""
     import numpy as np

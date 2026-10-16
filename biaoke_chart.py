@@ -954,18 +954,23 @@ def _paint_parallel_channel(
     y_lo: float,
     y_hi: float,
     n: int,
+    rail_lw: Optional[float] = None,
+    rail_dash: Any = None,
+    rail_halo: Optional[float] = None,
+    rail_color: Optional[str] = None,
 ) -> None:
     """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。
 
     真連點只標主軌兩點＋平行寬度觸點。平行緣是主軌平移，不准再撒假樞紐點。
+    rail_* 只給大盤大量區加粗；省略時結構圖仍是細虛線。
     """
     if not ch:
         return
     kind = str(ch.get("kind") or "")
     # 顏色跟他用語對齊：下降壓紫、上升軌藍
-    color = _UP_TRACK if kind == "asc" else _DOWN_TRACK
+    color = str(rail_color) if rail_color else (_UP_TRACK if kind == "asc" else _DOWN_TRACK)
     alive = bool(ch.get("alive"))
-    if not alive:
+    if not alive and not rail_color:
         color = "#90a4ae"
     upper = ch.get("upper") or ()
     lower = ch.get("lower") or ()
@@ -992,10 +997,10 @@ def _paint_parallel_channel(
             y_lo=float(y_lo),
             y_hi=float(y_hi),
             color=color,
-            ls_body=_CHANNEL_RAIL_DASH,
-            ls_fut=_CHANNEL_RAIL_DASH,
-            lw=float(_CHANNEL_RAIL_LW),
-            halo=0.55,
+            ls_body=_CHANNEL_RAIL_DASH if rail_dash is None else rail_dash,
+            ls_fut=_CHANNEL_RAIL_DASH if rail_dash is None else rail_dash,
+            lw=float(_CHANNEL_RAIL_LW if rail_lw is None else rail_lw),
+            halo=0.55 if rail_halo is None else float(rail_halo),
         )
     touch = ch.get("touch")
     if touch:

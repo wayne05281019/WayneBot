@@ -92,7 +92,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 41  # 大盤軌標避 K／均線；橘標讓出當天價；個股日標仍貼主K上框內側
+_VZ_PAINT_VER = 42  # 大盤平行軌加粗；軌標寫錨點日與價
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -1836,22 +1836,67 @@ def infer_vol_zone_parallel_channel(
     return infer_parallel_channel(rows) or {}
 
 
-def _channel_text_box_data(ax, text: str, *, n: int, ymin: float, ymax: float) -> Tuple[float, float]:
+def _channel_anchor_md(raw: Any) -> str:
+    t = str(raw or "").replace("-", "")[:8]
+    if len(t) == 8 and t.isdigit():
+        return f"{int(t[4:6])}/{int(t[6:8])}"
+    return str(raw or "").strip()
+
+
+def _market_channel_anchor_caption(ch: Dict[str, Any], *, upper: bool) -> str:
+    """大盤軌標：寫這條線實際連的日期與價，不寫右緣延伸價。"""
+    kind = str((ch or {}).get("kind") or "")
+    if kind == "desc":
+        name = str(ch.get("name_u") if upper else ch.get("name_l") or "")
+        if upper:
+            pts = ch.get("base") or ch.get("upper") or ()
+            lines = [name] if name else []
+            for pt in list(pts)[:2]:
+                if pt and len(pt) >= 3:
+                    lines.append(f"{_channel_anchor_md(pt[2])}高{_fmt_price(pt[1])}")
+            return "\n".join(lines) if lines else name
+        touch = ch.get("touch") or ()
+        if touch and len(touch) >= 3:
+            head = name or "平行撐"
+            return f"{head}\n{_channel_anchor_md(touch[2])}低{_fmt_price(touch[1])}"
+        return name
+    name = str(ch.get("name_l") if not upper else ch.get("name_u") or "")
+    if not upper:
+        pts = ch.get("base") or ch.get("lower") or ()
+        lines = [name or "上升軌"]
+        for pt in list(pts)[:2]:
+            if pt and len(pt) >= 3:
+                lines.append(f"{_channel_anchor_md(pt[2])}低{_fmt_price(pt[1])}")
+        return "\n".join(lines)
+    touch = ch.get("touch") or ()
+    head = name or "平行壓"
+    if touch and len(touch) >= 3:
+        return f"{head}\n{_channel_anchor_md(touch[2])}高{_fmt_price(touch[1])}"
+    return head
+
+
+def _channel_text_box_data(
+    ax, text: str, *, n: int, ymin: float, ymax: float, fs: float = 7.6
+) -> Tuple[float, float]:
     """軌標盒寬高（資料座標）。對齊最終 xlim（-0.8, n-0.2），不把 K 往左擠。"""
     pos = ax.get_position()
     fw, fh = ax.figure.get_size_inches()
     ax_w = max(float(pos.width) * float(fw), 0.1)
     ax_h = max(float(pos.height) * float(fh), 0.1)
-    fs = 7.6
-    w_pt = fs * 0.5
-    for ch in str(text or ""):
-        w_pt += fs if ord(ch) > 127 else fs * 0.56
-    h_pt = fs * 1.55 + fs * 0.5
+    lines = [ln for ln in str(text or "").split("\n")] or [""]
+    widths = []
+    for line in lines:
+        w_pt = fs * 0.45
+        for ch in line:
+            w_pt += fs if ord(ch) > 127 else fs * 0.56
+        widths.append(w_pt)
+    w_pt = max(widths) if widths else fs
+    h_pt = fs * 1.28 * max(len(lines), 1) + fs * 0.55
     x_span = max(float(n) - 0.2 - (-0.8), 1.0)
     y_span = max(float(ymax) - float(ymin), 1.0)
     dx = (w_pt / 72.0) / ax_w * x_span
     dy = (h_pt / 72.0) / ax_h * y_span
-    return dx * 1.06, dy * 1.08
+    return dx * 1.08, dy * 1.12
 
 
 def _channel_seg_y(seg, x: float, fallback: float) -> float:
@@ -2031,12 +2076,23 @@ def paint_vol_zone_parallel_channel(
 
     seam = float(max(n - 1, 0))
     # 軸外標才加右緣空；滿寬不准把 xlim 再撐開把 K 擠瘦
+    market_rails = not labels_outside
     if labels_outside:
         x0, x1 = ax.get_xlim()
         ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
         rail_hi = float(n) + 0.35
     else:
         rail_hi = float(n) - 0.35
+    kind0 = str(ch.get("kind") or "")
+    # 話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。不改結構圖細線。
+    rail_kw: Dict[str, Any] = {}
+    if market_rails:
+        rail_kw = dict(
+            rail_lw=3.2,
+            rail_dash=(0, (8.2, 3.5)),
+            rail_halo=2.3,
+            rail_color="#0d47a1" if kind0 == "asc" else "#4a148c",
+        )
     _paint_parallel_channel(
         ax,
         ch,
@@ -2046,6 +2102,7 @@ def paint_vol_zone_parallel_channel(
         y_lo=float(ymin),
         y_hi=float(ymax),
         n=int(n),
+        **rail_kw,
     )
     # 右緣價標：上升軌／平行壓 或 下降壓／平行撐（跟結構圖用語同一套）
     name_u = str(ch.get("name_u") or "上軌")
@@ -2053,9 +2110,14 @@ def paint_vol_zone_parallel_channel(
     rail = float(ch.get("rail_now") or 0)
     base = float(ch.get("base_now") or 0)
     kind = str(ch.get("kind") or "")
-    color = "#1565c0" if kind == "asc" else "#6a1b9a"
-    if not bool(ch.get("alive")):
-        color = "#90a4ae"
+    if market_rails:
+        color = "#0d47a1" if kind == "asc" else "#4a148c"
+        label_fs = 12.5
+    else:
+        color = "#1565c0" if kind == "asc" else "#6a1b9a"
+        if not bool(ch.get("alive")):
+            color = "#90a4ae"
+        label_fs = 7.6
     y_span = max(float(ymax) - float(ymin), 1.0)
     # (顯示Y, 標名, 真價)——錯開只動顯示Y，價標仍用真價
     items: List[Tuple[float, str, float]] = []
@@ -2087,7 +2149,12 @@ def paint_vol_zone_parallel_channel(
         and lo_arr.size >= int(n)
     )
     for y_disp, lab, y_px in items:
-        shown = f"{lab} {_fmt_price(y_px)}"
+        if market_rails:
+            shown = _market_channel_anchor_caption(
+                ch, upper=(lab == str(ch.get("name_u") or ""))
+            )
+        else:
+            shown = f"{lab} {_fmt_price(y_px)}"
         if not use_blank:
             y_draw = min(
                 max(float(y_disp), float(ymin) + y_span * 0.02),
@@ -2119,7 +2186,9 @@ def paint_vol_zone_parallel_channel(
         else:
             seg = ch.get("lower")
             outside = -1
-        dx, dy = _channel_text_box_data(ax, shown, n=int(n), ymin=float(ymin), ymax=float(ymax))
+        dx, dy = _channel_text_box_data(
+            ax, shown, n=int(n), ymin=float(ymin), ymax=float(ymax), fs=label_fs
+        )
         cx, cy = _blank_for_channel_label(
             text=shown,
             seg=seg,
@@ -2141,16 +2210,17 @@ def paint_vol_zone_parallel_channel(
             shown,
             ha="center",
             va="center",
-            fontproperties=_fp(7.6, "bold"),
+            fontproperties=_fp(label_fs, "bold"),
             color=color,
             zorder=12,
             clip_on=True,
+            linespacing=1.12,
             bbox=dict(
-                boxstyle="round,pad=0.14",
+                boxstyle="round,pad=0.22",
                 facecolor="#ffffff",
                 edgecolor=color,
-                linewidth=0.75,
-                alpha=0.96,
+                linewidth=1.35 if market_rails else 0.75,
+                alpha=0.97,
             ),
         )
         placed.append((cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0))
