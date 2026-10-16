@@ -87,7 +87,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 36  # 底部灰字補止穩◆／橘六角出現時機
+_VZ_PAINT_VER = 38  # 日標整塊在圖例上方，止穩◆／橘六角完整可見
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2301,12 +2301,13 @@ def _paint_volume_zone(
     if lookup_portrait:
         fig_size = VOL_ZONE_FIG_LOOKUP
         # 量柱列加高：高價股矮柱不准被擠沒。表頭不再放收盤晶片。
-        head_ratios = [0.78, 4.35, 0.38, 1.72]
+        # 表頭加高：標題→日標→介紹→圖例垂直分層，不准互壓（§6）
+        head_ratios = [1.05, 4.18, 0.38, 1.72]
         # 底部灰字兩行（含止穩◆／橘六角出現時機）要留空
         head_bottom = 0.078
     else:
         fig_size = (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV)
-        head_ratios = [1.28, 3.38, 0.40, 0.98]
+        head_ratios = [1.58, 3.18, 0.40, 0.98]
         head_bottom = 0.072
 
     # 平行軌右緣標（平行壓／上升軌）要完整：右溝加寬（過右軸刻度），標放軸外不進 K
@@ -2535,7 +2536,7 @@ def _paint_volume_zone(
         )
         if path_msg and last_hi > 0 and float(hi) > 0:
             bits = [p for p in path_msg.split("  ") if p]
-            # 兩行事實句：日＋撐／壓｜今高（今低）過未過＋收；不准再堆第三行判斷
+            # 兩行事實句（壓低高度）：日＋撐／壓｜今高／今低／過未過＋收；整塊掛圖例上方
             if len(bits) >= 3:
                 path_shown = f"{bits[0]}  {bits[1]}\n{'  '.join(bits[2:])}"
             else:
@@ -3008,9 +3009,11 @@ def _paint_volume_zone(
         except Exception:
             close_ink = _TEXT
         intro_right = str(ex_title or "")
+        # 垂直分層：標題 → 日標(右) → 介紹 → 圖例；日標底必須高於圖例頂
+        _intro_y = 0.58 if path_shown else 0.78
         ax_head.text(
             0.5,
-            0.96,
+            0.98,
             head,
             transform=ax_head.transAxes,
             ha="center",
@@ -3023,7 +3026,7 @@ def _paint_volume_zone(
         _fp_close = _fp(15.6, "bold")  # 收XXXX 稍大一點點
         _t_left = ax_head.text(
             0.0,
-            0.78,
+            _intro_y,
             intro_left,
             transform=ax_head.transAxes,
             ha="left",
@@ -3035,7 +3038,7 @@ def _paint_volume_zone(
         )
         _t_close = ax_head.text(
             0.0,
-            0.78,
+            _intro_y,
             close_bit,
             transform=ax_head.transAxes,
             ha="left",
@@ -3049,7 +3052,7 @@ def _paint_volume_zone(
         if intro_right:
             _t_right = ax_head.text(
                 0.0,
-                0.78,
+                _intro_y,
                 intro_right,
                 transform=ax_head.transAxes,
                 ha="left",
@@ -3073,12 +3076,12 @@ def _paint_volume_zone(
             _w_right = _ax_w(_t_right) if _t_right is not None else 0.0
             _w_total = _w_left + _w_close + _w_right
             _x0 = 0.5 - 0.5 * _w_total
-            _t_left.set_position((_x0, 0.78))
+            _t_left.set_position((_x0, _intro_y))
             _t_left.set_alpha(1.0)
-            _t_close.set_position((_x0 + _w_left, 0.78))
+            _t_close.set_position((_x0 + _w_left, _intro_y))
             _t_close.set_alpha(1.0)
             if _t_right is not None:
-                _t_right.set_position((_x0 + _w_left + _w_close, 0.78))
+                _t_right.set_position((_x0 + _w_left + _w_close, _intro_y))
                 _t_right.set_alpha(1.0)
         except Exception:
             logger.exception("大量區表頭收字置中失敗 sid=%s", sid)
@@ -3087,26 +3090,26 @@ def _paint_volume_zone(
             if _t_right is not None:
                 _t_right.set_alpha(1.0)
             _t_left.set_ha("right")
-            _t_left.set_position((0.50, 0.78))
-            _t_close.set_position((0.50, 0.78))
+            _t_left.set_position((0.50, _intro_y))
+            _t_close.set_position((0.50, _intro_y))
             if _t_right is not None:
-                _t_right.set_position((0.62, 0.78))
-        # 狀況簡述掛表頭中右（圖例右側／介紹列下），離開 K 頂與末日導航箭
+                _t_right.set_position((0.62, _intro_y))
+        # 日標先掛右上（標題下）；再畫圖例於更低 y，整排止穩◆／橘六角不准被蓋（§6）
         if path_shown:
             ax_head.text(
                 0.995,
-                0.48,
+                0.82,
                 path_shown,
                 transform=ax_head.transAxes,
                 ha="right",
-                va="center",
-                fontproperties=_fp(8.6, "bold"),
+                va="top",
+                fontproperties=_fp(7.8, "bold"),
                 color=_CALL,
                 zorder=15,
-                clip_on=True,
-                linespacing=1.10,
+                clip_on=False,
+                linespacing=1.02,
                 bbox=dict(
-                    boxstyle="round,pad=0.16",
+                    boxstyle="round,pad=0.12",
                     facecolor="#fff8e1",
                     edgecolor="#ef6c00",
                     linewidth=0.75,

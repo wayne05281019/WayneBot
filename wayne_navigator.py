@@ -6201,11 +6201,12 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
     )
     if panel:
         # 標題列圖例三整排（不准左右互壓）：上量能／買賣／觀察標、中高低箭、下均線
+        # 頂≤0.48：低於日標底(~0.71)；第三排 y=0.14 整排在表頭內（含 SMA）
         # (handles, labels, x, y, ncol)
         panel_rows = (
-            (row2, 0.0, 0.58, 9),
-            (row1, 0.0, 0.34, 8),
-            (row3, 0.0, 0.10, 5),
+            (row2, 0.0, 0.48, 9),
+            (row1, 0.0, 0.31, 8),
+            (row3, 0.0, 0.14, 5),
         )
         artists = []
         for row, x, y, ncol in panel_rows:
