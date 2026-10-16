@@ -433,6 +433,8 @@ def format_focus_oral(
     mains = sorted(cleaned_mains, key=_row_key, reverse=True)
     cleaned_replies: List[Dict[str, Any]] = []
     for p in replies:
+        if str(p.get("kind") or "") == "bystander":
+            continue
         row = dict(p)
         row["text"] = _scrub_post_text(str(row.get("text") or ""))
         t = str(row.get("text") or "").strip()
@@ -541,32 +543,21 @@ def format_focus_oral(
     _add("族群", field)
     _add("PCB", pcb)
     _add("他還說", said)
-    # 近四月活化＋智囊：有傳主庫才跨庫查；真人對真人不秀買訊套話
+    # 黃金脈絡只跟這次拿進來的最新主文＋他自己的回文，對過已收官方柱。
+    # 不准再套近四月雙箭頭稿，也不准在空白鍵後面接「可接」。
     try:
-        from biaoke_advisor import advisor_focus_lines
-        from biaoke_reweave import reweave_focus_lines
+        from biaoke_reweave import voice_gold_lines
 
-        db_hint = str(db_path or "")
-        adv_lines: List[str] = []
-        if db_hint:
-            adv_lines.extend(reweave_focus_lines(db_hint, limit=3))
-            for x in advisor_focus_lines(db_hint):
-                if x not in adv_lines:
-                    adv_lines.append(x)
-        cleaned: List[str] = []
-        for x in adv_lines:
-            t = (
-                str(x)
-                .replace("不是買訊", "")
-                .replace("非買訊", "")
-                .strip(" ；。")
-            )
-            if t and "不是買訊" not in t:
-                cleaned.append(t)
-        if cleaned:
+        shown_txt = [x for x in (board, field, pcb, said) if x]
+        gold_lines = voice_gold_lines(
+            list(cleaned_mains) + list(replies),
+            str(db_path or ""),
+            shown=shown_txt,
+        )
+        if gold_lines:
             blocks.append("")
             blocks.append("<b>脈絡黃金</b>")
-            for x in cleaned[:4]:
+            for x in gold_lines:
                 if db_path:
                     try:
                         from biaoke_live_match import linkify_spoken_html
@@ -580,17 +571,12 @@ def format_focus_oral(
                 blocks.append(html_escape(x))
     except Exception:
         pass
-    try:
-        from biaoke_advisor import format_action_advice_html
-
-        if db_path:
-            advice = format_action_advice_html(str(db_path), limit=3)
-            if advice:
-                blocks.append("")
-                blocks.append(advice)
-    except Exception:
-        pass
-    asks = _likely_asks(list(mains[:2]) + replies[:8])
+    # 還能問只跟最新主文＋當天以後的自回，不准拿更早一篇的夜盤價來出題。
+    latest_day = str(mains[0].get("date") or "")
+    ask_rows = [mains[0]] + [
+        r for r in replies if not latest_day or str(r.get("date") or "") >= latest_day
+    ]
+    asks = _likely_asks(ask_rows[:9])
     if asks:
         blocks.append("")
         blocks.append("<b>還能問</b>")
@@ -599,7 +585,7 @@ def format_focus_oral(
     if now is not None:
         dt = now if now.tzinfo else now.replace(tzinfo=TAIPEI)
         clock = dt.astimezone(TAIPEI).strftime("%H:%M")
-    tail = "直接打字或語音。可跨庫查閱，不是答錄機。"
+    tail = "直接打字或語音。"
     if clock:
         tail = f"看到這裡是 {clock}。{tail}"
     blocks.append("")
@@ -675,6 +661,8 @@ def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
         asks.append("長線龍頭現在怎麼抱")
     for tag in tags:
         if tag in _ASK_SKIP or tag in asks:
+            continue
+        if "TWA" in tag or "指數" in tag:
             continue
         if tag.isdigit() and len(tag) == 4:
             continue

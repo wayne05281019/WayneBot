@@ -163,8 +163,10 @@ def test_focus_oral_includes_advisor(tmp_path):
         }
     ]
     html = format_focus_oral(mains, [], db_path=db)
-    assert "脈絡黃金" in html or "智囊團活用" in html
     assert "雙箭頭" in html or "波浪" in html or "ASIC" in html
+    assert "創高把" not in html
+    assert "該怎麼做" not in html
+    assert "可接" not in html
     assert "不是買訊" not in html
 
 
