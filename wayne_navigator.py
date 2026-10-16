@@ -6221,12 +6221,15 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         prop=_fp(10.0 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 標題列圖例三整排（不准左右互壓）：上量能／買賣／觀察標、中高低箭、下均線
-        # (handles, labels, x, y, ncol)
+        # 量能列最右兩顆（止穩◆／橘六角）跟均線同一整列，不准斷行。
+        # 這一列頂緣貼在三角形列下方的空白裡（0.18），上下都留空隙。
+        row2_main = row2[:7]
+        row3_ext = list(row3) + list(row2[7:])
+        # (handles, labels, x, y, ncol) ncol＝項數，整列一行
         panel_rows = (
-            (row2, 0.0, 0.58, 9),
-            (row1, 0.0, 0.34, 8),
-            (row3, 0.0, 0.10, 5),
+            (row2_main, 0.0, 0.58, len(row2_main)),
+            (row1, 0.0, 0.34, len(row1)),
+            (row3_ext, 0.0, 0.18, len(row3_ext)),
         )
         artists = []
         for row, x, y, ncol in panel_rows:
@@ -6703,6 +6706,7 @@ def _paint_nav_buy_arrows(
     arrow_h: float,
     arrow_gap: float,
     span: float,
+    occupy: Optional[dict] = None,
 ) -> bool:
     """在多根買點柱畫藍▲紅框。導航／大量區共用。有畫回 True。
 
@@ -6751,7 +6755,38 @@ def _paint_nav_buy_arrows(
             edgewidth=_NAV_BUY_ARROW_EDGE_W,
             edge_alpha=float(edge_a),
         )
+        if occupy is not None:
+            # 只記箭尾，藍▲紅框位置不動
+            _note_mark_floor(occupy, ii, float(tip) - float(h_i))
     return True
+
+
+# 六角上緣與同柱已佔用底（上箭尾／止穩）的淨空。縮圖縮小後仍要分得開。
+_FOREIGN_OBSERVE_CLEAR_SPAN = 0.090
+
+
+def _foreign_observe_anchor(
+    low: float,
+    *,
+    arrow_gap: float,
+    span: float,
+    blocked_y: Optional[float] = None,
+) -> float:
+    """外資六角中心。沒有別的標就維持原位；同柱已有上箭／止穩就整顆排到其下，不准疊同一點。"""
+    mark_r = max(float(span) * 0.028, 0.01)
+    default = float(low) - float(arrow_gap) * 2.15
+    if blocked_y is None:
+        return default
+    clear = max(float(span) * _FOREIGN_OBSERVE_CLEAR_SPAN, mark_r * 2.6)
+    below = float(blocked_y) - mark_r - clear
+    return min(default, below)
+
+
+def _note_mark_floor(occupy: dict, idx: int, y: float) -> None:
+    """同柱已畫標記的最低 y（箭尾／菱形底）。外資六角要排在這之下。"""
+    prev = occupy.get(int(idx))
+    y = float(y)
+    occupy[int(idx)] = y if prev is None else min(float(prev), y)
 
 
 def _paint_foreign_sell_observe_marks(
@@ -6762,11 +6797,13 @@ def _paint_foreign_sell_observe_marks(
     *,
     arrow_gap: float,
     span: float,
+    occupy: Optional[dict] = None,
 ) -> bool:
     """查股／大量區：外資升級／確認「觀察」六角標（測試版；永遠不是買訊）。
 
     視覺＝琥珀橘六角形＋「觀察」字；異於藍▲紅框、止穩◆。
     規則／命中在 foreign_sell_display；不准併入 _nav_trade_marks／買訊路徑。
+    同柱若已有上箭／止穩，六角整顆改排到其下方，縮圖也要分得開。
     """
     if ax1 is None or work is None or getattr(work, "empty", True):
         return False
@@ -6789,10 +6826,18 @@ def _paint_foreign_sell_observe_marks(
             "h",
         )
     tip_ys = []
-    for ii in paint_idxs:
-        tip_ys.append(float(work["low"].iloc[ii]) - arrow_gap * 2.15)
-    y0, y1 = ax1.get_ylim()
     mark_r = max(span * 0.028, 0.01)
+    for ii in paint_idxs:
+        blocked = None if not occupy else occupy.get(int(ii))
+        tip_ys.append(
+            _foreign_observe_anchor(
+                float(work["low"].iloc[ii]),
+                arrow_gap=arrow_gap,
+                span=span,
+                blocked_y=blocked,
+            )
+        )
+    y0, y1 = ax1.get_ylim()
     ax1.set_ylim(min(y0, min(tip_ys) - mark_r * 3.2 - span * 0.01), y1)
     painted = False
     for ii, tip in zip(paint_idxs, tip_ys):
@@ -6832,6 +6877,7 @@ def _paint_stabilize_marks(
     arrow_gap: float,
     span: float,
     signal_work: Optional[pd.DataFrame] = None,
+    occupy: Optional[dict] = None,
 ) -> bool:
     """查股／導航／大量區：畫「止穩」菱形觀察標（永遠不是買訊）。
 
@@ -6901,6 +6947,8 @@ def _paint_stabilize_marks(
             zorder=9,
             clip_on=False,
         )
+        if occupy is not None:
+            _note_mark_floor(occupy, ii, float(tip) - float(mark_r))
         painted = True
     return painted
 
@@ -7130,6 +7178,8 @@ def overlay_nav_marks_on_zone(
 
     sig = signal_work if signal_work is not None and not getattr(signal_work, "empty", True) else paint
     date_to_i = {str(paint["date"].iloc[i]): i for i in range(n)}
+    # 同柱上箭尾：外資六角要排到這之下，不准疊在箭身上
+    occupy: dict = {}
     for ev in collect_nav_mark_events(sig):
         i = date_to_i.get(str(ev.get("date") or ""))
         if i is None:
@@ -7166,12 +7216,15 @@ def overlay_nav_marks_on_zone(
                     ax1, tip, x, down=False, face=pastel, ink=ink,
                     arrow_h=arrow_h * sc, hw=arrow_hw * sc, hollow=hollow, z=6, alpha=1.0,
                 )
+                _note_mark_floor(occupy, i, float(tip) - arrow_h * sc)
             else:
                 pastel, ink = _NAV_GHOST
+                ghost_tip = lo - arrow_gap
                 _nav_arrow(
-                    ax1, lo - arrow_gap, x, down=False, face=pastel, ink=ink,
+                    ax1, ghost_tip, x, down=False, face=pastel, ink=ink,
                     arrow_h=arrow_h * 0.78, hw=arrow_hw * 0.78, z=5, alpha=0.42,
                 )
+                _note_mark_floor(occupy, i, float(ghost_tip) - arrow_h * 0.78)
             continue
         if ax_sig is None:
             continue
@@ -7210,7 +7263,8 @@ def overlay_nav_marks_on_zone(
     buy_is = [i for i in range(n) if str(paint["date"].iloc[i]) in buy_dates]
     # 時間軸內凡買點都畫藍▲紅框（不只最後一根）；導航／大量區同一路徑
     _paint_nav_buy_arrows(
-        ax1, paint, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
+        ax1, paint, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span,
+        occupy=occupy,
     )
     # 止穩觀察標（非買訊）：與藍▲紅框／純藍▲60低分開；規則見 stabilize_watch
     _paint_stabilize_marks(
@@ -7221,6 +7275,7 @@ def overlay_nav_marks_on_zone(
         arrow_gap=arrow_gap,
         span=span,
         signal_work=buy_src,
+        occupy=occupy,
     )
     # 外資升級／確認觀察標（測試版；非買訊）：琥珀六角；異於止穩◆／藍▲紅框
     # 呼叫端經 card["_foreign_sell_observe_idxs"] 注入（查股／大量區）
@@ -7229,7 +7284,7 @@ def overlay_nav_marks_on_zone(
         _fs_idxs = card.get("_foreign_sell_observe_idxs")
     if _fs_idxs:
         _paint_foreign_sell_observe_marks(
-            ax1, paint, _fs_idxs, xs, arrow_gap=arrow_gap, span=span
+            ax1, paint, _fs_idxs, xs, arrow_gap=arrow_gap, span=span, occupy=occupy,
         )
     if sell_i_src is not None:
         sell_d = str(buy_src["date"].iloc[int(sell_i_src)])
@@ -7291,6 +7346,7 @@ def _paint_nav_on_axes(
 
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     last_dn_i = last_up_i = -9
+    occupy: dict = {}
     opens = work["open"].to_numpy(dtype=float)
     closes = work["close"].to_numpy(dtype=float)
     highs = work["high"].to_numpy(dtype=float)
@@ -7425,6 +7481,7 @@ def _paint_nav_on_axes(
                 hollow=hollow,
                 alpha=1.0,
             )
+            _note_mark_floor(occupy, int(i), float(tip) - arrow_h * sc)
             last_up_i = i
         elif (is_20l or is_60l) and (was_20l or was_60l) and i - last_up_i <= 6:
             tip = lo - arrow_gap
@@ -7441,6 +7498,7 @@ def _paint_nav_on_axes(
                 z=5,
                 alpha=0.42,
             )
+            _note_mark_floor(occupy, int(i), float(tip) - arrow_h * 0.78)
         if warn:
             ax_sig.add_patch(patches.Rectangle(
                 (x - 0.45, 0.52), 0.9, 0.44,
@@ -7462,11 +7520,12 @@ def _paint_nav_on_axes(
     buy_is, sell_i = _nav_trade_marks(work, card)
     trade_note = ""
     if _paint_nav_buy_arrows(
-        ax1, work, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span
+        ax1, work, buy_is, xs, arrow_h=arrow_h, arrow_gap=arrow_gap, span=span,
+        occupy=occupy,
     ):
         trade_note = "　買↑藍▲紅框"
     if _paint_stabilize_marks(
-        ax1, work, None, xs, arrow_gap=arrow_gap, span=span
+        ax1, work, None, xs, arrow_gap=arrow_gap, span=span, occupy=occupy,
     ):
         trade_note += "　止穩◆觀察"
     # 外資升級／確認觀察標（測試版；非買訊）：琥珀六角；圖說見圖例
@@ -7485,7 +7544,7 @@ def _paint_nav_on_axes(
                 dates = [str(work["date"].iloc[i]) for i in range(len(work))]
                 fs_idxs = stock_observe_bar_index(dates, hit)
         if fs_idxs and _paint_foreign_sell_observe_marks(
-            ax1, work, fs_idxs, xs, arrow_gap=arrow_gap, span=span
+            ax1, work, fs_idxs, xs, arrow_gap=arrow_gap, span=span, occupy=occupy,
         ):
             trade_note += "　橘六角觀察"
     except Exception:

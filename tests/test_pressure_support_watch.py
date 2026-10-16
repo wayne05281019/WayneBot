@@ -213,7 +213,7 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     leg = inspect.getsource(_draw_nav_legend)
     assert "panel" in leg
     assert "panel_rows" in leg
-    assert "0.34" in leg and "0.10" in leg  # 圖例三整排，不准左右互壓
+    assert "0.34" in leg and "0.18" in leg  # 均線列貼上三角形列下方空白，仍一行
     assert "10.0 if panel" in leg  # 圖例字級
     assert "14.0" not in src or "15.0" in src  # 股票介紹放大（≥15）
     assert "15.0" in src and "13.0" in src  # 標題／介紹字級
