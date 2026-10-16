@@ -2772,7 +2772,7 @@ def _paint_volume_zone(
             figure=fig,
             height_ratios=head_ratios,
             hspace=0.035,
-            left=_gs_left,
+            left=0.050,
             right=_gs_right,
             top=0.985,
             bottom=head_bottom,
@@ -3065,7 +3065,7 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
             channel_label_rects = []
-    # 橘框日標：個股貼主K上框內側。大盤滿寬改掛標題區，這裡不畫。
+    # 橘框日標：個股貼主K上框內側右上，不准掛表頭壓圖例。大盤滿寬改掛標題區，這裡不畫。
     if path_shown and not market_wide:
         ax1.text(
             0.995,
