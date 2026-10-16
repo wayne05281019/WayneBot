@@ -370,3 +370,16 @@ def test_foreign_hex_stacks_below_same_bar_arrow():
     plain = _foreign_observe_anchor(low, arrow_gap=gap, span=span, blocked_y=None)
     assert abs(plain - (low - gap * 2.15)) < 1e-6
     assert y < plain
+
+
+def test_structure_hex_shares_occupy_with_stabilize():
+    """結構圖與大量區／導航同一套：同柱六角排到止穩下方。不分代號。"""
+    import inspect
+
+    from biaoke_chart import _place_right_notes, render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "mark_occupy" in src
+    assert src.count("occupy=mark_occupy") >= 2
+    assert 'sid == "2454"' not in src
+    assert "_inset_today_close_inside" in inspect.getsource(_place_right_notes)

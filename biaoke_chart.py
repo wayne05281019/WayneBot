@@ -3884,7 +3884,7 @@ def render_biaoke_structure_png(
         # v78j＋live-face：右軸跟決策卡；縮圖末日 K／量疊盤中真報價
         "hdr-band-v78j-axis-card-live-face" if fullbleed else "hdr-wrap3-vol-min",
         # 止穩／外資觀察標進鍵：命中與否不准互蓋舊圖
-        "stabilize-v2-fs-observe-v1",
+        "stabilize-v2-fs-observe-stack",
         int(_BARS),
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
@@ -4803,6 +4803,8 @@ def render_biaoke_structure_png(
             _paint_structure_blue_baskets(fig, ov, ax1, ax2)
         except Exception:
             logger.debug("結構圖三藍籃筐略過", exc_info=True)
+    # 止穩◆與外資六角共用同柱佔用。六角整顆排到◆下方，不准疊同一點。
+    mark_occupy: dict = {}
     # 止穩／不再破底觀察標（非買訊）：綠松石◆；不進藍▲紅框買訊路徑
     try:
         from stabilize_watch import frame_from_bars, stabilize_bar_indices
@@ -4818,6 +4820,7 @@ def render_biaoke_structure_png(
                 xs,
                 arrow_gap=span * 0.034,
                 span=span,
+                occupy=mark_occupy,
             )
     except Exception:
         logger.debug("結構圖止穩標略過", exc_info=True)
@@ -4845,6 +4848,7 @@ def render_biaoke_structure_png(
                         xs,
                         arrow_gap=span * 0.034,
                         span=span,
+                        occupy=mark_occupy,
                     )
     except Exception:
         logger.debug("結構圖外資觀察標略過", exc_info=True)
