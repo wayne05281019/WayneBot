@@ -485,6 +485,8 @@ def format_focus_oral(
         if _PREVIEW.search(t) and not preview:
             preview = _speak(t, 140)
             continue
+        if "閱讀障礙" in t:
+            continue
         if re.search(r"比ABF短|錯殺", t):
             newer_short = True
             pcb = _speak(t, 140)

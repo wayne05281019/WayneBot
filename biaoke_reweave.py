@@ -55,13 +55,23 @@ def load_voice_window(
             ).fetchone()
             if not hit:
                 return []
-            rows = conn.execute(
-                "SELECT id, date, time, text, IFNULL(kind,'post'), IFNULL(parent,'') "
-                "FROM biaoke_posts "
-                "WHERE date>=? AND date<=? AND IFNULL(kind,'')!='bystander' "
-                "ORDER BY date ASC, time ASC, id ASC",
-                (start, end),
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    "SELECT id, date, time, text, IFNULL(kind,'post'), IFNULL(parent,''), "
+                    "IFNULL(reply_to_text,'') "
+                    "FROM biaoke_posts "
+                    "WHERE date>=? AND date<=? AND IFNULL(kind,'')!='bystander' "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (start, end),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = conn.execute(
+                    "SELECT id, date, time, text, IFNULL(kind,'post'), IFNULL(parent,'') "
+                    "FROM biaoke_posts "
+                    "WHERE date>=? AND date<=? AND IFNULL(kind,'')!='bystander' "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (start, end),
+                ).fetchall()
         finally:
             conn.close()
     except sqlite3.Error:
@@ -83,6 +93,7 @@ def load_voice_window(
                 "text": text,
                 "kind": kind or "post",
                 "parent": str(r[5] or ""),
+                "reply_to_text": str(r[6] or "") if len(r) > 6 else "",
             }
         )
     return out
@@ -127,6 +138,13 @@ def _field_arc(rows: Sequence[Dict[str, Any]]) -> List[str]:
 _CORR = re.compile(r"改為|改口|重新訂|假突破")
 _POS = re.compile(r"空手|清光|全部出清|降低持股")
 _SKIP_REPLY = re.compile(r"閱讀障礙")
+# 討論串自回要留的事實。聯亞單獨保住，不准被「最後兩則部位」或嘲諷詞蓋掉。
+_FACT = re.compile(
+    r"聯亞|大立光|5700|創意|吞噬|風向球|奇鋐|奇宏|4000|2700|C-3-4|2027|0050|"
+    r"9成|九成|第一批|比七月|跳空|觀察單|出清|清光|空手|改為|假突破|"
+    r"沒有個股|均線|殺低|殺快|3-3主跌"
+)
+_ANCHORS = ("聯亞", "大立光", "奇鋐", "奇宏", "創意", "台積電", "台指期")
 _IF_EXAMPLE = re.compile(r"如果|舉例|譬如")
 _LEVEL_NUM = re.compile(r"(?<!\d)(\d{4,6})(?!\d)")
 # 台指期比「大盤」先配：同一句同時出現時，數字靠誰近就跟誰。
@@ -177,7 +195,8 @@ def _already_shown(bit: str, shown: Sequence[str]) -> bool:
         return False
     for s in shown:
         t = _norm_cmp(s)
-        if t and (n in t or t in n):
+        # 只在黃金句已經整段出現過才略過。他還說裡的短摘錄不准把較完整的自回蓋掉。
+        if t and n in t:
             return True
     return False
 
@@ -193,6 +212,39 @@ def _clean_voice(text: str) -> str:
     s = re.sub(r"https://image\.cmoney\.tw/\S+", "", s, flags=re.I)
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+def _anchored_text(row: Dict[str, Any]) -> str:
+    """他回在別人樓下時，自己那句沒寫股名，就沿用該樓點過的那一個名字。"""
+    text = _clean_voice(str(row.get("text") or ""))
+    if not text:
+        return ""
+    if any(name in text for name in _ANCHORS):
+        return text
+    # 0050／定期定額是他自己的完整句，不准把樓主股名黏上去。
+    if re.search(r"0050|定期定額", text):
+        return text
+    parent = _clean_voice(str(row.get("reply_to_text") or ""))
+    hits = [name for name in _ANCHORS if name in parent and name not in text]
+    if len(hits) == 1 and (
+        _LEVEL_NUM.search(text) or re.search(r"出清|觀察單|買回|止穩", text)
+    ):
+        return f"{hits[0]}，{text}"
+    return text
+
+
+def _lianya_kept(raw: str) -> str:
+    """22:14 有人問清光是否包含聯亞。嘲諷詞不進話筒，聯亞還在要留下。"""
+    if "聯亞" not in raw:
+        return ""
+    if not _SKIP_REPLY.search(raw):
+        return ""
+    if "清光" not in raw and "台積電" not in raw:
+        return ""
+    return (
+        "有人問全部清光是否也包含聯亞，他說那是讀錯；"
+        "那句是清光持股、包含台積電，聯亞還在，不在清光那句裡。"
+    )
 
 
 def _hit_clip(text: str, pat: re.Pattern[str], *, limit: int = 180) -> str:
@@ -436,17 +488,19 @@ def voice_gold_lines(
         if _is_reply_row(r) and _row_sort_key(r) >= latest_key
     ]
     later.sort(key=_row_sort_key)
-    corr = [r for r in later if _CORR.search(_clean_voice(str(r.get("text") or "")))]
-    pos = [r for r in later if _POS.search(_clean_voice(str(r.get("text") or "")))]
     chunks: List[str] = []
     shown_now = [str(x) for x in shown if str(x or "").strip()]
-    for rep in reversed(corr[-2:]):
-        clip = _hit_clip(str(rep.get("text") or ""), _CORR)
-        if clip and not _already_shown(clip, shown_now + chunks):
-            chunks.append(clip)
-    for rep in reversed(pos[-2:]):
-        clip = _hit_clip(str(rep.get("text") or ""), _POS)
-        if clip and not _already_shown(clip, shown_now + chunks):
+    picked: List[Dict[str, Any]] = []
+    for rep in later:
+        raw = _clean_voice(str(rep.get("text") or ""))
+        anchored = _anchored_text(rep)
+        clip = _lianya_kept(raw)
+        if not clip and _FACT.search(anchored) and not _SKIP_REPLY.search(raw):
+            clip = _hit_clip(anchored, _FACT, limit=220)
+        if not clip:
+            continue
+        picked.append(rep)
+        if not _already_shown(clip, shown_now + chunks):
             chunks.append(clip)
     if not chunks:
         clip = _hit_clip(
@@ -455,16 +509,12 @@ def voice_gold_lines(
         )
         if clip and not _already_shown(clip, shown_now):
             chunks.append(clip)
-    picked: List[Dict[str, Any]] = []
-    seen_ids = set()
-    for rep in list(corr[-2:]) + list(pos[-2:]):
-        rid = str(rep.get("id") or rep.get("post_id") or id(rep))
-        if rid in seen_ids:
-            continue
-        seen_ids.add(rid)
-        picked.append(rep)
-    # 官方柱只對最新主文＋拿來改口／報部位的那幾則自回，不掃更早回文裡的舊價。
-    level_posts = [latest] + picked
+    # 官方柱只對最新主文＋這串拿進文案的自回。股名沿用他回的那一樓。
+    level_posts = [latest]
+    for rep in picked:
+        leveled = dict(rep)
+        leveled["text"] = _anchored_text(rep)
+        level_posts.append(leveled)
     official = _official_lines(db_path, _levels_from_posts(level_posts))
     official = [x for x in official if not _already_shown(x, shown_now + chunks)]
     if not chunks and not official:

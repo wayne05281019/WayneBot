@@ -558,6 +558,26 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
             ),
         },
         {
+            "id": "r-lya-am",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "10:37",
+            "layer": 2,
+            "reply_to_text": "目前只留一張聯亞讓他飄",
+            "text": "我也只剩下聯亞零股觀察單，因為這檔股票只要一旦發動都是用跳空方式不讓散戶上車",
+        },
+        {
+            "id": "r-lrg",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "10:59",
+            "layer": 2,
+            "reply_to_text": "想請問大立光跌破大量的低點，會不會假跌破",
+            "text": "會回到5700或之下",
+        },
+        {
             "id": "r-pos",
             "kind": "reply",
             "parent": "185962404",
@@ -579,7 +599,7 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
             "parent": "185962404",
             "date": "2026-10-16",
             "time": "22:14",
-            "text": "也決定全部清光持股 包含台積電(2200) 是不是有閱讀障礙",
+            "text": "\"也包含聯亞嗎\" 也決定全部清光持股 包含台積電(2200) 是不是有閱讀障礙",
         },
     ]
     html = format_focus_oral(
@@ -591,7 +611,7 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     tail = html.split("<b>脈絡黃金</b>", 1)[-1]
     assert "<b>脈絡黃金</b>" in html
     assert "黃金脈絡：" in tail
-    assert "改為C波" in tail or "C波修正" in tail
+    assert "改為C波" in html or "C波修正" in html
     assert "39000" in tail
     assert "48240" in tail
     assert "清光" in html or "空手" in html
@@ -607,6 +627,11 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     assert "88888" not in html
     assert "99999" not in html
     assert "閱讀障礙" not in tail
+    assert "不在清光那句裡" in tail
+    assert "聯亞" in tail
+    assert "零股" in tail
+    assert "5700" in tail
+    assert "大立光" in tail
     assert "不是買訊" not in html
     from biaoke_desk import upsert_biaoke_posts
 
@@ -619,3 +644,29 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     assert "改為C波" in blob or "C波修正" in blob
     assert "創高把" not in blob
     assert "48240" in blob
+    from biaoke_reweave import voice_gold_lines
+
+    glued = "\n".join(
+        voice_gold_lines(
+            [
+                {
+                    "id": "m",
+                    "kind": "post",
+                    "date": "2026-10-16",
+                    "time": "10:27",
+                    "text": "台指期必須反彈至少48240之上。",
+                },
+                {
+                    "id": "r0050",
+                    "kind": "reply",
+                    "date": "2026-10-16",
+                    "time": "12:47",
+                    "text": "那就定期定額0050",
+                    "reply_to_text": "聯亞比較可惜，今天高點直接出清。",
+                },
+            ],
+            "",
+        )
+    )
+    assert "0050" in glued
+    assert "聯亞，那就" not in glued
