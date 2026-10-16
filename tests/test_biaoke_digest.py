@@ -428,12 +428,12 @@ def test_focus_oral_does_not_repeat_board_in_said():
     assert "<b>族群</b>" in html
     assert "ASIC" in html
     assert "<b>PCB</b>" in html or "台光電" in html
-    # 他還說若有，不准整段再貼大盤；南亞科／光通訊這種補充才留
+    # 他還說若有，不准整段再貼大盤。自回裡多出來的南亞科進黃金脈絡。
     if "<b>他還說</b>" in html:
         said = html.split("<b>他還說</b>", 1)[1]
-        said = said.split("<b>還能問</b>")[0] if "<b>還能問</b>" in said else said
+        said = said.split("<b>", 1)[0]
         assert said.count("緩步上攻") == 0
-        assert "南亞科" in said or "光通訊" in said or "全新" in said
+    assert "南亞科" in html or "光通訊" in html or "全新" in html
     assert html.count("緩步上攻") == 1
     assert "13:12" in html
 
@@ -601,6 +601,49 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
             "time": "22:14",
             "text": "\"也包含聯亞嗎\" 也決定全部清光持股 包含台積電(2200) 是不是有閱讀障礙",
         },
+        {
+            "id": "r-99",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "16:34",
+            "text": "99%撐不住，多空關鍵點位其實我和波浪大師說的點位完全一致，只是他用大盤，我用台指期。",
+        },
+        {
+            "id": "r-charity",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "22:03",
+            "text": "等這波修正完成，抄底賺大錢，不要忘記社會有很多需要幫助的人，能夠行有餘力盡量多做一些慈善",
+        },
+        {
+            "id": "r-8",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "23:27",
+            "text": (
+                "\"違反人性的當下確實會很掙扎 事後回頭看不見得不好\" "
+                "確實 對超過8成沒進行台指期多空雙向交易的投資人會很掙扎"
+            ),
+        },
+        {
+            "id": "r-yes",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "11:04",
+            "text": "Yes厲害 看樣子命中機率高 高手",
+        },
+        {
+            "id": "r-short",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "12:52",
+            "text": "其實空股票幾乎和隔日沖差不多，非常難操作。開課的人裡蕭明道會要求學生把賺的錢捐出來。",
+        },
     ]
     html = format_focus_oral(
         mains,
@@ -632,6 +675,14 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     assert "零股" in tail
     assert "5700" in tail
     assert "大立光" in tail
+    assert "99%" in tail
+    assert "台指期" in tail
+    assert "行有餘力" in tail
+    assert "8成" in tail
+    assert "違反人性" not in tail
+    assert "命中機率高" in tail
+    assert "空股票" in tail
+    assert "蕭明道" in tail
     assert "不是買訊" not in html
     from biaoke_desk import upsert_biaoke_posts
 

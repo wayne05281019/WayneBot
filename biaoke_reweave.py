@@ -135,15 +135,9 @@ def _field_arc(rows: Sequence[Dict[str, Any]]) -> List[str]:
     return lines
 
 
-_CORR = re.compile(r"改為|改口|重新訂|假突破")
-_POS = re.compile(r"空手|清光|全部出清|降低持股")
 _SKIP_REPLY = re.compile(r"閱讀障礙")
-# 討論串自回要留的事實。聯亞單獨保住，不准被「最後兩則部位」或嘲諷詞蓋掉。
-_FACT = re.compile(
-    r"聯亞|大立光|5700|創意|吞噬|風向球|奇鋐|奇宏|4000|2700|C-3-4|2027|0050|"
-    r"9成|九成|第一批|比七月|跳空|觀察單|出清|清光|空手|改為|假突破|"
-    r"沒有個股|均線|殺低|殺快|3-3主跌|2周|下殺力道|空股票|"
-    r"聰明錢|走弱|不好操作|保守"
+_LEAD_QUOTE = re.compile(
+    r"""^\s*(?:["“「『][^"”」』]{0,160}["”」』])\s*"""
 )
 _ANCHORS = ("聯亞", "大立光", "奇鋐", "奇宏", "創意", "台積電", "台指期")
 _IF_EXAMPLE = re.compile(r"如果|舉例|譬如")
@@ -248,13 +242,45 @@ def _lianya_kept(raw: str) -> str:
     )
 
 
+def _split_sents(text: str) -> List[str]:
+    s = _clean_voice(text)
+    parts = [p.strip(" ，、") for p in re.split(r"[。！？]", s) if p.strip()]
+    if parts:
+        return parts
+    return [s] if s else []
+
+
+def _strip_leading_quotes(text: str) -> str:
+    """樓中樓常先引路人那句。引號裡不是他的判斷，留下引號後面他自己的話。"""
+    s = _clean_voice(text)
+    prev = None
+    while s and prev != s:
+        prev = s
+        s = _LEAD_QUOTE.sub("", s).strip()
+    return s
+
+
+def _own_clip(text: str, shown: Sequence[str], *, limit: int = 220) -> str:
+    """自回整則留。已經寫進大盤／前面黃金句的句子不再貼一次。"""
+    body = _strip_leading_quotes(text)
+    if not body or _SKIP_REPLY.search(body):
+        return ""
+    fresh = [p for p in _split_sents(body) if not _already_shown(p, shown)]
+    if not fresh:
+        return ""
+    out = "。".join(fresh[:2]).strip()
+    if len(out) > limit:
+        out = out[:limit].rstrip("，、 ") + "…"
+    if out and not out.endswith(("。", "…")):
+        out += "。"
+    return out
+
+
 def _hit_clip(text: str, pat: re.Pattern[str], *, limit: int = 180) -> str:
     s = _clean_voice(text)
     if not s or _SKIP_REPLY.search(s):
         return ""
-    parts = [p.strip(" ，、") for p in re.split(r"[。！？]", s) if p.strip()]
-    if not parts:
-        parts = [s]
+    parts = _split_sents(s)
     hit = [p for p in parts if pat.search(p)]
     use = hit or parts[:2]
     out = "。".join(use[:2]).strip()
@@ -467,9 +493,10 @@ def voice_gold_lines(
     *,
     shown: Sequence[str] = (),
 ) -> List[str]:
-    """黃金脈絡起：只依最新主文之後他自己的改口／部位，對過已收官方柱。
+    """黃金脈絡起：最新主文之後他自己的每一則回都留，對過已收官方柱。
 
     不套舊雙箭頭稿、不補他沒講的價、不當買訊。路人列不要傳進來。
+    關鍵字對不上的自回也要留。跟大盤欄整句重複的才略過。
     """
     voice = [
         r
@@ -496,8 +523,10 @@ def voice_gold_lines(
         raw = _clean_voice(str(rep.get("text") or ""))
         anchored = _anchored_text(rep)
         clip = _lianya_kept(raw)
-        if not clip and _FACT.search(anchored) and not _SKIP_REPLY.search(raw):
-            clip = _hit_clip(anchored, _FACT, limit=220)
+        if not clip and _SKIP_REPLY.search(raw):
+            continue
+        if not clip:
+            clip = _own_clip(anchored, shown_now + chunks, limit=220)
         if not clip:
             continue
         picked.append(rep)

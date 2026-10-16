@@ -399,7 +399,11 @@ def _noise_reply(text: str) -> bool:
     s = _SPACE.sub(" ", text or "").strip()
     if len(s) < 6:
         return True
-    if _NOISE.search(s) and not re.search(r"(PCB|台光電|夜盤|47578|ASIC|整理|錯殺)", s):
+    # 名字本身不是整則作廢。同一則裡有部位、空方、波浪，仍然是他的回文。
+    if _NOISE.search(s) and not re.search(
+        r"(PCB|台光電|夜盤|47578|ASIC|整理|錯殺|空股票|出清|波浪|修正|台指|持股)",
+        s,
+    ):
         return True
     return False
 
@@ -496,6 +500,9 @@ def format_focus_oral(
             continue
         day = str(p.get("date") or "")
         if day and latest_day and day < latest_day:
+            continue
+        # 最新主文之後的自回全部進黃金脈絡。先塞進他還說只留三格，短句會把後面整則蓋掉。
+        if _row_key(p) >= _row_key(latest):
             continue
         extra.append(_speak(t, 100))
     if older_long and newer_short:
