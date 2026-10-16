@@ -1993,6 +1993,13 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         record_diverge_events(db_path, packed)
     except Exception:
         logger.exception("飆大他說／我說分軌對質略過")
+    try:
+        # 危險時段只進飆大自己的表。其他鈕不准讀。失敗不擋抓文。
+        from biaoke_danger_silent import record_from_events as record_danger_events
+
+        record_danger_events(db_path, packed)
+    except Exception:
+        logger.exception("飆大危險時段對質略過")
 
 
 def run_biaoke_ingest_quiet() -> None:

@@ -660,9 +660,13 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     assert "清光" in html or "空手" in html
     assert "2200" in tail
     assert "官方柱" in tail
-    assert "46979" in tail
-    assert "高還沒到他說的48240" in tail
-    assert "2440" in tail
+    assert "殺兩週左右" in tail
+    assert "C-3-4" in tail
+    assert "超過九成" in tail
+    assert "清的是持股" in tail
+    assert "加權2026-10-16缺完整官方開高低收" in tail
+    assert "46979" not in tail
+    assert "2440" not in tail
     assert "創高把" not in html
     assert "過年前雙箭頭" not in html
     assert "該怎麼做" not in html
@@ -670,7 +674,8 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     assert "88888" not in html
     assert "99999" not in html
     assert "閱讀障礙" not in tail
-    assert "不在清光那句裡" in tail
+    assert "不在清光那句裡" not in tail
+    assert "都賣光了" not in tail
     assert "聯亞" in tail
     assert "零股" in tail
     assert "5700" in tail

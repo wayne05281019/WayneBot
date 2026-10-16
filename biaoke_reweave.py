@@ -229,17 +229,16 @@ def _anchored_text(row: Dict[str, Any]) -> str:
 
 
 def _lianya_kept(raw: str) -> str:
-    """22:14 有人問清光是否包含聯亞。嘲諷詞不進話筒，聯亞還在要留下。"""
+    """22:14 有人問清光是否包含聯亞。嘲諷詞不進話筒。他澄清聯亞還在。"""
     if "聯亞" not in raw:
         return ""
     if not _SKIP_REPLY.search(raw):
         return ""
     if "清光" not in raw and "台積電" not in raw:
         return ""
-    return (
-        "有人問全部清光是否也包含聯亞，他說那是讀錯；"
-        "那句是清光持股、包含台積電，聯亞還在，不在清光那句裡。"
-    )
+    from biaoke_danger_silent import LIANYA_LINE
+
+    return LIANYA_LINE
 
 
 def _split_sents(text: str) -> List[str]:
@@ -547,6 +546,14 @@ def voice_gold_lines(
         level_posts.append(leveled)
     official = _official_lines(db_path, _levels_from_posts(level_posts))
     official = [x for x in official if not _already_shown(x, shown_now + chunks)]
+    try:
+        from biaoke_danger_silent import apply_danger_window
+
+        chunks, official = apply_danger_window(
+            latest, chunks, official, db_path
+        )
+    except Exception:
+        pass
     if not chunks and not official:
         return []
     out: List[str] = []
