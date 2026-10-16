@@ -12,10 +12,12 @@
 4. 不准呼叫 ingest_public_posts／run_absorb／寫 biaoke_posts；只寫 dc_sf_* 表與 media。
 5. 資源強碰＝鐘點錯開（03:30）；01:00–02:19 若誤觸則延後，不准兩條長任務同時重壓。
 
-日流程：03:30 抓過去 24 小時 D.C 全文＋圖＋圖注 → 一篇生成一張我們的情境預估
-→ 比圖上數字／浪標與敘事文意。有發文且價格與文意尚未同時 ≥95% 才改
-dc_sf_rules（話筒讀）。沒發文只落檔、不改畫法。不准把他的價抄成死目標。
-永遠不是買訊；A+B+C。
+日流程：03:30 抓過去 24 小時 D.C 全文＋圖＋圖注。他有幾篇，就先用我們的
+官方股價把對應股號的情境預估全部畫完，然後才逐篇對他的圖。比的是波浪走法、
+每個轉折落點、以及該轉折的點位數字。底圖仍是我們的官方 K。
+有發文且轉折數字／文意尚未同時 ≥95% 才改 dc_sf_rules（話筒讀）。
+已走的轉折改釘到最接近他那個價的官方高／低；還沒走的點位每天往他的數字走一步。
+沒發文只落檔、不改畫法。不准把這組數字抄進買訊。永遠不是買訊；A+B+C。
 """
 from __future__ import annotations
 
@@ -774,6 +776,181 @@ def _keep_price_token(blob: str, index: int, value: float) -> bool:
     return True
 
 
+_TURN_AFTER = re.compile(
+    r"[\(（]\s*(1|2|3|4|5|a|b|c|iii|ii|iv|v|i)\s*[\)）]\s*[：:、,，／/]?\s*(\d{2,5}(?:\.\d+)?)",
+    re.I,
+)
+_TURN_BEFORE = re.compile(
+    r"(\d{2,5}(?:\.\d+)?)\s*[\(（]\s*(1|2|3|4|5|a|b|c|iii|ii|iv|v|i)\s*[\)）]",
+    re.I,
+)
+_ROMAN_TURN = {"i": "(1)", "ii": "(2)", "iii": "(3)", "iv": "(4)", "v": "(5)"}
+
+
+def _norm_turn_label(raw: str) -> str:
+    s = str(raw or "").strip().lower()
+    if s in _ROMAN_TURN:
+        return _ROMAN_TURN[s]
+    if s in ("a", "b", "c", "1", "2", "3", "4", "5"):
+        return f"({s})"
+    return ""
+
+
+def parse_turn_prices(text: str) -> Dict[str, float]:
+    """只收跟浪號綁在一起的點位。裸數字不當轉折價。"""
+    blob = str(text or "")
+    out: Dict[str, float] = {}
+
+    def _take(lab_raw: str, num_raw: str, index: int) -> None:
+        lab = _norm_turn_label(lab_raw)
+        if not lab or lab in out:
+            return
+        try:
+            v = float(num_raw)
+        except Exception:
+            return
+        if not _keep_price_token(blob, index, v):
+            return
+        out[lab] = v
+
+    for m in _TURN_AFTER.finditer(blob):
+        _take(m.group(1), m.group(2), m.start(2))
+    for m in _TURN_BEFORE.finditer(blob):
+        _take(m.group(2), m.group(1), m.start(1))
+    return out
+
+
+def align_wave_turns(
+    wave: Dict[str, Any],
+    rows: Sequence[Dict[str, Any]],
+    spec: Dict[str, Any],
+) -> Dict[str, Any]:
+    """底圖列不動。已走轉折改釘最接近他那個價的官方高／低；未走點位用每日走出來的數字。"""
+    if not wave:
+        return wave
+    his = (spec or {}).get("his") or {}
+    drawn = (spec or {}).get("drawn") or {}
+    if not his and not drawn:
+        return wave
+    bars = list(rows or [])
+    out = dict(wave)
+
+    def _kind(node: Dict[str, Any]) -> str:
+        k = str(node.get("kind") or "")
+        if k in ("H", "L"):
+            return k
+        if str(node.get("label") or "") in ("(2)", "(4)", "(b)"):
+            return "L"
+        return "H"
+
+    def _snap(kind: str, target: float):
+        best = None
+        best_err = 1e9
+        for i, bar in enumerate(bars):
+            try:
+                px = float(bar.get("high") if kind == "H" else bar.get("low") or 0)
+            except Exception:
+                continue
+            if px <= 0:
+                continue
+            err = abs(px - float(target)) / max(abs(float(target)), 1e-9)
+            if err < best_err:
+                best_err = err
+                best = (float(i), px, str(bar.get("date") or ""))
+        if best is None or best_err > 0.08:
+            return None
+        return best
+
+    def _fix(node: Dict[str, Any], projected: bool) -> Dict[str, Any]:
+        item = dict(node)
+        lab = str(item.get("label") or "")
+        if not projected and lab in his:
+            try:
+                hit = _snap(_kind(item), float(his[lab]))
+            except Exception:
+                hit = None
+            if hit:
+                item["i"], item["price"], item["date"] = hit
+        elif projected and lab in drawn:
+            try:
+                item["price"] = float(drawn[lab])
+            except Exception:
+                pass
+        return item
+
+    confirmed = [_fix(n, False) for n in (out.get("confirmed") or [])]
+    projected = [_fix(n, True) for n in (out.get("projected") or [])]
+    abc = [
+        _fix(n, str(n.get("date") or "") in ("", "估"))
+        for n in (out.get("abc") or [])
+    ]
+    start = out.get("start") or {}
+    path_done: List[Tuple[float, float]] = []
+    if start:
+        try:
+            path_done.append((float(start.get("i") or 0), float(start.get("price") or 0)))
+        except Exception:
+            path_done = []
+    for node in confirmed:
+        try:
+            path_done.append((float(node.get("i") or 0), float(node.get("price") or 0)))
+        except Exception:
+            continue
+    path_proj: List[Tuple[float, float]] = []
+    if projected and path_done:
+        path_proj.append(path_done[-1])
+    for node in projected:
+        try:
+            path_proj.append((float(node.get("i") or 0), float(node.get("price") or 0)))
+        except Exception:
+            continue
+    out["confirmed"] = confirmed
+    out["projected"] = projected
+    out["abc"] = abc
+    out["path_done"] = path_done
+    out["path_proj"] = path_proj
+    out["labels"] = (
+        [str(n.get("label") or "") for n in confirmed]
+        + [str(n.get("label") or "") for n in abc]
+        + [str(n.get("label") or "") for n in projected]
+    )
+    return out
+
+
+def step_turn_drawn(
+    prev_drawn: Dict[str, Any],
+    his: Dict[str, float],
+    our_turns: Sequence[Dict[str, Any]],
+) -> Dict[str, float]:
+    """未走轉折的點位每天往他的數字走一半。已走的不在這裡改價，改去釘官方 K。"""
+    our: Dict[str, Dict[str, Any]] = {}
+    for node in our_turns or []:
+        lab = str(node.get("label") or "")
+        if lab and lab not in our:
+            our[lab] = node
+    drawn: Dict[str, float] = {}
+    for lab, target in (his or {}).items():
+        node = our.get(lab) or {}
+        if node and not node.get("projected"):
+            continue
+        try:
+            tgt = float(target)
+        except Exception:
+            continue
+        base = (prev_drawn or {}).get(lab)
+        if base is None:
+            base = node.get("price", tgt)
+        try:
+            base_f = float(base)
+        except Exception:
+            base_f = tgt
+        nxt = base_f + 0.5 * (tgt - base_f)
+        if abs(nxt - tgt) / max(abs(tgt), 1e-9) <= 0.03:
+            nxt = tgt
+        drawn[lab] = round(float(nxt), 2)
+    return drawn
+
+
 def _narrative_tokens(text: str) -> set:
     blob = str(text or "")
     keys = (
@@ -869,6 +1046,30 @@ def compare_one(
     if meaning and meaning not in ("文意標大致重疊", "雙方無可對文意標"):
         gaps.append("文意／說法差異")
     note = "；".join(gaps) if gaps else "結構／價位／文意大致可對或他文無可量化浪標"
+    our_turns: List[Dict[str, Any]] = []
+    for c in list(our_wave.get("confirmed") or []):
+        try:
+            our_turns.append(
+                {
+                    "label": str(c.get("label") or ""),
+                    "price": float(c.get("price")),
+                    "projected": False,
+                }
+            )
+        except Exception:
+            continue
+    for c in list(our_wave.get("projected") or []) + list(our_wave.get("abc") or []):
+        try:
+            walked = str(c.get("date") or "") not in ("", "估")
+            our_turns.append(
+                {
+                    "label": str(c.get("label") or ""),
+                    "price": float(c.get("price")),
+                    "projected": not walked,
+                }
+            )
+        except Exception:
+            continue
     likeness = _likeness(
         his_labels=list(his.get("wave_labels_guess") or []),
         label_overlap=label_overlap,
@@ -883,6 +1084,7 @@ def compare_one(
         "his": his,
         "our_labels": our_labs,
         "our_prices": our_prices[:40],
+        "our_turns": our_turns,
         "gaps": gaps,
         "meaning_diff": meaning,
         "likeness": likeness,
@@ -1045,6 +1247,44 @@ def _price_grain(prices: Sequence[float]) -> Optional[List[int]]:
     return None
 
 
+def _upsert_stock_turns(
+    db_path: str,
+    as_of: str,
+    compares: Sequence[Dict[str, Any]],
+    prev: Dict[str, Any],
+) -> Dict[str, Any]:
+    """一檔一個轉折表。底圖不換。已走的價留給官方 K 去釘；未走的點位往他的數字走。"""
+    by_sid: Dict[str, Dict[str, Any]] = {}
+    for row in compares:
+        sid = str(row.get("stock_id") or "").strip()
+        if not sid:
+            continue
+        his = parse_turn_prices(str(row.get("his_text") or ""))
+        if not his:
+            continue
+        slot = by_sid.setdefault(sid, {"his": {}, "our": []})
+        slot["his"].update(his)
+        slot["our"].extend(list((row.get("diff") or {}).get("our_turns") or []))
+    changed: Dict[str, Any] = {}
+    for sid, slot in by_sid.items():
+        key = f"turns:{sid}"
+        old = prev.get(key) if isinstance(prev.get(key), dict) else {}
+        drawn = step_turn_drawn(old.get("drawn") or {}, slot["his"], slot["our"])
+        val = {
+            "goal": "wave_turns",
+            "base": "our_ohlc",
+            "his": slot["his"],
+            "drawn": drawn,
+            "as_of": _ymd(as_of),
+        }
+        old_his = old.get("his") or {}
+        old_drawn = old.get("drawn") or {}
+        if old_his != slot["his"] or old_drawn != drawn:
+            if upsert_rule(db_path, key, val, as_of=as_of, note="日對質：轉折位置與點位往他的浪走"):
+                changed[key] = val
+    return changed
+
+
 def propose_rule_updates(
     db_path: str,
     as_of: str,
@@ -1147,7 +1387,10 @@ def propose_rule_updates(
         if upsert_rule(db_path, "narrative_template", val, as_of=as_of, note="日對質：補他有我們無的方法詞"):
             changed["narrative_template"] = val
 
+    changed.update(_upsert_stock_turns(db_path, as_of, compares, prev))
+
     book["rev"] = rev + (1 if changed else 0)
+    book["goal"] = "wave_turns_on_our_ohlc"
     book["levers"] = list(changed.keys())
     upsert_rule(
         db_path,
@@ -1326,9 +1569,10 @@ def night_tick(
         seen_stocks = set()
         unmapped = 0
         stamp = _taipei_now().strftime("%Y-%m-%d %H:%M:%S")
+        # 先畫完我們的圖（股號＋我們的官方股價），再對他的圖。不准畫一篇比一篇。
+        drawn_rows: List[Dict[str, Any]] = []
         conn = sqlite3.connect(path, timeout=60.0)
         try:
-            # 他幾篇就生成幾篇。一篇一個代號；沒代號的只記原文，不畫假圖。
             for post in posts:
                 pid = str(post.get("id") or "").strip()
                 if not pid:
@@ -1363,6 +1607,34 @@ def night_tick(
                     path_png, cap, meta = render_our_bundle(sid, path, png)
                     wave = _our_wave_summary(meta)
                     our_narr = str((wave.get("bubble") or "") or cap or "").strip()
+                drawn_rows.append(
+                    {
+                        "pid": pid,
+                        "sid": sid,
+                        "extra": extra,
+                        "body": body,
+                        "his_full": his_full,
+                        "image_notes": image_notes,
+                        "img_paths": img_paths,
+                        "path_png": path_png,
+                        "cap": cap,
+                        "wave": wave,
+                        "our_narr": our_narr,
+                    }
+                )
+            report["drawn_n"] = sum(1 for row in drawn_rows if row.get("sid"))
+            for item in drawn_rows:
+                pid = item["pid"]
+                sid = item["sid"]
+                path_png = item["path_png"]
+                cap = item["cap"]
+                wave = item["wave"]
+                our_narr = item["our_narr"]
+                his_full = item["his_full"]
+                body = item["body"]
+                image_notes = item["image_notes"]
+                img_paths = item["img_paths"]
+                extra = item["extra"]
                 diff = compare_one(
                     our_wave=wave,
                     our_caption=cap,
@@ -1495,7 +1767,7 @@ def night_tick(
             "rules=" + (",".join(report["rule_keys"]) or "none")
         )
         report["notes"] = (
-            f"posts={report['post_n']};compared={report['compare_n']};"
+            f"posts={report['post_n']};drawn={report.get('drawn_n')};compared={report['compare_n']};"
             f"px={_fmt_axis(like.get('prices'))};narr={_fmt_axis(like.get('narrative'))};"
             f"{hold}"
         )

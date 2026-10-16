@@ -9,6 +9,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from dc_scenario_silent_verify import (
+    align_wave_turns,
     DC_SF_START,
     JOB_KIND,
     LOCK_NAME,
@@ -113,6 +114,31 @@ def test_main_scheduler_wires_dc_sf_silent_isolated():
     absorb = open("biaoke_absorb.py", encoding="utf-8").read()
     assert "dc_sf_silent" in absorb and "互不影響" in absorb
     assert "03:30" in absorb
+
+
+def test_align_uses_our_bars_for_walked_turns_and_drawn_forecast():
+    rows = [
+        {"date": "d0", "high": 5000, "low": 4000},
+        {"date": "d1", "high": 4800, "low": 3900},
+        {"date": "d2", "high": 5100, "low": 4100},
+    ]
+    wave = {
+        "start": {"i": 0, "price": 4000},
+        "confirmed": [{"label": "(2)", "i": 1, "price": 3900, "kind": "L"}],
+        "projected": [{"label": "(5)", "i": 10, "price": 100, "kind": "H"}],
+        "abc": [],
+    }
+    out = align_wave_turns(
+        wave,
+        rows,
+        {"his": {"(2)": 4100, "(5)": 5200}, "drawn": {"(5)": 2650}},
+    )
+    assert out["confirmed"][0]["i"] == 2
+    assert out["confirmed"][0]["price"] == 4100
+    assert out["projected"][0]["price"] == 2650
+    assert out["projected"][0]["i"] == 10
+    assert rows[1]["low"] == 3900
+    assert out["path_proj"][-1][1] == 2650
 
 
 def test_lookback_is_trailing_24h():
@@ -250,10 +276,21 @@ def test_night_tick_one_chart_per_post_and_skips_encoding_when_empty(monkeypatch
         ]
 
     calls = []
+    order = []
 
     def fake_render(sid, db_path, png):
         calls.append(os.path.basename(png))
+        order.append("draw")
         return png, "上升", {"wave": {"bubble": "上升", "labels": ["(1)"], "confirmed": [{"price": 100}]}}
+
+    import dc_scenario_silent_verify as mod
+
+    orig_compare = mod.compare_one
+
+    def fake_compare(**kwargs):
+        order.append("cmp")
+        assert order.count("draw") == 2
+        return orig_compare(**kwargs)
 
     def fake_stocks(posts, db_path=""):
         out = []
@@ -271,6 +308,7 @@ def test_night_tick_one_chart_per_post_and_skips_encoding_when_empty(monkeypatch
 
     monkeypatch.setattr("dc_scenario_silent_verify.fetch_dc_posts_within", fake_fetch)
     monkeypatch.setattr("dc_scenario_silent_verify.render_our_bundle", fake_render)
+    monkeypatch.setattr("dc_scenario_silent_verify.compare_one", fake_compare)
     monkeypatch.setattr("dc_scenario_silent_verify.stocks_from_posts", fake_stocks)
     with tempfile.TemporaryDirectory() as td:
         db = os.path.join(td, "t.db")
@@ -282,6 +320,8 @@ def test_night_tick_one_chart_per_post_and_skips_encoding_when_empty(monkeypatch
         assert report.get("compare_n") == 2
         assert report.get("unmapped_n") == 1
         assert calls == ["a-2330-scenario-forecast.png", "b-2330-scenario-forecast.png"]
+        assert order == ["draw", "draw", "cmp", "cmp", "cmp"]
+        assert report.get("drawn_n") == 2
         assert report.get("rules_changed") == 1
         blob = str(load_rules(db))
         assert "4800" not in blob

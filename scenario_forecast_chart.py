@@ -2284,6 +2284,14 @@ def render_scenario_forecast(
         ladders = infer_prior_high_ladders(rows, max_n=3)
         press = infer_desc_press(rows)
         wave = infer_dc_wave_scenario(rows, ladders)
+        try:
+            from dc_scenario_silent_verify import align_wave_turns, load_rules
+
+            spec = (load_rules(path) or {}).get(f"turns:{sid}") or {}
+            if spec:
+                wave = align_wave_turns(wave, rows, spec)
+        except Exception:
+            logger.debug("情境預估轉折對齊略過 sid=%s", sid, exc_info=True)
         if wave and wave.get("desc_press"):
             press = dict(wave.get("desc_press") or {})
         paths = (
