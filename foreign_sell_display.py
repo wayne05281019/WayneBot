@@ -273,24 +273,24 @@ def load_env_status(db_path: str, as_of: str) -> EnvObserveStatus:
 
 def _fear_plain(st: EnvObserveStatus) -> str:
     if not st.fear_evaluable:
-        skip = st.fear_skip or "資料未齊"
-        return f"恐懼複合暫無法評估（{skip}）"
+        if "美股關鍵欄全空" in (st.fear_skip or ""):
+            return "開盤前恐懼：美股沒資料，今天先不算"
+        return "開盤前恐懼：資料未齊，今天先不算"
     if st.fear_lit:
-        sync = "同步" if st.fear_lead_sync == "sync" else "領先"
-        return f"開盤前恐懼偏高（{st.fear_votes}票・{sync}）"
-    return "開盤前恐懼複合未亮"
+        return "開盤前恐懼偏高"
+    return "開盤前恐懼沒亮"
 
 
 def _confirm_plain(st: EnvObserveStatus) -> str:
     if st.confirm_n <= 0:
-        return "外資升級／極端確認今無"
-    return f"外資升級／確認近窗約{st.confirm_n}檔"
+        return "外資大賣升級：今天沒有"
+    return f"外資大賣升級：約{st.confirm_n}檔"
 
 
 def _calm_plain(st: EnvObserveStatus) -> str:
     if st.calm_lit:
-        return "恐懼消退／反向環境亮（佈局環境觀察）"
-    return "反向冷靜未亮"
+        return "恐懼消退：有亮，仍不是買"
+    return "恐懼消退：今天沒有"
 
 
 def load_morning_status(
@@ -340,27 +340,17 @@ def morning_observe_line_html(
 def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
     """台股大盤頁頂部「環境觀察」一小段（HTML 行）。
 
-    標題一行＋中文狀態一行＋白話一句＋非買訊一句（只留一次）。
+    標題一行＋三句白話（恐懼／外資大賣升級／恐懼消退）＋非買訊一句（只留一次）。
+    不印亮／熄／未齊狀態詞。
     """
     from tg_layout import html_escape
 
     st = load_env_status(db_path, as_of)
-    # 白話一句：優先恐懼→確認→反向→全無（「不是買訊」只在末行）
-    if st.fear_lit:
-        plain = _fear_plain(st)
-    elif st.confirm_n > 0:
-        plain = _confirm_plain(st)
-    elif st.calm_lit:
-        plain = _calm_plain(st)
-    elif not st.fear_evaluable and st.fear_skip:
-        plain = _fear_plain(st)
-    else:
-        plain = "今日環境無預警亮燈"
-
     return [
         f"<b>環境觀察｜{html_escape(DISPLAY_TAG)}</b>",
-        html_escape(st.status_line_zh()),
-        html_escape(plain),
+        html_escape(_fear_plain(st)),
+        html_escape(_confirm_plain(st)),
+        html_escape(_calm_plain(st)),
         html_escape("不是買訊；進場仍只認藍▲紅框"),
     ]
 

@@ -25,6 +25,7 @@ from foreign_sell_display import (
 )
 from foreign_sell_escalate_verify import ensure_tables as ensure_esc
 from foreign_sell_extreme_verify import ensure_tables as ensure_ext
+from foreign_sell_calm_verify import ensure_tables as ensure_calm
 from fear_preopen_verify import ensure_tables as ensure_fear
 
 
@@ -165,10 +166,12 @@ def test_market_env_section():
     blob = "\n".join(lines)
     assert "環境觀察｜" in blob or "環境觀察" in blob
     assert DISPLAY_TAG in blob.replace("<b>", "").replace("</b>", "")
-    # 中文狀態一行；不准英文鍵重複堆（Fear Fear Confirm…）
-    assert "恐懼亮" in blob
-    assert "確認熄" in blob
-    assert "冷靜熄" in blob
+    # 三句白話各一行；大盤頁不再印亮／熄／未齊
+    assert "開盤前恐懼偏高" in lines
+    assert "外資大賣升級：今天沒有" in lines
+    assert "恐懼消退：今天沒有" in lines
+    for banned in ("恐懼未齊", "恐懼亮", "恐懼熄", "確認亮", "確認熄", "冷靜亮", "冷靜熄"):
+        assert banned not in blob
     assert "Fear" not in blob
     assert "Confirm" not in blob
     assert "Calm" not in blob
@@ -177,6 +180,84 @@ def test_market_env_section():
     assert "藍▲紅框" in blob
     # 標題收成一行（有｜）
     assert any("環境觀察｜" in ln for ln in lines)
+
+
+def _put_fear(store: str, *, lit: int, evaluable: int, skip: str) -> None:
+    conn = sqlite3.connect(store)
+    conn.execute("DELETE FROM fear_preopen_tape")
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO fear_preopen_tape(
+            kind, as_of, params_key, lit, evaluable, votes, lead_sync,
+            gap_open_pct, dump_day, twii_ret_d, vote_json, skip_reason
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "fear_preopen_warn",
+            "20261014",
+            "test",
+            lit,
+            evaluable,
+            0,
+            "",
+            None,
+            0,
+            None,
+            "[]",
+            skip,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_market_env_plain_branches():
+    """三句對旗標：恐懼 skip／沒亮、外資約 N 檔、恐懼消退有亮。"""
+    db = _mk_db()
+    ensure_fear(db)
+    ensure_esc(db)
+    ensure_calm(db)
+    store = tape_store_path(db)
+    _put_fear(store, lit=0, evaluable=0, skip="美股關鍵欄全空")
+    lines = market_env_section_lines(db, "20261014")
+    assert "開盤前恐懼：美股沒資料，今天先不算" in lines
+    assert lines.count("不是買訊；進場仍只認藍▲紅框") == 1
+
+    _put_fear(store, lit=0, evaluable=0, skip="台股休市")
+    lines = market_env_section_lines(db, "20261014")
+    assert "開盤前恐懼：資料未齊，今天先不算" in lines
+
+    _put_fear(store, lit=0, evaluable=1, skip="")
+    lines = market_env_section_lines(db, "20261014")
+    assert "開盤前恐懼沒亮" in lines
+
+    conn = sqlite3.connect(store)
+    for sid in ("2383", "2330"):
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO foreign_sell_escalate_tape(
+                kind, as_of, params_key, sid, name, tag
+            ) VALUES (?,?,?,?,?,?)
+            """,
+            ("foreign_sell_escalate", "20261014", "p", sid, sid, "escalate_pre_A"),
+        )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO foreign_sell_calm_tape(
+            kind, as_of, params_key, sid, tag, note
+        ) VALUES (?,?,?,?,?,?)
+        """,
+        ("foreign_sell_calm_env", "20261014", "", "", "calm_fear_fade", "fade"),
+    )
+    conn.commit()
+    conn.close()
+    lines = market_env_section_lines(db, "20261014")
+    blob = "\n".join(lines)
+    assert "外資大賣升級：約2檔" in lines
+    assert "恐懼消退：有亮，仍不是買" in lines
+    assert blob.count("不是買訊") == 1
+    for banned in ("恐懼未齊", "確認熄", "冷靜熄", "恐懼亮", "恐懼熄"):
+        assert banned not in blob
 
 
 def test_stock_observe_hit_escalate():
