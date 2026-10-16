@@ -72,6 +72,7 @@ def test_live_board_uses_average_not_last_trade(monkeypatch):
         "3,078,767",
     ]
     monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20261016")
+    monkeypatch.setattr(live_quote, "_load_tpex_esb_map", lambda: {})
     monkeypatch.setattr(
         live_quote,
         "_load_tpex_esb_live_board",
