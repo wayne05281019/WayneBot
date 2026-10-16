@@ -64,7 +64,7 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "close_bit" in src
     assert "quote_move_ink" in src
     assert "color=_UP," not in src or "close_ink" in src
-    assert "離開 K 頂與末日導航箭" in src  # 狀況標離 K／末日箭
+    assert "貼主K上框內側" in src and "不准掛表頭壓圖例" in src  # 日標在主K上框內，不壓圖例
     # 標位不准碰假 OHLC／量
     assert "不准動 OHLC" in src or "不准改 OHLC" in inspect.getsource(_paint_ma_line_labels)
     lab_src = inspect.getsource(_label_ma_blank)
