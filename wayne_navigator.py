@@ -6200,15 +6200,15 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
         prop=_fp(10.0 if panel else (9.0 if zone_mode else 8.0), "bold"),
     )
     if panel:
-        # 量能列最右兩顆（止穩◆／橘六角）改掛均線那一排，離開行尾，不准跟前一顆疊同一點。
-        # 高低箭仍在 0.34。橘框日標位置不動。
+        # 量能列最右兩顆（止穩◆／橘六角）跟均線同一整列，不准斷行。
+        # 這一列頂緣貼在三角形列下方的空白裡（0.18），不准壓到上一列，也不准壓大量區壓框。
         row2_main = row2[:7]
         row3_ext = list(row3) + list(row2[7:])
-        # (handles, labels, x, y, ncol)
+        # (handles, labels, x, y, ncol) ncol＝項數，整列一行
         panel_rows = (
-            (row2_main, 0.0, 0.58, 7),
-            (row1, 0.0, 0.34, 8),
-            (row3_ext, 0.0, 0.10, 7),
+            (row2_main, 0.0, 0.58, len(row2_main)),
+            (row1, 0.0, 0.34, len(row1)),
+            (row3_ext, 0.0, 0.18, len(row3_ext)),
         )
         artists = []
         for row, x, y, ncol in panel_rows:
