@@ -87,7 +87,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 38  # 日標整塊在圖例上方，止穩◆／橘六角完整可見
+_VZ_PAINT_VER = 39  # 日標貼主K上框內側；表頭／主圖比例回原，不准壓圖例
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2301,13 +2301,12 @@ def _paint_volume_zone(
     if lookup_portrait:
         fig_size = VOL_ZONE_FIG_LOOKUP
         # 量柱列加高：高價股矮柱不准被擠沒。表頭不再放收盤晶片。
-        # 表頭加高：標題→日標→介紹→圖例垂直分層，不准互壓（§6）
-        head_ratios = [1.05, 4.18, 0.38, 1.72]
+        head_ratios = [0.78, 4.35, 0.38, 1.72]
         # 底部灰字兩行（含止穩◆／橘六角出現時機）要留空
         head_bottom = 0.078
     else:
         fig_size = (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV)
-        head_ratios = [1.58, 3.18, 0.40, 0.98]
+        head_ratios = [1.28, 3.38, 0.40, 0.98]
         head_bottom = 0.072
 
     # 平行軌右緣標（平行壓／上升軌）要完整：右溝加寬（過右軸刻度），標放軸外不進 K
@@ -2557,8 +2556,8 @@ def _paint_volume_zone(
             y_lo = min(y_lo, float(np.nanmin(_arr[ok_ma])))
     ymin = min(y_lo, lo) - ypad
     ymax = max(y_hi, hi) + ypad * (1.35 if with_nav_signals else 1.25)
-    # 狀況簡述已改掛表頭時不再為它抬 K 頂；無表頭才略留空
-    if path_shown and not with_nav_signals:
+    # 日標貼主K上框內側：略抬頂，少壓末日K／導航箭
+    if path_shown:
         ymax = ymax + (ymax - ymin) * 0.08
     # 平行軌現價可能高於壓／低於撐：ylim 先吃進去，線才不會被裁
     if with_parallel_channel:
@@ -2593,25 +2592,25 @@ def _paint_volume_zone(
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
-    # 有獨立表頭時狀況簡述只掛表頭右下；無表頭才掛 K 頂外。不准壓末日導航箭。
-    if path_shown and not (with_nav_signals and ax_head is not None):
+    # 橘框日標：貼主K上框內側右上（沿上框線內），不准掛表頭壓圖例（§6）
+    if path_shown:
         ax1.text(
             0.995,
-            1.012,
+            0.985,
             path_shown,
             transform=ax1.transAxes,
             ha="right",
-            va="bottom",
-            fontproperties=_fp(9.0, "bold"),
+            va="top",
+            fontproperties=_fp(8.4, "bold"),
             color=_CALL,
             zorder=12,
-            clip_on=False,
-            linespacing=1.15,
+            clip_on=True,
+            linespacing=1.08,
             bbox=dict(
-                boxstyle="round,pad=0.20",
+                boxstyle="round,pad=0.16",
                 facecolor="#fff8e1",
                 edgecolor="#ef6c00",
-                linewidth=0.85,
+                linewidth=0.75,
                 alpha=0.96,
             ),
         )
@@ -3009,11 +3008,9 @@ def _paint_volume_zone(
         except Exception:
             close_ink = _TEXT
         intro_right = str(ex_title or "")
-        # 垂直分層：標題 → 日標(右) → 介紹 → 圖例；日標底必須高於圖例頂
-        _intro_y = 0.58 if path_shown else 0.78
         ax_head.text(
             0.5,
-            0.98,
+            0.96,
             head,
             transform=ax_head.transAxes,
             ha="center",
@@ -3026,7 +3023,7 @@ def _paint_volume_zone(
         _fp_close = _fp(15.6, "bold")  # 收XXXX 稍大一點點
         _t_left = ax_head.text(
             0.0,
-            _intro_y,
+            0.78,
             intro_left,
             transform=ax_head.transAxes,
             ha="left",
@@ -3038,7 +3035,7 @@ def _paint_volume_zone(
         )
         _t_close = ax_head.text(
             0.0,
-            _intro_y,
+            0.78,
             close_bit,
             transform=ax_head.transAxes,
             ha="left",
@@ -3052,7 +3049,7 @@ def _paint_volume_zone(
         if intro_right:
             _t_right = ax_head.text(
                 0.0,
-                _intro_y,
+                0.78,
                 intro_right,
                 transform=ax_head.transAxes,
                 ha="left",
@@ -3076,12 +3073,12 @@ def _paint_volume_zone(
             _w_right = _ax_w(_t_right) if _t_right is not None else 0.0
             _w_total = _w_left + _w_close + _w_right
             _x0 = 0.5 - 0.5 * _w_total
-            _t_left.set_position((_x0, _intro_y))
+            _t_left.set_position((_x0, 0.78))
             _t_left.set_alpha(1.0)
-            _t_close.set_position((_x0 + _w_left, _intro_y))
+            _t_close.set_position((_x0 + _w_left, 0.78))
             _t_close.set_alpha(1.0)
             if _t_right is not None:
-                _t_right.set_position((_x0 + _w_left + _w_close, _intro_y))
+                _t_right.set_position((_x0 + _w_left + _w_close, 0.78))
                 _t_right.set_alpha(1.0)
         except Exception:
             logger.exception("大量區表頭收字置中失敗 sid=%s", sid)
@@ -3090,32 +3087,11 @@ def _paint_volume_zone(
             if _t_right is not None:
                 _t_right.set_alpha(1.0)
             _t_left.set_ha("right")
-            _t_left.set_position((0.50, _intro_y))
-            _t_close.set_position((0.50, _intro_y))
+            _t_left.set_position((0.50, 0.78))
+            _t_close.set_position((0.50, 0.78))
             if _t_right is not None:
-                _t_right.set_position((0.62, _intro_y))
-        # 日標先掛右上（標題下）；再畫圖例於更低 y，整排止穩◆／橘六角不准被蓋（§6）
-        if path_shown:
-            ax_head.text(
-                0.995,
-                0.82,
-                path_shown,
-                transform=ax_head.transAxes,
-                ha="right",
-                va="top",
-                fontproperties=_fp(7.8, "bold"),
-                color=_CALL,
-                zorder=15,
-                clip_on=False,
-                linespacing=1.02,
-                bbox=dict(
-                    boxstyle="round,pad=0.12",
-                    facecolor="#fff8e1",
-                    edgecolor="#ef6c00",
-                    linewidth=0.75,
-                    alpha=0.96,
-                ),
-            )
+                _t_right.set_position((0.62, 0.78))
+        # 日標已改掛主K上框內側；表頭只留介紹＋圖例（原比例）
         try:
             from wayne_navigator import _draw_nav_legend
 
