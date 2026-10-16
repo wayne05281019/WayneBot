@@ -1575,12 +1575,15 @@ def _future_tick_labels(
     return ticks, labels
 
 
-# 底軸日期：比先前 13.5／15pt 斜字小一階。9pt 水平置中後，3081 最右兩日仍分開。
+# 日期在價、量之間。9pt 水平置中後，3081 最右兩日仍分開。
 _AXIS_DATE_PT = 9.0
+# 中縫要容得下這行字，不壓價圖、不壓量柱。
+_PRICE_VOL_HSPACE = 0.10
+_CHART_BOTTOM = 0.06
 
 
 def _style_axis_date_labels(ax, ticks, n: int) -> None:
-    """年月與預估日同一小字：水平、不旋轉，置中在刻度正下方。不錯開。"""
+    """年月與預估日同一小字：水平、不旋轉，置中在刻度上。不錯開。"""
     from wayne_navigator import _fp
 
     for lab, xi in zip(ax.get_xticklabels(), ticks):
@@ -1778,7 +1781,7 @@ def _paint(
             2,
             1,
             figsize=(10.6, 7.6),
-            gridspec_kw={"height_ratios": [3.35, 0.95], "hspace": 0.05},
+            gridspec_kw={"height_ratios": [3.35, 0.95], "hspace": _PRICE_VOL_HSPACE},
             facecolor=_BG,
         )
         ax.set_facecolor(_BG)
@@ -2183,15 +2186,17 @@ def _paint(
             wave_xs=wave_xs,
             future_bars=fut_bars,
         )
-        # 軸標掛量能底軸（上圖會被量能面板裁掉）
+        # 日期放價圖與量圖中縫，對準刻度；量柱底不再掛日期
         ax.set_xticks(ticks)
-        ax.set_xticklabels([])
-        ax.tick_params(axis="x", labelbottom=False, length=0)
+        ax.set_xticklabels(labels)
+        _style_axis_date_labels(ax, ticks, n)
+        ax.tick_params(
+            axis="x", pad=2, length=3, width=0.8, colors="#111111", labelbottom=True
+        )
         axv.set_xticks(ticks)
-        axv.set_xticklabels(labels)
-        _style_axis_date_labels(axv, ticks, n)
-        axv.tick_params(axis="x", pad=4, length=4, width=1.0, colors="#111111", labelbottom=True)
-        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.10)
+        axv.set_xticklabels([])
+        axv.tick_params(axis="x", labelbottom=False, length=0)
+        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=_CHART_BOTTOM)
         # 現價豎線＝歷史／未來分界（加粗＋淺底帶）
         ax.axvspan(float(n - 1), x_max, color="#ffffff", alpha=0.22, zorder=0)
         ax.axvline(float(n - 1), color="#212121", lw=2.2, ls="-", alpha=0.95, zorder=6)

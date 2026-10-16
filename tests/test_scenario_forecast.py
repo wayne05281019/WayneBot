@@ -27,6 +27,8 @@ from scenario_forecast_chart import (
     _future_tick_labels,
     _style_axis_date_labels,
     _AXIS_DATE_PT,
+    _PRICE_VOL_HSPACE,
+    _CHART_BOTTOM,
     _confirmed_leg_bars,
     _CAL_PER_BAR,
 )
@@ -417,37 +419,51 @@ def test_future_tick_labels_follow_wave_xs():
     assert fut_labs_s[-1] != fut_labs_l[-1]
 
 
-def test_axis_dates_are_small_horizontal_under_ticks():
-    """年月與預估日水平置中在刻度下，不旋轉、不錯開。最右兩日字盒分開。"""
+def test_axis_dates_sit_in_price_volume_gap():
+    """日期在價圖與量圖中縫，水平置中對準刻度，不旋轉、不錯開。"""
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(10.6, 7.6), dpi=168)
-    fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.10)
+    fig, (ax, axv) = plt.subplots(
+        2,
+        1,
+        figsize=(10.6, 7.6),
+        dpi=168,
+        gridspec_kw={"height_ratios": [3.35, 0.95], "hspace": _PRICE_VOL_HSPACE},
+    )
+    fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=_CHART_BOTTOM)
     ax.set_xlim(-0.8, 364.35)
+    axv.set_xlim(-0.8, 364.35)
     ticks = [13.0, 160.0, 319.0, 350.0]
     labels = ["2025/07/22", "2026/02/24", "2026/10/15", "2026/11/27"]
     n = 320
     ax.set_xticks(ticks)
     ax.set_xticklabels(labels)
     _style_axis_date_labels(ax, ticks, n)
+    axv.set_xticks(ticks)
+    axv.set_xticklabels([])
     assert _AXIS_DATE_PT < 13.5
     texts = list(ax.get_xticklabels())
     for lab in texts:
         assert lab.get_rotation() == 0
         assert lab.get_ha() == "center"
         assert lab.get_fontsize() == _AXIS_DATE_PT
+    assert all(not t.get_text() for t in axv.get_xticklabels())
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
     boxes = [lab.get_window_extent(renderer=renderer) for lab in texts]
     y0s = [bb.y0 for bb in boxes]
     assert max(y0s) - min(y0s) < 2
+    price_bottom = ax.bbox.y0
+    vol_top = axv.bbox.y1
+    assert price_bottom > vol_top + 8
     for bb, xi in zip(boxes, ticks):
         tx = ax.transData.transform((xi, 0))[0]
         assert abs((bb.x0 + bb.x1) / 2 - tx) < 2
-        assert bb.y0 > 2
+        assert bb.y1 <= price_bottom - 1
+        assert bb.y0 >= vol_top + 1
         assert bb.x0 > 2
         assert bb.x1 < fig.bbox.width - 2
     for i in range(len(boxes)):
