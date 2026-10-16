@@ -461,7 +461,13 @@ class TestMarketMenuE2E:
         phone = reflow_telegram_html(html)
         plains = [_html_plain(ln) for ln in phone.split("\n") if _html_plain(ln).strip()]
         def _row(prefix):
-            hits = [ln for ln in plains if ln.startswith(prefix)]
+            # 標籤列「外資」後面是補白；環境觀察「外資大賣升級」不是法人列。
+            hits = [
+                ln
+                for ln in plains
+                if ln.startswith(prefix)
+                and (len(ln) == len(prefix) or ln[len(prefix)] in " \u3000\t")
+            ]
             assert hits, prefix
             return hits[0]
         wai = _row("外資")

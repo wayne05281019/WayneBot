@@ -3789,6 +3789,18 @@ def _falling_risk_lamp_word(score: int) -> str:
     return "綠燈"
 
 
+def _falling_risk_face(score: int) -> str:
+    """話筒：0–100 分，100 最危險。黃燈＝中等，紅燈＝偏高，綠燈＝偏低。"""
+    s = int(score or 0)
+    if s >= 60:
+        level = "偏高"
+    elif s >= 35:
+        level = "中等"
+    else:
+        level = "偏低"
+    return f"往下跌的風險{level}，{s} 分，100 分最危險。"
+
+
 def _page_regime_lines(snap: Dict[str, Any]) -> List[str]:
     """大盤頁燈號：貼在環境觀察後。數值只用 snap，不另算。"""
     regime = str(snap.get("regime") or "")
@@ -3812,7 +3824,7 @@ def _page_regime_lines(snap: Dict[str, Any]) -> List[str]:
         ),
         _page_kv(
             "下跌風險",
-            f"{_falling_risk_light(score)} {_page_b(f'{score}，{_falling_risk_lamp_word(score)}')}",
+            f"{_falling_risk_light(score)} {_page_b(_falling_risk_face(score))}",
         ),
     ]
 
@@ -4390,7 +4402,7 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     regime = [
         f"{_brief_lab('盤勢')}　{_page_b(snap['regime_label'])}（把握 {_page_b(str(snap['confidence']) + '%')}）",
         f"{_brief_lab('細分盤勢')}　{_regime_plus_traffic_light(snap.get('regime_plus'))} {_page_b(snap.get('regime_plus_label', '—'))}",
-        f"{_brief_lab('下跌風險')}　{fr_light} {_page_b(snap.get('falling_risk', 0))}",
+        f"{_brief_lab('下跌風險')}　{fr_light} {_page_b(_falling_risk_face(int(snap.get('falling_risk') or 0)))}",
         f"{_brief_lab('高檔區')}　{_risk_zone_label(snap.get('risk_zone'))}",
     ]
     explain = _brief_state_explain_lines(snap)
