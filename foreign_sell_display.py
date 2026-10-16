@@ -60,17 +60,22 @@ class EnvObserveStatus:
         return bool(self.fear_lit or self.confirm_n > 0 or self.calm_lit)
 
     def fear_state(self) -> str:
+        """中文狀態：恐懼亮／恐懼熄／恐懼未齊。"""
         if not self.fear_evaluable:
-            return "n/a"
-        return "Fear" if self.fear_lit else "Off"
+            return "恐懼未齊"
+        return "恐懼亮" if self.fear_lit else "恐懼熄"
 
     def confirm_state(self) -> str:
-        if self.confirm_n > 0:
-            return "Confirm"
-        return "Off"
+        """中文狀態：確認亮／確認熄。"""
+        return "確認亮" if self.confirm_n > 0 else "確認熄"
 
     def calm_state(self) -> str:
-        return "Calm" if self.calm_lit else "Off"
+        """中文狀態：冷靜亮／冷靜熄。"""
+        return "冷靜亮" if self.calm_lit else "冷靜熄"
+
+    def status_line_zh(self) -> str:
+        """大盤狀態一行：恐懼亮／確認熄／冷靜熄。"""
+        return f"{self.fear_state()}／{self.confirm_state()}／{self.calm_state()}"
 
 
 @dataclass
@@ -272,20 +277,20 @@ def _fear_plain(st: EnvObserveStatus) -> str:
         return f"恐懼複合暫無法評估（{skip}）"
     if st.fear_lit:
         sync = "同步" if st.fear_lead_sync == "sync" else "領先"
-        return f"開盤前恐懼偏高（{st.fear_votes}票・{sync}）；只觀察，不是買訊"
+        return f"開盤前恐懼偏高（{st.fear_votes}票・{sync}）"
     return "開盤前恐懼複合未亮"
 
 
 def _confirm_plain(st: EnvObserveStatus) -> str:
     if st.confirm_n <= 0:
         return "外資升級／極端確認今無"
-    return f"外資升級／確認近窗約{st.confirm_n}檔；只觀察，不是買訊"
+    return f"外資升級／確認近窗約{st.confirm_n}檔"
 
 
 def _calm_plain(st: EnvObserveStatus) -> str:
     if st.calm_lit:
-        return "恐懼消退／反向環境亮（佈局環境觀察，不是買訊）"
-    return "反向 Calm 未亮"
+        return "恐懼消退／反向環境亮（佈局環境觀察）"
+    return "反向冷靜未亮"
 
 
 def load_morning_status(
@@ -333,11 +338,14 @@ def morning_observe_line_html(
 
 
 def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
-    """台股大盤頁頂部「環境觀察」一小段（HTML 行）。"""
+    """台股大盤頁頂部「環境觀察」一小段（HTML 行）。
+
+    標題一行＋中文狀態一行＋白話一句＋非買訊一句（只留一次）。
+    """
     from tg_layout import html_escape
 
     st = load_env_status(db_path, as_of)
-    # 白話一句：優先恐懼→確認→反向→全無
+    # 白話一句：優先恐懼→確認→反向→全無（「不是買訊」只在末行）
     if st.fear_lit:
         plain = _fear_plain(st)
     elif st.confirm_n > 0:
@@ -347,19 +355,11 @@ def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
     elif not st.fear_evaluable and st.fear_skip:
         plain = _fear_plain(st)
     else:
-        plain = "今日環境無預警亮燈；進場仍只認藍▲紅框"
+        plain = "今日環境無預警亮燈"
 
-    fear_s = st.fear_state()
-    conf_s = st.confirm_state()
-    calm_s = st.calm_state()
-    state_line = (
-        f"Fear　{html_escape(fear_s)}　"
-        f"Confirm　{html_escape(conf_s)}　"
-        f"Calm　{html_escape(calm_s)}"
-    )
     return [
-        f"<b>環境觀察</b>　{html_escape(DISPLAY_TAG)}",
-        state_line,
+        f"<b>環境觀察｜{html_escape(DISPLAY_TAG)}</b>",
+        html_escape(st.status_line_zh()),
         html_escape(plain),
         html_escape("不是買訊；進場仍只認藍▲紅框"),
     ]

@@ -163,13 +163,20 @@ def test_market_env_section():
     conn.close()
     lines = market_env_section_lines(db, "20261014")
     blob = "\n".join(lines)
-    assert "環境觀察" in blob
-    assert "Fear" in blob
-    assert "Confirm" in blob
-    assert "Calm" in blob
+    assert "環境觀察｜" in blob or "環境觀察" in blob
+    assert DISPLAY_TAG in blob.replace("<b>", "").replace("</b>", "")
+    # 中文狀態一行；不准英文鍵重複堆（Fear Fear Confirm…）
+    assert "恐懼亮" in blob
+    assert "確認熄" in blob
+    assert "冷靜熄" in blob
+    assert "Fear" not in blob
+    assert "Confirm" not in blob
+    assert "Calm" not in blob
     assert "測試" in blob
-    assert "不是買訊" in blob
+    assert blob.count("不是買訊") == 1
     assert "藍▲紅框" in blob
+    # 標題收成一行（有｜）
+    assert any("環境觀察｜" in ln for ln in lines)
 
 
 def test_stock_observe_hit_escalate():
