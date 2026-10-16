@@ -63,6 +63,11 @@ VOL_ZONE_JPEG_QUALITY = 95
 VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
 VOL_ZONE_FIG_H_NAV = 9.35
 VOL_ZONE_FIG_H_PLAIN = 7.7
+# 大盤大量區專用：畫布對齊加權日K（12.8×7.55、右緣 0.96）。
+# 個股仍走 VOL_ZONE_FIG_W×NAV，不准為了對齊改個股 figsize／日標。
+MARKET_VOL_ZONE_FIG = (12.8, 7.55)
+MARKET_VOL_ZONE_GS_LEFT = 0.03
+MARKET_VOL_ZONE_GS_RIGHT = 0.96
 # 查股單張：對齊高低卡 4:5（220DPI → 1920×2400），Telegram 縮圖寬才不獨大／變窄
 VOL_ZONE_FIG_LOOKUP = (1920 / 220.0, 2400 / 220.0)
 # 月線／季線＝官方收盤 MA20／MA60；畫圖前多抓暖機柱，近窗第一根就要有線
@@ -87,7 +92,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 39  # 日標貼主K上框內側；表頭／主圖比例回原，不准壓圖例
+_VZ_PAINT_VER = 40  # 大盤大量區畫布對齊日K滿寬；日標仍貼主K上框內側
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -1837,11 +1842,12 @@ def paint_vol_zone_parallel_channel(
     n: int,
     ymin: float,
     ymax: float,
+    labels_outside: bool = True,
 ) -> None:
     """在大量區 K 上畫兩條平行軌＋右緣價標。不是買訊、不數 5／9。
 
-    標籤（平行壓／上升軌）放軸外右溝（axesX×dataY），字級略縮；
-    呼叫端須把 GridSpec right 收窄留溝，整盒才不會被圖框切斷。
+    labels_outside：標放軸外右溝（axes 1.085），呼叫端須收窄 GridSpec。
+    大盤滿寬傳 False：標貼主圖右緣內側，不准再開死白欄把 K 擠到左邊。
     """
     if not ch or ax is None:
         return
@@ -1892,24 +1898,27 @@ def paint_vol_zone_parallel_channel(
                 (mid - gap, items[0][1], items[0][2]),
                 (mid + gap, items[1][1], items[1][2]),
             ]
-    # 軸外右溝：X＝axes 分數、Y＝價；clip_on=False 才能畫進 GridSpec 預留溝
+    # 軸外右溝：X＝axes 分數、Y＝價；clip_on=False 才能畫進 GridSpec 預留溝。
+    # 大盤滿寬改貼右緣內側（ha=right），主圖右緣才跟日K一樣貼近畫布。
     trans = blended_transform_factory(ax.transAxes, ax.transData)
+    label_x = 1.085 if labels_outside else 0.985
+    label_ha = "left" if labels_outside else "right"
     for y_disp, lab, y_px in items:
         y_draw = min(
             max(float(y_disp), float(ymin) + y_span * 0.02),
             float(ymax) - y_span * 0.02,
         )
         ax.text(
-            1.085,
+            label_x,
             y_draw,
             f"{lab} {_fmt_price(y_px)}",
             transform=trans,
-            ha="left",
+            ha=label_ha,
             va="center",
             fontproperties=_fp(7.6, "bold"),
             color=color,
             zorder=12,
-            clip_on=False,
+            clip_on=not labels_outside,
             bbox=dict(
                 boxstyle="round,pad=0.14",
                 facecolor="#ffffff",
@@ -2309,18 +2318,31 @@ def _paint_volume_zone(
         head_ratios = [1.28, 3.38, 0.40, 0.98]
         head_bottom = 0.072
 
-    # 平行軌右緣標（平行壓／上升軌）要完整：右溝加寬（過右軸刻度），標放軸外不進 K
-    _gs_right = 0.72 if with_parallel_channel else (0.935 if with_nav_signals else 0.96)
+    # 大盤大量區（平行軌、無導航、橫式）：畫布與右緣對齊加權日K，標改貼軸內。
+    # 個股／直式不准走這組 figsize。其餘平行軌才收窄右溝給軸外標。
+    market_wide = bool(
+        with_parallel_channel and not lookup_portrait and not with_nav_signals
+    )
+    if market_wide:
+        from wayne_navigator import NAV_CHART_DPI
+
+        _gs_left = MARKET_VOL_ZONE_GS_LEFT
+        _gs_right = MARKET_VOL_ZONE_GS_RIGHT
+        _paint_dpi = int(NAV_CHART_DPI)
+    else:
+        _gs_left = 0.050 if with_nav_signals else 0.04
+        _gs_right = 0.72 if with_parallel_channel else (0.935 if with_nav_signals else 0.96)
+        _paint_dpi = int(VOL_ZONE_DPI)
     if with_nav_signals:
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
-        fig = _new_lookup_figure(fig_size, VOL_ZONE_DPI, _BG)
+        fig = _new_lookup_figure(fig_size, _paint_dpi, _BG)
         gs = GridSpec(
             4,
             1,
             figure=fig,
             height_ratios=head_ratios,
             hspace=0.035,
-            left=0.050,
+            left=_gs_left,
             right=_gs_right,
             top=0.985,
             bottom=head_bottom,
@@ -2334,8 +2356,14 @@ def _paint_volume_zone(
         ax_head.set_axis_off()
     else:
         fig = _new_lookup_figure(
-            VOL_ZONE_FIG_LOOKUP if lookup_portrait else (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_PLAIN),
-            VOL_ZONE_DPI,
+            MARKET_VOL_ZONE_FIG
+            if market_wide
+            else (
+                VOL_ZONE_FIG_LOOKUP
+                if lookup_portrait
+                else (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_PLAIN)
+            ),
+            _paint_dpi,
             _BG,
         )
         gs = GridSpec(
@@ -2344,7 +2372,7 @@ def _paint_volume_zone(
             figure=fig,
             height_ratios=[4.85, 1.85] if lookup_portrait else [3.4, 1.05],
             hspace=0.055,
-            left=0.04,
+            left=_gs_left,
             right=_gs_right,
             top=0.88,
             bottom=0.08,
@@ -2588,7 +2616,12 @@ def _paint_volume_zone(
     if with_parallel_channel and channel:
         try:
             paint_vol_zone_parallel_channel(
-                ax1, channel, n=int(n), ymin=float(ymin), ymax=float(ymax)
+                ax1,
+                channel,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                labels_outside=not market_wide,
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
@@ -3165,7 +3198,7 @@ def _paint_volume_zone(
         fig.savefig(
             out,
             format="jpeg",
-            dpi=VOL_ZONE_DPI,
+            dpi=_paint_dpi,
             facecolor=_BG,
             # 停價灰短柱要保得住，不准被 JPEG 抽樣吃成空白
             pil_kwargs={

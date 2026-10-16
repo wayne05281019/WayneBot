@@ -102,6 +102,38 @@ def test_market_vol_zone_paints_parallel_channel(tmp_path, production_db):
     assert ("上升軌" in (cap or "")) or ("下降壓" in (cap or ""))
 
 
+def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
+    """大盤大量區畫布＝日K 12.8×7.55、主圖右緣 0.96；個股 figsize 不動。"""
+    from PIL import Image
+
+    from index_kline_chart import build_market_vol_zone_chart
+    from vol_zone_chart import (
+        MARKET_VOL_ZONE_FIG,
+        MARKET_VOL_ZONE_GS_RIGHT,
+        VOL_ZONE_FIG_H_NAV,
+        VOL_ZONE_FIG_W,
+        clear_vol_zone_render_cache,
+    )
+    from wayne_navigator import NAV_CHART_DPI
+
+    assert MARKET_VOL_ZONE_FIG == (12.8, 7.55)
+    assert MARKET_VOL_ZONE_GS_RIGHT == 0.96
+    assert VOL_ZONE_FIG_W == 12.4
+    assert VOL_ZONE_FIG_H_NAV == 9.35
+    db = str(tmp_path / "twii.db")
+    _seed_twii_channel(db)
+    clear_vol_zone_render_cache()
+    out = str(tmp_path / "vz.jpg")
+    path, cap = build_market_vol_zone_chart(out, db_path=db)
+    assert path and os.path.isfile(path)
+    assert "大量區" in (cap or "")
+    with Image.open(path) as im:
+        assert im.size == (
+            int(round(MARKET_VOL_ZONE_FIG[0] * NAV_CHART_DPI)),
+            int(round(MARKET_VOL_ZONE_FIG[1] * NAV_CHART_DPI)),
+        )
+
+
 def test_stock_lookup_vol_default_no_parallel_flag():
     """查股第 4 張預設不准自動開平行軌（大盤專用旗標）。"""
     import inspect
