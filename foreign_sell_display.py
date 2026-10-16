@@ -340,8 +340,8 @@ def morning_observe_line_html(
 def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
     """台股大盤頁頂部「環境觀察」一小段（HTML 行）。
 
-    標題一行＋三句白話（恐懼／外資大賣升級／恐懼消退）＋非買訊一句（只留一次）。
-    不印亮／熄／未齊狀態詞。
+    標題一行＋三句白話（恐懼／外資大賣升級／恐懼消退）。
+    不印亮／熄／未齊，也不印「不是買訊；進場仍只認藍▲紅框」。
     """
     from tg_layout import html_escape
 
@@ -351,7 +351,6 @@ def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
         html_escape(_fear_plain(st)),
         html_escape(_confirm_plain(st)),
         html_escape(_calm_plain(st)),
-        html_escape("不是買訊；進場仍只認藍▲紅框"),
     ]
 
 

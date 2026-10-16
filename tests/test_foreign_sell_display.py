@@ -176,8 +176,8 @@ def test_market_env_section():
     assert "Confirm" not in blob
     assert "Calm" not in blob
     assert "測試" in blob
-    assert blob.count("不是買訊") == 1
-    assert "藍▲紅框" in blob
+    assert "不是買訊；進場仍只認藍▲紅框" not in blob
+    assert "藍▲紅框" not in blob
     # 標題收成一行（有｜）
     assert any("環境觀察｜" in ln for ln in lines)
 
@@ -221,7 +221,7 @@ def test_market_env_plain_branches():
     _put_fear(store, lit=0, evaluable=0, skip="美股關鍵欄全空")
     lines = market_env_section_lines(db, "20261014")
     assert "開盤前恐懼：美股沒資料，今天先不算" in lines
-    assert lines.count("不是買訊；進場仍只認藍▲紅框") == 1
+    assert "不是買訊；進場仍只認藍▲紅框" not in lines
 
     _put_fear(store, lit=0, evaluable=0, skip="台股休市")
     lines = market_env_section_lines(db, "20261014")
@@ -255,7 +255,7 @@ def test_market_env_plain_branches():
     blob = "\n".join(lines)
     assert "外資大賣升級：約2檔" in lines
     assert "恐懼消退：有亮，仍不是買" in lines
-    assert blob.count("不是買訊") == 1
+    assert "不是買訊；進場仍只認藍▲紅框" not in blob
     for banned in ("恐懼未齊", "確認熄", "冷靜熄", "恐懼亮", "恐懼熄"):
         assert banned not in blob
 
