@@ -1501,7 +1501,7 @@ def _future_tick_labels(
     wave_xs: Optional[Sequence[float]] = None,
     future_bars: Optional[float] = None,
 ):
-    """歷史＋未來軸標（Asia/Taipei）。少刻度、大字、帶年月。
+    """歷史＋未來軸標（Asia/Taipei）。少刻度、帶年月。
 
     未來刻度錨在該檔投影浪點 x（DC：軸長跟情境幾何走），不是固定 0.88·72。
     """
@@ -1575,40 +1575,22 @@ def _future_tick_labels(
     return ticks, labels
 
 
-def _separate_stacked_date_labels(fig, labels) -> None:
-    """旋轉日期字盒若相交，只把後面那顆往下挪。刻度 x、其他日期不動。"""
-    shown = [lab for lab in labels if str(lab.get_text() or "").strip()]
-    if len(shown) < 2:
-        return
-    import matplotlib.transforms as mtransforms
-    from matplotlib.transforms import Bbox
+# 底軸日期：比先前 13.5／15pt 斜字小一階。9pt 水平置中後，3081 最右兩日仍分開。
+_AXIS_DATE_PT = 9.0
 
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    pad = 8.0
-    floor = 4.0
-    dpi = float(fig.dpi or 100.0) or 100.0
-    placed = []
-    for lab in shown:
-        bb = lab.get_window_extent(renderer=renderer)
-        shift = 0.0
-        for prev in placed:
-            ox = min(bb.x1, prev.x1) - max(bb.x0, prev.x0)
-            oy = min(bb.y1, prev.y1) - max(bb.y0, prev.y0)
-            if ox > 1.0 and oy > 1.0:
-                need = (prev.y0 - pad) - bb.y1
-                if need < shift:
-                    shift = need
-        if shift < -0.5:
-            if bb.y0 + shift < floor:
-                shift = floor - bb.y0
-            if shift < -0.5:
-                offset = mtransforms.ScaledTranslation(
-                    0.0, shift / dpi, fig.dpi_scale_trans
-                )
-                lab.set_transform(lab.get_transform() + offset)
-                bb = Bbox.from_extents(bb.x0, bb.y0 + shift, bb.x1, bb.y1 + shift)
-        placed.append(bb)
+
+def _style_axis_date_labels(ax, ticks, n: int) -> None:
+    """年月與預估日同一小字：水平、不旋轉，置中在刻度正下方。不錯開。"""
+    from wayne_navigator import _fp
+
+    for lab, xi in zip(ax.get_xticklabels(), ticks):
+        is_fut = float(xi) > float(n - 1) + 0.2
+        lab.set_fontproperties(_fp(_AXIS_DATE_PT, "bold"))
+        lab.set_color("#0d47a1" if is_fut else "#111111")
+        lab.set_rotation(0)
+        lab.set_ha("center")
+        lab.set_va("top")
+        lab.set_clip_on(False)
 
 
 def _ladder_range_note(price: float, idx: int, n: int) -> str:
@@ -2201,26 +2183,15 @@ def _paint(
             wave_xs=wave_xs,
             future_bars=fut_bars,
         )
-        # 軸標掛量能底軸（上圖會被量能面板裁掉）；字級約舊 v5 的 1.5～2×
+        # 軸標掛量能底軸（上圖會被量能面板裁掉）
         ax.set_xticks(ticks)
         ax.set_xticklabels([])
         ax.tick_params(axis="x", labelbottom=False, length=0)
         axv.set_xticks(ticks)
         axv.set_xticklabels(labels)
-        for lab, xi in zip(axv.get_xticklabels(), ticks):
-            is_fut = float(xi) > float(n - 1) + 0.2
-            is_first = abs(float(xi) - float(ticks[0])) < 0.5
-            is_last = abs(float(xi) - float(ticks[-1])) < 0.5
-            lab.set_fontproperties(_fp(15.0 if is_fut else 13.5, "bold"))
-            lab.set_color("#0d47a1" if is_fut else "#111111")
-            lab.set_rotation(18)
-            # 頭尾對齊，減少切斷；中間 right 對齊刻度
-            lab.set_ha("left" if is_first else ("right" if is_last or is_fut else "center"))
-            lab.set_clip_on(False)
-        axv.tick_params(axis="x", pad=8, length=5, width=1.2, colors="#111111", labelbottom=True)
-        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.20)
-        # 只挪撞在一起的日期字；刻度 x、浪號、價位不改。先定版面再量字盒。
-        _separate_stacked_date_labels(fig, list(axv.get_xticklabels()))
+        _style_axis_date_labels(axv, ticks, n)
+        axv.tick_params(axis="x", pad=4, length=4, width=1.0, colors="#111111", labelbottom=True)
+        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.10)
         # 現價豎線＝歷史／未來分界（加粗＋淺底帶）
         ax.axvspan(float(n - 1), x_max, color="#ffffff", alpha=0.22, zorder=0)
         ax.axvline(float(n - 1), color="#212121", lw=2.2, ls="-", alpha=0.95, zorder=6)
