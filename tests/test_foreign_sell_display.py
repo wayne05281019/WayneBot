@@ -101,8 +101,8 @@ def test_morning_line_none_and_lit():
     assert "環境觀察｜" in line
     assert DISPLAY_TAG in line.replace("<b>", "").replace("</b>", "")
     assert "開盤前恐懼" in line
-    assert "外資大賣升級：" in line
-    assert "恐懼消退：" in line
+    assert "確認：" in line
+    assert "冷靜：" in line
     assert "今無" not in line and "非買訊" not in line
     assert "不是買訊" not in line
     assert "買進" not in line and "可買" not in line
@@ -133,9 +133,9 @@ def test_morning_line_none_and_lit():
     conn.commit()
     conn.close()
     lit = morning_observe_line_html(db, "20261014", fear_as_of="20261015")
-    assert "開盤前恐懼偏高" in lit
-    assert "外資大賣升級：今天沒有" in lit
-    assert "恐懼消退：今天沒有" in lit
+    assert "開盤前恐懼：現在開著" in lit
+    assert "確認：現在不算數" in lit
+    assert "冷靜：現在不算數" in lit
     assert "今無" not in lit and "非買訊" not in lit
     assert "不是買訊" not in lit
     assert "買進" not in lit
@@ -174,11 +174,23 @@ def test_market_env_section():
     blob = "\n".join(lines)
     assert "環境觀察｜" in blob or "環境觀察" in blob
     assert DISPLAY_TAG in blob.replace("<b>", "").replace("</b>", "")
-    # 三句白話各一行；大盤頁不再印亮／熄／未齊
-    assert "開盤前恐懼偏高" in lines
-    assert "外資大賣升級：今天沒有" in lines
-    assert "恐懼消退：今天沒有" in lines
-    for banned in ("恐懼未齊", "恐懼亮", "恐懼熄", "確認亮", "確認熄", "冷靜亮", "冷靜熄"):
+    # 三句白話各一行；大盤頁不再印亮／熄／未齊／近窗
+    assert "開盤前恐懼：現在開著" in lines
+    assert "確認：現在不算數" in lines
+    assert "冷靜：現在不算數" in lines
+    for banned in (
+        "恐懼未齊",
+        "恐懼亮",
+        "恐懼熄",
+        "確認亮",
+        "確認熄",
+        "冷靜亮",
+        "冷靜熄",
+        "近窗",
+        "沒亮",
+        "有亮",
+        "未齊",
+    ):
         assert banned not in blob
     assert "Fear" not in blob
     assert "Confirm" not in blob
@@ -220,7 +232,7 @@ def _put_fear(store: str, *, lit: int, evaluable: int, skip: str) -> None:
 
 
 def test_market_env_plain_branches():
-    """三句對旗標：恐懼 skip／沒亮、外資約 N 檔、恐懼消退有亮。"""
+    """三句對旗標：恐懼開或關、確認算不算、冷靜算不算。"""
     db = _mk_db()
     ensure_fear(db)
     ensure_esc(db)
@@ -233,11 +245,11 @@ def test_market_env_plain_branches():
 
     _put_fear(store, lit=0, evaluable=0, skip="台股休市")
     lines = market_env_section_lines(db, "20261014")
-    assert "開盤前恐懼：資料未齊，今天先不算" in lines
+    assert "開盤前恐懼：資料不夠，今天先不算" in lines
 
     _put_fear(store, lit=0, evaluable=1, skip="")
     lines = market_env_section_lines(db, "20261014")
-    assert "開盤前恐懼沒亮" in lines
+    assert "開盤前恐懼：現在關著" in lines
 
     conn = sqlite3.connect(store)
     for sid in ("2383", "2330"):
@@ -261,10 +273,11 @@ def test_market_env_plain_branches():
     conn.close()
     lines = market_env_section_lines(db, "20261014")
     blob = "\n".join(lines)
-    assert "外資大賣升級：約2檔" in lines
-    assert "恐懼消退：有亮，仍不是買" in lines
+    assert "確認：現在算數。外資賣超升級，這天大約2檔股票" in lines
+    assert "冷靜：現在算數" in lines
+    assert "近窗" not in blob
     assert "不是買訊；進場仍只認藍▲紅框" not in blob
-    for banned in ("恐懼未齊", "確認熄", "冷靜熄", "恐懼亮", "恐懼熄"):
+    for banned in ("恐懼未齊", "確認熄", "冷靜熄", "恐懼亮", "恐懼熄", "沒亮", "有亮", "未齊"):
         assert banned not in blob
 
 
@@ -441,7 +454,7 @@ def test_load_env_status_confirm_count():
     assert st.buy_signal is False
     line = morning_observe_line_html(db, "20261014")
     assert line == "\n".join(market_env_section_lines(db, "20261014"))
-    assert "外資大賣升級：約3檔" in line
+    assert "確認：現在算數。外資賣超升級，這天大約3檔股票" in line
     assert "非買訊" not in line and "不是買訊" not in line
 
 

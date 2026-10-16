@@ -275,22 +275,24 @@ def _fear_plain(st: EnvObserveStatus) -> str:
     if not st.fear_evaluable:
         if "美股關鍵欄全空" in (st.fear_skip or ""):
             return "開盤前恐懼：美股沒資料，今天先不算"
-        return "開盤前恐懼：資料未齊，今天先不算"
+        return "開盤前恐懼：資料不夠，今天先不算"
     if st.fear_lit:
-        return "開盤前恐懼偏高"
-    return "開盤前恐懼沒亮"
+        return "開盤前恐懼：現在開著"
+    return "開盤前恐懼：現在關著"
 
 
 def _confirm_plain(st: EnvObserveStatus) -> str:
-    if st.confirm_n <= 0:
-        return "外資大賣升級：今天沒有"
-    return f"外資大賣升級：約{st.confirm_n}檔"
+    """確認檔數＝當天外資賣超升級＋極端賣超，去重後的股票數。不含買升級。"""
+    n = int(st.confirm_n or 0)
+    if n <= 0:
+        return "確認：現在不算數"
+    return f"確認：現在算數。外資賣超升級，這天大約{n}檔股票"
 
 
 def _calm_plain(st: EnvObserveStatus) -> str:
     if st.calm_lit:
-        return "恐懼消退：有亮，仍不是買"
-    return "恐懼消退：今天沒有"
+        return "冷靜：現在算數"
+    return "冷靜：現在不算數"
 
 
 def load_morning_status(
@@ -339,8 +341,8 @@ def morning_observe_line_html(
 def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
     """台股大盤頁頂部「環境觀察」一小段（HTML 行）。
 
-    標題一行＋三句白話（恐懼／外資大賣升級／恐懼消退）。
-    不印亮／熄／未齊，也不印「不是買訊；進場仍只認藍▲紅框」。
+    標題一行＋三句白話（恐懼開或關、確認算不算、冷靜算不算）。
+    不印亮／熄／未齊，不印近窗，也不印「不是買訊；進場仍只認藍▲紅框」。
     燈號由大盤頁貼在這段後面、同一則。
     """
     return env_observe_plain_lines(load_env_status(db_path, as_of))
