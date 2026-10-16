@@ -92,7 +92,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 43  # 上升軌文字改貼右側倒數幾根 K 的鄰近空白
+_VZ_PAINT_VER = 44  # 大盤平行軌虛線加密、空隙縮短；色與線寬不變
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2132,12 +2132,12 @@ def paint_vol_zone_parallel_channel(
     else:
         rail_hi = float(n) - 0.35
     kind0 = str(ch.get("kind") or "")
-    # 話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。不改結構圖細線。
+    # 話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。虛線段密、空隙短。不改結構圖細線。
     rail_kw: Dict[str, Any] = {}
     if market_rails:
         rail_kw = dict(
             rail_lw=3.2,
-            rail_dash=(0, (8.2, 3.5)),
+            rail_dash=(0, (3.6, 1.2)),
             rail_halo=2.3,
             rail_color="#0d47a1" if kind0 == "asc" else "#4a148c",
         )

@@ -125,6 +125,21 @@ def test_market_channel_caption_uses_anchor_dates_not_extended_price():
     assert "50,846" not in up and "49,181" not in low
 
 
+def test_market_rail_dash_denser_same_weight_and_color():
+    """大盤虛線段更密、空隙更短；線寬與顏色維持。結構圖細虛線常數不動。"""
+    from biaoke_chart import _CHANNEL_RAIL_DASH, _CHANNEL_RAIL_LW
+    from vol_zone_chart import paint_vol_zone_parallel_channel
+
+    src = inspect.getsource(paint_vol_zone_parallel_channel)
+    assert "rail_lw=3.2" in src
+    assert "rail_halo=2.3" in src
+    assert 'rail_color="#0d47a1"' in src
+    assert "rail_dash=(0, (3.6, 1.2))" in src
+    assert "(8.2, 3.5)" not in src
+    assert _CHANNEL_RAIL_LW <= 1.2
+    assert _CHANNEL_RAIL_DASH == (0, (3.4, 2.2))
+
+
 def test_rising_rail_label_stays_beside_last_bars():
     """上升軌文字右緣貼最後幾根，不准落到圖中段。"""
     import numpy as np
