@@ -102,6 +102,45 @@ def test_market_vol_zone_paints_parallel_channel(tmp_path, production_db):
     assert ("上升軌" in (cap or "")) or ("下降壓" in (cap or ""))
 
 
+def test_channel_label_blank_avoids_candles_and_ma():
+    """軌標找空白：盒子不准壓 K、不准壓均線。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_blocked
+
+    n = 80
+    highs = np.full(n, 100.0)
+    lows = np.full(n, 92.0)
+    mas = [np.full(n, 96.0)]
+    seg = ((10.0, 104.0, "a"), (70.0, 112.0, "b"))
+    cx, cy = _blank_for_channel_label(
+        text="上升軌 49,181",
+        seg=seg,
+        y_now=112.0,
+        outside=-1,
+        n=n,
+        ymin=70.0,
+        ymax=140.0,
+        dx=8.0,
+        dy=3.5,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+    )
+    box = (cx - 4.0, cx + 4.0, cy - 1.75, cy + 1.75)
+    assert not _channel_box_blocked(
+        *box,
+        n=n,
+        ymin=70.0,
+        ymax=140.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+    )
+
+
 def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
     """大盤大量區畫布＝日K 12.8×7.55、主圖右緣 0.96；個股 figsize 不動。"""
     from PIL import Image

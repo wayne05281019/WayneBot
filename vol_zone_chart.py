@@ -92,7 +92,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 40  # 大盤大量區畫布對齊日K滿寬；日標仍貼主K上框內側
+_VZ_PAINT_VER = 41  # 大盤軌標避 K／均線；橘標讓出當天價；個股日標仍貼主K上框內側
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -472,9 +472,10 @@ def _paint_ma_line_labels(
     hold_lo: Optional[float] = None,
     spike_i: Optional[int] = None,
     avoid_path_box: bool = False,
+    extra_occupied: Optional[List[Tuple[float, float, float, float]]] = None,
 ) -> None:
     """短標 5／10／月／季：程式自動選位；只貼自己線、互避、不壓 K。不准改 OHLC／量。"""
-    occupied: List[Tuple[float, float, float, float]] = []
+    occupied: List[Tuple[float, float, float, float]] = list(extra_occupied or [])
     order = sorted(
         series,
         key=lambda t: {
@@ -1835,6 +1836,174 @@ def infer_vol_zone_parallel_channel(
     return infer_parallel_channel(rows) or {}
 
 
+def _channel_text_box_data(ax, text: str, *, n: int, ymin: float, ymax: float) -> Tuple[float, float]:
+    """軌標盒寬高（資料座標）。對齊最終 xlim（-0.8, n-0.2），不把 K 往左擠。"""
+    pos = ax.get_position()
+    fw, fh = ax.figure.get_size_inches()
+    ax_w = max(float(pos.width) * float(fw), 0.1)
+    ax_h = max(float(pos.height) * float(fh), 0.1)
+    fs = 7.6
+    w_pt = fs * 0.5
+    for ch in str(text or ""):
+        w_pt += fs if ord(ch) > 127 else fs * 0.56
+    h_pt = fs * 1.55 + fs * 0.5
+    x_span = max(float(n) - 0.2 - (-0.8), 1.0)
+    y_span = max(float(ymax) - float(ymin), 1.0)
+    dx = (w_pt / 72.0) / ax_w * x_span
+    dy = (h_pt / 72.0) / ax_h * y_span
+    return dx * 1.06, dy * 1.08
+
+
+def _channel_seg_y(seg, x: float, fallback: float) -> float:
+    try:
+        (x1, y1, _a), (x2, y2, _b) = seg
+        x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
+        if abs(x2 - x1) < 1e-9:
+            return y2
+        return y1 + (y2 - y1) * (float(x) - x1) / (x2 - x1)
+    except Exception:
+        return float(fallback)
+
+
+def _channel_box_blocked(
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    *,
+    n: int,
+    ymin: float,
+    ymax: float,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    mas: List[np.ndarray],
+    placed: List[Tuple[float, float, float, float]],
+) -> bool:
+    """盒碰到 K、均線、左上／左下壓撐標、已放軌標＝堵住。"""
+    span = max(float(ymax) - float(ymin), 1.0)
+    x_lo, x_hi = -0.8, float(n) - 0.2
+    if x0 < x_lo + 0.15 or x1 > x_hi - 0.05:
+        return True
+    if y0 < float(ymin) + span * 0.012 or y1 > float(ymax) - span * 0.012:
+        return True
+    xf0 = (x0 - x_lo) / max(x_hi - x_lo, 1e-6)
+    yf0 = (y0 - float(ymin)) / span
+    yf1 = (y1 - float(ymin)) / span
+    # 大量區壓／撐標在左上、左下
+    if xf0 < 0.30 and yf1 > 0.84:
+        return True
+    if xf0 < 0.30 and yf0 < 0.16:
+        return True
+    pad_y = span * 0.006
+    i0 = max(0, int(np.floor(x0 - 0.35)))
+    i1 = min(int(n) - 1, int(np.ceil(x1 + 0.35)))
+    for i in range(i0, i1 + 1):
+        hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
+        lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
+        if np.isfinite(hk) and np.isfinite(lk) and lk - pad_y <= y1 and hk + pad_y >= y0:
+            return True
+        for arr in mas:
+            if i >= len(arr):
+                continue
+            v = float(arr[i]) if np.isfinite(arr[i]) else np.nan
+            if np.isfinite(v) and v > 0 and (y0 - pad_y) <= v <= (y1 + pad_y):
+                return True
+    for ox0, ox1, oy0, oy1 in placed:
+        if not (x1 < ox0 or ox1 < x0 or y1 < oy0 or oy1 < y0):
+            return True
+    return False
+
+
+def _blank_for_channel_label(
+    *,
+    text: str,
+    seg,
+    y_now: float,
+    outside: int,
+    n: int,
+    ymin: float,
+    ymax: float,
+    dx: float,
+    dy: float,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    mas: List[np.ndarray],
+    placed: List[Tuple[float, float, float, float]],
+) -> Tuple[float, float]:
+    """鄰近空白優先；沒有就放到軌道外側空白。不准壓 K、不准壓均線。"""
+    span = max(float(ymax) - float(ymin), 1.0)
+    x_hi = float(n) - 0.2
+    gap = max(span * 0.008, dy * 0.08)
+    x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
+    best: Optional[Tuple[float, float, float]] = None  # score, cx, cy
+
+    def _consider(cx: float, cy: float, score: float) -> None:
+        nonlocal best
+        box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
+        if _channel_box_blocked(
+            *box,
+            n=n,
+            ymin=ymin,
+            ymax=ymax,
+            highs=highs,
+            lows=lows,
+            mas=mas,
+            placed=placed,
+        ):
+            return
+        if best is None or score > best[0]:
+            best = (score, cx, cy)
+
+    # 鄰近：沿軌往左找，盒子貼在線旁空隙（先外側、再內側）
+    for step in range(0, 34):
+        cx = x_anchor - step * max(dx * 0.22, 1.1)
+        y_line = _channel_seg_y(seg, cx, y_now)
+        near = 1.0 - step / 40.0
+        for sign in (int(outside) or 1, -int(outside or 1)):
+            if sign == 0:
+                continue
+            for k in (1.0, 1.7, 2.5):
+                if sign > 0:
+                    cy = y_line + gap + dy / 2.0 + (k - 1.0) * dy * 0.55
+                else:
+                    cy = y_line - gap - dy / 2.0 - (k - 1.0) * dy * 0.55
+                dist = abs(cy - y_line) / span
+                _consider(cx, cy, near - dist * 0.8 - (0.0 if sign == int(outside) else 0.12))
+        if best is not None and step >= 6 and best[0] > 0.35:
+            break
+    if best is not None:
+        return best[1], best[2]
+
+    # 外側空白：上軌往最高 K／均線之上，下軌往最低之下；仍避開蠟燭
+    env_hi = float(np.nanmax(highs)) if len(highs) else float(y_now)
+    env_lo = float(np.nanmin(lows)) if len(lows) else float(y_now)
+    for arr in mas:
+        ok = np.isfinite(arr) & (arr > 0)
+        if ok.any():
+            env_hi = max(env_hi, float(np.nanmax(arr[ok])))
+            env_lo = min(env_lo, float(np.nanmin(arr[ok])))
+    env_hi = max(env_hi, float(y_now))
+    env_lo = min(env_lo, float(y_now))
+    for step in range(0, 40):
+        cx = x_anchor - step * max(dx * 0.2, 1.0)
+        if int(outside) >= 0:
+            cy = env_hi + gap + dy / 2.0 + step * dy * 0.15
+            _consider(cx, cy, 0.2 - step * 0.004)
+            cy_lo = env_lo - gap - dy / 2.0 - step * dy * 0.15
+            _consider(cx, cy_lo, 0.05 - step * 0.004)
+        else:
+            cy = env_lo - gap - dy / 2.0 - step * dy * 0.15
+            _consider(cx, cy, 0.2 - step * 0.004)
+            cy_hi = env_hi + gap + dy / 2.0 + step * dy * 0.15
+            _consider(cx, cy_hi, 0.05 - step * 0.004)
+        if best is not None:
+            return best[1], best[2]
+    # 仍無淨空：貼在外側 ylim 內緣，不回到蠟燭上
+    if int(outside) >= 0:
+        return x_anchor, min(float(ymax) - dy / 2.0 - gap, env_hi + gap + dy / 2.0)
+    return x_anchor, max(float(ymin) + dy / 2.0 + gap, env_lo - gap - dy / 2.0)
+
+
 def paint_vol_zone_parallel_channel(
     ax,
     ch: Dict[str, Any],
@@ -1843,23 +2012,31 @@ def paint_vol_zone_parallel_channel(
     ymin: float,
     ymax: float,
     labels_outside: bool = True,
-) -> None:
+    highs: Optional[np.ndarray] = None,
+    lows: Optional[np.ndarray] = None,
+    mas: Optional[List[np.ndarray]] = None,
+) -> List[Tuple[float, float, float, float]]:
     """在大量區 K 上畫兩條平行軌＋右緣價標。不是買訊、不數 5／9。
 
     labels_outside：標放軸外右溝（axes 1.085），呼叫端須收窄 GridSpec。
-    大盤滿寬傳 False：標貼主圖右緣內側，不准再開死白欄把 K 擠到左邊。
+    大盤滿寬傳 False：沿軌找鄰近空白，沒有就放軌道外側；不准壓 K／均線、不准把 K 擠窄。
+    回傳已放標盒 (x0, x1, y0, y1)，給均線短標互讓。
     """
+    placed: List[Tuple[float, float, float, float]] = []
     if not ch or ax is None:
-        return
+        return placed
     from matplotlib.transforms import blended_transform_factory
 
     from biaoke_chart import _paint_parallel_channel
 
     seam = float(max(n - 1, 0))
-    # K 右略留空；線不過軸外標
-    x0, x1 = ax.get_xlim()
-    ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
-    rail_hi = float(n) + 0.35
+    # 軸外標才加右緣空；滿寬不准把 xlim 再撐開把 K 擠瘦
+    if labels_outside:
+        x0, x1 = ax.get_xlim()
+        ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
+        rail_hi = float(n) + 0.35
+    else:
+        rail_hi = float(n) - 0.35
     _paint_parallel_channel(
         ax,
         ch,
@@ -1899,26 +2076,75 @@ def paint_vol_zone_parallel_channel(
                 (mid + gap, items[1][1], items[1][2]),
             ]
     # 軸外右溝：X＝axes 分數、Y＝價；clip_on=False 才能畫進 GridSpec 預留溝。
-    # 大盤滿寬改貼右緣內側（ha=right），主圖右緣才跟日K一樣貼近畫布。
+    # 大盤滿寬改找鄰近空白（資料座標），不准固定貼在最右 K 上。
     trans = blended_transform_factory(ax.transAxes, ax.transData)
-    label_x = 1.085 if labels_outside else 0.985
-    label_ha = "left" if labels_outside else "right"
+    hi_arr = np.asarray(highs if highs is not None else [], dtype=float)
+    lo_arr = np.asarray(lows if lows is not None else [], dtype=float)
+    ma_arrs = [np.asarray(a, dtype=float) for a in (mas or []) if a is not None]
+    use_blank = (
+        not labels_outside
+        and hi_arr.size >= int(n)
+        and lo_arr.size >= int(n)
+    )
     for y_disp, lab, y_px in items:
-        y_draw = min(
-            max(float(y_disp), float(ymin) + y_span * 0.02),
-            float(ymax) - y_span * 0.02,
+        shown = f"{lab} {_fmt_price(y_px)}"
+        if not use_blank:
+            y_draw = min(
+                max(float(y_disp), float(ymin) + y_span * 0.02),
+                float(ymax) - y_span * 0.02,
+            )
+            ax.text(
+                1.085,
+                y_draw,
+                shown,
+                transform=trans,
+                ha="left",
+                va="center",
+                fontproperties=_fp(7.6, "bold"),
+                color=color,
+                zorder=12,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle="round,pad=0.14",
+                    facecolor="#ffffff",
+                    edgecolor=color,
+                    linewidth=0.75,
+                    alpha=0.96,
+                ),
+            )
+            continue
+        if lab == str(ch.get("name_u") or ""):
+            seg = ch.get("upper")
+            outside = 1
+        else:
+            seg = ch.get("lower")
+            outside = -1
+        dx, dy = _channel_text_box_data(ax, shown, n=int(n), ymin=float(ymin), ymax=float(ymax))
+        cx, cy = _blank_for_channel_label(
+            text=shown,
+            seg=seg,
+            y_now=float(y_px),
+            outside=outside,
+            n=int(n),
+            ymin=float(ymin),
+            ymax=float(ymax),
+            dx=dx,
+            dy=dy,
+            highs=hi_arr,
+            lows=lo_arr,
+            mas=ma_arrs,
+            placed=placed,
         )
         ax.text(
-            label_x,
-            y_draw,
-            f"{lab} {_fmt_price(y_px)}",
-            transform=trans,
-            ha=label_ha,
+            cx,
+            cy,
+            shown,
+            ha="center",
             va="center",
             fontproperties=_fp(7.6, "bold"),
             color=color,
             zorder=12,
-            clip_on=not labels_outside,
+            clip_on=True,
             bbox=dict(
                 boxstyle="round,pad=0.14",
                 facecolor="#ffffff",
@@ -1927,6 +2153,8 @@ def paint_vol_zone_parallel_channel(
                 alpha=0.96,
             ),
         )
+        placed.append((cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0))
+    return placed
 
 
 def _vz_memo_get(key: Tuple[Any, ...], save_path: str) -> Optional[Tuple[str, str]]:
@@ -2252,6 +2480,89 @@ def render_lookup_vol_result(
     )
 
 
+def _paint_market_vol_header(fig, ax, *, title: str, ohlc: str, orange: str) -> None:
+    """大盤大量區表頭：橘標在上、當天開高低收整行在下，兩段都不互壓。"""
+    pos = ax.get_position()
+    fig_h_px = max(float(fig.bbox.height), 1.0)
+    ohlc_art = fig.text(
+        pos.x0,
+        pos.y1 + 8.0 / (fig.get_figheight() * 72.0),
+        ohlc,
+        ha="left",
+        va="bottom",
+        fontproperties=_fp(12, "bold"),
+        color=_TEXT,
+        zorder=20,
+    )
+    title_art = fig.text(
+        pos.x0,
+        pos.y1 + 36.0 / (fig.get_figheight() * 72.0),
+        title,
+        ha="left",
+        va="bottom",
+        fontproperties=_fp(13, "bold"),
+        color=_TEXT,
+        zorder=20,
+    )
+    orange_art = None
+    if str(orange or "").strip():
+        orange_art = fig.text(
+            pos.x1,
+            pos.y1 + 36.0 / (fig.get_figheight() * 72.0),
+            orange,
+            ha="right",
+            va="bottom",
+            fontproperties=_fp(9.0, "bold"),
+            color=_CALL,
+            zorder=21,
+            linespacing=1.15,
+            bbox=dict(
+                boxstyle="round,pad=0.20",
+                facecolor="#fff8e1",
+                edgecolor="#ef6c00",
+                linewidth=0.85,
+                alpha=0.96,
+            ),
+        )
+
+    def _gap_up(art, floor_y1: float, gap_px: float) -> None:
+        bb = art.get_window_extent(renderer=ren)
+        if bb.y0 >= floor_y1 + gap_px:
+            return
+        dy = (floor_y1 + gap_px - bb.y0) / fig_h_px
+        x, y = art.get_position()
+        art.set_position((x, y + dy))
+
+    try:
+        fig.canvas.draw()
+        ren = fig.canvas.get_renderer()
+        ohlc_bb = ohlc_art.get_window_extent(renderer=ren)
+        if orange_art is not None:
+            _gap_up(orange_art, ohlc_bb.y1, 10.0)
+            fig.canvas.draw()
+            ren = fig.canvas.get_renderer()
+            title_bb = title_art.get_window_extent(renderer=ren)
+            orange_bb = orange_art.get_window_extent(renderer=ren)
+            overlap = not (
+                title_bb.x1 < orange_bb.x0 - 8
+                or orange_bb.x1 < title_bb.x0 - 8
+                or title_bb.y1 < orange_bb.y0 - 4
+                or orange_bb.y1 < title_bb.y0 - 4
+            )
+            if overlap:
+                _gap_up(orange_art, title_bb.y1, 8.0)
+            # 右上時間戳在圖頂；橘標頂不要鑽進那一行
+            fig.canvas.draw()
+            orange_bb = orange_art.get_window_extent(renderer=ren)
+            stamp_floor = fig_h_px * 0.955
+            if orange_bb.y1 > stamp_floor:
+                dy = (orange_bb.y1 - stamp_floor) / fig_h_px
+                x, y = orange_art.get_position()
+                orange_art.set_position((x, max(pos.y1 + 0.01, y - dy)))
+    except Exception:
+        logger.debug("大盤大量區表頭讓位失敗", exc_info=True)
+
+
 def _paint_volume_zone(
     sid,
     name,
@@ -2374,7 +2685,7 @@ def _paint_volume_zone(
             hspace=0.055,
             left=_gs_left,
             right=_gs_right,
-            top=0.88,
+            top=0.835 if market_wide else 0.88,
             bottom=0.08,
         )
         ax1 = fig.add_subplot(gs[0])
@@ -2613,20 +2924,30 @@ def _paint_volume_zone(
     # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
     # 右略鬆給末日 K／收價；均線標改放左半／中段，不搶近端
     ax1.set_xlim(-0.05, n + 2.15)
+    channel_label_rects: List[Tuple[float, float, float, float]] = []
     if with_parallel_channel and channel:
         try:
-            paint_vol_zone_parallel_channel(
+            ma_for_labels = [
+                a
+                for a in (ma5_vals, ma10_vals, ma20_vals, ma60_vals)
+                if a is not None
+            ]
+            channel_label_rects = paint_vol_zone_parallel_channel(
                 ax1,
                 channel,
                 n=int(n),
                 ymin=float(ymin),
                 ymax=float(ymax),
                 labels_outside=not market_wide,
+                highs=highs if market_wide else None,
+                lows=lows if market_wide else None,
+                mas=ma_for_labels if market_wide else None,
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
-    # 橘框日標：貼主K上框內側右上（沿上框線內），不准掛表頭壓圖例（§6）
-    if path_shown:
+            channel_label_rects = []
+    # 橘框日標：個股貼主K上框內側。大盤滿寬改掛標題區，這裡不畫。
+    if path_shown and not market_wide:
         ax1.text(
             0.995,
             0.985,
@@ -2850,7 +3171,8 @@ def _paint_volume_zone(
             press_hi=float(hi) if hi else None,
             hold_lo=float(lo) if lo else None,
             spike_i=int(spike_i) if spike_i is not None else None,
-            avoid_path_box=bool(path_shown),
+            avoid_path_box=bool(path_shown) and not market_wide,
+            extra_occupied=channel_label_rects,
         )
 
     # 除息標：貼豎線上方、避開左上壓標；不准大抬 ylim 把 K 壓扁
@@ -3132,6 +3454,22 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("標題列圖例失敗 sid=%s", sid)
         ax1.set_title("")
+    elif market_wide:
+        # 左：圖名。右：橘標。下一列整行當天開高低收。橘標不准壓住價那一行。
+        ax1.set_title("")
+        _paint_market_vol_header(
+            fig,
+            ax1,
+            title=f"{sid} {name}　大量區專圖（非買訊・{src_note}）",
+            ohlc=(
+                f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
+                f"最近 {_md(last.get('date'))} "
+                f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
+                f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
+                f"{ex_title}"
+            ),
+            orange=path_shown,
+        )
     else:
         title = (
             f"{sid} {name}　大量區專圖（非買訊・{src_note}）\n"
