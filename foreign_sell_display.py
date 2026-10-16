@@ -313,28 +313,27 @@ def load_morning_status(
     return chip
 
 
+def env_observe_plain_lines(st: EnvObserveStatus) -> List[str]:
+    """話筒環境觀察：標題＋三句白話。大盤、早報、其他推播同一套。"""
+    from tg_layout import html_escape
+
+    return [
+        f"<b>環境觀察｜{html_escape(DISPLAY_TAG)}</b>",
+        html_escape(_fear_plain(st)),
+        html_escape(_confirm_plain(st)),
+        html_escape(_calm_plain(st)),
+    ]
+
+
 def morning_observe_line_html(
     db_path: str,
     as_of: str,
     *,
     fear_as_of: str = "",
 ) -> str:
-    """早報一句：有亮才寫主句；不亮寫「今無」短句。永遠標測試／非買。"""
-    from tg_layout import html_escape
-
+    """早報環境觀察：與大盤同一段三句。恐懼日仍可分開，不改旗標算法。"""
     st = load_morning_status(db_path, as_of, fear_as_of=fear_as_of)
-    bits: List[str] = []
-    if st.fear_lit:
-        bits.append("恐懼預警")
-    if st.confirm_n > 0:
-        bits.append(f"外資升級約{st.confirm_n}檔")
-    if st.calm_lit:
-        bits.append("反向環境")
-    tag = html_escape(DISPLAY_TAG)
-    if not bits:
-        return f"<b>{tag}</b>　今無"
-    body = "／".join(bits)
-    return f"<b>{tag}</b>　{html_escape(body)}　非買訊"
+    return "\n".join(env_observe_plain_lines(st))
 
 
 def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
@@ -342,16 +341,9 @@ def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
 
     標題一行＋三句白話（恐懼／外資大賣升級／恐懼消退）。
     不印亮／熄／未齊，也不印「不是買訊；進場仍只認藍▲紅框」。
+    燈號由大盤頁貼在這段後面、同一則。
     """
-    from tg_layout import html_escape
-
-    st = load_env_status(db_path, as_of)
-    return [
-        f"<b>環境觀察｜{html_escape(DISPLAY_TAG)}</b>",
-        html_escape(_fear_plain(st)),
-        html_escape(_confirm_plain(st)),
-        html_escape(_calm_plain(st)),
-    ]
+    return env_observe_plain_lines(load_env_status(db_path, as_of))
 
 
 def _recent_as_ofs(conn: sqlite3.Connection, table: str, kind: str, limit: int) -> List[str]:

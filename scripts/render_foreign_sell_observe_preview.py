@@ -132,7 +132,7 @@ def main() -> int:
 
     text_path = os.path.join(out_dir, "copy-preview.txt")
     with open(text_path, "w", encoding="utf-8") as f:
-        f.write("=== 早報一行（無 tape → 今無）===\n")
+        f.write("=== 早報（與大盤同一段三句）===\n")
         f.write(morning_observe_line_html(":memory:", "20261014") + "\n\n")
         f.write("=== 大盤環境段（空庫）===\n")
         f.write("\n".join(market_env_section_lines(":memory:", "20261014")) + "\n")

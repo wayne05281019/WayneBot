@@ -91,7 +91,7 @@ def _tw_brief_drop_outlook_overlap(tw_brief: str, outlook_html: str) -> str:
 
 
 def _foreign_sell_observe_line(db_path: str, as_of: str) -> str:
-    """外資／恐懼預警測試版：早報一行。失敗不擋早報。"""
+    """早報環境觀察：與大盤同一段三句。失敗不擋早報。"""
     try:
         from foreign_sell_display import morning_observe_line_html
         from trading_calendar import taipei_calendar_ymd
@@ -115,7 +115,7 @@ def build_morning_opening_html(
     outlook = _outlook_from_screening(screening)
     observe = _foreign_sell_observe_line(db_path, as_of or "")
     if observe and outlook:
-        # 插在大盤狀況段首下：有亮／今無都留一行，方便每天一眼
+        # 插在大盤狀況段下：與大盤頁同一段三句
         outlook = outlook.rstrip() + "\n" + observe
     elif observe and not outlook:
         outlook = observe

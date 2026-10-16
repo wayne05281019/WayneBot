@@ -96,10 +96,15 @@ def test_morning_line_none_and_lit():
     db = _mk_db()
     ensure_fear(db)
     store = tape_store_path(db)
-    # 無 tape → 今無（evaluate 也可能因缺美股不亮）
+    # 無 tape：仍是三句，不准退回今無／非買訊
     line = morning_observe_line_html(db, "20261014", fear_as_of="20261015")
-    assert DISPLAY_TAG in line.replace("<b>", "").replace("</b>", "") or "觀察" in line
-    assert "非買訊" in line or "今無" in line
+    assert "環境觀察｜" in line
+    assert DISPLAY_TAG in line.replace("<b>", "").replace("</b>", "")
+    assert "開盤前恐懼" in line
+    assert "外資大賣升級：" in line
+    assert "恐懼消退：" in line
+    assert "今無" not in line and "非買訊" not in line
+    assert "不是買訊" not in line
     assert "買進" not in line and "可買" not in line
 
     conn = sqlite3.connect(store)
@@ -128,8 +133,11 @@ def test_morning_line_none_and_lit():
     conn.commit()
     conn.close()
     lit = morning_observe_line_html(db, "20261014", fear_as_of="20261015")
-    assert "恐懼" in lit
-    assert "非買訊" in lit
+    assert "開盤前恐懼偏高" in lit
+    assert "外資大賣升級：今天沒有" in lit
+    assert "恐懼消退：今天沒有" in lit
+    assert "今無" not in lit and "非買訊" not in lit
+    assert "不是買訊" not in lit
     assert "買進" not in lit
 
 
@@ -432,8 +440,9 @@ def test_load_env_status_confirm_count():
     assert st.confirm_n == 3
     assert st.buy_signal is False
     line = morning_observe_line_html(db, "20261014")
-    assert "外資升級" in line
-    assert "非買訊" in line
+    assert line == "\n".join(market_env_section_lines(db, "20261014"))
+    assert "外資大賣升級：約3檔" in line
+    assert "非買訊" not in line and "不是買訊" not in line
 
 
 def test_foreign_hex_stacks_below_same_bar_arrow():
