@@ -6201,7 +6201,7 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
     )
     if panel:
         # 量能列最右兩顆（止穩◆／橘六角）跟均線同一整列，不准斷行。
-        # 這一列頂緣貼在三角形列下方的空白裡（0.18），不准壓到上一列，也不准壓大量區壓框。
+        # 這一列頂緣貼在三角形列下方的空白裡（0.18），上下都留空隙。
         row2_main = row2[:7]
         row3_ext = list(row3) + list(row2[7:])
         # (handles, labels, x, y, ncol) ncol＝項數，整列一行
