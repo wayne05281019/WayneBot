@@ -3335,8 +3335,13 @@ def render_lookup_structure_result(
     save_path: str,
     *,
     card: Optional[dict] = None,
+    pack: Optional[dict] = None,
 ) -> Tuple[str, str]:
-    """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。"""
+    """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。
+
+    pack：查股熱路徑可在 paint 外先 prepare_volume_zone；有 pack 就不再 prepare／ensure，
+    縮短高低卡／介紹之後到結構出圖的沉默（不准造假量）。
+    """
     sid = str(stock_id or "").strip()
     name = str(stock_name or sid).strip() or sid
     if not sid or not db_path or not save_path:
@@ -3358,7 +3363,12 @@ def render_lookup_structure_result(
         )
 
         # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖吃近 _BARS（≈八個月）
-        pack = prepare_volume_zone(sid, name, db_path, save_path)
+        # 查股可傳預先 prepare 的 pack（paint 外），此處只渲 PNG。
+        if not (
+            isinstance(pack, dict)
+            and (pack.get("bars") or pack.get("view") is not None)
+        ):
+            pack = prepare_volume_zone(sid, name, db_path, save_path)
         if not pack:
             return "", ""
         # prepare 已載官方柱（need≈188 ≥ _BARS）；暖路徑不准再 load_official_ohlc／iterrows。

@@ -41,6 +41,8 @@ def test_lookup_gc_once_after_all_pngs():
     )
     assert "ensure_official_volume_window" in src
     assert "volfill" in src
+    assert "struct_prep_task" in src
+    assert "prepare_volume_zone" in src
     assert "render_lookup_structure_result" in src
     assert "render_lookup_vol_result" in src
     assert "render_three_in_one_result" not in src
@@ -49,6 +51,8 @@ def test_lookup_gc_once_after_all_pngs():
     pair_at = src.index("card_item = await card_render_task")
     assert pair_at < gc_at
     assert src.index("create_task(_vol_item())") < gc_at
+    assert src.index("ensure_task = asyncio.create_task") < pair_at
+    assert src.index("struct_prep_task = asyncio.create_task") < pair_at
 
 
 def test_decision_card_quick_shares_lookup_timeouts():

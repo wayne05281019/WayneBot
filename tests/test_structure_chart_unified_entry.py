@@ -36,6 +36,7 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
     lookup = inspect.getsource(render_lookup_structure_result)
     assert "render_biaoke_structure_png" in lookup
     assert "_STRUCTURE_LOOKUP_FIG" in lookup
+    assert "pack:" in lookup or "pack=" in lookup
 
     build = inspect.getsource(build_biaoke_structure_chart)
     assert "render_biaoke_structure_png" in build
@@ -43,6 +44,8 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
 
     send = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "render_lookup_structure_result" in send
+    assert "struct_prep_task" in send
+    assert "prepare_volume_zone" in send
 
     biaoke_send = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "build_biaoke_structure_chart" in biaoke_send

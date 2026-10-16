@@ -628,10 +628,77 @@ def test_lookup_path_early_vol_ensure_outside_paint():
     assert "volfill" in src
     assert "_await_vol_ensure" in src
     assert "glance_queued" in src
-    # ensure task 在 card／結構之前就 create
+    assert "struct_prep_task" in src
+    assert "prepare_volume_zone" in src
+    # ensure 與 MIS／建卡並行（在 card_item await 之前）；結構 prepare 在 paint 外
     assert src.find("ensure_task = asyncio.create_task") < src.find(
-        "create_task(_struct_item())"
+        "card_item = await card_render_task"
+    )
+    assert src.find("struct_prep_task = asyncio.create_task") < src.find(
+        "card_item = await card_render_task"
     )
     assert src.find("create_task(_struct_item())") < src.find(
         "card_item = await card_render_task"
     )
+    # 結構 paint 吃預先 pack，不准只在 paint 內才 ensure+prepare
+    assert "pack=_struct_pack_box[0]" in src or "pack=_struct_pack_box" in src
+
+
+def test_confirmed_absent_persisted_skips_refetch(tmp_path, monkeypatch):
+    """官方月表確認無列落庫後：清 memo 再 ensure 不准重打網路。"""
+    import time
+
+    from vol_zone_chart import (
+        clear_ensure_official_volume_cache,
+        ensure_official_volume_window,
+        load_confirmed_absent_dates,
+        missing_open_quote_days,
+        save_confirmed_absent_dates,
+    )
+
+    db = str(tmp_path / "abs.db")
+    _schema(db)
+    calls = {"n": 0}
+
+    def _fetch(sid, ym, **kwargs):
+        calls["n"] += 1
+        # 月表成功但沒有 20260813 → confirmed_absent
+        return [
+            {
+                "date": "2026-08-12",
+                "stock_id": sid,
+                "stock_name": "測缺",
+                "market": "TW",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "volume": 100,
+                "pct_change": 1.0,
+            }
+        ]
+
+    import biaoke_walk as bw
+
+    monkeypatch.setattr(bw, "fetch_stock_month", _fetch)
+    monkeypatch.setattr(bw, "_market_of", lambda *a, **k: "TW")
+    clear_ensure_official_volume_cache()
+    st = ensure_official_volume_window(
+        "9077", db, end_ymd="20260814", days=5, stock_name="測缺"
+    )
+    assert "20260813" in (st.get("confirmed_absent") or [])
+    assert calls["n"] >= 1
+    assert "20260813" in load_confirmed_absent_dates("9077", db, "20260801", "20260831")
+    assert "20260813" not in missing_open_quote_days("9077", db, "20260812", "20260814")
+    n1 = calls["n"]
+    clear_ensure_official_volume_cache()
+    t0 = time.perf_counter()
+    st2 = ensure_official_volume_window(
+        "9077", db, end_ymd="20260814", days=5, stock_name="測缺"
+    )
+    assert time.perf_counter() - t0 < 0.2
+    assert calls["n"] == n1
+    assert "20260813" in (st2.get("confirmed_absent") or [])
+    # 手動落庫路徑也要能擋缺洞
+    save_confirmed_absent_dates("9077", db, ["20260814"])
+    assert "20260814" not in missing_open_quote_days("9077", db, "20260812", "20260814")
