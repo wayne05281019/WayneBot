@@ -1034,7 +1034,8 @@ def parse_api_thread(
                         row["reply_to"] = _api_comment_id(parent_cm)
                         row["reply_to_text"] = _api_text(parent_cm)[:240]
                         row["layer"] = max(int(row.get("layer") or 2), 2)
-                    key = row["text"]
+                    # 同一句出現在兩個留言 id 都要留。用正文當鍵會把後一則整則丟掉。
+                    key = cid or row["text"]
                     if key not in seen:
                         seen.add(key)
                         out.append(row)
@@ -1270,27 +1271,59 @@ def _merge_comment_kids(
 def _fetch_replies_payload(
     sess: requests.Session, aid: str, cid: str, auth: str
 ) -> tuple[List[Dict[str, Any]], int]:
-    """樓中樓＝該則留言自己當 article 再打 Comments。舊 Replies 路徑會 404。"""
-    extra, extra_status = _get_json_resp(
-        sess,
-        f"https://www.cmoney.tw/api/mach/api/Article/{cid}/Comments"
-        f"?startCommentIndex=0&fetch=-50",
-        timeout=_COMMENT_API_TIMEOUT,
-        token=auth,
-    )
-    kids = _comment_list(extra) if extra is not None else []
-    if not kids and extra_status == 404:
+    """樓中樓＝該則留言自己當 article 再打 Comments。一頁 50，後面還有就續抓。"""
+    kids: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    start = 0
+    status = 0
+    for _page in range(6):
         extra, extra_status = _get_json_resp(
             sess,
-            f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
-            f"?fetch=-50",
+            f"https://www.cmoney.tw/api/mach/api/Article/{cid}/Comments"
+            f"?startCommentIndex={int(start)}&fetch=-50",
             timeout=_COMMENT_API_TIMEOUT,
             token=auth,
         )
-        kids = _comment_list(extra) if extra is not None else []
-    if not kids and isinstance(extra, dict):
-        kids = _api_children(extra)
-    return kids, extra_status
+        status = extra_status
+        page = _comment_list(extra) if extra is not None else []
+        if not page and start == 0 and extra_status == 404:
+            extra, extra_status = _get_json_resp(
+                sess,
+                f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
+                f"?fetch=-50",
+                timeout=_COMMENT_API_TIMEOUT,
+                token=auth,
+            )
+            status = extra_status
+            page = _comment_list(extra) if extra is not None else []
+        if not page and start == 0 and isinstance(extra, dict):
+            page = _api_children(extra)
+        for cm in page:
+            if not isinstance(cm, dict):
+                continue
+            key = _api_comment_id(cm) or f"anon:{len(kids)}"
+            if key in seen:
+                continue
+            seen.add(key)
+            kids.append(cm)
+        remain = 0
+        nxt: Any = None
+        if isinstance(extra, dict):
+            try:
+                remain = int(extra.get("remainCount") or 0)
+            except (TypeError, ValueError):
+                remain = 0
+            nxt = extra.get("nextCommentIndex")
+        if remain <= 0 or not page or nxt is None:
+            break
+        try:
+            nxt_i = int(nxt)
+        except (TypeError, ValueError):
+            break
+        if nxt_i == start:
+            break
+        start = nxt_i
+    return kids, status
 
 
 def _fill_nested_replies(
@@ -1960,6 +1993,13 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         record_diverge_events(db_path, packed)
     except Exception:
         logger.exception("飆大他說／我說分軌對質略過")
+    try:
+        # 危險時段只進飆大自己的表。其他鈕不准讀。失敗不擋抓文。
+        from biaoke_danger_silent import record_from_events as record_danger_events
+
+        record_danger_events(db_path, packed)
+    except Exception:
+        logger.exception("飆大危險時段對質略過")
 
 
 def run_biaoke_ingest_quiet() -> None:

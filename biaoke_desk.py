@@ -46,6 +46,11 @@ def ensure_biaoke_posts_table(db_path: str) -> None:
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         conn.execute(_BIAOKE_POSTS_DDL)
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(biaoke_posts)")}
+        if "reply_to_text" not in cols:
+            conn.execute(
+                "ALTER TABLE biaoke_posts ADD COLUMN reply_to_text TEXT NOT NULL DEFAULT ''"
+            )
         conn.commit()
     finally:
         conn.close()
@@ -83,8 +88,9 @@ def upsert_biaoke_posts(db_path: str, rows: List[Dict[str, Any]]) -> int:
             conn.execute(
                 """
                 INSERT INTO biaoke_posts (
-                    id, n, date, time, parent, layer, kind, tags, text, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                    id, n, date, time, parent, layer, kind, tags, text, updated_at,
+                    reply_to_text
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                     n=excluded.n,
                     date=excluded.date,
@@ -94,7 +100,8 @@ def upsert_biaoke_posts(db_path: str, rows: List[Dict[str, Any]]) -> int:
                     kind=excluded.kind,
                     tags=excluded.tags,
                     text=excluded.text,
-                    updated_at=excluded.updated_at;
+                    updated_at=excluded.updated_at,
+                    reply_to_text=excluded.reply_to_text;
                 """,
                 (
                     aid,
@@ -107,6 +114,7 @@ def upsert_biaoke_posts(db_path: str, rows: List[Dict[str, Any]]) -> int:
                     tags,
                     body,
                     now,
+                    str(row.get("reply_to_text") or "")[:240],
                 ),
             )
             n += 1
@@ -126,9 +134,15 @@ def _overlay_posts(db_path: Optional[str]) -> List[Dict[str, Any]]:
         ).fetchone()
         if not hit:
             return []
-        rows = conn.execute(
-            "SELECT id, n, date, time, parent, layer, kind, tags, text FROM biaoke_posts"
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                "SELECT id, n, date, time, parent, layer, kind, tags, text, "
+                "IFNULL(reply_to_text,'') FROM biaoke_posts"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = conn.execute(
+                "SELECT id, n, date, time, parent, layer, kind, tags, text FROM biaoke_posts"
+            ).fetchall()
     except sqlite3.Error:
         return []
     finally:
@@ -164,6 +178,7 @@ def _overlay_posts(db_path: Optional[str]) -> List[Dict[str, Any]]:
                 "kind": r[6] or "post",
                 "tags": tags,
                 "text": r[8] or "",
+                "reply_to_text": (r[9] if len(r) > 9 else "") or "",
             }
         )
     return out

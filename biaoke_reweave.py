@@ -28,21 +28,6 @@ _FIELD_MARKERS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("CPO/FAU", ("CPO", "FAU", "矽光子", "大立光")),
     ("PCB/CCL", ("PCB", "CCL", "台光電", "金像電", "欣興")),
 )
-_WAVE_MARKERS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
-    ("逃命波C-2", ("逃命波", "C-2", "C2")),
-    ("位階二/右肩", ("位階二", "右肩")),
-    ("位階四→五", ("位階四", "開始走五", "整理完成")),
-    ("末升/浪五", ("末升", "波浪五", "浪五")),
-    ("五段或九段未定", ("五段", "九段")),
-)
-_GOLD_BUY_HINT = re.compile(
-    r"(整理末端|突破回測|剛離|黃金|量縮站上|半山腰|隔日沖|回測)"
-)
-_UNCERTAIN = re.compile(
-    r"(還看不出|不知道|不能保證|如果|否則|要不然|希望看錯|未確認|還要等)"
-)
-
-
 def _ymd_ago(days: int) -> str:
     dt = datetime.now(TAIPEI) - timedelta(days=max(1, int(days)))
     return dt.strftime("%Y-%m-%d")
@@ -70,13 +55,23 @@ def load_voice_window(
             ).fetchone()
             if not hit:
                 return []
-            rows = conn.execute(
-                "SELECT id, date, time, text, IFNULL(kind,'post'), IFNULL(parent,'') "
-                "FROM biaoke_posts "
-                "WHERE date>=? AND date<=? AND IFNULL(kind,'')!='bystander' "
-                "ORDER BY date ASC, time ASC, id ASC",
-                (start, end),
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    "SELECT id, date, time, text, IFNULL(kind,'post'), IFNULL(parent,''), "
+                    "IFNULL(reply_to_text,'') "
+                    "FROM biaoke_posts "
+                    "WHERE date>=? AND date<=? AND IFNULL(kind,'')!='bystander' "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (start, end),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = conn.execute(
+                    "SELECT id, date, time, text, IFNULL(kind,'post'), IFNULL(parent,'') "
+                    "FROM biaoke_posts "
+                    "WHERE date>=? AND date<=? AND IFNULL(kind,'')!='bystander' "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (start, end),
+                ).fetchall()
         finally:
             conn.close()
     except sqlite3.Error:
@@ -98,6 +93,7 @@ def load_voice_window(
                 "text": text,
                 "kind": kind or "post",
                 "parent": str(r[5] or ""),
+                "reply_to_text": str(r[6] or "") if len(r) > 6 else "",
             }
         )
     return out
@@ -128,21 +124,6 @@ def _field_arc(rows: Sequence[Dict[str, Any]]) -> List[str]:
         return []
     path = "→".join(f"{name}" for _d, name, _n in timed[-5:])
     lines = [f"近四月主戰場脈絡：{path}（他自己文＋自回串起來，不是新聞標題）"]
-    # 黃金：最後兩個主軸並列＝雙箭頭精神
-    names = [n for _d, n, _n in timed]
-    if "ASIC" in names and "光通訊InP" in names:
-        lines.append(
-            "黃金脈絡：光通訊／InP 先釘主流後，創意創高把 ASIC 拉成並列——"
-            "到過年前雙箭頭；矽光子／CPO alone 已降級成細分次層。"
-        )
-    elif "光通訊InP" in names and names and names[-1] == "光通訊InP":
-        lines.append(
-            "黃金脈絡：近窗主軸仍在光通訊／InP；連動要細分 InP≠CPO／FAU。"
-        )
-    if "記憶體" in names and names[-1] != "記憶體":
-        lines.append(
-            "改口脈絡：記憶體曾是主戰場，近窗已被光通訊／ASIC 敘事蓋過——不准死背舊年底記憶體稿。"
-        )
     # 已退場主題：四月窗內提過、但最近沒再講＝不准建議買
     recent = list(rows)[-min(40, len(rows)) :]
     drone_recent = any("無人機" in str(r.get("text") or "") for r in recent)
@@ -154,97 +135,436 @@ def _field_arc(rows: Sequence[Dict[str, Any]]) -> List[str]:
     return lines
 
 
-def _wave_arc(rows: Sequence[Dict[str, Any]]) -> List[str]:
-    timed: List[Tuple[str, str]] = []
-    for name, needles in _WAVE_MARKERS:
-        a, b, n = _first_last_dates(rows, needles)
-        if n:
-            timed.append((b or a or "", name))
-    timed.sort(key=lambda x: x[0])
-    if not timed:
-        return []
-    last = timed[-1][1]
-    path = "→".join(n for _d, n in timed)
-    lines = [f"近四月大盤浪階脈絡：{path}"]
-    if "五段或九段未定" in {n for _d, n in timed} or last in (
-        "位階四→五",
-        "末升/浪五",
-    ):
-        lines.append(
-            "黃金思考：位階四完成→走五時方向清楚，是因為波浪才讀長期規劃；"
-            "量價只見籌碼意圖。五段或九段他自己說還看不出——"
-            "活人會停在『方向對、內部段數未定』，不准替他選邊、不准永遠念舊ABC。"
-        )
-    elif "逃命波C-2" in {n for _d, n in timed} and last != "逃命波C-2":
-        lines.append(
-            "改口脈絡：早先怕強彈是逃命波C-2；近窗已往四整理／走五推——圖要跟著重畫。"
-        )
-    return lines
+_SKIP_REPLY = re.compile(r"閱讀障礙")
+_LEAD_QUOTE = re.compile(
+    r"""^\s*(?:["“「『][^"”」』]{0,160}["”」』])\s*"""
+)
+_ANCHORS = ("聯亞", "大立光", "奇鋐", "奇宏", "創意", "台積電", "台指期")
+_IF_EXAMPLE = re.compile(r"如果|舉例|譬如")
+_LEVEL_NUM = re.compile(r"(?<!\d)(\d{4,6})(?!\d)")
+# 台指期比「大盤」先配：同一句同時出現時，數字靠誰近就跟誰。
+_SERIES_WORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("TX", ("台指期",)),
+    ("TWII", ("加權", "大盤")),
+    ("2330", ("台積電",)),
+    ("3443", ("創意",)),
+    ("3081", ("聯亞",)),
+    ("3017", ("奇鋐",)),
+    ("3008", ("大立光",)),
+)
+_SERIES_LABEL = {
+    "TX": "台指期",
+    "TWII": "加權",
+    "2330": "台積電",
+    "3443": "創意",
+    "3081": "聯亞",
+    "3017": "奇鋐",
+    "3008": "大立光",
+}
 
 
-def _method_gold(rows: Sequence[Dict[str, Any]]) -> List[str]:
-    blob = "\n".join(str(r.get("text") or "") for r in rows[-80:])
-    lines: List[str] = []
-    if "量價結構" in blob and ("波浪" in blob or "波浪理論" in blob):
-        lines.append(
-            "方法黃金：量價＝主力籌碼意圖；長期大盤規劃只認波浪——"
-            "兩套分工，不是互相取代。"
-        )
-    if _GOLD_BUY_HINT.search(blob):
-        lines.append(
-            "買點黃金（他教過的三個）：整理末端／突破回測／行進中隔日沖；"
-            "半山腰只隔日沖。話筒切入編碼仍對齊剛脫離零。"
-        )
-    unc = [r for r in rows[-40:] if _UNCERTAIN.search(str(r.get("text") or ""))]
-    if unc:
-        lines.append(
-            "為什麼他現在不定某些事：近窗仍有如果／還看不出／不能保證——"
-            "活人會把不確定講清楚，不准裝成已經確認。"
-        )
-    return lines
+def _row_sort_key(row: Dict[str, Any]) -> Tuple[str, str, str]:
+    t = str(row.get("time") or "")
+    parts = t.split(":")
+    while len(parts) < 3:
+        parts.append("00")
+    clock = ":".join(p.zfill(2)[:2] if len(p) > 2 else p.zfill(2) for p in parts[:3])
+    return (
+        str(row.get("date") or ""),
+        clock,
+        str(row.get("id") or row.get("post_id") or ""),
+    )
 
 
-def _reply_expand_gold(rows: Sequence[Dict[str, Any]]) -> List[str]:
-    """樓下自回常藏真黃金：點名次層、誰弱、二軍怎找。"""
-    replies = [r for r in rows if str(r.get("kind") or "") == "reply"]
-    if not replies:
-        return []
-    lines: List[str] = []
-    blob = "\n".join(str(r.get("text") or "") for r in replies[-120:])
-    if "上詮" in blob and ("更弱" in blob or "聯亞" in blob):
-        lines.append(
-            "自回黃金：連接側（上詮等）近窗他叫更弱、先看聯亞／全新——"
-            "觸類要把光通訊整組展開對柱，不是只記點名。"
-        )
-    if "IC設計" in blob.replace(" ", "") or "二軍" in blob:
-        lines.append(
-            "自回黃金：ASIC 二軍往台積／創意／聯發相關 IC 設計找；"
-            "愛普屬記憶體IC、他說過不是這主流。"
-        )
-    if "積極者" in blob and ("ASIC" in blob or "InP" in blob or "光通訊" in blob):
-        lines.append(
-            "資金配置脈絡：積極者加強 ASIC／光通訊持股比例到過年前——"
-            "這是他公開的節奏巢，不是程式自動下單。"
-        )
-    return lines
+def _is_reply_row(row: Dict[str, Any]) -> bool:
+    return str(row.get("kind") or "") == "reply"
 
 
-def _cross_gold(db_path: str) -> List[str]:
+def _norm_cmp(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
+def _already_shown(bit: str, shown: Sequence[str]) -> bool:
+    n = _norm_cmp(bit)
+    if len(n) < 12:
+        return False
+    for s in shown:
+        t = _norm_cmp(s)
+        # 只在黃金句已經整段出現過才略過。他還說裡的短摘錄不准把較完整的自回蓋掉。
+        if t and n in t:
+            return True
+    return False
+
+
+def _clean_voice(text: str) -> str:
+    s = str(text or "")
     try:
-        from biaoke_advisor import cross_db_glance, inp_asic_tiers
+        from biaoke_ingest import scrub_cmoney_chrome
 
-        lines: List[str] = []
-        cross = cross_db_glance(db_path, "")
-        for x in (cross.get("lines") or [])[:2]:
-            if x:
-                lines.append(str(x))
-        tiers = inp_asic_tiers(db_path, "ASIC InP 光通訊 雙箭頭")
-        for x in (tiers.get("lines") or [])[:2]:
-            if x:
-                lines.append(str(x))
-        return lines
+        s = scrub_cmoney_chrome(s)
     except Exception:
+        pass
+    s = re.sub(r"https://image\.cmoney\.tw/\S+", "", s, flags=re.I)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _anchored_text(row: Dict[str, Any]) -> str:
+    """他回在別人樓下時，自己那句沒寫股名，就沿用該樓點過的那一個名字。"""
+    text = _clean_voice(str(row.get("text") or ""))
+    if not text:
+        return ""
+    if any(name in text for name in _ANCHORS):
+        return text
+    # 0050／定期定額是他自己的完整句，不准把樓主股名黏上去。
+    if re.search(r"0050|定期定額", text):
+        return text
+    parent = _clean_voice(str(row.get("reply_to_text") or ""))
+    hits = [name for name in _ANCHORS if name in parent and name not in text]
+    if len(hits) == 1 and (
+        _LEVEL_NUM.search(text) or re.search(r"出清|觀察單|買回|止穩", text)
+    ):
+        return f"{hits[0]}，{text}"
+    return text
+
+
+def _lianya_kept(raw: str) -> str:
+    """22:14 有人問清光是否包含聯亞。嘲諷詞不進話筒。他連台積電都賣光，包含聯亞。"""
+    if "聯亞" not in raw:
+        return ""
+    if not _SKIP_REPLY.search(raw):
+        return ""
+    if "清光" not in raw and "台積電" not in raw:
+        return ""
+    from biaoke_danger_silent import LIANYA_LINE
+
+    return LIANYA_LINE
+
+
+def _split_sents(text: str) -> List[str]:
+    s = _clean_voice(text)
+    parts = [p.strip(" ，、") for p in re.split(r"[。！？]", s) if p.strip()]
+    if parts:
+        return parts
+    return [s] if s else []
+
+
+def _strip_leading_quotes(text: str) -> str:
+    """樓中樓常先引路人那句。引號裡不是他的判斷，留下引號後面他自己的話。"""
+    s = _clean_voice(text)
+    prev = None
+    while s and prev != s:
+        prev = s
+        s = _LEAD_QUOTE.sub("", s).strip()
+    return s
+
+
+def _own_clip(text: str, shown: Sequence[str], *, limit: int = 220) -> str:
+    """自回整則留。已經寫進大盤／前面黃金句的句子不再貼一次。"""
+    body = _strip_leading_quotes(text)
+    if not body or _SKIP_REPLY.search(body):
+        return ""
+    fresh = [p for p in _split_sents(body) if not _already_shown(p, shown)]
+    if not fresh:
+        return ""
+    out = "。".join(fresh[:2]).strip()
+    if len(out) > limit:
+        out = out[:limit].rstrip("，、 ") + "…"
+    if out and not out.endswith(("。", "…")):
+        out += "。"
+    return out
+
+
+def _hit_clip(text: str, pat: re.Pattern[str], *, limit: int = 180) -> str:
+    s = _clean_voice(text)
+    if not s or _SKIP_REPLY.search(s):
+        return ""
+    parts = _split_sents(s)
+    hit = [p for p in parts if pat.search(p)]
+    use = hit or parts[:2]
+    out = "。".join(use[:2]).strip()
+    if len(out) > limit:
+        out = out[:limit].rstrip("，、 ") + "…"
+    if out and not out.endswith(("。", "…")):
+        out += "。"
+    return out
+
+
+def _fmt_px(val: Any) -> str:
+    try:
+        x = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if abs(x - round(x)) < 1e-6:
+        return str(int(round(x)))
+    return f"{x:.2f}".rstrip("0").rstrip(".")
+
+
+def _bar_closed(date_iso: str, session: str) -> bool:
+    """盤中未收不當官方收。比今天早的日盤／夜盤才算已收。"""
+    today = _today()
+    if date_iso < today:
+        return True
+    if date_iso > today:
+        return False
+    now = datetime.now(TAIPEI)
+    if session == "night":
+        return (now.hour, now.minute) >= (5, 0)
+    return (now.hour, now.minute) >= (13, 45)
+
+
+def _ymd_iso(raw: str) -> str:
+    s = str(raw or "").strip()
+    if re.fullmatch(r"\d{8}", s):
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    return s
+
+
+def _load_official_bar(db_path: str, series: str) -> Optional[Dict[str, Any]]:
+    if not db_path or not os.path.isfile(db_path):
+        return None
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+    except sqlite3.Error:
+        return None
+    try:
+        if series == "TX":
+            rows = conn.execute(
+                "SELECT date, open, high, low, close, volume, session "
+                "FROM futures_daily WHERE symbol='TX' AND session='regular' "
+                "AND close IS NOT NULL ORDER BY date DESC LIMIT 6"
+            ).fetchall()
+            session = "regular"
+        elif series == "TWII":
+            rows = conn.execute(
+                "SELECT date, open, high, low, close, volume "
+                "FROM index_daily WHERE symbol='TWII' AND close IS NOT NULL "
+                "ORDER BY date DESC LIMIT 6"
+            ).fetchall()
+            session = "regular"
+        else:
+            rows = conn.execute(
+                "SELECT date, open, high, low, close, volume "
+                "FROM daily_quotes WHERE stock_id=? AND close IS NOT NULL "
+                "ORDER BY date DESC LIMIT 6",
+                (series,),
+            ).fetchall()
+            session = "regular"
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    for row in rows:
+        date_iso = _ymd_iso(str(row[0] or ""))
+        sess = session
+        if series == "TX":
+            sess = str(row[6] or "regular")
+        if not date_iso or not _bar_closed(date_iso, sess):
+            continue
+        try:
+            high = float(row[2])
+            low = float(row[3])
+            close = float(row[4])
+            open_ = float(row[1]) if row[1] is not None else close
+        except (TypeError, ValueError):
+            continue
+        vol = row[5]
+        return {
+            "date": date_iso,
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": vol,
+            "session": sess,
+        }
+    return None
+
+
+def _touch_phrase(high: float, low: float, px: float) -> str:
+    p = _fmt_px(px)
+    if low <= px <= high:
+        return f"這根高低包住他說的{p}"
+    if high < px:
+        return f"高還沒到他說的{p}"
+    return f"低還在他說的{p}之上"
+
+
+def _series_near(sentence: str, start: int, end: int) -> str:
+    best = ""
+    best_d = 10**9
+    for code, words in _SERIES_WORDS:
+        for word in words:
+            i = sentence.find(word)
+            while i >= 0:
+                d = min(abs(i - start), abs(i + len(word) - end))
+                if d < best_d:
+                    best_d = d
+                    best = code
+                i = sentence.find(word, i + 1)
+    if best and best_d <= 40:
+        return best
+    return ""
+
+
+def _levels_from_posts(posts: Sequence[Dict[str, Any]]) -> List[Tuple[str, float]]:
+    """只配他同一句（或同一則接著講的點位）裡點名的價。不另造價。"""
+    found: List[Tuple[str, float]] = []
+    seen = set()
+    for post in posts:
+        text = _clean_voice(str(post.get("text") or ""))
+        if not text:
+            continue
+        last = ""
+        parts = [p.strip() for p in re.split(r"[。！？]", text) if p.strip()]
+        if not parts:
+            parts = [text]
+        for sent in parts:
+            named = ""
+            for code, words in _SERIES_WORDS:
+                if any(w in sent for w in words):
+                    named = code
+                    break
+            if _IF_EXAMPLE.search(sent):
+                if named:
+                    last = named
+                continue
+            local = ""
+            for m in _LEVEL_NUM.finditer(sent):
+                num = m.group(1)
+                if num.startswith("202"):
+                    continue
+                series = _series_near(sent, m.start(), m.end()) or local or named or last
+                if not series:
+                    continue
+                local = series
+                px = float(num)
+                key = (series, px)
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append(key)
+            if local or named:
+                last = local or named
+    return found
+
+
+def _official_lines(db_path: str, levels: Sequence[Tuple[str, float]]) -> List[str]:
+    grouped: Dict[str, List[float]] = {}
+    order: List[str] = []
+    for series, px in levels:
+        if series not in grouped:
+            order.append(series)
+            grouped[series] = []
+        if px not in grouped[series]:
+            grouped[series].append(px)
+    lines: List[str] = []
+    for series in order:
+        bar = _load_official_bar(db_path, series)
+        if not bar:
+            continue
+        touches = [
+            _touch_phrase(float(bar["high"]), float(bar["low"]), px)
+            for px in grouped[series]
+        ]
+        name = _SERIES_LABEL.get(series, series)
+        sess = ""
+        if series == "TX":
+            sess = "日盤" if bar.get("session") == "regular" else "夜盤"
+        vol = bar.get("volume")
+        vol_bit = ""
+        vol_txt = _fmt_px(vol) if vol not in (None, "") else ""
+        if vol_txt and vol_txt != "0":
+            vol_bit = f" 量{vol_txt}"
+        lines.append(
+            f"官方柱：{name}{bar['date']}{sess} "
+            f"開{_fmt_px(bar['open'])} 高{_fmt_px(bar['high'])} "
+            f"低{_fmt_px(bar['low'])} 收{_fmt_px(bar['close'])}{vol_bit}，"
+            + "、".join(touches)
+            + "。"
+        )
+    return lines
+
+
+def voice_gold_lines(
+    rows: Sequence[Dict[str, Any]],
+    db_path: str = "",
+    *,
+    shown: Sequence[str] = (),
+) -> List[str]:
+    """黃金脈絡起：最新主文之後他自己的每一則回都留，對過已收官方柱。
+
+    不套舊雙箭頭稿、不補他沒講的價、不當買訊。路人列不要傳進來。
+    關鍵字對不上的自回也要留。跟大盤欄整句重複的才略過。
+    """
+    voice = [
+        r
+        for r in rows
+        if str(r.get("kind") or "") != "bystander" and str(r.get("text") or "").strip()
+    ]
+    if not voice:
         return []
+    mains = [r for r in voice if not _is_reply_row(r)]
+    if not mains:
+        return []
+    latest = max(mains, key=_row_sort_key)
+    latest_key = _row_sort_key(latest)
+    later = [
+        r
+        for r in voice
+        if _is_reply_row(r) and _row_sort_key(r) >= latest_key
+    ]
+    later.sort(key=_row_sort_key)
+    chunks: List[str] = []
+    shown_now = [str(x) for x in shown if str(x or "").strip()]
+    picked: List[Dict[str, Any]] = []
+    for rep in later:
+        raw = _clean_voice(str(rep.get("text") or ""))
+        anchored = _anchored_text(rep)
+        clip = _lianya_kept(raw)
+        if not clip and _SKIP_REPLY.search(raw):
+            continue
+        if not clip:
+            clip = _own_clip(anchored, shown_now + chunks, limit=220)
+        if not clip:
+            continue
+        picked.append(rep)
+        if not _already_shown(clip, shown_now + chunks):
+            chunks.append(clip)
+    if not chunks:
+        clip = _hit_clip(
+            str(latest.get("text") or ""),
+            re.compile(r"點位|雙箭頭|主流|空方|波浪|必須|穿刺"),
+        )
+        if clip and not _already_shown(clip, shown_now):
+            chunks.append(clip)
+    # 官方柱只對最新主文＋這串拿進文案的自回。股名沿用他回的那一樓。
+    level_posts = [latest]
+    for rep in picked:
+        leveled = dict(rep)
+        leveled["text"] = _anchored_text(rep)
+        level_posts.append(leveled)
+    official = _official_lines(db_path, _levels_from_posts(level_posts))
+    official = [x for x in official if not _already_shown(x, shown_now + chunks)]
+    try:
+        from biaoke_danger_silent import apply_danger_window
+
+        chunks, official = apply_danger_window(
+            latest, chunks, official, db_path
+        )
+    except Exception:
+        pass
+    if not chunks and not official:
+        return []
+    out: List[str] = []
+    if chunks:
+        out.append("黃金脈絡：" + chunks[0])
+        out.extend(chunks[1:])
+        out.extend(official)
+    else:
+        out.append("黃金脈絡：" + official[0])
+        out.extend(official[1:])
+    return out
 
 
 def reweave_gold(
@@ -278,11 +598,10 @@ def reweave_gold(
         _CACHE.update({"key": key, "at": now, "pack": out})
         return out
     gold: List[str] = []
-    gold.extend(_field_arc(rows))
-    gold.extend(_wave_arc(rows))
-    gold.extend(_method_gold(rows))
-    gold.extend(_reply_expand_gold(rows))
-    gold.extend(_cross_gold(db_path))
+    gold.extend(voice_gold_lines(rows, db_path))
+    for line in _field_arc(rows):
+        if str(line).startswith("已退場") and line not in gold:
+            gold.append(line)
     # 去重保序
     seen: List[str] = []
     for g in gold:

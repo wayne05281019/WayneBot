@@ -428,12 +428,12 @@ def test_focus_oral_does_not_repeat_board_in_said():
     assert "<b>族群</b>" in html
     assert "ASIC" in html
     assert "<b>PCB</b>" in html or "台光電" in html
-    # 他還說若有，不准整段再貼大盤；南亞科／光通訊這種補充才留
+    # 他還說若有，不准整段再貼大盤。自回裡多出來的南亞科進黃金脈絡。
     if "<b>他還說</b>" in html:
         said = html.split("<b>他還說</b>", 1)[1]
-        said = said.split("<b>還能問</b>")[0] if "<b>還能問</b>" in said else said
+        said = said.split("<b>", 1)[0]
         assert said.count("緩步上攻") == 0
-        assert "南亞科" in said or "光通訊" in said or "全新" in said
+    assert "南亞科" in html or "光通訊" in html or "全新" in html
     assert html.count("緩步上攻") == 1
     assert "13:12" in html
 
@@ -477,3 +477,254 @@ def test_old_inbox_not_counted_as_unread(tmp_path):
     assert "17:49" in html
     assert "樓下 2026-09-11" not in html
     assert "飆大現在在講" in html
+
+
+def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
+    """黃金脈絡到結尾跟最新主文＋自回，對已收官方柱。舊雙箭頭稿不准再印。"""
+    import sqlite3
+
+    from biaoke_reweave import reweave_gold
+
+    db = str(tmp_path / "w.db")
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE biaoke_posts(
+            id TEXT PRIMARY KEY, n INTEGER, date TEXT, time TEXT, parent TEXT,
+            layer INTEGER, kind TEXT, tags TEXT, text TEXT, updated_at TEXT
+        );
+        CREATE TABLE futures_daily(
+            date TEXT, symbol TEXT, session TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER
+        );
+        CREATE TABLE index_daily(
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL
+        );
+        CREATE TABLE daily_quotes(
+            date TEXT, stock_id TEXT, open REAL, high REAL, low REAL, close REAL, volume INTEGER
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO futures_daily VALUES('20261015','TX','regular',47716,47720,46883,46979,84911)"
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES('20261015','TWII',48382.75,48382.75,46795.38,46969.87,18709109)"
+    )
+    conn.execute(
+        "INSERT INTO daily_quotes VALUES('20261015','2330',2420,2450,2420,2440,58486)"
+    )
+    conn.commit()
+    conn.close()
+    old_arrow = {
+        "id": "old-arrow",
+        "kind": "post",
+        "date": "2026-09-20",
+        "time": "10:00",
+        "text": "光通訊 InP 先釘主流後，創意創高把 ASIC 拉成並列，到過年前雙箭頭。",
+    }
+    mains = [
+        {
+            "id": "185962404",
+            "kind": "post",
+            "date": "2026-10-16",
+            "time": "10:27",
+            "text": (
+                "用台指期來分析大盤多空轉折，台指期現在必須反彈至少48240之上，"
+                "才能化解第三波往下擴延。否則目前還是空方主場，需先降低持股，"
+                "至少保持現金5成以上(最好是七成)。"
+                "關鍵數字：台指期多空關鍵點位48240。除非能穿刺48240目前都是以空方誘多視之。"
+            ),
+        },
+    ]
+    replies = [
+        {
+            "id": "r-bystander",
+            "kind": "bystander",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "16:00",
+            "text": "我覺得會噴到88888，快買。",
+        },
+        {
+            "id": "r-corr",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "16:15",
+            "text": (
+                "今天波浪大師分析大盤從費半去分析。"
+                "原來訂此次為A波修正，改為C波修正，不見得會破7月底A波低點39000左右。"
+            ),
+        },
+        {
+            "id": "r-lya-am",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "10:37",
+            "layer": 2,
+            "reply_to_text": "目前只留一張聯亞讓他飄",
+            "text": "我也只剩下聯亞零股觀察單，因為這檔股票只要一旦發動都是用跳空方式不讓散戶上車",
+        },
+        {
+            "id": "r-lrg",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "10:59",
+            "layer": 2,
+            "reply_to_text": "想請問大立光跌破大量的低點，會不會假跌破",
+            "text": "會回到5700或之下",
+        },
+        {
+            "id": "r-pos",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "17:22",
+            "text": "我後來看創意破線，我最後連聯亞觀察單都出清，我現在是空手，包含台積電都沒有了。",
+        },
+        {
+            "id": "r-clear",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "21:38",
+            "text": "我也決定全部清光持股 包含台積電(2200)",
+        },
+        {
+            "id": "r-snark",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "22:14",
+            "text": "\"也包含聯亞嗎\" 也決定全部清光持股 包含台積電(2200) 是不是有閱讀障礙",
+        },
+        {
+            "id": "r-99",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "16:34",
+            "text": "99%撐不住，多空關鍵點位其實我和波浪大師說的點位完全一致，只是他用大盤，我用台指期。",
+        },
+        {
+            "id": "r-charity",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "22:03",
+            "text": "等這波修正完成，抄底賺大錢，不要忘記社會有很多需要幫助的人，能夠行有餘力盡量多做一些慈善",
+        },
+        {
+            "id": "r-8",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "23:27",
+            "text": (
+                "\"違反人性的當下確實會很掙扎 事後回頭看不見得不好\" "
+                "確實 對超過8成沒進行台指期多空雙向交易的投資人會很掙扎"
+            ),
+        },
+        {
+            "id": "r-yes",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "11:04",
+            "text": "Yes厲害 看樣子命中機率高 高手",
+        },
+        {
+            "id": "r-short",
+            "kind": "reply",
+            "parent": "185962404",
+            "date": "2026-10-16",
+            "time": "12:52",
+            "text": "其實空股票幾乎和隔日沖差不多，非常難操作。開課的人裡蕭明道會要求學生把賺的錢捐出來。",
+        },
+    ]
+    html = format_focus_oral(
+        mains,
+        replies,
+        now=datetime(2026, 10, 16, 22, 20, tzinfo=ZoneInfo("Asia/Taipei")),
+        db_path=db,
+    )
+    tail = html.split("<b>脈絡黃金</b>", 1)[-1]
+    assert "<b>脈絡黃金</b>" in html
+    assert "黃金脈絡：" in tail
+    assert "改為C波" in html or "C波修正" in html
+    assert "39000" in tail
+    assert "48240" in tail
+    assert "清光" in html or "空手" in html
+    assert "2200" in tail
+    assert "官方柱" in tail
+    assert "殺兩週左右" in tail
+    assert "C-3-4" in tail
+    assert "超過九成" in tail
+    assert "聯亞</a>已賣出" in tail or "聯亞已賣出" in tail
+    assert "加權2026-10-16缺完整官方開高低收" in tail
+    assert "46979" not in tail
+    assert "2440" not in tail
+    assert "創高把" not in html
+    assert "過年前雙箭頭" not in html
+    assert "該怎麼做" not in html
+    assert "可接" not in html
+    assert "88888" not in html
+    assert "99999" not in html
+    assert "閱讀障礙" not in tail
+    assert "不在清光那句裡" not in tail
+    assert "聯亞還在" not in tail
+    assert "不是聯亞" not in tail
+    assert "都賣光了" in tail
+    assert "聯亞" in tail
+    assert "零股" in tail
+    assert "5700" in tail
+    assert "大立光" in tail
+    assert "99%" in tail
+    assert "台指期" in tail
+    assert "行有餘力" in tail
+    assert "8成" in tail
+    assert "違反人性" not in tail
+    assert "命中機率高" in tail
+    assert "空股票" in tail
+    assert "蕭明道" in tail
+    assert "不是買訊" not in html
+    from biaoke_desk import upsert_biaoke_posts
+
+    upsert_biaoke_posts(
+        db,
+        [old_arrow] + mains + [r for r in replies if r["kind"] != "bystander"],
+    )
+    pack = reweave_gold(db, force=True)
+    blob = "\n".join(pack.get("gold") or [])
+    assert "改為C波" in blob or "C波修正" in blob
+    assert "創高把" not in blob
+    assert "48240" in blob
+    from biaoke_reweave import voice_gold_lines
+
+    glued = "\n".join(
+        voice_gold_lines(
+            [
+                {
+                    "id": "m",
+                    "kind": "post",
+                    "date": "2026-10-16",
+                    "time": "10:27",
+                    "text": "台指期必須反彈至少48240之上。",
+                },
+                {
+                    "id": "r0050",
+                    "kind": "reply",
+                    "date": "2026-10-16",
+                    "time": "12:47",
+                    "text": "那就定期定額0050",
+                    "reply_to_text": "聯亞比較可惜，今天高點直接出清。",
+                },
+            ],
+            "",
+        )
+    )
+    assert "0050" in glued
+    assert "聯亞，那就" not in glued

@@ -868,6 +868,27 @@ def test_parse_api_author_replies_keeps_layer1_c2_warning():
     assert "謝謝飆大" not in rows[0]["text"]
 
 
+def test_parse_api_author_replies_keeps_same_words_on_two_ids():
+    """同一句寫在兩個留言 id，後一則不准因為正文相同被丟掉。"""
+    payload = [
+        {
+            "id": "a1",
+            "memberId": 25263,
+            "content": {"text": "還有兩段要殺，現在只是C-3-4。"},
+            "createTime": "2026-10-16T09:24:00Z",
+        },
+        {
+            "id": "a2",
+            "memberId": 25263,
+            "content": {"text": "還有兩段要殺，現在只是C-3-4。"},
+            "createTime": "2026-10-16T09:25:00Z",
+        },
+    ]
+    rows = parse_api_author_replies(payload, parent_id="185962404")
+    assert len(rows) == 2
+    assert {r["id"].split(":c")[-1] for r in rows} == {"a1", "a2"}
+
+
 def test_parse_api_author_replies_nickname_containing_him_is_not_him():
     payload = [
         {
