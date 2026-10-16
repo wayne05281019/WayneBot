@@ -25,6 +25,7 @@ from scenario_forecast_chart import (
     _dc_project_impulse_xs,
     _dc_abc_future_bars,
     _future_tick_labels,
+    _separate_stacked_date_labels,
     _confirmed_leg_bars,
     _CAL_PER_BAR,
 )
@@ -413,6 +414,54 @@ def test_future_tick_labels_follow_wave_xs():
     fut_labs_l = [lb for t, lb in zip(ticks_l, labs_l) if t > n - 1]
     assert fut_labs_s and fut_labs_l
     assert fut_labs_s[-1] != fut_labs_l[-1]
+
+
+def test_close_future_date_labels_separate_without_moving_others():
+    """最右兩顆日期字盒太近時只下移後一顆；前面日期的 x、y 不動。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots(figsize=(10.6, 7.6))
+    fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.20)
+    ax.set_xlim(-0.8, 364.35)
+    ticks = [13.0, 160.0, 319.0, 350.0]
+    labels = ["2025/07/22", "2026/02/24", "2026/10/15", "2026/11/27"]
+    n = 320
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(labels)
+    texts = list(ax.get_xticklabels())
+    for lab, xi in zip(texts, ticks):
+        is_fut = float(xi) > float(n - 1) + 0.2
+        is_first = abs(float(xi) - float(ticks[0])) < 0.5
+        is_last = abs(float(xi) - float(ticks[-1])) < 0.5
+        lab.set_fontproperties(_fp(15.0 if is_fut else 13.5, "bold"))
+        lab.set_rotation(18)
+        lab.set_ha("left" if is_first else ("right" if is_last or is_fut else "center"))
+        lab.set_clip_on(False)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    before = [lab.get_window_extent(renderer=renderer) for lab in texts]
+    assert min(before[2].x1, before[3].x1) - max(before[2].x0, before[3].x0) > 1
+    _separate_stacked_date_labels(fig, texts)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    after = [lab.get_window_extent(renderer=renderer) for lab in texts]
+    for i in range(3):
+        assert abs(after[i].x0 - before[i].x0) < 1.5
+        assert abs(after[i].y0 - before[i].y0) < 1.5
+    assert after[3].y1 < after[2].y0 - 4
+    for i in range(len(after)):
+        for j in range(i + 1, len(after)):
+            a, b = after[i], after[j]
+            ox = min(a.x1, b.x1) - max(a.x0, b.x0)
+            oy = min(a.y1, b.y1) - max(a.y0, b.y0)
+            assert ox <= 1 or oy <= 1
+    assert after[3].y0 > 2
+    plt.close(fig)
 
 
 @pytest.mark.production_db

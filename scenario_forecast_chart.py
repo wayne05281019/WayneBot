@@ -1575,6 +1575,42 @@ def _future_tick_labels(
     return ticks, labels
 
 
+def _separate_stacked_date_labels(fig, labels) -> None:
+    """旋轉日期字盒若相交，只把後面那顆往下挪。刻度 x、其他日期不動。"""
+    shown = [lab for lab in labels if str(lab.get_text() or "").strip()]
+    if len(shown) < 2:
+        return
+    import matplotlib.transforms as mtransforms
+    from matplotlib.transforms import Bbox
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    pad = 8.0
+    floor = 4.0
+    dpi = float(fig.dpi or 100.0) or 100.0
+    placed = []
+    for lab in shown:
+        bb = lab.get_window_extent(renderer=renderer)
+        shift = 0.0
+        for prev in placed:
+            ox = min(bb.x1, prev.x1) - max(bb.x0, prev.x0)
+            oy = min(bb.y1, prev.y1) - max(bb.y0, prev.y0)
+            if ox > 1.0 and oy > 1.0:
+                need = (prev.y0 - pad) - bb.y1
+                if need < shift:
+                    shift = need
+        if shift < -0.5:
+            if bb.y0 + shift < floor:
+                shift = floor - bb.y0
+            if shift < -0.5:
+                offset = mtransforms.ScaledTranslation(
+                    0.0, shift / dpi, fig.dpi_scale_trans
+                )
+                lab.set_transform(lab.get_transform() + offset)
+                bb = Bbox.from_extents(bb.x0, bb.y0 + shift, bb.x1, bb.y1 + shift)
+        placed.append(bb)
+
+
 def _ladder_range_note(price: float, idx: int, n: int) -> str:
     """灰框區間文案：如 63/66、關鍵點位。"""
     p = float(price)
@@ -2182,11 +2218,13 @@ def _paint(
             lab.set_ha("left" if is_first else ("right" if is_last or is_fut else "center"))
             lab.set_clip_on(False)
         axv.tick_params(axis="x", pad=8, length=5, width=1.2, colors="#111111", labelbottom=True)
+        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.20)
+        # 只挪撞在一起的日期字；刻度 x、浪號、價位不改。先定版面再量字盒。
+        _separate_stacked_date_labels(fig, list(axv.get_xticklabels()))
         # 現價豎線＝歷史／未來分界（加粗＋淺底帶）
         ax.axvspan(float(n - 1), x_max, color="#ffffff", alpha=0.22, zorder=0)
         ax.axvline(float(n - 1), color="#212121", lw=2.2, ls="-", alpha=0.95, zorder=6)
         axv.axvline(float(n - 1), color="#212121", lw=1.8, ls="-", alpha=0.9, zorder=6)
-        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=0.20)
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         fig.savefig(out_path, dpi=_DPI, facecolor=_BG)
         plt.close(fig)
