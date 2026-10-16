@@ -1754,6 +1754,8 @@ _STRUCTURE_LABEL_FRAC = 0.068
 _STRUCTURE_X_RIGHT_CAP_EXTRA = 26.0
 # 昨收→今收前進寬係數（≈1＝用足昨收盒寬，中間再加 SIDE_GAP）
 _STRUCTURE_CLOSE_PAIR_ADVANCE = 0.92
+# 今收盒右緣距軸右界的像素。縮圖後四字＋數字仍要整段落在圖內。
+_TODAY_CLOSE_RIGHT_INSET_PX = 18
 
 
 def _dedupe_right_notes(
@@ -1853,6 +1855,45 @@ def _dedupe_right_notes(
                 note["y"] = y
     kept.sort(key=lambda n: -float(n.get("y") or 0))
     return kept
+
+
+def _inset_today_close_inside(ax, prev_art, today_art) -> None:
+    """今收整盒收進軸右緣內。xlim 不加大，主圖 K 寬度維持。昨收跟著左移，兩盒仍留縫。"""
+    if today_art is None or ax is None:
+        return
+    try:
+        fig = ax.figure
+        # clip_on 時 tightbbox 會被軸裁成貼齊右緣，量不到溢出
+        saved_clip = []
+        for art in (today_art, prev_art):
+            if art is None:
+                continue
+            saved_clip.append((art, bool(art.get_clip_on())))
+            art.set_clip_on(False)
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        axbb = ax.get_window_extent(renderer=renderer)
+        tb = today_art.get_tightbbox(renderer)
+        for art, flag in saved_clip:
+            art.set_clip_on(flag)
+        if tb is None:
+            return
+        limit = float(axbb.x1) - float(_TODAY_CLOSE_RIGHT_INSET_PX)
+        overflow = float(tb.x1) - limit
+        if overflow <= 0.4:
+            return
+        x0, _y0 = ax.transData.inverted().transform((0.0, 0.0))
+        x1, _y1 = ax.transData.inverted().transform((overflow + 1.0, 0.0))
+        dx = float(x1 - x0)
+        if dx <= 0:
+            return
+        tx, ty = today_art.get_position()
+        today_art.set_position((float(tx) - dx, float(ty)))
+        if prev_art is not None:
+            px, py = prev_art.get_position()
+            prev_art.set_position((float(px) - dx, float(py)))
+    except Exception:
+        return
 
 
 def _place_right_notes(
@@ -2037,6 +2078,8 @@ def _place_right_notes(
     pair_prev = prev_close_notes[0] if close_pair else None
     pair_today = today_close_notes[0] if close_pair else None
     pair_side_gap = float(_CLOSE_PAIR_SIDE_GAP)
+    close_prev_art = None
+    close_today_art = None
 
     def _paint_close_text_only(
         note: Dict[str, Any],
@@ -2049,7 +2092,7 @@ def _place_right_notes(
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
         size = int(note.get("size") or _STRUCTURE_TAG_SIZE)
-        ax.text(
+        return ax.text(
             float(text_x),
             show_ty,
             text,
@@ -2200,10 +2243,15 @@ def _place_right_notes(
                 linestyle="None",
                 clip_on=True,
             )
-            _paint_close_text_only(pair_prev, show_ty, col_tx, pad=_STRUCTURE_TAG_PAD, z=12)
-            _paint_close_text_only(pair_today, show_ty, today_tx, pad=_STRUCTURE_TAG_PAD, z=13)
+            close_prev_art = _paint_close_text_only(
+                pair_prev, show_ty, col_tx, pad=_STRUCTURE_TAG_PAD, z=12
+            )
+            close_today_art = _paint_close_text_only(
+                pair_today, show_ty, today_tx, pad=_STRUCTURE_TAG_PAD, z=13
+            )
             continue
         _paint_one_note(note, show_ty, col_tx, stub=True)
+    _inset_today_close_inside(ax, close_prev_art, close_today_art)
 
 
 def _spread_ys_around(

@@ -353,3 +353,20 @@ def test_load_env_status_confirm_count():
     line = morning_observe_line_html(db, "20261014")
     assert "外資升級" in line
     assert "非買訊" in line
+
+
+def test_foreign_hex_stacks_below_same_bar_arrow():
+    """同柱上箭尾之下才放六角，中心不准落在箭身上。"""
+    from wayne_navigator import _foreign_observe_anchor
+
+    span = 1000.0
+    gap = span * 0.034
+    arrow_h = span * 0.048
+    low = 4250.0
+    tail = low - gap - arrow_h
+    y = _foreign_observe_anchor(low, arrow_gap=gap, span=span, blocked_y=tail)
+    mark_r = span * 0.028
+    assert y <= tail - mark_r - span * 0.05
+    plain = _foreign_observe_anchor(low, arrow_gap=gap, span=span, blocked_y=None)
+    assert abs(plain - (low - gap * 2.15)) < 1e-6
+    assert y < plain

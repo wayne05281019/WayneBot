@@ -1364,3 +1364,49 @@ def test_broken_up_rail_not_projected_to_forecast():
         proj = project_next(info)
         assert proj.get("up_fut") in (None, 0) or "up_fut" not in proj or proj.get("up_fut") is None
 
+
+def test_today_close_box_inset_inside_axes():
+    """今收盒右緣要留在軸內；主圖 xlim 不為這顆標加大。"""
+    import matplotlib
+
+    matplotlib.use("Agg", force=False)
+    import matplotlib.pyplot as plt
+
+    from biaoke_chart import _TODAY_CLOSE_RIGHT_INSET_PX, _inset_today_close_inside
+
+    assert int(_TODAY_CLOSE_RIGHT_INSET_PX) >= 12
+    fig, ax = plt.subplots(figsize=(6.2, 3.2), dpi=120)
+    try:
+        ax.set_xlim(0, 100)
+        ax.set_ylim(0, 10)
+        prev = ax.text(
+            78,
+            5,
+            "昨收 4,165",
+            ha="left",
+            va="center",
+            fontproperties=__import__("biaoke_chart", fromlist=["_fp"])._fp(11, "bold"),
+            clip_on=True,
+            bbox=dict(boxstyle="round,pad=0.22", facecolor="#ffffff", edgecolor="#546e7a"),
+        )
+        today = ax.text(
+            96,
+            5,
+            "今收 4,250",
+            ha="left",
+            va="center",
+            fontproperties=__import__("biaoke_chart", fromlist=["_fp"])._fp(11, "bold"),
+            clip_on=True,
+            bbox=dict(boxstyle="round,pad=0.22", facecolor="#ffffff", edgecolor="#212121"),
+        )
+        _inset_today_close_inside(ax, prev, today)
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        axbb = ax.get_window_extent(renderer=renderer)
+        tb = today.get_tightbbox(renderer)
+        pb = prev.get_tightbbox(renderer)
+        assert tb.x1 <= axbb.x1 - 8
+        assert pb.x1 < tb.x0 - 2
+    finally:
+        plt.close(fig)
+
