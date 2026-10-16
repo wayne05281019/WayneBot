@@ -573,11 +573,14 @@ def missing_open_quote_days(
     db_path: str,
     start_ymd: str,
     end_ymd: str,
+    *,
+    skip_confirmed_absent: bool = True,
 ) -> List[str]:
     """開市日曆日 ∩ 窗內，daily_quotes 缺列／量 NULL／櫃買張誤÷1000殘列 的日期。
 
     週末／休市不列。量 0＝可能真停價，不算缺列。
     source=biaoke_stock_day 且正量卻小到像股數被當張再÷1000 → 當洞重抓（不准留假小量挖洞）。
+    skip_confirmed_absent：已落庫「官方月表無列」日不再當缺洞（預設 True）。
     """
     sid = str(stock_id or "").strip()
     path = str(db_path or "").strip()
@@ -642,7 +645,14 @@ def missing_open_quote_days(
         ):
             continue
         have.add(d)
-    return [d for d in open_days if d not in have]
+    holes = [d for d in open_days if d not in have]
+    if not skip_confirmed_absent or not holes:
+        return holes
+    # 官方月表已確認無列（休市／未交易）落庫後不再當缺洞，避免每次冷查重抓整月
+    known = load_confirmed_absent_dates(sid, path, start, end)
+    if not known:
+        return holes
+    return [d for d in holes if d not in known]
 
 
 # 補洞結果短記：查股暖路徑會二次 prepare，不准每次重打官方月表（CI ~2s）
@@ -652,12 +662,109 @@ _ENSURE_VOL_MEMO: Dict[Tuple[Any, ...], Tuple[float, Dict[str, Any]]] = {}
 _ENSURE_VOL_MEMO_MAX = 64
 # (sid, yyyymm) → 上次成功 STOCK_DAY 的日期集合（空 frozenset＝月表確認無列）
 _ENSURE_MONTH_DATES: Dict[Tuple[str, str], frozenset] = {}
+_ABSENT_TABLE = "official_quote_absent"
 
 
 def clear_ensure_official_volume_cache() -> None:
+    """清進程 memo／月表快取。已落庫的 confirmed_absent 不准清（冷啟才省得住）。"""
     with _ENSURE_VOL_LOCK:
         _ENSURE_VOL_MEMO.clear()
         _ENSURE_MONTH_DATES.clear()
+
+
+def _ensure_absent_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {_ABSENT_TABLE} (
+            stock_id TEXT NOT NULL,
+            ymd TEXT NOT NULL,
+            noted_at TEXT,
+            PRIMARY KEY (stock_id, ymd)
+        )
+        """
+    )
+
+
+def load_confirmed_absent_dates(
+    stock_id: str,
+    db_path: str,
+    start_ymd: str = "",
+    end_ymd: str = "",
+) -> set:
+    """讀已落庫：官方月表確認無列的開市日（不准發明量）。"""
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    if not sid or not path:
+        return set()
+    start = str(start_ymd or "").replace("-", "")[:8]
+    end = str(end_ymd or "").replace("-", "")[:8]
+    try:
+        conn = sqlite3.connect(path, timeout=15.0)
+        try:
+            _ensure_absent_table(conn)
+            if len(start) == 8 and len(end) == 8:
+                rows = conn.execute(
+                    f"SELECT ymd FROM {_ABSENT_TABLE} WHERE stock_id=? "
+                    "AND ymd BETWEEN ? AND ?",
+                    (sid, start, end),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"SELECT ymd FROM {_ABSENT_TABLE} WHERE stock_id=?",
+                    (sid,),
+                ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return set()
+    out = set()
+    for (ymd,) in rows or []:
+        d = str(ymd or "").replace("-", "")[:8]
+        if len(d) == 8:
+            out.add(d)
+    return out
+
+
+def save_confirmed_absent_dates(
+    stock_id: str,
+    db_path: str,
+    dates: List[str],
+) -> int:
+    """官方月表確認無列 → 落庫；下次缺洞掃描跳過，縮短查股第二→第三冷路徑。"""
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    clean = []
+    for raw in dates or []:
+        d = str(raw or "").replace("-", "")[:8]
+        if len(d) == 8 and d.isdigit():
+            clean.append(d)
+    if not sid or not path or not clean:
+        return 0
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    noted = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M:%S")
+    n = 0
+    try:
+        conn = sqlite3.connect(path, timeout=30.0)
+        try:
+            _ensure_absent_table(conn)
+            for d in clean:
+                cur = conn.execute(
+                    f"INSERT OR IGNORE INTO {_ABSENT_TABLE} "
+                    "(stock_id, ymd, noted_at) VALUES (?,?,?)",
+                    (sid, d, noted),
+                )
+                n += int(cur.rowcount or 0)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        logger.debug(
+            "save_confirmed_absent fail sid=%s", sid, exc_info=True
+        )
+        return 0
+    return n
 
 
 def _copy_ensure_stats(stats: Dict[str, Any]) -> Dict[str, Any]:
@@ -745,6 +852,10 @@ def ensure_official_volume_window(
     missing = missing_open_quote_days(sid, path, start, end)
     out["missing_before"] = list(missing)
     if not missing:
+        # 無缺洞：仍帶已落庫 absent 給 prepare skip_invent（不准發明假量）
+        known_abs = load_confirmed_absent_dates(sid, path, start, end)
+        if known_abs:
+            out["confirmed_absent"] = sorted(known_abs)
         with _ENSURE_VOL_LOCK:
             _ENSURE_VOL_MEMO[memo_key] = (time.monotonic(), _copy_ensure_stats(out))
         return out
@@ -874,7 +985,10 @@ def ensure_official_volume_window(
         except Exception:
             pass
     # 補完再掃：仍缺且該月官方已回＝confirmed_absent；月失敗＝still_missing
-    missing_after = missing_open_quote_days(sid, path, start, end)
+    # 不跳過已落庫 absent：本輪剛確認的也要寫進 out／DB
+    missing_after = missing_open_quote_days(
+        sid, path, start, end, skip_confirmed_absent=False
+    )
     for d in missing_after:
         ym = d[:6]
         if ym in official_by_month:
@@ -890,6 +1004,17 @@ def ensure_official_volume_window(
     # 補成功的洞
     filled_dates = [d for d in missing if d not in missing_after]
     out["filled_dates"] = filled_dates
+    if out["confirmed_absent"]:
+        try:
+            save_confirmed_absent_dates(sid, path, out["confirmed_absent"])
+        except Exception:
+            logger.debug("persist confirmed_absent fail sid=%s", sid, exc_info=True)
+        # 合併舊落庫（窗內），給 prepare skip_invent 一次帶齊
+        known_abs = load_confirmed_absent_dates(sid, path, start, end)
+        if known_abs:
+            out["confirmed_absent"] = sorted(
+                set(out["confirmed_absent"]) | known_abs
+            )
     if filled_dates or out["confirmed_absent"]:
         logger.info(
             "official vol window sid=%s filled=%s absent=%s still=%s months_ok=%s",

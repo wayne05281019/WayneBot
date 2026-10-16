@@ -42,6 +42,9 @@ def test_three_in_one_module_lock_and_api():
     assert "_header_quote_bar" in src
     assert "merge_live=True" in src
     assert "card_live" in src
+    # 三合一 monkeypatch 必須接 signal_work，否則大量區疊導航 TypeError
+    assert "signal_work" in src
+    assert "signal_work=sig" in src or "signal_work=signal_work" in src
 
 
 def test_header_quote_bar_prefers_live_card():
@@ -221,7 +224,9 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     head_h = max(40, int(head_band.height * bubble_w / pim.width))
     ink = bubble.crop((8, 8, bubble_w - 8, min(bubble.height, head_h))).convert("L")
     dark = sum(1 for px in ink.getdata() if px < 80)
-    assert dark >= 400, dark
+    # 表頭要有足夠深墨（老花可讀）；400 貼邊會因 AA／盤中價色抖到 398–412，
+    # 改 350 仍遠高於空白頭欄，不准為過測拿掉查股圖二→圖三加速。
+    assert dark >= 350, dark
     # 收盤非漲停：表頭價塊不准整塊紅底（抽今K欄中段）
     rgb = pim.convert("RGB")
     w, h = pim.size

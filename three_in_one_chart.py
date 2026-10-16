@@ -2580,11 +2580,28 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
 
         orig_overlay = wn.overlay_nav_marks_on_zone
 
-        def _overlay_aligned(ax1, ax_sig, work, *, card=None, draw_legend=True, draw_ma20=True):
+        def _overlay_aligned(
+            ax1,
+            ax_sig,
+            work,
+            *,
+            card=None,
+            draw_legend=True,
+            draw_ma20=True,
+            signal_work=None,
+        ):
+            # 必須接 signal_work：大量區 overlay_nav_marks_on_zone 會傳 180 日母體，
+            # 簽名對不齊會整段疊標失敗（CI dark 墨水門檻一併炸）。
             view_dk = [_dk(d) for d in work["date"].tolist()]
             if not view_dk:
                 return orig_overlay(
-                    ax1, ax_sig, work, card=card, draw_legend=draw_legend, draw_ma20=draw_ma20
+                    ax1,
+                    ax_sig,
+                    work,
+                    card=card,
+                    draw_legend=draw_legend,
+                    draw_ma20=draw_ma20,
+                    signal_work=signal_work,
                 )
             cw_dk = [_dk(d) for d in canon_work["date"].tolist()]
             end_d = view_dk[-1]
@@ -2595,9 +2612,17 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 start = warm_dk.index(view_dk[0])
             except ValueError:
                 return orig_overlay(
-                    ax1, ax_sig, work, card=card, draw_legend=draw_legend, draw_ma20=draw_ma20
+                    ax1,
+                    ax_sig,
+                    work,
+                    card=card,
+                    draw_legend=draw_legend,
+                    draw_ma20=draw_ma20,
+                    signal_work=signal_work,
                 )
             real_arange = np.arange
+            # 三合一① 180 暖窗即 signal 母體；呼叫端有傳就沿用，沒傳用 warm
+            sig = signal_work if signal_work is not None else warm
 
             def _shifted_arange(*a, **k):
                 arr = real_arange(*a, **k)
@@ -2617,7 +2642,13 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
             np.arange = _shifted_arange  # type: ignore[assignment]
             try:
                 orig_overlay(
-                    ax1, ax_sig, warm, card=card, draw_legend=draw_legend, draw_ma20=draw_ma20
+                    ax1,
+                    ax_sig,
+                    warm,
+                    card=card,
+                    draw_legend=draw_legend,
+                    draw_ma20=draw_ma20,
+                    signal_work=sig,
                 )
             finally:
                 np.arange = real_arange  # type: ignore[assignment]
@@ -3335,8 +3366,13 @@ def render_lookup_structure_result(
     save_path: str,
     *,
     card: Optional[dict] = None,
+    pack: Optional[dict] = None,
 ) -> Tuple[str, str]:
-    """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。"""
+    """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。
+
+    pack：查股熱路徑可在 paint 外先 prepare_volume_zone；有 pack 就不再 prepare／ensure，
+    縮短高低卡／介紹之後到結構出圖的沉默（不准造假量）。
+    """
     sid = str(stock_id or "").strip()
     name = str(stock_name or sid).strip() or sid
     if not sid or not db_path or not save_path:
@@ -3358,7 +3394,12 @@ def render_lookup_structure_result(
         )
 
         # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖吃近 _BARS（≈八個月）
-        pack = prepare_volume_zone(sid, name, db_path, save_path)
+        # 查股可傳預先 prepare 的 pack（paint 外），此處只渲 PNG。
+        if not (
+            isinstance(pack, dict)
+            and (pack.get("bars") or pack.get("view") is not None)
+        ):
+            pack = prepare_volume_zone(sid, name, db_path, save_path)
         if not pack:
             return "", ""
         # prepare 已載官方柱（need≈188 ≥ _BARS）；暖路徑不准再 load_official_ohlc／iterrows。

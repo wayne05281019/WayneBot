@@ -8465,6 +8465,34 @@ class WayneTelegramBot:
                 return None
 
         news_task = asyncio.create_task(_fetch_news())
+        # 官方量窗 ensure：跟 MIS／建卡並行（paint 外），縮短介紹→結構沉默。
+        # 不准造假量；結構 paint 前仍 await 同一 task。
+        from vol_zone_chart import (
+            ensure_official_volume_window,
+            lookup_vol_ensure_days,
+        )
+
+        _vol_ensure_name = ""
+        if hits:
+            _vol_ensure_name = str(hits[0].get("stock_name") or "").strip()
+        _vol_ensure_days = lookup_vol_ensure_days()
+        t_ensure0 = time.monotonic()
+
+        async def _run_vol_ensure():
+            """paint 外補官方量；例外吞掉後仍回空 dict，prepare 內可再 ensure。"""
+            try:
+                return await asyncio.to_thread(
+                    ensure_official_volume_window,
+                    code,
+                    self.db_path,
+                    days=_vol_ensure_days,
+                    stock_name=_vol_ensure_name or code,
+                )
+            except Exception:
+                logger.exception("查股提早 ensure 失敗 code=%s", code)
+                return {}
+
+        ensure_task = asyncio.create_task(_run_vol_ensure())
         live_rt = await _fetch_mis()
         st0 = self._op_state_map().setdefault(actor, {"sent": [], "current": "table", "t0": op_t0})
         st0["current"] = "table"
@@ -8593,6 +8621,7 @@ class WayneTelegramBot:
             logger.info("看這檔 card %.1fs code=%s", time.monotonic() - t0, code)
             if card.get("error"):
                 tape_task.cancel()
+                ensure_task.cancel()
                 await _reply_visible(
                     f"⚠️ {html_escape(card.get('error'))}",
                     html=True,
@@ -8627,6 +8656,9 @@ class WayneTelegramBot:
             ]
             vol_face = ["大量撐壓圖（非買訊）"]
 
+            # 結構 paint 閉包吃預先 prepare 的 pack（由 _struct_item 填入）
+            _struct_pack_box: list = [None]
+
             def _render_struct():
                 from three_in_one_chart import render_lookup_structure_result
 
@@ -8636,6 +8668,7 @@ class WayneTelegramBot:
                     self.db_path,
                     struct_path_f,
                     card=card,
+                    pack=_struct_pack_box[0],
                 )
                 if cap:
                     struct_face[0] = cap
@@ -8735,35 +8768,13 @@ class WayneTelegramBot:
 
             # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
             # 介紹圖在高低卡已 submit 後排隊：卡一畫完 worker 馬上接介紹，與送高低卡重疊。
-            # 官方量窗 ensure：卡建完就背景跑（paint 外），與卡／介紹重疊；結構渲前 await。
+            # 官方量窗 ensure：進查股就與 MIS／建卡並行（見上方 ensure_task）；結構 prepare 在 paint 外。
             # 順序鎖死：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖。一次一張、好了就送。
             card_queued = asyncio.Event()
             glance_queued = asyncio.Event()
 
-            from vol_zone_chart import (
-                ensure_official_volume_window,
-                lookup_vol_ensure_days,
-            )
-
-            _vol_ensure_name = _stock_caption_name(card, code)
-            _vol_ensure_days = lookup_vol_ensure_days()
-            t_ensure0 = time.monotonic()
-
-            async def _run_vol_ensure():
-                """paint 外補官方量；例外吞掉後仍回空 dict，prepare 內可再 ensure。"""
-                try:
-                    return await asyncio.to_thread(
-                        ensure_official_volume_window,
-                        code,
-                        self.db_path,
-                        days=_vol_ensure_days,
-                        stock_name=_vol_ensure_name,
-                    )
-                except Exception:
-                    logger.exception("查股提早 ensure 失敗 code=%s", code)
-                    return {}
-
-            ensure_task = asyncio.create_task(_run_vol_ensure())
+            # 卡建完後名稱可能比 hits 準；只更新字串，不准重開 ensure（已在跑／memo）。
+            _vol_ensure_name = _stock_caption_name(card, code) or _vol_ensure_name
 
             async def _await_vol_ensure(*, label: str = "struct") -> None:
                 """補官方量在 paint 外等完；不准造假量／挖洞。"""
@@ -8774,6 +8785,28 @@ class WayneTelegramBot:
                     code,
                     label,
                 )
+
+            async def _run_struct_prepare():
+                """ensure 完後在 paint 外 prepare；與卡／介紹渲重疊，結構只剩 PNG。"""
+                try:
+                    await _await_vol_ensure(label="struct_prep")
+                except asyncio.CancelledError:
+                    return None
+                from vol_zone_chart import prepare_volume_zone
+
+                try:
+                    return await asyncio.to_thread(
+                        prepare_volume_zone,
+                        code,
+                        _vol_ensure_name or code,
+                        self.db_path,
+                        struct_path_f,
+                    )
+                except Exception:
+                    logger.exception("查股結構 prepare 失敗 code=%s", code)
+                    return None
+
+            struct_prep_task = asyncio.create_task(_run_struct_prepare())
 
             async def _card_item():
                 """先 submit 再放行介紹圖排隊；await 完才回傳要送的高低卡。"""
@@ -8845,14 +8878,20 @@ class WayneTelegramBot:
                 return None
 
             async def _struct_item():
-                # ensure 與卡／介紹重疊；paint 前必須等介紹已進 queue
-                await _await_vol_ensure(label="struct")
+                # ensure＋prepare 與卡／介紹重疊；paint 前必須等介紹已進 queue
                 try:
                     await asyncio.wait_for(
                         glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
                     )
                 except asyncio.TimeoutError:
                     glance_queued.set()
+                try:
+                    _struct_pack_box[0] = await struct_prep_task
+                except asyncio.CancelledError:
+                    _struct_pack_box[0] = None
+                except Exception:
+                    logger.exception("查股結構 prep await 失敗 code=%s", code)
+                    _struct_pack_box[0] = None
                 png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
                 cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
                 if not png:
