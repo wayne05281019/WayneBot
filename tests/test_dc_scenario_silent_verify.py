@@ -9,19 +9,25 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from dc_scenario_silent_verify import (
+    align_wave_turns,
     DC_SF_START,
     JOB_KIND,
     LOCK_NAME,
     PIPE_PREFIX,
+    LOOKBACK_HOURS,
     SCHEDULE_HOUR,
     SCHEDULE_MINUTE,
     biaoke_night_busy,
     compare_one,
-    in_campaign,
-    meaning_diff_line,
-    pipeline_key,
     ensure_tables,
+    fetch_dc_posts_within,
+    in_campaign,
+    in_lookback,
+    load_rules,
+    meaning_diff_line,
     night_tick,
+    pipeline_key,
+    propose_rule_updates,
 )
 
 
@@ -30,20 +36,22 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 
 def test_schedule_staggered_from_biaoke_0100():
     assert JOB_KIND == "dc_sf_silent"
-    assert SCHEDULE_HOUR == 2 and SCHEDULE_MINUTE == 20
+    assert SCHEDULE_HOUR == 3 and SCHEDULE_MINUTE == 30
+    assert LOOKBACK_HOURS == 24
     assert PIPE_PREFIX.startswith("dc-sf-silent")
     assert LOCK_NAME == "dc_sf_silent.lock"
-    # 01:00–02:19 忙；02:20 起可跑
+    # 01:00–02:19 忙；03:30 才是本軌
     busy = datetime(2026, 10, 15, 1, 30, tzinfo=TAIPEI)
-    free = datetime(2026, 10, 15, 2, 20, tzinfo=TAIPEI)
+    free = datetime(2026, 10, 15, 3, 30, tzinfo=TAIPEI)
     assert biaoke_night_busy(busy) is True
     assert biaoke_night_busy(free) is False
 
 
 def test_campaign_window_and_pipeline_key():
     assert DC_SF_START == date(2026, 10, 15)
-    assert in_campaign(datetime(2026, 10, 15, 2, 20, tzinfo=TAIPEI))
-    assert not in_campaign(datetime(2026, 10, 14, 2, 20, tzinfo=TAIPEI))
+    assert in_campaign(datetime(2026, 10, 15, 3, 30, tzinfo=TAIPEI))
+    assert in_campaign(datetime(2026, 12, 1, 3, 30, tzinfo=TAIPEI))
+    assert not in_campaign(datetime(2026, 10, 14, 3, 30, tzinfo=TAIPEI))
     assert pipeline_key(date(2026, 10, 15)) == "dc-sf-silent-20261015"
 
 
@@ -102,6 +110,228 @@ def test_main_scheduler_wires_dc_sf_silent_isolated():
     assert "dc_sf_night_tick" in src or "night_tick" in src
     assert "return" in src  # 專鍵提早 return，不走飆大 ingest 鏈
     slot_src = inspect.getsource(main_mod.start_daily_scheduler)
-    assert "(2, 20, \"dc_sf_silent\")" in slot_src or "(2, 20, 'dc_sf_silent')" in slot_src
+    assert "(3, 30, \"dc_sf_silent\")" in slot_src or "(3, 30, 'dc_sf_silent')" in slot_src
     absorb = open("biaoke_absorb.py", encoding="utf-8").read()
     assert "dc_sf_silent" in absorb and "互不影響" in absorb
+    assert "03:30" in absorb
+
+
+def test_align_uses_our_bars_for_walked_turns_and_drawn_forecast():
+    rows = [
+        {"date": "d0", "high": 5000, "low": 4000},
+        {"date": "d1", "high": 4800, "low": 3900},
+        {"date": "d2", "high": 5100, "low": 4100},
+    ]
+    wave = {
+        "start": {"i": 0, "price": 4000},
+        "confirmed": [{"label": "(2)", "i": 1, "price": 3900, "kind": "L"}],
+        "projected": [{"label": "(5)", "i": 10, "price": 100, "kind": "H"}],
+        "abc": [],
+    }
+    out = align_wave_turns(
+        wave,
+        rows,
+        {"his": {"(2)": 4100, "(5)": 5200}, "drawn": {"(5)": 2650}},
+    )
+    assert out["confirmed"][0]["i"] == 2
+    assert out["confirmed"][0]["price"] == 4100
+    assert out["projected"][0]["price"] == 2650
+    assert out["projected"][0]["i"] == 10
+    assert rows[1]["low"] == 3900
+    assert out["path_proj"][-1][1] == 2650
+
+
+def test_lookback_is_trailing_24h():
+    now = datetime(2026, 10, 17, 3, 30, tzinfo=TAIPEI)
+    assert in_lookback({"date": "2026-10-16", "time": "03:30"}, now)
+    assert in_lookback({"date": "2026-10-17", "time": "03:30"}, now)
+    assert not in_lookback({"date": "2026-10-16", "time": "03:29"}, now)
+    assert not in_lookback({"date": "2026-10-17", "time": "03:31"}, now)
+
+
+def test_fetch_within_stops_when_older_than_window(monkeypatch):
+    rows = {
+        "1": {"id": "1", "date": "2026-10-17", "time": "01:00", "text": "新文", "images": []},
+        "2": {"id": "2", "date": "2026-10-15", "time": "01:00", "text": "舊文", "images": []},
+        "3": {"id": "3", "date": "2026-10-17", "time": "02:00", "text": "不該再讀", "images": []},
+    }
+    seen = []
+
+    def fetch_html(url, session=None):
+        return "2590523"
+
+    def parse_ids(html):
+        return ["1", "2", "3"]
+
+    def parse_article(aid, html):
+        seen.append(str(aid))
+        return rows[str(aid)]
+
+    monkeypatch.setattr("biaoke_ingest.fetch_html", fetch_html)
+    monkeypatch.setattr("biaoke_ingest.parse_user_article_ids", parse_ids)
+    monkeypatch.setattr(
+        "dc_scenario_silent_verify.parse_dc_article", parse_article
+    )
+    got = fetch_dc_posts_within(datetime(2026, 10, 17, 3, 30, tzinfo=TAIPEI))
+    assert [p["id"] for p in got] == ["1"]
+    assert seen == ["1", "2"]
+
+
+def _matching_diff():
+    return compare_one(
+        our_wave={
+            "labels": ["(1)"],
+            "confirmed": [{"label": "(1)", "price": 4800}],
+            "projected": [{"label": "(3)", "price": 4800}],
+            "abc": [],
+            "zones": [{"price": 4800}],
+            "wedge": True,
+            "desc_press": {"source": "vb"},
+        },
+        our_caption="通道 目標 轉多",
+        our_narrative="通道 目標 轉多",
+        his_text="通道 目標 轉多 4800",
+    )
+
+
+def test_reached_95_does_not_change_drawing_rules():
+    diff = _matching_diff()
+    assert diff["likeness"]["reached_95"] is True
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        ensure_tables(db)
+        applied = propose_rule_updates(
+            db,
+            "20261017",
+            [{"caption": "通道 目標 轉多", "his_text": "通道 目標 轉多 4800", "diff": diff}],
+        )
+        assert applied.get("held") is True
+        assert applied.get("changed") is False
+        rules = load_rules(db)
+        assert "support_band" not in rules
+        assert "narrative_template" not in rules
+        assert "4800" not in str(rules)
+
+
+def test_gap_updates_method_not_his_price():
+    diff = compare_one(
+        our_wave={
+            "labels": ["(1)"],
+            "confirmed": [{"label": "(1)", "price": 100}],
+            "projected": [],
+            "abc": [],
+            "zones": [],
+            "wedge": False,
+            "desc_press": {},
+        },
+        our_caption="上升",
+        our_narrative="上升",
+        his_text="下降 通道 目標 4800",
+    )
+    assert diff["likeness"]["reached_95"] is False
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        ensure_tables(db)
+        row = [{"caption": "上升", "his_text": "下降 通道 目標 4800", "diff": diff}]
+        first = propose_rule_updates(db, "20261017", row)
+        assert first.get("changed") is True
+        assert "4800" not in str(load_rules(db))
+        wick1 = load_rules(db)["support_band"]["wick_ratio"]
+        second = propose_rule_updates(db, "20261018", row)
+        assert second.get("changed") is True
+        wick2 = load_rules(db)["support_band"]["wick_ratio"]
+        assert wick2 < wick1
+        assert wick2 >= 0.95
+
+
+def test_night_tick_one_chart_per_post_and_skips_encoding_when_empty(monkeypatch):
+    def fake_fetch(now=None, **kwargs):
+        return [
+            {
+                "id": "a",
+                "date": "2026-10-16",
+                "time": "16:51",
+                "text": "2330 通道 目標 4800",
+                "images": [],
+                "image_notes": "圖注：前高",
+            },
+            {
+                "id": "b",
+                "date": "2026-10-16",
+                "time": "16:30",
+                "text": "2330 下降壓",
+                "images": [],
+                "image_notes": "",
+            },
+            {
+                "id": "c",
+                "date": "2026-10-16",
+                "time": "10:22",
+                "text": "這篇沒有代號",
+                "images": [],
+                "image_notes": "",
+            },
+        ]
+
+    calls = []
+    order = []
+
+    def fake_render(sid, db_path, png):
+        calls.append(os.path.basename(png))
+        order.append("draw")
+        return png, "上升", {"wave": {"bubble": "上升", "labels": ["(1)"], "confirmed": [{"price": 100}]}}
+
+    import dc_scenario_silent_verify as mod
+
+    orig_compare = mod.compare_one
+
+    def fake_compare(**kwargs):
+        order.append("cmp")
+        assert order.count("draw") == 2
+        return orig_compare(**kwargs)
+
+    def fake_stocks(posts, db_path=""):
+        out = []
+        for p in posts:
+            if "2330" in str(p.get("text") or ""):
+                out.append(
+                    {
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "post_ids": [str(p.get("id"))],
+                        "excerpts": [p.get("text")],
+                    }
+                )
+        return out
+
+    monkeypatch.setattr("dc_scenario_silent_verify.fetch_dc_posts_within", fake_fetch)
+    monkeypatch.setattr("dc_scenario_silent_verify.render_our_bundle", fake_render)
+    monkeypatch.setattr("dc_scenario_silent_verify.compare_one", fake_compare)
+    monkeypatch.setattr("dc_scenario_silent_verify.stocks_from_posts", fake_stocks)
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        ensure_tables(db)
+        now = datetime(2026, 10, 17, 3, 30, tzinfo=TAIPEI)
+        report = night_tick(db, now=now, skip_if_done=False)
+        assert report.get("post_n") == 3
+        assert report.get("compare_n") == 2
+        assert report.get("unmapped_n") == 1
+        assert calls == ["a-2330-scenario-forecast.png", "b-2330-scenario-forecast.png"]
+        assert order == ["draw", "draw", "cmp", "cmp", "cmp"]
+        assert report.get("drawn_n") == 2
+        assert report.get("rules_changed") == 1
+        blob = str(load_rules(db))
+        assert "4800" not in blob
+        monkeypatch.setattr(
+            "dc_scenario_silent_verify.fetch_dc_posts_within", lambda now=None, **k: []
+        )
+        empty = night_tick(
+            db,
+            now=datetime(2026, 10, 18, 3, 30, tzinfo=TAIPEI),
+            skip_if_done=False,
+        )
+        assert empty.get("notes") == "empty_posts"
+        assert empty.get("rules_changed") == 0

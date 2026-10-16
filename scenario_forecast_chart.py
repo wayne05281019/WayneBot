@@ -1408,11 +1408,21 @@ def format_scenario_caption(sid: str, name: str, meta: Dict[str, Any]) -> str:
         tmpl = rules.get("narrative_template") or {}
         if isinstance(tmpl, dict) and tmpl.get("suffix"):
             narr_suffix = str(tmpl.get("suffix") or "").strip()
+        method_words = list((tmpl or {}).get("method_words") or []) if isinstance(tmpl, dict) else []
     except Exception:
         narr_suffix = ""
+        method_words = []
     if wave.get("bubble"):
-        # 圖說優先用浪情境句；仍硬釘不是買訊
+        # 圖說優先用浪情境句；仍硬釘不是買訊。方法詞只補已經畫得出來的。
         body = str(wave["bubble"])
+        try:
+            from dc_scenario_silent_verify import method_clause
+
+            extra = method_clause(body, wave, method_words)
+            if extra:
+                body = body.rstrip("。") + extra
+        except Exception:
+            pass
         if narr_suffix and narr_suffix not in body:
             body = body.rstrip("。") + "；" + narr_suffix
         if "不是買訊" not in body:
@@ -2288,6 +2298,14 @@ def render_scenario_forecast(
         ladders = infer_prior_high_ladders(rows, max_n=3)
         press = infer_desc_press(rows)
         wave = infer_dc_wave_scenario(rows, ladders)
+        try:
+            from dc_scenario_silent_verify import align_wave_turns, load_rules
+
+            spec = (load_rules(path) or {}).get(f"turns:{sid}") or {}
+            if spec:
+                wave = align_wave_turns(wave, rows, spec)
+        except Exception:
+            logger.debug("情境預估轉折對齊略過 sid=%s", sid, exc_info=True)
         if wave and wave.get("desc_press"):
             press = dict(wave.get("desc_press") or {})
         paths = (
