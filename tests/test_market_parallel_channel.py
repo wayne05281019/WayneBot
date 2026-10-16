@@ -134,11 +134,11 @@ def test_market_rail_dash_denser_same_weight_and_color():
     assert "rail_lw=3.2" in src
     assert "rail_halo=2.3" in src
     assert 'rail_color="#0d47a1"' in src
-    assert "rail_dash=(0, (1.2, 1.2))" in src
+    assert "rail_dash=_CHANNEL_RAIL_DASH" in src
     assert "(8.2, 3.5)" not in src
     assert "(3.6, 1.2)" not in src
     assert _CHANNEL_RAIL_LW <= 1.2
-    assert _CHANNEL_RAIL_DASH == (0, (3.4, 2.2))
+    assert _CHANNEL_RAIL_DASH == (0, (1.2, 1.2))
 
 
 def test_rising_rail_label_stays_beside_last_bars():

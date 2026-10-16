@@ -1102,8 +1102,8 @@ def _clip_line(
     return xa, ya, xb, yb
 
 
-# 上升／下降區間雙軌：全程細虛線（與先前討論一致）
-_CHANNEL_RAIL_DASH = (0, (3.4, 2.2))
+# 上升／下降區間雙軌：短劃跟大盤大量區同一套（實線段 1.2、空隙 1.2）。結構圖線寬仍細。
+_CHANNEL_RAIL_DASH = (0, (1.2, 1.2))
 _CHANNEL_RAIL_LW = 1.05
 
 

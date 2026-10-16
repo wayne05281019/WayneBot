@@ -2120,7 +2120,7 @@ def paint_vol_zone_parallel_channel(
         return placed
     from matplotlib.transforms import blended_transform_factory
 
-    from biaoke_chart import _paint_parallel_channel
+    from biaoke_chart import _CHANNEL_RAIL_DASH, _paint_parallel_channel
 
     seam = float(max(n - 1, 0))
     # 軸外標才加右緣空；滿寬不准把 xlim 再撐開把 K 擠瘦
@@ -2132,12 +2132,12 @@ def paint_vol_zone_parallel_channel(
     else:
         rail_hi = float(n) - 0.35
     kind0 = str(ch.get("kind") or "")
-    # 話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。實線段短、空隙維持細。不改結構圖細線。
+    # 話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。短劃跟結構圖同一常數。結構圖線寬仍細。
     rail_kw: Dict[str, Any] = {}
     if market_rails:
         rail_kw = dict(
             rail_lw=3.2,
-            rail_dash=(0, (1.2, 1.2)),
+            rail_dash=_CHANNEL_RAIL_DASH,
             rail_halo=2.3,
             rail_color="#0d47a1" if kind0 == "asc" else "#4a148c",
         )
