@@ -3790,7 +3790,7 @@ def _falling_risk_lamp_word(score: int) -> str:
 
 
 def _falling_risk_face(score: int) -> str:
-    """話筒：0–100 的風險分。黃燈＝中等。不是指數跌幾點。"""
+    """話筒：0–100 分，100 最危險。黃燈＝中等，紅燈＝偏高，綠燈＝偏低。"""
     s = int(score or 0)
     if s >= 60:
         level = "偏高"
@@ -3798,7 +3798,7 @@ def _falling_risk_face(score: int) -> str:
         level = "中等"
     else:
         level = "偏低"
-    return f"{level}，{_falling_risk_lamp_word(s)}（{s}／100）"
+    return f"往下跌的風險{level}，{s} 分，100 分最危險。"
 
 
 def _page_regime_lines(snap: Dict[str, Any]) -> List[str]:

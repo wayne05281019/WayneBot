@@ -19,7 +19,7 @@ def test_build_morning_opening_merges_brief_and_outlook(monkeypatch):
         "morning_digest._foreign_sell_observe_line",
         lambda *_a, **_k: (
             "<b>環境觀察｜觀察／預警（測試）</b>\n"
-            "開盤前恐懼：現在關著\n確認：現在不算數\n冷靜：現在不算數"
+            "開盤前，市場不怕。\n今天沒有外資賣得更兇的股票。\n害怕還沒緩下來。"
         ),
     )
     screening = {
@@ -33,7 +33,7 @@ def test_build_morning_opening_merges_brief_and_outlook(monkeypatch):
     assert "台灣加權指數研究" in merged
     assert "收盤" in merged
     assert "環境觀察｜觀察／預警（測試）" in merged
-    assert "確認：現在不算數" in merged
+    assert "今天沒有外資賣得更兇的股票。" in merged
     assert "近窗" not in merged
     assert "今無" not in merged and "非買訊" not in merged
     assert "買進" not in merged

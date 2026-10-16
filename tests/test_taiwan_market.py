@@ -1009,7 +1009,12 @@ def test_market_regime_plain_example_and_same_bubble():
     assert "大方向" in plain and "區間震盪，沒有單邊" in plain
     assert "短線" in plain and "還在往下" in plain
     assert "空頭延伸" not in plain
-    assert "下跌風險" in plain and "中等，黃燈（50／100）" in plain
+    assert "下跌風險" in plain and "往下跌的風險中等，50 分，100 分最危險。" in plain
+    from taiwan_market import _falling_risk_face
+
+    assert _falling_risk_face(35) == "往下跌的風險中等，35 分，100 分最危險。"
+    assert _falling_risk_face(60) == "往下跌的風險偏高，60 分，100 分最危險。"
+    assert _falling_risk_face(34) == "往下跌的風險偏低，34 分，100 分最危險。"
     assert "月線下 2.1%。季線上。近5日 -4.5%。離年高 5.4%。量是平常的 1.34 倍。個股站上月線 46%。" in plain
     assert "；" not in note
     assert "<b>結構</b>" not in rows
