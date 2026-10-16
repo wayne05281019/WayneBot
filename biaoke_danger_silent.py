@@ -28,8 +28,7 @@ VARIANT_NEXT = "next"
 MIN_UNIQUE_DAYS = 20
 
 LIANYA_LINE = (
-    "有人問全部清光是否也包含聯亞，他澄清聯亞還在；"
-    "清的是持股，含台積電 2200，不是聯亞。"
+    "有人問全部清光是否也包含聯亞，他說連台積電都賣光了，包含聯亞，聯亞已賣出。"
 )
 JUDGMENT = (
     "下週起應該會殺兩週左右。"
@@ -60,7 +59,7 @@ TOOLS: Tuple[str, ...] = (
 NAMED_PRICES: Tuple[Dict[str, Any], ...] = (
     {"series": "TX", "name": "台指期", "px": 48240, "role": "沒過就當誘多"},
     {"series": "TWII", "name": "加權", "px": 39000, "role": "C波不一定破"},
-    {"series": "2330", "name": "台積電", "px": 2200, "role": "清光持股含這價，不是聯亞"},
+    {"series": "2330", "name": "台積電", "px": 2200, "role": "清倉含台積電，聯亞也已賣出"},
 )
 
 _DDL = """

@@ -229,7 +229,7 @@ def _anchored_text(row: Dict[str, Any]) -> str:
 
 
 def _lianya_kept(raw: str) -> str:
-    """22:14 有人問清光是否包含聯亞。嘲諷詞不進話筒。他澄清聯亞還在。"""
+    """22:14 有人問清光是否包含聯亞。嘲諷詞不進話筒。他連台積電都賣光，包含聯亞。"""
     if "聯亞" not in raw:
         return ""
     if not _SKIP_REPLY.search(raw):

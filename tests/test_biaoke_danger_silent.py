@@ -16,6 +16,12 @@ def test_record_keeps_one_row_per_variant_and_does_not_replace(tmp_path):
     assert danger.record_danger_window(db, now=now) == 2
     conn = sqlite3.connect(db)
     n = conn.execute("SELECT COUNT(*) FROM biaoke_danger_window").fetchone()[0]
+    judgment = conn.execute(
+        "SELECT judgment FROM biaoke_danger_window LIMIT 1"
+    ).fetchone()[0]
+    assert "聯亞已賣出" in judgment
+    assert "聯亞還在" not in judgment
+    assert "不在清倉" not in judgment
     keys = {
         r[0]
         for r in conn.execute("SELECT track_key FROM biaoke_danger_window")
