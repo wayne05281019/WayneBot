@@ -68,10 +68,14 @@ def _last_price(item: dict, yesterday: float) -> float:
 _OTC_MARKETS = {"TWO", "OTC", "TPEX", "ROCO", "ROCC", "上櫃"}
 _EMERGING_MARKETS = {"EM", "EMERGING", "ESB", "興櫃"}
 
-# 櫃買興櫃當日行情 OpenAPI（含 LatestPrice）；全日表快取，不准每檔重抓。
+# 櫃買興櫃當日行情。盤中官方表是 emerging/latest（頁面寫每分鐘更新）；
+# OpenAPI tpex_esb_latest_statistics 多半要等收盤後才換成今日，盤中仍是昨收。
 _TPEX_ESB_URL = "https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics"
+_TPEX_ESB_LIVE_URL = "https://www.tpex.org.tw/www/zh-tw/emerging/latest"
 _TPEX_ESB_LOCK = threading.Lock()
 _TPEX_ESB_CACHE: Tuple[float, Dict[str, Dict[str, Any]]] = (0.0, {})
+_TPEX_ESB_LIVE_LOCK = threading.Lock()
+_TPEX_ESB_LIVE_CACHE: Dict[str, Any] = {"ts": 0.0, "as_of": "", "clock": "", "rows": {}}
 _TPEX_ESB_TTL_SEC = 20.0
 
 
@@ -292,7 +296,7 @@ def format_quote_clock_line(
         return ""
     label = board_session_label(t, emerging=emerging)
     src = str(source or "").strip().lower()
-    if src in ("tpex_esb", "tpex_esb_openapi", "emerging"):
+    if src in ("tpex_esb", "tpex_esb_openapi", "tpex_esb_live", "emerging"):
         return f"{label}　{t}　櫃買興櫃"
     if src == "yahoo":
         if emerging:
@@ -367,17 +371,44 @@ def sanitize_ohlc_frame(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _emerging_official_source(rt: Optional[Dict[str, Any]]) -> bool:
+    """櫃買興櫃官方列（日均價）。Yahoo 最後成交不是這條。"""
+    src = str((rt or {}).get("source") or "")
+    return src in (
+        "tpex_esb",
+        "tpex_esb_openapi",
+        "tpex_esb_live",
+        "emerging_quotes",
+    )
+
+
 def session_bar_from_mis(rt: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """自開盤至 MIS 回報時刻的當日 K（開高低收量），僅供記憶體合併、不寫庫。"""
+    """自開盤至回報時刻的當日 K（開高低收量），僅供記憶體合併、不寫庫。
+
+    興櫃官方：收＝日均價，開＝前日均價。不准把前日均價拉進今高／今低，
+    否則縮圖末日影線會變成昨收，跟歷史官方柱不一樣。
+    """
     if not rt or float(rt.get("close") or 0) <= 0:
         return None
-    o, h, l, c = sanitize_ohlc(rt.get("open"), rt.get("high"), rt.get("low"), rt["close"])
+    if _emerging_official_source(rt):
+        c = float(rt["close"])
+        o = float(rt.get("open") or 0) or c
+        h = float(rt.get("high") or 0) or c
+        l = float(rt.get("low") or 0) or c
+        if c > h:
+            h = c
+        if l <= 0 or c < l:
+            l = c if l <= 0 else min(l, c)
+        vol = round(max(0.0, _num(rt.get("volume"))), 6)
+    else:
+        o, h, l, c = sanitize_ohlc(rt.get("open"), rt.get("high"), rt.get("low"), rt["close"])
+        vol = mis_volume_sheets(rt.get("volume"))
     return {
         "open": o,
         "high": h,
         "low": l,
         "close": c,
-        "volume": mis_volume_sheets(rt.get("volume")),
+        "volume": vol,
         "pct_change": float(rt.get("pct_change") or 0),
         "yesterday_close": float(rt.get("yesterday_close") or 0),
         "update_time": str(rt.get("update_time") or ""),
@@ -439,8 +470,23 @@ def reconcile_lookup_quote(
     stock_id: str = "",
     db_hit: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """用庫內最後官方收盤當基準重算漲跌（Yahoo previousClose 常與台股昨收不一致）。"""
+    """用庫內最後官方收盤當基準重算漲跌（Yahoo previousClose 常與台股昨收不一致）。
+
+    興櫃櫃買列的昨收已是前日均價。庫內 MAX(date) 盤中常是今日均價快照，
+    不准拿來蓋掉前日均價。
+    """
     out = dict(rt)
+    if _emerging_official_source(out):
+        try:
+            prev = float(out.get("yesterday_close") or 0)
+            px = float(out.get("close") or 0)
+        except (TypeError, ValueError):
+            prev = px = 0.0
+        if prev > 0 and px > 0:
+            out["yesterday_close"] = prev
+            out["pct_change"] = round((px - prev) / prev * 100.0, 2)
+            out["change"] = round(px - prev, 2)
+        return out
     sid = str(stock_id or out.get("stock_id") or "").strip()
     prev = None
     if db_hit:
@@ -615,15 +661,154 @@ def _load_tpex_esb_map() -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def fetch_emerging_tpex_quote(stock_id: str) -> Optional[Dict[str, Any]]:
-    """櫃買 OpenAPI tpex_esb_latest_statistics：只在 Date＝台北今日才當現價／當日收。
+def _parse_roc_datetime_label(text: str) -> Tuple[str, str]:
+    """115年10月16日 12:06:03 → (20261016, 12:06:03)。"""
+    s = str(text or "").strip()
+    if "年" not in s or "月" not in s or "日" not in s:
+        return "", ""
+    ymd, _, rest = s.partition("日")
+    y, _, restm = ymd.partition("年")
+    mo, _, day = restm.partition("月")
+    try:
+        as_of = f"{int(y) + 1911:04d}{int(mo):02d}{int(day):02d}"
+    except ValueError:
+        return "", ""
+    clock = rest.strip()
+    if len(clock) >= 8 and clock[2] == ":" and clock[5] == ":":
+        clock = clock[:8]
+    else:
+        clock = ""
+    return as_of, clock
 
-    LatestPrice＝當下成交／收盤最後一筆；Average＝日均價（日K 仍用均價）。
-    盤中若表還停在昨收日，回 None，改走 Yahoo .TWO。
+
+def _load_tpex_esb_live_board() -> Tuple[str, str, Dict[str, list]]:
+    """興櫃當日行情表（每分鐘）。回傳 (YYYYMMDD, HH:MM:SS, code→列)。"""
+    global _TPEX_ESB_LIVE_CACHE
+    now = time.time()
+    with _TPEX_ESB_LIVE_LOCK:
+        cached = dict(_TPEX_ESB_LIVE_CACHE)
+        rows = cached.get("rows") or {}
+        if rows and now - float(cached.get("ts") or 0) < _TPEX_ESB_TTL_SEC:
+            return str(cached.get("as_of") or ""), str(cached.get("clock") or ""), rows
+    as_of = ""
+    clock = ""
+    out: Dict[str, list] = {}
+    try:
+        resp = _SESSION.get(
+            _TPEX_ESB_LIVE_URL,
+            timeout=(_MIS_CONNECT_TIMEOUT, 3.5),
+            headers={
+                "User-Agent": _SESSION.headers.get("User-Agent", ""),
+                "Accept": "application/json,*/*;q=0.8",
+                "Referer": "https://www.tpex.org.tw/zh-tw/esb/trading/info/pricing.html",
+            },
+        )
+        if resp.status_code != 200:
+            return (
+                str(cached.get("as_of") or ""),
+                str(cached.get("clock") or ""),
+                rows,
+            )
+        data = resp.json()
+        tables = (data or {}).get("tables") or []
+        table = tables[0] if tables else {}
+        as_of, clock = _parse_roc_datetime_label(
+            table.get("date") or table.get("subtitle2") or ""
+        )
+        for row in table.get("data") or []:
+            if not isinstance(row, (list, tuple)) or not row:
+                continue
+            code = str(row[0] or "").strip()
+            if code:
+                out[code] = list(row)
+    except Exception:
+        logger.debug("櫃買興櫃當日行情表失敗", exc_info=True)
+        return (
+            str(cached.get("as_of") or ""),
+            str(cached.get("clock") or ""),
+            rows,
+        )
+    if not out:
+        return (
+            str(cached.get("as_of") or ""),
+            str(cached.get("clock") or ""),
+            rows,
+        )
+    with _TPEX_ESB_LIVE_LOCK:
+        _TPEX_ESB_LIVE_CACHE = {
+            "ts": time.time(),
+            "as_of": as_of,
+            "clock": clock,
+            "rows": out,
+        }
+    return as_of, clock, out
+
+
+def _quote_from_tpex_live_board(stock_id: str) -> Optional[Dict[str, Any]]:
+    """盤中收＝當日行情表的日均價。成交欄是最後一筆，不准當收。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return None
+    as_of, clock, rows = _load_tpex_esb_live_board()
+    if as_of != taipei_today_str():
+        return None
+    row = rows.get(sid)
+    if not row or len(row) < 14:
+        return None
+    avg = _num(row[9])
+    if avg <= 0:
+        return None
+    prev = _num(row[2])
+    high = _num(row[7])
+    low = _num(row[8])
+    if high <= 0:
+        high = avg
+    if low <= 0:
+        low = avg
+    if low > high:
+        low, high = high, low
+    if avg > high:
+        high = avg
+    if avg < low:
+        low = avg
+    open_px = prev if prev > 0 else avg
+    shares = max(0, int(round(_num(row[13]))))
+    vol = round(shares / 1000.0, 6) if shares > 0 else 0.0
+    pct = round((avg - prev) / prev * 100.0, 2) if prev > 0 else 0.0
+    chg = round(avg - prev, 2) if prev > 0 else 0.0
+    return {
+        "stock_id": sid,
+        "stock_name": str(row[1] or "").strip(),
+        "open": open_px,
+        "high": high,
+        "low": low,
+        "close": avg,
+        "volume": vol,
+        "pct_change": pct,
+        "change": chg,
+        "yesterday_close": prev,
+        "avg_price": avg,
+        "update_time": clock,
+        "is_realtime": True,
+        "source": "tpex_esb_live",
+        "emerging": True,
+        "as_of": as_of,
+    }
+
+
+def fetch_emerging_tpex_quote(stock_id: str) -> Optional[Dict[str, Any]]:
+    """興櫃現價：先當日行情表（每分鐘、收＝日均價），沒有今日列才用 OpenAPI。
+
+    收＝日均價（盤中就是當時累計均價，跟日 K 同一套）。
+    「成交」／LatestPrice 是最後一筆，不拿來當收。無均價＝無成交，回 None。
+    兩份官方表的日期都不是台北今日就回 None，改走 Yahoo .TWO。
     """
     sid = str(stock_id or "").strip()
     if not sid:
         return None
+    live = _quote_from_tpex_live_board(sid)
+    if live and float(live.get("close") or 0) > 0:
+        return live
     today = taipei_today_str()
     item = _load_tpex_esb_map().get(sid)
     if not item:
@@ -631,35 +816,45 @@ def fetch_emerging_tpex_quote(stock_id: str) -> Optional[Dict[str, Any]]:
     as_of = _tpex_esb_as_of(item)
     if as_of != today:
         return None
-    px = _num(item.get("LatestPrice"))
-    if px <= 0:
-        # 無成交：官方用前日均價當停價參考，不准發明假成交價
+    avg = _num(item.get("Average"))
+    if avg <= 0:
+        # 無成交：官方用前日均價當停價參考，不准拿最後成交冒充今日收
         return None
     prev = _num(item.get("PreviousAveragePrice"))
-    high = _num(item.get("Highest")) or px
-    low = _num(item.get("Lowest")) or px
-    avg = _num(item.get("Average"))
-    open_px = prev if prev > 0 else (avg if avg > 0 else px)
-    o, h, l, c = sanitize_ohlc(open_px, high, low, px)
+    last = _num(item.get("LatestPrice"))
+    high = _num(item.get("Highest"))
+    low = _num(item.get("Lowest"))
+    if high <= 0:
+        high = max(avg, last) if last > 0 else avg
+    if low <= 0:
+        low = min(x for x in (avg, last, high) if x > 0)
+    if low > high:
+        low, high = high, low
+    if avg > high:
+        high = avg
+    if avg < low:
+        low = avg
+    open_px = prev if prev > 0 else avg
     shares = max(0, int(round(_num(item.get("TransactionVolume")))))
-    vol = int(round(shares / 1000.0)) if shares > 0 else 0
-    pct = round((px - prev) / prev * 100.0, 2) if prev > 0 else 0.0
-    chg = round(px - prev, 2) if prev > 0 else 0.0
+    vol = round(shares / 1000.0, 6) if shares > 0 else 0.0
+    pct = round((avg - prev) / prev * 100.0, 2) if prev > 0 else 0.0
+    chg = round(avg - prev, 2) if prev > 0 else 0.0
     return {
         "stock_id": sid,
         "stock_name": str(item.get("CompanyName") or ""),
-        "open": o,
-        "high": h,
-        "low": l,
-        "close": c,
+        "open": open_px,
+        "high": high,
+        "low": low,
+        "close": avg,
         "volume": vol,
         "pct_change": pct,
         "change": chg,
         "yesterday_close": prev,
-        "avg_price": avg if avg > 0 else c,
+        "avg_price": avg,
         "update_time": _format_tpex_esb_time(item.get("Time") or ""),
         "is_realtime": True,
         "source": "tpex_esb",
+        "emerging": True,
         "as_of": as_of,
     }
 
@@ -997,6 +1192,25 @@ def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
     return out
 
 
+def _emerging_snapshot_refresh(rt: Optional[Dict[str, Any]], market: str = "") -> bool:
+    """興櫃今日庫列是盤中均價快照，不是已收柱。記憶體可改成當下官方均價。
+
+    Yahoo 最後成交不准蓋已寫入的官方均價列。上市櫃官方今日收仍不蓋。
+    """
+    if not rt:
+        return False
+    src = str(rt.get("source") or "")
+    if src == "yahoo":
+        return False
+    if src in ("tpex_esb", "tpex_esb_openapi", "tpex_esb_live"):
+        return True
+    if src in ("emerging_quotes", "decision_card") and (
+        bool(rt.get("emerging")) or is_emerging_market(market)
+    ):
+        return True
+    return False
+
+
 def append_live_bar(
     df: pd.DataFrame,
     stock_id: str,
@@ -1004,7 +1218,11 @@ def append_live_bar(
     merge_live: bool = True,
     live_quote: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
-    """盤中用 MIS 合併今日 K：開盤→查詢當下的開高低收量（不寫回 sqlite）。"""
+    """盤中合併今日 K：開盤→查詢當下的開高低收量（不寫回 sqlite）。
+
+    上市櫃：庫內已有今日官方收就不蓋。
+    興櫃：今日列常是稍早同步的均價快照，查股當下改成櫃買最新均價（仍不寫庫）。
+    """
     if not merge_live or df is None or df.empty:
         return df
     if not is_live_merge_window():
@@ -1027,8 +1245,9 @@ def append_live_bar(
         return df
     if latest == today:
         official = "is_live" not in df.columns or not bool(df["is_live"].iloc[-1])
-        if official:
-            # 16:30 融合後列上已是官方收盤，不要用 MIS／Yahoo 蓋掉。
+        if official and not _emerging_snapshot_refresh(rt, mkt):
+            # 上市櫃 16:30 融合後列上已是官方收盤，不要用 MIS／Yahoo 蓋掉。
+            # 興櫃今日列是均價快照，查股當下仍改成最新官方均價（只改記憶體）。
             return df
         out = df.copy()
         idx = len(out) - 1
