@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import os
 
 import pytest
@@ -28,6 +29,9 @@ def test_three_in_one_module_lock_and_api():
     assert 'info.get("stock_id")' in src
     assert "CHROME_SCALE" in src
     assert "TG_WH_BUDGET" in src
+    # 大量區 overlay 會傳 signal_work；三合一暖窗包裝必須接著往下傳
+    assert "signal_work=None" in src
+    assert "signal_work=signal_work" in src
     assert "TG_CLICK_MAX_SIDE" in src
     assert "COMPOSE_INNER_W" in src
     assert "_header_price_chip_style" in src
@@ -178,7 +182,7 @@ def test_render_three_in_one_6526_smoke(tmp_path, production_db):
 
 
 @pytest.mark.production_db
-def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db):
+def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db, caplog):
     """台光電：表頭必須寫 2383／台光電；整張守 TG w+h；縮圖後表頭列高仍老花可讀。"""
     from PIL import Image
 
@@ -191,7 +195,10 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     )
 
     out = str(tmp_path / "2383-three.png")
-    path, cap = render_three_in_one_result("2383", "台光電", production_db, out)
+    with caplog.at_level(logging.ERROR):
+        path, cap = render_three_in_one_result("2383", "台光電", production_db, out)
+    # 暖窗包裝漏接 signal_work 時，大量區會整段略過導航疊圖
+    assert not any("大量區疊導航指標失敗" in r.getMessage() for r in caplog.records)
     assert path and os.path.isfile(path)
     im = Image.open(path)
     assert max(im.size) <= TG_CLICK_MAX_SIDE + 8
@@ -224,9 +231,9 @@ def test_render_three_in_one_2383_header_name_and_budget(tmp_path, production_db
     head_h = max(40, int(head_band.height * bubble_w / pim.width))
     ink = bubble.crop((8, 8, bubble_w - 8, min(bubble.height, head_h))).convert("L")
     dark = sum(1 for px in ink.getdata() if px < 80)
-    # 表頭要有足夠深墨（老花可讀）；400 貼邊會因 AA／盤中價色抖到 398–412，
-    # 改 350 仍遠高於空白頭欄，不准為過測拿掉查股圖二→圖三加速。
-    assert dark >= 350, dark
+    # 送出 JPEG 縮圖實測暗點 397（原圖 400）。導航有疊上、表頭 2383／台光電還在。
+    # 貼著實測，只留一點壓縮餘裕；不准退回 350／320 把表頭幾乎沒字藏起來。
+    assert dark >= 390, dark
     # 收盤非漲停：表頭價塊不准整塊紅底（抽今K欄中段）
     rgb = pim.convert("RGB")
     w, h = pim.size

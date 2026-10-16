@@ -217,6 +217,11 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "10.0 if panel" in leg  # 圖例字級
     assert "14.0" not in src or "15.0" in src  # 股票介紹放大（≥15）
     assert "15.0" in src and "13.0" in src  # 標題／介紹字級
+    # 日標貼主K上框內側（0.995,0.985），不准再掛表頭圖例帶 y=0.48
+    assert "0.985" in src
+    assert 'va="top"' in src or "va='top'" in src
+    assert "ax_head.text(\n                0.995,\n                0.48" not in src
+    assert "貼主K上框內側" in src
     ov = inspect.getsource(overlay_nav_marks_on_zone)
     assert 'rotation=0' in ov and "量能\\n訊號" in ov  # 量能訊號翻正
     assert 'ax_sig.set_ylabel("")' in ov or "set_ylabel(\"\")" in ov
