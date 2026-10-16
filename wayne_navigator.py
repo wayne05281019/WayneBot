@@ -640,10 +640,44 @@ def pink_warning_note(card: dict) -> str:
     return ""
 
 
+def live_card_memo_bucket(live_quote: Optional[dict]):
+    """決策卡快取鍵：同一張盤中快照才可重用。
+
+    只看收盤價會在均價沒變、累計量已增加時，把舊量配上新查詢。
+    收／高／低／量／報價時間一起進鍵，價與末日 K 與量才是同一張。
+    """
+    if not isinstance(live_quote, dict):
+        return None
+
+    def _r(*keys: str, nd: int = 4):
+        for key in keys:
+            if key not in live_quote or live_quote.get(key) in (None, ""):
+                continue
+            try:
+                v = float(live_quote.get(key))
+            except (TypeError, ValueError):
+                continue
+            if v != v:
+                continue
+            return round(v, nd)
+        return None
+
+    close = _r("close", "price", "last")
+    if not close:
+        return None
+    return (
+        close,
+        _r("high"),
+        _r("low"),
+        _r("volume"),
+        str(live_quote.get("update_time") or ""),
+    )
+
+
 class NavigatorEngine:
     """WayneBot 買低賣高決策卡、多空溫度計與雙綠脫離海選引擎"""
 
-    # 同檔連按：鍵含 as_of／live 價桶，短 TTL；不准跨日或跨現價重用舊卡。
+    # 同檔連按：鍵含 as_of／同一張 live 快照，短 TTL；不准跨日或跨現價重用舊卡。
     _CARD_MEMO: dict = {}
     _CARD_MEMO_TTL_S = 45.0
     _CARD_MEMO_MAX = 64
@@ -718,20 +752,7 @@ class NavigatorEngine:
             merge_live = False
         else:
             db_as_of = db_as_of_trading_date(self.db_path)
-        live_bucket = None
-        if merge_live and live_quote:
-            try:
-                live_bucket = round(
-                    float(
-                        live_quote.get("price")
-                        or live_quote.get("close")
-                        or live_quote.get("last")
-                        or 0
-                    ),
-                    2,
-                ) or None
-            except (TypeError, ValueError):
-                live_bucket = None
+        live_bucket = live_card_memo_bucket(live_quote) if merge_live else None
         memo_key = (
             os.path.abspath(str(self.db_path or "")),
             str(stock_id),

@@ -446,10 +446,56 @@ def test_navigator_merges_emerging_live(monkeypatch, tmp_path):
     )
 
     engine = NavigatorEngine(db)
+    NavigatorEngine.clear_card_memo()
     card = engine.get_decision_card("3595", merge_live=True, live_quote=live)
     assert not card.get("error"), card
     assert card.get("quote_source") == "emerging_quotes"
     assert card.get("is_live") is True
     assert float(card.get("close") or 0) == 132.0
+    assert float(card.get("volume") or 0) == 20.0
     assert session_price_label(card) == "現價"
     assert card.get("live_source") == "yahoo"
+    # 均價沒變、累計量變了：必須用新快照，不准 45 秒內沿用舊量。
+    live_more = dict(live)
+    live_more["volume"] = 48
+    live_more["update_time"] = "14:21:00"
+    card_more = engine.get_decision_card("3595", merge_live=True, live_quote=live_more)
+    assert float(card_more.get("close") or 0) == 132.0
+    assert float(card_more.get("volume") or 0) == 48.0
+    assert float(card_more.get("high") or 0) == 135.0
+
+
+def test_live_memo_bucket_splits_same_price_new_volume():
+    """均價沒變、累計量增加＝另一張快照，不准沿用舊卡。"""
+    from wayne_navigator import live_card_memo_bucket
+
+    a = live_card_memo_bucket(
+        {
+            "close": 166.72,
+            "high": 172.0,
+            "low": 160.0,
+            "volume": 3088.782,
+            "update_time": "12:09:02",
+        }
+    )
+    b = live_card_memo_bucket(
+        {
+            "close": 166.72,
+            "high": 172.0,
+            "low": 160.0,
+            "volume": 3200.5,
+            "update_time": "12:10:02",
+        }
+    )
+    same = live_card_memo_bucket(
+        {
+            "close": 166.72,
+            "high": 172.0,
+            "low": 160.0,
+            "volume": 3088.782,
+            "update_time": "12:09:02",
+        }
+    )
+    assert a == same
+    assert a != b
+    assert a[0] == b[0]

@@ -1011,7 +1011,9 @@ def live_quote_from_decision_card(
         vol = float(dq.get("volume") or 0)
     except (TypeError, ValueError):
         o = hi = lo = vol = 0.0
-    o, hi, lo, close = sanitize_ohlc(o, hi, lo, close)
+    # 興櫃開＝前日均價，常在今日高低外。拉進影線會讓縮圖 K 離開這張快照的日高／日低。
+    if not dq.get("emerging"):
+        o, hi, lo, close = sanitize_ohlc(o, hi, lo, close)
     return {
         "open": o,
         "high": hi,
