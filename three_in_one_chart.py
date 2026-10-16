@@ -2580,11 +2580,28 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
 
         orig_overlay = wn.overlay_nav_marks_on_zone
 
-        def _overlay_aligned(ax1, ax_sig, work, *, card=None, draw_legend=True, draw_ma20=True):
+        def _overlay_aligned(
+            ax1,
+            ax_sig,
+            work,
+            *,
+            card=None,
+            draw_legend=True,
+            draw_ma20=True,
+            signal_work=None,
+        ):
+            # 必須接 signal_work：大量區 overlay_nav_marks_on_zone 會傳 180 日母體，
+            # 簽名對不齊會整段疊標失敗（CI dark 墨水門檻一併炸）。
             view_dk = [_dk(d) for d in work["date"].tolist()]
             if not view_dk:
                 return orig_overlay(
-                    ax1, ax_sig, work, card=card, draw_legend=draw_legend, draw_ma20=draw_ma20
+                    ax1,
+                    ax_sig,
+                    work,
+                    card=card,
+                    draw_legend=draw_legend,
+                    draw_ma20=draw_ma20,
+                    signal_work=signal_work,
                 )
             cw_dk = [_dk(d) for d in canon_work["date"].tolist()]
             end_d = view_dk[-1]
@@ -2595,9 +2612,17 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                 start = warm_dk.index(view_dk[0])
             except ValueError:
                 return orig_overlay(
-                    ax1, ax_sig, work, card=card, draw_legend=draw_legend, draw_ma20=draw_ma20
+                    ax1,
+                    ax_sig,
+                    work,
+                    card=card,
+                    draw_legend=draw_legend,
+                    draw_ma20=draw_ma20,
+                    signal_work=signal_work,
                 )
             real_arange = np.arange
+            # 三合一① 180 暖窗即 signal 母體；呼叫端有傳就沿用，沒傳用 warm
+            sig = signal_work if signal_work is not None else warm
 
             def _shifted_arange(*a, **k):
                 arr = real_arange(*a, **k)
@@ -2617,7 +2642,13 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
             np.arange = _shifted_arange  # type: ignore[assignment]
             try:
                 orig_overlay(
-                    ax1, ax_sig, warm, card=card, draw_legend=draw_legend, draw_ma20=draw_ma20
+                    ax1,
+                    ax_sig,
+                    warm,
+                    card=card,
+                    draw_legend=draw_legend,
+                    draw_ma20=draw_ma20,
+                    signal_work=sig,
                 )
             finally:
                 np.arange = real_arange  # type: ignore[assignment]
