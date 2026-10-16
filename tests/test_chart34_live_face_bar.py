@@ -230,3 +230,85 @@ def test_emerging_overlay_uses_em_market(monkeypatch):
     assert len(out) == 2
     assert float(out[-1]["close"]) == 1350.0
     assert float(out[-1]["volume"]) == 25.0
+
+
+def test_emerging_overlay_refreshes_stale_today_bar(monkeypatch):
+    """圖三／四臉柱已有今日官方快照時，仍改成決策卡當下均價。"""
+    import live_quote
+
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20261015")
+    card = _live_card(
+        stock_id="3595",
+        listing="興櫃",
+        quote_source="emerging_quotes",
+        close=1459.45,
+        prev_close=1493.35,
+        open=1493.35,
+        high=1555.0,
+        low=1430.0,
+        volume=450.806,
+        change_pct=-2.27,
+    )
+    face = [
+        {
+            "date": "20261013",
+            "open": 1391.0,
+            "high": 1450.0,
+            "low": 1375.0,
+            "close": 1402.0,
+            "volume": 10,
+        },
+        {
+            "date": "20261015",
+            "open": 1493.35,
+            "high": 1500.0,
+            "low": 1480.0,
+            "close": 1496.0,
+            "volume": 1.0,
+        },
+    ]
+    out = live_quote.overlay_live_face_from_card(face, card, stock_id="3595")
+    assert len(out) == 2
+    assert float(out[-1]["close"]) == 1459.45
+    assert float(out[-1]["high"]) == 1555.0
+    assert abs(float(out[-1]["volume"]) - 450.806) < 1e-6
+
+
+def test_emerging_overlay_keeps_one_snapshot_ohlc(monkeypatch):
+    """前日均價在今日高之外：縮圖高／低／收／量仍是這張快照，不准把開盤拉成影線。"""
+    import live_quote
+
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20261016")
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda d: True
+    )
+    card = _live_card(
+        stock_id="6696",
+        listing="興櫃",
+        quote_source="emerging_quotes",
+        close=166.72,
+        prev_close=172.0,
+        open=172.0,
+        high=168.0,
+        low=160.0,
+        volume=3088.782,
+    )
+    face = [
+        {
+            "date": "20261015",
+            "open": 166.0,
+            "high": 170.0,
+            "low": 160.0,
+            "close": 160.12,
+            "volume": 100,
+        }
+    ]
+    out = live_quote.overlay_live_face_from_card(face, card, stock_id="6696")
+    last = out[-1]
+    assert float(last["close"]) == 166.72
+    assert float(last["high"]) == 168.0
+    assert float(last["low"]) == 160.0
+    assert float(last["open"]) == 172.0
+    assert abs(float(last["volume"]) - 3088.782) < 1e-6
