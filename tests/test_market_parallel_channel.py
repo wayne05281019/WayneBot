@@ -125,6 +125,49 @@ def test_market_channel_caption_uses_anchor_dates_not_extended_price():
     assert "50,846" not in up and "49,181" not in low
 
 
+def test_rising_rail_label_stays_beside_last_bars():
+    """上升軌文字右緣貼最後幾根，不准落到圖中段。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_blocked
+
+    n = 80
+    highs = np.full(n, 100.0)
+    lows = np.full(n, 90.0)
+    highs[-8:] = 130.0
+    lows[-8:] = 118.0
+    mas = [np.full(n, 96.0)]
+    mas[0][-8:] = 124.0
+    cx, cy = _blank_for_channel_label(
+        text="上升軌\n8/25低44,210\n9/29低47,573",
+        seg=((10.0, 80.0, "a"), (70.0, 100.0, "b")),
+        y_now=112.0,
+        outside=-1,
+        n=n,
+        ymin=60.0,
+        ymax=160.0,
+        dx=7.0,
+        dy=6.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        near_last=True,
+    )
+    assert cx + 3.5 >= n - 2.0
+    box = (cx - 3.5, cx + 3.5, cy - 3.0, cy + 3.0)
+    assert not _channel_box_blocked(
+        *box,
+        n=n,
+        ymin=60.0,
+        ymax=160.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+    )
+
+
 def test_channel_label_blank_avoids_candles_and_ma():
     """軌標找空白：盒子不准壓 K、不准壓均線。"""
     import numpy as np

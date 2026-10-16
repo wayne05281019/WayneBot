@@ -92,7 +92,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 42  # 大盤平行軌加粗；軌標寫錨點日與價
+_VZ_PAINT_VER = 43  # 上升軌文字改貼右側倒數幾根 K 的鄰近空白
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -1974,8 +1974,12 @@ def _blank_for_channel_label(
     lows: np.ndarray,
     mas: List[np.ndarray],
     placed: List[Tuple[float, float, float, float]],
+    near_last: bool = False,
 ) -> Tuple[float, float]:
-    """鄰近空白優先；沒有就放到軌道外側空白。不准壓 K、不准壓均線。"""
+    """鄰近空白優先；沒有就放到軌道外側空白。不准壓 K、不准壓均線。
+
+    near_last：上升軌文字只在右側倒數幾根裡找空白，右緣貼近最後一根。
+    """
     span = max(float(ymax) - float(ymin), 1.0)
     x_hi = float(n) - 0.2
     gap = max(span * 0.008, dy * 0.08)
@@ -1998,6 +2002,50 @@ def _blank_for_channel_label(
             return
         if best is None or score > best[0]:
             best = (score, cx, cy)
+
+    if near_last:
+        # 盒右緣貼最後一根，只准往左挪幾根；垂直挑離最近 K 最近的空白
+        last_i = max(int(n) - 1, 0)
+        y_ref_hi = float(highs[last_i]) if np.isfinite(highs[last_i]) else float(y_now)
+        y_ref_lo = float(lows[last_i]) if np.isfinite(lows[last_i]) else float(y_now)
+        best = None
+        for shift in (0.0, 0.9, 1.8, 2.8, 4.0):
+            x1 = x_hi - 0.08 - shift
+            cx = x1 - dx / 2.0
+            if x1 < float(n) - 6.0:
+                break
+            i0 = max(0, int(np.floor(cx - dx / 2.0 - 0.3)))
+            i1 = min(int(n) - 1, int(np.ceil(x1 + 0.3)))
+            hi_w = float(y_now)
+            lo_w = float(y_now)
+            for i in range(i0, i1 + 1):
+                hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
+                lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
+                if np.isfinite(hk):
+                    hi_w = max(hi_w, hk)
+                if np.isfinite(lk):
+                    lo_w = min(lo_w, lk)
+                for arr in mas:
+                    if i >= len(arr) or not np.isfinite(arr[i]) or float(arr[i]) <= 0:
+                        continue
+                    hv = float(arr[i])
+                    hi_w = max(hi_w, hv)
+                    lo_w = min(lo_w, hv)
+            for k in (0.0, 0.45, 0.95, 1.5):
+                for sign in (-1, 1):
+                    if sign < 0:
+                        cy = lo_w - gap - dy / 2.0 - k * dy * 0.42
+                    else:
+                        cy = hi_w + gap + dy / 2.0 + k * dy * 0.42
+                    if y_ref_lo <= cy <= y_ref_hi:
+                        dist = 0.0
+                    else:
+                        dist = min(abs(cy - y_ref_lo), abs(cy - y_ref_hi)) / span
+                    _consider(cx, cy, 4.0 - shift * 0.35 - dist * 0.85 - k * 0.2)
+        if best is not None:
+            return best[1], best[2]
+        cy = lo_w - gap - dy / 2.0
+        return cx, max(float(ymin) + dy / 2.0 + gap, min(cy, float(ymax) - dy / 2.0 - gap))
 
     # 鄰近：沿軌往左找，盒子貼在線旁空隙（先外側、再內側）
     for step in range(0, 34):
@@ -2203,6 +2251,7 @@ def paint_vol_zone_parallel_channel(
             lows=lo_arr,
             mas=ma_arrs,
             placed=placed,
+            near_last=bool(market_rails and "上升軌" in shown),
         )
         ax.text(
             cx,
