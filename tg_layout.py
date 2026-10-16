@@ -766,14 +766,25 @@ def reflow_telegram_html(html: str, *, width: int = _PHONE_CHARS) -> str:
     return "\n".join(_glue_html_orphans(lines, width))
 
 
-def chunk_telegram_html(html: str, limit: int = 3500, *, reflow: bool = False) -> List[str]:
-    """依 </blockquote> 或換行切開，避免把 <a> 切成半截導致 Telegram parse 失敗。"""
-    if reflow:
-        html = reflow_telegram_html(html)
-    if not html:
-        return []
-    if len(html) <= limit:
-        return [html]
+def _plain_line_offset(html: str, marker: str) -> int:
+    """第一行可見文字就是 marker 的行首。沒有則 -1。"""
+    if not marker or not html:
+        return -1
+    pos = 0
+    text = str(html)
+    while pos <= len(text):
+        nxt = text.find("\n", pos)
+        line = text[pos:] if nxt < 0 else text[pos:nxt]
+        plain = _html_plain(line).strip()
+        if plain == marker or plain.startswith(marker + "　") or plain.startswith(marker + " "):
+            return pos
+        if nxt < 0:
+            break
+        pos = nxt + 1
+    return -1
+
+
+def _chunk_telegram_html_body(html: str, limit: int) -> List[str]:
     chunks: List[str] = []
     rest = html
     close = "</blockquote>"
@@ -791,3 +802,38 @@ def chunk_telegram_html(html: str, limit: int = 3500, *, reflow: bool = False) -
         chunks.append(rest[:cut])
         rest = rest[cut:].lstrip("\n")
     return [c for c in chunks if c]
+
+
+def chunk_telegram_html(
+    html: str,
+    limit: int = 3500,
+    *,
+    reflow: bool = False,
+    cut_before: str = "",
+) -> List[str]:
+    """依 </blockquote> 或換行切開，避免把 <a> 切成半截導致 Telegram parse 失敗。
+
+    cut_before：大盤頁超長時，表頭到該行之前維持同一則（加權指數之前）。
+    沒給切點的頁面仍走原來的換行切開。
+    """
+    if reflow:
+        html = reflow_telegram_html(html)
+    if not html:
+        return []
+    if len(html) <= limit:
+        return [html]
+    if cut_before:
+        at = _plain_line_offset(html, cut_before)
+        if at > 0:
+            head = html[:at].rstrip("\n")
+            tail = html[at:].lstrip("\n")
+            chunks: List[str] = []
+            if head:
+                if len(head) <= max(int(limit), 4096):
+                    chunks.append(head)
+                else:
+                    chunks.extend(_chunk_telegram_html_body(head, limit))
+            if tail:
+                chunks.extend(_chunk_telegram_html_body(tail, limit))
+            return [c for c in chunks if c]
+    return _chunk_telegram_html_body(html, limit)

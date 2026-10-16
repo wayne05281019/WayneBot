@@ -932,7 +932,8 @@ def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
     html = format_taiwan_market_page_html(str(db), "20260824")
     assert "台股大盤" in html
     assert "官方收" in html or "休市上一收" in html
-    assert "結構" in html
+    assert "<b>結構</b>" not in html
+    assert html.find("大方向") < html.find("加權指數")
     assert "距月線" in html
     mock_fetch.assert_not_called()
 
@@ -980,7 +981,59 @@ def test_index_performance_periods():
     }
     note = _market_read_note(snap)
     assert "月線下" in note
-    assert "量比" in note
+    assert "量是平常的 0.70 倍" in note
+    assert "；" not in note
+
+
+def test_market_regime_plain_example_and_same_bubble():
+    """燈號白話貼在表頭；超長從加權指數前切開，不准切在燈號中間。"""
+    from taiwan_market import _market_read_note, _page_regime_lines
+    from tg_layout import _html_plain, chunk_telegram_html
+
+    snap = {
+        "regime": "neutral",
+        "regime_label": "區間震盪",
+        "regime_plus": "trend_down",
+        "regime_plus_label": "空頭延伸",
+        "falling_risk": 50,
+        "vs_ma20_pct": -2.1,
+        "vs_ma60_pct": 0.4,
+        "chg5_pct": -4.5,
+        "vs_high52_pct": -5.4,
+        "vol_ratio": 1.34,
+        "breadth_above_ma20": 46,
+    }
+    rows = "\n".join(_page_regime_lines(snap))
+    note = _market_read_note(snap)
+    plain = _html_plain(rows + "\n" + note)
+    assert "大方向" in plain and "區間震盪，沒有單邊" in plain
+    assert "短線" in plain and "還在往下" in plain
+    assert "空頭延伸" not in plain
+    assert "下跌風險" in plain and "50，黃燈" in plain
+    assert "月線下 2.1%。季線上。近5日 -4.5%。離年高 5.4%。量是平常的 1.34 倍。個股站上月線 46%。" in plain
+    assert "；" not in note
+    assert "<b>結構</b>" not in rows
+
+    head = (
+        "<b>📊 台股大盤</b>\n截至　官方收\n"
+        "<b>環境觀察｜測試</b>\n狀態一行\n"
+        + rows
+        + "\n"
+        + note
+    )
+    index = '<a href="https://tw.stock.yahoo.com/">加權指數</a>\n' + ("收盤　12345\n" * 400)
+    parts = chunk_telegram_html(head + "\n\n" + index, 3500, reflow=True, cut_before="加權指數")
+    assert len(parts) >= 2
+    assert "大方向" in parts[0] and "個股站上月線 46%" in parts[0]
+    assert "環境觀察" in parts[0]
+    assert "加權指數" not in parts[0]
+    assert parts[1].startswith("<a ")
+    assert "加權指數" in parts[1]
+    assert all("大方向" not in p for p in parts[1:])
+
+    untouched = chunk_telegram_html("\n".join(["甲" * 80] * 50), 3500)
+    assert len(untouched) >= 2
+    assert all(len(p) <= 3500 for p in untouched)
 
 
 @pytest.mark.production_db
@@ -1434,10 +1487,16 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "OI " not in html
     assert "基差" not in html
     assert "近月" not in html
-    assert "結構" in html
-    assert "盤勢" in html
-    assert "細分" in html
-    assert "風險" in html
+    assert "<b>結構</b>" not in html
+    head, _, tail = html.partition("加權指數")
+    assert "大方向" in head and "短線" in head and "下跌風險" in head
+    assert "大方向" not in tail
+    assert "盤勢" not in head and "細分" not in head
+    lights = head[head.find("大方向"):]
+    anchor = lights.rfind("<a ")
+    if anchor >= 0:
+        lights = lights[:anchor]
+    assert "\n\n" not in lights.rstrip("\n")
 
 
 def test_resolve_te_night_from_cache_not_tx(tmp_path):
