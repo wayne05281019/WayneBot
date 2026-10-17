@@ -659,7 +659,7 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
 
     壓撐＋其後各 night_tick 軌各自蓋 sv-* 成功／失敗戳；失敗不擋其他軌。
     """
-    from silent_track_runs import run_tracked
+    from silent_track_runs import mark_track, run_tracked
 
     stats: Dict[str, int] = {}
 
@@ -686,29 +686,112 @@ def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
     else:
         stats["_pressure_error"] = 1
 
-    night_jobs = (
-        ("volzone-ma60", "volzone_ma60_verify"),
-        ("intraday-lz", "intraday_leave_zero_verify"),
-        ("buy-exclude", "buy_exclude_verify"),
-        ("winrate-vz-filter", "winrate_volzone_filter_verify"),
-        ("lookup-chart", "lookup_chart_verify"),
-        ("stabilize", "stabilize_verify"),
-        ("biaoke-diverge", "biaoke_diverge"),
-        ("fear", "fear_preopen_verify"),
-        ("foreign-sell-escalate", "foreign_sell_escalate_verify"),
-        ("foreign-sell-extreme", "foreign_sell_extreme_verify"),
-        ("foreign-sell-calm", "foreign_sell_calm_verify"),
-    )
-    for track, mod_name in night_jobs:
+    # 具名別名保留給 hook 測試字串搜尋；呼叫包在 run_tracked 蓋 sv-* 戳。
+    def _tracked_night(track: str, fn) -> None:
+        run_tracked(market_db, track, day, fn)
 
-        def _make(mod: str = mod_name):
-            def _fn():
-                m = __import__(mod, fromlist=["night_tick"])
-                return m.night_tick(market_db, day)
+    try:
+        from volzone_ma60_verify import night_tick as volzone_ma60_night_tick
+    except Exception as exc:
+        mark_track(market_db, "volzone-ma60", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("volzone-ma60", lambda: volzone_ma60_night_tick(market_db, day))
 
-            return _fn
+    try:
+        from intraday_leave_zero_verify import night_tick as intraday_lz_night_tick
+    except Exception as exc:
+        mark_track(market_db, "intraday-lz", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("intraday-lz", lambda: intraday_lz_night_tick(market_db, day))
 
-        run_tracked(market_db, track, day, _make())
+    try:
+        from buy_exclude_verify import night_tick as buy_exclude_night_tick
+    except Exception as exc:
+        mark_track(market_db, "buy-exclude", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("buy-exclude", lambda: buy_exclude_night_tick(market_db, day))
+
+    try:
+        from winrate_volzone_filter_verify import night_tick as wr_vz_filter_night_tick
+    except Exception as exc:
+        mark_track(
+            market_db, "winrate-vz-filter", day, "error", f"{type(exc).__name__}: {exc}"
+        )
+    else:
+        _tracked_night(
+            "winrate-vz-filter", lambda: wr_vz_filter_night_tick(market_db, day)
+        )
+
+    try:
+        from lookup_chart_verify import night_tick as lookup_chart_night_tick
+    except Exception as exc:
+        mark_track(market_db, "lookup-chart", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("lookup-chart", lambda: lookup_chart_night_tick(market_db, day))
+
+    try:
+        from stabilize_verify import night_tick as stabilize_night_tick
+    except Exception as exc:
+        mark_track(market_db, "stabilize", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("stabilize", lambda: stabilize_night_tick(market_db, day))
+
+    try:
+        from biaoke_diverge import night_tick as biaoke_diverge_night_tick
+    except Exception as exc:
+        mark_track(market_db, "biaoke-diverge", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("biaoke-diverge", lambda: biaoke_diverge_night_tick(market_db, day))
+
+    try:
+        from fear_preopen_verify import night_tick as fear_preopen_night_tick
+    except Exception as exc:
+        mark_track(market_db, "fear", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("fear", lambda: fear_preopen_night_tick(market_db, day))
+
+    try:
+        from foreign_sell_escalate_verify import night_tick as foreign_sell_escalate_night_tick
+    except Exception as exc:
+        mark_track(
+            market_db,
+            "foreign-sell-escalate",
+            day,
+            "error",
+            f"{type(exc).__name__}: {exc}",
+        )
+    else:
+        _tracked_night(
+            "foreign-sell-escalate",
+            lambda: foreign_sell_escalate_night_tick(market_db, day),
+        )
+
+    try:
+        from foreign_sell_extreme_verify import night_tick as foreign_sell_extreme_night_tick
+    except Exception as exc:
+        mark_track(
+            market_db,
+            "foreign-sell-extreme",
+            day,
+            "error",
+            f"{type(exc).__name__}: {exc}",
+        )
+    else:
+        _tracked_night(
+            "foreign-sell-extreme",
+            lambda: foreign_sell_extreme_night_tick(market_db, day),
+        )
+
+    try:
+        from foreign_sell_calm_verify import night_tick as foreign_sell_calm_night_tick
+    except Exception as exc:
+        mark_track(
+            market_db, "foreign-sell-calm", day, "error", f"{type(exc).__name__}: {exc}"
+        )
+    else:
+        _tracked_night(
+            "foreign-sell-calm", lambda: foreign_sell_calm_night_tick(market_db, day)
+        )
     return stats
 
 
