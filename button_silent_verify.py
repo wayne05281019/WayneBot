@@ -839,27 +839,52 @@ def snapshot_winrate_buypoint(market_db: str, as_of: str = "") -> int:
 
 
 def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
-    """補缺鈕骨架一輪。一條失敗不擋其他。"""
+    """補缺鈕骨架一輪。一條失敗不擋其他；各軌各自蓋 sv-* 成功／失敗戳。"""
     day = _as_of(market_db, as_of)
     stats: Dict[str, int] = {}
     if not day:
         return stats
+    from silent_track_runs import mark_track, track_status
+
+    # (stats_key, pipeline track id, fn)
     runners = (
-        ("money_flow", snapshot_money_flow),
-        ("book_hold", snapshot_book_hold),
-        ("book_watch", snapshot_book_watch),
-        ("book_buy", snapshot_book_buy),
-        ("ai_desk", snapshot_ai_desk),
-        ("biaoke_named", snapshot_biaoke_named),
-        ("biaoke_levels", snapshot_biaoke_levels),
-        ("biaoke_diverge", snapshot_biaoke_diverge),
-        ("winrate_buypoint", snapshot_winrate_buypoint),
+        ("money_flow", "money-flow", snapshot_money_flow),
+        ("book_hold", "book-hold", snapshot_book_hold),
+        ("book_watch", "book-watch", snapshot_book_watch),
+        ("book_buy", "book-buy", snapshot_book_buy),
+        ("ai_desk", "ai-desk", snapshot_ai_desk),
+        ("biaoke_named", "biaoke-named", snapshot_biaoke_named),
+        ("biaoke_levels", "biaoke-levels", snapshot_biaoke_levels),
+        ("biaoke_diverge", "biaoke-diverge", snapshot_biaoke_diverge),
+        ("winrate_buypoint", "winrate-buypoint", snapshot_winrate_buypoint),
     )
-    for key, fn in runners:
+    for key, track, fn in runners:
+        prev = track_status(market_db, track, day)
+        prev_st = str((prev or {}).get("status") or "").strip().lower()
         try:
-            stats[key] = int(fn(market_db, day) or 0)
-        except Exception:
+            n = int(fn(market_db, day) or 0)
+            stats[key] = n
+        except Exception as exc:
             stats[key] = 0
+            stats[f"_{key}_error"] = 1
+            # freeze 失敗一定打紅；已有 error 也不洗成 success
+            mark_track(
+                market_db,
+                track,
+                day,
+                "error",
+                f"{type(exc).__name__}: {exc}"[:800],
+            )
+            continue
+        # 壓撐路徑可能已跑過同軌 night_tick：
+        # - 已 error → freeze 成功不准洗白
+        # - 已 success → 不重蓋
+        # - 尚無戳 → 本輪 freeze 蓋 success
+        if prev_st == "error":
+            continue
+        if prev_st == "success":
+            continue
+        mark_track(market_db, track, day, "success", f"n={n}")
     return stats
 
 
