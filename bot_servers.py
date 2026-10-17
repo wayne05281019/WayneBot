@@ -4632,7 +4632,6 @@ class WayneTelegramBot:
         pre_live = len(rows)
         raw_rows = list(rows)
         live_skipped = False
-        live_filtered = False
         if live_bucket:
             try:
                 rows = await asyncio.wait_for(
@@ -4640,33 +4639,20 @@ class WayneTelegramBot:
                     timeout=45.0,
                 )
             except asyncio.TimeoutError:
-                logger.warning("%s 盤中複核逾時，改顯示昨收候選", live_bucket)
-                rows = [dict(r, _live_skipped=True) for r in raw_rows]
+                logger.warning("%s 盤中複核逾時，今天沒有（不送昨收候選）", live_bucket)
+                rows = []
                 live_skipped = True
             else:
-                live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
-                live_filtered = bool(rows) and bool(rows[0].get("_live_filtered"))
+                live_skipped = False
 
         label = LINE_BUCKET_TITLES.get(bucket_key, "")
         rows = stamp_entry_stars(list(rows or []), bucket_key)
         cards = [_stock_card_html(r, i + 1, bucket_label=label) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>\n────────────────"
-        if cards and live_skipped:
-            body = (
-                head
-                + "\n<i>⚠️ 盤中即時價暫時無法複核，以下為昨收候選（請自行確認現價與漲幅）。</i>\n"
-                + "\n".join(cards)
-            )
-        elif cards and live_filtered:
-            body = (
-                head
-                + "\n<i>此刻無標的落在盤中漲幅條件內，以下為昨收候選供參考。</i>\n"
-                + "\n".join(cards)
-            )
-        elif cards:
+        if cards:
             body = head + "\n" + "\n".join(cards)
-        elif pre_live > 0:
-            body = head + "\n<i>盤中複核後無符合（當沖漲幅須 2%～8.5%，隔日沖須 ≥2.5%）。</i>"
+        elif pre_live > 0 or live_skipped:
+            body = head + "\n<i>今天沒有。盤中對不上現價。</i>"
         else:
             body = head + "\n<i>今日無符合</i>"
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
@@ -4816,7 +4802,7 @@ class WayneTelegramBot:
             bucket_key="day_trade",
             live_bucket="daytrade",
             title="⚡ 當沖候選（盤中）",
-            subtitle="盤中節奏名單，不是黃金買點、不是記買入建議。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
+            subtitle="盤中節奏名單，不是黃金買點、不是記買入建議。下面的＋3%、＋6%、均價停損，是用收盤乘比例的推算，不是現價、不是成交價。對不上現價的不列。",
             topic="daytrade",
             status_text="⚡ 當沖查詢中（盤中現價複核）…",
             menu_label="當沖",
@@ -4829,7 +4815,7 @@ class WayneTelegramBot:
             bucket_key="overnight",
             live_bucket="overnight",
             title="⚡ 隔日沖候選（盤中即時）",
-            subtitle="盤中節奏名單，不是黃金買點。只列此刻漲幅≥2.5%；現價旁小字＝報價時間。不是記買入建議。",
+            subtitle="盤中節奏名單，不是黃金買點。只列此刻漲幅≥2.5%；對不上現價的不列。尾盤區間、開高、+7%是用收盤乘比例的推算，不是現價、不是成交價。現價旁小字＝報價時間。",
             topic="overnight",
             status_text="⚡ 隔日沖查詢中（盤中現價複核）…",
             menu_label="隔日沖",
@@ -9496,7 +9482,7 @@ class WayneTelegramBot:
                 bucket_key="day_trade",
                 live_bucket="daytrade",
                 title="⚡ 當沖候選（盤中）",
-                subtitle="盤中節奏名單，不是黃金買點、不是記買入建議。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
+                subtitle="盤中節奏名單，不是黃金買點、不是記買入建議。下面的＋3%、＋6%、均價停損，是用收盤乘比例的推算，不是現價、不是成交價。對不上現價的不列。",
                 topic="daytrade",
                 status_text="⚡ 當沖查詢中（盤中現價複核）…",
                 menu_label="當沖",
@@ -9508,7 +9494,7 @@ class WayneTelegramBot:
                 bucket_key="overnight",
                 live_bucket="overnight",
                 title="⚡ 隔日沖候選（盤中即時）",
-                subtitle="盤中節奏名單，不是黃金買點。只列此刻漲幅≥2.5%；現價旁小字＝報價時間。不是記買入建議。",
+                subtitle="盤中節奏名單，不是黃金買點。只列此刻漲幅≥2.5%；對不上現價的不列。尾盤區間、開高、+7%是用收盤乘比例的推算，不是現價、不是成交價。現價旁小字＝報價時間。",
                 topic="overnight",
                 status_text="⚡ 隔日沖查詢中（盤中現價複核）…",
                 menu_label="隔日沖",

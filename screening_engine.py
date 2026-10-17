@@ -3,8 +3,8 @@
 # 檔案路徑：screening_engine.py
 # 核心功能：
 #   1. 海選：周帶量、站上季線、止跌（不再列雙綠／半年高／兩年高；同條件整檔不推）
-#   2. 當沖動能專區（進場價、+3%第一停利、+6%衝頂、均價停損）
-#   3. 隔日沖精選專區（買進區間、明日+3.5~4.8%開高目標、衝頂價、保本防守價）
+#   2. 當沖動能專區（盤中複核；+3%／+6%／均價停損是收盤乘比例的推算）
+#   3. 隔日沖精選專區（盤中複核；尾盤區間／開高／+7%是收盤乘比例的推算）
 #   4. S 級籌碼濾網（投信連買 + 5MA向上勾角）
 #   5. 中小型股流動性雙防護（日量 >= 1,000張 且 日額 >= 3,000萬）
 # ==============================================================================
@@ -500,6 +500,10 @@ class ScreeningEngine:
                 day_trade_item["target_1"] = round(c * 1.03, 2)   # +3% 第一停利
                 day_trade_item["target_2"] = round(c * 1.06, 2)   # +6% 第二衝頂
                 day_trade_item["stop_loss"] = round(avg_p, 2)     # 均價停損
+                day_trade_item["ratio_plan"] = "day_trade"
+                raw_avg = _raw_official_avg(df)
+                if raw_avg is not None:
+                    day_trade_item["avg_price_official"] = raw_avg
                 res_day_trade.append(day_trade_item)
 
             # ------------------------------------------------------------------
@@ -511,6 +515,7 @@ class ScreeningEngine:
                 overnight_item["target_gap"] = f"{round(c * 1.035, 2)} ~ {round(c * 1.048, 2)}" # +3.5%~+4.8%
                 overnight_item["target_max"] = round(c * 1.07, 2) # +7% 衝頂價
                 overnight_item["defense_price"] = round(min(o, avg_p), 2) # 保本防守價
+                overnight_item["ratio_plan"] = "overnight"
                 res_overnight.append(overnight_item)
 
         # 排序：少追排最後。佈局桶按 60 日低獲利低→高（剛離基準在前）。
@@ -583,7 +588,10 @@ class ScreeningEngine:
         return out
 
     def _enrich_session_trade_rows(
-        self, session_rows: List[Dict[str, Any]], target_date: str
+        self,
+        session_rows: List[Dict[str, Any]],
+        target_date: str,
+        bucket_key: str = "",
     ) -> List[Dict[str, Any]]:
         """把 screen_sessions 桶資料補上昨收行情，供當沖／隔日沖盤中複核。"""
         if not session_rows:
@@ -632,6 +640,19 @@ class ScreeningEngine:
             ):
                 if q.get(key) is not None:
                     item[key] = q[key]
+            if bucket_key in ("day_trade", "overnight"):
+                try:
+                    close_v = float(item.get("close") or 0)
+                except (TypeError, ValueError):
+                    close_v = 0.0
+                if close_v > 0:
+                    item["ratio_plan"] = bucket_key
+                    try:
+                        avg_v = float(item.get("avg_price") or 0)
+                    except (TypeError, ValueError):
+                        avg_v = 0.0
+                    if avg_v > 0:
+                        item["avg_price_official"] = avg_v
             out.append(item)
         return out
 
@@ -647,7 +668,7 @@ class ScreeningEngine:
         if not rows:
             _remember_live_judges(self.db_path, bucket_key, [], as_of=str(target_date or ""))
             return []
-        enriched = self._enrich_session_trade_rows(rows, target_date)
+        enriched = self._enrich_session_trade_rows(rows, target_date, bucket_key)
         bot_rows = [self._row_for_bot(x) for x in enriched]
         _remember_live_judges(self.db_path, bucket_key, bot_rows, as_of=str(target_date or ""))
         return bot_rows
@@ -2029,6 +2050,17 @@ def _pct_str(pct) -> str:
     return f"+{p:.2f}%" if p > 0 else f"{p:.2f}%"
 
 
+def _raw_official_avg(df) -> Optional[float]:
+    """日 K 均價欄。沒有官方均價就不要用收盤補。"""
+    try:
+        raw = float(df["avg_price"].iloc[-1] or 0)
+    except (TypeError, ValueError, KeyError, IndexError):
+        return None
+    if raw != raw or raw <= 0:
+        return None
+    return raw
+
+
 def _avg_price_for_safety(item: Dict[str, Any]) -> float:
     """停損／防守價用均價；庫裡若誤存成交股數則改算 turnover÷volume。"""
     try:
@@ -2131,31 +2163,110 @@ def _card_kv(label: str, value_html: str) -> str:
     return f"{pad_label(str(label or ''), 4)}　{value_html}"
 
 
-def _safety_plan_plain(item: Dict[str, Any]) -> List[str]:
-    """當沖／隔日沖：現在不要貴過多少、漲到哪先出、跌破哪就走。"""
-    lines: List[str] = []
+def _ratio_plan_kind(item: Dict[str, Any]) -> str:
+    """只有當沖／隔日沖才有收盤乘比例。別的桶沒有這段。"""
+    kind = str(item.get("ratio_plan") or "").strip()
+    if kind in ("day_trade", "overnight"):
+        return kind
+    if item.get("buy_range") is not None or item.get("target_max") is not None:
+        return "overnight"
     if item.get("target_1") is not None or item.get("entry_price") is not None:
-        entry = _px_str(item.get("entry_price") if item.get("entry_price") is not None else item.get("close"))
-        lines.append(f"現在不要貴過　{entry}")
-        lines.append(f"漲到這裡先出　{_px_str(item.get('target_1'))}（+3%）")
-        lines.append(f"再衝看這裡　{_px_str(item.get('target_2'))}（+6%）")
-        lines.append(f"跌破這裡就走　{_px_str(item.get('stop_loss'))}（當日均價）")
-    elif item.get("buy_range") is not None:
-        lines.append(f"尾盤買這裡　{item.get('buy_range')}（昨收附近，不要摸高）")
-        lines.append(f"明早開高看　{item.get('target_gap')}（+3.5%～+4.8%）")
-        lines.append(f"再衝看這裡　{_px_str(item.get('target_max'))}（+7%）")
-        lines.append(f"跌破這裡就走　{_px_str(item.get('defense_price'))}（開盤與均價較低者）")
+        return "day_trade"
+    return ""
+
+
+def _official_close_for_ratio(item: Dict[str, Any]) -> Optional[float]:
+    try:
+        close = float(item.get("close") or 0)
+    except (TypeError, ValueError):
+        return None
+    if close <= 0:
+        return None
+    return close
+
+
+def _official_avg_for_ratio(item: Dict[str, Any]) -> Optional[float]:
+    """均價停損只認官方均價。沒有就不算、不留白。"""
+    if "avg_price_official" in item:
+        raw = item.get("avg_price_official")
+    else:
+        raw = item.get("avg_price")
+    try:
+        avg_p = float(raw or 0)
+        close = float(item.get("close") or 0)
+    except (TypeError, ValueError):
+        return None
+    if avg_p != avg_p or close != close or avg_p <= 0 or close <= 0:
+        return None
+    try:
+        vol_lots = int(item.get("volume") or 0)
+    except (TypeError, ValueError):
+        vol_lots = 0
+    shares = vol_lots * 1000
+    if shares > 0 and abs(avg_p - shares) <= max(1.0, shares * 0.001):
+        return None
+    if avg_p < close * 0.5 or avg_p > close * 2.0:
+        return None
+    return round(avg_p, 2)
+
+
+def _ratio_px_plain(close) -> str:
+    """推算價純文字（給 plain／再交給 html_face）。"""
+    try:
+        v = float(close)
+    except (TypeError, ValueError):
+        return ""
+    if v <= 0:
+        return ""
+    if v >= 100:
+        return f"{v:.1f}".rstrip("0").rstrip(".")
+    return f"{v:.2f}"
+
+
+def _safety_plan_plain(item: Dict[str, Any]) -> List[str]:
+    """當沖／隔日沖：用收盤乘比例的推算。沒有官方收就不算、不留白。"""
+    kind = _ratio_plan_kind(item)
+    if not kind:
+        return []
+    close = _official_close_for_ratio(item)
+    if close is None:
+        return []
+    lines = ["用收盤乘比例的推算，不是成交價"]
+    if kind == "day_trade":
+        lines.append(f"+3%　{_ratio_px_plain(round(close * 1.03, 2))}")
+        lines.append(f"+6%　{_ratio_px_plain(round(close * 1.06, 2))}")
+        avg_p = _official_avg_for_ratio(item)
+        if avg_p is not None:
+            lines.append(f"均價停損　{_ratio_px_plain(avg_p)}")
+        return lines
+    lo = _ratio_px_plain(round(close * 0.992, 2))
+    hi = _ratio_px_plain(close)
+    lines.append(f"尾盤區間　{lo}～{hi}")
+    gap_lo = _ratio_px_plain(round(close * 1.035, 2))
+    gap_hi = _ratio_px_plain(round(close * 1.048, 2))
+    lines.append(f"開高　{gap_lo}～{gap_hi}")
+    lines.append(f"+7%　{_ratio_px_plain(round(close * 1.07, 2))}")
     return lines
 
 
 def _safety_plan_html(item: Dict[str, Any]) -> List[str]:
+    from tg_layout import html_face
+
     out = []
     for line in _safety_plan_plain(item):
         if "　" in line:
             label, rest = line.split("　", 1)
-            out.append(f"{html_escape(label)}　{_hot(rest)}")
+            # 區間用 ～ 切開，各自上橘等寬；不要整段再 escape 一次。
+            if "～" in rest:
+                parts = rest.split("～")
+                out.append(
+                    f"{html_escape(label)}　"
+                    + "～".join(html_face(p) for p in parts)
+                )
+            else:
+                out.append(f"{html_escape(label)}　{html_face(rest)}")
         else:
-            out.append(_hot(line))
+            out.append(html_escape(line))
     return out
 
 
@@ -2378,19 +2489,8 @@ def _compact_line(item: Dict[str, Any]) -> str:
         if on
     )
     extra = f"　{hot}" if hot else ""
-    plan = ""
-    if item.get("target_1") is not None or item.get("entry_price") is not None:
-        plan = (
-            f"　保險進≤{_px_str(item.get('entry_price') if item.get('entry_price') is not None else item.get('close'))}"
-            f"　停利{_px_str(item.get('target_1'))}/{_px_str(item.get('target_2'))}"
-            f"　停損均價{_px_str(item.get('stop_loss'))}"
-        )
-    elif item.get("buy_range") is not None:
-        plan = (
-            f"　買{html_escape(item.get('buy_range'))}"
-            f"　開高{html_escape(item.get('target_gap'))}"
-            f"　守{_px_str(item.get('defense_price'))}"
-        )
+    plan_bits = [html_escape(bit) for bit in _safety_plan_plain(item)]
+    plan = ("　" + "　".join(plan_bits)) if plan_bits else ""
     try:
         from stock_links import html_stock_anchor
 
@@ -2442,7 +2542,8 @@ EMERGING_PUSH_SPECS = (
 
 LINE_TRADE_POINTER = (
     "＝＝短線（不在晨間海選）＝＝\n"
-    "當沖、隔日沖名單改在 Telegram 主選單按「當沖」或「隔日沖」查看（同樣是昨收掃描，含保險進／停利／停損）。"
+    "當沖、隔日沖名單改在 Telegram 主選單按「當沖」或「隔日沖」查看"
+    "（同樣是昨收掃描；卡片上的＋3%／＋6%／＋7%／均價停損是用收盤乘比例的推算）。"
 )
 
 

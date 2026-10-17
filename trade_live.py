@@ -92,8 +92,8 @@ def apply_trade_live(
         quotes = {}
 
     if not quotes:
-        logger.warning("apply_trade_live: MIS 無報價，改顯示昨收候選（未盤中複核）")
-        return [dict(r, _live_skipped=True) for r in rows]
+        logger.warning("apply_trade_live: MIS 無報價，今天沒有（不送昨收候選）")
+        return []
 
     checker = passes_daytrade_live if bucket == "daytrade" else passes_overnight_live
     out: List[Dict[str, Any]] = []
@@ -135,7 +135,7 @@ def apply_trade_live(
                     item["vol_rank_120"] = rank
         except Exception:
             logger.debug("live vol rank batch failed", exc_info=True)
-    if not out and rows and quotes:
-        logger.info("apply_trade_live: 盤中條件全過濾，改顯示昨收候選")
-        return [dict(r, _live_filtered=True) for r in rows]
+    if not out and rows:
+        logger.info("apply_trade_live: 盤中對不上現價，今天沒有（不送昨收候選）")
+        return []
     return out
