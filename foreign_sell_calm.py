@@ -54,6 +54,23 @@ def iter_buy_param_grid() -> List[BuyEscalateParams]:
     return out
 
 
+def current_buy_params() -> BuyEscalateParams:
+    """現況靜默（測試；橘六角買升級仍不亮）。"""
+    return BuyEscalateParams()
+
+
+def next_silent_buy_params() -> BuyEscalateParams:
+    """下一版靜默候選 buy_n5；只落檔，未過閘不上橘六角。"""
+    from foreign_sell_escalate import NEXT_K, NEXT_N
+
+    return BuyEscalateParams(
+        n_days=int(NEXT_N),
+        k_ahead=int(NEXT_K),
+        theta_pctl=float(DEFAULT_THETA_PCTL),
+        min_upgrades=2,
+    )
+
+
 def buy_lots(foreign_net: Any) -> Optional[float]:
     """單日外資買超張數＝max(0, foreign_net)；單位張。"""
     fn = _f(foreign_net)

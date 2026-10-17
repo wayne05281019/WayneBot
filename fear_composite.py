@@ -96,6 +96,16 @@ def iter_fear_param_grid() -> List[FearParams]:
     return out
 
 
+def current_fear_params() -> FearParams:
+    """話筒／夜盤現況（測試版）。"""
+    return FearParams()
+
+
+def next_silent_fear_params() -> FearParams:
+    """下一版靜默候選：夜盤門檻更緊 -1.2；只落檔，未過閘不改現況。"""
+    return FearParams(night_thr=-1.2)
+
+
 @dataclass
 class FearVoteDetail:
     name: str

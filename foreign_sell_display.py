@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""外資／恐懼預警｜測試版話筒顯示（觀察／預警，不是買訊）。
+"""外資／恐懼預警｜話筒顯示（觀察／預警，不是買訊）。
 
-使用者 2026-10-15「先做一版」＝測試版可上話筒（早報一句／大盤環境／查股觀察標）。
-文案一律標「觀察／預警（測試）」；不准寫成可買；不准改 leave_zero／黃金買點／藍▲紅框。
-正式過閘後再收文案（DISPLAY_MODE 之後可改 official）。
+2026-10-15 測試版已上話筒；2026-10-17 收斂：四軌靜默未過閘 → 文案標「還在測試」。
+不准寫成可買；不准改 leave_zero／黃金買點／藍▲紅框。
+某軌 n≥20 且贏該軌現況 → 該軌 DISPLAY_MODE 可改 official（見 foreign_sell_gate）。
+大盤環境維持白話，不准印恐懼熄／確認亮那套。
 """
 from __future__ import annotations
 
@@ -15,15 +16,24 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from dongzhu_tape import tape_store_path
 from fear_composite import _ymd
 
-# 測試版上話筒；正式過閘文案之後再收；靜默對質繼續
+# 四軌皆未過閘 → 整體仍 test；分軌日後可各自改 official（見 TRACK_DISPLAY_MODE）
 DISPLAY_MODE = "test"
-DISPLAY_TAG = "觀察／預警（測試）"
+# 一眼懂還在測試；正式過閘後該軌改「觀察／預警」
+DISPLAY_TAG = "觀察／預警（還在測試）"
 BUY_SIGNAL = False  # 硬鎖：永遠不是買訊
+
+# 分軌顯示模式（正反向分軌；勝率不准混）。目前全 test。
+TRACK_DISPLAY_MODE: Dict[str, str] = {
+    "fear": "test",
+    "escalate": "test",
+    "extreme": "test",
+    "calm": "test",
+}
 
 # 查股觀察標視覺（須異於藍▲紅框、止穩◆）
 OBSERVE_FACE = "#E65100"  # 琥珀橘
 OBSERVE_EDGE = "#FF8F00"
-OBSERVE_LABEL = "觀察"
+OBSERVE_LABEL = "觀察"  # 圖上字短；圖例／標題帶「還在測試」
 OBSERVE_MARKER = "h"  # 六角形；◆＝止穩、▲＝買／60低
 
 # 個股近窗：最近幾個交易日有升級／極端確認才標
@@ -58,24 +68,6 @@ class EnvObserveStatus:
     @property
     def any_lit(self) -> bool:
         return bool(self.fear_lit or self.confirm_n > 0 or self.calm_lit)
-
-    def fear_state(self) -> str:
-        """中文狀態：恐懼亮／恐懼熄／恐懼未齊。"""
-        if not self.fear_evaluable:
-            return "恐懼未齊"
-        return "恐懼亮" if self.fear_lit else "恐懼熄"
-
-    def confirm_state(self) -> str:
-        """中文狀態：確認亮／確認熄。"""
-        return "確認亮" if self.confirm_n > 0 else "確認熄"
-
-    def calm_state(self) -> str:
-        """中文狀態：冷靜亮／冷靜熄。"""
-        return "冷靜亮" if self.calm_lit else "冷靜熄"
-
-    def status_line_zh(self) -> str:
-        """大盤狀態一行：恐懼亮／確認熄／冷靜熄。"""
-        return f"{self.fear_state()}／{self.confirm_state()}／{self.calm_state()}"
 
 
 @dataclass
@@ -288,9 +280,12 @@ def _confirm_plain(st: EnvObserveStatus) -> str:
 
 
 def _calm_plain(st: EnvObserveStatus) -> str:
+    """害怕有沒有緩：有亮才說緩下來；仍在怕才說還沒緩；其餘不裝成有恐懼在燒。"""
     if st.calm_lit:
         return "害怕已經緩下來。"
-    return "害怕還沒緩下來。"
+    if st.fear_lit:
+        return "害怕還沒緩下來。"
+    return "害怕這件事今天沒特別變化。"
 
 
 def load_morning_status(

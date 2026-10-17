@@ -16,9 +16,11 @@ from foreign_sell_calm import (
     TAG_BUY_ESC,
     TAG_CALM,
     BuyEscalateParams,
+    current_buy_params,
     evaluate_buy_escalate_A,
     evaluate_calm_fear_fade,
     hit_buy_within_k,
+    next_silent_buy_params,
     units_banner,
 )
 from foreign_sell_escalate import cross_sectional_percentile
@@ -124,45 +126,56 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
         if as_of not in dens:
             return out
         di = dens.index(as_of)
-        p = BuyEscalateParams()
-        win = dens[max(0, di - p.n_days) : di + 1]
+        p = current_buy_params()
+        p_next = next_silent_buy_params()
+        need_n = max(int(p.n_days), int(p_next.n_days))
+        win = dens[max(0, di - need_n + 1) : di + 1]
         top = _top_sids(market_db, as_of, TOP_N)
         panel = _load_panel(market_db, win, top)
         ex = _ex_set(market_db, as_of)
         pctls_by_day = {d: _buy_day_pctls(panel.get(d) or {}) for d in win}
-        lit_buy: List[Dict[str, Any]] = []
-        for sid in top:
-            if sid in ex:
-                continue
-            fns, vols, ps = [], [], []
-            ok = True
-            for d in win[-p.n_days :]:
-                b = (panel.get(d) or {}).get(sid)
-                if not b:
-                    ok = False
-                    break
-                fns.append(b.get("foreign_net"))
-                vols.append(b.get("volume"))
-                ps.append(pctls_by_day.get(d, {}).get(sid))
-            if not ok:
-                continue
-            today = (panel.get(as_of) or {}).get(sid) or {}
-            if (_f(today.get("volume")) or 0) < MIN_VOLUME_LOTS:
-                continue
-            ev = evaluate_buy_escalate_A(
-                foreign_nets=fns, volumes=vols, pctls=ps, params=p
-            )
-            if not ev.get("lit"):
-                continue
-            lit_buy.append(
-                {
-                    "sid": sid,
-                    "buy_share": ev.get("buy_share"),
-                    "pctl": ev.get("pctl"),
-                    "foreign_net": today.get("foreign_net"),
-                    "volume": today.get("volume"),
-                }
-            )
+
+        def _scan_buy(params: BuyEscalateParams) -> List[Dict[str, Any]]:
+            lit: List[Dict[str, Any]] = []
+            for sid in top:
+                if sid in ex:
+                    continue
+                fns, vols, ps = [], [], []
+                ok = True
+                for d in win[-params.n_days :]:
+                    b = (panel.get(d) or {}).get(sid)
+                    if not b:
+                        ok = False
+                        break
+                    fns.append(b.get("foreign_net"))
+                    vols.append(b.get("volume"))
+                    ps.append(pctls_by_day.get(d, {}).get(sid))
+                if not ok:
+                    continue
+                today = (panel.get(as_of) or {}).get(sid) or {}
+                if (_f(today.get("volume")) or 0) < MIN_VOLUME_LOTS:
+                    continue
+                ev = evaluate_buy_escalate_A(
+                    foreign_nets=fns, volumes=vols, pctls=ps, params=params
+                )
+                if not ev.get("lit"):
+                    continue
+                lit.append(
+                    {
+                        "sid": sid,
+                        "buy_share": ev.get("buy_share"),
+                        "pctl": ev.get("pctl"),
+                        "foreign_net": today.get("foreign_net"),
+                        "volume": today.get("volume"),
+                        "params_key": params.key(),
+                        "k_ahead": int(params.k_ahead),
+                        "theta_pctl": float(params.theta_pctl),
+                    }
+                )
+            return lit
+
+        lit_buy = _scan_buy(p)
+        lit_buy_next = _scan_buy(p_next)
 
         # Calm：讀 fear_preopen_tape 若存在
         calm_lit = False
@@ -210,7 +223,7 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
                     """,
                     (KIND, as_of, "calm", "", TAG_CALM, calm_note),
                 )
-            for r in lit_buy:
+            for r in lit_buy + lit_buy_next:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO foreign_sell_calm_tape(
@@ -220,7 +233,7 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
                     (
                         KIND,
                         as_of,
-                        p.key(),
+                        r["params_key"],
                         r["sid"],
                         TAG_BUY_ESC,
                         "小買升級",
@@ -230,14 +243,20 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
                         r.get("volume"),
                     ),
                 )
-            # score buy escalate if future exists
-            fut = dens[di + 1 : di + 1 + p.k_ahead]
-            if fut and lit_buy:
-                fut_panel = _load_panel(market_db, fut, [r["sid"] for r in lit_buy])
+            # score：現況＋下一版分 params_key；勝率不准混
+            for bundle in (lit_buy, lit_buy_next):
+                if not bundle:
+                    continue
+                k_ah = int(bundle[0]["k_ahead"])
+                th = float(bundle[0]["theta_pctl"])
+                fut = dens[di + 1 : di + 1 + k_ah]
+                if not fut:
+                    continue
+                fut_panel = _load_panel(market_db, fut, [r["sid"] for r in bundle])
                 fut_pctls = {d: _buy_day_pctls(fut_panel.get(d) or {}) for d in fut}
-                for r in lit_buy:
+                for r in bundle:
                     fps = [fut_pctls.get(d, {}).get(r["sid"]) for d in fut]
-                    h = hit_buy_within_k(fps, k=p.k_ahead, theta_pctl=p.theta_pctl)
+                    h = hit_buy_within_k(fps, k=k_ah, theta_pctl=th)
                     hit_v = h.get("hit")
                     conn.execute(
                         """
@@ -248,10 +267,10 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
                         (
                             KIND,
                             as_of,
-                            p.key(),
+                            r["params_key"],
                             r["sid"],
                             TAG_BUY_ESC,
-                            p.k_ahead,
+                            k_ah,
                             None if hit_v is None else (1 if hit_v else 0),
                             "pending"
                             if hit_v is None
@@ -263,9 +282,12 @@ def night_tick(market_db: str, day: str = "") -> Dict[str, Any]:
             conn.close()
         out["ok"] = True
         out["n_buy"] = len(lit_buy)
+        out["n_buy_next"] = len(lit_buy_next)
+        out["next_silent"] = p_next.key()
         out["calm"] = calm_lit
         out["as_of"] = as_of
         out["units"] = units_banner()
+        out["buy_signal"] = False
         return out
     except Exception as e:
         out["error"] = str(e)[:200]

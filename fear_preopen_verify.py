@@ -23,8 +23,10 @@ from fear_composite import (
     SELL_SHARE_UNIT,
     VOLUME_UNIT,
     FearParams,
+    current_fear_params,
     evaluate_fear_composite,
     is_dump_day,
+    next_silent_fear_params,
     night_vs_prior_settle_pct,
     sell_share,
 )
@@ -669,8 +671,10 @@ def _persist_stock_events(db_path: str, day: str, params_key: str) -> int:
     return n
 
 
-def snapshot_day(db_path: str, as_of: str = "") -> Dict[str, Any]:
-    """盤後靜默：預設參數落一列。"""
+def snapshot_day(
+    db_path: str, as_of: str = "", *, params: Optional[FearParams] = None
+) -> Dict[str, Any]:
+    """盤後靜默：預設／指定參數落一列。"""
     day = _ymd(as_of)
     if not day:
         try:
@@ -681,7 +685,9 @@ def snapshot_day(db_path: str, as_of: str = "") -> Dict[str, Any]:
             day = ""
     if not day:
         return {"as_of": "", "lit": False, "events": 0}
-    return persist_day(db_path, day, params=FearParams(), persist_stocks=True)
+    return persist_day(
+        db_path, day, params=params or current_fear_params(), persist_stocks=True
+    )
 
 
 def _forward_index_ret(
@@ -870,8 +876,17 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
 
 
 def night_tick(market_db: str, as_of: str = "") -> Dict[str, Any]:
-    """盤後掛勾：落檔＋打分＋重算。失敗由呼叫端吞。"""
-    snap = snapshot_day(market_db, as_of)
+    """盤後掛勾：現況落檔＋下一版靜默落檔＋打分＋重算。失敗由呼叫端吞。"""
+    snap = snapshot_day(market_db, as_of, params=current_fear_params())
+    try:
+        nxt = snapshot_day(market_db, as_of or snap.get("as_of") or "", params=next_silent_fear_params())
+        snap["next_silent"] = {
+            "params_key": (nxt or {}).get("params_key") or next_silent_fear_params().key(),
+            "lit": bool((nxt or {}).get("lit")),
+            "evaluable": bool((nxt or {}).get("evaluable")),
+        }
+    except Exception as e:
+        snap["next_silent_error"] = str(e)[:160]
     scored = 0
     rates: Dict[str, Any] = {}
     try:
@@ -881,6 +896,7 @@ def night_tick(market_db: str, as_of: str = "") -> Dict[str, Any]:
         pass
     snap["scored"] = scored
     snap["rates_keys"] = len(rates)
+    snap["buy_signal"] = False
     return snap
 
 

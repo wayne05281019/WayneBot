@@ -43,6 +43,9 @@ UNIVERSE_LIQUID = "liquid_tw"  # 上市櫃流動對照
 DEFAULT_THETA_PCTL = 90.0
 DEFAULT_N = 3
 DEFAULT_K = 3
+# 下一版靜默候選（離線 n5 有 lift；只落檔不改話筒現況編碼，直到過閘）
+NEXT_N = 5
+NEXT_K = 3
 GRID_N: Tuple[int, ...] = (3, 5)
 GRID_K: Tuple[int, ...] = (1, 2, 3)
 GRID_THETA: Tuple[float, ...] = (90.0,)
@@ -80,6 +83,21 @@ def iter_escalate_param_grid() -> List[EscalateParams]:
             for th in GRID_THETA:
                 out.append(EscalateParams(n_days=int(n), k_ahead=int(k), theta_pctl=float(th)))
     return out
+
+
+def current_params() -> EscalateParams:
+    """話筒／夜盤現況編碼（測試版）。"""
+    return EscalateParams()
+
+
+def next_silent_params() -> EscalateParams:
+    """下一版靜默候選：n5（離線較優）；只落檔不畫、不改現況。"""
+    return EscalateParams(
+        n_days=int(NEXT_N),
+        k_ahead=int(NEXT_K),
+        theta_pctl=float(DEFAULT_THETA_PCTL),
+        min_upgrades=2,
+    )
 
 
 def units_banner() -> Dict[str, Any]:

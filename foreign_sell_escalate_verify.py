@@ -20,8 +20,10 @@ from foreign_sell_escalate import (
     EscalateParams,
     classify_lead_sync_vs_extreme,
     cross_sectional_percentile,
+    current_params,
     evaluate_escalate_A,
     hit_within_k,
+    next_silent_params,
     units_banner,
 )
 
@@ -533,13 +535,28 @@ def recompute_rates(db_path: str) -> Dict[str, Any]:
 
 
 def night_tick(market_db: str, as_of: str = "") -> Dict[str, Any]:
-    snap = snapshot_day(market_db, as_of)
+    """盤後：現況 n3 落檔＋下一版 n5 靜默落檔；有後窗才 score（失敗不擋）。"""
+    day = _ymd(as_of)
+    snap = snapshot_day(market_db, day, params=current_params())
+    out: Dict[str, Any] = dict(snap or {})
+    out["buy_signal"] = False
     try:
-        # 靜默骨架：先落檔；完整後驗以離線腳本為主（避免夜盤過慢）
-        pass
-    except Exception:
-        pass
-    return snap
+        nxt = snapshot_day(market_db, day or out.get("as_of") or "", params=next_silent_params())
+        out["next_silent"] = {
+            "params_key": (nxt or {}).get("params_key") or next_silent_params().key(),
+            "n_lit": int((nxt or {}).get("n_lit") or 0),
+        }
+    except Exception as e:
+        out["next_silent_error"] = str(e)[:160]
+    try:
+        # 只對現況 params score；下一版離線／後續再對，避免夜盤過慢
+        scored = score_pending(market_db, params=current_params())
+        rates = recompute_rates(market_db)
+        out["scored"] = int(scored or 0)
+        out["rates_keys"] = len(rates or {})
+    except Exception as e:
+        out["score_error"] = str(e)[:160]
+    return out
 
 
 def gate_status(db_path: str) -> Dict[str, Any]:
