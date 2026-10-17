@@ -5785,7 +5785,7 @@ class WayneTelegramBot:
             if not path or not self._chart_png_looks_ok(path):
                 await message.reply_text(fail_msg)
                 return
-            cap = "加權指數日K（K棒・MA5/20/60・量）"
+            cap = "加權指數日K（K棒・他 10/17 說的 C 波區間・量）"
             try:
                 send_path = self._prepare_lookup_album_photo(path)
                 with open(send_path, "rb") as f:
