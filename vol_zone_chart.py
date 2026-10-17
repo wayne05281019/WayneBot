@@ -2511,6 +2511,7 @@ def render_volume_zone_result(
     with_parallel_channel: bool = False,
     with_ma5_ma10: bool = True,
     pack: Optional[Dict[str, Any]] = None,
+    nav_signal_work=None,
 ) -> tuple[str, str]:
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
@@ -2621,6 +2622,7 @@ def render_volume_zone_result(
             with_parallel_channel=with_parallel_channel,
             with_ma5_ma10=with_ma5_ma10,
             bars_face=pack.get("bars"),
+            nav_signal_work=nav_signal_work,
         )
     out_path, out_cap = str(path or ""), str(cap or "")
     if out_path:
@@ -2788,6 +2790,7 @@ def _paint_volume_zone(
     with_parallel_channel: bool = False,
     with_ma5_ma10: bool = True,
     bars_face=None,
+    nav_signal_work=None,
 ):
     spike_md = _md(spike_date)
     ax_head = None
@@ -3286,8 +3289,8 @@ def _paint_volume_zone(
             from wayne_navigator import _load_ohlc, overlay_nav_marks_on_zone
 
             # 訊號＝與高低導航同一套 180 日官方柱，再依日期對到近窗；不准短窗重算
-            signal_work = None
-            if db_path:
+            signal_work = nav_signal_work
+            if signal_work is None and db_path:
                 try:
                     signal_work = _load_ohlc(str(sid), str(db_path), 180)
                 except Exception:
