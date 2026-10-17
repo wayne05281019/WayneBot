@@ -6,12 +6,13 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -805,6 +806,38 @@ def _cache_pair_paths(cache_dir: str, stock_id: str) -> Tuple[str, str]:
     )
 
 
+def cached_winrate_pair(charts_dir: str, as_of: str, stock_id: str) -> Tuple[str, str]:
+    """同基準日磁碟快取（壓力區＋高低卡）。兩張都在才算命中，命中不准再畫。"""
+    day = _ymd(as_of)
+    sid = str(stock_id or "").strip()
+    if not day or not sid:
+        return "", ""
+    vz, card = _cache_pair_paths(_pair_cache_dir(charts_dir, day), sid)
+    if _cache_file_ok(vz) and _cache_file_ok(card, min_bytes=8_000):
+        return vz, card
+    return "", ""
+
+
+async def chain_roster_slots(
+    count: int,
+    load: Callable[[int], Awaitable[Any]],
+    send: Callable[[int, Any], Awaitable[None]],
+) -> None:
+    """勝率名單：一檔 paint 完才開始下一檔 paint；下一檔 load 與上一檔送圖重疊。
+
+    後面的代號不准排在「上一檔畫完＋傳完」之後才開始準備。不准兩檔同時 paint
+    （load 必須在上一檔 load 結束後才啟動）。
+    """
+    n = int(count or 0)
+    if n <= 0:
+        return
+    pending: Optional[asyncio.Task] = asyncio.ensure_future(load(0))
+    for i in range(n):
+        item = await pending
+        pending = asyncio.ensure_future(load(i + 1)) if i + 1 < n else None
+        await send(i, item)
+
+
 def _cache_file_ok(path: str, *, min_bytes: int = 20_000) -> bool:
     try:
         return bool(path) and os.path.isfile(path) and os.path.getsize(path) >= int(min_bytes)
@@ -879,7 +912,7 @@ def render_page_pairs(
     回傳與 rows 同序的 (vz_path, card_path, caption_name)；失敗格空字串。
     同 as_of＋SCAN_KIND 的官方日圖跨人共用磁碟快取；uid 只影響工作檔名，不拆內容。
     """
-    from vol_zone_chart import render_volume_zone_result
+    from vol_zone_chart import prepare_volume_zone, render_volume_zone_result
     from wayne_navigator import render_decision_card_png, run_mpl_paint
 
     charts = charts_dir or os.path.join(os.path.dirname(db_path) or ".", "charts")
@@ -970,6 +1003,23 @@ def render_page_pairs(
         )
         vpath = ""
         try:
+            # 補官方量／180 日訊號在 paint worker 外：不准一檔大量區的網路抓取占住
+            # 唯一畫布執行緒，把下一檔的圖卡在後面越等越久。
+            pack = prepare_volume_zone(
+                sid,
+                name,
+                db_path,
+                job["vz_work"],
+            )
+            nav_signal_work = None
+            if pack:
+                try:
+                    from wayne_navigator import _load_ohlc
+
+                    nav_signal_work = _load_ohlc(sid, db_path, 180)
+                except Exception:
+                    logger.debug("勝率買點導航柱預載略過 code=%s", sid, exc_info=True)
+                    nav_signal_work = None
             vpath, _cap = run_mpl_paint(
                 render_volume_zone_result,
                 sid,
@@ -979,6 +1029,8 @@ def render_page_pairs(
                 card=card or None,
                 with_nav_signals=True,
                 with_ma5_ma10=True,  # 與查股／壓撐同一新臉（5／10／月／季）
+                pack=pack,
+                nav_signal_work=nav_signal_work,
             )
         except Exception:
             logger.exception("勝率買點壓力區失敗 code=%s", sid)

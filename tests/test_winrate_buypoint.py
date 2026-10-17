@@ -852,6 +852,148 @@ def test_silent_remember_roster_and_filter(tmp_path, monkeypatch):
     assert fextra.get("v") == 8000
 
 
+def test_chain_roster_slots_flat_gap_and_one_paint():
+    """下一檔準備與上一檔送出重疊；paint 仍一次一檔；送出間隔不隨名次變長。"""
+    import asyncio
+    import time
+
+    from winrate_buypoint import chain_roster_slots
+
+    active = {"n": 0, "max": 0}
+    ev: dict[tuple[str, int], float] = {}
+
+    async def load(i: int):
+        active["n"] += 1
+        active["max"] = max(active["max"], active["n"])
+        ev[("load_start", i)] = time.perf_counter()
+        await asyncio.sleep(0.05)
+        ev[("load_end", i)] = time.perf_counter()
+        active["n"] -= 1
+        return i
+
+    async def send(i: int, item):
+        assert item == i
+        ev[("send_start", i)] = time.perf_counter()
+        await asyncio.sleep(0.05)
+        ev[("send_end", i)] = time.perf_counter()
+
+    asyncio.run(chain_roster_slots(4, load, send))
+    assert active["max"] == 1
+    for i in range(3):
+        # 上一檔還在送，下一檔 load 已經開始；不是等送完才畫
+        assert ev[("load_start", i + 1)] < ev[("send_end", i)]
+        assert ev[("load_end", i)] <= ev[("send_start", i)]
+    gaps = [ev[("send_start", i + 1)] - ev[("send_start", i)] for i in range(3)]
+    assert max(gaps) < min(gaps) * 1.75, gaps
+
+
+def test_cached_winrate_pair_repeat_skips_paint(tmp_path, monkeypatch):
+    """再按同一基準日：磁碟快取命中，不准重畫，後面的檔不准比第一檔慢一截。"""
+    import os
+    import time
+
+    from winrate_buypoint import cached_winrate_pair, render_stock_pair
+
+    calls = {"n": 0}
+
+    class _FakeEng:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def get_decision_card(self, sid, **_k):
+            return {"stock_id": sid, "stock_name": f"名{sid}", "table": []}
+
+    def _fake_vz(sid, name, db_path, save_path, df=None, **kw):
+        calls["n"] += 1
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        with open(save_path, "wb") as f:
+            f.write(b"x" * 25_000)
+        return save_path, "cap"
+
+    def _fake_card_png(card, path):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(b"y" * 12_000)
+        return path
+
+    monkeypatch.setattr("wayne_navigator.NavigatorEngine", _FakeEng)
+    monkeypatch.setattr("vol_zone_chart.render_volume_zone_result", _fake_vz)
+    monkeypatch.setattr("vol_zone_chart.prepare_volume_zone", lambda *a, **k: None)
+    monkeypatch.setattr("wayne_navigator.render_decision_card_png", _fake_card_png)
+
+    charts = str(tmp_path / "charts")
+    db = str(tmp_path / "x.db")
+    ids = ["2330", "2454", "2317", "2303", "3034", "2383"]
+    for sid in ids:
+        render_stock_pair(
+            db, sid, "名", charts_dir=charts, uid="u", as_of="20261016", reuse_cache=True
+        )
+    assert calls["n"] == len(ids)
+    gaps = []
+    for sid in ids:
+        t0 = time.perf_counter()
+        vz, card = cached_winrate_pair(charts, "20261016", sid)
+        gaps.append(time.perf_counter() - t0)
+        assert vz and card and os.path.isfile(vz)
+    assert calls["n"] == len(ids)
+    assert max(gaps) < 0.05
+    assert max(gaps) < min(gaps) * 8 + 0.02
+
+
+def test_winrate_button_stops_ticker_and_reuses_file_id(tmp_path):
+    import inspect
+    import os
+
+    from bot_servers import (
+        WayneTelegramBot,
+        _winrate_photo_ref,
+        _winrate_remember_photo,
+        _WINRATE_PHOTO_IDS,
+    )
+
+    src = inspect.getsource(WayneTelegramBot._run_winrate_buypoint)
+    assert "cached_winrate_pair" in src
+    assert "chain_roster_slots" in src
+    assert "_silence_wait_ticker" in src
+    assert src.index("await self._silence_wait_ticker") < src.index(
+        "await chain_roster_slots"
+    )
+    assert "to_thread(_pair)" in src
+    assert "render_page_pairs(" not in src
+    assert "gc.collect" not in src
+    assert "plt.close" not in src
+
+    path = tmp_path / "2330_vz.jpg"
+    path.write_bytes(b"x" * 1000)
+    _WINRATE_PHOTO_IDS.clear()
+    assert _winrate_photo_ref(str(path)) == str(path) or os.path.samefile(
+        _winrate_photo_ref(str(path)), path
+    )
+
+    class _Photo:
+        file_id = "AgWinrate1"
+
+    class _Sent:
+        photo = [_Photo()]
+
+    _winrate_remember_photo(str(path), _Sent())
+    assert _winrate_photo_ref(str(path)) == "AgWinrate1"
+    # 檔案一換（重畫）就不用舊 file_id
+    path.write_bytes(b"y" * 1200)
+    assert _winrate_photo_ref(str(path)) == str(path)
+
+
+def test_render_page_pairs_prepares_outside_paint_worker():
+    import inspect
+
+    from winrate_buypoint import render_page_pairs
+
+    src = inspect.getsource(render_page_pairs)
+    assert "prepare_volume_zone" in src
+    assert src.index("prepare_volume_zone") < src.index("run_mpl_paint")
+    assert "nav_signal_work" in src
+
+
 def test_silent_catalog_lists_winrate():
     from button_silent_verify import BUTTON_CATALOG, snapshot_winrate_buypoint
 

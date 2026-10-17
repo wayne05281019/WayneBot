@@ -570,6 +570,41 @@ TELEGRAM_BOT_COMMANDS = (
 
 from tg_layout import chunk_telegram_html, chunk_telegram_text, reflow_telegram_html
 
+# 勝率買點再按：同一張快取圖用 Telegram file_id 重送，不准每檔再上傳 1MB+。
+# 鍵＝路徑＋大小＋mtime；圖一換檔就失效。上限避免長駐進程字典無限長。
+_WINRATE_PHOTO_IDS: Dict[Tuple[str, int, int], str] = {}
+_WINRATE_PHOTO_IDS_MAX = 256
+
+
+def _winrate_photo_token(path: str) -> Tuple[str, int, int]:
+    st = os.stat(path)
+    return (os.path.abspath(path), int(st.st_size), int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))))
+
+
+def _winrate_photo_ref(path: str):
+    """未改過的快取圖回 file_id；否則回原路徑。"""
+    try:
+        tok = _winrate_photo_token(path)
+    except OSError:
+        return path
+    return _WINRATE_PHOTO_IDS.get(tok) or path
+
+
+def _winrate_remember_photo(path: str, sent) -> None:
+    photos = getattr(sent, "photo", None) or []
+    if not photos:
+        return
+    fid = str(getattr(photos[-1], "file_id", "") or "")
+    if not fid or not path:
+        return
+    try:
+        tok = _winrate_photo_token(path)
+    except OSError:
+        return
+    if len(_WINRATE_PHOTO_IDS) >= _WINRATE_PHOTO_IDS_MAX and tok not in _WINRATE_PHOTO_IDS:
+        _WINRATE_PHOTO_IDS.pop(next(iter(_WINRATE_PHOTO_IDS)), None)
+    _WINRATE_PHOTO_IDS[tok] = fid
+
 
 class WayneTelegramBot:
     def __init__(self, token: str = None, chat_id: str = None, db_path: str = None, **kwargs):
@@ -4228,6 +4263,38 @@ class WayneTelegramBot:
         await self._magic_dismiss(wait_msg)
 
     @staticmethod
+    async def _silence_wait_ticker(stop, task) -> None:
+        """停掉每秒 edit。出圖迴圈若繼續每秒改等待泡泡，會跟送圖搶同一聊天室，越後面越慢。"""
+        if stop is not None:
+            stop.set()
+        if task is not None:
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                pass
+
+    async def _reply_winrate_photo(self, message, path: str, **kwargs) -> bool:
+        """快取圖再按走 file_id。file_id 失效才重傳檔案。"""
+        ref = _winrate_photo_ref(path)
+        use_id = isinstance(ref, str) and ref != path and not os.path.isfile(ref)
+
+        async def _upload() -> bool:
+            send_path = self._prepare_lookup_album_photo(path)
+            with open(send_path, "rb") as f:
+                sent = await message.reply_photo(photo=f, parse_mode="HTML", **kwargs)
+            _winrate_remember_photo(path, sent)
+            return True
+
+        if use_id:
+            try:
+                await message.reply_photo(photo=ref, parse_mode="HTML", **kwargs)
+                return True
+            except Exception:
+                logger.debug("勝率買點 file_id 重送失敗，改傳檔", exc_info=True)
+        return await _upload()
+
+    @staticmethod
     def _png_looks_ok(path: str, *, min_bytes: int = 24_000, min_w: int = 400, min_h: int = 500) -> bool:
         """PNG 或 JPEG 都算有效圖。查股相簿格是 .album.jpg，只認 PNG 魔術字會整組改送文字。"""
         if not path or not os.path.exists(path):
@@ -4880,6 +4947,8 @@ class WayneTelegramBot:
         from winrate_buypoint import (
             EMPTY_MSG,
             PAGE_SIZE,
+            cached_winrate_pair,
+            chain_roster_slots,
             header_html,
             next_page_callback,
             page_slice,
@@ -4937,29 +5006,28 @@ class WayneTelegramBot:
             chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
             head = header_html(as_of, len(rows), mode=mode, offset=off)
             await message.reply_html(head, disable_web_page_preview=True)
-            # 還原 #489 前舊好：逐檔 to_thread(render_stock_pair)→立刻送。
+            # 標題出去後停掉每秒改泡泡。逐檔仍 to_thread(render_stock_pair)→送出。
             # 內層 run_mpl_paint 鎖仍留（#492／#493 FreeType）；不准整頁批次 pairs。
-            for i, row in enumerate(chunk):
+            # 下一檔 load 與上一檔送圖重疊，但 paint 仍一次一檔。
+            wait_msg = wait_h[0] if wait_h else None
+            await self._silence_wait_ticker(wait_h[1] if wait_h else None, wait_h[2] if wait_h else None)
+            n_chunk = len(chunk)
+
+            async def _load_slot(i: int):
+                row = chunk[i] if isinstance(chunk[i], dict) else {}
                 sid = str(row.get("stock_id") or "").strip()
                 name = str(row.get("stock_name") or "")
                 if not sid:
-                    continue
-                prog["now"] = f"{sid} {i + 1}/{len(chunk)}"
-                is_last = i == len(chunk) - 1
-                markup = None
-                if is_last and has_next:
-                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                    from winrate_buypoint import NEXT_PAGE_LABEL
-
-                    markup = InlineKeyboardMarkup(
-                        [
-                            [
-                                InlineKeyboardButton(
-                                    NEXT_PAGE_LABEL,
-                                    callback_data=next_page_callback(off + PAGE_SIZE),
-                                )
-                            ]
-                        ]
+                    return sid, name, "", "", name
+                hit_v, hit_c = cached_winrate_pair(self.charts_dir, as_of, sid)
+                if hit_v and hit_c:
+                    return sid, name, hit_v, hit_c, name
+                prog["now"] = f"{sid} {i + 1}/{n_chunk}"
+                if wait_msg is not None:
+                    await self._safe_edit_text(
+                        wait_msg,
+                        f"勝率買點 {html_escape(sid)} {i + 1}/{n_chunk} 圖準備中",
+                        parse_mode="HTML",
                     )
 
                 def _pair(code=sid, nm=name):
@@ -4981,43 +5049,54 @@ class WayneTelegramBot:
                 except Exception:
                     logger.exception("勝率買點出圖失敗 code=%s", sid)
                     vpath, cpath, cap_name = "", "", name or sid
+                return sid, name, vpath, cpath, cap_name
+
+            async def _send_slot(i: int, loaded) -> None:
+                sid, name, vpath, cpath, cap_name = loaded
+                if not sid:
+                    return
+                is_last = i == n_chunk - 1
+                markup = None
+                if is_last and has_next:
+                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                    from winrate_buypoint import NEXT_PAGE_LABEL
+
+                    markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton(
+                                    NEXT_PAGE_LABEL,
+                                    callback_data=next_page_callback(off + PAGE_SIZE),
+                                )
+                            ]
+                        ]
+                    )
                 label = html_escape(cap_name or name or sid)
                 sent_volume = False
                 sent_card = False
-                if vpath and os.path.isfile(vpath):
+                if vpath and (os.path.isfile(vpath) or _winrate_photo_ref(vpath) != vpath):
                     try:
-                        send_path = self._prepare_lookup_album_photo(vpath)
-                        with open(send_path, "rb") as f:
-                            await message.reply_photo(
-                                photo=f,
-                                caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
-                                parse_mode="HTML",
-                            )
-                        sent_volume = True
+                        sent_volume = await self._reply_winrate_photo(
+                            message,
+                            vpath,
+                            caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
+                        )
                     except Exception:
                         logger.exception("勝率買點壓力區送出失敗 code=%s", sid)
-                if cpath and os.path.isfile(cpath):
+                        sent_volume = False
+                if cpath and (os.path.isfile(cpath) or _winrate_photo_ref(cpath) != cpath):
                     try:
-                        send_path = self._prepare_lookup_album_photo(cpath)
-                        with open(send_path, "rb") as f:
-                            await message.reply_photo(
-                                photo=f,
-                                caption=f"<b>{html_escape(sid)}</b> {label}　高低溫度卡",
-                                parse_mode="HTML",
-                                reply_markup=markup,
-                            )
-                        sent_card = True
-                        try:
-                            import matplotlib.pyplot as plt
-
-                            plt.close("all")
-                        except Exception:
-                            pass
-                        gc.collect()
-                        await asyncio.sleep(0.05)
-                        continue
+                        sent_card = await self._reply_winrate_photo(
+                            message,
+                            cpath,
+                            caption=f"<b>{html_escape(sid)}</b> {label}　高低溫度卡",
+                            reply_markup=markup,
+                        )
                     except Exception:
                         logger.exception("勝率買點高低卡送出失敗 code=%s", sid)
+                        sent_card = False
+                if sent_card:
+                    return
                 if markup is not None:
                     await message.reply_html(
                         f"<b>{html_escape(sid)}</b> {label}",
@@ -5029,19 +5108,13 @@ class WayneTelegramBot:
                         sid,
                         cap_name or name,
                         is_last=is_last,
-                        has_volume=sent_volume,
-                        has_card=sent_card,
+                        has_volume=bool(sent_volume),
+                        has_card=bool(sent_card),
                     )
                     if gap:
                         await message.reply_html(gap, disable_web_page_preview=True)
-                try:
-                    import matplotlib.pyplot as plt
 
-                    plt.close("all")
-                except Exception:
-                    pass
-                gc.collect()
-                await asyncio.sleep(0.05)
+            await chain_roster_slots(n_chunk, _load_slot, _send_slot)
             await self._stop_plain_wait(*wait_h)
         except asyncio.TimeoutError:
             await message.reply_text(
