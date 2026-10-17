@@ -597,6 +597,8 @@ class WayneTelegramBot:
         self._lookup_op_state: Dict[str, dict] = {}
         self._pending_locks: Dict[str, asyncio.Lock] = {}
         self._screening_running: set[str] = set()
+        # 槽位＝actor::kind；五顆（剛脫離零／當沖／隔日沖／勝率買點／洞燭）各一把，
+        # 按人分開。同一顆連按仍擋；不同顆互不卡住。壓撐也走同一套，不准再共用 actor 一把。
         self._trade_running: set[str] = set()
         self._screening_gate = asyncio.Lock()
         self._screening_global_owner: str = ""
@@ -639,6 +641,29 @@ class WayneTelegramBot:
         if uid:
             return str(uid)
         return str(chat_id or "0")
+
+    @staticmethod
+    def _trade_slot_key(actor: str, kind: str) -> str:
+        return f"{str(actor or '')}::{str(kind or 'trade')}"
+
+    def _ensure_trade_running(self) -> set:
+        slots = getattr(self, "_trade_running", None)
+        if not isinstance(slots, set):
+            self._trade_running = set()
+            return self._trade_running
+        return slots
+
+    def _trade_slot_try_begin(self, actor: str, kind: str) -> bool:
+        """同一人同一顆進行中才擋；不同顆各一把鎖。True＝搶到。"""
+        slots = self._ensure_trade_running()
+        key = self._trade_slot_key(actor, kind)
+        if key in slots:
+            return False
+        slots.add(key)
+        return True
+
+    def _trade_slot_end(self, actor: str, kind: str) -> None:
+        self._ensure_trade_running().discard(self._trade_slot_key(actor, kind))
 
     def _op_state_map(self) -> Dict[str, dict]:
         """查股進度表。測試用 __new__ 沒跑 __init__ 時也要能寫。"""
@@ -1355,18 +1380,16 @@ class WayneTelegramBot:
             or ""
         )
         actor = self._actor_key(message, uid=uid)
-        if not hasattr(self, "_trade_running"):
-            self._trade_running = set()
-        if actor in self._trade_running:
+        slot_kind = "pressure"
+        if not tag:
+            await self._show_pressure_hub(message, uid)
+            return
+        if not self._trade_slot_try_begin(actor, slot_kind):
             await message.reply_text(
                 "壓撐觀察進行中，請稍候完成後再按。",
                 reply_markup=self._reply_menu(uid),
             )
             return
-        if not tag:
-            await self._show_pressure_hub(message, uid)
-            return
-        self._trade_running.add(actor)
         wait_h = (None, None, None)
         label = tag_label(tag) or "壓撐觀察"
         try:
@@ -1513,7 +1536,7 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(uid),
             )
         finally:
-            self._trade_running.discard(actor)
+            self._trade_slot_end(actor, slot_kind)
             await self._stop_plain_wait(*wait_h)
 
     async def _send_pressure_stock_trio(self, message, code: str, tag: str = "") -> None:
@@ -4711,15 +4734,14 @@ class WayneTelegramBot:
             or ""
         )
         actor = self._actor_key(message, uid=uid)
-        if not hasattr(self, "_trade_running"):
-            self._trade_running = set()
-        if actor in self._trade_running:
+        # 當沖／隔日沖各一把；不准跟剛脫離零／勝率／洞燭共用 actor 一把鎖。
+        slot_kind = str(live_bucket or bucket_key or "trade")
+        if not self._trade_slot_try_begin(actor, slot_kind):
             await message.reply_text(
                 f"{menu_label}進行中，請稍候完成後再按。",
                 reply_markup=self._reply_menu(uid),
             )
             return
-        self._trade_running.add(actor)
         # 進度泡泡不掛 ReplyKeyboard，否則 delete 時兩排主選單會被客戶端收掉。
         _ = status_text  # 舊靜態文案；改走 LOADING／倒數泡泡
         wait_h = await self._start_plain_wait(
@@ -4807,7 +4829,7 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(uid),
             )
         finally:
-            self._trade_running.discard(actor)
+            self._trade_slot_end(actor, slot_kind)
             await self._stop_plain_wait(*wait_h)
 
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4864,15 +4886,13 @@ class WayneTelegramBot:
             or ""
         )
         actor = self._actor_key(message, uid=uid)
-        if not hasattr(self, "_trade_running"):
-            self._trade_running = set()
-        if actor in self._trade_running:
+        slot_kind = "winrate"
+        if not self._trade_slot_try_begin(actor, slot_kind):
             await message.reply_text(
                 "勝率買點進行中，請稍候完成後再按。",
                 reply_markup=self._reply_menu(uid),
             )
             return
-        self._trade_running.add(actor)
         prog = {"now": "篩名單", "rest": "壓力區＋高低卡"}
         wait_h = await self._start_plain_wait(
             message,
@@ -5010,7 +5030,7 @@ class WayneTelegramBot:
             logger.exception("勝率買點查詢失敗")
             await message.reply_text(PHONE_BUSY, reply_markup=self._reply_menu(uid))
         finally:
-            self._trade_running.discard(actor)
+            self._trade_slot_end(actor, slot_kind)
             await self._stop_plain_wait(*wait_h)
 
     def push_winrate_buypoint_page(
@@ -5198,15 +5218,13 @@ class WayneTelegramBot:
             or ""
         )
         actor = self._actor_key(message, uid=uid)
-        if not hasattr(self, "_trade_running"):
-            self._trade_running = set()
-        if actor in self._trade_running:
+        slot_kind = "dongzhu"
+        if not self._trade_slot_try_begin(actor, slot_kind):
             await message.reply_text(
                 "洞燭先機進行中，請稍候完成後再按。",
                 reply_markup=self._dongzhu_reply_menu(uid),
             )
             return
-        self._trade_running.add(actor)
         wait_h = (None, None, None)
         try:
             await self._enter_main_menu(message, uid)
@@ -5293,7 +5311,7 @@ class WayneTelegramBot:
                 pass
         finally:
             await self._stop_plain_wait(*wait_h)
-            self._trade_running.discard(actor)
+            self._trade_slot_end(actor, slot_kind)
 
     async def _run_leave_zero_now(self, message, pick: str = "0"):
         from live_quote import is_live_merge_window
@@ -5307,15 +5325,13 @@ class WayneTelegramBot:
             or ""
         )
         actor = self._actor_key(message, uid=uid)
-        if not hasattr(self, "_trade_running"):
-            self._trade_running = set()
-        if actor in self._trade_running:
+        slot_kind = "leave_zero"
+        if not self._trade_slot_try_begin(actor, slot_kind):
             await message.reply_text(
                 "剛脫離零進行中，請稍候完成後再按。",
                 reply_markup=self._reply_menu(uid),
             )
             return
-        self._trade_running.add(actor)
         wait_h = (None, None, None)
         try:
             from trading_calendar import is_tw_equity_session, leave_zero_closed_message
@@ -5417,7 +5433,7 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(uid),
             )
         finally:
-            self._trade_running.discard(actor)
+            self._trade_slot_end(actor, slot_kind)
             await self._stop_plain_wait(*wait_h)
 
     async def _send_market_page(self, message, *, status=None, wait_h=None) -> None:

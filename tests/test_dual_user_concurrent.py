@@ -361,7 +361,7 @@ def test_same_chat_bro_why_does_not_swallow_wayne_streak():
 def test_same_chat_trade_lock_is_per_person():
     """偉權當沖進行中，哥哥仍可按當沖；同一人連按才擋。"""
     bot = _bot()
-    bot._trade_running.add(f"{SHARED_CHAT}:{WAYNE_UID}")
+    bot._trade_running.add(f"{SHARED_CHAT}:{WAYNE_UID}::daytrade")
     wayne_msg = _msg(WAYNE_UID, "當沖", chat_id=SHARED_CHAT)
     bro_msg = _msg(BRO_UID, "當沖", chat_id=SHARED_CHAT)
 
@@ -406,6 +406,65 @@ def test_same_chat_trade_lock_is_per_person():
     assert "請稍候完成後再按" not in b_blob
     assert "休市" in b_blob or "尚未開盤" in b_blob
     assert "LOADING" in b_blob or "當沖進行中" in b_blob
+
+
+def test_same_person_five_buttons_have_separate_locks():
+    """同一人：剛脫離零進行中按當沖可進；再連按當沖才擋。五顆各一把。"""
+    bot = _bot()
+    actor = f"{SHARED_CHAT}:{WAYNE_UID}"
+    bot._trade_running.add(f"{actor}::leave_zero")
+    bot._start_plain_wait = AsyncMock(return_value=(None, None, None))
+    bot._stop_plain_wait = AsyncMock()
+    first = _msg(WAYNE_UID, "當沖", chat_id=SHARED_CHAT)
+    second = _msg(WAYNE_UID, "當沖", chat_id=SHARED_CHAT)
+
+    async def run():
+        with patch("trading_calendar.is_tw_equity_session", return_value=False), patch(
+            "trading_calendar.tw_session_phase", return_value="closed"
+        ), patch("trading_calendar.daytrade_closed_title", return_value="休市"), patch(
+            "trading_calendar.daytrade_closed_message", return_value="尚未開盤"
+        ):
+            await bot._run_trade_bucket(
+                first,
+                bucket_key="day_trade",
+                live_bucket="daytrade",
+                title="x",
+                subtitle="",
+                topic="daytrade",
+                status_text="查",
+                menu_label="當沖",
+                loader=lambda: [],
+            )
+        # 模擬當沖仍佔槽（loader 瞬間結束會清掉；手動再佔）
+        bot._trade_running.add(f"{actor}::daytrade")
+        await bot._run_trade_bucket(
+            second,
+            bucket_key="day_trade",
+            live_bucket="daytrade",
+            title="x",
+            subtitle="",
+            topic="daytrade",
+            status_text="查",
+            menu_label="當沖",
+            loader=lambda: [],
+        )
+
+    asyncio.run(run())
+    first_blob = " ".join(
+        str(c.args[0])
+        for c in (first.reply_text.await_args_list + first.reply_html.await_args_list)
+        if c.args
+    )
+    second_blob = " ".join(
+        str(c.args[0]) for c in second.reply_text.await_args_list if c.args
+    )
+    assert "請稍候完成後再按" not in first_blob
+    assert "休市" in first_blob or "尚未開盤" in first_blob or "LOADING" in first_blob
+    assert "請稍候完成後再按" in second_blob
+    # 槽位鍵：五顆各自一把
+    for kind in ("leave_zero", "daytrade", "overnight", "winrate", "dongzhu"):
+        assert bot._trade_slot_key(actor, kind) == f"{actor}::{kind}"
+        assert bot._trade_slot_key(actor, kind) != bot._trade_slot_key(actor, "other")
 
 
 def test_brother_ai_desk_does_not_clear_wayne_buy():
