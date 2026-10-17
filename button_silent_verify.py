@@ -178,9 +178,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "kinds": ("money_flow",),
         "class": CLASS_SCREEN,
         "status": "gap_filled",
-        "pipe": "button_silent_verify.snapshot_money_flow",
-        "window": "1／5 日官方收；與海選勝率分開",
-        "note": "外資／投信買超＋短線熱代表股；不是買訊",
+        "pipe": "button_silent_verify.snapshot_money_flow ← money_flow.compute_sector_rows",
+        "window": "當日產業法人張數＋較前日 delta；與個股外資／投信買超分開",
+        "note": "證交所產業別三大法人流入／流出／加速；不是買訊；不准混個股買超勝率",
     },
     {
         "btn": "當沖",
@@ -388,69 +388,71 @@ def _row_from_quote(sid: str, name: str = "", **extra: Any) -> Dict[str, Any]:
 
 
 def snapshot_money_flow(market_db: str, as_of: str = "") -> int:
-    """資金輪動沒按也落檔：外資買超／投信買超／短線熱代表股。空名單＝0。"""
+    """資金輪動沒按也落檔：證交所產業別三大法人流入／流出／加速。
+
+    與話筒／早報 ``format_sector_rotation_html`` 同一母體（``compute_sector_rows``）。
+    不准再記個股外資／投信買超前幾名當這顆對質；個股買超另軌另算。空名單＝0。
+    """
     day = _as_of(market_db, as_of)
     if not market_db or not day or not os.path.isfile(market_db):
         return 0
-    rows: List[Dict[str, Any]] = []
-    seen = set()
     try:
+        from money_flow import compute_sector_rows
+
         conn = sqlite3.connect(market_db, timeout=8.0)
-        conn.row_factory = sqlite3.Row
         try:
-            packs = []
-            for col, desc in (("foreign_net", True), ("trust_net", True)):
-                order = "DESC" if desc else "ASC"
-                packs.append(
-                    conn.execute(
-                        f"""
-                        SELECT stock_id, stock_name, close, pct_change, volume,
-                               foreign_net, trust_net, dealer_net
-                        FROM daily_quotes
-                        WHERE REPLACE(CAST(date AS TEXT),'-','')=? AND length(stock_id)=4
-                        ORDER BY {col} {order}
-                        LIMIT 6
-                        """,
-                        (day,),
-                    ).fetchall()
-                )
-            packs.append(
-                conn.execute(
-                    """
-                    SELECT stock_id, stock_name, close, pct_change, volume,
-                           foreign_net, trust_net, dealer_net
-                    FROM daily_quotes
-                    WHERE REPLACE(CAST(date AS TEXT),'-','')=? AND length(stock_id)=4
-                      AND volume>=3000 AND ABS(pct_change)>=1.5
-                    ORDER BY ABS(foreign_net) DESC
-                    LIMIT 6
-                    """,
-                    (day,),
-                ).fetchall()
-            )
+            sector_rows = compute_sector_rows(conn, day)
         finally:
             conn.close()
-        for pack in packs:
-            for r in pack:
-                sid = str(r["stock_id"] or "").strip()
-                if not sid or sid in seen:
-                    continue
-                seen.add(sid)
-                rows.append(
-                    _row_from_quote(
-                        sid,
-                        str(r["stock_name"] or ""),
-                        close=r["close"],
-                        pct_change=r["pct_change"],
-                        volume=r["volume"],
-                        foreign_net=r["foreign_net"],
-                        trust_net=r["trust_net"],
-                        dealer_net=r["dealer_net"],
-                    )
-                )
     except Exception:
         return 0
-    return _remember(market_db, "money_flow", rows, as_of=day, pick="rule", src="flow")
+    if not sector_rows:
+        return 0
+    # 與 format_sector_rotation_html 同一套桶：流入前三／流出前三／較前日加碼
+    inflow = [r for r in sector_rows if int(r["three_net"]) > 0][:3]
+    outflow = sorted(
+        [r for r in sector_rows if int(r["three_net"]) < 0],
+        key=lambda x: int(x["three_net"]),
+    )[:3]
+    accel = [
+        r
+        for r in sorted(sector_rows, key=lambda x: int(x["three_delta"]), reverse=True)
+        if int(r["three_delta"]) > 0 and int(r["three_net"]) > 0
+    ][:3]
+    if {r["industry"] for r in accel} == {r["industry"] for r in inflow}:
+        accel = []
+
+    n = 0
+    for bucket, pack in (("inflow", inflow), ("outflow", outflow), ("accel", accel)):
+        rows: List[Dict[str, Any]] = []
+        for r in pack:
+            industry = str(r.get("industry") or "").strip()
+            if not industry:
+                continue
+            # 假碼 _ 開頭：不要求個股 OHLCV；score_live_judges 也不拿股價 fwd 混勝率
+            sid = f"_SEC:{bucket}:{industry}"[:80]
+            rows.append(
+                {
+                    "stock_id": sid,
+                    "stock_name": industry[:40],
+                    "bucket_key": bucket,
+                    "role": bucket,
+                    "foreign_net": int(r.get("foreign_net") or 0),
+                    "trust_net": int(r.get("trust_net") or 0),
+                    "dealer_net": int(r.get("dealer_net") or 0),
+                    "three_net": int(r.get("three_net") or 0),
+                    "three_delta": int(r.get("three_delta") or 0),
+                    "prev_three_net": int(r.get("prev_three_net") or 0),
+                    "pct_change": float(r.get("avg_pct") or 0),
+                    "top_buy_id": str(r.get("top_buy_id") or ""),
+                    "top_sell_id": str(r.get("top_sell_id") or ""),
+                }
+            )
+        if rows:
+            n += _remember(
+                market_db, "money_flow", rows, as_of=day, pick=bucket, src="sector_flow"
+            )
+    return n
 
 
 def _distinct_uids(market_db: str, table: str, col: str = "user_id") -> List[str]:

@@ -135,22 +135,81 @@ def test_personal_vs_screen_kinds_do_not_mix():
     assert not is_screen_kind("market")
 
 
-def test_money_flow_snapshot_freezes_official_bars(tmp_path):
+def test_money_flow_snapshot_freezes_sector_rotation(tmp_path):
+    """資金輪動對質＝證交所產業別流入／流出／加速，不是個股外資／投信買超。"""
     db = str(tmp_path / "wayne_market.db")
-    _seed(db, {"1101": 50.0, "2330": 900.0}, "20260915")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    univ = [
+        ("2330", "台積電", "半導體業", 8000, 400, 50),
+        ("2454", "聯發科", "半導體業", 1200, 300, 20),
+        ("2002", "中鋼", "鋼鐵工業", -3000, -400, -50),
+        ("2027", "大成鋼", "鋼鐵工業", -500, -80, -10),
+        ("1101", "台泥", "水泥工業", 100, 20, 0),
+        ("1102", "亞泥", "水泥工業", 80, 10, 0),
+    ]
+    now = "2026-09-15T00:00:00"
+    for sid, name, ind, fn, tn, dn in univ:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_universe("
+            "stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
+            "VALUES (?,?,?,?,?,1,?)",
+            (sid, name, "TWSE", "STOCK", ind, now),
+        )
+        for ymd, scale in (("20260912", 0.3), ("20260915", 1.0)):
+            conn.execute(
+                "INSERT OR REPLACE INTO daily_quotes("
+                "date,stock_id,stock_name,market,open,high,low,close,volume,"
+                "turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    ymd,
+                    sid,
+                    name,
+                    "TW",
+                    100,
+                    101,
+                    99,
+                    100,
+                    8000,
+                    400000,
+                    1.0 if scale == 1.0 else 0.2,
+                    100,
+                    int(fn * scale),
+                    int(tn * scale),
+                    int(dn * scale),
+                ),
+            )
+    conn.commit()
+    conn.close()
     n = snapshot_money_flow(db, "20260915")
-    assert n >= 1
+    assert n >= 2
     store = store_path(db)
     conn = sqlite3.connect(store)
-    row = conn.execute(
-        "SELECT sid, extra FROM live_judge WHERE kind='money_flow' AND as_of='20260915' LIMIT 1"
-    ).fetchone()
+    rows = conn.execute(
+        "SELECT sid, pick, name, extra FROM live_judge "
+        "WHERE kind='money_flow' AND as_of='20260915'"
+    ).fetchall()
     conn.close()
-    assert row
-    extra = json.loads(row[1] or "{}")
-    assert extra.get("c") is not None
-    assert extra.get("v") is not None
-    assert "png" not in json.dumps(extra).lower()
+    assert rows
+    sids = {str(r[0]) for r in rows}
+    picks = {str(r[1]) for r in rows}
+    names = {str(r[2]) for r in rows}
+    assert all(s.startswith("_SEC:") for s in sids)
+    assert "inflow" in picks
+    assert "outflow" in picks
+    assert "半導體業" in names
+    assert "鋼鐵工業" in names
+    # 不准再把真個股代號當這顆母體
+    assert not any(s.isdigit() and len(s) == 4 for s in sids)
+    extras = [json.loads(r[3] or "{}") for r in rows]
+    assert any(e.get("three_net") is not None for e in extras)
+    assert any(e.get("src") == "sector_flow" for e in extras)
+    assert "png" not in json.dumps(extras).lower()
+    # 清冊註明產業法人母體
+    cat = next(r for r in BUTTON_CATALOG if r["btn"] == "資金輪動")
+    assert "產業" in str(cat.get("note") or "")
+    assert "外資／投信買超" not in str(cat.get("note") or "")
 
 
 def test_empty_book_does_not_count_as_recorded(tmp_path):
