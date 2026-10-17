@@ -5527,7 +5527,7 @@ class WayneTelegramBot:
             _ = own_wait
 
     async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:
-        """大盤專頁附圖：加權日 K（淺底）。"""
+        """大盤專頁附圖：加權日 K（淺底）。畫失敗要補白話，不准只停等待泡泡。"""
         from config import skip_chart_warmup
 
         if skip_chart_warmup():
@@ -5538,9 +5538,11 @@ class WayneTelegramBot:
                 "日K圖進行中", s, now="加權官方日K", fill_sec=30.0
             ),
         )
+        fail_msg = "加權日K圖這次畫不出來，請稍後再試。"
         os.makedirs(self.charts_dir, exist_ok=True)
         uid = uid or self._uid_from_message(message)
         chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "kline", uid)
+        path = ""
         try:
             from index_kline_chart import build_market_kline_chart
             from wayne_navigator import submit_mpl_paint
@@ -5561,25 +5563,28 @@ class WayneTelegramBot:
         except Exception:
             path = ""
             logger.exception("大盤日K圖失敗")
-        if not path or not self._chart_png_looks_ok(path):
-            await self._stop_plain_wait(*wait_h)
-            return
-        cap = "加權指數日K（K棒・MA5/20/60・量）"
         try:
-            send_path = self._prepare_lookup_album_photo(path)
-            with open(send_path, "rb") as f:
-                await message.reply_photo(
-                    photo=f,
-                    caption=cap,
-                    parse_mode="HTML",
-                    reply_markup=None,
-                )
-        except Exception:
-            logger.exception("大盤日K圖送出失敗")
-        await self._stop_plain_wait(*wait_h)
+            if not path or not self._chart_png_looks_ok(path):
+                await message.reply_text(fail_msg)
+                return
+            cap = "加權指數日K（K棒・MA5/20/60・量）"
+            try:
+                send_path = self._prepare_lookup_album_photo(path)
+                with open(send_path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=cap,
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+            except Exception:
+                logger.exception("大盤日K圖送出失敗")
+                await message.reply_text(fail_msg)
+        finally:
+            await self._stop_plain_wait(*wait_h)
 
     async def _send_market_vol_zone(self, message, *, uid: str = "") -> None:
-        """大盤專頁附圖：加權大量壓／撐（與個股同一套；非買訊、不疊藍▲紅框）。"""
+        """大盤專頁附圖：加權大量壓／撐（與個股同一套；非買訊、不疊藍▲紅框）。畫失敗要補白話，不准只停等待泡泡。"""
         from config import skip_chart_warmup
 
         if skip_chart_warmup():
@@ -5590,9 +5595,11 @@ class WayneTelegramBot:
                 "大量區進行中", s, now="加權大量壓撐", fill_sec=30.0
             ),
         )
+        fail_msg = "加權大量區圖這次畫不出來，請稍後再試。"
         os.makedirs(self.charts_dir, exist_ok=True)
         uid = uid or self._uid_from_message(message)
         chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "volzone", uid)
+        path, cap = "", ""
         try:
             from index_kline_chart import build_market_vol_zone_chart
             from wayne_navigator import submit_mpl_paint
@@ -5613,22 +5620,25 @@ class WayneTelegramBot:
         except Exception:
             path, cap = "", ""
             logger.exception("大盤大量區圖失敗")
-        if not path or not self._chart_png_looks_ok(path):
-            await self._stop_plain_wait(*wait_h)
-            return
-        face = (cap or "").strip() or "加權大量區（壓／撐；非買訊）"
         try:
-            send_path = self._prepare_lookup_album_photo(path)
-            with open(send_path, "rb") as f:
-                await message.reply_photo(
-                    photo=f,
-                    caption=face[:1024],
-                    parse_mode="HTML",
-                    reply_markup=None,
-                )
-        except Exception:
-            logger.exception("大盤大量區圖送出失敗")
-        await self._stop_plain_wait(*wait_h)
+            if not path or not self._chart_png_looks_ok(path):
+                await message.reply_text(fail_msg)
+                return
+            face = (cap or "").strip() or "加權大量區（壓／撐；非買訊）"
+            try:
+                send_path = self._prepare_lookup_album_photo(path)
+                with open(send_path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=face[:1024],
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+            except Exception:
+                logger.exception("大盤大量區圖送出失敗")
+                await message.reply_text(fail_msg)
+        finally:
+            await self._stop_plain_wait(*wait_h)
 
     def _enter_biaoke_chat(self, message, uid: str = "") -> None:
         uid = str(uid or self._uid_from_message(message) or "")

@@ -92,9 +92,13 @@ def test_image_surfaces_wait_vanishes_after_photo():
     kline = inspect.getsource(WayneTelegramBot._send_market_kline)
     assert kline.index("_start_plain_wait") < kline.index("reply_photo")
     assert kline.index("reply_photo") < kline.rindex("_stop_plain_wait")
+    assert "加權日K圖這次畫不出來，請稍後再試。" in kline
+    assert "reply_text" in kline
     vz = inspect.getsource(WayneTelegramBot._send_market_vol_zone)
     assert vz.index("_start_plain_wait") < vz.index("reply_photo")
     assert vz.index("reply_photo") < vz.rindex("_stop_plain_wait")
+    assert "加權大量區圖這次畫不出來，請稍後再試。" in vz
+    assert "reply_text" in vz
     assert "build_market_vol_zone_chart" in vz
     assert "with_nav_signals=False" in inspect.getsource(
         __import__("index_kline_chart", fromlist=["build_market_vol_zone_chart"]).build_market_vol_zone_chart
