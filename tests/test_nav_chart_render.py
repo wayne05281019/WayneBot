@@ -80,7 +80,7 @@ class NavChartRenderTests(unittest.TestCase):
             "量能異常", "警告", "警告底", "月波動低", "月波動低底",
             "買點↑首清楚／續淡", "賣點↓橙",
             "止穩◆觀察",
-            "橘六角觀察（外資預警・測試）",
+            "橘六角觀察（外資預警・還在測試）",
         ):
             self.assertIn(label, leg, label)
         # 圖例底邊必須 > 1（整塊在軸上方，不准壓 K）

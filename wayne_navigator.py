@@ -6199,7 +6199,7 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
                 markeredgecolor="#26A69A", markeredgewidth=1.4, markersize=ms_z + 1), "止穩◆觀察"),
         # 外資升級／確認＝琥珀橘六角（測試版觀察／預警；不是買訊；異於止穩◆）
         (Line2D([], [], linestyle="none", marker="h", markerfacecolor="#E65100",
-                markeredgecolor="#FF8F00", markeredgewidth=1.5, markersize=ms_z + 2), "橘六角觀察（外資預警・測試）"),
+                markeredgecolor="#FF8F00", markeredgewidth=1.5, markersize=ms_z + 2), "橘六角觀察（外資預警・還在測試）"),
     ]
     row3 = [
         (Line2D([], [], color="#f9a825", lw=2.6 if panel else 2.25), "SMA(20)"),
@@ -7757,7 +7757,7 @@ def draw_from_ohlc(
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列見上方圖例："
         "實心＝當日觸發、空心＝接近、灰藍半透明＝殘影（仍貼高低不當新觸發）；高紫／脫離橙／低綠／脫離青／60低藍；"
         "20低／60低＝紅箭頭代理；過 ma60_lower 確認才當買訊（藍▲紅框，與 leave_zero 並列）；未確認仍不當買；"
-        "止穩◆＝觀察非買；橘六角「觀察」＝外資預警（測試・非買）",
+        "止穩◆＝觀察非買；橘六角「觀察」＝外資預警（還在測試・非買）",
         ha="center", va="bottom", fontproperties=_fp(8.2, "bold"), color="#263238",
     )
     halt_n = int(work["is_halt"].fillna(False).astype(bool).sum()) if "is_halt" in work.columns else 0

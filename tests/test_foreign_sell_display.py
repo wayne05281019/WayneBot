@@ -51,7 +51,7 @@ def _mk_db() -> str:
 def test_display_hard_locks():
     assert BUY_SIGNAL is False
     assert DISPLAY_MODE == "test"
-    assert "測試" in DISPLAY_TAG
+    assert "還在測試" in DISPLAY_TAG
     assert "觀察" in DISPLAY_TAG
     assert OBSERVE_MARKER == "h"  # 異於止穩 D、買訊三角
     assert OBSERVE_LABEL == "觀察"
@@ -253,6 +253,11 @@ def test_market_env_plain_branches():
     _put_fear(store, lit=0, evaluable=1, skip="")
     lines = market_env_section_lines(db, "20261014")
     assert "開盤前，市場不怕。" in lines
+    assert "害怕這件事今天沒特別變化。" in lines
+
+    _put_fear(store, lit=0, evaluable=0, skip="美股關鍵欄全空")
+    lines = market_env_section_lines(db, "20261014")
+    assert "害怕這件事今天沒特別變化。" in lines
 
     conn = sqlite3.connect(store)
     for sid in ("2383", "2330"):

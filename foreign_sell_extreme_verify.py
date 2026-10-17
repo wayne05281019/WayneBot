@@ -38,10 +38,16 @@ MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 DEFAULT_TRACK = ExtremeTrack("lots", float(GRID_LOTS_THR[2] if len(GRID_LOTS_THR) > 2 else 5000))
 # 測試版顯示／靜默並行：超比 20%（回測有 lift；千金也適用，不靠絕對張數）
 DISPLAY_SHARE_TRACK = ExtremeTrack("share", 0.20)
+# 下一版靜默候選：超比 25%（更緊；只落檔，未過閘不改橘六角門檻）
+NEXT_SHARE_TRACK = ExtremeTrack("share", 0.25)
 DEFAULT_K = 5
 DEFAULT_DD = -0.05
-# night_tick 並行兩軌：張數（量大股）＋超比（千金／相對）
-NIGHT_TRACKS: Tuple[ExtremeTrack, ...] = (DEFAULT_TRACK, DISPLAY_SHARE_TRACK)
+# night_tick：現況兩軌＋下一版超比；勝率分軌不准混
+NIGHT_TRACKS: Tuple[ExtremeTrack, ...] = (
+    DEFAULT_TRACK,
+    DISPLAY_SHARE_TRACK,
+    NEXT_SHARE_TRACK,
+)
 
 
 def _now_iso() -> str:
