@@ -144,6 +144,12 @@ _EXTRA_KEEP = (
     "foreign_net",
     "trust_net",
     "dealer_net",
+    # 資金輪動＝產業法人母體（流入／流出／加速；不准當個股買超）
+    "three_net",
+    "three_delta",
+    "prev_three_net",
+    "top_buy_id",
+    "top_sell_id",
     # 大盤大量區（與個股同一套 find_volume_zone；不混海選勝率）
     "zone_date",
     "zone_high",
