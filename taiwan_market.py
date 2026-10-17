@@ -1757,16 +1757,20 @@ def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
 
 
 def _format_overnight_watch_lines(
-    db_path: str, as_of: str, snap: Dict[str, Any], now: Optional[datetime] = None
+    db_path: str,
+    as_of: str,
+    snap: Dict[str, Any],
+    now: Optional[datetime] = None,
+    us_snap: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """美股一欄一行。台指期夜盤歸台指期區，不塞在美股底下。盤中期貨不看。
 
     時段與交易日必須一致：快取過舊時只標「尚未接到／資料停在」，
-    不准並列現況時段＋舊％。
+    不准並列現況時段＋舊％。按鍵刷新失敗（``_press_miss``）同樣不准把舊％當現況。
     """
     from tg_layout import html_escape
 
-    us, fresh = _resolve_us_for_display(db_path, as_of)
+    us, fresh = _resolve_us_for_display(db_path, as_of, us_snap)
     bits: List[str] = []
     holiday_lines: List[str] = []
     try:
@@ -1777,6 +1781,15 @@ def _format_overnight_watch_lines(
         logger.debug("美股休市年曆讀不到", exc_info=True)
     if holiday_lines:
         bits.extend(html_escape(x) for x in holiday_lines)
+
+    if (us or {}).get("_press_miss"):
+        bits.append(html_escape("美股收盤尚未接到"))
+        stop_s = _us_stop_label(us)
+        if stop_s and stop_s != "—":
+            bits.append(_page_kv("資料停在", html_escape(stop_s)))
+        from stock_links import html_named
+
+        return ["", _TG_SECTION, html_named("美股"), *bits]
 
     us_as_of = _norm_us_ymd(us.get("as_of") if us else "")
     tw_as_of = _norm_us_ymd(as_of)
@@ -4443,6 +4456,7 @@ def format_taiwan_market_page_html(
     snap: Optional[Dict[str, Any]] = None,
     outer_snap: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
+    us_snap: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Telegram「大盤」專頁：只讀庫內；基準日與海選／資金同一套完整收盤。"""
     from tg_layout import html_escape
@@ -4593,8 +4607,8 @@ def format_taiwan_market_page_html(
         if te_rows:
             lines.append("")
             lines.extend(te_rows)
-    lines.extend(_format_overnight_watch_lines(db_path, ref, snap, now=now))
-    us_for_outer, us_outer_fresh = _resolve_us_for_display(db_path, ref)
+    lines.extend(_format_overnight_watch_lines(db_path, ref, snap, now=now, us_snap=us_snap))
+    us_for_outer, us_outer_fresh = _resolve_us_for_display(db_path, ref, us_snap)
     lines.extend(
         _page_outer_lines(
             _resolve_outer_snap(us_for_outer if us_outer_fresh else {}, outer_snap)

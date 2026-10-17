@@ -638,6 +638,107 @@ def load_us_overnight(db_path: str, as_of: str) -> Dict[str, Any]:
     return data
 
 
+def expected_us_print_session(now: Optional[datetime] = None, db_path: str = None) -> str:
+    """此刻話筒該對上的美股現金列日期（紐約）。
+
+    開市日 09:30 後＝當天（盤中官方列或收盤）。開盤前＝上一開市日收盤。
+    週末與全日休市退回上一開市日，不准把星期六寫成交易日。
+    """
+    from us_holidays import lookup_us_session, previous_trading_day
+
+    if now is None:
+        dt = datetime.now(NY)
+    elif now.tzinfo is None:
+        dt = now.replace(tzinfo=NY)
+    else:
+        dt = now.astimezone(NY)
+    ymd = dt.strftime("%Y%m%d")
+    kind = (lookup_us_session(ymd, db_path) or {}).get("kind") or "open"
+    if kind in ("open", "early_close") and (dt.hour, dt.minute) >= (9, 30):
+        return ymd
+    return previous_trading_day(ymd, db_path) or ""
+
+
+def _us_session_ymd(snap: Optional[Dict[str, Any]]) -> str:
+    return str((snap or {}).get("us_session") or "").replace("-", "")[:8]
+
+
+def _press_cache_reusable(
+    cached: Optional[Dict[str, Any]], expected: str, *, max_age_sec: int = 900
+) -> bool:
+    """同一美股交易日、15 分鐘內剛抓過，按鍵不必再打一次。"""
+    if not cached or not expected:
+        return False
+    if _us_session_ymd(cached) != expected:
+        return False
+    if cached.get("regime") in (None, "", "unknown"):
+        return False
+    if not any(cached.get(k) is not None for k in ("ixic_pct", "spx_pct", "dji_pct", "sox_pct")):
+        return False
+    fetched = str(cached.get("fetched_at") or "")
+    if not fetched:
+        return False
+    try:
+        ts = datetime.fromisoformat(fetched.replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds()
+    except Exception:
+        return False
+    return age >= 0 and age < max_age_sec
+
+
+def refresh_us_for_market_page(
+    db_path: str, tw_as_of: str, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """按台股大盤：畫面前先對到最新官方美股列。
+
+    抓失敗、或抓回來的交易日不是此刻該有的那一天，不准把較舊的％當現況。
+    庫內已經是該交易日、重抓失敗時，仍用那一列（日期就是該日，不是更新的日子）。
+    """
+    tw = str(tw_as_of or "").replace("-", "")[:8]
+    expected = expected_us_print_session(now, db_path)
+    cached: Dict[str, Any] = {}
+    if tw:
+        try:
+            cached = load_us_overnight(db_path, tw) or {}
+        except Exception:
+            logger.debug("台股大盤美股快取讀不到", exc_info=True)
+            cached = {}
+    if _press_cache_reusable(cached, expected):
+        return cached
+    snap: Dict[str, Any] = {}
+    try:
+        snap = fetch_us_tape(now) or {}
+    except Exception:
+        logger.exception("台股大盤按鍵美股刷新失敗")
+        snap = {}
+    sess = _us_session_ymd(snap)
+    weekend = False
+    if len(sess) == 8:
+        try:
+            weekend = datetime.strptime(sess, "%Y%m%d").weekday() >= 5
+        except ValueError:
+            weekend = True
+    if snap.get("ok") and expected and sess == expected and not weekend:
+        if tw:
+            save_us_overnight(db_path, tw, snap)
+        merged = dict(snap)
+        merged["as_of"] = tw or expected
+        merged["ok"] = True
+        return merged
+    if _us_session_ymd(cached) == expected and cached.get("regime") not in (None, "", "unknown"):
+        return cached
+    stop = _us_session_ymd(cached)
+    if stop == sess and weekend:
+        stop = ""
+    return {
+        "ok": False,
+        "_press_miss": True,
+        "_fallback": True,
+        "us_session": stop,
+        "regime": "unknown",
+    }
+
+
 def refresh_us_overnight(db_path: str, as_of: str, max_age_sec: int = 900) -> Dict[str, Any]:
     """早上 06:30 與手動海選都走這裡。15 分鐘內有庫就沿用，免得每次打海選狂打 Yahoo。"""
     as_of = str(as_of or "").replace("-", "")
