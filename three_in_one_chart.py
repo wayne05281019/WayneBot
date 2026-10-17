@@ -3367,11 +3367,12 @@ def render_lookup_structure_result(
     *,
     card: Optional[dict] = None,
     pack: Optional[dict] = None,
+    live_quote: Optional[dict] = None,
 ) -> Tuple[str, str]:
     """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。
 
-    pack：查股熱路徑可在 paint 外先 prepare_volume_zone；有 pack 就不再 prepare／ensure，
-    縮短高低卡／介紹之後到結構出圖的沉默（不准造假量）。
+    pack：查股可先給官方柱（prepare_lookup_structure_bars）。有柱就不再 ensure／
+    不再選大量區，現價用決策卡或已抓到的 live_quote，不准在畫布裡再打一輪網路。
     """
     sid = str(stock_id or "").strip()
     name = str(stock_name or sid).strip() or sid
@@ -3425,7 +3426,12 @@ def render_lookup_structure_result(
             last_b = bars[-1] if bars else {}
             prev_b = bars[-2] if len(bars) >= 2 else {}
             spot = _spot_quote(
-                sid, last_b, prev_b, db_path, card=card if isinstance(card, dict) else None
+                sid,
+                last_b,
+                prev_b,
+                db_path,
+                card=card if isinstance(card, dict) else None,
+                live_quote=live_quote if isinstance(live_quote, dict) else None,
             )
         except Exception:
             spot = None
