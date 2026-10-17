@@ -4600,7 +4600,7 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
             await message.reply_text(
-                "興櫃海選逾時。請稍後再按「海選」選興櫃，或打「興櫃海選」。",
+                "興櫃海選逾時。請稍後再到連買區最底按「興櫃海選」，或直接打「興櫃海選」。",
                 reply_markup=hub,
             )
             return
@@ -4608,7 +4608,10 @@ class WayneTelegramBot:
             logger.exception("興櫃海選失敗")
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
-            await message.reply_text("興櫃海選失敗。請稍後再按「海選」選興櫃，或打「興櫃海選」。", reply_markup=hub)
+            await message.reply_text(
+                "興櫃海選失敗。請稍後再到連買區最底按「興櫃海選」，或直接打「興櫃海選」。",
+                reply_markup=hub,
+            )
             return
         finally:
             await self._stop_plain_wait(*wait_h)
@@ -4616,7 +4619,8 @@ class WayneTelegramBot:
         if n <= 0:
             await message.reply_html(
                 "興櫃海選：目前沒有可用的官方日均價序列。\n"
-                "請等盤後同步櫃買「興櫃股票當日行情表」後再按「海選」選興櫃。",
+                "請等盤後同步櫃買「興櫃股票當日行情表」後，再到連買區最底按「興櫃海選」，"
+                "或直接打「興櫃海選」。",
                 reply_markup=hub,
                 disable_web_page_preview=True,
             )
