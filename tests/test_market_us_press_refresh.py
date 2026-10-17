@@ -72,6 +72,32 @@ def test_press_refreshes_us_block_to_latest_official_bar(tmp_path, monkeypatch):
     assert "1.11%" not in joined
 
 
+def test_missing_us_overnight_table_does_not_kill_market_page(monkeypatch):
+    """:memory: 沒有 us_overnight。寫庫失敗仍回這次官方列，不准整頁炸掉。"""
+    from us_overnight import refresh_us_for_market_page
+
+    def _friday(_now=None):
+        return {
+            "ok": True,
+            "fetched_at": "2026-10-17T16:25:00+00:00",
+            "us_phase": "regular",
+            "us_session": "20261016",
+            "regime": "caution",
+            "vix": 20.5,
+            "dji_pct": -0.34,
+            "spx_pct": -1.09,
+            "ixic_pct": -2.15,
+            "sox_pct": -3.83,
+        }
+
+    monkeypatch.setattr("us_overnight.fetch_us_tape", _friday)
+    now = datetime(2026, 10, 18, 0, 25, tzinfo=TP)
+    got = refresh_us_for_market_page(":memory:", "20261016", now=now)
+    assert got["us_session"] == "20261016"
+    assert got["ixic_pct"] == -2.15
+    assert got.get("_press_miss") is not True
+
+
 def test_press_fetch_fail_does_not_show_older_as_current(tmp_path, monkeypatch):
     from taiwan_market import _format_overnight_watch_lines
     from us_overnight import refresh_us_for_market_page, save_us_overnight

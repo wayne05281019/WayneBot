@@ -720,7 +720,12 @@ def refresh_us_for_market_page(
             weekend = True
     if snap.get("ok") and expected and sess == expected and not weekend:
         if tw:
-            save_us_overnight(db_path, tw, snap)
+            try:
+                save_us_overnight(db_path, tw, snap)
+            except Exception:
+                # :memory: 每次連線都是新庫，建表換連線後仍沒有 us_overnight。
+                # 寫不進庫不准把整頁打死；這次官方列照樣拿去畫。
+                logger.exception("台股大盤美股列寫不進庫，仍用這次官方列")
         merged = dict(snap)
         merged["as_of"] = tw or expected
         merged["ok"] = True
