@@ -103,15 +103,48 @@ class FuseAndScreenTest(unittest.TestCase):
             "target_1": 103.0,
             "target_2": 106.0,
             "stop_loss": 99.2,
+            "avg_price_official": 99.2,
+            "ratio_plan": "day_trade",
             "foreign_net": 120,
             "trust_net": 30,
             "dealer_net": -10,
         }
         html = _stock_card_html(item, 1)
-        self.assertIn("現在不要貴過", html)
-        self.assertIn("漲到這裡先出", html)
-        self.assertIn("跌破這裡就走", html)
+        self.assertIn("用收盤乘比例的推算，不是成交價", html)
+        self.assertIn("+3%", html)
+        self.assertIn("+6%", html)
+        self.assertIn("均價停損", html)
         self.assertIn("103", html)
+        self.assertNotIn("現在不要貴過", html)
+        self.assertNotIn("漲到這裡先出", html)
+        self.assertNotIn("尾盤買這裡", html)
+        close_line = next(line for line in html.splitlines() if "收盤" in line)
+        self.assertNotIn("103", close_line)
+        blank = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "entry_price": 100.0,
+            "ratio_plan": "day_trade",
+        }
+        blank_html = _stock_card_html(blank, 1)
+        self.assertNotIn("用收盤乘比例的推算", blank_html)
+        self.assertNotIn("+3%", blank_html)
+        self.assertNotIn("現在不要貴過", blank_html)
+        overnight = {
+            "stock_id": "2317",
+            "stock_name": "鴻海",
+            "close": 100.0,
+            "pct_change": 3.0,
+            "q60r": 2.0,
+            "volume": 5000,
+            "ratio_plan": "overnight",
+        }
+        night_html = _stock_card_html(overnight, 1)
+        self.assertIn("用收盤乘比例的推算，不是成交價", night_html)
+        self.assertIn("尾盤區間", night_html)
+        self.assertIn("開高", night_html)
+        self.assertIn("+7%", night_html)
+        self.assertNotIn("尾盤買這裡", night_html)
         chased = dict(item)
         chased["chase_warning"] = True
         self.assertIn("少追", _stock_card_html(chased, 1))

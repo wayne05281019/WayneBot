@@ -72,7 +72,7 @@ def test_apply_trade_live_filters(monkeypatch):
     assert out[0]["vol_rank_120"] == 3
 
 
-def test_apply_trade_live_all_filtered_fallback(monkeypatch):
+def test_apply_trade_live_all_filtered_says_none(monkeypatch):
     rows = [
         {"code": "2330", "name": "台積電"},
         {"code": "2454", "name": "聯發科"},
@@ -100,12 +100,10 @@ def test_apply_trade_live_all_filtered_fallback(monkeypatch):
 
     monkeypatch.setattr("trade_live.fetch_mis_batch", fake_batch)
     out = apply_trade_live(rows, ":memory:", "daytrade")
-    assert len(out) == 2
-    assert out[0]["_live_filtered"] is True
-    assert out[0]["code"] == "2330"
+    assert out == []
 
 
-def test_apply_trade_live_mis_fail_shows_cached(monkeypatch):
+def test_apply_trade_live_mis_fail_says_none(monkeypatch):
     rows = [{"code": "2330", "name": "台積電"}]
 
     def fake_batch(codes, db_path):
@@ -113,7 +111,5 @@ def test_apply_trade_live_mis_fail_shows_cached(monkeypatch):
 
     monkeypatch.setattr("trade_live.fetch_mis_batch", fake_batch)
     out = apply_trade_live(rows, ":memory:", "daytrade")
-    assert len(out) == 1
-    assert out[0]["code"] == "2330"
-    assert out[0].get("_live_skipped") is True
+    assert out == []
 

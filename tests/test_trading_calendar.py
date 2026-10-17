@@ -292,14 +292,17 @@ def test_daytrade_list_heading_tail_says_what_to_do_now():
 
     open_t, open_s = daytrade_list_heading("open")
     assert "盤中" in open_t
-    assert "沒進場" in open_s
-    assert "現在不要貴過" in open_s
+    assert "用收盤乘比例的推算" in open_s
+    assert "不是成交價" in open_s
+    assert "對不上現價的不列" in open_s
+    assert "現在不要貴過" not in open_s
     tail_t, tail_s = daytrade_list_heading("tail")
     assert "尾盤" in tail_t
     assert "12:45" in tail_s
     assert "不要再進當沖" in tail_s
     assert "隔日沖" in tail_s
-    assert "漲到這裡先出" in tail_s
+    assert "用收盤乘比例的推算" in tail_s
+    assert "漲到這裡先出" not in tail_s
     taipei = ZoneInfo("Asia/Taipei")
     morning = datetime(2026, 9, 10, 10, 0, tzinfo=taipei)
     tail = datetime(2026, 9, 10, 12, 50, tzinfo=taipei)
