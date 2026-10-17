@@ -97,7 +97,13 @@ from trade_journal import (
 )
 from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
-from ai_trader import format_ai_desk_html, format_ai_desk_pages, run_ai_desk
+from ai_trader import (
+    ai_no_fill_note,
+    ai_run_wait_now,
+    format_ai_desk_html,
+    format_ai_desk_pages,
+    run_ai_desk,
+)
 from chips import generate_chips_image
 from intent_router import (
     NEEDS_STOCK,
@@ -1357,10 +1363,11 @@ class WayneTelegramBot:
         """進壓撐觀察先選標籤；不改黃金買點。"""
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         await self._enter_main_menu(message, uid)
+        from pressure_support_watch import PRESSURE_HUB_LEAD
+
         body = (
             "<b>壓撐觀察</b>\n"
-            "<i>接大量壓力區框選。三種標籤自選，只觀察，不是買訊。"
-            "不准當進場、不改黃金買點。</i>\n"
+            f"<i>{html_escape(PRESSURE_HUB_LEAD)}</i>\n"
             "選標籤後先出壓力區圖（含導航箭頭／量能訊號）。"
             "點股票一次三張：壓力區／高低溫度卡／籌碼；介紹／產業／導航圖下自選。"
         )
@@ -4876,6 +4883,7 @@ class WayneTelegramBot:
             header_html,
             next_page_callback,
             page_slice,
+            pair_gap_html,
             render_stock_pair,
             resolve_button_rows,
         )
@@ -4974,6 +4982,8 @@ class WayneTelegramBot:
                     logger.exception("勝率買點出圖失敗 code=%s", sid)
                     vpath, cpath, cap_name = "", "", name or sid
                 label = html_escape(cap_name or name or sid)
+                sent_volume = False
+                sent_card = False
                 if vpath and os.path.isfile(vpath):
                     try:
                         send_path = self._prepare_lookup_album_photo(vpath)
@@ -4983,6 +4993,7 @@ class WayneTelegramBot:
                                 caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
                                 parse_mode="HTML",
                             )
+                        sent_volume = True
                     except Exception:
                         logger.exception("勝率買點壓力區送出失敗 code=%s", sid)
                 if cpath and os.path.isfile(cpath):
@@ -4995,6 +5006,7 @@ class WayneTelegramBot:
                                 parse_mode="HTML",
                                 reply_markup=markup,
                             )
+                        sent_card = True
                         try:
                             import matplotlib.pyplot as plt
 
@@ -5012,6 +5024,16 @@ class WayneTelegramBot:
                         reply_markup=markup,
                         disable_web_page_preview=True,
                     )
+                else:
+                    gap = pair_gap_html(
+                        sid,
+                        cap_name or name,
+                        is_last=is_last,
+                        has_volume=sent_volume,
+                        has_card=sent_card,
+                    )
+                    if gap:
+                        await message.reply_html(gap, disable_web_page_preview=True)
                 try:
                     import matplotlib.pyplot as plt
 
@@ -5055,6 +5077,7 @@ class WayneTelegramBot:
             header_html,
             next_page_callback,
             page_slice,
+            pair_gap_html,
             render_page_pairs,
         )
 
@@ -5099,13 +5122,15 @@ class WayneTelegramBot:
                         ]
                     ]
                 )
-            if vpath and os.path.isfile(vpath):
+            has_volume = bool(vpath and os.path.isfile(vpath))
+            has_card = bool(cpath and os.path.isfile(cpath))
+            if has_volume:
                 self._send_photo(
                     dest,
                     vpath,
                     caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
                 )
-            if cpath and os.path.isfile(cpath):
+            if has_card:
                 self._send_photo(
                     dest,
                     cpath,
@@ -5119,6 +5144,16 @@ class WayneTelegramBot:
                     extra_keyboard=markup,
                     attach_menu=False,
                 )
+            else:
+                gap = pair_gap_html(
+                    sid,
+                    cap_name or name,
+                    is_last=(i == len(chunk) - 1),
+                    has_volume=has_volume,
+                    has_card=has_card,
+                )
+                if gap:
+                    self._send_html(dest, gap, attach_menu=False)
         return ok
 
     async def dongzhu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE, code: str = ""):
@@ -7675,7 +7710,7 @@ class WayneTelegramBot:
             text_fn=lambda s: self._wait_bubble(
                 "AI倉進行中",
                 s,
-                now="依今日海選紀律",
+                now=ai_run_wait_now(),
                 rest="模擬成交",
                 fill_sec=90.0,
             ),
@@ -7686,9 +7721,7 @@ class WayneTelegramBot:
             ai = await asyncio.to_thread(run_ai_desk, self.db_path, uid, result.get("results") or {}, as_of)
             bits = [ai.get("html") or ""]
             if not ai.get("bought") and not ai.get("sold"):
-                bits.append(
-                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。操作最多 3 檔（30 萬）、留 20 萬抄底；或名單被高低卡／美股濾掉。</i>"
-                )
+                bits.append(ai_no_fill_note(ai.get("candidates") or 0))
             if ai.get("bought"):
                 bits.append("<b>本次買進</b>\n" + "\n".join(html_escape(x) for x in ai["bought"]))
             if ai.get("sold"):

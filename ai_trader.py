@@ -1082,6 +1082,24 @@ def _research_and_log_buy(
     }
 
 
+def ai_run_wait_now() -> str:
+    """AI操盤等待句。進場只吃當天勝率買點名單，不准寫成海選。"""
+    return "依今日勝率買點名單"
+
+
+def ai_no_fill_note(candidates: int) -> str:
+    """沒成交時跟進場母體同一句。假錢、不真下單。"""
+    try:
+        n = int(candidates or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return (
+        f"<i>本次沒有新成交（候選 {n} 檔）。"
+        "操作最多 3 檔（30 萬）、留 20 萬抄底。"
+        "只從當天勝率買點名單模擬。</i>"
+    )
+
+
 def run_ai_desk(
     db_path: str,
     telegram_uid: str,

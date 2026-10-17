@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from pressure_support_watch import (
+    PRESSURE_HUB_LEAD,
     SIDEWAYS_N,
     STAND_SUPPORT_W,
     TAG_SIDEWAYS,
@@ -25,6 +26,15 @@ def _bars(rows):
 
 def _zone(hi=100.0, lo=90.0, date="20260101", volume=10000):
     return {"high": hi, "low": lo, "date": date, "volume": volume, "active": True}
+
+
+def test_pressure_hub_lead_is_plain_observation():
+    assert PRESSURE_HUB_LEAD == "接大量壓力區框選。這三標籤只是觀察。"
+    assert "不准當進場" not in PRESSURE_HUB_LEAD
+    assert "黃金買點" not in PRESSURE_HUB_LEAD
+    assert tag_label(TAG_SIDEWAYS) == "壓力橫盤"
+    assert tag_label(TAG_TEST_PRESS) == "測壓未破"
+    assert tag_label(TAG_STAND_SUPPORT) == "剛站上撐"
 
 
 def test_tag_labels_and_thresholds():

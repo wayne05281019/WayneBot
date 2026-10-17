@@ -414,6 +414,22 @@ def test_page_slice_and_callback():
     assert parse_next_page_callback(next_page_callback(15)) == 15
     assert NEXT_PAGE_LABEL == "下一個 15 檔"
     assert EMPTY_MSG in header_html("20260930", 0)
+    titled = header_html("20261016", 3, mode="full", offset=0)
+    assert "leave_zero" not in titled
+    assert "盤後剛離零（藍▲紅框）" in titled
+    filtered = header_html("20261016", 3, mode="filter", offset=0)
+    assert "leave_zero" not in filtered
+    assert "隔日盤中篩" in filtered
+
+
+def test_pair_gap_html_only_when_both_charts_missing_and_not_last():
+    from winrate_buypoint import pair_gap_html
+
+    gap = pair_gap_html("2330", "台積電", is_last=False, has_volume=False, has_card=False)
+    assert "2330" in gap and "台積電" in gap and "這檔略過" in gap
+    assert pair_gap_html("2330", "台積電", is_last=True, has_volume=False, has_card=False) == ""
+    assert pair_gap_html("2330", "台積電", is_last=False, has_volume=True, has_card=False) == ""
+    assert pair_gap_html("2330", "台積電", is_last=False, has_volume=False, has_card=True) == ""
 
 
 def test_should_apply_intraday_filter_same_day_false():
