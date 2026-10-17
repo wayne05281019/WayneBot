@@ -272,10 +272,15 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "status": "external",
         "pipe": (
             "winrate_volzone_filter_verify current／vz_mid_thin／ma60_rising／"
-            "space_h20／untangle_up／combo_vz_ma60 → night_tick"
+            "space_h20／untangle_up／combo_vz_ma60／combo_vz_untangle／"
+            "combo_vz_space／combo_triple → night_tick；"
+            "母體各檔凍官方開高低收＋量＋hit 命中"
         ),
         "window": "前瞻 1／3／5／10 日；母體＝勝率買點現況（leave_zero＋exclude＋AI）",
-        "note": "靜默對質；不過閘不改話筒排序／推播；不准改黃金買點公式",
+        "note": (
+            "靜默對質＝建議哪檔候選；n＜20 或未贏不改話筒排序／不硬標優先 1～2 檔；"
+            "不准改黃金買點／leave_zero／藍▲紅框"
+        ),
     },
     {
         "btn": "AI倉",
