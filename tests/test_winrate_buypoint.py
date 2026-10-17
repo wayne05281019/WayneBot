@@ -421,6 +421,136 @@ def test_should_apply_intraday_filter_same_day_false():
     assert should_apply_intraday_filter(as_of="20260930", now=now) is False
 
 
+def test_filter_intraday_keeps_emerging_on_official_avg(tmp_path, monkeypatch):
+    """隔日開市：興櫃用自己的日均價與興櫃柱複核；沒真報價就拿掉該檔，不准填上市櫃價。"""
+    from emerging_quotes import ensure_emerging_table
+
+    db = str(tmp_path / "em.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            stock_id TEXT, date TEXT, open REAL, high REAL, low REAL, close REAL,
+            volume REAL, turnover_k REAL, market TEXT
+        )
+        """
+    )
+    conn.executemany(
+        "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+        [
+            ("2330", "20261016", 100, 101, 99, 100, 1, 1, "TW"),
+            ("7777", "20261016", 999, 999, 999, 999, 1, 1, "TW"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    ensure_emerging_table(db)
+    conn = sqlite3.connect(db)
+    em_rows = []
+    for sid, name, days in (
+        ("7777", "興甲", (("20261015", 42.0), ("20261016", 40.0), ("20261017", 1.0))),
+        ("8888", "興乙", (("20261015", 31.0), ("20261016", 30.0))),
+        ("6666", "興丙", (("20261015", 21.0), ("20261016", 20.0))),
+    ):
+        for day, close in days:
+            em_rows.append(
+                (day, sid, name, "EM", close, close, close, close, 10, 10, 0, close, "csv")
+            )
+    conn.executemany(
+        """
+        INSERT INTO emerging_quotes(
+            date, stock_id, stock_name, market, open, high, low, close,
+            volume, turnover_k, pct_change, avg_price, source
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        em_rows,
+    )
+    conn.commit()
+    conn.close()
+
+    roster = [
+        {
+            "as_of": "20261016",
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "pick_close": 100.0,
+            "quote_source": "card_lz_paint_ex5|daily_quotes",
+        },
+        {
+            "as_of": "20261016",
+            "stock_id": "7777",
+            "stock_name": "興甲",
+            "pick_close": 50.0,
+            "quote_source": "card_lz_paint_ex5|emerging_quotes",
+        },
+        {
+            "as_of": "20261016",
+            "stock_id": "8888",
+            "stock_name": "興乙",
+            "pick_close": 30.0,
+            "quote_source": "card_lz_paint_ex5|emerging_quotes",
+        },
+        {
+            "as_of": "20261016",
+            "stock_id": "6666",
+            "stock_name": "興丙",
+            "pick_close": 50.0,
+            "quote_source": "card_lz_paint_ex5|emerging_quotes",
+        },
+    ]
+    mis_ids = []
+
+    def _mis(ids, db_path, timeout=12.0):
+        mis_ids.extend(list(ids))
+        table = {
+            "2330": {"price": 90.0},
+            "7777": {"price": 1.0},
+            "8888": {"price": 1.0},
+            "6666": {"price": 1.0},
+        }
+        return {s: table[s] for s in ids if s in table}
+
+    def _tpex(sid):
+        if sid == "7777":
+            return {
+                "source": "tpex_esb_live",
+                "avg_price": 45.0,
+                "close": 45.0,
+                "yesterday_close": 40.0,
+            }
+        if sid == "6666":
+            # close 是最後一筆；複核必須用日均價 19，不准用 99。
+            return {"source": "tpex_esb", "avg_price": 19.0, "close": 99.0}
+        if sid == "5555":
+            return {"source": "yahoo", "avg_price": 10.0, "close": 10.0}
+        return None
+
+    seen = {}
+
+    def _still(db_path, sid, *, live_price, frames):
+        df = frames.get(sid)
+        seen[sid] = None if df is None else float(df["close"].iloc[-1])
+        if sid == "7777":
+            assert df is not None
+            assert str(df["date"].iloc[-1])[:8] == "20261016"
+            assert "20261017" not in set(df["date"].astype(str))
+            assert float(df["close"].iloc[-1]) == 40.0
+        return sid in ("2330", "7777", "6666")
+
+    monkeypatch.setattr("midday_review.fetch_mis_batch", _mis)
+    monkeypatch.setattr("live_quote.fetch_emerging_tpex_quote", _tpex)
+    monkeypatch.setattr("winrate_buypoint._still_leave_zero_live", _still)
+
+    out = filter_intraday_from_roster(db, roster)
+    assert [r["stock_id"] for r in out] == ["2330", "7777", "6666"]
+    assert float(out[0]["live_price"]) == 90.0
+    assert float(out[1]["live_price"]) == 45.0
+    assert float(out[2]["live_price"]) == 19.0
+    assert mis_ids == ["2330"]
+    assert seen["7777"] == 40.0
+    assert "8888" not in seen
+
+
 def test_filter_intraday_keeps_lower_price_with_leave_zero(tmp_path, monkeypatch):
     db = str(tmp_path / "f.db")
     roster = [
