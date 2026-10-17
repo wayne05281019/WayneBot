@@ -261,7 +261,7 @@ def test_chengjiao_text_opens_journal():
 
 def test_daytrade_lock_blocks_second_press():
     bot = _bot()
-    bot._trade_running = {"99:9"}
+    bot._trade_running = {"99:9::daytrade"}
     bot._reply_menu = MagicMock()
     msg = _msg(9, "當沖")
 
@@ -281,6 +281,44 @@ def test_daytrade_lock_blocks_second_press():
     asyncio.run(run())
     text = str(msg.reply_text.await_args.args[0])
     assert "進行中" in text
+
+
+def test_leave_zero_lock_does_not_block_daytrade():
+    """剛脫離零進行中，同一人按當沖仍可進；不准五顆共用一把鎖。"""
+    bot = _bot()
+    bot._trade_running = {"99:9::leave_zero"}
+    bot._reply_menu = MagicMock()
+    bot._start_plain_wait = AsyncMock(return_value=(None, None, None))
+    bot._stop_plain_wait = AsyncMock()
+    bot._enter_main_menu = AsyncMock()
+    msg = _msg(9, "當沖")
+
+    async def run():
+        with patch("trading_calendar.is_tw_equity_session", return_value=False), patch(
+            "trading_calendar.tw_session_phase", return_value="closed"
+        ), patch("trading_calendar.daytrade_closed_title", return_value="休市"), patch(
+            "trading_calendar.daytrade_closed_message", return_value="尚未開盤"
+        ):
+            await bot._run_trade_bucket(
+                msg,
+                bucket_key="day_trade",
+                live_bucket="daytrade",
+                title="x",
+                subtitle="",
+                topic="daytrade",
+                status_text="x",
+                menu_label="當沖",
+                loader=lambda: [],
+            )
+
+    asyncio.run(run())
+    blob = " ".join(
+        str(c.args[0])
+        for c in (msg.reply_text.await_args_list + msg.reply_html.await_args_list)
+        if c.args
+    )
+    assert "請稍候完成後再按" not in blob
+    assert "休市" in blob or "尚未開盤" in blob or "LOADING" in blob
 
 
 def test_help_drops_why_topic():

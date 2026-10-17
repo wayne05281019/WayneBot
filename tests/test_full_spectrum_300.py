@@ -411,8 +411,11 @@ def test_l3_pending_same_chat_isolated():
 
 def test_l3_trade_lock_per_actor():
     bot = _bot()
-    bot._trade_running.add(f"{SHARED_CHAT}:{WAYNE_UID}")
-    assert f"{SHARED_CHAT}:{BRO_UID}" not in bot._trade_running
+    wayne = f"{SHARED_CHAT}:{WAYNE_UID}"
+    bro = f"{SHARED_CHAT}:{BRO_UID}"
+    bot._trade_running.add(bot._trade_slot_key(wayne, "daytrade"))
+    assert bot._trade_slot_key(bro, "daytrade") not in bot._trade_running
+    assert bot._trade_slot_key(wayne, "leave_zero") not in bot._trade_running
 
 
 def test_l3_buy_68_does_not_use_other_last_card():
