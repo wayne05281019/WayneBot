@@ -553,3 +553,106 @@ class TestMarketMenuE2E:
         lead = _row("領跌")
         assert "現貨3" in lead or "現貨 3" in lead
         assert "／" not in lead
+
+    def test_market_kline_fail_replies_plain(self, tmp_path, monkeypatch):
+        """日K畫失敗要補白話，不准只停等待泡泡。"""
+        monkeypatch.setenv("WAYNE_SKIP_CHART_WARMUP", "0")
+        charts = str(tmp_path / "kfail")
+        os.makedirs(charts, exist_ok=True)
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = str(tmp_path / "k.db")
+        bot.charts_dir = charts
+        bot._chart_png_looks_ok = MagicMock(return_value=False)
+        bot._scratch_chart_path = MagicMock(return_value=str(tmp_path / "k.png"))
+        bot._uid_from_message = MagicMock(return_value="1")
+        msg = _message()
+        msg.reply_photo = AsyncMock()
+
+        async def run():
+            from concurrent.futures import Future
+
+            fut = Future()
+            fut.set_result("")
+            with patch.object(bot, "_start_plain_wait", new_callable=AsyncMock) as st, patch.object(
+                bot, "_stop_plain_wait", new_callable=AsyncMock
+            ) as stop, patch("wayne_navigator.submit_mpl_paint", return_value=fut):
+                st.return_value = (MagicMock(), None, None)
+                await bot._send_market_kline(msg, uid="1")
+                stop.assert_awaited()
+                msg.reply_text.assert_awaited()
+                assert msg.reply_text.await_args.args[0] == "加權日K圖這次畫不出來，請稍後再試。"
+                msg.reply_photo.assert_not_awaited()
+
+        asyncio.run(run())
+
+    def test_market_vol_zone_fail_replies_plain(self, tmp_path, monkeypatch):
+        """大量區畫失敗要補白話，不准只停等待泡泡。"""
+        monkeypatch.setenv("WAYNE_SKIP_CHART_WARMUP", "0")
+        charts = str(tmp_path / "vzfail")
+        os.makedirs(charts, exist_ok=True)
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = str(tmp_path / "vz.db")
+        bot.charts_dir = charts
+        bot._chart_png_looks_ok = MagicMock(return_value=False)
+        bot._scratch_chart_path = MagicMock(return_value=str(tmp_path / "vz.png"))
+        bot._uid_from_message = MagicMock(return_value="1")
+        msg = _message()
+        msg.reply_photo = AsyncMock()
+
+        async def run():
+            from concurrent.futures import Future
+
+            fut = Future()
+            fut.set_result(("", ""))
+            with patch.object(bot, "_start_plain_wait", new_callable=AsyncMock) as st, patch.object(
+                bot, "_stop_plain_wait", new_callable=AsyncMock
+            ) as stop, patch("wayne_navigator.submit_mpl_paint", return_value=fut):
+                st.return_value = (MagicMock(), None, None)
+                await bot._send_market_vol_zone(msg, uid="1")
+                stop.assert_awaited()
+                msg.reply_text.assert_awaited()
+                assert msg.reply_text.await_args.args[0] == "加權大量區圖這次畫不出來，請稍後再試。"
+                msg.reply_photo.assert_not_awaited()
+
+        asyncio.run(run())
+
+    def test_market_page_still_sends_text_when_charts_fail(self, tmp_path, monkeypatch):
+        """環境觀察文字該出仍出；圖失敗不整頁空白。"""
+        monkeypatch.setenv("WAYNE_SKIP_CHART_WARMUP", "0")
+        db = str(tmp_path / "pagefail.db")
+        charts = str(tmp_path / "pagefail_c")
+        os.makedirs(charts, exist_ok=True)
+        _seed_market_db(db)
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = db
+        bot.charts_dir = charts
+        msg = _message()
+        msg.reply_photo = AsyncMock()
+
+        async def run():
+            with patch.object(bot, "_start_plain_wait", new_callable=AsyncMock) as st, patch.object(
+                bot, "_stop_plain_wait", new_callable=AsyncMock
+            ), patch.object(
+                bot, "_send_market_kline", new_callable=AsyncMock
+            ) as kline, patch.object(
+                bot, "_send_market_vol_zone", new_callable=AsyncMock
+            ) as vz, patch("taiwan_market._fetch_index_daily"):
+                st.return_value = (MagicMock(), None, None)
+
+                async def _kline_fail(message, **kwargs):
+                    await message.reply_text("加權日K圖這次畫不出來，請稍後再試。")
+
+                async def _vz_fail(message, **kwargs):
+                    await message.reply_text("加權大量區圖這次畫不出來，請稍後再試。")
+
+                kline.side_effect = _kline_fail
+                vz.side_effect = _vz_fail
+                await bot._send_market_page(msg)
+
+        asyncio.run(run())
+        msg.reply_html.assert_awaited()
+        body = msg.reply_html.await_args.args[0]
+        assert "台股大盤" in body
+        texts = [c.args[0] for c in msg.reply_text.await_args_list]
+        assert "加權日K圖這次畫不出來，請稍後再試。" in texts
+        assert "加權大量區圖這次畫不出來，請稍後再試。" in texts
