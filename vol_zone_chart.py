@@ -2310,6 +2310,65 @@ def _vz_memo_put(key: Tuple[Any, ...], path: str, cap: str) -> None:
         _VZ_RENDER_MEMO[key] = (time.monotonic(), str(path), str(cap or ""))
 
 
+def prepare_lookup_structure_bars(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: str = None,
+    *,
+    vol_ensure: Optional[Dict[str, Any]] = None,
+    lookback: int = VOL_ZONE_LOOKBACK,
+    bars: int = VOL_ZONE_BARS,
+) -> Optional[Dict[str, Any]]:
+    """查股第 3 張用的官方柱。不含除權息補抓、不含大量區選窗。
+
+    沒有真開高低收就回 None。不准在這裡發明量或補假柱。
+    vol_ensure 由查股提早打過就傳進來，避免再等一輪網路。
+    """
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    if not sid or not path:
+        return None
+    need = lookup_vol_ensure_days(lookback=lookback, bars=bars)
+    stats = vol_ensure if isinstance(vol_ensure, dict) else None
+    # 例外路徑回的空 dict 沒有 sid，這裡再 ensure 一次（暖命中不打網路）。
+    if not stats or "sid" not in stats:
+        try:
+            stats = ensure_official_volume_window(
+                sid,
+                path,
+                days=need,
+                stock_name=str(stock_name or ""),
+            )
+        except Exception:
+            logger.debug("structure bars ensure fail sid=%s", sid, exc_info=True)
+            stats = {}
+    skip = set((stats or {}).get("confirmed_absent") or [])
+    raw = load_official_ohlc(sid, path, need)
+    work = official_work(raw, skip_invent_dates=skip or None)
+    if work is None or getattr(work, "empty", True) or len(work) < 8:
+        return None
+    bars_face = [
+        {
+            "date": r.get("date"),
+            "open": r.get("open"),
+            "high": r.get("high"),
+            "low": r.get("low"),
+            "close": r.get("close"),
+            "volume": r.get("volume"),
+        }
+        for r in work.to_dict("records")
+    ]
+    if len(bars_face) < 8:
+        return None
+    return {
+        "sid": sid,
+        "name": str(stock_name or sid),
+        "bars": bars_face,
+        "work": work,
+        "vol_ensure": stats or {},
+    }
+
+
 def prepare_volume_zone(
     stock_id: str,
     stock_name: str = "",
@@ -2319,8 +2378,13 @@ def prepare_volume_zone(
     *,
     lookback: int = VOL_ZONE_LOOKBACK,
     bars: int = VOL_ZONE_BARS,
+    preloaded_work=None,
+    known_ensure: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """官方原柱＋除權息完成稿＋壓撐窗。HTTP 補抓在畫布鎖外。"""
+    """官方原柱＋除權息完成稿＋壓撐窗。HTTP 補抓在畫布鎖外。
+
+    preloaded_work：查股已為結構圖整理過的官方柱，第 4 張不要再讀一次庫。
+    """
     sid = str(stock_id or "").strip()
     if not sid:
         return None
@@ -2328,7 +2392,14 @@ def prepare_volume_zone(
     need = lookup_vol_ensure_days(lookback=lookback, bars=bars)
     skip_invent: set = set()
     vol_ensure: Dict[str, Any] = {}
-    if db_path:
+    if (
+        preloaded_work is not None
+        and not getattr(preloaded_work, "empty", True)
+    ):
+        work = preloaded_work
+        vol_ensure = dict(known_ensure or {})
+        skip_invent = set(vol_ensure.get("confirmed_absent") or [])
+    elif db_path:
         # 結構／大量區同一 prepare：開市日缺量先官方補，不准對齊發明假量
         # 查股路徑應已提早 ensure（paint 外）；此處暖命中＝0 網路
         try:
@@ -2439,6 +2510,7 @@ def render_volume_zone_result(
     lookup_portrait: bool = False,
     with_parallel_channel: bool = False,
     with_ma5_ma10: bool = True,
+    pack: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, str]:
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
@@ -2449,9 +2521,19 @@ def render_volume_zone_result(
     預設 True＝話筒／勝率／壓撐／大盤同一新臉；測試要舊臉才顯式傳 False。
     """
     del already_normalized
-    pack = prepare_volume_zone(
-        stock_id, stock_name, db_path, save_path, df, lookback=lookback, bars=bars
-    )
+    if not (
+        isinstance(pack, dict)
+        and pack.get("zone")
+        and pack.get("view") is not None
+        and pack.get("bars")
+    ):
+        pack = prepare_volume_zone(
+            stock_id, stock_name, db_path, save_path, df, lookback=lookback, bars=bars
+        )
+    else:
+        pack = dict(pack)
+        if save_path:
+            pack["out"] = save_path
     if not pack:
         return "", ""
     # 卡指紋進鍵：查股必帶 card；舊「有卡就不 memo」讓第二次同檔仍重渲 ~0.4s。
@@ -2582,6 +2664,7 @@ def render_lookup_vol_result(
     save_path: str = None,
     *,
     card: Optional[Dict[str, Any]] = None,
+    pack: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, str]:
     """查股第 4 張：大量撐壓＝橫式原版（VOL_ZONE_FIG_W×NAV），不是直式 4:5。不是買訊。
 
@@ -2596,6 +2679,7 @@ def render_lookup_vol_result(
         with_nav_signals=True,
         lookup_portrait=False,
         with_ma5_ma10=True,
+        pack=pack,
     )
 
 

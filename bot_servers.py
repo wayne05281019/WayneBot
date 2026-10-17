@@ -4097,6 +4097,16 @@ class WayneTelegramBot:
         return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
 
     @staticmethod
+    def _struct_gap_line(phase: str = "") -> str:
+        """第 2 張已送、第 3 張還沒好：話筒補一句在等什麼。"""
+        p = str(phase or "")
+        if p == "volfill":
+            return "結構圖在等官方成交量，補齊就送。"
+        if p == "bars":
+            return "結構圖在整理官方日K，好了就送。"
+        return "結構圖繪製中，好了就送。"
+
+    @staticmethod
     def _biaoke_progress_text(
         elapsed_sec: int,
         *,
@@ -8295,7 +8305,10 @@ class WayneTelegramBot:
             return
         await lock.acquire()
         wait_msg = None
+        early_ensure = None
         try:
+            # 官方量補洞跟「送進度泡泡／查代號」同時開始，第 2 張出去前能先跑完。
+            early_ensure = self._schedule_lookup_vol_ensure(code)
             try:
                 wait_msg = await message.reply_text(
                     self._chart_progress_text(0, current="quote"),
@@ -8384,10 +8397,41 @@ class WayneTelegramBot:
                     )
                 return
             await self._send_card_to_locked(
-                message, code, uid, actor, hits, wait_msg=wait_msg
+                message, code, uid, actor, hits, wait_msg=wait_msg, ensure_task=early_ensure
             )
+            early_ensure = None
         finally:
+            if early_ensure is not None and not early_ensure.done():
+                early_ensure.cancel()
             lock.release()
+
+    def _schedule_lookup_vol_ensure(self, code: str, stock_name: str = ""):
+        """查股一進代號就補官方量。沒有真月表就不填。回傳的 task 可給出圖接走。"""
+        from vol_zone_chart import (
+            ensure_official_volume_window,
+            lookup_vol_ensure_days,
+        )
+
+        sid = str(code or "").strip()
+        days = lookup_vol_ensure_days()
+        name = str(stock_name or "").strip() or sid
+
+        async def _run():
+            if not sid:
+                return {}
+            try:
+                return await asyncio.to_thread(
+                    ensure_official_volume_window,
+                    sid,
+                    self.db_path,
+                    days=days,
+                    stock_name=name,
+                )
+            except Exception:
+                logger.exception("查股提早 ensure 失敗 code=%s", sid)
+                return {}
+
+        return asyncio.create_task(_run())
 
     async def _send_card_to_locked(
         self,
@@ -8397,9 +8441,13 @@ class WayneTelegramBot:
         actor: str,
         hits: list,
         wait_msg=None,
+        ensure_task=None,
     ):
         lookup_faded = False
         sent_any = False
+        gap_msg = None
+        struct_prep_task = None
+        vol_zone_task = None
         is_em = self._hit_is_emerging(code, hits)
         progress_stop = asyncio.Event()
         progress_task = None
@@ -8482,8 +8530,8 @@ class WayneTelegramBot:
                 return None
 
         news_task = asyncio.create_task(_fetch_news())
-        # 官方量窗 ensure：跟 MIS／建卡並行（paint 外），縮短介紹→結構沉默。
-        # 不准造假量；結構 paint 前仍 await 同一 task。
+        # 官方量：進查股就補（_send_card_to 已先開）。結構只等這份真柱，不等大量區選窗。
+        # 不准造假量。大量區 prepare 在旁邊跑，不擋住第 3 張。
         from vol_zone_chart import (
             ensure_official_volume_window,
             lookup_vol_ensure_days,
@@ -8494,22 +8542,109 @@ class WayneTelegramBot:
             _vol_ensure_name = str(hits[0].get("stock_name") or "").strip()
         _vol_ensure_days = lookup_vol_ensure_days()
         t_ensure0 = time.monotonic()
+        _struct_phase = {"phase": "volfill"}
+        _gap_box = {"msg": None}
 
-        async def _run_vol_ensure():
-            """paint 外補官方量；例外吞掉後仍回空 dict，prepare 內可再 ensure。"""
+        if ensure_task is None:
+
+            async def _run_vol_ensure():
+                """paint 外補官方量；例外吞掉後仍回空 dict。"""
+                try:
+                    return await asyncio.to_thread(
+                        ensure_official_volume_window,
+                        code,
+                        self.db_path,
+                        days=_vol_ensure_days,
+                        stock_name=_vol_ensure_name or code,
+                    )
+                except Exception:
+                    logger.exception("查股提早 ensure 失敗 code=%s", code)
+                    return {}
+
+            ensure_task = asyncio.create_task(_run_vol_ensure())
+
+        async def _await_vol_ensure(*, label: str = "struct") -> None:
+            """補官方量在 paint 外等完；不准造假量／挖洞。"""
+            await ensure_task
+            logger.info(
+                "查股階段 vol_ensure done %.1fs code=%s label=%s",
+                time.monotonic() - t_ensure0,
+                code,
+                label,
+            )
+
+        async def _set_struct_phase(phase: str) -> None:
+            _struct_phase["phase"] = phase
+            msg = _gap_box.get("msg")
+            if msg is None:
+                return
+
+            async def _edit() -> None:
+                try:
+                    await msg.edit_text(self._struct_gap_line(phase))
+                except Exception:
+                    pass
+
+            asyncio.create_task(_edit())
+
+        async def _run_struct_bars():
+            """ensure 完就整理官方柱，給第 3 張。不跑除權息補抓、不選大量區。"""
+            stats: dict = {}
+            try:
+                await _await_vol_ensure(label="struct_bars")
+                if ensure_task.done() and not ensure_task.cancelled():
+                    got = ensure_task.result()
+                    if isinstance(got, dict):
+                        stats = got
+            except asyncio.CancelledError:
+                return None
+            except Exception:
+                logger.exception("查股結構等官方量失敗 code=%s", code)
+                stats = {}
+            await _set_struct_phase("bars")
+            from vol_zone_chart import prepare_lookup_structure_bars
+
             try:
                 return await asyncio.to_thread(
-                    ensure_official_volume_window,
+                    prepare_lookup_structure_bars,
                     code,
+                    _vol_ensure_name or code,
                     self.db_path,
-                    days=_vol_ensure_days,
-                    stock_name=_vol_ensure_name or code,
+                    vol_ensure=stats,
                 )
             except Exception:
-                logger.exception("查股提早 ensure 失敗 code=%s", code)
-                return {}
+                logger.exception("查股結構柱失敗 code=%s", code)
+                return None
 
-        ensure_task = asyncio.create_task(_run_vol_ensure())
+        struct_prep_task = asyncio.create_task(_run_struct_bars())
+
+        async def _run_vol_zone_prep():
+            """第 4 張的選區／除權息。跟結構出圖平行，不准擋第 3 張。"""
+            try:
+                bars_pack = await struct_prep_task
+            except asyncio.CancelledError:
+                return None
+            except Exception:
+                logger.exception("查股大量區等結構柱失敗 code=%s", code)
+                return None
+            if not isinstance(bars_pack, dict) or bars_pack.get("work") is None:
+                return None
+            from vol_zone_chart import prepare_volume_zone
+
+            try:
+                return await asyncio.to_thread(
+                    prepare_volume_zone,
+                    code,
+                    _vol_ensure_name or code,
+                    self.db_path,
+                    preloaded_work=bars_pack.get("work"),
+                    known_ensure=bars_pack.get("vol_ensure") or {},
+                )
+            except Exception:
+                logger.exception("查股大量區 prepare 失敗 code=%s", code)
+                return None
+
+        vol_zone_task = asyncio.create_task(_run_vol_zone_prep())
         live_rt = await _fetch_mis()
         st0 = self._op_state_map().setdefault(actor, {"sent": [], "current": "table", "t0": op_t0})
         st0["current"] = "table"
@@ -8639,6 +8774,10 @@ class WayneTelegramBot:
             if card.get("error"):
                 tape_task.cancel()
                 ensure_task.cancel()
+                if struct_prep_task is not None:
+                    struct_prep_task.cancel()
+                if vol_zone_task is not None:
+                    vol_zone_task.cancel()
                 await _reply_visible(
                     f"⚠️ {html_escape(card.get('error'))}",
                     html=True,
@@ -8675,6 +8814,7 @@ class WayneTelegramBot:
 
             # 結構 paint 閉包吃預先 prepare 的 pack（由 _struct_item 填入）
             _struct_pack_box: list = [None]
+            _vol_pack_box: list = [None]
 
             def _render_struct():
                 from three_in_one_chart import render_lookup_structure_result
@@ -8686,6 +8826,7 @@ class WayneTelegramBot:
                     struct_path_f,
                     card=card,
                     pack=_struct_pack_box[0],
+                    live_quote=live_rt if isinstance(live_rt, dict) else None,
                 )
                 if cap:
                     struct_face[0] = cap
@@ -8695,12 +8836,20 @@ class WayneTelegramBot:
                 from vol_zone_chart import render_lookup_vol_result
 
                 # 選區只吃官方原柱；縮圖末日 K／量可疊決策卡盤中真報價（與圖一二同源）。
+                # 預先 prepare 的 pack 在 paint 外完成，畫布不再重抓月表。
+                zone_pack = _vol_pack_box[0]
+                if isinstance(zone_pack, dict):
+                    zone_pack = dict(zone_pack)
+                    zone_pack["out"] = vol_path_f
+                else:
+                    zone_pack = None
                 path, cap = render_lookup_vol_result(
                     code,
                     _stock_caption_name(card, code),
                     self.db_path,
                     vol_path_f,
                     card=card,
+                    pack=zone_pack,
                 )
                 if cap:
                     vol_face[0] = cap
@@ -8793,38 +8942,6 @@ class WayneTelegramBot:
             # 卡建完後名稱可能比 hits 準；只更新字串，不准重開 ensure（已在跑／memo）。
             _vol_ensure_name = _stock_caption_name(card, code) or _vol_ensure_name
 
-            async def _await_vol_ensure(*, label: str = "struct") -> None:
-                """補官方量在 paint 外等完；不准造假量／挖洞。"""
-                await ensure_task
-                logger.info(
-                    "查股階段 vol_ensure done %.1fs code=%s label=%s",
-                    time.monotonic() - t_ensure0,
-                    code,
-                    label,
-                )
-
-            async def _run_struct_prepare():
-                """ensure 完後在 paint 外 prepare；與卡／介紹渲重疊，結構只剩 PNG。"""
-                try:
-                    await _await_vol_ensure(label="struct_prep")
-                except asyncio.CancelledError:
-                    return None
-                from vol_zone_chart import prepare_volume_zone
-
-                try:
-                    return await asyncio.to_thread(
-                        prepare_volume_zone,
-                        code,
-                        _vol_ensure_name or code,
-                        self.db_path,
-                        struct_path_f,
-                    )
-                except Exception:
-                    logger.exception("查股結構 prepare 失敗 code=%s", code)
-                    return None
-
-            struct_prep_task = asyncio.create_task(_run_struct_prepare())
-
             async def _card_item():
                 """先 submit 再放行介紹圖排隊；await 完才回傳要送的高低卡。"""
                 attempts = 2
@@ -8895,7 +9012,7 @@ class WayneTelegramBot:
                 return None
 
             async def _struct_item():
-                # ensure＋prepare 與卡／介紹重疊；paint 前必須等介紹已進 queue
+                # 官方柱與卡／介紹重疊；paint 前必須等介紹已進 queue，不准插隊。
                 try:
                     await asyncio.wait_for(
                         glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
@@ -8909,6 +9026,7 @@ class WayneTelegramBot:
                 except Exception:
                     logger.exception("查股結構 prep await 失敗 code=%s", code)
                     _struct_pack_box[0] = None
+                await _set_struct_phase("paint")
                 png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
                 cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
                 if not png:
@@ -8916,8 +9034,14 @@ class WayneTelegramBot:
                 return ("struct", png, cap, None)
 
             async def _vol_item():
-                # 結構已 ensure；暖命中。仍 await 同一 task，不准再整窗阻塞
-                await _await_vol_ensure(label="vol")
+                # 大量區選窗在 paint 外已開；這裡只等那份，不准再整窗擋住結構圖。
+                try:
+                    _vol_pack_box[0] = await vol_zone_task
+                except asyncio.CancelledError:
+                    _vol_pack_box[0] = None
+                except Exception:
+                    logger.exception("查股大量區 prep await 失敗 code=%s", code)
+                    _vol_pack_box[0] = None
                 png = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
                 cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖（非買訊）"
                 if not png:
@@ -8996,11 +9120,23 @@ class WayneTelegramBot:
                     sent_kinds.append(kind)
                     ready_items.append(glance_item)
 
-            if not ensure_task.done():
+            if not ensure_task.done() or str(_struct_phase.get("phase") or "") == "volfill":
                 await _bump_progress("volfill")
+            elif not struct_prep_task.done():
+                await _bump_progress("struct")
             else:
                 await _bump_progress("struct")
             await asyncio.sleep(0)
+            # 第 2 張已經在對話最下面。進度泡泡在更上面，這裡再補一句，不准空白乾等。
+            if "glance" in sent_kinds and not struct_task.done():
+                try:
+                    gap_msg = await message.reply_text(
+                        self._struct_gap_line(str(_struct_phase.get("phase") or ""))
+                    )
+                    _gap_box["msg"] = gap_msg
+                except Exception:
+                    gap_msg = None
+                    logger.exception("查股結構等待句失敗 code=%s", code)
             t_struct0 = time.monotonic()
             struct_item = await struct_task
             logger.info(
@@ -9019,6 +9155,10 @@ class WayneTelegramBot:
                     sent_any = True
                     sent_kinds.append(kind)
                     ready_items.append(struct_item)
+            if gap_msg is not None:
+                await self._delete_message(gap_msg)
+                gap_msg = None
+                _gap_box["msg"] = None
 
             await _bump_progress("vol")
             await asyncio.sleep(0)
@@ -9097,6 +9237,12 @@ class WayneTelegramBot:
             progress_stop.set()
             if progress_task is not None:
                 progress_task.cancel()
+            for _pend in (struct_prep_task, vol_zone_task):
+                if _pend is not None and not _pend.done():
+                    _pend.cancel()
+            if gap_msg is not None:
+                await self._delete_message(gap_msg)
+                gap_msg = None
             await _clear_wait()
             fade_roles = {"ack", "wait"}
             if sent_any:
