@@ -3391,10 +3391,10 @@ class WayneTelegramBot:
             return WayneTelegramBot._wait_bubble("海選完成", elapsed_sec, now="推送名單")
         if str(phase or "") == "cache":
             now = "讀取名單快取"
-            rest = "黃金買點／還在零"
+            rest = "黃金買點／紅箭確認"
         else:
             now = "掃描全市場"
-            rest = "黃金買點／還在零"
+            rest = "黃金買點／紅箭確認"
         return WayneTelegramBot._wait_bubble(
             "海選進行中", elapsed_sec, now=now, rest=rest, fill_sec=300.0
         )
@@ -4563,7 +4563,7 @@ class WayneTelegramBot:
                 "興櫃海選進行中",
                 s,
                 now="櫃買日均價",
-                rest="黃金買點／還在零",
+                rest="黃金買點／紅箭確認",
                 fill_sec=120.0,
             ),
         )
