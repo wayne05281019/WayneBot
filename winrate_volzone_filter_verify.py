@@ -4,17 +4,21 @@
 母體＝當日勝率買點現況路徑（leave_zero 藍▲＋buy_exclude_v5 留下；
 可選 AI 生態系 ONLY 與話筒對齊）。不准改 leave_zero／ma60_lower／黃金買點公式。
 
-變體（同母體再篩；分軌記、分軌算；勝率不准混海選／壓撐／洞燭）：
-  current        ＝現況整包（對照基線；空名單不算）
-  vz_mid_thin    ＝大量區內中下帶（區相對位置 0.15–0.70）＋量能／爆大量日 <0.50
-  ma60_rising    ＝季線近 5 交易日上升
-  space_h20      ＝收盤距近 20 收盤高 ≥5%（上檔空間）
-  untangle_up    ＝5／10／月線未糾結（spread≥2.8%）且月線上升、收≥五日
-  combo_vz_ma60  ＝vz_mid_thin ∩ ma60_rising（再生下一版候選）
+變體（同母體再篩；分軌記、分軌算；勝率不准混海選／壓撐／洞燭／AI倉／飆大）：
+  current            ＝現況整包（對照基線；空名單不算）
+  vz_mid_thin        ＝大量區內中下帶（區相對位置 0.15–0.70）＋量能／爆大量日 <0.50
+  ma60_rising        ＝季線近 5 交易日上升
+  space_h20          ＝收盤距近 20 收盤高 ≥5%（上檔空間）
+  untangle_up        ＝5／10／月線未糾結（spread≥2.8%）且月線上升、收≥五日
+  combo_vz_ma60      ＝vz_mid_thin ∩ ma60_rising
+  combo_vz_untangle  ＝vz_mid_thin ∩ untangle_up（§13 再生下一版）
+  combo_vz_space     ＝vz_mid_thin ∩ space_h20（§13 再生下一版）
+  combo_triple       ＝vz_mid_thin ∩ ma60_rising ∩ untangle_up（§13 再生下一版）
 
+開市日沒按也落檔：母體各檔＋各變體命中＋當日官方開高低收＋量。
 獨立交易日 n≥20 且主窗（＋5）勝率贏 current、且平均報酬不差於 current 才算過閘；
-不過閘不准改話筒排序／推播。失敗不擋出卡／海選／查股。
-Asia/Taipei；官方已收柱；盤中未收不當收；不准假資料。
+不過閘不准改話筒排序／推播／硬標優先 1～2 檔。本軌只落檔，過閘也不自動改推薦。
+失敗不擋出卡／海選／查股。Asia/Taipei；官方已收柱；盤中未收不當收；不准假資料。
 """
 from __future__ import annotations
 
@@ -31,7 +35,10 @@ VARIANT_VZ_MID_THIN = "vz_mid_thin"
 VARIANT_MA60_RISING = "ma60_rising"
 VARIANT_SPACE_H20 = "space_h20"
 VARIANT_UNTANGLE_UP = "untangle_up"
-VARIANT_COMBO = "combo_vz_ma60"  # 再生下一版：中帶量縮 ∩ 季線升
+VARIANT_COMBO = "combo_vz_ma60"
+VARIANT_COMBO_VZ_UNTANGLE = "combo_vz_untangle"  # §13 再生
+VARIANT_COMBO_VZ_SPACE = "combo_vz_space"  # §13 再生
+VARIANT_COMBO_TRIPLE = "combo_triple"  # §13 再生：中帶∩季線升∩解糾結
 TRACK_VARIANTS: Tuple[str, ...] = (
     VARIANT_CURRENT,
     VARIANT_VZ_MID_THIN,
@@ -39,6 +46,13 @@ TRACK_VARIANTS: Tuple[str, ...] = (
     VARIANT_SPACE_H20,
     VARIANT_UNTANGLE_UP,
     VARIANT_COMBO,
+    VARIANT_COMBO_VZ_UNTANGLE,
+    VARIANT_COMBO_VZ_SPACE,
+    VARIANT_COMBO_TRIPLE,
+)
+# 篩選臂（不含 current）；current 列 extra.hit 記各臂命中結果
+FILTER_VARIANTS: Tuple[str, ...] = tuple(
+    v for v in TRACK_VARIANTS if v != VARIANT_CURRENT
 )
 SPACE_H20_MIN_PCT = 5.0
 SCORE_HORIZONS: Tuple[int, ...] = (1, 3, 5, 10)
@@ -90,7 +104,11 @@ def ensure_tables(db_path: str) -> str:
                 sid TEXT NOT NULL,
                 variant TEXT NOT NULL,
                 name TEXT DEFAULT '',
+                open REAL,
+                high REAL,
+                low REAL,
                 close REAL,
+                volume REAL,
                 zone_pos REAL,
                 vol_ratio REAL,
                 ma60_rising INTEGER,
@@ -126,10 +144,48 @@ def ensure_tables(db_path: str) -> str:
             );
             """
         )
+        # 舊庫補官方柱欄（開高低量）；缺真數可 NULL，不准假填
+        cols = {
+            r[1]
+            for r in conn.execute(
+                "PRAGMA table_info(winrate_volzone_filter_tape)"
+            ).fetchall()
+        }
+        for name, decl in (
+            ("open", "REAL"),
+            ("high", "REAL"),
+            ("low", "REAL"),
+            ("volume", "REAL"),
+        ):
+            if name not in cols:
+                conn.execute(
+                    f"ALTER TABLE winrate_volzone_filter_tape ADD COLUMN {name} {decl}"
+                )
         conn.commit()
     finally:
         conn.close()
     return store
+
+
+def _signal_day_ohlcv(df) -> Dict[str, Optional[float]]:
+    """訊號日（df 最後一根）官方開高低收＋量；缺＝None，不准假填。"""
+    out: Dict[str, Optional[float]] = {
+        "open": None,
+        "high": None,
+        "low": None,
+        "close": None,
+        "volume": None,
+    }
+    if df is None or len(df) < 1:
+        return out
+    try:
+        last = df.iloc[-1]
+    except Exception:
+        return out
+    for k in ("open", "high", "low", "close", "volume"):
+        if k in df.columns:
+            out[k] = _f(last.get(k) if hasattr(last, "get") else last[k])
+    return out
 
 
 def compute_filter_features(df) -> Optional[Dict[str, Any]]:
@@ -249,7 +305,26 @@ def variant_pass(feat: Dict[str, Any], variant: str) -> bool:
         return variant_pass(feat, VARIANT_VZ_MID_THIN) and variant_pass(
             feat, VARIANT_MA60_RISING
         )
+    if v == VARIANT_COMBO_VZ_UNTANGLE:
+        return variant_pass(feat, VARIANT_VZ_MID_THIN) and variant_pass(
+            feat, VARIANT_UNTANGLE_UP
+        )
+    if v == VARIANT_COMBO_VZ_SPACE:
+        return variant_pass(feat, VARIANT_VZ_MID_THIN) and variant_pass(
+            feat, VARIANT_SPACE_H20
+        )
+    if v == VARIANT_COMBO_TRIPLE:
+        return (
+            variant_pass(feat, VARIANT_VZ_MID_THIN)
+            and variant_pass(feat, VARIANT_MA60_RISING)
+            and variant_pass(feat, VARIANT_UNTANGLE_UP)
+        )
     return False
+
+
+def hit_map(feat: Dict[str, Any]) -> Dict[str, bool]:
+    """各篩選臂對該檔是否命中（可重算；缺真數＝False）。"""
+    return {v: bool(variant_pass(feat, v)) for v in FILTER_VARIANTS}
 
 
 def _load_baseline_rows(
@@ -416,16 +491,18 @@ def persist_tape(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
                     "pressure",
                     "support",
                     "zone_date",
+                    "hit",
                 )
                 if r.get(k) is not None
             }
             conn.execute(
                 """
                 INSERT OR REPLACE INTO winrate_volzone_filter_tape(
-                    kind, as_of, sid, variant, name, close,
+                    kind, as_of, sid, variant, name,
+                    open, high, low, close, volume,
                     zone_pos, vol_ratio, ma60_rising, ma_spread_pct,
                     dist_h20_pct, extra
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     KIND,
@@ -433,7 +510,11 @@ def persist_tape(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
                     r["sid"],
                     r["variant"],
                     str(r.get("name") or "")[:40],
+                    r.get("open"),
+                    r.get("high"),
+                    r.get("low"),
                     r.get("close"),
+                    r.get("volume"),
                     r.get("zone_pos"),
                     r.get("vol_ratio"),
                     1 if r.get("ma60_rising") else 0,
@@ -450,7 +531,7 @@ def persist_tape(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
 
 
 def snapshot_day(db_path: str, as_of: str = "") -> Dict[str, int]:
-    """盤後：凍現況母體＋各過濾變體。空名單不算有記。失敗回空。"""
+    """盤後：凍現況母體＋各過濾變體命中＋官方開高低收量。空名單不算有記。失敗回空。"""
     counts = {v: 0 for v in TRACK_VARIANTS}
     day = _ymd(as_of)
     if not day:
@@ -481,32 +562,54 @@ def snapshot_day(db_path: str, as_of: str = "") -> Dict[str, int]:
         feat = compute_filter_features(df)
         if not feat:
             continue
+        # 訊號日官方柱：優先特徵 close；開高低量從當日棒讀
+        ohlcv = _signal_day_ohlcv(df)
+        if ohlcv.get("close") is None:
+            ohlcv["close"] = feat.get("close") or _f(item.get("close"))
+        # 缺完整官方收＝這檔不凍（不准假柱）
+        if None in (
+            ohlcv.get("open"),
+            ohlcv.get("high"),
+            ohlcv.get("low"),
+            ohlcv.get("close"),
+            ohlcv.get("volume"),
+        ):
+            continue
+        if float(ohlcv["close"] or 0) <= 0 or float(ohlcv["volume"] or 0) < 0:
+            continue
         name = str(item.get("stock_name") or item.get("name") or "")
+        hits = hit_map(feat)
         for variant in TRACK_VARIANTS:
             if not variant_pass(feat, variant):
                 continue
-            rows.append(
-                {
-                    "as_of": day,
-                    "sid": sid,
-                    "variant": variant,
-                    "name": name,
-                    "close": feat.get("close") or item.get("close"),
-                    "zone_pos": feat.get("zone_pos"),
-                    "vol_ratio": feat.get("vol_ratio"),
-                    "ma60_rising": feat.get("ma60_rising"),
-                    "ma_spread_pct": feat.get("ma_spread_pct"),
-                    "dist_h20_pct": feat.get("dist_h20_pct"),
-                    "in_band": feat.get("in_band"),
-                    "near_press": feat.get("near_press"),
-                    "ma20_rising": feat.get("ma20_rising"),
-                    "tangled": feat.get("tangled"),
-                    "close_ge_ma5": feat.get("close_ge_ma5"),
-                    "pressure": feat.get("pressure"),
-                    "support": feat.get("support"),
-                    "zone_date": feat.get("zone_date"),
-                }
-            )
+            row: Dict[str, Any] = {
+                "as_of": day,
+                "sid": sid,
+                "variant": variant,
+                "name": name,
+                "open": ohlcv.get("open"),
+                "high": ohlcv.get("high"),
+                "low": ohlcv.get("low"),
+                "close": ohlcv.get("close"),
+                "volume": ohlcv.get("volume"),
+                "zone_pos": feat.get("zone_pos"),
+                "vol_ratio": feat.get("vol_ratio"),
+                "ma60_rising": feat.get("ma60_rising"),
+                "ma_spread_pct": feat.get("ma_spread_pct"),
+                "dist_h20_pct": feat.get("dist_h20_pct"),
+                "in_band": feat.get("in_band"),
+                "near_press": feat.get("near_press"),
+                "ma20_rising": feat.get("ma20_rising"),
+                "tangled": feat.get("tangled"),
+                "close_ge_ma5": feat.get("close_ge_ma5"),
+                "pressure": feat.get("pressure"),
+                "support": feat.get("support"),
+                "zone_date": feat.get("zone_date"),
+            }
+            # current 列附各臂命中結果（建議哪檔靜默依據；不過閘不進話筒）
+            if variant == VARIANT_CURRENT:
+                row["hit"] = hits
+            rows.append(row)
             counts[variant] = int(counts.get(variant) or 0) + 1
     persist_tape(db_path, rows)
     return counts
@@ -773,11 +876,11 @@ def optimize_status_one_liner(db_path: str) -> str:
     if g.get("passed"):
         return (
             f"勝率大量區再篩 n={n} 且 {g.get('best_variant')} "
-            f"＋{PRIMARY_H}日勝率贏現況 → 可另 PR 改推薦；本軌只落檔"
+            f"＋{PRIMARY_H}日勝率贏現況 → 可另 PR 改建議哪檔；本軌只落檔不改話筒"
         )
     return (
         f"勝率大量區再篩 n={n} 已滿；領先 {g.get('best_variant')} "
-        f"尚未穩贏現況整包 → 不改話筒"
+        f"尚未穩贏現況整包 → 不改話筒／不硬標優先檔"
     )
 
 
