@@ -13,6 +13,7 @@ import pytest
 from bot_servers import WayneTelegramBot
 from scenario_forecast_chart import (
     build_scenario_meta,
+    chart_note_lines,
     dodge_label_ys,
     format_scenario_caption,
     infer_dc_wave_scenario,
@@ -128,6 +129,44 @@ def _impulse_rows(n: int = 120):
         )
         d0 = d
     return rows
+
+
+def test_chart_note_lines_has_done_correct_proj():
+    """圖頂說明：已走／修正／未走轉折＋點位；永遠不是買訊。"""
+    note = chart_note_lines(
+        {
+            "path_mode": "mixed",
+            "confirmed": [
+                {"label": "(1)", "price": 100.0},
+                {"label": "(2)", "price": 80.0},
+            ],
+            "abc": [
+                {"label": "(a)", "price": 90.0},
+                {"label": "(b)", "price": 95.0},
+            ],
+            "projected": [
+                {"label": "(3)", "price": 120.0},
+                {"label": "(4)", "price": 105.0},
+                {"label": "(5)", "price": 140.0},
+            ],
+        }
+    )
+    assert note.startswith("情境預估：衝動後修正")
+    assert "已走 (1) 100　(2) 80" in note
+    assert "修正 (a) 90　(b) 95" in note
+    assert "未走 (3) 120　(4) 105　(5) 140" in note
+    assert note.endswith("不保證・不是買訊")
+    impulse = chart_note_lines(
+        {
+            "state": "partial",
+            "confirmed": [{"label": "(1)", "price": 50}, {"label": "(2)", "price": 40}],
+            "projected": [{"label": "(3)", "price": 70}],
+            "abc": [],
+        }
+    )
+    assert "衝動浪" in impulse
+    assert "已走" in impulse and "未走" in impulse
+    assert "修正" not in impulse
 
 
 def test_ema_and_caption_not_buy_signal():
