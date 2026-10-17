@@ -647,7 +647,23 @@ class TestMarketMenuE2E:
 
                 kline.side_effect = _kline_fail
                 vz.side_effect = _vz_fail
-                await bot._send_market_page(msg)
+                with patch(
+                    "us_overnight.refresh_us_for_market_page",
+                    return_value={
+                        "ok": False,
+                        "_press_miss": True,
+                        "_fallback": True,
+                        "regime": "unknown",
+                    },
+                ), patch(
+                    "market_session_cards.assemble_session_cards",
+                    return_value={
+                        "us": {"session": "", "cards": [], "missing": []},
+                        "tx": {"card": None, "missing": False},
+                        "notes": [],
+                    },
+                ):
+                    await bot._send_market_page(msg)
 
         asyncio.run(run())
         msg.reply_html.assert_awaited()

@@ -219,6 +219,7 @@ def render_index_kline_png(
         1 if live_px > 0 else 0,
         round(live_px, 2) if live_px > 0 else 0,
         "vol-min-v1",
+        "biaoke-mkt-20261017",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -383,6 +384,9 @@ def render_index_kline_png(
         ax1.spines[side].set_visible(False)
         ax2.spines[side].set_visible(False)
 
+    from market_biaoke_wave import paint_biaoke_market_marks
+
+    paint_biaoke_market_marks(ax1, work)
     fig.subplots_adjust(left=0.03, right=0.96, top=0.78, bottom=0.15)
     fig.text(
         0.03,

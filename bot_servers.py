@@ -5583,24 +5583,48 @@ class WayneTelegramBot:
                     live = live_f.result()
                     snap = snap_f.result()
                 as_of = str((snap or {}).get("as_of") or "")[:8]
+                from us_overnight import refresh_us_for_market_page
+
+                us_press = refresh_us_for_market_page(self.db_path, as_of)
                 live_px = None
                 try:
                     live_px = round(float((live or {}).get("price") or (live or {}).get("close") or 0), 0)
                 except (TypeError, ValueError):
                     live_px = None
-                memo_key = ("market", str(self.db_path), as_of, live_px)
+                memo_key = (
+                    "market",
+                    str(self.db_path),
+                    as_of,
+                    live_px,
+                    str((us_press or {}).get("us_session") or ""),
+                    str((us_press or {}).get("fetched_at") or ""),
+                    bool((us_press or {}).get("_press_miss")),
+                )
                 now = time.monotonic()
                 hit = _PAGE_HTML_CACHE.get(memo_key)
                 if hit and (now - float(hit[0])) < _PAGE_HTML_TTL_SEC:
-                    return hit[1], live
-                html = format_taiwan_market_page_html(self.db_path, live=live, snap=snap)
-                _PAGE_HTML_CACHE[memo_key] = (now, html)
+                    return hit[1]
+                from market_session_cards import assemble_session_cards
+
+                bundle = assemble_session_cards(us_snap=us_press)
+                html = format_taiwan_market_page_html(
+                    self.db_path, live=live, snap=snap, us_snap=us_press
+                )
+                notes = (bundle or {}).get("notes") or []
+                if notes:
+                    from tg_layout import html_escape
+
+                    html = html + "\n" + "\n".join(html_escape(str(n)) for n in notes)
+                packed = (html, live, bundle)
+                _PAGE_HTML_CACHE[memo_key] = (now, packed)
                 if len(_PAGE_HTML_CACHE) > 32:
                     oldest = min(_PAGE_HTML_CACHE.items(), key=lambda kv: float(kv[1][0]))
                     _PAGE_HTML_CACHE.pop(oldest[0], None)
-                return html, live
+                return packed
 
-            html, live_quote = await asyncio.wait_for(asyncio.to_thread(_build), timeout=_MARKET_PAGE_TIMEOUT)
+            html, live_quote, card_bundle = await asyncio.wait_for(
+                asyncio.to_thread(_build), timeout=_MARKET_PAGE_TIMEOUT
+            )
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await _end_wait()
@@ -5627,6 +5651,9 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 await message.reply_html(part, disable_web_page_preview=True)
             await _end_wait()
+            await self._send_market_session_cards(
+                message, card_bundle, uid=self._uid_from_message(message)
+            )
             await self._send_market_kline(
                 message, live=live_quote, uid=self._uid_from_message(message)
             )
@@ -5643,6 +5670,79 @@ class WayneTelegramBot:
         finally:
             await _end_wait()
             _ = own_wait
+
+    async def _send_market_session_cards(self, message, bundle, *, uid: str = "") -> None:
+        """文字之後：美股四指數、台指期盤後。沒有官方走勢的卡已在文字裡說明。"""
+        from config import skip_chart_warmup
+
+        if skip_chart_warmup() or not bundle:
+            return
+        uid = uid or self._uid_from_message(message)
+        os.makedirs(self.charts_dir, exist_ok=True)
+        us = (bundle or {}).get("us") or {}
+        tx = (bundle or {}).get("tx") or {}
+        jobs = []
+        if us.get("cards"):
+            jobs.append(
+                (
+                    "us",
+                    us["cards"],
+                    2,
+                    f"美股現金　{us.get('session', '')[:4]}/{us.get('session', '')[4:6]}/{us.get('session', '')[6:8]}"
+                    if len(str(us.get("session") or "")) == 8
+                    else "美股現金",
+                )
+            )
+        tx_card = tx.get("card")
+        if tx_card and tx_card.get("series"):
+            sess = str(tx_card.get("session") or "")
+            face = (
+                f"台指期盤後　{sess[:4]}/{sess[4:6]}/{sess[6:]}"
+                if len(sess) == 8
+                else "台指期盤後"
+            )
+            jobs.append(("tx", [tx_card], 1, face))
+        for kind, cards, cols, heading in jobs:
+            path = self._scratch_chart_path(self.charts_dir, "MKT", kind, uid)
+            try:
+                from market_session_cards import render_session_cards
+                from wayne_navigator import submit_mpl_paint
+
+                drawn = await asyncio.wait_for(
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            lambda p=path, cs=cards, n=cols, h=heading: render_session_cards(
+                                p, cs, heading=h, columns=n
+                            )
+                        )
+                    ),
+                    timeout=_CHART_RENDER_TIMEOUT,
+                )
+            except Exception:
+                logger.exception("大盤走勢圖失敗 %s", kind)
+                drawn = ""
+            if not drawn or not self._chart_png_looks_ok(drawn):
+                await message.reply_text(
+                    "美股走勢圖這次畫不出來，請稍後再試。"
+                    if kind == "us"
+                    else "台指期盤後圖這次畫不出來，請稍後再試。"
+                )
+                continue
+            try:
+                send_path = self._prepare_lookup_album_photo(drawn)
+                with open(send_path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=heading[:1024],
+                        reply_markup=None,
+                    )
+            except Exception:
+                logger.exception("大盤走勢圖送出失敗 %s", kind)
+                await message.reply_text(
+                    "美股走勢圖這次畫不出來，請稍後再試。"
+                    if kind == "us"
+                    else "台指期盤後圖這次畫不出來，請稍後再試。"
+                )
 
     async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:
         """大盤專頁附圖：加權日 K（淺底）。畫失敗要補白話，不准只停等待泡泡。"""
@@ -5685,7 +5785,7 @@ class WayneTelegramBot:
             if not path or not self._chart_png_looks_ok(path):
                 await message.reply_text(fail_msg)
                 return
-            cap = "加權指數日K（K棒・MA5/20/60・量）"
+            cap = "加權指數日K（K棒・他 10/17 說的 C 波區間・量）"
             try:
                 send_path = self._prepare_lookup_album_photo(path)
                 with open(send_path, "rb") as f:
