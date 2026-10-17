@@ -11,7 +11,7 @@ import os
 import shutil
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -514,30 +514,219 @@ def _still_leave_zero_live(
     return bool(ok)
 
 
+_EMERGING_QUOTE_SOURCES = frozenset(
+    {"tpex_esb_live", "tpex_esb", "tpex_esb_openapi"}
+)
+
+
+def _quote_source_is_emerging(src: str) -> bool:
+    """掃檔標成 emerging_quotes（含 SCAN_KIND| 前綴）才算興櫃柱，不是上市櫃日 K。"""
+    parts = [p.strip() for p in str(src or "").split("|") if p.strip()]
+    return "emerging_quotes" in parts
+
+
+def _emerging_ids(db_path: str, rows: Sequence[Dict[str, Any]]) -> Set[str]:
+    """名單裡走興櫃日表的代號。quote_source 已標的不再查庫。"""
+    out: Set[str] = set()
+    rest: List[str] = []
+    for row in rows or []:
+        sid = str((row or {}).get("stock_id") or "").strip()
+        if not sid:
+            continue
+        if _quote_source_is_emerging(str((row or {}).get("quote_source") or "")):
+            out.add(sid)
+        else:
+            rest.append(sid)
+    if not rest:
+        return out
+    conn = sqlite3.connect(db_path)
+    try:
+        ph = ",".join("?" * len(rest))
+        try:
+            for sid, mt in conn.execute(
+                f"SELECT stock_id, market_type FROM stock_universe "
+                f"WHERE stock_id IN ({ph})",
+                rest,
+            ):
+                if str(mt or "").upper() in ("EM", "EMERGING", "ESB"):
+                    out.add(str(sid))
+        except sqlite3.OperationalError:
+            pass
+        daily: Dict[str, int] = {}
+        em: Dict[str, int] = {}
+        try:
+            for sid, n in conn.execute(
+                f"SELECT stock_id, COUNT(*) FROM daily_quotes "
+                f"WHERE stock_id IN ({ph}) GROUP BY stock_id",
+                rest,
+            ):
+                daily[str(sid)] = int(n or 0)
+        except sqlite3.OperationalError:
+            pass
+        try:
+            for sid, n in conn.execute(
+                f"SELECT stock_id, COUNT(*) FROM emerging_quotes "
+                f"WHERE stock_id IN ({ph}) GROUP BY stock_id",
+                rest,
+            ):
+                em[str(sid)] = int(n or 0)
+        except sqlite3.OperationalError:
+            pass
+        for sid in rest:
+            if sid in out:
+                continue
+            if daily.get(sid, 0) < 5 and em.get(sid, 0) >= 5:
+                out.add(sid)
+    finally:
+        conn.close()
+    return out
+
+
+def _load_emerging_close_frames(
+    db_path: str, codes: Sequence[str], as_of: str
+) -> Dict[str, Any]:
+    """興櫃複核柱：emerging_quotes 收到基準日為止。不含當日未收，也不讀 daily_quotes。"""
+    from datetime import datetime, timedelta
+
+    ids = [str(c).strip() for c in codes if str(c).strip()]
+    day = _ymd(as_of)
+    if not ids or not day:
+        return {}
+    try:
+        import pandas as pd
+    except Exception:
+        return {}
+    try:
+        lo = (datetime.strptime(day, "%Y%m%d") - timedelta(days=90)).strftime("%Y%m%d")
+    except ValueError:
+        lo = ""
+    conn = sqlite3.connect(db_path)
+    try:
+        ph = ",".join("?" * len(ids))
+        params: List[Any] = list(ids) + [day]
+        extra = ""
+        if lo:
+            extra = " AND REPLACE(date,'-','') >= ?"
+            params.append(lo)
+        try:
+            df = pd.read_sql_query(
+                f"""
+                SELECT stock_id, date, open, high, low, close, volume, turnover_k
+                FROM emerging_quotes
+                WHERE stock_id IN ({ph})
+                  AND REPLACE(date,'-','') <= ?{extra}
+                ORDER BY stock_id, date
+                """,
+                conn,
+                params=params,
+            )
+        except Exception:
+            return {}
+    finally:
+        conn.close()
+    if df is None or df.empty:
+        return {}
+    df["date"] = df["date"].astype(str).str.replace("-", "", regex=False)
+    out: Dict[str, Any] = {}
+    for sid, g in df.groupby("stock_id"):
+        g = g.reset_index(drop=True)
+        if str(g["date"].iloc[-1] or "")[:8] != day:
+            continue
+        out[str(sid)] = g
+    return out
+
+
+def _fetch_emerging_official_quotes(codes: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+    """興櫃現價只認櫃買官方日均價。沒有均價就不填，不准改問上市櫃 MIS。"""
+    ids = [str(c).strip() for c in codes if str(c).strip()]
+    if not ids:
+        return {}
+    try:
+        from live_quote import fetch_emerging_tpex_quote
+    except Exception:
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for sid in ids:
+        try:
+            rt = fetch_emerging_tpex_quote(sid) or {}
+        except Exception:
+            continue
+        src = str(rt.get("source") or "")
+        if src not in _EMERGING_QUOTE_SOURCES:
+            continue
+        raw = rt.get("avg_price")
+        if raw is None:
+            raw = rt.get("close")
+        try:
+            px = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if px <= 0:
+            continue
+        out[sid] = {
+            "price": px,
+            "close": px,
+            "source": src,
+            "emerging": True,
+            "yesterday_close": rt.get("yesterday_close"),
+            "update_time": rt.get("update_time") or "",
+        }
+    return out
+
+
 def filter_intraday_from_roster(
     db_path: str,
     roster: Sequence[Dict[str, Any]],
     *,
     quotes: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """昨盤後勝率名單 → 買點仍在且現價更低才留；買點消失就不出現。"""
+    """昨盤後勝率名單 → 買點仍在且現價更低才留；買點消失就不出現。
+
+    興櫃用自己的官方日均價與 emerging_quotes 複核，產業篩沿用名單（AI 生態系）。
+    沒有興櫃真報價就略過該檔，不准拿上市櫃價填。
+    """
     rows = [r for r in (roster or []) if isinstance(r, dict) and str(r.get("stock_id") or "").strip()]
     if not rows:
         return []
-    codes = [str(r["stock_id"]).strip() for r in rows]
     from screening_engine import ScreeningEngine
 
     engine = ScreeningEngine(db_path)
     as_of = _ymd(rows[0].get("as_of")) or _ymd(engine.get_latest_trading_date())
-    frames = engine._load_close_frames(codes, as_of) or {}
-    live_quotes = quotes
-    if live_quotes is None:
-        try:
-            from midday_review import fetch_mis_batch
+    em_ids = _emerging_ids(db_path, rows)
+    listed_codes = [
+        str(r["stock_id"]).strip()
+        for r in rows
+        if str(r["stock_id"]).strip() not in em_ids
+    ]
+    em_codes = [str(r["stock_id"]).strip() for r in rows if str(r["stock_id"]).strip() in em_ids]
+    frames: Dict[str, Any] = {}
+    if listed_codes:
+        frames.update(engine._load_close_frames(listed_codes, as_of) or {})
+    if em_codes:
+        frames.update(_load_emerging_close_frames(db_path, em_codes, as_of))
+    if quotes is None:
+        live_quotes: Dict[str, Dict[str, Any]] = {}
+        if listed_codes:
+            try:
+                from midday_review import fetch_mis_batch
 
-            live_quotes = fetch_mis_batch(codes, db_path) or {}
-        except Exception:
-            live_quotes = {}
+                live_quotes.update(fetch_mis_batch(listed_codes, db_path) or {})
+            except Exception:
+                pass
+        if em_codes:
+            live_quotes.update(_fetch_emerging_official_quotes(em_codes))
+    else:
+        live_quotes = {}
+        for sid, q in (quotes or {}).items():
+            if sid in em_ids:
+                src = str((q or {}).get("source") or "")
+                if src not in _EMERGING_QUOTE_SOURCES and not (q or {}).get("emerging"):
+                    continue
+            if q:
+                live_quotes[str(sid)] = q
+        missing_em = [sid for sid in em_codes if sid not in live_quotes]
+        if missing_em:
+            live_quotes.update(_fetch_emerging_official_quotes(missing_em))
     out: List[Dict[str, Any]] = []
     for row in rows:
         sid = str(row.get("stock_id") or "").strip()
