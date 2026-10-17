@@ -1392,6 +1392,60 @@ def build_scenario_meta(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     return meta
 
 
+def chart_note_lines(wave: Dict[str, Any]) -> str:
+    """圖頂說明：走法＋已走／修正／未走轉折點位。永遠不是買訊。"""
+    wave = wave or {}
+
+    def _px(node: Dict[str, Any]) -> str:
+        try:
+            return _fmt_px(float(node.get("price")))
+        except Exception:
+            return ""
+
+    def _groups(nodes: Sequence[Dict[str, Any]], head: str) -> List[str]:
+        bits = []
+        for node in nodes or []:
+            lab = str(node.get("label") or "").strip()
+            px = _px(node)
+            if not lab or not px:
+                continue
+            bits.append(f"{lab} {px}")
+        lines = []
+        for i in range(0, len(bits), 3):
+            chunk = "　".join(bits[i : i + 3])
+            lines.append(f"{head} {chunk}" if i == 0 else f"　　 {chunk}")
+        return lines
+
+    def _path_mode() -> str:
+        pm = str(wave.get("path_mode") or "").strip()
+        if pm in ("impulse", "abc", "mixed"):
+            return pm
+        state = str(wave.get("state") or "").strip()
+        if state == "abc":
+            return "abc"
+        if state == "abc_next":
+            return "mixed"
+        has_abc = bool(wave.get("abc"))
+        has_proj = bool(wave.get("projected"))
+        if has_abc and has_proj:
+            return "mixed"
+        if has_abc and not has_proj:
+            return "abc"
+        return "impulse"
+
+    mode_key = _path_mode()
+    mode = {"impulse": "衝動浪", "abc": "修正浪", "mixed": "衝動後修正"}.get(
+        mode_key, ""
+    )
+    lines = ["情境預估" + (f"：{mode}" if mode else "")]
+    lines.extend(_groups(list(wave.get("confirmed") or []), "已走"))
+    if mode_key != "impulse":
+        lines.extend(_groups(list(wave.get("abc") or []), "修正"))
+    lines.extend(_groups(list(wave.get("projected") or []), "未走"))
+    lines.append("不保證・不是買訊")
+    return "\n".join(line for line in lines if line)
+
+
 def format_scenario_caption(sid: str, name: str, meta: Dict[str, Any]) -> str:
     sid = str(sid or "").strip()
     name = str(name or "").strip()
@@ -2133,30 +2187,20 @@ def _paint(
             face = _TAG_HOT if str(txt).replace(".", "").isdigit() else _TAG_BG
             _draw_price_tag(ax, x_end + 0.15, y, txt, fp=_fp(7.4, "bold"), face=face)
 
-        bubble = str(wave.get("bubble") or "").strip()
-        if not bubble:
-            bubble = "情境預估（不保證・不是買訊）"
-        # 條件氣泡靠上緣，避開底部通道／量區互壓；縮圖仍可讀
-        ax.text(
-            0.015,
-            0.965,
-            bubble,
-            transform=ax.transAxes,
-            color="white",
-            fontproperties=_fp(8.4, "bold"),
+        note = str(wave.get("bubble") or "").strip() or chart_note_lines(wave)
+        # 說明放圖上方，不壓 K、不壓點位。他的圖有配文，縮圖也要讀得到。
+        fig.text(
+            0.09,
+            0.985,
+            note,
+            fontproperties=_fp(12, "bold"),
+            color=_TEXT,
             ha="left",
             va="top",
-            zorder=9,
-            bbox={
-                "boxstyle": "round,pad=0.38",
-                "facecolor": _BUBBLE,
-                "edgecolor": "#0d47a1",
-                "alpha": 0.93,
-            },
         )
 
         title = f"{sid} {name}　情境預估（不保證・不是買訊）".strip()
-        ax.set_title(title, fontproperties=_fp(11, "bold"), color=_TEXT, pad=8)
+        ax.set_title(title, fontproperties=_fp(11, "bold"), color=_TEXT, pad=6)
         x_max = x_end + 3.5
         if wave:
             for p in list(wave.get("path_proj") or []) + list(wave.get("projected") or []):
@@ -2206,7 +2250,10 @@ def _paint(
         axv.set_xticks(ticks)
         axv.set_xticklabels([])
         axv.tick_params(axis="x", labelbottom=False, length=0)
-        fig.subplots_adjust(left=0.09, right=0.93, top=0.90, bottom=_CHART_BOTTOM)
+        # 圖頂多行說明要淨空；行數多就再往下讓
+        n_note = max(1, str(note).count("\n") + 1)
+        top = max(0.72, min(0.90, 0.98 - 0.032 * float(n_note) - 0.05))
+        fig.subplots_adjust(left=0.09, right=0.93, top=top, bottom=_CHART_BOTTOM)
         # 現價豎線＝歷史／未來分界（加粗＋淺底帶）
         ax.axvspan(float(n - 1), x_max, color="#ffffff", alpha=0.22, zorder=0)
         ax.axvline(float(n - 1), color="#212121", lw=2.2, ls="-", alpha=0.95, zorder=6)
@@ -2302,10 +2349,13 @@ def render_scenario_forecast(
             from dc_scenario_silent_verify import align_wave_turns, load_rules
 
             spec = (load_rules(path) or {}).get(f"turns:{sid}") or {}
-            if spec:
+            if spec and wave:
                 wave = align_wave_turns(wave, rows, spec)
         except Exception:
             logger.debug("情境預估轉折對齊略過 sid=%s", sid, exc_info=True)
+        if wave:
+            wave = dict(wave)
+            wave["bubble"] = chart_note_lines(wave)
         if wave and wave.get("desc_press"):
             press = dict(wave.get("desc_press") or {})
         paths = (
