@@ -167,12 +167,31 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     now = taipei_now()
     hour = now.hour if now else 0
 
+    silent_tracks: Dict[str, Any] = {"ok": True, "skipped": True, "reasons": [], "failed": []}
     if cap and is_trading_weekday(cap):
         # 盤後融合：16:30 後才要求當日 success
         if hour >= 17:
             inc = pipeline_run_status(db_path, today) or pipeline_run_status(db_path, cap)
             if not inc or str(inc.get("status") or "") != "success":
                 reasons.append(f"盤後融合 {today} 未成功")
+            else:
+                # 融合 success 不准當每一靜默軌都寫進庫；各軌缺／失敗要單獨亮
+                try:
+                    from silent_track_runs import silent_tracks_health
+
+                    silent_tracks = silent_tracks_health(path, cap)
+                    silent_tracks["skipped"] = False
+                    for r in silent_tracks.get("reasons") or []:
+                        if r not in reasons:
+                            reasons.append(str(r))
+                except Exception as exc:
+                    silent_tracks = {
+                        "ok": False,
+                        "skipped": False,
+                        "reasons": [f"靜默軌健檢無法執行：{exc}"],
+                        "failed": [],
+                    }
+                    reasons.append(silent_tracks["reasons"][0])
         # 早上海選：開市日 06:45 後才要求 screen-{基準日} success。
         # 週末／國定假不寄早報；若仍用「今天 06:35 基準日」會誤查 screen-{上周五}，
         # 而週五早上實際寫的是更舊的 as_of，造成假紅。
@@ -187,7 +206,14 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
                     if not screen or str(screen.get("status") or "") != "success":
                         reasons.append(f"早上海選 {screen_key} 未成功")
 
-    return {"ok": not reasons, "cap": cap, "today": today, "reasons": reasons, "recent": recent[:6]}
+    return {
+        "ok": not reasons,
+        "cap": cap,
+        "today": today,
+        "reasons": reasons,
+        "recent": recent[:6],
+        "silent_tracks": silent_tracks,
+    }
 
 
 def verify_release_snapshot(db_path: str) -> Dict[str, Any]:

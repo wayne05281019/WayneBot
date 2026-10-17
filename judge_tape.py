@@ -464,22 +464,9 @@ def ensure_confront_aux(market_db: str, as_of: str = "") -> Dict[str, Any]:
     return out
 
 
-def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
-    """當天規則名單沒按也落檔。代號＋為什麼選＋官方柱／量／法人。不准渲圖、不推話筒。"""
+def _freeze_screen_buckets(market_db: str, day: str) -> Dict[str, int]:
+    """海選各舊桶靜默凍。例外往外拋，由 run_tracked 蓋失敗戳。"""
     stats: Dict[str, int] = {}
-    if not market_db:
-        return stats
-    day = _as_of(market_db, as_of)
-    if not day:
-        return stats
-    # 對質輔助：缺期貨／美股已收可同步補；未收不當收。失敗不擋。
-    try:
-        aux = ensure_confront_aux(market_db, day)
-        if aux.get("fut") or aux.get("us"):
-            stats["aux_sync_fut"] = int(aux.get("fut") or 0)
-            stats["aux_sync_us"] = int(aux.get("us") or 0)
-    except Exception:
-        pass
     results: Dict[str, Any] = {}
     src = "none"
     try:
@@ -502,174 +489,315 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
         stats[bucket] = remember_rows(
             market_db, bucket, rows, as_of=day, pick="rule", src=src
         )
-    try:
-        from buy_streak import KIND_BOTH, KIND_FOREIGN, KIND_TRUST, MARKET_ALL, MIN_STREAK, load_snapshot
+    return stats
 
-        for kind in (KIND_FOREIGN, KIND_TRUST, KIND_BOTH):
-            snap = load_snapshot(market_db, kind, MARKET_ALL, as_of=day, use_cache=True)
-            key = f"streak_{kind}"
-            days_map = getattr(snap, "by_days", None) or {}
-            if not days_map:
-                stats[key] = remember_rows(
-                    market_db, key, [], as_of=day, pick="rule", src="streak"
-                )
+
+def _freeze_streak(market_db: str, day: str) -> Dict[str, int]:
+    """連買三類靜默凍。"""
+    from buy_streak import KIND_BOTH, KIND_FOREIGN, KIND_TRUST, MARKET_ALL, MIN_STREAK, load_snapshot
+
+    stats: Dict[str, int] = {}
+    for kind in (KIND_FOREIGN, KIND_TRUST, KIND_BOTH):
+        snap = load_snapshot(market_db, kind, MARKET_ALL, as_of=day, use_cache=True)
+        key = f"streak_{kind}"
+        days_map = getattr(snap, "by_days", None) or {}
+        if not days_map:
+            stats[key] = remember_rows(
+                market_db, key, [], as_of=day, pick="rule", src="streak"
+            )
+            continue
+        n = 0
+        for days, rows in days_map.items():
+            if int(days) < int(MIN_STREAK) or not rows:
                 continue
-            n = 0
-            for days, rows in days_map.items():
-                if int(days) < int(MIN_STREAK) or not rows:
-                    continue
-                payload = [
-                    {"stock_id": r.stock_id, "stock_name": getattr(r, "name", "")}
-                    for r in rows
-                ]
-                n += remember_rows(
-                    market_db,
-                    key,
-                    payload,
-                    as_of=day,
-                    pick=str(int(days)),
-                    src="streak",
-                )
-            stats[key] = n
+            payload = [
+                {"stock_id": r.stock_id, "stock_name": getattr(r, "name", "")}
+                for r in rows
+            ]
+            n += remember_rows(
+                market_db,
+                key,
+                payload,
+                as_of=day,
+                pick=str(int(days)),
+                src="streak",
+            )
+        stats[key] = n
+    return stats
+
+
+def _freeze_emerging(market_db: str, day: str) -> Dict[str, int]:
+    """興櫃海選桶靜默凍。"""
+    from screening_engine import ScreeningEngine
+
+    stats: Dict[str, int] = {}
+    em = ScreeningEngine(market_db).run_emerging_screening(day, sync=False) or {}
+    em_day = str(em.get("as_of") or day)
+    for bucket, kind in (
+        ("leave_zero", "em_leave_zero"),
+        ("ma60_lower", "em_ma60_lower"),
+        ("golden_buy", "em_golden_buy"),
+    ):
+        rows = em.get(bucket) if isinstance(em.get(bucket), list) else []
+        stats[kind] = remember_rows(
+            market_db, kind, rows, as_of=em_day, pick="rule", src="emerging"
+        )
+    return stats
+
+
+def _freeze_market_aux(market_db: str, day: str) -> Dict[str, int]:
+    """大盤／外圍／期貨／美股佐證凍。"""
+    return {
+        "market": _snapshot_market(market_db, day),
+        "outer": _snapshot_outer(market_db, day),
+        "fut": _snapshot_futures(market_db, day),
+        "us": _snapshot_us_lead(market_db, day),
+    }
+
+
+def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
+    """當天規則名單沒按也落檔。代號＋為什麼選＋官方柱／量／法人。不准渲圖、不推話筒。
+
+    各功能軌分開落檔、分開蓋 pipeline 成功／失敗戳（sv-*）；
+    融合成功不准當每一軌都寫進庫的證明。一軌失敗不擋其他軌。
+    """
+    stats: Dict[str, int] = {}
+    if not market_db:
+        return stats
+    day = _as_of(market_db, as_of)
+    if not day:
+        return stats
+    from silent_track_runs import run_tracked
+
+    # 對質輔助：缺期貨／美股已收可同步補；未收不當收。失敗不擋。
+    try:
+        aux = ensure_confront_aux(market_db, day)
+        if aux.get("fut") or aux.get("us"):
+            stats["aux_sync_fut"] = int(aux.get("fut") or 0)
+            stats["aux_sync_us"] = int(aux.get("us") or 0)
     except Exception:
         pass
-    if not os.getenv("PYTEST_CURRENT_TEST"):
-        try:
-            from screening_engine import ScreeningEngine
 
-            em = ScreeningEngine(market_db).run_emerging_screening(day, sync=False) or {}
-            em_day = str(em.get("as_of") or day)
-            for bucket, kind in (
-                ("leave_zero", "em_leave_zero"),
-                ("ma60_lower", "em_ma60_lower"),
-                ("golden_buy", "em_golden_buy"),
-            ):
-                rows = em.get(bucket) if isinstance(em.get(bucket), list) else []
-                stats[kind] = remember_rows(
-                    market_db, kind, rows, as_of=em_day, pick="rule", src="emerging"
-                )
-        except Exception:
-            pass
-    stats["dongzhu"] = _snapshot_dongzhu(market_db, day)
-    stats["market"] = _snapshot_market(market_db, day)
-    stats["outer"] = _snapshot_outer(market_db, day)
-    stats["fut"] = _snapshot_futures(market_db, day)
-    stats["us"] = _snapshot_us_lead(market_db, day)
+    def _merge_ok(track: str, fn, *, into: Optional[Dict[str, int]] = None) -> None:
+        hit = run_tracked(market_db, track, day, fn)
+        payload = hit.get("result")
+        target = into if into is not None else stats
+        if hit.get("ok") and isinstance(payload, dict):
+            for k, v in payload.items():
+                try:
+                    target[str(k)] = int(v or 0)
+                except (TypeError, ValueError):
+                    target[str(k)] = 0
+        elif hit.get("ok") and isinstance(payload, (int, float)):
+            target[track.replace("-", "_")] = int(payload)
+        elif not hit.get("ok"):
+            # 失敗戳已寫；stats 記 -1 方便本機對質，不當成功筆數
+            target[f"_{track}_error"] = 1
+
+    _merge_ok("screen-buckets", lambda: _freeze_screen_buckets(market_db, day))
+    _merge_ok("streak", lambda: _freeze_streak(market_db, day))
     if not os.getenv("PYTEST_CURRENT_TEST"):
-        stats.update(_snapshot_leave_zero_picks(market_db, day))
+        _merge_ok("emerging", lambda: _freeze_emerging(market_db, day))
+    def _freeze_dongzhu() -> Dict[str, int]:
+        # 不准吞例外：失敗要蓋 error 戳（空名單仍算本輪跑完＝success）
+        from biaoke_field_scan import dongzhu_picks
+
+        data = dongzhu_picks(market_db, record_flow=False) or {}
+        why = str(data.get("why") or "").strip()
+        five = str(data.get("five") or "").strip()
+        field = str(data.get("field") or "").strip()
+        rows = []
+        for raw in list(data.get("recs") or []):
+            if not isinstance(raw, dict):
+                continue
+            sid = str(raw.get("sid") or raw.get("stock_id") or "").strip()
+            if not sid:
+                continue
+            rows.append(
+                {
+                    "stock_id": sid,
+                    "stock_name": str(raw.get("name") or raw.get("stock_name") or ""),
+                    "close": raw.get("close") or raw.get("px"),
+                    "why": str(raw.get("why") or why),
+                    "five": five,
+                    "field": field or str(raw.get("fine") or ""),
+                    "fine": raw.get("fine"),
+                    "role": raw.get("role"),
+                    "vs20": raw.get("vs20"),
+                    "vs60": raw.get("vs60"),
+                    "q": raw.get("volr") or raw.get("q"),
+                }
+            )
+        return {
+            "dongzhu": remember_rows(
+                market_db, "dongzhu", rows, as_of=day, pick="rule", src="dongzhu"
+            )
+        }
+
+    _merge_ok("dongzhu", _freeze_dongzhu)
+    _merge_ok("market-aux", lambda: _freeze_market_aux(market_db, day))
+    if not os.getenv("PYTEST_CURRENT_TEST"):
+        _merge_ok(
+            "leave-zero-picks",
+            lambda: _snapshot_leave_zero_picks(market_db, day),
+        )
         stats.update(_snapshot_pressure_support(market_db, day))
-    # 全鈕缺縫骨架：資金輪動／個人本／AI倉／飆大點名。失敗不擋。
+    # 全鈕缺縫骨架：資金輪動／個人本／AI倉／飆大點名。各軌自己蓋戳。
     try:
         from button_silent_verify import snapshot_all_button_gaps
 
-        stats.update(snapshot_all_button_gaps(market_db, day))
-    except Exception:
-        pass
+        stats.update(snapshot_all_button_gaps(market_db, day) or {})
+    except Exception as exc:
+        from silent_track_runs import mark_track
+
+        mark_track(
+            market_db,
+            "money-flow",
+            day,
+            "error",
+            f"snapshot_all_button_gaps: {type(exc).__name__}: {exc}",
+        )
     return stats
 
 
 def _snapshot_pressure_support(market_db: str, day: str) -> Dict[str, int]:
-    """壓撐觀察沒按也落檔：三標籤各自一列。不是買訊、不改黃金買點。"""
+    """壓撐觀察沒按也落檔：三標籤各自一列。不是買訊、不改黃金買點。
+
+    壓撐＋其後各 night_tick 軌各自蓋 sv-* 成功／失敗戳；失敗不擋其他軌。
+    """
+    from silent_track_runs import mark_track, run_tracked
+
     stats: Dict[str, int] = {}
-    try:
+
+    def _pressure_track() -> Dict[str, int]:
+        from pressure_rank_verify import night_tick as pressure_night
         from pressure_support_watch import TAG_ORDER, screen_pressure_support
-    except Exception:
-        return stats
-    for tag in TAG_ORDER:
-        key = f"pressure_{tag}"
-        try:
+
+        out: Dict[str, int] = {}
+        for tag in TAG_ORDER:
+            key = f"pressure_{tag}"
             rows = screen_pressure_support(market_db, tag, as_of=day)
-            stats[key] = remember_rows(
+            out[key] = remember_rows(
                 market_db, key, rows or [], as_of=day, pick=tag, src="radar"
             )
-        except Exception:
-            stats[key] = remember_rows(
-                market_db, key, [], as_of=day, pick=tag, src="radar"
-            )
-    # 靜默對質：現況 vs 第一次優化（改碼候選）；飆大另軌只記不 promote。失敗不擋。
-    try:
-        from pressure_rank_verify import night_tick
+        # 名單凍＋四軌對質同件；任一步丟例外＝整軌 error 戳
+        pressure_night(market_db, day)
+        return out
 
-        night_tick(market_db, day)
-    except Exception:
-        pass
-    # 大量區×季線上升另軌：與壓撐／海選勝率分開；過閘也不自動改買訊。失敗不擋。
+    hit = run_tracked(
+        market_db, "pressure", day, _pressure_track, note_ok="pressure freeze+night"
+    )
+    if hit.get("ok") and isinstance(hit.get("result"), dict):
+        stats.update({k: int(v or 0) for k, v in hit["result"].items()})
+    else:
+        stats["_pressure_error"] = 1
+
+    # 具名別名保留給 hook 測試字串搜尋；呼叫包在 run_tracked 蓋 sv-* 戳。
+    def _tracked_night(track: str, fn) -> None:
+        run_tracked(market_db, track, day, fn)
+
     try:
         from volzone_ma60_verify import night_tick as volzone_ma60_night_tick
+    except Exception as exc:
+        mark_track(market_db, "volzone-ma60", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("volzone-ma60", lambda: volzone_ma60_night_tick(market_db, day))
 
-        volzone_ma60_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 盤中剛離零→收盤站得住另軌：查股／MIS hit 對質；不准改買訊。失敗不擋。
     try:
         from intraday_leave_zero_verify import night_tick as intraday_lz_night_tick
+    except Exception as exc:
+        mark_track(market_db, "intraday-lz", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("intraday-lz", lambda: intraday_lz_night_tick(market_db, day))
 
-        intraday_lz_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 買點排除層另軌：lz_raw／v2／v3 候選前瞻對質；過閘才准擴 paint。失敗不擋。
     try:
         from buy_exclude_verify import night_tick as buy_exclude_night_tick
+    except Exception as exc:
+        mark_track(market_db, "buy-exclude", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("buy-exclude", lambda: buy_exclude_night_tick(market_db, day))
 
-        buy_exclude_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 勝率買點×大量區／均線再篩另軌：母體內靜默過濾對質；不過閘不改話筒。失敗不擋。
     try:
         from winrate_volzone_filter_verify import night_tick as wr_vz_filter_night_tick
+    except Exception as exc:
+        mark_track(
+            market_db, "winrate-vz-filter", day, "error", f"{type(exc).__name__}: {exc}"
+        )
+    else:
+        _tracked_night(
+            "winrate-vz-filter", lambda: wr_vz_filter_night_tick(market_db, day)
+        )
 
-        wr_vz_filter_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 查股結構／導航出圖精確度另軌：官方柱對標籤；不准改買訊。失敗不擋。
     try:
         from lookup_chart_verify import night_tick as lookup_chart_night_tick
+    except Exception as exc:
+        mark_track(market_db, "lookup-chart", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("lookup-chart", lambda: lookup_chart_night_tick(market_db, day))
 
-        lookup_chart_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 止穩／不再破底觀察標：沒按也掃母體落檔；永遠不是買訊。失敗不擋。
     try:
         from stabilize_verify import night_tick as stabilize_night_tick
+    except Exception as exc:
+        mark_track(market_db, "stabilize", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("stabilize", lambda: stabilize_night_tick(market_db, day))
 
-        stabilize_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 飆大點位／走法他說＋我說分軌：§13 過閘才換該軌；不進話筒、不改買訊。失敗不擋。
     try:
         from biaoke_diverge import night_tick as biaoke_diverge_night_tick
+    except Exception as exc:
+        mark_track(market_db, "biaoke-diverge", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("biaoke-diverge", lambda: biaoke_diverge_night_tick(market_db, day))
 
-        biaoke_diverge_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 開盤前恐懼複合：只觀察／預警；F→Dump 分 Lead／Sync；非買訊、不改 leave_zero。失敗不擋。
     try:
         from fear_preopen_verify import night_tick as fear_preopen_night_tick
+    except Exception as exc:
+        mark_track(market_db, "fear", day, "error", f"{type(exc).__name__}: {exc}")
+    else:
+        _tracked_night("fear", lambda: fear_preopen_night_tick(market_db, day))
 
-        fear_preopen_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 小賣→大賣升級：T86 張單位；與恐懼軌分勝率；非買訊。失敗不擋。
     try:
         from foreign_sell_escalate_verify import night_tick as foreign_sell_escalate_night_tick
+    except Exception as exc:
+        mark_track(
+            market_db,
+            "foreign-sell-escalate",
+            day,
+            "error",
+            f"{type(exc).__name__}: {exc}",
+        )
+    else:
+        _tracked_night(
+            "foreign-sell-escalate",
+            lambda: foreign_sell_escalate_night_tick(market_db, day),
+        )
 
-        foreign_sell_escalate_night_tick(market_db, day)
-    except Exception:
-        pass
-    # 極端大賣→D+1～D+5 確認層：與 Fear／escalate 分勝率；非買訊。失敗不擋。
     try:
         from foreign_sell_extreme_verify import night_tick as foreign_sell_extreme_night_tick
+    except Exception as exc:
+        mark_track(
+            market_db,
+            "foreign-sell-extreme",
+            day,
+            "error",
+            f"{type(exc).__name__}: {exc}",
+        )
+    else:
+        _tracked_night(
+            "foreign-sell-extreme",
+            lambda: foreign_sell_extreme_night_tick(market_db, day),
+        )
 
-        foreign_sell_extreme_night_tick(market_db, day)
-    except Exception:
-        pass
-    # Calm／小買→大買環境：佈局觀察 only；非買訊。失敗不擋。
     try:
         from foreign_sell_calm_verify import night_tick as foreign_sell_calm_night_tick
-
-        foreign_sell_calm_night_tick(market_db, day)
-    except Exception:
-        pass
+    except Exception as exc:
+        mark_track(
+            market_db, "foreign-sell-calm", day, "error", f"{type(exc).__name__}: {exc}"
+        )
+    else:
+        _tracked_night(
+            "foreign-sell-calm", lambda: foreign_sell_calm_night_tick(market_db, day)
+        )
     return stats
 
 

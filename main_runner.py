@@ -962,6 +962,7 @@ class MainRunner:
             )
         except Exception as e:
             logger.error("洞燭每日落檔失敗: %s", e, exc_info=True)
+            raise
         return judged
 
     def _refresh_twii_forecast_after_close(self, cap: str = "") -> Dict[str, Any]:
@@ -977,6 +978,71 @@ class MainRunner:
             out.get("cap"),
         )
         return out
+
+    def _run_post_fuse_silent_tracks(
+        self, cap: str = "", *, skip_ok: bool = False
+    ) -> Dict[str, Any]:
+        """盤後融合成功後：各靜默軌分開落檔、分開蓋成功／失敗戳。
+
+        融合 success 不准當「每一軌都寫進庫」的證明。
+        skip_ok=True 時已 success 的軌不重跑（補跑失敗／缺戳用）。
+        """
+        from silent_track_runs import CORE_AFTER_FUSE, mark_track, needs_rerun, run_tracked
+
+        day = str(cap or self.today_str or "").replace("-", "")[:8]
+        report: Dict[str, Any] = {"as_of": day, "tracks": {}}
+        if not day:
+            return report
+
+        def _maybe(track: str, fn) -> None:
+            if skip_ok and not needs_rerun(self.db_path, day, track):
+                report["tracks"][track] = "skip-ok"
+                return
+            hit = run_tracked(self.db_path, track, day, fn)
+            report["tracks"][track] = "ok" if hit.get("ok") else "error"
+
+        _maybe("dongzhu-refresh", lambda: self._refresh_dongzhu_after_close(day))
+        _maybe("twii-forecast", lambda: self._refresh_twii_forecast_after_close(day))
+
+        def _screen_review_and_lists() -> Dict[str, Any]:
+            from screen_review import score_ai_fills, score_screen_picks
+
+            n = score_screen_picks(self.db_path, day)
+            nf = score_ai_fills(self.db_path, day)
+            return {"screen_picks": n, "ai_fills": nf}
+
+        _maybe("screen-review", _screen_review_and_lists)
+
+        # snapshot 內各子軌各自蓋 sv-*；任一核心軌缺／失敗就整輪重跑（已 success 的會重蓋）。
+        need_lists = (not skip_ok) or any(
+            needs_rerun(self.db_path, day, t) for t in CORE_AFTER_FUSE
+        )
+        if need_lists:
+            try:
+                from judge_tape import snapshot_button_lists
+
+                snapshot_button_lists(self.db_path, day)
+                report["tracks"]["snapshot_button_lists"] = "ran"
+            except Exception as exc:
+                logger.error("靜默名單總入口失敗: %s", exc, exc_info=True)
+                report["tracks"]["snapshot_button_lists"] = "error"
+                mark_track(
+                    self.db_path,
+                    "screen-buckets",
+                    day,
+                    "error",
+                    f"snapshot_button_lists: {type(exc).__name__}: {exc}"[:800],
+                )
+        else:
+            report["tracks"]["snapshot_button_lists"] = "skip-ok"
+
+        def _score_live() -> int:
+            from judge_tape import score_live_judges
+
+            return int(score_live_judges(self.db_path, day) or 0)
+
+        _maybe("score-live", _score_live)
+        return report
 
     @staticmethod
     def _screening_delivered(screening: Optional[Dict[str, Any]]) -> bool:
@@ -1292,6 +1358,11 @@ class MainRunner:
                     f"cap={cap_closed} tw={health_closed.get('tw')} "
                     f"two={health_closed.get('two')} em={health_closed.get('em')}",
                 )
+                # 融合 success ≠ 各靜默軌都寫進庫；休市仍補跑缺／失敗軌
+                try:
+                    self._run_post_fuse_silent_tracks(cap_closed, skip_ok=True)
+                except Exception:
+                    logger.exception("休市日靜默各軌補跑失敗")
                 return True
             logger.warning(
                 "休市日但上一收盤 %s 未齊（上市 %s 上櫃 %s 興櫃 %s），改補齊",
@@ -1303,6 +1374,11 @@ class MainRunner:
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，仍對官方側車（月營收續補）。", self.today_str)
             self._refresh_official_sidecars()
+            # 融合已成功仍要補跑缺／失敗的靜默軌（不准被融合 success 蓋掉）
+            try:
+                self._run_post_fuse_silent_tracks(fuse_end_date(), skip_ok=True)
+            except Exception:
+                logger.exception("融合已成功後靜默各軌補跑失敗")
             return True
         try:
             from import_health import audit_import
@@ -1325,6 +1401,10 @@ class MainRunner:
                 f"em={health_ready.get('em')}",
             )
             logger.info("ℹ️ %s 官方柱已齊，補蓋盤後融合紀錄（不重抓）", cap_ready)
+            try:
+                self._run_post_fuse_silent_tracks(cap_ready, skip_ok=True)
+            except Exception:
+                logger.exception("柱齊補蓋後靜默各軌補跑失敗")
             return True
         if not self.try_claim_pipeline(
             self.today_str,
@@ -1412,14 +1492,12 @@ class MainRunner:
             health.get("em"),
             elapsed,
         )
+        # 融合 success 只代表官方柱齊；後面各靜默軌自己蓋 sv-* 成功／失敗戳。
         try:
-            self._refresh_dongzhu_after_close(cap)
-        except Exception as e_dz:
-            logger.error("盤後齊了但洞燭走查失敗: %s", e_dz, exc_info=True)
-        try:
-            self._refresh_twii_forecast_after_close(cap)
-        except Exception as e_fc:
-            logger.error("盤後齊了但大盤默默落檔失敗: %s", e_fc, exc_info=True)
+            silent_rep = self._run_post_fuse_silent_tracks(cap, skip_ok=False)
+            logger.info("盤後靜默各軌：%s", silent_rep.get("tracks"))
+        except Exception:
+            logger.exception("盤後靜默各軌入口失敗（融合仍保持 success）")
         if notify:
             try:
                 self._broadcast_family(self._fuse_done_message(cap, health))
@@ -1441,21 +1519,6 @@ class MainRunner:
             logger.info("北市停班：%s", typh)
         except Exception as e:
             logger.warning("台股休市年曆略過：%s", e)
-        try:
-            from screen_review import score_ai_fills, score_screen_picks
-
-            n = score_screen_picks(self.db_path, cap)
-            nf = score_ai_fills(self.db_path, cap)
-            try:
-                from judge_tape import score_live_judges, snapshot_button_lists
-
-                snapshot_button_lists(self.db_path, cap)
-                nj = score_live_judges(self.db_path, cap)
-            except Exception:
-                nj = 0
-            logger.info("海選復盤已對帳 %s 檔、AI 成交 %s 筆、當下判斷 %s（隔日＝%s）", n, nf, nj, cap)
-        except Exception:
-            logger.exception("海選復盤對帳失敗")
         # 盤後這份庫會打進 Release zip：模擬倉也要在這裡成交，下次開機才看得到持倉。
         self.run_evening_screen(skip_if_done=True, notify=False)
         return True

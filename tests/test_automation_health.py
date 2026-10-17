@@ -197,8 +197,9 @@ def test_pipeline_expectations_skips_morning_on_weekend(monkeypatch):
             lambda *_a, **_k: "screen-20260911",
         )
         r = pipeline_expectations_met(path, cap="20260911")
-        assert r.get("ok") is True, r
+        # 週六不寄早報：不准為 screen 假紅。靜默軌缺戳可另亮（與融合 success 分開）。
         assert not any("早上海選" in str(x) for x in r.get("reasons") or [])
+        assert not any("盤後融合" in str(x) and "未成功" in str(x) for x in r.get("reasons") or [])
     finally:
         os.remove(path)
 
