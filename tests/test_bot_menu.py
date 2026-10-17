@@ -382,12 +382,19 @@ def test_screening_progress_text():
 
     start = WayneTelegramBot._screening_progress_text(0)
     assert "海選進行中" in start
+    assert "黃金買點／紅箭確認" in start
+    assert "還在零" not in start
     assert "□" in start
     assert "＋" not in start
     assert "好了這則會消失" in start
     body = WayneTelegramBot._screening_progress_text(45)
     assert "1:00" in body or "45" in body or "４５" in body
     assert "■" in body
+    assert "黃金買點／紅箭確認" in body
+    assert "還在零" not in body
+    cache = WayneTelegramBot._screening_progress_text(10, phase="cache")
+    assert "黃金買點／紅箭確認" in cache
+    assert "還在零" not in cache
     assert WayneTelegramBot._format_elapsed(95) == "1:35"
     assert "完成" in WayneTelegramBot._screening_progress_text(0, done=True)
 

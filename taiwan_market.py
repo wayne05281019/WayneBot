@@ -3862,14 +3862,14 @@ def _outlook_action_plain(
     if us_down and night_firm:
         return "美股弱、台指期夜盤沒跟崩。今天別追高，黃金買點仍按表。"
     if us == "caution" or fr >= 35:
-        return "偏空。黃金買點、還在零照表，別追高。"
+        return "偏空。黃金買點、紅箭確認照表，別追高。"
     if us_up and night_firm:
         return "隔夜偏多，台股容易開高。黃金買點仍按表，不要追已經噴的。"
     if vs_ma20 is not None and float(vs_ma20) < -1.0:
-        return "加權還在月線下。黃金買點、還在零照表，別追高。"
+        return "加權還在月線下。黃金買點、紅箭確認照表，別追高。"
     if night_weak:
-        return "台指期夜盤比日盤便宜。黃金買點、還在零照表，別追高。"
-    return "黃金買點、還在零照表，別追高。"
+        return "台指期夜盤比日盤便宜。黃金買點、紅箭確認照表，別追高。"
+    return "黃金買點、紅箭確認照表，別追高。"
 
 
 def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:
@@ -3896,6 +3896,7 @@ _OUTLOOK_ACTION_BOLD = (
     "台指期夜盤比日盤便宜",
     "夜盤比日盤便宜",
     "黃金買點",
+    "紅箭確認",
     "還在零",
     "佈局先等",
     "今天別追高",
