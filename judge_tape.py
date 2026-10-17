@@ -100,6 +100,7 @@ _SCREEN_BUCKETS = (
     "golden_buy",
     "revenue_cross",
     "select_01",
+    "half_year_high",  # 話筒不顯示；靜默對質／沒按也落檔（真代號＋官方柱）
     "select_02",
     "select_03",
     "day_trade",

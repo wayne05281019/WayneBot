@@ -335,3 +335,44 @@ def test_night_tick_one_chart_per_post_and_skips_encoding_when_empty(monkeypatch
         )
         assert empty.get("notes") == "empty_posts"
         assert empty.get("rules_changed") == 0
+        from dc_scenario_silent_verify import stamp_status
+
+        # 有跑完／沒發文仍要有自己的成功戳（不被 recent 六筆限制）
+        hit = stamp_status(db, "20261018")
+        assert hit is not None
+        assert hit["run_date"] == "dc-sf-silent-20261018"
+        assert hit["status"] == "success"
+        assert "empty" in str(hit.get("notes") or "")
+
+
+def test_stamp_status_error_not_hidden_by_other_success():
+    """本軌 error 戳與別軌 success 鍵分開；讀 stamp_status 不受 recent 擠掉。"""
+    import sqlite3
+    from dc_scenario_silent_verify import _mark_pipeline, stamp_status
+
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        ensure_tables(db)
+        _mark_pipeline(db, "20261017", "error", "boom")
+        # 別軌 success 不該蓋掉本軌鍵
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT OR REPLACE INTO pipeline_runs(run_date,finished_at,status,notes) "
+            "VALUES (?,?,?,?)",
+            ("20261017", "2026-10-17 17:09:00", "success", "increment"),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO pipeline_runs(run_date,finished_at,status,notes) "
+            "VALUES (?,?,?,?)",
+            ("screen-20261016", "2026-10-17 07:14:00", "success", "morning"),
+        )
+        conn.commit()
+        conn.close()
+        hit = stamp_status(db, "20261017")
+        assert hit["status"] == "error"
+        assert "boom" in str(hit.get("notes") or "")
+        # 本軌重跑 empty 才准把自己的 error 換成 success
+        _mark_pipeline(db, "20261017", "success", "dc_sf empty_posts as_of=20261017")
+        hit2 = stamp_status(db, "20261017")
+        assert hit2["status"] == "success"

@@ -72,6 +72,7 @@ def test_catalog_covers_full_keyboard():
     want = {
         "勝率買點",
         "海選",
+        "半年高（靜默）",
         "紅箭確認",
         "持股",
         "加入觀察",
@@ -106,6 +107,10 @@ def test_catalog_covers_full_keyboard():
 
     assert "ma60_lower" in SCREEN_KINDS
     assert "em_ma60_lower" in SCREEN_KINDS
+    assert "half_year_high" in SCREEN_KINDS
+    half = next(r for r in BUTTON_CATALOG if r["btn"] == "半年高（靜默）")
+    assert half["kinds"] == ("half_year_high",)
+    assert "不上話筒" in str(half.get("note") or "")
     lookup = next(r for r in BUTTON_CATALOG if r["btn"] == "查股")
     assert "lookup" in lookup["kinds"]
     assert "lookup_chart" in lookup["kinds"]
@@ -121,6 +126,7 @@ def test_catalog_covers_full_keyboard():
     sf = next(r for r in BUTTON_CATALOG if r["btn"] == "情境預估")
     assert "scenario_forecast" in sf["kinds"]
     assert "dc_sf_silent" in str(sf.get("pipe") or "")
+    assert "dc-sf-silent" in str(sf.get("pipe") or "")
 
 
 def test_personal_vs_screen_kinds_do_not_mix():
