@@ -206,6 +206,16 @@ def test_ma60_lower_screen_bucket_in_silent_list():
     assert _SCREEN_BUCKETS.index("ma60_lower") != _SCREEN_BUCKETS.index("leave_zero")
 
 
+def test_half_year_high_silent_bucket_not_display_decision():
+    """半年高：靜默落檔鍵有；話筒海選推播規格仍不含。"""
+    from judge_tape import _SCREEN_BUCKETS
+    from screening_engine import SCREEN_PUSH_SPECS, MORNING_PUSH_SPECS
+
+    assert "half_year_high" in _SCREEN_BUCKETS
+    push_keys = {s[0] for s in SCREEN_PUSH_SPECS} | {s[0] for s in MORNING_PUSH_SPECS}
+    assert "half_year_high" not in push_keys
+
+
 def test_remember_keeps_why_and_official_chips(tmp_path):
     db = str(tmp_path / "wayne_market.db")
     _seed(db, {"1101": 50.4}, "20260915")

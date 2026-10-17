@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 """盤中剛離零（藍▲紅框）→ 收盤是否仍 leave_zero・靜默對質。
 
-查股／MIS 路徑：盤中亮買點標時默默記一列（代號＋日）；官方收齊後對質：
+兩條進樣來源（同軌計分、與海選 leave_zero／剛脫離零分開鍵）：
+  A) 查股／MIS：盤中亮買點標時默默記一列（src=lookup）
+  B) 開市日沒按也落檔：當日海選 leave_zero 名單真代號＋官方柱（src=silent_roster）
+
+官方收齊後對質：
   1) 主勝＝當日官方收仍 leave_zero_ok（close_hold）
   2) 選填＝隔日官方收相對當日收的報酬（next_1；只記，不進改碼）
 
-不是買訊。不准改黃金買點／leave_zero 公式／話筒畫面／海選桶。
-分軌記、勝率不准混進海選／壓撐／洞燭／AI／飆大。
+不是買訊。不准改黃金買點／leave_zero 公式／話筒畫面／海選桶／藍▲紅框。
+分軌記、勝率不准混進海選／壓撐／洞燭／AI／飆大／剛脫離零。
 獨立交易日 n≥20 且明確贏基線前不准改碼；本軌 promote_* 恒 False。
 失敗吞掉，不准擋查股／出卡／海選。過程／％不准進對話。Asia/Taipei。
-盤中未收不當官方收。
+盤中未收不當官方收。空名單不算有記。
 """
 from __future__ import annotations
 
@@ -28,6 +32,7 @@ HORIZON_CLOSE = "close_hold"
 HORIZON_NEXT = "next_1"
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 SRC_LOOKUP = "lookup"
+SRC_SILENT_ROSTER = "silent_roster"
 
 
 def _ymd(raw: Any) -> str:
@@ -182,6 +187,178 @@ def maybe_note_from_card(market_db: str, card: Optional[Dict[str, Any]]) -> bool
         )
     except Exception:
         return False
+
+
+def _leave_zero_roster_rows(market_db: str, as_of: str) -> List[Dict[str, Any]]:
+    """開市日落檔用的剛離零名單（海選 leave_zero 桶快取）。空＝[]。
+
+    只讀已落檔 session／screen_picks，不准在盤後對質時重跑全市場海選。
+    """
+    day = _ymd(as_of)
+    if not market_db or not day:
+        return []
+    try:
+        from screen_sessions import load_session_results
+
+        for session in ("morning", "evening"):
+            results = load_session_results(market_db, day, session) or {}
+            bucket = results.get("leave_zero") if isinstance(results, dict) else None
+            if isinstance(bucket, list) and bucket:
+                return [r for r in bucket if isinstance(r, dict)]
+    except Exception:
+        pass
+    if not os.path.isfile(market_db):
+        return []
+    conn = sqlite3.connect(market_db, timeout=8.0)
+    try:
+        picks = conn.execute(
+            """
+            SELECT stock_id, stock_name, pick_close
+            FROM screen_picks
+            WHERE REPLACE(CAST(as_of AS TEXT),'-','')=? AND bucket='leave_zero'
+            """,
+            (day,),
+        ).fetchall()
+    except sqlite3.Error:
+        picks = []
+    finally:
+        conn.close()
+    out: List[Dict[str, Any]] = []
+    for sid, name, close in picks or []:
+        s = str(sid or "").strip()
+        if not s:
+            continue
+        out.append(
+            {
+                "stock_id": s,
+                "stock_name": str(name or ""),
+                "close": close,
+            }
+        )
+    return out
+
+
+def _official_bar_complete(market_db: str, sid: str, as_of: str) -> Optional[Dict[str, Any]]:
+    """當日官方開高低收＋量齊才回列；缺任一＝None（空／未收不算）。"""
+    day = _ymd(as_of)
+    sid = str(sid or "").strip()
+    if not market_db or not os.path.isfile(market_db) or not sid or not day:
+        return None
+    conn = sqlite3.connect(market_db, timeout=8.0)
+    try:
+        row = conn.execute(
+            """
+            SELECT stock_name, open, high, low, close, volume
+            FROM daily_quotes
+            WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')=?
+            LIMIT 1
+            """,
+            (sid, day),
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        conn.close()
+    if not row:
+        return None
+    name, o, h, l, c, v = row
+    try:
+        o_f, h_f, l_f, c_f = float(o), float(h), float(l), float(c)
+        v_f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if min(o_f, h_f, l_f, c_f) <= 0 or v_f != v_f:
+        return None
+    return {
+        "stock_id": sid,
+        "stock_name": str(name or ""),
+        "open": o_f,
+        "high": h_f,
+        "low": l_f,
+        "close": c_f,
+        "volume": v_f,
+    }
+
+
+def archive_day_roster(market_db: str, as_of: str = "") -> Dict[str, int]:
+    """開市日沒按查股也落檔剛離零名單。
+
+    真代號＋當日官方開高低收＋量才算；空名單／缺柱＝0（不算有記）。
+    寫入 intraday_lz_hit（src=silent_roster）＋ live_judge kind=intraday_leave_zero。
+    與海選 leave_zero／剛脫離零分開鍵；勝率不准混。失敗吞掉。
+    """
+    out = {"hits": 0, "frozen": 0, "skipped_no_bar": 0}
+    day = _ymd(as_of)
+    if not day:
+        try:
+            from import_health import latest_complete_quote_date
+
+            day = _ymd(latest_complete_quote_date(market_db))
+        except Exception:
+            day = ""
+    if not market_db or not day:
+        return out
+    # 休市日不強制落檔（開市日才記）
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        if not is_tw_open_calendar_day(day):
+            return out
+    except Exception:
+        pass
+    roster = _leave_zero_roster_rows(market_db, day)
+    if not roster:
+        return out
+    freeze_rows: List[Dict[str, Any]] = []
+    for raw in roster:
+        sid = str(raw.get("stock_id") or raw.get("code") or raw.get("sid") or "").strip()
+        if not sid:
+            continue
+        bar = _official_bar_complete(market_db, sid, day)
+        if not bar:
+            out["skipped_no_bar"] += 1
+            continue
+        name = str(raw.get("stock_name") or raw.get("name") or bar.get("stock_name") or "")
+        if note_intraday_hit(
+            market_db,
+            stock_id=sid,
+            as_of=day,
+            name=name,
+            live_px=bar.get("close"),
+            live_profit_pct=raw.get("gain_pct") or raw.get("profit_pct"),
+            src=SRC_SILENT_ROSTER,
+        ):
+            out["hits"] += 1
+        freeze_rows.append(
+            {
+                "stock_id": sid,
+                "stock_name": name,
+                "close": bar.get("close"),
+                "open": bar.get("open"),
+                "high": bar.get("high"),
+                "low": bar.get("low"),
+                "volume": bar.get("volume"),
+                "src": SRC_SILENT_ROSTER,
+            }
+        )
+    if freeze_rows:
+        try:
+            from judge_tape import remember_rows
+
+            out["frozen"] = int(
+                remember_rows(
+                    market_db,
+                    KIND,
+                    freeze_rows,
+                    as_of=day,
+                    pick="silent_roster",
+                    src=SRC_SILENT_ROSTER,
+                )
+                or 0
+            )
+        except Exception:
+            out["frozen"] = 0
+    return out
 
 
 def _official_ohlc_through(
@@ -523,8 +700,12 @@ def gate_status(market_db: str) -> Dict[str, Any]:
 
 
 def night_tick(market_db: str, as_of: str = "") -> Dict[str, Any]:
-    """接默默落檔節奏。失敗吞掉。"""
-    out: Dict[str, Any] = {"scored": 0, "gate": {}}
+    """接默默落檔節奏：先沒按也落檔當日剛離零名單，再對已記樣本計分。失敗吞掉。"""
+    out: Dict[str, Any] = {"archived": {}, "scored": 0, "gate": {}}
+    try:
+        out["archived"] = archive_day_roster(market_db, as_of)
+    except Exception:
+        out["archived"] = {}
     try:
         out["scored"] = score_pending(market_db, cap=as_of)
         out["gate"] = gate_status(market_db)

@@ -263,3 +263,101 @@ def test_button_catalog_lists_intraday_lz():
     assert hit
     assert hit[0]["status"] == "external"
     assert "不是新鈕" in hit[0]["note"] or "靜默" in hit[0]["note"]
+    assert "silent_roster" in str(hit[0].get("pipe") or "")
+
+
+def test_archive_day_roster_without_lookup(tmp_path: Path, monkeypatch):
+    """開市日沒按查股也落檔 leave_zero 名單（真代號＋官方柱）。"""
+    from intraday_leave_zero_verify import (
+        SRC_SILENT_ROSTER,
+        archive_day_roster,
+        night_tick,
+        pending_hits,
+    )
+    from dongzhu_tape import tape_store_path
+
+    db = str(tmp_path / "m.db")
+    ensure_core_schema(db)
+    as_of = "20260915"
+    start = datetime(2026, 7, 1)
+    end = datetime.strptime(as_of, "%Y%m%d")
+    conn = sqlite3.connect(db)
+    d = start
+    while d <= end:
+        ymd = d.strftime("%Y%m%d")
+        close = 101.0 if ymd == as_of else 100.0
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_quotes("
+            "date,stock_id,stock_name,market,open,high,low,close,volume,"
+            "turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                ymd,
+                "2330",
+                "台積電",
+                "TW",
+                close,
+                close + 0.5,
+                close - 0.5,
+                close,
+                8000,
+                400000,
+                1.0 if ymd == as_of else 0.0,
+                close,
+                0,
+                0,
+                0,
+            ),
+        )
+        d += timedelta(days=1)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS screen_picks (
+            as_of TEXT NOT NULL,
+            bucket TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            stock_name TEXT,
+            pick_close REAL,
+            entry_stars INTEGER,
+            PRIMARY KEY (as_of, bucket, stock_id)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO screen_picks(as_of,bucket,stock_id,stock_name,pick_close,entry_stars) "
+        "VALUES (?,?,?,?,?,?)",
+        (as_of, "leave_zero", "2330", "台積電", 101.0, 5),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda *_a, **_k: True
+    )
+    archived = archive_day_roster(db, as_of)
+    assert archived["hits"] >= 1
+    assert ("20260915", "2330") in pending_hits(db)
+    store = tape_store_path(db)
+    src = sqlite3.connect(store).execute(
+        "SELECT src FROM intraday_lz_hit WHERE as_of=? AND sid=?",
+        (as_of, "2330"),
+    ).fetchone()
+    assert src and src[0] == SRC_SILENT_ROSTER
+
+    # night_tick 會先 archive 再 score
+    out = night_tick(db, as_of)
+    assert "archived" in out
+    assert int(out.get("scored") or 0) >= 0
+
+
+def test_archive_day_roster_empty_does_not_count(tmp_path: Path, monkeypatch):
+    from intraday_leave_zero_verify import archive_day_roster
+
+    db = str(tmp_path / "empty.db")
+    ensure_core_schema(db)
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda *_a, **_k: True
+    )
+    out = archive_day_roster(db, "20260915")
+    assert out["hits"] == 0
+    assert out["frozen"] == 0

@@ -129,6 +129,73 @@ def pipeline_run_status(db_path: str, run_date: str) -> Optional[Dict[str, Any]]
     return {"run_date": row[0], "finished_at": row[1], "status": row[2], "notes": row[3] or ""}
 
 
+def _dc_sf_silent_stamp(db_path: str, *, now=None) -> Dict[str, Any]:
+    """情境預估日對質自有戳（dc-sf-silent-*）；不受 recent 六筆擠掉。"""
+    out: Dict[str, Any] = {
+        "ok": True,
+        "skipped": True,
+        "key": "",
+        "status": "",
+        "notes": "",
+        "finished_at": "",
+        "reasons": [],
+    }
+    try:
+        from dc_scenario_silent_verify import (
+            SCHEDULE_HOUR,
+            SCHEDULE_MINUTE,
+            in_campaign,
+            pipeline_key,
+            stamp_status,
+        )
+        from config import taipei_now
+    except Exception as exc:
+        out["ok"] = False
+        out["skipped"] = False
+        out["reasons"] = [f"情境預估日對質戳無法讀取：{exc}"]
+        return out
+    ref = now or taipei_now()
+    if not in_campaign(ref):
+        out["notes"] = "out_of_campaign"
+        return out
+    day = ref.strftime("%Y%m%d") if hasattr(ref, "strftime") else str(ref)[:8]
+    key = pipeline_key(day)
+    out["key"] = key
+    out["skipped"] = False
+    mins = (ref.hour * 60 + ref.minute) if hasattr(ref, "hour") else 0
+    due = int(SCHEDULE_HOUR) * 60 + int(SCHEDULE_MINUTE)
+    hit = stamp_status(db_path, day)
+    if hit:
+        out["status"] = str(hit.get("status") or "")
+        out["notes"] = str(hit.get("notes") or "")
+        out["finished_at"] = str(hit.get("finished_at") or "")
+        st = out["status"].lower()
+        if st == "success":
+            out["ok"] = True
+        elif st == "error":
+            out["ok"] = False
+            note = out["notes"][:80]
+            out["reasons"] = [
+                f"情境預估日對質 {key} 失敗" + (f"（{note}）" if note else "")
+            ]
+        elif st == "running":
+            out["ok"] = True  # 進行中不當漏；稍後再查
+            out["notes"] = out["notes"] or "running"
+        else:
+            out["ok"] = False
+            out["reasons"] = [f"情境預估日對質 {key} 狀態={st or 'empty'}"]
+        return out
+    # 還沒到 03:30＝略過；已過＝缺戳要亮（含週末，本軌含週末）
+    if mins < due:
+        out["skipped"] = True
+        out["notes"] = "before_schedule"
+        return out
+    out["ok"] = False
+    out["status"] = "missing"
+    out["reasons"] = [f"情境預估日對質 {key} 尚無成功戳"]
+    return out
+
+
 def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     """交易日應完成的排程是否 success（increment / screen）。"""
     try:
@@ -152,6 +219,7 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     if run_count == 0:
         return {"ok": True, "skipped": True, "cap": cap, "today": today, "reasons": [], "recent": []}
     recent = pipeline_recent_status(db_path).get("runs") or []
+    dc_sf = _dc_sf_silent_stamp(path)
     if (os.getenv("GITHUB_ACTIONS") or "").strip():
         # Release zip 不是常駐碟：GHA 上傳前會把 screen-* success 改成 computed，
         # 早上 job 也不蓋 zip。拿快照查今早有沒有寄永遠是假紅。
@@ -162,6 +230,7 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
             "today": today,
             "reasons": [],
             "recent": recent[:6],
+            "dc_sf_silent": dc_sf,
         }
 
     now = taipei_now()
@@ -206,6 +275,12 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
                     if not screen or str(screen.get("status") or "") != "success":
                         reasons.append(f"早上海選 {screen_key} 未成功")
 
+    # 情境預估日對質：自有鍵；失敗／缺戳不被融合／早報 success 蓋掉
+    if not dc_sf.get("skipped"):
+        for r in dc_sf.get("reasons") or []:
+            if r not in reasons:
+                reasons.append(str(r))
+
     return {
         "ok": not reasons,
         "cap": cap,
@@ -213,6 +288,7 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
         "reasons": reasons,
         "recent": recent[:6],
         "silent_tracks": silent_tracks,
+        "dc_sf_silent": dc_sf,
     }
 
 

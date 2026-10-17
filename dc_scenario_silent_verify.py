@@ -1409,10 +1409,25 @@ def propose_rule_updates(
 
 
 def _mark_pipeline(db_path: str, run_day: str, status: str, notes: str) -> None:
+    """只寫本軌鍵 ``dc-sf-silent-{YYYYMMDD}``。不准別軌 success 蓋掉本軌失敗。
+
+    empty／無發文仍記 success（notes 含 empty）；真正失敗記 error。
+    """
     path = str(db_path or "").strip()
     if not path:
         return
     key = pipeline_key(run_day)
+    if not key.startswith(PIPE_PREFIX):
+        return
+    st = str(status or "").strip().lower() or "error"
+    # 只允許本軌狀態字；防止誤傳把別軌語意寫進來
+    if st not in ("success", "error", "running", "computed", "empty"):
+        st = "error"
+    # empty 對外仍當 success（有跑完），notes 保留 empty_* 供健檢辨識
+    if st == "empty":
+        st = "success"
+        if "empty" not in str(notes or "").lower():
+            notes = f"empty:{notes}" if notes else "empty"
     stamp = _taipei_now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         conn = sqlite3.connect(path, timeout=30.0)
@@ -1432,7 +1447,7 @@ def _mark_pipeline(db_path: str, run_day: str, status: str, notes: str) -> None:
                 INSERT OR REPLACE INTO pipeline_runs(run_date, finished_at, status, notes)
                 VALUES (?,?,?,?)
                 """,
-                (key, stamp, status, str(notes or "")[:800]),
+                (key, stamp, st, str(notes or "")[:800]),
             )
             conn.commit()
         finally:
@@ -1441,22 +1456,43 @@ def _mark_pipeline(db_path: str, run_day: str, status: str, notes: str) -> None:
         logger.exception("dc_sf pipeline_runs 寫入失敗")
 
 
-def already_done(db_path: str, run_day: str) -> bool:
+def stamp_status(db_path: str, run_day: Any = None) -> Optional[Dict[str, Any]]:
+    """讀本軌成功／失敗戳（不受 recent 六筆限制）。缺＝None。"""
     path = str(db_path or "").strip()
-    if not path or not os.path.isfile(path):
-        return False
-    key = pipeline_key(run_day)
+    day = _ymd(run_day) if run_day is not None else _ymd(_taipei_now())
+    key = pipeline_key(day)
+    if not path or not key or not os.path.isfile(path):
+        return None
     try:
         conn = sqlite3.connect(path, timeout=10.0)
         try:
             row = conn.execute(
-                "SELECT status FROM pipeline_runs WHERE run_date=?", (key,)
+                "SELECT run_date, finished_at, status, notes FROM pipeline_runs WHERE run_date=?",
+                (key,),
             ).fetchone()
         finally:
             conn.close()
-        return bool(row and str(row[0] or "") == "success")
     except Exception:
+        return None
+    if not row:
+        return None
+    return {
+        "run_date": row[0],
+        "finished_at": row[1],
+        "status": row[2],
+        "notes": row[3] or "",
+        "job": JOB_KIND,
+        "label": "情境預估日對質",
+        "as_of": day,
+    }
+
+
+def already_done(db_path: str, run_day: str) -> bool:
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
         return False
+    hit = stamp_status(path, run_day)
+    return bool(hit and str(hit.get("status") or "") == "success")
 
 
 def night_tick(

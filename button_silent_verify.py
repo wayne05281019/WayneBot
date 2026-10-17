@@ -35,6 +35,7 @@ SCREEN_KINDS = frozenset(
         "golden_buy",
         "revenue_cross",
         "select_01",
+        "half_year_high",
         "select_02",
         "select_03",
         "day_trade",
@@ -120,7 +121,19 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "status": "present",
         "pipe": "judge_tape.snapshot_button_lists + dongzhu_tape screen + screen_review",
         "window": "1／5 日官方收（live_judge）；洞燭／海選另有 1／5／10",
-        "note": "選股對質；leave_zero／ma60_lower 分開記分開對；勝率不准混",
+        "note": "選股對質；leave_zero／ma60_lower 分開記分開對；勝率不准混；半年高另鍵不上話筒",
+    },
+    {
+        "btn": "半年高（靜默）",
+        "kinds": ("half_year_high",),
+        "class": CLASS_SCREEN,
+        "status": "present",
+        "pipe": (
+            "judge_tape.snapshot_button_lists bucket=half_year_high → live_judge；"
+            "dongzhu_tape screen.half_year_high；話筒海選不顯示"
+        ),
+        "window": "1／5 日官方收（live_judge）；與海選可見桶分開記、分開對",
+        "note": "不上話筒；沒按也落檔（真代號＋官方開高低收＋量；空名單不算）；勝率不准混",
     },
     {
         "btn": "紅箭確認",
@@ -232,9 +245,16 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "kinds": ("intraday_leave_zero",),
         "class": CLASS_SCREEN,
         "status": "external",
-        "pipe": "intraday_leave_zero_verify lookup／MIS hit → close_hold／next_1",
+        "pipe": (
+            "intraday_leave_zero_verify：開市日沒按也落檔 leave_zero 名單"
+            "（src=silent_roster）＋查股／MIS hit（src=lookup）→ close_hold／next_1；"
+            "live_judge kind=intraday_leave_zero 另凍官方柱"
+        ),
         "window": "當日官方收是否仍 leave_zero；選填隔日報酬",
-        "note": "靜默對質；不是新鈕；過閘也不自動改黃金買點／買訊",
+        "note": (
+            "靜默對質；與海選 leave_zero／剛脫離零分開鍵、勝率不准混；"
+            "空名單不算；過閘也不自動改黃金買點／買訊／藍▲紅框"
+        ),
     },
     {
         "btn": "買點排除層",
@@ -328,11 +348,13 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "pipe": (
             "button_silent_verify.snapshot_scenario_forecast（查股圖下按了才記）；"
             "dc_scenario_silent_verify.night_tick（台北 03:30／dc_sf_silent；"
-            "與飆大 01:00 錯開、專鎖隔離）"
+            "pipeline_runs 鍵 dc-sf-silent-{YYYYMMDD} 自有成功／失敗／empty 戳；"
+            "與飆大 01:00 錯開、專鎖隔離；失敗不被別軌 success 蓋掉）"
         ),
         "window": (
             "查股圖下按了才記＋D.C 日對質沒按也跑（台北 03:30／往回 24 小時／一篇一圖）；"
-            "圖＋說法／文意／備注落 dc_sf_*；有發文且未到 95% 才改 dc_sf_rules"
+            "圖＋說法／文意／備注落 dc_sf_*；有發文且未到 95% 才改 dc_sf_rules；"
+            "沒發文記 empty 仍蓋 success 戳"
         ),
         "note": (
             "獨立附加；D.C 日對質＝沒按也留；不是選股、浪號只在此鈕；"

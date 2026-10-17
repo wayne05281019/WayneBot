@@ -78,6 +78,69 @@ def test_pipeline_expectations_skips_empty_db():
         os.remove(path)
 
 
+def test_dc_sf_silent_stamp_visible_after_0330(monkeypatch):
+    """情境預估日對質：過 03:30 後健檢要看到自己的鍵，不被 recent 六筆擠掉。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from automation_health import _dc_sf_silent_stamp
+
+    TAIPEI = ZoneInfo("Asia/Taipei")
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        conn = sqlite3.connect(path)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pipeline_runs ("
+            "run_date TEXT PRIMARY KEY, finished_at TEXT, status TEXT, notes TEXT)"
+        )
+        # 塞六筆較新的別軌，模擬公開健檢 recent 擠掉 03:30
+        for i, key in enumerate(
+            (
+                "20261016",
+                "screen-20261016",
+                "midday-20261016",
+                "winrate-bp-20261016",
+                "evening-20261016",
+                "open-check-20261017",
+            )
+        ):
+            conn.execute(
+                "INSERT OR REPLACE INTO pipeline_runs(run_date,finished_at,status,notes) "
+                "VALUES (?,?,?,?)",
+                (key, f"2026-10-17T{10+i:02d}:00:00", "success", "other"),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO pipeline_runs(run_date,finished_at,status,notes) "
+            "VALUES (?,?,?,?)",
+            (
+                "dc-sf-silent-20261017",
+                "2026-10-17 03:35:00",
+                "success",
+                "dc_sf empty_posts as_of=20261017",
+            ),
+        )
+        conn.commit()
+        conn.close()
+        now = datetime(2026, 10, 17, 12, 0, tzinfo=TAIPEI)
+        stamp = _dc_sf_silent_stamp(path, now=now)
+        assert stamp.get("skipped") is False
+        assert stamp.get("ok") is True
+        assert stamp.get("key") == "dc-sf-silent-20261017"
+        assert stamp.get("status") == "success"
+        # 缺戳要亮紅
+        conn = sqlite3.connect(path)
+        conn.execute("DELETE FROM pipeline_runs WHERE run_date=?", ("dc-sf-silent-20261017",))
+        conn.commit()
+        conn.close()
+        missing = _dc_sf_silent_stamp(path, now=now)
+        assert missing.get("ok") is False
+        assert missing.get("status") == "missing"
+        assert any("情境預估日對質" in r for r in missing.get("reasons") or [])
+    finally:
+        os.remove(path)
+
+
 def _seed_pipeline_row(path: str, run_date: str = "20260909") -> None:
     conn = sqlite3.connect(path)
     conn.execute(
