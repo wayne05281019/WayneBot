@@ -815,9 +815,82 @@ def test_leave_zero_pick_scans_profit_including_emerging(tmp_path, monkeypatch):
     assert by["3595"].get("trend_now_label")
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: True)
     monkeypatch.setattr("midday_review.fetch_mis_batch", lambda *a, **k: {})
-    live_rows = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF)]
+    monkeypatch.setattr("live_quote.fetch_emerging_tpex_quote", lambda sid: None)
+    live = engine.screen_leave_zero_pick(AS_OF)
+    live_rows = [r["code"] for r in live]
     assert "3595" in live_rows
     assert "8069" not in live_rows
+    em = {r["code"]: r for r in live}["3595"]
+    assert em.get("_emerging_live_unused") is True
+    assert "live" not in em
+    assert "還沒用興櫃現價" in _stock_card_html(em, 1, bucket_label="剛脫離零")
+
+
+def test_leave_zero_live_emerging_uses_tpex_avg_not_listed_price(tmp_path, monkeypatch):
+    """盤中興櫃只認櫃買日均價再對；上市櫃報價不准填進來。回到 0 就移出。"""
+    db = str(tmp_path / "lz_em_live.db")
+    ensure_core_schema(db)
+    _seed_emerging_leave_yesterday(db)
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
+    engine = ScreeningEngine(db)
+    closed = {r["code"]: r for r in engine.screen_leave_zero_pick(AS_OF)}
+    assert "3595" in closed
+    floor = float(closed["3595"]["cal60_low"])
+    official = float(closed["3595"]["profit_pct"])
+    assert floor > 0
+
+    def _mis(*_a, **_k):
+        return {
+            "3595": {
+                "price": 99.0,
+                "close": 99.0,
+                "yesterday_close": 20.0,
+                "volume": 8000,
+                "source": "twse_mis",
+            }
+        }
+
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr("midday_review.fetch_mis_batch", _mis)
+    px = round(floor * 1.02, 2)
+    monkeypatch.setattr(
+        "live_quote.fetch_emerging_tpex_quote",
+        lambda sid: {
+            "close": px,
+            "avg_price": px,
+            "source": "tpex_esb_live",
+            "emerging": True,
+            "yesterday_close": floor,
+            "update_time": "10:01",
+        }
+        if sid == "3595"
+        else None,
+    )
+    kept = {r["code"]: r for r in engine.screen_leave_zero_pick(AS_OF)}
+    assert "3595" in kept
+    row = kept["3595"]
+    assert row.get("_emerging_live_unused") is not True
+    assert float(row["live"]["price"]) == px
+    assert float(row["live"]["price"]) != 99.0
+    assert float(row["profit_pct"]) != official
+    card = _stock_card_html(row, 1, bucket_label="剛脫離零")
+    assert "還沒用興櫃現價" not in card
+
+    monkeypatch.setattr(
+        "live_quote.fetch_emerging_tpex_quote",
+        lambda sid: {
+            "close": floor,
+            "avg_price": floor,
+            "source": "tpex_esb",
+            "emerging": True,
+            "yesterday_close": floor,
+            "update_time": "10:02",
+        }
+        if sid == "3595"
+        else None,
+    )
+    again = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF)]
+    assert "3595" not in again
 
 
 def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):

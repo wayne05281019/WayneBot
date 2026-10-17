@@ -24,6 +24,29 @@ from ai_trader import (
 from wayne_db import ensure_core_schema
 
 
+def test_ai_run_copy_matches_winrate_roster():
+    import inspect
+
+    from ai_trader import ai_no_fill_note, ai_run_wait_now
+    from bot_servers import WayneTelegramBot
+
+    assert ai_run_wait_now() == "依今日勝率買點名單"
+    note = ai_no_fill_note(2)
+    assert "候選 2 檔" in note
+    assert "只從當天勝率買點名單模擬" in note
+    assert "海選" not in note
+    assert "高低卡" not in note
+    assert "美股" not in note
+    src = inspect.getsource(WayneTelegramBot._run_ai_now)
+    assert "依今日海選紀律" not in src
+    assert "名單被高低卡" not in src
+    assert "ai_run_wait_now" in src
+    assert "ai_no_fill_note" in src
+    hub = inspect.getsource(WayneTelegramBot._show_pressure_hub)
+    assert "不准當進場" not in hub
+    assert "PRESSURE_HUB_LEAD" in hub
+
+
 def test_persist_lesson_and_encoding_roundtrip(tmp_path):
     path = str(tmp_path / "e.db")
     ensure_core_schema(path)

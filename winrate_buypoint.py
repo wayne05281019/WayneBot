@@ -1025,6 +1025,25 @@ def render_stock_pair(
     return pairs[0]
 
 
+def pair_gap_html(
+    stock_id: str,
+    stock_name: str = "",
+    *,
+    is_last: bool,
+    has_volume: bool,
+    has_card: bool,
+) -> str:
+    """兩張圖都沒畫出來、又不是最後一檔時，補一句這檔略過。"""
+    if is_last or has_volume or has_card:
+        return ""
+    from html import escape as html_escape
+
+    sid = str(stock_id or "").strip()
+    name = str(stock_name or "").strip()
+    label = html_escape(name or sid)
+    return f"<b>{html_escape(sid)}</b> {label}　這檔略過"
+
+
 def header_html(as_of: str, total: int, *, mode: str = "full", offset: int = 0) -> str:
     from html import escape as html_escape
 
@@ -1034,7 +1053,7 @@ def header_html(as_of: str, total: int, *, mode: str = "full", offset: int = 0) 
         return EMPTY_MSG
     start = int(offset) + 1
     end = min(int(offset) + PAGE_SIZE, total)
-    mode_note = "隔日盤中篩（買點仍在且現價更低）" if mode == "filter" else "盤後 leave_zero（藍▲紅框）"
+    mode_note = "隔日盤中篩（買點仍在且現價更低）" if mode == "filter" else "盤後剛離零（藍▲紅框）"
     return (
         f"<b>勝率買點</b>　基準日 {html_escape(day_disp)}　"
         f"{start}–{end}/{total}　<i>{html_escape(mode_note)}</i>"

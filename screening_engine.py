@@ -1258,94 +1258,68 @@ class ScreeningEngine:
                     quotes = fetch_mis_batch(listed, self.db_path) or {}
             except Exception:
                 quotes = {}
+            em_codes = [
+                str(x.get("stock_id") or "")
+                for x in out
+                if str(x.get("stock_id") or "") in em_ids
+            ]
+            em_codes = [c for c in em_codes if c]
+            em_quotes: Dict[str, Dict[str, Any]] = {}
+            if em_codes:
+                try:
+                    from winrate_buypoint import _fetch_emerging_official_quotes
+
+                    em_quotes = _fetch_emerging_official_quotes(em_codes) or {}
+                except Exception:
+                    em_quotes = {}
+            live_cache = (
+                ex_cache if ex_cache is not None else self._scale_ex_map()
+            )
             if not quotes:
                 for item in out:
                     if str(item.get("stock_id") or "") not in em_ids:
                         item["_live_skipped"] = True
-            else:
-                kept: List[Dict[str, Any]] = []
-                for item in out:
-                    sid = str(item.get("stock_id") or "")
-                    if not sid or sid in em_ids:
-                        kept.append(item)
-                        continue
-                    if sid not in mis_ids:
-                        continue
-                    q = quotes.get(sid) or {}
-                    raw_px = (
-                        q.get("price") if q.get("price") is not None else q.get("close")
+            kept: List[Dict[str, Any]] = []
+            for item in out:
+                sid = str(item.get("stock_id") or "")
+                if not sid:
+                    continue
+                if sid in em_ids:
+                    verdict = _apply_leave_zero_live_quote(
+                        item,
+                        em_quotes.get(sid) or {},
+                        mode=mode,
+                        frames=frames,
+                        db_path=self.db_path,
+                        ex_cache=live_cache,
                     )
-                    floor = float(item.get("cal60_low") or 0)
-                    if raw_px is None or floor <= 0:
-                        item["_live_skipped"] = True
-                        kept.append(item)
+                    if verdict == "drop":
                         continue
-                    price = float(raw_px)
-                    live_profit = round((price - floor) / floor * 100.0, 1)
-                    if not _leave_zero_pick_ok(mode, live_profit):
-                        continue
-                    yest_c = q.get("yesterday_close")
-                    pct = None
-                    try:
-                        if yest_c:
-                            pct = (price - float(yest_c)) / float(yest_c) * 100.0
-                    except (TypeError, ValueError, ZeroDivisionError):
-                        pct = q.get("pct")
-                    live_vol = int(q.get("volume") or 0)
-                    last_vol = float(item.get("volume") or 0)
-                    if live_vol > 0:
-                        item["volume"] = live_vol
-                        if item.get("q60r") and last_vol > 0:
-                            item["q60r"] = float(item["q60r"]) * (live_vol / last_vol)
-                    item["profit"] = live_profit
-                    item["profit_pct"] = live_profit
-                    item["live"] = {
-                        "price": price,
-                        "change": q.get("change"),
-                        "pct": pct,
-                        "update_time": q.get("update_time", ""),
-                        "yesterday_close": yest_c,
-                    }
-                    try:
-                        hi20 = float(
-                            pd.to_numeric(frames[sid]["close"], errors="coerce")
-                            .iloc[-20:]
-                            .max()
-                            or 0
-                        )
-                    except Exception:
-                        hi20 = 0.0
-                    if hi20 > 0:
-                        item["chase_warning"] = bool(price >= hi20 * 0.985)
-                    if mode == "ago":
-                        df = frames.get(sid)
-                        if df is not None:
-                            info = _leave_zero_now_trend_info(
-                                df,
-                                last_close=price,
-                                stock_id=sid,
-                                db_path=self.db_path,
-                                cache=ex_cache
-                                if ex_cache is not None
-                                else self._scale_ex_map(),
-                            )
-                            info["stock_id"] = sid
-                            ok = bool(info) and _leave_zero_trend_ok(info)
-                            item["trend_up_now"] = bool(ok)
-                            item["trend_now_label"] = (
-                                "趨勢已向上" if ok else "趨勢還沒向上"
-                            )
-                            for key in (
-                                "ma20",
-                                "ma60",
-                                "low20",
-                                "d20",
-                                "monthly_stage_kind",
-                            ):
-                                if key in info:
-                                    item[key] = info[key]
+                    if verdict == "unused":
+                        item["_emerging_live_unused"] = True
+                    else:
+                        item.pop("_emerging_live_unused", None)
                     kept.append(item)
-                out = kept
+                    continue
+                if not quotes or sid not in mis_ids:
+                    if quotes and sid not in mis_ids:
+                        continue
+                    kept.append(item)
+                    continue
+                verdict = _apply_leave_zero_live_quote(
+                    item,
+                    quotes.get(sid) or {},
+                    mode=mode,
+                    frames=frames,
+                    db_path=self.db_path,
+                    ex_cache=live_cache,
+                )
+                if verdict == "drop":
+                    continue
+                if verdict == "unused":
+                    item["_live_skipped"] = True
+                kept.append(item)
+            out = kept
         if mode == "zero":
             out.sort(
                 key=lambda x: (
@@ -2042,6 +2016,87 @@ def _leave_zero_now_trend_info(
     return info
 
 
+def _apply_leave_zero_live_quote(
+    item: Dict[str, Any],
+    quote: Optional[Dict[str, Any]],
+    *,
+    mode: str,
+    frames: Dict[str, pd.DataFrame],
+    db_path: str,
+    ex_cache,
+) -> str:
+    """盤中用這一檔自己的真報價再對剛離零。回 keep／drop／unused。
+
+    unused＝沒有可用報價，呼叫端維持昨收官方獲利。不准把別的市場價填進來。
+    """
+    q = quote or {}
+    raw_px = q.get("price") if q.get("price") is not None else q.get("close")
+    try:
+        floor = float(item.get("cal60_low") or 0)
+    except (TypeError, ValueError):
+        floor = 0.0
+    if raw_px is None or floor <= 0:
+        return "unused"
+    try:
+        price = float(raw_px)
+    except (TypeError, ValueError):
+        return "unused"
+    if price <= 0:
+        return "unused"
+    live_profit = round((price - floor) / floor * 100.0, 1)
+    if not _leave_zero_pick_ok(mode, live_profit):
+        return "drop"
+    yest_c = q.get("yesterday_close")
+    pct = None
+    try:
+        if yest_c:
+            pct = (price - float(yest_c)) / float(yest_c) * 100.0
+    except (TypeError, ValueError, ZeroDivisionError):
+        pct = q.get("pct")
+    live_vol = int(q.get("volume") or 0)
+    last_vol = float(item.get("volume") or 0)
+    if live_vol > 0:
+        item["volume"] = live_vol
+        if item.get("q60r") and last_vol > 0:
+            item["q60r"] = float(item["q60r"]) * (live_vol / last_vol)
+    item["profit"] = live_profit
+    item["profit_pct"] = live_profit
+    item["live"] = {
+        "price": price,
+        "change": q.get("change"),
+        "pct": pct,
+        "update_time": q.get("update_time", ""),
+        "yesterday_close": yest_c,
+    }
+    sid = str(item.get("stock_id") or "")
+    try:
+        hi20 = float(
+            pd.to_numeric(frames[sid]["close"], errors="coerce").iloc[-20:].max() or 0
+        )
+    except Exception:
+        hi20 = 0.0
+    if hi20 > 0:
+        item["chase_warning"] = bool(price >= hi20 * 0.985)
+    if mode == "ago":
+        df = frames.get(sid)
+        if df is not None:
+            info = _leave_zero_now_trend_info(
+                df,
+                last_close=price,
+                stock_id=sid,
+                db_path=db_path,
+                cache=ex_cache,
+            )
+            info["stock_id"] = sid
+            ok = bool(info) and _leave_zero_trend_ok(info)
+            item["trend_up_now"] = bool(ok)
+            item["trend_now_label"] = "趨勢已向上" if ok else "趨勢還沒向上"
+            for key in ("ma20", "ma60", "low20", "d20", "monthly_stage_kind"):
+                if key in info:
+                    item[key] = info[key]
+    return "keep"
+
+
 def _pct_str(pct) -> str:
     try:
         p = float(pct)
@@ -2422,6 +2477,8 @@ def _stock_card_html(
     profit_val = _line_profit_value(item)
     if profit_val:
         body.append(_card_kv("獲利", html_escape(profit_val)))
+    if item.get("_emerging_live_unused"):
+        body.append(html_escape("還沒用興櫃現價，獲利沿用昨收。"))
     try:
         from decision_card_signals import leave_zero_trade_plan
 

@@ -38,6 +38,9 @@ TAG_LABELS = {
 
 TAG_ORDER = (TAG_SIDEWAYS, TAG_TEST_PRESS, TAG_STAND_SUPPORT)
 
+# 話筒開場第一段。三標籤只是觀察；門檻與出圖不改。
+PRESSURE_HUB_LEAD = "接大量壓力區框選。這三標籤只是觀察。"
+
 TAG_SUBTITLES = {
     TAG_SIDEWAYS: (
         f"同一大量區內，收在〔撐,壓〕恰好 {SIDEWAYS_N} 根日Ｋ。"
