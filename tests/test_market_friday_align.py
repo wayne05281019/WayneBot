@@ -36,15 +36,95 @@ def test_washout_replaces_bull_zero_risk_without_new_score():
         "falling_risk": 0,
     }
     plain = _html_plain("\n".join(_page_regime_lines(snap, FRIDAY_US)))
-    assert "不是多頭帶動" in plain
-    assert "不是還在往上" in plain
-    assert "不是風險 0" in plain
-    assert "那斯達克 -2.15%" in plain
-    assert "費半 -3.83%" in plain
+    assert "美股收盤大跌" in plain
+    assert "下一個台股交易日不是平穩多頭日" in plain
+    assert "不是還在往上" not in plain
+    assert "不是風險 0" not in plain
+    assert "美股現金" not in plain
+    assert plain.count("那斯達克 -2.15%") == 1
+    assert plain.count("費半 -3.83%") == 1
+    assert plain.count("道瓊 -0.34%") == 1
     assert "往下跌的風險偏低，0 分" not in plain
-    assert "不是還在往上" in plain
-    # 沒有另編一個風險整數
     assert "分，100 分最危險" not in plain
+    from tg_layout import _disp_w
+
+    for ln in plain.splitlines():
+        if ln.strip():
+            assert _disp_w(ln) <= 36, ln
+
+
+def test_us_drop_drops_fear_eased_lines():
+    from taiwan_market import _drop_fear_lines_that_fight_us_drop
+
+    kept = _drop_fear_lines_that_fight_us_drop(
+        [
+            "<b>環境觀察｜觀察 / 預警</b>",
+            "開盤前，市場不怕。",
+            "今天沒有外資賣得更兇的股票。",
+            "害怕已經緩下來。",
+            "害怕這件事今天沒特別變化。",
+            "開盤前，市場在怕。",
+        ]
+    )
+    blob = "\n".join(kept)
+    assert "市場不怕" not in blob
+    assert "害怕已經緩下來" not in blob
+    assert "沒特別變化" not in blob
+    assert "外資賣得更兇" in blob
+    assert "市場在怕" in blob
+
+
+def test_session_card_heading_says_us_close_not_cash():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._send_market_session_cards)
+    assert "美股收盤" in src
+    assert "美股現金" not in src
+    assert "恐慌指數" in src
+    assert "極度恐慌" not in src
+
+
+def test_vix_card_uses_real_closes_and_not_fear_label(tmp_path):
+    from bot_servers import WayneTelegramBot
+    from market_session_cards import fetch_vix_card, render_session_cards
+
+    def _fake_chart(sym, interval, range_):
+        assert sym == "^VIX"
+        assert interval == "1d"
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        ny = ZoneInfo("America/New_York")
+        stamps = [
+            int(datetime(2026, 10, 15, 16, 0, tzinfo=ny).timestamp()),
+            int(datetime(2026, 10, 16, 16, 0, tzinfo=ny).timestamp()),
+        ]
+        return {
+            "timestamp": stamps,
+            "indicators": {"quote": [{"close": [18.51, 19.40]}]},
+        }
+
+    import market_session_cards as cards
+
+    orig = cards._chart
+    cards._chart = _fake_chart
+    try:
+        got = fetch_vix_card({"us_session": "20261016", "vix": 19.99})
+    finally:
+        cards._chart = orig
+    card = got["card"]
+    assert card["name"] == "恐慌指數"
+    assert abs(card["last"] - 19.99) < 1e-6
+    assert "極度恐慌" not in card["name"]
+    path = str(tmp_path / "vix.png")
+    out = render_session_cards(
+        path, [card], heading="恐慌指數　2026/10/16", columns=1, layout="spark"
+    )
+    assert out == path
+    assert WayneTelegramBot._market_landscape_chart_ok(path)
+    assert "極度恐慌" not in "恐慌指數　2026/10/16"
 
 
 def test_mild_caution_keeps_taiwan_structure_lines():

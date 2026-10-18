@@ -173,6 +173,56 @@ class IndexDailyOfficialChartTests(unittest.TestCase):
         self.assertEqual(_fmt_last_vol(None), "—")
         self.assertEqual(_fmt_last_vol(11201668), "1120.2萬張")
 
+    def test_load_waits_out_a_short_write_lock(self):
+        """寫鎖超過 sqlite 預設 5 秒時，日 K 仍要讀到官方柱，不准空表。"""
+        import sqlite3
+        import tempfile
+        import threading
+        import time
+
+        db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+        try:
+            con = sqlite3.connect(db)
+            con.execute(
+                """
+                CREATE TABLE index_daily (
+                    date TEXT, symbol TEXT, close REAL, volume REAL,
+                    open REAL, high REAL, low REAL,
+                    PRIMARY KEY (date, symbol)
+                )
+                """
+            )
+            con.execute(
+                "INSERT INTO index_daily VALUES ('2026-10-15','TWII',46969.87,1,48382.75,48382.75,46795.38)"
+            )
+            con.execute(
+                "INSERT INTO index_daily VALUES ('20261016','TWII',47111.26,2,46995.03,47520.60,46995.03)"
+            )
+            con.commit()
+            con.close()
+            held = threading.Event()
+
+            def _locker():
+                lock = sqlite3.connect(db, timeout=30)
+                lock.execute("BEGIN EXCLUSIVE")
+                held.set()
+                time.sleep(6)
+                lock.rollback()
+                lock.close()
+
+            th = threading.Thread(target=_locker)
+            th.start()
+            self.assertTrue(held.wait(3))
+            started = time.monotonic()
+            df = load_index_daily_ohlc(db, days=30)
+            th.join(5)
+            self.assertGreaterEqual(time.monotonic() - started, 5.0)
+            self.assertEqual(len(df), 2)
+            self.assertEqual(str(df.iloc[-1]["date"]), "20261016")
+            self.assertAlmostEqual(float(df.iloc[-1]["close"]), 47111.26, places=2)
+        finally:
+            os.unlink(db)
+
     def test_build_skips_yahoo_when_db_empty(self):
         import inspect
 

@@ -5724,11 +5724,22 @@ class WayneTelegramBot:
                     "us",
                     us["cards"],
                     2,
-                    f"美股現金　{us.get('session', '')[:4]}/{us.get('session', '')[4:6]}/{us.get('session', '')[6:8]}"
+                    f"美股收盤　{us.get('session', '')[:4]}/{us.get('session', '')[4:6]}/{us.get('session', '')[6:8]}"
                     if len(str(us.get("session") or "")) == 8
-                    else "美股現金",
+                    else "美股收盤",
+                    "grid",
                 )
             )
+        vix = (bundle or {}).get("vix") or {}
+        vix_card = vix.get("card")
+        if vix_card and vix_card.get("series"):
+            vsess = str(vix_card.get("session") or "")
+            vix_head = (
+                f"恐慌指數　{vsess[:4]}/{vsess[4:6]}/{vsess[6:]}"
+                if len(vsess) == 8
+                else "恐慌指數"
+            )
+            jobs.append(("vix", [vix_card], 1, vix_head, "spark"))
         tx_card = tx.get("card")
         if tx_card and tx_card.get("series"):
             sess = str(tx_card.get("session") or "")
@@ -5737,8 +5748,8 @@ class WayneTelegramBot:
                 if len(sess) == 8
                 else "台指期盤後"
             )
-            jobs.append(("tx", [tx_card], 1, face))
-        for kind, cards, cols, heading in jobs:
+            jobs.append(("tx", [tx_card], 1, face, "grid"))
+        for kind, cards, cols, heading, layout in jobs:
             path = self._scratch_chart_path(self.charts_dir, "MKT", kind, uid)
             try:
                 from market_session_cards import render_session_cards
@@ -5747,8 +5758,8 @@ class WayneTelegramBot:
                 drawn = await asyncio.wait_for(
                     asyncio.wrap_future(
                         submit_mpl_paint(
-                            lambda p=path, cs=cards, n=cols, h=heading: render_session_cards(
-                                p, cs, heading=h, columns=n
+                            lambda p=path, cs=cards, n=cols, h=heading, lay=layout: render_session_cards(
+                                p, cs, heading=h, columns=n, layout=lay
                             )
                         )
                     ),
@@ -5759,7 +5770,7 @@ class WayneTelegramBot:
                 drawn = ""
             if not drawn or not self._market_landscape_chart_ok(drawn):
                 why = self._chart_reject_reason(drawn)
-                face = "美股走勢圖" if kind == "us" else "台指期盤後圖"
+                face = {"us": "美股走勢圖", "vix": "恐慌指數圖"}.get(kind, "台指期盤後圖")
                 await message.reply_text(f"{face}這次畫不出來：{why}")
                 continue
             try:
@@ -5773,9 +5784,10 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("大盤走勢圖送出失敗 %s", kind)
                 await message.reply_text(
-                    "美股走勢圖這次畫不出來，請稍後再試。"
-                    if kind == "us"
-                    else "台指期盤後圖這次畫不出來，請稍後再試。"
+                    {
+                        "us": "美股走勢圖這次畫不出來，請稍後再試。",
+                        "vix": "恐慌指數圖這次畫不出來，請稍後再試。",
+                    }.get(kind, "台指期盤後圖這次畫不出來，請稍後再試。")
                 )
 
     async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:
