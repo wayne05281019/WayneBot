@@ -902,6 +902,24 @@ def format_quote_move(snap: Dict[str, Any], pct_k: str, chg_k: str) -> str:
     return _fmt_move(snap.get(pct_k), snap.get(chg_k), px=px, unit=unit)
 
 
+def format_phone_usd_move(snap: Dict[str, Any], pct_k: str, chg_k: str) -> str:
+    """話筒約 18 個全形字寬：價格、％、元同一行。半形空白與括號，單位寫元。"""
+    if _STOCK_UNITS.get(pct_k) != "美元":
+        return format_quote_move(snap, pct_k, chg_k)
+    px = snap.get(pct_k[:-4] + "_px") if pct_k.endswith("_pct") else None
+    bits: List[str] = []
+    px_s = _fmt_px(px)
+    if px_s:
+        bits.append(px_s)
+    if snap.get(pct_k) is not None:
+        bits.append(_fmt_pct(snap.get(pct_k)))
+    if snap.get(chg_k) is not None:
+        pts = _fmt_pts(snap.get(chg_k), unit="元")
+        if pts:
+            bits.append(f"({pts})")
+    return " ".join(bits) if bits else "—"
+
+
 def cash_index_moves(snap: Optional[Dict[str, Any]]) -> List[tuple]:
     """美股收盤四大指數唯一出口：[(道瓊, ％＋點), ...]。
 

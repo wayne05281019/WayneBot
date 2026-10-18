@@ -384,9 +384,12 @@ def render_index_kline_png(
         ax1.spines[side].set_visible(False)
         ax2.spines[side].set_visible(False)
 
-    from market_biaoke_wave import paint_biaoke_market_marks
+    try:
+        from market_biaoke_wave import paint_biaoke_market_marks
 
-    paint_biaoke_market_marks(ax1, work)
+        paint_biaoke_market_marks(ax1, work)
+    except Exception:
+        logger.exception("大盤日K飆大標記略過，官方柱仍畫")
     fig.subplots_adjust(left=0.03, right=0.96, top=0.78, bottom=0.15)
     fig.text(
         0.03,

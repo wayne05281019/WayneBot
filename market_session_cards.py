@@ -430,11 +430,15 @@ def render_session_cards(
         return ""
     cols = max(1, min(columns, len(got)))
     rows = (len(got) + cols - 1) // cols
-    fig_w = 9.0 if cols == 1 else 10.2
+    fig_w = 9.2 if cols == 1 else 10.2
+    dpi = 130
     head_in = 0.55
-    row_h = 4.15 if cols == 1 else 3.55
+    row_h = 6.85 if cols == 1 else 3.55
     fig_h = head_in + rows * row_h + 0.28
-    fig = plt.figure(figsize=(fig_w, fig_h), dpi=130, facecolor=_BG)
+    # 單張台指期盤後是橫圖。畫布太扁會被直式查股門檻（高 900、48KB）整張丟掉。
+    if cols == 1:
+        fig_h = max(fig_h, 960 / dpi)
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_BG)
     fig.text(0.045, 1 - (0.28 / fig_h), heading, color=_TITLE, fontproperties=_fp(22, "bold"), ha="left", va="top")
     gap_x = 0.03
     gap_y = 0.025
