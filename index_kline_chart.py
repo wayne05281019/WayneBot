@@ -219,7 +219,7 @@ def render_index_kline_png(
         1 if live_px > 0 else 0,
         round(live_px, 2) if live_px > 0 else 0,
         "vol-min-v1",
-        "biaoke-mkt-20261017",
+        "biaoke-mkt-dc-try-20261018",
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:

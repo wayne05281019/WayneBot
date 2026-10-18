@@ -24,6 +24,7 @@ def test_caption_uses_only_labels_he_said():
     assert "C-3-5" in lines
     assert "C-3-3" in lines
     assert "10/26" in lines
+    assert "DC" in lines
     assert "1-2-3-4-5" not in lines
     assert "56000" not in lines
     assert "4000" not in lines
@@ -33,14 +34,26 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     import market_biaoke_wave as mod
 
     src = inspect.getsource(mod.paint_biaoke_market_marks)
+    path_src = inspect.getsource(mod._biaoke_dc_proj_path)
     assert "1-2-3-4-5" not in src
     assert "56000" not in src
     assert "4000" not in src
+    assert "56000" not in path_src
     assert "48240" in inspect.getsource(mod)
     assert "39000" in inspect.getsource(mod)
     assert "45000" in inspect.getsource(mod)
     assert mod.NOT_FLOOR == 45000.0
     assert "不止跌" in src
+    # DC 臉：虛線未走、粉 pin、紅價標；路徑函式只吐他點過的價
+    assert "_biaoke_dc_proj_path" in src
+    assert "_draw_map_pin" in src
+    assert "C-3-5" in src
+    pts = mod._biaoke_dc_proj_path(10.0, 47111.26, 6)
+    ys = {round(p[1], 2) for p in pts}
+    assert 47111.26 in ys
+    assert float(mod.NOT_FLOOR) in ys
+    assert float(mod.ZONE_LO) in ys
+    assert 56000.0 not in ys
 
 
 def test_market_chart_calls_overlay_and_keeps_us_refresh():
