@@ -24,6 +24,9 @@ def test_caption_uses_only_labels_he_said():
     assert "C-3-5" in lines
     assert "C-3-3" in lines
     assert "10/26" in lines
+    assert "DC" in lines
+    assert "多頭一年" in lines
+    assert "過年後再下＝他沒說" in lines
     assert "1-2-3-4-5" not in lines
     assert "56000" not in lines
     assert "4000" not in lines
@@ -33,14 +36,56 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     import market_biaoke_wave as mod
 
     src = inspect.getsource(mod.paint_biaoke_market_marks)
+    path_src = inspect.getsource(mod._biaoke_dc_proj_path)
     assert "1-2-3-4-5" not in src
     assert "56000" not in src
     assert "4000" not in src
+    assert "56000" not in path_src
     assert "48240" in inspect.getsource(mod)
     assert "39000" in inspect.getsource(mod)
     assert "45000" in inspect.getsource(mod)
     assert mod.NOT_FLOOR == 45000.0
     assert "不止跌" in src
+    # DC 臉：虛線未走、粉 pin、紅價標；路徑函式只吐他點過的價
+    assert "_biaoke_dc_proj_path" in src
+    assert "_draw_map_pin" in src
+    assert "C-3-5" in src
+    assert "不准壓到縮圖 K" in inspect.getsource(mod) or "不准壓" in inspect.getsource(mod)
+    assert "axhspan" not in src  # 灰帶改 fill_between 右側，不准整幅蓋 K
+    # 右側欄去重：level 文案不准再夾紅價已印的數字
+    level_blob = src[src.index("level_rows") : src.index("y_span")]
+    assert "45000" not in level_blob
+    assert "47500" not in level_blob
+    assert "39000" not in level_blob
+    assert "48240" not in level_blob
+    assert "台指期48240" not in src
+    assert "不止跌" in src
+    assert "_dodge_note_ys" in src
+    assert "note_right" in src
+    assert "path_x_hi" in src
+    assert "_chart_caption_lines" in src
+    assert "或C-3-3" in src
+    # 精簡圖上氣泡：完整六行不直接畫進 ax.text
+    assert "market_wave_caption_lines(last_ymd)" not in src
+    pts = mod._biaoke_dc_proj_path(10.0, 47111.26, 6)
+    ys = {round(p[1], 2) for p in pts}
+    assert 47111.26 in ys
+    assert float(mod.NOT_FLOOR) in ys
+    assert float(mod.ZONE_LO) in ys
+    assert 56000.0 not in ys
+    # 折點 x 都在最後一根右側
+    assert all(p[0] > 10.0 for p in pts)
+
+
+def test_dodge_note_ys_keeps_gap():
+    from market_biaoke_wave import _dodge_note_ys
+
+    rows = [(48240.0, "a"), (47500.0, "b"), (45000.0, "c"), (39000.0, "d")]
+    out = _dodge_note_ys(rows, min_gap=800.0)
+    ys = [yy for _, yy, _ in out]
+    assert ys == sorted(ys, reverse=True)
+    for i in range(len(ys) - 1):
+        assert ys[i] - ys[i + 1] >= 800.0 - 1e-6
 
 
 def test_market_chart_calls_overlay_and_keeps_us_refresh():
@@ -100,3 +145,45 @@ def test_render_puts_zone_right_of_candles(tmp_path):
         assert right[2] > right[1] + 8
         corner = rgb.getpixel((8, 8))
         assert corner[0] > 200 and corner[1] > 200 and corner[2] > 200
+
+
+def test_index_view_starts_may_not_january():
+    """五月短窗：1～4 月不進畫面，右側演化區才夠寬。"""
+    import index_kline_chart as ik
+
+    assert ik._VIEW_START_YMD == "20260501"
+    rows = []
+    px = 22000.0
+    for ymd in (
+        "20260115",
+        "20260315",
+        "20260415",
+        "20260505",
+        "20260605",
+        "20260705",
+        "20260805",
+        "20260905",
+        "20261001",
+        "20261016",
+    ):
+        rows.append(
+            {
+                "date": ymd,
+                "open": px,
+                "high": px + 100,
+                "low": px - 100,
+                "close": px + 20,
+                "volume": 1_000_000,
+            }
+        )
+        px += 500
+    rows[-1]["close"] = 47111.26
+    df = pd.DataFrame(rows)
+    df["dt"] = pd.to_datetime(df["date"], format="%Y%m%d")
+    # 走裁窗邏輯（不真正存圖也能驗 work 起點）
+    full = df.copy()
+    ymd = full["date"].astype(str).str[:8]
+    view = full.loc[ymd >= ik._VIEW_START_YMD]
+    assert str(view["date"].iloc[0])[:8] >= "20260501"
+    assert "20260115" not in set(view["date"].astype(str))
+    assert "20260415" not in set(view["date"].astype(str))

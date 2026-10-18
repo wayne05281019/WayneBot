@@ -48,7 +48,9 @@ _VOL_DN = "#26a69a"
 _MA5 = "#ef6c00"
 _MA20 = "#f9a825"
 _MA60 = "#7b1fa2"
-_BARS = 180  # 與個股導航圖同一視窗，橫向才讀得清
+_BARS = 180  # 暖機／備援視窗（均線先算再裁）
+# 畫面左緣改從五月：不秀 1～4 月，右側演化／研發區才夠寬、標籤讀得清
+_VIEW_START_YMD = "20260501"
 
 
 def fetch_twii_ohlc(days: int = 120) -> pd.DataFrame:
@@ -183,7 +185,13 @@ def render_index_kline_png(
     full["ma5"] = full["close"].rolling(5, min_periods=1).mean()
     full["ma20"] = full["close"].rolling(20, min_periods=1).mean()
     full["ma60"] = full["close"].rolling(60, min_periods=1).mean()
-    work = full.tail(_BARS).reset_index(drop=True)
+    # 均線用較長暖機；畫面只留五月起→最後收，右側演化區才夠寬
+    ymd = full["date"].astype(str).str[:8]
+    view = full.loc[ymd >= _VIEW_START_YMD]
+    if len(view) >= 40:
+        work = view.reset_index(drop=True)
+    else:
+        work = full.tail(_BARS).reset_index(drop=True)
     work["vol_ma"] = work["volume"].rolling(20, min_periods=1).mean()
     n = len(work)
     if n < 2:
@@ -219,7 +227,8 @@ def render_index_kline_png(
         1 if live_px > 0 else 0,
         round(live_px, 2) if live_px > 0 else 0,
         "vol-min-v1",
-        "biaoke-mkt-20261017",
+        "biaoke-mkt-dc-rail-v3-20261018",
+        str(_VIEW_START_YMD),
     )
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
@@ -304,8 +313,14 @@ def render_index_kline_png(
     except Exception:
         stamp = ""
     # 標題一行：時間戳改放整圖右上，不准塞進標題互壓
+    view_from = str(work["date"].iloc[0])[:8]
+    view_lbl = (
+        f"{view_from[4:6]}月起"
+        if len(view_from) == 8 and view_from.isdigit()
+        else f"{n}日"
+    )
     ax1.set_title(
-        f"{title} (日K線) {n}日區間　高低帶＝近20日高／低{live_note}　WayneBot ® 2026",
+        f"{title} (日K線) {view_lbl}→最新　高低帶＝近20日高／低{live_note}　WayneBot ® 2026",
         fontproperties=_fp(14, "bold"),
         pad=38,
         color=_TEXT,
@@ -436,11 +451,12 @@ def render_index_kline_png(
 def build_market_kline_chart(
     save_path: str,
     *,
-    days: int = 180,
+    days: int = 240,
     live: Optional[Dict[str, Any]] = None,
     db_path: str | None = None,
 ) -> str:
-    df = load_index_daily_ohlc(db_path, days=days)
+    # 多抓暖機根數給季線；畫面再裁到 _VIEW_START_YMD
+    df = load_index_daily_ohlc(db_path, days=max(int(days or 240), 240))
     if df.empty:
         logger.warning("大盤日K：庫內無官方開高低收，略過 Yahoo 圖（漲跌會跟官方差）")
         return ""
