@@ -3968,6 +3968,36 @@ def _us_cash_washout(us: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return {"light": "🔴" if red else "🟡", "facts": "、".join(bits)}
 
 
+_WASH_DROP_SNIPS = ("市場不怕", "害怕已經緩下來", "沒特別變化")
+
+
+def _drop_fear_lines_that_fight_us_drop(lines: List[str]) -> List[str]:
+    """美股收盤已是大跌時，拿掉「不怕／害怕緩下來」這種相反句。"""
+    from tg_layout import _html_plain
+
+    kept: List[str] = []
+    for ln in lines or []:
+        plain = _html_plain(str(ln))
+        if any(snip in plain for snip in _WASH_DROP_SNIPS):
+            continue
+        kept.append(ln)
+    return kept
+
+
+def _washout_copy_lines(wash: Dict[str, Any]) -> List[str]:
+    """一段：官方％只出現一次，下一台股交易日不是平穩多頭日。"""
+    light = str(wash.get("light") or "")
+    parts = [p.strip() for p in str(wash.get("facts") or "").split("、") if p.strip()]
+    lines = [f"{light} {_page_b('美股收盤大跌。')}".strip()]
+    if parts:
+        mid = len(parts) if len(parts) <= 2 else (len(parts) + 1) // 2
+        lines.append(_page_b("、".join(parts[:mid]) + "。"))
+        if mid < len(parts):
+            lines.append(_page_b("、".join(parts[mid:]) + "。"))
+    lines.append(_page_b("下一個台股交易日不是平穩多頭日。"))
+    return lines
+
+
 def _cnn_fear_lines(us: Optional[Dict[str, Any]]) -> List[str]:
     """跟恐慌指數同一塊。只印 CNN 接到的讀數與檔位。"""
     raw = (us or {}).get("cnn_fear")
@@ -3984,13 +4014,7 @@ def _page_regime_lines(snap: Dict[str, Any], us: Optional[Dict[str, Any]] = None
     """大盤頁燈號：貼在環境觀察後。台股結構分只用 snap；美股現金血洗時開頭改看那組官方％。"""
     wash = _us_cash_washout(us)
     if wash:
-        light = wash["light"]
-        facts = wash["facts"]
-        return [
-            _page_kv("大方向", f"{light} {_page_b('美股現金已血洗，下一個交易日不是多頭帶動')}"),
-            _page_kv("短線", f"{light} {_page_b('不是還在往上。' + facts)}"),
-            _page_kv("下跌風險", f"{light} {_page_b('下一個交易日不是風險 0。' + facts)}"),
-        ]
+        return _washout_copy_lines(wash)
     regime = str(snap.get("regime") or "")
     regime_lab = str(snap.get("regime_label") or "—")
     if regime == "neutral" or regime_lab == "區間震盪":
@@ -4684,17 +4708,20 @@ def format_taiwan_market_page_html(
     lines = ["<b>📊 台股大盤</b>", *tw_banner, as_of_note]
     if extra_note:
         lines.append(extra_note)
-    # 環境觀察文案在 foreign_sell_display；燈號緊貼其後，中間不空行。
+    # 環境觀察文案在 foreign_sell_display；美股收盤大跌時拿掉相反的不怕／緩下來。
+    us_for_regime, us_regime_fresh = _resolve_us_for_display(db_path, ref, us_snap)
+    us_for_lines = us_for_regime if us_regime_fresh else None
     try:
         from foreign_sell_display import market_env_section_lines
 
         env_lines = market_env_section_lines(db_path, ref)
+        if _us_cash_washout(us_for_lines):
+            env_lines = _drop_fear_lines_that_fight_us_drop(env_lines)
         if env_lines:
             lines.extend(["", _TG_SECTION, *env_lines])
     except Exception:
         logger.debug("大盤頁環境觀察略過", exc_info=True)
-    us_for_regime, us_regime_fresh = _resolve_us_for_display(db_path, ref, us_snap)
-    lines.extend(_page_regime_lines(snap, us_for_regime if us_regime_fresh else None))
+    lines.extend(_page_regime_lines(snap, us_for_lines))
     read = _market_read_note(snap)
     if read:
         lines.append(read)

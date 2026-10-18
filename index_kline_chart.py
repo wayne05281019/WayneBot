@@ -112,29 +112,48 @@ def load_index_daily_ohlc(db_path: str | None = None, days: int = 120) -> pd.Dat
     if not path or not os.path.isfile(path):
         return pd.DataFrame()
     need = max(30, int(days or 120))
-    try:
-        con = sqlite3.connect(path)
+    # 大量區讀同一張表會等 30 秒。這裡以前用 sqlite 預設 5 秒，鎖一超過就吞成空表，
+    # 話筒只看到「沒有畫出圖檔」；大量區晚一點仍畫得出來。
+    sql = """
+        SELECT date, open, high, low, close, volume
+        FROM index_daily
+        WHERE symbol = 'TWII'
+          AND close > 0 AND open > 0 AND high > 0 AND low > 0
+        ORDER BY date DESC
+        LIMIT ?
+    """
+    rows = None
+    for attempt in range(3):
         try:
-            rows = con.execute(
-                """
-                SELECT date, open, high, low, close, volume
-                FROM index_daily
-                WHERE symbol = 'TWII'
-                  AND close > 0 AND open > 0 AND high > 0 AND low > 0
-                ORDER BY date DESC
-                LIMIT ?
-                """,
-                (need,),
-            ).fetchall()
-        finally:
-            con.close()
-    except Exception as exc:
-        logger.warning("index_daily OHLC 讀取失敗: %s", exc)
-        return pd.DataFrame()
+            con = sqlite3.connect(path, timeout=30.0)
+            try:
+                con.execute("PRAGMA busy_timeout=30000")
+                rows = con.execute(sql, (need,)).fetchall()
+            finally:
+                con.close()
+            break
+        except sqlite3.OperationalError as exc:
+            locked = "locked" in str(exc).lower()
+            if locked and attempt < 2:
+                continue
+            logger.warning("index_daily OHLC 讀取失敗: %s", exc)
+            return pd.DataFrame()
+        except Exception as exc:
+            logger.warning("index_daily OHLC 讀取失敗: %s", exc)
+            return pd.DataFrame()
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows[::-1], columns=["date", "open", "high", "low", "close", "volume"])
-    df["dt"] = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+    ymd = (
+        df["date"]
+        .astype(str)
+        .str.replace("-", "", regex=False)
+        .str.replace("/", "", regex=False)
+        .str.replace(r"\D", "", regex=True)
+        .str.slice(0, 8)
+    )
+    df["date"] = ymd
+    df["dt"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce")
     df = df.dropna(subset=["dt"]).reset_index(drop=True)
     return df
 

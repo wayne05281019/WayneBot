@@ -355,18 +355,58 @@ def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
     return {"card": card, "missing": card is None}
 
 
+def fetch_vix_card(us_snap: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """恐慌指數＝VIX 官方日收。沒有兩根以上真收就不組卡，不准畫假線。"""
+    try:
+        daily = _daily_closes(_chart("^VIX", "1d", "6mo"))
+    except Exception:
+        logger.exception("恐慌指數走勢抓不到")
+        return {"card": None, "missing": True, "source": ""}
+    daily = [(ymd, px) for ymd, px in daily if px and px > 0]
+    if len(daily) < 2:
+        return {"card": None, "missing": True, "source": ""}
+    daily = daily[-40:]
+    session = daily[-1][0]
+    series = [px for _, px in daily]
+    last = float(series[-1])
+    prev = float(series[-2])
+    snap = us_snap or {}
+    snap_sess = str(snap.get("us_session") or "").replace("-", "")[:8]
+    snap_vix = snap.get("vix")
+    if snap_sess == session and snap_vix is not None:
+        try:
+            pinned = float(snap_vix)
+        except (TypeError, ValueError):
+            pinned = 0.0
+        if pinned > 0:
+            last = pinned
+            series[-1] = pinned
+    card = _card(name="恐慌指數", last=last, prev=prev, series=series, integers=False)
+    if not card:
+        return {"card": None, "missing": True, "source": "yahoo_vix"}
+    card["session"] = session
+    return {"card": card, "missing": False, "source": "yahoo_vix"}
+
+
 def assemble_session_cards(
     now: Optional[datetime] = None, us_snap: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     us = fetch_us_cash_cards(now, us_snap)
     tx = fetch_tx_after_hours_card(now)
-    return {"us": us, "tx": tx, "notes": omission_lines(us, tx)}
+    vix = fetch_vix_card(us_snap)
+    return {"us": us, "tx": tx, "vix": vix, "notes": omission_lines(us, tx, vix)}
 
 
-def omission_lines(us: Dict[str, Any], tx: Dict[str, Any]) -> List[str]:
+def omission_lines(
+    us: Dict[str, Any], tx: Dict[str, Any], vix: Optional[Dict[str, Any]] = None
+) -> List[str]:
     lines = [f"{name}這次沒有官方走勢，不上圖" for name in (us or {}).get("missing") or []]
     if (tx or {}).get("missing") or not ((tx or {}).get("card") or {}).get("series"):
         lines.append("台指期盤後這次沒有官方走勢，不上圖")
+    if vix is not None and (
+        vix.get("missing") or not ((vix.get("card") or {}).get("series"))
+    ):
+        lines.append("恐慌指數這次沒有官方日收，不上圖")
     return lines
 
 
@@ -415,6 +455,7 @@ def render_session_cards(
     *,
     heading: str,
     columns: int,
+    layout: str = "grid",
 ) -> str:
     """手機縮圖要看得清：字大、標跟數字分開、昨收是虛線。"""
     import matplotlib
@@ -436,8 +477,13 @@ def render_session_cards(
     row_h = 6.85 if cols == 1 else 3.55
     fig_h = head_in + rows * row_h + 0.28
     # 單張台指期盤後是橫圖。畫布太扁會被直式查股門檻（高 900、48KB）整張丟掉。
-    if cols == 1:
+    if cols == 1 and layout != "spark":
         fig_h = max(fig_h, 960 / dpi)
+    # 恐慌指數單卡：高過大盤橫式門檻 480px，不必拉成台指期那張。
+    if layout == "spark":
+        dpi = 140
+        fig_w = 9.2
+        fig_h = 4.05
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_BG)
     fig.text(0.045, 1 - (0.28 / fig_h), heading, color=_TITLE, fontproperties=_fp(22, "bold"), ha="left", va="top")
     gap_x = 0.03
