@@ -3,6 +3,7 @@
 
 個股情境預估不走這裡。沒有把他沒寫的浪號、價、日期補進去。
 「還有約 4000 點」沒有換成價。56000 是他 10/07 的測距，10/17 已當誤判，不上這張的現況區。
+45000＝他 10/17 14:25 說「不是簡單45000就能止跌」，不是目標價。
 """
 from __future__ import annotations
 
@@ -12,6 +13,8 @@ from datetime import datetime, timedelta
 ZONE_LO = 39000.0
 ZONE_HI = 48240.0
 BROKE_LEVEL = 47500.0
+# 10/17 14:25：不是簡單45000就能止跌（回「急殺比緩跌好」）
+NOT_FLOOR = 45000.0
 DATE_YMD = "20261026"
 _ZONE = "#ce93d8"
 _LINE = "#6a1b9a"
@@ -90,6 +93,7 @@ def paint_biaoke_market_marks(ax, work) -> None:
     for price, text in (
         (ZONE_HI, "台指期48240　未站上仍空方"),
         (BROKE_LEVEL, "約47500　10/15他說破壞"),
+        (NOT_FLOOR, "約45000　他說不止跌"),
         (ZONE_LO, "約39000　C不見得破"),
     ):
         ax.plot(

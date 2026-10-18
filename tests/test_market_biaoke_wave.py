@@ -38,6 +38,9 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     assert "4000" not in src
     assert "48240" in inspect.getsource(mod)
     assert "39000" in inspect.getsource(mod)
+    assert "45000" in inspect.getsource(mod)
+    assert mod.NOT_FLOOR == 45000.0
+    assert "不止跌" in src
 
 
 def test_market_chart_calls_overlay_and_keeps_us_refresh():
