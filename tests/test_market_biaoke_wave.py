@@ -52,6 +52,21 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     assert "C-3-5" in src
     assert "不准壓到縮圖 K" in inspect.getsource(mod) or "不准壓" in inspect.getsource(mod)
     assert "axhspan" not in src  # 灰帶改 fill_between 右側，不准整幅蓋 K
+    # 右側欄去重：level 文案不准再夾紅價已印的數字
+    level_blob = src[src.index("level_rows") : src.index("y_span")]
+    assert "45000" not in level_blob
+    assert "47500" not in level_blob
+    assert "39000" not in level_blob
+    assert "48240" not in level_blob
+    assert "台指期48240" not in src
+    assert "不止跌" in src
+    assert "_dodge_note_ys" in src
+    assert "note_right" in src
+    assert "path_x_hi" in src
+    assert "_chart_caption_lines" in src
+    assert "或C-3-3" in src
+    # 精簡圖上氣泡：完整六行不直接畫進 ax.text
+    assert "market_wave_caption_lines(last_ymd)" not in src
     pts = mod._biaoke_dc_proj_path(10.0, 47111.26, 6)
     ys = {round(p[1], 2) for p in pts}
     assert 47111.26 in ys
@@ -60,6 +75,17 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     assert 56000.0 not in ys
     # 折點 x 都在最後一根右側
     assert all(p[0] > 10.0 for p in pts)
+
+
+def test_dodge_note_ys_keeps_gap():
+    from market_biaoke_wave import _dodge_note_ys
+
+    rows = [(48240.0, "a"), (47500.0, "b"), (45000.0, "c"), (39000.0, "d")]
+    out = _dodge_note_ys(rows, min_gap=800.0)
+    ys = [yy for _, yy, _ in out]
+    assert ys == sorted(ys, reverse=True)
+    for i in range(len(ys) - 1):
+        assert ys[i] - ys[i + 1] >= 800.0 - 1e-6
 
 
 def test_market_chart_calls_overlay_and_keeps_us_refresh():
