@@ -4607,6 +4607,33 @@ class WayneTelegramBot:
         """併發產圖偶發殘缺檔（只有標題、中間全白）；送出前擋掉。"""
         return WayneTelegramBot._png_looks_ok(path, min_bytes=48_000, min_w=500, min_h=900)
 
+    @staticmethod
+    def _market_landscape_chart_ok(path: str) -> bool:
+        """大盤橫式走勢。不准用查股直式高 900 把已畫出的台指期盤後整張丟掉。"""
+        return WayneTelegramBot._png_looks_ok(path, min_bytes=12_000, min_w=600, min_h=480)
+
+    @staticmethod
+    def _chart_reject_reason(path: str) -> str:
+        """失敗句要講原因。沒有檔、太小、太扁各一句，不編 K。"""
+        if not path or not os.path.exists(path):
+            return "沒有畫出圖檔。"
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            return "圖檔讀不到。"
+        if size < 12_000:
+            return f"圖檔只有 {size} bytes，不送。"
+        try:
+            from PIL import Image
+
+            with Image.open(path) as im:
+                w, h = im.size
+        except Exception:
+            return "圖檔打不開。"
+        if w < 600 or h < 480:
+            return f"圖只有 {w}×{h}，不送。"
+        return "圖檔檢查沒過。"
+
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
         await self._run_manual_screening(update.message, uid)
@@ -5586,6 +5613,15 @@ class WayneTelegramBot:
                 from us_overnight import refresh_us_for_market_page
 
                 us_press = refresh_us_for_market_page(self.db_path, as_of)
+                try:
+                    from cnn_fear import fetch_cnn_fear_greed
+
+                    fg = fetch_cnn_fear_greed(str((us_press or {}).get("us_session") or ""))
+                    if fg and isinstance(us_press, dict):
+                        us_press = dict(us_press)
+                        us_press["cnn_fear"] = fg
+                except Exception:
+                    logger.debug("CNN Fear & Greed 略過", exc_info=True)
                 live_px = None
                 try:
                     live_px = round(float((live or {}).get("price") or (live or {}).get("close") or 0), 0)
@@ -5721,12 +5757,10 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("大盤走勢圖失敗 %s", kind)
                 drawn = ""
-            if not drawn or not self._chart_png_looks_ok(drawn):
-                await message.reply_text(
-                    "美股走勢圖這次畫不出來，請稍後再試。"
-                    if kind == "us"
-                    else "台指期盤後圖這次畫不出來，請稍後再試。"
-                )
+            if not drawn or not self._market_landscape_chart_ok(drawn):
+                why = self._chart_reject_reason(drawn)
+                face = "美股走勢圖" if kind == "us" else "台指期盤後圖"
+                await message.reply_text(f"{face}這次畫不出來：{why}")
                 continue
             try:
                 send_path = self._prepare_lookup_album_photo(drawn)
@@ -5761,6 +5795,7 @@ class WayneTelegramBot:
         uid = uid or self._uid_from_message(message)
         chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "kline", uid)
         path = ""
+        fail_why = ""
         try:
             from index_kline_chart import build_market_kline_chart
             from wayne_navigator import submit_mpl_paint
@@ -5777,13 +5812,19 @@ class WayneTelegramBot:
             )
         except asyncio.TimeoutError:
             path = ""
+            fail_why = "畫圖逾時。"
             logger.warning("大盤日K圖逾時")
-        except Exception:
+        except Exception as exc:
             path = ""
+            fail_why = f"{exc.__class__.__name__}。"
             logger.exception("大盤日K圖失敗")
         try:
-            if not path or not self._chart_png_looks_ok(path):
-                await message.reply_text(fail_msg)
+            if not path or not self._market_landscape_chart_ok(path):
+                why = fail_why or self._chart_reject_reason(path)
+                if why == "沒有畫出圖檔。":
+                    await message.reply_text(fail_msg)
+                else:
+                    await message.reply_text(f"加權日K圖這次畫不出來：{why}")
                 return
             cap = "加權指數日K（K棒・他 10/17 說的 C 波區間・量）"
             try:

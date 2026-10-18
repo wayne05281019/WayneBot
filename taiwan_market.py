@@ -716,6 +716,102 @@ def load_futures_tx_foreign_oi(
     }
 
 
+def _tx_oi_series(db_path: str, item: str, as_of: str, limit: int = 6) -> List[Dict[str, Any]]:
+    """臺股期貨某一法人列的未平倉，由舊到新。沒表就空。"""
+    if not db_path or db_path == ":memory:" or not item:
+        return []
+    ensure_futures_inst_oi_table(db_path)
+    d = _norm_ymd(as_of or "")
+    conn = sqlite3.connect(db_path)
+    try:
+        if d:
+            rows = conn.execute(
+                """
+                SELECT date, oi_long, oi_short
+                FROM futures_inst_oi
+                WHERE contract=? AND item=? AND date<=?
+                ORDER BY date DESC LIMIT ?
+                """,
+                (_TX_CONTRACT_NAME, item, d, int(limit)),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT date, oi_long, oi_short
+                FROM futures_inst_oi
+                WHERE contract=? AND item=?
+                ORDER BY date DESC LIMIT ?
+                """,
+                (_TX_CONTRACT_NAME, item, int(limit)),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    out = [
+        {"date": str(r[0]), "oi_long": int(r[1] or 0), "oi_short": int(r[2] or 0)}
+        for r in reversed(rows or [])
+        if r and r[0]
+    ]
+    return out
+
+
+def _shorts_strictly_rising(rows: List[Dict[str, Any]], steps: int = 2) -> bool:
+    """最近 steps 段空單一口一口增加。少於 steps+1 列就不算持續。"""
+    if len(rows) < steps + 1:
+        return False
+    tail = rows[-(steps + 1) :]
+    prev = int(tail[0]["oi_short"])
+    for row in tail[1:]:
+        cur = int(row["oi_short"])
+        if cur <= prev:
+            return False
+        prev = cur
+    return True
+
+
+def tx_foreign_short_hedge_line(db_path: str, as_of: str) -> str:
+    """外資持續加碼放空及避險。
+
+    要同時有：頁面基準日的外資空單，而且最近兩段都在加空；
+    以及名稱含「避險」的官方列，最近兩段空單也在加。
+    缺任一段、或最新一日不是基準日，就不把這句印成事實。
+    """
+    day = _norm_ymd(as_of or "")
+    foreign = _tx_oi_series(db_path, _TX_FOREIGN_ITEM, day)
+    if not foreign or _norm_ymd(foreign[-1]["date"]) != day:
+        return ""
+    if not _shorts_strictly_rising(foreign, 2):
+        return ""
+    hedge_rows: List[Dict[str, Any]] = []
+    if db_path and db_path != ":memory:":
+        ensure_futures_inst_oi_table(db_path)
+        conn = sqlite3.connect(db_path)
+        try:
+            names = conn.execute(
+                """
+                SELECT DISTINCT item FROM futures_inst_oi
+                WHERE contract=? AND date<=?
+                """,
+                (_TX_CONTRACT_NAME, day),
+            ).fetchall()
+        except sqlite3.Error:
+            names = []
+        finally:
+            conn.close()
+        for (name,) in names or []:
+            label = str(name or "")
+            if "避險" not in label:
+                continue
+            series = _tx_oi_series(db_path, label, day)
+            if series and _norm_ymd(series[-1]["date"]) == day and _shorts_strictly_rising(series, 2):
+                hedge_rows = series
+                break
+    if not hedge_rows:
+        return ""
+    return "外資持續加碼放空及避險"
+
+
 def _taifex_num(val: Any, *, allow_dash: bool = True) -> Optional[float]:
     if val is None:
         return None
@@ -1738,7 +1834,7 @@ def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
     收盤四大指數請用 `_us_cash_close_lines`，不准走這條以免跟海選分叉。
     """
     from stock_links import html_named
-    from us_overnight import _CASH_ITEMS, format_quote_move
+    from us_overnight import _CASH_ITEMS, _STOCK_UNITS, format_phone_usd_move, format_quote_move
 
     cash_keys = {t[0] for t in _CASH_ITEMS}
     rows: List[str] = []
@@ -1749,10 +1845,17 @@ def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
         if snap.get(pct_k) is None:
             continue
         label = _US_NAME_SHORT.get(name, name)
-        move = format_quote_move(snap, pct_k, chg_k)
+        if _STOCK_UNITS.get(pct_k) == "美元":
+            move = format_phone_usd_move(snap, pct_k, chg_k)
+        else:
+            move = format_quote_move(snap, pct_k, chg_k)
         if not move or move == "—":
             continue
-        rows.append(_page_kv(html_named(label), _page_b(move)))
+        if _STOCK_UNITS.get(pct_k) == "美元":
+            # 標籤不補到 8 格，價格和「元」才留在同一行。
+            rows.append(f"{html_named(label)} {_page_b(move)}")
+        else:
+            rows.append(_page_kv(html_named(label), _page_b(move)))
     return rows
 
 
@@ -1844,6 +1947,7 @@ def _format_overnight_watch_lines(
             bits.append(
                 _page_kv("恐慌指數", f"{_page_b(vix_s)}" + (f"　{mood}" if mood else ""))
             )
+            bits.extend(_cnn_fear_lines(us))
         if not skip_post:
             fut = _us_quote_rows(us, _FUTURES_ITEMS)
             bits.extend(fut)
@@ -3814,8 +3918,79 @@ def _falling_risk_face(score: int) -> str:
     return f"往下跌的風險{level}，{s} 分，100 分最危險。"
 
 
-def _page_regime_lines(snap: Dict[str, Any]) -> List[str]:
-    """大盤頁燈號：貼在環境觀察後。數值只用 snap，不另算。"""
+def _fmt_official_pct(val: Any) -> str:
+    try:
+        return f"{float(val):+.2f}%"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _us_cash_washout(us: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """同一按已接到的美股現金。血洗才改開頭三行；沒有官方％就不改、不編分數。"""
+    if not isinstance(us, dict) or us.get("_press_miss") or us.get("_fallback"):
+        return None
+    if not _us_has_nums(us):
+        return None
+    from us_overnight import classify_us_regime, effective_sox_pct
+
+    regime = str(us.get("regime") or "") or classify_us_regime(us)
+    if regime in ("", "unknown"):
+        regime = classify_us_regime(us)
+    ixic = us.get("ixic_pct")
+    sox = effective_sox_pct(us)
+    dji = us.get("dji_pct")
+    spx = us.get("spx_pct")
+
+    def _f(v: Any) -> Optional[float]:
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    ixic_n, sox_n = _f(ixic), _f(sox)
+    blood = regime == "risk_off"
+    if ixic_n is not None and ixic_n <= -1.5:
+        blood = True
+    if sox_n is not None and sox_n <= -2.0:
+        blood = True
+    if not blood:
+        return None
+    bits: List[str] = []
+    for name, raw in (("道瓊", dji), ("標普", spx), ("那斯達克", ixic), ("費半", sox)):
+        pct = _fmt_official_pct(raw)
+        if pct:
+            bits.append(f"{name} {pct}")
+    if not bits:
+        return None
+    red = regime == "risk_off" or (ixic_n is not None and ixic_n <= -2.0) or (
+        sox_n is not None and sox_n <= -3.0
+    )
+    return {"light": "🔴" if red else "🟡", "facts": "、".join(bits)}
+
+
+def _cnn_fear_lines(us: Optional[Dict[str, Any]]) -> List[str]:
+    """跟恐慌指數同一塊。只印 CNN 接到的讀數與檔位。"""
+    raw = (us or {}).get("cnn_fear")
+    if not isinstance(raw, dict):
+        return []
+    face = str(raw.get("face") or "").strip()
+    band = str(raw.get("band") or "").strip()
+    if not face or not band:
+        return []
+    return [_page_kv("恐懼貪婪", f"{_page_b(face)}　{band}")]
+
+
+def _page_regime_lines(snap: Dict[str, Any], us: Optional[Dict[str, Any]] = None) -> List[str]:
+    """大盤頁燈號：貼在環境觀察後。台股結構分只用 snap；美股現金血洗時開頭改看那組官方％。"""
+    wash = _us_cash_washout(us)
+    if wash:
+        light = wash["light"]
+        facts = wash["facts"]
+        return [
+            _page_kv("大方向", f"{light} {_page_b('美股現金已血洗，下一個交易日不是多頭帶動')}"),
+            _page_kv("短線", f"{light} {_page_b('不是還在往上。' + facts)}"),
+            _page_kv("下跌風險", f"{light} {_page_b('下一個交易日不是風險 0。' + facts)}"),
+        ]
     regime = str(snap.get("regime") or "")
     regime_lab = str(snap.get("regime_label") or "—")
     if regime == "neutral" or regime_lab == "區間震盪":
@@ -4518,7 +4693,8 @@ def format_taiwan_market_page_html(
             lines.extend(["", _TG_SECTION, *env_lines])
     except Exception:
         logger.debug("大盤頁環境觀察略過", exc_info=True)
-    lines.extend(_page_regime_lines(snap))
+    us_for_regime, us_regime_fresh = _resolve_us_for_display(db_path, ref, us_snap)
+    lines.extend(_page_regime_lines(snap, us_for_regime if us_regime_fresh else None))
     read = _market_read_note(snap)
     if read:
         lines.append(read)
@@ -4581,6 +4757,9 @@ def format_taiwan_market_page_html(
             if chips_date and chips_date != ref:
                 lines.append(_page_kv("日期", chips_date))
     fut_rows = _format_futures_page_rows(snap)
+    hedge_line = tx_foreign_short_hedge_line(db_path, ref)
+    if hedge_line:
+        fut_rows.append(hedge_line)
     night = snap.get("futures_night") or resolve_futures_night(db_path, ref)
     night_rows = _fmt_night_page_rows(
         night or {},
