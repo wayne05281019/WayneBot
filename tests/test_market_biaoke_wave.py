@@ -25,6 +25,8 @@ def test_caption_uses_only_labels_he_said():
     assert "C-3-3" in lines
     assert "10/26" in lines
     assert "DC" in lines
+    assert "多頭一年" in lines
+    assert "過年後再下＝他沒說" in lines
     assert "1-2-3-4-5" not in lines
     assert "56000" not in lines
     assert "4000" not in lines
@@ -48,12 +50,16 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     assert "_biaoke_dc_proj_path" in src
     assert "_draw_map_pin" in src
     assert "C-3-5" in src
+    assert "不准壓到縮圖 K" in inspect.getsource(mod) or "不准壓" in inspect.getsource(mod)
+    assert "axhspan" not in src  # 灰帶改 fill_between 右側，不准整幅蓋 K
     pts = mod._biaoke_dc_proj_path(10.0, 47111.26, 6)
     ys = {round(p[1], 2) for p in pts}
     assert 47111.26 in ys
     assert float(mod.NOT_FLOOR) in ys
     assert float(mod.ZONE_LO) in ys
     assert 56000.0 not in ys
+    # 折點 x 都在最後一根右側
+    assert all(p[0] > 10.0 for p in pts)
 
 
 def test_market_chart_calls_overlay_and_keeps_us_refresh():
@@ -113,3 +119,45 @@ def test_render_puts_zone_right_of_candles(tmp_path):
         assert right[2] > right[1] + 8
         corner = rgb.getpixel((8, 8))
         assert corner[0] > 200 and corner[1] > 200 and corner[2] > 200
+
+
+def test_index_view_starts_may_not_january():
+    """五月短窗：1～4 月不進畫面，右側演化區才夠寬。"""
+    import index_kline_chart as ik
+
+    assert ik._VIEW_START_YMD == "20260501"
+    rows = []
+    px = 22000.0
+    for ymd in (
+        "20260115",
+        "20260315",
+        "20260415",
+        "20260505",
+        "20260605",
+        "20260705",
+        "20260805",
+        "20260905",
+        "20261001",
+        "20261016",
+    ):
+        rows.append(
+            {
+                "date": ymd,
+                "open": px,
+                "high": px + 100,
+                "low": px - 100,
+                "close": px + 20,
+                "volume": 1_000_000,
+            }
+        )
+        px += 500
+    rows[-1]["close"] = 47111.26
+    df = pd.DataFrame(rows)
+    df["dt"] = pd.to_datetime(df["date"], format="%Y%m%d")
+    # 走裁窗邏輯（不真正存圖也能驗 work 起點）
+    full = df.copy()
+    ymd = full["date"].astype(str).str[:8]
+    view = full.loc[ymd >= ik._VIEW_START_YMD]
+    assert str(view["date"].iloc[0])[:8] >= "20260501"
+    assert "20260115" not in set(view["date"].astype(str))
+    assert "20260415" not in set(view["date"].astype(str))
