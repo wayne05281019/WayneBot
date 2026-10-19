@@ -274,8 +274,8 @@ class IndexDailyOfficialChartTests(unittest.TestCase):
                 path, cap = build_market_vol_zone_chart(out, db_path=db)
                 self.assertTrue(path and os.path.isfile(path))
                 self.assertGreater(os.path.getsize(path), 5000)
-                self.assertIn("大量區", cap)
-                self.assertIn("非買訊", cap)
+                self.assertNotIn("非買訊", cap)
+                self.assertNotIn("測壓", cap)
         finally:
             os.unlink(db)
 

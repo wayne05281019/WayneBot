@@ -27,7 +27,7 @@ def test_sanchi_lines_fit_phone_bubble():
     assert "1000" in SANCHI_LINE_MORNING
     assert "盤中" in SANCHI_LINE_LOOKUP
     assert "全市場" in SANCHI_LINE_LEAVE_ZERO
-    assert "圖有箭≠早報必有" in SANCHI_LINE_WHY
+    assert "圖上有箭，早報不一定有。" == SANCHI_LINE_WHY
 
 
 def test_sanchi_html_and_plain():
