@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from vol_zone_chart import (
-    VOL_ZONE_CAPTION_HEAD,
     vol_zone_photo_caption,
     vol_zone_position_line,
 )
@@ -29,8 +28,9 @@ def test_chi_yuan_close_voice():
     assert "三天收盤價持續攀高" in line
     assert "低點" not in line
     assert "收盤仍沒有突破210上緣壓力" in line
-    assert "今天成交量對比前次大量那天是量縮" in line
-    assert "但溫度上升中" in line
+    assert "今天的量比前一次爆大量少很多" in line
+    assert "溫度上升。" in line
+    assert "但溫度" not in line
     assert "看起來不錯！" in line
     assert "買訊" not in line
     for w in _NO_HOLD_SELL:
@@ -42,7 +42,8 @@ def test_close_above_press_not_nice():
     bars[-1] = {"high": 216, "low": 208, "close": 214, "volume": 9000}
     line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("最高溫"), bars=bars)
     assert "收盤已過壓210上緣" in line
-    assert "不是買訊" in line
+    assert "不是買訊" not in line
+    assert "非買訊" not in line
     assert "看起來不錯" not in line
 
 
@@ -56,15 +57,19 @@ def test_close_equals_press_is_touch_not_breakout():
     assert "已過壓" not in line
     assert "站在支撐線上" in line
     assert "沒過" in line or "沒有突破" in line
-    assert "測壓不是站上" in line
+    assert "今天高碰到上緣" in line
+    assert "收盤沒過" in line
+    assert "測壓" not in line
     assert "看起來不錯" not in line
 
 
 def test_broke_support_no_nice():
     last = {"high": 194, "low": 188, "close": 190, "volume": 4000}
     line = vol_zone_position_line(_ZONE, last, None, bars=[last])
-    assert "收盤跌破撐195.5" in line
-    assert "這根大量區撐先不當還在" in line
+    assert "撐195.5已跌破" in line
+    assert "當天收190" in line
+    assert "這條撐不算還在" in line
+    assert "不當還在" not in line
     assert "看起來不錯" not in line
 
 
@@ -72,9 +77,9 @@ def test_photo_caption_keeps_head():
     cap = vol_zone_photo_caption(
         zone=_ZONE, last=_CHI_BARS[-1], bars=_CHI_BARS, card=_card_heat("升溫")
     )
-    assert cap.startswith(VOL_ZONE_CAPTION_HEAD)
+    assert "大量區（" not in cap
+    assert "非買訊" not in cap
     assert "第三天站在支撐線上" in cap
-    assert "非買訊" in cap
     for w in _NO_HOLD_SELL:
         assert w not in cap.split("\n", 1)[-1]
 
@@ -149,9 +154,10 @@ def test_tsmc_fourth_day_still_on_support_line():
     assert "但今天收盤 2,475 比昨天低" in line
     assert "昨天盤中高點有碰到上緣 2,505" in line
     assert "這四天收盤價沒有持續攀高" in line
-    assert "還是少了點" in line
-    assert "且溫度比昨天低" in line
-    assert "但溫度比昨天低" not in line
+    assert "今天的量比前一次爆大量少" in line
+    assert "少很多" not in line
+    assert "溫度比昨天低。" in line
+    assert "且溫度" not in line
     assert "看起來不錯" not in line
 
 
@@ -161,7 +167,9 @@ def test_wick_test_press_not_breakout():
         {"high": 210, "low": 198, "close": 205, "volume": 4000},
     ]
     line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
-    assert "測壓不是站上" in line
+    assert "今天高碰到上緣" in line
+    assert "收盤沒過" in line
+    assert "測壓" not in line
     assert "看起來不錯" not in line
 
 
@@ -210,12 +218,13 @@ def test_above_resistance_day_does_not_reset_support_streak():
     assert "收盤價持續攀高" not in line
     assert "沒有持續攀高" in line
     assert "收盤仍沒有突破566上緣壓力" in line
-    assert "今天成交量對比前次大量那天是量縮" in line
+    assert "前一次爆大量是9月17日" in line
+    assert "今天的量比那天少很多" in line
     assert "看起來不錯" not in line
 
 
 def test_photo_caption_keeps_zone_date_skips_own_rim():
-    from vol_zone_chart import VOL_ZONE_CAPTION_HEAD, vol_zone_photo_caption
+    from vol_zone_chart import vol_zone_photo_caption
 
     zone = {"date": "20260923", "high": 40.45, "low": 39.0, "volume": 47140}
     bars = [
@@ -224,7 +233,8 @@ def test_photo_caption_keeps_zone_date_skips_own_rim():
         {"date": "20260924", "high": 39.5, "low": 38.8, "close": 39.5, "volume": 12468},
     ]
     cap = vol_zone_photo_caption(zone=zone, last=bars[-1], bars=bars, card=_card_heat("持平"))
-    assert cap.startswith(VOL_ZONE_CAPTION_HEAD)
+    assert "大量區（" not in cap
+    assert "非買訊" not in cap
     assert "第三天" in cap
     assert "碰到上緣" not in cap
 
@@ -237,9 +247,9 @@ def test_rising_with_real_volume():
     ]
     line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
     assert "收盤價持續攀高" in line
-    assert "仍真" in line
+    assert "今天的量仍接近前一次爆大量" in line
     assert "看起來不錯！" in line
-    assert "量縮" not in line
+    assert "少很多" not in line
 
 
 def test_ex_div_cuts_pre_ex_volume_and_caption():
@@ -342,13 +352,57 @@ def test_ex_cut_streak_ignores_pre_ex_closes_above_new_support():
     assert "看起來不錯" not in line
 
 
+def _disp_w(text: str) -> int:
+    return sum(2 if ord(ch) > 127 else 1 for ch in str(text or ""))
+
+
+def test_broke_support_caption_is_plain_one_fact_per_line():
+    """跌破撐：一句一個事實。日期用選區，不寫死；溫度單獨成句。"""
+    zone = {"date": "20260826", "high": 3255.0, "low": 2940.0, "volume": 6821.0}
+    bars = [
+        {"date": "20261014", "open": 2725, "high": 2915, "low": 2710, "close": 2880, "volume": 3268},
+        {"date": "20261015", "open": 2620, "high": 2780, "low": 2615, "close": 2640, "volume": 3002},
+        {"date": "20261016", "open": 2685, "high": 2695, "low": 2500, "close": 2570, "volume": 4116},
+    ]
+    card = {
+        "table": [
+            {"date": "20261015", "升降": "降溫", "temp_num": 8.4},
+            {"date": "20261016", "升降": "升溫", "temp_num": 20.0},
+        ]
+    }
+    cap = vol_zone_photo_caption(
+        zone=zone,
+        last=bars[-1],
+        bars=bars,
+        card=card,
+        ex_events=[],
+    )
+    # 10/15 開 2620 對前收 2880，跌幅超過 5%，且沒有官方除權息列。
+    assert "10/15跳空超過5%。" in cap
+    assert "當天沒有官方除權息。" in cap
+    assert "撐2,940已跌破。" in cap
+    assert "當天收2,570。" in cap
+    assert "這條撐不算還在。" in cap
+    assert "前一次爆大量是8月26日。" in cap
+    assert "今天的量比那天少。" in cap
+    assert "溫度上升。" in cap
+    for banned in ("庫", "非買訊", "測壓", "站上", "不當崩", "不當還在"):
+        assert banned not in cap
+    assert "，" not in cap
+    for line in cap.splitlines():
+        assert line.endswith(("。", "！"))
+        assert _disp_w(line) <= 36, (line, _disp_w(line))
+
+
 def test_unexplained_gap_is_called_out():
     from vol_zone_chart import _ex_gap_note
 
     note = _ex_gap_note([], ["20260923"], "20260924", "20260923", voice="zone")
-    assert "跳空超過五％" in note
-    assert "不當崩" in note
-    assert "測壓" in note
+    assert "09/23跳空超過5%。" in note
+    assert "當天沒有官方除權息。" in note
+    assert "不當崩" not in note
+    assert "庫" not in note
+    assert "測壓" not in note
 
 
 def test_unexplained_gap_up_is_not_called_crash():

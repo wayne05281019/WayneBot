@@ -291,7 +291,10 @@ class LookupImageTests(unittest.TestCase):
             for c in message.reply_photo.await_args_list
         ]
         self.assertTrue(any("結構圖" in c for c in caps), caps)
-        self.assertTrue(any("大量撐壓" in c or "大量區" in c for c in caps), caps)
+        self.assertTrue(
+            any("大量撐壓" in c or "大量區" in c or "爆大量" in c for c in caps),
+            caps,
+        )
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE

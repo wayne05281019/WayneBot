@@ -100,7 +100,8 @@ def test_limit_up_above_press_caption():
     ]
     line = vol_zone_position_line(zone, bars[-1], _card(), bars=bars)
     assert "收盤已過壓100上緣" in line
-    assert "不是買訊" in line
+    assert "不是買訊" not in line
+    assert "非買訊" not in line
     assert "站在支撐" not in line
 
 
@@ -111,8 +112,10 @@ def test_just_broke_support_caption():
         {"date": "20260924", "high": 91, "low": 85, "close": 88, "volume": 4000},
     ]
     line = vol_zone_position_line(zone, bars[-1], _card(), bars=bars)
-    assert "收盤跌破撐90" in line
-    assert "這根大量區撐先不當還在" in line
+    assert "撐90已跌破" in line
+    assert "當天收88" in line
+    assert "這條撐不算還在" in line
+    assert "前一次爆大量是9月10日" in line
 
 
 def test_oscillate_in_band_not_rising():
@@ -148,7 +151,7 @@ def test_broke_press_then_back_still_counts_support_streak():
     assert "沒有持續攀高" in line
     assert "100" in line and ("上緣" in line or "壓力" in line)
     assert "已過壓" not in line
-    assert "量縮" in line
+    assert "今天的量比那天少很多" in line
 
 
 def test_emerging_like_bars_same_caption_path():
@@ -162,7 +165,7 @@ def test_emerging_like_bars_same_caption_path():
     line = vol_zone_position_line(zone, bars[-1], _card("持平"), bars=bars)
     assert "第三天站在支撐線上" in line
     assert "比昨天低" in line
-    assert "量縮" in line
+    assert "今天的量比那天少很多" in line
     for w in ("該買", "該賣", "買訊", "持有"):
         assert w not in line
 

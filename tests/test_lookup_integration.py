@@ -140,7 +140,10 @@ class LookupIntegrationTests(unittest.TestCase):
             caps.append(str(call.kwargs.get("caption") or ""))
         self.assertTrue(any("結構圖" in c for c in caps), caps)
         self.assertTrue(
-            any("大量撐壓" in c or "大量區" in c or "大量壓力" in c for c in caps),
+            any(
+                "大量撐壓" in c or "大量區" in c or "大量壓力" in c or "爆大量" in c
+                for c in caps
+            ),
             caps,
         )
 

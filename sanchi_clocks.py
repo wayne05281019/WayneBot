@@ -12,7 +12,7 @@ from typing import List, Sequence
 SANCHI_LINE_MORNING = "早報＝昨收掃描＋量≥1000張。"
 SANCHI_LINE_LOOKUP = "查股藍▲＝現在查（可含盤中）。"
 SANCHI_LINE_LEAVE_ZERO = "剛脫離零＝全市場雷達。"
-SANCHI_LINE_WHY = "三尺不同，圖有箭≠早報必有。"
+SANCHI_LINE_WHY = "圖上有箭，早報不一定有。"
 
 SANCHI_LINES: Sequence[str] = (
     SANCHI_LINE_MORNING,

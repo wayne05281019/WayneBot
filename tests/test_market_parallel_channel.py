@@ -96,8 +96,8 @@ def test_market_vol_zone_paints_parallel_channel(tmp_path, production_db):
     path, cap = build_market_vol_zone_chart(out, db_path=production_db)
     assert path and os.path.isfile(path)
     assert os.path.getsize(path) > 20000
-    assert "大量區" in (cap or "")
-    assert "非買訊" in (cap or "")
+    assert "非買訊" not in (cap or "")
+    assert "測壓" not in (cap or "")
     # 圖說應帶平行軌 tip（上升軌／下降壓）
     assert ("上升軌" in (cap or "")) or ("下降壓" in (cap or ""))
 
@@ -247,7 +247,10 @@ def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
     out = str(tmp_path / "vz.jpg")
     path, cap = build_market_vol_zone_chart(out, db_path=db)
     assert path and os.path.isfile(path)
-    assert "大量區" in (cap or "")
+    assert cap
+    assert "爆大量" in cap
+    assert "非買訊" not in cap
+    assert "庫" not in cap
     with Image.open(path) as im:
         assert im.size == (
             int(round(MARKET_VOL_ZONE_FIG[0] * NAV_CHART_DPI)),

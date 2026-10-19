@@ -849,11 +849,7 @@ def ex_gap_note(
             return f"{bit}。缺口是息差不是崩。"
     for d in gaps or []:
         if d:
-            extra = "、也不拿來當測壓理由。" if zone else "。"
-            return (
-                f"{_md_ex(d)}跳空超過五％，庫沒這日官方除權息列，"
-                f"缺口先不當崩{extra}"
-            )
+            return f"{_md_ex(d)}跳空超過5%。\n當天沒有官方除權息。"
     return ""
 
 

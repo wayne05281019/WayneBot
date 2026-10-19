@@ -5895,7 +5895,7 @@ class WayneTelegramBot:
             if not path or not self._chart_png_looks_ok(path):
                 await message.reply_text(fail_msg)
                 return
-            face = (cap or "").strip() or "加權大量區（壓／撐；非買訊）"
+            face = (cap or "").strip() or "加權大量區。"
             try:
                 send_path = self._prepare_lookup_album_photo(path)
                 with open(send_path, "rb") as f:
@@ -9069,7 +9069,7 @@ class WayneTelegramBot:
             struct_face = [
                 "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察　橘六角觀察＝外資預警（還在測試・非買）"
             ]
-            vol_face = ["大量撐壓圖（非買訊）"]
+            vol_face = ["大量撐壓圖。"]
 
             # 結構 paint 閉包吃預先 prepare 的 pack（由 _struct_item 填入）
             _struct_pack_box: list = [None]
@@ -9302,7 +9302,7 @@ class WayneTelegramBot:
                     logger.exception("查股大量區 prep await 失敗 code=%s", code)
                     _vol_pack_box[0] = None
                 png = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
-                cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖（非買訊）"
+                cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
                 if not png:
                     return None
                 return ("vol", png, cap, None)

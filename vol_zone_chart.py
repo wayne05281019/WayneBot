@@ -1260,14 +1260,15 @@ def find_volume_zone(
     }
 
 
-VOL_ZONE_CAPTION_HEAD = "大量區（近窗仍有效爆大量日高低＝壓／撐；測壓≠站上；非買訊）"
+# 圖下不再加括號定義。事實句由 vol_zone_photo_caption 逐句送出。
+VOL_ZONE_CAPTION_HEAD = ""
 _PRESS_TOUCH = 0.997
 _VOL_REAL = 0.70
 _VOL_THIN = 0.35
 _HEAT_CLAUSE = {
     "peak": "溫度在最高溫",
-    "up": "溫度上升中",
-    "down": "溫度下降中",
+    "up": "溫度上升",
+    "down": "溫度下降",
     "floor": "溫度在最低溫",
     "flat": "溫度沒再走",
     "diverge": "價溫背離",
@@ -1357,15 +1358,32 @@ def _heat_key(card: Optional[Dict[str, Any]]) -> str:
         return ""
 
 
-def _vol_clause(last_vol: float, zone_vol: float) -> str:
+def _vol_compare_line(last_vol: float, zone_vol: float, *, named_day: bool) -> str:
+    """量比前一次爆大量。門檻仍是 _VOL_REAL／_VOL_THIN，只改口吻。"""
     if zone_vol <= 0 or last_vol <= 0:
         return ""
     ratio = last_vol / zone_vol
+    that = "那天" if named_day else "前一次爆大量"
+    if ratio >= 1.05:
+        return f"今天的量比{that}多"
     if ratio >= _VOL_REAL:
-        return "今天成交量對比前次大量那天仍真"
+        return f"今天的量仍接近{that}"
     if ratio < _VOL_THIN:
-        return "今天成交量對比前次大量那天是量縮"
-    return "今天成交量對比前次大量那天還是少了點"
+        return f"今天的量比{that}少很多"
+    return f"今天的量比{that}少"
+
+
+def _vol_fact_lines(zone: Optional[Dict[str, Any]], last: Optional[Dict[str, Any]]) -> List[str]:
+    """前一次爆大量用選區已算出的日期，不寫死某一天。"""
+    last_vol = _px((last or {}).get("volume"))
+    zone_vol = _px((zone or {}).get("volume"))
+    md = _date_zh_md((zone or {}).get("date"))
+    cmp_line = _vol_compare_line(last_vol, zone_vol, named_day=bool(md))
+    if not cmp_line:
+        return []
+    if md:
+        return [f"前一次爆大量是{md}", cmp_line]
+    return [cmp_line]
 
 
 def _today_yest_temp(card: Optional[Dict[str, Any]]) -> tuple:
@@ -1400,22 +1418,9 @@ def _heat_clause(card: Optional[Dict[str, Any]], heat: str) -> str:
             return "溫度比昨天低"
         if today > yest + 0.05:
             if heat in ("up", "peak"):
-                return "溫度上升中"
+                return "溫度上升"
             return "溫度比昨天高"
     return _HEAT_CLAUSE.get(heat, "")
-
-
-def _vol_heat_tail(vol_c: str, heat_c: str, heat: str) -> str:
-    if vol_c and heat_c and "比昨天低" in heat_c:
-        return f"{vol_c}，且{heat_c}"
-    if vol_c and heat_c and heat in ("up", "peak") and "量縮" in vol_c:
-        return f"{vol_c}，但{heat_c}"
-    if vol_c and heat_c and heat in ("down", "floor") and "仍真" in vol_c:
-        return f"{vol_c}，但{heat_c}"
-    if vol_c and heat_c and heat in ("down", "floor") and "量縮" in vol_c:
-        return f"{vol_c}，溫度也在退"
-    bits = [x for x in (vol_c, heat_c) if x]
-    return "，".join(bits)
 
 
 def _closes_rising(closes: List[float]) -> bool:
@@ -1539,33 +1544,51 @@ def vol_zone_position_line(
     if not rows:
         rows = _rows_from_last(last)
     heat = _heat_key(card)
-    heat_c = _heat_clause(card, heat)
-    vol_c = _vol_clause(_px(last.get("volume")), _px(zone.get("volume")))
-    tail = _vol_heat_tail(vol_c, heat_c, heat)
+    heat_line = _heat_clause(card, heat)
+    vol_lines = _vol_fact_lines(zone, last)
     last_hi = _px(last.get("high") or cl)
     # 收＝壓＝碰到上緣還沒過；只有收＞壓才算過壓
     test_press = last_hi >= hi * _PRESS_TOUCH and cl <= hi
     near_press = hi > 0 and cl <= hi and (hi - cl) / hi <= 0.015
 
-    def _end(body: str, *, nice: bool = False, test: bool = False) -> str:
-        if on_ex:
-            body = body.replace("剛站在支撐線上", "剛站在除息後支撐線上")
-            body = body.replace("站在支撐線上", "站在除息後支撐線上")
-            body = body.replace("跌破撐", "跌破除息後撐")
-        if tail:
-            body = f"{body}，{tail}" if not body.endswith("。") else body[:-1] + f"，{tail}。"
-        if not body.endswith("。"):
-            body += "。"
+    def _emit(*clauses: str, nice: bool = False, test: bool = False) -> str:
+        bits: List[str] = []
+        for raw in clauses:
+            s = str(raw or "").strip()
+            if not s:
+                continue
+            if on_ex:
+                s = s.replace("剛站在支撐線上", "剛站在除息後支撐線上")
+                s = s.replace("站在支撐線上", "站在除息後支撐線上")
+                s = s.replace("跌破撐", "跌破除息後撐")
+            bits.append(s)
+        bits.extend(vol_lines)
+        if heat_line:
+            bits.append(heat_line)
         if nice:
-            body += "看起來不錯！"
+            bits.append("看起來不錯！")
         elif test:
-            body += "今天高碰到上緣、收沒過，只是測壓不是站上。"
-        return body
+            bits.append("今天高碰到上緣")
+            bits.append("收盤沒過")
+        lines: List[str] = []
+        for bit in bits:
+            s = str(bit or "").strip()
+            if not s:
+                continue
+            if not s.endswith(("。", "！")):
+                s += "。"
+            lines.append(s)
+        return "\n".join(lines)
 
     if cl < lo:
-        return _end(f"收盤跌破撐{lo_s}，這根大量區撐先不當還在")
+        hold = f"撐{lo_s}已跌破"
+        gone = "這條撐不算還在"
+        if on_ex:
+            hold = f"除息後撐{lo_s}已跌破"
+            gone = "這條除息後撐不算還在"
+        return _emit(hold, f"當天收{_fmt_price(cl)}", gone)
     if cl > hi:
-        return _end(f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊")
+        return _emit(f"收盤已過壓{hi_s}上緣")
 
     # 有官方除權息切開才卡 since；沒有則仍用全序列（同尺價可含爆大量日前）。
     since = _trade_day(zone.get("ex_cut") or "")
@@ -1581,19 +1604,19 @@ def vol_zone_position_line(
     if n == 1:
         if test_press:
             body = f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，還沒過{hi_s}上緣"
-            return _end(body, test=True)
+            return _emit(body, test=True)
         body = (
             f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，"
             f"仍沒有突破{hi_s}上緣壓力"
         )
-        return _end(body)
+        return _emit(body)
 
     if rising:
         body = (
             f"今天是第{n_ord}天站在支撐線上，且{n_zh}天收盤價持續攀高，"
             f"收盤仍沒有突破{hi_s}上緣壓力"
         )
-        return _end(body, nice=nice, test=test_press and not nice)
+        return _emit(body, nice=nice, test=test_press and not nice)
 
     if last_down:
         body = f"今天是第{n_ord}天站在支撐線上，但今天收盤 {_fmt_price(cl)} 比昨天低"
@@ -1601,22 +1624,22 @@ def vol_zone_position_line(
         prev_hi = _px(prev.get("high")) if n >= 2 else 0
         if prev_hi >= hi * _PRESS_TOUCH and not _is_zone_bar(prev, zone):
             body += f"；昨天盤中高點有碰到上緣 {hi_s}，這{n_zh}天收盤價沒有持續攀高"
-            return _end(body, test=False)
+            return _emit(body, test=False)
         body += f"，這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
-        return _end(body, test=test_press)
+        return _emit(body, test=test_press)
 
     if near_press:
         body = (
             f"今天是第{n_ord}天站在支撐線上，收盤{_fmt_price(cl)}靠近{hi_s}上緣但沒過，"
             f"仍在撐{lo_s}之上，這{n_zh}天收盤價沒有持續攀高"
         )
-        return _end(body, test=test_press)
+        return _emit(body, test=test_press)
 
     body = (
         f"今天是第{n_ord}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
         f"但這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
     )
-    return _end(body, test=test_press)
+    return _emit(body, test=test_press)
 
 
 def vol_zone_photo_caption(
@@ -1668,10 +1691,9 @@ def vol_zone_photo_caption(
         on_ex = True
     note = _ex_gap_note(events, gaps, last_d or zd, zd, voice="zone")
     pos = vol_zone_position_line(zone, last, card, bars=bars, on_ex=on_ex)
-    if pos:
-        return f"{VOL_ZONE_CAPTION_HEAD}\n{note}{pos}" if note else f"{VOL_ZONE_CAPTION_HEAD}\n{pos}"
-    if note:
-        return f"{VOL_ZONE_CAPTION_HEAD}\n{note}"
+    parts = [x.strip() for x in (note, pos) if str(x or "").strip()]
+    if parts:
+        return "\n".join(parts)
     return VOL_ZONE_CAPTION_HEAD
 
 
