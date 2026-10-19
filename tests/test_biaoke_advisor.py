@@ -229,15 +229,30 @@ def test_advice_never_pushes_retired_drone(tmp_path):
 def test_retired_drone_reply_omits_insult_aside(tmp_path):
     """已退場可標「不准再建議」；話筒不准出「廢物／廢物做法」罵句。"""
     import sqlite3
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
     from biaoke_live import SYSTEM
-    from biaoke_reweave import _field_arc, format_reweave_html, reweave_gold, reweave_live_notes
+    from biaoke_reweave import (
+        REWEAVE_DAYS,
+        _field_arc,
+        format_reweave_html,
+        reweave_gold,
+        reweave_live_notes,
+    )
 
     assert "廢物" not in SYSTEM
     assert "廢物做法" not in SYSTEM
 
-    # 四月窗內提過無人機，近 40 則沒再講 → 應出已退場、不准罵
+    # 近 120 日窗內提過無人機，近 40 則沒再講 → 應出已退場、不准罵。
+    # 日期跟台北今天走，避免窗起點滑過寫死的 6/20 之後整段消失。
+    today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+    window_start = today - timedelta(days=max(1, REWEAVE_DAYS - 1))
+    old_day = min(today - timedelta(days=100), window_start + timedelta(days=7))
+    if old_day < window_start:
+        old_day = window_start
     old = {
-        "date": "2026-06-20",
+        "date": old_day.isoformat(),
         "text": "無人機族群中光電、雷虎、事欣科不要再碰。",
         "kind": "post",
     }
@@ -263,7 +278,7 @@ def test_retired_drone_reply_omits_insult_aside(tmp_path):
         "INSERT INTO biaoke_posts(id,date,time,text,kind) VALUES(?,?,?,?,?)",
         (
             "old-drone-insult",
-            "2026-06-20",
+            old["date"],
             "10:00:00",
             "無人機族群長榮航、中光電、事欣科不要再碰。亞航、雷虎風險大。",
             "post",

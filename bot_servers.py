@@ -5838,7 +5838,7 @@ class WayneTelegramBot:
                 else:
                     await message.reply_text(f"加權日K圖這次畫不出來：{why}")
                 return
-            cap = "加權指數日K（K棒・他 10/17 說的 C 波區間・量）"
+            cap = "加權指數日K（K棒・他 10/19 大概率C-4・量）"
             try:
                 send_path = self._prepare_lookup_album_photo(path)
                 with open(send_path, "rb") as f:
