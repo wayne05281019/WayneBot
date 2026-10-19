@@ -247,7 +247,10 @@ def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
     out = str(tmp_path / "vz.jpg")
     path, cap = build_market_vol_zone_chart(out, db_path=db)
     assert path and os.path.isfile(path)
-    assert "大量區" in (cap or "")
+    assert cap
+    assert "爆大量" in cap
+    assert "非買訊" not in cap
+    assert "庫" not in cap
     with Image.open(path) as im:
         assert im.size == (
             int(round(MARKET_VOL_ZONE_FIG[0] * NAV_CHART_DPI)),
