@@ -21,23 +21,24 @@ def test_caption_uses_only_labels_he_said():
 
     lines = "\n".join(market_wave_caption_lines("20261016"))
     assert "2026/10/16" in lines
-    assert "C-3-5" in lines
     assert "C-4" in lines
+    assert "C-5" in lines
     assert "C-3-3" in lines
     assert "10/26" in lines
-    assert "最低消費" in lines
-    assert "99% 必破" in lines
+    assert "99% 會看到" in lines
+    assert "45546 必破" in lines
     assert "第一組" in lines
-    assert "DC" in lines
+    assert "2～3 組" in lines
     assert "不往上拐" in lines
-    assert "多頭一年" in lines
-    assert "過年後再下＝他沒說" in lines
+    assert "40000 以下" in lines
     assert "1-2-3-4-5" not in lines
-    assert "56000" not in lines
-    assert "4000" not in lines
+    assert "56000 已收回" in lines
+    assert "約 4000 點不換價" in lines
     assert "31117" not in lines
     assert "35000" not in lines
-    assert "40000" not in lines
+    assert "47451" not in lines
+    assert "46429" not in lines
+    assert "46816" not in lines
 
 
 def test_overlay_source_does_not_invent_impulse_or_point_drop():
@@ -47,20 +48,24 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     path_src = inspect.getsource(mod._biaoke_dc_proj_path)
     assert "1-2-3-4-5" not in src
     assert "56000" not in src
-    assert "4000" not in src
+    assert "4000點" not in src
+    assert "約4000" not in src
     assert "56000" not in path_src
     assert "48240" in inspect.getsource(mod)
     assert "39000" in inspect.getsource(mod)
     assert "45000" in inspect.getsource(mod)
     assert mod.NOT_FLOOR == 45000.0
     assert mod.BREAK_SAID == 45546.0
-    assert "最低消費" in src
+    assert "99%會看到" in src
     assert "99%必破" in src
+    assert "以下撿鑽石" in src
     # DC 臉：虛線未走、粉 pin、紅價標；路徑函式只吐他點過的價
     assert "_biaoke_dc_proj_path" in src
     assert "_draw_map_pin" in src
-    assert "C-3-5" in src
-    assert '"C-4"' in src
+    assert '"第一組"' in src
+    assert "還有2～3組" in src
+    assert "DESCENDING_RAIL_ANCHORS" in inspect.getsource(mod)
+    assert mod.DESCENDING_RAIL_ANCHORS == ()
     assert "不往上拐" in inspect.getsource(mod)
     assert "不准壓到縮圖 K" in inspect.getsource(mod) or "不准壓" in inspect.getsource(mod)
     assert "axhspan" not in src  # 灰帶改 fill_between 右側，不准整幅蓋 K
@@ -73,17 +78,21 @@ def test_overlay_source_does_not_invent_impulse_or_point_drop():
     assert "45546" not in level_blob
     assert "31117" not in src
     assert "35000" not in src
-    assert "40000" not in src
+    assert "47451" not in src
+    assert "46429" not in src
+    assert "46816" not in src
+    # 40000 只在水平標，不進未走折線
+    assert "40000" not in path_src
     assert "46844" not in src
     assert "46822" not in src
     assert "46170" not in src
     assert "台指期48240" not in src
-    assert "最低消費" in src
+    assert "99%會看到" in src
     assert "_dodge_note_ys" in src
     assert "note_right" in src
     assert "path_x_hi" in src
     assert "_chart_caption_lines" in src
-    assert "或C-3-3" in src
+    assert "不另畫" in src
     # 精簡圖上氣泡：完整六行不直接畫進 ax.text
     assert "market_wave_caption_lines(last_ymd)" not in src
     pts = mod._biaoke_dc_proj_path(10.0, 47111.26, 6)
@@ -139,7 +148,7 @@ def test_market_chart_calls_overlay_and_keeps_us_refresh():
     assert "paint_biaoke_market_marks" in inspect.getsource(ik.render_index_kline_png)
     page = inspect.getsource(bot_servers.WayneTelegramBot._send_market_page)
     assert page.index("refresh_us_for_market_page") < page.index("_send_market_kline")
-    assert "他 10/19 大概率C-4" in inspect.getsource(
+    assert "C-4機率最高" in inspect.getsource(
         bot_servers.WayneTelegramBot._send_market_kline
     )
 
@@ -231,3 +240,22 @@ def test_index_view_starts_may_not_january():
     assert str(view["date"].iloc[0])[:8] >= "20260501"
     assert "20260115" not in set(view["date"].astype(str))
     assert "20260415" not in set(view["date"].astype(str))
+
+
+def test_july_dip_window_is_the_session_not_the_close_low():
+    """7/29 11:15 說今天第一次抄。39384 是收完才有的低，不當成他當時報的價。"""
+    from market_biaoke_wave import read_dip_session
+
+    speech = (
+        "要抄底至少要分三次，今天第一次，等開始強彈第一天B-a-1第二次，"
+        "B-a-2 轉B-a-3第三次，這是我的規劃。這是純技術分析抄底，不能重壓，"
+        "我在此區間最多壓剩下資金的1/3。"
+    )
+    assert "39384" not in speech
+    # 11:13 圖上頭列收與當時已走出的低，不是收盤低 39384.85。
+    got = read_dip_session(speech, price_then=39946.75, low_already=39743.56)
+    assert got is not None
+    assert got["window"] == "當日盤中"
+    assert got["exact_entry"] is None
+    assert got["distance_to_printed_low"] == round(39946.75 - 39743.56, 2)
+    assert read_dip_session("45000是99%會看到的，我看的不是這麼簡單。") is None

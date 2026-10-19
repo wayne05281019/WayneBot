@@ -1,11 +1,20 @@
 # -*- coding: utf-8 -*-
-"""台股大盤日K：只疊飆大本人還沒收回的位（收到 2026-10-19 13:47）。
+"""台股大盤日K：只疊飆大本人還沒收回的位（收到 2026-10-19 18:58）。
 
 個股情境預估不走這裡。沒有把他沒寫的浪號、價、日期補進去。
-「還有約 4000 點」沒有換成價。56000 是他 10/07 的測距，10/17 已當誤判，不上這張的現況區。
-45000＝10/17「不是簡單45000就能止跌」，10/19 09:50 補成「最低消費」。不是止跌價，也不是 C-4 反彈價。
+「還有約 4000 點」沒有換成價。56000 是他 10/07 的測距，10/17 已收回，不上這張。
+45000＝10/19 18:57「99% 會看到」。不是止跌價，也不是 C-4 反彈價。
 45546＝他寫的 9/16 低點，00:49 說 99% 必破。庫內那根低點差不到 1 點就貼同一軌，不另畫。
-31117、35000、40000 這批不是他的目標，不畫。C-4 沒有反彈價，虛線不往上拐。10/26 他沒收回。
+40000 以下＝18:58 彎腰撿鑽石的條件，只留水平，不拿來當下一組的目標價。
+39000 左右＝C 不見得破。31117、35000 不是他的目標，不畫。
+47451、46429、46816 是別人的價，不畫成他的。
+18:52：第一組裡 C-4 機率最高，其次 C-5 走完再第一組反彈 B。這兩個沒有價。
+18:55：可以像 7 月畫 60 分下降趨勢線；跌破下降軌才把第一組標成完成，後面還有 2～3 組。
+7 月那幾張（181095970、181132138、181145877、181149602）下降斜線沒有印出兩個轉折價，
+文字也沒寫兩個錨點（41600～41800 是那條線當晚大約在的區間，不是兩個高點）。錨點缺，不假畫。
+所以這張不把第一組標成完成，2～3 組只留組數，不另畫路徑、不補未來價。
+C-4 沒有反彈價，虛線不往上拐。10/26、C-3-3、「過 2 天還有 5」他沒明文收回。
+抄底窗跟下降軌分開：他說「今天可以抄」才把當天盤中當窗，不要求精確進場價。不是黃金買點。
 
 視覺借 DC 情境預估臉（虛線未走路徑、浪標、粉 pin、演化帶、關鍵日豎線、右側紅價標）；
 折線／位階／日期只認他自己說的，不准抄 DC 個股目標到大盤。
@@ -15,17 +24,22 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
 # 他寫出來的整數。39000＝「39000左右」。48240 他註明是台指期。
 ZONE_LO = 39000.0
 ZONE_HI = 48240.0
 BROKE_LEVEL = 47500.0
-# 10/17 14:25：不是簡單45000就能止跌。10/19 09:50：基本上45000是最低消費。
+# 10/19 18:57：45000 是 99% 會看到。不是止跌價，也不是 C-4 反彈價。
 NOT_FLOOR = 45000.0
+# 18:58：殺到 40000 以下才是彎腰撿鑽石。只留水平，不進未走折線。
+DIAMOND_BELOW = 40000.0
 # 他寫的 9/16 低點。官方那根是 45546.56，差不到 1 點就用那一軌。
 BREAK_SAID = 45546.0
 DATE_YMD = "20261026"
+# 7 月下降斜線的兩個轉折價：圖上沒印、文字沒寫。缺了就不畫。
+DESCENDING_RAIL_ANCHORS: tuple[tuple[str, float], ...] = ()
 
 # DC 視覺臉（對齊 scenario_forecast_chart v4 配色；路徑內容仍是飆大）
 _ZONE = "#ce93d8"
@@ -71,13 +85,16 @@ def market_wave_caption_lines(session_ymd: str) -> tuple[str, ...]:
     head = f"官方日K至 {stamp}" if stamp else "官方日K"
     return (
         head,
-        "他 10/19　大概率 C-3-5 轉 C-4",
-        "過兩天還有 5；只是第一組",
-        "最保守仍 3-5；或還在 C-3-3",
+        "他 10/19 18:52　C-4 機率最高",
+        "其次 C-5 走完再第一組反彈 B；這兩個沒有價",
+        "下降軌兩個轉折沒印出來，不畫，第一組不標完成",
+        "還有 2～3 組，只留組數，不另畫路徑",
+        "過兩天還有 5、或還在 C-3-3，他沒劃掉",
         "10/26 他沒收回；C-4 無反彈價",
-        "45000 最低消費；45546 有 99% 必破",
-        "殺完他說多頭一年；過年後再下＝他沒說",
-        "虛線＝未走（DC臉・不往上拐）",
+        "45000 有 99% 會看到；45546 必破",
+        "40000 以下才撿鑽石；39000 C 不見得破",
+        "56000 已收回不畫；約 4000 點不換價",
+        "虛線＝未走（不往上拐）",
     )
 
 
@@ -88,7 +105,7 @@ def _chart_caption_lines(session_ymd: str) -> tuple[str, ...]:
     if len(raw) == 8 and raw.isdigit():
         stamp = f"{raw[:4]}/{raw[4:6]}/{raw[6:8]}"
     head = f"官方日K至 {stamp}" if stamp else "官方日K"
-    return (head, "虛線＝未走・C-4無價不往上拐")
+    return (head, "虛線未走・第一組未標完成・2～3組無價")
 
 
 def _biaoke_dc_proj_path(
@@ -96,8 +113,9 @@ def _biaoke_dc_proj_path(
 ) -> list[tuple[float, float]]:
     """未走虛線折點：只經他自己點過的整數價＋官方最後收。不准發明中間價／反彈高。
 
-    現況＝大概率已轉 C-4，但沒有反彈價，所以折線不往上拐。
-    下行仍只經約45000最低消費 → 約39000（不見得破）。不准拐去這批不是目標的價。
+    現況＝C-4 機率最高，但沒有反彈價，所以折線不往上拐。
+    下行仍只經他說 99% 會看到的 45000 → 約 39000（C 不見得破）。
+    撿鑽石那條水平不插進這條折線，也不拿來當第 2、第 3 組的價。
     「過年後再往下」大盤句他沒說，不畫。
     """
     s = float(steps if steps is not None else 8)
@@ -190,11 +208,11 @@ def _draw_wave_dot(ax, x: float, y: float, label: str, *, fp, color: str) -> Non
     ax.annotate(
         label,
         xy=(x, y),
-        xytext=(-10, 12),
+        xytext=(8, 14),
         textcoords="offset points",
         color=color,
         fontproperties=fp,
-        ha="right",
+        ha="left",
         va="bottom",
         zorder=9,
         clip_on=True,
@@ -288,8 +306,9 @@ def paint_biaoke_market_marks(ax, work) -> None:
         wave_x = min(max(x0 + 1.35, x0 + 0.55), (x0 + seg_end_x) * 0.5)
         wave_x = min(wave_x, path_x_hi - 1.0)
         wave_y = _path_y_at(clipped, wave_x)
-        # 短標貼路徑，長句走右側欄，避免字蓋回 K
-        _draw_wave_dot(ax, wave_x, wave_y, "C-4", fp=fp_w, color=_INK)
+        # 短標貼路徑，長句走右側欄，避免字蓋回 K。
+        # 下降軌錨點缺，不把第一組標成完成，也不另畫第 2、第 3 組。
+        _draw_wave_dot(ax, wave_x, wave_y, "第一組", fp=fp_w, color=_INK)
         # C-3-3 註：併入右側說明欄，不准再疊在路徑上
         pin_450 = next((p for p in clipped if abs(p[1] - NOT_FLOOR) < 1.0), None)
         if pin_450 is not None and pin_450[0] >= x0:
@@ -306,7 +325,8 @@ def paint_biaoke_market_marks(ax, work) -> None:
         (ZONE_HI, "48240", "台指期未站上"),
         (BROKE_LEVEL, "47500", "10/15破壞"),
         (break_y, "45546", "99%必破"),
-        (NOT_FLOOR, "45000", "最低消費"),
+        (NOT_FLOOR, "45000", "99%會看到"),
+        (DIAMOND_BELOW, "40000", "以下撿鑽石"),
         (ZONE_LO, "39000", "C不見得破"),
     ]
     level_rows: list[tuple[float, str]] = [
@@ -315,8 +335,8 @@ def paint_biaoke_market_marks(ax, work) -> None:
     y_span = max(hi - lo, 1.0)
     min_gap = max(y_span * 0.055, 780.0)
     dodged = _dodge_note_ys(level_rows, min_gap=min_gap)
-    # 浪句不跟價標搶同一軌：排在 47500 與 45546 中間，避免「最低消費」被擠離 45000。
-    wave_notes = ("大概率自C-3-5", "過2天有5・第一組", "或C-3-3")
+    # 浪句不跟價標搶同一軌：排在 47500 與 45546 中間。
+    wave_notes = ("C-4最高・無價", "其次C-5再B・無價", "還有2～3組・不另畫")
     gap_w = max(min_gap * 0.55, 520.0)
     ceiling = float(BROKE_LEVEL) - gap_w
     floor = float(break_y) + gap_w
@@ -425,3 +445,32 @@ def paint_biaoke_market_marks(ax, work) -> None:
             alpha=0.93,
         ),
     )
+
+
+_DIP_TODAY = re.compile(
+    r"(今天.{0,12}抄|抄底.{0,40}今天第一次|可開始抄底|今天可以抄)"
+)
+
+
+def read_dip_session(
+    speech: str,
+    *,
+    price_then: float | None = None,
+    low_already: float | None = None,
+) -> dict | None:
+    """他說今天可以抄：窗＝當天盤中。不要求一句精確進場價。
+
+    距離只用當時價對當天已經走出的低點。收盤後才知道的低點不要傳進來當他開口報的價。
+    沒說「今天可以抄」就回 None。不是黃金買點，不改 leave_zero。
+    """
+    blob = str(speech or "")
+    if not _DIP_TODAY.search(blob):
+        return None
+    dist = None
+    if price_then is not None and low_already is not None:
+        dist = round(float(price_then) - float(low_already), 2)
+    return {
+        "window": "當日盤中",
+        "exact_entry": None,
+        "distance_to_printed_low": dist,
+    }
