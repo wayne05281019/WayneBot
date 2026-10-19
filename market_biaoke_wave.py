@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""台股大盤日K：只疊飆大本人在 2026-10-16／10-17 還沒收回的位。
+"""台股大盤日K：只疊飆大本人還沒收回的位（收到 2026-10-19 13:47）。
 
 個股情境預估不走這裡。沒有把他沒寫的浪號、價、日期補進去。
 「還有約 4000 點」沒有換成價。56000 是他 10/07 的測距，10/17 已當誤判，不上這張的現況區。
-45000＝他 10/17 14:25 說「不是簡單45000就能止跌」，不是目標價。
+45000＝10/17「不是簡單45000就能止跌」，10/19 09:50 補成「最低消費」。不是止跌價，也不是 C-4 反彈價。
+45546＝他寫的 9/16 低點，00:49 說 99% 必破。庫內那根低點差不到 1 點就貼同一軌，不另畫。
+31117、35000、40000 這批不是他的目標，不畫。C-4 沒有反彈價，虛線不往上拐。10/26 他沒收回。
 
 視覺借 DC 情境預估臉（虛線未走路徑、浪標、粉 pin、演化帶、關鍵日豎線、右側紅價標）；
 折線／位階／日期只認他自己說的，不准抄 DC 個股目標到大盤。
@@ -19,8 +21,10 @@ from datetime import datetime, timedelta
 ZONE_LO = 39000.0
 ZONE_HI = 48240.0
 BROKE_LEVEL = 47500.0
-# 10/17 14:25：不是簡單45000就能止跌（回「急殺比緩跌好」）
+# 10/17 14:25：不是簡單45000就能止跌。10/19 09:50：基本上45000是最低消費。
 NOT_FLOOR = 45000.0
+# 他寫的 9/16 低點。官方那根是 45546.56，差不到 1 點就用那一軌。
+BREAK_SAID = 45546.0
 DATE_YMD = "20261026"
 
 # DC 視覺臉（對齊 scenario_forecast_chart v4 配色；路徑內容仍是飆大）
@@ -67,11 +71,13 @@ def market_wave_caption_lines(session_ymd: str) -> tuple[str, ...]:
     head = f"官方日K至 {stamp}" if stamp else "官方日K"
     return (
         head,
-        "他說 10/17　C-3-5 行進中",
-        "5 還沒止跌；也可能還在 C-3-3",
-        "C-4 他改口 10/26 起或之後（折返・無高點）",
+        "他 10/19　大概率 C-3-5 轉 C-4",
+        "過兩天還有 5；只是第一組",
+        "最保守仍 3-5；或還在 C-3-3",
+        "10/26 他沒收回；C-4 無反彈價",
+        "45000 最低消費；45546 有 99% 必破",
         "殺完他說多頭一年；過年後再下＝他沒說",
-        "虛線＝未走（DC臉・走法是他的）",
+        "虛線＝未走（DC臉・不往上拐）",
     )
 
 
@@ -82,7 +88,7 @@ def _chart_caption_lines(session_ymd: str) -> tuple[str, ...]:
     if len(raw) == 8 and raw.isdigit():
         stamp = f"{raw[:4]}/{raw[4:6]}/{raw[6:8]}"
     head = f"官方日K至 {stamp}" if stamp else "官方日K"
-    return (head, "虛線＝未走（DC臉・走法是他的）")
+    return (head, "虛線＝未走・C-4無價不往上拐")
 
 
 def _biaoke_dc_proj_path(
@@ -90,8 +96,8 @@ def _biaoke_dc_proj_path(
 ) -> list[tuple[float, float]]:
     """未走虛線折點：只經他自己點過的整數價＋官方最後收。不准發明中間價／反彈高。
 
-    現況＝C-3-5（或 C-3-3）下行中 → 約45000不止跌 → 約39000（不見得破）收束未走。
-    C-4 只有日期、沒有他給的反彈高，所以折線不往上拐（避免假價）。
+    現況＝大概率已轉 C-4，但沒有反彈價，所以折線不往上拐。
+    下行仍只經約45000最低消費 → 約39000（不見得破）。不准拐去這批不是目標的價。
     「過年後再往下」大盤句他沒說，不畫。
     """
     s = float(steps if steps is not None else 8)
@@ -140,6 +146,27 @@ def _dodge_note_ys(
         out.append((y, yy, t))
         last_y = yy
     return out
+
+
+def break_track_y(work) -> float:
+    """99% 必破貼在 9/16 低點那一軌。差不到 1 點不另畫一條。"""
+    y = float(BREAK_SAID)
+    if work is None:
+        return y
+    try:
+        dates = work["date"].astype(str).str[:8]
+        hit = work.loc[dates == "20260916"]
+    except (TypeError, KeyError, AttributeError):
+        return y
+    if hit is None or len(hit) == 0 or "low" not in hit.columns:
+        return y
+    try:
+        lo = float(hit["low"].iloc[0])
+    except (TypeError, ValueError, IndexError):
+        return y
+    if abs(lo - y) < 1.0:
+        return lo
+    return y
 
 
 def _draw_map_pin(ax, x: float, y: float) -> None:
@@ -261,7 +288,8 @@ def paint_biaoke_market_marks(ax, work) -> None:
         wave_x = min(max(x0 + 1.35, x0 + 0.55), (x0 + seg_end_x) * 0.5)
         wave_x = min(wave_x, path_x_hi - 1.0)
         wave_y = _path_y_at(clipped, wave_x)
-        _draw_wave_dot(ax, wave_x, wave_y, "C-3-5", fp=fp_w, color=_INK)
+        # 短標貼路徑，長句走右側欄，避免字蓋回 K
+        _draw_wave_dot(ax, wave_x, wave_y, "C-4", fp=fp_w, color=_INK)
         # C-3-3 註：併入右側說明欄，不准再疊在路徑上
         pin_450 = next((p for p in clipped if abs(p[1] - NOT_FLOOR) < 1.0), None)
         if pin_450 is not None and pin_450[0] >= x0:
@@ -271,19 +299,36 @@ def paint_biaoke_market_marks(ax, work) -> None:
     else:
         wave_y = float(last_close)
 
-    # 水平位：線停在說明欄左；紅價只印一次；說明去重數字、右對齊在紅價左側
+    # 水平位：線停在說明欄左；紅價只印一次；說明去重數字、右對齊在紅價左側。
+    # 45546 與 9/16 官方低差不到 1 點時，線的 y 用那根低點，紅標仍印他寫的 45546。
+    break_y = break_track_y(work)
+    price_tags: list[tuple[float, str, str]] = [
+        (ZONE_HI, "48240", "台指期未站上"),
+        (BROKE_LEVEL, "47500", "10/15破壞"),
+        (break_y, "45546", "99%必破"),
+        (NOT_FLOOR, "45000", "最低消費"),
+        (ZONE_LO, "39000", "C不見得破"),
+    ]
     level_rows: list[tuple[float, str]] = [
-        (ZONE_HI, "台指期未站上"),
-        (BROKE_LEVEL, "10/15破壞"),
-        (NOT_FLOOR, "不止跌"),
-        (ZONE_LO, "C不見得破"),
-        (float(wave_y), "或C-3-3"),
+        (price, text) for price, _tag, text in price_tags
     ]
     y_span = max(hi - lo, 1.0)
     min_gap = max(y_span * 0.055, 780.0)
     dodged = _dodge_note_ys(level_rows, min_gap=min_gap)
+    # 浪句不跟價標搶同一軌：排在 47500 與 45546 中間，避免「最低消費」被擠離 45000。
+    wave_notes = ("大概率自C-3-5", "過2天有5・第一組", "或C-3-3")
+    gap_w = max(min_gap * 0.55, 520.0)
+    ceiling = float(BROKE_LEVEL) - gap_w
+    floor = float(break_y) + gap_w
+    top = min(float(wave_y), ceiling)
+    need = gap_w * (len(wave_notes) - 1)
+    if top - need < floor:
+        top = floor + need
+    for i, text in enumerate(wave_notes):
+        yy = top - i * gap_w
+        dodged.append((yy, yy, text))
 
-    for price, _text in level_rows[:4]:
+    for price, tag, _text in price_tags:
         ax.plot(
             [x0, hline_xmax],
             [price, price],
@@ -296,7 +341,7 @@ def paint_biaoke_market_marks(ax, work) -> None:
         ax.text(
             tag_x,
             price,
-            f"{int(price)}",
+            tag,
             color="#ffffff",
             fontproperties=fp_d,
             ha="right",
