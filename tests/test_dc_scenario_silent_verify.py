@@ -186,7 +186,7 @@ def _matching_diff():
             "confirmed": [{"label": "(1)", "price": 4800}],
             "projected": [{"label": "(3)", "price": 4800}],
             "abc": [],
-            "zones": [{"price": 4800}],
+            "zones": [{"lo": 4700, "hi": 4900, "kind": "ok", "label": "滿足 4800"}],
             "wedge": True,
             "desc_press": {"source": "vb"},
         },

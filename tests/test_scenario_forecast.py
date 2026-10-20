@@ -219,6 +219,50 @@ def test_dc_wave_labels_and_projection():
     assert "不是買訊" in cap and "不保證" in cap
 
 
+def test_wave4_fulfill_band_and_dir_arrows_helper():
+    from scenario_forecast_chart import _wave4_fulfill_band, _paint_wave_dir_arrows
+
+    lo, hi = _wave4_fulfill_band(240.0, 128.0, 385.0)
+    assert lo < hi
+    # 約在 240–260 滿足區語意：含 (1) 鄰與 0.5 回撤
+    assert lo <= 240 <= hi or (226 <= lo <= 250 and 250 <= hi <= 270)
+    assert 230 <= hi <= 280
+    # helper 可呼叫（不噴）
+    class _Ax:
+        def annotate(self, *a, **k):
+            return None
+
+    _paint_wave_dir_arrows(
+        _Ax(),
+        {
+            "confirmed": [
+                {"label": "(1)", "i": 10, "price": 240},
+                {"label": "(2)", "i": 30, "price": 128},
+            ],
+            "projected": [
+                {"label": "(3)", "i": 50, "price": 385},
+                {"label": "(4)", "i": 70, "price": 250},
+                {"label": "(5)", "i": 90, "price": 512},
+            ],
+        },
+    )
+
+
+def test_impulse_projected_has_fulfill_zone():
+    rows = _impulse_rows(120)
+    ladders = [{"price": 220.0}, {"price": 250.0}, {"price": 280.0}]
+    wave = infer_dc_wave_scenario(rows, ladders)
+    assert wave
+    zones = list(wave.get("zones") or [])
+    # 有虛線 (4) 時應帶滿足灰框（kind=ok）
+    labs = set(wave.get("labels") or [])
+    if "(4)" in labs and not any(
+        c.get("label") == "(4)" and not c.get("projected")
+        for c in (wave.get("confirmed") or [])
+    ):
+        assert any(str(z.get("kind") or "") == "ok" for z in zones)
+
+
 def test_snap_support_band_and_ending_fifth():
     from scenario_forecast_chart import (
         _snap_support_band_price,

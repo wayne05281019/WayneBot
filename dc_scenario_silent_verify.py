@@ -1056,8 +1056,17 @@ def compare_one(
         our_wave.get("wedge") or (our_wave.get("desc_press") or {}).get("source")
     ):
         gaps.append("他提通道／壓線；我們幾何未掛")
-    if his.get("has_target_words") and not (our_wave.get("zones") or our_wave.get("projected")):
+    our_zones = list(our_wave.get("zones") or [])
+    has_fulfill = any(str(z.get("kind") or "") in ("ok", "tgt") for z in our_zones)
+    if his.get("has_target_words") and not (our_zones or our_wave.get("projected")):
         gaps.append("他提目標；我們無帶／虛線")
+    # 他明文「滿足」或已有虛線 (4) 卻無滿足灰框 → 記缺層（可遷移）
+    need_fulfill = ("滿足" in str(his_text or "")) or any(
+        str(p.get("label") or "") == "(4)"
+        for p in list(our_wave.get("projected") or [])
+    )
+    if need_fulfill and not has_fulfill:
+        gaps.append("他有滿足區／目標帶；我們未畫滿足灰框")
     if meaning and meaning not in ("文意標大致重疊", "雙方無可對文意標"):
         gaps.append("文意／說法差異")
     note = "；".join(gaps) if gaps else "結構／價位／文意大致可對或他文無可量化浪標"
@@ -1103,6 +1112,8 @@ def compare_one(
         "our_wave": {
             "deadline": dict((our_wave or {}).get("deadline") or {}),
             "labels": our_labs,
+            "zones": list((our_wave or {}).get("zones") or []),
+            "projected": list((our_wave or {}).get("projected") or []),
         },
         "gaps": gaps,
         "meaning_diff": meaning,
@@ -1379,6 +1390,19 @@ def build_why_card(
         transferable.append("未來時間軸長度依該檔浪段／時間對稱分檔，不准每檔同一終點")
     if missing:
         transferable.append("方法詞缺漏時優先補：" + "／".join(missing[:6]))
+    # 8227 對照鎖死的可遷移層（無單檔絕對價）
+    for g in gaps:
+        if "滿足" in g:
+            transferable.append(
+                "(4)滿足區＝(1)鄰域∪(3)-(2)之0.5～0.618回撤帶，標hi/lo，(4)點落帶內"
+            )
+    transferable.extend(
+        [
+            "方向箭：修正腿綠下、衝動腿紅上；語意＝走勢意圖不是買訊",
+            "Vegas藍＝EMA144/169、紅＝EMA576/676均線隧道；紫陰影＝未來浪路徑包絡，語意不同勿混",
+            "樞紐差致點位差：他用已走真峰谷＋滿足帶定(3)(5)；勿只抄單夜絕對價",
+        ]
+    )
     # 去重保序
     seen_t: set = set()
     transfer_u: List[str] = []
@@ -1500,19 +1524,25 @@ def persist_mismatch_learn(
         if t not in rules:
             rules.append(t)
     rules = rules[-40:]  # 留近窗，避免無限長
+    paint = dict(old.get("paint") or {}) if isinstance(old.get("paint"), dict) else {}
+    # 夜檔可吸收的畫層旗標（情境預估讀；預設開）
+    paint.setdefault("fulfill_zone_w4", True)
+    paint.setdefault("dir_arrows", True)
+    paint.setdefault("vegas_dual_tunnel", True)
     val = {
         "as_of": _ymd(as_of),
         "rules": rules,
+        "paint": paint,
         "n_cards_night": len(cards),
         "not_buy_signal": True,
-        "note": "可遷移方法句；不含單檔絕對價；只進情境預估",
+        "note": "可遷移方法句＋paint 旗標；不含單檔絕對價；只進情境預估",
     }
     upsert_rule(
         db_path,
         "learn_transfer",
         val,
         as_of=as_of,
-        note="日對質：可遷移 why／滿足點／時間軸方法",
+        note="日對質：可遷移 why／滿足點／時間軸／畫層",
     )
     return {"n": len(cards), "transfer_n": len(transfer_all), "keys": ["learn_transfer"]}
 
