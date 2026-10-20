@@ -922,16 +922,16 @@ def render_fear_greed_gauge(
     def _ang(val: float) -> float:
         return 180.0 - (max(0.0, min(100.0, val)) / 100.0) * 180.0
 
-    # 上半＝弧＋針＋23＋說明（同一座標系）。
+    # 上半＝弧＋針＋23＋說明（同一座標系）。弧盤加大；相關字級跟弧一起放大。
     # 用 axes 框比例對齊 data，不用 set_aspect（避免縮框留邊）。
-    y0, y1 = -0.92, 1.22
-    ax_w, ax_h = 0.996, 0.515
+    y0, y1 = -0.98, 1.28
+    ax_w, ax_h = 0.996, 0.575
     # (Δy/Δx) = (ax_h/ax_w)*(fig_h/fig_w) → 算滿寬所需 Δx
     dy = y1 - y0
     dx = dy / ((ax_h / ax_w) * (fig_h / fig_w))
     x0, x1 = -0.5 * dx, 0.5 * dx
     ax_x = (1.0 - ax_w) / 2.0
-    ax_y = 0.988 - 0.038 - ax_h
+    ax_y = 0.988 - 0.034 - ax_h
     gauge = fig.add_axes([ax_x, ax_y, ax_w, ax_h])
     gauge.set_xlim(x0, x1)
     gauge.set_ylim(y0, y1)
@@ -942,23 +942,23 @@ def render_fear_greed_gauge(
         gauge.add_patch(
             Wedge(
                 (0, 0), 1.0, _ang(hi), _ang(lo), width=0.46,
-                facecolor=color, edgecolor=_NAVY, linewidth=2.2, alpha=0.97,
+                facecolor=color, edgecolor=_NAVY, linewidth=2.4, alpha=0.97,
             )
         )
         mid = (lo + hi) / 2.0
         rad = math.radians(_ang(mid))
         if 45.0 <= mid <= 55.0:
-            r_lab, y_nudge = 1.16, -0.02
+            r_lab, y_nudge = 1.18, -0.02
         elif mid <= 20.0 or mid >= 80.0:
-            r_lab, y_nudge = 1.20, -0.10
+            r_lab, y_nudge = 1.22, -0.11
         else:
-            r_lab, y_nudge = 1.18, 0.0
+            r_lab, y_nudge = 1.20, 0.0
         gauge.text(
             r_lab * math.cos(rad),
             r_lab * math.sin(rad) + y_nudge,
             f"{zh}\n{en}",
             color=_WHITE,
-            fontproperties=_fp(16, "bold"),
+            fontproperties=_fp(19, "bold"),
             ha="center",
             va="center",
             linespacing=1.05,
@@ -968,53 +968,53 @@ def render_fear_greed_gauge(
         gauge.plot(
             [0.52 * math.cos(rad), 1.0 * math.cos(rad)],
             [0.52 * math.sin(rad), 1.0 * math.sin(rad)],
-            color=_NAVY, lw=1.6, zorder=3,
+            color=_NAVY, lw=1.8, zorder=3,
         )
         if tick == 50:
             gauge.text(
                 0.0, 0.76, "50",
-                color=_NAVY, fontproperties=_fp(17, "bold"), ha="center", va="center", zorder=4,
+                color=_NAVY, fontproperties=_fp(20, "bold"), ha="center", va="center", zorder=4,
             )
         else:
-            tr = 1.34
+            tr = 1.36
             gauge.text(
                 tr * math.cos(rad),
                 tr * math.sin(rad) - (0.05 if tick in (0, 100) else 0),
                 str(tick),
                 color=_MUTE,
-                fontproperties=_fp(18, "bold"),
+                fontproperties=_fp(21, "bold"),
                 ha="center",
                 va="center",
             )
     prad = math.radians(_ang(score_f))
     gauge.plot(
         [0, 0.70 * math.cos(prad)], [0, 0.70 * math.sin(prad)],
-        color=_WHITE, lw=6.5, solid_capstyle="round", zorder=5,
+        color=_WHITE, lw=7.2, solid_capstyle="round", zorder=5,
     )
-    gauge.plot(0, 0, "o", color=_WHITE, markersize=15, zorder=6)
+    gauge.plot(0, 0, "o", color=_WHITE, markersize=17, zorder=6)
     # 23 與說明在弧下同一座標系；空隙清楚、不碰針／不互壓。
-    gauge.text(0, -0.05, face, color=_WHITE, fontproperties=_fp(66, "bold"), ha="center", va="top")
+    gauge.text(0, -0.04, face, color=_WHITE, fontproperties=_fp(78, "bold"), ha="center", va="top")
     gauge.text(
-        0, -0.58,
+        0, -0.62,
         "市場即時情緒指標",
         color=_MUTE,
-        fontproperties=_fp(20, "bold"),
+        fontproperties=_fp(23, "bold"),
         ha="center",
         va="top",
     )
     if band:
         gauge.text(
-            0, -0.78,
+            0, -0.84,
             band,
             color=_WHITE,
-            fontproperties=_fp(24, "bold"),
+            fontproperties=_fp(28, "bold"),
             ha="center",
             va="top",
         )
 
     # 下半＝趨勢表：貼上半底到畫布底，左右幾乎貼邊。
     panel_top = ax_y - 0.004
-    panel_h = max(0.30, panel_top - 0.006)
+    panel_h = max(0.28, panel_top - 0.006)
     panel = fig.add_axes([0.006, 0.006, 0.988, panel_h])
     panel.set_xlim(0, 1)
     panel.set_ylim(0, 1)
