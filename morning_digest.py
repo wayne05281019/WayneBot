@@ -104,6 +104,16 @@ def _foreign_sell_observe_line(db_path: str, as_of: str) -> str:
         return ""
 
 
+def _prev_day_margin_line(db_path: str, as_of: str) -> str:
+    """早報：前一日大盤融資增減（億）。沒官方列＝空。失敗不擋早報。"""
+    try:
+        from official_snapshots import format_prev_day_margin_line
+
+        return format_prev_day_margin_line(db_path, as_of or "")
+    except Exception:
+        return ""
+
+
 def build_morning_opening_html(
     db_path: str,
     as_of: str,
@@ -114,11 +124,13 @@ def build_morning_opening_html(
     """合成海選第一則前的開頭（提醒＋大盤狀況＋加權研究）。"""
     outlook = _outlook_from_screening(screening)
     observe = _foreign_sell_observe_line(db_path, as_of or "")
-    if observe and outlook:
-        # 插在大盤狀況段下：與大盤頁同一段三句
-        outlook = outlook.rstrip() + "\n" + observe
-    elif observe and not outlook:
-        outlook = observe
+    margin = _prev_day_margin_line(db_path, as_of or "")
+    extras = [x for x in (observe, margin) if x and str(x).strip()]
+    if extras and outlook:
+        # 插在大盤狀況段下：環境觀察＋前一日融資（與大盤頁同一環境資訊）
+        outlook = outlook.rstrip() + "\n" + "\n".join(extras)
+    elif extras and not outlook:
+        outlook = "\n".join(extras)
     tw_brief = ""
     try:
         from taiwan_market import format_taiwan_market_brief_html

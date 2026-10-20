@@ -28,6 +28,8 @@ log = logging.getLogger("wayne.official")
 
 TWSE_BWIBBU = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
 TWSE_MARGN = "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN"
+# 上市信用交易統計（融資金額仟元）：大盤融資餘額增減用這張，不是個股 MI_MARGN 明細。
+TWSE_MI_MARGN_RWD = "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN"
 TWSE_TWTB4U = "https://openapi.twse.com.tw/v1/exchangeReport/TWTB4U"
 TWSE_FMTQIK = "https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK"
 # OpenAPI FMTQIK 常只留近兩日且換日會晚；rwd 月表與 MI_INDEX 同一官方源，盤後用來補 fuse_end。
@@ -554,6 +556,14 @@ def ensure_schema(db_path: str | None = None) -> str:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (stock_id, date)
             );
+            CREATE TABLE IF NOT EXISTS market_margin_daily (
+                date TEXT NOT NULL PRIMARY KEY,
+                margin_bal_prev_k INTEGER,
+                margin_bal_k INTEGER,
+                margin_delta_k INTEGER,
+                source TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS daytrade_status (
                 stock_id TEXT NOT NULL,
                 date TEXT NOT NULL,
@@ -582,6 +592,7 @@ def ensure_schema(db_path: str | None = None) -> str:
             );
             CREATE INDEX IF NOT EXISTS idx_valuation_date ON daily_valuation(date);
             CREATE INDEX IF NOT EXISTS idx_margin_date ON daily_margin(date);
+            CREATE INDEX IF NOT EXISTS idx_market_margin_date ON market_margin_daily(date);
             CREATE INDEX IF NOT EXISTS idx_daytrade_date ON daytrade_status(date, suspended);
             CREATE INDEX IF NOT EXISTS idx_etf_nav_date ON etf_nav_snapshot(date);
             CREATE INDEX IF NOT EXISTS idx_etf_div_date ON etf_div_event(ex_date);
@@ -684,6 +695,226 @@ def parse_tpex_margin(rows: Sequence[dict]) -> List[dict]:
             "source": "tpex_margin",
         })
     return out
+
+
+def _market_margin_date_from_payload(payload: dict) -> str:
+    """信用交易統計日期：先 payload.date，再標題民國年月日。"""
+    date = str((payload or {}).get("date") or "").replace("-", "")[:8]
+    if len(date) == 8 and date.isdigit():
+        return date
+    for table in (payload or {}).get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        title = str(table.get("title") or "")
+        if "信用交易統計" not in title:
+            continue
+        ymd = roc_to_ymd(title)
+        if len(ymd) == 8:
+            return ymd
+    return ""
+
+
+def parse_twse_market_margin_payload(payload: dict) -> Optional[Dict[str, Any]]:
+    """證交所 MI_MARGN 信用交易統計：融資金額(仟元) 前日／今日餘額。
+
+    單位＝仟元。增減＝今日餘額−前日餘額。沒有真數列回 None。
+    """
+    if not isinstance(payload, dict):
+        return None
+    if str(payload.get("stat") or "") != "OK":
+        return None
+    date = _market_margin_date_from_payload(payload)
+    if len(date) != 8:
+        return None
+    for table in payload.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        title = str(table.get("title") or "")
+        fields = [str(x) for x in (table.get("fields") or [])]
+        if "信用交易統計" not in title and "項目" not in fields:
+            continue
+        for row in table.get("data") or []:
+            if not isinstance(row, (list, tuple)) or not row:
+                continue
+            label = str(row[0] or "")
+            if "融資金額" not in label:
+                continue
+            if len(row) < 6:
+                return None
+            prev_k = _int(row[4])
+            bal_k = _int(row[5])
+            if prev_k is None or bal_k is None:
+                return None
+            return {
+                "date": date,
+                "margin_bal_prev_k": prev_k,
+                "margin_bal_k": bal_k,
+                "margin_delta_k": bal_k - prev_k,
+                "source": "twse_mi_margn_credit",
+            }
+    return None
+
+
+def fetch_twse_market_margin(ymd: str = "", timeout: int = 45) -> Optional[Dict[str, Any]]:
+    """抓上市大盤融資金額統計。ymd 空＝官網最新一日；有日則指定 YYYYMMDD。"""
+    d = str(ymd or "").replace("-", "")[:8]
+    if d and (len(d) != 8 or not d.isdigit()):
+        return None
+    q = "response=json&selectType=ALL"
+    if d:
+        q = f"date={d}&{q}"
+    url = f"{TWSE_MI_MARGN_RWD}?{q}"
+    req = Request(
+        url,
+        headers={
+            "User-Agent": _BROWSER_UA,
+            "Referer": "https://www.twse.com.tw/zh/trading/margin/mi-margn.html",
+        },
+    )
+    with urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    return parse_twse_market_margin_payload(payload if isinstance(payload, dict) else {})
+
+
+def _upsert_market_margin(conn: sqlite3.Connection, row: Optional[dict], now: str) -> int:
+    if not row:
+        return 0
+    date = str(row.get("date") or "").replace("-", "")[:8]
+    if len(date) != 8:
+        return 0
+    prev_k = row.get("margin_bal_prev_k")
+    bal_k = row.get("margin_bal_k")
+    delta_k = row.get("margin_delta_k")
+    if prev_k is None or bal_k is None or delta_k is None:
+        return 0
+    conn.execute(
+        """
+        INSERT INTO market_margin_daily(
+            date, margin_bal_prev_k, margin_bal_k, margin_delta_k, source, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET
+            margin_bal_prev_k=excluded.margin_bal_prev_k,
+            margin_bal_k=excluded.margin_bal_k,
+            margin_delta_k=excluded.margin_delta_k,
+            source=excluded.source,
+            updated_at=excluded.updated_at
+        """,
+        (
+            date,
+            int(prev_k),
+            int(bal_k),
+            int(delta_k),
+            str(row.get("source") or "twse_mi_margn_credit"),
+            now,
+        ),
+    )
+    return 1
+
+
+def sync_market_margin_daily(db_path: str | None = None, ymd: str = "") -> Dict[str, Any]:
+    """盤後寫入大盤融資金額增減。失敗不擋其他官方快照。"""
+    path = ensure_schema(db_path)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    wrote = 0
+    errors: Dict[str, str] = {}
+    targets: List[str] = []
+    cap = str(ymd or "").replace("-", "")[:8]
+    if len(cap) == 8:
+        targets.append(cap)
+    else:
+        try:
+            from trading_calendar import fuse_end_trading_date
+
+            fuse_cap = str(fuse_end_trading_date() or "").replace("-", "")[:8]
+            if len(fuse_cap) == 8:
+                targets.append(fuse_cap)
+        except Exception:
+            pass
+        targets.append("")  # 官網最新
+    seen_dates: set[str] = set()
+    for target in targets:
+        try:
+            row = fetch_twse_market_margin(target)
+        except Exception as exc:
+            key = target or "latest"
+            errors[key] = str(exc)
+            log.warning("大盤融資統計 %s 失敗：%s", key, exc)
+            continue
+        if not row:
+            continue
+        date = str(row.get("date") or "")
+        if date in seen_dates:
+            continue
+        seen_dates.add(date)
+        conn = sqlite3.connect(path)
+        try:
+            wrote += _upsert_market_margin(conn, row, now)
+            conn.commit()
+        finally:
+            conn.close()
+    return {"ok": wrote > 0, "wrote": wrote, "dates": sorted(seen_dates), "errors": errors}
+
+
+def latest_market_margin(
+    db_path: str | None = None, as_of: str = ""
+) -> Optional[Dict[str, Any]]:
+    """讀庫內大盤融資金額列。as_of 有值＝該日或往前最近有官方列；空＝最新。"""
+    path = db_path or get_db_path()
+    if not path or not os.path.isfile(path):
+        return None
+    ensure_schema(path)
+    cap = str(as_of or "").replace("-", "")[:8]
+    conn = sqlite3.connect(path)
+    try:
+        if len(cap) == 8 and cap.isdigit():
+            row = conn.execute(
+                """
+                SELECT date, margin_bal_prev_k, margin_bal_k, margin_delta_k, source
+                FROM market_margin_daily
+                WHERE date <= ?
+                ORDER BY date DESC LIMIT 1
+                """,
+                (cap,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT date, margin_bal_prev_k, margin_bal_k, margin_delta_k, source
+                FROM market_margin_daily
+                ORDER BY date DESC LIMIT 1
+                """
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    if not row or row[3] is None:
+        return None
+    return {
+        "date": str(row[0]),
+        "margin_bal_prev_k": int(row[1]) if row[1] is not None else None,
+        "margin_bal_k": int(row[2]) if row[2] is not None else None,
+        "margin_delta_k": int(row[3]),
+        "source": str(row[4] or ""),
+    }
+
+
+def format_prev_day_margin_line(db_path: str | None = None, as_of: str = "") -> str:
+    """話筒一行：前一日融資 增／減 X.X 億。沒官方列＝空字串（不佔位）。"""
+    row = latest_market_margin(db_path, as_of=as_of)
+    if not row:
+        return ""
+    delta_k = row.get("margin_delta_k")
+    if delta_k is None:
+        return ""
+    # 官方單位仟元 → 億元
+    yi = abs(int(delta_k)) / 100_000.0
+    amt = f"{yi:.1f}"
+    if int(delta_k) < 0:
+        return f"前一日融資 減 {amt} 億"
+    if int(delta_k) > 0:
+        return f"前一日融資 增 {amt} 億"
+    return "前一日融資 持平"
 
 
 def parse_twtb4u(rows: Sequence[dict]) -> List[dict]:
@@ -1238,10 +1469,22 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
     industry_pairs += parse_company_industry(fetched.get("tpex_co") or [], source="tpex")
     ind_n = overlay_industry(path, industry_pairs)
 
+    mkt_mar_n = 0
+    try:
+        mkt_res = sync_market_margin_daily(path, ymd=fallback or fuse_cap)
+        mkt_mar_n = int(mkt_res.get("wrote") or 0)
+        for k, msg in (mkt_res.get("errors") or {}).items():
+            errors[f"market_margin_{k}"] = msg
+    except Exception as exc:
+        errors["market_margin"] = str(exc)
+        log.warning("大盤融資統計寫庫略過：%s", exc)
+
     return {
-        "ok": not errors or val_n + mar_n + dt_n + fmt_n + ohlc_n + nav_n + div_n > 0,
+        "ok": not errors
+        or val_n + mar_n + dt_n + fmt_n + ohlc_n + nav_n + div_n + mkt_mar_n > 0,
         "valuation": val_n,
         "margin": mar_n,
+        "market_margin": mkt_mar_n,
         "daytrade": dt_n,
         "etf_nav": nav_n,
         "etf_div": div_n,

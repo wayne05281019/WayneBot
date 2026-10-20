@@ -4725,6 +4725,15 @@ def format_taiwan_market_page_html(
     read = _market_read_note(snap)
     if read:
         lines.append(read)
+    # 環境觀察：前一日大盤融資增減（官方仟元→億）。沒真數整行省略。
+    try:
+        from official_snapshots import format_prev_day_margin_line
+
+        margin_line = format_prev_day_margin_line(db_path, ref)
+        if margin_line:
+            lines.append(margin_line)
+    except Exception:
+        logger.debug("大盤頁前一日融資略過", exc_info=True)
     from stock_links import html_index_anchor, html_named
 
     lines.extend(["", html_index_anchor("加權指數")])
