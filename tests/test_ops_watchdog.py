@@ -218,12 +218,72 @@ def test_missed_jobs_flags_both_after_evening(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    now = datetime(2026, 9, 2, 19, 0)  # 過了 18:30
+    now = datetime(2026, 9, 2, 19, 0)  # 過了 16:45 融合死線
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
     assert kinds == {"increment", "morning_screen", "midday_review"}
     midday = next(m for m in missed_jobs(path, now=now) if m["kind"] == "midday_review")
     assert midday["calendar"] == "20260902"
     assert midday["run_date"] == "midday-20260902"
+
+
+def test_missed_jobs_flags_increment_after_1645(tmp_path, monkeypatch):
+    """16:45 起就要判融合 miss；不准拖到 18:30。"""
+    from ops_watchdog import JOB_SPECS
+
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    assert int(JOB_SPECS["increment"]["due_minutes"]) == 16 * 60 + 45
+    now = datetime(2026, 9, 2, 16, 46)
+    kinds = {m["kind"] for m in missed_jobs(path, now=now)}
+    assert "increment" in kinds
+    assert "morning_screen" in kinds
+
+
+def test_missed_jobs_skips_fresh_increment_running(tmp_path, monkeypatch):
+    from zoneinfo import ZoneInfo
+
+    from ops_watchdog import INCREMENT_RUNNING_STALE_SEC
+
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20261020")
+    tw = ZoneInfo("Asia/Taipei")
+    fin = datetime(2026, 10, 20, 16, 32, tzinfo=tw).isoformat()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?, ?, ?, ?)",
+        ("20261020", fin, "running", "increment-claim"),
+    )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 10, 20, 16, 35, tzinfo=tw)
+    kinds = {m["kind"] for m in missed_jobs(path, now=now)}
+    assert "increment" not in kinds
+    assert INCREMENT_RUNNING_STALE_SEC <= 600
+
+
+def test_missed_jobs_flags_stale_increment_running(tmp_path, monkeypatch):
+    from zoneinfo import ZoneInfo
+
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20261020")
+    tw = ZoneInfo("Asia/Taipei")
+    fin = datetime(2026, 10, 20, 16, 32, tzinfo=tw).isoformat()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?, ?, ?, ?)",
+        ("20261020", fin, "running", "increment-claim"),
+    )
+    conn.commit()
+    conn.close()
+    # 租約 5 分過期後＝Deploy 殺死後鎖；過 16:45 死線才進 missed 讓補跑重搶
+    now = datetime(2026, 10, 20, 16, 46, tzinfo=tw)
+    missed = [m for m in missed_jobs(path, now=now) if m["kind"] == "increment"]
+    assert len(missed) == 1
+    assert missed[0]["status"] == "running"
+    assert missed[0]["run_date"] == "20261020"
 
 
 def test_missed_jobs_increment_quiet_when_bars_complete(tmp_path, monkeypatch):
