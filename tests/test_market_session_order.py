@@ -80,10 +80,14 @@ def test_render_fear_greed_gauge_passes_send_gate(tmp_path):
         "score": 17.938,
         "face": "18",
         "band": "極度恐懼",
+        "band_en": "Extreme Fear",
         "session": "20261016",
         "history": [
-            {"label": "前一日", "face": "22", "band": "極度恐懼"},
-            {"label": "一週前", "face": "46", "band": "中立"},
+            {"label": "當日", "date": "2026/10/16", "face": "18", "band": "極度恐懼", "color": "#e53935"},
+            {"label": "前一交易日", "date": "2026/10/15", "face": "22", "band": "極度恐懼", "color": "#e53935"},
+            {"label": "一週前", "date": "2026/10/09", "face": "46", "band": "中立", "color": "#f9a825"},
+            {"label": "一個月前", "date": "2026/09/16", "face": "30", "band": "恐懼", "color": "#ef6c00"},
+            {"label": "一年前", "date": "2025/10/16", "face": "22", "band": "極度恐懼", "color": "#e53935"},
         ],
     }
     path = str(tmp_path / "fear.png")
@@ -95,7 +99,7 @@ def test_render_fear_greed_gauge_passes_send_gate(tmp_path):
 
 def test_tx_board_card_with_volume_passes_send_gate(tmp_path):
     from bot_servers import WayneTelegramBot
-    from market_session_cards import render_session_cards
+    from market_session_cards import render_tx_electronic_board
 
     card = {
         "name": "台指電子盤",
@@ -104,15 +108,18 @@ def test_tx_board_card_with_volume_passes_send_gate(tmp_path):
         "chg": -1144,
         "pct": -2.42,
         "series": [47200 - i * 15 for i in range(40)],
+        "xs": [i * 20 for i in range(40)],
+        "ma": [47200 - i * 12 for i in range(40)],
         "volumes": [100 + (i % 7) * 30 for i in range(40)],
         "volume": 8000,
+        "last_qty": 12,
+        "high": 47300,
+        "low": 46000,
         "asof_time": "04:55:00",
         "integers": True,
     }
     path = str(tmp_path / "tx.png")
-    out = render_session_cards(
-        path, [card], heading="台指電子盤　2026/10/16", columns=1, layout="board"
-    )
+    out = render_tx_electronic_board(path, card, heading="台指電子盤　2026/10/16")
     assert out == path
     assert WayneTelegramBot._market_landscape_chart_ok(path)
 

@@ -227,6 +227,8 @@ def test_tx_after_hours_card_passes_send_gate(tmp_path):
     from bot_servers import WayneTelegramBot
     from market_session_cards import render_session_cards
 
+    from market_session_cards import render_tx_electronic_board
+
     card = {
         "name": "台指電子盤",
         "last": 47366,
@@ -234,15 +236,18 @@ def test_tx_after_hours_card_passes_send_gate(tmp_path):
         "chg": 124,
         "pct": 0.26,
         "series": [46900 + i * 3 for i in range(40)],
+        "xs": [i * 20 for i in range(40)],
+        "ma": [46900 + i * 2 for i in range(40)],
         "volumes": [50 + i for i in range(40)],
         "volume": 3000,
+        "last_qty": 8,
+        "high": 47420,
+        "low": 46880,
         "asof_time": "04:50:00",
         "integers": True,
     }
     path = str(tmp_path / "tx.png")
-    out = render_session_cards(
-        path, [card], heading="台指電子盤　2026/10/16", columns=1, layout="board"
-    )
+    out = render_tx_electronic_board(path, card, heading="台指電子盤　2026/10/16")
     assert out == path
     assert WayneTelegramBot._market_landscape_chart_ok(path)
     assert os.path.getsize(path) >= 12_000
