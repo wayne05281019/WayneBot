@@ -161,6 +161,8 @@ def test_missed_jobs_incomplete_still_alerts(tmp_path, monkeypatch):
 def test_missed_jobs_skips_fresh_morning_running(tmp_path, monkeypatch):
     from zoneinfo import ZoneInfo
 
+    from ops_watchdog import MORNING_RUNNING_STALE_SEC
+
     path = _make_db(tmp_path)
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
@@ -173,8 +175,33 @@ def test_missed_jobs_skips_fresh_morning_running(tmp_path, monkeypatch):
     )
     conn.commit()
     conn.close()
+    # 租約內（預設 30 分）：長掃進行中不當漏寄
     now = datetime(2026, 10, 13, 6, 55, tzinfo=tw)
     assert missed_jobs(path, now=now) == []
+    assert MORNING_RUNNING_STALE_SEC >= 1800
+
+
+def test_missed_jobs_flags_stale_morning_running(tmp_path, monkeypatch):
+    """租約過期仍 running＝死鎖；08:45 類誤卡要進 missed，讓補跑可重搶。"""
+    from zoneinfo import ZoneInfo
+
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20261019")
+    tw = ZoneInfo("Asia/Taipei")
+    fin = datetime(2026, 10, 20, 6, 30, 41, tzinfo=tw).isoformat()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?, ?, ?, ?)",
+        ("screen-20261019", fin, "running", "morning-claim"),
+    )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 10, 20, 8, 45, tzinfo=tw)
+    missed = missed_jobs(path, now=now)
+    assert [m["kind"] for m in missed] == ["morning_screen"]
+    assert missed[0]["status"] == "running"
+    assert missed[0]["run_date"] == "screen-20261019"
 
 
 def test_missed_jobs_computed_still_alerts(tmp_path, monkeypatch):

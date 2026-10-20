@@ -5640,14 +5640,31 @@ class WayneTelegramBot:
                 hit = _PAGE_HTML_CACHE.get(memo_key)
                 if hit and (now - float(hit[0])) < _PAGE_HTML_TTL_SEC:
                     return hit[1]
-                from market_session_cards import assemble_session_cards
-
-                bundle = assemble_session_cards(
-                    us_snap=us_press, cnn_fear=(us_press or {}).get("cnn_fear")
-                )
+                # 文字先出；盤後卡（期交所 zip）慢或逾時不准吃掉整頁 45 秒預算。
                 html = format_taiwan_market_page_html(
                     self.db_path, live=live, snap=snap, us_snap=us_press
                 )
+                from market_session_cards import assemble_session_cards
+
+                bundle: dict = {
+                    "us": {"session": "", "cards": [], "missing": []},
+                    "tx": {"card": None, "missing": True},
+                    "fear": None,
+                    "notes": [],
+                }
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as card_ex:
+                        card_f = card_ex.submit(
+                            lambda: assemble_session_cards(
+                                us_snap=us_press,
+                                cnn_fear=(us_press or {}).get("cnn_fear"),
+                            )
+                        )
+                        got = card_f.result(timeout=10)
+                        if isinstance(got, dict):
+                            bundle = got
+                except Exception:
+                    logger.debug("大盤盤後卡略過（不擋文字）", exc_info=True)
                 notes = (bundle or {}).get("notes") or []
                 if notes:
                     from tg_layout import html_escape

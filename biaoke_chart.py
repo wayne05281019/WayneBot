@@ -3831,14 +3831,27 @@ def render_biaoke_structure_png(
     live_quote: Optional[Dict[str, Any]] = None,
 ) -> str:
     rows = list(bars or [])
-    # 縮圖最後一根 K／量＝決策卡盤中真報價（與圖一／二同源）；選區仍官方原柱。
-    if isinstance(card, dict) and card.get("is_live"):
+    # 縮圖最後一根 K／量＝決策卡今天臉（與圖一／二／大量區同源）；選區仍官方原柱。
+    # 盤中 overlay；13:30 收後 is_live 可能已關，仍要用卡上今天這根，不准臉柱停在昨收。
+    if isinstance(card, dict) and card:
         try:
             from live_quote import overlay_live_face_from_card
 
-            rows = list(
-                overlay_live_face_from_card(rows, card, stock_id=str(sid or "")) or rows
+            if card.get("is_live"):
+                rows = list(
+                    overlay_live_face_from_card(rows, card, stock_id=str(sid or ""))
+                    or rows
+                )
+        except Exception:
+            pass
+        try:
+            from vol_zone_chart import align_vol_zone_caption_face
+
+            face, rows2, meta = align_vol_zone_caption_face(
+                rows[-1] if rows else None, rows, card
             )
+            if meta.get("aligned") and rows2 and face:
+                rows = list(rows2)
         except Exception:
             pass
     if len(rows) < 8 or not save_path:

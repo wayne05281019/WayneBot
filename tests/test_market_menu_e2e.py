@@ -319,6 +319,19 @@ class TestMarketMenuE2E:
         bot._menu_fade_gen = {}
         bot._lookup_locks = {}
         msg = _message()
+        empty_cards = {
+            "us": {"session": "", "cards": [], "missing": []},
+            "tx": {"card": None, "missing": True},
+            "fear": None,
+            "notes": [],
+        }
+        press_miss = {
+            "ok": False,
+            "_press_miss": True,
+            "_fallback": True,
+            "us_session": "",
+            "regime": "unknown",
+        }
 
         with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
             bot, "_start_plain_wait", new_callable=AsyncMock
@@ -330,23 +343,11 @@ class TestMarketMenuE2E:
             "live_quote.fetch_mis_index_quote", return_value=None
         ), patch(
             "us_overnight.refresh_us_for_market_page",
-            return_value={
-                "ok": False,
-                "_press_miss": True,
-                "_fallback": True,
-                "us_session": "",
-                "regime": "unknown",
-            },
+            return_value=press_miss,
         ), patch(
             "cnn_fear.fetch_cnn_fear_greed", return_value=None
         ), patch(
-            "market_session_cards.assemble_session_cards",
-            return_value={
-                "us": {"session": "", "cards": [], "missing": []},
-                "tx": {"card": None, "missing": True},
-                "fear": None,
-                "notes": [],
-            },
+            "market_session_cards.assemble_session_cards", return_value=empty_cards
         ), patch.object(
             bot, "_send_market_session_cards", new_callable=AsyncMock
         ), patch.object(
@@ -367,6 +368,16 @@ class TestMarketMenuE2E:
         body = msg.reply_html.await_args.args[0]
         assert "台股大盤" in body
         assert "三大法人" in body or "結構" in body or "加權指數" in body
+        # 逾時改走 reply_text「大盤讀取逾時」＝沒做完；db-only 不准靠外網
+        timeout_replies = [
+            c.args[0]
+            for c in msg.reply_text.await_args_list
+            if c.args and "逾時" in str(c.args[0])
+        ]
+        assert not timeout_replies
+        from us_overnight import refresh_us_for_market_page as _refresh
+
+        assert not isinstance(_refresh, MagicMock)
 
     def test_on_text_routes_market_and_flow(self, tmp_path):
         db = str(tmp_path / "route.db")
@@ -419,33 +430,37 @@ class TestMarketMenuE2E:
         bot._screening_running = set()
         bot._menu_fade_gen = {}
         bot._lookup_locks = {}
+        empty_cards = {
+            "us": {"session": "", "cards": [], "missing": []},
+            "tx": {"card": None, "missing": True},
+            "fear": None,
+            "notes": [],
+        }
+        press_miss = {
+            "ok": False,
+            "_press_miss": True,
+            "_fallback": True,
+            "us_session": "",
+            "regime": "unknown",
+        }
 
-        # 外層一次 patch：兩 uid 並行時不可各開 unittest.patch（停補丁會互踩，留下假 refresh）。
-        with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
-            bot, "_start_plain_wait", new_callable=AsyncMock
-        ) as st, patch.object(
-            bot, "_stop_plain_wait", new_callable=AsyncMock
-        ), patch(
-            "live_quote.fetch_mis_index_quote", return_value=None
-        ), patch(
+        async def _run(uid):
+            msg = _message(uid)
+            wait_start = AsyncMock(return_value=(MagicMock(), None, None))
+            with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
+                bot, "_start_plain_wait", new=wait_start
+            ), patch.object(bot, "_stop_plain_wait", new_callable=AsyncMock):
+                await bot.market_cmd(_update(msg), MagicMock())
+            return msg
+
+        # 外網 mock 放 gather 外：兩協程同時 patch 同一屬性會漏還原，毒到後面 us_press 測。
+        with patch("live_quote.fetch_mis_index_quote", return_value=None), patch(
             "us_overnight.refresh_us_for_market_page",
-            return_value={
-                "ok": False,
-                "_press_miss": True,
-                "_fallback": True,
-                "us_session": "",
-                "regime": "unknown",
-            },
+            return_value=press_miss,
         ), patch(
             "cnn_fear.fetch_cnn_fear_greed", return_value=None
         ), patch(
-            "market_session_cards.assemble_session_cards",
-            return_value={
-                "us": {"session": "", "cards": [], "missing": []},
-                "tx": {"card": None, "missing": True},
-                "fear": None,
-                "notes": [],
-            },
+            "market_session_cards.assemble_session_cards", return_value=empty_cards
         ), patch.object(
             bot, "_send_market_session_cards", new_callable=AsyncMock
         ), patch.object(
@@ -453,18 +468,15 @@ class TestMarketMenuE2E:
         ), patch.object(
             bot, "_send_market_vol_zone", new_callable=AsyncMock
         ):
-            st.return_value = (MagicMock(), None, None)
-
-            async def _run(uid):
-                msg = _message(uid)
-                await bot.market_cmd(_update(msg), MagicMock())
-                return msg
 
             async def run_both():
                 await asyncio.gather(_run(111), _run(222))
 
             asyncio.run(run_both())
         assert bot._pending.get("99:111") == "buy"
+        from us_overnight import refresh_us_for_market_page as _refresh
+
+        assert not isinstance(_refresh, MagicMock)
 
     def test_market_page_builds_under_two_seconds(self):
         import time

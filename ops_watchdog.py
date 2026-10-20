@@ -47,6 +47,10 @@ HEARTBEAT_POLLING = "telegram_polling"
 # 心跳每 60s；逾 5 分鐘（約 5 拍）判死。舊值 900 會讓迴圈卡 8 分仍顯示 alive。
 _POLLING_STALE_SECONDS = 300
 
+# 早上海選 running 租約：main_runner 進行中會續期 finished_at。
+# 逾時＝行程已死／卡死，准許重搶補寄（§14）；未逾時不當漏寄（修 06:55 誤報）。
+MORNING_RUNNING_STALE_SEC = 1800
+
 # watchdog kind → main.py 排程名（與 config.scheduler_owns 對齊）
 _WATCHDOG_SCHEDULER_JOB = {
     "increment": "fuse",
@@ -328,8 +332,8 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
             fin = str(row.get("finished_at") or "")
             if "morning" in notes and fin:
                 age = _stamp_age_seconds_taipei(fin, now=ref)
-                # 06:30 海選長掃＋附帶：running 兩小時內不當漏寄（修 06:55 誤報）。
-                if age is not None and age < 7200:
+                # 租約未過期＝準點／長掃仍在跑，不當漏寄（對齊 morning claim stale）。
+                if age is not None and age < float(MORNING_RUNNING_STALE_SEC):
                     continue
         if kind == "increment":
             try:
