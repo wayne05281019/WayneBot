@@ -18,6 +18,7 @@ from dc_scenario_silent_verify import (
     SCHEDULE_HOUR,
     SCHEDULE_MINUTE,
     biaoke_night_busy,
+    build_why_card,
     compare_one,
     ensure_tables,
     fetch_dc_posts_within,
@@ -26,6 +27,7 @@ from dc_scenario_silent_verify import (
     load_rules,
     meaning_diff_line,
     night_tick,
+    persist_mismatch_learn,
     pipeline_key,
     propose_rule_updates,
 )
@@ -343,6 +345,93 @@ def test_night_tick_one_chart_per_post_and_skips_encoding_when_empty(monkeypatch
         assert hit["run_date"] == "dc-sf-silent-20261018"
         assert hit["status"] == "success"
         assert "empty" in str(hit.get("notes") or "")
+
+
+def test_mismatch_writes_why_learn_not_blind_turns_only():
+    """他≠我們：落 why 卡（動機／滿足點／時間軸／可遷移）；可遷移進 learn_transfer。"""
+    import sqlite3
+
+    diff = compare_one(
+        our_wave={
+            "labels": ["(1)"],
+            "confirmed": [{"label": "(1)", "price": 100}],
+            "projected": [],
+            "abc": [],
+            "zones": [],
+            "wedge": False,
+            "desc_press": {},
+            "deadline": {"i": 120, "label": "估·年底"},
+        },
+        our_caption="上升",
+        our_narrative="上升",
+        his_text="2330 下降壓 通道 (5)：5200 目標 月底前 滿足",
+    )
+    assert diff["has_actionable_diff"] is True
+    card = build_why_card(
+        as_of="20261020",
+        stock_id="2330",
+        post_id="p1",
+        his_text="2330 下降壓 通道 (5)：5200 目標 月底前 滿足",
+        our_caption="上升",
+        our_wave={"deadline": {"i": 120, "label": "估·年底"}},
+        diff=diff,
+    )
+    assert "通道" in card["motive"] or "方法詞" in card["motive"] or "差距" in card["motive"]
+    assert any(float(x.get("price") or 0) == 5200 for x in card["fulfill_targets"])
+    assert card["timeline"].get("his_timing_hints")
+    assert card["transferable"]
+    assert "5200" not in " ".join(card["transferable"])
+    assert card["ticker_only"]["his_turn_prices"].get("(5)") == 5200
+    assert card["not_buy_signal"] is True
+
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        ensure_tables(db)
+        applied = propose_rule_updates(
+            db,
+            "20261020",
+            [
+                {
+                    "stock_id": "2330",
+                    "post_id": "p1",
+                    "caption": "上升",
+                    "his_text": "2330 下降壓 通道 (5)：5200 目標 月底前 滿足",
+                    "diff": diff,
+                }
+            ],
+        )
+        assert applied.get("learn", {}).get("n", 0) >= 1
+        rules = load_rules(db)
+        lt = rules.get("learn_transfer") or {}
+        assert lt.get("rules")
+        assert "5200" not in str(lt)
+        conn = sqlite3.connect(db)
+        row = conn.execute(
+            "SELECT motive, fulfill_json, timeline_json, transferable_json FROM dc_sf_learn "
+            "WHERE as_of=? AND stock_id=?",
+            ("20261020", "2330"),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0]
+        assert "5200" in row[1]
+        assert "月底" in row[2] or "deadline" in row[2]
+        assert "通道" in row[3] or "時間軸" in row[3]
+
+
+def test_persist_mismatch_learn_skips_aligned_row():
+    diff = _matching_diff()
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        ensure_tables(db)
+        out = persist_mismatch_learn(
+            db,
+            "20261020",
+            [{"stock_id": "2330", "post_id": "x", "caption": "通道 目標 轉多", "his_text": "通道 目標 轉多 4800", "diff": diff}],
+        )
+        assert out.get("n") == 0
 
 
 def test_stamp_status_error_not_hidden_by_other_success():
