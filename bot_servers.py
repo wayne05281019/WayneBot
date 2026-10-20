@@ -9244,10 +9244,6 @@ class WayneTelegramBot:
 
             tape_task = asyncio.create_task(asyncio.to_thread(_build_tape))
             t0 = time.monotonic()
-            try:
-                gc.collect()
-            except Exception:
-                pass
             card, ohlc = await asyncio.wait_for(
                 asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT
             )
