@@ -17,6 +17,7 @@ import threading
 import time
 import unicodedata
 from contextvars import ContextVar
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 # 當下一則是誰在按。asyncio 任務各自一份，不能用 instance 全域。
@@ -830,9 +831,11 @@ class WayneTelegramBot:
             except Exception:
                 pass
         old_msgs = []
+        slot_kinds: list[str] = []
         for _kind, slot in slots.items():
             if not isinstance(slot, dict):
                 continue
+            slot_kinds.append(str(_kind))
             stop = slot.get("stop")
             task = slot.get("task")
             if stop is not None:
@@ -847,6 +850,12 @@ class WayneTelegramBot:
                     pass
             if dismiss:
                 old_msgs.append(slot.get("wait_msg"))
+        # 只清「本行程記憶體有登記」的碟列；部署殺死後的 orphan 留給開機／menu delete。
+        for k in slot_kinds:
+            try:
+                self._forget_progress_orphan(key, k)
+            except Exception:
+                pass
         if not dismiss or not old_msgs:
             return
 
@@ -897,6 +906,7 @@ class WayneTelegramBot:
             "stop": stop,
             "task": task,
         }
+        self._remember_progress_orphan(key, str(kind), wait_msg)
 
     def _unregister_actor_wait(self, actor: str, kind: str, *, gen: int) -> None:
         self._ensure_actor_op_maps()
@@ -910,6 +920,7 @@ class WayneTelegramBot:
         bucket.pop(str(kind), None)
         if not bucket:
             self._actor_waits.pop(key, None)
+        self._forget_progress_orphan(key, str(kind))
 
     async def _enter_main_menu(
         self,
@@ -3354,6 +3365,11 @@ class WayneTelegramBot:
         actor = self._actor_key(update.message, uid=uid)
         self._clear_actor_menu_state(actor)
         await self._cancel_actor_ops(actor, dismiss=True)
+        try:
+            bot = getattr(context, "bot", None) or getattr(update, "get_bot", lambda: None)()
+            await self._reclaim_progress_orphans(bot, actor=actor)
+        except Exception:
+            logger.debug("/start 清 LOADING orphan 略過", exc_info=True)
         await update.message.reply_html(
             reflow_telegram_html(
                 "<b>WayneBot</b>\n"
@@ -3413,6 +3429,11 @@ class WayneTelegramBot:
             actor = self._actor_key(update.message, uid=uid)
             self._clear_actor_menu_state(actor)
             await self._cancel_actor_ops(actor, dismiss=True)
+            try:
+                bot = getattr(context, "bot", None)
+                await self._reclaim_progress_orphans(bot, actor=actor)
+            except Exception:
+                logger.debug("/menu 清 LOADING orphan 略過", exc_info=True)
             await self._force_reply_menu(update.message, uid)
         except Exception:
             logger.exception("/menu 重掛鍵盤失敗")
@@ -4169,6 +4190,8 @@ class WayneTelegramBot:
         return WayneTelegramBot._wait_bubble("飆大進行中", elapsed_sec, now=now, rest=rest)
 
     _EDIT_WAIT_TIMEOUT_S = 2.0
+    # LOADING 秒數硬上限：逾時收起殘框，背景工作可繼續；部署殺死後另靠 orphan 表清。
+    _WAIT_MAX_ELAPSED_S = 120.0
 
     async def _safe_edit_text(self, msg, text: str, **kwargs) -> bool:
         """LOADING／進度 edit：必須有硬上限，不准一則卡住凍住全部秒數。
@@ -4185,6 +4208,155 @@ class WayneTelegramBot:
             return True
         except Exception:
             return False
+
+    def _ensure_progress_orphan_table(self) -> None:
+        path = str(getattr(self, "db_path", "") or "").strip()
+        if not path:
+            return
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(path, timeout=8.0)
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS tg_progress_orphans (
+                        actor TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        chat_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY (actor, kind)
+                    )
+                    """
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            logger.debug("tg_progress_orphans 建表略過", exc_info=True)
+
+    def _remember_progress_orphan(self, actor: str, kind: str, wait_msg) -> None:
+        """進度泡泡寫進碟：部署殺死後下一次開機才能刪殘框。"""
+        key = str(actor or "")
+        k = str(kind or "")
+        if not key or not k or wait_msg is None:
+            return
+        try:
+            chat_id = int(getattr(wait_msg, "chat_id", 0) or 0)
+            mid = int(getattr(wait_msg, "message_id", 0) or 0)
+        except Exception:
+            return
+        if not chat_id or not mid:
+            return
+        path = str(getattr(self, "db_path", "") or "").strip()
+        if not path:
+            return
+        self._ensure_progress_orphan_table()
+        try:
+            import sqlite3
+            from zoneinfo import ZoneInfo
+
+            stamp = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M:%S")
+            conn = sqlite3.connect(path, timeout=8.0)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO tg_progress_orphans(actor, kind, chat_id, message_id, created_at)
+                    VALUES (?,?,?,?,?)
+                    ON CONFLICT(actor, kind) DO UPDATE SET
+                      chat_id=excluded.chat_id,
+                      message_id=excluded.message_id,
+                      created_at=excluded.created_at
+                    """,
+                    (key, k, chat_id, mid, stamp),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            logger.debug("記住 LOADING orphan 略過", exc_info=True)
+
+    def _forget_progress_orphan(self, actor: str, kind: str = "") -> None:
+        path = str(getattr(self, "db_path", "") or "").strip()
+        key = str(actor or "")
+        if not path or not key:
+            return
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(path, timeout=8.0)
+            try:
+                if kind:
+                    conn.execute(
+                        "DELETE FROM tg_progress_orphans WHERE actor=? AND kind=?",
+                        (key, str(kind)),
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM tg_progress_orphans WHERE actor=?",
+                        (key,),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            logger.debug("清 LOADING orphan 列略過", exc_info=True)
+
+    def _list_progress_orphans(self, actor: str = "") -> list:
+        path = str(getattr(self, "db_path", "") or "").strip()
+        if not path:
+            return []
+        self._ensure_progress_orphan_table()
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(path, timeout=8.0)
+            try:
+                if actor:
+                    rows = conn.execute(
+                        "SELECT actor, kind, chat_id, message_id FROM tg_progress_orphans WHERE actor=?",
+                        (str(actor),),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT actor, kind, chat_id, message_id FROM tg_progress_orphans"
+                    ).fetchall()
+            finally:
+                conn.close()
+        except Exception:
+            return []
+        out = []
+        for row in rows or []:
+            out.append(
+                {
+                    "actor": str(row[0] or ""),
+                    "kind": str(row[1] or ""),
+                    "chat_id": int(row[2] or 0),
+                    "message_id": int(row[3] or 0),
+                }
+            )
+        return out
+
+    async def _reclaim_progress_orphans(self, bot, *, actor: str = "") -> int:
+        """刪碟上殘留的 LOADING 泡泡（部署殺死後／menu／start）。兩人各清各的。"""
+        if bot is None:
+            return 0
+        rows = self._list_progress_orphans(actor)
+        n = 0
+        for row in rows:
+            chat_id = int(row.get("chat_id") or 0)
+            mid = int(row.get("message_id") or 0)
+            if not chat_id or not mid:
+                self._forget_progress_orphan(row.get("actor") or "", row.get("kind") or "")
+                continue
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=mid)
+                n += 1
+            except Exception:
+                pass
+            self._forget_progress_orphan(row.get("actor") or "", row.get("kind") or "")
+        return n
 
     async def _start_plain_wait(
         self,
@@ -4210,6 +4382,7 @@ class WayneTelegramBot:
         # 秒數從氣泡真的送出後算：send 卡住時不准一出現就是「已 6 秒」。
         t0 = time.monotonic()
         stop = asyncio.Event()
+        max_elapsed = float(getattr(self, "_WAIT_MAX_ELAPSED_S", 120.0) or 120.0)
 
         async def _tick() -> None:
             while not stop.is_set():
@@ -4226,9 +4399,20 @@ class WayneTelegramBot:
                     pass
                 if actor and kind and not self._actor_op_alive(actor, kind, gen):
                     break
+                elapsed = time.monotonic() - t0
+                if elapsed >= max_elapsed:
+                    # 硬上限：收起殘框，不准永遠停在「已 N 秒」
+                    try:
+                        await self._dismiss_progress_now(wait_msg)
+                    except Exception:
+                        pass
+                    if actor and kind:
+                        self._unregister_actor_wait(actor, kind, gen=gen)
+                        self._forget_progress_orphan(actor, kind)
+                    break
                 await self._safe_edit_text(
                     wait_msg,
-                    text_fn(int(time.monotonic() - t0)),
+                    text_fn(int(elapsed)),
                     parse_mode="HTML",
                 )
 
@@ -10093,6 +10277,12 @@ class WayneTelegramBot:
                 await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
             except Exception:
                 logger.exception("set_my_commands 失敗")
+            try:
+                n_orphan = await self._reclaim_progress_orphans(app.bot)
+                if n_orphan:
+                    logger.info("開機清掉 LOADING 殘框 %s 則", n_orphan)
+            except Exception:
+                logger.exception("開機清 LOADING 殘框失敗")
             try:
                 await self._notify_phones_updated(app)
             except Exception:

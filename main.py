@@ -550,8 +550,12 @@ def catch_up_missed_jobs(now=None) -> None:
         except Exception:
             logger.exception("補跑海選快取失敗（不擋）")
 
-    # D.C 情境預估日對質：台北 03:30 起（含週末）；與飆大 01:00 錯開、失敗不擋
-    need_dc_sf = scheduler_owns("dc_sf_silent") and mins >= (3 * 60 + 30)
+    # D.C 情境預估日對質：補跑窗只 03:30–05:59（含週末）。
+    # 準點 03:30 仍走排程；晚上／部署重開不准再拉整輪渲圖（#660 後會 OOM→502 死循環）。
+    need_dc_sf = (
+        scheduler_owns("dc_sf_silent")
+        and (3 * 60 + 30) <= mins < (6 * 60)
+    )
     if now.weekday() >= 5:
         # 週末仍補深夜開盤查核（查週一／週日），其他盤中排程略過。
         # 另：若最新基準日 screen_sessions 空，補建快取（不寄），避免週末按海選全掃逾時。

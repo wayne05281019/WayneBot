@@ -118,6 +118,49 @@ def test_main_scheduler_wires_dc_sf_silent_isolated():
     assert "03:30" in absorb
 
 
+def test_catch_up_dc_sf_only_in_morning_window():
+    """補跑只 03:30–05:59；晚上部署重開不准再拉整輪渲圖（OOM→502）。"""
+    import main as main_mod
+
+    src = inspect.getsource(main_mod.catch_up_missed_jobs)
+    assert "3 * 60 + 30" in src or "(3 * 60 + 30)" in src
+    assert "6 * 60" in src
+    assert "need_dc_sf" in src
+
+
+def test_reclaim_stale_running_marks_error():
+    from dc_scenario_silent_verify import (
+        _mark_pipeline,
+        reclaim_stale_running,
+        stamp_status,
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        day = date(2026, 10, 20)
+        _mark_pipeline(db, day, "running", "killed mid-render")
+        # 假裝 finished_at 很舊
+        import sqlite3
+
+        conn = sqlite3.connect(db)
+        try:
+            conn.execute(
+                "UPDATE pipeline_runs SET finished_at=? WHERE run_date=?",
+                ("2026-10-20 03:40:00", "dc-sf-silent-20261020"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        now = datetime(2026, 10, 20, 20, 40, tzinfo=TAIPEI)
+        assert reclaim_stale_running(db, day, now=now, stale_sec=600) is True
+        hit = stamp_status(db, day)
+        assert hit and hit.get("status") == "error"
+        assert "stale_running_reclaim" in str(hit.get("notes") or "")
+        # 已是 error：不再重降
+        assert reclaim_stale_running(db, day, now=now, stale_sec=600) is False
+
+
 def test_align_uses_our_bars_for_walked_turns_and_drawn_forecast():
     rows = [
         {"date": "d0", "high": 5000, "low": 4000},
