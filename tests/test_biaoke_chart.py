@@ -1366,7 +1366,7 @@ def test_broken_up_rail_not_projected_to_forecast():
 
 
 def test_today_close_box_inset_inside_axes():
-    """今收盒右緣要留在軸內；主圖 xlim 不為這顆標加大。"""
+    """今收盒右緣要留在軸內；左移不得蓋過 min_data_x（末日 K 空隙）。"""
     import matplotlib
 
     matplotlib.use("Agg", force=False)
@@ -1399,7 +1399,7 @@ def test_today_close_box_inset_inside_axes():
             clip_on=True,
             bbox=dict(boxstyle="round,pad=0.22", facecolor="#ffffff", edgecolor="#212121"),
         )
-        _inset_today_close_inside(ax, prev, today)
+        _inset_today_close_inside(ax, prev, today, min_data_x=70.0)
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()
         axbb = ax.get_window_extent(renderer=renderer)
@@ -1407,6 +1407,33 @@ def test_today_close_box_inset_inside_axes():
         pb = prev.get_tightbbox(renderer)
         assert tb.x1 <= axbb.x1 - 8
         assert pb.x1 < tb.x0 - 2
+        assert float(prev.get_position()[0]) >= 70.0 - 1e-6
     finally:
         plt.close(fig)
+
+
+def test_close_tags_never_cover_last_candle_clearance():
+    """昨收／今收左緣必須在末日 K 空隙右側；不夠改加寬，不准左移蓋 K。"""
+    import inspect
+
+    from biaoke_chart import (
+        _CLOSE_TAG_CANDLE_CLEAR,
+        _STRUCTURE_X_RIGHT_CAP_EXTRA,
+        _inset_today_close_inside,
+        _place_right_notes,
+        render_biaoke_structure_png,
+    )
+
+    assert float(_CLOSE_TAG_CANDLE_CLEAR) >= 5.0
+    assert float(_STRUCTURE_X_RIGHT_CAP_EXTRA) >= 30.0
+    place_src = inspect.getsource(_place_right_notes)
+    assert "_CLOSE_TAG_CANDLE_CLEAR" in place_src
+    assert "min_data_x" in place_src
+    assert "貼近右軸" in place_src or "加寬 xlim" in place_src
+    inset_src = inspect.getsource(_inset_today_close_inside)
+    assert "min_data_x" in inset_src
+    assert "不准蓋" in inset_src or "加寬" in inset_src
+    rsrc = inspect.getsource(render_biaoke_structure_png)
+    assert "need_by_close_pair" in rsrc
+    assert "_CLOSE_TAG_CANDLE_CLEAR" in rsrc
 
