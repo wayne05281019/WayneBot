@@ -550,11 +550,11 @@ def catch_up_missed_jobs(now=None) -> None:
         except Exception:
             logger.exception("補跑海選快取失敗（不擋）")
 
-    # D.C 情境預估日對質：補跑窗只 03:30–05:59（含週末）。
-    # 準點 03:30 仍走排程；晚上／部署重開不准再拉整輪渲圖（#660 後會 OOM→502 死循環）。
+    # D.C 情境預估日對質：最高指令只准台北 03:00–04:00（含週末）。
+    # 準點 03:00 排程；晚上／白天／deploy catch-up 不准再拉整輪渲圖。
     need_dc_sf = (
         scheduler_owns("dc_sf_silent")
-        and (3 * 60 + 30) <= mins < (6 * 60)
+        and (3 * 60) <= mins < (4 * 60)
     )
     if now.weekday() >= 5:
         # 週末仍補深夜開盤查核（查週一／週日），其他盤中排程略過。
@@ -571,7 +571,7 @@ def catch_up_missed_jobs(now=None) -> None:
             try:
                 from dc_scenario_silent_verify import night_tick as dc_sf_night_tick
 
-                logger.info("補跑：已過台灣 03:30，D.C 情境預估日對質（不擋飆大）")
+                logger.info("補跑：台北 03:00–04:00 窗內，D.C 情境預估日對質（不擋飆大）")
                 dc_sf_night_tick(skip_if_done=True, now=now)
             except Exception:
                 logger.exception("補跑 dc_sf_silent 失敗（不擋）")
@@ -608,7 +608,7 @@ def catch_up_missed_jobs(now=None) -> None:
         try:
             from dc_scenario_silent_verify import night_tick as dc_sf_night_tick
 
-            logger.info("補跑：已過台灣 03:30，D.C 情境預估日對質（不擋飆大）")
+            logger.info("補跑：台北 03:00–04:00 窗內，D.C 情境預估日對質（不擋飆大）")
             dc_sf_night_tick(skip_if_done=True, now=now)
         except Exception:
             logger.exception("補跑 dc_sf_silent 失敗（不擋）")
@@ -816,9 +816,9 @@ def start_daily_scheduler():
         from datetime import timedelta
 
         now = _taipei_now()
-        # dc_sf_silent＝台北 03:30（與飆大隔日 01:00 彙整錯開；兩軌隔離互不影響）
+        # dc_sf_silent＝台北 03:00（03:00–04:00 窗；與飆大 01:00 錯開；兩軌隔離）
         slots = (
-            (3, 30, "dc_sf_silent"),
+            (3, 0, "dc_sf_silent"),
             (3, 0, "open_check"),
             (6, 30, "morning"),
             (12, 45, "midday"),

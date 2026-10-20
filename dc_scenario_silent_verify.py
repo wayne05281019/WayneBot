@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """情境預估 × D.C直流變頻 靜默對質（分軌）。
 
-排程鍵：dc_sf_silent＝Asia/Taipei **03:30**（自 DC_SF_START 起每天，含週末）。
+排程鍵：dc_sf_silent＝Asia/Taipei **03:00–04:00**（自 DC_SF_START 起每天，含週末）。
 往回 **24 小時**主文；他幾篇就生成幾篇情境預估來比。錯開飆大隔日 **01:00**
 盤後彙整；抓文窗／神經元照原本跑，本檔不准停它們。
 
@@ -10,11 +10,11 @@
 2. 各自檔鎖／逾時（dc_sf_silent.lock；不准共用飆大鎖或清對方 actor）。
 3. 失敗互不擋：本檔 exception 只記自己的 pipeline；不准 raise 打斷飆大 poller／absorb。
 4. 不准呼叫 ingest_public_posts／run_absorb／寫 biaoke_posts；只寫 dc_sf_* 表與 media。
-5. 資源強碰＝鐘點錯開（03:30）；01:00–02:19 若誤觸則延後，不准兩條長任務同時重壓。
+5. 最高指令：只准 03:00–04:00；窗外／deploy catch-up 不准整批重畫；01:00–02:19 延後。
 
-日流程：03:30 抓過去 24 小時 D.C 全文＋圖＋圖注。他有幾篇，就先用我們的
-官方股價把對應股號的情境預估全部畫完，然後才逐篇對他的圖。比的是波浪走法、
-每個轉折落點、以及該轉折的點位數字。底圖仍是我們的官方 K。
+日流程：03:00 起抓過去 24 小時 D.C 全文＋圖＋圖注；整段須在 04:00 前結束或自己停。
+他有幾篇，就先用我們的官方股價把對應股號的情境預估全部畫完，然後才逐篇對他的圖。
+比的是波浪走法、每個轉折落點、以及該轉折的點位數字。底圖仍是我們的官方 K。
 有發文且轉折數字／文意尚未同時 ≥95% 才改 dc_sf_rules（話筒讀）。
 已走的轉折改釘到最接近他那個價的官方高／低；還沒走的點位每天往他的數字走一步。
 他圖≠我們圖時：不准只調 likeness／盲抄轉折；要落 why 卡（動機／滿足點／時間軸／
@@ -44,9 +44,12 @@ DC_SF_AUTHOR_NAMES = ("D.C直流變頻", "D.C", "直流變頻", "DC直流變頻"
 DC_SF_START = date(2026, 10, 15)
 JOB_KIND = "dc_sf_silent"
 PIPE_PREFIX = "dc-sf-silent-"
-# 鐘點錯開：飆大隔日彙整 01:00；本檔 03:30（含週末日曆日）
+# 最高指令（2026-10-20）：只准台北 03:00–04:00 學習／對質／修正；窗外不准整批重畫。
+# 準點 03:00 觸發；整段須在 04:00 前結束或自己停。錯開飆大隔日 01:00。
 SCHEDULE_HOUR = 3
-SCHEDULE_MINUTE = 30
+SCHEDULE_MINUTE = 0
+WINDOW_START_MIN = 3 * 60  # 03:00 含
+WINDOW_END_MIN = 4 * 60  # 04:00 不含
 LOOKBACK_HOURS = 24
 # 價格軸與文意軸都要到這個比例才停改畫法。缺任一軸不算到。
 SIM_TARGET = 0.95
@@ -54,9 +57,34 @@ SIM_TARGET = 0.95
 _BIAOKE_NIGHT_BUSY_FROM = 1 * 60
 _BIAOKE_NIGHT_BUSY_UNTIL = 2 * 60 + 20
 LOCK_NAME = "dc_sf_silent.lock"  # 專鎖；不准與飆大共用
-JOB_TIMEOUT_SEC = 45 * 60
+# 窗長 60 分；預留收尾，逾時自己停（不准拖過 04:00）
+JOB_TIMEOUT_SEC = 55 * 60
 # 部署／OOM 殺死後 pipeline 常留 running；逾時就降成 error，避免重開一直重搶渲圖。
 STALE_RUNNING_SEC = 10 * 60
+
+
+def in_dc_work_window(now: Optional[datetime] = None) -> bool:
+    """台北 03:00≤t＜04:00 才准跑 DC 學習／對質／整批重畫。"""
+    dt = now or _taipei_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    mins = int(dt.hour) * 60 + int(dt.minute)
+    return int(WINDOW_START_MIN) <= mins < int(WINDOW_END_MIN)
+
+
+def seconds_left_in_dc_window(now: Optional[datetime] = None) -> float:
+    """距 04:00 還剩幾秒；窗外＝0。"""
+    dt = now or _taipei_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    if not in_dc_work_window(dt):
+        return 0.0
+    end = dt.replace(hour=4, minute=0, second=0, microsecond=0)
+    return max(0.0, (end - dt).total_seconds())
 
 _IMG_RE = re.compile(
     r"https://image\.cmoney\.tw/attachment/[^\s\"'<>]+",
@@ -1899,6 +1927,16 @@ def night_tick(
         report["notes"] = "defer_biaoke_night_window"
         report["ok"] = True
         return report
+    # 最高指令：只准 03:00–04:00；窗外／deploy catch-up 不准整批重畫
+    if not in_dc_work_window(dt):
+        report["notes"] = "outside_dc_window"
+        report["ok"] = True
+        return report
+    left_s = seconds_left_in_dc_window(dt)
+    if left_s < 300.0:
+        report["notes"] = "window_too_short"
+        report["ok"] = True
+        return report
     # 部署殺死後的死 running：先降級，再看 skip／重跑
     try:
         reclaim_stale_running(path, run_day, now=dt)
@@ -1909,7 +1947,7 @@ def night_tick(
         report["ok"] = True
         return report
 
-    lock = acquire_job_lock(path)
+    lock = acquire_job_lock(path, timeout_sec=int(min(JOB_TIMEOUT_SEC, left_s)))
     if lock is None:
         report["notes"] = "lock_busy"
         report["ok"] = True

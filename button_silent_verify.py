@@ -352,12 +352,12 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
         "status": "gap_filled",
         "pipe": (
             "button_silent_verify.snapshot_scenario_forecast（查股圖下按了才記）；"
-            "dc_scenario_silent_verify.night_tick（台北 03:30／dc_sf_silent；"
+            "dc_scenario_silent_verify.night_tick（台北 03:00–04:00／dc_sf_silent；"
             "pipeline_runs 鍵 dc-sf-silent-{YYYYMMDD} 自有成功／失敗／empty 戳；"
             "與飆大 01:00 錯開、專鎖隔離；失敗不被別軌 success 蓋掉）"
         ),
         "window": (
-            "查股圖下按了才記＋D.C 日對質沒按也跑（台北 03:30／往回 24 小時／一篇一圖）；"
+            "查股圖下按了才記＋D.C 日對質沒按也跑（台北 03:00–04:00／往回 24 小時／一篇一圖）；"
             "圖＋說法／文意／備注落 dc_sf_*；有發文且未到 95% 才改 dc_sf_rules；"
             "沒發文記 empty 仍蓋 success 戳"
         ),
