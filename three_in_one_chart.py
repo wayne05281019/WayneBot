@@ -1211,6 +1211,7 @@ def _polish_vol_figure(
     last_bar=None,
     bars=None,
     zone_date: str = "",
+    card=None,
 ):
     """圖三：壓撐標移橘虛線左、爆大量張數、量柱日期刻度、當日走勢標（非死釘壓價）。"""
     from wayne_navigator import _fp, _fmt_price, _set_staggered_month_ticks
@@ -1459,7 +1460,7 @@ def _polish_vol_figure(
         press = float(spike_hi)
         hold = float(spike_lo)
         msg = vol_zone_day_path_label(
-            press, hold, lb, bars=bars, zone_date=zone_date
+            press, hold, lb, bars=bars, zone_date=zone_date, card=card
         )
         if last_i is not None and last_hi > 0 and press > 0 and msg:
             ymin, ymax = ax1.get_ylim()
@@ -2723,6 +2724,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
                     last_bar=path_last,
                     bars=view_bars,
                     zone_date=spike_date,
+                    card=card,
                 )
                 ax_p, ax_s, _ = _pick_vol_axes(self)
                 fr = _ax_spine_frac(ax_p)
