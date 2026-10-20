@@ -2013,10 +2013,10 @@ def infer_vol_zone_parallel_channel(
     否則長窗推算→近窗對日期。映不上才直接用近窗算。不准發明沒說過的價／浪號。
     """
     from biaoke_chart import (
-        _BARS,
         build_asc_channel_from_low_dates,
         infer_parallel_channel,
         latest_biaoke_named_rising_lows,
+        structure_visible_bars,
     )
 
     if view is None or getattr(view, "empty", True) or len(view) < 24:
@@ -2025,7 +2025,8 @@ def infer_vol_zone_parallel_channel(
         str(view.iloc[i].get("date") or "").replace("-", "")[:8]: i for i in range(len(view))
     }
     face = _bars_face_records(bars_face)
-    work = face[-int(_BARS) :] if len(face) > int(_BARS) else face
+    # 與結構圖同一固定可視窗（新日進／最左出）；大量區近窗 show_n 仍走 VOL_ZONE_BARS
+    work = structure_visible_bars(face)
     if len(work) < 24:
         work = _bars_face_records(view.to_dict("records"))
 

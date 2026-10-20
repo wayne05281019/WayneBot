@@ -555,6 +555,7 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
         _STOCK_MAIN_TOP_FULLBLEED,
         _STRUCTURE_BOX_W,
         _paint_structure_blue_baskets,
+        structure_visible_bars,
     )
 
     # 61：主圖上緣抬高；三藍籃筐等縫；頭欄仍不准疊進 K
@@ -565,6 +566,51 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert int(_BARS_MAX) <= 195
     assert int(_BARS_MIN) <= int(_BARS) <= int(_BARS_MAX)
     assert 160 <= int(_BARS) <= 175
+    assert callable(structure_visible_bars)
+    assert "structure_visible_bars" in src
+
+
+def test_structure_rolling_window_new_day_drops_leftmost():
+    """固定可視窗：新交易日進 → 最左一日出；根數恆＝_BARS（不准越畫越擠）。"""
+    from copy import deepcopy
+
+    from biaoke_chart import _BARS, structure_visible_bars
+
+    day0 = date(2025, 1, 2)
+    rows = []
+    px = 100.0
+    # 多於窗寬的假日 K（只測滾動，不依真實休市表）
+    for i in range(int(_BARS) + 40):
+        d = (day0 + timedelta(days=i)).strftime("%Y%m%d")
+        px = 100 + i * 0.3
+        rows.append(
+            {
+                "date": d,
+                "open": px,
+                "high": px + 2,
+                "low": px - 2,
+                "close": px + 0.5,
+                "volume": 1000 + i,
+            }
+        )
+    win0 = structure_visible_bars(rows)
+    assert len(win0) == int(_BARS)
+    left0 = str(win0[0]["date"])
+    right0 = str(win0[-1]["date"])
+
+    nxt = deepcopy(rows[-1])
+    nxt["date"] = (date(2025, 1, 2) + timedelta(days=int(_BARS) + 40)).strftime("%Y%m%d")
+    nxt["close"] = float(nxt["close"]) + 1.0
+    win1 = structure_visible_bars(rows + [nxt])
+    assert len(win1) == int(_BARS)
+    assert str(win1[-1]["date"]) == str(nxt["date"])
+    assert str(win1[0]["date"]) != left0
+    assert str(win1[0]["date"]) == str(rows[-int(_BARS) + 1]["date"])
+    assert right0 != str(win1[-1]["date"])
+    # 短資料不硬砍、不補假柱
+    short = structure_visible_bars(rows[:20])
+    assert len(short) == 20
+    assert short[0]["date"] == rows[0]["date"]
 
 
 def test_structure_no_vol_day_judgment_and_prev_close_note():
