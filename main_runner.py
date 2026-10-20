@@ -42,6 +42,8 @@ import sys
 import time
 import sqlite3
 import logging
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
@@ -49,6 +51,7 @@ import requests
 
 from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str, fuse_end_date, taipei_now, taipei_stamp
 from wayne_db import ensure_core_schema
+from ops_watchdog import MORNING_RUNNING_STALE_SEC
 
 logging.basicConfig(
     level=logging.INFO,
@@ -242,6 +245,48 @@ class MainRunner:
             raise
         finally:
             conn.close()
+
+    def touch_pipeline_running(self, run_date: str) -> bool:
+        """早報進行中續租：只更新 running 的 finished_at，不改 status／notes。"""
+        key = str(run_date or "").strip()
+        if not key:
+            return False
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=5000;")
+            cur = conn.execute(
+                "UPDATE pipeline_runs SET finished_at = ? "
+                "WHERE run_date = ? AND status = 'running'",
+                (taipei_stamp(), key),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        except Exception:
+            logger.debug("pipeline running 續租失敗 key=%s", key, exc_info=True)
+            return False
+        finally:
+            conn.close()
+
+    @contextmanager
+    def _morning_running_lease(self, run_date: str, *, interval_sec: float = 60.0):
+        """持鎖期間定期續 finished_at；行程死掉後租約過期才能重搶補寄。"""
+        key = str(run_date or "").strip()
+        stop = threading.Event()
+
+        def _beat() -> None:
+            while not stop.wait(float(interval_sec)):
+                try:
+                    self.touch_pipeline_running(key)
+                except Exception:
+                    logger.debug("morning lease beat 失敗 key=%s", key, exc_info=True)
+
+        t = threading.Thread(target=_beat, name="morning-lease", daemon=True)
+        t.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            t.join(timeout=2.0)
 
     def demote_premature_morning_screens(self) -> int:
         """盤後當日補跑若先標 screen-{as_of} success，隔天 06:30 會略過、吃不到美股隔夜。
@@ -1563,7 +1608,8 @@ class MainRunner:
 
         準點／catch-up／watchdog／CLI／重開都走這裡。notify=True 時，
         補齊基準日後、任何 Telegram 寄出前，必須原子搶 screen-{as_of}；
-        已 success 或未明確失敗的 running 一律不寄（對齊 midday #469）。
+        success 永不重寄；fresh running（租約未過期）不重搶防雙寄；
+        租約過期／computed／crash 可重搶補寄（§14，與 midday 永久擋 stale 不同）。
         加權指數研究／資金輪動／月營收／雷達都在 _push_screening，同一把鎖。
         """
         from import_health import latest_complete_quote_date
@@ -1682,91 +1728,119 @@ class MainRunner:
             if status == "computed" and not notify and has_rows:
                 logger.info("早上海選 %s 補齊後已算出（不寄），略過。", key)
                 return True
-        # 真寄路徑：原子搶鎖。不准 stale running 重搶（重開／watchdog 連寄）。
-        # 只有 computed（明確寄失敗／notify-off）才能再搶；success／running 一律略過。
+        # 真寄路徑：原子搶鎖。fresh running 不重搶（防雙寄）；租約過期可重搶補寄（§14）。
+        # success 永不重搶；computed（明確寄失敗／notify-off／crashed／stale）可再搶。
         claimed = False
         if notify:
             if not self.try_claim_pipeline(
-                key, notes="morning-claim", allow_stale_running=False
+                key,
+                notes="morning-claim",
+                allow_stale_running=True,
+                stale_running_sec=int(MORNING_RUNNING_STALE_SEC),
             ):
                 logger.info("早上海選 %s 已寄過或進行中，略過。", key)
                 return True
             claimed = True
         logger.info("☀️ 台灣 06:30 海選，基準日 %s", as_of)
-        try:
-            from taiwan_market import sync_futures_daily
 
-            fut = sync_futures_daily(self.db_path)
-            logger.info("今早補台指期日盤／夜盤：%s", fut)
-        except Exception as e:
-            logger.warning("今早台指期略過：%s", e)
-        try:
-            from taiwan_market import sync_futures_inst_oi
-
-            foi = sync_futures_inst_oi(self.db_path)
-            logger.info("今早補台指期外資未平倉：%s", foi)
-        except Exception as e:
-            logger.warning("今早台指期外資未平倉略過：%s", e)
-        us_snap: Dict[str, Any] = {}
-        try:
-            from us_overnight import refresh_us_overnight, should_alert_us_drop
-
-            us_snap = refresh_us_overnight(self.db_path, as_of) or {}
-            if should_alert_us_drop(us_snap):
-                logger.info(
-                    "美股收盤偏弱，併入 06:30 早報彙整（不另寄一早提醒） regime=%s",
-                    us_snap.get("regime"),
-                )
-        except Exception as e:
-            logger.warning("美股隔夜略過：%s", e)
-        screening = None
-        if run_full_screening:
+        def _run_morning_body() -> bool:
             try:
-                screening = run_full_screening(
-                    db_path=self.db_path, target_date=as_of, apply_us=True, session="morning"
-                )
+                from taiwan_market import sync_futures_daily
+
+                fut = sync_futures_daily(self.db_path)
+                logger.info("今早補台指期日盤／夜盤：%s", fut)
             except Exception as e:
-                logger.error("四大選股失敗: %s", e, exc_info=True)
-        sent_ok = True
-        if notify:
-            sent_ok = bool(
-                self._push_screening(
-                    screening,
-                    as_of=as_of,
-                    morning_digest=True,
-                    us_snap=us_snap or None,
-                    pipeline_run_date=key,
-                )
-            )
-        else:
-            logger.info("早上海選不寄 Telegram（notify=0），只寫快照")
-            if self._screening_delivered(screening):
+                logger.warning("今早台指期略過：%s", e)
+            try:
+                from taiwan_market import sync_futures_inst_oi
+
+                foi = sync_futures_inst_oi(self.db_path)
+                logger.info("今早補台指期外資未平倉：%s", foi)
+            except Exception as e:
+                logger.warning("今早台指期外資未平倉略過：%s", e)
+            if claimed:
+                self.touch_pipeline_running(key)
+            us_snap: Dict[str, Any] = {}
+            try:
+                from us_overnight import refresh_us_overnight, should_alert_us_drop
+
+                us_snap = refresh_us_overnight(self.db_path, as_of) or {}
+                if should_alert_us_drop(us_snap):
+                    logger.info(
+                        "美股收盤偏弱，併入 06:30 早報彙整（不另寄一早提醒） regime=%s",
+                        us_snap.get("regime"),
+                    )
+            except Exception as e:
+                logger.warning("美股隔夜略過：%s", e)
+            if claimed:
+                self.touch_pipeline_running(key)
+            screening = None
+            if run_full_screening:
                 try:
-                    self._run_ai_desk(
-                        as_of or self.today_str,
-                        results=(screening or {}).get("results") or {},
-                        notify=False,
+                    screening = run_full_screening(
+                        db_path=self.db_path,
+                        target_date=as_of,
+                        apply_us=True,
+                        session="morning",
                     )
                 except Exception as e:
-                    logger.warning("無推播早報仍跑 AI 模擬倉略過：%s", e)
-        delivered = self._screening_delivered(screening)
-        if delivered and sent_ok:
-            if notify or rebuild_only:
-                self._mark_pipeline("success", "morning", run_date=key)
-            else:
-                # GHA notify=0 只算名單。若標 success，Release zip 灌進 Render
-                # 會讓 skip_if_done 以為已寄過（401 那天就是這樣）。
-                self._mark_pipeline("computed", "morning notify-off", run_date=key)
-                logger.info("早上海選已算出但不標已寄過（notify=0）%s", key)
-        elif delivered and not sent_ok:
-            # 已搶鎖但沒送到：放 computed，讓 catch-up／watchdog 可補寄；不准卡 running。
-            self._mark_pipeline("computed", "morning send-failed", run_date=key)
-            logger.error("早上海選已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
-        else:
+                    logger.error("四大選股失敗: %s", e, exc_info=True)
             if claimed:
-                self._mark_pipeline("computed", "morning empty", run_date=key)
-            logger.error("早上海選未產出名單，基準日 %s", as_of)
-        return bool(delivered and sent_ok)
+                self.touch_pipeline_running(key)
+            sent_ok = True
+            if notify:
+                sent_ok = bool(
+                    self._push_screening(
+                        screening,
+                        as_of=as_of,
+                        morning_digest=True,
+                        us_snap=us_snap or None,
+                        pipeline_run_date=key,
+                    )
+                )
+            else:
+                logger.info("早上海選不寄 Telegram（notify=0），只寫快照")
+                if self._screening_delivered(screening):
+                    try:
+                        self._run_ai_desk(
+                            as_of or self.today_str,
+                            results=(screening or {}).get("results") or {},
+                            notify=False,
+                        )
+                    except Exception as e:
+                        logger.warning("無推播早報仍跑 AI 模擬倉略過：%s", e)
+            delivered = self._screening_delivered(screening)
+            if delivered and sent_ok:
+                if notify or rebuild_only:
+                    self._mark_pipeline("success", "morning", run_date=key)
+                else:
+                    # GHA notify=0 只算名單。若標 success，Release zip 灌進 Render
+                    # 會讓 skip_if_done 以為已寄過（401 那天就是這樣）。
+                    self._mark_pipeline("computed", "morning notify-off", run_date=key)
+                    logger.info("早上海選已算出但不標已寄過（notify=0）%s", key)
+            elif delivered and not sent_ok:
+                # 已搶鎖但沒送到：放 computed，讓 catch-up／watchdog 可補寄；不准卡 running。
+                self._mark_pipeline("computed", "morning send-failed", run_date=key)
+                logger.error("早上海選已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
+            else:
+                if claimed:
+                    self._mark_pipeline("computed", "morning empty", run_date=key)
+                logger.error("早上海選未產出名單，基準日 %s", as_of)
+            return bool(delivered and sent_ok)
+
+        try:
+            if claimed:
+                with self._morning_running_lease(key):
+                    return _run_morning_body()
+            return _run_morning_body()
+        except Exception:
+            # 未標 success／computed 的 crash／OOM 前例外：放 computed，§14 才能補寄。
+            if claimed and self.pipeline_status(key) == "running":
+                try:
+                    self._mark_pipeline("computed", "morning crashed", run_date=key)
+                except Exception:
+                    logger.exception("早上海選 crash 後改 computed 失敗 key=%s", key)
+            raise
 
     def run_evening_screen(self, skip_if_done: bool = False, notify: bool = False) -> bool:
         """台股收盤後的名單只存庫，不寄 Telegram（美股還沒開）。"""
