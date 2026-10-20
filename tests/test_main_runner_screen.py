@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_screening_fail_message_no_fallback_wording(monkeypatch):
     from main_runner import MainRunner
 
@@ -1298,6 +1301,128 @@ def test_morning_send_failed_marks_computed_for_retry(tmp_path, monkeypatch):
     assert (
         runner.try_claim_pipeline(
             "screen-20260908", notes="morning-claim", allow_stale_running=False
+        )
+        is True
+    )
+
+
+def test_morning_stale_running_reclaims_and_sends_both(tmp_path, monkeypatch):
+    """死鎖 morning-claim（租約過期）必須能重搶並寄兩支話筒（§14）。"""
+    import sqlite3
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner
+    from ops_watchdog import MORNING_RUNNING_STALE_SEC
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "morning-stale.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    touch_tg_user(path, "8772209416", "哥哥")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "8772209416")
+
+    pushes = []
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261020"
+    runner.chat_id = "9001"
+    runner.bot = type(
+        "B",
+        (),
+        {
+            "send_screening_report": staticmethod(
+                lambda *a, **k: pushes.append(k.get("chat_id")) or True
+            )
+        },
+    )()
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner.send_telegram_message = lambda *a, **k: True
+    runner.token = ""
+    _stub_morning_deps(monkeypatch, runner)
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261019"
+    )
+    monkeypatch.setattr("config.fuse_end_date", lambda: "20261019")
+    monkeypatch.setattr(
+        "main_runner.run_full_screening",
+        lambda **_k: {
+            "status": "success",
+            "payload": [{"html": "海選"}],
+            "message": "海選",
+            "results": {},
+        },
+    )
+    from screen_sessions import save_screen_session
+
+    save_screen_session(
+        path,
+        "20261019",
+        "morning",
+        {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 1.0}]},
+    )
+
+    tw = ZoneInfo("Asia/Taipei")
+    old = (
+        datetime(2026, 10, 20, 6, 30, 41, tzinfo=tw)
+        - timedelta(seconds=MORNING_RUNNING_STALE_SEC + 60)
+    ).isoformat()
+    sqlite3.connect(path).execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261019", old, "running", "morning-claim"),
+    ).connection.commit()
+
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+    assert sorted(pushes) == ["8772209416", "9001"]
+    row = sqlite3.connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20261019",),
+    ).fetchone()
+    assert row[0] == "success"
+    assert "morning" in row[1]
+
+
+def test_morning_crash_marks_computed_for_retry(tmp_path, monkeypatch):
+    """claim 後未標終態就例外 → computed，不准卡 running。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "morning-crash.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: True)})()
+    _stub_morning_deps(monkeypatch, runner)
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("simulated morning crash")
+
+    runner._push_screening = _boom  # type: ignore
+
+    with pytest.raises(RuntimeError, match="simulated morning crash"):
+        runner.run_morning_screen(skip_if_done=True, notify=True)
+
+    row = sqlite3.connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20260908",),
+    ).fetchone()
+    assert row[0] == "computed"
+    assert "crashed" in row[1]
+    assert (
+        runner.try_claim_pipeline(
+            "screen-20260908",
+            notes="morning-claim",
+            allow_stale_running=True,
+            stale_running_sec=1800,
         )
         is True
     )
