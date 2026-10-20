@@ -335,7 +335,8 @@ class TestMarketMenuE2E:
         ) as mock_yahoo, patch(
             "live_quote.fetch_mis_index_quote", return_value=None
         ), patch(
-            "us_overnight.refresh_us_for_market_page", return_value={}
+            "us_overnight.refresh_us_for_market_page",
+            return_value={"ok": False, "_press_miss": True, "regime": "unknown"},
         ), patch(
             "market_session_cards.assemble_session_cards", return_value=empty_cards
         ), patch.object(
@@ -365,6 +366,9 @@ class TestMarketMenuE2E:
             if c.args and "逾時" in str(c.args[0])
         ]
         assert not timeout_replies
+        from us_overnight import refresh_us_for_market_page as _refresh
+
+        assert not isinstance(_refresh, MagicMock)
 
     def test_on_text_routes_market_and_flow(self, tmp_path):
         db = str(tmp_path / "route.db")
@@ -426,32 +430,35 @@ class TestMarketMenuE2E:
 
         async def _run(uid):
             msg = _message(uid)
+            wait_start = AsyncMock(return_value=(MagicMock(), None, None))
             with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
-                bot, "_start_plain_wait", new_callable=AsyncMock
-            ) as st, patch.object(
-                bot, "_stop_plain_wait", new_callable=AsyncMock
-            ), patch(
-                "live_quote.fetch_mis_index_quote", return_value=None
-            ), patch(
-                "us_overnight.refresh_us_for_market_page", return_value={}
-            ), patch(
-                "market_session_cards.assemble_session_cards", return_value=empty_cards
-            ), patch.object(
-                bot, "_send_market_session_cards", new_callable=AsyncMock
-            ), patch.object(
-                bot, "_send_market_kline", new_callable=AsyncMock
-            ), patch.object(
-                bot, "_send_market_vol_zone", new_callable=AsyncMock
-            ):
-                st.return_value = (MagicMock(), None, None)
+                bot, "_start_plain_wait", new=wait_start
+            ), patch.object(bot, "_stop_plain_wait", new_callable=AsyncMock):
                 await bot.market_cmd(_update(msg), MagicMock())
             return msg
 
-        async def run_both():
-            await asyncio.gather(_run(111), _run(222))
+        # 外網 mock 放 gather 外：兩協程同時 patch 同一屬性會漏還原，毒到後面 us_press 測。
+        with patch("live_quote.fetch_mis_index_quote", return_value=None), patch(
+            "us_overnight.refresh_us_for_market_page",
+            return_value={"ok": False, "_press_miss": True, "regime": "unknown"},
+        ), patch(
+            "market_session_cards.assemble_session_cards", return_value=empty_cards
+        ), patch.object(
+            bot, "_send_market_session_cards", new_callable=AsyncMock
+        ), patch.object(
+            bot, "_send_market_kline", new_callable=AsyncMock
+        ), patch.object(
+            bot, "_send_market_vol_zone", new_callable=AsyncMock
+        ):
 
-        asyncio.run(run_both())
+            async def run_both():
+                await asyncio.gather(_run(111), _run(222))
+
+            asyncio.run(run_both())
         assert bot._pending.get("99:111") == "buy"
+        from us_overnight import refresh_us_for_market_page as _refresh
+
+        assert not isinstance(_refresh, MagicMock)
 
     def test_market_page_builds_under_two_seconds(self):
         import time
