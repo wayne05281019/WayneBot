@@ -193,6 +193,9 @@ def test_industry_tier_cards_match_official_expand_on_fail():
             for extra in _same_industry_more(by.get(ind) or [], seen, EXTRA_PER_FAIL):
                 queue.append((ind, "加抽", extra))
             continue
+        # 抽樣來自 daily_quotes；卡若實際走興櫃柱（上市櫃殘列／新掛），不准拿殘列對興櫃收
+        if str(card.get("quote_source") or "") == "emerging_quotes":
+            continue
         got_c = float(card.get("close") or 0)
         want_c = float(s["close"] or 0)
         got_p = round(float(card.get("change_pct") or 0), 2)

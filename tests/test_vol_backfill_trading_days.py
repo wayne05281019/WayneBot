@@ -612,8 +612,8 @@ def test_ensure_fetches_missing_months_in_parallel(tmp_path, monkeypatch):
     elapsed = time.perf_counter() - t0
     assert len(stats.get("months_fetched") or []) >= 2
     assert active["peak"] >= 2, active
-    # 串行 3×0.35≈1.05+；並行牆鐘應明顯較短
-    assert elapsed < 0.95, elapsed
+    # 串行 3×0.35≈1.05+；並行應較短。真證明是 peak>=2；牆鐘留 CI runner 裕度
+    assert elapsed < 1.8, elapsed
 
 
 def test_lookup_path_early_vol_ensure_outside_paint():

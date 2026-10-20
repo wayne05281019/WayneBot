@@ -27,9 +27,11 @@ def test_lookup_source_splits_struct_bars_from_volume_zone():
     assert "prepare_lookup_structure_bars" in src
     assert "prepare_volume_zone" in src
     assert "_struct_gap_line" in src
-    assert src.find("struct_prep_task = asyncio.create_task") < src.find(
-        "live_rt = await _fetch_mis"
-    )
+    # 1c-2g：結構 prepare 必須在建卡成功後才開，不准跟 get_decision_card 搶記憶體
+    card_at = src.find("to_thread(_build_card)")
+    struct_at = src.find("struct_prep_task = asyncio.create_task")
+    assert card_at > 0 and struct_at > card_at
+    assert src.find("live_rt = await _fetch_mis") < struct_at
     assert src.find("_struct_gap_line") < src.find("struct_item = await struct_task")
     assert src.find("struct_item = await struct_task") < src.find(
         "create_task(_vol_item())"

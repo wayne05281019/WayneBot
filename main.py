@@ -534,7 +534,8 @@ def catch_up_missed_jobs(now=None) -> None:
 
     now = now or _taipei_now()
     mins = now.hour * 60 + now.minute
-    need_open_check = scheduler_owns("open_check") and mins >= 3 * 60
+    # 02:45 準點；補跑門檻同鐘，讓 03:00–04:00 DC 窗獨占（避撞）
+    need_open_check = scheduler_owns("open_check") and mins >= (2 * 60 + 45)
 
     def _ensure_screen_cache(runner: MainRunner) -> None:
         """最新完整日若無 screen_sessions，補建快取（不寄），避免按海選全掃逾時。"""
@@ -550,15 +551,19 @@ def catch_up_missed_jobs(now=None) -> None:
         except Exception:
             logger.exception("補跑海選快取失敗（不擋）")
 
-    # D.C 情境預估日對質：台北 03:30 起（含週末）；與飆大 01:00 錯開、失敗不擋
-    need_dc_sf = scheduler_owns("dc_sf_silent") and mins >= (3 * 60 + 30)
+    # D.C 情境預估日對質：最高指令只准台北 03:00–04:00（含週末）。
+    # 準點 03:00 排程；晚上／白天／deploy catch-up 不准再拉整輪渲圖。
+    need_dc_sf = (
+        scheduler_owns("dc_sf_silent")
+        and (3 * 60) <= mins < (4 * 60)
+    )
     if now.weekday() >= 5:
         # 週末仍補深夜開盤查核（查週一／週日），其他盤中排程略過。
         # 另：若最新基準日 screen_sessions 空，補建快取（不寄），避免週末按海選全掃逾時。
         runner = None
         if need_open_check:
             runner = MainRunner()
-            logger.info("補跑：已過台灣 03:00，若深夜開盤查核沒落檔就補跑")
+            logger.info("補跑：已過台灣 02:45，若深夜開盤查核沒落檔就補跑")
             try:
                 runner.run_nightly_open_check(now=now)
             except Exception:
@@ -567,7 +572,7 @@ def catch_up_missed_jobs(now=None) -> None:
             try:
                 from dc_scenario_silent_verify import night_tick as dc_sf_night_tick
 
-                logger.info("補跑：已過台灣 03:30，D.C 情境預估日對質（不擋飆大）")
+                logger.info("補跑：台北 03:00–04:00 窗內，D.C 情境預估日對質（不擋飆大）")
                 dc_sf_night_tick(skip_if_done=True, now=now)
             except Exception:
                 logger.exception("補跑 dc_sf_silent 失敗（不擋）")
@@ -604,7 +609,7 @@ def catch_up_missed_jobs(now=None) -> None:
         try:
             from dc_scenario_silent_verify import night_tick as dc_sf_night_tick
 
-            logger.info("補跑：已過台灣 03:30，D.C 情境預估日對質（不擋飆大）")
+            logger.info("補跑：台北 03:00–04:00 窗內，D.C 情境預估日對質（不擋飆大）")
             dc_sf_night_tick(skip_if_done=True, now=now)
         except Exception:
             logger.exception("補跑 dc_sf_silent 失敗（不擋）")
@@ -615,7 +620,7 @@ def catch_up_missed_jobs(now=None) -> None:
         _ensure_screen_cache(runner)
         return
     if need_open_check:
-        logger.info("補跑：已過台灣 03:00，若深夜開盤查核沒落檔就補跑")
+        logger.info("補跑：已過台灣 02:45，若深夜開盤查核沒落檔就補跑")
         try:
             runner.run_nightly_open_check(now=now)
         except Exception:
@@ -812,10 +817,11 @@ def start_daily_scheduler():
         from datetime import timedelta
 
         now = _taipei_now()
-        # dc_sf_silent＝台北 03:30（與飆大隔日 01:00 彙整錯開；兩軌隔離互不影響）
+        # open_check＝02:45（輕）；dc_sf_silent＝03:00（03:00–04:00 窗；與飆大 01:00 錯開）
+        # 盤後彙整已錯開官方融合：17:40／18:50／22:30（見 biaoke_absorb）
         slots = (
-            (3, 30, "dc_sf_silent"),
-            (3, 0, "open_check"),
+            (2, 45, "open_check"),
+            (3, 0, "dc_sf_silent"),
             (6, 30, "morning"),
             (12, 45, "midday"),
             (16, 30, "fuse"),
@@ -848,6 +854,10 @@ def start_daily_scheduler():
         # 長睡若被前一檔拖過 06:30，下一檔要到 12:45 才醒，開市日早報會漏。
         # 每輪先補跑、睡眠切片，漏了就在下一分鐘內補寄（§14）。
         _slice_s = 60.0
+        # 開機先讓 /live＋聽筒站穩；立刻 catch_up 拉海選／情境渲圖會跟第一檔查股搶 2GB→502。
+        _boot_catchup_delay_s = 180.0
+        logger.info("排程：延後 %.0f 秒再補跑，先開聽筒", _boot_catchup_delay_s)
+        time.sleep(_boot_catchup_delay_s)
         while True:
             try:
                 catch_up_missed_jobs()

@@ -17,12 +17,15 @@ from dc_scenario_silent_verify import (
     LOOKBACK_HOURS,
     SCHEDULE_HOUR,
     SCHEDULE_MINUTE,
+    WINDOW_END_MIN,
+    WINDOW_START_MIN,
     biaoke_night_busy,
     build_why_card,
     compare_one,
     ensure_tables,
     fetch_dc_posts_within,
     in_campaign,
+    in_dc_work_window,
     in_lookback,
     load_rules,
     meaning_diff_line,
@@ -38,15 +41,20 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 
 def test_schedule_staggered_from_biaoke_0100():
     assert JOB_KIND == "dc_sf_silent"
-    assert SCHEDULE_HOUR == 3 and SCHEDULE_MINUTE == 30
+    assert SCHEDULE_HOUR == 3 and SCHEDULE_MINUTE == 0
+    assert WINDOW_START_MIN == 3 * 60 and WINDOW_END_MIN == 4 * 60
     assert LOOKBACK_HOURS == 24
     assert PIPE_PREFIX.startswith("dc-sf-silent")
     assert LOCK_NAME == "dc_sf_silent.lock"
-    # 01:00–02:19 忙；03:30 才是本軌
+    # 01:00–02:19 忙；03:00–04:00 才是本軌
     busy = datetime(2026, 10, 15, 1, 30, tzinfo=TAIPEI)
-    free = datetime(2026, 10, 15, 3, 30, tzinfo=TAIPEI)
+    free = datetime(2026, 10, 15, 3, 0, tzinfo=TAIPEI)
     assert biaoke_night_busy(busy) is True
     assert biaoke_night_busy(free) is False
+    assert in_dc_work_window(free) is True
+    assert in_dc_work_window(datetime(2026, 10, 15, 3, 59, tzinfo=TAIPEI)) is True
+    assert in_dc_work_window(datetime(2026, 10, 15, 4, 0, tzinfo=TAIPEI)) is False
+    assert in_dc_work_window(datetime(2026, 10, 15, 20, 40, tzinfo=TAIPEI)) is False
 
 
 def test_campaign_window_and_pipeline_key():
@@ -102,6 +110,14 @@ def test_night_tick_out_of_campaign_and_isolation_notes():
             skip_if_done=False,
         )
         assert r2.get("notes") == "defer_biaoke_night_window"
+        # 窗外（晚上 deploy）不准整批重畫
+        r3 = night_tick(
+            db,
+            now=datetime(2026, 10, 15, 20, 40, tzinfo=TAIPEI),
+            skip_if_done=False,
+        )
+        assert r3.get("notes") == "outside_dc_window"
+        assert r3.get("ok") is True
 
 
 def test_main_scheduler_wires_dc_sf_silent_isolated():
@@ -112,10 +128,65 @@ def test_main_scheduler_wires_dc_sf_silent_isolated():
     assert "dc_sf_night_tick" in src or "night_tick" in src
     assert "return" in src  # 專鍵提早 return，不走飆大 ingest 鏈
     slot_src = inspect.getsource(main_mod.start_daily_scheduler)
-    assert "(3, 30, \"dc_sf_silent\")" in slot_src or "(3, 30, 'dc_sf_silent')" in slot_src
+    assert "(3, 0, \"dc_sf_silent\")" in slot_src or "(3, 0, 'dc_sf_silent')" in slot_src
     absorb = open("biaoke_absorb.py", encoding="utf-8").read()
     assert "dc_sf_silent" in absorb and "互不影響" in absorb
-    assert "03:30" in absorb
+    assert "03:00" in absorb and "04:00" in absorb
+
+
+def test_catch_up_dc_sf_only_in_0300_0400_window():
+    """補跑只 03:00–04:00；晚上／白天／deploy 不准再拉整輪渲圖。"""
+    import main as main_mod
+
+    src = inspect.getsource(main_mod.catch_up_missed_jobs)
+    assert "(3 * 60)" in src or "3 * 60" in src
+    assert "(4 * 60)" in src or "4 * 60" in src
+    assert "need_dc_sf" in src
+    assert "03:00–04:00" in src or "03:00-04:00" in src or "outside" in open(
+        "dc_scenario_silent_verify.py", encoding="utf-8"
+    ).read()
+
+
+def test_scheduler_defers_catch_up_after_boot():
+    """開機先聽筒、延後補跑，避免跟第一檔查股搶 2GB。"""
+    import main as main_mod
+
+    src = inspect.getsource(main_mod.start_daily_scheduler)
+    assert "180" in src
+    assert "先開聽筒" in src or "boot_catchup" in src or "_boot_catchup_delay" in src
+
+
+def test_reclaim_stale_running_marks_error():
+    from dc_scenario_silent_verify import (
+        _mark_pipeline,
+        reclaim_stale_running,
+        stamp_status,
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "t.db")
+        open(db, "a").close()
+        day = date(2026, 10, 20)
+        _mark_pipeline(db, day, "running", "killed mid-render")
+        # 假裝 finished_at 很舊
+        import sqlite3
+
+        conn = sqlite3.connect(db)
+        try:
+            conn.execute(
+                "UPDATE pipeline_runs SET finished_at=? WHERE run_date=?",
+                ("2026-10-20 03:40:00", "dc-sf-silent-20261020"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        now = datetime(2026, 10, 20, 20, 40, tzinfo=TAIPEI)
+        assert reclaim_stale_running(db, day, now=now, stale_sec=600) is True
+        hit = stamp_status(db, day)
+        assert hit and hit.get("status") == "error"
+        assert "stale_running_reclaim" in str(hit.get("notes") or "")
+        # 已是 error：不再重降
+        assert reclaim_stale_running(db, day, now=now, stale_sec=600) is False
 
 
 def test_align_uses_our_bars_for_walked_turns_and_drawn_forecast():

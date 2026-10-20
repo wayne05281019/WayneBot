@@ -1080,6 +1080,62 @@ def test_menu_and_start_cancel_ops():
         assert "_cancel_actor_ops" in src, name
 
 
+def test_menu_and_start_reclaim_progress_orphans():
+    """部署殺死後殘框：/menu／/start 必須 delete 碟上 orphan。"""
+    for name in ("menu_cmd", "start_cmd"):
+        src = inspect.getsource(getattr(WayneTelegramBot, name))
+        assert "_reclaim_progress_orphans" in src, name
+    boot = inspect.getsource(WayneTelegramBot.run_polling)
+    assert "_reclaim_progress_orphans" in boot
+    assert "_WAIT_MAX_ELAPSED_S" in inspect.getsource(WayneTelegramBot)
+
+
+def test_progress_orphan_remember_and_reclaim(tmp_path):
+    """LOADING 寫進碟；reclaim 刪 Telegram 訊息並清列。"""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    db = tmp_path / "o.db"
+    db.write_text("")
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = str(db)
+    wait = MagicMock()
+    wait.chat_id = 111
+    wait.message_id = 222
+    bot._remember_progress_orphan("111:9", "biaoke", wait)
+    rows = bot._list_progress_orphans("111:9")
+    assert len(rows) == 1
+    assert rows[0]["message_id"] == 222
+    tg = MagicMock()
+    tg.delete_message = AsyncMock()
+
+    async def _run():
+        n = await bot._reclaim_progress_orphans(tg, actor="111:9")
+        assert n == 1
+        tg.delete_message.assert_awaited_once()
+        assert bot._list_progress_orphans("111:9") == []
+
+    asyncio.run(_run())
+
+
+def test_plain_wait_hard_cap_dismisses_frozen_bubble():
+    """LOADING 秒數硬上限：逾時必須收起，不准永遠停在「已 N 秒」。"""
+    src = inspect.getsource(WayneTelegramBot._start_plain_wait)
+    assert "_WAIT_MAX_ELAPSED_S" in src
+    assert "_dismiss_progress_now" in src
+
+
+def test_lookup_defers_struct_vol_prep_until_after_card():
+    """1c-2g：讀高低卡當下不准疊結構／大量區 prepare（OOM→502）。"""
+    src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    # 建卡成功後才 create_task 結構／大量區
+    card_at = src.find("to_thread(_build_card)")
+    struct_at = src.find("struct_prep_task = asyncio.create_task(_run_struct_bars())")
+    vol_at = src.find("vol_zone_task = asyncio.create_task(_run_vol_zone_prep())")
+    assert card_at > 0 and struct_at > card_at and vol_at > card_at
+    assert "1c-2g" in src or "搶記憶體" in src
+
+
 def test_cancel_dismisses_frozen_progress_and_blocks_bg_send():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._actor_op_gen = {"u1": 3}

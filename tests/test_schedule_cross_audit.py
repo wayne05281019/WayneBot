@@ -77,7 +77,8 @@ def test_render_data_role_pushes_morning(monkeypatch):
 
 def test_main_scheduler_slots_match_clocks():
     src = _read("main.py")
-    assert '(3, 0, "open_check")' in src
+    assert '(2, 45, "open_check")' in src
+    assert '(3, 0, "dc_sf_silent")' in src
     assert '(6, 30, "morning")' in src
     assert '(12, 45, "midday")' in src
     assert '(16, 30, "fuse")' in src
@@ -85,6 +86,9 @@ def test_main_scheduler_slots_match_clocks():
     assert '(21, 0, "winrate")' in src
     assert '(5, 10, "typhoon")' in src
     assert '(22, 15, "typhoon")' in src
+    absorb = _read("biaoke_absorb.py")
+    assert "_AFTER_CLOSE_HMS = ((17, 40), (18, 50), (22, 30))" in absorb
+    assert "(16, 30)" not in absorb.split("_AFTER_CLOSE_HMS", 1)[1][:120]
     header = _read("main_runner.py")[:2800]
     assert "WAYNE_SCREEN_NOTIFY=0 不寄" in header
     assert "Render 常駐 06:30" not in header
