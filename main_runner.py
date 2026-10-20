@@ -51,7 +51,7 @@ import requests
 
 from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str, fuse_end_date, taipei_now, taipei_stamp
 from wayne_db import ensure_core_schema
-from ops_watchdog import MORNING_RUNNING_STALE_SEC
+from ops_watchdog import INCREMENT_RUNNING_STALE_SEC, MORNING_RUNNING_STALE_SEC
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1454,119 +1454,135 @@ class MainRunner:
         if not self.try_claim_pipeline(
             self.today_str,
             notes="increment-claim",
-            stale_running_sec=2700,
+            stale_running_sec=int(INCREMENT_RUNNING_STALE_SEC),
             allow_stale_running=True,
         ):
             logger.info("ℹ️ %s 盤後融合進行中或已成功，略過。", self.today_str)
             return True
         start_time = time.time()
-        logger.info("🎬 === 盤後融合開始（不寄海選；海選 06:30／尾盤 12:45）===")
-        self.run_daily_increment(notify=notify)
-        from import_health import audit_import, format_audit_plain
-
-        cap = fuse_end_date()
+        key = str(self.today_str)
         try:
-            from emerging_quotes import emerging_rows_on, sync_emerging_quotes
+            with self._morning_running_lease(key):
+                logger.info("🎬 === 盤後融合開始（不寄海選；海選 06:30／尾盤 12:45）===")
+                self.run_daily_increment(notify=notify)
+                from import_health import audit_import, format_audit_plain
 
-            ems = sync_emerging_quotes(self.db_path, cap=cap)
-            logger.info("興櫃收盤再寫：%s", ems)
-        except Exception as e_em:
-            logger.warning("興櫃收盤再寫略過：%s", e_em)
-        health = audit_import(self.db_path, cap)
-        try:
-            wd = datetime.strptime(cap, "%Y%m%d").weekday()
-        except Exception:
-            wd = 0
-        if wd < 5 and not self._increment_ok(health) and self.fetcher:
-            for i in range(1, 9):
-                logger.warning(
-                    "%s 繼續補齊（上市 %s 上櫃 %s 興櫃 %s）第 %s 次",
-                    cap,
+                cap = fuse_end_date()
+                try:
+                    from emerging_quotes import emerging_rows_on, sync_emerging_quotes
+
+                    ems = sync_emerging_quotes(self.db_path, cap=cap)
+                    logger.info("興櫃收盤再寫：%s", ems)
+                except Exception as e_em:
+                    logger.warning("興櫃收盤再寫略過：%s", e_em)
+                health = audit_import(self.db_path, cap)
+                try:
+                    wd = datetime.strptime(cap, "%Y%m%d").weekday()
+                except Exception:
+                    wd = 0
+                if wd < 5 and not self._increment_ok(health) and self.fetcher:
+                    for i in range(1, 9):
+                        logger.warning(
+                            "%s 繼續補齊（上市 %s 上櫃 %s 興櫃 %s）第 %s 次",
+                            cap,
+                            health.get("tw"),
+                            health.get("two"),
+                            health.get("em"),
+                            i,
+                        )
+                        time.sleep(min(25 * i, 60))
+                        self.fetcher.update_daily_market_data(cap)
+                        if hasattr(self.fetcher, "sync_paired_markets"):
+                            self.fetcher.sync_paired_markets()
+                        try:
+                            from chips import backfill_chips, update_chips_for_date
+
+                            update_chips_for_date(self.db_path, cap)
+                            backfill_chips(self.db_path, days=90)
+                        except Exception as e_chip:
+                            logger.warning("補齊輪法人再抓略過：%s", e_chip)
+                        try:
+                            from emerging_quotes import sync_emerging_quotes
+
+                            em = sync_emerging_quotes(self.db_path, cap=cap)
+                            logger.info("興櫃補齊寫入：%s", em)
+                        except Exception as e_em:
+                            logger.warning("興櫃補齊略過：%s", e_em)
+                        health = audit_import(self.db_path, cap)
+                        if self._increment_ok(health):
+                            break
+                elapsed = time.time() - start_time
+                if not self._increment_ok(health):
+                    note = format_audit_plain(health)
+                    self._mark_pipeline("incomplete", note[:500])
+                    logger.error("盤後仍待補：%s", note)
+                    if notify:
+                        try:
+                            self.send_telegram_message(
+                                "🔁 盤後繼續補齊（下一輪開機／16:30 會再跑）\n" + note
+                            )
+                        except Exception:
+                            pass
+                    return False
+                health = dict(health or {})
+                try:
+                    from emerging_quotes import emerging_rows_on
+
+                    health["em"] = emerging_rows_on(self.db_path, cap)
+                except Exception:
+                    health.setdefault("em", int(health.get("em") or 0))
+                self._mark_pipeline(
+                    "success",
+                    f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} "
+                    f"two={health.get('two')} em={health.get('em')}",
+                )
+                logger.info(
+                    "🎉 === 盤後融合完畢 上市%s 上櫃%s 興櫃%s（%.1fs）===",
                     health.get("tw"),
                     health.get("two"),
                     health.get("em"),
-                    i,
+                    elapsed,
                 )
-                time.sleep(min(25 * i, 60))
-                self.fetcher.update_daily_market_data(cap)
-                if hasattr(self.fetcher, "sync_paired_markets"):
-                    self.fetcher.sync_paired_markets()
+                # 融合 success 只代表官方柱齊；後面各靜默軌自己蓋 sv-* 成功／失敗戳。
                 try:
-                    from chips import backfill_chips, update_chips_for_date
-
-                    update_chips_for_date(self.db_path, cap)
-                    backfill_chips(self.db_path, days=90)
-                except Exception as e_chip:
-                    logger.warning("補齊輪法人再抓略過：%s", e_chip)
-                try:
-                    from emerging_quotes import sync_emerging_quotes
-
-                    em = sync_emerging_quotes(self.db_path, cap=cap)
-                    logger.info("興櫃補齊寫入：%s", em)
-                except Exception as e_em:
-                    logger.warning("興櫃補齊略過：%s", e_em)
-                health = audit_import(self.db_path, cap)
-                if self._increment_ok(health):
-                    break
-        elapsed = time.time() - start_time
-        if not self._increment_ok(health):
-            note = format_audit_plain(health)
-            self._mark_pipeline("incomplete", note[:500])
-            logger.error("盤後仍待補：%s", note)
-            if notify:
-                try:
-                    self.send_telegram_message("🔁 盤後繼續補齊（下一輪開機／16:30 會再跑）\n" + note)
+                    silent_rep = self._run_post_fuse_silent_tracks(cap, skip_ok=False)
+                    logger.info("盤後靜默各軌：%s", silent_rep.get("tracks"))
                 except Exception:
-                    pass
-            return False
-        health = dict(health or {})
-        try:
-            from emerging_quotes import emerging_rows_on
+                    logger.exception("盤後靜默各軌入口失敗（融合仍保持 success）")
+                if notify:
+                    try:
+                        self._broadcast_family(self._fuse_done_message(cap, health))
+                    except Exception:
+                        logger.exception("盤後融合完成推播失敗")
+                try:
+                    from us_holidays import refresh_us_holiday_calendar
 
-            health["em"] = emerging_rows_on(self.db_path, cap)
-        except Exception:
-            health.setdefault("em", int(health.get("em") or 0))
-        self._mark_pipeline(
-            "success",
-            f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')} em={health.get('em')}",
-        )
-        logger.info(
-            "🎉 === 盤後融合完畢 上市%s 上櫃%s 興櫃%s（%.1fs）===",
-            health.get("tw"),
-            health.get("two"),
-            health.get("em"),
-            elapsed,
-        )
-        # 融合 success 只代表官方柱齊；後面各靜默軌自己蓋 sv-* 成功／失敗戳。
-        try:
-            silent_rep = self._run_post_fuse_silent_tracks(cap, skip_ok=False)
-            logger.info("盤後靜默各軌：%s", silent_rep.get("tracks"))
-        except Exception:
-            logger.exception("盤後靜默各軌入口失敗（融合仍保持 success）")
-        if notify:
+                    hol = refresh_us_holiday_calendar(self.db_path)
+                    logger.info("美股 NYSE 休市年曆：%s", hol)
+                except Exception as e:
+                    logger.warning("美股休市年曆略過：%s", e)
+                try:
+                    from tw_holidays import refresh_tw_holiday_calendar, refresh_tw_typhoon_halt
+
+                    tw_hol = refresh_tw_holiday_calendar(self.db_path)
+                    logger.info("台股開休市年曆：%s", tw_hol)
+                    typh = refresh_tw_typhoon_halt(self.db_path)
+                    logger.info("北市停班：%s", typh)
+                except Exception as e:
+                    logger.warning("台股休市年曆略過：%s", e)
+                # 盤後這份庫會打進 Release zip：模擬倉也要在這裡成交，下次開機才看得到持倉。
+                self.run_evening_screen(skip_if_done=True, notify=False)
+                return True
+        except Exception as exc:
+            logger.exception("盤後融合未捕捉例外 key=%s", key)
             try:
-                self._broadcast_family(self._fuse_done_message(cap, health))
+                self._mark_pipeline(
+                    "incomplete",
+                    f"increment crashed: {type(exc).__name__}: {exc}"[:500],
+                )
             except Exception:
-                logger.exception("盤後融合完成推播失敗")
-        try:
-            from us_holidays import refresh_us_holiday_calendar
-
-            hol = refresh_us_holiday_calendar(self.db_path)
-            logger.info("美股 NYSE 休市年曆：%s", hol)
-        except Exception as e:
-            logger.warning("美股休市年曆略過：%s", e)
-        try:
-            from tw_holidays import refresh_tw_holiday_calendar, refresh_tw_typhoon_halt
-
-            tw_hol = refresh_tw_holiday_calendar(self.db_path)
-            logger.info("台股開休市年曆：%s", tw_hol)
-            typh = refresh_tw_typhoon_halt(self.db_path)
-            logger.info("北市停班：%s", typh)
-        except Exception as e:
-            logger.warning("台股休市年曆略過：%s", e)
-        # 盤後這份庫會打進 Release zip：模擬倉也要在這裡成交，下次開機才看得到持倉。
-        self.run_evening_screen(skip_if_done=True, notify=False)
-        return True
+                logger.exception("盤後融合 crash 蓋戳失敗 key=%s", key)
+            return False
 
     def _refresh_official_sidecars(self) -> None:
         """行情已齊時仍每天對官方側車。不重抓全市場日K、不分點。

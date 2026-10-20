@@ -25,7 +25,8 @@ JOB_SPECS: Dict[str, Dict[str, Any]] = {
     "increment": {
         "label": "盤後融合",
         "scheduled": "16:30",
-        "due_minutes": 18 * 60 + 30,
+        # 16:30 窗內就要完；18:30 才判 miss＝拖太久（#656 部署殺行程後卡 45 分）。
+        "due_minutes": 16 * 60 + 45,
         "key": "today",
     },
     "morning_screen": {
@@ -50,6 +51,9 @@ _POLLING_STALE_SECONDS = 300
 # 早上海選 running 租約：main_runner 進行中會續期 finished_at。
 # 逾時＝行程已死／卡死，准許重搶補寄（§14）；未逾時不當漏寄（修 06:55 誤報）。
 MORNING_RUNNING_STALE_SEC = 1800
+# 盤後融合 running 租約：進行中續 finished_at；Deploy 殺行程後 5 分即可重搶，
+# 不准再靠 45 分 stale 把 16:30 窗拖掉。
+INCREMENT_RUNNING_STALE_SEC = 300
 
 # watchdog kind → main.py 排程名（與 config.scheduler_owns 對齊）
 _WATCHDOG_SCHEDULER_JOB = {
@@ -334,6 +338,15 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
                 age = _stamp_age_seconds_taipei(fin, now=ref)
                 # 租約未過期＝準點／長掃仍在跑，不當漏寄（對齊 morning claim stale）。
                 if age is not None and age < float(MORNING_RUNNING_STALE_SEC):
+                    continue
+        if kind == "increment" and status == "running":
+            row = _pipeline_rows(db_path, [run_key]).get(run_key) or {}
+            notes = str(row.get("notes") or "")
+            fin = str(row.get("finished_at") or "")
+            if "increment" in notes and fin:
+                age = _stamp_age_seconds_taipei(fin, now=ref)
+                # 租約未過期＝融合仍在跑，不當漏（對齊 increment claim stale）。
+                if age is not None and age < float(INCREMENT_RUNNING_STALE_SEC):
                     continue
         if kind == "increment":
             try:

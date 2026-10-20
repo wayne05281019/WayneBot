@@ -328,11 +328,16 @@ def test_increment_job_stamps_when_bars_already_complete():
     import inspect
 
     from main_runner import MainRunner
+    from ops_watchdog import INCREMENT_RUNNING_STALE_SEC
 
     src = inspect.getsource(MainRunner.run_increment_job)
     assert "already-complete" in src
     assert "increment-claim" in src
     assert src.index("already-complete") < src.index("盤後融合開始")
+    assert "INCREMENT_RUNNING_STALE_SEC" in src
+    assert "_morning_running_lease" in src
+    assert "increment crashed" in src
+    assert INCREMENT_RUNNING_STALE_SEC <= 600
 
 
 def test_boot_backfill_uses_increment_job():
