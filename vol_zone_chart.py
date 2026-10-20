@@ -1460,6 +1460,166 @@ def _bar_tests_press(row: Dict[str, Any], press: float) -> bool:
     return hi >= press * _PRESS_TOUCH and cl <= press
 
 
+def _vol_zone_price_voice(*, session_live: bool, emerging: bool) -> Dict[str, str]:
+    """盤中／收盤圖說價口吻。盤中不准寫收／收盤／當天收；興櫃盤中＝興櫃日均價。"""
+    if session_live:
+        if emerging:
+            return {
+                "day_stamp": "興櫃日均價",
+                "today_stamp": "興櫃日均價",
+                "px_prefix": "興櫃日均價",
+                "over": "興櫃日均價已過",
+                "not_over": "興櫃日均價未過",
+                "still": "興櫃日均價仍",
+                "not_through": "興櫃日均價沒過",
+                "vs_yest": "比昨天收低",
+                "short": "現",
+            }
+        return {
+            "day_stamp": "現價",
+            "today_stamp": "現價",
+            "px_prefix": "現價",
+            "over": "現價已過",
+            "not_over": "現價未過",
+            "still": "現價仍",
+            "not_through": "現價沒過",
+            "vs_yest": "比昨天收低",
+            "short": "現",
+        }
+    return {
+        "day_stamp": "當天收",
+        "today_stamp": "今天收盤",
+        "px_prefix": "收盤",
+        "over": "收盤已過",
+        "not_over": "收盤未過",
+        "still": "收盤仍",
+        "not_through": "收盤沒過",
+        "vs_yest": "比昨天低",
+        "short": "收",
+    }
+
+
+def _apply_card_face_to_view(view: pd.DataFrame, card: Optional[Dict[str, Any]]) -> pd.DataFrame:
+    """縮圖臉柱末日對齊決策卡表頭：今天已收／盤中現價都要跟上，不准停在昨收。
+
+    與圖說／走勢標同一條 `align_vol_zone_caption_face`：單一今天棒餵渲染。
+    """
+    if view is None or getattr(view, "empty", True) or not isinstance(card, dict):
+        return view
+    last_row = view.iloc[-1].to_dict()
+    bars = view.to_dict("records")
+    face, _face_bars, meta = align_vol_zone_caption_face(last_row, bars, card)
+    if not meta.get("aligned") or not face or _px(face.get("close")) <= 0:
+        return view
+    out = view.copy()
+    face_d = _trade_day(face.get("date"))
+    last_d = _trade_day(out.iloc[-1].get("date"))
+    patch = {
+        "date": face.get("date"),
+        "open": _px(face.get("open")),
+        "high": _px(face.get("high")),
+        "low": _px(face.get("low")),
+        "close": _px(face.get("close")),
+        "volume": _px(face.get("volume")),
+        "is_live": bool(meta.get("session_live")),
+    }
+    if face_d and last_d and face_d > last_d:
+        row = dict(out.iloc[-1].to_dict())
+        row.update(patch)
+        out = pd.concat([out, pd.DataFrame([row])], ignore_index=True)
+        return out
+    idx = len(out) - 1
+    for k, val in patch.items():
+        if val is None:
+            continue
+        if k not in out.columns:
+            out[k] = None
+        out.iat[idx, out.columns.get_loc(k)] = val
+    return out
+
+
+def align_vol_zone_caption_face(
+    last: Optional[Dict[str, Any]],
+    bars: Optional[List[Dict[str, Any]]],
+    card: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
+    """大量區圖說／走勢標末日柱＝表頭同源（display_quote_from_card）。
+
+    不准用前一日收／開冒充今天收／現價。回傳 (face_last, face_bars, meta)。
+    meta: session_live／emerging／voice。
+    """
+    rows = [dict(x) for x in (bars or []) if isinstance(x, dict)]
+    face = dict(last) if isinstance(last, dict) else (dict(rows[-1]) if rows else None)
+    emerging = False
+    session_live = False
+    dq = None
+    if isinstance(card, dict) and card:
+        listing = str(card.get("listing") or "")
+        qs = str(card.get("quote_source") or "")
+        if qs == "emerging_quotes" or listing.startswith("興櫃"):
+            emerging = True
+        try:
+            from live_quote import display_quote_from_card
+
+            dq = display_quote_from_card(card)
+        except Exception:
+            dq = None
+    if dq and _px(dq.get("close")) > 0:
+        emerging = bool(dq.get("emerging")) or emerging
+        # 表頭 label 已分盤中／收盤（含興櫃 15:00）；跟四張圖同源
+        session_live = str(dq.get("label") or "") == "盤中"
+        face_date = _trade_day(dq.get("date") or dq.get("as_of") or "")
+        if not face_date and isinstance(card, dict):
+            face_date = _trade_day(card.get("latest_date") or card.get("as_of") or "")
+        face = dict(face or {})
+        if face_date:
+            face["date"] = face_date
+        for k in ("open", "high", "low", "close"):
+            v = _px(dq.get(k))
+            if v > 0:
+                face[k] = v
+        face["close"] = _px(dq.get("close"))
+        vol = dq.get("volume")
+        if vol is not None and _px(vol) >= 0:
+            face["volume"] = _px(vol)
+        if not rows:
+            rows = [dict(face)]
+        else:
+            last_d = _trade_day(rows[-1].get("date"))
+            face_d = _trade_day(face.get("date"))
+            if face_d and last_d and face_d > last_d:
+                # 庫末日仍是前一日：附加今天臉柱，不准蓋掉昨天（連站要比昨天）
+                rows = list(rows) + [dict(face)]
+            else:
+                merged = dict(rows[-1])
+                for k in ("date", "open", "high", "low", "close", "volume"):
+                    if face.get(k) is not None:
+                        merged[k] = face[k]
+                rows = list(rows[:-1]) + [merged]
+                face = dict(merged)
+    elif isinstance(card, dict) and card:
+        session_live = bool(card.get("is_live"))
+        try:
+            from decision_card_signals import _in_board_session
+            from config import taipei_now
+
+            session_live = bool(card.get("is_live")) and _in_board_session(
+                taipei_now(), emerging=emerging
+            )
+        except Exception:
+            pass
+    if face is None and rows:
+        face = dict(rows[-1])
+    voice = _vol_zone_price_voice(session_live=session_live, emerging=emerging)
+    meta = {
+        "session_live": session_live,
+        "emerging": emerging,
+        "voice": voice,
+        "aligned": bool(dq and _px((dq or {}).get("close")) > 0),
+    }
+    return face, rows, meta
+
+
 def vol_zone_day_path_label(
     press: float,
     hold: float,
@@ -1467,24 +1627,37 @@ def vol_zone_day_path_label(
     bars: Optional[List[Dict[str, Any]]] = None,
     *,
     zone_date: str = "",
+    card: Optional[Dict[str, Any]] = None,
+    session_live: Optional[bool] = None,
+    emerging: Optional[bool] = None,
 ) -> str:
     """③最後一根走勢標：對應當日官方／MIS 開高低收＋既有壓撐，不是死釘『月/日 壓價』。
 
     例形：10月6日 撐為2,940  今最高3,055  今最低2,915  收盤未過撐  收2,920
-    只留事實句；測壓次數／尚未測／壓轉撐等判斷句一律不打。不是買訊。
+    盤中改現價／興櫃日均價口吻，價跟表頭同源。只留事實句。不是買訊。
     bars／zone_date 保留給呼叫端相容（判斷句已刪，不再用來計次）。
     """
     del bars, zone_date  # 相容舊呼叫；當日標不再做近窗測次判斷
-    if not last:
+    face = last
+    live = bool(session_live) if session_live is not None else False
+    em = bool(emerging) if emerging is not None else False
+    if card is not None:
+        face, _rows, meta = align_vol_zone_caption_face(last, None, card)
+        live = bool(meta.get("session_live"))
+        em = bool(meta.get("emerging"))
+    elif session_live is None and emerging is None:
+        live, em = False, False
+    if not face:
         return ""
+    voice = _vol_zone_price_voice(session_live=live, emerging=em)
     press = _px(press)
     hold = _px(hold)
-    cl = _px(last.get("close"))
-    hi = _px(last.get("high") or cl)
-    lo = _px(last.get("low") or cl)
+    cl = _px(face.get("close"))
+    hi = _px(face.get("high") or cl)
+    lo = _px(face.get("low") or cl)
     if cl <= 0 or hi <= 0 or press <= 0 or hold <= 0 or press < hold:
         return ""
-    day_zh = _date_zh_md(last.get("date"))
+    day_zh = _date_zh_md(face.get("date"))
     if not day_zh:
         return ""
     press_s = _fmt_price(press)
@@ -1493,8 +1666,8 @@ def vol_zone_day_path_label(
     cl_s = _fmt_price(cl)
     lo_s = _fmt_price(lo)
 
-    press_touch = _bar_tests_press(last, press)
-    hold_touch = _bar_tests_hold(last, hold)
+    press_touch = _bar_tests_press(face, press)
+    hold_touch = _bar_tests_hold(face, hold)
     if press_touch and not (cl < hold):
         side = "press"
     elif hold_touch or cl < hold:
@@ -1504,18 +1677,19 @@ def vol_zone_day_path_label(
     else:
         side = "press" if abs(cl - press) <= abs(cl - hold) else "hold"
 
+    short = voice["short"]
     if side == "hold":
-        verb = "收盤已過撐" if cl > hold else "收盤未過撐"
+        verb = f"{voice['over']}撐" if cl > hold else f"{voice['not_over']}撐"
         low_bit = f"  今最低{lo_s}" if lo > 0 and lo <= hold * 1.01 else ""
         line = (
             f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
-            f"{verb}  收{cl_s}"
+            f"{verb}  {short}{cl_s}"
         )
     else:
-        verb = "收盤已過壓" if cl > press else "收盤未過壓"
+        verb = f"{voice['over']}壓" if cl > press else f"{voice['not_over']}壓"
         line = (
             f"{day_zh} 壓為{press_s}  今最高{hi_s}  "
-            f"{verb}  收{cl_s}"
+            f"{verb}  {short}{cl_s}"
         )
     return "  ".join(line.split())
 
@@ -1528,25 +1702,29 @@ def vol_zone_position_line(
     *,
     on_ex: bool = False,
 ) -> str:
-    """依這檔在帶裡的現況換句，不是同一套填空。不寫抱、不寫賣、不改如何賣。"""
-    if not zone or not last:
+    """依這檔在帶裡的現況換句，不是同一套填空。不寫抱、不寫賣、不改如何賣。
+
+    今天這根價／口吻跟大量區表頭同源（決策卡 display_quote）；盤中不准用昨收／開當收。
+    """
+    face, rows, meta = align_vol_zone_caption_face(last, bars, card)
+    if not zone or not face:
         return ""
+    voice = meta.get("voice") or _vol_zone_price_voice(session_live=False, emerging=False)
     hi = _px(zone.get("high"))
     lo = _px(zone.get("low"))
-    cl = _px(last.get("close"))
+    cl = _px(face.get("close"))
     if hi <= 0 or lo <= 0 or hi < lo or cl <= 0:
         return ""
     from wayne_navigator import _fmt_price
 
     hi_s = _fmt_price(hi)
     lo_s = _fmt_price(lo)
-    rows = [dict(x) for x in (bars or _rows_from_last(last)) if isinstance(x, dict)]
     if not rows:
-        rows = _rows_from_last(last)
+        rows = _rows_from_last(face)
     heat = _heat_key(card)
     heat_line = _heat_clause(card, heat)
-    vol_lines = _vol_fact_lines(zone, last)
-    last_hi = _px(last.get("high") or cl)
+    vol_lines = _vol_fact_lines(zone, face)
+    last_hi = _px(face.get("high") or cl)
     # 收＝壓＝碰到上緣還沒過；只有收＞壓才算過壓
     test_press = last_hi >= hi * _PRESS_TOUCH and cl <= hi
     near_press = hi > 0 and cl <= hi and (hi - cl) / hi <= 0.015
@@ -1569,7 +1747,7 @@ def vol_zone_position_line(
             bits.append("看起來不錯！")
         elif test:
             bits.append("今天高碰到上緣")
-            bits.append("收盤沒過")
+            bits.append(voice["not_through"])
         lines: List[str] = []
         for bit in bits:
             s = str(bit or "").strip()
@@ -1586,9 +1764,9 @@ def vol_zone_position_line(
         if on_ex:
             hold = f"除息後撐{lo_s}已跌破"
             gone = "這條除息後撐不算還在"
-        return _emit(hold, f"當天收{_fmt_price(cl)}", gone)
+        return _emit(hold, f"{voice['day_stamp']}{_fmt_price(cl)}", gone)
     if cl > hi:
-        return _emit(f"收盤已過壓{hi_s}上緣")
+        return _emit(f"{voice['over']}壓{hi_s}上緣")
 
     # 有官方除權息切開才卡 since；沒有則仍用全序列（同尺價可含爆大量日前）。
     since = _trade_day(zone.get("ex_cut") or "")
@@ -1603,10 +1781,13 @@ def vol_zone_position_line(
 
     if n == 1:
         if test_press:
-            body = f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，還沒過{hi_s}上緣"
+            body = (
+                f"今天剛站在支撐線上，{voice['px_prefix']}{_fmt_price(cl)}"
+                f"還在撐{lo_s}之上，還沒過{hi_s}上緣"
+            )
             return _emit(body, test=True)
         body = (
-            f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，"
+            f"今天剛站在支撐線上，{voice['px_prefix']}{_fmt_price(cl)}還在撐{lo_s}之上，"
             f"仍沒有突破{hi_s}上緣壓力"
         )
         return _emit(body)
@@ -1614,30 +1795,37 @@ def vol_zone_position_line(
     if rising:
         body = (
             f"今天是第{n_ord}天站在支撐線上，且{n_zh}天收盤價持續攀高，"
-            f"收盤仍沒有突破{hi_s}上緣壓力"
+            f"{voice['still']}沒有突破{hi_s}上緣壓力"
         )
         return _emit(body, nice=nice, test=test_press and not nice)
 
     if last_down:
-        body = f"今天是第{n_ord}天站在支撐線上，但今天收盤 {_fmt_price(cl)} 比昨天低"
+        body = (
+            f"今天是第{n_ord}天站在支撐線上，但{voice['today_stamp']} "
+            f"{_fmt_price(cl)} {voice['vs_yest']}"
+        )
         prev = streak[-2] if n >= 2 else {}
         prev_hi = _px(prev.get("high")) if n >= 2 else 0
         if prev_hi >= hi * _PRESS_TOUCH and not _is_zone_bar(prev, zone):
             body += f"；昨天盤中高點有碰到上緣 {hi_s}，這{n_zh}天收盤價沒有持續攀高"
             return _emit(body, test=False)
-        body += f"，這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
+        body += (
+            f"，這{n_zh}天收盤價沒有持續攀高，"
+            f"{voice['still']}沒有突破{hi_s}上緣壓力"
+        )
         return _emit(body, test=test_press)
 
     if near_press:
         body = (
-            f"今天是第{n_ord}天站在支撐線上，收盤{_fmt_price(cl)}靠近{hi_s}上緣但沒過，"
+            f"今天是第{n_ord}天站在支撐線上，{voice['px_prefix']}{_fmt_price(cl)}"
+            f"靠近{hi_s}上緣但沒過，"
             f"仍在撐{lo_s}之上，這{n_zh}天收盤價沒有持續攀高"
         )
         return _emit(body, test=test_press)
 
     body = (
-        f"今天是第{n_ord}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
-        f"但這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
+        f"今天是第{n_ord}天站在支撐線上，{voice['px_prefix']}{_fmt_price(cl)}仍在撐{lo_s}之上，"
+        f"但這{n_zh}天收盤價沒有持續攀高，{voice['still']}沒有突破{hi_s}上緣壓力"
     )
     return _emit(body, test=test_press)
 
@@ -1652,7 +1840,10 @@ def vol_zone_photo_caption(
     bars: Optional[List[Dict[str, Any]]] = None,
     ex_events: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """第三張圖說：原句＋除權息／跳空＋收盤口吻。如何賣仍只在介紹圖／高低卡。"""
+    """大量區圖說：原句＋除權息／跳空＋今天臉柱口吻。查股／勝率／壓撐同一條。
+
+    今天價跟表頭同源；盤中現價／興櫃日均價，收盤＝官方收（興櫃＝日均價）。如何賣仍只在介紹圖／高低卡。
+    """
     events = list(ex_events or [])
     gaps: List[str] = []
     if zone is None or last is None or bars is None:
@@ -1683,6 +1874,8 @@ def vol_zone_photo_caption(
     elif bars:
         recent = bars[-8:] if len(bars) > 8 else bars
         gaps = unexplained_gap_dates(recent, way="down")
+    # 圖說末日先對齊決策卡表頭，再算除息日／位置句（上市＋興櫃同一條）
+    last, bars, _meta = align_vol_zone_caption_face(last, bars, card)
     on_ex = False
     last_d = _bar_ymd((last or {}).get("date"))
     zd = _bar_ymd((zone or {}).get("date"))
@@ -2817,31 +3010,44 @@ def _paint_volume_zone(
     spike_md = _md(spike_date)
     ax_head = None
     channel: Dict[str, Any] = {}
-    # 縮圖最後一根 K／量＝決策卡盤中真報價（與圖一／二同源）；選區已在 prepare 吃官方。
-    if isinstance(card, dict) and card.get("is_live"):
+    # 縮圖最後一根 K／量＝決策卡今臉（與圖一／二／表頭同源）；選區已在 prepare 吃官方。
+    # 盤中走 overlay；13:30 收後 is_live 可能已關，仍要用卡上今天這根，不准臉柱停在昨收。
+    if isinstance(card, dict) and card:
         try:
             from live_quote import overlay_live_face_from_card
 
-            view2 = overlay_live_face_from_card(
-                view if isinstance(view, pd.DataFrame) else view,
-                card,
-                stock_id=str(sid or ""),
-            )
-            if (
-                isinstance(view2, pd.DataFrame)
-                and not getattr(view2, "empty", True)
-                and len(view2) >= 1
-            ):
-                view = view2.reset_index(drop=True)
-                n = len(view)
-                xs = np.arange(n, dtype=float)
-                halt = (
-                    view["is_halt"].fillna(False).astype(bool)
-                    if "is_halt" in view.columns
-                    else pd.Series(False, index=view.index)
+            if card.get("is_live"):
+                view2 = overlay_live_face_from_card(
+                    view if isinstance(view, pd.DataFrame) else view,
+                    card,
+                    stock_id=str(sid or ""),
                 )
+                if (
+                    isinstance(view2, pd.DataFrame)
+                    and not getattr(view2, "empty", True)
+                    and len(view2) >= 1
+                ):
+                    view = view2.reset_index(drop=True)
+                    n = len(view)
+                    xs = np.arange(n, dtype=float)
+                    halt = (
+                        view["is_halt"].fillna(False).astype(bool)
+                        if "is_halt" in view.columns
+                        else pd.Series(False, index=view.index)
+                    )
         except Exception:
             logger.debug("大量區臉柱疊盤中報價略過 sid=%s", sid, exc_info=True)
+        try:
+            view = _apply_card_face_to_view(view, card)
+            n = len(view)
+            xs = np.arange(n, dtype=float)
+            halt = (
+                view["is_halt"].fillna(False).astype(bool)
+                if "is_halt" in view.columns
+                else pd.Series(False, index=view.index)
+            )
+        except Exception:
+            logger.debug("大量區臉柱對齊決策卡略過 sid=%s", sid, exc_info=True)
     # 獨立 Figure＋Agg：可與介紹／高低卡真並行，不准再用 pyplot 全域搶鎖。
     from matplotlib.gridspec import GridSpec
     from wayne_navigator import _close_lookup_figure, _new_lookup_figure
@@ -3076,6 +3282,14 @@ def _paint_volume_zone(
     last_hi = float(last["high"] or 0)
     last_cl = float(last["close"] or 0)
     last_md = _md(last.get("date"))
+    # 表頭／當日走勢標／圖說同一決策卡臉（盤中現價或已收今天），不准走勢標仍釘前一日收
+    hdr_quote = None
+    try:
+        from live_quote import display_quote_from_card
+
+        hdr_quote = display_quote_from_card(card if isinstance(card, dict) else None)
+    except Exception:
+        hdr_quote = None
     path_shown = ""
     try:
         last_bar = {
@@ -3097,8 +3311,22 @@ def _paint_volume_zone(
             }
             for r in view.to_dict("records")
         ]
+        face_last, face_bars, face_meta = align_vol_zone_caption_face(
+            last_bar, bars_face, card if isinstance(card, dict) else None
+        )
+        if face_last and _px(face_last.get("close")) > 0:
+            last_bar = face_last
+            bars_face = face_bars or bars_face
+            last_hi = float(last_bar.get("high") or last_hi or 0)
+            last_cl = float(last_bar.get("close") or last_cl or 0)
         path_msg = vol_zone_day_path_label(
-            float(hi), float(lo), last_bar, bars=bars_face, zone_date=str(spike_date or "")
+            float(hi),
+            float(lo),
+            last_bar,
+            bars=bars_face,
+            zone_date=str(spike_date or ""),
+            session_live=bool(face_meta.get("session_live")),
+            emerging=bool(face_meta.get("emerging")),
         )
         if path_msg and last_hi > 0 and float(hi) > 0:
             bits = [p for p in path_msg.split("  ") if p]
@@ -3237,19 +3465,14 @@ def _paint_volume_zone(
     # 大量區右軸／表頭：已刪綠匡白底「收」晶片；不准再畫「昨收」白底標
 
     # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位。
-    # 盤中有決策卡現價時，戳與高低卡／介紹同源（含興櫃）；臉柱 K／量已在上方疊同卡。
-    hdr_quote = None
-    try:
-        from live_quote import display_quote_from_card
-
-        hdr_quote = display_quote_from_card(card if isinstance(card, dict) else None)
-    except Exception:
-        hdr_quote = None
+    # hdr_quote 已在走勢標前取過；戳／表頭／臉柱同一張今天棒。
     try:
         from decision_card_signals import format_card_query_stamp
 
         last_d = _bar_ymd(last.get("date"))
-        is_live = bool(hdr_quote and hdr_quote.get("is_live"))
+        is_live = bool(hdr_quote and str(hdr_quote.get("label") or "") == "盤中")
+        if not is_live and hdr_quote and hdr_quote.get("is_live"):
+            is_live = True
         if not is_live and "is_live" in view.columns:
             try:
                 is_live = bool(pd.Series(view["is_live"]).fillna(False).iloc[-1])
@@ -3264,10 +3487,11 @@ def _paint_volume_zone(
         if not qs and isinstance(card, dict):
             qs = str(card.get("quote_source") or "")
         stamp_date = last_d
-        if hdr_quote and hdr_quote.get("is_live") and hdr_quote.get("date"):
-            stamp_date = _bar_ymd(hdr_quote.get("date"))
-        elif isinstance(card, dict) and card.get("is_live") and card.get("latest_date"):
-            stamp_date = _bar_ymd(card.get("latest_date"))
+        # 表頭有今天日就用今天，不准查詢戳還停在昨收日（含 13:30 已收）
+        if hdr_quote and hdr_quote.get("date"):
+            stamp_date = _bar_ymd(hdr_quote.get("date")) or stamp_date
+        elif isinstance(card, dict) and (card.get("latest_date") or card.get("as_of")):
+            stamp_date = _bar_ymd(card.get("latest_date") or card.get("as_of")) or stamp_date
         qd = str((hdr_quote or {}).get("query_date") or (card or {}).get("query_date") or "").strip()
         qc = str((hdr_quote or {}).get("query_clock") or (card or {}).get("query_clock") or "").strip()
         if qd and qc:
@@ -3576,7 +3800,11 @@ def _paint_volume_zone(
             f"開{_fmt_price(face_row['open'])} 高{_fmt_price(face_row['high'])} "
             f"低{_fmt_price(face_row['low'])} "
         )
-        close_lab = "現" if (hdr_quote and hdr_quote.get("is_live")) else "收"
+        close_lab = (
+            "現"
+            if (hdr_quote and str(hdr_quote.get("label") or "") == "盤中")
+            else "收"
+        )
         close_bit = f"{close_lab}{_fmt_price(close_px)}"
         try:
             from wayne_navigator import quote_move_ink
