@@ -2040,7 +2040,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
         from wayne_navigator import _fp
 
         bars = ctx["bars"]
-        work = bars[-bc._BARS :]
+        work = bc.structure_visible_bars(bars)
         dates = [_dk(r.get("date")) for r in work]
         i = _index_of_date(dates, first_k)
         ctx["st_i"] = i

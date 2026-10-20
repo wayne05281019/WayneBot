@@ -58,6 +58,7 @@ _WASH = "#ef6c00"
 _SPIKE_VOL = "#f9a825"
 # 查股結構橫式：選定 C 後加寬仍擠 → 時間窗改≈八個月（約 168 根）讓每天 K 更清楚
 # 大量撐壓近窗不動。官方柱 only；不准造假。未點頭不准合主。
+# 固定可視窗滾動（2026-10-20 鎖）：新交易日進來就拿掉最左邊一天，不准窗一直拉長變擠。
 _BARS_MAX_MONTHS = 9
 _BARS_PER_MONTH = 21  # 台股約月均交易日
 _BARS_MAX = int(_BARS_MAX_MONTHS * _BARS_PER_MONTH)  # 189
@@ -65,6 +66,27 @@ _BARS = 168  # ≈八個月（v78b：加寬後仍擠才改窗）；必須 ≤ _B
 _BARS_MIN = 150  # 備援下限（短資料才縮）
 _FUTURE = 10
 assert _BARS_MIN <= _BARS <= _BARS_MAX
+
+
+def structure_visible_bars(
+    bars: Optional[Sequence[Dict[str, Any]]],
+    *,
+    max_bars: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """結構圖可視窗：固定根數尾段；新一日進 → 最左一日出。
+
+    台股開市日柱（Asia/Taipei 日 K）已由官方表給出；這裡只裁可視長度。
+    短於窗寬時整段留下（資料不夠不硬補假柱）。不准改買訊／OHLC。
+    """
+    rows = list(bars or [])
+    cap = int(max_bars if max_bars is not None else _BARS)
+    if cap < 1:
+        return rows
+    if len(rows) <= cap:
+        return rows
+    return rows[-cap:]
+
+
 _PROJECT = "#e65100"
 _FORK = "#5d4037"
 _FUTURE_BG = "#fff6e0"
@@ -3892,7 +3914,8 @@ def render_biaoke_structure_png(
             pass
     if len(rows) < 8 or not save_path:
         return ""
-    work = rows[-_BARS:]
+    # 固定窗滾動：只畫近 _BARS 根；新交易日進則最左日出（不准越畫越擠）
+    work = structure_visible_bars(rows)
     info = analyze_structure(work)
     n = len(work)
     highs = info.get("highs") or [float(r.get("high") or 0) for r in work]
@@ -3939,7 +3962,10 @@ def render_biaoke_structure_png(
         "hdr-band-v78j-axis-card-live-face" if fullbleed else "hdr-wrap3-vol-min",
         # 止穩／外資觀察標進鍵：命中與否不准互蓋舊圖
         "stabilize-v2-fs-observe-stack",
+        # rolling-v1：固定窗滾動（新日進／最左出）進鍵，不准互蓋舊長窗圖
+        "struct-roll-v1",
         int(_BARS),
+        str((work[0].get("date") if work else "") or "")[:8],
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
         str(_q0.get("label") or ""),
         int(bool(_q0.get("is_live"))),
@@ -5107,7 +5133,7 @@ def build_biaoke_structure_chart(
     if not bars:
         return {"ok": False, "path": "", "caption": ""}
     nm = name or str(bars[-1].get("stock_name") or sid)
-    info = analyze_structure(bars[-_BARS:])
+    info = analyze_structure(structure_visible_bars(bars))
     # 代號出圖也走串接表達面：文字桌與圖說同一條判斷／官方結構
     q = (ask or "").strip() or sid
     surface: Dict[str, Any] = {}
