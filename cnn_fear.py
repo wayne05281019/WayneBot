@@ -261,6 +261,28 @@ def fetch_cnn_fear_greed(session_ymd: str) -> Optional[Dict[str, Any]]:
         except ValueError:
             live_day = ""
     by_day = _historical_by_day(payload)
+    # 補前一美股開市日：主包歷史序列常缺那天，再打一次該日 endpoint 合併真點。
+    prev_day = _nth_prev_us_day(ymd, 1)
+    if prev_day and prev_day not in by_day:
+        try:
+            slash_p = f"{prev_day[:4]}-{prev_day[4:6]}-{prev_day[6:]}"
+            req_p = urllib.request.Request(
+                _URL.format(ymd=slash_p),
+                headers={
+                    "User-Agent": _UA,
+                    "Accept": "application/json",
+                    "Referer": "https://edition.cnn.com/markets/fear-and-greed",
+                },
+            )
+            with urllib.request.urlopen(req_p, timeout=10) as resp_p:
+                extra = json.loads(resp_p.read().decode("utf-8", errors="replace"))
+            if isinstance(extra, dict):
+                by_day.update(_historical_by_day(extra))
+                hit = _score_from_historical(extra, prev_day)
+                if hit is not None:
+                    by_day[prev_day] = hit
+        except Exception:
+            logger.debug("CNN Fear 前一交易日補抓失敗 %s", prev_day, exc_info=True)
     if live_score is not None and live_day == ymd:
         score, rating = live_score, live_rating
         display_block = dict(block)
