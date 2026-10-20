@@ -824,6 +824,47 @@ _FEAR_BAND_COLORS = (
 )
 
 
+def _crop_flat_bezel(path: str, *, pad: int = 8, tol: int = 30) -> str:
+    """裁掉四周同色空邊；內部字距不碰。失敗就原檔。"""
+    try:
+        import numpy as np
+        from PIL import Image
+    except Exception:
+        return path
+    try:
+        im = Image.open(path).convert("RGB")
+    except Exception:
+        return path
+    arr = np.asarray(im)
+    if arr.size == 0:
+        return path
+    h, w = arr.shape[:2]
+    samples = [
+        arr[0, 0],
+        arr[0, w - 1],
+        arr[h - 1, 0],
+        arr[h - 1, w - 1],
+        arr[0, w // 2],
+        arr[h - 1, w // 2],
+    ]
+    bg = np.median(np.asarray(samples, dtype=np.int16), axis=0)
+    diff = np.abs(arr.astype(np.int16) - bg).sum(axis=2)
+    mask = diff > int(tol)
+    if not mask.any():
+        return path
+    ys, xs = np.where(mask)
+    y0 = max(0, int(ys.min()) - pad)
+    y1 = min(h, int(ys.max()) + 1 + pad)
+    x0 = max(0, int(xs.min()) - pad)
+    x1 = min(w, int(xs.max()) + 1 + pad)
+    if x1 - x0 < 40 or y1 - y0 < 40:
+        return path
+    if x0 <= 1 and y0 <= 1 and x1 >= w - 1 and y1 >= h - 1:
+        return path
+    im.crop((x0, y0, x1, y1)).save(path, optimize=True)
+    return path
+
+
 def render_fear_greed_gauge(
     path: str,
     fear: Dict[str, Any],
@@ -857,8 +898,8 @@ def render_fear_greed_gauge(
     _MUTE = "#c5d0e0"
 
     dpi = 150
-    # 模板構圖硬鎖：上下半都吃滿畫布；邊距極小；字級跟圖一起放大。
-    fig_w, fig_h = 9.0, 11.6
+    # 模板構圖硬鎖：上下半都吃滿畫布；外框邊距壓到最小（存檔後再裁空邊）。
+    fig_w, fig_h = 9.0, 11.2
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_NAVY)
     # 標題與日期拆開：左標題、右日期，避免壓到弧頂「中立」。
     head = str(heading or "")
@@ -869,12 +910,12 @@ def render_fear_greed_gauge(
     else:
         head_title, head_date = head, ""
     fig.text(
-        0.025, 0.978, head_title,
+        0.012, 0.988, head_title,
         color=_WHITE, fontproperties=_fp(28, "bold"), ha="left", va="top",
     )
     if head_date:
         fig.text(
-            0.975, 0.978, head_date.strip(),
+            0.988, 0.988, head_date.strip(),
             color=_MUTE, fontproperties=_fp(22, "bold"), ha="right", va="top",
         )
 
@@ -884,13 +925,13 @@ def render_fear_greed_gauge(
     # 上半＝弧＋針＋23＋說明（同一座標系）。
     # 用 axes 框比例對齊 data，不用 set_aspect（避免縮框留邊）。
     y0, y1 = -0.92, 1.22
-    ax_w, ax_h = 0.99, 0.50
+    ax_w, ax_h = 0.996, 0.515
     # (Δy/Δx) = (ax_h/ax_w)*(fig_h/fig_w) → 算滿寬所需 Δx
     dy = y1 - y0
     dx = dy / ((ax_h / ax_w) * (fig_h / fig_w))
     x0, x1 = -0.5 * dx, 0.5 * dx
     ax_x = (1.0 - ax_w) / 2.0
-    ax_y = 0.978 - 0.048 - ax_h
+    ax_y = 0.988 - 0.038 - ax_h
     gauge = fig.add_axes([ax_x, ax_y, ax_w, ax_h])
     gauge.set_xlim(x0, x1)
     gauge.set_ylim(y0, y1)
@@ -972,9 +1013,9 @@ def render_fear_greed_gauge(
         )
 
     # 下半＝趨勢表：貼上半底到畫布底，左右幾乎貼邊。
-    panel_top = ax_y - 0.006
-    panel_h = max(0.30, panel_top - 0.010)
-    panel = fig.add_axes([0.012, 0.010, 0.976, panel_h])
+    panel_top = ax_y - 0.004
+    panel_h = max(0.30, panel_top - 0.006)
+    panel = fig.add_axes([0.006, 0.006, 0.988, panel_h])
     panel.set_xlim(0, 1)
     panel.set_ylim(0, 1)
     panel.axis("off")
@@ -1034,6 +1075,7 @@ def render_fear_greed_gauge(
 
     fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none", pad_inches=0)
     plt.close(fig)
+    _crop_flat_bezel(path, pad=6, tol=28)
     return path
 
 
