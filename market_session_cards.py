@@ -638,15 +638,15 @@ def render_session_cards(
         ax.text(0.06, 0.90, card["name"], color=_TITLE, fontproperties=_fp(20, "bold"), ha="left", va="top")
         ax.text(
             0.94, 0.90, f"{arrow}{chg_abs}",
-            color=col, fontproperties=_fp(16, "bold"), ha="right", va="top",
+            color=col, fontproperties=_fp(22, "bold"), ha="right", va="top",
         )
         ax.text(
-            0.94, 0.78, f"({float(card['pct']):+.2f}%)",
-            color=col, fontproperties=_fp(15, "bold"), ha="right", va="top",
+            0.94, 0.76, f"({float(card['pct']):+.2f}%)",
+            color=col, fontproperties=_fp(20, "bold"), ha="right", va="top",
         )
         ax.text(
             0.06,
-            0.62,
+            0.60,
             _fmt_num(float(card["last"]), integers=integers),
             color=col,
             fontproperties=_fp(34, "bold"),
@@ -705,25 +705,25 @@ def render_tx_electronic_board(path: str, card: Dict[str, Any], *, heading: str)
             facecolor=_CARD, edgecolor="#3a3a3a", transform=head.transAxes,
         )
     )
-    head.text(0.03, 0.78, "台指電子盤", color=_TITLE, fontproperties=_fp(18, "bold"), ha="left", va="center")
+    # 標題只留外層 heading，卡內不再重複「台指電子盤」。
     head.text(
-        0.03, 0.38, _fmt_num(float(card["last"]), integers=True),
-        color=col, fontproperties=_fp(40, "bold"), ha="left", va="center",
+        0.03, 0.58, _fmt_num(float(card["last"]), integers=True),
+        color=col, fontproperties=_fp(42, "bold"), ha="left", va="center",
     )
     head.text(
-        0.97, 0.70, f"{arrow}{_fmt_num(abs(float(card['chg'])), integers=True)}",
+        0.97, 0.72, f"{arrow}{_fmt_num(abs(float(card['chg'])), integers=True)}",
+        color=col, fontproperties=_fp(22, "bold"), ha="right", va="center",
+    )
+    head.text(
+        0.97, 0.42, f"({float(card['pct']):+.2f}%)",
         color=col, fontproperties=_fp(20, "bold"), ha="right", va="center",
-    )
-    head.text(
-        0.97, 0.38, f"({float(card['pct']):+.2f}%)",
-        color=col, fontproperties=_fp(18, "bold"), ha="right", va="center",
     )
     last_qty = int(card.get("last_qty") or 0)
     total = int(card.get("volume") or 0)
     head.text(
-        0.03, 0.10,
+        0.03, 0.16,
         f"{card.get('asof_time') or ''}　單量 {last_qty:,}口　總量 {total:,}口",
-        color=_MUTED, fontproperties=_fp(14, "bold"), ha="left", va="center",
+        color=_MUTED, fontproperties=_fp(15, "bold"), ha="left", va="center",
     )
 
     ax = fig.add_axes([0.10, 0.28, 0.86, 0.48])
@@ -830,7 +830,7 @@ def render_fear_greed_gauge(
     *,
     heading: str,
 ) -> str:
-    """CNN 指針儀表＋中英檔位＋市場情緒變化趨勢（日期／分數／色章）。"""
+    """深藍底白字 CNN 儀表：中英弧標、數字下「市場即時情緒指標」、趨勢色章列。"""
     import matplotlib
 
     matplotlib.use("Agg", force=False)
@@ -849,28 +849,33 @@ def render_fear_greed_gauge(
         return ""
     face = str(fear.get("face") or gauge_face(score_f))
     band = str(fear.get("band") or "")
-    band_en = str(fear.get("band_en") or "")
     hist = [h for h in (fear.get("history") or []) if isinstance(h, dict)]
 
+    _NAVY = "#0b1c33"
+    _PANEL = "#12263f"
+    _WHITE = "#f5f7fa"
+    _MUTE = "#b8c4d6"
+
     dpi = 140
-    fig_w, fig_h = 9.4, 10.2
-    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor="#f5f5f5")
+    fig_w, fig_h = 9.4, 10.4
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_NAVY)
     fig.text(
         0.05,
         0.965,
         heading,
-        color="#111111",
+        color=_WHITE,
         fontproperties=_fp(22, "bold"),
         ha="left",
         va="top",
     )
 
-    gauge = fig.add_axes([0.12, 0.48, 0.76, 0.42])
-    gauge.set_xlim(-1.35, 1.35)
-    gauge.set_ylim(-0.35, 1.25)
+    # 儀表區加高一點，數字下方留空，避免與針／23 互壓。
+    gauge = fig.add_axes([0.10, 0.52, 0.80, 0.40])
+    gauge.set_xlim(-1.42, 1.42)
+    gauge.set_ylim(-0.72, 1.30)
     gauge.set_aspect("equal")
     gauge.axis("off")
-    gauge.set_facecolor("#f5f5f5")
+    gauge.set_facecolor(_NAVY)
 
     def _ang(val: float) -> float:
         return 180.0 - (max(0.0, min(100.0, val)) / 100.0) * 180.0
@@ -879,17 +884,17 @@ def render_fear_greed_gauge(
         gauge.add_patch(
             Wedge(
                 (0, 0), 1.0, _ang(hi), _ang(lo), width=0.36,
-                facecolor=color, edgecolor="#ffffff", linewidth=1.4, alpha=0.95,
+                facecolor=color, edgecolor=_NAVY, linewidth=1.6, alpha=0.96,
             )
         )
         mid = (lo + hi) / 2.0
         rad = math.radians(_ang(mid))
         gauge.text(
-            1.18 * math.cos(rad),
-            1.18 * math.sin(rad),
+            1.22 * math.cos(rad),
+            1.22 * math.sin(rad),
             f"{zh}\n{en}",
-            color="#333333",
-            fontproperties=_fp(9, "bold"),
+            color=_WHITE,
+            fontproperties=_fp(12, "bold"),
             ha="center",
             va="center",
             linespacing=1.15,
@@ -899,51 +904,79 @@ def render_fear_greed_gauge(
         gauge.plot(
             [0.60 * math.cos(rad), 1.0 * math.cos(rad)],
             [0.60 * math.sin(rad), 1.0 * math.sin(rad)],
-            color="#ffffff", lw=1.1, zorder=3,
+            color=_NAVY, lw=1.2, zorder=3,
         )
         gauge.text(
-            1.30 * math.cos(rad),
-            1.30 * math.sin(rad) - (0.05 if tick in (0, 100) else 0),
+            1.36 * math.cos(rad),
+            1.36 * math.sin(rad) - (0.05 if tick in (0, 100) else 0),
             str(tick),
-            color="#666666",
-            fontproperties=_fp(10, "bold"),
+            color=_MUTE,
+            fontproperties=_fp(14, "bold"),
             ha="center",
             va="center",
         )
     prad = math.radians(_ang(score_f))
-    gauge.plot([0, 0.78 * math.cos(prad)], [0, 0.78 * math.sin(prad)], color="#111111", lw=5.0, solid_capstyle="round", zorder=5)
-    gauge.plot(0, 0, "o", color="#111111", markersize=11, zorder=6)
-    gauge.text(0, -0.05, face, color="#111111", fontproperties=_fp(42, "bold"), ha="center", va="top")
+    # 針稍短；23 與「市場即時情緒指標」拉開，不准壓針／數字。
+    gauge.plot(
+        [0, 0.68 * math.cos(prad)], [0, 0.68 * math.sin(prad)],
+        color=_WHITE, lw=5.0, solid_capstyle="round", zorder=5,
+    )
+    gauge.plot(0, 0, "o", color=_WHITE, markersize=11, zorder=6)
+    gauge.text(0, -0.10, face, color=_WHITE, fontproperties=_fp(50, "bold"), ha="center", va="top")
+    # 模板鎖：數字正下方這句；再往下、略放大，避開針尖與大數字。
+    gauge.text(
+        0, -0.40,
+        "市場即時情緒指標",
+        color=_MUTE,
+        fontproperties=_fp(16, "bold"),
+        ha="center",
+        va="top",
+    )
     if band:
         gauge.text(
-            0, -0.22,
-            f"{band}" + (f"  {band_en}" if band_en else ""),
-            color="#444444",
-            fontproperties=_fp(14, "bold"),
+            0, -0.56,
+            band,
+            color=_WHITE,
+            fontproperties=_fp(17, "bold"),
             ha="center",
             va="top",
         )
 
-    panel = fig.add_axes([0.06, 0.05, 0.88, 0.40])
+    panel = fig.add_axes([0.06, 0.03, 0.88, 0.40])
     panel.set_xlim(0, 1)
     panel.set_ylim(0, 1)
     panel.axis("off")
-    panel.set_facecolor("#ffffff")
+    panel.set_facecolor(_PANEL)
     panel.add_patch(
         FancyBboxPatch(
             (0, 0), 1, 1, boxstyle="round,pad=0.01,rounding_size=0.02",
-            facecolor="#ffffff", edgecolor="#dddddd", transform=panel.transAxes,
+            facecolor=_PANEL, edgecolor="#1e3a5f", transform=panel.transAxes,
         )
     )
-    panel.text(0.04, 0.92, "市場情緒變化趨勢", color="#111111", fontproperties=_fp(16, "bold"), ha="left", va="top")
+    panel.text(
+        0.04, 0.92, "市場情緒變化趨勢",
+        color=_WHITE, fontproperties=_fp(16, "bold"), ha="left", va="top",
+    )
     if not hist:
-        panel.text(0.04, 0.75, "（無官方歷史列）", color="#888888", fontproperties=_fp(13, "bold"), ha="left", va="top")
+        panel.text(
+            0.04, 0.75, "（無官方歷史列）",
+            color=_MUTE, fontproperties=_fp(13, "bold"), ha="left", va="top",
+        )
     else:
         for i, row in enumerate(hist[:5]):
             yy = 0.78 - i * 0.14
-            panel.text(0.04, yy, str(row.get("label") or ""), color="#333333", fontproperties=_fp(13, "bold"), ha="left", va="center")
-            panel.text(0.32, yy, str(row.get("date") or ""), color="#666666", fontproperties=_fp(12, "bold"), ha="left", va="center")
-            panel.text(0.58, yy, str(row.get("face") or ""), color="#111111", fontproperties=_fp(18, "bold"), ha="right", va="center")
+            panel.text(
+                0.04, yy, str(row.get("label") or ""),
+                color=_MUTE, fontproperties=_fp(13, "bold"), ha="left", va="center",
+            )
+            panel.text(
+                0.32, yy, str(row.get("date") or ""),
+                color=_WHITE, fontproperties=_fp(12, "bold"), ha="left", va="center",
+            )
+            panel.text(
+                0.58, yy, str(row.get("face") or ""),
+                color=_WHITE, fontproperties=_fp(18, "bold"), ha="right", va="center",
+            )
             badge = str(row.get("band") or "")
             bcolor = str(row.get("color") or "#9e9e9e")
             panel.add_patch(
@@ -955,10 +988,13 @@ def render_fear_greed_gauge(
                     facecolor=bcolor,
                     edgecolor=bcolor,
                     transform=panel.transData,
-                    alpha=0.92,
+                    alpha=0.95,
                 )
             )
-            panel.text(0.79, yy, badge, color="#ffffff", fontproperties=_fp(11, "bold"), ha="center", va="center")
+            panel.text(
+                0.79, yy, badge,
+                color="#ffffff", fontproperties=_fp(11, "bold"), ha="center", va="center",
+            )
 
     fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none")
     plt.close(fig)

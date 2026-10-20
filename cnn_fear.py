@@ -7,6 +7,7 @@ import logging
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("WayneBot.CnnFear")
 
@@ -15,6 +16,7 @@ _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
+_NY = ZoneInfo("America/New_York")
 
 # 官網儀表檔位（使用者 2026-10-20 鎖中文帶＋英文）。
 _BANDS = (
@@ -25,6 +27,7 @@ _BANDS = (
     (100.0, "extreme greed", "極度貪婪", "Extreme Greed", "#2e7d32"),
 )
 
+# (block_key, 中文列名, 往前回推幾個美股開市日；0＝當日用 score)
 _HISTORY_SPECS = (
     ("score", "當日", 0),
     ("previous_close", "前一交易日", 1),
@@ -117,18 +120,69 @@ def _nth_prev_us_day(ymd: str, n: int) -> str:
     return cur
 
 
-def _history_rows(block: Dict[str, Any], session_ymd: str) -> List[Dict[str, str]]:
-    """市場情緒變化趨勢列。缺官方分數就略過該列，不准補假數。"""
+def _ny_ymd_from_ts(ts: Any) -> str:
+    try:
+        ms = float(ts)
+        if ms > 1e12:
+            ms /= 1000.0
+        return datetime.fromtimestamp(ms, tz=timezone.utc).astimezone(_NY).strftime("%Y%m%d")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+
+
+def _historical_by_day(payload: Dict[str, Any]) -> Dict[str, Tuple[float, str]]:
+    """歷史序列 → 紐約交易日。同一日多點取最後一筆。"""
+    hist = payload.get("fear_and_greed_historical")
+    if not isinstance(hist, dict):
+        return {}
+    data = hist.get("data")
+    if not isinstance(data, list):
+        return {}
+    out: Dict[str, Tuple[float, str]] = {}
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        score = _as_float(row.get("y") if row.get("y") is not None else row.get("score"))
+        day = _ny_ymd_from_ts(row.get("x") or row.get("timestamp"))
+        if score is None or not day:
+            continue
+        out[day] = (score, str(row.get("rating") or ""))
+    return out
+
+
+def _history_rows(
+    block: Dict[str, Any],
+    session_ymd: str,
+    *,
+    by_day: Optional[Dict[str, Tuple[float, str]]] = None,
+) -> List[Dict[str, str]]:
+    """市場情緒變化趨勢列。
+
+    優先：該日歷史序列真點。
+    其次：官網 previous_*（僅當與當日分差夠大，才當成「前一交易日」等，避免把同日 23 貼成 10/16）。
+    都沒有就略過，不准發明。
+    """
     rows: List[Dict[str, str]] = []
+    by_day = by_day or {}
+    cur = _as_float(block.get("score"))
     for key, lab, steps in _HISTORY_SPECS:
+        day = _nth_prev_us_day(session_ymd, steps) if steps else session_ymd
+        score = None
+        rating = ""
         if key == "score":
-            score = _as_float(block.get("score"))
+            score = cur
             rating = str(block.get("rating") or "")
             day = session_ymd
         else:
-            score = _as_float(block.get(key))
-            rating = ""
-            day = _nth_prev_us_day(session_ymd, steps)
+            if day and day in by_day:
+                score, rating = by_day[day]
+            else:
+                prev = _as_float(block.get(key))
+                # previous_close≈當日分 → 多半是同日更新，不准貼到「前一交易日」日期。
+                if prev is not None and cur is not None and abs(prev - cur) < 0.75:
+                    prev = None
+                if prev is not None:
+                    score = prev
         if score is None:
             continue
         band = fear_greed_band(score, rating)
@@ -149,30 +203,9 @@ def _history_rows(block: Dict[str, Any], session_ymd: str) -> List[Dict[str, str
 
 
 def _score_from_historical(payload: Dict[str, Any], ymd: str) -> Optional[Tuple[float, str]]:
-    """歷史序列對上該美股日就用那天；對不上不准硬湊最新分。"""
-    hist = payload.get("fear_and_greed_historical")
-    if not isinstance(hist, dict):
-        return None
-    data = hist.get("data")
-    if not isinstance(data, list):
-        return None
-    for row in data:
-        if not isinstance(row, dict):
-            continue
-        ts = row.get("x") or row.get("timestamp")
-        score = _as_float(row.get("y") if row.get("y") is not None else row.get("score"))
-        if ts is None or score is None:
-            continue
-        try:
-            ms = float(ts)
-            if ms > 1e12:
-                ms /= 1000.0
-            day = datetime.fromtimestamp(ms, tz=timezone.utc).strftime("%Y%m%d")
-        except (TypeError, ValueError, OSError, OverflowError):
-            continue
-        if day != ymd:
-            continue
-        return score, str(row.get("rating") or "")
+    by_day = _historical_by_day(payload)
+    if ymd in by_day:
+        return by_day[ymd]
     return None
 
 
@@ -223,17 +256,13 @@ def fetch_cnn_fear_greed(session_ymd: str) -> Optional[Dict[str, Any]]:
     ts = block.get("timestamp")
     if ts:
         try:
-            from zoneinfo import ZoneInfo
-
             dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-            # 美股交易日看紐約日，不准用 UTC 日把 10/19 收誤判成 10/20。
-            live_day = dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y%m%d")
+            live_day = dt.astimezone(_NY).strftime("%Y%m%d")
         except ValueError:
             live_day = ""
-    history_ok = False
+    by_day = _historical_by_day(payload)
     if live_score is not None and live_day == ymd:
         score, rating = live_score, live_rating
-        history_ok = True
         display_block = dict(block)
     else:
         picked = _score_from_historical(payload, ymd)
@@ -241,11 +270,10 @@ def fetch_cnn_fear_greed(session_ymd: str) -> Optional[Dict[str, Any]]:
             score, rating = picked
             if not rating:
                 rating = live_rating
-            # 歷史日：當日分數用歷史點；previous_* 不准拿「現在」那針的去冒充舊日。
+            # 歷史日：只帶當日分；previous_* 是「現在」針的相對值，不准貼舊日。
             display_block = {"score": score, "rating": rating}
         elif live_score is not None and not live_day:
             score, rating = live_score, live_rating
-            history_ok = True
             display_block = dict(block)
         else:
             return None
@@ -260,5 +288,5 @@ def fetch_cnn_fear_greed(session_ymd: str) -> Optional[Dict[str, Any]]:
         "band_en": fear_greed_band_en(score, rating),
         "session": ymd,
         "source": "cnn",
-        "history": _history_rows(display_block, ymd) if history_ok else _history_rows(display_block, ymd),
+        "history": _history_rows(display_block, ymd, by_day=by_day),
     }
