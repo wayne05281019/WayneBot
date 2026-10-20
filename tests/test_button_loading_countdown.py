@@ -1125,6 +1125,17 @@ def test_plain_wait_hard_cap_dismisses_frozen_bubble():
     assert "_dismiss_progress_now" in src
 
 
+def test_lookup_defers_struct_vol_prep_until_after_card():
+    """1c-2g：讀高低卡當下不准疊結構／大量區 prepare（OOM→502）。"""
+    src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    # 建卡成功後才 create_task 結構／大量區
+    card_at = src.find("to_thread(_build_card)")
+    struct_at = src.find("struct_prep_task = asyncio.create_task(_run_struct_bars())")
+    vol_at = src.find("vol_zone_task = asyncio.create_task(_run_vol_zone_prep())")
+    assert card_at > 0 and struct_at > card_at and vol_at > card_at
+    assert "1c-2g" in src or "搶記憶體" in src
+
+
 def test_cancel_dismisses_frozen_progress_and_blocks_bg_send():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._actor_op_gen = {"u1": 3}

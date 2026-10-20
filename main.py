@@ -852,6 +852,10 @@ def start_daily_scheduler():
         # 長睡若被前一檔拖過 06:30，下一檔要到 12:45 才醒，開市日早報會漏。
         # 每輪先補跑、睡眠切片，漏了就在下一分鐘內補寄（§14）。
         _slice_s = 60.0
+        # 開機先讓 /live＋聽筒站穩；立刻 catch_up 拉海選／情境渲圖會跟第一檔查股搶 2GB→502。
+        _boot_catchup_delay_s = 180.0
+        logger.info("排程：延後 %.0f 秒再補跑，先開聽筒", _boot_catchup_delay_s)
+        time.sleep(_boot_catchup_delay_s)
         while True:
             try:
                 catch_up_missed_jobs()

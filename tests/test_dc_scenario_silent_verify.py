@@ -128,6 +128,15 @@ def test_catch_up_dc_sf_only_in_morning_window():
     assert "need_dc_sf" in src
 
 
+def test_scheduler_defers_catch_up_after_boot():
+    """開機先聽筒、延後補跑，避免跟第一檔查股搶 2GB。"""
+    import main as main_mod
+
+    src = inspect.getsource(main_mod.start_daily_scheduler)
+    assert "180" in src
+    assert "先開聽筒" in src or "boot_catchup" in src or "_boot_catchup_delay" in src
+
+
 def test_reclaim_stale_running_marks_error():
     from dc_scenario_silent_verify import (
         _mark_pipeline,

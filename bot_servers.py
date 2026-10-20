@@ -9091,10 +9091,10 @@ class WayneTelegramBot:
                 logger.exception("查股結構柱失敗 code=%s", code)
                 return None
 
-        struct_prep_task = asyncio.create_task(_run_struct_bars())
-
         async def _run_vol_zone_prep():
             """第 4 張的選區／除權息。跟結構出圖平行，不准擋第 3 張。"""
+            if struct_prep_task is None:
+                return None
             try:
                 bars_pack = await struct_prep_task
             except asyncio.CancelledError:
@@ -9119,7 +9119,9 @@ class WayneTelegramBot:
                 logger.exception("查股大量區 prepare 失敗 code=%s", code)
                 return None
 
-        vol_zone_task = asyncio.create_task(_run_vol_zone_prep())
+        # 1c-2g：建卡（讀高低卡）當下不准疊結構／大量區 prepare——會跟
+        # get_decision_card 搶記憶體把行程 OOM→502。ensure 仍與 MIS 並行。
+        # 卡建完再開 prepare，與高低卡 paint 重疊即可。
         live_rt = await _fetch_mis()
         st0 = self._op_state_map().setdefault(actor, {"sent": [], "current": "table", "t0": op_t0})
         st0["current"] = "table"
@@ -9242,6 +9244,10 @@ class WayneTelegramBot:
 
             tape_task = asyncio.create_task(asyncio.to_thread(_build_tape))
             t0 = time.monotonic()
+            try:
+                gc.collect()
+            except Exception:
+                pass
             card, ohlc = await asyncio.wait_for(
                 asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT
             )
@@ -9259,6 +9265,11 @@ class WayneTelegramBot:
                     markup=hub,
                 )
                 return
+            # 卡已在手：這才開結構／大量區 prepare（與後續 paint 重疊）
+            if struct_prep_task is None:
+                struct_prep_task = asyncio.create_task(_run_struct_bars())
+            if vol_zone_task is None:
+                vol_zone_task = asyncio.create_task(_run_vol_zone_prep())
             os.makedirs(self.charts_dir, exist_ok=True)
             uid_key = uid or self._uid_from_message(message)
             glance_path = self._scratch_chart_path(self.charts_dir, code, "glance", uid_key)
