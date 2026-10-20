@@ -6,7 +6,7 @@ services:
     disk:
       name: wayne-data
       mountPath: /opt/render/project/src/data
-      sizeGB: 5
+      sizeGB: 15
     # 裝完整鎖檔，否則傳遞相依會浮動，部署到的版本跟測過的不是同一份。
     buildCommand: pip install -r requirements.lock
     startCommand: python main.py
