@@ -292,6 +292,23 @@ def _m014_tg_actor_pending(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m015_market_margin_daily(conn: sqlite3.Connection) -> None:
+    """證交所信用交易統計：大盤融資金額（仟元）前日／今日餘額與增減。"""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS market_margin_daily (
+            date TEXT NOT NULL PRIMARY KEY,
+            margin_bal_prev_k INTEGER,
+            margin_bal_k INTEGER,
+            margin_delta_k INTEGER,
+            source TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_market_margin_date ON market_margin_daily(date);
+        """
+    )
+
+
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
     (2, "daily_sector_flow 加 top_sell_*", _m002_sector_flow_top_sell),
@@ -307,6 +324,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (12, "15／60 分 K 歷史庫", _m012_minute_bars),
     (13, "期交所成交 zip 已抓紀錄", _m013_taifex_tick_zips),
     (14, "話筒步驟落盤 tg_actor_pending", _m014_tg_actor_pending),
+    (15, "大盤融資金額增減（信用交易統計）", _m015_market_margin_daily),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)
