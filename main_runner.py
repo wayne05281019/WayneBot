@@ -1094,12 +1094,20 @@ class MainRunner:
                                 logger.warning("海選 Telegram 未接受 dest_len=%s", len(str(cid)))
                             else:
                                 sent_n += 1
+                                if morning_digest:
+                                    self._push_morning_session_cards(
+                                        cid, us_snap=us_snap
+                                    )
                         except Exception as e:
                             logger.warning("海選寄出失敗 dest_len=%s: %s", len(str(cid)), e)
                     logger.info("海選寄出成功 %d/%d 人", sent_n, len(dests))
                     sent_ok = sent_n == len(dests) and sent_n > 0
                 else:
                     sent_ok = self.bot.send_screening_report(screening) is not False
+                    if sent_ok and morning_digest:
+                        self._push_morning_session_cards(
+                            str(getattr(self, "chat_id", None) or ""), us_snap=us_snap
+                        )
             except Exception as e:
                 logger.warning("分類戰報推播失敗，改送長文: %s", e)
                 self._broadcast_family(
@@ -1187,6 +1195,35 @@ class MainRunner:
             logger.warning("海選復盤略過：%s", e)
         self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=False)
         return True
+
+    def _push_morning_session_cards(
+        self, chat_id: str, *, us_snap: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """06:30 早報文字後附美股／台指電子盤／恐懼貪婪圖（兩支話筒同一套）。"""
+        dest = str(chat_id or "").strip()
+        bot = getattr(self, "bot", None)
+        if not dest or bot is None:
+            return
+        if not hasattr(bot, "send_market_session_cards_to_chat"):
+            return
+        try:
+            from cnn_fear import fetch_cnn_fear_greed
+            from market_session_cards import assemble_session_cards
+            from us_overnight import refresh_us_for_market_page
+
+            snap = us_snap if isinstance(us_snap, dict) else None
+            if not snap:
+                snap = refresh_us_for_market_page(self.db_path, None)
+            else:
+                snap = dict(snap)
+            if not snap.get("cnn_fear"):
+                fg = fetch_cnn_fear_greed(str(snap.get("us_session") or ""))
+                if fg:
+                    snap["cnn_fear"] = fg
+            bundle = assemble_session_cards(us_snap=snap, cnn_fear=snap.get("cnn_fear"))
+            bot.send_market_session_cards_to_chat(dest, bundle, uid=dest)
+        except Exception as e:
+            logger.warning("早報大盤附圖略過：%s", e)
 
     def _send_screening_extra(self, html: str, chat_id: Optional[str] = None) -> bool:
         """海選附註一則一則寄：加權研究／資金輪動／月營收／雷達分開，切塊不拆標籤。"""

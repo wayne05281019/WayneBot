@@ -21,7 +21,7 @@ FRIDAY_US = {
     "ixic_chg": -573.0,
     "sox_pct": -3.83,
     "sox_chg": -443.92,
-    "cnn_fear": {"score": 17.938, "face": "18", "band": "極度恐慌", "rating": "extreme fear"},
+    "cnn_fear": {"score": 17.938, "face": "18", "band": "極度恐懼", "rating": "extreme fear"},
 }
 
 
@@ -78,53 +78,23 @@ def test_session_card_heading_says_us_close_not_cash():
     import inspect
 
     from bot_servers import WayneTelegramBot
+    from market_session_cards import session_card_jobs
 
     src = inspect.getsource(WayneTelegramBot._send_market_session_cards)
-    assert "美股收盤" in src
+    assert "session_card_jobs" in src
     assert "美股現金" not in src
-    assert "恐慌指數" in src
-    assert "極度恐慌" not in src
-
-
-def test_vix_card_uses_real_closes_and_not_fear_label(tmp_path):
-    from bot_servers import WayneTelegramBot
-    from market_session_cards import fetch_vix_card, render_session_cards
-
-    def _fake_chart(sym, interval, range_):
-        assert sym == "^VIX"
-        assert interval == "1d"
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-
-        ny = ZoneInfo("America/New_York")
-        stamps = [
-            int(datetime(2026, 10, 15, 16, 0, tzinfo=ny).timestamp()),
-            int(datetime(2026, 10, 16, 16, 0, tzinfo=ny).timestamp()),
-        ]
-        return {
-            "timestamp": stamps,
-            "indicators": {"quote": [{"close": [18.51, 19.40]}]},
+    jobs = session_card_jobs(
+        {
+            "us": {"session": "20261016", "cards": [{"name": "道瓊", "series": [1, 2]}]},
+            "tx": {"card": {"name": "台指電子盤", "session": "20261016", "series": [1, 2]}},
+            "fear": {"score": 18, "session": "20261016"},
         }
-
-    import market_session_cards as cards
-
-    orig = cards._chart
-    cards._chart = _fake_chart
-    try:
-        got = fetch_vix_card({"us_session": "20261016", "vix": 19.99})
-    finally:
-        cards._chart = orig
-    card = got["card"]
-    assert card["name"] == "恐慌指數"
-    assert abs(card["last"] - 19.99) < 1e-6
-    assert "極度恐慌" not in card["name"]
-    path = str(tmp_path / "vix.png")
-    out = render_session_cards(
-        path, [card], heading="恐慌指數　2026/10/16", columns=1, layout="spark"
     )
-    assert out == path
-    assert WayneTelegramBot._market_landscape_chart_ok(path)
-    assert "極度恐慌" not in "恐慌指數　2026/10/16"
+    heads = " ".join(spec["heading"] for _, spec in jobs)
+    assert "美股收盤" in heads
+    assert "台指電子盤" in heads
+    assert "恐懼與貪婪指數" in heads
+    assert "恐慌指數" not in heads
 
 
 def test_mild_caution_keeps_taiwan_structure_lines():
@@ -184,7 +154,7 @@ def test_vix_block_keeps_19_99_and_adds_extreme_fear():
 
     lines = _cnn_fear_lines(FRIDAY_US)
     plain = _html_plain("\n".join(lines))
-    assert "18" in plain and "極度恐慌" in plain
+    assert "18" in plain and "極度恐懼" in plain
     # 直接組美股塊：VIX 原文不改成別的數
     html = "\n".join(
         _format_overnight_watch_lines("", "20261016", {}, us_snap=FRIDAY_US)
@@ -192,7 +162,7 @@ def test_vix_block_keeps_19_99_and_adds_extreme_fear():
     text = _html_plain(html)
     assert "19.99" in text
     assert "跳升" in text
-    assert "恐懼貪婪" in text and "極度恐慌" in text
+    assert "恐懼貪婪" in text and "極度恐懼" in text
 
 
 def test_foreign_hedge_sentence_needs_both_series(tmp_path):
@@ -247,10 +217,10 @@ def test_foreign_hedge_sentence_needs_both_series(tmp_path):
 def test_cnn_extreme_fear_band_and_gauge_rounds_official_score():
     from cnn_fear import fear_greed_band, gauge_face
 
-    assert fear_greed_band(17.938, "extreme fear") == "極度恐慌"
+    assert fear_greed_band(17.938, "extreme fear") == "極度恐懼"
     assert gauge_face(17.938) == "18"
-    assert fear_greed_band(19.99, "") == "極度恐慌"
-    assert fear_greed_band(19.99, "fear") == "恐慌"
+    assert fear_greed_band(19.99, "") == "極度恐懼"
+    assert fear_greed_band(19.99, "fear") == "恐懼"
 
 
 def test_tx_after_hours_card_passes_send_gate(tmp_path):
@@ -258,16 +228,21 @@ def test_tx_after_hours_card_passes_send_gate(tmp_path):
     from market_session_cards import render_session_cards
 
     card = {
-        "name": "台指期盤後",
+        "name": "台指電子盤",
         "last": 47366,
         "prev": 47242,
         "chg": 124,
         "pct": 0.26,
         "series": [46900 + i * 3 for i in range(40)],
+        "volumes": [50 + i for i in range(40)],
+        "volume": 3000,
+        "asof_time": "04:50:00",
         "integers": True,
     }
     path = str(tmp_path / "tx.png")
-    out = render_session_cards(path, [card], heading="台指期盤後　2026/10/16", columns=1)
+    out = render_session_cards(
+        path, [card], heading="台指電子盤　2026/10/16", columns=1, layout="board"
+    )
     assert out == path
     assert WayneTelegramBot._market_landscape_chart_ok(path)
     assert os.path.getsize(path) >= 12_000
