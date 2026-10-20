@@ -607,6 +607,30 @@ def _ending_fifth_band(src3_price: float) -> Tuple[float, float]:
     return lo, hi
 
 
+def _wave4_fulfill_band(
+    p1: float, p2: float, p3: float
+) -> Tuple[float, float]:
+    """(4) 滿足區：取 (3)→(2) 的 0.5～0.618 回撤帶，並與 (1) 價鄰域取聯集。
+
+    可遷移（D.C.）：(4) 常回 (1) 附近／半數回撤，不是只釘 0.382 單點。
+    回傳 (lo, hi)，lo≤hi。不准當買訊。
+    """
+    try:
+        a1, a2, a3 = float(p1), float(p2), float(p3)
+    except Exception:
+        return 0.0, 0.0
+    if a3 <= a2:
+        return min(a1, a2), max(a1, a3)
+    span = a3 - a2
+    fib_lo = a3 - 0.618 * span
+    fib_hi = a3 - 0.50 * span
+    z_lo = min(fib_lo, a1 * 0.97)
+    z_hi = max(fib_hi, a1 * 1.08)
+    if z_lo > z_hi:
+        z_lo, z_hi = z_hi, z_lo
+    return float(z_lo), float(z_hi)
+
+
 def _wave_desc_press_vb(
     rows: Sequence[Dict[str, Any]],
     peak: Dict[str, Any],
@@ -1115,10 +1139,28 @@ def infer_dc_wave_scenario(
     if "(4)" not in have:
         src3 = next((c for c in confirmed + projected if c["label"] == "(3)"), None)
         src2 = next((c for c in confirmed if c["label"] == "(2)"), None)
+        src1 = next((c for c in confirmed if c["label"] == "(1)"), None)
         if src3 and src2:
-            y4 = float(src3["price"]) - 0.382 * (
+            # 可遷移：優先落在 (4) 滿足區（(1) 鄰＋0.5～0.618），不盲釘 0.382 單點
+            y4 = float(src3["price"]) - 0.50 * (
                 float(src3["price"]) - float(src2["price"])
             )
+            if src1:
+                z_lo, z_hi = _wave4_fulfill_band(
+                    float(src1["price"]),
+                    float(src2["price"]),
+                    float(src3["price"]),
+                )
+                if z_hi > z_lo > 0:
+                    y4 = min(max(y4, z_lo), z_hi)
+                    zones.append(
+                        {
+                            "lo": float(z_lo),
+                            "hi": float(z_hi),
+                            "kind": "ok",
+                            "label": f"{_fmt_px(z_hi)}/{_fmt_px(z_lo)}",
+                        }
+                    )
             y4 = max(y4, float(start["price"]) * 1.02)
             projected.append(
                 _wave_node(
@@ -1701,6 +1743,57 @@ def _infer_asc_support(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _paint_wave_dir_arrows(ax, wave: Dict[str, Any]) -> None:
+    """方向箭：修正腿綠下、衝動腿紅上（語意＝走勢意圖，不是買訊）。
+
+    可遷移（D.C.）：(1)→(2)／(3)→(4) 綠下；(2)→(3)／(4)→(5) 紅上。
+    """
+    wave = wave or {}
+    nodes: List[Tuple[float, float, str]] = []
+    for n in list(wave.get("confirmed") or []) + list(wave.get("projected") or []):
+        try:
+            nodes.append(
+                (float(n["i"]), float(n["price"]), str(n.get("label") or ""))
+            )
+        except Exception:
+            continue
+    # 依 x 排序，兩兩連段
+    nodes.sort(key=lambda t: t[0])
+    for i in range(len(nodes) - 1):
+        x0, y0, _lab0 = nodes[i]
+        x1, y1, lab1 = nodes[i + 1]
+        dx, dy = x1 - x0, y1 - y0
+        if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+            continue
+        # 箭畫在段中後 55%，避免壓浪號
+        t = 0.55
+        xa, ya = x0 + t * dx, y0 + t * dy
+        down = dy < 0
+        col = _EMA12 if down else _LADDER
+        # 只在關鍵腿畫：下到 (2)(4)；上到 (3)(5)
+        if down and lab1 not in ("(2)", "(4)", "(b)"):
+            continue
+        if (not down) and lab1 not in ("(3)", "(5)", "(c)", "(1)"):
+            continue
+        try:
+            ax.annotate(
+                "",
+                xy=(x1, y1),
+                xytext=(xa, ya),
+                arrowprops={
+                    "arrowstyle": "-|>",
+                    "color": col,
+                    "lw": 1.6,
+                    "mutation_scale": 14,
+                    "shrinkA": 0,
+                    "shrinkB": 6,
+                },
+                zorder=6,
+            )
+        except Exception:
+            continue
+
+
 def _draw_price_tag(
     ax, x: float, y: float, text: str, *, fp, face: str, color: str = "white"
 ) -> None:
@@ -1859,17 +1952,24 @@ def _paint(
             z0, z1 = float(min(lo_band)), float(max(lo_band) * 1.04)
             ax.axhspan(z0, z1, color=_ZONE_SUP, alpha=0.18, zorder=1)
 
+        # Vegas 雙隧道：藍＝144/169；紅＝576/676（語意＝均線隧道，不是未來浪陰影）
         if e144 and e169 and len(e144) == n and len(e169) == n:
             lo = np.minimum(np.asarray(e144), np.asarray(e169))
             hi = np.maximum(np.asarray(e144), np.asarray(e169))
-            ax.fill_between(xs, lo, hi, color=_TUNNEL, alpha=0.10, zorder=2)
+            ax.fill_between(xs, lo, hi, color=_TUNNEL, alpha=0.14, zorder=2)
             ax.plot(xs, e144, color=_TUNNEL, lw=1.05, zorder=3)
             ax.plot(xs, e169, color=_TUNNEL, lw=1.05, zorder=3)
         if e12 and len(e12) == n:
             ax.plot(xs, e12, color=_EMA12, lw=0.85, zorder=3)
-        if e576 and len(e576) == n:
+        if e576 and e676 and len(e576) == n and len(e676) == n:
+            slo = np.minimum(np.asarray(e576), np.asarray(e676))
+            shi = np.maximum(np.asarray(e576), np.asarray(e676))
+            ax.fill_between(xs, slo, shi, color=_EMA_SLOW, alpha=0.14, zorder=2)
+            ax.plot(xs, e576, color=_EMA_SLOW, lw=0.85, zorder=3, alpha=0.9)
+            ax.plot(xs, e676, color=_EMA_SLOW, lw=0.85, zorder=3, alpha=0.9)
+        elif e576 and len(e576) == n:
             ax.plot(xs, e576, color=_EMA_SLOW, lw=0.75, zorder=2, alpha=0.8)
-        if e676 and len(e676) == n:
+        elif e676 and len(e676) == n:
             ax.plot(xs, e676, color=_EMA_SLOW, lw=0.75, zorder=2, alpha=0.8)
 
         fut_bars = _clamp_future_bars(
@@ -2027,6 +2127,8 @@ def _paint(
                     zorder=5,
                     alpha=0.95,
                 )
+
+            _paint_wave_dir_arrows(ax, wave)
 
             fp_w = _fp(10.2, "bold")
             fp_tag = _fp(7.8, "bold")

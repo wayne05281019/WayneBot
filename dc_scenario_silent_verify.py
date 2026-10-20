@@ -17,7 +17,9 @@
 每個轉折落點、以及該轉折的點位數字。底圖仍是我們的官方 K。
 有發文且轉折數字／文意尚未同時 ≥95% 才改 dc_sf_rules（話筒讀）。
 已走的轉折改釘到最接近他那個價的官方高／低；還沒走的點位每天往他的數字走一步。
-沒發文只落檔、不改畫法。不准把這組數字抄進買訊。永遠不是買訊；A+B+C。
+他圖≠我們圖時：不准只調 likeness／盲抄轉折；要落 why 卡（動機／滿足點／時間軸／
+可遷移規則／僅此檔）進 dc_sf_learn，可遷移句另寫入 dc_sf_rules.learn_transfer，
+供其他股預估路徑用。沒發文只落檔、不改畫法。不准把這組數字抄進買訊。永遠不是買訊；A+B+C。
 """
 from __future__ import annotations
 
@@ -298,6 +300,19 @@ def ensure_tables(db_path: str) -> None:
                 as_of TEXT NOT NULL DEFAULT '',
                 note TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS dc_sf_learn (
+                as_of TEXT NOT NULL,
+                stock_id TEXT NOT NULL,
+                post_id TEXT NOT NULL DEFAULT '',
+                motive TEXT NOT NULL DEFAULT '',
+                fulfill_json TEXT NOT NULL DEFAULT '[]',
+                timeline_json TEXT NOT NULL DEFAULT '{}',
+                transferable_json TEXT NOT NULL DEFAULT '[]',
+                ticker_only_json TEXT NOT NULL DEFAULT '{}',
+                card_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (as_of, stock_id, post_id)
             );
             """
         )
@@ -1041,8 +1056,17 @@ def compare_one(
         our_wave.get("wedge") or (our_wave.get("desc_press") or {}).get("source")
     ):
         gaps.append("他提通道／壓線；我們幾何未掛")
-    if his.get("has_target_words") and not (our_wave.get("zones") or our_wave.get("projected")):
+    our_zones = list(our_wave.get("zones") or [])
+    has_fulfill = any(str(z.get("kind") or "") in ("ok", "tgt") for z in our_zones)
+    if his.get("has_target_words") and not (our_zones or our_wave.get("projected")):
         gaps.append("他提目標；我們無帶／虛線")
+    # 他明文「滿足」或已有虛線 (4) 卻無滿足灰框 → 記缺層（可遷移）
+    need_fulfill = ("滿足" in str(his_text or "")) or any(
+        str(p.get("label") or "") == "(4)"
+        for p in list(our_wave.get("projected") or [])
+    )
+    if need_fulfill and not has_fulfill:
+        gaps.append("他有滿足區／目標帶；我們未畫滿足灰框")
     if meaning and meaning not in ("文意標大致重疊", "雙方無可對文意標"):
         gaps.append("文意／說法差異")
     note = "；".join(gaps) if gaps else "結構／價位／文意大致可對或他文無可量化浪標"
@@ -1085,6 +1109,12 @@ def compare_one(
         "our_labels": our_labs,
         "our_prices": our_prices[:40],
         "our_turns": our_turns,
+        "our_wave": {
+            "deadline": dict((our_wave or {}).get("deadline") or {}),
+            "labels": our_labs,
+            "zones": list((our_wave or {}).get("zones") or []),
+            "projected": list((our_wave or {}).get("projected") or []),
+        },
         "gaps": gaps,
         "meaning_diff": meaning,
         "likeness": likeness,
@@ -1247,6 +1277,276 @@ def _price_grain(prices: Sequence[float]) -> Optional[List[int]]:
     return None
 
 
+_DATE_HINT_RE = re.compile(
+    r"(?:20\d{2}[-/])?(?:0?[1-9]|1[0-2])[-/](?:0?[1-9]|[12]\d|3[01])"
+    r"|(?:年底|年底前|月底|月底前|季底|兩週|三週|一週|幾週|交易日|開盤前|盤後)"
+)
+_FULFILL_NEAR_RE = re.compile(
+    r"(?:滿足|目標|上看|下看|區間)[^0-9]{0,8}(\d{2,5}(?:\.\d+)?)"
+    r"|(\d{2,5}(?:\.\d+)?)[^0-9]{0,8}(?:滿足|目標|上看|下看)",
+)
+
+
+def _timeline_cues(his_text: str, our_wave: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """時間軸線索：他文日期／窗詞＋我們 deadline（bar 軸）。不准發明浪號。"""
+    blob = str(his_text or "")
+    hints = []
+    for m in _DATE_HINT_RE.finditer(blob):
+        s = (m.group(0) or "").strip()
+        if s and s not in hints:
+            hints.append(s)
+        if len(hints) >= 8:
+            break
+    deadline = dict((our_wave or {}).get("deadline") or {})
+    out: Dict[str, Any] = {
+        "his_timing_hints": hints,
+        "our_deadline_label": str(deadline.get("label") or ""),
+        "our_deadline_i": deadline.get("i"),
+        "axis_note": "",
+    }
+    if hints and deadline.get("i") is not None:
+        out["axis_note"] = "他有時間窗詞／日期；我們有 deadline bar——要比軸長是否跟浪段綁定"
+    elif hints:
+        out["axis_note"] = "他標了時間窗；我們軸長要依該檔結構分檔，不准固定終點"
+    elif deadline.get("i") is not None:
+        out["axis_note"] = "我們有 deadline；他文無明確時間詞——核對是否該縮／拉軸"
+    return out
+
+
+def _fulfill_targets(his_text: str) -> List[Dict[str, Any]]:
+    """滿足點：浪號綁價＋「滿足／目標／上看／下看」近旁價。"""
+    blob = str(his_text or "")
+    out: List[Dict[str, Any]] = []
+    seen: set = set()
+    for lab, px in parse_turn_prices(blob).items():
+        key = f"{lab}:{px}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"kind": "turn", "label": lab, "price": float(px)})
+    for m in _FULFILL_NEAR_RE.finditer(blob):
+        raw = m.group(1) or m.group(2)
+        try:
+            px = float(raw)
+        except Exception:
+            continue
+        if not _keep_price_token(blob, m.start(1) if m.group(1) else m.start(2), px):
+            continue
+        key = f"tgt:{px}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"kind": "target_word", "label": "", "price": px})
+        if len(out) >= 20:
+            break
+    return out
+
+
+def build_why_card(
+    *,
+    as_of: str,
+    stock_id: str,
+    post_id: str = "",
+    his_text: str,
+    our_caption: str = "",
+    our_wave: Optional[Dict[str, Any]] = None,
+    diff: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """他圖≠我們圖時的 why 卡：動機／滿足點／時間軸／可遷移／僅此檔。
+
+    可遷移＝方法句（無該檔絕對價）；僅此檔＝該檔轉折價與案號。不准當買訊。
+    """
+    d = dict(diff or {})
+    gaps = [str(g) for g in (d.get("gaps") or []) if g]
+    meaning = str(d.get("meaning_diff") or "")
+    missing = method_words_missing(
+        our_narrative=str(our_caption or ""),
+        his_narrative=str(his_text or ""),
+    )
+    motive_bits = []
+    if gaps:
+        motive_bits.append("差距：" + "／".join(gaps[:6]))
+    if meaning and meaning not in ("文意標大致重疊", "雙方無可對文意標"):
+        motive_bits.append(meaning)
+    if missing:
+        motive_bits.append("方法詞他有我們無：" + "／".join(missing[:8]))
+    if not motive_bits:
+        motive_bits.append("結構可對但仍記滿足點／時間軸供遷移")
+    fulfill = _fulfill_targets(his_text)
+    timeline = _timeline_cues(his_text, our_wave)
+    transferable: List[str] = []
+    for g in gaps:
+        if "通道" in g or "壓線" in g:
+            transferable.append("他文有通道／壓線詞時補楔形＋下降壓＋區間帶幾何")
+        if "目標" in g or "虛線" in g:
+            transferable.append("他文有目標／上看時要畫未走虛線與滿足帶，不准只標已走轉折")
+        if "浪號" in g:
+            transferable.append("浪號選點優先夠幅度／夠間隔真轉折；未走從現在所在段延伸")
+        if "關鍵價" in g:
+            transferable.append("撐帶刻度跟他常用整數關（grain），不准抄單檔絕對價")
+        if "文意" in g:
+            transferable.append("敘事補他有我們無的方法詞（通道／滿足／轉多等），不寫他的目標價")
+    if timeline.get("his_timing_hints") or timeline.get("axis_note"):
+        transferable.append("未來時間軸長度依該檔浪段／時間對稱分檔，不准每檔同一終點")
+    if missing:
+        transferable.append("方法詞缺漏時優先補：" + "／".join(missing[:6]))
+    # 8227 對照鎖死的可遷移層（無單檔絕對價）
+    for g in gaps:
+        if "滿足" in g:
+            transferable.append(
+                "(4)滿足區＝(1)鄰域∪(3)-(2)之0.5～0.618回撤帶，標hi/lo，(4)點落帶內"
+            )
+    transferable.extend(
+        [
+            "方向箭：修正腿綠下、衝動腿紅上；語意＝走勢意圖不是買訊",
+            "Vegas藍＝EMA144/169、紅＝EMA576/676均線隧道；紫陰影＝未來浪路徑包絡，語意不同勿混",
+            "樞紐差致點位差：他用已走真峰谷＋滿足帶定(3)(5)；勿只抄單夜絕對價",
+        ]
+    )
+    # 去重保序
+    seen_t: set = set()
+    transfer_u: List[str] = []
+    for t in transferable:
+        if t not in seen_t:
+            seen_t.add(t)
+            transfer_u.append(t)
+    his_turns = parse_turn_prices(his_text)
+    ticker_only = {
+        "stock_id": str(stock_id or ""),
+        "post_id": str(post_id or ""),
+        "his_turn_prices": his_turns,
+        "fulfill_prices": [x.get("price") for x in fulfill],
+        "note": "僅此檔對照用；不准當買訊、不准寫進黃金買點／海選／查股／飆大",
+    }
+    return {
+        "as_of": _ymd(as_of),
+        "stock_id": str(stock_id or ""),
+        "post_id": str(post_id or ""),
+        "motive": "；".join(motive_bits)[:800],
+        "fulfill_targets": fulfill,
+        "timeline": timeline,
+        "transferable": transfer_u[:12],
+        "ticker_only": ticker_only,
+        "not_buy_signal": True,
+        "has_actionable_diff": bool(d.get("has_actionable_diff")),
+    }
+
+
+def upsert_learn_card(db_path: str, card: Dict[str, Any]) -> bool:
+    """落一張 why 卡進 dc_sf_learn（分軌；不碰飆大／買訊表）。"""
+    path = str(db_path or "").strip()
+    if not path:
+        return False
+    sid = str((card or {}).get("stock_id") or "").strip()
+    as_of = _ymd((card or {}).get("as_of") or "")
+    if not sid or not as_of:
+        return False
+    ensure_tables(path)
+    stamp = _taipei_now().strftime("%Y-%m-%d %H:%M:%S")
+    pid = str((card or {}).get("post_id") or "")
+    try:
+        conn = sqlite3.connect(path, timeout=30.0)
+        try:
+            conn.execute(
+                """
+                INSERT INTO dc_sf_learn(
+                  as_of, stock_id, post_id, motive, fulfill_json, timeline_json,
+                  transferable_json, ticker_only_json, card_json, created_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(as_of, stock_id, post_id) DO UPDATE SET
+                  motive=excluded.motive,
+                  fulfill_json=excluded.fulfill_json,
+                  timeline_json=excluded.timeline_json,
+                  transferable_json=excluded.transferable_json,
+                  ticker_only_json=excluded.ticker_only_json,
+                  card_json=excluded.card_json,
+                  created_at=excluded.created_at
+                """,
+                (
+                    as_of,
+                    sid,
+                    pid,
+                    str((card or {}).get("motive") or "")[:800],
+                    json.dumps((card or {}).get("fulfill_targets") or [], ensure_ascii=False),
+                    json.dumps((card or {}).get("timeline") or {}, ensure_ascii=False),
+                    json.dumps((card or {}).get("transferable") or [], ensure_ascii=False),
+                    json.dumps((card or {}).get("ticker_only") or {}, ensure_ascii=False),
+                    json.dumps(card, ensure_ascii=False),
+                    stamp,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return True
+    except Exception:
+        logger.exception("dc_sf_learn 寫入失敗")
+        return False
+
+
+def persist_mismatch_learn(
+    db_path: str,
+    as_of: str,
+    compares: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """mismatch 夜：寫 why 卡＋把可遷移句併進 dc_sf_rules.learn_transfer。"""
+    cards: List[Dict[str, Any]] = []
+    transfer_all: List[str] = []
+    for row in compares or []:
+        diff = row.get("diff") or {}
+        like = diff.get("likeness") or {}
+        # 有可行動差距，或尚未雙軸 95%，才建卡（對齊＝不盲抄仍可略）
+        if not (diff.get("has_actionable_diff") or not like.get("reached_95")):
+            continue
+        sid = str(row.get("stock_id") or "").strip()
+        if not sid:
+            continue
+        card = build_why_card(
+            as_of=as_of,
+            stock_id=sid,
+            post_id=str(row.get("post_id") or ""),
+            his_text=str(row.get("his_text") or ""),
+            our_caption=str(row.get("caption") or ""),
+            our_wave=diff.get("our_wave") if isinstance(diff.get("our_wave"), dict) else None,
+            diff=diff,
+        )
+        if upsert_learn_card(db_path, card):
+            cards.append(card)
+            for t in card.get("transferable") or []:
+                if t and t not in transfer_all:
+                    transfer_all.append(str(t))
+    if not cards:
+        return {"n": 0, "transfer_n": 0, "keys": []}
+    prev = load_rules(db_path)
+    old = prev.get("learn_transfer") if isinstance(prev.get("learn_transfer"), dict) else {}
+    rules = [str(x) for x in (old.get("rules") or []) if x]
+    for t in transfer_all:
+        if t not in rules:
+            rules.append(t)
+    rules = rules[-40:]  # 留近窗，避免無限長
+    paint = dict(old.get("paint") or {}) if isinstance(old.get("paint"), dict) else {}
+    # 夜檔可吸收的畫層旗標（情境預估讀；預設開）
+    paint.setdefault("fulfill_zone_w4", True)
+    paint.setdefault("dir_arrows", True)
+    paint.setdefault("vegas_dual_tunnel", True)
+    val = {
+        "as_of": _ymd(as_of),
+        "rules": rules,
+        "paint": paint,
+        "n_cards_night": len(cards),
+        "not_buy_signal": True,
+        "note": "可遷移方法句＋paint 旗標；不含單檔絕對價；只進情境預估",
+    }
+    upsert_rule(
+        db_path,
+        "learn_transfer",
+        val,
+        as_of=as_of,
+        note="日對質：可遷移 why／滿足點／時間軸／畫層",
+    )
+    return {"n": len(cards), "transfer_n": len(transfer_all), "keys": ["learn_transfer"]}
+
+
 def _upsert_stock_turns(
     db_path: str,
     as_of: str,
@@ -1309,16 +1609,27 @@ def propose_rule_updates(
         "not_buy_signal": True,
     }
     if not compares:
-        return {"changed": False, "keys": [], "values": {}, "likeness": like, "held": False}
-    if like.get("reached_95"):
-        book["hold"] = True
-        upsert_rule(db_path, "absorb", book, as_of=as_of, note="日對質：價格與文意已到 95%，停改畫法")
         return {
             "changed": False,
             "keys": [],
             "values": {},
             "likeness": like,
+            "held": False,
+            "learn": {"n": 0, "transfer_n": 0},
+        }
+    # mismatch／未到 95%：先落 why 卡（動機／滿足點／時間軸／可遷移）；到 95% 仍可對有差距列建卡
+    learn = persist_mismatch_learn(db_path, as_of, compares)
+    if like.get("reached_95"):
+        book["hold"] = True
+        book["learn_n"] = int(learn.get("n") or 0)
+        upsert_rule(db_path, "absorb", book, as_of=as_of, note="日對質：價格與文意已到 95%，停改畫法")
+        return {
+            "changed": False,
+            "keys": list(learn.get("keys") or []),
+            "values": {},
+            "likeness": like,
             "held": True,
+            "learn": learn,
         }
 
     changed: Dict[str, Any] = {}
@@ -1392,6 +1703,7 @@ def propose_rule_updates(
     book["rev"] = rev + (1 if changed else 0)
     book["goal"] = "wave_turns_on_our_ohlc"
     book["levers"] = list(changed.keys())
+    book["learn_n"] = int(learn.get("n") or 0)
     upsert_rule(
         db_path,
         "absorb",
@@ -1399,12 +1711,17 @@ def propose_rule_updates(
         as_of=as_of,
         note="日對質落檔" if not changed else "日對質：改畫法編碼",
     )
+    keys_out = list(changed.keys())
+    for k in learn.get("keys") or []:
+        if k not in keys_out:
+            keys_out.append(k)
     return {
         "changed": bool(changed),
-        "keys": list(changed.keys()),
+        "keys": keys_out,
         "values": changed,
         "likeness": like,
         "held": False,
+        "learn": learn,
     }
 
 
@@ -1789,7 +2106,9 @@ def night_tick(
         report["rules_changed"] = 1 if applied.get("changed") else 0
         report["rule_keys"] = list(applied.get("keys") or [])
         report["likeness"] = applied.get("likeness") or {}
+        report["learn"] = applied.get("learn") or {}
         like = report["likeness"]
+        learn = report["learn"]
 
         def _fmt_axis(v: Any) -> str:
             if v is None:
@@ -1805,7 +2124,7 @@ def night_tick(
         report["notes"] = (
             f"posts={report['post_n']};drawn={report.get('drawn_n')};compared={report['compare_n']};"
             f"px={_fmt_axis(like.get('prices'))};narr={_fmt_axis(like.get('narrative'))};"
-            f"{hold}"
+            f"learn={int(learn.get('n') or 0)};{hold}"
         )
         report["ok"] = True
 
