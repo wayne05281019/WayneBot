@@ -322,8 +322,15 @@ class TestMarketMenuE2E:
         empty_cards = {
             "us": {"session": "", "cards": [], "missing": []},
             "tx": {"card": None, "missing": True},
-            "vix": {"card": None, "missing": True},
+            "fear": None,
             "notes": [],
+        }
+        press_miss = {
+            "ok": False,
+            "_press_miss": True,
+            "_fallback": True,
+            "us_session": "",
+            "regime": "unknown",
         }
 
         with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
@@ -336,7 +343,9 @@ class TestMarketMenuE2E:
             "live_quote.fetch_mis_index_quote", return_value=None
         ), patch(
             "us_overnight.refresh_us_for_market_page",
-            return_value={"ok": False, "_press_miss": True, "regime": "unknown"},
+            return_value=press_miss,
+        ), patch(
+            "cnn_fear.fetch_cnn_fear_greed", return_value=None
         ), patch(
             "market_session_cards.assemble_session_cards", return_value=empty_cards
         ), patch.object(
@@ -424,8 +433,15 @@ class TestMarketMenuE2E:
         empty_cards = {
             "us": {"session": "", "cards": [], "missing": []},
             "tx": {"card": None, "missing": True},
-            "vix": {"card": None, "missing": True},
+            "fear": None,
             "notes": [],
+        }
+        press_miss = {
+            "ok": False,
+            "_press_miss": True,
+            "_fallback": True,
+            "us_session": "",
+            "regime": "unknown",
         }
 
         async def _run(uid):
@@ -440,7 +456,9 @@ class TestMarketMenuE2E:
         # 外網 mock 放 gather 外：兩協程同時 patch 同一屬性會漏還原，毒到後面 us_press 測。
         with patch("live_quote.fetch_mis_index_quote", return_value=None), patch(
             "us_overnight.refresh_us_for_market_page",
-            return_value={"ok": False, "_press_miss": True, "regime": "unknown"},
+            return_value=press_miss,
+        ), patch(
+            "cnn_fear.fetch_cnn_fear_greed", return_value=None
         ), patch(
             "market_session_cards.assemble_session_cards", return_value=empty_cards
         ), patch.object(

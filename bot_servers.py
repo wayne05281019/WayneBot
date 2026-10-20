@@ -5649,13 +5649,16 @@ class WayneTelegramBot:
                 bundle: dict = {
                     "us": {"session": "", "cards": [], "missing": []},
                     "tx": {"card": None, "missing": True},
-                    "vix": {"card": None, "missing": True},
+                    "fear": None,
                     "notes": [],
                 }
                 try:
                     with ThreadPoolExecutor(max_workers=1) as card_ex:
                         card_f = card_ex.submit(
-                            assemble_session_cards, us_snap=us_press
+                            lambda: assemble_session_cards(
+                                us_snap=us_press,
+                                cnn_fear=(us_press or {}).get("cnn_fear"),
+                            )
                         )
                         got = card_f.result(timeout=10)
                         if isinstance(got, dict):
@@ -5723,59 +5726,76 @@ class WayneTelegramBot:
             await _end_wait()
             _ = own_wait
 
-    async def _send_market_session_cards(self, message, bundle, *, uid: str = "") -> None:
-        """文字之後：美股四指數、台指期盤後。沒有官方走勢的卡已在文字裡說明。"""
+    @staticmethod
+    def _session_card_face(kind: str) -> str:
+        return {
+            "us": "美股走勢圖",
+            "tx": "台指電子盤圖",
+            "fear": "恐懼與貪婪指數圖",
+        }.get(kind, "大盤附圖")
+
+    def _paint_session_card_file(self, path: str, kind: str, spec: dict) -> str:
+        from market_session_cards import paint_session_job
+
+        return paint_session_job(path, kind, spec or {})
+
+    def send_market_session_cards_to_chat(
+        self, chat_id: str, bundle, *, uid: str = ""
+    ) -> int:
+        """同步寄出大盤附圖（06:30 早報）。順序：美股→台指電子盤→恐懼貪婪。"""
         from config import skip_chart_warmup
+        from market_session_cards import session_card_jobs
+
+        if skip_chart_warmup() or not bundle or not chat_id:
+            return 0
+        uid = str(uid or chat_id or "0")
+        os.makedirs(self.charts_dir, exist_ok=True)
+        sent = 0
+        for kind, spec in session_card_jobs(bundle):
+            path = self._scratch_chart_path(self.charts_dir, "MKT", kind, uid)
+            heading = str((spec or {}).get("heading") or "")
+            try:
+                drawn = self._paint_session_card_file(path, kind, spec)
+            except Exception:
+                logger.exception("早報走勢圖失敗 %s", kind)
+                drawn = ""
+            if not drawn or not self._market_landscape_chart_ok(drawn):
+                why = self._chart_reject_reason(drawn)
+                self._send_plain(
+                    chat_id, f"{self._session_card_face(kind)}這次畫不出來：{why}"
+                )
+                continue
+            try:
+                send_path = self._prepare_lookup_album_photo(drawn)
+                self._send_photo(chat_id, send_path, caption=heading[:1024])
+                sent += 1
+            except Exception:
+                logger.exception("早報走勢圖送出失敗 %s", kind)
+                self._send_plain(
+                    chat_id, f"{self._session_card_face(kind)}這次畫不出來，請稍後再試。"
+                )
+        return sent
+
+    async def _send_market_session_cards(self, message, bundle, *, uid: str = "") -> None:
+        """文字之後：美股四大 → 台指電子盤 → 恐懼與貪婪。沒有官方走勢的卡已在文字裡說明。"""
+        from config import skip_chart_warmup
+        from market_session_cards import session_card_jobs
 
         if skip_chart_warmup() or not bundle:
             return
         uid = uid or self._uid_from_message(message)
         os.makedirs(self.charts_dir, exist_ok=True)
-        us = (bundle or {}).get("us") or {}
-        tx = (bundle or {}).get("tx") or {}
-        jobs = []
-        if us.get("cards"):
-            jobs.append(
-                (
-                    "us",
-                    us["cards"],
-                    2,
-                    f"美股收盤　{us.get('session', '')[:4]}/{us.get('session', '')[4:6]}/{us.get('session', '')[6:8]}"
-                    if len(str(us.get("session") or "")) == 8
-                    else "美股收盤",
-                    "grid",
-                )
-            )
-        vix = (bundle or {}).get("vix") or {}
-        vix_card = vix.get("card")
-        if vix_card and vix_card.get("series"):
-            vsess = str(vix_card.get("session") or "")
-            vix_head = (
-                f"恐慌指數　{vsess[:4]}/{vsess[4:6]}/{vsess[6:]}"
-                if len(vsess) == 8
-                else "恐慌指數"
-            )
-            jobs.append(("vix", [vix_card], 1, vix_head, "spark"))
-        tx_card = tx.get("card")
-        if tx_card and tx_card.get("series"):
-            sess = str(tx_card.get("session") or "")
-            face = (
-                f"台指期盤後　{sess[:4]}/{sess[4:6]}/{sess[6:]}"
-                if len(sess) == 8
-                else "台指期盤後"
-            )
-            jobs.append(("tx", [tx_card], 1, face, "grid"))
-        for kind, cards, cols, heading, layout in jobs:
+        for kind, spec in session_card_jobs(bundle):
             path = self._scratch_chart_path(self.charts_dir, "MKT", kind, uid)
+            heading = str((spec or {}).get("heading") or "")
             try:
-                from market_session_cards import render_session_cards
                 from wayne_navigator import submit_mpl_paint
 
                 drawn = await asyncio.wait_for(
                     asyncio.wrap_future(
                         submit_mpl_paint(
-                            lambda p=path, cs=cards, n=cols, h=heading, lay=layout: render_session_cards(
-                                p, cs, heading=h, columns=n, layout=lay
+                            lambda p=path, k=kind, s=spec: self._paint_session_card_file(
+                                p, k, s
                             )
                         )
                     ),
@@ -5786,8 +5806,7 @@ class WayneTelegramBot:
                 drawn = ""
             if not drawn or not self._market_landscape_chart_ok(drawn):
                 why = self._chart_reject_reason(drawn)
-                face = {"us": "美股走勢圖", "vix": "恐慌指數圖"}.get(kind, "台指期盤後圖")
-                await message.reply_text(f"{face}這次畫不出來：{why}")
+                await message.reply_text(f"{self._session_card_face(kind)}這次畫不出來：{why}")
                 continue
             try:
                 send_path = self._prepare_lookup_album_photo(drawn)
@@ -5800,10 +5819,7 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("大盤走勢圖送出失敗 %s", kind)
                 await message.reply_text(
-                    {
-                        "us": "美股走勢圖這次畫不出來，請稍後再試。",
-                        "vix": "恐慌指數圖這次畫不出來，請稍後再試。",
-                    }.get(kind, "台指期盤後圖這次畫不出來，請稍後再試。")
+                    f"{self._session_card_face(kind)}這次畫不出來，請稍後再試。"
                 )
 
     async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:

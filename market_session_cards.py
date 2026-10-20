@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""台股大盤附圖：美股四指數、台指期盤後。只畫官方成交，沒有走勢就不上圖。"""
+"""台股大盤附圖：美股四指數、台指電子盤、恐懼與貪婪。只畫官方成交，沒有走勢就不上圖。"""
 from __future__ import annotations
 
 import io
 import logging
+import math
 import zipfile
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -232,6 +233,15 @@ def parse_tx_night_ticks(text: str) -> List[Tuple[str, str, str, float, int]]:
     return out
 
 
+def _bucket_minutes(stamp: str) -> int:
+    """夜盤 15:00→隔日 05:00 轉成從 15:00 起的分鐘數。"""
+    hh = int(stamp[:2])
+    mm = int(stamp[2:4])
+    if stamp >= "150000":
+        return (hh - 15) * 60 + mm
+    return (hh + 9) * 60 + mm  # 00:00 = 540 min after 15:00
+
+
 def build_tx_night_card(
     ticks: Sequence[Tuple[str, str, str, float, int]],
     prev_close: Optional[float],
@@ -256,14 +266,37 @@ def build_tx_night_card(
     month = max(vol, key=lambda m: vol[m])
     front = [t for t in kept if t[1] == month]
     front.sort(key=lambda t: (0 if t[2] >= "150000" else 1, t[0], t[2]))
+    if len(front) < 2:
+        return None
     buckets: Dict[Tuple[int, str, int, int], float] = {}
-    for d, _m, stamp, px, _q in front:
+    vol_buckets: Dict[Tuple[int, str, int, int], int] = {}
+    for d, _m, stamp, px, qty in front:
         hh = int(stamp[:2])
         mm = int(stamp[2:4]) // 5 * 5
-        buckets[(0 if stamp >= "150000" else 1, d, hh, mm)] = px
-    series = [buckets[k] for k in sorted(buckets)]
+        key = (0 if stamp >= "150000" else 1, d, hh, mm)
+        buckets[key] = px
+        vol_buckets[key] = vol_buckets.get(key, 0) + int(qty)
+    keys = sorted(buckets)
+    series = [buckets[k] for k in keys]
+    volumes = [int(vol_buckets.get(k, 0)) for k in keys]
+    # x = 夜盤分鐘（15:00=0 … 05:00=840）
+    xs = []
+    for _seg, _d, hh, mm in keys:
+        stamp = f"{hh:02d}{mm:02d}00"
+        xs.append(float(_bucket_minutes(stamp)))
+    last_stamp = front[-1][2]
+    last_qty = int(front[-1][4])
+    highs = [float(t[3]) for t in front]
+    session_hi = max(highs)
+    session_lo = min(highs)
+    # 5 期簡單均線（對 5 分桶）
+    ma: List[float] = []
+    win = 5
+    for i in range(len(series)):
+        chunk = series[max(0, i - win + 1) : i + 1]
+        ma.append(sum(chunk) / len(chunk))
     card = _card(
-        name="台指期盤後",
+        name="台指電子盤",
         last=front[-1][3],
         prev=float(prev_close),
         series=series,
@@ -273,6 +306,14 @@ def build_tx_night_card(
         return None
     card["session"] = session
     card["month"] = month
+    card["volumes"] = volumes
+    card["xs"] = xs
+    card["ma"] = ma
+    card["high"] = float(session_hi)
+    card["low"] = float(session_lo)
+    card["asof_time"] = f"{last_stamp[:2]}:{last_stamp[2:4]}:{last_stamp[4:6]}"
+    card["last_qty"] = last_qty
+    card["volume"] = int(sum(int(t[4]) for t in front))
     return card
 
 
@@ -298,61 +339,81 @@ def _regular_settlement(session_ymd: str, month: str) -> Optional[float]:
         return None
     if not isinstance(rows, list):
         return None
+    best = None
     for row in rows:
         if str(row.get("Contract") or "").strip().upper() != "TX":
             continue
         if str(row.get("TradingSession") or "") != "一般":
             continue
-        if str(row.get("Date") or "") != session_ymd:
-            continue
         if str(row.get("ContractMonth(Week)") or "").strip() != month:
             continue
+        day = str(row.get("Date") or "").replace("/", "").replace("-", "")[:8]
+        if day != session_ymd:
+            continue
         raw = str(row.get("SettlementPrice") or "").replace(",", "").strip()
+        if not raw or raw in {"-", "－", "—"}:
+            continue
         try:
             px = float(raw)
         except ValueError:
-            return None
-        return px if px > 0 else None
-    return None
+            continue
+        if px > 0:
+            best = px
+            break
+    return best
 
 
 def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
     """最新一檔期交所逐筆夜盤。沒有 15:00 起的官方成交就不上圖。"""
     _ = now
+    ymds: List[str] = []
+    # 大盤專頁總逾時約 45s：頁面／zip 不可各吃滿半分鐘，失敗就缺圖。
     try:
-        page = _SESSION.get(_TAIFEX_TICK_PAGE, timeout=30)
+        page = _SESSION.get(_TAIFEX_TICK_PAGE, timeout=12)
         page.raise_for_status()
         ymd = latest_taifex_tick_zip_ymd(page.text)
-        if len(ymd) != 8:
-            return {"card": None, "missing": True}
-        url = _TAIFEX_ZIP.format(y=ymd[:4], m=ymd[4:6], d=ymd[6:])
-        blob = _SESSION.get(url, timeout=40)
-        blob.raise_for_status()
-        ticks = parse_tx_night_ticks(_read_tick_zip(blob.content))
+        if len(ymd) == 8:
+            ymds.append(ymd)
     except Exception:
-        logger.exception("台指期盤後走勢抓不到")
-        return {"card": None, "missing": True}
-    evening = [t for t in ticks if t[2] >= "150000"]
-    if not evening:
-        return {"card": None, "missing": True}
-    session = min(t[0] for t in evening)
-    if _is_weekend(session):
-        return {"card": None, "missing": True}
-    nxt = _next_ymd(session)
-    kept = [
-        t
-        for t in ticks
-        if (t[0] == session and t[2] >= "150000") or (t[0] == nxt and t[2] < "050000")
-    ]
-    vol: Dict[str, int] = {}
-    for _d, month, _t, _px, qty in kept:
-        vol[month] = vol.get(month, 0) + int(qty)
-    if not vol:
-        return {"card": None, "missing": True}
-    month = max(vol, key=lambda m: vol[m])
-    prev = _regular_settlement(session, month)
-    card = build_tx_night_card(ticks, prev)
-    return {"card": card, "missing": card is None}
+        logger.exception("台指期下載頁抓不到，改試近期 zip")
+    # 頁面失敗仍試台北近日 zip（夜盤檔名常是隔日）。
+    try:
+        today = datetime.now(TP).strftime("%Y%m%d")
+    except Exception:
+        today = ""
+    if today:
+        cur = today
+        for _ in range(3):
+            if cur not in ymds:
+                ymds.append(cur)
+            cur = (datetime.strptime(cur, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+    for ymd in ymds:
+        try:
+            url = _TAIFEX_ZIP.format(y=ymd[:4], m=ymd[4:6], d=ymd[6:])
+            blob = _SESSION.get(url, timeout=15)
+            if blob.status_code != 200 or len(blob.content) < 1000:
+                continue
+            ticks = parse_tx_night_ticks(_read_tick_zip(blob.content))
+        except Exception:
+            logger.exception("台指期盤後 zip 失敗 %s", ymd)
+            continue
+        evening = [t for t in ticks if t[2] >= "150000"]
+        if not evening:
+            continue
+        session = min(t[0] for t in evening)
+        if _is_weekend(session):
+            continue
+        vol: Dict[str, int] = {}
+        for _d, month, _t, _px, qty in evening:
+            vol[month] = vol.get(month, 0) + int(qty)
+        if not vol:
+            continue
+        month = max(vol, key=lambda m: vol[m])
+        prev = _regular_settlement(session, month)
+        card = build_tx_night_card(ticks, prev)
+        if card is not None:
+            return {"card": card, "missing": False}
+    return {"card": None, "missing": True}
 
 
 def fetch_vix_card(us_snap: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -389,25 +450,69 @@ def fetch_vix_card(us_snap: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
 
 def assemble_session_cards(
-    now: Optional[datetime] = None, us_snap: Optional[Dict[str, Any]] = None
+    now: Optional[datetime] = None,
+    us_snap: Optional[Dict[str, Any]] = None,
+    cnn_fear: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     us = fetch_us_cash_cards(now, us_snap)
     tx = fetch_tx_after_hours_card(now)
-    vix = fetch_vix_card(us_snap)
-    return {"us": us, "tx": tx, "vix": vix, "notes": omission_lines(us, tx, vix)}
+    fear = cnn_fear if isinstance(cnn_fear, dict) else (us_snap or {}).get("cnn_fear")
+    if not isinstance(fear, dict) or fear.get("score") is None:
+        fear = None
+    return {
+        "us": us,
+        "tx": tx,
+        "fear": fear,
+        "notes": omission_lines(us, tx, fear),
+    }
 
 
 def omission_lines(
-    us: Dict[str, Any], tx: Dict[str, Any], vix: Optional[Dict[str, Any]] = None
+    us: Dict[str, Any],
+    tx: Dict[str, Any],
+    fear: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     lines = [f"{name}這次沒有官方走勢，不上圖" for name in (us or {}).get("missing") or []]
     if (tx or {}).get("missing") or not ((tx or {}).get("card") or {}).get("series"):
-        lines.append("台指期盤後這次沒有官方走勢，不上圖")
-    if vix is not None and (
-        vix.get("missing") or not ((vix.get("card") or {}).get("series"))
-    ):
-        lines.append("恐慌指數這次沒有官方日收，不上圖")
+        lines.append("台指電子盤這次沒有官方走勢，不上圖")
+    if fear is None:
+        lines.append("恐懼與貪婪指數這次沒有官方讀數，不上圖")
     return lines
+
+
+def session_card_jobs(bundle: Optional[Dict[str, Any]]) -> List[Tuple[str, Any]]:
+    """送圖順序硬鎖：美股四大 → 台指電子盤 → 恐懼與貪婪。"""
+    bundle = bundle or {}
+    jobs: List[Tuple[str, Any]] = []
+    us = bundle.get("us") or {}
+    if us.get("cards"):
+        sess = str(us.get("session") or "")
+        head = (
+            f"美股收盤　{sess[:4]}/{sess[4:6]}/{sess[6:8]}"
+            if len(sess) == 8
+            else "美股收盤"
+        )
+        jobs.append(("us", {"cards": us["cards"], "heading": head, "columns": 2, "layout": "grid"}))
+    tx = bundle.get("tx") or {}
+    tx_card = tx.get("card")
+    if tx_card and tx_card.get("series"):
+        sess = str(tx_card.get("session") or "")
+        head = (
+            f"台指電子盤　{sess[:4]}/{sess[4:6]}/{sess[6:8]}"
+            if len(sess) == 8
+            else "台指電子盤"
+        )
+        jobs.append(("tx", {"cards": [tx_card], "heading": head, "columns": 1, "layout": "board"}))
+    fear = bundle.get("fear")
+    if isinstance(fear, dict) and fear.get("score") is not None:
+        sess = str(fear.get("session") or "")
+        head = (
+            f"恐懼與貪婪指數　{sess[:4]}/{sess[4:6]}/{sess[6:8]}"
+            if len(sess) == 8
+            else "恐懼與貪婪指數"
+        )
+        jobs.append(("fear", {"fear": fear, "heading": head}))
+    return jobs
 
 
 def _side_color(chg: float) -> str:
@@ -457,7 +562,7 @@ def render_session_cards(
     columns: int,
     layout: str = "grid",
 ) -> str:
-    """手機縮圖要看得清：字大、標跟數字分開、昨收是虛線。"""
+    """美股四指數 2×2：每卡自己的官方分時 series，字大、漲紅跌綠。"""
     import matplotlib
 
     matplotlib.use("Agg", force=False)
@@ -466,28 +571,41 @@ def render_session_cards(
 
     from wayne_navigator import _fp
 
-    got = [c for c in cards if c and c.get("series")]
+    if layout == "board" and len([c for c in cards if c and c.get("series")]) == 1:
+        return render_tx_electronic_board(path, cards[0], heading=heading)
+
+    got = [c for c in cards if c and c.get("series") and len(c.get("series") or []) >= 2]
     if not got:
         return ""
+    # 擋假圖：四卡 series 完全相同就不畫
+    if len(got) >= 2:
+        sigs = [tuple(round(float(x), 4) for x in c["series"][:12]) for c in got]
+        if len(set(sigs)) == 1 and len(got) > 1:
+            logger.error("美股四指數 series 重複，拒畫假圖")
+            return ""
     cols = max(1, min(columns, len(got)))
     rows = (len(got) + cols - 1) // cols
-    fig_w = 9.2 if cols == 1 else 10.2
-    dpi = 130
-    head_in = 0.55
-    row_h = 6.85 if cols == 1 else 3.55
-    fig_h = head_in + rows * row_h + 0.28
-    # 單張台指期盤後是橫圖。畫布太扁會被直式查股門檻（高 900、48KB）整張丟掉。
-    if cols == 1 and layout != "spark":
-        fig_h = max(fig_h, 960 / dpi)
-    # 恐慌指數單卡：高過大盤橫式門檻 480px，不必拉成台指期那張。
+    fig_w = 9.2 if cols == 1 else 10.4
+    dpi = 140
+    head_in = 0.52
+    row_h = 3.85 if cols > 1 else 6.85
+    fig_h = head_in + rows * row_h + 0.22
     if layout == "spark":
         dpi = 140
         fig_w = 9.2
         fig_h = 4.05
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_BG)
-    fig.text(0.045, 1 - (0.28 / fig_h), heading, color=_TITLE, fontproperties=_fp(22, "bold"), ha="left", va="top")
-    gap_x = 0.03
-    gap_y = 0.025
+    fig.text(
+        0.04,
+        1 - (0.26 / fig_h),
+        heading,
+        color=_TITLE,
+        fontproperties=_fp(24, "bold"),
+        ha="left",
+        va="top",
+    )
+    gap_x = 0.028
+    gap_y = 0.022
     top = 1 - (head_in / fig_h)
     bottom = 0.03
     grid_h = top - bottom
@@ -504,29 +622,481 @@ def render_session_cards(
         ax.set_facecolor(_CARD)
         ax.add_patch(
             FancyBboxPatch(
-                (0, 0),
-                1,
-                1,
-                boxstyle="round,pad=0.012,rounding_size=0.04",
+                (0.01, 0.01),
+                0.98,
+                0.98,
+                boxstyle="round,pad=0.01,rounding_size=0.035",
                 facecolor=_CARD,
-                edgecolor=_CARD,
+                edgecolor="#3a3a3a",
+                linewidth=1.0,
                 transform=ax.transAxes,
-                mutation_aspect=card_w / card_h * fig_w / fig_h,
             )
         )
         col = _side_color(float(card["chg"]))
         integers = bool(card.get("integers"))
         arrow = "▲" if card["chg"] > 0 else ("▼" if card["chg"] < 0 else "")
         chg_abs = _fmt_num(abs(float(card["chg"])), integers=integers)
-        fp_name = _fp(20 if cols > 1 else 24, "bold")
-        fp_px = _fp(30 if cols > 1 else 40, "bold")
-        fp_meta = _fp(16 if cols > 1 else 20, "bold")
-        ax.text(0.06, 0.90, card["name"], color=_TITLE, fontproperties=fp_name, ha="left", va="top")
-        ax.text(0.94, 0.90, f"{arrow}{chg_abs}", color=col, fontproperties=fp_meta, ha="right", va="top")
-        ax.text(0.06, 0.68, _fmt_num(float(card["last"]), integers=integers), color=col, fontproperties=fp_px, ha="left", va="center")
-        ax.text(0.94, 0.68, f"({float(card['pct']):+.2f}%)", color=col, fontproperties=fp_meta, ha="right", va="center")
-        spark = fig.add_axes([x + card_w * 0.06, y + card_h * 0.08, card_w * 0.88, card_h * 0.40])
+        ax.text(0.06, 0.90, card["name"], color=_TITLE, fontproperties=_fp(20, "bold"), ha="left", va="top")
+        ax.text(
+            0.94, 0.90, f"{arrow}{chg_abs}",
+            color=col, fontproperties=_fp(22, "bold"), ha="right", va="top",
+        )
+        ax.text(
+            0.94, 0.76, f"({float(card['pct']):+.2f}%)",
+            color=col, fontproperties=_fp(20, "bold"), ha="right", va="top",
+        )
+        ax.text(
+            0.06,
+            0.60,
+            _fmt_num(float(card["last"]), integers=integers),
+            color=col,
+            fontproperties=_fp(34, "bold"),
+            ha="left",
+            va="center",
+        )
+        spark = fig.add_axes([x + card_w * 0.06, y + card_h * 0.07, card_w * 0.88, card_h * 0.42])
         _draw_spark(spark, card["series"], float(card["prev"]))
     fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none")
     plt.close(fig)
     return path
+
+
+def render_tx_electronic_board(path: str, card: Dict[str, Any], *, heading: str) -> str:
+    """券商電子盤臉：價／漲跌、時間＋單量／總量口、紅上綠下、灰均線、高低標、15→05、量柱。"""
+    import matplotlib
+    import numpy as np
+
+    matplotlib.use("Agg", force=False)
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch
+
+    from wayne_navigator import _fp
+
+    series = [float(x) for x in (card.get("series") or []) if x is not None]
+    if len(series) < 2:
+        return ""
+    prev = float(card["prev"])
+    xs = card.get("xs")
+    if not xs or len(xs) != len(series):
+        xs = list(range(len(series)))
+    xs = [float(v) for v in xs]
+    volumes = [float(v or 0) for v in (card.get("volumes") or [0] * len(series))]
+    if len(volumes) != len(series):
+        volumes = [0.0] * len(series)
+    ma = card.get("ma") or []
+    if len(ma) != len(series):
+        ma = []
+    hi = float(card.get("high") if card.get("high") is not None else max(series))
+    lo = float(card.get("low") if card.get("low") is not None else min(series))
+    col = _side_color(float(card["chg"]))
+    arrow = "▲" if card["chg"] > 0 else ("▼" if card["chg"] < 0 else "")
+    dpi = 140
+    fig_w, fig_h = 10.2, 8.6
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_BG)
+    fig.text(0.04, 0.965, heading, color=_TITLE, fontproperties=_fp(22, "bold"), ha="left", va="top")
+
+    head = fig.add_axes([0.04, 0.78, 0.92, 0.16])
+    head.set_xlim(0, 1)
+    head.set_ylim(0, 1)
+    head.axis("off")
+    head.set_facecolor(_CARD)
+    head.add_patch(
+        FancyBboxPatch(
+            (0, 0), 1, 1, boxstyle="round,pad=0.01,rounding_size=0.03",
+            facecolor=_CARD, edgecolor="#3a3a3a", transform=head.transAxes,
+        )
+    )
+    # 標題只留外層 heading，卡內不再重複「台指電子盤」。
+    head.text(
+        0.03, 0.58, _fmt_num(float(card["last"]), integers=True),
+        color=col, fontproperties=_fp(42, "bold"), ha="left", va="center",
+    )
+    head.text(
+        0.97, 0.72, f"{arrow}{_fmt_num(abs(float(card['chg'])), integers=True)}",
+        color=col, fontproperties=_fp(22, "bold"), ha="right", va="center",
+    )
+    head.text(
+        0.97, 0.42, f"({float(card['pct']):+.2f}%)",
+        color=col, fontproperties=_fp(20, "bold"), ha="right", va="center",
+    )
+    last_qty = int(card.get("last_qty") or 0)
+    total = int(card.get("volume") or 0)
+    head.text(
+        0.03, 0.16,
+        f"{card.get('asof_time') or ''}　單量 {last_qty:,}口　總量 {total:,}口",
+        color=_MUTED, fontproperties=_fp(15, "bold"), ha="left", va="center",
+    )
+
+    ax = fig.add_axes([0.10, 0.28, 0.86, 0.48])
+    ax.set_facecolor(_CARD)
+    y_arr = np.asarray(series, dtype=float)
+    x_arr = np.asarray(xs, dtype=float)
+    pad = max((hi - lo) * 0.08, abs(prev) * 0.001, 8.0)
+    y0 = min(lo, prev) - pad
+    y1 = max(hi, prev) + pad
+    ax.set_ylim(y0, y1)
+    ax.set_xlim(min(x_arr), max(x_arr) if max(x_arr) > min(x_arr) else min(x_arr) + 1)
+    ax.axhline(prev, color=_DASH, linestyle=(0, (4, 3)), linewidth=1.4, zorder=2)
+    ax.fill_between(x_arr, prev, y_arr, where=y_arr >= prev, interpolate=True, color=_UP, alpha=0.32, zorder=1)
+    ax.fill_between(x_arr, prev, y_arr, where=y_arr <= prev, interpolate=True, color=_DN, alpha=0.32, zorder=1)
+    for i in range(len(y_arr) - 1):
+        a, b = float(y_arr[i]), float(y_arr[i + 1])
+        if (a >= prev and b >= prev) or (a < prev and b < prev):
+            ax.plot(x_arr[i : i + 2], [a, b], color=_side_color(a - prev if a != prev else b - prev), lw=2.0, zorder=3)
+        else:
+            if b == a:
+                continue
+            t = (prev - a) / (b - a)
+            xc = x_arr[i] + t * (x_arr[i + 1] - x_arr[i])
+            ax.plot([x_arr[i], xc], [a, prev], color=_side_color(a - prev), lw=2.0, zorder=3)
+            ax.plot([xc, x_arr[i + 1]], [prev, b], color=_side_color(b - prev), lw=2.0, zorder=3)
+    if ma:
+        ax.plot(x_arr, ma, color="#9e9e9e", lw=1.6, alpha=0.95, zorder=4, label="MA")
+    # 高低標
+    hi_i = int(np.argmax(y_arr))
+    lo_i = int(np.argmin(y_arr))
+    ax.text(
+        float(x_arr[hi_i]), float(y_arr[hi_i]),
+        f"  高 {_fmt_num(hi, integers=True)}",
+        color=_UP, fontproperties=_fp(11, "bold"), ha="left", va="bottom", zorder=5,
+    )
+    ax.text(
+        float(x_arr[lo_i]), float(y_arr[lo_i]),
+        f"  低 {_fmt_num(lo, integers=True)}",
+        color=_DN, fontproperties=_fp(11, "bold"), ha="left", va="top", zorder=5,
+    )
+    # Y：高／中／低（昨收當中）
+    ax.set_yticks([lo, prev, hi])
+    ax.set_yticklabels(
+        [_fmt_num(lo, integers=True), _fmt_num(prev, integers=True), _fmt_num(hi, integers=True)]
+    )
+    for lab in ax.get_yticklabels():
+        lab.set_color(_MUTED)
+        lab.set_fontproperties(_fp(10, "bold"))
+    for lab in ax.get_xticklabels():
+        lab.set_color(_MUTED)
+        lab.set_fontproperties(_fp(10, "bold"))
+    # X：15→05
+    hour_ticks = [0, 120, 240, 360, 480, 600, 720, 840]  # 15,17,19,21,23,01,03,05
+    hour_labs = ["15", "17", "19", "21", "23", "01", "03", "05"]
+    xmin, xmax = float(min(x_arr)), float(max(x_arr))
+    show_t, show_l = [], []
+    for t, lab in zip(hour_ticks, hour_labs):
+        if xmin - 5 <= t <= xmax + 5:
+            show_t.append(t)
+            show_l.append(lab)
+    if show_t:
+        ax.set_xticks(show_t)
+        ax.set_xticklabels(show_l, color=_MUTED, fontsize=10)
+    else:
+        ax.set_xticks([])
+    for sp in ax.spines.values():
+        sp.set_color("#555555")
+    ax.tick_params(colors=_MUTED, length=3)
+    ax.grid(False)
+
+    vol_ax = fig.add_axes([0.10, 0.08, 0.86, 0.16])
+    vol_ax.set_facecolor(_CARD)
+    vcols = [_side_color(float(y) - prev) for y in series]
+    width = max((xmax - xmin) / max(len(series), 1) * 0.8, 1.0)
+    vol_ax.bar(x_arr, volumes, width=width, color=vcols, alpha=0.85, zorder=2)
+    vol_ax.set_xlim(ax.get_xlim())
+    vol_ax.set_xticks(show_t if show_t else [])
+    vol_ax.set_xticklabels(show_l if show_t else [], color=_MUTED, fontsize=10)
+    vol_ax.set_yticks([])
+    for sp in vol_ax.spines.values():
+        sp.set_color("#555555")
+    vol_ax.text(
+        0.01, 0.92, "量", color=_MUTED, fontproperties=_fp(10, "bold"),
+        transform=vol_ax.transAxes, va="top",
+    )
+
+    fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.close(fig)
+    return path
+
+
+_FEAR_BAND_COLORS = (
+    (0.0, 25.0, "#e53935", "極度恐懼", "Extreme Fear"),
+    (25.0, 45.0, "#ef6c00", "恐懼", "Fear"),
+    (45.0, 55.0, "#f9a825", "中立", "Neutral"),
+    (55.0, 75.0, "#7cb342", "貪婪", "Greed"),
+    (75.0, 100.0, "#2e7d32", "極度貪婪", "Extreme Greed"),
+)
+
+
+def _crop_flat_bezel(path: str, *, pad: int = 8, tol: int = 30) -> str:
+    """裁掉四周同色空邊；內部字距不碰。失敗就原檔。"""
+    try:
+        import numpy as np
+        from PIL import Image
+    except Exception:
+        return path
+    try:
+        im = Image.open(path).convert("RGB")
+    except Exception:
+        return path
+    arr = np.asarray(im)
+    if arr.size == 0:
+        return path
+    h, w = arr.shape[:2]
+    samples = [
+        arr[0, 0],
+        arr[0, w - 1],
+        arr[h - 1, 0],
+        arr[h - 1, w - 1],
+        arr[0, w // 2],
+        arr[h - 1, w // 2],
+    ]
+    bg = np.median(np.asarray(samples, dtype=np.int16), axis=0)
+    diff = np.abs(arr.astype(np.int16) - bg).sum(axis=2)
+    mask = diff > int(tol)
+    if not mask.any():
+        return path
+    ys, xs = np.where(mask)
+    y0 = max(0, int(ys.min()) - pad)
+    y1 = min(h, int(ys.max()) + 1 + pad)
+    x0 = max(0, int(xs.min()) - pad)
+    x1 = min(w, int(xs.max()) + 1 + pad)
+    if x1 - x0 < 40 or y1 - y0 < 40:
+        return path
+    if x0 <= 1 and y0 <= 1 and x1 >= w - 1 and y1 >= h - 1:
+        return path
+    im.crop((x0, y0, x1, y1)).save(path, optimize=True)
+    return path
+
+
+def render_fear_greed_gauge(
+    path: str,
+    fear: Dict[str, Any],
+    *,
+    heading: str,
+) -> str:
+    """深藍底白字 CNN 儀表：中英弧標、數字下「市場即時情緒指標」、趨勢色章列。"""
+    import matplotlib
+
+    matplotlib.use("Agg", force=False)
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch, Wedge
+
+    from wayne_navigator import _fp
+    from cnn_fear import gauge_face
+
+    score = fear.get("score")
+    try:
+        score_f = float(score)
+    except (TypeError, ValueError):
+        return ""
+    if score_f < 0 or score_f > 100:
+        return ""
+    face = str(fear.get("face") or gauge_face(score_f))
+    band = str(fear.get("band") or "")
+    hist = [h for h in (fear.get("history") or []) if isinstance(h, dict)]
+
+    _NAVY = "#0b1c33"
+    _PANEL = "#152a45"
+    _WHITE = "#f5f7fa"
+    _MUTE = "#c5d0e0"
+
+    dpi = 150
+    # 模板構圖硬鎖：上下半都吃滿畫布；外框邊距壓到最小（存檔後再裁空邊）。
+    fig_w, fig_h = 9.0, 11.2
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_NAVY)
+    # 標題與日期拆開：左標題、右日期，避免壓到弧頂「中立」。
+    head = str(heading or "")
+    if "　" in head:
+        head_title, head_date = head.split("　", 1)
+    elif " " in head:
+        head_title, head_date = head.split(" ", 1)
+    else:
+        head_title, head_date = head, ""
+    fig.text(
+        0.012, 0.988, head_title,
+        color=_WHITE, fontproperties=_fp(28, "bold"), ha="left", va="top",
+    )
+    if head_date:
+        fig.text(
+            0.988, 0.988, head_date.strip(),
+            color=_MUTE, fontproperties=_fp(22, "bold"), ha="right", va="top",
+        )
+
+    def _ang(val: float) -> float:
+        return 180.0 - (max(0.0, min(100.0, val)) / 100.0) * 180.0
+
+    # 上半＝弧＋針＋23＋說明（同一座標系）。弧盤加大；相關字級跟弧一起放大。
+    # 用 axes 框比例對齊 data，不用 set_aspect（避免縮框留邊）。
+    y0, y1 = -0.98, 1.28
+    ax_w, ax_h = 0.996, 0.575
+    # (Δy/Δx) = (ax_h/ax_w)*(fig_h/fig_w) → 算滿寬所需 Δx
+    dy = y1 - y0
+    dx = dy / ((ax_h / ax_w) * (fig_h / fig_w))
+    x0, x1 = -0.5 * dx, 0.5 * dx
+    ax_x = (1.0 - ax_w) / 2.0
+    ax_y = 0.988 - 0.034 - ax_h
+    gauge = fig.add_axes([ax_x, ax_y, ax_w, ax_h])
+    gauge.set_xlim(x0, x1)
+    gauge.set_ylim(y0, y1)
+    gauge.axis("off")
+    gauge.set_facecolor(_NAVY)
+
+    for lo, hi, color, zh, en in _FEAR_BAND_COLORS:
+        gauge.add_patch(
+            Wedge(
+                (0, 0), 1.0, _ang(hi), _ang(lo), width=0.46,
+                facecolor=color, edgecolor=_NAVY, linewidth=2.4, alpha=0.97,
+            )
+        )
+        mid = (lo + hi) / 2.0
+        rad = math.radians(_ang(mid))
+        if 45.0 <= mid <= 55.0:
+            r_lab, y_nudge = 1.18, -0.02
+        elif mid <= 20.0 or mid >= 80.0:
+            r_lab, y_nudge = 1.22, -0.11
+        else:
+            r_lab, y_nudge = 1.20, 0.0
+        gauge.text(
+            r_lab * math.cos(rad),
+            r_lab * math.sin(rad) + y_nudge,
+            f"{zh}\n{en}",
+            color=_WHITE,
+            fontproperties=_fp(19, "bold"),
+            ha="center",
+            va="center",
+            linespacing=1.05,
+        )
+    for tick in (0, 25, 50, 75, 100):
+        rad = math.radians(_ang(tick))
+        gauge.plot(
+            [0.52 * math.cos(rad), 1.0 * math.cos(rad)],
+            [0.52 * math.sin(rad), 1.0 * math.sin(rad)],
+            color=_NAVY, lw=1.8, zorder=3,
+        )
+        if tick == 50:
+            gauge.text(
+                0.0, 0.76, "50",
+                color=_NAVY, fontproperties=_fp(20, "bold"), ha="center", va="center", zorder=4,
+            )
+        else:
+            tr = 1.36
+            gauge.text(
+                tr * math.cos(rad),
+                tr * math.sin(rad) - (0.05 if tick in (0, 100) else 0),
+                str(tick),
+                color=_MUTE,
+                fontproperties=_fp(21, "bold"),
+                ha="center",
+                va="center",
+            )
+    prad = math.radians(_ang(score_f))
+    gauge.plot(
+        [0, 0.70 * math.cos(prad)], [0, 0.70 * math.sin(prad)],
+        color=_WHITE, lw=7.2, solid_capstyle="round", zorder=5,
+    )
+    gauge.plot(0, 0, "o", color=_WHITE, markersize=17, zorder=6)
+    # 23 與說明在弧下同一座標系；空隙清楚、不碰針／不互壓。
+    gauge.text(0, -0.04, face, color=_WHITE, fontproperties=_fp(78, "bold"), ha="center", va="top")
+    gauge.text(
+        0, -0.62,
+        "市場即時情緒指標",
+        color=_MUTE,
+        fontproperties=_fp(23, "bold"),
+        ha="center",
+        va="top",
+    )
+    if band:
+        gauge.text(
+            0, -0.84,
+            band,
+            color=_WHITE,
+            fontproperties=_fp(28, "bold"),
+            ha="center",
+            va="top",
+        )
+
+    # 下半＝趨勢表：貼上半底到畫布底，左右幾乎貼邊。
+    panel_top = ax_y - 0.004
+    panel_h = max(0.28, panel_top - 0.006)
+    panel = fig.add_axes([0.006, 0.006, 0.988, panel_h])
+    panel.set_xlim(0, 1)
+    panel.set_ylim(0, 1)
+    panel.axis("off")
+    panel.set_facecolor(_PANEL)
+    panel.add_patch(
+        FancyBboxPatch(
+            (0.0, 0.0), 1.0, 1.0, boxstyle="round,pad=0.004,rounding_size=0.02",
+            facecolor=_PANEL, edgecolor="#243f66", linewidth=1.5, transform=panel.transAxes,
+        )
+    )
+    panel.text(
+        0.03, 0.93, "市場情緒變化趨勢",
+        color=_WHITE, fontproperties=_fp(24, "bold"), ha="left", va="top",
+    )
+    if not hist:
+        panel.text(
+            0.03, 0.68, "（無官方歷史列）",
+            color=_MUTE, fontproperties=_fp(18, "bold"), ha="left", va="top",
+        )
+    else:
+        n = min(5, len(hist))
+        top_y, bot_y = 0.78, 0.10
+        step = (top_y - bot_y) / max(n - 1, 1) if n > 1 else 0.0
+        badge_h = min(0.14, step * 0.72 if step else 0.14)
+        for i, row in enumerate(hist[:n]):
+            yy = top_y - i * step
+            panel.text(
+                0.03, yy, str(row.get("label") or ""),
+                color=_MUTE, fontproperties=_fp(20, "bold"), ha="left", va="center",
+            )
+            panel.text(
+                0.28, yy, str(row.get("date") or ""),
+                color=_WHITE, fontproperties=_fp(20, "bold"), ha="left", va="center",
+            )
+            panel.text(
+                0.55, yy, str(row.get("face") or ""),
+                color=_WHITE, fontproperties=_fp(32, "bold"), ha="right", va="center",
+            )
+            badge = str(row.get("band") or "")
+            bcolor = str(row.get("color") or "#9e9e9e")
+            panel.add_patch(
+                FancyBboxPatch(
+                    (0.59, yy - badge_h / 2),
+                    0.38,
+                    badge_h,
+                    boxstyle="round,pad=0.01,rounding_size=0.025",
+                    facecolor=bcolor,
+                    edgecolor=bcolor,
+                    transform=panel.transData,
+                    alpha=0.96,
+                )
+            )
+            panel.text(
+                0.78, yy, badge,
+                color="#ffffff", fontproperties=_fp(17, "bold"), ha="center", va="center",
+            )
+
+    fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none", pad_inches=0)
+    plt.close(fig)
+    _crop_flat_bezel(path, pad=6, tol=28)
+    return path
+
+
+def paint_session_job(path: str, kind: str, spec: Dict[str, Any]) -> str:
+    """統一出圖入口：美股 grid／台指電子盤／恐懼貪婪儀表。"""
+    if kind == "fear":
+        return render_fear_greed_gauge(
+            path, spec.get("fear") or {}, heading=str(spec.get("heading") or "恐懼與貪婪指數")
+        )
+    if kind == "tx":
+        cards = spec.get("cards") or []
+        if not cards:
+            return ""
+        return render_tx_electronic_board(
+            path, cards[0], heading=str(spec.get("heading") or "台指電子盤")
+        )
+    return render_session_cards(
+        path,
+        spec.get("cards") or [],
+        heading=str(spec.get("heading") or ""),
+        columns=int(spec.get("columns") or 1),
+        layout=str(spec.get("layout") or "grid"),
+    )

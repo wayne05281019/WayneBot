@@ -168,11 +168,13 @@ def test_missing_series_omits_card_and_says_so():
     lines = omission_lines(
         {"session": "20261016", "cards": [], "missing": ["道瓊", "費城半導體"]},
         {"card": None, "missing": True},
+        None,
     )
     assert lines == [
         "道瓊這次沒有官方走勢，不上圖",
         "費城半導體這次沒有官方走勢，不上圖",
-        "台指期盤後這次沒有官方走勢，不上圖",
+        "台指電子盤這次沒有官方走勢，不上圖",
+        "恐懼與貪婪指數這次沒有官方讀數，不上圖",
     ]
 
 
