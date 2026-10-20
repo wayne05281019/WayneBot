@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import sqlite3
+import unicodedata
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
@@ -48,6 +49,12 @@ CREATE TABLE IF NOT EXISTS biaoke_level_alerts (
     bar_date TEXT NOT NULL DEFAULT '',
     reasons TEXT NOT NULL DEFAULT '',
     sent_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS biaoke_chat_dedupe (
+    chat_id TEXT NOT NULL,
+    dedupe_key TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (chat_id, dedupe_key)
 );
 """
 
@@ -172,9 +179,19 @@ def _plain(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+def _normalize_for_fp(text: str) -> str:
+    """急推／關卡去重用：全半形、空白、常見標點差異不當成新文。"""
+    s = unicodedata.normalize("NFKC", str(text or ""))
+    s = re.sub(r"<[^>]+>", "", s)
+    s = re.sub(r"\s+", "", s)
+    s = s.replace("，", ",").replace("。", ".").replace("、", ",")
+    s = s.replace("：", ":").replace("；", ";")
+    return s.strip()
+
+
 def _body_fingerprint(text: str) -> str:
     """同一原文指紋。HTML :rN 與 API :c{id} 不同列也要擋住。"""
-    s = _plain(text)
+    s = _normalize_for_fp(text)
     if not s:
         return ""
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
@@ -586,6 +603,52 @@ def _claim_push(
             pass
         logger.debug("緊急推播 claim 失敗", exc_info=True)
         # 占位失敗＝寧可略過，不准洗版
+        return False
+    finally:
+        conn.close()
+
+
+def _claim_chat_dedupe(chat_id: str, dedupe_key: str, *, db_path: str = "") -> bool:
+    """同一 chat＋同一 dedupe_key 只准送一次。True＝可送。
+
+    沒庫時退回 True（靠上層 post／level claim）；有庫占位失敗則不准送。
+    """
+    cid = str(chat_id or "").strip()
+    key = str(dedupe_key or "").strip()
+    if not cid or not key:
+        return False
+    path = str(db_path or "").strip()
+    if not path:
+        try:
+            path = _push_db()
+        except Exception:
+            path = ""
+    if not path:
+        return True
+    _ensure(path)
+    conn = sqlite3.connect(path, timeout=30.0)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        hit = conn.execute(
+            "SELECT 1 FROM biaoke_chat_dedupe WHERE chat_id=? AND dedupe_key=?",
+            (cid, key),
+        ).fetchone()
+        if hit:
+            conn.rollback()
+            return False
+        conn.execute(
+            "INSERT INTO biaoke_chat_dedupe(chat_id, dedupe_key, sent_at) "
+            "VALUES(?,?,datetime('now'))",
+            (cid, key),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+        logger.debug("chat dedupe claim 失敗", exc_info=True)
         return False
     finally:
         conn.close()
@@ -1019,7 +1082,8 @@ def _oral_level_thesis(essence: str, level_face: str) -> str:
     return t
 
 
-def _send_family(html: str) -> int:
+def _send_family(html: str, *, dedupe_key: str = "", db_path: str = "") -> int:
+    """推白名單兩人；同一 dedupe_key 每 chat 只送一次（先占位再送）。"""
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return 0
     try:
@@ -1031,10 +1095,14 @@ def _send_family(html: str) -> int:
     if not token or not uids:
         logger.warning("飆大緊急推播沒有 token 或白名單，略過")
         return 0
+    key = str(dedupe_key or "").strip() or f"html:{_body_fingerprint(html)}"
     import requests
 
     n = 0
     for cid in uids:
+        if not _claim_chat_dedupe(cid, key, db_path=db_path):
+            logger.info("飆大推播 chat dedupe 略過 chat=%s key=%s", cid, key[:96])
+            continue
         try:
             resp = requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
@@ -1150,7 +1218,9 @@ def maybe_push_drop_alert(
         if fp:
             seen_fp.add(fp)
         html = format_alert(ev, judged, mkt if isinstance(mkt, dict) else {})
-        sent = _send_family(html)
+        # 同原文指紋再擋一層（deploy／重掃當 added 也不准同一 chat 重送）
+        dedupe = f"urgent:fp:{fp}" if fp else f"urgent:id:{pid}"
+        sent = _send_family(html, dedupe_key=dedupe, db_path=db_path)
         stats["pushed"] += 1
         logger.info(
             "飆大緊急推播 post=%s score=%s reasons=%s sent=%s",
@@ -1207,6 +1277,58 @@ def _mark_level(
         conn.commit()
     except sqlite3.Error:
         logger.debug("位階急推記號寫不進", exc_info=True)
+    finally:
+        conn.close()
+
+
+def _claim_level_batch(
+    db_path: str,
+    rows: Sequence[Tuple[str, str, float, str, Sequence[str]]],
+) -> bool:
+    """先占位再送關卡推播。任一 key 已占 → False（整批不送）。
+
+    rows: (alert_key, post_id, level, bar_date, reasons)
+    BEGIN IMMEDIATE 擋住 ingest／tape 雙路徑競速。
+    """
+    if not db_path:
+        return False
+    items = [r for r in (rows or []) if r and str(r[0] or "").strip()]
+    if not items:
+        return False
+    _ensure(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for alert_key, _pid, _lv, _day, _why in items:
+            hit = conn.execute(
+                "SELECT 1 FROM biaoke_level_alerts WHERE alert_key=?",
+                (str(alert_key),),
+            ).fetchone()
+            if hit:
+                conn.rollback()
+                return False
+        for alert_key, post_id, level, bar_date, reasons in items:
+            conn.execute(
+                "INSERT INTO biaoke_level_alerts"
+                "(alert_key, post_id, level, bar_date, reasons, sent_at) "
+                "VALUES(?,?,?,?,?,datetime('now'))",
+                (
+                    str(alert_key),
+                    str(post_id or ""),
+                    float(level or 0),
+                    str(bar_date or ""),
+                    "／".join(reasons)[:400],
+                ),
+            )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+        logger.debug("位階急推 claim 失敗", exc_info=True)
+        return False
     finally:
         conn.close()
 
@@ -1309,8 +1431,9 @@ def maybe_push_marked_level_hits(
     未收盤不當收。一般新文不走這條。不准逐則堆幾月幾號舊文。
     同根柱一次碰到多個已點位 → 國中生一句（標題「飆大提醒·大盤碰到關卡」）；
     不准關卡串／收點串／之上之下表／機器規則句上話筒（2026-10-13 教訓）。
-    每位仍記 (level, bar_date) 鍵，之後別日碰到同一位仍可再推。
+    先 claim 再送：同日同位／同關卡正文不重推；真新關卡仍兩支話筒各一則。
     """
+    del now  # 官方柱是否已收走 is_official_daily_bar；保留參數相容呼叫端
     stats = {"checked": 0, "pushed": 0, "skipped": 0, "levels": 0}
     if not db_path:
         return stats
@@ -1396,33 +1519,56 @@ def maybe_push_marked_level_hits(
         bar_low=lo,
         bar_close=bar.get("close"),
     )
-    sent = _send_family(html)
-    if sent or os.environ.get("PYTEST_CURRENT_TEST"):
-        # 一位一鍵：之後別日同點仍可推；同日同柱不再拆泡
-        for item in pending:
-            sources = item["sources"]
-            level = float(item["level"])
-            _mark_level(
-                db_path,
+    if not html:
+        return stats
+    body_fp = _body_fingerprint(html)
+    body_key = f"idx:body:{bar_ymd}:{body_fp}"
+    # 同日同關卡正文已推過（即使 level 鍵集合微變）→ 不重送
+    if body_fp and _level_already(db_path, body_key):
+        stats["skipped"] += len(pending)
+        return stats
+    claim_rows: List[Tuple[str, str, float, str, Sequence[str]]] = []
+    for item in pending:
+        sources = item["sources"]
+        level = float(item["level"])
+        claim_rows.append(
+            (
                 str(item["key"]),
-                post_id=str(sources[0].get("post_id") or ""),
-                level=level,
-                bar_date=bar_ymd,
-                reasons=[
+                str(sources[0].get("post_id") or ""),
+                level,
+                bar_ymd,
+                [
                     f"官方{bar_ymd}碰到{level:g}",
                     str(item.get("note") or ""),
                     f"n={len(sources)}",
                     f"coalesce={len(pending)}",
                 ],
             )
-        stats["pushed"] = 1
-        stats["levels"] = len(pending)
-        logger.info(
-            "飆大位階急推 coalesce levels=%s bar=%s sent=%s",
-            [float(x["level"]) for x in pending],
-            bar_ymd,
-            sent,
         )
+    if body_fp:
+        claim_rows.append(
+            (
+                body_key,
+                "",
+                0.0,
+                bar_ymd,
+                [f"同日同關卡正文 n={len(pending)}"],
+            )
+        )
+    # 先占位再送：ingest＋tape 雙呼叫／多 worker 也不洗版
+    if not _claim_level_batch(db_path, claim_rows):
+        stats["skipped"] += len(pending)
+        return stats
+    dedupe = body_key if body_fp else f"idx:coalesce:{bar_ymd}:{len(pending)}"
+    sent = _send_family(html, dedupe_key=dedupe, db_path=db_path)
+    stats["pushed"] = 1
+    stats["levels"] = len(pending)
+    logger.info(
+        "飆大位階急推 coalesce levels=%s bar=%s sent=%s",
+        [float(x["level"]) for x in pending],
+        bar_ymd,
+        sent,
+    )
     return stats
 
 

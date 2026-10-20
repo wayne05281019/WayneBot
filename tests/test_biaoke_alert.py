@@ -85,7 +85,7 @@ def test_same_body_different_ids_push_once(tmp_path, monkeypatch):
     from zoneinfo import ZoneInfo
 
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 2)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h, **kw: sent.append(h) or 2)
     db = str(tmp_path / "w.db")
     body = (
         "「光通訊 InP 不在前波高點的個股」這句話好好去研究，"
@@ -143,7 +143,7 @@ def test_claim_before_send_survives_timeout(tmp_path, monkeypatch):
 
     calls = {"n": 0}
 
-    def boom(_html):
+    def boom(_html, **_kw):
         calls["n"] += 1
         return 0  # 模擬 TimedOut／失敗但訊息可能已送達
 
@@ -348,7 +348,7 @@ def test_routine_new_post_never_calls_send(monkeypatch):
     from biaoke_alert import maybe_push_drop_alert
 
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda html: sent.append(html) or 1)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda html, **kw: sent.append(html) or 1)
     move = {"ok": False, "drop": 0, "pct": 0}
     now = datetime(2026, 10, 1, 10, 30, tzinfo=ZoneInfo("Asia/Taipei"))
     stats = maybe_push_drop_alert(
@@ -399,7 +399,7 @@ def test_emergency_exit_pushes_full_text(monkeypatch, tmp_path):
     assert html.count("…") == 0 or len(long) > 3800
 
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h, **kw: sent.append(h) or 1)
     db = str(tmp_path / "w.db")
     now = datetime(2026, 10, 1, 11, 30, tzinfo=ZoneInfo("Asia/Taipei"))
     stats = maybe_push_drop_alert(
@@ -464,7 +464,7 @@ def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
         lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20260930",
     )
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h, **kw: sent.append(h) or 1)
 
     a = maybe_push_marked_level_hits(
         db, now=datetime(2026, 9, 30, 15, 0, tzinfo=ZoneInfo("Asia/Taipei"))
@@ -583,7 +583,7 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
         lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261012",
     )
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h, **kw: sent.append(h) or 1)
 
     a = maybe_push_marked_level_hits(
         db, now=datetime(2026, 10, 12, 14, 6, tzinfo=ZoneInfo("Asia/Taipei"))
@@ -611,6 +611,190 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
     assert b["pushed"] == 0
     assert sent == []
     assert b["skipped"] >= 3
+
+
+def test_level_hit_claim_before_send_blocks_dual_caller(monkeypatch, tmp_path):
+    """復現 2026-10-20 13:59／14:03：ingest＋tape 雙路徑不得同關卡連推兩次。
+
+    先 claim 再送；即使第一次 Telegram sent=0，第二次仍略過。
+    """
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db = str(tmp_path / "lv.db")
+    ensure_biaoke_posts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20261020','TWII',46000,46800,45800,46200)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p46506','2026-09-11','10:00','post',?)",
+        ("有效確認要今晚夜盤至少穿越 46506。",),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261020",
+    )
+    calls = {"n": 0}
+
+    def boom(_html, **_kw):
+        calls["n"] += 1
+        return 0
+
+    monkeypatch.setattr("biaoke_alert._send_family", boom)
+    now = datetime(2026, 10, 20, 13, 59, tzinfo=ZoneInfo("Asia/Taipei"))
+    a = maybe_push_marked_level_hits(db, now=now)
+    assert a["pushed"] == 1
+    assert calls["n"] == 1
+    b = maybe_push_marked_level_hits(
+        db, now=datetime(2026, 10, 20, 14, 3, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert b["pushed"] == 0
+    assert calls["n"] == 1
+
+
+def test_level_hit_same_body_same_day_not_repushed(monkeypatch, tmp_path):
+    """同日同關卡正文已推 → 即使再跑一次也不送（body key）。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db = str(tmp_path / "body.db")
+    ensure_biaoke_posts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20261020','TWII',46000,46800,45800,46200)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p46506','2026-09-11','10:00','post',?)",
+        ("有效確認要今晚夜盤至少穿越 46506。",),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261020",
+    )
+    sent = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: sent.append(h) or 2,
+    )
+    a = maybe_push_marked_level_hits(
+        db, now=datetime(2026, 10, 20, 13, 59, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert a["pushed"] == 1
+    assert len(sent) == 1
+    assert "46506" in sent[0] or "關" in sent[0]
+    sent.clear()
+    b = maybe_push_marked_level_hits(db)
+    assert b["pushed"] == 0
+    assert sent == []
+
+
+def test_urgent_same_body_hours_later_not_repushed(tmp_path, monkeypatch):
+    """復現 2026-10-20：09:57 主文 10:03 急推後，14:04 同原文不准再推。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_drop_alert
+
+    sent = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: sent.append(h) or 2,
+    )
+    db = str(tmp_path / "u.db")
+    body = (
+        "現在用台指期來定位大盤細微波(60分鐘線)的波浪位階，目前第一組下跌5波修正完成，"
+        "開始進行反彈，用波浪理論來看會回測波浪位階4點位區間(47000~47600)，"
+        "除非有辦法過47600以上才會轉呈區間震盪盤，否則從10/8~10/19只是第一組初跌段下跌，"
+        "有非常高機率反彈不過波浪位階4(47000~47600)之後，下一組會出現主跌段下跌，"
+        "因此這兩天的漲勢還是視為逃命。"
+    )
+    move = {"ok": False, "drop": 0, "pct": 0}
+    row = {
+        "id": "186229065",
+        "kind": "post",
+        "date": "2026-10-20",
+        "time": "09:57",
+        "text": body,
+        "_ingest": "added",
+    }
+    a = maybe_push_drop_alert(
+        db,
+        [row],
+        move=move,
+        now=datetime(2026, 10, 20, 10, 3, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert a["pushed"] == 1
+    assert len(sent) == 1
+    # 下午又當 added（重掃／deploy）＋空白微差 → 仍擋
+    row2 = dict(row)
+    row2["text"] = body.replace("，", "， ")  # 空白差異
+    b = maybe_push_drop_alert(
+        db,
+        [row2],
+        move=move,
+        now=datetime(2026, 10, 20, 14, 4, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert b["pushed"] == 0
+    assert b["skipped"] >= 1
+    assert len(sent) == 1
+
+
+def test_chat_dedupe_whitelist_one_each(tmp_path):
+    """白名單兩 uid 首次各一則；同 key 再送兩人皆略。"""
+    from biaoke_alert import _claim_chat_dedupe
+
+    db = str(tmp_path / "chat.db")
+    key = "urgent:fp:demo"
+    assert _claim_chat_dedupe("111", key, db_path=db) is True
+    assert _claim_chat_dedupe("222", key, db_path=db) is True
+    assert _claim_chat_dedupe("111", key, db_path=db) is False
+    assert _claim_chat_dedupe("222", key, db_path=db) is False
+    # 真新 key 仍兩人可各送一次
+    key2 = "level:body:20261020:abc"
+    assert _claim_chat_dedupe("111", key2, db_path=db) is True
+    assert _claim_chat_dedupe("222", key2, db_path=db) is True
+
+
+def test_body_fingerprint_ignores_whitespace_noise():
+    from biaoke_alert import _body_fingerprint
+
+    a = "因此這兩天的漲勢還是視為逃命。"
+    b = "因此這兩天的漲勢還是視為逃命。 "
+    c = "因此這兩天的漲勢還是視為逃命。"
+    assert _body_fingerprint(a) == _body_fingerprint(b) == _body_fingerprint(c)
 
 
 def test_format_seven_levels_one_oral_sentence_not_table():
@@ -733,7 +917,7 @@ def test_old_posts_not_urgent_on_reingest(tmp_path, monkeypatch):
     from biaoke_alert import maybe_push_drop_alert
 
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 2)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h, **kw: sent.append(h) or 2)
     db = str(tmp_path / "w.db")
     now = datetime(2026, 10, 10, 17, 31, tzinfo=ZoneInfo("Asia/Taipei"))
     move = {"ok": False, "drop": 0, "pct": 0}
@@ -811,7 +995,7 @@ def test_updated_ingest_never_urgent(tmp_path, monkeypatch):
     from biaoke_alert import maybe_push_drop_alert
 
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 1)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h, **kw: sent.append(h) or 1)
     db = str(tmp_path / "w.db")
     now = datetime(2026, 10, 10, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     stats = maybe_push_drop_alert(
@@ -842,7 +1026,7 @@ def test_fresh_clear_still_urgent(tmp_path, monkeypatch):
     from biaoke_alert import maybe_push_drop_alert
 
     sent = []
-    monkeypatch.setattr("biaoke_alert._send_family", lambda h: sent.append(h) or 2)
+    monkeypatch.setattr("biaoke_alert._send_family", lambda h, **kw: sent.append(h) or 2)
     db = str(tmp_path / "w.db")
     now = datetime(2026, 10, 10, 14, 20, tzinfo=ZoneInfo("Asia/Taipei"))
     stats = maybe_push_drop_alert(
