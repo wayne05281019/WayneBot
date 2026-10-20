@@ -204,9 +204,8 @@ def test_caption_and_chart_carry_six_neurons_without_lecture(tmp_path):
     assert (tmp_path / "biaoke-glance.png").stat().st_size > 24_000
 
 
+@pytest.mark.production_db
 def test_real_daily_quotes_numbers_are_exact():
-    import os
-
     from biaoke_brain import load_bars
 
     from tests.conftest import require_production_db
@@ -238,10 +237,16 @@ def test_real_daily_quotes_numbers_are_exact():
     # 官方撐／收走 _px_quote（可含千分位）；舊「3930」錨只當備援
     assert "3930" in notes.replace(",", "") or _px_from_bar(expect["spike_low"]) in notes
     proj = info.get("project") or {}
-    assert proj.get("key") != "abandon"
-    assert float(proj.get("target") or 0) > 0
-    assert "圖上演算" in notes
+    # 官方柱走到撐下時 abandon 是對的；不准死鎖舊盤勢 key
     assert "不是保證" in str(proj.get("label") or "")
+    if proj.get("key") == "abandon":
+        assert bool(info.get("under_support"))
+        assert float(st.get("spike_low") or 0) > 0
+        lo_txt = _px_from_bar(expect["spike_low"]).replace(",", "")
+        assert lo_txt in str(proj.get("label") or "").replace(",", "")
+    else:
+        assert float(proj.get("target") or 0) > 0
+    assert "圖上演算" in notes
 
 
 def _px_from_bar(val):
