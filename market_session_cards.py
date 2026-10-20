@@ -367,8 +367,9 @@ def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
     """最新一檔期交所逐筆夜盤。沒有 15:00 起的官方成交就不上圖。"""
     _ = now
     ymds: List[str] = []
+    # 大盤專頁總逾時約 45s：頁面／zip 不可各吃滿半分鐘，失敗就缺圖。
     try:
-        page = _SESSION.get(_TAIFEX_TICK_PAGE, timeout=45)
+        page = _SESSION.get(_TAIFEX_TICK_PAGE, timeout=12)
         page.raise_for_status()
         ymd = latest_taifex_tick_zip_ymd(page.text)
         if len(ymd) == 8:
@@ -382,14 +383,14 @@ def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
         today = ""
     if today:
         cur = today
-        for _ in range(5):
+        for _ in range(3):
             if cur not in ymds:
                 ymds.append(cur)
             cur = (datetime.strptime(cur, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
     for ymd in ymds:
         try:
             url = _TAIFEX_ZIP.format(y=ymd[:4], m=ymd[4:6], d=ymd[6:])
-            blob = _SESSION.get(url, timeout=60)
+            blob = _SESSION.get(url, timeout=15)
             if blob.status_code != 200 or len(blob.content) < 1000:
                 continue
             ticks = parse_tx_night_ticks(_read_tick_zip(blob.content))
