@@ -857,22 +857,23 @@ def render_fear_greed_gauge(
     _MUTE = "#b8c4d6"
 
     dpi = 140
-    fig_w, fig_h = 9.4, 10.8
+    # 更滿版：儀表幾乎滿寬、歷史列拉高字級；暗紺底不變。
+    fig_w, fig_h = 9.6, 11.4
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_NAVY)
     fig.text(
-        0.05,
-        0.965,
+        0.035,
+        0.975,
         heading,
         color=_WHITE,
-        fontproperties=_fp(22, "bold"),
+        fontproperties=_fp(24, "bold"),
         ha="left",
         va="top",
     )
 
-    # 儀表區：數字下方多留空，23 與說明句拉開。
-    gauge = fig.add_axes([0.10, 0.56, 0.80, 0.36])
-    gauge.set_xlim(-1.42, 1.42)
-    gauge.set_ylim(-1.05, 1.30)
+    # 弧盤單獨占上半滿寬（equal 只包弧＋弧標）；23／說明另條，避免縮弧留邊。
+    gauge = fig.add_axes([0.01, 0.54, 0.98, 0.40])
+    gauge.set_xlim(-1.55, 1.55)
+    gauge.set_ylim(-0.18, 1.42)
     gauge.set_aspect("equal")
     gauge.axis("off")
     gauge.set_facecolor(_NAVY)
@@ -883,66 +884,78 @@ def render_fear_greed_gauge(
     for lo, hi, color, zh, en in _FEAR_BAND_COLORS:
         gauge.add_patch(
             Wedge(
-                (0, 0), 1.0, _ang(hi), _ang(lo), width=0.36,
-                facecolor=color, edgecolor=_NAVY, linewidth=1.6, alpha=0.96,
+                (0, 0), 1.0, _ang(hi), _ang(lo), width=0.42,
+                facecolor=color, edgecolor=_NAVY, linewidth=1.8, alpha=0.96,
             )
         )
         mid = (lo + hi) / 2.0
         rad = math.radians(_ang(mid))
+        # 兩端弧標略往外／下，避免跟標題或鄰帶互壓。
+        r_lab = 1.26 if 20.0 < mid < 80.0 else 1.30
+        y_nudge = -0.06 if mid <= 20.0 or mid >= 80.0 else 0.0
         gauge.text(
-            1.22 * math.cos(rad),
-            1.22 * math.sin(rad),
+            r_lab * math.cos(rad),
+            r_lab * math.sin(rad) + y_nudge,
             f"{zh}\n{en}",
             color=_WHITE,
-            fontproperties=_fp(12, "bold"),
+            fontproperties=_fp(16, "bold"),
             ha="center",
             va="center",
-            linespacing=1.15,
+            linespacing=1.12,
         )
     for tick in (0, 25, 50, 75, 100):
         rad = math.radians(_ang(tick))
         gauge.plot(
-            [0.60 * math.cos(rad), 1.0 * math.cos(rad)],
-            [0.60 * math.sin(rad), 1.0 * math.sin(rad)],
-            color=_NAVY, lw=1.2, zorder=3,
+            [0.56 * math.cos(rad), 1.0 * math.cos(rad)],
+            [0.56 * math.sin(rad), 1.0 * math.sin(rad)],
+            color=_NAVY, lw=1.4, zorder=3,
         )
+        # 50 略下移，避免貼頂裁切。
+        ty = 1.34 * math.sin(rad) - (0.10 if tick == 50 else (0.05 if tick in (0, 100) else 0))
         gauge.text(
-            1.36 * math.cos(rad),
-            1.36 * math.sin(rad) - (0.05 if tick in (0, 100) else 0),
+            1.34 * math.cos(rad),
+            ty,
             str(tick),
             color=_MUTE,
-            fontproperties=_fp(14, "bold"),
+            fontproperties=_fp(18, "bold"),
             ha="center",
             va="center",
         )
     prad = math.radians(_ang(score_f))
-    # 針再縮；23 與下方兩行說明拉開，不准碰數字／針。
+    # 針停在弧內；大數字在下方獨立帶，不准壓針。
     gauge.plot(
-        [0, 0.62 * math.cos(prad)], [0, 0.62 * math.sin(prad)],
-        color=_WHITE, lw=4.8, solid_capstyle="round", zorder=5,
+        [0, 0.72 * math.cos(prad)], [0, 0.72 * math.sin(prad)],
+        color=_WHITE, lw=5.8, solid_capstyle="round", zorder=5,
     )
-    gauge.plot(0, 0, "o", color=_WHITE, markersize=10, zorder=6)
-    # 大數字貼針樞；說明句再往下（約一個字高空隙），不准貼邊。
-    gauge.text(0, -0.06, face, color=_WHITE, fontproperties=_fp(48, "bold"), ha="center", va="top")
-    gauge.text(
-        0, -0.68,
+    gauge.plot(0, 0, "o", color=_WHITE, markersize=13, zorder=6)
+
+    # 23／說明獨立帶：加高，三行互不重疊；與針樞分開。
+    cap = fig.add_axes([0.04, 0.34, 0.92, 0.19])
+    cap.set_xlim(0, 1)
+    cap.set_ylim(0, 1)
+    cap.axis("off")
+    cap.set_facecolor(_NAVY)
+    cap.text(0.5, 0.98, face, color=_WHITE, fontproperties=_fp(62, "bold"), ha="center", va="top")
+    cap.text(
+        0.5, 0.34,
         "市場即時情緒指標",
         color=_MUTE,
-        fontproperties=_fp(17, "bold"),
+        fontproperties=_fp(20, "bold"),
         ha="center",
-        va="top",
+        va="center",
     )
     if band:
-        gauge.text(
-            0, -0.88,
+        cap.text(
+            0.5, 0.08,
             band,
             color=_WHITE,
-            fontproperties=_fp(18, "bold"),
+            fontproperties=_fp(24, "bold"),
             ha="center",
-            va="top",
+            va="center",
         )
 
-    panel = fig.add_axes([0.06, 0.02, 0.88, 0.36])
+    # 歷史列滿寬加大：列距均分面板，色章不壓日期／分數。
+    panel = fig.add_axes([0.02, 0.012, 0.96, 0.31])
     panel.set_xlim(0, 1)
     panel.set_ylim(0, 1)
     panel.axis("off")
@@ -954,36 +967,40 @@ def render_fear_greed_gauge(
         )
     )
     panel.text(
-        0.04, 0.92, "市場情緒變化趨勢",
-        color=_WHITE, fontproperties=_fp(16, "bold"), ha="left", va="top",
+        0.03, 0.94, "市場情緒變化趨勢",
+        color=_WHITE, fontproperties=_fp(20, "bold"), ha="left", va="top",
     )
     if not hist:
         panel.text(
-            0.04, 0.75, "（無官方歷史列）",
-            color=_MUTE, fontproperties=_fp(13, "bold"), ha="left", va="top",
+            0.03, 0.70, "（無官方歷史列）",
+            color=_MUTE, fontproperties=_fp(16, "bold"), ha="left", va="top",
         )
     else:
-        for i, row in enumerate(hist[:5]):
-            yy = 0.78 - i * 0.14
+        n = min(5, len(hist))
+        top_y, bot_y = 0.78, 0.12
+        step = (top_y - bot_y) / max(n - 1, 1) if n > 1 else 0.0
+        badge_h = min(0.11, step * 0.62 if step else 0.11)
+        for i, row in enumerate(hist[:n]):
+            yy = top_y - i * step
             panel.text(
-                0.04, yy, str(row.get("label") or ""),
-                color=_MUTE, fontproperties=_fp(13, "bold"), ha="left", va="center",
+                0.03, yy, str(row.get("label") or ""),
+                color=_MUTE, fontproperties=_fp(17, "bold"), ha="left", va="center",
             )
             panel.text(
-                0.32, yy, str(row.get("date") or ""),
-                color=_WHITE, fontproperties=_fp(12, "bold"), ha="left", va="center",
+                0.28, yy, str(row.get("date") or ""),
+                color=_WHITE, fontproperties=_fp(17, "bold"), ha="left", va="center",
             )
             panel.text(
-                0.58, yy, str(row.get("face") or ""),
-                color=_WHITE, fontproperties=_fp(18, "bold"), ha="right", va="center",
+                0.55, yy, str(row.get("face") or ""),
+                color=_WHITE, fontproperties=_fp(28, "bold"), ha="right", va="center",
             )
             badge = str(row.get("band") or "")
             bcolor = str(row.get("color") or "#9e9e9e")
             panel.add_patch(
                 FancyBboxPatch(
-                    (0.62, yy - 0.045),
-                    0.34,
-                    0.09,
+                    (0.59, yy - badge_h / 2),
+                    0.38,
+                    badge_h,
                     boxstyle="round,pad=0.01,rounding_size=0.02",
                     facecolor=bcolor,
                     edgecolor=bcolor,
@@ -992,8 +1009,8 @@ def render_fear_greed_gauge(
                 )
             )
             panel.text(
-                0.79, yy, badge,
-                color="#ffffff", fontproperties=_fp(11, "bold"), ha="center", va="center",
+                0.78, yy, badge,
+                color="#ffffff", fontproperties=_fp(15, "bold"), ha="center", va="center",
             )
 
     fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none")
