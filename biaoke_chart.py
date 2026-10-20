@@ -1755,12 +1755,14 @@ _CLOSE_PAIR_SIDE_GAP = 0.35
 _STRUCTURE_X_RIGHT_PAD = 8.0
 _STRUCTURE_LABEL_COL_EXTRA = 0.70
 _STRUCTURE_LABEL_FRAC = 0.068
-# xlim 硬頂：主圖加寬仍須整盒入軸（今收不准裁半）；估寬已收過
-_STRUCTURE_X_RIGHT_CAP_EXTRA = 26.0
+# xlim 硬頂：須容納右軸並排昨收｜今收整盒；不夠時准加寬，不准左移蓋 K
+_STRUCTURE_X_RIGHT_CAP_EXTRA = 34.0
 # 昨收→今收前進寬係數（≈1＝用足昨收盒寬，中間再加 SIDE_GAP）
 _STRUCTURE_CLOSE_PAIR_ADVANCE = 0.92
 # 今收盒右緣距軸右界的像素。縮圖後四字＋數字仍要整段落在圖內。
 _TODAY_CLOSE_RIGHT_INSET_PX = 18
+# 昨收／今收左緣距末日 K（seam）最小資料座標空隙；短影線半寬≈0.45
+_CLOSE_TAG_CANDLE_CLEAR = 5.8
 
 
 def _dedupe_right_notes(
@@ -1862,8 +1864,10 @@ def _dedupe_right_notes(
     return kept
 
 
-def _inset_today_close_inside(ax, prev_art, today_art) -> None:
-    """今收整盒收進軸右緣內。xlim 不加大，主圖 K 寬度維持。昨收跟著左移，兩盒仍留縫。"""
+def _inset_today_close_inside(
+    ax, prev_art, today_art, *, min_data_x: Optional[float] = None
+) -> None:
+    """今收整盒收進軸右緣內。左移不得越過末日 K 空隙；不夠就加寬 xlim，不准蓋 K。"""
     if today_art is None or ax is None:
         return
     try:
@@ -1892,11 +1896,24 @@ def _inset_today_close_inside(ax, prev_art, today_art) -> None:
         dx = float(x1 - x0)
         if dx <= 0:
             return
-        tx, ty = today_art.get_position()
-        today_art.set_position((float(tx) - dx, float(ty)))
-        if prev_art is not None:
-            px, py = prev_art.get_position()
-            prev_art.set_position((float(px) - dx, float(py)))
+        # 最多左移到 min_data_x；剩餘改加寬右緣（不准昨收／今收蓋最後一根 K）
+        leftmost = prev_art if prev_art is not None else today_art
+        lx, _ly = leftmost.get_position()
+        if min_data_x is not None:
+            max_shift = max(0.0, float(lx) - float(min_data_x))
+            shift = min(float(dx), max_shift)
+        else:
+            shift = float(dx)
+        if shift > 1e-6:
+            tx, ty = today_art.get_position()
+            today_art.set_position((float(tx) - shift, float(ty)))
+            if prev_art is not None:
+                px, py = prev_art.get_position()
+                prev_art.set_position((float(px) - shift, float(py)))
+        remain = float(dx) - float(shift)
+        if remain > 0.05:
+            x_lo, x_hi = ax.get_xlim()
+            ax.set_xlim(float(x_lo), float(x_hi) + remain)
     except Exception:
         return
 
@@ -1920,6 +1937,7 @@ def _place_right_notes(
     71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
     75：昨收＋今收同列並排（先昨收、右今收），垂直貼當日收那列。
+    昨收／今收整列貼近右軸；左緣離末日 K 至少 _CLOSE_TAG_CANDLE_CLEAR，不准蓋 K。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -1982,8 +2000,8 @@ def _place_right_notes(
         # 右緣內邊距：整盒含邊框必須落在軸內，不准貼齊／裁掉右邊框
         fit_tx = float(x_max) - need - 4.8
         if pin_x is not None:
-            # 左緣離末日 K 仍留縫；略收以把空檔還主圖（不准蓋最後幾根）
-            floor_tx = float(pin_x) + 4.9
+            # 左緣離末日 K 仍留縫；不够右溝時優先保左空隙，不准蓋最後幾根
+            floor_tx = float(pin_x) + float(_CLOSE_TAG_CANDLE_CLEAR)
             # 若右溝不夠，優先保左空隙（呼叫端應把 x_right 加夠）
             tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
@@ -2212,11 +2230,14 @@ def _place_right_notes(
                 clip_on=True,
             )
 
+    close_floor_x = (
+        float(pin_x) + float(_CLOSE_TAG_CANDLE_CLEAR) if pin_x is not None else None
+    )
     for note, ty in placed:
         # 73：顯示 Y 一律用留縫後的 ty（不准再 snap 回 ny 把盒貼死）
         show_ty = float(ty)
         if close_pair and note is pair_today and pair_prev is not None:
-            # 77／78：同列左昨收右今收；前進寬略收＝兩盒靠緊，空檔還主圖 K
+            # 同列左昨收右今收：整列貼近右軸；左緣不得進入末日 K 空隙
             prev_text = str(pair_prev.get("text") or "")
             prev_size = float(pair_prev.get("size") or 11)
             today_text = str(pair_today.get("text") or "")
@@ -2225,19 +2246,32 @@ def _place_right_notes(
                 _approx_note_pack_width(prev_text, prev_size)
                 * float(_STRUCTURE_CLOSE_PAIR_ADVANCE)
             )
-            today_tx = float(col_tx) + advance + pair_side_gap
-            if x_max is not None:
-                today_w = _approx_note_pack_width(today_text, today_size)
-                # 右緣不夠時略縮縫仍同列；今收整盒入軸；中間至少留一半縫不准互壓
-                overflow = (today_tx + today_w) - (float(x_max) - 2.2)
-                if overflow > 0:
-                    today_tx = max(
-                        float(col_tx) + advance + float(_CLOSE_PAIR_SIDE_GAP),
-                        today_tx - overflow,
-                    )
+            today_w = _approx_note_pack_width(today_text, today_size)
+            pair_span = (
+                float(advance) + float(pair_side_gap) + float(today_w) + 2.2
+            )
+            floor_x = (
+                float(close_floor_x)
+                if close_floor_x is not None
+                else float(col_tx)
+            )
+            cur_xmax = float(x_max) if x_max is not None else float(floor_x + pair_span)
+            # 右溝不夠整列 → 加寬 xlim（不准把昨收左推去蓋 K）
+            need_right = float(floor_x) + float(pair_span)
+            if need_right > cur_xmax + 1e-6:
+                x_lo, _x_hi = ax.get_xlim()
+                ax.set_xlim(float(x_lo), float(need_right))
+                cur_xmax = float(need_right)
+            # 今收右緣貼軸內緣；昨收緊貼其左，兩盒仍留縫、不准互壓
+            today_tx = float(cur_xmax) - float(today_w) - 2.2
+            prev_tx = float(today_tx) - float(pair_side_gap) - float(advance)
+            if prev_tx < floor_x:
+                prev_tx = float(floor_x)
+                today_tx = float(prev_tx) + float(advance) + float(pair_side_gap)
+            pair_stub_x = float(prev_tx) - 1.35
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
             ax.plot(
-                [stub_x],
+                [pair_stub_x],
                 [show_ty],
                 marker="o",
                 markersize=4.0,
@@ -2249,14 +2283,16 @@ def _place_right_notes(
                 clip_on=True,
             )
             close_prev_art = _paint_close_text_only(
-                pair_prev, show_ty, col_tx, pad=_STRUCTURE_TAG_PAD, z=12
+                pair_prev, show_ty, prev_tx, pad=_STRUCTURE_TAG_PAD, z=12
             )
             close_today_art = _paint_close_text_only(
                 pair_today, show_ty, today_tx, pad=_STRUCTURE_TAG_PAD, z=13
             )
             continue
         _paint_one_note(note, show_ty, col_tx, stub=True)
-    _inset_today_close_inside(ax, close_prev_art, close_today_art)
+    _inset_today_close_inside(
+        ax, close_prev_art, close_today_art, min_data_x=close_floor_x
+    )
 
 
 def _spread_ys_around(
@@ -4258,27 +4294,42 @@ def render_biaoke_structure_png(
     _prev_ns = [nt for nt in right_notes if _is_prev_close_note(str(nt.get("text") or ""))]
     _today_ns = [nt for nt in right_notes if _is_today_close_note(str(nt.get("text") or ""))]
     if _prev_ns and _today_ns:
-        _widths.append(
-            _approx_note_width(str(_prev_ns[0].get("text") or ""), float(_prev_ns[0].get("size") or 11))
-            + 1.25
-            + _approx_note_width(str(_today_ns[0].get("text") or ""), float(_today_ns[0].get("size") or 11))
+        _pair_w = (
+            _approx_note_pack_width(
+                str(_prev_ns[0].get("text") or ""), float(_prev_ns[0].get("size") or 11)
+            )
+            * float(_STRUCTURE_CLOSE_PAIR_ADVANCE)
+            + float(_CLOSE_PAIR_SIDE_GAP)
+            + _approx_note_pack_width(
+                str(_today_ns[0].get("text") or ""), float(_today_ns[0].get("size") or 11)
+            )
+            + 2.2
         )
+        _widths.append(_pair_w)
     else:
         for nt in _prev_ns + _today_ns:
             _widths.append(
                 _approx_note_width(str(nt.get("text") or ""), float(nt.get("size") or 11))
             )
     max_note_w = max(_widths, default=22.0)
-    # 標籤欄仍夠放今收｜昨收；多餘右白收回主圖（fit 對齊 floor_tx）
+    # 標籤欄仍夠放今收｜昨收；昨收／今收貼右軸時左緣須離末日 K
     label_frac = float(_STRUCTURE_LABEL_FRAC)
     content_right = float(label_col_left)
     need_by_frac = content_right / max(1.0 - label_frac, 0.5)
     need_by_place = content_right + max_note_w + 3.6 + 1.8
     need_by_text = content_right + max_note_w * 0.88 + 1.8
-    x_right = max(float(x_right), need_by_frac, need_by_text, need_by_place)
-    # 硬頂最後套：並排今收不准再把右白撐到 K 變瘦
+    # 並排昨收｜今收：從末日 K＋空隙起算整列寬，不准被硬頂裁到蓋 K
+    need_by_close_pair = float(n - 1) + float(_CLOSE_TAG_CANDLE_CLEAR) + (
+        float(max_note_w) if (_prev_ns and _today_ns) else 0.0
+    )
+    x_right = max(
+        float(x_right), need_by_frac, need_by_text, need_by_place, need_by_close_pair
+    )
+    # 硬頂：仍留上限；不夠放昨收｜今收時 place 內會再加寬，不准左移蓋 K
     x_cap = float(n - 1) + float(_FUTURE) + float(_STRUCTURE_X_RIGHT_CAP_EXTRA)
-    x_floor = content_right + min(max_note_w, 26.0) + 1.6
+    x_floor = content_right + min(max_note_w, 32.0) + 1.6
+    if _prev_ns and _today_ns:
+        x_floor = max(x_floor, need_by_close_pair)
     x_right = min(max(float(x_right), x_floor), x_cap)
     ax1.set_xlim(-0.55, x_right)
     # 字落標籤欄內偏右，右側留邊框＋右軸；左緣離末日 K 有空隙
