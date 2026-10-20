@@ -857,7 +857,7 @@ def render_fear_greed_gauge(
     _MUTE = "#b8c4d6"
 
     dpi = 140
-    fig_w, fig_h = 9.4, 10.4
+    fig_w, fig_h = 9.4, 10.8
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_NAVY)
     fig.text(
         0.05,
@@ -869,10 +869,10 @@ def render_fear_greed_gauge(
         va="top",
     )
 
-    # 儀表區加高一點，數字下方留空，避免與針／23 互壓。
-    gauge = fig.add_axes([0.10, 0.52, 0.80, 0.40])
+    # 儀表區：數字下方多留空，23 與說明句拉開。
+    gauge = fig.add_axes([0.10, 0.56, 0.80, 0.36])
     gauge.set_xlim(-1.42, 1.42)
-    gauge.set_ylim(-0.72, 1.30)
+    gauge.set_ylim(-1.05, 1.30)
     gauge.set_aspect("equal")
     gauge.axis("off")
     gauge.set_facecolor(_NAVY)
@@ -916,33 +916,33 @@ def render_fear_greed_gauge(
             va="center",
         )
     prad = math.radians(_ang(score_f))
-    # 針稍短；23 與「市場即時情緒指標」拉開，不准壓針／數字。
+    # 針再縮；23 與下方兩行說明拉開，不准碰數字／針。
     gauge.plot(
-        [0, 0.68 * math.cos(prad)], [0, 0.68 * math.sin(prad)],
-        color=_WHITE, lw=5.0, solid_capstyle="round", zorder=5,
+        [0, 0.62 * math.cos(prad)], [0, 0.62 * math.sin(prad)],
+        color=_WHITE, lw=4.8, solid_capstyle="round", zorder=5,
     )
-    gauge.plot(0, 0, "o", color=_WHITE, markersize=11, zorder=6)
-    gauge.text(0, -0.10, face, color=_WHITE, fontproperties=_fp(50, "bold"), ha="center", va="top")
-    # 模板鎖：數字正下方這句；再往下、略放大，避開針尖與大數字。
+    gauge.plot(0, 0, "o", color=_WHITE, markersize=10, zorder=6)
+    # 大數字貼針樞；說明句再往下（約一個字高空隙），不准貼邊。
+    gauge.text(0, -0.06, face, color=_WHITE, fontproperties=_fp(48, "bold"), ha="center", va="top")
     gauge.text(
-        0, -0.40,
+        0, -0.68,
         "市場即時情緒指標",
         color=_MUTE,
-        fontproperties=_fp(16, "bold"),
+        fontproperties=_fp(17, "bold"),
         ha="center",
         va="top",
     )
     if band:
         gauge.text(
-            0, -0.56,
+            0, -0.88,
             band,
             color=_WHITE,
-            fontproperties=_fp(17, "bold"),
+            fontproperties=_fp(18, "bold"),
             ha="center",
             va="top",
         )
 
-    panel = fig.add_axes([0.06, 0.03, 0.88, 0.40])
+    panel = fig.add_axes([0.06, 0.02, 0.88, 0.36])
     panel.set_xlim(0, 1)
     panel.set_ylim(0, 1)
     panel.axis("off")
