@@ -534,7 +534,8 @@ def catch_up_missed_jobs(now=None) -> None:
 
     now = now or _taipei_now()
     mins = now.hour * 60 + now.minute
-    need_open_check = scheduler_owns("open_check") and mins >= 3 * 60
+    # 02:45 準點；補跑門檻同鐘，讓 03:00–04:00 DC 窗獨占（避撞）
+    need_open_check = scheduler_owns("open_check") and mins >= (2 * 60 + 45)
 
     def _ensure_screen_cache(runner: MainRunner) -> None:
         """最新完整日若無 screen_sessions，補建快取（不寄），避免按海選全掃逾時。"""
@@ -562,7 +563,7 @@ def catch_up_missed_jobs(now=None) -> None:
         runner = None
         if need_open_check:
             runner = MainRunner()
-            logger.info("補跑：已過台灣 03:00，若深夜開盤查核沒落檔就補跑")
+            logger.info("補跑：已過台灣 02:45，若深夜開盤查核沒落檔就補跑")
             try:
                 runner.run_nightly_open_check(now=now)
             except Exception:
@@ -619,7 +620,7 @@ def catch_up_missed_jobs(now=None) -> None:
         _ensure_screen_cache(runner)
         return
     if need_open_check:
-        logger.info("補跑：已過台灣 03:00，若深夜開盤查核沒落檔就補跑")
+        logger.info("補跑：已過台灣 02:45，若深夜開盤查核沒落檔就補跑")
         try:
             runner.run_nightly_open_check(now=now)
         except Exception:
@@ -816,10 +817,11 @@ def start_daily_scheduler():
         from datetime import timedelta
 
         now = _taipei_now()
-        # dc_sf_silent＝台北 03:00（03:00–04:00 窗；與飆大 01:00 錯開；兩軌隔離）
+        # open_check＝02:45（輕）；dc_sf_silent＝03:00（03:00–04:00 窗；與飆大 01:00 錯開）
+        # 盤後彙整已錯開官方融合：17:40／18:50／22:30（見 biaoke_absorb）
         slots = (
+            (2, 45, "open_check"),
             (3, 0, "dc_sf_silent"),
-            (3, 0, "open_check"),
             (6, 30, "morning"),
             (12, 45, "midday"),
             (16, 30, "fuse"),
