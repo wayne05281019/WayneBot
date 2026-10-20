@@ -330,7 +330,13 @@ class TestMarketMenuE2E:
             "live_quote.fetch_mis_index_quote", return_value=None
         ), patch(
             "us_overnight.refresh_us_for_market_page",
-            return_value={"ok": False, "_press_miss": True},
+            return_value={
+                "ok": False,
+                "_press_miss": True,
+                "_fallback": True,
+                "us_session": "",
+                "regime": "unknown",
+            },
         ), patch(
             "cnn_fear.fetch_cnn_fear_greed", return_value=None
         ), patch(
@@ -414,42 +420,50 @@ class TestMarketMenuE2E:
         bot._menu_fade_gen = {}
         bot._lookup_locks = {}
 
-        async def _run(uid):
-            msg = _message(uid)
-            with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
-                bot, "_start_plain_wait", new_callable=AsyncMock
-            ) as st, patch.object(
-                bot, "_stop_plain_wait", new_callable=AsyncMock
-            ), patch(
-                "live_quote.fetch_mis_index_quote", return_value=None
-            ), patch(
-                "us_overnight.refresh_us_for_market_page",
-                return_value={"ok": False, "_press_miss": True},
-            ), patch(
-                "cnn_fear.fetch_cnn_fear_greed", return_value=None
-            ), patch(
-                "market_session_cards.assemble_session_cards",
-                return_value={
-                    "us": {"session": "", "cards": [], "missing": []},
-                    "tx": {"card": None, "missing": True},
-                    "fear": None,
-                    "notes": [],
-                },
-            ), patch.object(
-                bot, "_send_market_session_cards", new_callable=AsyncMock
-            ), patch.object(
-                bot, "_send_market_kline", new_callable=AsyncMock
-            ), patch.object(
-                bot, "_send_market_vol_zone", new_callable=AsyncMock
-            ):
-                st.return_value = (MagicMock(), None, None)
+        # 外層一次 patch：兩 uid 並行時不可各開 unittest.patch（停補丁會互踩，留下假 refresh）。
+        with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
+            bot, "_start_plain_wait", new_callable=AsyncMock
+        ) as st, patch.object(
+            bot, "_stop_plain_wait", new_callable=AsyncMock
+        ), patch(
+            "live_quote.fetch_mis_index_quote", return_value=None
+        ), patch(
+            "us_overnight.refresh_us_for_market_page",
+            return_value={
+                "ok": False,
+                "_press_miss": True,
+                "_fallback": True,
+                "us_session": "",
+                "regime": "unknown",
+            },
+        ), patch(
+            "cnn_fear.fetch_cnn_fear_greed", return_value=None
+        ), patch(
+            "market_session_cards.assemble_session_cards",
+            return_value={
+                "us": {"session": "", "cards": [], "missing": []},
+                "tx": {"card": None, "missing": True},
+                "fear": None,
+                "notes": [],
+            },
+        ), patch.object(
+            bot, "_send_market_session_cards", new_callable=AsyncMock
+        ), patch.object(
+            bot, "_send_market_kline", new_callable=AsyncMock
+        ), patch.object(
+            bot, "_send_market_vol_zone", new_callable=AsyncMock
+        ):
+            st.return_value = (MagicMock(), None, None)
+
+            async def _run(uid):
+                msg = _message(uid)
                 await bot.market_cmd(_update(msg), MagicMock())
-            return msg
+                return msg
 
-        async def run_both():
-            await asyncio.gather(_run(111), _run(222))
+            async def run_both():
+                await asyncio.gather(_run(111), _run(222))
 
-        asyncio.run(run_both())
+            asyncio.run(run_both())
         assert bot._pending.get("99:111") == "buy"
 
     def test_market_page_builds_under_two_seconds(self):
