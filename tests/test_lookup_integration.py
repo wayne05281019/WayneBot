@@ -139,9 +139,18 @@ class LookupIntegrationTests(unittest.TestCase):
         for call in message.reply_photo.await_args_list:
             caps.append(str(call.kwargs.get("caption") or ""))
         self.assertTrue(any("結構圖" in c for c in caps), caps)
+        # 第 4 張＝大量撐壓圖說：預設標題或事實句（跳空／撐破／溫度／爆大量）。
+        # 發行庫若還沒寫出「爆大量」句，仍算大量區圖，不准只認標題關鍵字。
         self.assertTrue(
             any(
-                "大量撐壓" in c or "大量區" in c or "大量壓力" in c or "爆大量" in c
+                "大量撐壓" in c
+                or "大量區" in c
+                or "大量壓力" in c
+                or "爆大量" in c
+                or "跳空超過" in c
+                or "這條撐" in c
+                or "溫度在" in c
+                or "溫度比" in c
                 for c in caps
             ),
             caps,
