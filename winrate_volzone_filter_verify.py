@@ -62,7 +62,7 @@ MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 MIN_WR_LIFT = 0.01
 MA60_SLOPE_BARS = 5
 MA20_SLOPE_BARS = 5
-# 均線糾結：對齊 technical_patterns.detect_ma_entanglement_breakout 的 2.8%
+# 均線糾結門檻：五日／十日／月線價差 ≤2.8% 視為糾結（本檔常數，不接形態偵測）
 TANGLE_SPREAD_MAX = 0.028
 VZ_POS_LO = 0.15
 VZ_POS_HI = 0.70
