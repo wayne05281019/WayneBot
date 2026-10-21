@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from bot_servers import (
     HELP_TOPICS,
@@ -16,7 +15,6 @@ from bot_servers import (
     MENU_BTN_STREAK,
     WayneTelegramBot,
 )
-from picture_guide import PAGE_HEIGHT, PAGE_WIDTH, PAGES, render_page
 
 
 def _msg(uid: int, text: str = ""):
@@ -131,23 +129,12 @@ def test_ai_deploy_cap_is_max_three_active_names():
     )
 
 
-def test_help_and_two_guide_pages_parallel_under_deadline(tmp_path):
-    import time
+def test_picture_guide_gone_but_phone_stubs_remain():
+    import importlib.util
 
-    slug_a, title_a, body_a = PAGES[1]
-    slug_b, title_b, body_b = PAGES[4]
-    out_a = str(tmp_path / "menu.png")
-    out_b = str(tmp_path / "discipline.png")
-    t0 = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        fa = pool.submit(render_page, slug_a, title_a, body_a, out_a)
-        fb = pool.submit(render_page, slug_b, title_b, body_b, out_b)
-        fa.result()
-        fb.result()
-    wall = time.perf_counter() - t0
-    from PIL import Image
-
-    for path in (out_a, out_b):
-        with Image.open(path) as im:
-            assert im.size == (PAGE_WIDTH, PAGE_HEIGHT)
-    assert wall < 25.0, f"兩頁並行太慢 {wall:.2f}s"
+    assert importlib.util.find_spec("picture_guide") is None
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    assert not bot._picture_guide_keyboard(0, 9).inline_keyboard
+    src = open("bot_servers.py", encoding="utf-8").read()
+    assert "_send_picture_guide" in src
+    assert 'startswith("pg:")' in src

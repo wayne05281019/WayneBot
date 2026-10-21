@@ -411,9 +411,16 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         return _ok("start")
 
     if lens == "picture_guide":
-        if feature == "圖文":
-            return _ok("pg") if "_send_picture_guide" in src else _bad("沒圖文")
-        return _ok("pg-n/a") if "picture_guide" in src else _bad("沒圖文模組")
+        # 模組／assets 已清；只鎖話筒靜音 stub（不准復活舊 UX／舊氣泡噴錯）
+        stubs_ok = (
+            "_send_picture_guide" in src
+            and "_show_picture_guide_page" in src
+            and 'startswith("pg:")' in src
+            and 'text == "圖文"' in src
+        )
+        if not stubs_ok:
+            return _bad("沒圖文 stub")
+        return _ok("pg" if feature == "圖文" else "pg-n/a")
 
     if lens == "no_group":
         if "不要拉進同一個群組" not in src:
