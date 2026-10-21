@@ -16,10 +16,15 @@ from foreign_sell_display import (
     DISPLAY_TAG,
     OBSERVE_LABEL,
     OBSERVE_MARKER,
+    display_mode_banner,
+    gate_status_one_liner,
     is_buy_entry_path,
+    live_track_display_modes,
     load_env_status,
     market_env_section_lines,
     morning_observe_line_html,
+    resolve_display_mode,
+    resolve_display_tag,
     stock_observe_bar_index,
     stock_observe_hit,
 )
@@ -494,3 +499,28 @@ def test_structure_hex_shares_occupy_with_stabilize():
     assert src.count("occupy=mark_occupy") >= 2
     assert 'sid == "2454"' not in src
     assert "_inset_today_close_inside" in inspect.getsource(_place_right_notes)
+
+
+def test_display_resolves_tag_via_foreign_sell_gate():
+    """顯示層真 call gate；空庫四軌未過閘 → 還在測試，非正式買訊。"""
+    db = _mk_db()
+    modes = live_track_display_modes(db)
+    assert set(modes) == {"fear", "escalate", "extreme", "calm"}
+    assert all(m == "test" for m in modes.values())
+    assert resolve_display_mode(db) == "test"
+    assert resolve_display_tag(db) == DISPLAY_TAG
+    assert "還在測試" in resolve_display_tag(db)
+    banner = display_mode_banner(db)
+    assert "還在測試" in banner
+    assert "mode=test" in banner
+    assert "buy_signal=0" in banner
+    line = gate_status_one_liner(db)
+    assert line.startswith("明確優化狀態：")
+    assert "未過閘" in line
+    assert "還在測試" in line
+    assert "非買訊" in line
+    # 早報／大盤標題走同一 resolve（不是只測 import）
+    morning = morning_observe_line_html(db, "20261014", fear_as_of="20261015")
+    assert f"環境觀察｜{DISPLAY_TAG}" in morning.replace("<b>", "").replace("</b>", "")
+    market = "\n".join(market_env_section_lines(db, "20261014"))
+    assert f"環境觀察｜{DISPLAY_TAG}" in market.replace("<b>", "").replace("</b>", "")

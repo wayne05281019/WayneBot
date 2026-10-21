@@ -16,13 +16,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from dongzhu_tape import tape_store_path
 from fear_composite import _ymd
 
-# 四軌皆未過閘 → 整體仍 test；分軌日後可各自改 official（見 TRACK_DISPLAY_MODE）
+# 模組常數＝未過閘預設／硬鎖；話筒標題／banner 真讀 foreign_sell_gate（見 resolve_*）
 DISPLAY_MODE = "test"
-# 一眼懂還在測試；正式過閘後該軌改「觀察／預警」
+# 一眼懂還在測試；正式過閘後該軌改「觀察／預警」（仍非買訊）
 DISPLAY_TAG = "觀察／預警（還在測試）"
+DISPLAY_TAG_OFFICIAL = "觀察／預警"
+DISPLAY_TAG_PARTIAL = "觀察／預警（部分軌還在測試）"
 BUY_SIGNAL = False  # 硬鎖：永遠不是買訊
 
-# 分軌顯示模式（正反向分軌；勝率不准混）。目前全 test。
+# 分軌顯示模式預設（正反向分軌；勝率不准混）。live 以 live_track_display_modes 為準。
 TRACK_DISPLAY_MODE: Dict[str, str] = {
     "fear": "test",
     "escalate": "test",
@@ -84,6 +86,66 @@ class StockObserveHit:
 
 def _store(db_path: str) -> str:
     return tape_store_path(db_path)
+
+
+def _all_track_gates_safe(db_path: str = "") -> List[Dict[str, Any]]:
+    """顯示層唯一閘門入口；缺模組／炸了 → 空列（呼叫端當全 test）。"""
+    try:
+        from foreign_sell_gate import all_track_gates
+
+        return list(all_track_gates(str(db_path or "").strip()) or [])
+    except Exception:
+        return []
+
+
+def live_track_display_modes(db_path: str = "") -> Dict[str, str]:
+    """分軌顯示模式：真讀 foreign_sell_gate；未 promote 不准 official。"""
+    out = {k: "test" for k in TRACK_DISPLAY_MODE}
+    for g in _all_track_gates_safe(db_path):
+        track = str(g.get("track") or "")
+        if track not in out:
+            continue
+        mode = str(g.get("display_mode") or "test").strip().lower()
+        if mode == "official" and g.get("promote_observe_copy"):
+            out[track] = "official"
+        else:
+            out[track] = "test"
+    return out
+
+
+def resolve_display_mode(db_path: str = "") -> str:
+    """整體 mode：四軌全 official 才 official，否則 test。"""
+    modes = live_track_display_modes(db_path)
+    if modes and all(m == "official" for m in modes.values()):
+        return "official"
+    return "test"
+
+
+def resolve_display_tag(db_path: str = "") -> str:
+    """話筒標題用標籤：真讀閘門；清楚測試／未過閘 vs 正式觀察（仍非買訊）。"""
+    modes = live_track_display_modes(db_path)
+    n_off = sum(1 for m in modes.values() if m == "official")
+    if n_off <= 0:
+        return DISPLAY_TAG
+    if n_off >= len(modes):
+        return DISPLAY_TAG_OFFICIAL
+    return DISPLAY_TAG_PARTIAL
+
+
+def gate_status_one_liner(db_path: str = "") -> str:
+    """明確優化狀態一句（轉口 foreign_sell_gate；過程／％不准堆）。"""
+    try:
+        from foreign_sell_gate import optimize_status_one_liner
+
+        line = str(optimize_status_one_liner(str(db_path or "").strip()) or "").strip()
+        if line:
+            return line
+    except Exception:
+        pass
+    return (
+        "明確優化狀態：外資／恐懼預警閘門未載入 → 話筒維持還在測試；"
+        "非買訊、不改黃金買點"
+    )
 
 
 def _conn_ro(path: str) -> Optional[sqlite3.Connection]:
@@ -308,12 +370,18 @@ def load_morning_status(
     return chip
 
 
-def env_observe_plain_lines(st: EnvObserveStatus) -> List[str]:
-    """話筒環境觀察：標題＋三句白話。大盤、早報、其他推播同一套。"""
+def env_observe_plain_lines(
+    st: EnvObserveStatus, *, db_path: str = ""
+) -> List[str]:
+    """話筒環境觀察：標題＋三句白話。大盤、早報、其他推播同一套。
+
+    標題標籤真讀 foreign_sell_gate（未過閘＝還在測試；過閘＝正式觀察，仍非買訊）。
+    """
     from tg_layout import html_escape
 
+    tag = resolve_display_tag(db_path)
     return [
-        f"<b>環境觀察｜{html_escape(DISPLAY_TAG)}</b>",
+        f"<b>環境觀察｜{html_escape(tag)}</b>",
         html_escape(_fear_plain(st)),
         html_escape(_confirm_plain(st)),
         html_escape(_calm_plain(st)),
@@ -328,7 +396,7 @@ def morning_observe_line_html(
 ) -> str:
     """早報環境觀察：與大盤同一段三句。恐懼日仍可分開，不改旗標算法。"""
     st = load_morning_status(db_path, as_of, fear_as_of=fear_as_of)
-    return "\n".join(env_observe_plain_lines(st))
+    return "\n".join(env_observe_plain_lines(st, db_path=db_path))
 
 
 def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
@@ -338,7 +406,7 @@ def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
     不印亮／熄／未齊，不印近窗，也不印「不是買訊；進場仍只認藍▲紅框」。
     燈號由大盤頁貼在這段後面、同一則。
     """
-    return env_observe_plain_lines(load_env_status(db_path, as_of))
+    return env_observe_plain_lines(load_env_status(db_path, as_of), db_path=db_path)
 
 
 def _recent_as_ofs(conn: sqlite3.Connection, table: str, kind: str, limit: int) -> List[str]:
@@ -573,5 +641,8 @@ def is_buy_entry_path(fn_name: str) -> bool:
     return str(fn_name or "") in buy_names
 
 
-def display_mode_banner() -> str:
-    return f"{DISPLAY_TAG}｜mode={DISPLAY_MODE}｜buy_signal={int(BUY_SIGNAL)}"
+def display_mode_banner(db_path: str = "") -> str:
+    """預覽／除錯用：標籤與 mode 真讀閘門（buy_signal 硬鎖 0）。"""
+    tag = resolve_display_tag(db_path)
+    mode = resolve_display_mode(db_path)
+    return f"{tag}｜mode={mode}｜buy_signal={int(BUY_SIGNAL)}"
