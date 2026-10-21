@@ -26,10 +26,8 @@ def test_pack_phone_bits_keeps_short_and_splits_at_sep():
     assert not any(ln.endswith("+") for ln in long)
 
 
-def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
-    from taiwan_market import format_taiwan_market_brief_html
-
-    snap = {
+def _brief_snap():
+    return {
         "ok": True,
         "close": 46551.12,
         "ma5": 46200.0,
@@ -51,7 +49,23 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
         "falling_risk": 20,
         "risk_zone": "normal",
         "futures": {"close": 26500, "date": "20260919", "open_interest": 0},
-        "futures_night": {"close": 26580, "date": "20260919"},
+        "futures_night": {
+            "close": 26580,
+            "date": "20260919",
+            "open": 26400,
+            "high": 26600,
+            "low": 26300,
+            "volume": 12000,
+        },
+        "futures_te": {"close": 2100, "date": "20260919"},
+        "futures_te_night": {
+            "close": 2110,
+            "date": "20260919",
+            "open": 2100,
+            "high": 2120,
+            "low": 2090,
+            "volume": 3000,
+        },
         "backtest": [
             {"regime": "neutral", "bucket": "黃金買點", "n": 20, "avg_next_pct": 0.8, "hit_rate": 0.6},
             {"regime": "neutral", "bucket": "還在零", "n": 20, "avg_next_pct": 0.2, "hit_rate": 0.5},
@@ -63,6 +77,12 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
             {"regime_plus": "range", "bucket": "leave_zero", "n": 10, "avg_next_pct": -0.2, "hit_rate": 0.33},
         ],
     }
+
+
+def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
+    from taiwan_market import format_taiwan_market_brief_html
+
+    snap = _brief_snap()
     monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: snap)
     html = format_taiwan_market_brief_html(":memory:", "20260919")
     assert "＝＝台灣加權指數研究＝＝" in html
@@ -106,6 +126,25 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
         if "<b>" in ln:
             continue
         assert not plain.endswith("勝"), ln
+
+
+def test_taiwan_market_brief_morning_slim(monkeypatch):
+    """早報精簡：收／日／距月線＋最細夜盤；無對照說明／回測表。"""
+    from taiwan_market import format_taiwan_market_brief_html
+
+    monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: _brief_snap())
+    html = format_taiwan_market_brief_html(":memory:", "20260919", for_morning=True)
+    assert "＝＝台灣加權指數研究＝＝" in html
+    assert ">收盤</a>" in html
+    assert "距月線" in _plain(html) or "月線" in _plain(html)
+    assert "台指期夜盤" in _plain(html)
+    assert "電子期夜盤" in _plain(html)
+    assert "12,000" in html or "12000" in _plain(html).replace(",", "")
+    assert "<b>對照說明</b>" not in html
+    assert "同一盤勢隔日" not in html
+    assert "同一細分盤勢隔日" not in html
+    assert "5日均" not in _plain(html)
+    assert "站上月線" not in _plain(html)
 
 
 def test_hot_revenue_dashed_two_line_rows(monkeypatch):

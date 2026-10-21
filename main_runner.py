@@ -1110,7 +1110,8 @@ class MainRunner:
         """寄出海選本文。回傳是否每個收件人都被 Telegram 接受。
 
         算出名單 ≠ 已寄到。401／空 token 必須回 False，否則 skip_if_done 會把失敗當成已完成。
-        morning_digest：06:30 把提醒＋大盤＋加權研究併入海選第一則，不再另寄加權研究。
+        morning_digest：06:30 Option B＝文字①環境／夜盤／加權精簡＋文字②兩桶海選；
+        圖（美股／電子盤／恐懼）另寄；不再另寄加權研究／輪動／月營收／雷達。
         """
         if morning_digest and screening:
             try:
@@ -1174,8 +1175,9 @@ class MainRunner:
         if morning_digest and pkey:
             # 海選＋彙整已送出即標 success，避免長掃期間 watchdog 06:55 誤報 running。
             self._mark_pipeline("success", "morning-digest", run_date=pkey)
-        extra_bits = []
+        # Option B：輪動／月營收／雷達不塞進 06:30 早報主輪（改盤後／按鈕路徑）
         if not morning_digest:
+            extra_bits = []
             try:
                 from taiwan_market import format_taiwan_market_brief_html
 
@@ -1184,39 +1186,39 @@ class MainRunner:
                     extra_bits.insert(0, mkt)
             except Exception:
                 pass
-        try:
-            from money_flow import format_sector_rotation_html
+            try:
+                from money_flow import format_sector_rotation_html
 
-            rot = format_sector_rotation_html(self.db_path)
-            if rot:
-                extra_bits.append(rot)
-        except Exception as e:
-            logger.warning("盤後資金輪動區塊略過：%s", e)
-        try:
-            from fundamentals import format_hot_revenue_html
+                rot = format_sector_rotation_html(self.db_path)
+                if rot:
+                    extra_bits.append(rot)
+            except Exception as e:
+                logger.warning("盤後資金輪動區塊略過：%s", e)
+            try:
+                from fundamentals import format_hot_revenue_html
 
-            hot = format_hot_revenue_html(self.db_path)
-            if hot:
-                extra_bits.append(hot)
-        except Exception:
-            pass
-        extra_bits = [x for x in extra_bits if x]
-        owner = str(getattr(self, "chat_id", None) or "").strip()
-        targets = ids or ([owner] if owner else [])
-        if not targets:
-            for html in extra_bits:
-                self._send_screening_extra(html)
-        else:
-            for cid in targets:
-                try:
-                    radar = self._format_watch_radar_section(cid)
-                except Exception as e:
-                    logger.warning("自選雷達略過 uid=%s: %s", cid, e)
-                    radar = ""
+                hot = format_hot_revenue_html(self.db_path)
+                if hot:
+                    extra_bits.append(hot)
+            except Exception:
+                pass
+            extra_bits = [x for x in extra_bits if x]
+            owner = str(getattr(self, "chat_id", None) or "").strip()
+            targets = ids or ([owner] if owner else [])
+            if not targets:
                 for html in extra_bits:
-                    self._send_screening_extra(html, chat_id=cid)
-                if radar:
-                    self._send_screening_extra(radar, chat_id=cid)
+                    self._send_screening_extra(html)
+            else:
+                for cid in targets:
+                    try:
+                        radar = self._format_watch_radar_section(cid)
+                    except Exception as e:
+                        logger.warning("自選雷達略過 uid=%s: %s", cid, e)
+                        radar = ""
+                    for html in extra_bits:
+                        self._send_screening_extra(html, chat_id=cid)
+                    if radar:
+                        self._send_screening_extra(radar, chat_id=cid)
         try:
             from screen_review import adapt_bucket_weights, score_ai_fills, score_screen_picks
             from taiwan_market import analyze_taiwan_market

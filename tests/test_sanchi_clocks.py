@@ -10,6 +10,7 @@ from sanchi_clocks import (
     SANCHI_LINES,
     append_sanchi_to_caption,
     card_lights_buy_arrow,
+    sanchi_morning_one_line_html,
     sanchi_note_html,
     sanchi_note_plain,
 )
@@ -54,6 +55,14 @@ def test_append_only_when_buy_arrow():
     assert card_lights_buy_arrow({}) is False
 
 
+def test_sanchi_morning_one_line():
+    html = sanchi_morning_one_line_html()
+    assert SANCHI_LINE_MORNING in html
+    assert SANCHI_LINE_WHY not in html
+    assert SANCHI_LINE_LOOKUP not in html
+    assert "<i>" in html
+
+
 def test_morning_payload_includes_sanchi():
     from screening_engine import format_screening_payload
 
@@ -75,7 +84,9 @@ def test_morning_payload_includes_sanchi():
     assert payload
     blob = "\n".join(str(p.get("html") or "") for p in payload)
     assert SANCHI_LINE_MORNING in blob
-    assert SANCHI_LINE_WHY in blob
+    # Option B：早報三尺只留一行
+    assert SANCHI_LINE_WHY not in blob
+    assert SANCHI_LINE_LOOKUP not in blob
 
 
 def test_manual_screen_also_gets_sanchi_on_first_bucket():
