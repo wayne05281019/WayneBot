@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-"""導航 180＋多檔兩段式出圖速度。"""
+"""導航 180＋出圖速度／快取。"""
 from __future__ import annotations
 
 import inspect
 import os
-import tempfile
 import time
 
 import pytest
@@ -66,25 +65,15 @@ def test_nav180_render_memo(tmp_path):
     assert elapsed < 0.25, elapsed
 
 
-def test_chart_batch_two_phase_api():
-    from chart_batch import (
-        paint_volume_zones_serial,
-        prepare_volume_zones_parallel,
-        render_volume_zones_two_phase,
-    )
-
-    assert callable(prepare_volume_zones_parallel)
-    assert callable(paint_volume_zones_serial)
-    assert callable(render_volume_zones_two_phase)
-    # 話筒壓撐名單改逐檔串流；two_phase API 仍保留給批次腳本
+def test_pressure_streams_per_stock_not_batch():
+    # 話筒壓撐名單逐檔串流；不准依賴已刪的 chart_batch two_phase
     bot = open("bot_servers.py", encoding="utf-8").read()
     assert "render_lookup_vol_result" in bot
     assert "submit_mpl_paint" in bot
+    assert "render_volume_zones_two_phase" not in bot
 
 
 def test_vol_zone_uses_align_cache():
-    import inspect
-
     from vol_zone_chart import official_work
 
     src = inspect.getsource(official_work)

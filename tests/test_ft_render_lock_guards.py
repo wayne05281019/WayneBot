@@ -197,17 +197,6 @@ def test_page_prep_outside_worker_does_not_block_lookup_paint():
     assert named["lk_paint"] < 0.35, named
 
 
-def test_chart_batch_paint_uses_single_worker():
-    from chart_batch import paint_nav_charts_serial, paint_volume_zones_serial
-
-    src = inspect.getsource(paint_volume_zones_serial)
-    assert "run_mpl_paint" in src
-    assert "ThreadPoolExecutor" not in src
-    nav = inspect.getsource(paint_nav_charts_serial)
-    assert "run_mpl_paint" in nav
-    assert "ThreadPoolExecutor" not in nav
-
-
 def test_mpl_render_is_reentrant():
     """chips／導航外層已鎖時，_savefig／量字再進不准死鎖。"""
     from wayne_navigator import mpl_render, _glyph_w_pt

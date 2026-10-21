@@ -347,5 +347,3 @@ def test_pressure_bot_paths_share_nav_volzone_layout():
     # 名單壓力區：逐檔 submit_mpl_paint 畫完就送；不准整頁 two_phase 逾時吞後面檔
     assert "submit_mpl_paint" in src
     assert "render_volume_zones_two_phase" not in src
-    assert "prepare_volume_zone" in open("chart_batch.py", encoding="utf-8").read()
-    assert "_paint_volume_zone" in open("chart_batch.py", encoding="utf-8").read()
