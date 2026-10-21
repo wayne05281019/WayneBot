@@ -74,6 +74,57 @@ def last_open_calendar_day_on_or_before(ymd: str) -> str:
     return d.strftime("%Y%m%d")
 
 
+def next_open_calendar_day_after(ymd: str) -> str:
+    """嚴格晚於 ymd 的下一個台股開市日（跳過週末／國定休市）。"""
+    d = datetime.strptime(normalize_ymd(ymd), "%Y%m%d") + timedelta(days=1)
+    for _ in range(20):
+        s = d.strftime("%Y%m%d")
+        if is_trading_weekday(s) and not is_tw_market_holiday(s):
+            return s
+        d += timedelta(days=1)
+    return d.strftime("%Y%m%d")
+
+
+def futures_night_date_cap(now=None) -> str:
+    """期貨夜盤官方 date 上限（台北）。
+
+    歷史／OpenAPI 的盤後 date＝夜盤結束後的日曆日（平日）或下一開市日（週末夜盤）。
+    05:00 後才認「今晨結束的夜盤」可齊；05:00 前仍停在昨日標籤。
+    """
+    from config import taipei_now
+
+    now = now or taipei_now()
+    if getattr(now, "tzinfo", None) is None:
+        now = now.replace(tzinfo=TAIPEI)
+    else:
+        now = now.astimezone(TAIPEI)
+    if int(now.hour) >= 5:
+        return now.strftime("%Y%m%d")
+    return (now - timedelta(days=1)).strftime("%Y%m%d")
+
+
+def futures_night_query_ceiling(cash_as_of: Optional[str] = None, now=None) -> str:
+    """夜盤查詢上限：現況窗可讀到牆鐘已完成的夜盤標籤；歷史 as_of 不往後漂。
+
+    期貨夜盤官方 date 常＝下一開市日（平日隔晨／週末→週一）。早報現金 as_of 仍是
+    昨收時，必須讀得到「今晨結束」那根。距離牆鐘太遠的歷史查詢維持 date<=cash，
+    避免回測／單測被活檔夜盤蓋掉。
+    """
+    wall = futures_night_date_cap(now)
+    cash = normalize_ymd(cash_as_of)
+    if len(cash) != 8:
+        return wall
+    try:
+        wall_dt = datetime.strptime(wall, "%Y%m%d")
+        cash_dt = datetime.strptime(cash, "%Y%m%d")
+    except ValueError:
+        return wall
+    # 5 曆日：涵蓋週五→週一＋現金 as_of 略落後一天的補齊窗。
+    if 0 <= (wall_dt - cash_dt).days <= 5:
+        return wall
+    return cash if cash <= wall else wall
+
+
 def fuse_end_trading_date(now=None) -> str:
     """16:30 前不算今天；結果必為可開市的週一～五。"""
     from config import taipei_now

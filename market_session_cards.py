@@ -329,7 +329,7 @@ def _read_tick_zip(blob: bytes) -> str:
     return raw.decode("cp950", errors="replace")
 
 
-def _regular_settlement(session_ymd: str, month: str) -> Optional[float]:
+def _regular_settlement_from_openapi(session_ymd: str, month: str) -> Optional[float]:
     try:
         resp = _SESSION.get(_TAIFEX_OPENAPI, timeout=40)
         resp.raise_for_status()
@@ -339,7 +339,6 @@ def _regular_settlement(session_ymd: str, month: str) -> Optional[float]:
         return None
     if not isinstance(rows, list):
         return None
-    best = None
     for row in rows:
         if str(row.get("Contract") or "").strip().upper() != "TX":
             continue
@@ -350,7 +349,7 @@ def _regular_settlement(session_ymd: str, month: str) -> Optional[float]:
         day = str(row.get("Date") or "").replace("/", "").replace("-", "")[:8]
         if day != session_ymd:
             continue
-        raw = str(row.get("SettlementPrice") or "").replace(",", "").strip()
+        raw = str(row.get("SettlementPrice") or row.get("Last") or "").replace(",", "").strip()
         if not raw or raw in {"-", "－", "—"}:
             continue
         try:
@@ -358,14 +357,67 @@ def _regular_settlement(session_ymd: str, month: str) -> Optional[float]:
         except ValueError:
             continue
         if px > 0:
-            best = px
-            break
-    return best
+            return px
+    return None
+
+
+def _regular_settlement(session_ymd: str, month: str) -> Optional[float]:
+    """夜盤對照用日盤結算：OpenAPI → 歷史檔 → 庫內。OpenAPI 常晚一天，不可因此退回舊夜盤圖。"""
+    ymd = str(session_ymd or "").replace("-", "").replace("/", "")[:8]
+    if len(ymd) != 8:
+        return None
+    got = _regular_settlement_from_openapi(ymd, month)
+    if got is not None and got > 0:
+        return got
+    try:
+        from taiwan_market import _fetch_taifex_tx_sessions
+
+        sess = _fetch_taifex_tx_sessions(ymd, symbol="TX") or {}
+        reg = sess.get("regular") or {}
+        if month and str(reg.get("contract_month") or "").strip() not in ("", month):
+            # 近月已換月時仍可用結算／收盤當參考價。
+            pass
+        for key in ("settlement", "close"):
+            try:
+                px = float(reg.get(key) or 0)
+            except (TypeError, ValueError):
+                px = 0.0
+            if px > 0:
+                return px
+    except Exception:
+        logger.debug("台指期日盤結算歷史補齊略過 %s", ymd, exc_info=True)
+    try:
+        from config import get_db_path
+        from taiwan_market import load_futures_daily
+
+        row = load_futures_daily(get_db_path(), ymd, symbol="TX") or {}
+        if month and str(row.get("contract_month") or "").strip() not in ("", month):
+            pass
+        for key in ("settlement", "close"):
+            try:
+                px = float(row.get(key) or 0)
+            except (TypeError, ValueError):
+                px = 0.0
+            if px > 0:
+                return px
+    except Exception:
+        logger.debug("台指期日盤結算庫內補齊略過 %s", ymd, exc_info=True)
+    return None
 
 
 def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
-    """最新一檔期交所逐筆夜盤。沒有 15:00 起的官方成交就不上圖。"""
-    _ = now
+    """最新一檔期交所逐筆夜盤。沒有 15:00 起的官方成交就不上圖。
+
+    Daily_YYYY_MM_DD.zip 含「前一晚盤後＋當日日盤」。要畫最新夜盤必須吃最新 zip；
+    結算價缺漏時改歷史／庫內補，不准退回更舊 zip 卻標成現況。
+    """
+    ref_now = now
+    if ref_now is None:
+        ref_now = datetime.now(TP)
+    elif getattr(ref_now, "tzinfo", None) is None:
+        ref_now = ref_now.replace(tzinfo=TP)
+    else:
+        ref_now = ref_now.astimezone(TP)
     ymds: List[str] = []
     # 大盤專頁總逾時約 45s：頁面／zip 不可各吃滿半分鐘，失敗就缺圖。
     try:
@@ -376,17 +428,15 @@ def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
             ymds.append(ymd)
     except Exception:
         logger.exception("台指期下載頁抓不到，改試近期 zip")
-    # 頁面失敗仍試台北近日 zip（夜盤檔名常是隔日）。
-    try:
-        today = datetime.now(TP).strftime("%Y%m%d")
-    except Exception:
-        today = ""
-    if today:
-        cur = today
-        for _ in range(3):
-            if cur not in ymds:
-                ymds.append(cur)
-            cur = (datetime.strptime(cur, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+    # 頁面失敗仍試台北近日 zip（夜盤檔名常是隔日／下一開市日）。
+    today = ref_now.strftime("%Y%m%d")
+    cur = today
+    for _ in range(5):
+        if cur not in ymds:
+            ymds.append(cur)
+        cur = (datetime.strptime(cur, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+    best: Optional[Dict[str, Any]] = None
+    best_session = ""
     for ymd in ymds:
         try:
             url = _TAIFEX_ZIP.format(y=ymd[:4], m=ymd[4:6], d=ymd[6:])
@@ -411,8 +461,15 @@ def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
         month = max(vol, key=lambda m: vol[m])
         prev = _regular_settlement(session, month)
         card = build_tx_night_card(ticks, prev)
-        if card is not None:
-            return {"card": card, "missing": False}
+        if card is None:
+            continue
+        sess = str(card.get("session") or "")
+        # 取夜盤起始日最新的一檔；較舊 zip 只在更新檔失敗時備援，不當現況捷徑。
+        if sess > best_session:
+            best = card
+            best_session = sess
+    if best is not None:
+        return {"card": best, "missing": False}
     return {"card": None, "missing": True}
 
 
