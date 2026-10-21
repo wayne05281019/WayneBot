@@ -38,7 +38,6 @@ def render_all(out_dir: Path | None = None) -> dict:
     from chips import generate_chips_image
     from industry_card import render_industry_png
     from index_kline_chart import build_market_kline_chart
-    from picture_guide import PAGE_SLUGS, ensure_page
 
     eng = NavigatorEngine(db)
     done = {}
@@ -73,14 +72,6 @@ def render_all(out_dir: Path | None = None) -> dict:
         done["index.kline"] = build_market_kline_chart(str(out_dir / "index_kline.png"), db_path=db) or "empty"
     except Exception as e:
         done["index.kline"] = f"err:{e}"
-
-    guide_dir = out_dir / "guide"
-    guide_dir.mkdir(exist_ok=True)
-    for slug in PAGE_SLUGS:
-        try:
-            done[f"guide.{slug}"] = ensure_page(slug, str(guide_dir), force=True)
-        except Exception as e:
-            done[f"guide.{slug}"] = f"err:{e}"
 
     summary = {k: ("ok" if _ok(str(v)) else str(v)) for k, v in done.items()}
     return {"dir": str(out_dir), "results": summary, "raw": {k: str(v) for k, v in done.items()}}

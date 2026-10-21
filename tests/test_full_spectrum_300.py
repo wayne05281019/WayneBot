@@ -496,7 +496,6 @@ def test_l3_listed_hub_has_chips():
         "wayne_navigator.py",
         "bot_servers.py",
         "intent_router.py",
-        "picture_guide.py",
         "portfolio_engine.py",
         "broker_points.py",
     ],
@@ -508,7 +507,6 @@ def test_l4_no_fake_cost_formulas(path):
     assert "外資成本" not in src or path in (
         "bot_servers.py",
         "intent_router.py",
-        "picture_guide.py",
     )
 
 
@@ -667,21 +665,14 @@ def test_l6_wrap_cjk_no_orphan():
     assert "".join(lines) == "準備減碼不是買訊"
 
 
-def test_l6_picture_guide_phone_ratio():
-    from picture_guide import BODY_SIZE, PAGE_HEIGHT, PAGE_WIDTH
+def test_l6_picture_guide_module_gone_stubs_remain():
+    import importlib.util
 
-    assert PAGE_WIDTH == 1080
-    assert PAGE_HEIGHT == 1920
-    assert BODY_SIZE * (390 / PAGE_WIDTH) >= 18
-
-
-def test_l6_picture_guide_no_emoji():
-    from picture_guide import page_copy_blob
-
-    blob = page_copy_blob()
-    assert "⌨️" not in blob
-    assert "紅箭頭" in blob
-    assert "如何賣" in blob
+    assert importlib.util.find_spec("picture_guide") is None
+    src = open("bot_servers.py", encoding="utf-8").read()
+    assert "_send_picture_guide" in src
+    assert "_show_picture_guide_page" in src
+    assert 'startswith("pg:")' in src
 
 
 def test_l6_help_topics_cancelled():

@@ -62,7 +62,6 @@ def test_no_tradingview_product_hooks():
         "kline_page.html",
         "bot_servers.py",
         "wayne_navigator.py",
-        "picture_guide.py",
         "taifex_ticks.py",
     ):
         src = open(path, encoding="utf-8").read().lower()

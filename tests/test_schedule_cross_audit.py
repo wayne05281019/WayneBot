@@ -7,7 +7,6 @@ import re
 
 from bot_servers import HELP_TOPICS
 from config import scheduled_job_kind
-from picture_guide import page_copy_blob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -92,10 +91,10 @@ def test_main_scheduler_slots_match_clocks():
     header = _read("main_runner.py")[:2800]
     assert "WAYNE_SCREEN_NOTIFY=0 不寄" in header
     assert "Render 常駐 06:30" not in header
-    blob = page_copy_blob()
+    runner = _read("main_runner.py")
     for clock in ("06:30", "12:45", "16:30", "20:00", "21:00"):
-        assert clock in blob
-    assert "不是海選" in _read("main_runner.py")
+        assert clock in runner or clock in src, clock
+    assert "不是海選" in runner
     assert HELP_TOPICS == {}
 
 
