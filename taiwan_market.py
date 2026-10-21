@@ -1129,12 +1129,27 @@ def _row_to_futures(row, *, session: str, symbol: str = _FUTURES_SYMBOL) -> Dict
 
 
 def load_futures_night(
-    db_path: str, as_of: Optional[str] = None, *, symbol: str = _FUTURES_SYMBOL
+    db_path: str,
+    as_of: Optional[str] = None,
+    *,
+    symbol: str = _FUTURES_SYMBOL,
+    now: Optional[datetime] = None,
 ) -> Optional[Dict[str, Any]]:
-    """期貨夜盤（盤後時段）。沒有列就回 None。symbol=TX 台指／TE 電子。"""
+    """期貨夜盤（盤後時段）。沒有列就回 None。symbol=TX 台指／TE 電子。
+
+    as_of 當現金基準日時，夜盤官方 date 可到下一開市日標籤（週五夜＝週一），
+    並受台北牆鐘 futures_night_date_cap 限制；不准用更舊夜盤冒充現況。
+    """
     ensure_futures_daily_table(db_path)
     want_sym = _norm_futures_symbol(symbol)
     ref = _norm_ymd(as_of) if as_of else ""
+    if ref:
+        try:
+            from trading_calendar import futures_night_query_ceiling
+
+            ref = futures_night_query_ceiling(ref, now=now)
+        except Exception:
+            pass
     conn = sqlite3.connect(db_path)
     try:
         if ref:
@@ -1166,28 +1181,113 @@ def load_futures_night(
     return _row_to_futures(row, session="night", symbol=want_sym)
 
 
+def _upsert_futures_session_row(
+    db_path: str, row: Dict[str, Any], *, symbol: str, sess: str
+) -> None:
+    """把單一官方日／夜盤列寫進 futures_daily（有真 close 才寫）。"""
+    if not row or not row.get("close"):
+        return
+    ensure_futures_daily_table(db_path)
+    want_sym = _norm_futures_symbol(symbol)
+    day = _norm_ymd(row.get("date"))
+    if len(day) != 8:
+        return
+    sess_key = str(sess or row.get("session") or "regular")
+    if sess_key not in ("regular", "night"):
+        sess_key = "regular"
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, symbol, session) DO UPDATE SET
+                contract_month=excluded.contract_month,
+                open=excluded.open, high=excluded.high, low=excluded.low,
+                close=excluded.close, settlement=excluded.settlement,
+                volume=excluded.volume, open_interest=excluded.open_interest,
+                pct_change=excluded.pct_change, source=excluded.source,
+                updated_at=excluded.updated_at
+            """,
+            (
+                day,
+                want_sym,
+                sess_key,
+                row.get("contract_month") or "",
+                float(row.get("open") or row["close"]),
+                float(row.get("high") or row["close"]),
+                float(row.get("low") or row["close"]),
+                float(row["close"]),
+                float(row.get("settlement") or row["close"]),
+                int(row.get("volume") or 0),
+                int(row.get("open_interest") or 0),
+                float(row.get("pct_change") or 0),
+                str(row.get("source") or "taifex"),
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def resolve_futures_night(
     db_path: str,
     as_of: Optional[str] = None,
     *,
     symbol: str = _FUTURES_SYMBOL,
+    now: Optional[datetime] = None,
 ) -> Optional[Dict[str, Any]]:
-    """庫內夜盤優先；沒有就讀期交所最新盤後（只讀、不寫庫）。"""
+    """庫內夜盤優先；若現金 as_of 對應的最新夜盤標籤尚未入庫，歷史／OpenAPI 補齊再回。"""
     want_sym = _norm_futures_symbol(symbol)
-    night = load_futures_night(db_path, as_of, symbol=want_sym)
-    if night and night.get("close"):
+    try:
+        from trading_calendar import futures_night_query_ceiling
+
+        ceiling = futures_night_query_ceiling(as_of, now=now)
+    except Exception:
+        ceiling = _norm_ymd(as_of) if as_of else ""
+    night = load_futures_night(db_path, as_of, symbol=want_sym, now=now)
+    n_date = _norm_ymd((night or {}).get("date"))
+    if night and night.get("close") and (not ceiling or n_date >= ceiling):
         return night
-    cached = _cached_taifex_all_sessions()
-    if not cached:
-        return None
-    want = _norm_ymd(as_of) if as_of else ""
-    dates = [want] if want in cached else []
-    dates.extend(sorted(cached, reverse=True))
-    for d in dates:
-        row = ((cached.get(d) or {}).get(want_sym) or {}).get("night")
+    # 天花板（下一開市日標籤）上的夜盤：OpenAPI 常晚一天，改走歷史 chunk。
+    probe_dates: List[str] = []
+    if ceiling:
+        probe_dates.append(ceiling)
+    cash = _norm_ymd(as_of)
+    if cash and cash not in probe_dates:
+        probe_dates.append(cash)
+    for d in probe_dates:
+        if len(d) != 8:
+            continue
+        if night and n_date and d <= n_date:
+            continue
+        try:
+            sess = _fetch_taifex_tx_sessions(d, symbol=want_sym)
+        except Exception:
+            sess = {}
+        row = (sess or {}).get("night") if isinstance(sess, dict) else None
         if row and row.get("close"):
+            try:
+                _upsert_futures_session_row(db_path, row, symbol=want_sym, sess="night")
+            except Exception:
+                logger.debug("夜盤補寫略過 %s %s", want_sym, d, exc_info=True)
             return row
-    return None
+    cached = _cached_taifex_all_sessions()
+    if cached:
+        want = ceiling or cash
+        dates = [want] if want in cached else []
+        dates.extend(sorted(cached, reverse=True))
+        for d in dates:
+            if want and d > want:
+                continue
+            row = ((cached.get(d) or {}).get(want_sym) or {}).get("night")
+            if row and row.get("close"):
+                return row
+    return night if night and night.get("close") else None
 
 
 def _nearest_futures_daily(
@@ -1339,13 +1439,26 @@ def sync_futures_daily(
     *,
     backfill_days: int = 0,
 ) -> Dict[str, Any]:
-    """盤後寫入 TAIFEX 台指／電子近月日 K；抓取失敗不覆蓋舊列。"""
+    """盤後寫入 TAIFEX 台指／電子近月日 K；抓取失敗不覆蓋舊列。
+
+    除 fuse_end 現金日外，一併抓 futures_night_date_cap 標籤日：
+    16:30 前 fuse_end 仍是昨收，但今晨已結束的夜盤（官方 date＝今日）必須入庫，
+    否則早報／大盤會停在更舊夜盤。
+    """
     ensure_futures_daily_table(db_path)
     if not dates:
         from trading_calendar import fuse_end_trading_date
 
         dates = [fuse_end_trading_date()]
     want = {_norm_ymd(d) for d in dates if _norm_ymd(d)}
+    try:
+        from trading_calendar import futures_night_date_cap
+
+        night_cap = _norm_ymd(futures_night_date_cap())
+        if len(night_cap) == 8:
+            want.add(night_cap)
+    except Exception:
+        pass
     if backfill_days <= 0:
         conn = sqlite3.connect(db_path)
         try:
@@ -3100,13 +3213,12 @@ def analyze_taiwan_market(
     )
     futures = load_futures_daily(db_path, ref_date) or _nearest_futures_daily(db_path, ref_date)
     futures_date = futures.get("date") if futures else ref_date
-    futures_night = load_futures_night(db_path, ref_date) or resolve_futures_night(db_path, ref_date)
+    # 夜盤官方 date 可晚於現金 as_of 一日（或週五→週一）；resolve 會補歷史缺口。
+    futures_night = resolve_futures_night(db_path, ref_date)
     futures_te = load_futures_daily(db_path, ref_date, symbol="TE") or _nearest_futures_daily(
         db_path, ref_date, symbol="TE"
     )
-    futures_te_night = load_futures_night(db_path, ref_date, symbol="TE") or resolve_futures_night(
-        db_path, ref_date, symbol="TE"
-    )
+    futures_te_night = resolve_futures_night(db_path, ref_date, symbol="TE")
     spot_close = float(core.get("close") or 0)
     fut_close = float(futures.get("close") or 0) if futures else 0.0
     basis_pct = compute_basis_pct(spot_close, fut_close) if futures else None
