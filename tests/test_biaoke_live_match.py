@@ -7,6 +7,10 @@ from pathlib import Path
 
 
 def _mk_db(tmp_path: Path) -> str:
+    """近窗說法＋柱要以台北「今天」為準，不准寫死日（14 日窗一過就紅）。"""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
     db = str(tmp_path / "wayne_market.db")
     conn = sqlite3.connect(db)
     conn.executescript(
@@ -31,12 +35,16 @@ def _mk_db(tmp_path: Path) -> str:
         "就是空手不要再介入全新及穩懋，要去找低位階還在底部的 InP，"
         "當然聯亞是標配一股不賣。"
     )
+    # as_of＝台北昨；對齊原 fixture 相對峰日（相對 2026-10-08）
+    as_of_dt = datetime.now(ZoneInfo("Asia/Taipei")).date() - timedelta(days=1)
+    as_of = as_of_dt.strftime("%Y%m%d")
+    post_date = as_of_dt.strftime("%Y-%m-%d")
     # 主文＋自回：week_spoken 要有非 reply 根才串樓中樓
     conn.execute(
         "INSERT INTO biaoke_posts(id,date,time,text,kind) VALUES(?,?,?,?,?)",
         (
             "p-root",
-            "2026-10-08",
+            post_date,
             "10:00:00",
             "光通訊 InP 仍是主流，位階各自看。",
             "post",
@@ -44,11 +52,9 @@ def _mk_db(tmp_path: Path) -> str:
     )
     conn.execute(
         "INSERT INTO biaoke_posts(id,date,time,text,kind,parent) VALUES(?,?,?,?,?,?)",
-        ("p-inp", "2026-10-08", "13:42:00", body, "reply", "p-root"),
+        ("p-inp", post_date, "13:42:00", body, "reply", "p-root"),
     )
     # 官方柱：環宇／IET 離峰深；全新／穩懋近高；聯亞中離峰（標配不進去找）
-    from datetime import date, timedelta
-
     names = {
         "4991": "環宇-KY",
         "4971": "IET-KY",
@@ -56,23 +62,25 @@ def _mk_db(tmp_path: Path) -> str:
         "2455": "全新",
         "3105": "穩懋",
     }
-    # peak_day, peak_high, last_close；低檔區間讓 pos120 偏低
+    # (days_before_as_of, peak_high, last_close, base_ratio)
     specs = {
-        "4991": ("20260525", 900.0, 511.0, 0.45),
-        "4971": ("20260422", 955.0, 596.0, 0.50),
-        "3081": ("20260901", 3600.0, 2960.0, 0.80),
-        "2455": ("20261006", 613.0, 558.0, 0.90),
-        "3105": ("20260421", 634.0, 581.0, 0.90),
+        "4991": (136, 900.0, 511.0, 0.45),
+        "4971": (169, 955.0, 596.0, 0.50),
+        "3081": (37, 3600.0, 2960.0, 0.80),
+        "2455": (2, 613.0, 558.0, 0.90),
+        "3105": (170, 634.0, 581.0, 0.90),
     }
-    for sid, (peak_day, peak_h, last_c, base_ratio) in specs.items():
-        # 涵蓋 1/2～10/08，確保 as-of／峰日都寫進
+    start_dt = as_of_dt - timedelta(days=279)
+    for sid, (peak_ago, peak_h, last_c, base_ratio) in specs.items():
+        peak_day = (as_of_dt - timedelta(days=int(peak_ago))).strftime("%Y%m%d")
         for d in range(0, 280):
-            day_s = (date(2026, 1, 2) + timedelta(days=d)).strftime("%Y%m%d")
-            if day_s > "20261008":
+            day_dt = start_dt + timedelta(days=d)
+            if day_dt > as_of_dt:
                 break
+            day_s = day_dt.strftime("%Y%m%d")
             if day_s == peak_day:
                 h, lo, c = peak_h, peak_h * 0.92, peak_h * 0.96
-            elif day_s == "20261008":
+            elif day_s == as_of:
                 h, lo, c = last_c * 1.01, last_c * 0.99, last_c
             else:
                 c = last_c * float(base_ratio)
@@ -248,6 +256,9 @@ def test_advice_html_strips_no_chase_links_keeps_group(tmp_path):
 
 def test_digest_refresh_calls_live_match(tmp_path, monkeypatch):
     """按飆大彙整路徑會 refresh（預設自動化）。"""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
     from biaoke_digest import format_focus_oral
 
     called = {"n": 0}
@@ -258,8 +269,11 @@ def test_digest_refresh_calls_live_match(tmp_path, monkeypatch):
 
     monkeypatch.setattr("biaoke_live_match.refresh_live_match", _fake_refresh)
     db = _mk_db(tmp_path)
+    day = (datetime.now(ZoneInfo("Asia/Taipei")).date() - timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    )
     html = format_focus_oral(
-        [{"date": "2026-10-08", "time": "13:42", "text": "InP 低位階好好去研究"}],
+        [{"date": day, "time": "13:42", "text": "InP 低位階好好去研究"}],
         [],
         db_path=db,
     )
@@ -316,13 +330,19 @@ def test_sync_biaoke_inline_after_update_runs(tmp_path, monkeypatch):
 
 def test_focus_oral_inline_blue_and_plain(tmp_path):
     """圖文重點文內：聯亞藍、全新黑。"""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
     from biaoke_digest import format_focus_oral
 
     db = _mk_db(tmp_path)
+    day = (datetime.now(ZoneInfo("Asia/Taipei")).date() - timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    )
     html = format_focus_oral(
         [
             {
-                "date": "2026-10-08",
+                "date": day,
                 "time": "13:42",
                 "text": (
                     "1. 夜盤反彈，大盤還在整理。"
