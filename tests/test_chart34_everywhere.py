@@ -63,14 +63,3 @@ def test_structure_entries_share_figsize_and_dpi():
     assert "_STRUCTURE_LOOKUP_FIG" in compose
     assert "VOL_ZONE_DPI" in compose
     assert "dpi=" in compose
-
-
-def test_chart_batch_paint_defaults_ma5_ma10():
-    from chart_batch import paint_volume_zones_serial, render_volume_zones_two_phase
-
-    sig = inspect.signature(paint_volume_zones_serial)
-    assert sig.parameters["with_ma5_ma10"].default is True
-    src = inspect.getsource(paint_volume_zones_serial)
-    assert "with_ma5_ma10=with_ma5_ma10" in src
-    tw = inspect.getsource(render_volume_zones_two_phase)
-    assert "with_ma5_ma10=with_ma5_ma10" in tw

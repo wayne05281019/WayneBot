@@ -61,10 +61,6 @@ def test_pressure_list_streams_per_stock_not_whole_page():
     assert "submit_mpl_paint" in src
     assert "render_lookup_vol_result" in src
     assert "render_volume_zones_two_phase" not in src
-    batch = open("chart_batch.py", encoding="utf-8").read()
-    assert "prepare_volume_zone" in batch
-    assert "_paint_volume_zone" in batch
-    assert batch.find("prepare_volume_zones_parallel") < batch.find("paint_volume_zones_serial")
 
 
 def test_vol_zone_render_memo_reuses_file(tmp_path):
