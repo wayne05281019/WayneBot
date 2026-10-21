@@ -29,10 +29,17 @@ def sanchi_note_lines(*, plain: bool = False) -> List[str]:
 
 
 def sanchi_note_html() -> str:
-    """早報頭／剛脫離零副標用：斜體短行。"""
+    """查股／剛脫離零副標用：完整三尺斜體短行。"""
     from html import escape as html_escape
 
     return "\n".join(f"<i>{html_escape(x)}</i>" for x in SANCHI_LINES)
+
+
+def sanchi_morning_one_line_html() -> str:
+    """06:30 早報 Option B：三尺只留一行「早報＝昨收＋量閘」。"""
+    from html import escape as html_escape
+
+    return f"<i>{html_escape(SANCHI_LINE_MORNING)}</i>"
 
 
 def sanchi_note_plain() -> str:

@@ -4669,12 +4669,53 @@ def _brief_state_explain_lines(snap: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -> str:
+def format_taiwan_market_brief_html(
+    db_path: str,
+    as_of: Optional[str] = None,
+    *,
+    for_morning: bool = False,
+) -> str:
+    """加權研究全文；for_morning=True 時早報精簡（收／日漲跌／距月線＋最細夜盤）。
+
+    早報砍「對照說明」、隔日回測表、均線包、廣度等；夜盤開高低／口數仍留。
+    大盤鈕／盤後附註仍走完整版。
+    """
     from tg_layout import join_dashed, pack_phone_bits, wrap_phone_html_lines
 
     snap = analyze_taiwan_market(db_path, as_of)
     if not snap.get("ok"):
         return ""
+    night_lines = [
+        *wrap_phone_html_lines(
+            _format_futures_night_line(
+                snap.get("futures_night") or {},
+                snap.get("futures"),
+                spot_close=float(snap.get("close") or 0),
+            )
+            or ""
+        ),
+        *wrap_phone_html_lines(
+            _format_futures_night_line(
+                snap.get("futures_te_night") or {},
+                snap.get("futures_te"),
+                spot_close=0.0,
+                label="電子期夜盤",
+            )
+            or ""
+        ),
+    ]
+    if for_morning:
+        # Option B 文字①：加權收＋日漲跌＋距月線＋最仔細夜盤一版
+        nums = [
+            "＝＝台灣加權指數研究＝＝",
+            f"{_brief_lab('收盤')}　{_page_b(snap['close'])}",
+            *pack_phone_bits(
+                f"{_brief_lab('日')}　{_page_b(_fmt_signed_pct(snap.get('chg1_pct')))}",
+                f"{_brief_lab('距月線')}　{_page_b(_fmt_signed_pct(snap.get('vs_ma20_pct')))}",
+            ),
+            *night_lines,
+        ]
+        return "\n".join(x for x in nums if x)
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
     nums = [
         "＝＝台灣加權指數研究＝＝",
@@ -4694,23 +4735,7 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
             f"{_brief_lab('距年高')}　{_page_b(_fmt_signed_pct(snap.get('vs_high52_pct')))}",
         ),
         *wrap_phone_html_lines(_format_futures_line(snap) or ""),
-        *wrap_phone_html_lines(
-            _format_futures_night_line(
-                snap.get("futures_night") or {},
-                snap.get("futures"),
-                spot_close=float(snap.get("close") or 0),
-            )
-            or ""
-        ),
-        *wrap_phone_html_lines(
-            _format_futures_night_line(
-                snap.get("futures_te_night") or {},
-                snap.get("futures_te"),
-                spot_close=0.0,
-                label="電子期夜盤",
-            )
-            or ""
-        ),
+        *night_lines,
         _brief_lab("站上月線", kind="mi")
         + "　"
         + _page_b(f"{float(snap['breadth_above_ma20']):.1f}%")

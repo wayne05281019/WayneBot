@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""06:30 早報：一早提醒＋海選大盤狀況＋加權指數研究合成開頭一塊（去重）。"""
+"""06:30 早報 Option B：文字①環境＋最細夜盤＋加權精簡；文字②黃金買點＋紅箭。
+
+圖（美股／台指電子盤／恐懼貪婪）仍由 main_runner._push_morning_session_cards 另寄。
+輪動／月營收／雷達不進早報主輪。買訊公式不改。
+"""
 from __future__ import annotations
 
 import re
@@ -27,6 +31,11 @@ def _outlook_from_screening(screening: Optional[Dict[str, Any]]) -> str:
     return ""
 
 
+_DROP_ALERT_TAIL = (
+    "不是從佈局名單刪掉，也不是叫你現在下單。",
+)
+
+
 def _early_alert_supplement_html(
     us_snap: Optional[Dict[str, Any]], *, db_path: str, outlook_html: str
 ) -> str:
@@ -48,6 +57,11 @@ def _early_alert_supplement_html(
         b = block.strip()
         if not b:
             continue
+        # 早報砍冗尾：併進動作句即可，不另貼長免責
+        if _DROP_ALERT_TAIL in _plain(b):
+            b = b.replace(_DROP_ALERT_TAIL, "").rstrip()
+            if not b.strip():
+                continue
         p = _plain(b)
         if "一早提醒" in p:
             keep.append(b)
@@ -69,23 +83,38 @@ def _early_alert_supplement_html(
     return join_sections(*keep)
 
 
-def _tw_brief_drop_outlook_overlap(tw_brief: str, outlook_html: str) -> str:
-    """加權研究保留完整數字；與大盤狀況重複的夜盤／現貨句拿掉。"""
-    if not tw_brief.strip() or not outlook_html.strip():
-        return tw_brief.strip()
-    op = _plain(outlook_html)
+def _outlook_drop_short_nights(outlook: str, tw_brief: str) -> str:
+    """夜盤只留加權研究詳細版；大盤狀況裡的短夜盤句（含比日盤／比現貨）拿掉。"""
+    if not outlook.strip():
+        return ""
+    if not tw_brief.strip():
+        return outlook.strip()
+    bp = _plain(tw_brief)
+    has_tx = "台指期夜盤" in bp
+    has_te = "電子期夜盤" in bp
+    if not has_tx and not has_te:
+        return outlook.strip()
     out_lines: List[str] = []
-    for ln in tw_brief.split("\n"):
-        pl = _plain(ln)
-        if not pl.strip():
+    skip_follow = False
+    for ln in outlook.split("\n"):
+        pl = _plain(ln).strip()
+        if not pl:
             out_lines.append(ln)
             continue
-        if "台指期夜盤" in pl and "台指期夜盤" in op:
+        if has_tx and "台指期夜盤" in pl:
+            skip_follow = True
             continue
-        if "電子期夜盤" in pl and "電子期夜盤" in op:
+        if has_te and "電子期夜盤" in pl:
+            skip_follow = True
             continue
-        if pl.startswith("台指期　") and "台指期" in op and "夜盤" not in pl:
+        if skip_follow and (
+            pl.startswith("比日盤")
+            or pl.startswith("比現貨")
+            or "比日盤收" in pl
+            or "比現貨" in pl
+        ):
             continue
+        skip_follow = False
         out_lines.append(ln)
     return "\n".join(out_lines).strip()
 
@@ -121,7 +150,7 @@ def build_morning_opening_html(
     *,
     us_snap: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """合成海選第一則前的開頭（提醒＋大盤狀況＋加權研究）。"""
+    """文字①：提醒＋大盤狀況（去短夜盤）＋加權精簡（最細夜盤）＋環境／融資。"""
     outlook = _outlook_from_screening(screening)
     observe = _foreign_sell_observe_line(db_path, as_of or "")
     margin = _prev_day_margin_line(db_path, as_of or "")
@@ -135,10 +164,13 @@ def build_morning_opening_html(
     try:
         from taiwan_market import format_taiwan_market_brief_html
 
-        tw_brief = format_taiwan_market_brief_html(db_path, as_of or "")
+        tw_brief = format_taiwan_market_brief_html(
+            db_path, as_of or "", for_morning=True
+        )
     except Exception:
         tw_brief = ""
-    tw_brief = _tw_brief_drop_outlook_overlap(tw_brief, outlook)
+    # 去重：留詳細夜盤（tw_brief），砍 outlook 短版
+    outlook = _outlook_drop_short_nights(outlook, tw_brief)
     early = _early_alert_supplement_html(us_snap, db_path=db_path, outlook_html=outlook)
     blocks = [b for b in (early, outlook, tw_brief) if b and b.strip()]
     if not blocks:
@@ -151,7 +183,7 @@ def build_morning_opening_html(
 def apply_morning_opening_to_screening(
     screening: Optional[Dict[str, Any]], opening_html: str
 ) -> Optional[Dict[str, Any]]:
-    """把合成開頭寫回 payload 第一則（大盤狀況）。"""
+    """把合成開頭寫回 payload 第一則（文字①），再把兩桶海選合成文字②。"""
     if not screening or not opening_html.strip():
         return screening
     out = dict(screening)
@@ -160,8 +192,8 @@ def apply_morning_opening_to_screening(
     for part in payload:
         if str(part.get("mark_key") or "") == "market":
             part["html"] = opening_html
-            part["mark_label"] = "早報彙整"
-            part["mark_hint"] = "提醒＋大盤＋加權研究"
+            part["mark_label"] = "早報環境"
+            part["mark_hint"] = "環境＋夜盤＋加權精簡"
             replaced = True
             break
     if not replaced:
@@ -171,14 +203,87 @@ def apply_morning_opening_to_screening(
                 "mark_key": "market",
                 "screen_pack_id": "",
                 "line_pack_id": "",
-                "mark_label": "早報彙整",
-                "mark_hint": "提醒＋大盤＋加權研究",
+                "mark_label": "早報環境",
+                "mark_hint": "環境＋夜盤＋加權精簡",
                 "html": opening_html,
                 "picks": [],
             },
         )
     out["payload"] = payload
+    out = collapse_morning_pick_parts(out)
     # message 供無 payload 的 fallback
-    rest = [p.get("html") for p in payload if p.get("mark_key") != "market"]
+    payload = list(out.get("payload") or [])
+    rest = [p.get("html") for p in payload if str(p.get("mark_key") or "") != "market"]
     out["message"] = opening_html + "\n\n" + "\n\n".join(x for x in rest if x)
+    return out
+
+
+def collapse_morning_pick_parts(
+    screening: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Option B 文字②：黃金買點＋紅箭確認合成一則（超長仍由 Telegram 切塊）。"""
+    if not screening:
+        return screening
+    out = dict(screening)
+    payload = [dict(p) for p in (out.get("payload") or []) if isinstance(p, dict)]
+    market: Optional[Dict[str, Any]] = None
+    pick_parts: List[Dict[str, Any]] = []
+    other: List[Dict[str, Any]] = []
+    for part in payload:
+        key = str(part.get("mark_key") or "")
+        if key == "market":
+            market = part
+        elif key in ("leave_zero", "ma60_lower"):
+            pick_parts.append(part)
+        else:
+            other.append(part)
+    if len(pick_parts) <= 1:
+        out["payload"] = payload
+        return out
+    bodies = [str(p.get("html") or "").strip() for p in pick_parts if str(p.get("html") or "").strip()]
+    if not bodies:
+        out["payload"] = payload
+        return out
+    try:
+        from sanchi_clocks import sanchi_morning_one_line_html
+
+        one = sanchi_morning_one_line_html()
+    except Exception:
+        one = ""
+    # 各桶若已貼過完整三尺，先剝掉再改貼一行
+    cleaned: List[str] = []
+    for body in bodies:
+        lines = body.split("\n")
+        kept = [
+            ln
+            for ln in lines
+            if "早報＝昨收" not in _plain(ln)
+            and "查股藍▲" not in _plain(ln)
+            and "剛脫離零＝" not in _plain(ln)
+            and "圖上有箭" not in _plain(ln)
+        ]
+        cleaned.append("\n".join(kept).strip())
+    cleaned = [c for c in cleaned if c]
+    joined = join_sections(*cleaned, sep=f"\n{DASH_LINE}\n") if len(cleaned) > 1 else (cleaned[0] if cleaned else "")
+    if one and one not in joined:
+        joined = f"{one}\n{joined}" if joined else one
+    picks: List[Any] = []
+    for p in pick_parts:
+        for row in p.get("picks") or []:
+            picks.append(row)
+    combined = {
+        "mark_key": "morning_picks",
+        "screen_pack_id": "leave_zero",
+        "line_pack_id": "leave_zero",
+        "mark_label": "海選",
+        "mark_hint": "黃金買點＋紅箭確認",
+        "html": joined,
+        "picks": picks,
+    }
+    new_payload: List[Dict[str, Any]] = []
+    if market is not None:
+        new_payload.append(market)
+    new_payload.append(combined)
+    new_payload.extend(other)
+    out["payload"] = new_payload
     return out
