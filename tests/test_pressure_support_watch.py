@@ -29,9 +29,10 @@ def _zone(hi=100.0, lo=90.0, date="20260101", volume=10000):
 
 
 def test_pressure_hub_lead_is_plain_observation():
-    assert PRESSURE_HUB_LEAD == "接大量壓力區框選。這三標籤只是觀察。"
+    assert PRESSURE_HUB_LEAD == "三標籤只觀察，不是買訊。"
     assert "不准當進場" not in PRESSURE_HUB_LEAD
     assert "黃金買點" not in PRESSURE_HUB_LEAD
+    assert "接大量壓力區框選" not in PRESSURE_HUB_LEAD
     assert tag_label(TAG_SIDEWAYS) == "壓力橫盤"
     assert tag_label(TAG_TEST_PRESS) == "測壓未破"
     assert tag_label(TAG_STAND_SUPPORT) == "剛站上撐"
