@@ -45,16 +45,13 @@ from winrate_ai_priority import is_winrate_priority  # noqa: E402
 
 # 複用第 1 步底線腳本工具（同 repo）
 from multi_track_baseline_backtest import (  # noqa: E402
-    HORIZONS,
     dedup_indices,
-    forward_stats,
     holdout_cut,
     load_stock_df,
     load_twii,
     load_universe,
     stabilize_fire_indices,
     summarize_rets,
-    twii_forward,
 )
 
 TP = ZoneInfo("Asia/Taipei")
@@ -395,56 +392,78 @@ CANDIDATE_SPECS: List[Tuple[str, Tuple[str, ...], Callable[[pd.DataFrame, int], 
 ]
 
 
-def score_entries(
+# 第 2 步閘門／總表主看這幾個天期（全算會拖太久；底線已在第 1 步報齊）
+STEP2_HORIZONS: Tuple[int, ...] = (1, 5, 20)
+
+
+def _fast_forward(
+    df: pd.DataFrame, i_entry: int, entry_px: float, horizons: Sequence[int]
+) -> Dict[int, Optional[float]]:
+    """進場日 i_entry 開盤進場後，各天期收盤報酬（不做回撤／不加權）。"""
+    out: Dict[int, Optional[float]] = {h: None for h in horizons}
+    if entry_px is None or entry_px <= 0:
+        return out
+    n = len(df)
+    closes = df["close"].to_numpy(dtype=float, copy=False)
+    for h in horizons:
+        j = i_entry + h - 1  # +1＝進場當日收
+        if j < 0 or j >= n:
+            continue
+        cl = float(closes[j])
+        if cl == cl and cl > 0:
+            out[int(h)] = (cl - entry_px) / entry_px
+    return out
+
+
+def score_entries_split(
     entries: Sequence[Entry],
     frames: Dict[str, pd.DataFrame],
-    twii: Dict[str, Dict[str, float]],
-    *,
-    holdout_only: Optional[bool] = None,
-) -> Dict[str, Any]:
-    """依 track×cand×market 彙總；holdout_only True/False 切留白／訓練窗。"""
-    buckets: Dict[Tuple[str, str, str], List[Entry]] = defaultdict(list)
-    for e in entries:
-        if holdout_only is True and not e.holdout:
-            continue
-        if holdout_only is False and e.holdout:
-            continue
-        buckets[(e.track, e.cand, e.market)].append(e)
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    """一次走完全部 entries，同時彙出全樣／訓練／留白。"""
+    # key → {h → list}; days set; n_events
+    Acc = Dict[str, Any]
 
-    out: Dict[str, Any] = {}
-    for key, evs in sorted(buckets.items()):
-        track, cand, market = key
-        rows: Dict[str, List[float]] = defaultdict(list)
-        rows_ex: Dict[str, List[float]] = defaultdict(list)
-        n_days = len({e.date_sig for e in evs})
-        for e in evs:
-            df = frames.get(e.sid)
-            if df is None or e.i_entry >= len(df) or e.entry_px <= 0:
-                continue
-            # forward_stats 以訊號日 i 為錨、進場＝i+1 open；
-            # 此處進場已在 i_entry，改用「假訊號日＝i_entry-1」對齊同一函式語意
-            i_fake = e.i_entry - 1
-            if i_fake < 0:
-                continue
-            rets, _, done = forward_stats(df, i_fake, entry_px=float(e.entry_px))
-            days = [str(x) for x in df["date"].tolist()]
-            for h in HORIZONS:
-                if not done.get(h) or rets.get(h) is None:
-                    continue
-                r = float(rets[h])
-                rows[str(h)].append(r)
-                tx = twii_forward(twii, days, i_fake, h, entry_open=True)
-                if tx is not None:
-                    rows_ex[str(h)].append(r - float(tx))
-        out[f"{track}:{cand}:{market}"] = {
-            "n_events": len(evs),
-            "n_days": n_days,
-            "horizons": {h: summarize_rets(rows[str(h)]) for h in map(str, HORIZONS)},
-            "excess_vs_twii": {
-                h: summarize_rets(rows_ex[str(h)]) for h in map(str, HORIZONS)
-            },
+    def _new_acc() -> Acc:
+        return {
+            "n_events": 0,
+            "days": set(),
+            "rets": defaultdict(list),
         }
-    return out
+
+    full_acc: Dict[str, Acc] = defaultdict(_new_acc)
+    train_acc: Dict[str, Acc] = defaultdict(_new_acc)
+    ho_acc: Dict[str, Acc] = defaultdict(_new_acc)
+
+    for idx, e in enumerate(entries):
+        if (idx + 1) % 200000 == 0:
+            print(f"[score] {idx+1}/{len(entries)}", flush=True)
+        df = frames.get(e.sid)
+        if df is None or e.i_entry >= len(df) or e.entry_px <= 0:
+            continue
+        rets = _fast_forward(df, e.i_entry, float(e.entry_px), STEP2_HORIZONS)
+        key = f"{e.track}:{e.cand}:{e.market}"
+        targets = [full_acc[key]]
+        targets.append(ho_acc[key] if e.holdout else train_acc[key])
+        for acc in targets:
+            acc["n_events"] += 1
+            acc["days"].add(e.date_sig)
+            for h, r in rets.items():
+                if r is not None:
+                    acc["rets"][str(h)].append(float(r))
+
+    def _finalize(acc_map: Dict[str, Acc]) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for key, acc in acc_map.items():
+            out[key] = {
+                "n_events": int(acc["n_events"]),
+                "n_days": len(acc["days"]),
+                "horizons": {
+                    h: summarize_rets(acc["rets"][str(h)]) for h in map(str, STEP2_HORIZONS)
+                },
+            }
+        return out
+
+    return _finalize(full_acc), _finalize(train_acc), _finalize(ho_acc)
 
 
 def _cell_h(cell: Optional[Dict[str, Any]], h: int = PRIMARY_H) -> Tuple[Optional[float], Optional[float], int, int]:
@@ -554,7 +573,7 @@ def verdict_for(
 def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
     t0 = time.time()
     universe = load_universe(db)
-    twii = load_twii(db)
+    _ = load_twii(db)  # 保留載入核對庫完整；第 2 步閘門不重算超額（見第 1 步底線）
     con = sqlite3.connect(db)
     try:
         tw_days = [
@@ -657,9 +676,7 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
             break
 
     print(f"[score] entries={len(entries)}", flush=True)
-    full = score_entries(entries, frames, twii, holdout_only=None)
-    train = score_entries(entries, frames, twii, holdout_only=False)
-    holdout = score_entries(entries, frames, twii, holdout_only=True)
+    full, train, holdout = score_entries_split(entries, frames)
 
     verdicts: Dict[str, Any] = {}
     for name, tracks, _ in CANDIDATE_SPECS:
