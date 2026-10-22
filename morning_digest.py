@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """06:30 早報 Option B：文字①環境＋最細夜盤＋加權精簡；文字②黃金買點＋紅箭。
 
-圖（美股／台指電子盤／恐懼貪婪）仍由 main_runner._push_morning_session_cards 另寄。
+圖（美股／台指電子盤／恐懼貪婪）由 main_runner._push_morning_session_cards 先寄，再寄文字。
 輪動／月營收／雷達不進早報主輪。買訊公式不改。
 """
 from __future__ import annotations

@@ -1110,8 +1110,8 @@ class MainRunner:
         """寄出海選本文。回傳是否每個收件人都被 Telegram 接受。
 
         算出名單 ≠ 已寄到。401／空 token 必須回 False，否則 skip_if_done 會把失敗當成已完成。
-        morning_digest：06:30 Option B＝文字①環境／夜盤／加權精簡＋文字②兩桶海選；
-        圖（美股／電子盤／恐懼）另寄；不再另寄加權研究／輪動／月營收／雷達。
+        morning_digest：06:30 Option B＝每人先附圖（美股／電子盤／恐懼）再文字①環境／夜盤／加權精簡＋文字②兩桶海選；
+        不再另寄加權研究／輪動／月營收／雷達。
         """
         if morning_digest and screening:
             try:
@@ -1136,24 +1136,25 @@ class MainRunner:
                     sent_n = 0
                     for cid in dests:
                         try:
+                            # 同一人一輪：先圖後文，兩人白名單同一套；不拆成無關推播。
+                            if morning_digest:
+                                self._push_morning_session_cards(
+                                    cid, us_snap=us_snap
+                                )
                             if self.bot.send_screening_report(screening, chat_id=cid) is False:
                                 logger.warning("海選 Telegram 未接受 dest_len=%s", len(str(cid)))
                             else:
                                 sent_n += 1
-                                if morning_digest:
-                                    self._push_morning_session_cards(
-                                        cid, us_snap=us_snap
-                                    )
                         except Exception as e:
                             logger.warning("海選寄出失敗 dest_len=%s: %s", len(str(cid)), e)
                     logger.info("海選寄出成功 %d/%d 人", sent_n, len(dests))
                     sent_ok = sent_n == len(dests) and sent_n > 0
                 else:
-                    sent_ok = self.bot.send_screening_report(screening) is not False
-                    if sent_ok and morning_digest:
+                    if morning_digest:
                         self._push_morning_session_cards(
                             str(getattr(self, "chat_id", None) or ""), us_snap=us_snap
                         )
+                    sent_ok = self.bot.send_screening_report(screening) is not False
             except Exception as e:
                 logger.warning("分類戰報推播失敗，改送長文: %s", e)
                 self._broadcast_family(
@@ -1246,7 +1247,7 @@ class MainRunner:
     def _push_morning_session_cards(
         self, chat_id: str, *, us_snap: Optional[Dict[str, Any]] = None
     ) -> None:
-        """06:30 早報文字後附美股／台指電子盤／恐懼貪婪圖（兩支話筒同一套）。"""
+        """06:30 早報附圖：美股／台指電子盤／恐懼貪婪（兩支話筒同一套；呼叫端先圖後文）。"""
         dest = str(chat_id or "").strip()
         bot = getattr(self, "bot", None)
         if not dest or bot is None:

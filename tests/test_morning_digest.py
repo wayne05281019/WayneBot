@@ -211,20 +211,25 @@ def test_push_screening_morning_skips_separate_brief(monkeypatch):
 
 
 def test_push_screening_morning_keeps_session_cards(monkeypatch):
-    """圖必留：美股／電子盤／恐懼貪婪仍走 _push_morning_session_cards。"""
+    """圖必留且先於文字：美股／電子盤／恐懼貪婪走 _push_morning_session_cards。"""
     from main_runner import MainRunner
 
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = ":memory:"
     runner.today_str = "20261013"
     runner.chat_id = "9001"
-    cards = []
+    order = []
+
+    def _send_report(_s, _x, chat_id=None):
+        order.append(("text", chat_id))
+        return True
+
     runner.bot = type(
         "B",
         (),
         {
-            "send_screening_report": lambda _s, _x, chat_id=None: True,
-            "send_market_session_cards_to_chat": lambda *a, **k: cards.append(a),
+            "send_screening_report": _send_report,
+            "send_market_session_cards_to_chat": lambda *a, **k: None,
         },
     )()
     runner.send_telegram_message = lambda *a, **k: True
@@ -244,7 +249,7 @@ def test_push_screening_morning_keeps_session_cards(monkeypatch):
     )
     monkeypatch.setattr(
         "main_runner.MainRunner._push_morning_session_cards",
-        lambda self, cid, us_snap=None: cards.append(cid),
+        lambda self, cid, us_snap=None: order.append(("cards", cid)),
     )
     screening = {
         "status": "success",
@@ -255,4 +260,95 @@ def test_push_screening_morning_keeps_session_cards(monkeypatch):
     assert runner._push_screening(
         screening, as_of="20261010", morning_digest=True, pipeline_run_date="screen-20261010"
     )
-    assert cards == ["9001"]
+    assert order == [("cards", "9001"), ("text", "9001")]
+
+
+def test_push_screening_morning_cards_before_text_both_family(monkeypatch):
+    """兩人白名單：每人同一輪先圖後文，不交叉亂序。"""
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = ":memory:"
+    runner.today_str = "20261013"
+    runner.chat_id = "9001"
+    order = []
+
+    def _send_report(_s, _x, chat_id=None):
+        order.append(("text", chat_id))
+        return True
+
+    runner.bot = type("B", (), {"send_screening_report": _send_report})()
+    runner.send_telegram_message = lambda *a, **k: True
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._family_chat_ids = lambda: ["9001", "8772209416"]
+    runner._mark_pipeline = lambda *a, **k: None
+    monkeypatch.setattr("money_flow.format_sector_rotation_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("fundamentals.format_hot_revenue_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False})
+    monkeypatch.setattr("screen_review.score_screen_picks", lambda *_a, **_k: None)
+    monkeypatch.setattr("screen_review.score_ai_fills", lambda *_a, **_k: None)
+    monkeypatch.setattr("screen_review.adapt_bucket_weights", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "morning_digest.build_morning_opening_html",
+        lambda *_a, **_k: "環境",
+    )
+    monkeypatch.setattr(
+        "main_runner.MainRunner._push_morning_session_cards",
+        lambda self, cid, us_snap=None: order.append(("cards", cid)),
+    )
+    screening = {
+        "status": "success",
+        "payload": [{"mark_key": "market", "html": "大盤", "picks": []}],
+        "message": "x",
+        "results": {},
+    }
+    assert runner._push_screening(
+        screening, as_of="20261010", morning_digest=True, pipeline_run_date="screen-20261010"
+    )
+    assert order == [
+        ("cards", "9001"),
+        ("text", "9001"),
+        ("cards", "8772209416"),
+        ("text", "8772209416"),
+    ]
+
+
+def test_push_screening_non_morning_skips_session_cards(monkeypatch):
+    """非早報路徑不寄大盤附圖。"""
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = ":memory:"
+    runner.today_str = "20261013"
+    runner.chat_id = "9001"
+    cards = []
+    runner.bot = type(
+        "B",
+        (),
+        {"send_screening_report": lambda _s, _x, chat_id=None: True},
+    )()
+    runner.send_telegram_message = lambda *a, **k: True
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._family_chat_ids = lambda: ["9001"]
+    runner._mark_pipeline = lambda *a, **k: None
+    monkeypatch.setattr("money_flow.format_sector_rotation_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("fundamentals.format_hot_revenue_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("taiwan_market.format_taiwan_market_brief_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False})
+    monkeypatch.setattr("screen_review.score_screen_picks", lambda *_a, **_k: None)
+    monkeypatch.setattr("screen_review.score_ai_fills", lambda *_a, **_k: None)
+    monkeypatch.setattr("screen_review.adapt_bucket_weights", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "main_runner.MainRunner._push_morning_session_cards",
+        lambda self, cid, us_snap=None: cards.append(cid),
+    )
+    screening = {
+        "status": "success",
+        "payload": [{"mark_key": "market", "html": "大盤", "picks": []}],
+        "message": "x",
+        "results": {},
+    }
+    assert runner._push_screening(screening, as_of="20261010", morning_digest=False)
+    assert cards == []
