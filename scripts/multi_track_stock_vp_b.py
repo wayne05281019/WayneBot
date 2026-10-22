@@ -801,65 +801,146 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
         if smoke and len(entries) > 8000:
             break
 
-    # 事件掃描：B3／B6／B10／隨機對照（全庫幀）
+    # 事件掃描：B3／B6／B10（每檔先算陣列；進度每 100 檔）
     print("[events] B3/B6/B10…", flush=True)
     twii_dates = sorted(twii.keys()) if twii else []
-    for sid, df in frames.items():
-        market = universe[sid]["market"]
-        hf = holdout_from.get(market, "")
+    frame_items = list(frames.items())
+    for fi, (sid, df) in enumerate(frame_items):
+        if (fi + 1) % 100 == 0:
+            print(
+                f"[events] {fi+1}/{len(frame_items)} fwd_n={sum(len(v) for v in event_fwd.values())}",
+                flush=True,
+            )
         n = len(df)
+        if n < 80:
+            continue
+        closes = df["close"].to_numpy(dtype=float, copy=False)
+        highs = df["high"].to_numpy(dtype=float, copy=False)
+        lows = df["low"].to_numpy(dtype=float, copy=False)
+        opens = df["open"].to_numpy(dtype=float, copy=False)
+        vols = df["volume"].to_numpy(dtype=float, copy=False)
+        amps = highs - lows
+        # 預先 rolling 90 分位（量／振幅）供 B10
+        vol_p90 = np.full(n, np.nan)
+        amp_p90 = np.full(n, np.nan)
+        look = 90
+        for i in range(look, n):
+            vwin = vols[i - look : i]
+            awin = amps[i - look : i]
+            vwin = vwin[np.isfinite(vwin) & (vwin > 0)]
+            awin = awin[np.isfinite(awin) & (awin > 0)]
+            if len(vwin) >= 30:
+                vol_p90[i] = np.percentile(vwin, 90)
+            if len(awin) >= 30:
+                amp_p90[i] = np.percentile(awin, 90)
+
+        # 連漲 streak（收＞昨收）
+        up = np.zeros(n, dtype=np.int32)
+        for i in range(1, n):
+            if closes[i] > closes[i - 1]:
+                up[i] = up[i - 1] + 1
+        # 近 60 日報酬 std（門檻）
+        rets = np.zeros(n)
+        rets[1:] = np.where(closes[:-1] > 0, (closes[1:] - closes[:-1]) / closes[:-1], 0.0)
+        # 低點下移連陰完成點（B6）
+        down_close = np.zeros(n, dtype=bool)
+        lower_low = np.zeros(n, dtype=bool)
+        down_close[1:] = closes[1:] < closes[:-1]
+        lower_low[1:] = lows[1:] < lows[:-1]
+
+        def push_event_at(i: int, tag: str) -> None:
+            px = float(opens[i + 1]) if i + 1 < n else 0.0
+            if not (px > 0):
+                return
+            rr = _fast_forward(df, i + 1, px, (1, 5, 20))
+            for h, r in rr.items():
+                if r is not None:
+                    event_fwd[f"{tag}_h{h}"].append(float(r))
+            dd = _path_max_dd(df, i + 1, px, 5)
+            if dd is not None:
+                event_dd[f"{tag}_dd5"].append(dd)
+
         for i in range(30, n - 3):
-            d = str(df["date"].iloc[i])
-            holdout = bool(hf and d >= hf)
-            px = _f(df["open"].iloc[i + 1]) if i + 1 < n else None
-            if px is None or px <= 0:
-                continue
-
-            def push_event(tag: str) -> None:
-                # 事件形只進前向統計（不當買訊 Entry，避免全庫日掃爆量）
-                rr = _fast_forward(df, i + 1, float(px), (1, 5, 20))
-                for h, r in rr.items():
-                    if r is not None:
-                        event_fwd[f"{tag}_h{h}"].append(float(r))
-                dd = _path_max_dd(df, i + 1, float(px), 5)
-                if dd is not None:
-                    event_dd[f"{tag}_dd5"].append(dd)
-
-            if b3_divergence_at(df, i, n_up=5):
-                push_event("B3_div_n5")
-            if b3_divergence_at(df, i, n_up=8):
-                push_event("B3_div_n8")
-            if b3_false_positive_at(df, i):
-                push_event("B3_false_pos")
-
-            if b10_key_bar(df, i, look=90):
-                push_event("B10_all")
+            # B10
+            if (
+                np.isfinite(vol_p90[i])
+                and np.isfinite(amp_p90[i])
+                and amps[i] >= amp_p90[i]
+                and vols[i] >= vol_p90[i]
+                and amps[i] > 0
+                and vols[i] > 0
+            ):
+                push_event_at(i, "B10_all")
                 if r1e1_at(df, i):
-                    push_event("B10_cap_r1e")
+                    push_event_at(i, "B10_cap_r1e")
                 else:
-                    push_event("B10_minus_r1e")
+                    push_event_at(i, "B10_minus_r1e")
 
+            # B3：攻擊段末＋價新高量縮
+            for n_up, tag in ((5, "B3_div_n5"), (8, "B3_div_n8")):
+                if up[i] < n_up:
+                    continue
+                start = i - int(up[i])
+                if start < 1 or closes[start] <= 0:
+                    continue
+                gain = (closes[i] - closes[start]) / closes[start]
+                lo = max(1, i - 60)
+                thr = float(np.std(rets[lo : i + 1])) * float(np.sqrt(n_up))
+                if thr <= 0 or gain < thr:
+                    continue
+                seg_hi = float(np.nanmax(highs[start : i + 1]))
+                if not (highs[i] >= seg_hi - 1e-9):
+                    continue
+                seg_v = vols[start : i + 1]
+                seg_v = seg_v[np.isfinite(seg_v) & (seg_v > 0)]
+                if len(seg_v) < 2:
+                    continue
+                vmax = float(seg_v.max())
+                vmed = float(np.median(seg_v))
+                if vols[i] <= vmax * 0.6 or vols[i] <= vmed:
+                    push_event_at(i, tag)
+
+            # B3 假陽性：每 3 日抽一（非攻擊）
+            if i % 3 == 0 and up[i] < 5:
+                lo = max(0, i - 20)
+                prev_hi = float(np.nanmax(highs[lo:i])) if i > lo else 0.0
+                if highs[i] >= prev_hi and prev_hi > 0:
+                    med = float(np.median(vols[lo:i][vols[lo:i] > 0])) if i > lo else 0.0
+                    if med > 0 and vols[i] < med:
+                        push_event_at(i, "B3_false_pos")
+
+            # B6 結構完成點
             for n_key, nn in (("n5", 5), ("n8", 8)):
-                # 只在結構「剛滿 N 日」的完成點計一次（避免連陰段天天重複）
-                if not bear_structure_at(df, i, n=nn):
+                if i < nn:
                     continue
-                if i > nn and bear_structure_at(df, i - 1, n=nn):
+                dc = int(down_close[i - nn + 1 : i + 1].sum())
+                ll = int(lower_low[i - nn + 1 : i + 1].sum())
+                if not (dc >= nn or ll >= nn):
                     continue
+                # 前一日尚不成結構
+                if i > nn:
+                    dc0 = int(down_close[i - nn : i].sum())
+                    ll0 = int(lower_low[i - nn : i].sum())
+                    if dc0 >= nn or ll0 >= nn:
+                        continue
                 b6_stats[n_key]["struct"] += 1
-                hit = sharp_v_hit(df, i, n=nn, within=3)
+                hi = float(np.nanmax(highs[i - nn + 1 : i + 1]))
+                hit = False
+                for j in range(i + 1, min(n, i + 4)):
+                    if closes[j] >= hi:
+                        hit = True
+                        break
                 if hit:
                     b6_stats[n_key]["v_hit"] += 1
-                    push_event(f"B6_v_ok_{n_key}")
+                    push_event_at(i, f"B6_v_ok_{n_key}")
                 else:
-                    push_event(f"B6_v_fail_{n_key}")
-                if n > 40:
-                    ri = rng.randint(30, n - 4)
-                    b6_stats[n_key]["rand_n"] += 1
-                    if sharp_v_hit(df, ri, n=nn, within=3):
-                        b6_stats[n_key]["rand_hit"] += 1
+                    push_event_at(i, f"B6_v_fail_{n_key}")
+                ri = rng.randint(30, n - 4)
+                b6_stats[n_key]["rand_n"] += 1
+                hi_r = float(np.nanmax(highs[max(0, ri - nn + 1) : ri + 1]))
+                if any(closes[j] >= hi_r for j in range(ri + 1, min(n, ri + 4))):
+                    b6_stats[n_key]["rand_hit"] += 1
 
-            if smoke and sum(len(v) for v in event_fwd.values()) > 400:
-                break
         if smoke and sum(len(v) for v in event_fwd.values()) > 400:
             break
 
@@ -950,17 +1031,21 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
             "rand_hit_rate": (st["rand_hit"] / st["rand_n"]) if st["rand_n"] else None,
         }
 
-    # 候選路徑回撤摘要（相對 baseline 的附加欄）
+    # 候選路徑回撤摘要（每鍵最多抽 8000，避免 70 萬筆全算）
     dd_by_cand: Dict[str, List[float]] = defaultdict(list)
+    dd_cap = 8000
     for e in entries:
         if e.cand == "baseline" or e.track not in PRICE_TRACKS:
+            continue
+        key = f"{e.track}:{e.cand}:{e.market}"
+        if len(dd_by_cand[key]) >= dd_cap:
             continue
         df = frames.get(e.sid)
         if df is None:
             continue
         dd = _path_max_dd(df, e.i_entry, e.entry_px, 5)
         if dd is not None:
-            dd_by_cand[f"{e.track}:{e.cand}:{e.market}"].append(dd)
+            dd_by_cand[key].append(dd)
     dd_summary = {k: summarize_rets(v) for k, v in dd_by_cand.items()}
 
     result = {
