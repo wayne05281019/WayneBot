@@ -405,11 +405,356 @@ def _regular_settlement(session_ymd: str, month: str) -> Optional[float]:
     return None
 
 
+def _evening_ymd_for_night_label(night_ymd: str) -> str:
+    """futures_daily 夜盤 date＝結束晨標籤 → 對應夜盤起日（15:00 那曆日的開市日）。"""
+    ymd = str(night_ymd or "").replace("-", "").replace("/", "")[:8]
+    if len(ymd) != 8:
+        return ""
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        probe = (datetime.strptime(ymd, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+        return last_open_calendar_day_on_or_before(probe)
+    except Exception:
+        return (datetime.strptime(ymd, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+
+
+def _tx_night_minute_rows(db_path: str, evening_ymd: str) -> List[Dict[str, Any]]:
+    """庫內 TX 15 分柱：夜盤 15:00→隔日 05:00。只回官方已存柱。"""
+    import sqlite3
+
+    eve = str(evening_ymd or "").replace("-", "")[:8]
+    if len(eve) != 8 or not db_path:
+        return []
+    nxt = _next_ymd(eve)
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT ts, o, h, l, c, v FROM minute_bars
+                WHERE stock_id='TX' AND interval='15'
+                  AND (
+                    (ts >= ? AND ts <= ?)
+                    OR (ts >= ? AND ts <= ?)
+                  )
+                ORDER BY ts
+                """,
+                (eve + "1500", eve + "2345", nxt + "0000", nxt + "0459"),
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        logger.debug("庫內 TX 夜盤分 K 讀不到 %s", eve, exc_info=True)
+        return []
+    out: List[Dict[str, Any]] = []
+    for ts, _o, h, l, c, v in rows:
+        try:
+            close = float(c)
+            if close <= 0:
+                continue
+            out.append(
+                {
+                    "t": str(ts),
+                    "h": float(h or close),
+                    "l": float(l or close),
+                    "c": close,
+                    "v": float(v or 0),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def build_tx_night_card_from_minute_bars(
+    bars: Sequence[Dict[str, Any]],
+    prev_close: Optional[float],
+    *,
+    evening_ymd: str,
+) -> Optional[Dict[str, Any]]:
+    """用庫內已同步的 TX 夜盤 15 分官方收畫與 zip 同一張電子盤臉。不准捏假柱。"""
+    if prev_close is None or float(prev_close) <= 0:
+        return None
+    eve = str(evening_ymd or "").replace("-", "")[:8]
+    if len(eve) != 8 or _is_weekend(eve):
+        return None
+    kept = [b for b in bars if b and float(b.get("c") or 0) > 0]
+    if len(kept) < 2:
+        return None
+    series: List[float] = []
+    volumes: List[int] = []
+    xs: List[float] = []
+    highs: List[float] = []
+    lows: List[float] = []
+    last_stamp = ""
+    for b in kept:
+        ts = str(b.get("t") or "")
+        if len(ts) < 12:
+            continue
+        stamp = ts[8:12] + "00"
+        if len(stamp) < 6:
+            continue
+        px = float(b["c"])
+        series.append(px)
+        volumes.append(int(round(float(b.get("v") or 0))))
+        xs.append(float(_bucket_minutes(stamp)))
+        highs.append(float(b.get("h") or px))
+        lows.append(float(b.get("l") or px))
+        last_stamp = stamp
+    if len(series) < 2 or not last_stamp:
+        return None
+    ma: List[float] = []
+    win = 5
+    for i in range(len(series)):
+        chunk = series[max(0, i - win + 1) : i + 1]
+        ma.append(sum(chunk) / len(chunk))
+    card = _card(
+        name="台指電子盤",
+        last=float(series[-1]),
+        prev=float(prev_close),
+        series=series,
+        integers=True,
+    )
+    if card is None:
+        return None
+    card["session"] = eve
+    card["month"] = ""
+    card["volumes"] = volumes
+    card["xs"] = xs
+    card["ma"] = ma
+    card["high"] = float(max(highs))
+    card["low"] = float(min(lows))
+    card["asof_time"] = f"{last_stamp[:2]}:{last_stamp[2:4]}:{last_stamp[4:6]}"
+    card["last_qty"] = int(volumes[-1]) if volumes else 0
+    card["volume"] = int(sum(volumes))
+    card["source"] = "db:minute_bars"
+    card["source_label"] = "庫內TX夜盤15分（期交所已同步）"
+    return card
+
+
+def _session_row_from_futures(
+    row: Optional[Dict[str, Any]],
+    *,
+    label: str,
+    prev: Optional[float],
+) -> Optional[Dict[str, Any]]:
+    if not row or not row.get("close"):
+        return None
+    try:
+        last = float(row["close"])
+        o = float(row.get("open") or last)
+        h = float(row.get("high") or last)
+        lo = float(row.get("low") or last)
+        vol = int(row.get("volume") or 0)
+    except (TypeError, ValueError):
+        return None
+    if last <= 0 or h <= 0 or lo <= 0:
+        return None
+    prev_px = float(prev) if prev is not None and float(prev) > 0 else None
+    chg = pct = None
+    if prev_px:
+        chg = last - prev_px
+        pct = chg / prev_px * 100.0
+    return {
+        "label": label,
+        "symbol": str(row.get("symbol") or ""),
+        "session_kind": str(row.get("session") or ""),
+        "date": str(row.get("date") or ""),
+        "open": o,
+        "high": h,
+        "low": lo,
+        "close": last,
+        "volume": vol,
+        "prev": prev_px,
+        "chg": chg,
+        "pct": pct,
+        "source": str(row.get("source") or "taifex"),
+    }
+
+
+def build_tx_te_sessions_card_from_db(
+    db_path: str,
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    """zip 全失敗時：庫內 TX／TE 日盤＋夜盤官方 OHLC 組卡。不准捏分時線。"""
+    if not db_path:
+        return None
+    try:
+        from taiwan_market import load_futures_daily, load_futures_night
+        from trading_calendar import futures_night_date_cap
+    except Exception:
+        logger.debug("庫內台指／電子日夜盤載入失敗", exc_info=True)
+        return None
+    ref_now = now
+    if ref_now is None:
+        ref_now = datetime.now(TP)
+    elif getattr(ref_now, "tzinfo", None) is None:
+        ref_now = ref_now.replace(tzinfo=TP)
+    else:
+        ref_now = ref_now.astimezone(TP)
+    ceiling = futures_night_date_cap(ref_now)
+    night_tx = load_futures_night(db_path, ceiling, symbol="TX", now=ref_now)
+    if not night_tx or not night_tx.get("close"):
+        return None
+    night_ymd = str(night_tx.get("date") or "").replace("-", "")[:8]
+    if len(night_ymd) != 8 or night_ymd > ceiling:
+        return None
+    # 盤中未收不當收：05:00 前不把「今晨夜盤」當已齊（ceiling 已擋）；此處再拒無 close。
+    evening = _evening_ymd_for_night_label(night_ymd)
+    if len(evening) != 8:
+        return None
+    reg_tx = load_futures_daily(db_path, evening, symbol="TX")
+    reg_te = load_futures_daily(db_path, evening, symbol="TE")
+    night_te = load_futures_night(db_path, night_ymd, symbol="TE", now=ref_now)
+    # 日盤昨收：再往前一根有收的日盤
+    prev_tx = prev_te = None
+    try:
+        from trading_calendar import last_open_calendar_day_on_or_before
+
+        prior = last_open_calendar_day_on_or_before(
+            (datetime.strptime(evening, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+        )
+        p_tx = load_futures_daily(db_path, prior, symbol="TX") if prior else None
+        p_te = load_futures_daily(db_path, prior, symbol="TE") if prior else None
+        if p_tx:
+            prev_tx = float(p_tx.get("settlement") or p_tx.get("close") or 0) or None
+        if p_te:
+            prev_te = float(p_te.get("settlement") or p_te.get("close") or 0) or None
+    except Exception:
+        logger.debug("日盤昨收補齊略過", exc_info=True)
+    tx_reg_settle = None
+    if reg_tx:
+        try:
+            tx_reg_settle = float(reg_tx.get("settlement") or reg_tx.get("close") or 0) or None
+        except (TypeError, ValueError):
+            tx_reg_settle = None
+    te_reg_settle = None
+    if reg_te:
+        try:
+            te_reg_settle = float(reg_te.get("settlement") or reg_te.get("close") or 0) or None
+        except (TypeError, ValueError):
+            te_reg_settle = None
+    rows: List[Dict[str, Any]] = []
+    for item in (
+        _session_row_from_futures(reg_tx, label="台指期日盤", prev=prev_tx),
+        _session_row_from_futures(night_tx, label="台指期夜盤", prev=tx_reg_settle or prev_tx),
+        _session_row_from_futures(reg_te, label="電子期日盤", prev=prev_te),
+        _session_row_from_futures(night_te, label="電子期夜盤", prev=te_reg_settle or prev_te),
+    ):
+        if item:
+            rows.append(item)
+    # 至少要有台指夜盤一根官方收；電子可缺但不准假數補。
+    if not any(r.get("label") == "台指期夜盤" for r in rows):
+        return None
+    last = float(night_tx["close"])
+    prev = float(tx_reg_settle or prev_tx or 0)
+    if prev <= 0:
+        return None
+    card = {
+        "name": "台指電子盤",
+        "board_mode": "sessions_ohlc",
+        "session": night_ymd,
+        "evening": evening,
+        "last": last,
+        "prev": prev,
+        "chg": last - prev,
+        "pct": (last - prev) / prev * 100.0,
+        "integers": True,
+        "rows": rows,
+        "source": "db:futures_daily",
+        "source_label": "庫內台指／電子日盤＋夜盤（zip 逾時備援）",
+    }
+    return card
+
+
+def _tx_minute_card_for_evening(
+    db_path: str, evening: str
+) -> Optional[Dict[str, Any]]:
+    if len(evening) != 8 or _is_weekend(evening):
+        return None
+    bars = _tx_night_minute_rows(db_path, evening)
+    if len(bars) < 2:
+        return None
+    prev = None
+    try:
+        from taiwan_market import load_futures_daily
+
+        reg = load_futures_daily(db_path, evening, symbol="TX") or {}
+        prev = float(reg.get("settlement") or reg.get("close") or 0) or None
+    except Exception:
+        prev = None
+    if prev is None or prev <= 0:
+        prev = _regular_settlement(evening, "")
+    return build_tx_night_card_from_minute_bars(bars, prev, evening_ymd=evening)
+
+
+def _tx_card_from_db(now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+    """zip 全失敗後的庫內備援。
+
+    優先對齊庫內最新夜盤標籤：同夜有 TX 15 分柱 → 同臉分 K；否則 TX／TE 日＋夜 OHLC 表。
+    不准用更舊分 K 冒充比 futures_daily 更新的夜盤。
+    """
+    try:
+        from config import get_db_path
+        from taiwan_market import load_futures_night
+        from trading_calendar import futures_night_date_cap
+    except Exception:
+        logger.debug("庫內電子盤備援入口失敗", exc_info=True)
+        return None
+    db_path = str(get_db_path() or "").strip()
+    if not db_path:
+        return None
+    ref_now = now
+    if ref_now is None:
+        ref_now = datetime.now(TP)
+    elif getattr(ref_now, "tzinfo", None) is None:
+        ref_now = ref_now.replace(tzinfo=TP)
+    else:
+        ref_now = ref_now.astimezone(TP)
+    ceiling = futures_night_date_cap(ref_now)
+    night = load_futures_night(db_path, ceiling, symbol="TX", now=ref_now)
+    night_ymd = str((night or {}).get("date") or "").replace("-", "")[:8]
+    if night and night.get("close") and len(night_ymd) == 8 and night_ymd <= ceiling:
+        evening = _evening_ymd_for_night_label(night_ymd)
+        minute_card = _tx_minute_card_for_evening(db_path, evening)
+        if minute_card is not None:
+            logger.info(
+                "台指電子盤改用庫內分 K 備援 evening=%s night=%s",
+                evening,
+                night_ymd,
+            )
+            return minute_card
+        ohlc = build_tx_te_sessions_card_from_db(db_path, ref_now)
+        if ohlc is not None:
+            logger.info(
+                "台指電子盤改用庫內日／夜盤 OHLC 備援 session=%s rows=%s",
+                ohlc.get("session"),
+                len(ohlc.get("rows") or []),
+            )
+            return ohlc
+    # 庫內夜盤列也缺：只剩更舊分 K（仍標清來源／時段，不當更新現況捷徑）。
+    probe = ceiling
+    for _ in range(6):
+        evening = _evening_ymd_for_night_label(probe)
+        card = _tx_minute_card_for_evening(db_path, evening)
+        if card is not None:
+            logger.info(
+                "台指電子盤改用較舊庫內分 K 備援 evening=%s（無更新夜盤列）",
+                evening,
+            )
+            return card
+        probe = (datetime.strptime(probe, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+    return None
+
+
 def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
     """最新一檔期交所逐筆夜盤。沒有 15:00 起的官方成交就不上圖。
 
     Daily_YYYY_MM_DD.zip 含「前一晚盤後＋當日日盤」。要畫最新夜盤必須吃最新 zip；
     結算價缺漏時改歷史／庫內補，不准退回更舊 zip 卻標成現況。
+    Zip 全失敗／逾時 → 改吃庫內已同步的 TX 夜盤分 K，再不行才用 TX／TE 日盤＋夜盤
+    官方 OHLC 表（標清來源／時段）；不准假數、不准盤中未收當收。
     """
     ref_now = now
     if ref_now is None:
@@ -463,14 +808,24 @@ def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
         card = build_tx_night_card(ticks, prev)
         if card is None:
             continue
+        card["source"] = "taifex_zip"
+        card["source_label"] = "期交所逐筆 zip"
         sess = str(card.get("session") or "")
         # 取夜盤起始日最新的一檔；較舊 zip 只在更新檔失敗時備援，不當現況捷徑。
         if sess > best_session:
             best = card
             best_session = sess
     if best is not None:
-        return {"card": best, "missing": False}
-    return {"card": None, "missing": True}
+        return {"card": best, "missing": False, "source": best.get("source") or "taifex_zip"}
+    # Zip 全失敗才 fallback；成功路徑不吃庫、不改臉。
+    db_card = _tx_card_from_db(ref_now)
+    if db_card is not None:
+        return {
+            "card": db_card,
+            "missing": False,
+            "source": db_card.get("source") or "db",
+        }
+    return {"card": None, "missing": True, "source": ""}
 
 
 def fetch_vix_card(us_snap: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -524,17 +879,34 @@ def assemble_session_cards(
     }
 
 
+def _tx_card_drawable(card: Optional[Dict[str, Any]]) -> bool:
+    if not card:
+        return False
+    if card.get("board_mode") == "sessions_ohlc" and card.get("rows"):
+        return True
+    series = card.get("series") or []
+    return len(series) >= 2
+
+
 def omission_lines(
     us: Dict[str, Any],
     tx: Dict[str, Any],
     fear: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     lines = [f"{name}這次沒有官方走勢，不上圖" for name in (us or {}).get("missing") or []]
-    if (tx or {}).get("missing") or not ((tx or {}).get("card") or {}).get("series"):
+    if (tx or {}).get("missing") or not _tx_card_drawable((tx or {}).get("card")):
         lines.append("台指電子盤這次沒有官方走勢，不上圖")
     if fear is None:
         lines.append("恐懼與貪婪指數這次沒有官方讀數，不上圖")
     return lines
+
+
+def _tx_board_heading(card: Dict[str, Any]) -> str:
+    """標題只留日期；庫內備援來源改畫在圖內／caption，避免標題過長互壓。"""
+    sess = str(card.get("session") or "")
+    if len(sess) == 8:
+        return f"台指電子盤　{sess[:4]}/{sess[4:6]}/{sess[6:8]}"
+    return "台指電子盤"
 
 
 def session_card_jobs(bundle: Optional[Dict[str, Any]]) -> List[Tuple[str, Any]]:
@@ -552,14 +924,18 @@ def session_card_jobs(bundle: Optional[Dict[str, Any]]) -> List[Tuple[str, Any]]
         jobs.append(("us", {"cards": us["cards"], "heading": head, "columns": 2, "layout": "grid"}))
     tx = bundle.get("tx") or {}
     tx_card = tx.get("card")
-    if tx_card and tx_card.get("series"):
-        sess = str(tx_card.get("session") or "")
-        head = (
-            f"台指電子盤　{sess[:4]}/{sess[4:6]}/{sess[6:8]}"
-            if len(sess) == 8
-            else "台指電子盤"
+    if _tx_card_drawable(tx_card):
+        jobs.append(
+            (
+                "tx",
+                {
+                    "cards": [tx_card],
+                    "heading": _tx_board_heading(tx_card),
+                    "columns": 1,
+                    "layout": "board",
+                },
+            )
         )
-        jobs.append(("tx", {"cards": [tx_card], "heading": head, "columns": 1, "layout": "board"}))
     fear = bundle.get("fear")
     if isinstance(fear, dict) and fear.get("score") is not None:
         sess = str(fear.get("session") or "")
@@ -628,8 +1004,13 @@ def render_session_cards(
 
     from wayne_navigator import _fp
 
-    if layout == "board" and len([c for c in cards if c and c.get("series")]) == 1:
-        return render_tx_electronic_board(path, cards[0], heading=heading)
+    if layout == "board" and cards:
+        c0 = next((c for c in cards if c), None)
+        if c0 and (
+            c0.get("board_mode") == "sessions_ohlc"
+            or (c0.get("series") and len(c0.get("series") or []) >= 2)
+        ):
+            return render_tx_electronic_board(path, c0, heading=heading)
 
     got = [c for c in cards if c and c.get("series") and len(c.get("series") or []) >= 2]
     if not got:
@@ -718,8 +1099,97 @@ def render_session_cards(
     return path
 
 
+def render_tx_te_sessions_board(path: str, card: Dict[str, Any], *, heading: str) -> str:
+    """庫內備援臉：台指／電子日盤＋夜盤官方 OHLC 表。只畫真數，不捏分時。"""
+    import matplotlib
+
+    matplotlib.use("Agg", force=False)
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch
+
+    from wayne_navigator import _fp
+
+    rows = [r for r in (card.get("rows") or []) if r and r.get("close")]
+    if not rows:
+        return ""
+    dpi = 140
+    fig_w, fig_h = 10.2, 8.6
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_BG)
+    fig.text(0.04, 0.965, heading, color=_TITLE, fontproperties=_fp(20, "bold"), ha="left", va="top")
+    src = str(card.get("source_label") or card.get("source") or "").strip()
+    if src:
+        fig.text(
+            0.04, 0.915, f"來源　{src}",
+            color=_MUTED, fontproperties=_fp(13, "bold"), ha="left", va="top",
+        )
+    n = len(rows)
+    top = 0.86
+    bottom = 0.06
+    gap = 0.02
+    row_h = (top - bottom - gap * max(n - 1, 0)) / max(n, 1)
+    for i, row in enumerate(rows):
+        y = top - (i + 1) * row_h - i * gap
+        ax = fig.add_axes([0.04, y, 0.92, row_h])
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        ax.set_facecolor(_CARD)
+        ax.add_patch(
+            FancyBboxPatch(
+                (0, 0), 1, 1, boxstyle="round,pad=0.01,rounding_size=0.03",
+                facecolor=_CARD, edgecolor="#3a3a3a", transform=ax.transAxes,
+            )
+        )
+        integers = abs(float(row["close"]) - round(float(row["close"]))) < 1e-6
+        chg = row.get("chg")
+        col = _MUTED
+        arrow = ""
+        if chg is not None:
+            col = _side_color(float(chg))
+            arrow = "▲" if float(chg) > 0 else ("▼" if float(chg) < 0 else "")
+        day = str(row.get("date") or "")
+        day_lab = f"{day[:4]}/{day[4:6]}/{day[6:8]}" if len(day) == 8 else day
+        sess_lab = "夜盤" if str(row.get("session_kind") or "") == "night" else "日盤"
+        ax.text(
+            0.03, 0.78,
+            f"{row.get('label') or ''}　{day_lab}　{sess_lab}",
+            color=_TITLE, fontproperties=_fp(16, "bold"), ha="left", va="center",
+        )
+        ax.text(
+            0.03, 0.42,
+            _fmt_num(float(row["close"]), integers=integers),
+            color=col, fontproperties=_fp(30, "bold"), ha="left", va="center",
+        )
+        if chg is not None and row.get("pct") is not None:
+            ax.text(
+                0.97, 0.72,
+                f"{arrow}{_fmt_num(abs(float(chg)), integers=integers)}",
+                color=col, fontproperties=_fp(18, "bold"), ha="right", va="center",
+            )
+            ax.text(
+                0.97, 0.42,
+                f"({float(row['pct']):+.2f}%)",
+                color=col, fontproperties=_fp(16, "bold"), ha="right", va="center",
+            )
+        ax.text(
+            0.03, 0.14,
+            (
+                f"開 {_fmt_num(float(row['open']), integers=integers)}　"
+                f"高 {_fmt_num(float(row['high']), integers=integers)}　"
+                f"低 {_fmt_num(float(row['low']), integers=integers)}　"
+                f"量 {int(row.get('volume') or 0):,}口"
+            ),
+            color=_MUTED, fontproperties=_fp(13, "bold"), ha="left", va="center",
+        )
+    fig.savefig(path, facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.close(fig)
+    return path
+
+
 def render_tx_electronic_board(path: str, card: Dict[str, Any], *, heading: str) -> str:
     """券商電子盤臉：價／漲跌、時間＋單量／總量口、紅上綠下、灰均線、高低標、15→05、量柱。"""
+    if card.get("board_mode") == "sessions_ohlc":
+        return render_tx_te_sessions_board(path, card, heading=heading)
     import matplotlib
     import numpy as np
 
@@ -751,6 +1221,12 @@ def render_tx_electronic_board(path: str, card: Dict[str, Any], *, heading: str)
     fig_w, fig_h = 10.2, 8.6
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_BG)
     fig.text(0.04, 0.965, heading, color=_TITLE, fontproperties=_fp(22, "bold"), ha="left", va="top")
+    src = str(card.get("source_label") or "").strip()
+    if src and str(card.get("source") or "").startswith("db:"):
+        fig.text(
+            0.04, 0.925, f"來源　{src}",
+            color=_MUTED, fontproperties=_fp(12, "bold"), ha="left", va="top",
+        )
 
     head = fig.add_axes([0.04, 0.78, 0.92, 0.16])
     head.set_xlim(0, 1)
@@ -1145,7 +1621,7 @@ def paint_session_job(path: str, kind: str, spec: Dict[str, Any]) -> str:
         )
     if kind == "tx":
         cards = spec.get("cards") or []
-        if not cards:
+        if not cards or not cards[0]:
             return ""
         return render_tx_electronic_board(
             path, cards[0], heading=str(spec.get("heading") or "台指電子盤")
