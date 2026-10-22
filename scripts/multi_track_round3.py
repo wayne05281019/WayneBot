@@ -54,8 +54,13 @@ from stabilize_watch import (  # noqa: E402
     _l60_first_touch_indices,
 )
 
+from foreign_sell_calm import (  # noqa: E402
+    buy_share as _buy_share,
+    current_buy_params,
+    evaluate_buy_escalate_A,
+)
 from multi_track_baseline_backtest import (  # noqa: E402
-    build_foreign_events,
+    DEDUP_N,
     load_stock_df,
     load_twii,
     load_universe,
@@ -572,15 +577,20 @@ def day_count_threshold(day_counts: Dict[str, int], pct: float) -> float:
     return float(np.percentile(np.asarray(xs, dtype=float), pct))
 
 
-def compute_foreign_pressure_days(
+def compute_foreign_bundle(
     db: str,
     universe: Dict[str, Dict[str, str]],
     *,
     smoke: bool = False,
-) -> Dict[str, bool]:
+) -> Tuple[Dict[str, bool], List[Tuple[str, str, str]], List[Tuple[str, str, str]], Dict[str, Any]]:
+    """單遍：外資壓力日＋A3／A4 亮燈（sid, market, date）。避免再跑 build_foreign_events。"""
+    note = {
+        "EM": "缺官方免驗證碼單檔外資 → 橘六角興櫃不可測",
+        "pass": "single-pass pressure+A3/A4",
+    }
     listed = {s: m for s, m in universe.items() if m["market"] in ("TW", "TWO")}
     if not listed:
-        return {}
+        return {}, [], [], note
     sids = sorted(listed.keys())
     if smoke:
         sids = sids[:40]
@@ -589,7 +599,7 @@ def compute_foreign_pressure_days(
         ph = ",".join("?" * len(sids))
         df = pd.read_sql_query(
             f"""
-            SELECT replace(CAST(date AS TEXT),'-','') AS date, stock_id,
+            SELECT replace(CAST(date AS TEXT),'-','') AS date, stock_id, market,
                    volume, COALESCE(foreign_net,0) AS foreign_net
             FROM daily_quotes
             WHERE stock_id IN ({ph}) AND market IN ('TW','TWO')
@@ -602,28 +612,45 @@ def compute_foreign_pressure_days(
     finally:
         con.close()
     if df.empty:
-        return {}
+        return {}, [], [], note
     df["date"] = df["date"].map(_ymd)
     df = df[df["date"].str.len() == 8]
     esc_p = current_params()
+    buy_p = current_buy_params()
     ext_track = ExtremeTrack("share", float(DISPLAY_SELL_SHARE_THR))
-    hist: Dict[str, List[Tuple[str, float, float]]] = defaultdict(list)
+    hist: Dict[str, List[Tuple[str, float, float, str]]] = defaultdict(list)
     for r in df.itertuples(index=False):
-        hist[str(r.stock_id)].append((str(r.date), float(r.volume), float(r.foreign_net)))
+        hist[str(r.stock_id)].append(
+            (str(r.date), float(r.volume), float(r.foreign_net), str(r.market))
+        )
     date_ix = {sid: {t[0]: i for i, t in enumerate(seq)} for sid, seq in hist.items()}
     sell_pctl: Dict[Tuple[str, str], float] = {}
+    buy_pctl: Dict[Tuple[str, str], float] = {}
     for day, g in df.groupby("date", sort=True):
         sell_vals: List[float] = []
+        buy_vals: List[float] = []
         sell_map: Dict[str, float] = {}
+        buy_map: Dict[str, float] = {}
         for r in g.itertuples(index=False):
+            sid = str(r.stock_id)
             ss = sell_share(r.foreign_net, r.volume)
             if ss is not None:
                 sell_vals.append(float(ss))
-                sell_map[str(r.stock_id)] = float(ss)
+                sell_map[sid] = float(ss)
+            bs = _buy_share(r.foreign_net, r.volume)
+            if bs is not None:
+                buy_vals.append(float(bs))
+                buy_map[sid] = float(bs)
         for sid, ss in sell_map.items():
             sell_pctl[(str(day), sid)] = cross_sectional_percentile(sell_vals, ss)
+        for sid, bs in buy_map.items():
+            buy_pctl[(str(day), sid)] = cross_sectional_percentile(buy_vals, bs)
 
     ratios: Dict[str, float] = {}
+    a3_hits: List[Tuple[str, str, str]] = []
+    a4_hits: List[Tuple[str, str, str]] = []
+    last_a3: Dict[str, int] = {}
+    last_a4: Dict[str, int] = {}
     for day in sorted(df["date"].unique().tolist()):
         day_df = df[df["date"] == day]
         nz = int((day_df["foreign_net"] != 0).sum())
@@ -637,6 +664,7 @@ def compute_foreign_pressure_days(
             ix = date_ix[sid].get(day)
             if ix is None:
                 continue
+            market = listed.get(sid, {}).get("market") or seq[ix][3]
             n = int(esc_p.n_days)
             if ix + 1 < n:
                 continue
@@ -656,8 +684,24 @@ def compute_foreign_pressure_days(
                 foreign_nets_hist=fns,
                 foreign_nets_10=[t[2] for t in seq[max(0, ix - 9) : ix + 1]],
             )
-            if ev_esc.get("lit") or lit_ext:
+            sell_lit = bool(ev_esc.get("lit") or lit_ext)
+            if sell_lit:
                 lit += 1
+                if ix - last_a3.get(sid, -10**9) >= DEDUP_N:
+                    a3_hits.append((sid, market, day))
+                    last_a3[sid] = ix
+            n2 = int(buy_p.n_days)
+            if ix + 1 >= n2:
+                window_b = seq[ix - n2 + 1 : ix + 1]
+                fns_b = [t[2] for t in window_b]
+                vols_b = [t[1] for t in window_b]
+                pctls_b = [buy_pctl.get((t[0], sid)) for t in window_b]
+                ev_b = evaluate_buy_escalate_A(
+                    foreign_nets=fns_b, volumes=vols_b, pctls=pctls_b, params=buy_p
+                )
+                if ev_b.get("lit") and ix - last_a4.get(sid, -10**9) >= DEDUP_N:
+                    a4_hits.append((sid, market, day))
+                    last_a4[sid] = ix
         if tot > 0:
             ratios[day] = lit / tot
 
@@ -669,7 +713,7 @@ def compute_foreign_pressure_days(
             pressure[day] = False
             continue
         pressure[day] = bool(ratios[day] > float(np.median(window)))
-    return pressure
+    return pressure, a3_hits, a4_hits, note
 
 
 def stabilize_touch_low(df: pd.DataFrame, fire_i: int) -> Optional[float]:
@@ -991,6 +1035,8 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
     signals: List[Sig] = []
     a5_touch_low: Dict[Tuple[str, int], float] = {}
     stock_traps: Dict[str, List[TripleTrap]] = {}
+    fire5_by_sid: Dict[str, List[int]] = {}
+    fire6_by_sid: Dict[str, List[int]] = {}
 
     con = sqlite3.connect(db)
     try:
@@ -1001,10 +1047,11 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
             if df.empty or len(df) < 30:
                 continue
             frames[sid] = df
-            stock_traps[sid] = detect_triple_traps(df)
             industry = meta.get("industry") or ""
             hf = holdout_from.get(market, "")
             days = [str(x) for x in df["date"].tolist()]
+            got_r1 = False
+            got_a5 = False
             for track in PRICE_TRACKS:
                 for ix in find_signal_indices(df, track, market, industry):
                     if ix < 0 or ix >= len(df) - 1:
@@ -1013,10 +1060,18 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
                     signals.append(
                         Sig(track, sid, market, d, ix, bool(hf and d >= hf))
                     )
+                    if track in R1_TRACKS:
+                        got_r1 = True
                     if track == "A5":
+                        got_a5 = True
                         tl = stabilize_touch_low(df, ix)
                         if tl is not None:
                             a5_touch_low[(sid, ix)] = float(tl)
+            if got_r1:
+                stock_traps[sid] = detect_triple_traps(df)
+            if got_a5:
+                fire5_by_sid[sid] = stabilize_fire_indices(df, HOLD_N)
+                fire6_by_sid[sid] = stabilize_fire_indices(df, HOLD_N_NEXT)
             if smoke and i >= 18:
                 break
             if (i + 1) % 200 == 0:
@@ -1032,8 +1087,14 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
     print("[index] R1f/R1g on TWII…", flush=True)
     index_block = analyze_index_patterns(twii_df) if not twii_df.empty else {}
 
-    print("[foreign-pressure]…", flush=True)
-    pressure_days = compute_foreign_pressure_days(db, universe, smoke=smoke)
+    print("[foreign-bundle] pressure+A3/A4 one pass…", flush=True)
+    pressure_days, a3_hits, a4_hits, f_note = compute_foreign_bundle(
+        db, universe, smoke=smoke
+    )
+    print(
+        f"[foreign-bundle] pressure_days={len(pressure_days)} a3={len(a3_hits)} a4={len(a4_hits)}",
+        flush=True,
+    )
 
     sorted_tw = sorted(twii.keys())
     twii_dir: Dict[str, int] = {}
@@ -1045,20 +1106,24 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
         if c0 and c1 and c0 > 0:
             twii_dir[d] = 1 if c1 > c0 else (-1 if c1 < c0 else 0)
 
-    print("[orange]…", flush=True)
-    f_events, f_note = build_foreign_events(
-        db, universe, holdout_from=holdout_from, smoke=smoke
-    )
-    a3_sigs = [
-        Sig("A3", e.sid, e.market, e.date, e.i, e.holdout)
-        for e in f_events
-        if e.track == "A3" and e.sid in frames
-    ]
-    a4_sigs = [
-        Sig("A4", e.sid, e.market, e.date, e.i, e.holdout)
-        for e in f_events
-        if e.track == "A4" and e.sid in frames
-    ]
+    def _hits_to_sigs(track: str, hits: List[Tuple[str, str, str]]) -> List[Sig]:
+        out: List[Sig] = []
+        for sid, market, day in hits:
+            df = frames.get(sid)
+            if df is None:
+                continue
+            days = [str(x) for x in df["date"].tolist()]
+            if day not in days:
+                continue
+            ix = days.index(day)
+            if ix >= len(df) - 1:
+                continue
+            hf = holdout_from.get(market, "")
+            out.append(Sig(track, sid, market, day, ix, bool(hf and day >= hf)))
+        return out
+
+    a3_sigs = _hits_to_sigs("A3", a3_hits)
+    a4_sigs = _hits_to_sigs("A4", a4_hits)
 
     entries: List[Entry] = []
     r1e_forward: Dict[str, List[float]] = defaultdict(list)
@@ -1066,11 +1131,6 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
     r6_scored: Dict[str, List[Tuple[str, float, float, str]]] = defaultdict(list)
     r2d_set: Set[Tuple[str, str]] = set()
     r3a_set: Set[Tuple[str, str]] = set()
-    triple_v3_dates: Dict[str, Set[str]] = {
-        sid: {str(frames[sid]["date"].iloc[t.v3]) for t in traps if t.v3 < len(frames[sid])}
-        for sid, traps in stock_traps.items()
-        if sid in frames
-    }
 
     sig_vol_high_fn = cand_signal_vol_tercile(want="high")
 
@@ -1201,14 +1261,13 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
                             r4_compare["R4a_exit_invalid"].append(
                                 (cl - float(px)) / float(px)
                             )
-                        for j in range(invalid_i + 1, min(len(df) - 1, invalid_i + 40)):
-                            if j in set(stabilize_fire_indices(df.iloc[: j + 1], HOLD_N)):
+                        lim = min(len(df) - 1, invalid_i + 40)
+                        for j in fire5_by_sid.get(sig.sid, []):
+                            if invalid_i < j <= lim:
                                 add(_entry_from("A5", "R4b_relight", sig, df, j + 1))
                                 break
-                        for j in range(invalid_i + 1, min(len(df) - 1, invalid_i + 40)):
-                            if j in set(
-                                stabilize_fire_indices(df.iloc[: j + 1], HOLD_N_NEXT)
-                            ):
+                        for j in fire6_by_sid.get(sig.sid, []):
+                            if invalid_i < j <= lim:
                                 add(
                                     _entry_from(
                                         "A5", "R4c_tight_confirm", sig, df, j + 1
