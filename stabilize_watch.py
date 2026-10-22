@@ -167,7 +167,21 @@ def stabilize_bar_indices(
     detail = stabilize_detail(df, hold_n=hold_n, lookback=lookback)
     if not detail:
         return []
-    return [int(detail["end_i"])]
+    end_i = int(detail["end_i"])
+    # §13 第3輪可換：A5 加 R3a 加權收跌日濾網（不改 hold_l60 公式本體）
+    if hold_n == HOLD_N:
+        try:
+            from config import get_db_path
+            from multi_track_env_gates import keep_a5_stabilize
+
+            day = ""
+            if df is not None and "date" in df.columns and 0 <= end_i < len(df):
+                day = str(df["date"].iloc[end_i] or "").replace("-", "")[:8]
+            if day and not keep_a5_stabilize(str(get_db_path()), day):
+                return []
+        except Exception:
+            pass
+    return [end_i]
 
 
 def stabilize_fires_today(df: pd.DataFrame, *, hold_n: int = HOLD_N) -> bool:
