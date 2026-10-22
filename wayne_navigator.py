@@ -427,7 +427,11 @@ _FONTS_WARMED = False
 
 
 def prewarm_card_fonts() -> None:
-    """開機載入打包好的兩個靜態字重，避免第一檔查詢才去壓字型。"""
+    """開機載入打包好的兩個靜態字重，避免第一檔查詢才去壓字型。
+
+    一併預建常用字級 FontProperties（介紹／高低卡／結構／大量區），
+    冷啟第一檔少一次 findfont／開檔。
+    """
     global _FONTS_WARMED
     if _FONTS_WARMED:
         return
@@ -436,7 +440,68 @@ def prewarm_card_fonts() -> None:
     with mpl_render():
         _ft_font(_WEIGHT_TEXT)
         _ft_font(_WEIGHT_BOLD)
+        # 常用字級：查股四張＋大盤附圖都吃這組，不准省略 bold
+        for sz in (8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 15.0, 18.0, 28.0, 32.0):
+            _fp(sz, "normal")
+            _fp(sz, "bold")
     _FONTS_WARMED = True
+
+
+def try_decision_card_memo(card: dict, save_path: str) -> str:
+    """暖路徑：同指紋高低卡短 TTL 命中就複製，不進 paint／Agg。
+
+    盤中現價／時戳進指紋；變了就 miss，不准拿過期收冒充盤中。
+    miss 回 "" → 呼叫端再 submit_mpl_paint(render_decision_card_png)。
+    """
+    if not card or card.get("error") or not save_path:
+        return ""
+    memo_key = (
+        "card",
+        _lookup_card_fingerprint(card),
+        int(CARD_PNG_DPI),
+        int(LOOKUP_JPEG_QUALITY),
+    )
+    return _lookup_render_memo_get(memo_key, save_path) or ""
+
+
+def try_glance_memo(
+    stock_id: str,
+    card: dict,
+    tape: Optional[dict],
+    save_path: str,
+    db_path: str = "",
+) -> str:
+    """暖路徑：同指紋介紹圖短 TTL 命中就複製，不進 paint／Agg。
+
+    指紋含卡＋tape＋營收；現價變或營收補進會 miss。miss 回 ""。
+    """
+    if not card or card.get("error") or not save_path or not stock_id:
+        return ""
+    dbp = db_path or get_db_path()
+    try:
+        # 與 render_first_glance_png 同序：先 ensure 再指紋，不准鎖死舊營收圖
+        from fundamentals import ensure_stock_fundamentals
+
+        ensure_stock_fundamentals(dbp, stock_id)
+    except Exception:
+        pass
+    try:
+        from fundamentals import stock_fundamentals_fingerprint
+
+        fund_fp = stock_fundamentals_fingerprint(dbp, stock_id)
+    except Exception:
+        fund_fp = ()
+    memo_key = (
+        "glance",
+        str(stock_id or ""),
+        _lookup_card_fingerprint(card),
+        _lookup_tape_fingerprint(tape if isinstance(tape, dict) else {}),
+        fund_fp,
+        int(GLANCE_PNG_DPI),
+        int(LOOKUP_JPEG_QUALITY),
+        "match-card-076-fund-rev2line-v77-card-price",
+    )
+    return _lookup_render_memo_get(memo_key, save_path) or ""
 
 
 def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:

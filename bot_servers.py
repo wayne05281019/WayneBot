@@ -5220,8 +5220,23 @@ class WayneTelegramBot:
             # 內層 run_mpl_paint 鎖仍留（#492／#493 FreeType）；不准整頁批次 pairs。
             # 下一檔 load 與上一檔送圖重疊，但 paint 仍一次一檔。
             wait_msg = wait_h[0] if wait_h else None
-            await self._silence_wait_ticker(wait_h[1] if wait_h else None, wait_h[2] if wait_h else None)
             n_chunk = len(chunk)
+            # 進出資圖階段先改口，不准名單出了還停在「篩名單」長沉默
+            if wait_msg is not None and n_chunk:
+                prog["now"] = f"出圖 1/{n_chunk}"
+                prog["rest"] = "壓力區＋高低卡"
+                await self._safe_edit_text(
+                    wait_msg,
+                    self._wait_bubble(
+                        "勝率買點進行中",
+                        0,
+                        now=prog["now"],
+                        rest=prog["rest"],
+                        fill_sec=40.0,
+                    ),
+                    parse_mode="HTML",
+                )
+            await self._silence_wait_ticker(wait_h[1] if wait_h else None, wait_h[2] if wait_h else None)
 
             async def _load_slot(i: int):
                 row = chunk[i] if isinstance(chunk[i], dict) else {}
@@ -5888,10 +5903,28 @@ class WayneTelegramBot:
         try:
             for i, part in enumerate(parts):
                 await message.reply_html(part, disable_web_page_preview=True)
-            await _end_wait()
+            # 文字已出：進度改成附圖階段，不准空白乾等美股／台指／恐懼貪婪
+            if wait_h is not None:
+                status_msg = wait_h[0] if wait_h else None
+                if status_msg is not None:
+                    await self._safe_edit_text(
+                        status_msg,
+                        self._wait_bubble(
+                            "大盤進行中",
+                            0,
+                            now="美股・台指・恐懼貪婪",
+                            rest="日K・大量區",
+                            fill_sec=25.0,
+                        ),
+                        parse_mode="HTML",
+                    )
             await self._send_market_session_cards(
-                message, card_bundle, uid=self._uid_from_message(message)
+                message,
+                card_bundle,
+                uid=self._uid_from_message(message),
+                wait_h=wait_h,
             )
+            await _end_wait()
             await self._send_market_kline(
                 message, live=live_quote, uid=self._uid_from_message(message)
             )
@@ -5959,8 +5992,13 @@ class WayneTelegramBot:
                 )
         return sent
 
-    async def _send_market_session_cards(self, message, bundle, *, uid: str = "") -> None:
-        """文字之後：美股四大 → 台指電子盤 → 恐懼與貪婪。沒有官方走勢的卡已在文字裡說明。"""
+    async def _send_market_session_cards(
+        self, message, bundle, *, uid: str = "", wait_h=None
+    ) -> None:
+        """文字之後：美股四大 → 台指電子盤 → 恐懼與貪婪。沒有官方走勢的卡已在文字裡說明。
+
+        wait_h：沿用大盤 LOADING；每張附圖前改階段文案，不准長沉默。
+        """
         from config import skip_chart_warmup
         from market_session_cards import session_card_jobs
 
@@ -5968,7 +6006,27 @@ class WayneTelegramBot:
             return
         uid = uid or self._uid_from_message(message)
         os.makedirs(self.charts_dir, exist_ok=True)
+        phase_now = {
+            "us": "美股走勢圖",
+            "tx": "台指電子盤圖",
+            "fear": "恐懼與貪婪圖",
+        }
+        status_msg = wait_h[0] if wait_h else None
+        t0 = time.monotonic()
         for kind, spec in session_card_jobs(bundle):
+            if status_msg is not None:
+                elapsed = int(time.monotonic() - t0)
+                await self._safe_edit_text(
+                    status_msg,
+                    self._wait_bubble(
+                        "大盤進行中",
+                        elapsed,
+                        now=phase_now.get(kind, self._session_card_face(kind)),
+                        rest="日K・大量區",
+                        fill_sec=25.0,
+                    ),
+                    parse_mode="HTML",
+                )
             path = self._scratch_chart_path(self.charts_dir, "MKT", kind, uid)
             heading = str((spec or {}).get("heading") or "")
             try:
@@ -9424,7 +9482,16 @@ class WayneTelegramBot:
             _vol_ensure_name = _stock_caption_name(card, code) or _vol_ensure_name
 
             async def _card_item():
-                """先 submit 再放行介紹圖排隊；await 完才回傳要送的高低卡。"""
+                """先 submit 再放行介紹圖排隊；await 完才回傳要送的高低卡。
+
+                同人連查同指紋：短 TTL memo 命中就複製，不佔 paint 佇列。
+                """
+                from wayne_navigator import try_decision_card_memo
+
+                warm = try_decision_card_memo(card, card_path_f)
+                if warm and self._png_looks_ok(warm):
+                    card_queued.set()
+                    return ("card", warm, card_cap, None)
                 attempts = 2
                 path = ""
                 for attempt in range(attempts):
@@ -9459,7 +9526,18 @@ class WayneTelegramBot:
                 return None
 
             async def _glance_item():
-                """submit 後放行結構 ensure→paint；不准結構插隊搶在介紹之前。"""
+                """submit 後放行結構 ensure→paint；不准結構插隊搶在介紹之前。
+
+                同人連查同指紋：短 TTL memo 命中就複製，不佔 paint 佇列。
+                """
+                from wayne_navigator import try_glance_memo
+
+                warm = try_glance_memo(
+                    code, card, tape if isinstance(tape, dict) else {}, glance_path, self.db_path
+                )
+                if warm and self._png_looks_ok(warm):
+                    glance_queued.set()
+                    return ("glance", warm, glance_cap, None)
                 attempts = 2
                 path = ""
                 for attempt in range(attempts):
@@ -9516,6 +9594,7 @@ class WayneTelegramBot:
 
             async def _vol_item():
                 # 大量區選窗在 paint 外已開；這裡只等那份，不准再整窗擋住結構圖。
+                # 同指紋短 TTL：memo 命中不佔 paint 佇列（現價指紋變了會 miss）。
                 try:
                     _vol_pack_box[0] = await vol_zone_task
                 except asyncio.CancelledError:
@@ -9523,6 +9602,25 @@ class WayneTelegramBot:
                 except Exception:
                     logger.exception("查股大量區 prep await 失敗 code=%s", code)
                     _vol_pack_box[0] = None
+                from vol_zone_chart import try_lookup_vol_memo
+
+                zone_pack = _vol_pack_box[0]
+                if isinstance(zone_pack, dict):
+                    zone_pack = dict(zone_pack)
+                    zone_pack["out"] = vol_path_f
+                    warm = try_lookup_vol_memo(
+                        zone_pack,
+                        vol_path_f,
+                        card=card,
+                        with_nav_signals=True,
+                        lookup_portrait=False,
+                        with_ma5_ma10=True,
+                        db_path=self.db_path,
+                    )
+                    if warm and warm[0] and self._chart_png_looks_ok(warm[0]):
+                        if warm[1]:
+                            vol_face[0] = warm[1]
+                        return ("vol", warm[0], vol_face[0], None)
                 png = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
                 cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
                 if not png:
