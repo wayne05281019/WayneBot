@@ -2478,7 +2478,8 @@ def _stock_card_html(
     if profit_val:
         body.append(_card_kv("獲利", html_escape(profit_val)))
     if item.get("_emerging_live_unused"):
-        body.append(html_escape("還沒用興櫃現價，獲利沿用昨收。"))
+        # 盤中興櫃無櫃買現價可複核時：獲利仍昨收官方，標清楚不准看成已複核。
+        body.append(html_escape("尚未用興櫃現價複核。"))
     try:
         from decision_card_signals import leave_zero_trade_plan
 
