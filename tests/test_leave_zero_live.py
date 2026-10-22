@@ -823,7 +823,8 @@ def test_leave_zero_pick_scans_profit_including_emerging(tmp_path, monkeypatch):
     em = {r["code"]: r for r in live}["3595"]
     assert em.get("_emerging_live_unused") is True
     assert "live" not in em
-    assert "還沒用興櫃現價" in _stock_card_html(em, 1, bucket_label="剛脫離零")
+    assert "尚未用興櫃現價複核" in _stock_card_html(em, 1, bucket_label="剛脫離零")
+    assert "還沒用興櫃現價" not in _stock_card_html(em, 1, bucket_label="剛脫離零")
 
 
 def test_leave_zero_live_emerging_uses_tpex_avg_not_listed_price(tmp_path, monkeypatch):
@@ -874,6 +875,7 @@ def test_leave_zero_live_emerging_uses_tpex_avg_not_listed_price(tmp_path, monke
     assert float(row["live"]["price"]) != 99.0
     assert float(row["profit_pct"]) != official
     card = _stock_card_html(row, 1, bucket_label="剛脫離零")
+    assert "尚未用興櫃現價複核" not in card
     assert "還沒用興櫃現價" not in card
 
     monkeypatch.setattr(
