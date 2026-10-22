@@ -27,10 +27,11 @@ from wayne_db import ensure_core_schema
 def test_ai_run_copy_matches_winrate_roster():
     import inspect
 
-    from ai_trader import ai_no_fill_note, ai_run_wait_now
+    from ai_trader import ai_no_fill_note, ai_run_wait_now, format_ai_desk_pages
     from bot_servers import WayneTelegramBot
+    from screen_review import format_ai_review_html
 
-    assert ai_run_wait_now() == "依今日勝率買點名單"
+    assert ai_run_wait_now() == "依勝率買點隔日名單"
     note = ai_no_fill_note(2)
     assert "候選 2 檔" in note
     assert "只從當天勝率買點名單模擬" in note
@@ -45,6 +46,16 @@ def test_ai_run_copy_matches_winrate_roster():
     hub = inspect.getsource(WayneTelegramBot._show_pressure_hub)
     assert "不准當進場" not in hub
     assert "PRESSURE_HUB_LEAD" in hub
+    assert "選標籤看出圖" in hub
+    assert "含導航箭頭" not in hub
+    desk = inspect.getsource(format_ai_desk_pages)
+    assert "海選紀律" not in desk
+    assert 'or "勝率買點"' in desk
+    review_src = inspect.getsource(format_ai_review_html)
+    assert "leave_zero" not in review_src
+    assert "ma60_lower" not in review_src
+    assert "勝率買點" in review_src
+    assert "剛離零" in review_src
 
 
 def test_persist_lesson_and_encoding_roundtrip(tmp_path):

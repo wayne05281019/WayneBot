@@ -1414,8 +1414,7 @@ class WayneTelegramBot:
         body = (
             "<b>壓撐觀察</b>\n"
             f"<i>{html_escape(PRESSURE_HUB_LEAD)}</i>\n"
-            "選標籤後先出壓力區圖（含導航箭頭／量能訊號）。"
-            "點股票一次三張：壓力區／高低溫度卡／籌碼；介紹／產業／導航圖下自選。"
+            "選標籤看出圖；點股一次三張。"
         )
         await message.reply_html(
             body,

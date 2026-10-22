@@ -39,7 +39,7 @@ TAG_LABELS = {
 TAG_ORDER = (TAG_SIDEWAYS, TAG_TEST_PRESS, TAG_STAND_SUPPORT)
 
 # 話筒開場第一段。三標籤只是觀察；門檻與出圖不改。
-PRESSURE_HUB_LEAD = "接大量壓力區框選。這三標籤只是觀察。"
+PRESSURE_HUB_LEAD = "三標籤只觀察，不是買訊。"
 
 TAG_SUBTITLES = {
     TAG_SIDEWAYS: (

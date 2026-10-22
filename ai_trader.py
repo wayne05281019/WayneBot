@@ -934,7 +934,7 @@ def format_ai_desk_pages(
                 kv_html_compact("停損", html_num_paren(f"{stop_px:,.2f}", STOP_PCT, compact=True)),
                 kv_html_compact("停利", html_num_paren(f"{take_px:,.2f}", TAKE_PCT, compact=True)),
             ]
-            reason = reasons.get(sid) or "海選紀律"
+            reason = reasons.get(sid) or "勝率買點"
             bought = _fmt_ymd(p.get("buy_date") or "")
             block.extend(_ai_phone_lines(f"進場　{reason} {bought}".strip()))
             flow = str(flows.get(sid) or "").strip()
@@ -1083,8 +1083,8 @@ def _research_and_log_buy(
 
 
 def ai_run_wait_now() -> str:
-    """AI操盤等待句。進場只吃當天勝率買點名單，不准寫成海選。"""
-    return "依今日勝率買點名單"
+    """AI操盤等待句。進場只吃當天勝率買點隔日名單，不准寫成海選。"""
+    return "依勝率買點隔日名單"
 
 
 def ai_no_fill_note(candidates: int) -> str:
