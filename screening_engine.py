@@ -476,7 +476,27 @@ class ScreeningEngine:
 
                     if PRODUCT_ENTRY and bool(nav_low_ma60_lower_mask(df).iloc[-1]):
                         last_i = len(df) - 1
-                        if not should_exclude_buy(df, last_i):
+                        # §13 第3輪可換：A2 加 R3c 外資壓力日濾網（不改 ma60_lower 公式）
+                        a2_ok = True
+                        try:
+                            from multi_track_env_gates import keep_a2_red_arrow
+
+                            qday = (
+                                str(df["date"].iloc[last_i] or "").replace("-", "")[:8]
+                                if "date" in df.columns
+                                else ""
+                            )
+                            mkt = str(
+                                (info or {}).get("market")
+                                or (info or {}).get("market_type")
+                                or ""
+                            )
+                            a2_ok = bool(
+                                keep_a2_red_arrow(self.db_path, qday, market=mkt)
+                            )
+                        except Exception:
+                            a2_ok = True
+                        if a2_ok and not should_exclude_buy(df, last_i):
                             item = dict(info)
                             item["ma60_lower"] = True
                             item["entry_stage"] = "buy"

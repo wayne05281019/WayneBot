@@ -1494,8 +1494,14 @@ def run(db: str, out_path: str, *, smoke: bool = False) -> Dict[str, Any]:
         "notes": {
             "R8_skip": "未重跑 wait_1～5／粗 hi_vol_shrink 全市場三分位",
             "pending_new_R": "連2根確認／平台爆量等未鎖條目 → 等協調者彙整定案再加",
+            "pending_B": "B1–B10 見 stock-vp-b-freeze；本輪不加",
             "gate": "可換＝TW／TWO 全樣＋留白 h5 勝率≥現況+1pt 且均報酬≥現況，n_days≥20",
-            "buy_formula": "未改 leave_zero／黃金買點",
+            "buy_formula": "未改 leave_zero／黃金買點／ma60_lower／hold_l60 公式本體",
+            "section13": {
+                "A2": "R3c_keep_pressure → multi_track_env_gates.keep_a2_red_arrow",
+                "A5": "R3a_twii_down → multi_track_env_gates.keep_a5_stabilize",
+                "next": "A2:R3c_keep_and_R2a；A5:R3a_and_R3d_excl_crowd",
+            },
         },
     }
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
