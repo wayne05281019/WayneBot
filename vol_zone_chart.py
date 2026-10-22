@@ -662,7 +662,8 @@ def missing_open_quote_days(
 
 
 # 補洞結果短記：查股暖路徑會二次 prepare，不准每次重打官方月表（CI ~2s）
-_ENSURE_VOL_TTL_SEC = 180.0
+# 同人連查／同檔暖路徑：5 分鐘內命中即可，仍只認真月表、不准造假量
+_ENSURE_VOL_TTL_SEC = 300.0
 _ENSURE_VOL_LOCK = threading.Lock()
 _ENSURE_VOL_MEMO: Dict[Tuple[Any, ...], Tuple[float, Dict[str, Any]]] = {}
 _ENSURE_VOL_MEMO_MAX = 64
@@ -906,14 +907,15 @@ def ensure_official_volume_window(
         if month_miss:
             conn_chk = sqlite3.connect(path, timeout=15.0)
             try:
-                for d in month_miss:
-                    hit = conn_chk.execute(
-                        "SELECT 1 FROM daily_quotes WHERE stock_id=? AND replace(date,'-','')=?",
-                        (sid, d),
-                    ).fetchone()
-                    if hit:
-                        force_refetch = True
-                        break
+                # 一批 IN 查，冷路徑少打 N 次單日 SELECT
+                placeholders = ",".join("?" for _ in month_miss)
+                hit = conn_chk.execute(
+                    "SELECT 1 FROM daily_quotes WHERE stock_id=? "
+                    f"AND replace(date,'-','') IN ({placeholders}) LIMIT 1",
+                    (sid, *month_miss),
+                ).fetchone()
+                if hit:
+                    force_refetch = True
             except Exception:
                 force_refetch = True
             finally:
@@ -2511,6 +2513,74 @@ def _vz_memo_get(key: Tuple[Any, ...], save_path: str) -> Optional[Tuple[str, st
     except Exception:
         logger.debug("vol zone memo copy fail", exc_info=True)
         return None
+
+
+def try_lookup_vol_memo(
+    pack: Optional[Dict[str, Any]],
+    save_path: str,
+    *,
+    card: Optional[Dict[str, Any]] = None,
+    with_nav_signals: bool = True,
+    lookback: int = VOL_ZONE_LOOKBACK,
+    bars: int = VOL_ZONE_BARS,
+    lookup_portrait: bool = False,
+    with_parallel_channel: bool = False,
+    with_ma5_ma10: bool = True,
+    db_path: str = "",
+) -> Optional[Tuple[str, str]]:
+    """暖路徑：已有 prepare pack 時，短 TTL 命中就複製，不進 paint／Agg。
+
+    miss 回 None → 呼叫端再 submit_mpl_paint。盤中卡指紋變了會 miss。
+    """
+    if not (
+        isinstance(pack, dict)
+        and pack.get("zone")
+        and pack.get("view") is not None
+        and pack.get("bars")
+        and save_path
+    ):
+        return None
+    card_fp: Tuple[Any, ...] = ()
+    if isinstance(card, dict) and card:
+        try:
+            from wayne_navigator import _lookup_card_fingerprint
+
+            card_fp = tuple(_lookup_card_fingerprint(card))
+        except Exception:
+            card_fp = (
+                str(card.get("stock_id") or ""),
+                str(card.get("latest_date") or card.get("as_of") or ""),
+                str(card.get("query_clock") or ""),
+                str(card.get("stance") or ""),
+            )
+    channel_fp: Tuple[Any, ...] = ()
+    if with_parallel_channel and str(pack.get("sid") or "").upper() in (
+        "TWII",
+        "TAIEX",
+        "^TWII",
+    ):
+        try:
+            from biaoke_chart import latest_biaoke_named_rising_lows
+
+            named = latest_biaoke_named_rising_lows(str(db_path or ""))
+            if named:
+                channel_fp = (str(named[0]), str(named[1]))
+        except Exception:
+            channel_fp = ()
+    memo_key = _vz_memo_key(
+        pack["sid"],
+        pack["zone"],
+        pack["last"],
+        with_nav_signals=with_nav_signals,
+        lookback=lookback,
+        bars=bars,
+        lookup_portrait=lookup_portrait,
+        with_parallel_channel=with_parallel_channel,
+        with_ma5_ma10=with_ma5_ma10,
+        card_fp=card_fp,
+        channel_fp=channel_fp,
+    )
+    return _vz_memo_get(memo_key, save_path)
 
 
 def _vz_memo_put(key: Tuple[Any, ...], path: str, cap: str) -> None:
