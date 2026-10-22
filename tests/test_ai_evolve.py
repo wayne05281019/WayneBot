@@ -54,8 +54,8 @@ def test_ai_run_copy_matches_winrate_roster():
     review_src = inspect.getsource(format_ai_review_html)
     assert "leave_zero" not in review_src
     assert "ma60_lower" not in review_src
-    assert "勝率買點" in review_src
-    assert "剛離零" in review_src
+    assert "剛離零買點" in review_src
+    assert "勝" not in review_src  # 復盤白話不准露「勝率／勝％」
 
 
 def test_persist_lesson_and_encoding_roundtrip(tmp_path):
