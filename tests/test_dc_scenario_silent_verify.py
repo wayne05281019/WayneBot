@@ -167,6 +167,9 @@ def test_catch_up_skips_cache_while_morning_claim_fresh():
     src = inspect.getsource(main_mod.catch_up_missed_jobs)
     assert "morning_claim_is_fresh_running" in src
     assert "略過背景補建海選快取" in src
+    # 開機 demote 若曾 lock 失敗，補跑早報前再清 orphan
+    assert "demote_orphaned_morning_claims" in src
+    assert "補跑清掉 orphan morning-claim" in src
 
 
 def test_reclaim_stale_running_marks_error():

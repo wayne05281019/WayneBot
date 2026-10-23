@@ -649,6 +649,16 @@ def catch_up_missed_jobs(now=None) -> None:
                 as_of,
             )
         else:
+            # 開機 demote 若曾 DB lock 失敗，每輪補跑再清一次 pre-boot orphan（§14）。
+            try:
+                n_orphan = runner.demote_orphaned_morning_claims()
+                if n_orphan:
+                    logger.info(
+                        "補跑清掉 orphan morning-claim %s 筆，改為可補寄",
+                        n_orphan,
+                    )
+            except Exception:
+                logger.exception("補跑清 orphan morning-claim 失敗（不擋）")
             logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
             runner.run_morning_screen(skip_if_done=True)
     if need_midday:

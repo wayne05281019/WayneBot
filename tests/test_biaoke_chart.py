@@ -1355,13 +1355,17 @@ def test_structure_right_notes_fit_most_likely_full_text():
 
 @pytest.mark.production_db
 def test_channel_rejects_stub_two_point_span(production_db):
-    """過短兩點（例如只隔一週）不准當通道主軌。"""
+    """過短兩點（例如只隔一週）不准當通道主軌。
+
+    3017 升降方向會隨官方柱滾動；本測只鎖「有通道→底邊跨度夠長＋上下軌平行」，
+    不准寫死 asc（2026-10-23 full-suite 已變成 desc）。
+    """
     from biaoke_brain import load_bars
     from biaoke_chart import _BARS, infer_parallel_channel
 
     work = load_bars(production_db, "3017", n=360)[-_BARS:]
     ch = infer_parallel_channel(work)
-    assert ch.get("kind") == "asc"
+    assert ch.get("kind") in ("asc", "desc")
     (i, _y1, _d1), (j, _y2, _d2) = ch["base"]
     assert int(j) - int(i) >= 10
     # 平行兩線斜率相同
