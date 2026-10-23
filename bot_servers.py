@@ -26,6 +26,11 @@ _ACTIVE_PHONE_UID: ContextVar[str] = ContextVar("wayne_phone_uid", default="")
 PHONE_BUSY = "這一步暫時沒跑完，請稍後再按一次。細節已記在後台，不會影響你其他按鈕。"
 PHONE_STALE_REPLAY = "雲端剛重開，上一則操作已作廢。請再按一次該按鈕。"
 PHONE_OP_CANCELLED = "已取消上一則等待。請再按一次要用的按鈕。"
+# 06:30／16:30／03–04 重活窗：與 busy_window_notice 同一句；擋重鈕防 web OOM。
+try:
+    from busy_window_notice import BUSY_TEXT as PHONE_HEAVY_JOB
+except Exception:  # pragma: no cover
+    PHONE_HEAVY_JOB = "資料處理中，請稍後再用"
 
 # Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
 _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
@@ -7675,6 +7680,31 @@ class WayneTelegramBot:
             return True
         return False
 
+    def _heavy_job_blocks_phone(self) -> bool:
+        """重活窗進行中？只讀小 JSON，不碰行情／出圖（防 web OOM）。"""
+        try:
+            from busy_window_notice import is_busy_window_active
+
+            return bool(is_busy_window_active(db_path=self.db_path))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _phone_allowed_during_heavy_job(text: str) -> bool:
+        """重活時仍准開機／回主選單／備份；其餘重鈕先擋。"""
+        t = (text or "").strip()
+        low = t.lower().lstrip("/")
+        if low in ("start", "開始", "menu", "備份", "backup") or t in (
+            "備份",
+            "私人備份",
+            "選單",
+            "主選單",
+        ):
+            return True
+        if t in (MENU_BTN_BACK_MAIN, MENU_BTN_BACK_STEP):
+            return True
+        return False
+
     async def _on_text_bound(self, update, context, *, raw, text, uid: str):
         actor = self._actor_key(update.message, uid=uid)
         # 重開後重放崩潰前舊訊：作廢，不准晚跑海選／飆大。
@@ -7685,6 +7715,17 @@ class WayneTelegramBot:
             try:
                 await update.message.reply_text(
                     PHONE_STALE_REPLAY, reply_markup=self._reply_menu(uid)
+                )
+            except Exception:
+                pass
+            return
+        # 早報／融合／DC 重活：推播提示之外，話筒重鈕也擋，避免跟排程搶記憶體。
+        if self._heavy_job_blocks_phone() and not self._phone_allowed_during_heavy_job(
+            text
+        ):
+            try:
+                await update.message.reply_text(
+                    PHONE_HEAVY_JOB, reply_markup=self._reply_menu(uid)
                 )
             except Exception:
                 pass
@@ -9933,6 +9974,15 @@ class WayneTelegramBot:
 
     async def _on_callback_bound(self, update, context, q, uid: str):
         data = q.data or ""
+        # 重活窗：圖下鈕／翻頁也擋（除 noop／分類提示），防跟排程搶記憶體。
+        if self._heavy_job_blocks_phone() and not (
+            data.startswith("cat:") or data.startswith("noop")
+        ):
+            try:
+                await q.answer(PHONE_HEAVY_JOB[:200], show_alert=True)
+            except Exception:
+                pass
+            return
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
