@@ -1776,3 +1776,198 @@ def test_push_screening_keeps_sent_ok_when_mark_fails(monkeypatch, tmp_path):
     )
     assert ok is True
     assert marks["n"] == 1
+
+
+def test_send_ok_mark_fail_force_morning_does_not_resend(tmp_path, monkeypatch):
+    """2026-10-23：Telegram 2/2 後蓋戳失敗，第二次 force 不准再寄。"""
+    import sqlite3
+
+    import main_runner as mr
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "dup-force.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261023"
+    runner.token = "x"
+    runner.chat_id = "111"
+    runner.bot = type(
+        "B",
+        (),
+        {"send_screening_report": staticmethod(lambda *a, **k: True)},
+    )()
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["111", "222"])
+    monkeypatch.setattr(runner, "_push_morning_session_cards", lambda *a, **k: None)
+    monkeypatch.setattr(mr.time, "sleep", lambda *_a, **_k: None)
+
+    # 模擬 DB 蓋戳永遠 locked（寄出回執仍要靠檔／表寫成）
+    real_mark = runner._mark_pipeline
+
+    def _mark_boom(*a, **k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(runner, "_mark_pipeline", _mark_boom)
+
+    screening = {
+        "status": "success",
+        "payload": [{"html": "海選"}],
+        "message": "海選",
+        "results": {},
+    }
+    ok = runner._push_screening(
+        screening,
+        as_of="20261022",
+        morning_digest=True,
+        pipeline_run_date="screen-20261022",
+    )
+    assert ok is True
+    assert runner.push_already_delivered("screen-20261022") is True
+
+    # pipeline 仍可能不是 success（蓋戳失敗）
+    # 模擬仍卡在 running morning-claim
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261022", "2026-10-23T18:32:00+08:00", "running", "morning-claim"),
+    )
+    conn.commit()
+    conn.close()
+
+    # force demote 不准降有回執的鍵
+    assert runner.demote_orphaned_morning_claims(force=True) == 0
+
+    # reconcile／honor 補標 success（用真 _mark_pipeline）
+    monkeypatch.setattr(runner, "_mark_pipeline", real_mark)
+    assert runner.honor_push_delivery("screen-20261022") is True
+    assert runner.pipeline_status("screen-20261022") == "success"
+
+    # 第二次 force／claim 不准再搶
+    assert (
+        runner.try_claim_pipeline(
+            "screen-20261022",
+            notes="morning-claim",
+            allow_stale_running=True,
+            stale_running_sec=1,
+        )
+        is False
+    )
+
+    morning_calls = {"n": 0}
+
+    def _morning(*_a, **_k):
+        morning_calls["n"] += 1
+        return True
+
+    monkeypatch.setattr(runner, "run_morning_screen", _morning)
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261022"
+    )
+    out = runner.force_rescue_morning()
+    # reconcile 已把 key 標 success → 不再當成未寄去跑 morning（或跑了也因 skip 不寄）
+    assert out.get("delivered") is True or runner.pipeline_status("screen-20261022") == "success"
+    assert runner.push_already_delivered("screen-20261022") is True
+    # 第二次 demote+claim 仍擋
+    assert runner.demote_orphaned_morning_claims(force=True) == 0
+    assert (
+        runner.try_claim_pipeline(
+            "screen-20261022", notes="morning-claim", allow_stale_running=True
+        )
+        is False
+    )
+    _ = morning_calls
+
+
+def test_midday_records_delivery_before_mark(tmp_path, monkeypatch):
+    """12:45 寄出後即使蓋戳失敗，也要有回執擋重寄。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "midday-receipt.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261023"
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261022"
+    )
+    monkeypatch.setattr(
+        "tw_holidays.closed_tw_session", lambda **_k: None
+    )
+    claim_n = {"n": 0}
+    real_claim = runner.try_claim_pipeline
+
+    def _claim_once(*a, **k):
+        claim_n["n"] += 1
+        if claim_n["n"] == 1:
+            return True
+        return real_claim(*a, **k)
+
+    monkeypatch.setattr(runner, "try_claim_pipeline", _claim_once)
+    monkeypatch.setattr(
+        "midday_review.run_midday_review",
+        lambda *_a, **_k: {"html": "<b>比價</b>"},
+    )
+    monkeypatch.setattr(runner, "_broadcast_family", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["1", "2"])
+
+    def _boom(*_a, **_k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(runner, "_mark_pipeline", _boom)
+    assert runner.run_midday_review(skip_if_done=True) is True
+    assert runner.push_already_delivered("midday-20261022") is True
+    # 還原真 claim：有回執則 honor 擋住
+    monkeypatch.setattr(runner, "try_claim_pipeline", real_claim)
+    monkeypatch.setattr(runner, "_mark_pipeline", lambda *a, **k: None)
+    assert (
+        runner.try_claim_pipeline(
+            "midday-20261022", notes="midday-claim", allow_stale_running=False
+        )
+        is False
+    )
+
+
+def test_winrate_records_delivery_before_mark(tmp_path, monkeypatch):
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "wr-receipt.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261023"
+    runner.bot = None
+    monkeypatch.setattr(
+        "tw_holidays.closed_tw_session", lambda **_k: None
+    )
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261022"
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint.scan_winrate_leave_zero",
+        lambda *_a, **_k: ("20261022", []),
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint.save_winrate_roster", lambda *_a, **_k: 0
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint.silent_remember_roster", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(runner, "_broadcast_family", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["1", "2"])
+
+    def _boom(*_a, **_k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(runner, "_mark_pipeline", _boom)
+    from winrate_buypoint import pipeline_run_key
+
+    key = pipeline_run_key("20261022")
+    assert runner.run_winrate_buypoint(skip_if_done=True, notify=True) is True
+    assert runner.push_already_delivered(key) is True

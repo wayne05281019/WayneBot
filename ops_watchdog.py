@@ -280,7 +280,15 @@ def pipeline_stamps(db_path: str, *, now: Optional[datetime] = None) -> Dict[str
             "notes": str(row.get("notes") or ""),
         }
         if kind in ("morning_screen", "midday_review"):
-            stamp["delivered"] = status == "success"
+            delivered = status == "success"
+            if not delivered and key:
+                try:
+                    from pipeline_delivery import push_delivery_recorded
+
+                    delivered = bool(push_delivery_recorded(db_path, key))
+                except Exception:
+                    delivered = False
+            stamp["delivered"] = delivered
         out[kind] = stamp
     return out
 
