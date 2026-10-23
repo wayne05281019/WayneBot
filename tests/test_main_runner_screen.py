@@ -698,6 +698,52 @@ def test_morning_skip_increment_refreshes_sidecars(tmp_path, monkeypatch):
     assert bumped == []
 
 
+def test_morning_skips_increment_when_as_of_behind_cap(tmp_path, monkeypatch):
+    """基準日已齊但 cap 已往後：不准再跑 fuse 擋 §14 寄出。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "behind-cap.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261023"
+    runner.chat_id = "9001"
+    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: True)})()
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner.send_telegram_message = lambda *a, **k: True
+    runner.token = ""
+    runner._refresh_official_sidecars = lambda: (_ for _ in ()).throw(
+        AssertionError("behind cap 不准重側車")
+    )
+    monkeypatch.setattr("tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {})
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20261022")
+    monkeypatch.setattr("config.fuse_end_date", lambda: "20261023")
+    monkeypatch.setenv("WAYNE_SCREEN_INLINE", "1")
+    monkeypatch.setattr(
+        "main_runner.run_full_screening",
+        lambda **_k: {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+    )
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+
+    bumped = []
+
+    def boom(*_a, **_k):
+        bumped.append(True)
+        raise AssertionError("behind cap 不該再跑全市場增量")
+
+    runner.run_daily_increment = boom
+    assert runner.run_morning_screen(skip_if_done=False, notify=True) is True
+    assert bumped == []
+    assert runner.pipeline_status("screen-20261022") == "success"
+
+
 def test_midday_does_not_mark_when_telegram_rejects(tmp_path, monkeypatch):
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema, touch_tg_user
