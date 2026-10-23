@@ -520,6 +520,103 @@ class MainRunner:
             )
         return 0
 
+    def demote_orphaned_increment_claims(
+        self,
+        *,
+        retries: int = 8,
+        force: bool = False,
+        max_age_sec: int | None = None,
+    ) -> int:
+        """清卡住的 increment-claim running→computed（§14 讓路早報）。
+
+        前一進程 OOM／Deploy 後，假 running 會讓補跑 fuse 搶鎖失敗或雙開鎖死 DB。
+        年齡預設 INCREMENT_RUNNING_STALE_SEC；force 全降。
+        """
+        age_limit = int(
+            INCREMENT_RUNNING_STALE_SEC if max_age_sec is None else max_age_sec
+        )
+        last_err: Exception | None = None
+        for attempt in range(max(1, int(retries))):
+            conn = None
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=60.0)
+                conn.execute("PRAGMA busy_timeout=30000;")
+                rows = conn.execute(
+                    """
+                    SELECT run_date, finished_at, notes
+                    FROM pipeline_runs
+                    WHERE status = 'running'
+                      AND run_date NOT LIKE 'screen-%'
+                      AND (
+                        notes LIKE '%increment-claim%'
+                        OR notes LIKE '%increment claim%'
+                        OR notes = 'increment-claim'
+                      )
+                    """
+                ).fetchall()
+                n = 0
+                stamp = taipei_stamp()
+                boot_cut = float(_PROCESS_BOOT_EPOCH) - 5.0
+                now_epoch = time.time()
+                for run_date, finished_at, _notes in rows:
+                    epoch = self._pipeline_finished_epoch(finished_at)
+                    note = "increment orphan-boot demote"
+                    if not force:
+                        pre_boot = epoch is None or epoch < boot_cut
+                        aged = False
+                        if epoch is not None and age_limit >= 0:
+                            aged = (now_epoch - float(epoch)) > float(age_limit)
+                        if not pre_boot and not aged:
+                            continue
+                        if aged and not pre_boot:
+                            note = "increment age demote"
+                    else:
+                        note = "increment force demote"
+                    cur = conn.execute(
+                        """
+                        UPDATE pipeline_runs
+                        SET status = 'computed',
+                            notes = ?,
+                            finished_at = ?
+                        WHERE run_date = ? AND status = 'running'
+                        """,
+                        (note, stamp, run_date),
+                    )
+                    n += int(cur.rowcount or 0)
+                conn.commit()
+                return n
+            except sqlite3.OperationalError as e:
+                last_err = e
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                logger.warning(
+                    "清 orphan increment-claim DB busy（%s/%s）：%s",
+                    attempt + 1,
+                    retries,
+                    e,
+                )
+                time.sleep(1.5 * (attempt + 1))
+            except Exception:
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                logger.exception("清 orphan increment-claim 失敗")
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+        if last_err is not None:
+            logger.error(
+                "清 orphan increment-claim 連續 DB locked，放棄本輪：%s",
+                last_err,
+            )
+        return 0
+
     def force_rescue_morning(self) -> Dict[str, Any]:
         """§14 救援：在常駐碟上強制降 morning-claim，立刻補寄白名單兩人。
 
@@ -536,6 +633,9 @@ class MainRunner:
             "error": "",
         }
         try:
+            # 假 fuse running 會鎖死寄出；救援先清
+            n_inc = int(self.demote_orphaned_increment_claims(force=True) or 0)
+            out["demoted_increment"] = n_inc
             out["demoted"] = int(self.demote_orphaned_morning_claims(force=True) or 0)
         except Exception as e:
             out["error"] = f"demote: {e}"
