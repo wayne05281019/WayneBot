@@ -10,6 +10,7 @@ import os
 import sqlite3
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
@@ -368,3 +369,81 @@ def test_live_always_200_even_if_db_missing(serve, monkeypatch):
     code, body = get("/live")
     assert code == 200
     assert body.get("live") is True
+
+
+def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
+    """§14：POST /ops/force-morning 在常駐 HTTP（掛碟）上 demote＋補寄。"""
+    import urllib.request
+
+    get, db, main = serve
+    port = None
+    # serve fixture only exposes GET；另開一把 POST
+    httpd = None
+    for thr in threading.enumerate():
+        pass
+    # 從 get 反查 port：打一下 /live
+    code, _ = get("/live")
+    assert code == 200
+
+    monkeypatch.setenv("WAYNE_OPS_SECRET", "test-ops-secret")
+    importlib.reload(main)
+    # reload 會丟 server；改直接測 handler 邏輯用新 server
+    main._PROCESS_STARTED_AT = 0.0
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), main.HealthHandler)
+    port = httpd.server_address[1]
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+
+    def _post(path, headers=None):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}{path}",
+            data=b"{}",
+            method="POST",
+            headers=headers or {"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read().decode("utf-8"))
+
+    try:
+        code, body = _post("/ops/force-morning")
+        assert code == 401
+        assert body.get("ok") is False
+
+        called = {"demote": 0, "morning": 0}
+        import main_runner as mr
+
+        def _fake_demote(self, *a, **k):
+            called["demote"] += 1
+            return 1
+
+        def _fake_morning(self, *a, **k):
+            called["morning"] += 1
+            return True
+
+        monkeypatch.setattr(mr.MainRunner, "demote_orphaned_morning_claims", _fake_demote)
+        monkeypatch.setattr(mr.MainRunner, "run_morning_screen", _fake_morning)
+
+        code, body = _post(
+            "/ops/force-morning",
+            headers={
+                "Content-Type": "application/json",
+                "X-Wayne-Ops-Secret": "test-ops-secret",
+            },
+        )
+        assert code == 202
+        assert body.get("ok") is True
+        assert body.get("started") is True
+        assert body.get("demoted") == 1
+        # 背景執行緒補寄
+        for _ in range(50):
+            if called["morning"]:
+                break
+            time.sleep(0.05)
+        assert called["demote"] == 1
+        assert called["morning"] == 1
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
