@@ -156,6 +156,20 @@ def test_scheduler_defers_catch_up_after_boot():
     assert "先開聽筒" in src or "boot_catchup" in src or "_boot_catchup_delay" in src
     # §14：開機清 orphan morning-claim，不准空等租約
     assert "demote_orphaned_morning_claims" in src
+    # 必須在 180s 聽筒窗之前就先 demote，不准等延遲才清
+    assert "開機立刻清掉 orphan morning-claim" in src
+    assert "force_rescue_morning" in open("main_runner.py", encoding="utf-8").read()
+    assert "/ops/force-morning" in open("main.py", encoding="utf-8").read()
+    # 最重負荷預設：全掃走子行程；晚間／AI 備援不准 inline 重掃拖死常駐
+    runner_src = open("main_runner.py", encoding="utf-8").read()
+    assert "_screening_surviving_oom" in runner_src
+    assert "WAYNE_SCREEN_CHILD" in runner_src
+    assert "session=\"evening\", apply_us=False" in runner_src.replace(
+        " ", ""
+    ) or 'session="evening", apply_us=False' in runner_src or (
+        'session="evening"' in runner_src
+        and "_screening_surviving_oom" in runner_src
+    )
 
 
 def test_catch_up_skips_cache_while_morning_claim_fresh():

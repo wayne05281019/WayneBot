@@ -2007,11 +2007,20 @@ def run_biaoke_ingest_quiet() -> None:
 
     單元測預設略過真抓（否則 ownership／catch-up 會掛死外網數十分鐘）。
     要測真匯入：設 WAYNE_BIAOKE_INGEST_LIVE=1，或直接呼叫 ingest_public_posts（可塞 Fake session）。
+    morning-claim 進行中略過：跟 06:30 全掃搶 DB／記憶體會把常駐 OOM 掉（§14）。
     """
     if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get(
         "WAYNE_BIAOKE_INGEST_LIVE"
     ):
         return
+    try:
+        from main_runner import MainRunner
+
+        if MainRunner().morning_claim_is_fresh_running():
+            logger.info("飆大輪詢：morning-claim 進行中，略過本輪抓文")
+            return
+    except Exception:
+        logger.debug("查 morning-claim 略過", exc_info=True)
     try:
         from config import get_db_path
 

@@ -501,6 +501,84 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def do_POST(self):
+        """§14 救援：POST /ops/force-morning（常駐碟內 demote＋立刻補寄兩支話筒）。"""
+        import json
+
+        route = self.path.split("?")[0]
+        if route != "/ops/force-morning":
+            self.send_response(404)
+            self.end_headers()
+            return
+        secret = (os.getenv("WAYNE_OPS_SECRET") or "").strip()
+        got = (self.headers.get("X-Wayne-Ops-Secret") or "").strip()
+        if not secret or got != secret:
+            body = json.dumps(
+                {"ok": False, "error": "unauthorized"}, ensure_ascii=False
+            ).encode("utf-8")
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except BrokenPipeError:
+                pass
+            return
+        # 讀掉 body（可空），避免部分客戶端卡住
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length > 0:
+            try:
+                self.rfile.read(min(length, 1_000_000))
+            except Exception:
+                pass
+        try:
+            from main_runner import MainRunner
+
+            logger.info("§14 /ops/force-morning：常駐碟強制 demote＋背景補寄")
+            runner = MainRunner()
+            demoted = int(runner.demote_orphaned_morning_claims(force=True) or 0)
+
+            def _bg() -> None:
+                try:
+                    ok = bool(runner.run_morning_screen(skip_if_done=True, notify=True))
+                    logger.info(
+                        "§14 /ops/force-morning 背景補寄結束 ok=%s demoted=%s",
+                        ok,
+                        demoted,
+                    )
+                except Exception:
+                    logger.exception("§14 /ops/force-morning 背景補寄失敗")
+
+            threading.Thread(
+                target=_bg, name="ops-force-morning", daemon=True
+            ).start()
+            result = {
+                "ok": True,
+                "started": True,
+                "demoted": demoted,
+                "delivered": False,
+                "note": "demoted; morning notify started on web service disk",
+            }
+            body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+            self.send_response(202)
+        except Exception as e:
+            logger.exception("/ops/force-morning 失敗")
+            body = json.dumps(
+                {"ok": False, "error": str(e)}, ensure_ascii=False
+            ).encode("utf-8")
+            self.send_response(500)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            pass
+
     def log_message(self, format, *args):
         return
 
@@ -870,11 +948,23 @@ def start_daily_scheduler():
         # 長睡若被前一檔拖過 06:30，下一檔要到 12:45 才醒，開市日早報會漏。
         # 每輪先補跑、睡眠切片，漏了就在下一分鐘內補寄（§14）。
         _slice_s = 60.0
+        # §14：orphan morning-claim 必須開機立刻降，不准空等 180s 聽筒窗才清。
+        try:
+            from main_runner import MainRunner
+
+            n_orphan = MainRunner().demote_orphaned_morning_claims()
+            if n_orphan:
+                logger.info(
+                    "開機立刻清掉 orphan morning-claim %s 筆，改為可補寄",
+                    n_orphan,
+                )
+        except Exception:
+            logger.exception("開機立刻清 orphan morning-claim 失敗（不擋）")
         # 開機先讓 /live＋聽筒站穩；立刻 catch_up 拉海選／情境渲圖會跟第一檔查股搶 2GB→502。
         _boot_catchup_delay_s = 180.0
         logger.info("排程：延後 %.0f 秒再補跑，先開聽筒", _boot_catchup_delay_s)
         time.sleep(_boot_catchup_delay_s)
-        # §14：前一進程留下的 morning-claim running 必須開機立刻放行，不准空等租約。
+        # §14：延遲窗內若又寫入逾齡／pre-boot claim，補跑前再清一次。
         try:
             from main_runner import MainRunner
 

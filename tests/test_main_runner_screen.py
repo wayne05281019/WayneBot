@@ -958,6 +958,7 @@ def test_demote_premature_morning_screens_same_day(tmp_path):
 def test_demote_orphaned_morning_claims_boot(tmp_path):
     """開機必須把 orphan morning-claim running→computed，不准空等 30 分租約（§14）。"""
     import sqlite3
+    import time
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -972,10 +973,10 @@ def test_demote_orphaned_morning_claims_boot(tmp_path):
     old = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH - 120, tz=tw).isoformat(
         timespec="seconds"
     )
-    # 本行程啟動後的續租＝不准降（防雙寄）
-    fresh = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH + 30, tz=tw).isoformat(
-        timespec="seconds"
-    )
+    # 持鎖中：必須同時 (1) ≥ boot_cut (2) 年齡 < age demote。
+    # 短跑用 boot+N；長跑 CI 用 now-30——取較晚者兩邊都過。
+    fresh_epoch = max(float(mr._PROCESS_BOOT_EPOCH) + 30.0, time.time() - 30.0)
+    fresh = datetime.fromtimestamp(fresh_epoch, tz=tw).isoformat(timespec="seconds")
     conn = sqlite3.connect(path)
     conn.execute(
         "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
@@ -1031,6 +1032,87 @@ def test_demote_orphaned_morning_claims_boot(tmp_path):
         )
         is True
     )
+
+
+def test_demote_morning_claims_by_age_regardless_of_boot(tmp_path, monkeypatch):
+    """逾齡 morning-claim 即使 finished_at 在本行程 boot 之後也要降（§14）。"""
+    import sqlite3
+    import time
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    import main_runner as mr
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "age-demote.db")
+    ensure_core_schema(path)
+    tw = ZoneInfo("Asia/Taipei")
+    now = time.time()
+    # boot 拉很早：兩筆 finished_at 都「晚於 boot」，只測年齡路徑
+    monkeypatch.setattr(mr, "_PROCESS_BOOT_EPOCH", now - 10_000)
+    aged = datetime.now(tz=tw) - timedelta(seconds=900)
+    fresh = datetime.now(tz=tw) - timedelta(seconds=30)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261022", aged.isoformat(timespec="seconds"), "running", "morning-claim"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261021", fresh.isoformat(timespec="seconds"), "running", "morning-claim"),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.demote_orphaned_morning_claims(max_age_sec=600) == 1
+    rows = {
+        r[0]: r[1:]
+        for r in sqlite3.connect(path).execute(
+            "SELECT run_date, status, notes FROM pipeline_runs"
+        )
+    }
+    assert rows["screen-20261022"][0] == "computed"
+    assert "age demote" in rows["screen-20261022"][1]
+    assert rows["screen-20261021"][0] == "running"
+
+
+def test_force_demote_morning_claims(tmp_path):
+    """force=True 不論年齡一律降，供 /ops/force-morning 救援。"""
+    import sqlite3
+    import time
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import main_runner as mr
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "force-demote.db")
+    ensure_core_schema(path)
+    tw = ZoneInfo("Asia/Taipei")
+    # 非 force 必須保留：晚於 boot_cut 且未逾齡（短跑／長跑 CI 都要過）
+    fresh_epoch = max(float(mr._PROCESS_BOOT_EPOCH) + 30.0, time.time() - 30.0)
+    fresh = datetime.fromtimestamp(fresh_epoch, tz=tw).isoformat(timespec="seconds")
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261022", fresh, "running", "morning-claim"),
+    )
+    conn.commit()
+    conn.close()
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.demote_orphaned_morning_claims() == 0
+    assert runner.demote_orphaned_morning_claims(force=True) == 1
+    st, notes = sqlite3.connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20261022",),
+    ).fetchone()
+    assert st == "computed"
+    assert "force demote" in notes
 
 
 def test_demote_orphaned_morning_claims_retries_db_lock(tmp_path, monkeypatch):

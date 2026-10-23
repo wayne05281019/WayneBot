@@ -51,6 +51,9 @@ _POLLING_STALE_SECONDS = 300
 # 早上海選 running 租約：main_runner 進行中會續期 finished_at。
 # 逾時＝行程已死／卡死，准許重搶補寄（§14）；未逾時不當漏寄（修 06:55 誤報）。
 MORNING_RUNNING_STALE_SEC = 1800
+# §14：morning-claim 不論是否跨 boot，finished_at 逾此秒數一律降 computed。
+# 健康路徑會每 ~60s 續租；卡死／OOM 後不再續→逾齡放行，不准空等 30 分租約。
+MORNING_CLAIM_AGE_DEMOTE_SEC = 600
 # 盤後融合 running 租約：進行中續 finished_at；Deploy 殺行程後 5 分即可重搶，
 # 不准再靠 45 分 stale 把 16:30 窗拖掉。
 INCREMENT_RUNNING_STALE_SEC = 300

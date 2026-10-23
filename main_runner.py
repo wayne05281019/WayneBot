@@ -51,7 +51,11 @@ import requests
 
 from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str, fuse_end_date, taipei_now, taipei_stamp
 from wayne_db import ensure_core_schema
-from ops_watchdog import INCREMENT_RUNNING_STALE_SEC, MORNING_RUNNING_STALE_SEC
+from ops_watchdog import (
+    INCREMENT_RUNNING_STALE_SEC,
+    MORNING_CLAIM_AGE_DEMOTE_SEC,
+    MORNING_RUNNING_STALE_SEC,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -280,14 +284,14 @@ class MainRunner:
     ):
         """持鎖期間定期續 finished_at；行程死掉後租約過期才能重搶補寄。
 
-        max_lease_sec（預設＝MORNING_RUNNING_STALE_SEC）：逾時停止續租，
-        讓卡死在 DB lock 的行程不再把 finished_at 一直刷新、永遠擋 §14 補寄。
+        max_lease_sec（預設＝MORNING_CLAIM_AGE_DEMOTE_SEC）：逾時停止續租，
+        讓卡死全掃的行程不再把 finished_at 一直刷新；逾齡 demote 才能放行 §14。
         不在此降 computed（避免與仍在寄送的 body 雙寄）；只停續租。
         """
         key = str(run_date or "").strip()
         stop = threading.Event()
         cap = float(
-            MORNING_RUNNING_STALE_SEC if max_lease_sec is None else max_lease_sec
+            MORNING_CLAIM_AGE_DEMOTE_SEC if max_lease_sec is None else max_lease_sec
         )
         started = time.monotonic()
 
@@ -411,15 +415,25 @@ class MainRunner:
         except Exception:
             return None
 
-    def demote_orphaned_morning_claims(self, *, retries: int = 8) -> int:
-        """清前一進程留下的 morning-claim running→computed（§14）。
+    def demote_orphaned_morning_claims(
+        self,
+        *,
+        retries: int = 8,
+        force: bool = False,
+        max_age_sec: int | None = None,
+    ) -> int:
+        """清卡住的 morning-claim running→computed（§14）。
 
-        Deploy／OOM／DB lock 殺行程後，fresh running 會擋 catch-up 最多
-        MORNING_RUNNING_STALE_SEC；必須立刻放行補寄。
-        只降 finished_at 早於本行程開機的列（本行程持鎖中的 claim 不動，防雙寄）。
+        降級條件（force=True 則全降）：
+        1) finished_at 早於本行程開機（前一進程 orphan），或
+        2) finished_at 逾 max_age_sec（預設 MORNING_CLAIM_AGE_DEMOTE_SEC）—
+           不論是否跨 boot；健康路徑會續租，卡死／OOM 後不再續→逾齡放行。
         只動 screen-*（不含 screen-closed-*）；不准動 success；不准假 success。
         DB lock 會重試；不准一次 locked 就放棄讓 §14 永遠略過。
         """
+        age_limit = int(
+            MORNING_CLAIM_AGE_DEMOTE_SEC if max_age_sec is None else max_age_sec
+        )
         last_err: Exception | None = None
         for attempt in range(max(1, int(retries))):
             conn = None
@@ -445,11 +459,22 @@ class MainRunner:
                 stamp = taipei_stamp()
                 # 5s 緩衝：開機當下時鐘／寫入先後
                 boot_cut = float(_PROCESS_BOOT_EPOCH) - 5.0
+                now_epoch = time.time()
                 for run_date, finished_at, _notes in rows:
                     epoch = self._pipeline_finished_epoch(finished_at)
-                    # 無時戳或早於本行程＝orphan；本行程續租後的 finished_at 晚於 boot → 保留
-                    if epoch is not None and epoch >= boot_cut:
-                        continue
+                    note = "morning orphan-boot demote"
+                    if not force:
+                        pre_boot = epoch is None or epoch < boot_cut
+                        aged = False
+                        if epoch is not None and age_limit >= 0:
+                            aged = (now_epoch - float(epoch)) > float(age_limit)
+                        if not pre_boot and not aged:
+                            # 本行程持鎖且未逾齡：保留，防雙寄
+                            continue
+                        if aged and not pre_boot:
+                            note = "morning age demote"
+                    else:
+                        note = "morning force demote"
                     cur = conn.execute(
                         """
                         UPDATE pipeline_runs
@@ -458,7 +483,7 @@ class MainRunner:
                             finished_at = ?
                         WHERE run_date = ? AND status = 'running'
                         """,
-                        ("morning orphan-boot demote", stamp, run_date),
+                        (note, stamp, run_date),
                     )
                     n += int(cur.rowcount or 0)
                 conn.commit()
@@ -494,6 +519,44 @@ class MainRunner:
                 last_err,
             )
         return 0
+
+    def force_rescue_morning(self) -> Dict[str, Any]:
+        """§14 救援：在常駐碟上強制降 morning-claim，立刻補寄白名單兩人。
+
+        只准 web 常駐呼叫（掛永久碟）；不准 Render 無碟 one-off job。
+        """
+        out: Dict[str, Any] = {
+            "ok": False,
+            "demoted": 0,
+            "delivered": False,
+            "as_of": "",
+            "key": "",
+            "error": "",
+        }
+        try:
+            out["demoted"] = int(self.demote_orphaned_morning_claims(force=True) or 0)
+        except Exception as e:
+            out["error"] = f"demote: {e}"
+            logger.exception("force_rescue_morning demote 失敗")
+            return out
+        try:
+            from import_health import latest_complete_quote_date
+
+            as_of = latest_complete_quote_date(self.db_path) or ""
+            out["as_of"] = str(as_of)
+            out["key"] = f"screen-{as_of or 'none'}"
+        except Exception:
+            pass
+        try:
+            ok = bool(self.run_morning_screen(skip_if_done=True, notify=True))
+            out["ok"] = ok
+            st = self.pipeline_status(out["key"]) if out["key"] else ""
+            out["delivered"] = st == "success"
+            out["status"] = st or ""
+        except Exception as e:
+            out["error"] = f"morning: {e}"
+            logger.exception("force_rescue_morning 早報失敗")
+        return out
 
     def morning_claim_is_fresh_running(self, *, stale_running_sec: int | None = None) -> bool:
         """是否有未過期的 morning-claim running（補建快取／開機融合應讓路）。"""
@@ -976,9 +1039,18 @@ class MainRunner:
         report_text = ""
         if run_full_screening:
             try:
-                output = run_full_screening(db_path=self.db_path)
+                from import_health import latest_complete_quote_date
+
+                as_of = latest_complete_quote_date(self.db_path) or ""
+                output = self._screening_surviving_oom(
+                    as_of, session="morning", apply_us=True
+                ) or {}
                 report_text = output.get("message") or ""
-                logger.info(f"四大選股 status={output.get('status')} scanned={output.get('total_scanned')}")
+                logger.info(
+                    "四大選股 status=%s scanned=%s",
+                    output.get("status"),
+                    output.get("total_scanned"),
+                )
             except Exception as e:
                 logger.error(f"四大選股失敗：{e}", exc_info=True)
         if not report_text:
@@ -1255,6 +1327,107 @@ class MainRunner:
             return True
         return str(screening.get("status") or "") in ("success", "empty")
 
+    def _screening_surviving_oom(
+        self,
+        as_of: str,
+        *,
+        session: str = "morning",
+        apply_us: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """全市場掃預設走子行程：最重負荷當預設，OOM 不准拖死常駐／Telegram（§14）。
+
+        輕量日假設＝錯的。先讀 screen_sessions；無快取才 spawn。
+        子行程失敗不准在父行程重掃。pytest／WAYNE_SCREEN_INLINE 才准 inline。
+        """
+        from screening_engine import load_cached_full_screening
+
+        as_of = str(as_of or "").strip()
+        session = str(session or "morning").strip() or "morning"
+        cached = load_cached_full_screening(self.db_path)
+        if cached and str(cached.get("as_of") or cached.get("date") or "") == as_of:
+            if any((cached.get("results") or {}).values()):
+                logger.info(
+                    "海選讀既有 screen_sessions 快取 as_of=%s session=%s",
+                    as_of,
+                    session,
+                )
+                return cached
+
+        if not run_full_screening:
+            return cached
+
+        # 本機／pytest：子行程重、且常無真庫；直接同行程掃。
+        inline = os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get(
+            "WAYNE_SCREEN_INLINE"
+        ) or os.environ.get("WAYNE_MORNING_SCREEN_INLINE")
+        if inline:
+            try:
+                return run_full_screening(
+                    db_path=self.db_path,
+                    target_date=as_of,
+                    apply_us=bool(apply_us),
+                    session=session,
+                )
+            except Exception as e:
+                logger.error("四大選股（inline）失敗: %s", e, exc_info=True)
+                return None
+
+        import subprocess
+
+        logger.info(
+            "海選全掃改子行程（最重負荷預設／防 OOM）as_of=%s session=%s",
+            as_of,
+            session,
+        )
+        child = (
+            "import os,sys\n"
+            "os.environ['WAYNE_SCREEN_CHILD']='1'\n"
+            "from screening_engine import run_full_screening\n"
+            f"r=run_full_screening(db_path={self.db_path!r},target_date={as_of!r},"
+            f"apply_us={bool(apply_us)!r},session={session!r})\n"
+            "sys.exit(0 if r else 1)\n"
+        )
+        rc = -1
+        try:
+            env = dict(os.environ)
+            env["WAYNE_SCREEN_CHILD"] = "1"
+            proc = subprocess.run(
+                [sys.executable, "-c", child],
+                timeout=float(
+                    os.getenv("WAYNE_SCREEN_CHILD_TIMEOUT")
+                    or os.getenv("WAYNE_MORNING_CHILD_TIMEOUT")
+                    or "900"
+                ),
+                env=env,
+            )
+            rc = int(proc.returncode)
+        except subprocess.TimeoutExpired:
+            logger.error("海選子行程逾時 as_of=%s session=%s", as_of, session)
+        except Exception as e:
+            logger.error("海選子行程失敗: %s", e, exc_info=True)
+
+        cached = load_cached_full_screening(self.db_path)
+        if cached and str(cached.get("as_of") or cached.get("date") or "") == as_of:
+            if any((cached.get("results") or {}).values()):
+                logger.info(
+                    "海選子行程後讀到快取 as_of=%s session=%s rc=%s",
+                    as_of,
+                    session,
+                    rc,
+                )
+                return cached
+        # 子行程失敗／無快取：不准在父行程重掃（會再 OOM 拖死常駐）。
+        logger.error(
+            "海選子行程未寫出快取 rc=%s as_of=%s session=%s", rc, as_of, session
+        )
+        return None
+
+    def _morning_screening_surviving_oom(self, as_of: str) -> Optional[Dict[str, Any]]:
+        """相容舊名：06:30 早報全掃（預設子行程）。"""
+        return self._screening_surviving_oom(
+            as_of, session="morning", apply_us=True
+        )
+
     def _push_screening(
         self,
         screening: Optional[Dict[str, Any]],
@@ -1459,11 +1632,11 @@ class MainRunner:
             if results is None:
                 if not run_full_screening:
                     return {}
-                screening = run_full_screening(
-                    db_path=self.db_path,
-                    target_date=as_of,
-                    apply_us=apply_us,
-                    session=session or "",
+                # 最重負荷預設：不准在常駐行程內重掃全市場（OOM→話筒死）。
+                screening = self._screening_surviving_oom(
+                    as_of,
+                    session=str(session or "evening"),
+                    apply_us=bool(apply_us),
                 )
                 results = (screening or {}).get("results") or {}
 
@@ -1906,15 +2079,19 @@ class MainRunner:
                 self._refresh_official_sidecars()
                 return True
             if status in ("success", "computed") and not has_rows:
-                logger.warning(
-                    "早上海選 %s 已標 %s 但 screen_sessions 空，重掃補快取（不重寄）",
-                    key,
-                    status,
-                )
-                # 已寄過只補快取，不准再洗版推播。
+                # success＝已寄過只補快取；computed＝尚未寄到，必須重掃並仍可寄（§14）。
                 if status == "success":
+                    logger.warning(
+                        "早上海選 %s 已標 success 但 screen_sessions 空，重掃補快取（不重寄）",
+                        key,
+                    )
                     notify = False
                     rebuild_only = True
+                else:
+                    logger.warning(
+                        "早上海選 %s 已標 computed 但 screen_sessions 空，重掃後補寄",
+                        key,
+                    )
         logger.info("☀️ 06:30 先確認庫已齊，再寄海選")
         from config import fuse_end_date
 
@@ -2005,16 +2182,10 @@ class MainRunner:
             if claimed:
                 self.touch_pipeline_running(key)
             screening = None
-            if run_full_screening:
-                try:
-                    screening = run_full_screening(
-                        db_path=self.db_path,
-                        target_date=as_of,
-                        apply_us=True,
-                        session="morning",
-                    )
-                except Exception as e:
-                    logger.error("四大選股失敗: %s", e, exc_info=True)
+            try:
+                screening = self._morning_screening_surviving_oom(as_of)
+            except Exception as e:
+                logger.error("四大選股失敗: %s", e, exc_info=True)
             if claimed:
                 self.touch_pipeline_running(key)
             sent_ok = True
@@ -2108,8 +2279,9 @@ class MainRunner:
             return False
         screening = None
         try:
-            screening = run_full_screening(
-                db_path=self.db_path, target_date=as_of, apply_us=False, session="evening"
+            # 最重負荷預設：晚間全掃也走子行程，不准拖死常駐。
+            screening = self._screening_surviving_oom(
+                as_of, session="evening", apply_us=False
             )
         except Exception as e:
             logger.error("晚間海選失敗: %s", e, exc_info=True)
