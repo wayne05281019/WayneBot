@@ -958,6 +958,7 @@ def test_demote_premature_morning_screens_same_day(tmp_path):
 def test_demote_orphaned_morning_claims_boot(tmp_path):
     """開機必須把 orphan morning-claim running→computed，不准空等 30 分租約（§14）。"""
     import sqlite3
+    import time
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -972,10 +973,10 @@ def test_demote_orphaned_morning_claims_boot(tmp_path):
     old = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH - 120, tz=tw).isoformat(
         timespec="seconds"
     )
-    # 本行程啟動後的續租＝不准降（防雙寄）
-    fresh = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH + 30, tz=tw).isoformat(
-        timespec="seconds"
-    )
+    # 持鎖中：必須同時 (1) ≥ boot_cut (2) 年齡 < age demote。
+    # 短跑用 boot+N；長跑 CI 用 now-30——取較晚者兩邊都過。
+    fresh_epoch = max(float(mr._PROCESS_BOOT_EPOCH) + 30.0, time.time() - 30.0)
+    fresh = datetime.fromtimestamp(fresh_epoch, tz=tw).isoformat(timespec="seconds")
     conn = sqlite3.connect(path)
     conn.execute(
         "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
@@ -1081,6 +1082,7 @@ def test_demote_morning_claims_by_age_regardless_of_boot(tmp_path, monkeypatch):
 def test_force_demote_morning_claims(tmp_path):
     """force=True 不論年齡一律降，供 /ops/force-morning 救援。"""
     import sqlite3
+    import time
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -1091,9 +1093,9 @@ def test_force_demote_morning_claims(tmp_path):
     path = str(tmp_path / "force-demote.db")
     ensure_core_schema(path)
     tw = ZoneInfo("Asia/Taipei")
-    fresh = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH + 5, tz=tw).isoformat(
-        timespec="seconds"
-    )
+    # 非 force 必須保留：晚於 boot_cut 且未逾齡（短跑／長跑 CI 都要過）
+    fresh_epoch = max(float(mr._PROCESS_BOOT_EPOCH) + 30.0, time.time() - 30.0)
+    fresh = datetime.fromtimestamp(fresh_epoch, tz=tw).isoformat(timespec="seconds")
     conn = sqlite3.connect(path)
     conn.execute(
         "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
