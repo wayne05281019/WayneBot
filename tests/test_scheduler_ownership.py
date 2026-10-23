@@ -96,6 +96,16 @@ def test_every_job_has_exactly_one_pusher(monkeypatch):
 class _Recorder:
     def __init__(self):
         self.calls = []
+        self.db_path = ":memory:"
+
+    def demote_orphaned_increment_claims(self, **kw):
+        return 0
+
+    def demote_orphaned_morning_claims(self, **kw):
+        return 0
+
+    def morning_claim_is_fresh_running(self):
+        return False
 
     def run_morning_screen(self, **kw):
         self.calls.append(("morning", kw))
@@ -196,7 +206,8 @@ def test_catch_up_after_2100_runs_winrate_on_data_role(monkeypatch, recorder):
     now = datetime(2026, 9, 4, 21, 16, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
     kinds = [c[0] for c in recorder.calls]
-    assert kinds == ["open_check", "fuse", "morning", "evening", "winrate"]
+    # §14：morning before fuse so catch-up cannot DB-lock 早報
+    assert kinds == ["open_check", "morning", "fuse", "evening", "winrate"]
     wr = [c for c in recorder.calls if c[0] == "winrate"][0]
     assert wr[1]["skip_if_done"] is True
     assert wr[1]["notify"] is True
@@ -210,7 +221,7 @@ def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     now = datetime(2026, 9, 4, 20, 16, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
     kinds = [c[0] for c in recorder.calls]
-    assert kinds == ["open_check", "fuse", "morning", "evening"]
+    assert kinds == ["open_check", "morning", "fuse", "evening"]
     eve = [c for c in recorder.calls if c[0] == "evening"][0]
     assert eve[1]["skip_if_done"] is True
     assert eve[1]["notify"] is False
@@ -230,7 +241,7 @@ def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 4, 19, 50, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
-    assert [c[0] for c in recorder.calls] == ["open_check", "fuse", "morning"]
+    assert [c[0] for c in recorder.calls] == ["open_check", "morning", "fuse"]
     assert recorder.calls[1][1]["skip_if_done"] is True
     assert recorder.calls[2][1]["skip_if_done"] is True
 

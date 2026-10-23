@@ -540,15 +540,16 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             logger.info("§14 /ops/force-morning：常駐碟強制 demote＋背景補寄")
             runner = MainRunner()
+            # 先清假 fuse／morning running，再背景走 force_rescue（釘 as_of＋寄兩人）
+            demoted_inc = int(runner.demote_orphaned_increment_claims(force=True) or 0)
             demoted = int(runner.demote_orphaned_morning_claims(force=True) or 0)
 
             def _bg() -> None:
                 try:
-                    ok = bool(runner.run_morning_screen(skip_if_done=True, notify=True))
+                    result_bg = runner.force_rescue_morning()
                     logger.info(
-                        "§14 /ops/force-morning 背景補寄結束 ok=%s demoted=%s",
-                        ok,
-                        demoted,
+                        "§14 /ops/force-morning 背景補寄結束 %s",
+                        result_bg,
                     )
                 except Exception:
                     logger.exception("§14 /ops/force-morning 背景補寄失敗")
@@ -560,6 +561,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "started": True,
                 "demoted": demoted,
+                "demoted_increment": demoted_inc,
                 "delivered": False,
                 "note": "demoted; morning notify started on web service disk",
             }
@@ -606,7 +608,7 @@ def _taipei_now() -> datetime:
 
 
 def catch_up_missed_jobs(now=None) -> None:
-    """重啟補跑：已過死線的擁有排程（融合→海選→尾盤→晚間模擬倉）。"""
+    """重啟補跑：已過死線的擁有排程（§14：未寄早報時海選→融合→尾盤→晚間）。"""
     from config import scheduler_may_push, scheduler_owns
     from main_runner import MainRunner
 
@@ -709,9 +711,7 @@ def catch_up_missed_jobs(now=None) -> None:
             runner.run_nightly_open_check(now=now)
         except Exception:
             logger.exception("補跑深夜開盤查核失敗（不擋）")
-    if need_fuse:
-        logger.info("補跑：已過台灣 16:30，若盤後融合沒成功就補跑")
-        runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
+    # §14：未寄早報時先寄再融合。fuse 先跑會鎖死 DB，force-morning／補寄永遠到不了寄出。
     if need_morning:
         # 基準日當日（剛融合完）不提早寄：要等隔天 06:30 吃美股隔夜。
         try:
@@ -729,6 +729,15 @@ def catch_up_missed_jobs(now=None) -> None:
         else:
             # 開機 demote 若曾 DB lock 失敗，每輪補跑再清一次 pre-boot orphan（§14）。
             try:
+                n_inc = runner.demote_orphaned_increment_claims()
+                if n_inc:
+                    logger.info(
+                        "補跑清掉 orphan increment-claim %s 筆，讓路早報",
+                        n_inc,
+                    )
+            except Exception:
+                logger.exception("補跑清 orphan increment-claim 失敗（不擋）")
+            try:
                 n_orphan = runner.demote_orphaned_morning_claims()
                 if n_orphan:
                     logger.info(
@@ -737,8 +746,17 @@ def catch_up_missed_jobs(now=None) -> None:
                     )
             except Exception:
                 logger.exception("補跑清 orphan morning-claim 失敗（不擋）")
-            logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
+            logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄（先於盤後融合）")
             runner.run_morning_screen(skip_if_done=True)
+    if need_fuse:
+        logger.info("補跑：已過台灣 16:30，若盤後融合沒成功就補跑")
+        try:
+            n_inc = runner.demote_orphaned_increment_claims()
+            if n_inc:
+                logger.info("補跑清掉 orphan increment-claim %s 筆，改為可融合", n_inc)
+        except Exception:
+            logger.exception("補跑清 orphan increment-claim 失敗（不擋）")
+        runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
     if need_midday:
         logger.info("補跑：已過台灣 12:45，若尾盤可切沒寄過就補寄")
         runner.run_midday_review(skip_if_done=True)
@@ -948,18 +966,25 @@ def start_daily_scheduler():
         # 長睡若被前一檔拖過 06:30，下一檔要到 12:45 才醒，開市日早報會漏。
         # 每輪先補跑、睡眠切片，漏了就在下一分鐘內補寄（§14）。
         _slice_s = 60.0
-        # §14：orphan morning-claim 必須開機立刻降，不准空等 180s 聽筒窗才清。
+        # §14：orphan morning／increment claim 必須開機立刻降，不准空等 180s 聽筒窗才清。
         try:
             from main_runner import MainRunner
 
-            n_orphan = MainRunner().demote_orphaned_morning_claims()
+            _boot_runner = MainRunner()
+            n_inc = _boot_runner.demote_orphaned_increment_claims()
+            if n_inc:
+                logger.info(
+                    "開機立刻清掉 orphan increment-claim %s 筆，讓路早報",
+                    n_inc,
+                )
+            n_orphan = _boot_runner.demote_orphaned_morning_claims()
             if n_orphan:
                 logger.info(
                     "開機立刻清掉 orphan morning-claim %s 筆，改為可補寄",
                     n_orphan,
                 )
         except Exception:
-            logger.exception("開機立刻清 orphan morning-claim 失敗（不擋）")
+            logger.exception("開機立刻清 orphan claim 失敗（不擋）")
         # 開機先讓 /live＋聽筒站穩；立刻 catch_up 拉海選／情境渲圖會跟第一檔查股搶 2GB→502。
         _boot_catchup_delay_s = 180.0
         logger.info("排程：延後 %.0f 秒再補跑，先開聽筒", _boot_catchup_delay_s)
@@ -968,14 +993,18 @@ def start_daily_scheduler():
         try:
             from main_runner import MainRunner
 
-            n_orphan = MainRunner().demote_orphaned_morning_claims()
+            _r2 = MainRunner()
+            n_inc = _r2.demote_orphaned_increment_claims()
+            if n_inc:
+                logger.info("開機清掉 orphan increment-claim %s 筆，讓路早報", n_inc)
+            n_orphan = _r2.demote_orphaned_morning_claims()
             if n_orphan:
                 logger.info(
                     "開機清掉 orphan morning-claim %s 筆，改為可補寄",
                     n_orphan,
                 )
         except Exception:
-            logger.exception("開機清 orphan morning-claim 失敗（不擋補跑）")
+            logger.exception("開機清 orphan claim 失敗（不擋補跑）")
         while True:
             try:
                 catch_up_missed_jobs()
