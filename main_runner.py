@@ -60,6 +60,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("WayneBotRunner")
 
+# 本行程啟動牆鐘（epoch）；finished_at 早於此＝前一進程 orphan，可降 computed。
+_PROCESS_BOOT_EPOCH = time.time()
+
 
 def _stamp_age_seconds(raw: str, *, now=None) -> float:
     """紀錄時戳距今幾秒。含時區用該時區；舊 naive 當 UTC（Render 以前的寫法）。對比一律台北。"""
@@ -390,45 +393,107 @@ class MainRunner:
         finally:
             conn.close()
 
-    def demote_orphaned_morning_claims(self) -> int:
-        """開機清前一進程留下的 morning-claim running→computed（§14）。
+    @staticmethod
+    def _pipeline_finished_epoch(finished_at) -> float | None:
+        """pipeline finished_at → epoch 秒；解析失敗回 None。"""
+        raw = str(finished_at or "").strip()
+        if not raw:
+            return None
+        try:
+            from datetime import timezone
+
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            dt = datetime.fromisoformat(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return float(dt.timestamp())
+        except Exception:
+            return None
+
+    def demote_orphaned_morning_claims(self, *, retries: int = 8) -> int:
+        """清前一進程留下的 morning-claim running→computed（§14）。
 
         Deploy／OOM／DB lock 殺行程後，fresh running 會擋 catch-up 最多
-        MORNING_RUNNING_STALE_SEC；開機時前一進程已死，必須立刻放行補寄。
+        MORNING_RUNNING_STALE_SEC；必須立刻放行補寄。
+        只降 finished_at 早於本行程開機的列（本行程持鎖中的 claim 不動，防雙寄）。
         只動 screen-*（不含 screen-closed-*）；不准動 success；不准假 success。
-        同進程持鎖中不准呼叫（會雙寄）——只准排程執行緒開機呼叫一次。
+        DB lock 會重試；不准一次 locked 就放棄讓 §14 永遠略過。
         """
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        try:
-            conn.execute("PRAGMA busy_timeout=5000;")
-            cur = conn.execute(
-                """
-                UPDATE pipeline_runs
-                SET status = 'computed',
-                    notes = ?,
-                    finished_at = ?
-                WHERE run_date LIKE 'screen-%'
-                  AND run_date NOT LIKE 'screen-closed-%'
-                  AND status = 'running'
-                  AND (
-                    notes LIKE '%morning-claim%'
-                    OR notes LIKE '%morning claim%'
-                    OR notes = 'morning-claim'
-                  )
-                """,
-                ("morning orphan-boot demote", taipei_stamp()),
-            )
-            conn.commit()
-            return int(cur.rowcount or 0)
-        except Exception:
+        last_err: Exception | None = None
+        for attempt in range(max(1, int(retries))):
+            conn = None
             try:
-                conn.rollback()
+                # connect 本身也可能 locked——必須包在重試裡（§14 今早 demote 失敗根因）
+                conn = sqlite3.connect(self.db_path, timeout=60.0)
+                conn.execute("PRAGMA busy_timeout=30000;")
+                rows = conn.execute(
+                    """
+                    SELECT run_date, finished_at, notes
+                    FROM pipeline_runs
+                    WHERE run_date LIKE 'screen-%'
+                      AND run_date NOT LIKE 'screen-closed-%'
+                      AND status = 'running'
+                      AND (
+                        notes LIKE '%morning-claim%'
+                        OR notes LIKE '%morning claim%'
+                        OR notes = 'morning-claim'
+                      )
+                    """
+                ).fetchall()
+                n = 0
+                stamp = taipei_stamp()
+                # 5s 緩衝：開機當下時鐘／寫入先後
+                boot_cut = float(_PROCESS_BOOT_EPOCH) - 5.0
+                for run_date, finished_at, _notes in rows:
+                    epoch = self._pipeline_finished_epoch(finished_at)
+                    # 無時戳或早於本行程＝orphan；本行程續租後的 finished_at 晚於 boot → 保留
+                    if epoch is not None and epoch >= boot_cut:
+                        continue
+                    cur = conn.execute(
+                        """
+                        UPDATE pipeline_runs
+                        SET status = 'computed',
+                            notes = ?,
+                            finished_at = ?
+                        WHERE run_date = ? AND status = 'running'
+                        """,
+                        ("morning orphan-boot demote", stamp, run_date),
+                    )
+                    n += int(cur.rowcount or 0)
+                conn.commit()
+                return n
+            except sqlite3.OperationalError as e:
+                last_err = e
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                logger.warning(
+                    "開機清 orphan morning-claim DB busy（%s/%s）：%s",
+                    attempt + 1,
+                    retries,
+                    e,
+                )
+                time.sleep(1.5 * (attempt + 1))
             except Exception:
-                pass
-            logger.exception("開機清 orphan morning-claim 失敗")
-            return 0
-        finally:
-            conn.close()
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                logger.exception("開機清 orphan morning-claim 失敗")
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+        if last_err is not None:
+            logger.error(
+                "開機清 orphan morning-claim 連續 DB locked，放棄本輪：%s",
+                last_err,
+            )
+        return 0
 
     def morning_claim_is_fresh_running(self, *, stale_running_sec: int | None = None) -> bool:
         """是否有未過期的 morning-claim running（補建快取／開機融合應讓路）。"""

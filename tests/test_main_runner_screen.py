@@ -958,21 +958,32 @@ def test_demote_premature_morning_screens_same_day(tmp_path):
 def test_demote_orphaned_morning_claims_boot(tmp_path):
     """開機必須把 orphan morning-claim running→computed，不准空等 30 分租約（§14）。"""
     import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
+    import main_runner as mr
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema
 
     path = str(tmp_path / "orphan-claim.db")
     ensure_core_schema(path)
+    tw = ZoneInfo("Asia/Taipei")
+    # 明確早於本行程 boot epoch＝orphan
+    old = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH - 120, tz=tw).isoformat(
+        timespec="seconds"
+    )
+    # 本行程啟動後的續租＝不准降（防雙寄）
+    fresh = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH + 30, tz=tw).isoformat(
+        timespec="seconds"
+    )
     conn = sqlite3.connect(path)
     conn.execute(
         "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
-        (
-            "screen-20261022",
-            "2026-10-23T08:17:43+08:00",
-            "running",
-            "morning-claim",
-        ),
+        ("screen-20261022", old, "running", "morning-claim"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261020", fresh, "running", "morning-claim"),
     )
     # 休市鍵／已寄 success 不准動
     conn.execute(
@@ -1008,6 +1019,7 @@ def test_demote_orphaned_morning_claims_boot(tmp_path):
     }
     assert rows["screen-20261022"][0] == "computed"
     assert "orphan-boot" in rows["screen-20261022"][1]
+    assert rows["screen-20261020"][0] == "running"
     assert rows["screen-closed-20261010"][0] == "success"
     assert rows["screen-20261021"][0] == "success"
     # 降級後可立刻重搶補寄（不必等 stale）
@@ -1019,6 +1031,51 @@ def test_demote_orphaned_morning_claims_boot(tmp_path):
         )
         is True
     )
+
+
+def test_demote_orphaned_morning_claims_retries_db_lock(tmp_path, monkeypatch):
+    """DB lock 必須重試，不准一次失敗就讓 §14 永遠略過。"""
+    import sqlite3
+
+    import main_runner as mr
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "orphan-retry.db")
+    ensure_core_schema(path)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    tw = ZoneInfo("Asia/Taipei")
+    old = datetime.fromtimestamp(mr._PROCESS_BOOT_EPOCH - 60, tz=tw).isoformat(
+        timespec="seconds"
+    )
+    sqlite3.connect(path).execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261022", old, "running", "morning-claim"),
+    ).connection.commit()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    calls = {"n": 0}
+    real_connect = sqlite3.connect
+
+    def _flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise sqlite3.OperationalError("database is locked")
+        return real_connect(*a, **k)
+
+    monkeypatch.setattr(mr.sqlite3, "connect", _flaky)
+    monkeypatch.setattr(mr.time, "sleep", lambda *_a, **_k: None)
+    assert runner.demote_orphaned_morning_claims(retries=5) == 1
+    assert calls["n"] >= 3
+    row = real_connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20261022",),
+    ).fetchone()
+    assert row[0] == "computed"
+    assert "orphan-boot" in row[1]
 
 
 def test_morning_claim_is_fresh_running(tmp_path):
