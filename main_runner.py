@@ -9,7 +9,10 @@
 # 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
 #   - 常駐 data 角色 06:30 寄出（有效 token＋按開始的話筒）
 #   - GHA cron 30 22 * * 0-4 仍跑 morning_screen 算名單、蓋 zip；WAYNE_SCREEN_NOTIFY=0 不寄
+#   - 真休市日（連假／北市停班／颱風）：不跑海選；仍寄美股＋環境精簡早報（us-digest-*）；
+#     台股段寫「今日無開盤，因為〇〇」；screen-closed-* 記略過海選；不准改買訊
 # 12:45 雙時段比價：只對照今早剛離零＋還在零；開盤 vs 約 12:45 現價
+#   - 休市日整段略過（midday-closed-*；連「今天沒開盤」也不寄）
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
 # 22:15 抓人事行政總處北市停班（週日也跑）；05:10 再抓一次涵蓋 04:30 補發；06:30 海選前再確認
 # 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
@@ -371,7 +374,10 @@ class MainRunner:
                 WHERE run_date LIKE 'screen-%'
                   AND run_date NOT LIKE 'screen-closed-%'
                   AND status = 'success'
-                  AND notes LIKE '%tw closed%skip morning%'
+                  AND (
+                    notes LIKE '%tw closed%skip morning%'
+                    OR notes LIKE '%tw closed%skip screen%'
+                  )
                 """
             ).fetchall()
             n = 0
@@ -1984,6 +1990,137 @@ class MainRunner:
                 logger.exception("盤後融合 crash 蓋戳失敗 key=%s", key)
             return False
 
+    def _run_closed_day_morning_digest(
+        self,
+        closed: Dict[str, Any],
+        *,
+        skip_if_done: bool = True,
+        notify: bool = True,
+    ) -> bool:
+        """真休市日 06:30：美股＋環境精簡早報；不跑海選、不改買訊。
+
+        鍵：
+        - screen-closed-{ymd}＝略過海選（不准寫 screen-{as_of}）
+        - us-digest-{ymd}＝精簡早報寄送鎖（兩支話筒）
+        最重負荷預設：不准呼叫全市場海選／子行程掃；只讀庫＋美股隔夜＋附圖。
+        """
+        from import_health import latest_complete_quote_date
+        from tw_holidays import closed_no_open_line
+
+        ymd = str(closed.get("ymd") or "").strip() or "none"
+        closed_key = f"screen-closed-{ymd}"
+        digest_key = f"us-digest-{ymd}"
+        reason_line = closed_no_open_line(closed)
+        logger.info(
+            "今日台股休市 %s %s，不跑海選（%s）；精簡早報 %s｜%s",
+            closed.get("ymd"),
+            closed.get("zh"),
+            closed_key,
+            digest_key,
+            reason_line,
+        )
+        # 連假休市仍每天對 MOPS／OpenAPI：十月十號前後陸續公告，不准空窗。
+        self._refresh_official_sidecars()
+        # 略過海選鍵：有寄／不寄都先記，開市日 skip_if_done 不會誤擋。
+        self._mark_pipeline(
+            "success",
+            f"tw closed {closed.get('ymd')} {closed.get('zh')} skip screen",
+            run_date=closed_key,
+        )
+        if not notify:
+            self._mark_pipeline(
+                "computed",
+                f"tw closed {closed.get('ymd')} us-digest notify-off",
+                run_date=digest_key,
+            )
+            return True
+        if skip_if_done and self.pipeline_status(digest_key) == "success":
+            logger.info("休市精簡早報 %s 已寄過，略過。", digest_key)
+            return True
+        if not self.try_claim_pipeline(
+            digest_key,
+            notes="us-digest-claim",
+            allow_stale_running=True,
+            stale_running_sec=int(MORNING_RUNNING_STALE_SEC),
+        ):
+            logger.info("休市精簡早報 %s 已寄過或進行中，略過。", digest_key)
+            return True
+
+        as_of = (
+            str(closed.get("prev_ymd") or "").strip()
+            or latest_complete_quote_date(self.db_path)
+            or ""
+        )
+        us_snap: Dict[str, Any] = {}
+        try:
+            from us_overnight import refresh_us_overnight, should_alert_us_drop
+
+            us_snap = refresh_us_overnight(self.db_path, as_of) or {}
+            if should_alert_us_drop(us_snap):
+                logger.info(
+                    "休市日美股收盤偏弱，併入精簡早報 regime=%s",
+                    us_snap.get("regime"),
+                )
+        except Exception as e:
+            logger.warning("休市日美股隔夜略過：%s", e)
+        try:
+            from taiwan_market import sync_futures_daily
+
+            fut = sync_futures_daily(self.db_path)
+            logger.info("休市日補台指期日盤／夜盤：%s", fut)
+        except Exception as e:
+            logger.warning("休市日台指期略過：%s", e)
+
+        html = ""
+        try:
+            from morning_digest import build_closed_day_digest_html
+
+            html = build_closed_day_digest_html(
+                self.db_path, as_of, closed, us_snap=us_snap or None
+            )
+        except Exception as e:
+            logger.exception("休市精簡早報組文失敗：%s", e)
+            html = f"<b>WayneBot 早報</b>\n{reason_line}" if reason_line else ""
+
+        dests = self._family_chat_ids()
+        if not dests:
+            owner = str(getattr(self, "chat_id", None) or "").strip()
+            dests = [owner] if owner else []
+        sent_n = 0
+        for cid in dests:
+            try:
+                self._push_morning_session_cards(cid, us_snap=us_snap or None)
+            except Exception as e:
+                logger.warning("休市早報附圖略過 dest_len=%s: %s", len(str(cid)), e)
+            ok = True
+            if html:
+                ok = bool(self.send_telegram_message(html, chat_id=cid))
+            if ok:
+                sent_n += 1
+            else:
+                logger.warning("休市精簡早報未接受 dest_len=%s", len(str(cid)))
+        sent_ok = bool(dests) and sent_n == len(dests)
+        if sent_ok:
+            self._mark_pipeline(
+                "success",
+                f"tw closed {closed.get('ymd')} us-digest",
+                run_date=digest_key,
+            )
+            logger.info("休市精簡早報寄出成功 %d/%d 人", sent_n, len(dests))
+        else:
+            self._mark_pipeline(
+                "computed",
+                f"tw closed {closed.get('ymd')} us-digest send-failed",
+                run_date=digest_key,
+            )
+            logger.error(
+                "休市精簡早報未全數送到 %d/%d，不標已寄過 %s",
+                sent_n,
+                len(dests),
+                digest_key,
+            )
+        return bool(sent_ok)
+
     def _refresh_official_sidecars(self) -> None:
         """行情已齊時仍每天對官方側車。不重抓全市場日K、不分點。
 
@@ -2063,23 +2200,11 @@ class MainRunner:
         except Exception as e:
             logger.warning("今早開市對質略過：%s", e)
         if closed:
-            # 休市紀錄用獨立鍵，不准寫進 screen-{as_of}，否則連假後開市日 skip_if_done 誤擋。
-            ymd = str(closed.get("ymd") or "").strip() or "none"
-            key = f"screen-closed-{ymd}"
-            logger.info(
-                "今日台股休市 %s %s，不寄今早海選（%s）；仍對官方側車補月營收",
-                closed.get("ymd"),
-                closed.get("zh"),
-                key,
+            # 休市：不跑海選／不改買訊；仍寄美股＋環境精簡早報（兩支話筒）。
+            # screen-closed-*＝略過海選紀錄；us-digest-*＝精簡早報寄送鎖（不准寫進 screen-{as_of}）。
+            return self._run_closed_day_morning_digest(
+                closed, skip_if_done=skip_if_done, notify=notify
             )
-            # 連假休市仍每天對 MOPS／OpenAPI：十月十號前後陸續公告，不准空窗。
-            self._refresh_official_sidecars()
-            self._mark_pipeline(
-                "success",
-                f"tw closed {closed.get('ymd')} {closed.get('zh')} skip morning",
-                run_date=key,
-            )
-            return True
 
         if notify:
             demoted = self.demote_premature_morning_screens()
@@ -2497,12 +2622,16 @@ class MainRunner:
 
         closed = closed_tw_session(db_path=self.db_path)
         as_of = latest_complete_quote_date(self.db_path)
-        key = f"midday-{as_of or 'none'}"
         if closed:
+            # 休市日 12:45 整段不出（連「今天沒開盤」也不寄）。
+            # 鍵用 midday-closed-{休市日}，不准寫 midday-{as_of} 污染上一開市日紀錄。
+            ymd = str(closed.get("ymd") or "").strip() or "none"
+            key = f"midday-closed-{ymd}"
             logger.info(
-                "今日台股休市 %s %s，不寄 12:45 比價",
+                "今日台股休市 %s %s，12:45 比價整段略過（不寄任何對話框；%s）",
                 closed.get("ymd"),
                 closed.get("zh"),
+                key,
             )
             self._mark_pipeline(
                 "success",
@@ -2510,6 +2639,7 @@ class MainRunner:
                 run_date=key,
             )
             return True
+        key = f"midday-{as_of or 'none'}"
         if not as_of:
             logger.error("無完整交易日可做 12:45 比價")
             return False

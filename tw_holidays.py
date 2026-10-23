@@ -585,6 +585,44 @@ def holiday_banner_lines(closed: Optional[Dict[str, str]]) -> List[str]:
     return lines
 
 
+def closed_no_open_reason_zh(closed: Optional[Dict[str, str]]) -> str:
+    """休市原因用語（給「今日無開盤，因為〇〇」）。
+
+    例：光復節補假；颱風停班，今日停止上班上課；北市停班，今日停止上班上課。
+    有較長原文（taipei_text／reason）就優先用原文，不准發明颱風名。
+    """
+    if not closed:
+        return ""
+    raw = str(
+        closed.get("reason")
+        or closed.get("taipei_text")
+        or closed.get("zh")
+        or ""
+    ).strip()
+    if not raw:
+        return "台股休市"
+    # 人事行政總處原文已夠清楚就直接用（去空白）
+    compact = raw.replace(" ", "").replace("　", "")
+    if "停止上班" in compact or "停止上課" in compact:
+        return compact
+    zh = str(closed.get("zh") or raw).strip()
+    if zh == "僅結算":
+        return "僅結算、無交易"
+    if zh in ("颱風停班",) or ("颱風" in zh and "停班" in zh):
+        return "颱風停班，今日停止上班上課"
+    if zh in ("北市停班",) or ("北市" in zh and "停班" in zh):
+        return "北市停班，今日停止上班上課"
+    return zh
+
+
+def closed_no_open_line(closed: Optional[Dict[str, str]]) -> str:
+    """台股休市早報固定句：今日無開盤，因為〇〇。"""
+    reason = closed_no_open_reason_zh(closed)
+    if not reason:
+        return "今日無開盤"
+    return f"今日無開盤，因為{reason}"
+
+
 def fetch_twse_holiday_rows(timeout: int = 8) -> List[Any]:
     resp = requests.get(
         TWSE_HOLIDAY_URL,

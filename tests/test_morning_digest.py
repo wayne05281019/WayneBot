@@ -4,10 +4,47 @@ from __future__ import annotations
 
 from morning_digest import (
     apply_morning_opening_to_screening,
+    build_closed_day_digest_html,
     build_morning_opening_html,
     collapse_morning_pick_parts,
     _outlook_drop_short_nights,
 )
+
+
+def test_build_closed_day_digest_has_no_open_reason(monkeypatch):
+    monkeypatch.setattr(
+        "taiwan_market.format_screen_market_outlook_html",
+        lambda *_a, **_k: (
+            "<b>WayneBot 海選</b>　10/26（一）\n"
+            "＝＝大盤狀況＝＝\n"
+            "20261026 台股光復節補假休市\n"
+            "台股今天休市；下面是上一收盤，不是今天會開盤。\n"
+            "美股　偏空\n"
+            "那斯達克　-2.1%"
+        ),
+    )
+    monkeypatch.setattr(
+        "taiwan_market.format_taiwan_market_brief_html",
+        lambda *_a, **_k: "＝＝台灣加權指數研究＝＝\n收盤　46500",
+    )
+    monkeypatch.setattr("morning_digest._foreign_sell_observe_line", lambda *_a, **_k: "")
+    monkeypatch.setattr("morning_digest._prev_day_margin_line", lambda *_a, **_k: "")
+    monkeypatch.setattr(
+        "morning_digest._early_alert_supplement_html", lambda *_a, **_k: ""
+    )
+    html = build_closed_day_digest_html(
+        ":memory:",
+        "20261024",
+        {"ymd": "20261026", "zh": "光復節補假", "prev_ymd": "20261024"},
+        us_snap=None,
+    )
+    assert "今日無開盤，因為光復節補假" in html
+    assert "WayneBot 早報" in html
+    assert "美股" in html or "那斯達克" in html
+    assert "WayneBot 海選" not in html
+    assert "黃金買點" not in html
+    assert "剛離零" not in html
+    assert "leave_zero" not in html
 
 
 def test_build_morning_opening_merges_brief_and_outlook(monkeypatch):

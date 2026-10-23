@@ -290,6 +290,18 @@ def _expected_run_keys(db_path: str, now: datetime) -> Dict[str, str]:
     today = now.strftime("%Y%m%d")
     keys = {"increment": today}
     try:
+        from tw_holidays import closed_tw_session
+
+        closed = closed_tw_session(now=now, db_path=db_path)
+    except Exception:
+        closed = None
+    if closed:
+        ymd = str(closed.get("ymd") or today).strip() or today
+        # 休市：海選略過鍵＋精簡早報鍵；12:45 用 midday-closed-*（整段不寄）。
+        keys["morning_screen"] = f"us-digest-{ymd}"
+        keys["midday_review"] = f"midday-closed-{ymd}"
+        return keys
+    try:
         from trading_calendar import morning_screen_pipeline_key
 
         screen_key = morning_screen_pipeline_key(db_path, now=now)
@@ -312,18 +324,21 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
     ref = now or taipei_now()
     if ref.weekday() >= 5:
         return []
+    closed_today = False
     try:
         from trading_calendar import is_tw_market_holiday
 
-        if is_tw_market_holiday(ref.strftime("%Y%m%d")):
-            return []
+        closed_today = bool(is_tw_market_holiday(ref.strftime("%Y%m%d")))
     except Exception:
-        pass
+        closed_today = False
     minutes = ref.hour * 60 + ref.minute
     keys = _expected_run_keys(db_path, ref)
     out: List[Dict[str, Any]] = []
     for kind, spec in JOB_SPECS.items():
         if not _watchdog_job_owned(kind):
+            continue
+        # 休市日：只盯 us-digest 精簡早報；12:45 整段故意不寄、融合等也不告警。
+        if closed_today and kind != "morning_screen":
             continue
         if minutes < int(spec["due_minutes"]):
             continue
@@ -337,9 +352,9 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
             row = _pipeline_rows(db_path, [run_key]).get(run_key) or {}
             notes = str(row.get("notes") or "")
             fin = str(row.get("finished_at") or "")
-            if "morning" in notes and fin:
+            if ("morning" in notes or "us-digest" in notes) and fin:
                 age = _stamp_age_seconds_taipei(fin, now=ref)
-                # 租約未過期＝準點／長掃仍在跑，不當漏寄（對齊 morning claim stale）。
+                # 租約未過期＝準點／長掃／休市精簡早報仍在跑，不當漏寄。
                 if age is not None and age < float(MORNING_RUNNING_STALE_SEC):
                     continue
         if kind == "increment" and status == "running":

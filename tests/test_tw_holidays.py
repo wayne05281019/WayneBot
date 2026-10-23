@@ -3,6 +3,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from tw_holidays import (
+    closed_no_open_line,
+    closed_no_open_reason_zh,
     closed_tw_session,
     holiday_banner_lines,
     lookup_tw_session,
@@ -98,6 +100,21 @@ def test_banner_mid_autumn():
     lines = holiday_banner_lines(closed)
     assert lines[0] == "20260925 台股中秋節休市"
     assert lines[1] == "上一收盤 20260924"
+
+
+def test_closed_no_open_line_reasons():
+    assert (
+        closed_no_open_line({"zh": "光復節補假", "ymd": "20261026"})
+        == "今日無開盤，因為光復節補假"
+    )
+    assert closed_no_open_reason_zh({"zh": "颱風停班"}) == (
+        "颱風停班，今日停止上班上課"
+    )
+    assert "今日無開盤，因為" in closed_no_open_line({"zh": "北市停班"})
+    assert closed_no_open_line(
+        {"zh": "颱風停班", "taipei_text": "因凱米颱風停止上班及上課"}
+    ) == "今日無開盤，因為因凱米颱風停止上班及上課"
+    assert closed_no_open_reason_zh({"zh": "僅結算"}) == "僅結算、無交易"
 
 
 def test_parse_twse_skips_open_days():
