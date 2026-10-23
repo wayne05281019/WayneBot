@@ -412,19 +412,28 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         assert code == 401
         assert body.get("ok") is False
 
-        called = {"demote": 0, "morning": 0}
+        called = {"demote_m": 0, "demote_i": 0, "rescue": 0}
         import main_runner as mr
 
-        def _fake_demote(self, *a, **k):
-            called["demote"] += 1
+        def _fake_demote_m(self, *a, **k):
+            called["demote_m"] += 1
             return 1
 
-        def _fake_morning(self, *a, **k):
-            called["morning"] += 1
-            return True
+        def _fake_demote_i(self, *a, **k):
+            called["demote_i"] += 1
+            return 1
 
-        monkeypatch.setattr(mr.MainRunner, "demote_orphaned_morning_claims", _fake_demote)
-        monkeypatch.setattr(mr.MainRunner, "run_morning_screen", _fake_morning)
+        def _fake_rescue(self, *a, **k):
+            called["rescue"] += 1
+            return {"ok": True, "delivered": True, "demoted": 1}
+
+        monkeypatch.setattr(
+            mr.MainRunner, "demote_orphaned_morning_claims", _fake_demote_m
+        )
+        monkeypatch.setattr(
+            mr.MainRunner, "demote_orphaned_increment_claims", _fake_demote_i
+        )
+        monkeypatch.setattr(mr.MainRunner, "force_rescue_morning", _fake_rescue)
 
         code, body = _post(
             "/ops/force-morning",
@@ -437,13 +446,14 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         assert body.get("ok") is True
         assert body.get("started") is True
         assert body.get("demoted") == 1
-        # 背景執行緒補寄
+        assert body.get("demoted_increment") == 1
         for _ in range(50):
-            if called["morning"]:
+            if called["rescue"]:
                 break
             time.sleep(0.05)
-        assert called["demote"] == 1
-        assert called["morning"] == 1
+        assert called["demote_m"] >= 1
+        assert called["demote_i"] >= 1
+        assert called["rescue"] == 1
     finally:
         httpd.shutdown()
         httpd.server_close()
