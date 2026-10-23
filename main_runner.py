@@ -179,7 +179,11 @@ class MainRunner:
             logger.warning("ℹ️ 未設置 Telegram Token，將輸出日誌而不推播。")
 
     def already_completed_today(self, run_date: str = None) -> bool:
-        return self.pipeline_status(run_date) == "success"
+        key = run_date or self.today_str
+        if self.pipeline_status(key) == "success":
+            return True
+        # 寄出回執也算完成（蓋戳失敗仍不准重寄）
+        return self.push_already_delivered(key)
 
     def pipeline_status(self, run_date: str = None) -> str:
         conn = sqlite3.connect(self.db_path)
@@ -188,6 +192,99 @@ class MainRunner:
         row = cur.fetchone()
         conn.close()
         return str(row[0] or "") if row else ""
+
+    def push_already_delivered(self, run_date: str) -> bool:
+        """pipeline success 或寄出回執任一成立＝已寄到白名單。"""
+        key = str(run_date or "").strip()
+        if not key:
+            return False
+        if self.pipeline_status(key) == "success":
+            return True
+        try:
+            from pipeline_delivery import push_delivery_recorded
+
+            return bool(push_delivery_recorded(self.db_path, key))
+        except Exception:
+            logger.debug("查寄出回執略過 key=%s", key, exc_info=True)
+            return False
+
+    def record_whitelist_push(
+        self,
+        run_date: str,
+        *,
+        kind: str,
+        n_ok: int = 0,
+        notes: str = "",
+    ) -> bool:
+        """Telegram 白名單寄出成功後立刻落回執（先於／優於 pipeline success 蓋戳）。"""
+        from pipeline_delivery import record_push_delivery
+
+        return bool(
+            record_push_delivery(
+                self.db_path,
+                run_date,
+                kind=kind,
+                n_ok=n_ok,
+                notes=notes,
+            )
+        )
+
+    def honor_push_delivery(self, run_date: str, *, notes: str = "delivery-receipt") -> bool:
+        """若已有寄出回執：補標 pipeline success，回 True＝不准再寄。"""
+        key = str(run_date or "").strip()
+        if not key:
+            return False
+        if self.pipeline_status(key) == "success":
+            return True
+        if not self.push_already_delivered(key):
+            return False
+        try:
+            self._mark_pipeline("success", notes[:500], run_date=key, retries=12)
+        except Exception:
+            logger.exception("回執補蓋 success 失敗 key=%s（仍視為已寄）", key)
+        logger.info("已有寄出回執，略過重寄並補標 success key=%s", key)
+        return True
+
+    def reconcile_push_deliveries(self, *, prefix: str = "") -> int:
+        """掃有回執但 pipeline 非 success 的鍵，補標 success（force／catch-up 前必跑）。"""
+        from pipeline_delivery import ensure_delivery_schema
+
+        n = 0
+        pref = str(prefix or "")
+        rows: list = []
+        try:
+            ensure_delivery_schema(self.db_path)
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            try:
+                conn.execute("PRAGMA busy_timeout=10000")
+                rows = list(
+                    conn.execute("SELECT run_date FROM pipeline_deliveries").fetchall()
+                )
+            finally:
+                conn.close()
+        except Exception:
+            logger.debug("reconcile 讀回執略過", exc_info=True)
+        # 檔案回執也掃（DB 寫失敗時仍在）
+        try:
+            from pipeline_delivery import _delivery_dir
+
+            for p in _delivery_dir(self.db_path).glob("*.json"):
+                rows.append((p.stem,))
+        except Exception:
+            logger.debug("reconcile 掃檔略過", exc_info=True)
+        seen = set()
+        for (run_date,) in rows:
+            key = str(run_date or "").strip()
+            if not key or key in seen:
+                continue
+            if pref and not key.startswith(pref):
+                continue
+            seen.add(key)
+            if self.pipeline_status(key) == "success":
+                continue
+            if self.honor_push_delivery(key, notes="delivery-reconcile"):
+                n += 1
+        return n
 
     def try_claim_pipeline(
         self,
@@ -200,13 +297,17 @@ class MainRunner:
         """搶尾盤／早報推播鎖：同一 run_date 同時只准一個路徑寄。
 
         success＝已寄過，永不重搶。
+        寄出回執＝已寄過（即使 pipeline 仍 running／computed），永不重搶並補標 success。
         running＝別條進行中；allow_stale_running=False 時連逾時也不重搶
         （尾盤用：Render 重開不准把「可能已寄出的 running」再寄一次）。
-        computed＝明確寄失敗，可重搶補寄。
+        computed＝明確寄失敗，可重搶補寄（無回執時）。
         回 True＝本行程取得所有權，必須寄完立刻標 success，或失敗改 computed。
         """
         key = str(run_date or "").strip()
         if not key:
+            return False
+        # 回執優先於搶鎖：已寄過就不准重搶（2026-10-23 雙寄根因）
+        if self.honor_push_delivery(key, notes="delivery-before-claim"):
             return False
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         try:
@@ -467,6 +568,14 @@ class MainRunner:
                 boot_cut = float(_PROCESS_BOOT_EPOCH) - 5.0
                 now_epoch = time.time()
                 for run_date, finished_at, _notes in rows:
+                    # 已有 Telegram 寄出回執：不准降 computed 讓人重搶重寄
+                    try:
+                        from pipeline_delivery import push_delivery_recorded
+
+                        if push_delivery_recorded(self.db_path, str(run_date)):
+                            continue
+                    except Exception:
+                        pass
                     epoch = self._pipeline_finished_epoch(finished_at)
                     note = "morning orphan-boot demote"
                     if not force:
@@ -638,6 +747,14 @@ class MainRunner:
             "key": "",
             "error": "",
         }
+        # 先把「已寄出但蓋戳失敗」的回執補成 success，再 demote／補寄（防 2026-10-23 雙寄）
+        try:
+            out["reconciled"] = int(
+                self.reconcile_push_deliveries(prefix="screen-") or 0
+            )
+        except Exception:
+            logger.exception("force_rescue_morning reconcile 失敗")
+            out["reconciled"] = 0
         try:
             # 假 fuse running 會鎖死寄出；救援先清
             n_inc = int(self.demote_orphaned_increment_claims(force=True) or 0)
@@ -648,6 +765,7 @@ class MainRunner:
             logger.exception("force_rescue_morning demote 失敗")
             return out
         # 找出未寄出的 screen-*（優先今早漏的），釘死 as_of 再寄
+        # 有寄出回執的鍵已在 reconcile 變 success，不會再被當成未寄。
         pin_as_of = ""
         try:
             conn = sqlite3.connect(self.db_path, timeout=30.0)
@@ -669,6 +787,11 @@ class MainRunner:
                 conn.close()
         except Exception:
             logger.debug("force_rescue 查未寄 screen 略過", exc_info=True)
+        # 若釘到的鍵其實已有回執（檔在、表尚未）→ 補標後不要當未寄
+        if pin_as_of and self.honor_push_delivery(
+            f"screen-{pin_as_of}", notes="force-rescue-receipt"
+        ):
+            pin_as_of = ""
         try:
             from import_health import latest_complete_quote_date
 
@@ -774,15 +897,57 @@ class MainRunner:
         finally:
             conn.close()
 
-    def _mark_pipeline(self, status: str, notes: str = "", run_date: str = None):
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR REPLACE INTO pipeline_runs (run_date, finished_at, status, notes) VALUES (?, ?, ?, ?);",
-            (run_date or self.today_str, taipei_stamp(), status, notes),
+    def _mark_pipeline(
+        self,
+        status: str,
+        notes: str = "",
+        run_date: str = None,
+        *,
+        retries: int = 8,
+    ):
+        """寫 pipeline_runs。DB locked 必須重試——海選已寄出卻蓋戳失敗會讓 force／catch-up 重寄（2026-10-23）。"""
+        key = run_date or self.today_str
+        stamp = taipei_stamp()
+        last_err: Optional[Exception] = None
+        attempts = max(1, int(retries or 1))
+        for attempt in range(attempts):
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=30)
+                try:
+                    conn.execute("PRAGMA busy_timeout=30000")
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT OR REPLACE INTO pipeline_runs "
+                        "(run_date, finished_at, status, notes) VALUES (?, ?, ?, ?);",
+                        (key, stamp, status, notes),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                return
+            except sqlite3.OperationalError as e:
+                last_err = e
+                msg = str(e).lower()
+                if "locked" not in msg and "busy" not in msg:
+                    raise
+                logger.warning(
+                    "pipeline 蓋戳 DB busy（%s/%s）key=%s status=%s：%s",
+                    attempt + 1,
+                    attempts,
+                    key,
+                    status,
+                    e,
+                )
+                time.sleep(0.4 * (attempt + 1))
+        logger.error(
+            "pipeline 蓋戳失敗 key=%s status=%s notes=%s：%s",
+            key,
+            status,
+            notes,
+            last_err,
         )
-        conn.commit()
-        conn.close()
+        if last_err is not None:
+            raise last_err
 
     def send_telegram_message(self, text: str, chat_id: Optional[str] = None) -> bool:
         if not text:
@@ -1615,12 +1780,26 @@ class MainRunner:
                             logger.warning("海選寄出失敗 dest_len=%s: %s", len(str(cid)), e)
                     logger.info("海選寄出成功 %d/%d 人", sent_n, len(dests))
                     sent_ok = sent_n == len(dests) and sent_n > 0
+                    if sent_ok and pipeline_run_date:
+                        self.record_whitelist_push(
+                            str(pipeline_run_date),
+                            kind="morning-digest",
+                            n_ok=sent_n,
+                            notes="海選寄出成功",
+                        )
                 else:
                     if morning_digest:
                         self._push_morning_session_cards(
                             str(getattr(self, "chat_id", None) or ""), us_snap=us_snap
                         )
                     sent_ok = self.bot.send_screening_report(screening) is not False
+                    if sent_ok and pipeline_run_date:
+                        self.record_whitelist_push(
+                            str(pipeline_run_date),
+                            kind="morning-digest",
+                            n_ok=1,
+                            notes="海選寄出成功",
+                        )
             except Exception as e:
                 logger.warning("分類戰報推播失敗，改送長文: %s", e)
                 self._broadcast_family(
@@ -1632,6 +1811,13 @@ class MainRunner:
             report_text = (screening or {}).get("message") if screening else ""
             # 沒有 bot 物件就走原生 API；有 token 且 Telegram 接受才算寄到。
             sent_ok = bool(self._broadcast_family(report_text or self._screening_fail_message()))
+            if sent_ok and morning_digest and pipeline_run_date:
+                self.record_whitelist_push(
+                    str(pipeline_run_date),
+                    kind="morning-digest",
+                    n_ok=len(self._family_chat_ids() or []) or 1,
+                    notes="海選寄出成功(broadcast)",
+                )
         if not delivered:
             logger.warning("早上海選未產出名單，略過 AI 模擬倉／資金輪動附帶推播")
             return False
@@ -1641,7 +1827,16 @@ class MainRunner:
         pkey = str(pipeline_run_date or "").strip()
         if morning_digest and pkey:
             # 海選＋彙整已送出即標 success，避免長掃期間 watchdog 06:55 誤報 running。
-            self._mark_pipeline("success", "morning-digest", run_date=pkey)
+            # 蓋戳失敗不准往上炸：否則 catch-up／force-morning 以為沒寄又重寄（2026-10-23 18:32／19:17）。
+            try:
+                self._mark_pipeline(
+                    "success", "morning-digest", run_date=pkey, retries=12
+                )
+            except Exception:
+                logger.exception(
+                    "海選已寄出但 pipeline 蓋戳失敗（稍後 run_morning 仍會再標）key=%s",
+                    pkey,
+                )
         # Option B：輪動／月營收／雷達不塞進 06:30 早報主輪（改盤後／按鈕路徑）
         if not morning_digest:
             extra_bits = []
@@ -2330,6 +2525,18 @@ class MainRunner:
 
             status = self.pipeline_status(key)
             has_rows = screen_session_has_data(self.db_path, as_of)
+            # 寄出回執＝已寄：即使 pipeline 仍 running／computed 也不重寄
+            if self.honor_push_delivery(key, notes="morning-skip-receipt"):
+                if has_rows:
+                    logger.info("早上海選 %s 已有寄出回執，略過寄送；仍對官方側車。", key)
+                    self._refresh_official_sidecars()
+                    return True
+                logger.warning(
+                    "早上海選 %s 已有寄出回執但 screen_sessions 空，重掃補快取（不重寄）",
+                    key,
+                )
+                notify = False
+                rebuild_only = True
             if status == "success" and has_rows:
                 logger.info("早上海選 %s 已寄過，略過寄送；仍對官方側車。", key)
                 self._refresh_official_sidecars()
@@ -2384,6 +2591,12 @@ class MainRunner:
 
             status = self.pipeline_status(key)
             has_rows = screen_session_has_data(self.db_path, as_of)
+            if self.honor_push_delivery(key, notes="morning-skip-receipt-2"):
+                if has_rows:
+                    logger.info("早上海選 %s 補齊後已有寄出回執，略過。", key)
+                    return True
+                notify = False
+                rebuild_only = True
             if status == "success" and has_rows:
                 logger.info("早上海選 %s 補齊後已寄過，略過。", key)
                 return True
@@ -2391,7 +2604,7 @@ class MainRunner:
                 logger.info("早上海選 %s 補齊後已算出（不寄），略過。", key)
                 return True
         # 真寄路徑：原子搶鎖。fresh running 不重搶（防雙寄）；租約過期可重搶補寄（§14）。
-        # success 永不重搶；computed（明確寄失敗／notify-off／crashed／stale）可再搶。
+        # success／寄出回執永不重搶；computed（明確寄失敗／notify-off／crashed／stale）可再搶。
         claimed = False
         if notify:
             claimed_ok = False
@@ -2485,7 +2698,16 @@ class MainRunner:
             delivered = self._screening_delivered(screening)
             if delivered and sent_ok:
                 if notify or rebuild_only:
-                    self._mark_pipeline("success", "morning", run_date=key)
+                    # 已寄出：蓋戳必須盡力成功；失敗再 raise 會讓外層改 computed→重寄。
+                    try:
+                        self._mark_pipeline(
+                            "success", "morning", run_date=key, retries=12
+                        )
+                    except Exception:
+                        logger.exception(
+                            "早上海選已寄出但最終蓋戳仍失敗 key=%s（勿當未寄）",
+                            key,
+                        )
                 else:
                     # GHA notify=0 只算名單。若標 success，Release zip 灌進 Render
                     # 會讓 skip_if_done 以為已寄過（401 那天就是這樣）。
@@ -2602,6 +2824,9 @@ class MainRunner:
         key = pipeline_run_key(as_of or "none")
         if skip_if_done and as_of:
             status = self.pipeline_status(key)
+            if self.honor_push_delivery(key, notes="winrate-skip-receipt"):
+                logger.info("勝率買點 %s 已有寄出回執，略過。", key)
+                return True
             # 舊鍵 winrate-{as_of} 或掃版本未對齊藍▲ → 不略過，重掃並可再推。
             if status == "success" and roster_is_current(self.db_path, as_of):
                 logger.info("勝率買點 %s 已寄過且名單現行，略過。", key)
@@ -2702,7 +2927,16 @@ class MainRunner:
             logger.info("勝率買點不寄 Telegram（notify=0），只寫名單")
 
         if notify and sent_ok:
-            self._mark_pipeline("success", f"winrate-bp n={n}", run_date=key)
+            # 先落回執再蓋戳：蓋戳失敗仍不准 catch-up 重寄
+            self.record_whitelist_push(
+                key, kind="winrate-bp", n_ok=n, notes=f"winrate-bp n={n}"
+            )
+            try:
+                self._mark_pipeline(
+                    "success", f"winrate-bp n={n}", run_date=key, retries=12
+                )
+            except Exception:
+                logger.exception("勝率買點已寄出但蓋戳失敗 key=%s（回執已記）", key)
         elif not notify:
             self._mark_pipeline("computed", "winrate-bp notify-off", run_date=key)
         else:
@@ -2760,8 +2994,15 @@ class MainRunner:
         if html:
             sent_ok = bool(self._broadcast_family(html)) and sent_ok
         if sent_ok:
-            # 寄成功立刻落 success，避免重開時卡在 running 被誤判可補。
-            self._mark_pipeline("success", "midday", run_date=key)
+            # 先回執再蓋戳：蓋戳失敗仍不准重開／補跑當未寄再寄
+            n_chats = len(self._family_chat_ids() or []) or (1 if html else 0)
+            self.record_whitelist_push(
+                key, kind="midday", n_ok=n_chats, notes="midday"
+            )
+            try:
+                self._mark_pipeline("success", "midday", run_date=key, retries=12)
+            except Exception:
+                logger.exception("12:45 已寄出但蓋戳失敗 key=%s（回執已記）", key)
         else:
             # 明確寄失敗才放 computed，讓 12:46–13:30 補跑可再寄；不准假 success。
             self._mark_pipeline("computed", "midday send-failed", run_date=key)

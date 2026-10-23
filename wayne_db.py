@@ -312,6 +312,18 @@ def ensure_core_schema(db_path: str = None) -> None:
                 );
                 """
             )
+            # Telegram 白名單寄出回執（與 pipeline_runs success 並列；蓋戳失敗仍防重寄）
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pipeline_deliveries (
+                    run_date TEXT PRIMARY KEY,
+                    delivered_at TEXT NOT NULL,
+                    kind TEXT DEFAULT '',
+                    n_ok INTEGER DEFAULT 0,
+                    notes TEXT DEFAULT ''
+                );
+                """
+            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS stock_universe (

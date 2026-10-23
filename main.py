@@ -540,16 +540,21 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             logger.info("§14 /ops/force-morning：常駐碟強制 demote＋背景補寄")
             runner = MainRunner()
-            # 先清假 fuse／morning running，再背景走 force_rescue（釘 as_of＋寄兩人）
+            # 已寄出回執先補標 success，再清假 fuse／morning running（防蓋戳失敗後雙寄）
+            reconciled = int(runner.reconcile_push_deliveries(prefix="screen-") or 0)
             demoted_inc = int(runner.demote_orphaned_increment_claims(force=True) or 0)
             demoted = int(runner.demote_orphaned_morning_claims(force=True) or 0)
 
             def _bg() -> None:
                 try:
+                    # force_rescue：再 reconcile＋釘 as_of＋寄兩人（內部仍認寄出回執）
                     result_bg = runner.force_rescue_morning()
                     logger.info(
-                        "§14 /ops/force-morning 背景補寄結束 %s",
+                        "§14 /ops/force-morning 背景補寄結束 %s demoted=%s reconciled=%s demoted_inc=%s",
                         result_bg,
+                        demoted,
+                        reconciled,
+                        demoted_inc,
                     )
                 except Exception:
                     logger.exception("§14 /ops/force-morning 背景補寄失敗")
@@ -561,9 +566,10 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "started": True,
                 "demoted": demoted,
+                "reconciled": reconciled,
                 "demoted_increment": demoted_inc,
                 "delivered": False,
-                "note": "demoted; morning notify started on web service disk",
+                "note": "reconciled+demoted; morning notify started on web service disk",
             }
             body = json.dumps(result, ensure_ascii=False).encode("utf-8")
             self.send_response(202)
@@ -727,6 +733,13 @@ def catch_up_missed_jobs(now=None) -> None:
                 as_of,
             )
         else:
+            # 已寄出回執先補標，再開 demote／補寄（防蓋戳失敗後雙寄）
+            try:
+                n_rec = runner.reconcile_push_deliveries(prefix="screen-")
+                if n_rec:
+                    logger.info("補跑依寄出回執補標 success %s 筆", n_rec)
+            except Exception:
+                logger.exception("補跑 reconcile 寄出回執失敗（不擋）")
             # 開機 demote 若曾 DB lock 失敗，每輪補跑再清一次 pre-boot orphan（§14）。
             try:
                 n_inc = runner.demote_orphaned_increment_claims()
@@ -758,12 +771,20 @@ def catch_up_missed_jobs(now=None) -> None:
             logger.exception("補跑清 orphan increment-claim 失敗（不擋）")
         runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
     if need_midday:
+        try:
+            runner.reconcile_push_deliveries(prefix="midday-")
+        except Exception:
+            logger.exception("補跑 midday reconcile 失敗（不擋）")
         logger.info("補跑：已過台灣 12:45，若尾盤可切沒寄過就補寄")
         runner.run_midday_review(skip_if_done=True)
     if need_evening:
         logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
         runner.run_evening_screen(skip_if_done=True, notify=False)
     if need_winrate:
+        try:
+            runner.reconcile_push_deliveries(prefix="winrate-bp-")
+        except Exception:
+            logger.exception("補跑 winrate reconcile 失敗（不擋）")
         wr_notify = scheduler_may_push("winrate")
         try:
             from datetime import datetime
@@ -774,7 +795,7 @@ def catch_up_missed_jobs(now=None) -> None:
                 logger.info("補跑：2026-10-02 使用者鎖今晚不推勝率買點→只重掃")
         except Exception:
             logger.debug("勝率買點當晚不推判斷略過", exc_info=True)
-        # 當日若已寄過（pipeline success）但掃版鍵失效→只重掃不重寄（使用者鎖：今晚不補推）
+        # 當日若已寄過（pipeline success 或寄出回執）但掃版鍵失效→只重掃不重寄
         try:
             from import_health import latest_complete_quote_date
             from winrate_buypoint import pipeline_run_key, roster_is_current
@@ -784,7 +805,7 @@ def catch_up_missed_jobs(now=None) -> None:
             if (
                 wr_notify
                 and _as_of
-                and runner.pipeline_status(_key) == "success"
+                and runner.push_already_delivered(_key)
                 and not roster_is_current(runner.db_path, _as_of)
             ):
                 wr_notify = False
