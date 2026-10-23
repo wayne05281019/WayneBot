@@ -1962,6 +1962,16 @@ def night_tick(
     ensure_tables(path)
     _mark_pipeline(path, run_day, "running", f"dc_sf 24h as_of={as_of}")
 
+    from busy_window_notice import finish_busy_notice, start_busy_notice
+
+    # 03:00–04:00 最重出圖窗：兩支話筒先提示，結束魔法刪；不擋本檔失敗路徑。
+    busy_msgs = {}
+    try:
+        busy_msgs = start_busy_notice("dc_sf", db_path=path) or {}
+    except Exception:
+        logger.debug("dc_sf busy_window 推播略過", exc_info=True)
+        busy_msgs = {}
+
     try:
         posts = fetch_dc_posts_within(dt, session=session)
         saved = save_posts_and_images(path, as_of, posts, session=session)
@@ -2283,6 +2293,10 @@ def night_tick(
         return report
     finally:
         release_job_lock(lock)
+        try:
+            finish_busy_notice("dc_sf", db_path=path, messages=busy_msgs or None)
+        except Exception:
+            logger.debug("dc_sf busy_window 收起略過", exc_info=True)
 
 
 def optimize_status_one_liner(db_path: str = "") -> str:
