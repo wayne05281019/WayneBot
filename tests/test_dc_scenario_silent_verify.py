@@ -186,9 +186,7 @@ def test_catch_up_skips_cache_while_morning_claim_fresh():
     assert "補跑清掉 orphan morning-claim" in src
     # §14：未寄早報時先 morning 再 fuse，不准融合鎖死寄出
     assert "先於盤後融合" in src
-    assert src.index("need_morning") < src.index("need_fuse") or src.index(
-        "若今早海選沒寄過就補寄"
-    ) < src.index("若盤後融合沒成功就補跑")
+    assert src.index("若今早海選沒寄過就補寄") < src.index("若盤後融合沒成功就補跑")
     assert "demote_orphaned_increment_claims" in src
 
 
