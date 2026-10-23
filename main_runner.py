@@ -524,6 +524,8 @@ class MainRunner:
         """§14 救援：在常駐碟上強制降 morning-claim，立刻補寄白名單兩人。
 
         只准 web 常駐呼叫（掛永久碟）；不准 Render 無碟 one-off job。
+        若 screen-{as_of} 仍未 success，即使 fuse cap 已往後走，仍針對該 as_of 補寄
+        （不准被當日盤後融合把基準日洗成「今天」而略過今早漏寄）。
         """
         out: Dict[str, Any] = {
             "ok": False,
@@ -539,16 +541,44 @@ class MainRunner:
             out["error"] = f"demote: {e}"
             logger.exception("force_rescue_morning demote 失敗")
             return out
+        # 找出未寄出的 screen-*（優先今早漏的），釘死 as_of 再寄
+        pin_as_of = ""
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            try:
+                conn.execute("PRAGMA busy_timeout=10000;")
+                row = conn.execute(
+                    """
+                    SELECT run_date FROM pipeline_runs
+                    WHERE run_date LIKE 'screen-%'
+                      AND run_date NOT LIKE 'screen-closed-%'
+                      AND status != 'success'
+                    ORDER BY finished_at DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if row and str(row[0]).startswith("screen-"):
+                    pin_as_of = str(row[0]).replace("screen-", "", 1)
+            finally:
+                conn.close()
+        except Exception:
+            logger.debug("force_rescue 查未寄 screen 略過", exc_info=True)
         try:
             from import_health import latest_complete_quote_date
 
-            as_of = latest_complete_quote_date(self.db_path) or ""
+            as_of = pin_as_of or (latest_complete_quote_date(self.db_path) or "")
             out["as_of"] = str(as_of)
             out["key"] = f"screen-{as_of or 'none'}"
         except Exception:
             pass
         try:
-            ok = bool(self.run_morning_screen(skip_if_done=True, notify=True))
+            # 救援路徑：釘基準日，避免 fuse 把 latest 推到今日後寄錯鍵／略過
+            if pin_as_of:
+                os.environ["WAYNE_MORNING_PIN_AS_OF"] = str(pin_as_of)
+            try:
+                ok = bool(self.run_morning_screen(skip_if_done=True, notify=True))
+            finally:
+                os.environ.pop("WAYNE_MORNING_PIN_AS_OF", None)
             out["ok"] = ok
             st = self.pipeline_status(out["key"]) if out["key"] else ""
             out["delivered"] = st == "success"
@@ -2063,6 +2093,11 @@ class MainRunner:
                 )
 
         as_of = latest_complete_quote_date(self.db_path)
+        pin = (os.environ.get("WAYNE_MORNING_PIN_AS_OF") or "").strip()
+        if pin:
+            # §14 救援：釘未寄出的基準日，不准被 fuse 推到「今天」洗掉今早漏寄
+            logger.info("今早救援釘基準日 %s（latest=%s）", pin, as_of)
+            as_of = pin
         key = f"screen-{as_of or 'none'}"
         rebuild_only = False
         if skip_if_done and as_of:
@@ -2096,12 +2131,24 @@ class MainRunner:
         from config import fuse_end_date
 
         cap = fuse_end_date()
-        if as_of and as_of == cap:
-            logger.info("今早庫已是完整日 %s，略過再抓行情，仍對官方側車", as_of)
-            self._refresh_official_sidecars()
-        else:
+        # 已有完整基準日＝可寄。不准再跑 fuse／重側車去追 cap（§14：
+        # 今早 force-morning 被 16:30 increment-claim 鎖死 DB，永遠到不了搶鎖寄出）。
+        # 最重負荷預設：寄出優先；缺日融合歸盤後排程，不擋早報。
+        if not as_of:
             self.run_daily_increment(notify=False)
-        as_of = latest_complete_quote_date(self.db_path)
+        elif as_of == cap:
+            logger.info("今早庫已是完整日 %s，略過再抓行情，仍對官方側車", as_of)
+            try:
+                self._refresh_official_sidecars()
+            except Exception as e:
+                logger.warning("今早側車略過（不擋寄）：%s", e)
+        else:
+            logger.info(
+                "今早基準日 %s 已齊（cap 尚為 %s），略過再抓行情／重側車以免擋寄",
+                as_of,
+                cap,
+            )
+        as_of = latest_complete_quote_date(self.db_path) or as_of
         key = f"screen-{as_of or 'none'}"
         if not as_of:
             logger.error("補齊後仍無完整交易日可寄海選")
