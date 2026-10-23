@@ -348,6 +348,20 @@ def test_boot_backfill_uses_increment_job():
     src = inspect.getsource(main.start_market_backfill)
     assert "run_increment_job(skip_if_done=True, notify=False)" in src
     assert "run_daily_increment(notify=False)" not in src
+    # §14：開市日早報未寄前開機融合必須讓路
+    assert "_morning_digest_still_due" in src
+    assert "開市日早報尚未寄達" in src
+
+
+def test_morning_digest_still_due_helper_exists():
+    import inspect
+
+    import main
+
+    assert callable(main._morning_digest_still_due)
+    src = inspect.getsource(main._morning_digest_still_due)
+    assert "screen-" in src
+    assert "success" in src
 
 
 def test_increment_job_holiday_checks_prior_cap_before_skip():

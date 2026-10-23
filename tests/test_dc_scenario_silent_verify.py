@@ -154,6 +154,19 @@ def test_scheduler_defers_catch_up_after_boot():
     src = inspect.getsource(main_mod.start_daily_scheduler)
     assert "180" in src
     assert "先開聽筒" in src or "boot_catchup" in src or "_boot_catchup_delay" in src
+    # §14：開機清 orphan morning-claim，不准空等租約
+    assert "demote_orphaned_morning_claims" in src
+
+
+def test_catch_up_skips_cache_while_morning_claim_fresh():
+    """morning-claim 進行中不准背景補建海選快取（DB 互鎖根因）。"""
+    import inspect
+
+    import main as main_mod
+
+    src = inspect.getsource(main_mod.catch_up_missed_jobs)
+    assert "morning_claim_is_fresh_running" in src
+    assert "略過背景補建海選快取" in src
 
 
 def test_reclaim_stale_running_marks_error():

@@ -538,8 +538,14 @@ def catch_up_missed_jobs(now=None) -> None:
     need_open_check = scheduler_owns("open_check") and mins >= (2 * 60 + 45)
 
     def _ensure_screen_cache(runner: MainRunner) -> None:
-        """最新完整日若無 screen_sessions，補建快取（不寄），避免按海選全掃逾時。"""
+        """最新完整日若無 screen_sessions，補建快取（不寄），避免按海選全掃逾時。
+
+        morning-claim 進行中不准搶掃：會跟 06:30 補寄互鎖 DB（§14 今早根因）。
+        """
         try:
+            if runner.morning_claim_is_fresh_running():
+                logger.info("補跑：早報 morning-claim 進行中，略過背景補建海選快取")
+                return
             from import_health import latest_complete_quote_date
             from screen_sessions import screen_session_has_data
             from screening_engine import build_and_cache_full_screening
@@ -858,6 +864,18 @@ def start_daily_scheduler():
         _boot_catchup_delay_s = 180.0
         logger.info("排程：延後 %.0f 秒再補跑，先開聽筒", _boot_catchup_delay_s)
         time.sleep(_boot_catchup_delay_s)
+        # §14：前一進程留下的 morning-claim running 必須開機立刻放行，不准空等租約。
+        try:
+            from main_runner import MainRunner
+
+            n_orphan = MainRunner().demote_orphaned_morning_claims()
+            if n_orphan:
+                logger.info(
+                    "開機清掉 orphan morning-claim %s 筆，改為可補寄",
+                    n_orphan,
+                )
+        except Exception:
+            logger.exception("開機清 orphan morning-claim 失敗（不擋補跑）")
         while True:
             try:
                 catch_up_missed_jobs()
@@ -942,14 +960,56 @@ def start_watchdog():
     return t
 
 
+def _morning_digest_still_due() -> bool:
+    """開市日已過 06:30 且早報尚未 success → 開機融合必須讓路（§14）。"""
+    try:
+        from tw_holidays import closed_tw_session
+        from import_health import latest_complete_quote_date
+        from main_runner import MainRunner
+        from config import get_db_path
+
+        now = _taipei_now()
+        if now.weekday() >= 5:
+            return False
+        if (now.hour * 60 + now.minute) < (6 * 60 + 30):
+            return False
+        db = get_db_path()
+        if closed_tw_session(db_path=db) is not None:
+            return False
+        as_of = latest_complete_quote_date(db)
+        if not as_of:
+            return True
+        st = MainRunner().pipeline_status(f"screen-{as_of}")
+        return st != "success"
+    except Exception:
+        logger.debug("早報是否仍欠寄判斷略過", exc_info=True)
+        return False
+
+
 def start_market_backfill(delay_s: float = 0):
-    """Deploy 後 Release zip 可能缺最近交易日；背景 UPSERT 進現有 wayne_market.db。"""
+    """Deploy 後 Release zip 可能缺最近交易日；背景 UPSERT 進現有 wayne_market.db。
+
+    開市日早報未寄前不准搶開機融合（DB lock／OOM 會卡死 morning-claim，§14）。
+    """
 
     def _run():
         try:
             if delay_s > 0:
                 logger.info("延後 %.0f 秒再啟動盤後融合（Render 省記憶體）", delay_s)
                 time.sleep(delay_s)
+            # 最多再等 20 分讓 catch-up 早報先寄；仍未寄才融合（不准永遠擋補庫）。
+            waited = 0.0
+            while _morning_digest_still_due() and waited < 1200.0:
+                if waited == 0.0:
+                    logger.info(
+                        "開市日早報尚未寄達，開機融合讓路（§14）；最多再等 20 分"
+                    )
+                time.sleep(30.0)
+                waited += 30.0
+            if waited > 0.0 and _morning_digest_still_due():
+                logger.warning(
+                    "早報仍未 success，逾時後仍啟動開機融合（不永久擋）"
+                )
             logger.info("啟動後融合官方日K／法人／財報（不推播）")
             from main_runner import MainRunner
 
