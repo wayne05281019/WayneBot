@@ -1703,3 +1703,76 @@ def test_morning_crash_marks_computed_for_retry(tmp_path, monkeypatch):
         )
         is True
     )
+
+
+def test_mark_pipeline_retries_db_lock(tmp_path, monkeypatch):
+    """寄出後蓋戳若遇 DB lock 必須重試，否則 force-morning 會重寄。"""
+    import sqlite3
+
+    import main_runner as mr
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "mark-retry.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261023"
+    calls = {"n": 0}
+    real_connect = sqlite3.connect
+
+    def _flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise sqlite3.OperationalError("database is locked")
+        return real_connect(*a, **k)
+
+    monkeypatch.setattr(mr.sqlite3, "connect", _flaky)
+    monkeypatch.setattr(mr.time, "sleep", lambda *_a, **_k: None)
+    runner._mark_pipeline("success", "morning-digest", run_date="screen-20261022")
+    assert calls["n"] >= 3
+    row = real_connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20261022",),
+    ).fetchone()
+    assert row[0] == "success"
+    assert row[1] == "morning-digest"
+
+
+def test_push_screening_keeps_sent_ok_when_mark_fails(monkeypatch, tmp_path):
+    """Telegram 已 2/2 後蓋戳炸裂，不准再往上丟例外（否則當未寄→重寄）。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "push-mark-fail.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261023"
+    runner.token = "x"
+    runner.chat_id = "1"
+    runner.bot = type(
+        "B",
+        (),
+        {"send_screening_report": staticmethod(lambda *a, **k: True)},
+    )()
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["111", "222"])
+    monkeypatch.setattr(runner, "_push_morning_session_cards", lambda *a, **k: None)
+    marks = {"n": 0}
+
+    def _boom(*_a, **_k):
+        marks["n"] += 1
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(runner, "_mark_pipeline", _boom)
+    screening = {"status": "success", "payload": [{"html": "海選"}], "message": "海選", "results": {}}
+    ok = runner._push_screening(
+        screening,
+        as_of="20261022",
+        morning_digest=True,
+        pipeline_run_date="screen-20261022",
+    )
+    assert ok is True
+    assert marks["n"] == 1

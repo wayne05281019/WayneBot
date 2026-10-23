@@ -668,15 +668,57 @@ class MainRunner:
         finally:
             conn.close()
 
-    def _mark_pipeline(self, status: str, notes: str = "", run_date: str = None):
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR REPLACE INTO pipeline_runs (run_date, finished_at, status, notes) VALUES (?, ?, ?, ?);",
-            (run_date or self.today_str, taipei_stamp(), status, notes),
+    def _mark_pipeline(
+        self,
+        status: str,
+        notes: str = "",
+        run_date: str = None,
+        *,
+        retries: int = 8,
+    ):
+        """寫 pipeline_runs。DB locked 必須重試——海選已寄出卻蓋戳失敗會讓 force／catch-up 重寄（2026-10-23）。"""
+        key = run_date or self.today_str
+        stamp = taipei_stamp()
+        last_err: Optional[Exception] = None
+        attempts = max(1, int(retries or 1))
+        for attempt in range(attempts):
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=30)
+                try:
+                    conn.execute("PRAGMA busy_timeout=30000")
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT OR REPLACE INTO pipeline_runs "
+                        "(run_date, finished_at, status, notes) VALUES (?, ?, ?, ?);",
+                        (key, stamp, status, notes),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                return
+            except sqlite3.OperationalError as e:
+                last_err = e
+                msg = str(e).lower()
+                if "locked" not in msg and "busy" not in msg:
+                    raise
+                logger.warning(
+                    "pipeline 蓋戳 DB busy（%s/%s）key=%s status=%s：%s",
+                    attempt + 1,
+                    attempts,
+                    key,
+                    status,
+                    e,
+                )
+                time.sleep(0.4 * (attempt + 1))
+        logger.error(
+            "pipeline 蓋戳失敗 key=%s status=%s notes=%s：%s",
+            key,
+            status,
+            notes,
+            last_err,
         )
-        conn.commit()
-        conn.close()
+        if last_err is not None:
+            raise last_err
 
     def send_telegram_message(self, text: str, chat_id: Optional[str] = None) -> bool:
         if not text:
@@ -1535,7 +1577,16 @@ class MainRunner:
         pkey = str(pipeline_run_date or "").strip()
         if morning_digest and pkey:
             # 海選＋彙整已送出即標 success，避免長掃期間 watchdog 06:55 誤報 running。
-            self._mark_pipeline("success", "morning-digest", run_date=pkey)
+            # 蓋戳失敗不准往上炸：否則 catch-up／force-morning 以為沒寄又重寄（2026-10-23 18:32／19:17）。
+            try:
+                self._mark_pipeline(
+                    "success", "morning-digest", run_date=pkey, retries=12
+                )
+            except Exception:
+                logger.exception(
+                    "海選已寄出但 pipeline 蓋戳失敗（稍後 run_morning 仍會再標）key=%s",
+                    pkey,
+                )
         # Option B：輪動／月營收／雷達不塞進 06:30 早報主輪（改盤後／按鈕路徑）
         if not morning_digest:
             extra_bits = []
@@ -2260,7 +2311,16 @@ class MainRunner:
             delivered = self._screening_delivered(screening)
             if delivered and sent_ok:
                 if notify or rebuild_only:
-                    self._mark_pipeline("success", "morning", run_date=key)
+                    # 已寄出：蓋戳必須盡力成功；失敗再 raise 會讓外層改 computed→重寄。
+                    try:
+                        self._mark_pipeline(
+                            "success", "morning", run_date=key, retries=12
+                        )
+                    except Exception:
+                        logger.exception(
+                            "早上海選已寄出但最終蓋戳仍失敗 key=%s（勿當未寄）",
+                            key,
+                        )
                 else:
                     # GHA notify=0 只算名單。若標 success，Release zip 灌進 Render
                     # 會讓 skip_if_done 以為已寄過（401 那天就是這樣）。
