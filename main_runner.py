@@ -1039,9 +1039,18 @@ class MainRunner:
         report_text = ""
         if run_full_screening:
             try:
-                output = run_full_screening(db_path=self.db_path)
+                from import_health import latest_complete_quote_date
+
+                as_of = latest_complete_quote_date(self.db_path) or ""
+                output = self._screening_surviving_oom(
+                    as_of, session="morning", apply_us=True
+                ) or {}
                 report_text = output.get("message") or ""
-                logger.info(f"四大選股 status={output.get('status')} scanned={output.get('total_scanned')}")
+                logger.info(
+                    "四大選股 status=%s scanned=%s",
+                    output.get("status"),
+                    output.get("total_scanned"),
+                )
             except Exception as e:
                 logger.error(f"四大選股失敗：{e}", exc_info=True)
         if not report_text:
@@ -1318,33 +1327,46 @@ class MainRunner:
             return True
         return str(screening.get("status") or "") in ("success", "empty")
 
-    def _morning_screening_surviving_oom(self, as_of: str) -> Optional[Dict[str, Any]]:
-        """06:30 全掃改子行程：OOM 只殺子進程，常駐還能標 computed／補寄（§14）。
+    def _screening_surviving_oom(
+        self,
+        as_of: str,
+        *,
+        session: str = "morning",
+        apply_us: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """全市場掃預設走子行程：最重負荷當預設，OOM 不准拖死常駐／Telegram（§14）。
 
-        先讀 screen_sessions 快取；無快取才 spawn。子行程寫入後父行程再 load。
+        輕量日假設＝錯的。先讀 screen_sessions；無快取才 spawn。
+        子行程失敗不准在父行程重掃。pytest／WAYNE_SCREEN_INLINE 才准 inline。
         """
         from screening_engine import load_cached_full_screening
 
         as_of = str(as_of or "").strip()
+        session = str(session or "morning").strip() or "morning"
         cached = load_cached_full_screening(self.db_path)
         if cached and str(cached.get("as_of") or cached.get("date") or "") == as_of:
             if any((cached.get("results") or {}).values()):
-                logger.info("今早海選讀既有 screen_sessions 快取 as_of=%s", as_of)
+                logger.info(
+                    "海選讀既有 screen_sessions 快取 as_of=%s session=%s",
+                    as_of,
+                    session,
+                )
                 return cached
 
         if not run_full_screening:
             return cached
 
         # 本機／pytest：子行程重、且常無真庫；直接同行程掃。
-        if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get(
-            "WAYNE_MORNING_SCREEN_INLINE"
-        ):
+        inline = os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get(
+            "WAYNE_SCREEN_INLINE"
+        ) or os.environ.get("WAYNE_MORNING_SCREEN_INLINE")
+        if inline:
             try:
                 return run_full_screening(
                     db_path=self.db_path,
                     target_date=as_of,
-                    apply_us=True,
-                    session="morning",
+                    apply_us=bool(apply_us),
+                    session=session,
                 )
             except Exception as e:
                 logger.error("四大選股（inline）失敗: %s", e, exc_info=True)
@@ -1352,38 +1374,59 @@ class MainRunner:
 
         import subprocess
 
-        logger.info("今早海選全掃改子行程（防 OOM 拖死常駐）as_of=%s", as_of)
+        logger.info(
+            "海選全掃改子行程（最重負荷預設／防 OOM）as_of=%s session=%s",
+            as_of,
+            session,
+        )
         child = (
             "import os,sys\n"
-            "os.environ['WAYNE_MORNING_CHILD']='1'\n"
+            "os.environ['WAYNE_SCREEN_CHILD']='1'\n"
             "from screening_engine import run_full_screening\n"
             f"r=run_full_screening(db_path={self.db_path!r},target_date={as_of!r},"
-            "apply_us=True,session='morning')\n"
+            f"apply_us={bool(apply_us)!r},session={session!r})\n"
             "sys.exit(0 if r else 1)\n"
         )
         rc = -1
         try:
             env = dict(os.environ)
-            env["WAYNE_MORNING_CHILD"] = "1"
+            env["WAYNE_SCREEN_CHILD"] = "1"
             proc = subprocess.run(
                 [sys.executable, "-c", child],
-                timeout=float(os.getenv("WAYNE_MORNING_CHILD_TIMEOUT", "900") or 900),
+                timeout=float(
+                    os.getenv("WAYNE_SCREEN_CHILD_TIMEOUT")
+                    or os.getenv("WAYNE_MORNING_CHILD_TIMEOUT")
+                    or "900"
+                ),
                 env=env,
             )
             rc = int(proc.returncode)
         except subprocess.TimeoutExpired:
-            logger.error("今早海選子行程逾時 as_of=%s", as_of)
+            logger.error("海選子行程逾時 as_of=%s session=%s", as_of, session)
         except Exception as e:
-            logger.error("今早海選子行程失敗: %s", e, exc_info=True)
+            logger.error("海選子行程失敗: %s", e, exc_info=True)
 
         cached = load_cached_full_screening(self.db_path)
         if cached and str(cached.get("as_of") or cached.get("date") or "") == as_of:
             if any((cached.get("results") or {}).values()):
-                logger.info("今早海選子行程後讀到快取 as_of=%s rc=%s", as_of, rc)
+                logger.info(
+                    "海選子行程後讀到快取 as_of=%s session=%s rc=%s",
+                    as_of,
+                    session,
+                    rc,
+                )
                 return cached
         # 子行程失敗／無快取：不准在父行程重掃（會再 OOM 拖死常駐）。
-        logger.error("今早海選子行程未寫出快取 rc=%s as_of=%s", rc, as_of)
+        logger.error(
+            "海選子行程未寫出快取 rc=%s as_of=%s session=%s", rc, as_of, session
+        )
         return None
+
+    def _morning_screening_surviving_oom(self, as_of: str) -> Optional[Dict[str, Any]]:
+        """相容舊名：06:30 早報全掃（預設子行程）。"""
+        return self._screening_surviving_oom(
+            as_of, session="morning", apply_us=True
+        )
 
     def _push_screening(
         self,
@@ -1589,11 +1632,11 @@ class MainRunner:
             if results is None:
                 if not run_full_screening:
                     return {}
-                screening = run_full_screening(
-                    db_path=self.db_path,
-                    target_date=as_of,
-                    apply_us=apply_us,
-                    session=session or "",
+                # 最重負荷預設：不准在常駐行程內重掃全市場（OOM→話筒死）。
+                screening = self._screening_surviving_oom(
+                    as_of,
+                    session=str(session or "evening"),
+                    apply_us=bool(apply_us),
                 )
                 results = (screening or {}).get("results") or {}
 
@@ -2236,8 +2279,9 @@ class MainRunner:
             return False
         screening = None
         try:
-            screening = run_full_screening(
-                db_path=self.db_path, target_date=as_of, apply_us=False, session="evening"
+            # 最重負荷預設：晚間全掃也走子行程，不准拖死常駐。
+            screening = self._screening_surviving_oom(
+                as_of, session="evening", apply_us=False
             )
         except Exception as e:
             logger.error("晚間海選失敗: %s", e, exc_info=True)
