@@ -309,9 +309,27 @@ def test_missed_jobs_skips_weekend(tmp_path, monkeypatch):
 
 
 def test_missed_jobs_skips_tw_national_holiday(tmp_path, monkeypatch):
+    """休市：不盯 midday／fuse；仍盯 us-digest 精簡早報（未寄＝missed）。"""
     path = _make_db(tmp_path)
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     mid_autumn = datetime(2026, 9, 25, 19, 0)
+    missed = missed_jobs(path, now=mid_autumn)
+    assert [m["kind"] for m in missed] == ["morning_screen"]
+    assert missed[0]["run_date"] == "us-digest-20260925"
+    assert "midday" not in missed[0]["run_date"]
+    # 已寄精簡早報 → 休市日無 missed
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "us-digest-20260925",
+            "2026-09-25T06:35:00+08:00",
+            "success",
+            "tw closed us-digest",
+        ),
+    )
+    conn.commit()
+    conn.close()
     assert missed_jobs(path, now=mid_autumn) == []
 
 

@@ -174,8 +174,9 @@ def test_closed_and_morning_skip_still_refresh_sidecars():
     assert "_refresh_official_sidecars()" in chunk
     # 早報已寄過仍對側車
     assert "略過寄送；仍對官方側車" in src
-    # 休市早報仍對側車
-    assert "仍對官方側車補月營收" in src
+    # 休市早報仍對側車（精簡早報路徑）
+    assert "_run_closed_day_morning_digest" in src
+    assert "_refresh_official_sidecars()" in src
     # 盤後已成功仍續補月營收
     assert "仍對官方側車（月營收續補）" in src
 

@@ -1282,41 +1282,116 @@ def test_demote_holiday_skip_morning_screens(tmp_path):
 
 
 def test_morning_closed_uses_screen_closed_key(tmp_path, monkeypatch):
-    """休市不寫 screen-{as_of}，改記 screen-closed-{休市日}。"""
+    """休市不寫 screen-{as_of}；記 screen-closed-*＋us-digest-*；不跑海選。"""
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema
-    import sqlite3
 
     path = str(tmp_path / "closed_key.db")
     ensure_core_schema(path)
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
+    runner.chat_id = "9001"
+    runner.bot = None
     marks = []
+    pushed = []
+    cards = []
 
     monkeypatch.setattr(
         "tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {"ok": True}
     )
     monkeypatch.setattr(
         "tw_holidays.closed_tw_session",
-        lambda **_k: {"ymd": "20260928", "zh": "教師節", "kind": "full_close"},
+        lambda **_k: {
+            "ymd": "20260928",
+            "zh": "教師節",
+            "kind": "full_close",
+            "prev_ymd": "20260926",
+        },
+    )
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20260926",
+    )
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        "morning_digest.build_closed_day_digest_html",
+        lambda *_a, **_k: "<b>WayneBot 早報</b>\n今日無開盤，因為教師節",
     )
 
     def _mark(status, notes="", run_date=None):
         marks.append((status, notes, run_date))
 
     runner._mark_pipeline = _mark  # type: ignore
+    runner._refresh_official_sidecars = lambda: None  # type: ignore
+    runner.try_claim_pipeline = lambda *a, **k: True  # type: ignore
+    runner.pipeline_status = lambda *_a, **_k: ""  # type: ignore
+    runner._family_chat_ids = lambda: ["9001", "9002"]  # type: ignore
+    runner._push_morning_session_cards = (  # type: ignore
+        lambda cid, us_snap=None: cards.append(cid)
+    )
+    runner.send_telegram_message = (  # type: ignore
+        lambda text, chat_id=None: pushed.append((chat_id, text)) or True
+    )
+    # 不准走全市場海選
+    runner._morning_screening_surviving_oom = lambda *_a, **_k: (_ for _ in ()).throw(  # type: ignore
+        AssertionError("closed day must not run screening")
+    )
+
     assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
-    assert marks == [
-        (
-            "success",
-            "tw closed 20260928 教師節 skip morning",
-            "screen-closed-20260928",
-        )
-    ]
+    keys = [m[2] for m in marks]
+    assert "screen-closed-20260928" in keys
+    assert "us-digest-20260928" in keys
     assert not any(
         (m[2] or "").startswith("screen-2026") and "closed" not in (m[2] or "")
         for m in marks
     )
+    assert any("skip screen" in str(m[1]) for m in marks)
+    assert any("us-digest" in str(m[1]) and m[0] == "success" for m in marks)
+    assert cards == ["9001", "9002"]
+    assert len(pushed) == 2
+    assert all("今日無開盤，因為教師節" in (t or "") for _, t in pushed)
+
+
+def test_midday_closed_uses_midday_closed_key_and_sends_nothing(tmp_path, monkeypatch):
+    """休市 12:45：midday-closed-*；不准寄任何對話框、不准寫 midday-{as_of}。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "midday_closed.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    marks = []
+    sent = []
+
+    monkeypatch.setattr(
+        "tw_holidays.closed_tw_session",
+        lambda **_k: {"ymd": "20261026", "zh": "光復節補假", "kind": "full_close"},
+    )
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20261024",
+    )
+
+    def _mark(status, notes="", run_date=None):
+        marks.append((status, notes, run_date))
+
+    runner._mark_pipeline = _mark  # type: ignore
+    runner._broadcast_family = lambda t: sent.append(t) or True  # type: ignore
+    runner.send_telegram_message = lambda *a, **k: sent.append(a) or True  # type: ignore
+
+    assert runner.run_midday_review(skip_if_done=True) is True
+    assert marks == [
+        (
+            "success",
+            "tw closed 20261026 光復節補假 skip midday",
+            "midday-closed-20261026",
+        )
+    ]
+    assert sent == []
+    assert not any((m[2] or "").startswith("midday-2026") for m in marks)
 
 
 def test_catch_up_skips_morning_on_as_of_day(monkeypatch):

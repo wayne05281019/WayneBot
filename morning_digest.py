@@ -143,6 +143,92 @@ def _prev_day_margin_line(db_path: str, as_of: str) -> str:
         return ""
 
 
+def build_closed_day_digest_html(
+    db_path: str,
+    as_of: str,
+    closed: Optional[Dict[str, Any]],
+    *,
+    us_snap: Optional[Dict[str, Any]] = None,
+) -> str:
+    """休市日 06:30 精簡早報：美股＋大盤環境；台股寫「今日無開盤，因為〇〇」。
+
+    不跑海選、不含剛離零／紅箭／買訊。只讀庫＋已抓的美股快照，負擔要遠低於開市日全掃。
+    """
+    from tg_layout import html_escape, headline_lines
+    from trading_calendar import format_trading_date_zh, taipei_calendar_ymd
+    from tw_holidays import closed_no_open_line
+
+    no_open = closed_no_open_line(closed)
+    today = taipei_calendar_ymd()
+    title = "<b>WayneBot 早報</b>"
+    if today:
+        title = f"{title}　{html_escape(format_trading_date_zh(today))}"
+    head_bits = [title]
+    if no_open:
+        head_bits.append(f"<b>{html_escape(no_open)}</b>")
+    as_of8 = str(as_of or "").replace("-", "")[:8]
+    prev = str((closed or {}).get("prev_ymd") or as_of8 or "").strip()
+    if prev and len(prev) == 8 and prev != str(today or ""):
+        head_bits.append(
+            f"台股上一收盤　{html_escape(format_trading_date_zh(prev))}"
+        )
+    head_bits.append("＝＝美股＋大盤環境＝＝")
+    head = headline_lines(*head_bits)
+
+    outlook = ""
+    try:
+        from taiwan_market import format_screen_market_outlook_html
+
+        outlook = format_screen_market_outlook_html(
+            db_path, as_of or prev or "", us_snap=us_snap
+        )
+    except Exception:
+        outlook = ""
+    # 拿掉開市日海選標題／舊休市橫幅；原因句已在開頭寫死。
+    if outlook:
+        kept: List[str] = []
+        for ln in outlook.split("\n"):
+            pl = _plain(ln).strip()
+            if not pl:
+                continue
+            if "WayneBot 海選" in pl:
+                continue
+            if "＝＝大盤狀況＝＝" in pl:
+                continue
+            if pl.startswith("20") and ("台股" in pl and "休市" in pl):
+                continue
+            if "台股僅結算" in pl:
+                continue
+            if "上一收盤" == pl[:4] or pl.startswith("上一收盤 "):
+                continue
+            if "台股今天休市" in pl:
+                continue
+            kept.append(ln)
+        outlook = "\n".join(kept).strip()
+
+    tw_brief = ""
+    try:
+        from taiwan_market import format_taiwan_market_brief_html
+
+        tw_brief = format_taiwan_market_brief_html(
+            db_path, as_of or prev or "", for_morning=True
+        )
+    except Exception:
+        tw_brief = ""
+    outlook = _outlook_drop_short_nights(outlook, tw_brief)
+    observe = _foreign_sell_observe_line(db_path, as_of or prev or "")
+    margin = _prev_day_margin_line(db_path, as_of or prev or "")
+    early = _early_alert_supplement_html(
+        us_snap, db_path=db_path, outlook_html=outlook or ""
+    )
+    extras = [x for x in (observe, margin) if x and str(x).strip()]
+    blocks = [b for b in (early, outlook, tw_brief, *extras) if b and str(b).strip()]
+    body = join_sections(*blocks, sep=f"\n{DASH_LINE}\n") if blocks else ""
+    if body:
+        return f"{head}\n{body}"
+    return head
+
+
 def build_morning_opening_html(
     db_path: str,
     as_of: str,

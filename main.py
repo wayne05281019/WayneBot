@@ -1090,7 +1090,10 @@ def start_watchdog():
 
 
 def _morning_digest_still_due() -> bool:
-    """開市日已過 06:30 且早報尚未 success → 開機融合必須讓路（§14）。"""
+    """已過 06:30 且早報尚未 success → 開機融合必須讓路（§14）。
+
+    開市日＝screen-{as_of}；休市日＝us-digest-{ymd}（精簡美股早報，仍輕量讓路）。
+    """
     try:
         from tw_holidays import closed_tw_session
         from import_health import latest_complete_quote_date
@@ -1103,12 +1106,15 @@ def _morning_digest_still_due() -> bool:
         if (now.hour * 60 + now.minute) < (6 * 60 + 30):
             return False
         db = get_db_path()
-        if closed_tw_session(db_path=db) is not None:
-            return False
+        closed = closed_tw_session(db_path=db)
+        runner = MainRunner()
+        if closed is not None:
+            ymd = str(closed.get("ymd") or now.strftime("%Y%m%d")).strip()
+            return runner.pipeline_status(f"us-digest-{ymd}") != "success"
         as_of = latest_complete_quote_date(db)
         if not as_of:
             return True
-        st = MainRunner().pipeline_status(f"screen-{as_of}")
+        st = runner.pipeline_status(f"screen-{as_of}")
         return st != "success"
     except Exception:
         logger.debug("早報是否仍欠寄判斷略過", exc_info=True)

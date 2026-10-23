@@ -188,7 +188,7 @@ def test_runner_nightly_writes_pipeline_and_skip_if_done(tmp_path, monkeypatch):
 
 
 def test_morning_closed_after_nightly_uses_screen_closed(tmp_path, monkeypatch):
-    """連假休市日：深夜記 closed → 今早仍 screen-closed-*，不准假 success 擋開市日。"""
+    """連假休市日：深夜記 closed → 今早仍 screen-closed-*＋us-digest，不准假 success 擋開市日。"""
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema
     from tw_holidays import record_tw_open_check
@@ -207,27 +207,52 @@ def test_morning_closed_after_nightly_uses_screen_closed(tmp_path, monkeypatch):
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
     runner.today_str = "20260928"
+    runner.chat_id = "9001"
+    runner.bot = None
     marks = []
     monkeypatch.setattr(
         "tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {"ok": True}
     )
     monkeypatch.setattr(
         "tw_holidays.closed_tw_session",
-        lambda **_k: {"ymd": "20260928", "zh": "教師節", "kind": "full_close"},
+        lambda **_k: {
+            "ymd": "20260928",
+            "zh": "教師節",
+            "kind": "full_close",
+            "prev_ymd": "20260926",
+        },
+    )
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20260926",
+    )
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        "morning_digest.build_closed_day_digest_html",
+        lambda *_a, **_k: "今日無開盤，因為教師節",
     )
 
     def _mark(status, notes="", run_date=None):
         marks.append((status, notes, run_date))
 
     runner._mark_pipeline = _mark  # type: ignore
+    runner._refresh_official_sidecars = lambda: None  # type: ignore
+    runner.try_claim_pipeline = lambda *a, **k: True  # type: ignore
+    runner.pipeline_status = lambda *_a, **_k: ""  # type: ignore
+    runner._family_chat_ids = lambda: ["9001"]  # type: ignore
+    runner._push_morning_session_cards = lambda *a, **k: None  # type: ignore
+    runner.send_telegram_message = lambda *a, **k: True  # type: ignore
     assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
-    assert marks == [
-        (
-            "success",
-            "tw closed 20260928 教師節 skip morning",
-            "screen-closed-20260928",
-        )
-    ]
+    keys = [m[2] for m in marks]
+    assert "screen-closed-20260928" in keys
+    assert "us-digest-20260928" in keys
+    assert any("skip screen" in str(m[1]) for m in marks)
+    assert not any(
+        (m[2] or "").startswith("screen-2026") and "closed" not in (m[2] or "")
+        for m in marks
+    )
 
 
 def test_morning_first_open_day_pushes_despite_prior_closed_key(tmp_path, monkeypatch):
