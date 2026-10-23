@@ -268,13 +268,35 @@ class MainRunner:
             conn.close()
 
     @contextmanager
-    def _morning_running_lease(self, run_date: str, *, interval_sec: float = 60.0):
-        """持鎖期間定期續 finished_at；行程死掉後租約過期才能重搶補寄。"""
+    def _morning_running_lease(
+        self,
+        run_date: str,
+        *,
+        interval_sec: float = 60.0,
+        max_lease_sec: float | None = None,
+    ):
+        """持鎖期間定期續 finished_at；行程死掉後租約過期才能重搶補寄。
+
+        max_lease_sec（預設＝MORNING_RUNNING_STALE_SEC）：逾時停止續租，
+        讓卡死在 DB lock 的行程不再把 finished_at 一直刷新、永遠擋 §14 補寄。
+        不在此降 computed（避免與仍在寄送的 body 雙寄）；只停續租。
+        """
         key = str(run_date or "").strip()
         stop = threading.Event()
+        cap = float(
+            MORNING_RUNNING_STALE_SEC if max_lease_sec is None else max_lease_sec
+        )
+        started = time.monotonic()
 
         def _beat() -> None:
             while not stop.wait(float(interval_sec)):
+                if time.monotonic() - started >= cap:
+                    logger.warning(
+                        "pipeline lease 停續租 key=%s（已滿 %.0fs，准許補寄重搶）",
+                        key,
+                        cap,
+                    )
+                    break
                 try:
                     self.touch_pipeline_running(key)
                 except Exception:
@@ -365,6 +387,76 @@ class MainRunner:
             if n:
                 conn.commit()
             return n
+        finally:
+            conn.close()
+
+    def demote_orphaned_morning_claims(self) -> int:
+        """開機清前一進程留下的 morning-claim running→computed（§14）。
+
+        Deploy／OOM／DB lock 殺行程後，fresh running 會擋 catch-up 最多
+        MORNING_RUNNING_STALE_SEC；開機時前一進程已死，必須立刻放行補寄。
+        只動 screen-*（不含 screen-closed-*）；不准動 success；不准假 success。
+        同進程持鎖中不准呼叫（會雙寄）——只准排程執行緒開機呼叫一次。
+        """
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=5000;")
+            cur = conn.execute(
+                """
+                UPDATE pipeline_runs
+                SET status = 'computed',
+                    notes = ?,
+                    finished_at = ?
+                WHERE run_date LIKE 'screen-%'
+                  AND run_date NOT LIKE 'screen-closed-%'
+                  AND status = 'running'
+                  AND (
+                    notes LIKE '%morning-claim%'
+                    OR notes LIKE '%morning claim%'
+                    OR notes = 'morning-claim'
+                  )
+                """,
+                ("morning orphan-boot demote", taipei_stamp()),
+            )
+            conn.commit()
+            return int(cur.rowcount or 0)
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.exception("開機清 orphan morning-claim 失敗")
+            return 0
+        finally:
+            conn.close()
+
+    def morning_claim_is_fresh_running(self, *, stale_running_sec: int | None = None) -> bool:
+        """是否有未過期的 morning-claim running（補建快取／開機融合應讓路）。"""
+        stale = int(
+            MORNING_RUNNING_STALE_SEC if stale_running_sec is None else stale_running_sec
+        )
+        conn = sqlite3.connect(self.db_path, timeout=15.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=3000;")
+            rows = conn.execute(
+                """
+                SELECT finished_at FROM pipeline_runs
+                WHERE run_date LIKE 'screen-%'
+                  AND run_date NOT LIKE 'screen-closed-%'
+                  AND status = 'running'
+                  AND notes LIKE '%morning%'
+                """
+            ).fetchall()
+            for (fin,) in rows:
+                try:
+                    if _stamp_age_seconds(str(fin or "")) <= float(stale):
+                        return True
+                except Exception:
+                    return True
+            return False
+        except Exception:
+            logger.debug("查 morning-claim running 略過", exc_info=True)
+            return False
         finally:
             conn.close()
 
@@ -1788,12 +1880,29 @@ class MainRunner:
         # success 永不重搶；computed（明確寄失敗／notify-off／crashed／stale）可再搶。
         claimed = False
         if notify:
-            if not self.try_claim_pipeline(
-                key,
-                notes="morning-claim",
-                allow_stale_running=True,
-                stale_running_sec=int(MORNING_RUNNING_STALE_SEC),
-            ):
+            claimed_ok = False
+            for attempt in range(5):
+                try:
+                    claimed_ok = self.try_claim_pipeline(
+                        key,
+                        notes="morning-claim",
+                        allow_stale_running=True,
+                        stale_running_sec=int(MORNING_RUNNING_STALE_SEC),
+                    )
+                    break
+                except sqlite3.OperationalError as e:
+                    # DB lock 不准讓整段排程炸掉留下上一輪 orphan running。
+                    logger.warning(
+                        "早上海選搶鎖 DB busy（%s/%s）：%s",
+                        attempt + 1,
+                        5,
+                        e,
+                    )
+                    time.sleep(1.5 * (attempt + 1))
+            else:
+                logger.error("早上海選搶鎖連續 DB locked，略過本輪（不標 success）")
+                return False
+            if not claimed_ok:
                 logger.info("早上海選 %s 已寄過或進行中，略過。", key)
                 return True
             claimed = True

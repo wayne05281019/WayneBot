@@ -955,6 +955,98 @@ def test_demote_premature_morning_screens_same_day(tmp_path):
     assert rows["screen-20260908"][0] == "success"
 
 
+def test_demote_orphaned_morning_claims_boot(tmp_path):
+    """開機必須把 orphan morning-claim running→computed，不准空等 30 分租約（§14）。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "orphan-claim.db")
+    ensure_core_schema(path)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "screen-20261022",
+            "2026-10-23T08:17:43+08:00",
+            "running",
+            "morning-claim",
+        ),
+    )
+    # 休市鍵／已寄 success 不准動
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "screen-closed-20261010",
+            "2026-10-10T06:30:00+08:00",
+            "success",
+            "tw closed skip morning",
+        ),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "screen-20261021",
+            "2026-10-22T07:23:14+08:00",
+            "success",
+            "morning",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.demote_orphaned_morning_claims() == 1
+    assert runner.demote_orphaned_morning_claims() == 0
+    rows = {
+        r[0]: r[1:]
+        for r in sqlite3.connect(path).execute(
+            "SELECT run_date, status, notes FROM pipeline_runs"
+        )
+    }
+    assert rows["screen-20261022"][0] == "computed"
+    assert "orphan-boot" in rows["screen-20261022"][1]
+    assert rows["screen-closed-20261010"][0] == "success"
+    assert rows["screen-20261021"][0] == "success"
+    # 降級後可立刻重搶補寄（不必等 stale）
+    assert (
+        runner.try_claim_pipeline(
+            "screen-20261022",
+            notes="morning-claim",
+            allow_stale_running=False,
+        )
+        is True
+    )
+
+
+def test_morning_claim_is_fresh_running(tmp_path):
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "fresh-claim.db")
+    ensure_core_schema(path)
+    tw = ZoneInfo("Asia/Taipei")
+    now = datetime.now(tw).isoformat(timespec="seconds")
+    sqlite3.connect(path).execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261022", now, "running", "morning-claim"),
+    ).connection.commit()
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.morning_claim_is_fresh_running() is True
+    sqlite3.connect(path).execute(
+        "UPDATE pipeline_runs SET status='computed' WHERE run_date=?",
+        ("screen-20261022",),
+    ).connection.commit()
+    assert runner.morning_claim_is_fresh_running() is False
+
+
 def test_demote_holiday_skip_morning_screens(tmp_path):
     """連假休市誤標 screen-{as_of} success 必須降級，開市日才能補寄。"""
     from main_runner import MainRunner
