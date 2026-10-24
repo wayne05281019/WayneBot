@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""勝率買點母體 × 大量區／均線再篩・靜默對質（不是買訊）。
+"""勝率買點母體 × 大量區／裸 K＋量再篩・靜默對質（建議哪檔候選；不是買訊）。
 
 母體＝當日勝率買點現況路徑（leave_zero 藍▲＋buy_exclude_v5 留下；
 可選 AI 生態系 ONLY 與話筒對齊）。不准改 leave_zero／ma60_lower／黃金買點公式。
@@ -7,17 +7,24 @@
 變體（同母體再篩；分軌記、分軌算；勝率不准混海選／壓撐／洞燭／AI倉／飆大）：
   current            ＝現況整包（對照基線；空名單不算）
   vz_mid_thin        ＝大量區內中下帶（區相對位置 0.15–0.70）＋量能／爆大量日 <0.50
-  ma60_rising        ＝季線近 5 交易日上升
-  space_h20          ＝收盤距近 20 收盤高 ≥5%（上檔空間）
+  ma60_rising        ＝季線近 5 交易日上升（既有凍結；可重算）
+  space_h20          ＝收盤距近 20 收盤高 ≥5%（上檔空間；裸 K）
   untangle_up        ＝5／10／月線未糾結（spread≥2.8%）且月線上升、收≥五日
   combo_vz_ma60      ＝vz_mid_thin ∩ ma60_rising
-  combo_vz_untangle  ＝vz_mid_thin ∩ untangle_up（§13 再生下一版）
-  combo_vz_space     ＝vz_mid_thin ∩ space_h20（§13 再生下一版）
-  combo_triple       ＝vz_mid_thin ∩ ma60_rising ∩ untangle_up（§13 再生下一版）
+  combo_vz_untangle  ＝vz_mid_thin ∩ untangle_up
+  combo_vz_space     ＝vz_mid_thin ∩ space_h20
+  combo_triple       ＝vz_mid_thin ∩ ma60_rising ∩ untangle_up
+  no_upper_dump      ＝訊號日非沖高倒貨指紋（上影比＜0.6 或量＜自身近20日80分位；裸 K＋量）
+  vol_own_mid        ＝訊號日量在自身近20日 20～70 分位（非死量、非高潮）★話筒建議篩
+  vol_own_mid_tight  ＝自身量 30～60 分位（§13 再生下一版；只靜默）
+  bull_close         ＝收≥開（陽／平；裸 K）
+  combo_vz_nodump    ＝vz_mid_thin ∩ no_upper_dump
+  combo_space_bull   ＝space_h20 ∩ bull_close
 
 開市日沒按也落檔：母體各檔＋各變體命中＋當日官方開高低收＋量。
-獨立交易日 n≥20 且主窗（＋5）勝率贏 current、且平均報酬不差於 current 才算過閘；
-不過閘不准改話筒排序／推播／硬標優先 1～2 檔。本軌只落檔，過閘也不自動改推薦。
+獨立交易日 n≥20 且主窗（＋5）勝率贏 current、且平均報酬不差於 current 才算過閘。
+2026-10-24 歷史回測：vol_own_mid 過閘 → PAINT＝該臂；話筒／推播／AI倉建議名單只留命中
+（可多檔；空則退回整包 AI leave_zero，不准硬標優先 1～2 檔）。leave_zero 公式本身不改。
 失敗不擋出卡／海選／查股。Asia/Taipei；官方已收柱；盤中未收不當收；不准假資料。
 """
 from __future__ import annotations
@@ -36,9 +43,18 @@ VARIANT_MA60_RISING = "ma60_rising"
 VARIANT_SPACE_H20 = "space_h20"
 VARIANT_UNTANGLE_UP = "untangle_up"
 VARIANT_COMBO = "combo_vz_ma60"
-VARIANT_COMBO_VZ_UNTANGLE = "combo_vz_untangle"  # §13 再生
-VARIANT_COMBO_VZ_SPACE = "combo_vz_space"  # §13 再生
-VARIANT_COMBO_TRIPLE = "combo_triple"  # §13 再生：中帶∩季線升∩解糾結
+VARIANT_COMBO_VZ_UNTANGLE = "combo_vz_untangle"
+VARIANT_COMBO_VZ_SPACE = "combo_vz_space"
+VARIANT_COMBO_TRIPLE = "combo_triple"
+# §13 裸 K＋量再生（2026-10-24）：前輪均線／區帶臂未穩贏 → 加裸 K 臂續收
+VARIANT_NO_UPPER_DUMP = "no_upper_dump"
+VARIANT_VOL_OWN_MID = "vol_own_mid"
+VARIANT_VOL_OWN_MID_TIGHT = "vol_own_mid_tight"  # §13 再生：緊中位，只靜默
+VARIANT_BULL_CLOSE = "bull_close"
+VARIANT_COMBO_VZ_NODUMP = "combo_vz_nodump"
+VARIANT_COMBO_SPACE_BULL = "combo_space_bull"
+# 過閘後話筒建議篩（可多檔；不是硬標 1～2）
+PAINT_VARIANT = VARIANT_VOL_OWN_MID
 TRACK_VARIANTS: Tuple[str, ...] = (
     VARIANT_CURRENT,
     VARIANT_VZ_MID_THIN,
@@ -49,6 +65,12 @@ TRACK_VARIANTS: Tuple[str, ...] = (
     VARIANT_COMBO_VZ_UNTANGLE,
     VARIANT_COMBO_VZ_SPACE,
     VARIANT_COMBO_TRIPLE,
+    VARIANT_NO_UPPER_DUMP,
+    VARIANT_VOL_OWN_MID,
+    VARIANT_VOL_OWN_MID_TIGHT,
+    VARIANT_BULL_CLOSE,
+    VARIANT_COMBO_VZ_NODUMP,
+    VARIANT_COMBO_SPACE_BULL,
 )
 # 篩選臂（不含 current）；current 列 extra.hit 記各臂命中結果
 FILTER_VARIANTS: Tuple[str, ...] = tuple(
@@ -67,6 +89,14 @@ TANGLE_SPREAD_MAX = 0.028
 VZ_POS_LO = 0.15
 VZ_POS_HI = 0.70
 VZ_VOL_RATIO_MAX = 0.50
+# 裸 K＋量：沖高倒貨上影比／自身量分位（對齊 R1e1 代理；不是買訊）
+UPPER_DUMP_SHADOW_MIN = 0.6
+UPPER_DUMP_VOL_PCTILE_MIN = 0.80
+VOL_OWN_MID_LO = 0.20
+VOL_OWN_MID_HI = 0.70
+VOL_OWN_MID_TIGHT_LO = 0.30
+VOL_OWN_MID_TIGHT_HI = 0.60
+OWN_VOL_LOOKBACK = 20
 
 
 def _ymd(raw: Any) -> str:
@@ -248,8 +278,37 @@ def compute_filter_features(df) -> Optional[Dict[str, Any]]:
         dist_h20 = ((h20 - cl) / cl) if cl > 0 and h20 > 0 else None
         in_band = bool(lo <= cl <= hi)
         near_press = bool(hi > 0 and cl <= hi and (hi - cl) / hi <= 0.015)
+        # 裸 K＋量：訊號日開高低／陽線／上影／自身近窗量分位
+        o = _f(work["open"].iloc[-1]) if "open" in work.columns else None
+        hi_bar = _f(work["high"].iloc[-1]) if "high" in work.columns else None
+        lo_bar = _f(work["low"].iloc[-1]) if "low" in work.columns else None
+        bull_close = bool(o is not None and cl is not None and cl >= o)
+        upper_shadow_ratio = None
+        if (
+            hi_bar is not None
+            and lo_bar is not None
+            and cl is not None
+            and hi_bar > lo_bar
+        ):
+            upper_shadow_ratio = (hi_bar - cl) / (hi_bar - lo_bar)
+        vol_series = pd.to_numeric(work["volume"], errors="coerce").tail(
+            OWN_VOL_LOOKBACK
+        )
+        vol_pctile = None
+        if len(vol_series.dropna()) >= 10 and last_vol is not None and last_vol >= 0:
+            vals = [float(x) for x in vol_series.dropna().tolist()]
+            if vals:
+                # 自身近窗百分位：≤當日量的根數／總根（含當日）
+                vol_pctile = sum(1 for x in vals if x <= float(last_vol)) / len(vals)
+        dump_r1e1 = bool(
+            upper_shadow_ratio is not None
+            and upper_shadow_ratio >= UPPER_DUMP_SHADOW_MIN
+            and vol_pctile is not None
+            and vol_pctile >= UPPER_DUMP_VOL_PCTILE_MIN
+        )
         return {
             "close": cl,
+            "open": o,
             "zone_pos": round(zone_pos, 4) if zone_pos is not None else None,
             "vol_ratio": round(vol_ratio, 4) if vol_ratio is not None else None,
             "ma60_rising": bool(ma60_r) if ma60_r is not None else None,
@@ -263,6 +322,14 @@ def compute_filter_features(df) -> Optional[Dict[str, Any]]:
             "pressure": hi,
             "support": lo,
             "zone_date": str(zone.get("date") or ""),
+            "bull_close": bull_close,
+            "upper_shadow_ratio": (
+                round(upper_shadow_ratio, 4) if upper_shadow_ratio is not None else None
+            ),
+            "vol_own_pctile": (
+                round(vol_pctile, 4) if vol_pctile is not None else None
+            ),
+            "dump_r1e1": dump_r1e1,
         }
     except Exception:
         return None
@@ -301,6 +368,25 @@ def variant_pass(feat: Dict[str, Any], variant: str) -> bool:
         if not bool(feat.get("ma20_rising")):
             return False
         return bool(feat.get("close_ge_ma5"))
+    if v == VARIANT_NO_UPPER_DUMP:
+        # 缺上影或量分位＝不過（不准假過）
+        if feat.get("upper_shadow_ratio") is None or feat.get("vol_own_pctile") is None:
+            return False
+        return feat.get("dump_r1e1") is not True
+    if v == VARIANT_VOL_OWN_MID:
+        p = _f(feat.get("vol_own_pctile"))
+        if p is None:
+            return False
+        return bool(VOL_OWN_MID_LO <= p <= VOL_OWN_MID_HI)
+    if v == VARIANT_VOL_OWN_MID_TIGHT:
+        p = _f(feat.get("vol_own_pctile"))
+        if p is None:
+            return False
+        return bool(VOL_OWN_MID_TIGHT_LO <= p <= VOL_OWN_MID_TIGHT_HI)
+    if v == VARIANT_BULL_CLOSE:
+        if feat.get("open") is None and feat.get("bull_close") is None:
+            return False
+        return feat.get("bull_close") is True
     if v == VARIANT_COMBO:
         return variant_pass(feat, VARIANT_VZ_MID_THIN) and variant_pass(
             feat, VARIANT_MA60_RISING
@@ -319,12 +405,74 @@ def variant_pass(feat: Dict[str, Any], variant: str) -> bool:
             and variant_pass(feat, VARIANT_MA60_RISING)
             and variant_pass(feat, VARIANT_UNTANGLE_UP)
         )
+    if v == VARIANT_COMBO_VZ_NODUMP:
+        return variant_pass(feat, VARIANT_VZ_MID_THIN) and variant_pass(
+            feat, VARIANT_NO_UPPER_DUMP
+        )
+    if v == VARIANT_COMBO_SPACE_BULL:
+        return variant_pass(feat, VARIANT_SPACE_H20) and variant_pass(
+            feat, VARIANT_BULL_CLOSE
+        )
     return False
 
 
 def hit_map(feat: Dict[str, Any]) -> Dict[str, bool]:
     """各篩選臂對該檔是否命中（可重算；缺真數＝False）。"""
     return {v: bool(variant_pass(feat, v)) for v in FILTER_VARIANTS}
+
+
+def paint_suggest_rows(
+    db_path: str,
+    rows: Sequence[Dict[str, Any]],
+    *,
+    as_of: str = "",
+    variant: str = "",
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """話筒／推播／AI倉建議名單：過閘臂命中才進（可多檔）。
+
+    母體 roster 仍應保留完整 AI leave_zero（靜默 current 基線）。
+    本函式只回「建議」子集。空命中＝退回原列（不准話筒空白困擾）；
+    缺特徵／缺柱＝該檔不進建議子集。不准硬標優先 1～2 檔。
+    """
+    items = [r for r in (rows or []) if isinstance(r, dict)]
+    meta: Dict[str, Any] = {
+        "paint": str(variant or PAINT_VARIANT or ""),
+        "n_in": len(items),
+        "n_out": len(items),
+        "fallback": False,
+        "as_of": _ymd(as_of),
+    }
+    paint = str(variant or PAINT_VARIANT or "").strip()
+    if not paint or paint == VARIANT_CURRENT or not items:
+        return list(items), meta
+    day = _ymd(as_of)
+    if not day:
+        try:
+            from import_health import latest_complete_quote_date
+
+            day = _ymd(latest_complete_quote_date(db_path))
+        except Exception:
+            day = ""
+    meta["as_of"] = day
+    kept: List[Dict[str, Any]] = []
+    for item in items:
+        sid = str(item.get("stock_id") or item.get("code") or "").strip()
+        if not sid:
+            continue
+        df = item.get("_df")
+        if df is None:
+            df = _frame_for_sid(db_path, sid, day or as_of)
+        feat = compute_filter_features(df)
+        if not feat:
+            continue
+        if variant_pass(feat, paint):
+            kept.append(item)
+    if not kept:
+        meta["fallback"] = True
+        meta["n_out"] = len(items)
+        return list(items), meta
+    meta["n_out"] = len(kept)
+    return kept, meta
 
 
 def _load_baseline_rows(
@@ -492,6 +640,10 @@ def persist_tape(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
                     "support",
                     "zone_date",
                     "hit",
+                    "bull_close",
+                    "upper_shadow_ratio",
+                    "vol_own_pctile",
+                    "dump_r1e1",
                 )
                 if r.get(k) is not None
             }
@@ -605,6 +757,10 @@ def snapshot_day(db_path: str, as_of: str = "") -> Dict[str, int]:
                 "pressure": feat.get("pressure"),
                 "support": feat.get("support"),
                 "zone_date": feat.get("zone_date"),
+                "bull_close": feat.get("bull_close"),
+                "upper_shadow_ratio": feat.get("upper_shadow_ratio"),
+                "vol_own_pctile": feat.get("vol_own_pctile"),
+                "dump_r1e1": feat.get("dump_r1e1"),
             }
             # current 列附各臂命中結果（建議哪檔靜默依據；不過閘不進話筒）
             if variant == VARIANT_CURRENT:
@@ -867,19 +1023,33 @@ def gate_status(db_path: str) -> Dict[str, Any]:
 
 
 def optimize_status_one_liner(db_path: str) -> str:
-    """對話唯一准講的一句。"""
+    """對話唯一准講的一句（建議哪檔靜默軌）。"""
     g = gate_status(db_path)
     n = int(g.get("n_days") or 0)
     need = int(g.get("min_n") or MIN_UNIQUE_DAYS)
+    paint = str(PAINT_VARIANT or "")
     if n < need:
-        return f"勝率大量區再篩靜默對質收集中；獨立交易日 n={n}＜{need} → 尚未改話筒"
+        return (
+            f"勝率買點建議哪檔靜默對質收集中；獨立交易日 n={n}＜{need} → 尚未改話筒"
+        )
+    if paint:
+        # 已上建議篩：一句報現況＋下一版是否過閘
+        if g.get("passed") and g.get("best_variant") not in (VARIANT_CURRENT, paint, ""):
+            return (
+                f"勝率買點建議哪檔 n={n}；話筒已用 {paint}；"
+                f"下一版 {g.get('best_variant')} 已贏 current → 可另 PR 升建議篩"
+            )
+        return (
+            f"勝率買點建議哪檔 n={n} 已滿；話筒建議篩＝{paint}；"
+            f"下一版尚未穩贏 → 不硬標優先檔"
+        )
     if g.get("passed"):
         return (
-            f"勝率大量區再篩 n={n} 且 {g.get('best_variant')} "
-            f"＋{PRIMARY_H}日勝率贏現況 → 可另 PR 改建議哪檔；本軌只落檔不改話筒"
+            f"勝率買點建議哪檔 n={n} 且 {g.get('best_variant')} "
+            f"＋{PRIMARY_H}日勝率贏現況 → 可另 PR 改推薦篩"
         )
     return (
-        f"勝率大量區再篩 n={n} 已滿；領先 {g.get('best_variant')} "
+        f"勝率買點建議哪檔 n={n} 已滿；領先 {g.get('best_variant')} "
         f"尚未穩贏現況整包 → 不改話筒／不硬標優先檔"
     )
 

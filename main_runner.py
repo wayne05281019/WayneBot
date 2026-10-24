@@ -2872,6 +2872,15 @@ class MainRunner:
             silent_remember_roster(self.db_path, as_of, rows)
         except Exception:
             logger.debug("勝率買點靜默落檔略過", exc_info=True)
+        # 建議哪檔過閘篩：推播臉用 paint；roster 落檔仍是完整 AI leave_zero
+        push_rows = rows
+        try:
+            from winrate_buypoint import apply_suggest_paint
+
+            push_rows = apply_suggest_paint(self.db_path, rows, as_of=as_of)
+        except Exception:
+            logger.debug("勝率建議篩略過，推播用整包", exc_info=True)
+            push_rows = rows
         sent_ok = True
         if notify:
             # 舊鍵 winrate-{as_of} 曾錯推（公式有剛離零但圖無藍▲紅框）→ 先更正再寄正確名單。
@@ -2899,11 +2908,11 @@ class MainRunner:
                 ok_n = 0
                 # 雙人同一份名單：整頁只渲一次，再各寄一次（省第二輪出圖）
                 page_pairs = None
-                if rows:
+                if push_rows:
                     try:
                         from winrate_buypoint import PAGE_SIZE, page_slice, render_page_pairs
 
-                        chunk, _off, _more = page_slice(rows, 0, limit=PAGE_SIZE)
+                        chunk, _off, _more = page_slice(push_rows, 0, limit=PAGE_SIZE)
                         page_pairs = render_page_pairs(
                             self.db_path,
                             chunk,
@@ -2919,7 +2928,7 @@ class MainRunner:
                     try:
                         if self.bot.push_winrate_buypoint_page(
                             cid,
-                            rows,
+                            push_rows,
                             as_of=as_of,
                             offset=0,
                             mode="full",
@@ -2931,7 +2940,7 @@ class MainRunner:
                         logger.warning("勝率買點寄出失敗 dest=%s: %s", cid, e)
                 sent_ok = ok_n == len(dests) and ok_n > 0
             else:
-                if not rows:
+                if not push_rows:
                     sent_ok = bool(self._broadcast_family(EMPTY_MSG))
                 else:
                     from winrate_buypoint import header_html

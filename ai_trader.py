@@ -233,9 +233,16 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
 
 
 def _winrate_roster_rows(db_path: str, as_of: str = "") -> List[Dict[str, Any]]:
-    """勝率買點母體：先試 as_of，空則退最新已落檔日（隔日操作吃前一日名單）。"""
+    """勝率買點母體：先試 as_of，空則退最新已落檔日（隔日操作吃前一日名單）。
+
+    建議哪檔過閘後套 vol_own_mid 再篩（可多檔；空命中退回整包）；leave_zero 公式不改。
+    """
     try:
-        from winrate_buypoint import latest_roster_as_of, load_winrate_roster
+        from winrate_buypoint import (
+            apply_suggest_paint,
+            latest_roster_as_of,
+            load_winrate_roster,
+        )
 
         day = str(as_of or "").replace("-", "")[:8]
         rows: List[Dict[str, Any]] = []
@@ -244,6 +251,7 @@ def _winrate_roster_rows(db_path: str, as_of: str = "") -> List[Dict[str, Any]]:
         if not rows:
             latest = latest_roster_as_of(db_path)
             if latest and latest != day:
+                day = latest
                 rows = load_winrate_roster(db_path, latest) or []
     except Exception:
         return []
@@ -253,7 +261,12 @@ def _winrate_roster_rows(db_path: str, as_of: str = "") -> List[Dict[str, Any]]:
         if not sid or sid.startswith("__"):
             continue
         out.append(dict(it))
-    return out
+    if not out:
+        return out
+    try:
+        return apply_suggest_paint(db_path, out, as_of=day)
+    except Exception:
+        return out
 
 
 def _candidates(

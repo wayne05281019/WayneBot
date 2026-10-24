@@ -13,15 +13,22 @@ from winrate_volzone_filter_verify import (
     KIND,
     MIN_UNIQUE_DAYS,
     TRACK_VARIANTS,
+    VARIANT_BULL_CLOSE,
     VARIANT_COMBO,
+    VARIANT_COMBO_SPACE_BULL,
     VARIANT_COMBO_TRIPLE,
+    VARIANT_COMBO_VZ_NODUMP,
     VARIANT_COMBO_VZ_SPACE,
     VARIANT_COMBO_VZ_UNTANGLE,
     VARIANT_CURRENT,
     VARIANT_MA60_RISING,
+    VARIANT_NO_UPPER_DUMP,
     VARIANT_SPACE_H20,
     VARIANT_UNTANGLE_UP,
+    VARIANT_VOL_OWN_MID,
+    VARIANT_VOL_OWN_MID_TIGHT,
     VARIANT_VZ_MID_THIN,
+    PAINT_VARIANT,
     gate_status,
     hit_map,
     optimize_status_one_liner,
@@ -34,6 +41,7 @@ from winrate_volzone_filter_verify import (
 def _feat(**kwargs):
     base = {
         "close": 100.0,
+        "open": 99.0,
         "zone_pos": 0.4,
         "vol_ratio": 0.3,
         "ma60_rising": True,
@@ -44,6 +52,10 @@ def _feat(**kwargs):
         "dist_h20_pct": 8.0,
         "in_band": True,
         "near_press": False,
+        "bull_close": True,
+        "upper_shadow_ratio": 0.2,
+        "vol_own_pctile": 0.45,
+        "dump_r1e1": False,
     }
     base.update(kwargs)
     return base
@@ -60,14 +72,28 @@ def test_variant_pass_rules():
     assert variant_pass(f, VARIANT_COMBO_VZ_UNTANGLE) is True
     assert variant_pass(f, VARIANT_COMBO_VZ_SPACE) is True
     assert variant_pass(f, VARIANT_COMBO_TRIPLE) is True
-    # §13 再生臂都在 FILTER_VARIANTS
+    assert variant_pass(f, VARIANT_NO_UPPER_DUMP) is True
+    assert variant_pass(f, VARIANT_VOL_OWN_MID) is True
+    assert variant_pass(f, VARIANT_VOL_OWN_MID_TIGHT) is True
+    assert variant_pass(f, VARIANT_BULL_CLOSE) is True
+    assert variant_pass(f, VARIANT_COMBO_VZ_NODUMP) is True
+    assert variant_pass(f, VARIANT_COMBO_SPACE_BULL) is True
+    # §13 再生臂都在 FILTER_VARIANTS（含裸 K＋量）
     assert VARIANT_COMBO_VZ_UNTANGLE in FILTER_VARIANTS
     assert VARIANT_COMBO_VZ_SPACE in FILTER_VARIANTS
     assert VARIANT_COMBO_TRIPLE in FILTER_VARIANTS
+    assert VARIANT_NO_UPPER_DUMP in FILTER_VARIANTS
+    assert VARIANT_VOL_OWN_MID in FILTER_VARIANTS
+    assert VARIANT_VOL_OWN_MID_TIGHT in FILTER_VARIANTS
+    assert VARIANT_BULL_CLOSE in FILTER_VARIANTS
+    assert VARIANT_COMBO_VZ_NODUMP in FILTER_VARIANTS
+    assert VARIANT_COMBO_SPACE_BULL in FILTER_VARIANTS
+    assert PAINT_VARIANT == VARIANT_VOL_OWN_MID
     assert VARIANT_CURRENT not in FILTER_VARIANTS
     assert set(FILTER_VARIANTS) | {VARIANT_CURRENT} == set(TRACK_VARIANTS)
     hits = hit_map(f)
     assert hits[VARIANT_COMBO_TRIPLE] is True
+    assert hits[VARIANT_COMBO_VZ_NODUMP] is True
     # 貼壓＝大量區中帶不過
     assert variant_pass(_feat(near_press=True), VARIANT_VZ_MID_THIN) is False
     assert variant_pass(_feat(near_press=True), VARIANT_COMBO_TRIPLE) is False
@@ -81,11 +107,59 @@ def test_variant_pass_rules():
     # 距 20 高太近
     assert variant_pass(_feat(dist_h20_pct=3.0), VARIANT_SPACE_H20) is False
     assert variant_pass(_feat(dist_h20_pct=3.0), VARIANT_COMBO_VZ_SPACE) is False
+    assert variant_pass(_feat(dist_h20_pct=3.0), VARIANT_COMBO_SPACE_BULL) is False
     # 仍糾結
     assert variant_pass(_feat(ma_spread_pct=1.0), VARIANT_UNTANGLE_UP) is False
     assert variant_pass(_feat(ma_spread_pct=1.0), VARIANT_COMBO_VZ_UNTANGLE) is False
+    # 沖高倒貨指紋＝no_upper_dump 不過
+    assert (
+        variant_pass(
+            _feat(dump_r1e1=True, upper_shadow_ratio=0.7, vol_own_pctile=0.9),
+            VARIANT_NO_UPPER_DUMP,
+        )
+        is False
+    )
+    assert (
+        variant_pass(
+            _feat(dump_r1e1=True, upper_shadow_ratio=0.7, vol_own_pctile=0.9),
+            VARIANT_COMBO_VZ_NODUMP,
+        )
+        is False
+    )
+    # 量分位太高／太低
+    assert variant_pass(_feat(vol_own_pctile=0.05), VARIANT_VOL_OWN_MID) is False
+    assert variant_pass(_feat(vol_own_pctile=0.95), VARIANT_VOL_OWN_MID) is False
+    # 緊版：0.25 過 mid 不過 tight
+    assert variant_pass(_feat(vol_own_pctile=0.25), VARIANT_VOL_OWN_MID) is True
+    assert variant_pass(_feat(vol_own_pctile=0.25), VARIANT_VOL_OWN_MID_TIGHT) is False
+    # 陰線
+    assert variant_pass(_feat(bull_close=False, open=101.0), VARIANT_BULL_CLOSE) is False
     # 缺真數不准假過
     assert variant_pass(_feat(zone_pos=None), VARIANT_VZ_MID_THIN) is False
+    assert (
+        variant_pass(_feat(upper_shadow_ratio=None), VARIANT_NO_UPPER_DUMP) is False
+    )
+
+
+def test_paint_suggest_rows_fallback_when_empty(monkeypatch):
+    """建議篩全空 → 退回整包（不准話筒空白）。"""
+    from winrate_volzone_filter_verify import paint_suggest_rows
+
+    rows = [{"stock_id": "2330", "close": 100.0}, {"stock_id": "2317", "close": 90.0}]
+
+    def _no_feat(_df):
+        return None
+
+    monkeypatch.setattr(
+        "winrate_volzone_filter_verify.compute_filter_features", _no_feat
+    )
+    monkeypatch.setattr(
+        "winrate_volzone_filter_verify._frame_for_sid", lambda *a, **k: object()
+    )
+    painted, meta = paint_suggest_rows("/tmp/no.db", rows, as_of="20261022")
+    assert meta["fallback"] is True
+    assert len(painted) == 2
+    assert {r["stock_id"] for r in painted} == {"2330", "2317"}
 
 
 def test_persist_tape_stores_ohlcv_and_hit():
