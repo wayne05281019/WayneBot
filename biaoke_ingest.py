@@ -52,8 +52,9 @@ _UA = {
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
 }
 SESSION_EVERY_SEC = 3 * 60  # 交易日 09:01–13:30
-AFTER_EVERY_SEC = 1 * 60 * 60
-NIGHT_EVERY_SEC = AFTER_EVERY_SEC  # 休市／週末／凌晨也每小時，不再等到開盤
+AFTER_EVERY_SEC = 1 * 60 * 60  # 開市日盤外／夜間
+CLOSED_EVERY_SEC = 3 * 60 * 60  # 真休市日（週末／國定假／北市停班）整天每 3 小時
+NIGHT_EVERY_SEC = AFTER_EVERY_SEC  # 開市日凌晨仍每小時；休市改 CLOSED_EVERY_SEC
 PREOPEN_EVERY_SEC = 10 * 60  # 交易日 08:00–09:00
 AFTER_CLOSE_EVERY_SEC = 10 * 60  # 交易日 13:30–15:00
 PREOPEN_FROM_MIN = 8 * 60
@@ -609,11 +610,15 @@ def _row_is_fresh(
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """交易日 08:00–09:00 每 10 分；09:01–13:30 每 3 分；13:30–15:00 每 10 分；其餘每 1 小時。
+    """開市日：08:00–09:00 每 10 分；09:01–13:30 每 3 分；13:30–15:00 每 10 分；其餘每 1 小時。
+    真休市日（週末／國定假／北市停班，含監看到 2026-11-09）：整天每 3 小時。
+
+    休市鍵＝``_open_calendar_day``（``is_tw_open_calendar_day``／年曆＋北市停班）。
+    ``closed_tw_session`` 只涵蓋 full_close、不含週末，抓文節奏不准單靠它。
 
     08:59 不准睡 10 分睡過 09:01。09:00 整點最多等到 09:01。
     討論串（自己回、別人回他、他回別人）跟主文同一套節奏。
-    不准再用「等到開盤」把凌晨到 8 點、週末、颱風天空掉。
+    不准再用「等到開盤」把凌晨到 8 點、週末、颱風天空掉；休市只降頻到 3 小時，不准整天不抓。
     """
     dt = now or taipei_now()
     if dt.tzinfo is None:
@@ -621,15 +626,17 @@ def poll_wait_seconds(now: Optional[datetime] = None) -> int:
     else:
         dt = dt.astimezone(TAIPEI)
     open_day = _open_calendar_day(dt)
+    if not open_day:
+        return CLOSED_EVERY_SEC
     hm = dt.hour * 60 + dt.minute
-    if open_day and PREOPEN_FROM_MIN <= hm < SESSION_FROM_MIN:
+    if PREOPEN_FROM_MIN <= hm < SESSION_FROM_MIN:
         remain = max(30, (SESSION_FROM_MIN - hm) * 60)
         if hm < PREOPEN_UNTIL_MIN:
             return min(PREOPEN_EVERY_SEC, remain)
         return remain
-    if open_day and SESSION_FROM_MIN <= hm <= CLOSE_MIN:
+    if SESSION_FROM_MIN <= hm <= CLOSE_MIN:
         return SESSION_EVERY_SEC
-    if open_day and CLOSE_MIN < hm < AFTER_CLOSE_UNTIL_MIN:
+    if CLOSE_MIN < hm < AFTER_CLOSE_UNTIL_MIN:
         remain = max(30, (AFTER_CLOSE_UNTIL_MIN - hm) * 60)
         return min(AFTER_CLOSE_EVERY_SEC, remain)
     return AFTER_EVERY_SEC
