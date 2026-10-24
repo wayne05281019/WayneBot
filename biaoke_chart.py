@@ -3871,26 +3871,14 @@ def _paint_spot(
         )
 
 
-@_mpl_serial
-def render_biaoke_structure_png(
+def _structure_face_rows(
     bars: Sequence[Dict[str, Any]],
-    save_path: str,
     *,
     sid: str = "",
-    name: str = "",
-    glance: Optional[Dict[str, str]] = None,
-    plate: Optional[Dict[str, str]] = None,
-    quote: Optional[Dict[str, Any]] = None,
-    db_path: str = "",
-    figsize: Optional[Tuple[float, float]] = None,
-    dpi: Optional[int] = None,
-    press_band: Optional[Tuple[float, float]] = None,
     card: Optional[Dict[str, Any]] = None,
-    live_quote: Optional[Dict[str, Any]] = None,
-) -> str:
+) -> List[Dict[str, Any]]:
+    """結構圖臉柱：官方窗＋決策卡今天臉（與圖一／二／大量區同源）。不准造假柱。"""
     rows = list(bars or [])
-    # 縮圖最後一根 K／量＝決策卡今天臉（與圖一／二／大量區同源）；選區仍官方原柱。
-    # 盤中 overlay；13:30 收後 is_live 可能已關，仍要用卡上今天這根，不准臉柱停在昨收。
     if isinstance(card, dict) and card:
         try:
             from live_quote import overlay_live_face_from_card
@@ -3912,18 +3900,22 @@ def render_biaoke_structure_png(
                 rows = list(rows2)
         except Exception:
             pass
-    if len(rows) < 8 or not save_path:
-        return ""
-    # 固定窗滾動：只畫近 _BARS 根；新交易日進則最左日出（不准越畫越擠）
-    work = structure_visible_bars(rows)
-    info = analyze_structure(work)
+    return rows
+
+
+def _structure_render_memo_key(
+    rows: Sequence[Dict[str, Any]],
+    work: Sequence[Dict[str, Any]],
+    info: Dict[str, Any],
+    *,
+    sid: str = "",
+    quote: Optional[Dict[str, Any]] = None,
+    figsize: Optional[Tuple[float, float]] = None,
+    dpi: Optional[int] = None,
+) -> Tuple[Any, ...]:
+    """結構圖 memo 鍵（paint 內外共用）。現價／量／時段進鍵，變了必 miss。"""
     n = len(work)
-    highs = info.get("highs") or [float(r.get("high") or 0) for r in work]
-    lows = info.get("lows") or [float(r.get("low") or 0) for r in work]
-    closes = info.get("closes") or [float(r.get("close") or 0) for r in work]
-    opens = [float(r.get("open") or r.get("close") or 0) for r in work]
-    vols = info.get("vols") or [float(r.get("volume") or 0) for r in work]
-    last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1])
+    last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1] if work else {})
     last_d = str(last_bar0.get("date") or "")[:8]
     last_c0 = float(last_bar0.get("close") or 0)
     try:
@@ -3943,7 +3935,7 @@ def render_biaoke_structure_png(
         _q_prev = float(_q0.get("prev") or _q0.get("prev_close") or 0)
     except (TypeError, ValueError):
         _q_prev = 0.0
-    memo_key = (
+    return (
         "biaoke_struct",
         str(sid or ""),
         last_d,
@@ -3972,11 +3964,94 @@ def render_biaoke_structure_png(
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
     )
+
+
+def try_biaoke_structure_memo(
+    bars: Sequence[Dict[str, Any]],
+    save_path: str,
+    *,
+    sid: str = "",
+    quote: Optional[Dict[str, Any]] = None,
+    figsize: Optional[Tuple[float, float]] = None,
+    dpi: Optional[int] = None,
+    card: Optional[Dict[str, Any]] = None,
+) -> str:
+    """暖路徑：同指紋結構圖短 TTL 命中就複製，不進 paint／Agg 鎖。
+
+    miss 回 "" → 呼叫端再 submit_mpl_paint。盤中現價／量指紋變了會 miss。
+    """
+    if not save_path:
+        return ""
+    rows = _structure_face_rows(bars, sid=sid, card=card)
+    if len(rows) < 8:
+        return ""
+    work = structure_visible_bars(rows)
+    if len(work) < 8:
+        return ""
+    info = analyze_structure(work)
+    memo_key = _structure_render_memo_key(
+        rows,
+        work,
+        info,
+        sid=sid,
+        quote=quote,
+        figsize=figsize,
+        dpi=dpi,
+    )
+    from wayne_navigator import _lookup_render_memo_get
+
+    return _lookup_render_memo_get(memo_key, save_path) or ""
+
+
+@_mpl_serial
+def render_biaoke_structure_png(
+    bars: Sequence[Dict[str, Any]],
+    save_path: str,
+    *,
+    sid: str = "",
+    name: str = "",
+    glance: Optional[Dict[str, str]] = None,
+    plate: Optional[Dict[str, str]] = None,
+    quote: Optional[Dict[str, Any]] = None,
+    db_path: str = "",
+    figsize: Optional[Tuple[float, float]] = None,
+    dpi: Optional[int] = None,
+    press_band: Optional[Tuple[float, float]] = None,
+    card: Optional[Dict[str, Any]] = None,
+    live_quote: Optional[Dict[str, Any]] = None,
+) -> str:
+    rows = _structure_face_rows(bars, sid=sid, card=card)
+    if len(rows) < 8 or not save_path:
+        return ""
+    # 固定窗滾動：只畫近 _BARS 根；新交易日進則最左日出（不准越畫越擠）
+    work = structure_visible_bars(rows)
+    info = analyze_structure(work)
+    n = len(work)
+    highs = info.get("highs") or [float(r.get("high") or 0) for r in work]
+    lows = info.get("lows") or [float(r.get("low") or 0) for r in work]
+    closes = info.get("closes") or [float(r.get("close") or 0) for r in work]
+    opens = [float(r.get("open") or r.get("close") or 0) for r in work]
+    vols = info.get("vols") or [float(r.get("volume") or 0) for r in work]
+    memo_key = _structure_render_memo_key(
+        rows,
+        work,
+        info,
+        sid=sid,
+        quote=quote,
+        figsize=figsize,
+        dpi=dpi,
+    )
     from wayne_navigator import _lookup_render_memo_get, _lookup_render_memo_put
 
     hit = _lookup_render_memo_get(memo_key, save_path)
     if hit:
         return hit
+    fig_w, fig_h = (float(figsize[0]), float(figsize[1])) if figsize else (18.6, 10.8)
+    portrait = fig_h / max(fig_w, 0.01) >= 1.15
+    fullbleed = not portrait
+    use_dpi = int(dpi or BIAOKE_CHART_DPI)
+    last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1])
+    last_d = str(last_bar0.get("date") or "")[:8]
     xs = list(range(n))
     span = max(max(highs) - min(lows), 1.0)
     proj = info.get("project") or {}

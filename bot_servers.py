@@ -8695,8 +8695,7 @@ class WayneTelegramBot:
             except Exception:
                 live_rt = None
 
-            def _render():
-                card = None
+            def _build_card():
                 try:
                     card = NavigatorEngine(self.db_path).get_decision_card(
                         code, lookback=20, merge_live=True, live_quote=live_rt
@@ -8704,17 +8703,33 @@ class WayneTelegramBot:
                     if isinstance(card, dict):
                         card.pop("_ohlc", None)
                         if card.get("error"):
-                            card = None
+                            return None
+                    return card if isinstance(card, dict) else None
                 except Exception:
-                    card = None
-                return render_scenario_forecast(
-                    code, self.db_path, out, card=card
-                )
+                    return None
 
-            path, cap, meta = await asyncio.wait_for(
-                asyncio.wrap_future(submit_mpl_paint(_render)),
-                timeout=max(12.0, _sf_timeout),
+            # 建卡在 paint 外：暖 memo 命中就不佔單一 paint worker（重活日少互搶）
+            card = await asyncio.to_thread(_build_card)
+            from scenario_forecast_chart import try_scenario_forecast_memo
+
+            warm = try_scenario_forecast_memo(
+                code, self.db_path, out, card=card
             )
+            if warm and warm[0] and self._png_looks_ok(
+                warm[0], min_bytes=18_000, min_w=400, min_h=400
+            ):
+                path, cap, meta = warm[0], warm[1], warm[2]
+            else:
+
+                def _render():
+                    return render_scenario_forecast(
+                        code, self.db_path, out, card=card
+                    )
+
+                path, cap, meta = await asyncio.wait_for(
+                    asyncio.wrap_future(submit_mpl_paint(_render)),
+                    timeout=max(12.0, _sf_timeout),
+                )
         except asyncio.TimeoutError:
             path = ""
             cap = "情境預估暫略（逾時）。不是買訊。"
@@ -9615,6 +9630,7 @@ class WayneTelegramBot:
 
             async def _struct_item():
                 # 官方柱與卡／介紹重疊；paint 前必須等介紹已進 queue，不准插隊。
+                # 同指紋短 TTL：memo 命中不佔 paint／Agg（與卡／介紹／大量區同規）。
                 try:
                     await asyncio.wait_for(
                         glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
@@ -9628,6 +9644,26 @@ class WayneTelegramBot:
                 except Exception:
                     logger.exception("查股結構 prep await 失敗 code=%s", code)
                     _struct_pack_box[0] = None
+                from three_in_one_chart import try_lookup_structure_memo
+
+                warm_path, warm_cap = try_lookup_structure_memo(
+                    code,
+                    _stock_caption_name(card, code),
+                    self.db_path,
+                    struct_path_f,
+                    card=card,
+                    pack=_struct_pack_box[0],
+                    live_quote=live_rt if isinstance(live_rt, dict) else None,
+                )
+                if warm_path and self._chart_png_looks_ok(warm_path):
+                    if warm_cap:
+                        struct_face[0] = warm_cap
+                    return (
+                        "struct",
+                        warm_path,
+                        struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）",
+                        None,
+                    )
                 await _set_struct_phase("paint")
                 png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
                 cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"

@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
@@ -39,6 +42,193 @@ _DPI = 168
 _MIN_BARS = 40
 # 日曆換算：交易日→約略日曆日（軸標用；與舊 _future_tick_labels 一致）
 _CAL_PER_BAR = 1.4
+
+# 同人連按／同檔翻回：短 TTL 複製整張（path＋caption＋meta），不進 paint。
+# 指紋含末日柱＋決策卡現價／時戳＋DC rules 版；變了必 miss。不准造假柱。
+_SF_RENDER_TTL_SEC = 90.0
+_SF_RENDER_LOCK = threading.Lock()
+_SF_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str, Dict[str, Any]]] = {}
+_SF_RENDER_MEMO_MAX = 48
+_SF_MEMO_TAG = "sf-memo-v1-future-ladder"
+
+
+def clear_scenario_forecast_memo() -> None:
+    with _SF_RENDER_LOCK:
+        _SF_RENDER_MEMO.clear()
+
+
+def _scenario_card_fp(card: Optional[Dict[str, Any]]) -> Tuple[Any, ...]:
+    if not isinstance(card, dict) or not card:
+        return ()
+    try:
+        close = round(float(card.get("close") or card.get("last_close") or 0), 4)
+    except (TypeError, ValueError):
+        close = 0.0
+    try:
+        vol = round(float(card.get("volume") or 0), 0)
+    except (TypeError, ValueError):
+        vol = 0.0
+    return (
+        str(card.get("stock_id") or ""),
+        str(card.get("latest_date") or card.get("as_of") or ""),
+        close,
+        vol,
+        str(card.get("query_clock") or ""),
+        int(bool(card.get("is_live"))),
+    )
+
+
+def _scenario_rules_fp(db_path: str, sid: str) -> Tuple[Any, ...]:
+    """DC turns 規則進鍵；沒有就空。改規則後不准互蓋舊圖。"""
+    try:
+        from dc_scenario_silent_verify import load_rules
+
+        spec = (load_rules(str(db_path or "")) or {}).get(f"turns:{sid}") or {}
+        if not isinstance(spec, dict) or not spec:
+            return ()
+        turns = spec.get("turns") or spec.get("points") or ()
+        return (
+            str(spec.get("version") or spec.get("rev") or ""),
+            int(len(turns) if hasattr(turns, "__len__") else 0),
+            str(spec.get("updated_at") or spec.get("as_of") or "")[:19],
+        )
+    except Exception:
+        return ()
+
+
+def _scenario_last_bar_fp(db_path: str, sid: str) -> Tuple[Any, ...]:
+    """庫內最新官方末日柱（單列）；暖鍵不准發明量。"""
+    import sqlite3
+
+    path = str(db_path or "").strip()
+    code = str(sid or "").strip()
+    if not path or not code:
+        return ()
+    try:
+        conn = sqlite3.connect(path, timeout=10.0)
+        try:
+            row = conn.execute(
+                "SELECT replace(date,'-',''), open, high, low, close, volume "
+                "FROM daily_quotes WHERE stock_id=? "
+                "ORDER BY date DESC LIMIT 1",
+                (code,),
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return ()
+    if not row:
+        return ()
+    try:
+        return (
+            str(row[0] or "")[:8],
+            round(float(row[1] or 0), 4),
+            round(float(row[2] or 0), 4),
+            round(float(row[3] or 0), 4),
+            round(float(row[4] or 0), 4),
+            round(float(row[5] or 0), 0),
+        )
+    except (TypeError, ValueError):
+        return ()
+
+
+def _scenario_memo_key(
+    sid: str,
+    db_path: str,
+    card: Optional[Dict[str, Any]] = None,
+) -> Tuple[Any, ...]:
+    return (
+        _SF_MEMO_TAG,
+        str(sid or ""),
+        _scenario_last_bar_fp(db_path, sid),
+        _scenario_card_fp(card),
+        _scenario_rules_fp(db_path, sid),
+        int(_DPI),
+        int(_BARS),
+    )
+
+
+def _sf_memo_get(key: Tuple[Any, ...], save_path: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
+    now = time.monotonic()
+    with _SF_RENDER_LOCK:
+        hit = _SF_RENDER_MEMO.get(key)
+        if not hit:
+            return None
+        ts, src, cap, meta = hit
+        if now - float(ts) > _SF_RENDER_TTL_SEC or not src or not os.path.isfile(src):
+            _SF_RENDER_MEMO.pop(key, None)
+            return None
+        meta_copy = dict(meta or {})
+        cap_s = str(cap or "")
+    out = str(save_path or src)
+    try:
+        if os.path.abspath(src) != os.path.abspath(out):
+            os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+            shutil.copy2(src, out)
+        return out, cap_s, meta_copy
+    except Exception:
+        logger.debug("scenario memo copy fail", exc_info=True)
+        return None
+
+
+def _sf_memo_put(
+    key: Tuple[Any, ...], path: str, cap: str, meta: Dict[str, Any]
+) -> None:
+    if not path or not os.path.isfile(path):
+        return
+    stable = path
+    try:
+        from config import get_charts_dir
+
+        memo_dir = os.path.join(get_charts_dir(), "_lookup_memo")
+        os.makedirs(memo_dir, exist_ok=True)
+        digest = abs(hash(key)) % (10**12)
+        stable = os.path.join(memo_dir, f"scenario_{digest}.jpg")
+        if os.path.abspath(path) != os.path.abspath(stable):
+            shutil.copy2(path, stable)
+    except Exception:
+        stable = path
+    with _SF_RENDER_LOCK:
+        if len(_SF_RENDER_MEMO) >= _SF_RENDER_MEMO_MAX:
+            oldest = sorted(_SF_RENDER_MEMO.items(), key=lambda kv: kv[1][0])[
+                : _SF_RENDER_MEMO_MAX // 2
+            ]
+            for k, _ in oldest:
+                _SF_RENDER_MEMO.pop(k, None)
+        _SF_RENDER_MEMO[key] = (
+            time.monotonic(),
+            str(stable),
+            str(cap or ""),
+            dict(meta or {}),
+        )
+
+
+def try_scenario_forecast_memo(
+    stock_id: str,
+    db_path: str,
+    out_path: str,
+    *,
+    card: Optional[Dict[str, Any]] = None,
+) -> Optional[Tuple[str, str, Dict[str, Any]]]:
+    """暖路徑：同指紋情境預估短 TTL 命中就複製，不進 paint／Agg。
+
+    miss 回 None → 呼叫端再 submit_mpl_paint。現價／末日柱／規則變了會 miss。
+    """
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    out = str(out_path or "").strip()
+    if not sid or not path or not out:
+        return None
+    key = _scenario_memo_key(sid, path, card)
+    if not key[2]:  # 無末日柱指紋不准假命中
+        return None
+    hit = _sf_memo_get(key, out)
+    if not hit:
+        return None
+    png, cap, meta = hit
+    if not png or not os.path.isfile(png) or os.path.getsize(png) < 18_000:
+        return None
+    return png, str(cap or ""), dict(meta or {})
 
 # DC 配色鎖（v4）：白實線已走／黑線 abc／白虛線未來；禁全紅粗線壓 K
 _BG = "#e6e6e6"
@@ -2607,6 +2797,17 @@ def render_scenario_forecast(
     empty_meta: Dict[str, Any] = {}
     if not sid or not path or not out:
         return None, "情境預估暫略（參數不足）。不是買訊。", empty_meta
+    # 進函式先查短 TTL：命中就不載整窗／不推浪／不進 Agg（指紋含末日柱＋卡＋規則）
+    memo_key = _scenario_memo_key(sid, path, card if isinstance(card, dict) else None)
+    if memo_key[2]:
+        warm0 = _sf_memo_get(memo_key, out)
+        if (
+            warm0
+            and warm0[0]
+            and os.path.isfile(warm0[0])
+            and os.path.getsize(warm0[0]) >= 18_000
+        ):
+            return warm0[0], str(warm0[1] or ""), dict(warm0[2] or {})
     try:
         from vol_zone_chart import load_official_ohlc, official_work
 
@@ -2747,6 +2948,10 @@ def render_scenario_forecast(
                 for p in (meta.get("paths") or [])
             ],
         }
+        try:
+            _sf_memo_put(memo_key, painted, cap, meta_out)
+        except Exception:
+            logger.debug("scenario memo put fail sid=%s", sid, exc_info=True)
         return painted, cap, meta_out
     except Exception:
         logger.exception("情境預估渲圖失敗 sid=%s", sid)

@@ -3361,6 +3361,127 @@ def _pending_nav_window_compare(nav_pane: Image.Image, first_k: str, out_dir: st
     return path
 
 
+def _lookup_structure_bars_and_spot(
+    stock_id: str,
+    stock_name: str,
+    db_path: str,
+    *,
+    pack: Optional[dict] = None,
+    card: Optional[dict] = None,
+    live_quote: Optional[dict] = None,
+    save_path: str = "",
+) -> Tuple[list, Optional[dict], Optional[dict]]:
+    """查股結構圖：官方柱＋表頭 spot。回 (bars, spot, pack)；失敗 bars=[]。"""
+    sid = str(stock_id or "").strip()
+    name = str(stock_name or sid).strip() or sid
+    if not sid or not db_path:
+        return [], None, None
+    from biaoke_chart import _BARS, _spot_quote
+    from vol_zone_chart import load_official_ohlc, official_work, prepare_volume_zone
+
+    if not (
+        isinstance(pack, dict) and (pack.get("bars") or pack.get("view") is not None)
+    ):
+        pack = prepare_volume_zone(sid, name, db_path, save_path or ".")
+    if not pack:
+        return [], None, None
+    face = pack.get("bars") or []
+    if len(face) >= 8:
+        bars = _bars_from_pack_face(face, sid, name)
+    else:
+        need = max(int(_BARS) + 40, 300)
+        long_df = official_work(load_official_ohlc(sid, db_path, need))
+        if (
+            long_df is not None
+            and not getattr(long_df, "empty", True)
+            and len(long_df) >= 8
+        ):
+            bars = _bars_from_official(long_df, sid, name)
+        else:
+            bars = _bars_from_official(pack["view"], sid, name)
+    if len(bars) < 8:
+        return [], None, pack
+    spot = None
+    try:
+        last_b = bars[-1] if bars else {}
+        prev_b = bars[-2] if len(bars) >= 2 else {}
+        spot = _spot_quote(
+            sid,
+            last_b,
+            prev_b,
+            db_path,
+            card=card if isinstance(card, dict) else None,
+            live_quote=live_quote if isinstance(live_quote, dict) else None,
+        )
+    except Exception:
+        spot = None
+    return bars, spot, pack
+
+
+def try_lookup_structure_memo(
+    stock_id: str,
+    stock_name: str,
+    db_path: str,
+    save_path: str,
+    *,
+    card: Optional[dict] = None,
+    pack: Optional[dict] = None,
+    live_quote: Optional[dict] = None,
+) -> Tuple[str, str]:
+    """暖路徑：同指紋結構圖短 TTL 命中就複製，不進 paint／Agg。
+
+    miss 回 ("","") → 呼叫端再 submit_mpl_paint。現價指紋變了會 miss。
+    """
+    sid = str(stock_id or "").strip()
+    name = str(stock_name or sid).strip() or sid
+    if not sid or not db_path or not save_path:
+        return "", ""
+    if not (
+        isinstance(pack, dict) and (pack.get("bars") or pack.get("view") is not None)
+    ):
+        return "", ""
+    try:
+        from biaoke_chart import (
+            _STRUCTURE_LOOKUP_FIG,
+            try_biaoke_structure_memo,
+        )
+        from vol_zone_chart import VOL_ZONE_DPI
+
+        bars, spot, _pack = _lookup_structure_bars_and_spot(
+            sid,
+            name,
+            db_path,
+            pack=pack,
+            card=card,
+            live_quote=live_quote,
+            save_path=save_path,
+        )
+        if len(bars) < 8:
+            return "", ""
+        hit = try_biaoke_structure_memo(
+            bars,
+            save_path,
+            sid=sid,
+            quote=spot,
+            figsize=_STRUCTURE_LOOKUP_FIG,
+            dpi=VOL_ZONE_DPI,
+            card=card if isinstance(card, dict) else None,
+        )
+        if not hit or not os.path.isfile(hit) or os.path.getsize(hit) < 20000:
+            return "", ""
+        cap = LOOKUP_STRUCTURE_CAPTION
+        try:
+            from sanchi_clocks import append_sanchi_to_caption
+
+            if isinstance(card, dict):
+                cap = append_sanchi_to_caption(cap, card)
+        except Exception:
+            pass
+        return hit, cap
+    except Exception:
+        return "", ""
+
+
 def render_lookup_structure_result(
     stock_id: str,
     stock_name: str,
@@ -3383,60 +3504,25 @@ def render_lookup_structure_result(
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     try:
         from biaoke_chart import (
-            _BARS,
             _STRUCTURE_LOOKUP_FIG,
-            _spot_quote,
             render_biaoke_structure_png,
             stock_nameplate,
         )
-        from vol_zone_chart import (
-            VOL_ZONE_DPI,
-            load_official_ohlc,
-            official_work,
-            prepare_volume_zone,
-        )
+        from vol_zone_chart import VOL_ZONE_DPI
 
         # 仍走 prepare：同一套官方原柱＋除權息暖機；結構主圖吃近 _BARS（≈八個月）
         # 查股可傳預先 prepare 的 pack（paint 外），此處只渲 PNG。
-        if not (
-            isinstance(pack, dict)
-            and (pack.get("bars") or pack.get("view") is not None)
-        ):
-            pack = prepare_volume_zone(sid, name, db_path, save_path)
-        if not pack:
-            return "", ""
-        # prepare 已載官方柱（need≈188 ≥ _BARS）；暖路徑不准再 load_official_ohlc／iterrows。
-        face = pack.get("bars") or []
-        if len(face) >= 8:
-            bars = _bars_from_pack_face(face, sid, name)
-        else:
-            need = max(int(_BARS) + 40, 300)
-            long_df = official_work(load_official_ohlc(sid, db_path, need))
-            if (
-                long_df is not None
-                and not getattr(long_df, "empty", True)
-                and len(long_df) >= 8
-            ):
-                bars = _bars_from_official(long_df, sid, name)
-            else:
-                bars = _bars_from_official(pack["view"], sid, name)
+        bars, spot, pack = _lookup_structure_bars_and_spot(
+            sid,
+            name,
+            db_path,
+            pack=pack,
+            card=card,
+            live_quote=live_quote,
+            save_path=save_path,
+        )
         if len(bars) < 8:
             return "", ""
-        # 表頭現價／昨收／漲跌＝決策卡同源；縮圖末日 K／量由 structure paint 疊同卡
-        spot = None
-        try:
-            last_b = bars[-1] if bars else {}
-            prev_b = bars[-2] if len(bars) >= 2 else {}
-            spot = _spot_quote(
-                sid,
-                last_b,
-                prev_b,
-                db_path,
-                card=card if isinstance(card, dict) else None,
-                live_quote=live_quote if isinstance(live_quote, dict) else None,
-            )
-        except Exception:
-            spot = None
         path = render_biaoke_structure_png(
             bars,
             save_path,
