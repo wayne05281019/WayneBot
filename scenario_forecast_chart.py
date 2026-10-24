@@ -444,11 +444,22 @@ def _dc_project_impulse_xs(
     x_end = (max(xs.values()) if xs else float(x_now)) + pad
     future_bars = float(x_end) - float(n - 1)
     future_bars = max(float(_FUTURE_MIN), min(float(_FUTURE_MAX), future_bars))
-    # 投影點不得超出軸（CLAMP 後仍可能因 pad 被裁）
+    # 軸不夠長時等比壓縮投影 x，不准把 (3)(4)(5) 全夾成同一個 x（否則未來折線消失）
     x_cap = float(n - 1) + float(future_bars)
-    for lab in list(xs.keys()):
-        if xs[lab] > x_cap:
-            xs[lab] = x_cap - max(pad * 0.25, 4.0)
+    if xs:
+        far = max(float(v) for v in xs.values())
+        if far > x_cap + 1e-6 and far > float(x_now) + 1e-6:
+            usable = max(float(x_cap) - float(x_now) - max(pad * 0.15, 4.0), 12.0)
+            raw = far - float(x_now)
+            scale = usable / raw if raw > 1e-9 else 1.0
+            for lab in list(xs.keys()):
+                xs[lab] = float(x_now) + (float(xs[lab]) - float(x_now)) * scale
+                if lab in durs:
+                    durs[lab] = float(durs[lab]) * scale
+        else:
+            for lab in list(xs.keys()):
+                if xs[lab] > x_cap:
+                    xs[lab] = x_cap - max(pad * 0.25, 4.0)
     return xs, future_bars, durs
 
 
@@ -744,7 +755,14 @@ def infer_dc_wave_scenario(
                 path_proj.append((float(abc[-1]["i"]), float(abc[-1]["price"])))
             else:
                 path_proj.append(path_done[-1])
-        for c in projected:
+            # DC 週線可遷移（新唐 186465869）：波3 先過已走 (1) 前高，再中繼，再到 (3)
+            # 不准直跳終點、也不准抄單檔 800 絕對價
+            path_proj.extend(
+                _dc_w3_climb_waypoints(
+                    confirmed, projected, last=last, x_now=float(n - 1)
+                )
+            )
+            for c in projected:
                 path_proj.append((float(c["i"]), float(c["price"])))
         conf_labs = [c["label"] for c in confirmed]
         proj_labs = [c["label"] for c in projected]
@@ -806,92 +824,140 @@ def infer_dc_wave_scenario(
             work = [{"i": j, "kind": "L", "price": float(lows[j])}] + work
 
     def _impulse_from(work_zz):
+        """大級別衝動：允許跨中間樞紐塌縮成 L→max(H)→L。
+
+        DC 新唐類：細 zigzag 會在大 (1) 裡塞中段高低，只看相鄰
+        L-H-L 會把真 (1)(2) 拆碎或誤判破起點。可遷移：同一對起迄低點
+        之間取最高峰為 (1)，再找其後最低合格 (2)。
+        """
         best_local = None
         best_sc = -1.0
-        for si, p0 in enumerate(work_zz):
-            if p0["kind"] != "L":
+        zz = list(work_zz or [])
+        n_zz = len(zz)
+        for i in range(n_zz):
+            if zz[i]["kind"] != "L":
                 continue
-            seg = work_zz[si:]
-            if len(seg) < 3:
-                continue
-            if seg[1]["kind"] != "H" or seg[2]["kind"] != "L":
-                continue
-            start_p, w1, w2 = seg[0], seg[1], seg[2]
-            if w1["price"] <= start_p["price"] * 1.01:
-                continue
-            if w2["price"] >= w1["price"] * 0.995:
-                continue
-            if w2["price"] < start_p["price"] * 0.998:
-                continue
-            span = float(w2["i"]) - float(start_p["i"])
-            if span < 12:
-                continue
-            confirmed: List[Dict[str, Any]] = [
-                _wave_node(
-                    "(1)", w1["i"], w1["price"], "H",
-                    projected=False, date=_bar_date(rows, w1["i"]),
-                ),
-                _wave_node(
-                    "(2)", w2["i"], w2["price"], "L",
-                    projected=False, date=_bar_date(rows, w2["i"]),
-                ),
-            ]
-            w3 = seg[3] if len(seg) > 3 and seg[3]["kind"] == "H" else None
-            w4 = seg[4] if len(seg) > 4 and seg[4]["kind"] == "L" else None
-            w5 = seg[5] if len(seg) > 5 and seg[5]["kind"] == "H" else None
-            soft_w3 = None
-            if (
-                w3
-                and w3["price"] > w1["price"] * 1.002
-                and w4
-                and w4["price"] < w3["price"] * 0.998
-                and w4["price"] > start_p["price"]
-            ):
-                confirmed.append(
-                    _wave_node(
-                        "(3)", w3["i"], w3["price"], "H",
-                        projected=False, date=_bar_date(rows, w3["i"]),
-                    )
+            start_p = zz[i]
+            for k in range(i + 2, n_zz):
+                if zz[k]["kind"] != "L":
+                    continue
+                w2 = zz[k]
+                mid = zz[i + 1 : k]
+                hs = [p for p in mid if p["kind"] == "H"]
+                if not hs:
+                    continue
+                w1 = max(hs, key=lambda p: float(p["price"]))
+                if float(w1["price"]) <= float(start_p["price"]) * 1.01:
+                    continue
+                if float(w2["price"]) >= float(w1["price"]) * 0.995:
+                    continue
+                # (2) 不可破 (1) 起點（標準衝動）
+                if float(w2["price"]) < float(start_p["price"]) * 0.998:
+                    continue
+                # (2) 須在 (1) 峰之後
+                if float(w2["i"]) <= float(w1["i"]):
+                    continue
+                span = float(w2["i"]) - float(start_p["i"])
+                if span < 12:
+                    continue
+                amp_pct = (float(w1["price"]) - float(start_p["price"])) / max(
+                    float(start_p["price"]), 1e-9
                 )
-                confirmed.append(
+                if amp_pct < 0.06:
+                    continue
+                confirmed: List[Dict[str, Any]] = [
                     _wave_node(
-                        "(4)", w4["i"], w4["price"], "L",
-                        projected=False, date=_bar_date(rows, w4["i"]),
-                    )
-                )
-                if w5 and w5["price"] > w3["price"] * 1.001:
-                    len1 = float(w1["price"]) - float(start_p["price"])
-                    len3 = float(w3["price"]) - float(w2["price"])
-                    len5 = float(w5["price"]) - float(w4["price"])
-                    if len3 + 1e-9 >= min(len1, len5):
-                        confirmed.append(
-                            _wave_node(
-                                "(5)", w5["i"], w5["price"], "H",
-                                projected=False, date=_bar_date(rows, w5["i"]),
-                            )
+                        "(1)",
+                        w1["i"],
+                        w1["price"],
+                        "H",
+                        projected=False,
+                        date=_bar_date(rows, w1["i"]),
+                    ),
+                    _wave_node(
+                        "(2)",
+                        w2["i"],
+                        w2["price"],
+                        "L",
+                        projected=False,
+                        date=_bar_date(rows, w2["i"]),
+                    ),
+                ]
+                # (2) 之後的相鄰段：若已走出完整 (3)(4)／軟 (3)
+                after = [p for p in zz[k + 1 :] if float(p["i"]) > float(w2["i"])]
+                soft_w3 = None
+                w3 = after[0] if after and after[0]["kind"] == "H" else None
+                w4 = after[1] if len(after) > 1 and after[1]["kind"] == "L" else None
+                w5 = after[2] if len(after) > 2 and after[2]["kind"] == "H" else None
+                # 跨樞紐時 (3) 取 (2) 後最高峰（未確認回撤前僅 soft）
+                post_hs = [p for p in after if p["kind"] == "H"]
+                if (
+                    w3
+                    and float(w3["price"]) > float(w1["price"]) * 1.002
+                    and w4
+                    and float(w4["price"]) < float(w3["price"]) * 0.998
+                    and float(w4["price"]) > float(start_p["price"])
+                ):
+                    confirmed.append(
+                        _wave_node(
+                            "(3)",
+                            w3["i"],
+                            w3["price"],
+                            "H",
+                            projected=False,
+                            date=_bar_date(rows, w3["i"]),
                         )
-            elif w3 and w3["price"] > w1["price"] * 1.002:
-                soft_w3 = w3
-            amp_pct = (float(w1["price"]) - float(start_p["price"])) / max(
-                float(start_p["price"]), 1e-9
-            )
-            if amp_pct < 0.06:
-                continue
-            last_i = float(confirmed[-1]["i"])
-            span_frac = span / float(max(n, 1))
-            recency = (last_i / float(max(n - 1, 1))) ** 1.5
-            score = amp_pct * (0.5 + 4.0 * span_frac) * (0.4 + 1.6 * recency)
-            score *= 1.0 + 0.1 * float(len(confirmed))
-            if score > best_sc:
-                best_sc = score
-                best_local = {
-                    "start": start_p,
-                    "confirmed": confirmed,
-                    "soft_w3": soft_w3,
-                    "score": score,
-                    "span": span,
-                    "amp": amp_pct,
-                }
+                    )
+                    confirmed.append(
+                        _wave_node(
+                            "(4)",
+                            w4["i"],
+                            w4["price"],
+                            "L",
+                            projected=False,
+                            date=_bar_date(rows, w4["i"]),
+                        )
+                    )
+                    if w5 and float(w5["price"]) > float(w3["price"]) * 1.001:
+                        len1 = float(w1["price"]) - float(start_p["price"])
+                        len3 = float(w3["price"]) - float(w2["price"])
+                        len5 = float(w5["price"]) - float(w4["price"])
+                        if len3 + 1e-9 >= min(len1, len5):
+                            confirmed.append(
+                                _wave_node(
+                                    "(5)",
+                                    w5["i"],
+                                    w5["price"],
+                                    "H",
+                                    projected=False,
+                                    date=_bar_date(rows, w5["i"]),
+                                )
+                            )
+                elif post_hs:
+                    peak3 = max(post_hs, key=lambda p: float(p["price"]))
+                    if float(peak3["price"]) > float(w1["price"]) * 1.002:
+                        soft_w3 = peak3
+                    elif float(peak3["price"]) > float(w2["price"]) * 1.05:
+                        # 未過 (1) 的早段反彈：仍可當 soft 抬高 (3) 下限
+                        soft_w3 = peak3
+                last_i = float(confirmed[-1]["i"])
+                span_frac = span / float(max(n, 1))
+                recency = (last_i / float(max(n - 1, 1))) ** 1.5
+                # 偏好更大級別幅度；略罰過遠的舊段
+                score = amp_pct * (0.5 + 4.0 * span_frac) * (0.4 + 1.6 * recency)
+                score *= 1.0 + 0.1 * float(len(confirmed))
+                # 同窗多組時，(2) 越靠近現在越好（活躍段）
+                score *= 0.85 + 0.15 * (float(w2["i"]) / float(max(n - 1, 1)))
+                if score > best_sc:
+                    best_sc = score
+                    best_local = {
+                        "start": start_p,
+                        "confirmed": confirmed,
+                        "soft_w3": soft_w3,
+                        "score": score,
+                        "span": span,
+                        "amp": amp_pct,
+                    }
         return best_local
 
     impulse = _impulse_from(work)
@@ -1081,6 +1147,32 @@ def infer_dc_wave_scenario(
     start, confirmed = _retarget_first_equal_peak(
         work, start, confirmed, lows, rows
     )
+    # 可遷移：同一 (1)(2) 下，起點改釘 (1) 前、仍不破 (2) 規則的最低 L
+    # （避免中段較高 L 搶成起點，DC 新唐類真起點常是大行情前的更低）
+    try:
+        w1n = next(c for c in confirmed if c.get("label") == "(1)")
+        w2n = next(c for c in confirmed if c.get("label") == "(2)")
+        w1i, w1px = float(w1n["i"]), float(w1n["price"])
+        w2px = float(w2n["price"])
+        better = [
+            p
+            for p in work
+            if p.get("kind") == "L"
+            and float(p["i"]) < w1i
+            and w2px >= float(p["price"]) * 0.998
+            and w1px > float(p["price"]) * 1.01
+        ]
+        if better:
+            low_p = min(better, key=lambda p: float(p["price"]))
+            if float(low_p["price"]) < float(start["price"]) * 0.995:
+                start = {
+                    "i": float(low_p["i"]),
+                    "price": float(low_p["price"]),
+                    "kind": "L",
+                    "date": _bar_date(rows, low_p["i"]),
+                }
+    except Exception:
+        pass
     # (2) 撐帶：長下影不釘極值
     for idx, node in enumerate(confirmed):
         if node.get("label") == "(2)" and node.get("kind") == "L":
@@ -1109,18 +1201,47 @@ def infer_dc_wave_scenario(
         n=n,
         prior_corr_bars=prior_corr,
     )
+    # 樂觀參考軸頂：深 (2)（回撤≥50% amp1）允許看到 1.618～2.618 延伸，
+    # 否則舊 1.35×(1) 會把未來滿足點壓成「像只標過去近高」。可遷移，非抄單檔價。
+    n2 = next((c for c in confirmed if c["label"] == "(2)"), None)
+    deep_w2 = False
+    if n2 and amp1 > 0:
+        retr = (float(confirmed[0]["price"]) - float(n2["price"])) / max(amp1, 1e-9)
+        deep_w2 = retr >= 0.50
     y_cap = max(float(confirmed[0]["price"]) * 1.35, last * 1.45)
+    y_cap = max(y_cap, float(confirmed[0]["price"]) + amp1 * 1.618)
+    if deep_w2:
+        # (3) 看×2.618；(5) 需再高一截（DC 週線 (5)＞(3)）。×3＝可遷移上限帶，非抄 800。
+        y_cap = max(
+            y_cap,
+            float(start["price"]) + amp1 * 2.618,
+            float(n2["price"]) + amp1 * 1.618,
+            float(confirmed[0]["price"]) * 1.618,
+            float(confirmed[0]["price"]) * 2.618,
+            float(confirmed[0]["price"]) * 3.0,
+        )
     if ladder_lv:
         y_cap = max(y_cap, max(ladder_lv) * 1.05)
     soft_w3 = chosen.get("soft_w3")
     zones = []
     wedge: Dict[str, Any] = {}
     if "(3)" not in have:
+        y3_default = float(confirmed[0]["price"]) + min(
+            amp1 * 1.618, float(confirmed[0]["price"]) * 0.35
+        )
+        if deep_w2 and n2:
+            # 樂觀 (3)：DC 週線常見過 (1) 後看 (1)×1.618～2.618 帶
+            # （新唐圖 (1)≈228 →×2.618≈598，對他針腳 619 同帶；不准寫死 619）
+            y3_default = max(
+                y3_default,
+                float(n2["price"]) + amp1 * 1.618,
+                float(confirmed[0]["price"]) * 1.618,
+                float(confirmed[0]["price"]) * 2.618,
+            )
         y3 = _pick_ladder_above(
             ladder_lv,
             float(confirmed[0]["price"]),
-            default=float(confirmed[0]["price"])
-            + min(amp1 * 1.618, float(confirmed[0]["price"]) * 0.35),
+            default=y3_default,
         )
         if soft_w3:
             y3 = max(y3, float(soft_w3["price"]) * 1.02)
@@ -1177,11 +1298,20 @@ def infer_dc_wave_scenario(
         src4 = next((c for c in confirmed + projected if c["label"] == "(4)"), None)
         src2 = next((c for c in confirmed if c["label"] == "(2)"), None)
         if src3 and src4:
+            y5_default = float(src3["price"]) + min(
+                amp1 * 0.8, float(src3["price"]) * 0.15
+            )
+            if deep_w2:
+                # 樂觀 (5)：常 ≥ (3)，可再延伸約 0.618～1.0× amp1
+                y5_default = max(
+                    y5_default,
+                    float(src3["price"]) + amp1 * 0.618,
+                    float(src4["price"]) + amp1,
+                )
             y5 = _pick_ladder_above(
                 ladder_lv,
                 float(src3["price"]),
-                default=float(src3["price"])
-                + min(amp1 * 0.8, float(src3["price"]) * 0.15),
+                default=y5_default,
             )
             y5 = max(y5, float(src3["price"]) * 1.03)
             y5 = min(y5, y_cap * 1.02)
@@ -1266,6 +1396,72 @@ def infer_dc_wave_scenario(
 
 
 
+def _dc_w3_climb_waypoints(
+    confirmed: Sequence[Dict[str, Any]],
+    projected: Sequence[Dict[str, Any]],
+    *,
+    last: float,
+    x_now: float,
+) -> List[Tuple[float, float]]:
+    """未走 (3) 爬升中繼：先過 (1) 前高，再約 0.382 中繼（DC 週線針腳語意）。
+
+    對照 CMoney 2590523／186465869 新唐週線：222→290/300→(3)。
+    可遷移＝過前高＋比例中繼；不是抄 619／800。
+    """
+    n1 = next((c for c in confirmed if str(c.get("label") or "") == "(1)"), None)
+    n3 = next((c for c in projected if str(c.get("label") or "") == "(3)"), None)
+    if not n1 or not n3:
+        return []
+    try:
+        y1 = float(n1["price"])
+        y3 = float(n3["price"])
+        x3 = float(n3["i"])
+        x0 = float(x_now)
+        last_px = float(last or 0)
+    except Exception:
+        return []
+    if y3 <= y1 * 1.02 or x3 <= x0 + 1.0:
+        return []
+    span = x3 - x0
+    out: List[Tuple[float, float]] = []
+    if last_px < y1 * 0.995:
+        out.append((x0 + 0.28 * span, y1))
+    y_mid = y1 + 0.382 * (y3 - y1)
+    if y_mid > y1 * 1.02 and y_mid < y3 * 0.98:
+        out.append((x0 + 0.55 * span, float(y_mid)))
+    return out
+
+
+def _optimistic_fallback_levels(rows: Sequence[Dict[str, Any]], last: float) -> List[float]:
+    """無前高階梯時的樂觀參考階（全檔通用；不是買訊）。
+
+    優先近窗歷史高（仍高於現價）；否則用現價×1.05／1.12／1.20。
+    查每一支都要有可讀未來路徑時的後備，不准特判單一股號。
+    """
+    last = float(last or 0)
+    if last <= 0:
+        return []
+    highs = [float(r.get("high") or 0) for r in (rows or []) if float(r.get("high") or 0) > 0]
+    out: List[float] = []
+    if highs:
+        peak = float(max(highs))
+        if peak > last * 1.002:
+            out.append(round(peak, 4))
+        # 次高：近窗高點裡略低於峰、仍高於現價
+        below = sorted({round(h, 4) for h in highs if last * 1.002 < h < peak * 0.995})
+        for h in below[-2:]:
+            if h not in out:
+                out.append(h)
+    if len(out) < 2:
+        for m in (1.05, 1.12, 1.20):
+            lv = round(last * m, 4)
+            if lv > last * 1.002 and lv not in out:
+                out.append(lv)
+            if len(out) >= 3:
+                break
+    return sorted(out)[:3]
+
+
 def infer_scenario_paths(
     rows: Sequence[Dict[str, Any]],
     ladders: Sequence[Dict[str, Any]],
@@ -1273,7 +1469,11 @@ def infer_scenario_paths(
     n_bars: Optional[int] = None,
     max_paths: int = 3,
 ) -> List[Dict[str, Any]]:
-    """相位 1.5：2～3 條淺色虛線情境階梯（現價附近→最近前高→下一階）。"""
+    """相位 1.5：2～3 條淺色虛線情境階梯（現價附近→最近前高→下一階）。
+
+    全檔共用：上市／上櫃／興櫃同一入口。無浪或 abc 完成無投影時走這裡；
+    連前高階梯也沒有時改樂觀後備階，不准右半空白。
+    """
     rows = list(rows or [])
     n = int(n_bars if n_bars is not None else len(rows))
     if n < _MIN_BARS or not rows:
@@ -1288,6 +1488,8 @@ def infer_scenario_paths(
             if float(x.get("price") or 0) > last * 1.002
         }
     )
+    if not levels:
+        levels = _optimistic_fallback_levels(rows, last)
     if not levels:
         return []
     use = levels[:3]
@@ -1418,8 +1620,10 @@ def build_scenario_meta(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             meta["caption_bits"].append(f"浪號{labs}")
         if wave.get("bubble"):
             meta["caption_bits"].append("情境預估／不保證")
-    # 有浪號主路徑時少畫多條階梯，避免互壓；無浪才用階梯虛線
-    if not wave:
+    # 有未走投影時以浪虛線為主，少畫階梯避互壓。
+    # 完成 abc／無 projected 時仍疊樂觀階梯，避免右半空白「像只標過去」。
+    has_proj = bool(wave and (wave.get("projected") or wave.get("path_proj")))
+    if not has_proj:
         paths = infer_scenario_paths(rows, ladders, n_bars=len(rows), max_paths=3)
         if paths:
             meta["paths"] = paths
@@ -2130,9 +2334,10 @@ def _paint(
 
             _paint_wave_dir_arrows(ax, wave)
 
-            fp_w = _fp(10.2, "bold")
-            fp_tag = _fp(7.8, "bold")
-            fp_d = _fp(6.6)
+            # 浪號略放大：手機縮圖仍要讀得出未來 (3)(4)(5)
+            fp_w = _fp(11.4, "bold")
+            fp_tag = _fp(8.2, "bold")
+            fp_d = _fp(6.8)
             for node in list(wave.get("confirmed") or []):
                 _draw_wave_label(
                     ax,
@@ -2178,7 +2383,9 @@ def _paint(
                     color=_WAVE_ABC,
                 )
 
-        if not wave:
+        # 階梯：無浪、或有浪但無未走投影（abc 完成態）時畫，保證未來可讀
+        label_anchors: List[Tuple[float, float, str]] = []
+        if paths:
             deepest = None
             for path in paths:
                 pts = list(path.get("points") or [])
@@ -2200,7 +2407,6 @@ def _paint(
                 steps = list(path.get("steps") or [])
                 if deepest is None or len(steps) > len(deepest.get("steps") or []):
                     deepest = path
-            label_anchors: List[Tuple[float, float, str]] = []
             seen_lbl = set()
             for st in (deepest or {}).get("steps") or []:
                 txt = str(st.get("label") or "").strip()
@@ -2214,8 +2420,6 @@ def _paint(
                         txt,
                     )
                 )
-        else:
-            label_anchors = []
 
         # 右側關鍵價：只留紅底價標（不再重複畫「候選 xxx」字，避免互壓）
         y_span = max(highs) - min(lows) if highs and lows else 1.0
@@ -2225,6 +2429,22 @@ def _paint(
             right_tags.append(
                 (x_end + 0.2, float(lad["price"]), f"{_fmt_px(float(lad['price']))}")
             )
+        # 已走 (1) 前高：DC 波3 第一參考（過前高）；現價仍低於時上右軸
+        last_close = float(closes[-1] or 0) if closes else 0.0
+        for node in list(wave.get("confirmed") or []):
+            if str(node.get("label") or "") != "(1)":
+                continue
+            try:
+                y1 = float(node["price"])
+            except Exception:
+                continue
+            if last_close > 0 and y1 > last_close * 1.002:
+                near = any(
+                    abs(y1 - float(t[1])) / max(abs(y1), 1e-9) < 0.02
+                    for t in right_tags
+                )
+                if not near:
+                    right_tags.append((x_end + 0.2, y1, _fmt_px(y1)))
         # 虛線峰／谷價：只走右軸紅標
         for node in list(wave.get("projected") or []):
             try:
@@ -2460,9 +2680,11 @@ def render_scenario_forecast(
             wave["bubble"] = chart_note_lines(wave)
         if wave and wave.get("desc_press"):
             press = dict(wave.get("desc_press") or {})
+        # 與 build_scenario_meta 同規：有未走投影才抑階梯；abc 完成態仍疊樂觀階梯
+        has_proj = bool(wave and (wave.get("projected") or wave.get("path_proj")))
         paths = (
             []
-            if wave
+            if has_proj
             else infer_scenario_paths(rows, ladders, n_bars=len(rows), max_paths=3)
         )
         meta = {
@@ -2490,7 +2712,7 @@ def render_scenario_forecast(
             if labs:
                 meta["caption_bits"].append(f"浪號{labs}")
             meta["caption_bits"].append("情境預估／不保證")
-        elif paths:
+        if paths:
             meta["caption_bits"].append(f"情境階梯{len(paths)}條")
         name = str(rows[-1].get("stock_name") or "")
         painted = _paint(rows, meta, out, sid=sid, name=name)
