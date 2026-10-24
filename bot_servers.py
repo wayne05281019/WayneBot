@@ -6306,6 +6306,7 @@ class WayneTelegramBot:
                 mark_read = True
             else:
                 html = ""
+                field_advice = False
                 try:
                     from biaoke_digest import format_latest_focus, take_unread_digest
 
@@ -6369,9 +6370,10 @@ class WayneTelegramBot:
             if not self._actor_op_alive(actor, op_kind, gen):
                 cancelled = True
                 return
-            # 空白／類股：多檔改名單＋按檔鈕（沒按不出圖）；單檔問句仍一張結構圖。
+            # 空白鍵：只出口語大盤＋關卡對照，不准再送一排個股藍字／選股狀態（2026-10-24）。
+            # 類股問句：多檔改名單＋按檔鈕；單檔問句仍一張結構圖。
             try:
-                if (not q) or field_advice:
+                if q and field_advice:
                     await self._send_biaoke_advice_charts(
                         message,
                         uid,

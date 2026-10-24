@@ -311,7 +311,10 @@ def test_seeded_db_format_latest_focus_has_locked_intro(tmp_path):
     assert "台虹" in html
     assert "PTFE" in html or "Hybrid" in html or "CCL" in html
     assert "直接打字或語音" in html
-    assert "<b>還能問</b>" in html
+    # 空白鍵 2026-10-24：不准「還能問」股名清單／藍字；改純文字入口
+    assert "<b>還能問</b>" not in html
+    assert "不掛可點清單" in html
+    assert "quote/" not in html
 
 
 def test_boot_force_seed_calls_ingest():
