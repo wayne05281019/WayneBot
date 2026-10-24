@@ -557,6 +557,145 @@ def test_axis_dates_sit_in_price_volume_gap():
     plt.close(fig)
 
 
+def test_impulse_degree_collapse_skips_mid_pivots():
+    """大級別 (1)(2)：中段高低不准拆碎真衝動；起點釘更低 L。"""
+    from datetime import date, timedelta
+
+    # 起 50 → 中段 112/140 → 峰 230 → 回 100（DC 新唐類骨架）
+    path = []
+    for i in range(160):
+        if i < 20:
+            c = 58 - i * 0.3  # drift to ~52
+        elif i < 40:
+            c = 50 + (i - 20) * 3.0  # up to ~110
+        elif i < 55:
+            c = 110 + (i - 40) * 2.0  # up to ~140
+        elif i < 70:
+            c = 140 - (i - 55) * 1.5  # soft pull
+        elif i < 100:
+            c = 120 + (i - 70) * 3.6  # to ~228
+        elif i < 120:
+            c = 228 - (i - 100) * 6.0  # to ~108
+        else:
+            c = 105 + (i - 120) * 0.8
+        path.append(c)
+    d0 = date(2025, 9, 1)
+    rows = []
+    for i, c in enumerate(path):
+        d = d0 + timedelta(days=i)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        hi = c + (8 if i == 95 else 2)
+        lo = c - (6 if 100 <= i <= 110 else 2)
+        if i == 25:
+            lo = 49.5  # true start low
+            c = 51.0
+        if i == 108:
+            lo = 100.0
+            c = 102.0
+        rows.append(
+            {
+                "date": d.strftime("%Y%m%d"),
+                "stock_name": "測",
+                "open": c - 0.5,
+                "high": hi,
+                "low": lo,
+                "close": c,
+                "volume": 1000 + i,
+            }
+        )
+        d0 = d
+    ladders = [{"price": 144.0}, {"price": 167.0}, {"price": 200.0}]
+    wave = infer_dc_wave_scenario(rows, ladders)
+    assert wave
+    labs = set(wave.get("labels") or [])
+    assert "(1)" in labs and "(2)" in labs
+    conf = {c["label"]: float(c["price"]) for c in (wave.get("confirmed") or [])}
+    assert conf["(1)"] >= 200.0
+    assert conf["(2)"] <= 120.0
+    assert float(wave["start"]["price"]) <= 55.0
+    proj = {c["label"]: c for c in (wave.get("projected") or [])}
+    assert "(3)" in proj and "(4)" in proj and "(5)" in proj
+    xs = [float(proj[k]["i"]) for k in ("(3)", "(4)", "(5)")]
+    assert xs == sorted(xs)
+    assert len({round(x, 2) for x in xs}) == 3
+    # 樂觀參考：(3) 應明顯高於 (1)，不是卡在近窗前高
+    assert float(proj["(3)"]["price"]) > conf["(1)"] * 1.05
+
+
+def test_project_impulse_xs_scale_keeps_distinct_points():
+    """長 (1) 鏡射超出 FUTURE_MAX 時須等比壓縮，不准 (3)(4)(5) 同 x。"""
+    start = {"i": 10.0, "price": 50.0, "kind": "L"}
+    confirmed = [
+        {"label": "(1)", "i": 200.0, "price": 230.0, "kind": "H"},
+        {"label": "(2)", "i": 260.0, "price": 100.0, "kind": "L"},
+    ]
+    xs, fut, durs = _dc_project_impulse_xs(
+        start, confirmed, x_now=319.0, n=320, prior_corr_bars=40.0
+    )
+    assert fut <= 160.0 + 1e-6
+    assert "(3)" in xs and "(4)" in xs and "(5)" in xs
+    vals = [xs["(3)"], xs["(4)"], xs["(5)"]]
+    assert vals == sorted(vals)
+    assert len({round(v, 3) for v in vals}) == 3
+    assert xs["(5)"] <= 319.0 + fut + 1e-6
+
+
+def test_abc_complete_still_gets_optimistic_paths():
+    """完成 abc、無 projected 時仍疊情境階梯（未來可讀）。"""
+    from datetime import date, timedelta
+
+    # 大頂後深 abc，現價仍低於前高階梯
+    d0 = date(2025, 6, 2)
+    rows = []
+    for i in range(200):
+        d = d0 + timedelta(days=i)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        if i < 40:
+            c = 800 + i * 50  # up to ~2800
+        elif i < 70:
+            c = 2800 - (i - 40) * 35  # a
+        elif i < 90:
+            c = 1750 + (i - 70) * 40  # b
+        elif i < 120:
+            c = 2550 - (i - 90) * 45  # c deep
+        else:
+            c = 1200 + (i - 120) * 2
+        hi = c + (120 if i == 39 else 20)
+        lo = c - (80 if i == 115 else 15)
+        if i == 39:
+            hi = 3000
+            c = 2950
+        if i == 60:
+            lo = 1775
+            c = 1800
+        if i == 85:
+            hi = 2625
+            c = 2600
+        if i == 115:
+            lo = 1150
+            c = 1180
+        rows.append(
+            {
+                "date": d.strftime("%Y%m%d"),
+                "stock_name": "測",
+                "open": c - 5,
+                "high": hi,
+                "low": lo,
+                "close": c,
+                "volume": 500 + i,
+            }
+        )
+        d0 = d
+    meta = build_scenario_meta(rows)
+    wave = meta.get("wave") or {}
+    assert "a" in set(wave.get("labels") or []) or wave.get("abc")
+    # 無未走投影時必須有階梯
+    if not (wave.get("projected") or []):
+        assert len(meta.get("paths") or []) >= 1
+
+
 @pytest.mark.production_db
 def test_per_stock_future_axis_differs_2404_3661_3529(production_db):
     """三檔硬比樣：未來軸終點／future_bars 須分檔，不准再全家同一 27/01。"""
