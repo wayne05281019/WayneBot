@@ -641,6 +641,26 @@ def test_project_impulse_xs_scale_keeps_distinct_points():
     assert xs["(5)"] <= 319.0 + fut + 1e-6
 
 
+def test_paths_fallback_when_no_ladders_above():
+    """全檔：無高於現價的前高階梯時，仍有樂觀後備階（不准右半空白）。"""
+    from scenario_forecast_chart import _optimistic_fallback_levels
+
+    rows = _synth_rows(120)
+    # 現價抬到近窗最高之上 → 舊邏輯 levels 空
+    peak = max(float(r["high"]) for r in rows)
+    for r in rows[-3:]:
+        r["close"] = peak * 1.02
+        r["high"] = peak * 1.03
+        r["low"] = peak * 1.01
+        r["open"] = peak * 1.015
+    last = float(rows[-1]["close"])
+    fb = _optimistic_fallback_levels(rows, last)
+    assert len(fb) >= 2
+    assert all(lv > last for lv in fb)
+    paths = infer_scenario_paths(rows, ladders=[], n_bars=len(rows), max_paths=3)
+    assert len(paths) >= 1
+
+
 def test_abc_complete_still_gets_optimistic_paths():
     """完成 abc、無 projected 時仍疊情境階梯（未來可讀）。"""
     from datetime import date, timedelta

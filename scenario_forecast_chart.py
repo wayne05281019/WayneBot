@@ -1384,6 +1384,36 @@ def infer_dc_wave_scenario(
 
 
 
+def _optimistic_fallback_levels(rows: Sequence[Dict[str, Any]], last: float) -> List[float]:
+    """無前高階梯時的樂觀參考階（全檔通用；不是買訊）。
+
+    優先近窗歷史高（仍高於現價）；否則用現價×1.05／1.12／1.20。
+    查每一支都要有可讀未來路徑時的後備，不准特判單一股號。
+    """
+    last = float(last or 0)
+    if last <= 0:
+        return []
+    highs = [float(r.get("high") or 0) for r in (rows or []) if float(r.get("high") or 0) > 0]
+    out: List[float] = []
+    if highs:
+        peak = float(max(highs))
+        if peak > last * 1.002:
+            out.append(round(peak, 4))
+        # 次高：近窗高點裡略低於峰、仍高於現價
+        below = sorted({round(h, 4) for h in highs if last * 1.002 < h < peak * 0.995})
+        for h in below[-2:]:
+            if h not in out:
+                out.append(h)
+    if len(out) < 2:
+        for m in (1.05, 1.12, 1.20):
+            lv = round(last * m, 4)
+            if lv > last * 1.002 and lv not in out:
+                out.append(lv)
+            if len(out) >= 3:
+                break
+    return sorted(out)[:3]
+
+
 def infer_scenario_paths(
     rows: Sequence[Dict[str, Any]],
     ladders: Sequence[Dict[str, Any]],
@@ -1391,7 +1421,11 @@ def infer_scenario_paths(
     n_bars: Optional[int] = None,
     max_paths: int = 3,
 ) -> List[Dict[str, Any]]:
-    """相位 1.5：2～3 條淺色虛線情境階梯（現價附近→最近前高→下一階）。"""
+    """相位 1.5：2～3 條淺色虛線情境階梯（現價附近→最近前高→下一階）。
+
+    全檔共用：上市／上櫃／興櫃同一入口。無浪或 abc 完成無投影時走這裡；
+    連前高階梯也沒有時改樂觀後備階，不准右半空白。
+    """
     rows = list(rows or [])
     n = int(n_bars if n_bars is not None else len(rows))
     if n < _MIN_BARS or not rows:
@@ -1406,6 +1440,8 @@ def infer_scenario_paths(
             if float(x.get("price") or 0) > last * 1.002
         }
     )
+    if not levels:
+        levels = _optimistic_fallback_levels(rows, last)
     if not levels:
         return []
     use = levels[:3]
