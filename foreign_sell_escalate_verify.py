@@ -549,10 +549,16 @@ def night_tick(market_db: str, as_of: str = "") -> Dict[str, Any]:
     except Exception as e:
         out["next_silent_error"] = str(e)[:160]
     try:
-        # 只對現況 params score；下一版離線／後續再對，避免夜盤過慢
+        # 現況 n3＋下一版 n5 都 score／rates，靜默 n 才能收滿（失敗不擋）
         scored = score_pending(market_db, params=current_params())
+        scored_next = 0
+        try:
+            scored_next = score_pending(market_db, params=next_silent_params())
+        except Exception as e_next:
+            out["score_next_error"] = str(e_next)[:160]
         rates = recompute_rates(market_db)
         out["scored"] = int(scored or 0)
+        out["scored_next"] = int(scored_next or 0)
         out["rates_keys"] = len(rates or {})
     except Exception as e:
         out["score_error"] = str(e)[:160]
