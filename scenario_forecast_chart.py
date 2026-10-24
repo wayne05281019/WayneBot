@@ -755,7 +755,14 @@ def infer_dc_wave_scenario(
                 path_proj.append((float(abc[-1]["i"]), float(abc[-1]["price"])))
             else:
                 path_proj.append(path_done[-1])
-        for c in projected:
+            # DC 週線可遷移（新唐 186465869）：波3 先過已走 (1) 前高，再中繼，再到 (3)
+            # 不准直跳終點、也不准抄單檔 800 絕對價
+            path_proj.extend(
+                _dc_w3_climb_waypoints(
+                    confirmed, projected, last=last, x_now=float(n - 1)
+                )
+            )
+            for c in projected:
                 path_proj.append((float(c["i"]), float(c["price"])))
         conf_labs = [c["label"] for c in confirmed]
         proj_labs = [c["label"] for c in projected]
@@ -1204,11 +1211,14 @@ def infer_dc_wave_scenario(
     y_cap = max(float(confirmed[0]["price"]) * 1.35, last * 1.45)
     y_cap = max(y_cap, float(confirmed[0]["price"]) + amp1 * 1.618)
     if deep_w2:
+        # (3) 看×2.618；(5) 需再高一截（DC 週線 (5)＞(3)）。×3＝可遷移上限帶，非抄 800。
         y_cap = max(
             y_cap,
             float(start["price"]) + amp1 * 2.618,
             float(n2["price"]) + amp1 * 1.618,
             float(confirmed[0]["price"]) * 1.618,
+            float(confirmed[0]["price"]) * 2.618,
+            float(confirmed[0]["price"]) * 3.0,
         )
     if ladder_lv:
         y_cap = max(y_cap, max(ladder_lv) * 1.05)
@@ -1220,11 +1230,13 @@ def infer_dc_wave_scenario(
             amp1 * 1.618, float(confirmed[0]["price"]) * 0.35
         )
         if deep_w2 and n2:
-            # 樂觀 (3)：過 (1) 後看 1.618×amp 從 (2) 起／(1)×1.618（取較大）
+            # 樂觀 (3)：DC 週線常見過 (1) 後看 (1)×1.618～2.618 帶
+            # （新唐圖 (1)≈228 →×2.618≈598，對他針腳 619 同帶；不准寫死 619）
             y3_default = max(
                 y3_default,
                 float(n2["price"]) + amp1 * 1.618,
                 float(confirmed[0]["price"]) * 1.618,
+                float(confirmed[0]["price"]) * 2.618,
             )
         y3 = _pick_ladder_above(
             ladder_lv,
@@ -1382,6 +1394,42 @@ def infer_dc_wave_scenario(
         proj_durs=proj_durs,
     )
 
+
+
+def _dc_w3_climb_waypoints(
+    confirmed: Sequence[Dict[str, Any]],
+    projected: Sequence[Dict[str, Any]],
+    *,
+    last: float,
+    x_now: float,
+) -> List[Tuple[float, float]]:
+    """未走 (3) 爬升中繼：先過 (1) 前高，再約 0.382 中繼（DC 週線針腳語意）。
+
+    對照 CMoney 2590523／186465869 新唐週線：222→290/300→(3)。
+    可遷移＝過前高＋比例中繼；不是抄 619／800。
+    """
+    n1 = next((c for c in confirmed if str(c.get("label") or "") == "(1)"), None)
+    n3 = next((c for c in projected if str(c.get("label") or "") == "(3)"), None)
+    if not n1 or not n3:
+        return []
+    try:
+        y1 = float(n1["price"])
+        y3 = float(n3["price"])
+        x3 = float(n3["i"])
+        x0 = float(x_now)
+        last_px = float(last or 0)
+    except Exception:
+        return []
+    if y3 <= y1 * 1.02 or x3 <= x0 + 1.0:
+        return []
+    span = x3 - x0
+    out: List[Tuple[float, float]] = []
+    if last_px < y1 * 0.995:
+        out.append((x0 + 0.28 * span, y1))
+    y_mid = y1 + 0.382 * (y3 - y1)
+    if y_mid > y1 * 1.02 and y_mid < y3 * 0.98:
+        out.append((x0 + 0.55 * span, float(y_mid)))
+    return out
 
 
 def _optimistic_fallback_levels(rows: Sequence[Dict[str, Any]], last: float) -> List[float]:
@@ -2381,6 +2429,22 @@ def _paint(
             right_tags.append(
                 (x_end + 0.2, float(lad["price"]), f"{_fmt_px(float(lad['price']))}")
             )
+        # 已走 (1) 前高：DC 波3 第一參考（過前高）；現價仍低於時上右軸
+        last_close = float(closes[-1] or 0) if closes else 0.0
+        for node in list(wave.get("confirmed") or []):
+            if str(node.get("label") or "") != "(1)":
+                continue
+            try:
+                y1 = float(node["price"])
+            except Exception:
+                continue
+            if last_close > 0 and y1 > last_close * 1.002:
+                near = any(
+                    abs(y1 - float(t[1])) / max(abs(y1), 1e-9) < 0.02
+                    for t in right_tags
+                )
+                if not near:
+                    right_tags.append((x_end + 0.2, y1, _fmt_px(y1)))
         # 虛線峰／谷價：只走右軸紅標
         for node in list(wave.get("projected") or []):
             try:

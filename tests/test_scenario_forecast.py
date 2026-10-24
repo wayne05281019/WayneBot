@@ -641,6 +641,27 @@ def test_project_impulse_xs_scale_keeps_distinct_points():
     assert xs["(5)"] <= 319.0 + fut + 1e-6
 
 
+def test_dc_w3_climb_waypoints_pass_prior_high():
+    """DC 週線語意：未走 (3) 路徑先過 (1) 前高再中繼（可遷移，非抄絕對價）。"""
+    from scenario_forecast_chart import _dc_w3_climb_waypoints
+
+    confirmed = [
+        {"label": "(1)", "i": 100.0, "price": 228.5, "kind": "H"},
+        {"label": "(2)", "i": 130.0, "price": 100.5, "kind": "L"},
+    ]
+    projected = [
+        {"label": "(3)", "i": 200.0, "price": 598.0, "kind": "H"},
+        {"label": "(4)", "i": 220.0, "price": 350.0, "kind": "L"},
+        {"label": "(5)", "i": 260.0, "price": 700.0, "kind": "H"},
+    ]
+    wps = _dc_w3_climb_waypoints(confirmed, projected, last=134.5, x_now=150.0)
+    assert len(wps) >= 1
+    assert abs(wps[0][1] - 228.5) < 0.1
+    assert wps[0][0] < 200.0
+    if len(wps) >= 2:
+        assert 228.5 < wps[1][1] < 598.0
+
+
 def test_paths_fallback_when_no_ladders_above():
     """全檔：無高於現價的前高階梯時，仍有樂觀後備階（不准右半空白）。"""
     from scenario_forecast_chart import _optimistic_fallback_levels
