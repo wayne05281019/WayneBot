@@ -222,6 +222,9 @@ def test_latest_focus_is_oral_not_july_bwave():
     assert "飆大現在在講" in html
     assert "不是買訊" not in html
     assert "直接打字或語音" in html
+    assert "不掛可點清單" in html
+    assert "還能問" not in html
+    assert "quote/" not in html
     assert "這句沒點檔" not in html
     assert "現在位階" not in html
     assert "位階不講死" not in html
@@ -238,7 +241,7 @@ def test_latest_focus_is_oral_not_july_bwave():
     assert "46000" not in html
     assert "語料" not in html
     assert "量先價行" not in html
-    assert len(html) < 1800
+    assert len(html) < 2200
 
 
 def test_focus_oral_strips_cmoney_google_chrome():
@@ -684,7 +687,8 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     assert "大立光" in tail
     assert "99%" in tail
     assert "台指期" in tail
-    assert "行有餘力" in tail
+    # 主文後含「抄底」的自回會併進大盤口語（2026-10-24）
+    assert "行有餘力" in html
     assert "8成" in tail
     assert "違反人性" not in tail
     assert "命中機率高" in tail
@@ -728,3 +732,162 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     )
     assert "0050" in glued
     assert "聯亞，那就" not in glued
+
+
+def test_blank_focus_no_stock_blue_links_and_has_gates(tmp_path):
+    """空白鍵：無奇摩藍字／還能問股名；主文後自回進大盤；附關卡×已收。"""
+    import sqlite3
+
+    from biaoke_digest import format_focus_oral, format_index_gates_confront_html
+
+    db = str(tmp_path / "gates.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE index_daily (
+            symbol TEXT, date TEXT, open REAL, high REAL, low REAL, close REAL,
+            pct_change REAL, PRIMARY KEY(symbol, date)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE futures_daily (
+            symbol TEXT, date TEXT, session TEXT,
+            open REAL, high REAL, low REAL, close REAL, pct_change REAL,
+            PRIMARY KEY(symbol, date, session)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES ('TWII','20261022',46942.75,47332.18,46041.43,46041.43,-1.8)"
+    )
+    conn.execute(
+        "INSERT INTO futures_daily VALUES ('TX','20261022','regular',47164,47337,46217,46272,0)"
+    )
+    conn.execute(
+        "INSERT INTO futures_daily VALUES ('TX','20261022','night',46991,47555,46983,47482,0)"
+    )
+    conn.commit()
+    conn.close()
+
+    mains = [
+        {
+            "id": "186534405",
+            "kind": "post",
+            "date": "2026-10-22",
+            "time": "13:21",
+            "text": (
+                "大盤已經破前低，但是看預估量還是沒放量出來，也就是沒有進行大量籌碼交換，"
+                "從量價結構來看完全沒出現止跌訊號。"
+            ),
+        }
+    ]
+    replies = [
+        {
+            "id": "186534405:c-272",
+            "kind": "reply",
+            "parent": "186534405",
+            "date": "2026-10-23",
+            "time": "10:38",
+            "text": "記住 下星期二絕對不能抄底 風險太高",
+        },
+        {
+            "id": "186534405:c-256-3",
+            "kind": "reply",
+            "parent": "186534405",
+            "date": "2026-10-23",
+            "time": "10:36",
+            "text": "應該會直接殺破 45000",
+        },
+        {
+            "id": "186346610",
+            "kind": "post",
+            "date": "2026-10-21",
+            "time": "08:50",
+            "text": "大盤反彈不過壓48066主跌段會啟動。已經空手者不要再介入買進。",
+        },
+    ]
+    # 空白鍵路徑旗標
+    html = format_focus_oral(
+        mains,
+        replies,
+        now=datetime(2026, 10, 24, 15, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+        db_path=db,
+        stock_links=False,
+        include_gates=True,
+    )
+    assert "飆大現在在講" in html
+    assert "止跌" in html or "破前低" in html
+    assert "星期二" in html and "抄底" in html
+    assert "45000" in html
+    assert "quote/" not in html
+    assert "tw.stock.yahoo.com" not in html
+    assert "還能問" not in html
+    assert "不掛可點清單" in html
+    assert "關卡 × 官方已收" in html
+    assert "48066" in html or "45000" in html
+    assert "高未到" in html or "區間碰到" in html or "低已破" in html
+
+    gates = format_index_gates_confront_html(
+        db,
+        posts=mains
+        + replies
+        + [
+            {
+                "id": "186423955:c-124",
+                "kind": "reply",
+                "date": "2026-10-21",
+                "time": "19:29",
+                "text": "補充弱勢反彈不過 47729，雖然過下降軌道，但還是很快會下去。如果反彈點位(0.618)48697，會拖比較久才會開啟主跌段。",
+            }
+        ],
+        now=datetime(2026, 10, 24, 15, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "47729" in gates
+    assert "48697" in gates
+    assert "他說：" in gates
+    assert "官方：" in gates
+    assert "加權" in gates or "台指" in gates
+
+
+def test_blank_send_biaoke_page_skips_advice_charts():
+    """按飆大空白：不准再送結構圖按檔名單／個股藍字鍵盤。"""
+    import asyncio
+    import inspect
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    src = inspect.getsource(WayneTelegramBot._send_biaoke_page)
+    assert "不准再送一排個股藍字" in src or "空白鍵：只出口語" in src
+    assert "if q and field_advice" in src
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ""
+    bot._pending = {}
+    bot._biaoke_hist = {}
+    bot._enter_biaoke_chat = MagicMock()
+    bot._mark_menu_layout_ok = MagicMock()
+    bot._uid_from_message = MagicMock(return_value="11")
+    bot._actor_key = MagicMock(return_value="11:11")
+    bot._begin_actor_op = AsyncMock(return_value=1)
+    bot._actor_op_alive = MagicMock(return_value=True)
+    bot._start_plain_wait = AsyncMock(return_value=(None, None, None))
+    bot._stop_plain_wait = AsyncMock()
+    bot._show_biaoke_leave_key = AsyncMock()
+    bot._biaoke_hub_markup = MagicMock(return_value=None)
+    bot._biaoke_reply_menu = MagicMock(return_value=None)
+    bot._send_biaoke_advice_charts = AsyncMock()
+    bot._send_biaoke_structure_chart = AsyncMock()
+    msg = MagicMock()
+    msg.reply_html = AsyncMock()
+    msg.reply_text = AsyncMock()
+    html = "<b>飆大現在在講</b>\n大盤口語\n<b>關卡 × 官方已收</b>\n45000"
+    with patch("biaoke_digest.take_unread_digest", return_value=""), patch(
+        "biaoke_digest.format_latest_focus", return_value=html
+    ), patch("biaoke_digest.mark_biaoke_read"):
+        asyncio.run(bot._send_biaoke_page(msg, ask="", uid="11"))
+    bot._send_biaoke_advice_charts.assert_not_awaited()
+    bot._send_biaoke_structure_chart.assert_not_awaited()
+    assert msg.reply_html.await_count >= 1
+    sent = msg.reply_html.await_args.args[0]
+    assert "關卡 × 官方已收" in sent or "飆大現在在講" in sent

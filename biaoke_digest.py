@@ -230,15 +230,26 @@ _NOISE = re.compile(
     r"(打錯|很有心|出書|90%\s*老師|碩哥和我|蕭明道|楊少凱)"
 )
 _BOARD = re.compile(
-    r"(夜盤|47578|C\s*波|頭部型態|大盤要漲|加權|逃命|45398|"
+    r"(夜盤|47578|C\s*波|B\s*[-‐‑‒–—]?c|B\s*波|頭部型態|大盤要漲|加權|逃命|45398|"
     r"目前大盤|緩步上攻|推升脈動|早盤要買|尾盤再考慮|調節股票|"
     r"大盤|台指期|頭肩底|中繼站|做多安全|"
-    r"台股|股王|股后)"
+    r"台股|股王|股后|"
+    r"主跌|止跌|抄底|空手|減碼|48066|45000|47729|48697|49239|"
+    r"47000|47600|47300|反彈不過壓|下降軌道)"
     # 不准用「回測／前波高點／主升段」當大盤鍵：個股（智邦回測季線）會誤吸進大盤欄
 )
-_FIELD = re.compile(r"(ASIC|散熱|光通訊|記憶體|多頭格局的族群)")
+_FIELD = re.compile(
+    r"(ASIC|散熱|光通訊|記憶體|多頭格局的族群|創意|健策|奇鋐|風向)"
+)
 _PCB = re.compile(r"(PCB|台光電|金像電|台燿|富喬|金居|ABF)")
 _PREVIEW = re.compile(r"(星期[日天]晚上|技術分析看法)")
+# 主文之後自回：做法／關卡／位階句才併進大盤口語（不准整段丟掉；也不准把閒聊全吸進來）
+_BOARD_REPLY = re.compile(
+    r"(C\s*波|B\s*[-‐‑‒–—]?c|B\s*波|主跌|止跌|抄底|空手|減碼|逃命|"
+    r"下降軌道|反彈不過|做多安全|無止跌|破前低|"
+    r"48066|45000|47729|48697|49239|47000|47600|47300|"
+    r"下星期[一二]|星期二絕對|不要再介入|撤出觀望)"
+)
 _NOISE_ONLY = re.compile(r"(出書|90%\s*老師|我自己都沒|說實話|看盤當下寫|很有心)")
 # CMoney 頁面「加入 google 偏好」宣傳；不是他正文（他真講去 google 查型態另算）
 _CMONEY_CHROME = re.compile(
@@ -424,8 +435,14 @@ def format_focus_oral(
     *,
     now: Optional[datetime] = None,
     db_path: str = "",
+    stock_links: bool = True,
+    include_gates: bool = False,
 ) -> str:
-    """空白按飆大：口語重述最新重點＋智囊團活用。不准倒原文、不准時間跳來跳去。"""
+    """空白按飆大：口語重述最新重點＋智囊團活用。不准倒原文、不准時間跳來跳去。
+
+    stock_links=False（話筒空白鍵）：不准文內個股藍字／可點清單。
+    include_gates=True：附他自己點過的加權／台指關 × 最新官方已收對照。
+    """
     cleaned_mains: List[Dict[str, Any]] = []
     for p in mains:
         row = dict(p)
@@ -456,6 +473,7 @@ def format_focus_oral(
     preview = ""
     spare: List[str] = []
     extra: List[str] = []
+    after_board: List[str] = []
     older_long = False
     newer_short = False
     for bit in _numbered_bits(str(latest.get("text") or "")):
@@ -501,8 +519,12 @@ def format_focus_oral(
         day = str(p.get("date") or "")
         if day and latest_day and day < latest_day:
             continue
-        # 最新主文之後的自回全部進黃金脈絡。先塞進他還說只留三格，短句會把後面整則蓋掉。
+        # 最新主文之後的自回：大盤／關卡／空手句要進口語，不准整段丟掉。
         if _row_key(p) >= _row_key(latest):
+            if _BOARD_REPLY.search(t):
+                bit = _speak(t, 120)
+                if bit:
+                    after_board.append(bit)
             continue
         extra.append(_speak(t, 100))
     if older_long and newer_short:
@@ -513,6 +535,11 @@ def format_focus_oral(
     latest_t = str(latest.get("text") or "")
     if board and re.search(r"(否則|如果|一定要過)", board + latest_t) and "如果句" not in board:
         board = board.rstrip("。") + "。這句還是如果句，不是已確認主升。"
+    # 主文後大盤自回併進大盤欄（口語一句接一句，國中生也讀得懂）
+    if after_board:
+        merged = _join_said([board] + after_board[:6], shown=[])
+        if merged:
+            board = merged
     shown = [x for x in (board, field, pcb) if x]
     # 他還說＝主文沒進上面三欄的補充＋樓下；已講過的大盤／族群／PCB 整段丟掉
     said = _join_said([preview] + spare[:2] + extra[:3], shown=shown)
@@ -520,23 +547,23 @@ def format_focus_oral(
         "<b>飆大現在在講</b>",
         html_escape(f"最新　{when}" if when else "最新"),
     ]
-    # 預設每次按飆大重算近窗對質（可點／勿追／標配），再畫文內藍／黑；不准等對話提醒
+    # 文內藍字僅非空白鍵路徑；空白鍵只出口語＋關卡表（2026-10-24）
     match_pack: Dict[str, Any] = {}
-    try:
-        if db_path:
-            from biaoke_live_match import refresh_live_match
+    if stock_links:
+        try:
+            if db_path:
+                from biaoke_live_match import refresh_live_match
 
-            match_pack = refresh_live_match(str(db_path)) or {}
-    except Exception:
-        match_pack = {}
+                match_pack = refresh_live_match(str(db_path)) or {}
+        except Exception:
+            match_pack = {}
 
     def _add(title: str, body: str) -> None:
         if not body:
             return
         blocks.append("")
         blocks.append(f"<b>{html_escape(title)}</b>")
-        # 文內點名：該記＝藍可點、勿追／該剔＝黑字（對齊 live_match）
-        if db_path:
+        if stock_links and db_path:
             try:
                 from biaoke_live_match import linkify_spoken_html
 
@@ -567,7 +594,7 @@ def format_focus_oral(
             blocks.append("")
             blocks.append("<b>脈絡黃金</b>")
             for x in gold_lines:
-                if db_path:
+                if stock_links and db_path:
                     try:
                         from biaoke_live_match import linkify_spoken_html
 
@@ -580,16 +607,37 @@ def format_focus_oral(
                 blocks.append(html_escape(x))
     except Exception:
         pass
+    if include_gates and db_path:
+        try:
+            gates = format_index_gates_confront_html(
+                str(db_path),
+                posts=list(cleaned_mains) + list(cleaned_replies),
+                now=now,
+            )
+            if gates:
+                blocks.append("")
+                blocks.append(gates)
+        except Exception:
+            pass
     # 還能問只跟最新主文＋當天以後的自回，不准拿更早一篇的夜盤價來出題。
     latest_day = str(mains[0].get("date") or "")
     ask_rows = [mains[0]] + [
         r for r in replies if not latest_day or str(r.get("date") or "") >= latest_day
     ]
-    asks = _likely_asks(ask_rows[:9])
-    if asks:
+    if stock_links:
+        asks = _likely_asks(ask_rows[:9])
+        if asks:
+            blocks.append("")
+            blocks.append("<b>還能問</b>")
+            blocks.extend(html_escape(a) for a in asks[:3])
+    else:
+        # 空白鍵：不准一排可點股名；改純文字入口說明
         blocks.append("")
-        blocks.append("<b>還能問</b>")
-        blocks.extend(html_escape(a) for a in asks[:3])
+        blocks.append(
+            html_escape(
+                "想問某一檔他怎麼看，直接打股號或股名即可（這裡不掛可點清單）。"
+            )
+        )
     clock = ""
     if now is not None:
         dt = now if now.tzinfo else now.replace(tzinfo=TAIPEI)
@@ -602,6 +650,311 @@ def format_focus_oral(
     return "\n".join(blocks)
 
 
+def _ymd8(raw: Any) -> str:
+    s = str(raw or "").strip()
+    digits = re.sub(r"\D", "", s)
+    if len(digits) >= 8:
+        return digits[:8]
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}{m.group(2)}{m.group(3)}"
+    return ""
+
+
+def _fmt_ymd_slash(ymd: str) -> str:
+    d = _ymd8(ymd)
+    if len(d) != 8:
+        return str(ymd or "")
+    return f"{int(d[4:6])}/{int(d[6:8])}"
+
+
+def _bar_px(val: Any) -> Optional[float]:
+    try:
+        if val is None or val == "":
+            return None
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _latest_closed_index_bars(
+    db_path: str, *, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """最新已收官方柱：加權／台指日盤／台指夜盤；盤中未收不當印到。"""
+    out: Dict[str, Any] = {"twii": None, "tx": None, "txn": None, "asof_note": ""}
+    path = str(db_path or "").strip()
+    if not path:
+        return out
+    clock = now if now is not None else taipei_now()
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=TAIPEI)
+    else:
+        clock = clock.astimezone(TAIPEI)
+    try:
+        from trading_calendar import is_official_daily_bar
+    except Exception:
+        def is_official_daily_bar(ymd, *, now=None):  # type: ignore
+            return True
+
+    conn = sqlite3.connect(path, timeout=30.0)
+    try:
+        tw_rows = conn.execute(
+            """
+            SELECT date, open, high, low, close FROM index_daily
+            WHERE symbol='TWII' OR symbol='^TWII' OR symbol='' OR symbol IS NULL
+            ORDER BY date DESC LIMIT 12
+            """
+        ).fetchall()
+        for date, o, h, l, c in tw_rows:
+            ymd = _ymd8(date)
+            if not ymd or not is_official_daily_bar(ymd, now=clock):
+                continue
+            out["twii"] = {
+                "date": ymd,
+                "open": _bar_px(o),
+                "high": _bar_px(h),
+                "low": _bar_px(l),
+                "close": _bar_px(c),
+                "label": "加權",
+            }
+            break
+        try:
+            tx_rows = conn.execute(
+                """
+                SELECT date, session, open, high, low, close FROM futures_daily
+                WHERE symbol='TX' AND (session='regular' OR session='day' OR session='' OR session IS NULL)
+                ORDER BY date DESC LIMIT 12
+                """
+            ).fetchall()
+        except sqlite3.Error:
+            tx_rows = []
+        for date, _sess, o, h, l, c in tx_rows:
+            ymd = _ymd8(date)
+            if not ymd or not is_official_daily_bar(ymd, now=clock):
+                continue
+            out["tx"] = {
+                "date": ymd,
+                "open": _bar_px(o),
+                "high": _bar_px(h),
+                "low": _bar_px(l),
+                "close": _bar_px(c),
+                "label": "台指日盤",
+            }
+            break
+        try:
+            txn_rows = conn.execute(
+                """
+                SELECT date, session, open, high, low, close FROM futures_daily
+                WHERE symbol='TX' AND session='night'
+                ORDER BY date DESC LIMIT 12
+                """
+            ).fetchall()
+        except sqlite3.Error:
+            txn_rows = []
+        for date, _sess, o, h, l, c in txn_rows:
+            ymd = _ymd8(date)
+            # 夜盤：交易日當天白天不算「已收」；用同一把官方日收閘（過 13:30 才認當日）
+            if not ymd or not is_official_daily_bar(ymd, now=clock):
+                continue
+            out["txn"] = {
+                "date": ymd,
+                "open": _bar_px(o),
+                "high": _bar_px(h),
+                "low": _bar_px(l),
+                "close": _bar_px(c),
+                "label": "台指夜盤",
+            }
+            break
+    finally:
+        conn.close()
+
+    bits: List[str] = []
+    for key in ("twii", "tx", "txn"):
+        bar = out.get(key) or {}
+        if not bar:
+            continue
+        hi = bar.get("high")
+        lo = bar.get("low")
+        cl = bar.get("close")
+        bits.append(
+            f"{bar.get('label')} {_fmt_ymd_slash(str(bar.get('date') or ''))}"
+            f" 高{_px_face(hi)} 低{_px_face(lo)} 收{_px_face(cl)}"
+        )
+    today = clock.strftime("%Y%m%d")
+    closed_note = ""
+    try:
+        from trading_calendar import is_tw_market_holiday
+
+        if clock.weekday() >= 5 or is_tw_market_holiday(today):
+            closed_note = "今日休市／未開盤；"
+    except Exception:
+        if clock.weekday() >= 5:
+            closed_note = "今日休市／未開盤；"
+    if bits:
+        out["asof_note"] = (
+            f"{closed_note}截至（台北）" + "；".join(bits) + "。盤中未收不當印到。"
+        )
+    elif closed_note:
+        out["asof_note"] = f"{closed_note}尚無已收官方柱。"
+    return out
+
+
+def _px_face(val: Optional[float]) -> str:
+    if val is None:
+        return "—"
+    if abs(val - round(val)) < 1e-6:
+        return f"{int(round(val))}"
+    return f"{val:.2f}".rstrip("0").rstrip(".")
+
+
+def _gate_touch_line(level: float, bar: Optional[Dict[str, Any]]) -> str:
+    if not bar:
+        return "尚無對應已收柱"
+    hi = bar.get("high")
+    lo = bar.get("low")
+    cl = bar.get("close")
+    if hi is None or lo is None:
+        return "尚無對應已收柱"
+    try:
+        h, l = float(hi), float(lo)
+    except (TypeError, ValueError):
+        return "尚無對應已收柱"
+    face = (
+        f"{bar.get('label') or ''} {_fmt_ymd_slash(str(bar.get('date') or ''))}"
+        f" 高{_px_face(h)} 低{_px_face(l)} 收{_px_face(cl)}"
+    ).strip()
+    if l <= level <= h:
+        return f"區間碰到　{face}"
+    if level > h:
+        gap = level - h
+        return f"高未到（差{_px_face(gap)}）　{face}"
+    return f"低已破　{face}"
+
+
+def _gate_bar_for_role(
+    role: str, bars: Dict[str, Any], ctx: str = ""
+) -> Optional[Dict[str, Any]]:
+    r = str(role or "")
+    blob = f"{r} {ctx}"
+    if "夜盤" in blob:
+        return bars.get("txn") or bars.get("tx") or bars.get("twii")
+    if "台指" in blob:
+        return bars.get("tx") or bars.get("txn") or bars.get("twii")
+    if "加權" in blob or "大盤" in blob:
+        return bars.get("twii") or bars.get("tx")
+    # 點位：依上下文；沒寫清楚先對加權（他常混用時表頭會標來源）
+    return bars.get("twii") or bars.get("tx")
+
+
+def _collect_open_index_gates(
+    posts: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """只收他自己文內的指數關；路人正文不進 posts。同價留最新一句。"""
+    try:
+        from biaoke_walk import extract_index_levels
+    except Exception:
+        return []
+    by_lv: Dict[float, Dict[str, Any]] = {}
+    for p in sorted(posts or [], key=_row_key):
+        if str(p.get("kind") or "") == "bystander":
+            continue
+        text = _scrub_post_text(str(p.get("text") or ""))
+        if not text.strip():
+            continue
+        for hit in extract_index_levels(text):
+            try:
+                lv = float(hit.get("level"))
+            except (TypeError, ValueError):
+                continue
+            if lv < 15000:
+                continue
+            key = round(lv, 2)
+            ctx = str(hit.get("ctx") or "").strip()
+            role = str(hit.get("role") or "點位")
+            how = _SPACE.sub(" ", ctx).strip()
+            if len(how) > 72:
+                how = how[:71] + "…"
+            by_lv[key] = {
+                "level": key,
+                "role": role,
+                "how": how or role,
+                "date": str(p.get("date") or ""),
+                "time": str(p.get("time") or ""),
+            }
+    rows = sorted(by_lv.values(), key=lambda r: float(r["level"]), reverse=True)
+    return rows[:14]
+
+
+def format_index_gates_confront_html(
+    db_path: str = "",
+    *,
+    posts: Optional[Sequence[Dict[str, Any]]] = None,
+    now: Optional[datetime] = None,
+    days: int = 21,
+) -> str:
+    """他自己點過的加權／台指關 × 最新官方已收。一眼對：關、他怎麼說、柱有沒碰到。
+
+    路人價不收；盤中未收不當印到。不是買訊、不是可點個股清單。
+    """
+    path = str(db_path or "").strip()
+    rows_in = list(posts or [])
+    if not rows_in and path:
+        try:
+            from biaoke_desk import load_corpus
+            from biaoke_ingest import is_biaoke_voice
+        except Exception:
+            return ""
+        blob = load_corpus(path)
+        all_posts = list((blob or {}).get("posts") or [])
+        clock = now if now is not None else taipei_now()
+        if clock.tzinfo is None:
+            clock = clock.replace(tzinfo=TAIPEI)
+        else:
+            clock = clock.astimezone(TAIPEI)
+        floor = (clock - timedelta(days=max(7, int(days)))).strftime("%Y-%m-%d")
+        for p in all_posts:
+            day = str(p.get("date") or "")
+            if day and day < floor:
+                continue
+            text = _scrub_post_text(str(p.get("text") or ""))
+            if not text.strip():
+                continue
+            if str(p.get("kind") or "") == "bystander":
+                continue
+            try:
+                if not is_biaoke_voice(text):
+                    continue
+            except Exception:
+                pass
+            rows_in.append(dict(p, text=text))
+    gates = _collect_open_index_gates(rows_in)
+    if not gates:
+        return ""
+    bars = _latest_closed_index_bars(path, now=now) if path else {
+        "twii": None,
+        "tx": None,
+        "txn": None,
+        "asof_note": "",
+    }
+    lines: List[str] = ["<b>關卡 × 官方已收</b>"]
+    note = str(bars.get("asof_note") or "").strip()
+    if note:
+        lines.append(html_escape(note))
+    for g in gates:
+        lv = float(g["level"])
+        role = str(g.get("role") or "點位")
+        how = str(g.get("how") or "")
+        bar = _gate_bar_for_role(role, bars, how)
+        touch = _gate_touch_line(lv, bar)
+        head = f"{_px_face(lv)}（{role}）"
+        lines.append("")
+        lines.append(html_escape(head))
+        if how:
+            lines.append(html_escape(f"他說：{how}"))
+        lines.append(html_escape(f"官方：{touch}"))
+    return "\n".join(lines)
+
+
 def format_unread_digest(
     events: Sequence[Dict[str, Any]],
     *,
@@ -611,6 +964,7 @@ def format_unread_digest(
     """未讀期間同一篇抓很多次，只留最新再口語重述。按飆大才看。
 
     顯示對齊最新兩則主文＋這兩串自回；更早未讀不拿來組「現在在講」。
+    空白鍵路徑：無個股藍字、附關卡對官方已收。
     """
     uniq: Dict[str, Dict[str, Any]] = {}
     for ev in events:
@@ -635,7 +989,14 @@ def format_unread_digest(
     root_ids = {_thread_root_id(p) for p in mains if _thread_root_id(p)}
     if root_ids:
         replies = [r for r in replies if _thread_root_id(r) in root_ids]
-    return format_focus_oral(mains, replies, now=now, db_path=db_path or "")
+    return format_focus_oral(
+        mains,
+        replies,
+        now=now,
+        db_path=db_path or "",
+        stock_links=False,
+        include_gates=True,
+    )
 
 
 _ASK_SKIP = {
@@ -698,10 +1059,11 @@ def _thread_root_id(post: Dict[str, Any]) -> str:
     return aid.split(":", 1)[0] if aid else ""
 
 
-def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16) -> str:
+def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 24) -> str:
     """按飆大空白進去：口語重述最新重點。不准倒原文、不念課綱、不疊舊位階。
 
     只認最新兩則主文＋這兩串他自己的回文（含樓中樓自回）；路人不当判斷。
+    空白鍵：無個股藍字／選股狀態；附關卡 × 官方已收對照。
     """
     try:
         from biaoke_desk import load_corpus
@@ -737,7 +1099,12 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
         list(reversed(thread_replies[-max(0, int(n_reply)) :])) if n_reply else []
     )
     return format_focus_oral(
-        latest, latest_replies, now=taipei_now(), db_path=db_path or ""
+        latest,
+        latest_replies,
+        now=taipei_now(),
+        db_path=db_path or "",
+        stock_links=False,
+        include_gates=True,
     )
 
 
