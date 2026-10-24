@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""勝率買點母體 × 大量區／均線再篩・歷史回測（靜默量化）。
+"""勝率買點母體 × 大量區／裸 K＋量再篩・歷史回測（建議哪檔靜默量化）。
 
 母體＝歷史 leave_zero 且過 buy_exclude_v5（現況整包 proxy；可選 AI ONLY）。
-變體＝vz_mid_thin／ma60_rising／untangle_up／combo_vz_ma60。
+變體＝TRACK_VARIANTS（含 no_upper_dump／vol_own_mid／bull_close／combo_*）。
 不准改黃金買點公式；不寫話筒；結果進 evolve tape＋JSON 報告。
 
 用法：
@@ -197,6 +197,10 @@ def run_backtest(
                             "pressure": feat.get("pressure"),
                             "support": feat.get("support"),
                             "zone_date": feat.get("zone_date"),
+                            "bull_close": feat.get("bull_close"),
+                            "upper_shadow_ratio": feat.get("upper_shadow_ratio"),
+                            "vol_own_pctile": feat.get("vol_own_pctile"),
+                            "dump_r1e1": feat.get("dump_r1e1"),
                         }
                     )
                 for h in SCORE_HORIZONS:

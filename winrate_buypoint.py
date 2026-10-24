@@ -756,6 +756,27 @@ def filter_intraday_from_roster(
     return out
 
 
+def apply_suggest_paint(
+    db_path: str,
+    rows: Sequence[Dict[str, Any]],
+    *,
+    as_of: str = "",
+) -> List[Dict[str, Any]]:
+    """建議哪檔過閘篩（vol_own_mid）：命中才進推薦，可多檔；空則退回原列。
+
+    roster 落檔仍是完整 AI leave_zero；本函式只改話筒／推播／AI 建議臉。
+    不准改 leave_zero 公式、不准硬標優先 1～2 檔。
+    """
+    try:
+        from winrate_volzone_filter_verify import paint_suggest_rows
+
+        painted, _meta = paint_suggest_rows(db_path, rows, as_of=as_of)
+        return list(painted)
+    except Exception:
+        logger.debug("勝率建議篩略過，退回整包", exc_info=True)
+        return list(rows or [])
+
+
 def resolve_button_rows(
     db_path: str,
     *,
@@ -765,6 +786,7 @@ def resolve_button_rows(
     """按鈕按下：回 (as_of, rows, mode)。mode＝full|filter|empty。
 
     優先用最新完整官方收基準日；當日 roster 缺／掃版本舊就當場補掃再建檔。
+    回傳列已套建議哪檔過閘篩（空命中退回整包）。
     """
     complete = ""
     try:
@@ -784,8 +806,8 @@ def resolve_button_rows(
         return "", [], "empty"
     if should_apply_intraday_filter(as_of=as_of, now=now):
         filtered = filter_intraday_from_roster(db_path, roster, quotes=quotes)
-        return as_of, filtered, "filter"
-    return as_of, roster, "full"
+        return as_of, apply_suggest_paint(db_path, filtered, as_of=as_of), "filter"
+    return as_of, apply_suggest_paint(db_path, roster, as_of=as_of), "full"
 
 
 def _pair_cache_dir(charts_dir: str, as_of: str) -> str:
