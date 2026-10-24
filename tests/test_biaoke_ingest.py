@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from biaoke_ingest import (
     SESSION_EVERY_SEC,
     AFTER_EVERY_SEC,
+    CLOSED_EVERY_SEC,
     AFTER_CLOSE_EVERY_SEC,
     AFTER_UNTIL_HOUR,
     NIGHT_EVERY_SEC,
@@ -320,6 +321,7 @@ def test_ingest_hook_is_on_product_clocks():
     assert "start_quote_month_backfill" in boot
     assert SESSION_EVERY_SEC == 3 * 60
     assert AFTER_EVERY_SEC == 1 * 60 * 60
+    assert CLOSED_EVERY_SEC == 3 * 60 * 60
     assert PREOPEN_EVERY_SEC == 10 * 60
     assert AFTER_UNTIL_HOUR == 3
     assert REFRESH_LATEST == 2
@@ -327,6 +329,7 @@ def test_ingest_hook_is_on_product_clocks():
     ingest_src = open("biaoke_ingest.py", encoding="utf-8").read()
     assert "refresh_latest_now" in ingest_src
     assert "PREOPEN_EVERY_SEC" in ingest_src
+    assert "CLOSED_EVERY_SEC" in ingest_src
     assert "refresh_after_market_fuse" in src
 
 
@@ -347,11 +350,36 @@ def test_poll_wait_session_after_night():
     after_three = datetime(2026, 9, 10, 3, 0, tzinfo=tz)
     assert poll_wait_seconds(after_three) == AFTER_EVERY_SEC
     sat = datetime(2026, 9, 12, 10, 30, tzinfo=tz)
-    assert poll_wait_seconds(sat) == AFTER_EVERY_SEC
+    assert poll_wait_seconds(sat) == CLOSED_EVERY_SEC
     hol = datetime(2026, 9, 25, 10, 30, tzinfo=tz)
-    assert poll_wait_seconds(hol) == AFTER_EVERY_SEC
+    assert poll_wait_seconds(hol) == CLOSED_EVERY_SEC
     dawn_open = datetime(2026, 9, 10, 4, 10, tzinfo=tz)
     assert poll_wait_seconds(dawn_open) == AFTER_EVERY_SEC
+
+
+def test_poll_wait_closed_day_every_three_hours():
+    """真休市日整天每 3 小時；開市日仍 §12。監看休市到 2026-11-09 同一套。"""
+    tz = ZoneInfo("Asia/Taipei")
+    sat_dawn = datetime(2026, 9, 12, 2, 0, tzinfo=tz)
+    assert poll_wait_seconds(sat_dawn) == CLOSED_EVERY_SEC
+    sat_noon = datetime(2026, 9, 12, 12, 0, tzinfo=tz)
+    assert poll_wait_seconds(sat_noon) == CLOSED_EVERY_SEC
+    sat_night = datetime(2026, 9, 12, 22, 0, tzinfo=tz)
+    assert poll_wait_seconds(sat_night) == CLOSED_EVERY_SEC
+    hol_pre = datetime(2026, 9, 25, 8, 30, tzinfo=tz)
+    assert poll_wait_seconds(hol_pre) == CLOSED_EVERY_SEC
+    hol_session_slot = datetime(2026, 9, 25, 10, 0, tzinfo=tz)
+    assert poll_wait_seconds(hol_session_slot) == CLOSED_EVERY_SEC
+    # 監看窗內週末（到 2026-11-09）同一 3 小時
+    watch_sat = datetime(2026, 11, 7, 11, 0, tzinfo=tz)
+    assert poll_wait_seconds(watch_sat) == CLOSED_EVERY_SEC
+    watch_sun = datetime(2026, 11, 8, 15, 0, tzinfo=tz)
+    assert poll_wait_seconds(watch_sun) == CLOSED_EVERY_SEC
+    # 開市日盤中仍密節奏
+    open_session = datetime(2026, 11, 9, 10, 30, tzinfo=tz)  # 週一
+    assert poll_wait_seconds(open_session) == SESSION_EVERY_SEC
+    open_night = datetime(2026, 11, 9, 20, 0, tzinfo=tz)
+    assert poll_wait_seconds(open_night) == AFTER_EVERY_SEC
 
 
 def test_poll_wait_preopen_five_minutes_and_old_replies():
@@ -384,10 +412,10 @@ def test_poll_wait_preopen_five_minutes_and_old_replies():
     assert poll_wait_seconds(hourly) == AFTER_EVERY_SEC
     sat_pre = datetime(2026, 9, 12, 8, 30, tzinfo=tz)
     assert in_preopen_window(sat_pre) is False
-    assert poll_wait_seconds(sat_pre) == AFTER_EVERY_SEC
+    assert poll_wait_seconds(sat_pre) == CLOSED_EVERY_SEC
     hol_pre = datetime(2026, 9, 25, 8, 30, tzinfo=tz)
     assert in_preopen_window(hol_pre) is False
-    assert poll_wait_seconds(hol_pre) == AFTER_EVERY_SEC
+    assert poll_wait_seconds(hol_pre) == CLOSED_EVERY_SEC
 
 
 def test_preopen_rereads_latest_two_threads(tmp_path, monkeypatch):
