@@ -137,7 +137,8 @@ _STANCE_NOTE_STACK = 2.58
 _LR_PRIM_DY = 1.78
 _LR_SEC_DY = 1.92
 
-_LOOKUP_RENDER_TTL_SEC = 45.0
+# 同人連查／同檔翻回：90s 內指紋不變就複製，不進 paint。盤中現價進指紋，變了必 miss。
+_LOOKUP_RENDER_TTL_SEC = 90.0
 _LOOKUP_RENDER_LOCK = Lock()
 _LOOKUP_RENDER_MEMO: dict = {}
 _LOOKUP_RENDER_MEMO_MAX = 96
@@ -247,7 +248,7 @@ def _lookup_render_memo_get(key: tuple, save_path: str) -> str:
 def _lookup_render_memo_put(key: tuple, path: str) -> None:
     if not path or not os.path.isfile(path):
         return
-    # 穩定副本：scratch 檔名每次不同且可能被清；暖路徑要靠這份活過 45s。
+    # 穩定副本：scratch 檔名每次不同且可能被清；暖路徑要靠這份活過 TTL。
     try:
         memo_dir = os.path.join(OUTPUT_DIR, "_lookup_memo")
         os.makedirs(memo_dir, exist_ok=True)

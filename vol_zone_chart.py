@@ -87,7 +87,8 @@ def lookup_vol_ensure_days(
     """查股第 3／4 張 prepare 同一窗長；提早 ensure 用這個 days。"""
     return max(int(bars) + int(lookback) + VOL_ZONE_MA60_WARM, 180)
 # 同檔同 as_of 壓力區圖短快取（名單→點股三張可複用）
-_VZ_RENDER_TTL_SEC = 45.0
+# 對齊查股 memo TTL：同指紋 90s 內複製不進 paint（現價指紋變了會 miss）
+_VZ_RENDER_TTL_SEC = 90.0
 _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64

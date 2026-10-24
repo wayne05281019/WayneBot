@@ -148,22 +148,28 @@ def test_glance_prefers_card_over_stale_tape():
 
 
 def test_structure_lookup_passes_card_into_spot():
-    from three_in_one_chart import render_lookup_structure_result
+    from three_in_one_chart import (
+        _lookup_structure_bars_and_spot,
+        render_lookup_structure_result,
+    )
 
+    # spot 組裝抽到 _lookup_structure_bars_and_spot；render 仍傳 quote=spot
+    helper = inspect.getsource(_lookup_structure_bars_and_spot)
     src = inspect.getsource(render_lookup_structure_result)
-    assert "_spot_quote" in src
-    assert "card=card" in src
+    assert "_spot_quote" in helper
+    assert "card=card" in helper or "card=card" in src
     assert "quote=spot" in src
 
 
 def test_structure_axis_close_uses_quote_not_last_bar_only():
     """右軸今收／現價必須跟決策卡 quote 同源；不准只吃官方 last_bar（上市上櫃也會分岔）。"""
-    from biaoke_chart import render_biaoke_structure_png
+    from biaoke_chart import _structure_render_memo_key, render_biaoke_structure_png
 
     src = inspect.getsource(render_biaoke_structure_png)
+    memo_src = inspect.getsource(_structure_render_memo_key)
     assert 'quote.get("close")' in src or "quote.get('close')" in src
     assert 'close_tag = "現價"' in src or "close_tag = '現價'" in src
-    assert "hdr-band-v78j-axis-card" in src
+    assert "hdr-band-v78j-axis-card" in (src + memo_src)
     # 舊寫法：只認 last_bar.close 當今收＝回歸點
     assert 'text": f"今收 {_px_quote(last_c)}"' not in src
 

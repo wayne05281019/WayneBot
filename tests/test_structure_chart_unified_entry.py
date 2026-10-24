@@ -10,21 +10,25 @@ def test_all_structure_entries_use_biaoke_chart_renderer():
     from bot_servers import WayneTelegramBot
     from three_in_one_chart import render_lookup_structure_result
 
+    from biaoke_chart import _structure_render_memo_key
+
     rsrc = inspect.getsource(render_biaoke_structure_png)
-    # 頭欄 memo：v78j＝右軸今收／現價跟決策卡同源（含興櫃）；舊鍵相容備援
+    memo_src = inspect.getsource(_structure_render_memo_key)
+    band_src = rsrc + memo_src
+    # 頭欄 memo：v78j＝右軸今收／現價跟決策卡同源（含興櫃）；鍵在 _structure_render_memo_key
     assert (
-        "hdr-band-v78j-axis-card" in rsrc
-        or "hdr-band-v78h-quote-ink" in rsrc
-        or "hdr-band-v78g-close-half" in rsrc
-        or "hdr-band-v78f-gap-tighten" in rsrc
-        or "hdr-band-v78e-dash-rails" in rsrc
-        or "hdr-band-v78d-label-gaps" in rsrc
-        or "hdr-band-v78c-c-polish" in rsrc
-        or "hdr-band-v77-vol-min-visible" in rsrc
-        or "hdr-band-v76-no-next-press" in rsrc
-        or "hdr-band-v75-next-press" in rsrc
-        or "hdr-band-v74-ohlc-align" in rsrc
-        or "hdr-band-v73" in rsrc
+        "hdr-band-v78j-axis-card" in band_src
+        or "hdr-band-v78h-quote-ink" in band_src
+        or "hdr-band-v78g-close-half" in band_src
+        or "hdr-band-v78f-gap-tighten" in band_src
+        or "hdr-band-v78e-dash-rails" in band_src
+        or "hdr-band-v78d-label-gaps" in band_src
+        or "hdr-band-v78c-c-polish" in band_src
+        or "hdr-band-v77-vol-min-visible" in band_src
+        or "hdr-band-v76-no-next-press" in band_src
+        or "hdr-band-v75-next-press" in band_src
+        or "hdr-band-v74-ohlc-align" in band_src
+        or "hdr-band-v73" in band_src
     )
     assert "status_row" in rsrc
     assert "status_h_gap" in rsrc

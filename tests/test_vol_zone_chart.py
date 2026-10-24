@@ -166,16 +166,20 @@ def test_lookup_structure_uses_vol_zone_view():
     from three_in_one_chart import (
         _bars_from_official,
         _bars_from_pack_face,
+        _lookup_structure_bars_and_spot,
         render_lookup_structure_result,
     )
 
+    # 柱組裝抽到 _lookup_structure_bars_and_spot；render 仍走同一套官方柱
+    helper = inspect.getsource(_lookup_structure_bars_and_spot)
     src = inspect.getsource(render_lookup_structure_result)
-    assert "prepare_volume_zone" in src
-    assert "_bars_from_pack_face" in src
-    assert 'pack.get("bars")' in src or "pack.get(\"bars\")" in src
-    assert "load_official_ohlc" in src  # pack bars 不足才退回
-    assert "official_work" in src
-    assert 'pack["view"]' in src  # 長窗也不足才退回 view
+    assert "prepare_volume_zone" in helper
+    assert "_bars_from_pack_face" in helper
+    assert 'pack.get("bars")' in helper or "pack.get(\"bars\")" in helper
+    assert "load_official_ohlc" in helper  # pack bars 不足才退回
+    assert "official_work" in helper
+    assert 'pack["view"]' in helper  # 長窗也不足才退回 view
+    assert "_lookup_structure_bars_and_spot" in src
     assert "_STRUCTURE_LOOKUP_FIG" in src
     assert "VOL_ZONE_FIG_H_NAV" not in src
     bars = inspect.getsource(_bars_from_official)

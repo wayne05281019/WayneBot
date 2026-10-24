@@ -91,22 +91,26 @@ def test_structure_builders_do_not_auto_paint_next_press():
     from biaoke_chart import build_biaoke_structure_chart, render_biaoke_structure_png
     from three_in_one_chart import render_lookup_structure_result
 
+    from biaoke_chart import _structure_render_memo_key
+
     build_src = inspect.getsource(build_biaoke_structure_chart)
     lookup_src = inspect.getsource(render_lookup_structure_result)
     render_src = inspect.getsource(render_biaoke_structure_png)
+    memo_src = inspect.getsource(_structure_render_memo_key)
+    band_src = render_src + memo_src
     assert "resolve_next_press_band" not in build_src
     assert "resolve_next_press_band" not in lookup_src
     assert 'f"下一壓' not in render_src
     assert "下一壓 " not in render_src
     assert (
-        "hdr-band-v78j-axis-card" in render_src
-        or "hdr-band-v78h-quote-ink" in render_src
-        or "hdr-band-v78g-close-half" in render_src
-        or "hdr-band-v78f-gap-tighten" in render_src
-        or "hdr-band-v78e-dash-rails" in render_src
-        or "hdr-band-v78d-label-gaps" in render_src
-        or "hdr-band-v78c-c-polish" in render_src
-        or "hdr-band-v77-vol-min-visible" in render_src
+        "hdr-band-v78j-axis-card" in band_src
+        or "hdr-band-v78h-quote-ink" in band_src
+        or "hdr-band-v78g-close-half" in band_src
+        or "hdr-band-v78f-gap-tighten" in band_src
+        or "hdr-band-v78e-dash-rails" in band_src
+        or "hdr-band-v78d-label-gaps" in band_src
+        or "hdr-band-v78c-c-polish" in band_src
+        or "hdr-band-v77-vol-min-visible" in band_src
     )
     assert "axhspan" not in render_src
 

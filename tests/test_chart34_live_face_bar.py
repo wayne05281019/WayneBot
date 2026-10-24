@@ -112,12 +112,25 @@ def test_overlay_does_not_invent_volume_without_card():
 
 
 def test_structure_paint_calls_overlay():
-    from biaoke_chart import render_biaoke_structure_png
+    from biaoke_chart import (
+        _structure_face_rows,
+        _structure_render_memo_key,
+        render_biaoke_structure_png,
+    )
 
-    src = inspect.getsource(render_biaoke_structure_png)
-    assert "overlay_live_face_from_card" in src
-    assert "is_live" in src
-    assert "live-face" in src or "last_v0" in src
+    # live-face 疊柱抽到 _structure_face_rows；memo 鍵含 live-face；paint 入口必呼叫它
+    face_src = inspect.getsource(_structure_face_rows)
+    memo_src = inspect.getsource(_structure_render_memo_key)
+    paint_src = inspect.getsource(render_biaoke_structure_png)
+    assert "overlay_live_face_from_card" in face_src
+    assert "is_live" in face_src
+    assert "_structure_face_rows" in paint_src
+    assert (
+        "live-face" in paint_src
+        or "last_v0" in paint_src
+        or "live-face" in face_src
+        or "live-face" in memo_src
+    )
 
 
 def test_vol_zone_paint_calls_overlay():
@@ -133,13 +146,15 @@ def test_vol_zone_paint_calls_overlay():
 
 def test_structure_stabilize_after_live_face():
     """結構圖：live-face 先疊再算止穩，盤中末日低／收才進 hold_l60。"""
-    from biaoke_chart import render_biaoke_structure_png
+    from biaoke_chart import _structure_face_rows, render_biaoke_structure_png
 
-    src = inspect.getsource(render_biaoke_structure_png)
-    face_i = src.find("overlay_live_face_from_card")
-    stab_i = src.find("stabilize_bar_indices")
-    assert face_i >= 0 and stab_i > face_i
-    assert "_paint_stabilize_marks" in src
+    face_src = inspect.getsource(_structure_face_rows)
+    paint_src = inspect.getsource(render_biaoke_structure_png)
+    assert "overlay_live_face_from_card" in face_src
+    face_call = paint_src.find("_structure_face_rows")
+    stab_i = paint_src.find("stabilize_bar_indices")
+    assert face_call >= 0 and stab_i > face_call
+    assert "_paint_stabilize_marks" in paint_src
 
 
 def test_lookup_vol_comment_keeps_official_zone_only():

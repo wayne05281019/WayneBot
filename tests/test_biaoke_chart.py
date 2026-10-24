@@ -498,7 +498,10 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert path
     assert Image.open(path).size[0] >= 1000
     assert (tmp_path / "nameplate.png").stat().st_size > 24_000
+    from biaoke_chart import _structure_render_memo_key
+
     src = inspect.getsource(render_biaoke_structure_png)
+    memo_src = inspect.getsource(_structure_render_memo_key)
     # 75：最可能改短 dash 直連標籤，不再在 render 裡 _halo_line 彎路徑；軌線仍走 _paint_extended_rail
     assert "_paint_extended_rail" in src
     assert "_leader_note" in src or "_place_right_notes" in src
@@ -511,30 +514,32 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "x_fut" in src
     assert "paint_locator_inset" in src
     assert "_STOCK_LOCATOR_RECT" in src
+    # 頭欄 memo 鍵抽到 _structure_render_memo_key（暖路徑與 paint 共用）
+    band_src = src + memo_src
     assert (
-        "hdr-band-v78j-axis-card" in src
-        or "hdr-band-v78h-quote-ink" in src
-        or "hdr-band-v78g-close-half" in src
-        or "hdr-band-v78f-gap-tighten" in src
-        or "hdr-band-v78e-dash-rails" in src
-        or "hdr-band-v78d-label-gaps" in src
-        or "hdr-band-v78c-c-polish" in src
-        or "hdr-band-v77-vol-min-visible" in src
-        or "hdr-band-v76-no-next-press" in src
-        or "hdr-band-v75-next-press" in src
-        or "hdr-band-v74-ohlc-align" in src
-        or "hdr-band-v73" in src
-        or "hdr-band-v72" in src
-        or "hdr-band-v71" in src
-        or "hdr-band-v70" in src
-        or "hdr-band-v69" in src
-        or "hdr-band-v68" in src
-        or "hdr-band-v67" in src
-        or "hdr-band-v64" in src
-        or "hdr-band-v63" in src
-        or "hdr-band-v62" in src
-        or "hdr-band-v61" in src
-        or "hdr-band-v9c" in src
+        "hdr-band-v78j-axis-card" in band_src
+        or "hdr-band-v78h-quote-ink" in band_src
+        or "hdr-band-v78g-close-half" in band_src
+        or "hdr-band-v78f-gap-tighten" in band_src
+        or "hdr-band-v78e-dash-rails" in band_src
+        or "hdr-band-v78d-label-gaps" in band_src
+        or "hdr-band-v78c-c-polish" in band_src
+        or "hdr-band-v77-vol-min-visible" in band_src
+        or "hdr-band-v76-no-next-press" in band_src
+        or "hdr-band-v75-next-press" in band_src
+        or "hdr-band-v74-ohlc-align" in band_src
+        or "hdr-band-v73" in band_src
+        or "hdr-band-v72" in band_src
+        or "hdr-band-v71" in band_src
+        or "hdr-band-v70" in band_src
+        or "hdr-band-v69" in band_src
+        or "hdr-band-v68" in band_src
+        or "hdr-band-v67" in band_src
+        or "hdr-band-v64" in band_src
+        or "hdr-band-v63" in band_src
+        or "hdr-band-v62" in band_src
+        or "hdr-band-v61" in band_src
+        or "hdr-band-v9c" in band_src
     )
     assert "_STATUS_CHIP_SCALE" in src
     assert "過壓後掉回撐下＝出貨痕跡" in src
