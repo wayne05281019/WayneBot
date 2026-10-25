@@ -2104,14 +2104,14 @@ def _close_tags_lower_right_y(
     y0 = float(ymin)
     y1 = float(ymax)
     span = max(y1 - y0, 1.0)
-    # 低位空窗（使用者鎖：右下，低於 2000 目標／次層帶）
-    band_lo, band_hi = 1000.0, 1500.0
-    mid = 1250.0
+    # 低位空窗（v11 右下；再壓低一點，避開 1500 線旁擁擠）
+    band_lo, band_hi = 900.0, 1350.0
+    mid = 1100.0
     pad = span * 0.04
     if (y0 + pad) <= mid <= (y1 - pad):
         ay = float(mid)
     elif (y0 + pad) <= band_lo <= (y1 - pad):
-        ay = float(band_lo + (band_hi - band_lo) * 0.35)
+        ay = float(band_lo + (band_hi - band_lo) * 0.40)
     elif y0 < band_hi and y1 > band_lo:
         a = max(y0 + pad, band_lo)
         b = min(y1 - pad, band_hi)

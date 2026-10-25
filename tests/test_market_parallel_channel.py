@@ -270,7 +270,8 @@ def test_channel_label_mark_pad_avoids_nav_arrow_band():
         placed=[],
         mark_pad=0.0,  # 空窗內清 K 實體
     )
-    assert cx < n * 0.92
+    assert cx < n * 0.95
+    assert cx < n - 3.0  # 不准死貼末日箭堆
 
 
 def test_paint_channel_splits_rails_and_nav_aware_labels():
@@ -359,13 +360,55 @@ def test_upper_rail_label_sticks_near_line():
     assert abs(cy - y_line) < 10.0
 
 
+def test_steep_desc_rail_label_stays_on_visible_segment():
+    """短段下降軌左延飛出圖外時，標必須掛在可見軌段，不准用 y_now 浮空。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_seg_y
+
+    n = 168
+    # 模擬 2454：錨只在 148～155，左延會遠高於 ymax
+    highs = np.linspace(5200.0, 4100.0, n)
+    lows = highs - 80.0
+    mas: list = []
+    seg_u = ((148.0, 5480.0, "a"), (155.0, 5165.0, "b"))
+    seg_l = ((148.0, 5100.0, "a"), (155.0, 4785.0, "b"))
+    ymin, ymax = 3000.0, 5750.0
+    span = ymax - ymin
+    mark_pad = span * 0.10
+    for name, seg, y_now, outside in (
+        ("下降壓 4625", seg_u, 4625.0, 1),
+        ("平行撐 4245", seg_l, 4245.0, -1),
+    ):
+        cx, cy = _blank_for_channel_label(
+            text=name,
+            seg=seg,
+            y_now=y_now,
+            outside=outside,
+            n=n,
+            ymin=ymin,
+            ymax=ymax,
+            dx=12.0,
+            dy=span * 0.045,
+            highs=highs,
+            lows=lows,
+            mas=mas,
+            placed=[],
+            mark_pad=mark_pad,
+        )
+        y_line = _channel_seg_y(seg, cx, y_now)
+        assert ymin < y_line < ymax
+        assert abs(cy - y_line) < span * 0.06
+        assert cx / max(n - 1, 1) >= 0.70
+
+
 def test_close_tags_lower_right_band():
-    """結構昨收／今收錨在右下低位空窗（約 1000～1500），不准貼現價。"""
+    """結構昨收／今收錨在右下低位空窗（約 900～1350），不准貼現價。"""
     from biaoke_chart import _close_tags_lower_right_y
 
     ay = _close_tags_lower_right_y(500.0, 4200.0, avoid_price=2375.0)
-    assert 1000.0 <= ay <= 1600.0
-    assert abs(ay - 2375.0) > 400.0
+    assert 900.0 <= ay <= 1400.0
+    assert abs(ay - 2375.0) > 500.0
 
 
 def test_market_vol_zone_canvas_matches_daily_k(tmp_path):

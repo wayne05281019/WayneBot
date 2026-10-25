@@ -2308,11 +2308,31 @@ def _blank_for_channel_label(
     pref = int(outside) or 1
     # 貼軌硬窗：標心須貼近所屬軌（約一格標高內）；不准飄到通道正中／只認 y_now
     rail_soft = max(dy * 0.95, span * 0.045)
-    # 中右空窗起錨往左掃；上軌略偏中段（下降壓常在中右線旁），下軌更右
-    if mpad > 0 and not near_last:
-        x_anchor = min(float(n) * (0.87 if pref < 0 else 0.78), x_hi - dx * 0.55)
-    else:
-        x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
+    # 箭尖縫：碰撞／硬擋用接近真箭高；口袋底邊用較小 tip，免得把線旁空窗吃光
+    tip_arrow = max(mpad * 0.70, dy * 0.30, span * 0.018) if mpad > 0 else 0.0
+    tip = max(span * 0.010, dy * 0.08, min(max(tip_arrow * 0.45, span * 0.012), span * 0.020))
+    y_vis_lo = float(ymin) + max(dy * 0.55, span * 0.02)
+    y_vis_hi = float(ymax) - max(dy * 0.55, span * 0.02)
+
+    def _rail_visible(cx: float) -> Tuple[bool, float]:
+        """該 x 的軌位必須落在可見軸內；下降軌左延常飛出圖外，不准在那裡掛標。"""
+        y_line = _channel_seg_y(seg, cx, y_now)
+        return (y_vis_lo <= float(y_line) <= y_vis_hi), float(y_line)
+
+    # 起錨：從右往左找「軌線仍在圖內」的中右點（下降壓／平行撐都貼可見軌段）
+    x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
+    if not near_last:
+        found_anchor = False
+        for xf in (0.90, 0.86, 0.82, 0.78, 0.74, 0.70, 0.94):
+            cx0 = min(float(n - 1) * xf, x_hi - dx * 0.55)
+            ok, _yl = _rail_visible(cx0)
+            if ok:
+                x_anchor = cx0
+                found_anchor = True
+                break
+        if not found_anchor:
+            # 整段左延都出界：貼末日軌價旁
+            x_anchor = min(float(n) - 1.2, x_hi - dx * 0.45)
     best: Optional[Tuple[float, float, float]] = None  # score, cx, cy
 
     def _window_hl(cx: float, *, half: Optional[float] = None) -> Tuple[float, float]:
@@ -2345,9 +2365,18 @@ def _blank_for_channel_label(
     ) -> None:
         nonlocal best
         # 軟約束：只認該 x 的軌位（下降軌左右高度差大，不准拿 y_now 開後門）
-        y_line = _channel_seg_y(seg, cx, y_now)
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            return
         if abs(cy - y_line) > rail_soft:
             return
+        if not (y_vis_lo <= float(cy) <= y_vis_hi):
+            return
+        # 硬擋買點▲：下軌標底不准伸進 K低−箭高（平行撐不准壓紅／綠▲）
+        if tip_arrow > 0 and pref < 0:
+            _lh, loc_lo_a = _window_hl(cx)
+            if (cy + dy / 2.0) > (loc_lo_a - tip_arrow):
+                return
         use_pad = mpad if pad is None else max(float(pad), 0.0)
         box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
         if _channel_box_blocked(
@@ -2365,20 +2394,27 @@ def _blank_for_channel_label(
             return
         # 貼線分：離軌越遠越扣（下降壓／平行撐都必須貼所屬線，不准浮空）
         dist_rail = abs(cy - y_line) / span
-        score -= dist_rail * 6.5
-        # 上軌偏好略下方（通道內側線旁）；下軌偏好略上方
-        if pref > 0 and -dy * 0.15 <= (cy - y_line) <= dy * 0.55:
-            score += 0.55
-        elif pref < 0 and -dy * 0.15 <= (y_line - cy) <= dy * 0.55:
-            score += 0.55
+        score -= dist_rail * 8.5
+        # 上軌偏好略下方（通道內側線旁）；下軌偏好略上方——錯側重罰
+        if pref > 0:
+            if -dy * 0.10 <= (y_line - cy) <= dy * 0.65:
+                score += 0.75
+            elif cy > y_line + dy * 0.15:
+                score -= 0.85
+        else:
+            if -dy * 0.10 <= (cy - y_line) <= dy * 0.65:
+                score += 0.75
+            elif cy < y_line - dy * 0.15:
+                score -= 0.85
         if mpad > 0 and not near_last:
             xf = cx / max(float(n) - 1.0, 1.0)
-            if xf > 0.90:
+            # 可見軌段偏右；太右（壓末日箭堆）略扣，太左（軌飛出／浮空）重扣
+            if xf > 0.93:
                 score -= 0.40
-            if pref < 0 and 0.70 <= xf <= 0.90:
-                score += 0.20
-            elif pref > 0 and 0.55 <= xf <= 0.85:
-                score += 0.20
+            elif xf < 0.72:
+                score -= 0.55
+            if 0.78 <= xf <= 0.91:
+                score += 0.35
         if best is None or score > best[0]:
             best = (score, cx, cy)
 
@@ -2392,28 +2428,27 @@ def _blank_for_channel_label(
         edge = max(gap, span * 0.006, dy * 0.04)
         pockets: List[Tuple[float, float, float]] = []  # p_lo, p_hi, bonus
         if pref < 0:
-            # 下軌：軌上 → K 低（平行撐貼線上方）
-            top = loc_lo - edge
-            bot = y_line + edge * 0.2
+            # 下軌：軌上 → K低−tip（平行撐貼線上方，上緣避開買點▲）
+            top = loc_lo - tip
+            bot = y_line + edge * 0.15
             if top > bot + max(dy * 0.20, span * 0.008):
                 pockets.append((bot, top, 0.85))
-            top2 = y_line - edge * 0.2
-            bot2 = loc_hi + edge
+            top2 = y_line - edge * 0.15
+            bot2 = loc_hi + tip
             if top2 > bot2 + max(dy * 0.20, span * 0.008):
                 pockets.append((bot2, top2, 0.15))
         else:
-            # 上軌：K 高 → 軌下（下降壓貼線下方／通道內側線旁）
-            top = y_line - edge * 0.2
-            bot = loc_hi + edge
+            # 上軌：K高＋tip → 軌下（下降壓貼線下方）
+            top = y_line - edge * 0.15
+            bot = loc_hi + tip
             if top > bot + max(dy * 0.20, span * 0.008):
                 pockets.append((bot, top, 0.85))
-            top2 = loc_lo - edge
-            bot2 = y_line + edge * 0.2
+            top2 = loc_lo - tip
+            bot2 = y_line + edge * 0.15
             if top2 > bot2 + max(dy * 0.20, span * 0.008):
                 pockets.append((bot2, top2, 0.15))
         for p_lo, p_hi, side_bonus in pockets:
             pocket_h = p_hi - p_lo
-            # 貼軌側優先（下降壓貼上軌下緣、平行撐貼下軌上緣）
             fracs = (
                 ((0.82, 0.42), (0.65, 0.30), (0.45, 0.18), (0.28, 0.10))
                 if pref > 0
@@ -2422,21 +2457,32 @@ def _blank_for_channel_label(
             for frac, bonus in fracs:
                 cy = p_lo + pocket_h * frac
                 cy = min(cy, p_hi - dy / 2.0)
-                cy = max(cy, p_lo)
+                cy = max(cy, p_lo + dy / 2.0 * 0.15)
+                # 碰撞用 tip：標盒不准伸進箭帶；再試 pad=0 保貼線
                 _consider(
                     cx,
                     cy,
                     1.55 + side_bonus + bonus + min(pocket_h / span, 0.30),
+                    pad=tip,
+                    ignore_ma=True,
+                )
+                _consider(
+                    cx,
+                    cy,
+                    1.25 + side_bonus + bonus * 0.5,
                     pad=0.0,
                     ignore_ma=True,
                 )
-        # 無足夠空窗：仍強制貼線外側半格（寧可貼線，不准浮空）
+        # 無足夠空窗：仍強制貼線內側半格（寧可貼線，不准浮空）
+        stick_pad_opts = (tip, max(tip * 0.35, span * 0.006), 0.0)
         if pref > 0:
-            _consider(cx, y_line - gap - dy * 0.35, 1.15, pad=0.0, ignore_ma=True)
-            _consider(cx, y_line + gap + dy * 0.35, 0.70, pad=0.0, ignore_ma=True)
+            for p in stick_pad_opts:
+                _consider(cx, y_line - gap - dy * 0.35, 1.15, pad=p, ignore_ma=True)
+                _consider(cx, y_line + gap + dy * 0.35, 0.70, pad=p, ignore_ma=True)
         else:
-            _consider(cx, y_line + gap + dy * 0.35, 1.15, pad=0.0, ignore_ma=True)
-            _consider(cx, y_line - gap - dy * 0.35, 0.70, pad=0.0, ignore_ma=True)
+            for p in stick_pad_opts:
+                _consider(cx, y_line + gap + dy * 0.35, 1.15, pad=p, ignore_ma=True)
+                _consider(cx, y_line - gap - dy * 0.35, 0.70, pad=p, ignore_ma=True)
 
     if near_last:
         # 盒右緣貼最後一根，只准往左挪幾根；垂直挑離最近 K 最近的空白
@@ -2469,65 +2515,73 @@ def _blank_for_channel_label(
         cy = lo_w - gap - dy / 2.0 - mpad
         return cx, max(float(ymin) + dy / 2.0 + gap, min(cy, float(ymax) - dy / 2.0 - gap))
 
-    # 主掃：沿軌往左，先評線旁空窗，再評貼線外側
+    # 主掃：只在「軌線可見」的 x 往左，先評線旁空窗，再評貼線外側
     near_steps = 72 if mpad > 0 else 34
-    k_near = (0.35, 0.7, 1.15, 1.7, 2.4, 3.2) if mpad > 0 else (1.0, 1.7, 2.5)
+    k_near = (0.35, 0.7, 1.15, 1.7, 2.4) if mpad > 0 else (1.0, 1.7, 2.5)
     for step in range(0, near_steps):
         cx = x_anchor - step * max(dx * 0.16, 0.85)
         if cx < dx * 0.4:
             break
-        y_line = _channel_seg_y(seg, cx, y_now)
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            continue
         near = 1.0 - step / float(near_steps + 8)
         loc_hi, loc_lo = _window_hl(cx)
         # ① 線旁空窗（對照紅標：軌上／軌下淨空）
         _pocket_candidates(cx, y_line, loc_hi, loc_lo)
-        # ② 貼線兩側小步（空窗不夠時）
+        # ② 貼線兩側小步（空窗不夠時）；pad 由大到小保貼線
         for sign in (1, -1):
             for k in k_near:
                 if sign > 0:
                     cy = y_line + gap + dy / 2.0 + max(0.0, k - 1.0) * dy * 0.45
                 else:
                     cy = y_line - gap - dy / 2.0 - max(0.0, k - 1.0) * dy * 0.45
-                side_pen = 0.0 if sign == pref else 0.18
-                _consider(cx, cy, near - abs(cy - y_line) / span * 0.9 - side_pen)
-        # ③ 箭帶外保底（仍貼軌軟窗內）
-        if mpad > 0:
-            extra = max(dy * 0.25, span * 0.015)
-            _consider(cx, loc_lo - mpad - gap - dy / 2.0 - extra, near - 0.05)
-            _consider(cx, loc_hi + mpad + gap + dy / 2.0 + extra, near - 0.05)
-        if best is not None and step >= 12 and best[0] > 0.55:
+                side_pen = 0.0 if sign == pref else 0.22
+                for p in (tip, tip * 0.35, 0.0):
+                    _consider(
+                        cx,
+                        cy,
+                        near - abs(cy - y_line) / span * 1.1 - side_pen,
+                        pad=p,
+                        ignore_ma=True,
+                    )
+        if best is not None and step >= 10 and best[0] > 0.55:
             break
     if best is not None:
         return best[1], best[2]
 
-    # 外側／放寬：仍沿軌＋_consider
-    env_hi = float(np.nanmax(highs)) if len(highs) else float(y_now)
-    env_lo = float(np.nanmin(lows)) if len(lows) else float(y_now)
-    for arr in mas:
-        ok = np.isfinite(arr) & (arr > 0)
-        if ok.any():
-            env_hi = max(env_hi, float(np.nanmax(arr[ok])))
-            env_lo = min(env_lo, float(np.nanmin(arr[ok])))
-    saved_mpad = mpad
-    for frac in (1.0, 0.75, 0.5, 0.35):
-        mpad = saved_mpad * frac
-        for step in range(0, max(int(n), 16)):
-            cx = x_anchor - step * max(dx * 0.18, 0.9)
-            y_line = _channel_seg_y(seg, cx, y_now)
-            loc_hi, loc_lo = _window_hl(cx)
-            _pocket_candidates(cx, y_line, loc_hi, loc_lo)
-            if pref < 0:
-                _consider(cx, y_line + gap + dy / 2.0, 0.1 - step * 0.002, pad=mpad)
-                _consider(cx, y_line - gap - dy / 2.0, 0.05 - step * 0.002, pad=mpad)
-            else:
-                _consider(cx, y_line - gap - dy / 2.0, 0.1 - step * 0.002, pad=mpad)
-                _consider(cx, y_line + gap + dy / 2.0, 0.05 - step * 0.002, pad=mpad)
-            if best is not None:
-                return best[1], best[2]
-    mpad = saved_mpad
+    # 外側／放寬：仍只認可見軌＋貼線；pad 降到 0
+    for step in range(0, max(int(n), 16)):
+        cx = x_anchor - step * max(dx * 0.18, 0.9)
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            continue
+        loc_hi, loc_lo = _window_hl(cx)
+        _pocket_candidates(cx, y_line, loc_hi, loc_lo)
+        stick_cy = (
+            y_line + gap + dy * 0.35 if pref < 0 else y_line - gap - dy * 0.35
+        )
+        for p in (tip, 0.0):
+            _consider(cx, stick_cy, 0.15 - step * 0.002, pad=p, ignore_ma=True)
+        if best is not None:
+            return best[1], best[2]
+
+    # 最後保底：可見軌上強制貼線（寧可輕壓，不准用 y_now 浮空）
+    for xf in (0.90, 0.86, 0.82, 0.78, 0.74, 0.70, 0.94):
+        cx = min(float(n - 1) * xf, x_hi - dx * 0.4)
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            continue
+        if pref >= 0:
+            cy = min(y_line - gap - dy * 0.28, y_vis_hi)
+        else:
+            cy = max(y_line + gap + dy * 0.28, y_vis_lo)
+        cy = min(max(cy, y_vis_lo), y_vis_hi)
+        return cx, cy
+    # 軸內連可見軌都沒有：貼末日軌價（仍是軌，不是通道正中空想）
     if pref >= 0:
-        return x_anchor, min(float(ymax) - dy / 2.0 - gap, float(y_now) + gap + dy / 2.0)
-    return x_anchor, max(float(ymin) + dy / 2.0 + gap, float(y_now) + gap + dy / 2.0)
+        return x_anchor, min(y_vis_hi, float(y_now) - gap - dy * 0.28)
+    return x_anchor, max(y_vis_lo, float(y_now) + gap + dy * 0.28)
 
 
 def paint_vol_zone_parallel_channel(
