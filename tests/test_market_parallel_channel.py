@@ -257,7 +257,7 @@ def test_channel_label_mark_pad_avoids_nav_arrow_band():
         mark_pad=mark_pad,
     )
     y_line = _channel_seg_y(seg, cx, 90.0)
-    assert abs(cy - y_line) < span * 0.08  # 貼線
+    assert abs(cy - y_line) <= 3.5 * 0.50 + 0.01  # ≤ 半格字高
     box = (cx - 4.0, cx + 4.0, cy - 1.75, cy + 1.75)
     assert not _channel_box_blocked(
         *box,
@@ -321,8 +321,8 @@ def test_lower_rail_label_prefers_pocket_above_rail():
     )
     y_line = _channel_seg_y(seg, cx, y_now)
     assert cy >= y_line - 1.0
-    assert abs(cy - y_line) < 12.0  # 貼線
-    assert 0.35 * n < cx < 0.92 * n
+    assert abs(cy - y_line) <= 4.0 * 0.50 + 0.01  # ≤ 半格字高
+    assert 0.35 * n < cx < 0.95 * n
 
 
 def test_upper_rail_label_sticks_near_line():
@@ -357,7 +357,7 @@ def test_upper_rail_label_sticks_near_line():
         mark_pad=7.0,
     )
     y_line = _channel_seg_y(seg, cx, y_now)
-    assert abs(cy - y_line) < 10.0
+    assert abs(cy - y_line) <= 4.0 * 0.50 + 0.01  # ≤ 半格字高
 
 
 def test_steep_desc_rail_label_stays_on_visible_segment():
@@ -375,6 +375,7 @@ def test_steep_desc_rail_label_stays_on_visible_segment():
     seg_l = ((148.0, 5100.0, "a"), (155.0, 4785.0, "b"))
     ymin, ymax = 3000.0, 5750.0
     span = ymax - ymin
+    dy = span * 0.045
     mark_pad = span * 0.10
     for name, seg, y_now, outside in (
         ("下降壓 4625", seg_u, 4625.0, 1),
@@ -389,7 +390,7 @@ def test_steep_desc_rail_label_stays_on_visible_segment():
             ymin=ymin,
             ymax=ymax,
             dx=12.0,
-            dy=span * 0.045,
+            dy=dy,
             highs=highs,
             lows=lows,
             mas=mas,
@@ -398,17 +399,18 @@ def test_steep_desc_rail_label_stays_on_visible_segment():
         )
         y_line = _channel_seg_y(seg, cx, y_now)
         assert ymin < y_line < ymax
-        assert abs(cy - y_line) < span * 0.06
+        assert abs(cy - y_line) <= dy * 0.50 + 1e-6
         assert cx / max(n - 1, 1) >= 0.70
 
 
 def test_close_tags_lower_right_band():
-    """結構昨收／今收錨在右下低位空窗（約 900～1350），不准貼現價。"""
+    """結構昨收／今收錨在右下最低空窗（約 550～950），不准貼現價／中右。"""
     from biaoke_chart import _close_tags_lower_right_y
 
     ay = _close_tags_lower_right_y(500.0, 4200.0, avoid_price=2375.0)
-    assert 900.0 <= ay <= 1400.0
-    assert abs(ay - 2375.0) > 500.0
+    assert 550.0 <= ay <= 1000.0
+    assert abs(ay - 2375.0) > 1000.0
+    assert ay < 1500.0
 
 
 def test_market_vol_zone_canvas_matches_daily_k(tmp_path):

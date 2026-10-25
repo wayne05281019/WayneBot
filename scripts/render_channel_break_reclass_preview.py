@@ -147,6 +147,12 @@ def main() -> None:
         action="store_true",
         help="只渲大量區滿版（跳過結構）",
     )
+    ap.add_argument(
+        "--before-from",
+        type=Path,
+        default=None,
+        help="未修標籤底圖目錄（review-*）：複製為 before，避免 3081 NO_RECLASS 前後同檔假對照",
+    )
     args = ap.parse_args()
     db = _db()
     out_dir = args.out
@@ -161,6 +167,8 @@ def main() -> None:
         "VOL_ZONE_TAG_PT=14(main-role-large)",
         "LAYER_TAG_PT=8.5(next-layer-small)",
     ]
+    if args.before_from:
+        meta_lines.append(f"before_from={args.before_from.resolve()}")
 
     def _clear_caches() -> None:
         try:
@@ -176,7 +184,44 @@ def main() -> None:
         except Exception:
             pass
 
-    if args.phase in ("before", "both"):
+    def _copy_before_from(src_dir: Path) -> None:
+        """把舊審 after（未修標籤臉）拷成本輪 before；結構／大量區 png+jpg+caption。"""
+        from PIL import Image
+
+        src_dir = src_dir.resolve()
+        if not src_dir.is_dir():
+            raise SystemExit(f"before-from missing: {src_dir}")
+        for sid in sids:
+            pairs = [
+                (f"{sid}-structure-after", f"{sid}-structure-before-{stamp}"),
+                (f"{sid}-volzone-after", f"{sid}-volzone-before-fullwidth-{stamp}"),
+            ]
+            if args.vol_only:
+                pairs = [pairs[1]]
+            for src_stem, dst_stem in pairs:
+                src_png = src_dir / f"{src_stem}.png"
+                src_jpg = src_dir / f"{src_stem}.jpg"
+                if not src_png.is_file() and not src_jpg.is_file():
+                    raise SystemExit(f"before-from lack {src_stem} in {src_dir}")
+                dst_png = out_dir / f"{dst_stem}.png"
+                dst_jpg = out_dir / f"{dst_stem}.jpg"
+                if src_png.is_file():
+                    shutil.copy2(src_png, dst_png)
+                elif src_jpg.is_file():
+                    Image.open(src_jpg).convert("RGB").save(
+                        dst_png, format="PNG", optimize=True
+                    )
+                if src_jpg.is_file():
+                    shutil.copy2(src_jpg, dst_jpg)
+                else:
+                    Image.open(dst_png).convert("RGB").save(
+                        dst_jpg, quality=92, optimize=True
+                    )
+                print("before-from", dst_png, "bytes", dst_png.stat().st_size)
+
+    if args.before_from is not None and args.phase in ("before", "both"):
+        _copy_before_from(args.before_from)
+    elif args.phase in ("before", "both"):
         os.environ["WAYNE_CHANNEL_NO_RECLASS"] = "1"
         _clear_caches()
         for sid in sids:

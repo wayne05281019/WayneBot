@@ -2098,35 +2098,36 @@ def _close_tags_lower_right_y(
 ) -> float:
     """昨收／今收錨點 Y。
 
-    v11：主圖**右下空白**（約右軸 1000～1500 低位空窗），跟現價／次層／2000 目標帶拉開；
+    v11：主圖**右下空白**（低於次層／2000 目標／現價帶的空窗）；
     不准擠在現價旁右緣。軸內無該帶則取下緣空白。
     """
     y0 = float(ymin)
     y1 = float(ymax)
     span = max(y1 - y0, 1.0)
-    # 低位空窗（v11 右下；再壓低一點，避開 1500 線旁擁擠）
-    band_lo, band_hi = 900.0, 1350.0
-    mid = 1100.0
+    # 右下最低空窗（明顯低於 1000～1500 中帶；避開 2000 原文目標）
+    band_lo, band_hi = 550.0, 950.0
+    mid = 750.0
     pad = span * 0.04
     if (y0 + pad) <= mid <= (y1 - pad):
         ay = float(mid)
     elif (y0 + pad) <= band_lo <= (y1 - pad):
-        ay = float(band_lo + (band_hi - band_lo) * 0.40)
+        ay = float(band_lo + (band_hi - band_lo) * 0.45)
     elif y0 < band_hi and y1 > band_lo:
         a = max(y0 + pad, band_lo)
         b = min(y1 - pad, band_hi)
-        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.12)
+        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.10)
     else:
-        ay = float(y0 + span * 0.12)
-    # 跟現價拉開（至少約 18% 軸高）；不夠就再往下沉
+        ay = float(y0 + span * 0.10)
+    # 跟現價拉開（至少約 22% 軸高）；不夠就再往下沉
     ap = float(avoid_price or 0.0)
-    if ap > 0 and abs(ay - ap) < span * 0.18:
-        ay = float(min(ay, ap - span * 0.20))
+    if ap > 0 and abs(ay - ap) < span * 0.22:
+        ay = float(min(ay, ap - span * 0.25))
         ay = float(max(ay, y0 + pad))
-    # 亦避開 2000 目標帶中心，免得跟原文目標搶位
-    if abs(ay - 2000.0) < span * 0.06:
-        ay = float(min(ay, 2000.0 - span * 0.08))
-        ay = float(max(ay, y0 + pad))
+    # 亦避開 2000／1500 帶，確保落在右下空白而非中右
+    for band_c in (2000.0, 1500.0, 1000.0):
+        if abs(ay - band_c) < span * 0.05:
+            ay = float(min(ay, band_c - span * 0.07))
+            ay = float(max(ay, y0 + pad))
     return float(ay)
 
 
