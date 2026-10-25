@@ -417,14 +417,16 @@ def test_lookup_vol_gives_header_space_from_volume_blank():
     src = inspect.getsource(_paint_volume_zone)
     assert "head_ratios = [1.28, 3.38, 0.40, 0.98]" in src
     assert "lookup_portrait=False" in inspect.getsource(render_lookup_vol_result)
-    assert "transform=ax1.transAxes" in src
-    assert "0.975" in src
-    # 日標貼主K上框內側（有無導航表頭都掛 ax1），略抬頂少壓末日K
+    assert "transform=ax1.transAxes" in src or "blended_transform_factory" in src
+    # v9：大量區壓／撐釘價線左側；日標仍貼主K上框內側
+    assert "大量區壓" in src and "_left_tag_tf" in src
     assert "貼主K上框內側" in src
     assert "if path_shown:" in src
-    assert "ymax = ymax + (ymax - ymin) * 0.08" in src
+    # v9：有導航時頂空略加大，橘框不跟箭頭互壓
+    assert "ymax = ymax + (ymax - ymin)" in src
     assert "0.985" in src or "0.992" in src
-    assert "set_ylim(0, max(vol_ylim * 1.30" in src
+    # v8／v9：量標貼柱 → ylim 跟 vol_lab_y／y_top 走（不再寫死 1.30）
+    assert "vol_lab_y" in src and ("set_ylim(0, float(y_top))" in src or "vol_ylim" in src)
 
 
 def test_volume_bars_one_per_traded_day_3081():

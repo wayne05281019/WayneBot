@@ -670,6 +670,7 @@ def paint_written_and_next_levels(
     tag_size: float = 10.0,
     layer_labels: str = "right",
     written_labels: str = "auto",
+    busy_ys: Optional[Sequence[float]] = None,
 ) -> List[float]:
     """原文目標水平線＋破撐／過壓下一層（次大量區淺灰底＋壓／撐兩線）。
 
@@ -677,6 +678,7 @@ def paint_written_and_next_levels(
       - \"left\"＝結構圖：下一層壓／撐偏左（比照大量區左側標）
       - \"right\"／\"notes\"＝右側或併入 right_notes
     written_labels：\"auto\"＝有 right_notes 走 notes，否則 right；也可強制 left／right／notes。
+    busy_ys：已佔用價位（如大量區壓／撐），標籤 y 微避讓不准互蓋。
     標籤一律帶 CJK fontproperties。平行撐不搶「下一撐」名。
     """
     ys: List[float] = []
@@ -691,12 +693,15 @@ def paint_written_and_next_levels(
     fp = _cjk_fp(max(7.5, float(tag_size) - 1.5), "bold")
     fp_tag = _cjk_fp(max(8.5, float(tag_size) - 0.5), "bold")
     fp_none = _cjk_fp(8.2, "bold")
+    # v9：關鍵標白底不透明＋高 z，不准被 K／箭頭／均線壓住
     _tag_box = dict(
         boxstyle="round,pad=0.28",
         facecolor="#ffffff",
         linewidth=1.1,
-        alpha=0.94,
+        alpha=1.0,
     )
+    # 略高於大量區壓／撐角標（22），同欄近價時仍以白底可讀為先
+    _TAG_Z = 23
 
     def _text(x, y, text, *, color, size=None, transform=None, ha="right", va="center", bbox=None):
         kw: Dict[str, Any] = {
@@ -704,7 +709,7 @@ def paint_written_and_next_levels(
             "va": va,
             "color": color,
             "fontsize": float(size if size is not None else max(7.5, float(tag_size) - 1.5)),
-            "zorder": 11,
+            "zorder": int(_TAG_Z),
             "clip_on": False,
         }
         use_fp = fp_tag if bbox is not None else fp
@@ -727,7 +732,8 @@ def paint_written_and_next_levels(
             span = max(abs(float(y1) - float(y0)), 1.0)
         except Exception:
             span = max(abs(y) * 0.2, 50.0)
-        gap = span * 0.028
+        # 原文目標微避讓；下一層壓／撐改釘線上（見 left 分支），不准被縫推離線
+        gap = span * 0.032
         for _ in range(8):
             if all(abs(y - u) >= gap for u in used):
                 break
@@ -737,7 +743,26 @@ def paint_written_and_next_levels(
         used.append(y)
         return y
 
+    def _left_tag_x(raw_y: float, used: Sequence[float]) -> float:
+        """近價互壓時改走第二欄 x，Y 仍釘線上。"""
+        try:
+            y0, y1 = ax.get_ylim()
+            span = max(abs(float(y1) - float(y0)), 1.0)
+        except Exception:
+            span = max(abs(float(raw_y)) * 0.2, 50.0)
+        gap = span * 0.045
+        if any(abs(float(raw_y) - float(u)) < gap for u in used):
+            return 0.20
+        return 0.012
+
     label_ys: List[float] = []
+    for _by in list(busy_ys or []):
+        try:
+            _bf = float(_by or 0)
+        except (TypeError, ValueError):
+            _bf = 0.0
+        if _bf > 0:
+            label_ys.append(_bf)
 
     for row in written:
         y = _num(row.get("price"))
@@ -781,8 +806,10 @@ def paint_written_and_next_levels(
             )
         elif written_mode == "left":
             try:
+                # 近主區／下一層改第二欄；白底高 z，線仍對得到
+                _wx = _left_tag_x(float(y), label_ys[:-1] if label_ys else [])
                 _text(
-                    0.012,
+                    float(_wx),
                     lab_y,
                     label,
                     color=color_written,
@@ -862,11 +889,14 @@ def paint_written_and_next_levels(
                         except Exception:
                             pass
                     ys.append(y)
-                lab_y = _label_y(y, label_ys)
                 if layer_mode == "left":
+                    # v9：Y 釘線上；近主區壓撐改第二欄，不准被推離線
+                    lab_y = float(y)
+                    lx_left = _left_tag_x(lab_y, label_ys)
+                    label_ys.append(lab_y)
                     try:
                         _text(
-                            0.012,
+                            float(lx_left),
                             lab_y,
                             label,
                             color=color,
@@ -879,6 +909,7 @@ def paint_written_and_next_levels(
                     except Exception:
                         pass
                 elif layer_mode == "notes" and notes is not None:
+                    lab_y = _label_y(y, label_ys)
                     notes.append(
                         {
                             "x": lx,
@@ -889,13 +920,19 @@ def paint_written_and_next_levels(
                         }
                     )
                 else:
+                    lab_y = _label_y(y, label_ys)
                     try:
+                        # v9：右緣下一層標也帶白底，不准被 K／箭頭切字
                         _text(
                             0.988,
                             lab_y,
                             label,
                             color=color,
                             transform=ax.get_yaxis_transform(),
+                            ha="right",
+                            va="center",
+                            bbox={**_tag_box, "edgecolor": color},
+                            size=max(9.0, float(tag_size) - 0.2),
                         )
                     except Exception:
                         pass
@@ -907,7 +944,7 @@ def paint_written_and_next_levels(
                     "ha": "right",
                     "va": "bottom",
                     "color": color_none,
-                    "zorder": 11,
+                    "zorder": 20,
                     "clip_on": True,
                 }
                 if fp_none is not None:

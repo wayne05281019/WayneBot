@@ -3507,9 +3507,9 @@ def _paint_volume_zone(
             y_lo = min(y_lo, float(np.nanmin(_arr[ok_ma])))
     ymin = min(y_lo, lo) - ypad
     ymax = max(y_hi, hi) + ypad * (1.35 if with_nav_signals else 1.25)
-    # 日標貼主K上框內側：略抬頂，少壓末日K／導航箭
+    # 日標貼主K上框內側：略抬頂，少壓末日K／導航箭（v9 再多一點，橘框不跟箭頭互壓）
     if path_shown:
-        ymax = ymax + (ymax - ymin) * 0.08
+        ymax = ymax + (ymax - ymin) * (0.12 if with_nav_signals else 0.08)
     # 平行軌現價可能高於壓／低於撐：ylim 先吃進去，線才不會被裁
     if with_parallel_channel:
         try:
@@ -3616,85 +3616,16 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
             channel_label_rects = []
-    # 橘框日標：個股貼主K上框內側右上，不准掛表頭壓圖例。大盤滿寬改掛標題區，這裡不畫。
-    if path_shown and not market_wide:
-        ax1.text(
-            0.995,
-            0.985,
-            path_shown,
-            transform=ax1.transAxes,
-            ha="right",
-            va="top",
-            fontproperties=_fp(8.4, "bold"),
-            color=_CALL,
-            zorder=12,
-            clip_on=True,
-            linespacing=1.08,
-            bbox=dict(
-                boxstyle="round,pad=0.16",
-                facecolor="#fff8e1",
-                edgecolor="#ef6c00",
-                linewidth=0.75,
-                alpha=0.96,
-            ),
-        )
+    # v9：橘框／壓撐／下一層／原文目標改在導航箭頭之後再畫（高 z＋白底），
+    # 優先保文字可讀；水平線仍先畫（見下方 paint 只補標）。
     ax1.yaxis.tick_right()
     ax1.tick_params(labelbottom=False, labelsize=10)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, zorder=0, alpha=0.85)
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(10))
 
-    # 壓／撐標：回圖內左上／左下原位（微調內縮），不准挪到軸外把 K 擠小
-    _tag_box = dict(
-        boxstyle="round,pad=0.30",
-        facecolor="#ffffff",
-        linewidth=1.15,
-        alpha=0.94,
-    )
-    ax1.text(
-        0.012,
-        0.975,
-        f"大量區壓 {_fmt_price(hi)}",
-        transform=ax1.transAxes,
-        ha="left",
-        va="top",
-        fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
-        color=_PRESS,
-        zorder=10,
-        bbox={**_tag_box, "edgecolor": _PRESS},
-    )
-    ax1.text(
-        0.012,
-        0.025,
-        f"大量區撐 {_fmt_price(lo)}",
-        transform=ax1.transAxes,
-        ha="left",
-        va="bottom",
-        fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
-        color=_HOLD,
-        zorder=10,
-        bbox={**_tag_box, "edgecolor": _HOLD},
-    )
-    # D4／D5-T1：原文目標水平線＋破撐 NEXT（或暫無）；非買訊
-    if next_pack:
-        try:
-            from biaoke_next_support import paint_written_and_next_levels
-
-            paint_written_and_next_levels(
-                ax1,
-                sid=str(sid or ""),
-                next_pack=next_pack,
-                xmin=float(xs[0]) - 0.35 if len(xs) else -0.35,
-                xmax=float(n) + 0.55,
-                right_notes=None,
-                tag_size=10.5,
-                ymin=float(ymin),
-                ymax=float(ymax),
-            )
-        except Exception:
-            logger.debug("大量區原文／下一撐線略過 sid=%s", sid, exc_info=True)
-
     # 大量區右軸／表頭：已刪綠匡白底「收」晶片；不准再畫「昨收」白底標
+    # v9：下一層／原文線＋標改在導航之後一次畫（見下方關鍵標區塊）
 
     # 查詢時間：整張底圖右上角（台北）；不進 K 區、不跟除息搶位。
     # hdr_quote 已在走勢標前取過；戳／表頭／臉柱同一張今天棒。
@@ -3897,6 +3828,90 @@ def _paint_volume_zone(
             )
             used_x.append(float(xs[i]))
 
+    # v9：關鍵文字最後畫（白底＋高 z），不准被箭頭／三角／均線短標／K 壓住
+    from matplotlib.transforms import blended_transform_factory
+
+    _key_tag_box = dict(
+        boxstyle="round,pad=0.30",
+        facecolor="#ffffff",
+        linewidth=1.15,
+        alpha=1.0,
+    )
+    _KEY_Z = 22
+    _left_tag_tf = blended_transform_factory(ax1.transAxes, ax1.transData)
+    # 主區壓／撐：釘在價線左側（對得到線；避開左下角導航▲）
+    if float(hi or 0) > 0:
+        ax1.text(
+            0.012,
+            float(hi),
+            f"大量區壓 {_fmt_price(hi)}",
+            transform=_left_tag_tf,
+            ha="left",
+            va="center",
+            fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
+            color=_PRESS,
+            zorder=int(_KEY_Z),
+            clip_on=False,
+            bbox={**_key_tag_box, "edgecolor": _PRESS},
+        )
+    if float(lo or 0) > 0:
+        ax1.text(
+            0.012,
+            float(lo),
+            f"大量區撐 {_fmt_price(lo)}",
+            transform=_left_tag_tf,
+            ha="left",
+            va="center",
+            fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
+            color=_HOLD,
+            zorder=int(_KEY_Z),
+            clip_on=False,
+            bbox={**_key_tag_box, "edgecolor": _HOLD},
+        )
+    # 下一層／原文偏左對線；busy_ys 避開主區壓撐標
+    if next_pack:
+        try:
+            from biaoke_next_support import paint_written_and_next_levels
+
+            paint_written_and_next_levels(
+                ax1,
+                sid=str(sid or ""),
+                next_pack=next_pack,
+                xmin=float(xs[0]) - 0.35 if len(xs) else -0.35,
+                xmax=float(n) + 0.55,
+                right_notes=None,
+                tag_size=10.5,
+                ymin=float(ymin),
+                ymax=float(ymax),
+                layer_labels="left",
+                written_labels="left",
+                busy_ys=(float(hi or 0), float(lo or 0)),
+            )
+        except Exception:
+            logger.debug("大量區關鍵標略過 sid=%s", sid, exc_info=True)
+    # 橘框日標：貼主K上框內側右上，不准掛表頭壓圖例；v9 最後畫＋高 z，不被箭頭壓
+    if path_shown and not market_wide:
+        ax1.text(
+            0.995,
+            0.985,
+            path_shown,
+            transform=ax1.transAxes,
+            ha="right",
+            va="top",
+            fontproperties=_fp(8.4, "bold"),
+            color=_CALL,
+            zorder=int(_KEY_Z),
+            clip_on=True,
+            linespacing=1.08,
+            bbox=dict(
+                boxstyle="round,pad=0.16",
+                facecolor="#fff8e1",
+                edgecolor="#ef6c00",
+                linewidth=0.75,
+                alpha=0.98,
+            ),
+        )
+
     layer_i = -1
     try:
         from biaoke_next_support import find_layer_bar_index
@@ -3933,9 +3948,18 @@ def _paint_volume_zone(
         if layer_raw > 0:
             layer_h = float(lookup_vol_to_display([layer_raw], float(vol_ylim))[0])
     # v8 建議：量標同高並排、貼近柱頂（縮短連線）；相鄰日水平偏移更短
+    # v9：量標高度吃進相鄰柱頂，白底不准壓到旁邊高峰量柱
     _peak_h = max(float(spike_h or 0), float(layer_h or 0), float(vol_ylim) * 0.35)
-    vol_lab_y = float(_peak_h) * 1.06 + float(vol_ylim) * 0.02
-    y_top = max(float(vol_ylim) * 1.12, float(vol_lab_y) * 1.10)
+    try:
+        _i0 = max(0, min(int(spike_i), int(layer_i if layer_i >= 0 else spike_i)) - 2)
+        _i1 = min(int(n), max(int(spike_i), int(layer_i if layer_i >= 0 else spike_i)) + 3)
+        for _vi in range(_i0, _i1):
+            if _vi < len(vol_heights):
+                _peak_h = max(_peak_h, float(vol_heights[_vi] or 0))
+    except Exception:
+        pass
+    vol_lab_y = float(_peak_h) * 1.10 + float(vol_ylim) * 0.03
+    y_top = max(float(vol_ylim) * 1.14, float(vol_lab_y) * 1.12)
     ax2.set_ylim(0, float(y_top))
 
     def _vol_day_callout(
@@ -3969,14 +3993,14 @@ def _paint_volume_zone(
                 va="center",
                 fontproperties=_fp(9.5, "bold"),
                 color=ink,
-                zorder=6,
+                zorder=16,
                 clip_on=False,
                 bbox=dict(
                     boxstyle="round,pad=0.16",
                     facecolor=face,
                     edgecolor=edge,
                     linewidth=0.65,
-                    alpha=0.95,
+                    alpha=0.98,
                 ),
                 arrowprops=dict(
                     arrowstyle="-",
@@ -3997,14 +4021,14 @@ def _paint_volume_zone(
             va="center",
             fontproperties=_fp(10.0, "bold"),
             color=ink,
-            zorder=6,
+            zorder=16,
             clip_on=False,
             bbox=dict(
                 boxstyle="round,pad=0.16",
                 facecolor=face,
                 edgecolor=edge,
                 linewidth=0.65,
-                alpha=0.95,
+                alpha=0.98,
             ),
             arrowprops=dict(
                 arrowstyle="-",
