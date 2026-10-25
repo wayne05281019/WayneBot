@@ -2308,9 +2308,9 @@ def _blank_for_channel_label(
     pref = int(outside) or 1
     # 貼軌軟窗：准兩側找空窗，但不准飛離軌太遠（不是寫死座標）
     rail_soft = max(dy * 2.2, span * 0.12)
-    # 中右空窗起錨往左掃（聯亞紅標約 0.75–0.85 帶）；略離最右箭堆；非寫死座標
+    # 中右空窗起錨往左掃（紅標約兩顆買點▲之間）；略離最右箭堆；非寫死座標
     if mpad > 0 and not near_last:
-        x_anchor = min(float(n) * (0.84 if pref < 0 else 0.80), x_hi - dx * 0.55)
+        x_anchor = min(float(n) * (0.87 if pref < 0 else 0.80), x_hi - dx * 0.55)
     else:
         x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
     best: Optional[Tuple[float, float, float]] = None  # score, cx, cy
@@ -2371,9 +2371,9 @@ def _blank_for_channel_label(
             score -= abs(xf - 0.62) * 0.18
             if xf > 0.88:
                 score -= 0.35
-            # 紅標帶約在圖中右（x 分位 0.65–0.88）再加分
-            if 0.65 <= xf <= 0.88:
-                score += 0.18
+            # 紅標帶約在圖中右（兩顆近端買點▲之間，約 0.70–0.90）
+            if 0.70 <= xf <= 0.90:
+                score += 0.22
         if best is None or score > best[0]:
             best = (score, cx, cy)
 
