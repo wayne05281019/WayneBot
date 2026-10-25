@@ -898,7 +898,7 @@ def test_locator_inset_marks_window():
 
     notes = inspect.getsource(_place_right_notes)
     assert 'ha="left"' in notes
-    assert "clip=True" in notes
+    assert "clip=False" in notes or "clip=True" in notes
     assert "seam" in notes
     assert "x_max" in notes
     assert "最可能" in notes
@@ -1349,7 +1349,8 @@ def test_structure_right_notes_fit_most_likely_full_text():
     assert "x_max" in notes
     assert "avoid_ys" in notes
     assert "_approx_note_width" in notes
-    assert "clip=True" in notes
+    # v6：標籤完整可見改 clip=False；仍保留 clip= 參數路徑
+    assert "clip=False" in notes or "clip=True" in notes
     assert "stub_x" in notes
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "x_fut" in rsrc

@@ -3932,21 +3932,15 @@ def _paint_volume_zone(
         layer_raw = float(vol_heights[layer_i] or 0)
         if layer_raw > 0:
             layer_h = float(lookup_vol_to_display([layer_raw], float(vol_ylim))[0])
-    # 爆大量／下一層量日標；相鄰日（≤2 根）改左右分開＋虛線，不准上下疊
-    ax2.set_ylim(
-        0,
-        max(
-            vol_ylim * 1.30,
-            spike_h * 1.38 if spike_h > 0 else 0.0,
-            layer_h * 1.38 if layer_h > 0 else 0.0,
-            vol_ylim * 1.30,
-        ),
+    # v6：爆大量／下一層量日＝同一水平高度左右並排，各虛線連柱
+    y_top = max(
+        vol_ylim * 1.34,
+        spike_h * 1.42 if spike_h > 0 else 0.0,
+        layer_h * 1.42 if layer_h > 0 else 0.0,
+        vol_ylim * 1.34,
     )
-    adjacent_vol = bool(
-        layer_h > 0
-        and 0 <= layer_i < int(n)
-        and abs(int(layer_i) - int(spike_i)) <= 2
-    )
+    ax2.set_ylim(0, float(y_top))
+    vol_lab_y = float(y_top) * 0.92
 
     def _vol_day_callout(
         *,
@@ -3957,31 +3951,54 @@ def _paint_volume_zone(
         face: str,
         ink: str,
         side: str,
-        dy: int = 18,
-        dx: int = 0,
+        lab_y: Optional[float] = None,
     ) -> None:
-        """side=left／right／center：標籤偏左或偏右，虛線連回量柱頂。
-
-        相鄰量日拉開左右，但 dx 不准甩到過遠左緣（約一標寬）。
-        """
-        if side == "left":
-            # v4：略拉開但仍貼近量柱（~58pt），不准甩到圖最左
-            xytext = (-58 + int(dx), int(dy))
-            ha = "right"
-        elif side == "right":
-            xytext = (58 + int(dx), int(dy))
-            ha = "left"
-        else:
-            xytext = (int(dx), int(dy))
-            ha = "center"
+        """side=left／right／center；有 lab_y＝資料座標水平並排，否則貼柱頂。"""
+        if lab_y is not None:
+            if side == "left":
+                tx = max(-0.2, float(x) - 4.8)
+                ha = "right"
+            elif side == "right":
+                tx = min(float(n) - 0.4, float(x) + 4.8)
+                ha = "left"
+            else:
+                tx = float(x)
+                ha = "center"
+            ax2.annotate(
+                str(text),
+                xy=(float(x), float(y)),
+                xytext=(float(tx), float(lab_y)),
+                ha=ha,
+                va="center",
+                fontproperties=_fp(9.5, "bold"),
+                color=ink,
+                zorder=6,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle="round,pad=0.16",
+                    facecolor=face,
+                    edgecolor=edge,
+                    linewidth=0.65,
+                    alpha=0.95,
+                ),
+                arrowprops=dict(
+                    arrowstyle="-",
+                    color=edge,
+                    lw=0.85,
+                    linestyle=(0, (2.2, 1.6)),
+                    shrinkA=1,
+                    shrinkB=2,
+                ),
+            )
+            return
         ax2.annotate(
             str(text),
             xy=(float(x), float(y)),
-            xytext=xytext,
+            xytext=(0, 18),
             textcoords="offset points",
-            ha=ha,
-            va="bottom",
-            fontproperties=_fp(9.5 if side != "center" else 10.0, "bold"),
+            ha="center",
+            va="center",
+            fontproperties=_fp(10.0, "bold"),
             color=ink,
             zorder=6,
             clip_on=False,
@@ -4002,17 +4019,14 @@ def _paint_volume_zone(
             ),
         )
 
-    # 較早量日偏左、較晚偏右（奇鋐 08/26 下一層｜08/27 爆大量）；高低錯開再減互壓
     spike_side = "center"
     layer_side = "center"
-    spike_dy, layer_dy = 18, 18
-    if adjacent_vol:
+    twin = bool(layer_h > 0 and 0 <= layer_i < int(n) and int(layer_i) != int(spike_i))
+    if twin:
         if int(layer_i) < int(spike_i):
             layer_side, spike_side = "left", "right"
-            layer_dy, spike_dy = 24, 12
         else:
             layer_side, spike_side = "right", "left"
-            layer_dy, spike_dy = 12, 24
 
     _vol_day_callout(
         x=float(spike_i),
@@ -4022,7 +4036,7 @@ def _paint_volume_zone(
         face="#fffde7",
         ink="#5d4037",
         side=spike_side,
-        dy=spike_dy,
+        lab_y=vol_lab_y if twin else None,
     )
     if layer_h > 0 and 0 <= layer_i < int(n):
         layer_md = _md(view["date"].iloc[layer_i]) if "date" in view.columns else ""
@@ -4034,7 +4048,7 @@ def _paint_volume_zone(
             face="#e3f2fd",
             ink="#0d47a1",
             side=layer_side,
-            dy=layer_dy,
+            lab_y=vol_lab_y if twin else None,
         )
         try:
             ax1.axvline(
