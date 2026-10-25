@@ -19,6 +19,11 @@ WRITTEN_LABEL_TMPL = "飆大原文目標 {price}・非買訊"
 NEXT_HOLD_LABEL_TMPL = "下一層撐 {price}"
 NEXT_PRESS_LABEL_TMPL = "下一層壓 {price}"
 NEXT_LAYER_SOURCE = "次大量區"
+# v11：下一層壓／撐整組同一字級（結構＝大量區）；略縮輔助避擋，掃位優先。主壓撐／原文／量標不跟縮。
+LAYER_TAG_PT = 8.5
+LAYER_TAG_SIZE_DELTA = 1.35  # 相容舊測試／說明
+LAYER_TAG_SIZE_FLOOR = 8.2
+LAYER_TAG_PAD = 0.20
 
 # 相容舊測試／靜默鍵顯示名
 SOURCE_NEXT_VOL = "次大量區撐"
@@ -650,6 +655,314 @@ def find_layer_bar_index(
     return -1
 
 
+def _approx_layer_tag_half_w(text: str, tag_size: float) -> float:
+    """資料座標半寬粗估（沿 K 索引）；CJK 偏寬，略保守以免實畫仍壓柱。"""
+    nchars = max(len(str(text or "")), 4)
+    return max(3.6, 0.72 * float(nchars) * (max(float(tag_size), 8.0) / 10.0))
+
+
+
+def _min_vertical_clearance(
+    *,
+    x0: float,
+    x1: float,
+    y: float,
+    highs: Sequence[float],
+    lows: Sequence[float],
+) -> float:
+    """盒內相對 K 的最小垂直距離；無柱則回大值。"""
+    import math
+
+    n = min(len(highs), len(lows))
+    if n <= 0:
+        return 1.0e9
+    bar_hw = 0.42
+    i0 = max(0, int(math.floor(float(x0) - bar_hw)))
+    i1 = min(n - 1, int(math.ceil(float(x1) + bar_hw)))
+    best = 1.0e9
+    hit = False
+    for i in range(i0, i1 + 1):
+        if float(i) + bar_hw < float(x0) or float(i) - bar_hw > float(x1):
+            continue
+        try:
+            hk = float(highs[i])
+            lk = float(lows[i])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if hk <= 0 or lk <= 0:
+            continue
+        hit = True
+        if lk <= float(y) <= hk:
+            return 0.0
+        if float(y) < lk:
+            best = min(best, lk - float(y))
+        else:
+            best = min(best, float(y) - hk)
+    return 1.0e9 if not hit else float(best)
+
+
+def _layer_box_overlap_score(
+    *,
+    x0: float,
+    x1: float,
+    y: float,
+    half_h: float,
+    highs: Sequence[float],
+    lows: Sequence[float],
+    mas: Optional[Sequence[Sequence[float]]] = None,
+    occupied: Optional[Sequence[Tuple[float, float, float, float]]] = None,
+) -> float:
+    """重疊 K／近距柱列／均線／已放標的代價；愈低愈好。"""
+    score = 0.0
+    n = min(len(highs), len(lows))
+    if n <= 0:
+        return score
+    import math
+
+    # K 柱資料座標半寬（與影線柱身對齊），避免右溝誤算末日柱
+    bar_hw = 0.42
+    i0 = max(0, int(math.floor(float(x0) - bar_hw)))
+    i1 = min(n - 1, int(math.ceil(float(x1) + bar_hw)))
+    y_lo = float(y) - float(half_h)
+    y_hi = float(y) + float(half_h)
+    soft_r = max(float(half_h) * 5.5, abs(float(y)) * 0.022, 28.0)
+    recent_from = max(0, n - max(8, int(n * 0.12)))
+    for i in range(i0, i1 + 1):
+        bx0_i, bx1_i = float(i) - bar_hw, float(i) + bar_hw
+        if bx1_i < float(x0) or bx0_i > float(x1):
+            continue
+        try:
+            hk = float(highs[i])
+            lk = float(lows[i])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if hk <= 0 or lk <= 0:
+            continue
+        if lk <= y_hi and hk >= y_lo:
+            score += 2.5
+            if lk <= float(y) <= hk:
+                # 標壓在真 K 柱上＝重罰（使用者紅圈壞例）
+                score += 8.0
+                mid = 0.5 * (hk + lk)
+                span = max(hk - lk, 1e-6)
+                score += 2.5 * (1.0 - min(abs(float(y) - mid) / span, 1.0))
+        else:
+            # 同 x 柱列近距也擋讀＝軟罰，逼標離開密 K 帶
+            if float(y) < lk:
+                dist = lk - float(y)
+            elif float(y) > hk:
+                dist = float(y) - hk
+            else:
+                dist = 0.0
+            if dist < soft_r:
+                score += 2.2 * (1.0 - dist / soft_r)
+            # 標在近端 K 正下方／上方＝再罰（右溝貼末日柱壞例）
+            if i >= recent_from and dist < soft_r * 1.35:
+                score += 3.2 * (1.0 - min(dist / (soft_r * 1.35), 1.0))
+            # 線遠低於近端行情時，仍算「擋在 K 列下」——逼標稍離末日柱
+            if i >= recent_from and float(y) < lk:
+                score += 2.4 * min(1.0, 380.0 / max(lk - float(y), 50.0))
+        if mas:
+            for arr in mas:
+                if arr is None or i >= len(arr):
+                    continue
+                try:
+                    mv = float(arr[i])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if mv > 0 and abs(mv - float(y)) <= float(half_h) * 1.25:
+                    score += 1.15
+    # 右緣無柱但仍在近端行情正下方（視感貼 K）＝罰，改搶線上中空窗
+    if n > 0:
+        import statistics
+
+        recent_lows = []
+        for j in range(recent_from, n):
+            try:
+                lv = float(lows[j])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if lv > 0:
+                recent_lows.append(lv)
+        if recent_lows:
+            med = float(statistics.median(recent_lows))
+            if float(y) < med - float(half_h):
+                # 僅罰「貼末日柱」右溝；中段高淨空空窗不罰
+                if float(x0) >= float(recent_from) - 0.5:
+                    score += 26.0 + 0.35 * max(0.0, float(x1) - float(recent_from))
+    for box in occupied or ():
+
+        try:
+            ox0, ox1, oy0, oy1 = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+        except (TypeError, ValueError, IndexError):
+            continue
+        ix0, ix1 = max(x0, ox0), min(x1, ox1)
+        iy0, iy1 = max(y_lo, oy0), min(y_hi, oy1)
+        if ix1 > ix0 and iy1 > iy0:
+            score += 10.0 * (ix1 - ix0) * (iy1 - iy0) / max(half_h * 2.0, 1e-6)
+    return float(score)
+
+
+def pick_layer_label_along_line(
+    *,
+    y: float,
+    text: str,
+    xmin: float,
+    xmax: float,
+    highs: Sequence[float],
+    lows: Sequence[float],
+    mas: Optional[Sequence[Sequence[float]]] = None,
+    occupied: Optional[Sequence[Tuple[float, float, float, float]]] = None,
+    tag_size: float = 10.0,
+    y_span: Optional[float] = None,
+) -> Tuple[float, str, Tuple[float, float, float, float]]:
+    """沿水平線掃候選，取重疊代價最低的錨點（不准寫死左／右）。
+
+    候選含左空白、線段中空窗、右溝；同代價偏好較空／較右，避開密 K。
+    回傳 (x, ha, occupied_box)。
+    """
+    import math
+
+    half_w = _approx_layer_tag_half_w(text, tag_size)
+    try:
+        span = float(y_span) if y_span and float(y_span) > 0 else 0.0
+    except (TypeError, ValueError):
+        span = 0.0
+    if span <= 0:
+        try:
+            hs = [float(h) for h in highs if float(h) > 0]
+            ls = [float(l) for l in lows if float(l) > 0]
+            span = max(max(hs) - min(ls), 1.0) if hs and ls else max(abs(float(y)) * 0.2, 50.0)
+        except Exception:
+            span = max(abs(float(y)) * 0.2, 50.0)
+    half_h = max(span * 0.018, abs(float(y)) * 0.0045, 10.0)
+    x_lo = float(xmin) + half_w * 0.12
+    x_hi = float(xmax) - half_w * 0.12
+    if x_hi <= x_lo + 1.0:
+        cx = 0.5 * (float(xmin) + float(xmax))
+        box = (cx - half_w, cx + half_w, float(y) - half_h, float(y) + half_h)
+        return cx, "center", box
+
+    step = max(0.55, (x_hi - x_lo) / 64.0)
+    best: Optional[Tuple[float, float, str, Tuple[float, float, float, float]]] = None
+    trials: List[Tuple[float, str]] = []
+    x = x_lo
+    while x <= x_hi + 1e-9:
+        trials.append((float(x), "center"))
+        x += step
+    trials.append((float(xmin) + half_w * 0.08, "left"))
+    trials.append((float(xmax) - half_w * 0.08, "right"))
+    n_bars = min(len(highs), len(lows))
+    if n_bars > 0:
+        last = float(n_bars - 1)
+        # 右溝：整盒盡量在末日 K 右側（ha=left 錨在 last+ε）
+        trials.append((min(float(xmax) - 0.05, last + 0.55), "left"))
+        trials.append((min(float(xmax) - half_w * 0.15, last + half_w * 0.85), "left"))
+        trials.append((max(float(xmin) + half_w * 0.2, last - half_w * 0.15), "right"))
+        # 左緣空白（含整盒在第一根左側）
+        trials.append((max(float(xmin) + 0.05, -0.15), "left"))
+        trials.append((float(xmin) + half_w * 0.9, "right"))
+        trials.append((min(float(xmin) + 0.35, -0.05), "right"))
+        # 整盒完全離開第 0 根（bar_hw=0.42）
+        trials.append((float(xmin) - 0.25, "right"))
+        trials.append((-0.55, "right"))
+
+    # 可見左欄（資料座標，整盒進界）
+    trials.append((float(xmin) + half_w * 1.05, "left"))
+    trials.append((float(xmin) + half_w * 1.05 + half_w, "center"))
+    # 已放標兩側空窗（常見：原文目標左／右）
+    for ob in occupied or ():
+        try:
+            ox0, ox1 = float(ob[0]), float(ob[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        trials.append((ox0 - half_w * 1.05, "right"))
+        trials.append((ox1 + half_w * 0.15, "left"))
+        trials.append((0.5 * (ox0 + ox1), "center"))
+    # 空窗中心：連續不穿線的段，取中點當候選
+    if n_bars > 0:
+        y_lo = float(y) - half_h
+        y_hi = float(y) + half_h
+        clear: List[int] = []
+        for i in range(n_bars):
+            try:
+                hk = float(highs[i])
+                lk = float(lows[i])
+            except (TypeError, ValueError, IndexError):
+                clear.append(i)
+                continue
+            if hk <= 0 or lk <= 0 or not (lk <= y_hi and hk >= y_lo):
+                clear.append(i)
+        if clear:
+            run_s = clear[0]
+            prev = clear[0]
+            for idx in clear[1:] + [clear[-1] + 2]:
+                if idx == prev + 1:
+                    prev = idx
+                    continue
+                run_e = prev
+                if run_e - run_s + 1 >= 3:
+                    mid = 0.5 * (run_s + run_e)
+                    trials.append((float(mid), "center"))
+                run_s = idx
+                prev = idx
+
+    for cx, ha in trials:
+        if ha == "left":
+            bx0, bx1 = float(cx), float(cx) + 2.0 * half_w
+        elif ha == "right":
+            bx0, bx1 = float(cx) - 2.0 * half_w, float(cx)
+        else:
+            bx0, bx1 = float(cx) - half_w, float(cx) + half_w
+        if float(cx) < float(xmin) - 1.2 or float(cx) > float(xmax) + 0.8:
+            continue
+        if bx1 < float(xmin) - 1.2 or bx0 > float(xmax) + 0.8:
+            continue
+        sc = _layer_box_overlap_score(
+            x0=bx0,
+            x1=bx1,
+            y=float(y),
+            half_h=half_h,
+            highs=highs,
+            lows=lows,
+            mas=mas,
+            occupied=occupied,
+        )
+        # 出界／半截＝不可用
+        if bx1 < float(xmin) + 1.0:
+            sc += 28.0
+        if bx0 < float(xmin):
+            sc += 14.0 * min(1.0, (float(xmin) - bx0) / max(half_w, 1.0))
+        if bx0 > float(xmax) - 0.8:
+            sc += 6.0
+        clear = _min_vertical_clearance(
+            x0=bx0, x1=bx1, y=float(y), highs=highs, lows=lows
+        )
+        # 淨空太小＝視感貼 K（即使沒穿線）
+        if clear < max(half_h * 3.0, 100.0):
+            sc += 12.0 * (1.0 - min(clear / max(half_h * 3.0, 100.0), 1.0))
+        # 高淨空＋中後段：加分；左 42% 內即使高淨空也微罰（少停上升初段）
+        if n_bars > 0:
+            if clear >= max(half_h * 6.0, 280.0) and bx0 >= float(n_bars) * 0.42:
+                sc -= 11.0
+            if bx1 <= float(n_bars) * 0.42:
+                sc += 7.5
+        recent_pen = 0.0
+        if n_bars > 0 and bx1 > float(n_bars - 1) - max(6.0, n_bars * 0.10):
+            recent_pen = 1.15
+        tie = -min(clear, 1200.0) * 1.2e-3 - bx1 * 1e-6
+        key = sc + recent_pen + tie
+        box = (bx0, bx1, float(y) - half_h, float(y) + half_h)
+        if best is None or key < best[0]:
+            best = (key, float(cx), ha, box)
+
+    if best is None:
+        cx = 0.5 * (x_lo + x_hi)
+        box = (cx - half_w, cx + half_w, float(y) - half_h, float(y) + half_h)
+        return cx, "center", box
+    return best[1], best[2], best[3]
+
+
 def paint_written_and_next_levels(
     ax,
     *,
@@ -671,11 +984,15 @@ def paint_written_and_next_levels(
     layer_labels: str = "right",
     written_labels: str = "auto",
     busy_ys: Optional[Sequence[float]] = None,
+    highs: Optional[Sequence[float]] = None,
+    lows: Optional[Sequence[float]] = None,
+    mas: Optional[Sequence[Sequence[float]]] = None,
 ) -> List[float]:
     """原文目標水平線＋破撐／過壓下一層（次大量區淺灰底＋壓／撐兩線）。
 
     layer_labels：
-      - \"left\"＝結構圖：下一層壓／撐偏左（比照大量區左側標）
+      - \"smart\"／\"auto\"＝沿該水平線掃位，取擋 K／均線最少（有 highs／lows 時）
+      - \"left\"＝偏左固定欄
       - \"right\"／\"notes\"＝右側或併入 right_notes
     written_labels：\"auto\"＝有 right_notes 走 notes，否則 right；也可強制 left／right／notes。
     busy_ys：已佔用價位（如大量區壓／撐），標籤 y 微避讓不准互蓋。
@@ -690,6 +1007,19 @@ def paint_written_and_next_levels(
     written_mode = str(written_labels or "auto").strip().lower() or "auto"
     if written_mode == "auto":
         written_mode = "notes" if notes is not None else "right"
+    hi_arr = list(highs) if highs is not None else []
+    lo_arr = list(lows) if lows is not None else []
+    if layer_mode in ("auto", "smart"):
+        layer_mode = "smart" if (hi_arr and lo_arr) else ("notes" if notes is not None else "left")
+    occupied_boxes: List[Tuple[float, float, float, float]] = []
+    try:
+        y_span_for_pick = (
+            abs(float(ymax) - float(ymin))
+            if ymin is not None and ymax is not None
+            else 0.0
+        )
+    except (TypeError, ValueError):
+        y_span_for_pick = 0.0
     fp = _cjk_fp(max(7.5, float(tag_size) - 1.5), "bold")
     fp_tag = _cjk_fp(max(8.5, float(tag_size) - 0.5), "bold")
     fp_none = _cjk_fp(8.2, "bold")
@@ -698,6 +1028,14 @@ def paint_written_and_next_levels(
         boxstyle="round,pad=0.28",
         facecolor="#ffffff",
         linewidth=1.1,
+        alpha=1.0,
+    )
+    # 下一層壓／撐：結構＝大量區同一絕對字級；兩條一樣大（略縮輔助避擋）
+    _layer_tag_size = max(float(LAYER_TAG_SIZE_FLOOR), float(LAYER_TAG_PT))
+    _layer_tag_box = dict(
+        boxstyle=f"round,pad={float(LAYER_TAG_PAD):.2f}",
+        facecolor="#ffffff",
+        linewidth=1.0,
         alpha=1.0,
     )
     # 略高於大量區壓／撐角標（22），同欄近價時仍以白底可讀為先
@@ -823,7 +1161,7 @@ def paint_written_and_next_levels(
                 pass
         else:
             try:
-                # 大量區右緣：長標「飆大原文目標…非買訊」再左，整段可見、不壓軸刻度
+                # 大量區右緣：長標「飆大原文目標…非買訊」再左，整段可見、不壓軸刻度（v8／v10 位）
                 _text(
                     0.78,
                     lab_y,
@@ -835,6 +1173,25 @@ def paint_written_and_next_levels(
                     bbox={**_tag_box, "edgecolor": color_written},
                     size=max(8.5, float(tag_size) - 0.5),
                 )
+                # 佔位給下一層 smart 掃位避讓
+                try:
+                    _xl0, _xl1 = ax.get_xlim()
+                    _edge = float(_xl0) + 0.78 * (float(_xl1) - float(_xl0))
+                    _hw = _approx_layer_tag_half_w(label, max(8.5, float(tag_size) - 0.5))
+                    _hh = max(abs(float(lab_y)) * 0.004, 8.0)
+                    if y_span_for_pick > 0:
+                        _hh = max(_hh, float(y_span_for_pick) * 0.016)
+                    # 佔位略緊：避免吃掉原文標右側真·空窗（下一層要能挨著空段）
+                    occupied_boxes.append(
+                        (
+                            _edge - 1.55 * _hw,
+                            _edge + 0.15 * _hw,
+                            float(lab_y) - _hh,
+                            float(lab_y) + _hh,
+                        )
+                    )
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -889,8 +1246,38 @@ def paint_written_and_next_levels(
                         except Exception:
                             pass
                     ys.append(y)
-                if layer_mode == "left":
-                    # v9：Y 釘線上；近主區壓撐改第二欄，不准被推離線
+                if layer_mode == "smart" and hi_arr and lo_arr:
+                    # v11：沿該水平線掃位，Y 釘線；取擋 K／均線／已放標最少；字級整組同縮
+                    lab_y = float(y)
+                    label_ys.append(lab_y)
+                    cx, ha, box = pick_layer_label_along_line(
+                        y=lab_y,
+                        text=label,
+                        xmin=float(xmin),
+                        xmax=float(xmax),
+                        highs=hi_arr,
+                        lows=lo_arr,
+                        mas=mas,
+                        occupied=occupied_boxes,
+                        tag_size=float(_layer_tag_size),
+                        y_span=y_span_for_pick or None,
+                    )
+                    occupied_boxes.append(box)
+                    try:
+                        _text(
+                            float(cx),
+                            lab_y,
+                            label,
+                            color=color,
+                            ha=ha,
+                            va="center",
+                            bbox={**_layer_tag_box, "edgecolor": color},
+                            size=float(_layer_tag_size),
+                        )
+                    except Exception:
+                        pass
+                elif layer_mode == "left":
+                    # 舊固定左欄；近主區壓撐改第二欄
                     lab_y = float(y)
                     lx_left = _left_tag_x(lab_y, label_ys)
                     label_ys.append(lab_y)
@@ -903,8 +1290,8 @@ def paint_written_and_next_levels(
                             transform=ax.get_yaxis_transform(),
                             ha="left",
                             va="center",
-                            bbox={**_tag_box, "edgecolor": color},
-                            size=max(9.0, float(tag_size) - 0.2),
+                            bbox={**_layer_tag_box, "edgecolor": color},
+                            size=float(_layer_tag_size),
                         )
                     except Exception:
                         pass
@@ -916,7 +1303,8 @@ def paint_written_and_next_levels(
                             "y": lab_y,
                             "text": label,
                             "color": color,
-                            "size": tag_size,
+                            "size": float(_layer_tag_size),
+                            "pad": float(LAYER_TAG_PAD),
                         }
                     )
                 else:
@@ -931,8 +1319,8 @@ def paint_written_and_next_levels(
                             transform=ax.get_yaxis_transform(),
                             ha="right",
                             va="center",
-                            bbox={**_tag_box, "edgecolor": color},
-                            size=max(9.0, float(tag_size) - 0.2),
+                            bbox={**_layer_tag_box, "edgecolor": color},
+                            size=float(_layer_tag_size),
                         )
                     except Exception:
                         pass

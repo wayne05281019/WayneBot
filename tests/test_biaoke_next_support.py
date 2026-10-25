@@ -15,6 +15,7 @@ from biaoke_next_support import (
     collect_next_support_candidates,
     find_secondary_vol_zone,
     find_secondary_vol_zone_support,
+    pick_layer_label_along_line,
     reason_next_support_line,
     resolve_next_support,
     written_target_label,
@@ -283,6 +284,43 @@ def test_chiifeng_written_not_on_other_stock():
     assert 3000.0 in px and 2700.0 in px
 
 
+def test_pick_layer_label_avoids_candle_cluster():
+    """下一層標沿線掃位：密 K 區代價高，空白段勝出（不准寫死左右）。"""
+    n = 80
+    highs = [2100.0] * n
+    lows = [1900.0] * n
+    for i in range(40, n):
+        highs[i] = 1950.0
+        lows[i] = 1800.0
+    cx, ha, box = pick_layer_label_along_line(
+        y=2010.0,
+        text="下一層壓 2,010",
+        xmin=-0.3,
+        xmax=float(n) + 0.5,
+        highs=highs,
+        lows=lows,
+        tag_size=9.0,
+    )
+    # 0–39 穿 2010；應落在空白（左緣外側／右側空窗／右溝），不准停密 K 中段
+    assert ha in ("left", "right", "center")
+    assert box[0] < box[1]
+    mid = 0.5 * (box[0] + box[1])
+    assert mid < 5.0 or mid > 35.0 or box[1] < 0.0
+
+
+def test_layer_tag_size_delta_uniform():
+    """下一層壓／撐整組同一字級（結構＝大量區）；不准各走各的。"""
+    from biaoke_next_support import LAYER_TAG_PT, LAYER_TAG_SIZE_FLOOR
+    import inspect
+    from biaoke_next_support import paint_written_and_next_levels
+
+    assert LAYER_TAG_PT >= LAYER_TAG_SIZE_FLOOR
+    src = inspect.getsource(paint_written_and_next_levels)
+    assert "_layer_tag_size" in src
+    assert "LAYER_TAG_PT" in src
+    assert 'layer_labels="smart"' in open("biaoke_chart.py", encoding="utf-8").read()
+
+
 def test_paint_uses_cjk_fontproperties():
     """第 4 張水平標必須帶 fontproperties，避免 DejaVu 方塊亂碼。"""
     import inspect
@@ -292,6 +330,8 @@ def test_paint_uses_cjk_fontproperties():
     src = inspect.getsource(paint_written_and_next_levels)
     assert "fontproperties" in src
     assert "_cjk_fp" in src or "_fp" in src
+    assert "pick_layer_label_along_line" in src or "layer_labels" in src
+    assert 'layer_labels="smart"' in open("vol_zone_chart.py", encoding="utf-8").read()
 
 
 @pytest.mark.production_db

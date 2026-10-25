@@ -3868,12 +3868,17 @@ def _paint_volume_zone(
             clip_on=False,
             bbox={**_key_tag_box, "edgecolor": _HOLD},
         )
-    # v10：下一層仍偏左釘線；飆大原文目標紫標座標還原 v8（右緣 0.78）
-    # busy_ys 仍避開主區壓撐；白底高 z／導航後畫保留
+    # v11：下一層壓／撐沿線 smart 掃位；原文目標仍 v8／v10 右緣 0.78
+    # busy_ys／白底高 z／導航後畫保留
     if next_pack:
         try:
             from biaoke_next_support import paint_written_and_next_levels
 
+            _mas_for_layer = [
+                a
+                for a in (ma5_vals, ma10_vals, ma20_vals, ma60_vals)
+                if a is not None
+            ]
             paint_written_and_next_levels(
                 ax1,
                 sid=str(sid or ""),
@@ -3884,9 +3889,12 @@ def _paint_volume_zone(
                 tag_size=10.5,
                 ymin=float(ymin),
                 ymax=float(ymax),
-                layer_labels="left",
+                layer_labels="smart",
                 written_labels="right",
                 busy_ys=(float(hi or 0), float(lo or 0)),
+                highs=highs,
+                lows=lows,
+                mas=_mas_for_layer,
             )
         except Exception:
             logger.debug("大量區關鍵標略過 sid=%s", sid, exc_info=True)

@@ -4458,7 +4458,8 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    # 下一層壓／撐偏左；原文目標仍走右溝避讓；非買訊
+    # v11：下一層壓／撐＝大量區同一 pick_layer_label_along_line（沿線掃位＋整組同字級略縮）
+    # 昨收／今收右下、下降壓／平行撐釘紫虛線、主壓撐桃色右緣＝既有鎖位保留
     try:
         from biaoke_next_support import paint_written_and_next_levels
 
@@ -4473,8 +4474,10 @@ def render_biaoke_structure_png(
             tag_size=float(_STRUCTURE_TAG_SIZE),
             ymin=ymin,
             ymax=ymax,
-            layer_labels="left",
+            layer_labels="smart",
             written_labels="notes",
+            highs=highs,
+            lows=lows,
         )
         # v8 建議：飆大原文目標長標字級／框略縮一階（仍完整可見）
         for _wn in right_notes:
