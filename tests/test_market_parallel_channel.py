@@ -232,7 +232,7 @@ def test_channel_label_mark_pad_avoids_nav_arrow_band():
 
     n = 80
     span = 70.0
-    mark_pad = span * 0.14
+    mark_pad = span * 0.10
     highs = np.full(n, 100.0)
     lows = np.full(n, 92.0)
     # 近端堆箭：右側高低拉開一點，仍要被 mark_pad 擋住貼箭位
@@ -273,14 +273,68 @@ def test_channel_label_mark_pad_avoids_nav_arrow_band():
 
 
 def test_paint_channel_splits_rails_and_nav_aware_labels():
-    """軌線／標可拆畫；avoid_nav_marks 走 mark_pad。"""
+    """軌線／標可拆畫；avoid_nav_marks 走 mark_pad（跟柱幅）。"""
     from vol_zone_chart import paint_vol_zone_parallel_channel
 
     src = inspect.getsource(paint_vol_zone_parallel_channel)
     assert "paint_rails" in src and "paint_labels" in src
     assert "avoid_nav_marks" in src
     assert "mark_pad" in src
-    assert "0.14" in src
+    assert "candle_span" in src
+    assert "0.10" in src
+
+
+def test_lower_rail_label_prefers_pocket_above_rail():
+    """下軌：K 拉離軌上方時，標優先落在軌上空窗（聯亞紅標那種），不准沉到軌下壓▲。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_blocked
+
+    n = 80
+    # 下軌約 90；中右段 K 在 110–125（拉離），左右有更低／更高雜訊
+    highs = np.full(n, 118.0)
+    lows = np.full(n, 110.0)
+    highs[:20] = 105.0
+    lows[:20] = 95.0
+    highs[-8:] = 130.0
+    lows[-8:] = 112.0
+    mas = [np.full(n, 108.0)]
+    seg = ((5.0, 92.0, "a"), (75.0, 88.0, "b"))  # 緩降下軌 ~90
+    y_now = 90.0
+    span = 70.0
+    mark_pad = span * 0.10
+    cx, cy = _blank_for_channel_label(
+        text="平行撐 90",
+        seg=seg,
+        y_now=y_now,
+        outside=-1,
+        n=n,
+        ymin=60.0,
+        ymax=160.0,
+        dx=8.0,
+        dy=4.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=mark_pad,
+    )
+    # 應在軌上方空窗（> y_now），且低於窗內低－箭帶
+    assert cy > y_now - 1.0
+    assert cy < 110.0
+    box = (cx - 4.0, cx + 4.0, cy - 2.0, cy + 2.0)
+    assert not _channel_box_blocked(
+        *box,
+        n=n,
+        ymin=60.0,
+        ymax=160.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=mark_pad,
+    )
+    assert 0.35 * n < cx < 0.90 * n
 
 
 def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
