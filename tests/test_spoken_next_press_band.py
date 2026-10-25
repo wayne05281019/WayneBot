@@ -112,7 +112,10 @@ def test_structure_builders_do_not_auto_paint_next_press():
         or "hdr-band-v78c-c-polish" in band_src
         or "hdr-band-v77-vol-min-visible" in band_src
     )
-    assert "axhspan" not in render_src
+    # 桃色主大量區可用 axhspan（_WINDOW_BG）；不准自動下一壓帶
+    assert "press_band=None" in render_src or "press_band" in render_src
+    assert "_WINDOW_BG" in render_src or "resolve_next_press_band" not in render_src
+    assert "下一壓帶" not in render_src and "spoken_next_press" not in render_src
 
 
 def test_official_volume_press_band_from_zone():

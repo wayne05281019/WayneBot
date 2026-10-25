@@ -1881,13 +1881,17 @@ def _dedupe_right_notes(
         if hit:
             continue
         kept.append(dict(note))
-    # 軌標若與已留標太近：只挪顯示 Y，不准刪（升軌上緣平行壓要看得到價）
+    # 軌標若與「其他軌」太近：只挪顯示 Y，不准刪。
+    # v7：不准因靠近壓／撐／收而把下降壓／平行撐擠離紫虛線（分欄繪製）。
     for note in kept:
         if not _is_rail_note(str(note.get("text") or "")):
             continue
         y = float(note.get("y") or 0)
         for other in kept:
             if other is note:
+                continue
+            ot = str(other.get("text") or "")
+            if not _is_rail_note(ot):
                 continue
             oy = float(other.get("y") or 0)
             if abs(y - oy) < thr:
@@ -1951,6 +1955,43 @@ def _inset_today_close_inside(
         return
 
 
+def _close_tags_lower_right_y(
+    ymin: float,
+    ymax: float,
+    *,
+    avoid_price: float = 0.0,
+) -> float:
+    """昨收／今收錨點 Y。
+
+    v7：主圖**右下空白**（約右軸 1500～2000 一帶），跟現價／次層帶拉開；
+    不准再貼現價旁搶位。軸內無 1500～2000 則取下緣空白帶。
+    """
+    y0 = float(ymin)
+    y1 = float(ymax)
+    span = max(y1 - y0, 1.0)
+    # 優先落在 1500～2000 中段（使用者紅框）
+    band_lo, band_hi = 1500.0, 2000.0
+    mid = 1750.0
+    pad = span * 0.05
+    if (y0 + pad) <= mid <= (y1 - pad):
+        ay = float(mid)
+    elif (y0 + pad) <= band_lo <= (y1 - pad):
+        ay = float(band_lo)
+    elif y0 < band_hi and y1 > band_lo:
+        # 軸與 1500～2000 有交集：取交集中點
+        a = max(y0 + pad, band_lo)
+        b = min(y1 - pad, band_hi)
+        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.14)
+    else:
+        ay = float(y0 + span * 0.14)
+    # 跟現價拉開（至少約 12% 軸高）
+    ap = float(avoid_price or 0.0)
+    if ap > 0 and abs(ay - ap) < span * 0.12:
+        ay = float(min(ay, ap - span * 0.14))
+        ay = float(max(ay, y0 + pad))
+    return float(ay)
+
+
 def _place_right_notes(
     ax,
     notes: Sequence[Dict[str, Any]],
@@ -1964,13 +2005,16 @@ def _place_right_notes(
     avoid_ys: Sequence[float] = (),
     x_max: Optional[float] = None,
     bottom_pad: float = 0.0,
+    close_anchor_y: Optional[float] = None,
 ) -> None:
     """右溝標籤欄：去重＋垂直錯開；字落在軌線末端右側，不准壓軌／壓 K。
 
     71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
-    75：昨收＋今收同列並排（先昨收、右今收），垂直貼當日收那列。
-    昨收／今收整列貼近右軸；左緣離末日 K 至少 _CLOSE_TAG_CANDLE_CLEAR，不准蓋 K。
+    75：昨收＋今收同列並排（先昨收、右今收）。
+    close_anchor_y：有值＝昨收／今收整組釘該價（v7＝右下空白約 1500～2000，離現價）。
+    v7：壓／撐貼桃色帶最右（不壓軸刻度）；下降壓／平行撐釘紫虛線旁且不跟收標搶右緣；
+    長標整段入軸不准切斷。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -1984,6 +2028,13 @@ def _place_right_notes(
     tx = float(x_text)
     most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
     levels = [n for n in cleaned if _is_level_note(str(n.get("text") or ""))]
+    rails = [
+        n
+        for n in cleaned
+        if _is_rail_note(str(n.get("text") or ""))
+        and not _is_level_note(str(n.get("text") or ""))
+        and "最可能" not in str(n.get("text") or "")
+    ]
     closes = [
         n
         for n in cleaned
@@ -1992,9 +2043,14 @@ def _place_right_notes(
     ]
     prev_close_notes = [n for n in closes if _is_prev_close_note(str(n.get("text") or ""))]
     today_close_notes = [n for n in closes if _is_today_close_note(str(n.get("text") or ""))]
-    # 75：兩標同列——垂直只佔一格（錨在今收價）；昨收不另開一列
+    # 75：兩標同列——垂直只佔一格；有 close_anchor_y 則釘右下，否則錨今收價
     close_pair = bool(prev_close_notes and today_close_notes)
-    if close_pair:
+    if close_anchor_y is not None and closes:
+        ay = float(close_anchor_y)
+        for n in closes:
+            n["y"] = ay
+        closes_for_slot = list(today_close_notes) if close_pair else list(closes)
+    elif close_pair:
         today_y = float(today_close_notes[0].get("y") or 0)
         for pn in prev_close_notes:
             pn["y"] = today_y
@@ -2006,6 +2062,7 @@ def _place_right_notes(
         for n in cleaned
         if "最可能" not in str(n.get("text") or "")
         and not _is_level_note(str(n.get("text") or ""))
+        and not _is_rail_note(str(n.get("text") or ""))
         and not _is_close_note(str(n.get("text") or ""))
     ]
     if x_max is not None:
@@ -2039,7 +2096,7 @@ def _place_right_notes(
             tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
             tx = min(tx, fit_tx)
-    # 上緣留給「最可能」；壓／撐釘價貼線；其餘錯開
+    # 上緣留給「最可能」；壓／撐／平行撐釘價貼線；其餘錯開
     reserve = gap * 1.35
     hi_others = hi - reserve
     taken: List[float] = []
@@ -2048,27 +2105,52 @@ def _place_right_notes(
         my = hi - gap * 0.2
         placed.append((most[0], my))
         taken.append(my)
-    # 71：壓／撐顯示 Y＝釘點價（貼水平線）；高價在上＝依 ny 排序後僅在互撞時微挪
-    levels_sorted = sorted(levels, key=lambda n: -float(n.get("y") or 0))
+    # v7：壓／撐與軌分欄——各自釘價；軌（下降壓／平行撐）必須貼紫虛線，不准被壓撐擠離線
+    hard_notes = list(levels) + list(rails)
     level_tys: List[float] = []
-    for note in levels_sorted:
+    for note in sorted(levels, key=lambda n: -float(n.get("y") or 0)):
         ny = float(note.get("y") or 0)
         ty = min(max(ny, lo), hi_others)
         for prev_ty in level_tys:
             if abs(ty - prev_ty) < gap * 0.55:
-                # 高價列已在上；低價列往下讓，保持高＞低閱讀順位
                 ty = min(prev_ty - gap * 0.55, ty)
         ty = min(max(ty, lo), hi_others)
         level_tys.append(ty)
         placed.append((note, ty))
         taken.append(ty)
-    soft = others + closes_for_slot
-    # avoid 不含壓／撐釘價本身（那些已用 levels 釘住）；其餘軌／避開互壓
+    rail_tys: List[float] = []
+    for note in sorted(rails, key=lambda n: -float(n.get("y") or 0)):
+        ny = float(note.get("y") or 0)
+        # 嚴格貼軌價；同軌互撞才微挪
+        ty = min(max(ny, lo), hi_others)
+        for prev_ty in rail_tys:
+            if abs(ty - prev_ty) < gap * 0.45:
+                ty = min(prev_ty - gap * 0.45, ty)
+        ty = min(max(ty, lo), hi_others)
+        rail_tys.append(ty)
+        placed.append((note, ty))
+        taken.append(ty)
+    # v7：昨收／今收硬釘右下空白錨點，不准進 soft、不准跟軌／現價搶位
+    if close_anchor_y is not None and closes_for_slot:
+        ay = float(close_anchor_y)
+        for r in rails:
+            ry = float(r.get("y") or 0)
+            if abs(ay - ry) < gap * 1.2:
+                ay = min(ay, ry - gap * 1.25)
+        ty = min(max(ay, lo), hi_others)
+        for note in closes_for_slot:
+            note["y"] = float(ty)
+            placed.append((note, float(ty)))
+            taken.append(float(ty))
+        soft = list(others)
+    else:
+        soft = others + closes_for_slot
+    # avoid 不含壓／撐／軌／錨定收本身；軟標（原文目標）再避開
     avoid_soft = [
         float(y)
         for y in avoid_ys
         if y is not None
-        and all(abs(float(y) - float(n.get("y") or 0)) > gap * 0.2 for n in levels)
+        and all(abs(float(y) - float(n.get("y") or 0)) > gap * 0.2 for n in hard_notes)
     ]
     soft_ys = _spread_ys_around(
         [float(n.get("y") or 0) for n in soft],
@@ -2080,57 +2162,150 @@ def _place_right_notes(
     for note, ty in zip(soft, soft_ys):
         placed.append((note, ty))
         taken.append(ty)
-    # 軟標籤由上往下再錯開；壓／撐／最可能已定位的不准被這步拖離線
-    pinned_ids = {id(n) for n, _ in placed if "最可能" in str(n.get("text") or "") or _is_level_note(str(n.get("text") or ""))}
+    # 軟標籤由上往下再錯開；壓／撐／軌／最可能／右下昨收今收已定位的不准被這步拖離線
+    pinned_ids = {
+        id(n)
+        for n, _ in placed
+        if "最可能" in str(n.get("text") or "")
+        or _is_level_note(str(n.get("text") or ""))
+        or _is_rail_note(str(n.get("text") or ""))
+        or (close_anchor_y is not None and _is_close_note(str(n.get("text") or "")))
+    }
+    def _pin_family(n: Dict[str, Any]) -> str:
+        t = str(n.get("text") or "")
+        if _is_level_note(t):
+            return "level"
+        if _is_rail_note(t):
+            return "rail"
+        if _is_close_note(t):
+            return "close"
+        if "最可能" in t:
+            return "most"
+        return "soft"
+
     placed.sort(key=lambda p: -float(p[1]))
     enforced: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in placed:
         text = str(note.get("text") or "")
         hard = id(note) in pinned_ids
+        fam = _pin_family(note)
         if not hard:
             for prev_note, ty2 in enforced:
                 if abs(ty - ty2) < gap:
                     ty = ty2 - gap
             ty = min(max(ty, lo), hi)
         else:
-            # 硬釘只跟其他硬釘保證最小縫，仍貼近 ny
+            # 硬釘：只跟「同欄家族」保縫（壓撐／軌／收分欄），軌不准被壓撐擠離紫虛線
             ny = float(note.get("y") or 0)
             for prev_note, ty2 in enforced:
                 if id(prev_note) not in pinned_ids:
+                    continue
+                if _pin_family(prev_note) != fam:
                     continue
                 if abs(ty - ty2) < gap * 0.5:
                     if ny >= float(prev_note.get("y") or 0):
                         ty = max(ty2 + gap * 0.5, ty)
                     else:
                         ty = min(ty2 - gap * 0.5, ty)
+            # 軌／壓撐／收：顯示 Y 鎖回釘點（同欄微挪後仍貼線）
+            if fam in ("rail", "level", "close") and abs(ty - ny) < gap * 0.35:
+                ty = float(ny)
             ty = min(max(ty, lo), hi)
         enforced.append((note, ty))
     placed = enforced
-    # 73：鄰近標籤最小縫 ≥ 盒高＋空隙（舊 gap≈盒高會互貼）；高價仍在上
+    # 73／v4：軟標鄰縫；硬釘（壓／撐／軌／右下收）不准被這步拖離對應價
     neighbor = max(gap * 1.55, (ymax - ymin) * 0.062)
     placed.sort(key=lambda p: -float(p[1]))
     spaced: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in placed:
+        if id(note) in pinned_ids:
+            spaced.append((note, float(ty)))
+            continue
         if spaced:
-            prev_note, prev_ty = spaced[-1]
-            if prev_ty - ty < neighbor:
-                ty = prev_ty - neighbor
+            # 只跟已放軟標比縫；硬釘當固定避讓
+            for prev_note, prev_ty in spaced:
+                if id(prev_note) in pinned_ids:
+                    if abs(ty - prev_ty) < neighbor * 0.85:
+                        ty = prev_ty - neighbor if ty <= prev_ty else prev_ty + neighbor
+                elif prev_ty - ty < neighbor and prev_ty >= ty:
+                    ty = prev_ty - neighbor
         ty = min(max(ty, lo), hi)
         spaced.append((note, ty))
     spaced.sort(key=lambda p: float(p[1]))  # low → high
     fixed_up: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in spaced:
+        if id(note) in pinned_ids:
+            fixed_up.append((note, float(ty)))
+            continue
         if fixed_up:
-            prev_note, prev_ty = fixed_up[-1]
-            if ty - prev_ty < neighbor:
-                ty = prev_ty + neighbor
+            for prev_note, prev_ty in fixed_up:
+                if id(prev_note) in pinned_ids:
+                    if abs(ty - prev_ty) < neighbor * 0.85:
+                        ty = prev_ty + neighbor if ty >= prev_ty else prev_ty - neighbor
+                elif ty - prev_ty < neighbor and ty >= prev_ty:
+                    ty = prev_ty + neighbor
         ty = min(max(ty, lo), hi)
         fixed_up.append((note, ty))
     placed = sorted(fixed_up, key=lambda p: -float(p[1]))
-    # 同一左緣欄：所有標籤共用 tx，不准「最可能」因估寬偏右
-    # 75：昨收｜今收並排時左盒仍對齊 col_tx，右盒往右一點
+    # v7：壓／撐貼桃色帶最右；下降壓／平行撐釘紫虛線旁（略左於壓撐、不跟收標搶右緣）；
+    # 昨收／今收走右下空白（close_anchor_y≈1500～2000）；原文長標完整入軸。
     col_tx = float(tx)
-    stub_x = float(col_tx) - 1.35
+    _AXIS_TICK_CLEAR = 12.0
+    level_tx = float(col_tx)
+    rail_tx = float(col_tx)
+    soft_tx = float(col_tx)
+    if x_max is not None:
+        level_ws = [
+            _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+            for n in levels
+        ]
+        rail_ws = [
+            _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+            for n in rails
+        ]
+        soft_ws = [
+            _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+            for n in others
+        ]
+        level_w = max(level_ws, default=14.0)
+        rail_w = max(rail_ws, default=16.0)
+        soft_w = max(soft_ws, default=28.0) * 1.52
+        floor_axis = (
+            float(pin_x) + float(_CLOSE_TAG_CANDLE_CLEAR) + 0.8
+            if pin_x is not None
+            else float(col_tx)
+        )
+        soft_floor = (
+            float(pin_x) + 1.6 if pin_x is not None else float(floor_axis)
+        )
+        # 原文長標：先留足寬，必要時加寬 xlim
+        soft_fit = float(x_max) - float(soft_w) - float(_AXIS_TICK_CLEAR)
+        soft_tx = max(float(soft_floor), min(float(soft_fit), float(col_tx) - 4.0))
+        need_right = float(soft_tx) + float(soft_w) + float(_AXIS_TICK_CLEAR)
+        if need_right > float(x_max) + 1e-6:
+            x_lo, _ = ax.get_xlim()
+            ax.set_xlim(float(x_lo), float(need_right))
+            x_max = float(need_right)
+        # 壓／撐：桃色帶最右顯示區內側，與軸刻度留縫
+        level_tx = float(x_max) - float(level_w) - float(_AXIS_TICK_CLEAR)
+        level_tx = max(floor_axis, float(level_tx))
+        # 下降壓／平行撐：貼紫虛線旁——在壓撐左側一欄，Y 已釘軌價
+        rail_tx = min(float(col_tx) + 2.0, float(level_tx) - max(6.5, float(rail_w) * 0.28))
+        rail_tx = max(floor_axis, float(rail_tx))
+        soft_tx = min(float(soft_tx), float(rail_tx) - 4.0)
+        soft_tx = max(float(soft_floor), float(soft_tx))
+        need_right = float(soft_tx) + float(soft_w) + float(_AXIS_TICK_CLEAR)
+        if need_right > float(x_max) + 1e-6:
+            x_lo, _ = ax.get_xlim()
+            ax.set_xlim(float(x_lo), float(need_right))
+            x_max = float(need_right)
+            level_tx = float(x_max) - float(level_w) - float(_AXIS_TICK_CLEAR)
+            level_tx = max(floor_axis, float(level_tx))
+            rail_tx = min(float(col_tx) + 2.0, float(level_tx) - max(6.5, float(rail_w) * 0.28))
+            rail_tx = max(floor_axis, float(rail_tx))
+    stub_x = float(level_tx) - 1.35
+    rail_stub_x = float(rail_tx) - 1.35
+    soft_stub_x = float(soft_tx) - 1.35
     pair_prev = prev_close_notes[0] if close_pair else None
     pair_today = today_close_notes[0] if close_pair else None
     pair_side_gap = float(_CLOSE_PAIR_SIDE_GAP)
@@ -2157,7 +2332,7 @@ def _place_right_notes(
             ha="left",
             va="center",
             zorder=int(z),
-            clip_on=True,
+            clip_on=False,
             bbox=dict(
                 boxstyle=f"round,pad={float(pad):.2f}",
                 facecolor="#ffffff",
@@ -2167,18 +2342,26 @@ def _place_right_notes(
             ),
         )
 
-    def _paint_one_note(note: Dict[str, Any], show_ty: float, text_x: float, *, stub: bool) -> None:
+    def _paint_one_note(
+        note: Dict[str, Any],
+        show_ty: float,
+        text_x: float,
+        *,
+        stub: bool,
+        note_stub_x: Optional[float] = None,
+    ) -> None:
         ny = float(note.get("y") or 0)
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
         size = int(note.get("size") or _STRUCTURE_TAG_SIZE)
+        use_stub_x = float(note_stub_x) if note_stub_x is not None else float(stub_x)
         # 75：最可能＝短 dash 直連末日 K → 標籤；不准末端空曠橘點、不准長段假虛線。
         # annotate 的 arrowprops 常吃掉自訂 dash → 改 ax.plot 短虛線＋text 盒。
         if "最可能" in text:
             fx = note.get("from_x")
             fy = note.get("from_y")
             if fx is None:
-                fx = float(pin_x) if pin_x is not None else stub_x
+                fx = float(pin_x) if pin_x is not None else use_stub_x
             if fy is None:
                 fy = ny
             fx = float(fx)
@@ -2198,7 +2381,7 @@ def _place_right_notes(
                 dash_capstyle="butt",
                 marker=None,
                 zorder=11,
-                clip_on=True,
+                clip_on=False,
             )
             ax.text(
                 tx,
@@ -2209,7 +2392,7 @@ def _place_right_notes(
                 ha="left",
                 va="center",
                 zorder=12,
-                clip_on=True,
+                clip_on=False,
                 bbox=dict(
                     boxstyle=f"round,pad={float(_STRUCTURE_TAG_PAD):.2f}",
                     facecolor="#ffffff",
@@ -2219,9 +2402,10 @@ def _place_right_notes(
                 ),
             )
             return
+        note_pad = note.get("pad")
         _leader_note(
             ax,
-            stub_x,
+            use_stub_x,
             show_ty,
             text,
             color,
@@ -2230,16 +2414,20 @@ def _place_right_notes(
             size=size,
             ha="left",
             va="center",
-            clip=True,
+            clip=False,
             shrink_b=1.5,
-            pad=_STRUCTURE_TAG_PAD,
+            pad=float(note_pad) if note_pad is not None else _STRUCTURE_TAG_PAD,
         )
         if not stub:
             return
-        # 壓／撐：釘點仍在水平線價；收／其他釘在顯示列（短 stub，無長虛線）
-        pin_y = float(ny) if _is_level_note(text) else float(show_ty)
+        # 壓／撐／軌：釘點仍在水平線／軌價；收／其他釘在顯示列（短 stub，無長虛線）
+        pin_y = (
+            float(ny)
+            if (_is_level_note(text) or _is_rail_note(text))
+            else float(show_ty)
+        )
         ax.plot(
-            [stub_x],
+            [use_stub_x],
             [pin_y],
             marker="o",
             markersize=4.0,
@@ -2250,10 +2438,13 @@ def _place_right_notes(
             linestyle="None",
             clip_on=True,
         )
-        # 僅壓／撐在貼線微偏時畫短垂直點線；收／其餘不准畫
-        if _is_level_note(text) and abs(show_ty - ny) > neighbor * 0.12:
+        # 僅壓／撐／軌在貼線微偏時畫短垂直點線；收／其餘不准畫
+        if (
+            (_is_level_note(text) or _is_rail_note(text))
+            and abs(show_ty - ny) > neighbor * 0.12
+        ):
             ax.plot(
-                [stub_x, stub_x],
+                [use_stub_x, use_stub_x],
                 [ny, show_ty],
                 color=color,
                 linewidth=0.85,
@@ -2295,12 +2486,19 @@ def _place_right_notes(
                 x_lo, _x_hi = ax.get_xlim()
                 ax.set_xlim(float(x_lo), float(need_right))
                 cur_xmax = float(need_right)
-            # 今收右緣貼軸內緣；昨收緊貼其左，兩盒仍留縫、不准互壓
-            today_tx = float(cur_xmax) - float(today_w) - 2.2
+            # v6：昨收／今收貼次層帶右下；今收右緣與軸刻度留縫，整組不准切斷
+            today_tx = float(cur_xmax) - float(today_w) - float(_AXIS_TICK_CLEAR)
             prev_tx = float(today_tx) - float(pair_side_gap) - float(advance)
             if prev_tx < floor_x:
                 prev_tx = float(floor_x)
                 today_tx = float(prev_tx) + float(advance) + float(pair_side_gap)
+                need_pair = float(today_tx) + float(today_w) + float(_AXIS_TICK_CLEAR)
+                if need_pair > cur_xmax + 1e-6:
+                    x_lo, _x_hi = ax.get_xlim()
+                    ax.set_xlim(float(x_lo), float(need_pair))
+                    cur_xmax = float(need_pair)
+                    today_tx = float(cur_xmax) - float(today_w) - float(_AXIS_TICK_CLEAR)
+                    prev_tx = float(today_tx) - float(pair_side_gap) - float(advance)
             pair_stub_x = float(prev_tx) - 1.35
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
             ax.plot(
@@ -2313,7 +2511,7 @@ def _place_right_notes(
                 markeredgewidth=0.55,
                 zorder=13,
                 linestyle="None",
-                clip_on=True,
+                clip_on=False,
             )
             close_prev_art = _paint_close_text_only(
                 pair_prev, show_ty, prev_tx, pad=_STRUCTURE_TAG_PAD, z=12
@@ -2322,7 +2520,28 @@ def _place_right_notes(
                 pair_today, show_ty, today_tx, pad=_STRUCTURE_TAG_PAD, z=13
             )
             continue
-        _paint_one_note(note, show_ty, col_tx, stub=True)
+        text = str(note.get("text") or "")
+        # v6：壓／撐貼桃色帶最右；下降壓／平行撐偏左；原文再左（完整可見）
+        if _is_level_note(text):
+            _paint_one_note(
+                note, show_ty, float(level_tx), stub=True, note_stub_x=float(stub_x)
+            )
+        elif _is_rail_note(text):
+            _paint_one_note(
+                note,
+                show_ty,
+                float(rail_tx),
+                stub=True,
+                note_stub_x=float(rail_stub_x),
+            )
+        else:
+            _paint_one_note(
+                note,
+                show_ty,
+                float(soft_tx),
+                stub=True,
+                note_stub_x=float(soft_stub_x),
+            )
     _inset_today_close_inside(
         ax, close_prev_art, close_today_art, min_data_x=close_floor_x
     )
@@ -4086,9 +4305,18 @@ def render_biaoke_structure_png(
         if yf:
             ymin = min(ymin, float(yf) - span * 0.04)
             ymax = max(ymax, float(yf) + span * 0.04)
-    # 原文目標／下一撐價也吃進 ylim，線才不會被裁
+    # 原文目標／下一層壓撐價也吃進 ylim，線才不會被裁
     try:
         ns = dict(info.get("next_support") or {})
+        layer = dict(ns.get("layer") or {})
+        for key in ("low", "high"):
+            try:
+                yf = float(layer.get(key) or 0)
+            except (TypeError, ValueError):
+                yf = 0.0
+            if yf > 0:
+                ymax = max(ymax, yf + span * 0.05)
+                ymin = min(ymin, yf - span * 0.05)
         for row in list(ns.get("written") or []):
             try:
                 yv = float(row.get("price") or 0)
@@ -4135,7 +4363,7 @@ def render_biaoke_structure_png(
     # 78：收今收四周空檔 → 主圖 K 往右拉寬（只改排版，不准造假 OHLC／量）
     x_right = n + _FUTURE + float(_STRUCTURE_X_RIGHT_PAD)
     ax1.set_xlim(-0.55, x_right)
-    paint_forecast_span(ax1, n - 1, _FUTURE)
+    # 已刪「演化區」膚色直式底（paint_forecast_span）；右溝空白仍留放標籤
     st = info.get("struct") or {}
     spike_hi = float(st.get("spike_high") or 0)
     spike_lo = float(st.get("spike_low") or 0)
@@ -4156,6 +4384,18 @@ def render_biaoke_structure_png(
         )
     )
     halt_flags = [_bar_is_halt(work[i]) for i in range(n)]
+    # 主大量區桃色帶（與第 4 張 _FILL 同色）；次層淺灰另畫
+    if spike_hi > 0 and spike_lo > 0 and spike_hi >= spike_lo:
+        try:
+            ax1.axhspan(
+                float(spike_lo),
+                float(spike_hi),
+                color=_WINDOW_BG,
+                alpha=0.42,
+                zorder=0,
+            )
+        except Exception:
+            pass
     # 日 K＝查股共用 paint（與大量撐壓／導航同一套紅綠、柱寬、線寬）
     candle_up = paint_lookup_ohlc_candles(
         ax1,
@@ -4175,7 +4415,7 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     x_fut = float(n - 1 + _FUTURE)
-    # 標籤欄左緣：演化帶右側；略左移＝主圖＋水平壓撐線往右吃空檔
+    # 標籤欄左緣：略左移＝主圖＋水平壓撐線往右吃空檔
     label_col_left = (
         float(n - 1) + max(float(_FUTURE) * 0.70, 5.9) + float(_STRUCTURE_LABEL_COL_EXTRA)
     )
@@ -4218,7 +4458,8 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    # D4／D5-T1：原文絕對目標水平線＋破撐 NEXT（或暫無）；非買訊
+    # v11：下一層壓／撐＝大量區同一 pick_layer_label_along_line（沿線掃位＋整組同字級略縮）
+    # 昨收／今收右下、下降壓／平行撐釘紫虛線、主壓撐桃色右緣＝既有鎖位保留
     try:
         from biaoke_next_support import paint_written_and_next_levels
 
@@ -4233,9 +4474,18 @@ def render_biaoke_structure_png(
             tag_size=float(_STRUCTURE_TAG_SIZE),
             ymin=ymin,
             ymax=ymax,
+            layer_labels="smart",
+            written_labels="notes",
+            highs=highs,
+            lows=lows,
         )
+        # v8 建議：飆大原文目標長標字級／框略縮一階（仍完整可見）
+        for _wn in right_notes:
+            if "原文目標" in str(_wn.get("text") or ""):
+                _wn["size"] = max(8.5, float(_STRUCTURE_TAG_SIZE) - 1.5)
+                _wn["pad"] = max(0.12, float(_STRUCTURE_TAG_PAD) - 0.06)
     except Exception:
-        logger.debug("結構圖原文／下一撐線略過", exc_info=True)
+        logger.debug("結構圖原文／下一層線略過", exc_info=True)
     # 右軸：今收／現價（71 紅框必留）＋昨收；75 同列並排。
     # 數字跟左上 nameplate／高低卡／介紹同源＝決策卡 quote；K 主體仍官方柱。
     # 不准再用 last_bar 官方末日蓋掉盤中現價（上市上櫃興櫃同一規則）。
@@ -4297,9 +4547,15 @@ def render_biaoke_structure_png(
     # 有通道時以通道為準重算（含完整 bars 窗），避免 work 窗與全列不一致
     if not channel:
         channel = infer_parallel_channel(work) or {}
-    # 軌／通道平行線再往右延長一點進演化區（67），仍停在標籤欄左側空隙
-    rail_end = min(float(n - 1) + float(_FUTURE) * 0.62, float(label_col_left) - 2.8)
-    rail_end = max(float(n - 1) + 2.5, rail_end)
+    # v8 建議：紫虛線往右延伸到接近桃色帶右緣／主圖右緣（留邊距、不壓軸刻度）
+    # 標籤仍走 rail_tx 釘在線旁，不跟線末端綁死
+    rail_label_x = min(
+        float(label_col_left) - 2.8,
+        float(n - 1) + max(float(_FUTURE) * 0.62, 4.0),
+    )
+    rail_label_x = max(float(n - 1) + 2.5, float(rail_label_x))
+    rail_end = min(float(hline_xmax) + 0.15, float(label_col_left) - 0.25)
+    rail_end = max(float(rail_label_x) + 1.5, float(rail_end))
     # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
     if channel.get("kind"):
         _paint_parallel_channel(
@@ -4312,11 +4568,11 @@ def render_biaoke_structure_png(
             y_hi=ymax,
             n=n,
         )
-        # 釘在軌末端（標籤欄左側），引線短、不准穿盒
+        # 標籤釘在線上相對位置（略左於線末端），引線短、不准穿盒
         if channel.get("rail_now"):
             right_notes.append(
                 {
-                    "x": float(rail_end),
+                    "x": float(rail_label_x),
                     "y": float(channel["rail_now"]),
                     "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
@@ -4326,7 +4582,7 @@ def render_biaoke_structure_png(
         if channel.get("base_now"):
             right_notes.append(
                 {
-                    "x": float(rail_end),
+                    "x": float(rail_label_x),
                     "y": float(channel["base_now"]),
                     "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
@@ -4423,23 +4679,9 @@ def render_biaoke_structure_png(
                 right_notes.append(
                     {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": _STRUCTURE_TAG_SIZE}
                 )
-    path = list(proj.get("path") or [])
-    if len(path) >= 2:
-        # 75：不准再畫演化區彎路徑＋右緣無意義橘點。
-        # 改由右溝「最可能」標籤短 dash 直連末日 K（見 _place_right_notes）。
-        right_notes.append(
-            {
-                "x": float(path[0][0]),
-                "y": float(path[-1][1]),
-                "from_x": float(path[0][0]),
-                "from_y": float(path[0][1]),
-                "text": str(proj.get("mark") or ("最可能→" + _px(proj.get("target")))),
-                "color": _PROJECT,
-                "size": _STRUCTURE_TAG_SIZE,
-            }
-        )
-    # 73：不准畫「連點延長」叉虛線（末日 K 往下甩進空曠、無對應標籤＝多餘）
-    # forks 仍可留在 proj 供演算；圖上只留有右溝標籤的線（最可能／壓撐／軌）
+    # 已刪：末日 K 連出橘虛線＋「最可能＝下一層撐…」標（使用者鎖）
+    _ = list(proj.get("path") or [])
+    # 73：不准畫「連點延長」叉虛線；圖上只留右溝壓撐／軌／原文目標
     _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     # 標籤欄：軌虛線已停在 label_col_left 左側。
@@ -4501,7 +4743,8 @@ def render_biaoke_structure_png(
         avoid_ys.append(float(channel["rail_now"]))
     if channel.get("base_now"):
         avoid_ys.append(float(channel["base_now"]))
-    evo_pad = span * 0.08
+    # 右下空白給昨收／今收；底墊略減以免把錨點頂離 1500～2000 紅框
+    evo_pad = span * 0.045
     _place_right_notes(
         ax1,
         right_notes,
@@ -4514,63 +4757,50 @@ def render_biaoke_structure_png(
         avoid_ys=avoid_ys,
         x_max=float(x_right),
         bottom_pad=evo_pad,
+        close_anchor_y=_close_tags_lower_right_y(
+            float(ymin),
+            float(ymax),
+            avoid_price=float(last_c) if last_c > 0 else 0.0,
+        ),
     )
-    # 演化區說明一行（不准拆成「演化區」孤字＋括號另列）
-    evo_cx = float(n - 1) + float(_FUTURE) * 0.50
-    ax1.text(
-        evo_cx,
-        ymin + span * 0.018,
-        EVOLUTION_ZONE_LABEL,
-        color="#546e7a",
-        fontproperties=_fp(8.5, "bold"),
-        ha="center",
-        va="bottom",
-        zorder=8,
-        clip_on=True,
-    )
+    # 已刪演化區膚色底＋「演化區（不是保證…）」底標
     mark = ""
     mc = _TEXT
     if info.get("wash"):
         mark = "破線洗盤痕跡（破撐後站回，不是保證）"
         mc = _WASH
     elif info.get("distribution"):
-        mark = "過壓後掉回撐下＝出貨痕跡"
+        mark = "出貨痕跡"
         mc = _PRESS
-        # 原因句鉤：出貨痕跡點名 NEXT（一句、非買訊）
+        # v8 建議：左側已有「下一層壓／撐」線標 → 摘要不重複帶價
         try:
             ns = dict(info.get("next_support") or {})
-            bit = str(ns.get("reason_line") or "").strip()
-            if bit and "朝" in bit:
-                # 晶片維持短標；完整句走 notes／caption
-                prim = ns.get("primary") or {}
-                if prim and float(prim.get("price") or 0) > 0:
-                    from biaoke_next_support import _fmt_price as _ns_px
-
-                    mark = (
-                        f"出貨痕跡→下一撐："
-                        f"{prim.get('source') or ''} {_ns_px(prim.get('price'))}"
-                    ).strip()
-                elif ns.get("none_label"):
-                    mark = f"出貨痕跡・{ns.get('none_label')}"
+            layer = dict(ns.get("layer") or {})
+            lo = float(layer.get("low") or 0)
+            hi = float(layer.get("high") or 0)
+            if not (lo > 0 and hi > 0) and ns.get("none_label"):
+                mark = f"出貨痕跡・{ns.get('none_label')}"
         except Exception:
             pass
     elif info.get("under_support"):
-        # 破撐：晶片點名 NEXT 或暫無
+        # v8 建議：破撐摘要不帶下一層價（線標已在左側）
         try:
             ns = dict(info.get("next_support") or {})
-            prim = ns.get("primary") or {}
-            if prim and float(prim.get("price") or 0) > 0:
-                from biaoke_next_support import _fmt_price as _ns_px
-
-                mark = (
-                    f"破撐→下一撐：{prim.get('source') or ''} {_ns_px(prim.get('price'))}"
-                ).strip()
+            layer = dict(ns.get("layer") or {})
+            lo = float(layer.get("low") or 0)
+            hi = float(layer.get("high") or 0)
+            if lo > 0 and hi > 0:
+                mark = "破撐"
                 mc = _PRESS
             elif ns.get("none_label"):
                 mark = str(ns.get("none_label"))
                 mc = _MUTED
+            else:
+                mark = "破撐"
+                mc = _PRESS
         except Exception:
-            pass
+            mark = "破撐"
+            mc = _PRESS
     # 大量日高／低判斷句（收在低下／已過高等）全股票都不打
     banner_bits = header_banner_lines(glance, sid=sid, plate=plate)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
@@ -4970,6 +5200,15 @@ def render_biaoke_structure_png(
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(12, "bold"))
         lab.set_clip_on(False)
+    layer_i = -1
+    try:
+        from biaoke_next_support import find_layer_bar_index
+
+        layer_i = find_layer_bar_index(
+            work, dict((info.get("next_support") or {}).get("layer") or {})
+        )
+    except Exception:
+        layer_i = -1
     vol_heights, vol_ylim, _vol_missing = paint_lookup_volume_bars(
         ax2,
         xs,
@@ -4977,12 +5216,119 @@ def render_biaoke_structure_png(
         candle_up,
         halt=halt_flags,
         spike_i=spike_i,
+        secondary_i=layer_i if layer_i >= 0 else None,
         z=3,
     )
     vmax = float(vol_ylim) if vol_ylim else 1.0
-    ax2.set_ylim(0, vmax * 1.28)
-    if 0 <= spike_i < n and vols[spike_i]:
-        # 量標拉到空白帶；釘點用開方顯示高（字串仍真實張數）
+    has_layer_vol = bool(
+        0 <= layer_i < n and layer_i != spike_i and vols[layer_i]
+    )
+    spike_ok = bool(0 <= spike_i < n and vols[spike_i])
+    # v8 建議：量標同高並排，但貼近柱頂（縮短垂直／水平連線）
+    _peak_disp = 0.0
+    if spike_ok:
+        _peak_disp = max(
+            _peak_disp,
+            float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0]),
+        )
+    if has_layer_vol:
+        _peak_disp = max(
+            _peak_disp,
+            float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0]),
+        )
+    vol_lab_y = (
+        float(_peak_disp) * 1.06 + float(vmax) * 0.02
+        if _peak_disp > 0
+        else float(vmax) * 1.05
+    )
+    ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.10))
+    if spike_ok and has_layer_vol:
+        spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
+        layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
+        layer_md = _md(work[layer_i].get("date"))
+        # 較早量日偏左、較晚偏右；同一水平高度
+        if int(layer_i) <= int(spike_i):
+            layer_side, spike_side = "left", "right"
+        else:
+            layer_side, spike_side = "right", "left"
+
+        # v8 建議：連線改短、貼近各自量柱（相鄰日用更短偏移）
+        _gap_bars = abs(int(layer_i) - int(spike_i))
+        _vol_off = 1.55 if _gap_bars <= 2 else 2.4
+
+        def _side_x(i: int, side: str) -> float:
+            if side == "left":
+                return max(1.2, float(i) - float(_vol_off))
+            if side == "right":
+                return min(float(n) - 1.5, float(i) + float(_vol_off))
+            return float(i)
+
+        ax2.annotate(
+            f"下一層量日　{layer_md}",
+            xy=(float(layer_i), float(layer_disp)),
+            xytext=(_side_x(layer_i, layer_side), vol_lab_y),
+            color="#1565c0",
+            fontproperties=_fp(10, "bold"),
+            ha="right" if layer_side == "left" else "left",
+            va="center",
+            zorder=12,
+            annotation_clip=False,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor="#ffffff",
+                edgecolor="#1565c0",
+                linewidth=1.05,
+                alpha=0.97,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color="#1565c0",
+                lw=0.95,
+                linestyle=(0, (2.4, 1.8)),
+                shrinkA=2,
+                shrinkB=3,
+            ),
+        )
+        ax2.annotate(
+            f"這根＝爆大量　{_vol(vols[spike_i])}",
+            xy=(float(spike_i), float(spike_disp)),
+            xytext=(_side_x(spike_i, spike_side), vol_lab_y),
+            color=_TEXT,
+            fontproperties=_fp(10, "bold"),
+            ha="right" if spike_side == "left" else "left",
+            va="center",
+            zorder=12,
+            annotation_clip=False,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor="#ffffff",
+                edgecolor="#546e7a",
+                linewidth=1.05,
+                alpha=0.97,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color="#546e7a",
+                lw=0.95,
+                linestyle=(0, (2.4, 1.8)),
+                shrinkA=2,
+                shrinkB=3,
+            ),
+        )
+        try:
+            ax1.axvline(
+                layer_i,
+                color="#90caf9",
+                linewidth=1.0,
+                linestyle=(0, (1.1, 1.35)),
+                alpha=0.75,
+                zorder=2,
+            )
+        except Exception:
+            pass
+    elif spike_ok:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
         _leader_note(
@@ -4992,11 +5338,54 @@ def render_biaoke_structure_png(
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             _TEXT,
             tx=vol_tx,
-            ty=vmax * 1.12,
+            ty=vol_lab_y,
             size=11,
             ha="left" if vol_tx >= spike_i else "right",
             va="center",
+            clip=False,
         )
+    elif has_layer_vol:
+        layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
+        layer_md = _md(work[layer_i].get("date"))
+        lab_x = max(2.4, float(layer_i) - 5.2)
+        ax2.annotate(
+            f"下一層量日　{layer_md}",
+            xy=(float(layer_i), float(layer_disp)),
+            xytext=(lab_x, vol_lab_y),
+            color="#1565c0",
+            fontproperties=_fp(10, "bold"),
+            ha="right" if lab_x + 0.4 < float(layer_i) else "left",
+            va="center",
+            zorder=12,
+            annotation_clip=False,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor="#ffffff",
+                edgecolor="#1565c0",
+                linewidth=1.05,
+                alpha=0.97,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color="#1565c0",
+                lw=0.95,
+                linestyle=(0, (2.4, 1.8)),
+                shrinkA=2,
+                shrinkB=3,
+            ),
+        )
+        try:
+            ax1.axvline(
+                layer_i,
+                color="#90caf9",
+                linewidth=1.0,
+                linestyle=(0, (1.1, 1.35)),
+                alpha=0.75,
+                zorder=2,
+            )
+        except Exception:
+            pass
     ax2.set_ylabel("")
     ax2.yaxis.set_ticks_position("right")
     ax2.tick_params(
@@ -5015,11 +5404,9 @@ def render_biaoke_structure_png(
         lab.set_fontproperties(_fp(11, "bold"))
         lab.set_clip_on(False)
     ax2.set_xlim(-0.55, x_right)
-    paint_forecast_span(ax2, n - 1, _FUTURE, line=False)
     ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
-    tick_i = _axis_ticks(n, extra=(spike_i,))
-    # 演化帶已有 EVOLUTION_ZONE_LABEL；底軸不准再孤一個「演算」
+    tick_i = _axis_ticks(n, extra=(spike_i, layer_i if layer_i >= 0 else spike_i))
     if n - 1 + _FUTURE not in tick_i:
         tick_i.append(n - 1 + _FUTURE)
     labels = []
