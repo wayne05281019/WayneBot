@@ -170,7 +170,7 @@ def _score(
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="data/wayne_market.db")
-    ap.add_argument("--start", default="20260401")
+    ap.add_argument("--start", default="20260324")
     ap.add_argument("--end", default="")
     ap.add_argument("--out", default="/opt/cursor/artifacts/foreign-sell-calm")
     args = ap.parse_args()

@@ -254,7 +254,7 @@ def _score_cell(
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=os.environ.get("WAYNE_DB_PATH", "data/wayne_market.db"))
-    ap.add_argument("--start", default="20260401")
+    ap.add_argument("--start", default="20260324")
     ap.add_argument("--end", default="")
     ap.add_argument("--out", default="/opt/cursor/artifacts/foreign-sell-extreme-dplus")
     ap.add_argument("--k", type=int, default=5, help="主評 K（另掃 1..5）")

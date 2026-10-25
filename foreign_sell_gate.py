@@ -15,21 +15,24 @@ from dongzhu_tape import OPTIMIZE_MIN_N, tape_store_path
 
 MIN_N = OPTIMIZE_MIN_N
 
-# 離線全量回測備註（2026-10-15；不是靜默 live n，不准當假 live）
+# 離線全量回測備註（2026-10-25 密窗 20260324→20261022 n=145；不是靜默 live n，不准當假 live）
 OFFLINE_NOTE: Dict[str, str] = {
     "fear": (
         "離線：ForeignSell lead 亮 hit≈23.4% vs 基線≈7.7% 有 lift；"
         "StockHit top500 亮≈11.7% 輸暗≈13.4%；Dump 解讀分歧"
     ),
     "escalate": (
-        "離線：n5_k3_th90 top500 hit≈17.3% vs 基線≈12.2% 有 lift；"
-        "現況畫／落檔預設 n3；下一版靜默 n5"
+        "離線密窗：n5_k3_th90 top500 hit≈16.8% vs 基線≈12.3% 有 lift；"
+        "現況 n3 近平基線；下一版靜默仍 n5；靜默 n 未滿不換碼"
     ),
     "extreme": (
-        "離線：續極端多數軌大幅贏基線（例 lots_th5000 命中≈69% vs≈9%）；"
+        "離線密窗：續極端 lots_th5000 命中≈69.5% vs≈8.8%；"
         "價回撤 −5% 近平／輸基線，不當主閘"
     ),
-    "calm": "離線：小買→大買多數近平基線；未過閘；買升級橘六角仍不亮",
+    "calm": (
+        "離線密窗：小買→大買 top500 n5 弱 lift（≈54.4% vs≈52.5%）、"
+        "流動對照近平；未過閘；買升級橘六角仍不亮"
+    ),
 }
 
 TRACKS = ("fear", "escalate", "extreme", "calm")
