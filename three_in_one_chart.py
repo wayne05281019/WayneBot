@@ -2251,95 +2251,73 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
             fig.subplots_adjust(left=FRAME_LEFT, right=FRAME_RIGHT, top=0.965, bottom=0.10)
         except Exception:
             pass
-        # 軌道標籤：藏舊右溝標，往左貼軌末端重畫（字級≈③壓840）；收掉右側大空白
+        # 軌道標：刪舊右溝 annotate／抬離線重畫；改沿可見軌貼線（跟大量區同一套）
         if ax1 is not None:
             from wayne_navigator import _fp as _st_fp
 
             n_bars = len(work)
             seam = float(max(n_bars - 1, 0))
-            # 標籤落在橘虛線左側、貼兩條軌道；字向左長，不准再飄右溝
-            tag_x = seam - 3.6
-            redraw: list[tuple[str, float, str]] = []
+            # 藏舊「最可能」右溝 annotate；下降壓／平行撐若已是貼線 Text 則保留
             for txt in list(ax1.texts):
                 s = str(txt.get_text() or "")
-                if not any(
-                    k in s
-                    for k in ("平行壓", "上升軌", "最可能", "平行撐", "下降壓")
-                ):
+                is_rail = any(
+                    k in s for k in ("平行壓", "上升軌", "平行撐", "下降壓")
+                )
+                is_most = "最可能" in s
+                if not (is_rail or is_most):
                     continue
-                y = None
-                try:
-                    if hasattr(txt, "xyann"):
-                        y = float(txt.xyann[1])
-                    else:
-                        y = float(txt.get_position()[1])
-                except Exception:
+                # Annotation（有箭頭／引線）一律藏；貼線 Text 保留
+                is_ann = type(txt).__name__ == "Annotation" or hasattr(txt, "arrow_patch")
+                if is_ann or is_most:
+                    txt.set_visible(False)
                     try:
-                        y = float(txt.get_position()[1])
+                        ap = getattr(txt, "arrow_patch", None)
+                        if ap is not None:
+                            ap.set_visible(False)
                     except Exception:
-                        y = None
+                        pass
+            # 若圖上沒有貼線軌道 Text，用大量區同一套補畫（不准抬離線、不准引線）
+            has_rail_txt = any(
+                any(k in str(t.get_text() or "") for k in ("下降壓", "平行撐", "平行壓", "上升軌"))
+                and type(t).__name__ != "Annotation"
+                and bool(getattr(t, "get_visible", lambda: True)())
+                for t in list(ax1.texts)
+            )
+            if not has_rail_txt:
                 try:
-                    col = str(txt.get_color() or "#1565c0")
-                except Exception:
-                    col = "#1565c0"
-                if y is not None:
-                    redraw.append((s, float(y), col))
-                txt.set_visible(False)
-                # Annotation 短引線一併藏（有平行軌就不需要短藍線）
-                try:
-                    ap = getattr(txt, "arrow_patch", None)
-                    if ap is not None:
-                        ap.set_visible(False)
+                    import numpy as _np_st
+
+                    import vol_zone_chart as _vz_st
+
+                    ch_info = _bc_mod.infer_parallel_channel(work) or {}
+                    if ch_info.get("kind"):
+                        hi_a = _np_st.asarray(
+                            [float(r.get("high") or _np_st.nan) for r in work],
+                            dtype=float,
+                        )
+                        lo_a = _np_st.asarray(
+                            [float(r.get("low") or _np_st.nan) for r in work],
+                            dtype=float,
+                        )
+                        y0, y1 = ax1.get_ylim()
+                        _vz_st.paint_vol_zone_parallel_channel(
+                            ax1,
+                            ch_info,
+                            n=int(n_bars),
+                            ymin=float(y0),
+                            ymax=float(y1),
+                            labels_outside=False,
+                            market_style=False,
+                            highs=hi_a,
+                            lows=lo_a,
+                            mas=[],
+                            paint_rails=False,
+                            paint_labels=True,
+                            avoid_nav_marks=False,
+                        )
                 except Exception:
                     pass
-            # 垂直錯開，且不准坐在軌線上（上軌標往上、下軌標往下）
-            redraw.sort(key=lambda t: -t[1])
-            used_y: list[float] = []
-            # 上軌標若貼頂會被 ylim 壓回線上：先抬 ylim 再放標
-            ymin, ymax = ax1.get_ylim()
-            span = max(ymax - ymin, 1.0)
-            ax1.set_ylim(ymin, ymax + span * 0.10)
-            ymin, ymax = ax1.get_ylim()
-            gap = max((ymax - ymin) * 0.10, 48.0)
-            for s, y0, col in redraw:
-                y = float(y0)
-                if "平行壓" in s or "下降壓" in s or "上軌" in s:
-                    # 上軌標整盒抬離線；引線指回軌端，盒本身不准壓線
-                    y = min(float(y0) + gap * 1.6, ymax - gap * 0.15)
-                elif "上升軌" in s or "平行撐" in s or "下軌" in s:
-                    y = float(y0) - gap * 1.45
-                elif "最可能" in s:
-                    y = min(max(float(y0), ymax - gap * 1.4), ymax - gap * 0.35)
-                for _ in range(12):
-                    if not any(abs(y - u) < gap * 0.85 for u in used_y):
-                        break
-                    y -= gap * 0.9
-                y = min(max(y, ymin + gap * 0.6), ymax - gap * 0.12)
-                used_y.append(y)
-                # 字級／盒對齊③「壓 840」；軌道已有平行線，不准再畫短引線交叉
-                sz = 16.5 if "最可能" in s else 15.5
-                va = "bottom" if ("平行壓" in s or "下降壓" in s or "上軌" in s) else (
-                    "top" if ("上升軌" in s or "平行撐" in s or "下軌" in s) else "center"
-                )
-                ax1.text(
-                    tag_x - 2.4,
-                    y,
-                    s,
-                    ha="right",
-                    va=va,
-                    fontproperties=_st_fp(sz, "bold"),
-                    color=col,
-                    zorder=16,
-                    clip_on=False,
-                    bbox=dict(
-                        boxstyle="round,pad=0.36",
-                        facecolor="#ffffff",
-                        edgecolor=col,
-                        linewidth=1.35,
-                        alpha=0.97,
-                    ),
-                )
-            # 右緣只留刻度溝，不准再空一大片給舊右溝標
+            # 右緣只留刻度溝
             x_right = seam + 10.5
             ax1.set_xlim(-0.55, x_right)
             if ax2 is not None:

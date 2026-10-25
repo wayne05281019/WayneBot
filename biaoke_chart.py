@@ -2666,12 +2666,25 @@ def _place_right_notes(
                 note, show_ty, float(level_tx), stub=True, note_stub_x=float(stub_x)
             )
         elif _is_rail_note(text):
-            _paint_one_note(
-                note,
-                show_ty,
+            # 備援：軌道標只准 ax.text 壓在 show_ty（軌價），不准 annotate 引線／灰虛線箭頭
+            # 正常路徑已由 paint_vol_zone_parallel_channel 貼線，此處不該再走到
+            ax.text(
                 float(rail_tx),
-                stub=True,
-                note_stub_x=float(rail_stub_x),
+                float(show_ty),
+                text,
+                color=str(note.get("color") or _TEXT),
+                fontproperties=_fp(int(note.get("size") or _STRUCTURE_TAG_SIZE), "bold"),
+                ha="left",
+                va="center",
+                zorder=12,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle=f"round,pad={float(_STRUCTURE_TAG_PAD):.2f}",
+                    facecolor="#ffffff",
+                    edgecolor=str(note.get("color") or _TEXT),
+                    linewidth=1.05,
+                    alpha=0.97,
+                ),
             )
         else:
             _paint_one_note(
@@ -4707,27 +4720,36 @@ def render_biaoke_structure_png(
             y_hi=ymax,
             n=n,
         )
-        # 標籤釘在線上相對位置（略左於線末端），引線短、不准穿盒
-        if channel.get("rail_now"):
-            right_notes.append(
-                {
-                    "x": float(rail_label_x),
-                    "y": float(channel["rail_now"]),
-                    "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
-                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
-                    "size": _STRUCTURE_TAG_SIZE,
-                }
+        # 軌道標＝大量區同一套：bbox 中心壓可見軌，不准右緣 annotate／灰虛線箭頭
+        try:
+            import numpy as _np_ch
+
+            from vol_zone_chart import paint_vol_zone_parallel_channel
+
+            _hi_a = _np_ch.asarray(
+                [float(h) if h else _np_ch.nan for h in highs], dtype=float
             )
-        if channel.get("base_now"):
-            right_notes.append(
-                {
-                    "x": float(rail_label_x),
-                    "y": float(channel["base_now"]),
-                    "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
-                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
-                    "size": _STRUCTURE_TAG_SIZE,
-                }
+            _lo_a = _np_ch.asarray(
+                [float(lo) if lo else _np_ch.nan for lo in lows], dtype=float
             )
+            paint_vol_zone_parallel_channel(
+                ax1,
+                channel,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                labels_outside=False,
+                market_style=False,
+                highs=_hi_a,
+                lows=_lo_a,
+                mas=[],
+                paint_rails=False,
+                paint_labels=True,
+                avoid_nav_marks=False,
+            )
+        except Exception:
+            logger.debug("結構圖軌道標貼線略過", exc_info=True)
+        # 不准再塞 right_notes 走 _leader_note 引線
     else:
         if down_pts:
             (x1, y1, d1), (x2, y2, d2) = down_pts

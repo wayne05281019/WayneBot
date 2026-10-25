@@ -2315,21 +2315,37 @@ def _blank_for_channel_label(
     y_vis_hi = float(ymax) - max(dy * 0.55, span * 0.02)
 
     def _rail_visible(cx: float) -> Tuple[bool, float]:
-        """該 x 的軌位必須落在可見軸內；下降軌左延常飛出圖外，不准在那裡掛標。"""
-        y_line = _channel_seg_y(seg, cx, y_now)
-        return (y_vis_lo <= float(y_line) <= y_vis_hi), float(y_line)
+        """該 x 的軌位必須落在可見軸內，且接近末日軌價。
+
+        下降軌左延常飛出圖外或飄到高空空白；掛在那裡看起來像浮標＋假 callout。
+        """
+        y_line = float(_channel_seg_y(seg, cx, y_now))
+        if not (y_vis_lo <= y_line <= y_vis_hi):
+            return False, y_line
+        # 硬：離 y_now 太遠＝左延段，不准掛（約 12% 軸高內）
+        if abs(y_line - float(y_now)) > span * 0.12:
+            return False, y_line
+        return True, y_line
 
     # 起錨：從右往左找「軌線仍在圖內」的中右點（下降壓／平行撐都貼可見軌段）
     x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
     if not near_last:
         found_anchor = False
-        for xf in (0.90, 0.86, 0.82, 0.78, 0.74, 0.70, 0.94):
+        # 由右往左：先找「軌 y 接近 y_now」的可見點（近端通道），再退而求可見
+        best_anchor: Optional[Tuple[float, float, float]] = None  # score, cx, yl
+        for xf in (0.96, 0.94, 0.92, 0.90, 0.88, 0.86, 0.84, 0.82, 0.78, 0.74):
             cx0 = min(float(n - 1) * xf, x_hi - dx * 0.55)
-            ok, _yl = _rail_visible(cx0)
-            if ok:
-                x_anchor = cx0
-                found_anchor = True
-                break
+            ok, yl0 = _rail_visible(cx0)
+            if not ok:
+                continue
+            sc = -abs(yl0 - float(y_now)) / span
+            if xf >= 0.88:
+                sc += 0.15
+            if best_anchor is None or sc > best_anchor[0]:
+                best_anchor = (sc, cx0, yl0)
+        if best_anchor is not None:
+            x_anchor = float(best_anchor[1])
+            found_anchor = True
         if not found_anchor:
             # 整段左延都出界：貼末日軌價旁
             x_anchor = min(float(n) - 1.2, x_hi - dx * 0.45)
@@ -2411,12 +2427,14 @@ def _blank_for_channel_label(
                 score += 0.35
         if mpad > 0 and not near_last:
             xf = cx / max(float(n) - 1.0, 1.0)
-            if xf > 0.93:
-                score -= 0.40
-            elif xf < 0.72:
-                score -= 0.55
-            if 0.78 <= xf <= 0.91:
-                score += 0.35
+            if xf > 0.96:
+                score -= 0.35
+            elif xf < 0.78:
+                score -= 0.65
+            if 0.84 <= xf <= 0.95:
+                score += 0.55
+        # 貼近端軌價（rail_now／base_now）：不准掛在左延高空「看起來浮著」的段
+        score -= abs(y_line - float(y_now)) / span * 3.2
         if best is None or score > best[0]:
             best = (score, cx, cy)
 
