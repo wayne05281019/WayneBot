@@ -3932,15 +3932,11 @@ def _paint_volume_zone(
         layer_raw = float(vol_heights[layer_i] or 0)
         if layer_raw > 0:
             layer_h = float(lookup_vol_to_display([layer_raw], float(vol_ylim))[0])
-    # v6：爆大量／下一層量日＝同一水平高度左右並排，各虛線連柱
-    y_top = max(
-        vol_ylim * 1.34,
-        spike_h * 1.42 if spike_h > 0 else 0.0,
-        layer_h * 1.42 if layer_h > 0 else 0.0,
-        vol_ylim * 1.34,
-    )
+    # v8 建議：量標同高並排、貼近柱頂（縮短連線）；相鄰日水平偏移更短
+    _peak_h = max(float(spike_h or 0), float(layer_h or 0), float(vol_ylim) * 0.35)
+    vol_lab_y = float(_peak_h) * 1.06 + float(vol_ylim) * 0.02
+    y_top = max(float(vol_ylim) * 1.12, float(vol_lab_y) * 1.10)
     ax2.set_ylim(0, float(y_top))
-    vol_lab_y = float(y_top) * 0.92
 
     def _vol_day_callout(
         *,
@@ -3955,11 +3951,12 @@ def _paint_volume_zone(
     ) -> None:
         """side=left／right／center；有 lab_y＝資料座標水平並排，否則貼柱頂。"""
         if lab_y is not None:
+            # v8 建議：水平並排保留；連線改短、貼近量柱
             if side == "left":
-                tx = max(-0.2, float(x) - 4.8)
+                tx = max(-0.2, float(x) - 1.55)
                 ha = "right"
             elif side == "right":
-                tx = min(float(n) - 0.4, float(x) + 4.8)
+                tx = min(float(n) - 0.4, float(x) + 1.55)
                 ha = "left"
             else:
                 tx = float(x)

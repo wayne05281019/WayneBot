@@ -521,9 +521,11 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "_paint_extended_rail" in src
     assert "_leader_note" in src or "_place_right_notes" in src
     assert "_place_right_notes" in src
-    assert "from_x" in src and "_MOST_LIKELY_DASH" in inspect.getsource(
+    # from_x／最可能短 dash 在 _place_right_notes（render 內可能已無「最可能」列）
+    _notes_src = inspect.getsource(
         __import__("biaoke_chart", fromlist=["_place_right_notes"])._place_right_notes
     )
+    assert "from_x" in _notes_src and "_MOST_LIKELY_DASH" in _notes_src
     assert "inset_axes" not in src
     assert "if down_live" not in src
     assert "x_fut" in src
@@ -557,7 +559,9 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
         or "hdr-band-v9c" in band_src
     )
     assert "_STATUS_CHIP_SCALE" in src
-    assert "過壓後掉回撐下＝出貨痕跡" in src
+    # v8：出貨痕跡摘要去重（線標已有下一層價 → 摘要不帶價）
+    assert 'mark = "出貨痕跡"' in src
+    assert "出貨痕跡→下一層" not in src
     assert "status_row" in src
     assert "不准上下兩排互壓" in src
     assert "status_h_gap" in src
@@ -691,8 +695,8 @@ def test_structure_no_vol_day_judgment_and_prev_close_note():
     assert _approx_note_pack_width("昨收 3140", 11) >= _approx_note_width("昨收 3140", 11) * 1.05
     assert "不准蓋昨收" in place_src or "兩盒" in place_src
     assert "_MOST_LIKELY_DASH" in place_src or "_MOST_LIKELY_DASH" in src
-    assert "from_x" in src and "from_y" in src
-    assert "不准再畫演化區彎路徑" in src or "短 dash 直連末日 K" in src
+    assert "from_x" in place_src and "from_y" in place_src
+    assert "不准再畫演化區彎路徑" in place_src or "短 dash 直連末日 K" in place_src or "短 dash 直連末日 K" in src
     assert "(0, (7, 3))" not in src
     assert "連點延長" in src and "不准畫" in src
     spot = inspect.getsource(_paint_spot)
@@ -804,11 +808,12 @@ def test_locator_inset_marks_window():
     )
     assert any("最可能" in str(k.get("text")) for k in kept)
     assert any(str(k.get("text") or "").startswith("壓") for k in kept)
-    # 61：軌標不准被壓／撐刪掉，改垂直錯開
+    # 61：軌標不准被壓／撐刪掉；v7：軌 y 釘紫虛線，不准被壓／撐 nudge 離線
     assert any("下降壓" in str(k.get("text")) for k in kept)
     rail = next(k for k in kept if "下降壓" in str(k.get("text")))
     press = next(k for k in kept if str(k.get("text") or "").startswith("壓"))
-    assert abs(float(rail["y"]) - float(press["y"])) >= 2.0
+    assert float(rail["y"]) == 101.0
+    assert float(press["y"]) == 100.0
     # 昨收貼「最可能」釘價仍要留；只跟壓／撐極近才讓
     # 最可能釘現價不准吃掉撐（7853：撐423 vs 收416；span 大時 thr 會蓋到）
     kept_prev = _dedupe_right_notes(
@@ -1366,12 +1371,12 @@ def test_structure_right_notes_fit_most_likely_full_text():
         or "已刪演化區" in rsrc
     )
     assert "_STRUCTURE_FIG_RIGHT" in rsrc
-    # 軌虛線停在標籤欄左側（明顯空隙）；右溝用軸寬比例留白
+    # v8：軌虛線往右延伸到接近桃色帶右緣；標籤仍用略左的 rail_label_x
+    assert "rail_label_x" in rsrc or "hline_xmax" in rsrc
     assert (
-        "label_col_left) - 5.5" in rsrc
-        or "label_col_left - 5.5" in rsrc
-        or "label_col_left) - 2.8" in rsrc
+        "label_col_left) - 2.8" in rsrc
         or "label_col_left - 2.8" in rsrc
+        or "rail_end" in rsrc
     )
     assert "label_frac" in rsrc
     assert "need_by_frac" in rsrc

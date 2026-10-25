@@ -2402,6 +2402,7 @@ def _place_right_notes(
                 ),
             )
             return
+        note_pad = note.get("pad")
         _leader_note(
             ax,
             use_stub_x,
@@ -2415,7 +2416,7 @@ def _place_right_notes(
             va="center",
             clip=False,
             shrink_b=1.5,
-            pad=_STRUCTURE_TAG_PAD,
+            pad=float(note_pad) if note_pad is not None else _STRUCTURE_TAG_PAD,
         )
         if not stub:
             return
@@ -4475,6 +4476,11 @@ def render_biaoke_structure_png(
             layer_labels="left",
             written_labels="notes",
         )
+        # v8 建議：飆大原文目標長標字級／框略縮一階（仍完整可見）
+        for _wn in right_notes:
+            if "原文目標" in str(_wn.get("text") or ""):
+                _wn["size"] = max(8.5, float(_STRUCTURE_TAG_SIZE) - 1.5)
+                _wn["pad"] = max(0.12, float(_STRUCTURE_TAG_PAD) - 0.06)
     except Exception:
         logger.debug("結構圖原文／下一層線略過", exc_info=True)
     # 右軸：今收／現價（71 紅框必留）＋昨收；75 同列並排。
@@ -4538,9 +4544,15 @@ def render_biaoke_structure_png(
     # 有通道時以通道為準重算（含完整 bars 窗），避免 work 窗與全列不一致
     if not channel:
         channel = infer_parallel_channel(work) or {}
-    # 軌／通道平行線再往右延長一點進演化區（67），仍停在標籤欄左側空隙
-    rail_end = min(float(n - 1) + float(_FUTURE) * 0.62, float(label_col_left) - 2.8)
-    rail_end = max(float(n - 1) + 2.5, rail_end)
+    # v8 建議：紫虛線往右延伸到接近桃色帶右緣／主圖右緣（留邊距、不壓軸刻度）
+    # 標籤仍走 rail_tx 釘在線旁，不跟線末端綁死
+    rail_label_x = min(
+        float(label_col_left) - 2.8,
+        float(n - 1) + max(float(_FUTURE) * 0.62, 4.0),
+    )
+    rail_label_x = max(float(n - 1) + 2.5, float(rail_label_x))
+    rail_end = min(float(hline_xmax) + 0.15, float(label_col_left) - 0.25)
+    rail_end = max(float(rail_label_x) + 1.5, float(rail_end))
     # 通道與單軌二擇一畫：有合格通道就畫平行雙線；單軌只在沒通道時畫，避免雙套互壓
     if channel.get("kind"):
         _paint_parallel_channel(
@@ -4553,11 +4565,11 @@ def render_biaoke_structure_png(
             y_hi=ymax,
             n=n,
         )
-        # 釘在軌末端（標籤欄左側），引線短、不准穿盒
+        # 標籤釘在線上相對位置（略左於線末端），引線短、不准穿盒
         if channel.get("rail_now"):
             right_notes.append(
                 {
-                    "x": float(rail_end),
+                    "x": float(rail_label_x),
                     "y": float(channel["rail_now"]),
                     "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
@@ -4567,7 +4579,7 @@ def render_biaoke_structure_png(
         if channel.get("base_now"):
             right_notes.append(
                 {
-                    "x": float(rail_end),
+                    "x": float(rail_label_x),
                     "y": float(channel["base_now"]),
                     "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
                     "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
@@ -4755,41 +4767,37 @@ def render_biaoke_structure_png(
         mark = "破線洗盤痕跡（破撐後站回，不是保證）"
         mc = _WASH
     elif info.get("distribution"):
-        mark = "過壓後掉回撐下＝出貨痕跡"
+        mark = "出貨痕跡"
         mc = _PRESS
-        # 原因句鉤：出貨痕跡點名 NEXT（一句、非買訊）
+        # v8 建議：左側已有「下一層壓／撐」線標 → 摘要不重複帶價
         try:
             ns = dict(info.get("next_support") or {})
             layer = dict(ns.get("layer") or {})
-            from biaoke_next_support import _fmt_price as _ns_px
-
             lo = float(layer.get("low") or 0)
             hi = float(layer.get("high") or 0)
-            if lo > 0 and hi > 0:
-                mark = (
-                    f"出貨痕跡→下一層：壓 {_ns_px(hi)}／撐 {_ns_px(lo)}"
-                ).strip()
-            elif ns.get("none_label"):
+            if not (lo > 0 and hi > 0) and ns.get("none_label"):
                 mark = f"出貨痕跡・{ns.get('none_label')}"
         except Exception:
             pass
     elif info.get("under_support"):
-        # 破撐：晶片點名下一層（次大量區壓+撐）或暫無；破撐≠換主區
+        # v8 建議：破撐摘要不帶下一層價（線標已在左側）
         try:
             ns = dict(info.get("next_support") or {})
             layer = dict(ns.get("layer") or {})
-            from biaoke_next_support import _fmt_price as _ns_px
-
             lo = float(layer.get("low") or 0)
             hi = float(layer.get("high") or 0)
             if lo > 0 and hi > 0:
-                mark = f"破撐→下一層：壓 {_ns_px(hi)}／撐 {_ns_px(lo)}".strip()
+                mark = "破撐"
                 mc = _PRESS
             elif ns.get("none_label"):
                 mark = str(ns.get("none_label"))
                 mc = _MUTED
+            else:
+                mark = "破撐"
+                mc = _PRESS
         except Exception:
-            pass
+            mark = "破撐"
+            mc = _PRESS
     # 大量日高／低判斷句（收在低下／已過高等）全股票都不打
     banner_bits = header_banner_lines(glance, sid=sid, plate=plate)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
@@ -5212,10 +5220,25 @@ def render_biaoke_structure_png(
     has_layer_vol = bool(
         0 <= layer_i < n and layer_i != spike_i and vols[layer_i]
     )
-    ax2.set_ylim(0, vmax * (1.42 if has_layer_vol else 1.28))
-    # v6：爆大量＋下一層量日＝同一水平高度左右並排，各虛線連柱；不准一上一下歪斜
-    vol_lab_y = float(vmax) * 1.18
     spike_ok = bool(0 <= spike_i < n and vols[spike_i])
+    # v8 建議：量標同高並排，但貼近柱頂（縮短垂直／水平連線）
+    _peak_disp = 0.0
+    if spike_ok:
+        _peak_disp = max(
+            _peak_disp,
+            float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0]),
+        )
+    if has_layer_vol:
+        _peak_disp = max(
+            _peak_disp,
+            float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0]),
+        )
+    vol_lab_y = (
+        float(_peak_disp) * 1.06 + float(vmax) * 0.02
+        if _peak_disp > 0
+        else float(vmax) * 1.05
+    )
+    ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.10))
     if spike_ok and has_layer_vol:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
@@ -5226,11 +5249,15 @@ def render_biaoke_structure_png(
         else:
             layer_side, spike_side = "right", "left"
 
+        # v8 建議：連線改短、貼近各自量柱（相鄰日用更短偏移）
+        _gap_bars = abs(int(layer_i) - int(spike_i))
+        _vol_off = 1.55 if _gap_bars <= 2 else 2.4
+
         def _side_x(i: int, side: str) -> float:
             if side == "left":
-                return max(1.2, float(i) - 5.5)
+                return max(1.2, float(i) - float(_vol_off))
             if side == "right":
-                return min(float(n) - 1.5, float(i) + 5.5)
+                return min(float(n) - 1.5, float(i) + float(_vol_off))
             return float(i)
 
         ax2.annotate(
