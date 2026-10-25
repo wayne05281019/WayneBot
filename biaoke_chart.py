@@ -2098,31 +2098,34 @@ def _close_tags_lower_right_y(
 ) -> float:
     """昨收／今收錨點 Y。
 
-    v7：主圖**右下空白**（約右軸 1500～2000 一帶），跟現價／次層帶拉開；
-    不准再貼現價旁搶位。軸內無 1500～2000 則取下緣空白帶。
+    v11：主圖**右下空白**（約右軸 1000～1500 低位空窗），跟現價／次層／2000 目標帶拉開；
+    不准擠在現價旁右緣。軸內無該帶則取下緣空白。
     """
     y0 = float(ymin)
     y1 = float(ymax)
     span = max(y1 - y0, 1.0)
-    # 優先落在 1500～2000 中段（使用者紅框）
-    band_lo, band_hi = 1500.0, 2000.0
-    mid = 1750.0
-    pad = span * 0.05
+    # 低位空窗（使用者鎖：右下，低於 2000 目標／次層帶）
+    band_lo, band_hi = 1000.0, 1500.0
+    mid = 1250.0
+    pad = span * 0.04
     if (y0 + pad) <= mid <= (y1 - pad):
         ay = float(mid)
     elif (y0 + pad) <= band_lo <= (y1 - pad):
-        ay = float(band_lo)
+        ay = float(band_lo + (band_hi - band_lo) * 0.35)
     elif y0 < band_hi and y1 > band_lo:
-        # 軸與 1500～2000 有交集：取交集中點
         a = max(y0 + pad, band_lo)
         b = min(y1 - pad, band_hi)
-        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.14)
+        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.12)
     else:
-        ay = float(y0 + span * 0.14)
-    # 跟現價拉開（至少約 12% 軸高）
+        ay = float(y0 + span * 0.12)
+    # 跟現價拉開（至少約 18% 軸高）；不夠就再往下沉
     ap = float(avoid_price or 0.0)
-    if ap > 0 and abs(ay - ap) < span * 0.12:
-        ay = float(min(ay, ap - span * 0.14))
+    if ap > 0 and abs(ay - ap) < span * 0.18:
+        ay = float(min(ay, ap - span * 0.20))
+        ay = float(max(ay, y0 + pad))
+    # 亦避開 2000 目標帶中心，免得跟原文目標搶位
+    if abs(ay - 2000.0) < span * 0.06:
+        ay = float(min(ay, 2000.0 - span * 0.08))
         ay = float(max(ay, y0 + pad))
     return float(ay)
 
@@ -2147,7 +2150,7 @@ def _place_right_notes(
     71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
     75：昨收＋今收同列並排（先昨收、右今收）。
-    close_anchor_y：有值＝昨收／今收整組釘該價（v7＝右下空白約 1500～2000，離現價）。
+    close_anchor_y：有值＝昨收／今收整組釘該價（v11＝右下空白約 1000～1500，離現價）。
     v7：壓／撐貼桃色帶最右（不壓軸刻度）；下降壓／平行撐釘紫虛線旁且不跟收標搶右緣；
     長標整段入軸不准切斷。
     """
@@ -2383,7 +2386,7 @@ def _place_right_notes(
         fixed_up.append((note, ty))
     placed = sorted(fixed_up, key=lambda p: -float(p[1]))
     # v7：壓／撐貼桃色帶最右；下降壓／平行撐釘紫虛線旁（略左於壓撐、不跟收標搶右緣）；
-    # 昨收／今收走右下空白（close_anchor_y≈1500～2000）；原文長標完整入軸。
+    # 昨收／今收走右下空白（close_anchor_y≈1000～1500）；原文長標完整入軸。
     col_tx = float(tx)
     _AXIS_TICK_CLEAR = 12.0
     level_tx = float(col_tx)
@@ -4878,7 +4881,7 @@ def render_biaoke_structure_png(
         avoid_ys.append(float(channel["rail_now"]))
     if channel.get("base_now"):
         avoid_ys.append(float(channel["base_now"]))
-    # 右下空白給昨收／今收；底墊略減以免把錨點頂離 1500～2000 紅框
+    # 右下空白給昨收／今收；底墊略減以免把錨點頂離 1000～1500 低位空窗
     evo_pad = span * 0.045
     _place_right_notes(
         ax1,

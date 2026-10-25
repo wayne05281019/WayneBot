@@ -2306,11 +2306,11 @@ def _blank_for_channel_label(
     gap = max(span * 0.008, dy * 0.08)
     mpad = max(float(mark_pad or 0.0), 0.0)
     pref = int(outside) or 1
-    # 貼軌軟窗：准兩側找空窗，但不准飛離軌太遠（不是寫死座標）
-    rail_soft = max(dy * 2.2, span * 0.12)
-    # 中右空窗起錨往左掃（紅標約兩顆買點▲之間）；略離最右箭堆；非寫死座標
+    # 貼軌硬窗：標心須貼近所屬軌（約一格標高內）；不准飄到通道正中／只認 y_now
+    rail_soft = max(dy * 0.95, span * 0.045)
+    # 中右空窗起錨往左掃；上軌略偏中段（下降壓常在中右線旁），下軌更右
     if mpad > 0 and not near_last:
-        x_anchor = min(float(n) * (0.87 if pref < 0 else 0.80), x_hi - dx * 0.55)
+        x_anchor = min(float(n) * (0.87 if pref < 0 else 0.78), x_hi - dx * 0.55)
     else:
         x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
     best: Optional[Tuple[float, float, float]] = None  # score, cx, cy
@@ -2363,17 +2363,22 @@ def _blank_for_channel_label(
             ignore_ma=ignore_ma,
         ):
             return
+        # 貼線分：離軌越遠越扣（下降壓／平行撐都必須貼所屬線，不准浮空）
         dist_rail = abs(cy - y_line) / span
-        score -= dist_rail * 1.6
-        # 略獎中右空窗（對照聯亞紅標帶），重罰貼死最右箭堆
+        score -= dist_rail * 6.5
+        # 上軌偏好略下方（通道內側線旁）；下軌偏好略上方
+        if pref > 0 and -dy * 0.15 <= (cy - y_line) <= dy * 0.55:
+            score += 0.55
+        elif pref < 0 and -dy * 0.15 <= (y_line - cy) <= dy * 0.55:
+            score += 0.55
         if mpad > 0 and not near_last:
             xf = cx / max(float(n) - 1.0, 1.0)
-            score -= abs(xf - 0.62) * 0.18
-            if xf > 0.88:
-                score -= 0.35
-            # 紅標帶約在圖中右（兩顆近端買點▲之間，約 0.70–0.90）
-            if 0.70 <= xf <= 0.90:
-                score += 0.22
+            if xf > 0.90:
+                score -= 0.40
+            if pref < 0 and 0.70 <= xf <= 0.90:
+                score += 0.20
+            elif pref > 0 and 0.55 <= xf <= 0.85:
+                score += 0.20
         if best is None or score > best[0]:
             best = (score, cx, cy)
 
@@ -2387,39 +2392,51 @@ def _blank_for_channel_label(
         edge = max(gap, span * 0.006, dy * 0.04)
         pockets: List[Tuple[float, float, float]] = []  # p_lo, p_hi, bonus
         if pref < 0:
-            # 軌上 → K 低：平行撐紅標主空窗
+            # 下軌：軌上 → K 低（平行撐貼線上方）
             top = loc_lo - edge
-            bot = y_line + edge * 0.3
-            if top > bot + max(dy * 0.25, span * 0.01):
-                pockets.append((bot, top, 0.75))
-            top2 = y_line - edge * 0.3
+            bot = y_line + edge * 0.2
+            if top > bot + max(dy * 0.20, span * 0.008):
+                pockets.append((bot, top, 0.85))
+            top2 = y_line - edge * 0.2
             bot2 = loc_hi + edge
-            if top2 > bot2 + max(dy * 0.25, span * 0.01):
-                pockets.append((bot2, top2, 0.18))
+            if top2 > bot2 + max(dy * 0.20, span * 0.008):
+                pockets.append((bot2, top2, 0.15))
         else:
-            top = y_line - edge * 0.3
+            # 上軌：K 高 → 軌下（下降壓貼線下方／通道內側線旁）
+            top = y_line - edge * 0.2
             bot = loc_hi + edge
-            if top > bot + max(dy * 0.25, span * 0.01):
-                pockets.append((bot, top, 0.75))
+            if top > bot + max(dy * 0.20, span * 0.008):
+                pockets.append((bot, top, 0.85))
             top2 = loc_lo - edge
-            bot2 = y_line + edge * 0.3
-            if top2 > bot2 + max(dy * 0.25, span * 0.01):
-                pockets.append((bot2, top2, 0.18))
+            bot2 = y_line + edge * 0.2
+            if top2 > bot2 + max(dy * 0.20, span * 0.008):
+                pockets.append((bot2, top2, 0.15))
         for p_lo, p_hi, side_bonus in pockets:
             pocket_h = p_hi - p_lo
-            # 貼軌（紅標貼紫虛線）權重最高；標可略跨軌線但不能衝進 K 實體
-            for frac, bonus in ((0.12, 0.40), (0.28, 0.32), (0.45, 0.22), (0.62, 0.12)):
+            # 貼軌側優先（下降壓貼上軌下緣、平行撐貼下軌上緣）
+            fracs = (
+                ((0.82, 0.42), (0.65, 0.30), (0.45, 0.18), (0.28, 0.10))
+                if pref > 0
+                else ((0.12, 0.42), (0.28, 0.30), (0.45, 0.18), (0.62, 0.10))
+            )
+            for frac, bonus in fracs:
                 cy = p_lo + pocket_h * frac
-                # 盒可略超出空窗下緣（貼軌），上緣不准進 K
                 cy = min(cy, p_hi - dy / 2.0)
                 cy = max(cy, p_lo)
                 _consider(
                     cx,
                     cy,
-                    1.35 + side_bonus + bonus + min(pocket_h / span, 0.35),
-                    pad=0.0,  # 空窗內清 K 實體即可，箭在 K 低之下
-                    ignore_ma=True,  # 均線常穿過空窗；紅標優先避 K／箭
+                    1.55 + side_bonus + bonus + min(pocket_h / span, 0.30),
+                    pad=0.0,
+                    ignore_ma=True,
                 )
+        # 無足夠空窗：仍強制貼線外側半格（寧可貼線，不准浮空）
+        if pref > 0:
+            _consider(cx, y_line - gap - dy * 0.35, 1.15, pad=0.0, ignore_ma=True)
+            _consider(cx, y_line + gap + dy * 0.35, 0.70, pad=0.0, ignore_ma=True)
+        else:
+            _consider(cx, y_line + gap + dy * 0.35, 1.15, pad=0.0, ignore_ma=True)
+            _consider(cx, y_line - gap - dy * 0.35, 0.70, pad=0.0, ignore_ma=True)
 
     if near_last:
         # 盒右緣貼最後一根，只准往左挪幾根；垂直挑離最近 K 最近的空白
