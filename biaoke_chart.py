@@ -1951,6 +1951,19 @@ def _inset_today_close_inside(
         return
 
 
+def _close_tags_lower_right_y(ymin: float, ymax: float) -> float:
+    """昨收／今收改放右下角：優先貼右軸約 1500 刻度帶；軸內沒有就依比例貼下緣。"""
+    y0 = float(ymin)
+    y1 = float(ymax)
+    span = max(y1 - y0, 1.0)
+    prefer = 1500.0
+    lo_band = y0 + span * 0.06
+    hi_band = y0 + span * 0.32
+    if lo_band <= prefer <= min(hi_band, y1 - span * 0.06):
+        return float(prefer)
+    return float(y0 + span * 0.14)
+
+
 def _place_right_notes(
     ax,
     notes: Sequence[Dict[str, Any]],
@@ -1964,13 +1977,14 @@ def _place_right_notes(
     avoid_ys: Sequence[float] = (),
     x_max: Optional[float] = None,
     bottom_pad: float = 0.0,
+    close_anchor_y: Optional[float] = None,
 ) -> None:
     """右溝標籤欄：去重＋垂直錯開；字落在軌線末端右側，不准壓軌／壓 K。
 
     71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
-    75：昨收＋今收同列並排（先昨收、右今收），垂直貼當日收那列。
-    昨收／今收整列貼近右軸；左緣離末日 K 至少 _CLOSE_TAG_CANDLE_CLEAR，不准蓋 K。
+    75：昨收＋今收同列並排（先昨收、右今收）。
+    close_anchor_y：有值＝昨收／今收整組釘右下角該價（不再貼今收價列擠中右）。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -1992,9 +2006,14 @@ def _place_right_notes(
     ]
     prev_close_notes = [n for n in closes if _is_prev_close_note(str(n.get("text") or ""))]
     today_close_notes = [n for n in closes if _is_today_close_note(str(n.get("text") or ""))]
-    # 75：兩標同列——垂直只佔一格（錨在今收價）；昨收不另開一列
+    # 75：兩標同列——垂直只佔一格；有 close_anchor_y 則釘右下，否則錨今收價
     close_pair = bool(prev_close_notes and today_close_notes)
-    if close_pair:
+    if close_anchor_y is not None and closes:
+        ay = float(close_anchor_y)
+        for n in closes:
+            n["y"] = ay
+        closes_for_slot = list(today_close_notes) if close_pair else list(closes)
+    elif close_pair:
         today_y = float(today_close_notes[0].get("y") or 0)
         for pn in prev_close_notes:
             pn["y"] = today_y
@@ -2080,8 +2099,14 @@ def _place_right_notes(
     for note, ty in zip(soft, soft_ys):
         placed.append((note, ty))
         taken.append(ty)
-    # 軟標籤由上往下再錯開；壓／撐／最可能已定位的不准被這步拖離線
-    pinned_ids = {id(n) for n, _ in placed if "最可能" in str(n.get("text") or "") or _is_level_note(str(n.get("text") or ""))}
+    # 軟標籤由上往下再錯開；壓／撐／最可能／右下昨收今收已定位的不准被這步拖離線
+    pinned_ids = {
+        id(n)
+        for n, _ in placed
+        if "最可能" in str(n.get("text") or "")
+        or _is_level_note(str(n.get("text") or ""))
+        or (close_anchor_y is not None and _is_close_note(str(n.get("text") or "")))
+    }
     placed.sort(key=lambda p: -float(p[1]))
     enforced: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in placed:
@@ -4523,6 +4548,7 @@ def render_biaoke_structure_png(
         avoid_ys=avoid_ys,
         x_max=float(x_right),
         bottom_pad=evo_pad,
+        close_anchor_y=_close_tags_lower_right_y(float(ymin), float(ymax)),
     )
     # 已刪演化區膚色底＋「演化區（不是保證…）」底標
     mark = ""
@@ -4985,7 +5011,10 @@ def render_biaoke_structure_png(
         z=3,
     )
     vmax = float(vol_ylim) if vol_ylim else 1.0
-    ax2.set_ylim(0, vmax * 1.28)
+    has_layer_vol = bool(
+        0 <= layer_i < n and layer_i != spike_i and vols[layer_i]
+    )
+    ax2.set_ylim(0, vmax * (1.38 if has_layer_vol else 1.28))
     if 0 <= spike_i < n and vols[spike_i]:
         # 量標拉到空白帶；釘點用開方顯示高（字串仍真實張數）
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
@@ -5002,23 +5031,38 @@ def render_biaoke_structure_png(
             ha="left" if vol_tx >= spike_i else "right",
             va="center",
         )
-    if 0 <= layer_i < n and layer_i != spike_i and vols[layer_i]:
+    if has_layer_vol:
+        # 下一層量日：標籤偏左上方，虛線連到對應量柱
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
         layer_md = _md(work[layer_i].get("date"))
-        vol_tx2 = (
-            min(n - 1.2, layer_i + 6.5) if layer_i < n - 8 else max(1.0, layer_i - 6.5)
-        )
-        _leader_note(
-            ax2,
-            float(layer_i),
-            layer_disp,
+        lab_x = 0.6
+        lab_y = float(vmax) * 1.22
+        ax2.annotate(
             f"下一層量日　{layer_md}",
-            "#1565c0",
-            tx=vol_tx2,
-            ty=vmax * (1.02 if abs(layer_i - spike_i) <= 6 else 1.12),
-            size=10,
-            ha="left" if vol_tx2 >= layer_i else "right",
-            va="center",
+            xy=(float(layer_i), float(layer_disp)),
+            xytext=(lab_x, lab_y),
+            color="#1565c0",
+            fontproperties=_fp(10, "bold"),
+            ha="left",
+            va="bottom",
+            zorder=12,
+            annotation_clip=False,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.22",
+                facecolor="#ffffff",
+                edgecolor="#1565c0",
+                linewidth=1.05,
+                alpha=0.97,
+            ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color="#1565c0",
+                lw=0.95,
+                linestyle=(0, (2.4, 1.8)),
+                shrinkA=2,
+                shrinkB=3,
+            ),
         )
         try:
             ax1.axvline(

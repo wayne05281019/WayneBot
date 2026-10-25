@@ -3932,7 +3932,7 @@ def _paint_volume_zone(
         layer_raw = float(vol_heights[layer_i] or 0)
         if layer_raw > 0:
             layer_h = float(lookup_vol_to_display([layer_raw], float(vol_ylim))[0])
-    # 爆大量標貼柱頂再上移一截；下一層量日另標；ylim 以視窗 max 顯示高為準
+    # 爆大量／下一層量日標；相鄰日（≤2 根）改左右分開＋虛線，不准上下疊
     ax2.set_ylim(
         0,
         max(
@@ -3942,45 +3942,91 @@ def _paint_volume_zone(
             vol_ylim * 1.30,
         ),
     )
-    ax2.annotate(
-        f"爆大量 {spike_md}",
-        xy=(float(spike_i), spike_h),
-        xytext=(0, 18),
-        textcoords="offset points",
-        ha="center",
-        va="bottom",
-        fontproperties=_fp(10.0, "bold"),
-        color="#5d4037",
-        zorder=6,
-        clip_on=False,
-        bbox=dict(
-            boxstyle="round,pad=0.16",
-            facecolor="#fffde7",
-            edgecolor="#f9a825",
-            linewidth=0.65,
-            alpha=0.95,
-        ),
+    adjacent_vol = bool(
+        layer_h > 0
+        and 0 <= layer_i < int(n)
+        and abs(int(layer_i) - int(spike_i)) <= 2
     )
-    if layer_h > 0 and 0 <= layer_i < int(n):
-        layer_md = _md(view["date"].iloc[layer_i]) if "date" in view.columns else ""
+
+    def _vol_day_callout(
+        *,
+        x: float,
+        y: float,
+        text: str,
+        edge: str,
+        face: str,
+        ink: str,
+        side: str,
+        dy: int = 18,
+    ) -> None:
+        """side=left／right／center：標籤偏左或偏右，虛線連回量柱頂。"""
+        if side == "left":
+            xytext = (-52, int(dy))
+            ha = "right"
+        elif side == "right":
+            xytext = (52, int(dy))
+            ha = "left"
+        else:
+            xytext = (0, int(dy))
+            ha = "center"
         ax2.annotate(
-            f"下一層量日 {layer_md}".strip(),
-            xy=(float(layer_i), layer_h),
-            xytext=(0, 18 if abs(int(layer_i) - int(spike_i)) > 3 else 34),
+            str(text),
+            xy=(float(x), float(y)),
+            xytext=xytext,
             textcoords="offset points",
-            ha="center",
+            ha=ha,
             va="bottom",
-            fontproperties=_fp(9.5, "bold"),
-            color="#0d47a1",
+            fontproperties=_fp(9.5 if side != "center" else 10.0, "bold"),
+            color=ink,
             zorder=6,
             clip_on=False,
             bbox=dict(
                 boxstyle="round,pad=0.16",
-                facecolor="#e3f2fd",
-                edgecolor="#42a5f5",
+                facecolor=face,
+                edgecolor=edge,
                 linewidth=0.65,
                 alpha=0.95,
             ),
+            arrowprops=dict(
+                arrowstyle="-",
+                color=edge,
+                lw=0.85,
+                linestyle=(0, (2.2, 1.6)),
+                shrinkA=1,
+                shrinkB=2,
+            ),
+        )
+
+    # 較早量日偏左、較晚偏右（奇鋐 08/26 下一層｜08/27 爆大量）
+    spike_side = "center"
+    layer_side = "center"
+    if adjacent_vol:
+        if int(layer_i) < int(spike_i):
+            layer_side, spike_side = "left", "right"
+        else:
+            layer_side, spike_side = "right", "left"
+
+    _vol_day_callout(
+        x=float(spike_i),
+        y=float(spike_h),
+        text=f"爆大量 {spike_md}",
+        edge="#f9a825",
+        face="#fffde7",
+        ink="#5d4037",
+        side=spike_side,
+        dy=18,
+    )
+    if layer_h > 0 and 0 <= layer_i < int(n):
+        layer_md = _md(view["date"].iloc[layer_i]) if "date" in view.columns else ""
+        _vol_day_callout(
+            x=float(layer_i),
+            y=float(layer_h),
+            text=f"下一層量日 {layer_md}".strip(),
+            edge="#42a5f5",
+            face="#e3f2fd",
+            ink="#0d47a1",
+            side=layer_side,
+            dy=18,
         )
         try:
             ax1.axvline(
