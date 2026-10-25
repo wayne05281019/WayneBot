@@ -4144,7 +4144,7 @@ def render_biaoke_structure_png(
     # 78：收今收四周空檔 → 主圖 K 往右拉寬（只改排版，不准造假 OHLC／量）
     x_right = n + _FUTURE + float(_STRUCTURE_X_RIGHT_PAD)
     ax1.set_xlim(-0.55, x_right)
-    paint_forecast_span(ax1, n - 1, _FUTURE)
+    # 已刪「演化區」膚色直式底（paint_forecast_span）；右溝空白仍留放標籤
     st = info.get("struct") or {}
     spike_hi = float(st.get("spike_high") or 0)
     spike_lo = float(st.get("spike_low") or 0)
@@ -4165,6 +4165,18 @@ def render_biaoke_structure_png(
         )
     )
     halt_flags = [_bar_is_halt(work[i]) for i in range(n)]
+    # 主大量區桃色帶（與第 4 張 _FILL 同色）；次層淺灰另畫
+    if spike_hi > 0 and spike_lo > 0 and spike_hi >= spike_lo:
+        try:
+            ax1.axhspan(
+                float(spike_lo),
+                float(spike_hi),
+                color=_WINDOW_BG,
+                alpha=0.42,
+                zorder=0,
+            )
+        except Exception:
+            pass
     # 日 K＝查股共用 paint（與大量撐壓／導航同一套紅綠、柱寬、線寬）
     candle_up = paint_lookup_ohlc_candles(
         ax1,
@@ -4184,7 +4196,7 @@ def render_biaoke_structure_png(
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
     x_fut = float(n - 1 + _FUTURE)
-    # 標籤欄左緣：演化帶右側；略左移＝主圖＋水平壓撐線往右吃空檔
+    # 標籤欄左緣：略左移＝主圖＋水平壓撐線往右吃空檔
     label_col_left = (
         float(n - 1) + max(float(_FUTURE) * 0.70, 5.9) + float(_STRUCTURE_LABEL_COL_EXTRA)
     )
@@ -4227,7 +4239,7 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    # D4／D5-T1：原文絕對目標水平線＋破撐 NEXT（或暫無）；非買訊
+    # 下一層壓／撐偏左；原文目標仍走右溝避讓；非買訊
     try:
         from biaoke_next_support import paint_written_and_next_levels
 
@@ -4242,9 +4254,11 @@ def render_biaoke_structure_png(
             tag_size=float(_STRUCTURE_TAG_SIZE),
             ymin=ymin,
             ymax=ymax,
+            layer_labels="left",
+            written_labels="notes",
         )
     except Exception:
-        logger.debug("結構圖原文／下一撐線略過", exc_info=True)
+        logger.debug("結構圖原文／下一層線略過", exc_info=True)
     # 右軸：今收／現價（71 紅框必留）＋昨收；75 同列並排。
     # 數字跟左上 nameplate／高低卡／介紹同源＝決策卡 quote；K 主體仍官方柱。
     # 不准再用 last_bar 官方末日蓋掉盤中現價（上市上櫃興櫃同一規則）。
@@ -4432,23 +4446,9 @@ def render_biaoke_structure_png(
                 right_notes.append(
                     {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": _STRUCTURE_TAG_SIZE}
                 )
-    path = list(proj.get("path") or [])
-    if len(path) >= 2:
-        # 75：不准再畫演化區彎路徑＋右緣無意義橘點。
-        # 改由右溝「最可能」標籤短 dash 直連末日 K（見 _place_right_notes）。
-        right_notes.append(
-            {
-                "x": float(path[0][0]),
-                "y": float(path[-1][1]),
-                "from_x": float(path[0][0]),
-                "from_y": float(path[0][1]),
-                "text": str(proj.get("mark") or ("最可能→" + _px(proj.get("target")))),
-                "color": _PROJECT,
-                "size": _STRUCTURE_TAG_SIZE,
-            }
-        )
-    # 73：不准畫「連點延長」叉虛線（末日 K 往下甩進空曠、無對應標籤＝多餘）
-    # forks 仍可留在 proj 供演算；圖上只留有右溝標籤的線（最可能／壓撐／軌）
+    # 已刪：末日 K 連出橘虛線＋「最可能＝下一層撐…」標（使用者鎖）
+    _ = list(proj.get("path") or [])
+    # 73：不准畫「連點延長」叉虛線；圖上只留右溝壓撐／軌／原文目標
     _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=max(8.0, n * 0.11))
     # 標籤欄：軌虛線已停在 label_col_left 左側。
@@ -4524,19 +4524,7 @@ def render_biaoke_structure_png(
         x_max=float(x_right),
         bottom_pad=evo_pad,
     )
-    # 演化區說明一行（不准拆成「演化區」孤字＋括號另列）
-    evo_cx = float(n - 1) + float(_FUTURE) * 0.50
-    ax1.text(
-        evo_cx,
-        ymin + span * 0.018,
-        EVOLUTION_ZONE_LABEL,
-        color="#546e7a",
-        fontproperties=_fp(8.5, "bold"),
-        ha="center",
-        va="bottom",
-        zorder=8,
-        clip_on=True,
-    )
+    # 已刪演化區膚色底＋「演化區（不是保證…）」底標
     mark = ""
     mc = _TEXT
     if info.get("wash"):
@@ -4977,6 +4965,15 @@ def render_biaoke_structure_png(
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(12, "bold"))
         lab.set_clip_on(False)
+    layer_i = -1
+    try:
+        from biaoke_next_support import find_layer_bar_index
+
+        layer_i = find_layer_bar_index(
+            work, dict((info.get("next_support") or {}).get("layer") or {})
+        )
+    except Exception:
+        layer_i = -1
     vol_heights, vol_ylim, _vol_missing = paint_lookup_volume_bars(
         ax2,
         xs,
@@ -4984,6 +4981,7 @@ def render_biaoke_structure_png(
         candle_up,
         halt=halt_flags,
         spike_i=spike_i,
+        secondary_i=layer_i if layer_i >= 0 else None,
         z=3,
     )
     vmax = float(vol_ylim) if vol_ylim else 1.0
@@ -5004,6 +5002,35 @@ def render_biaoke_structure_png(
             ha="left" if vol_tx >= spike_i else "right",
             va="center",
         )
+    if 0 <= layer_i < n and layer_i != spike_i and vols[layer_i]:
+        layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
+        layer_md = _md(work[layer_i].get("date"))
+        vol_tx2 = (
+            min(n - 1.2, layer_i + 6.5) if layer_i < n - 8 else max(1.0, layer_i - 6.5)
+        )
+        _leader_note(
+            ax2,
+            float(layer_i),
+            layer_disp,
+            f"下一層量日　{layer_md}",
+            "#1565c0",
+            tx=vol_tx2,
+            ty=vmax * (1.02 if abs(layer_i - spike_i) <= 6 else 1.12),
+            size=10,
+            ha="left" if vol_tx2 >= layer_i else "right",
+            va="center",
+        )
+        try:
+            ax1.axvline(
+                layer_i,
+                color="#90caf9",
+                linewidth=1.0,
+                linestyle=(0, (1.1, 1.35)),
+                alpha=0.75,
+                zorder=2,
+            )
+        except Exception:
+            pass
     ax2.set_ylabel("")
     ax2.yaxis.set_ticks_position("right")
     ax2.tick_params(
@@ -5022,11 +5049,9 @@ def render_biaoke_structure_png(
         lab.set_fontproperties(_fp(11, "bold"))
         lab.set_clip_on(False)
     ax2.set_xlim(-0.55, x_right)
-    paint_forecast_span(ax2, n - 1, _FUTURE, line=False)
     ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
-    tick_i = _axis_ticks(n, extra=(spike_i,))
-    # 演化帶已有 EVOLUTION_ZONE_LABEL；底軸不准再孤一個「演算」
+    tick_i = _axis_ticks(n, extra=(spike_i, layer_i if layer_i >= 0 else spike_i))
     if n - 1 + _FUTURE not in tick_i:
         tick_i.append(n - 1 + _FUTURE)
     labels = []

@@ -3897,6 +3897,22 @@ def _paint_volume_zone(
             )
             used_x.append(float(xs[i]))
 
+    layer_i = -1
+    try:
+        from biaoke_next_support import find_layer_bar_index
+
+        layer_rows = [
+            {
+                "date": r.get("date"),
+                "volume": r.get("volume"),
+            }
+            for r in view.to_dict("records")
+        ]
+        layer_i = find_layer_bar_index(
+            layer_rows, dict((next_pack or {}).get("layer") or {})
+        )
+    except Exception:
+        layer_i = -1
     vol_heights, vol_ylim, vol_missing = paint_lookup_volume_bars(
         ax2,
         xs,
@@ -3904,14 +3920,28 @@ def _paint_volume_zone(
         up_mask,
         halt=halt_arr,
         spike_i=int(spike_i),
+        secondary_i=int(layer_i) if layer_i >= 0 else None,
         z=2,
     )
     spike_raw = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
     spike_h = (
         float(lookup_vol_to_display([spike_raw], float(vol_ylim))[0]) if spike_raw > 0 else 0.0
     )
-    # 爆大量標貼柱頂再上移一截，右下不貼底軸；ylim 以視窗 max 顯示高為準
-    ax2.set_ylim(0, max(vol_ylim * 1.30, spike_h * 1.38 if spike_h > 0 else vol_ylim * 1.30))
+    layer_h = 0.0
+    if 0 <= layer_i < len(vol_heights) and layer_i != int(spike_i):
+        layer_raw = float(vol_heights[layer_i] or 0)
+        if layer_raw > 0:
+            layer_h = float(lookup_vol_to_display([layer_raw], float(vol_ylim))[0])
+    # 爆大量標貼柱頂再上移一截；下一層量日另標；ylim 以視窗 max 顯示高為準
+    ax2.set_ylim(
+        0,
+        max(
+            vol_ylim * 1.30,
+            spike_h * 1.38 if spike_h > 0 else 0.0,
+            layer_h * 1.38 if layer_h > 0 else 0.0,
+            vol_ylim * 1.30,
+        ),
+    )
     ax2.annotate(
         f"爆大量 {spike_md}",
         xy=(float(spike_i), spike_h),
@@ -3931,6 +3961,38 @@ def _paint_volume_zone(
             alpha=0.95,
         ),
     )
+    if layer_h > 0 and 0 <= layer_i < int(n):
+        layer_md = _md(view["date"].iloc[layer_i]) if "date" in view.columns else ""
+        ax2.annotate(
+            f"下一層量日 {layer_md}".strip(),
+            xy=(float(layer_i), layer_h),
+            xytext=(0, 18 if abs(int(layer_i) - int(spike_i)) > 3 else 34),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontproperties=_fp(9.5, "bold"),
+            color="#0d47a1",
+            zorder=6,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.16",
+                facecolor="#e3f2fd",
+                edgecolor="#42a5f5",
+                linewidth=0.65,
+                alpha=0.95,
+            ),
+        )
+        try:
+            ax1.axvline(
+                float(layer_i),
+                color="#42a5f5",
+                linewidth=1.0,
+                alpha=0.7,
+                zorder=1,
+                linestyle=(0, (1.1, 1.35)),
+            )
+        except Exception:
+            pass
     ax2.yaxis.tick_right()
     ax2.tick_params(labelsize=10)
     configure_lookup_vol_axis(ax2, float(vol_ylim))

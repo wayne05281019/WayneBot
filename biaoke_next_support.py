@@ -603,6 +603,7 @@ def attach_next_support(
         lo = _num(layer.get("low"))
         hi = _num(layer.get("high"))
         if key in ("abandon", "distribution") and pack.get("broke"):
+            # 圖上不再畫「最可能＝…」橘虛線／標；演算句留 label，mark 清空
             if lo > 0 and hi > 0:
                 if key == "distribution":
                     proj["label"] = (
@@ -611,7 +612,6 @@ def attach_next_support(
                         "不是保證、非買訊。"
                     )
                     proj["target"] = lo
-                    proj["mark"] = f"最可能＝下一層撐 {_fmt_price(lo)}"
                 else:
                     proj["label"] = (
                         f"收在撐 {_fmt_price(spike_lo)} 之下，"
@@ -619,22 +619,35 @@ def attach_next_support(
                         "不把反彈當最可能。不是保證。"
                     )
                     proj["target"] = lo
-                    proj["mark"] = f"最可能＝下一層撐 {_fmt_price(lo)}"
+                proj["mark"] = ""
             elif pack.get("none_label"):
                 if key == "abandon":
                     proj["label"] = (
                         f"收在撐 {_fmt_price(spike_lo)} 之下，{NONE_LABEL}；"
                         "這次量價先放棄，不把反彈當最可能。不是保證。"
                     )
-                    proj["mark"] = "最可能＝先放棄"
                 else:
                     proj["label"] = (
                         f"出貨痕跡，收破撐 {_fmt_price(spike_lo)}，{NONE_LABEL}。"
                         "不是保證、非買訊。"
                     )
-                    proj["mark"] = f"最可能＝往撐 {_fmt_price(spike_lo)}"
+                proj["mark"] = ""
             info["project"] = proj
     return info
+
+
+def find_layer_bar_index(
+    bars: Sequence[Dict[str, Any]],
+    layer: Optional[Dict[str, Any]],
+) -> int:
+    """次大量參考日在可視 bars 的索引；找不到回 -1。"""
+    d = _ymd((layer or {}).get("date"))
+    if not d:
+        return -1
+    for i, r in enumerate(bars or []):
+        if _ymd(r.get("date")) == d:
+            return int(i)
+    return -1
 
 
 def paint_written_and_next_levels(
@@ -655,22 +668,37 @@ def paint_written_and_next_levels(
     ymin: Optional[float] = None,
     ymax: Optional[float] = None,
     tag_size: float = 10.0,
+    layer_labels: str = "right",
+    written_labels: str = "auto",
 ) -> List[float]:
     """原文目標水平線＋破撐／過壓下一層（次大量區淺灰底＋壓／撐兩線）。
 
-    標籤一律帶 CJK fontproperties（與結構圖同源），避免第 4 張方塊亂碼。
-    平行撐不在此函式搶「下一撐」名。
-    回傳畫過的 y 價（呼叫端可併入 ylim／avoid）。
+    layer_labels：
+      - \"left\"＝結構圖：下一層壓／撐偏左（比照大量區左側標）
+      - \"right\"／\"notes\"＝右側或併入 right_notes
+    written_labels：\"auto\"＝有 right_notes 走 notes，否則 right；也可強制 left／right／notes。
+    標籤一律帶 CJK fontproperties。平行撐不搶「下一撐」名。
     """
     ys: List[float] = []
     pack = dict(next_pack or {})
     written = list(pack.get("written") or written_targets_for(sid))
     lx = float(label_x) if label_x is not None else float(xmax) - 0.4
     notes = right_notes if isinstance(right_notes, list) else None
+    layer_mode = str(layer_labels or "right").strip().lower() or "right"
+    written_mode = str(written_labels or "auto").strip().lower() or "auto"
+    if written_mode == "auto":
+        written_mode = "notes" if notes is not None else "right"
     fp = _cjk_fp(max(7.5, float(tag_size) - 1.5), "bold")
+    fp_tag = _cjk_fp(max(8.5, float(tag_size) - 0.5), "bold")
     fp_none = _cjk_fp(8.2, "bold")
+    _tag_box = dict(
+        boxstyle="round,pad=0.28",
+        facecolor="#ffffff",
+        linewidth=1.1,
+        alpha=0.94,
+    )
 
-    def _text(x, y, text, *, color, size=None, transform=None, ha="right", va="center"):
+    def _text(x, y, text, *, color, size=None, transform=None, ha="right", va="center", bbox=None):
         kw: Dict[str, Any] = {
             "ha": ha,
             "va": va,
@@ -679,12 +707,37 @@ def paint_written_and_next_levels(
             "zorder": 11,
             "clip_on": False,
         }
-        if fp is not None:
-            kw["fontproperties"] = fp if size is None else _cjk_fp(float(size), "bold")
+        use_fp = fp_tag if bbox is not None else fp
+        if use_fp is not None:
+            kw["fontproperties"] = (
+                use_fp if size is None else _cjk_fp(float(size), "bold")
+            )
             kw.pop("fontsize", None)
         if transform is not None:
             kw["transform"] = transform
+        if bbox is not None:
+            kw["bbox"] = bbox
         ax.text(x, y, text, **kw)
+
+    def _label_y(raw_y: float, used: List[float]) -> float:
+        """標籤 y 微避讓：原文與下一層壓太近不准互蓋。"""
+        y = float(raw_y)
+        try:
+            y0, y1 = ax.get_ylim()
+            span = max(abs(float(y1) - float(y0)), 1.0)
+        except Exception:
+            span = max(abs(y) * 0.2, 50.0)
+        gap = span * 0.028
+        for _ in range(8):
+            if all(abs(y - u) >= gap for u in used):
+                break
+            above = sum(1 for u in used if u >= y)
+            below = sum(1 for u in used if u < y)
+            y = y - gap if above >= below else y + gap
+        used.append(y)
+        return y
+
+    label_ys: List[float] = []
 
     for row in written:
         y = _num(row.get("price"))
@@ -715,21 +768,37 @@ def paint_written_and_next_levels(
                 continue
         ys.append(y)
         label = str(row.get("label") or written_target_label(y))
-        if notes is not None:
+        lab_y = _label_y(y, label_ys)
+        if written_mode == "notes" and notes is not None:
             notes.append(
                 {
                     "x": lx,
-                    "y": y,
+                    "y": lab_y,
                     "text": label,
                     "color": color_written,
                     "size": tag_size,
                 }
             )
+        elif written_mode == "left":
+            try:
+                _text(
+                    0.012,
+                    lab_y,
+                    label,
+                    color=color_written,
+                    transform=ax.get_yaxis_transform(),
+                    ha="left",
+                    va="center",
+                    bbox={**_tag_box, "edgecolor": color_written},
+                    size=max(8.5, float(tag_size) - 0.5),
+                )
+            except Exception:
+                pass
         else:
             try:
                 _text(
                     0.988,
-                    y,
+                    lab_y,
                     label,
                     color=color_written,
                     transform=ax.get_yaxis_transform(),
@@ -741,37 +810,12 @@ def paint_written_and_next_levels(
     if not layer and pack.get("primary"):
         layer = dict((pack.get("primary") or {}).get("layer") or {})
 
-    def _label_y(raw_y: float, used: List[float]) -> float:
-        """標籤 y 微避讓：原文與下一層壓太近（如 2000／2010）不准互蓋。"""
-        y = float(raw_y)
-        try:
-            y0, y1 = ax.get_ylim()
-            span = max(abs(float(y1) - float(y0)), 1.0)
-        except Exception:
-            span = max(abs(y) * 0.2, 50.0)
-        gap = span * 0.028
-        for _ in range(8):
-            if all(abs(y - u) >= gap for u in used):
-                break
-            # 往遠離已佔位的方向推
-            above = sum(1 for u in used if u >= y)
-            below = sum(1 for u in used if u < y)
-            y = y - gap if above >= below else y + gap
-        used.append(y)
-        return y
-
-    label_ys: List[float] = list(ys)
-    # 先替已畫原文標佔位，後面下一層才好推開
-    for y0 in list(ys):
-        if y0 > 0 and y0 not in label_ys:
-            label_ys.append(y0)
-
     show_layer = bool(pack.get("broke") or pack.get("over")) and bool(layer)
     if show_layer:
         lo = _num(layer.get("low") or layer.get("support"))
         hi = _num(layer.get("high") or layer.get("pressure"))
         if lo > 0 and hi > 0 and hi >= lo:
-            # 淺灰底＝次大量區區間帶（不是平行撐細縫）
+            # 淺灰底＝次大量區區間帶（不是平行撐細縫；與主區桃色分開）
             try:
                 ax.axhspan(
                     lo,
@@ -814,7 +858,22 @@ def paint_written_and_next_levels(
                             pass
                     ys.append(y)
                 lab_y = _label_y(y, label_ys)
-                if notes is not None:
+                if layer_mode == "left":
+                    try:
+                        _text(
+                            0.012,
+                            lab_y,
+                            label,
+                            color=color,
+                            transform=ax.get_yaxis_transform(),
+                            ha="left",
+                            va="center",
+                            bbox={**_tag_box, "edgecolor": color},
+                            size=max(9.0, float(tag_size) - 0.2),
+                        )
+                    except Exception:
+                        pass
+                elif layer_mode == "notes" and notes is not None:
                     notes.append(
                         {
                             "x": lx,

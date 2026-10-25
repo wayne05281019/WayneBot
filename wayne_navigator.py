@@ -2194,6 +2194,8 @@ def paint_lookup_volume_bars(
     *,
     halt=None,
     spike_i: int | None = None,
+    secondary_i: int | None = None,
+    secondary_color: str = "#42a5f5",
     z: int = 3,
 ) -> tuple:
     """結構／大量／導航共用日量柱。回 (heights, ylim, missing)。
@@ -2264,6 +2266,25 @@ def paint_lookup_volume_bars(
                 [float(xs[si])],
                 [spike_h],
                 color=LOOKUP_SPIKE_VOL,
+                width=LOOKUP_VOL_BAR_W + 0.08,
+                zorder=z + 1,
+                linewidth=0,
+            )
+    # 下一層／次大量參考日另色匡選（與主爆大量日並存）
+    if secondary_i is not None:
+        mi = int(secondary_i)
+        if (
+            0 <= mi < n
+            and (spike_i is None or int(mi) != int(spike_i))
+            and not bool(halt_arr[mi])
+            and float(vol_vals[mi]) > 0
+            and float(heights[mi]) > 0
+        ):
+            sec_h = max(float(vol_draw[mi]) if mi < len(vol_draw) else 0.0, min_h)
+            ax.bar(
+                [float(xs[mi])],
+                [sec_h],
+                color=str(secondary_color or "#42a5f5"),
                 width=LOOKUP_VOL_BAR_W + 0.08,
                 zorder=z + 1,
                 linewidth=0,
