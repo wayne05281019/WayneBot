@@ -2353,7 +2353,7 @@ def _apply_patches_and_render(sid: str, name: str, db: str, tmp: str, *, card: O
             tip_raw = str(ch_tip_info.get("tip") or "").strip()
             tip_kind = str(ch_tip_info.get("kind") or "").strip()
             tip_drawn = ""
-            tip_pt = round(float(_vz_tip.VOL_ZONE_TAG_PT) * 1.55, 1)  # 16→24.8
+            tip_pt = round(float(_vz_tip.VOL_ZONE_TAG_PT) * 1.55, 1)  # 14→約22
             if tip_raw and tip_kind in ("asc", "desc"):
                 bits = [
                     b.strip()

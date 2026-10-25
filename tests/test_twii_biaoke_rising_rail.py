@@ -101,19 +101,20 @@ def test_latest_biaoke_named_rising_lows_from_db(tmp_path):
     assert got == ("20260916", "20261013", "p1")
 
 
-def test_paint_vol_zone_channel_labels_outside_axis_gutter():
-    """軌標走軸外右溝（blended transform）＋呼叫端收窄 GridSpec right。"""
+def test_paint_vol_zone_channel_labels_fullwidth_smart():
+    """軌標滿版沿線智能定位；平行軌不准把 GridSpec right 收到 0.72（左右黑邊）。"""
     import inspect
 
     from vol_zone_chart import _paint_volume_zone, paint_vol_zone_parallel_channel
 
     src = inspect.getsource(paint_vol_zone_parallel_channel)
-    assert "blended_transform_factory" in src
-    assert "clip_on=False" in src
-    assert "1.085" in src
+    assert "_blank_for_channel_label" in src
+    assert "labels_outside: bool = False" in src
     paint_src = inspect.getsource(_paint_volume_zone)
     assert "_gs_right" in paint_src
-    assert "with_parallel_channel" in paint_src
+    assert "0.72 if with_parallel_channel" not in paint_src
+    assert "labels_outside=False" in paint_src
+    assert "market_style=bool(market_wide)" in paint_src
 
 
 @pytest.mark.production_db

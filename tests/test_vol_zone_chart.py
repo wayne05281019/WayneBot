@@ -354,14 +354,27 @@ def test_vol_zone_uses_shared_volume_heights():
     vol_src = inspect.getsource(paint_lookup_volume_bars)
     assert "nav_volume_bar_heights" in vol_src
 
-    """話筒紅圈：大量區壓／撐要比標題更容易讀。"""
+
+def test_vol_zone_main_tag_is_largest_role_tier():
+    """現任主區壓／撐＝大檔同大；下一層＝小檔；大小跟角色不跟文案名。"""
     import inspect
 
-    from vol_zone_chart import VOL_ZONE_TAG_PT, _paint_volume_zone, render_volume_zone_png
+    from biaoke_next_support import LAYER_TAG_PT
+    from vol_zone_chart import (
+        VOL_ZONE_TAG_PAD,
+        VOL_ZONE_TAG_PT,
+        _paint_volume_zone,
+        render_volume_zone_png,
+    )
 
-    assert VOL_ZONE_TAG_PT >= 14
+    assert VOL_ZONE_TAG_PT == 14
+    assert VOL_ZONE_TAG_PT > float(LAYER_TAG_PT)
+    assert float(VOL_ZONE_TAG_PAD) > 0.20
     src = inspect.getsource(render_volume_zone_png) + inspect.getsource(_paint_volume_zone)
     assert "VOL_ZONE_TAG_PT" in src
+    assert src.count("VOL_ZONE_TAG_PT") >= 2
+    assert "LAYER_TAG_PT" in inspect.getsource(_paint_volume_zone)
+    assert "現任主區" in src or "find_volume_zone" in src or "VOL_ZONE_TAG_PT" in src
 
 
 def test_emerging_help_mentions_three_in_one():

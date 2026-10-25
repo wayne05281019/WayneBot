@@ -58,7 +58,11 @@ VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
 # 查股結構／大量區 ensure 並行抓月表：上限 3，縮短第二→第三體感；不准跳過真量
 _ENSURE_MONTH_FETCH_WORKERS = 3
-VOL_ZONE_TAG_PT = 16  # 壓／撐標要比標題更容易讀（話筒紅圈）
+# 現任主大量區壓／撐＝大檔字級（兩者同大）。略縮自舊 16，但仍須明顯大於下一層
+# （biaoke_next_support.LAYER_TAG_PT≈8.5）。大小跟「是否現任主區」走：find_volume_zone
+# 重算後新主區走這條大檔；下一層／更下層永遠小檔——不准寫死文案名決定大小。
+VOL_ZONE_TAG_PT = 14
+VOL_ZONE_TAG_PAD = 0.24  # 主區框；略縮自 0.30，仍大於下一層 LAYER_TAG_PAD
 VOL_ZONE_JPEG_QUALITY = 95
 VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
 VOL_ZONE_FIG_H_NAV = 9.35
@@ -2408,15 +2412,18 @@ def paint_vol_zone_parallel_channel(
     n: int,
     ymin: float,
     ymax: float,
-    labels_outside: bool = True,
+    labels_outside: bool = False,
+    market_style: bool = False,
     highs: Optional[np.ndarray] = None,
     lows: Optional[np.ndarray] = None,
     mas: Optional[List[np.ndarray]] = None,
 ) -> List[Tuple[float, float, float, float]]:
-    """在大量區 K 上畫兩條平行軌＋右緣價標。不是買訊、不數 5／9。
+    """在大量區 K 上畫兩條平行軌＋軌標。不是買訊、不數 5／9。
 
-    labels_outside：標放軸外右溝（axes 1.085），呼叫端須收窄 GridSpec。
-    大盤滿寬傳 False：沿軌找鄰近空白，沒有就放軌道外側；不准壓 K／均線、不准把 K 擠窄。
+    預設／產品：labels_outside=False＝滿版底＋沿線智能定位（擋最少）；
+    不准為塞標收窄 GridSpec／加寬黑邊／改 figsize。
+    market_style：大盤加粗軌＋錨點日期標；個股滿版仍用結構圖細虛線色。
+    labels_outside=True 僅舊備援（軸外 1.085）；新呼叫端不准再開。
     回傳已放標盒 (x0, x1, y0, y1)，給均線短標互讓。
     """
     placed: List[Tuple[float, float, float, float]] = []
@@ -2428,7 +2435,7 @@ def paint_vol_zone_parallel_channel(
 
     seam = float(max(n - 1, 0))
     # 軸外標才加右緣空；滿寬不准把 xlim 再撐開把 K 擠瘦
-    market_rails = not labels_outside
+    market_rails = bool(market_style)
     if labels_outside:
         x0, x1 = ax.get_xlim()
         ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
@@ -2436,7 +2443,7 @@ def paint_vol_zone_parallel_channel(
     else:
         rail_hi = float(n) - 0.35
     kind0 = str(ch.get("kind") or "")
-    # 話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。短劃跟結構圖同一常數。結構圖線寬仍細。
+    # 大盤話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。個股滿版跟結構圖同一細虛線常數。
     rail_kw: Dict[str, Any] = {}
     if market_rails:
         rail_kw = dict(
@@ -2469,7 +2476,7 @@ def paint_vol_zone_parallel_channel(
         color = "#1565c0" if kind == "asc" else "#6a1b9a"
         if not bool(ch.get("alive")):
             color = "#90a4ae"
-        label_fs = 7.6
+        label_fs = 9.2
     y_span = max(float(ymax) - float(ymin), 1.0)
     # (顯示Y, 標名, 真價)——錯開只動顯示Y，價標仍用真價
     items: List[Tuple[float, str, float]] = []
@@ -2490,7 +2497,7 @@ def paint_vol_zone_parallel_channel(
                 (mid + gap, items[1][1], items[1][2]),
             ]
     # 軸外右溝：X＝axes 分數、Y＝價；clip_on=False 才能畫進 GridSpec 預留溝。
-    # 大盤滿寬改找鄰近空白（資料座標），不准固定貼在最右 K 上。
+    # 滿版改找鄰近空白（資料座標），不准固定貼在最右 K 上、不准收窄底版。
     trans = blended_transform_factory(ax.transAxes, ax.transData)
     hi_arr = np.asarray(highs if highs is not None else [], dtype=float)
     lo_arr = np.asarray(lows if lows is not None else [], dtype=float)
@@ -2572,7 +2579,7 @@ def paint_vol_zone_parallel_channel(
                 boxstyle="round,pad=0.22",
                 facecolor="#ffffff",
                 edgecolor=color,
-                linewidth=1.35 if market_rails else 0.75,
+                linewidth=1.35 if market_rails else 0.9,
                 alpha=0.97,
             ),
         )
@@ -3220,8 +3227,9 @@ def _paint_volume_zone(
         head_ratios = [1.28, 3.38, 0.40, 0.98]
         head_bottom = 0.072
 
-    # 大盤大量區（平行軌、無導航、橫式）：畫布與右緣對齊加權日K，標改貼軸內。
-    # 個股／直式不准走這組 figsize。其餘平行軌才收窄右溝給軸外標。
+    # 大盤大量區（平行軌、無導航、橫式）：畫布與右緣對齊加權日K。
+    # 個股／直式不准走這組 figsize。平行軌標一律軸內智能定位，
+    # 不准為塞標把 GridSpec right 收到 0.72（會左右大黑邊、主圖被擠窄）。
     market_wide = bool(
         with_parallel_channel and not lookup_portrait and not with_nav_signals
     )
@@ -3233,7 +3241,7 @@ def _paint_volume_zone(
         _paint_dpi = int(NAV_CHART_DPI)
     else:
         _gs_left = 0.050 if with_nav_signals else 0.04
-        _gs_right = 0.72 if with_parallel_channel else (0.935 if with_nav_signals else 0.96)
+        _gs_right = 0.935 if with_nav_signals else 0.96
         _paint_dpi = int(VOL_ZONE_DPI)
     if with_nav_signals:
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
@@ -3603,16 +3611,18 @@ def _paint_volume_zone(
                 for a in (ma5_vals, ma10_vals, ma20_vals, ma60_vals)
                 if a is not None
             ]
+            # 滿版底＋沿線智能定位；不准 labels_outside 收窄底版
             channel_label_rects = paint_vol_zone_parallel_channel(
                 ax1,
                 channel,
                 n=int(n),
                 ymin=float(ymin),
                 ymax=float(ymax),
-                labels_outside=not market_wide,
-                highs=highs if market_wide else None,
-                lows=lows if market_wide else None,
-                mas=ma_for_labels if market_wide else None,
+                labels_outside=False,
+                market_style=bool(market_wide),
+                highs=highs,
+                lows=lows,
+                mas=ma_for_labels,
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
@@ -3832,15 +3842,16 @@ def _paint_volume_zone(
     # v9：關鍵文字最後畫（白底＋高 z），不准被箭頭／三角／均線短標／K 壓住
     from matplotlib.transforms import blended_transform_factory
 
+    # 現任主區壓／撐＝大檔同大（角色＝find_volume_zone 當下主區，不是文案名）
     _key_tag_box = dict(
-        boxstyle="round,pad=0.30",
+        boxstyle=f"round,pad={float(VOL_ZONE_TAG_PAD):.2f}",
         facecolor="#ffffff",
-        linewidth=1.15,
+        linewidth=1.05,
         alpha=1.0,
     )
     _KEY_Z = 22
     _left_tag_tf = blended_transform_factory(ax1.transAxes, ax1.transData)
-    # 主區壓／撐：釘在價線左側（對得到線；避開左下角導航▲）
+    # 釘在價線左側（對得到線；避開左下角導航▲）
     if float(hi or 0) > 0:
         ax1.text(
             0.012,
@@ -3869,11 +3880,10 @@ def _paint_volume_zone(
             clip_on=False,
             bbox={**_key_tag_box, "edgecolor": _HOLD},
         )
-    # v11：下一層壓／撐沿線 smart 掃位；原文目標仍 v8／v10 右緣 0.78
-    # busy_ys／白底高 z／導航後畫保留
+    # 下一層＝小檔（LAYER_TAG_PT）；v11 smart 掃位＋整組同字級。破撐≠立刻換主區。
     if next_pack:
         try:
-            from biaoke_next_support import paint_written_and_next_levels
+            from biaoke_next_support import LAYER_TAG_PT, paint_written_and_next_levels
 
             _mas_for_layer = [
                 a
@@ -3887,7 +3897,7 @@ def _paint_volume_zone(
                 xmin=float(xs[0]) - 0.35 if len(xs) else -0.35,
                 xmax=float(n) + 0.55,
                 right_notes=None,
-                tag_size=10.5,
+                tag_size=float(LAYER_TAG_PT),
                 ymin=float(ymin),
                 ymax=float(ymax),
                 layer_labels="smart",

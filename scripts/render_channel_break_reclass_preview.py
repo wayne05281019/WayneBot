@@ -84,22 +84,33 @@ def _name(sid: str, db: str) -> str:
     return str(row[0]) if row and row[0] else sid
 
 
-def _render_one(sid: str, name: str, db: str, out_dir: Path, tag: str, stamp: str) -> None:
+def _render_one(
+    sid: str,
+    name: str,
+    db: str,
+    out_dir: Path,
+    tag: str,
+    stamp: str,
+    *,
+    structure: bool = True,
+) -> None:
     from three_in_one_chart import render_lookup_structure_result
     from vol_zone_chart import render_volume_zone_result
 
-    sp = _unique(out_dir, f"{sid}-structure-{tag}-{stamp}")
-    path, cap = render_lookup_structure_result(sid, name, db, str(sp), card=None)
-    if not path or not Path(path).is_file():
-        raise SystemExit(f"structure fail {sid} {tag}")
-    if Path(path).resolve() != sp.resolve():
-        shutil.copy2(path, sp)
-    (out_dir / f"{sid}-structure-{tag}-{stamp}.caption.txt").write_text(
-        str(cap or ""), encoding="utf-8"
-    )
-    print("structure", sp, "bytes", sp.stat().st_size)
+    if structure:
+        sp = _unique(out_dir, f"{sid}-structure-{tag}-{stamp}")
+        path, cap = render_lookup_structure_result(sid, name, db, str(sp), card=None)
+        if not path or not Path(path).is_file():
+            raise SystemExit(f"structure fail {sid} {tag}")
+        if Path(path).resolve() != sp.resolve():
+            shutil.copy2(path, sp)
+        (out_dir / f"{sid}-structure-{tag}-{stamp}.caption.txt").write_text(
+            str(cap or ""), encoding="utf-8"
+        )
+        print("structure", sp, "bytes", sp.stat().st_size)
 
-    vp = _unique(out_dir, f"{sid}-volzone-{tag}-{stamp}")
+    # 檔名帶 fullwidth：滿版底＋軌道智能標（不准 0.72 黑邊）
+    vp = _unique(out_dir, f"{sid}-volzone-{tag}-fullwidth-{stamp}")
     tmp = vp.with_suffix(".jpg")
     path, cap = render_volume_zone_result(
         sid,
@@ -120,7 +131,7 @@ def _render_one(sid: str, name: str, db: str, out_dir: Path, tag: str, stamp: st
         Image.open(src).convert("RGB").save(vp, format="PNG", optimize=True)
     elif src.resolve() != vp.resolve():
         shutil.copy2(src, vp)
-    (out_dir / f"{sid}-volzone-{tag}-{stamp}.caption.txt").write_text(
+    (out_dir / f"{sid}-volzone-{tag}-fullwidth-{stamp}.caption.txt").write_text(
         str(cap or ""), encoding="utf-8"
     )
     print("volzone", vp, "bytes", vp.stat().st_size)
@@ -128,16 +139,28 @@ def _render_one(sid: str, name: str, db: str, out_dir: Path, tag: str, stamp: st
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sids", default="2454,3081,3017")
+    ap.add_argument("--sids", default="2454,3081")
     ap.add_argument("--out", type=Path, default=_DEFAULT_OUT)
     ap.add_argument("--phase", choices=("before", "after", "both"), default="both")
+    ap.add_argument(
+        "--vol-only",
+        action="store_true",
+        help="只渲大量區滿版（跳過結構）",
+    )
     args = ap.parse_args()
     db = _db()
     out_dir = args.out
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = _stamp()
     sids = [s.strip() for s in str(args.sids).split(",") if s.strip()]
-    meta_lines = [f"stamp={stamp}", f"db={db}", f"phase={args.phase}"]
+    meta_lines = [
+        f"stamp={stamp}",
+        f"db={db}",
+        f"phase={args.phase}",
+        "volzone=fullwidth+smart-channel-labels",
+        "VOL_ZONE_TAG_PT=14(main-role-large)",
+        "LAYER_TAG_PT=8.5(next-layer-small)",
+    ]
 
     def _clear_caches() -> None:
         try:
@@ -157,13 +180,29 @@ def main() -> None:
         os.environ["WAYNE_CHANNEL_NO_RECLASS"] = "1"
         _clear_caches()
         for sid in sids:
-            _render_one(sid, _name(sid, db), db, out_dir, "before", stamp)
+            _render_one(
+                sid,
+                _name(sid, db),
+                db,
+                out_dir,
+                "before",
+                stamp,
+                structure=not args.vol_only,
+            )
 
     if args.phase in ("after", "both"):
         os.environ.pop("WAYNE_CHANNEL_NO_RECLASS", None)
         _clear_caches()
         for sid in sids:
-            _render_one(sid, _name(sid, db), db, out_dir, "after", stamp)
+            _render_one(
+                sid,
+                _name(sid, db),
+                db,
+                out_dir,
+                "after",
+                stamp,
+                structure=not args.vol_only,
+            )
 
     from biaoke_brain import load_bars
     from biaoke_chart import _BARS, infer_parallel_channel

@@ -267,3 +267,15 @@ def test_stock_lookup_vol_default_no_parallel_flag():
 
     src = inspect.getsource(render_lookup_vol_result)
     assert "with_parallel_channel" not in src
+
+
+def test_parallel_channel_keeps_fullwidth_gs_right():
+    """開平行軌仍維持導航滿版 right＝0.935；不准 0.72 黑邊。"""
+    import inspect
+
+    from vol_zone_chart import _paint_volume_zone
+
+    src = inspect.getsource(_paint_volume_zone)
+    assert "0.72 if with_parallel_channel" not in src
+    assert "0.935 if with_nav_signals" in src
+    assert "MARKET_VOL_ZONE_GS_RIGHT" in src
