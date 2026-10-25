@@ -2097,10 +2097,11 @@ def infer_vol_zone_parallel_channel(
     """大量區近窗可疊的平行軌：算法＝結構圖 infer_parallel_channel（可重算；不數浪）。
 
     加權／TWII：若他自己寫過「M/D M/D兩天低點來畫」，優先用那兩天官方低連線；
-    否則長窗推算→近窗對日期。映不上才直接用近窗算。不准發明沒說過的價／浪號。
+    官方收破升軌則升通道失效、改判下降（與結構圖同一套）。否則長窗推算→近窗對日期。
+    映不上才直接用近窗算。不准發明沒說過的價／浪號。盤中未收不當收。
     """
     from biaoke_chart import (
-        build_asc_channel_from_low_dates,
+        channel_prefer_named_rising_or_infer,
         infer_parallel_channel,
         latest_biaoke_named_rising_lows,
         structure_visible_bars,
@@ -2122,10 +2123,10 @@ def infer_vol_zone_parallel_channel(
         named = latest_biaoke_named_rising_lows(str(db_path))
         if named:
             d1, d2, _pid = named
-            ch_named = build_asc_channel_from_low_dates(work, d1, d2)
+            ch_named = channel_prefer_named_rising_or_infer(work, d1, d2)
             if not ch_named:
                 rows_v = _bars_face_records(view.to_dict("records"))
-                ch_named = build_asc_channel_from_low_dates(rows_v, d1, d2)
+                ch_named = channel_prefer_named_rising_or_infer(rows_v, d1, d2)
             if ch_named:
                 mapped = _channel_remap_to_view(ch_named, date_to_i)
                 return mapped or ch_named
@@ -4348,7 +4349,8 @@ def _paint_volume_zone(
         foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
         if with_parallel_channel:
             foot2 = (
-                "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）。"
+                "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）；"
+                "官方收破升軌則升通道失效改畫下降壓。"
                 "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
                 "無成交＝灰短K＋量柱貼底，不准挖洞。"
             )

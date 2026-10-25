@@ -2056,7 +2056,7 @@ def desk_market_rail_tip(db_path: str) -> str:
         return ""
     try:
         from biaoke_chart import (
-            build_asc_channel_from_low_dates,
+            channel_prefer_named_rising_or_infer,
             infer_parallel_channel,
             latest_biaoke_named_rising_lows,
         )
@@ -2068,7 +2068,7 @@ def desk_market_rail_tip(db_path: str) -> str:
         ch: Dict[str, Any] = {}
         named = latest_biaoke_named_rising_lows(db_path)
         if named:
-            ch = build_asc_channel_from_low_dates(bars, named[0], named[1]) or {}
+            ch = channel_prefer_named_rising_or_infer(bars, named[0], named[1]) or {}
         if not ch:
             ch = infer_parallel_channel(bars) or {}
         tip = str(ch.get("tip") or "").strip()

@@ -733,14 +733,24 @@ def build_asc_channel_from_low_dates(
     else:
         pos, alive = "上升通道中段", True
     # tip 用語跟自動軌同一套；不准特別標「自動／非他點名／他自己點的」
-    tip = (
-        f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
-        f"平行壓貼 {_md(td)}高{_px(ty)}；現況{pos}。"
-        f"破上升軌才像轉折。不是買訊。"
-    )
+    if alive:
+        tip = (
+            f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
+            f"平行壓貼 {_md(td)}高{_px(ty)}；現況{pos}。"
+            f"破上升軌才像轉折。不是買訊。"
+        )
+        label = f"上升軌通道　{pos}"
+    else:
+        # 官方收盤破軌＝升通道失效（盤中未收不當收；呼叫端應改判下降）
+        tip = (
+            f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
+            f"平行壓貼 {_md(td)}高{_px(ty)}；官方收盤已破上升軌，舊升通道失效。"
+            f"不是買訊。"
+        )
+        label = "上升軌通道　已失效"
     return {
         "kind": "asc",
-        "label": f"上升軌通道　{pos}",
+        "label": label,
         "tip": tip,
         "pos": pos,
         "alive": bool(alive),
@@ -758,6 +768,42 @@ def build_asc_channel_from_low_dates(
     }
 
 
+def channel_prefer_named_rising_or_infer(
+    rows: Sequence[Dict[str, Any]],
+    d1: str,
+    d2: str,
+) -> Dict[str, Any]:
+    """具名兩低升軌仍有效就用；官方收盤破軌則舊升失效，改走 infer 改判下降。
+
+    盤中未收不當收（呼叫端必須餵已收／臉柱同源）。不是買訊。
+    """
+    named = build_asc_channel_from_low_dates(rows, d1, d2) or {}
+    if named and named.get("alive"):
+        return named
+    inferred = infer_parallel_channel(rows) or {}
+    if named and not named.get("alive"):
+        if inferred.get("kind") == "desc":
+            out = dict(inferred)
+            out["reclass_from"] = "asc_break_named"
+            (a1, ay1, ad1), (a2, ay2, ad2) = named.get("base") or ((0, 0, ""), (0, 0, ""))
+            head = (
+                f"官方收盤跌破他點的上升軌（{_md(ad1)}低{_px(ay1)}～"
+                f"{_md(ad2)}低{_px(ay2)}），舊升通道失效；"
+            )
+            tip0 = str(out.get("tip") or "").strip()
+            out["tip"] = (head + tip0) if tip0 else (head + "改畫下降壓。不是買訊。")
+            pos = str(out.get("pos") or "").strip()
+            out["label"] = (
+                f"下降壓通道　{pos}　升軌已失效" if pos else "下降壓通道　升軌已失效"
+            )
+            return out
+        # 尚無合格下降候選：只標升軌失效，不准繼續當活升通道
+        out = dict(named)
+        out["reclass_from"] = "asc_break_named"
+        return out
+    return inferred
+
+
 def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """依飆大連點長上升／下降通道（二擇一、兩條平行線）。
 
@@ -766,7 +812,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     - 同次級／更高低連點＝上升軌（下軌）；平行上緣貼合理高＝通道上軌
     - 升／降軌道破壞才算轉折；個股不數 5／9 當操作
     - 兩種不准同時畫；不是買訊
-    若他已點名兩天低點來畫，呼叫端應先走 build_asc_channel_from_low_dates。
+    - WB-28：官方收盤跌破上升軌（收 < 升軌延長 − 2% 高低幅）→ 舊升通道失效，
+      改判／改畫下降通道；盤中未收不當收。
+    若他已點名兩天低點來畫，呼叫端應先走 channel_prefer_named_rising_or_infer。
     """
     rows = list(rows or [])
     n = len(rows)
@@ -783,9 +831,11 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     hi_p, lo_p = _pivots(highs, lows, left=3)
     cands: List[Dict[str, Any]] = []
 
-    def _pack_desc(i: int, j: int, *, bonus: float = 0.0) -> None:
-        # 通道主軌至少約兩週：過短兩點延長上話筒會像假錨
-        if int(j) - int(i) < 10:
+    def _pack_desc(
+        i: int, j: int, *, bonus: float = 0.0, min_span: int = 10
+    ) -> None:
+        # 常規主軌至少約兩週；破升改判時可放寬到 ≥5 根（仍要過包覆閘）
+        if int(j) - int(i) < int(min_span):
             return
         touch = _channel_width_touch(
             i, j, highs[i], highs[j], lo_p, highs, lows, above=False, span=span, n=n
@@ -869,6 +919,45 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             }
         )
 
+    def _score_near() -> None:
+        for c in cands:
+            j = int(c["base"][1][0])
+            c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
+            if c["kind"] == "desc" and last < float(c["rail_now"]):
+                c["score"] += 0.45  # 收在下降壓下＝他還在講「還壓著」
+            if c["kind"] == "asc" and last > float(c["base_now"]):
+                c["score"] += 0.35
+
+    def _pack_desc_reclass() -> None:
+        """破升後補抓下降：主降對可短至 5 根；近窗 look 加寬。"""
+        seen = {
+            (int(c["base"][0][0]), int(c["base"][1][0]))
+            for c in cands
+            if c.get("kind") == "desc"
+        }
+        down_r = _desc_high_pair(hi_p, highs)
+        if down_r:
+            ij = (int(down_r[0]), int(down_r[1]))
+            if ij not in seen:
+                _pack_desc(ij[0], ij[1], bonus=0.65, min_span=5)
+                seen.add(ij)
+        for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=5, look=12):
+            if (i, j) in seen:
+                continue
+            _pack_desc(i, j, bonus=0.15, min_span=5)
+            seen.add((i, j))
+        # 只給新補的降候選加近端分（舊 cand 已加過）
+        for c in cands:
+            if c.get("_scored"):
+                continue
+            j = int(c["base"][1][0])
+            c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
+            if c["kind"] == "desc" and last < float(c["rail_now"]):
+                c["score"] += 0.45
+            if c["kind"] == "asc" and last > float(c["base_now"]):
+                c["score"] += 0.35
+            c["_scored"] = True
+
     # 1) 他的標準下降壓：最近兩樞紐高、後高更低、中間不高過前高
     down = _desc_high_pair(hi_p, highs)
     if down:
@@ -896,13 +985,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         return {}
 
     # 二擇一：還壓著的下降壓優先於已破的上升軌；兩邊都活就比分＋近端
+    _score_near()
     for c in cands:
-        j = int(c["base"][1][0])
-        c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
-        if c["kind"] == "desc" and last < float(c["rail_now"]):
-            c["score"] += 0.45  # 收在下降壓下＝他還在講「還壓著」
-        if c["kind"] == "asc" and last > float(c["base_now"]):
-            c["score"] += 0.35
+        c["_scored"] = True
 
     best = max(cands, key=lambda c: float(c["score"]))
     # 若最佳是升、但同時有明顯還壓著的降，改採降（兩種不准並存）
@@ -923,6 +1008,28 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         if held and float(held[0]["score"]) > float(best["score"]) - 0.2:
             best = max(held, key=lambda c: float(c["score"]))
 
+    reclass_from = ""
+    # WB-28：官方收盤破上升軌 → 舊升失效，改判下降（必要時放寬建降）
+    # 試渲 before 可設 WAYNE_CHANNEL_NO_RECLASS=1 暫時關掉改判（不准進話筒預設）
+    _skip_reclass = str(os.environ.get("WAYNE_CHANNEL_NO_RECLASS") or "").strip() in (
+        "1",
+        "true",
+        "TRUE",
+        "yes",
+    )
+    if (
+        not _skip_reclass
+        and best["kind"] == "asc"
+        and not best.get("alive")
+    ):
+        desc_cands = [c for c in cands if c["kind"] == "desc"]
+        if not desc_cands:
+            _pack_desc_reclass()
+            desc_cands = [c for c in cands if c["kind"] == "desc"]
+        if desc_cands:
+            best = max(desc_cands, key=lambda c: float(c["score"]))
+            reclass_from = "asc_break"
+
     kind = str(best["kind"])
     (x1, y1, d1), (x2, y2, d2) = best["base"]
     tk, ty, td = best["touch"]
@@ -930,24 +1037,49 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     if kind == "asc":
         upper = ((x1, y1 + width, d1), (x2, y2 + width, d2))
         lower = ((x1, y1, d1), (x2, y2, d2))
-        label = f"上升軌通道　{best['pos']}"
-        tip = (
-            f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
-            f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
-            f"破上升軌才像轉折。不是買訊。"
-        )
+        if best.get("alive"):
+            label = f"上升軌通道　{best['pos']}"
+            tip = (
+                f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+                f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
+                f"破上升軌才像轉折。不是買訊。"
+            )
+        elif _skip_reclass:
+            # 試渲 before：還原舊句（破了仍掛升通道）
+            label = f"上升軌通道　{best['pos']}"
+            tip = (
+                f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+                f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
+                f"破上升軌才像轉折。不是買訊。"
+            )
+        else:
+            label = "上升軌通道　已失效"
+            tip = (
+                f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+                f"平行壓貼 {_md(td)}高{_px(ty)}；官方收盤已破上升軌，舊升通道失效。"
+                f"不是買訊。"
+            )
         name_u, name_l = "平行壓", "上升軌"
     else:
         upper = ((x1, y1, d1), (x2, y2, d2))
         lower = ((x1, y1 - width, d1), (x2, y2 - width, d2))
-        label = f"下降壓通道　{best['pos']}"
-        tip = (
-            f"下降壓：{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
-            f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
-            f"過下降壓才像準備突破機會，不是保證、不是買訊。"
-        )
+        if reclass_from == "asc_break":
+            label = f"下降壓通道　{best['pos']}　升軌已失效"
+            tip = (
+                f"官方收盤跌破上升軌，舊升通道失效；改畫下降壓："
+                f"{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
+                f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
+                f"不是買訊。"
+            )
+        else:
+            label = f"下降壓通道　{best['pos']}"
+            tip = (
+                f"下降壓：{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
+                f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
+                f"過下降壓才像準備突破機會，不是保證、不是買訊。"
+            )
         name_u, name_l = "下降壓", "平行撐"
-    return {
+    out = {
         "kind": kind,
         "label": label,
         "tip": tip,
@@ -964,6 +1096,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "name_u": name_u,
         "name_l": name_l,
     }
+    if reclass_from:
+        out["reclass_from"] = reclass_from
+    return out
 
 
 def _paint_parallel_channel(
