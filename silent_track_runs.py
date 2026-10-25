@@ -34,6 +34,7 @@ TRACK_LABELS: Dict[str, str] = {
     "lookup-chart": "查股結構精確度",
     "stabilize": "止穩觀察",
     "biaoke-diverge": "飆大分軌",
+    "biaoke-vol-next-sup": "破撐下一撐",
     "fear": "開盤前恐懼",
     "foreign-sell-escalate": "外資賣超升級",
     "foreign-sell-extreme": "外資賣超極端",

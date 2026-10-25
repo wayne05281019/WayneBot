@@ -130,5 +130,6 @@ def test_market_vol_zone_paints_ma5_ma10(tmp_path, production_db):
     path, cap = build_market_vol_zone_chart(out, db_path=production_db)
     assert path and os.path.isfile(path)
     assert os.path.getsize(path) > 20000
-    assert "非買訊" not in (cap or "")
+    # D4 破撐下一撐刻意標「（非買訊）」；不准當舊禁令掃掉產品免責
     assert "測壓" not in (cap or "")
+    assert "（非買訊）" in (cap or "") or "不是買訊" in (cap or "")

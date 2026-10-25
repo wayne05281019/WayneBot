@@ -1704,6 +1704,7 @@ def vol_zone_position_line(
     bars: Optional[List[Dict[str, Any]]] = None,
     *,
     on_ex: bool = False,
+    stock_id: str = "",
 ) -> str:
     """依這檔在帶裡的現況換句，不是同一套填空。不寫抱、不寫賣、不改如何賣。
 
@@ -1767,7 +1768,41 @@ def vol_zone_position_line(
         if on_ex:
             hold = f"除息後撐{lo_s}已跌破"
             gone = "這條除息後撐不算還在"
-        return _emit(hold, f"{voice['day_stamp']}{_fmt_price(cl)}", gone)
+        # 破撐原因句：點名 NEXT（非買訊）；無候選明示暫無
+        next_bit = ""
+        try:
+            from biaoke_next_support import (
+                NONE_LABEL,
+                resolve_next_support,
+            )
+
+            sid0 = str(
+                stock_id
+                or (card or {}).get("stock_id")
+                or (card or {}).get("sid")
+                or (card or {}).get("code")
+                or ""
+            )
+            pack = resolve_next_support(
+                rows,
+                sid=sid0,
+                close=cl,
+                support=lo,
+                spike_date=str((zone or {}).get("date") or ""),
+                under_support=True,
+            )
+            prim = pack.get("primary") or {}
+            if prim and _px(prim.get("price")) > 0:
+                next_bit = (
+                    f"下一撐：{prim.get('source') or ''}{_fmt_price(prim.get('price'))}"
+                    "（非買訊）"
+                )
+            else:
+                next_bit = str(pack.get("none_label") or NONE_LABEL)
+        except Exception:
+            next_bit = ""
+        bits_extra = (next_bit,) if next_bit else ()
+        return _emit(hold, f"{voice['day_stamp']}{_fmt_price(cl)}", gone, *bits_extra)
     if cl > hi:
         return _emit(f"{voice['over']}壓{hi_s}上緣")
 
@@ -1886,7 +1921,14 @@ def vol_zone_photo_caption(
     if ev and phone_ex_verb((ev or {}).get("kind")) and _bar_ymd(ev.get("ex_date")) in {zd, last_d}:
         on_ex = True
     note = _ex_gap_note(events, gaps, last_d or zd, zd, voice="zone")
-    pos = vol_zone_position_line(zone, last, card, bars=bars, on_ex=on_ex)
+    pos = vol_zone_position_line(
+        zone,
+        last,
+        card,
+        bars=bars,
+        on_ex=on_ex,
+        stock_id=str(stock_id or ""),
+    )
     parts = [x.strip() for x in (note, pos) if str(x or "").strip()]
     if parts:
         return "\n".join(parts)
@@ -3448,6 +3490,54 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區推平行軌失敗 sid=%s", sid)
             channel = {}
+    # D4／D5-T1：原文目標／破撐 NEXT 價也先吃進 ylim
+    next_pack: Dict[str, Any] = {}
+    try:
+        from biaoke_next_support import resolve_next_support, written_targets_for
+
+        face_rows = list(bars_face or [])
+        if not face_rows:
+            face_rows = [
+                {
+                    "date": r.get("date"),
+                    "open": r.get("open"),
+                    "high": r.get("high"),
+                    "low": r.get("low"),
+                    "close": r.get("close"),
+                    "volume": r.get("volume"),
+                }
+                for r in view.to_dict("records")
+            ]
+        next_pack = resolve_next_support(
+            face_rows,
+            sid=str(sid or ""),
+            close=float(last_cl or 0),
+            support=float(lo or 0),
+            spike_date=str(spike_date or ""),
+            channel=channel if isinstance(channel, dict) else {},
+        )
+        if not next_pack.get("written"):
+            next_pack["written"] = written_targets_for(str(sid or ""))
+        y_span = max(float(ymax) - float(ymin), 1.0)
+        for row in list(next_pack.get("written") or []):
+            try:
+                yf = float(row.get("price") or 0)
+            except (TypeError, ValueError):
+                yf = 0.0
+            if yf > 0:
+                ymax = max(ymax, yf + y_span * 0.04)
+                ymin = min(ymin, yf - y_span * 0.04)
+        prim = next_pack.get("primary") or {}
+        try:
+            yf = float(prim.get("price") or 0)
+        except (TypeError, ValueError):
+            yf = 0.0
+        if yf > 0:
+            ymax = max(ymax, yf + y_span * 0.04)
+            ymin = min(ymin, yf - y_span * 0.04)
+    except Exception:
+        logger.debug("大量區下一撐解析略過 sid=%s", sid, exc_info=True)
+        next_pack = {}
     ax1.set_ylim(ymin, ymax)
     # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
     # 右略鬆給末日 K／收價；均線標改放左半／中段，不搶近端
@@ -3533,6 +3623,24 @@ def _paint_volume_zone(
         zorder=10,
         bbox={**_tag_box, "edgecolor": _HOLD},
     )
+    # D4／D5-T1：原文目標水平線＋破撐 NEXT（或暫無）；非買訊
+    if next_pack:
+        try:
+            from biaoke_next_support import paint_written_and_next_levels
+
+            paint_written_and_next_levels(
+                ax1,
+                sid=str(sid or ""),
+                next_pack=next_pack,
+                xmin=float(xs[0]) - 0.35 if len(xs) else -0.35,
+                xmax=float(n) + 0.55,
+                right_notes=None,
+                tag_size=9.0,
+                ymin=float(ymin),
+                ymax=float(ymax),
+            )
+        except Exception:
+            logger.debug("大量區原文／下一撐線略過 sid=%s", sid, exc_info=True)
 
     # 大量區右軸／表頭：已刪綠匡白底「收」晶片；不准再畫「昨收」白底標
 

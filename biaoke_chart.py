@@ -1296,6 +1296,16 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     if proj.get("label"):
         notes.append("圖上演算：" + str(proj.get("label")))
     out["notes"] = notes
+    # 破大量區撐 → NEXT／原文目標（D4／D5-T1）；非買訊、不准假價
+    try:
+        from biaoke_next_support import attach_next_support
+
+        sid0 = str((out.get("struct") or {}).get("sid") or "")
+        if not sid0 and rows:
+            sid0 = str(rows[-1].get("stock_id") or rows[-1].get("sid") or "")
+        attach_next_support(out, sid=sid0, bars=rows)
+    except Exception:
+        logger.debug("結構圖下一撐掛載略過", exc_info=True)
     return out
 
 
@@ -1342,6 +1352,7 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
     if info.get("distribution"):
         key = "distribution"
         target = spike_lo if spike_lo else last
+        # 有 NEXT 時 attach_next_support 會改寫標籤；這裡先給基線
         label = f"出貨痕跡，演算往撐 {_px(target)}／撐下。不是保證。"
     elif info.get("under_support"):
         key = "abandon"
@@ -4026,6 +4037,14 @@ def render_biaoke_structure_png(
     # 固定窗滾動：只畫近 _BARS 根；新交易日進則最左日出（不准越畫越擠）
     work = structure_visible_bars(rows)
     info = analyze_structure(work)
+    # 查股／飆大出圖帶明確 sid：原文目標檔別隔離（聯亞／奇鋐…）
+    if sid:
+        try:
+            from biaoke_next_support import attach_next_support
+
+            attach_next_support(info, sid=str(sid), bars=work)
+        except Exception:
+            logger.debug("結構圖下一撐 sid 掛載略過", exc_info=True)
     n = len(work)
     highs = info.get("highs") or [float(r.get("high") or 0) for r in work]
     lows = info.get("lows") or [float(r.get("low") or 0) for r in work]
@@ -4067,6 +4086,27 @@ def render_biaoke_structure_png(
         if yf:
             ymin = min(ymin, float(yf) - span * 0.04)
             ymax = max(ymax, float(yf) + span * 0.04)
+    # 原文目標／下一撐價也吃進 ylim，線才不會被裁
+    try:
+        ns = dict(info.get("next_support") or {})
+        for row in list(ns.get("written") or []):
+            try:
+                yv = float(row.get("price") or 0)
+            except (TypeError, ValueError):
+                yv = 0.0
+            if yv > 0:
+                ymin = min(ymin, yv - span * 0.05)
+                ymax = max(ymax, yv + span * 0.05)
+        prim = ns.get("primary") or {}
+        try:
+            yv = float(prim.get("price") or 0)
+        except (TypeError, ValueError):
+            yv = 0.0
+        if yv > 0:
+            ymin = min(ymin, yv - span * 0.05)
+            ymax = max(ymax, yv + span * 0.05)
+    except Exception:
+        pass
     ymax = max(ymax, y_top + span * 0.07)
     ymin = min(ymin, y_bot - span * 0.07)
     # press_band 參數保留相容；使用者定案不畫 next-press 帶（只留大量壓／撐）
@@ -4178,6 +4218,24 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
+    # D4／D5-T1：原文絕對目標水平線＋破撐 NEXT（或暫無）；非買訊
+    try:
+        from biaoke_next_support import paint_written_and_next_levels
+
+        paint_written_and_next_levels(
+            ax1,
+            sid=str(sid or ""),
+            next_pack=dict(info.get("next_support") or {}),
+            xmin=-0.55,
+            xmax=hline_xmax,
+            right_notes=right_notes,
+            label_x=float(label_col_left) - 0.6,
+            tag_size=float(_STRUCTURE_TAG_SIZE),
+            ymin=ymin,
+            ymax=ymax,
+        )
+    except Exception:
+        logger.debug("結構圖原文／下一撐線略過", exc_info=True)
     # 右軸：今收／現價（71 紅框必留）＋昨收；75 同列並排。
     # 數字跟左上 nameplate／高低卡／介紹同源＝決策卡 quote；K 主體仍官方柱。
     # 不准再用 last_bar 官方末日蓋掉盤中現價（上市上櫃興櫃同一規則）。
@@ -4478,6 +4536,41 @@ def render_biaoke_structure_png(
     elif info.get("distribution"):
         mark = "過壓後掉回撐下＝出貨痕跡"
         mc = _PRESS
+        # 原因句鉤：出貨痕跡點名 NEXT（一句、非買訊）
+        try:
+            ns = dict(info.get("next_support") or {})
+            bit = str(ns.get("reason_line") or "").strip()
+            if bit and "朝" in bit:
+                # 晶片維持短標；完整句走 notes／caption
+                prim = ns.get("primary") or {}
+                if prim and float(prim.get("price") or 0) > 0:
+                    from biaoke_next_support import _fmt_price as _ns_px
+
+                    mark = (
+                        f"出貨痕跡→下一撐："
+                        f"{prim.get('source') or ''} {_ns_px(prim.get('price'))}"
+                    ).strip()
+                elif ns.get("none_label"):
+                    mark = f"出貨痕跡・{ns.get('none_label')}"
+        except Exception:
+            pass
+    elif info.get("under_support"):
+        # 破撐：晶片點名 NEXT 或暫無
+        try:
+            ns = dict(info.get("next_support") or {})
+            prim = ns.get("primary") or {}
+            if prim and float(prim.get("price") or 0) > 0:
+                from biaoke_next_support import _fmt_price as _ns_px
+
+                mark = (
+                    f"破撐→下一撐：{prim.get('source') or ''} {_ns_px(prim.get('price'))}"
+                ).strip()
+                mc = _PRESS
+            elif ns.get("none_label"):
+                mark = str(ns.get("none_label"))
+                mc = _MUTED
+        except Exception:
+            pass
     # 大量日高／低判斷句（收在低下／已過高等）全股票都不打
     banner_bits = header_banner_lines(glance, sid=sid, plate=plate)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
@@ -5137,6 +5230,18 @@ def chart_caption(
             tape += "過壓之後又掉回撐下，比較像出貨。"
         # 大量日高／低判斷句不上 caption
         lines.append(tape)
+    # 破撐 NEXT／原文目標一句（非買訊）
+    try:
+        ns = dict(info.get("next_support") or {})
+        bit = str(ns.get("reason_line") or "").strip()
+        if bit and bit not in lines:
+            lines.append(bit)
+        for wl in list(ns.get("written_lines") or [])[:3]:
+            w = str(wl or "").strip()
+            if w and w not in lines:
+                lines.append(w)
+    except Exception:
+        pass
     ch = info.get("channel") or {}
     tip = str(ch.get("tip") or "").strip()
     if tip:
