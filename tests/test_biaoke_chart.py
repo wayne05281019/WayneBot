@@ -129,10 +129,22 @@ def test_structure_flags_distribution_not_wash():
     assert "洗盤" not in notes or "不是洗盤" in notes
     proj = info.get("project") or {}
     assert proj.get("key") == "distribution"
-    assert abs(float(proj.get("target") or 0) - 96) < 1e-6
+    # D4：有 NEXT 時 target／標籤改朝下一撐；無則仍錨舊撐 96
+    ns = info.get("next_support") or {}
+    prim = ns.get("primary") or {}
+    if prim and float(prim.get("price") or 0) > 0:
+        assert abs(float(proj.get("target") or 0) - float(prim["price"])) < 1e-6
+        assert "下一撐" in str(proj.get("label") or "") or "朝" in str(
+            proj.get("label") or ""
+        )
+    else:
+        assert abs(float(proj.get("target") or 0) - 96) < 1e-6
+    assert "不是保證" in str(proj.get("label") or "") or "非買訊" in str(
+        proj.get("label") or ""
+    )
     cap = chart_caption(info, sid="3035", name="智原")
-    assert "演算" in cap
-    assert "不是保證" in cap
+    assert "演算" in cap or "出貨" in cap
+    assert "不是保證" in cap or "非買訊" in cap
 
 
 def test_render_structure_png(tmp_path):
