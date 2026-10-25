@@ -224,6 +224,65 @@ def test_channel_label_blank_avoids_candles_and_ma():
     )
 
 
+def test_channel_label_mark_pad_avoids_nav_arrow_band():
+    """有 mark_pad：軌標盒不准落進 K 上下箭頭／殘影帶；下軌錨點也不准死貼最右。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_blocked
+
+    n = 80
+    span = 70.0
+    mark_pad = span * 0.14
+    highs = np.full(n, 100.0)
+    lows = np.full(n, 92.0)
+    # 近端堆箭：右側高低拉開一點，仍要被 mark_pad 擋住貼箭位
+    highs[-12:] = 108.0
+    lows[-12:] = 88.0
+    mas = [np.full(n, 96.0)]
+    seg = ((5.0, 90.0, "a"), (75.0, 90.0, "b"))  # 近似水平下軌
+    cx, cy = _blank_for_channel_label(
+        text="平行撐 90",
+        seg=seg,
+        y_now=90.0,
+        outside=-1,
+        n=n,
+        ymin=70.0,
+        ymax=140.0,
+        dx=8.0,
+        dy=3.5,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=mark_pad,
+    )
+    box = (cx - 4.0, cx + 4.0, cy - 1.75, cy + 1.75)
+    assert not _channel_box_blocked(
+        *box,
+        n=n,
+        ymin=70.0,
+        ymax=140.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=mark_pad,
+    )
+    # 下軌＋mark_pad：錨點改中右往左掃，不准貼在最右幾根箭堆上
+    assert cx < n * 0.85
+
+
+def test_paint_channel_splits_rails_and_nav_aware_labels():
+    """軌線／標可拆畫；avoid_nav_marks 走 mark_pad。"""
+    from vol_zone_chart import paint_vol_zone_parallel_channel
+
+    src = inspect.getsource(paint_vol_zone_parallel_channel)
+    assert "paint_rails" in src and "paint_labels" in src
+    assert "avoid_nav_marks" in src
+    assert "mark_pad" in src
+    assert "0.14" in src
+
+
 def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
     """大盤大量區畫布＝日K 12.8×7.55、主圖右緣 0.96；個股 figsize 不動。"""
     from PIL import Image

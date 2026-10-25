@@ -185,7 +185,10 @@ def test_vol_zone_layout_k_first_no_fake_bars():
 
     src = inspect.getsource(_paint_volume_zone)
     assert "ex_labels" in src
-    assert "left_guard" in src
+    # 除息標必須鎖 xs[i]（對準豎虛線）；不准再把標平移離開豎線
+    assert "left_guard =" not in src
+    assert "x_pos = float(xs[i])" in src
+    assert "不准把標平移離開豎線" in src
     assert "GridSpec" in src and "ax_head" in src
     assert "panel=True" in src
     assert "draw_legend=False" in src
