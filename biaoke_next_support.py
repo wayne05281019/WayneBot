@@ -796,12 +796,17 @@ def paint_written_and_next_levels(
                 pass
         else:
             try:
+                # 大量區右緣：長標「飆大原文目標…非買訊」再左，整段可見、不壓軸刻度
                 _text(
-                    0.988,
+                    0.78,
                     lab_y,
                     label,
                     color=color_written,
                     transform=ax.get_yaxis_transform(),
+                    ha="right",
+                    va="center",
+                    bbox={**_tag_box, "edgecolor": color_written},
+                    size=max(8.5, float(tag_size) - 0.5),
                 )
             except Exception:
                 pass

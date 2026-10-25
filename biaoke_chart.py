@@ -1985,8 +1985,8 @@ def _place_right_notes(
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
     75：昨收＋今收同列並排（先昨收、右今收）。
     close_anchor_y：有值＝昨收／今收整組釘右下角該價（不再貼今收價列擠中右）。
-    v4：第一層壓／撐＋通道軌（平行撐／下降壓）改貼近右軸內側堆疊；
-    平行撐釘對應價，不准被鄰標擠到中右亂位；原文目標仍走較左軟欄避讓。
+    v5：第一層壓／撐偏右但右緣與軸刻度留空隙；下降壓／平行撐往左離軸；
+    原文目標再左移，整段（含「非買訊」）完整可見；軌／壓撐仍釘對應價。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -2177,29 +2177,62 @@ def _place_right_notes(
         ty = min(max(ty, lo), hi)
         fixed_up.append((note, ty))
     placed = sorted(fixed_up, key=lambda p: -float(p[1]))
-    # v4：壓／撐／軌貼近右軸內側；原文等軟標走較左欄，釋出中右空檔
+    # v5：三欄——原文目標偏左完整可見；下降壓／平行撐再左離軸；
+    # 第一層壓／撐偏右但右緣與軸刻度留空隙（不准壓住股價數字）。
     # 75：昨收｜今收並排時仍貼右軸（既有 close 路徑）
     col_tx = float(tx)
-    axis_tx = float(col_tx)
+    # 右軸刻度數字約需的資料座標空隙（壓／撐右緣不准侵入）
+    _AXIS_TICK_CLEAR = 11.5
+    level_tx = float(col_tx)
+    rail_tx = float(col_tx)
+    soft_tx = float(col_tx)
     if x_max is not None:
-        hard_ws = [
+        level_ws = [
             _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
-            for n in hard_notes
+            for n in levels
         ]
-        hard_w = max(hard_ws, default=14.0)
-        axis_tx = float(x_max) - float(hard_w) - 3.2
+        rail_ws = [
+            _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+            for n in rails
+        ]
+        soft_ws = [
+            _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+            for n in others
+        ]
+        level_w = max(level_ws, default=14.0)
+        rail_w = max(rail_ws, default=16.0)
+        # CJK＋圓角 bbox 實測比估寬明顯更寬；原文長標必須整段（含非買訊）入軸
+        soft_w = max(soft_ws, default=28.0) * 1.52
         floor_axis = (
             float(pin_x) + float(_CLOSE_TAG_CANDLE_CLEAR) + 0.8
             if pin_x is not None
             else float(col_tx)
         )
-        axis_tx = max(floor_axis, min(float(axis_tx), float(x_max) - 6.0))
-        # 軟欄略左於右軸堆，避免與壓／撐／平行撐互壓
-        soft_tx = min(float(col_tx), float(axis_tx) - max(3.5, hard_w * 0.22))
-        soft_tx = max(floor_axis, soft_tx)
-    else:
-        soft_tx = float(col_tx)
-    stub_x = float(axis_tx) - 1.35
+        # 壓／撐：偏右，但整盒右緣 ≤ x_max − 刻度空隙
+        level_tx = float(x_max) - float(level_w) - float(_AXIS_TICK_CLEAR)
+        level_tx = max(
+            floor_axis,
+            min(float(level_tx), float(x_max) - float(_AXIS_TICK_CLEAR) - 6.0),
+        )
+        # 下降壓／平行撐：明顯往左，離開右軸擁擠區
+        rail_tx = min(float(col_tx), float(level_tx) - max(7.5, float(rail_w) * 0.35))
+        rail_tx = max(floor_axis, float(rail_tx))
+        # 原文目標：整段必須落在軸內且與軸刻度留縫 → 依實寬再左移。
+        # 長標准許伸進右溝／演化區，但左緣仍須在末日 K 右側（不准蓋 K）。
+        soft_fit = float(x_max) - float(soft_w) - float(_AXIS_TICK_CLEAR)
+        soft_floor = (
+            float(pin_x) + 1.6 if pin_x is not None else float(floor_axis)
+        )
+        soft_tx = min(float(soft_fit), float(rail_tx) - 4.0, float(col_tx) - 4.0)
+        soft_tx = max(float(soft_floor), float(soft_tx))
+        # 若右溝仍不夠整段：加寬 xlim（不准再右裁「非買訊」）
+        need_right = float(soft_tx) + float(soft_w) + float(_AXIS_TICK_CLEAR)
+        if need_right > float(x_max) + 1e-6:
+            x_lo, _ = ax.get_xlim()
+            ax.set_xlim(float(x_lo), float(need_right))
+            x_max = float(need_right)
+    stub_x = float(level_tx) - 1.35
+    rail_stub_x = float(rail_tx) - 1.35
     soft_stub_x = float(soft_tx) - 1.35
     pair_prev = prev_close_notes[0] if close_pair else None
     pair_today = today_close_notes[0] if close_pair else None
@@ -2408,10 +2441,18 @@ def _place_right_notes(
             )
             continue
         text = str(note.get("text") or "")
-        # v4：壓／撐／軌貼近右軸；原文等軟標走較左欄
-        if _is_level_note(text) or _is_rail_note(text):
+        # v5：壓／撐偏右；下降壓／平行撐偏左；原文再左（完整可見）
+        if _is_level_note(text):
             _paint_one_note(
-                note, show_ty, float(axis_tx), stub=True, note_stub_x=float(stub_x)
+                note, show_ty, float(level_tx), stub=True, note_stub_x=float(stub_x)
+            )
+        elif _is_rail_note(text):
+            _paint_one_note(
+                note,
+                show_ty,
+                float(rail_tx),
+                stub=True,
+                note_stub_x=float(rail_stub_x),
             )
         else:
             _paint_one_note(
