@@ -189,8 +189,9 @@ def test_vol_zone_layout_k_first_no_fake_bars():
     assert "GridSpec" in src and "ax_head" in src
     assert "panel=True" in src
     assert "draw_legend=False" in src
-    # 壓撐回圖內左上／左下
-    assert "0.012" in src and "0.975" in src and "0.025" in src
+    # v9+：壓撐釘價線左側（axes-x + data-y），不再死釘 0.975／0.025 角
+    assert "0.012" in src and ("_left_tag_tf" in src or "blended_transform_factory" in src)
+    assert "大量區壓" in src and "大量區撐" in src
     assert "left=0.16" not in src
     assert "xytext=(0, 18)" in src  # 爆大量標再上移
     # 停價＝灰短 K（共用 paint LOOKUP_CANDLE_HALT）；0 量／缺量＝貼底灰短柱，不准挖洞

@@ -3868,7 +3868,8 @@ def _paint_volume_zone(
             clip_on=False,
             bbox={**_key_tag_box, "edgecolor": _HOLD},
         )
-    # 下一層／原文偏左對線；busy_ys 避開主區壓撐標
+    # v10：下一層仍偏左釘線；飆大原文目標紫標座標還原 v8（右緣 0.78）
+    # busy_ys 仍避開主區壓撐；白底高 z／導航後畫保留
     if next_pack:
         try:
             from biaoke_next_support import paint_written_and_next_levels
@@ -3884,7 +3885,7 @@ def _paint_volume_zone(
                 ymin=float(ymin),
                 ymax=float(ymax),
                 layer_labels="left",
-                written_labels="left",
+                written_labels="right",
                 busy_ys=(float(hi or 0), float(lo or 0)),
             )
         except Exception:
