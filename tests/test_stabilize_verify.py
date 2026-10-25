@@ -117,3 +117,25 @@ def test_night_tick_empty_db():
         out = night_tick(market, as_of="20260301")
         assert out["buy_signal"] is False
         assert TAG_CURRENT in out["tags"]
+
+
+def test_confront_summary_and_backfill_empty():
+    from stabilize_verify import backfill_recent_days, confront_summary
+
+    with tempfile.TemporaryDirectory() as td:
+        market = os.path.join(td, "m.db")
+        conn = sqlite3.connect(market)
+        conn.execute(
+            "CREATE TABLE daily_quotes("
+            "stock_id TEXT, date TEXT, open REAL, high REAL, low REAL,"
+            "close REAL, volume REAL)"
+        )
+        conn.commit()
+        conn.close()
+        summary = confront_summary(market)
+        assert summary["buy_signal"] is False
+        assert summary["gate_ok"] is False
+        assert "止穩" in summary["line"]
+        bf = backfill_recent_days(market, trading_days=3)
+        assert bf["buy_signal"] is False
+        assert isinstance(bf.get("days"), list)

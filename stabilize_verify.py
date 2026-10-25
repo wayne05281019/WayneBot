@@ -427,15 +427,7 @@ def gate_status(db_path: str) -> Dict[str, Any]:
 
 
 def optimize_status_one_liner(db_path: str) -> str:
-    g = gate_status(db_path)
-    need = int(g.get("min_n") or MIN_UNIQUE_DAYS)
-    n = int((g.get("current") or {}).get("n_days") or 0)
-    if g.get("promote_rule"):
-        return (
-            f"止穩觀察：{TAG_NEXT} n≥{need} 且贏 {TAG_CURRENT} → "
-            "可換畫圖規則；永遠不是買訊。"
-        )
-    return f"止穩觀察靜默對質：{TAG_CURRENT} n={n}/{need}；非買訊／尚未改碼。"
+    return str(confront_summary(db_path).get("line") or "")
 
 
 def night_tick(db_path: str, as_of: str = "") -> Dict[str, Any]:
@@ -454,3 +446,123 @@ def night_tick(db_path: str, as_of: str = "") -> Dict[str, Any]:
     except Exception:
         return out
     return out
+
+
+def backfill_recent_days(
+    db_path: str,
+    *,
+    trading_days: int = 55,
+    end: str = "",
+) -> Dict[str, Any]:
+    """回填近窗交易日 tape＋前瞻分（官方已收；空名單日不算）。
+
+    逐日走與 night_tick 同一套 snapshot_day（90 曆日母體＋cal60 臉），
+    日與日之間釋放 frames，避免 OOM。不准盤中未收當收。
+    """
+    import gc
+
+    out: Dict[str, Any] = {
+        "days": [],
+        "scored": 0,
+        "gate": {},
+        "line": "",
+        "buy_signal": False,
+    }
+    if not db_path or not os.path.isfile(db_path):
+        return out
+    end_d = _ymd(end)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        if end_d:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT REPLACE(CAST(date AS TEXT),'-','') AS d
+                FROM daily_quotes
+                WHERE close > 0
+                  AND REPLACE(CAST(date AS TEXT),'-','') <= ?
+                ORDER BY d DESC
+                LIMIT ?
+                """,
+                (end_d, max(1, int(trading_days))),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT REPLACE(CAST(date AS TEXT),'-','') AS d
+                FROM daily_quotes
+                WHERE close > 0
+                ORDER BY d DESC
+                LIMIT ?
+                """,
+                (max(1, int(trading_days)),),
+            ).fetchall()
+    finally:
+        conn.close()
+    days = [_ymd(r[0]) for r in reversed(rows) if _ymd(r[0])]
+    for day in days:
+        try:
+            wrote = snapshot_day(db_path, as_of=day)
+            out["days"].append({"as_of": day, "wrote": wrote})
+        except Exception:
+            out["days"].append({"as_of": day, "wrote": {}, "error": True})
+        gc.collect()
+    try:
+        out["scored"] = score_pending(db_path, cap=end_d or "")
+        out["rates"] = recompute_rates(db_path)
+        out["gate"] = gate_status(db_path)
+        out["line"] = optimize_status_one_liner(db_path)
+    except Exception:
+        pass
+    return out
+
+
+def confront_summary(db_path: str) -> Dict[str, Any]:
+    """現況 vs 緊版一句話用摘要（主窗 h5；空名單日不計入 n_days）。"""
+    g = gate_status(db_path)
+    cur = g.get("current") or {}
+    nxt = g.get("next") or {}
+    n_cur = int(cur.get("n_days") or 0)
+    n_nxt = int(nxt.get("n_days") or 0)
+    hit_cur = int(cur.get("hit") or 0)
+    miss_cur = int(cur.get("miss") or 0)
+    hit_nxt = int(nxt.get("hit") or 0)
+    miss_nxt = int(nxt.get("miss") or 0)
+    den_cur = hit_cur + miss_cur
+    den_nxt = hit_nxt + miss_nxt
+    rate_cur = (hit_cur / den_cur) if den_cur else None
+    rate_nxt = (hit_nxt / den_nxt) if den_nxt else None
+    beats = bool(
+        rate_nxt is not None
+        and rate_cur is not None
+        and rate_nxt > rate_cur
+    )
+    need = int(g.get("min_n") or MIN_UNIQUE_DAYS)
+    gate_ok = bool(g.get("promote_rule"))
+    if gate_ok:
+        line = (
+            f"止穩◆閘通過：{TAG_NEXT} n_days={n_nxt}≥{need} 且 h{PRIMARY_H} "
+            f"勝率贏 {TAG_CURRENT} → 可換畫圖規則；永遠不是買訊。"
+        )
+    else:
+        beat_s = "贏" if beats else ("未贏" if rate_nxt is not None else "尚無可比")
+        line = (
+            f"止穩◆閘未過：{TAG_CURRENT} n_days={n_cur}/{need}、"
+            f"{TAG_NEXT} n_days={n_nxt}/{need}；緊版 h{PRIMARY_H} {beat_s}現況；"
+            "非買訊／不改話筒。"
+        )
+    return {
+        "kind": KIND,
+        "tag_current": TAG_CURRENT,
+        "tag_next": TAG_NEXT,
+        "primary_h": PRIMARY_H,
+        "min_n": need,
+        "n_days_current": n_cur,
+        "n_days_next": n_nxt,
+        "rate_current": rate_cur,
+        "rate_next": rate_nxt,
+        "beats_current": beats,
+        "gate_ok": gate_ok,
+        "buy_signal": False,
+        "line": line,
+        "gate": g,
+    }
