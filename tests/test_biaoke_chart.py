@@ -129,19 +129,22 @@ def test_structure_flags_distribution_not_wash():
     assert "洗盤" not in notes or "不是洗盤" in notes
     proj = info.get("project") or {}
     assert proj.get("key") == "distribution"
-    # D4：有 NEXT 時 target／標籤改朝下一撐；無則仍錨舊撐 96
+    # 下一層＝次大量區壓／撐；有 layer／primary 時 target 朝下一層撐；無則仍錨舊撐 96
     ns = info.get("next_support") or {}
     prim = ns.get("primary") or {}
+    label = str(proj.get("label") or "")
     if prim and float(prim.get("price") or 0) > 0:
         assert abs(float(proj.get("target") or 0) - float(prim["price"])) < 1e-6
-        assert "下一撐" in str(proj.get("label") or "") or "朝" in str(
-            proj.get("label") or ""
+        assert (
+            "下一層" in label
+            or "下一撐" in label
+            or "朝" in label
         )
+        # 圖上已不畫「最可能＝…」橘虛線；mark 應空或不再當畫面主標
+        assert "最可能＝下一層" not in str(proj.get("mark") or "")
     else:
         assert abs(float(proj.get("target") or 0) - 96) < 1e-6
-    assert "不是保證" in str(proj.get("label") or "") or "非買訊" in str(
-        proj.get("label") or ""
-    )
+    assert "不是保證" in label or "非買訊" in label
     cap = chart_caption(info, sid="3035", name="智原")
     assert "演算" in cap or "出貨" in cap
     assert "不是保證" in cap or "非買訊" in cap
