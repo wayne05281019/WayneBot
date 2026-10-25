@@ -1881,13 +1881,17 @@ def _dedupe_right_notes(
         if hit:
             continue
         kept.append(dict(note))
-    # 軌標若與已留標太近：只挪顯示 Y，不准刪（升軌上緣平行壓要看得到價）
+    # 軌標若與「其他軌」太近：只挪顯示 Y，不准刪。
+    # v7：不准因靠近壓／撐／收而把下降壓／平行撐擠離紫虛線（分欄繪製）。
     for note in kept:
         if not _is_rail_note(str(note.get("text") or "")):
             continue
         y = float(note.get("y") or 0)
         for other in kept:
             if other is note:
+                continue
+            ot = str(other.get("text") or "")
+            if not _is_rail_note(ot):
                 continue
             oy = float(other.get("y") or 0)
             if abs(y - oy) < thr:
@@ -1955,29 +1959,37 @@ def _close_tags_lower_right_y(
     ymin: float,
     ymax: float,
     *,
-    layer_lo: float = 0.0,
-    layer_hi: float = 0.0,
+    avoid_price: float = 0.0,
 ) -> float:
     """昨收／今收錨點 Y。
 
-    v6：有次層淺灰／淺藍帶時貼該帶**右下角**（帶內偏下），不必對準 1500 刻度。
-    無次層帶才退回舊的右下比例／1500 優先。
+    v7：主圖**右下空白**（約右軸 1500～2000 一帶），跟現價／次層帶拉開；
+    不准再貼現價旁搶位。軸內無 1500～2000 則取下緣空白帶。
     """
     y0 = float(ymin)
     y1 = float(ymax)
-    lo = float(layer_lo or 0.0)
-    hi = float(layer_hi or 0.0)
-    if lo > 0 and hi > lo:
-        # 帶內右下角：下緣上約 10% 帶高，仍落在帶內（避開帶內軌標）
-        ay = float(lo) + (hi - lo) * 0.10
-        return float(min(max(ay, y0 + (y1 - y0) * 0.04), y1 - (y1 - y0) * 0.04))
     span = max(y1 - y0, 1.0)
-    prefer = 1500.0
-    lo_band = y0 + span * 0.06
-    hi_band = y0 + span * 0.32
-    if lo_band <= prefer <= min(hi_band, y1 - span * 0.06):
-        return float(prefer)
-    return float(y0 + span * 0.14)
+    # 優先落在 1500～2000 中段（使用者紅框）
+    band_lo, band_hi = 1500.0, 2000.0
+    mid = 1750.0
+    pad = span * 0.05
+    if (y0 + pad) <= mid <= (y1 - pad):
+        ay = float(mid)
+    elif (y0 + pad) <= band_lo <= (y1 - pad):
+        ay = float(band_lo)
+    elif y0 < band_hi and y1 > band_lo:
+        # 軸與 1500～2000 有交集：取交集中點
+        a = max(y0 + pad, band_lo)
+        b = min(y1 - pad, band_hi)
+        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.14)
+    else:
+        ay = float(y0 + span * 0.14)
+    # 跟現價拉開（至少約 12% 軸高）
+    ap = float(avoid_price or 0.0)
+    if ap > 0 and abs(ay - ap) < span * 0.12:
+        ay = float(min(ay, ap - span * 0.14))
+        ay = float(max(ay, y0 + pad))
+    return float(ay)
 
 
 def _place_right_notes(
@@ -2000,9 +2012,9 @@ def _place_right_notes(
     71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
     75：昨收＋今收同列並排（先昨收、右今收）。
-    close_anchor_y：有值＝昨收／今收整組釘該價（v6＝次層帶右下；不再死釘 1500）。
-    v6：壓／撐貼近桃色帶最右顯示區（軸內側、不壓刻度）；下降壓／平行撐偏左；
-    所有標籤整段入軸不准切斷；軌／壓撐仍釘對應價。
+    close_anchor_y：有值＝昨收／今收整組釘該價（v7＝右下空白約 1500～2000，離現價）。
+    v7：壓／撐貼桃色帶最右（不壓軸刻度）；下降壓／平行撐釘紫虛線旁且不跟收標搶右緣；
+    長標整段入軸不准切斷。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -2093,29 +2105,38 @@ def _place_right_notes(
         my = hi - gap * 0.2
         placed.append((most[0], my))
         taken.append(my)
-    # 71／v4：壓／撐＋通道軌顯示 Y＝釘點價（貼水平線／軌價）；高價在上＝僅互撞微挪
+    # v7：壓／撐與軌分欄——各自釘價；軌（下降壓／平行撐）必須貼紫虛線，不准被壓撐擠離線
     hard_notes = list(levels) + list(rails)
-    hard_sorted = sorted(hard_notes, key=lambda n: -float(n.get("y") or 0))
-    hard_tys: List[float] = []
-    for note in hard_sorted:
+    level_tys: List[float] = []
+    for note in sorted(levels, key=lambda n: -float(n.get("y") or 0)):
         ny = float(note.get("y") or 0)
         ty = min(max(ny, lo), hi_others)
-        for prev_ty in hard_tys:
+        for prev_ty in level_tys:
             if abs(ty - prev_ty) < gap * 0.55:
-                # 高價列已在上；低價列往下讓，保持高＞低閱讀順位
                 ty = min(prev_ty - gap * 0.55, ty)
         ty = min(max(ty, lo), hi_others)
-        hard_tys.append(ty)
+        level_tys.append(ty)
         placed.append((note, ty))
         taken.append(ty)
-    # v6：昨收／今收有 close_anchor 時硬釘該價（次層帶右下），不准進 soft 被擠走
+    rail_tys: List[float] = []
+    for note in sorted(rails, key=lambda n: -float(n.get("y") or 0)):
+        ny = float(note.get("y") or 0)
+        # 嚴格貼軌價；同軌互撞才微挪
+        ty = min(max(ny, lo), hi_others)
+        for prev_ty in rail_tys:
+            if abs(ty - prev_ty) < gap * 0.45:
+                ty = min(prev_ty - gap * 0.45, ty)
+        ty = min(max(ty, lo), hi_others)
+        rail_tys.append(ty)
+        placed.append((note, ty))
+        taken.append(ty)
+    # v7：昨收／今收硬釘右下空白錨點，不准進 soft、不准跟軌／現價搶位
     if close_anchor_y is not None and closes_for_slot:
         ay = float(close_anchor_y)
-        # 若貼近通道軌（平行撐等），往下讓一格，仍盡量留在錨點附近
         for r in rails:
             ry = float(r.get("y") or 0)
-            if abs(ay - ry) < gap * 1.15:
-                ay = min(ay, ry - gap * 1.15)
+            if abs(ay - ry) < gap * 1.2:
+                ay = min(ay, ry - gap * 1.25)
         ty = min(max(ay, lo), hi_others)
         for note in closes_for_slot:
             note["y"] = float(ty)
@@ -2150,27 +2171,45 @@ def _place_right_notes(
         or _is_rail_note(str(n.get("text") or ""))
         or (close_anchor_y is not None and _is_close_note(str(n.get("text") or "")))
     }
+    def _pin_family(n: Dict[str, Any]) -> str:
+        t = str(n.get("text") or "")
+        if _is_level_note(t):
+            return "level"
+        if _is_rail_note(t):
+            return "rail"
+        if _is_close_note(t):
+            return "close"
+        if "最可能" in t:
+            return "most"
+        return "soft"
+
     placed.sort(key=lambda p: -float(p[1]))
     enforced: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in placed:
         text = str(note.get("text") or "")
         hard = id(note) in pinned_ids
+        fam = _pin_family(note)
         if not hard:
             for prev_note, ty2 in enforced:
                 if abs(ty - ty2) < gap:
                     ty = ty2 - gap
             ty = min(max(ty, lo), hi)
         else:
-            # 硬釘只跟其他硬釘保證最小縫，仍貼近 ny
+            # 硬釘：只跟「同欄家族」保縫（壓撐／軌／收分欄），軌不准被壓撐擠離紫虛線
             ny = float(note.get("y") or 0)
             for prev_note, ty2 in enforced:
                 if id(prev_note) not in pinned_ids:
+                    continue
+                if _pin_family(prev_note) != fam:
                     continue
                 if abs(ty - ty2) < gap * 0.5:
                     if ny >= float(prev_note.get("y") or 0):
                         ty = max(ty2 + gap * 0.5, ty)
                     else:
                         ty = min(ty2 - gap * 0.5, ty)
+            # 軌／壓撐／收：顯示 Y 鎖回釘點（同欄微挪後仍貼線）
+            if fam in ("rail", "level", "close") and abs(ty - ny) < gap * 0.35:
+                ty = float(ny)
             ty = min(max(ty, lo), hi)
         enforced.append((note, ty))
     placed = enforced
@@ -2208,10 +2247,9 @@ def _place_right_notes(
         ty = min(max(ty, lo), hi)
         fixed_up.append((note, ty))
     placed = sorted(fixed_up, key=lambda p: -float(p[1]))
-    # v6：先留足原文長標寬（必要時加寬 xlim），再把壓／撐貼到桃色帶最右顯示區；
-    # 下降壓／平行撐偏左；昨收／今收走次層帶右下（close_anchor_y）。
+    # v7：壓／撐貼桃色帶最右；下降壓／平行撐釘紫虛線旁（略左於壓撐、不跟收標搶右緣）；
+    # 昨收／今收走右下空白（close_anchor_y≈1500～2000）；原文長標完整入軸。
     col_tx = float(tx)
-    # 右軸刻度數字空隙（壓／撐／收標右緣不准侵入）
     _AXIS_TICK_CLEAR = 12.0
     level_tx = float(col_tx)
     rail_tx = float(col_tx)
@@ -2240,7 +2278,7 @@ def _place_right_notes(
         soft_floor = (
             float(pin_x) + 1.6 if pin_x is not None else float(floor_axis)
         )
-        # 原文長標：先決定需要的右緣，必要時加寬（整段含「非買訊」不准切）
+        # 原文長標：先留足寬，必要時加寬 xlim
         soft_fit = float(x_max) - float(soft_w) - float(_AXIS_TICK_CLEAR)
         soft_tx = max(float(soft_floor), min(float(soft_fit), float(col_tx) - 4.0))
         need_right = float(soft_tx) + float(soft_w) + float(_AXIS_TICK_CLEAR)
@@ -2248,13 +2286,12 @@ def _place_right_notes(
             x_lo, _ = ax.get_xlim()
             ax.set_xlim(float(x_lo), float(need_right))
             x_max = float(need_right)
-        # 壓／撐：貼近桃色帶最右顯示區（最終 xlim 內側），仍與軸刻度留縫
+        # 壓／撐：桃色帶最右顯示區內側，與軸刻度留縫
         level_tx = float(x_max) - float(level_w) - float(_AXIS_TICK_CLEAR)
         level_tx = max(floor_axis, float(level_tx))
-        # 下降壓／平行撐：往左離開右軸擁擠區
-        rail_tx = min(float(col_tx), float(level_tx) - max(8.0, float(rail_w) * 0.4))
+        # 下降壓／平行撐：貼紫虛線旁——在壓撐左側一欄，Y 已釘軌價
+        rail_tx = min(float(col_tx) + 2.0, float(level_tx) - max(6.5, float(rail_w) * 0.28))
         rail_tx = max(floor_axis, float(rail_tx))
-        # 原文再確保在軌標左側且整段入軸
         soft_tx = min(float(soft_tx), float(rail_tx) - 4.0)
         soft_tx = max(float(soft_floor), float(soft_tx))
         need_right = float(soft_tx) + float(soft_w) + float(_AXIS_TICK_CLEAR)
@@ -2262,10 +2299,9 @@ def _place_right_notes(
             x_lo, _ = ax.get_xlim()
             ax.set_xlim(float(x_lo), float(need_right))
             x_max = float(need_right)
-            # xlim 又加寬 → 壓／撐跟著貼回最右
             level_tx = float(x_max) - float(level_w) - float(_AXIS_TICK_CLEAR)
             level_tx = max(floor_axis, float(level_tx))
-            rail_tx = min(float(col_tx), float(level_tx) - max(8.0, float(rail_w) * 0.4))
+            rail_tx = min(float(col_tx) + 2.0, float(level_tx) - max(6.5, float(rail_w) * 0.28))
             rail_tx = max(floor_axis, float(rail_tx))
     stub_x = float(level_tx) - 1.35
     rail_stub_x = float(rail_tx) - 1.35
@@ -4692,16 +4728,8 @@ def render_biaoke_structure_png(
         avoid_ys.append(float(channel["rail_now"]))
     if channel.get("base_now"):
         avoid_ys.append(float(channel["base_now"]))
-    evo_pad = span * 0.08
-    # v6：昨收／今收錨在次層淺灰帶右下（有帶才用）；無帶退回舊右下
-    _layer_lo = 0.0
-    _layer_hi = 0.0
-    try:
-        _ns_layer = dict((info.get("next_support") or {}).get("layer") or {})
-        _layer_lo = float(_ns_layer.get("low") or _ns_layer.get("support") or 0)
-        _layer_hi = float(_ns_layer.get("high") or _ns_layer.get("pressure") or 0)
-    except (TypeError, ValueError):
-        _layer_lo = _layer_hi = 0.0
+    # 右下空白給昨收／今收；底墊略減以免把錨點頂離 1500～2000 紅框
+    evo_pad = span * 0.045
     _place_right_notes(
         ax1,
         right_notes,
@@ -4717,8 +4745,7 @@ def render_biaoke_structure_png(
         close_anchor_y=_close_tags_lower_right_y(
             float(ymin),
             float(ymax),
-            layer_lo=float(_layer_lo),
-            layer_hi=float(_layer_hi),
+            avoid_price=float(last_c) if last_c > 0 else 0.0,
         ),
     )
     # 已刪演化區膚色底＋「演化區（不是保證…）」底標
