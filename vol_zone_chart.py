@@ -1768,7 +1768,7 @@ def vol_zone_position_line(
         if on_ex:
             hold = f"除息後撐{lo_s}已跌破"
             gone = "這條除息後撐不算還在"
-        # 破撐原因句：點名 NEXT（非買訊）；無候選明示暫無
+        # 破撐原因句：點名下一層壓+撐（非買訊）；無候選明示暫無；破撐≠換主區
         next_bit = ""
         try:
             from biaoke_next_support import (
@@ -1788,14 +1788,17 @@ def vol_zone_position_line(
                 sid=sid0,
                 close=cl,
                 support=lo,
+                pressure=hi,
                 spike_date=str((zone or {}).get("date") or ""),
                 under_support=True,
             )
-            prim = pack.get("primary") or {}
-            if prim and _px(prim.get("price")) > 0:
+            layer = pack.get("layer") or {}
+            lo_n = _px(layer.get("low"))
+            hi_n = _px(layer.get("high"))
+            if lo_n > 0 and hi_n > 0:
                 next_bit = (
-                    f"下一撐：{prim.get('source') or ''}{_fmt_price(prim.get('price'))}"
-                    "（非買訊）"
+                    f"下一層壓{_fmt_price(hi_n)}／撐{_fmt_price(lo_n)}"
+                    "（非買訊；主區未換）"
                 )
             else:
                 next_bit = str(pack.get("none_label") or NONE_LABEL)
@@ -1804,7 +1807,46 @@ def vol_zone_position_line(
         bits_extra = (next_bit,) if next_bit else ()
         return _emit(hold, f"{voice['day_stamp']}{_fmt_price(cl)}", gone, *bits_extra)
     if cl > hi:
-        return _emit(f"{voice['over']}壓{hi_s}上緣")
+        # 過壓對稱：標下一層（次大量區壓+撐）；主區仍依重算規則，不在此硬換
+        next_bit = ""
+        try:
+            from biaoke_next_support import (
+                NONE_LABEL,
+                resolve_next_support,
+            )
+
+            sid0 = str(
+                stock_id
+                or (card or {}).get("stock_id")
+                or (card or {}).get("sid")
+                or (card or {}).get("code")
+                or ""
+            )
+            pack = resolve_next_support(
+                rows,
+                sid=sid0,
+                close=cl,
+                support=lo,
+                pressure=hi,
+                spike_date=str((zone or {}).get("date") or ""),
+                over_pressure=True,
+            )
+            layer = pack.get("layer") or {}
+            lo_n = _px(layer.get("low"))
+            hi_n = _px(layer.get("high"))
+            if lo_n > 0 and hi_n > 0:
+                next_bit = (
+                    f"下一層壓{_fmt_price(hi_n)}／撐{_fmt_price(lo_n)}"
+                    "（非買訊）"
+                )
+            else:
+                next_bit = str(pack.get("none_label") or NONE_LABEL)
+        except Exception:
+            next_bit = ""
+        bits = (f"{voice['over']}壓{hi_s}上緣",)
+        if next_bit:
+            bits = bits + (next_bit,)
+        return _emit(*bits)
 
     # 有官方除權息切開才卡 since；沒有則仍用全序列（同尺價可含爆大量日前）。
     since = _trade_day(zone.get("ex_cut") or "")
@@ -3513,6 +3555,7 @@ def _paint_volume_zone(
             sid=str(sid or ""),
             close=float(last_cl or 0),
             support=float(lo or 0),
+            pressure=float(hi or 0),
             spike_date=str(spike_date or ""),
             channel=channel if isinstance(channel, dict) else {},
         )
@@ -3527,6 +3570,15 @@ def _paint_volume_zone(
             if yf > 0:
                 ymax = max(ymax, yf + y_span * 0.04)
                 ymin = min(ymin, yf - y_span * 0.04)
+        layer = next_pack.get("layer") or {}
+        for key in ("low", "high"):
+            try:
+                yf = float(layer.get(key) or 0)
+            except (TypeError, ValueError):
+                yf = 0.0
+            if yf > 0:
+                ymax = max(ymax, yf + y_span * 0.04)
+                ymin = min(ymin, yf - y_span * 0.04)
         prim = next_pack.get("primary") or {}
         try:
             yf = float(prim.get("price") or 0)
@@ -3536,7 +3588,7 @@ def _paint_volume_zone(
             ymax = max(ymax, yf + y_span * 0.04)
             ymin = min(ymin, yf - y_span * 0.04)
     except Exception:
-        logger.debug("大量區下一撐解析略過 sid=%s", sid, exc_info=True)
+        logger.debug("大量區下一層解析略過 sid=%s", sid, exc_info=True)
         next_pack = {}
     ax1.set_ylim(ymin, ymax)
     # 左貼第一根 K、右多留空：最後一根／買點箭不貼死右軸
@@ -3635,7 +3687,7 @@ def _paint_volume_zone(
                 xmin=float(xs[0]) - 0.35 if len(xs) else -0.35,
                 xmax=float(n) + 0.55,
                 right_notes=None,
-                tag_size=9.0,
+                tag_size=10.5,
                 ymin=float(ymin),
                 ymax=float(ymax),
             )

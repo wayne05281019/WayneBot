@@ -1,31 +1,35 @@
 # -*- coding: utf-8 -*-
-"""破大量區撐 → 下一撐候選＋飆大原文絕對目標線（非買訊）。
+"""破大量區撐／過壓 → 下一層（次大量區壓+撐）＋飆大原文絕對目標（非買訊）。
 
-產品缺口 D4／D5-T1：
-- 收盤跌破近窗大量區撐（盤中刺穿不算）→ 必須標 NEXT support 來源＋價；
-  無候選就明示「暫無下一官方結構撐」，不准假價。
-- 他寫死的絕對價（聯亞 2000、奇鋐 3000／2700…）可畫水平
-  「飆大原文目標 {價}・非買訊」；檔別隔離，不准串到他沒點的檔。
-- 原因句可綁 NEXT；仍非買訊、不准寫回黃金買點／海選。
+產品（2026-10-25 鎖／WB-27）：
+- 下一層＝往更早 K 對照出的**次大量區間**（上緣壓＋下緣撐兩條一起）；
+  不是單線平行撐、也不把原文目標叫「下一撐」。
+- 收盤有效破主撐才標下一層；收盤有效過主壓對稱標下一層（下一壓）。
+- 破撐≠立刻換主區（主區仍依 find_volume_zone 近窗爆大量重算）。
+- 平行軌若結構圖仍畫，用通道自己的名，不准搶「下一撐／下一層」。
+- 他寫死絕對價＝「飆大原文目標 {價}・非買訊」；檔別隔離。
 Asia/Taipei；官方已收 OHLC＋量。
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-NONE_LABEL = "暫無下一官方結構撐"
+NONE_LABEL = "暫無下一層大量區"
 WRITTEN_LABEL_TMPL = "飆大原文目標 {price}・非買訊"
-NEXT_LABEL_TMPL = "下一撐：{source} {price}"
+NEXT_HOLD_LABEL_TMPL = "下一層撐 {price}"
+NEXT_PRESS_LABEL_TMPL = "下一層壓 {price}"
+NEXT_LAYER_SOURCE = "次大量區"
 
-# 來源顯示名（對齊概念清單 §F）
+# 相容舊測試／靜默鍵顯示名
+SOURCE_NEXT_VOL = "次大量區撐"
+SOURCE_NEXT_VOL_PRESS = "次大量區壓"
+SOURCE_WRITTEN = "原文目標"
+# 舊來源名保留常數，但**不再**當下一層主候選（不准搶名）
 SOURCE_CHANNEL = "平行撐"
 SOURCE_CHANNEL_DASH = "通道下緣"
-SOURCE_NEXT_VOL = "次大量區撐"
-SOURCE_WRITTEN = "原文目標"
 SOURCE_PIVOT = "近窗樞紐低"
 
 # 他寫死的絕對價：每檔隔離。費半／大立光無絕對價 → 不補。
-# role=down：下檔目標（觸及＝已收低 ≤ 價）
 WRITTEN_ABSOLUTE_TARGETS: Dict[str, Tuple[Dict[str, Any], ...]] = {
     "3081": (  # 聯亞：第二段下殺，目標先看頸線 2000
         {
@@ -51,14 +55,8 @@ WRITTEN_ABSOLUTE_TARGETS: Dict[str, Tuple[Dict[str, Any], ...]] = {
     ),
 }
 
-# 候選優先：通道平行撐 → 次大量區 → 原文目標 → 近窗樞紐低
-_SOURCE_RANK = {
-    SOURCE_CHANNEL: 0,
-    SOURCE_CHANNEL_DASH: 0,
-    SOURCE_NEXT_VOL: 1,
-    SOURCE_WRITTEN: 2,
-    SOURCE_PIVOT: 3,
-}
+_DEFAULT_LOOKBACK = 40
+_EARLIER_LOOKBACK = 80  # 近窗內次層已破 → 往更早 K 再找一檔
 
 
 def _sid(raw: Any) -> str:
@@ -94,6 +92,16 @@ def _fmt_price(val: Any) -> str:
         return f"{v:,.2f}".rstrip("0").rstrip(".")
 
 
+def _cjk_fp(size: float = 9.0, weight: str = "bold"):
+    """與結構圖／大量區標籤同源 CJK 字型；缺字＝方塊亂碼。"""
+    try:
+        from wayne_navigator import _fp
+
+        return _fp(float(size), weight)
+    except Exception:
+        return None
+
+
 def written_targets_for(sid: str) -> List[Dict[str, Any]]:
     """該檔他寫死的絕對目標；沒寫＝空。檔別隔離。"""
     key = _sid(sid)
@@ -124,8 +132,20 @@ def written_target_label(price: Any) -> str:
     return WRITTEN_LABEL_TMPL.format(price=px or "—")
 
 
+def next_hold_label(price: Any) -> str:
+    return NEXT_HOLD_LABEL_TMPL.format(price=_fmt_price(price) or "—")
+
+
+def next_press_label(price: Any) -> str:
+    return NEXT_PRESS_LABEL_TMPL.format(price=_fmt_price(price) or "—")
+
+
 def next_support_label(source: str, price: Any) -> str:
-    return NEXT_LABEL_TMPL.format(source=str(source or "").strip() or "結構", price=_fmt_price(price) or "—")
+    """舊單線標籤相容；次大量區改走下一層撐文案。"""
+    src = str(source or "").strip()
+    if src in (SOURCE_NEXT_VOL, NEXT_LAYER_SOURCE, SOURCE_NEXT_VOL_PRESS):
+        return next_hold_label(price)
+    return f"下一撐：{src or '結構'} {_fmt_price(price) or '—'}"
 
 
 def close_broke_vol_support(
@@ -139,146 +159,138 @@ def close_broke_vol_support(
     return bool(cl > 0 and lo > 0 and cl < lo)
 
 
+def close_over_vol_pressure(
+    *,
+    close: Any,
+    pressure: Any,
+) -> bool:
+    """收盤有效站上大量區壓；盤中刺穿不算。"""
+    cl = _num(close)
+    hi = _num(pressure)
+    return bool(cl > 0 and hi > 0 and cl > hi)
+
+
+def _window_rows(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    lookback: int,
+) -> List[Dict[str, Any]]:
+    rows = list(bars or [])
+    if lookback > 0 and len(rows) > lookback:
+        rows = rows[-int(lookback) :]
+    # 不含末日（與 find_volume_zone 同尺：大量區＝過去參考）
+    if len(rows) >= 2:
+        return list(rows[:-1])
+    return list(rows)
+
+
+def find_secondary_vol_zone(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    direction: str = "below",
+    ref_lo: float = 0.0,
+    ref_hi: float = 0.0,
+    exclude_date: str = "",
+    lookback: int = _DEFAULT_LOOKBACK,
+    close: Any = None,
+    allow_earlier: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """次大量區間（高低一對）。
+
+    below（破撐後）：量次大且低 < 已破撐；若該撐已被收盤再破，往更低／更早串聯。
+    above（過壓後）：量次大且高 > 已過壓；若該壓已被收盤再過，往更高／更早串聯。
+    不准回填主區同一爆大量日。
+    """
+    rows = list(bars or [])
+    if len(rows) < 4:
+        return None
+    excl = _ymd(exclude_date)
+    cl = _num(close)
+    direction = str(direction or "below").strip().lower() or "below"
+
+    def _pick(lb: int) -> Optional[Dict[str, Any]]:
+        cands = _window_rows(rows, lookback=lb)
+        scored: List[Tuple[float, Dict[str, Any]]] = []
+        for r in cands:
+            if excl and _ymd(r.get("date")) == excl:
+                continue
+            v = _num(r.get("volume"))
+            if v <= 0:
+                continue
+            hi = _num(r.get("high"))
+            lo = _num(r.get("low"))
+            if hi <= 0 or lo <= 0 or hi < lo:
+                continue
+            if direction == "above":
+                if ref_hi <= 0 or hi <= ref_hi + 1e-9:
+                    continue
+                # 已過這層壓 → 再往上找
+                if cl > 0 and cl > hi + 1e-9:
+                    continue
+            else:
+                if ref_lo <= 0 or lo >= ref_lo - 1e-9:
+                    continue
+                # 已破這層撐 → 再往下找
+                if cl > 0 and cl < lo - 1e-9:
+                    continue
+            scored.append((v, r))
+        if not scored:
+            return None
+        scored.sort(key=lambda t: -t[0])
+        best = scored[0][1]
+        lo = _num(best.get("low"))
+        hi = _num(best.get("high"))
+        return {
+            "source": NEXT_LAYER_SOURCE,
+            "price": lo if direction != "above" else hi,  # 主焦點價（相容 primary.price）
+            "low": lo,
+            "high": hi,
+            "support": lo,
+            "pressure": hi,
+            "date": _ymd(best.get("date")),
+            "volume": _num(best.get("volume")),
+            "direction": direction,
+            "label_hold": next_hold_label(lo),
+            "label_press": next_press_label(hi),
+            # 舊單線相容：破撐主標＝撐；過壓主標＝壓
+            "label": (
+                next_press_label(hi) if direction == "above" else next_hold_label(lo)
+            ),
+            "source_hold": SOURCE_NEXT_VOL,
+            "source_press": SOURCE_NEXT_VOL_PRESS,
+        }
+
+    hit = _pick(int(lookback or _DEFAULT_LOOKBACK))
+    if hit is None and allow_earlier and int(lookback or 0) < _EARLIER_LOOKBACK:
+        hit = _pick(_EARLIER_LOOKBACK)
+    return hit
+
+
 def find_secondary_vol_zone_support(
     bars: Sequence[Dict[str, Any]],
     *,
     broken_lo: float,
     exclude_date: str = "",
-    lookback: int = 40,
+    lookback: int = _DEFAULT_LOOKBACK,
+    close: Any = None,
 ) -> Optional[Dict[str, Any]]:
-    """次一大量區撐：近窗（不含末日）量次大／量大且低 < 已破撐。
-
-    與 find_volume_zone／volume_first_price 同尺：官方日 K 原柱；
-    排除已破那根爆大量日；撐＝該日低。無合格候選回 None。
-    """
-    rows = list(bars or [])
-    if len(rows) < 4 or broken_lo <= 0:
+    """相容舊 API：回次大量區撐列（含 high）。"""
+    zone = find_secondary_vol_zone(
+        bars,
+        direction="below",
+        ref_lo=broken_lo,
+        exclude_date=exclude_date,
+        lookback=lookback,
+        close=close,
+    )
+    if not zone:
         return None
-    window = rows[-int(lookback) :] if lookback > 0 else rows
-    if len(window) < 3:
-        return None
-    cands = list(window[:-1]) if len(window) >= 2 else list(window)
-    excl = _ymd(exclude_date)
-    best: Optional[Dict[str, Any]] = None
-    best_v = -1.0
-    for r in cands:
-        if excl and _ymd(r.get("date")) == excl:
-            continue
-        v = _num(r.get("volume"))
-        if v <= 0:
-            continue
-        hi = _num(r.get("high"))
-        lo = _num(r.get("low"))
-        if hi <= 0 or lo <= 0 or hi < lo:
-            continue
-        # 必須低於已破撐，才算「下一」撐（不准回填同一區）
-        if lo >= broken_lo - 1e-9:
-            continue
-        if v > best_v:
-            best_v = v
-            best = r
-    if best is None:
-        return None
-    lo = _num(best.get("low"))
-    return {
-        "source": SOURCE_NEXT_VOL,
-        "price": lo,
-        "date": _ymd(best.get("date")),
-        "high": _num(best.get("high")),
-        "volume": _num(best.get("volume")),
-        "label": next_support_label(SOURCE_NEXT_VOL, lo),
-    }
-
-
-def _channel_next_support(
-    channel: Optional[Dict[str, Any]],
-    *,
-    broken_lo: float,
-) -> Optional[Dict[str, Any]]:
-    """平行／通道下緣：現價軌 base_now 低於已破大量區撐才認。"""
-    ch = dict(channel or {})
-    if not ch.get("kind"):
-        return None
-    base = _num(ch.get("base_now"))
-    if base <= 0 or base >= broken_lo - 1e-9:
-        return None
-    kind = str(ch.get("kind") or "")
-    # desc＝下降通道平行撐；asc＝上升軌本身（破後下緣仍可能是參考）
-    src = SOURCE_CHANNEL if kind in ("desc", "asc") else SOURCE_CHANNEL_DASH
-    pos = str(ch.get("pos") or "")
-    if "破平行撐" in pos or kind == "desc":
-        src = SOURCE_CHANNEL
-    return {
-        "source": src,
-        "price": base,
-        "kind": kind,
-        "pos": pos,
-        "label": next_support_label(src, base),
-    }
-
-
-def _pivot_next_support(
-    bars: Sequence[Dict[str, Any]],
-    *,
-    broken_lo: float,
-) -> Optional[Dict[str, Any]]:
-    """近窗樞紐低：低於已破撐的最近／最高樞紐低。"""
-    rows = list(bars or [])
-    if len(rows) < 16 or broken_lo <= 0:
-        return None
-    try:
-        from biaoke_chart import _pivots
-    except Exception:
-        return None
-    highs = [_num(r.get("high")) for r in rows]
-    lows = [_num(r.get("low")) for r in rows]
-    _hi_p, lo_p = _pivots(highs, lows, left=3)
-    best_i = -1
-    best_lo = -1.0
-    for i in lo_p:
-        if i < 0 or i >= len(lows):
-            continue
-        lo = lows[i]
-        if lo <= 0 or lo >= broken_lo - 1e-9:
-            continue
-        # 取最靠近已破撐（最高）的下一樞紐低
-        if lo > best_lo:
-            best_lo = lo
-            best_i = int(i)
-    if best_i < 0 or best_lo <= 0:
-        return None
-    return {
-        "source": SOURCE_PIVOT,
-        "price": best_lo,
-        "date": _ymd(rows[best_i].get("date")),
-        "i": best_i,
-        "label": next_support_label(SOURCE_PIVOT, best_lo),
-    }
-
-
-def _written_next_candidates(
-    sid: str,
-    *,
-    broken_lo: float,
-) -> List[Dict[str, Any]]:
-    """原文絕對目標中，低於已破撐者（由近到遠）。"""
-    out: List[Dict[str, Any]] = []
-    for row in written_targets_for(sid):
-        px = _num(row.get("price"))
-        if px <= 0 or px >= broken_lo - 1e-9:
-            continue
-        out.append(
-            {
-                "source": SOURCE_WRITTEN,
-                "price": px,
-                "note": row.get("note") or "",
-                "role": row.get("role") or "down",
-                "label": next_support_label(SOURCE_WRITTEN, px),
-                "face_label": row.get("label") or written_target_label(px),
-            }
-        )
-    out.sort(key=lambda r: -_num(r.get("price")))
-    return out
+    # 舊欄位名
+    zone = dict(zone)
+    zone["source"] = SOURCE_NEXT_VOL
+    zone["price"] = _num(zone.get("low") or zone.get("price"))
+    zone["label"] = next_hold_label(zone["price"])
+    return zone
 
 
 def collect_next_support_candidates(
@@ -288,45 +300,48 @@ def collect_next_support_candidates(
     broken_lo: float,
     spike_date: str = "",
     channel: Optional[Dict[str, Any]] = None,
+    close: Any = None,
 ) -> List[Dict[str, Any]]:
-    """破撐後全部 NEXT 候選（去重價）；來源標籤保留。不准發明價。"""
+    """破撐後 NEXT 候選。產品主臉只認次大量區；原文另欄不搶「下一撐」名。
+
+    channel 參數保留（呼叫端相容），但**不**再進下一層主候選。
+    """
+    del channel  # 平行撐不准搶下一撐名
     if broken_lo <= 0:
         return []
     cands: List[Dict[str, Any]] = []
-    ch = _channel_next_support(channel, broken_lo=broken_lo)
-    if ch:
-        cands.append(ch)
-    sec = find_secondary_vol_zone_support(
-        bars, broken_lo=broken_lo, exclude_date=spike_date
+    sec = find_secondary_vol_zone(
+        bars,
+        direction="below",
+        ref_lo=broken_lo,
+        exclude_date=spike_date,
+        close=close,
     )
     if sec:
-        cands.append(sec)
-    cands.extend(_written_next_candidates(sid, broken_lo=broken_lo))
-    piv = _pivot_next_support(bars, broken_lo=broken_lo)
-    if piv:
-        cands.append(piv)
-    # 價位去重：同價保留優先序較高來源
-    by_px: Dict[float, Dict[str, Any]] = {}
-    for row in cands:
-        px = round(_num(row.get("price")), 4)
-        if px <= 0:
-            continue
-        prev = by_px.get(px)
-        if prev is None:
-            by_px[px] = row
-            continue
-        rk_new = _SOURCE_RANK.get(str(row.get("source") or ""), 99)
-        rk_old = _SOURCE_RANK.get(str(prev.get("source") or ""), 99)
-        if rk_new < rk_old:
-            by_px[px] = row
-    ranked = sorted(
-        by_px.values(),
-        key=lambda r: (
-            _SOURCE_RANK.get(str(r.get("source") or ""), 99),
-            -_num(r.get("price")),
-        ),
-    )
-    return ranked
+        # candidates 列：撐／壓各一列方便靜默；primary 用整區
+        cands.append(
+            {
+                **sec,
+                "source": SOURCE_NEXT_VOL,
+                "price": _num(sec.get("low")),
+                "label": next_hold_label(sec.get("low")),
+                "role": "hold",
+                "layer": sec,
+            }
+        )
+        cands.append(
+            {
+                **sec,
+                "source": SOURCE_NEXT_VOL_PRESS,
+                "price": _num(sec.get("high")),
+                "label": next_press_label(sec.get("high")),
+                "role": "press",
+                "layer": sec,
+            }
+        )
+    # 原文目標只留在 written／face，不進「下一撐」候選搶名
+    _ = sid
+    return cands
 
 
 def resolve_next_support(
@@ -335,77 +350,184 @@ def resolve_next_support(
     sid: str = "",
     close: Any = None,
     support: Any = None,
+    pressure: Any = None,
     spike_date: str = "",
     channel: Optional[Dict[str, Any]] = None,
     under_support: Optional[bool] = None,
+    over_pressure: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    """破大量區撐時解析 NEXT；未破＝空（不畫下一撐）。
+    """破撐／過壓時解析下一層（次大量區壓+撐）；未破未過＝不畫下一層。
 
     回傳：
-      broke, primary, candidates, none_label, reason_line, written_lines
+      broke, over, layer, primary, primary_press, candidates,
+      none_label, reason_line, written, written_lines
+    破撐≠換主區（本函式不改主區錨）。
     """
+    del channel
     rows = list(bars or [])
     broken_lo = _num(support)
+    broken_hi = _num(pressure)
     cl = _num(close)
     if cl <= 0 and rows:
         cl = _num(rows[-1].get("close"))
-    broke = bool(under_support) if under_support is not None else close_broke_vol_support(
-        close=cl, support=broken_lo
+    broke = (
+        bool(under_support)
+        if under_support is not None
+        else close_broke_vol_support(close=cl, support=broken_lo)
     )
+    over = (
+        bool(over_pressure)
+        if over_pressure is not None
+        else (
+            close_over_vol_pressure(close=cl, pressure=broken_hi)
+            if broken_hi > 0
+            else False
+        )
+    )
+    # 同時破撐又過壓不合理；破撐優先（掉在撐下）
+    if broke:
+        over = False
     written = written_targets_for(sid)
     out: Dict[str, Any] = {
         "broke": bool(broke),
+        "over": bool(over),
         "broken_lo": broken_lo if broke else 0.0,
+        "broken_hi": broken_hi if over else 0.0,
         "close": cl,
         "sid": _sid(sid),
+        "layer": None,
         "primary": None,
+        "primary_press": None,
         "candidates": [],
         "none_label": "",
         "reason_line": "",
         "written": written,
         "written_lines": [w.get("label") for w in written if w.get("label")],
+        "main_zone_unchanged": True,  # 破撐≠換主區
     }
-    if not broke or broken_lo <= 0:
+    if not broke and not over:
         return out
-    cands = collect_next_support_candidates(
-        rows,
-        sid=sid,
-        broken_lo=broken_lo,
-        spike_date=spike_date,
-        channel=channel,
-    )
-    out["candidates"] = cands
-    if cands:
-        out["primary"] = cands[0]
+
+    if broke:
+        layer = find_secondary_vol_zone(
+            rows,
+            direction="below",
+            ref_lo=broken_lo,
+            exclude_date=spike_date,
+            close=cl,
+        )
+        out["candidates"] = collect_next_support_candidates(
+            rows,
+            sid=sid,
+            broken_lo=broken_lo,
+            spike_date=spike_date,
+            close=cl,
+        )
+    else:
+        layer = find_secondary_vol_zone(
+            rows,
+            direction="above",
+            ref_hi=broken_hi,
+            exclude_date=spike_date,
+            close=cl,
+        )
+        if layer:
+            out["candidates"] = [
+                {
+                    **layer,
+                    "source": SOURCE_NEXT_VOL_PRESS,
+                    "price": _num(layer.get("high")),
+                    "label": next_press_label(layer.get("high")),
+                    "role": "press",
+                    "layer": layer,
+                },
+                {
+                    **layer,
+                    "source": SOURCE_NEXT_VOL,
+                    "price": _num(layer.get("low")),
+                    "label": next_hold_label(layer.get("low")),
+                    "role": "hold",
+                    "layer": layer,
+                },
+            ]
+
+    out["layer"] = layer
+    if layer and _num(layer.get("low")) > 0 and _num(layer.get("high")) > 0:
+        hold = {
+            "source": SOURCE_NEXT_VOL,
+            "price": _num(layer.get("low")),
+            "high": _num(layer.get("high")),
+            "low": _num(layer.get("low")),
+            "date": layer.get("date"),
+            "volume": layer.get("volume"),
+            "label": next_hold_label(layer.get("low")),
+            "layer": layer,
+        }
+        press = {
+            "source": SOURCE_NEXT_VOL_PRESS,
+            "price": _num(layer.get("high")),
+            "high": _num(layer.get("high")),
+            "low": _num(layer.get("low")),
+            "date": layer.get("date"),
+            "volume": layer.get("volume"),
+            "label": next_press_label(layer.get("high")),
+            "layer": layer,
+        }
+        out["primary"] = press if over else hold
+        out["primary_press"] = press
+        out["primary_hold"] = hold
         out["none_label"] = ""
     else:
         out["primary"] = None
+        out["primary_press"] = None
+        out["primary_hold"] = None
         out["none_label"] = NONE_LABEL
+
     out["reason_line"] = reason_next_support_line(
-        broken_lo=broken_lo,
+        broken_lo=broken_lo if broke else 0.0,
+        broken_hi=broken_hi if over else 0.0,
+        layer=layer,
         primary=out.get("primary"),
         none_label=out.get("none_label") or "",
         distribution=False,
+        over=over,
     )
     return out
 
 
 def reason_next_support_line(
     *,
-    broken_lo: float,
+    broken_lo: float = 0.0,
+    broken_hi: float = 0.0,
+    layer: Optional[Dict[str, Any]] = None,
     primary: Optional[Dict[str, Any]] = None,
     none_label: str = "",
     distribution: bool = False,
+    over: bool = False,
 ) -> str:
-    """破撐／出貨痕跡一句原因：點名 NEXT；非買訊。"""
-    lo_s = _fmt_price(broken_lo) or "—"
-    head = (
-        f"過壓後掉回撐下＝出貨痕跡，收破大量區撐 {lo_s}"
-        if distribution
-        else f"收破大量區撐 {lo_s}"
-    )
+    """破撐／過壓／出貨痕跡一句原因：點名下一層壓+撐；非買訊。"""
+    if over:
+        hi_s = _fmt_price(broken_hi) or "—"
+        head = f"收過大量區壓 {hi_s}"
+    else:
+        lo_s = _fmt_price(broken_lo) or "—"
+        head = (
+            f"過壓後掉回撐下＝出貨痕跡，收破大量區撐 {lo_s}"
+            if distribution
+            else f"收破大量區撐 {lo_s}"
+        )
+    zone = dict(layer or {})
+    if not zone and primary:
+        zone = dict((primary or {}).get("layer") or primary or {})
+    lo = _num(zone.get("low") or zone.get("support"))
+    hi = _num(zone.get("high") or zone.get("pressure"))
+    if lo > 0 and hi > 0:
+        return (
+            f"{head}，下一層＝次大量區壓 {_fmt_price(hi)}／"
+            f"撐 {_fmt_price(lo)}（非買訊）"
+        )
     if primary and _num(primary.get("price")) > 0:
-        src = str(primary.get("source") or "").strip() or "結構"
+        src = str(primary.get("source") or "").strip() or NEXT_LAYER_SOURCE
         px = _fmt_price(primary.get("price")) or "—"
         return f"{head}，朝{src} {px}（非買訊）"
     label = str(none_label or NONE_LABEL).strip() or NONE_LABEL
@@ -418,12 +540,11 @@ def attach_next_support(
     sid: str = "",
     bars: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """把 NEXT／原文目標掛進 analyze_structure 結果（原地＋回傳）。"""
+    """把下一層／原文目標掛進 analyze_structure 結果（原地＋回傳）。"""
     if not isinstance(info, dict):
         return {}
     rows = list(bars or [])
     if not rows:
-        # 從 info 還原粗列（僅 OHLC；量可缺）
         highs = list(info.get("highs") or [])
         lows = list(info.get("lows") or [])
         closes = list(info.get("closes") or [])
@@ -441,57 +562,64 @@ def attach_next_support(
             )
     st = dict(info.get("struct") or {})
     spike_lo = _num(st.get("spike_low") or info.get("spike_lo"))
+    spike_hi = _num(st.get("spike_high") or info.get("spike_hi"))
     last = info.get("last_bar") or (rows[-1] if rows else {})
     close = _num(last.get("close"))
     if close <= 0 and info.get("closes"):
         close = _num(list(info.get("closes") or [])[-1])
-    channel = dict(info.get("channel") or {})
     pack = resolve_next_support(
         rows,
         sid=sid or str(st.get("sid") or ""),
         close=close,
         support=spike_lo,
+        pressure=spike_hi,
         spike_date=str(st.get("spike_date") or ""),
-        channel=channel,
         under_support=bool(info.get("under_support") or info.get("distribution")),
+        over_pressure=(
+            bool(info.get("over_pressure") or info.get("over_press"))
+            if ("over_pressure" in info or "over_press" in info)
+            else None
+        ),
     )
     info["next_support"] = pack
-    # 破撐／出貨 notes：補一句 NEXT（不重複堆）
-    if pack.get("broke"):
+    if pack.get("broke") or pack.get("over"):
         line = reason_next_support_line(
             broken_lo=_num(pack.get("broken_lo") or spike_lo),
+            broken_hi=_num(pack.get("broken_hi") or spike_hi),
+            layer=pack.get("layer"),
             primary=pack.get("primary"),
             none_label=str(pack.get("none_label") or ""),
             distribution=bool(info.get("distribution")),
+            over=bool(pack.get("over")),
         )
         pack["reason_line"] = line
         notes = list(info.get("notes") or [])
         if line and line not in notes:
             notes.append(line)
         info["notes"] = notes
-        # 改寫 abandon／distribution 演算標／最可能標，點名 NEXT（仍非保證）
         proj = dict(info.get("project") or {})
         key = str(proj.get("key") or "")
-        if key in ("abandon", "distribution"):
-            if pack.get("primary") and _num((pack.get("primary") or {}).get("price")) > 0:
-                prim = pack["primary"]
-                src = str(prim.get("source") or "")
-                px = _fmt_price(prim.get("price"))
-                nxt = _num(prim.get("price"))
+        layer = dict(pack.get("layer") or {})
+        lo = _num(layer.get("low"))
+        hi = _num(layer.get("high"))
+        if key in ("abandon", "distribution") and pack.get("broke"):
+            if lo > 0 and hi > 0:
                 if key == "distribution":
                     proj["label"] = (
                         f"出貨痕跡，收破撐 {_fmt_price(spike_lo)}，"
-                        f"朝{src} {px}。不是保證、非買訊。"
+                        f"下一層壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}。"
+                        "不是保證、非買訊。"
                     )
-                    proj["target"] = nxt
-                    proj["mark"] = f"最可能＝朝{src} {px}"
+                    proj["target"] = lo
+                    proj["mark"] = f"最可能＝下一層撐 {_fmt_price(lo)}"
                 else:
                     proj["label"] = (
                         f"收在撐 {_fmt_price(spike_lo)} 之下，"
-                        f"下一撐：{src} {px}；不把反彈當最可能。不是保證。"
+                        f"下一層壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}；"
+                        "不把反彈當最可能。不是保證。"
                     )
-                    proj["target"] = nxt
-                    proj["mark"] = f"最可能＝下一撐 {px}"
+                    proj["target"] = lo
+                    proj["mark"] = f"最可能＝下一層撐 {_fmt_price(lo)}"
             elif pack.get("none_label"):
                 if key == "abandon":
                     proj["label"] = (
@@ -520,13 +648,18 @@ def paint_written_and_next_levels(
     label_x: Optional[float] = None,
     color_written: str = "#6a1b9a",
     color_next: str = "#1565c0",
+    color_next_press: str = "#ad1457",
     color_none: str = "#546e7a",
+    color_band: str = "#9e9e9e",
+    band_alpha: float = 0.14,
     ymin: Optional[float] = None,
     ymax: Optional[float] = None,
     tag_size: float = 10.0,
 ) -> List[float]:
-    """在結構／大量區圖畫原文目標水平線＋破撐 NEXT（或暫無字）。
+    """原文目標水平線＋破撐／過壓下一層（次大量區淺灰底＋壓／撐兩線）。
 
+    標籤一律帶 CJK fontproperties（與結構圖同源），避免第 4 張方塊亂碼。
+    平行撐不在此函式搶「下一撐」名。
     回傳畫過的 y 價（呼叫端可併入 ylim／avoid）。
     """
     ys: List[float] = []
@@ -534,15 +667,29 @@ def paint_written_and_next_levels(
     written = list(pack.get("written") or written_targets_for(sid))
     lx = float(label_x) if label_x is not None else float(xmax) - 0.4
     notes = right_notes if isinstance(right_notes, list) else None
+    fp = _cjk_fp(max(7.5, float(tag_size) - 1.5), "bold")
+    fp_none = _cjk_fp(8.2, "bold")
+
+    def _text(x, y, text, *, color, size=None, transform=None, ha="right", va="center"):
+        kw: Dict[str, Any] = {
+            "ha": ha,
+            "va": va,
+            "color": color,
+            "fontsize": float(size if size is not None else max(7.5, float(tag_size) - 1.5)),
+            "zorder": 11,
+            "clip_on": False,
+        }
+        if fp is not None:
+            kw["fontproperties"] = fp if size is None else _cjk_fp(float(size), "bold")
+            kw.pop("fontsize", None)
+        if transform is not None:
+            kw["transform"] = transform
+        ax.text(x, y, text, **kw)
 
     for row in written:
         y = _num(row.get("price"))
         if y <= 0:
             continue
-        if ymin is not None and ymax is not None:
-            if y < float(ymin) - 1e-9 or y > float(ymax) + 1e-9:
-                # 仍畫線；ylim 由呼叫端先吃
-                pass
         try:
             ax.hlines(
                 y,
@@ -580,94 +727,130 @@ def paint_written_and_next_levels(
             )
         else:
             try:
-                ax.text(
+                _text(
                     0.988,
                     y,
                     label,
-                    transform=ax.get_yaxis_transform(),
-                    ha="right",
-                    va="center",
                     color=color_written,
-                    fontsize=max(7.5, float(tag_size) - 1.5),
-                    zorder=11,
-                    clip_on=False,
+                    transform=ax.get_yaxis_transform(),
                 )
             except Exception:
                 pass
 
-    if pack.get("broke"):
-        prim = pack.get("primary")
-        if prim and _num(prim.get("price")) > 0:
-            y = _num(prim.get("price"))
-            # 若與原文目標同價，不重複畫線；標籤用下一撐
-            same = any(abs(y - w) < 1e-6 for w in ys)
-            if not same:
-                try:
-                    ax.hlines(
-                        y,
-                        xmin=xmin,
-                        xmax=xmax,
-                        colors=color_next,
-                        linestyles=(0, (2.2, 1.6)),
-                        linewidth=1.15,
-                        zorder=4,
-                        alpha=0.9,
-                    )
-                except Exception:
+    layer = dict(pack.get("layer") or {})
+    if not layer and pack.get("primary"):
+        layer = dict((pack.get("primary") or {}).get("layer") or {})
+
+    def _label_y(raw_y: float, used: List[float]) -> float:
+        """標籤 y 微避讓：原文與下一層壓太近（如 2000／2010）不准互蓋。"""
+        y = float(raw_y)
+        try:
+            y0, y1 = ax.get_ylim()
+            span = max(abs(float(y1) - float(y0)), 1.0)
+        except Exception:
+            span = max(abs(y) * 0.2, 50.0)
+        gap = span * 0.028
+        for _ in range(8):
+            if all(abs(y - u) >= gap for u in used):
+                break
+            # 往遠離已佔位的方向推
+            above = sum(1 for u in used if u >= y)
+            below = sum(1 for u in used if u < y)
+            y = y - gap if above >= below else y + gap
+        used.append(y)
+        return y
+
+    label_ys: List[float] = list(ys)
+    # 先替已畫原文標佔位，後面下一層才好推開
+    for y0 in list(ys):
+        if y0 > 0 and y0 not in label_ys:
+            label_ys.append(y0)
+
+    show_layer = bool(pack.get("broke") or pack.get("over")) and bool(layer)
+    if show_layer:
+        lo = _num(layer.get("low") or layer.get("support"))
+        hi = _num(layer.get("high") or layer.get("pressure"))
+        if lo > 0 and hi > 0 and hi >= lo:
+            # 淺灰底＝次大量區區間帶（不是平行撐細縫）
+            try:
+                ax.axhspan(
+                    lo,
+                    hi,
+                    facecolor=color_band,
+                    edgecolor="none",
+                    alpha=float(band_alpha),
+                    zorder=1,
+                )
+            except Exception:
+                pass
+            for y, color, label in (
+                (hi, color_next_press, str(layer.get("label_press") or next_press_label(hi))),
+                (lo, color_next, str(layer.get("label_hold") or next_hold_label(lo))),
+            ):
+                same = any(abs(y - w) < 1e-6 for w in ys)
+                if not same:
                     try:
-                        ax.axhline(
+                        ax.hlines(
                             y,
-                            color=color_next,
-                            linestyle=(0, (2.2, 1.6)),
+                            xmin=xmin,
+                            xmax=xmax,
+                            colors=color,
+                            linestyles=(0, (2.2, 1.6)),
                             linewidth=1.15,
                             zorder=4,
                             alpha=0.9,
                         )
                     except Exception:
-                        pass
-                ys.append(y)
-            label = str(prim.get("label") or next_support_label(str(prim.get("source") or ""), y))
-            if notes is not None:
-                notes.append(
-                    {
-                        "x": lx,
-                        "y": y,
-                        "text": label,
-                        "color": color_next,
-                        "size": tag_size,
-                    }
-                )
-            else:
-                try:
-                    ax.text(
-                        0.988,
-                        y,
-                        label,
-                        transform=ax.get_yaxis_transform(),
-                        ha="right",
-                        va="center",
-                        color=color_next,
-                        fontsize=max(7.5, float(tag_size) - 1.5),
-                        zorder=11,
-                        clip_on=False,
+                        try:
+                            ax.axhline(
+                                y,
+                                color=color,
+                                linestyle=(0, (2.2, 1.6)),
+                                linewidth=1.15,
+                                zorder=4,
+                                alpha=0.9,
+                            )
+                        except Exception:
+                            pass
+                    ys.append(y)
+                lab_y = _label_y(y, label_ys)
+                if notes is not None:
+                    notes.append(
+                        {
+                            "x": lx,
+                            "y": lab_y,
+                            "text": label,
+                            "color": color,
+                            "size": tag_size,
+                        }
                     )
-                except Exception:
-                    pass
-        elif pack.get("none_label"):
-            # 明示暫無；掛在軸內下緣，不准發明價線
+                else:
+                    try:
+                        _text(
+                            0.988,
+                            lab_y,
+                            label,
+                            color=color,
+                            transform=ax.get_yaxis_transform(),
+                        )
+                    except Exception:
+                        pass
+    elif pack.get("broke") or pack.get("over"):
+        if pack.get("none_label"):
             try:
-                ax.text(
-                    0.98,
-                    0.04,
-                    str(pack.get("none_label") or NONE_LABEL),
-                    transform=ax.transAxes,
-                    ha="right",
-                    va="bottom",
-                    color=color_none,
-                    fontsize=8.2,
-                    zorder=11,
-                    clip_on=True,
-                )
+                kw: Dict[str, Any] = {
+                    "transform": ax.transAxes,
+                    "ha": "right",
+                    "va": "bottom",
+                    "color": color_none,
+                    "zorder": 11,
+                    "clip_on": True,
+                }
+                if fp_none is not None:
+                    kw["fontproperties"] = fp_none
+                else:
+                    kw["fontsize"] = 8.2
+                ax.text(0.98, 0.04, str(pack.get("none_label") or NONE_LABEL), **kw)
             except Exception:
                 pass
     return ys

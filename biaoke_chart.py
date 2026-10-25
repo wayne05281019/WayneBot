@@ -4086,9 +4086,18 @@ def render_biaoke_structure_png(
         if yf:
             ymin = min(ymin, float(yf) - span * 0.04)
             ymax = max(ymax, float(yf) + span * 0.04)
-    # 原文目標／下一撐價也吃進 ylim，線才不會被裁
+    # 原文目標／下一層壓撐價也吃進 ylim，線才不會被裁
     try:
         ns = dict(info.get("next_support") or {})
+        layer = dict(ns.get("layer") or {})
+        for key in ("low", "high"):
+            try:
+                yf = float(layer.get(key) or 0)
+            except (TypeError, ValueError):
+                yf = 0.0
+            if yf > 0:
+                ymax = max(ymax, yf + span * 0.05)
+                ymin = min(ymin, yf - span * 0.05)
         for row in list(ns.get("written") or []):
             try:
                 yv = float(row.get("price") or 0)
@@ -4539,32 +4548,30 @@ def render_biaoke_structure_png(
         # 原因句鉤：出貨痕跡點名 NEXT（一句、非買訊）
         try:
             ns = dict(info.get("next_support") or {})
-            bit = str(ns.get("reason_line") or "").strip()
-            if bit and "朝" in bit:
-                # 晶片維持短標；完整句走 notes／caption
-                prim = ns.get("primary") or {}
-                if prim and float(prim.get("price") or 0) > 0:
-                    from biaoke_next_support import _fmt_price as _ns_px
+            layer = dict(ns.get("layer") or {})
+            from biaoke_next_support import _fmt_price as _ns_px
 
-                    mark = (
-                        f"出貨痕跡→下一撐："
-                        f"{prim.get('source') or ''} {_ns_px(prim.get('price'))}"
-                    ).strip()
-                elif ns.get("none_label"):
-                    mark = f"出貨痕跡・{ns.get('none_label')}"
+            lo = float(layer.get("low") or 0)
+            hi = float(layer.get("high") or 0)
+            if lo > 0 and hi > 0:
+                mark = (
+                    f"出貨痕跡→下一層：壓 {_ns_px(hi)}／撐 {_ns_px(lo)}"
+                ).strip()
+            elif ns.get("none_label"):
+                mark = f"出貨痕跡・{ns.get('none_label')}"
         except Exception:
             pass
     elif info.get("under_support"):
-        # 破撐：晶片點名 NEXT 或暫無
+        # 破撐：晶片點名下一層（次大量區壓+撐）或暫無；破撐≠換主區
         try:
             ns = dict(info.get("next_support") or {})
-            prim = ns.get("primary") or {}
-            if prim and float(prim.get("price") or 0) > 0:
-                from biaoke_next_support import _fmt_price as _ns_px
+            layer = dict(ns.get("layer") or {})
+            from biaoke_next_support import _fmt_price as _ns_px
 
-                mark = (
-                    f"破撐→下一撐：{prim.get('source') or ''} {_ns_px(prim.get('price'))}"
-                ).strip()
+            lo = float(layer.get("low") or 0)
+            hi = float(layer.get("high") or 0)
+            if lo > 0 and hi > 0:
+                mark = f"破撐→下一層：壓 {_ns_px(hi)}／撐 {_ns_px(lo)}".strip()
                 mc = _PRESS
             elif ns.get("none_label"):
                 mark = str(ns.get("none_label"))
