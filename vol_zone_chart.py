@@ -3958,16 +3958,21 @@ def _paint_volume_zone(
         ink: str,
         side: str,
         dy: int = 18,
+        dx: int = 0,
     ) -> None:
-        """side=left／right／center：標籤偏左或偏右，虛線連回量柱頂。"""
+        """side=left／right／center：標籤偏左或偏右，虛線連回量柱頂。
+
+        相鄰量日拉開左右，但 dx 不准甩到過遠左緣（約一標寬）。
+        """
         if side == "left":
-            xytext = (-52, int(dy))
+            # v4：略拉開但仍貼近量柱（~58pt），不准甩到圖最左
+            xytext = (-58 + int(dx), int(dy))
             ha = "right"
         elif side == "right":
-            xytext = (52, int(dy))
+            xytext = (58 + int(dx), int(dy))
             ha = "left"
         else:
-            xytext = (0, int(dy))
+            xytext = (int(dx), int(dy))
             ha = "center"
         ax2.annotate(
             str(text),
@@ -3997,14 +4002,17 @@ def _paint_volume_zone(
             ),
         )
 
-    # 較早量日偏左、較晚偏右（奇鋐 08/26 下一層｜08/27 爆大量）
+    # 較早量日偏左、較晚偏右（奇鋐 08/26 下一層｜08/27 爆大量）；高低錯開再減互壓
     spike_side = "center"
     layer_side = "center"
+    spike_dy, layer_dy = 18, 18
     if adjacent_vol:
         if int(layer_i) < int(spike_i):
             layer_side, spike_side = "left", "right"
+            layer_dy, spike_dy = 24, 12
         else:
             layer_side, spike_side = "right", "left"
+            layer_dy, spike_dy = 12, 24
 
     _vol_day_callout(
         x=float(spike_i),
@@ -4014,7 +4022,7 @@ def _paint_volume_zone(
         face="#fffde7",
         ink="#5d4037",
         side=spike_side,
-        dy=18,
+        dy=spike_dy,
     )
     if layer_h > 0 and 0 <= layer_i < int(n):
         layer_md = _md(view["date"].iloc[layer_i]) if "date" in view.columns else ""
@@ -4026,7 +4034,7 @@ def _paint_volume_zone(
             face="#e3f2fd",
             ink="#0d47a1",
             side=layer_side,
-            dy=18,
+            dy=layer_dy,
         )
         try:
             ax1.axvline(

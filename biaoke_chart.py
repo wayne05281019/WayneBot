@@ -1985,6 +1985,8 @@ def _place_right_notes(
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
     75：昨收＋今收同列並排（先昨收、右今收）。
     close_anchor_y：有值＝昨收／今收整組釘右下角該價（不再貼今收價列擠中右）。
+    v4：第一層壓／撐＋通道軌（平行撐／下降壓）改貼近右軸內側堆疊；
+    平行撐釘對應價，不准被鄰標擠到中右亂位；原文目標仍走較左軟欄避讓。
     """
     cleaned = _dedupe_right_notes(notes, span=span or min_gap * 8.0)
     if not cleaned:
@@ -1998,6 +2000,13 @@ def _place_right_notes(
     tx = float(x_text)
     most = [n for n in cleaned if "最可能" in str(n.get("text") or "")]
     levels = [n for n in cleaned if _is_level_note(str(n.get("text") or ""))]
+    rails = [
+        n
+        for n in cleaned
+        if _is_rail_note(str(n.get("text") or ""))
+        and not _is_level_note(str(n.get("text") or ""))
+        and "最可能" not in str(n.get("text") or "")
+    ]
     closes = [
         n
         for n in cleaned
@@ -2025,6 +2034,7 @@ def _place_right_notes(
         for n in cleaned
         if "最可能" not in str(n.get("text") or "")
         and not _is_level_note(str(n.get("text") or ""))
+        and not _is_rail_note(str(n.get("text") or ""))
         and not _is_close_note(str(n.get("text") or ""))
     ]
     if x_max is not None:
@@ -2058,7 +2068,7 @@ def _place_right_notes(
             tx = max(floor_tx, min(tx, max(fit_tx, floor_tx)))
         else:
             tx = min(tx, fit_tx)
-    # 上緣留給「最可能」；壓／撐釘價貼線；其餘錯開
+    # 上緣留給「最可能」；壓／撐／平行撐釘價貼線；其餘錯開
     reserve = gap * 1.35
     hi_others = hi - reserve
     taken: List[float] = []
@@ -2067,27 +2077,28 @@ def _place_right_notes(
         my = hi - gap * 0.2
         placed.append((most[0], my))
         taken.append(my)
-    # 71：壓／撐顯示 Y＝釘點價（貼水平線）；高價在上＝依 ny 排序後僅在互撞時微挪
-    levels_sorted = sorted(levels, key=lambda n: -float(n.get("y") or 0))
-    level_tys: List[float] = []
-    for note in levels_sorted:
+    # 71／v4：壓／撐＋通道軌顯示 Y＝釘點價（貼水平線／軌價）；高價在上＝僅互撞微挪
+    hard_notes = list(levels) + list(rails)
+    hard_sorted = sorted(hard_notes, key=lambda n: -float(n.get("y") or 0))
+    hard_tys: List[float] = []
+    for note in hard_sorted:
         ny = float(note.get("y") or 0)
         ty = min(max(ny, lo), hi_others)
-        for prev_ty in level_tys:
+        for prev_ty in hard_tys:
             if abs(ty - prev_ty) < gap * 0.55:
                 # 高價列已在上；低價列往下讓，保持高＞低閱讀順位
                 ty = min(prev_ty - gap * 0.55, ty)
         ty = min(max(ty, lo), hi_others)
-        level_tys.append(ty)
+        hard_tys.append(ty)
         placed.append((note, ty))
         taken.append(ty)
     soft = others + closes_for_slot
-    # avoid 不含壓／撐釘價本身（那些已用 levels 釘住）；其餘軌／避開互壓
+    # avoid 不含壓／撐／軌釘價本身；軟標（原文目標）再避開
     avoid_soft = [
         float(y)
         for y in avoid_ys
         if y is not None
-        and all(abs(float(y) - float(n.get("y") or 0)) > gap * 0.2 for n in levels)
+        and all(abs(float(y) - float(n.get("y") or 0)) > gap * 0.2 for n in hard_notes)
     ]
     soft_ys = _spread_ys_around(
         [float(n.get("y") or 0) for n in soft],
@@ -2099,12 +2110,13 @@ def _place_right_notes(
     for note, ty in zip(soft, soft_ys):
         placed.append((note, ty))
         taken.append(ty)
-    # 軟標籤由上往下再錯開；壓／撐／最可能／右下昨收今收已定位的不准被這步拖離線
+    # 軟標籤由上往下再錯開；壓／撐／軌／最可能／右下昨收今收已定位的不准被這步拖離線
     pinned_ids = {
         id(n)
         for n, _ in placed
         if "最可能" in str(n.get("text") or "")
         or _is_level_note(str(n.get("text") or ""))
+        or _is_rail_note(str(n.get("text") or ""))
         or (close_anchor_y is not None and _is_close_note(str(n.get("text") or "")))
     }
     placed.sort(key=lambda p: -float(p[1]))
@@ -2131,31 +2143,64 @@ def _place_right_notes(
             ty = min(max(ty, lo), hi)
         enforced.append((note, ty))
     placed = enforced
-    # 73：鄰近標籤最小縫 ≥ 盒高＋空隙（舊 gap≈盒高會互貼）；高價仍在上
+    # 73／v4：軟標鄰縫；硬釘（壓／撐／軌／右下收）不准被這步拖離對應價
     neighbor = max(gap * 1.55, (ymax - ymin) * 0.062)
     placed.sort(key=lambda p: -float(p[1]))
     spaced: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in placed:
+        if id(note) in pinned_ids:
+            spaced.append((note, float(ty)))
+            continue
         if spaced:
-            prev_note, prev_ty = spaced[-1]
-            if prev_ty - ty < neighbor:
-                ty = prev_ty - neighbor
+            # 只跟已放軟標比縫；硬釘當固定避讓
+            for prev_note, prev_ty in spaced:
+                if id(prev_note) in pinned_ids:
+                    if abs(ty - prev_ty) < neighbor * 0.85:
+                        ty = prev_ty - neighbor if ty <= prev_ty else prev_ty + neighbor
+                elif prev_ty - ty < neighbor and prev_ty >= ty:
+                    ty = prev_ty - neighbor
         ty = min(max(ty, lo), hi)
         spaced.append((note, ty))
     spaced.sort(key=lambda p: float(p[1]))  # low → high
     fixed_up: List[Tuple[Dict[str, Any], float]] = []
     for note, ty in spaced:
+        if id(note) in pinned_ids:
+            fixed_up.append((note, float(ty)))
+            continue
         if fixed_up:
-            prev_note, prev_ty = fixed_up[-1]
-            if ty - prev_ty < neighbor:
-                ty = prev_ty + neighbor
+            for prev_note, prev_ty in fixed_up:
+                if id(prev_note) in pinned_ids:
+                    if abs(ty - prev_ty) < neighbor * 0.85:
+                        ty = prev_ty + neighbor if ty >= prev_ty else prev_ty - neighbor
+                elif ty - prev_ty < neighbor and ty >= prev_ty:
+                    ty = prev_ty + neighbor
         ty = min(max(ty, lo), hi)
         fixed_up.append((note, ty))
     placed = sorted(fixed_up, key=lambda p: -float(p[1]))
-    # 同一左緣欄：所有標籤共用 tx，不准「最可能」因估寬偏右
-    # 75：昨收｜今收並排時左盒仍對齊 col_tx，右盒往右一點
+    # v4：壓／撐／軌貼近右軸內側；原文等軟標走較左欄，釋出中右空檔
+    # 75：昨收｜今收並排時仍貼右軸（既有 close 路徑）
     col_tx = float(tx)
-    stub_x = float(col_tx) - 1.35
+    axis_tx = float(col_tx)
+    if x_max is not None:
+        hard_ws = [
+            _approx_note_width(str(n.get("text") or ""), float(n.get("size") or 12))
+            for n in hard_notes
+        ]
+        hard_w = max(hard_ws, default=14.0)
+        axis_tx = float(x_max) - float(hard_w) - 3.2
+        floor_axis = (
+            float(pin_x) + float(_CLOSE_TAG_CANDLE_CLEAR) + 0.8
+            if pin_x is not None
+            else float(col_tx)
+        )
+        axis_tx = max(floor_axis, min(float(axis_tx), float(x_max) - 6.0))
+        # 軟欄略左於右軸堆，避免與壓／撐／平行撐互壓
+        soft_tx = min(float(col_tx), float(axis_tx) - max(3.5, hard_w * 0.22))
+        soft_tx = max(floor_axis, soft_tx)
+    else:
+        soft_tx = float(col_tx)
+    stub_x = float(axis_tx) - 1.35
+    soft_stub_x = float(soft_tx) - 1.35
     pair_prev = prev_close_notes[0] if close_pair else None
     pair_today = today_close_notes[0] if close_pair else None
     pair_side_gap = float(_CLOSE_PAIR_SIDE_GAP)
@@ -2192,18 +2237,26 @@ def _place_right_notes(
             ),
         )
 
-    def _paint_one_note(note: Dict[str, Any], show_ty: float, text_x: float, *, stub: bool) -> None:
+    def _paint_one_note(
+        note: Dict[str, Any],
+        show_ty: float,
+        text_x: float,
+        *,
+        stub: bool,
+        note_stub_x: Optional[float] = None,
+    ) -> None:
         ny = float(note.get("y") or 0)
         text = str(note.get("text") or "")
         color = str(note.get("color") or _TEXT)
         size = int(note.get("size") or _STRUCTURE_TAG_SIZE)
+        use_stub_x = float(note_stub_x) if note_stub_x is not None else float(stub_x)
         # 75：最可能＝短 dash 直連末日 K → 標籤；不准末端空曠橘點、不准長段假虛線。
         # annotate 的 arrowprops 常吃掉自訂 dash → 改 ax.plot 短虛線＋text 盒。
         if "最可能" in text:
             fx = note.get("from_x")
             fy = note.get("from_y")
             if fx is None:
-                fx = float(pin_x) if pin_x is not None else stub_x
+                fx = float(pin_x) if pin_x is not None else use_stub_x
             if fy is None:
                 fy = ny
             fx = float(fx)
@@ -2246,7 +2299,7 @@ def _place_right_notes(
             return
         _leader_note(
             ax,
-            stub_x,
+            use_stub_x,
             show_ty,
             text,
             color,
@@ -2261,10 +2314,14 @@ def _place_right_notes(
         )
         if not stub:
             return
-        # 壓／撐：釘點仍在水平線價；收／其他釘在顯示列（短 stub，無長虛線）
-        pin_y = float(ny) if _is_level_note(text) else float(show_ty)
+        # 壓／撐／軌：釘點仍在水平線／軌價；收／其他釘在顯示列（短 stub，無長虛線）
+        pin_y = (
+            float(ny)
+            if (_is_level_note(text) or _is_rail_note(text))
+            else float(show_ty)
+        )
         ax.plot(
-            [stub_x],
+            [use_stub_x],
             [pin_y],
             marker="o",
             markersize=4.0,
@@ -2275,10 +2332,13 @@ def _place_right_notes(
             linestyle="None",
             clip_on=True,
         )
-        # 僅壓／撐在貼線微偏時畫短垂直點線；收／其餘不准畫
-        if _is_level_note(text) and abs(show_ty - ny) > neighbor * 0.12:
+        # 僅壓／撐／軌在貼線微偏時畫短垂直點線；收／其餘不准畫
+        if (
+            (_is_level_note(text) or _is_rail_note(text))
+            and abs(show_ty - ny) > neighbor * 0.12
+        ):
             ax.plot(
-                [stub_x, stub_x],
+                [use_stub_x, use_stub_x],
                 [ny, show_ty],
                 color=color,
                 linewidth=0.85,
@@ -2347,7 +2407,20 @@ def _place_right_notes(
                 pair_today, show_ty, today_tx, pad=_STRUCTURE_TAG_PAD, z=13
             )
             continue
-        _paint_one_note(note, show_ty, col_tx, stub=True)
+        text = str(note.get("text") or "")
+        # v4：壓／撐／軌貼近右軸；原文等軟標走較左欄
+        if _is_level_note(text) or _is_rail_note(text):
+            _paint_one_note(
+                note, show_ty, float(axis_tx), stub=True, note_stub_x=float(stub_x)
+            )
+        else:
+            _paint_one_note(
+                note,
+                show_ty,
+                float(soft_tx),
+                stub=True,
+                note_stub_x=float(soft_stub_x),
+            )
     _inset_today_close_inside(
         ax, close_prev_art, close_today_art, min_data_x=close_floor_x
     )
@@ -5032,18 +5105,22 @@ def render_biaoke_structure_png(
             va="center",
         )
     if has_layer_vol:
-        # 下一層量日：標籤偏左上方，虛線連到對應量柱
+        # 下一層量日：量圖內靠近該量柱（中左相對位），虛線連柱；不准貼整圖最左緣
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
         layer_md = _md(work[layer_i].get("date"))
-        lab_x = 0.6
-        lab_y = float(vmax) * 1.22
+        lab_x = max(2.4, float(layer_i) - 5.2)
+        # 量柱很靠左時改放柱右側，避免再甩到左緣
+        if lab_x < 3.2 and float(layer_i) <= 8.0:
+            lab_x = min(float(n) - 2.0, float(layer_i) + 4.5)
+        lab_y = float(vmax) * 1.16
+        lab_ha = "right" if lab_x + 0.4 < float(layer_i) else "left"
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
             xytext=(lab_x, lab_y),
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
-            ha="left",
+            ha=lab_ha,
             va="bottom",
             zorder=12,
             annotation_clip=False,
