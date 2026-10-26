@@ -10,6 +10,8 @@
 - 進行中 LOADING／pending／busy_window 綁定的訊息：未完成前不要誤刪；
   完成後仍走既有魔法消逝
 - 早報／海選推播／查股圖／飆大回文：超過 24h 都可清
+- 不准跟排程／重活／其他原始功能互搶造成崩潰：busy 或重鐘點整輪略過；
+  失敗只略過；不改排程編碼、不碰官方柱／私人本
 
 本模組只管「Telegram 顯示」；與 disk_guard 碟暫存分開。
 """
@@ -504,6 +506,35 @@ def _gone_error(res: Dict[str, Any]) -> bool:
     return False
 
 
+def _heavy_window_active(db_path: str = "") -> bool:
+    """重活窗進行中：整輪略過 purge，不准跟早報／融合／DC／查股搶 API。"""
+    try:
+        from busy_window_notice import is_busy_window_active
+
+        if is_busy_window_active(db_path=db_path):
+            return True
+    except Exception:
+        pass
+    # 沒有 busy 旗時仍避開已知重鐘點（台北）：06:25–07:10、16:25–17:10、03:00–04:10
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+
+        now = datetime.now(ZoneInfo("Asia/Taipei"))
+        mins = now.hour * 60 + now.minute
+        windows = (
+            (6 * 60 + 25, 7 * 60 + 10),
+            (16 * 60 + 25, 17 * 60 + 10),
+            (3 * 60, 4 * 60 + 10),
+        )
+        for lo, hi in windows:
+            if lo <= mins <= hi:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def purge_expired(
     *,
     db_path: str = "",
@@ -513,8 +544,13 @@ def purge_expired(
     sleep_sec: float = DEFAULT_SLEEP_SEC,
     now: Optional[float] = None,
     delete_fn: Optional[Callable[[str, str, int], Dict[str, Any]]] = None,
+    force: bool = False,
 ) -> Dict[str, Any]:
-    """節流刪過期 Bot 訊。永不 raise 到呼叫端；查股路徑不准等這裡。"""
+    """節流刪過期 Bot 訊。永不 raise 到呼叫端；查股路徑不准等這裡。
+
+    不准跟排程／重活／查股互搶：busy_window 或重鐘點整輪略過（force 僅單測）。
+    不改任何排程編碼、不碰官方柱／私人本／默默落檔。
+    """
     stats = {
         "scanned": 0,
         "deleted": 0,
@@ -522,6 +558,7 @@ def purge_expired(
         "failed": 0,
         "forgotten": 0,
         "disabled": 0,
+        "deferred": 0,
     }
     if not _enabled():
         stats["disabled"] = 1
@@ -529,6 +566,9 @@ def purge_expired(
     path = ensure_table(db_path)
     tok = _token(token)
     if not path:
+        return stats
+    if not force and _heavy_window_active(path):
+        stats["deferred"] = 1
         return stats
     rows = list_expired(
         db_path=path,

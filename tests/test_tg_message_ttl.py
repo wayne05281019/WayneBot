@@ -40,6 +40,7 @@ def test_record_and_purge_expired(tmp_path, monkeypatch):
         max_per_run=10,
         sleep_sec=0.01,
         delete_fn=_del,
+        force=True,
     )
     assert stats["deleted"] == 2
     assert set(deleted) == {("111", 10), ("222", 20)}
@@ -67,7 +68,7 @@ def test_protect_loading_skipped(tmp_path, monkeypatch):
         return {"ok": True}
 
     stats = ttl.purge_expired(
-        db_path=db, token="tok", now=now, sleep_sec=0.01, delete_fn=_del
+        db_path=db, token="tok", now=now, sleep_sec=0.01, delete_fn=_del, force=True
     )
     assert stats["deleted"] == 1
     assert deleted == [8]
@@ -106,7 +107,7 @@ def test_progress_orphan_blocks_purge(tmp_path, monkeypatch):
         return {"ok": True}
 
     stats = ttl.purge_expired(
-        db_path=db, token="tok", now=now, sleep_sec=0.01, delete_fn=_del
+        db_path=db, token="tok", now=now, sleep_sec=0.01, delete_fn=_del, force=True
     )
     assert stats["deleted"] == 0
     assert deleted == []
@@ -124,7 +125,7 @@ def test_gone_error_forgets_row(tmp_path, monkeypatch):
         return {"ok": False, "error_code": 400, "description": "Bad Request: message to delete not found"}
 
     stats = ttl.purge_expired(
-        db_path=db, token="tok", now=now, sleep_sec=0.01, delete_fn=_del
+        db_path=db, token="tok", now=now, sleep_sec=0.01, delete_fn=_del, force=True
     )
     assert stats["forgotten"] == 1
     conn = sqlite3.connect(db)
@@ -154,6 +155,7 @@ def test_throttle_max_per_run(tmp_path, monkeypatch):
         max_per_run=3,
         sleep_sec=0.01,
         delete_fn=_del,
+        force=True,
     )
     assert stats["deleted"] == 3
     assert len(deleted) == 3
@@ -221,3 +223,44 @@ def test_disk_guard_untouched_by_ttl():
     src = Path(dg.__file__).read_text(encoding="utf-8")
     assert "tg_bot_outbound" not in src
     assert "deleteMessage" not in src
+
+
+def test_purge_defers_during_busy_window(tmp_path, monkeypatch):
+    """重活進行中整輪略過：不准跟早報／融合／DC 搶 API 弄崩話筒。"""
+    monkeypatch.setenv("WAYNE_TG_MSG_TTL_TEST", "1")
+    ttl.reset_for_tests()
+    db = _db(tmp_path)
+    now = time.time()
+    ttl.record_outbound("111", 1, db_path=db, sent_at=now - 40 * 3600)
+    monkeypatch.setattr(ttl, "_heavy_window_active", lambda db_path="": True)
+    deleted = []
+
+    def _del(token, chat_id, message_id):
+        deleted.append(int(message_id))
+        return {"ok": True}
+
+    stats = ttl.purge_expired(
+        db_path=db, token="tok", now=now, sleep_sec=0.01, delete_fn=_del
+    )
+    assert stats["deferred"] == 1
+    assert stats["deleted"] == 0
+    assert deleted == []
+    # force 單測仍可刪
+    stats2 = ttl.purge_expired(
+        db_path=db,
+        token="tok",
+        now=now,
+        sleep_sec=0.01,
+        delete_fn=_del,
+        force=True,
+    )
+    assert stats2["deleted"] == 1
+
+
+def test_purge_source_does_not_touch_schedulers():
+    src = Path(ttl.__file__).read_text(encoding="utf-8")
+    assert "run_scheduled_job" not in src
+    assert "start_daily_scheduler" not in src
+    assert "wayne_market.db" not in src or "get_db_path" in src
+    assert "DELETE FROM daily_quotes" not in src
+    assert "strip_private_user_data" not in src
