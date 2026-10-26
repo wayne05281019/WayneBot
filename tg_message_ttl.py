@@ -506,8 +506,33 @@ def _gone_error(res: Dict[str, Any]) -> bool:
     return False
 
 
-def _heavy_window_active(db_path: str = "") -> bool:
-    """重活窗進行中：整輪略過 purge，不准跟早報／融合／DC／查股搶 API。"""
+# 台北重鐘點（分鐘）：早報／海選尾盤／融合／DC／午夜 disk_guard。
+# 整輪略過 purge，不准跟排程或其他原始功能搶 API／碟 IO。
+HEAVY_WINDOWS_MINS = (
+    (6 * 60 + 25, 7 * 60 + 10),  # 06:30 早報＋海選
+    (12 * 60 + 40, 13 * 60 + 10),  # 12:45 尾盤海選
+    (16 * 60 + 25, 17 * 60 + 10),  # 16:30 融合
+    (3 * 60, 4 * 60 + 10),  # 03:00–04:00 DC
+    (23 * 60 + 55, 24 * 60 - 1),  # 23:55–23:59 接午夜 disk_guard
+    (0, 14),  # 00:00–00:14 午夜 disk_guard
+)
+
+
+def _mins_in_heavy_window(mins: int) -> bool:
+    m = int(mins) % (24 * 60)
+    for lo, hi in HEAVY_WINDOWS_MINS:
+        if lo <= hi:
+            if lo <= m <= hi:
+                return True
+        else:
+            # 跨日窗（若日後需要）
+            if m >= lo or m <= hi:
+                return True
+    return False
+
+
+def _heavy_window_active(db_path: str = "", *, now_mins: Optional[int] = None) -> bool:
+    """重活窗進行中：整輪略過 purge，不准跟早報／海選／融合／DC／disk_guard 搶。"""
     try:
         from busy_window_notice import is_busy_window_active
 
@@ -515,21 +540,17 @@ def _heavy_window_active(db_path: str = "") -> bool:
             return True
     except Exception:
         pass
-    # 沒有 busy 旗時仍避開已知重鐘點（台北）：06:25–07:10、16:25–17:10、03:00–04:10
     try:
-        from zoneinfo import ZoneInfo
-        from datetime import datetime
+        if now_mins is not None:
+            mins = int(now_mins)
+        else:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime
 
-        now = datetime.now(ZoneInfo("Asia/Taipei"))
-        mins = now.hour * 60 + now.minute
-        windows = (
-            (6 * 60 + 25, 7 * 60 + 10),
-            (16 * 60 + 25, 17 * 60 + 10),
-            (3 * 60, 4 * 60 + 10),
-        )
-        for lo, hi in windows:
-            if lo <= mins <= hi:
-                return True
+            now = datetime.now(ZoneInfo("Asia/Taipei"))
+            mins = now.hour * 60 + now.minute
+        if _mins_in_heavy_window(mins):
+            return True
     except Exception:
         pass
     return False

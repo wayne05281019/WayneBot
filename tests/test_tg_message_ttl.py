@@ -264,3 +264,102 @@ def test_purge_source_does_not_touch_schedulers():
     assert "wayne_market.db" not in src or "get_db_path" in src
     assert "DELETE FROM daily_quotes" not in src
     assert "strip_private_user_data" not in src
+    # 雙人 pending／持股本不准碰
+    assert "tg_actor_pending" not in src
+    assert "user_holdings" not in src
+    assert "user_watchlist" not in src
+    assert "save_actor_pending" not in src
+
+
+def test_clock_windows_cover_morning_midday_fuse_dc_midnight():
+    """早報／12:45 海選／融合／DC／午夜 disk_guard 鐘點都要略過。"""
+    assert ttl._mins_in_heavy_window(6 * 60 + 30) is True
+    assert ttl._mins_in_heavy_window(12 * 60 + 45) is True
+    assert ttl._mins_in_heavy_window(16 * 60 + 30) is True
+    assert ttl._mins_in_heavy_window(3 * 60 + 30) is True
+    assert ttl._mins_in_heavy_window(0) is True
+    assert ttl._mins_in_heavy_window(23 * 60 + 58) is True
+    # 平常時段可清
+    assert ttl._mins_in_heavy_window(10 * 60) is False
+    assert ttl._mins_in_heavy_window(14 * 60) is False
+    assert ttl._heavy_window_active(now_mins=6 * 60 + 30) is True
+    assert ttl._heavy_window_active(now_mins=10 * 60) is False
+
+
+def test_busy_message_pair_skipped_even_with_force(tmp_path, monkeypatch):
+    """busy_window 進行中的那則，force 也不准誤刪。"""
+    monkeypatch.setenv("WAYNE_TG_MSG_TTL_TEST", "1")
+    ttl.reset_for_tests()
+    db = _db(tmp_path)
+    now = time.time()
+    ttl.record_outbound("111", 1, db_path=db, sent_at=now - 40 * 3600)
+    ttl.record_outbound("111", 2, db_path=db, sent_at=now - 40 * 3600)
+    monkeypatch.setattr(
+        ttl, "_protected_pairs", lambda db_path="": {("111", 1)}
+    )
+    deleted = []
+
+    def _del(token, chat_id, message_id):
+        deleted.append(int(message_id))
+        return {"ok": True}
+
+    stats = ttl.purge_expired(
+        db_path=db,
+        token="tok",
+        now=now,
+        sleep_sec=0.01,
+        delete_fn=_del,
+        force=True,
+    )
+    assert 1 not in deleted
+    assert 2 in deleted
+    assert stats["deleted"] == 1
+
+
+def test_record_fail_soft_never_raises(tmp_path, monkeypatch):
+    """落檔失敗不准噴到查股／推播主路徑。"""
+    monkeypatch.setenv("WAYNE_TG_MSG_TTL_TEST", "1")
+    ttl.reset_for_tests()
+
+    def _boom(*a, **k):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(ttl, "ensure_table", lambda db_path="": str(tmp_path / "x.db"))
+    monkeypatch.setattr(sqlite3, "connect", _boom)
+    assert ttl.record_outbound("1", 9, db_path=str(tmp_path / "x.db")) is False
+
+
+def test_purge_exception_in_delete_fn_counts_failed(tmp_path, monkeypatch):
+    monkeypatch.setenv("WAYNE_TG_MSG_TTL_TEST", "1")
+    ttl.reset_for_tests()
+    db = _db(tmp_path)
+    now = time.time()
+    ttl.record_outbound("1", 3, db_path=db, sent_at=now - 40 * 3600)
+
+    def _boom(token, chat_id, message_id):
+        raise RuntimeError("network down")
+
+    stats = ttl.purge_expired(
+        db_path=db,
+        token="tok",
+        now=now,
+        sleep_sec=0.01,
+        delete_fn=_boom,
+        force=True,
+    )
+    assert stats["failed"] == 1
+    assert stats["deleted"] == 0
+
+
+def test_wiring_does_not_rewrite_core_feature_modules():
+    """TTL 只附加 hook／落檔；不准改寫排程／海選／查股／disk_guard 本體邏輯。"""
+    # disk_guard 本體無 deleteMessage（已測）；排程／pending 模組無 TTL 反向依賴
+    for mod_name in ("main_runner", "disk_guard", "tg_pending", "screening_engine"):
+        src = Path(__import__(mod_name).__file__).read_text(encoding="utf-8")
+        if mod_name == "main_runner":
+            # runner 只准附加 record，不准 purge 擋主路徑
+            assert "purge_expired" not in src
+            assert "record_from_api_result" in src
+        else:
+            assert "tg_message_ttl" not in src
+            assert "purge_expired" not in src
