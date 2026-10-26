@@ -510,7 +510,7 @@ def test_channel_labels_same_band_and_reject_any_k_hit():
         mark_pad=0.0,
         pair_x=cx_u,
     )
-    assert abs(cx_u - cx_l) <= max(dx * 1.35, 8.0) + 0.05
+    assert abs(cx_u - cx_l) <= min(max(dx * 0.95, 5.5), 8.0) + 0.05
     for cx, cy in ((cx_u, cy_u), (cx_l, cy_l)):
         box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
         hits = _channel_box_k_hits(
@@ -557,7 +557,7 @@ def test_channel_label_second_rail_same_band_near_pivot():
         mark_pad=0.0,
         pair_x=50.0,
     )
-    assert abs(cx - 50.0) <= max(dx * 1.35, 8.0) + 0.05
+    assert abs(cx - 50.0) <= min(max(dx * 0.95, 5.5), 8.0) + 0.05
     assert cx <= 65.0 + 1.0
     assert cx >= 58.0 - 22.0 - 0.5
     box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)

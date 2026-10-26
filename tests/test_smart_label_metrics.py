@@ -95,7 +95,7 @@ def test_channel_pair_same_band_passes_functional():
     )
     s = score_chart(g)
     assert classify_bucket(g) == "dual_parallel"
-    assert s.channel_pair_dx is not None and s.channel_pair_dx < 10.0
+    assert s.channel_pair_dx is not None and s.channel_pair_dx < 8.0
     assert s.functional_pass
     assert s.aesthetic_score >= 50.0
 
@@ -208,4 +208,4 @@ def test_blank_channel_pair_same_band_unit():
         mark_pad=0.0,
         pair_x=cx_u,
     )
-    assert abs(cx_u - cx_l) <= max(dx * 1.35, 8.0) + 0.05
+    assert abs(cx_u - cx_l) <= min(max(dx * 0.95, 5.5), 8.0) + 0.05
