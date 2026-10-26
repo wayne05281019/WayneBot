@@ -10615,6 +10615,27 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("開機清 LOADING 殘框失敗")
             try:
+                # 前一進程 crash 留下的 busy_window_notice.json 會永久擋查股；開機一律清。
+                from busy_window_notice import clear_busy_notices, reclaim_stale_busy_notices
+
+                stats = clear_busy_notices(db_path=getattr(self, "db_path", "") or "")
+                if int(stats.get("deleted") or 0) or stats.get("kinds"):
+                    logger.info(
+                        "開機清掉 busy 殘閘 deleted=%s kinds=%s",
+                        stats.get("deleted"),
+                        stats.get("kinds"),
+                    )
+                stale = reclaim_stale_busy_notices(
+                    db_path=getattr(self, "db_path", "") or ""
+                )
+                if stale.get("reclaimed"):
+                    logger.info(
+                        "開機清 stale busy reason=%s",
+                        stale.get("reason"),
+                    )
+            except Exception:
+                logger.exception("開機清 busy 殘閘失敗")
+            try:
                 from tg_message_ttl import install_bot_hooks
 
                 install_bot_hooks(app.bot, db_path=getattr(self, "db_path", "") or "")

@@ -38,8 +38,9 @@ def test_start_finish_stores_per_chat_and_deletes(tmp_path, monkeypatch):
         return {"ok": True}
 
     monkeypatch.setattr(bwn, "_tg_api", _fake_api)
-    # 清掉其他測試殘留
+    # 清掉其他測試殘留；鎖在早報窗內，避免現在鐘點觸發 stale 自清
     bwn._active.clear()
+    monkeypatch.setattr(bwn, "_taipei_hhmm", lambda: 640)
 
     sent = bwn.start_busy_notice("morning", db_path=db, token="tok-test")
     assert sent == {"111": 1111, "222": 1222}
@@ -163,3 +164,131 @@ def test_phone_allows_menu_during_heavy():
     assert WayneTelegramBot._phone_allowed_during_heavy_job("備份") is True
     assert WayneTelegramBot._phone_allowed_during_heavy_job("海選") is False
     assert WayneTelegramBot._phone_allowed_during_heavy_job("2330") is False
+
+
+def test_stale_outside_hold_window_reclaims_and_unblocks(tmp_path, monkeypatch):
+    """19:xx 補跑留下的 fuse JSON 必須清掉，不准再擋查股。"""
+    monkeypatch.setenv("WAYNE_BUSY_NOTICE_TEST", "1")
+    monkeypatch.setenv("WAYNE_SCREEN_NOTIFY", "1")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "111")
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "222")
+    db = str(tmp_path / "w.db")
+    Path(db).write_text("", encoding="utf-8")
+    bwn._active.clear()
+
+    deletes = []
+
+    def _fake_api(token, method, payload):
+        if method == "sendMessage":
+            cid = str(payload["chat_id"])
+            return {"ok": True, "result": {"message_id": 1000 + int(cid)}}
+        if method == "deleteMessage":
+            deletes.append((payload["chat_id"], payload["message_id"]))
+            return {"ok": True}
+        return {"ok": True}
+
+    monkeypatch.setattr(bwn, "_tg_api", _fake_api)
+    # 假裝還在融合窗內推播
+    monkeypatch.setattr(bwn, "_taipei_hhmm", lambda: 1630)
+    sent = bwn.start_busy_notice("fuse", db_path=db, token="t")
+    assert sent
+    assert bwn.is_busy_window_active(db_path=db, reclaim_stale=False) is True
+
+    # 盤後 19:13：離窗 → stale → 查股閘放行
+    reason = bwn.busy_notice_stale_reason(db_path=db, now_hhmm=1913)
+    assert reason.startswith("outside_hold")
+    stats = bwn.reclaim_stale_busy_notices(
+        db_path=db, token="t", now_hhmm=1913, delete_messages=True
+    )
+    assert stats["reclaimed"] is True
+    assert bwn.is_busy_window_active(db_path=db, reclaim_stale=False) is False
+    assert not (tmp_path / "busy_window_notice.json").exists()
+    assert len(deletes) >= 2
+
+
+def test_stale_by_age_even_inside_hold(tmp_path, monkeypatch):
+    monkeypatch.setenv("WAYNE_BUSY_NOTICE_TEST", "1")
+    monkeypatch.setenv("WAYNE_SCREEN_NOTIFY", "1")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    db = str(tmp_path / "w.db")
+    Path(db).write_text("", encoding="utf-8")
+    bwn._active.clear()
+
+    def _fake_api(token, method, payload):
+        if method == "sendMessage":
+            return {"ok": True, "result": {"message_id": 9}}
+        if method == "deleteMessage":
+            return {"ok": True}
+        return {"ok": True}
+
+    monkeypatch.setattr(bwn, "_tg_api", _fake_api)
+    monkeypatch.setattr(bwn, "_taipei_hhmm", lambda: 1640)
+    bwn.start_busy_notice("fuse", db_path=db, token="t")
+    path = tmp_path / "busy_window_notice.json"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    # 開始於 50 分鐘前
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    started = datetime.now(ZoneInfo("Asia/Taipei")) - timedelta(minutes=50)
+    state["started_at"] = started.isoformat(timespec="seconds")
+    path.write_text(json.dumps(state), encoding="utf-8")
+
+    reason = bwn.busy_notice_stale_reason(db_path=db, now_hhmm=1640)
+    assert reason.startswith("age>")
+    assert bwn.is_busy_window_active(db_path=db, reclaim_stale=True) is False
+    assert not path.exists()
+
+
+def test_is_busy_active_auto_reclaims_outside_window(tmp_path, monkeypatch):
+    """話筒路徑：is_busy_window_active 預設自動清殘閘。"""
+    monkeypatch.setenv("WAYNE_BUSY_NOTICE_TEST", "1")
+    monkeypatch.setenv("WAYNE_SCREEN_NOTIFY", "1")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    db = str(tmp_path / "w.db")
+    Path(db).write_text("", encoding="utf-8")
+    bwn._active.clear()
+
+    def _fake_api(token, method, payload):
+        if method == "sendMessage":
+            return {"ok": True, "result": {"message_id": 42}}
+        if method == "deleteMessage":
+            return {"ok": True}
+        return {"ok": True}
+
+    monkeypatch.setattr(bwn, "_tg_api", _fake_api)
+    monkeypatch.setattr(bwn, "_taipei_hhmm", lambda: 1910)
+    # 直接寫殘檔（模擬 19:07 補跑 push 後卡住）
+    path = tmp_path / "busy_window_notice.json"
+    path.write_text(
+        json.dumps(
+            {
+                "kind": "fuse",
+                "started_at": "2026-10-26T19:07:48+08:00",
+                "messages": {"1": 42},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert bwn.is_busy_window_active(db_path=db) is False
+    assert not path.exists()
+
+
+def test_boot_wiring_clears_busy_notices():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot.run_polling)
+    assert "clear_busy_notices" in src
+    assert "reclaim_stale_busy_notices" in src
+
+
+def test_health_wiring_throttled_reclaim():
+    import pathlib
+
+    main_src = pathlib.Path("main.py").read_text(encoding="utf-8")
+    assert "reclaim_stale_busy_notices_throttled" in main_src
+    assert "busy_gate" in main_src

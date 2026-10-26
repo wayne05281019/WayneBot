@@ -348,6 +348,22 @@ class HealthHandler(BaseHTTPRequestHandler):
                     payload["data_ok"] = False
                     payload["data_error"] = str(e)
             try:
+                # 殘閘逾時／離窗：健檢週期清狀態檔放行話筒（不打 TG，免拖死 /health）。
+                from busy_window_notice import (
+                    is_busy_window_active,
+                    reclaim_stale_busy_notices_throttled,
+                )
+                from config import get_db_path
+
+                reclaim_stale_busy_notices_throttled(db_path=str(get_db_path() or ""))
+                payload["busy_gate"] = bool(
+                    is_busy_window_active(
+                        db_path=str(get_db_path() or ""), reclaim_stale=False
+                    )
+                )
+            except Exception:
+                payload["busy_gate"] = None
+            try:
                 from voice_stt import stt_configured
 
                 payload["stt_ok"] = bool(stt_configured())

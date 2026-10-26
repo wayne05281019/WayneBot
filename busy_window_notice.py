@@ -20,9 +20,22 @@ _EDIT_FALLBACK = "·"
 
 KINDS = frozenset({"morning", "fuse", "dc_sf"})
 
+# 硬逾時：開始後超過這秒數一律視為卡死（融合／早報／DC 再長也不准永久擋查股）。
+STALE_AFTER_SEC = 45 * 60
+# 各 kind 允許擋話筒的台北鐘點窗（HHMM）；出窗仍 active＝殘閘／補跑誤擋，立刻清。
+# 略寬於尖峰：給排程本體 overrun，但不涵蓋 19:xx 補跑。
+HOLD_WINDOWS_HHMM: Dict[str, Tuple[int, int]] = {
+    "morning": (615, 800),  # 06:15–08:00
+    "fuse": (1615, 1730),  # 16:15–17:30
+    "dc_sf": (245, 415),  # 02:45–04:15
+}
+
 _lock = threading.Lock()
 # kind → {chat_id: message_id}
 _active: Dict[str, Dict[str, int]] = {}
+# health 路徑節流：不准每次 /health 打 Telegram
+_last_health_reclaim_mono: float = 0.0
+_HEALTH_RECLAIM_EVERY_SEC = 60.0
 
 
 def _taipei_stamp() -> str:
@@ -33,6 +46,110 @@ def _taipei_stamp() -> str:
     except Exception:
         return time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
+
+def _taipei_hhmm() -> int:
+    try:
+        from config import taipei_now
+
+        now = taipei_now()
+        return int(now.hour) * 100 + int(now.minute)
+    except Exception:
+        return int(time.strftime("%H%M"))
+
+
+def _parse_started_at(raw: Any) -> Optional[float]:
+    """started_at（台北 ISO）→ epoch 秒；解析失敗回 None。"""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        tw = ZoneInfo("Asia/Taipei")
+        if s.endswith("Z"):
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tw)
+        return float(dt.timestamp())
+    except Exception:
+        return None
+
+
+def _in_hold_window(kind: str, hhmm: Optional[int] = None) -> bool:
+    k = str(kind or "").strip()
+    bounds = HOLD_WINDOWS_HHMM.get(k)
+    if not bounds:
+        return False
+    t = int(hhmm if hhmm is not None else _taipei_hhmm())
+    lo, hi = int(bounds[0]), int(bounds[1])
+    if lo <= hi:
+        return lo <= t < hi
+    # 跨日（目前未用；預留）
+    return t >= lo or t < hi
+
+
+def _snapshot_active(*, db_path: str = "") -> Tuple[str, Dict[str, int], str]:
+    """回 (kind, messages, started_at)；無進行中則 kind 空。"""
+    with _lock:
+        if _active:
+            kind = next(iter(_active.keys()))
+            msgs = dict(_active.get(kind) or {})
+            data = _load_file(_state_path(db_path))
+            started = str((data or {}).get("started_at") or "")
+            if str((data or {}).get("kind") or "") == kind:
+                raw = (data or {}).get("messages") or {}
+                if isinstance(raw, dict):
+                    for cid, mid in raw.items():
+                        try:
+                            msgs[str(cid)] = int(mid)
+                        except (TypeError, ValueError):
+                            continue
+                if not started:
+                    started = str((data or {}).get("started_at") or "")
+            return kind, msgs, started
+    data = _load_file(_state_path(db_path))
+    if not isinstance(data, dict):
+        return "", {}, ""
+    raw = data.get("messages") or {}
+    if not isinstance(raw, dict) or not raw:
+        return "", {}, ""
+    msgs: Dict[str, int] = {}
+    for cid, mid in raw.items():
+        try:
+            msgs[str(cid)] = int(mid)
+        except (TypeError, ValueError):
+            continue
+    if not msgs:
+        return "", {}, ""
+    return str(data.get("kind") or "").strip(), msgs, str(data.get("started_at") or "")
+
+
+def busy_notice_stale_reason(
+    *,
+    db_path: str = "",
+    now_hhmm: Optional[int] = None,
+    now_epoch: Optional[float] = None,
+    stale_after_sec: Optional[int] = None,
+) -> str:
+    """若應清閘：回原因字串；否則空字串。"""
+    kind, msgs, started = _snapshot_active(db_path=db_path)
+    if not msgs and not kind:
+        return ""
+    age_lim = int(STALE_AFTER_SEC if stale_after_sec is None else stale_after_sec)
+    epoch = float(time.time() if now_epoch is None else now_epoch)
+    started_ts = _parse_started_at(started)
+    if started_ts is not None and (epoch - started_ts) > float(age_lim):
+        return f"age>{age_lim}s"
+    # 無 started_at 的殘檔：當過期（開機殘／舊版）
+    if started_ts is None and msgs:
+        return "missing_started_at"
+    k = kind or "fuse"
+    if not _in_hold_window(k, now_hhmm):
+        return f"outside_hold:{k}"
+    return ""
 
 def _state_path(db_path: str = "") -> Path:
     """輕量 JSON：跟行情庫同碟，Crash 後下一窗仍能清掉殘訊。"""
@@ -136,8 +253,73 @@ def _clear_file(path: Path) -> None:
         logger.debug("busy_window 狀態檔刪失敗", exc_info=True)
 
 
-def is_busy_window_active(*, db_path: str = "") -> bool:
-    """話筒／web 輕量查：重活進行中？只讀小 JSON，不碰行情庫。"""
+def reclaim_stale_busy_notices(
+    *,
+    db_path: str = "",
+    token: str = "",
+    delete_messages: bool = True,
+    now_hhmm: Optional[int] = None,
+    now_epoch: Optional[float] = None,
+    stale_after_sec: Optional[int] = None,
+) -> Dict[str, Any]:
+    """逾時／離窗殘閘：清檔＋（可選）deleteMessage。回傳 stats。"""
+    reason = busy_notice_stale_reason(
+        db_path=db_path,
+        now_hhmm=now_hhmm,
+        now_epoch=now_epoch,
+        stale_after_sec=stale_after_sec,
+    )
+    if not reason:
+        return {"reclaimed": False, "reason": "", "deleted": 0, "failed": 0}
+    kind, _msgs, _started = _snapshot_active(db_path=db_path)
+    logger.warning(
+        "busy_window 殘閘清掉 kind=%s reason=%s",
+        kind or "?",
+        reason,
+    )
+    if delete_messages:
+        stats = clear_busy_notices(db_path=db_path, token=token)
+    else:
+        # 只放行話筒閘：清記憶體＋狀態檔；TG 泡留給 TTL／下次 full reclaim
+        path = _state_path(db_path)
+        with _lock:
+            _active.clear()
+        _clear_file(path)
+        stats = {"deleted": 0, "failed": 0, "kinds": [kind] if kind else []}
+    stats["reclaimed"] = True
+    stats["reason"] = reason
+    return stats
+
+
+def reclaim_stale_busy_notices_throttled(
+    *,
+    db_path: str = "",
+    token: str = "",
+    every_sec: float = _HEALTH_RECLAIM_EVERY_SEC,
+) -> Dict[str, Any]:
+    """/health 用：最多每 every_sec 做一次；閘先放行，TG 刪訊可省略以免拖死健檢。"""
+    global _last_health_reclaim_mono
+    now = time.monotonic()
+    if (now - float(_last_health_reclaim_mono or 0.0)) < float(every_sec):
+        return {"reclaimed": False, "reason": "throttled", "deleted": 0, "failed": 0}
+    _last_health_reclaim_mono = now
+    # 健檢路徑不准等 Telegram：只清閘；殘泡靠 boot full reclaim／TTL。
+    return reclaim_stale_busy_notices(
+        db_path=db_path, token=token, delete_messages=False
+    )
+
+
+def is_busy_window_active(*, db_path: str = "", reclaim_stale: bool = True) -> bool:
+    """話筒／web 輕量查：重活進行中？只讀小 JSON，不碰行情庫。
+
+    殘閘（逾時／離窗）預設當場清掉再回 False，不准 19:xx 補跑永久擋查股。
+    """
+    if reclaim_stale:
+        try:
+            if busy_notice_stale_reason(db_path=db_path):
+                reclaim_stale_busy_notices(db_path=db_path, delete_messages=True)
+        except Exception:
+            logger.debug("busy_window stale reclaim 略過", exc_info=True)
     with _lock:
         if _active:
             return True
