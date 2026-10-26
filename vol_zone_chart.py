@@ -97,7 +97,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 49  # 通道雙標同垂直帶；下一層／橘框硬避 K（2026-10-26）
+_VZ_PAINT_VER = 50  # 通道同帶再收窄（美感 parallel_pair；2026-10-26）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2564,8 +2564,8 @@ def _blank_for_channel_label(
         _pair_mids.append(float(pair_x))
     for a, b, _c, _d in placed:
         _pair_mids.append(0.5 * (float(a) + float(b)))
-    # 同帶寬≈標寬；半圖拉開＝硬拒（2026-10-26 使用者鎖）
-    same_band_max = max(float(dx) * 1.35, 8.0)
+    # 同帶寬：寧窄勿拉開（美感 parallel_pair／alignment）；半圖拉開＝硬拒
+    same_band_max = min(max(float(dx) * 0.95, 5.5), 8.0)
 
     def _pair_anchor() -> Optional[float]:
         return float(_pair_mids[0]) if _pair_mids else None
@@ -3294,7 +3294,7 @@ def paint_vol_zone_parallel_channel(
         _pair_x: Optional[float] = None
         if placed:
             _pair_x = 0.5 * (float(placed[0][0]) + float(placed[0][1]))
-        _same_band_max = max(float(dx) * 1.35, 8.0)
+        _same_band_max = min(max(float(dx) * 0.95, 5.5), 8.0)
         for _try in range(2):
             cx, cy = _blank_for_channel_label(
                 text=shown,
