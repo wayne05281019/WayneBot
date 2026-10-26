@@ -1397,11 +1397,53 @@ def test_channel_rejects_stub_two_point_span(production_db):
     ch = infer_parallel_channel(work)
     assert ch.get("kind") in ("asc", "desc")
     (i, _y1, _d1), (j, _y2, _d2) = ch["base"]
-    assert int(j) - int(i) >= 10
+    # 非常規破升改判可短至 5；本檔非改判路徑仍要 ≥10
+    if ch.get("reclass_from") == "asc_break":
+        assert int(j) - int(i) >= 5
+    else:
+        assert int(j) - int(i) >= 10
     # 平行兩線斜率相同
     (ux1, uy1, _), (ux2, uy2, _) = ch["upper"]
     (lx1, ly1, _), (lx2, ly2, _) = ch["lower"]
     assert abs((uy2 - uy1) / (ux2 - ux1) - (ly2 - ly1) / (lx2 - lx1)) < 1e-9
+
+
+@pytest.mark.production_db
+def test_asc_break_reclass_to_desc_2454(production_db):
+    """WB-28：官方收破上升軌後不准繼續畫上翹升通道；改判下降（2454 破軌樣本）。"""
+    from biaoke_brain import load_bars
+    from biaoke_chart import _BARS, chart_caption, infer_parallel_channel
+
+    work = load_bars(production_db, "2454", n=360)[-_BARS:]
+    ch = infer_parallel_channel(work)
+    assert ch.get("kind") == "desc"
+    assert ch.get("reclass_from") == "asc_break"
+    assert "升軌已失效" in str(ch.get("label") or "")
+    tip = str(ch.get("tip") or "")
+    assert "舊升通道失效" in tip
+    assert "改畫下降壓" in tip
+    assert "不是買訊" in tip
+    # caption 吃 tip，結構／大量區同一句
+    cap = chart_caption({"channel": ch, "struct": {}, "last_bar": work[-1]}, sid="2454")
+    assert "舊升通道失效" in cap
+
+
+def test_asc_break_reclass_source_contract():
+    """破升改判／具名破軌共用入口寫進源碼；盤中未收不當收。"""
+    import inspect
+
+    from biaoke_chart import channel_prefer_named_rising_or_infer, infer_parallel_channel
+    from vol_zone_chart import infer_vol_zone_parallel_channel
+
+    src = inspect.getsource(infer_parallel_channel)
+    assert "asc_break" in src
+    assert "舊升通道失效" in src
+    assert "_pack_desc_reclass" in src
+    nsrc = inspect.getsource(channel_prefer_named_rising_or_infer)
+    assert "asc_break_named" in nsrc
+    vsrc = inspect.getsource(infer_vol_zone_parallel_channel)
+    assert "channel_prefer_named_rising_or_infer" in vsrc
+    assert "官方收破升軌" in vsrc or "改判下降" in vsrc
 
 
 def test_broken_up_rail_not_projected_to_forecast():

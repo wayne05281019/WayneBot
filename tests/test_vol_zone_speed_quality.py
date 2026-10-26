@@ -45,7 +45,7 @@ def test_vol_zone_dpi_and_jpeg_quality_floor():
 
     assert VOL_ZONE_DPI >= 220
     assert VOL_ZONE_JPEG_QUALITY >= 92
-    assert VOL_ZONE_TAG_PT >= 15
+    assert VOL_ZONE_TAG_PT == 14
     assert VOL_ZONE_FIG_W >= 11.2
     src = inspect.getsource(_paint_volume_zone)
     # 日 K 影線 LineCollection 在共用 paint 內

@@ -17,7 +17,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib
 
@@ -58,7 +58,11 @@ VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
 # 查股結構／大量區 ensure 並行抓月表：上限 3，縮短第二→第三體感；不准跳過真量
 _ENSURE_MONTH_FETCH_WORKERS = 3
-VOL_ZONE_TAG_PT = 16  # 壓／撐標要比標題更容易讀（話筒紅圈）
+# 現任主大量區壓／撐＝大檔字級（兩者同大）。略縮自舊 16，但仍須明顯大於下一層
+# （biaoke_next_support.LAYER_TAG_PT≈8.5）。大小跟「是否現任主區」走：find_volume_zone
+# 重算後新主區走這條大檔；下一層／更下層永遠小檔——不准寫死文案名決定大小。
+VOL_ZONE_TAG_PT = 14
+VOL_ZONE_TAG_PAD = 0.24  # 主區框；略縮自 0.30，仍大於下一層 LAYER_TAG_PAD
 VOL_ZONE_JPEG_QUALITY = 95
 VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
 VOL_ZONE_FIG_H_NAV = 9.35
@@ -93,7 +97,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 45  # 大盤平行軌實線段再縮短；空隙、色、線寬不變
+_VZ_PAINT_VER = 48  # 軌道標鎖接觸帶；橘框上緣擠改右下（註解對齊測試）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2097,10 +2101,11 @@ def infer_vol_zone_parallel_channel(
     """大量區近窗可疊的平行軌：算法＝結構圖 infer_parallel_channel（可重算；不數浪）。
 
     加權／TWII：若他自己寫過「M/D M/D兩天低點來畫」，優先用那兩天官方低連線；
-    否則長窗推算→近窗對日期。映不上才直接用近窗算。不准發明沒說過的價／浪號。
+    官方收破升軌則升通道失效、改判下降（與結構圖同一套）。否則長窗推算→近窗對日期。
+    映不上才直接用近窗算。不准發明沒說過的價／浪號。盤中未收不當收。
     """
     from biaoke_chart import (
-        build_asc_channel_from_low_dates,
+        channel_prefer_named_rising_or_infer,
         infer_parallel_channel,
         latest_biaoke_named_rising_lows,
         structure_visible_bars,
@@ -2122,10 +2127,10 @@ def infer_vol_zone_parallel_channel(
         named = latest_biaoke_named_rising_lows(str(db_path))
         if named:
             d1, d2, _pid = named
-            ch_named = build_asc_channel_from_low_dates(work, d1, d2)
+            ch_named = channel_prefer_named_rising_or_infer(work, d1, d2)
             if not ch_named:
                 rows_v = _bars_face_records(view.to_dict("records"))
-                ch_named = build_asc_channel_from_low_dates(rows_v, d1, d2)
+                ch_named = channel_prefer_named_rising_or_infer(rows_v, d1, d2)
             if ch_named:
                 mapped = _channel_remap_to_view(ch_named, date_to_i)
                 return mapped or ch_named
@@ -2213,6 +2218,229 @@ def _channel_seg_y(seg, x: float, fallback: float) -> float:
         return float(fallback)
 
 
+def _channel_box_k_hits(
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    *,
+    n: int,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    mark_pad: float = 0.0,
+    span: float = 1.0,
+) -> int:
+    """資料座標粗估：盒蓋到幾根 K（含影線 high–low）。交審以像素 hit 為準。"""
+    pad_y = max(float(span), 1.0) * 0.008
+    mpad = max(float(mark_pad or 0.0), 0.0)
+    # 含影線半寬；略放寬避免低估
+    i0 = max(0, int(np.floor(x0 - 0.42)))
+    i1 = min(int(n) - 1, int(np.ceil(x1 + 0.42)))
+    hits = 0
+    for i in range(i0, i1 + 1):
+        hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
+        lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
+        if not (np.isfinite(hk) and np.isfinite(lk)):
+            continue
+        if lk - pad_y - mpad <= y1 and hk + pad_y + mpad >= y0:
+            hits += 1
+    return int(hits)
+
+
+def _channel_artist_pixel_hits(
+    ax,
+    artist,
+    *,
+    n: int,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    renderer=None,
+    bar_half: float = 0.38,
+) -> Tuple[List[int], Tuple[float, float, float, float]]:
+    """畫完後：artist 像素 bbox ∩ 每根 K high–low（同座標轉換）。
+
+    回傳 (hit 索引列, display bbox x0,y0,x1,y1)。
+    """
+    fig = ax.figure
+    if renderer is None:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+    bb = artist.get_window_extent(renderer=renderer)
+    # bbox 內邊略外擴 1px，對齊肉眼「壓到影線」
+    x0 = float(bb.x0) - 1.0
+    x1 = float(bb.x1) + 1.0
+    y0 = float(bb.y0) - 1.0
+    y1 = float(bb.y1) + 1.0
+    hits: List[int] = []
+    half = float(bar_half)
+    for i in range(int(n)):
+        hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
+        lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
+        if not (np.isfinite(hk) and np.isfinite(lk) and hk >= lk):
+            continue
+        p_lo = ax.transData.transform((float(i) - half, float(lk)))
+        p_hi = ax.transData.transform((float(i) + half, float(hk)))
+        kx0, kx1 = min(float(p_lo[0]), float(p_hi[0])), max(
+            float(p_lo[0]), float(p_hi[0])
+        )
+        ky0, ky1 = min(float(p_lo[1]), float(p_hi[1])), max(
+            float(p_lo[1]), float(p_hi[1])
+        )
+        if kx1 < x0 or kx0 > x1 or ky1 < y0 or ky0 > y1:
+            continue
+        hits.append(int(i))
+    return hits, (x0, y0, x1, y1)
+
+
+def _probe_channel_label_dxdy(
+    ax,
+    text: str,
+    *,
+    n: int,
+    ymin: float,
+    ymax: float,
+    fs: float,
+    color: str = "#6a1b9a",
+) -> Tuple[float, float]:
+    """實畫隱形標→window_extent→資料座標 dx/dy（比字寬粗估準）。"""
+    y_mid = 0.5 * (float(ymin) + float(ymax))
+    x_mid = max(float(n) * 0.5, 1.0)
+    art = ax.text(
+        x_mid,
+        y_mid,
+        str(text),
+        ha="center",
+        va="center",
+        fontproperties=_fp(fs, "bold"),
+        color=color,
+        alpha=0.0,
+        zorder=0,
+        clip_on=False,
+        linespacing=1.12,
+        bbox=dict(
+            boxstyle="round,pad=0.22",
+            facecolor="#ffffff",
+            edgecolor=color,
+            linewidth=0.9,
+            alpha=0.0,
+        ),
+    )
+    try:
+        ax.figure.canvas.draw()
+        renderer = ax.figure.canvas.get_renderer()
+        bb = art.get_window_extent(renderer=renderer)
+        inv = ax.transData.inverted()
+        (dx0, dy0) = inv.transform((bb.x0, bb.y0))
+        (dx1, dy1) = inv.transform((bb.x1, bb.y1))
+        dx = abs(float(dx1) - float(dx0))
+        dy = abs(float(dy1) - float(dy0))
+        # 略放大當碰撞盒，避免低估
+        return max(dx * 1.12, 1.0), max(dy * 1.12, 1.0)
+    except Exception:
+        return _channel_text_box_data(
+            ax, text, n=int(n), ymin=float(ymin), ymax=float(ymax), fs=float(fs)
+        )
+    finally:
+        try:
+            art.remove()
+        except Exception:
+            pass
+
+
+def draw_channel_label_hits_overlay(
+    ax,
+    *,
+    n: int,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    label_artists: Sequence[Any],
+    renderer=None,
+) -> List[Dict[str, Any]]:
+    """半透明紅框＝標籤像素 bbox；紅豎線＝被算到的 K。回傳 hit 報告。"""
+    from matplotlib.patches import Rectangle
+
+    if renderer is None:
+        ax.figure.canvas.draw()
+        renderer = ax.figure.canvas.get_renderer()
+    report: List[Dict[str, Any]] = []
+    inv = ax.transData.inverted()
+    for art in label_artists:
+        if art is None:
+            continue
+        try:
+            txt = str(art.get_text() or "")
+        except Exception:
+            txt = ""
+        hits, (px0, py0, px1, py1) = _channel_artist_pixel_hits(
+            ax, art, n=n, highs=highs, lows=lows, renderer=renderer
+        )
+        (dx0, dy0) = inv.transform((px0, py0))
+        (dx1, dy1) = inv.transform((px1, py1))
+        x0, x1 = min(float(dx0), float(dx1)), max(float(dx0), float(dx1))
+        y0, y1 = min(float(dy0), float(dy1)), max(float(dy0), float(dy1))
+        ax.add_patch(
+            Rectangle(
+                (x0, y0),
+                x1 - x0,
+                y1 - y0,
+                fill=True,
+                facecolor="#ff1744",
+                edgecolor="#d50000",
+                alpha=0.28,
+                linewidth=1.4,
+                zorder=20,
+                clip_on=False,
+            )
+        )
+        for i in hits:
+            ax.plot(
+                [float(i), float(i)],
+                [float(lows[i]), float(highs[i])],
+                color="#ff1744",
+                lw=2.2,
+                alpha=0.85,
+                zorder=21,
+                solid_capstyle="round",
+            )
+        report.append(
+            {
+                "text": txt,
+                "k_hits": int(len(hits)),
+                "hit_bars": list(hits),
+                "data_box": (x0, y0, x1, y1),
+            }
+        )
+    return report
+
+
+def _channel_box_k_depth(
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    *,
+    n: int,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    span: float = 1.0,
+) -> float:
+    """盒與 K 重疊深度總和／軸高：擦邊影線遠小於貫穿實體。"""
+    pad_y = max(float(span), 1.0) * 0.004
+    i0 = max(0, int(np.floor(x0 - 0.15)))
+    i1 = min(int(n) - 1, int(np.ceil(x1 + 0.15)))
+    depth = 0.0
+    for i in range(i0, i1 + 1):
+        hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
+        lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
+        if not (np.isfinite(hk) and np.isfinite(lk)):
+            continue
+        ov0 = max(float(y0), lk - pad_y)
+        ov1 = min(float(y1), hk + pad_y)
+        if ov1 > ov0:
+            depth += (ov1 - ov0) / max(float(span), 1.0)
+    return float(depth)
+
+
 def _channel_box_blocked(
     x0: float,
     x1: float,
@@ -2226,8 +2454,16 @@ def _channel_box_blocked(
     lows: np.ndarray,
     mas: List[np.ndarray],
     placed: List[Tuple[float, float, float, float]],
+    mark_pad: float = 0.0,
+    ignore_ma: bool = False,
+    ignore_k: bool = False,
 ) -> bool:
-    """盒碰到 K、均線、左上／左下壓撐標、已放軌標＝堵住。"""
+    """盒碰到 K、導航箭帶、左上／左下壓撐標、已放軌標＝堵住。
+
+    mark_pad：K 高低再外擴（導航箭／殘影約在 high+gap～low−gap），不准軌標壓箭頭。
+    ignore_ma：線旁空窗候選可略過均線硬擋（均線常穿過空窗；仍避 K／箭）。
+    ignore_k：只擋界／已放標；K 成本改由 _channel_box_k_hits 評分（準許比遮擋）。
+    """
     span = max(float(ymax) - float(ymin), 1.0)
     x_lo, x_hi = -0.8, float(n) - 0.2
     if x0 < x_lo + 0.15 or x1 > x_hi - 0.05:
@@ -2243,19 +2479,24 @@ def _channel_box_blocked(
     if xf0 < 0.30 and yf0 < 0.16:
         return True
     pad_y = span * 0.006
+    mpad = max(float(mark_pad or 0.0), 0.0)
     i0 = max(0, int(np.floor(x0 - 0.35)))
     i1 = min(int(n) - 1, int(np.ceil(x1 + 0.35)))
     for i in range(i0, i1 + 1):
-        hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
-        lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
-        if np.isfinite(hk) and np.isfinite(lk) and lk - pad_y <= y1 and hk + pad_y >= y0:
-            return True
-        for arr in mas:
-            if i >= len(arr):
-                continue
-            v = float(arr[i]) if np.isfinite(arr[i]) else np.nan
-            if np.isfinite(v) and v > 0 and (y0 - pad_y) <= v <= (y1 + pad_y):
-                return True
+        if not ignore_k:
+            hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
+            lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
+            if np.isfinite(hk) and np.isfinite(lk):
+                # 外擴含導航上下箭／殘影佔位
+                if lk - pad_y - mpad <= y1 and hk + pad_y + mpad >= y0:
+                    return True
+        if not ignore_ma:
+            for arr in mas:
+                if i >= len(arr):
+                    continue
+                v = float(arr[i]) if np.isfinite(arr[i]) else np.nan
+                if np.isfinite(v) and v > 0 and (y0 - pad_y) <= v <= (y1 + pad_y):
+                    return True
     for ox0, ox1, oy0, oy1 in placed:
         if not (x1 < ox0 or ox1 < x0 or y1 < oy0 or oy1 < y0):
             return True
@@ -2278,20 +2519,174 @@ def _blank_for_channel_label(
     mas: List[np.ndarray],
     placed: List[Tuple[float, float, float, float]],
     near_last: bool = False,
+    mark_pad: float = 0.0,
 ) -> Tuple[float, float]:
-    """鄰近空白優先；沒有就放到軌道外側空白。不准壓 K、不准壓均線。
+    """沿所屬軌線掃「線旁空窗」；不准壓 K、均線、導航箭。
 
-    near_last：上升軌文字只在右側倒數幾根裡找空白，右緣貼近最後一根。
+    優先：軌與 K／箭帶之間的空隙（下軌常在軌上方空窗，如上拉離軌後的 2300–2400 帶）。
+    near_last：上升軌文字右緣貼最後幾根。
+    mark_pad：避開導航箭／殘影帶（與 _channel_box_blocked 同源）。
     """
     span = max(float(ymax) - float(ymin), 1.0)
     x_hi = float(n) - 0.2
     gap = max(span * 0.008, dy * 0.08)
-    x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
-    best: Optional[Tuple[float, float, float]] = None  # score, cx, cy
+    mpad = max(float(mark_pad or 0.0), 0.0)
+    pref = int(outside) or 1
+    # 硬驗收：標心／盒邊須落在軌上（線旁 ≤ 半個字高）；不准浮空／只認 y_now
+    rail_soft = max(dy * 0.50, span * 0.012)
+    # 箭尖縫：碰撞／硬擋用接近真箭高；口袋底邊用較小 tip，免得把線旁空窗吃光
+    tip_arrow = max(mpad * 0.70, dy * 0.30, span * 0.018) if mpad > 0 else 0.0
+    tip = max(span * 0.010, dy * 0.08, min(max(tip_arrow * 0.45, span * 0.012), span * 0.020))
+    y_vis_lo = float(ymin) + max(dy * 0.55, span * 0.02)
+    y_vis_hi = float(ymax) - max(dy * 0.55, span * 0.02)
+    # 通道樞紐（紫點／接觸）：空窗優先貼近，不准甩遠端或蓋密峰上
+    pivot_xs: List[float] = []
+    try:
+        (px1, _py1, _pa), (px2, _py2, _pb) = seg  # type: ignore[misc]
+        pivot_xs = sorted({float(px1), float(px2)})
+    except Exception:
+        pivot_xs = []
+    pivot_lo = min(pivot_xs) if pivot_xs else float(n) * 0.75
+    pivot_hi = max(pivot_xs) if pivot_xs else float(n) * 0.85
+    # 樞紐落在圖中右才啟用紅圈帶偏好（左緣假樞／水平測試段不強制）
+    pivot_band_ok = bool(pivot_xs) and (
+        float(n) * 0.28 <= float(pivot_lo) <= float(n) * 0.96
+    )
+    # 左界＝第一樞接觸前空窗（紅圈）；再左＝通道未成形，硬拒
+    x_contact_floor = (
+        float(pivot_lo) - 22.0 if pivot_band_ok else float(dx) * 0.5
+    )
 
-    def _consider(cx: float, cy: float, score: float) -> None:
+    def _rail_visible(cx: float) -> Tuple[bool, float]:
+        """該 x 的軌位必須落在可見軸內。
+
+        優先樞紐空窗帶；避 K 可略離 y_now，不准飛出 ylim。
+        """
+        if pivot_band_ok and float(cx) < float(x_contact_floor) - 0.25:
+            return False, float(_channel_seg_y(seg, cx, y_now))
+        y_line = float(_channel_seg_y(seg, cx, y_now))
+        if not (y_vis_lo <= y_line <= y_vis_hi):
+            return False, y_line
+        # 樞紐鄰域／左接觸前空窗：下降軌左側常明顯高於 rail_now，放寬
+        near_piv = min((abs(cx - p) for p in pivot_xs), default=99.0)
+        in_pivot_windows = bool(pivot_xs) and (
+            float(x_contact_floor) <= cx <= float(pivot_hi) + 2.0
+        )
+        if in_pivot_windows:
+            lim = span * 0.55
+        elif near_piv <= 28.0:
+            lim = span * 0.35
+        else:
+            lim = span * 0.28
+        if abs(y_line - float(y_now)) > lim:
+            return False, y_line
+        return True, y_line
+
+    # 起錨：樞紐左側空窗／兩樞之間（對齊使用者紅圈），再掃全段
+    x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
+    if not near_last:
+        found_anchor = False
+        best_anchor: Optional[Tuple[float, float, float]] = None  # score, cx, yl
+        seed_xs: List[float] = []
+        if pivot_band_ok:
+            for back in (6, 10, 14, 18, 22, 4):
+                seed_xs.append(float(pivot_lo) - float(back))
+            if pivot_hi > pivot_lo + 2:
+                seed_xs.append(0.5 * (pivot_lo + pivot_hi))
+                seed_xs.append(pivot_lo + 2.0)
+                seed_xs.append(pivot_hi - 2.0)
+        for xf in (0.88, 0.82, 0.76, 0.70, 0.92, 0.64, 0.94, 0.58):
+            seed_xs.append(min(float(n - 1) * xf, x_hi - dx * 0.55))
+        _placed_mid0: List[float] = []
+        if placed:
+            _placed_mid0 = [0.5 * (float(a) + float(b)) for a, b, _c, _d in placed]
+        for cx0 in seed_xs:
+            cx0 = min(max(float(cx0), max(dx * 0.5, x_contact_floor)), x_hi - dx * 0.45)
+            ok, yl0 = _rail_visible(cx0)
+            if not ok:
+                continue
+            if any(abs(cx0 - m) < max(dx * 0.72, 4.5) for m in _placed_mid0):
+                continue
+            near_piv = min((abs(cx0 - p) for p in pivot_xs), default=40.0)
+            sc = 2.5 - abs(yl0 - float(y_now)) / span
+            if pivot_band_ok:
+                sc -= near_piv * 0.08
+                if float(pivot_lo) - 22.0 <= cx0 <= float(pivot_lo) - 3.0:
+                    sc += 1.8
+                    if not _placed_mid0 and float(pivot_lo) - 10.0 <= cx0 <= float(pivot_lo) - 3.0:
+                        sc += 2.4  # 第一標靠接觸，留給第二標更左空窗
+                if (
+                    pivot_hi > pivot_lo
+                    and float(pivot_lo) + 1.0 <= cx0 <= float(pivot_hi) - 1.0
+                ):
+                    sc += 1.4
+            if best_anchor is None or sc > best_anchor[0]:
+                best_anchor = (sc, cx0, yl0)
+        if best_anchor is not None:
+            x_anchor = float(best_anchor[1])
+            found_anchor = True
+        if not found_anchor:
+            x_anchor = min(float(n) - 1.2, x_hi - dx * 0.45)
+            if pivot_band_ok:
+                x_anchor = min(float(pivot_lo) - 8.0, x_anchor)
+            x_anchor = max(dx * 0.5, float(x_contact_floor), float(x_anchor))
+    # score, cx, cy, k_hits —— 主序 k_hits；≥1 硬拒
+    best: Optional[Tuple[float, float, float, int]] = None
+    # 接觸帶寬≈19 根：錯開須 ≤ 半帶，否則第二標會被擠出紅圈或丟標
+    min_x_sep = max(dx * 0.72, 4.5)
+    def _window_hl(cx: float, *, half: Optional[float] = None) -> Tuple[float, float]:
+        # 空窗偵測：用標寬半幅掃 K，跟真盒遮擋對齊（窄 ±1.6 會漏估長串 K）
+        hw = max(dx / 2.0 + 0.45, 1.6) if half is None else max(float(half), 0.6)
+        i0 = max(0, int(np.floor(cx - hw)))
+        i1 = min(int(n) - 1, int(np.ceil(cx + hw)))
+        loc_hi = -1e18
+        loc_lo = 1e18
+        for i in range(i0, i1 + 1):
+            hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
+            lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
+            if np.isfinite(hk):
+                loc_hi = max(loc_hi, hk)
+            if np.isfinite(lk):
+                loc_lo = min(loc_lo, lk)
+        if loc_hi < -1e17:
+            loc_hi = float(y_now)
+        if loc_lo > 1e17:
+            loc_lo = float(y_now)
+        return loc_hi, loc_lo
+
+    def _consider(
+        cx: float,
+        cy: float,
+        score: float,
+        *,
+        pad: Optional[float] = None,
+        ignore_ma: bool = False,
+    ) -> None:
         nonlocal best
+        # 軟約束：只認該 x 的軌位（下降軌左右高度差大，不准拿 y_now 開後門）
+        if pivot_band_ok and float(cx) < float(x_contact_floor) - 0.25:
+            return
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            return
+        if abs(cy - y_line) > rail_soft:
+            return
+        if not (y_vis_lo <= float(cy) <= y_vis_hi):
+            return
+        # 硬擋買點▲：下軌標底不准伸進 K低−箭高（平行撐不准壓紅／綠▲）
+        if tip_arrow > 0 and pref < 0:
+            _lh, loc_lo_a = _window_hl(cx)
+            if (cy + dy / 2.0) > (loc_lo_a - tip_arrow):
+                return
+        use_pad = mpad if pad is None else max(float(pad), 0.0)
         box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
+        # 兩軌標錯開 x：已放標同密區上下疊＝不合格
+        for ox0, ox1, _oy0, _oy1 in placed:
+            mid_new = 0.5 * (box[0] + box[1])
+            mid_old = 0.5 * (float(ox0) + float(ox1))
+            if abs(mid_new - mid_old) < min_x_sep:
+                return
+        # 硬擋只留界／已放標／均線；K 用 hits 主序
         if _channel_box_blocked(
             *box,
             n=n,
@@ -2301,10 +2696,170 @@ def _blank_for_channel_label(
             lows=lows,
             mas=mas,
             placed=placed,
+            mark_pad=use_pad,
+            ignore_ma=ignore_ma,
+            ignore_k=True,
         ):
             return
+        k_hits = _channel_box_k_hits(
+            *box,
+            n=n,
+            highs=highs,
+            lows=lows,
+            mark_pad=0.0,
+            span=span,
+        )
+        # 硬：蓋 ≥1 根實體／影線＝不合格候選（像素驗收同規）
+        if k_hits >= 1:
+            return
+        k_depth = _channel_box_k_depth(
+            *box, n=n, highs=highs, lows=lows, span=span
+        )
+        arrow_hits = 0
+        if use_pad > 0:
+            arrow_hits = _channel_box_k_hits(
+                *box,
+                n=n,
+                highs=highs,
+                lows=lows,
+                mark_pad=use_pad,
+                span=span,
+            )
+            if arrow_hits >= 1:
+                # 箭帶也當不合格（導航尖）
+                return
+        score -= float(k_depth) * 10.0
+        score += 16.0  # 已通過 0 蓋 K
+        loc_hi, loc_lo = _window_hl(cx)
+        y0, y1 = float(box[2]), float(box[3])
+        # 整盒在 K 外包絡外＝真空白（線旁半格內仍算貼線）
+        clear_gap = max(tip * 0.55, span * 0.012, dy * 0.08)
+        clear_above = y0 >= loc_hi + clear_gap
+        clear_below = y1 <= loc_lo - clear_gap
+        if clear_above or clear_below:
+            score += 8.0
+        else:
+            return  # 未離開價區包絡＝不合格
+        # 真空不要飄太高（視覺像脫軌）；盒底貼近 loc_hi 上方一小段最佳
+        if clear_above:
+            float_gap = (y0 - loc_hi) / span
+            if float_gap < 0.02:
+                score += 1.2
+            elif float_gap < 0.08:
+                score += 2.2  # 紅圈：軌旁剛離開密峰的空窗
+            elif float_gap < 0.14:
+                score += 0.6
+            else:
+                score -= (float_gap - 0.14) * 10.0  # 甩到天際＝差
+        # 偏好靠近紫點／接觸空窗（使用者紅圈）；坐上紫點則微罰
+        if pivot_band_ok:
+            near_piv = min((abs(cx - p) for p in pivot_xs), default=40.0)
+            if 3.0 <= near_piv <= 22.0:
+                score += 7.5 - near_piv * 0.12
+            elif near_piv < 3.0:
+                score -= 2.5  # 蓋住紫點本身
+            elif near_piv > 32.0:
+                score -= min((near_piv - 32.0) * 0.25, 6.0)
+            in_left = float(pivot_lo) - 22.0 <= cx <= float(pivot_lo) - 3.0
+            in_between = (
+                pivot_hi > pivot_lo
+                and float(pivot_lo) + 1.0 <= cx <= float(pivot_hi) - 1.0
+            )
+            # 圖二兩紅圈：左接觸前／兩樞間（有真空才加分）
+            if in_left:
+                score += 5.0
+                if not placed:
+                    # 第一標靠接觸點（左帶右側），留給第二標更左空窗
+                    score += min((cx - (float(pivot_lo) - 22.0)) * 0.22, 4.0)
+                    if float(pivot_lo) - 10.0 <= cx <= float(pivot_lo) - 3.0:
+                        score += 3.0
+                else:
+                    # 第二標偏更左，錯開第一標（仍 ≥ 接觸帶左界）
+                    score += min((float(pivot_lo) - 3.0 - cx) * 0.18, 3.5)
+            if in_between:
+                score += 4.0  # 有真空的兩樞間＝第二紅圈
+            # 甩到第二樞右側／遠端＝對齊紅叉，重罰
+            if cx > float(pivot_hi) + 1.5:
+                score -= min((cx - float(pivot_hi)) * 0.8, 10.0)
+            if cx > float(n) * 0.90:
+                score -= 4.0
+        # 密 K 柱區振幅
+        col_amp = max(loc_hi - loc_lo, 0.0) / span
+        if col_amp > 0.08:
+            score -= (col_amp - 0.08) * 16.0
+        # 貼線分
+        dist_h = abs(cy - y_line) / max(dy, 1e-6)
+        score -= dist_h * 3.5
+        if dist_h <= 0.12:
+            score += 1.4
+        elif dist_h <= 0.35:
+            score += 0.45
+        if pref > 0:
+            if cy > y_line + dy * 0.08:
+                score -= 0.85
+            elif cy <= y_line:
+                score += 0.30
+        else:
+            if cy < y_line - dy * 0.08:
+                score -= 0.85
+            elif cy >= y_line:
+                score += 0.30
+        # 近端輕罰；樞紐空窗壓過近端
+        score -= abs(y_line - float(y_now)) / span * 0.45
         if best is None or score > best[0]:
-            best = (score, cx, cy)
+            best = (score, cx, cy, 0)
+
+    def _stick_offsets() -> Tuple[float, ...]:
+        """線心優先；半格內可偏到線旁空白（仍貼線、不准引線）。"""
+        # 上軌：略偏下（標在線下空白）；下軌：略偏上（標在線上空白）
+        if pref > 0:
+            return (0.0, -0.25 * dy, -0.40 * dy, -0.50 * dy, 0.15 * dy)
+        return (0.0, 0.25 * dy, 0.40 * dy, 0.50 * dy, -0.15 * dy)
+
+    def _on_rail_candidates(cx: float, y_line: float, base: float) -> None:
+        """只評貼線候選（線心／半格內）；碰撞 pad 由大到小。"""
+        for off in _stick_offsets():
+            cy = float(y_line) + float(off)
+            for p in (tip, tip * 0.35, 0.0):
+                _consider(
+                    cx,
+                    cy,
+                    base + (1.4 - abs(off) / max(dy, 1e-6)),
+                    pad=p,
+                    ignore_ma=True,
+                )
+
+    def _pocket_candidates(cx: float, y_line: float, loc_hi: float, loc_lo: float) -> None:
+        """線旁空窗仍要貼軌：口袋內的 cy 強制夾回半格字高內。"""
+        edge = max(gap, span * 0.006, dy * 0.04)
+        pockets: List[Tuple[float, float, float]] = []
+        if pref < 0:
+            top = loc_lo - tip
+            bot = y_line + edge * 0.05
+            if top > bot + max(dy * 0.15, span * 0.006):
+                pockets.append((bot, top, 0.85))
+        else:
+            top = y_line - edge * 0.05
+            bot = loc_hi + tip
+            if top > bot + max(dy * 0.15, span * 0.006):
+                pockets.append((bot, top, 0.85))
+        for p_lo, p_hi, side_bonus in pockets:
+            # 只在貼軌帶內取點（不准口袋中段浮空）
+            band_lo = max(p_lo, y_line - rail_soft)
+            band_hi = min(p_hi, y_line + rail_soft)
+            if band_hi <= band_lo + dy * 0.05:
+                continue
+            for frac, bonus in ((0.15, 0.50), (0.35, 0.35), (0.55, 0.20), (0.75, 0.10)):
+                cy = band_lo + (band_hi - band_lo) * frac
+                _consider(
+                    cx,
+                    cy,
+                    1.35 + side_bonus + bonus,
+                    pad=tip,
+                    ignore_ma=True,
+                )
+                _consider(cx, cy, 1.10 + side_bonus, pad=0.0, ignore_ma=True)
+        _on_rail_candidates(cx, y_line, 1.20)
 
     if near_last:
         # 盒右緣貼最後一根，只准往左挪幾根；垂直挑離最近 K 最近的空白
@@ -2317,87 +2872,125 @@ def _blank_for_channel_label(
             cx = x1 - dx / 2.0
             if x1 < float(n) - 6.0:
                 break
-            i0 = max(0, int(np.floor(cx - dx / 2.0 - 0.3)))
-            i1 = min(int(n) - 1, int(np.ceil(x1 + 0.3)))
-            hi_w = float(y_now)
-            lo_w = float(y_now)
-            for i in range(i0, i1 + 1):
-                hk = float(highs[i]) if i < len(highs) and np.isfinite(highs[i]) else np.nan
-                lk = float(lows[i]) if i < len(lows) and np.isfinite(lows[i]) else np.nan
-                if np.isfinite(hk):
-                    hi_w = max(hi_w, hk)
-                if np.isfinite(lk):
-                    lo_w = min(lo_w, lk)
-                for arr in mas:
-                    if i >= len(arr) or not np.isfinite(arr[i]) or float(arr[i]) <= 0:
-                        continue
-                    hv = float(arr[i])
-                    hi_w = max(hi_w, hv)
-                    lo_w = min(lo_w, hv)
-            for k in (0.0, 0.45, 0.95, 1.5):
+            loc_hi, loc_lo = _window_hl(cx)
+            hi_w, lo_w = loc_hi, loc_lo
+            k_vals = (0.0, 0.45, 0.95, 1.5, 2.2, 3.0) if mpad > 0 else (0.0, 0.45, 0.95, 1.5)
+            for k in k_vals:
                 for sign in (-1, 1):
                     if sign < 0:
-                        cy = lo_w - gap - dy / 2.0 - k * dy * 0.42
+                        cy = lo_w - gap - dy / 2.0 - k * dy * 0.42 - (mpad * 0.35 if mpad else 0.0)
                     else:
-                        cy = hi_w + gap + dy / 2.0 + k * dy * 0.42
+                        cy = hi_w + gap + dy / 2.0 + k * dy * 0.42 + (mpad * 0.35 if mpad else 0.0)
                     if y_ref_lo <= cy <= y_ref_hi:
                         dist = 0.0
                     else:
                         dist = min(abs(cy - y_ref_lo), abs(cy - y_ref_hi)) / span
                     _consider(cx, cy, 4.0 - shift * 0.35 - dist * 0.85 - k * 0.2)
+            _pocket_candidates(cx, _channel_seg_y(seg, cx, y_now), loc_hi, loc_lo)
         if best is not None:
             return best[1], best[2]
-        cy = lo_w - gap - dy / 2.0
+        cy = lo_w - gap - dy / 2.0 - mpad
         return cx, max(float(ymin) + dy / 2.0 + gap, min(cy, float(ymax) - dy / 2.0 - gap))
 
-    # 鄰近：沿軌往左找，盒子貼在線旁空隙（先外側、再內側）
-    for step in range(0, 34):
-        cx = x_anchor - step * max(dx * 0.22, 1.1)
-        y_line = _channel_seg_y(seg, cx, y_now)
-        near = 1.0 - step / 40.0
-        for sign in (int(outside) or 1, -int(outside or 1)):
-            if sign == 0:
-                continue
-            for k in (1.0, 1.7, 2.5):
-                if sign > 0:
-                    cy = y_line + gap + dy / 2.0 + (k - 1.0) * dy * 0.55
-                else:
-                    cy = y_line - gap - dy / 2.0 - (k - 1.0) * dy * 0.55
-                dist = abs(cy - y_line) / span
-                _consider(cx, cy, near - dist * 0.8 - (0.0 if sign == int(outside) else 0.12))
-        if best is not None and step >= 6 and best[0] > 0.35:
+    # 主掃：整段可見軌；不准提早 break（近端密 K 時必須往左找空窗）
+    near_steps = max(int(n * 1.2), 96) if mpad > 0 else max(int(n), 56)
+    step_dx = max(dx * 0.10, 0.55)
+    for step in range(0, near_steps):
+        cx = x_anchor - step * step_dx
+        if cx < dx * 0.4:
             break
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            continue
+        near = 1.0 - step / float(near_steps + 8)
+        loc_hi, loc_lo = _window_hl(cx)
+        _pocket_candidates(cx, y_line, loc_hi, loc_lo)
+        _on_rail_candidates(cx, y_line, near)
+        # 已找到 0 蓋 K 且貼線夠好 → 可收；否則繼續掃空窗
+        if best is not None and best[3] == 0 and best[0] > 8.0 and step >= 12:
+            break
+    if best is not None and best[3] == 0:
+        return best[1], best[2]
+
+    # 放寬：仍只認可見軌＋貼線心；忽略箭硬擋，比最少蓋 K
+    saved_tip_arrow = tip_arrow
+    tip_arrow = 0.0
+    for step in range(0, max(int(n), 40)):
+        cx = x_anchor - step * max(dx * 0.12, 0.65)
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            continue
+        _on_rail_candidates(cx, y_line, 0.25 - step * 0.002)
+        if best is not None and best[3] == 0:
+            tip_arrow = saved_tip_arrow
+            return best[1], best[2]
+    tip_arrow = saved_tip_arrow
     if best is not None:
         return best[1], best[2]
 
-    # 外側空白：上軌往最高 K／均線之上，下軌往最低之下；仍避開蠟燭
-    env_hi = float(np.nanmax(highs)) if len(highs) else float(y_now)
-    env_lo = float(np.nanmin(lows)) if len(lows) else float(y_now)
-    for arr in mas:
-        ok = np.isfinite(arr) & (arr > 0)
-        if ok.any():
-            env_hi = max(env_hi, float(np.nanmax(arr[ok])))
-            env_lo = min(env_lo, float(np.nanmin(arr[ok])))
-    env_hi = max(env_hi, float(y_now))
-    env_lo = min(env_lo, float(y_now))
-    for step in range(0, 40):
-        cx = x_anchor - step * max(dx * 0.2, 1.0)
-        if int(outside) >= 0:
-            cy = env_hi + gap + dy / 2.0 + step * dy * 0.15
-            _consider(cx, cy, 0.2 - step * 0.004)
-            cy_lo = env_lo - gap - dy / 2.0 - step * dy * 0.15
-            _consider(cx, cy_lo, 0.05 - step * 0.004)
-        else:
-            cy = env_lo - gap - dy / 2.0 - step * dy * 0.15
-            _consider(cx, cy, 0.2 - step * 0.004)
-            cy_hi = env_hi + gap + dy / 2.0 + step * dy * 0.15
-            _consider(cx, cy_hi, 0.05 - step * 0.004)
-        if best is not None:
-            return best[1], best[2]
-    # 仍無淨空：貼在外側 ylim 內緣，不回到蠟燭上
-    if int(outside) >= 0:
-        return x_anchor, min(float(ymax) - dy / 2.0 - gap, env_hi + gap + dy / 2.0)
-    return x_anchor, max(float(ymin) + dy / 2.0 + gap, env_lo - gap - dy / 2.0)
+    # 最後保底：只收 0 蓋 K＋整盒離開價區包絡
+    best_fb: Optional[Tuple[float, float, float, float]] = None  # dist, -clear, cx, cy
+    for xf in (
+        0.94,
+        0.90,
+        0.86,
+        0.82,
+        0.78,
+        0.74,
+        0.70,
+        0.66,
+        0.62,
+        0.58,
+        0.54,
+        0.50,
+        0.45,
+        0.40,
+    ):
+        cx = min(float(n - 1) * xf, x_hi - dx * 0.4)
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            continue
+        for off in _stick_offsets():
+            cy = min(max(float(y_line) + float(off), y_vis_lo), y_vis_hi)
+            box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
+            clash = False
+            for ox0, ox1, _a, _b in placed:
+                if abs(cx - 0.5 * (float(ox0) + float(ox1))) < min_x_sep:
+                    clash = True
+                    break
+            if clash:
+                continue
+            kh = _channel_box_k_hits(
+                *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+            )
+            if kh >= 1:
+                continue
+            loc_hi, loc_lo = _window_hl(cx)
+            gap = max(tip * 0.55, span * 0.012, dy * 0.08)
+            clear = (box[2] >= loc_hi + gap) or (box[3] <= loc_lo - gap)
+            if not clear:
+                continue
+            dist_now = abs(y_line - float(y_now)) / span
+            key = (dist_now, float(cx), float(cy))
+            if best_fb is None or key[0] < best_fb[0]:
+                best_fb = (dist_now, float(cx), float(cy), 0.0)
+    if best_fb is not None:
+        return best_fb[1], best_fb[2]
+    # 無真空窗：仍貼可見軌線心，但必須錯開已放標 x
+    for xf in (0.90, 0.82, 0.74, 0.66, 0.58, 0.50, 0.94):
+        cx = min(float(n - 1) * xf, x_hi - dx * 0.4)
+        ok_vis, y_line = _rail_visible(cx)
+        if not ok_vis:
+            continue
+        if any(
+            abs(cx - 0.5 * (float(a) + float(b))) < min_x_sep
+            for a, b, _c, _d in placed
+        ):
+            continue
+        cy = min(max(float(y_line), y_vis_lo), y_vis_hi)
+        return cx, cy
+    cy = min(max(float(_channel_seg_y(seg, x_anchor, y_now)), y_vis_lo), y_vis_hi)
+    return x_anchor, cy
 
 
 def paint_vol_zone_parallel_channel(
@@ -2407,15 +3000,23 @@ def paint_vol_zone_parallel_channel(
     n: int,
     ymin: float,
     ymax: float,
-    labels_outside: bool = True,
+    labels_outside: bool = False,
+    market_style: bool = False,
     highs: Optional[np.ndarray] = None,
     lows: Optional[np.ndarray] = None,
     mas: Optional[List[np.ndarray]] = None,
+    paint_rails: bool = True,
+    paint_labels: bool = True,
+    avoid_nav_marks: bool = False,
 ) -> List[Tuple[float, float, float, float]]:
-    """在大量區 K 上畫兩條平行軌＋右緣價標。不是買訊、不數 5／9。
+    """在大量區 K 上畫兩條平行軌＋軌標。不是買訊、不數 5／9。
 
-    labels_outside：標放軸外右溝（axes 1.085），呼叫端須收窄 GridSpec。
-    大盤滿寬傳 False：沿軌找鄰近空白，沒有就放軌道外側；不准壓 K／均線、不准把 K 擠窄。
+    預設／產品：labels_outside=False＝滿版底＋沿線智能定位（擋最少）；
+    不准為塞標收窄 GridSpec／加寬黑邊／改 figsize。
+    market_style：大盤加粗軌＋錨點日期標；個股滿版仍用結構圖細虛線色。
+    avoid_nav_marks：標位避開導航箭／殘影帶（呼叫端宜在疊導航之後再 paint_labels）。
+    paint_rails／paint_labels：可拆成先畫線、導航後再掛標。
+    labels_outside=True 僅舊備援（軸外 1.085）；新呼叫端不准再開。
     回傳已放標盒 (x0, x1, y0, y1)，給均線短標互讓。
     """
     placed: List[Tuple[float, float, float, float]] = []
@@ -2427,7 +3028,7 @@ def paint_vol_zone_parallel_channel(
 
     seam = float(max(n - 1, 0))
     # 軸外標才加右緣空；滿寬不准把 xlim 再撐開把 K 擠瘦
-    market_rails = not labels_outside
+    market_rails = bool(market_style)
     if labels_outside:
         x0, x1 = ax.get_xlim()
         ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
@@ -2435,7 +3036,7 @@ def paint_vol_zone_parallel_channel(
     else:
         rail_hi = float(n) - 0.35
     kind0 = str(ch.get("kind") or "")
-    # 話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。短劃跟結構圖同一常數。結構圖線寬仍細。
+    # 大盤話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。個股滿版跟結構圖同一細虛線常數。
     rail_kw: Dict[str, Any] = {}
     if market_rails:
         rail_kw = dict(
@@ -2444,17 +3045,20 @@ def paint_vol_zone_parallel_channel(
             rail_halo=2.3,
             rail_color="#0d47a1" if kind0 == "asc" else "#4a148c",
         )
-    _paint_parallel_channel(
-        ax,
-        ch,
-        seam=seam,
-        x_lo=-0.05,
-        x_hi=rail_hi,
-        y_lo=float(ymin),
-        y_hi=float(ymax),
-        n=int(n),
-        **rail_kw,
-    )
+    if paint_rails:
+        _paint_parallel_channel(
+            ax,
+            ch,
+            seam=seam,
+            x_lo=-0.05,
+            x_hi=rail_hi,
+            y_lo=float(ymin),
+            y_hi=float(ymax),
+            n=int(n),
+            **rail_kw,
+        )
+    if not paint_labels:
+        return placed
     # 右緣價標：上升軌／平行壓 或 下降壓／平行撐（跟結構圖用語同一套）
     name_u = str(ch.get("name_u") or "上軌")
     name_l = str(ch.get("name_l") or "下軌")
@@ -2468,28 +3072,73 @@ def paint_vol_zone_parallel_channel(
         color = "#1565c0" if kind == "asc" else "#6a1b9a"
         if not bool(ch.get("alive")):
             color = "#90a4ae"
-        label_fs = 7.6
+        label_fs = 9.2
+    # 導航疊完後 ylim 會再外擴；標位用軸上真實範圍
+    if avoid_nav_marks and ax is not None:
+        try:
+            y0_ax, y1_ax = ax.get_ylim()
+            if np.isfinite(y0_ax) and np.isfinite(y1_ax) and y1_ax > y0_ax:
+                ymin = float(y0_ax)
+                ymax = float(y1_ax)
+        except Exception:
+            pass
     y_span = max(float(ymax) - float(ymin), 1.0)
-    # (顯示Y, 標名, 真價)——錯開只動顯示Y，價標仍用真價
+    # mark_pad 跟「柱高低幅」走（對齊導航 arrow_h+gap≈0.082），不准用整幅 ylim 灌太大
+    # 否則軌旁空窗（紅標那種）會被假性塞滿、標被趕到軌下壓買點▲
+    if avoid_nav_marks:
+        try:
+            c_hi = float(np.nanmax(highs)) if highs is not None and len(highs) else 0.0
+            c_lo = float(np.nanmin(lows)) if lows is not None and len(lows) else 0.0
+            candle_span = max(c_hi - c_lo, y_span * 0.35, 1.0)
+        except Exception:
+            candle_span = y_span
+        mark_pad = float(candle_span) * 0.10
+    else:
+        mark_pad = 0.0
+    # (顯示Y, 標名, 真價)。先放下軌再上軌——下軌真空窗常在左上，不准被上標先佔死
     items: List[Tuple[float, str, float]] = []
-    for y, lab in ((rail, name_u), (base, name_l)):
+    for y, lab in ((base, name_l), (rail, name_u)):
         if y > 0:
             items.append((float(y), str(lab), float(y)))
     if len(items) == 2 and abs(items[0][0] - items[1][0]) < y_span * 0.045:
         mid = (items[0][0] + items[1][0]) / 2.0
         gap = y_span * 0.028
-        if items[0][0] >= items[1][0]:
-            items = [
-                (mid + gap, items[0][1], items[0][2]),
-                (mid - gap, items[1][1], items[1][2]),
-            ]
-        else:
-            items = [
-                (mid - gap, items[0][1], items[0][2]),
-                (mid + gap, items[1][1], items[1][2]),
-            ]
+        # 保持下／上順序
+        lo_it = items[0] if items[0][1] == name_l else items[1]
+        hi_it = items[1] if items[0][1] == name_l else items[0]
+        items = [
+            (mid - gap, lo_it[1], lo_it[2]),
+            (mid + gap, hi_it[1], hi_it[2]),
+        ]
+    # 樞紐左側空窗常略高於原 ymax：抬到「兩標錯開後更左接觸帶」夠用
+    try:
+        top_need = float(ymax)
+        for _seg in (ch.get("lower"), ch.get("upper")):
+            if not _seg:
+                continue
+            try:
+                (qx1, _a, _b), (qx2, _c, _d) = _seg
+                p0 = min(float(qx1), float(qx2))
+            except Exception:
+                p0 = float(n) * 0.78
+            for back in (6.0, 10.0, 14.0, 18.0, 22.0):
+                yl = float(
+                    _channel_seg_y(
+                        _seg, p0 - back, float(base or rail or 0)
+                    )
+                )
+                top_need = max(top_need, yl + y_span * 0.055)
+        # 抬到紅圈接觸帶左界（pivot−22）軌位可見；不准再往未成形更左抬
+        top_cap = float(ymax) + y_span * 0.28
+        top_need = min(top_need, top_cap)
+        if top_need > float(ymax) + 1.0:
+            ax.set_ylim(float(ymin), float(top_need))
+            ymax = float(top_need)
+            y_span = max(float(ymax) - float(ymin), 1.0)
+    except Exception:
+        pass
     # 軸外右溝：X＝axes 分數、Y＝價；clip_on=False 才能畫進 GridSpec 預留溝。
-    # 大盤滿寬改找鄰近空白（資料座標），不准固定貼在最右 K 上。
+    # 滿版改找鄰近空白（資料座標），不准固定貼在最右 K 上、不准收窄底版。
     trans = blended_transform_factory(ax.transAxes, ax.transData)
     hi_arr = np.asarray(highs if highs is not None else [], dtype=float)
     lo_arr = np.asarray(lows if lows is not None else [], dtype=float)
@@ -2499,6 +3148,7 @@ def paint_vol_zone_parallel_channel(
         and hi_arr.size >= int(n)
         and lo_arr.size >= int(n)
     )
+    label_artists: List[Any] = []
     for y_disp, lab, y_px in items:
         if market_rails:
             shown = _market_channel_anchor_caption(
@@ -2537,45 +3187,240 @@ def paint_vol_zone_parallel_channel(
         else:
             seg = ch.get("lower")
             outside = -1
-        dx, dy = _channel_text_box_data(
-            ax, shown, n=int(n), ymin=float(ymin), ymax=float(ymax), fs=label_fs
-        )
-        cx, cy = _blank_for_channel_label(
-            text=shown,
-            seg=seg,
-            y_now=float(y_px),
-            outside=outside,
+        # 先探真 bbox 尺寸，再口袋；畫完後像素驗收，撞 K 就重試／強制掃真空窗
+        dx, dy = _probe_channel_label_dxdy(
+            ax,
+            shown,
             n=int(n),
             ymin=float(ymin),
             ymax=float(ymax),
-            dx=dx,
-            dy=dy,
-            highs=hi_arr,
-            lows=lo_arr,
-            mas=ma_arrs,
-            placed=placed,
-            near_last=bool(market_rails and "上升軌" in shown),
-        )
-        ax.text(
-            cx,
-            cy,
-            shown,
-            ha="center",
-            va="center",
-            fontproperties=_fp(label_fs, "bold"),
+            fs=label_fs,
             color=color,
-            zorder=12,
-            clip_on=True,
-            linespacing=1.12,
-            bbox=dict(
-                boxstyle="round,pad=0.22",
-                facecolor="#ffffff",
-                edgecolor=color,
-                linewidth=1.35 if market_rails else 0.75,
-                alpha=0.97,
-            ),
         )
-        placed.append((cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0))
+        art = None
+        cx = cy = 0.0
+        box_kw = dict(
+            boxstyle="round,pad=0.22",
+            facecolor="#ffffff",
+            edgecolor=color,
+            linewidth=1.35 if market_rails else 0.9,
+            alpha=0.97,
+        )
+
+        def _place_at(x: float, y: float):
+            nonlocal art
+            if art is not None:
+                try:
+                    art.remove()
+                except Exception:
+                    pass
+            art = ax.text(
+                float(x),
+                float(y),
+                shown,
+                ha="center",
+                va="center",
+                fontproperties=_fp(label_fs, "bold"),
+                color=color,
+                zorder=12,
+                clip_on=True,
+                linespacing=1.12,
+                bbox=box_kw,
+            )
+            return art
+
+        def _pixel_hits_of(artist) -> List[int]:
+            try:
+                ax.figure.canvas.draw()
+                renderer = ax.figure.canvas.get_renderer()
+                hits, _bb = _channel_artist_pixel_hits(
+                    ax,
+                    artist,
+                    n=int(n),
+                    highs=hi_arr,
+                    lows=lo_arr,
+                    renderer=renderer,
+                )
+                return list(hits)
+            except Exception:
+                return []
+
+        ok = False
+        min_sep = max(dx * 0.72, 4.5)
+        for _try in range(2):
+            cx, cy = _blank_for_channel_label(
+                text=shown,
+                seg=seg,
+                y_now=float(y_px),
+                outside=outside,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                dx=dx,
+                dy=dy,
+                highs=hi_arr,
+                lows=lo_arr,
+                mas=ma_arrs,
+                placed=placed,
+                near_last=bool(market_rails and "上升軌" in shown),
+                mark_pad=mark_pad,
+            )
+            # 保底若仍撞已放 x → 當失敗，逼進像素掃
+            clash_x = any(
+                abs(float(cx) - 0.5 * (float(a) + float(b))) < min_sep
+                for a, b, _c, _d in placed
+            )
+            _place_at(cx, cy)
+            hits = _pixel_hits_of(art)
+            if not hits and not clash_x:
+                ok = True
+                # 立刻佔位，下一條軌才能錯開 x／換紅圈帶
+                placed.append(
+                    (
+                        float(cx) - dx / 2.0,
+                        float(cx) + dx / 2.0,
+                        float(cy) - dy / 2.0,
+                        float(cy) + dy / 2.0,
+                    )
+                )
+                break
+            # 失敗不放大盒（dx 變大反而塞不下左接觸帶）；進像素掃
+            break
+        if not ok:
+            # 強制沿可見軌像素掃：只收 k_hits==0
+            span = max(float(ymax) - float(ymin), 1.0)
+            rail_soft = max(dy * 0.50, span * 0.012)
+            min_sep = max(dx * 0.72, 4.5)
+            best_pix: Optional[Tuple[float, float, float]] = None
+            # 強制掃：樞紐左側／兩樞間優先（對齊紅圈）
+            try:
+                (sx1, _a, _b), (sx2, _c, _d) = seg  # type: ignore[misc]
+                p_lo, p_hi = min(float(sx1), float(sx2)), max(float(sx1), float(sx2))
+            except Exception:
+                p_lo, p_hi = float(n) * 0.75, float(n) * 0.85
+            scan_floor = float(p_lo) - 22.0
+            scan_xs = [p_lo - b for b in (6, 10, 14, 18, 22, 4)]
+            if p_hi > p_lo + 2:
+                scan_xs += [p_lo + 2, 0.5 * (p_lo + p_hi), p_hi - 2]
+            scan_xs += list(np.linspace(0.88, 0.45, 28) * float(n - 1))
+            for tx in scan_xs:
+                tx = min(
+                    max(float(tx), max(dx * 0.5, scan_floor)),
+                    float(n) - 0.4 - dx * 0.5,
+                )
+                y_line = float(_channel_seg_y(seg, tx, float(y_px)))
+                if not (float(ymin) + dy * 0.55 <= y_line <= float(ymax) - dy * 0.55):
+                    continue
+                if abs(y_line - float(y_px)) > span * 0.36:
+                    continue
+                clash = any(
+                    abs(tx - 0.5 * (float(a) + float(b))) < min_sep
+                    for a, b, _c, _d in placed
+                )
+                if clash:
+                    continue
+                for off in (
+                    0.0,
+                    0.35 * dy * (-1 if outside > 0 else 1),
+                    0.5 * dy * (-1 if outside > 0 else 1),
+                ):
+                    ty = y_line + float(off)
+                    if abs(ty - y_line) > rail_soft:
+                        continue
+                    _place_at(tx, ty)
+                    hits = _pixel_hits_of(art)
+                    if hits:
+                        continue
+                    near_piv = min(abs(tx - p_lo), abs(tx - p_hi))
+                    # 主鍵：紅圈帶（左接觸前／兩樞間）＞近端；右側紅叉重罰
+                    key = near_piv + abs(y_line - float(y_px)) / span * 8.0
+                    if p_lo - 22 <= tx <= p_lo - 3:
+                        key -= 8.0
+                    if p_hi > p_lo and p_lo + 1 <= tx <= p_hi - 1:
+                        key -= 6.0
+                    if tx > p_hi + 1.5:
+                        key += 8.0
+                    if best_pix is None or key < best_pix[0]:
+                        best_pix = (key, float(tx), float(ty))
+            if best_pix is not None:
+                cx, cy = best_pix[1], best_pix[2]
+                _place_at(cx, cy)
+                ok = not _pixel_hits_of(art)
+                if ok:
+                    placed.append(
+                        (
+                            float(cx) - dx / 2.0,
+                            float(cx) + dx / 2.0,
+                            float(cy) - dy / 2.0,
+                            float(cy) + dy / 2.0,
+                        )
+                    )
+            if not ok and placed:
+                # 保底：接觸帶內略縮錯開距再掃（結構圖字盒較大時仍要塞兩標）
+                soft_sep = max(dx * 0.55, 3.8)
+                best_soft: Optional[Tuple[float, float, float]] = None
+                for tx in [p_lo - b for b in (8, 12, 16, 20, 22, 5, 3)]:
+                    tx = min(max(float(tx), scan_floor), float(n) - 0.4 - dx * 0.5)
+                    y_line = float(_channel_seg_y(seg, tx, float(y_px)))
+                    if not (
+                        float(ymin) + dy * 0.55 <= y_line <= float(ymax) - dy * 0.55
+                    ):
+                        continue
+                    if any(
+                        abs(tx - 0.5 * (float(a) + float(b))) < soft_sep
+                        for a, b, _c, _d in placed
+                    ):
+                        continue
+                    for off in (0.0, 0.35 * dy * (-1 if outside > 0 else 1)):
+                        ty = y_line + float(off)
+                        if abs(ty - y_line) > rail_soft:
+                            continue
+                        _place_at(tx, ty)
+                        if _pixel_hits_of(art):
+                            continue
+                        key = abs(tx - p_lo)
+                        if best_soft is None or key < best_soft[0]:
+                            best_soft = (key, float(tx), float(ty))
+                if best_soft is not None:
+                    cx, cy = best_soft[1], best_soft[2]
+                    _place_at(cx, cy)
+                    ok = not _pixel_hits_of(art)
+                    if ok:
+                        placed.append(
+                            (
+                                float(cx) - dx / 2.0,
+                                float(cx) + dx / 2.0,
+                                float(cy) - dy / 2.0,
+                                float(cy) + dy / 2.0,
+                            )
+                        )
+        if art is not None and ok:
+            label_artists.append(art)
+            try:
+                print(
+                    f"channel-label-place {shown!r} x={float(art.get_position()[0]):.2f} "
+                    f"y={float(art.get_position()[1]):.2f} ok={ok}",
+                    flush=True,
+                )
+            except Exception:
+                pass
+        elif art is not None and not ok:
+            # 像素仍蓋 K → 不准留紅叉位，拿掉
+            try:
+                art.remove()
+            except Exception:
+                pass
+            art = None
+            try:
+                print(f"channel-label-drop {shown!r} pixel-hits", flush=True)
+            except Exception:
+                pass
+    # 供 debug overlay：暫掛在 axes
+    try:
+        ax._wayne_channel_label_artists = list(label_artists)  # type: ignore[attr-defined]
+        ax._wayne_channel_label_ohlc = (hi_arr, lo_arr, int(n))  # type: ignore[attr-defined]
+    except Exception:
+        pass
     return placed
 
 
@@ -3219,8 +4064,9 @@ def _paint_volume_zone(
         head_ratios = [1.28, 3.38, 0.40, 0.98]
         head_bottom = 0.072
 
-    # 大盤大量區（平行軌、無導航、橫式）：畫布與右緣對齊加權日K，標改貼軸內。
-    # 個股／直式不准走這組 figsize。其餘平行軌才收窄右溝給軸外標。
+    # 大盤大量區（平行軌、無導航、橫式）：畫布與右緣對齊加權日K。
+    # 個股／直式不准走這組 figsize。平行軌標一律軸內智能定位，
+    # 不准為塞標把 GridSpec right 收到 0.72（會左右大黑邊、主圖被擠窄）。
     market_wide = bool(
         with_parallel_channel and not lookup_portrait and not with_nav_signals
     )
@@ -3232,7 +4078,7 @@ def _paint_volume_zone(
         _paint_dpi = int(NAV_CHART_DPI)
     else:
         _gs_left = 0.050 if with_nav_signals else 0.04
-        _gs_right = 0.72 if with_parallel_channel else (0.935 if with_nav_signals else 0.96)
+        _gs_right = 0.935 if with_nav_signals else 0.96
         _paint_dpi = int(VOL_ZONE_DPI)
     if with_nav_signals:
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
@@ -3395,7 +4241,15 @@ def _paint_volume_zone(
         except (TypeError, ValueError):
             amt = 0.0
         lab = verb if amt <= 0 else f"{verb}{_fmt_price(amt)}元"
-        ax1.axvline(xs[i], color="#6a1b9a", linewidth=1.05, alpha=0.5, zorder=1, linestyle=(0, (2.5, 1.8)))
+        # z 略高於底帶／參考線，豎虛線才不會在上半被蓋到「看不見對哪根」
+        ax1.axvline(
+            xs[i],
+            color="#6a1b9a",
+            linewidth=1.05,
+            alpha=0.55,
+            zorder=3,
+            linestyle=(0, (2.5, 1.8)),
+        )
         ex_labels.append((i, lab))
         ref = 0.0
         try:
@@ -3595,27 +4449,31 @@ def _paint_volume_zone(
     # 右略鬆給末日 K／收價；均線標改放左半／中段，不搶近端
     ax1.set_xlim(-0.05, n + 2.15)
     channel_label_rects: List[Tuple[float, float, float, float]] = []
+    _ma_for_channel: List[Any] = []
     if with_parallel_channel and channel:
         try:
-            ma_for_labels = [
+            _ma_for_channel = [
                 a
                 for a in (ma5_vals, ma10_vals, ma20_vals, ma60_vals)
                 if a is not None
             ]
-            channel_label_rects = paint_vol_zone_parallel_channel(
+            # 先畫軌線；標籤等導航箭疊完再掛（避開箭頭，不准壓判定符號）
+            paint_vol_zone_parallel_channel(
                 ax1,
                 channel,
                 n=int(n),
                 ymin=float(ymin),
                 ymax=float(ymax),
-                labels_outside=not market_wide,
-                highs=highs if market_wide else None,
-                lows=lows if market_wide else None,
-                mas=ma_for_labels if market_wide else None,
+                labels_outside=False,
+                market_style=bool(market_wide),
+                highs=highs,
+                lows=lows,
+                mas=_ma_for_channel,
+                paint_rails=True,
+                paint_labels=False,
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
-            channel_label_rects = []
     # v9：橘框／壓撐／下一層／原文目標改在導航箭頭之後再畫（高 z＋白底），
     # 優先保文字可讀；水平線仍先畫（見下方 paint 只補標）。
     ax1.yaxis.tick_right()
@@ -3764,6 +4622,28 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
+    # 軌道價標：導航之後再掛，智能避箭頭／殘影；不准壓判定符號
+    if with_parallel_channel and channel:
+        try:
+            channel_label_rects = paint_vol_zone_parallel_channel(
+                ax1,
+                channel,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                labels_outside=False,
+                market_style=bool(market_wide),
+                highs=highs,
+                lows=lows,
+                mas=_ma_for_channel,
+                paint_rails=False,
+                paint_labels=True,
+                avoid_nav_marks=bool(with_nav_signals),
+            )
+        except Exception:
+            logger.exception("大量區平行軌標失敗 sid=%s", sid)
+            channel_label_rects = []
+
     # 均線短標：程式自動選位（中左→中→中右靠中）只貼己線；不准動 OHLC／量柱
     highs_a = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
     lows_a = pd.to_numeric(view["low"], errors="coerce").to_numpy(dtype=float)
@@ -3790,23 +4670,53 @@ def _paint_volume_zone(
             extra_occupied=channel_label_rects,
         )
 
-    # 除息標：貼豎線上方、避開左上壓標；不准大抬 ylim 把 K 壓扁
+    # 除息標：必須對準該根 K 的豎虛線（x＝xs[i]）；不准把標平移離開豎線
+    # 標在軸頂；豎虛線提高 z，必要時再補標底→K 高連線，對應哪根一眼可讀
     if ex_labels:
         from matplotlib.transforms import blended_transform_factory
 
         trans = blended_transform_factory(ax1.transData, ax1.transAxes)
-        left_guard = max(n * 0.20, 14.0)
         used_x: list[float] = []
+        try:
+            y0_ax, y1_ax = ax1.get_ylim()
+            y_lo_ex = float(y0_ax)
+            y_hi_ex = float(y1_ax)
+        except Exception:
+            y_lo_ex, y_hi_ex = float(ymin), float(ymax)
+        y_span_ex = max(y_hi_ex - y_lo_ex, 1.0)
         for i, lab in ex_labels:
             near = sum(1 for ux in used_x if abs(ux - float(xs[i])) < 5.0)
             x_pos = float(xs[i])
-            ha = "center"
-            # 除息標貼軸頂，避開 K 頂／壓標
-            y_ax = 0.965 - 0.055 * (near % 3)
-            if x_pos < left_guard:
-                x_pos = left_guard
+            # 仍鎖在該根 x；左／右緣貼豎線（寬標 ha=center 會看起來像飄離虛線）
+            if x_pos < max(6.0, float(n) * 0.22):
                 ha = "left"
-                y_ax = 0.94 - 0.05 * (near % 3)
+            elif x_pos > float(n) - max(6.0, float(n) * 0.22):
+                ha = "right"
+            else:
+                ha = "center"
+            y_ax = 0.965 - 0.055 * (near % 3)
+            # 既有 axvline z 低會被 K／帶蓋住上段；補畫標底→K 高的虛線連杆
+            try:
+                y_bar = float(highs[i]) if i < len(highs) and float(highs[i] or 0) > 0 else float(
+                    closes[i] if i < len(closes) else 0
+                )
+            except (TypeError, ValueError, IndexError):
+                y_bar = 0.0
+            if y_bar > 0:
+                y_top = y_lo_ex + y_span_ex * float(y_ax)
+                y_end = min(y_top - y_span_ex * 0.018, y_hi_ex - y_span_ex * 0.008)
+                if y_end > y_bar:
+                    ax1.plot(
+                        [x_pos, x_pos],
+                        [y_bar, y_end],
+                        color="#6a1b9a",
+                        linewidth=1.05,
+                        alpha=0.62,
+                        zorder=10,
+                        linestyle=(0, (2.5, 1.8)),
+                        solid_capstyle="butt",
+                        clip_on=False,
+                    )
             ax1.text(
                 x_pos,
                 y_ax,
@@ -3831,15 +4741,16 @@ def _paint_volume_zone(
     # v9：關鍵文字最後畫（白底＋高 z），不准被箭頭／三角／均線短標／K 壓住
     from matplotlib.transforms import blended_transform_factory
 
+    # 現任主區壓／撐＝大檔同大（角色＝find_volume_zone 當下主區，不是文案名）
     _key_tag_box = dict(
-        boxstyle="round,pad=0.30",
+        boxstyle=f"round,pad={float(VOL_ZONE_TAG_PAD):.2f}",
         facecolor="#ffffff",
-        linewidth=1.15,
+        linewidth=1.05,
         alpha=1.0,
     )
     _KEY_Z = 22
     _left_tag_tf = blended_transform_factory(ax1.transAxes, ax1.transData)
-    # 主區壓／撐：釘在價線左側（對得到線；避開左下角導航▲）
+    # 釘在價線左側（對得到線；避開左下角導航▲）
     if float(hi or 0) > 0:
         ax1.text(
             0.012,
@@ -3868,11 +4779,10 @@ def _paint_volume_zone(
             clip_on=False,
             bbox={**_key_tag_box, "edgecolor": _HOLD},
         )
-    # v11：下一層壓／撐沿線 smart 掃位；原文目標仍 v8／v10 右緣 0.78
-    # busy_ys／白底高 z／導航後畫保留
+    # 下一層＝小檔（LAYER_TAG_PT）；v11 smart 掃位＋整組同字級。破撐≠立刻換主區。
     if next_pack:
         try:
-            from biaoke_next_support import paint_written_and_next_levels
+            from biaoke_next_support import LAYER_TAG_PT, paint_written_and_next_levels
 
             _mas_for_layer = [
                 a
@@ -3886,7 +4796,7 @@ def _paint_volume_zone(
                 xmin=float(xs[0]) - 0.35 if len(xs) else -0.35,
                 xmax=float(n) + 0.55,
                 right_notes=None,
-                tag_size=10.5,
+                tag_size=float(LAYER_TAG_PT),
                 ymin=float(ymin),
                 ymax=float(ymax),
                 layer_labels="smart",
@@ -3898,15 +4808,37 @@ def _paint_volume_zone(
             )
         except Exception:
             logger.debug("大量區關鍵標略過 sid=%s", sid, exc_info=True)
-    # 橘框日標：貼主K上框內側右上，不准掛表頭壓圖例；v9 最後畫＋高 z，不被箭頭壓
+    # 橘框日標：貼主K上框內側，不准掛表頭壓圖例；上緣擠（導航箭／近端高點）→ 右下／中右空白
     if path_shown and not market_wide:
+        path_ax_y = 0.985
+        path_va = "top"
+        try:
+            y0_ax, y1_ax = ax1.get_ylim()
+            y_sp = max(float(y1_ax) - float(y0_ax), 1.0)
+            # 近端高點／導航頂帶佔上緣 → 改落到右下空白（約 axes 0.10～0.22）
+            tail_hi = float(
+                np.nanmax(highs[max(0, int(n) - 12) : int(n)])
+            ) if highs is not None and len(highs) else float(y0_ax)
+            top_busy = bool(with_nav_signals) or (
+                tail_hi >= float(y0_ax) + y_sp * 0.78
+            )
+            if top_busy:
+                path_ax_y = 0.14
+                path_va = "bottom"
+                # 中右若被壓撐／下一層佔滿價帶，再略抬到中右空白
+                mid_lo = float(y0_ax) + y_sp * 0.18
+                mid_hi = float(y0_ax) + y_sp * 0.42
+                if float(lo or 0) > 0 and mid_lo <= float(lo) <= mid_hi:
+                    path_ax_y = 0.08
+        except Exception:
+            path_ax_y, path_va = 0.985, "top"
         ax1.text(
             0.995,
-            0.985,
+            float(path_ax_y),
             path_shown,
             transform=ax1.transAxes,
             ha="right",
-            va="top",
+            va=str(path_va),
             fontproperties=_fp(8.4, "bold"),
             color=_CALL,
             zorder=int(_KEY_Z),
@@ -4348,7 +5280,8 @@ def _paint_volume_zone(
         foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
         if with_parallel_channel:
             foot2 = (
-                "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）。"
+                "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）；"
+                "官方收破升軌則升通道失效改畫下降壓。"
                 "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
                 "無成交＝灰短K＋量柱貼底，不准挖洞。"
             )

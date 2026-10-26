@@ -139,7 +139,7 @@ def test_market_rail_dash_denser_same_weight_and_color():
     assert "(8.2, 3.5)" not in src
     assert "(3.6, 1.2)" not in src
     assert _CHANNEL_RAIL_LW <= 1.2
-    assert _CHANNEL_RAIL_DASH == (0, (1.2, 1.2))
+    assert _CHANNEL_RAIL_DASH == (0, (1.55, 1.05))
 
 
 def test_rising_rail_label_stays_beside_last_bars():
@@ -224,6 +224,437 @@ def test_channel_label_blank_avoids_candles_and_ma():
     )
 
 
+def test_channel_label_mark_pad_avoids_nav_arrow_band():
+    """有 mark_pad：軌標貼線旁空窗，不准落進 K 箭帶；下軌不准死貼最右。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_blocked, _channel_seg_y
+
+    n = 80
+    span = 70.0
+    mark_pad = span * 0.10
+    # 下軌 90；中段 K 拉到 110+，右側近端略低（箭堆）
+    highs = np.full(n, 118.0)
+    lows = np.full(n, 110.0)
+    highs[-12:] = 108.0
+    lows[-12:] = 100.0
+    mas = [np.full(n, 105.0)]
+    seg = ((5.0, 90.0, "a"), (75.0, 90.0, "b"))
+    cx, cy = _blank_for_channel_label(
+        text="平行撐 90",
+        seg=seg,
+        y_now=90.0,
+        outside=-1,
+        n=n,
+        ymin=70.0,
+        ymax=140.0,
+        dx=8.0,
+        dy=3.5,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=mark_pad,
+    )
+    y_line = _channel_seg_y(seg, cx, 90.0)
+    assert abs(cy - y_line) <= 3.5 * 0.50 + 0.01  # ≤ 半格字高
+    box = (cx - 4.0, cx + 4.0, cy - 1.75, cy + 1.75)
+    assert not _channel_box_blocked(
+        *box,
+        n=n,
+        ymin=70.0,
+        ymax=140.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=0.0,  # 空窗內清 K 實體
+    )
+    assert cx < n * 0.95
+    assert cx < n - 3.0  # 不准死貼末日箭堆
+
+
+def test_paint_channel_splits_rails_and_nav_aware_labels():
+    """軌線／標可拆畫；avoid_nav_marks 走 mark_pad（跟柱幅）。"""
+    from vol_zone_chart import paint_vol_zone_parallel_channel
+
+    src = inspect.getsource(paint_vol_zone_parallel_channel)
+    assert "paint_rails" in src and "paint_labels" in src
+    assert "avoid_nav_marks" in src
+    assert "mark_pad" in src
+    assert "candle_span" in src
+    assert "0.10" in src
+
+
+def test_lower_rail_label_prefers_pocket_above_rail():
+    """下軌：K 拉離軌上方時，標優先落在軌上空窗，貼線不准浮空。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_seg_y
+
+    n = 80
+    highs = np.full(n, 118.0)
+    lows = np.full(n, 110.0)
+    highs[:20] = 105.0
+    lows[:20] = 95.0
+    highs[-8:] = 130.0
+    lows[-8:] = 112.0
+    mas = [np.full(n, 108.0)]
+    seg = ((5.0, 92.0, "a"), (75.0, 88.0, "b"))
+    y_now = 90.0
+    mark_pad = 70.0 * 0.10
+    cx, cy = _blank_for_channel_label(
+        text="平行撐 90",
+        seg=seg,
+        y_now=y_now,
+        outside=-1,
+        n=n,
+        ymin=60.0,
+        ymax=160.0,
+        dx=8.0,
+        dy=4.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=mark_pad,
+    )
+    y_line = _channel_seg_y(seg, cx, y_now)
+    assert cy >= y_line - 1.0
+    assert abs(cy - y_line) <= 4.0 * 0.50 + 0.01  # ≤ 半格字高
+    assert 0.35 * n < cx < 0.95 * n
+
+
+def test_upper_rail_label_sticks_near_line():
+    """上軌下降壓：標心貼所屬下降軌，不准浮到通道正中。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_seg_y
+
+    n = 80
+    highs = np.full(n, 100.0)
+    lows = np.full(n, 90.0)
+    # 中右 K 在軌下拉開，留線旁空窗
+    highs[40:70] = 102.0
+    lows[40:70] = 88.0
+    mas = [np.full(n, 95.0)]
+    seg = ((10.0, 120.0, "a"), (75.0, 108.0, "b"))  # 下降上軌
+    y_now = 108.0
+    cx, cy = _blank_for_channel_label(
+        text="下降壓 108",
+        seg=seg,
+        y_now=y_now,
+        outside=1,
+        n=n,
+        ymin=70.0,
+        ymax=140.0,
+        dx=8.0,
+        dy=4.0,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=7.0,
+    )
+    y_line = _channel_seg_y(seg, cx, y_now)
+    assert abs(cy - y_line) <= 4.0 * 0.50 + 0.01  # ≤ 半格字高
+
+
+def test_steep_desc_rail_label_stays_on_visible_segment():
+    """短段下降軌左延飛出圖外時，標必須掛在可見軌段，不准用 y_now 浮空。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_seg_y
+
+    n = 168
+    # 模擬 2454：錨只在 148～155，左延會遠高於 ymax
+    highs = np.linspace(5200.0, 4100.0, n)
+    lows = highs - 80.0
+    mas: list = []
+    seg_u = ((148.0, 5480.0, "a"), (155.0, 5165.0, "b"))
+    seg_l = ((148.0, 5100.0, "a"), (155.0, 4785.0, "b"))
+    ymin, ymax = 3000.0, 5750.0
+    span = ymax - ymin
+    dy = span * 0.045
+    mark_pad = span * 0.10
+    for name, seg, y_now, outside in (
+        ("下降壓 4625", seg_u, 4625.0, 1),
+        ("平行撐 4245", seg_l, 4245.0, -1),
+    ):
+        cx, cy = _blank_for_channel_label(
+            text=name,
+            seg=seg,
+            y_now=y_now,
+            outside=outside,
+            n=n,
+            ymin=ymin,
+            ymax=ymax,
+            dx=12.0,
+            dy=dy,
+            highs=highs,
+            lows=lows,
+            mas=mas,
+            placed=[],
+            mark_pad=mark_pad,
+        )
+        y_line = _channel_seg_y(seg, cx, y_now)
+        assert ymin < y_line < ymax
+        assert abs(cy - y_line) <= dy * 0.50 + 1e-6
+        # 避 K 可往左；仍須在可見軌（不准 y_now 浮空）
+        assert cx / max(n - 1, 1) >= 0.48
+
+
+def test_channel_label_prefers_low_k_cover_along_rail():
+    """沿軌掃空窗：近端密 K 時必須往左找蓋 K 最少的可見段；≥3 根不合格。"""
+    import numpy as np
+
+    from vol_zone_chart import (
+        _blank_for_channel_label,
+        _channel_box_k_hits,
+        _channel_seg_y,
+    )
+
+    n = 80
+    ymin, ymax = 70.0, 140.0
+    span = ymax - ymin
+    dy = 4.0
+    dx = 8.0
+    # 水平上軌 y=120；近端 55–79 整段 K 蓋住軌，中段 30–50 軌在 K 上方空窗
+    highs = np.full(n, 100.0)
+    lows = np.full(n, 90.0)
+    highs[30:51] = 108.0
+    lows[30:51] = 98.0
+    highs[55:] = 128.0
+    lows[55:] = 116.0
+    mas: list = []
+    seg = ((10.0, 120.0, "a"), (75.0, 120.0, "b"))
+    y_now = 120.0
+    cx, cy = _blank_for_channel_label(
+        text="下降壓 120",
+        seg=seg,
+        y_now=y_now,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=span * 0.08,
+    )
+    y_line = _channel_seg_y(seg, cx, y_now)
+    assert abs(cy - y_line) <= dy * 0.50 + 1e-6
+    # 不准停在密 K 近端（x≥55）
+    assert cx < 54.0
+    box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
+    hits = _channel_box_k_hits(
+        *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+    )
+    assert hits == 0
+
+
+def test_channel_labels_stagger_x_and_reject_any_k_hit():
+    """兩軌標必須錯開 x；候選蓋 ≥1 根 K（含影）不合格。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
+
+    n = 80
+    ymin, ymax = 60.0, 160.0
+    span = ymax - ymin
+    dx, dy = 8.0, 5.0
+    highs = np.full(n, 110.0)
+    lows = np.full(n, 100.0)
+    # 近端密穿價；左側上軌上方／下軌下方有空
+    highs[50:] = 125.0
+    lows[50:] = 95.0
+    highs[20:40] = 105.0
+    lows[20:40] = 88.0
+    seg_u = ((5.0, 130.0, "a"), (75.0, 118.0, "b"))
+    seg_l = ((5.0, 92.0, "a"), (75.0, 80.0, "b"))
+    cx_u, cy_u = _blank_for_channel_label(
+        text="下降壓 118",
+        seg=seg_u,
+        y_now=118.0,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=[],
+        mark_pad=0.0,
+    )
+    placed = [(cx_u - dx / 2, cx_u + dx / 2, cy_u - dy / 2, cy_u + dy / 2)]
+    cx_l, cy_l = _blank_for_channel_label(
+        text="平行撐 80",
+        seg=seg_l,
+        y_now=80.0,
+        outside=-1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=placed,
+        mark_pad=0.0,
+    )
+    assert abs(cx_u - cx_l) >= max(dx * 0.72, 4.5) - 0.05
+    for cx, cy in ((cx_u, cy_u), (cx_l, cy_l)):
+        box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
+        hits = _channel_box_k_hits(
+            *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+        )
+        assert hits == 0
+
+
+def test_channel_label_second_rail_staggers_near_pivot_band():
+    """下軌已佔第一樞左側時，上軌仍近樞紐空窗且 x 錯開（不准疊紅叉密位）。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
+
+    n = 80
+    ymin, ymax = 3000.0, 7000.0
+    span = ymax - ymin
+    dx, dy = 10.0, 120.0
+    highs = np.full(n, 4200.0)
+    lows = np.full(n, 4000.0)
+    highs[50:70] = 5400.0
+    lows[50:70] = 5000.0
+    highs[30:50] = 4500.0
+    lows[30:50] = 4300.0
+    # 下軌先佔左側帶中心 ~50
+    placed = [(45.0, 55.0, 4800.0, 5000.0)]
+    seg_u = ((58.0, 5480.0, "a"), (65.0, 5165.0, "b"))
+    cx, cy = _blank_for_channel_label(
+        text="下降壓 4625",
+        seg=seg_u,
+        y_now=4625.0,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=placed,
+        mark_pad=0.0,
+    )
+    assert abs(cx - 50.0) >= max(dx * 0.72, 4.5) - 0.05
+    # 仍在紅圈接觸帶（第一樞左 ≤22 根或兩樞間），不准甩未成形太左／右密 K
+    assert cx <= 65.0 + 1.0
+    assert cx >= 58.0 - 22.0 - 0.5
+    box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
+    assert (
+        _channel_box_k_hits(
+            *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+        )
+        == 0
+    )
+
+
+def test_channel_label_prefers_near_pivot_clear_window():
+    """空窗優先貼近上軌樞紐左側（紅圈帶），不准甩遠端密 K。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
+
+    n = 80
+    ymin, ymax = 3000.0, 7000.0
+    span = ymax - ymin
+    dx, dy = 10.0, 120.0
+    # 樞紐在 58、65；左側空、近端密穿價
+    highs = np.full(n, 4200.0)
+    lows = np.full(n, 4000.0)
+    highs[50:70] = 5400.0
+    lows[50:70] = 5000.0
+    highs[30:50] = 4500.0
+    lows[30:50] = 4300.0
+    seg = ((58.0, 5480.0, "a"), (65.0, 5165.0, "b"))
+    cx, cy = _blank_for_channel_label(
+        text="下降壓 4625",
+        seg=seg,
+        y_now=4625.0,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=[],
+        mark_pad=0.0,
+    )
+    # 應落在第一樞左側空窗帶
+    assert 58.0 - 26.0 <= cx <= 58.0 - 2.0
+    box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
+    assert (
+        _channel_box_k_hits(
+            *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+        )
+        == 0
+    )
+
+
+def test_channel_artist_pixel_hits_counts_wick():
+    """像素 hit-test：bbox 碰到影線就算 ≥1。"""
+    import numpy as np
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from vol_zone_chart import _channel_artist_pixel_hits
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    n = 20
+    highs = np.linspace(110, 100, n)
+    lows = highs - 8.0
+    ax.set_xlim(-0.5, n - 0.5)
+    ax.set_ylim(80, 120)
+    # 標籤壓在第 10 根影線上
+    art = ax.text(
+        10.0,
+        float(highs[10]) - 1.0,
+        "下降壓 100",
+        ha="center",
+        va="center",
+        fontsize=12,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="w", edgecolor="k"),
+    )
+    fig.canvas.draw()
+    hits, _bb = _channel_artist_pixel_hits(
+        ax, art, n=n, highs=highs, lows=lows, renderer=fig.canvas.get_renderer()
+    )
+    plt.close(fig)
+    assert len(hits) >= 1
+    assert 10 in hits
+
+
+def test_close_tags_lower_right_band():
+    """結構昨收／今收錨在右下最低空窗（約 550～950），不准貼現價／中右。"""
+    from biaoke_chart import _close_tags_lower_right_y
+
+    ay = _close_tags_lower_right_y(500.0, 4200.0, avoid_price=2375.0)
+    assert 550.0 <= ay <= 1000.0
+    assert abs(ay - 2375.0) > 1000.0
+    assert ay < 1500.0
+
+
 def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
     """大盤大量區畫布＝日K 12.8×7.55、主圖右緣 0.96；個股 figsize 不動。"""
     from PIL import Image
@@ -267,3 +698,15 @@ def test_stock_lookup_vol_default_no_parallel_flag():
 
     src = inspect.getsource(render_lookup_vol_result)
     assert "with_parallel_channel" not in src
+
+
+def test_parallel_channel_keeps_fullwidth_gs_right():
+    """開平行軌仍維持導航滿版 right＝0.935；不准 0.72 黑邊。"""
+    import inspect
+
+    from vol_zone_chart import _paint_volume_zone
+
+    src = inspect.getsource(_paint_volume_zone)
+    assert "0.72 if with_parallel_channel" not in src
+    assert "0.935 if with_nav_signals" in src
+    assert "MARKET_VOL_ZONE_GS_RIGHT" in src

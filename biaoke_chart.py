@@ -733,14 +733,24 @@ def build_asc_channel_from_low_dates(
     else:
         pos, alive = "上升通道中段", True
     # tip 用語跟自動軌同一套；不准特別標「自動／非他點名／他自己點的」
-    tip = (
-        f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
-        f"平行壓貼 {_md(td)}高{_px(ty)}；現況{pos}。"
-        f"破上升軌才像轉折。不是買訊。"
-    )
+    if alive:
+        tip = (
+            f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
+            f"平行壓貼 {_md(td)}高{_px(ty)}；現況{pos}。"
+            f"破上升軌才像轉折。不是買訊。"
+        )
+        label = f"上升軌通道　{pos}"
+    else:
+        # 官方收盤破軌＝升通道失效（盤中未收不當收；呼叫端應改判下降）
+        tip = (
+            f"上升軌：{_md(key1)}低{_px(y1)}～{_md(key2)}低{_px(y2)}；"
+            f"平行壓貼 {_md(td)}高{_px(ty)}；官方收盤已破上升軌，舊升通道失效。"
+            f"不是買訊。"
+        )
+        label = "上升軌通道　已失效"
     return {
         "kind": "asc",
-        "label": f"上升軌通道　{pos}",
+        "label": label,
         "tip": tip,
         "pos": pos,
         "alive": bool(alive),
@@ -758,6 +768,42 @@ def build_asc_channel_from_low_dates(
     }
 
 
+def channel_prefer_named_rising_or_infer(
+    rows: Sequence[Dict[str, Any]],
+    d1: str,
+    d2: str,
+) -> Dict[str, Any]:
+    """具名兩低升軌仍有效就用；官方收盤破軌則舊升失效，改走 infer 改判下降。
+
+    盤中未收不當收（呼叫端必須餵已收／臉柱同源）。不是買訊。
+    """
+    named = build_asc_channel_from_low_dates(rows, d1, d2) or {}
+    if named and named.get("alive"):
+        return named
+    inferred = infer_parallel_channel(rows) or {}
+    if named and not named.get("alive"):
+        if inferred.get("kind") == "desc":
+            out = dict(inferred)
+            out["reclass_from"] = "asc_break_named"
+            (a1, ay1, ad1), (a2, ay2, ad2) = named.get("base") or ((0, 0, ""), (0, 0, ""))
+            head = (
+                f"官方收盤跌破他點的上升軌（{_md(ad1)}低{_px(ay1)}～"
+                f"{_md(ad2)}低{_px(ay2)}），舊升通道失效；"
+            )
+            tip0 = str(out.get("tip") or "").strip()
+            out["tip"] = (head + tip0) if tip0 else (head + "改畫下降壓。不是買訊。")
+            pos = str(out.get("pos") or "").strip()
+            out["label"] = (
+                f"下降壓通道　{pos}　升軌已失效" if pos else "下降壓通道　升軌已失效"
+            )
+            return out
+        # 尚無合格下降候選：只標升軌失效，不准繼續當活升通道
+        out = dict(named)
+        out["reclass_from"] = "asc_break_named"
+        return out
+    return inferred
+
+
 def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """依飆大連點長上升／下降通道（二擇一、兩條平行線）。
 
@@ -766,7 +812,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     - 同次級／更高低連點＝上升軌（下軌）；平行上緣貼合理高＝通道上軌
     - 升／降軌道破壞才算轉折；個股不數 5／9 當操作
     - 兩種不准同時畫；不是買訊
-    若他已點名兩天低點來畫，呼叫端應先走 build_asc_channel_from_low_dates。
+    - WB-28：官方收盤跌破上升軌（收 < 升軌延長 − 2% 高低幅）→ 舊升通道失效，
+      改判／改畫下降通道；盤中未收不當收。
+    若他已點名兩天低點來畫，呼叫端應先走 channel_prefer_named_rising_or_infer。
     """
     rows = list(rows or [])
     n = len(rows)
@@ -783,9 +831,11 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     hi_p, lo_p = _pivots(highs, lows, left=3)
     cands: List[Dict[str, Any]] = []
 
-    def _pack_desc(i: int, j: int, *, bonus: float = 0.0) -> None:
-        # 通道主軌至少約兩週：過短兩點延長上話筒會像假錨
-        if int(j) - int(i) < 10:
+    def _pack_desc(
+        i: int, j: int, *, bonus: float = 0.0, min_span: int = 10
+    ) -> None:
+        # 常規主軌至少約兩週；破升改判時可放寬到 ≥5 根（仍要過包覆閘）
+        if int(j) - int(i) < int(min_span):
             return
         touch = _channel_width_touch(
             i, j, highs[i], highs[j], lo_p, highs, lows, above=False, span=span, n=n
@@ -869,6 +919,45 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             }
         )
 
+    def _score_near() -> None:
+        for c in cands:
+            j = int(c["base"][1][0])
+            c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
+            if c["kind"] == "desc" and last < float(c["rail_now"]):
+                c["score"] += 0.45  # 收在下降壓下＝他還在講「還壓著」
+            if c["kind"] == "asc" and last > float(c["base_now"]):
+                c["score"] += 0.35
+
+    def _pack_desc_reclass() -> None:
+        """破升後補抓下降：主降對可短至 5 根；近窗 look 加寬。"""
+        seen = {
+            (int(c["base"][0][0]), int(c["base"][1][0]))
+            for c in cands
+            if c.get("kind") == "desc"
+        }
+        down_r = _desc_high_pair(hi_p, highs)
+        if down_r:
+            ij = (int(down_r[0]), int(down_r[1]))
+            if ij not in seen:
+                _pack_desc(ij[0], ij[1], bonus=0.65, min_span=5)
+                seen.add(ij)
+        for i, j in _pivot_pairs(hi_p, highs, ascending=False, min_gap=5, look=12):
+            if (i, j) in seen:
+                continue
+            _pack_desc(i, j, bonus=0.15, min_span=5)
+            seen.add((i, j))
+        # 只給新補的降候選加近端分（舊 cand 已加過）
+        for c in cands:
+            if c.get("_scored"):
+                continue
+            j = int(c["base"][1][0])
+            c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
+            if c["kind"] == "desc" and last < float(c["rail_now"]):
+                c["score"] += 0.45
+            if c["kind"] == "asc" and last > float(c["base_now"]):
+                c["score"] += 0.35
+            c["_scored"] = True
+
     # 1) 他的標準下降壓：最近兩樞紐高、後高更低、中間不高過前高
     down = _desc_high_pair(hi_p, highs)
     if down:
@@ -896,13 +985,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         return {}
 
     # 二擇一：還壓著的下降壓優先於已破的上升軌；兩邊都活就比分＋近端
+    _score_near()
     for c in cands:
-        j = int(c["base"][1][0])
-        c["score"] = float(c["score"]) + (j / max(n, 1)) * 0.4
-        if c["kind"] == "desc" and last < float(c["rail_now"]):
-            c["score"] += 0.45  # 收在下降壓下＝他還在講「還壓著」
-        if c["kind"] == "asc" and last > float(c["base_now"]):
-            c["score"] += 0.35
+        c["_scored"] = True
 
     best = max(cands, key=lambda c: float(c["score"]))
     # 若最佳是升、但同時有明顯還壓著的降，改採降（兩種不准並存）
@@ -923,6 +1008,28 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         if held and float(held[0]["score"]) > float(best["score"]) - 0.2:
             best = max(held, key=lambda c: float(c["score"]))
 
+    reclass_from = ""
+    # WB-28：官方收盤破上升軌 → 舊升失效，改判下降（必要時放寬建降）
+    # 試渲 before 可設 WAYNE_CHANNEL_NO_RECLASS=1 暫時關掉改判（不准進話筒預設）
+    _skip_reclass = str(os.environ.get("WAYNE_CHANNEL_NO_RECLASS") or "").strip() in (
+        "1",
+        "true",
+        "TRUE",
+        "yes",
+    )
+    if (
+        not _skip_reclass
+        and best["kind"] == "asc"
+        and not best.get("alive")
+    ):
+        desc_cands = [c for c in cands if c["kind"] == "desc"]
+        if not desc_cands:
+            _pack_desc_reclass()
+            desc_cands = [c for c in cands if c["kind"] == "desc"]
+        if desc_cands:
+            best = max(desc_cands, key=lambda c: float(c["score"]))
+            reclass_from = "asc_break"
+
     kind = str(best["kind"])
     (x1, y1, d1), (x2, y2, d2) = best["base"]
     tk, ty, td = best["touch"]
@@ -930,24 +1037,49 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     if kind == "asc":
         upper = ((x1, y1 + width, d1), (x2, y2 + width, d2))
         lower = ((x1, y1, d1), (x2, y2, d2))
-        label = f"上升軌通道　{best['pos']}"
-        tip = (
-            f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
-            f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
-            f"破上升軌才像轉折。不是買訊。"
-        )
+        if best.get("alive"):
+            label = f"上升軌通道　{best['pos']}"
+            tip = (
+                f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+                f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
+                f"破上升軌才像轉折。不是買訊。"
+            )
+        elif _skip_reclass:
+            # 試渲 before：還原舊句（破了仍掛升通道）
+            label = f"上升軌通道　{best['pos']}"
+            tip = (
+                f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+                f"平行壓貼 {_md(td)}高{_px(ty)}；現況{best['pos']}。"
+                f"破上升軌才像轉折。不是買訊。"
+            )
+        else:
+            label = "上升軌通道　已失效"
+            tip = (
+                f"上升軌：{_md(d1)}低{_px(y1)}～{_md(d2)}低{_px(y2)}；"
+                f"平行壓貼 {_md(td)}高{_px(ty)}；官方收盤已破上升軌，舊升通道失效。"
+                f"不是買訊。"
+            )
         name_u, name_l = "平行壓", "上升軌"
     else:
         upper = ((x1, y1, d1), (x2, y2, d2))
         lower = ((x1, y1 - width, d1), (x2, y2 - width, d2))
-        label = f"下降壓通道　{best['pos']}"
-        tip = (
-            f"下降壓：{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
-            f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
-            f"過下降壓才像準備突破機會，不是保證、不是買訊。"
-        )
+        if reclass_from == "asc_break":
+            label = f"下降壓通道　{best['pos']}　升軌已失效"
+            tip = (
+                f"官方收盤跌破上升軌，舊升通道失效；改畫下降壓："
+                f"{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
+                f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
+                f"不是買訊。"
+            )
+        else:
+            label = f"下降壓通道　{best['pos']}"
+            tip = (
+                f"下降壓：{_md(d1)}高{_px(y1)}～{_md(d2)}高{_px(y2)}；"
+                f"平行撐貼 {_md(td)}低{_px(ty)}；現況{best['pos']}。"
+                f"過下降壓才像準備突破機會，不是保證、不是買訊。"
+            )
         name_u, name_l = "下降壓", "平行撐"
-    return {
+    out = {
         "kind": kind,
         "label": label,
         "tip": tip,
@@ -964,6 +1096,9 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "name_u": name_u,
         "name_l": name_l,
     }
+    if reclass_from:
+        out["reclass_from"] = reclass_from
+    return out
 
 
 def _paint_parallel_channel(
@@ -1124,9 +1259,9 @@ def _clip_line(
     return xa, ya, xb, yb
 
 
-# 上升／下降區間雙軌：短劃跟大盤大量區同一套（實線段 1.2、空隙 1.2）。結構圖線寬仍細。
-_CHANNEL_RAIL_DASH = (0, (1.2, 1.2))
-_CHANNEL_RAIL_LW = 1.05
+# 上升／下降區間雙軌：實線段略長、空隙略短＝可讀不花；結構圖線寬仍細、壓撐主線略清楚。
+_CHANNEL_RAIL_DASH = (0, (1.55, 1.05))
+_CHANNEL_RAIL_LW = 1.15
 
 
 def _paint_extended_rail(
@@ -1963,32 +2098,36 @@ def _close_tags_lower_right_y(
 ) -> float:
     """昨收／今收錨點 Y。
 
-    v7：主圖**右下空白**（約右軸 1500～2000 一帶），跟現價／次層帶拉開；
-    不准再貼現價旁搶位。軸內無 1500～2000 則取下緣空白帶。
+    v11：主圖**右下空白**（低於次層／2000 目標／現價帶的空窗）；
+    不准擠在現價旁右緣。軸內無該帶則取下緣空白。
     """
     y0 = float(ymin)
     y1 = float(ymax)
     span = max(y1 - y0, 1.0)
-    # 優先落在 1500～2000 中段（使用者紅框）
-    band_lo, band_hi = 1500.0, 2000.0
-    mid = 1750.0
-    pad = span * 0.05
+    # 右下最低空窗（明顯低於 1000～1500 中帶；避開 2000 原文目標）
+    band_lo, band_hi = 550.0, 950.0
+    mid = 750.0
+    pad = span * 0.04
     if (y0 + pad) <= mid <= (y1 - pad):
         ay = float(mid)
     elif (y0 + pad) <= band_lo <= (y1 - pad):
-        ay = float(band_lo)
+        ay = float(band_lo + (band_hi - band_lo) * 0.45)
     elif y0 < band_hi and y1 > band_lo:
-        # 軸與 1500～2000 有交集：取交集中點
         a = max(y0 + pad, band_lo)
         b = min(y1 - pad, band_hi)
-        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.14)
+        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.10)
     else:
-        ay = float(y0 + span * 0.14)
-    # 跟現價拉開（至少約 12% 軸高）
+        ay = float(y0 + span * 0.10)
+    # 跟現價拉開（至少約 22% 軸高）；不夠就再往下沉
     ap = float(avoid_price or 0.0)
-    if ap > 0 and abs(ay - ap) < span * 0.12:
-        ay = float(min(ay, ap - span * 0.14))
+    if ap > 0 and abs(ay - ap) < span * 0.22:
+        ay = float(min(ay, ap - span * 0.25))
         ay = float(max(ay, y0 + pad))
+    # 亦避開 2000／1500 帶，確保落在右下空白而非中右
+    for band_c in (2000.0, 1500.0, 1000.0):
+        if abs(ay - band_c) < span * 0.05:
+            ay = float(min(ay, band_c - span * 0.07))
+            ay = float(max(ay, y0 + pad))
     return float(ay)
 
 
@@ -2012,7 +2151,7 @@ def _place_right_notes(
     71／72：壓／撐貼對應水平線（高價在上）；當日收必留；鄰近標籤留縫；
     不准從末日 K 斜拉長虛線。x_text 在演化帶右側；x_max 保「最可能」入軸。
     75：昨收＋今收同列並排（先昨收、右今收）。
-    close_anchor_y：有值＝昨收／今收整組釘該價（v7＝右下空白約 1500～2000，離現價）。
+    close_anchor_y：有值＝昨收／今收整組釘該價（v11＝右下空白約 1000～1500，離現價）。
     v7：壓／撐貼桃色帶最右（不壓軸刻度）；下降壓／平行撐釘紫虛線旁且不跟收標搶右緣；
     長標整段入軸不准切斷。
     """
@@ -2248,7 +2387,7 @@ def _place_right_notes(
         fixed_up.append((note, ty))
     placed = sorted(fixed_up, key=lambda p: -float(p[1]))
     # v7：壓／撐貼桃色帶最右；下降壓／平行撐釘紫虛線旁（略左於壓撐、不跟收標搶右緣）；
-    # 昨收／今收走右下空白（close_anchor_y≈1500～2000）；原文長標完整入軸。
+    # 昨收／今收走右下空白（close_anchor_y≈1000～1500）；原文長標完整入軸。
     col_tx = float(tx)
     _AXIS_TICK_CLEAR = 12.0
     level_tx = float(col_tx)
@@ -2527,12 +2666,25 @@ def _place_right_notes(
                 note, show_ty, float(level_tx), stub=True, note_stub_x=float(stub_x)
             )
         elif _is_rail_note(text):
-            _paint_one_note(
-                note,
-                show_ty,
+            # 備援：軌道標只准 ax.text 壓在 show_ty（軌價），不准 annotate 引線／灰虛線箭頭
+            # 正常路徑已由 paint_vol_zone_parallel_channel 貼線，此處不該再走到
+            ax.text(
                 float(rail_tx),
-                stub=True,
-                note_stub_x=float(rail_stub_x),
+                float(show_ty),
+                text,
+                color=str(note.get("color") or _TEXT),
+                fontproperties=_fp(int(note.get("size") or _STRUCTURE_TAG_SIZE), "bold"),
+                ha="left",
+                va="center",
+                zorder=12,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle=f"round,pad={float(_STRUCTURE_TAG_PAD):.2f}",
+                    facecolor="#ffffff",
+                    edgecolor=str(note.get("color") or _TEXT),
+                    linewidth=1.05,
+                    alpha=0.97,
+                ),
             )
         else:
             _paint_one_note(
@@ -4568,27 +4720,36 @@ def render_biaoke_structure_png(
             y_hi=ymax,
             n=n,
         )
-        # 標籤釘在線上相對位置（略左於線末端），引線短、不准穿盒
-        if channel.get("rail_now"):
-            right_notes.append(
-                {
-                    "x": float(rail_label_x),
-                    "y": float(channel["rail_now"]),
-                    "text": f"{channel.get('name_u') or '上軌'} {_px(channel['rail_now'])}",
-                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
-                    "size": _STRUCTURE_TAG_SIZE,
-                }
+        # 軌道標＝大量區同一套：bbox 中心壓可見軌，不准右緣 annotate／灰虛線箭頭
+        try:
+            import numpy as _np_ch
+
+            from vol_zone_chart import paint_vol_zone_parallel_channel
+
+            _hi_a = _np_ch.asarray(
+                [float(h) if h else _np_ch.nan for h in highs], dtype=float
             )
-        if channel.get("base_now"):
-            right_notes.append(
-                {
-                    "x": float(rail_label_x),
-                    "y": float(channel["base_now"]),
-                    "text": f"{channel.get('name_l') or '下軌'} {_px(channel['base_now'])}",
-                    "color": _UP_TRACK if channel.get("kind") == "asc" else _DOWN_TRACK,
-                    "size": _STRUCTURE_TAG_SIZE,
-                }
+            _lo_a = _np_ch.asarray(
+                [float(lo) if lo else _np_ch.nan for lo in lows], dtype=float
             )
+            paint_vol_zone_parallel_channel(
+                ax1,
+                channel,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                labels_outside=False,
+                market_style=False,
+                highs=_hi_a,
+                lows=_lo_a,
+                mas=[],
+                paint_rails=False,
+                paint_labels=True,
+                avoid_nav_marks=False,
+            )
+        except Exception:
+            logger.debug("結構圖軌道標貼線略過", exc_info=True)
+        # 不准再塞 right_notes 走 _leader_note 引線
     else:
         if down_pts:
             (x1, y1, d1), (x2, y2, d2) = down_pts
@@ -4743,7 +4904,7 @@ def render_biaoke_structure_png(
         avoid_ys.append(float(channel["rail_now"]))
     if channel.get("base_now"):
         avoid_ys.append(float(channel["base_now"]))
-    # 右下空白給昨收／今收；底墊略減以免把錨點頂離 1500～2000 紅框
+    # 右下空白給昨收／今收；底墊略減以免把錨點頂離 1000～1500 低位空窗
     evo_pad = span * 0.045
     _place_right_notes(
         ax1,
