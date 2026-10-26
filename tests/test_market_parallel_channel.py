@@ -508,13 +508,61 @@ def test_channel_labels_stagger_x_and_reject_any_k_hit():
         placed=placed,
         mark_pad=0.0,
     )
-    assert abs(cx_u - cx_l) >= dx * 1.10
+    assert abs(cx_u - cx_l) >= max(dx * 0.90, 5.0) - 0.05
     for cx, cy in ((cx_u, cy_u), (cx_l, cy_l)):
         box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
         hits = _channel_box_k_hits(
             *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
         )
         assert hits == 0
+
+
+def test_channel_label_second_rail_staggers_near_pivot_band():
+    """下軌已佔第一樞左側時，上軌仍近樞紐空窗且 x 錯開（不准疊紅叉密位）。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
+
+    n = 80
+    ymin, ymax = 3000.0, 7000.0
+    span = ymax - ymin
+    dx, dy = 10.0, 120.0
+    highs = np.full(n, 4200.0)
+    lows = np.full(n, 4000.0)
+    highs[50:70] = 5400.0
+    lows[50:70] = 5000.0
+    highs[30:50] = 4500.0
+    lows[30:50] = 4300.0
+    # 下軌先佔左側帶中心 ~50
+    placed = [(45.0, 55.0, 4800.0, 5000.0)]
+    seg_u = ((58.0, 5480.0, "a"), (65.0, 5165.0, "b"))
+    cx, cy = _blank_for_channel_label(
+        text="下降壓 4625",
+        seg=seg_u,
+        y_now=4625.0,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=placed,
+        mark_pad=0.0,
+    )
+    assert abs(cx - 50.0) >= max(dx * 0.90, 5.0) - 0.05
+    # 仍靠近樞紐（左接觸前延伸帶或兩樞間），不准甩到圖右密 K
+    assert cx <= 65.0 + 1.0
+    assert cx >= 58.0 - 36.0
+    box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
+    assert (
+        _channel_box_k_hits(
+            *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+        )
+        == 0
+    )
 
 
 def test_channel_label_prefers_near_pivot_clear_window():
