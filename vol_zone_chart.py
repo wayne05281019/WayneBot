@@ -4808,7 +4808,7 @@ def _paint_volume_zone(
             )
         except Exception:
             logger.debug("大量區關鍵標略過 sid=%s", sid, exc_info=True)
-    # 橘框日標：上緣擠（導航箭／近端高點）→ 右下／中右空白；否則仍右上內側
+    # 橘框日標：貼主K上框內側，不准掛表頭壓圖例；上緣擠（導航箭／近端高點）→ 右下／中右空白
     if path_shown and not market_wide:
         path_ax_y = 0.985
         path_va = "top"
