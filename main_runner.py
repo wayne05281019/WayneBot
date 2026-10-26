@@ -2108,8 +2108,11 @@ class MainRunner:
 
         closed = closed_tw_session(db_path=self.db_path)
         if closed:
+            # 2026-10-26 鎖死：早報／休市鍵已認「今日無開盤」→ 當日不准 16:30 融合、
+            # 不准 fuse 補跑、不准推「資料處理中」。開市日才進 busy_window 融合本體。
+            # 上一收盤未齊也只輕量側車／興櫃，不准掉進下方重融合。
             logger.info(
-                "今日台股休市 %s %s；先確認上一完整收盤日是否齊",
+                "今日台股休市 %s %s；跳過盤後融合（開市日才融合）",
                 closed.get("ymd"),
                 closed.get("zh"),
             )
@@ -2121,7 +2124,6 @@ class MainRunner:
                 logger.info("北市停班：%s", refresh_tw_typhoon_halt(self.db_path))
             except Exception as e:
                 logger.warning("北市停班略過：%s", e)
-            # 休市不准直接標成功就走：上一交易日若上市／上櫃／興櫃未齊仍要補。
             cap_closed = fuse_end_date()
             try:
                 from emerging_quotes import sync_emerging_quotes
@@ -2135,29 +2137,33 @@ class MainRunner:
                 health_closed = audit_import(self.db_path, cap_closed)
             except Exception:
                 health_closed = {}
-            if self._increment_ok(health_closed):
-                # 休市仍每天對月營收／季報等官方側車：連假期間公司陸續公告，
-                # 不准因 skip increment 讓庫停在休市前的已公告子集（政美 7853 九月）。
-                self._refresh_official_sidecars()
-                self._mark_pipeline(
-                    "success",
-                    f"tw closed {closed.get('ymd')} {closed.get('zh')} skip increment "
-                    f"cap={cap_closed} tw={health_closed.get('tw')} "
-                    f"two={health_closed.get('two')} em={health_closed.get('em')}",
+            prior_ok = bool(self._increment_ok(health_closed))
+            if not prior_ok:
+                logger.warning(
+                    "休市日上一收盤 %s 未齊（上市 %s 上櫃 %s 興櫃 %s）；"
+                    "仍跳過融合／不推 busy（開市日再補）",
+                    cap_closed,
+                    health_closed.get("tw"),
+                    health_closed.get("two"),
+                    health_closed.get("em"),
                 )
-                # 融合 success ≠ 各靜默軌都寫進庫；休市仍補跑缺／失敗軌
-                try:
-                    self._run_post_fuse_silent_tracks(cap_closed, skip_ok=True)
-                except Exception:
-                    logger.exception("休市日靜默各軌補跑失敗")
-                return True
-            logger.warning(
-                "休市日但上一收盤 %s 未齊（上市 %s 上櫃 %s 興櫃 %s），改補齊",
-                cap_closed,
-                health_closed.get("tw"),
-                health_closed.get("two"),
-                health_closed.get("em"),
+            # 休市仍每天對月營收／季報等官方側車：連假期間公司陸續公告，
+            # 不准因 skip increment 讓庫停在休市前的已公告子集（政美 7853 九月）。
+            self._refresh_official_sidecars()
+            note_tail = "ok" if prior_ok else "prior_incomplete"
+            self._mark_pipeline(
+                "success",
+                f"tw closed {closed.get('ymd')} {closed.get('zh')} skip increment "
+                f"cap={cap_closed} tw={health_closed.get('tw')} "
+                f"two={health_closed.get('two')} em={health_closed.get('em')} "
+                f"{note_tail}",
             )
+            # 融合 success ≠ 各靜默軌都寫進庫；休市仍補跑缺／失敗軌（無 busy）
+            try:
+                self._run_post_fuse_silent_tracks(cap_closed, skip_ok=True)
+            except Exception:
+                logger.exception("休市日靜默各軌補跑失敗")
+            return True
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，仍對官方側車（月營收續補）。", self.today_str)
             self._refresh_official_sidecars()
