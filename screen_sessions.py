@@ -343,6 +343,70 @@ def screen_session_has_data(db_path: str, as_of: str = "") -> bool:
         conn.close()
 
 
+def screen_session_has_session_data(
+    db_path: str, as_of: str, session: str
+) -> bool:
+    """該基準日指定時段（morning／evening）是否已有海選存檔。"""
+    ensure_screen_session_table(db_path)
+    as_of = str(as_of or "").replace("-", "")
+    session = str(session or "").strip()
+    if not as_of or session not in ("morning", "evening"):
+        return False
+    conn = _connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM screen_sessions WHERE as_of=? AND session=? LIMIT 1",
+            (as_of, session),
+        ).fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
+# 話筒海選／早報／12:45 比價認的畫面桶（優先看等只靜默，不算「有畫面」）
+FACE_BUCKETS = (
+    "leave_zero",
+    "ma60_lower",
+    "golden_buy",
+)
+
+
+def screen_session_has_face_data(
+    db_path: str, as_of: str, session: str = ""
+) -> bool:
+    """該基準日是否有話筒會顯示的桶存檔（黃金買點／紅箭／還在零）。
+
+    只有周帶量／當沖等靜默桶不算有畫面資料——避免假 success／skip 以為已寄海選。
+    session 空＝morning 優先，再 evening。
+    """
+    ensure_screen_session_table(db_path)
+    as_of = str(as_of or "").replace("-", "")
+    if not as_of:
+        return False
+    sessions = (
+        [session]
+        if session in ("morning", "evening")
+        else ("morning", "evening")
+    )
+    placeholders = ",".join("?" * len(FACE_BUCKETS))
+    conn = _connect(db_path)
+    try:
+        for sess in sessions:
+            row = conn.execute(
+                f"""
+                SELECT 1 FROM screen_sessions
+                WHERE as_of=? AND session=? AND bucket IN ({placeholders})
+                LIMIT 1
+                """,
+                (as_of, sess, *FACE_BUCKETS),
+            ).fetchone()
+            if row:
+                return True
+        return False
+    finally:
+        conn.close()
+
+
 def load_morning_rows(db_path: str, as_of: str) -> List[Dict[str, Any]]:
     ensure_screen_session_table(db_path)
     conn = _connect(db_path)
