@@ -403,6 +403,58 @@ def test_steep_desc_rail_label_stays_on_visible_segment():
         assert cx / max(n - 1, 1) >= 0.70
 
 
+def test_channel_label_prefers_low_k_cover_along_rail():
+    """沿軌掃空窗：近端密 K 時必須往左找蓋 K 最少的可見段（主序＝k_hits）。"""
+    import numpy as np
+
+    from vol_zone_chart import (
+        _blank_for_channel_label,
+        _channel_box_k_hits,
+        _channel_seg_y,
+    )
+
+    n = 80
+    ymin, ymax = 70.0, 140.0
+    span = ymax - ymin
+    dy = 4.0
+    dx = 8.0
+    # 水平上軌 y=120；近端 55–79 整段 K 蓋住軌，中段 30–50 軌在 K 上方空窗
+    highs = np.full(n, 100.0)
+    lows = np.full(n, 90.0)
+    highs[30:51] = 108.0
+    lows[30:51] = 98.0
+    highs[55:] = 128.0
+    lows[55:] = 116.0
+    mas: list = []
+    seg = ((10.0, 120.0, "a"), (75.0, 120.0, "b"))
+    y_now = 120.0
+    cx, cy = _blank_for_channel_label(
+        text="下降壓 120",
+        seg=seg,
+        y_now=y_now,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=mas,
+        placed=[],
+        mark_pad=span * 0.08,
+    )
+    y_line = _channel_seg_y(seg, cx, y_now)
+    assert abs(cy - y_line) <= dy * 0.50 + 1e-6
+    # 不准停在密 K 近端（x≥55）
+    assert cx < 54.0
+    box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
+    hits = _channel_box_k_hits(
+        *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+    )
+    assert hits <= 1
+
+
 def test_close_tags_lower_right_band():
     """結構昨收／今收錨在右下最低空窗（約 550～950），不准貼現價／中右。"""
     from biaoke_chart import _close_tags_lower_right_y
