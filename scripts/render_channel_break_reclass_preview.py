@@ -84,6 +84,76 @@ def _name(sid: str, db: str) -> str:
     return str(row[0]) if row and row[0] else sid
 
 
+def _install_hits_overlay_savefig(hits_stem: Path):
+    """after 存檔時：先寫淨圖，再疊紅框／命中 K 另存 *-hits.png。"""
+    from matplotlib.figure import Figure
+
+    from vol_zone_chart import (
+        _channel_artist_pixel_hits,
+        draw_channel_label_hits_overlay,
+    )
+
+    real = Figure.savefig
+    reports: list = []
+
+    def _sf(self, fname, *a, **k):
+        out = real(self, fname, *a, **k)
+        for ax in self.axes:
+            arts = getattr(ax, "_wayne_channel_label_artists", None)
+            ohlc = getattr(ax, "_wayne_channel_label_ohlc", None)
+            if not arts or not ohlc:
+                continue
+            hi, lo, n = ohlc
+            self.canvas.draw()
+            ren = self.canvas.get_renderer()
+            for art in arts:
+                hits, _bb = _channel_artist_pixel_hits(
+                    ax, art, n=int(n), highs=hi, lows=lo, renderer=ren
+                )
+                try:
+                    txt = str(art.get_text() or "")
+                except Exception:
+                    txt = ""
+                reports.append({"text": txt, "k_hits": len(hits), "bars": hits})
+                print(
+                    f"pixel-hits {hits_stem.name}: {txt!r} k_hits={len(hits)} bars={hits}"
+                )
+            draw_channel_label_hits_overlay(
+                ax,
+                n=int(n),
+                highs=hi,
+                lows=lo,
+                label_artists=arts,
+                renderer=ren,
+            )
+            hits_path = Path(str(hits_stem) + "-hits.png")
+            try:
+                real(self, str(hits_path), dpi=int(k.get("dpi") or 120), format="png")
+            except TypeError:
+                real(self, str(hits_path), format="png")
+            except OSError as exc:
+                print("hits-overlay-skip", hits_path, exc)
+            else:
+                print("hits-overlay", hits_path, "bytes", hits_path.stat().st_size)
+                hits_path.with_suffix(".txt").write_text(
+                    "\n".join(
+                        f"{r['text']}\tk_hits={r['k_hits']}\tbars={r['bars']}"
+                        for r in reports
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            break
+        return out
+
+    Figure.savefig = _sf
+
+    def _restore() -> None:
+        Figure.savefig = real
+
+    return _restore
+
+
 def _render_one(
     sid: str,
     name: str,
@@ -99,7 +169,18 @@ def _render_one(
 
     if structure:
         sp = _unique(out_dir, f"{sid}-structure-{tag}-{stamp}")
-        path, cap = render_lookup_structure_result(sid, name, db, str(sp), card=None)
+        restore = None
+        if tag == "after":
+            restore = _install_hits_overlay_savefig(
+                out_dir / f"{sid}-structure-{tag}"
+            )
+        try:
+            path, cap = render_lookup_structure_result(
+                sid, name, db, str(sp), card=None
+            )
+        finally:
+            if restore:
+                restore()
         if not path or not Path(path).is_file():
             raise SystemExit(f"structure fail {sid} {tag}")
         if Path(path).resolve() != sp.resolve():
@@ -112,16 +193,26 @@ def _render_one(
     # 檔名帶 fullwidth：滿版底＋軌道智能標（不准 0.72 黑邊）
     vp = _unique(out_dir, f"{sid}-volzone-{tag}-fullwidth-{stamp}")
     tmp = vp.with_suffix(".jpg")
-    path, cap = render_volume_zone_result(
-        sid,
-        name,
-        db,
-        str(tmp),
-        with_nav_signals=True,
-        lookup_portrait=False,
-        with_ma5_ma10=True,
-        with_parallel_channel=True,
-    )
+    restore = None
+    if tag == "after":
+        # overlay 檔名用簡名 stem（交審會改名）
+        restore = _install_hits_overlay_savefig(
+            out_dir / f"{sid}-volzone-{tag}"
+        )
+    try:
+        path, cap = render_volume_zone_result(
+            sid,
+            name,
+            db,
+            str(tmp),
+            with_nav_signals=True,
+            lookup_portrait=False,
+            with_ma5_ma10=True,
+            with_parallel_channel=True,
+        )
+    finally:
+        if restore:
+            restore()
     if not path or not Path(path).is_file():
         raise SystemExit(f"volzone fail {sid} {tag}")
     src = Path(path)

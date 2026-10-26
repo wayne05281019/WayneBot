@@ -453,11 +453,11 @@ def test_channel_label_prefers_low_k_cover_along_rail():
     hits = _channel_box_k_hits(
         *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
     )
-    assert hits <= 1
+    assert hits == 0
 
 
-def test_channel_labels_stagger_x_and_reject_ge3_k_hits():
-    """兩軌標必須錯開 x；候選蓋 ≥3 根 K 不合格。"""
+def test_channel_labels_stagger_x_and_reject_any_k_hit():
+    """兩軌標必須錯開 x；候選蓋 ≥1 根 K（含影）不合格。"""
     import numpy as np
 
     from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
@@ -489,7 +489,7 @@ def test_channel_labels_stagger_x_and_reject_ge3_k_hits():
         lows=lows,
         mas=[],
         placed=[],
-        mark_pad=span * 0.06,
+        mark_pad=0.0,
     )
     placed = [(cx_u - dx / 2, cx_u + dx / 2, cy_u - dy / 2, cy_u + dy / 2)]
     cx_l, cy_l = _blank_for_channel_label(
@@ -506,7 +506,7 @@ def test_channel_labels_stagger_x_and_reject_ge3_k_hits():
         lows=lows,
         mas=[],
         placed=placed,
-        mark_pad=span * 0.06,
+        mark_pad=0.0,
     )
     assert abs(cx_u - cx_l) >= dx * 1.10
     for cx, cy in ((cx_u, cy_u), (cx_l, cy_l)):
@@ -514,7 +514,42 @@ def test_channel_labels_stagger_x_and_reject_ge3_k_hits():
         hits = _channel_box_k_hits(
             *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
         )
-        assert hits < 3
+        assert hits == 0
+
+
+def test_channel_artist_pixel_hits_counts_wick():
+    """像素 hit-test：bbox 碰到影線就算 ≥1。"""
+    import numpy as np
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from vol_zone_chart import _channel_artist_pixel_hits
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    n = 20
+    highs = np.linspace(110, 100, n)
+    lows = highs - 8.0
+    ax.set_xlim(-0.5, n - 0.5)
+    ax.set_ylim(80, 120)
+    # 標籤壓在第 10 根影線上
+    art = ax.text(
+        10.0,
+        float(highs[10]) - 1.0,
+        "下降壓 100",
+        ha="center",
+        va="center",
+        fontsize=12,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="w", edgecolor="k"),
+    )
+    fig.canvas.draw()
+    hits, _bb = _channel_artist_pixel_hits(
+        ax, art, n=n, highs=highs, lows=lows, renderer=fig.canvas.get_renderer()
+    )
+    plt.close(fig)
+    assert len(hits) >= 1
+    assert 10 in hits
 
 
 def test_close_tags_lower_right_band():
