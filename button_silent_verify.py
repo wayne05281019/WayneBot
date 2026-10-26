@@ -169,6 +169,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
             "biaoke_levels",
             "biaoke_diverge",
             "biaoke_vol_next_sup",
+            "biaoke_dist_trace",
+            "biaoke_desc_channel",
+            "biaoke_second_leg",
         ),
         "class": CLASS_BIAOKE,
         "status": "gap_filled",
@@ -177,6 +180,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
             "biaoke_claims 點位（lo/hi／role）→ biaoke_levels 輔助凍；"
             "點位／大盤走法必寫他說＋可重算我說→biaoke_diverge；"
             "破大量區撐→下一撐到達／續跌＝biaoke_vol_next_sup（D4 骨架；非買訊）；"
+            "出貨痕跡＝biaoke_dist_trace（D6；face=false；下一版 dist_v2_over_vol）；"
+            "下降通道破平行撐＝biaoke_desc_channel（D7；下一版 desc_break_v2_from_mid）；"
+            "第二段下殺＝biaoke_second_leg（D9；下一版 second_v2_channel）；"
             "§13 n≥20 且下一版贏現況才換該軌並再生；"
             "對質前 ensure_confront_aux 補台指／電子夜盤／美股已收"
         ),
@@ -859,6 +865,16 @@ def snapshot_biaoke_vol_next_sup(market_db: str, as_of: str = "") -> int:
         return 0
 
 
+def snapshot_biaoke_dist_channel_second(market_db: str, as_of: str = "") -> int:
+    """D6／D7／D9 出貨痕跡／通道／第二段靜默落檔（face=false；非買訊）。失敗回 0。"""
+    try:
+        from biaoke_dist_channel_second_verify import snapshot_day
+
+        return int(snapshot_day(market_db, as_of) or 0)
+    except Exception:
+        return 0
+
+
 def snapshot_biaoke_diverge(market_db: str, as_of: str = "") -> int:
     """飆大他說／我說分軌凍（必有可重算下一步；§13 另軌；不是買訊）。"""
     try:
@@ -901,6 +917,11 @@ def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
         ("biaoke_levels", "biaoke-levels", snapshot_biaoke_levels),
         ("biaoke_diverge", "biaoke-diverge", snapshot_biaoke_diverge),
         ("biaoke_vol_next_sup", "biaoke-vol-next-sup", snapshot_biaoke_vol_next_sup),
+        (
+            "biaoke_dist_channel_second",
+            "biaoke-dist-channel-second",
+            snapshot_biaoke_dist_channel_second,
+        ),
         ("winrate_buypoint", "winrate-buypoint", snapshot_winrate_buypoint),
     )
     for key, track, fn in runners:
