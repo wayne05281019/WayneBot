@@ -171,6 +171,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
             "biaoke_vol_next_sup",
             "biaoke_m_neck_break",
             "biaoke_w_neck_break",
+            "biaoke_dist_trace",
+            "biaoke_desc_channel",
+            "biaoke_second_leg",
         ),
         "class": CLASS_BIAOKE,
         "status": "gap_filled",
@@ -183,6 +186,9 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
             "下一版 m_neck_v2_vol_confirm）；"
             "W底破頸線站上＝biaoke_w_neck_break（D2 骨架；非買訊；face=false；"
             "下一版 w_neck_v2_vol_confirm）；"
+            "出貨痕跡＝biaoke_dist_trace（D6；face=false；下一版 dist_v2_over_vol）；"
+            "下降通道破平行撐＝biaoke_desc_channel（D7；下一版 desc_break_v2_from_mid）；"
+            "第二段下殺＝biaoke_second_leg（D9；下一版 second_v2_channel）；"
             "§13 n≥20 且下一版贏現況才換該軌並再生；"
             "對質前 ensure_confront_aux 補台指／電子夜盤／美股已收"
         ),
@@ -885,6 +891,16 @@ def snapshot_biaoke_w_neck_break(market_db: str, as_of: str = "") -> int:
         return 0
 
 
+def snapshot_biaoke_dist_channel_second(market_db: str, as_of: str = "") -> int:
+    """D6／D7／D9 出貨痕跡／通道／第二段靜默落檔（face=false；非買訊）。失敗回 0。"""
+    try:
+        from biaoke_dist_channel_second_verify import snapshot_day
+
+        return int(snapshot_day(market_db, as_of) or 0)
+    except Exception:
+        return 0
+
+
 def snapshot_biaoke_diverge(market_db: str, as_of: str = "") -> int:
     """飆大他說／我說分軌凍（必有可重算下一步；§13 另軌；不是買訊）。"""
     try:
@@ -929,6 +945,11 @@ def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
         ("biaoke_vol_next_sup", "biaoke-vol-next-sup", snapshot_biaoke_vol_next_sup),
         ("biaoke_m_neck_break", "biaoke-m-neck-break", snapshot_biaoke_m_neck_break),
         ("biaoke_w_neck_break", "biaoke-w-neck-break", snapshot_biaoke_w_neck_break),
+        (
+            "biaoke_dist_channel_second",
+            "biaoke-dist-channel-second",
+            snapshot_biaoke_dist_channel_second,
+        ),
         ("winrate_buypoint", "winrate-buypoint", snapshot_winrate_buypoint),
     )
     for key, track, fn in runners:
