@@ -1512,10 +1512,16 @@ def test_morning_claim_blocks_parallel_second_send(tmp_path, monkeypatch):
     assert "morning-claim" in row[1]
 
     # watchdog／catch-up 第二槍：搶不到 → 零推播
+    # _stub_morning_deps 只 stub 了 runner_a；runner_b 必須自己略過側車，
+    # 否則 as_of==cap 會真打 MOPS／TLS，本機／CI 卡住就不測到搶鎖。
     runner_b = _make_runner()
+    sidecar_hits = []
+    runner_b._refresh_official_sidecars = lambda: sidecar_hits.append(1)
     assert runner_b.run_morning_screen(skip_if_done=True, notify=True) is True
     assert pushes == []
     assert extras == []
+    # running 中第二槍不准跑預搶鎖側車（§14 不擋 catch-up）
+    assert sidecar_hits == []
     assert (
         sqlite3.connect(path)
         .execute(
@@ -1525,6 +1531,35 @@ def test_morning_claim_blocks_parallel_second_send(tmp_path, monkeypatch):
         .fetchone()[0]
         == "running"
     )
+
+
+def test_refresh_official_sidecars_hard_timeout(monkeypatch):
+    """MOPS／TLS 卡住時側車必須逾時返回，不准拖死早報執行緒。"""
+    import time
+
+    import company_events
+    import ex_rights
+    import fundamentals
+    import official_snapshots
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = ":memory:"
+    monkeypatch.setenv("WAYNE_MORNING_SIDECAR_TIMEOUT_SEC", "1")
+
+    def _hang(*_a, **_k):
+        time.sleep(30)
+        return {}
+
+    # body 內 from X import sync_*：patch 模組屬性即可
+    monkeypatch.setattr(fundamentals, "sync_fundamentals", _hang)
+    monkeypatch.setattr(company_events, "sync_company_events", _hang)
+    monkeypatch.setattr(ex_rights, "sync_ex_preview", _hang)
+    monkeypatch.setattr(official_snapshots, "sync_official_snapshots", _hang)
+    t0 = time.perf_counter()
+    runner._refresh_official_sidecars()
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 3.0, elapsed
 
 
 def test_morning_double_call_sends_once(tmp_path, monkeypatch):

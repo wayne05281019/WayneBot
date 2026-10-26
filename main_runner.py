@@ -2471,35 +2471,63 @@ class MainRunner:
 
         月營收 OpenAPI 常整期才換檔；已先公告的公司要對公開資訊觀測站 NAS。
         股東會／法說、除權息預告、本益／融資快照也是查股會讀的官方列。
+
+        硬牆逾時：MOPS／TLS 卡住不准拖死 §14 早報（含第二槍 catch-up）。
+        單段已有 try／except；整包再加 wall-clock，逾時只略過側車、不擋寄。
         """
         try:
-            from fundamentals import sync_fundamentals
+            timeout_s = float(
+                os.environ.get("WAYNE_MORNING_SIDECAR_TIMEOUT_SEC") or 45
+            )
+        except (TypeError, ValueError):
+            timeout_s = 45.0
+        timeout_s = max(1.0, min(timeout_s, 180.0))
 
-            fund = sync_fundamentals(self.db_path)
-            logger.info("今早月營收／季報：%s", fund)
-        except Exception as e:
-            logger.warning("今早基本面略過：%s", e)
+        def _body() -> None:
+            try:
+                from fundamentals import sync_fundamentals
+
+                fund = sync_fundamentals(self.db_path)
+                logger.info("今早月營收／季報：%s", fund)
+            except Exception as e:
+                logger.warning("今早基本面略過：%s", e)
+            try:
+                from company_events import sync_company_events
+
+                ev = sync_company_events(self.db_path)
+                logger.info("今早股東會／法說：%s", ev)
+            except Exception as e:
+                logger.warning("今早公司行事略過：%s", e)
+            try:
+                from ex_rights import sync_ex_preview
+
+                preview = sync_ex_preview(self.db_path)
+                logger.info("今早除權息預告：%s", preview)
+            except Exception as e:
+                logger.warning("今早除權息預告略過：%s", e)
+            try:
+                from official_snapshots import sync_official_snapshots
+
+                snap = sync_official_snapshots(self.db_path)
+                logger.info("今早官方快照：%s", snap)
+            except Exception as e:
+                logger.warning("今早官方快照略過：%s", e)
+
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+        # 不准 with-Executor：result 逾時後 __exit__ 仍會等卡住的側車執行緒。
+        ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wayne-sidecar")
         try:
-            from company_events import sync_company_events
-
-            ev = sync_company_events(self.db_path)
-            logger.info("今早股東會／法說：%s", ev)
+            fut = ex.submit(_body)
+            fut.result(timeout=timeout_s)
+        except FuturesTimeout:
+            logger.warning(
+                "今早官方側車逾時 %.0fs，略過不擋寄（§14）", timeout_s
+            )
         except Exception as e:
-            logger.warning("今早公司行事略過：%s", e)
-        try:
-            from ex_rights import sync_ex_preview
-
-            preview = sync_ex_preview(self.db_path)
-            logger.info("今早除權息預告：%s", preview)
-        except Exception as e:
-            logger.warning("今早除權息預告略過：%s", e)
-        try:
-            from official_snapshots import sync_official_snapshots
-
-            snap = sync_official_snapshots(self.db_path)
-            logger.info("今早官方快照：%s", snap)
-        except Exception as e:
-            logger.warning("今早官方快照略過：%s", e)
+            logger.warning("今早官方側車略過：%s", e)
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
 
     def run_morning_screen(self, skip_if_done: bool = False, notify: bool = True) -> bool:
         """開市日 06:30 海選＋加權研究等同輪附帶：白名單只寄一次。
@@ -2636,11 +2664,21 @@ class MainRunner:
         if not as_of:
             self.run_daily_increment(notify=False)
         elif as_of == cap:
-            logger.info("今早庫已是完整日 %s，略過再抓行情，仍對官方側車", as_of)
-            try:
-                self._refresh_official_sidecars()
-            except Exception as e:
-                logger.warning("今早側車略過（不擋寄）：%s", e)
+            # 別槍已搶 running：預搶鎖側車不准擋 catch-up／watchdog 第二槍。
+            # success／回執略過路徑已各自對側車；這裡只服務「尚未寄、要搶鎖」那一槍。
+            pre_status = self.pipeline_status(key) if as_of else ""
+            if pre_status == "running":
+                logger.info(
+                    "今早庫已是完整日 %s，但 %s 進行中，略過預搶鎖側車",
+                    as_of,
+                    key,
+                )
+            else:
+                logger.info("今早庫已是完整日 %s，略過再抓行情，仍對官方側車", as_of)
+                try:
+                    self._refresh_official_sidecars()
+                except Exception as e:
+                    logger.warning("今早側車略過（不擋寄）：%s", e)
         else:
             logger.info(
                 "今早基準日 %s 已齊（cap 尚為 %s），略過再抓行情／重側車以免擋寄",
