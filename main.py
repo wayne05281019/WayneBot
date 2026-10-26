@@ -1402,6 +1402,14 @@ def run_web():
     from wayne_db import ensure_core_schema
     from config import get_db_path, get_telegram_chat_id
 
+    try:
+        from tg_message_ttl import start_message_ttl_guard
+
+        # Telegram 顯示 24h：只刪 Bot 自己寄出的；LOADING／busy 進行中不刪；不擋查股
+        start_message_ttl_guard(db_path=get_db_path())
+    except Exception:
+        logger.exception("tg_message_ttl 守衛啟動失敗")
+
     db_path = get_db_path()
     # 開機閘只用便宜 SELECT 1；完整 quick_check 丟背景，避免卡死 /live（Render 5s）。
     from import_health import db_liveness_ok

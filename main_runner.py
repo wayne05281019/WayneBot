@@ -1001,6 +1001,17 @@ class MainRunner:
                 resp = requests.post(url, json=payload, timeout=15)
                 if resp.status_code == 200:
                     logger.info("📤 原生 API 成功送出 Telegram 推播")
+                    try:
+                        from tg_message_ttl import record_from_api_result
+
+                        record_from_api_result(
+                            resp.json() if resp.content else {},
+                            chat_id=chat_id,
+                            db_path=getattr(self, "db_path", "") or "",
+                            kind="runner_send",
+                        )
+                    except Exception:
+                        pass
                     return True
                 logger.error(f"❌ Telegram API 錯誤 ({resp.status_code}): {resp.text}")
                 return False
