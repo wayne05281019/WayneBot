@@ -1005,6 +1005,16 @@ class WayneTelegramBot:
             return
         try:
             await msg.delete()
+            try:
+                from tg_message_ttl import forget_outbound
+
+                forget_outbound(
+                    getattr(msg, "chat_id", None) or getattr(getattr(msg, "chat", None), "id", None),
+                    getattr(msg, "message_id", None),
+                    db_path=getattr(self, "db_path", "") or "",
+                )
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1032,6 +1042,16 @@ class WayneTelegramBot:
                 pass
         try:
             await msg.delete()
+            try:
+                from tg_message_ttl import forget_outbound
+
+                forget_outbound(
+                    getattr(msg, "chat_id", None) or getattr(getattr(msg, "chat", None), "id", None),
+                    getattr(msg, "message_id", None),
+                    db_path=getattr(self, "db_path", "") or "",
+                )
+            except Exception:
+                pass
             return
         except Exception:
             pass
@@ -1040,6 +1060,16 @@ class WayneTelegramBot:
             await msg.edit_text(
                 html_escape("等待框已結束（可略過這則）"),
                 parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        try:
+            from tg_message_ttl import unprotect_message
+
+            unprotect_message(
+                getattr(msg, "chat_id", None) or getattr(getattr(msg, "chat", None), "id", None),
+                getattr(msg, "message_id", None),
+                db_path=getattr(self, "db_path", "") or "",
             )
         except Exception:
             pass
@@ -3168,12 +3198,24 @@ class WayneTelegramBot:
             import requests
 
             with open(path, "rb") as fh:
-                requests.post(
+                resp = requests.post(
                     f"https://api.telegram.org/bot{self.token}/sendAnimation",
                     data={"chat_id": chat_id},
                     files={"animation": fh},
                     timeout=30,
                 )
+            try:
+                from tg_message_ttl import record_from_api_result
+
+                if getattr(resp, "status_code", 0) == 200:
+                    record_from_api_result(
+                        resp.json() if resp.content else {},
+                        chat_id=chat_id,
+                        db_path=getattr(self, "db_path", "") or "",
+                        kind="send_animation",
+                    )
+            except Exception:
+                pass
         except Exception as e:
             logger.error("send_animation: %s", e)
 
@@ -3181,11 +3223,23 @@ class WayneTelegramBot:
         try:
             import requests
 
-            requests.post(
+            resp = requests.post(
                 f"https://api.telegram.org/bot{self.token}/sendSticker",
                 data={"chat_id": chat_id, "sticker": file_id},
                 timeout=30,
             )
+            try:
+                from tg_message_ttl import record_from_api_result
+
+                if getattr(resp, "status_code", 0) == 200:
+                    record_from_api_result(
+                        resp.json() if resp.content else {},
+                        chat_id=chat_id,
+                        db_path=getattr(self, "db_path", "") or "",
+                        kind="send_sticker",
+                    )
+            except Exception:
+                pass
         except Exception as e:
             logger.error("send_sticker: %s", e)
 
@@ -3212,6 +3266,17 @@ class WayneTelegramBot:
                     (getattr(resp, "text", None) or "")[:240],
                 )
                 return False
+            try:
+                from tg_message_ttl import record_from_api_result
+
+                record_from_api_result(
+                    resp.json() if resp.content else {},
+                    chat_id=chat_id,
+                    db_path=getattr(self, "db_path", "") or "",
+                    kind="send_html",
+                )
+            except Exception:
+                pass
             return True
         except Exception as e:
             logger.error("send_html: %s", e)
@@ -3224,11 +3289,23 @@ class WayneTelegramBot:
             payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
             if reply_markup is not None:
                 payload["reply_markup"] = reply_markup.to_dict()
-            requests.post(
+            resp = requests.post(
                 f"https://api.telegram.org/bot{self.token}/sendMessage",
                 json=payload,
                 timeout=20,
             )
+            try:
+                from tg_message_ttl import record_from_api_result
+
+                if getattr(resp, "status_code", 0) == 200:
+                    record_from_api_result(
+                        resp.json() if resp.content else {},
+                        chat_id=chat_id,
+                        db_path=getattr(self, "db_path", "") or "",
+                        kind="send_plain",
+                    )
+            except Exception:
+                pass
         except Exception as e:
             logger.error("send_plain: %s", e)
 
@@ -3238,12 +3315,24 @@ class WayneTelegramBot:
 
             url = f"https://api.telegram.org/bot{self.token}/sendDocument"
             with open(file_path, "rb") as f:
-                requests.post(
+                resp = requests.post(
                     url,
                     data={"chat_id": chat_id, "caption": caption[:1024]},
                     files={"document": (os.path.basename(file_path), f, "text/plain; charset=utf-8")},
                     timeout=40,
                 )
+            try:
+                from tg_message_ttl import record_from_api_result
+
+                if getattr(resp, "status_code", 0) == 200:
+                    record_from_api_result(
+                        resp.json() if resp.content else {},
+                        chat_id=chat_id,
+                        db_path=getattr(self, "db_path", "") or "",
+                        kind="send_document",
+                    )
+            except Exception:
+                pass
         except Exception as e:
             logger.error("send_text_file: %s", e)
 
@@ -3266,7 +3355,19 @@ class WayneTelegramBot:
                 data = {"chat_id": chat_id, "caption": caption[:1024], "parse_mode": "HTML"}
                 if reply_markup is not None:
                     data["reply_markup"] = json.dumps(reply_markup.to_dict())
-                requests.post(url, files=files, data=data, timeout=40)
+                resp = requests.post(url, files=files, data=data, timeout=40)
+            try:
+                from tg_message_ttl import record_from_api_result
+
+                if getattr(resp, "status_code", 0) == 200:
+                    record_from_api_result(
+                        resp.json() if resp.content else {},
+                        chat_id=chat_id,
+                        db_path=getattr(self, "db_path", "") or "",
+                        kind="send_photo",
+                    )
+            except Exception:
+                pass
         except Exception as e:
             logger.error("send_photo: %s", e)
 
@@ -4278,6 +4379,19 @@ class WayneTelegramBot:
                 conn.commit()
             finally:
                 conn.close()
+            try:
+                from tg_message_ttl import protect_message, record_outbound
+
+                record_outbound(
+                    chat_id,
+                    mid,
+                    db_path=path,
+                    protect=True,
+                    kind=f"loading:{k}",
+                )
+                protect_message(chat_id, mid, db_path=path, kind=f"loading:{k}")
+            except Exception:
+                pass
         except Exception:
             logger.debug("記住 LOADING orphan 略過", exc_info=True)
 
@@ -4292,11 +4406,19 @@ class WayneTelegramBot:
             conn = sqlite3.connect(path, timeout=8.0)
             try:
                 if kind:
+                    rows = conn.execute(
+                        "SELECT chat_id, message_id FROM tg_progress_orphans WHERE actor=? AND kind=?",
+                        (key, str(kind)),
+                    ).fetchall()
                     conn.execute(
                         "DELETE FROM tg_progress_orphans WHERE actor=? AND kind=?",
                         (key, str(kind)),
                     )
                 else:
+                    rows = conn.execute(
+                        "SELECT chat_id, message_id FROM tg_progress_orphans WHERE actor=?",
+                        (key,),
+                    ).fetchall()
                     conn.execute(
                         "DELETE FROM tg_progress_orphans WHERE actor=?",
                         (key,),
@@ -4304,6 +4426,13 @@ class WayneTelegramBot:
                 conn.commit()
             finally:
                 conn.close()
+            try:
+                from tg_message_ttl import unprotect_message
+
+                for row in rows or []:
+                    unprotect_message(row[0], row[1], db_path=path)
+            except Exception:
+                pass
         except Exception:
             logger.debug("清 LOADING orphan 列略過", exc_info=True)
 
@@ -4357,6 +4486,16 @@ class WayneTelegramBot:
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=mid)
                 n += 1
+                try:
+                    from tg_message_ttl import forget_outbound
+
+                    forget_outbound(
+                        chat_id,
+                        mid,
+                        db_path=getattr(self, "db_path", "") or "",
+                    )
+                except Exception:
+                    pass
             except Exception:
                 pass
             self._forget_progress_orphan(row.get("actor") or "", row.get("kind") or "")
@@ -10475,6 +10614,12 @@ class WayneTelegramBot:
                     logger.info("開機清掉 LOADING 殘框 %s 則", n_orphan)
             except Exception:
                 logger.exception("開機清 LOADING 殘框失敗")
+            try:
+                from tg_message_ttl import install_bot_hooks
+
+                install_bot_hooks(app.bot, db_path=getattr(self, "db_path", "") or "")
+            except Exception:
+                logger.exception("tg_message_ttl Bot hook 失敗")
             try:
                 await self._notify_phones_updated(app)
             except Exception:

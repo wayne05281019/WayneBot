@@ -1618,6 +1618,17 @@ def _record_push_msg(chat_id: str, message_id: int, html: str) -> None:
         )
         conn.commit()
         conn.close()
+        try:
+            from tg_message_ttl import record_outbound
+
+            record_outbound(
+                chat_id,
+                message_id,
+                db_path=db,
+                kind="biaoke_push",
+            )
+        except Exception:
+            pass
     except sqlite3.Error:
         logger.debug("推播 message_id 寫不進", exc_info=True)
 

@@ -10,7 +10,7 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 logger = logging.getLogger("WayneBotRunner")
 
@@ -154,6 +154,35 @@ def active_busy_kind(*, db_path: str = "") -> str:
     return str((data or {}).get("kind") or "").strip()
 
 
+def active_message_pairs(*, db_path: str = "") -> List[Tuple[str, int]]:
+    """進行中重活提示的 (chat_id, message_id)；給 tg_message_ttl 略過誤刪。"""
+    out: List[Tuple[str, int]] = []
+    seen = set()
+
+    def _add(cid: Any, mid: Any) -> None:
+        try:
+            key = (str(cid), int(mid))
+        except (TypeError, ValueError):
+            return
+        if not key[0] or key[1] <= 0 or key in seen:
+            return
+        seen.add(key)
+        out.append(key)
+
+    with _lock:
+        for msgs in (_active or {}).values():
+            if not isinstance(msgs, dict):
+                continue
+            for cid, mid in msgs.items():
+                _add(cid, mid)
+    data = _load_file(_state_path(db_path))
+    raw = (data or {}).get("messages") or {}
+    if isinstance(raw, dict):
+        for cid, mid in raw.items():
+            _add(cid, mid)
+    return out
+
+
 def _delete_one(token: str, chat_id: str, message_id: int) -> bool:
     mid = int(message_id or 0)
     if not mid:
@@ -280,6 +309,13 @@ def start_busy_notice(
         mid = int(((res.get("result") or {}).get("message_id") or 0) or 0)
         if res.get("ok") and mid:
             sent[str(cid)] = mid
+            try:
+                from tg_message_ttl import protect_message, record_outbound
+
+                record_outbound(cid, mid, db_path=db_path, protect=True, kind=f"busy:{k}")
+                protect_message(cid, mid, db_path=db_path, kind=f"busy:{k}")
+            except Exception:
+                pass
         else:
             logger.warning(
                 "busy_window 推播失敗 kind=%s chat=%s err=%s",
@@ -343,10 +379,23 @@ def finish_busy_notice(
     stats = {"kind": k, "deleted": 0, "failed": 0}
     if tok and mem:
         for cid, mid in list(mem.items()):
-            if _delete_one(tok, str(cid), int(mid)):
+            ok = _delete_one(tok, str(cid), int(mid))
+            if ok:
                 stats["deleted"] += 1
+                try:
+                    from tg_message_ttl import forget_outbound
+
+                    forget_outbound(cid, mid, db_path=db_path)
+                except Exception:
+                    pass
             else:
                 stats["failed"] += 1
+                try:
+                    from tg_message_ttl import unprotect_message
+
+                    unprotect_message(cid, mid, db_path=db_path)
+                except Exception:
+                    pass
     # 本 kind 清完；若檔內仍是本 kind 就刪檔
     data = _load_file(path)
     if str((data or {}).get("kind") or "") == k:

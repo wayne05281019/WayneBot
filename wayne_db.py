@@ -1741,6 +1741,7 @@ PRIVATE_USER_TABLES: tuple[str, ...] = (
     "ai_fills",
     "ai_lessons",
     "tg_issue_reports",
+    "tg_bot_outbound",
 )
 
 
