@@ -351,6 +351,83 @@ def test_boot_backfill_uses_increment_job():
     # §14：開市日早報未寄前開機融合必須讓路
     assert "_morning_digest_still_due" in src
     assert "開市日早報尚未寄達" in src
+    # 休市日開機也不准 fuse（光復節補假／颱風等同精神）
+    assert "closed_tw_session" in src
+    assert "開市日才融合" in src
+
+
+def test_catch_up_skips_fuse_on_closed_day():
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.catch_up_missed_jobs)
+    assert "跳過盤後融合補跑" in src
+    assert "closed_tw_session" in src
+    fuse_chunk = src.split("if need_fuse:")[1].split("if need_midday:")[0]
+    assert "closed_fuse" in fuse_chunk
+    assert "now=now" in fuse_chunk
+    assert "run_increment_job" in fuse_chunk
+
+
+def test_catch_up_skips_fuse_on_guangfu_makeup_holiday(monkeypatch):
+    """光復節補假下午：補跑不准呼叫 run_increment_job。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import main
+    import main_runner
+
+    calls = []
+
+    class _R:
+        db_path = ":memory:"
+
+        def morning_claim_is_fresh_running(self):
+            return False
+
+        def demote_orphaned_increment_claims(self, **kw):
+            return 0
+
+        def demote_orphaned_morning_claims(self, **kw):
+            return 0
+
+        def reconcile_push_deliveries(self, **kw):
+            return 0
+
+        def run_nightly_open_check(self, **kw):
+            calls.append(("open_check", kw))
+
+        def run_morning_screen(self, **kw):
+            calls.append(("morning", kw))
+
+        def run_increment_job(self, **kw):
+            calls.append(("fuse", kw))
+
+        def run_midday_review(self, **kw):
+            calls.append(("midday", kw))
+
+        def run_evening_screen(self, **kw):
+            calls.append(("evening", kw))
+
+        def run_winrate_buypoint(self, **kw):
+            calls.append(("winrate", kw))
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr(main_runner, "MainRunner", lambda *a, **k: _R())
+    monkeypatch.setattr(
+        "tw_holidays.closed_tw_session",
+        lambda now=None, db_path=None: {
+            "ymd": "20261026",
+            "zh": "光復節補假",
+            "kind": "full_close",
+        },
+    )
+    now = datetime(2026, 10, 26, 19, 10, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    kinds = [c[0] for c in calls]
+    assert "fuse" not in kinds
+    assert "morning" in kinds
 
 
 def test_morning_digest_still_due_helper_exists():
@@ -370,12 +447,83 @@ def test_increment_job_holiday_checks_prior_cap_before_skip():
     from main_runner import MainRunner
 
     src = inspect.getsource(MainRunner.run_increment_job)
-    assert "上一完整收盤日是否齊" in src
-    assert "改補齊" in src
+    # 休市一律跳過重融合；上一收盤未齊也不准掉進 busy_window
+    assert "跳過盤後融合（開市日才融合）" in src
+    assert "仍跳過融合／不推 busy" in src
+    assert "改補齊" not in src
     closed_block = src.split("if closed:")[1].split("if skip_if_done")[0]
     assert "sync_emerging_quotes" in closed_block
     assert "audit_import" in closed_block
     assert "_increment_ok" in closed_block
+    assert 'busy_window("fuse"' not in closed_block
+    assert "return True" in closed_block
+    # busy 融合本體只在 closed 分支之後
+    assert src.index("if closed:") < src.index('busy_window("fuse"')
+
+
+def test_increment_job_closed_never_enters_busy_even_if_prior_incomplete(
+    tmp_path, monkeypatch
+):
+    """光復節補假等：上一收盤未齊也不准推「資料處理中」／跑重融合。"""
+    from main_runner import MainRunner
+
+    db = tmp_path / "w.db"
+    db.write_text("", encoding="utf-8")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = str(db)
+    runner.today_str = "20261026"
+    runner.fetcher = None
+
+    monkeypatch.setattr(
+        "tw_holidays.closed_tw_session",
+        lambda db_path=None, now=None: {
+            "ymd": "20261026",
+            "zh": "光復節補假",
+            "kind": "full_close",
+            "prev_ymd": "20261023",
+        },
+    )
+    monkeypatch.setattr(
+        "tw_holidays.refresh_tw_holiday_calendar", lambda *a, **k: {"ok": True}
+    )
+    monkeypatch.setattr(
+        "tw_holidays.refresh_tw_typhoon_halt", lambda *a, **k: {"ok": True}
+    )
+    monkeypatch.setattr(
+        "main_runner.fuse_end_date", lambda *a, **k: "20261023"
+    )
+    monkeypatch.setattr(
+        "emerging_quotes.sync_emerging_quotes", lambda *a, **k: {"n": 0}
+    )
+    monkeypatch.setattr(
+        "import_health.audit_import",
+        lambda *a, **k: {"tw": 10, "two": 10, "em": 0},
+    )
+
+    marks = []
+    busy_calls = []
+
+    runner._increment_ok = lambda health: False  # type: ignore[method-assign]
+    runner._refresh_official_sidecars = lambda: None  # type: ignore[method-assign]
+    runner._run_post_fuse_silent_tracks = lambda *a, **k: {}  # type: ignore[method-assign]
+    runner._mark_pipeline = lambda status, notes="", **kw: marks.append(  # type: ignore[method-assign]
+        (status, notes)
+    )
+
+    def _no_busy(*a, **k):
+        busy_calls.append(1)
+        raise AssertionError("休市日不准進 busy_window")
+
+    monkeypatch.setattr(
+        "busy_window_notice.busy_window", _no_busy
+    )
+
+    assert runner.run_increment_job(skip_if_done=True, notify=True) is True
+    assert busy_calls == []
+    assert marks and marks[0][0] == "success"
+    assert "skip increment" in marks[0][1]
+    assert "光復節補假" in marks[0][1]
+    assert "prior_incomplete" in marks[0][1]
 
 
 def test_pipeline_stamp_and_finished_at_are_taipei():

@@ -778,14 +778,31 @@ def catch_up_missed_jobs(now=None) -> None:
             logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄（先於盤後融合）")
             runner.run_morning_screen(skip_if_done=True)
     if need_fuse:
-        logger.info("補跑：已過台灣 16:30，若盤後融合沒成功就補跑")
+        # 休市日（光復節補假／颱風停班／連假）：早報已認無開盤 → 不准 fuse 補跑
+        # 必須吃 catch-up 的 now（台北），不准另用機器「今天」誤判開市日測試。
         try:
-            n_inc = runner.demote_orphaned_increment_claims()
-            if n_inc:
-                logger.info("補跑清掉 orphan increment-claim %s 筆，改為可融合", n_inc)
+            from tw_holidays import closed_tw_session
+
+            closed_fuse = closed_tw_session(now=now, db_path=runner.db_path)
         except Exception:
-            logger.exception("補跑清 orphan increment-claim 失敗（不擋）")
-        runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
+            closed_fuse = None
+        if closed_fuse is not None:
+            logger.info(
+                "補跑：今日台股休市 %s %s，跳過盤後融合補跑（開市日才融合）",
+                closed_fuse.get("ymd"),
+                closed_fuse.get("zh"),
+            )
+        else:
+            logger.info("補跑：已過台灣 16:30，若盤後融合沒成功就補跑")
+            try:
+                n_inc = runner.demote_orphaned_increment_claims()
+                if n_inc:
+                    logger.info("補跑清掉 orphan increment-claim %s 筆，改為可融合", n_inc)
+            except Exception:
+                logger.exception("補跑清 orphan increment-claim 失敗（不擋）")
+            runner.run_increment_job(
+                skip_if_done=True, notify=scheduler_may_push("fuse")
+            )
     if need_midday:
         try:
             runner.reconcile_push_deliveries(prefix="midday-")
@@ -1182,10 +1199,20 @@ def start_market_backfill(delay_s: float = 0):
                 logger.warning(
                     "早報仍未 success，逾時後仍啟動開機融合（不永久擋）"
                 )
-            logger.info("啟動後融合官方日K／法人／財報（不推播）")
             from main_runner import MainRunner
+            from tw_holidays import closed_tw_session
 
-            n = MainRunner().run_increment_job(skip_if_done=True, notify=False)
+            runner_bf = MainRunner()
+            closed_bf = closed_tw_session(db_path=runner_bf.db_path)
+            if closed_bf is not None:
+                logger.info(
+                    "啟動後融合略過：今日台股休市 %s %s（開市日才融合）",
+                    closed_bf.get("ymd"),
+                    closed_bf.get("zh"),
+                )
+                return
+            logger.info("啟動後融合官方日K／法人／財報（不推播）")
+            n = runner_bf.run_increment_job(skip_if_done=True, notify=False)
             logger.info("啟動後融合完成（當日檔數／回補 %s）", n)
         except Exception:
             logger.exception("啟動後融合失敗")

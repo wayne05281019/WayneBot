@@ -167,11 +167,16 @@ def test_fundamentals_fingerprint_changes_when_sept_arrives(tmp_path):
 
 def test_closed_and_morning_skip_still_refresh_sidecars():
     src = open("main_runner.py", encoding="utf-8").read()
-    # 休市 skip increment 仍對側車
+    # 休市 skip increment 仍對側車（含上一收盤未齊仍 skip 重融合）
     i_closed = src.find("tw closed")
     assert i_closed != -1
-    chunk = src[src.find("if self._increment_ok(health_closed)") : src.find("if skip_if_done and self.already_completed_today()")]
-    assert "_refresh_official_sidecars()" in chunk
+    closed_chunk = src[
+        src.find("if closed:") : src.find(
+            "if skip_if_done and self.already_completed_today()"
+        )
+    ]
+    assert "_refresh_official_sidecars()" in closed_chunk
+    assert "_increment_ok(health_closed)" in closed_chunk
     # 早報已寄過仍對側車
     assert "略過寄送；仍對官方側車" in src
     # 休市早報仍對側車（精簡早報路徑）
