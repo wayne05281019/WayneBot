@@ -63,7 +63,7 @@ TITLE_ALIASES: Dict[str, str] = {
     "隔夜": "overnight",
 }
 
-# 覆盤／早報統計列順序（key, 中文）
+# 覆盤／早報統計列順序（key, 中文）；半年高只靜默對質、仍列入統計，不上話筒推播
 REVIEW_BUCKETS: Tuple[Tuple[str, str], ...] = tuple(
     (k, BUCKET_TITLE[k])
     for k in (
@@ -72,6 +72,7 @@ REVIEW_BUCKETS: Tuple[Tuple[str, str], ...] = tuple(
         "golden_buy",
         "revenue_cross",
         "select_01",
+        "half_year_high",
         "select_02",
         "select_03",
         "day_trade",

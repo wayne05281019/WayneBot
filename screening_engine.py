@@ -3124,6 +3124,128 @@ def _is_db_locked_error(exc: BaseException) -> bool:
     return "database is locked" in msg or "database is busy" in msg
 
 
+def _assemble_screening_from_results(
+    path: str,
+    as_of: str,
+    results: Dict[str, Any],
+    *,
+    morning: bool = False,
+    light: bool = False,
+    from_cache: bool = True,
+) -> Dict[str, Any]:
+    """把 results 組成話筒／早報用的 screening dict（不重掃）。"""
+    results = drop_non_equity_picks(results, path)
+    for key, rows in list(results.items()):
+        if isinstance(rows, list) and not str(key).startswith("_"):
+            results[key] = stamp_entry_stars(rows, key)
+    outlook = ""
+    if not light:
+        try:
+            from money_flow import just_rotated_names_in_results
+            from taiwan_market import format_screen_market_outlook_html
+
+            rot_keys = list(MORNING_LAYOUT_KEYS) if morning else None
+            outlook = format_screen_market_outlook_html(
+                path,
+                as_of,
+                snap=None,
+                us_snap=None,
+                rotated_names=just_rotated_names_in_results(results, rot_keys),
+            )
+            try:
+                from dongzhu_screen import rotation_screen_block
+
+                rot = rotation_screen_block(path)
+                if rot:
+                    outlook = (outlook + "\n" if outlook else "") + rot
+            except Exception:
+                pass
+        except Exception:
+            outlook = ""
+    payload = format_screening_payload(
+        results, as_of, morning=bool(morning), market_html=outlook
+    )
+    report_parts = []
+    if outlook:
+        report_parts.append(outlook)
+    report_parts.extend(p["html"] for p in payload if p.get("mark_key") != "market")
+    return {
+        "status": "success",
+        "date": as_of,
+        "as_of": as_of,
+        "total_scanned": sum(
+            len(v or []) for v in results.values() if isinstance(v, list)
+        ),
+        "results": results,
+        "message": "\n\n".join(report_parts),
+        "payload": payload,
+        "sections": [p["html"] for p in payload],
+        "daytrade": list(results.get("day_trade") or []),
+        "overnight": list(results.get("overnight") or []),
+        "major_alerts": [],
+        "from_cache": bool(from_cache),
+        "light": bool(light),
+    }
+
+
+def ensure_morning_session_from_cache(
+    db_path: str = None,
+    as_of: str = "",
+    *,
+    apply_us: bool = True,
+    light: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """06:30／早報：若只有 evening 快取、沒有 morning 列，升成 morning 再組 payload。
+
+    根因：晚間全掃寫 evening 後，早報 `_screening_surviving_oom` 直接讀快取推播，
+    卻沒寫 session=morning → 話筒早報有名單，但 12:45 比價／morning 專用路徑看不到桶
+    （桶算了沒進 morning＝未顯示）。空名單仍不算有記；這裡只複製已有真代號列。
+    優先看／周帶量等仍只靜默，不改 SCREEN_PUSH_SPECS。
+    """
+    path = db_path or get_db_path()
+    as_of = str(as_of or "").replace("-", "")[:8] or _resolve_screen_as_of_ymd(path)
+    if not as_of:
+        return None
+    from screen_sessions import (
+        load_session_results,
+        save_screen_session,
+        screen_session_has_session_data,
+    )
+
+    morning_rows = load_session_results(path, as_of, "morning") or {}
+    if any(morning_rows.values()):
+        return _assemble_screening_from_results(
+            path, as_of, morning_rows, morning=True, light=light, from_cache=True
+        )
+    evening_rows = load_session_results(path, as_of, "evening") or {}
+    if not any(evening_rows.values()):
+        return None
+    # 深拷貝 list，避免改到呼叫端／evening 原列
+    results: Dict[str, Any] = {}
+    for key, rows in evening_rows.items():
+        if isinstance(rows, list):
+            results[key] = [dict(it) if isinstance(it, dict) else it for it in rows]
+        else:
+            results[key] = rows
+    if apply_us:
+        try:
+            _postprocess_screen(path, as_of, results, apply_us=True)
+        except Exception:
+            pass
+    try:
+        save_screen_session(path, as_of, "morning", results)
+    except Exception:
+        logger = __import__("logging").getLogger(__name__)
+        logger.exception("evening→morning 升寫失敗 as_of=%s", as_of)
+        return None
+    if not screen_session_has_session_data(path, as_of, "morning"):
+        # 全空桶：save 寫 0 列；仍回組裝結果給早報（今日無符合也要能寄）
+        pass
+    return _assemble_screening_from_results(
+        path, as_of, results, morning=True, light=light, from_cache=True
+    )
+
+
 def load_cached_full_screening(
     db_path: str = None, *, light: bool = False
 ) -> Optional[Dict[str, Any]]:
@@ -3168,55 +3290,9 @@ def load_cached_full_screening(
     if last_locked is not None or not any(results.values()):
         return None
 
-    results = drop_non_equity_picks(results, path)
-    for key, rows in list(results.items()):
-        if isinstance(rows, list) and not str(key).startswith("_"):
-            results[key] = stamp_entry_stars(rows, key)
-    outlook = ""
-    if not light:
-        try:
-            from money_flow import just_rotated_names_in_results
-            from taiwan_market import format_screen_market_outlook_html
-
-            outlook = format_screen_market_outlook_html(
-                path,
-                as_of,
-                snap=None,
-                us_snap=None,
-                rotated_names=just_rotated_names_in_results(results, None),
-            )
-            try:
-                from dongzhu_screen import rotation_screen_block
-
-                rot = rotation_screen_block(path)
-                if rot:
-                    outlook = (outlook + "\n" if outlook else "") + rot
-            except Exception:
-                pass
-        except Exception:
-            outlook = ""
-    payload = format_screening_payload(
-        results, as_of, morning=False, market_html=outlook
+    return _assemble_screening_from_results(
+        path, as_of, results, morning=False, light=light, from_cache=True
     )
-    report_parts = []
-    if outlook:
-        report_parts.append(outlook)
-    report_parts.extend(p["html"] for p in payload if p.get("mark_key") != "market")
-    return {
-        "status": "success",
-        "date": as_of,
-        "as_of": as_of,
-        "total_scanned": sum(len(v or []) for v in results.values() if isinstance(v, list)),
-        "results": results,
-        "message": "\n\n".join(report_parts),
-        "payload": payload,
-        "sections": [p["html"] for p in payload],
-        "daytrade": list(results.get("day_trade") or []),
-        "overnight": list(results.get("overnight") or []),
-        "major_alerts": [],
-        "from_cache": True,
-        "light": bool(light),
-    }
 
 
 _FULL_SCREEN_BUILD_LOCK = threading.Lock()

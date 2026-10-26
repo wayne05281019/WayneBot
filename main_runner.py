@@ -1651,10 +1651,28 @@ class MainRunner:
         輕量日假設＝錯的。先讀 screen_sessions；無快取才 spawn。
         子行程失敗不准在父行程重掃。pytest／WAYNE_SCREEN_INLINE 才准 inline。
         """
-        from screening_engine import load_cached_full_screening
+        from screening_engine import (
+            ensure_morning_session_from_cache,
+            load_cached_full_screening,
+        )
+        from screen_sessions import screen_session_has_session_data
 
         as_of = str(as_of or "").strip()
         session = str(session or "morning").strip() or "morning"
+        # 06:30：只有 evening 快取時必須升寫 morning，否則早報推了、12:45／morning 路徑看不到桶。
+        if session == "morning":
+            promoted = ensure_morning_session_from_cache(
+                self.db_path, as_of, apply_us=bool(apply_us), light=True
+            )
+            if promoted and str(promoted.get("as_of") or promoted.get("date") or "") == as_of:
+                if any((promoted.get("results") or {}).values()) or screen_session_has_session_data(
+                    self.db_path, as_of, "morning"
+                ):
+                    logger.info(
+                        "海選讀／升寫 morning 快取 as_of=%s（evening→morning 補桶）",
+                        as_of,
+                    )
+                    return promoted
         cached = load_cached_full_screening(self.db_path)
         if cached and str(cached.get("as_of") or cached.get("date") or "") == as_of:
             if any((cached.get("results") or {}).values()):
@@ -1718,6 +1736,18 @@ class MainRunner:
         except Exception as e:
             logger.error("海選子行程失敗: %s", e, exc_info=True)
 
+        if session == "morning":
+            promoted = ensure_morning_session_from_cache(
+                self.db_path, as_of, apply_us=bool(apply_us), light=True
+            )
+            if promoted and str(promoted.get("as_of") or promoted.get("date") or "") == as_of:
+                if any((promoted.get("results") or {}).values()):
+                    logger.info(
+                        "海選子行程後升寫／讀到 morning 快取 as_of=%s rc=%s",
+                        as_of,
+                        rc,
+                    )
+                    return promoted
         cached = load_cached_full_screening(self.db_path)
         if cached and str(cached.get("as_of") or cached.get("date") or "") == as_of:
             if any((cached.get("results") or {}).values()):
@@ -2541,10 +2571,27 @@ class MainRunner:
         key = f"screen-{as_of or 'none'}"
         rebuild_only = False
         if skip_if_done and as_of:
-            from screen_sessions import screen_session_has_data
+            from screen_sessions import (
+                screen_session_has_data,
+                screen_session_has_session_data,
+            )
+            from screening_engine import ensure_morning_session_from_cache
 
             status = self.pipeline_status(key)
             has_rows = screen_session_has_data(self.db_path, as_of)
+            # 只有 evening、沒 morning：升寫 morning（不重寄），避免 12:45／畫面桶「還沒存到」
+            if has_rows and not screen_session_has_session_data(
+                self.db_path, as_of, "morning"
+            ):
+                try:
+                    ensure_morning_session_from_cache(
+                        self.db_path, as_of, apply_us=True, light=True
+                    )
+                    logger.info(
+                        "早上海選 %s 補寫 morning（由 evening 升），不重寄", key
+                    )
+                except Exception:
+                    logger.exception("早上海選 %s evening→morning 升寫失敗", key)
             # 寄出回執＝已寄：即使 pipeline 仍 running／computed 也不重寄
             if self.honor_push_delivery(key, notes="morning-skip-receipt"):
                 if has_rows:
@@ -2607,10 +2654,23 @@ class MainRunner:
             return False
         # 補齊後再判一次：並行路徑可能已寄完；running 交給下面 claim。
         if skip_if_done:
-            from screen_sessions import screen_session_has_data
+            from screen_sessions import (
+                screen_session_has_data,
+                screen_session_has_session_data,
+            )
+            from screening_engine import ensure_morning_session_from_cache
 
             status = self.pipeline_status(key)
             has_rows = screen_session_has_data(self.db_path, as_of)
+            if has_rows and not screen_session_has_session_data(
+                self.db_path, as_of, "morning"
+            ):
+                try:
+                    ensure_morning_session_from_cache(
+                        self.db_path, as_of, apply_us=True, light=True
+                    )
+                except Exception:
+                    logger.exception("早上海選 %s 補齊後 evening→morning 升寫失敗", key)
             if self.honor_push_delivery(key, notes="morning-skip-receipt-2"):
                 if has_rows:
                     logger.info("早上海選 %s 補齊後已有寄出回執，略過。", key)
