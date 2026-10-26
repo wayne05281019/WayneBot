@@ -169,6 +169,7 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
             "biaoke_levels",
             "biaoke_diverge",
             "biaoke_vol_next_sup",
+            "biaoke_m_neck_break",
         ),
         "class": CLASS_BIAOKE,
         "status": "gap_filled",
@@ -177,10 +178,12 @@ BUTTON_CATALOG: Tuple[Dict[str, Any], ...] = (
             "biaoke_claims 點位（lo/hi／role）→ biaoke_levels 輔助凍；"
             "點位／大盤走法必寫他說＋可重算我說→biaoke_diverge；"
             "破大量區撐→下一撐到達／續跌＝biaoke_vol_next_sup（D4 骨架；非買訊）；"
+            "M頭破頸線＝biaoke_m_neck_break（D1 骨架；非買訊；face=false；"
+            "下一版 m_neck_v2_vol_confirm）；"
             "§13 n≥20 且下一版贏現況才換該軌並再生；"
             "對質前 ensure_confront_aux 補台指／電子夜盤／美股已收"
         ),
-        "window": "近窗官方 OHLC＋量；點位持續對質；live_judge 再對 1／5；破撐前瞻 1／3／5",
+        "window": "近窗官方 OHLC＋量；點位持續對質；live_judge 再對 1／5；破撐／M頸前瞻 1／3／5",
         "note": "不是買訊；不准話筒抬槓；不准寫回黃金買點／海選；未過閘不改買訊",
     },
     {
@@ -859,6 +862,16 @@ def snapshot_biaoke_vol_next_sup(market_db: str, as_of: str = "") -> int:
         return 0
 
 
+def snapshot_biaoke_m_neck_break(market_db: str, as_of: str = "") -> int:
+    """M頭破頸線事件落檔（D1 骨架；非買訊；face=false）。失敗回 0。"""
+    try:
+        from biaoke_m_neck_verify import snapshot_day
+
+        return int(snapshot_day(market_db, as_of) or 0)
+    except Exception:
+        return 0
+
+
 def snapshot_biaoke_diverge(market_db: str, as_of: str = "") -> int:
     """飆大他說／我說分軌凍（必有可重算下一步；§13 另軌；不是買訊）。"""
     try:
@@ -901,6 +914,7 @@ def snapshot_all_button_gaps(market_db: str, as_of: str = "") -> Dict[str, int]:
         ("biaoke_levels", "biaoke-levels", snapshot_biaoke_levels),
         ("biaoke_diverge", "biaoke-diverge", snapshot_biaoke_diverge),
         ("biaoke_vol_next_sup", "biaoke-vol-next-sup", snapshot_biaoke_vol_next_sup),
+        ("biaoke_m_neck_break", "biaoke-m-neck-break", snapshot_biaoke_m_neck_break),
         ("winrate_buypoint", "winrate-buypoint", snapshot_winrate_buypoint),
     )
     for key, track, fn in runners:
