@@ -400,11 +400,12 @@ def test_steep_desc_rail_label_stays_on_visible_segment():
         y_line = _channel_seg_y(seg, cx, y_now)
         assert ymin < y_line < ymax
         assert abs(cy - y_line) <= dy * 0.50 + 1e-6
-        assert cx / max(n - 1, 1) >= 0.70
+        # 避 K 可往左；仍須在可見軌（不准 y_now 浮空）
+        assert cx / max(n - 1, 1) >= 0.48
 
 
 def test_channel_label_prefers_low_k_cover_along_rail():
-    """沿軌掃空窗：近端密 K 時必須往左找蓋 K 最少的可見段（主序＝k_hits）。"""
+    """沿軌掃空窗：近端密 K 時必須往左找蓋 K 最少的可見段；≥3 根不合格。"""
     import numpy as np
 
     from vol_zone_chart import (
@@ -453,6 +454,67 @@ def test_channel_label_prefers_low_k_cover_along_rail():
         *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
     )
     assert hits <= 1
+
+
+def test_channel_labels_stagger_x_and_reject_ge3_k_hits():
+    """兩軌標必須錯開 x；候選蓋 ≥3 根 K 不合格。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
+
+    n = 80
+    ymin, ymax = 60.0, 160.0
+    span = ymax - ymin
+    dx, dy = 8.0, 5.0
+    highs = np.full(n, 110.0)
+    lows = np.full(n, 100.0)
+    # 近端密穿價；左側上軌上方／下軌下方有空
+    highs[50:] = 125.0
+    lows[50:] = 95.0
+    highs[20:40] = 105.0
+    lows[20:40] = 88.0
+    seg_u = ((5.0, 130.0, "a"), (75.0, 118.0, "b"))
+    seg_l = ((5.0, 92.0, "a"), (75.0, 80.0, "b"))
+    cx_u, cy_u = _blank_for_channel_label(
+        text="下降壓 118",
+        seg=seg_u,
+        y_now=118.0,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=[],
+        mark_pad=span * 0.06,
+    )
+    placed = [(cx_u - dx / 2, cx_u + dx / 2, cy_u - dy / 2, cy_u + dy / 2)]
+    cx_l, cy_l = _blank_for_channel_label(
+        text="平行撐 80",
+        seg=seg_l,
+        y_now=80.0,
+        outside=-1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=placed,
+        mark_pad=span * 0.06,
+    )
+    assert abs(cx_u - cx_l) >= dx * 1.10
+    for cx, cy in ((cx_u, cy_u), (cx_l, cy_l)):
+        box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
+        hits = _channel_box_k_hits(
+            *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+        )
+        assert hits < 3
 
 
 def test_close_tags_lower_right_band():

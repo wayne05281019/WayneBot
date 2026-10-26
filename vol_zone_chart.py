@@ -2375,38 +2375,37 @@ def _blank_for_channel_label(
     y_vis_hi = float(ymax) - max(dy * 0.55, span * 0.02)
 
     def _rail_visible(cx: float) -> Tuple[bool, float]:
-        """該 x 的軌位必須落在可見軸內，且接近末日軌價。
+        """該 x 的軌位必須落在可見軸內。
 
-        下降軌左延常飛出圖外或飄到高空空白；掛在那裡看起來像浮標＋假 callout。
+        近端優先，但避 K 可放到更左／更右（放寬離 y_now）；不准飛出 ylim。
         """
         y_line = float(_channel_seg_y(seg, cx, y_now))
         if not (y_vis_lo <= y_line <= y_vis_hi):
             return False, y_line
-        # 硬：離 y_now 太遠＝左延高空／遠段；準許比遮擋可放寬到 22%
-        if abs(y_line - float(y_now)) > span * 0.22:
+        # 避 K 優先：允許離末日軌價到 40% 軸高（更左／更右找空窗）
+        if abs(y_line - float(y_now)) > span * 0.40:
             return False, y_line
         return True, y_line
 
-    # 起錨：從右往左找「軌線仍在圖內」的中右點（下降壓／平行撐都貼可見軌段）
+    # 起錨：從右往左；密 K 時整段可見軌都要掃，不准鎖死近端
     x_anchor = min(float(n) - 1.0, x_hi - dx * 0.55)
     if not near_last:
         found_anchor = False
-        # 由右往左：先找「軌 y 接近 y_now」的可見點（近端通道），再退而求可見
         best_anchor: Optional[Tuple[float, float, float]] = None  # score, cx, yl
         for xf in (
-            0.96,
+            0.97,
             0.94,
-            0.92,
-            0.90,
+            0.91,
             0.88,
-            0.86,
-            0.84,
+            0.85,
             0.82,
-            0.80,
             0.78,
             0.74,
             0.70,
-            0.66,
+            0.65,
+            0.60,
+            0.55,
+            0.50,
         ):
             cx0 = min(float(n - 1) * xf, x_hi - dx * 0.55)
             ok, yl0 = _rail_visible(cx0)
@@ -2414,17 +2413,17 @@ def _blank_for_channel_label(
                 continue
             sc = -abs(yl0 - float(y_now)) / span
             if xf >= 0.88:
-                sc += 0.15
+                sc += 0.10
             if best_anchor is None or sc > best_anchor[0]:
                 best_anchor = (sc, cx0, yl0)
         if best_anchor is not None:
             x_anchor = float(best_anchor[1])
             found_anchor = True
         if not found_anchor:
-            # 整段左延都出界：貼末日軌價旁
             x_anchor = min(float(n) - 1.2, x_hi - dx * 0.45)
-    # score, cx, cy, k_hits —— K 遮擋是主序（愈少愈好）
+    # score, cx, cy, k_hits —— 主序 k_hits；≥3 硬拒
     best: Optional[Tuple[float, float, float, int]] = None
+    min_x_sep = max(dx * 1.15, 4.5)  # 兩軌標不准同密區上下疊
 
     def _window_hl(cx: float, *, half: Optional[float] = None) -> Tuple[float, float]:
         # 空窗偵測：用標寬半幅掃 K，跟真盒遮擋對齊（窄 ±1.6 會漏估長串 K）
@@ -2470,7 +2469,13 @@ def _blank_for_channel_label(
                 return
         use_pad = mpad if pad is None else max(float(pad), 0.0)
         box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
-        # K 改軟成本；硬擋只留界／已放標／均線（可 ignore）
+        # 兩軌標錯開 x：已放標同密區上下疊＝不合格
+        for ox0, ox1, _oy0, _oy1 in placed:
+            mid_new = 0.5 * (box[0] + box[1])
+            mid_old = 0.5 * (float(ox0) + float(ox1))
+            if abs(mid_new - mid_old) < min_x_sep:
+                return
+        # 硬擋只留界／已放標／均線；K 用 hits 主序
         if _channel_box_blocked(
             *box,
             n=n,
@@ -2485,7 +2490,6 @@ def _blank_for_channel_label(
             ignore_k=True,
         ):
             return
-        # 主序＝真 K 遮擋（mark_pad=0）；箭帶另計，不准把空窗誤算成長串 K
         k_hits = _channel_box_k_hits(
             *box,
             n=n,
@@ -2494,6 +2498,9 @@ def _blank_for_channel_label(
             mark_pad=0.0,
             span=span,
         )
+        # 硬：蓋 ≥3 根＝不合格候選
+        if k_hits >= 3:
+            return
         k_depth = _channel_box_k_depth(
             *box, n=n, highs=highs, lows=lows, span=span
         )
@@ -2511,68 +2518,61 @@ def _blank_for_channel_label(
                 )
                 - k_hits,
             )
-        # 主序：蓋 K 成本極重（蓋一長串＝失敗）；0 根大加分
-        score -= float(k_hits) * 8.0
-        score -= float(k_depth) * 18.0
-        score -= float(arrow_hits) * 1.4
+        score -= float(k_hits) * 12.0
+        score -= float(k_depth) * 22.0
+        score -= float(arrow_hits) * 1.2
         if k_hits == 0:
-            score += 10.0
-        elif k_hits <= 1:
-            score += 1.0
-        elif k_hits >= 4:
-            score -= 6.0
+            score += 14.0
+        elif k_hits == 1:
+            score += 2.5
+        elif k_hits == 2:
+            score -= 3.5
         loc_hi, loc_lo = _window_hl(cx)
-        # 軌在 K 外包絡外＝真空窗；否則貼 K 上下緣（擦邊優於貫穿）
-        if pref > 0 and y_line >= loc_hi + tip * 0.25:
-            score += 3.2
-        elif pref < 0 and y_line <= loc_lo - tip * 0.25:
-            score += 3.2
+        y0, y1 = float(box[2]), float(box[3])
+        # 整盒在 K 外包絡外＝真空白（線旁半格內仍算貼線）
+        clear_above = y0 >= loc_hi + tip * 0.35
+        clear_below = y1 <= loc_lo - tip * 0.35
+        if clear_above or clear_below:
+            score += 6.5
         else:
+            # 貫穿價區重罰（即使 hits≤2）
+            score -= 4.5
             if pref > 0:
-                score -= abs(y_line - loc_hi) / span * 2.4
+                score -= abs(y_line - loc_hi) / span * 2.0
             else:
-                score -= abs(y_line - loc_lo) / span * 2.4
-            if pref > 0 and y_line < loc_lo:
-                score -= 2.0  # 上軌埋進 K 堆
-            elif pref < 0 and y_line > loc_hi:
-                score -= 2.0
-        # 貼線分：離軌以「半格字高」計，愈貼愈高；錯側重罰
+                score -= abs(y_line - loc_lo) / span * 2.0
+        # 密 K 柱區：同 x 高低振幅大＝視覺密堆，不准兩標擠在那一柱
+        col_amp = max(loc_hi - loc_lo, 0.0) / span
+        if col_amp > 0.10:
+            score -= (col_amp - 0.10) * 14.0
+        # 貼線分
         dist_h = abs(cy - y_line) / max(dy, 1e-6)
-        score -= dist_h * 4.5
-        if dist_h <= 0.15:
-            score += 1.25  # 幾乎壓在線上
+        score -= dist_h * 3.5
+        if dist_h <= 0.12:
+            score += 1.4
         elif dist_h <= 0.35:
-            score += 0.55
+            score += 0.45
         if pref > 0:
             if cy > y_line + dy * 0.08:
-                score -= 1.10  # 上軌不准飄到線上方
+                score -= 0.85
             elif cy <= y_line:
-                score += 0.35
+                score += 0.30
         else:
             if cy < y_line - dy * 0.08:
-                score -= 1.10  # 下軌不准飄到線下方
+                score -= 0.85
             elif cy >= y_line:
-                score += 0.35
-        if mpad > 0 and not near_last:
-            xf = cx / max(float(n) - 1.0, 1.0)
-            if xf > 0.96:
-                score -= 0.35
-            elif xf < 0.62:
-                score -= 0.55
-            if 0.72 <= xf <= 0.94:
-                score += 0.35
-        # 近端軌價：次於避 K；有空窗時仍偏好近端
-        score -= abs(y_line - float(y_now)) / span * 1.6
-        # 主鍵：先比真 K hits（少贏），同分再比 score
+                score += 0.30
+        # 近端次於避 K／真空窗
+        score -= abs(y_line - float(y_now)) / span * 0.9
         if best is None or k_hits < best[3] or (k_hits == best[3] and score > best[0]):
             best = (score, cx, cy, int(k_hits))
 
     def _stick_offsets() -> Tuple[float, ...]:
-        """優先線心；半格內微移只為避 K，不准浮空。"""
-        # 線心優先，其餘 ≤ 半格字高
+        """線心優先；半格內可偏到線旁空白（仍貼線、不准引線）。"""
+        # 上軌：略偏下（標在線下空白）；下軌：略偏上（標在線上空白）
         if pref > 0:
-            return (0.0, -0.20 * dy, -0.35 * dy, 0.15 * dy, -0.45 * dy)
-        return (0.0, 0.20 * dy, 0.35 * dy, -0.15 * dy, 0.45 * dy)
+            return (0.0, -0.25 * dy, -0.40 * dy, -0.50 * dy, 0.15 * dy)
+        return (0.0, 0.25 * dy, 0.40 * dy, 0.50 * dy, -0.15 * dy)
 
     def _on_rail_candidates(cx: float, y_line: float, base: float) -> None:
         """只評貼線候選（線心／半格內）；碰撞 pad 由大到小。"""
@@ -2686,9 +2686,10 @@ def _blank_for_channel_label(
     if best is not None:
         return best[1], best[2]
 
-    # 最後保底：可見軌上「蓋 K 最少」的線心（不准盲目貼密 K 近端）
+    # 最後保底：可見軌上蓋 K≤2 且優先整盒離開 K 包絡
     best_fb: Optional[Tuple[int, float, float, float, float]] = None
     for xf in (
+        0.94,
         0.90,
         0.86,
         0.82,
@@ -2697,22 +2698,43 @@ def _blank_for_channel_label(
         0.70,
         0.66,
         0.62,
-        0.94,
         0.58,
+        0.54,
+        0.50,
     ):
         cx = min(float(n - 1) * xf, x_hi - dx * 0.4)
         ok_vis, y_line = _rail_visible(cx)
         if not ok_vis:
             continue
-        cy = min(max(float(y_line), y_vis_lo), y_vis_hi)
-        box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
-        kh = _channel_box_k_hits(
-            *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
-        )
-        dist_now = abs(y_line - float(y_now)) / span
-        key = (kh, dist_now, -float(xf), float(cx), float(cy))
-        if best_fb is None or key[:3] < best_fb[:3]:
-            best_fb = key
+        for off in _stick_offsets():
+            cy = min(max(float(y_line) + float(off), y_vis_lo), y_vis_hi)
+            box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
+            # 錯開已放
+            clash = False
+            for ox0, ox1, _a, _b in placed:
+                if abs(cx - 0.5 * (float(ox0) + float(ox1))) < min_x_sep:
+                    clash = True
+                    break
+            if clash:
+                continue
+            kh = _channel_box_k_hits(
+                *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+            )
+            if kh >= 3:
+                continue
+            loc_hi, loc_lo = _window_hl(cx)
+            clear = (box[2] >= loc_hi + tip * 0.2) or (box[3] <= loc_lo - tip * 0.2)
+            dist_now = abs(y_line - float(y_now)) / span
+            # 主鍵：hits → 非真空罰 → 近端
+            key = (
+                kh,
+                0.0 if clear else 1.0,
+                dist_now,
+                float(cx),
+                float(cy),
+            )
+            if best_fb is None or key[:3] < best_fb[:3]:
+                best_fb = key
     if best_fb is not None:
         return best_fb[3], best_fb[4]
     cy = min(max(float(y_now), y_vis_lo), y_vis_hi)
