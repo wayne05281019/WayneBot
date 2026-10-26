@@ -517,6 +517,51 @@ def test_channel_labels_stagger_x_and_reject_any_k_hit():
         assert hits == 0
 
 
+def test_channel_label_prefers_near_pivot_clear_window():
+    """空窗優先貼近上軌樞紐左側（紅圈帶），不准甩遠端密 K。"""
+    import numpy as np
+
+    from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
+
+    n = 80
+    ymin, ymax = 3000.0, 7000.0
+    span = ymax - ymin
+    dx, dy = 10.0, 120.0
+    # 樞紐在 58、65；左側空、近端密穿價
+    highs = np.full(n, 4200.0)
+    lows = np.full(n, 4000.0)
+    highs[50:70] = 5400.0
+    lows[50:70] = 5000.0
+    highs[30:50] = 4500.0
+    lows[30:50] = 4300.0
+    seg = ((58.0, 5480.0, "a"), (65.0, 5165.0, "b"))
+    cx, cy = _blank_for_channel_label(
+        text="下降壓 4625",
+        seg=seg,
+        y_now=4625.0,
+        outside=1,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        dx=dx,
+        dy=dy,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        placed=[],
+        mark_pad=0.0,
+    )
+    # 應落在第一樞左側空窗帶
+    assert 58.0 - 26.0 <= cx <= 58.0 - 2.0
+    box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
+    assert (
+        _channel_box_k_hits(
+            *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
+        )
+        == 0
+    )
+
+
 def test_channel_artist_pixel_hits_counts_wick():
     """像素 hit-test：bbox 碰到影線就算 ≥1。"""
     import numpy as np
