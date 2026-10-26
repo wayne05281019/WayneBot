@@ -197,3 +197,66 @@ def load_push_delivery(db_path: str, run_date: str) -> Optional[Dict[str, Any]]:
     except Exception:
         logger.debug("pipeline_delivery load 檔略過", exc_info=True)
     return None
+
+
+def delivery_taipei_ymd(delivered_at: str) -> str:
+    """回執時戳 → 台北 YYYYMMDD；解析失敗回空字串。"""
+    raw = str(delivered_at or "").strip()
+    if not raw:
+        return ""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        tw = ZoneInfo("Asia/Taipei")
+        # 支援 2026-10-23T06:32:00+08:00／無時區／空白分隔
+        s = raw.replace(" ", "T", 1) if " " in raw and "T" not in raw else raw
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tw)
+        else:
+            dt = dt.astimezone(tw)
+        return dt.strftime("%Y%m%d")
+    except Exception:
+        digits = "".join(c for c in raw if c.isdigit())
+        return digits[:8] if len(digits) >= 8 else ""
+
+
+def clear_push_delivery(db_path: str, run_date: str, *, bak_suffix: str = "") -> bool:
+    """刪回執表列＋檔（可選改名備份）。回 True＝有清到任一證據。"""
+    key = str(run_date or "").strip()
+    if not key:
+        return False
+    cleared = False
+    try:
+        ensure_delivery_schema(db_path)
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=10000")
+            cur = conn.execute(
+                "DELETE FROM pipeline_deliveries WHERE run_date = ?", (key,)
+            )
+            conn.commit()
+            if int(cur.rowcount or 0) > 0:
+                cleared = True
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("pipeline_delivery 清表失敗 key=%s", key)
+    try:
+        path = _file_path(db_path, key)
+        if path.is_file():
+            if bak_suffix:
+                bak = path.with_suffix(path.suffix + str(bak_suffix))
+                try:
+                    path.rename(bak)
+                except Exception:
+                    path.unlink(missing_ok=True)
+            else:
+                path.unlink(missing_ok=True)
+            cleared = True
+    except Exception:
+        logger.exception("pipeline_delivery 清檔失敗 key=%s", key)
+    return cleared

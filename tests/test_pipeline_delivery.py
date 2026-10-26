@@ -43,3 +43,20 @@ def test_record_and_query_roundtrip(tmp_path):
     )
     assert pd.push_delivery_recorded(db, "midday-20261022") is True
     assert pd.push_delivery_recorded(db, "midday-missing") is False
+
+
+def test_delivery_taipei_ymd_and_clear(tmp_path):
+    import pipeline_delivery as pd
+
+    assert pd.delivery_taipei_ymd("2026-10-23T06:32:00+08:00") == "20261023"
+    assert pd.delivery_taipei_ymd("2026-10-22 22:32:00+00:00") == "20261023"
+    db = str(tmp_path / "clr.db")
+    assert (
+        pd.record_push_delivery(
+            db, "screen-20261022", kind="morning-digest", n_ok=2
+        )
+        is True
+    )
+    assert pd.push_delivery_recorded(db, "screen-20261022") is True
+    assert pd.clear_push_delivery(db, "screen-20261022", bak_suffix=".bak-t") is True
+    assert pd.push_delivery_recorded(db, "screen-20261022") is False

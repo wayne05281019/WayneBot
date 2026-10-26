@@ -245,6 +245,97 @@ class MainRunner:
         logger.info("已有寄出回執，略過重寄並補標 success key=%s", key)
         return True
 
+    def release_stale_morning_delivery_for_open_day(self, run_date: str) -> bool:
+        """§14：開市日必寄。as_of 未前進時 screen-{as_of} 舊開市日回執不准擋今日真寄。
+
+        僅 screen-*（不含 screen-closed-*）。回執台北日 < 今日開市日曆日 → 清回執＋
+        降 success→computed，回 True＝已放行可重寄。同日回執仍擋（防雙寄）。
+        """
+        key = str(run_date or "").strip()
+        if not key.startswith("screen-") or key.startswith("screen-closed-"):
+            return False
+        today = str(getattr(self, "today_str", "") or "").strip()
+        if len(today) != 8:
+            try:
+                from config import taipei_now
+
+                today = taipei_now().strftime("%Y%m%d")
+            except Exception:
+                return False
+        try:
+            from trading_calendar import is_tw_open_calendar_day
+
+            if not is_tw_open_calendar_day(today):
+                return False
+        except Exception:
+            logger.debug("開市日判斷略過 key=%s", key, exc_info=True)
+            return False
+        try:
+            from pipeline_delivery import (
+                clear_push_delivery,
+                delivery_taipei_ymd,
+                load_push_delivery,
+                push_delivery_recorded,
+            )
+        except Exception:
+            logger.debug("pipeline_delivery 匯入略過", exc_info=True)
+            return False
+        delivered_ymd = ""
+        try:
+            loaded = load_push_delivery(self.db_path, key) or {}
+            delivered_ymd = delivery_taipei_ymd(str(loaded.get("delivered_at") or ""))
+        except Exception:
+            logger.debug("讀回執日略過 key=%s", key, exc_info=True)
+        # 無回執但 pipeline success：仍可能是舊開市日蓋戳；用 finished_at 當日
+        if not delivered_ymd and self.pipeline_status(key) == "success":
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=15.0)
+                try:
+                    conn.execute("PRAGMA busy_timeout=3000;")
+                    row = conn.execute(
+                        "SELECT finished_at FROM pipeline_runs WHERE run_date=?",
+                        (key,),
+                    ).fetchone()
+                finally:
+                    conn.close()
+                if row:
+                    delivered_ymd = delivery_taipei_ymd(str(row[0] or ""))
+            except Exception:
+                logger.debug("讀 pipeline finished_at 略過 key=%s", key, exc_info=True)
+        if not delivered_ymd:
+            # 有回執檔但時戳壞掉：保守不放行（避免同日雙寄）
+            if push_delivery_recorded(self.db_path, key):
+                return False
+            return False
+        if delivered_ymd >= today:
+            return False
+        # 舊開市日（或更早）回執：清掉才能搶鎖真寄
+        try:
+            clear_push_delivery(
+                self.db_path, key, bak_suffix=f".bak-reissue-{today}"
+            )
+        except Exception:
+            logger.exception("清舊開市日回執失敗 key=%s", key)
+            return False
+        if self.pipeline_status(key) == "success":
+            try:
+                self._mark_pipeline(
+                    "computed",
+                    f"§14 open-day reissue demote prior={delivered_ymd}",
+                    run_date=key,
+                    retries=8,
+                )
+            except Exception:
+                logger.exception("舊開市日 success 降級失敗 key=%s", key)
+                return False
+        logger.info(
+            "§14 開市日放行重寄：%s 回執日 %s < 今日 %s（as_of 未前進）",
+            key,
+            delivered_ymd,
+            today,
+        )
+        return True
+
     def reconcile_push_deliveries(self, *, prefix: str = "") -> int:
         """掃有回執但 pipeline 非 success 的鍵，補標 success（force／catch-up 前必跑）。"""
         from pipeline_delivery import ensure_delivery_schema
@@ -795,11 +886,28 @@ class MainRunner:
         try:
             from import_health import latest_complete_quote_date
 
-            as_of = pin_as_of or (latest_complete_quote_date(self.db_path) or "")
+            latest = str(latest_complete_quote_date(self.db_path) or "")
+            # 不准釘到與 latest 無關的舊 computed（會洗掉今早真鍵）
+            if pin_as_of and latest and pin_as_of != latest:
+                logger.info(
+                    "force_rescue 忽略舊未寄鍵 screen-%s（latest=%s）",
+                    pin_as_of,
+                    latest,
+                )
+                pin_as_of = ""
+            as_of = pin_as_of or latest
             out["as_of"] = str(as_of)
             out["key"] = f"screen-{as_of or 'none'}"
         except Exception:
             pass
+        # §14 救援：連假後同一 as_of 舊回執先放行，再跑早報（否則永遠略過）
+        try:
+            if out.get("key"):
+                if self.release_stale_morning_delivery_for_open_day(str(out["key"])):
+                    out["reissued_stale"] = True
+                    pin_as_of = ""
+        except Exception:
+            logger.exception("force_rescue 開市日舊回執放行略過")
         try:
             # 救援路徑：釘基準日，避免 fuse 把 latest 推到今日後寄錯鍵／略過
             if pin_as_of:
@@ -2603,6 +2711,12 @@ class MainRunner:
             logger.info("今早救援釘基準日 %s（latest=%s）", pin, as_of)
             as_of = pin
         key = f"screen-{as_of or 'none'}"
+        # §14：連假後 as_of 未前進時，舊開市日 screen-{as_of} 回執不准擋今日真寄
+        if notify and as_of:
+            try:
+                self.release_stale_morning_delivery_for_open_day(key)
+            except Exception:
+                logger.exception("開市日舊回執放行略過 key=%s", key)
         rebuild_only = False
         if skip_if_done and as_of:
             from screen_sessions import (
@@ -2696,6 +2810,12 @@ class MainRunner:
         if not as_of:
             logger.error("補齊後仍無完整交易日可寄海選")
             return False
+        # pin／補齊後 as_of 可能變：再開市日舊回執放行一次
+        if notify and as_of:
+            try:
+                self.release_stale_morning_delivery_for_open_day(key)
+            except Exception:
+                logger.exception("補齊後開市日舊回執放行略過 key=%s", key)
         # 補齊後再判一次：並行路徑可能已寄完；running 交給下面 claim。
         if skip_if_done:
             from screen_sessions import (
