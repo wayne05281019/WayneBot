@@ -815,11 +815,16 @@ def pick_layer_label_along_line(
     occupied: Optional[Sequence[Tuple[float, float, float, float]]] = None,
     tag_size: float = 10.0,
     y_span: Optional[float] = None,
-) -> Tuple[float, str, Tuple[float, float, float, float]]:
+    prefer_x: Optional[float] = None,
+    max_score: Optional[float] = 22.0,
+    same_band_max: float = 10.0,
+) -> Optional[Tuple[float, str, Tuple[float, float, float, float]]]:
     """沿水平線掃候選，取重疊代價最低的錨點（不准寫死左／右）。
 
     候選含左空白、線段中空窗、右溝；同代價偏好較空／較右，避開密 K。
-    回傳 (x, ha, occupied_box)。
+    prefer_x：成對下一層壓／撐鎖同垂直帶。
+    max_score：代價過高→回 None（略過，不准硬壓 K）。
+    回傳 (x, ha, occupied_box) 或 None。
     """
     import math
 
@@ -907,6 +912,14 @@ def pick_layer_label_along_line(
                 run_s = idx
                 prev = idx
 
+    # 成對同帶：優先在 prefer_x 附近加候選
+    if prefer_x is not None:
+        px = float(prefer_x)
+        for dlt in (0.0, -2.0, 2.0, -4.0, 4.0, -6.0, 6.0, -8.0, 8.0):
+            trials.append((px + dlt, "center"))
+            trials.append((px + dlt, "left"))
+            trials.append((px + dlt, "right"))
+
     for cx, ha in trials:
         if ha == "left":
             bx0, bx1 = float(cx), float(cx) + 2.0 * half_w
@@ -917,6 +930,9 @@ def pick_layer_label_along_line(
         if float(cx) < float(xmin) - 1.2 or float(cx) > float(xmax) + 0.8:
             continue
         if bx1 < float(xmin) - 1.2 or bx0 > float(xmax) + 0.8:
+            continue
+        # 成對：拉開同帶硬拒
+        if prefer_x is not None and abs(float(cx) - float(prefer_x)) > float(same_band_max):
             continue
         sc = _layer_box_overlap_score(
             x0=bx0,
@@ -950,16 +966,19 @@ def pick_layer_label_along_line(
         recent_pen = 0.0
         if n_bars > 0 and bx1 > float(n_bars - 1) - max(6.0, n_bars * 0.10):
             recent_pen = 1.15
+        band_pen = 0.0
+        if prefer_x is not None:
+            band_pen = abs(float(cx) - float(prefer_x)) * 0.08
         tie = -min(clear, 1200.0) * 1.2e-3 - bx1 * 1e-6
-        key = sc + recent_pen + tie
+        key = sc + recent_pen + band_pen + tie
         box = (bx0, bx1, float(y) - half_h, float(y) + half_h)
         if best is None or key < best[0]:
             best = (key, float(cx), ha, box)
 
     if best is None:
-        cx = 0.5 * (x_lo + x_hi)
-        box = (cx - half_w, cx + half_w, float(y) - half_h, float(y) + half_h)
-        return cx, "center", box
+        return None
+    if max_score is not None and float(best[0]) > float(max_score):
+        return None
     return best[1], best[2], best[3]
 
 
@@ -1217,6 +1236,8 @@ def paint_written_and_next_levels(
                 )
             except Exception:
                 pass
+            _layer_pair_anchor = False
+            _layer_prefer_x: Optional[float] = None
             for y, color, label in (
                 (hi, color_next_press, str(layer.get("label_press") or next_press_label(hi))),
                 (lo, color_next, str(layer.get("label_hold") or next_hold_label(lo))),
@@ -1248,10 +1269,10 @@ def paint_written_and_next_levels(
                             pass
                     ys.append(y)
                 if layer_mode == "smart" and hi_arr and lo_arr:
-                    # v11：沿該水平線掃位，Y 釘線；取擋 K／均線／已放標最少；字級整組同縮
+                    # v12：成對壓／撐同垂直帶；代價過高略過（不准硬壓 K）
                     lab_y = float(y)
                     label_ys.append(lab_y)
-                    cx, ha, box = pick_layer_label_along_line(
+                    picked = pick_layer_label_along_line(
                         y=lab_y,
                         text=label,
                         xmin=float(xmin),
@@ -1262,8 +1283,15 @@ def paint_written_and_next_levels(
                         occupied=occupied_boxes,
                         tag_size=float(_layer_tag_size),
                         y_span=y_span_for_pick or None,
+                        prefer_x=_layer_prefer_x,
                     )
+                    if picked is None:
+                        continue
+                    cx, ha, box = picked
                     occupied_boxes.append(box)
+                    if _layer_prefer_x is None:
+                        _layer_prefer_x = float(cx)
+                        _layer_pair_anchor = True
                     try:
                         _text(
                             float(cx),
@@ -1275,6 +1303,21 @@ def paint_written_and_next_levels(
                             bbox={**_layer_tag_box, "edgecolor": color},
                             size=float(_layer_tag_size),
                         )
+                        try:
+                            from smart_label_metrics import record_smart_label
+
+                            record_smart_label(
+                                ax,
+                                kind="layer",
+                                text=str(label),
+                                x0=float(box[0]),
+                                x1=float(box[1]),
+                                y0=float(box[2]),
+                                y1=float(box[3]),
+                                rail_y=float(lab_y),
+                            )
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 elif layer_mode == "left":

@@ -456,8 +456,8 @@ def test_channel_label_prefers_low_k_cover_along_rail():
     assert hits == 0
 
 
-def test_channel_labels_stagger_x_and_reject_any_k_hit():
-    """兩軌標必須錯開 x；候選蓋 ≥1 根 K（含影）不合格。"""
+def test_channel_labels_same_band_and_reject_any_k_hit():
+    """兩軌標必須同垂直帶；候選蓋 ≥1 根 K（含影）不合格（2026-10-26）。"""
     import numpy as np
 
     from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
@@ -468,11 +468,12 @@ def test_channel_labels_stagger_x_and_reject_any_k_hit():
     dx, dy = 8.0, 5.0
     highs = np.full(n, 110.0)
     lows = np.full(n, 100.0)
-    # 近端密穿價；左側上軌上方／下軌下方有空
     highs[50:] = 125.0
     lows[50:] = 95.0
     highs[20:40] = 105.0
     lows[20:40] = 88.0
+    highs[25:38] = 100.0
+    lows[25:38] = 99.0
     seg_u = ((5.0, 130.0, "a"), (75.0, 118.0, "b"))
     seg_l = ((5.0, 92.0, "a"), (75.0, 80.0, "b"))
     cx_u, cy_u = _blank_for_channel_label(
@@ -507,8 +508,9 @@ def test_channel_labels_stagger_x_and_reject_any_k_hit():
         mas=[],
         placed=placed,
         mark_pad=0.0,
+        pair_x=cx_u,
     )
-    assert abs(cx_u - cx_l) >= max(dx * 0.72, 4.5) - 0.05
+    assert abs(cx_u - cx_l) <= max(dx * 1.35, 8.0) + 0.05
     for cx, cy in ((cx_u, cy_u), (cx_l, cy_l)):
         box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
         hits = _channel_box_k_hits(
@@ -517,8 +519,8 @@ def test_channel_labels_stagger_x_and_reject_any_k_hit():
         assert hits == 0
 
 
-def test_channel_label_second_rail_staggers_near_pivot_band():
-    """下軌已佔第一樞左側時，上軌仍近樞紐空窗且 x 錯開（不准疊紅叉密位）。"""
+def test_channel_label_second_rail_same_band_near_pivot():
+    """下軌已佔時，上軌鎖同帶（不准半圖拉開）；仍拒蓋 K。"""
     import numpy as np
 
     from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
@@ -533,8 +535,10 @@ def test_channel_label_second_rail_staggers_near_pivot_band():
     lows[50:70] = 5000.0
     highs[30:50] = 4500.0
     lows[30:50] = 4300.0
-    # 下軌先佔左側帶中心 ~50
+    # 同帶錨 ~50；上軌旁留空窗
     placed = [(45.0, 55.0, 4800.0, 5000.0)]
+    highs[40:55] = 4700.0
+    lows[40:55] = 4600.0
     seg_u = ((58.0, 5480.0, "a"), (65.0, 5165.0, "b"))
     cx, cy = _blank_for_channel_label(
         text="下降壓 4625",
@@ -551,9 +555,9 @@ def test_channel_label_second_rail_staggers_near_pivot_band():
         mas=[],
         placed=placed,
         mark_pad=0.0,
+        pair_x=50.0,
     )
-    assert abs(cx - 50.0) >= max(dx * 0.72, 4.5) - 0.05
-    # 仍在紅圈接觸帶（第一樞左 ≤22 根或兩樞間），不准甩未成形太左／右密 K
+    assert abs(cx - 50.0) <= max(dx * 1.35, 8.0) + 0.05
     assert cx <= 65.0 + 1.0
     assert cx >= 58.0 - 22.0 - 0.5
     box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
