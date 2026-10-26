@@ -1070,9 +1070,9 @@ def paint_written_and_next_levels(
             span = max(abs(float(y1) - float(y0)), 1.0)
         except Exception:
             span = max(abs(y) * 0.2, 50.0)
-        # 原文目標微避讓；下一層壓／撐改釘線上（見 left 分支），不准被縫推離線
-        gap = span * 0.032
-        for _ in range(8):
+        # 原文目標／下一層價很近時加大縫，避免白底互疊
+        gap = span * 0.045
+        for _ in range(10):
             if all(abs(y - u) >= gap for u in used):
                 break
             above = sum(1 for u in used if u >= y)
@@ -1088,9 +1088,9 @@ def paint_written_and_next_levels(
             span = max(abs(float(y1) - float(y0)), 1.0)
         except Exception:
             span = max(abs(float(raw_y)) * 0.2, 50.0)
-        gap = span * 0.045
+        gap = span * 0.055
         if any(abs(float(raw_y) - float(u)) < gap for u in used):
-            return 0.20
+            return 0.22
         return 0.012
 
     label_ys: List[float] = []
@@ -1181,13 +1181,14 @@ def paint_written_and_next_levels(
                     _hh = max(abs(float(lab_y)) * 0.004, 8.0)
                     if y_span_for_pick > 0:
                         _hh = max(_hh, float(y_span_for_pick) * 0.016)
-                    # 佔位略緊：避免吃掉原文標右側真·空窗（下一層要能挨著空段）
+                    # 佔位：價很近時加大 y 盒，逼下一層標錯開 x，避免白底互疊
+                    _y_pad = _hh * 1.65
                     occupied_boxes.append(
                         (
                             _edge - 1.55 * _hw,
-                            _edge + 0.15 * _hw,
-                            float(lab_y) - _hh,
-                            float(lab_y) + _hh,
+                            _edge + 0.35 * _hw,
+                            float(lab_y) - _y_pad,
+                            float(lab_y) + _y_pad,
                         )
                     )
                 except Exception:

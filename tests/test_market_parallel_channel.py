@@ -139,7 +139,7 @@ def test_market_rail_dash_denser_same_weight_and_color():
     assert "(8.2, 3.5)" not in src
     assert "(3.6, 1.2)" not in src
     assert _CHANNEL_RAIL_LW <= 1.2
-    assert _CHANNEL_RAIL_DASH == (0, (1.2, 1.2))
+    assert _CHANNEL_RAIL_DASH == (0, (1.55, 1.05))
 
 
 def test_rising_rail_label_stays_beside_last_bars():
@@ -508,7 +508,7 @@ def test_channel_labels_stagger_x_and_reject_any_k_hit():
         placed=placed,
         mark_pad=0.0,
     )
-    assert abs(cx_u - cx_l) >= max(dx * 0.90, 5.0) - 0.05
+    assert abs(cx_u - cx_l) >= max(dx * 0.72, 4.5) - 0.05
     for cx, cy in ((cx_u, cy_u), (cx_l, cy_l)):
         box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
         hits = _channel_box_k_hits(
@@ -552,10 +552,10 @@ def test_channel_label_second_rail_staggers_near_pivot_band():
         placed=placed,
         mark_pad=0.0,
     )
-    assert abs(cx - 50.0) >= max(dx * 0.90, 5.0) - 0.05
-    # 仍靠近樞紐（左接觸前延伸帶或兩樞間），不准甩到圖右密 K
+    assert abs(cx - 50.0) >= max(dx * 0.72, 4.5) - 0.05
+    # 仍在紅圈接觸帶（第一樞左 ≤22 根或兩樞間），不准甩未成形太左／右密 K
     assert cx <= 65.0 + 1.0
-    assert cx >= 58.0 - 36.0
+    assert cx >= 58.0 - 22.0 - 0.5
     box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
     assert (
         _channel_box_k_hits(

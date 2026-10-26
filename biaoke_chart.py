@@ -1259,9 +1259,9 @@ def _clip_line(
     return xa, ya, xb, yb
 
 
-# 上升／下降區間雙軌：短劃跟大盤大量區同一套（實線段 1.2、空隙 1.2）。結構圖線寬仍細。
-_CHANNEL_RAIL_DASH = (0, (1.2, 1.2))
-_CHANNEL_RAIL_LW = 1.05
+# 上升／下降區間雙軌：實線段略長、空隙略短＝可讀不花；結構圖線寬仍細、壓撐主線略清楚。
+_CHANNEL_RAIL_DASH = (0, (1.55, 1.05))
+_CHANNEL_RAIL_LW = 1.15
 
 
 def _paint_extended_rail(
