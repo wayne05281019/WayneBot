@@ -3355,6 +3355,45 @@ def paint_vol_zone_parallel_channel(
                             float(cy) + dy / 2.0,
                         )
                     )
+            if not ok and placed:
+                # 保底：接觸帶內略縮錯開距再掃（結構圖字盒較大時仍要塞兩標）
+                soft_sep = max(dx * 0.55, 3.8)
+                best_soft: Optional[Tuple[float, float, float]] = None
+                for tx in [p_lo - b for b in (8, 12, 16, 20, 22, 5, 3)]:
+                    tx = min(max(float(tx), scan_floor), float(n) - 0.4 - dx * 0.5)
+                    y_line = float(_channel_seg_y(seg, tx, float(y_px)))
+                    if not (
+                        float(ymin) + dy * 0.55 <= y_line <= float(ymax) - dy * 0.55
+                    ):
+                        continue
+                    if any(
+                        abs(tx - 0.5 * (float(a) + float(b))) < soft_sep
+                        for a, b, _c, _d in placed
+                    ):
+                        continue
+                    for off in (0.0, 0.35 * dy * (-1 if outside > 0 else 1)):
+                        ty = y_line + float(off)
+                        if abs(ty - y_line) > rail_soft:
+                            continue
+                        _place_at(tx, ty)
+                        if _pixel_hits_of(art):
+                            continue
+                        key = abs(tx - p_lo)
+                        if best_soft is None or key < best_soft[0]:
+                            best_soft = (key, float(tx), float(ty))
+                if best_soft is not None:
+                    cx, cy = best_soft[1], best_soft[2]
+                    _place_at(cx, cy)
+                    ok = not _pixel_hits_of(art)
+                    if ok:
+                        placed.append(
+                            (
+                                float(cx) - dx / 2.0,
+                                float(cx) + dx / 2.0,
+                                float(cy) - dy / 2.0,
+                                float(cy) + dy / 2.0,
+                            )
+                        )
         if art is not None and ok:
             label_artists.append(art)
             try:
