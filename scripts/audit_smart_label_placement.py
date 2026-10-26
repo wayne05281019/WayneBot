@@ -309,12 +309,28 @@ def _score_sid_official_channel(sid: str, db: str, *, chart: str):
             mark_pad=0.0,
             pair_x=pair_x,
         )
+        if not (np.isfinite(float(cx)) and np.isfinite(float(cy))):
+            # 同帶無淨空／會互壓 → 略過第二標
+            continue
         box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
         hits = _channel_box_k_hits(
             *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
         )
         if hits >= 1:
             # 同產品：略過硬壓
+            continue
+        # 硬拒已放標互壓（與 paint／blocked 墊一致）
+        clash = False
+        for ox0, ox1, oy0, oy1 in placed:
+            if not (
+                box[1] + 0.25 < ox0
+                or ox1 + 0.25 < box[0]
+                or box[3] + 0.08 < oy0
+                or oy1 + 0.08 < box[2]
+            ):
+                clash = True
+                break
+        if clash:
             continue
         placed.append(box)
         labels.append(

@@ -97,7 +97,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 50  # 通道同帶再收窄（美感 parallel_pair；2026-10-26）
+_VZ_PAINT_VER = 51  # 同帶保底也硬拒互壓；密軌第二標略過（2026-10-26）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2497,8 +2497,16 @@ def _channel_box_blocked(
                 v = float(arr[i]) if np.isfinite(arr[i]) else np.nan
                 if np.isfinite(v) and v > 0 and (y0 - pad_y) <= v <= (y1 + pad_y):
                     return True
+    # 已放標互壓：留小墊，避免兩標「貼邊」仍被評測判重疊
+    pad_x_lab = 0.25
+    pad_y_lab = max(span * 0.005, 0.08)
     for ox0, ox1, oy0, oy1 in placed:
-        if not (x1 < ox0 or ox1 < x0 or y1 < oy0 or oy1 < y0):
+        if not (
+            x1 + pad_x_lab < ox0
+            or ox1 + pad_x_lab < x0
+            or y1 + pad_y_lab < oy0
+            or oy1 + pad_y_lab < y0
+        ):
             return True
     return False
 
@@ -2988,6 +2996,21 @@ def _blank_for_channel_label(
             )
             if kh >= 1:
                 continue
+            # 保底也硬拒互壓（密軌同帶常見）
+            if _channel_box_blocked(
+                *box,
+                n=n,
+                ymin=ymin,
+                ymax=ymax,
+                highs=highs,
+                lows=lows,
+                mas=mas,
+                placed=placed,
+                mark_pad=0.0,
+                ignore_ma=True,
+                ignore_k=True,
+            ):
+                continue
             loc_hi, loc_lo = _window_hl(cx)
             gap = max(tip * 0.55, span * 0.012, dy * 0.08)
             clear = (box[2] >= loc_hi + gap) or (box[3] <= loc_lo - gap)
@@ -3004,7 +3027,7 @@ def _blank_for_channel_label(
                 best_fb = (dist_now + band_pen, float(cx), float(cy), 0.0)
     if best_fb is not None:
         return best_fb[1], best_fb[2]
-    # 無真空窗：貼可見軌線心；成對時鎖同帶（找不到就回錨點，交給呼叫端像素驗收／略過）
+    # 無真空窗：貼可見軌線心；成對時鎖同帶且不互壓（找不到→NaN 讓呼叫端略過）
     _fb_xs: List[float] = []
     anc = _pair_anchor()
     if anc is not None:
@@ -3027,14 +3050,24 @@ def _blank_for_channel_label(
         if not _in_same_band(cx):
             continue
         cy = min(max(float(y_line), y_vis_lo), y_vis_hi)
+        box = (cx - dx / 2.0, cx + dx / 2.0, cy - dy / 2.0, cy + dy / 2.0)
+        if _channel_box_blocked(
+            *box,
+            n=n,
+            ymin=ymin,
+            ymax=ymax,
+            highs=highs,
+            lows=lows,
+            mas=mas,
+            placed=placed,
+            mark_pad=0.0,
+            ignore_ma=True,
+            ignore_k=True,
+        ):
+            continue
         return cx, cy
-    # 成對無同帶可見點→回錨（像素掃會略過硬壓）
-    if anc is not None:
-        ok_vis, y_line = _rail_visible(float(anc))
-        cy = min(max(float(y_line if ok_vis else y_now), y_vis_lo), y_vis_hi)
-        return float(anc), cy
-    cy = min(max(float(_channel_seg_y(seg, x_anchor, y_now)), y_vis_lo), y_vis_hi)
-    return x_anchor, cy
+    # 成對無同帶淨空→回 NaN（像素掃／呼叫端略過，不准硬壓互疊）
+    return float("nan"), float("nan")
 
 
 def paint_vol_zone_parallel_channel(
@@ -3295,6 +3328,29 @@ def paint_vol_zone_parallel_channel(
         if placed:
             _pair_x = 0.5 * (float(placed[0][0]) + float(placed[0][1]))
         _same_band_max = min(max(float(dx) * 0.95, 5.5), 8.0)
+        def _overlaps_placed(cx0: float, cy0: float) -> bool:
+            box0 = (
+                float(cx0) - dx / 2.0,
+                float(cx0) + dx / 2.0,
+                float(cy0) - dy / 2.0,
+                float(cy0) + dy / 2.0,
+            )
+            return bool(
+                _channel_box_blocked(
+                    *box0,
+                    n=int(n),
+                    ymin=float(ymin),
+                    ymax=float(ymax),
+                    highs=hi_arr,
+                    lows=lo_arr,
+                    mas=ma_arrs,
+                    placed=placed,
+                    mark_pad=0.0,
+                    ignore_ma=True,
+                    ignore_k=True,
+                )
+            )
+
         for _try in range(2):
             cx, cy = _blank_for_channel_label(
                 text=shown,
@@ -3314,11 +3370,15 @@ def paint_vol_zone_parallel_channel(
                 mark_pad=mark_pad,
                 pair_x=_pair_x,
             )
+            if not (np.isfinite(float(cx)) and np.isfinite(float(cy))):
+                break
             # 拉開同帶＝失敗，進像素掃；靠近＝合格
             far_x = bool(
                 _pair_x is not None
                 and abs(float(cx) - float(_pair_x)) > _same_band_max
             )
+            if _overlaps_placed(cx, cy):
+                break
             _place_at(cx, cy)
             hits = _pixel_hits_of(art)
             if not hits and not far_x:
@@ -3372,6 +3432,8 @@ def paint_vol_zone_parallel_channel(
                     ty = y_line + float(off)
                     if abs(ty - y_line) > rail_soft:
                         continue
+                    if _overlaps_placed(tx, ty):
+                        continue
                     _place_at(tx, ty)
                     hits = _pixel_hits_of(art)
                     if hits:
@@ -3391,7 +3453,7 @@ def paint_vol_zone_parallel_channel(
             if best_pix is not None:
                 cx, cy = best_pix[1], best_pix[2]
                 _place_at(cx, cy)
-                ok = not _pixel_hits_of(art)
+                ok = (not _pixel_hits_of(art)) and (not _overlaps_placed(cx, cy))
                 if ok:
                     placed.append(
                         (
@@ -3402,7 +3464,7 @@ def paint_vol_zone_parallel_channel(
                         )
                     )
             if not ok and placed and _pair_x is not None:
-                # 保底：只在同帶內再掃；找不到就略過（不准遠拋）
+                # 保底：只在同帶內再掃；找不到就略過（不准遠拋／互壓）
                 best_soft: Optional[Tuple[float, float, float]] = None
                 for dlt in (0.0, -2.0, 2.0, -4.0, 4.0, -6.0, 6.0):
                     tx = float(_pair_x) + float(dlt)
@@ -3418,6 +3480,8 @@ def paint_vol_zone_parallel_channel(
                         ty = y_line + float(off)
                         if abs(ty - y_line) > rail_soft:
                             continue
+                        if _overlaps_placed(tx, ty):
+                            continue
                         _place_at(tx, ty)
                         if _pixel_hits_of(art):
                             continue
@@ -3427,7 +3491,7 @@ def paint_vol_zone_parallel_channel(
                 if best_soft is not None:
                     cx, cy = best_soft[1], best_soft[2]
                     _place_at(cx, cy)
-                    ok = not _pixel_hits_of(art)
+                    ok = (not _pixel_hits_of(art)) and (not _overlaps_placed(cx, cy))
                     if ok:
                         placed.append(
                             (
