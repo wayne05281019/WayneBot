@@ -2081,3 +2081,105 @@ def test_winrate_records_delivery_before_mark(tmp_path, monkeypatch):
     key = pipeline_run_key("20261022")
     assert runner.run_winrate_buypoint(skip_if_done=True, notify=True) is True
     assert runner.push_already_delivered(key) is True
+
+
+def test_morning_open_day_reissues_after_holiday_same_as_of(tmp_path, monkeypatch):
+    """§14：連假後 as_of 未前進，舊開市日 screen-{as_of} 回執不准擋今日真寄。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from pipeline_delivery import record_push_delivery
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "reissue.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    # 模擬 10/23 已寄 screen-20261022；今日 10/27 開市、as_of 仍 20261022
+    record_push_delivery(
+        path,
+        "screen-20261022",
+        kind="morning-digest",
+        n_ok=2,
+        delivered_at="2026-10-23T06:32:00+08:00",
+    )
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "screen-20261022",
+            "2026-10-23T06:32:00+08:00",
+            "success",
+            "morning",
+        ),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        (
+            "screen-closed-20261026",
+            "2026-10-26T06:30:00+08:00",
+            "success",
+            "tw closed 光復節補假 skip screen",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261027"
+    runner.chat_id = "9001"
+    runner.token = "x"
+    sends = {"n": 0}
+
+    def _send_report(*_a, **_k):
+        sends["n"] += 1
+        return True
+
+    runner.bot = type(
+        "B", (), {"send_screening_report": staticmethod(_send_report)}
+    )()
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner.send_telegram_message = lambda *a, **k: None
+    runner._push_morning_session_cards = lambda *a, **k: None
+    runner._refresh_official_sidecars = lambda: None
+    runner.demote_premature_morning_screens = lambda: 0
+    runner.demote_holiday_skip_morning_screens = lambda: 0
+    monkeypatch.setattr(
+        "tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {"ok": True}
+    )
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20261022",
+    )
+    monkeypatch.setattr("config.fuse_end_date", lambda: "20261023")
+    monkeypatch.setattr(
+        "main_runner.run_full_screening",
+        lambda **_k: {
+            "status": "success",
+            "payload": [{"html": "海選"}],
+            "results": {},
+        },
+    )
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        "taiwan_market.format_taiwan_market_brief_html", lambda *_a, **_k: ""
+    )
+    monkeypatch.setattr(
+        "taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False}
+    )
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["9001", "9002"])
+
+    assert runner.push_already_delivered("screen-20261022") is True
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+    assert sends["n"] >= 1
+    assert runner.pipeline_status("screen-20261022") == "success"
+    assert runner.push_already_delivered("screen-20261022") is True
+    # 同日再跑仍擋
+    n1 = sends["n"]
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+    assert sends["n"] == n1
