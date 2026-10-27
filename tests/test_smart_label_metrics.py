@@ -156,15 +156,15 @@ def test_needs_restyle_when_imbalanced_but_clear():
     assert summarize_scores([s])["gate_aesthetic_min"] == 70.0
 
 
-def test_key_zone_smart_tags_skip_when_pressing_k():
-    """主區壓／撐：沿線無淨空→略過，不准硬釘左緣壓滿盤 K。"""
+def test_key_zone_smart_tags_force_keep_when_pressing_k():
+    """主區壓／撐＝REQUIRED：沿線無淨空仍必須留標（不准智慧略過弄丟膚色帶標）。"""
     from vol_zone_chart import _paint_key_zone_smart_tags
     import matplotlib.pyplot as plt
 
     n = 60
     highs = np.full(n, 120.0)
     lows = np.full(n, 100.0)
-    # 整段都貼住 110／105 價位 → 無淨空
+    # 整段都貼住 110／105 價位 → 無淨空；仍須強制留下壓＋撐
     fig, ax = plt.subplots()
     ax.set_xlim(-0.5, n + 0.5)
     ax.set_ylim(90, 130)
@@ -181,9 +181,12 @@ def test_key_zone_smart_tags_skip_when_pressing_k():
         ymax=130.0,
         occupied=[],
     )
+    texts = [t.get_text() for t in ax.texts]
     plt.close(fig)
-    # occupied 回傳含輸入；新標若硬壓會增加。無淨空時不准新增
-    assert len(placed) == 0
+    assert any(str(t).startswith("大量區壓") for t in texts)
+    assert any(str(t).startswith("大量區撐") for t in texts)
+    # occupied 至少含兩枚 REQUIRED 盒（輸入 occupied 為空）
+    assert len(placed) >= 2
 
 
 def test_blank_channel_pair_same_band_unit():

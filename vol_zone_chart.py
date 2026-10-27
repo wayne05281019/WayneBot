@@ -97,7 +97,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 51  # 同帶保底也硬拒互壓；密軌第二標略過（2026-10-26）
+_VZ_PAINT_VER = 52  # REQUIRED 主區壓／撐不准略過；量日／橘框右緣防裁（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3592,8 +3592,15 @@ def _paint_key_zone_smart_tags(
     ymax: float,
     occupied: Optional[List[Tuple[float, float, float, float]]] = None,
 ) -> List[Tuple[float, float, float, float]]:
-    """現任主大量區壓／撐：沿線智能掃位；壓 K／互壓／裁切→略過（不准硬釘左緣）。"""
-    from biaoke_next_support import pick_layer_label_along_line
+    """現任主大量區壓／撐（REQUIRED）：沿線智能掃位；找不到淨空也必須留標。
+
+    硬規則（2026-10-27）：膚色帶上下緣「大量區壓／撐」不准因智慧定位略過。
+    先掃沿線淨空；盒出界就平移進窗；仍無位→強制左／中左保底槽。下一層仍可略過。
+    """
+    from biaoke_next_support import (
+        _approx_layer_tag_half_w,
+        pick_layer_label_along_line,
+    )
 
     placed: List[Tuple[float, float, float, float]] = list(occupied or [])
     prefer_x: Optional[float] = None
@@ -3609,7 +3616,100 @@ def _paint_key_zone_smart_tags(
         linewidth=1.05,
         alpha=1.0,
     )
+    x_lo = float(xmin)
+    x_hi = float(xmax)
+    # 右／左溝可微伸，但整盒必須大部分留在可視窗（clip_on=False 只吃圖邊距）
+    box_right_limit = x_hi - 0.12
+    box_left_limit = x_lo - 0.35
+
+    def _box_for(cx: float, ha: str, half_w: float, y_px: float) -> Tuple[float, float, float, float]:
+        half_h = max(y_span * 0.018, abs(float(y_px)) * 0.0045, 10.0)
+        if ha == "left":
+            bx0, bx1 = float(cx), float(cx) + 2.0 * half_w
+        elif ha == "right":
+            bx0, bx1 = float(cx) - 2.0 * half_w, float(cx)
+        else:
+            bx0, bx1 = float(cx) - half_w, float(cx) + half_w
+        return (bx0, bx1, float(y_px) - half_h, float(y_px) + half_h)
+
+    def _clamp_into_view(
+        cx: float, ha: str, box: Tuple[float, float, float, float], half_w: float
+    ) -> Tuple[float, str, Tuple[float, float, float, float]]:
+        bx0, bx1, by0, by1 = (float(v) for v in box)
+        shift = 0.0
+        if bx1 > box_right_limit:
+            shift = box_right_limit - bx1
+        if bx0 + shift < box_left_limit:
+            shift = box_left_limit - bx0
+        if abs(shift) > 1e-9:
+            cx = float(cx) + shift
+            bx0 += shift
+            bx1 += shift
+            box = (bx0, bx1, by0, by1)
+        # 仍超右→改 ha=right 錨在右緣內，文字往左長
+        if float(box[1]) > box_right_limit + 0.05:
+            cx = min(float(cx), box_right_limit)
+            ha = "right"
+            box = _box_for(cx, ha, half_w, 0.5 * (by0 + by1))
+            if float(box[0]) < box_left_limit:
+                cx = box_left_limit + 2.0 * half_w
+                box = _box_for(cx, ha, half_w, 0.5 * (by0 + by1))
+        # 仍超左→改 ha=left 錨在左緣
+        if float(box[0]) < box_left_limit - 0.05:
+            cx = max(float(cx), box_left_limit)
+            ha = "left"
+            box = _box_for(cx, ha, half_w, 0.5 * (by0 + by1))
+        return float(cx), str(ha), box
+
+    def _force_keep_slot(
+        y_px: float, text: str, half_w: float
+    ) -> Tuple[float, str, Tuple[float, float, float, float]]:
+        """REQUIRED 保底：同帶優先；否則左 18%～中左；最後釘可視左緣。"""
+        n_bars = min(len(highs), len(lows))
+        candidates: List[Tuple[float, str]] = []
+        if prefer_x is not None:
+            for dlt in (0.0, -3.0, 3.0, -6.0, 6.0):
+                candidates.append((float(prefer_x) + dlt, "center"))
+        # 左段／中左（避開末日密 K／右溝裁切）
+        if n_bars > 0:
+            left_cap = max(2.0, float(n_bars) * 0.28)
+            for frac in (0.10, 0.16, 0.22, 0.30, 0.38):
+                candidates.append((min(left_cap, float(n_bars) * frac), "center"))
+            candidates.append((max(x_lo + half_w * 0.2, 0.35), "left"))
+            candidates.append((max(x_lo + 0.15, -0.05), "left"))
+        else:
+            candidates.append((x_lo + half_w * 1.05, "left"))
+        # 末日左側（ha=right）整盒留在窗內
+        if n_bars > 0:
+            candidates.append((min(x_hi - 0.2, float(n_bars - 1) - 0.35), "right"))
+        for cx0, ha0 in candidates:
+            cx1, ha1, box1 = _clamp_into_view(
+                float(cx0), str(ha0), _box_for(float(cx0), str(ha0), half_w, y_px), half_w
+            )
+            # 與已放 REQUIRED／通道盒垂直重疊可接受（同帶），水平互壓則換下一個
+            overlaps = False
+            for ob in placed:
+                try:
+                    ox0, ox1, oy0, oy1 = (float(v) for v in ob)
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if box1[1] < ox0 or box1[0] > ox1 or box1[3] < oy0 or box1[2] > oy1:
+                    continue
+                # 同價線成對＝允許水平錯開不夠時仍收下（REQUIRED）
+                if abs(0.5 * (oy0 + oy1) - float(y_px)) <= y_span * 0.03:
+                    continue
+                overlaps = True
+                break
+            if not overlaps:
+                return cx1, ha1, box1
+        # 最後手段：可視左緣 ha=left（寧願貼邊，不准消失）
+        cx_f = max(box_left_limit, x_lo + 0.05)
+        return _clamp_into_view(
+            cx_f, "left", _box_for(cx_f, "left", half_w, y_px), half_w
+        )
+
     for y_px, color, text in items:
+        half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
         picked = pick_layer_label_along_line(
             y=float(y_px),
             text=text,
@@ -3622,17 +3722,17 @@ def _paint_key_zone_smart_tags(
             tag_size=float(VOL_ZONE_TAG_PT),
             y_span=float(y_span),
             prefer_x=prefer_x,
-            max_score=18.0,
-            same_band_max=10.0,
+            max_score=28.0,
+            same_band_max=14.0,
         )
         if picked is None:
-            continue
-        cx, ha, box = picked
-        # 近端密 K：右溝半截常裁切 → 再拒一次右緣過近
-        if float(box[1]) > float(xmax) - 0.15:
-            continue
-        if float(box[0]) < float(xmin) - 0.85:
-            continue
+            cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+        else:
+            cx, ha, box = picked
+            cx, ha, box = _clamp_into_view(float(cx), str(ha), box, half_w)
+            # 平移後仍整盒出窗／幾乎貼出 → 改保底槽（不准略過）
+            if float(box[1]) > box_right_limit + 0.55 or float(box[0]) < box_left_limit - 0.55:
+                cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
         try:
             ax.text(
                 float(cx),
@@ -3647,7 +3747,20 @@ def _paint_key_zone_smart_tags(
                 bbox={**_key_tag_box, "edgecolor": color},
             )
         except Exception:
-            continue
+            # 繪製失敗仍再試一次保底座標
+            cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+            ax.text(
+                float(cx),
+                float(y_px),
+                text,
+                ha=str(ha),
+                va="center",
+                fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
+                color=color,
+                zorder=22,
+                clip_on=False,
+                bbox={**_key_tag_box, "edgecolor": color},
+            )
         placed.append(tuple(float(v) for v in box))  # type: ignore[arg-type]
         if prefer_x is None:
             prefer_x = float(cx)
@@ -5085,17 +5198,18 @@ def _paint_volume_zone(
             path_ax_y, path_va = 0.985, "top"
             _path_place = True
         if _path_place:
+            # 長句橘框：略離右緣＋關 clip，不准右框／「收####」被切半
             ax1.text(
-                0.995,
+                0.978,
                 float(path_ax_y),
                 path_shown,
                 transform=ax1.transAxes,
                 ha="right",
                 va=str(path_va),
-                fontproperties=_fp(8.4, "bold"),
+                fontproperties=_fp(8.2, "bold"),
                 color=_CALL,
                 zorder=int(_KEY_Z),
-                clip_on=True,
+                clip_on=False,
                 linespacing=1.08,
                 bbox=dict(
                     boxstyle="round,pad=0.16",
@@ -5171,15 +5285,31 @@ def _paint_volume_zone(
         """side=left／right／center；有 lab_y＝資料座標水平並排，否則貼柱頂。"""
         if lab_y is not None:
             # v8 建議：水平並排保留；連線改短、貼近量柱
+            # 近右／左緣：文字往窗內長，不准裁成「下一層量日 10」半句
             if side == "left":
-                tx = max(-0.2, float(x) - 1.55)
-                ha = "right"
+                if float(x) <= 6.0:
+                    tx = max(-0.15, float(x) - 0.25)
+                    ha = "left"
+                else:
+                    tx = max(-0.2, float(x) - 1.55)
+                    ha = "right"
             elif side == "right":
-                tx = min(float(n) - 0.4, float(x) + 1.55)
-                ha = "left"
+                if float(x) >= float(n) - 8.0:
+                    tx = min(float(n) - 0.55, float(x) + 0.25)
+                    ha = "right"
+                else:
+                    tx = min(float(n) - 0.55, float(x) + 1.55)
+                    ha = "left"
             else:
                 tx = float(x)
                 ha = "center"
+                # 單標也在末日：改右對齊往左長
+                if float(x) >= float(n) - 5.0:
+                    tx = min(float(n) - 0.55, float(x) + 0.15)
+                    ha = "right"
+                elif float(x) <= 4.0:
+                    tx = max(-0.15, float(x) - 0.15)
+                    ha = "left"
             ax2.annotate(
                 str(text),
                 xy=(float(x), float(y)),

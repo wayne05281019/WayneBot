@@ -7265,6 +7265,13 @@ def overlay_nav_marks_on_zone(
 
     sig = signal_work if signal_work is not None and not getattr(signal_work, "empty", True) else paint
     date_to_i = {str(paint["date"].iloc[i]): i for i in range(n)}
+    # 買點日先算：同柱純藍▲／殘影與藍▲紅框互壓 → 只留買訊（不改 leave_zero 公式）
+    buy_is_src_early, _sell_i_early = _nav_trade_marks(sig, card)
+    buy_dates_paint = {
+        str(sig["date"].iloc[i])
+        for i in buy_is_src_early
+        if 0 <= int(i) < len(sig)
+    }
     # 同柱上箭尾：外資六角要排到這之下，不准疊在箭身上
     occupy: dict = {}
     for ev in collect_nav_mark_events(sig):
@@ -7295,6 +7302,9 @@ def overlay_nav_marks_on_zone(
                     arrow_h=arrow_h * 0.78, hw=arrow_hw * 0.78, z=5, alpha=0.42,
                 )
             elif role == "up":
+                # 同柱已有買訊藍▲紅框 → 略過純藍▲，減少互壓（標仍在，規則未刪）
+                if str(ev.get("date") or "") in buy_dates_paint:
+                    continue
                 tip = lo - arrow_gap
                 pastel, ink = _NAV_TONE.get(kind, _NAV_GHOST)
                 if kind[:1] == "l" and tip <= l20:
@@ -7305,6 +7315,8 @@ def overlay_nav_marks_on_zone(
                 )
                 _note_mark_floor(occupy, i, float(tip) - arrow_h * sc)
             else:
+                if str(ev.get("date") or "") in buy_dates_paint:
+                    continue
                 pastel, ink = _NAV_GHOST
                 ghost_tip = lo - arrow_gap
                 _nav_arrow(
@@ -7434,6 +7446,9 @@ def _paint_nav_on_axes(
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     last_dn_i = last_up_i = -9
     occupy: dict = {}
+    # 買點日先算：同柱純藍▲與藍▲紅框互壓時只留買訊（不改公式）
+    _buy_is_pre, _ = _nav_trade_marks(work, card)
+    buy_idx_paint = {int(i) for i in _buy_is_pre if 0 <= int(i) < n}
     opens = work["open"].to_numpy(dtype=float)
     closes = work["close"].to_numpy(dtype=float)
     highs = work["high"].to_numpy(dtype=float)
@@ -7551,41 +7566,44 @@ def _paint_nav_on_axes(
             )
         if up_pick:
             kind, sc, hollow = up_pick
-            tip = lo - arrow_gap
-            pastel, ink = _NAV_TONE[kind]
-            if kind[0] == "l" and tip <= l20:
-                pastel = _lerp_hex(pastel, ink, 0.28)
-            _nav_arrow(
-                ax1,
-                tip,
-                x,
-                down=False,
-                face=pastel,
-                ink=ink,
-                arrow_h=arrow_h * sc,
-                hw=arrow_hw * sc,
-                z=6,
-                hollow=hollow,
-                alpha=1.0,
-            )
-            _note_mark_floor(occupy, int(i), float(tip) - arrow_h * sc)
             last_up_i = i
+            # 同柱已有買訊藍▲紅框 → 略過純藍▲，減少互壓
+            if int(i) not in buy_idx_paint:
+                tip = lo - arrow_gap
+                pastel, ink = _NAV_TONE[kind]
+                if kind[0] == "l" and tip <= l20:
+                    pastel = _lerp_hex(pastel, ink, 0.28)
+                _nav_arrow(
+                    ax1,
+                    tip,
+                    x,
+                    down=False,
+                    face=pastel,
+                    ink=ink,
+                    arrow_h=arrow_h * sc,
+                    hw=arrow_hw * sc,
+                    z=6,
+                    hollow=hollow,
+                    alpha=1.0,
+                )
+                _note_mark_floor(occupy, int(i), float(tip) - arrow_h * sc)
         elif (is_20l or is_60l) and (was_20l or was_60l) and i - last_up_i <= 6:
-            tip = lo - arrow_gap
-            pastel, ink = _NAV_GHOST
-            _nav_arrow(
-                ax1,
-                tip,
-                x,
-                down=False,
-                face=pastel,
-                ink=ink,
-                arrow_h=arrow_h * 0.78,
-                hw=arrow_hw * 0.78,
-                z=5,
-                alpha=0.42,
-            )
-            _note_mark_floor(occupy, int(i), float(tip) - arrow_h * 0.78)
+            if int(i) not in buy_idx_paint:
+                tip = lo - arrow_gap
+                pastel, ink = _NAV_GHOST
+                _nav_arrow(
+                    ax1,
+                    tip,
+                    x,
+                    down=False,
+                    face=pastel,
+                    ink=ink,
+                    arrow_h=arrow_h * 0.78,
+                    hw=arrow_hw * 0.78,
+                    z=5,
+                    alpha=0.42,
+                )
+                _note_mark_floor(occupy, int(i), float(tip) - arrow_h * 0.78)
         if warn:
             ax_sig.add_patch(patches.Rectangle(
                 (x - 0.45, 0.52), 0.9, 0.44,
