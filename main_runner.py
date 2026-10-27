@@ -186,12 +186,25 @@ class MainRunner:
         return self.push_already_delivered(key)
 
     def pipeline_status(self, run_date: str = None) -> str:
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute("SELECT status FROM pipeline_runs WHERE run_date = ?;", (run_date or self.today_str,))
-        row = cur.fetchone()
-        conn.close()
-        return str(row[0] or "") if row else ""
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT status FROM pipeline_runs WHERE run_date = ?;",
+                (run_date or self.today_str,),
+            )
+            row = cur.fetchone()
+            return str(row[0] or "") if row else ""
+        except sqlite3.OperationalError:
+            # 單測／空殼 DB 可能還沒建 pipeline_runs；當成未完成，不准炸寄送路徑
+            return ""
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def push_already_delivered(self, run_date: str) -> bool:
         """pipeline success 或寄出回執任一成立＝已寄到白名單。"""
@@ -1908,11 +1921,18 @@ class MainRunner:
         """
         pkey = str(pipeline_run_date or "").strip()
         # 雙寄擋：別條已寄出回執／已 success → 本條不准再打 Telegram（2026-10-27 07:47／07:56）。
-        if pkey and (
-            self.push_already_delivered(pkey) or self.pipeline_status(pkey) == "success"
-        ):
-            logger.info("海選已有寄出回執／success，略過 _push_screening 重寄 key=%s", pkey)
-            return True
+        if pkey:
+            try:
+                already = self.push_already_delivered(pkey) or (
+                    self.pipeline_status(pkey) == "success"
+                )
+            except Exception:
+                already = False
+            if already:
+                logger.info(
+                    "海選已有寄出回執／success，略過 _push_screening 重寄 key=%s", pkey
+                )
+                return True
         if morning_digest and screening:
             try:
                 from morning_digest import apply_morning_opening_to_screening, build_morning_opening_html
