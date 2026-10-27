@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 53  # 主區壓／撐左緣同棧；無下一層靜默（2026-10-27）
+_VZ_PAINT_VER = 54  # 主區壓／撐依圖自適應同側；無下一層靜默（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3588,12 +3588,13 @@ def _paint_key_zone_smart_tags(
     ymax: float,
     occupied: Optional[List[Tuple[float, float, float, float]]] = None,
 ) -> List[Tuple[float, float, float, float]]:
-    """現任主大量區壓／撐（REQUIRED）：優先膚色帶左緣同棧；找不到淨空也必須留標。
+    """現任主大量區壓／撐（REQUIRED）：依本圖淨空自適應同側；找不到淨空也必須留標。
 
     硬規則（2026-10-27）：
     - 膚色帶上下緣「大量區壓／撐」不准因智慧定位略過。
     - 壓在上、撐在下（依價位垂直序）。
-    - 左緣淨空夠→兩標同 X 左緣對齊棧；左緣會裁／壓死 K 才改掃位／保底。
+    - 每圖自揀左／中／右最佳淨空槽（對 K／量）；成對盡量同 X／同側。
+      2233 靠左＝該圖適合，不准寫死永遠釘左。
     """
     from biaoke_next_support import (
         _approx_layer_tag_half_w,
@@ -3659,7 +3660,7 @@ def _paint_key_zone_smart_tags(
         return float(cx), str(ha), box
 
     def _k_crush_score(box: Tuple[float, float, float, float]) -> float:
-        """左緣候選：與 K 實體／影重疊代價（高＝壓死 K）。"""
+        """與 K 實體／影重疊代價（高＝壓死 K）。"""
         if n_bars <= 0:
             return 0.0
         bx0, bx1, by0, by1 = (float(v) for v in box)
@@ -3676,7 +3677,6 @@ def _paint_key_zone_smart_tags(
                 continue
             if lk > by1 or hk < by0:
                 continue
-            # 穿線／蓋實體
             mid = 0.5 * (hk + lk)
             if by0 <= mid <= by1:
                 score += 3.0
@@ -3684,60 +3684,95 @@ def _paint_key_zone_smart_tags(
                 score += 1.2
         return score
 
-    def _left_stack_anchor(half_w: float) -> Optional[Tuple[float, str]]:
-        """膚色帶左緣同棧錨點；會裁切／壓死 K → None（改掃位）。"""
-        # 遠左：資料座標貼 xmin 內側
-        trials: List[Tuple[float, str]] = [
-            (max(box_left_limit + 0.02, x_lo + 0.05), "left"),
-            (max(0.15, x_lo + 0.12), "left"),
-            (max(0.55, x_lo + half_w * 0.15), "left"),
-            (min(max(1.2, float(n_bars) * 0.08), 4.0), "left"),
-        ]
+    def _pair_slot_candidates(half_w: float) -> List[Tuple[float, str]]:
+        """左／中／右同棧候選（依本圖幾何，不准寫死只左）。"""
+        trials: List[Tuple[float, str]] = []
+        # 左帶
+        trials.extend(
+            [
+                (max(box_left_limit + 0.02, x_lo + 0.05), "left"),
+                (max(0.35, x_lo + 0.2), "left"),
+                (min(max(1.5, float(n_bars) * 0.10), 6.0) if n_bars else 1.5, "left"),
+                (min(max(2.5, float(n_bars) * 0.18), 10.0) if n_bars else 2.5, "center"),
+            ]
+        )
+        # 中帶
+        if n_bars > 0:
+            mid = 0.5 * float(n_bars - 1)
+            trials.extend(
+                [
+                    (mid, "center"),
+                    (mid - half_w * 0.4, "center"),
+                    (mid + half_w * 0.4, "center"),
+                    (float(n_bars) * 0.42, "center"),
+                    (float(n_bars) * 0.58, "center"),
+                ]
+            )
+        # 右帶（末日左側／右溝）
+        if n_bars > 0:
+            last = float(n_bars - 1)
+            trials.extend(
+                [
+                    (min(box_right_limit - 0.05, last - 0.35), "right"),
+                    (min(box_right_limit, last + 0.35), "left"),
+                    (max(last - half_w * 1.1, float(n_bars) * 0.72), "right"),
+                    (float(n_bars) * 0.82, "center"),
+                ]
+            )
+        return trials
+
+    def _best_pair_anchor(half_w: float) -> Optional[Tuple[float, str]]:
+        """成對同 X：在左／中／右挑壓死 K 最少的槽；全很差→None 改逐標掃。"""
         best: Optional[Tuple[float, float, str]] = None
-        for cx0, ha0 in trials:
-            # 兩標都要用同一錨；以較寬字估盒，對 hi／lo 兩價各算 crush
+        for cx0, ha0 in _pair_slot_candidates(half_w):
             crush = 0.0
             ok = True
             for y_px, _c, _t in items:
                 box = _box_for(float(cx0), str(ha0), half_w, float(y_px))
                 cx1, ha1, box1 = _clamp_into_view(float(cx0), str(ha0), box, half_w)
-                if abs(float(cx1) - float(cx0)) > 1.2 or str(ha1) != str(ha0):
-                    # 被夾出左緣＝這錨不合格
+                # 夾到換邊／大位移＝這錨對這圖不合格
+                if abs(float(cx1) - float(cx0)) > 2.5:
                     ok = False
                     break
                 crush += _k_crush_score(box1)
             if not ok:
                 continue
-            if crush > 4.5:
-                continue
-            if best is None or crush < best[0]:
-                best = (crush, float(cx0), str(ha0))
+            # 微偏中段：同代價略偏好不貼絕對兩端（但仍可比左／右淨空贏）
+            edge_bias = 0.0
+            if n_bars > 0:
+                frac = float(cx0) / max(float(n_bars - 1), 1.0)
+                if frac < 0.04 or frac > 0.96:
+                    edge_bias = 0.35
+            key = crush + edge_bias
+            if best is None or key < best[0]:
+                best = (key, float(cx0), str(ha0))
         if best is None:
+            return None
+        # 代價仍極高＝沒有可用同棧，交給逐標掃位
+        if float(best[0]) > 18.0:
             return None
         return best[1], best[2]
 
     def _force_keep_slot(
         y_px: float, text: str, half_w: float
     ) -> Tuple[float, str, Tuple[float, float, float, float]]:
-        """REQUIRED 保底：同帶優先；否則左段；最後釘可視左緣。"""
+        """REQUIRED 保底：同帶優先；再掃左／中／右；最後釘可視左緣。"""
         candidates: List[Tuple[float, str]] = []
         if prefer_x is not None:
             for dlt in (0.0, -2.0, 2.0, -4.0, 4.0):
-                candidates.append((float(prefer_x) + dlt, "left"))
                 candidates.append((float(prefer_x) + dlt, "center"))
-        if n_bars > 0:
-            left_cap = max(2.0, float(n_bars) * 0.28)
-            for frac in (0.06, 0.10, 0.16, 0.22, 0.30):
-                candidates.append((min(left_cap, float(n_bars) * frac), "left"))
-            candidates.append((max(x_lo + 0.08, -0.05), "left"))
-        else:
-            candidates.append((x_lo + half_w * 0.2, "left"))
-        if n_bars > 0:
-            candidates.append((min(x_hi - 0.2, float(n_bars - 1) - 0.35), "right"))
+                candidates.append((float(prefer_x) + dlt, "left"))
+                candidates.append((float(prefer_x) + dlt, "right"))
+        candidates.extend(_pair_slot_candidates(half_w))
+        # 依 crush 排序再取第一個不互壓
+        scored: List[Tuple[float, float, str, Tuple[float, float, float, float]]] = []
         for cx0, ha0 in candidates:
             cx1, ha1, box1 = _clamp_into_view(
                 float(cx0), str(ha0), _box_for(float(cx0), str(ha0), half_w, y_px), half_w
             )
+            scored.append((_k_crush_score(box1), float(cx1), str(ha1), box1))
+        scored.sort(key=lambda t: t[0])
+        for _sc, cx1, ha1, box1 in scored:
             overlaps = False
             for ob in placed:
                 try:
@@ -3794,14 +3829,14 @@ def _paint_key_zone_smart_tags(
     half_w_max = max(
         float(_approx_layer_tag_half_w(t, float(VOL_ZONE_TAG_PT))) for _y, _c, t in items
     )
-    left_anchor = _left_stack_anchor(half_w_max)
-    if left_anchor is not None:
-        cx_l, ha_l = left_anchor
-        prefer_x = float(cx_l)
+    pair_anchor = _best_pair_anchor(half_w_max)
+    if pair_anchor is not None:
+        cx_p, ha_p = pair_anchor
+        prefer_x = float(cx_p)
         for y_px, color, text in items:
             half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
-            box = _box_for(float(cx_l), str(ha_l), half_w, float(y_px))
-            cx, ha, box = _clamp_into_view(float(cx_l), str(ha_l), box, half_w)
+            box = _box_for(float(cx_p), str(ha_p), half_w, float(y_px))
+            cx, ha, box = _clamp_into_view(float(cx_p), str(ha_p), box, half_w)
             try:
                 _emit(float(y_px), color, text, cx, ha, box)
             except Exception:
@@ -3809,7 +3844,7 @@ def _paint_key_zone_smart_tags(
                 _emit(float(y_px), color, text, cx, ha, box)
         return placed
 
-    # 左緣會壓死 K／裁切 → 沿線掃位；成對仍鎖同帶（壓上撐下）
+    # 無可用同棧 → 逐標沿線掃；第二標鎖同帶（壓上撐下）
     for y_px, color, text in items:
         half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
         picked = pick_layer_label_along_line(
@@ -3825,7 +3860,7 @@ def _paint_key_zone_smart_tags(
             y_span=float(y_span),
             prefer_x=prefer_x,
             max_score=28.0,
-            same_band_max=10.0,
+            same_band_max=12.0,
         )
         if picked is None:
             cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
