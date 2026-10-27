@@ -4947,29 +4947,15 @@ def render_biaoke_structure_png(
             layer = dict(ns.get("layer") or {})
             lo = float(layer.get("low") or 0)
             hi = float(layer.get("high") or 0)
-            if not (lo > 0 and hi > 0) and ns.get("none_label"):
-                mark = f"出貨痕跡・{ns.get('none_label')}"
+            # 無下一層：只留「出貨痕跡」，不准附「暫無下一層大量區」
+            if not (lo > 0 and hi > 0):
+                mark = "出貨痕跡"
         except Exception:
             pass
     elif info.get("under_support"):
-        # v8 建議：破撐摘要不帶下一層價（線標已在左側）
-        try:
-            ns = dict(info.get("next_support") or {})
-            layer = dict(ns.get("layer") or {})
-            lo = float(layer.get("low") or 0)
-            hi = float(layer.get("high") or 0)
-            if lo > 0 and hi > 0:
-                mark = "破撐"
-                mc = _PRESS
-            elif ns.get("none_label"):
-                mark = str(ns.get("none_label"))
-                mc = _MUTED
-            else:
-                mark = "破撐"
-                mc = _PRESS
-        except Exception:
-            mark = "破撐"
-            mc = _PRESS
+        # 破撐摘要不帶下一層價；無下一層＝靜默佔位字，標籤仍寫「破撐」
+        mark = "破撐"
+        mc = _PRESS
     # 大量日高／低判斷句（收在低下／已過高等）全股票都不打
     banner_bits = header_banner_lines(glance, sid=sid, plate=plate)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)

@@ -189,6 +189,39 @@ def test_key_zone_smart_tags_force_keep_when_pressing_k():
     assert len(placed) >= 2
 
 
+def test_key_zone_left_stack_when_left_clear():
+    """左緣膚色帶淨空：壓／撐同 X 左棧，且壓在上（價高）。"""
+    from vol_zone_chart import _paint_key_zone_smart_tags
+    import matplotlib.pyplot as plt
+
+    n = 80
+    # 左半 K 遠在帶上方；右半跌破帶 → 左緣淨空（對齊 2233 類）
+    highs = np.concatenate([np.full(40, 240.0), np.full(40, 150.0)])
+    lows = np.concatenate([np.full(40, 220.0), np.full(40, 140.0)])
+    fig, ax = plt.subplots()
+    ax.set_xlim(-0.5, n + 0.5)
+    ax.set_ylim(120, 260)
+    _paint_key_zone_smart_tags(
+        ax,
+        hi=173.0,
+        lo=157.5,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        xmin=-0.35,
+        xmax=n + 0.55,
+        ymin=120.0,
+        ymax=260.0,
+        occupied=[],
+    )
+    press = next(t for t in ax.texts if str(t.get_text()).startswith("大量區壓"))
+    hold = next(t for t in ax.texts if str(t.get_text()).startswith("大量區撐"))
+    plt.close(fig)
+    assert float(press.get_position()[1]) > float(hold.get_position()[1])
+    assert abs(float(press.get_position()[0]) - float(hold.get_position()[0])) < 1.5
+    assert float(press.get_position()[0]) < n * 0.22
+
+
 def test_blank_channel_pair_same_band_unit():
     """定位碼：第二軌標必須同帶（反證舊錯開 x）。"""
     from vol_zone_chart import _blank_for_channel_label

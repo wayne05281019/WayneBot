@@ -243,7 +243,9 @@ def test_reason_line_names_next_layer():
     assert "下一層" in line
     assert "非買訊" in line
     none_line = reason_next_support_line(broken_lo=100, primary=None, none_label=NONE_LABEL)
-    assert NONE_LABEL in none_line
+    # 無下一層：原因句靜默佔位字，只留破撐本身
+    assert "收破大量區撐" in none_line
+    assert NONE_LABEL not in none_line
 
 
 def test_attach_rewrites_abandon_label():
@@ -261,7 +263,8 @@ def test_attach_rewrites_abandon_label():
             ns.get("reason_line") or ""
         )
     notes = " ".join(info.get("notes") or [])
-    assert "收破大量區撐" in notes or NONE_LABEL in notes
+    assert "收破大量區撐" in notes
+    assert NONE_LABEL not in notes
 
 
 def test_chiifeng_written_not_on_other_stock():

@@ -535,8 +535,10 @@ def reason_next_support_line(
         src = str(primary.get("source") or "").strip() or NEXT_LAYER_SOURCE
         px = _fmt_price(primary.get("price")) or "—"
         return f"{head}，朝{src} {px}（非買訊）"
-    label = str(none_label or NONE_LABEL).strip() or NONE_LABEL
-    return f"{head}，{label}"
+    # 無下一層：原因句只留破撐／過壓本身；不准附「暫無下一層大量區」佔位
+    # （none_label 參數保留給呼叫端相容；圖／話筒靜默）
+    _ = none_label
+    return f"{head}"
 
 
 def attach_next_support(
@@ -626,14 +628,15 @@ def attach_next_support(
                     proj["target"] = lo
                 proj["mark"] = ""
             elif pack.get("none_label"):
+                # 無下一層：靜默佔位字；演算句仍可講破撐／出貨，不准寫暫無下一層
                 if key == "abandon":
                     proj["label"] = (
-                        f"收在撐 {_fmt_price(spike_lo)} 之下，{NONE_LABEL}；"
+                        f"收在撐 {_fmt_price(spike_lo)} 之下；"
                         "這次量價先放棄，不把反彈當最可能。不是保證。"
                     )
                 else:
                     proj["label"] = (
-                        f"出貨痕跡，收破撐 {_fmt_price(spike_lo)}，{NONE_LABEL}。"
+                        f"出貨痕跡，收破撐 {_fmt_price(spike_lo)}。"
                         "不是保證、非買訊。"
                     )
                 proj["mark"] = ""
@@ -1378,21 +1381,6 @@ def paint_written_and_next_levels(
                     except Exception:
                         pass
     elif pack.get("broke") or pack.get("over"):
-        if pack.get("none_label"):
-            try:
-                kw: Dict[str, Any] = {
-                    "transform": ax.transAxes,
-                    "ha": "right",
-                    "va": "bottom",
-                    "color": color_none,
-                    "zorder": 20,
-                    "clip_on": True,
-                }
-                if fp_none is not None:
-                    kw["fontproperties"] = fp_none
-                else:
-                    kw["fontsize"] = 8.2
-                ax.text(0.98, 0.04, str(pack.get("none_label") or NONE_LABEL), **kw)
-            except Exception:
-                pass
+        # 2026-10-27：無下一層＝靜默，不准畫「暫無下一層大量區」佔位
+        pass
     return ys
