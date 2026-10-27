@@ -869,7 +869,14 @@ def test_2383_4915_stance_note_matches_latest_row():
         assert "高" in note or "先出" in note or "漲多" in note
         assert "長線低" not in note
     else:
-        assert "偏空" in note or "今天沒有急著買或賣" in note or "先等" in note
+        # 新柱會滾到「先看、先別急著買」等低檔句；跟表現況，不准假設永遠偏空／先等
+        assert (
+            "偏空" in note
+            or "今天沒有急著買或賣" in note
+            or "先等" in note
+            or "先別急著買" in note
+            or "先看" in note
+        )
 
     down = eng.get_decision_card("4915", merge_live=False)
     attach_sell(down)

@@ -1402,10 +1402,11 @@ class NavigatorEngine:
             )
 
             face_name = prefer_display_stock_name(raw_name, "", stock_id)
-            if looks_like_yahoo_english_name(raw_name):
+            # Yahoo 英文長名、或合併後只剩代號：再查官方中文，不准高低卡標題變 2330
+            if looks_like_yahoo_english_name(raw_name) or face_name == str(stock_id):
                 face_name = prefer_display_stock_name(
                     official_stock_name(str(stock_id), self.db_path), "", stock_id
-                )
+                ) or face_name
         except Exception:
             face_name = raw_name or str(stock_id)
         ex_gap_note = ""

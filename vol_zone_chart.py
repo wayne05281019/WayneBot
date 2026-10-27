@@ -6014,6 +6014,14 @@ def _paint_volume_zone(
         fontproperties=_fp(8.2, "bold"),
         color=_MUTED,
     )
+    # 查股順序四／壓撐大量區：墨線定稿套皮；失敗略過不准炸出圖／排程
+    try:
+        from ink_chart_theme import maybe_apply_ink
+
+        maybe_apply_ink(fig, "vol")
+    except Exception:
+        logger.debug("大量區墨線套皮略過", exc_info=True)
+
     with mpl_render():
         fig.savefig(
             out,
