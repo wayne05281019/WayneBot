@@ -1306,10 +1306,39 @@ def paint_written_and_next_levels(
                         y_span=y_span_for_pick or None,
                         prefer_x=_layer_prefer_x,
                     )
+                    # 過代價略過後仍要給「有下一層」一條界內位：ha=right 釘 xmax（不准裁出 figure）
                     if picked is None:
-                        continue
+                        picked = pick_layer_label_along_line(
+                            y=lab_y,
+                            text=label,
+                            xmin=float(xmin),
+                            xmax=float(xmax),
+                            highs=hi_arr,
+                            lows=lo_arr,
+                            mas=mas,
+                            occupied=occupied_boxes,
+                            tag_size=float(_layer_tag_size),
+                            y_span=y_span_for_pick or None,
+                            prefer_x=_layer_prefer_x,
+                            max_score=48.0,
+                        )
+                    if picked is None:
+                        _hw = _approx_layer_tag_half_w(
+                            label, float(_layer_tag_size)
+                        )
+                        _hh = max(
+                            abs(float(lab_y)) * 0.004,
+                            (y_span_for_pick or abs(float(lab_y)) * 0.2) * 0.016,
+                            8.0,
+                        )
+                        cx = float(xmax) - 0.08
+                        ha = "right"
+                        box = (cx - 2.0 * _hw, cx, float(lab_y) - _hh, float(lab_y) + _hh)
+                        if float(box[0]) < float(xmin) - 0.55:
+                            continue
+                        picked = (cx, ha, box)
                     cx, ha, box = picked
-                    # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內（OPTIONAL 寧可改位不准裁）
+                    # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內
                     if float(box[1]) > float(xmax) + 0.05:
                         _hw = max(0.5 * (float(box[1]) - float(box[0])), 1.0)
                         cx = float(xmax) - 0.08
@@ -1337,25 +1366,70 @@ def paint_written_and_next_levels(
                             bbox={**_layer_tag_box, "edgecolor": color},
                             size=float(_layer_tag_size),
                         )
-                        # 像素裁切閘：仍出 figure → 拿掉（下一層 OPTIONAL，不准半句）
+                        # 像素裁切閘：出 figure → 往左 nudge（ha=right），仍裁才拿掉
                         try:
                             ax.figure.canvas.draw()
                             ren = ax.figure.canvas.get_renderer()
                             if art is not None:
-                                bb = art.get_window_extent(renderer=ren)
-                                fbb = ax.figure.bbox
-                                if (
-                                    bb.x0 < fbb.x0 - 1
-                                    or bb.x1 > fbb.x1 - 1
-                                    or bb.y0 < fbb.y0 - 1
-                                    or bb.y1 > fbb.y1 - 1
-                                ):
+                                for _nudge in range(8):
+                                    bb = art.get_window_extent(renderer=ren)
+                                    fbb = ax.figure.bbox
+                                    if not (
+                                        bb.x0 < fbb.x0 - 1
+                                        or bb.x1 > fbb.x1 - 1
+                                        or bb.y0 < fbb.y0 - 1
+                                        or bb.y1 > fbb.y1 - 1
+                                    ):
+                                        break
+                                    # 超右：整標左移；資料座標每次退 1.2
                                     try:
                                         art.remove()
                                     except Exception:
                                         pass
-                                    occupied_boxes.pop()
-                                    continue
+                                    cx = float(cx) - 1.2
+                                    ha = "right"
+                                    _hw = max(
+                                        0.5 * (float(box[1]) - float(box[0])), 1.0
+                                    )
+                                    box = (
+                                        cx - 2.0 * _hw,
+                                        cx,
+                                        float(box[2]),
+                                        float(box[3]),
+                                    )
+                                    if float(box[0]) < float(xmin) - 0.55:
+                                        art = None
+                                        break
+                                    art = _text(
+                                        float(cx),
+                                        lab_y,
+                                        label,
+                                        color=color,
+                                        ha=ha,
+                                        va="center",
+                                        bbox={
+                                            **_layer_tag_box,
+                                            "edgecolor": color,
+                                        },
+                                        size=float(_layer_tag_size),
+                                    )
+                                    ax.figure.canvas.draw()
+                                    ren = ax.figure.canvas.get_renderer()
+                                if art is not None:
+                                    bb = art.get_window_extent(renderer=ren)
+                                    fbb = ax.figure.bbox
+                                    if (
+                                        bb.x0 < fbb.x0 - 1
+                                        or bb.x1 > fbb.x1 - 1
+                                        or bb.y0 < fbb.y0 - 1
+                                        or bb.y1 > fbb.y1 - 1
+                                    ):
+                                        try:
+                                            art.remove()
+                                        except Exception:
+                                            pass
+                                        occupied_boxes.pop()
+                                        continue
                         except Exception:
                             pass
                         try:
