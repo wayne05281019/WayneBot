@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 56  # 成對同側；crush 過重改掃淨空；底軸不雙排壓腳註（2026-10-27）
+_VZ_PAINT_VER = 57  # 壓撐垂直微移離 K；橘框避壓撐；量標／底軸沿用（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3790,10 +3790,9 @@ def _paint_key_zone_smart_tags(
                 best = (key, float(cx0), str(ha0))
         if best is None:
             return None
-        # 最佳同棧仍嚴重碾 K（6274 左槽蓋 7 月實體）→ 交回逐標掃淨空，仍成對鎖側
-        if float(best[0]) >= 2.0:
+        # 任一明顯碾 K → 交回逐標掃＋垂直微移（6274 全窗都穿過膚色帶）
+        if float(best[0]) >= 0.5:
             return None
-        # REQUIRED 成對同側：輕微代價可留同棧（不准拆左右）
         return best[1], best[2]
 
     def _force_keep_slot(
@@ -3834,6 +3833,36 @@ def _paint_key_zone_smart_tags(
         return _clamp_into_view(
             cx_f, "left", _box_for(cx_f, "left", half_w, y_px), half_w
         )
+
+    def _nudge_y_clear(
+        y_rail: float,
+        text: str,
+        cx: float,
+        ha: str,
+        half_w: float,
+        *,
+        prefer_up: bool,
+    ) -> Tuple[float, Tuple[float, float, float, float]]:
+        """壓略上移、撐略下移直到不碾 K（膚色帶橫貫全窗時只能垂直躲）。"""
+        sign = 1.0 if prefer_up else -1.0
+        step = max(float(y_span) * 0.012, 1.0)
+        best_y = float(y_rail)
+        best_box = _box_for(float(cx), str(ha), half_w, best_y)
+        best_c = _k_crush_score(best_box)
+        if best_c < 0.5:
+            return best_y, best_box
+        for k in range(1, 16):
+            y2 = float(y_rail) + sign * step * float(k)
+            # 不准跑出可視窗太遠
+            if y2 > float(ymax) - y_span * 0.02 or y2 < float(ymin) + y_span * 0.02:
+                break
+            box2 = _box_for(float(cx), str(ha), half_w, y2)
+            c2 = _k_crush_score(box2)
+            if c2 < best_c:
+                best_c, best_y, best_box = c2, y2, box2
+            if c2 < 0.5:
+                break
+        return best_y, best_box
 
     def _emit(y_px: float, color: str, text: str, cx: float, ha: str, box) -> None:
         ax.text(
@@ -3880,11 +3909,17 @@ def _paint_key_zone_smart_tags(
             half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
             box = _box_for(float(cx_p), str(ha_p), half_w, float(y_px))
             cx, ha, box = _clamp_into_view(float(cx_p), str(ha_p), box, half_w)
+            y_draw, box = _nudge_y_clear(
+                float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
+            )
             try:
-                _emit(float(y_px), color, text, cx, ha, box)
+                _emit(float(y_draw), color, text, cx, ha, box)
             except Exception:
                 cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-                _emit(float(y_px), color, text, cx, ha, box)
+                y_draw, box = _nudge_y_clear(
+                    float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
+                )
+                _emit(float(y_draw), color, text, cx, ha, box)
         return placed
 
     # 無可用同棧 → 仍成對同側：第一標掃位，第二標鎖同一 cx／ha
@@ -3920,11 +3955,17 @@ def _paint_key_zone_smart_tags(
                 cx, ha, box = _clamp_into_view(float(cx), str(ha), box, half_w)
                 if float(box[1]) > box_right_limit + 0.55 or float(box[0]) < box_left_limit - 0.55:
                     cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+        y_draw, box = _nudge_y_clear(
+            float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
+        )
         try:
-            _emit(float(y_px), color, text, cx, ha, box)
+            _emit(float(y_draw), color, text, cx, ha, box)
         except Exception:
             cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-            _emit(float(y_px), color, text, cx, ha, box)
+            y_draw, box = _nudge_y_clear(
+                float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
+            )
+            _emit(float(y_draw), color, text, cx, ha, box)
         if prefer_x is None:
             prefer_x = float(cx)
             prefer_ha = str(ha)
@@ -5326,21 +5367,55 @@ def _paint_volume_zone(
                 mid_hi = float(y0_ax) + y_sp * 0.42
                 if float(lo or 0) > 0 and mid_lo <= float(lo) <= mid_hi:
                     path_ax_y = 0.08
-            # 資料座標粗估橘框高度≈ 0.10*ylim；撞近端高低帶→改試 0.55，再撞就略過
-            def _path_hits_tail(axy: float, va: str) -> bool:
+            # 資料座標粗估橘框高度≈ 0.10*ylim；撞近端高低帶→改試其他槽；再撞略過
+            def _path_y_span(axy: float, va: str) -> Tuple[float, float]:
                 if va == "top":
                     y_hi = float(y0_ax) + float(axy) * y_sp
                     y_lo = y_hi - y_sp * 0.10
-                else:
+                elif va == "bottom":
                     y_lo = float(y0_ax) + float(axy) * y_sp
                     y_hi = y_lo + y_sp * 0.10
+                else:
+                    mid = float(y0_ax) + float(axy) * y_sp
+                    y_lo, y_hi = mid - y_sp * 0.055, mid + y_sp * 0.055
+                return float(y_lo), float(y_hi)
+
+            def _path_hits_tail(axy: float, va: str) -> bool:
+                y_lo, y_hi = _path_y_span(axy, va)
                 return not (y_hi < float(tail_lo) or y_lo > float(tail_hi))
 
-            if _path_hits_tail(path_ax_y, path_va):
-                path_ax_y, path_va = 0.55, "center"
-            if _path_hits_tail(path_ax_y, path_va):
-                path_ax_y, path_va = 0.72, "center"
-            if _path_hits_tail(path_ax_y, path_va):
+            def _path_hits_key(axy: float, va: str) -> bool:
+                """橘框不准蓋「大量區壓／撐」（6919 右下提示貼壓框底）。"""
+                y_lo, y_hi = _path_y_span(axy, va)
+                x_lo_path = float(n) * 0.55  # 右半才可能跟右槽壓撐互壓
+                for ob in _key_occ or []:
+                    try:
+                        ox0, ox1, oy0, oy1 = (float(v) for v in ob)
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                    if ox1 < x_lo_path:
+                        continue
+                    if not (y_hi < oy0 or y_lo > oy1):
+                        return True
+                return False
+
+            trials = [
+                (path_ax_y, path_va),
+                (0.14, "bottom"),
+                (0.08, "bottom"),
+                (0.28, "center"),
+                (0.72, "center"),
+                (0.85, "top"),
+                (0.55, "center"),
+            ]
+            placed_ok = False
+            for axy, va in trials:
+                if _path_hits_tail(axy, va) or _path_hits_key(axy, va):
+                    continue
+                path_ax_y, path_va = float(axy), str(va)
+                placed_ok = True
+                break
+            if not placed_ok:
                 _path_place = False
         except Exception:
             path_ax_y, path_va = 0.985, "top"

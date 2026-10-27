@@ -5488,7 +5488,8 @@ def render_biaoke_structure_png(
                 band_peak = max(band_peak, float(_vol_disp_all[i]))
             except (IndexError, TypeError, ValueError):
                 continue
-        need = float(band_peak) * 1.10 + float(vmax) * 0.025
+        # va=bottom：整盒在柱頂之上；略加墊高避開框邊吃柱（3033／6148）
+        need = float(band_peak) * 1.06 + float(vmax) * 0.035
         if need > float(vol_lab_y):
             vol_lab_y = need
 
@@ -5519,7 +5520,7 @@ def render_biaoke_structure_png(
             float(spike_i),
             float(layer_i),
         )
-        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.12))
+        ax2.set_ylim(0, max(float(vmax) * 1.14, float(vol_lab_y) * 1.18))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
@@ -5527,7 +5528,7 @@ def render_biaoke_structure_png(
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
             ha="right" if layer_side == "left" else "left",
-            va="center",
+            va="bottom",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5554,7 +5555,7 @@ def render_biaoke_structure_png(
             color=_TEXT,
             fontproperties=_fp(10, "bold"),
             ha="right" if spike_side == "left" else "left",
-            va="center",
+            va="bottom",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5589,7 +5590,7 @@ def render_biaoke_structure_png(
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
         _bump_vol_lab_y(float(vol_tx), float(spike_i))
-        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.12))
+        ax2.set_ylim(0, max(float(vmax) * 1.14, float(vol_lab_y) * 1.18))
         _leader_note(
             ax2,
             float(spike_i),
@@ -5600,7 +5601,7 @@ def render_biaoke_structure_png(
             ty=vol_lab_y,
             size=11,
             ha="left" if vol_tx >= spike_i else "right",
-            va="center",
+            va="bottom",
             clip=False,
         )
     elif has_layer_vol:
@@ -5608,7 +5609,7 @@ def render_biaoke_structure_png(
         layer_md = _md(work[layer_i].get("date"))
         lab_x = max(2.4, float(layer_i) - 5.2)
         _bump_vol_lab_y(float(lab_x), float(layer_i))
-        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.12))
+        ax2.set_ylim(0, max(float(vmax) * 1.14, float(vol_lab_y) * 1.18))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
@@ -5616,7 +5617,7 @@ def render_biaoke_structure_png(
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
             ha="right" if lab_x + 0.4 < float(layer_i) else "left",
-            va="center",
+            va="bottom",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
