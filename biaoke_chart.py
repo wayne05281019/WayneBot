@@ -5784,6 +5784,14 @@ def render_biaoke_structure_png(
         logger.debug("結構圖外資觀察標略過", exc_info=True)
     from wayne_navigator import _savefig_lookup_png
 
+    # 查股順序三／飆大結構：墨線定稿套皮；失敗略過不准炸出圖
+    try:
+        from ink_chart_theme import maybe_apply_ink
+
+        maybe_apply_ink(fig, "struct")
+    except Exception:
+        logger.debug("結構圖墨線套皮略過", exc_info=True)
+
     _savefig_lookup_png(fig, save_path, use_dpi)
     plt.close(fig)
     if os.path.isfile(save_path):
