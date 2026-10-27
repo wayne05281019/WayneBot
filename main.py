@@ -554,24 +554,15 @@ class HealthHandler(BaseHTTPRequestHandler):
         try:
             from main_runner import MainRunner
 
-            logger.info("§14 /ops/force-morning：常駐碟強制 demote＋背景補寄")
+            logger.info("§14 /ops/force-morning：常駐碟背景 force_rescue_morning")
             runner = MainRunner()
-            # 已寄出回執先補標 success，再清假 fuse／morning running（防蓋戳失敗後雙寄）
-            reconciled = int(runner.reconcile_push_deliveries(prefix="screen-") or 0)
-            demoted_inc = int(runner.demote_orphaned_increment_claims(force=True) or 0)
-            demoted = int(runner.demote_orphaned_morning_claims(force=True) or 0)
+            # demote／補寄全交給 force_rescue_morning：新鮮 morning-claim 進行中不准
+            # 先 demote 再開第二條（2026-10-27 整套雙寄根因）。
 
             def _bg() -> None:
                 try:
-                    # force_rescue：再 reconcile＋釘 as_of＋寄兩人（內部仍認寄出回執）
                     result_bg = runner.force_rescue_morning()
-                    logger.info(
-                        "§14 /ops/force-morning 背景補寄結束 %s demoted=%s reconciled=%s demoted_inc=%s",
-                        result_bg,
-                        demoted,
-                        reconciled,
-                        demoted_inc,
-                    )
+                    logger.info("§14 /ops/force-morning 背景補寄結束 %s", result_bg)
                 except Exception:
                     logger.exception("§14 /ops/force-morning 背景補寄失敗")
 
@@ -581,11 +572,8 @@ class HealthHandler(BaseHTTPRequestHandler):
             result = {
                 "ok": True,
                 "started": True,
-                "demoted": demoted,
-                "reconciled": reconciled,
-                "demoted_increment": demoted_inc,
                 "delivered": False,
-                "note": "reconciled+demoted; morning notify started on web service disk",
+                "note": "force_rescue_morning started on web service disk",
             }
             body = json.dumps(result, ensure_ascii=False).encode("utf-8")
             self.send_response(202)

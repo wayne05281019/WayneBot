@@ -23,7 +23,15 @@ CREATE TABLE IF NOT EXISTS pipeline_deliveries (
 """
 
 
+def _is_memory_db(db_path: str) -> bool:
+    s = str(db_path or "").strip()
+    return (not s) or s == ":memory:" or s.startswith("file:mem")
+
+
 def _delivery_dir(db_path: str) -> Path:
+    # :memory: 解析成工作區根會誤讀殘檔、污染單測；記憶體庫只走表、不走檔。
+    if _is_memory_db(db_path):
+        raise ValueError("memory db has no delivery dir")
     parent = Path(db_path).resolve().parent
     d = parent / "pipeline_deliveries"
     d.mkdir(parents=True, exist_ok=True)
@@ -75,12 +83,13 @@ def record_push_delivery(
         "notes": str(notes or "")[:500],
     }
     file_ok = False
-    try:
-        path = _file_path(db_path, key)
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        file_ok = True
-    except Exception:
-        logger.exception("pipeline_delivery 檔寫失敗 key=%s", key)
+    if not _is_memory_db(db_path):
+        try:
+            path = _file_path(db_path, key)
+            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            file_ok = True
+        except Exception:
+            logger.exception("pipeline_delivery 檔寫失敗 key=%s", key)
 
     db_ok = False
     last_err: Optional[Exception] = None
@@ -153,12 +162,13 @@ def push_delivery_recorded(db_path: str, run_date: str) -> bool:
             conn.close()
     except Exception:
         logger.debug("pipeline_delivery 查表略過 key=%s", key, exc_info=True)
-    try:
-        path = _file_path(db_path, key)
-        if path.is_file() and path.stat().st_size > 2:
-            return True
-    except Exception:
-        logger.debug("pipeline_delivery 查檔略過 key=%s", key, exc_info=True)
+    if not _is_memory_db(db_path):
+        try:
+            path = _file_path(db_path, key)
+            if path.is_file() and path.stat().st_size > 2:
+                return True
+        except Exception:
+            logger.debug("pipeline_delivery 查檔略過 key=%s", key, exc_info=True)
     return False
 
 
@@ -190,12 +200,13 @@ def load_push_delivery(db_path: str, run_date: str) -> Optional[Dict[str, Any]]:
             conn.close()
     except Exception:
         logger.debug("pipeline_delivery load 表略過", exc_info=True)
-    try:
-        path = _file_path(db_path, key)
-        if path.is_file():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        logger.debug("pipeline_delivery load 檔略過", exc_info=True)
+    if not _is_memory_db(db_path):
+        try:
+            path = _file_path(db_path, key)
+            if path.is_file():
+                return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            logger.debug("pipeline_delivery load 檔略過", exc_info=True)
     return None
 
 
@@ -245,18 +256,19 @@ def clear_push_delivery(db_path: str, run_date: str, *, bak_suffix: str = "") ->
             conn.close()
     except Exception:
         logger.exception("pipeline_delivery 清表失敗 key=%s", key)
-    try:
-        path = _file_path(db_path, key)
-        if path.is_file():
-            if bak_suffix:
-                bak = path.with_suffix(path.suffix + str(bak_suffix))
-                try:
-                    path.rename(bak)
-                except Exception:
+    if not _is_memory_db(db_path):
+        try:
+            path = _file_path(db_path, key)
+            if path.is_file():
+                if bak_suffix:
+                    bak = path.with_suffix(path.suffix + str(bak_suffix))
+                    try:
+                        path.rename(bak)
+                    except Exception:
+                        path.unlink(missing_ok=True)
+                else:
                     path.unlink(missing_ok=True)
-            else:
-                path.unlink(missing_ok=True)
-            cleared = True
-    except Exception:
-        logger.exception("pipeline_delivery 清檔失敗 key=%s", key)
+                cleared = True
+        except Exception:
+            logger.exception("pipeline_delivery 清檔失敗 key=%s", key)
     return cleared

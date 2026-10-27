@@ -2083,6 +2083,77 @@ def test_winrate_records_delivery_before_mark(tmp_path, monkeypatch):
     assert runner.push_already_delivered(key) is True
 
 
+def test_force_rescue_skips_when_fresh_morning_claim(tmp_path, monkeypatch):
+    """新鮮 morning-claim 進行中：force-rescue 不准 demote 再開第二條。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "inflight.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261027"
+    called = {"demote": 0, "morning": 0}
+    monkeypatch.setattr(runner, "reconcile_push_deliveries", lambda **k: 0)
+    monkeypatch.setattr(runner, "morning_claim_is_fresh_running", lambda: True)
+    monkeypatch.setattr(
+        runner,
+        "demote_orphaned_morning_claims",
+        lambda **k: called.__setitem__("demote", called["demote"] + 1) or 0,
+    )
+    monkeypatch.setattr(
+        runner,
+        "demote_orphaned_increment_claims",
+        lambda **k: 0,
+    )
+    monkeypatch.setattr(
+        runner,
+        "run_morning_screen",
+        lambda **k: called.__setitem__("morning", called["morning"] + 1) or True,
+    )
+    out = runner.force_rescue_morning()
+    assert out.get("ok") is True
+    assert out.get("skipped_inflight") is True
+    assert called["demote"] == 0
+    assert called["morning"] == 0
+
+
+def test_push_screening_skips_when_delivery_recorded(tmp_path, monkeypatch):
+    """已有寄出回執：_push_screening 不准再打 Telegram。"""
+    from main_runner import MainRunner
+    from pipeline_delivery import record_push_delivery
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "dedupe.db")
+    ensure_core_schema(path)
+    record_push_delivery(
+        path, "screen-20261022", kind="morning-digest", n_ok=2
+    )
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261027"
+    runner.chat_id = "1"
+    sends = {"n": 0}
+
+    def _boom(*_a, **_k):
+        sends["n"] += 1
+        return True
+
+    runner.bot = type(
+        "B", (), {"send_screening_report": staticmethod(_boom)}
+    )()
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["1", "2"])
+    monkeypatch.setattr(runner, "_push_morning_session_cards", lambda *a, **k: None)
+    ok = runner._push_screening(
+        {"status": "success", "payload": [{"html": "x"}], "message": "x", "results": {}},
+        as_of="20261022",
+        morning_digest=True,
+        pipeline_run_date="screen-20261022",
+    )
+    assert ok is True
+    assert sends["n"] == 0
+
+
 def test_morning_open_day_reissues_after_holiday_same_as_of(tmp_path, monkeypatch):
     """§14：連假後 as_of 未前進，舊開市日 screen-{as_of} 回執不准擋今日真寄。"""
     import sqlite3
