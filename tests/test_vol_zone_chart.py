@@ -229,7 +229,11 @@ def test_vol_zone_ignores_adjusted_card_ohlc():
 
 
 def test_vol_zone_bars_match_db_exactly():
-    """畫面用的每一根開高低收量＝庫內官方列，不准漂浮小數還原價。"""
+    """畫面用的每一根開高低收量＝庫內官方列，不准漂浮小數還原價。
+
+    開市日軸對齊發明的停價／無量假柱（is_halt／no_trade_fill）不在 daily_quotes，
+    略過比對；真官方柱仍須一字不差。
+    """
     from vol_zone_chart import load_official_ohlc, official_work
 
     db = get_db_path()
@@ -237,8 +241,11 @@ def test_vol_zone_bars_match_db_exactly():
     for sid in ("2330", "6488", "6274"):
         work = official_work(load_official_ohlc(sid, db, 60))
         assert work is not None and len(work) >= 20
-        for _, row in work.tail(30).iterrows():
-            d = str(row["date"])
+        compared = 0
+        for _, row in work.tail(40).iterrows():
+            d = str(row["date"])[:8]
+            if bool(row.get("is_halt")) or bool(row.get("no_trade_fill")):
+                continue
             db_row = con.execute(
                 "SELECT open,high,low,close,volume FROM daily_quotes WHERE stock_id=? AND date=?",
                 (sid, d),
@@ -253,6 +260,8 @@ def test_vol_zone_bars_match_db_exactly():
             for col in ("open", "high", "low", "close"):
                 v = float(row[col])
                 assert abs(v - round(v, 2)) < 1e-9, (sid, d, col, v)
+            compared += 1
+        assert compared >= 15, (sid, compared)
     con.close()
 
 
