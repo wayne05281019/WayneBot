@@ -866,7 +866,7 @@ def test_locator_inset_marks_window():
     )
     assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_3081)
     assert any(str(k.get("text") or "").startswith("昨收") for k in kept_3081)
-    # 昨收真價真的貼撐才讓（文案價，不是錨點）
+    # REQUIRED：昨收真價貼撐也要留（6213／3033；顯示 Y 再錯開，不准刪）
     kept_near = _dedupe_right_notes(
         [
             {"y": 2940.0, "text": "撐 2940"},
@@ -876,7 +876,8 @@ def test_locator_inset_marks_window():
         span=3050.0,
     )
     assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_near)
-    assert not any(str(k.get("text") or "").startswith("昨收") for k in kept_near)
+    assert any(str(k.get("text") or "").startswith("昨收") for k in kept_near)
+    assert any(str(k.get("text") or "").startswith("撐") for k in kept_near)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
