@@ -846,6 +846,19 @@ class MainRunner:
         except Exception:
             logger.exception("force_rescue_morning reconcile 失敗")
             out["reconciled"] = 0
+        # 2026-10-27：Deploy 後 boot catch-up 已搶 morning-claim 進行中，force 再 demote
+        # 並開第二條會整套雙寄（07:47＋07:56）。新鮮 claim 未寄達＝讓路給進行中那條。
+        try:
+            if self.morning_claim_is_fresh_running():
+                out["ok"] = True
+                out["skipped_inflight"] = True
+                out["note"] = "fresh morning-claim in progress; skip demote+rerun"
+                logger.info(
+                    "§14 force-rescue：已有新鮮 morning-claim，不 demote、不另開第二條"
+                )
+                return out
+        except Exception:
+            logger.exception("force_rescue 查新鮮 morning-claim 略過")
         try:
             # 假 fuse running 會鎖死寄出；救援先清
             n_inc = int(self.demote_orphaned_increment_claims(force=True) or 0)
@@ -1893,6 +1906,13 @@ class MainRunner:
         morning_digest：06:30 Option B＝每人先附圖（美股／電子盤／恐懼）再文字①環境／夜盤／加權精簡＋文字②兩桶海選；
         不再另寄加權研究／輪動／月營收／雷達。
         """
+        pkey = str(pipeline_run_date or "").strip()
+        # 雙寄擋：別條已寄出回執／已 success → 本條不准再打 Telegram（2026-10-27 07:47／07:56）。
+        if pkey and (
+            self.push_already_delivered(pkey) or self.pipeline_status(pkey) == "success"
+        ):
+            logger.info("海選已有寄出回執／success，略過 _push_screening 重寄 key=%s", pkey)
+            return True
         if morning_digest and screening:
             try:
                 from morning_digest import apply_morning_opening_to_screening, build_morning_opening_html
@@ -2919,6 +2939,21 @@ class MainRunner:
                 self.touch_pipeline_running(key)
             sent_ok = True
             if notify:
+                # demote／別條搶走 claim 後，本執行緒不准再寄（防整套雙寄）
+                if claimed:
+                    st_now = self.pipeline_status(key)
+                    if self.push_already_delivered(key) or st_now == "success":
+                        logger.info(
+                            "早上海選 %s 寄出前已有回執／success，中止本條", key
+                        )
+                        return True
+                    if st_now != "running":
+                        logger.warning(
+                            "早上海選 %s claim 已非 running（%s），中止寄送防雙寄",
+                            key,
+                            st_now or "missing",
+                        )
+                        return False
                 sent_ok = bool(
                     self._push_screening(
                         screening,

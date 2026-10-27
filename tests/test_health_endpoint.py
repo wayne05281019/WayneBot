@@ -372,15 +372,10 @@ def test_live_always_200_even_if_db_missing(serve, monkeypatch):
 
 
 def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
-    """§14：POST /ops/force-morning 在常駐 HTTP（掛碟）上 demote＋補寄。"""
+    """§14：POST /ops/force-morning 只開 force_rescue（不先 demote，防雙寄）。"""
     import urllib.request
 
     get, db, main = serve
-    port = None
-    # serve fixture only exposes GET；另開一把 POST
-    httpd = None
-    for thr in threading.enumerate():
-        pass
     # 從 get 反查 port：打一下 /live
     code, _ = get("/live")
     assert code == 200
@@ -412,27 +407,13 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         assert code == 401
         assert body.get("ok") is False
 
-        called = {"demote_m": 0, "demote_i": 0, "rescue": 0}
+        called = {"rescue": 0}
         import main_runner as mr
-
-        def _fake_demote_m(self, *a, **k):
-            called["demote_m"] += 1
-            return 1
-
-        def _fake_demote_i(self, *a, **k):
-            called["demote_i"] += 1
-            return 1
 
         def _fake_rescue(self, *a, **k):
             called["rescue"] += 1
             return {"ok": True, "delivered": True, "demoted": 1}
 
-        monkeypatch.setattr(
-            mr.MainRunner, "demote_orphaned_morning_claims", _fake_demote_m
-        )
-        monkeypatch.setattr(
-            mr.MainRunner, "demote_orphaned_increment_claims", _fake_demote_i
-        )
         monkeypatch.setattr(mr.MainRunner, "force_rescue_morning", _fake_rescue)
 
         code, body = _post(
@@ -445,14 +426,10 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         assert code == 202
         assert body.get("ok") is True
         assert body.get("started") is True
-        assert body.get("demoted") == 1
-        assert body.get("demoted_increment") == 1
         for _ in range(50):
             if called["rescue"]:
                 break
             time.sleep(0.05)
-        assert called["demote_m"] >= 1
-        assert called["demote_i"] >= 1
         assert called["rescue"] == 1
     finally:
         httpd.shutdown()
