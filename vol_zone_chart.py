@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 59  # 成對共用錨（含右溝）；不准壓撐各搬各的（2026-10-27）
+_VZ_PAINT_VER = 60  # 成對共用錨；壓／撐垂直躲過盒內局部高低（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3933,22 +3933,49 @@ def _paint_key_zone_smart_tags(
         *,
         prefer_up: bool,
     ) -> Tuple[float, Tuple[float, float, float, float]]:
-        """成對鎖錨後只准垂直微移，不准單標水平溜走（否則撐乾淨、壓沒動）。"""
-        sign = 1.0 if prefer_up else -1.0
-        step = max(float(y_span) * 0.012, 1.0)
+        """成對鎖錨後只准垂直躲：壓抬過盒內局部最高、撐壓過局部最低（6274 今日 K 穿壓線）。"""
         best_y = float(y_rail)
         best_box = _box_for(float(cx), str(ha), half_w, best_y)
         best_c = _k_crush_score(best_box)
         if best_c < 0.5:
             return best_y, best_box
-        for k in range(1, 14):
-            y2 = float(y_rail) + sign * step * float(k)
-            if y2 > float(ymax) - y_span * 0.02 or y2 < float(ymin) + y_span * 0.02:
-                break
-            box2 = _box_for(float(cx), str(ha), half_w, y2)
+        # 盒蓋到的 K 索引 → 局部高低
+        bx0, bx1 = float(best_box[0]), float(best_box[1])
+        i0 = max(0, int(math.floor(bx0 - 0.55)))
+        i1 = min(n_bars, int(math.ceil(bx1 + 0.55)) + 1)
+        local_hi = None
+        local_lo = None
+        for i in range(i0, i1):
+            try:
+                hk = float(highs[i])
+                lk = float(lows[i])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if hk > 0:
+                local_hi = hk if local_hi is None else max(local_hi, hk)
+            if lk > 0:
+                local_lo = lk if local_lo is None else min(local_lo, lk)
+        pad = max(float(y_span) * 0.028, abs(float(y_rail)) * 0.004, 2.0)
+        candidates: List[float] = []
+        if prefer_up and local_hi is not None:
+            candidates.append(float(local_hi) + pad)
+        if (not prefer_up) and local_lo is not None:
+            candidates.append(float(local_lo) - pad)
+        # 再加逐步微移備援
+        sign = 1.0 if prefer_up else -1.0
+        step = max(float(y_span) * 0.018, 1.5)
+        for k in range(1, 18):
+            candidates.append(float(y_rail) + sign * step * float(k))
+        for y2 in candidates:
+            if y2 > float(ymax) - y_span * 0.01:
+                # 需要更高 → 呼叫端若已擴 ylim；此處先夾在可視頂下
+                y2 = float(ymax) - y_span * 0.015
+            if y2 < float(ymin) + y_span * 0.01:
+                y2 = float(ymin) + y_span * 0.015
+            box2 = _box_for(float(cx), str(ha), half_w, float(y2))
             c2 = _k_crush_score(box2)
             if c2 < best_c:
-                best_c, best_y, best_box = c2, y2, box2
+                best_c, best_y, best_box = c2, float(y2), box2
             if c2 < 0.5:
                 break
         return best_y, best_box
@@ -3966,14 +3993,19 @@ def _paint_key_zone_smart_tags(
         prefer_x, prefer_ha = cx_p, ha_p
         for y_px, color, text in items:
             half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
-            cx, ha, box = _clamp_into_view(
-                cx_p, ha_p, _box_for(cx_p, ha_p, half_w, float(y_px)), half_w
-            )
-            # 夾住後仍用共用錨的 ha／盡量同 cx
             cx, ha = cx_p, ha_p
             y_draw, box = _y_nudge_only(
                 float(y_px), cx, ha, half_w, prefer_up=("壓" in text)
             )
+            # 抬過今日高／壓過今日低時擴 ylim，免裁切
+            try:
+                y0, y1 = ax.get_ylim()
+                top_need = float(box[3]) + float(y_span) * 0.025
+                bot_need = float(box[2]) - float(y_span) * 0.025
+                if top_need > float(y1) or bot_need < float(y0):
+                    ax.set_ylim(min(float(y0), bot_need), max(float(y1), top_need))
+            except Exception:
+                pass
             try:
                 _emit(float(y_draw), color, text, cx, ha, box)
             except Exception:
