@@ -367,13 +367,18 @@ def test_vol_zone_main_tag_is_largest_role_tier():
         render_volume_zone_png,
     )
 
+    from vol_zone_chart import _paint_key_zone_smart_tags
+
     assert VOL_ZONE_TAG_PT == 14
     assert VOL_ZONE_TAG_PT > float(LAYER_TAG_PT)
     assert float(VOL_ZONE_TAG_PAD) > 0.20
-    src = inspect.getsource(render_volume_zone_png) + inspect.getsource(_paint_volume_zone)
-    assert "VOL_ZONE_TAG_PT" in src
-    assert src.count("VOL_ZONE_TAG_PT") >= 2
-    assert "LAYER_TAG_PT" in inspect.getsource(_paint_volume_zone)
+    paint_src = inspect.getsource(_paint_volume_zone)
+    key_src = inspect.getsource(_paint_key_zone_smart_tags)
+    src = inspect.getsource(render_volume_zone_png) + paint_src + key_src
+    assert "_paint_key_zone_smart_tags" in paint_src
+    assert "VOL_ZONE_TAG_PT" in key_src
+    assert key_src.count("VOL_ZONE_TAG_PT") >= 1
+    assert "LAYER_TAG_PT" in paint_src
     assert "現任主區" in src or "find_volume_zone" in src or "VOL_ZONE_TAG_PT" in src
 
 
@@ -427,12 +432,16 @@ def test_lookup_vol_gives_header_space_from_volume_blank():
 
     from vol_zone_chart import _paint_volume_zone, render_lookup_vol_result
 
+    from vol_zone_chart import _paint_key_zone_smart_tags
+
     src = inspect.getsource(_paint_volume_zone)
+    key_src = inspect.getsource(_paint_key_zone_smart_tags)
     assert "head_ratios = [1.28, 3.38, 0.40, 0.98]" in src
     assert "lookup_portrait=False" in inspect.getsource(render_lookup_vol_result)
     assert "transform=ax1.transAxes" in src or "blended_transform_factory" in src
-    # v9：大量區壓／撐釘價線左側；日標仍貼主K上框內側
-    assert "大量區壓" in src and "_left_tag_tf" in src
+    # v12：主區壓／撐沿線智能掃位；日標仍貼主K上框內側
+    assert "_paint_key_zone_smart_tags" in src
+    assert "大量區壓" in key_src and "_left_tag_tf" not in src
     assert "貼主K上框內側" in src
     assert "if path_shown:" in src
     # v9：有導航時頂空略加大，橘框不跟箭頭互壓

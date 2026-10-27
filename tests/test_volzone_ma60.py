@@ -42,13 +42,20 @@ def test_attach_official_ma60_needs_60_bars():
 
 
 def test_paint_draws_ma60_and_query_stamp():
-    from vol_zone_chart import _paint_volume_zone, _label_ma_blank, _paint_ma_line_labels
+    from vol_zone_chart import (
+        _paint_key_zone_smart_tags,
+        _paint_volume_zone,
+        _label_ma_blank,
+        _paint_ma_line_labels,
+    )
 
     src = inspect.getsource(_paint_volume_zone)
+    key_src = inspect.getsource(_paint_key_zone_smart_tags)
     assert "_MA60" in src and "_MA20" in src
     assert "format_card_query_stamp" in src
     assert "fig.text" in src and "0.985" in src  # 整圖右上時間戳
-    assert "大量區壓" in src and "大量區撐" in src
+    assert "_paint_key_zone_smart_tags" in src
+    assert "大量區壓" in key_src and "大量區撐" in key_src
     assert "linewidth=0.78" in src  # 壓／撐水平線再細
     assert "_paint_ma_line_labels" in src
     assert '"月"' in src and '"季"' in src

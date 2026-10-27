@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """自抽測智能標籤：多檔×結構／大量區 → 基本評測套件分數表。
 
-兩輪抽測：--round 1|2；--exclude 已渲股；真渲＋量化。
-Asia/Taipei。不准搶 getUpdates。
+三輪抽測：--round 1|2|3；每輪標的互不重複；真渲＋量化。
+Asia/Taipei。不准搶 getUpdates。paint 單線（本機 Agg）。
 functional_fail>0 → exit 2；needs_restyle 多 → exit 3。
 """
 from __future__ import annotations
@@ -26,10 +26,82 @@ os.environ.setdefault("WAYNE_SKIP_POLLING", "1")
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _OUT = Path(
     "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/"
-    "label-placement-20261026/after"
+    "label-placement-20261027"
 )
-# 首輪已渲佐證：第二輪／首輪真渲勿只重複這些
-_ALREADY = {"2330", "2345", "3363", "6669", "8234"}
+# 先前輪次＋例圖股：三輪互斥時一律排除
+_ALREADY = {
+    "00683L",
+    "009800",
+    "1229",
+    "1259",
+    "1316",
+    "1325",
+    "1441",
+    "1506",
+    "1907",
+    "2059",
+    "2308",
+    "2330",
+    "2345",
+    "2367",
+    "2368",
+    "2376",
+    "2380",
+    "2618",
+    "3189",
+    "3288",
+    "3363",
+    "3388",
+    "3441",
+    "3501",
+    "3570",
+    "3588",
+    "3595",
+    "3596",
+    "4129",
+    "4142",
+    "4192",
+    "4304",
+    "4414",
+    "4552",
+    "4747",
+    "4770",
+    "5457",
+    "5478",
+    "5520",
+    "5876",
+    "6104",
+    "6142",
+    "6148",
+    "6170",
+    "6180",
+    "6414",
+    "6477",
+    "6496",
+    "6577",
+    "6592",
+    "6614",
+    "6641",
+    "6669",
+    "6698",
+    "6739",
+    "6792",
+    "6803",
+    "6829",
+    "6863",
+    "6931",
+    "7717",
+    "7730",
+    "7853",
+    "8103",
+    "8183",
+    "8234",
+    "8473",
+    "8481",
+    "9912",
+    "9934",
+    "9942",
+}
 
 
 def _db() -> str:
@@ -60,10 +132,20 @@ def _has_daily(conn: sqlite3.Connection, sid: str) -> bool:
     return int(n) >= 80
 
 
+def _is_etf_like(sid: str) -> bool:
+    s = str(sid or "")
+    if not s:
+        return True
+    if s.endswith(("L", "R")):
+        return True
+    if s.startswith("00") and len(s) >= 4:
+        return True
+    return False
+
+
 def _random_liquid(
     conn: sqlite3.Connection, *, n: int, exclude: set[str], seed_tag: str
 ) -> list[str]:
-    # 用 seed_tag 做穩定但輪次不同的抽樣（sqlite random 不可控 → 先取多再洗）
     rows = conn.execute(
         """
         SELECT stock_id, COUNT(*) c FROM daily_quotes
@@ -71,8 +153,11 @@ def _random_liquid(
         GROUP BY stock_id HAVING c>=120
         """
     ).fetchall()
-    pool = [str(r[0]) for r in rows if str(r[0]) not in exclude]
-    # 簡單洗牌：依 (sid, seed_tag) 雜湊排序
+    pool = [
+        str(r[0])
+        for r in rows
+        if str(r[0]) not in exclude and not _is_etf_like(str(r[0]))
+    ]
     pool.sort(key=lambda s: (hash(seed_tag + ":" + s) & 0xFFFFFFFF))
     return pool[: int(n)]
 
@@ -86,7 +171,6 @@ def _enrich_labels_from_texts(ax, geom):
         ren = ax.figure.canvas.get_renderer()
     except Exception:
         return geom
-    ymin, ymax = ax.get_ylim()
     for art in list(ax.texts or []):
         try:
             txt = str(art.get_text() or "").strip()
@@ -97,15 +181,24 @@ def _enrich_labels_from_texts(ax, geom):
         kind = None
         if txt.startswith("下一層"):
             kind = "layer"
-        elif txt.startswith(("大量區", "壓 ", "撐 ")) or txt in ("壓", "撐"):
+        elif txt.startswith("大量區"):
+            kind = "key"
+        elif txt.startswith(("壓 ", "撐 ")) or txt in ("壓", "撐"):
             kind = "key"
         elif "月" in txt[:6] and ("撐為" in txt or "壓為" in txt or "收盤" in txt):
             kind = "path"
         elif txt in ("5", "10", "月", "季"):
             kind = "ma"
-        elif any(k in txt for k in ("下降壓", "平行撐", "上昇軌", "上升軌", "平行壓")):
-            # 通道已由 channel artists 收
-            continue
+        elif any(
+            k in txt
+            for k in ("下降壓", "平行撐", "上昇軌", "上升軌", "平行壓", "上軌", "下軌")
+        ):
+            # 與 collect_labels_from_ax 同源：上升／平行撐＝下軌欄；下降／平行壓＝上軌欄
+            kind = "channel_u"
+            if any(k in txt for k in ("平行撐", "上昇軌", "上升軌", "下軌")):
+                kind = "channel_l"
+            if any(k in txt for k in ("下降壓", "平行壓", "上軌")):
+                kind = "channel_u"
         if kind is None:
             continue
         try:
@@ -122,7 +215,18 @@ def _enrich_labels_from_texts(ax, geom):
                     or bb.y0 < abb.y0 - 2
                     or bb.y1 > abb.y1 + 2
                 ):
-                    clipped = True
+                    # clip_on=False 且仍在 figure 內＝可視，不算裁切
+                    if bool(getattr(art, "get_clip_on", lambda: True)()):
+                        clipped = True
+                    else:
+                        fbb = ax.figure.bbox
+                        if (
+                            bb.x0 < fbb.x0 - 2
+                            or bb.x1 > fbb.x1 + 2
+                            or bb.y0 < fbb.y0 - 2
+                            or bb.y1 > fbb.y1 + 2
+                        ):
+                            clipped = True
             except Exception:
                 pass
             geom.labels.append(
@@ -142,10 +246,33 @@ def _enrich_labels_from_texts(ax, geom):
     return geom
 
 
-def _score_figure(sid: str, chart: str, fig) -> object:
-    from smart_label_metrics import collect_labels_from_ax, score_chart
+def _dedupe_labels(labels):
+    """同一文案只留一次（artist／record／Text 三路常重複）；保留較緊 bbox。"""
+    from smart_label_metrics import LabelBox
 
-    # 主價軸通常是 axes[0]
+    best: dict = {}
+    for L in labels:
+        key = (str(L.kind), str(L.text).strip())
+        area = max(0.0, float(L.x1) - float(L.x0)) * max(
+            0.0, float(L.y1) - float(L.y0)
+        )
+        prev = best.get(key)
+        if prev is None:
+            best[key] = (area, L)
+            continue
+        # 同文案取較小盒（record 常高估 half_h 誤判壓 K）
+        if area < prev[0] * 0.92 or (
+            abs(area - prev[0]) < 1e-6 and (L.clipped or L.orphan)
+        ):
+            best[key] = (area, L)
+    out = [v[1] for v in best.values()]
+    # 型別保險
+    return [x for x in out if isinstance(x, LabelBox)]
+
+
+def _score_figure(sid: str, chart: str, fig) -> object:
+    from smart_label_metrics import ChartGeom, collect_labels_from_ax, score_chart
+
     ax = fig.axes[0] if fig.axes else None
     if ax is None:
         raise RuntimeError("no axes")
@@ -154,7 +281,6 @@ def _score_figure(sid: str, chart: str, fig) -> object:
         highs, lows, n = ohlc
         ymin, ymax = ax.get_ylim()
     else:
-        # 無通道：用 lim ＋空柱
         import numpy as np
 
         ymin, ymax = ax.get_ylim()
@@ -162,6 +288,12 @@ def _score_figure(sid: str, chart: str, fig) -> object:
         n = max(int(xlim[1]), 40)
         highs = np.full(n, ymax - (ymax - ymin) * 0.2)
         lows = np.full(n, ymin + (ymax - ymin) * 0.2)
+    # 先清掉粗估 record 盒，改以 Text 實測為準；通道仍認 artist
+    try:
+        saved = getattr(ax, "_wayne_smart_label_boxes", None)
+        ax._wayne_smart_label_boxes = []  # type: ignore[attr-defined]
+    except Exception:
+        saved = None
     geom = collect_labels_from_ax(
         ax,
         n=int(n),
@@ -172,66 +304,43 @@ def _score_figure(sid: str, chart: str, fig) -> object:
         sid=sid,
         chart=chart,
     )
-    geom = _enrich_labels_from_texts(ax, geom)
-    # 量軸
-    if len(fig.axes) > 1:
-        ax2 = fig.axes[1]
+    if saved is not None:
         try:
-            # 量標 text
-            geom = _enrich_labels_from_texts(ax2, geom)
+            ax._wayne_smart_label_boxes = saved  # type: ignore[attr-defined]
         except Exception:
             pass
+    geom = _enrich_labels_from_texts(ax, geom)
+    if len(fig.axes) > 1:
+        try:
+            geom = _enrich_labels_from_texts(fig.axes[1], geom)
+        except Exception:
+            pass
+    geom = ChartGeom(
+        n=geom.n,
+        highs=geom.highs,
+        lows=geom.lows,
+        labels=_dedupe_labels(geom.labels),
+        vol_heights=geom.vol_heights,
+        ymin=geom.ymin,
+        ymax=geom.ymax,
+        xmin=geom.xmin,
+        xmax=geom.xmax,
+        chart=geom.chart,
+        sid=geom.sid,
+    )
     return score_chart(geom)
-
-
-def _render_and_score(sid: str, name: str, db: str, out_dir: Path, round_id: int):
-    import matplotlib.pyplot as plt
-
-    from three_in_one_chart import render_lookup_structure_result
-    from vol_zone_chart import render_volume_zone_result
-    from smart_label_metrics import MetricScore
-
-    scores: list[MetricScore] = []
-    # 結構
-    sp = out_dir / f"r{round_id}-{sid}-structure.jpg"
-    try:
-        path, _ = render_lookup_structure_result(sid, name, db, str(sp), card=None)
-        # 重新開圖不便；改：render 過程掛 artists 的 fig 已關。
-        # 用合成通道 blank 對該股官方柱再 paint 一次只為評測通道標。
-        scores.extend(_score_sid_official_channel(sid, db, chart="structure"))
-        print(f"struct ok {sid} {path}")
-    except Exception as e:
-        print(f"struct fail {sid}: {e}", flush=True)
-    # 大量區
-    vp = out_dir / f"r{round_id}-{sid}-volzone.jpg"
-    try:
-        path, _ = render_volume_zone_result(
-            sid,
-            name,
-            db,
-            str(vp),
-            with_nav_signals=True,
-            lookup_portrait=False,
-            with_ma5_ma10=True,
-        )
-        scores.extend(_score_sid_official_channel(sid, db, chart="volzone"))
-        print(f"vol ok {sid} {path}")
-    except Exception as e:
-        print(f"vol fail {sid}: {e}", flush=True)
-    plt.close("all")
-    return scores
 
 
 def _score_sid_official_channel(sid: str, db: str, *, chart: str):
     """用官方柱推平行通道＋同帶標位，量化一筆（結構／大量區共用定位碼）。"""
     import numpy as np
-    import sqlite3
+    import sqlite3 as _sql
 
     from biaoke_chart import infer_parallel_channel
     from smart_label_metrics import ChartGeom, LabelBox, score_chart
     from vol_zone_chart import _blank_for_channel_label, _channel_box_k_hits
 
-    conn = sqlite3.connect(db)
+    conn = _sql.connect(db)
     try:
         rows = conn.execute(
             "SELECT date, open, high, low, close, volume FROM daily_quotes "
@@ -256,7 +365,6 @@ def _score_sid_official_channel(sid: str, db: str, *, chart: str):
     ]
     ch = infer_parallel_channel(work) or {}
     if not ch.get("kind"):
-        # 無通道：空標仍計一筆 sparse（底線過）
         n = len(work)
         highs = np.array([w["high"] for w in work], dtype=float)
         lows = np.array([w["low"] for w in work], dtype=float)
@@ -310,16 +418,13 @@ def _score_sid_official_channel(sid: str, db: str, *, chart: str):
             pair_x=pair_x,
         )
         if not (np.isfinite(float(cx)) and np.isfinite(float(cy))):
-            # 同帶無淨空／會互壓 → 略過第二標
             continue
         box = (cx - dx / 2, cx + dx / 2, cy - dy / 2, cy + dy / 2)
         hits = _channel_box_k_hits(
             *box, n=n, highs=highs, lows=lows, mark_pad=0.0, span=span
         )
         if hits >= 1:
-            # 同產品：略過硬壓
             continue
-        # 硬拒已放標互壓（與 paint／blocked 墊一致）
         clash = False
         for ox0, ox1, oy0, oy1 in placed:
             if not (
@@ -357,53 +462,137 @@ def _score_sid_official_channel(sid: str, db: str, *, chart: str):
     return [score_chart(g)]
 
 
+def _render_and_score(sid: str, name: str, db: str, out_dir: Path, round_id: int):
+    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
+
+    from smart_label_metrics import MetricScore
+    from three_in_one_chart import render_lookup_structure_result
+    from vol_zone_chart import render_volume_zone_result
+
+    scores: list[MetricScore] = []
+    captured: list = []
+    pending_chart = {"chart": None}
+
+    orig_savefig = Figure.savefig
+
+    def _hook_savefig(self, *args, **kwargs):
+        chart = pending_chart.get("chart") or getattr(
+            self, "_wayne_audit_chart", None
+        )
+        try:
+            if chart:
+                captured.append(_score_figure(str(sid), str(chart), self))
+        except Exception as e:
+            print(f"score-hook fail {sid}/{chart}: {e}", flush=True)
+        return orig_savefig(self, *args, **kwargs)
+
+    Figure.savefig = _hook_savefig  # type: ignore[method-assign]
+    try:
+        sp = out_dir / f"r{round_id}-{sid}-structure.jpg"
+        try:
+            pending_chart["chart"] = "structure"
+            path, _ = render_lookup_structure_result(
+                sid, name, db, str(sp), card=None
+            )
+            print(f"struct ok {sid} {path}")
+        except Exception as e:
+            print(f"struct fail {sid}: {e}", flush=True)
+        vp = out_dir / f"r{round_id}-{sid}-volzone.jpg"
+        try:
+            pending_chart["chart"] = "volzone"
+            path, _ = render_volume_zone_result(
+                sid,
+                name,
+                db,
+                str(vp),
+                with_nav_signals=True,
+                lookup_portrait=False,
+                with_ma5_ma10=True,
+            )
+            print(f"vol ok {sid} {path}")
+        except Exception as e:
+            print(f"vol fail {sid}: {e}", flush=True)
+    finally:
+        pending_chart["chart"] = None
+        Figure.savefig = orig_savefig  # type: ignore[method-assign]
+        plt.close("all")
+
+    scores.extend([s for s in captured if isinstance(s, MetricScore)])
+    # 通道定位碼（合成）補一筆；真渲分數為主
+    scores.extend(_score_sid_official_channel(sid, db, chart="structure-ch"))
+    scores.extend(_score_sid_official_channel(sid, db, chart="volzone-ch"))
+    return scores
+
+
 def main() -> int:
     from smart_label_metrics import summarize_scores
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--round", type=int, default=1, choices=(1, 2))
+    ap.add_argument("--round", type=int, default=1, choices=(1, 2, 3))
     ap.add_argument("--n", type=int, default=6, help="每輪抽幾檔（真渲）")
     ap.add_argument(
         "--exclude",
         default=",".join(sorted(_ALREADY)),
         help="逗號分隔已渲股，勿重複",
     )
+    ap.add_argument(
+        "--sids",
+        default="",
+        help="逗號分隔指定股（測試用）；空＝自抽",
+    )
     args = ap.parse_args()
     exclude = {x.strip() for x in str(args.exclude).split(",") if x.strip()}
-    # 第二輪再排除首輪 JSON 若存在
     round_id = int(args.round)
-    seed_tag = f"20261026-r{round_id}"
+    seed_tag = f"20261027-r{round_id}"
 
     db = _db()
     conn = sqlite3.connect(db)
     try:
-        # 若上一輪結果在，併入 exclude
-        prev = sorted(_OUT.glob(f"audit-round-{round_id-1}-*.json")) if round_id > 1 else []
-        if prev:
-            try:
-                prev_data = json.loads(prev[-1].read_text(encoding="utf-8"))
-                for s in prev_data.get("sids") or []:
-                    exclude.add(str(s))
-            except Exception:
-                pass
-        sids = _random_liquid(conn, n=int(args.n), exclude=exclude, seed_tag=seed_tag)
-        # 補流動股不足時放寬
-        if len(sids) < int(args.n):
-            more = _random_liquid(
-                conn, n=int(args.n) * 3, exclude=exclude | set(sids), seed_tag=seed_tag + "b"
+        # 併入本目錄先前輪 JSON 的 sids（互斥）
+        for prev_r in range(1, round_id):
+            for prev in sorted(_OUT.glob(f"audit-round-{prev_r}-*.json")):
+                try:
+                    prev_data = json.loads(prev.read_text(encoding="utf-8"))
+                    for s in prev_data.get("sids") or []:
+                        exclude.add(str(s))
+                except Exception:
+                    pass
+        if str(args.sids).strip():
+            sids = [
+                x.strip()
+                for x in str(args.sids).split(",")
+                if x.strip() and x.strip() not in exclude
+            ][: int(args.n)]
+        else:
+            sids = _random_liquid(
+                conn, n=int(args.n), exclude=exclude, seed_tag=seed_tag
             )
-            for s in more:
-                if s not in sids:
-                    sids.append(s)
-                if len(sids) >= int(args.n):
-                    break
-        sids = [s for s in sids if _has_daily(conn, s)][: int(args.n)]
+            if len(sids) < int(args.n):
+                more = _random_liquid(
+                    conn,
+                    n=int(args.n) * 4,
+                    exclude=exclude | set(sids),
+                    seed_tag=seed_tag + "b",
+                )
+                for s in more:
+                    if s not in sids:
+                        sids.append(s)
+                    if len(sids) >= int(args.n):
+                        break
+            sids = [s for s in sids if _has_daily(conn, s)][: int(args.n)]
         names = {s: _name(conn, s) for s in sids}
     finally:
         conn.close()
 
     if not sids:
         print("no sids to sample", file=sys.stderr)
+        return 2
+
+    # 互斥硬閘
+    overlap = set(sids) & exclude
+    if overlap:
+        print(f"exclude overlap: {sorted(overlap)}", file=sys.stderr)
         return 2
 
     _OUT.mkdir(parents=True, exist_ok=True)
@@ -430,11 +619,16 @@ def main() -> int:
     out_json.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(json.dumps({"round": round_id, "sids": sids, "summary": summary}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"round": round_id, "sids": sids, "summary": summary},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     print(f"wrote {out_json}")
     if summary.get("functional_fail", 0) > 0:
         return 2
-    # 美感：允許少數 restyle，但 mean 須 ≥70 且 fail 美感比例不要過半
     if float(summary.get("aesthetic_mean") or 0) < 70.0:
         return 3
     if summary.get("n") and summary.get("needs_restyle", 0) > summary["n"] // 2:

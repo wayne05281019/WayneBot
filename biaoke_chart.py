@@ -2161,6 +2161,9 @@ def _place_right_notes(
     # 盒高約 span*0.04；gap 太大會全擠到上下緣互壓
     gap = max(float(min_gap), (ymax - ymin) * 0.045)
     gap = min(gap, (ymax - ymin) * 0.09)
+    # 同欄壓／撐實際白底盒高 ≈ span*0.038～0.05；價近時必須 ≥ 整盒高才不互壓
+    level_box_h = max(float(gap), (float(ymax) - float(ymin)) * 0.042)
+    level_min_sep = max(float(gap) * 0.85, float(level_box_h) * 1.08)
     lo = ymin + max(float(bottom_pad), gap * 1.1)
     hi = ymax - gap * 0.9
     pin_x = float(seam) if seam is not None else None
@@ -2251,8 +2254,12 @@ def _place_right_notes(
         ny = float(note.get("y") or 0)
         ty = min(max(ny, lo), hi_others)
         for prev_ty in level_tys:
-            if abs(ty - prev_ty) < gap * 0.55:
-                ty = min(prev_ty - gap * 0.55, ty)
+            if abs(ty - prev_ty) < float(level_min_sep):
+                # 高價壓在上、低價撐往下讓；整盒分離
+                if ny >= float(prev_ty):
+                    ty = max(prev_ty + float(level_min_sep), ty)
+                else:
+                    ty = min(prev_ty - float(level_min_sep), ty)
         ty = min(max(ty, lo), hi_others)
         level_tys.append(ty)
         placed.append((note, ty))
@@ -2336,16 +2343,17 @@ def _place_right_notes(
         else:
             # 硬釘：只跟「同欄家族」保縫（壓撐／軌／收分欄），軌不准被壓撐擠離紫虛線
             ny = float(note.get("y") or 0)
+            fam_sep = float(level_min_sep) if fam == "level" else float(gap) * 0.5
             for prev_note, ty2 in enforced:
                 if id(prev_note) not in pinned_ids:
                     continue
                 if _pin_family(prev_note) != fam:
                     continue
-                if abs(ty - ty2) < gap * 0.5:
+                if abs(ty - ty2) < fam_sep:
                     if ny >= float(prev_note.get("y") or 0):
-                        ty = max(ty2 + gap * 0.5, ty)
+                        ty = max(ty2 + fam_sep, ty)
                     else:
-                        ty = min(ty2 - gap * 0.5, ty)
+                        ty = min(ty2 - fam_sep, ty)
             # 軌／壓撐／收：顯示 Y 鎖回釘點（同欄微挪後仍貼線）
             if fam in ("rail", "level", "close") and abs(ty - ny) < gap * 0.35:
                 ty = float(ny)
