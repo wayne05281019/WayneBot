@@ -202,7 +202,7 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
     """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免日期標互壓。
 
     爆量／下一層日若離最後一根不足標籤縫，只留最後一根（爆量另有豎虛線＋量標），不准日刻互壓。
-    3081：08/26 爆量與 09/03 只差 6 根 → 鄰距門檻拉到 ≥8，不准 MM/DD 互壓。
+    3081／1605：鄰距門檻 ≥12（八個月窗 bold MM/DD）；差 8 根仍會黏成「09/1609/30」。
     優先序：頭／尾日 > 爆量／下一層 extra > 一般步進刻。任意相鄰不得 < min_label_gap。
     """
     n = int(n or 0)
@@ -211,9 +211,9 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
     if n == 1:
         return [0]
     last = n - 1
-    # 標籤寬（MM/DD）約需 ≥8 根空隙才不互壓（八個月窗更密）
-    min_label_gap = max(8, n // 22)
-    # extra 離尾日不足縫＝不進軸（與互壓門檻同一把尺；舊門檻 4 會讓 7 根縫雙留）
+    # 標籤寬（MM/DD bold）約需 ≥12 根才不互壓；8 根仍會黏成「09/1609/30」（1605）
+    min_label_gap = max(12, n // 16)
+    # extra 離尾日不足縫＝不進軸（與互壓門檻同一把尺；舊門檻 4／8 會雙留）
     extras = [
         int(x)
         for x in extra
