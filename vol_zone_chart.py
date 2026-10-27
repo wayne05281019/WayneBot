@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 58  # 壓撐水平＋垂直躲 K；橘框避壓撐（2026-10-27）
+_VZ_PAINT_VER = 59  # 成對共用錨（含右溝）；不准壓撐各搬各的（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3750,7 +3750,7 @@ def _paint_key_zone_smart_tags(
                     (float(n_bars) * 0.58, "center"),
                 ]
             )
-        # 右帶（末日左側／右溝）
+        # 右帶（末日左側）＋右溝（末日右側無 K，6274 左半必碾時用）
         if n_bars > 0:
             last = float(n_bars - 1)
             trials.extend(
@@ -3759,12 +3759,16 @@ def _paint_key_zone_smart_tags(
                     (min(box_right_limit, last + 0.35), "left"),
                     (max(last - half_w * 1.1, float(n_bars) * 0.72), "right"),
                     (float(n_bars) * 0.82, "center"),
+                    (last + 0.55, "left"),
+                    (last + 1.15, "left"),
+                    (min(box_right_limit, last + 2.0), "left"),
+                    (min(box_right_limit, float(x_hi) - 0.15), "right"),
                 ]
             )
         return trials
 
     def _best_pair_anchor(half_w: float) -> Optional[Tuple[float, str]]:
-        """成對同 X：在左／中／右挑壓死 K 最少的槽；全很差→None 改逐標掃。"""
+        """成對同 X：左／中／右／右溝挑壓死 K 最少的共用錨（不准兩標各搬各的）。"""
         best: Optional[Tuple[float, float, str]] = None
         for cx0, ha0 in _pair_slot_candidates(half_w):
             crush = 0.0
@@ -3772,26 +3776,24 @@ def _paint_key_zone_smart_tags(
             for y_px, _c, _t in items:
                 box = _box_for(float(cx0), str(ha0), half_w, float(y_px))
                 cx1, ha1, box1 = _clamp_into_view(float(cx0), str(ha0), box, half_w)
-                # 夾到換邊／大位移＝這錨對這圖不合格
                 if abs(float(cx1) - float(cx0)) > 2.5:
                     ok = False
                     break
                 crush += _k_crush_score(box1)
             if not ok:
                 continue
-            # 微偏中段：同代價略偏好不貼絕對兩端（但仍可比左／右淨空贏）
             edge_bias = 0.0
             if n_bars > 0:
-                frac = float(cx0) / max(float(n_bars - 1), 1.0)
-                if frac < 0.04 or frac > 0.96:
+                last = float(n_bars - 1)
+                # 右溝無 K：重獎；貼絕對左緣略罰
+                if float(cx0) >= last + 0.2:
+                    edge_bias = -max(2.5, float(crush))
+                elif float(cx0) / max(last, 1.0) < 0.04:
                     edge_bias = 0.35
             key = crush + edge_bias
             if best is None or key < best[0]:
                 best = (key, float(cx0), str(ha0))
         if best is None:
-            return None
-        # 任一明顯碾 K → 交回逐標掃＋垂直微移（6274 全窗都穿過膚色帶）
-        if float(best[0]) >= 0.5:
             return None
         return best[1], best[2]
 
@@ -3923,30 +3925,62 @@ def _paint_key_zone_smart_tags(
         float(_approx_layer_tag_half_w(t, float(VOL_ZONE_TAG_PT))) for _y, _c, t in items
     )
     pair_anchor = _best_pair_anchor(half_w_max)
+    def _y_nudge_only(
+        y_rail: float,
+        cx: float,
+        ha: str,
+        half_w: float,
+        *,
+        prefer_up: bool,
+    ) -> Tuple[float, Tuple[float, float, float, float]]:
+        """成對鎖錨後只准垂直微移，不准單標水平溜走（否則撐乾淨、壓沒動）。"""
+        sign = 1.0 if prefer_up else -1.0
+        step = max(float(y_span) * 0.012, 1.0)
+        best_y = float(y_rail)
+        best_box = _box_for(float(cx), str(ha), half_w, best_y)
+        best_c = _k_crush_score(best_box)
+        if best_c < 0.5:
+            return best_y, best_box
+        for k in range(1, 14):
+            y2 = float(y_rail) + sign * step * float(k)
+            if y2 > float(ymax) - y_span * 0.02 or y2 < float(ymin) + y_span * 0.02:
+                break
+            box2 = _box_for(float(cx), str(ha), half_w, y2)
+            c2 = _k_crush_score(box2)
+            if c2 < best_c:
+                best_c, best_y, best_box = c2, y2, box2
+            if c2 < 0.5:
+                break
+        return best_y, best_box
+
+    # 成對必共用錨（含右溝）；找不到才退回逐標（仍鎖同側）
+    if pair_anchor is None and len(items) >= 2:
+        # 保底：末日右溝
+        if n_bars > 0:
+            pair_anchor = (
+                min(box_right_limit, float(n_bars - 1) + 0.55),
+                "left",
+            )
     if pair_anchor is not None:
-        cx_p, ha_p = pair_anchor
-        prefer_x = float(cx_p)
-        prefer_ha = str(ha_p)
+        cx_p, ha_p = float(pair_anchor[0]), str(pair_anchor[1])
+        prefer_x, prefer_ha = cx_p, ha_p
         for y_px, color, text in items:
             half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
-            box = _box_for(float(prefer_x), str(prefer_ha), half_w, float(y_px))
-            cx, ha, box = _clamp_into_view(float(prefer_x), str(prefer_ha), box, half_w)
-            y_draw, cx, ha, box = _nudge_clear(
-                float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
+            cx, ha, box = _clamp_into_view(
+                cx_p, ha_p, _box_for(cx_p, ha_p, half_w, float(y_px)), half_w
             )
-            prefer_x, prefer_ha = float(cx), str(ha)
+            # 夾住後仍用共用錨的 ha／盡量同 cx
+            cx, ha = cx_p, ha_p
+            y_draw, box = _y_nudge_only(
+                float(y_px), cx, ha, half_w, prefer_up=("壓" in text)
+            )
             try:
                 _emit(float(y_draw), color, text, cx, ha, box)
             except Exception:
-                cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-                y_draw, cx, ha, box = _nudge_clear(
-                    float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
-                )
-                prefer_x, prefer_ha = float(cx), str(ha)
-                _emit(float(y_draw), color, text, cx, ha, box)
+                _emit(float(y_px), color, text, cx, ha, _box_for(cx, ha, half_w, float(y_px)))
         return placed
 
-    # 無可用同棧 → 仍成對同側：第一標掃位，第二標鎖同一 cx／ha
+    # 單標或無錨：逐標掃
     for y_px, color, text in items:
         half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
         if prefer_x is not None and prefer_ha is not None:
@@ -3956,6 +3990,10 @@ def _paint_key_zone_smart_tags(
                 _box_for(float(prefer_x), str(prefer_ha), half_w, float(y_px)),
                 half_w,
             )
+            y_draw, box = _y_nudge_only(
+                float(y_px), float(prefer_x), str(prefer_ha), half_w, prefer_up=("壓" in text)
+            )
+            cx, ha = float(prefer_x), str(prefer_ha)
         else:
             picked = pick_layer_label_along_line(
                 y=float(y_px),
@@ -3979,22 +4017,15 @@ def _paint_key_zone_smart_tags(
                 cx, ha, box = _clamp_into_view(float(cx), str(ha), box, half_w)
                 if float(box[1]) > box_right_limit + 0.55 or float(box[0]) < box_left_limit - 0.55:
                     cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-        y_draw, cx, ha, box = _nudge_clear(
-            float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
-        )
+            y_draw, cx, ha, box = _nudge_clear(
+                float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
+            )
         try:
             _emit(float(y_draw), color, text, cx, ha, box)
         except Exception:
             cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-            y_draw, cx, ha, box = _nudge_clear(
-                float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
-            )
-            _emit(float(y_draw), color, text, cx, ha, box)
+            _emit(float(y_px), color, text, cx, ha, box)
         if prefer_x is None:
-            prefer_x = float(cx)
-            prefer_ha = str(ha)
-        else:
-            # 成對同側：後標跟前標鎖同一錨（水平微移後同步）
             prefer_x = float(cx)
             prefer_ha = str(ha)
     return placed
