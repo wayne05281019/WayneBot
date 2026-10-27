@@ -2189,9 +2189,14 @@ def knockout_halos(main, sig) -> None:
 def apply_vol(fig) -> Ink:
     ink = Ink(fig, "vol")
     header, main, sig, volume = _vol_axes(fig)
-    legends = [a for a in header.artists if isinstance(a, Legend)]
-    if header.get_legend() is not None:
-        legends.append(header.get_legend())
+    # 大盤大量區 with_nav_signals=False：無 header／圖例／訊號列，仍要套墨線主圖＋量框
+    if main is None:
+        return ink
+    legends: List[Legend] = []
+    if header is not None:
+        legends = [a for a in header.artists if isinstance(a, Legend)]
+        if header.get_legend() is not None:
+            legends.append(header.get_legend())
     align_vol_panel_margins(main, sig, volume)
     fig.canvas.draw()
     ink.ren = fig.canvas.get_renderer()
@@ -2212,16 +2217,17 @@ def apply_vol(fig) -> Ink:
     flush_data_left_xlim(main, sig, volume)
     if sig is not None:
         sig.tick_params(colors=INK, length=0, bottom=False, top=False, left=False, right=False)
-    panel_left = vol_key_shift(ink, legends, main)
-    vol_masthead(ink, header, legends, panel_left)
-    open_vol_vertical_gaps(ink, legends, main)
-    # KEY 可能下移／主圖頂下移 → 線・觀察拉開後再畫面板
-    ink.fig.canvas.draw()
-    ink.ren = ink.fig.canvas.get_renderer()
-    breathe_observe_legend(ink, legends)
-    ink.fig.canvas.draw()
-    ink.ren = ink.fig.canvas.get_renderer()
-    vol_key_panel(ink, header, legends, panel_left)
+    if header is not None:
+        panel_left = vol_key_shift(ink, legends, main)
+        vol_masthead(ink, header, legends, panel_left)
+        open_vol_vertical_gaps(ink, legends, main)
+        # KEY 可能下移／主圖頂下移 → 線・觀察拉開後再畫面板
+        ink.fig.canvas.draw()
+        ink.ren = ink.fig.canvas.get_renderer()
+        breathe_observe_legend(ink, legends)
+        ink.fig.canvas.draw()
+        ink.ren = ink.fig.canvas.get_renderer()
+        vol_key_panel(ink, header, legends, panel_left)
     ma_under_candles(main)
     knockout_halos(main, sig)
     ma_badges(ink, main)

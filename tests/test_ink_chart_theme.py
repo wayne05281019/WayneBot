@@ -55,3 +55,23 @@ def test_structure_and_vol_zone_call_maybe_apply_ink():
     assert "maybe_apply_ink" in st
     vz = inspect.getsource(vol_zone_chart._paint_volume_zone)
     assert "maybe_apply_ink" in vz
+
+
+def test_apply_vol_tolerates_no_header_axes(monkeypatch):
+    """大盤大量區無 header／圖例時仍要套皮成功（不准整段被 maybe_apply_ink 吞掉）。"""
+    import ink_chart_theme as ink
+
+    monkeypatch.setenv("WAYNE_INK_CHART", "1")
+    fig = plt.figure(figsize=(8, 5), dpi=72)
+    try:
+        main = fig.add_axes([0.05, 0.28, 0.9, 0.55])
+        vol = fig.add_axes([0.05, 0.08, 0.9, 0.16])
+        main.plot([0, 1], [1, 2])
+        vol.bar([0, 1], [3, 4])
+        # 與大盤路徑相同：兩個 axison=True，沒有 axison=False 的 header
+        assert ink._vol_axes(fig)[0] is None
+        out = ink.apply_vol(fig)
+        assert out is not None
+        assert ink.maybe_apply_ink(fig, "vol") is True
+    finally:
+        plt.close(fig)
