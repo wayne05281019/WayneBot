@@ -156,6 +156,36 @@ def test_needs_restyle_when_imbalanced_but_clear():
     assert summarize_scores([s])["gate_aesthetic_min"] == 70.0
 
 
+def test_key_zone_smart_tags_skip_when_pressing_k():
+    """主區壓／撐：沿線無淨空→略過，不准硬釘左緣壓滿盤 K。"""
+    from vol_zone_chart import _paint_key_zone_smart_tags
+    import matplotlib.pyplot as plt
+
+    n = 60
+    highs = np.full(n, 120.0)
+    lows = np.full(n, 100.0)
+    # 整段都貼住 110／105 價位 → 無淨空
+    fig, ax = plt.subplots()
+    ax.set_xlim(-0.5, n + 0.5)
+    ax.set_ylim(90, 130)
+    placed = _paint_key_zone_smart_tags(
+        ax,
+        hi=110.0,
+        lo=105.0,
+        highs=highs,
+        lows=lows,
+        mas=[],
+        xmin=-0.35,
+        xmax=n + 0.55,
+        ymin=90.0,
+        ymax=130.0,
+        occupied=[],
+    )
+    plt.close(fig)
+    # occupied 回傳含輸入；新標若硬壓會增加。無淨空時不准新增
+    assert len(placed) == 0
+
+
 def test_blank_channel_pair_same_band_unit():
     """定位碼：第二軌標必須同帶（反證舊錯開 x）。"""
     from vol_zone_chart import _blank_for_channel_label

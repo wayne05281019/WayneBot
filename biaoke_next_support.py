@@ -1006,6 +1006,7 @@ def paint_written_and_next_levels(
     highs: Optional[Sequence[float]] = None,
     lows: Optional[Sequence[float]] = None,
     mas: Optional[Sequence[Sequence[float]]] = None,
+    occupied: Optional[Sequence[Tuple[float, float, float, float]]] = None,
 ) -> List[float]:
     """原文目標水平線＋破撐／過壓下一層（次大量區淺灰底＋壓／撐兩線）。
 
@@ -1015,6 +1016,7 @@ def paint_written_and_next_levels(
       - \"right\"／\"notes\"＝右側或併入 right_notes
     written_labels：\"auto\"＝有 right_notes 走 notes，否則 right；也可強制 left／right／notes。
     busy_ys：已佔用價位（如大量區壓／撐），標籤 y 微避讓不准互蓋。
+    occupied：已放標盒（主區壓撐／通道），下一層掃位須避讓不准互壓。
     標籤一律帶 CJK fontproperties。平行撐不搶「下一撐」名。
     """
     ys: List[float] = []
@@ -1031,6 +1033,13 @@ def paint_written_and_next_levels(
     if layer_mode in ("auto", "smart"):
         layer_mode = "smart" if (hi_arr and lo_arr) else ("notes" if notes is not None else "left")
     occupied_boxes: List[Tuple[float, float, float, float]] = []
+    for ob in occupied or ():
+        try:
+            occupied_boxes.append(
+                (float(ob[0]), float(ob[1]), float(ob[2]), float(ob[3]))
+            )
+        except (TypeError, ValueError, IndexError):
+            continue
     try:
         y_span_for_pick = (
             abs(float(ymax) - float(ymin))

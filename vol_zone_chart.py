@@ -3502,7 +3502,54 @@ def paint_vol_zone_parallel_channel(
                             )
                         )
         if art is not None and ok:
+            # 裁切閘：clip_on 把字切半＝不合格；先關 clip 用圖邊距，仍出 figure→略過
+            try:
+                ax.figure.canvas.draw()
+                ren = ax.figure.canvas.get_renderer()
+                bb = art.get_window_extent(renderer=ren)
+                abb = ax.get_window_extent(renderer=ren)
+                clipped_ax = (
+                    bb.x0 < abb.x0 - 1
+                    or bb.x1 > abb.x1 + 1
+                    or bb.y0 < abb.y0 - 1
+                    or bb.y1 > abb.y1 + 1
+                )
+                if clipped_ax:
+                    art.set_clip_on(False)
+                    ax.figure.canvas.draw()
+                    ren = ax.figure.canvas.get_renderer()
+                    bb2 = art.get_window_extent(renderer=ren)
+                    fbb = ax.figure.bbox
+                    clipped_fig = (
+                        bb2.x0 < fbb.x0 - 1
+                        or bb2.x1 > fbb.x1 + 1
+                        or bb2.y0 < fbb.y0 - 1
+                        or bb2.y1 > fbb.y1 + 1
+                    )
+                    if clipped_fig or _pixel_hits_of(art):
+                        ok = False
+                        if placed:
+                            placed.pop()
+            except Exception:
+                pass
+        if art is not None and ok:
             label_artists.append(art)
+            try:
+                from smart_label_metrics import record_smart_label
+
+                record_smart_label(
+                    ax,
+                    kind="channel_u" if outside > 0 else "channel_l",
+                    text=str(shown),
+                    x0=float(cx) - dx / 2.0,
+                    x1=float(cx) + dx / 2.0,
+                    y0=float(cy) - dy / 2.0,
+                    y1=float(cy) + dy / 2.0,
+                    rail_y=float(cy),
+                    clipped=False,
+                )
+            except Exception:
+                pass
             try:
                 print(
                     f"channel-label-place {shown!r} x={float(art.get_position()[0]):.2f} "
@@ -3512,14 +3559,14 @@ def paint_vol_zone_parallel_channel(
             except Exception:
                 pass
         elif art is not None and not ok:
-            # 像素仍蓋 K → 不准留紅叉位，拿掉
+            # 像素仍蓋 K／裁切 → 不准留紅叉位，拿掉
             try:
                 art.remove()
             except Exception:
                 pass
             art = None
             try:
-                print(f"channel-label-drop {shown!r} pixel-hits", flush=True)
+                print(f"channel-label-drop {shown!r} pixel-hits-or-clip", flush=True)
             except Exception:
                 pass
     # 供 debug overlay：暫掛在 axes
@@ -3528,6 +3575,98 @@ def paint_vol_zone_parallel_channel(
         ax._wayne_channel_label_ohlc = (hi_arr, lo_arr, int(n))  # type: ignore[attr-defined]
     except Exception:
         pass
+    return placed
+
+
+def _paint_key_zone_smart_tags(
+    ax,
+    *,
+    hi: float,
+    lo: float,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    mas: Optional[Sequence[np.ndarray]],
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    occupied: Optional[List[Tuple[float, float, float, float]]] = None,
+) -> List[Tuple[float, float, float, float]]:
+    """現任主大量區壓／撐：沿線智能掃位；壓 K／互壓／裁切→略過（不准硬釘左緣）。"""
+    from biaoke_next_support import pick_layer_label_along_line
+
+    placed: List[Tuple[float, float, float, float]] = list(occupied or [])
+    prefer_x: Optional[float] = None
+    y_span = max(float(ymax) - float(ymin), 1.0)
+    items: List[Tuple[float, str, str]] = []
+    if float(hi or 0) > 0:
+        items.append((float(hi), _PRESS, f"大量區壓 {_fmt_price(hi)}"))
+    if float(lo or 0) > 0:
+        items.append((float(lo), _HOLD, f"大量區撐 {_fmt_price(lo)}"))
+    _key_tag_box = dict(
+        boxstyle=f"round,pad={float(VOL_ZONE_TAG_PAD):.2f}",
+        facecolor="#ffffff",
+        linewidth=1.05,
+        alpha=1.0,
+    )
+    for y_px, color, text in items:
+        picked = pick_layer_label_along_line(
+            y=float(y_px),
+            text=text,
+            xmin=float(xmin),
+            xmax=float(xmax),
+            highs=highs,
+            lows=lows,
+            mas=list(mas or []),
+            occupied=placed,
+            tag_size=float(VOL_ZONE_TAG_PT),
+            y_span=float(y_span),
+            prefer_x=prefer_x,
+            max_score=18.0,
+            same_band_max=10.0,
+        )
+        if picked is None:
+            continue
+        cx, ha, box = picked
+        # 近端密 K：右溝半截常裁切 → 再拒一次右緣過近
+        if float(box[1]) > float(xmax) - 0.15:
+            continue
+        if float(box[0]) < float(xmin) - 0.85:
+            continue
+        try:
+            ax.text(
+                float(cx),
+                float(y_px),
+                text,
+                ha=str(ha),
+                va="center",
+                fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
+                color=color,
+                zorder=22,
+                clip_on=False,
+                bbox={**_key_tag_box, "edgecolor": color},
+            )
+        except Exception:
+            continue
+        placed.append(tuple(float(v) for v in box))  # type: ignore[arg-type]
+        if prefer_x is None:
+            prefer_x = float(cx)
+        try:
+            from smart_label_metrics import record_smart_label
+
+            record_smart_label(
+                ax,
+                kind="key",
+                text=str(text),
+                x0=float(box[0]),
+                x1=float(box[1]),
+                y0=float(box[2]),
+                y1=float(box[3]),
+                rail_y=float(y_px),
+                clipped=False,
+            )
+        except Exception:
+            pass
     return placed
 
 
@@ -4845,57 +4984,43 @@ def _paint_volume_zone(
             )
             used_x.append(float(xs[i]))
 
-    # v9：關鍵文字最後畫（白底＋高 z），不准被箭頭／三角／均線短標／K 壓住
-    from matplotlib.transforms import blended_transform_factory
-
-    # 現任主區壓／撐＝大檔同大（角色＝find_volume_zone 當下主區，不是文案名）
-    _key_tag_box = dict(
-        boxstyle=f"round,pad={float(VOL_ZONE_TAG_PAD):.2f}",
-        facecolor="#ffffff",
-        linewidth=1.05,
-        alpha=1.0,
-    )
+    # v12：現任主區壓／撐沿線智能掃位（不准硬釘左緣壓 K）；下一層同套
     _KEY_Z = 22
-    _left_tag_tf = blended_transform_factory(ax1.transAxes, ax1.transData)
-    # 釘在價線左側（對得到線；避開左下角導航▲）
-    if float(hi or 0) > 0:
-        ax1.text(
-            0.012,
-            float(hi),
-            f"大量區壓 {_fmt_price(hi)}",
-            transform=_left_tag_tf,
-            ha="left",
-            va="center",
-            fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
-            color=_PRESS,
-            zorder=int(_KEY_Z),
-            clip_on=False,
-            bbox={**_key_tag_box, "edgecolor": _PRESS},
+    _mas_for_layer = [
+        a for a in (ma5_vals, ma10_vals, ma20_vals, ma60_vals) if a is not None
+    ]
+    _key_occ: List[Tuple[float, float, float, float]] = []
+    try:
+        _key_occ.extend(
+            [
+                (float(a), float(b), float(c), float(d))
+                for a, b, c, d in (channel_label_rects or [])
+            ]
         )
-    if float(lo or 0) > 0:
-        ax1.text(
-            0.012,
-            float(lo),
-            f"大量區撐 {_fmt_price(lo)}",
-            transform=_left_tag_tf,
-            ha="left",
-            va="center",
-            fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
-            color=_HOLD,
-            zorder=int(_KEY_Z),
-            clip_on=False,
-            bbox={**_key_tag_box, "edgecolor": _HOLD},
+    except Exception:
+        pass
+    try:
+        _key_occ = _paint_key_zone_smart_tags(
+            ax1,
+            hi=float(hi or 0),
+            lo=float(lo or 0),
+            highs=np.asarray(highs, dtype=float),
+            lows=np.asarray(lows, dtype=float),
+            mas=_mas_for_layer,
+            xmin=float(xs[0]) - 0.35 if len(xs) else -0.35,
+            xmax=float(n) + 0.55,
+            ymin=float(ymin),
+            ymax=float(ymax),
+            occupied=_key_occ,
         )
+    except Exception:
+        logger.debug("大量區主壓撐智能標略過 sid=%s", sid, exc_info=True)
+        _key_occ = list(_key_occ or [])
     # 下一層＝小檔（LAYER_TAG_PT）；v11 smart 掃位＋整組同字級。破撐≠立刻換主區。
     if next_pack:
         try:
             from biaoke_next_support import LAYER_TAG_PT, paint_written_and_next_levels
 
-            _mas_for_layer = [
-                a
-                for a in (ma5_vals, ma10_vals, ma20_vals, ma60_vals)
-                if a is not None
-            ]
             paint_written_and_next_levels(
                 ax1,
                 sid=str(sid or ""),
@@ -4912,6 +5037,7 @@ def _paint_volume_zone(
                 highs=highs,
                 lows=lows,
                 mas=_mas_for_layer,
+                occupied=_key_occ,
             )
         except Exception:
             logger.debug("大量區關鍵標略過 sid=%s", sid, exc_info=True)
