@@ -316,14 +316,10 @@ def test_pick_layer_label_avoids_candle_cluster():
 def test_pick_layer_label_box_stays_inside_xmax():
     """短標「下一層壓 ##」右緣候選也必須整盒 ≤ xmax（1605／3033／6443）。"""
     n = 80
-    highs = [45.0] * n
-    lows = [35.0] * n
-    # 中段淨空差、右緣較空 → 舊版常選 ha=left 伸出 xmax
-    for i in range(0, 50):
-        highs[i] = 44.0
-        lows[i] = 36.0
+    # y=43.1 全程高於 K → 有淨空；舊右溝 ha=left 會把盒伸出 xmax
+    highs = [40.0] * n
+    lows = [36.0] * n
     xmax = float(n) + 0.55
-    # max_score=None：只驗「有解時整盒不超右界」；過高代價仍可略過（OPTIONAL）
     picked = pick_layer_label_along_line(
         y=43.1,
         text="下一層壓 43.1",
@@ -332,7 +328,7 @@ def test_pick_layer_label_box_stays_inside_xmax():
         highs=highs,
         lows=lows,
         tag_size=9.5,
-        max_score=None,
+        max_score=60.0,
     )
     assert picked is not None
     _cx, ha, box = picked

@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 54  # 主區壓／撐依圖自適應同側；無下一層靜默（2026-10-27）
+_VZ_PAINT_VER = 55  # 成對同側硬鎖；half_h 隨價窗；下一層不裁右緣（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3603,6 +3603,7 @@ def _paint_key_zone_smart_tags(
 
     placed: List[Tuple[float, float, float, float]] = list(occupied or [])
     prefer_x: Optional[float] = None
+    prefer_ha: Optional[str] = None
     y_span = max(float(ymax) - float(ymin), 1.0)
     # 壓先、撐後：保證垂直序（上壓下撐）
     items: List[Tuple[float, str, str]] = []
@@ -3623,7 +3624,9 @@ def _paint_key_zone_smart_tags(
     n_bars = min(len(highs), len(lows))
 
     def _box_for(cx: float, ha: str, half_w: float, y_px: float) -> Tuple[float, float, float, float]:
-        half_h = max(y_span * 0.018, abs(float(y_px)) * 0.0045, 10.0)
+        # 半高隨價窗：絕對 floor=10 會讓個股盒蓋滿 K → 同棧誤判失敗、改逐標拆左右
+        half_h = max(float(y_span) * 0.022, abs(float(y_px)) * 0.0035, 1.15)
+        half_h = min(float(half_h), max(float(y_span) * 0.09, 2.8))
         if ha == "left":
             bx0, bx1 = float(cx), float(cx) + 2.0 * half_w
         elif ha == "right":
@@ -3748,9 +3751,7 @@ def _paint_key_zone_smart_tags(
                 best = (key, float(cx0), str(ha0))
         if best is None:
             return None
-        # 代價仍極高＝沒有可用同棧，交給逐標掃位
-        if float(best[0]) > 18.0:
-            return None
+        # REQUIRED 成對同側：即使 crush 偏高仍回最佳同棧（不准拆左右）
         return best[1], best[2]
 
     def _force_keep_slot(
@@ -3844,31 +3845,39 @@ def _paint_key_zone_smart_tags(
                 _emit(float(y_px), color, text, cx, ha, box)
         return placed
 
-    # 無可用同棧 → 逐標沿線掃；第二標鎖同帶（壓上撐下）
+    # 無可用同棧 → 仍成對同側：第一標掃位，第二標鎖同一 cx／ha
     for y_px, color, text in items:
         half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
-        picked = pick_layer_label_along_line(
-            y=float(y_px),
-            text=text,
-            xmin=float(xmin),
-            xmax=float(xmax),
-            highs=highs,
-            lows=lows,
-            mas=list(mas or []),
-            occupied=placed,
-            tag_size=float(VOL_ZONE_TAG_PT),
-            y_span=float(y_span),
-            prefer_x=prefer_x,
-            max_score=28.0,
-            same_band_max=12.0,
-        )
-        if picked is None:
-            cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+        if prefer_x is not None and prefer_ha is not None:
+            cx, ha, box = _clamp_into_view(
+                float(prefer_x),
+                str(prefer_ha),
+                _box_for(float(prefer_x), str(prefer_ha), half_w, float(y_px)),
+                half_w,
+            )
         else:
-            cx, ha, box = picked
-            cx, ha, box = _clamp_into_view(float(cx), str(ha), box, half_w)
-            if float(box[1]) > box_right_limit + 0.55 or float(box[0]) < box_left_limit - 0.55:
+            picked = pick_layer_label_along_line(
+                y=float(y_px),
+                text=text,
+                xmin=float(xmin),
+                xmax=float(xmax),
+                highs=highs,
+                lows=lows,
+                mas=list(mas or []),
+                occupied=placed,
+                tag_size=float(VOL_ZONE_TAG_PT),
+                y_span=float(y_span),
+                prefer_x=prefer_x,
+                max_score=28.0,
+                same_band_max=12.0,
+            )
+            if picked is None:
                 cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+            else:
+                cx, ha, box = picked
+                cx, ha, box = _clamp_into_view(float(cx), str(ha), box, half_w)
+                if float(box[1]) > box_right_limit + 0.55 or float(box[0]) < box_left_limit - 0.55:
+                    cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
         try:
             _emit(float(y_px), color, text, cx, ha, box)
         except Exception:
@@ -3876,6 +3885,7 @@ def _paint_key_zone_smart_tags(
             _emit(float(y_px), color, text, cx, ha, box)
         if prefer_x is None:
             prefer_x = float(cx)
+            prefer_ha = str(ha)
     return placed
 
 

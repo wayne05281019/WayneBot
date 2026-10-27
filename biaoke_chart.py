@@ -1992,6 +1992,15 @@ def _dedupe_right_notes(
             if _is_today_close_note(kt):
                 if _is_level_note(text) or is_close or is_rail:
                     continue
+            # REQUIRED：昨收不准因貼近壓／撐／軌被刪（6213 昨收823≈壓818；3033 昨收≈撐）
+            if _is_prev_close_note(text) and (
+                _is_level_note(kt) or _is_rail_note(kt)
+            ):
+                continue
+            if _is_prev_close_note(kt) and (
+                _is_level_note(text) or is_rail
+            ):
+                continue
             # 75：昨收＋今收同列並排，同價 Y 必須兩標都留
             if _is_prev_close_note(text) and _is_today_close_note(kt):
                 continue
@@ -4618,15 +4627,18 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    # v11：下一層壓／撐＝大量區同一 pick_layer_label_along_line（沿線掃位＋整組同字級略縮）
-    # 昨收／今收右下、下降壓／平行撐釘紫虛線、主壓撐桃色右緣＝既有鎖位保留
+    # 原文目標先入 right_notes；下一層壓／撐改在軌道標之後畫（避 1605 與平行撐互壓）
     try:
-        from biaoke_next_support import paint_written_and_next_levels
+        from biaoke_next_support import paint_written_and_next_levels as _paint_written_only
 
-        paint_written_and_next_levels(
+        _paint_written_only(
             ax1,
             sid=str(sid or ""),
-            next_pack=dict(info.get("next_support") or {}),
+            next_pack={
+                **dict(info.get("next_support") or {}),
+                "broke": False,
+                "over": False,
+            },
             xmin=-0.55,
             xmax=hline_xmax,
             right_notes=right_notes,
@@ -4638,14 +4650,14 @@ def render_biaoke_structure_png(
             written_labels="notes",
             highs=highs,
             lows=lows,
+            busy_ys=(float(spike_hi or 0), float(spike_lo or 0)),
         )
-        # v8 建議：飆大原文目標長標字級／框略縮一階（仍完整可見）
         for _wn in right_notes:
             if "原文目標" in str(_wn.get("text") or ""):
                 _wn["size"] = max(8.5, float(_STRUCTURE_TAG_SIZE) - 1.5)
                 _wn["pad"] = max(0.12, float(_STRUCTURE_TAG_PAD) - 0.06)
     except Exception:
-        logger.debug("結構圖原文／下一層線略過", exc_info=True)
+        logger.debug("結構圖原文目標線略過", exc_info=True)
     # 右軸：今收／現價（71 紅框必留）＋昨收；75 同列並排。
     # 數字跟左上 nameplate／高低卡／介紹同源＝決策卡 quote；K 主體仍官方柱。
     # 不准再用 last_bar 官方末日蓋掉盤中現價（上市上櫃興櫃同一規則）。
@@ -4848,6 +4860,50 @@ def render_biaoke_structure_png(
                 right_notes.append(
                     {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": _STRUCTURE_TAG_SIZE}
                 )
+    # 下一層壓／撐：軌道／單軌標之後再掃（避與平行撐互壓；OPTIONAL 無淨空可略）
+    try:
+        from biaoke_next_support import paint_written_and_next_levels
+
+        _occ = []
+        for _art in list(getattr(ax1, "_wayne_channel_label_artists", None) or []):
+            try:
+                ax1.figure.canvas.draw()
+                _ren = ax1.figure.canvas.get_renderer()
+                _bb = _art.get_window_extent(renderer=_ren)
+                _inv = ax1.transData.inverted()
+                (_x0, _y0) = _inv.transform((_bb.x0, _bb.y0))
+                (_x1, _y1) = _inv.transform((_bb.x1, _bb.y1))
+                _occ.append(
+                    (
+                        float(min(_x0, _x1)),
+                        float(max(_x0, _x1)),
+                        float(min(_y0, _y1)),
+                        float(max(_y0, _y1)),
+                    )
+                )
+            except Exception:
+                continue
+        _np = dict(info.get("next_support") or {})
+        _np["written"] = []
+        paint_written_and_next_levels(
+            ax1,
+            sid=str(sid or ""),
+            next_pack=_np,
+            xmin=-0.55,
+            xmax=hline_xmax,
+            right_notes=None,
+            tag_size=float(_STRUCTURE_TAG_SIZE),
+            ymin=ymin,
+            ymax=ymax,
+            layer_labels="smart",
+            written_labels="right",
+            highs=highs,
+            lows=lows,
+            busy_ys=(float(spike_hi or 0), float(spike_lo or 0)),
+            occupied=_occ,
+        )
+    except Exception:
+        logger.debug("結構圖下一層（軌道後）略過", exc_info=True)
     # 已刪：末日 K 連出橘虛線＋「最可能＝下一層撐…」標（使用者鎖）
     _ = list(proj.get("path") or [])
     # 73：不准畫「連點延長」叉虛線；圖上只留右溝壓撐／軌／原文目標

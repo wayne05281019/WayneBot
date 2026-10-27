@@ -843,7 +843,9 @@ def pick_layer_label_along_line(
             span = max(max(hs) - min(ls), 1.0) if hs and ls else max(abs(float(y)) * 0.2, 50.0)
         except Exception:
             span = max(abs(float(y)) * 0.2, 50.0)
-    half_h = max(span * 0.018, abs(float(y)) * 0.0045, 10.0)
+    # 半高隨價窗縮放：絕對 floor=10 會讓 30～50 元股整盒蓋滿 K → 掃位全死、只能歪出右緣
+    half_h = max(float(span) * 0.022, abs(float(y)) * 0.0035, 1.15)
+    half_h = min(float(half_h), max(float(span) * 0.09, 2.8))
     x_lo = float(xmin) + half_w * 0.12
     x_hi = float(xmax) - half_w * 0.12
     if x_hi <= x_lo + 1.0:
@@ -953,6 +955,27 @@ def pick_layer_label_along_line(
             mas=mas,
             occupied=occupied,
         )
+        # 硬拒：盒蓋到任何 K（與 smart_label_metrics k_hit 對齊）
+        _k_hits = 0
+        if n_bars > 0:
+            import math as _math
+
+            _i0 = max(0, int(_math.floor(float(bx0) - 0.42)))
+            _i1 = min(n_bars - 1, int(_math.ceil(float(bx1) + 0.42)))
+            _y_lo = float(y) - half_h
+            _y_hi = float(y) + half_h
+            for _i in range(_i0, _i1 + 1):
+                try:
+                    _hk = float(highs[_i])
+                    _lk = float(lows[_i])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if _hk <= 0 or _lk <= 0:
+                    continue
+                if _lk <= _y_hi and _hk >= _y_lo:
+                    _k_hits += 1
+            if _k_hits > 0:
+                continue
         # 出界／半截＝不可用
         if bx1 < float(xmin) + 1.0:
             sc += 28.0
@@ -1306,8 +1329,24 @@ def paint_written_and_next_levels(
                         y_span=y_span_for_pick or None,
                         prefer_x=_layer_prefer_x,
                     )
-                    # OPTIONAL：無淨空＝略過。不准硬釘右緣壓死 K（f5063d0 迴歸 1605／3033）
+# OPTIONAL：無淨空可略過。第二趟放寬代價但仍硬拒壓 K／超 xmax
                     if picked is None:
+                        picked = pick_layer_label_along_line(
+                            y=lab_y,
+                            text=label,
+                            xmin=float(xmin),
+                            xmax=float(xmax),
+                            highs=hi_arr,
+                            lows=lo_arr,
+                            mas=mas,
+                            occupied=occupied_boxes,
+                            tag_size=float(_layer_tag_size),
+                            y_span=y_span_for_pick or None,
+                            prefer_x=_layer_prefer_x,
+                            max_score=60.0,
+                        )
+                    if picked is None:
+
                         continue
                     cx, ha, box = picked
                     # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內
