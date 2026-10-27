@@ -1157,8 +1157,28 @@ def official_work(
             sid_hint = str(work["stock_id"].dropna().iloc[-1] or "")
         except Exception:
             sid_hint = ""
+    # 呼叫端忘傳 skip 時仍吃庫內 confirmed_absent（2233 10/23 假柱曾讓兩圖分叉）
+    skip_use = skip_invent_dates
+    if skip_use is None and sid_hint:
+        try:
+            from wayne_db import DEFAULT_DB_PATH
+
+            db_hint = str(
+                os.environ.get("WAYNE_DB_PATH")
+                or os.environ.get("DB_PATH")
+                or DEFAULT_DB_PATH
+                or ""
+            ).strip()
+            if db_hint and os.path.isfile(db_hint):
+                known = load_confirmed_absent_dates(sid_hint, db_hint)
+                if known:
+                    skip_use = known
+        except Exception:
+            logger.debug(
+                "official_work auto absent skip fail sid=%s", sid_hint, exc_info=True
+            )
     work = align_ohlc_cached(
-        work, sid_hint, skip_invent_dates=skip_invent_dates
+        work, sid_hint, skip_invent_dates=skip_use
     )
     if work is None or work.empty:
         return None
@@ -1183,6 +1203,19 @@ def _scale_cut_date(ex_events: Optional[List[Dict[str, Any]]], last_date: str) -
     return cut
 
 
+def _vol_zone_bar_skippable(work: pd.DataFrame, i: int, halt: pd.Series) -> bool:
+    """停牌／假補／盤中疊加不准佔爆大量近窗名額、也不准當候選。"""
+    if bool(halt.iloc[i]):
+        return True
+    if "no_trade_fill" in work.columns and bool(work["no_trade_fill"].iloc[i]):
+        return True
+    if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
+        return True
+    if "is_live" in work.columns and bool(work["is_live"].iloc[i]):
+        return True
+    return False
+
+
 def find_volume_zone(
     work: pd.DataFrame,
     *,
@@ -1193,8 +1226,8 @@ def find_volume_zone(
 
     準則（鎖死；與 ``biaoke_brain.volume_first_price`` 同窗）：
     1. 只用官方日 K 原柱；略過停牌、略過 biaoke_stock_day／is_live。
-    2. 近窗＝恰 lookback 根候選（預設 40），不含「最後一根」（大量區＝過去參考日）。
-       實作 ``start = end - lookback``、``range(start, end)``；結構圖必須同長，不准少一根。
+    2. 近窗＝恰 lookback 根**可交易**候選（預設 40），不含「最後一根」（大量區＝過去參考日）。
+       停牌／對齊發明的假柱不准佔名額（2233：發明 10/23 曾把 08/25 擠出窗 → 與結構圖分叉）。
     3. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     4. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
     5. 壓＝該日官方高、撐＝該日官方低。不是買訊、不發明 5／9。
@@ -1213,7 +1246,15 @@ def find_volume_zone(
     )
     end = n - 1
     lb = max(int(lookback or 0), 1)
-    start = max(0, end - lb)
+    # 由末日往前數恰 lookback 根可交易柱；假停牌不進計數
+    tradable: List[int] = []
+    for i in range(end - 1, -1, -1):
+        if _vol_zone_bar_skippable(work, i, halt):
+            continue
+        tradable.append(i)
+        if len(tradable) >= lb:
+            break
+    start = int(tradable[-1]) if tradable else end
     last_d = _bar_ymd(work["date"].iloc[-1])
     cut = _scale_cut_date(ex_events, last_d)
     if cut:
@@ -1232,11 +1273,7 @@ def find_volume_zone(
     active_i = None
     active_v = -1.0
     for i in range(start, end):
-        if bool(halt.iloc[i]):
-            continue
-        if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
-            continue
-        if "is_live" in work.columns and bool(work["is_live"].iloc[i]):
+        if _vol_zone_bar_skippable(work, i, halt):
             continue
         v = float(work["volume"].iloc[i] or 0)
         if v <= 0:
