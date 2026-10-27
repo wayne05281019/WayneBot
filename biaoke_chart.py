@@ -5453,7 +5453,7 @@ def render_biaoke_structure_png(
             _peak_disp,
             float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0]),
         )
-    # 量標高度先依爆大量／下一層柱頂；稍後依標籤水平帶內「更高柱」再抬（6213／6148）
+    # 量標：先挑水平淨空（ha=right 框往左伸會蓋更高柱，6148），再抬 y
     vol_lab_y = (
         float(_peak_disp) * 1.06 + float(vmax) * 0.02
         if _peak_disp > 0
@@ -5465,69 +5465,85 @@ def render_biaoke_structure_png(
             [float(x or 0) for x in vols], vmax
         )
     ]
+    # 「這根＝爆大量　99,999張」約占 9～11 根
+    _VOL_TAG_HALF_BARS = 10.0
 
-    def _bump_vol_lab_y(*centers: float) -> None:
-        """標籤水平帶覆蓋的量柱頂都要讓開（含今日比爆大量更高的柱）。"""
-        nonlocal vol_lab_y
+    def _vol_box_span(tx: float, ha: str, half: float = _VOL_TAG_HALF_BARS) -> Tuple[int, int]:
+        if ha == "right":
+            i0 = int(math.floor(float(tx) - 2.0 * half))
+            i1 = int(math.ceil(float(tx))) + 1
+        elif ha == "left":
+            i0 = int(math.floor(float(tx)))
+            i1 = int(math.ceil(float(tx) + 2.0 * half)) + 1
+        else:
+            i0 = int(math.floor(float(tx) - half))
+            i1 = int(math.ceil(float(tx) + half)) + 1
+        return max(0, i0), min(n, i1)
+
+    def _peak_under(tx: float, ha: str) -> float:
         if not _vol_disp_all:
-            return
-        # 框寬約 7～9 根；左右各留餘裕
-        half_span = 4.5
-        band_peak = float(_peak_disp)
-        for cx in centers:
-            i0 = max(0, int(math.floor(float(cx) - half_span)))
-            i1 = min(n, int(math.ceil(float(cx) + half_span)) + 1)
-            for i in range(i0, i1):
-                try:
-                    band_peak = max(band_peak, float(_vol_disp_all[i]))
-                except (IndexError, TypeError, ValueError):
-                    continue
-        # 右緣近窗也納入（今收量常比爆大量高，標在右側時會壓住）
-        for i in range(max(0, n - 10), n):
+            return float(_peak_disp)
+        i0, i1 = _vol_box_span(tx, ha)
+        peak = 0.0
+        for i in range(i0, i1):
             try:
-                band_peak = max(band_peak, float(_vol_disp_all[i]))
+                peak = max(peak, float(_vol_disp_all[i]))
             except (IndexError, TypeError, ValueError):
                 continue
-        # va=bottom：整盒在柱頂之上；略加墊高避開框邊吃柱（3033／6148）
-        need = float(band_peak) * 1.06 + float(vmax) * 0.035
+        return peak
+
+    def _bump_vol_lab_y_for(tx: float, ha: str) -> None:
+        nonlocal vol_lab_y
+        band_peak = max(float(_peak_disp), _peak_under(tx, ha))
+        need = float(band_peak) * 1.08 + float(vmax) * 0.04
         if need > float(vol_lab_y):
             vol_lab_y = need
+
+    def _pick_vol_anchor(anchor_i: int) -> Tuple[float, str]:
+        """水平避開更高柱；上移空間不夠時只能橫移（6148）。"""
+        trials: List[Tuple[float, str]] = []
+        for off in (3.0, 5.0, 6.5, 9.0, 12.0, 15.0):
+            trials.append((min(float(n) - 1.2, float(anchor_i) + off), "left"))
+            trials.append((max(1.0, float(anchor_i) - off), "right"))
+        best: Optional[Tuple[float, float, str]] = None
+        spike_h = float(_vol_disp_all[anchor_i]) if 0 <= anchor_i < len(_vol_disp_all) else 0.0
+        for tx, ha in trials:
+            pk = _peak_under(tx, ha)
+            # 代價：蓋到比錨柱明顯更高的柱 → 重罰；其次看帶內峰值
+            taller = max(0.0, pk - max(spike_h, 1.0))
+            key = taller * 10.0 + pk + abs(float(tx) - float(anchor_i)) * 0.02
+            if best is None or key < best[0]:
+                best = (key, float(tx), str(ha))
+        if best is None:
+            return float(anchor_i) + 4.0, "left"
+        return best[1], best[2]
 
     if spike_ok and has_layer_vol:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
         layer_md = _md(work[layer_i].get("date"))
-        # 較早量日偏左、較晚偏右；同一水平高度
-        if int(layer_i) <= int(spike_i):
-            layer_side, spike_side = "left", "right"
-        else:
-            layer_side, spike_side = "right", "left"
-
-        # v8 建議：連線改短、貼近各自量柱（相鄰日用更短偏移）
-        _gap_bars = abs(int(layer_i) - int(spike_i))
-        _vol_off = 1.55 if _gap_bars <= 2 else 2.4
-
-        def _side_x(i: int, side: str) -> float:
-            if side == "left":
-                return max(1.2, float(i) - float(_vol_off))
-            if side == "right":
-                return min(float(n) - 1.5, float(i) + float(_vol_off))
-            return float(i)
-
-        _bump_vol_lab_y(
-            _side_x(layer_i, layer_side),
-            _side_x(spike_i, spike_side),
-            float(spike_i),
-            float(layer_i),
-        )
-        ax2.set_ylim(0, max(float(vmax) * 1.14, float(vol_lab_y) * 1.18))
+        spike_tx, spike_ha = _pick_vol_anchor(int(spike_i))
+        layer_tx, layer_ha = _pick_vol_anchor(int(layer_i))
+        # 兩標太近 → 較晚者再外推
+        if abs(float(spike_tx) - float(layer_tx)) < 8.0:
+            if int(spike_i) >= int(layer_i):
+                spike_tx, spike_ha = _pick_vol_anchor(int(spike_i))
+                if abs(float(spike_tx) - float(layer_tx)) < 8.0:
+                    spike_tx = min(float(n) - 1.2, max(float(spike_tx), float(layer_tx) + 9.0))
+                    spike_ha = "left"
+            else:
+                layer_tx = min(float(n) - 1.2, max(float(layer_tx), float(spike_tx) + 9.0))
+                layer_ha = "left"
+        _bump_vol_lab_y_for(spike_tx, spike_ha)
+        _bump_vol_lab_y_for(layer_tx, layer_ha)
+        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
-            xytext=(_side_x(layer_i, layer_side), vol_lab_y),
+            xytext=(float(layer_tx), vol_lab_y),
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
-            ha="right" if layer_side == "left" else "left",
+            ha=str(layer_ha),
             va="bottom",
             zorder=12,
             annotation_clip=False,
@@ -5551,10 +5567,10 @@ def render_biaoke_structure_png(
         ax2.annotate(
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             xy=(float(spike_i), float(spike_disp)),
-            xytext=(_side_x(spike_i, spike_side), vol_lab_y),
+            xytext=(float(spike_tx), vol_lab_y),
             color=_TEXT,
             fontproperties=_fp(10, "bold"),
-            ha="right" if spike_side == "left" else "left",
+            ha=str(spike_ha),
             va="bottom",
             zorder=12,
             annotation_clip=False,
@@ -5588,9 +5604,9 @@ def render_biaoke_structure_png(
             pass
     elif spike_ok:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
-        vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
-        _bump_vol_lab_y(float(vol_tx), float(spike_i))
-        ax2.set_ylim(0, max(float(vmax) * 1.14, float(vol_lab_y) * 1.18))
+        vol_tx, vol_ha = _pick_vol_anchor(int(spike_i))
+        _bump_vol_lab_y_for(vol_tx, vol_ha)
+        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
         _leader_note(
             ax2,
             float(spike_i),
@@ -5600,23 +5616,23 @@ def render_biaoke_structure_png(
             tx=vol_tx,
             ty=vol_lab_y,
             size=11,
-            ha="left" if vol_tx >= spike_i else "right",
+            ha=str(vol_ha),
             va="bottom",
             clip=False,
         )
     elif has_layer_vol:
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
         layer_md = _md(work[layer_i].get("date"))
-        lab_x = max(2.4, float(layer_i) - 5.2)
-        _bump_vol_lab_y(float(lab_x), float(layer_i))
-        ax2.set_ylim(0, max(float(vmax) * 1.14, float(vol_lab_y) * 1.18))
+        lab_x, lab_ha = _pick_vol_anchor(int(layer_i))
+        _bump_vol_lab_y_for(lab_x, lab_ha)
+        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
-            xytext=(lab_x, vol_lab_y),
+            xytext=(float(lab_x), vol_lab_y),
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
-            ha="right" if lab_x + 0.4 < float(layer_i) else "left",
+            ha=str(lab_ha),
             va="bottom",
             zorder=12,
             annotation_clip=False,

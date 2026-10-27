@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 57  # 壓撐垂直微移離 K；橘框避壓撐；量標／底軸沿用（2026-10-27）
+_VZ_PAINT_VER = 58  # 壓撐水平＋垂直躲 K；橘框避壓撐（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3834,7 +3834,7 @@ def _paint_key_zone_smart_tags(
             cx_f, "left", _box_for(cx_f, "left", half_w, y_px), half_w
         )
 
-    def _nudge_y_clear(
+    def _nudge_clear(
         y_rail: float,
         text: str,
         cx: float,
@@ -3842,27 +3842,48 @@ def _paint_key_zone_smart_tags(
         half_w: float,
         *,
         prefer_up: bool,
-    ) -> Tuple[float, Tuple[float, float, float, float]]:
-        """壓略上移、撐略下移直到不碾 K（膚色帶橫貫全窗時只能垂直躲）。"""
+    ) -> Tuple[float, float, str, Tuple[float, float, float, float]]:
+        """先垂直微移；仍碾 K 再水平縮離（6274 大綠 K 跨過壓線，只上移仍蓋上影）。"""
         sign = 1.0 if prefer_up else -1.0
         step = max(float(y_span) * 0.012, 1.0)
         best_y = float(y_rail)
-        best_box = _box_for(float(cx), str(ha), half_w, best_y)
+        best_cx, best_ha = float(cx), str(ha)
+        best_box = _box_for(best_cx, best_ha, half_w, best_y)
         best_c = _k_crush_score(best_box)
         if best_c < 0.5:
-            return best_y, best_box
+            return best_y, best_cx, best_ha, best_box
         for k in range(1, 16):
             y2 = float(y_rail) + sign * step * float(k)
-            # 不准跑出可視窗太遠
             if y2 > float(ymax) - y_span * 0.02 or y2 < float(ymin) + y_span * 0.02:
                 break
-            box2 = _box_for(float(cx), str(ha), half_w, y2)
+            box2 = _box_for(best_cx, best_ha, half_w, y2)
             c2 = _k_crush_score(box2)
             if c2 < best_c:
                 best_c, best_y, best_box = c2, y2, box2
             if c2 < 0.5:
-                break
-        return best_y, best_box
+                return best_y, best_cx, best_ha, best_box
+        # 水平：往左緣縮（ha=left 釘左）或略右，縮短蓋到跨線 K 的寬度
+        x_trials: List[Tuple[float, str]] = [
+            (max(box_left_limit + 0.02, float(x_lo) + 0.05), "left"),
+            (max(0.4, float(best_cx) - half_w * 0.8), "left"),
+            (max(0.4, float(best_cx) - half_w * 1.4), "left"),
+            (min(box_right_limit - 0.05, float(best_cx) + half_w * 0.6), "right"),
+            (min(box_right_limit, float(n_bars) * 0.22 if n_bars else best_cx), "left"),
+        ]
+        for cx2, ha2 in x_trials:
+            for k in range(0, 10):
+                y2 = float(y_rail) + sign * step * float(k)
+                if y2 > float(ymax) - y_span * 0.02 or y2 < float(ymin) + y_span * 0.02:
+                    break
+                cx3, ha3, box3 = _clamp_into_view(
+                    float(cx2), str(ha2), _box_for(float(cx2), str(ha2), half_w, y2), half_w
+                )
+                c3 = _k_crush_score(box3)
+                if c3 < best_c:
+                    best_c, best_y, best_cx, best_ha, best_box = c3, y2, cx3, ha3, box3
+                if c3 < 0.5:
+                    return best_y, best_cx, best_ha, best_box
+        return best_y, best_cx, best_ha, best_box
 
     def _emit(y_px: float, color: str, text: str, cx: float, ha: str, box) -> None:
         ax.text(
@@ -3905,20 +3926,23 @@ def _paint_key_zone_smart_tags(
     if pair_anchor is not None:
         cx_p, ha_p = pair_anchor
         prefer_x = float(cx_p)
+        prefer_ha = str(ha_p)
         for y_px, color, text in items:
             half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
-            box = _box_for(float(cx_p), str(ha_p), half_w, float(y_px))
-            cx, ha, box = _clamp_into_view(float(cx_p), str(ha_p), box, half_w)
-            y_draw, box = _nudge_y_clear(
+            box = _box_for(float(prefer_x), str(prefer_ha), half_w, float(y_px))
+            cx, ha, box = _clamp_into_view(float(prefer_x), str(prefer_ha), box, half_w)
+            y_draw, cx, ha, box = _nudge_clear(
                 float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
             )
+            prefer_x, prefer_ha = float(cx), str(ha)
             try:
                 _emit(float(y_draw), color, text, cx, ha, box)
             except Exception:
                 cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-                y_draw, box = _nudge_y_clear(
+                y_draw, cx, ha, box = _nudge_clear(
                     float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
                 )
+                prefer_x, prefer_ha = float(cx), str(ha)
                 _emit(float(y_draw), color, text, cx, ha, box)
         return placed
 
@@ -3955,18 +3979,22 @@ def _paint_key_zone_smart_tags(
                 cx, ha, box = _clamp_into_view(float(cx), str(ha), box, half_w)
                 if float(box[1]) > box_right_limit + 0.55 or float(box[0]) < box_left_limit - 0.55:
                     cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-        y_draw, box = _nudge_y_clear(
+        y_draw, cx, ha, box = _nudge_clear(
             float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
         )
         try:
             _emit(float(y_draw), color, text, cx, ha, box)
         except Exception:
             cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
-            y_draw, box = _nudge_y_clear(
+            y_draw, cx, ha, box = _nudge_clear(
                 float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
             )
             _emit(float(y_draw), color, text, cx, ha, box)
         if prefer_x is None:
+            prefer_x = float(cx)
+            prefer_ha = str(ha)
+        else:
+            # 成對同側：後標跟前標鎖同一錨（水平微移後同步）
             prefer_x = float(cx)
             prefer_ha = str(ha)
     return placed
