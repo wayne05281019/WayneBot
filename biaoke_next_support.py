@@ -535,8 +535,10 @@ def reason_next_support_line(
         src = str(primary.get("source") or "").strip() or NEXT_LAYER_SOURCE
         px = _fmt_price(primary.get("price")) or "—"
         return f"{head}，朝{src} {px}（非買訊）"
-    label = str(none_label or NONE_LABEL).strip() or NONE_LABEL
-    return f"{head}，{label}"
+    # 無下一層：原因句只留破撐／過壓本身；不准附「暫無下一層大量區」佔位
+    # （none_label 參數保留給呼叫端相容；圖／話筒靜默）
+    _ = none_label
+    return f"{head}"
 
 
 def attach_next_support(
@@ -626,14 +628,15 @@ def attach_next_support(
                     proj["target"] = lo
                 proj["mark"] = ""
             elif pack.get("none_label"):
+                # 無下一層：靜默佔位字；演算句仍可講破撐／出貨，不准寫暫無下一層
                 if key == "abandon":
                     proj["label"] = (
-                        f"收在撐 {_fmt_price(spike_lo)} 之下，{NONE_LABEL}；"
+                        f"收在撐 {_fmt_price(spike_lo)} 之下；"
                         "這次量價先放棄，不把反彈當最可能。不是保證。"
                     )
                 else:
                     proj["label"] = (
-                        f"出貨痕跡，收破撐 {_fmt_price(spike_lo)}，{NONE_LABEL}。"
+                        f"出貨痕跡，收破撐 {_fmt_price(spike_lo)}。"
                         "不是保證、非買訊。"
                     )
                 proj["mark"] = ""
@@ -840,7 +843,9 @@ def pick_layer_label_along_line(
             span = max(max(hs) - min(ls), 1.0) if hs and ls else max(abs(float(y)) * 0.2, 50.0)
         except Exception:
             span = max(abs(float(y)) * 0.2, 50.0)
-    half_h = max(span * 0.018, abs(float(y)) * 0.0045, 10.0)
+    # 半高隨價窗縮放：絕對 floor=10 會讓 30～50 元股整盒蓋滿 K → 掃位全死、只能歪出右緣
+    half_h = max(float(span) * 0.022, abs(float(y)) * 0.0035, 1.15)
+    half_h = min(float(half_h), max(float(span) * 0.09, 2.8))
     x_lo = float(xmin) + half_w * 0.12
     x_hi = float(xmax) - half_w * 0.12
     if x_hi <= x_lo + 1.0:
@@ -860,10 +865,11 @@ def pick_layer_label_along_line(
     n_bars = min(len(highs), len(lows))
     if n_bars > 0:
         last = float(n_bars - 1)
-        # 右溝：整盒盡量在末日 K 右側（ha=left 錨在 last+ε）
-        trials.append((min(float(xmax) - 0.05, last + 0.55), "left"))
-        trials.append((min(float(xmax) - half_w * 0.15, last + half_w * 0.85), "left"))
+        # 右緣：ha=right 讓字往左長進圖內，不准 ha=left 把「下一層壓」裁出 figure
+        trials.append((float(xmax) - 0.08, "right"))
+        trials.append((min(float(xmax) - 0.05, last + 0.35), "right"))
         trials.append((max(float(xmin) + half_w * 0.2, last - half_w * 0.15), "right"))
+        trials.append((max(float(xmin) + half_w, last - 1.2), "right"))
         # 左緣空白（含整盒在第一根左側）
         trials.append((max(float(xmin) + 0.05, -0.15), "left"))
         trials.append((float(xmin) + half_w * 0.9, "right"))
@@ -931,6 +937,11 @@ def pick_layer_label_along_line(
             continue
         if bx1 < float(xmin) - 1.2 or bx0 > float(xmax) + 0.8:
             continue
+        # 硬拒：整盒超出資料右／左界＝話筒必裁（1605／3033／6443「下一層壓」右緣）
+        if float(bx1) > float(xmax) + 0.05:
+            continue
+        if float(bx0) < float(xmin) - 0.55:
+            continue
         # 成對：拉開同帶硬拒
         if prefer_x is not None and abs(float(cx) - float(prefer_x)) > float(same_band_max):
             continue
@@ -944,6 +955,27 @@ def pick_layer_label_along_line(
             mas=mas,
             occupied=occupied,
         )
+        # 硬拒：盒蓋到任何 K（與 smart_label_metrics k_hit 對齊）
+        _k_hits = 0
+        if n_bars > 0:
+            import math as _math
+
+            _i0 = max(0, int(_math.floor(float(bx0) - 0.42)))
+            _i1 = min(n_bars - 1, int(_math.ceil(float(bx1) + 0.42)))
+            _y_lo = float(y) - half_h
+            _y_hi = float(y) + half_h
+            for _i in range(_i0, _i1 + 1):
+                try:
+                    _hk = float(highs[_i])
+                    _lk = float(lows[_i])
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if _hk <= 0 or _lk <= 0:
+                    continue
+                if _lk <= _y_hi and _hk >= _y_lo:
+                    _k_hits += 1
+            if _k_hits > 0:
+                continue
         # 出界／半截＝不可用
         if bx1 < float(xmin) + 1.0:
             sc += 28.0
@@ -951,6 +983,9 @@ def pick_layer_label_along_line(
             sc += 14.0 * min(1.0, (float(xmin) - bx0) / max(half_w, 1.0))
         if bx0 > float(xmax) - 0.8:
             sc += 6.0
+        # 貼右緣仍微罰，逼回圖內空窗
+        if bx1 > float(xmax) - 0.35:
+            sc += 9.0 * min(1.0, (bx1 - (float(xmax) - 0.35)) / max(half_w, 1.0))
         clear = _min_vertical_clearance(
             x0=bx0, x1=bx1, y=float(y), highs=highs, lows=lows
         )
@@ -1088,7 +1123,7 @@ def paint_written_and_next_levels(
             kw["transform"] = transform
         if bbox is not None:
             kw["bbox"] = bbox
-        ax.text(x, y, text, **kw)
+        return ax.text(x, y, text, **kw)
 
     def _label_y(raw_y: float, used: List[float]) -> float:
         """標籤 y 微避讓：原文與下一層壓太近不准互蓋。"""
@@ -1294,15 +1329,45 @@ def paint_written_and_next_levels(
                         y_span=y_span_for_pick or None,
                         prefer_x=_layer_prefer_x,
                     )
+# OPTIONAL：無淨空可略過。第二趟放寬代價但仍硬拒壓 K／超 xmax
                     if picked is None:
+                        picked = pick_layer_label_along_line(
+                            y=lab_y,
+                            text=label,
+                            xmin=float(xmin),
+                            xmax=float(xmax),
+                            highs=hi_arr,
+                            lows=lo_arr,
+                            mas=mas,
+                            occupied=occupied_boxes,
+                            tag_size=float(_layer_tag_size),
+                            y_span=y_span_for_pick or None,
+                            prefer_x=_layer_prefer_x,
+                            max_score=60.0,
+                        )
+                    if picked is None:
+
                         continue
                     cx, ha, box = picked
+                    # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內
+                    if float(box[1]) > float(xmax) + 0.05:
+                        _hw = max(0.5 * (float(box[1]) - float(box[0])), 1.0)
+                        cx = float(xmax) - 0.08
+                        ha = "right"
+                        box = (
+                            cx - 2.0 * _hw,
+                            cx,
+                            float(box[2]),
+                            float(box[3]),
+                        )
+                        if float(box[0]) < float(xmin) - 0.55:
+                            continue
                     occupied_boxes.append(box)
                     if _layer_prefer_x is None:
                         _layer_prefer_x = float(cx)
                         _layer_pair_anchor = True
                     try:
-                        _text(
+                        art = _text(
                             float(cx),
                             lab_y,
                             label,
@@ -1312,6 +1377,75 @@ def paint_written_and_next_levels(
                             bbox={**_layer_tag_box, "edgecolor": color},
                             size=float(_layer_tag_size),
                         )
+                        # 像素裁切閘：出 figure → 往左 nudge；仍裁才拿掉（不准半句）
+                        try:
+                            ax.figure.canvas.draw()
+                            ren = ax.figure.canvas.get_renderer()
+                            if art is not None:
+                                for _nudge in range(8):
+                                    bb = art.get_window_extent(renderer=ren)
+                                    fbb = ax.figure.bbox
+                                    if not (
+                                        bb.x0 < fbb.x0 - 1
+                                        or bb.x1 > fbb.x1 - 1
+                                        or bb.y0 < fbb.y0 - 1
+                                        or bb.y1 > fbb.y1 - 1
+                                    ):
+                                        break
+                                    try:
+                                        art.remove()
+                                    except Exception:
+                                        pass
+                                    cx = float(cx) - 1.2
+                                    ha = "right"
+                                    _hw = max(
+                                        0.5 * (float(box[1]) - float(box[0])), 1.0
+                                    )
+                                    box = (
+                                        cx - 2.0 * _hw,
+                                        cx,
+                                        float(box[2]),
+                                        float(box[3]),
+                                    )
+                                    if float(box[0]) < float(xmin) - 0.55:
+                                        art = None
+                                        break
+                                    art = _text(
+                                        float(cx),
+                                        lab_y,
+                                        label,
+                                        color=color,
+                                        ha=ha,
+                                        va="center",
+                                        bbox={
+                                            **_layer_tag_box,
+                                            "edgecolor": color,
+                                        },
+                                        size=float(_layer_tag_size),
+                                    )
+                                    ax.figure.canvas.draw()
+                                    ren = ax.figure.canvas.get_renderer()
+                                if art is None:
+                                    occupied_boxes.pop()
+                                    continue
+                                bb = art.get_window_extent(renderer=ren)
+                                fbb = ax.figure.bbox
+                                if (
+                                    bb.x0 < fbb.x0 - 1
+                                    or bb.x1 > fbb.x1 - 1
+                                    or bb.y0 < fbb.y0 - 1
+                                    or bb.y1 > fbb.y1 - 1
+                                ):
+                                    try:
+                                        art.remove()
+                                    except Exception:
+                                        pass
+                                    occupied_boxes.pop()
+                                    continue
+                                # nudge 後同步佔位盒
+                                occupied_boxes[-1] = box
+                        except Exception:
+                            pass
                         try:
                             from smart_label_metrics import record_smart_label
 
@@ -1324,6 +1458,7 @@ def paint_written_and_next_levels(
                                 y0=float(box[2]),
                                 y1=float(box[3]),
                                 rail_y=float(lab_y),
+                                clipped=False,
                             )
                         except Exception:
                             pass
@@ -1378,21 +1513,6 @@ def paint_written_and_next_levels(
                     except Exception:
                         pass
     elif pack.get("broke") or pack.get("over"):
-        if pack.get("none_label"):
-            try:
-                kw: Dict[str, Any] = {
-                    "transform": ax.transAxes,
-                    "ha": "right",
-                    "va": "bottom",
-                    "color": color_none,
-                    "zorder": 20,
-                    "clip_on": True,
-                }
-                if fp_none is not None:
-                    kw["fontproperties"] = fp_none
-                else:
-                    kw["fontsize"] = 8.2
-                ax.text(0.98, 0.04, str(pack.get("none_label") or NONE_LABEL), **kw)
-            except Exception:
-                pass
+        # 2026-10-27：無下一層＝靜默，不准畫「暫無下一層大量區」佔位
+        pass
     return ys

@@ -866,7 +866,7 @@ def test_locator_inset_marks_window():
     )
     assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_3081)
     assert any(str(k.get("text") or "").startswith("昨收") for k in kept_3081)
-    # 昨收真價真的貼撐才讓（文案價，不是錨點）
+    # REQUIRED：昨收真價貼撐也要留（6213／3033；顯示 Y 再錯開，不准刪）
     kept_near = _dedupe_right_notes(
         [
             {"y": 2940.0, "text": "撐 2940"},
@@ -876,7 +876,8 @@ def test_locator_inset_marks_window():
         span=3050.0,
     )
     assert any(str(k.get("text") or "").startswith("今收 ") for k in kept_near)
-    assert not any(str(k.get("text") or "").startswith("昨收") for k in kept_near)
+    assert any(str(k.get("text") or "").startswith("昨收") for k in kept_near)
+    assert any(str(k.get("text") or "").startswith("撐") for k in kept_near)
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
     spot = inspect.getsource(_paint_spot)
@@ -979,26 +980,42 @@ def test_caption_records_forecast_line():
 
 
 def test_axis_ticks_drop_near_last_bar():
+    gap60 = max(12, 60 // 16)
     ticks = _axis_ticks(60, extra=(12,))
     assert 0 in ticks
     assert 59 in ticks
     assert 12 in ticks
-    assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
+    assert all(abs(i - 59) >= gap60 or i in (0, 12, 59) for i in ticks)
     assert 56 not in ticks
     # 爆量日貼最後一根：只留尾日，不准 10/05 疊 10/07
     near = _axis_ticks(78, extra=(75,))
     assert 77 in near
     assert 75 not in near
     assert 0 in near
-    # 3081 型：爆量日與 +6 一般刻不准同留（MM/DD 互壓）
+    # 3081 型：爆量日與鄰近一般刻不准同留（MM/DD 互壓）
     wide = _axis_ticks(168, extra=(138,))
     assert 138 in wide
     assert 144 not in wide
+    gap168 = max(12, 168 // 16)
     assert all(
-        abs(a - b) >= 8
+        abs(a - b) >= gap168
         for a, b in zip(wide, wide[1:])
         if a < 168 and b < 168
     )
+    # 1605／3033 型：爆量離尾 7 根 → 只留尾日
+    mid = _axis_ticks(80, extra=(72,))
+    assert 79 in mid
+    assert 72 not in mid
+    assert all(abs(a - b) >= max(12, 80 // 16) for a, b in zip(mid, mid[1:]))
+    # 雙 extra 都貼尾：全丟，只留頭尾
+    dual = _axis_ticks(100, extra=(92, 94))
+    assert 99 in dual and 0 in dual
+    assert 92 not in dual and 94 not in dual
+    # 1605 實窗：下一層 09/30(152) 與步進 09/16(144) 差 8 → 只留 extra／尾
+    s1605 = _axis_ticks(168, extra=(71, 152))
+    assert 152 in s1605 and 167 in s1605 and 0 in s1605
+    assert 144 not in s1605
+    assert all(abs(a - b) >= gap168 for a, b in zip(s1605, s1605[1:]) if b <= 167)
 
 
 def test_pressure_support_use_consecutive_pivots():

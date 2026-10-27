@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import shutil
 import sqlite3
@@ -97,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 51  # 同帶保底也硬拒互壓；密軌第二標略過（2026-10-26）
+_VZ_PAINT_VER = 61  # 成對共用錨；右溝同 crush 不壓過左／中（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -1156,8 +1157,28 @@ def official_work(
             sid_hint = str(work["stock_id"].dropna().iloc[-1] or "")
         except Exception:
             sid_hint = ""
+    # 呼叫端忘傳 skip 時仍吃庫內 confirmed_absent（2233 10/23 假柱曾讓兩圖分叉）
+    skip_use = skip_invent_dates
+    if skip_use is None and sid_hint:
+        try:
+            from wayne_db import DEFAULT_DB_PATH
+
+            db_hint = str(
+                os.environ.get("WAYNE_DB_PATH")
+                or os.environ.get("DB_PATH")
+                or DEFAULT_DB_PATH
+                or ""
+            ).strip()
+            if db_hint and os.path.isfile(db_hint):
+                known = load_confirmed_absent_dates(sid_hint, db_hint)
+                if known:
+                    skip_use = known
+        except Exception:
+            logger.debug(
+                "official_work auto absent skip fail sid=%s", sid_hint, exc_info=True
+            )
     work = align_ohlc_cached(
-        work, sid_hint, skip_invent_dates=skip_invent_dates
+        work, sid_hint, skip_invent_dates=skip_use
     )
     if work is None or work.empty:
         return None
@@ -1182,6 +1203,19 @@ def _scale_cut_date(ex_events: Optional[List[Dict[str, Any]]], last_date: str) -
     return cut
 
 
+def _vol_zone_bar_skippable(work: pd.DataFrame, i: int, halt: pd.Series) -> bool:
+    """停牌／假補／盤中疊加不准佔爆大量近窗名額、也不准當候選。"""
+    if bool(halt.iloc[i]):
+        return True
+    if "no_trade_fill" in work.columns and bool(work["no_trade_fill"].iloc[i]):
+        return True
+    if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
+        return True
+    if "is_live" in work.columns and bool(work["is_live"].iloc[i]):
+        return True
+    return False
+
+
 def find_volume_zone(
     work: pd.DataFrame,
     *,
@@ -1190,9 +1224,10 @@ def find_volume_zone(
 ) -> Optional[Dict[str, Any]]:
     """近窗仍對現價有效的爆大量日。壓還在頭上才認；已全部站上才退回絕對最大量。
 
-    準則（鎖死）：
+    準則（鎖死；與 ``biaoke_brain.volume_first_price`` 同窗）：
     1. 只用官方日 K 原柱；略過停牌、略過 biaoke_stock_day／is_live。
-    2. 近窗＝最近 lookback 根（預設 40），不含「最後一根」（大量區＝過去參考日）。
+    2. 近窗＝恰 lookback 根**可交易**候選（預設 40），不含「最後一根」（大量區＝過去參考日）。
+       停牌／對齊發明的假柱不准佔名額（2233：發明 10/23 曾把 08/25 擠出窗 → 與結構圖分叉）。
     3. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     4. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
     5. 壓＝該日官方高、撐＝該日官方低。不是買訊、不發明 5／9。
@@ -1210,7 +1245,16 @@ def find_volume_zone(
         else pd.Series(False, index=work.index)
     )
     end = n - 1
-    start = max(0, end - max(int(lookback or 0), 1))
+    lb = max(int(lookback or 0), 1)
+    # 由末日往前數恰 lookback 根可交易柱；假停牌不進計數
+    tradable: List[int] = []
+    for i in range(end - 1, -1, -1):
+        if _vol_zone_bar_skippable(work, i, halt):
+            continue
+        tradable.append(i)
+        if len(tradable) >= lb:
+            break
+    start = int(tradable[-1]) if tradable else end
     last_d = _bar_ymd(work["date"].iloc[-1])
     cut = _scale_cut_date(ex_events, last_d)
     if cut:
@@ -1229,11 +1273,7 @@ def find_volume_zone(
     active_i = None
     active_v = -1.0
     for i in range(start, end):
-        if bool(halt.iloc[i]):
-            continue
-        if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
-            continue
-        if "is_live" in work.columns and bool(work["is_live"].iloc[i]):
+        if _vol_zone_bar_skippable(work, i, halt):
             continue
         v = float(work["volume"].iloc[i] or 0)
         if v <= 0:
@@ -1775,10 +1815,7 @@ def vol_zone_position_line(
         # 破撐原因句：點名下一層壓+撐（非買訊）；無候選明示暫無；破撐≠換主區
         next_bit = ""
         try:
-            from biaoke_next_support import (
-                NONE_LABEL,
-                resolve_next_support,
-            )
+            from biaoke_next_support import resolve_next_support
 
             sid0 = str(
                 stock_id
@@ -1805,7 +1842,8 @@ def vol_zone_position_line(
                     "（非買訊；主區未換）"
                 )
             else:
-                next_bit = str(pack.get("none_label") or NONE_LABEL)
+                # 無下一層＝靜默，不准寫「暫無下一層大量區」
+                next_bit = ""
         except Exception:
             next_bit = ""
         bits_extra = (next_bit,) if next_bit else ()
@@ -1814,10 +1852,7 @@ def vol_zone_position_line(
         # 過壓對稱：標下一層（次大量區壓+撐）；主區仍依重算規則，不在此硬換
         next_bit = ""
         try:
-            from biaoke_next_support import (
-                NONE_LABEL,
-                resolve_next_support,
-            )
+            from biaoke_next_support import resolve_next_support
 
             sid0 = str(
                 stock_id
@@ -1844,7 +1879,7 @@ def vol_zone_position_line(
                     "（非買訊）"
                 )
             else:
-                next_bit = str(pack.get("none_label") or NONE_LABEL)
+                next_bit = ""
         except Exception:
             next_bit = ""
         bits = (f"{voice['over']}壓{hi_s}上緣",)
@@ -3592,12 +3627,24 @@ def _paint_key_zone_smart_tags(
     ymax: float,
     occupied: Optional[List[Tuple[float, float, float, float]]] = None,
 ) -> List[Tuple[float, float, float, float]]:
-    """現任主大量區壓／撐：沿線智能掃位；壓 K／互壓／裁切→略過（不准硬釘左緣）。"""
-    from biaoke_next_support import pick_layer_label_along_line
+    """現任主大量區壓／撐（REQUIRED）：依本圖淨空自適應同側；找不到淨空也必須留標。
+
+    硬規則（2026-10-27）：
+    - 膚色帶上下緣「大量區壓／撐」不准因智慧定位略過。
+    - 壓在上、撐在下（依價位垂直序）。
+    - 每圖自揀左／中／右最佳淨空槽（對 K／量）；成對盡量同 X／同側。
+      2233 靠左＝該圖適合，不准寫死永遠釘左。
+    """
+    from biaoke_next_support import (
+        _approx_layer_tag_half_w,
+        pick_layer_label_along_line,
+    )
 
     placed: List[Tuple[float, float, float, float]] = list(occupied or [])
     prefer_x: Optional[float] = None
+    prefer_ha: Optional[str] = None
     y_span = max(float(ymax) - float(ymin), 1.0)
+    # 壓先、撐後：保證垂直序（上壓下撐）
     items: List[Tuple[float, str, str]] = []
     if float(hi or 0) > 0:
         items.append((float(hi), _PRESS, f"大量區壓 {_fmt_price(hi)}"))
@@ -3609,48 +3656,252 @@ def _paint_key_zone_smart_tags(
         linewidth=1.05,
         alpha=1.0,
     )
-    for y_px, color, text in items:
-        picked = pick_layer_label_along_line(
-            y=float(y_px),
-            text=text,
-            xmin=float(xmin),
-            xmax=float(xmax),
-            highs=highs,
-            lows=lows,
-            mas=list(mas or []),
-            occupied=placed,
-            tag_size=float(VOL_ZONE_TAG_PT),
-            y_span=float(y_span),
-            prefer_x=prefer_x,
-            max_score=18.0,
-            same_band_max=10.0,
+    x_lo = float(xmin)
+    x_hi = float(xmax)
+    box_right_limit = x_hi - 0.12
+    box_left_limit = x_lo - 0.35
+    n_bars = min(len(highs), len(lows))
+
+    def _box_for(cx: float, ha: str, half_w: float, y_px: float) -> Tuple[float, float, float, float]:
+        # 半高隨價窗：絕對 floor=10 會讓個股盒蓋滿 K → 同棧誤判失敗、改逐標拆左右
+        half_h = max(float(y_span) * 0.022, abs(float(y_px)) * 0.0035, 1.15)
+        half_h = min(float(half_h), max(float(y_span) * 0.09, 2.8))
+        if ha == "left":
+            bx0, bx1 = float(cx), float(cx) + 2.0 * half_w
+        elif ha == "right":
+            bx0, bx1 = float(cx) - 2.0 * half_w, float(cx)
+        else:
+            bx0, bx1 = float(cx) - half_w, float(cx) + half_w
+        return (bx0, bx1, float(y_px) - half_h, float(y_px) + half_h)
+
+    def _clamp_into_view(
+        cx: float, ha: str, box: Tuple[float, float, float, float], half_w: float
+    ) -> Tuple[float, str, Tuple[float, float, float, float]]:
+        bx0, bx1, by0, by1 = (float(v) for v in box)
+        shift = 0.0
+        if bx1 > box_right_limit:
+            shift = box_right_limit - bx1
+        if bx0 + shift < box_left_limit:
+            shift = box_left_limit - bx0
+        if abs(shift) > 1e-9:
+            cx = float(cx) + shift
+            bx0 += shift
+            bx1 += shift
+            box = (bx0, bx1, by0, by1)
+        if float(box[1]) > box_right_limit + 0.05:
+            cx = min(float(cx), box_right_limit)
+            ha = "right"
+            box = _box_for(cx, ha, half_w, 0.5 * (by0 + by1))
+            if float(box[0]) < box_left_limit:
+                cx = box_left_limit + 2.0 * half_w
+                box = _box_for(cx, ha, half_w, 0.5 * (by0 + by1))
+        if float(box[0]) < box_left_limit - 0.05:
+            cx = max(float(cx), box_left_limit)
+            ha = "left"
+            box = _box_for(cx, ha, half_w, 0.5 * (by0 + by1))
+        return float(cx), str(ha), box
+
+    def _k_crush_score(box: Tuple[float, float, float, float]) -> float:
+        """與 K 實體／影重疊代價（高＝壓死 K）。"""
+        if n_bars <= 0:
+            return 0.0
+        bx0, bx1, by0, by1 = (float(v) for v in box)
+        i0 = max(0, int(math.floor(bx0 - 0.55)))
+        i1 = min(n_bars, int(math.ceil(bx1 + 0.55)) + 1)
+        score = 0.0
+        for i in range(i0, i1):
+            try:
+                hk = float(highs[i])
+                lk = float(lows[i])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if hk <= 0 or lk <= 0:
+                continue
+            if lk > by1 or hk < by0:
+                continue
+            mid = 0.5 * (hk + lk)
+            if by0 <= mid <= by1:
+                score += 3.0
+            else:
+                score += 1.2
+        return score
+
+    def _pair_slot_candidates(half_w: float) -> List[Tuple[float, str]]:
+        """左／中／右同棧候選（依本圖幾何，不准寫死只左）。"""
+        trials: List[Tuple[float, str]] = []
+        # 左帶
+        trials.extend(
+            [
+                (max(box_left_limit + 0.02, x_lo + 0.05), "left"),
+                (max(0.35, x_lo + 0.2), "left"),
+                (min(max(1.5, float(n_bars) * 0.10), 6.0) if n_bars else 1.5, "left"),
+                (min(max(2.5, float(n_bars) * 0.18), 10.0) if n_bars else 2.5, "center"),
+            ]
         )
-        if picked is None:
-            continue
-        cx, ha, box = picked
-        # 近端密 K：右溝半截常裁切 → 再拒一次右緣過近
-        if float(box[1]) > float(xmax) - 0.15:
-            continue
-        if float(box[0]) < float(xmin) - 0.85:
-            continue
-        try:
-            ax.text(
-                float(cx),
-                float(y_px),
-                text,
-                ha=str(ha),
-                va="center",
-                fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
-                color=color,
-                zorder=22,
-                clip_on=False,
-                bbox={**_key_tag_box, "edgecolor": color},
+        # 中帶
+        if n_bars > 0:
+            mid = 0.5 * float(n_bars - 1)
+            trials.extend(
+                [
+                    (mid, "center"),
+                    (mid - half_w * 0.4, "center"),
+                    (mid + half_w * 0.4, "center"),
+                    (float(n_bars) * 0.42, "center"),
+                    (float(n_bars) * 0.58, "center"),
+                ]
             )
-        except Exception:
-            continue
+        # 右帶（末日左側）＋右溝（末日右側無 K，6274 左半必碾時用）
+        if n_bars > 0:
+            last = float(n_bars - 1)
+            trials.extend(
+                [
+                    (min(box_right_limit - 0.05, last - 0.35), "right"),
+                    (min(box_right_limit, last + 0.35), "left"),
+                    (max(last - half_w * 1.1, float(n_bars) * 0.72), "right"),
+                    (float(n_bars) * 0.82, "center"),
+                    (last + 0.55, "left"),
+                    (last + 1.15, "left"),
+                    (min(box_right_limit, last + 2.0), "left"),
+                    (min(box_right_limit, float(x_hi) - 0.15), "right"),
+                ]
+            )
+        return trials
+
+    def _best_pair_anchor(half_w: float) -> Optional[Tuple[float, str]]:
+        """成對同 X：左／中／右／右溝挑壓死 K 最少的共用錨（不准兩標各搬各的）。"""
+        best: Optional[Tuple[float, float, str]] = None
+        for cx0, ha0 in _pair_slot_candidates(half_w):
+            crush = 0.0
+            ok = True
+            for y_px, _c, _t in items:
+                box = _box_for(float(cx0), str(ha0), half_w, float(y_px))
+                cx1, ha1, box1 = _clamp_into_view(float(cx0), str(ha0), box, half_w)
+                if abs(float(cx1) - float(cx0)) > 2.5:
+                    ok = False
+                    break
+                crush += _k_crush_score(box1)
+            if not ok:
+                continue
+            edge_bias = 0.0
+            if n_bars > 0:
+                last = float(n_bars - 1)
+                # 右溝無 K：同 crush 不准壓過左／中（自适应槽）；crush 更低時仍會贏
+                # （舊 -max(2.5,crush) 重獎會讓左淨空圖也永遠釘右溝 → CI 紅）
+                if float(cx0) >= last + 0.2:
+                    edge_bias = 0.12
+                elif float(cx0) / max(last, 1.0) < 0.04:
+                    edge_bias = 0.35
+            key = crush + edge_bias
+            if best is None or key < best[0]:
+                best = (key, float(cx0), str(ha0))
+        if best is None:
+            return None
+        return best[1], best[2]
+
+    def _force_keep_slot(
+        y_px: float, text: str, half_w: float
+    ) -> Tuple[float, str, Tuple[float, float, float, float]]:
+        """REQUIRED 保底：同帶優先；再掃左／中／右；最後釘可視左緣。"""
+        candidates: List[Tuple[float, str]] = []
+        if prefer_x is not None:
+            for dlt in (0.0, -2.0, 2.0, -4.0, 4.0):
+                candidates.append((float(prefer_x) + dlt, "center"))
+                candidates.append((float(prefer_x) + dlt, "left"))
+                candidates.append((float(prefer_x) + dlt, "right"))
+        candidates.extend(_pair_slot_candidates(half_w))
+        # 依 crush 排序再取第一個不互壓
+        scored: List[Tuple[float, float, str, Tuple[float, float, float, float]]] = []
+        for cx0, ha0 in candidates:
+            cx1, ha1, box1 = _clamp_into_view(
+                float(cx0), str(ha0), _box_for(float(cx0), str(ha0), half_w, y_px), half_w
+            )
+            scored.append((_k_crush_score(box1), float(cx1), str(ha1), box1))
+        scored.sort(key=lambda t: t[0])
+        for _sc, cx1, ha1, box1 in scored:
+            overlaps = False
+            for ob in placed:
+                try:
+                    ox0, ox1, oy0, oy1 = (float(v) for v in ob)
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if box1[1] < ox0 or box1[0] > ox1 or box1[3] < oy0 or box1[2] > oy1:
+                    continue
+                if abs(0.5 * (oy0 + oy1) - float(y_px)) <= y_span * 0.03:
+                    continue
+                overlaps = True
+                break
+            if not overlaps:
+                return cx1, ha1, box1
+        cx_f = max(box_left_limit, x_lo + 0.05)
+        return _clamp_into_view(
+            cx_f, "left", _box_for(cx_f, "left", half_w, y_px), half_w
+        )
+
+    def _nudge_clear(
+        y_rail: float,
+        text: str,
+        cx: float,
+        ha: str,
+        half_w: float,
+        *,
+        prefer_up: bool,
+    ) -> Tuple[float, float, str, Tuple[float, float, float, float]]:
+        """先垂直微移；仍碾 K 再水平縮離（6274 大綠 K 跨過壓線，只上移仍蓋上影）。"""
+        sign = 1.0 if prefer_up else -1.0
+        step = max(float(y_span) * 0.012, 1.0)
+        best_y = float(y_rail)
+        best_cx, best_ha = float(cx), str(ha)
+        best_box = _box_for(best_cx, best_ha, half_w, best_y)
+        best_c = _k_crush_score(best_box)
+        if best_c < 0.5:
+            return best_y, best_cx, best_ha, best_box
+        for k in range(1, 16):
+            y2 = float(y_rail) + sign * step * float(k)
+            if y2 > float(ymax) - y_span * 0.02 or y2 < float(ymin) + y_span * 0.02:
+                break
+            box2 = _box_for(best_cx, best_ha, half_w, y2)
+            c2 = _k_crush_score(box2)
+            if c2 < best_c:
+                best_c, best_y, best_box = c2, y2, box2
+            if c2 < 0.5:
+                return best_y, best_cx, best_ha, best_box
+        # 水平：往左緣縮（ha=left 釘左）或略右，縮短蓋到跨線 K 的寬度
+        x_trials: List[Tuple[float, str]] = [
+            (max(box_left_limit + 0.02, float(x_lo) + 0.05), "left"),
+            (max(0.4, float(best_cx) - half_w * 0.8), "left"),
+            (max(0.4, float(best_cx) - half_w * 1.4), "left"),
+            (min(box_right_limit - 0.05, float(best_cx) + half_w * 0.6), "right"),
+            (min(box_right_limit, float(n_bars) * 0.22 if n_bars else best_cx), "left"),
+        ]
+        for cx2, ha2 in x_trials:
+            for k in range(0, 10):
+                y2 = float(y_rail) + sign * step * float(k)
+                if y2 > float(ymax) - y_span * 0.02 or y2 < float(ymin) + y_span * 0.02:
+                    break
+                cx3, ha3, box3 = _clamp_into_view(
+                    float(cx2), str(ha2), _box_for(float(cx2), str(ha2), half_w, y2), half_w
+                )
+                c3 = _k_crush_score(box3)
+                if c3 < best_c:
+                    best_c, best_y, best_cx, best_ha, best_box = c3, y2, cx3, ha3, box3
+                if c3 < 0.5:
+                    return best_y, best_cx, best_ha, best_box
+        return best_y, best_cx, best_ha, best_box
+
+    def _emit(y_px: float, color: str, text: str, cx: float, ha: str, box) -> None:
+        ax.text(
+            float(cx),
+            float(y_px),
+            text,
+            ha=str(ha),
+            va="center",
+            fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
+            color=color,
+            zorder=22,
+            clip_on=False,
+            bbox={**_key_tag_box, "edgecolor": color},
+        )
         placed.append(tuple(float(v) for v in box))  # type: ignore[arg-type]
-        if prefer_x is None:
-            prefer_x = float(cx)
         try:
             from smart_label_metrics import record_smart_label
 
@@ -3667,6 +3918,149 @@ def _paint_key_zone_smart_tags(
             )
         except Exception:
             pass
+
+    if not items:
+        return placed
+
+    half_w_max = max(
+        float(_approx_layer_tag_half_w(t, float(VOL_ZONE_TAG_PT))) for _y, _c, t in items
+    )
+    pair_anchor = _best_pair_anchor(half_w_max)
+    def _y_nudge_only(
+        y_rail: float,
+        cx: float,
+        ha: str,
+        half_w: float,
+        *,
+        prefer_up: bool,
+    ) -> Tuple[float, Tuple[float, float, float, float]]:
+        """成對鎖錨後只准垂直躲：壓抬過盒內局部最高、撐壓過局部最低（6274 今日 K 穿壓線）。"""
+        best_y = float(y_rail)
+        best_box = _box_for(float(cx), str(ha), half_w, best_y)
+        best_c = _k_crush_score(best_box)
+        if best_c < 0.5:
+            return best_y, best_box
+        # 盒蓋到的 K 索引 → 局部高低
+        bx0, bx1 = float(best_box[0]), float(best_box[1])
+        i0 = max(0, int(math.floor(bx0 - 0.55)))
+        i1 = min(n_bars, int(math.ceil(bx1 + 0.55)) + 1)
+        local_hi = None
+        local_lo = None
+        for i in range(i0, i1):
+            try:
+                hk = float(highs[i])
+                lk = float(lows[i])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if hk > 0:
+                local_hi = hk if local_hi is None else max(local_hi, hk)
+            if lk > 0:
+                local_lo = lk if local_lo is None else min(local_lo, lk)
+        pad = max(float(y_span) * 0.028, abs(float(y_rail)) * 0.004, 2.0)
+        candidates: List[float] = []
+        if prefer_up and local_hi is not None:
+            candidates.append(float(local_hi) + pad)
+        if (not prefer_up) and local_lo is not None:
+            candidates.append(float(local_lo) - pad)
+        # 再加逐步微移備援
+        sign = 1.0 if prefer_up else -1.0
+        step = max(float(y_span) * 0.018, 1.5)
+        for k in range(1, 18):
+            candidates.append(float(y_rail) + sign * step * float(k))
+        for y2 in candidates:
+            if y2 > float(ymax) - y_span * 0.01:
+                # 需要更高 → 呼叫端若已擴 ylim；此處先夾在可視頂下
+                y2 = float(ymax) - y_span * 0.015
+            if y2 < float(ymin) + y_span * 0.01:
+                y2 = float(ymin) + y_span * 0.015
+            box2 = _box_for(float(cx), str(ha), half_w, float(y2))
+            c2 = _k_crush_score(box2)
+            if c2 < best_c:
+                best_c, best_y, best_box = c2, float(y2), box2
+            if c2 < 0.5:
+                break
+        return best_y, best_box
+
+    # 成對必共用錨（含右溝）；找不到才退回逐標（仍鎖同側）
+    if pair_anchor is None and len(items) >= 2:
+        # 保底：末日右溝
+        if n_bars > 0:
+            pair_anchor = (
+                min(box_right_limit, float(n_bars - 1) + 0.55),
+                "left",
+            )
+    if pair_anchor is not None:
+        cx_p, ha_p = float(pair_anchor[0]), str(pair_anchor[1])
+        prefer_x, prefer_ha = cx_p, ha_p
+        for y_px, color, text in items:
+            half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
+            cx, ha = cx_p, ha_p
+            y_draw, box = _y_nudge_only(
+                float(y_px), cx, ha, half_w, prefer_up=("壓" in text)
+            )
+            # 抬過今日高／壓過今日低時擴 ylim，免裁切
+            try:
+                y0, y1 = ax.get_ylim()
+                top_need = float(box[3]) + float(y_span) * 0.025
+                bot_need = float(box[2]) - float(y_span) * 0.025
+                if top_need > float(y1) or bot_need < float(y0):
+                    ax.set_ylim(min(float(y0), bot_need), max(float(y1), top_need))
+            except Exception:
+                pass
+            try:
+                _emit(float(y_draw), color, text, cx, ha, box)
+            except Exception:
+                _emit(float(y_px), color, text, cx, ha, _box_for(cx, ha, half_w, float(y_px)))
+        return placed
+
+    # 單標或無錨：逐標掃
+    for y_px, color, text in items:
+        half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
+        if prefer_x is not None and prefer_ha is not None:
+            cx, ha, box = _clamp_into_view(
+                float(prefer_x),
+                str(prefer_ha),
+                _box_for(float(prefer_x), str(prefer_ha), half_w, float(y_px)),
+                half_w,
+            )
+            y_draw, box = _y_nudge_only(
+                float(y_px), float(prefer_x), str(prefer_ha), half_w, prefer_up=("壓" in text)
+            )
+            cx, ha = float(prefer_x), str(prefer_ha)
+        else:
+            picked = pick_layer_label_along_line(
+                y=float(y_px),
+                text=text,
+                xmin=float(xmin),
+                xmax=float(xmax),
+                highs=highs,
+                lows=lows,
+                mas=list(mas or []),
+                occupied=placed,
+                tag_size=float(VOL_ZONE_TAG_PT),
+                y_span=float(y_span),
+                prefer_x=prefer_x,
+                max_score=28.0,
+                same_band_max=12.0,
+            )
+            if picked is None:
+                cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+            else:
+                cx, ha, box = picked
+                cx, ha, box = _clamp_into_view(float(cx), str(ha), box, half_w)
+                if float(box[1]) > box_right_limit + 0.55 or float(box[0]) < box_left_limit - 0.55:
+                    cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+            y_draw, cx, ha, box = _nudge_clear(
+                float(y_px), text, cx, ha, half_w, prefer_up=("壓" in text)
+            )
+        try:
+            _emit(float(y_draw), color, text, cx, ha, box)
+        except Exception:
+            cx, ha, box = _force_keep_slot(float(y_px), text, half_w)
+            _emit(float(y_px), color, text, cx, ha, box)
+        if prefer_x is None:
+            prefer_x = float(cx)
+            prefer_ha = str(ha)
     return placed
 
 
@@ -5065,37 +5459,72 @@ def _paint_volume_zone(
                 mid_hi = float(y0_ax) + y_sp * 0.42
                 if float(lo or 0) > 0 and mid_lo <= float(lo) <= mid_hi:
                     path_ax_y = 0.08
-            # 資料座標粗估橘框高度≈ 0.10*ylim；撞近端高低帶→改試 0.55，再撞就略過
-            def _path_hits_tail(axy: float, va: str) -> bool:
+            # 資料座標粗估橘框高度≈ 0.10*ylim；撞近端高低帶→改試其他槽；再撞略過
+            def _path_y_span(axy: float, va: str) -> Tuple[float, float]:
                 if va == "top":
                     y_hi = float(y0_ax) + float(axy) * y_sp
                     y_lo = y_hi - y_sp * 0.10
-                else:
+                elif va == "bottom":
                     y_lo = float(y0_ax) + float(axy) * y_sp
                     y_hi = y_lo + y_sp * 0.10
+                else:
+                    mid = float(y0_ax) + float(axy) * y_sp
+                    y_lo, y_hi = mid - y_sp * 0.055, mid + y_sp * 0.055
+                return float(y_lo), float(y_hi)
+
+            def _path_hits_tail(axy: float, va: str) -> bool:
+                y_lo, y_hi = _path_y_span(axy, va)
                 return not (y_hi < float(tail_lo) or y_lo > float(tail_hi))
 
-            if _path_hits_tail(path_ax_y, path_va):
-                path_ax_y, path_va = 0.55, "center"
-            if _path_hits_tail(path_ax_y, path_va):
-                path_ax_y, path_va = 0.72, "center"
-            if _path_hits_tail(path_ax_y, path_va):
+            def _path_hits_key(axy: float, va: str) -> bool:
+                """橘框不准蓋「大量區壓／撐」（6919 右下提示貼壓框底）。"""
+                y_lo, y_hi = _path_y_span(axy, va)
+                x_lo_path = float(n) * 0.55  # 右半才可能跟右槽壓撐互壓
+                for ob in _key_occ or []:
+                    try:
+                        ox0, ox1, oy0, oy1 = (float(v) for v in ob)
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                    if ox1 < x_lo_path:
+                        continue
+                    if not (y_hi < oy0 or y_lo > oy1):
+                        return True
+                return False
+
+            trials = [
+                (path_ax_y, path_va),
+                (0.14, "bottom"),
+                (0.08, "bottom"),
+                (0.28, "center"),
+                (0.72, "center"),
+                (0.85, "top"),
+                (0.55, "center"),
+            ]
+            placed_ok = False
+            for axy, va in trials:
+                if _path_hits_tail(axy, va) or _path_hits_key(axy, va):
+                    continue
+                path_ax_y, path_va = float(axy), str(va)
+                placed_ok = True
+                break
+            if not placed_ok:
                 _path_place = False
         except Exception:
             path_ax_y, path_va = 0.985, "top"
             _path_place = True
         if _path_place:
+            # 長句橘框：略離右緣＋關 clip，不准右框／「收####」被切半
             ax1.text(
-                0.995,
+                0.978,
                 float(path_ax_y),
                 path_shown,
                 transform=ax1.transAxes,
                 ha="right",
                 va=str(path_va),
-                fontproperties=_fp(8.4, "bold"),
+                fontproperties=_fp(8.2, "bold"),
                 color=_CALL,
                 zorder=int(_KEY_Z),
-                clip_on=True,
+                clip_on=False,
                 linespacing=1.08,
                 bbox=dict(
                     boxstyle="round,pad=0.16",
@@ -5171,15 +5600,31 @@ def _paint_volume_zone(
         """side=left／right／center；有 lab_y＝資料座標水平並排，否則貼柱頂。"""
         if lab_y is not None:
             # v8 建議：水平並排保留；連線改短、貼近量柱
+            # 近右／左緣：文字往窗內長，不准裁成「下一層量日 10」半句
             if side == "left":
-                tx = max(-0.2, float(x) - 1.55)
-                ha = "right"
+                if float(x) <= 6.0:
+                    tx = max(-0.15, float(x) - 0.25)
+                    ha = "left"
+                else:
+                    tx = max(-0.2, float(x) - 1.55)
+                    ha = "right"
             elif side == "right":
-                tx = min(float(n) - 0.4, float(x) + 1.55)
-                ha = "left"
+                if float(x) >= float(n) - 8.0:
+                    tx = min(float(n) - 0.55, float(x) + 0.25)
+                    ha = "right"
+                else:
+                    tx = min(float(n) - 0.55, float(x) + 1.55)
+                    ha = "left"
             else:
                 tx = float(x)
                 ha = "center"
+                # 單標也在末日：改右對齊往左長
+                if float(x) >= float(n) - 5.0:
+                    tx = min(float(n) - 0.55, float(x) + 0.15)
+                    ha = "right"
+                elif float(x) <= 4.0:
+                    tx = max(-0.15, float(x) - 0.15)
+                    ha = "left"
             ax2.annotate(
                 str(text),
                 xy=(float(x), float(y)),
@@ -5319,8 +5764,10 @@ def _paint_volume_zone(
             del tick_at[i]
     tick_pos = sorted(tick_at)
     tick_lab = [tick_at[i] for i in tick_pos]
-    # 與導航同一套：能排下單排；會互壓才錯開
-    _set_staggered_month_ticks(ax2, tick_lab, tick_pos, compact=False)
+    # 腳註佔下排：互壓時丟月標／較早日，不准 10/22 掉到「／殘影」上（6148）
+    _set_staggered_month_ticks(
+        ax2, tick_lab, tick_pos, compact=False, allow_stagger=False
+    )
     ax1.tick_params(labelbottom=False)
 
     src = str(view["quote_source"].iloc[-1] if "quote_source" in view.columns else "")

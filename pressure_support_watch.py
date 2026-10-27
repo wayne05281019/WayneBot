@@ -406,12 +406,25 @@ def _find_volume_zone_np(
     *,
     lookback: int = VOL_ZONE_LOOKBACK,
 ) -> Optional[Dict[str, Any]]:
-    """與 vol_zone_chart.find_volume_zone 同準則（篩選略過除權切窗＝fast 路徑）。"""
+    """與 vol_zone_chart.find_volume_zone 同準則（篩選略過除權切窗＝fast 路徑）。
+
+    近窗＝恰 lookback 根**可交易**候選（停牌不佔名額），與 pandas 路徑同窗。
+    """
     n = len(closes)
     if n < 2:
         return None
     end = n - 1
-    start = max(0, end - max(int(lookback or 0), 1))
+    lb = max(int(lookback or 0), 1)
+    # 由末日往前數恰 lookback 根非停牌（對齊 find_volume_zone）
+    tradable = 0
+    start = end
+    for i in range(end - 1, -1, -1):
+        if bool(halt[i]):
+            continue
+        tradable += 1
+        start = i
+        if tradable >= lb:
+            break
     last_close = float(closes[-1] or 0)
     best_i = None
     best_v = -1.0

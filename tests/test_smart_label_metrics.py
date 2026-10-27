@@ -156,15 +156,15 @@ def test_needs_restyle_when_imbalanced_but_clear():
     assert summarize_scores([s])["gate_aesthetic_min"] == 70.0
 
 
-def test_key_zone_smart_tags_skip_when_pressing_k():
-    """主區壓／撐：沿線無淨空→略過，不准硬釘左緣壓滿盤 K。"""
+def test_key_zone_smart_tags_force_keep_when_pressing_k():
+    """主區壓／撐＝REQUIRED：沿線無淨空仍必須留標（不准智慧略過弄丟膚色帶標）。"""
     from vol_zone_chart import _paint_key_zone_smart_tags
     import matplotlib.pyplot as plt
 
     n = 60
     highs = np.full(n, 120.0)
     lows = np.full(n, 100.0)
-    # 整段都貼住 110／105 價位 → 無淨空
+    # 整段都貼住 110／105 價位 → 無淨空；仍須強制留下壓＋撐
     fig, ax = plt.subplots()
     ax.set_xlim(-0.5, n + 0.5)
     ax.set_ylim(90, 130)
@@ -181,9 +181,61 @@ def test_key_zone_smart_tags_skip_when_pressing_k():
         ymax=130.0,
         occupied=[],
     )
+    texts = [t.get_text() for t in ax.texts]
     plt.close(fig)
-    # occupied 回傳含輸入；新標若硬壓會增加。無淨空時不准新增
-    assert len(placed) == 0
+    assert any(str(t).startswith("大量區壓") for t in texts)
+    assert any(str(t).startswith("大量區撐") for t in texts)
+    # occupied 至少含兩枚 REQUIRED 盒（輸入 occupied 為空）
+    assert len(placed) >= 2
+
+
+def test_key_zone_adaptive_pair_slot_differs_by_geometry():
+    """壓上撐下＋同側；左淨空圖靠左、右淨空圖靠右——不准寫死永遠釘左。"""
+    from vol_zone_chart import _paint_key_zone_smart_tags
+    import matplotlib.pyplot as plt
+
+    n = 80
+    xmin, xmax = -0.35, n + 0.55
+
+    def _paint(highs, lows):
+        fig, ax = plt.subplots()
+        ax.set_xlim(-0.5, n + 0.5)
+        ax.set_ylim(120, 260)
+        _paint_key_zone_smart_tags(
+            ax,
+            hi=173.0,
+            lo=157.5,
+            highs=highs,
+            lows=lows,
+            mas=[],
+            xmin=xmin,
+            xmax=xmax,
+            ymin=120.0,
+            ymax=260.0,
+            occupied=[],
+        )
+        press = next(t for t in ax.texts if str(t.get_text()).startswith("大量區壓"))
+        hold = next(t for t in ax.texts if str(t.get_text()).startswith("大量區撐"))
+        xs = (float(press.get_position()[0]), float(hold.get_position()[0]))
+        ys = (float(press.get_position()[1]), float(hold.get_position()[1]))
+        plt.close(fig)
+        assert ys[0] > ys[1]  # 壓在上
+        assert abs(xs[0] - xs[1]) < 2.0  # 成對同側
+        return 0.5 * (xs[0] + xs[1])
+
+    # 左淨空（2233 類）：左半 K 遠在帶上
+    left_clear_x = _paint(
+        np.concatenate([np.full(40, 240.0), np.full(40, 150.0)]),
+        np.concatenate([np.full(40, 220.0), np.full(40, 140.0)]),
+    )
+    # 右淨空：右半 K 遠在帶上、左半穿帶
+    right_clear_x = _paint(
+        np.concatenate([np.full(40, 175.0), np.full(40, 240.0)]),
+        np.concatenate([np.full(40, 155.0), np.full(40, 220.0)]),
+    )
+    assert left_clear_x < n * 0.35
+    assert right_clear_x > n * 0.55
+    assert abs(left_clear_x - right_clear_x) > n * 0.25
 
 
 def test_blank_channel_pair_same_band_unit():

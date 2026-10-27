@@ -270,22 +270,62 @@ def resolve_stock(db_path: str, query: str) -> List[Dict[str, Any]]:
     return direct or hits
 
 
+def _volume_first_bar_skippable(r: Dict[str, Any]) -> bool:
+    """停牌／對齊假補不准佔近窗名額（與 find_volume_zone 同）。"""
+    if bool(r.get("is_halt")) or bool(r.get("no_trade_fill")):
+        return True
+    if str(r.get("source") or "") == "biaoke_stock_day":
+        return True
+    if bool(r.get("is_live")):
+        return True
+    try:
+        v = float(r.get("volume") or 0)
+        hi = float(r.get("high") or 0)
+        lo = float(r.get("low") or 0)
+    except (TypeError, ValueError):
+        return True
+    # 無量且高低同價＝停價柱；有量不准當假停
+    if v <= 0 and abs(hi - lo) <= 1e-8:
+        return True
+    return False
+
+
 def volume_first_price(bars: Sequence[Dict[str, Any]], *, lookback: int = 40) -> Dict[str, Any]:
     """量先價行：近窗仍有效爆大量日高當壓、低當撐（與大量區專圖同一套）。
 
-    準則對齊 ``vol_zone_chart.find_volume_zone``：
-    1. 近窗不含最後一根（大量區＝過去參考日）。
+    準則對齊 ``vol_zone_chart.find_volume_zone``（2026-10-27 鎖死同窗）：
+    1. 近窗＝恰 lookback 根**可交易**候選（預設 40），**不含最後一根**（大量區＝過去參考日）。
+       停牌／發明假柱不准佔名額（2233：發明 10/23 曾把 08/25 擠出 → 結構／大量區分叉）。
     2. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     3. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
     沒公式、不編 KD；不是買訊。
     """
-    window = list(bars)[-int(lookback) :] if bars else []
-    if not window:
+    lb = max(int(lookback or 0), 1)
+    raw = list(bars or [])
+    if not raw:
         return {}
-    last = window[-1]
+    last = raw[-1]
     close = float(last.get("close") or 0)
-    # 不含最後一根；只剩一根時退回用它（極短序列）
-    cands = list(window[:-1]) if len(window) >= 2 else list(window)
+    # 由末日往前數恰 lookback 根可交易柱；與 find_volume_zone 同
+    cands_rev: List[Dict[str, Any]] = []
+    for r in reversed(raw[:-1]):
+        if _volume_first_bar_skippable(r):
+            continue
+        cands_rev.append(r)
+        if len(cands_rev) >= lb:
+            break
+    cands = list(reversed(cands_rev))
+    if not cands:
+        cands = [last]
+    # down_streak 仍看含末日的近尾（略過假停），與可讀連跌一致
+    streak_rows = [last]
+    for r in reversed(raw[:-1]):
+        if _volume_first_bar_skippable(r):
+            continue
+        streak_rows.append(r)
+        if len(streak_rows) >= min(8, lb + 1):
+            break
+    streak_rows.reverse()
     best = None
     best_v = -1.0
     active = None
@@ -306,14 +346,16 @@ def volume_first_price(bars: Sequence[Dict[str, Any]], *, lookback: int = 40) ->
             active = r
     spike = active if active is not None else best
     if spike is None:
-        spike = max(window, key=lambda r: float(r.get("volume") or 0))
+        spike = max(cands, key=lambda r: float(r.get("volume") or 0))
     vol_now = float(last.get("volume") or 0)
     vol_spike = float(spike.get("volume") or 0)
     hi = float(spike.get("high") or 0)
     lo = float(spike.get("low") or 0)
     down = 0
-    for i in range(len(window) - 1, 0, -1):
-        if float(window[i].get("close") or 0) < float(window[i - 1].get("close") or 0):
+    for i in range(len(streak_rows) - 1, 0, -1):
+        if float(streak_rows[i].get("close") or 0) < float(
+            streak_rows[i - 1].get("close") or 0
+        ):
             down += 1
         else:
             break

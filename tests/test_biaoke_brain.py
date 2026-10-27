@@ -190,6 +190,31 @@ def test_volume_first_price_excludes_last_bar_even_if_max_vol():
     assert st["spike_low"] == 90
 
 
+def test_volume_first_lookback_has_exactly_n_candidates():
+    """lookback=40 → 候選恰 40 根（不含末日），不准再變成 39（2233 分叉）。"""
+    bars = []
+    for i in range(50):
+        bars.append(
+            {
+                "date": f"20260{100 + i}",
+                "high": 100.0,
+                "low": 90.0,
+                "close": 95.0,
+                "volume": 1000 + i,
+            }
+        )
+    # 末日量最大也不可進候選；第 -41 根（index 9）量超大且壓還在頭上
+    bars[9]["volume"] = 99999
+    bars[9]["high"] = 110.0
+    bars[9]["low"] = 80.0
+    bars[-1]["volume"] = 88888
+    bars[-1]["close"] = 95.0
+    st = volume_first_price(bars, lookback=40)
+    assert str(st["spike_date"]).replace("-", "")[:8] == "20260109"
+    assert st["spike_high"] == 110.0
+    assert st["spike_low"] == 80.0
+
+
 def test_search_miss_does_not_say_wont_guess():
     html = search_biaoke("這個代號絕對不存在xyzzy")
     assert "不猜" not in html

@@ -243,7 +243,9 @@ def test_reason_line_names_next_layer():
     assert "下一層" in line
     assert "非買訊" in line
     none_line = reason_next_support_line(broken_lo=100, primary=None, none_label=NONE_LABEL)
-    assert NONE_LABEL in none_line
+    # 無下一層：原因句靜默佔位字，只留破撐本身
+    assert "收破大量區撐" in none_line
+    assert NONE_LABEL not in none_line
 
 
 def test_attach_rewrites_abandon_label():
@@ -261,7 +263,8 @@ def test_attach_rewrites_abandon_label():
             ns.get("reason_line") or ""
         )
     notes = " ".join(info.get("notes") or [])
-    assert "收破大量區撐" in notes or NONE_LABEL in notes
+    assert "收破大量區撐" in notes
+    assert NONE_LABEL not in notes
 
 
 def test_chiifeng_written_not_on_other_stock():
@@ -306,6 +309,44 @@ def test_pick_layer_label_avoids_candle_cluster():
     assert box[0] < box[1]
     mid = 0.5 * (box[0] + box[1])
     assert mid < 5.0 or mid > 35.0 or box[1] < 0.0
+    # 整盒不准超出 xmax（話筒右緣裁切根因）
+    assert box[1] <= float(n) + 0.55 + 1e-6
+
+
+def test_pick_layer_label_box_stays_inside_xmax():
+    """短標「下一層壓 ##」右緣候選也必須整盒 ≤ xmax（1605／3033／6443）。"""
+    n = 80
+    # y=43.1 全程高於 K → 有淨空；舊右溝 ha=left 會把盒伸出 xmax
+    highs = [40.0] * n
+    lows = [36.0] * n
+    xmax = float(n) + 0.55
+    picked = pick_layer_label_along_line(
+        y=43.1,
+        text="下一層壓 43.1",
+        xmin=-0.35,
+        xmax=xmax,
+        highs=highs,
+        lows=lows,
+        tag_size=9.5,
+        max_score=60.0,
+    )
+    assert picked is not None
+    _cx, ha, box = picked
+    assert box[1] <= xmax + 1e-6
+    assert ha in ("left", "right", "center")
+    # 硬拒路徑：故意超寬半盒的候選不得回超界解
+    wide = pick_layer_label_along_line(
+        y=43.1,
+        text="下一層壓 " + ("9" * 40),
+        xmin=-0.35,
+        xmax=xmax,
+        highs=highs,
+        lows=lows,
+        tag_size=12.0,
+        max_score=None,
+    )
+    if wide is not None:
+        assert wide[2][1] <= xmax + 1e-6
 
 
 def test_layer_tag_size_delta_uniform():

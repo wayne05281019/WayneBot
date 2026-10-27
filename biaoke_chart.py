@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -201,8 +202,9 @@ def _md(raw: Any) -> str:
 def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
     """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免日期標互壓。
 
-    爆量日若離最後一根 <4，只留最後一根（爆量另有豎虛線＋量標），不准日刻互壓。
-    3081：08/26 爆量與 09/03 只差 6 根 → 鄰距門檻拉到 ≥8，不准 MM/DD 互壓。
+    爆量／下一層日若離最後一根不足標籤縫，只留最後一根（爆量另有豎虛線＋量標），不准日刻互壓。
+    3081／1605：鄰距門檻 ≥12（八個月窗 bold MM/DD）；差 8 根仍會黏成「09/1609/30」。
+    優先序：頭／尾日 > 爆量／下一層 extra > 一般步進刻。任意相鄰不得 < min_label_gap。
     """
     n = int(n or 0)
     if n <= 0:
@@ -210,13 +212,13 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
     if n == 1:
         return [0]
     last = n - 1
-    min_extra_gap = 4
-    # 標籤寬（MM/DD）約需 ≥8 根空隙才不互壓（八個月窗更密）
-    min_label_gap = max(8, n // 22)
+    # 標籤寬（MM/DD bold）約需 ≥12 根才不互壓；8 根仍會黏成「09/1609/30」（1605）
+    min_label_gap = max(12, n // 16)
+    # extra 離尾日不足縫＝不進軸（與互壓門檻同一把尺；舊門檻 4／8 會雙留）
     extras = [
         int(x)
         for x in extra
-        if 0 <= int(x) < n and abs(int(x) - last) >= min_extra_gap
+        if 0 <= int(x) < n and int(x) not in (0, last) and abs(int(x) - last) >= min_label_gap
     ]
     extras_set = set(extras)
     step = max(n // 7, 4)
@@ -236,44 +238,48 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
         if abs(i - last) < min_label_gap:
             continue
         keep.append(i)
-    # 再掃一遍：任意相鄰刻度（含爆量日）不夠縫就丟中間那根（保頭尾／爆量優先）
+    # 再掃：任意相鄰不夠縫 → 置換／丟棄（不准尾日與爆量雙留互壓）
     thinned: List[int] = []
     for i in keep:
         if not thinned:
             thinned.append(i)
             continue
         prev = thinned[-1]
-        if abs(i - prev) >= min_label_gap or i in (0, last) and prev in extras_set:
+        if abs(i - prev) >= min_label_gap:
             thinned.append(i)
             continue
-        # 相鄰太近：優先留爆量／尾日，丟一般刻
-        if i in extras_set or i == last:
-            if prev not in extras_set and prev != 0:
-                thinned[-1] = i
-            elif prev == 0 or prev in extras_set:
-                # 頭或爆量已佔：若新的是尾日仍要；否則跳過
-                if i == last:
-                    thinned.append(i)
-            else:
-                thinned.append(i)
-        # else: 丟一般 i
-    # 尾日必在
+        if prev == 0:
+            # 頭日必留；過近的下一刻丟掉（尾日不可能貼頭）
+            continue
+        if i == last or (i in extras_set and prev not in extras_set):
+            thinned[-1] = i
+        # else: 丟一般 i（或第二個 extra）
     if last not in thinned:
         thinned.append(last)
-        thinned = sorted(set(thinned))
-        # 尾日擠到前一根一般刻 → 丟前一根
-        cleaned: List[int] = []
-        for i in thinned:
-            if cleaned and abs(i - cleaned[-1]) < min_label_gap:
-                if i == last:
-                    if cleaned[-1] not in extras_set and cleaned[-1] != 0:
-                        cleaned[-1] = i
-                    else:
-                        cleaned.append(i)
+    thinned = sorted(set(thinned))
+    cleaned: List[int] = []
+    for i in thinned:
+        if cleaned and abs(i - cleaned[-1]) < min_label_gap:
+            prev = cleaned[-1]
+            if prev == 0:
                 continue
-            cleaned.append(i)
-        thinned = cleaned
-    return thinned
+            if i == last or (i in extras_set and prev not in extras_set):
+                cleaned[-1] = i
+            continue
+        cleaned.append(i)
+    if last not in cleaned:
+        cleaned.append(last)
+        cleaned = sorted(set(cleaned))
+        # 尾日擠到前一刻 → 置換（含前一刻是 extra）
+        fixed: List[int] = []
+        for i in cleaned:
+            if fixed and abs(i - fixed[-1]) < min_label_gap:
+                if i == last and fixed[-1] != 0:
+                    fixed[-1] = i
+                continue
+            fixed.append(i)
+        cleaned = fixed
+    return cleaned
 
 
 def _ymd_full(raw: Any) -> str:
@@ -1941,7 +1947,7 @@ def _dedupe_right_notes(
 ) -> List[Dict[str, Any]]:
     """價位太近只留優先標籤，避免壓／軌／最可能互蓋。
 
-    「收／昨收」只在幾乎貼齊壓／撐時才讓；空位要留收（71 紅框鎖死）。
+    「今收」紅框必留；昨收 REQUIRED 不准因貼近壓／撐／軌被刪（顯示 Y 再錯開）。
     通道軌標（平行壓／上升軌…）不准被爆大量壓／撐刪掉——改垂直錯開（61 範本）。
     """
     if not notes:
@@ -1992,6 +1998,15 @@ def _dedupe_right_notes(
             if _is_today_close_note(kt):
                 if _is_level_note(text) or is_close or is_rail:
                     continue
+            # REQUIRED：昨收不准因貼近壓／撐／軌被刪（6213 昨收823≈壓818；3033 昨收≈撐）
+            if _is_prev_close_note(text) and (
+                _is_level_note(kt) or _is_rail_note(kt)
+            ):
+                continue
+            if _is_prev_close_note(kt) and (
+                _is_level_note(text) or is_rail
+            ):
+                continue
             # 75：昨收＋今收同列並排，同價 Y 必須兩標都留
             if _is_prev_close_note(text) and _is_today_close_note(kt):
                 continue
@@ -4618,15 +4633,18 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    # v11：下一層壓／撐＝大量區同一 pick_layer_label_along_line（沿線掃位＋整組同字級略縮）
-    # 昨收／今收右下、下降壓／平行撐釘紫虛線、主壓撐桃色右緣＝既有鎖位保留
+    # 原文目標先入 right_notes；下一層壓／撐改在軌道標之後畫（避 1605 與平行撐互壓）
     try:
-        from biaoke_next_support import paint_written_and_next_levels
+        from biaoke_next_support import paint_written_and_next_levels as _paint_written_only
 
-        paint_written_and_next_levels(
+        _paint_written_only(
             ax1,
             sid=str(sid or ""),
-            next_pack=dict(info.get("next_support") or {}),
+            next_pack={
+                **dict(info.get("next_support") or {}),
+                "broke": False,
+                "over": False,
+            },
             xmin=-0.55,
             xmax=hline_xmax,
             right_notes=right_notes,
@@ -4638,14 +4656,14 @@ def render_biaoke_structure_png(
             written_labels="notes",
             highs=highs,
             lows=lows,
+            busy_ys=(float(spike_hi or 0), float(spike_lo or 0)),
         )
-        # v8 建議：飆大原文目標長標字級／框略縮一階（仍完整可見）
         for _wn in right_notes:
             if "原文目標" in str(_wn.get("text") or ""):
                 _wn["size"] = max(8.5, float(_STRUCTURE_TAG_SIZE) - 1.5)
                 _wn["pad"] = max(0.12, float(_STRUCTURE_TAG_PAD) - 0.06)
     except Exception:
-        logger.debug("結構圖原文／下一層線略過", exc_info=True)
+        logger.debug("結構圖原文目標線略過", exc_info=True)
     # 右軸：今收／現價（71 紅框必留）＋昨收；75 同列並排。
     # 數字跟左上 nameplate／高低卡／介紹同源＝決策卡 quote；K 主體仍官方柱。
     # 不准再用 last_bar 官方末日蓋掉盤中現價（上市上櫃興櫃同一規則）。
@@ -4848,6 +4866,50 @@ def render_biaoke_structure_png(
                 right_notes.append(
                     {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": _STRUCTURE_TAG_SIZE}
                 )
+    # 下一層壓／撐：軌道／單軌標之後再掃（避與平行撐互壓；OPTIONAL 無淨空可略）
+    try:
+        from biaoke_next_support import paint_written_and_next_levels
+
+        _occ = []
+        for _art in list(getattr(ax1, "_wayne_channel_label_artists", None) or []):
+            try:
+                ax1.figure.canvas.draw()
+                _ren = ax1.figure.canvas.get_renderer()
+                _bb = _art.get_window_extent(renderer=_ren)
+                _inv = ax1.transData.inverted()
+                (_x0, _y0) = _inv.transform((_bb.x0, _bb.y0))
+                (_x1, _y1) = _inv.transform((_bb.x1, _bb.y1))
+                _occ.append(
+                    (
+                        float(min(_x0, _x1)),
+                        float(max(_x0, _x1)),
+                        float(min(_y0, _y1)),
+                        float(max(_y0, _y1)),
+                    )
+                )
+            except Exception:
+                continue
+        _np = dict(info.get("next_support") or {})
+        _np["written"] = []
+        paint_written_and_next_levels(
+            ax1,
+            sid=str(sid or ""),
+            next_pack=_np,
+            xmin=-0.55,
+            xmax=hline_xmax,
+            right_notes=None,
+            tag_size=float(_STRUCTURE_TAG_SIZE),
+            ymin=ymin,
+            ymax=ymax,
+            layer_labels="smart",
+            written_labels="right",
+            highs=highs,
+            lows=lows,
+            busy_ys=(float(spike_hi or 0), float(spike_lo or 0)),
+            occupied=_occ,
+        )
+    except Exception:
+        logger.debug("結構圖下一層（軌道後）略過", exc_info=True)
     # 已刪：末日 K 連出橘虛線＋「最可能＝下一層撐…」標（使用者鎖）
     _ = list(proj.get("path") or [])
     # 73：不准畫「連點延長」叉虛線；圖上只留右溝壓撐／軌／原文目標
@@ -4947,29 +5009,15 @@ def render_biaoke_structure_png(
             layer = dict(ns.get("layer") or {})
             lo = float(layer.get("low") or 0)
             hi = float(layer.get("high") or 0)
-            if not (lo > 0 and hi > 0) and ns.get("none_label"):
-                mark = f"出貨痕跡・{ns.get('none_label')}"
+            # 無下一層：只留「出貨痕跡」，不准附「暫無下一層大量區」
+            if not (lo > 0 and hi > 0):
+                mark = "出貨痕跡"
         except Exception:
             pass
     elif info.get("under_support"):
-        # v8 建議：破撐摘要不帶下一層價（線標已在左側）
-        try:
-            ns = dict(info.get("next_support") or {})
-            layer = dict(ns.get("layer") or {})
-            lo = float(layer.get("low") or 0)
-            hi = float(layer.get("high") or 0)
-            if lo > 0 and hi > 0:
-                mark = "破撐"
-                mc = _PRESS
-            elif ns.get("none_label"):
-                mark = str(ns.get("none_label"))
-                mc = _MUTED
-            else:
-                mark = "破撐"
-                mc = _PRESS
-        except Exception:
-            mark = "破撐"
-            mc = _PRESS
+        # 破撐摘要不帶下一層價；無下一層＝靜默佔位字，標籤仍寫「破撐」
+        mark = "破撐"
+        mc = _PRESS
     # 大量日高／低判斷句（收在低下／已過高等）全股票都不打
     banner_bits = header_banner_lines(glance, sid=sid, plate=plate)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
@@ -5405,41 +5453,98 @@ def render_biaoke_structure_png(
             _peak_disp,
             float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0]),
         )
+    # 量標：先挑水平淨空（ha=right 框往左伸會蓋更高柱，6148），再抬 y
     vol_lab_y = (
         float(_peak_disp) * 1.06 + float(vmax) * 0.02
         if _peak_disp > 0
         else float(vmax) * 1.05
     )
-    ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.10))
+    _vol_disp_all = [
+        float(v)
+        for v in lookup_vol_to_display(
+            [float(x or 0) for x in vols], vmax
+        )
+    ]
+    # 「這根＝爆大量　99,999張」約占 9～11 根
+    _VOL_TAG_HALF_BARS = 10.0
+
+    def _vol_box_span(tx: float, ha: str, half: float = _VOL_TAG_HALF_BARS) -> Tuple[int, int]:
+        if ha == "right":
+            i0 = int(math.floor(float(tx) - 2.0 * half))
+            i1 = int(math.ceil(float(tx))) + 1
+        elif ha == "left":
+            i0 = int(math.floor(float(tx)))
+            i1 = int(math.ceil(float(tx) + 2.0 * half)) + 1
+        else:
+            i0 = int(math.floor(float(tx) - half))
+            i1 = int(math.ceil(float(tx) + half)) + 1
+        return max(0, i0), min(n, i1)
+
+    def _peak_under(tx: float, ha: str) -> float:
+        if not _vol_disp_all:
+            return float(_peak_disp)
+        i0, i1 = _vol_box_span(tx, ha)
+        peak = 0.0
+        for i in range(i0, i1):
+            try:
+                peak = max(peak, float(_vol_disp_all[i]))
+            except (IndexError, TypeError, ValueError):
+                continue
+        return peak
+
+    def _bump_vol_lab_y_for(tx: float, ha: str) -> None:
+        nonlocal vol_lab_y
+        band_peak = max(float(_peak_disp), _peak_under(tx, ha))
+        need = float(band_peak) * 1.08 + float(vmax) * 0.04
+        if need > float(vol_lab_y):
+            vol_lab_y = need
+
+    def _pick_vol_anchor(anchor_i: int) -> Tuple[float, str]:
+        """水平避開更高柱；上移空間不夠時只能橫移（6148）。"""
+        trials: List[Tuple[float, str]] = []
+        for off in (3.0, 5.0, 6.5, 9.0, 12.0, 15.0):
+            trials.append((min(float(n) - 1.2, float(anchor_i) + off), "left"))
+            trials.append((max(1.0, float(anchor_i) - off), "right"))
+        best: Optional[Tuple[float, float, str]] = None
+        spike_h = float(_vol_disp_all[anchor_i]) if 0 <= anchor_i < len(_vol_disp_all) else 0.0
+        for tx, ha in trials:
+            pk = _peak_under(tx, ha)
+            # 代價：蓋到比錨柱明顯更高的柱 → 重罰；其次看帶內峰值
+            taller = max(0.0, pk - max(spike_h, 1.0))
+            key = taller * 10.0 + pk + abs(float(tx) - float(anchor_i)) * 0.02
+            if best is None or key < best[0]:
+                best = (key, float(tx), str(ha))
+        if best is None:
+            return float(anchor_i) + 4.0, "left"
+        return best[1], best[2]
+
     if spike_ok and has_layer_vol:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
         layer_md = _md(work[layer_i].get("date"))
-        # 較早量日偏左、較晚偏右；同一水平高度
-        if int(layer_i) <= int(spike_i):
-            layer_side, spike_side = "left", "right"
-        else:
-            layer_side, spike_side = "right", "left"
-
-        # v8 建議：連線改短、貼近各自量柱（相鄰日用更短偏移）
-        _gap_bars = abs(int(layer_i) - int(spike_i))
-        _vol_off = 1.55 if _gap_bars <= 2 else 2.4
-
-        def _side_x(i: int, side: str) -> float:
-            if side == "left":
-                return max(1.2, float(i) - float(_vol_off))
-            if side == "right":
-                return min(float(n) - 1.5, float(i) + float(_vol_off))
-            return float(i)
-
+        spike_tx, spike_ha = _pick_vol_anchor(int(spike_i))
+        layer_tx, layer_ha = _pick_vol_anchor(int(layer_i))
+        # 兩標太近 → 較晚者再外推
+        if abs(float(spike_tx) - float(layer_tx)) < 8.0:
+            if int(spike_i) >= int(layer_i):
+                spike_tx, spike_ha = _pick_vol_anchor(int(spike_i))
+                if abs(float(spike_tx) - float(layer_tx)) < 8.0:
+                    spike_tx = min(float(n) - 1.2, max(float(spike_tx), float(layer_tx) + 9.0))
+                    spike_ha = "left"
+            else:
+                layer_tx = min(float(n) - 1.2, max(float(layer_tx), float(spike_tx) + 9.0))
+                layer_ha = "left"
+        _bump_vol_lab_y_for(spike_tx, spike_ha)
+        _bump_vol_lab_y_for(layer_tx, layer_ha)
+        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
-            xytext=(_side_x(layer_i, layer_side), vol_lab_y),
+            xytext=(float(layer_tx), vol_lab_y),
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
-            ha="right" if layer_side == "left" else "left",
-            va="center",
+            ha=str(layer_ha),
+            va="bottom",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5462,11 +5567,11 @@ def render_biaoke_structure_png(
         ax2.annotate(
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             xy=(float(spike_i), float(spike_disp)),
-            xytext=(_side_x(spike_i, spike_side), vol_lab_y),
+            xytext=(float(spike_tx), vol_lab_y),
             color=_TEXT,
             fontproperties=_fp(10, "bold"),
-            ha="right" if spike_side == "left" else "left",
-            va="center",
+            ha=str(spike_ha),
+            va="bottom",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5499,7 +5604,9 @@ def render_biaoke_structure_png(
             pass
     elif spike_ok:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
-        vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
+        vol_tx, vol_ha = _pick_vol_anchor(int(spike_i))
+        _bump_vol_lab_y_for(vol_tx, vol_ha)
+        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
         _leader_note(
             ax2,
             float(spike_i),
@@ -5509,22 +5616,24 @@ def render_biaoke_structure_png(
             tx=vol_tx,
             ty=vol_lab_y,
             size=11,
-            ha="left" if vol_tx >= spike_i else "right",
-            va="center",
+            ha=str(vol_ha),
+            va="bottom",
             clip=False,
         )
     elif has_layer_vol:
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
         layer_md = _md(work[layer_i].get("date"))
-        lab_x = max(2.4, float(layer_i) - 5.2)
+        lab_x, lab_ha = _pick_vol_anchor(int(layer_i))
+        _bump_vol_lab_y_for(lab_x, lab_ha)
+        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
-            xytext=(lab_x, vol_lab_y),
+            xytext=(float(lab_x), vol_lab_y),
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
-            ha="right" if lab_x + 0.4 < float(layer_i) else "left",
-            va="center",
+            ha=str(lab_ha),
+            va="bottom",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5555,6 +5664,8 @@ def render_biaoke_structure_png(
             )
         except Exception:
             pass
+    else:
+        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.10))
     ax2.set_ylabel("")
     ax2.yaxis.set_ticks_position("right")
     ax2.tick_params(
