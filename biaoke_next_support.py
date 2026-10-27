@@ -1306,37 +1306,9 @@ def paint_written_and_next_levels(
                         y_span=y_span_for_pick or None,
                         prefer_x=_layer_prefer_x,
                     )
-                    # 過代價略過後仍要給「有下一層」一條界內位：ha=right 釘 xmax（不准裁出 figure）
+                    # OPTIONAL：無淨空＝略過。不准硬釘右緣壓死 K（f5063d0 迴歸 1605／3033）
                     if picked is None:
-                        picked = pick_layer_label_along_line(
-                            y=lab_y,
-                            text=label,
-                            xmin=float(xmin),
-                            xmax=float(xmax),
-                            highs=hi_arr,
-                            lows=lo_arr,
-                            mas=mas,
-                            occupied=occupied_boxes,
-                            tag_size=float(_layer_tag_size),
-                            y_span=y_span_for_pick or None,
-                            prefer_x=_layer_prefer_x,
-                            max_score=48.0,
-                        )
-                    if picked is None:
-                        _hw = _approx_layer_tag_half_w(
-                            label, float(_layer_tag_size)
-                        )
-                        _hh = max(
-                            abs(float(lab_y)) * 0.004,
-                            (y_span_for_pick or abs(float(lab_y)) * 0.2) * 0.016,
-                            8.0,
-                        )
-                        cx = float(xmax) - 0.08
-                        ha = "right"
-                        box = (cx - 2.0 * _hw, cx, float(lab_y) - _hh, float(lab_y) + _hh)
-                        if float(box[0]) < float(xmin) - 0.55:
-                            continue
-                        picked = (cx, ha, box)
+                        continue
                     cx, ha, box = picked
                     # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內
                     if float(box[1]) > float(xmax) + 0.05:
@@ -1366,7 +1338,7 @@ def paint_written_and_next_levels(
                             bbox={**_layer_tag_box, "edgecolor": color},
                             size=float(_layer_tag_size),
                         )
-                        # 像素裁切閘：出 figure → 往左 nudge（ha=right），仍裁才拿掉
+                        # 像素裁切閘：出 figure → 往左 nudge；仍裁才拿掉（不准半句）
                         try:
                             ax.figure.canvas.draw()
                             ren = ax.figure.canvas.get_renderer()
@@ -1381,7 +1353,6 @@ def paint_written_and_next_levels(
                                         or bb.y1 > fbb.y1 - 1
                                     ):
                                         break
-                                    # 超右：整標左移；資料座標每次退 1.2
                                     try:
                                         art.remove()
                                     except Exception:
@@ -1415,21 +1386,25 @@ def paint_written_and_next_levels(
                                     )
                                     ax.figure.canvas.draw()
                                     ren = ax.figure.canvas.get_renderer()
-                                if art is not None:
-                                    bb = art.get_window_extent(renderer=ren)
-                                    fbb = ax.figure.bbox
-                                    if (
-                                        bb.x0 < fbb.x0 - 1
-                                        or bb.x1 > fbb.x1 - 1
-                                        or bb.y0 < fbb.y0 - 1
-                                        or bb.y1 > fbb.y1 - 1
-                                    ):
-                                        try:
-                                            art.remove()
-                                        except Exception:
-                                            pass
-                                        occupied_boxes.pop()
-                                        continue
+                                if art is None:
+                                    occupied_boxes.pop()
+                                    continue
+                                bb = art.get_window_extent(renderer=ren)
+                                fbb = ax.figure.bbox
+                                if (
+                                    bb.x0 < fbb.x0 - 1
+                                    or bb.x1 > fbb.x1 - 1
+                                    or bb.y0 < fbb.y0 - 1
+                                    or bb.y1 > fbb.y1 - 1
+                                ):
+                                    try:
+                                        art.remove()
+                                    except Exception:
+                                        pass
+                                    occupied_boxes.pop()
+                                    continue
+                                # nudge 後同步佔位盒
+                                occupied_boxes[-1] = box
                         except Exception:
                             pass
                         try:
