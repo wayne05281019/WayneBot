@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 55  # 成對同側硬鎖；half_h 隨價窗；下一層不裁右緣（2026-10-27）
+_VZ_PAINT_VER = 56  # 成對同側；crush 過重改掃淨空；底軸不雙排壓腳註（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3753,7 +3753,10 @@ def _paint_key_zone_smart_tags(
                 best = (key, float(cx0), str(ha0))
         if best is None:
             return None
-        # REQUIRED 成對同側：即使 crush 偏高仍回最佳同棧（不准拆左右）
+        # 最佳同棧仍嚴重碾 K（6274 左槽蓋 7 月實體）→ 交回逐標掃淨空，仍成對鎖側
+        if float(best[0]) >= 2.0:
+            return None
+        # REQUIRED 成對同側：輕微代價可留同棧（不准拆左右）
         return best[1], best[2]
 
     def _force_keep_slot(
@@ -5557,8 +5560,10 @@ def _paint_volume_zone(
             del tick_at[i]
     tick_pos = sorted(tick_at)
     tick_lab = [tick_at[i] for i in tick_pos]
-    # 與導航同一套：能排下單排；會互壓才錯開
-    _set_staggered_month_ticks(ax2, tick_lab, tick_pos, compact=False)
+    # 腳註佔下排：互壓時丟月標／較早日，不准 10/22 掉到「／殘影」上（6148）
+    _set_staggered_month_ticks(
+        ax2, tick_lab, tick_pos, compact=False, allow_stagger=False
+    )
     ax1.tick_params(labelbottom=False)
 
     src = str(view["quote_source"].iloc[-1] if "quote_source" in view.columns else "")

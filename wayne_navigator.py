@@ -6351,8 +6351,18 @@ def _draw_nav_legend(ax1, *, zone_mode: bool = False, panel: bool = False) -> No
             ax1.add_artist(leg)
 
 
-def _set_staggered_month_ticks(ax, months: list, mpos: list, *, compact: bool = False) -> None:
-    """月份標：預設單排；只有會互壓的那幾個才下移，其餘保持同一排。月都保留。"""
+def _set_staggered_month_ticks(
+    ax,
+    months: list,
+    mpos: list,
+    *,
+    compact: bool = False,
+    allow_stagger: bool = True,
+) -> None:
+    """月份標：預設單排；只有會互壓的那幾個才下移，其餘保持同一排。
+
+    allow_stagger=False（大量區腳註佔下排）：互壓時丟掉較早／月標，不准 10/22 掉到「／殘影」上。
+    """
     from matplotlib.transforms import blended_transform_factory
 
     ax.set_xticks(list(mpos))
@@ -6379,20 +6389,42 @@ def _set_staggered_month_ticks(ax, months: list, mpos: list, *, compact: bool = 
         gap = abs(float(mpos[i]) - float(mpos[j]))
         return gap < (_half_w(months[i]) + _half_w(months[j]))
 
-    # 逐顆放：能跟已在近排的不互壓就近排；否則下排。不准整排無腦雙排。
-    row: list[int] = []
+    def _keep_priority(i: int) -> tuple:
+        lab = str(months[i])
+        # 尾日 mm/dd > 其他 mm/dd > 月標
+        is_day = "/" in lab
+        return (0 if is_day else 1, -float(mpos[i]))
+
+    # 逐顆放：能跟已在近排的不互壓就近排；否則下排（或丟較低優先）。
+    row: list[Optional[int]] = []
+    keep: list[bool] = []
     for i in range(len(mpos)):
         place = 0
+        conflict_j: Optional[int] = None
         for j in range(i):
-            if row[j] != 0:
+            if not keep[j] or row[j] != 0:
                 continue
             if _overlap(i, j):
+                conflict_j = j
                 place = 1
                 break
+        if conflict_j is not None and not allow_stagger:
+            # 留優先高的；另一個丟掉（寧可少刻，不准雙排壓腳註）
+            if _keep_priority(i) < _keep_priority(conflict_j):
+                keep[conflict_j] = False
+                place = 0
+                keep.append(True)
+            else:
+                keep.append(False)
+            row.append(place)
+            continue
+        keep.append(True)
         row.append(place)
 
     for i, (x, lab) in enumerate(zip(mpos, months)):
-        y = y_far if row[i] else y_near
+        if not keep[i]:
+            continue
+        y = y_far if (allow_stagger and row[i]) else y_near
         ax.text(
             float(x), y, str(lab),
             transform=trans, ha="center", va="top",

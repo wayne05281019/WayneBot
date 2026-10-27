@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -5452,12 +5453,45 @@ def render_biaoke_structure_png(
             _peak_disp,
             float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0]),
         )
+    # 量標高度先依爆大量／下一層柱頂；稍後依標籤水平帶內「更高柱」再抬（6213／6148）
     vol_lab_y = (
         float(_peak_disp) * 1.06 + float(vmax) * 0.02
         if _peak_disp > 0
         else float(vmax) * 1.05
     )
-    ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.10))
+    _vol_disp_all = [
+        float(v)
+        for v in lookup_vol_to_display(
+            [float(x or 0) for x in vols], vmax
+        )
+    ]
+
+    def _bump_vol_lab_y(*centers: float) -> None:
+        """標籤水平帶覆蓋的量柱頂都要讓開（含今日比爆大量更高的柱）。"""
+        nonlocal vol_lab_y
+        if not _vol_disp_all:
+            return
+        # 框寬約 7～9 根；左右各留餘裕
+        half_span = 4.5
+        band_peak = float(_peak_disp)
+        for cx in centers:
+            i0 = max(0, int(math.floor(float(cx) - half_span)))
+            i1 = min(n, int(math.ceil(float(cx) + half_span)) + 1)
+            for i in range(i0, i1):
+                try:
+                    band_peak = max(band_peak, float(_vol_disp_all[i]))
+                except (IndexError, TypeError, ValueError):
+                    continue
+        # 右緣近窗也納入（今收量常比爆大量高，標在右側時會壓住）
+        for i in range(max(0, n - 10), n):
+            try:
+                band_peak = max(band_peak, float(_vol_disp_all[i]))
+            except (IndexError, TypeError, ValueError):
+                continue
+        need = float(band_peak) * 1.10 + float(vmax) * 0.025
+        if need > float(vol_lab_y):
+            vol_lab_y = need
+
     if spike_ok and has_layer_vol:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
@@ -5479,6 +5513,13 @@ def render_biaoke_structure_png(
                 return min(float(n) - 1.5, float(i) + float(_vol_off))
             return float(i)
 
+        _bump_vol_lab_y(
+            _side_x(layer_i, layer_side),
+            _side_x(spike_i, spike_side),
+            float(spike_i),
+            float(layer_i),
+        )
+        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.12))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
@@ -5547,6 +5588,8 @@ def render_biaoke_structure_png(
     elif spike_ok:
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         vol_tx = min(n - 1.2, spike_i + 6.5) if spike_i < n - 8 else max(1.0, spike_i - 6.5)
+        _bump_vol_lab_y(float(vol_tx), float(spike_i))
+        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.12))
         _leader_note(
             ax2,
             float(spike_i),
@@ -5564,6 +5607,8 @@ def render_biaoke_structure_png(
         layer_disp = float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0])
         layer_md = _md(work[layer_i].get("date"))
         lab_x = max(2.4, float(layer_i) - 5.2)
+        _bump_vol_lab_y(float(lab_x), float(layer_i))
+        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.12))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
@@ -5602,6 +5647,8 @@ def render_biaoke_structure_png(
             )
         except Exception:
             pass
+    else:
+        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.10))
     ax2.set_ylabel("")
     ax2.yaxis.set_ticks_position("right")
     ax2.tick_params(
