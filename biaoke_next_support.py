@@ -863,10 +863,11 @@ def pick_layer_label_along_line(
     n_bars = min(len(highs), len(lows))
     if n_bars > 0:
         last = float(n_bars - 1)
-        # 右溝：整盒盡量在末日 K 右側（ha=left 錨在 last+ε）
-        trials.append((min(float(xmax) - 0.05, last + 0.55), "left"))
-        trials.append((min(float(xmax) - half_w * 0.15, last + half_w * 0.85), "left"))
+        # 右緣：ha=right 讓字往左長進圖內，不准 ha=left 把「下一層壓」裁出 figure
+        trials.append((float(xmax) - 0.08, "right"))
+        trials.append((min(float(xmax) - 0.05, last + 0.35), "right"))
         trials.append((max(float(xmin) + half_w * 0.2, last - half_w * 0.15), "right"))
+        trials.append((max(float(xmin) + half_w, last - 1.2), "right"))
         # 左緣空白（含整盒在第一根左側）
         trials.append((max(float(xmin) + 0.05, -0.15), "left"))
         trials.append((float(xmin) + half_w * 0.9, "right"))
@@ -934,6 +935,11 @@ def pick_layer_label_along_line(
             continue
         if bx1 < float(xmin) - 1.2 or bx0 > float(xmax) + 0.8:
             continue
+        # 硬拒：整盒超出資料右／左界＝話筒必裁（1605／3033／6443「下一層壓」右緣）
+        if float(bx1) > float(xmax) + 0.05:
+            continue
+        if float(bx0) < float(xmin) - 0.55:
+            continue
         # 成對：拉開同帶硬拒
         if prefer_x is not None and abs(float(cx) - float(prefer_x)) > float(same_band_max):
             continue
@@ -954,6 +960,9 @@ def pick_layer_label_along_line(
             sc += 14.0 * min(1.0, (float(xmin) - bx0) / max(half_w, 1.0))
         if bx0 > float(xmax) - 0.8:
             sc += 6.0
+        # 貼右緣仍微罰，逼回圖內空窗
+        if bx1 > float(xmax) - 0.35:
+            sc += 9.0 * min(1.0, (bx1 - (float(xmax) - 0.35)) / max(half_w, 1.0))
         clear = _min_vertical_clearance(
             x0=bx0, x1=bx1, y=float(y), highs=highs, lows=lows
         )
@@ -1091,7 +1100,7 @@ def paint_written_and_next_levels(
             kw["transform"] = transform
         if bbox is not None:
             kw["bbox"] = bbox
-        ax.text(x, y, text, **kw)
+        return ax.text(x, y, text, **kw)
 
     def _label_y(raw_y: float, used: List[float]) -> float:
         """標籤 y 微避讓：原文與下一層壓太近不准互蓋。"""
@@ -1300,12 +1309,25 @@ def paint_written_and_next_levels(
                     if picked is None:
                         continue
                     cx, ha, box = picked
+                    # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內（OPTIONAL 寧可改位不准裁）
+                    if float(box[1]) > float(xmax) + 0.05:
+                        _hw = max(0.5 * (float(box[1]) - float(box[0])), 1.0)
+                        cx = float(xmax) - 0.08
+                        ha = "right"
+                        box = (
+                            cx - 2.0 * _hw,
+                            cx,
+                            float(box[2]),
+                            float(box[3]),
+                        )
+                        if float(box[0]) < float(xmin) - 0.55:
+                            continue
                     occupied_boxes.append(box)
                     if _layer_prefer_x is None:
                         _layer_prefer_x = float(cx)
                         _layer_pair_anchor = True
                     try:
-                        _text(
+                        art = _text(
                             float(cx),
                             lab_y,
                             label,
@@ -1315,6 +1337,27 @@ def paint_written_and_next_levels(
                             bbox={**_layer_tag_box, "edgecolor": color},
                             size=float(_layer_tag_size),
                         )
+                        # 像素裁切閘：仍出 figure → 拿掉（下一層 OPTIONAL，不准半句）
+                        try:
+                            ax.figure.canvas.draw()
+                            ren = ax.figure.canvas.get_renderer()
+                            if art is not None:
+                                bb = art.get_window_extent(renderer=ren)
+                                fbb = ax.figure.bbox
+                                if (
+                                    bb.x0 < fbb.x0 - 1
+                                    or bb.x1 > fbb.x1 - 1
+                                    or bb.y0 < fbb.y0 - 1
+                                    or bb.y1 > fbb.y1 - 1
+                                ):
+                                    try:
+                                        art.remove()
+                                    except Exception:
+                                        pass
+                                    occupied_boxes.pop()
+                                    continue
+                        except Exception:
+                            pass
                         try:
                             from smart_label_metrics import record_smart_label
 
@@ -1327,6 +1370,7 @@ def paint_written_and_next_levels(
                                 y0=float(box[2]),
                                 y1=float(box[3]),
                                 rail_y=float(lab_y),
+                                clipped=False,
                             )
                         except Exception:
                             pass

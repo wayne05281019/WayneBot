@@ -309,6 +309,48 @@ def test_pick_layer_label_avoids_candle_cluster():
     assert box[0] < box[1]
     mid = 0.5 * (box[0] + box[1])
     assert mid < 5.0 or mid > 35.0 or box[1] < 0.0
+    # 整盒不准超出 xmax（話筒右緣裁切根因）
+    assert box[1] <= float(n) + 0.55 + 1e-6
+
+
+def test_pick_layer_label_box_stays_inside_xmax():
+    """短標「下一層壓 ##」右緣候選也必須整盒 ≤ xmax（1605／3033／6443）。"""
+    n = 80
+    highs = [45.0] * n
+    lows = [35.0] * n
+    # 中段淨空差、右緣較空 → 舊版常選 ha=left 伸出 xmax
+    for i in range(0, 50):
+        highs[i] = 44.0
+        lows[i] = 36.0
+    xmax = float(n) + 0.55
+    # max_score=None：只驗「有解時整盒不超右界」；過高代價仍可略過（OPTIONAL）
+    picked = pick_layer_label_along_line(
+        y=43.1,
+        text="下一層壓 43.1",
+        xmin=-0.35,
+        xmax=xmax,
+        highs=highs,
+        lows=lows,
+        tag_size=9.5,
+        max_score=None,
+    )
+    assert picked is not None
+    _cx, ha, box = picked
+    assert box[1] <= xmax + 1e-6
+    assert ha in ("left", "right", "center")
+    # 硬拒路徑：故意超寬半盒的候選不得回超界解
+    wide = pick_layer_label_along_line(
+        y=43.1,
+        text="下一層壓 " + ("9" * 40),
+        xmin=-0.35,
+        xmax=xmax,
+        highs=highs,
+        lows=lows,
+        tag_size=12.0,
+        max_score=None,
+    )
+    if wide is not None:
+        assert wide[2][1] <= xmax + 1e-6
 
 
 def test_layer_tag_size_delta_uniform():
