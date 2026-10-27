@@ -3587,6 +3587,7 @@ def _paint_key_zone_smart_tags(
     ymin: float,
     ymax: float,
     occupied: Optional[List[Tuple[float, float, float, float]]] = None,
+    signal_polish: bool = False,
 ) -> List[Tuple[float, float, float, float]]:
     """現任主大量區壓／撐（REQUIRED）：依本圖淨空自適應同側；找不到淨空也必須留標。
 
@@ -3605,22 +3606,36 @@ def _paint_key_zone_smart_tags(
     prefer_x: Optional[float] = None
     prefer_ha: Optional[str] = None
     y_span = max(float(ymax) - float(ymin), 1.0)
+    tag_pt = 15.5 if signal_polish else float(VOL_ZONE_TAG_PT)
     # 壓先、撐後：保證垂直序（上壓下撐）
     items: List[Tuple[float, str, str]] = []
     if float(hi or 0) > 0:
-        items.append((float(hi), _PRESS, f"大量區壓 {_fmt_price(hi)}"))
+        items.append(
+            (
+                float(hi),
+                _PRESS,
+                f"{'主壓' if signal_polish else '大量區壓'} {_fmt_price(hi)}",
+            )
+        )
     if float(lo or 0) > 0:
-        items.append((float(lo), _HOLD, f"大量區撐 {_fmt_price(lo)}"))
+        items.append(
+            (
+                float(lo),
+                _HOLD,
+                f"{'主撐' if signal_polish else '大量區撐'} {_fmt_price(lo)}",
+            )
+        )
     _key_tag_box = dict(
-        boxstyle=f"round,pad={float(VOL_ZONE_TAG_PAD):.2f}",
+        boxstyle=f"round,pad={0.30 if signal_polish else float(VOL_ZONE_TAG_PAD):.2f}",
         facecolor="#ffffff",
-        linewidth=1.05,
+        linewidth=1.45 if signal_polish else 1.05,
         alpha=1.0,
     )
     x_lo = float(xmin)
     x_hi = float(xmax)
-    box_right_limit = x_hi - 0.12
-    box_left_limit = x_lo - 0.35
+    # 試看版四周多留一根 K 左右的呼吸，不讓主標黏框；預設幾何完全不動。
+    box_right_limit = x_hi - (0.65 if signal_polish else 0.12)
+    box_left_limit = x_lo + (0.85 if signal_polish else -0.35)
     n_bars = min(len(highs), len(lows))
 
     def _box_for(cx: float, ha: str, half_w: float, y_px: float) -> Tuple[float, float, float, float]:
@@ -3794,17 +3809,22 @@ def _paint_key_zone_smart_tags(
         )
 
     def _emit(y_px: float, color: str, text: str, cx: float, ha: str, box) -> None:
+        face = (
+            ("#fff0f5" if color == _PRESS else "#edf7ee")
+            if signal_polish
+            else "#ffffff"
+        )
         ax.text(
             float(cx),
             float(y_px),
             text,
             ha=str(ha),
             va="center",
-            fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
+            fontproperties=_fp(tag_pt, "bold"),
             color=color,
             zorder=22,
             clip_on=False,
-            bbox={**_key_tag_box, "edgecolor": color},
+            bbox={**_key_tag_box, "edgecolor": color, "facecolor": face},
         )
         placed.append(tuple(float(v) for v in box))  # type: ignore[arg-type]
         try:
@@ -3828,14 +3848,14 @@ def _paint_key_zone_smart_tags(
         return placed
 
     half_w_max = max(
-        float(_approx_layer_tag_half_w(t, float(VOL_ZONE_TAG_PT))) for _y, _c, t in items
+        float(_approx_layer_tag_half_w(t, float(tag_pt))) for _y, _c, t in items
     )
     pair_anchor = _best_pair_anchor(half_w_max)
     if pair_anchor is not None:
         cx_p, ha_p = pair_anchor
         prefer_x = float(cx_p)
         for y_px, color, text in items:
-            half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
+            half_w = float(_approx_layer_tag_half_w(text, float(tag_pt)))
             box = _box_for(float(cx_p), str(ha_p), half_w, float(y_px))
             cx, ha, box = _clamp_into_view(float(cx_p), str(ha_p), box, half_w)
             try:
@@ -3847,7 +3867,7 @@ def _paint_key_zone_smart_tags(
 
     # 無可用同棧 → 仍成對同側：第一標掃位，第二標鎖同一 cx／ha
     for y_px, color, text in items:
-        half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
+        half_w = float(_approx_layer_tag_half_w(text, float(tag_pt)))
         if prefer_x is not None and prefer_ha is not None:
             cx, ha, box = _clamp_into_view(
                 float(prefer_x),
@@ -3865,7 +3885,7 @@ def _paint_key_zone_smart_tags(
                 lows=lows,
                 mas=list(mas or []),
                 occupied=placed,
-                tag_size=float(VOL_ZONE_TAG_PT),
+                tag_size=float(tag_pt),
                 y_span=float(y_span),
                 prefer_x=prefer_x,
                 max_score=28.0,
@@ -4193,6 +4213,7 @@ def render_volume_zone_result(
     with_ma5_ma10: bool = True,
     pack: Optional[Dict[str, Any]] = None,
     nav_signal_work=None,
+    visual_variant: str = "",
 ) -> tuple[str, str]:
     """一次準備：圖＋圖說。不准畫完再重抓日K／除權息。
 
@@ -4203,6 +4224,7 @@ def render_volume_zone_result(
     預設 True＝話筒／勝率／壓撐／大盤同一新臉；測試要舊臉才顯式傳 False。
     """
     del already_normalized
+    signal_polish = str(visual_variant or "").strip().lower() == "signal"
     if not (
         isinstance(pack, dict)
         and pack.get("zone")
@@ -4256,7 +4278,8 @@ def render_volume_zone_result(
         card_fp=card_fp,
         channel_fp=channel_fp,
     )
-    hit = _vz_memo_get(memo_key, pack["out"])
+    # 試看樣式不可命中／污染話筒預設快取。
+    hit = None if signal_polish else _vz_memo_get(memo_key, pack["out"])
     if hit:
         return hit
     cap = vol_zone_photo_caption(
@@ -4304,9 +4327,10 @@ def render_volume_zone_result(
             with_ma5_ma10=with_ma5_ma10,
             bars_face=pack.get("bars"),
             nav_signal_work=nav_signal_work,
+            visual_variant=str(visual_variant or ""),
         )
     out_path, out_cap = str(path or ""), str(cap or "")
-    if out_path:
+    if out_path and not signal_polish:
         _vz_memo_put(memo_key, out_path, out_cap)
     return out_path, out_cap
 
@@ -4348,6 +4372,7 @@ def render_lookup_vol_result(
     *,
     card: Optional[Dict[str, Any]] = None,
     pack: Optional[Dict[str, Any]] = None,
+    visual_variant: str = "",
 ) -> tuple[str, str]:
     """查股第 4 張：大量撐壓＝橫式原版（VOL_ZONE_FIG_W×NAV），不是直式 4:5。不是買訊。
 
@@ -4363,6 +4388,7 @@ def render_lookup_vol_result(
         lookup_portrait=False,
         with_ma5_ma10=True,
         pack=pack,
+        visual_variant=str(visual_variant or ""),
     )
 
 
@@ -4449,6 +4475,125 @@ def _paint_market_vol_header(fig, ax, *, title: str, ohlc: str, orange: str) -> 
         logger.debug("大盤大量區表頭讓位失敗", exc_info=True)
 
 
+def _draw_signal_polish_legend(ax) -> None:
+    """訊號層級試看：同一套標記語意，收成兩排，主圖不再被三排圖例搶高。"""
+    from matplotlib import patches as mpatches
+    from matplotlib.lines import Line2D
+    from wayne_navigator import (
+        _NAV_BUY_ARROW_EDGE,
+        _NAV_TRADE_BUY,
+        _NAV_TRADE_SELL,
+    )
+
+    row1 = [
+        (
+            mpatches.Patch(
+                facecolor=_FILL, edgecolor=_PRESS, linewidth=1.2, alpha=0.72
+            ),
+            "主壓／主撐帶",
+        ),
+        (
+            Line2D(
+                [],
+                [],
+                linestyle="none",
+                marker="^",
+                markerfacecolor=_NAV_TRADE_BUY,
+                markeredgecolor=_NAV_BUY_ARROW_EDGE,
+                markeredgewidth=2.4,
+                markersize=14,
+            ),
+            "買點＝藍▲紅框",
+        ),
+        (
+            Line2D(
+                [],
+                [],
+                linestyle="none",
+                marker="v",
+                markerfacecolor=_NAV_TRADE_SELL,
+                markeredgecolor=_NAV_TRADE_SELL,
+                markersize=13,
+            ),
+            "賣點＝橙▼",
+        ),
+        (
+            Line2D(
+                [],
+                [],
+                linestyle="none",
+                marker="D",
+                markerfacecolor="#00695c",
+                markeredgecolor="#26a69a",
+                markeredgewidth=1.3,
+                markersize=11,
+            ),
+            "◆止穩（觀察）",
+        ),
+        (
+            Line2D(
+                [],
+                [],
+                linestyle="none",
+                marker="h",
+                markerfacecolor="#e65100",
+                markeredgecolor="#ff8f00",
+                markeredgewidth=1.3,
+                markersize=12,
+            ),
+            "六角＝外資觀察（測試）",
+        ),
+    ]
+    row2 = [
+        (
+            Line2D(
+                [],
+                [],
+                linestyle="none",
+                marker="^",
+                markerfacecolor="#5c6bc0",
+                markeredgecolor="#5c6bc0",
+                markersize=11,
+                alpha=0.82,
+            ),
+            "三角＝高低位階（空心接近／淡色殘影）",
+        ),
+        (Line2D([], [], color=_MA5, lw=2.3), "5日"),
+        (Line2D([], [], color=_MA10, lw=2.3), "10日"),
+        (Line2D([], [], color=_MA20, lw=2.3), "月線"),
+        (Line2D([], [], color=_MA60, lw=2.3), "季線"),
+    ]
+    common = dict(
+        loc="upper left",
+        handlelength=1.15,
+        handletextpad=0.32,
+        columnspacing=0.78,
+        borderpad=0.24,
+        labelspacing=0.08,
+        framealpha=0.96,
+        facecolor="#f5f7fa",
+        edgecolor="#b0bec5",
+        prop=_fp(9.6, "bold"),
+    )
+    leg1 = ax.legend(
+        [h for h, _ in row1],
+        [t for _, t in row1],
+        bbox_to_anchor=(0.0, 0.52),
+        ncol=len(row1),
+        **common,
+    )
+    leg1.set_zorder(10)
+    ax.add_artist(leg1)
+    leg2 = ax.legend(
+        [h for h, _ in row2],
+        [t for _, t in row2],
+        bbox_to_anchor=(0.0, 0.24),
+        ncol=len(row2),
+        **common,
+    )
+    leg2.set_zorder(10)
+
+
 def _paint_volume_zone(
     sid,
     name,
@@ -4472,7 +4617,9 @@ def _paint_volume_zone(
     with_ma5_ma10: bool = True,
     bars_face=None,
     nav_signal_work=None,
+    visual_variant: str = "",
 ):
+    signal_polish = str(visual_variant or "").strip().lower() == "signal"
     spike_md = _md(spike_date)
     ax_head = None
     channel: Dict[str, Any] = {}
@@ -4527,6 +4674,8 @@ def _paint_volume_zone(
     else:
         fig_size = (VOL_ZONE_FIG_W, VOL_ZONE_FIG_H_NAV)
         head_ratios = [1.28, 3.38, 0.40, 0.98]
+        if signal_polish:
+            head_ratios = [0.98, 3.69, 0.31, 1.08]
         head_bottom = 0.072
 
     # 大盤大量區（平行軌、無導航、橫式）：畫布與右緣對齊加權日K。
@@ -4553,7 +4702,7 @@ def _paint_volume_zone(
             1,
             figure=fig,
             height_ratios=head_ratios,
-            hspace=0.035,
+            hspace=0.025 if signal_polish else 0.035,
             left=0.050,
             right=_gs_right,
             top=0.985,
@@ -4602,16 +4751,34 @@ def _paint_volume_zone(
         _spine.set_linewidth(0.7)
 
     # 桃色大量區（略透，K／箭頭更清楚）
-    ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
+    ax1.axhspan(
+        lo,
+        hi,
+        color=_FILL,
+        alpha=0.34 if signal_polish else 0.42,
+        zorder=0,
+    )
     # 壓／撐色線再細一點：仍清楚，不搶 K／均線
-    ax1.axhline(hi, color=_PRESS, linewidth=0.78, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=0.78, zorder=5, solid_capstyle="round")
+    ax1.axhline(
+        hi,
+        color=_PRESS,
+        linewidth=1.85 if signal_polish else 0.78,
+        zorder=5,
+        solid_capstyle="round",
+    )
+    ax1.axhline(
+        lo,
+        color=_HOLD,
+        linewidth=1.85 if signal_polish else 0.78,
+        zorder=5,
+        solid_capstyle="round",
+    )
     # 爆大量日豎線：極小間距虛線，避免實線切過 K／量看不清
     ax1.axvline(
         spike_i,
         color=_SPIKE,
-        linewidth=1.05,
-        alpha=0.72,
+        linewidth=1.25 if signal_polish else 1.05,
+        alpha=0.84 if signal_polish else 0.72,
         zorder=1,
         linestyle=(0, (1.1, 1.35)),
     )
@@ -5231,6 +5398,7 @@ def _paint_volume_zone(
             ymin=float(ymin),
             ymax=float(ymax),
             occupied=_key_occ,
+            signal_polish=bool(signal_polish),
         )
     except Exception:
         logger.debug("大量區主壓撐智能標略過 sid=%s", sid, exc_info=True)
@@ -5352,6 +5520,18 @@ def _paint_volume_zone(
         secondary_i=int(layer_i) if layer_i >= 0 else None,
         z=2,
     )
+    if signal_polish:
+        for guide_ax in (ax_sig, ax2):
+            if guide_ax is None:
+                continue
+            guide_ax.axvline(
+                float(spike_i),
+                color=_SPIKE,
+                linewidth=1.05,
+                alpha=0.55,
+                zorder=1,
+                linestyle=(0, (2.0, 1.8)),
+            )
     spike_raw = float(vol_heights[spike_i]) if spike_i < len(vol_heights) else 0.0
     spike_h = (
         float(lookup_vol_to_display([spike_raw], float(vol_ylim))[0]) if spike_raw > 0 else 0.0
@@ -5582,7 +5762,11 @@ def _paint_volume_zone(
     if with_nav_signals and ax_head is not None:
         # 標題列：兩行介紹放大＋圖例三排，緊接 K（橫式原版＝render_lookup_vol_result）
         # 已刪右上綠匡白底「收 XXXX」晶片；表頭第二排「收XXXX」稍大＋漲跌色（同源）
-        head = f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
+        head = (
+            f"{sid} {name}　大量區（官方日K・非買訊）"
+            if signal_polish
+            else f"{sid} {name}　大量區專圖（非買訊・{src_note}・含導航指標）"
+        )
         # 表頭「最近」開高低收：盤中跟決策卡現價同源；無現價才用官方末日柱
         face_row = last
         face_md = _md(last.get("date"))
@@ -5608,18 +5792,29 @@ def _paint_volume_zone(
                     prev_close_hdr = float(hdr_quote["prev"])
                 except (TypeError, ValueError):
                     pass
-        intro_left = (
-            f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
-            f"最近 {face_md} "
-            f"開{_fmt_price(face_row['open'])} 高{_fmt_price(face_row['high'])} "
-            f"低{_fmt_price(face_row['low'])} "
-        )
+        if signal_polish:
+            intro_left = (
+                f"爆大量 {_md(spike_date)}｜主壓 {_fmt_price(hi)}　主撐 {_fmt_price(lo)}｜"
+                f"{face_md}　開 {_fmt_price(face_row['open'])}　高 {_fmt_price(face_row['high'])}　"
+                f"低 {_fmt_price(face_row['low'])}　"
+            )
+        else:
+            intro_left = (
+                f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
+                f"最近 {face_md} "
+                f"開{_fmt_price(face_row['open'])} 高{_fmt_price(face_row['high'])} "
+                f"低{_fmt_price(face_row['low'])} "
+            )
         close_lab = (
             "現"
             if (hdr_quote and str(hdr_quote.get("label") or "") == "盤中")
             else "收"
         )
-        close_bit = f"{close_lab}{_fmt_price(close_px)}"
+        close_bit = (
+            f"{close_lab} {_fmt_price(close_px)}"
+            if signal_polish
+            else f"{close_lab}{_fmt_price(close_px)}"
+        )
         try:
             from wayne_navigator import quote_move_ink
 
@@ -5718,9 +5913,12 @@ def _paint_volume_zone(
                 _t_right.set_position((0.62, 0.78))
         # 日標已改掛主K上框內側；表頭只留介紹＋圖例（原比例）
         try:
-            from wayne_navigator import _draw_nav_legend
+            if signal_polish:
+                _draw_signal_polish_legend(ax_head)
+            else:
+                from wayne_navigator import _draw_nav_legend
 
-            _draw_nav_legend(ax_head, panel=True)
+                _draw_nav_legend(ax_head, panel=True)
         except Exception:
             logger.exception("標題列圖例失敗 sid=%s", sid)
         ax1.set_title("")
@@ -5755,17 +5953,27 @@ def _paint_volume_zone(
     else:
         ma_foot = "黃＝月線(MA20)、藍紫＝季線(MA60)。"
     if with_nav_signals:
-        foot1 = (
-            f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}"
-            "除權／除息缺口是息差不是崩。高觸壓、收未過＝測壓（非買訊）。"
-            "買點＝藍▲紅框；60低＝純藍▲。箭頭／殘影＝導航同一套。"
-        )
-        # 兩觀察標出現時機（灰字；永遠非買訊）
-        foot2 = (
-            "止穩◆＝近60低首觸後再走≥3日、期間未破該低、收在底上才亮（觀察非買）。"
-            "橘六角「觀察」＝外資賣升級（超比爬升／分位）或賣超佔量≥20%才亮"
-            "（還在測試・非買；千金不靠5000張）。無成交＝灰短K＋量柱貼底，不准挖洞。"
-        )
+        if signal_polish:
+            foot1 = (
+                "膚色帶＝主大量區；主壓／主撐為優先層。"
+                "橙／青／黃／藍紫＝5日／10日／月／季線。買點只認藍▲紅框。"
+            )
+            foot2 = (
+                "三角位階、止穩◆、橘六角外資預警皆為觀察；空心＝接近、淡色＝殘影。"
+                "除權息缺口非崩；無成交＝灰短K＋量柱貼底。"
+            )
+        else:
+            foot1 = (
+                f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}"
+                "除權／除息缺口是息差不是崩。高觸壓、收未過＝測壓（非買訊）。"
+                "買點＝藍▲紅框；60低＝純藍▲。箭頭／殘影＝導航同一套。"
+            )
+            # 兩觀察標出現時機（灰字；永遠非買訊）
+            foot2 = (
+                "止穩◆＝近60低首觸後再走≥3日、期間未破該低、收在底上才亮（觀察非買）。"
+                "橘六角「觀察」＝外資賣升級（超比爬升／分位）或賣超佔量≥20%才亮"
+                "（還在測試・非買；千金不靠5000張）。無成交＝灰短K＋量柱貼底，不准挖洞。"
+            )
     else:
         foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
         if with_parallel_channel:
@@ -5791,7 +5999,7 @@ def _paint_volume_zone(
         foot1,
         ha="center",
         va="bottom",
-        fontproperties=_fp(8.2, "bold"),
+        fontproperties=_fp(8.6 if signal_polish else 8.2, "bold"),
         color=_MUTED,
     )
     fig.text(
@@ -5800,7 +6008,7 @@ def _paint_volume_zone(
         foot2,
         ha="center",
         va="bottom",
-        fontproperties=_fp(8.2, "bold"),
+        fontproperties=_fp(8.6 if signal_polish else 8.2, "bold"),
         color=_MUTED,
     )
     with mpl_render():

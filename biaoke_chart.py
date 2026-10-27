@@ -1741,6 +1741,8 @@ def _leader_note(
     ls: Any = "--",
     lw: float = 0.95,
     pad: Optional[float] = None,
+    facecolor: str = "#ffffff",
+    edge_width: float = 1.05,
 ) -> None:
     """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。
 
@@ -1762,9 +1764,9 @@ def _leader_note(
         clip_on=bool(clip),
         bbox=dict(
             boxstyle=f"round,pad={box_pad:.2f}",
-            facecolor="#ffffff",
+            facecolor=str(facecolor or "#ffffff"),
             edgecolor=color,
-            linewidth=1.05,
+            linewidth=float(edge_width),
             alpha=0.97,
         ),
         arrowprops=dict(
@@ -1888,7 +1890,7 @@ def _note_priority(text: str) -> int:
     t = str(text or "")
     if "最可能" in t:
         return 0
-    if t.startswith("壓") or t.startswith("撐"):
+    if t.startswith(("壓", "撐", "主壓", "主撐")):
         return 1
     # 71／75：當日收優先於昨收；紅框空位要留今收
     if _is_today_close_note(t):
@@ -1908,7 +1910,7 @@ def _is_rail_note(text: str) -> bool:
 def _is_level_note(text: str) -> bool:
     """爆大量壓／撐水平線標籤——必須貼線，高價在上。"""
     t = str(text or "")
-    return t.startswith("壓") or t.startswith("撐")
+    return t.startswith(("壓", "撐", "主壓", "主撐"))
 
 
 def _is_close_note(text: str) -> bool:
@@ -2578,6 +2580,8 @@ def _place_right_notes(
             clip=False,
             shrink_b=1.5,
             pad=float(note_pad) if note_pad is not None else _STRUCTURE_TAG_PAD,
+            facecolor=str(note.get("facecolor") or "#ffffff"),
+            edge_width=float(note.get("edge_width") or 1.05),
         )
         if not stub:
             return
@@ -4423,7 +4427,9 @@ def render_biaoke_structure_png(
     press_band: Optional[Tuple[float, float]] = None,
     card: Optional[Dict[str, Any]] = None,
     live_quote: Optional[Dict[str, Any]] = None,
+    visual_variant: str = "",
 ) -> str:
+    signal_polish = str(visual_variant or "").strip().lower() == "signal"
     rows = _structure_face_rows(bars, sid=sid, card=card)
     if len(rows) < 8 or not save_path:
         return ""
@@ -4455,7 +4461,8 @@ def render_biaoke_structure_png(
     )
     from wayne_navigator import _lookup_render_memo_get, _lookup_render_memo_put
 
-    hit = _lookup_render_memo_get(memo_key, save_path)
+    # 試看樣式不可命中／污染話筒預設快取。
+    hit = "" if signal_polish else _lookup_render_memo_get(memo_key, save_path)
     if hit:
         return hit
     fig_w, fig_h = (float(figsize[0]), float(figsize[1])) if figsize else (18.6, 10.8)
@@ -4522,7 +4529,11 @@ def render_biaoke_structure_png(
         dpi=use_dpi,
         sharex=True,
         gridspec_kw=dict(
-            height_ratios=(5.55, 1.40) if fullbleed else (5.45, 1.45),
+            height_ratios=(
+                (5.30, 1.65)
+                if (fullbleed and signal_polish)
+                else ((5.55, 1.40) if fullbleed else (5.45, 1.45))
+            ),
             hspace=0.028 if fullbleed else 0.048,
         ),
         facecolor=_BG,
@@ -4565,7 +4576,7 @@ def render_biaoke_structure_png(
                 float(spike_lo),
                 float(spike_hi),
                 color=_WINDOW_BG,
-                alpha=0.42,
+                alpha=0.34 if signal_polish else 0.42,
                 zorder=0,
             )
         except Exception:
@@ -4600,17 +4611,20 @@ def render_biaoke_structure_png(
             xmin=-0.55,
             xmax=hline_xmax,
             color=_PRESS,
-            linewidth=1.15,
+            linewidth=2.15 if signal_polish else 1.15,
             zorder=4,
-            alpha=0.92,
+            alpha=1.0 if signal_polish else 0.92,
         )
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": spike_hi,
-                "text": f"壓 {_px_quote(spike_hi)}",
+                "text": f"{'主壓' if signal_polish else '壓'} {_px_quote(spike_hi)}",
                 "color": _PRESS,
-                "size": _STRUCTURE_TAG_SIZE,
+                "size": 14 if signal_polish else _STRUCTURE_TAG_SIZE,
+                "pad": 0.30 if signal_polish else _STRUCTURE_TAG_PAD,
+                "facecolor": "#fff0f5" if signal_polish else "#ffffff",
+                "edge_width": 1.45 if signal_polish else 1.05,
             }
         )
     if spike_lo:
@@ -4619,17 +4633,20 @@ def render_biaoke_structure_png(
             xmin=-0.55,
             xmax=hline_xmax,
             color=_HOLD,
-            linewidth=1.15,
+            linewidth=2.15 if signal_polish else 1.15,
             zorder=4,
-            alpha=0.92,
+            alpha=1.0 if signal_polish else 0.92,
         )
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": spike_lo,
-                "text": f"撐 {_px_quote(spike_lo)}",
+                "text": f"{'主撐' if signal_polish else '撐'} {_px_quote(spike_lo)}",
                 "color": _HOLD,
-                "size": _STRUCTURE_TAG_SIZE,
+                "size": 14 if signal_polish else _STRUCTURE_TAG_SIZE,
+                "pad": 0.30 if signal_polish else _STRUCTURE_TAG_PAD,
+                "facecolor": "#edf7ee" if signal_polish else "#ffffff",
+                "edge_width": 1.45 if signal_polish else 1.05,
             }
         )
     # 原文目標先入 right_notes；下一層壓／撐改在軌道標之後畫（避 1605 與平行撐互壓）
@@ -4710,7 +4727,14 @@ def render_biaoke_structure_png(
             }
         )
     if 0 <= spike_i < n:
-        ax1.axvline(spike_i, color="#90a4ae", linewidth=1.05, linestyle="--", zorder=2)
+        ax1.axvline(
+            spike_i,
+            color="#f9a825" if signal_polish else "#90a4ae",
+            linewidth=1.25 if signal_polish else 1.05,
+            linestyle=(0, (2.2, 1.8)) if signal_polish else "--",
+            alpha=0.84 if signal_polish else 1.0,
+            zorder=2,
+        )
     down_pts = info.get("down_pts")
     up_pts = info.get("up_pts")
     channel = dict(info.get("channel") or {})
@@ -5435,6 +5459,15 @@ def render_biaoke_structure_png(
         secondary_i=layer_i if layer_i >= 0 else None,
         z=3,
     )
+    if signal_polish and 0 <= spike_i < n:
+        ax2.axvline(
+            spike_i,
+            color="#f9a825",
+            linewidth=1.25,
+            linestyle=(0, (2.2, 1.8)),
+            alpha=0.84,
+            zorder=2,
+        )
     vmax = float(vol_ylim) if vol_ylim else 1.0
     has_layer_vol = bool(
         0 <= layer_i < n and layer_i != spike_i and vols[layer_i]
@@ -5723,7 +5756,8 @@ def render_biaoke_structure_png(
     _savefig_lookup_png(fig, save_path, use_dpi)
     plt.close(fig)
     if os.path.isfile(save_path):
-        _lookup_render_memo_put(memo_key, save_path)
+        if not signal_polish:
+            _lookup_render_memo_put(memo_key, save_path)
         return save_path
     return ""
 

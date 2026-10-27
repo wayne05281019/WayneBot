@@ -3469,6 +3469,7 @@ def render_lookup_structure_result(
     card: Optional[dict] = None,
     pack: Optional[dict] = None,
     live_quote: Optional[dict] = None,
+    visual_variant: str = "",
 ) -> Tuple[str, str]:
     """查股第 3 張：結構圖＝橫式原版，跟大量撐壓同一套官方日K。買訊只認藍▲紅框。
 
@@ -3515,6 +3516,7 @@ def render_lookup_structure_result(
             press_band=None,
             quote=spot,
             card=card if isinstance(card, dict) else None,
+            visual_variant=str(visual_variant or ""),
         )
         if not path or not os.path.isfile(path) or os.path.getsize(path) < 20000:
             return "", ""
