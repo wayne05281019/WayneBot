@@ -98,7 +98,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 60  # 成對共用錨；壓／撐垂直躲過盒內局部高低（2026-10-27）
+_VZ_PAINT_VER = 61  # 成對共用錨；右溝同 crush 不壓過左／中（2026-10-27）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3785,9 +3785,10 @@ def _paint_key_zone_smart_tags(
             edge_bias = 0.0
             if n_bars > 0:
                 last = float(n_bars - 1)
-                # 右溝無 K：重獎；貼絕對左緣略罰
+                # 右溝無 K：同 crush 不准壓過左／中（自适应槽）；crush 更低時仍會贏
+                # （舊 -max(2.5,crush) 重獎會讓左淨空圖也永遠釘右溝 → CI 紅）
                 if float(cx0) >= last + 0.2:
-                    edge_bias = -max(2.5, float(crush))
+                    edge_bias = 0.12
                 elif float(cx0) / max(last, 1.0) < 0.04:
                     edge_bias = 0.35
             key = crush + edge_bias
