@@ -983,7 +983,7 @@ def test_axis_ticks_drop_near_last_bar():
     assert 0 in ticks
     assert 59 in ticks
     assert 12 in ticks
-    assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
+    assert all(abs(i - 59) >= 8 or i in (0, 12, 59) for i in ticks)
     assert 56 not in ticks
     # 爆量日貼最後一根：只留尾日，不准 10/05 疊 10/07
     near = _axis_ticks(78, extra=(75,))
@@ -999,6 +999,15 @@ def test_axis_ticks_drop_near_last_bar():
         for a, b in zip(wide, wide[1:])
         if a < 168 and b < 168
     )
+    # 1605／3033 型：爆量離尾 7 根（舊門檻 4 會雙留）→ 只留尾日
+    mid = _axis_ticks(80, extra=(72,))
+    assert 79 in mid
+    assert 72 not in mid
+    assert all(abs(a - b) >= 8 for a, b in zip(mid, mid[1:]))
+    # 雙 extra 都貼尾：全丟，只留頭尾
+    dual = _axis_ticks(100, extra=(92, 94))
+    assert 99 in dual and 0 in dual
+    assert 92 not in dual and 94 not in dual
 
 
 def test_pressure_support_use_consecutive_pivots():

@@ -201,8 +201,9 @@ def _md(raw: Any) -> str:
 def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
     """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免日期標互壓。
 
-    爆量日若離最後一根 <4，只留最後一根（爆量另有豎虛線＋量標），不准日刻互壓。
+    爆量／下一層日若離最後一根不足標籤縫，只留最後一根（爆量另有豎虛線＋量標），不准日刻互壓。
     3081：08/26 爆量與 09/03 只差 6 根 → 鄰距門檻拉到 ≥8，不准 MM/DD 互壓。
+    優先序：頭／尾日 > 爆量／下一層 extra > 一般步進刻。任意相鄰不得 < min_label_gap。
     """
     n = int(n or 0)
     if n <= 0:
@@ -210,13 +211,13 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
     if n == 1:
         return [0]
     last = n - 1
-    min_extra_gap = 4
     # 標籤寬（MM/DD）約需 ≥8 根空隙才不互壓（八個月窗更密）
     min_label_gap = max(8, n // 22)
+    # extra 離尾日不足縫＝不進軸（與互壓門檻同一把尺；舊門檻 4 會讓 7 根縫雙留）
     extras = [
         int(x)
         for x in extra
-        if 0 <= int(x) < n and abs(int(x) - last) >= min_extra_gap
+        if 0 <= int(x) < n and int(x) not in (0, last) and abs(int(x) - last) >= min_label_gap
     ]
     extras_set = set(extras)
     step = max(n // 7, 4)
@@ -236,44 +237,48 @@ def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
         if abs(i - last) < min_label_gap:
             continue
         keep.append(i)
-    # 再掃一遍：任意相鄰刻度（含爆量日）不夠縫就丟中間那根（保頭尾／爆量優先）
+    # 再掃：任意相鄰不夠縫 → 置換／丟棄（不准尾日與爆量雙留互壓）
     thinned: List[int] = []
     for i in keep:
         if not thinned:
             thinned.append(i)
             continue
         prev = thinned[-1]
-        if abs(i - prev) >= min_label_gap or i in (0, last) and prev in extras_set:
+        if abs(i - prev) >= min_label_gap:
             thinned.append(i)
             continue
-        # 相鄰太近：優先留爆量／尾日，丟一般刻
-        if i in extras_set or i == last:
-            if prev not in extras_set and prev != 0:
-                thinned[-1] = i
-            elif prev == 0 or prev in extras_set:
-                # 頭或爆量已佔：若新的是尾日仍要；否則跳過
-                if i == last:
-                    thinned.append(i)
-            else:
-                thinned.append(i)
-        # else: 丟一般 i
-    # 尾日必在
+        if prev == 0:
+            # 頭日必留；過近的下一刻丟掉（尾日不可能貼頭）
+            continue
+        if i == last or (i in extras_set and prev not in extras_set):
+            thinned[-1] = i
+        # else: 丟一般 i（或第二個 extra）
     if last not in thinned:
         thinned.append(last)
-        thinned = sorted(set(thinned))
-        # 尾日擠到前一根一般刻 → 丟前一根
-        cleaned: List[int] = []
-        for i in thinned:
-            if cleaned and abs(i - cleaned[-1]) < min_label_gap:
-                if i == last:
-                    if cleaned[-1] not in extras_set and cleaned[-1] != 0:
-                        cleaned[-1] = i
-                    else:
-                        cleaned.append(i)
+    thinned = sorted(set(thinned))
+    cleaned: List[int] = []
+    for i in thinned:
+        if cleaned and abs(i - cleaned[-1]) < min_label_gap:
+            prev = cleaned[-1]
+            if prev == 0:
                 continue
-            cleaned.append(i)
-        thinned = cleaned
-    return thinned
+            if i == last or (i in extras_set and prev not in extras_set):
+                cleaned[-1] = i
+            continue
+        cleaned.append(i)
+    if last not in cleaned:
+        cleaned.append(last)
+        cleaned = sorted(set(cleaned))
+        # 尾日擠到前一刻 → 置換（含前一刻是 extra）
+        fixed: List[int] = []
+        for i in cleaned:
+            if fixed and abs(i - fixed[-1]) < min_label_gap:
+                if i == last and fixed[-1] != 0:
+                    fixed[-1] = i
+                continue
+            fixed.append(i)
+        cleaned = fixed
+    return cleaned
 
 
 def _ymd_full(raw: Any) -> str:
