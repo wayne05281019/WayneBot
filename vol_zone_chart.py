@@ -1191,9 +1191,10 @@ def find_volume_zone(
 ) -> Optional[Dict[str, Any]]:
     """近窗仍對現價有效的爆大量日。壓還在頭上才認；已全部站上才退回絕對最大量。
 
-    準則（鎖死）：
+    準則（鎖死；與 ``biaoke_brain.volume_first_price`` 同窗）：
     1. 只用官方日 K 原柱；略過停牌、略過 biaoke_stock_day／is_live。
-    2. 近窗＝最近 lookback 根（預設 40），不含「最後一根」（大量區＝過去參考日）。
+    2. 近窗＝恰 lookback 根候選（預設 40），不含「最後一根」（大量區＝過去參考日）。
+       實作 ``start = end - lookback``、``range(start, end)``；結構圖必須同長，不准少一根。
     3. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     4. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
     5. 壓＝該日官方高、撐＝該日官方低。不是買訊、不發明 5／9。
@@ -1211,7 +1212,8 @@ def find_volume_zone(
         else pd.Series(False, index=work.index)
     )
     end = n - 1
-    start = max(0, end - max(int(lookback or 0), 1))
+    lb = max(int(lookback or 0), 1)
+    start = max(0, end - lb)
     last_d = _bar_ymd(work["date"].iloc[-1])
     cut = _scale_cut_date(ex_events, last_d)
     if cut:

@@ -273,13 +273,18 @@ def resolve_stock(db_path: str, query: str) -> List[Dict[str, Any]]:
 def volume_first_price(bars: Sequence[Dict[str, Any]], *, lookback: int = 40) -> Dict[str, Any]:
     """量先價行：近窗仍有效爆大量日高當壓、低當撐（與大量區專圖同一套）。
 
-    準則對齊 ``vol_zone_chart.find_volume_zone``：
-    1. 近窗不含最後一根（大量區＝過去參考日）。
+    準則對齊 ``vol_zone_chart.find_volume_zone``（2026-10-27 鎖死同窗）：
+    1. 近窗＝恰 lookback 根候選（預設 40），**不含最後一根**（大量區＝過去參考日）。
+       實作取 lookback+1 根再丟末日，不准再變成 lookback−1（2233 結構／大量區分叉根因）。
     2. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     3. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
     沒公式、不編 KD；不是買訊。
     """
-    window = list(bars)[-int(lookback) :] if bars else []
+    lb = max(int(lookback or 0), 1)
+    raw = list(bars or [])
+    # 與 find_volume_zone：start=end-lookback、range(start,end) → 恰 lookback 根
+    need = lb + 1
+    window = raw[-need:] if raw else []
     if not window:
         return {}
     last = window[-1]

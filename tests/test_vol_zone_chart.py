@@ -340,6 +340,65 @@ def test_structure_spike_matches_vol_zone_for_2383():
     assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
 
 
+def test_volume_first_and_find_zone_same_window_synthetic():
+    """結構／大量區同 lookback：候選同長、同爆大量日（防 39 vs 40 再分叉）。"""
+    from biaoke_brain import volume_first_price
+    from vol_zone_chart import VOL_ZONE_LOOKBACK, find_volume_zone
+
+    lb = int(VOL_ZONE_LOOKBACK)
+    rows = []
+    for i in range(lb + 5):
+        rows.append(
+            {
+                "date": f"2026{100 + i:04d}",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 95.0,
+                "close": 100.0,
+                "volume": 1000.0 + i,
+                "is_halt": False,
+            }
+        )
+    # 恰在「40 候選最舊那根」放壓還在頭上的爆量；若結構少看一根會選別日
+    oldest = len(rows) - 1 - lb  # = end - lookback
+    rows[oldest]["volume"] = 50000.0
+    rows[oldest]["high"] = 120.0
+    rows[oldest]["low"] = 80.0
+    rows[-1]["close"] = 100.0
+    rows[-1]["volume"] = 90000.0  # 末日量再大也不准當參考
+    # 次新候選放較小爆量，舊 39 窗會誤鎖這根
+    rows[oldest + 1]["volume"] = 40000.0
+    rows[oldest + 1]["high"] = 118.0
+    rows[oldest + 1]["low"] = 82.0
+
+    st = volume_first_price(rows, lookback=lb)
+    zone = find_volume_zone(pd.DataFrame(rows), lookback=lb)
+    assert zone is not None
+    want = str(rows[oldest]["date"]).replace("-", "")[:8]
+    assert str(st["spike_date"]).replace("-", "")[:8] == want
+    assert str(zone["date"]).replace("-", "")[:8] == want
+    assert float(st["spike_high"]) == float(zone["high"]) == 120.0
+    assert float(st["spike_low"]) == float(zone["low"]) == 80.0
+
+
+def test_structure_spike_matches_vol_zone_for_2233():
+    """2233 查股兩圖爆大量日必須同日同壓撐（石板試看正式版 bug）。"""
+    from biaoke_brain import load_bars, volume_first_price
+    from vol_zone_chart import find_volume_zone, load_official_ohlc, official_work
+
+    db = get_db_path()
+    bars = load_bars(db, "2233")
+    if len(bars) < 50:
+        pytest.skip("2233 bars thin")
+    st = volume_first_price(bars, lookback=40)
+    work = official_work(load_official_ohlc("2233", db, 180))
+    zone = find_volume_zone(work, lookback=40)
+    assert zone
+    assert str(st["spike_date"]).replace("-", "")[:8] == str(zone["date"])[:8]
+    assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
+    assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
+
+
 def test_vol_zone_uses_shared_volume_heights():
     """大量區量柱與導航同一套線性比例高度（視窗 max＝滿高）。"""
     import inspect
