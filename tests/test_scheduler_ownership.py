@@ -336,6 +336,10 @@ def test_watchdog_retry_runs_morning_before_alert(monkeypatch, recorder):
 
 
 def test_watchdog_retry_fuses_before_morning(monkeypatch, recorder):
+    """06:30 後：死人開關仍先 fuse 再海選（名單吃得到剛補的收盤）。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
     monkeypatch.setattr(
@@ -345,10 +349,32 @@ def test_watchdog_retry_fuses_before_morning(monkeypatch, recorder):
             {"kind": "increment", "run_date": "20260908"},
         ],
     )
-    ran = main.retry_missed_owned_jobs()
+    now = datetime(2026, 9, 22, 7, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    ran = main.retry_missed_owned_jobs(now)
     assert ran == ["increment", "morning_screen"]
     assert [c[0] for c in recorder.calls] == ["fuse", "morning"]
     assert recorder.calls[0][1]["notify"] is False
+
+
+def test_watchdog_retry_skips_fuse_before_0630(monkeypatch, recorder):
+    """06:30 前半夜不准補 fuse（避 /live 健檢重啟循環）；海選仍可補。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "ops_watchdog.missed_jobs",
+        lambda *_a, **_k: [
+            {"kind": "morning_screen", "run_date": "screen-x"},
+            {"kind": "increment", "run_date": "20260908"},
+        ],
+    )
+    now = datetime(2026, 10, 29, 2, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    ran = main.retry_missed_owned_jobs(now)
+    assert ran == ["morning_screen"]
+    assert [c[0] for c in recorder.calls] == ["morning"]
+    assert "fuse" not in [c[0] for c in recorder.calls]
 
 
 def test_watchdog_retry_runs_midday_before_alert(monkeypatch, recorder):
