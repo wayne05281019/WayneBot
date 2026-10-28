@@ -80,13 +80,14 @@ def test_stock_quiet_trend_rail_constants():
 
 
 def test_vol_zone_dpi_sharpness_floor():
-    """結構／大量區不准為快降 DPI；#722 後底線 240、仍輕於導航 320。"""
-    from vol_zone_chart import VOL_ZONE_DPI
+    """結構／大量：paint 可 220 少 Agg；輸出 save 底線 238、仍輕於導航 320。"""
+    from vol_zone_chart import VOL_ZONE_DPI, VOL_ZONE_SAVE_DPI
     from wayne_navigator import NAV_CHART_DPI
 
-    assert int(VOL_ZONE_DPI) >= 240
-    assert int(VOL_ZONE_DPI) < int(NAV_CHART_DPI)
-    assert int(VOL_ZONE_DPI) <= 280  # 防 OOM：不准無上限狂加
+    assert int(VOL_ZONE_DPI) >= 220
+    assert int(VOL_ZONE_SAVE_DPI) >= 238
+    assert int(VOL_ZONE_SAVE_DPI) < int(NAV_CHART_DPI)
+    assert int(VOL_ZONE_SAVE_DPI) <= 280  # 防 OOM：不准無上限狂加
 
 
 def test_lookup_progress_tick_has_hard_elapsed_cap():
