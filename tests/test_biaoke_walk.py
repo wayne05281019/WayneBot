@@ -226,6 +226,51 @@ def test_upsert_does_not_invent_when_empty():
     assert upsert_fetched_quotes("missing.db", []) == 0
 
 
+def test_upsert_skips_bars_after_fuse_end(tmp_path, monkeypatch):
+    """盤中月表夾帶今日未齊柱不准寫庫（會擠爆大量近窗）。"""
+    import sqlite3
+
+    monkeypatch.setattr(
+        "trading_calendar.fuse_end_trading_date", lambda now=None: "20261027"
+    )
+    db = str(tmp_path / "wayne_market.db")
+    n = upsert_fetched_quotes(
+        db,
+        [
+            {
+                "stock_id": "2233",
+                "date": "20261027",
+                "stock_name": "宇隆",
+                "open": 149,
+                "high": 150,
+                "low": 148,
+                "close": 149,
+                "volume": 446,
+            },
+            {
+                "stock_id": "2233",
+                "date": "20261028",
+                "stock_name": "宇隆",
+                "open": 150.5,
+                "high": 152,
+                "low": 147.5,
+                "close": 149.5,
+                "volume": 193,
+            },
+        ],
+    )
+    assert n == 1
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT replace(date,'-',''), close, volume FROM daily_quotes "
+            "WHERE stock_id='2233' ORDER BY 1"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [("20261027", 149.0, 446)]
+
+
 def test_volume_lots_from_row_units():
     from biaoke_walk import _volume_lots_from_row
 

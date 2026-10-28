@@ -24,6 +24,17 @@ from db_recover import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _default_fresh_gate_to_rowcount(monkeypatch, request):
+    """多數單元庫沒 TW/TWO 完整日；除非標 real_fresh_gate，fresh＝列數閘。"""
+    if request.node.get_closest_marker("real_fresh_gate"):
+        return
+    monkeypatch.setattr(
+        "db_recover.market_quotes_fresh_ok",
+        lambda path, **k: market_quotes_ok(path),
+    )
+
+
 def _make_db(
     path: str,
     *,
@@ -256,7 +267,7 @@ def test_salvage_private_tables_from_corrupt(tmp_path):
 
 
 def test_readable_db_never_replaced_by_release(tmp_path, monkeypatch):
-    """可讀正式庫且日 K 已在（即使 biaoke 空）不准再被空 Release 整檔蓋掉。"""
+    """可讀正式庫且日 K 新鮮（即使 biaoke 空）不准再被空 Release 整檔蓋掉。"""
     db = str(tmp_path / "wayne_market.db")
     _make_db(db, biaoke_n=0, quotes_n=MIN_QUOTE_ROWS_RESTORE)
     assert market_quotes_ok(db)
@@ -308,7 +319,77 @@ def test_missing_daily_quotes_forces_release_then_salvages(tmp_path, monkeypatch
     assert daily_quote_row_count(db) >= 1500
     assert int(result["biaoke_n"]) >= 1700
     assert int(result.get("private_n") or 0) >= 5
-    assert any("release_for_missing_quotes" in a for a in result.get("actions") or [])
+    assert any(
+        "release_for_stale_or_missing_quotes" in a or "release_for_missing_quotes" in a
+        for a in (result.get("actions") or [])
+    )
+
+
+@pytest.mark.real_fresh_gate
+def test_stale_latest_complete_forces_release(tmp_path, monkeypatch):
+    """列數夠但完整日落後 fuse_end（如 20261002 vs 20261027）→ 必須換 Release。"""
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=1722, private_n=4, quotes_n=1500)
+    assert market_quotes_ok(db)
+
+    def _fresh(path, **k):
+        # 安裝前列數 1500＝過舊；Release 裝完 ≥1600 才算新鮮
+        return daily_quote_row_count(path) >= 1600
+
+    monkeypatch.setattr("db_recover.market_quotes_fresh_ok", _fresh)
+
+    release_db = tmp_path / "release" / "wayne_market.db"
+    release_db.parent.mkdir()
+    _make_db(str(release_db), biaoke_n=0, private_n=0, quotes_n=1600)
+    zpath = tmp_path / "rel.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.write(release_db, arcname="wayne_market.db")
+
+    def _fake_retrieve(url, dest):
+        import shutil
+
+        shutil.copy2(zpath, dest)
+        return dest, {}
+
+    result = ensure_market_db_recoverable(
+        db, allow_release=True, urlretrieve=_fake_retrieve
+    )
+    assert result["ok"] is True
+    assert result["source"] == "release"
+    assert daily_quote_row_count(db) >= 1600
+    assert int(result["biaoke_n"]) >= 1700
+    assert int(result.get("private_n") or 0) >= 4
+    assert any("release_for_stale_or_missing_quotes" in a for a in result.get("actions") or [])
+
+
+@pytest.mark.real_fresh_gate
+def test_force_release_flag_installs_even_when_fresh(tmp_path, monkeypatch):
+    db = str(tmp_path / "wayne_market.db")
+    _make_db(db, biaoke_n=1722, private_n=2, quotes_n=1500)
+    monkeypatch.setattr(
+        "db_recover.market_quotes_fresh_ok",
+        lambda path, **k: True,
+    )
+    release_db = tmp_path / "release" / "wayne_market.db"
+    release_db.parent.mkdir()
+    _make_db(str(release_db), biaoke_n=0, private_n=0, quotes_n=1800)
+    zpath = tmp_path / "rel.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.write(release_db, arcname="wayne_market.db")
+
+    def _fake_retrieve(url, dest):
+        import shutil
+
+        shutil.copy2(zpath, dest)
+        return dest, {}
+
+    result = ensure_market_db_recoverable(
+        db, allow_release=True, force_release=True, urlretrieve=_fake_retrieve
+    )
+    assert result["ok"] is True
+    assert result["source"] == "release"
+    assert any("force_release" in a for a in result.get("actions") or [])
+    assert daily_quote_row_count(db) >= 1800
 
 
 def test_force_biaoke_baseline_seeds_archive(tmp_path):
@@ -407,9 +488,10 @@ def test_main_wires_recoverable_and_retry_loop():
     assert "force_biaoke_baseline" in recover_src
     assert "_biaoke_ready" in main_src
     assert "_market_db_ready" in main_src
-    assert "market_quotes_ok" in main_src
-    assert "market_quotes_ok" in recover_src
-    assert "release_for_missing_quotes" in recover_src
+    assert "market_quotes_fresh_ok" in main_src
+    assert "market_quotes_fresh_ok" in recover_src
+    assert "release_for_stale_or_missing_quotes" in recover_src
+    assert "force_release" in recover_src
     assert "/ops/repair-market-db" in main_src
     assert "move_db_with_sidecars" in recover_src
     assert "best_corrupt_restore" in recover_src

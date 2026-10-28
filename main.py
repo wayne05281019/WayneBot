@@ -544,39 +544,57 @@ class HealthHandler(BaseHTTPRequestHandler):
             except BrokenPipeError:
                 pass
             return
-        # 讀掉 body（可空），避免部分客戶端卡住
+        # 讀 body（可空）；repair 可帶 {"force_release": true}
+        raw_body = b""
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = 0
         if length > 0:
             try:
-                self.rfile.read(min(length, 1_000_000))
+                raw_body = self.rfile.read(min(length, 1_000_000))
             except Exception:
-                pass
+                raw_body = b""
+        req_json: dict = {}
+        if raw_body:
+            try:
+                parsed = json.loads(raw_body.decode("utf-8", errors="replace"))
+                if isinstance(parsed, dict):
+                    req_json = parsed
+            except Exception:
+                req_json = {}
         try:
             if route == "/ops/repair-market-db":
-                logger.info("ops /ops/repair-market-db：背景 ensure_market_db")
+                # 預設 force_release：過舊完整日／缺表都要換公開 Release
+                force_release = True
+                if "force_release" in req_json:
+                    force_release = bool(req_json.get("force_release"))
+                logger.info(
+                    "ops /ops/repair-market-db：背景 ensure_market_db force_release=%s",
+                    force_release,
+                )
 
-                def _repair_bg() -> None:
+                def _repair_bg(force: bool = force_release) -> None:
                     try:
-                        ensure_market_db()
+                        ensure_market_db(force_release=force)
                         from busy_window_notice import clear_busy_notices
                         from config import get_db_path
                         from db_recover import (
                             biaoke_post_count,
                             daily_quote_row_count,
-                            market_quotes_ok,
+                            market_quotes_fresh_ok,
                             private_row_total,
                         )
+                        from import_health import latest_complete_quote_date
 
                         path = get_db_path()
                         clear_busy_notices(db_path=path)
                         logger.info(
-                            "ops repair-market-db 結束 quotes_ok=%s quote_n=%s "
-                            "biaoke_n=%s private_n=%s",
-                            market_quotes_ok(path),
+                            "ops repair-market-db 結束 fresh_ok=%s quote_n=%s "
+                            "latest=%s biaoke_n=%s private_n=%s",
+                            market_quotes_fresh_ok(path),
                             daily_quote_row_count(path),
+                            latest_complete_quote_date(path),
                             biaoke_post_count(path),
                             private_row_total(path),
                         )
@@ -592,6 +610,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 result = {
                     "ok": True,
                     "started": True,
+                    "force_release": force_release,
                     "note": "ensure_market_db started on web service disk",
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")
@@ -1340,18 +1359,19 @@ def force_seed_biaoke_baseline() -> dict:
     return result
 
 
-def ensure_market_db() -> None:
+def ensure_market_db(*, force_release: bool = False) -> None:
     """確保行情庫可讀：清錯位 wal/shm → 優先救 .corrupt-*（biaoke≥1700）→ 再 Release。
 
     不准只搬 .db 留下 -wal／-shm（會讓新庫套舊 WAL 永遠 quick_check 紅）。
-    不准留下 health 長期 db_ok=false／biaoke 空卻不再重試。
+    不准留下 health 長期 db_ok=false／biaoke 空／完整日過舊卻不再重試。
+    force_release：ops 急救直接換公開 Release（仍 salvage 私人／飆大）。
     """
     from config import get_db_path
     from db_recover import ensure_market_db_recoverable
 
     path = get_db_path()
     try:
-        result = ensure_market_db_recoverable(path)
+        result = ensure_market_db_recoverable(path, force_release=force_release)
     except Exception:
         logger.exception("行情庫復原失敗")
         force_seed_biaoke_baseline()
@@ -1362,9 +1382,10 @@ def ensure_market_db() -> None:
         except OSError:
             size_mb = 0
         logger.info(
-            "行情庫就緒 source=%s biaoke_n=%s（%.0f MB）actions=%s",
+            "行情庫就緒 source=%s biaoke_n=%s quote_n=%s（%.0f MB）actions=%s",
             result.get("source"),
             result.get("biaoke_n"),
+            result.get("quote_n"),
             size_mb,
             result.get("actions"),
         )
@@ -1400,13 +1421,13 @@ def _biaoke_ready(db_path: str, *, min_n: int = 1700) -> bool:
 
 
 def _market_db_ready(db_path: str, *, min_n: int = 1700) -> bool:
-    """復原重試停手閘：可讀＋官方日 K 在＋飆大底圖夠。缺 daily_quotes 不准停。"""
+    """復原重試停手閘：可讀＋官方日 K 新鮮（完整日≥fuse_end）＋飆大底圖夠。"""
     try:
-        from db_recover import market_quotes_ok
+        from db_recover import market_quotes_fresh_ok
 
         if not _biaoke_ready(db_path, min_n=min_n):
             return False
-        return bool(market_quotes_ok(db_path))
+        return bool(market_quotes_fresh_ok(db_path))
     except Exception:
         return False
 

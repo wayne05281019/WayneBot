@@ -438,12 +438,21 @@ def upsert_fetched_quotes(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
     from wayne_db import ensure_core_schema
 
     ensure_core_schema(db_path)
+    # 盤中未收不當收：月表常夾帶今日未齊柱，寫進庫會擠爆大量近窗（2233 08/25→08/26）。
+    try:
+        from trading_calendar import fuse_end_trading_date
+
+        cap = str(fuse_end_trading_date() or "").replace("-", "")[:8]
+    except Exception:
+        cap = ""
     now = datetime.now().isoformat(timespec="seconds")
     payload = []
     for q in rows:
         sid = str(q.get("stock_id") or "")
         ymd = _ymd(q.get("date"))
         if not sid or not ymd:
+            continue
+        if cap and ymd > cap:
             continue
         close = float(q.get("close") or 0)
         payload.append(
