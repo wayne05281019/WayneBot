@@ -410,6 +410,8 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         called = {"rescue": 0}
         import main_runner as mr
 
+        monkeypatch.setattr(mr.MainRunner, "__init__", lambda self, *a, **k: None)
+
         def _fake_rescue(self, *a, **k):
             called["rescue"] += 1
             return {"ok": True, "delivered": True, "demoted": 1}
@@ -426,7 +428,7 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
         assert code == 202
         assert body.get("ok") is True
         assert body.get("started") is True
-        for _ in range(50):
+        for _ in range(120):
             if called["rescue"]:
                 break
             time.sleep(0.05)

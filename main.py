@@ -619,13 +619,13 @@ class HealthHandler(BaseHTTPRequestHandler):
                 from main_runner import MainRunner
 
                 logger.info("§14 /ops/force-morning：常駐碟背景 force_rescue_morning")
-                runner = MainRunner()
                 # demote／補寄全交給 force_rescue_morning：新鮮 morning-claim 進行中不准
                 # 先 demote 再開第二條（2026-10-27 整套雙寄根因）。
+                # MainRunner() 可能很慢（Release／DB）；先 202 再背景建，不准拖死 ops POST。
 
                 def _bg() -> None:
                     try:
-                        result_bg = runner.force_rescue_morning()
+                        result_bg = MainRunner().force_rescue_morning()
                         logger.info("§14 /ops/force-morning 背景補寄結束 %s", result_bg)
                     except Exception:
                         logger.exception("§14 /ops/force-morning 背景補寄失敗")
