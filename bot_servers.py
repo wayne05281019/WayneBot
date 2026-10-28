@@ -50,6 +50,9 @@ _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 # 三合一表頭字多：q95＋永不色度抽樣；Floor 不准掉到會糊國字的區間
 _LOOKUP_JPEG_QUALITY = 95
 _LOOKUP_JPEG_QUALITY_FLOOR = 88
+# 結構／大量撐壓（第3／4張）：PNG→JPEG 或超大檔縮 quality 時不准掉到會糊細 K／灰柱
+_LOOKUP_CHART_KINDS = frozenset({"struct", "vol", "chart", "three"})
+_LOOKUP_JPEG_QUALITY_CHART_FLOOR = 92
 # 查股相關圖一律原生像素送出（高低卡／介紹／結構／大量／籌碼／產業／導航）。
 # 不准再 4:5 letterbox 白底外框墊版——會把內容縮成細條（籌碼橫表尤甚）。
 # 並排格仍可走 4:5（_prepare_album_cell）。
@@ -4864,7 +4867,12 @@ class WayneTelegramBot:
         return path
 
     @staticmethod
-    def _prepare_native_lookup_jpeg(path: str) -> str:
+    def _prepare_native_lookup_jpeg(
+        path: str,
+        *,
+        quality_ladder: tuple[int, ...] | None = None,
+        quality_floor: int | None = None,
+    ) -> str:
         """橫式原像素 JPEG。只在超過 Telegram 寬+高／檔案上限時縮小，不准套 4:5。"""
         from PIL import Image
 
@@ -4910,22 +4918,46 @@ class WayneTelegramBot:
                 im = im.resize((nw, nh), Image.Resampling.LANCZOS)
             out = path + ".hq.jpg"
             limit = _LOOKUP_TG_MAX_BYTES - 64
-            for q in (
+            floor = int(quality_floor if quality_floor is not None else _LOOKUP_JPEG_QUALITY_FLOOR)
+            ladder = quality_ladder or (
                 _LOOKUP_JPEG_QUALITY,
                 92,
                 90,
                 _LOOKUP_JPEG_QUALITY_FLOOR,
-            ):
-                im.save(
-                    out,
-                    "JPEG",
-                    quality=int(q),
-                    subsampling=0,
-                    optimize=False,
-                )
-                if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
-                    im.close()
-                    return out
+            )
+            qs: list[int] = []
+            for q in ladder:
+                qi = int(q)
+                if qi < floor:
+                    continue
+                if qi not in qs:
+                    qs.append(qi)
+            if floor not in qs:
+                qs.append(floor)
+            work_im = im
+            for shrink_pass in range(4):
+                for q in qs:
+                    work_im.save(
+                        out,
+                        "JPEG",
+                        quality=int(q),
+                        subsampling=0,
+                        optimize=False,
+                    )
+                    if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
+                        im.close()
+                        return out
+                # 第3／4張：超 10MB 先等比縮像素，quality 仍守 chart floor
+                if shrink_pass >= 3:
+                    break
+                ww, hh = work_im.size
+                if ww <= 400 or hh <= 400:
+                    break
+                nw2 = max(400, int(ww * 0.92))
+                nh2 = max(400, int(hh * 0.92))
+                if (nw2, nh2) == (ww, hh):
+                    break
+                work_im = work_im.resize((nw2, nh2), Image.Resampling.LANCZOS)
             im.close()
             if os.path.isfile(out) and os.path.getsize(out) > 0:
                 return out
@@ -4937,7 +4969,13 @@ class WayneTelegramBot:
     def _prepare_lookup_album_photo(path: str, kind: str = "") -> str:
         """查股所有圖（含籌碼／產業／結構／大量／導航）：原生像素 JPEG。
         不准 4:5 letterbox 白底墊版；一張圖＝內容本身、能大就大。"""
-        _ = kind  # 呼叫端仍傳 kind；送圖路徑已統一原生
+        k = str(kind or "").strip().lower()
+        if k in _LOOKUP_CHART_KINDS:
+            return WayneTelegramBot._prepare_native_lookup_jpeg(
+                path,
+                quality_ladder=(_LOOKUP_JPEG_QUALITY, 94, 93, _LOOKUP_JPEG_QUALITY_CHART_FLOOR),
+                quality_floor=_LOOKUP_JPEG_QUALITY_CHART_FLOOR,
+            )
         return WayneTelegramBot._prepare_native_lookup_jpeg(path)
 
     @staticmethod
@@ -9430,7 +9468,7 @@ class WayneTelegramBot:
                 except OSError:
                     is_jpeg = False
                 if not is_jpeg:
-                    send_path = self._prepare_lookup_album_photo(path)
+                    send_path = self._prepare_lookup_album_photo(path, kind)
             ok = await self._reply_lookup_photo(
                 message,
                 send_path,
@@ -9884,6 +9922,8 @@ class WayneTelegramBot:
             glance_task = asyncio.create_task(_glance_item())
             # 結構提早跑 ensure（已在 ensure_task）；paint 等 glance_queued
             struct_task = asyncio.create_task(_struct_item())
+            # 大量區 paint 與結構／上傳重疊：prep 已在 vol_zone_task，不必等 struct 送完才開
+            vol_task = asyncio.create_task(_vol_item())
             async def _prep_for_send(path: str, kind: str) -> str:
                 """JPEG 魔術字＋容量合格直接送；真 PNG 才 to_thread 轉碼。"""
                 if not path or not os.path.isfile(path):
@@ -9960,23 +10000,20 @@ class WayneTelegramBot:
                 code,
                 bool(struct_item),
             )
-            vol_task = asyncio.create_task(_vol_item())
-            if struct_item:
+
+            async def _send_struct_if_any():
+                nonlocal sent_any, hub_on
+                if not struct_item:
+                    return
                 kind, path, caption, _mk = struct_item
                 prep = await _prep_for_send(path, kind)
-                # 第 3 張結構圖：不要附圖下鈕。
                 ok = await send_photo(prep or path, caption, None, kind=kind)
                 if ok:
                     sent_any = True
                     sent_kinds.append(kind)
                     ready_items.append(struct_item)
-            if gap_msg is not None:
-                await self._delete_message(gap_msg)
-                gap_msg = None
-                _gap_box["msg"] = None
 
-            await _bump_progress("vol")
-            await asyncio.sleep(0)
+            struct_send_task = asyncio.create_task(_send_struct_if_any())
             t_vol0 = time.monotonic()
             vol_item = await vol_task
             logger.info(
@@ -9985,6 +10022,14 @@ class WayneTelegramBot:
                 code,
                 bool(vol_item),
             )
+            await struct_send_task
+            if gap_msg is not None:
+                await self._delete_message(gap_msg)
+                gap_msg = None
+                _gap_box["msg"] = None
+
+            await _bump_progress("vol")
+            await asyncio.sleep(0)
             if vol_item:
                 kind, path, caption, _mk = vol_item
                 prep = await _prep_for_send(path, kind)
