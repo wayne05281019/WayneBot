@@ -316,8 +316,16 @@ def render_index_kline_png(
     ax1.axhline(l60, color="#81c784", linewidth=0.95, zorder=2)
     ax1.axhline(h20, color="#f8bbd0", linewidth=0.80, linestyle="--", zorder=2)
     ax1.axhline(l20, color="#80deea", linewidth=0.80, linestyle="--", zorder=2)
+    # 時段跟收盤一致：現貨已收不准因殘價再寫「盤中」（同圖不准又盤中又收盤）。
     live_note = ""
-    if live_px > 0:
+    cash_open = False
+    try:
+        from trading_calendar import tw_cash_session_open
+
+        cash_open = bool(tw_cash_session_open())
+    except Exception:
+        cash_open = False
+    if live_px > 0 and cash_open:
         t = str((live or {}).get("update_time") or "")
         live_note = f"  ·盤中 {t[:5]}" if t else "  ·盤中即時"
     stamp = ""
@@ -325,7 +333,7 @@ def render_index_kline_png(
         from decision_card_signals import format_card_query_stamp
 
         date_s, clock_s = format_card_query_stamp(
-            is_live=bool(live_px > 0),
+            is_live=bool(live_px > 0 and cash_open),
             latest_date=last_d,
         )
         stamp = f"{date_s} {clock_s}"
@@ -475,7 +483,21 @@ def build_market_kline_chart(
     db_path: str | None = None,
 ) -> str:
     # 多抓暖機根數給季線；畫面再裁到 _VIEW_START_YMD
-    df = load_index_daily_ohlc(db_path, days=max(int(days or 240), 240))
+    # 量與主卡全日量同源：先節流以 FMTQIK 官方張覆寫近窗，再讀庫畫。
+    path = str(db_path or "").strip() or None
+    if path:
+        try:
+            from taiwan_market import _backfill_zero_index_volumes, _INDEX_VOL_TRY_AT
+            import time as _time
+
+            key = os.path.abspath(path)
+            now_m = _time.monotonic()
+            if key not in _INDEX_VOL_TRY_AT or now_m - float(_INDEX_VOL_TRY_AT[key]) >= 600.0:
+                _INDEX_VOL_TRY_AT[key] = now_m
+                _backfill_zero_index_volumes(path, force_recent=True)
+        except Exception:
+            logger.debug("日K前補加權量略過", exc_info=True)
+    df = load_index_daily_ohlc(path, days=max(int(days or 240), 240))
     if df.empty:
         logger.warning("大盤日K：庫內無官方開高低收，略過 Yahoo 圖（漲跌會跟官方差）")
         return ""

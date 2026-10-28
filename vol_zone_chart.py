@@ -1786,8 +1786,19 @@ def vol_zone_day_path_label(
 
     short = voice["short"]
     if side == "hold":
-        verb = f"{voice['over']}撐" if cl > hold else f"{voice['not_over']}撐"
-        low_bit = f"  今最低{lo_s}" if lo > 0 and lo <= hold * 1.01 else ""
+        # 「過撐」歧義（跌破？站上？）→ 改「站上撐／未站上撐」
+        verb = (
+            f"{voice['px_prefix']}站上撐"
+            if cl > hold
+            else f"{voice['px_prefix']}未站上撐"
+        )
+        pierce_back = lo > 0 and lo < hold and cl >= hold
+        if pierce_back:
+            low_bit = f"  今最低{lo_s}刺穿後收站回"
+        elif lo > 0 and lo <= hold * 1.01:
+            low_bit = f"  今最低{lo_s}"
+        else:
+            low_bit = ""
         line = (
             f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
             f"{verb}  {short}{cl_s}"
@@ -1958,7 +1969,20 @@ def vol_zone_position_line(
     last_down = n >= 2 and closes[-1] < closes[-2]
     nice = rising and heat in ("up", "peak", "") and not test_press
 
+    face_lo = _px(face.get("low") or cl)
+    pierce_recover = face_lo > 0 and face_lo < lo and cl >= lo
     if n == 1:
+        if pierce_recover:
+            # 今低破撐、收站回：先講刺穿再講收復（收盤後適合度）
+            body = (
+                f"今低刺穿撐{lo_s}後收站回，{voice['px_prefix']}{_fmt_price(cl)}"
+                f"仍在撐之上"
+            )
+            if test_press:
+                body += f"，還沒過{hi_s}上緣"
+                return _emit(body, test=True)
+            body += f"，仍沒有突破{hi_s}上緣壓力"
+            return _emit(body)
         if test_press:
             body = (
                 f"今天剛站在支撐線上，{voice['px_prefix']}{_fmt_price(cl)}"
@@ -3219,15 +3243,25 @@ def paint_vol_zone_parallel_channel(
         # 個股趨勢線：右緣釘末日 seam，不准伸出中間主圖框／演化溝
         rail_hi = float(max(n - 1, 0)) if quiet else float(n) - 0.35
     kind0 = str(ch.get("kind") or "")
-    # 大盤話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。個股滿版跟結構圖同一細虛線常數。
+    ch_alive = bool(ch.get("alive"))
+    # 大盤話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。失效升軌降權灰（對齊 WB-28）。
+    # 個股滿版跟結構圖同一細虛線常數。
     rail_kw: Dict[str, Any] = {}
     if market_rails:
-        rail_kw = dict(
-            rail_lw=3.2,
-            rail_dash=_CHANNEL_RAIL_DASH,
-            rail_halo=2.3,
-            rail_color="#0d47a1" if kind0 == "asc" else "#4a148c",
-        )
+        if ch_alive:
+            rail_kw = dict(
+                rail_lw=3.2,
+                rail_dash=_CHANNEL_RAIL_DASH,
+                rail_halo=2.3,
+                rail_color="#0d47a1" if kind0 == "asc" else "#4a148c",
+            )
+        else:
+            rail_kw = dict(
+                rail_lw=2.2,
+                rail_dash=_CHANNEL_RAIL_DASH,
+                rail_halo=1.4,
+                rail_color="#90a4ae",
+            )
     elif quiet:
         rail_kw = dict(
             rail_lw=float(_STOCK_TREND_RAIL_LW),
@@ -3257,14 +3291,18 @@ def paint_vol_zone_parallel_channel(
     base = float(ch.get("base_now") or 0)
     kind = str(ch.get("kind") or "")
     if market_rails:
-        color = "#0d47a1" if kind == "asc" else "#4a148c"
+        color = (
+            ("#0d47a1" if kind == "asc" else "#4a148c")
+            if ch_alive
+            else "#90a4ae"
+        )
         label_fs = 12.5
     elif quiet:
         color = str(_STOCK_TREND_RAIL_COLOR)
         label_fs = float(_STOCK_TREND_LABEL_FS)
     else:
         color = "#1565c0" if kind == "asc" else "#6a1b9a"
-        if not bool(ch.get("alive")):
+        if not ch_alive:
             color = "#90a4ae"
         label_fs = 9.2
     # 導航疊完後 ylim 會再外擴；標位用軸上真實範圍
@@ -6287,6 +6325,19 @@ def _paint_volume_zone(
                 ch_lab = str(channel.get("label") or "").strip()
                 if ch_lab:
                     foot1 = f"{foot1}　{ch_lab}"
+                # 失效升軌且未改畫下降：腳註明說，不准寫得像已改畫
+                if (
+                    not bool(channel.get("alive"))
+                    and str(channel.get("kind") or "") == "asc"
+                    and "未畫下降壓" not in foot1
+                    and "未改畫下降壓" not in foot2
+                ):
+                    foot2 = (
+                        "高觸壓、收未過＝測壓（非買訊）。舊升通道已失效（灰線僅對照）；"
+                        "尚無合格下降壓＝本圖未畫下降壓。"
+                        "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
+                        "無成交＝灰短K＋量柱貼底，不准挖洞。"
+                    )
         else:
             foot2 = (
                 "高觸壓、收未過＝測壓（非買訊）。"
