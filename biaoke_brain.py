@@ -114,19 +114,38 @@ def stock_query(ask: str) -> str:
 def load_bars(db_path: str, stock_id: str, *, n: int = 80) -> List[Dict[str, Any]]:
     if not db_path or not os.path.isfile(db_path) or not stock_id:
         return []
+    # 盤中未收不當收：只到庫內最後完整日（與 load_official_ohlc／高低卡同源）。
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        cap = str(db_as_of_trading_date(db_path) or "").replace("-", "")[:8]
+    except Exception:
+        cap = ""
     conn = sqlite3.connect(db_path, timeout=15.0)
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(
-            """
-            SELECT date, stock_id, stock_name, open, high, low, close, volume, pct_change
-            FROM daily_quotes
-            WHERE stock_id=?
-            ORDER BY date DESC
-            LIMIT ?
-            """,
-            (str(stock_id), int(n)),
-        ).fetchall()
+        if len(cap) == 8:
+            rows = conn.execute(
+                """
+                SELECT date, stock_id, stock_name, open, high, low, close, volume, pct_change
+                FROM daily_quotes
+                WHERE stock_id=? AND replace(CAST(date AS TEXT), '-', '') <= ?
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                (str(stock_id), cap, int(n)),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT date, stock_id, stock_name, open, high, low, close, volume, pct_change
+                FROM daily_quotes
+                WHERE stock_id=?
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                (str(stock_id), int(n)),
+            ).fetchall()
     except sqlite3.OperationalError:
         rows = []
     finally:

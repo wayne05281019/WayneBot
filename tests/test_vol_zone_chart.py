@@ -765,6 +765,37 @@ def test_cross_chart_last_close_aligned_2383():
     assert abs(float(last["close"]) - float(card.get("close"))) < 1e-6
 
 
+def test_load_official_ohlc_drops_incomplete_after_as_of(tmp_path, monkeypatch):
+    """讀圖丟掉完整日之後殘列，免盤中未齊柱擠爆大量近窗／與高低卡分叉。"""
+    from vol_zone_chart import load_official_ohlc
+
+    db = str(tmp_path / "wayne_market.db")
+    monkeypatch.setattr(
+        "quote_integrity.db_as_of_trading_date", lambda *_a, **_k: "20261027"
+    )
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume REAL,
+            PRIMARY KEY (date, stock_id)
+        )
+        """
+    )
+    for d, c, v in (("20261022", 144.5, 595), ("20261027", 149.0, 446), ("20261028", 149.5, 193)):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+            (d, "2233", "宇隆", "TW", c, c + 1, c - 1, c, v),
+        )
+    conn.commit()
+    conn.close()
+    df = load_official_ohlc("2233", db, 60)
+    dates = {str(x).replace("-", "")[:8] for x in df["date"].tolist()}
+    assert "20261027" in dates
+    assert "20261028" not in dates
+
+
 def test_vol_zone_no_prev_close_right_tag():
     """大量區右軸不准再畫「昨收」白底標（與今收／壓撐重複干擾）。"""
     src = open("vol_zone_chart.py", encoding="utf-8").read()

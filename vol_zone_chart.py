@@ -849,6 +849,19 @@ def ensure_official_volume_window(
             end = normalize_ymd(fuse_end_date())
         except Exception:
             end = ""
+    # 單檔 max(date) 可能殘留盤中未齊柱；補洞／抓月不准超過 fuse_end／完整日。
+    try:
+        from config import fuse_end_date
+        from quote_integrity import db_as_of_trading_date
+
+        cap = normalize_ymd(fuse_end_date())
+        as_of = normalize_ymd(db_as_of_trading_date(path) or "")
+        if len(as_of) == 8 and (not cap or as_of < cap):
+            cap = as_of
+        if len(cap) == 8 and len(end) == 8 and end > cap:
+            end = cap
+    except Exception:
+        pass
     if len(end) != 8:
         return out
     # 日曆略放大，涵蓋開市日 need 根
