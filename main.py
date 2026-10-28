@@ -695,10 +695,18 @@ def catch_up_missed_jobs(now=None) -> None:
         """最新完整日若無 screen_sessions，補建快取（不寄），避免按海選全掃逾時。
 
         morning-claim 進行中不准搶掃：會跟 06:30 補寄互鎖 DB（§14 今早根因）。
+        台北 06:30 前也不准背景全掃：會跟開機融合／飆大分析互鎖，
+        /live 健檢 5s 逾時 → Render 殺行程 → 快取永遠建不完 → 重啟循環。
         """
         try:
             if runner.morning_claim_is_fresh_running():
                 logger.info("補跑：早報 morning-claim 進行中，略過背景補建海選快取")
+                return
+            # 用 catch_up 的 now（台北）；06:30 早報路徑會建快取。
+            if mins < (6 * 60 + 30):
+                logger.info(
+                    "補跑：台北 06:30 前略過背景補建海選快取（避 Render 健檢重啟循環）"
+                )
                 return
             from import_health import latest_complete_quote_date
             from screen_sessions import screen_session_has_data
@@ -945,6 +953,12 @@ def retry_missed_owned_jobs(now=None) -> list:
                 continue
             runner.run_midday_review(skip_if_done=True)
         else:
+            now = now or _taipei_now()
+            mins = now.hour * 60 + now.minute
+            # 與開機融合同一道閘：06:30 前半夜補 fuse 會把 /live 拖死重啟。
+            if mins < (6 * 60 + 30):
+                logger.info("死人開關：台北 06:30 前不補跑 fuse（避健檢重啟循環）")
+                continue
             runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
         ran.append(kind)
     return ran
@@ -1261,6 +1275,16 @@ def start_market_backfill(delay_s: float = 0):
                     "啟動後融合略過：今日台股休市 %s %s（開市日才融合）",
                     closed_bf.get("ymd"),
                     closed_bf.get("zh"),
+                )
+                return
+            # 台北 06:30 前開機融合會跟補跑海選／飆大分析互鎖 SQLite，
+            # 連 /live 都回不來 → Render 5s 健檢殺行程形成重啟循環。
+            # 06:30 後／16:30 準點再補；深夜只開聽筒。
+            now_bf = _taipei_now()
+            mins_bf = now_bf.hour * 60 + now_bf.minute
+            if mins_bf < (6 * 60 + 30):
+                logger.info(
+                    "啟動後融合略過：台北 06:30 前（避 Render 健檢重啟循環）"
                 )
                 return
             logger.info("啟動後融合官方日K／法人／財報（不推播）")

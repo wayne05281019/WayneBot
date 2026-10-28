@@ -354,6 +354,30 @@ def test_boot_backfill_uses_increment_job():
     # 休市日開機也不准 fuse（光復節補假／颱風等同精神）
     assert "closed_tw_session" in src
     assert "開市日才融合" in src
+    # 06:30 前不准開機融合：避 /live 健檢重啟循環
+    assert "06:30 前" in src
+    assert "健檢重啟循環" in src
+
+
+def test_catch_up_skips_screen_cache_before_morning():
+    """台北 06:30 前補跑不准背景全掃海選（跟開機融合互鎖會重啟循環）。"""
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.catch_up_missed_jobs)
+    assert "06:30 前略過背景補建海選快取" in src
+    assert "健檢重啟循環" in src
+
+
+def test_watchdog_retry_skips_fuse_before_morning():
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.retry_missed_owned_jobs)
+    assert "06:30 前不補跑 fuse" in src
+    assert "健檢重啟循環" in src
 
 
 def test_catch_up_skips_fuse_on_closed_day():
