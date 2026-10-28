@@ -3275,10 +3275,25 @@ def _share_chg_line(prefix: str, val: float) -> str:
     return f"{prefix}{mark} {_pt_txt(val)}"
 
 
+def _lag_capture_count_line(n: int) -> str:
+    """推薦檔數文案跟名單長度對齊；不准硬印兩到三卻只列 1 檔。"""
+    n = int(n or 0)
+    if n <= 0:
+        return "這型此刻沒有可捕捉的次級"
+    if n == 1:
+        return "這型最落後次級 1 檔"
+    if n == 2:
+        return "這型最落後次級兩檔"
+    if n == 3:
+        return "這型最落後次級三檔"
+    return f"這型最落後次級 {n} 檔"
+
+
 def _share_path(ign: Dict[str, Any]) -> str:
     shares = list(ign.get("shares") or [])
     if len(shares) >= 2:
-        return f"{shares[0]:.1f}%→{shares[-1]:.1f}%（{_pt_txt(shares[-1] - shares[0])}）"
+        body = _share_path_body(shares)
+        return f"{body}（{_pt_txt(shares[-1] - shares[0])}）"
     if shares:
         return _share_txt(shares[-1])
     return ""
@@ -3304,12 +3319,42 @@ def _pack_phone(bits: Sequence[str], sep: str = "→") -> List[str]:
     return lines
 
 
+def _share_path_body(shares: Sequence[float]) -> str:
+    """近窗摘要：首→末；中間有更高／更低高峰就夾進路徑，不准抹掉。"""
+    vals = [float(x) for x in list(shares or [])]
+    if len(vals) < 2:
+        return f"{vals[0]:.1f}%" if vals else ""
+    first, last = vals[0], vals[-1]
+    mid = vals[1:-1]
+    if not mid:
+        return f"{first:.1f}%→{last:.1f}%"
+    peak = max(mid)
+    trough = min(mid)
+    # 只夾「比首末都顯眼」的轉折，避免每根都印成長牆。
+    marks: List[float] = []
+    if peak > max(first, last) + 1e-9:
+        marks.append(peak)
+    if trough < min(first, last) - 1e-9 and abs(trough - peak) > 1e-9:
+        marks.append(trough)
+    if not marks:
+        return f"{first:.1f}%→{last:.1f}%"
+    # 依出現順序夾入（先碰到的中間極值）
+    ordered: List[float] = []
+    for v in mid:
+        if v in marks and v not in ordered:
+            ordered.append(v)
+        if len(ordered) >= 2:
+            break
+    bits = [f"{first:.1f}%"] + [f"{x:.1f}%" for x in ordered] + [f"{last:.1f}%"]
+    return "→".join(bits)
+
+
 def _share_path_lines(ign: Dict[str, Any]) -> List[str]:
     """近窗路徑＋單日升降分開標，不准把單日當近窗。升降一字標升／退。"""
     shares = list(ign.get("shares") or [])
     out: List[str] = []
     if len(shares) >= 2:
-        body = f"{shares[0]:.1f}%→{shares[-1]:.1f}%"
+        body = _share_path_body(shares)
         win_delta = float(shares[-1] - shares[0])
         n = len(shares)
         one = f"近{n}日佔比 {body}"
@@ -4521,10 +4566,18 @@ def dongzhu_hold_page(
         rot = _rotation_layer_lines(parts, data.get("flow") or {})
         active = _layer_active_depth(parts)
         layer_rows = list(_layer_lines(parts, active_depth=active))
-        if rot:
-            blocks.append(_blk(*(_esc(x) for x in rot), *(_esc(x) for x in layer_rows)))
-        else:
-            blocks.append(_blk(*(_esc(x) for x in layer_rows)))
+        path_line = _layer_path_line(parts)
+        layer_blk: List[str] = []
+        if path_line:
+            layer_blk.append(_esc(path_line))
+        layer_blk.extend(_esc(x) for x in layer_rows)
+        for x in rot:
+            s = str(x or "")
+            if not s or s == path_line or s.startswith("層級 "):
+                continue
+            layer_blk.append(_esc(s))
+        if layer_blk:
+            blocks.append(_blk(*layer_blk))
     px_rows: List[str] = []
     role = str(data.get("role") or "")
     if role == "龍頭":
@@ -4619,9 +4672,19 @@ def dongzhu_page(
     ign = data.get("flow") or {}
     hot = data.get("flow_named_hot") or {}
     if parts:
-        now_rows.extend(_esc(x) for x in _rotation_layer_lines(parts, ign, hot))
+        # 層級：主／次／鏈＋·輪動為主；輪動進／退升橋只補不重印「層級 主→次→鏈」。
+        rot = _rotation_layer_lines(parts, ign, hot)
         active = _layer_active_depth(parts)
-        now_rows.extend(_esc(x) for x in _layer_lines(parts, active_depth=active))
+        layer_rows = list(_layer_lines(parts, active_depth=active))
+        path_line = _layer_path_line(parts)
+        if path_line:
+            now_rows.append(_esc(path_line))
+        now_rows.extend(_esc(x) for x in layer_rows)
+        for x in rot:
+            s = str(x or "")
+            if not s or s == path_line or s.startswith("層級 "):
+                continue
+            now_rows.append(_esc(s))
     lead_n = int(data.get("in_lead_n") or 0)
     pos_n = int(data.get("share_pos_n") or 0)
     win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
@@ -4629,7 +4692,9 @@ def dongzhu_page(
         now_rows.append(_esc(f"流入第一 {lead_n}天"))
     if pos_n:
         now_rows.append(_esc(f"近{win_n}日有佔比 {pos_n}天"))
-    now_rows.extend(_esc(x) for x in _share_path_lines(ign))
+    # 佔比數字只留下方「資金進出」全路徑；此處不重印摘要（避免兩套數）。
+    if not (ign.get("shares") or ign.get("nets")):
+        now_rows.extend(_esc(x) for x in _share_path_lines(ign))
     if data.get("pre_sign") == "pre":
         now_rows.append(_esc("佔比升還沒第一＝先機"))
     elif data.get("pre_sign") == "chase":
@@ -4676,7 +4741,7 @@ def dongzhu_page(
     recs = list(data.get("recs") or [])
     buy_sids = {str(x.get("sid") or "") for x in buys if x.get("sid")}
     if recs:
-        rec_rows.append(_esc("這型最落後次級兩到三檔"))
+        rec_rows.append(_esc(_lag_capture_count_line(len(recs))))
         rec_rows.append(_esc("不是單檔保證"))
         rec_rows.append(_esc("點圖下鈕選檔"))
         rec_rows.append(_esc("下列＝次級落後捕捉"))
