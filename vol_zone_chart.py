@@ -1203,15 +1203,41 @@ def _scale_cut_date(ex_events: Optional[List[Dict[str, Any]]], last_date: str) -
     return cut
 
 
+def _vol_zone_flag_true(v) -> bool:
+    """只認明確 True；NaN 不准當 True（bool(nan) 會誤殺近窗）。"""
+    if v is True:
+        return True
+    if v is False or v is None:
+        return False
+    try:
+        if v != v:
+            return False
+    except Exception:
+        pass
+    try:
+        if pd.isna(v):
+            return False
+    except Exception:
+        pass
+    try:
+        import numpy as np
+
+        if isinstance(v, np.bool_):
+            return bool(v)
+    except Exception:
+        pass
+    return False
+
+
 def _vol_zone_bar_skippable(work: pd.DataFrame, i: int, halt: pd.Series) -> bool:
     """停牌／假補／盤中疊加不准佔爆大量近窗名額、也不准當候選。"""
-    if bool(halt.iloc[i]):
+    if _vol_zone_flag_true(halt.iloc[i]):
         return True
-    if "no_trade_fill" in work.columns and bool(work["no_trade_fill"].iloc[i]):
+    if "no_trade_fill" in work.columns and _vol_zone_flag_true(work["no_trade_fill"].iloc[i]):
         return True
     if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
         return True
-    if "is_live" in work.columns and bool(work["is_live"].iloc[i]):
+    if "is_live" in work.columns and _vol_zone_flag_true(work["is_live"].iloc[i]):
         return True
     return False
 
@@ -5335,6 +5361,13 @@ def _paint_volume_zone(
             else:
                 ha = "center"
             y_ax = 0.965 - 0.055 * (near % 3)
+            # 壓線貼軸頂時，除息標抬到軸上方（transAxes>1），減少與「大量區壓」互壓
+            try:
+                press_ax = (float(hi) - y_lo_ex) / y_span_ex if y_span_ex > 0 else 0.0
+                if press_ax >= 0.78:
+                    y_ax = min(1.06, max(y_ax + 0.06, 1.02))
+            except Exception:
+                pass
             # 既有 axvline z 低會被 K／帶蓋住上段；補畫標底→K 高的虛線連杆
             try:
                 y_bar = float(highs[i]) if i < len(highs) and float(highs[i] or 0) > 0 else float(

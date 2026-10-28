@@ -1030,6 +1030,27 @@ def live_quote_from_decision_card(
     }
 
 
+def _coerce_live_flag(v) -> bool:
+    """只認明確 True／numpy.bool_(True)；NaN／None／False → False（bool(nan) 陷阱）。"""
+    if v is True:
+        return True
+    if v is False or v is None:
+        return False
+    try:
+        if v != v:  # NaN
+            return False
+    except Exception:
+        pass
+    try:
+        import numpy as np
+
+        if isinstance(v, np.bool_):
+            return bool(v)
+    except Exception:
+        pass
+    return False
+
+
 def overlay_live_face_from_card(
     face,
     card: Optional[Dict[str, Any]],
@@ -1057,7 +1078,16 @@ def overlay_live_face_from_card(
     if isinstance(face, pd.DataFrame):
         if face is None or getattr(face, "empty", True):
             return face
-        return append_live_bar(face, sid, market=mkt, merge_live=True, live_quote=rt)
+        out_df = append_live_bar(face, sid, market=mkt, merge_live=True, live_quote=rt)
+        # 歷史列 is_live 常成 nan；bool(nan)=True 會誤殺爆大量近窗 → 非真 True 一律 False
+        if (
+            out_df is not None
+            and not getattr(out_df, "empty", True)
+            and "is_live" in getattr(out_df, "columns", [])
+        ):
+            out_df = out_df.copy()
+            out_df["is_live"] = [_coerce_live_flag(v) for v in out_df["is_live"].tolist()]
+        return out_df
     rows = list(face or [])
     if not rows:
         return rows
@@ -1065,7 +1095,10 @@ def overlay_live_face_from_card(
     out = append_live_bar(df, sid, market=mkt, merge_live=True, live_quote=rt)
     if out is None or getattr(out, "empty", True):
         return rows
-    return out.to_dict("records")
+    records = out.to_dict("records")
+    for r in records:
+        r["is_live"] = _coerce_live_flag(r.get("is_live"))
+    return records
 
 
 def fetch_lookup_quote(

@@ -1599,7 +1599,11 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
     fig = ink.fig
     title = next((t for t in header.texts if "專圖" in str(t.get_text())), None)
     sub = next((t for t in header.texts if str(t.get_text()).startswith("爆大量") or "最近" in str(t.get_text())), None)
-    close_t = next((t for t in header.texts if re.fullmatch(r"收[\d,.]+", str(t.get_text()).strip())), None)
+    # 盤中＝「現xxxx」、收盤＝「收xxxx」；只認收會漏掉現價字，墨線重排後原字仍留在置中位壓住「低」
+    close_t = next(
+        (t for t in header.texts if re.fullmatch(r"[收現][\d,.]+", str(t.get_text()).strip())),
+        None,
+    )
     stamp = next((t for t in fig.texts if re.search(r"\d{4}/\d{2}/\d{2}", str(t.get_text()))), None)
     W, H = ink.W, ink.H
     # 右緣對齊結構外框（figure fraction 0.982）
@@ -1785,7 +1789,8 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     col = HOLD
                 wv, _, _ = ink.measure(val, val_prop)
                 ink.text(header, x, base, val, prop=val_prop, color=col, ha="left", z=22)
-                x += wv
+                # 字寬量測略偏窄時末位會貼紅底；欄尾多留一點呼吸
+                x += wv + ink.pt(2.0)
                 parts += [lab, val]
             return x, parts
 
@@ -1793,9 +1798,10 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
         x2_end, p2 = _paint_aligned(row2, cy2) if row2 else (x_data0, [])
         parts_all = list(p1) + list(p2)
         cy_close = cy2 if row2 else cy1
-        # 「低」右緣＝row2 畫完；收紅底必須在此右側留缝，不准再為時間戳往左拉
+        # 「低」右緣＝row2 畫完；收／現紅底必須在此右側留缝，不准再為時間戳往左拉
         x_low_end = x2_end if row2 else x1_end
-        MIN_LOW_CLOSE_GAP = max(8.0, ink.pt(12))  # 自證門檻 ≥8px
+        # 萬元股「低 4,830」「現 5,008」字寬大；12pt 縫目測仍像壓字，改 20pt
+        MIN_LOW_CLOSE_GAP = max(20.0, ink.pt(20))
         if ok:
             sub.set_visible(False)
             sub.set_gid("ink:replaced")
@@ -1970,8 +1976,13 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
 
 
 def align_vol_panel_margins(main, sig, volume) -> None:
-    """大量圖上中下三框左右對齊結構圖外框（FancyBbox x0≈0.016、右緣 0.982）。"""
-    target_x0, target_x1 = 0.016, 0.982
+    """大量圖上中下三框左緣對齊結構外框；右緣留價／量刻度溝。
+
+    右緣若拉到 0.982（結構 FancyBbox 外框），右軸數字會畫出畫布只剩橫杠。
+    結構主圖右緣約 0.905；大量區略寬一點仍要保住刻度完整入鏡。
+    """
+    # 0.942 仍會讓「36,975」量刻度右緣出畫布；再收一點給五位含逗號
+    target_x0, target_x1 = 0.016, 0.928
     target_w = target_x1 - target_x0
     for ax in (main, sig, volume):
         if ax is None:
@@ -1994,6 +2005,68 @@ def vol_frames(ink: Ink, main, sig, volume) -> None:
         else:
             panel_shadow(ink, bb, off_pt=3.0)  # USE_SHADOW=False → no-op
     # 主圖底／量圖頂刻度刺：交給 kill_seam_ticks 統一清
+
+
+def lift_ex_div_off_press(ink: Ink, main) -> None:
+    """除息／除權紫標不准壓「大量區壓／撐」；重疊就上移（仍鎖該根豎線 x）。"""
+    if main is None:
+        return
+    try:
+        ink.fig.canvas.draw()
+        ink.ren = ink.fig.canvas.get_renderer()
+    except Exception:
+        return
+    blockers = [bb for role, bb in ink.shells if role in ("press", "hold")]
+    if not blockers:
+        for t in list(main.texts):
+            s = str(t.get_text() or "")
+            if label_role(s) in ("press", "hold"):
+                try:
+                    blockers.append(ink.shell_ext(t))
+                except Exception:
+                    pass
+    if not blockers:
+        return
+    main_bb = main.get_window_extent(ink.ren)
+    # clip_on=False：准許略超出主圖上緣，寧可冒出框也不准壓「大量區壓」
+    top_cap = float(main_bb.y1) + ink.pt(22)
+    for t in list(main.texts):
+        s = str(t.get_text() or "")
+        if not t.get_visible() or not (s.startswith("除息") or s.startswith("除權")):
+            continue
+        try:
+            se = ink.shell_ext(t)
+        except Exception:
+            continue
+        min_gap = ink.pt(12)
+        hit = []
+        for bb in blockers:
+            xo = min(float(se.x1), float(bb.x1)) - max(float(se.x0), float(bb.x0))
+            if xo <= 2.0:
+                continue
+            yo = min(float(se.y1), float(bb.y1)) - max(float(se.y0), float(bb.y0))
+            gap_above = float(se.y0) - float(bb.y1)
+            if yo > 2.0 or gap_above < min_gap:
+                hit.append(bb)
+        if not hit:
+            continue
+        need_up = max(float(bb.y1) + min_gap - float(se.y0) for bb in hit)
+        h = float(se.y1) - float(se.y0)
+        dy = min(need_up, max(0.0, top_cap - float(se.y1)))
+        if dy <= 0.5:
+            dy = min(float(bb.y0) for bb in hit) - min_gap - float(se.y1)
+            if dy >= -0.5:
+                continue
+        cx = 0.5 * (float(se.x0) + float(se.x1))
+        # 以中心點平移，保留原 ha／va，bbox 跟著走
+        cy = 0.5 * (float(se.y0) + float(se.y1)) + dy
+        ink.move_text_px(t, cx, cy, ha=str(t.get_ha() or "center"), va="center")
+        try:
+            ink.fig.canvas.draw()
+            ink.ren = ink.fig.canvas.get_renderer()
+            ink.record(s, [s], "ex_div", ink.shell_ext(t))
+        except Exception:
+            pass
 
 
 def vol_labels(ink: Ink, header, main, sig, volume) -> None:
@@ -2234,6 +2307,7 @@ def apply_vol(fig) -> Ink:
     force_ma_badges(ink, main)
     vol_labels(ink, header, main, sig, volume)
     badge_all_labels(ink, [main] + ([volume] if volume is not None else []), vol_ax=volume)
+    lift_ex_div_off_press(ink, main)
     vol_footer(ink)
     kill_seam_ticks(main, sig, volume)
     if volume is not None:

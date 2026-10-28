@@ -270,13 +270,47 @@ def resolve_stock(db_path: str, query: str) -> List[Dict[str, Any]]:
     return direct or hits
 
 
+def _flag_is_true(v: Any) -> bool:
+    """只認明確 True；NaN／None／False 一律 False。
+
+    盤中疊臉後歷史柱常帶 is_live=nan；Python ``bool(nan) is True`` 會誤把全窗略過，
+    結構圖退回末日（今天）當爆大量 → 與大量區 10/15 分叉。
+    """
+    if v is True:
+        return True
+    if v is False or v is None:
+        return False
+    try:
+        # float nan / numpy nan：自身不等於自身
+        if v != v:
+            return False
+    except Exception:
+        pass
+    try:
+        import pandas as pd
+
+        if pd.isna(v):
+            return False
+    except Exception:
+        pass
+    # numpy.bool_(True) 等
+    try:
+        import numpy as np
+
+        if isinstance(v, np.bool_):
+            return bool(v)
+    except Exception:
+        pass
+    return False
+
+
 def _volume_first_bar_skippable(r: Dict[str, Any]) -> bool:
     """停牌／對齊假補不准佔近窗名額（與 find_volume_zone 同）。"""
-    if bool(r.get("is_halt")) or bool(r.get("no_trade_fill")):
+    if _flag_is_true(r.get("is_halt")) or _flag_is_true(r.get("no_trade_fill")):
         return True
     if str(r.get("source") or "") == "biaoke_stock_day":
         return True
-    if bool(r.get("is_live")):
+    if _flag_is_true(r.get("is_live")):
         return True
     try:
         v = float(r.get("volume") or 0)

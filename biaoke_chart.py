@@ -4305,7 +4305,14 @@ def _structure_face_rows(
                 rows = list(rows2)
         except Exception:
             pass
-    return rows
+    # 盤中疊臉後歷史列常帶 is_live=nan；只留明確 True，其餘 False（避免 bool(nan) 誤殺近窗）
+    cleaned: List[Dict[str, Any]] = []
+    for r in rows:
+        rr = dict(r)
+        live = rr.get("is_live")
+        rr["is_live"] = live is True or type(live).__name__ == "bool_" and bool(live)
+        cleaned.append(rr)
+    return cleaned
 
 
 def _structure_render_memo_key(
