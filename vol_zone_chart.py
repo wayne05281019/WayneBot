@@ -53,10 +53,9 @@ from ex_rights import (
 
 logger = logging.getLogger("WayneBot.VolZone")
 
-# 結構／大量區 DPI：2026-10-28 220→240（#722 加速後畫質加碼）。
-# 少 redraw 後仍單 paint；像素↑約 19%，本機 paint 秒數幾乎持平、縮圖／點開更銳。
-# 不准為快降 DPI／抽樣；JPEG 仍 quality=95、subsampling=0。
-VOL_ZONE_DPI = 240
+# paint 220（少 Agg）；大量 save 238、結構 save 220（#724）；JPEG q95 subsampling=0。
+VOL_ZONE_DPI = 220
+VOL_ZONE_SAVE_DPI = 238
 VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
 # 查股結構／大量區 ensure 並行抓月表：上限 3，縮短第二→第三體感；不准跳過真量
@@ -108,7 +107,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 64  # DPI 240；ink 少 redraw＋結構 quiet（2026-10-28）
+_VZ_PAINT_VER = 65  # 結構 save220＋大量 save238＋ink 少 redraw（2026-10-28）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -2143,6 +2142,7 @@ def _vz_memo_key(
         int(lookback),
         int(bars),
         int(VOL_ZONE_DPI),
+        int(VOL_ZONE_SAVE_DPI),
         int(VOL_ZONE_JPEG_QUALITY),
         int(_VZ_PAINT_VER),
         int(bool(lookup_portrait)),
@@ -5121,10 +5121,12 @@ def _paint_volume_zone(
         _gs_left = MARKET_VOL_ZONE_GS_LEFT
         _gs_right = MARKET_VOL_ZONE_GS_RIGHT
         _paint_dpi = int(NAV_CHART_DPI)
+        _save_dpi = int(NAV_CHART_DPI)
     else:
         _gs_left = 0.050 if with_nav_signals else 0.04
         _gs_right = 0.935 if with_nav_signals else 0.96
         _paint_dpi = int(VOL_ZONE_DPI)
+        _save_dpi = int(VOL_ZONE_SAVE_DPI)
     if with_nav_signals:
         # 獨立標題列：股票介紹＋圖例同一塊；中間整列給 K，不准標題／圖例之間留大空白
         fig = _new_lookup_figure(fig_size, _paint_dpi, _BG)
@@ -6526,7 +6528,7 @@ def _paint_volume_zone(
         fig.savefig(
             out,
             format="jpeg",
-            dpi=_paint_dpi,
+            dpi=_save_dpi,
             facecolor=_BG,
             # 停價灰短柱要保得住，不准被 JPEG 抽樣吃成空白
             pil_kwargs={

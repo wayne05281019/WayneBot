@@ -94,13 +94,17 @@ def _alpha(c: Any) -> float:
 
 
 class Ink:
-    def __init__(self, fig, kind: str):
+    def __init__(self, fig, kind: str, *, lazy: bool = False):
         self.fig = fig
         self.kind = kind
         self.records: List[Dict[str, Any]] = []
         self.shells: List[Tuple[str, Bbox]] = []
-        # 一次 draw 建 renderer；後續改幾何用 redraw()，不准各 helper 亂疊整圖 draw
-        self.redraw()
+        self.ren = None
+        self.W = 0.0
+        self.H = 0.0
+        # lazy=True：等 align／grow 後再第一次 draw，少一次無效 Agg
+        if not lazy:
+            self.redraw()
 
     def redraw(self) -> None:
         """整圖 Agg draw 一次並刷新 renderer。查股大量區曾因 ink 連 draw 20 次拖到兩分多鐘。"""
@@ -1357,8 +1361,9 @@ def flush_volume_bars_to_spine(ax) -> None:
 
 
 def apply_struct(fig) -> Ink:
-    ink = Ink(fig, "struct")
+    ink = Ink(fig, "struct", lazy=True)
     ov, main, vol = _struct_axes(fig)
+    ink.redraw()
     frames = struct_frames(ink, ov)
     close_struct_frame_seam(frames)
     struct_header(ink, ov, frames)
@@ -1366,7 +1371,7 @@ def apply_struct(fig) -> Ink:
     restyle_candles_and_bars(main)
     restyle_bands(main)
     restyle_levels(main)
-    restyle_grid_ticks(main, ylab_size=11.0)
+    restyle_grid_ticks(main, ylab_size=11.25)
     sparse_right_ticks(main, n_bins=5, price=True)
     for ax in [a for a in (main, vol) if a is not None]:
         ax.spines["right"].set_visible(True)
@@ -1374,7 +1379,7 @@ def apply_struct(fig) -> Ink:
         ax.spines["right"].set_linewidth(1.15)
     if vol is not None:
         restyle_candles_and_bars(vol, volume=True)
-        restyle_grid_ticks(vol, ylab_size=10.5)
+        restyle_grid_ticks(vol, ylab_size=10.75)
         sparse_right_ticks(vol, n_bins=4, price=False)
         flush_volume_bars_to_spine(vol)
         clear_vol_top_ytick(vol)
@@ -1568,8 +1573,6 @@ def vol_key_shift(ink: Ink, legends: List[Legend], main) -> float:
     panel_left = float(main.get_window_extent(ink.ren).x0)
     if not legends:
         return panel_left
-    _grow_legend_markers(legends)
-    ink.redraw()
     cats = _key_cats(legends)
     tab_prop = fp(KEY_TAB_PROP, heavy=True)
     tab_w = max(ink.measure(c, tab_prop)[0] for c in cats) + ink.pt(8)
@@ -1982,8 +1985,7 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
         new_h = max(0.12, p.height - delta)
         main.set_position([p.x0, p.y0, p.width, new_h])
         moved = True
-    if moved:
-        ink.redraw()
+    # 位移只改幾何；外層 apply_vol 在 KEY 面板前統一 redraw 一次
 
 
 # 大量區三框：軸右緣內縮＝刻度溝；外框右緣對齊結構 FancyBbox（0.982）
@@ -2031,10 +2033,11 @@ def vol_close_right_outer_frame(ink: Ink, main, sig, volume) -> None:
     axes = [a for a in (main, sig, volume) if a is not None]
     if not axes:
         return
-    try:
-        ink.redraw()
-    except Exception:
-        return
+    if ink.ren is None:
+        try:
+            ink.redraw()
+        except Exception:
+            return
     bbs = [a.get_window_extent(ink.ren) for a in axes]
     y0 = min(float(bb.y0) for bb in bbs) / float(ink.H)
     y1 = max(float(bb.y1) for bb in bbs) / float(ink.H)
@@ -2109,10 +2112,11 @@ def lift_ex_div_off_press(ink: Ink, main) -> None:
     """除息／除權紫標不准壓「大量區壓／撐」；重疊就上移（仍鎖該根豎線 x）。"""
     if main is None:
         return
-    try:
-        ink.redraw()
-    except Exception:
-        return
+    if ink.ren is None:
+        try:
+            ink.redraw()
+        except Exception:
+            return
     blockers = [bb for role, bb in ink.shells if role in ("press", "hold")]
     if not blockers:
         for t in list(main.texts):
@@ -2361,7 +2365,7 @@ def knockout_halos(main, sig) -> None:
 
 
 def apply_vol(fig) -> Ink:
-    ink = Ink(fig, "vol")
+    ink = Ink(fig, "vol", lazy=True)
     header, main, sig, volume = _vol_axes(fig)
     # 大盤大量區 with_nav_signals=False：無 header／圖例／訊號列，仍要套墨線主圖＋量框
     if main is None:
@@ -2372,16 +2376,16 @@ def apply_vol(fig) -> Ink:
         if header.get_legend() is not None:
             legends.append(header.get_legend())
     align_vol_panel_margins(main, sig, volume)
-    ink.redraw()  # 對齊 margins 後一次；Ink.__init__ 那次不夠（幾何已變）
+    ink.redraw()  # 對齊 margins 後第一次 sync
     vol_frames(ink, main, sig, volume)
     restyle_candles_and_bars(main)
     restyle_bands(main)
     restyle_levels(main)
-    restyle_grid_ticks(main, ylab_size=11.0)
+    restyle_grid_ticks(main, ylab_size=11.25)
     sparse_right_ticks(main, n_bins=5, price=True)
     if volume is not None:
         restyle_candles_and_bars(volume, volume=True)
-        restyle_grid_ticks(volume, ylab_size=10.5)
+        restyle_grid_ticks(volume, ylab_size=10.75)
         sparse_right_ticks(volume, n_bins=4, price=False)
         flush_volume_bars_to_spine(volume)
         clear_vol_top_ytick(volume)
@@ -2389,12 +2393,13 @@ def apply_vol(fig) -> Ink:
     if sig is not None:
         sig.tick_params(colors=INK, length=0, bottom=False, top=False, left=False, right=False)
     if header is not None:
+        _grow_legend_markers(legends)
+        ink.redraw()  # KEY 符號加大後量一次盒
         panel_left = vol_key_shift(ink, legends, main)
         vol_masthead(ink, header, legends, panel_left)
         open_vol_vertical_gaps(ink, legends, main)
-        # open_vol 有位移會自 redraw；無位移則沿用 vol_key_shift 的 ren
         breathe_observe_legend(ink, legends)
-        ink.redraw()  # 線・觀察拉開後一次，給 KEY 面板量盒
+        ink.redraw()  # 開縫／觀察列 sep 後一次，給 KEY 面板量盒
         vol_key_panel(ink, header, legends, panel_left)
     ma_under_candles(main)
     knockout_halos(main, sig)
