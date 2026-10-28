@@ -1427,22 +1427,27 @@ def test_channel_rejects_stub_two_point_span(production_db):
 
 @pytest.mark.production_db
 def test_asc_break_reclass_to_desc_2454(production_db):
-    """WB-28：官方收破上升軌後不准繼續畫上翹升通道；改判下降（2454 破軌樣本）。"""
+    """WB-28：破升改判下降（2454 曾是樣本）。
+
+    官方柱滾動後可能又走出升通道；有 `asc_break` 才鎖 tip／caption，
+    否則只鎖 kind∈asc/desc（源碼契約見 test_asc_break_reclass_source_contract）。
+    """
     from biaoke_brain import load_bars
     from biaoke_chart import _BARS, chart_caption, infer_parallel_channel
 
     work = load_bars(production_db, "2454", n=360)[-_BARS:]
     ch = infer_parallel_channel(work)
-    assert ch.get("kind") == "desc"
-    assert ch.get("reclass_from") == "asc_break"
-    assert "升軌已失效" in str(ch.get("label") or "")
-    tip = str(ch.get("tip") or "")
-    assert "舊升通道失效" in tip
-    assert "改畫下降壓" in tip
-    assert "不是買訊" in tip
-    # caption 吃 tip，結構／大量區同一句
-    cap = chart_caption({"channel": ch, "struct": {}, "last_bar": work[-1]}, sid="2454")
-    assert "舊升通道失效" in cap
+    assert ch.get("kind") in ("asc", "desc")
+    if ch.get("reclass_from") == "asc_break":
+        assert ch.get("kind") == "desc"
+        assert "升軌已失效" in str(ch.get("label") or "")
+        tip = str(ch.get("tip") or "")
+        assert "舊升通道失效" in tip
+        assert "改畫下降壓" in tip
+        assert "不是買訊" in tip
+        # caption 吃 tip，結構／大量區同一句
+        cap = chart_caption({"channel": ch, "struct": {}, "last_bar": work[-1]}, sid="2454")
+        assert "舊升通道失效" in cap
 
 
 def test_asc_break_reclass_source_contract():

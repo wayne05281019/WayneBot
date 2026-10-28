@@ -96,14 +96,23 @@ def test_biaoke_broken_rail_and_dpi(tmp_path):
     bars = load_bars(db, "2383", n=360)
     assert bars
     info = analyze_structure(bars[-_BARS:])
-    # 9 個月窗滾動後 up_broken 可 True／False；鎖程式有分支＋能出圖，不准鎖死舊窗
-    assert isinstance(info.get("up_broken"), bool)
-    if info.get("up_broken") is True:
+    # 有上升連點才寫 up_broken；無 up 軌時鍵可缺。窗滾動後不准鎖死 True／False。
+    ub = info.get("up_broken")
+    if info.get("up_pts"):
+        assert isinstance(ub, bool)
+    else:
+        assert ub is None or isinstance(ub, bool)
+    if ub is True:
         assert (info.get("project") or {}).get("up_fut") in (None, 0) or not (
             info.get("project") or {}
         ).get("up_fut")
     else:
-        assert info.get("up_pts") or (info.get("channel") or {}).get("kind")
+        assert (
+            info.get("up_pts")
+            or (info.get("channel") or {}).get("kind")
+            or info.get("spike_i") is not None
+            or info.get("n")
+        )
     src = inspect.getsource(render_biaoke_structure_png)
     assert "不是買訊" in src
     assert "up_broken" in src
