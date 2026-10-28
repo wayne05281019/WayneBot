@@ -82,6 +82,11 @@ VOL_ZONE_MA10 = 10
 VOL_ZONE_MA20 = 20
 VOL_ZONE_MA60 = 60
 VOL_ZONE_MA60_WARM = 70
+# 個股大量區平行趨勢線（2026-10-28 使用者確認）：淡灰藍細虛線、不標股價、不超出主圖框
+_STOCK_TREND_RAIL_COLOR = "#8aa0b4"
+_STOCK_TREND_RAIL_LW = 0.95
+_STOCK_TREND_RAIL_DASH = (0, (2.0, 2.35))
+_STOCK_TREND_RAIL_HALO = 0.28
 
 
 def lookup_vol_ensure_days(
@@ -3172,12 +3177,14 @@ def paint_vol_zone_parallel_channel(
     paint_rails: bool = True,
     paint_labels: bool = True,
     avoid_nav_marks: bool = False,
+    quiet_rails: bool = False,
 ) -> List[Tuple[float, float, float, float]]:
     """在大量區 K 上畫兩條平行軌＋軌標。不是買訊、不數 5／9。
 
     預設／產品：labels_outside=False＝滿版底＋沿線智能定位（擋最少）；
     不准為塞標收窄 GridSpec／加寬黑邊／改 figsize。
     market_style：大盤加粗軌＋錨點日期標；個股滿版仍用結構圖細虛線色。
+    quiet_rails：個股大量區淡灰藍細虛線、不標股價、不撒點、長度不超出中間主圖框。
     avoid_nav_marks：標位避開導航箭／殘影帶（呼叫端宜在疊導航之後再 paint_labels）。
     paint_rails／paint_labels：可拆成先畫線、導航後再掛標。
     labels_outside=True 僅舊備援（軸外 1.085）；新呼叫端不准再開。
@@ -3193,12 +3200,16 @@ def paint_vol_zone_parallel_channel(
     seam = float(max(n - 1, 0))
     # 軸外標才加右緣空；滿寬不准把 xlim 再撐開把 K 擠瘦
     market_rails = bool(market_style)
-    if labels_outside:
+    quiet = bool(quiet_rails) and not market_rails
+    if quiet:
+        paint_labels = False
+    if labels_outside and not quiet:
         x0, x1 = ax.get_xlim()
         ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
         rail_hi = float(n) + 0.35
     else:
-        rail_hi = float(n) - 0.35
+        # 個股趨勢線：右緣釘末日 seam，不准伸出中間主圖框／演化溝
+        rail_hi = float(max(n - 1, 0)) if quiet else float(n) - 0.35
     kind0 = str(ch.get("kind") or "")
     # 大盤話筒縮圖要看得出兩條平行虛線：加粗、深色、白邊。個股滿版跟結構圖同一細虛線常數。
     rail_kw: Dict[str, Any] = {}
@@ -3208,6 +3219,14 @@ def paint_vol_zone_parallel_channel(
             rail_dash=_CHANNEL_RAIL_DASH,
             rail_halo=2.3,
             rail_color="#0d47a1" if kind0 == "asc" else "#4a148c",
+        )
+    elif quiet:
+        rail_kw = dict(
+            rail_lw=float(_STOCK_TREND_RAIL_LW),
+            rail_dash=_STOCK_TREND_RAIL_DASH,
+            rail_halo=float(_STOCK_TREND_RAIL_HALO),
+            rail_color=str(_STOCK_TREND_RAIL_COLOR),
+            draw_markers=False,
         )
     if paint_rails:
         _paint_parallel_channel(
@@ -3754,13 +3773,17 @@ def _paint_key_zone_smart_tags(
         return float(cx), str(ha), box
 
     def _k_crush_score(box: Tuple[float, float, float, float]) -> float:
-        """與 K 實體／影重疊代價（高＝壓死 K）。"""
+        """與 K 實體／影重疊代價（高＝壓死 K）。
+
+        2026-10-28：尾端近窗（最後約 12 根）加重——撐／壓不准擋縮圖最後幾天 K（6274）。
+        """
         if n_bars <= 0:
             return 0.0
         bx0, bx1, by0, by1 = (float(v) for v in box)
         i0 = max(0, int(math.floor(bx0 - 0.55)))
         i1 = min(n_bars, int(math.ceil(bx1 + 0.55)) + 1)
         score = 0.0
+        tail0 = max(0, int(n_bars) - 12)
         for i in range(i0, i1):
             try:
                 hk = float(highs[i])
@@ -3772,10 +3795,10 @@ def _paint_key_zone_smart_tags(
             if lk > by1 or hk < by0:
                 continue
             mid = 0.5 * (hk + lk)
-            if by0 <= mid <= by1:
-                score += 3.0
-            else:
-                score += 1.2
+            hit = 3.0 if by0 <= mid <= by1 else 1.2
+            if i >= tail0:
+                hit *= 4.2  # 尾 K 代價重，逼成對錨離開右緣末日
+            score += hit
         return score
 
     def _pair_slot_candidates(half_w: float) -> List[Tuple[float, str]]:
@@ -3819,6 +3842,20 @@ def _paint_key_zone_smart_tags(
             )
         return trials
 
+    def _occ_hit(box: Tuple[float, float, float, float]) -> float:
+        """與已占位（除息紫標／軌道標等）重疊代價。"""
+        pen = 0.0
+        bx0, bx1, by0, by1 = (float(v) for v in box)
+        for ob in placed:
+            try:
+                ox0, ox1, oy0, oy1 = (float(v) for v in ob)
+            except (TypeError, ValueError, IndexError):
+                continue
+            if bx1 < ox0 or bx0 > ox1 or by1 < oy0 or by0 > oy1:
+                continue
+            pen += 8.0
+        return pen
+
     def _best_pair_anchor(half_w: float) -> Optional[Tuple[float, str]]:
         """成對同 X：左／中／右／右溝挑壓死 K 最少的共用錨（不准兩標各搬各的）。"""
         best: Optional[Tuple[float, float, str]] = None
@@ -3831,7 +3868,7 @@ def _paint_key_zone_smart_tags(
                 if abs(float(cx1) - float(cx0)) > 2.5:
                     ok = False
                     break
-                crush += _k_crush_score(box1)
+                crush += _k_crush_score(box1) + _occ_hit(box1)
             if not ok:
                 continue
             edge_bias = 0.0
@@ -3839,7 +3876,10 @@ def _paint_key_zone_smart_tags(
                 last = float(n_bars - 1)
                 # 右溝無 K：同 crush 不准壓過左／中（自适应槽）；crush 更低時仍會贏
                 # （舊 -max(2.5,crush) 重獎會讓左淨空圖也永遠釘右溝 → CI 紅）
-                if float(cx0) >= last + 0.2:
+                # 2026-10-28：尾端有 K 穿壓撐帶時，右錨再加罰（6274 撐擋末日）
+                if float(cx0) >= last - 3.5:
+                    edge_bias = 1.85 if crush >= 1.0 else 0.55
+                elif float(cx0) >= last + 0.2:
                     edge_bias = 0.12
                 elif float(cx0) / max(last, 1.0) < 0.04:
                     edge_bias = 0.35
@@ -4035,21 +4075,65 @@ def _paint_key_zone_smart_tags(
 
     # 成對必共用錨（含右溝）；找不到才退回逐標（仍鎖同側）
     if pair_anchor is None and len(items) >= 2:
-        # 保底：末日右溝
+        # 保底：偏左／中（不准預設釘末日右溝擋尾 K）
         if n_bars > 0:
             pair_anchor = (
-                min(box_right_limit, float(n_bars - 1) + 0.55),
+                min(max(1.2, float(n_bars) * 0.16), 8.0),
                 "left",
             )
     if pair_anchor is not None:
         cx_p, ha_p = float(pair_anchor[0]), str(pair_anchor[1])
         prefer_x, prefer_ha = cx_p, ha_p
+        # 短大量區高度：兩標半高會互壓 → 先強制垂直拉開（壓上撐下），必要標不准刪
+        y_draws: List[
+            Tuple[float, str, str, float, str, Tuple[float, float, float, float]]
+        ] = []
         for y_px, color, text in items:
             half_w = float(_approx_layer_tag_half_w(text, float(VOL_ZONE_TAG_PT)))
-            cx, ha = cx_p, ha_p
+            cx, ha = float(cx_p), str(ha_p)
             y_draw, box = _y_nudge_only(
                 float(y_px), cx, ha, half_w, prefer_up=("壓" in text)
             )
+            # 垂直躲過頭（遠離軌道）→ 改水平換槽，必要標仍貼近軌道
+            max_dy = max(float(y_span) * 0.12, abs(float(y_px)) * 0.04, 18.0)
+            if abs(float(y_draw) - float(y_px)) > max_dy:
+                alt = _force_keep_slot(float(y_px), text, half_w)
+                y2, box2 = _y_nudge_only(
+                    float(y_px), alt[0], alt[1], half_w, prefer_up=("壓" in text)
+                )
+                if abs(float(y2) - float(y_px)) < abs(float(y_draw) - float(y_px)):
+                    y_draw, box = y2, box2
+                    cx, ha = float(alt[0]), str(alt[1])
+                    # 成對同側：壓改槽則撐跟著
+                    if "壓" in text:
+                        cx_p, ha_p = cx, ha
+                        prefer_x, prefer_ha = cx_p, ha_p
+            y_draws.append((float(y_draw), color, text, half_w, str(ha), box))
+            # 同步目前成對錨（撐用壓定下的槽）
+            cx_p, ha_p = float(cx), str(ha)
+        if len(y_draws) >= 2:
+            # items 已壓先撐後；成對鎖同一 cx
+            y_p, c_p, t_p, hw_p, ha_used, b_p = y_draws[0]
+            y_h, c_h, t_h, hw_h, _ha_h, b_h = y_draws[1]
+            need = max(
+                abs(float(b_p[3]) - float(b_p[2])),
+                abs(float(b_h[3]) - float(b_h[2])),
+            ) * 1.15
+            if float(y_p) - float(y_h) < need:
+                mid = 0.5 * (float(items[0][0]) + float(items[1][0]))
+                y_p = float(mid + need * 0.55)
+                y_h = float(mid - need * 0.55)
+                b_p = _box_for(cx_p, ha_p, hw_p, y_p)
+                b_h = _box_for(cx_p, ha_p, hw_h, y_h)
+                y_draws[0] = (y_p, c_p, t_p, hw_p, str(ha_p), b_p)
+                y_draws[1] = (y_h, c_h, t_h, hw_h, str(ha_p), b_h)
+            else:
+                # 同 X 重算盒（避免壓撐各走各槽）
+                b_p = _box_for(cx_p, ha_p, hw_p, y_p)
+                b_h = _box_for(cx_p, ha_p, hw_h, y_h)
+                y_draws[0] = (y_p, c_p, t_p, hw_p, str(ha_p), b_p)
+                y_draws[1] = (y_h, c_h, t_h, hw_h, str(ha_p), b_h)
+        for y_draw, color, text, half_w, ha_e, box in y_draws:
             # 抬過今日高／壓過今日低時擴 ylim，免裁切
             try:
                 y0, y1 = ax.get_ylim()
@@ -4060,9 +4144,16 @@ def _paint_key_zone_smart_tags(
             except Exception:
                 pass
             try:
-                _emit(float(y_draw), color, text, cx, ha, box)
+                _emit(float(y_draw), color, text, cx_p, str(ha_e or ha_p), box)
             except Exception:
-                _emit(float(y_px), color, text, cx, ha, _box_for(cx, ha, half_w, float(y_px)))
+                _emit(
+                    float(y_draw),
+                    color,
+                    text,
+                    cx_p,
+                    str(ha_p),
+                    _box_for(cx_p, ha_p, half_w, float(y_draw)),
+                )
         return placed
 
     # 單標或無錨：逐標掃
@@ -4579,6 +4670,7 @@ def render_lookup_vol_result(
     """查股第 4 張：大量撐壓＝橫式原版（VOL_ZONE_FIG_W×NAV），不是直式 4:5。不是買訊。
 
     月／季一律畫；五日／十日一併畫（橙／青），短標避讓略過時線仍在。
+    平行趨勢＝淡灰藍細虛線、不標股價、不超出中間主圖框（2026-10-28）。
     """
     return render_volume_zone_result(
         stock_id,
@@ -4588,6 +4680,7 @@ def render_lookup_vol_result(
         card=card,
         with_nav_signals=True,
         lookup_portrait=False,
+        with_parallel_channel=True,
         with_ma5_ma10=True,
         pack=pack,
     )
@@ -4761,6 +4854,10 @@ def _paint_volume_zone(
     # 不准為塞標把 GridSpec right 收到 0.72（會左右大黑邊、主圖被擠窄）。
     market_wide = bool(
         with_parallel_channel and not lookup_portrait and not with_nav_signals
+    )
+    # 個股查股大量區：淡灰藍趨勢細虛線、不標股價（與大盤加粗軌標分開）
+    stock_quiet_rails = bool(
+        with_parallel_channel and with_nav_signals and not market_wide
     )
     if market_wide:
         from wayne_navigator import NAV_CHART_DPI
@@ -5150,6 +5247,7 @@ def _paint_volume_zone(
                 if a is not None
             ]
             # 先畫軌線；標籤等導航箭疊完再掛（避開箭頭，不准壓判定符號）
+            # 個股 quiet＝淡灰藍無價標，長度不超出主圖框
             paint_vol_zone_parallel_channel(
                 ax1,
                 channel,
@@ -5163,6 +5261,7 @@ def _paint_volume_zone(
                 mas=_ma_for_channel,
                 paint_rails=True,
                 paint_labels=False,
+                quiet_rails=bool(stock_quiet_rails),
             )
         except Exception:
             logger.exception("大量區畫平行軌失敗 sid=%s", sid)
@@ -5315,7 +5414,8 @@ def _paint_volume_zone(
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
     # 軌道價標：導航之後再掛，智能避箭頭／殘影；不准壓判定符號
-    if with_parallel_channel and channel:
+    # 個股 quiet 趨勢線不掛價標（不准搶必要壓撐位）
+    if with_parallel_channel and channel and not stock_quiet_rails:
         try:
             channel_label_rects = paint_vol_zone_parallel_channel(
                 ax1,
@@ -5450,6 +5550,23 @@ def _paint_volume_zone(
                 for a, b, c, d in (channel_label_rects or [])
             ]
         )
+    except Exception:
+        pass
+    # 除息紫標占位：壓／撐不准蓋上去（2248／6220 交叉目視）
+    try:
+        y0_ax, y1_ax = ax1.get_ylim()
+        y_sp_ex = max(float(y1_ax) - float(y0_ax), 1.0)
+        for i, _lab in ex_labels:
+            x_pos = float(xs[i])
+            # 軸頂紫標粗估資料盒（半寬約 4～6 根）
+            _key_occ.append(
+                (
+                    x_pos - 5.5,
+                    x_pos + 5.5,
+                    float(y1_ax) - y_sp_ex * 0.14,
+                    float(y1_ax) + y_sp_ex * 0.02,
+                )
+            )
     except Exception:
         pass
     try:
@@ -5640,10 +5757,22 @@ def _paint_volume_zone(
                 _peak_h = max(_peak_h, float(vol_heights[_vi] or 0))
     except Exception:
         pass
-    # 量標再抬高：白底不准壓鄰柱／右軸數字（2026-10-26 評測底線）
+    # 量標：白底不准壓鄰柱／右軸；有量能訊號列時壓低＋偏離柱頂，土黄標不准擋紫箭（6274）
     vol_lab_y = float(_peak_h) * 1.18 + float(vol_ylim) * 0.05
-    y_top = max(float(vol_ylim) * 1.22, float(vol_lab_y) * 1.16)
+    if with_nav_signals:
+        # 標盒貼柱腰／側，頂緣遠低於量圖頂（訊號列在上方獨立軸）
+        vol_lab_y = min(
+            float(_peak_h) * 0.62 + float(vol_ylim) * 0.03,
+            float(vol_ylim) * 0.58,
+        )
+        vol_lab_y = max(float(vol_lab_y), float(vol_ylim) * 0.22)
+    y_top = max(float(vol_ylim) * 1.22, float(_peak_h) * 1.20)
+    if with_nav_signals:
+        # 多留頂縫：標盒與訊號列之間要有空隙
+        y_top = max(float(y_top), float(vol_ylim) * 1.34)
     ax2.set_ylim(0, float(y_top))
+    # 土黄標頂不准超過此值（相對 ax2 資料座標）
+    _vol_callout_cap = float(y_top) * (0.58 if with_nav_signals else 0.92)
 
     def _vol_day_callout(
         *,
@@ -5657,71 +5786,62 @@ def _paint_volume_zone(
         lab_y: Optional[float] = None,
     ) -> None:
         """side=left／right／center；有 lab_y＝資料座標水平並排，否則貼柱頂。"""
-        if lab_y is not None:
-            # v8 建議：水平並排保留；連線改短、貼近量柱
-            # 近右／左緣：文字往窗內長，不准裁成「下一層量日 10」半句
-            if side == "left":
-                if float(x) <= 6.0:
-                    tx = max(-0.15, float(x) - 0.25)
-                    ha = "left"
-                else:
-                    tx = max(-0.2, float(x) - 1.55)
-                    ha = "right"
-            elif side == "right":
-                if float(x) >= float(n) - 8.0:
-                    tx = min(float(n) - 0.55, float(x) + 0.25)
-                    ha = "right"
-                else:
-                    tx = min(float(n) - 0.55, float(x) + 1.55)
-                    ha = "left"
+        # 一律走資料座標，方便把標盒壓在量圖內、避開上方量能訊號列紫箭
+        use_lab_y = float(lab_y) if lab_y is not None else min(
+            float(y) * 1.12 + float(vol_ylim) * 0.04,
+            float(_vol_callout_cap),
+        )
+        use_lab_y = min(float(use_lab_y), float(_vol_callout_cap))
+        if side == "left":
+            if float(x) <= 6.0:
+                tx = max(-0.15, float(x) - 0.25)
+                ha = "left"
             else:
-                tx = float(x)
-                ha = "center"
-                # 單標也在末日：改右對齊往左長
-                if float(x) >= float(n) - 5.0:
-                    tx = min(float(n) - 0.55, float(x) + 0.15)
-                    ha = "right"
-                elif float(x) <= 4.0:
-                    tx = max(-0.15, float(x) - 0.15)
-                    ha = "left"
-            ax2.annotate(
-                str(text),
-                xy=(float(x), float(y)),
-                xytext=(float(tx), float(lab_y)),
-                ha=ha,
-                va="center",
-                fontproperties=_fp(9.5, "bold"),
-                color=ink,
-                zorder=16,
-                clip_on=False,
-                bbox=dict(
-                    boxstyle="round,pad=0.16",
-                    facecolor=face,
-                    edgecolor=edge,
-                    linewidth=0.65,
-                    alpha=0.98,
-                ),
-                arrowprops=dict(
-                    arrowstyle="-",
-                    color=edge,
-                    lw=0.85,
-                    linestyle=(0, (2.2, 1.6)),
-                    shrinkA=1,
-                    shrinkB=2,
-                ),
-            )
-            return
+                tx = max(-0.2, float(x) - 1.55)
+                ha = "right"
+        elif side == "right":
+            if float(x) >= float(n) - 8.0:
+                tx = min(float(n) - 0.55, float(x) + 0.25)
+                ha = "right"
+            else:
+                tx = min(float(n) - 0.55, float(x) + 1.55)
+                ha = "left"
+        else:
+            tx = float(x)
+            ha = "center"
+            if float(x) >= float(n) - 5.0:
+                tx = min(float(n) - 0.55, float(x) + 0.15)
+                ha = "right"
+            elif float(x) <= 4.0:
+                tx = max(-0.15, float(x) - 0.15)
+                ha = "left"
+            elif with_nav_signals:
+                # 單標＋訊號列：大幅偏離柱頂正上方，減垂直頂到紫箭
+                tx = max(-0.2, float(x) - 2.6)
+                ha = "right"
+        if with_nav_signals and side == "left":
+            tx = max(-0.25, float(x) - 2.8)
+            ha = "right"
+        elif with_nav_signals and side == "right":
+            tx = min(float(n) - 0.55, float(x) + 2.8)
+            ha = "left"
+        # 長文案（下一層量日）鎖在可視窗內，不准右緣裁成半句（6509／6220）
+        if ha == "left":
+            tx = min(float(tx), float(n) - 6.5)
+        elif ha == "right":
+            tx = max(float(tx), 6.0)
+        else:
+            tx = min(max(float(tx), 4.0), float(n) - 4.0)
         ax2.annotate(
             str(text),
             xy=(float(x), float(y)),
-            xytext=(0, 18),
-            textcoords="offset points",
-            ha="center",
+            xytext=(float(tx), float(use_lab_y)),
+            ha=ha,
             va="center",
-            fontproperties=_fp(10.0, "bold"),
+            fontproperties=_fp(9.5 if lab_y is not None else 10.0, "bold"),
             color=ink,
             zorder=16,
-            clip_on=False,
+            clip_on=True,
             bbox=dict(
                 boxstyle="round,pad=0.16",
                 facecolor=face,
@@ -5747,6 +5867,8 @@ def _paint_volume_zone(
             layer_side, spike_side = "left", "right"
         else:
             layer_side, spike_side = "right", "left"
+    elif with_nav_signals:
+        spike_side = "left"
 
     _vol_day_callout(
         x=float(spike_i),
@@ -5756,7 +5878,7 @@ def _paint_volume_zone(
         face="#fffde7",
         ink="#5d4037",
         side=spike_side,
-        lab_y=vol_lab_y if twin else None,
+        lab_y=vol_lab_y,
     )
     if layer_h > 0 and 0 <= layer_i < int(n):
         layer_md = _md(view["date"].iloc[layer_i]) if "date" in view.columns else ""
@@ -5768,7 +5890,7 @@ def _paint_volume_zone(
             face="#e3f2fd",
             ink="#0d47a1",
             side=layer_side,
-            lab_y=vol_lab_y if twin else None,
+            lab_y=vol_lab_y,
         )
         try:
             ax1.axvline(
@@ -6025,8 +6147,14 @@ def _paint_volume_zone(
     else:
         ma_foot = "黃＝月線(MA20)、藍紫＝季線(MA60)。"
     if with_nav_signals:
+        quiet_bit = (
+            "淡灰藍細虛線＝可重算平行趨勢（不標價・不數浪）。"
+            if with_parallel_channel
+            else ""
+        )
         foot1 = (
             f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}"
+            f"{quiet_bit}"
             "除權／除息缺口是息差不是崩。高觸壓、收未過＝測壓（非買訊）。"
             "買點＝藍▲紅框；60低＝純藍▲。箭頭／殘影＝導航同一套。"
         )

@@ -650,13 +650,17 @@ def test_channel_artist_pixel_hits_counts_wick():
 
 
 def test_close_tags_lower_right_band():
-    """結構昨收／今收錨在右下最低空窗（約 550～950），不准貼現價／中右。"""
+    """結構昨收／今收錨在右下空窗；中價股不准落現價帶（6213）；高價股可走 550～950。"""
     from biaoke_chart import _close_tags_lower_right_y
 
     ay = _close_tags_lower_right_y(500.0, 4200.0, avoid_price=2375.0)
     assert 550.0 <= ay <= 1000.0
     assert abs(ay - 2375.0) > 1000.0
     assert ay < 1500.0
+    # 中價股：相對下緣，不准再寫死 750 落在現價旁
+    ay_mid = _close_tags_lower_right_y(400.0, 1000.0, avoid_price=778.0)
+    assert ay_mid < 650.0
+    assert abs(ay_mid - 778.0) >= 100.0
 
 
 def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
@@ -694,14 +698,25 @@ def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
         )
 
 
-def test_stock_lookup_vol_default_no_parallel_flag():
-    """查股第 4 張預設不准自動開平行軌（大盤專用旗標）。"""
+def test_stock_lookup_vol_quiet_trend_rails():
+    """查股第 4 張：淡灰藍趨勢細虛線、不標股價（與大盤加粗軌標分開）。"""
     import inspect
 
-    from vol_zone_chart import render_lookup_vol_result
+    from vol_zone_chart import (
+        _STOCK_TREND_RAIL_COLOR,
+        _paint_volume_zone,
+        paint_vol_zone_parallel_channel,
+        render_lookup_vol_result,
+    )
 
     src = inspect.getsource(render_lookup_vol_result)
-    assert "with_parallel_channel" not in src
+    assert "with_parallel_channel=True" in src
+    paint_src = inspect.getsource(_paint_volume_zone)
+    assert "stock_quiet_rails" in paint_src
+    assert "quiet_rails" in inspect.getsource(paint_vol_zone_parallel_channel)
+    assert str(_STOCK_TREND_RAIL_COLOR).startswith("#")
+    # 淡灰藍（非大盤深藍／紫）
+    assert _STOCK_TREND_RAIL_COLOR.lower() in ("#8aa0b4", "#8aa0b4")
 
 
 def test_parallel_channel_keeps_fullwidth_gs_right():
