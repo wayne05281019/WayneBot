@@ -849,6 +849,19 @@ def ensure_official_volume_window(
             end = normalize_ymd(fuse_end_date())
         except Exception:
             end = ""
+    # 單檔 max(date) 可能殘留盤中未齊柱；補洞／抓月不准超過 fuse_end／完整日。
+    try:
+        from config import fuse_end_date
+        from quote_integrity import db_as_of_trading_date
+
+        cap = normalize_ymd(fuse_end_date())
+        as_of = normalize_ymd(db_as_of_trading_date(path) or "")
+        if len(as_of) == 8 and (not cap or as_of < cap):
+            cap = as_of
+        if len(cap) == 8 and len(end) == 8 and end > cap:
+            end = cap
+    except Exception:
+        pass
     if len(end) != 8:
         return out
     # 日曆略放大，涵蓋開市日 need 根
@@ -1107,6 +1120,19 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
         .drop(columns="_d")
         .reset_index(drop=True)
     )
+    # 與高低卡同源：只到庫內最後完整收盤日。未齊日（例盤中只寫到兩檔）
+    # 不准進結構／大量區，否則兩圖最後收盤日會分叉。
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        cap = str(db_as_of_trading_date(path) or "").replace("-", "")[:8]
+    except Exception:
+        cap = ""
+    if cap:
+        dcap = df["date"].astype(str).str.replace("-", "", regex=False)
+        df = df.loc[dcap <= cap].reset_index(drop=True)
+        if df.empty:
+            return pd.DataFrame()
     if len(df) > lim:
         df = df.iloc[-lim:].reset_index(drop=True)
     df["stock_id"] = sid

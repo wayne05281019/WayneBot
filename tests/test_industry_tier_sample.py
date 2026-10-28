@@ -50,6 +50,15 @@ def _conn():
 
 
 def _latest_ymd(conn) -> str:
+    # 不准用 MAX(date)：盤中未齊殘列只有少數檔，會把產業抽樣打成空。
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        as_of = str(db_as_of_trading_date(get_db_path()) or "").replace("-", "")[:8]
+        if len(as_of) == 8:
+            return as_of
+    except Exception:
+        pass
     row = conn.execute(
         "SELECT MAX(replace(date,'-','')) FROM daily_quotes WHERE close > 0"
     ).fetchone()

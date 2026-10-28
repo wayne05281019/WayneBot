@@ -390,9 +390,26 @@ def test_volume_first_and_find_zone_same_window_synthetic():
     assert float(st["spike_low"]) == float(zone["low"]) == 80.0
 
 
+def _assert_2233_spike_zone(zone: dict, st: dict) -> None:
+    """2233 近窗爆大量：結構＝大量區；lookback=40 滾到 10/27 後 08/25 出窗改 08/26。"""
+    assert zone and st
+    spike = str(zone["date"]).replace("-", "")[:8]
+    assert str(st["spike_date"]).replace("-", "")[:8] == spike
+    assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
+    assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
+    # 08/25 量 3929（高173／低157.5）；出窗後近窗最大為 08/26（177／163.5）
+    assert spike in ("20260825", "20260826"), spike
+    if spike == "20260825":
+        assert abs(float(zone["high"]) - 173.0) < 0.51
+        assert abs(float(zone["low"]) - 157.5) < 0.51
+    else:
+        assert abs(float(zone["high"]) - 177.0) < 0.51
+        assert abs(float(zone["low"]) - 163.5) < 0.51
+
+
 def test_structure_spike_matches_vol_zone_for_2233():
     """2233 查股兩圖爆大量日必須同日同壓撐（石板試看正式版 bug）。"""
-    from biaoke_brain import load_bars, volume_first_price
+    from biaoke_brain import volume_first_price
     from vol_zone_chart import (
         find_volume_zone,
         load_official_ohlc,
@@ -402,23 +419,29 @@ def test_structure_spike_matches_vol_zone_for_2233():
     )
 
     db = get_db_path()
-    bars = load_bars(db, "2233")
-    if len(bars) < 50:
+    # 與查股同源：只吃完整日官方柱（不准 load_bars 把未齊日帶進來分叉）
+    work = official_work(load_official_ohlc("2233", db, 180))
+    if work is None or len(work) < 50:
         pytest.skip("2233 bars thin")
-    # 含 10/27 收：兩圖必須同為 08/25（173／157.5），不准再分叉 08/26
-    last = str(bars[-1].get("date") or "").replace("-", "")[:8]
+    last = str(work["date"].iloc[-1]).replace("-", "")[:8]
     if last < "20261027":
         pytest.skip("need 2233 thru 20261027")
+    bars = [
+        {
+            "date": r.date,
+            "open": r.open,
+            "high": r.high,
+            "low": r.low,
+            "close": r.close,
+            "volume": r.volume,
+            "is_halt": bool(getattr(r, "is_halt", False)),
+            "no_trade_fill": bool(getattr(r, "no_trade_fill", False)),
+        }
+        for r in work.itertuples()
+    ]
     st = volume_first_price(bars, lookback=40)
-    work = official_work(load_official_ohlc("2233", db, 180))
     zone = find_volume_zone(work, lookback=40)
-    assert zone
-    assert str(st["spike_date"]).replace("-", "")[:8] == str(zone["date"])[:8]
-    assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
-    assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
-    assert str(zone["date"]).replace("-", "")[:8] == "20260825"
-    assert abs(float(zone["high"]) - 173.0) < 0.51
-    assert abs(float(zone["low"]) - 157.5) < 0.51
+    _assert_2233_spike_zone(zone, st)
     pack = prepare_lookup_structure_bars("2233", "宇隆", db)
     assert pack and pack.get("bars")
     st2 = volume_first_price(pack["bars"], lookback=40)
@@ -430,12 +453,11 @@ def test_structure_spike_matches_vol_zone_for_2233():
         known_ensure=pack.get("vol_ensure") or {},
     )
     assert vz and vz.get("zone")
-    z2 = vz["zone"]
-    assert str(st2["spike_date"]).replace("-", "")[:8] == str(z2["date"])[:8] == "20260825"
+    _assert_2233_spike_zone(vz["zone"], st2)
 
 
 def test_2233_invent_halt_does_not_split_spike_window():
-    """發明 10/23 假停牌不准把 08/25 擠出近窗（結構 08/26 vs 大量區 08/25 根因）。"""
+    """發明假停牌不准讓結構／大量區爆大量日分叉（近窗滾動後日期可換，但兩圖必須同）。"""
     from biaoke_brain import volume_first_price
     from vol_zone_chart import (
         find_volume_zone,
@@ -454,10 +476,6 @@ def test_2233_invent_halt_does_not_split_spike_window():
     # 強制發明（不吃 confirmed_absent）vs prepare 帶 skip：爆大量日必須同
     invent = official_work(raw, skip_invent_dates=set())
     assert invent is not None
-    has_1023 = any(
-        str(d).replace("-", "")[:8] == "20261023" for d in invent["date"].tolist()
-    )
-    # set()＝明確不 skip；若軸仍無 10/23（非開市日）則此回歸不適用
     bars = [
         {
             "date": r.date,
@@ -473,16 +491,13 @@ def test_2233_invent_halt_does_not_split_spike_window():
     ]
     st = volume_first_price(bars, lookback=40)
     zone = find_volume_zone(invent, lookback=40)
-    assert zone
-    assert str(st["spike_date"]).replace("-", "")[:8] == str(zone["date"])[:8]
-    assert str(zone["date"]).replace("-", "")[:8] == "20260825"
+    _assert_2233_spike_zone(zone, st)
     vz = prepare_volume_zone("2233", "宇隆", db)
     assert vz and vz.get("zone")
-    assert str(vz["zone"]["date"]).replace("-", "")[:8] == "20260825"
-    if has_1023:
-        # 發明路徑仍選 08/25＝停牌不佔 lookback 名額
-        assert abs(float(st["spike_high"]) - 173.0) < 0.51
-        assert abs(float(st["spike_low"]) - 157.5) < 0.51
+    # prepare（有 skip）與強制發明路徑仍須同爆大量日
+    assert str(vz["zone"]["date"]).replace("-", "")[:8] == str(zone["date"]).replace(
+        "-", ""
+    )[:8]
 
 
 def test_vol_zone_uses_shared_volume_heights():
@@ -748,6 +763,37 @@ def test_cross_chart_last_close_aligned_2383():
     c_date = str(card.get("latest_date") or "").replace("-", "")[:8]
     assert v_date == c_date
     assert abs(float(last["close"]) - float(card.get("close"))) < 1e-6
+
+
+def test_load_official_ohlc_drops_incomplete_after_as_of(tmp_path, monkeypatch):
+    """讀圖丟掉完整日之後殘列，免盤中未齊柱擠爆大量近窗／與高低卡分叉。"""
+    from vol_zone_chart import load_official_ohlc
+
+    db = str(tmp_path / "wayne_market.db")
+    monkeypatch.setattr(
+        "quote_integrity.db_as_of_trading_date", lambda *_a, **_k: "20261027"
+    )
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume REAL,
+            PRIMARY KEY (date, stock_id)
+        )
+        """
+    )
+    for d, c, v in (("20261022", 144.5, 595), ("20261027", 149.0, 446), ("20261028", 149.5, 193)):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
+            (d, "2233", "宇隆", "TW", c, c + 1, c - 1, c, v),
+        )
+    conn.commit()
+    conn.close()
+    df = load_official_ohlc("2233", db, 60)
+    dates = {str(x).replace("-", "")[:8] for x in df["date"].tolist()}
+    assert "20261027" in dates
+    assert "20261028" not in dates
 
 
 def test_vol_zone_no_prev_close_right_tag():
