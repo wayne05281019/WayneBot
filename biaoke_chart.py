@@ -803,9 +803,17 @@ def channel_prefer_named_rising_or_infer(
                 f"下降壓通道　{pos}　升軌已失效" if pos else "下降壓通道　升軌已失效"
             )
             return out
-        # 尚無合格下降候選：只標升軌失效，不准繼續當活升通道
+        # 尚無合格下降候選：只標升軌失效＋明說未畫下降壓；alive=False 供畫層降權（灰）
         out = dict(named)
         out["reclass_from"] = "asc_break_named"
+        out["alive"] = False
+        tip0 = str(out.get("tip") or "").strip()
+        note = "尚無合格下降壓，本圖未改畫下降壓。"
+        if "未改畫下降壓" not in tip0 and "未畫下降壓" not in tip0:
+            out["tip"] = (tip0 + note) if tip0 else (note + "不是買訊。")
+        lab = str(out.get("label") or "").strip()
+        if "未畫下降壓" not in lab:
+            out["label"] = (lab + "　未畫下降壓") if lab else "上升軌通道　已失效　未畫下降壓"
         return out
     return inferred
 
@@ -1132,11 +1140,14 @@ def _paint_parallel_channel(
     if not ch:
         return
     kind = str(ch.get("kind") or "")
-    # 顏色跟他用語對齊：下降壓紫、上升軌藍
-    color = str(rail_color) if rail_color else (_UP_TRACK if kind == "asc" else _DOWN_TRACK)
+    # 顏色跟他用語對齊：下降壓紫、上升軌藍；失效一律降權灰（大盤加粗色也不准當活軌）
     alive = bool(ch.get("alive"))
-    if not alive and not rail_color:
+    if not alive:
         color = "#90a4ae"
+    elif rail_color:
+        color = str(rail_color)
+    else:
+        color = _UP_TRACK if kind == "asc" else _DOWN_TRACK
     upper = ch.get("upper") or ()
     lower = ch.get("lower") or ()
     if len(upper) < 2 or len(lower) < 2:

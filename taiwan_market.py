@@ -2157,7 +2157,8 @@ def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
                     "high": float(base["high"] if "high" in base and pd.notna(base["high"]) else max(float(off["close"]), float(base["close"]))),
                     "low": float(base["low"] if "low" in base and pd.notna(base["low"]) else min(float(off["close"]), float(base["close"]))),
                     "close": float(off["close"]),
-                    "volume": float(base["volume"]),
+                    # 官方收日不准留 Yahoo 量（與主卡全日量不同源）；0 → FMTQIK 覆寫
+                    "volume": 0.0,
                     "pct_change": float(off.get("pct_change", base["pct_change"])),
                     "source": "twse",
                 }
@@ -2225,24 +2226,38 @@ def _fetch_index_daily(range_: str = "2y") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _backfill_zero_index_volumes(db_path: str) -> int:
-    """近窗 volume≤0 時用 FMTQIK 官方全日量（張）補上。沒真數不寫假量。"""
+def _backfill_zero_index_volumes(db_path: str, *, force_recent: bool = False) -> int:
+    """近窗用 FMTQIK 官方全日量（張）寫進 index_daily。
+
+    force_recent=True（盤後 sync）：近窗有 FMTQIK 就覆寫，Yahoo 非零量不准蓋官方。
+    預設只補 volume≤0。沒真數不寫假量。
+    """
     ensure_index_daily_table(db_path)
     conn = sqlite3.connect(db_path)
     try:
-        zeros = conn.execute(
-            """
-            SELECT date FROM index_daily
-            WHERE symbol=? AND (volume IS NULL OR volume <= 0)
-            ORDER BY date DESC LIMIT ?
-            """,
-            (_INDEX_SYMBOL, _OFFICIAL_LOOKBACK_DAYS),
-        ).fetchall()
+        if force_recent:
+            recent = conn.execute(
+                """
+                SELECT date FROM index_daily
+                WHERE symbol=?
+                ORDER BY date DESC LIMIT ?
+                """,
+                (_INDEX_SYMBOL, _OFFICIAL_LOOKBACK_DAYS),
+            ).fetchall()
+        else:
+            recent = conn.execute(
+                """
+                SELECT date FROM index_daily
+                WHERE symbol=? AND (volume IS NULL OR volume <= 0)
+                ORDER BY date DESC LIMIT ?
+                """,
+                (_INDEX_SYMBOL, _OFFICIAL_LOOKBACK_DAYS),
+            ).fetchall()
     finally:
         conn.close()
-    if not zeros:
+    if not recent:
         return 0
-    need = {str(r[0]) for r in zeros}
+    need = {str(r[0]) for r in recent}
     try:
         from official_snapshots import (
             TWSE_FMTQIK,
@@ -2254,7 +2269,6 @@ def _backfill_zero_index_volumes(db_path: str) -> int:
         )
 
         openapi = parse_fmtqik(fetch_json(TWSE_FMTQIK) or [])
-        # 只對「已有列但量=0」的日期抓 rwd；不准為 fuse_end 另開新日寫進歷史測試庫
         rwd: list = []
         try:
             sample = sorted(need)[-1]
@@ -2301,7 +2315,11 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
                     high=COALESCE(NULLIF(excluded.high, 0), index_daily.high),
                     low=COALESCE(NULLIF(excluded.low, 0), index_daily.low),
                     close=excluded.close,
-                    volume=CASE WHEN excluded.volume > 0 THEN excluded.volume ELSE index_daily.volume END,
+                    volume=CASE
+                        WHEN index_daily.volume > 0 THEN index_daily.volume
+                        WHEN excluded.volume > 0 THEN excluded.volume
+                        ELSE index_daily.volume
+                    END,
                     pct_change=excluded.pct_change,
                     ma20=excluded.ma20, ma60=excluded.ma60, regime=excluded.regime, updated_at=excluded.updated_at
                 """,
@@ -2330,7 +2348,7 @@ def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
         out["alerts"] = alerts
     last_src = str(df["source"].iloc[-1]) if "source" in df.columns else "yahoo"
     out["latest_source"] = last_src
-    filled = _backfill_zero_index_volumes(db_path)
+    filled = _backfill_zero_index_volumes(db_path, force_recent=True)
     if filled:
         out["fmtqik_volume_fill"] = filled
     # Yahoo／OpenAPI 常晚幾日：僅當庫內最新日已貼近 fuse_end 才打 rwd 補缺日。
@@ -2362,7 +2380,7 @@ _INDEX_VOL_TRY_AT: Dict[str, float] = {}
 
 
 def _maybe_fill_zero_index_volumes(db_path: str) -> int:
-    """讀大盤時若最新日量≤0，節流打一次 FMTQIK 補官方張數。沒真數不寫。"""
+    """讀大盤／日K 時節流打一次 FMTQIK，近窗官方全日量覆寫（與主卡同源）。沒真數不寫。"""
     key = os.path.abspath(str(db_path or ""))
     if not key:
         return 0
@@ -4950,15 +4968,56 @@ def format_taiwan_market_page_html(
             lines.append(_page_kv("合計", tot_html))
             if chips_date and chips_date != ref:
                 lines.append(_page_kv("日期", chips_date))
-    fut_rows = _format_futures_page_rows(snap)
+    # 期貨比現貨：只對卡上加權現價／收同源；不准用 fuse 昨收當分母（會出現 0.03% 假貼平）。
+    snap_fut = dict(snap)
+    spot_for_basis = float(show_px or 0)
+    spot_day = ""
+    if live_px > 0:
+        spot_day = str(
+            (live or {}).get("date") or (live or {}).get("as_of") or ""
+        ).replace("-", "")[:8]
+        if len(spot_day) != 8:
+            try:
+                from config import taipei_now as _tn
+
+                spot_day = (now or _tn()).strftime("%Y%m%d")
+            except Exception:
+                spot_day = ref8
+    else:
+        spot_day = ref8
+    fut0 = snap_fut.get("futures")
+    fut_day = str((fut0 or {}).get("date") or "").replace("-", "")[:8]
+    if spot_day and fut0 and fut_day != spot_day:
+        alt_fut = load_futures_daily(db_path, spot_day)
+        if alt_fut and float(alt_fut.get("close") or 0) > 0:
+            snap_fut["futures"] = alt_fut
+            snap_fut["futures_as_of"] = spot_day
+            fut0 = alt_fut
+            fut_day = spot_day
+        else:
+            # 現貨日與期貨日不同源 → 不准拿昨期對今現算出假％
+            fut0 = None
+            fut_day = ""
+    fut_close_b = float((fut0 or {}).get("close") or 0)
+    if (
+        spot_for_basis > 0
+        and fut_close_b > 0
+        and (not spot_day or not fut_day or spot_day == fut_day)
+    ):
+        snap_fut["basis_pct"] = compute_basis_pct(spot_for_basis, fut_close_b)
+        if fut0 is not None:
+            snap_fut["futures"] = fut0
+    else:
+        snap_fut["basis_pct"] = None
+    fut_rows = _format_futures_page_rows(snap_fut)
     hedge_line = tx_foreign_short_hedge_line(db_path, ref)
     if hedge_line:
         fut_rows.append(hedge_line)
     night = snap.get("futures_night") or resolve_futures_night(db_path, ref)
     night_rows = _fmt_night_page_rows(
         night or {},
-        snap.get("futures"),
-        spot_close=float(snap.get("close") or 0),
+        snap_fut.get("futures"),
+        spot_close=spot_for_basis,
         heading="夜盤",
     )
     te_night = snap.get("futures_te_night") or resolve_futures_night(db_path, ref, symbol="TE")

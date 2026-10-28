@@ -480,7 +480,8 @@ def test_day_path_label_hold_test_not_dead_press_tag():
     assert "10月6日" in line
     assert "撐為2,940" in line
     assert "今最高3,055" in line
-    assert "收盤未過撐" in line
+    assert "收盤未站上撐" in line
+    assert "過撐" not in line
     assert "收2,920" in line
     # 判斷句全刪：只留事實
     assert "測大量撐" not in line

@@ -528,9 +528,12 @@ def test_format_performance_shows_fmtqik_volume():
     assert "nan" not in " ".join(nan_lines)
 
 
+@patch("taiwan_market._backfill_zero_index_volumes", return_value=0)
 @patch("taiwan_market._fetch_index_daily")
 @patch("taiwan_market._fetch_twse_index_close")
-def test_sync_index_daily_keeps_volume_when_yahoo_zero(mock_twse, mock_yahoo, tmp_path):
+def test_sync_index_daily_keeps_volume_when_yahoo_zero(
+    mock_twse, mock_yahoo, _mock_fill, tmp_path
+):
     import sqlite3
 
     db = str(tmp_path / "idx.db")
