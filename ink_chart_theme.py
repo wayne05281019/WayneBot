@@ -770,6 +770,12 @@ def badge_all_labels(ink: Ink, axes, *, vol_ax=None) -> None:
             if not t.get_visible():
                 continue
             s = str(t.get_text() or "")
+            # 個股淡灰藍趨勢小標（名＋最新價）保留原貌，不准墨線徽章拆掉價
+            try:
+                if str(t.get_gid() or "").startswith("ink:quiet-rail"):
+                    continue
+            except Exception:
+                pass
             role = label_role(s)
             if not role or role not in ROLE_STYLE or "\n" in s:
                 continue
@@ -1975,14 +1981,19 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
         ink.ren = ink.fig.canvas.get_renderer()
 
 
-def align_vol_panel_margins(main, sig, volume) -> None:
-    """大量圖上中下三框左緣對齊結構外框；右緣留價／量刻度溝。
+# 大量區三框：軸右緣內縮＝刻度溝；外框右緣對齊結構 FancyBbox（0.982）
+VOL_AXES_X0 = 0.016
+VOL_AXES_X1 = 0.905  # 對齊結構主圖右緣；刻度在軸脊～外框之間
+VOL_OUTER_X1 = 0.982  # 外黑框右緣（使用者 2026-10-28 紅線示意→實作黑）
 
-    右緣若拉到 0.982（結構 FancyBbox 外框），右軸數字會畫出畫布只剩橫杠。
-    結構主圖右緣約 0.905；大量區略寬一點仍要保住刻度完整入鏡。
+
+def align_vol_panel_margins(main, sig, volume) -> None:
+    """大量圖上中下三框左緣對齊結構外框；軸右緣內縮留刻度溝。
+
+    軸右緣不准拉到 0.982：刻度會畫在軸外，若無外框＝缺邊；若外框也在
+    0.982 則數字出畫布只剩橫杠（#716／6213／6274）。軸＝0.905、外框＝0.982。
     """
-    # 0.942 仍會讓「36,975」量刻度右緣出畫布；再收一點給五位含逗號
-    target_x0, target_x1 = 0.016, 0.928
+    target_x0, target_x1 = float(VOL_AXES_X0), float(VOL_AXES_X1)
     target_w = target_x1 - target_x0
     for ax in (main, sig, volume):
         if ax is None:
@@ -2005,6 +2016,86 @@ def vol_frames(ink: Ink, main, sig, volume) -> None:
         else:
             panel_shadow(ink, bb, off_pt=3.0)  # USE_SHADOW=False → no-op
     # 主圖底／量圖頂刻度刺：交給 kill_seam_ticks 統一清
+
+
+def vol_close_right_outer_frame(ink: Ink, main, sig, volume) -> None:
+    """三框外黑框：右緣封閉含刻度溝；刻度上下左右留距，不准卡／壓黑框。
+
+    使用者註記（2026-10-28）：紅線僅示意範圍→實作黑色；缺右邊＝沒做完。
+    """
+    axes = [a for a in (main, sig, volume) if a is not None]
+    if not axes:
+        return
+    try:
+        ink.fig.canvas.draw()
+        ink.ren = ink.fig.canvas.get_renderer()
+    except Exception:
+        return
+    bbs = [a.get_window_extent(ink.ren) for a in axes]
+    y0 = min(float(bb.y0) for bb in bbs) / float(ink.H)
+    y1 = max(float(bb.y1) for bb in bbs) / float(ink.H)
+    x0 = float(VOL_AXES_X0)
+    x1 = float(VOL_OUTER_X1)
+    # 清舊外框（重套／二次呼叫只留一框）
+    for p in list(ink.fig.patches):
+        gid = ""
+        try:
+            gid = str(p.get_gid() or "")
+        except Exception:
+            gid = ""
+        if gid == "ink:vol-outer-frame":
+            try:
+                p.remove()
+            except Exception:
+                pass
+            try:
+                if p in ink.fig.patches:
+                    ink.fig.patches.remove(p)
+            except Exception:
+                pass
+    frame = FancyBboxPatch(
+        (x0, y0),
+        x1 - x0,
+        y1 - y0,
+        boxstyle="square,pad=0",
+        transform=ink.fig.transFigure,
+        facecolor="none",
+        edgecolor=INK,
+        linewidth=1.25,
+        zorder=18,
+        clip_on=False,
+        gid="ink:vol-outer-frame",
+    )
+    ink.fig.add_artist(frame)
+    # 刻度不准壓外框：右緣留 ≥4pt；超出就略增 y pad 把字往左收
+    outer_x1_px = float(ink.W) * x1
+    pad_px = float(ink.pt(4.0))
+    for ax in axes:
+        if ax is None:
+            continue
+        hit = False
+        for t in list(ax.get_yticklabels()):
+            s = str(t.get_text() or "").strip()
+            if not s or not t.get_visible():
+                continue
+            try:
+                bb = t.get_window_extent(renderer=ink.ren)
+            except Exception:
+                continue
+            if float(bb.x1) > outer_x1_px - pad_px:
+                hit = True
+                break
+        if hit:
+            try:
+                cur = float(ax.yaxis.get_tick_params().get("pad") or 12.0)
+            except Exception:
+                cur = 12.0
+            ax.tick_params(axis="y", pad=max(6.0, cur - 4.0))
+    try:
+        ink.fig.canvas.draw()
+        ink.ren = ink.fig.canvas.get_renderer()
+    except Exception:
+        pass
 
 
 def lift_ex_div_off_press(ink: Ink, main) -> None:
@@ -2314,6 +2405,8 @@ def apply_vol(fig) -> Ink:
         flush_volume_bars_to_spine(volume)
         clear_vol_top_ytick(volume)
     flush_data_left_xlim(main, sig, volume)
+    # 刻度／縫處理後再封一次右外框，確保不缺邊、刻度不卡框
+    vol_close_right_outer_frame(ink, main, sig, volume)
     ink._flat_scrub = scrub_flat(fig)
     return ink
 

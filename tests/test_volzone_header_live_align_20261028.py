@@ -61,14 +61,16 @@ def test_ink_close_t_matches_live_xian():
 
 
 def test_vol_panel_right_margin_leaves_ytick_gutter():
-    """大量區右緣不准拉滿 0.982，否則價／量軸數字出畫布。"""
+    """大量區軸右緣內縮留刻度溝；外框 0.982 封閉，刻度不准出畫布。"""
     import inspect
 
     import ink_chart_theme as ink
 
+    assert float(ink.VOL_AXES_X1) < float(ink.VOL_OUTER_X1)
     src = inspect.getsource(ink.align_vol_panel_margins)
-    assert "0.928" in src
+    assert "VOL_AXES_X1" in src
     assert "target_x1 = 0.982" not in src
+    assert "vol_close_right_outer_frame" in inspect.getsource(ink.apply_vol)
 
 
 def test_lift_ex_div_wired_in_apply_vol():

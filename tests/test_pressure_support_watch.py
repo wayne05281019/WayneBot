@@ -200,7 +200,9 @@ def test_vol_zone_layout_k_first_no_fake_bars():
         __import__("vol_zone_chart", fromlist=["_paint_key_zone_smart_tags"])._paint_key_zone_smart_tags
     )
     assert "left=0.16" not in src
-    assert "xytext=(0, 18)" in src  # 爆大量標再上移
+    # 爆大量／下一層量日：智能定位（資料座標 xytext），不准硬鎖 offset (0, 18)
+    assert "xytext=(float(tx), float(use_lab_y))" in src
+    assert "_vol_day_callout" in src
     # 停價＝灰短 K（共用 paint LOOKUP_CANDLE_HALT）；0 量／缺量＝貼底灰短柱，不准挖洞
     assert "paint_lookup_ohlc_candles" in src
     assert "paint_lookup_volume_bars" in src

@@ -1121,11 +1121,13 @@ def _paint_parallel_channel(
     rail_dash: Any = None,
     rail_halo: Optional[float] = None,
     rail_color: Optional[str] = None,
+    draw_markers: bool = True,
 ) -> None:
     """畫上升或下降通道兩條平行線；標籤強制落在軸內，不准切一半。
 
     真連點只標主軌兩點＋平行寬度觸點。平行緣是主軌平移，不准再撒假樞紐點。
     rail_* 只給大盤大量區加粗；省略時結構圖仍是細虛線。
+    draw_markers=False：個股大量區淡灰藍趨勢線（不標價、不撒點）。
     """
     if not ch:
         return
@@ -1165,6 +1167,8 @@ def _paint_parallel_channel(
             lw=float(_CHANNEL_RAIL_LW if rail_lw is None else rail_lw),
             halo=0.55 if rail_halo is None else float(rail_halo),
         )
+    if not draw_markers:
+        return
     touch = ch.get("touch")
     if touch:
         ax.scatter(
@@ -1936,7 +1940,8 @@ _STRUCTURE_CLOSE_PAIR_ADVANCE = 0.92
 # 今收盒右緣距軸右界的像素。縮圖後四字＋數字仍要整段落在圖內。
 _TODAY_CLOSE_RIGHT_INSET_PX = 18
 # 昨收／今收左緣距末日 K（seam）最小資料座標空隙；短影線半寬≈0.45
-_CLOSE_TAG_CANDLE_CLEAR = 5.8
+# 2026-10-28：再加寬，昨收標必須離開末日豎線／尾 K，不准看成當日價
+_CLOSE_TAG_CANDLE_CLEAR = 11.5
 
 
 def _dedupe_right_notes(
@@ -2113,36 +2118,36 @@ def _close_tags_lower_right_y(
 ) -> float:
     """昨收／今收錨點 Y。
 
-    v11：主圖**右下空白**（低於次層／2000 目標／現價帶的空窗）；
-    不准擠在現價旁右緣。軸內無該帶則取下緣空白。
+    2026-10-28：相對價窗右下空白（約 12～20% 軸高），不准寫死 550～950
+    （中價股如 6213 會落在現價帶，昨收標＋seam 虛線易被看成「最近一天價錢」）。
+    必與現價／avoid_price 拉開；軸內無空窗才貼下緣。
     """
     y0 = float(ymin)
     y1 = float(ymax)
     span = max(y1 - y0, 1.0)
-    # 右下最低空窗（明顯低於 1000～1500 中帶；避開 2000 原文目標）
-    band_lo, band_hi = 550.0, 950.0
-    mid = 750.0
-    pad = span * 0.04
-    if (y0 + pad) <= mid <= (y1 - pad):
-        ay = float(mid)
-    elif (y0 + pad) <= band_lo <= (y1 - pad):
-        ay = float(band_lo + (band_hi - band_lo) * 0.45)
-    elif y0 < band_hi and y1 > band_lo:
-        a = max(y0 + pad, band_lo)
-        b = min(y1 - pad, band_hi)
-        ay = float((a + b) * 0.5) if b > a else float(y0 + span * 0.10)
-    else:
-        ay = float(y0 + span * 0.10)
-    # 跟現價拉開（至少約 22% 軸高）；不夠就再往下沉
+    pad = span * 0.035
+    # 相對右下：約 14% 軸高（縮圖仍讀得到，又離現價／尾 K 遠）
+    ay = float(y0 + span * 0.14)
     ap = float(avoid_price or 0.0)
+    # 跟現價拉開至少約 28% 軸高；不夠就再往下沉
+    if ap > 0 and abs(ay - ap) < span * 0.28:
+        ay = float(min(ay, ap - span * 0.30))
+    ay = float(max(ay, y0 + pad))
+    ay = float(min(ay, y1 - pad))
+    # 高價股舊絕對空窗（550～950）若仍遠低於現價，可再往該帶靠（更空）
+    if ap >= 1800.0:
+        band_lo, band_hi = 550.0, 950.0
+        mid = 750.0
+        if (y0 + pad) <= mid <= (y1 - pad) and abs(mid - ap) >= span * 0.28:
+            ay = float(mid)
+        elif y0 < band_hi and y1 > band_lo:
+            a = max(y0 + pad, band_lo)
+            b = min(y1 - pad, band_hi)
+            if b > a and abs(0.5 * (a + b) - ap) >= span * 0.22:
+                ay = float(0.5 * (a + b))
+    # 最終再確認離現價
     if ap > 0 and abs(ay - ap) < span * 0.22:
-        ay = float(min(ay, ap - span * 0.25))
-        ay = float(max(ay, y0 + pad))
-    # 亦避開 2000／1500 帶，確保落在右下空白而非中右
-    for band_c in (2000.0, 1500.0, 1000.0):
-        if abs(ay - band_c) < span * 0.05:
-            ay = float(min(ay, band_c - span * 0.07))
-            ay = float(max(ay, y0 + pad))
+        ay = float(max(y0 + pad, min(ay, ap - span * 0.25)))
     return float(ay)
 
 
@@ -2662,6 +2667,25 @@ def _place_right_notes(
                     today_tx = float(cur_xmax) - float(today_w) - float(_AXIS_TICK_CLEAR)
                     prev_tx = float(today_tx) - float(pair_side_gap) - float(advance)
             pair_stub_x = float(prev_tx) - 1.35
+            # 昨收：右溝內短水平虛線釘「真昨收價」（不准豎虛線穿尾 K，避免看成當日價）
+            true_prev_y = float(_note_true_price(pair_prev) or show_ty)
+            gutter_x0 = (
+                float(pin_x) + float(_CLOSE_TAG_CANDLE_CLEAR) * 0.55
+                if pin_x is not None
+                else float(pair_stub_x) - 2.0
+            )
+            gutter_x1 = float(prev_tx) - 0.35
+            if gutter_x1 > gutter_x0 + 0.8:
+                ax.plot(
+                    [gutter_x0, gutter_x1],
+                    [true_prev_y, true_prev_y],
+                    color="#78909c",
+                    linewidth=0.95,
+                    linestyle=(0, (2.4, 1.8)),
+                    zorder=11,
+                    alpha=0.88,
+                    clip_on=True,
+                )
             # 昨收左側短釘點（無引線穿盒）；兩盒皆 text-only，今收不准蓋昨收數字
             ax.plot(
                 [pair_stub_x],
@@ -2675,8 +2699,27 @@ def _place_right_notes(
                 linestyle="None",
                 clip_on=False,
             )
-            close_prev_art = _paint_close_text_only(
-                pair_prev, show_ty, prev_tx, pad=_STRUCTURE_TAG_PAD, z=12
+            # 昨收用虛線邊框，與今收實線區隔（必要標仍在；不准刪）
+            close_prev_art = ax.text(
+                float(prev_tx),
+                float(show_ty),
+                str(pair_prev.get("text") or ""),
+                color=str(pair_prev.get("color") or "#546e7a"),
+                fontproperties=_fp(
+                    int(pair_prev.get("size") or _STRUCTURE_TAG_SIZE), "bold"
+                ),
+                ha="left",
+                va="center",
+                zorder=12,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle=f"round,pad={float(_STRUCTURE_TAG_PAD):.2f}",
+                    facecolor="#eceff1",
+                    edgecolor="#78909c",
+                    linewidth=1.05,
+                    linestyle=(0, (2.4, 1.6)),
+                    alpha=0.97,
+                ),
             )
             close_today_art = _paint_close_text_only(
                 pair_today, show_ty, today_tx, pad=_STRUCTURE_TAG_PAD, z=13
@@ -4717,7 +4760,8 @@ def render_biaoke_structure_png(
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
-    if 0 <= spike_i < n:
+    # 爆大量日豎虛線：末日近窗不畫在價圖（尾端虛線＋昨收標易被看成當日價）；量圖仍黃匡
+    if 0 <= spike_i < n and int(spike_i) < int(n) - 6:
         ax1.axvline(spike_i, color="#90a4ae", linewidth=1.05, linestyle="--", zorder=2)
     down_pts = info.get("down_pts")
     up_pts = info.get("up_pts")
@@ -5691,7 +5735,8 @@ def render_biaoke_structure_png(
         lab.set_fontproperties(_fp(11, "bold"))
         lab.set_clip_on(False)
     ax2.set_xlim(-0.55, x_right)
-    ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
+    # 2026-10-28：刪末日豎虛線。演化區底已刪後，此線貼右溝昨收／今收，
+    # 易被看成「最近一天價錢」指引（6213／多檔交叉目視 FAIL）。
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
     tick_i = _axis_ticks(n, extra=(spike_i, layer_i if layer_i >= 0 else spike_i))
     if n - 1 + _FUTURE not in tick_i:

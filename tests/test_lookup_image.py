@@ -551,6 +551,8 @@ class LookupImageTests(unittest.TestCase):
 
     def test_album_fail_still_sends_jpeg_photos(self):
         """四張逐張 reply_photo；mock 官方柱／結構／撐壓後仍能出齊，不准改送文字版。"""
+        from concurrent.futures import Future
+
         from PIL import Image
 
         td = tempfile.mkdtemp()
@@ -573,6 +575,15 @@ class LookupImageTests(unittest.TestCase):
             Image.frombytes("RGB", (800, 900), os.urandom(800 * 900 * 3)).save(path, "PNG")
             return path
 
+        def _sync_paint(fn, /, *args, **kwargs):
+            """單測不准跟全域 paint worker 排隊互卡（否則 card 120s 逾時只剩 3 張）。"""
+            fut: Future = Future()
+            try:
+                fut.set_result(fn(*args, **kwargs))
+            except BaseException as exc:
+                fut.set_exception(exc)
+            return fut
+
         class _Engine:
             def __init__(self, *_a, **_k):
                 pass
@@ -593,6 +604,8 @@ class LookupImageTests(unittest.TestCase):
                 "chip_tape.build_tape", return_value={}
             ), patch(
                 "stock_news.fetch_stock_news_stats", return_value=None
+            ), patch(
+                "wayne_navigator.submit_mpl_paint", side_effect=_sync_paint
             ), patch(
                 "wayne_navigator.render_first_glance_png",
                 side_effect=lambda *_a, **_k: _png("g.png"),
