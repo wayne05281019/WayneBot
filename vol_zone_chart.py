@@ -5854,7 +5854,8 @@ def _paint_volume_zone(
             fontproperties=_fp(9.5 if lab_y is not None else 10.0, "bold"),
             color=ink,
             zorder=16,
-            clip_on=False,
+            # 土黄爆大量仍 clip；長「下一層量日」關 clip＋往左長，免右緣只剩「下一」
+            clip_on=not long_layer,
             bbox=dict(
                 boxstyle="round,pad=0.16",
                 facecolor=face,
