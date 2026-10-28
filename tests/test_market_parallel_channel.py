@@ -704,6 +704,7 @@ def test_stock_lookup_vol_quiet_trend_rails():
 
     from vol_zone_chart import (
         _STOCK_TREND_RAIL_COLOR,
+        _STOCK_TREND_RAIL_LW,
         _paint_volume_zone,
         paint_vol_zone_parallel_channel,
         render_lookup_vol_result,
@@ -713,10 +714,17 @@ def test_stock_lookup_vol_quiet_trend_rails():
     assert "with_parallel_channel=True" in src
     paint_src = inspect.getsource(_paint_volume_zone)
     assert "stock_quiet_rails" in paint_src
+    assert "_channel_bars_face" in paint_src
     assert "quiet_rails" in inspect.getsource(paint_vol_zone_parallel_channel)
     assert str(_STOCK_TREND_RAIL_COLOR).startswith("#")
-    # 淡灰藍（非大盤深藍／紫）
-    assert _STOCK_TREND_RAIL_COLOR.lower() in ("#8aa0b4", "#8aa0b4")
+    # 淡灰藍（非大盤深藍／紫）；可略加深以求縮圖可辨
+    assert _STOCK_TREND_RAIL_COLOR.lower() not in (
+        "#0d47a1",
+        "#4a148c",
+        "#1565c0",
+        "#6a1b9a",
+    )
+    assert float(_STOCK_TREND_RAIL_LW) >= 1.2
 
 
 def test_parallel_channel_keeps_fullwidth_gs_right():

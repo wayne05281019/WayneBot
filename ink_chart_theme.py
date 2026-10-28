@@ -1978,10 +1978,11 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
 def align_vol_panel_margins(main, sig, volume) -> None:
     """大量圖上中下三框左緣對齊結構外框；右緣留價／量刻度溝。
 
-    右緣若拉到 0.982（結構 FancyBbox 外框），右軸數字會畫出畫布只剩橫杠。
-    結構主圖右緣約 0.905；大量區略寬一點仍要保住刻度完整入鏡。
+    右緣若拉到 0.982（結構 FancyBbox 外框），右軸數字會畫出畫布只剩橫杠
+    （2026-10-28 6213／6274；#716 合主）。結構主圖右緣約 0.905；
+    大量區略寬仍要保住刻度完整入鏡。
     """
-    # 0.942 仍會讓「36,975」量刻度右緣出畫布；再收一點給五位含逗號
+    # 0.942 仍會讓「36,975」等五位含逗號量刻度右緣出畫布；0.928 過閘
     target_x0, target_x1 = 0.016, 0.928
     target_w = target_x1 - target_x0
     for ax in (main, sig, volume):

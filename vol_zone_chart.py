@@ -83,10 +83,11 @@ VOL_ZONE_MA20 = 20
 VOL_ZONE_MA60 = 60
 VOL_ZONE_MA60_WARM = 70
 # 個股大量區平行趨勢線（2026-10-28 使用者確認）：淡灰藍細虛線、不標股價、不超出主圖框
-_STOCK_TREND_RAIL_COLOR = "#8aa0b4"
-_STOCK_TREND_RAIL_LW = 0.95
-_STOCK_TREND_RAIL_DASH = (0, (2.0, 2.35))
-_STOCK_TREND_RAIL_HALO = 0.28
+# 過淡會「看起來沒畫」→ 略加深／加粗仍屬淡灰藍，縮圖可辨
+_STOCK_TREND_RAIL_COLOR = "#5f7a92"
+_STOCK_TREND_RAIL_LW = 1.45
+_STOCK_TREND_RAIL_DASH = (0, (2.4, 2.0))
+_STOCK_TREND_RAIL_HALO = 0.55
 
 
 def lookup_vol_ensure_days(
@@ -4796,6 +4797,8 @@ def _paint_volume_zone(
     spike_md = _md(spike_date)
     ax_head = None
     channel: Dict[str, Any] = {}
+    # 平行軌推論專用：保留呼叫端傳入的結構長窗（勿被近窗 view 覆寫）
+    _channel_bars_face = list(bars_face) if bars_face else []
     # 縮圖最後一根 K／量＝決策卡今臉（與圖一／二／表頭同源）；選區已在 prepare 吃官方。
     # 盤中走 overlay；13:30 收後 is_live 可能已關，仍要用卡上今天這根，不准臉柱停在昨收。
     if isinstance(card, dict) and card:
@@ -5099,6 +5102,7 @@ def _paint_volume_zone(
             "close": last.get("close"),
             "volume": last.get("volume"),
         }
+        # path 標只用近窗 view；平行軌仍用函式開頭留下的長窗 _channel_bars_face
         bars_face = [
             {
                 "date": r.get("date"),
@@ -5156,9 +5160,10 @@ def _paint_volume_zone(
     # 平行軌現價可能高於壓／低於撐：ylim 先吃進去，線才不會被裁
     if with_parallel_channel:
         try:
+            _face_for_ch = _channel_bars_face or bars_face
             channel = infer_vol_zone_parallel_channel(
                 view,
-                bars_face=bars_face,
+                bars_face=_face_for_ch,
                 db_path=str(db_path or ""),
                 stock_id=str(sid or ""),
             )

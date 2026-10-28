@@ -61,10 +61,22 @@ def test_stock_quiet_trend_rail_constants():
         render_lookup_vol_result,
     )
 
-    assert _STOCK_TREND_RAIL_COLOR == "#8aa0b4"
-    assert float(_STOCK_TREND_RAIL_LW) <= 1.2
+    # 淡灰藍但須縮圖可辨（過淡＝看起來沒畫）
+    assert str(_STOCK_TREND_RAIL_COLOR).lower().startswith("#")
+    assert float(_STOCK_TREND_RAIL_LW) >= 1.2
     assert isinstance(_STOCK_TREND_RAIL_DASH, tuple)
     assert "with_parallel_channel=True" in inspect.getsource(render_lookup_vol_result)
     psrc = inspect.getsource(paint_vol_zone_parallel_channel)
     assert "quiet_rails" in psrc
     assert "draw_markers=False" in psrc
+
+
+def test_volzone_ink_right_margin_keeps_tick_numbers():
+    """右緣不准 0.982 把價／量刻度裁出畫布（只剩橫杠）。"""
+    import inspect
+
+    from ink_chart_theme import align_vol_panel_margins
+
+    src = inspect.getsource(align_vol_panel_margins)
+    assert "0.928" in src
+    assert "0.982" not in src.split("target_x1")[1][:80]
