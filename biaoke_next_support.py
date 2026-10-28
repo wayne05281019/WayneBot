@@ -1017,6 +1017,111 @@ def pick_layer_label_along_line(
     return best[1], best[2], best[3]
 
 
+def _flush_smart_layer_pixel_gate(ax, queue, occupied_boxes) -> None:
+    """成對下一層標：整批只 draw 一次再做像素裁切／nudge（結構＋大量少 Agg）。"""
+    if not queue:
+        return
+    try:
+        ax.figure.canvas.draw()
+        ren = ax.figure.canvas.get_renderer()
+    except Exception:
+        return
+    fbb = ax.figure.bbox
+    for item in queue:
+        art = item.get("art")
+        if art is None:
+            continue
+        cx = float(item["cx"])
+        ha = item["ha"]
+        box = item["box"]
+        label = item["label"]
+        lab_y = item["lab_y"]
+        color = item["color"]
+        xmin = float(item["xmin"])
+        _text = item["_text_fn"]
+        _layer_tag_box = item["_layer_tag_box"]
+        _layer_tag_size = item["_layer_tag_size"]
+        try:
+            for _nudge in range(8):
+                bb = art.get_window_extent(renderer=ren)
+                if not (
+                    bb.x0 < fbb.x0 - 1
+                    or bb.x1 > fbb.x1 - 1
+                    or bb.y0 < fbb.y0 - 1
+                    or bb.y1 > fbb.y1 - 1
+                ):
+                    break
+                try:
+                    art.remove()
+                except Exception:
+                    pass
+                cx = float(cx) - 1.2
+                ha = "right"
+                _hw = max(0.5 * (float(box[1]) - float(box[0])), 1.0)
+                box = (
+                    cx - 2.0 * _hw,
+                    cx,
+                    float(box[2]),
+                    float(box[3]),
+                )
+                if float(box[0]) < float(xmin) - 0.55:
+                    art = None
+                    break
+                art = _text(
+                    float(cx),
+                    lab_y,
+                    label,
+                    color=color,
+                    ha=ha,
+                    va="center",
+                    bbox={**_layer_tag_box, "edgecolor": color},
+                    size=float(_layer_tag_size),
+                )
+                ax.figure.canvas.draw()
+                ren = ax.figure.canvas.get_renderer()
+            if art is None:
+                try:
+                    occupied_boxes.pop()
+                except Exception:
+                    pass
+                continue
+            bb = art.get_window_extent(renderer=ren)
+            if (
+                bb.x0 < fbb.x0 - 1
+                or bb.x1 > fbb.x1 - 1
+                or bb.y0 < fbb.y0 - 1
+                or bb.y1 > fbb.y1 - 1
+            ):
+                try:
+                    art.remove()
+                except Exception:
+                    pass
+                try:
+                    occupied_boxes.pop()
+                except Exception:
+                    pass
+                continue
+            occupied_boxes[-1] = box
+            try:
+                from smart_label_metrics import record_smart_label
+
+                record_smart_label(
+                    ax,
+                    kind="layer",
+                    text=str(label),
+                    x0=float(box[0]),
+                    x1=float(box[1]),
+                    y0=float(box[2]),
+                    y1=float(box[3]),
+                    rail_y=float(lab_y),
+                    clipped=False,
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
 def paint_written_and_next_levels(
     ax,
     *,
@@ -1282,6 +1387,7 @@ def paint_written_and_next_levels(
                 pass
             _layer_pair_anchor = False
             _layer_prefer_x: Optional[float] = None
+            _smart_layer_pixel_queue: List[Dict[str, Any]] = []
             for y, color, label in (
                 (hi, color_next_press, str(layer.get("label_press") or next_press_label(hi))),
                 (lo, color_next, str(layer.get("label_hold") or next_hold_label(lo))),
@@ -1377,91 +1483,21 @@ def paint_written_and_next_levels(
                             bbox={**_layer_tag_box, "edgecolor": color},
                             size=float(_layer_tag_size),
                         )
-                        # 像素裁切閘：出 figure → 往左 nudge；仍裁才拿掉（不准半句）
-                        try:
-                            ax.figure.canvas.draw()
-                            ren = ax.figure.canvas.get_renderer()
-                            if art is not None:
-                                for _nudge in range(8):
-                                    bb = art.get_window_extent(renderer=ren)
-                                    fbb = ax.figure.bbox
-                                    if not (
-                                        bb.x0 < fbb.x0 - 1
-                                        or bb.x1 > fbb.x1 - 1
-                                        or bb.y0 < fbb.y0 - 1
-                                        or bb.y1 > fbb.y1 - 1
-                                    ):
-                                        break
-                                    try:
-                                        art.remove()
-                                    except Exception:
-                                        pass
-                                    cx = float(cx) - 1.2
-                                    ha = "right"
-                                    _hw = max(
-                                        0.5 * (float(box[1]) - float(box[0])), 1.0
-                                    )
-                                    box = (
-                                        cx - 2.0 * _hw,
-                                        cx,
-                                        float(box[2]),
-                                        float(box[3]),
-                                    )
-                                    if float(box[0]) < float(xmin) - 0.55:
-                                        art = None
-                                        break
-                                    art = _text(
-                                        float(cx),
-                                        lab_y,
-                                        label,
-                                        color=color,
-                                        ha=ha,
-                                        va="center",
-                                        bbox={
-                                            **_layer_tag_box,
-                                            "edgecolor": color,
-                                        },
-                                        size=float(_layer_tag_size),
-                                    )
-                                    ax.figure.canvas.draw()
-                                    ren = ax.figure.canvas.get_renderer()
-                                if art is None:
-                                    occupied_boxes.pop()
-                                    continue
-                                bb = art.get_window_extent(renderer=ren)
-                                fbb = ax.figure.bbox
-                                if (
-                                    bb.x0 < fbb.x0 - 1
-                                    or bb.x1 > fbb.x1 - 1
-                                    or bb.y0 < fbb.y0 - 1
-                                    or bb.y1 > fbb.y1 - 1
-                                ):
-                                    try:
-                                        art.remove()
-                                    except Exception:
-                                        pass
-                                    occupied_boxes.pop()
-                                    continue
-                                # nudge 後同步佔位盒
-                                occupied_boxes[-1] = box
-                        except Exception:
-                            pass
-                        try:
-                            from smart_label_metrics import record_smart_label
-
-                            record_smart_label(
-                                ax,
-                                kind="layer",
-                                text=str(label),
-                                x0=float(box[0]),
-                                x1=float(box[1]),
-                                y0=float(box[2]),
-                                y1=float(box[3]),
-                                rail_y=float(lab_y),
-                                clipped=False,
-                            )
-                        except Exception:
-                            pass
+                        _smart_layer_pixel_queue.append(
+                            {
+                                "art": art,
+                                "cx": cx,
+                                "ha": ha,
+                                "box": box,
+                                "label": label,
+                                "lab_y": lab_y,
+                                "color": color,
+                                "xmin": float(xmin),
+                                "_text_fn": _text,
+                                "_layer_tag_box": _layer_tag_box,
+                                "_layer_tag_size": _layer_tag_size,
+                            }
+                        )
                     except Exception:
                         pass
                 elif layer_mode == "left":
@@ -1512,6 +1548,7 @@ def paint_written_and_next_levels(
                         )
                     except Exception:
                         pass
+            _flush_smart_layer_pixel_gate(ax, _smart_layer_pixel_queue, occupied_boxes)
     elif pack.get("broke") or pack.get("over"):
         # 2026-10-27：無下一層＝靜默，不准畫「暫無下一層大量區」佔位
         pass

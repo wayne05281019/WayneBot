@@ -4392,7 +4392,6 @@ def _structure_render_memo_key(
     portrait = fig_h / max(fig_w, 0.01) >= 1.15
     fullbleed = not portrait
     use_dpi = int(dpi or BIAOKE_CHART_DPI)
-    from vol_zone_chart import VOL_ZONE_SAVE_DPI as _struct_save_dpi
     _q0 = dict(quote or {})
     try:
         _q_close = float(_q0.get("close") or 0)
@@ -4415,7 +4414,6 @@ def _structure_render_memo_key(
         int(n),
         int(len(rows)),
         int(use_dpi),
-        int(_struct_save_dpi),
         round(fig_w, 3),
         round(fig_h, 3),
         # v78j＋live-face：右軸跟決策卡；縮圖末日 K／量疊盤中真報價
@@ -4426,7 +4424,7 @@ def _structure_render_memo_key(
         "struct-roll-v1",
         # quiet-rails-v1：個股軌道標幾何化（名＋價），禁像素掃；不准互蓋舊像素掃圖
         "struct-quiet-rails-v1",
-        "ink-paint-v64-save238",
+        "ink-paint-v65-volsave238",
         int(_BARS),
         str((work[0].get("date") if work else "") or "")[:8],
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
@@ -4529,7 +4527,6 @@ def render_biaoke_structure_png(
     portrait = fig_h / max(fig_w, 0.01) >= 1.15
     fullbleed = not portrait
     use_dpi = int(dpi or BIAOKE_CHART_DPI)
-    from vol_zone_chart import VOL_ZONE_SAVE_DPI as _struct_save_dpi
     last_bar0 = info.get("last_bar") or _bar_ohlc(work[-1])
     last_d = str(last_bar0.get("date") or "")[:8]
     xs = list(range(n))
@@ -5868,7 +5865,7 @@ def render_biaoke_structure_png(
     except Exception:
         logger.debug("結構圖墨線套皮略過", exc_info=True)
 
-    _savefig_lookup_png(fig, save_path, int(_struct_save_dpi))
+    _savefig_lookup_png(fig, save_path, use_dpi)
     plt.close(fig)
     if os.path.isfile(save_path):
         _lookup_render_memo_put(memo_key, save_path)
