@@ -273,6 +273,46 @@ def tw_session_phase(now=None) -> str:
     return "after"
 
 
+def tw_cash_session_open(now=None) -> bool:
+    """上市櫃現貨盤中：開市日 09:00 ≤ t < 13:30（13:30 整已收，不算盤中）。"""
+    from config import taipei_now
+
+    now = now or taipei_now()
+    ymd = now.strftime("%Y%m%d")
+    if not is_tw_open_calendar_day(ymd):
+        return False
+    hm = now.hour * 60 + now.minute
+    return 9 * 60 <= hm < 13 * 60 + 30
+
+
+def tw_post_cash_pre_fuse(now=None) -> bool:
+    """開市日現貨已收、16:30 盤後融合前（行情可收、法人／輪動常仍昨）。"""
+    from config import taipei_now
+
+    now = now or taipei_now()
+    ymd = now.strftime("%Y%m%d")
+    if not is_tw_open_calendar_day(ymd):
+        return False
+    t = now.time()
+    return dt_time(13, 30) <= t < dt_time(16, 30)
+
+
+def speak_when_for_press(now=None) -> str:
+    """話筒用詞時段：pre／open／after／weekend（依按下台北時；現貨窗對齊 tw_cash_session_open）。"""
+    from config import taipei_now
+
+    now = now or taipei_now()
+    ymd = now.strftime("%Y%m%d")
+    if now.weekday() >= 5 or is_tw_market_holiday(ymd) or not is_tw_open_calendar_day(ymd):
+        return "weekend"
+    if tw_cash_session_open(now):
+        return "open"
+    t = now.time()
+    if t < dt_time(9, 0):
+        return "pre"
+    return "after"
+
+
 def next_tw_session_when(now=None) -> str:
     """給人看：今天盤中或下個交易日 09:00–13:30。"""
     from config import taipei_now

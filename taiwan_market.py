@@ -4826,19 +4826,40 @@ def format_taiwan_market_page_html(
     clock = str((live or {}).get("update_time") or "")[:5]
     ref8 = str(ref).replace("-", "")[:8]
     try:
-        from trading_calendar import format_trading_date_zh
+        from config import taipei_now
+        from trading_calendar import (
+            format_trading_date_zh,
+            speak_when_for_press,
+            tw_cash_session_open,
+            tw_post_cash_pre_fuse,
+        )
 
+        press_now = now or taipei_now()
+        speak_when = speak_when_for_press(press_now)
+        cash_open = tw_cash_session_open(press_now)
+        post_pre_fuse = tw_post_cash_pre_fuse(press_now)
         ref_zh = format_trading_date_zh(ref8) or (
             f"{ref8[:4]}/{ref8[4:6]}/{ref8[6:8]}" if len(ref8) == 8 else str(ref)
         )
     except Exception:
+        press_now = now
+        speak_when = "pre"
+        cash_open = False
+        post_pre_fuse = False
         ref_zh = f"{ref8[:4]}/{ref8[4:6]}/{ref8[6:8]}" if len(ref8) == 8 else str(ref)
-    if live_px > 0:
-        as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　盤中")
-        extra_note = "漲跌家數、法人仍依庫內最近完整日"
-    elif tw_banner:
+    # 時段用詞依按下台北時；不准已收還因 live_px 殘價寫「盤中」。
+    if tw_banner:
         as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　休市上一收")
         extra_note = ""
+    elif cash_open and live_px > 0:
+        as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　盤中")
+        extra_note = "漲跌家數、法人仍依庫內最近完整日"
+    elif post_pre_fuse:
+        as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　已收盤")
+        extra_note = (
+            "加權行情可已用今日收；環境／法人／漲跌家數常仍截至上一完整日"
+            "（約 16:30 盤後匯入後換今日）。不是當下盤後定稿。"
+        )
     else:
         as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　官方收")
         extra_note = ""
@@ -4851,7 +4872,7 @@ def format_taiwan_market_page_html(
     try:
         from foreign_sell_display import market_env_section_lines
 
-        env_lines = market_env_section_lines(db_path, ref)
+        env_lines = market_env_section_lines(db_path, ref, speak_when=speak_when)
         if _us_cash_washout(us_for_lines):
             env_lines = _drop_fear_lines_that_fight_us_drop(env_lines)
         if env_lines:
