@@ -1107,6 +1107,19 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
         .drop(columns="_d")
         .reset_index(drop=True)
     )
+    # 與高低卡同源：只到庫內最後完整收盤日。未齊日（例盤中只寫到兩檔）
+    # 不准進結構／大量區，否則兩圖最後收盤日會分叉。
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        cap = str(db_as_of_trading_date(path) or "").replace("-", "")[:8]
+    except Exception:
+        cap = ""
+    if cap:
+        dcap = df["date"].astype(str).str.replace("-", "", regex=False)
+        df = df.loc[dcap <= cap].reset_index(drop=True)
+        if df.empty:
+            return pd.DataFrame()
     if len(df) > lim:
         df = df.iloc[-lim:].reset_index(drop=True)
     df["stock_id"] = sid
