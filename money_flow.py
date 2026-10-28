@@ -8,7 +8,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
     from config import get_db_path
@@ -1040,6 +1040,8 @@ def _sector_entry(
                     "three_net": int(r.get("top_sell_three") or 0),
                 }
             ]
+        # 賣超榜只列真賣超（three_net＜0）；族淨賣但個股全買／近零時不准裝賣超。
+        picks = [p for p in picks if int(p.get("three_net") or 0) < 0]
         head = "前幾名賣超"
     else:
         picks = list(r.get("top_buys") or [])
@@ -1067,6 +1069,49 @@ def _sector_entry(
 def _flow_stock_lines(items: List[str]) -> List[str]:
     """檔與檔緊貼；藍連結＋橘數字已夠分，不再多空一行。"""
     return [bit for bit in items if bit]
+
+
+def _price_strong_chip_out_bridge(
+    theme_industry: str,
+    outflow_rows: Sequence[Dict[str, Any]],
+    *,
+    live_reps: Optional[Sequence[Dict[str, Any]]] = None,
+) -> str:
+    """價強（均漲／短線熱）卻法人賣超時加一句橋；不准假數、不是買訊。"""
+    from tg_layout import html_escape, section
+
+    ind = str(theme_industry or "").strip()
+    if not ind:
+        return ""
+    out_row = next(
+        (r for r in list(outflow_rows or []) if str(r.get("industry") or "") == ind),
+        None,
+    )
+    if not out_row:
+        return ""
+    three = int(out_row.get("three_net") or 0)
+    if three >= 0:
+        return ""
+    short = _sector_short_name(ind)
+    lines = [
+        f"<b>價漲錢出｜{html_escape(short)}</b>",
+        "<i>均漲／短線熱可與法人賣超並存；撐盤≠法人方向，不是買訊。</i>",
+    ]
+    sell_ids = {
+        str(p.get("stock_id") or "").strip()
+        for p in list(out_row.get("top_sells") or [])
+        if int(p.get("three_net") or 0) < 0 and str(p.get("stock_id") or "").strip()
+    }
+    hit: List[str] = []
+    for r in list(live_reps or []):
+        sid = str(r.get("stock_id") or "").strip()
+        if sid and sid in sell_ids:
+            name = str(r.get("stock_name") or sid)
+            hit.append(f"{html_escape(name)}（{html_escape(sid)}）漲但法人賣超")
+        if len(hit) >= 2:
+            break
+    lines.extend(hit)
+    return section(*lines)
 
 
 def format_live_share_section(
@@ -1212,6 +1257,30 @@ def format_sector_rotation_html(
         )
     if theme:
         blocks.append(theme)
+        # 價強錢出：live／盤後最強族若同時在法人流出前三，加橋接句（不准假數）。
+        theme_ind = ""
+        live_reps: List[Dict[str, Any]] = []
+        if live_rows:
+            theme_ind = str(live_rows[0].get("industry") or "")
+            try:
+                meta = live_rows[0].get("_live_meta") or {}
+                quotes = live_rows[0].get("_live_quotes") or {}
+                live_reps = sector_representative_stocks_live(
+                    path,
+                    theme_ind,
+                    meta=meta,
+                    live_quotes=quotes,
+                    ymd=ymd,
+                )
+            except Exception:
+                live_reps = []
+        elif int(top_row.get("three_net") or 0) > 0:
+            theme_ind = str(top_row.get("industry") or "")
+        bridge = _price_strong_chip_out_bridge(
+            theme_ind, outflow, live_reps=live_reps
+        )
+        if bridge:
+            blocks.append(bridge)
     live_share = ""
     try:
         if live_rows:
@@ -1238,12 +1307,17 @@ def format_sector_rotation_html(
                 ),
             )
         )
-    if accel and {r["industry"] for r in accel} != {r["industry"] for r in inflow}:
+    # 較前日加碼：略過已在流入前三的族（部分重疊也去重，不准整段再印）。
+    inflow_inds = {str(r.get("industry") or "") for r in inflow}
+    accel_extra = [
+        r for r in accel if str(r.get("industry") or "") not in inflow_inds
+    ]
+    if accel_extra:
         blocks.append(
             section(
                 "<b>較前日加碼</b>",
                 *_flow_stock_lines(
-                    [_sector_entry(r, path, fine_map) for r in accel]
+                    [_sector_entry(r, path, fine_map) for r in accel_extra]
                 ),
             )
         )
