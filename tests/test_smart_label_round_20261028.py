@@ -80,3 +80,16 @@ def test_volzone_ink_right_margin_keeps_tick_numbers():
     src = inspect.getsource(align_vol_panel_margins)
     assert "0.928" in src
     assert "0.982" not in src.split("target_x1")[1][:80]
+
+
+def test_volzone_quiet_rail_footnote_not_in_foot1():
+    """淡灰藍說明不准塞進 foot1 第一行（Reviewer-A：整行左右裁切）。"""
+    import inspect
+
+    from vol_zone_chart import _paint_volume_zone
+
+    src = inspect.getsource(_paint_volume_zone)
+    assert "quiet_bit" in src
+    # foot1 組句後面不准再插 quiet_bit
+    assert 'f"{quiet_bit}"' not in src.split("foot1 = (")[1].split("foot2 = (")[0]
+    assert "淡灰藍虛線＝平行趨勢" in src

@@ -5830,13 +5830,21 @@ def _paint_volume_zone(
         elif with_nav_signals and side == "right":
             tx = min(float(n) - 0.55, float(x) + 2.8)
             ha = "left"
-        # 長文案（下一層量日）鎖在可視窗內，不准右緣裁成半句（6509／6220）
+        # 長文案（下一層量日）鎖在可視窗內，不准右緣裁成半句
+        # （6509／6220；2026-10-28 Reviewer-A：6794／9955 又裁「下一」）
+        long_layer = "下一層" in str(text)
+        if long_layer and ha == "left":
+            # 改往左長，避免右 ha=left 把整盒推出畫布
+            ha = "right"
+            tx = min(float(x) + 0.8, float(n) - 1.2)
         if ha == "left":
-            tx = min(float(tx), float(n) - 6.5)
+            tx = min(float(tx), float(n) - (10.0 if long_layer else 6.5))
         elif ha == "right":
             tx = max(float(tx), 6.0)
+            if long_layer:
+                tx = min(float(tx), float(n) - 1.0)
         else:
-            tx = min(max(float(tx), 4.0), float(n) - 4.0)
+            tx = min(max(float(tx), 4.0), float(n) - (6.0 if long_layer else 4.0))
         ax2.annotate(
             str(text),
             xy=(float(x), float(y)),
@@ -5846,7 +5854,7 @@ def _paint_volume_zone(
             fontproperties=_fp(9.5 if lab_y is not None else 10.0, "bold"),
             color=ink,
             zorder=16,
-            clip_on=True,
+            clip_on=False,
             bbox=dict(
                 boxstyle="round,pad=0.16",
                 facecolor=face,
@@ -6151,15 +6159,16 @@ def _paint_volume_zone(
         ma_foot = "橙＝五日、青＝十日、黃＝月線(MA20)、藍紫＝季線(MA60)。"
     else:
         ma_foot = "黃＝月線(MA20)、藍紫＝季線(MA60)。"
+    quiet_bit = ""
     if with_nav_signals:
+        # 淡灰藍說明獨立短行：不准塞進 foot1／foot2（2026-10-28 Reviewer-A 裁切）
         quiet_bit = (
-            "淡灰藍細虛線＝可重算平行趨勢（不標價・不數浪）。"
+            "淡灰藍虛線＝平行趨勢（不標價・不數浪）"
             if with_parallel_channel
             else ""
         )
         foot1 = (
             f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}"
-            f"{quiet_bit}"
             "除權／除息缺口是息差不是崩。高觸壓、收未過＝測壓（非買訊）。"
             "買點＝藍▲紅框；60低＝純藍▲。箭頭／殘影＝導航同一套。"
         )
@@ -6188,24 +6197,54 @@ def _paint_volume_zone(
                 "止穩◆＝60低首觸後≥3日未破底；橘六角＝外資賣升級／賣超佔量≥20%（還在測試・非買）。"
                 "無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
             )
-    fig.text(
-        0.5,
-        0.022,
-        foot1,
-        ha="center",
-        va="bottom",
-        fontproperties=_fp(8.2, "bold"),
-        color=_MUTED,
-    )
-    fig.text(
-        0.5,
-        0.005,
-        foot2,
-        ha="center",
-        va="bottom",
-        fontproperties=_fp(8.2, "bold"),
-        color=_MUTED,
-    )
+    # 有 quiet 短行時三行；否則維持兩行（不准左右裁切）
+    if quiet_bit:
+        fig.text(
+            0.5,
+            0.030,
+            foot1,
+            ha="center",
+            va="bottom",
+            fontproperties=_fp(8.0, "bold"),
+            color=_MUTED,
+        )
+        fig.text(
+            0.5,
+            0.016,
+            quiet_bit,
+            ha="center",
+            va="bottom",
+            fontproperties=_fp(8.0, "bold"),
+            color=_MUTED,
+        )
+        fig.text(
+            0.5,
+            0.003,
+            foot2,
+            ha="center",
+            va="bottom",
+            fontproperties=_fp(8.0, "bold"),
+            color=_MUTED,
+        )
+    else:
+        fig.text(
+            0.5,
+            0.022,
+            foot1,
+            ha="center",
+            va="bottom",
+            fontproperties=_fp(8.2, "bold"),
+            color=_MUTED,
+        )
+        fig.text(
+            0.5,
+            0.005,
+            foot2,
+            ha="center",
+            va="bottom",
+            fontproperties=_fp(8.2, "bold"),
+            color=_MUTED,
+        )
     # 查股順序四／壓撐大量區：墨線定稿套皮；失敗略過不准炸出圖／排程
     try:
         from ink_chart_theme import maybe_apply_ink
