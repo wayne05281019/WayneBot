@@ -350,6 +350,30 @@ def market_quotes_ok(
     return daily_quote_row_count(db_path) >= int(min_rows)
 
 
+def market_quotes_fresh_ok(
+    db_path: str, *, min_rows: int = MIN_QUOTE_ROWS_RESTORE
+) -> bool:
+    """列數夠且最新完整日 ≥ fuse_end：否則海選／data_ok 會停在舊日（2026-10-28 事故）。
+
+    舊 .corrupt-* 常有數十萬列但完整日停在更早（例如 20261002）；不准當復原完成。
+    """
+    if not market_quotes_ok(db_path, min_rows=min_rows):
+        return False
+    try:
+        from config import fuse_end_date
+        from import_health import latest_complete_quote_date
+
+        latest = str(latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
+        cap = str(fuse_end_date() or "").replace("-", "")[:8]
+        if not latest:
+            return False
+        if cap and latest < cap:
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def is_richer_completeness(
     cand_biaoke: int,
     cand_private: int,
@@ -683,11 +707,13 @@ def ensure_market_db_recoverable(
     *,
     min_biaoke: int = MIN_BIAOKE_RESTORE,
     allow_release: bool = True,
+    force_release: bool = False,
     urlretrieve=None,
 ) -> dict:
     """確保正式路徑可讀；優先救回含飆大／私人的較完整 .corrupt-*。
 
     壞庫時不准空 Release 整顆蓋掉較完整的私人本＋飆大 overlay。
+    缺日 K、或日 K 完整日遠落後 fuse_end、或 force_release：裝公開 Release 再 salvage。
     回傳狀態給測試／log：ok / source / biaoke_n / private_n / actions。
     """
     from config import get_db_path
@@ -708,7 +734,73 @@ def ensure_market_db_recoverable(
         return bool(path and os.path.isfile(path) and db_quick_check_ok(path, min_bytes=1))
 
     def _quotes_ok() -> bool:
-        return bool(_ok() and market_quotes_ok(path))
+        # 列數夠仍可能完整日停在舊日；復原停手必須 fresh。
+        return bool(_ok() and market_quotes_fresh_ok(path))
+
+    def _do_release_install() -> dict:
+        """裝公開 Release 行情柱；裝完 salvage＋seed，不准留雙空。"""
+        if not allow_release:
+            result.update(
+                ok=_ok(),
+                source="none",
+                biaoke_n=biaoke_post_count(path) if os.path.isfile(path) else 0,
+                private_n=private_row_total(path) if os.path.isfile(path) else 0,
+                quote_n=daily_quote_row_count(path) if os.path.isfile(path) else 0,
+            )
+            return result
+
+        had_rich_corrupt = _corrupt_has_recoverable_data(path)
+        if _ok() and (biaoke_post_count(path) > 0 or private_row_total(path) > 0):
+            had_rich_corrupt = True
+            actions.append("release_will_quarantine_current_for_salvage")
+        if had_rich_corrupt:
+            actions.append("release_with_rich_corrupt_will_salvage")
+
+        if install_release_db(path, urlretrieve=urlretrieve):
+            actions.append("release_install")
+            n, priv_n = _post_release_seed_and_salvage(
+                path, min_biaoke=min_biaoke, actions=actions
+            )
+            if had_rich_corrupt and n == 0 and priv_n == 0:
+                actions.append("guard_empty_after_release")
+                logger.error(
+                    "Release 後仍雙空，但 .corrupt-* 有可救資料 path=%s", path
+                )
+                if _ensure_readable_shell(path, actions):
+                    n, priv_n = _post_release_seed_and_salvage(
+                        path, min_biaoke=min_biaoke, actions=actions
+                    )
+            result.update(
+                ok=True,
+                source="release",
+                biaoke_n=n,
+                private_n=priv_n,
+                quote_n=daily_quote_row_count(path),
+            )
+            return result
+
+        if had_rich_corrupt and _ensure_readable_shell(path, actions) and _ok():
+            actions.append("release_failed_shell_salvage")
+            n, priv_n = _post_release_seed_and_salvage(
+                path, min_biaoke=min_biaoke, actions=actions
+            )
+            result.update(
+                ok=True,
+                source="salvage_shell",
+                biaoke_n=n,
+                private_n=priv_n,
+                quote_n=daily_quote_row_count(path),
+            )
+            return result
+
+        actions.append("release_failed")
+        result.update(ok=False, source="none", biaoke_n=0, private_n=0, quote_n=0)
+        return result
+
+    # 0) ops／急救：不看現況完整度，直接換公開 Release（私人／飆大仍 salvage）
+    if force_release and allow_release:
+        actions.append("force_release")
+        return _do_release_install()
 
     def _enrich_and_return(source: str, *, seed_if_low: bool = False) -> dict:
         """可讀後一律合併 corrupt 的私人表；需要時再 seed；不准留空私人本。"""
@@ -836,82 +928,26 @@ def ensure_market_db_recoverable(
                 if done is not None:
                     return done
 
-    # 6) 現況已可讀且日 K 在 → seed／合併私人，**禁止**再 Release 整檔蓋掉
+    # 6) 現況已可讀且日 K 新鮮 → seed／合併私人，**禁止**再 Release 整檔蓋掉
     if _quotes_ok():
         return _enrich_and_return("current", seed_if_low=True)
     if _ok() and not allow_release:
-        # 測試／離線：不准下載時，仍回可讀現況（可能缺日 K）
+        # 測試／離線：不准下載時，仍回可讀現況（可能缺／過舊日 K）
         return _enrich_and_return("current", seed_if_low=True)
 
-    # 7) 本尊不可讀，或可讀但缺／空 daily_quotes：裝 Release 行情柱；
-    #    裝完必須 salvage＋seed，不准留雙空（私人／飆大從 corrupt 救回）。
-    if not allow_release:
-        result.update(
-            ok=_ok(),
-            source="none",
-            biaoke_n=biaoke_post_count(path) if os.path.isfile(path) else 0,
-            private_n=private_row_total(path) if os.path.isfile(path) else 0,
-            quote_n=daily_quote_row_count(path) if os.path.isfile(path) else 0,
-        )
-        return result
+    # 7) 本尊不可讀，或可讀但缺／空／過舊 daily_quotes：裝 Release
+    if _ok() and not market_quotes_fresh_ok(path):
+        try:
+            from import_health import latest_complete_quote_date
 
-    if _ok() and not market_quotes_ok(path):
+            latest = str(latest_complete_quote_date(path) or "")
+        except Exception:
+            latest = ""
         actions.append(
-            f"release_for_missing_quotes:n={daily_quote_row_count(path)}"
+            f"release_for_stale_or_missing_quotes:n={daily_quote_row_count(path)}"
+            f":latest={latest}"
         )
-
-    had_rich_corrupt = _corrupt_has_recoverable_data(path)
-    # 現況本身有飆大／私人也算可救（裝 Release 前會 quarantine 成 corrupt）
-    if _ok() and (biaoke_post_count(path) > 0 or private_row_total(path) > 0):
-        had_rich_corrupt = True
-        actions.append("release_will_quarantine_current_for_salvage")
-
-    if had_rich_corrupt:
-        actions.append("release_with_rich_corrupt_will_salvage")
-
-    if install_release_db(path, urlretrieve=urlretrieve):
-        actions.append("release_install")
-        n, priv_n = _post_release_seed_and_salvage(
-            path, min_biaoke=min_biaoke, actions=actions
-        )
-        # 鎖死：有較完整 corrupt 不准留下空 biaoke／空私人
-        if had_rich_corrupt and n == 0 and priv_n == 0:
-            actions.append("guard_empty_after_release")
-            logger.error(
-                "Release 後仍雙空，但 .corrupt-* 有可救資料 path=%s", path
-            )
-            # 再逼一次：殼＋merge（Release 檔可能沒寫上）
-            if _ensure_readable_shell(path, actions):
-                n, priv_n = _post_release_seed_and_salvage(
-                    path, min_biaoke=min_biaoke, actions=actions
-                )
-        result.update(
-            ok=True,
-            source="release",
-            biaoke_n=n,
-            private_n=priv_n,
-            quote_n=daily_quote_row_count(path),
-        )
-        return result
-
-    # Release 失敗但 corrupt 有料：建殼 merge＋seed，仍不准雙空
-    if had_rich_corrupt and _ensure_readable_shell(path, actions) and _ok():
-        actions.append("release_failed_shell_salvage")
-        n, priv_n = _post_release_seed_and_salvage(
-            path, min_biaoke=min_biaoke, actions=actions
-        )
-        result.update(
-            ok=True,
-            source="salvage_shell",
-            biaoke_n=n,
-            private_n=priv_n,
-            quote_n=daily_quote_row_count(path),
-        )
-        return result
-
-    actions.append("release_failed")
-    result.update(ok=False, source="none", biaoke_n=0, private_n=0, quote_n=0)
-    return result
+    return _do_release_install()
 
 
 def _richer_corrupt_exists(

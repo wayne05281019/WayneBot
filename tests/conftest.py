@@ -64,6 +64,10 @@ def pytest_configure(config):
         "markers",
         "network: 允許打外網（預設單元測 stub ISIN／不准掛死 smoke）",
     )
+    config.addinivalue_line(
+        "markers",
+        "real_fresh_gate: 測 daily_quotes 完整日新鮮閘（不把 fresh 對齊列數）",
+    )
 
 
 @pytest.fixture(autouse=True)
