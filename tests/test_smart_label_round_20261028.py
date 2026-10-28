@@ -79,6 +79,16 @@ def test_stock_quiet_trend_rail_constants():
     assert "卡死話筒讀秒" in psrc or "不准每候選整圖" in psrc
 
 
+def test_vol_zone_dpi_sharpness_floor():
+    """結構／大量區不准為快降 DPI；#722 後底線 240、仍輕於導航 320。"""
+    from vol_zone_chart import VOL_ZONE_DPI
+    from wayne_navigator import NAV_CHART_DPI
+
+    assert int(VOL_ZONE_DPI) >= 240
+    assert int(VOL_ZONE_DPI) < int(NAV_CHART_DPI)
+    assert int(VOL_ZONE_DPI) <= 280  # 防 OOM：不准無上限狂加
+
+
 def test_lookup_progress_tick_has_hard_elapsed_cap():
     """查股 LOADING 逾時不准 silently dismiss；要 overtime 文案並等結果／錯誤。"""
     import inspect
