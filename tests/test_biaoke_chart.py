@@ -1355,6 +1355,53 @@ def test_parallel_channel_follows_biaoke_rails(production_db):
     assert abs(us - ls) < 1e-9
 
 
+@pytest.mark.production_db
+def test_parallel_channel_width_gate_tight(production_db):
+    """寬度閘專業預設：拒絕近窗 85% 大寬包覆；6274 應落在約 15–25% 幅。"""
+    import inspect
+
+    from biaoke_brain import load_bars
+    from biaoke_chart import (
+        _BARS,
+        _CHANNEL_WIDTH_MAX,
+        _CHANNEL_WIDTH_NARROW_PICK,
+        _channel_width_touch,
+        infer_parallel_channel,
+    )
+
+    wsrc = inspect.getsource(_channel_width_touch)
+    assert "0.85" not in wsrc
+    assert "_CHANNEL_WIDTH_MAX" in wsrc
+    assert "_CHANNEL_WIDTH_PENALTY" in wsrc
+    isrc = inspect.getsource(infer_parallel_channel)
+    assert "_prefer_narrower_channel_candidate" in isrc
+    assert float(_CHANNEL_WIDTH_MAX) <= 0.45
+    assert float(_CHANNEL_WIDTH_NARROW_PICK) <= 0.35
+
+    def _width_ratio(bars, ch):
+        work = bars[-_BARS:]
+        highs = [float(r.get("high") or 0) for r in work]
+        lows = [float(r.get("low") or 0) for r in work]
+        pos_lows = [v for v in lows if v > 0]
+        span = max(max(highs) - min(pos_lows), 1.0)
+        return float(ch.get("width") or 0) / span, span
+
+    bars_6274 = load_bars(production_db, "6274", n=360)
+    assert bars_6274
+    ch6274 = infer_parallel_channel(bars_6274[-_BARS:])
+    assert ch6274.get("kind")
+    wr6274, _ = _width_ratio(bars_6274, ch6274)
+    assert 0.12 <= wr6274 <= 0.28, wr6274
+
+    for sym in ("1303", "2330", "2383", "2454", "3017"):
+        bars = load_bars(production_db, sym, n=360)
+        assert bars
+        ch = infer_parallel_channel(bars[-_BARS:])
+        assert ch.get("kind") in ("asc", "desc")
+        wr, _ = _width_ratio(bars, ch)
+        assert wr <= float(_CHANNEL_WIDTH_MAX) + 0.02, (sym, wr)
+
+
 def test_structure_right_notes_fit_most_likely_full_text():
     """「最可能＝看壓 ####」整句必須落在軸右緣內，不准裁成 320／525。"""
     import inspect
