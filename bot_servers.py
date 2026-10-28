@@ -4192,6 +4192,7 @@ class WayneTelegramBot:
         *,
         sent: list | None = None,
         current: str = "",
+        overtime: bool = False,
     ) -> str:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
         labels = {
@@ -4262,7 +4263,17 @@ class WayneTelegramBot:
             rest = f"已送{sent_txt}；還有{rest}"
         elif sent_txt:
             rest = f"已送{sent_txt}"
-        return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
+        title = "查股進行中"
+        if overtime:
+            # 逾時仍出圖：泡泡不准消失；口吻改「仍在出」，避免以為成功結束
+            title = "查股逾時仍在出圖"
+            if not now:
+                now = "大量撐壓圖" if "vol" not in sent_ks else "收尾送圖"
+            if rest:
+                rest = f"{rest}；請稍候，失敗會明示"
+            else:
+                rest = "請稍候，失敗會明示，不會沒圖就結束"
+        return WayneTelegramBot._wait_bubble(title, elapsed_sec, now=now, rest=rest)
 
     @staticmethod
     def _struct_gap_line(phase: str = "") -> str:
@@ -9200,25 +9211,22 @@ class WayneTelegramBot:
             pass
 
         async def _progress_tick():
-            # 硬上限同 _start_plain_wait：paint 卡死／edit 全滅時不准永遠停在「已 N 秒」
+            # 硬上限：逾時不准 silently dismiss 當成功（#721 後仍見 LOADING 消了第 4 張沒到）。
+            # 改寫成「逾時仍在出圖」並繼續 tick；真正收泡泡只在 finally 有結果或明確錯誤之後。
             max_elapsed = float(getattr(self, "_WAIT_MAX_ELAPSED_S", 120.0) or 120.0)
             while not progress_stop.is_set():
                 if wait_msg is None:
                     break
                 st = self._op_state_map().get(actor) or {}
                 elapsed = int(time.monotonic() - op_t0)
-                if elapsed >= max_elapsed:
-                    try:
-                        await self._dismiss_progress_now(wait_msg)
-                    except Exception:
-                        pass
-                    break
+                overtime = elapsed >= max_elapsed
                 await self._safe_edit_text(
                     wait_msg,
                     self._chart_progress_text(
                         elapsed,
                         sent=st.get("sent") or [],
                         current=str(st.get("current") or ""),
+                        overtime=overtime,
                     ),
                     parse_mode="HTML",
                 )
@@ -9228,8 +9236,9 @@ class WayneTelegramBot:
                         await asyncio.wait_for(chat.send_action("typing"), timeout=1.0)
                 except Exception:
                     pass
+                tick_gap = 5.0 if overtime else 1.0
                 try:
-                    await asyncio.wait_for(progress_stop.wait(), timeout=1.0)
+                    await asyncio.wait_for(progress_stop.wait(), timeout=tick_gap)
                     break
                 except asyncio.TimeoutError:
                     continue
@@ -9986,6 +9995,28 @@ class WayneTelegramBot:
                     sent_kinds.append(kind)
                     hub_on = True
                     ready_items.append(vol_item)
+                else:
+                    # 上傳失敗：再試一次；仍失敗明示，不准 LOADING 消了就沒圖
+                    logger.warning("查股第4張送出失敗，重試 code=%s", code)
+                    ok2 = await send_photo(prep or path, caption, hub, kind=kind)
+                    if ok2:
+                        sent_any = True
+                        sent_kinds.append(kind)
+                        hub_on = True
+                        ready_items.append(vol_item)
+            elif "struct" in sent_kinds or "glance" in sent_kinds or "card" in sent_kinds:
+                # paint／memo 空：降載再試一次（仍單 worker；不准 silently 沒第4張）
+                logger.warning("查股第4張 paint 空，降載重試 code=%s", code)
+                await _bump_progress("vol")
+                retry = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
+                if retry:
+                    cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
+                    prep = await _prep_for_send(retry, "vol")
+                    ok = await send_photo(prep or retry, cap, hub, kind="vol")
+                    if ok:
+                        sent_any = True
+                        sent_kinds.append("vol")
+                        hub_on = True
 
             try:
                 gc.collect()

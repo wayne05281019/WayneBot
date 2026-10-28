@@ -4422,6 +4422,8 @@ def _structure_render_memo_key(
         "stabilize-v2-fs-observe-stack",
         # rolling-v1：固定窗滾動（新日進／最左出）進鍵，不准互蓋舊長窗圖
         "struct-roll-v1",
+        # quiet-rails-v1：個股軌道標幾何化（名＋價），禁像素掃；不准互蓋舊像素掃圖
+        "struct-quiet-rails-v1",
         int(_BARS),
         str((work[0].get("date") if work else "") or "")[:8],
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
@@ -4834,6 +4836,8 @@ def render_biaoke_structure_png(
                 paint_rails=False,
                 paint_labels=True,
                 avoid_nav_marks=False,
+                # 個股結構＝與大量區同一套 quiet 幾何軌標（名＋價）；禁像素掃拖慢第 3 張
+                quiet_rails=True,
             )
         except Exception:
             logger.debug("結構圖軌道標貼線略過", exc_info=True)

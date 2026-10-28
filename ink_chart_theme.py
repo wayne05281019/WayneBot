@@ -97,12 +97,17 @@ class Ink:
     def __init__(self, fig, kind: str):
         self.fig = fig
         self.kind = kind
-        fig.canvas.draw()
-        self.ren = fig.canvas.get_renderer()
-        self.W = float(fig.bbox.width)
-        self.H = float(fig.bbox.height)
         self.records: List[Dict[str, Any]] = []
         self.shells: List[Tuple[str, Bbox]] = []
+        # 一次 draw 建 renderer；後續改幾何用 redraw()，不准各 helper 亂疊整圖 draw
+        self.redraw()
+
+    def redraw(self) -> None:
+        """整圖 Agg draw 一次並刷新 renderer。查股大量區曾因 ink 連 draw 20 次拖到兩分多鐘。"""
+        self.fig.canvas.draw()
+        self.ren = self.fig.canvas.get_renderer()
+        self.W = float(self.fig.bbox.width)
+        self.H = float(self.fig.bbox.height)
 
     # ---------- 基本工具 ----------
     def pt(self, v: float) -> float:
@@ -762,8 +767,7 @@ def badge_all_labels(ink: Ink, axes, *, vol_ax=None) -> None:
                     t.set_fontproperties(fp(max(float(t.get_fontsize()) * 1.10, 14.5), heavy=True))
                     bumped = True
         if bumped:
-            ink.fig.canvas.draw()
-            ink.ren = ink.fig.canvas.get_renderer()
+            ink.redraw()
     plans = []
     for ax in axes:
         for t in list(ax.texts):
@@ -1280,10 +1284,7 @@ def clear_vol_top_ytick(ax) -> None:
     # 底＝0；頂端多 16% 頭，數字離開分界框線
     ax.set_ylim(0.0, bar_peak * 1.16)
     ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4, prune="both"))
-    try:
-        ax.figure.canvas.draw()
-    except Exception:
-        pass
+    # 不准在此整圖 draw：viewLim 已更新，get_yticks 不必重渲；外層 ink.redraw 一次收斂
     ticks = [
         float(t)
         for t in ax.get_yticks()
@@ -1296,10 +1297,6 @@ def clear_vol_top_ytick(ax) -> None:
         ticks = [bar_peak * x for x in (0.25, 0.50, 0.75)]
         ax.yaxis.set_major_locator(mticker.FixedLocator(ticks))
     ax.tick_params(axis="y", pad=13.0, length=3.6, width=1.1)
-    try:
-        ax.figure.canvas.draw()
-    except Exception:
-        pass
     for lab in ax.get_yticklabels():
         lab.set_visible(True)
         lab.set_fontproperties(fp(11.0, heavy=True))
@@ -1572,8 +1569,7 @@ def vol_key_shift(ink: Ink, legends: List[Legend], main) -> float:
     if not legends:
         return panel_left
     _grow_legend_markers(legends)
-    ink.fig.canvas.draw()
-    ink.ren = ink.fig.canvas.get_renderer()
+    ink.redraw()
     cats = _key_cats(legends)
     tab_prop = fp(KEY_TAB_PROP, heavy=True)
     tab_w = max(ink.measure(c, tab_prop)[0] for c in cats) + ink.pt(8)
@@ -1938,8 +1934,7 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
     """資料列／KEY／主圖縫：爆大量那排與下框、KEY 與主圖都要有清楚間距。"""
     if not legends or main is None:
         return
-    ink.fig.canvas.draw()
-    ink.ren = ink.fig.canvas.get_renderer()
+    # 沿用呼叫端剛同步的 renderer；位移用像素幾何推算，整段最多 redraw 一次
     exts = [L.get_window_extent(ink.ren) for L in legends]
     key_pad = ink.pt(7.0)
     key_y0 = min(e.y0 for e in exts) - key_pad
@@ -1947,6 +1942,7 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
     main_bb = main.get_window_extent(ink.ren)
     main_top = float(main_bb.y1)
     need_main = ink.pt(18.0)
+    moved = False
     # 資料列底 ↔ KEY 頂：先把 KEY 整塊下移，再處理主圖縫
     data_bot = getattr(ink, "_data_strip_bot", None)
     if data_bot is not None:
@@ -1964,11 +1960,19 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
                     (float(e.x0) / ink.W, (float(e.y1) - shift) / ink.H),
                     transform=ink.fig.transFigure,
                 )
-            ink.fig.canvas.draw()
-            ink.ren = ink.fig.canvas.get_renderer()
-            exts = [L.get_window_extent(ink.ren) for L in legends]
+            # 幾何平移推估新盒，免中段整圖 draw
+            exts = [
+                Bbox.from_extents(
+                    float(e.x0),
+                    float(e.y0) - shift,
+                    float(e.x1),
+                    float(e.y1) - shift,
+                )
+                for e in exts
+            ]
             key_y0 = min(e.y0 for e in exts) - key_pad
             key_y1 = max(e.y1 for e in exts) + key_pad
+            moved = True
     # KEY 底 ↔ 主圖頂
     gap_main = key_y0 - main_top
     if gap_main < need_main:
@@ -1977,8 +1981,9 @@ def open_vol_vertical_gaps(ink: Ink, legends: List[Legend], main) -> None:
         delta = delta_px / ink.H
         new_h = max(0.12, p.height - delta)
         main.set_position([p.x0, p.y0, p.width, new_h])
-        ink.fig.canvas.draw()
-        ink.ren = ink.fig.canvas.get_renderer()
+        moved = True
+    if moved:
+        ink.redraw()
 
 
 # 大量區三框：軸右緣內縮＝刻度溝；外框右緣對齊結構 FancyBbox（0.982）
@@ -2027,8 +2032,7 @@ def vol_close_right_outer_frame(ink: Ink, main, sig, volume) -> None:
     if not axes:
         return
     try:
-        ink.fig.canvas.draw()
-        ink.ren = ink.fig.canvas.get_renderer()
+        ink.redraw()
     except Exception:
         return
     bbs = [a.get_window_extent(ink.ren) for a in axes]
@@ -2070,6 +2074,7 @@ def vol_close_right_outer_frame(ink: Ink, main, sig, volume) -> None:
     # 刻度不准壓外框：右緣留 ≥4pt；超出就略增 y pad 把字往左收
     outer_x1_px = float(ink.W) * x1
     pad_px = float(ink.pt(4.0))
+    pad_hit = False
     for ax in axes:
         if ax is None:
             continue
@@ -2091,11 +2096,13 @@ def vol_close_right_outer_frame(ink: Ink, main, sig, volume) -> None:
             except Exception:
                 cur = 12.0
             ax.tick_params(axis="y", pad=max(6.0, cur - 4.0))
-    try:
-        ink.fig.canvas.draw()
-        ink.ren = ink.fig.canvas.get_renderer()
-    except Exception:
-        pass
+            pad_hit = True
+    # 只在真的改 pad／加外框後再畫一次；外框本身靠後續 savefig 即可，但 pad 改了要刷新
+    if pad_hit:
+        try:
+            ink.redraw()
+        except Exception:
+            pass
 
 
 def lift_ex_div_off_press(ink: Ink, main) -> None:
@@ -2103,8 +2110,7 @@ def lift_ex_div_off_press(ink: Ink, main) -> None:
     if main is None:
         return
     try:
-        ink.fig.canvas.draw()
-        ink.ren = ink.fig.canvas.get_renderer()
+        ink.redraw()
     except Exception:
         return
     blockers = [bb for role, bb in ink.shells if role in ("press", "hold")]
@@ -2121,6 +2127,7 @@ def lift_ex_div_off_press(ink: Ink, main) -> None:
     main_bb = main.get_window_extent(ink.ren)
     # clip_on=False：准許略超出主圖上緣，寧可冒出框也不准壓「大量區壓」
     top_cap = float(main_bb.y1) + ink.pt(22)
+    moved: List[Tuple[Any, str]] = []
     for t in list(main.texts):
         s = str(t.get_text() or "")
         if not t.get_visible() or not (s.startswith("除息") or s.startswith("除權")):
@@ -2152,10 +2159,13 @@ def lift_ex_div_off_press(ink: Ink, main) -> None:
         # 以中心點平移，保留原 ha／va，bbox 跟著走
         cy = 0.5 * (float(se.y0) + float(se.y1)) + dy
         ink.move_text_px(t, cx, cy, ha=str(t.get_ha() or "center"), va="center")
+        moved.append((t, s))
+    # 多標一次 redraw，不准每標整圖 Agg
+    if moved:
         try:
-            ink.fig.canvas.draw()
-            ink.ren = ink.fig.canvas.get_renderer()
-            ink.record(s, [s], "ex_div", ink.shell_ext(t))
+            ink.redraw()
+            for t, s in moved:
+                ink.record(s, [s], "ex_div", ink.shell_ext(t))
         except Exception:
             pass
 
@@ -2362,10 +2372,7 @@ def apply_vol(fig) -> Ink:
         if header.get_legend() is not None:
             legends.append(header.get_legend())
     align_vol_panel_margins(main, sig, volume)
-    fig.canvas.draw()
-    ink.ren = fig.canvas.get_renderer()
-    ink.W = float(fig.bbox.width)
-    ink.H = float(fig.bbox.height)
+    ink.redraw()  # 對齊 margins 後一次；Ink.__init__ 那次不夠（幾何已變）
     vol_frames(ink, main, sig, volume)
     restyle_candles_and_bars(main)
     restyle_bands(main)
@@ -2385,12 +2392,9 @@ def apply_vol(fig) -> Ink:
         panel_left = vol_key_shift(ink, legends, main)
         vol_masthead(ink, header, legends, panel_left)
         open_vol_vertical_gaps(ink, legends, main)
-        # KEY 可能下移／主圖頂下移 → 線・觀察拉開後再畫面板
-        ink.fig.canvas.draw()
-        ink.ren = ink.fig.canvas.get_renderer()
+        # open_vol 有位移會自 redraw；無位移則沿用 vol_key_shift 的 ren
         breathe_observe_legend(ink, legends)
-        ink.fig.canvas.draw()
-        ink.ren = ink.fig.canvas.get_renderer()
+        ink.redraw()  # 線・觀察拉開後一次，給 KEY 面板量盒
         vol_key_panel(ink, header, legends, panel_left)
     ma_under_candles(main)
     knockout_halos(main, sig)

@@ -79,16 +79,32 @@ def test_stock_quiet_trend_rail_constants():
     assert "卡死話筒讀秒" in psrc or "不准每候選整圖" in psrc
 
 
+def test_vol_zone_dpi_sharpness_floor():
+    """結構／大量區不准為快降 DPI；#722 後底線 240、仍輕於導航 320。"""
+    from vol_zone_chart import VOL_ZONE_DPI
+    from wayne_navigator import NAV_CHART_DPI
+
+    assert int(VOL_ZONE_DPI) >= 240
+    assert int(VOL_ZONE_DPI) < int(NAV_CHART_DPI)
+    assert int(VOL_ZONE_DPI) <= 280  # 防 OOM：不准無上限狂加
+
+
 def test_lookup_progress_tick_has_hard_elapsed_cap():
-    """查股 LOADING 讀秒必須有硬上限，不准永遠停在「已 N 秒」。"""
+    """查股 LOADING 逾時不准 silently dismiss；要 overtime 文案並等結果／錯誤。"""
     import inspect
 
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot)
     assert "_WAIT_MAX_ELAPSED_S" in src
-    # 查股 _progress_tick 路徑要 dismiss，不能只有 plain wait 有
-    assert "_dismiss_progress_now(wait_msg)" in src
+    # 查股 _progress_tick：逾時改 overtime，不准當成功收泡泡
+    tick = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    assert "overtime=" in tick
+    assert "查股逾時仍在出圖" in src or "overtime=overtime" in tick
+    # 海選／plain wait 仍可 dismiss 殘框；查股路徑不准靠 dismiss 冒充成功
+    progress_fn = WayneTelegramBot._chart_progress_text
+    txt = progress_fn(130, sent=["card", "glance", "struct"], current="vol", overtime=True)
+    assert "逾時" in txt
     assert "with_parallel_channel=True" in src  # memo 鍵對齊第 4 張
 
 
