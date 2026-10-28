@@ -1055,11 +1055,22 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "TRUE",
         "yes",
     )
-    if (
-        not _skip_reclass
-        and best["kind"] == "asc"
-        and not best.get("alive")
-    ):
+
+    def _primary_asc_broken() -> bool:
+        if not up:
+            return False
+        ui, uj = int(up[0]), int(up[1])
+        for c in cands:
+            if str(c.get("kind") or "") != "asc":
+                continue
+            bi = int(c["base"][0][0])
+            bj = int(c["base"][1][0])
+            if bi == ui and bj == uj:
+                return not bool(c.get("alive"))
+        return False
+
+    def _reclass_asc_break() -> None:
+        nonlocal best, reclass_from
         desc_cands = [c for c in cands if c["kind"] == "desc"]
         if not desc_cands:
             _pack_desc_reclass()
@@ -1068,7 +1079,22 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             best = max(desc_cands, key=lambda c: float(c["score"]))
             reclass_from = "asc_break"
 
+    _primary_broken = _primary_asc_broken()
+    if (
+        not _skip_reclass
+        and best["kind"] == "asc"
+        and (not best.get("alive") or _primary_broken)
+    ):
+        _reclass_asc_break()
+
     best = _prefer_narrower_channel_candidate(best, cands, span=span)
+
+    if (
+        not _skip_reclass
+        and best["kind"] == "asc"
+        and _primary_broken
+    ):
+        _reclass_asc_break()
 
     kind = str(best["kind"])
     (x1, y1, d1), (x2, y2, d2) = best["base"]
@@ -1465,6 +1491,8 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
                 f"{_md(rows[b].get('date'))}低{_px(lows[b])}，"
                 f"延長到最近約 {_px(y_now)}，收在上面；破這條才像軌壞掉"
             )
+    else:
+        out["up_broken"] = False
     if out["wash"]:
         notes.append("破撐之後又站回，比較像破線洗盤，不是保證")
     elif out.get("distribution"):
