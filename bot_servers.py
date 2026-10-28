@@ -9200,11 +9200,19 @@ class WayneTelegramBot:
             pass
 
         async def _progress_tick():
+            # 硬上限同 _start_plain_wait：paint 卡死／edit 全滅時不准永遠停在「已 N 秒」
+            max_elapsed = float(getattr(self, "_WAIT_MAX_ELAPSED_S", 120.0) or 120.0)
             while not progress_stop.is_set():
                 if wait_msg is None:
                     break
                 st = self._op_state_map().get(actor) or {}
                 elapsed = int(time.monotonic() - op_t0)
+                if elapsed >= max_elapsed:
+                    try:
+                        await self._dismiss_progress_now(wait_msg)
+                    except Exception:
+                        pass
+                    break
                 await self._safe_edit_text(
                     wait_msg,
                     self._chart_progress_text(
@@ -9832,6 +9840,7 @@ class WayneTelegramBot:
                         card=card,
                         with_nav_signals=True,
                         lookup_portrait=False,
+                        with_parallel_channel=True,
                         with_ma5_ma10=True,
                         db_path=self.db_path,
                     )

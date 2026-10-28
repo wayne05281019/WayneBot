@@ -73,6 +73,23 @@ def test_stock_quiet_trend_rail_constants():
     # 改口：要標名＋最新價；不准再強制 paint_labels=False
     assert "if quiet:\n        paint_labels = False" not in psrc
     assert "_STOCK_TREND_LABEL_FS" in psrc or "_fmt_price" in psrc
+    # 個股 quiet：幾何空窗，不准每候選整圖 canvas.draw（1303 卡死）
+    assert "_channel_text_box_data" in psrc
+    assert "_PIXEL_DRAW_BUDGET" in psrc
+    assert "卡死話筒讀秒" in psrc or "不准每候選整圖" in psrc
+
+
+def test_lookup_progress_tick_has_hard_elapsed_cap():
+    """查股 LOADING 讀秒必須有硬上限，不准永遠停在「已 N 秒」。"""
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot)
+    assert "_WAIT_MAX_ELAPSED_S" in src
+    # 查股 _progress_tick 路徑要 dismiss，不能只有 plain wait 有
+    assert "_dismiss_progress_now(wait_msg)" in src
+    assert "with_parallel_channel=True" in src  # memo 鍵對齊第 4 張
 
 
 def test_volzone_ink_right_margin_keeps_tick_numbers():

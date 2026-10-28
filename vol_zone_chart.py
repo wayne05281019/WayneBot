@@ -106,7 +106,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 61  # 成對共用錨；右溝同 crush 不壓過左／中（2026-10-27）
+_VZ_PAINT_VER = 62  # quiet 軌標幾何化；禁像素掃風暴卡死查股（2026-10-28）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -3381,6 +3381,8 @@ def paint_vol_zone_parallel_channel(
         and lo_arr.size >= int(n)
     )
     label_artists: List[Any] = []
+    # 像素掃每標最多 N 次整圖 draw；超過改幾何／保底（查股大量區曾 167 次 draw 卡死 LOADING）
+    _PIXEL_DRAW_BUDGET = 6
     for y_disp, lab, y_px in items:
         if market_rails:
             shown = _market_channel_anchor_caption(
@@ -3419,6 +3421,174 @@ def paint_vol_zone_parallel_channel(
         else:
             seg = ch.get("lower")
             outside = -1
+        # 成對同帶：只看本函式新放的軌標（不含 occupied 壓撐盒）
+        _pair_x: Optional[float] = None
+        if len(placed) > n_preoccupied:
+            _pair_x = 0.5 * (
+                float(placed[n_preoccupied][0]) + float(placed[n_preoccupied][1])
+            )
+        # 個股淡灰藍小標：只走幾何空窗＋保底，不准每候選整圖 redraw
+        # （1303 查股第四張曾因像素掃 ~160 次 draw 卡死話筒讀秒）。
+        if quiet:
+            dx, dy = _channel_text_box_data(
+                ax,
+                shown,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                fs=float(label_fs),
+            )
+            cx, cy = _blank_for_channel_label(
+                text=shown,
+                seg=seg,
+                y_now=float(y_px),
+                outside=outside,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                dx=dx,
+                dy=dy,
+                highs=hi_arr,
+                lows=lo_arr,
+                mas=ma_arrs,
+                placed=placed,
+                near_last=False,
+                mark_pad=mark_pad,
+                pair_x=_pair_x,
+            )
+            art = None
+            ok = False
+            if np.isfinite(float(cx)) and np.isfinite(float(cy)):
+                box0 = (
+                    float(cx) - dx / 2.0,
+                    float(cx) + dx / 2.0,
+                    float(cy) - dy / 2.0,
+                    float(cy) + dy / 2.0,
+                )
+                blocked = _channel_box_blocked(
+                    *box0,
+                    n=int(n),
+                    ymin=float(ymin),
+                    ymax=float(ymax),
+                    highs=hi_arr,
+                    lows=lo_arr,
+                    mas=ma_arrs,
+                    placed=placed,
+                    mark_pad=mark_pad,
+                    ignore_ma=True,
+                    ignore_k=False,
+                )
+                if not blocked:
+                    art = ax.text(
+                        float(cx),
+                        float(cy),
+                        shown,
+                        ha="center",
+                        va="center",
+                        fontproperties=_fp(label_fs, "bold"),
+                        color=color,
+                        zorder=12,
+                        clip_on=False,
+                        linespacing=1.12,
+                        bbox=dict(
+                            boxstyle="round,pad=0.14",
+                            facecolor="#ffffff",
+                            edgecolor=color,
+                            linewidth=0.75,
+                            alpha=0.94,
+                        ),
+                    )
+                    try:
+                        art.set_gid("ink:quiet-rail-label")
+                    except Exception:
+                        pass
+                    ok = True
+                    placed.append(box0)
+                    label_artists.append(art)
+                    try:
+                        from smart_label_metrics import record_smart_label
+
+                        record_smart_label(
+                            ax,
+                            kind="channel_u" if outside > 0 else "channel_l",
+                            text=str(shown),
+                            x0=float(box0[0]),
+                            x1=float(box0[1]),
+                            y0=float(box0[2]),
+                            y1=float(box0[3]),
+                            rail_y=float(cy),
+                            clipped=False,
+                        )
+                    except Exception:
+                        pass
+            if not ok and float(y_px) > 0:
+                fs_min = float(_STOCK_TREND_LABEL_FS_MIN)
+                shown_q = f"{lab} {_fmt_price(y_px)}"
+                tx = float(min(max(float(n) - 3.2, 2.0), float(n) - 0.8))
+                ty = float(
+                    _channel_seg_y(seg, tx, float(y_px)) if seg else float(y_px)
+                )
+                ty = min(
+                    max(ty, float(ymin) + y_span * 0.03),
+                    float(ymax) - y_span * 0.03,
+                )
+                if _pair_x is not None:
+                    tx = float(min(max(float(_pair_x), 2.0), float(n) - 0.8))
+                    ty = float(
+                        _channel_seg_y(seg, tx, float(y_px)) if seg else float(y_px)
+                    )
+                    ty = min(
+                        max(ty, float(ymin) + y_span * 0.03),
+                        float(ymax) - y_span * 0.03,
+                    )
+                art = ax.text(
+                    tx,
+                    ty,
+                    shown_q,
+                    ha="center",
+                    va="center",
+                    fontproperties=_fp(fs_min, "bold"),
+                    color=color,
+                    zorder=12,
+                    clip_on=False,
+                    bbox=dict(
+                        boxstyle="round,pad=0.12",
+                        facecolor="#ffffff",
+                        edgecolor=color,
+                        linewidth=0.7,
+                        alpha=0.94,
+                    ),
+                )
+                try:
+                    art.set_gid("ink:quiet-rail-label")
+                except Exception:
+                    pass
+                label_artists.append(art)
+                placed.append(
+                    (
+                        float(tx) - 2.2,
+                        float(tx) + 2.2,
+                        float(ty) - y_span * 0.025,
+                        float(ty) + y_span * 0.025,
+                    )
+                )
+                try:
+                    from smart_label_metrics import record_smart_label
+
+                    record_smart_label(
+                        ax,
+                        kind="channel_u" if outside > 0 else "channel_l",
+                        text=str(shown_q),
+                        x0=float(tx) - 2.2,
+                        x1=float(tx) + 2.2,
+                        y0=float(ty) - y_span * 0.025,
+                        y1=float(ty) + y_span * 0.025,
+                        rail_y=float(ty),
+                        clipped=False,
+                    )
+                except Exception:
+                    pass
+            continue
         # 先探真 bbox 尺寸，再口袋；畫完後像素驗收，撞 K 就重試／強制掃真空窗
         dx, dy = _probe_channel_label_dxdy(
             ax,
@@ -3438,6 +3608,7 @@ def paint_vol_zone_parallel_channel(
             linewidth=1.35 if market_rails else 0.9,
             alpha=0.97,
         )
+        pixel_draws_left = int(_PIXEL_DRAW_BUDGET)
 
         def _place_at(x: float, y: float):
             nonlocal art
@@ -3459,14 +3630,14 @@ def paint_vol_zone_parallel_channel(
                 linespacing=1.12,
                 bbox=box_kw,
             )
-            if quiet:
-                try:
-                    art.set_gid("ink:quiet-rail-label")
-                except Exception:
-                    pass
             return art
 
         def _pixel_hits_of(artist) -> List[int]:
+            nonlocal pixel_draws_left
+            if pixel_draws_left <= 0:
+                # 預算用盡：不當命中，交回幾何結果（不准再整圖風暴）
+                return []
+            pixel_draws_left -= 1
             try:
                 ax.figure.canvas.draw()
                 renderer = ax.figure.canvas.get_renderer()
@@ -3483,13 +3654,8 @@ def paint_vol_zone_parallel_channel(
                 return []
 
         ok = False
-        # 成對同帶：只看本函式新放的軌標（不含 occupied 壓撐盒）
-        _pair_x: Optional[float] = None
-        if len(placed) > n_preoccupied:
-            _pair_x = 0.5 * (
-                float(placed[n_preoccupied][0]) + float(placed[n_preoccupied][1])
-            )
         _same_band_max = min(max(float(dx) * 0.95, 5.5), 8.0)
+
         def _overlaps_placed(cx0: float, cy0: float) -> bool:
             box0 = (
                 float(cx0) - dx / 2.0,
@@ -3534,7 +3700,6 @@ def paint_vol_zone_parallel_channel(
             )
             if not (np.isfinite(float(cx)) and np.isfinite(float(cy))):
                 break
-            # 拉開同帶＝失敗，進像素掃；靠近＝合格
             far_x = bool(
                 _pair_x is not None
                 and abs(float(cx) - float(_pair_x)) > _same_band_max
@@ -3557,6 +3722,7 @@ def paint_vol_zone_parallel_channel(
             break
         if not ok:
             # 強制沿可見軌像素掃：只收 k_hits==0；成對則鎖同帶
+            # 候選上限：不准 linspace 大掃 × 每點整圖 draw
             span = max(float(ymax) - float(ymin), 1.0)
             rail_soft = max(dy * 0.50, span * 0.012)
             best_pix: Optional[Tuple[float, float, float]] = None
@@ -3573,8 +3739,11 @@ def paint_vol_zone_parallel_channel(
             scan_xs += [p_lo - b for b in (6, 10, 14, 18, 22, 4)]
             if p_hi > p_lo + 2:
                 scan_xs += [p_lo + 2, 0.5 * (p_lo + p_hi), p_hi - 2]
-            scan_xs += list(np.linspace(0.88, 0.45, 28) * float(n - 1))
+            # 粗掃最多 8 點（舊 28 點 × 3 off × draw＝話筒卡死）
+            scan_xs += list(np.linspace(0.88, 0.45, 8) * float(n - 1))
             for tx in scan_xs:
+                if pixel_draws_left <= 0 and best_pix is not None:
+                    break
                 tx = min(
                     max(float(tx), max(dx * 0.5, scan_floor)),
                     float(n) - 0.4 - dx * 0.5,
@@ -3586,6 +3755,7 @@ def paint_vol_zone_parallel_channel(
                     continue
                 if abs(y_line - float(y_px)) > span * 0.36:
                     continue
+                found_here = False
                 for off in (
                     0.0,
                     0.35 * dy * (-1 if outside > 0 else 1),
@@ -3595,6 +3765,20 @@ def paint_vol_zone_parallel_channel(
                     if abs(ty - y_line) > rail_soft:
                         continue
                     if _overlaps_placed(tx, ty):
+                        continue
+                    # 幾何先擋 K，過關才花一次 draw 預算
+                    geo_hits = _channel_box_k_hits(
+                        float(tx) - dx / 2.0,
+                        float(tx) + dx / 2.0,
+                        float(ty) - dy / 2.0,
+                        float(ty) + dy / 2.0,
+                        n=int(n),
+                        highs=hi_arr,
+                        lows=lo_arr,
+                        mark_pad=mark_pad,
+                        span=span,
+                    )
+                    if geo_hits:
                         continue
                     _place_at(tx, ty)
                     hits = _pixel_hits_of(art)
@@ -3612,6 +3796,10 @@ def paint_vol_zone_parallel_channel(
                         key += 8.0
                     if best_pix is None or key < best_pix[0]:
                         best_pix = (key, float(tx), float(ty))
+                        found_here = True
+                        break
+                if found_here and best_pix is not None and best_pix[0] < 2.0:
+                    break
             if best_pix is not None:
                 cx, cy = best_pix[1], best_pix[2]
                 _place_at(cx, cy)
@@ -3629,6 +3817,8 @@ def paint_vol_zone_parallel_channel(
                 # 保底：只在同帶內再掃；找不到就略過（不准遠拋／互壓）
                 best_soft: Optional[Tuple[float, float, float]] = None
                 for dlt in (0.0, -2.0, 2.0, -4.0, 4.0, -6.0, 6.0):
+                    if pixel_draws_left <= 0 and best_soft is not None:
+                        break
                     tx = float(_pair_x) + float(dlt)
                     tx = min(max(float(tx), scan_floor), float(n) - 0.4 - dx * 0.5)
                     if abs(tx - float(_pair_x)) > _same_band_max:
@@ -3666,32 +3856,36 @@ def paint_vol_zone_parallel_channel(
         if art is not None and ok:
             # 裁切閘：clip_on 把字切半＝不合格；先關 clip 用圖邊距，仍出 figure→略過
             try:
-                ax.figure.canvas.draw()
-                ren = ax.figure.canvas.get_renderer()
-                bb = art.get_window_extent(renderer=ren)
-                abb = ax.get_window_extent(renderer=ren)
-                clipped_ax = (
-                    bb.x0 < abb.x0 - 1
-                    or bb.x1 > abb.x1 + 1
-                    or bb.y0 < abb.y0 - 1
-                    or bb.y1 > abb.y1 + 1
-                )
-                if clipped_ax:
-                    art.set_clip_on(False)
+                if pixel_draws_left > 0:
+                    pixel_draws_left -= 1
                     ax.figure.canvas.draw()
                     ren = ax.figure.canvas.get_renderer()
-                    bb2 = art.get_window_extent(renderer=ren)
-                    fbb = ax.figure.bbox
-                    clipped_fig = (
-                        bb2.x0 < fbb.x0 - 1
-                        or bb2.x1 > fbb.x1 + 1
-                        or bb2.y0 < fbb.y0 - 1
-                        or bb2.y1 > fbb.y1 + 1
+                    bb = art.get_window_extent(renderer=ren)
+                    abb = ax.get_window_extent(renderer=ren)
+                    clipped_ax = (
+                        bb.x0 < abb.x0 - 1
+                        or bb.x1 > abb.x1 + 1
+                        or bb.y0 < abb.y0 - 1
+                        or bb.y1 > abb.y1 + 1
                     )
-                    if clipped_fig or _pixel_hits_of(art):
-                        ok = False
-                        if placed:
-                            placed.pop()
+                    if clipped_ax:
+                        art.set_clip_on(False)
+                        if pixel_draws_left > 0:
+                            pixel_draws_left -= 1
+                            ax.figure.canvas.draw()
+                            ren = ax.figure.canvas.get_renderer()
+                            bb2 = art.get_window_extent(renderer=ren)
+                            fbb = ax.figure.bbox
+                            clipped_fig = (
+                                bb2.x0 < fbb.x0 - 1
+                                or bb2.x1 > fbb.x1 + 1
+                                or bb2.y0 < fbb.y0 - 1
+                                or bb2.y1 > fbb.y1 + 1
+                            )
+                            if clipped_fig or _pixel_hits_of(art):
+                                ok = False
+                                if placed:
+                                    placed.pop()
             except Exception:
                 pass
         if art is not None and ok:
@@ -3731,82 +3925,8 @@ def paint_vol_zone_parallel_channel(
                 print(f"channel-label-drop {shown!r} pixel-hits-or-clip", flush=True)
             except Exception:
                 pass
-        # 個股 quiet：難放→小標仍要價，不准省價（2026-10-28 改口）
-        if quiet and (art is None or not ok) and float(y_px) > 0:
-            try:
-                if art is not None:
-                    art.remove()
-            except Exception:
-                pass
-            art = None
-            fs_min = float(_STOCK_TREND_LABEL_FS_MIN)
-            shown_q = f"{lab} {_fmt_price(y_px)}"
-            # 貼近該軌右端可見段，小白底
-            tx = float(min(max(float(n) - 3.2, 2.0), float(n) - 0.8))
-            ty = float(
-                _channel_seg_y(seg, tx, float(y_px))
-                if seg
-                else float(y_px)
-            )
-            ty = min(max(ty, float(ymin) + y_span * 0.03), float(ymax) - y_span * 0.03)
-            if _pair_x is not None:
-                tx = float(min(max(float(_pair_x), 2.0), float(n) - 0.8))
-                ty = float(
-                    _channel_seg_y(seg, tx, float(y_px))
-                    if seg
-                    else float(y_px)
-                )
-                ty = min(
-                    max(ty, float(ymin) + y_span * 0.03),
-                    float(ymax) - y_span * 0.03,
-                )
-            art = ax.text(
-                tx,
-                ty,
-                shown_q,
-                ha="center",
-                va="center",
-                fontproperties=_fp(fs_min, "bold"),
-                color=color,
-                zorder=12,
-                clip_on=False,
-                bbox=dict(
-                    boxstyle="round,pad=0.12",
-                    facecolor="#ffffff",
-                    edgecolor=color,
-                    linewidth=0.7,
-                    alpha=0.94,
-                ),
-            )
-            try:
-                art.set_gid("ink:quiet-rail-label")
-            except Exception:
-                pass
-            label_artists.append(art)
-            placed.append(
-                (
-                    float(tx) - 2.2,
-                    float(tx) + 2.2,
-                    float(ty) - y_span * 0.025,
-                    float(ty) + y_span * 0.025,
-                )
-            )
-            try:
-                from smart_label_metrics import record_smart_label
+        # 個股 quiet 已在上方 early-continue；此處僅非 quiet 殘路
 
-                record_smart_label(
-                    ax,
-                    kind="channel_u" if outside > 0 else "channel_l",
-                    text=str(shown_q),
-                    x0=float(tx) - 2.2,
-                    x1=float(tx) + 2.2,
-                    y0=float(ty) - y_span * 0.025,
-                    y1=float(ty) + y_span * 0.025,
-                    rail_y=float(ty),
-                    clipped=False,
-                )
-            except Exception:
-                pass
     # 供 debug overlay：暫掛在 axes
     try:
         ax._wayne_channel_label_artists = list(label_artists)  # type: ignore[attr-defined]
