@@ -92,7 +92,12 @@ def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
     """
     from config import taipei_now
     from import_health import count_markets, latest_complete_quote_date, sides_complete
-    from trading_calendar import format_trading_date_zh, fuse_end_trading_date, tw_session_phase
+    from trading_calendar import (
+        format_trading_date_zh,
+        fuse_end_trading_date,
+        tw_post_cash_pre_fuse,
+        tw_session_phase,
+    )
 
     now = now or taipei_now()
     cap = fuse_end_trading_date(now)
@@ -109,10 +114,17 @@ def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
         as_of = cap
 
     phase = tw_session_phase(now)
+    today = now.strftime("%Y%m%d")
     if cap > as_of and phase in ("after", "open"):
         lag = (
             f"<i>應顯示 {format_trading_date_zh(cap)} 收盤，"
             f"目前僅有 {format_trading_date_zh(as_of)} 資料（盤後更新中或尚未寫入）。</i>"
+        )
+    elif tw_post_cash_pre_fuse(now) and as_of and as_of < today:
+        # 13:30～16:30：cap 常＝昨＝as_of，舊 lag 不出；仍要說清楚盤後未齊。
+        lag = (
+            f"<i>現貨已收；法人／產業輪動仍截至 {format_trading_date_zh(as_of)} 完整日"
+            f"（約 16:30 盤後匯入後換今日）。不是當下盤後定稿。</i>"
         )
 
     return as_of, lag
@@ -920,6 +932,7 @@ def format_sector_theme_brief(
     *,
     mode: str = "",
     fine_map: Optional[Dict[str, Dict[str, Any]]] = None,
+    after_cash: bool = False,
 ) -> str:
     """盤中／盤後最強族 + 族內代表股（Telegram HTML）。"""
     from tg_layout import html_metrics_tight, pct_text, qty_text, section
@@ -944,11 +957,19 @@ def format_sector_theme_brief(
         if need:
             fmap.update(_flow_fine_map(db_path, need))
         headline = sector_theme_headline(top_row)
+        if after_cash:
+            headline = (
+                str(headline or "")
+                .replace("盤中走強", "走強")
+                .replace("盤中偏弱", "偏弱")
+            )
         n = int(top_row.get("sample_n") or 0)
         avg = float(top_row.get("avg_pct") or 0)
+        theme_lab = "當日最強族" if after_cash else "盤中最強族"
+        sample_lab = f"收盤後快照 {n} 檔" if after_cash else f"盤中 {n} 檔"
         lines = [
-            f"<b>盤中最強族｜{headline}</b>",
-            f"<i>{top_row['industry']}　均漲 {avg:+.2f}%（盤中 {n} 檔）</i>",
+            f"<b>{theme_lab}｜{headline}</b>",
+            f"<i>{top_row['industry']}　均漲 {avg:+.2f}%（{sample_lab}）</i>",
         ]
         for i, r in enumerate(reps, start=1):
             title = _flow_stock_title(r["stock_id"], r["stock_name"], db_path, fmap)
@@ -1048,14 +1069,17 @@ def _flow_stock_lines(items: List[str]) -> List[str]:
     return [bit for bit in items if bit]
 
 
-def format_live_share_section(rows: List[Dict[str, Any]]) -> str:
-    """盤中成交佔比升／降。不是三大法人。"""
+def format_live_share_section(
+    rows: List[Dict[str, Any]], *, after_cash: bool = False
+) -> str:
+    """盤中／收盤後快照成交佔比升／降。不是三大法人。"""
     from tg_layout import section
 
     up = [r for r in rows if float(r.get("share_chg") or 0) >= 0.3]
     down = [r for r in rows if float(r.get("share_chg") or 0) <= -0.3]
     up.sort(key=lambda r: float(r.get("share_chg") or 0), reverse=True)
     down.sort(key=lambda r: float(r.get("share_chg") or 0))
+    share_lab = "當日成交佔比" if after_cash else "盤中成交佔比"
 
     def _line(r: Dict[str, Any]) -> str:
         short = _sector_short_name(str(r.get("industry") or ""))
@@ -1068,14 +1092,14 @@ def format_live_share_section(rows: List[Dict[str, Any]]) -> str:
     if up[:3]:
         bits.append(
             section(
-                "<b>盤中成交佔比升（不是法人）</b>",
+                f"<b>{share_lab}升（不是法人）</b>",
                 *[ _line(r) for r in up[:3] ],
             )
         )
     if down[:3]:
         bits.append(
             section(
-                "<b>盤中成交佔比降（不是法人）</b>",
+                f"<b>{share_lab}降（不是法人）</b>",
                 *[ _line(r) for r in down[:3] ],
             )
         )
@@ -1140,9 +1164,17 @@ def format_sector_rotation_html(
                     sid_pool.append(sid)
     fine_map = _flow_fine_map(path, sid_pool)
 
-    blocks = [
-        title_line("盤後資金輪動", ymd_s, ""),
-    ]
+    from config import taipei_now
+    from trading_calendar import tw_post_cash_pre_fuse
+
+    press_now = now or taipei_now()
+    after_cash = bool(tw_post_cash_pre_fuse(press_now))
+    today = press_now.strftime("%Y%m%d")
+    if after_cash and ymd and ymd < today:
+        # 不准標題寫「盤後」定稿感；日期＋未匯入要一眼可讀。
+        blocks = [title_line("資金輪動", ymd_s, "今日盤後尚未匯入")]
+    else:
+        blocks = [title_line("盤後資金輪動", ymd_s, "")]
     if lag:
         blocks.append(lag)
     blocks.append(
@@ -1159,11 +1191,16 @@ def format_sector_rotation_html(
     try:
         from live_quote import is_live_merge_window
 
-        if is_live_merge_window(now):
-            live_rows = compute_live_sector_rows(path, now=now) or []
+        if is_live_merge_window(press_now):
+            live_rows = compute_live_sector_rows(path, now=press_now) or []
             if live_rows:
                 theme = format_sector_theme_brief(
-                    path, ymd, live_rows[0], mode="live", fine_map=fine_map
+                    path,
+                    ymd,
+                    live_rows[0],
+                    mode="live",
+                    fine_map=fine_map,
+                    after_cash=after_cash,
                 )
     except Exception:
         import logging
@@ -1178,7 +1215,7 @@ def format_sector_rotation_html(
     live_share = ""
     try:
         if live_rows:
-            live_share = format_live_share_section(live_rows)
+            live_share = format_live_share_section(live_rows, after_cash=after_cash)
     except Exception:
         live_share = ""
     if live_share:

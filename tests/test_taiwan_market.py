@@ -929,9 +929,13 @@ def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
         )
     conn.commit()
     conn.close()
-    html = format_taiwan_market_page_html(str(db), "20260824")
+    html = format_taiwan_market_page_html(
+        str(db),
+        "20260824",
+        now=datetime(2026, 8, 24, 17, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
     assert "台股大盤" in html
-    assert "官方收" in html or "休市上一收" in html
+    assert "官方收" in html or "休市上一收" in html or "已收盤" in html
     assert "<b>結構</b>" not in html
     assert html.find("大方向") < html.find("加權指數")
     assert "距月線" in html

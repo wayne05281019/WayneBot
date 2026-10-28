@@ -3104,22 +3104,60 @@ def _dongzhu_role_bridge_lines(
     return lines
 
 
-def _dongzhu_query_stamp_line(cap: str = "") -> str:
-    """有股價／距高％時寫查詢戳（Asia/Taipei）；失敗就空。"""
+def _dongzhu_query_stamp_line(cap: str = "", *, now=None) -> str:
+    """有股價／距高％時寫查詢戳（Asia/Taipei）；失敗就空。
+
+    依**按下當下**日＋牆鐘；不准只寫死「13:30收盤」又丟日期。
+    cap 僅保留相容參數（舊呼叫），戳日不再用資料日冒充查詢日。
+    """
+    del cap  # 查詢戳＝按下時鐘，不是官方收日
     try:
         from datetime import datetime
         from zoneinfo import ZoneInfo
 
-        from decision_card_signals import format_card_query_stamp
+        from decision_card_signals import format_ymd_slash_weekday
+        from trading_calendar import speak_when_for_press, tw_cash_session_open
 
-        now = datetime.now(ZoneInfo("Asia/Taipei"))
-        _, clock = format_card_query_stamp(
-            is_live=False,
-            latest_date=str(cap or ""),
-            generated_at=now,
-        )
-        clock = str(clock or "").strip()
+        press = now
+        if press is None:
+            press = datetime.now(ZoneInfo("Asia/Taipei"))
+        date_s = format_ymd_slash_weekday(press.strftime("%Y%m%d"))
+        when = speak_when_for_press(press)
+        hm = press.strftime("%H:%M")
+        if tw_cash_session_open(press):
+            clock = f"盤中 {hm}"
+        elif when == "pre":
+            clock = f"開盤前 {hm}"
+        elif when == "weekend":
+            clock = f"休市 {hm}"
+        else:
+            clock = f"{hm}（已收盤）"
+        if date_s and clock:
+            return f"查詢 {date_s} {clock}"
         return f"查詢 {clock}" if clock else ""
+    except Exception:
+        return ""
+
+
+def _dongzhu_post_cash_pre_fuse_note(data_ymd: str = "", *, now=None) -> str:
+    """13:30～16:30 且資料日仍昨：明白告知盤後未齊（可預期，不是假今日）。"""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from trading_calendar import format_trading_date_zh, tw_post_cash_pre_fuse
+
+        press = now
+        if press is None:
+            press = datetime.now(ZoneInfo("Asia/Taipei"))
+        day = str(data_ymd or "").replace("-", "")[:8]
+        today = press.strftime("%Y%m%d")
+        if not (tw_post_cash_pre_fuse(press) and day and day < today):
+            return ""
+        return (
+            f"今日盤後資料未齊，先機依 {format_trading_date_zh(day)} 完整日"
+            f"（約 16:30 盤後匯入後換今日）"
+        )
     except Exception:
         return ""
 
@@ -4473,6 +4511,10 @@ def dongzhu_hold_page(
             or data.get("vs60") is not None
         ):
             head.append(_esc(stamp))
+        note_day = str(data.get("chip_cap") or data.get("cap") or "")
+        pre_fuse_note = _dongzhu_post_cash_pre_fuse_note(note_day)
+        if pre_fuse_note:
+            head.append(_esc(pre_fuse_note))
     blocks = [_blk(*head)]
     parts = list(data.get("layers") or [])
     if parts:
@@ -4537,6 +4579,11 @@ def dongzhu_page(
             stamp = _dongzhu_query_stamp_line(str(data.get("cap") or ""))
             if stamp:
                 date_rows.append(_esc(stamp))
+        # 資料日取法人日優先（佔比／先機綁這批）；與官方收同昨時也要講未齊。
+        note_day = str(data.get("chip_cap") or data.get("cap") or "")
+        pre_fuse_note = _dongzhu_post_cash_pre_fuse_note(note_day)
+        if pre_fuse_note:
+            date_rows.append(_esc(pre_fuse_note))
         blocks.append(_blk(*date_rows))
     board = str(data.get("inflow_board") or "").strip()
     if board:

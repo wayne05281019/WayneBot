@@ -325,12 +325,25 @@ def load_env_status(db_path: str, as_of: str) -> EnvObserveStatus:
     )
 
 
-def _fear_plain(st: EnvObserveStatus) -> str:
+def _fear_prefix(speak_when: str = "pre") -> str:
+    """依按下時段選恐懼句前綴；預設開盤前（早報／舊測）。不准已收還寫開盤前。"""
+    when = str(speak_when or "pre").strip().lower()
+    if when == "open":
+        return "盤中"
+    if when == "after":
+        return "收盤後"
+    if when == "weekend":
+        return "休市"
+    return "開盤前"
+
+
+def _fear_plain(st: EnvObserveStatus, *, speak_when: str = "pre") -> str:
+    prefix = _fear_prefix(speak_when)
     if not st.fear_evaluable:
-        return "開盤前，今天先不算怕不怕。"
+        return f"{prefix}，今天先不算怕不怕。"
     if st.fear_lit:
-        return "開盤前，市場在怕。"
-    return "開盤前，市場不怕。"
+        return f"{prefix}，市場在怕。"
+    return f"{prefix}，市場不怕。"
 
 
 def _confirm_plain(st: EnvObserveStatus) -> str:
@@ -371,18 +384,19 @@ def load_morning_status(
 
 
 def env_observe_plain_lines(
-    st: EnvObserveStatus, *, db_path: str = ""
+    st: EnvObserveStatus, *, db_path: str = "", speak_when: str = "pre"
 ) -> List[str]:
     """話筒環境觀察：標題＋三句白話。大盤、早報、其他推播同一套。
 
     標題標籤真讀 foreign_sell_gate（未過閘＝還在測試；過閘＝正式觀察，仍非買訊）。
+    speak_when＝按下時段用詞（pre／open／after／weekend）；預設 pre 保早報。
     """
     from tg_layout import html_escape
 
     tag = resolve_display_tag(db_path)
     return [
         f"<b>環境觀察｜{html_escape(tag)}</b>",
-        html_escape(_fear_plain(st)),
+        html_escape(_fear_plain(st, speak_when=speak_when)),
         html_escape(_confirm_plain(st)),
         html_escape(_calm_plain(st)),
     ]
@@ -396,17 +410,21 @@ def morning_observe_line_html(
 ) -> str:
     """早報環境觀察：與大盤同一段三句。恐懼日仍可分開，不改旗標算法。"""
     st = load_morning_status(db_path, as_of, fear_as_of=fear_as_of)
-    return "\n".join(env_observe_plain_lines(st, db_path=db_path))
+    return "\n".join(env_observe_plain_lines(st, db_path=db_path, speak_when="pre"))
 
 
-def market_env_section_lines(db_path: str, as_of: str) -> List[str]:
+def market_env_section_lines(
+    db_path: str, as_of: str, *, speak_when: str = "pre"
+) -> List[str]:
     """台股大盤頁頂部「環境觀察」一小段（HTML 行）。
 
-    標題一行＋三句：開盤前怕不怕、今天外資賣得更兇幾檔、害怕有沒有緩下來。
+    標題一行＋三句：怕不怕（前綴依按下時段）、今天外資賣得更兇幾檔、害怕有沒有緩下來。
     不印亮／熄／未齊，不印近窗，也不印「不是買訊；進場仍只認藍▲紅框」。
     燈號由大盤頁貼在這段後面、同一則。
     """
-    return env_observe_plain_lines(load_env_status(db_path, as_of), db_path=db_path)
+    return env_observe_plain_lines(
+        load_env_status(db_path, as_of), db_path=db_path, speak_when=speak_when
+    )
 
 
 def _recent_as_ofs(conn: sqlite3.Connection, table: str, kind: str, limit: int) -> List[str]:
