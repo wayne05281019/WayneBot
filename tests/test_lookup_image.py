@@ -168,10 +168,12 @@ class LookupImageTests(unittest.TestCase):
             src.find("create_task(_struct_item())"),
             src.find('await _bump_progress("struct")'),
         )
-        self.assertLess(
-            src.find('await _bump_progress("struct")'),
-            src.find("create_task(_vol_item())"),
-        )
+        vol_at = src.find("vol_task = asyncio.create_task(_vol_item())")
+        struct_await = src.find("struct_item = await struct_task")
+        self.assertGreater(vol_at, 0)
+        self.assertGreater(struct_await, 0)
+        # 大量區提早開，與結構 paint／上傳重疊（仍單 worker）
+        self.assertLess(vol_at, struct_await)
 
     def test_glance_and_card_render_start_together(self):
         """高低溫度卡先開渲；介紹→結構→大量撐壓一次一張，paint worker 串行。"""
