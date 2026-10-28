@@ -518,11 +518,14 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
-        """§14 救援：POST /ops/force-morning（常駐碟內 demote＋立刻補寄兩支話筒）。"""
+        """Ops 救援（需 X-Wayne-Ops-Secret）：
+        - POST /ops/force-morning：常駐碟內立刻補寄今早海選兩支話筒
+        - POST /ops/repair-market-db：缺 daily_quotes／壞庫時裝 Release＋救私人／飆大
+        """
         import json
 
         route = self.path.split("?")[0]
-        if route != "/ops/force-morning":
+        if route not in ("/ops/force-morning", "/ops/repair-market-db"):
             self.send_response(404)
             self.end_headers()
             return
@@ -552,33 +555,75 @@ class HealthHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
         try:
-            from main_runner import MainRunner
+            if route == "/ops/repair-market-db":
+                logger.info("ops /ops/repair-market-db：背景 ensure_market_db")
 
-            logger.info("§14 /ops/force-morning：常駐碟背景 force_rescue_morning")
-            runner = MainRunner()
-            # demote／補寄全交給 force_rescue_morning：新鮮 morning-claim 進行中不准
-            # 先 demote 再開第二條（2026-10-27 整套雙寄根因）。
+                def _repair_bg() -> None:
+                    try:
+                        ensure_market_db()
+                        from busy_window_notice import clear_busy_notices
+                        from config import get_db_path
+                        from db_recover import (
+                            biaoke_post_count,
+                            daily_quote_row_count,
+                            market_quotes_ok,
+                            private_row_total,
+                        )
 
-            def _bg() -> None:
-                try:
-                    result_bg = runner.force_rescue_morning()
-                    logger.info("§14 /ops/force-morning 背景補寄結束 %s", result_bg)
-                except Exception:
-                    logger.exception("§14 /ops/force-morning 背景補寄失敗")
+                        path = get_db_path()
+                        clear_busy_notices(db_path=path)
+                        logger.info(
+                            "ops repair-market-db 結束 quotes_ok=%s quote_n=%s "
+                            "biaoke_n=%s private_n=%s",
+                            market_quotes_ok(path),
+                            daily_quote_row_count(path),
+                            biaoke_post_count(path),
+                            private_row_total(path),
+                        )
+                        # 清 health 快取，立刻露出 data_ok
+                        _HEALTH_DATA_CACHE["at"] = 0.0
+                        _HEALTH_DATA_CACHE["payload"] = None
+                    except Exception:
+                        logger.exception("ops /ops/repair-market-db 背景失敗")
 
-            threading.Thread(
-                target=_bg, name="ops-force-morning", daemon=True
-            ).start()
-            result = {
-                "ok": True,
-                "started": True,
-                "delivered": False,
-                "note": "force_rescue_morning started on web service disk",
-            }
-            body = json.dumps(result, ensure_ascii=False).encode("utf-8")
-            self.send_response(202)
+                threading.Thread(
+                    target=_repair_bg, name="ops-repair-market-db", daemon=True
+                ).start()
+                result = {
+                    "ok": True,
+                    "started": True,
+                    "note": "ensure_market_db started on web service disk",
+                }
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(202)
+            else:
+                from main_runner import MainRunner
+
+                logger.info("§14 /ops/force-morning：常駐碟背景 force_rescue_morning")
+                runner = MainRunner()
+                # demote／補寄全交給 force_rescue_morning：新鮮 morning-claim 進行中不准
+                # 先 demote 再開第二條（2026-10-27 整套雙寄根因）。
+
+                def _bg() -> None:
+                    try:
+                        result_bg = runner.force_rescue_morning()
+                        logger.info("§14 /ops/force-morning 背景補寄結束 %s", result_bg)
+                    except Exception:
+                        logger.exception("§14 /ops/force-morning 背景補寄失敗")
+
+                threading.Thread(
+                    target=_bg, name="ops-force-morning", daemon=True
+                ).start()
+                result = {
+                    "ok": True,
+                    "started": True,
+                    "delivered": False,
+                    "note": "force_rescue_morning started on web service disk",
+                }
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(202)
         except Exception as e:
-            logger.exception("/ops/force-morning 失敗")
+            logger.exception("%s 失敗", route)
             body = json.dumps(
                 {"ok": False, "error": str(e)}, ensure_ascii=False
             ).encode("utf-8")
@@ -1354,10 +1399,22 @@ def _biaoke_ready(db_path: str, *, min_n: int = 1700) -> bool:
         return False
 
 
-def start_market_db_recovery_loop() -> threading.Thread:
-    """db 不可讀或 biaoke 空就重試 ensure_market_db（含 corrupt 救回＋seed）。
+def _market_db_ready(db_path: str, *, min_n: int = 1700) -> bool:
+    """復原重試停手閘：可讀＋官方日 K 在＋飆大底圖夠。缺 daily_quotes 不准停。"""
+    try:
+        from db_recover import market_quotes_ok
 
-    不准開機失敗後永遠停在 unread／空 overlay。
+        if not _biaoke_ready(db_path, min_n=min_n):
+            return False
+        return bool(market_quotes_ok(db_path))
+    except Exception:
+        return False
+
+
+def start_market_db_recovery_loop() -> threading.Thread:
+    """db 不可讀、缺日 K、或 biaoke 空就重試 ensure_market_db（含 Release＋corrupt 救回）。
+
+    不准開機失敗後永遠停在 unread／空 overlay／無 daily_quotes 空殼。
     """
 
     def _loop():
@@ -1367,13 +1424,13 @@ def start_market_db_recovery_loop() -> threading.Thread:
         idx = 0
         while True:
             path = get_db_path()
-            if _biaoke_ready(path):
-                logger.info("行情庫＋飆大底圖已就緒，停止復原重試")
+            if _market_db_ready(path):
+                logger.info("行情庫＋日K＋飆大底圖已就緒，停止復原重試")
                 return
             wait = delays[min(idx, len(delays) - 1)]
             idx += 1
             logger.warning(
-                "行情庫／飆大底圖未就緒，%.0f 秒後重試 ensure_market_db", wait
+                "行情庫／日K／飆大底圖未就緒，%.0f 秒後重試 ensure_market_db", wait
             )
             time.sleep(wait)
             try:
@@ -1446,23 +1503,23 @@ def run_web():
     from import_health import db_liveness_ok
 
     if db_liveness_ok(db_path, min_bytes=1):
-        logger.info("行情庫已就緒，背景確認／救回飆大 overlay 後啟動聽筒")
+        logger.info("行情庫已就緒，背景確認／救回日K＋飆大 overlay 後啟動聽筒")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
         # Release 空表常見：立刻 seed＋corrupt 救回，不准等索引延遲
         start_early_biaoke_seed()
-        if not _biaoke_ready(db_path):
+        if not _market_db_ready(db_path):
             start_market_db_recovery_loop()
     elif os.getenv("RENDER") or render_lite_boot():
         logger.info("Render 冷啟：背景下載／救回行情庫，先開聽筒（避免阻塞健檢與 deploy）")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
         start_early_biaoke_seed()
-        # 不准開機一次失敗就永遠 db_ok=false／biaoke 空（wal 殘留／下載中斷）
+        # 不准開機一次失敗就永遠 db_ok=false／biaoke 空／缺 daily_quotes（wal 殘留／下載中斷）
         start_market_db_recovery_loop()
     else:
         logger.info("行情庫尚未就緒，先下載／救回再啟動聽筒")
         ensure_market_db()
         start_early_biaoke_seed()
-        if not _biaoke_ready(db_path):
+        if not _market_db_ready(db_path):
             start_market_db_recovery_loop()
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 

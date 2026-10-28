@@ -5,6 +5,10 @@
 若只搬 .db、留下 -wal／-shm，Release 裝回後會套到舊 WAL → 永遠讀不到。
 救回順序：清 sidecar → 可開且 biaoke≥1700 的 .corrupt-* → 再 Release。
 不准刪私人表／silent 落檔／官方 OHLC（整檔搬移或整檔覆蓋，不做 DELETE）。
+
+2026-10-28：I/O 壞庫後若只 salvage 出「有飆大／私人、無 daily_quotes」的小殼，
+仍必須再裝公開 Release 行情柱（私人／飆大從 .corrupt-* ATTACH 救回）。
+只看 biaoke_n≥1700 就停＝查股永久 no such table: daily_quotes。
 """
 from __future__ import annotations
 
@@ -21,6 +25,8 @@ logger = logging.getLogger("WayneBot.db_recover")
 
 # 與 biaoke_archive.ARCHIVE_BASELINE_N 對齊；避免循環 import 寫死常數。
 MIN_BIAOKE_RESTORE = 1700
+# 低於此＝當缺官方日 K（空殼／只有 biaoke 表）；公開 Release 通常數十萬列。
+MIN_QUOTE_ROWS_RESTORE = 1000
 
 
 def sidecar_paths(db_path: str) -> Tuple[str, str]:
@@ -315,6 +321,33 @@ def private_row_total(db_path: str) -> int:
 def completeness_counts(db_path: str) -> Tuple[int, int]:
     """(biaoke 主文數, 私人表合計)。讀不到回 (0, 0)。"""
     return biaoke_post_count(db_path), private_row_total(db_path)
+
+
+def daily_quote_row_count(db_path: str) -> int:
+    """daily_quotes 列數；缺表／讀不到回 0。"""
+    if not db_path or not os.path.isfile(db_path):
+        return 0
+    try:
+        conn = sqlite3.connect(db_path, timeout=2.0)
+        try:
+            hit = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_quotes'"
+            ).fetchone()
+            if not hit:
+                return 0
+            row = conn.execute("SELECT COUNT(*) FROM daily_quotes").fetchone()
+            return int((row or [0])[0] or 0)
+        finally:
+            conn.close()
+    except Exception:
+        return 0
+
+
+def market_quotes_ok(
+    db_path: str, *, min_rows: int = MIN_QUOTE_ROWS_RESTORE
+) -> bool:
+    """正式庫是否已有可用官方日 K（表在且列數過閘）。"""
+    return daily_quote_row_count(db_path) >= int(min_rows)
 
 
 def is_richer_completeness(
@@ -674,6 +707,9 @@ def ensure_market_db_recoverable(
     def _ok() -> bool:
         return bool(path and os.path.isfile(path) and db_quick_check_ok(path, min_bytes=1))
 
+    def _quotes_ok() -> bool:
+        return bool(_ok() and market_quotes_ok(path))
+
     def _enrich_and_return(source: str, *, seed_if_low: bool = False) -> dict:
         """可讀後一律合併 corrupt 的私人表；需要時再 seed；不准留空私人本。"""
         n = biaoke_post_count(path)
@@ -689,6 +725,7 @@ def ensure_market_db_recoverable(
                 biaoke_n=int(seeded.get("biaoke_n") or 0),
                 private_n=int(seeded.get("private_n") or 0),
                 private_merged=dict(seeded.get("private_merged") or {}),
+                quote_n=daily_quote_row_count(path),
             )
             return result
         priv = salvage_private_from_corrupts(path)
@@ -711,8 +748,17 @@ def ensure_market_db_recoverable(
             biaoke_n=final_n,
             private_n=final_priv,
             private_merged=dict(priv.get("merged_by_table") or {}),
+            quote_n=daily_quote_row_count(path),
         )
         return result
+
+    def _return_if_quotes_ok(source: str, *, seed_if_low: bool = False):
+        """有官方日 K 才算收工；缺表／空殼要繼續走 Release。"""
+        if _quotes_ok():
+            return _enrich_and_return(source, seed_if_low=seed_if_low)
+        qn = daily_quote_row_count(path) if _ok() else 0
+        actions.append(f"quotes_missing_after:{source}:n={qn}")
+        return None
 
     # 1) 錯位 wal/shm：先清再驗（本尊還在正式路徑）
     if (not _ok()) and os.path.isfile(path) and has_sidecars(path):
@@ -722,7 +768,9 @@ def ensure_market_db_recoverable(
         if _ok():
             n = biaoke_post_count(path)
             if n >= int(min_biaoke):
-                return _enrich_and_return("sidecar_strip")
+                done = _return_if_quotes_ok("sidecar_strip")
+                if done is not None:
+                    return done
             actions.append("sidecar_strip_ok_low_biaoke")
 
     # 2) 本尊仍不可讀：先搬成 .corrupt-*（含資料），再比完整度——不准直接 Release 蓋掉
@@ -741,8 +789,11 @@ def ensure_market_db_recoverable(
         actions.append(
             f"compare_current:b{current_n}/p{current_priv}"
         )
-        # 飆大已夠：私人用 ATTACH 合併（不整檔蓋行情）；不准再 Release
-        return _enrich_and_return("current")
+        # 飆大已夠且日 K 在：私人 ATTACH 合併，不准再 Release 蓋行情。
+        # 日 K 缺／空殼：不准停，必須往下裝 Release（私人／飆大稍後從 corrupt 救回）。
+        done = _return_if_quotes_ok("current")
+        if done is not None:
+            return done
 
     if _ok() and current_n < int(min_biaoke):
         actions.append(
@@ -767,7 +818,9 @@ def ensure_market_db_recoverable(
                     remove_sidecars(path)
                     actions.append("strip_after_corrupt_restore")
                 if _ok():
-                    return _enrich_and_return("corrupt")
+                    done = _return_if_quotes_ok("corrupt")
+                    if done is not None:
+                        return done
             actions.append("restore_corrupt_failed")
 
     # 5) 本尊可讀但 biaoke 仍少：ATTACH 合併 corrupt overlay（不丟 corrupt、不蓋官方柱）
@@ -779,23 +832,40 @@ def ensure_market_db_recoverable(
             )
             n = int(salv.get("after") or 0)
             if n >= int(min_biaoke):
-                return _enrich_and_return("salvage")
+                done = _return_if_quotes_ok("salvage")
+                if done is not None:
+                    return done
 
-    # 6) 現況已可讀 → seed／合併私人，**禁止**再 Release 整檔蓋掉
-    if _ok():
+    # 6) 現況已可讀且日 K 在 → seed／合併私人，**禁止**再 Release 整檔蓋掉
+    if _quotes_ok():
+        return _enrich_and_return("current", seed_if_low=True)
+    if _ok() and not allow_release:
+        # 測試／離線：不准下載時，仍回可讀現況（可能缺日 K）
         return _enrich_and_return("current", seed_if_low=True)
 
-    # 7) 本尊真的不可讀：才准 Release（行情柱）；裝完必須 salvage＋seed，不准留雙空
+    # 7) 本尊不可讀，或可讀但缺／空 daily_quotes：裝 Release 行情柱；
+    #    裝完必須 salvage＋seed，不准留雙空（私人／飆大從 corrupt 救回）。
     if not allow_release:
         result.update(
             ok=_ok(),
             source="none",
             biaoke_n=biaoke_post_count(path) if os.path.isfile(path) else 0,
             private_n=private_row_total(path) if os.path.isfile(path) else 0,
+            quote_n=daily_quote_row_count(path) if os.path.isfile(path) else 0,
         )
         return result
 
+    if _ok() and not market_quotes_ok(path):
+        actions.append(
+            f"release_for_missing_quotes:n={daily_quote_row_count(path)}"
+        )
+
     had_rich_corrupt = _corrupt_has_recoverable_data(path)
+    # 現況本身有飆大／私人也算可救（裝 Release 前會 quarantine 成 corrupt）
+    if _ok() and (biaoke_post_count(path) > 0 or private_row_total(path) > 0):
+        had_rich_corrupt = True
+        actions.append("release_will_quarantine_current_for_salvage")
+
     if had_rich_corrupt:
         actions.append("release_with_rich_corrupt_will_salvage")
 
@@ -820,6 +890,7 @@ def ensure_market_db_recoverable(
             source="release",
             biaoke_n=n,
             private_n=priv_n,
+            quote_n=daily_quote_row_count(path),
         )
         return result
 
@@ -834,11 +905,12 @@ def ensure_market_db_recoverable(
             source="salvage_shell",
             biaoke_n=n,
             private_n=priv_n,
+            quote_n=daily_quote_row_count(path),
         )
         return result
 
     actions.append("release_failed")
-    result.update(ok=False, source="none", biaoke_n=0, private_n=0)
+    result.update(ok=False, source="none", biaoke_n=0, private_n=0, quote_n=0)
     return result
 
 

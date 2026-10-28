@@ -7,11 +7,14 @@ import zipfile
 import pytest
 
 from db_recover import (
+    MIN_QUOTE_ROWS_RESTORE,
     best_corrupt_restore,
     completeness_counts,
+    daily_quote_row_count,
     ensure_market_db_recoverable,
     has_sidecars,
     is_richer_completeness,
+    market_quotes_ok,
     move_db_with_sidecars,
     private_row_total,
     quarantine_db,
@@ -26,7 +29,9 @@ def _make_db(
     *,
     biaoke_n: int = 0,
     private_n: int = 0,
+    quotes_n: int = MIN_QUOTE_ROWS_RESTORE,
     junk: bool = False,
+    skip_quotes_table: bool = False,
 ) -> None:
     parent = os.path.dirname(path)
     if parent:
@@ -36,7 +41,13 @@ def _make_db(
             f.write(b"not-a-sqlite-file" * 5000)
         return
     conn = sqlite3.connect(path)
-    conn.execute("CREATE TABLE daily_quotes (date TEXT, stock_id TEXT)")
+    if not skip_quotes_table:
+        conn.execute("CREATE TABLE daily_quotes (date TEXT, stock_id TEXT)")
+        for i in range(int(quotes_n)):
+            conn.execute(
+                "INSERT INTO daily_quotes(date, stock_id) VALUES (?,?)",
+                (f"202601{(i % 28) + 1:02d}", f"{2300 + (i % 50)}"),
+            )
     conn.execute(
         "CREATE TABLE biaoke_posts ("
         "id TEXT PRIMARY KEY, kind TEXT, date TEXT, time TEXT, text TEXT)"
@@ -245,9 +256,10 @@ def test_salvage_private_tables_from_corrupt(tmp_path):
 
 
 def test_readable_db_never_replaced_by_release(tmp_path, monkeypatch):
-    """可讀正式庫（即使 biaoke 空）不准再被空 Release 整檔蓋掉。"""
+    """可讀正式庫且日 K 已在（即使 biaoke 空）不准再被空 Release 整檔蓋掉。"""
     db = str(tmp_path / "wayne_market.db")
-    _make_db(db, biaoke_n=0)
+    _make_db(db, biaoke_n=0, quotes_n=MIN_QUOTE_ROWS_RESTORE)
+    assert market_quotes_ok(db)
     called = {"n": 0}
 
     def _boom(*a, **k):
@@ -259,6 +271,44 @@ def test_readable_db_never_replaced_by_release(tmp_path, monkeypatch):
     assert result["ok"] is True
     assert called["n"] == 0
     assert os.path.isfile(db)
+
+
+def test_missing_daily_quotes_forces_release_then_salvages(tmp_path, monkeypatch):
+    """2026-10-28：salvage 出有飆大／私人、無 daily_quotes 的小殼 → 必須裝 Release 救日 K。"""
+    db = str(tmp_path / "wayne_market.db")
+    # 模擬 outage 空殼：biaoke＋私人在、完全沒有 daily_quotes 表
+    _make_db(
+        db,
+        biaoke_n=1722,
+        private_n=5,
+        skip_quotes_table=True,
+    )
+    assert daily_quote_row_count(db) == 0
+    assert not market_quotes_ok(db)
+
+    release_db = tmp_path / "release" / "wayne_market.db"
+    release_db.parent.mkdir()
+    _make_db(str(release_db), biaoke_n=0, private_n=0, quotes_n=1500)
+    zpath = tmp_path / "rel.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.write(release_db, arcname="wayne_market.db")
+
+    def _fake_retrieve(url, dest):
+        import shutil
+
+        shutil.copy2(zpath, dest)
+        return dest, {}
+
+    result = ensure_market_db_recoverable(
+        db, allow_release=True, urlretrieve=_fake_retrieve
+    )
+    assert result["ok"] is True
+    assert result["source"] == "release"
+    assert market_quotes_ok(db)
+    assert daily_quote_row_count(db) >= 1500
+    assert int(result["biaoke_n"]) >= 1700
+    assert int(result.get("private_n") or 0) >= 5
+    assert any("release_for_missing_quotes" in a for a in result.get("actions") or [])
 
 
 def test_force_biaoke_baseline_seeds_archive(tmp_path):
@@ -356,6 +406,11 @@ def test_main_wires_recoverable_and_retry_loop():
     assert "force_seed_biaoke_baseline" in main_src
     assert "force_biaoke_baseline" in recover_src
     assert "_biaoke_ready" in main_src
+    assert "_market_db_ready" in main_src
+    assert "market_quotes_ok" in main_src
+    assert "market_quotes_ok" in recover_src
+    assert "release_for_missing_quotes" in recover_src
+    assert "/ops/repair-market-db" in main_src
     assert "move_db_with_sidecars" in recover_src
     assert "best_corrupt_restore" in recover_src
     assert "salvage_biaoke_from_corrupts" in recover_src
