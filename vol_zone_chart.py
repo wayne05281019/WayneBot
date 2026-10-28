@@ -106,7 +106,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 62  # quiet 軌標幾何化；禁像素掃風暴卡死查股（2026-10-28）
+_VZ_PAINT_VER = 63  # ink 少 redraw＋結構 quiet 軌標；查股四圖加速（2026-10-28）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"

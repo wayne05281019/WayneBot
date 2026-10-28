@@ -80,15 +80,21 @@ def test_stock_quiet_trend_rail_constants():
 
 
 def test_lookup_progress_tick_has_hard_elapsed_cap():
-    """查股 LOADING 讀秒必須有硬上限，不准永遠停在「已 N 秒」。"""
+    """查股 LOADING 逾時不准 silently dismiss；要 overtime 文案並等結果／錯誤。"""
     import inspect
 
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot)
     assert "_WAIT_MAX_ELAPSED_S" in src
-    # 查股 _progress_tick 路徑要 dismiss，不能只有 plain wait 有
-    assert "_dismiss_progress_now(wait_msg)" in src
+    # 查股 _progress_tick：逾時改 overtime，不准當成功收泡泡
+    tick = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    assert "overtime=" in tick
+    assert "查股逾時仍在出圖" in src or "overtime=overtime" in tick
+    # 海選／plain wait 仍可 dismiss 殘框；查股路徑不准靠 dismiss 冒充成功
+    progress_fn = WayneTelegramBot._chart_progress_text
+    txt = progress_fn(130, sent=["card", "glance", "struct"], current="vol", overtime=True)
+    assert "逾時" in txt
     assert "with_parallel_channel=True" in src  # memo 鍵對齊第 4 張
 
 
