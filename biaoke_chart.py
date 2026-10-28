@@ -1060,14 +1060,11 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         if not up:
             return False
         ui, uj = int(up[0]), int(up[1])
-        for c in cands:
-            if str(c.get("kind") or "") != "asc":
-                continue
-            bi = int(c["base"][0][0])
-            bj = int(c["base"][1][0])
-            if bi == ui and bj == uj:
-                return not bool(c.get("alive"))
-        return False
+        y1, y2 = float(lows[ui]), float(lows[uj])
+        if y1 <= 0 or y2 <= 0:
+            return False
+        base_now = _line_at(float(ui), y1, float(uj), y2, float(n - 1))
+        return _rail_broken(last, base_now, above_is_ok=True)
 
     def _reclass_asc_break() -> None:
         nonlocal best, reclass_from
