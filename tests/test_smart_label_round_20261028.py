@@ -70,17 +70,31 @@ def test_stock_quiet_trend_rail_constants():
     psrc = inspect.getsource(paint_vol_zone_parallel_channel)
     assert "quiet_rails" in psrc
     assert "draw_markers=False" in psrc
+    # 改口：要標名＋最新價；不准再強制 paint_labels=False
+    assert "if quiet:\n        paint_labels = False" not in psrc
+    assert "_STOCK_TREND_LABEL_FS" in psrc or "_fmt_price" in psrc
 
 
 def test_volzone_ink_right_margin_keeps_tick_numbers():
-    """右緣不准 0.982 把價／量刻度裁出畫布（只剩橫杠）。"""
+    """軸右緣內縮留刻度溝；外框 0.982 封閉右邊（刻度不准出畫布／卡框）。"""
     import inspect
 
-    from ink_chart_theme import align_vol_panel_margins
+    from ink_chart_theme import (
+        VOL_AXES_X1,
+        VOL_OUTER_X1,
+        align_vol_panel_margins,
+        apply_vol,
+        vol_close_right_outer_frame,
+    )
 
+    assert float(VOL_AXES_X1) < float(VOL_OUTER_X1)
+    assert float(VOL_AXES_X1) <= 0.92
+    assert float(VOL_OUTER_X1) == 0.982
     src = inspect.getsource(align_vol_panel_margins)
-    assert "0.928" in src
-    assert "0.982" not in src.split("target_x1")[1][:80]
+    assert "VOL_AXES_X1" in src
+    assert "target_x1 = 0.982" not in src
+    assert "vol_close_right_outer_frame" in inspect.getsource(apply_vol)
+    assert "ink:vol-outer-frame" in inspect.getsource(vol_close_right_outer_frame)
 
 
 def test_volzone_quiet_rail_footnote_not_in_foot1():

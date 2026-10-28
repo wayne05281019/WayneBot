@@ -82,12 +82,14 @@ VOL_ZONE_MA10 = 10
 VOL_ZONE_MA20 = 20
 VOL_ZONE_MA60 = 60
 VOL_ZONE_MA60_WARM = 70
-# 個股大量區平行趨勢線（2026-10-28 使用者確認）：淡灰藍細虛線、不標股價、不超出主圖框
-# 過淡會「看起來沒畫」→ 略加深／加粗仍屬淡灰藍，縮圖可辨
+# 個股大量區平行趨勢線：淡灰藍細虛線、標名＋最新價、不超出主圖框
+# （2026-10-28 先說不標價；16:21 改口要最新價小標）
 _STOCK_TREND_RAIL_COLOR = "#5f7a92"
 _STOCK_TREND_RAIL_LW = 1.45
 _STOCK_TREND_RAIL_DASH = (0, (2.4, 2.0))
 _STOCK_TREND_RAIL_HALO = 0.55
+_STOCK_TREND_LABEL_FS = 7.4
+_STOCK_TREND_LABEL_FS_MIN = 6.4
 
 
 def lookup_vol_ensure_days(
@@ -3179,19 +3181,26 @@ def paint_vol_zone_parallel_channel(
     paint_labels: bool = True,
     avoid_nav_marks: bool = False,
     quiet_rails: bool = False,
+    occupied: Optional[List[Tuple[float, float, float, float]]] = None,
 ) -> List[Tuple[float, float, float, float]]:
     """在大量區 K 上畫兩條平行軌＋軌標。不是買訊、不數 5／9。
 
     預設／產品：labels_outside=False＝滿版底＋沿線智能定位（擋最少）；
     不准為塞標收窄 GridSpec／加寬黑邊／改 figsize。
     market_style：大盤加粗軌＋錨點日期標；個股滿版仍用結構圖細虛線色。
-    quiet_rails：個股大量區淡灰藍細虛線、不標股價、不撒點、長度不超出中間主圖框。
+    quiet_rails：個股大量區淡灰藍細虛線、標名＋最新價（小標）、不撒點、長度不超出主圖框。
     avoid_nav_marks：標位避開導航箭／殘影帶（呼叫端宜在疊導航之後再 paint_labels）。
+    occupied：必要壓撐等已占盒，趨勢小標避讓（不准互壓）。
     paint_rails／paint_labels：可拆成先畫線、導航後再掛標。
     labels_outside=True 僅舊備援（軸外 1.085）；新呼叫端不准再開。
     回傳已放標盒 (x0, x1, y0, y1)，給均線短標互讓。
     """
-    placed: List[Tuple[float, float, float, float]] = []
+    placed: List[Tuple[float, float, float, float]] = [
+        tuple(float(v) for v in box)  # type: ignore[misc]
+        for box in (occupied or [])
+        if box is not None and len(box) >= 4
+    ]
+    n_preoccupied = len(placed)
     if not ch or ax is None:
         return placed
     from matplotlib.transforms import blended_transform_factory
@@ -3202,8 +3211,6 @@ def paint_vol_zone_parallel_channel(
     # 軸外標才加右緣空；滿寬不准把 xlim 再撐開把 K 擠瘦
     market_rails = bool(market_style)
     quiet = bool(quiet_rails) and not market_rails
-    if quiet:
-        paint_labels = False
     if labels_outside and not quiet:
         x0, x1 = ax.get_xlim()
         ax.set_xlim(float(x0), max(float(x1), float(n) + 1.35))
@@ -3252,6 +3259,9 @@ def paint_vol_zone_parallel_channel(
     if market_rails:
         color = "#0d47a1" if kind == "asc" else "#4a148c"
         label_fs = 12.5
+    elif quiet:
+        color = str(_STOCK_TREND_RAIL_COLOR)
+        label_fs = float(_STOCK_TREND_LABEL_FS)
     else:
         color = "#1565c0" if kind == "asc" else "#6a1b9a"
         if not bool(ch.get("alive")):
@@ -3411,6 +3421,11 @@ def paint_vol_zone_parallel_channel(
                 linespacing=1.12,
                 bbox=box_kw,
             )
+            if quiet:
+                try:
+                    art.set_gid("ink:quiet-rail-label")
+                except Exception:
+                    pass
             return art
 
         def _pixel_hits_of(artist) -> List[int]:
@@ -3430,10 +3445,12 @@ def paint_vol_zone_parallel_channel(
                 return []
 
         ok = False
-        # 成對同帶：已放標中心當 pair_x（2026-10-26：不准再錯開 x）
+        # 成對同帶：只看本函式新放的軌標（不含 occupied 壓撐盒）
         _pair_x: Optional[float] = None
-        if placed:
-            _pair_x = 0.5 * (float(placed[0][0]) + float(placed[0][1]))
+        if len(placed) > n_preoccupied:
+            _pair_x = 0.5 * (
+                float(placed[n_preoccupied][0]) + float(placed[n_preoccupied][1])
+            )
         _same_band_max = min(max(float(dx) * 0.95, 5.5), 8.0)
         def _overlaps_placed(cx0: float, cy0: float) -> bool:
             box0 = (
@@ -3674,6 +3691,82 @@ def paint_vol_zone_parallel_channel(
             art = None
             try:
                 print(f"channel-label-drop {shown!r} pixel-hits-or-clip", flush=True)
+            except Exception:
+                pass
+        # 個股 quiet：難放→小標仍要價，不准省價（2026-10-28 改口）
+        if quiet and (art is None or not ok) and float(y_px) > 0:
+            try:
+                if art is not None:
+                    art.remove()
+            except Exception:
+                pass
+            art = None
+            fs_min = float(_STOCK_TREND_LABEL_FS_MIN)
+            shown_q = f"{lab} {_fmt_price(y_px)}"
+            # 貼近該軌右端可見段，小白底
+            tx = float(min(max(float(n) - 3.2, 2.0), float(n) - 0.8))
+            ty = float(
+                _channel_seg_y(seg, tx, float(y_px))
+                if seg
+                else float(y_px)
+            )
+            ty = min(max(ty, float(ymin) + y_span * 0.03), float(ymax) - y_span * 0.03)
+            if _pair_x is not None:
+                tx = float(min(max(float(_pair_x), 2.0), float(n) - 0.8))
+                ty = float(
+                    _channel_seg_y(seg, tx, float(y_px))
+                    if seg
+                    else float(y_px)
+                )
+                ty = min(
+                    max(ty, float(ymin) + y_span * 0.03),
+                    float(ymax) - y_span * 0.03,
+                )
+            art = ax.text(
+                tx,
+                ty,
+                shown_q,
+                ha="center",
+                va="center",
+                fontproperties=_fp(fs_min, "bold"),
+                color=color,
+                zorder=12,
+                clip_on=False,
+                bbox=dict(
+                    boxstyle="round,pad=0.12",
+                    facecolor="#ffffff",
+                    edgecolor=color,
+                    linewidth=0.7,
+                    alpha=0.94,
+                ),
+            )
+            try:
+                art.set_gid("ink:quiet-rail-label")
+            except Exception:
+                pass
+            label_artists.append(art)
+            placed.append(
+                (
+                    float(tx) - 2.2,
+                    float(tx) + 2.2,
+                    float(ty) - y_span * 0.025,
+                    float(ty) + y_span * 0.025,
+                )
+            )
+            try:
+                from smart_label_metrics import record_smart_label
+
+                record_smart_label(
+                    ax,
+                    kind="channel_u" if outside > 0 else "channel_l",
+                    text=str(shown_q),
+                    x0=float(tx) - 2.2,
+                    x1=float(tx) + 2.2,
+                    y0=float(ty) - y_span * 0.025,
+                    y1=float(ty) + y_span * 0.025,
+                    rail_y=float(ty),
+                    clipped=False,
+                )
             except Exception:
                 pass
     # 供 debug overlay：暫掛在 axes
@@ -4671,7 +4764,7 @@ def render_lookup_vol_result(
     """查股第 4 張：大量撐壓＝橫式原版（VOL_ZONE_FIG_W×NAV），不是直式 4:5。不是買訊。
 
     月／季一律畫；五日／十日一併畫（橙／青），短標避讓略過時線仍在。
-    平行趨勢＝淡灰藍細虛線、不標股價、不超出中間主圖框（2026-10-28）。
+    平行趨勢＝淡灰藍細虛線、標名＋最新價小標、不超出中間主圖框（2026-10-28）。
     """
     return render_volume_zone_result(
         stock_id,
@@ -4858,7 +4951,7 @@ def _paint_volume_zone(
     market_wide = bool(
         with_parallel_channel and not lookup_portrait and not with_nav_signals
     )
-    # 個股查股大量區：淡灰藍趨勢細虛線、不標股價（與大盤加粗軌標分開）
+    # 個股查股大量區：淡灰藍趨勢細虛線＋名＋最新價小標（與大盤加粗軌標分開）
     stock_quiet_rails = bool(
         with_parallel_channel and with_nav_signals and not market_wide
     )
@@ -5251,8 +5344,8 @@ def _paint_volume_zone(
                 for a in (ma5_vals, ma10_vals, ma20_vals, ma60_vals)
                 if a is not None
             ]
-            # 先畫軌線；標籤等導航箭疊完再掛（避開箭頭，不准壓判定符號）
-            # 個股 quiet＝淡灰藍無價標，長度不超出主圖框
+            # 先畫軌線；標籤等導航箭疊完再掛（避開箭頭／必要壓撐）
+            # 個股 quiet＝淡灰藍＋名＋最新價小標，長度不超出主圖框
             paint_vol_zone_parallel_channel(
                 ax1,
                 channel,
@@ -5418,28 +5511,7 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區疊導航指標失敗 sid=%s", sid)
 
-    # 軌道價標：導航之後再掛，智能避箭頭／殘影；不准壓判定符號
-    # 個股 quiet 趨勢線不掛價標（不准搶必要壓撐位）
-    if with_parallel_channel and channel and not stock_quiet_rails:
-        try:
-            channel_label_rects = paint_vol_zone_parallel_channel(
-                ax1,
-                channel,
-                n=int(n),
-                ymin=float(ymin),
-                ymax=float(ymax),
-                labels_outside=False,
-                market_style=bool(market_wide),
-                highs=highs,
-                lows=lows,
-                mas=_ma_for_channel,
-                paint_rails=False,
-                paint_labels=True,
-                avoid_nav_marks=bool(with_nav_signals),
-            )
-        except Exception:
-            logger.exception("大量區平行軌標失敗 sid=%s", sid)
-            channel_label_rects = []
+    # 軌道價標改在必要壓撐之後掛（見下方），小標避讓、不准省價
 
     # 均線短標：程式自動選位（中左→中→中右靠中）只貼己線；不准動 OHLC／量柱
     highs_a = pd.to_numeric(view["high"], errors="coerce").to_numpy(dtype=float)
@@ -5616,6 +5688,29 @@ def _paint_volume_zone(
             )
         except Exception:
             logger.debug("大量區關鍵標略過 sid=%s", sid, exc_info=True)
+    # 軌道價標：必要壓撐／下一層之後再掛；小標避讓、不准省價
+    if with_parallel_channel and channel:
+        try:
+            channel_label_rects = paint_vol_zone_parallel_channel(
+                ax1,
+                channel,
+                n=int(n),
+                ymin=float(ymin),
+                ymax=float(ymax),
+                labels_outside=False,
+                market_style=bool(market_wide),
+                highs=highs,
+                lows=lows,
+                mas=_ma_for_channel,
+                paint_rails=False,
+                paint_labels=True,
+                avoid_nav_marks=bool(with_nav_signals),
+                quiet_rails=bool(stock_quiet_rails),
+                occupied=list(_key_occ or []),
+            )
+        except Exception:
+            logger.exception("大量區平行軌標失敗 sid=%s", sid)
+            channel_label_rects = []
     # 橘框日標：貼主K上框內側，不准掛表頭壓圖例；上緣擠→試右下／中右；仍撞近端 K→略過（底線不准壓 K）
     if path_shown and not market_wide:
         path_ax_y = 0.985
@@ -6164,7 +6259,7 @@ def _paint_volume_zone(
     if with_nav_signals:
         # 淡灰藍說明獨立短行：不准塞進 foot1／foot2（2026-10-28 Reviewer-A 裁切）
         quiet_bit = (
-            "淡灰藍虛線＝平行趨勢（不標價・不數浪）"
+            "淡灰藍虛線＝平行趨勢（標名＋最新價・不數浪）"
             if with_parallel_channel
             else ""
         )

@@ -699,7 +699,7 @@ def test_market_vol_zone_canvas_matches_daily_k(tmp_path):
 
 
 def test_stock_lookup_vol_quiet_trend_rails():
-    """查股第 4 張：淡灰藍趨勢細虛線、不標股價（與大盤加粗軌標分開）。"""
+    """查股第 4 張：淡灰藍趨勢細虛線＋名＋最新價小標（與大盤加粗軌標分開）。"""
     import inspect
 
     from vol_zone_chart import (
@@ -715,6 +715,8 @@ def test_stock_lookup_vol_quiet_trend_rails():
     paint_src = inspect.getsource(_paint_volume_zone)
     assert "stock_quiet_rails" in paint_src
     assert "_channel_bars_face" in paint_src
+    # 導航後也掛 quiet 價標（不准 not stock_quiet_rails 才 paint）
+    assert "quiet_rails=bool(stock_quiet_rails)" in paint_src
     assert "quiet_rails" in inspect.getsource(paint_vol_zone_parallel_channel)
     assert str(_STOCK_TREND_RAIL_COLOR).startswith("#")
     # 淡灰藍（非大盤深藍／紫）；可略加深以求縮圖可辨
@@ -725,6 +727,7 @@ def test_stock_lookup_vol_quiet_trend_rails():
         "#6a1b9a",
     )
     assert float(_STOCK_TREND_RAIL_LW) >= 1.2
+    assert "標名＋最新價" in paint_src or "不准省價" in paint_src
 
 
 def test_parallel_channel_keeps_fullwidth_gs_right():
