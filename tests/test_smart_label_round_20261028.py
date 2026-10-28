@@ -48,7 +48,8 @@ def test_volzone_ochre_keeps_below_signal_row():
 
     src = inspect.getsource(_paint_volume_zone)
     assert "_vol_callout_cap" in src
-    assert "clip_on=True" in src
+    # 土黄爆大量仍 clip；長「下一層量日」才 clip_on=not long_layer
+    assert "clip_on=not long_layer" in src or "clip_on=True" in src
     assert "紫箭" in src or "訊號列" in src
 
 
