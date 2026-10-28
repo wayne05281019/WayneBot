@@ -1885,7 +1885,11 @@ def chart_note_lines(wave: Dict[str, Any]) -> str:
 def format_scenario_caption(sid: str, name: str, meta: Dict[str, Any]) -> str:
     sid = str(sid or "").strip()
     name = str(name or "").strip()
-    head = f"{sid}{name}　情境預估（不保證・不是買訊）".strip()
+    # 代號與股名中間要空格；股名缺／誤成代號時不准黏成 13031303。
+    if name and name != sid:
+        head = f"{sid} {name}　情境預估（不保證・不是買訊）"
+    else:
+        head = f"{sid}　情境預估（不保證・不是買訊）"
     bits = [str(b) for b in (meta or {}).get("caption_bits") or [] if b]
     wave = (meta or {}).get("wave") or {}
     # D.C 日對質寫入的說法模板（dc_sf_rules）；讀不到就用預設。不准當買訊。
