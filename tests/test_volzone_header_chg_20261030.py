@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""2026-10-30：大量區表頭「收／現」旁同列真昨收漲跌點＋％。"""
+"""2026-10-30：大量區表頭收旁真昨收漲跌（上下並排、可讀字級）。"""
 from __future__ import annotations
 
 import inspect
@@ -16,37 +16,33 @@ def test_format_move_plain_is_single_line():
     assert "%" in s
 
 
-def test_volzone_header_paints_move_beside_close():
+def test_volzone_header_passes_stacked_move_bits():
     import vol_zone_chart as vz
 
     src = inspect.getsource(vz)
-    # 收旁同列漲跌：本層只交 _wayne_close_move_plain，墨線畫收右
-    assert "format_move_plain" in src
-    assert "_wayne_close_move_plain" in src
-    assert "不准跨行" in src or "同列" in src or "收右" in src
+    assert "_wayne_close_move_pts" in src
+    assert "_wayne_close_move_pct" in src
     chunk = src[src.index("close_bit = f"): src.index("日標已改掛主K上框內側")]
     assert "hdr_quote" in chunk
     assert "prev_close_hdr" in chunk
-    assert "format_move_plain" in chunk
     assert "15.6" in chunk  # 收字級鎖原本
-    assert "_wayne_close_move_plain" in chunk
+    assert "move_pts" in chunk and "move_pct_s" in chunk
     assert "不准在此再畫一層" in chunk or "masthead" in chunk
 
 
-def test_ink_masthead_keeps_close_size_move_uses_right_room():
+def test_ink_masthead_stacks_move_larger_keeps_close():
     import ink_chart_theme as ink
 
     src = inspect.getsource(ink.vol_masthead)
-    assert "_wayne_close_move_plain" in src
+    assert "_wayne_close_move_pts" in src
+    assert "_wayne_close_move_pct" in src
     assert "close_move" in src
-    # 普通日漲跌字不加底（色底只套收價）
-    assert "不上色底" in src or "色底只套收價" in src
-    # 收字級／位置鎖死原本；只縮昨比
+    assert "上下並排" in src
+    assert "15.5" in src  # 昨比加大起點
     assert "CLOSE_FS" in src
-    assert "不准為塞昨比縮小" in src or "不准動收" in src
+    assert "不准為塞昨比縮小" in src or "不准動收" in src or "鎖死原本" in src
     assert "close_fs -=" not in src
-    assert "MIN_LOW_CLOSE_GAP" in src
-    assert "room" in src
+    assert "不上色底" in src or "色底只套收價" in src or "普通日不上色底" in src
 
 
 def test_header_move_matches_real_prev_math():

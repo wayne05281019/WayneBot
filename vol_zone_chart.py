@@ -6791,21 +6791,29 @@ def _paint_volume_zone(
                     move_pct = round(move_chg / prev_v * 100.0, 2)
             except (TypeError, ValueError, ZeroDivisionError):
                 move_chg = move_pct = None
+        move_pts = ""
+        move_pct_s = ""
         if move_chg is not None and move_pct is not None:
             try:
-                from tg_layout import format_move_plain
-
-                # 同列緊湊：去三角空白＋半形括號，塞收右剩餘（收字級不縮）
-                _mv = (
-                    format_move_plain(move_chg, move_pct)
-                    .replace("▲ ", "▲")
-                    .replace("▼ ", "▼")
-                    .replace("（", "(")
-                    .replace("）", ")")
-                )
-                move_bit = " " + _mv
+                # 上下並排交給墨線：上點數、下％；半形括號省寬
+                if abs(float(move_chg)) < 0.005 and abs(float(move_pct)) < 0.005:
+                    move_pts = "0.00"
+                    move_pct_s = "(0.00%)"
+                else:
+                    _arrow = (
+                        "▲"
+                        if float(move_chg) > 0
+                        else (
+                            "▼"
+                            if float(move_chg) < 0
+                            else ("▲" if float(move_pct) > 0 else "▼")
+                        )
+                    )
+                    move_pts = f"{_arrow}{abs(float(move_chg)):.2f}"
+                    move_pct_s = f"({float(move_pct):+.2f}%)"
+                move_bit = f"{move_pts} {move_pct_s}"
             except Exception:
-                move_bit = ""
+                move_bit = move_pts = move_pct_s = ""
         _lim = ""
         try:
             from wayne_navigator import LOOKUP_QUOTE_FLAT, quote_limit_side, quote_move_ink
@@ -6838,6 +6846,8 @@ def _paint_volume_zone(
             fig._wayne_close_move_ink = str(close_ink)  # type: ignore[attr-defined]
             fig._wayne_close_limit_side = str(_lim or "")  # type: ignore[attr-defined]
             fig._wayne_close_move_plain = str(move_bit or "").strip()  # type: ignore[attr-defined]
+            fig._wayne_close_move_pts = str(move_pts or "").strip()  # type: ignore[attr-defined]
+            fig._wayne_close_move_pct = str(move_pct_s or "").strip()  # type: ignore[attr-defined]
         except Exception:
             pass
         intro_right = str(ex_title or "")

@@ -1871,33 +1871,51 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                 label = cs
                 limit_side = _detect_limit_from_header(header)
                 # 收／現：字級／位置鎖死原本（CLOSE_FS＋低右縫）；不准為塞昨比縮小或左移
-                # 昨比點／％：只用收右邊剩餘空間（小字同列；普通日不上色底）
+                # 昨比：收右剩餘上下並排（上點數、下％），字加大仍 < 收；普通日不上色底
                 move_plain = ""
+                move_pts = ""
+                move_pct_s = ""
                 try:
                     move_plain = str(
                         getattr(ink.fig, "_wayne_close_move_plain", "") or ""
                     ).strip()
+                    move_pts = str(
+                        getattr(ink.fig, "_wayne_close_move_pts", "") or ""
+                    ).strip()
+                    move_pct_s = str(
+                        getattr(ink.fig, "_wayne_close_move_pct", "") or ""
+                    ).strip()
                 except Exception:
-                    move_plain = ""
+                    move_plain = move_pts = move_pct_s = ""
                 _move_re = re.compile(
-                    r"^[▲▼]\s*[\d,.]+[\(（][+\-]?\d+\.\d+%[\)）]$|^0\.00[\(（]0\.00%[\)）]$"
+                    r"^[▲▼]\s*[\d,.]+([\s]+)?[\(（][+\-]?\d+\.\d+%[\)）]$|^0\.00([\s]+)?[\(（]0\.00%[\)）]$"
                 )
                 for _mt in list(header.texts):
                     _ms = str(_mt.get_text() or "").strip()
-                    if not _move_re.fullmatch(_ms):
+                    if not _move_re.fullmatch(_ms) and not re.fullmatch(
+                        r"^[▲▼]?[\d,.]+$", _ms
+                    ) and not re.fullmatch(r"^[\(（][+\-]?\d+\.\d+%[\)）]$", _ms):
                         continue
                     if not move_plain:
                         move_plain = _ms
                     _mt.set_visible(False)
                     _mt.set_gid("ink:replaced")
-                if move_plain:
-                    # 緊湊：去三角空白＋半形括號，好塞收右剩餘（不准動收字級）
-                    move_plain = (
-                        move_plain.replace("▲ ", "▲")
+                if not move_pts or not move_pct_s:
+                    # 後備：從單行 plain 拆上下
+                    _mp = (
+                        (move_plain or "")
+                        .replace("▲ ", "▲")
                         .replace("▼ ", "▼")
                         .replace("（", "(")
                         .replace("）", ")")
+                        .strip()
                     )
+                    _mm = re.match(
+                        r"^([▲▼]?[\d,.]+)\s*(\([+\-]?\d+\.\d+%\))$", _mp
+                    )
+                    if _mm:
+                        move_pts = move_pts or _mm.group(1)
+                        move_pct_s = move_pct_s or _mm.group(2)
                 pc = fp(CLOSE_FS, heavy=True)
                 badge_pad_x = ink.pt(10)
                 if limit_side == "up":
@@ -1974,20 +1992,23 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     )
                     sync_col = tc
                 move_right = x_badge + badge_w
-                if move_plain:
-                    # 昨比只用收字右緣到畫布右的剩餘；只縮昨比，收字級／x 鎖死
+                if move_pts and move_pct_s:
+                    # 上下並排加大字（仍 < CLOSE_FS）；寬度吃收右剩餘，只縮昨比不縮收
                     close_right = x_badge + float(wc)
                     room = max(0.0, (right_px - ink.pt(4)) - close_right - ink.pt(3))
-                    move_fs = 12.5
-                    wm = hm = dm = 0.0
+                    # 手機縮圖可讀：起點約 15.5（收＝20）
+                    move_fs = min(15.5, float(CLOSE_FS) - 4.0)
                     move_prop = fp(move_fs, heavy=True)
-                    for _ in range(16):
+                    wp = hp = dp = 0.0
+                    wc2 = hc2 = dc2 = 0.0
+                    for _ in range(12):
                         move_prop = fp(move_fs, heavy=True)
-                        wm, hm, dm = ink.measure(move_plain, move_prop)
-                        if wm <= room or move_fs <= 7.0:
+                        wp, hp, dp = ink.measure(move_pts, move_prop)
+                        wc2, hc2, dc2 = ink.measure(move_pct_s, move_prop)
+                        if max(wp, wc2) <= room or move_fs <= 11.0:
                             break
                         move_fs -= 0.5
-                    if room > 0 and wm <= room:
+                    if room > 0 and max(wp, wc2) <= room:
                         mx = close_right + ink.pt(4)
                         if limit_side == "up":
                             move_col = UP
@@ -1995,23 +2016,41 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                             move_col = DN
                         else:
                             move_col = tc
+                        # 兩行總高對齊收字垂直中心；行距略緊仍可讀
+                        gap = ink.pt(1.2)
+                        block_h = hp + hc2 + gap
+                        y_top = cy_close + block_h / 2 - hp
+                        y_bot = y_top - gap - hc2
                         ink.text(
                             header,
                             mx,
-                            cy_close - hm / 2 + dm,
-                            move_plain,
+                            y_top + dp,
+                            move_pts,
                             prop=move_prop,
                             color=move_col,
                             ha="left",
                             z=22,
                         )
-                        move_right = mx + wm + ink.pt(2)
+                        ink.text(
+                            header,
+                            mx,
+                            y_bot + dc2,
+                            move_pct_s,
+                            prop=move_prop,
+                            color=move_col,
+                            ha="left",
+                            z=22,
+                        )
+                        move_right = mx + max(wp, wc2) + ink.pt(2)
                         ink.record(
-                            move_plain,
-                            [move_plain],
+                            f"{move_pts}\n{move_pct_s}",
+                            [move_pts, move_pct_s],
                             "close_move",
                             Bbox.from_extents(
-                                mx, cy_close - hm / 2, mx + wm, cy_close + hm / 2
+                                mx,
+                                y_bot,
+                                mx + max(wp, wc2),
+                                y_top + hp,
                             ),
                         )
                 close_t.set_visible(False)
