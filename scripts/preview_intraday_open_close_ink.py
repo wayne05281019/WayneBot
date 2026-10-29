@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
-"""Preview-only：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v3：今日開→收墨線臉（查股第 5 張候選）。
 
-- 不准接話筒／不准改查股送序。
-- 路徑只認 Yahoo chart 1m（已允許源）；標「非官方定稿／暫讀」。
-- 不准用日 K 捏假折線。無點列 → 空態卡「暫無今日路徑資料」。
-- 興櫃：Yahoo 通常只到 13:30；日均價規則另標，不拿 Yahoo 現價冒充官方均價收。
+- 頭欄＝結構／大量區同款（nameplate＋spot → ``apply_struct``）。
+- 附圖二資訊：今開／最高／量、昨收／最低／成交額、均價／振幅（有真數才畫）。
+- 底部三條：季均量 vs 當日量、日低–日高（開盤／最新）、52週低–高。
+- 主圖右側股價區間標（昨收／日高／日低）；興櫃軸到 15:00，缺點標缺資料不准捏。
+- 不准接話筒／不准合 main；臉不寫出處。
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
+import sqlite3
 import sys
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote as url_quote
 from zoneinfo import ZoneInfo
 
-# repo root
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 TZ = ZoneInfo("Asia/Taipei")
+ASOF_YMD = "20261029"
 
-# 預覽五檔（使用者 2026-10-29 點名）
 PREVIEW_SYMBOLS: Tuple[Tuple[str, str, str], ...] = (
     ("3595", "山太士", "EM"),
     ("7853", "政美應用", "EM"),
@@ -43,21 +46,43 @@ _SLUG = {
 
 
 @dataclass
+class OfficialDay:
+    stock_id: str
+    open: float
+    high: float
+    low: float
+    close: float
+    prev_close: float
+    volume_lots: float
+    turnover_k: Optional[float]  # 千元；無則 None
+    avg_price: Optional[float]
+    pct_change: float
+    change: float
+    amplitude_pct: Optional[float]
+    q_avg_vol_lots: Optional[float]
+    w52_high: Optional[float]
+    w52_low: Optional[float]
+    source: str
+    close_label: str  # 收盤 / 興櫃收
+
+
+@dataclass
 class PathSeries:
     stock_id: str
     name: str
     market: str
-    yahoo_symbol: str
     times: List[datetime]
     closes: List[float]
-    volumes_lots: List[float]  # 張
+    volumes_lots: List[float]
     opens: List[float]
     highs: List[float]
     lows: List[float]
-    prev_close: float
-    source: str
-    label: str
-    fetched_at: datetime
+    path_source: str
+    path_end: datetime
+    gap_after: Optional[datetime]
+    official: OfficialDay
+    notices: List[str] = field(default_factory=list)
+    fetched_at: datetime = field(default_factory=lambda: datetime.now(TZ))
 
 
 def _ua() -> Dict[str, str]:
@@ -78,25 +103,21 @@ def _yahoo_ids(stock_id: str, market: str, db_path: Optional[str]) -> List[str]:
         cand = f"{stock_id}.{sfx}"
         if cand not in alts:
             alts.append(cand)
-    # EM 優先 TWO
     if str(market).upper() == "EM":
         alts = sorted(alts, key=lambda s: (0 if s.endswith(".TWO") else 1, s))
     return alts
 
 
-def fetch_yahoo_1m_today(
+def fetch_yahoo_1m_path(
     stock_id: str,
-    name: str,
     market: str,
     *,
     db_path: Optional[str] = None,
-) -> Optional[PathSeries]:
-    """單檔按需：Yahoo chart interval=1m range=1d。失敗回 None。"""
+    ymd: str = ASOF_YMD,
+) -> Optional[Dict[str, Any]]:
     import requests
     from kline_hop import parse_yahoo_chart_bars
 
-    now = datetime.now(TZ)
-    today = now.strftime("%Y%m%d")
     last_err = ""
     for yid in _yahoo_ids(stock_id, market, db_path):
         url = (
@@ -108,28 +129,21 @@ def fetch_yahoo_1m_today(
             if resp.status_code != 200:
                 last_err = f"HTTP {resp.status_code}"
                 continue
-            payload = resp.json() or {}
-            block = ((payload.get("chart") or {}).get("result") or [None])[0] or {}
-            if not block:
-                last_err = "empty chart"
-                continue
-            meta = block.get("meta") or {}
-            bars = parse_yahoo_chart_bars(payload)
-            # 只留今日台北開市窗點
+            bars = parse_yahoo_chart_bars(resp.json() or {})
             times: List[datetime] = []
             closes: List[float] = []
             vols: List[float] = []
             opens: List[float] = []
             highs: List[float] = []
             lows: List[float] = []
+            sess_end = 1500 if str(market).upper() == "EM" else 1330
             for b in bars:
                 t_raw = str(b.get("t") or "")
-                if len(t_raw) < 12 or not t_raw.startswith(today):
+                if len(t_raw) < 12 or not t_raw.startswith(ymd):
                     continue
                 dt = datetime.strptime(t_raw, "%Y%m%d%H%M").replace(tzinfo=TZ)
-                # 上市櫃 09:00–13:30；興櫃 Yahoo 常見也只到 13:30
                 hm = dt.hour * 100 + dt.minute
-                if hm < 900 or hm > 1500:
+                if hm < 900 or hm > sess_end:
                     continue
                 c = float(b["c"])
                 times.append(dt)
@@ -141,370 +155,915 @@ def fetch_yahoo_1m_today(
             if len(closes) < 2:
                 last_err = f"{yid} today points<{2}"
                 continue
-            prev = meta.get("chartPreviousClose")
-            if prev is None:
-                prev = meta.get("previousClose")
-            if prev is None or float(prev) <= 0:
-                last_err = "no prev close"
-                continue
-            prev_f = float(prev)
-            em_note = ""
-            if str(market).upper() == "EM":
-                em_note = "；興櫃官方收＝日均價，Yahoo 現／昨收＝成交暫讀，非定稿"
-                t1 = times[-1]
-                if t1.hour * 100 + t1.minute <= 1330:
-                    em_note += "；此源路徑常見只到 13:30（興櫃窗至 15:00）"
-            # 盤後（台北已過 13:30 上市／15:00 興櫃）標行情已收但非官方融合
-            sess_end = 1500 if str(market).upper() == "EM" else 1330
-            hm_now = now.hour * 100 + now.minute
-            if hm_now > sess_end:
-                stamp = "行情已收・非官方定稿"
-            elif hm_now < 900:
-                stamp = "盤前・暫無完整今日路徑"
-            else:
-                stamp = f"盤中暫讀 {now.strftime('%H:%M')}"
-            label = (
-                f"Yahoo 1m 暫讀・{stamp}・非官方日 K"
-                f"{em_note}"
-            )
-            return PathSeries(
-                stock_id=stock_id,
-                name=name,
-                market=market,
-                yahoo_symbol=str(meta.get("symbol") or yid),
-                times=times,
-                closes=closes,
-                volumes_lots=vols,
-                opens=opens,
-                highs=highs,
-                lows=lows,
-                prev_close=prev_f,
-                source=f"yahoo:chart:1m:{yid}",
-                label=label,
-                fetched_at=now,
-            )
-        except Exception as exc:  # noqa: BLE001 — preview soft fail
+            return {
+                "yahoo_symbol": yid,
+                "times": times,
+                "closes": closes,
+                "volumes_lots": vols,
+                "opens": opens,
+                "highs": highs,
+                "lows": lows,
+                "source": f"yahoo:chart:1m:{yid}",
+            }
+        except Exception as exc:  # noqa: BLE001
             last_err = str(exc)
             continue
-    sys.stderr.write(f"[skip] {stock_id} {name}: {last_err}\n")
+    sys.stderr.write(f"[path-skip] {stock_id}: {last_err}\n")
     return None
 
 
-def _fmt_px(v: float) -> str:
-    av = abs(v)
-    if av >= 1000:
-        return f"{v:,.0f}"
-    if av >= 100:
-        return f"{v:,.1f}".rstrip("0").rstrip(".")
-    if av >= 10:
-        return f"{v:,.2f}".rstrip("0").rstrip(".")
-    return f"{v:,.2f}"
+def _hist_stats(stock_id: str, market: str, db_path: str, *, ymd: str) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    """回 (q_avg_vol_lots, w52_high, w52_low)；庫無則 None。含當日官方高低時由呼叫端再併。"""
+    if not db_path or not os.path.isfile(db_path):
+        return None, None, None
+    table = "emerging_quotes" if str(market).upper() == "EM" else "daily_quotes"
+    # 52 週窗：約 365 曆日
+    y, m, d = int(ymd[:4]), int(ymd[4:6]), int(ymd[6:8])
+    from datetime import date, timedelta
+
+    start = (date(y, m, d) - timedelta(days=365)).strftime("%Y%m%d")
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            qavg = conn.execute(
+                f"""
+                SELECT AVG(volume) FROM (
+                  SELECT volume FROM {table}
+                  WHERE stock_id=? AND volume>0 AND REPLACE(CAST(date AS TEXT),'-','') < ?
+                  ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 60
+                )
+                """,
+                (stock_id, ymd),
+            ).fetchone()
+            w52 = conn.execute(
+                f"""
+                SELECT MAX(high), MIN(low) FROM {table}
+                WHERE stock_id=? AND high>0 AND low>0
+                  AND REPLACE(CAST(date AS TEXT),'-','') >= ?
+                  AND REPLACE(CAST(date AS TEXT),'-','') < ?
+                """,
+                (stock_id, start, ymd),
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None, None, None
+    q = float(qavg[0]) if qavg and qavg[0] is not None else None
+    hi = float(w52[0]) if w52 and w52[0] is not None else None
+    lo = float(w52[1]) if w52 and w52[1] is not None else None
+    return q, hi, lo
 
 
-def _side_color(delta: float, up: str, dn: str, mute: str) -> str:
-    if delta > 0:
-        return up
-    if delta < 0:
-        return dn
-    return mute
+def _amp(high: float, low: float, prev: float) -> Optional[float]:
+    if prev <= 0:
+        return None
+    return (high - low) / prev * 100.0
 
 
-def render_empty(
-    out_path: str,
+_EM_DAY_CACHE: Dict[str, List[dict]] = {}
+
+
+def fetch_official_em(stock_id: str, *, ymd: str, db_path: str) -> Optional[OfficialDay]:
+    import time
+    from emerging_quotes import fetch_emerging_csv_day
+
+    rows = _EM_DAY_CACHE.get(ymd)
+    if rows is None:
+        last_err = ""
+        for attempt in range(4):
+            try:
+                _as_of, rows = fetch_emerging_csv_day(ymd)
+                if rows:
+                    _EM_DAY_CACHE[ymd] = rows
+                    break
+                last_err = "empty"
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
+                rows = None
+            time.sleep(1.2 * (attempt + 1))
+        if not rows:
+            sys.stderr.write(f"[em-miss] {stock_id}: {last_err}\n")
+            return None
+    hit = next((r for r in rows if str(r.get("stock_id")) == stock_id), None)
+    if not hit or hit.get("no_trade"):
+        return None
+    o = float(hit["open"])
+    h = float(hit["high"])
+    lo = float(hit["low"])
+    c = float(hit["close"])
+    pct = float(hit.get("pct_change") or 0.0)
+    prev = o if o > 0 else (c / (1.0 + pct / 100.0) if pct != -100 else c)
+    chg = c - prev
+    qavg, w52h, w52l = _hist_stats(stock_id, "EM", db_path, ymd=ymd)
+    if w52h is not None:
+        w52h = max(w52h, h)
+    else:
+        w52h = h
+    if w52l is not None:
+        w52l = min(w52l, lo)
+    else:
+        w52l = lo
+    avg = float(hit["avg_price"]) if hit.get("avg_price") not in (None, "") else c
+    to_k = float(hit["turnover_k"]) if hit.get("turnover_k") not in (None, "") else None
+    return OfficialDay(
+        stock_id=stock_id,
+        open=o,
+        high=h,
+        low=lo,
+        close=c,
+        prev_close=prev,
+        volume_lots=float(hit.get("volume") or 0.0),
+        turnover_k=to_k,
+        avg_price=avg,
+        pct_change=pct,
+        change=chg,
+        amplitude_pct=_amp(h, lo, prev),
+        q_avg_vol_lots=qavg,
+        w52_high=w52h,
+        w52_low=w52l,
+        source=str(hit.get("source") or "tpex_esb_csv"),
+        close_label="興櫃收",
+    )
+
+
+def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[OfficialDay]:
+    import requests
+
+    url = (
+        "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
+        f"?response=json&date={ymd}&stockNo={stock_id}"
+    )
+    resp = requests.get(url, timeout=15, headers=_ua())
+    if resp.status_code != 200:
+        return None
+    data = resp.json() or {}
+    if str(data.get("stat") or "") != "OK":
+        return None
+    mmdd = f"{int(ymd[4:6])}/{int(ymd[6:8])}"
+    row = None
+    for r in data.get("data") or []:
+        d0 = str(r[0]).replace("／", "/")
+        if d0.endswith(mmdd) or mmdd in d0:
+            row = r
+            break
+    if not row:
+        return None
+
+    def _f(s: str) -> float:
+        return float(str(s).replace(",", "").strip())
+
+    o, h, lo, c = _f(row[3]), _f(row[4]), _f(row[5]), _f(row[6])
+    chg_raw = str(row[7]).replace(",", "").replace("＋", "+").replace("－", "-").replace("X", "").strip()
+    try:
+        chg = float(chg_raw) if chg_raw not in ("", "+", "-") else 0.0
+    except ValueError:
+        chg = 0.0
+    prev = c - chg
+    vol_shares = _f(row[1])
+    turnover_ntd = _f(row[2])
+    pct = (chg / prev * 100.0) if prev else 0.0
+    qavg, w52h, w52l = _hist_stats(stock_id, "TW", db_path, ymd=ymd)
+    if w52h is not None:
+        w52h = max(w52h, h)
+    else:
+        w52h = h
+    if w52l is not None:
+        w52l = min(w52l, lo)
+    else:
+        w52l = lo
+    avg = (turnover_ntd / vol_shares) if vol_shares > 0 else None
+    return OfficialDay(
+        stock_id=stock_id,
+        open=o,
+        high=h,
+        low=lo,
+        close=c,
+        prev_close=prev,
+        volume_lots=vol_shares / 1000.0,
+        turnover_k=turnover_ntd / 1000.0,
+        avg_price=avg,
+        pct_change=pct,
+        change=chg,
+        amplitude_pct=_amp(h, lo, prev),
+        q_avg_vol_lots=qavg,
+        w52_high=w52h,
+        w52_low=w52l,
+        source="twse:STOCK_DAY",
+        close_label="收盤",
+    )
+
+
+_TPEX_DAY_CACHE: Optional[List[dict]] = None
+
+
+def fetch_official_tpex(stock_id: str, *, ymd: str, db_path: str) -> Optional[OfficialDay]:
+    import time
+    import requests
+
+    global _TPEX_DAY_CACHE
+    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
+    data = _TPEX_DAY_CACHE
+    if data is None:
+        last_err = ""
+        for attempt in range(4):
+            try:
+                resp = requests.get(url, timeout=45, headers=_ua())
+                if resp.status_code != 200:
+                    last_err = f"HTTP {resp.status_code}"
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    _TPEX_DAY_CACHE = data
+                    break
+                last_err = "empty list"
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
+                time.sleep(1.5 * (attempt + 1))
+                data = None
+        if not isinstance(data, list) or not data:
+            sys.stderr.write(f"[tpex-miss] {stock_id}: {last_err}\n")
+            return None
+    hit = next((r for r in data if str(r.get("SecuritiesCompanyCode") or "") == stock_id), None)
+    if not hit:
+        return None
+
+    def _f(s: Any) -> float:
+        return float(str(s).replace(",", "").strip())
+
+    o, h, lo, c = _f(hit["Open"]), _f(hit["High"]), _f(hit["Low"]), _f(hit["Close"])
+    chg = _f(str(hit.get("Change") or "0").replace(" ", ""))
+    prev = c - chg
+    vol_shares = _f(hit.get("TradingShares") or 0)
+    turnover_ntd = _f(hit.get("TransactionAmount") or 0)
+    pct = (chg / prev * 100.0) if prev else 0.0
+    avg_s = str(hit.get("Average") or "").strip()
+    avg = _f(avg_s) if avg_s not in ("", "--", "-") else (
+        (turnover_ntd / vol_shares) if vol_shares > 0 else None
+    )
+    qavg, w52h, w52l = _hist_stats(stock_id, "TWO", db_path, ymd=ymd)
+    if w52h is not None:
+        w52h = max(w52h, h)
+    else:
+        w52h = h
+    if w52l is not None:
+        w52l = min(w52l, lo)
+    else:
+        w52l = lo
+    return OfficialDay(
+        stock_id=stock_id,
+        open=o,
+        high=h,
+        low=lo,
+        close=c,
+        prev_close=prev,
+        volume_lots=vol_shares / 1000.0,
+        turnover_k=turnover_ntd / 1000.0 if turnover_ntd else None,
+        avg_price=avg,
+        pct_change=pct,
+        change=chg,
+        amplitude_pct=_amp(h, lo, prev),
+        q_avg_vol_lots=qavg,
+        w52_high=w52h,
+        w52_low=w52l,
+        source="tpex:mainboard_daily_close",
+        close_label="收盤",
+    )
+
+
+def fetch_official(stock_id: str, market: str, *, ymd: str, db_path: str) -> Optional[OfficialDay]:
+    import time
+
+    m = str(market).upper()
+    last: Optional[OfficialDay] = None
+    for attempt in range(3):
+        try:
+            if m == "EM":
+                last = fetch_official_em(stock_id, ymd=ymd, db_path=db_path)
+            elif m == "TWO":
+                last = fetch_official_tpex(stock_id, ymd=ymd, db_path=db_path)
+            else:
+                last = fetch_official_twse(stock_id, ymd=ymd, db_path=db_path)
+            if last is not None:
+                return last
+        except Exception as exc:  # noqa: BLE001
+            sys.stderr.write(f"[official-retry] {stock_id} {attempt}: {exc}\n")
+            time.sleep(1.5 * (attempt + 1))
+    return last
+
+
+def _fmt_face(v: float) -> str:
+    from wayne_navigator import _fmt_price
+
+    return _fmt_price(v)
+
+
+def _fmt_turnover(turnover_k: float) -> str:
+    """千元 → 億／萬可讀。"""
+    ntd = float(turnover_k) * 1000.0
+    if ntd >= 1e8:
+        return f"{ntd / 1e8:.2f}億".rstrip("0").rstrip(".")
+    if ntd >= 1e4:
+        return f"{ntd / 1e4:.2f}萬".rstrip("0").rstrip(".")
+    return f"{ntd:,.0f}"
+
+
+def _fmt_lots(v: float) -> str:
+    return f"{int(round(float(v))):,}張"
+
+
+def _detect_notices(
+    series_times: List[datetime],
+    closes: List[float],
+    vols: List[float],
+    off: OfficialDay,
     *,
+    market: str,
+) -> List[str]:
+    out: List[str] = []
+    if not closes:
+        return out
+    prev = float(off.prev_close)
+    crossed = None
+    for t, c in zip(series_times, closes):
+        if c < prev:
+            crossed = t
+            break
+    if off.close < prev:
+        if crossed is not None:
+            out.append(f"破昨收　{crossed.strftime('%H:%M')} 起跌破 {_fmt_face(prev)}")
+        else:
+            out.append(f"破昨收　官方收 {_fmt_face(off.close)} ＜ 昨收 {_fmt_face(prev)}")
+    kill = None
+    for i, c0 in enumerate(closes):
+        t0 = series_times[i]
+        for j in range(i + 1, len(closes)):
+            mins = (series_times[j] - t0).total_seconds() / 60.0
+            if mins > 20:
+                break
+            if mins >= 8 and c0 > 0 and (closes[j] - c0) / c0 <= -0.05:
+                kill = (t0, series_times[j], (closes[j] - c0) / c0 * 100.0)
+                break
+        if kill:
+            break
+    if kill:
+        out.append(
+            f"急殺段　{kill[0].strftime('%H:%M')}→{kill[1].strftime('%H:%M')}　{kill[2]:+.1f}%"
+        )
+    if vols and sum(vols) > 0:
+        import numpy as np
+
+        arr = np.asarray(vols, dtype=float)
+        med = float(np.median(arr[arr > 0])) if np.any(arr > 0) else 0.0
+        total = float(arr.sum())
+        peak_i = int(np.argmax(arr))
+        if med > 0 and arr[peak_i] >= med * 6 and arr[peak_i] / total >= 0.04:
+            out.append(
+                f"爆量窗　{series_times[peak_i].strftime('%H:%M')}　{arr[peak_i]:,.0f}張／分"
+            )
+    if len(closes) >= 10 and off.close < prev:
+        below = touched = failed = False
+        for c in closes:
+            if c < prev * 0.998:
+                below = True
+            if below and abs(c - prev) / prev <= 0.003:
+                touched = True
+            if touched and c < prev * 0.985:
+                failed = True
+                break
+        if failed:
+            out.append("回測失敗　反彈未站回昨收")
+    if str(market).upper() == "EM" and series_times:
+        t1 = series_times[-1]
+        if t1.hour * 100 + t1.minute < 1500:
+            out.insert(0, f"缺資料　路徑末 {t1.strftime('%H:%M')}→15:00（未捏點）")
+            path_lo = min(closes)  # path closes; official low may be lower
+            if off.low < path_lo * 0.98:
+                out.append(f"官方低 {_fmt_face(off.low)} ＜ 路徑低 {_fmt_face(path_lo)}")
+    return out
+
+
+def build_series(
     stock_id: str,
     name: str,
     market: str,
-    reason: str,
-) -> str:
+    *,
+    db_path: str,
+    ymd: str = ASOF_YMD,
+) -> Optional[PathSeries]:
+    off = fetch_official(stock_id, market, ymd=ymd, db_path=db_path)
+    if off is None:
+        sys.stderr.write(f"[official-miss] {stock_id}\n")
+        return None
+    path = fetch_yahoo_1m_path(stock_id, market, db_path=db_path, ymd=ymd)
+    if path is None:
+        return None
+    times = list(path["times"])
+    closes = list(path["closes"])
+    notices = _detect_notices(times, closes, list(path["volumes_lots"]), off, market=market)
+    gap_after = None
+    if str(market).upper() == "EM":
+        t1 = times[-1]
+        if t1.hour * 100 + t1.minute < 1500:
+            gap_after = t1
+    return PathSeries(
+        stock_id=stock_id,
+        name=name,
+        market=market,
+        times=times,
+        closes=closes,
+        volumes_lots=list(path["volumes_lots"]),
+        opens=list(path["opens"]),
+        highs=list(path["highs"]),
+        lows=list(path["lows"]),
+        path_source=str(path["source"]),
+        path_end=times[-1],
+        gap_after=gap_after,
+        official=off,
+        notices=notices,
+        fetched_at=datetime.now(TZ),
+    )
+
+
+def render_empty(out_path: str, *, stock_id: str, name: str, market: str, reason: str) -> str:
     import matplotlib
 
     matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch
-
-    from ink_chart_theme import INK, INK2, MUTE, PAPER, RULE, fp
+    from ink_chart_theme import INK, INK2, MUTE, PAPER, fp
 
     fig = plt.figure(figsize=(12.8, 7.2), dpi=160, facecolor=PAPER)
     ax = fig.add_axes([0.06, 0.08, 0.88, 0.82])
+    ax.axis("off")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.axis("off")
     ax.add_patch(
         FancyBboxPatch(
-            (0.05, 0.18),
-            0.90,
-            0.62,
-            boxstyle="square,pad=0.012",
-            facecolor=PAPER,
-            edgecolor=INK,
-            linewidth=1.4,
-            transform=ax.transAxes,
+            (0.05, 0.18), 0.90, 0.62, boxstyle="square,pad=0.012",
+            facecolor=PAPER, edgecolor=INK, linewidth=1.4, transform=ax.transAxes,
         )
     )
-    ax.text(
-        0.5,
-        0.62,
-        f"{stock_id}　{name}",
-        fontproperties=fp(28, True),
-        color=INK,
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-    )
-    ax.text(
-        0.5,
-        0.48,
-        "暫無今日路徑資料",
-        fontproperties=fp(22, True),
-        color=INK2,
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-    )
-    ax.text(
-        0.5,
-        0.36,
-        f"{reason}　｜　{market}　｜　不是買訊",
-        fontproperties=fp(12, False),
-        color=MUTE,
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-    )
-    ax.text(
-        0.5,
-        0.08,
-        "preview only · 未接話筒",
-        fontproperties=fp(11, False),
-        color=RULE if False else MUTE,
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-    )
+    ax.text(0.5, 0.62, f"{stock_id}　{name}", fontproperties=fp(28, True), color=INK, ha="center", va="center", transform=ax.transAxes)
+    ax.text(0.5, 0.48, "暫無今日路徑資料", fontproperties=fp(22, True), color=INK2, ha="center", va="center", transform=ax.transAxes)
+    ax.text(0.5, 0.36, f"{reason}　｜　{market}", fontproperties=fp(12, False), color=MUTE, ha="center", va="center", transform=ax.transAxes)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     fig.savefig(out_path, facecolor=PAPER, edgecolor="none")
     plt.close(fig)
     return out_path
 
 
-def render_path(series: PathSeries, out_path: str) -> str:
-    """墨線臉：昨收基準紅綠帶＋折線＋量柱＋開高低現統計。無五檔／內外盤。"""
+def _scrub_em_limit_labels(fig) -> None:
+    """興櫃無上市櫃漲跌停；墨線誤標要清。"""
+    for ax in fig.axes:
+        for t in list(ax.texts):
+            s = str(t.get_text() or "")
+            if "漲停" in s or "跌停" in s:
+                t.set_text(s.replace("　漲停", "").replace("　跌停", "").replace(" 漲停", "").replace(" 跌停", "").replace("漲停", "").replace("跌停", ""))
+    for t in list(fig.texts):
+        s = str(t.get_text() or "")
+        if "漲停" in s or "跌停" in s:
+            t.set_text(s.replace("　漲停", "").replace("　跌停", "").replace(" 漲停", "").replace(" 跌停", "").replace("漲停", "").replace("跌停", ""))
+
+
+def _paint_quote_grid(fig, off: OfficialDay, *, y0: float, left: float, right: float) -> None:
+    """附圖二資訊（墨線扁平等寬格）；無真數欄不上。"""
+    from ink_chart_theme import DN, INK, MUTE, PAPER, RULE, UP, fp
+
+    cells: List[Tuple[str, str, str]] = [
+        ("今開", _fmt_face(off.open), INK),
+        ("最高", _fmt_face(off.high), UP),
+        ("成交量", _fmt_lots(off.volume_lots), INK),
+        ("昨收", _fmt_face(off.prev_close), INK),
+        ("最低", _fmt_face(off.low), DN),
+    ]
+    if off.turnover_k is not None and off.turnover_k > 0:
+        cells.append(("成交額", _fmt_turnover(off.turnover_k), INK))
+    if off.avg_price is not None and off.avg_price > 0:
+        lab = "均價" if off.close_label != "興櫃收" else "日均價"
+        cells.append((lab, _fmt_face(off.avg_price), INK))
+    if off.amplitude_pct is not None:
+        cells.append(("振幅", f"{off.amplitude_pct:.2f}%", INK))
+
+    # 最多 2×4
+    cols = 4
+    rows = (len(cells) + cols - 1) // cols
+    gap_x, gap_y = 0.008, 0.006
+    cell_h = 0.032
+    width = right - left
+    cell_w = (width - gap_x * (cols - 1)) / cols
+    for i, (lab, val, col) in enumerate(cells):
+        r, c = divmod(i, cols)
+        x = left + c * (cell_w + gap_x)
+        y = y0 - r * (cell_h + gap_y) - cell_h
+        fig.patches.append(
+            __import__("matplotlib.patches", fromlist=["FancyBboxPatch"]).FancyBboxPatch(
+                (x, y), cell_w, cell_h,
+                boxstyle="square,pad=0.002",
+                facecolor=PAPER, edgecolor=RULE, linewidth=0.85,
+                transform=fig.transFigure, clip_on=False,
+            )
+        )
+        fig.text(
+            x + 0.006, y + cell_h * 0.5, lab,
+            fontproperties=fp(9, False), color=MUTE, ha="left", va="center",
+            transform=fig.transFigure,
+        )
+        fig.text(
+            x + cell_w - 0.006, y + cell_h * 0.5, val,
+            fontproperties=fp(11, True), color=col, ha="right", va="center",
+            transform=fig.transFigure,
+        )
+
+
+def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right: float) -> None:
+    """底部三條：季均量、日區間、52週區間。"""
+    from ink_chart_theme import DN, INK, MUTE, PAPER, RULE, UP, YELLOW, fp
+    from matplotlib.patches import FancyBboxPatch, Rectangle
+
+    bar_h = 0.018
+    gap = 0.028
+    width = right - left
+
+    def _row(y: float, title: str, left_lab: str, right_lab: str, frac: float, mark_fracs: List[Tuple[float, str, str]]) -> None:
+        fig.text(left, y + bar_h + 0.004, title, fontproperties=fp(9, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
+        fig.text(left, y - 0.002, left_lab, fontproperties=fp(8, False), color=MUTE, ha="left", va="top", transform=fig.transFigure)
+        fig.text(right, y - 0.002, right_lab, fontproperties=fp(8, False), color=MUTE, ha="right", va="top", transform=fig.transFigure)
+        # track
+        fig.patches.append(
+            Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
+        )
+        f = max(0.0, min(1.0, float(frac)))
+        fig.patches.append(
+            Rectangle((left, y), width * f, bar_h, transform=fig.transFigure, facecolor=DN if f >= 0.5 else UP, edgecolor="none", alpha=0.85, clip_on=False)
+        )
+        for mf, mlab, mside in mark_fracs:
+            mf = max(0.0, min(1.0, float(mf)))
+            mx = left + width * mf
+            fig.patches.append(
+                Rectangle((mx - 0.0012, y - 0.003), 0.0024, bar_h + 0.006, transform=fig.transFigure, facecolor=INK, edgecolor="none", clip_on=False)
+            )
+            va = "bottom" if mside == "above" else "top"
+            ty = y + bar_h + 0.003 if mside == "above" else y - 0.003
+            fig.text(mx, ty, mlab, fontproperties=fp(8, True), color=INK, ha="center", va=va, transform=fig.transFigure,
+                     bbox=dict(boxstyle="square,pad=0.15", facecolor=PAPER, edgecolor=RULE, linewidth=0.7))
+
+    y = y_bot + 2 * (bar_h + gap) + 0.01
+    # 1) 季均量 vs 當日量
+    if off.q_avg_vol_lots and off.q_avg_vol_lots > 0:
+        ratio = off.volume_lots / off.q_avg_vol_lots
+        # 條長＝相對季均；超過 100% 仍滿格，％寫在標
+        frac = min(ratio, 1.0)
+        pct_lab = f"{ratio * 100:.0f}%"
+        _row(
+            y,
+            f"季均量 {_fmt_lots(off.q_avg_vol_lots)}　→　當日 {_fmt_lots(off.volume_lots)}（{pct_lab}）",
+            "季均",
+            "當日",
+            frac,
+            [(min(ratio, 1.0), pct_lab if ratio <= 1.0 else f"{pct_lab}", "above")],
+        )
+    y -= bar_h + gap
+
+    def _mark(mf: float, mlab: str, side: str, *, yb: float) -> None:
+        mf = max(0.0, min(1.0, float(mf)))
+        mx = left + width * mf
+        # 貼邊改左右對齊，避免標飛出圖
+        if mf <= 0.08:
+            ha = "left"
+            mx = left
+        elif mf >= 0.92:
+            ha = "right"
+            mx = right
+        else:
+            ha = "center"
+        fig.patches.append(
+            Rectangle(
+                (left + width * max(0.0, min(1.0, float(mf))) - 0.0012, yb - 0.003),
+                0.0024, bar_h + 0.006,
+                transform=fig.transFigure, facecolor=INK, edgecolor="none", clip_on=False,
+            )
+        )
+        ty = yb + bar_h + 0.003 if side == "above" else yb - 0.003
+        va = "bottom" if side == "above" else "top"
+        fig.text(
+            mx, ty, mlab, fontproperties=fp(8, True), color=INK, ha=ha, va=va,
+            transform=fig.transFigure,
+            bbox=dict(boxstyle="square,pad=0.15", facecolor=PAPER, edgecolor=RULE, linewidth=0.7),
+        )
+
+    # 2) 日低–日高（興櫃開＝前日均價可落在日高低外 → 超出就不標開盤，避免假貼右緣）
+    span = off.high - off.low
+    if span > 0:
+        last_f = (off.close - off.low) / span
+        open_in = off.low <= off.open <= off.high
+        open_f = (off.open - off.low) / span if open_in else None
+        fig.patches.append(
+            Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
+        )
+        if open_f is not None:
+            a, b = sorted([open_f, last_f])
+            fig.patches.append(
+                Rectangle(
+                    (left + width * a, y), max(width * (b - a), 0.002), bar_h,
+                    transform=fig.transFigure,
+                    facecolor=(DN if off.close < off.open else UP),
+                    edgecolor="none", alpha=0.9, clip_on=False,
+                )
+            )
+        else:
+            # 無開盤點在區間內：只標最新位置色點帶
+            fig.patches.append(
+                Rectangle(
+                    (left + width * max(0.0, min(1.0, last_f)) - 0.004, y),
+                    0.008, bar_h,
+                    transform=fig.transFigure,
+                    facecolor=DN if off.close < off.prev_close else UP,
+                    edgecolor="none", alpha=0.95, clip_on=False,
+                )
+            )
+        fig.text(left, y + bar_h + 0.004, "日低 — 日高", fontproperties=fp(9, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
+        fig.text(left, y - 0.002, f"日低 {_fmt_face(off.low)}", fontproperties=fp(8, False), color=DN, ha="left", va="top", transform=fig.transFigure)
+        fig.text(right, y - 0.002, f"日高 {_fmt_face(off.high)}", fontproperties=fp(8, False), color=UP, ha="right", va="top", transform=fig.transFigure)
+        if open_f is not None:
+            _mark(open_f, f"開盤 {_fmt_face(off.open)}", "below", yb=y)
+        _mark(last_f, f"最新 {_fmt_face(off.close)}", "above", yb=y)
+    y -= bar_h + gap
+
+    # 3) 52週
+    if off.w52_high is not None and off.w52_low is not None and off.w52_high > off.w52_low:
+        span = off.w52_high - off.w52_low
+        open_f = (off.open - off.w52_low) / span
+        last_f = (off.close - off.w52_low) / span
+        fig.patches.append(
+            Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
+        )
+        a, b = sorted([max(0.0, min(1.0, open_f)), max(0.0, min(1.0, last_f))])
+        fig.patches.append(
+            Rectangle(
+                (left + width * a, y), max(width * (b - a), 0.002), bar_h,
+                transform=fig.transFigure,
+                facecolor=YELLOW, edgecolor="none", alpha=0.85, clip_on=False,
+            )
+        )
+        fig.text(left, y + bar_h + 0.004, "52週低 — 52週高", fontproperties=fp(9, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
+        fig.text(left, y - 0.002, f"52週低 {_fmt_face(off.w52_low)}", fontproperties=fp(8, False), color=DN, ha="left", va="top", transform=fig.transFigure)
+        fig.text(right, y - 0.002, f"52週高 {_fmt_face(off.w52_high)}", fontproperties=fp(8, False), color=UP, ha="right", va="top", transform=fig.transFigure)
+        # 開／最新太近時只留最新在上、開盤在下錯開
+        if abs(open_f - last_f) < 0.04:
+            _mark(open_f, f"開 {_fmt_face(off.open)}", "below", yb=y)
+            _mark(last_f, f"最新 {_fmt_face(off.close)}", "above", yb=y)
+        else:
+            _mark(open_f, f"開盤 {_fmt_face(off.open)}", "below", yb=y)
+            _mark(last_f, f"最新 {_fmt_face(off.close)}", "above", yb=y)
+
+
+def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     import numpy as np
     import matplotlib
 
     matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
-    from matplotlib.patches import FancyBboxPatch, Rectangle
+    from matplotlib.patches import FancyBboxPatch
 
-    from ink_chart_theme import DN, INK, INK2, MUTE, PAPER, RULE, UP, fp
+    from biaoke_chart import (
+        _HEADER_X_FB,
+        _SPOT_X_NO_LOCATOR,
+        _STRUCTURE_BOX_EC,
+        _STRUCTURE_BOX_LW,
+        _STRUCTURE_BOX_STYLE,
+        _STRUCTURE_BOX_W,
+        _STRUCTURE_BOX_X,
+        _STRUCTURE_META_FS,
+        _STRUCTURE_SPOT_FS,
+        _STRUCTURE_SPOT_LAB_FS,
+        _STRUCTURE_SPOT_MOVE_FS,
+        _STRUCTURE_SPOT_ROW_GAP,
+        _STRUCTURE_SPOT_STAMP_FS,
+        _STRUCTURE_TITLE_FS,
+        _STRUCTURE_TOP_PAD,
+        _TEXT,
+        _fp,
+        _paint_nameplate,
+        _paint_spot,
+        stock_nameplate,
+    )
+    from decision_card_signals import board_close_clock_label, format_ymd_slash_weekday
+    from ink_chart_theme import (
+        DN,
+        INK,
+        MUTE,
+        PAPER,
+        RULE,
+        UP,
+        Ink,
+        close_struct_frame_seam,
+        fp,
+        struct_frames,
+        struct_header,
+    )
 
+    off = series.official
+    is_em = str(series.market).upper() == "EM"
     times = series.times
     ys = np.asarray(series.closes, dtype=float)
     vs = np.asarray(series.volumes_lots, dtype=float)
-    prev = float(series.prev_close)
-    # 統計：開＝首根開；高／低＝路徑；現＝末收；量＝張加總
-    open_px = float(series.opens[0])
-    high_px = float(np.max(series.highs))
-    low_px = float(np.min(series.lows))
-    last_px = float(ys[-1])
-    chg = last_px - prev
-    pct = (chg / prev * 100.0) if prev else 0.0
-    vol_sum = float(np.nansum(vs))
-    col = _side_color(chg, UP, DN, MUTE)
-    arrow = "▲" if chg > 0 else ("▼" if chg < 0 else "－")
+    prev = float(off.prev_close)
 
-    # 時間軸：分鐘 offset from 09:00
     def _x(dt: datetime) -> float:
         return (dt.hour - 9) * 60 + dt.minute
 
     xs = np.asarray([_x(t) for t in times], dtype=float)
-    # 上市櫃窗 09:00–13:30＝270 分；興櫃標到 15:00 空窗
-    x_end = 360.0 if str(series.market).upper() == "EM" else 270.0
+    x_end = 360.0 if is_em else 270.0
 
-    fig_w, fig_h, dpi = 14.2, 8.4, 160
+    # 更高：頭＋報價格＋圖＋量＋三條區間
+    fig_w, fig_h, dpi = 13.2, 10.6, 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
-    # 外框
-    fig.patches.append(
-        Rectangle(
-            (0.015, 0.02),
-            0.97,
-            0.96,
-            transform=fig.transFigure,
-            facecolor=PAPER,
-            edgecolor=INK,
-            linewidth=1.35,
-            zorder=-1,
-            clip_on=False,
-        )
-    )
-
-    # 標題列
-    fig.text(
-        0.04,
-        0.935,
-        f"{series.stock_id}　{series.name}",
-        fontproperties=fp(22, True),
-        color=INK,
-        ha="left",
-        va="top",
-    )
-    fig.text(
-        0.04,
-        0.895,
-        "今日開→收　｜　不是買訊　｜　preview",
-        fontproperties=fp(11, False),
-        color=MUTE,
-        ha="left",
-        va="top",
-    )
-    fig.text(
-        0.96,
-        0.935,
-        series.fetched_at.strftime("%Y-%m-%d %H:%M Asia/Taipei"),
-        fontproperties=fp(11, False),
-        color=MUTE,
-        ha="right",
-        va="top",
-    )
-
-    # 頭列：現價＋漲跌（左）／開高低現統計格（右）— 全在圖上方，不壓折線
-    fig.text(
-        0.04,
-        0.825,
-        _fmt_px(last_px),
-        fontproperties=fp(36, True),
-        color=col,
-        ha="left",
-        va="center",
-    )
-    fig.text(
-        0.04,
-        0.755,
-        f"{arrow}{_fmt_px(abs(chg))}　({pct:+.2f}%)",
-        fontproperties=fp(15, True),
-        color=col,
-        ha="left",
-        va="center",
-    )
-
-    stats = [
-        ("開盤", _fmt_px(open_px), INK),
-        ("最高", _fmt_px(high_px), UP if high_px >= prev else DN),
-        ("最低", _fmt_px(low_px), DN if low_px <= prev else UP),
-        ("現價", _fmt_px(last_px), col),
-        ("昨收", _fmt_px(prev), INK2),
-        ("漲跌", f"{chg:+.2f}".rstrip("0").rstrip("."), col),
-        ("漲跌幅", f"{pct:+.2f}%", col),
-        ("量(張)", f"{vol_sum:,.0f}", INK),
-    ]
-    # 2×4 格貼右上；底邊停在主圖頂之上
-    sx0, sy_top = 0.42, 0.86
-    cell_w, cell_h = 0.125, 0.048
-    gap_x, gap_y = 0.012, 0.008
-    for i, (lab, val, vc) in enumerate(stats):
-        r, c = divmod(i, 4)
-        x = sx0 + c * (cell_w + gap_x)
-        y = sy_top - cell_h - r * (cell_h + gap_y)
-        fig.patches.append(
-            FancyBboxPatch(
-                (x, y),
-                cell_w,
-                cell_h,
-                boxstyle="square,pad=0.003",
-                facecolor=PAPER,
-                edgecolor=RULE,
-                linewidth=0.9,
-                transform=fig.transFigure,
-                clip_on=False,
-            )
-        )
-        fig.text(
-            x + 0.008,
-            y + cell_h * 0.52,
-            lab,
-            fontproperties=fp(9, False),
-            color=MUTE,
-            ha="left",
-            va="center",
-            transform=fig.transFigure,
-        )
-        fig.text(
-            x + cell_w - 0.008,
-            y + cell_h * 0.52,
-            val,
-            fontproperties=fp(12, True),
-            color=vc,
-            ha="right",
-            va="center",
-            transform=fig.transFigure,
-        )
-
-    # 主圖＋量（左寬）＋來源說明（右窄）；頭列已結束於 ~0.74
-    ax = fig.add_axes([0.07, 0.26, 0.68, 0.42])
-    vol_ax = fig.add_axes([0.07, 0.10, 0.68, 0.14], sharex=ax)
+    left_f, right_f = 0.055, 0.905
+    # 底：三條區間約 0.16；量 0.10；主圖；頭欄
+    range_top = 0.20
+    vol_h = 0.09
+    vol_bot = range_top + 0.01
+    main_bot = vol_bot + vol_h + 0.012
+    main_top = 0.72  # 頭欄＋報價格在上
+    ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
+    vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
     ax.set_facecolor(PAPER)
     vol_ax.set_facecolor(PAPER)
 
-    hi = float(max(float(np.max(ys)), prev, high_px))
-    lo = float(min(float(np.min(ys)), prev, low_px))
+    ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
+    ov.set_xlim(0, 100)
+    ov.set_ylim(0, 100)
+    ov.axis("off")
+    ov.patch.set_alpha(0)
+
+    band_bot = main_top * 100.0
+    ov.add_patch(
+        FancyBboxPatch(
+            (_STRUCTURE_BOX_X, band_bot + 0.35),
+            _STRUCTURE_BOX_W,
+            100.0 - band_bot - float(_STRUCTURE_TOP_PAD) - 0.15,
+            boxstyle=_STRUCTURE_BOX_STYLE,
+            facecolor="#ffffff",
+            edgecolor=_STRUCTURE_BOX_EC,
+            linewidth=_STRUCTURE_BOX_LW,
+            alpha=0.98,
+            zorder=1,
+            clip_on=False,
+        )
+    )
+    for y0, y1 in (
+        (main_bot * 100.0, band_bot - 0.2),
+        (vol_bot * 100.0, (vol_bot + vol_h) * 100.0),
+    ):
+        ov.add_patch(
+            FancyBboxPatch(
+                (_STRUCTURE_BOX_X, y0),
+                _STRUCTURE_BOX_W,
+                max(0.4, y1 - y0),
+                boxstyle=_STRUCTURE_BOX_STYLE,
+                facecolor="none",
+                edgecolor=_STRUCTURE_BOX_EC,
+                linewidth=_STRUCTURE_BOX_LW,
+                alpha=0.98,
+                zorder=0,
+                clip_on=False,
+            )
+        )
+
+    plate = stock_nameplate(series.stock_id, series.name, db_path)
+    header_x = float(_HEADER_X_FB)
+    name_y = 95.6
+    _paint_nameplate(
+        ov, plate, x=header_x, y=float(name_y),
+        title_size=int(_STRUCTURE_TITLE_FS), industry_size=12,
+    )
+
+    quote = {
+        "open": off.open,
+        "high": off.high,
+        "low": off.low,
+        "close": off.close,
+        "prev": off.prev_close,
+        "change": off.change,
+        "pct": off.pct_change,
+        "label": off.close_label,
+        "is_live": False,
+    }
+    try:
+        date_part = format_ymd_slash_weekday(ASOF_YMD)
+    except Exception:
+        date_part = f"{ASOF_YMD[:4]}/{ASOF_YMD[4:6]}/{ASOF_YMD[6:8]}"
+    stamp = f"{date_part} {board_close_clock_label(emerging=is_em)}".strip()
+    # 興櫃無漲跌停：暫把 pct 藏起來讓 spot 不貼漲跌停底，畫完還原數字在 move 列
+    spot_quote = dict(quote)
+    if is_em:
+        spot_quote["pct"] = None  # quote_limit_side 無 pct 就不判停
+        # change 仍在，format_move_plain 要 pct — 改手動
+        spot_quote["change"] = off.change
+        spot_quote["pct"] = off.pct_change * 0.0  # 0 → 不判停；move 列改事後補
+    _paint_spot(
+        ov, spot_quote if not is_em else {**quote, "pct": 0.0, "change": 0.0},
+        x=float(_SPOT_X_NO_LOCATOR), y=float(name_y), align="right",
+        stamp=stamp, move_dy=float(_STRUCTURE_SPOT_ROW_GAP),
+        price_size=int(_STRUCTURE_SPOT_FS),
+        move_size=int(_STRUCTURE_SPOT_MOVE_FS),
+        stamp_size=int(_STRUCTURE_SPOT_STAMP_FS),
+        lab_size=int(_STRUCTURE_SPOT_LAB_FS),
+    )
+    if is_em:
+        # 補回真實漲跌字（無漲跌停底）
+        from tg_layout import format_move_plain
+        from wayne_navigator import quote_move_ink
+
+        move = format_move_plain(off.change, off.pct_change)
+        col = quote_move_ink(off.change, close=off.close, prev=off.prev_close, pct=off.pct_change, up=UP, down=DN, flat=MUTE)
+        # 找到「較昨日」列改字色
+        for t in ov.texts:
+            s = str(t.get_text() or "")
+            if s.startswith("較昨日"):
+                t.set_text("較昨日　" + move)
+                t.set_color(col)
+                if t.get_bbox_patch() is not None:
+                    t.set_bbox(dict(boxstyle="square,pad=0.28", facecolor=col, edgecolor=INK, linewidth=1.2))
+                    t.set_color(PAPER)
+            # 清大價任何漲跌停底
+            if re.fullmatch(r"[\d,.]+", s.strip()) and t.get_fontsize() >= 24:
+                t.set_bbox(None)
+                t.set_color(col)
+
+    # 只做頭欄墨線（名牌黑標＋右漲跌），不准 apply_struct 動主圖 y 軸
+    ink = Ink(fig, "struct", lazy=True)
+    ink.redraw()
+    frames = struct_frames(ink, ov)
+    close_struct_frame_seam(frames)
+    struct_header(ink, ov, frames)
+    if is_em:
+        _scrub_em_limit_labels(fig)
+
+    # 報價格（頭欄下、主圖上）— figure 座標
+    _paint_quote_grid(fig, off, y0=main_top - 0.012, left=left_f, right=right_f)
+
+    # 路徑
+    hi = float(max(float(np.max(ys)), prev, off.high, float(np.max(series.highs))))
+    lo = float(min(float(np.min(ys)), prev, off.low, float(np.min(series.lows))))
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
     ax.set_xlim(0.0, x_end)
-
     ax.axhline(prev, color=MUTE, linestyle=(0, (4, 3)), linewidth=1.35, zorder=2)
-    ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.22, zorder=1)
-    ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.22, zorder=1)
+    ax.axhline(off.high, color=UP, linestyle=(0, (2, 3)), linewidth=0.9, alpha=0.7, zorder=2)
+    ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=0.9, alpha=0.7, zorder=2)
+    ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
+    ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.16, zorder=1)
     for i in range(len(ys) - 1):
         a, b = float(ys[i]), float(ys[i + 1])
         x0, x1 = float(xs[i]), float(xs[i + 1])
+        if x1 - x0 > 8:
+            continue
         if (a >= prev and b >= prev) or (a < prev and b < prev):
-            ax.plot(
-                [x0, x1],
-                [a, b],
-                color=_side_color(a - prev if a != prev else b - prev, UP, DN, MUTE),
-                lw=2.05,
-                solid_capstyle="round",
-                zorder=3,
-            )
+            ax.plot([x0, x1], [a, b], color=(UP if a >= prev else DN), lw=2.05, solid_capstyle="round", zorder=3)
         else:
             if b == a:
                 continue
             t = (prev - a) / (b - a)
             xc = x0 + t * (x1 - x0)
-            ax.plot([x0, xc], [a, prev], color=_side_color(a - prev, UP, DN, MUTE), lw=2.05, zorder=3)
-            ax.plot([xc, x1], [prev, b], color=_side_color(b - prev, UP, DN, MUTE), lw=2.05, zorder=3)
+            ax.plot([x0, xc], [a, prev], color=(UP if a >= prev else DN), lw=2.05, zorder=3)
+            ax.plot([xc, x1], [prev, b], color=(UP if b >= prev else DN), lw=2.05, zorder=3)
 
-    # 昨收標
-    ax.text(
-        0.995,
-        prev,
-        f" 昨收 {_fmt_px(prev)}",
-        fontproperties=fp(9, False),
-        color=MUTE,
-        ha="right",
-        va="bottom",
-        transform=ax.get_yaxis_transform(),
-        zorder=5,
-    )
+    # 右側股價區間標（ref1 感）
+    for px, lab, col in (
+        (off.high, f"日高 {_fmt_face(off.high)}", UP),
+        (prev, f"昨收 {_fmt_face(prev)}", MUTE),
+        (off.low, f"日低 {_fmt_face(off.low)}", DN),
+    ):
+        ax.text(
+            0.995, px, f" {lab}",
+            fontproperties=fp(8.5, True), color=col, ha="right", va="center",
+            transform=ax.get_yaxis_transform(), zorder=5,
+            bbox=dict(boxstyle="square,pad=0.15", facecolor=PAPER, edgecolor=col, linewidth=0.8),
+        )
 
-    # 量柱
+    if series.gap_after is not None:
+        gx0 = _x(series.gap_after)
+        ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.55, zorder=0)
+        vol_ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.55, zorder=0)
+        ax.text(
+            (gx0 + x_end) * 0.5, lo + (hi - lo) * 0.06, "缺資料",
+            fontproperties=fp(11, True), color=MUTE, ha="center", va="bottom", zorder=6,
+        )
+
+    _paint_sparse_marks(ax, series, xs, ys, prev)
+
     if len(xs) >= 2:
         width = max(float(np.median(np.diff(xs))) * 0.75, 0.6)
     else:
         width = 1.0
-    vcols = [_side_color(float(y) - prev, UP, DN, MUTE) for y in ys]
-    vol_ax.bar(xs, vs, width=width, color=vcols, alpha=0.85, zorder=2, linewidth=0)
+    vol_ax.bar(xs, vs, width=width, color=[UP if float(y) >= prev else DN for y in ys], alpha=0.85, zorder=2, linewidth=0)
     vol_ax.set_ylim(0, max(float(np.max(vs)) * 1.15, 1.0))
 
-    # 時刻刻度
-    if str(series.market).upper() == "EM":
-        tick_h = [9, 10, 11, 12, 13, 14, 15]
-    else:
-        tick_h = [9, 10, 11, 12, 13]
+    tick_h = [9, 10, 11, 12, 13, 14, 15] if is_em else [9, 10, 11, 12, 13]
     tick_x = [(h - 9) * 60 for h in tick_h]
-    tick_lab = [f"{h:02d}" for h in tick_h]
     for a in (ax, vol_ax):
         a.set_xticks(tick_x)
         a.tick_params(colors=MUTE, length=3, labelsize=10)
@@ -513,82 +1072,14 @@ def render_path(series: PathSeries, out_path: str) -> str:
             sp.set_linewidth(0.95)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
     ax.set_xticklabels([])
-    vol_ax.set_xticklabels(tick_lab, fontproperties=fp(10, False), color=MUTE)
+    vol_ax.set_xticklabels([f"{h:02d}" for h in tick_h], fontproperties=fp(10, False), color=MUTE)
     for lab in ax.get_yticklabels():
         lab.set_fontproperties(fp(10, False))
         lab.set_color(MUTE)
     vol_ax.set_yticks([])
-    vol_ax.text(
-        0.01,
-        0.92,
-        "量(張)",
-        transform=vol_ax.transAxes,
-        fontproperties=fp(9, False),
-        color=MUTE,
-        va="top",
-        ha="left",
-    )
+    vol_ax.text(0.01, 0.92, "量(張)", transform=vol_ax.transAxes, fontproperties=fp(9, False), color=MUTE, va="top", ha="left")
 
-    # 右側說明（無五檔／內外盤 — 無真 MIS 序列不畫）
-    note_ax = fig.add_axes([0.78, 0.10, 0.18, 0.58])
-    note_ax.set_xlim(0, 1)
-    note_ax.set_ylim(0, 1)
-    note_ax.axis("off")
-    note_ax.add_patch(
-        FancyBboxPatch(
-            (0.0, 0.0),
-            1.0,
-            1.0,
-            boxstyle="square,pad=0.01",
-            facecolor=PAPER,
-            edgecolor=RULE,
-            linewidth=1.0,
-            transform=note_ax.transAxes,
-        )
-    )
-    # 長句手動折行，避免 matplotlib wrap 假開
-    def _wrap(s: str, n: int = 14) -> List[str]:
-        s = str(s or "").strip()
-        if not s:
-            return [""]
-        out: List[str] = []
-        while s:
-            out.append(s[:n])
-            s = s[n:]
-        return out
-
-    note_blocks: List[Tuple[str, bool]] = [("資料來源", True)]
-    for part in _wrap(series.source, 18):
-        note_blocks.append((part, False))
-    note_blocks.append(("", False))
-    for part in _wrap(series.label, 14):
-        note_blocks.append((part, False))
-    note_blocks.extend(
-        [
-            ("", False),
-            (f"點數 {len(ys)}（1 分）", False),
-            (f"首 {times[0].strftime('%H:%M')} → 末 {times[-1].strftime('%H:%M')}", False),
-            ("", False),
-            ("五檔／內外盤", False),
-            ("無真 MIS 欄，不上", False),
-            ("", False),
-            ("不是買訊", True),
-        ]
-    )
-    y = 0.96
-    for line, heavy in note_blocks:
-        if line:
-            note_ax.text(
-                0.06,
-                y,
-                line,
-                fontproperties=fp(10 if heavy else 8.5, heavy),
-                color=INK if heavy else MUTE,
-                ha="left",
-                va="top",
-                transform=note_ax.transAxes,
-            )
-        y -= 0.055 if line else 0.028
+    _paint_range_bars(fig, off, y_bot=0.028, left=left_f, right=right_f)
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     fig.savefig(out_path, facecolor=PAPER, edgecolor="none")
@@ -596,11 +1087,43 @@ def render_path(series: PathSeries, out_path: str) -> str:
     return out_path
 
 
+def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
+    from ink_chart_theme import DN, INK, UP, fp
+    import numpy as np
+
+    marks: List[Tuple[float, float, str, str]] = []
+    for x, y in zip(xs, ys):
+        if float(y) < prev:
+            marks.append((float(x), float(y), "破昨收", DN))
+            break
+    if len(ys):
+        i = int(np.argmin(ys))
+        if float(ys[i]) <= prev * 0.97:
+            marks.append((float(xs[i]), float(ys[i]), "急殺", DN))
+    vs = np.asarray(series.volumes_lots, dtype=float)
+    if len(vs) and float(np.max(vs)) > 0:
+        med = float(np.median(vs[vs > 0])) if np.any(vs > 0) else 0.0
+        i = int(np.argmax(vs))
+        if med > 0 and vs[i] >= med * 6:
+            marks.append((float(xs[i]), float(ys[i]), "爆量", UP if ys[i] >= prev else DN))
+    kept: List[Tuple[float, float, str, str]] = []
+    for m in marks:
+        if any(abs(m[0] - k[0]) < 18 and m[2] == k[2] for k in kept):
+            continue
+        kept.append(m)
+    for x, y, lab, col in kept[:3]:
+        ax.annotate(
+            lab, xy=(x, y), xytext=(8, 12), textcoords="offset points",
+            fontproperties=fp(9, True), color=INK,
+            bbox=dict(boxstyle="square,pad=0.22", facecolor="#FFF8E7", edgecolor=col, linewidth=1.0),
+            zorder=7,
+        )
+
+
 def default_out_dir() -> str:
     env = os.environ.get("WAYNE_INTRADAY_PREVIEW_DIR", "").strip()
     if env:
         return env
-    # Project store media（本回合預覽交付）
     store = "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-open-close-chart-20261029"
     if os.path.isdir(os.path.dirname(store)):
         return store
@@ -608,40 +1131,29 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收（不接話筒）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v3（不接話筒）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
+    ap.add_argument("--ymd", default=ASOF_YMD)
+    ap.add_argument("--prefix", default="preview-v3")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
     out_dir = args.out_dir
     os.makedirs(out_dir, exist_ok=True)
     results: List[Dict[str, Any]] = []
+    notices_all: Dict[str, List[str]] = {}
+
     for sid, name, market in PREVIEW_SYMBOLS:
         slug = _SLUG.get(sid, sid)
-        out_path = os.path.join(out_dir, f"preview-{sid}-{slug}.png")
-        series = fetch_yahoo_1m_today(sid, name, market, db_path=args.db)
+        out_path = os.path.join(out_dir, f"{args.prefix}-{sid}-{slug}.png")
+        series = build_series(sid, name, market, db_path=args.db, ymd=args.ymd)
         if series is None:
-            render_empty(
-                out_path,
-                stock_id=sid,
-                name=name,
-                market=market,
-                reason="Yahoo 1m 今日無可用點列",
-            )
-            results.append(
-                {
-                    "stock_id": sid,
-                    "name": name,
-                    "market": market,
-                    "path": out_path,
-                    "ok": False,
-                    "source": None,
-                    "n": 0,
-                }
-            )
+            render_empty(out_path, stock_id=sid, name=name, market=market, reason="官方日值或路徑不可用")
+            results.append({"stock_id": sid, "name": name, "market": market, "path": out_path, "ok": False, "n": 0})
             print(f"[empty] {sid} {name} -> {out_path}")
             continue
-        render_path(series, out_path)
+        render_path(series, out_path, db_path=args.db)
+        notices_all[sid] = list(series.notices)
         results.append(
             {
                 "stock_id": sid,
@@ -649,31 +1161,44 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "market": market,
                 "path": out_path,
                 "ok": True,
-                "source": series.source,
-                "label": series.label,
                 "n": len(series.closes),
-                "prev": series.prev_close,
-                "last": series.closes[-1],
+                "path_source": series.path_source,
+                "official_source": series.official.source,
                 "t0": series.times[0].isoformat(),
                 "t1": series.times[-1].isoformat(),
+                "gap": series.gap_after.isoformat() if series.gap_after else "",
+                "close": series.official.close,
+                "prev": series.official.prev_close,
+                "turnover_k": series.official.turnover_k,
+                "avg": series.official.avg_price,
+                "amp": series.official.amplitude_pct,
+                "qavg": series.official.q_avg_vol_lots,
+                "w52h": series.official.w52_high,
+                "w52l": series.official.w52_low,
+                "notices": series.notices,
             }
         )
         print(
             f"[ok] {sid} {name} n={len(series.closes)} "
             f"{series.times[0].strftime('%H:%M')}→{series.times[-1].strftime('%H:%M')} "
-            f"src={series.source} -> {out_path}"
+            f"off={series.official.close} -> {out_path}"
         )
 
-    manifest = os.path.join(out_dir, "preview-manifest-20261029.txt")
+    manifest = os.path.join(out_dir, f"{args.prefix}-manifest-20261029.txt")
     with open(manifest, "w", encoding="utf-8") as f:
         f.write(f"as_of_taipei={datetime.now(TZ).isoformat()}\n")
+        f.write(f"version={args.prefix}\n")
         f.write("not_buy_signal=1\n")
         f.write("phone_wired=0\n")
         for r in results:
             f.write(
                 f"{r['stock_id']}\t{r['name']}\t{r['market']}\tok={int(r['ok'])}\t"
-                f"n={r['n']}\tsource={r.get('source') or '-'}\t{r['path']}\n"
+                f"n={r.get('n', 0)}\t{r['path']}\n"
             )
+            for n in r.get("notices") or []:
+                f.write(f"  notice\t{n}\n")
+    with open(os.path.join(out_dir, f"{args.prefix}-notices-20261029.json"), "w", encoding="utf-8") as f:
+        json.dump(notices_all, f, ensure_ascii=False, indent=2)
     print(f"[manifest] {manifest}")
     return 0 if all(r["ok"] for r in results) else 2
 
