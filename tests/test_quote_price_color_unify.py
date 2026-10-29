@@ -26,6 +26,7 @@ def test_px_quote_keeps_etf_official_close():
 
 
 def test_quote_move_ink_up_down_flat():
+    assert LOOKUP_QUOTE_FLAT.lower() in {"#0b0b0b", "#000000", "#212121"}
     assert quote_move_ink(-0.15, close=114.8, prev=114.95) == LOOKUP_CANDLE_DN
     assert quote_move_ink(0.55, close=116.5, prev=115.95) == LOOKUP_CANDLE_UP
     assert quote_move_ink(0.0, close=100.0, prev=100.0) == LOOKUP_QUOTE_FLAT

@@ -59,8 +59,9 @@ VIOLET = "#4A2499"
 NEXT_H = "#08307A"
 SPIKE = "#E8A200"
 CALL = "#D45500"
-SKIN = "#FFF1E4"
-SKIN_HATCH = "#E8B88A"
+# v2d：現任大量區桃色加深（對齊 paint _FILL）；不准再洗成過淡 #FFF1E4 α0.32
+SKIN = "#FFB74D"
+SKIN_HATCH = "#E09040"
 LAYER_FACE = "#F2F4F7"
 LAYER_HATCH = "#A0AAB4"
 GRAYTAG = "#5C5C5C"
@@ -457,10 +458,10 @@ def restyle_bands(ax) -> None:
             wide = p.get_width() >= 0.9 and p.get_transform() != ax.transData
         except Exception:
             wide = False
-        if fc == "#ffe0b2" and wide:
-            # 淡底＋細斜線；降低對比，右端不准出現白塊假影
+        if fc in ("#ffe0b2", "#ffcc80", "#ffd7a8", "#ffb74d") and wide:
+            # v2d 加深桃底＋細斜線；右端不准出現白塊假影
             p.set_facecolor(SKIN)
-            p.set_alpha(0.32)
+            p.set_alpha(0.60)
             p.set_hatch("////")
             p.set_hatchcolor(SKIN_HATCH)
             p.set_edgecolor("none")
@@ -2260,7 +2261,32 @@ def vol_labels(ink: Ink, header, main, sig, volume) -> None:
         t.set_zorder(z + 0.3)
         t.set_gid("ink:label")
         ink.move_text_px(t, x0 + padx, ytop - hh + pady + d1, ha="left", va="baseline")
-        ink.text(main, x0 + padx, ybot + pady + d2, l2, prop=p2, color=INK, ha="left", z=z + 0.3)
+        # 日框「收／現」：紅漲黑平綠跌（漲停特例仍走表頭 chip；框內字跟 move ink）
+        close_col = INK
+        try:
+            raw_c = getattr(ink.fig, "_wayne_close_move_ink", None)
+            if raw_c:
+                close_col = str(raw_c)
+        except Exception:
+            close_col = INK
+        m_close = re.search(r"((?:收|現)[\d,.]+)\s*$", l2)
+        if m_close and m_close.start() > 0:
+            pref = l2[: m_close.start()]
+            bit = m_close.group(1)
+            wp, _, _ = ink.measure(pref, p2)
+            ink.text(main, x0 + padx, ybot + pady + d2, pref, prop=p2, color=INK, ha="left", z=z + 0.3)
+            ink.text(
+                main,
+                x0 + padx + wp,
+                ybot + pady + d2,
+                bit,
+                prop=p2,
+                color=close_col,
+                ha="left",
+                z=z + 0.3,
+            )
+        else:
+            ink.text(main, x0 + padx, ybot + pady + d2, l2, prop=p2, color=INK, ha="left", z=z + 0.3)
         ink.record(s, [l1, l2], "path_note", Bbox.from_extents(x0, ybot, x1, ytop))
     if sig is not None:
         # 點 2／7：量能訊號黑底白字框放回中間訊號列內（對齊主圖左緣），不准漂左外

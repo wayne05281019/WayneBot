@@ -3461,6 +3461,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
     if close is None:
         return
     from wayne_navigator import (
+        LOOKUP_QUOTE_FLAT,
         _draw_mini_candle,
         quote_limit_chip_colors,
         quote_limit_side,
@@ -3469,6 +3470,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
 
     x, y, _w, h = (float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
     prev = quote.get("prev")
+
     color = quote_move_ink(
         quote.get("change"),
         close=close,
@@ -3476,7 +3478,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
         pct=quote.get("pct"),
         up=_UP,
         down=_DN,
-        flat="#455a64",
+        flat=LOOKUP_QUOTE_FLAT,
     )
     chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
@@ -4083,6 +4085,7 @@ def _paint_spot(
     if close is None:
         return
     from wayne_navigator import (
+        LOOKUP_QUOTE_FLAT,
         _draw_mini_candle,
         quote_limit_chip_colors,
         quote_limit_side,
@@ -4090,6 +4093,7 @@ def _paint_spot(
     )
 
     prev = quote.get("prev")
+
     color = quote_move_ink(
         quote.get("change"),
         close=close,
@@ -4097,7 +4101,7 @@ def _paint_spot(
         pct=quote.get("pct"),
         up=_UP,
         down=_DN,
-        flat="#455a64",
+        flat=LOOKUP_QUOTE_FLAT,
     )
     chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
@@ -4624,14 +4628,22 @@ def render_biaoke_structure_png(
         )
     )
     halt_flags = [_bar_is_halt(work[i]) for i in range(n)]
-    # 主大量區桃色帶（與第 4 張 _FILL 同色）；次層淺灰另畫
+    # 主大量區桃色帶（與第 4 張 _FILL 同色／α；v2d 加深）；次層淺灰另畫
     if spike_hi > 0 and spike_lo > 0 and spike_hi >= spike_lo:
+        try:
+            from vol_zone_chart import _FILL as _VZ_FILL
+            from vol_zone_chart import _FILL_ALPHA as _VZ_FILL_A
+
+            _band_c = str(_VZ_FILL)
+            _band_a = float(_VZ_FILL_A)
+        except Exception:
+            _band_c, _band_a = "#ffb74d", 0.62
         try:
             ax1.axhspan(
                 float(spike_lo),
                 float(spike_hi),
-                color=_WINDOW_BG,
-                alpha=0.42,
+                color=_band_c,
+                alpha=_band_a,
                 zorder=0,
             )
         except Exception:

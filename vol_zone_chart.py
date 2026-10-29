@@ -60,11 +60,11 @@ VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
 # 查股結構／大量區 ensure 並行抓月表：上限 3，縮短第二→第三體感；不准跳過真量
 _ENSURE_MONTH_FETCH_WORKERS = 3
-# 現任主大量區壓／撐＝大檔字級（兩者同大）。2026-10-29 再略縮自 14（減雜訊；
-# 仍明顯大於舊下一層 LAYER_TAG_PT≈8.5）。大小跟「是否現任主區」走：find_volume_zone
-# 重算後新主區走這條大檔；下一層現改淺灰價帶不畫角標。
-VOL_ZONE_TAG_PT = 12.5
-VOL_ZONE_TAG_PAD = 0.21  # 主區框；隨字級略縮，仍大於舊 LAYER_TAG_PAD
+# 現任主大量區壓／撐＝大檔字級（兩者同大）。2026-10-29 v2d 再略縮自 12.5
+# （減雜訊；仍明顯大於舊下一層 LAYER_TAG_PT≈8.5）。大小跟「是否現任主區」走：
+# find_volume_zone 重算後新主區走這條大檔；下一層現改淺灰價帶不畫角標。
+VOL_ZONE_TAG_PT = 11.0
+VOL_ZONE_TAG_PAD = 0.18  # 主區框；隨字級略縮，仍大於舊 LAYER_TAG_PAD
 VOL_ZONE_JPEG_QUALITY = 95
 VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
 VOL_ZONE_FIG_H_NAV = 9.35
@@ -107,11 +107,13 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 65  # 結構 save220＋大量 save238＋ink 少 redraw（2026-10-28）
+_VZ_PAINT_VER = 66  # v2d：桃色加深＋主區標略縮＋收價紅黑綠（2026-10-29）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
-_FILL = "#ffe0b2"
+# 現任大量區底：加深桃（v2d）；墨線 restyle 同步加深，不准再洗成過淡膚色
+_FILL = "#ffb74d"
+_FILL_ALPHA = 0.62
 _PRESS = "#ad1457"
 # 2026-10-29：撐色加深（話筒縮圖可讀）；壓維持
 _HOLD = "#0a4d1c"
@@ -5184,9 +5186,9 @@ def _paint_volume_zone(
         _spine.set_color("#cfd8dc")
         _spine.set_linewidth(0.7)
 
-    # 桃色大量區（略透，K／箭頭更清楚）。2026-10-29 鎖臉：主區只留色帶，
+    # 桃色大量區（v2d 加深；K／箭頭仍可讀）。2026-10-29 鎖臉：主區只留色帶，
     # 不畫壓／撐水平線；角標「大量區壓／撐」仍留（見 _paint_key_zone_smart_tags）。
-    ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
+    ax1.axhspan(lo, hi, color=_FILL, alpha=float(_FILL_ALPHA), zorder=0)
     # 爆大量日豎線：極小間距虛線，避免實線切過 K／量看不清
     ax1.axvline(
         spike_i,
@@ -5376,6 +5378,24 @@ def _paint_volume_zone(
             bars_face = face_bars or bars_face
             last_hi = float(last_bar.get("high") or last_hi or 0)
             last_cl = float(last_bar.get("close") or last_cl or 0)
+        # 日框／表頭收價色同源：紅漲黑平綠跌（漲停特例之後表頭再覆寫）
+        try:
+            from wayne_navigator import LOOKUP_QUOTE_FLAT, quote_move_ink
+
+            _prev_for_ink = None
+            if hdr_quote and hdr_quote.get("prev") is not None:
+                _prev_for_ink = float(hdr_quote["prev"])
+            elif n >= 2:
+                _prev_for_ink = float(view.iloc[-2]["close"])
+            fig._wayne_close_move_ink = quote_move_ink(  # type: ignore[attr-defined]
+                close=float(last_bar.get("close") or last_cl or 0),
+                prev=_prev_for_ink,
+                up=_UP,
+                down=_DN,
+                flat=LOOKUP_QUOTE_FLAT,
+            )
+        except Exception:
+            pass
         path_msg = vol_zone_day_path_label(
             float(hi),
             float(lo),
@@ -6273,18 +6293,37 @@ def _paint_volume_zone(
             else "收"
         )
         close_bit = f"{close_lab}{_fmt_price(close_px)}"
+        _lim = ""
         try:
-            from wayne_navigator import quote_move_ink
+            from wayne_navigator import LOOKUP_QUOTE_FLAT, quote_limit_side, quote_move_ink
 
+            # 收價色：紅漲／黑平／綠跌；漲停／跌停特例另走（墨線 chip）
             close_ink = quote_move_ink(
                 close=float(close_px),
                 prev=prev_close_hdr,
                 up=_UP,
                 down=_DN,
-                flat="#455a64",
+                flat=LOOKUP_QUOTE_FLAT,
             )
+            _lim = str(
+                quote_limit_side(
+                    float(close_px),
+                    prev_close_hdr,
+                    None,
+                )
+                or ""
+            )
+            if _lim == "up":
+                close_ink = _UP
+            elif _lim == "down":
+                close_ink = _DN
         except Exception:
             close_ink = _TEXT
+        try:
+            fig._wayne_close_move_ink = str(close_ink)  # type: ignore[attr-defined]
+            fig._wayne_close_limit_side = str(_lim or "")  # type: ignore[attr-defined]
+        except Exception:
+            pass
         intro_right = str(ex_title or "")
         ax_head.text(
             0.5,
