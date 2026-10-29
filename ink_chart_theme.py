@@ -1870,10 +1870,58 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     pass
                 label = cs
                 limit_side = _detect_limit_from_header(header)
-                wc, hc, dc = ink.measure(label, pc)
+                # 收／現：字級／位置鎖死原本（CLOSE_FS＋低右縫）；不准為塞昨比縮小或左移
+                # 昨比：收右剩餘上下並排（上點數、下％），字加大仍 < 收；普通日不上色底
+                move_plain = ""
+                move_pts = ""
+                move_pct_s = ""
+                try:
+                    move_plain = str(
+                        getattr(ink.fig, "_wayne_close_move_plain", "") or ""
+                    ).strip()
+                    move_pts = str(
+                        getattr(ink.fig, "_wayne_close_move_pts", "") or ""
+                    ).strip()
+                    move_pct_s = str(
+                        getattr(ink.fig, "_wayne_close_move_pct", "") or ""
+                    ).strip()
+                except Exception:
+                    move_plain = move_pts = move_pct_s = ""
+                _move_re = re.compile(
+                    r"^[▲▼]\s*[\d,.]+([\s]+)?[\(（][+\-]?\d+\.\d+%[\)）]$|^0\.00([\s]+)?[\(（]0\.00%[\)）]$"
+                )
+                for _mt in list(header.texts):
+                    # 已墨線新字（開／高／低／壓／撐數字）不准當昨比殘影清掉
+                    if str(_mt.get_gid() or "").startswith("ink:"):
+                        continue
+                    _ms = str(_mt.get_text() or "").strip()
+                    # 只清帶 ▲▼ 的昨比／％；裸數字＝表頭開高低，不准誤藏
+                    if not _move_re.fullmatch(_ms) and not re.fullmatch(
+                        r"^[▲▼][\d,.]+$", _ms
+                    ) and not re.fullmatch(r"^[\(（][+\-]?\d+\.\d+%[\)）]$", _ms):
+                        continue
+                    if not move_plain:
+                        move_plain = _ms
+                    _mt.set_visible(False)
+                    _mt.set_gid("ink:replaced")
+                if not move_pts or not move_pct_s:
+                    # 後備：從單行 plain 拆上下
+                    _mp = (
+                        (move_plain or "")
+                        .replace("▲ ", "▲")
+                        .replace("▼ ", "▼")
+                        .replace("（", "(")
+                        .replace("）", ")")
+                        .strip()
+                    )
+                    _mm = re.match(
+                        r"^([▲▼]?[\d,.]+)\s*(\([+\-]?\d+\.\d+%\))$", _mp
+                    )
+                    if _mm:
+                        move_pts = move_pts or _mm.group(1)
+                        move_pct_s = move_pct_s or _mm.group(2)
+                pc = fp(CLOSE_FS, heavy=True)
                 badge_pad_x = ink.pt(10)
-                # 固定跟在「低」右側；寧願時間戳微讓，不准收字左移壓低
-                x_badge = x_low_end + MIN_LOW_CLOSE_GAP
                 if limit_side == "up":
                     fc = LIMIT_UP
                     if "漲停" not in label:
@@ -1890,20 +1938,21 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     tc = PAPER
                 else:
                     fc = None
+                    wc, hc, dc = ink.measure(label, pc)
                     badge_w = wc + ink.pt(4)
                     tc = move_tc
-                badge_right = x_badge + badge_w
-                # 時間戳微讓：收到收字右側，仍靠外框右緣
+                x_badge = x_low_end + MIN_LOW_CLOSE_GAP
+                # 時間戳微讓：先按「收」右緣讓位（原本邏輯）；昨比再吃收右剩餘
+                stamp_w = 0.0
+                stamp_gap = ink.pt(10)
                 if stamp is not None:
                     try:
                         sw, sh, sd = ink.measure(str(stamp.get_text()), fp(10.5, heavy=False))
                         stamp_w = sw + ink.pt(18)
-                        stamp_gap = ink.pt(10)
-                        stamp_left_need = badge_right + stamp_gap
                         stamp_right = right_px - ink.pt(2)
+                        stamp_left_need = x_badge + badge_w + stamp_gap
                         if stamp_left_need + stamp_w > stamp_right:
                             stamp_right = right_px - ink.pt(1)
-                            stamp_left_need = min(stamp_left_need, stamp_right - stamp_w)
                         stamp.set_fontproperties(fp(10.5, heavy=False))
                         stamp.set_color(INK2)
                         stamp.set_bbox(
@@ -1915,7 +1964,7 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                         stamp.set_ha("right")
                         ink.record(str(stamp.get_text()), [str(stamp.get_text())], "stamp", ink.shell_ext(stamp))
                     except Exception:
-                        pass
+                        stamp_w = ink.pt(140)
                 if fc is not None:
                     ink.rect(
                         header,
@@ -1946,6 +1995,68 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                         z=22,
                     )
                     sync_col = tc
+                move_right = x_badge + badge_w
+                if move_pts and move_pct_s:
+                    # 上下並排加大字（仍 < CLOSE_FS）；寬度吃收右剩餘，只縮昨比不縮收
+                    close_right = x_badge + float(wc)
+                    room = max(0.0, (right_px - ink.pt(4)) - close_right - ink.pt(3))
+                    # 手機縮圖可讀：起點約 15.5（收＝20）
+                    move_fs = min(15.5, float(CLOSE_FS) - 4.0)
+                    move_prop = fp(move_fs, heavy=True)
+                    wp = hp = dp = 0.0
+                    wc2 = hc2 = dc2 = 0.0
+                    for _ in range(12):
+                        move_prop = fp(move_fs, heavy=True)
+                        wp, hp, dp = ink.measure(move_pts, move_prop)
+                        wc2, hc2, dc2 = ink.measure(move_pct_s, move_prop)
+                        if max(wp, wc2) <= room or move_fs <= 11.0:
+                            break
+                        move_fs -= 0.5
+                    if room > 0 and max(wp, wc2) <= room:
+                        mx = close_right + ink.pt(4)
+                        if limit_side == "up":
+                            move_col = UP
+                        elif limit_side == "down":
+                            move_col = DN
+                        else:
+                            move_col = tc
+                        # 兩行總高對齊收字垂直中心；行距略緊仍可讀
+                        gap = ink.pt(1.2)
+                        block_h = hp + hc2 + gap
+                        y_top = cy_close + block_h / 2 - hp
+                        y_bot = y_top - gap - hc2
+                        ink.text(
+                            header,
+                            mx,
+                            y_top + dp,
+                            move_pts,
+                            prop=move_prop,
+                            color=move_col,
+                            ha="left",
+                            z=22,
+                        )
+                        ink.text(
+                            header,
+                            mx,
+                            y_bot + dc2,
+                            move_pct_s,
+                            prop=move_prop,
+                            color=move_col,
+                            ha="left",
+                            z=22,
+                        )
+                        move_right = mx + max(wp, wc2) + ink.pt(2)
+                        ink.record(
+                            f"{move_pts}\n{move_pct_s}",
+                            [move_pts, move_pct_s],
+                            "close_move",
+                            Bbox.from_extents(
+                                mx,
+                                y_bot,
+                                mx + max(wp, wc2),
+                                y_top + hp,
+                            ),
+                        )
                 close_t.set_visible(False)
                 close_t.set_gid("ink:replaced")
                 ink._low_end_x = float(x_low_end)

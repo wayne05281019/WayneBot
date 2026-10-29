@@ -392,20 +392,23 @@ def test_volume_first_and_find_zone_same_window_synthetic():
 
 
 def _assert_2233_spike_zone(zone: dict, st: dict) -> None:
-    """2233 近窗爆大量：結構＝大量區；lookback=40 滾到 10/27 後 08/25 出窗改 08/26。"""
+    """2233 近窗爆大量：結構＝大量區；lookback=40 滾動後近窗最大日可換，兩圖必須同日。"""
     assert zone and st
     spike = str(zone["date"]).replace("-", "")[:8]
     assert str(st["spike_date"]).replace("-", "")[:8] == spike
     assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
     assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
-    # 08/25 量 3929（高173／低157.5）；出窗後近窗最大為 08/26（177／163.5）
-    assert spike in ("20260825", "20260826"), spike
+    # 08/25（173／157.5）→出窗 08/26（177／163.5）→再滾 10/29 近窗最大 08/27（179.5／172）
+    assert spike in ("20260825", "20260826", "20260827"), spike
     if spike == "20260825":
         assert abs(float(zone["high"]) - 173.0) < 0.51
         assert abs(float(zone["low"]) - 157.5) < 0.51
-    else:
+    elif spike == "20260826":
         assert abs(float(zone["high"]) - 177.0) < 0.51
         assert abs(float(zone["low"]) - 163.5) < 0.51
+    else:
+        assert abs(float(zone["high"]) - 179.5) < 0.51
+        assert abs(float(zone["low"]) - 172.0) < 0.51
 
 
 def test_structure_spike_matches_vol_zone_for_2233():

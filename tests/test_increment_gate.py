@@ -315,12 +315,14 @@ def test_increment_job_sends_done_only_after_gate_passes():
     from main_runner import MainRunner
 
     src = inspect.getsource(MainRunner.run_increment_job)
-    fail_at = src.index("if not self._increment_ok")
+    # 2026-10-30：成功前必過興櫃閘＋_increment_ok（listed_ok）
+    fail_at = src.index("if not em_gate.get(\"ok\") or not listed_ok")
     done_at = src.index("_fuse_done_message")
     assert fail_at < done_at
     before_done = src[:done_at]
     assert "return False" in before_done
     assert "盤後繼續補齊" in before_done
+    assert "融合興櫃閘" in before_done
     assert "_fuse_done_message" not in src.split("return False")[0]
 
 
