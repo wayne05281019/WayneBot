@@ -56,7 +56,10 @@ def test_paint_draws_ma60_and_query_stamp():
     assert "fig.text" in src and "0.985" in src  # 整圖右上時間戳
     assert "_paint_key_zone_smart_tags" in src
     assert "大量區壓" in key_src and "大量區撐" in key_src
-    assert "linewidth=0.78" in src  # 壓／撐水平線再細
+    # 2026-10-29 v2e：主區只留桃色帶，不畫壓／撐硬水平線；角標仍在
+    assert "axhspan" in src
+    assert "不畫壓／撐水平線" in src
+    assert "linewidth=0.78" not in src
     assert "_paint_ma_line_labels" in src
     assert '"月"' in src and '"季"' in src
     assert '"5"' in src and '"10"' in src

@@ -3463,6 +3463,8 @@ def paint_vol_zone_parallel_channel(
             )
             art = None
             ok = False
+            # 縮圖近端柱帶：軌標不准停這段（即使幾何「淨空」仍會蓋近端 K）
+            _recent_cut = float(max(n - 1, 1)) - max(6.0, float(n) * 0.12)
             if np.isfinite(float(cx)) and np.isfinite(float(cy)):
                 box0 = (
                     float(cx) - dx / 2.0,
@@ -3470,6 +3472,7 @@ def paint_vol_zone_parallel_channel(
                     float(cy) - dy / 2.0,
                     float(cy) + dy / 2.0,
                 )
+                mid_x = 0.5 * (float(box0[0]) + float(box0[1]))
                 blocked = _channel_box_blocked(
                     *box0,
                     n=int(n),
@@ -3483,7 +3486,7 @@ def paint_vol_zone_parallel_channel(
                     ignore_ma=True,
                     ignore_k=False,
                 )
-                if not blocked:
+                if (not blocked) and mid_x <= _recent_cut:
                     art = ax.text(
                         float(cx),
                         float(cy),
@@ -3527,72 +3530,217 @@ def paint_vol_zone_parallel_channel(
                     except Exception:
                         pass
             if not ok and float(y_px) > 0:
+                # 保底仍要名＋價；不准盲放右緣蓋縮圖 K（2026-10-29）
                 fs_min = float(_STOCK_TREND_LABEL_FS_MIN)
                 shown_q = f"{lab} {_fmt_price(y_px)}"
-                tx = float(min(max(float(n) - 3.2, 2.0), float(n) - 0.8))
-                ty = float(
-                    _channel_seg_y(seg, tx, float(y_px)) if seg else float(y_px)
+                dx_q, dy_q = _channel_text_box_data(
+                    ax,
+                    shown_q,
+                    n=int(n),
+                    ymin=float(ymin),
+                    ymax=float(ymax),
+                    fs=float(fs_min),
                 )
-                ty = min(
-                    max(ty, float(ymin) + y_span * 0.03),
-                    float(ymax) - y_span * 0.03,
-                )
+                n_f = float(max(n - 1, 1))
+                # 優先成對同帶／中左空窗；硬拒最近約 12% 柱（縮圖近端）
+                edge_trials: List[float] = []
                 if _pair_x is not None:
-                    tx = float(min(max(float(_pair_x), 2.0), float(n) - 0.8))
+                    edge_trials.append(
+                        float(min(max(float(_pair_x), 1.0), n_f - 0.8))
+                    )
+                for frac in (
+                    0.22,
+                    0.32,
+                    0.42,
+                    0.52,
+                    0.62,
+                    0.12,
+                    0.72,
+                    0.08,
+                ):
+                    edge_trials.append(float(min(max(n_f * frac, 1.0), n_f - 0.8)))
+                # 去重保序
+                _seen_tx: set = set()
+                _uniq: List[float] = []
+                for _t in edge_trials:
+                    _k = round(float(_t), 2)
+                    if _k in _seen_tx:
+                        continue
+                    _seen_tx.add(_k)
+                    _uniq.append(float(_t))
+                placed_fb = False
+                recent_cut = float(n_f) - max(6.0, float(n) * 0.12)
+                for tx in _uniq:
+                    if float(tx) > recent_cut:
+                        continue
                     ty = float(
-                        _channel_seg_y(seg, tx, float(y_px)) if seg else float(y_px)
+                        _channel_seg_y(seg, float(tx), float(y_px))
+                        if seg
+                        else float(y_px)
                     )
                     ty = min(
                         max(ty, float(ymin) + y_span * 0.03),
                         float(ymax) - y_span * 0.03,
                     )
-                art = ax.text(
-                    tx,
-                    ty,
-                    shown_q,
-                    ha="center",
-                    va="center",
-                    fontproperties=_fp(fs_min, "bold"),
-                    color=color,
-                    zorder=12,
-                    clip_on=False,
-                    bbox=dict(
-                        boxstyle="round,pad=0.12",
-                        facecolor="#ffffff",
-                        edgecolor=color,
-                        linewidth=0.7,
-                        alpha=0.94,
-                    ),
-                )
-                try:
-                    art.set_gid("ink:quiet-rail-label")
-                except Exception:
-                    pass
-                label_artists.append(art)
-                placed.append(
-                    (
-                        float(tx) - 2.2,
-                        float(tx) + 2.2,
-                        float(ty) - y_span * 0.025,
-                        float(ty) + y_span * 0.025,
-                    )
-                )
-                try:
-                    from smart_label_metrics import record_smart_label
+                    # 沿軌上下微移避 K
+                    for dy_off in (0.0, dy_q * 0.85, -dy_q * 0.85, dy_q * 1.5, -dy_q * 1.5):
+                        ty2 = float(ty) + float(dy_off)
+                        ty2 = min(
+                            max(ty2, float(ymin) + y_span * 0.03),
+                            float(ymax) - y_span * 0.03,
+                        )
+                        box_q = (
+                            float(tx) - dx_q / 2.0,
+                            float(tx) + dx_q / 2.0,
+                            float(ty2) - dy_q / 2.0,
+                            float(ty2) + dy_q / 2.0,
+                        )
+                        if _channel_box_blocked(
+                            *box_q,
+                            n=int(n),
+                            ymin=float(ymin),
+                            ymax=float(ymax),
+                            highs=hi_arr,
+                            lows=lo_arr,
+                            mas=ma_arrs,
+                            placed=placed,
+                            mark_pad=mark_pad,
+                            ignore_ma=True,
+                            ignore_k=False,
+                        ):
+                            continue
+                        art = ax.text(
+                            float(tx),
+                            float(ty2),
+                            shown_q,
+                            ha="center",
+                            va="center",
+                            fontproperties=_fp(fs_min, "bold"),
+                            color=color,
+                            zorder=12,
+                            clip_on=False,
+                            bbox=dict(
+                                boxstyle="round,pad=0.12",
+                                facecolor="#ffffff",
+                                edgecolor=color,
+                                linewidth=0.7,
+                                alpha=0.94,
+                            ),
+                        )
+                        try:
+                            art.set_gid("ink:quiet-rail-label")
+                        except Exception:
+                            pass
+                        label_artists.append(art)
+                        placed.append(box_q)
+                        placed_fb = True
+                        try:
+                            from smart_label_metrics import record_smart_label
 
-                    record_smart_label(
-                        ax,
-                        kind="channel_u" if outside > 0 else "channel_l",
-                        text=str(shown_q),
-                        x0=float(tx) - 2.2,
-                        x1=float(tx) + 2.2,
-                        y0=float(ty) - y_span * 0.025,
-                        y1=float(ty) + y_span * 0.025,
-                        rail_y=float(ty),
-                        clipped=False,
+                            record_smart_label(
+                                ax,
+                                kind="channel_u" if outside > 0 else "channel_l",
+                                text=str(shown_q),
+                                x0=float(box_q[0]),
+                                x1=float(box_q[1]),
+                                y0=float(box_q[2]),
+                                y1=float(box_q[3]),
+                                rail_y=float(ty2),
+                                clipped=False,
+                            )
+                        except Exception:
+                            pass
+                        break
+                    if placed_fb:
+                        break
+                if not placed_fb:
+                    # 最後：軸外價溝（axes x>1），名＋價保留、不蓋軸內 K
+                    ty = min(
+                        max(float(y_px), float(ymin) + y_span * 0.03),
+                        float(ymax) - y_span * 0.03,
                     )
-                except Exception:
-                    pass
+                    for ax_x in (1.035, 1.028, 1.042, 1.02):
+                        art = ax.text(
+                            float(ax_x),
+                            float(ty),
+                            shown_q,
+                            transform=blended_transform_factory(
+                                ax.transAxes, ax.transData
+                            ),
+                            ha="right",
+                            va="center",
+                            fontproperties=_fp(fs_min, "bold"),
+                            color=color,
+                            zorder=12,
+                            clip_on=False,
+                            bbox=dict(
+                                boxstyle="round,pad=0.12",
+                                facecolor="#ffffff",
+                                edgecolor=color,
+                                linewidth=0.7,
+                                alpha=0.94,
+                            ),
+                        )
+                        try:
+                            art.set_gid("ink:quiet-rail-gutter")
+                        except Exception:
+                            pass
+                        # 擋刻度就換位
+                        hit_tick = False
+                        try:
+                            ax.figure.canvas.draw()
+                            ren = ax.figure.canvas.get_renderer()
+                            bb = art.get_window_extent(ren)
+                            ab = ax.get_window_extent(ren)
+                            mid = 0.5 * (float(bb.x0) + float(bb.x1))
+                            if mid < float(ab.x1) - 0.5:
+                                hit_tick = True
+                            for tlab in ax.get_yticklabels():
+                                if not tlab.get_visible():
+                                    continue
+                                tb = tlab.get_window_extent(ren)
+                                if not (
+                                    bb.x1 + 1 < tb.x0
+                                    or bb.x0 - 1 > tb.x1
+                                    or bb.y1 + 1 < tb.y0
+                                    or bb.y0 - 1 > tb.y1
+                                ):
+                                    hit_tick = True
+                                    break
+                        except Exception:
+                            hit_tick = False
+                        if hit_tick:
+                            try:
+                                art.remove()
+                            except Exception:
+                                pass
+                            continue
+                        label_artists.append(art)
+                        placed.append(
+                            (
+                                float(n) + 0.2,
+                                float(n) + 2.0,
+                                float(ty) - dy_q / 2.0,
+                                float(ty) + dy_q / 2.0,
+                            )
+                        )
+                        try:
+                            from smart_label_metrics import record_smart_label
+
+                            record_smart_label(
+                                ax,
+                                kind="channel_u" if outside > 0 else "channel_l",
+                                text=str(shown_q),
+                                x0=float(n) + 0.2,
+                                x1=float(n) + 2.0,
+                                y0=float(ty) - dy_q / 2.0,
+                                y1=float(ty) + dy_q / 2.0,
+                                rail_y=float(ty),
+                                clipped=False,
+                            )
+                        except Exception:
+                            pass
+                        break
             continue
         # 先探真 bbox 尺寸，再口袋；畫完後像素驗收，撞 K 就重試／強制掃真空窗
         dx, dy = _probe_channel_label_dxdy(
