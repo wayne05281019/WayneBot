@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Preview-only v3：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v4：今日開→收墨線臉（查股第 5 張候選）。
 
 - 頭欄＝結構／大量區同款（nameplate＋spot → ``apply_struct``）。
 - 附圖二資訊：今開／最高／量、昨收／最低／成交額、均價／振幅（有真數才畫）。
 - 底部三條：季均量 vs 當日量、日低–日高（開盤／最新）、52週低–高。
-- 主圖右側股價區間標（昨收／日高／日低）；興櫃軸到 15:00，缺點標缺資料不准捏。
+- 主圖右側股價區間標（昨收／日高／日低）；興櫃軸到 15:00。
+- 興櫃路徑＝Yahoo ``StockServices.priceByTimes``（.TWO，約 5 秒彙整）；
+  有午後點就不畫缺資料灰帶。面值仍官方日表。上市櫃仍 Yahoo 1m chart。
 - 不准接話筒／不准合 main；臉不寫出處。
 """
 from __future__ import annotations
@@ -15,8 +17,9 @@ import os
 import re
 import sqlite3
 import sys
+import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote as url_quote
 from zoneinfo import ZoneInfo
@@ -170,6 +173,177 @@ def fetch_yahoo_1m_path(
             continue
     sys.stderr.write(f"[path-skip] {stock_id}: {last_err}\n")
     return None
+
+
+def _parse_yahoo_utc(ts: str) -> Optional[datetime]:
+    raw = str(ts or "").strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(TZ)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _aggregate_prints_to_1m(
+    prints: List[Tuple[datetime, float, float]],
+    *,
+    ymd: str,
+    sess_end_hm: int = 1500,
+) -> Dict[str, List[Any]]:
+    """5 秒彙整價 → 1 分 OHLC；volumeK（千股＝張）加總。"""
+    buckets: Dict[datetime, List[Tuple[float, float]]] = {}
+    for dt, price, vol_k in prints:
+        if not dt.strftime("%Y%m%d").startswith(ymd):
+            continue
+        hm = dt.hour * 100 + dt.minute
+        if hm < 900 or hm > sess_end_hm:
+            continue
+        key = dt.replace(second=0, microsecond=0)
+        buckets.setdefault(key, []).append((price, vol_k))
+    times: List[datetime] = []
+    opens: List[float] = []
+    highs: List[float] = []
+    lows: List[float] = []
+    closes: List[float] = []
+    vols: List[float] = []
+    for key in sorted(buckets.keys()):
+        rows = buckets[key]
+        prices = [p for p, _ in rows]
+        times.append(key)
+        opens.append(prices[0])
+        highs.append(max(prices))
+        lows.append(min(prices))
+        closes.append(prices[-1])
+        vols.append(sum(v for _, v in rows))
+    return {
+        "times": times,
+        "opens": opens,
+        "highs": highs,
+        "lows": lows,
+        "closes": closes,
+        "volumes_lots": vols,
+    }
+
+
+def fetch_yahoo_price_by_times(
+    stock_id: str,
+    *,
+    ymd: str = ASOF_YMD,
+    yahoo_suffix: str = "TWO",
+    max_pages: int = 120,
+) -> Optional[Dict[str, Any]]:
+    """興櫃分時：Yahoo TW ``StockServices.priceByTimes``（約 5 秒彙整，可到 15:00）。
+
+    面值仍走官方日表；此路徑只負責折線形狀。非官方逐筆。
+    """
+    import requests
+
+    yid = f"{stock_id}.{yahoo_suffix}"
+    headers = {
+        **_ua(),
+        "Referer": f"https://tw.stock.yahoo.com/quote/{yid}/time-sales",
+        "Accept": "application/json,text/plain,*/*",
+    }
+    prints: List[Tuple[datetime, float, float]] = []
+    offset: Optional[str] = "0"
+    pages = 0
+    last_err = ""
+    seen_offsets: set = set()
+    while offset is not None and pages < max_pages:
+        if offset in seen_offsets:
+            break
+        seen_offsets.add(offset)
+        url = (
+            "https://tw.stock.yahoo.com/_td-stock/api/resource/"
+            f"StockServices.priceByTimes;symbol={url_quote(yid, safe='')};offset={offset}"
+        )
+        try:
+            resp = requests.get(url, timeout=20, headers=headers)
+            if resp.status_code != 200:
+                last_err = f"HTTP {resp.status_code}"
+                break
+            payload = resp.json() or {}
+        except Exception as exc:  # noqa: BLE001
+            last_err = str(exc)
+            break
+        rows = payload.get("priceByTimes") or []
+        if not isinstance(rows, list):
+            last_err = "bad priceByTimes shape"
+            break
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            dt = _parse_yahoo_utc(str(row.get("time") or ""))
+            if dt is None:
+                continue
+            try:
+                price = float(str(row.get("price") or "").replace(",", ""))
+            except Exception:  # noqa: BLE001
+                continue
+            try:
+                vol_k = float(str(row.get("volumeK") or "0").replace(",", "") or "0")
+            except Exception:  # noqa: BLE001
+                vol_k = 0.0
+            prints.append((dt, price, vol_k))
+        pages += 1
+        pag = payload.get("pagination") or {}
+        nxt = pag.get("nextOffset")
+        if nxt is None or nxt == "" or str(nxt) == str(offset):
+            offset = None
+        else:
+            offset = str(nxt)
+            time.sleep(0.05)
+    if len(prints) < 2:
+        sys.stderr.write(f"[priceByTimes-skip] {stock_id}: {last_err or 'points<2'}\n")
+        return None
+    # API 由新到舊；去重後升序
+    uniq: Dict[datetime, Tuple[float, float]] = {}
+    for dt, price, vol_k in prints:
+        uniq[dt] = (price, vol_k)
+    ordered = [(dt, uniq[dt][0], uniq[dt][1]) for dt in sorted(uniq.keys())]
+    agg = _aggregate_prints_to_1m(ordered, ymd=ymd, sess_end_hm=1500)
+    if len(agg["closes"]) < 2:
+        sys.stderr.write(f"[priceByTimes-skip] {stock_id}: 1m bars<2\n")
+        return None
+    n_after = sum(1 for t in agg["times"] if t.hour * 100 + t.minute > 1330)
+    return {
+        "yahoo_symbol": yid,
+        "times": agg["times"],
+        "closes": agg["closes"],
+        "volumes_lots": agg["volumes_lots"],
+        "opens": agg["opens"],
+        "highs": agg["highs"],
+        "lows": agg["lows"],
+        "source": f"yahoo:priceByTimes:1m:{yid}",
+        "prints_n": len(ordered),
+        "pages": pages,
+        "n_after_1330": n_after,
+        "path_min": min(agg["lows"]),
+        "path_max": max(agg["highs"]),
+    }
+
+
+def fetch_intraday_path(
+    stock_id: str,
+    market: str,
+    *,
+    db_path: Optional[str] = None,
+    ymd: str = ASOF_YMD,
+) -> Optional[Dict[str, Any]]:
+    """上市櫃＝Yahoo 1m chart；興櫃＝priceByTimes（午後可到 15:00）。"""
+    if str(market).upper() == "EM":
+        path = fetch_yahoo_price_by_times(stock_id, ymd=ymd, yahoo_suffix="TWO")
+        if path is not None:
+            return path
+        sys.stderr.write(f"[em-fallback-1m] {stock_id}: priceByTimes miss → chart 1m\n")
+    return fetch_yahoo_1m_path(stock_id, market, db_path=db_path, ymd=ymd)
 
 
 def _hist_stats(stock_id: str, market: str, db_path: str, *, ymd: str) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -494,18 +668,21 @@ def _detect_notices(
             out.append(f"破昨收　{crossed.strftime('%H:%M')} 起跌破 {_fmt_face(prev)}")
         else:
             out.append(f"破昨收　官方收 {_fmt_face(off.close)} ＜ 昨收 {_fmt_face(prev)}")
+    # 急殺＝路徑內最陡 8–20 分跌幅（與臉上標同規則）；缺資料邊界不算
     kill = None
     for i, c0 in enumerate(closes):
+        if c0 <= 0:
+            continue
         t0 = series_times[i]
         for j in range(i + 1, len(closes)):
             mins = (series_times[j] - t0).total_seconds() / 60.0
             if mins > 20:
                 break
-            if mins >= 8 and c0 > 0 and (closes[j] - c0) / c0 <= -0.05:
-                kill = (t0, series_times[j], (closes[j] - c0) / c0 * 100.0)
-                break
-        if kill:
-            break
+            if mins < 8:
+                continue
+            drop_pct = (closes[j] - c0) / c0 * 100.0
+            if drop_pct <= -5.0 and (kill is None or drop_pct < kill[2]):
+                kill = (t0, series_times[j], drop_pct)
     if kill:
         out.append(
             f"急殺段　{kill[0].strftime('%H:%M')}→{kill[1].strftime('%H:%M')}　{kill[2]:+.1f}%"
@@ -535,11 +712,12 @@ def _detect_notices(
             out.append("回測失敗　反彈未站回昨收")
     if str(market).upper() == "EM" and series_times:
         t1 = series_times[-1]
-        if t1.hour * 100 + t1.minute < 1500:
+        n_aft = sum(1 for t in series_times if t.hour * 100 + t.minute > 1330)
+        if n_aft <= 0 and t1.hour * 100 + t1.minute <= 1330:
             out.insert(0, f"缺資料　路徑末 {t1.strftime('%H:%M')}→15:00（未捏點）")
-            path_lo = min(closes)  # path closes; official low may be lower
-            if off.low < path_lo * 0.98:
-                out.append(f"官方低 {_fmt_face(off.low)} ＜ 路徑低 {_fmt_face(path_lo)}")
+        path_lo = min(closes)
+        if off.low < path_lo * 0.98:
+            out.append(f"官方低 {_fmt_face(off.low)} ＜ 路徑低 {_fmt_face(path_lo)}")
     return out
 
 
@@ -555,7 +733,7 @@ def build_series(
     if off is None:
         sys.stderr.write(f"[official-miss] {stock_id}\n")
         return None
-    path = fetch_yahoo_1m_path(stock_id, market, db_path=db_path, ymd=ymd)
+    path = fetch_intraday_path(stock_id, market, db_path=db_path, ymd=ymd)
     if path is None:
         return None
     times = list(path["times"])
@@ -564,7 +742,11 @@ def build_series(
     gap_after = None
     if str(market).upper() == "EM":
         t1 = times[-1]
-        if t1.hour * 100 + t1.minute < 1500:
+        # 有午後點＝真路徑到／過 13:30 → 不畫缺資料灰帶
+        n_aft = int(path.get("n_after_1330") or 0)
+        if n_aft <= 0 and t1.hour * 100 + t1.minute < 1500:
+            gap_after = t1
+        elif n_aft <= 0 and t1.hour * 100 + t1.minute <= 1330:
             gap_after = t1
     return PathSeries(
         stock_id=stock_id,
@@ -647,8 +829,8 @@ def _paint_quote_grid(fig, off: OfficialDay, *, y0: float, left: float, right: f
         cells.append(("振幅", f"{off.amplitude_pct:.2f}%", INK))
 
     cols = 4
-    gap_x, gap_y = 0.010, 0.008
-    cell_h = 0.038
+    gap_x, gap_y = 0.010, 0.010
+    cell_h = 0.044
     width = right - left
     cell_w = (width - gap_x * (cols - 1)) / cols
     for i, (lab, val, col) in enumerate(cells):
@@ -665,76 +847,102 @@ def _paint_quote_grid(fig, off: OfficialDay, *, y0: float, left: float, right: f
         )
         fig.text(
             x + 0.008, y + cell_h * 0.5, lab,
-            fontproperties=fp(10, False), color=MUTE, ha="left", va="center",
+            fontproperties=fp(11, False), color=MUTE, ha="left", va="center",
             transform=fig.transFigure,
         )
         fig.text(
             x + cell_w - 0.008, y + cell_h * 0.5, val,
-            fontproperties=fp(13, True), color=col, ha="right", va="center",
+            fontproperties=fp(15, True), color=col, ha="right", va="center",
+            transform=fig.transFigure,
+        )
+    # 興櫃開＝前日均價可高於當日最高：註在報價格底、頭欄內（必改 2.2）
+    if off.close_label == "興櫃收" and not (off.low <= off.open <= off.high):
+        note_y = y0 - 2 * (cell_h + gap_y) - 0.012
+        fig.text(
+            left, note_y,
+            "註：興櫃開＝前日均價，可高於當日最高",
+            fontproperties=fp(9.5, False), color=MUTE, ha="left", va="top",
             transform=fig.transFigure,
         )
 
 
 def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right: float) -> None:
-    """v4 底部三條：加高加距、字加大、近標合併，去掉重複長句。"""
+    """v4 底部三條（交叉必改）：加高、端點加大、最新上／開下、52週開距不足省略。"""
     from ink_chart_theme import DN, INK, MUTE, PAPER, RULE, UP, YELLOW, fp
-    from matplotlib.patches import Rectangle
+    from matplotlib.patches import FancyBboxPatch, Rectangle
 
-    bar_h = 0.022
-    row_pitch = 0.058  # 列距（含標上下）
+    bar_h = 0.026
+    row_pitch = 0.072
     width = right - left
-    y = y_bot + 2 * row_pitch + 0.012
+    y = y_bot + 2 * row_pitch + 0.014
+    # 興櫃「最新」＝日均語意，與頭欄興櫃收一致（必改 2.3）
+    last_lab = "日均" if off.close_label == "興櫃收" else "收盤"
 
     def _tick(mf: float, yb: float) -> float:
         mf = max(0.0, min(1.0, float(mf)))
         mx = left + width * mf
         fig.patches.append(
             Rectangle(
-                (mx - 0.0014, yb - 0.004), 0.0028, bar_h + 0.008,
+                (mx - 0.0015, yb - 0.004), 0.0030, bar_h + 0.008,
                 transform=fig.transFigure, facecolor=INK, edgecolor="none", clip_on=False,
             )
         )
         return mx
 
     def _bubble(mx: float, yb: float, text: str, *, side: str, ha: str = "center") -> None:
-        ty = yb + bar_h + 0.005 if side == "above" else yb - 0.005
+        ty = yb + bar_h + 0.006 if side == "above" else yb - 0.006
         va = "bottom" if side == "above" else "top"
         fig.text(
-            mx, ty, text, fontproperties=fp(9.5, True), color=INK, ha=ha, va=va,
+            mx, ty, text, fontproperties=fp(10.5, True), color=INK, ha=ha, va=va,
             transform=fig.transFigure,
-            bbox=dict(boxstyle="square,pad=0.18", facecolor=PAPER, edgecolor=RULE, linewidth=0.85),
+            bbox=dict(boxstyle="square,pad=0.20", facecolor=PAPER, edgecolor=RULE, linewidth=0.9),
         )
 
-    # —— 1) 量：左季均／右當日＋倍數；條＝min(當日/季均, 1) 滿格，超量只寫倍數 ——
+    # —— 1) 量能 ——
     if off.q_avg_vol_lots and off.q_avg_vol_lots > 0:
         ratio = off.volume_lots / off.q_avg_vol_lots
-        fig.text(left, y + bar_h + 0.006, "量能", fontproperties=fp(10, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
+        pct = int(round(ratio * 100))
+        fig.text(left, y + bar_h + 0.008, "量能", fontproperties=fp(11, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
         fig.patches.append(
             Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
         )
+        fill_w = width * min(ratio, 1.0)
         fig.patches.append(
             Rectangle(
-                (left, y), width * min(ratio, 1.0), bar_h,
+                (left, y), fill_w, bar_h,
                 transform=fig.transFigure, facecolor=DN if ratio >= 1 else UP, edgecolor="none", alpha=0.88, clip_on=False,
             )
         )
-        fig.text(
-            left, y - 0.003, f"季均 {_fmt_lots(off.q_avg_vol_lots)}",
-            fontproperties=fp(9.5, False), color=MUTE, ha="left", va="top", transform=fig.transFigure,
+        badge_x = left + min(max(fill_w, width * 0.12), width * 0.92)
+        fig.patches.append(
+            FancyBboxPatch(
+                (badge_x - 0.030, y + bar_h + 0.002), 0.060, 0.024,
+                boxstyle="square,pad=0.002",
+                facecolor=DN if ratio >= 1 else UP, edgecolor=INK, linewidth=0.8,
+                transform=fig.transFigure, clip_on=False,
+            )
         )
         fig.text(
-            right, y - 0.003, f"當日 {_fmt_lots(off.volume_lots)}　{ratio:.1f}×",
-            fontproperties=fp(10.5, True), color=INK, ha="right", va="top", transform=fig.transFigure,
+            badge_x, y + bar_h + 0.014, f"{pct}%",
+            fontproperties=fp(11, True), color=PAPER, ha="center", va="center", transform=fig.transFigure,
+        )
+        fig.text(
+            left, y - 0.004, f"季均 {_fmt_lots(off.q_avg_vol_lots)}",
+            fontproperties=fp(10.5, False), color=MUTE, ha="left", va="top", transform=fig.transFigure,
+        )
+        fig.text(
+            right, y - 0.004, f"當日 {_fmt_lots(off.volume_lots)}",
+            fontproperties=fp(12, True), color=INK, ha="right", va="top", transform=fig.transFigure,
         )
     y -= row_pitch
 
-    # —— 2) 日區間：端點大字；最新上、開盤下（開在區間外則省略） ——
+    # —— 2) 今日區間 ——
     span = off.high - off.low
     if span > 0:
         last_f = (off.close - off.low) / span
         open_in = off.low <= off.open <= off.high
         open_f = (off.open - off.low) / span if open_in else None
-        fig.text(left, y + bar_h + 0.006, "今日區間", fontproperties=fp(10, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
+        fig.text(left, y + bar_h + 0.008, "今日區間", fontproperties=fp(11, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
         fig.patches.append(
             Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
         )
@@ -758,63 +966,44 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
                     edgecolor="none", alpha=0.95, clip_on=False,
                 )
             )
-        fig.text(
-            left, y - 0.003, f"{_fmt_face(off.low)}",
-            fontproperties=fp(11, True), color=DN, ha="left", va="top", transform=fig.transFigure,
-        )
-        fig.text(
-            right, y - 0.003, f"{_fmt_face(off.high)}",
-            fontproperties=fp(11, True), color=UP, ha="right", va="top", transform=fig.transFigure,
-        )
+        fig.text(left, y - 0.004, f"日低 {_fmt_face(off.low)}", fontproperties=fp(12, True), color=DN, ha="left", va="top", transform=fig.transFigure)
+        fig.text(right, y - 0.004, f"日高 {_fmt_face(off.high)}", fontproperties=fp(12, True), color=UP, ha="right", va="top", transform=fig.transFigure)
         ha_last = "left" if last_f <= 0.12 else ("right" if last_f >= 0.88 else "center")
-        if open_f is not None and abs(open_f - last_f) < 0.06:
+        if open_f is not None and abs(open_f - last_f) < 0.08:
             _bubble(
                 _tick(last_f, y), y,
-                f"最新 {_fmt_face(off.close)}　開 {_fmt_face(off.open)}",
+                f"{last_lab} {_fmt_face(off.close)} ≈ 開 {_fmt_face(off.open)}",
                 side="above", ha=ha_last,
             )
         else:
             if open_f is not None:
-                _bubble(_tick(open_f, y), y, f"開 {_fmt_face(off.open)}", side="below")
-            _bubble(_tick(last_f, y), y, f"最新 {_fmt_face(off.close)}", side="above", ha=ha_last)
+                _bubble(_tick(open_f, y), y, f"開盤 {_fmt_face(off.open)}", side="below")
+            _bubble(_tick(last_f, y), y, f"{last_lab} {_fmt_face(off.close)}", side="above", ha=ha_last)
     y -= row_pitch
 
-    # —— 3) 52週：近標合併成一氣泡，避免 651／824 互壓 ——
+    # —— 3) 52週：開盤僅距 ≥8% 才畫（必改 5.2） ——
     if off.w52_high is not None and off.w52_low is not None and off.w52_high > off.w52_low:
         span = off.w52_high - off.w52_low
         open_f = (off.open - off.w52_low) / span
         last_f = (off.close - off.w52_low) / span
-        fig.text(left, y + bar_h + 0.006, "52週", fontproperties=fp(10, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
+        fig.text(left, y + bar_h + 0.008, "52週", fontproperties=fp(11, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
         fig.patches.append(
             Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
         )
-        a, b = sorted([max(0.0, min(1.0, open_f)), max(0.0, min(1.0, last_f))])
+        lf = max(0.0, min(1.0, last_f))
         fig.patches.append(
             Rectangle(
-                (left + width * a, y), max(width * (b - a), 0.003), bar_h,
-                transform=fig.transFigure, facecolor=YELLOW, edgecolor="none", alpha=0.88, clip_on=False,
+                (left + width * lf - 0.004, y), 0.008, bar_h,
+                transform=fig.transFigure, facecolor=YELLOW, edgecolor="none", alpha=0.95, clip_on=False,
             )
         )
-        fig.text(
-            left, y - 0.003, f"{_fmt_face(off.w52_low)}",
-            fontproperties=fp(11, True), color=DN, ha="left", va="top", transform=fig.transFigure,
-        )
-        fig.text(
-            right, y - 0.003, f"{_fmt_face(off.w52_high)}",
-            fontproperties=fp(11, True), color=UP, ha="right", va="top", transform=fig.transFigure,
-        )
-        mid = (max(0.0, min(1.0, open_f)) + max(0.0, min(1.0, last_f))) * 0.5
-        if abs(open_f - last_f) < 0.08:
-            ha = "left" if mid <= 0.18 else ("right" if mid >= 0.82 else "center")
-            _bubble(
-                _tick(mid, y), y,
-                f"最新 {_fmt_face(off.close)}　開 {_fmt_face(off.open)}",
-                side="above", ha=ha,
-            )
-        else:
-            _bubble(_tick(open_f, y), y, f"開 {_fmt_face(off.open)}", side="below")
-            ha = "left" if last_f <= 0.12 else ("right" if last_f >= 0.88 else "center")
-            _bubble(_tick(last_f, y), y, f"最新 {_fmt_face(off.close)}", side="above", ha=ha)
+        fig.text(left, y - 0.004, f"52週低 {_fmt_face(off.w52_low)}", fontproperties=fp(12, True), color=DN, ha="left", va="top", transform=fig.transFigure)
+        fig.text(right, y - 0.004, f"52週高 {_fmt_face(off.w52_high)}", fontproperties=fp(12, True), color=UP, ha="right", va="top", transform=fig.transFigure)
+        ha = "left" if last_f <= 0.18 else ("right" if last_f >= 0.82 else "center")
+        _bubble(_tick(last_f, y), y, f"{last_lab} {_fmt_face(off.close)}", side="above", ha=ha)
+        if abs(open_f - last_f) >= 0.08:
+            _bubble(_tick(open_f, y), y, f"開盤 {_fmt_face(off.open)}", side="below")
+
 
 
 def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
@@ -875,17 +1064,16 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # 更高：頭＋報價格＋圖＋量＋三條區間（v4 底加距）
-    fig_w, fig_h, dpi = 13.2, 11.2, 200
+    # v4：底≈24%；頭欄留給名牌＋報價格，主圖頂在格線之下（不准互壓）
+    fig_w, fig_h, dpi = 13.2, 12.0, 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
     left_f, right_f = 0.055, 0.905
-    # 底三條約 0.22；量；主圖；頭欄
-    range_top = 0.235
-    vol_h = 0.085
+    range_top = 0.250
+    vol_h = 0.078
     vol_bot = range_top + 0.012
     main_bot = vol_bot + vol_h + 0.012
-    main_top = 0.70
+    main_top = 0.62  # 頭欄＋2 列報價格在上
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
     ax.set_facecolor(PAPER)
@@ -1001,8 +1189,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     if is_em:
         _scrub_em_limit_labels(fig)
 
-    # 報價格（頭欄下、主圖上）— figure 座標
-    _paint_quote_grid(fig, off, y0=main_top - 0.012, left=left_f, right=right_f)
+    # 報價格：整段落在頭欄帶內（main_top 之上），不壓主圖
+    _paint_quote_grid(fig, off, y0=0.875, left=left_f, right=right_f)
 
     # 路徑
     hi = float(max(float(np.max(ys)), prev, off.high, float(np.max(series.highs))))
@@ -1012,7 +1200,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ax.set_xlim(0.0, x_end)
     ax.axhline(prev, color=MUTE, linestyle=(0, (4, 3)), linewidth=1.35, zorder=2)
     ax.axhline(off.high, color=UP, linestyle=(0, (2, 3)), linewidth=0.9, alpha=0.7, zorder=2)
-    ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=0.9, alpha=0.7, zorder=2)
+    # 官方日低虛線（興櫃路徑未必碰到）
+    ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=1.0, alpha=0.75, zorder=2)
     ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
     ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.16, zorder=1)
     for i in range(len(ys) - 1):
@@ -1030,38 +1219,58 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             ax.plot([x0, xc], [a, prev], color=(UP if a >= prev else DN), lw=2.05, zorder=3)
             ax.plot([xc, x1], [prev, b], color=(UP if b >= prev else DN), lw=2.05, zorder=3)
 
-    # 右側股價區間標：價距小時上下錯開，避免互壓
+    # 右側三層：日高／昨收／日低（價近合併；興櫃日低＝官方日低）
     y_span = (hi + pad) - (lo - pad)
-    right_labs = [
-        (off.high, f"日高 {_fmt_face(off.high)}", UP),
-        (prev, f"昨收 {_fmt_face(prev)}", MUTE),
-        (off.low, f"日低 {_fmt_face(off.low)}", DN),
-    ]
+    low_lab = f"官方日低 {_fmt_face(off.low)}" if is_em else f"日低 {_fmt_face(off.low)}"
+    right_labs: List[Tuple[float, str, str]] = []
+    if abs(off.high - prev) / max(y_span, 1e-9) < 0.08:
+        mid = (off.high + prev) * 0.5
+        right_labs.append((mid, f"昨收 {_fmt_face(prev)}／日高 {_fmt_face(off.high)}", MUTE))
+    else:
+        right_labs.append((off.high, f"日高 {_fmt_face(off.high)}", UP))
+        right_labs.append((prev, f"昨收 {_fmt_face(prev)}", MUTE))
+    right_labs.append((off.low, low_lab, DN))
     right_labs.sort(key=lambda t: t[0])
     placed_y: List[float] = []
-    min_gap = max(y_span * 0.06, abs(prev) * 0.004)
+    min_gap = max(y_span * 0.08, abs(prev) * 0.006)
     for px, lab, col in right_labs:
         yy = float(px)
         for py in placed_y:
             if abs(yy - py) < min_gap:
                 yy = py + min_gap if yy >= py else py - min_gap
+        yy = min(max(yy, lo - pad * 0.15), hi + pad * 0.15)
         placed_y.append(yy)
         ax.text(
-            0.995, yy, f" {lab}",
-            fontproperties=fp(9.5, True), color=col, ha="right", va="center",
+            0.992, yy, f" {lab}",
+            fontproperties=fp(10, True), color=col, ha="right", va="center",
             transform=ax.get_yaxis_transform(), zorder=5,
-            bbox=dict(boxstyle="square,pad=0.18", facecolor=PAPER, edgecolor=col, linewidth=0.85),
+            bbox=dict(boxstyle="square,pad=0.20", facecolor=PAPER, edgecolor=col, linewidth=0.9),
+            clip_on=False,
         )
 
     if series.gap_after is not None:
+        import matplotlib.patches as mpatches
+
         gx0 = _x(series.gap_after)
-        ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.45, zorder=0)
-        vol_ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.45, zorder=0)
-        # 小字貼灰帶上緣，不壓路徑
+        # 斜線底紋灰帶（必改 6.3）
+        for a in (ax, vol_ax):
+            a.axvspan(gx0, x_end, facecolor="#E8EAED", alpha=0.85, zorder=0)
+            a.add_patch(
+                mpatches.Rectangle(
+                    (gx0, a.get_ylim()[0]), x_end - gx0, a.get_ylim()[1] - a.get_ylim()[0],
+                    fill=False, hatch="///", edgecolor="#9AA0A6", linewidth=0.0, zorder=0.5,
+                )
+            )
         ax.text(
-            (gx0 + x_end) * 0.5, hi - (hi - lo) * 0.04, "缺資料",
-            fontproperties=fp(10, False), color=MUTE, ha="center", va="top", zorder=6,
+            (gx0 + x_end) * 0.5, hi - (hi - lo) * 0.05, "缺資料",
+            fontproperties=fp(14, True), color="#3A3A3A", ha="center", va="top", zorder=6,
         )
+        ax.text(
+            (gx0 + x_end) * 0.5, hi - (hi - lo) * 0.12, "13:30–15:00 無分時",
+            fontproperties=fp(9, False), color="#5C5C5C", ha="center", va="top", zorder=6,
+        )
+        # 路徑末圓點
+        ax.plot([xs[-1]], [ys[-1]], "o", color=INK, markersize=5.5, zorder=8)
 
     _paint_sparse_marks(ax, series, xs, ys, prev)
 
@@ -1089,7 +1298,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     vol_ax.set_yticks([])
     vol_ax.text(0.01, 0.92, "量(張)", transform=vol_ax.transAxes, fontproperties=fp(9, False), color=MUTE, va="top", ha="left")
 
-    _paint_range_bars(fig, off, y_bot=0.028, left=left_f, right=right_f)
+    _paint_range_bars(fig, off, y_bot=0.022, left=left_f, right=right_f)
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     fig.savefig(out_path, facecolor=PAPER, edgecolor="none")
@@ -1147,12 +1356,14 @@ def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
             m = (m[0], m[1], m[2], m[3], (ox, -oy if oy > 0 else 18))
         kept.append(m)
     for x, y, lab, col, (ox, oy) in kept[:3]:
+        # 事件標加大（交叉必改 3.1 ≈28–32px @200dpi → ~11.5–12pt）
         ax.annotate(
             lab, xy=(x, y), xytext=(ox, oy), textcoords="offset points",
-            fontproperties=fp(10, True), color=INK,
-            bbox=dict(boxstyle="square,pad=0.24", facecolor="#FFF8E7", edgecolor=col, linewidth=1.05),
-            arrowprops=dict(arrowstyle="-", color=col, lw=0.7),
+            fontproperties=fp(12, True), color=INK,
+            bbox=dict(boxstyle="square,pad=0.32", facecolor="#FFF8E7", edgecolor=col, linewidth=1.15),
+            arrowprops=dict(arrowstyle="-", color=col, lw=0.85, shrinkA=0, shrinkB=2),
             zorder=7,
+            annotation_clip=False,
         )
 
 
@@ -1160,18 +1371,21 @@ def default_out_dir() -> str:
     env = os.environ.get("WAYNE_INTRADAY_PREVIEW_DIR", "").strip()
     if env:
         return env
-    store = "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-open-close-chart-20261029"
-    if os.path.isdir(os.path.dirname(store)):
-        return store
+    for store in (
+        "/cursor/stores/self/media/intraday-open-close-chart-20261029",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-open-close-chart-20261029",
+    ):
+        if os.path.isdir(os.path.dirname(store)) or os.path.isdir(store):
+            return store
     return os.path.join(_ROOT, "artifacts", "intraday-open-close-preview")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v3（不接話筒）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v4（不接話筒）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v3")
+    ap.add_argument("--prefix", default="preview-v4")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
     out_dir = args.out_dir
