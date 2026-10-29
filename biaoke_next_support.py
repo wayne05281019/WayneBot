@@ -5,8 +5,8 @@
 - 下一層＝往更早 K 對照出的**次大量區間**（上緣壓＋下緣撐兩條一起）；
   不是單線平行撐、也不把原文目標叫「下一撐」。
 - 收盤有效破主撐才標下一層；收盤有效過主壓對稱標下一層（下一壓）。
-- **畫法（2026-10-29）**：次大量區間＝K 下淺灰價帶；**不**畫下一層壓／撐虛線與角標
-  （減雜訊；價帶本身就是區間）。舊 lines／both 僅預覽／回歸用。
+- **畫法（2026-10-29 鎖臉）**：次大量區間＝K 下**較深**淺灰價帶（α≈0.30）
+  ＋下一層壓／撐虛線＋數字角標（使用者改口：虛線／數字要留）。
 - 破撐≠立刻換主區（主區仍依 find_volume_zone 近窗爆大量重算）。
 - 平行軌若結構圖仍畫，用通道自己的名，不准搶「下一撐／下一層」。
 - 他寫死絕對價＝「飆大原文目標 {價}・非買訊」；檔別隔離。
@@ -1137,26 +1137,26 @@ def paint_written_and_next_levels(
     color_next: str = "#1565c0",
     color_next_press: str = "#ad1457",
     color_none: str = "#546e7a",
-    color_band: str = "#90a4ae",
-    band_alpha: float = 0.22,
+    color_band: str = "#78909c",
+    band_alpha: float = 0.30,
     ymin: Optional[float] = None,
     ymax: Optional[float] = None,
     tag_size: float = 10.0,
     layer_labels: str = "right",
     written_labels: str = "auto",
-    layer_marks: str = "band",
+    layer_marks: str = "both",
     busy_ys: Optional[Sequence[float]] = None,
     highs: Optional[Sequence[float]] = None,
     lows: Optional[Sequence[float]] = None,
     mas: Optional[Sequence[Sequence[float]]] = None,
     occupied: Optional[Sequence[Tuple[float, float, float, float]]] = None,
 ) -> List[float]:
-    """原文目標水平線＋破撐／過壓下一層（次大量區淺灰價帶）。
+    """原文目標水平線＋破撐／過壓下一層（次大量區深灰價帶＋壓／撐虛線標）。
 
-    layer_marks（2026-10-29）：
-      - \"band\"＝只畫 K 下淺灰區間帶（產品預設；無虛線／無下一層壓撐標）
+    layer_marks（2026-10-29 鎖臉）：
+      - \"both\"＝深灰價帶＋虛線＋角標（產品預設；對齊建議A濃度）
+      - \"band\"＝只畫 K 下灰帶（無虛線／無標）
       - \"lines\"＝舊虛線＋角標（無灰帶）
-      - \"both\"＝灰帶＋虛線＋角標（舊臉／對照）
     layer_labels：
       - \"smart\"／\"auto\"＝沿該水平線掃位，取擋 K／均線最少（有 highs／lows 時）
       - \"left\"＝偏左固定欄
@@ -1376,9 +1376,9 @@ def paint_written_and_next_levels(
         layer = dict((pack.get("primary") or {}).get("layer") or {})
 
     show_layer = bool(pack.get("broke") or pack.get("over")) and bool(layer)
-    marks = str(layer_marks or "band").strip().lower() or "band"
+    marks = str(layer_marks or "both").strip().lower() or "both"
     if marks not in ("band", "lines", "both"):
-        marks = "band"
+        marks = "both"
     draw_band = marks in ("band", "both")
     draw_layer_lines = marks in ("lines", "both")
     if show_layer:

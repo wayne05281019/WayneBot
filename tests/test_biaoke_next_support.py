@@ -362,19 +362,24 @@ def test_layer_tag_size_delta_uniform():
     assert 'layer_labels="smart"' in open("biaoke_chart.py", encoding="utf-8").read()
 
 
-def test_paint_next_layer_defaults_to_grey_band_only():
-    """2026-10-29：下一層產品臉＝淺灰價帶；預設不畫虛線／下一層壓撐標。"""
+def test_paint_next_layer_defaults_to_deep_band_with_lines():
+    """2026-10-29 鎖臉：下一層＝深灰價帶（α≈0.30）＋虛線＋數字標。"""
     import inspect
 
     from biaoke_next_support import paint_written_and_next_levels
 
     src = inspect.getsource(paint_written_and_next_levels)
-    assert 'layer_marks: str = "band"' in src
+    assert 'layer_marks: str = "both"' in src
     assert "axhspan" in src
     assert "zorder=0.5" in src
     assert "draw_layer_lines" in src
     sig = inspect.signature(paint_written_and_next_levels)
-    assert sig.parameters["layer_marks"].default == "band"
+    assert sig.parameters["layer_marks"].default == "both"
+    assert float(sig.parameters["band_alpha"].default) >= 0.28
+    assert str(sig.parameters["color_band"].default).lower() in {
+        "#78909c",
+        "#90a4ae",
+    }
 
 
 def test_paint_uses_cjk_fontproperties():

@@ -468,9 +468,10 @@ def restyle_bands(ax) -> None:
                 p.set_antialiased(False)
             except Exception:
                 pass
-        elif fc == "#9e9e9e" and wide:
-            p.set_facecolor(LAYER_FACE)
-            p.set_alpha(0.45)
+        elif fc in ("#9e9e9e", "#78909c", "#90a4ae") and wide:
+            # 下一層深灰價帶（2026-10-29 鎖臉 α≈0.30）；點紋略留層次
+            p.set_facecolor(LAYER_FACE if fc == "#9e9e9e" else fc)
+            p.set_alpha(0.30 if fc != "#9e9e9e" else 0.45)
             p.set_hatch("..")
             p.set_hatchcolor(LAYER_HATCH)
             p.set_edgecolor("none")
@@ -1267,7 +1268,10 @@ def sparse_right_ticks(ax, *, n_bins: int = 5, price: bool = True) -> None:
 
 
 def clear_vol_top_ytick(ax) -> None:
-    """量軸最上刻度不准壓價量分界框線；以量柱高峰為準重算，丟掉貼頂刻度。"""
+    """量軸最上刻度不准壓價量分界框線；以量柱高峰為準重算，丟掉貼頂刻度。
+
+    2026-10-29：若有「爆大量／下一層量日」標，頂端多留空帶並把標釘在上緣下方。
+    """
     import matplotlib.ticker as mticker
 
     if ax is None:
@@ -1285,8 +1289,16 @@ def clear_vol_top_ytick(ax) -> None:
             pass
     if bar_peak < 1.0:
         bar_peak = max(float(ax.get_ylim()[1]), 1.0)
-    # 底＝0；頂端多 16% 頭，數字離開分界框線
-    ax.set_ylim(0.0, bar_peak * 1.16)
+    has_vol_event = False
+    for t in list(ax.texts):
+        s = str(t.get_text() or "")
+        if "爆大量" in s or "下一層量日" in s:
+            has_vol_event = True
+            break
+    # 有量日標：柱區約 78%，上緣空帶掛標；否則維持舊 16% 頭
+    head = (1.0 / 0.78) if has_vol_event else 1.16
+    top = float(bar_peak) * float(head)
+    ax.set_ylim(0.0, top)
     ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4, prune="both"))
     # 不准在此整圖 draw：viewLim 已更新，get_yticks 不必重渲；外層 ink.redraw 一次收斂
     ticks = [
@@ -1306,6 +1318,23 @@ def clear_vol_top_ytick(ax) -> None:
         lab.set_fontproperties(fp(11.0, heavy=True))
         lab.set_color(INK2)
         lab.set_clip_on(False)
+    if has_vol_event:
+        lab_y = float(top) * 0.972
+        for t in list(ax.texts):
+            s = str(t.get_text() or "")
+            if "爆大量" not in s and "下一層量日" not in s:
+                continue
+            try:
+                t.set_va("top")
+                t.set_clip_on(False)
+                if isinstance(t, Annotation):
+                    x_pos = float(t.xyann[0]) if t.xyann is not None else float(t.get_position()[0])
+                    t.set_position((x_pos, lab_y))
+                else:
+                    x_pos = float(t.get_position()[0])
+                    t.set_position((x_pos, lab_y))
+            except Exception:
+                continue
 
 
 def flush_data_left_xlim(*axes) -> None:

@@ -5183,11 +5183,9 @@ def _paint_volume_zone(
         _spine.set_color("#cfd8dc")
         _spine.set_linewidth(0.7)
 
-    # 桃色大量區（略透，K／箭頭更清楚）
+    # 桃色大量區（略透，K／箭頭更清楚）。2026-10-29 鎖臉：主區只留色帶，
+    # 不畫壓／撐水平線；角標「大量區壓／撐」仍留（見 _paint_key_zone_smart_tags）。
     ax1.axhspan(lo, hi, color=_FILL, alpha=0.42, zorder=0)
-    # 壓／撐色線再細一點：仍清楚，不搶 K／均線
-    ax1.axhline(hi, color=_PRESS, linewidth=0.78, zorder=5, solid_capstyle="round")
-    ax1.axhline(lo, color=_HOLD, linewidth=0.78, zorder=5, solid_capstyle="round")
     # 爆大量日豎線：極小間距虛線，避免實線切過 K／量看不清
     ax1.axvline(
         spike_i,
@@ -6008,33 +6006,30 @@ def _paint_volume_zone(
         layer_raw = float(vol_heights[layer_i] or 0)
         if layer_raw > 0:
             layer_h = float(lookup_vol_to_display([layer_raw], float(vol_ylim))[0])
-    # v8 建議：量標同高並排、貼近柱頂（縮短連線）；相鄰日水平偏移更短
-    # v9：量標高度吃進相鄰柱頂，白底不准壓到旁邊高峰量柱
-    _peak_h = max(float(spike_h or 0), float(layer_h or 0), float(vol_ylim) * 0.35)
+    # 量標高度參考：一律用**顯示座標**柱高（開方後），不准混進真張數 vol_ylim
+    _peak_h = max(float(spike_h or 0), float(layer_h or 0), 1.0)
     try:
-        _i0 = max(0, min(int(spike_i), int(layer_i if layer_i >= 0 else spike_i)) - 2)
-        _i1 = min(int(n), max(int(spike_i), int(layer_i if layer_i >= 0 else spike_i)) + 3)
-        for _vi in range(_i0, _i1):
-            if _vi < len(vol_heights):
-                _peak_h = max(_peak_h, float(vol_heights[_vi] or 0))
+        for _vi in range(int(n)):
+            if _vi < len(vol_heights) and float(vol_heights[_vi] or 0) > 0:
+                _peak_h = max(
+                    _peak_h,
+                    float(
+                        lookup_vol_to_display(
+                            [float(vol_heights[_vi])], float(vol_ylim)
+                        )[0]
+                    ),
+                )
     except Exception:
         pass
-    # 量標：白底不准壓鄰柱／右軸；有量能訊號列時壓低＋偏離柱頂，土黄標不准擋紫箭（6274）
-    vol_lab_y = float(_peak_h) * 1.18 + float(vol_ylim) * 0.05
-    if with_nav_signals:
-        # 標盒貼柱腰／側，頂緣遠低於量圖頂（訊號列在上方獨立軸）
-        vol_lab_y = min(
-            float(_peak_h) * 0.62 + float(vol_ylim) * 0.03,
-            float(vol_ylim) * 0.58,
-        )
-        vol_lab_y = max(float(vol_lab_y), float(vol_ylim) * 0.22)
-    y_top = max(float(vol_ylim) * 1.22, float(_peak_h) * 1.20)
-    if with_nav_signals:
-        # 多留頂縫：標盒與訊號列之間要有空隙
-        y_top = max(float(y_top), float(vol_ylim) * 1.34)
+    # 先定軸刻度，再留上緣空帶＋掛標（configure 不准蓋掉 ylim）
+    ax2.yaxis.tick_right()
+    ax2.tick_params(labelsize=10)
+    configure_lookup_vol_axis(ax2, float(vol_ylim))
+    # 2026-10-29 鎖臉：爆大量／下一層量日貼量圖**上緣匡線下方空帶**，不准壓量柱。
+    y_top = float(_peak_h) / 0.78
     ax2.set_ylim(0, float(y_top))
-    # 土黄標頂不准超過此值（相對 ax2 資料座標）
-    _vol_callout_cap = float(y_top) * (0.58 if with_nav_signals else 0.92)
+    vol_lab_y = float(y_top) * 0.972
+    _vol_callout_cap = float(y_top) * 0.99
 
     def _vol_day_callout(
         *,
@@ -6047,12 +6042,8 @@ def _paint_volume_zone(
         side: str,
         lab_y: Optional[float] = None,
     ) -> None:
-        """side=left／right／center；有 lab_y＝資料座標水平並排，否則貼柱頂。"""
-        # 一律走資料座標，方便把標盒壓在量圖內、避開上方量能訊號列紫箭
-        use_lab_y = float(lab_y) if lab_y is not None else min(
-            float(y) * 1.12 + float(vol_ylim) * 0.04,
-            float(_vol_callout_cap),
-        )
+        """side=left／right／center；標盒掛量圖上緣下方空帶（va=top）。"""
+        use_lab_y = float(lab_y) if lab_y is not None else float(vol_lab_y)
         use_lab_y = min(float(use_lab_y), float(_vol_callout_cap))
         if side == "left":
             if float(x) <= 6.0:
@@ -6078,7 +6069,6 @@ def _paint_volume_zone(
                 tx = max(-0.15, float(x) - 0.15)
                 ha = "left"
             elif with_nav_signals:
-                # 單標＋訊號列：大幅偏離柱頂正上方，減垂直頂到紫箭
                 tx = max(-0.2, float(x) - 2.6)
                 ha = "right"
         if with_nav_signals and side == "left":
@@ -6107,12 +6097,12 @@ def _paint_volume_zone(
             xy=(float(x), float(y)),
             xytext=(float(tx), float(use_lab_y)),
             ha=ha,
-            va="center",
+            va="top",
             fontproperties=_fp(9.5 if lab_y is not None else 10.0, "bold"),
             color=ink,
             zorder=16,
-            # 土黄爆大量仍 clip；長「下一層量日」關 clip＋往左長，免右緣只剩「下一」
-            clip_on=not long_layer,
+            # 上緣空帶：兩標皆不准 clip 掉（墨線後仍要看得見）
+            clip_on=False,
             bbox=dict(
                 boxstyle="round,pad=0.16",
                 facecolor=face,
@@ -6174,10 +6164,9 @@ def _paint_volume_zone(
             )
         except Exception:
             pass
-    ax2.yaxis.tick_right()
-    ax2.tick_params(labelsize=10)
-    configure_lookup_vol_axis(ax2, float(vol_ylim))
+    # ylim 已在掛標前定好（上緣空帶）；此處只鎖 xlim
     ax2.set_xlim(-0.8, n - 0.2)
+    ax2.set_ylim(0, float(y_top))
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.45, color=_GRID, alpha=0.85)
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(10))
