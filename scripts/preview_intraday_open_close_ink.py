@@ -1206,12 +1206,11 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     quote_top = 0.78  # 八格帶頂；之上名牌
     assert quote_band_bot >= main_top + 0.015, "八格底緣必須在價圖頂之上（不准疊進主題區）"
 
-    ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
-    vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
-    quote_ax = fig.add_axes([left_f, quote_band_bot, right_f - left_f, quote_top - quote_band_bot])
+    ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot], zorder=2)
+    vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax, zorder=2)
     ax.set_facecolor(PAPER)
     vol_ax.set_facecolor(PAPER)
-    quote_ax.set_facecolor(PAPER)
+    # quote_ax 等頭欄 ov 建完再加（mpl 常依建立序後蓋前，zorder 不夠）
 
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
     ov.set_xlim(0, 100)
@@ -1324,8 +1323,16 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     if is_em:
         _scrub_em_limit_labels(fig)
 
-    # 八格：獨立 axes（主圖上方），不畫進價圖 ax
+    # 八格：獨立 axes（主圖上方、建於 ov 之後），不畫進價圖 ax
+    quote_ax = fig.add_axes(
+        [left_f, quote_band_bot, right_f - left_f, quote_top - quote_band_bot],
+        zorder=25,
+    )
+    quote_ax.set_facecolor(PAPER)
+    quote_ax.patch.set_alpha(1.0)
     _paint_quote_grid(quote_ax, off)
+    # 硬閘：八格底緣必須在價圖頂之上
+    assert float(quote_ax.get_position().y0) >= float(main_top) - 1e-6
 
     # 路徑
     hi = float(max(float(np.max(ys)), prev, off.high, float(np.max(series.highs))))
