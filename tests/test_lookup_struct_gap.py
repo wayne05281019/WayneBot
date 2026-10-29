@@ -188,7 +188,11 @@ def test_struct_paint_does_not_wait_for_volume_zone():
                 [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
             )
 
-    asyncio.run(_run())
+    with patch(
+        "intraday_open_close_chart.render_lookup_intraday_result",
+        return_value=("", ""),
+    ):
+        asyncio.run(_run())
     assert "struct" in marks and "zone_end" in marks
     assert marks["struct"] < marks["zone_end"]
 
@@ -280,7 +284,11 @@ def test_gap_line_while_official_volume_still_running():
                 [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
             )
 
-    asyncio.run(_run())
+    with patch(
+        "intraday_open_close_chart.render_lookup_intraday_result",
+        return_value=("", ""),
+    ):
+        asyncio.run(_run())
     texts = [str(c.args[0]) for c in message.reply_text.await_args_list if c.args]
     assert any("結構圖在等官方成交量" in t for t in texts), texts
     # 第 3 張仍有送出

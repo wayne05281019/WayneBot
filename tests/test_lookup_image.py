@@ -142,6 +142,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("card_queued", src)
         self.assertIn("create_task(_struct_item())", src)
         self.assertIn("create_task(_vol_item())", src)
+        self.assertIn("create_task(_intraday_item())", src)
         self.assertIn("_bump_progress", src)
         # 介紹圖在 await 高低卡完成之前就排隊，與送卡重疊
         self.assertLess(
@@ -220,6 +221,11 @@ class LookupImageTests(unittest.TestCase):
             time.sleep(0.05)
             return _png("v.png"), "大量撐壓圖（非買訊）"
 
+        def _intrad(*_a, **_k):
+            started["intraday"] = time.monotonic()
+            time.sleep(0.02)
+            return _png("i.png"), "當天走勢（開→收・非買訊）"
+
         class _Engine:
             def __init__(self, *_a, **_k):
                 pass
@@ -248,6 +254,9 @@ class LookupImageTests(unittest.TestCase):
                 "three_in_one_chart.render_lookup_structure_result", side_effect=_struct
             ), patch(
                 "vol_zone_chart.render_lookup_vol_result", side_effect=_vol
+            ), patch(
+                "intraday_open_close_chart.render_lookup_intraday_result",
+                side_effect=_intrad,
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -282,12 +291,14 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("card", started)
         self.assertIn("struct", started)
         self.assertIn("vol", started)
-        # 卡先、介紹、結構、大量撐壓
+        self.assertIn("intraday", started)
+        # 卡先、介紹、結構、大量撐壓、當天走勢
         self.assertGreaterEqual(started["glance"] - started["card"], 0.2)
         self.assertGreaterEqual(started["struct"] - started["glance"], 0.0)
         self.assertGreaterEqual(started["vol"] - started["struct"], 0.0)
+        self.assertGreaterEqual(started["intraday"] - started["vol"], 0.0)
         self.assertEqual(message.reply_media_group.await_count, 0)
-        self.assertGreaterEqual(message.reply_photo.await_count, 4)
+        self.assertGreaterEqual(message.reply_photo.await_count, 5)
         caps = [
             str(c.kwargs.get("caption") or "")
             for c in message.reply_photo.await_args_list
@@ -297,6 +308,7 @@ class LookupImageTests(unittest.TestCase):
             any("大量撐壓" in c or "大量區" in c or "爆大量" in c for c in caps),
             caps,
         )
+        self.assertTrue(any("當天走勢" in c for c in caps), caps)
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
@@ -620,6 +632,9 @@ class LookupImageTests(unittest.TestCase):
             ), patch(
                 "vol_zone_chart.render_lookup_vol_result",
                 side_effect=lambda *_a, **_k: (_png("v.png"), "大量撐壓圖（非買訊）"),
+            ), patch(
+                "intraday_open_close_chart.render_lookup_intraday_result",
+                side_effect=lambda *_a, **_k: (_png("i.png"), "當天走勢（開→收・非買訊）"),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(

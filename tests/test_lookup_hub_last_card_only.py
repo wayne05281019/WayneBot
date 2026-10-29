@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股四張圖：完整圖下鈕只掛第 4 張大量區；第 2／3 張不要重複鍵盤。"""
+"""查股五張圖：完整圖下鈕只掛第 4 張大量區；第 2／3／5 張不要重複鍵盤。"""
 from __future__ import annotations
 
 import asyncio
@@ -83,6 +83,12 @@ class LookupHubLastCardOnlyTests(TestCase):
                     _png(td, "v.png"),
                     "大量撐壓圖（非買訊）",
                 ),
+            ), patch(
+                "intraday_open_close_chart.render_lookup_intraday_result",
+                side_effect=lambda *_a, **_k: (
+                    _png(td, "i.png"),
+                    "當天走勢（開→收・非買訊）",
+                ),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -118,12 +124,13 @@ class LookupHubLastCardOnlyTests(TestCase):
 
         asyncio.run(_run())
         kinds = [k for k, _ in send_markups]
-        self.assertEqual(kinds, ["card", "glance", "struct", "vol"])
+        self.assertEqual(kinds, ["card", "glance", "struct", "vol", "intraday"])
         by_kind = {k: mk for k, mk in send_markups}
         self.assertIsNone(by_kind["card"])
         self.assertIsNone(by_kind["glance"])
         self.assertIsNone(by_kind["struct"])
         self.assertIs(by_kind["vol"], hub)
+        self.assertIsNone(by_kind["intraday"])
 
     def test_source_does_not_reattach_hub_on_mid_cards(self):
         import inspect
@@ -132,5 +139,5 @@ class LookupHubLastCardOnlyTests(TestCase):
         # 舊 bug：介紹用 markup or hub 會把 None 又變回 hub
         self.assertNotIn("markup or hub", src)
         self.assertIn('send_photo(prep or path, caption, hub, kind=kind)', src)
-        # 結構／介紹必須顯式 None
-        self.assertGreaterEqual(src.count("caption, None, kind=kind"), 2)
+        # 結構／介紹／當天走勢必須顯式 None
+        self.assertGreaterEqual(src.count("caption, None, kind=kind"), 3)

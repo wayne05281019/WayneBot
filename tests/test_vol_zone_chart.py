@@ -120,10 +120,12 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "render_lookup_structure_result" in src
     assert "render_lookup_vol_result" in src
+    assert "render_lookup_intraday_result" in src
     assert "render_three_in_one_result" not in src
-    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓；一次一張、好了就送
+    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓 → 當天走勢；一次一張、好了就送
     assert "create_task(_struct_item())" in src
     assert "create_task(_vol_item())" in src
+    assert "create_task(_intraday_item())" in src
     assert "_bump_progress" in src
     assert src.find("glance_task = asyncio.create_task") < src.find(
         "card_item = await card_render_task"
@@ -136,10 +138,13 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert "ensure_official_volume_window" in src
     assert "volfill" in src
     assert "glance_queued" in src
+    assert "vol_queued" in src
     vol_at = src.find("vol_task = asyncio.create_task(_vol_item())")
+    intrad_at = src.find("intrad_task = asyncio.create_task(_intraday_item())")
     struct_await = src.find("struct_item = await struct_task")
     assert vol_at > 0 and struct_await > 0
     assert vol_at < struct_await
+    assert intrad_at > vol_at
     assert "kind=kind" in src
     # 不准把決策卡還原 ohlc 當撐壓柱
     assert "already_normalized=True" not in src
