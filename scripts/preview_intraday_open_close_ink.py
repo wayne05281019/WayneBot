@@ -955,14 +955,15 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
                 transform=quote_ax.transAxes, clip_on=False, zorder=2,
             )
         )
+        # 國字上／數字下（layout arrange）
         quote_ax.text(
-            x + 0.012, y + cell_h * 0.5, lab,
-            fontproperties=fp(12, True), color=lab_col, ha="left", va="center",
+            x + cell_w * 0.5, y + cell_h * 0.72, lab,
+            fontproperties=fp(11, True), color=lab_col, ha="center", va="center",
             transform=quote_ax.transAxes, zorder=3, clip_on=False,
         )
         quote_ax.text(
-            x + cell_w - 0.012, y + cell_h * 0.5, val,
-            fontproperties=fp(16, True), color=col, ha="right", va="center",
+            x + cell_w * 0.5, y + cell_h * 0.32, val,
+            fontproperties=fp(16, True), color=col, ha="center", va="center",
             transform=quote_ax.transAxes, zorder=3, clip_on=False,
         )
     if has_note:
@@ -1115,9 +1116,10 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     fig.text(left, y - 0.005, f"52週低 {_fmt_face(w_lo)}", fontproperties=fp(13, True), color=DN, ha="left", va="top", transform=fig.transFigure, zorder=z)
     fig.text(right, y - 0.005, f"52週高 {_fmt_face(w_hi)}", fontproperties=fp(13, True), color=UP, ha="right", va="top", transform=fig.transFigure, zorder=z)
     ha = "left" if last_f <= 0.18 else ("right" if last_f >= 0.82 else "center")
-    _bubble(_tick(last_f, y), y, f"{last_lab} {_fmt_face(off.close)}", side="above", ha=ha)
+    # 52 週最新掛條下，免與今日區間收盤浮標互壓（layout arrange）
+    _bubble(_tick(last_f, y), y, f"{last_lab} {_fmt_face(off.close)}", side="below", ha=ha)
     if abs(open_f - last_f) >= 0.08 and off.low <= off.open <= off.high:
-        _bubble(_tick(open_f, y), y, f"開盤 {_fmt_face(off.open)}", side="below")
+        _bubble(_tick(open_f, y), y, f"開盤 {_fmt_face(off.open)}", side="above")
 
 
 
@@ -1184,29 +1186,29 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v7：figsize／dpi／左右底邊距＝查股結構圖（chart3）；八格獨立 axes 在主圖上
-    fig_w = float(_STRUCTURE_LOOKUP_FIG[0])  # 12.4
-    # 結構圖高 ≈8.16；本臉多八格＋底三條 → 加高（寬／邊距仍對齊）
-    fig_h = 10.85
+    # v7（layout arrange）：畫布＝大量區 NAV (12.4, 9.35)；八格獨立帶在價圖上
+    from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
+
+    fig_w = float(VOL_ZONE_FIG_W)  # 12.4
+    fig_h = float(VOL_ZONE_FIG_H_NAV)  # 9.35
     dpi = int(BIAOKE_CHART_DPI)  # 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
-    left_f = float(_FIG_LEFT)  # 0.028
-    right_f = 0.86  # 右標外掛；結構圖用 0.905，這裡略收給日高／昨收／日低
-    bot_f = float(_FIG_BOTTOM)  # 0.055
-    range_top = 0.235
-    xlab_h = 0.030
-    vol_h = 0.072
+    left_f = float(_FIG_LEFT)  # 0.028 對齊結構圖
+    right_f = 0.86  # 右標外掛
+    range_top = 0.220
+    xlab_h = 0.028
+    vol_h = 0.068
     vol_bot = range_top + xlab_h + 0.004
     main_bot = vol_bot + vol_h + 0.008
-    main_top = 0.58
-    quote_bot = main_top + 0.010
-    quote_top = 0.72  # 八格獨立帶；之上才是名牌頭欄
-    header_bot = quote_top + 0.008
+    main_top = 0.60  # 價圖頂
+    quote_band_bot = 0.62  # 頭欄／八格底；與價圖中間白縫
+    quote_top = 0.78  # 八格帶頂；之上名牌
+    assert quote_band_bot >= main_top + 0.015, "八格底緣必須在價圖頂之上（不准疊進主題區）"
 
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
-    quote_ax = fig.add_axes([left_f, quote_bot, right_f - left_f, quote_top - quote_bot])
+    quote_ax = fig.add_axes([left_f, quote_band_bot, right_f - left_f, quote_top - quote_band_bot])
     ax.set_facecolor(PAPER)
     vol_ax.set_facecolor(PAPER)
     quote_ax.set_facecolor(PAPER)
@@ -1217,11 +1219,11 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ov.axis("off")
     ov.patch.set_alpha(0)
 
-    # 頭欄白底只包名牌區（不含八格、不含價圖）
-    band_bot = header_bot * 100.0
+    # 頭欄白底＝名牌＋八格；與價／量框分開（中間白縫）
+    band_bot = quote_band_bot * 100.0
     ov.add_patch(
         FancyBboxPatch(
-            (_STRUCTURE_BOX_X, band_bot + 0.35),
+            (_STRUCTURE_BOX_X, band_bot),
             _STRUCTURE_BOX_W,
             100.0 - band_bot - float(_STRUCTURE_TOP_PAD) - 0.15,
             boxstyle=_STRUCTURE_BOX_STYLE,
@@ -1234,7 +1236,6 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         )
     )
     for y0, y1 in (
-        (quote_bot * 100.0, quote_top * 100.0),
         (main_bot * 100.0, main_top * 100.0),
         (vol_bot * 100.0, (vol_bot + vol_h) * 100.0),
     ):
@@ -1342,7 +1343,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     for i in range(len(ys) - 1):
         a, b = float(ys[i]), float(ys[i + 1])
         x0, x1 = float(xs[i]), float(xs[i + 1])
-        if x1 - x0 > 5:
+        if x1 - x0 > 8:
             continue
         if (a >= prev and b >= prev) or (a < prev and b < prev):
             ax.plot([x0, x1], [a, b], color=(UP if a >= prev else DN), lw=2.05, solid_capstyle="round", zorder=3)
@@ -1425,7 +1426,10 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         for sp in a.spines.values():
             sp.set_color(INK)
             sp.set_linewidth(0.95)
+        # 量圖底脊關閉，避免與框外時軸標打架（layout arrange）
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
+    vol_ax.spines["bottom"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
     # 時間標：畫在量圖框外（vol_bot 下方標帶），避免被 panel 框線切斷
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
