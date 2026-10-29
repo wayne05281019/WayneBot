@@ -1134,7 +1134,7 @@ def paint_written_and_next_levels(
     right_notes: Optional[List[Dict[str, Any]]] = None,
     label_x: Optional[float] = None,
     color_written: str = "#6a1b9a",
-    color_next: str = "#1565c0",
+    color_next: str = "#062e70",  # 下一層撐：再加深（縮圖可讀）
     color_next_press: str = "#ad1457",
     color_none: str = "#546e7a",
     color_band: str = "#78909c",

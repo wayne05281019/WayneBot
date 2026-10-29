@@ -53,9 +53,10 @@ YELLOW = "#F5C518"
 UP = "#E53935"
 DN = "#00897B"
 PRESS = "#B01030"
-HOLD = "#0A6B3A"
+# 2026-10-29：撐／下一層撐加深（縮圖可讀）；壓色不動
+HOLD = "#045A2E"
 VIOLET = "#4A2499"
-NEXT_H = "#1A54B8"
+NEXT_H = "#08307A"
 SPIKE = "#E8A200"
 CALL = "#D45500"
 SKIN = "#FFF1E4"
@@ -506,10 +507,10 @@ def restyle_levels(ax) -> None:
         if col == "#ad1457":
             c.set_colors([PRESS])
             c.set_linewidths([1.0 if dashed else 2.35])
-        elif col == "#1b5e20":
+        elif col in ("#1b5e20", "#0a4d1c"):
             c.set_colors([HOLD])
             c.set_linewidths([1.0 if dashed else 2.35])
-        elif col == "#1565c0":
+        elif col in ("#1565c0", "#0a3d8f", "#062e70"):
             c.set_colors([NEXT_H])
             c.set_linewidths([0.95])
     for ln in ax.lines:
@@ -518,7 +519,7 @@ def restyle_levels(ax) -> None:
         if col == "#ad1457" and ls == "-":
             ln.set_color(PRESS)
             ln.set_linewidth(2.2)
-        elif col == "#1b5e20" and ls == "-":
+        elif col in ("#1b5e20", "#0a4d1c") and ls == "-":
             ln.set_color(HOLD)
             ln.set_linewidth(2.2)
         elif col == "#6a1b9a" and ls == "--" and len(ln.get_xdata()) == 2:
@@ -540,7 +541,7 @@ def restyle_levels(ax) -> None:
             mfc = _hex(ln.get_markerfacecolor())
             if mfc == "#ad1457":
                 ln.set_markerfacecolor(PRESS)
-            elif mfc == "#1b5e20":
+            elif mfc in ("#1b5e20", "#0a4d1c"):
                 ln.set_markerfacecolor(HOLD)
             ln.set_markeredgecolor(INK)
             ln.set_markeredgewidth(0.9)
@@ -696,7 +697,7 @@ ROLE_STYLE = {
     "prev_close": dict(fill=GRAYTAG, on_fill=PAPER, value_color=INK2, edge=INK, tier=2),
     "channel": dict(fill=VIOLET, on_fill=PAPER, value_color=VIOLET, edge=INK, tier=2),
     "next_press": dict(fill="#F7E8EC", on_fill=PRESS, value_color=PRESS, edge=PRESS, tier=3),
-    "next_hold": dict(fill="#E8EEF8", on_fill=NEXT_H, value_color=NEXT_H, edge=NEXT_H, tier=3),
+    "next_hold": dict(fill="#C5D4EC", on_fill=NEXT_H, value_color=NEXT_H, edge=NEXT_H, tier=3),
     "spike": dict(fill=SPIKE, on_fill=INK, value_color=INK, edge=INK, tier=2),
     "layer_day": dict(fill=NEXT_H, on_fill=PAPER, value_color=NEXT_H, edge=INK, tier=2),
 }
@@ -1031,7 +1032,7 @@ def struct_header(ink: Ink, ov, frames: List[FancyBboxPatch]) -> None:
             continue
         col = _hex(t.get_color())
         if s.startswith("較昨日"):
-            fc = UP if col == "#e53935" else (DN if col in ("#00897b", "#2e7d32", "#1b5e20") else INK2)
+            fc = UP if col == "#e53935" else (DN if col in ("#00897b", "#2e7d32", "#1b5e20", "#0a4d1c") else INK2)
             # 漲停／跌停：更深底＋字尾標（規則同源 quote_limit_side）
             limit_side = _detect_limit_from_header(ov)
             label = s
@@ -1081,7 +1082,7 @@ def sync_header_mini_candle(ax, color: str) -> None:
     target = (color or UP).lower()
     if target in ("#d61f26", "#b71c1c"):
         target = UP.lower()
-    elif target in ("#0a7a58", "#00695c", "#2e7d32", "#1b5e20"):
+    elif target in ("#0a7a58", "#00695c", "#2e7d32", "#1b5e20", "#0a4d1c", "#045a2e"):
         target = DN.lower()
     elif target not in (UP.lower(), DN.lower()):
         # 非漲跌色就不動
@@ -1153,7 +1154,7 @@ def struct_chips(ink: Ink, ov) -> None:
         if t.get_fontsize() >= 12:
             continue
         col = _hex(t.get_color())
-        fc = PRESS if col == "#ad1457" else (VIOLET if col == "#6a1b9a" else (HOLD if col == "#1b5e20" else INK))
+        fc = PRESS if col == "#ad1457" else (VIOLET if col == "#6a1b9a" else (HOLD if col in ("#1b5e20", "#0a4d1c") else INK))
         ink.sticker(t, fc=fc, tc=PAPER, pad=0.26, shadow=False, role="chip")
 
 
