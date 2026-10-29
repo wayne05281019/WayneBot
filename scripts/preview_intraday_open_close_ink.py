@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Preview-only v17：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v18：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v17-vol-cell-20261030.md：
-拿掉分時量圖 N% 錨；十二格一格寫「約N倍均量」（當日全天量÷近60有量日均量）；
-色＝收相對昨收（漲紅／跌綠／平灰）。不准假資料、不准接話筒／合 main。
+對齊 docs/intraday-v18-gutter-20261030.md：
+價軸 Y 刻度移進框內；價／量軸右緣外擴吃掉右側空白；縮圖區加寬讓量柱不那麼密。
+外框仍與十二格共線。不准假資料、不准接話筒／合 main。
 """
 from __future__ import annotations
 
@@ -2343,9 +2343,12 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
     frame_left = frame_x / 100.0  # 0.016
     frame_right = (frame_x + frame_w) / 100.0  # 0.982
-    # axes：結構 subplots 同套；右標落在 axes 右～外框右的框內白邊（略窄可說明）
-    left_f = float(_FIG_LEFT)  # 0.028
-    right_f = float(_STRUCTURE_FIG_RIGHT)  # 0.905
+    # v18：價／量軸吃掉框內右白邊；左緣微內縮（外框仍與十二格共線）
+    # 舊 right_f=_STRUCTURE_FIG_RIGHT=0.905 → 右側大塊空白；改貼近 frame_right
+    left_f = frame_left + 0.010  # ≈0.026；Y 刻度手繪在軸內
+    right_f = frame_right - 0.008  # ≈0.974；線圖／量柱同步加寬
+    assert left_f > frame_left and right_f < frame_right
+    assert (right_f - left_f) >= 0.92, "價／量縮圖區寬度不夠（v18 應吃右側空白）"
     # v14：時間戳旁黑標 → 頭欄變矮 → 十二格上移 → 價圖加高（智能標不擠）
     bars_top = 0.195
     xlab_bot = 0.205
@@ -2632,20 +2635,31 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         for sp in a.spines.values():
             sp.set_visible(False)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
-    # 價軸刻度改軸內左側，不戳出共線外框
+    # v18：Y 刻度字改軸內手繪（mpl label 即使 direction=in 仍偏軸外，圈圖要框內）
+    import matplotlib.transforms as mtransforms
+
     ax.tick_params(
-        axis="y", colors=MUTE, length=3, labelsize=10,
-        direction="in", left=True, labelleft=True, right=False, labelright=False, pad=2,
+        axis="y", colors=MUTE, length=3.2, labelsize=10,
+        direction="in", left=True, labelleft=False, right=False, labelright=False,
     )
     # 時間標：xlab 專帶（bars_top 之上、vol_bot 之下）；09／15 完整（FAIL#1/#2）
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
-    for lab in ax.get_yticklabels():
-        lab.set_fontproperties(fp(10, False))
-        lab.set_color(MUTE)
+    y_trans = mtransforms.blended_transform_factory(ax.transAxes, ax.transData)
+    y0, y1 = ax.get_ylim()
+    for yv in ax.get_yticks():
+        if not (y0 < float(yv) < y1):
+            continue
+        # 整數價免小數；其餘跟 face 一致
+        txt = f"{yv:.0f}" if abs(float(yv) - round(float(yv))) < 1e-6 else _fmt_face(float(yv))
+        ax.text(
+            0.012, float(yv), txt,
+            transform=y_trans, ha="left", va="center",
+            fontproperties=fp(10, False), color=MUTE, zorder=6, clip_on=True,
+        )
     vol_ax.set_yticks([])
     vol_ax.text(
-        0.01, 0.92, "量(張)", transform=vol_ax.transAxes,
+        0.012, 0.90, "量(張)", transform=vol_ax.transAxes,
         fontproperties=fp(10, False), color=MUTE, va="top", ha="left",
     )
 
@@ -2751,10 +2765,10 @@ def default_out_dir() -> str:
     if env:
         return env
     for store in (
+        "/cursor/stores/self/media/intraday-v18-gutter-20261030",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v18-gutter-20261030",
         "/cursor/stores/self/media/intraday-v17-vol-cell-20261030",
         "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v17-vol-cell-20261030",
-        "/cursor/stores/self/media/intraday-v16-polish-20261030",
-        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v16-polish-20261030",
     ):
         parent = os.path.dirname(store)
         if os.path.isdir(parent) or os.path.isdir(store):
@@ -2763,11 +2777,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v17（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v18（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v17")
+    ap.add_argument("--prefix", default="preview-v18")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     ap.add_argument(
         "--set",
@@ -2840,7 +2854,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "20261030"
         if any(
             str(args.prefix).startswith(p)
-            for p in ("preview-v15", "preview-v16", "preview-v17")
+            for p in ("preview-v15", "preview-v16", "preview-v17", "preview-v18")
         )
         else "20261029"
     )
