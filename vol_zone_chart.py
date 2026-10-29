@@ -1156,12 +1156,23 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
     )
     # 與高低卡同源：只到庫內最後完整收盤日。未齊日（例盤中只寫到兩檔）
     # 不准進結構／大量區，否則兩圖最後收盤日會分叉。
+    # 興櫃：上市櫃未齊但 emerging_quotes 該日已全日（≥MIN_EM）→ 准用興櫃完整日，
+    # 不准把已收興櫃卡死在上市櫃半套昨收（3595 20261029）。
     try:
         from quote_integrity import db_as_of_trading_date
 
         cap = str(db_as_of_trading_date(path) or "").replace("-", "")[:8]
     except Exception:
         cap = ""
+    if source == "emerging_quotes":
+        try:
+            from import_health import latest_complete_emerging_date
+
+            em_cap = str(latest_complete_emerging_date(path) or "").replace("-", "")[:8]
+            if len(em_cap) == 8 and (not cap or em_cap > cap):
+                cap = em_cap
+        except Exception:
+            pass
     if cap:
         dcap = df["date"].astype(str).str.replace("-", "", regex=False)
         df = df.loc[dcap <= cap].reset_index(drop=True)
