@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Preview-only v5：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v6：今日開→收墨線臉（查股第 5 張候選）。
 
 - 頭欄＝結構／大量區同款（nameplate＋spot）。
-- 八格報價格畫在 overlay 高 z（頭欄名牌下／圖框上空白），國字＋數字加大；
-  不准淡成幽靈字（v4 畫在 fig 被頭欄白底蓋住）。
-- 底部三條：季均量 vs 當日量、日低–日高、52週低–高（端點＋最新必現）。
-- 主圖右側：日高／昨收／日低必現（智慧去撞）。
-- 興櫃路徑＝Yahoo ``priceByTimes``（.TWO）至 15:00；面值仍官方日表。
+- 八格報價格畫在 overlay 高 z；國字＋數字加大。
+- 路徑：TW/TWO Yahoo 1m、EM priceByTimes→1 分；盤中缺分用前收平鋪補齊（量＝0，不捏新價）。
+- 時間軸標畫在量圖框外，不被 panel 框線切斷。
+- 底部三條＋右側日高／昨收／日低必現。
 - 不准接話筒／不准合 main；臉不寫出處。
 """
 from __future__ import annotations
@@ -19,7 +18,7 @@ import sqlite3
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote as url_quote
 from zoneinfo import ZoneInfo
@@ -111,6 +110,75 @@ def _yahoo_ids(stock_id: str, market: str, db_path: Optional[str]) -> List[str]:
     return alts
 
 
+def _session_end_hm(market: str) -> int:
+    return 1500 if str(market).upper() == "EM" else 1330
+
+
+def _densify_1m_path(
+    times: List[datetime],
+    opens: List[float],
+    highs: List[float],
+    lows: List[float],
+    closes: List[float],
+    vols: List[float],
+    *,
+    ymd: str,
+    sess_end_hm: int,
+) -> Dict[str, List[Any]]:
+    """盤中缺分：用前一分收盤平鋪（量 0）；不跨日、不捏新價。"""
+    if len(closes) < 2:
+        return {
+            "times": times, "opens": opens, "highs": highs,
+            "lows": lows, "closes": closes, "volumes_lots": vols,
+        }
+    by_min: Dict[datetime, Tuple[float, float, float, float, float]] = {}
+    for t, o, h, lo, c, v in zip(times, opens, highs, lows, closes, vols):
+        key = t.replace(second=0, microsecond=0)
+        by_min[key] = (float(o), float(h), float(lo), float(c), float(v))
+    y, m, d = int(ymd[:4]), int(ymd[4:6]), int(ymd[6:8])
+    start = datetime(y, m, d, 9, 0, tzinfo=TZ)
+    end_h, end_m = divmod(sess_end_hm, 100)
+    end = datetime(y, m, d, end_h, end_m, tzinfo=TZ)
+    out_t: List[datetime] = []
+    out_o: List[float] = []
+    out_h: List[float] = []
+    out_l: List[float] = []
+    out_c: List[float] = []
+    out_v: List[float] = []
+    cur = start
+    last_c: Optional[float] = None
+    # 先對齊到第一筆真資料，不往前捏開盤前空檔
+    first_key = min(by_min.keys())
+    while cur < first_key:
+        cur += timedelta(minutes=1)
+    while cur <= end:
+        if cur in by_min:
+            o, h, lo, c, v = by_min[cur]
+            last_c = c
+            out_t.append(cur)
+            out_o.append(o)
+            out_h.append(h)
+            out_l.append(lo)
+            out_c.append(c)
+            out_v.append(v)
+        elif last_c is not None:
+            out_t.append(cur)
+            out_o.append(last_c)
+            out_h.append(last_c)
+            out_l.append(last_c)
+            out_c.append(last_c)
+            out_v.append(0.0)
+        cur += timedelta(minutes=1)
+    return {
+        "times": out_t,
+        "opens": out_o,
+        "highs": out_h,
+        "lows": out_l,
+        "closes": out_c,
+        "volumes_lots": out_v,
+    }
+
+
 def fetch_yahoo_1m_path(
     stock_id: str,
     market: str,
@@ -122,55 +190,72 @@ def fetch_yahoo_1m_path(
     from kline_hop import parse_yahoo_chart_bars
 
     last_err = ""
+    sess_end = _session_end_hm(market)
+    y, m, d = int(ymd[:4]), int(ymd[4:6]), int(ymd[6:8])
+    # 台北開盤前後窗 → UTC epoch，逼 Yahoo 吐完整當日 1m
+    p1 = int(datetime(y, m, d, 8, 50, tzinfo=TZ).timestamp())
+    p2 = int(datetime(y, m, d, 15, 10, tzinfo=TZ).timestamp())
     for yid in _yahoo_ids(stock_id, market, db_path):
-        url = (
-            f"https://query1.finance.yahoo.com/v8/finance/chart/{url_quote(yid, safe='')}"
-            f"?interval=1m&range=1d"
-        )
-        try:
-            resp = requests.get(url, timeout=12, headers=_ua())
-            if resp.status_code != 200:
-                last_err = f"HTTP {resp.status_code}"
-                continue
-            bars = parse_yahoo_chart_bars(resp.json() or {})
-            times: List[datetime] = []
-            closes: List[float] = []
-            vols: List[float] = []
-            opens: List[float] = []
-            highs: List[float] = []
-            lows: List[float] = []
-            sess_end = 1500 if str(market).upper() == "EM" else 1330
-            for b in bars:
-                t_raw = str(b.get("t") or "")
-                if len(t_raw) < 12 or not t_raw.startswith(ymd):
+        urls = [
+            (
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{url_quote(yid, safe='')}"
+                f"?interval=1m&period1={p1}&period2={p2}"
+            ),
+            (
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{url_quote(yid, safe='')}"
+                f"?interval=1m&range=1d"
+            ),
+        ]
+        for url in urls:
+            try:
+                resp = requests.get(url, timeout=15, headers=_ua())
+                if resp.status_code != 200:
+                    last_err = f"HTTP {resp.status_code}"
                     continue
-                dt = datetime.strptime(t_raw, "%Y%m%d%H%M").replace(tzinfo=TZ)
-                hm = dt.hour * 100 + dt.minute
-                if hm < 900 or hm > sess_end:
+                bars = parse_yahoo_chart_bars(resp.json() or {})
+                times: List[datetime] = []
+                closes: List[float] = []
+                vols: List[float] = []
+                opens: List[float] = []
+                highs: List[float] = []
+                lows: List[float] = []
+                for b in bars:
+                    t_raw = str(b.get("t") or "")
+                    if len(t_raw) < 12 or not t_raw.startswith(ymd):
+                        continue
+                    dt = datetime.strptime(t_raw, "%Y%m%d%H%M").replace(tzinfo=TZ)
+                    hm = dt.hour * 100 + dt.minute
+                    if hm < 900 or hm > sess_end:
+                        continue
+                    c = float(b["c"])
+                    times.append(dt)
+                    closes.append(c)
+                    vols.append(float(b.get("v") or 0.0))
+                    opens.append(float(b.get("o") or c))
+                    highs.append(float(b.get("h") or c))
+                    lows.append(float(b.get("l") or c))
+                if len(closes) < 2:
+                    last_err = f"{yid} today points<{2}"
                     continue
-                c = float(b["c"])
-                times.append(dt)
-                closes.append(c)
-                vols.append(float(b.get("v") or 0.0))
-                opens.append(float(b.get("o") or c))
-                highs.append(float(b.get("h") or c))
-                lows.append(float(b.get("l") or c))
-            if len(closes) < 2:
-                last_err = f"{yid} today points<{2}"
+                dense = _densify_1m_path(
+                    times, opens, highs, lows, closes, vols,
+                    ymd=ymd, sess_end_hm=sess_end,
+                )
+                return {
+                    "yahoo_symbol": yid,
+                    "times": dense["times"],
+                    "closes": dense["closes"],
+                    "volumes_lots": dense["volumes_lots"],
+                    "opens": dense["opens"],
+                    "highs": dense["highs"],
+                    "lows": dense["lows"],
+                    "source": f"yahoo:chart:1m:{yid}",
+                    "raw_n": len(closes),
+                    "dense_n": len(dense["closes"]),
+                }
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
                 continue
-            return {
-                "yahoo_symbol": yid,
-                "times": times,
-                "closes": closes,
-                "volumes_lots": vols,
-                "opens": opens,
-                "highs": highs,
-                "lows": lows,
-                "source": f"yahoo:chart:1m:{yid}",
-            }
-        except Exception as exc:  # noqa: BLE001
-            last_err = str(exc)
-            continue
     sys.stderr.write(f"[path-skip] {stock_id}: {last_err}\n")
     return None
 
@@ -312,21 +397,28 @@ def fetch_yahoo_price_by_times(
     if len(agg["closes"]) < 2:
         sys.stderr.write(f"[priceByTimes-skip] {stock_id}: 1m bars<2\n")
         return None
-    n_after = sum(1 for t in agg["times"] if t.hour * 100 + t.minute > 1330)
+    dense = _densify_1m_path(
+        list(agg["times"]), list(agg["opens"]), list(agg["highs"]),
+        list(agg["lows"]), list(agg["closes"]), list(agg["volumes_lots"]),
+        ymd=ymd, sess_end_hm=1500,
+    )
+    n_after = sum(1 for t in dense["times"] if t.hour * 100 + t.minute > 1330)
     return {
         "yahoo_symbol": yid,
-        "times": agg["times"],
-        "closes": agg["closes"],
-        "volumes_lots": agg["volumes_lots"],
-        "opens": agg["opens"],
-        "highs": agg["highs"],
-        "lows": agg["lows"],
+        "times": dense["times"],
+        "closes": dense["closes"],
+        "volumes_lots": dense["volumes_lots"],
+        "opens": dense["opens"],
+        "highs": dense["highs"],
+        "lows": dense["lows"],
         "source": f"yahoo:priceByTimes:1m:{yid}",
         "prints_n": len(ordered),
         "pages": pages,
+        "raw_1m_n": len(agg["closes"]),
+        "dense_n": len(dense["closes"]),
         "n_after_1330": n_after,
-        "path_min": min(agg["lows"]),
-        "path_max": max(agg["highs"]),
+        "path_min": min(dense["lows"]),
+        "path_max": max(dense["highs"]),
     }
 
 
@@ -1075,16 +1167,17 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v5：底≈24%；頭欄＝名牌＋八格（overlay 高 z）；右緣留白給日高／昨收／日低
+    # v6：底≈24%；量圖框下另留時間軸標帶（標不被框線切）
     fig_w, fig_h, dpi = 13.2, 12.0, 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
     left_f, right_f = 0.055, 0.86
     range_top = 0.250
+    xlab_h = 0.032  # 量圖框外時間標帶
     vol_h = 0.078
-    vol_bot = range_top + 0.012
-    main_bot = vol_bot + vol_h + 0.012
-    main_top = 0.56  # 頭欄名牌＋八格在上（避開右上時間戳）
+    vol_bot = range_top + xlab_h + 0.006
+    main_bot = vol_bot + vol_h + 0.010
+    main_top = 0.56  # 頭欄名牌＋八格在上
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
     ax.set_facecolor(PAPER)
@@ -1220,10 +1313,11 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=1.0, alpha=0.75, zorder=2)
     ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
     ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.16, zorder=1)
+    # 缺分已平鋪；僅跳超大斷層（不應再出現）。連續段用 plot 畫齊。
     for i in range(len(ys) - 1):
         a, b = float(ys[i]), float(ys[i + 1])
         x0, x1 = float(xs[i]), float(xs[i + 1])
-        if x1 - x0 > 8:
+        if x1 - x0 > 5:
             continue
         if (a >= prev and b >= prev) or (a < prev and b < prev):
             ax.plot([x0, x1], [a, b], color=(UP if a >= prev else DN), lw=2.05, solid_capstyle="round", zorder=3)
@@ -1301,18 +1395,30 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     tick_x = [(h - 9) * 60 for h in tick_h]
     for a in (ax, vol_ax):
         a.set_xticks(tick_x)
-        a.tick_params(colors=MUTE, length=3, labelsize=10)
+        a.tick_params(axis="x", length=0, labelbottom=False)
+        a.tick_params(axis="y", colors=MUTE, length=3, labelsize=10)
         for sp in a.spines.values():
             sp.set_color(INK)
             sp.set_linewidth(0.95)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
+    # 時間標：畫在量圖框外（vol_bot 下方標帶），避免被 panel 框線切斷
     ax.set_xticklabels([])
-    vol_ax.set_xticklabels([f"{h:02d}" for h in tick_h], fontproperties=fp(10, False), color=MUTE)
+    vol_ax.set_xticklabels([])
     for lab in ax.get_yticklabels():
         lab.set_fontproperties(fp(10, False))
         lab.set_color(MUTE)
     vol_ax.set_yticks([])
     vol_ax.text(0.01, 0.92, "量(張)", transform=vol_ax.transAxes, fontproperties=fp(9, False), color=MUTE, va="top", ha="left")
+    xlab_y = vol_bot - 0.014
+    chart_w = right_f - left_f
+    for h, tx in zip(tick_h, tick_x):
+        xf = left_f + chart_w * (float(tx) / float(x_end))
+        ha = "left" if h == tick_h[0] else ("right" if h == tick_h[-1] else "center")
+        fig.text(
+            xf, xlab_y, f"{h:02d}",
+            fontproperties=fp(11, False), color="#3A3A3A", ha=ha, va="top",
+            transform=fig.transFigure, clip_on=False, zorder=35,
+        )
 
     # 底部三條用圖框同寬（含右標外的視覺對齊用 chart 右緣）
     _paint_range_bars(fig, off, y_bot=0.022, left=left_f, right=min(right_f + 0.04, 0.94))
@@ -1398,11 +1504,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v5（不接話筒）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v6（不接話筒）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v5")
+    ap.add_argument("--prefix", default="preview-v6")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
