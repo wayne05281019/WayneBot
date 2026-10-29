@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Preview-only v6：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v7：今日開→收墨線臉（查股第 5 張候選）。
 
 - 頭欄＝結構／大量區同款（nameplate＋spot）。
-- 八格報價格畫在 overlay 高 z；國字＋數字加大。
-- 路徑：TW/TWO Yahoo 1m、EM priceByTimes→1 分；盤中缺分用前收平鋪補齊（量＝0，不捏新價）。
-- 時間軸標畫在量圖框外，不被 panel 框線切斷。
-- 底部三條＋右側日高／昨收／日低必現。
+- 八格＝**獨立 axes 帶**在主圖上方（不畫進價圖 ax／不蓋在價線上）。
+- figsize／dpi／左右底邊距對齊查股結構圖（chart3）ink 常數。
+- 路徑：TW/TWO Yahoo 1m、EM priceByTimes→1 分；缺分平鋪前收（量＝0）。
+- 時間軸標在量圖框外；底部三條＋右側日高／昨收／日低必現。
 - 不准接話筒／不准合 main；臉不寫出處。
 """
 from __future__ import annotations
@@ -900,13 +900,21 @@ def _scrub_em_limit_labels(fig) -> None:
             t.set_text(s.replace("　漲停", "").replace("　跌停", "").replace(" 漲停", "").replace(" 跌停", "").replace("漲停", "").replace("跌停", ""))
 
 
-def _paint_quote_grid(ov, off: OfficialDay, *, y_top: float, left: float, right: float) -> None:
-    """八格報價格：畫在 overlay（0–100），高 z，不准被頭欄白底蓋成幽靈字。
+def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
+    """八格報價格：獨立 axes（主圖上方），axes 座標 0–1；不准畫進價圖 ax。
 
     格序：今開／最高／成交量／昨收／最低／成交額／日均價｜均價／振幅。
     """
     from ink_chart_theme import DN, INK, MUTE, PAPER, UP, fp
     from matplotlib.patches import FancyBboxPatch
+
+    quote_ax.set_xlim(0, 1)
+    quote_ax.set_ylim(0, 1)
+    quote_ax.set_facecolor(PAPER)
+    quote_ax.set_xticks([])
+    quote_ax.set_yticks([])
+    for sp in quote_ax.spines.values():
+        sp.set_visible(False)
 
     avg_lab = "日均價" if off.close_label == "興櫃收" else "均價"
     avg_val = _fmt_face(off.avg_price) if off.avg_price and off.avg_price > 0 else "—"
@@ -924,41 +932,45 @@ def _paint_quote_grid(ov, off: OfficialDay, *, y_top: float, left: float, right:
     ]
 
     cols = 4
-    gap_x, gap_y = 0.55, 0.55
-    cell_h = 5.6  # 0–100 ov units；約兩列清楚可讀
-    width = right - left
+    # 軸內留邊；興櫃註另佔底列
+    has_note = off.close_label == "興櫃收" and not (off.low <= off.open <= off.high)
+    pad_x, pad_top = 0.008, 0.06
+    pad_bot = 0.22 if has_note else 0.06
+    gap_x, gap_y = 0.012, 0.06
+    usable_h = 1.0 - pad_top - pad_bot
+    cell_h = (usable_h - gap_y) / 2.0
+    width = 1.0 - 2 * pad_x
     cell_w = (width - gap_x * (cols - 1)) / cols
     edge = "#9AA0A6"
     lab_col = "#3A3A3A"
     for i, (lab, val, col) in enumerate(cells):
         r, c = divmod(i, cols)
-        x = left + c * (cell_w + gap_x)
-        y = y_top - (r + 1) * (cell_h + gap_y)
-        ov.add_patch(
+        x = pad_x + c * (cell_w + gap_x)
+        y = 1.0 - pad_top - (r + 1) * cell_h - r * gap_y
+        quote_ax.add_patch(
             FancyBboxPatch(
                 (x, y), cell_w, cell_h,
-                boxstyle="square,pad=0.04",
-                facecolor=PAPER, edgecolor=edge, linewidth=1.15,
-                alpha=1.0, zorder=40, clip_on=False,
+                boxstyle="square,pad=0.004",
+                facecolor=PAPER, edgecolor=edge, linewidth=1.2,
+                transform=quote_ax.transAxes, clip_on=False, zorder=2,
             )
         )
-        ov.text(
-            x + 0.55, y + cell_h * 0.52, lab,
-            fontproperties=fp(13, True), color=lab_col, ha="left", va="center",
-            zorder=41, clip_on=False,
+        quote_ax.text(
+            x + 0.012, y + cell_h * 0.5, lab,
+            fontproperties=fp(12, True), color=lab_col, ha="left", va="center",
+            transform=quote_ax.transAxes, zorder=3, clip_on=False,
         )
-        ov.text(
-            x + cell_w - 0.55, y + cell_h * 0.52, val,
-            fontproperties=fp(18, True), color=col, ha="right", va="center",
-            zorder=41, clip_on=False,
+        quote_ax.text(
+            x + cell_w - 0.012, y + cell_h * 0.5, val,
+            fontproperties=fp(16, True), color=col, ha="right", va="center",
+            transform=quote_ax.transAxes, zorder=3, clip_on=False,
         )
-    if off.close_label == "興櫃收" and not (off.low <= off.open <= off.high):
-        note_y = y_top - 2 * (cell_h + gap_y) - 0.8
-        ov.text(
-            left, note_y,
+    if has_note:
+        quote_ax.text(
+            pad_x, 0.04,
             "註：興櫃開＝前日均價，可高於當日最高",
-            fontproperties=fp(11, False), color=MUTE, ha="left", va="top",
-            zorder=41, clip_on=False,
+            fontproperties=fp(10, False), color=MUTE, ha="left", va="bottom",
+            transform=quote_ax.transAxes, zorder=3, clip_on=False,
         )
 
 
@@ -1118,6 +1130,9 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     from matplotlib.patches import FancyBboxPatch
 
     from biaoke_chart import (
+        BIAOKE_CHART_DPI,
+        _FIG_BOTTOM,
+        _FIG_LEFT,
         _HEADER_X_FB,
         _SPOT_X_NO_LOCATOR,
         _STRUCTURE_BOX_EC,
@@ -1125,6 +1140,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         _STRUCTURE_BOX_STYLE,
         _STRUCTURE_BOX_W,
         _STRUCTURE_BOX_X,
+        _STRUCTURE_FIG_RIGHT,
+        _STRUCTURE_LOOKUP_FIG,
         _STRUCTURE_META_FS,
         _STRUCTURE_SPOT_FS,
         _STRUCTURE_SPOT_LAB_FS,
@@ -1167,21 +1184,32 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v6：底≈24%；量圖框下另留時間軸標帶（標不被框線切）
-    fig_w, fig_h, dpi = 13.2, 12.0, 200
+    # v7：figsize／dpi／左右底邊距＝查股結構圖（chart3）；八格獨立 axes 在主圖上
+    fig_w = float(_STRUCTURE_LOOKUP_FIG[0])  # 12.4
+    # 結構圖高 ≈8.16；本臉多八格＋底三條 → 加高（寬／邊距仍對齊）
+    fig_h = 10.85
+    dpi = int(BIAOKE_CHART_DPI)  # 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
-    left_f, right_f = 0.055, 0.86
-    range_top = 0.250
-    xlab_h = 0.032  # 量圖框外時間標帶
-    vol_h = 0.078
-    vol_bot = range_top + xlab_h + 0.006
-    main_bot = vol_bot + vol_h + 0.010
-    main_top = 0.56  # 頭欄名牌＋八格在上
+    left_f = float(_FIG_LEFT)  # 0.028
+    right_f = 0.86  # 右標外掛；結構圖用 0.905，這裡略收給日高／昨收／日低
+    bot_f = float(_FIG_BOTTOM)  # 0.055
+    range_top = 0.235
+    xlab_h = 0.030
+    vol_h = 0.072
+    vol_bot = range_top + xlab_h + 0.004
+    main_bot = vol_bot + vol_h + 0.008
+    main_top = 0.58
+    quote_bot = main_top + 0.010
+    quote_top = 0.72  # 八格獨立帶；之上才是名牌頭欄
+    header_bot = quote_top + 0.008
+
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
+    quote_ax = fig.add_axes([left_f, quote_bot, right_f - left_f, quote_top - quote_bot])
     ax.set_facecolor(PAPER)
     vol_ax.set_facecolor(PAPER)
+    quote_ax.set_facecolor(PAPER)
 
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
     ov.set_xlim(0, 100)
@@ -1189,7 +1217,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ov.axis("off")
     ov.patch.set_alpha(0)
 
-    band_bot = main_top * 100.0
+    # 頭欄白底只包名牌區（不含八格、不含價圖）
+    band_bot = header_bot * 100.0
     ov.add_patch(
         FancyBboxPatch(
             (_STRUCTURE_BOX_X, band_bot + 0.35),
@@ -1205,7 +1234,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         )
     )
     for y0, y1 in (
-        (main_bot * 100.0, band_bot - 0.2),
+        (quote_bot * 100.0, quote_top * 100.0),
+        (main_bot * 100.0, main_top * 100.0),
         (vol_bot * 100.0, (vol_bot + vol_h) * 100.0),
     ):
         ov.add_patch(
@@ -1293,13 +1323,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     if is_em:
         _scrub_em_limit_labels(fig)
 
-    # 八格：overlay 高 z，整段落在右上價／時間戳之下（不准幽靈字、不准壓戳）
-    _paint_quote_grid(
-        ov, off,
-        y_top=78.5,
-        left=left_f * 100.0,
-        right=right_f * 100.0,
-    )
+    # 八格：獨立 axes（主圖上方），不畫進價圖 ax
+    _paint_quote_grid(quote_ax, off)
 
     # 路徑
     hi = float(max(float(np.max(ys)), prev, off.high, float(np.max(series.highs))))
@@ -1504,11 +1529,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v6（不接話筒）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v7（不接話筒）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v6")
+    ap.add_argument("--prefix", default="preview-v7")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
