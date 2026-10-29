@@ -50,7 +50,8 @@ _UP = "#e53935"
 _DN = "#00897b"
 _HALT = "#9e9e9e"
 _PRESS = "#ad1457"
-_HOLD = "#1b5e20"
+# 2026-10-29：撐色加深（與大量區同）；壓維持
+_HOLD = "#0a4d1c"
 _DOWN_TRACK = "#6a1b9a"
 _UP_TRACK = "#0277bd"
 _CH_ASC = "#00897b"  # 上升通道雙線（對齊附圖青綠色調，白底可讀）
@@ -3460,6 +3461,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
     if close is None:
         return
     from wayne_navigator import (
+        LOOKUP_QUOTE_FLAT,
         _draw_mini_candle,
         quote_limit_chip_colors,
         quote_limit_side,
@@ -3468,6 +3470,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
 
     x, y, _w, h = (float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
     prev = quote.get("prev")
+
     color = quote_move_ink(
         quote.get("change"),
         close=close,
@@ -3475,7 +3478,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
         pct=quote.get("pct"),
         up=_UP,
         down=_DN,
-        flat="#455a64",
+        flat=LOOKUP_QUOTE_FLAT,
     )
     chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
@@ -4082,6 +4085,7 @@ def _paint_spot(
     if close is None:
         return
     from wayne_navigator import (
+        LOOKUP_QUOTE_FLAT,
         _draw_mini_candle,
         quote_limit_chip_colors,
         quote_limit_side,
@@ -4089,6 +4093,7 @@ def _paint_spot(
     )
 
     prev = quote.get("prev")
+
     color = quote_move_ink(
         quote.get("change"),
         close=close,
@@ -4096,7 +4101,7 @@ def _paint_spot(
         pct=quote.get("pct"),
         up=_UP,
         down=_DN,
-        flat="#455a64",
+        flat=LOOKUP_QUOTE_FLAT,
     )
     chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
@@ -4623,14 +4628,22 @@ def render_biaoke_structure_png(
         )
     )
     halt_flags = [_bar_is_halt(work[i]) for i in range(n)]
-    # 主大量區桃色帶（與第 4 張 _FILL 同色）；次層淺灰另畫
+    # 主大量區桃色帶（與第 4 張 _FILL 同色／α；v2d 加深）；次層淺灰另畫
     if spike_hi > 0 and spike_lo > 0 and spike_hi >= spike_lo:
+        try:
+            from vol_zone_chart import _FILL as _VZ_FILL
+            from vol_zone_chart import _FILL_ALPHA as _VZ_FILL_A
+
+            _band_c = str(_VZ_FILL)
+            _band_a = float(_VZ_FILL_A)
+        except Exception:
+            _band_c, _band_a = "#ffb74d", 0.62
         try:
             ax1.axhspan(
                 float(spike_lo),
                 float(spike_hi),
-                color=_WINDOW_BG,
-                alpha=0.42,
+                color=_band_c,
+                alpha=_band_a,
                 zorder=0,
             )
         except Exception:
@@ -4659,16 +4672,8 @@ def render_biaoke_structure_png(
         float(n - 1) + max(float(_FUTURE) * 0.70, 5.9) + float(_STRUCTURE_LABEL_COL_EXTRA)
     )
     hline_xmax = float(label_col_left) - 0.9
+    # 2026-10-29 鎖臉：主大量區只留桃色帶（上方 axhspan），不畫壓／撐水平線；角標仍留。
     if spike_hi:
-        ax1.hlines(
-            spike_hi,
-            xmin=-0.55,
-            xmax=hline_xmax,
-            color=_PRESS,
-            linewidth=1.15,
-            zorder=4,
-            alpha=0.92,
-        )
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
@@ -4679,15 +4684,6 @@ def render_biaoke_structure_png(
             }
         )
     if spike_lo:
-        ax1.hlines(
-            spike_lo,
-            xmin=-0.55,
-            xmax=hline_xmax,
-            color=_HOLD,
-            linewidth=1.15,
-            zorder=4,
-            alpha=0.92,
-        )
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
@@ -5513,7 +5509,7 @@ def render_biaoke_structure_png(
         0 <= layer_i < n and layer_i != spike_i and vols[layer_i]
     )
     spike_ok = bool(0 <= spike_i < n and vols[spike_i])
-    # v8 建議：量標同高並排，但貼近柱頂（縮短垂直／水平連線）
+    # 2026-10-29 鎖臉：爆大量／下一層量日掛量圖上緣匡線下方空帶（不准壓柱）
     _peak_disp = 0.0
     if spike_ok:
         _peak_disp = max(
@@ -5525,18 +5521,15 @@ def render_biaoke_structure_png(
             _peak_disp,
             float(lookup_vol_to_display([float(vols[layer_i])], vmax)[0]),
         )
-    # 量標：先挑水平淨空（ha=right 框往左伸會蓋更高柱，6148），再抬 y
-    vol_lab_y = (
-        float(_peak_disp) * 1.06 + float(vmax) * 0.02
-        if _peak_disp > 0
-        else float(vmax) * 1.05
-    )
     _vol_disp_all = [
         float(v)
         for v in lookup_vol_to_display(
             [float(x or 0) for x in vols], vmax
         )
     ]
+    _bar_ceiling = max(float(_peak_disp), float(vmax), 1.0)
+    _vol_y_top = float(_bar_ceiling) / 0.78
+    vol_lab_y = float(_vol_y_top) * 0.985
     # 「這根＝爆大量　99,999張」約占 9～11 根
     _VOL_TAG_HALF_BARS = 10.0
 
@@ -5565,14 +5558,11 @@ def render_biaoke_structure_png(
         return peak
 
     def _bump_vol_lab_y_for(tx: float, ha: str) -> None:
-        nonlocal vol_lab_y
-        band_peak = max(float(_peak_disp), _peak_under(tx, ha))
-        need = float(band_peak) * 1.08 + float(vmax) * 0.04
-        if need > float(vol_lab_y):
-            vol_lab_y = need
+        # 鎖臉上緣空帶：不再依柱高抬標（標永遠掛頂下）
+        return None
 
     def _pick_vol_anchor(anchor_i: int) -> Tuple[float, str]:
-        """水平避開更高柱；上移空間不夠時只能橫移（6148）。"""
+        """水平錯開兩標；Y 固定上緣空帶。"""
         trials: List[Tuple[float, str]] = []
         for off in (3.0, 5.0, 6.5, 9.0, 12.0, 15.0):
             trials.append((min(float(n) - 1.2, float(anchor_i) + off), "left"))
@@ -5581,7 +5571,6 @@ def render_biaoke_structure_png(
         spike_h = float(_vol_disp_all[anchor_i]) if 0 <= anchor_i < len(_vol_disp_all) else 0.0
         for tx, ha in trials:
             pk = _peak_under(tx, ha)
-            # 代價：蓋到比錨柱明顯更高的柱 → 重罰；其次看帶內峰值
             taller = max(0.0, pk - max(spike_h, 1.0))
             key = taller * 10.0 + pk + abs(float(tx) - float(anchor_i)) * 0.02
             if best is None or key < best[0]:
@@ -5608,7 +5597,7 @@ def render_biaoke_structure_png(
                 layer_ha = "left"
         _bump_vol_lab_y_for(spike_tx, spike_ha)
         _bump_vol_lab_y_for(layer_tx, layer_ha)
-        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
+        ax2.set_ylim(0, float(_vol_y_top))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
@@ -5616,7 +5605,7 @@ def render_biaoke_structure_png(
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
             ha=str(layer_ha),
-            va="bottom",
+            va="top",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5643,7 +5632,7 @@ def render_biaoke_structure_png(
             color=_TEXT,
             fontproperties=_fp(10, "bold"),
             ha=str(spike_ha),
-            va="bottom",
+            va="top",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5678,7 +5667,7 @@ def render_biaoke_structure_png(
         spike_disp = float(lookup_vol_to_display([float(vols[spike_i])], vmax)[0])
         vol_tx, vol_ha = _pick_vol_anchor(int(spike_i))
         _bump_vol_lab_y_for(vol_tx, vol_ha)
-        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
+        ax2.set_ylim(0, float(_vol_y_top))
         _leader_note(
             ax2,
             float(spike_i),
@@ -5689,7 +5678,7 @@ def render_biaoke_structure_png(
             ty=vol_lab_y,
             size=11,
             ha=str(vol_ha),
-            va="bottom",
+            va="top",
             clip=False,
         )
     elif has_layer_vol:
@@ -5697,7 +5686,7 @@ def render_biaoke_structure_png(
         layer_md = _md(work[layer_i].get("date"))
         lab_x, lab_ha = _pick_vol_anchor(int(layer_i))
         _bump_vol_lab_y_for(lab_x, lab_ha)
-        ax2.set_ylim(0, max(float(vmax) * 1.16, float(vol_lab_y) * 1.22))
+        ax2.set_ylim(0, float(_vol_y_top))
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
@@ -5705,7 +5694,7 @@ def render_biaoke_structure_png(
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
             ha=str(lab_ha),
-            va="bottom",
+            va="top",
             zorder=12,
             annotation_clip=False,
             clip_on=False,
@@ -5737,7 +5726,7 @@ def render_biaoke_structure_png(
         except Exception:
             pass
     else:
-        ax2.set_ylim(0, max(float(vmax) * 1.12, float(vol_lab_y) * 1.10))
+        ax2.set_ylim(0, float(_vol_y_top))
     ax2.set_ylabel("")
     ax2.yaxis.set_ticks_position("right")
     ax2.tick_params(

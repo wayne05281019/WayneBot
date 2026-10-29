@@ -1378,7 +1378,9 @@ def test_structure_right_notes_fit_most_likely_full_text():
     assert "x_fut" in rsrc
     assert "label_col_left" in rsrc
     assert "rail_end" in rsrc
-    assert "hlines" in rsrc
+    # 2026-10-29 鎖臉：主大量區只留桃色帶，不畫壓／撐水平線；軌仍用 rail_end／hline_xmax
+    assert "hline_xmax" in rsrc or "axhspan" in rsrc
+    assert "不畫壓／撐水平線" in rsrc or "axhspan" in rsrc
     assert "max_note_w" in rsrc or "_approx_note_width" in rsrc
     assert "bottom_pad" in rsrc
     # 結構圖已刪演化區膚底標（v2）；函式內留刪除註記，模組常數另測

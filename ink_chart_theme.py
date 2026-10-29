@@ -53,13 +53,15 @@ YELLOW = "#F5C518"
 UP = "#E53935"
 DN = "#00897B"
 PRESS = "#B01030"
-HOLD = "#0A6B3A"
+# 2026-10-29：撐／下一層撐加深（縮圖可讀）；壓色不動
+HOLD = "#045A2E"
 VIOLET = "#4A2499"
-NEXT_H = "#1A54B8"
+NEXT_H = "#08307A"
 SPIKE = "#E8A200"
 CALL = "#D45500"
-SKIN = "#FFF1E4"
-SKIN_HATCH = "#E8B88A"
+# v2d：現任大量區桃色加深（對齊 paint _FILL）；不准再洗成過淡 #FFF1E4 α0.32
+SKIN = "#FFB74D"
+SKIN_HATCH = "#E09040"
 LAYER_FACE = "#F2F4F7"
 LAYER_HATCH = "#A0AAB4"
 GRAYTAG = "#5C5C5C"
@@ -456,10 +458,10 @@ def restyle_bands(ax) -> None:
             wide = p.get_width() >= 0.9 and p.get_transform() != ax.transData
         except Exception:
             wide = False
-        if fc == "#ffe0b2" and wide:
-            # 淡底＋細斜線；降低對比，右端不准出現白塊假影
+        if fc in ("#ffe0b2", "#ffcc80", "#ffd7a8", "#ffb74d") and wide:
+            # v2d 加深桃底＋細斜線；右端不准出現白塊假影
             p.set_facecolor(SKIN)
-            p.set_alpha(0.32)
+            p.set_alpha(0.60)
             p.set_hatch("////")
             p.set_hatchcolor(SKIN_HATCH)
             p.set_edgecolor("none")
@@ -468,9 +470,10 @@ def restyle_bands(ax) -> None:
                 p.set_antialiased(False)
             except Exception:
                 pass
-        elif fc == "#9e9e9e" and wide:
-            p.set_facecolor(LAYER_FACE)
-            p.set_alpha(0.45)
+        elif fc in ("#9e9e9e", "#78909c", "#90a4ae", "#607d8b") and wide:
+            # 下一層深灰價帶（v2c α≈0.38）；點紋略留層次
+            p.set_facecolor(LAYER_FACE if fc == "#9e9e9e" else fc)
+            p.set_alpha(0.38 if fc != "#9e9e9e" else 0.45)
             p.set_hatch("..")
             p.set_hatchcolor(LAYER_HATCH)
             p.set_edgecolor("none")
@@ -505,10 +508,10 @@ def restyle_levels(ax) -> None:
         if col == "#ad1457":
             c.set_colors([PRESS])
             c.set_linewidths([1.0 if dashed else 2.35])
-        elif col == "#1b5e20":
+        elif col in ("#1b5e20", "#0a4d1c"):
             c.set_colors([HOLD])
             c.set_linewidths([1.0 if dashed else 2.35])
-        elif col == "#1565c0":
+        elif col in ("#1565c0", "#0a3d8f", "#062e70"):
             c.set_colors([NEXT_H])
             c.set_linewidths([0.95])
     for ln in ax.lines:
@@ -517,7 +520,7 @@ def restyle_levels(ax) -> None:
         if col == "#ad1457" and ls == "-":
             ln.set_color(PRESS)
             ln.set_linewidth(2.2)
-        elif col == "#1b5e20" and ls == "-":
+        elif col in ("#1b5e20", "#0a4d1c") and ls == "-":
             ln.set_color(HOLD)
             ln.set_linewidth(2.2)
         elif col == "#6a1b9a" and ls == "--" and len(ln.get_xdata()) == 2:
@@ -527,6 +530,11 @@ def restyle_levels(ax) -> None:
             ln.set_color("#6E6E6E")
             ln.set_linestyle((0, (3.5, 2.8)))
             ln.set_linewidth(0.75)
+        elif col in ("#5f7a92", "#5F7A92"):
+            # 個股大量區淡灰藍平行軌（#717／v2e）：保持虛線可見，不准洗成實線／過淡
+            ln.set_color("#5f7a92")
+            ln.set_linestyle((0, (2.4, 2.0)))
+            ln.set_linewidth(max(float(ln.get_linewidth() or 1.0), 1.35))
     for c in ax.collections:
         if isinstance(c, PathCollection):
             fc = _hex(c.get_facecolor()[0]) if len(c.get_facecolor()) else ""
@@ -539,7 +547,7 @@ def restyle_levels(ax) -> None:
             mfc = _hex(ln.get_markerfacecolor())
             if mfc == "#ad1457":
                 ln.set_markerfacecolor(PRESS)
-            elif mfc == "#1b5e20":
+            elif mfc in ("#1b5e20", "#0a4d1c"):
                 ln.set_markerfacecolor(HOLD)
             ln.set_markeredgecolor(INK)
             ln.set_markeredgewidth(0.9)
@@ -695,7 +703,7 @@ ROLE_STYLE = {
     "prev_close": dict(fill=GRAYTAG, on_fill=PAPER, value_color=INK2, edge=INK, tier=2),
     "channel": dict(fill=VIOLET, on_fill=PAPER, value_color=VIOLET, edge=INK, tier=2),
     "next_press": dict(fill="#F7E8EC", on_fill=PRESS, value_color=PRESS, edge=PRESS, tier=3),
-    "next_hold": dict(fill="#E8EEF8", on_fill=NEXT_H, value_color=NEXT_H, edge=NEXT_H, tier=3),
+    "next_hold": dict(fill="#C5D4EC", on_fill=NEXT_H, value_color=NEXT_H, edge=NEXT_H, tier=3),
     "spike": dict(fill=SPIKE, on_fill=INK, value_color=INK, edge=INK, tier=2),
     "layer_day": dict(fill=NEXT_H, on_fill=PAPER, value_color=NEXT_H, edge=INK, tier=2),
 }
@@ -1030,7 +1038,7 @@ def struct_header(ink: Ink, ov, frames: List[FancyBboxPatch]) -> None:
             continue
         col = _hex(t.get_color())
         if s.startswith("較昨日"):
-            fc = UP if col == "#e53935" else (DN if col in ("#00897b", "#2e7d32", "#1b5e20") else INK2)
+            fc = UP if col == "#e53935" else (DN if col in ("#00897b", "#2e7d32", "#1b5e20", "#0a4d1c") else INK2)
             # 漲停／跌停：更深底＋字尾標（規則同源 quote_limit_side）
             limit_side = _detect_limit_from_header(ov)
             label = s
@@ -1080,7 +1088,7 @@ def sync_header_mini_candle(ax, color: str) -> None:
     target = (color or UP).lower()
     if target in ("#d61f26", "#b71c1c"):
         target = UP.lower()
-    elif target in ("#0a7a58", "#00695c", "#2e7d32", "#1b5e20"):
+    elif target in ("#0a7a58", "#00695c", "#2e7d32", "#1b5e20", "#0a4d1c", "#045a2e"):
         target = DN.lower()
     elif target not in (UP.lower(), DN.lower()):
         # 非漲跌色就不動
@@ -1152,7 +1160,7 @@ def struct_chips(ink: Ink, ov) -> None:
         if t.get_fontsize() >= 12:
             continue
         col = _hex(t.get_color())
-        fc = PRESS if col == "#ad1457" else (VIOLET if col == "#6a1b9a" else (HOLD if col == "#1b5e20" else INK))
+        fc = PRESS if col == "#ad1457" else (VIOLET if col == "#6a1b9a" else (HOLD if col in ("#1b5e20", "#0a4d1c") else INK))
         ink.sticker(t, fc=fc, tc=PAPER, pad=0.26, shadow=False, role="chip")
 
 
@@ -1267,7 +1275,10 @@ def sparse_right_ticks(ax, *, n_bins: int = 5, price: bool = True) -> None:
 
 
 def clear_vol_top_ytick(ax) -> None:
-    """量軸最上刻度不准壓價量分界框線；以量柱高峰為準重算，丟掉貼頂刻度。"""
+    """量軸最上刻度不准壓價量分界框線；以量柱高峰為準重算，丟掉貼頂刻度。
+
+    2026-10-29：若有「爆大量／下一層量日」標，頂端多留空帶並把標釘在上緣下方。
+    """
     import matplotlib.ticker as mticker
 
     if ax is None:
@@ -1285,8 +1296,16 @@ def clear_vol_top_ytick(ax) -> None:
             pass
     if bar_peak < 1.0:
         bar_peak = max(float(ax.get_ylim()[1]), 1.0)
-    # 底＝0；頂端多 16% 頭，數字離開分界框線
-    ax.set_ylim(0.0, bar_peak * 1.16)
+    has_vol_event = False
+    for t in list(ax.texts):
+        s = str(t.get_text() or "")
+        if "爆大量" in s or "下一層量日" in s:
+            has_vol_event = True
+            break
+    # 有量日標：柱區約 78%，上緣空帶掛標；否則維持舊 16% 頭
+    head = (1.0 / 0.78) if has_vol_event else 1.16
+    top = float(bar_peak) * float(head)
+    ax.set_ylim(0.0, top)
     ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4, prune="both"))
     # 不准在此整圖 draw：viewLim 已更新，get_yticks 不必重渲；外層 ink.redraw 一次收斂
     ticks = [
@@ -1306,6 +1325,23 @@ def clear_vol_top_ytick(ax) -> None:
         lab.set_fontproperties(fp(11.0, heavy=True))
         lab.set_color(INK2)
         lab.set_clip_on(False)
+    if has_vol_event:
+        lab_y = float(top) * 0.972
+        for t in list(ax.texts):
+            s = str(t.get_text() or "")
+            if "爆大量" not in s and "下一層量日" not in s:
+                continue
+            try:
+                t.set_va("top")
+                t.set_clip_on(False)
+                if isinstance(t, Annotation):
+                    x_pos = float(t.xyann[0]) if t.xyann is not None else float(t.get_position()[0])
+                    t.set_position((x_pos, lab_y))
+                else:
+                    x_pos = float(t.get_position()[0])
+                    t.set_position((x_pos, lab_y))
+            except Exception:
+                continue
 
 
 def flush_data_left_xlim(*axes) -> None:
@@ -1803,7 +1839,7 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
         x2_end, p2 = _paint_aligned(row2, cy2) if row2 else (x_data0, [])
         parts_all = list(p1) + list(p2)
         cy_close = cy2 if row2 else cy1
-        # 「低」右緣＝row2 畫完；收／現紅底必須在此右側留缝，不准再為時間戳往左拉
+        # 「低」右緣＝row2 畫完；收／現字必須在此右側留缝，不准再為時間戳往左拉
         x_low_end = x2_end if row2 else x1_end
         # 萬元股「低 4,830」「現 5,008」字寬大；12pt 縫目測仍像壓字，改 20pt
         MIN_LOW_CLOSE_GAP = max(20.0, ink.pt(20))
@@ -1818,24 +1854,46 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                 cs = str(close_t.get_text())
                 pc = fp(CLOSE_FS, heavy=True)
                 col = _hex(close_t.get_color())
-                fc = UP if col == "#e53935" else (DN if col == "#00897b" else INK)
+                # 普通日＝紅漲／黑平／綠跌「字」；只有漲停／跌停才走色底白字
+                move_tc = UP if col == "#e53935" else (DN if col == "#00897b" else INK)
+                try:
+                    raw_move = getattr(ink.fig, "_wayne_close_move_ink", None)
+                    if raw_move:
+                        rc = _hex(raw_move)
+                        if rc == "#e53935":
+                            move_tc = UP
+                        elif rc in ("#00897b", "#2e7d32", "#1b5e20", "#0a4d1c"):
+                            move_tc = DN
+                        elif rc in ("#0b0b0b", "#000000", "#212121"):
+                            move_tc = INK
+                except Exception:
+                    pass
                 label = cs
                 limit_side = _detect_limit_from_header(header)
+                wc, hc, dc = ink.measure(label, pc)
+                badge_pad_x = ink.pt(10)
+                # 固定跟在「低」右側；寧願時間戳微讓，不准收字左移壓低
+                x_badge = x_low_end + MIN_LOW_CLOSE_GAP
                 if limit_side == "up":
                     fc = LIMIT_UP
                     if "漲停" not in label:
                         label = cs + " 漲停"
+                    wc, hc, dc = ink.measure(label, pc)
+                    badge_w = wc + badge_pad_x
+                    tc = PAPER
                 elif limit_side == "down":
                     fc = LIMIT_DN
                     if "跌停" not in label:
                         label = cs + " 跌停"
-                wc, hc, dc = ink.measure(label, pc)
-                badge_pad_x = ink.pt(10)
-                badge_w = wc + badge_pad_x
-                # 固定跟在「低」右側；寧願時間戳微讓，不准紅底左移壓低
-                x_badge = x_low_end + MIN_LOW_CLOSE_GAP
+                    wc, hc, dc = ink.measure(label, pc)
+                    badge_w = wc + badge_pad_x
+                    tc = PAPER
+                else:
+                    fc = None
+                    badge_w = wc + ink.pt(4)
+                    tc = move_tc
                 badge_right = x_badge + badge_w
-                # 時間戳微讓：收到紅底右側，仍靠外框右緣
+                # 時間戳微讓：收到收字右側，仍靠外框右緣
                 if stamp is not None:
                     try:
                         sw, sh, sd = ink.measure(str(stamp.get_text()), fp(10.5, heavy=False))
@@ -1844,7 +1902,6 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                         stamp_left_need = badge_right + stamp_gap
                         stamp_right = right_px - ink.pt(2)
                         if stamp_left_need + stamp_w > stamp_right:
-                            # 空間極緊：時間戳貼右，紅底仍不左移（只縮時間戳與紅底縫）
                             stamp_right = right_px - ink.pt(1)
                             stamp_left_need = min(stamp_left_need, stamp_right - stamp_w)
                         stamp.set_fontproperties(fp(10.5, heavy=False))
@@ -1859,13 +1916,36 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                         ink.record(str(stamp.get_text()), [str(stamp.get_text())], "stamp", ink.shell_ext(stamp))
                     except Exception:
                         pass
-                ink.rect(
-                    header,
-                    x_badge, cy_close - hc / 2 - ink.pt(3.2),
-                    x_badge + badge_w, cy_close + hc / 2 + ink.pt(3.2),
-                    fc=fc, z=21,
-                )
-                ink.text(header, x_badge + ink.pt(5), cy_close - hc / 2 + dc, label, prop=pc, color=PAPER, ha="left", z=22)
+                if fc is not None:
+                    ink.rect(
+                        header,
+                        x_badge, cy_close - hc / 2 - ink.pt(3.2),
+                        x_badge + badge_w, cy_close + hc / 2 + ink.pt(3.2),
+                        fc=fc, z=21,
+                    )
+                    ink.text(
+                        header,
+                        x_badge + ink.pt(5),
+                        cy_close - hc / 2 + dc,
+                        label,
+                        prop=pc,
+                        color=tc,
+                        ha="left",
+                        z=22,
+                    )
+                    sync_col = fc
+                else:
+                    ink.text(
+                        header,
+                        x_badge,
+                        cy_close - hc / 2 + dc,
+                        label,
+                        prop=pc,
+                        color=tc,
+                        ha="left",
+                        z=22,
+                    )
+                    sync_col = tc
                 close_t.set_visible(False)
                 close_t.set_gid("ink:replaced")
                 ink._low_end_x = float(x_low_end)
@@ -1876,7 +1956,7 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     Bbox.from_extents(x_badge, cy_close - hc / 2, x_badge + badge_w, cy_close + hc / 2),
                 )
                 ink.record(s, parts_all, "data_strip", Bbox.from_extents(x_data0, y_bot, x_low_end, y_top))
-                sync_header_mini_candle(header, fc)
+                sync_header_mini_candle(header, sync_col)
             else:
                 ink.record(s, parts_all, "data_strip", Bbox.from_extents(x_data0, y_bot, x_low_end, y_top))
         else:
@@ -2230,7 +2310,32 @@ def vol_labels(ink: Ink, header, main, sig, volume) -> None:
         t.set_zorder(z + 0.3)
         t.set_gid("ink:label")
         ink.move_text_px(t, x0 + padx, ytop - hh + pady + d1, ha="left", va="baseline")
-        ink.text(main, x0 + padx, ybot + pady + d2, l2, prop=p2, color=INK, ha="left", z=z + 0.3)
+        # 日框「收／現」：紅漲黑平綠跌（漲停特例仍走表頭 chip；框內字跟 move ink）
+        close_col = INK
+        try:
+            raw_c = getattr(ink.fig, "_wayne_close_move_ink", None)
+            if raw_c:
+                close_col = str(raw_c)
+        except Exception:
+            close_col = INK
+        m_close = re.search(r"((?:收|現)[\d,.]+)\s*$", l2)
+        if m_close and m_close.start() > 0:
+            pref = l2[: m_close.start()]
+            bit = m_close.group(1)
+            wp, _, _ = ink.measure(pref, p2)
+            ink.text(main, x0 + padx, ybot + pady + d2, pref, prop=p2, color=INK, ha="left", z=z + 0.3)
+            ink.text(
+                main,
+                x0 + padx + wp,
+                ybot + pady + d2,
+                bit,
+                prop=p2,
+                color=close_col,
+                ha="left",
+                z=z + 0.3,
+            )
+        else:
+            ink.text(main, x0 + padx, ybot + pady + d2, l2, prop=p2, color=INK, ha="left", z=z + 0.3)
         ink.record(s, [l1, l2], "path_note", Bbox.from_extents(x0, ybot, x1, ytop))
     if sig is not None:
         # 點 2／7：量能訊號黑底白字框放回中間訊號列內（對齊主圖左緣），不准漂左外

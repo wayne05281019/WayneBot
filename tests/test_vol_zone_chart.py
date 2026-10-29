@@ -530,9 +530,9 @@ def test_vol_zone_main_tag_is_largest_role_tier():
 
     from vol_zone_chart import _paint_key_zone_smart_tags
 
-    assert VOL_ZONE_TAG_PT == 14
+    assert VOL_ZONE_TAG_PT == 11.0
     assert VOL_ZONE_TAG_PT > float(LAYER_TAG_PT)
-    assert float(VOL_ZONE_TAG_PAD) > 0.20
+    assert float(VOL_ZONE_TAG_PAD) >= 0.16
     paint_src = inspect.getsource(_paint_volume_zone)
     key_src = inspect.getsource(_paint_key_zone_smart_tags)
     src = inspect.getsource(render_volume_zone_png) + paint_src + key_src
@@ -608,8 +608,15 @@ def test_lookup_vol_gives_header_space_from_volume_blank():
     # v9：有導航時頂空略加大，橘框不跟箭頭互壓
     assert "ymax = ymax + (ymax - ymin)" in src
     assert "0.985" in src or "0.992" in src
-    # v8／v9：量標貼柱 → ylim 跟 vol_lab_y／y_top 走（不再寫死 1.30）
+    # 2026-10-29：量標掛上緣空帶；ylim 跟 y_top 走（顯示座標）
     assert "vol_lab_y" in src and ("set_ylim(0, float(y_top))" in src or "vol_ylim" in src)
+    assert 'va="top"' in src
+    assert "/ 0.78" in src
+    assert "configure_lookup_vol_axis" in src
+    # 主區只留桃色帶，不准再畫壓／撐水平線
+    assert "ax1.axhline(hi" not in src
+    assert "ax1.axhline(lo" not in src
+    assert "ax1.axhspan(lo, hi" in src
 
 
 def test_volume_bars_one_per_traded_day_3081():
