@@ -107,7 +107,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 66  # v2d：桃色加深＋主區標略縮＋收價紅黑綠（2026-10-29）
+_VZ_PAINT_VER = 67  # v2e：還原淡灰藍平行軌＋收普通日改字色（2026-10-29）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -4773,11 +4773,14 @@ def render_volume_zone_result(
 
     with_nav_signals＝疊導航箭頭／量能訊號（壓撐觀察用；仍非買訊）。
     lookup_portrait＝舊直式 4:5 畫布（壓區名單仍可走）。查股第 4 張改橫式原版。
-    with_parallel_channel＝疊可重算上升軌／下降壓兩條平行線（大盤大量區用；不數浪、非買訊）。
-    with_ma5_ma10＝疊官方五日／十日線（橙／青；與月／季並列；非買訊）。
-    預設 True＝話筒／勝率／壓撐／大盤同一新臉；測試要舊臉才顯式傳 False。
+    with_parallel_channel＝疊可重算上升軌／下降壓兩條平行線（不數浪、非買訊）。
+    查股導航臉（with_nav_signals）一律開平行軌（#717 淡灰藍細虛線＋名＋最新價）；
+    大盤大量區亦顯式 True。with_ma5_ma10＝五日／十日（預設 True）。
     """
     del already_normalized
+    # #717／查股第 4 張：導航臉漏傳仍要畫平行軌（預覽／舊呼叫端不准再無軌）
+    if with_nav_signals:
+        with_parallel_channel = True
     if not (
         isinstance(pack, dict)
         and pack.get("zone")

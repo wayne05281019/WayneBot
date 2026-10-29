@@ -67,6 +67,12 @@ def test_stock_quiet_trend_rail_constants():
     assert float(_STOCK_TREND_RAIL_LW) >= 1.2
     assert isinstance(_STOCK_TREND_RAIL_DASH, tuple)
     assert "with_parallel_channel=True" in inspect.getsource(render_lookup_vol_result)
+    # 導航臉漏傳仍開平行軌（v2e／預覽不准再無軌）
+    from vol_zone_chart import render_volume_zone_result
+
+    rsrc = inspect.getsource(render_volume_zone_result)
+    assert "if with_nav_signals:" in rsrc
+    assert "with_parallel_channel = True" in rsrc
     psrc = inspect.getsource(paint_vol_zone_parallel_channel)
     assert "quiet_rails" in psrc
     assert "draw_markers=False" in psrc

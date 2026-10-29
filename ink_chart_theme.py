@@ -530,6 +530,11 @@ def restyle_levels(ax) -> None:
             ln.set_color("#6E6E6E")
             ln.set_linestyle((0, (3.5, 2.8)))
             ln.set_linewidth(0.75)
+        elif col in ("#5f7a92", "#5F7A92"):
+            # 個股大量區淡灰藍平行軌（#717／v2e）：保持虛線可見，不准洗成實線／過淡
+            ln.set_color("#5f7a92")
+            ln.set_linestyle((0, (2.4, 2.0)))
+            ln.set_linewidth(max(float(ln.get_linewidth() or 1.0), 1.35))
     for c in ax.collections:
         if isinstance(c, PathCollection):
             fc = _hex(c.get_facecolor()[0]) if len(c.get_facecolor()) else ""
@@ -1834,7 +1839,7 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
         x2_end, p2 = _paint_aligned(row2, cy2) if row2 else (x_data0, [])
         parts_all = list(p1) + list(p2)
         cy_close = cy2 if row2 else cy1
-        # 「低」右緣＝row2 畫完；收／現紅底必須在此右側留缝，不准再為時間戳往左拉
+        # 「低」右緣＝row2 畫完；收／現字必須在此右側留缝，不准再為時間戳往左拉
         x_low_end = x2_end if row2 else x1_end
         # 萬元股「低 4,830」「現 5,008」字寬大；12pt 縫目測仍像壓字，改 20pt
         MIN_LOW_CLOSE_GAP = max(20.0, ink.pt(20))
@@ -1849,24 +1854,46 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                 cs = str(close_t.get_text())
                 pc = fp(CLOSE_FS, heavy=True)
                 col = _hex(close_t.get_color())
-                fc = UP if col == "#e53935" else (DN if col == "#00897b" else INK)
+                # 普通日＝紅漲／黑平／綠跌「字」；只有漲停／跌停才走色底白字
+                move_tc = UP if col == "#e53935" else (DN if col == "#00897b" else INK)
+                try:
+                    raw_move = getattr(ink.fig, "_wayne_close_move_ink", None)
+                    if raw_move:
+                        rc = _hex(raw_move)
+                        if rc == "#e53935":
+                            move_tc = UP
+                        elif rc in ("#00897b", "#2e7d32", "#1b5e20", "#0a4d1c"):
+                            move_tc = DN
+                        elif rc in ("#0b0b0b", "#000000", "#212121"):
+                            move_tc = INK
+                except Exception:
+                    pass
                 label = cs
                 limit_side = _detect_limit_from_header(header)
+                wc, hc, dc = ink.measure(label, pc)
+                badge_pad_x = ink.pt(10)
+                # 固定跟在「低」右側；寧願時間戳微讓，不准收字左移壓低
+                x_badge = x_low_end + MIN_LOW_CLOSE_GAP
                 if limit_side == "up":
                     fc = LIMIT_UP
                     if "漲停" not in label:
                         label = cs + " 漲停"
+                    wc, hc, dc = ink.measure(label, pc)
+                    badge_w = wc + badge_pad_x
+                    tc = PAPER
                 elif limit_side == "down":
                     fc = LIMIT_DN
                     if "跌停" not in label:
                         label = cs + " 跌停"
-                wc, hc, dc = ink.measure(label, pc)
-                badge_pad_x = ink.pt(10)
-                badge_w = wc + badge_pad_x
-                # 固定跟在「低」右側；寧願時間戳微讓，不准紅底左移壓低
-                x_badge = x_low_end + MIN_LOW_CLOSE_GAP
+                    wc, hc, dc = ink.measure(label, pc)
+                    badge_w = wc + badge_pad_x
+                    tc = PAPER
+                else:
+                    fc = None
+                    badge_w = wc + ink.pt(4)
+                    tc = move_tc
                 badge_right = x_badge + badge_w
-                # 時間戳微讓：收到紅底右側，仍靠外框右緣
+                # 時間戳微讓：收到收字右側，仍靠外框右緣
                 if stamp is not None:
                     try:
                         sw, sh, sd = ink.measure(str(stamp.get_text()), fp(10.5, heavy=False))
@@ -1875,7 +1902,6 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                         stamp_left_need = badge_right + stamp_gap
                         stamp_right = right_px - ink.pt(2)
                         if stamp_left_need + stamp_w > stamp_right:
-                            # 空間極緊：時間戳貼右，紅底仍不左移（只縮時間戳與紅底縫）
                             stamp_right = right_px - ink.pt(1)
                             stamp_left_need = min(stamp_left_need, stamp_right - stamp_w)
                         stamp.set_fontproperties(fp(10.5, heavy=False))
@@ -1890,13 +1916,36 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                         ink.record(str(stamp.get_text()), [str(stamp.get_text())], "stamp", ink.shell_ext(stamp))
                     except Exception:
                         pass
-                ink.rect(
-                    header,
-                    x_badge, cy_close - hc / 2 - ink.pt(3.2),
-                    x_badge + badge_w, cy_close + hc / 2 + ink.pt(3.2),
-                    fc=fc, z=21,
-                )
-                ink.text(header, x_badge + ink.pt(5), cy_close - hc / 2 + dc, label, prop=pc, color=PAPER, ha="left", z=22)
+                if fc is not None:
+                    ink.rect(
+                        header,
+                        x_badge, cy_close - hc / 2 - ink.pt(3.2),
+                        x_badge + badge_w, cy_close + hc / 2 + ink.pt(3.2),
+                        fc=fc, z=21,
+                    )
+                    ink.text(
+                        header,
+                        x_badge + ink.pt(5),
+                        cy_close - hc / 2 + dc,
+                        label,
+                        prop=pc,
+                        color=tc,
+                        ha="left",
+                        z=22,
+                    )
+                    sync_col = fc
+                else:
+                    ink.text(
+                        header,
+                        x_badge,
+                        cy_close - hc / 2 + dc,
+                        label,
+                        prop=pc,
+                        color=tc,
+                        ha="left",
+                        z=22,
+                    )
+                    sync_col = tc
                 close_t.set_visible(False)
                 close_t.set_gid("ink:replaced")
                 ink._low_end_x = float(x_low_end)
@@ -1907,7 +1956,7 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     Bbox.from_extents(x_badge, cy_close - hc / 2, x_badge + badge_w, cy_close + hc / 2),
                 )
                 ink.record(s, parts_all, "data_strip", Bbox.from_extents(x_data0, y_bot, x_low_end, y_top))
-                sync_header_mini_candle(header, fc)
+                sync_header_mini_candle(header, sync_col)
             else:
                 ink.record(s, parts_all, "data_strip", Bbox.from_extents(x_data0, y_bot, x_low_end, y_top))
         else:
