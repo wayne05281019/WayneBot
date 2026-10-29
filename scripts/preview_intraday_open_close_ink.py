@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Preview-only v14：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v15：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v14-tighten-gap-20261029.md：
-時間戳旁黑標 → 頭欄空白消 → 十二格上移 → 價圖加高；
-較昨日膠囊只漲停紅底／跌停綠底；今量額 ± 左右排；
-主圖智能標＝方案 B（實心原點＋短虛線＋淨空完整標；含事件／量％）；
-均＝現可併；不准線上大方框互壓。
+對齊 docs/intraday-v15-art-fix-20261030.md（美編審查必改＋建議）：
+骨架留 v14；興櫃「較昨日」永不色底；急殺不准黏撐（撐優先）；
+事件降權／量％再縮；開均現拉開；開＞高勿與壓擠；52週左端短標可讀。
 
-格子三排維持 v12 欄位；框共線／真分量柱紅綠／12.4×9.35／興櫃 15:00 維持。
 不准假資料、不准接話筒／合 main。
 """
 from __future__ import annotations
@@ -1164,22 +1161,55 @@ def _paint_smart_level_labels(
             }
         )
 
-    # v14 方案 B：破昨收／爆量／急殺＝實心原點＋虛線完整標（同閘避讓）
+    # v15：事件＝次層；急殺與撐互斥（撐優先不動，急殺掃對側／上方）
+    support_rects = [p["full_rect"] for p in pending if p.get("full") == "撐"]
+    support_ys = [float(p["price"]) for p in pending if p.get("full") == "撐"]
     for eidx, (ex, ey, elab, eck) in enumerate(list(events or [])):
         ecol = color_map.get(eck, ink)
         full_txt = str(elab)
+        is_kill = full_txt == "急殺"
         chip_ay = float(ey)
         chip_rect = _estimate_label_rect(
             float(ex), chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
         )
-        prefer_up = eidx % 2 == 1
-        full_fs_options = (11.0, 10.0, 9.0, 8.0, 7.0)
+        # 事件字級小於主標；急殺優先上方／撐對側
+        full_fs_options = (9.0, 8.0, 7.5, 7.0) if is_kill else (9.5, 8.5, 7.5, 7.0)
         chosen_e: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
         cands = _offset_cands(float(ex), float(ey))
-        if prefer_up:
+        if is_kill and support_ys:
+            # 撐在下方 → 急殺優先上方／對側；撐在左 → 急殺偏右
+            sy = support_ys[0]
+            sx0 = support_rects[0][0] if support_rects else ex
+            cands = sorted(
+                cands,
+                key=lambda p: (
+                    0 if p[1] > max(ey, sy) + y_span * 0.04 else 1,  # 上方優先
+                    0 if (p[0] - ex) * (ex - sx0) >= 0 else 1,  # 對側
+                    abs(p[1] - ey) + abs(p[0] - ex) * 0.25,
+                ),
+            )
+        elif eidx % 2 == 1:
             cands = sorted(cands, key=lambda p: (0 if p[1] >= ey else 1, abs(p[1] - ey)))
         else:
             cands = sorted(cands, key=lambda p: (0 if p[1] < ey else 1, abs(p[1] - ey)))
+
+        def _hits_support(rect: Tuple[float, float, float, float]) -> bool:
+            # 急殺：互斥墊加厚＋中心距下限（視覺勿貼撐）
+            pad = box_pad * (2.4 if is_kill else 0.8)
+            if any(_rects_overlap(rect, sr, pad=pad) for sr in support_rects):
+                return True
+            if is_kill and support_rects:
+                rcx = 0.5 * (rect[0] + rect[1])
+                rcy = 0.5 * (rect[2] + rect[3])
+                for sr in support_rects:
+                    scx = 0.5 * (sr[0] + sr[1])
+                    scy = 0.5 * (sr[2] + sr[3])
+                    dy = abs(rcy - scy) / max(y_span, 1e-9)
+                    dx = abs(rcx - scx) / max(x_span, 1e-9)
+                    if dy < 0.12 and dx < 0.18:
+                        return True
+            return False
+
         for full_fs in full_fs_options:
             for lx, ly in cands:
                 if not (x0 + x_span * 0.02 <= lx <= x1 - x_span * 0.02):
@@ -1193,6 +1223,8 @@ def _paint_smart_level_labels(
                     continue
                 if _rects_overlap(rect, chip_rect, pad=box_pad):
                     continue
+                if _hits_support(rect):
+                    continue
                 if _path_hits_rect(xs, ys, rect, y_pad=path_pad):
                     continue
                 chosen_e = (lx, ly, full_fs, rect)
@@ -1203,17 +1235,32 @@ def _paint_smart_level_labels(
             full_fs = 7.0
             best_pen = 1e18
             fallback_e = None
-            for lx, ly in cands:
-                for extra_dy in (0.0, y_span * 0.12, -y_span * 0.12, y_span * 0.20, -y_span * 0.20):
-                    for extra_dx in (0.0, x_span * 0.10, -x_span * 0.10, x_span * 0.16, -x_span * 0.16):
+            # 急殺強制候選：軸頂／對側大步
+            extra_cands = list(cands)
+            if is_kill:
+                extra_cands = [
+                    (ex + x_span * 0.18, y1 - y_span * 0.08),
+                    (ex - x_span * 0.18, y1 - y_span * 0.08),
+                    (x0 + x_span * 0.12, y1 - y_span * 0.10),
+                    (x1 - x_span * 0.12, y1 - y_span * 0.10),
+                    (ex + x_span * 0.22, ey + y_span * 0.18),
+                    (ex - x_span * 0.22, ey + y_span * 0.18),
+                ] + extra_cands
+            for lx, ly in extra_cands:
+                for extra_dy in (0.0, y_span * 0.14, y_span * 0.22, -y_span * 0.10):
+                    for extra_dx in (0.0, x_span * 0.12, -x_span * 0.12, x_span * 0.20, -x_span * 0.20):
                         lx2 = min(max(lx + extra_dx, x0 + x_span * 0.02), x1 - x_span * 0.02)
                         ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
                         rect = _estimate_label_rect(
                             lx2, ly2, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                         )
+                        if _hits_support(rect):
+                            continue
                         ov = sum(1 for o in occupied if _rects_overlap(rect, o, pad=box_pad * 0.5))
                         ph = 1 if _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.4) else 0
                         pen = ov * 20 + ph * 8 + abs(lx2 - ex) / x_span
+                        if is_kill and ly2 < ey:
+                            pen += 12  # 急殺少往下（易黏撐）
                         if pen < best_pen:
                             best_pen = pen
                             fallback_e = (lx2, ly2, full_fs, rect)
@@ -1261,34 +1308,67 @@ def _paint_smart_level_labels(
         pending[k]["full_rect"] = rect2
         return True
 
-    # 安置後 nudge：互壓推開；壓線則往外緣（軸頂／底淨空）撤離
+    def _is_support(p: Dict[str, Any]) -> bool:
+        return p.get("kind") == "level" and p.get("full") == "撐"
+
+    def _is_event_kill(p: Dict[str, Any]) -> bool:
+        return p.get("kind") == "event" and p.get("full") == "急殺"
+
+    # 安置後 nudge：互壓推開；撐優先不動（急殺／事件讓路）
     def _nudge_fulls() -> None:
-        for _round in range(36):
+        for _round in range(40):
             moved = False
-            # 1) 互壓（位階＋事件同一閘）
             for i in range(len(pending)):
                 for j in range(i + 1, len(pending)):
                     if not _rects_overlap(
-                        pending[i]["full_rect"], pending[j]["full_rect"], pad=box_pad * 0.5
+                        pending[i]["full_rect"], pending[j]["full_rect"], pad=box_pad * 0.55
                     ):
                         continue
-                    step = y_span * 0.04
-                    order = (i, j) if pending[i]["price"] >= pending[j]["price"] else (j, i)
-                    for k, sign in ((order[0], 1.0), (order[1], -1.0)):
+                    # 撐 vs 急殺／事件：只移事件
+                    movers: List[Tuple[int, float]] = []
+                    if _is_support(pending[i]) and pending[j].get("kind") == "event":
+                        movers = [(j, 1.0)]
+                    elif _is_support(pending[j]) and pending[i].get("kind") == "event":
+                        movers = [(i, 1.0)]
+                    elif pending[i].get("kind") == "event" and pending[j].get("kind") == "level":
+                        movers = [(i, 1.0)]
+                    elif pending[j].get("kind") == "event" and pending[i].get("kind") == "level":
+                        movers = [(j, 1.0)]
+                    else:
+                        order = (i, j) if pending[i]["price"] >= pending[j]["price"] else (j, i)
+                        movers = [(order[0], 1.0), (order[1], -1.0)]
+                    step = y_span * (0.055 if any(_is_event_kill(pending[k]) for k, _ in movers) else 0.04)
+                    for k, sign in movers:
+                        if _is_support(pending[k]):
+                            continue  # 撐絕對不動
                         lx, ly = pending[k]["label"]
-                        ly2 = min(max(ly + sign * step, y0 + y_span * 0.03), y1 - y_span * 0.03)
-                        if _try_set_full(k, lx, ly2):
-                            moved = True
+                        # 急殺優先往上／對側
+                        if _is_event_kill(pending[k]):
+                            targets = [
+                                (lx, min(ly + y_span * 0.10, y1 - y_span * 0.04)),
+                                (lx + x_span * 0.10, min(ly + y_span * 0.08, y1 - y_span * 0.04)),
+                                (lx - x_span * 0.10, min(ly + y_span * 0.08, y1 - y_span * 0.04)),
+                                (lx + x_span * 0.14, ly + sign * step),
+                                (lx - x_span * 0.14, ly + sign * step),
+                            ]
                         else:
-                            # 再試水平錯開（事件黏角常見）
-                            lx2 = min(
-                                max(lx + sign * x_span * 0.05, x0 + x_span * 0.02),
-                                x1 - x_span * 0.02,
-                            )
-                            if _try_set_full(k, lx2, ly2):
+                            ly2 = min(max(ly + sign * step, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                            targets = [
+                                (lx, ly2),
+                                (
+                                    min(max(lx + sign * x_span * 0.05, x0 + x_span * 0.02), x1 - x_span * 0.02),
+                                    ly2,
+                                ),
+                            ]
+                        for tx, ty in targets:
+                            tx = min(max(tx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                            ty = min(max(ty, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                            if _try_set_full(k, tx, ty):
                                 moved = True
-            # 2) 壓價線 → 往軸頂／底淨空
+                                break
             for k, p in enumerate(pending):
+                if _is_support(p):
+                    continue
                 if not _path_hits_rect(xs, ys, p["full_rect"], y_pad=path_pad * 0.45):
                     continue
                 lx, ly = p["label"]
@@ -1311,32 +1391,92 @@ def _paint_smart_level_labels(
 
     _nudge_fulls()
 
-    # 下筆：實心原點 → 短虛線 → 淨空完整標（方案 B；不准線上大方框）
+    # v15 建議：開／均／現水平拉開；均／開垂直呼吸；開＞高勿與壓擠
+    def _by_full(name: str) -> Optional[int]:
+        for i, p in enumerate(pending):
+            if p.get("kind") == "level" and p.get("full") == name:
+                return i
+        return None
+
+    def _by_short(name: str) -> Optional[int]:
+        for i, p in enumerate(pending):
+            if p.get("kind") == "level" and p.get("short") == name:
+                return i
+        return None
+
+    i_open = _by_full("開盤")
+    i_avg = _by_full("均") or _by_full("均＝現")
+    i_close = _by_full("現價") or (_by_full("均＝現") if i_avg is None else None)
+    i_press = _by_full("壓")
+    # 價極近：左開／中均／右現
+    if i_open is not None and i_avg is not None and i_close is not None and i_open != i_close:
+        prices = [pending[i]["price"] for i in (i_open, i_avg, i_close)]
+        if max(prices) - min(prices) <= max(abs(prices[0]) * 0.012, y_span * 0.08):
+            targets_x = [
+                (i_open, x0 + x_span * 0.14),
+                (i_avg, (x0 + x1) * 0.50),
+                (i_close, x1 - x_span * 0.12),
+            ]
+            for k, tx in targets_x:
+                lx, ly = pending[k]["label"]
+                _try_set_full(k, tx, ly)
+    # 均／開盤垂直拉開
+    if i_open is not None and i_avg is not None and i_open != i_avg:
+        if _rects_overlap(
+            pending[i_open]["full_rect"], pending[i_avg]["full_rect"], pad=box_pad * 1.2
+        ) or abs(pending[i_open]["label"][1] - pending[i_avg]["label"][1]) < y_span * 0.07:
+            lx, ly = pending[i_avg]["label"]
+            _try_set_full(
+                i_avg,
+                min(lx + x_span * 0.06, x1 - x_span * 0.04),
+                max(ly - y_span * 0.08, y0 + y_span * 0.05),
+            )
+    # 興櫃開＞高：開盤標勿與壓擠
+    if (
+        i_open is not None
+        and i_press is not None
+        and float(off.open) > float(off.high)
+    ):
+        if _rects_overlap(
+            pending[i_open]["full_rect"], pending[i_press]["full_rect"], pad=box_pad * 1.0
+        ):
+            lx, ly = pending[i_open]["label"]
+            _try_set_full(
+                i_open,
+                min(max(lx - x_span * 0.10, x0 + x_span * 0.03), x1 - x_span * 0.04),
+                min(ly + y_span * 0.06, y1 - y_span * 0.04),
+            )
+
+    # 下筆：實心原點 → 短虛線 → 淨空完整標；事件降權（淺底細框小字）
     for p in pending:
         axp, ayp = p["anchor"]
         lx, ly = p["label"]
         col = p["col"]
         ax.plot(
             [axp, lx], [ayp, ly],
-            linestyle=(0, (2, 2)), color=col, linewidth=0.85, alpha=0.85, zorder=9,
+            linestyle=(0, (2, 2)), color=col, linewidth=0.75, alpha=0.80, zorder=9,
             solid_capstyle="round",
         )
         ax.plot(
             [axp], [ayp], "o",
-            color=col, markersize=5.2, markeredgecolor=paper,
-            markeredgewidth=0.7, zorder=11, clip_on=False,
+            color=col, markersize=4.8 if p.get("kind") == "event" else 5.2,
+            markeredgecolor=paper, markeredgewidth=0.7, zorder=11, clip_on=False,
         )
         if p.get("kind") == "event":
-            face, edge, tc = "#FFF8E7", col, ink
+            face, edge, tc = "#FFFEF8", "#9AA0A6", ink
+            lw, pad = 0.65, 0.14
+            fs = min(float(p["fs"]), 8.5)
         else:
             face, edge, tc = paper, col, col
+            lw, pad = 0.9, 0.18
+            fs = float(p["fs"])
         ax.text(
             lx, ly, p["full_txt"],
             ha="center", va="center",
-            fontproperties=fp(p["fs"], True), color=tc, zorder=12, clip_on=False,
+            fontproperties=fp(fs, True), color=tc, zorder=12, clip_on=False,
             bbox=dict(
-                boxstyle="square,pad=0.18", facecolor=face, edgecolor=edge,
-                linewidth=0.9, alpha=0.96,
+                boxstyle=f"square,pad={pad}", facecolor=face, edgecolor=edge,
+                linewidth=lw, alpha=0.96,
             ),
         )
         placed_meta.append(p)
@@ -1356,15 +1496,37 @@ def _paint_smart_level_labels(
     has_avg = bool(off.avg_price and float(off.avg_price) > 0)
     merged_avg = any(str(m.get("full") or "").startswith("均＝現") for m in level_meta)
     required = 4 if (not has_avg or merged_avg) else 5
+    # v15 硬閘：急殺不准黏撐
+    kill_support_hits = 0
+    for em in event_meta:
+        if em.get("full") != "急殺":
+            continue
+        for lm in level_meta:
+            if lm.get("full") != "撐":
+                continue
+            if _rects_overlap(em["full_rect"], lm["full_rect"], pad=box_pad * 2.0):
+                kill_support_hits += 1
+                continue
+            ecx = 0.5 * (em["full_rect"][0] + em["full_rect"][1])
+            ecy = 0.5 * (em["full_rect"][2] + em["full_rect"][3])
+            lcx = 0.5 * (lm["full_rect"][0] + lm["full_rect"][1])
+            lcy = 0.5 * (lm["full_rect"][2] + lm["full_rect"][3])
+            # 軸相對距離過近也算黏
+            if abs(ecy - lcy) < y_span * 0.10 and abs(ecx - lcx) < x_span * 0.16:
+                kill_support_hits += 1
     gate = {
         "n_labels": len(level_meta),
         "n_events": len(event_meta),
         "required": required,
         "full_overlap_pairs": overlap_n,
         "full_path_hits": path_hits,
+        "kill_support_hits": kill_support_hits,
         "merged_avg_close": merged_avg,
         "pass": bool(
-            len(level_meta) >= required and overlap_n == 0 and path_hits == 0
+            len(level_meta) >= required
+            and overlap_n == 0
+            and path_hits == 0
+            and kill_support_hits == 0
         ),
         "labels": [
             {
@@ -1461,7 +1623,8 @@ def _paint_vol_ratio_smart(
     ]
     cands: List[Tuple[float, float]] = [(x, y) for y in top_band for x in x_opts]
     chosen = None
-    for full_fs in (10.0, 9.0, 8.0, 7.0):
+    # v15：量％字級≤事件標；不准大色塊
+    for full_fs in (8.0, 7.5, 7.0, 6.5):
         for lx, ly in cands:
             lx = min(max(lx, x0 + x_span * 0.04), x1 - x_span * 0.04)
             ly = min(max(ly, clear_y0), y1 - y_span * 0.04)
@@ -1479,14 +1642,12 @@ def _paint_vol_ratio_smart(
         if chosen is not None:
             break
     if chosen is None:
-        # 強制軸頂遠角，且標底鎖在 clear_y0 之上
         for lx in (x0 + x_span * 0.08, x1 - x_span * 0.08, x0 + x_span * 0.5):
             ly = max(clear_y0 + y_span * 0.02, y1 - y_span * 0.06)
-            full_fs = 8.0
+            full_fs = 7.0
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
-            # 若估盒仍壓柱，整盒上移
             if rect[2] < clear_y0:
                 dy = clear_y0 - rect[2] + y_span * 0.01
                 ly = min(ly + dy, y1 - y_span * 0.03)
@@ -1499,7 +1660,7 @@ def _paint_vol_ratio_smart(
         if chosen is None:
             lx = x1 - x_span * 0.08
             ly = min(max(clear_y0 + y_span * 0.05, y1 - y_span * 0.05), y1 - y_span * 0.03)
-            full_fs = 7.5
+            full_fs = 6.5
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
@@ -1507,19 +1668,19 @@ def _paint_vol_ratio_smart(
     lx, ly, full_fs, full_rect = chosen
     vol_ax.plot(
         [axp, lx], [chip_ay, ly],
-        linestyle=(0, (2, 2)), color=col, linewidth=0.85, alpha=0.9, zorder=9,
+        linestyle=(0, (2, 2)), color=col, linewidth=0.7, alpha=0.85, zorder=9,
         solid_capstyle="round",
     )
     vol_ax.plot(
         [axp], [chip_ay], "o",
-        color=col, markersize=5.0, markeredgecolor=paper,
-        markeredgewidth=0.7, zorder=11, clip_on=False,
+        color=col, markersize=4.2, markeredgecolor=paper,
+        markeredgewidth=0.6, zorder=11, clip_on=False,
     )
     vol_ax.text(
         lx, ly, full_txt,
         ha="center", va="center",
         fontproperties=fp(full_fs, True), color=col, zorder=12, clip_on=False,
-        bbox=dict(boxstyle="square,pad=0.20", facecolor=paper, edgecolor=col, linewidth=0.95),
+        bbox=dict(boxstyle="square,pad=0.12", facecolor=paper, edgecolor="#9AA0A6", linewidth=0.65),
     )
     bar_hit = _bars_hit_rect(xa, ba, full_rect, y_pad=y_span * 0.02)
     return {
@@ -1681,17 +1842,27 @@ def render_empty(out_path: str, *, stock_id: str, name: str, market: str, reason
     return out_path
 
 
-def _scrub_em_limit_labels(fig) -> None:
-    """興櫃無上市櫃漲跌停；墨線誤標要清。"""
+def _scrub_em_limit_labels(fig, *, move_color: Optional[str] = None) -> None:
+    """興櫃無上市櫃漲跌停；清停板字＋「較昨日」永不色底。"""
+    texts = []
     for ax in fig.axes:
-        for t in list(ax.texts):
-            s = str(t.get_text() or "")
-            if "漲停" in s or "跌停" in s:
-                t.set_text(s.replace("　漲停", "").replace("　跌停", "").replace(" 漲停", "").replace(" 跌停", "").replace("漲停", "").replace("跌停", ""))
-    for t in list(fig.texts):
+        texts.extend(list(ax.texts))
+    texts.extend(list(fig.texts))
+    for t in texts:
         s = str(t.get_text() or "")
         if "漲停" in s or "跌停" in s:
-            t.set_text(s.replace("　漲停", "").replace("　跌停", "").replace(" 漲停", "").replace(" 跌停", "").replace("漲停", "").replace("跌停", ""))
+            t.set_text(
+                s.replace("　漲停", "")
+                .replace("　跌停", "")
+                .replace(" 漲停", "")
+                .replace(" 跌停", "")
+                .replace("漲停", "")
+                .replace("跌停", "")
+            )
+        if s.startswith("較昨日"):
+            t.set_bbox(None)  # 興櫃鎖死：紅／綠字＋透明底
+            if move_color:
+                t.set_color(move_color)
 
 
 def _fmt_lots_signed(delta: float) -> str:
@@ -1792,7 +1963,7 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     cell_w = (width - gap_x * (cols - 1)) / cols
     edge = "#9AA0A6"
     lab_col = "#3A3A3A"
-    lab_fs, val_fs, sub_fs = 9.5, 12.0, 9.0
+    lab_fs, val_fs, sub_fs = 9.5, 13.0, 9.0  # v15：主數字略增，縮圖第二層可讀
     for i, (lab, val, col, sub, side) in enumerate(cells):
         r, c = divmod(i, cols)
         x = pad_x + c * (cell_w + gap_x)
@@ -2026,10 +2197,27 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
             transform=fig.transFigure, facecolor=YELLOW, edgecolor="none", alpha=0.95, clip_on=False, zorder=z,
         )
     )
-    # 現價標：若貼左右端則省略（已有高低），否則置中上方
+    # v15：貼左右端仍要可讀短標（不准只剩黃線）
+    tick_x = _tick(last_f52, y)
     if 0.18 < last_f52 < 0.82:
         ha = "center"
-        _inline_mark(_tick(last_f52, y), y, f"{last_lab} {_fmt_face(off.close)}", ha=ha)
+        _inline_mark(tick_x, y, f"{last_lab} {_fmt_face(off.close)}", ha=ha)
+    elif last_f52 <= 0.18:
+        fig.text(
+            min(tick_x + 0.012, left + width * 0.28), y + bar_h + 0.003,
+            f"收 {_fmt_face(off.close)}",
+            fontproperties=fp(9.5, True), color=INK, ha="left", va="bottom",
+            transform=fig.transFigure, zorder=z + 1,
+            bbox=dict(boxstyle="square,pad=0.12", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.7),
+        )
+    else:
+        fig.text(
+            max(tick_x - 0.012, left + width * 0.72), y + bar_h + 0.003,
+            f"收 {_fmt_face(off.close)}",
+            fontproperties=fp(9.5, True), color=INK, ha="right", va="bottom",
+            transform=fig.transFigure, zorder=z + 1,
+            bbox=dict(boxstyle="square,pad=0.12", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.7),
+        )
 
     return vol_ratio
 
@@ -2239,16 +2427,25 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
 
     # 只做頭欄墨線（名牌黑標＋右漲跌），不准 apply_struct 動主圖 y 軸
     # 不准 close_struct_frame_seam：會消掉價／量縫並切斷時標
+    from wayne_navigator import quote_move_ink as _qmi
+
+    move_col = _qmi(
+        off.change, close=off.close, prev=off.prev_close, pct=off.pct_change,
+        up=UP, down=DN, flat=MUTE,
+    )
     ink = Ink(fig, "struct", lazy=True)
     ink.redraw()
     frames = struct_frames(ink, ov)
     struct_header(ink, ov, frames)
     if is_em:
-        _scrub_em_limit_labels(fig)
+        # 興櫃：struct_header 可能因大％誤上停板底 → 強制透明底＋漲跌字色
+        _scrub_em_limit_labels(fig, move_color=move_col)
+        for t in ov.texts:
+            if str(t.get_text() or "").startswith("較昨日"):
+                t.set_bbox(None)
+                t.set_color(move_col)
 
     # 收／興櫃收：漲紅平黑跌綠（非漲停底）
-    from wayne_navigator import quote_move_ink as _qmi
-
     close_col = _qmi(
         off.change, close=off.close, prev=off.prev_close, pct=off.pct_change,
         up=UP, down=DN, flat=INK,
@@ -2514,10 +2711,10 @@ def default_out_dir() -> str:
     if env:
         return env
     for store in (
+        "/cursor/stores/self/media/intraday-v15-art-fix-20261030",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v15-art-fix-20261030",
         "/cursor/stores/self/media/intraday-v14-solid-dot-20261029",
         "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v14-solid-dot-20261029",
-        "/cursor/stores/self/media/intraday-v14-tighten-gap-20261029",
-        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v14-tighten-gap-20261029",
     ):
         parent = os.path.dirname(store)
         if os.path.isdir(parent) or os.path.isdir(store):
@@ -2526,11 +2723,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v14（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v15（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v14")
+    ap.add_argument("--prefix", default="preview-v15")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     ap.add_argument(
         "--set",
@@ -2599,7 +2796,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"off={series.official.close} -> {out_path}"
         )
 
-    manifest = os.path.join(out_dir, f"{args.prefix}-manifest-20261029.txt")
+    stamp_day = "20261030" if str(args.prefix).startswith("preview-v15") else "20261029"
+    manifest = os.path.join(out_dir, f"{args.prefix}-manifest-{stamp_day}.txt")
     with open(manifest, "w", encoding="utf-8") as f:
         f.write(f"as_of_taipei={datetime.now(TZ).isoformat()}\n")
         f.write(f"version={args.prefix}\n")
@@ -2612,7 +2810,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             for n in r.get("notices") or []:
                 f.write(f"  notice\t{n}\n")
-    with open(os.path.join(out_dir, f"{args.prefix}-notices-20261029.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, f"{args.prefix}-notices-{stamp_day}.json"), "w", encoding="utf-8") as f:
         json.dump(notices_all, f, ensure_ascii=False, indent=2)
     class _GateEnc(json.JSONEncoder):
         def default(self, o: Any) -> Any:  # noqa: ANN401
@@ -2625,7 +2823,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 return list(o)
             return str(o)
 
-    with open(os.path.join(out_dir, f"{args.prefix}-label-gate-20261029.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, f"{args.prefix}-label-gate-{stamp_day}.json"), "w", encoding="utf-8") as f:
         json.dump(gates, f, ensure_ascii=False, indent=2, cls=_GateEnc)
     print(f"[manifest] {manifest}")
     ok_all = all(r["ok"] for r in results) and all(

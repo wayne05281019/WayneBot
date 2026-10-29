@@ -899,15 +899,19 @@ def _kv_pairs(s: str) -> Optional[List[Tuple[str, str]]]:
 
 
 def _detect_limit_from_header(ov) -> Optional[str]:
-    """從頭欄「較昨日 ▲／▼ x.xx（±y%）」＋收盤價推漲跌停。興櫃不判。"""
+    """從頭欄「較昨日 ▲／▼ x.xx（±y%）」＋收盤價推漲跌停。興櫃永不判停。"""
     try:
         from wayne_navigator import quote_limit_side
     except Exception:
         return None
     close = None
     pct = None
+    emerging = False
     for t in ov.texts:
         s = str(t.get_text() or "").strip()
+        # 興櫃：戳「15:00」／文案「興櫃」→ 不准因大％誤上停板底
+        if "興櫃" in s or re.search(r"15:00", s):
+            emerging = True
         if re.fullmatch(r"[\d,.]+", s) and t.get_ha() == "right" and t.get_fontsize() >= 24:
             try:
                 close = float(s.replace(",", ""))
@@ -920,6 +924,8 @@ def _detect_limit_from_header(ov) -> Optional[str]:
                     pct = float(m.group(1))
                 except Exception:
                     pct = None
+    if emerging:
+        return None
     if close is None:
         return None
     prev = None
