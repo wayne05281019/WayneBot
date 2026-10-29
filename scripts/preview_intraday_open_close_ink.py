@@ -2,11 +2,12 @@
 """Preview-only v7：今日開→收墨線臉（查股第 5 張候選）。
 
 - 頭欄＝結構／大量區同款（nameplate＋spot）。
-- 八格＝**獨立 axes 帶**在主圖上方（不畫進價圖 ax／不蓋在價線上）。
-- figsize／dpi／左右底邊距對齊查股結構圖（chart3）ink 常數。
+- 八格＝**獨立 quote_ax**在頭欄與主圖之間（零重疊價圖／Y 軸）。
+- 畫布 12.4×10.85；邊距對齊結構／大量區 ink 常數。
 - 路徑：TW/TWO Yahoo 1m、EM priceByTimes→1 分；缺分平鋪前收（量＝0）。
-- 時間軸標在量圖框外；底部三條＋右側日高／昨收／日低必現。
-- 不准接話筒／不准合 main；臉不寫出處。
+- 量柱 log1p＋gamma；缺分極短灰柱（不准假 0 洗白）。
+- 時標在量框下淨空；框線／格線不准切斷。底三條＋右側日高／昨收／日低。
+- 收／興櫃收：漲紅平黑跌綠。不准接話筒／合 main；臉不寫出處。
 """
 from __future__ import annotations
 
@@ -1167,7 +1168,6 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         RULE,
         UP,
         Ink,
-        close_struct_frame_seam,
         fp,
         struct_frames,
         struct_header,
@@ -1186,24 +1186,24 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v7（layout arrange）：畫布＝大量區 NAV (12.4, 9.35)；八格獨立帶在價圖上
-    from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
+    # v7：寬 12.4＝結構／大量區；高 10.85（八格獨立帶＋底三條）— chart-layout-arrange
+    from vol_zone_chart import VOL_ZONE_FIG_W
 
     fig_w = float(VOL_ZONE_FIG_W)  # 12.4
-    fig_h = float(VOL_ZONE_FIG_H_NAV)  # 9.35
+    fig_h = 10.85
     dpi = int(BIAOKE_CHART_DPI)  # 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
     left_f = float(_FIG_LEFT)  # 0.028 對齊結構圖
     right_f = 0.86  # 右標外掛
-    range_top = 0.220
-    xlab_h = 0.028
-    vol_h = 0.068
-    vol_bot = range_top + xlab_h + 0.004
+    range_top = 0.200
+    xlab_h = 0.032  # 量框下時標淨空（格線／框線不准切斷）
+    vol_h = 0.070
+    vol_bot = range_top + xlab_h + 0.006
     main_bot = vol_bot + vol_h + 0.008
-    main_top = 0.60  # 價圖頂
-    quote_band_bot = 0.62  # 頭欄／八格底；與價圖中間白縫
-    quote_top = 0.78  # 八格帶頂；之上名牌
+    main_top = 0.58  # 價圖頂
+    quote_band_bot = 0.605  # 八格底；與價圖中間白縫
+    quote_top = 0.76  # 八格帶頂；之上名牌
     assert quote_band_bot >= main_top + 0.015, "八格底緣必須在價圖頂之上（不准疊進主題區）"
 
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot], zorder=2)
@@ -1315,13 +1315,26 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
                 t.set_color(col)
 
     # 只做頭欄墨線（名牌黑標＋右漲跌），不准 apply_struct 動主圖 y 軸
+    # 不准 close_struct_frame_seam：會消掉價／量縫並切斷時標
     ink = Ink(fig, "struct", lazy=True)
     ink.redraw()
     frames = struct_frames(ink, ov)
-    close_struct_frame_seam(frames)
     struct_header(ink, ov, frames)
     if is_em:
         _scrub_em_limit_labels(fig)
+
+    # 收／興櫃收：漲紅平黑跌綠（非漲停底）
+    from wayne_navigator import quote_move_ink as _qmi
+
+    close_col = _qmi(
+        off.change, close=off.close, prev=off.prev_close, pct=off.pct_change,
+        up=UP, down=DN, flat=INK,
+    )
+    for t in ov.texts:
+        s = str(t.get_text() or "").strip()
+        if re.fullmatch(r"[\d,.]+", s) and float(t.get_fontsize() or 0) >= 24:
+            if t.get_bbox_patch() is None:
+                t.set_color(close_col)
 
     # 八格：獨立 axes（主圖上方、建於 ov 之後），不畫進價圖 ax
     quote_ax = fig.add_axes(
@@ -1417,42 +1430,56 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
 
     _paint_sparse_marks(ax, series, xs, ys, prev)
 
-    if len(xs) >= 2:
-        width = max(float(np.median(np.diff(xs))) * 0.75, 0.6)
-    else:
-        width = 1.0
-    vol_ax.bar(xs, vs, width=width, color=[UP if float(y) >= prev else DN for y in ys], alpha=0.85, zorder=2, linewidth=0)
-    vol_ax.set_ylim(0, max(float(np.max(vs)) * 1.15, 1.0))
+    # 量柱：log1p＋gamma 抬中段（爆量仍最高）；零量極短灰柱，不准假 0 洗白
+    vs_arr = np.asarray(vs, dtype=float)
+    vs_log = np.log1p(np.maximum(vs_arr, 0.0))
+    vmax_s = float(np.max(vs_log)) if len(vs_log) else 1.0
+    vs_disp = np.power(vs_log / vmax_s, 0.55) * vmax_s if vmax_s > 0 else vs_log
+    stub = max(vmax_s * 0.05, 0.15)
+    width = 0.92
+    real_mask = vs_arr > 0
+    if np.any(real_mask):
+        vol_ax.bar(
+            xs[real_mask], vs_disp[real_mask], width=width,
+            color=[UP if float(y) >= prev else DN for y in np.asarray(ys)[real_mask]],
+            alpha=0.92, zorder=3, linewidth=0, align="center",
+        )
+    miss_mask = ~real_mask
+    if np.any(miss_mask):
+        vol_ax.bar(
+            np.asarray(xs)[miss_mask], np.full(int(np.sum(miss_mask)), stub),
+            width=width * 0.55, color="#D0D3D8", alpha=0.45, zorder=1, linewidth=0, align="center",
+        )
+    vol_ax.set_ylim(0, max(vmax_s * 1.08, stub * 4))
 
     tick_h = [9, 10, 11, 12, 13, 14, 15] if is_em else [9, 10, 11, 12, 13]
     tick_x = [(h - 9) * 60 for h in tick_h]
     for a in (ax, vol_ax):
         a.set_xticks(tick_x)
-        a.tick_params(axis="x", length=0, labelbottom=False)
+        a.tick_params(axis="x", length=0, labelbottom=False, bottom=False, top=False)
         a.tick_params(axis="y", colors=MUTE, length=3, labelsize=10)
         for sp in a.spines.values():
             sp.set_color(INK)
             sp.set_linewidth(0.95)
-        # 量圖底脊關閉，避免與框外時軸標打架（layout arrange）
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
     vol_ax.spines["bottom"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
-    # 時間標：畫在量圖框外（vol_bot 下方標帶），避免被 panel 框線切斷
+    # 時間標：量圖框外淨空帶；格線停在軸上側，框線不准切斷數字
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
     for lab in ax.get_yticklabels():
         lab.set_fontproperties(fp(10, False))
         lab.set_color(MUTE)
     vol_ax.set_yticks([])
-    vol_ax.text(0.01, 0.92, "量(張)", transform=vol_ax.transAxes, fontproperties=fp(9, False), color=MUTE, va="top", ha="left")
-    xlab_y = vol_bot - 0.014
+    vol_ax.text(0.01, 0.92, "量(張)", transform=vol_ax.transAxes, fontproperties=fp(10, False), color=MUTE, va="top", ha="left")
+    xlab_y = vol_bot - xlab_h * 0.55
     chart_w = right_f - left_f
     for h, tx in zip(tick_h, tick_x):
         xf = left_f + chart_w * (float(tx) / float(x_end))
         ha = "left" if h == tick_h[0] else ("right" if h == tick_h[-1] else "center")
         fig.text(
             xf, xlab_y, f"{h:02d}",
-            fontproperties=fp(11, False), color="#3A3A3A", ha=ha, va="top",
+            fontproperties=fp(12, True), color="#3A3A3A", ha=ha, va="center",
             transform=fig.transFigure, clip_on=False, zorder=35,
         )
 
