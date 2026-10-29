@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Preview-only v9：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v10：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v9-frame-align-20261029.md；修 v8 框線左右不齊：
-頭欄獨用結構全寬、下框縮到 right_f=0.78 → 頭欄獨寬一大截、左緣錯位。
+對齊 docs/intraday-v10-extra-cells-20261029.md（上排四格＋下八格＝12）；
+框線共線／真分量柱紅綠維持 v9。
 
-- 頭欄／八格／價／量外框＝結構圖同款 `_STRUCTURE_BOX_X`／`_STRUCTURE_BOX_W`（左緣共線、右緣共線）。
-- 價／量／八格 axes＝`_FIG_LEFT`～`_STRUCTURE_FIG_RIGHT`（與結構 subplots 同套）。
-- 右標落在 axes 右～外框右之間的框內白邊（仍過 v8 FAIL#4 不切末碼）。
-- 八格獨立帶、均價線、時軸完整、興櫃 15:00、真數鎖維持。
+- 頭欄／報價格／價／量外框＝結構圖同款 `_STRUCTURE_BOX_X`／`_STRUCTURE_BOX_W`。
+- 上排四格＝昨量／成交筆數／漲停價／跌停價（有真數才填；興櫃漲跌停＝—）。
+- 下兩排八格維持 v8／v9 格序；獨立帶、興櫃 15:00、真數鎖維持。
 - 不准接話筒／合 main；臉不寫出處。
 """
 from __future__ import annotations
@@ -68,6 +67,11 @@ class OfficialDay:
     w52_low: Optional[float]
     source: str
     close_label: str  # 收盤 / 興櫃收
+    # v10 上排四格（無真數＝None → 畫面「—」；不准假湊）
+    prev_volume_lots: Optional[float] = None  # 昨量（張）
+    trade_count: Optional[int] = None  # 成交筆數
+    limit_up: Optional[float] = None  # 當日漲停價（興櫃無）
+    limit_down: Optional[float] = None  # 當日跌停價（興櫃無）
 
 
 @dataclass
@@ -488,6 +492,54 @@ def _amp(high: float, low: float, prev: float) -> Optional[float]:
     return (high - low) / prev * 100.0
 
 
+def _prev_volume_lots_db(
+    stock_id: str, market: str, db_path: str, *, ymd: str
+) -> Optional[float]:
+    """上一開市日官方量（張）。庫無則 None；不准編造。"""
+    if not db_path or not os.path.isfile(db_path):
+        return None
+    table = "emerging_quotes" if str(market).upper() == "EM" else "daily_quotes"
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                f"""
+                SELECT volume FROM {table}
+                WHERE stock_id=? AND volume>0
+                  AND REPLACE(CAST(date AS TEXT),'-','') < ?
+                ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC
+                LIMIT 1
+                """,
+                (stock_id, ymd),
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    if not row or row[0] is None:
+        return None
+    try:
+        v = float(row[0])
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def _listed_limit_prices(prev_close: float) -> Tuple[Optional[float], Optional[float]]:
+    """上市櫃當日漲／跌停＝昨收±10% 再依證交所升降單位四捨五入（wayne_navigator 已驗證路徑）。
+    興櫃不准呼叫。特殊處置／初次上市另規不在本預覽硬填。"""
+    from wayne_navigator import _limit_band_px
+
+    if prev_close <= 0:
+        return None, None
+    lu = _limit_band_px(prev_close, 0.10)
+    ld = _limit_band_px(prev_close, -0.10)
+    return (
+        float(lu) if lu is not None and float(lu) > 0 else None,
+        float(ld) if ld is not None and float(ld) > 0 else None,
+    )
+
+
 _EM_DAY_CACHE: Dict[str, List[dict]] = {}
 
 
@@ -533,6 +585,8 @@ def fetch_official_em(stock_id: str, *, ymd: str, db_path: str) -> Optional[Offi
         w52l = lo
     avg = float(hit["avg_price"]) if hit.get("avg_price") not in (None, "") else c
     to_k = float(hit["turnover_k"]) if hit.get("turnover_k") not in (None, "") else None
+    # 興櫃：無 ±10% 漲跌停、CSV 無成交筆數 → 上排對應格「—」；昨量＝庫內上一開市日真量
+    prev_vol = _prev_volume_lots_db(stock_id, "EM", db_path, ymd=ymd)
     return OfficialDay(
         stock_id=stock_id,
         open=o,
@@ -551,6 +605,10 @@ def fetch_official_em(stock_id: str, *, ymd: str, db_path: str) -> Optional[Offi
         w52_low=w52l,
         source=str(hit.get("source") or "tpex_esb_csv"),
         close_label="興櫃收",
+        prev_volume_lots=prev_vol,
+        trade_count=None,
+        limit_up=None,
+        limit_down=None,
     )
 
 
@@ -568,11 +626,14 @@ def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
     if str(data.get("stat") or "") != "OK":
         return None
     mmdd = f"{int(ymd[4:6])}/{int(ymd[6:8])}"
+    rows = list(data.get("data") or [])
     row = None
-    for r in data.get("data") or []:
+    row_idx = -1
+    for i, r in enumerate(rows):
         d0 = str(r[0]).replace("／", "/")
         if d0.endswith(mmdd) or mmdd in d0:
             row = r
+            row_idx = i
             break
     if not row:
         return None
@@ -590,6 +651,26 @@ def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
     vol_shares = _f(row[1])
     turnover_ntd = _f(row[2])
     pct = (chg / prev * 100.0) if prev else 0.0
+    # fields: …漲跌價差, 成交筆數, 註記
+    trade_count: Optional[int] = None
+    if len(row) >= 9:
+        try:
+            tc = int(float(str(row[8]).replace(",", "").strip() or "0"))
+            trade_count = tc if tc > 0 else None
+        except (TypeError, ValueError):
+            trade_count = None
+    # 昨量：同月 STOCK_DAY 上一列股數／1000；缺則庫
+    prev_vol: Optional[float] = None
+    if row_idx > 0:
+        try:
+            prev_vol = _f(rows[row_idx - 1][1]) / 1000.0
+            if prev_vol <= 0:
+                prev_vol = None
+        except (TypeError, ValueError, IndexError):
+            prev_vol = None
+    if prev_vol is None:
+        prev_vol = _prev_volume_lots_db(stock_id, "TW", db_path, ymd=ymd)
+    lu, ld = _listed_limit_prices(prev)
     qavg, w52h, w52l = _hist_stats(stock_id, "TW", db_path, ymd=ymd)
     if w52h is not None:
         w52h = max(w52h, h)
@@ -618,6 +699,10 @@ def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
         w52_low=w52l,
         source="twse:STOCK_DAY",
         close_label="收盤",
+        prev_volume_lots=prev_vol,
+        trade_count=trade_count,
+        limit_up=lu,
+        limit_down=ld,
     )
 
 
@@ -669,6 +754,19 @@ def fetch_official_tpex(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
     avg = _f(avg_s) if avg_s not in ("", "--", "-") else (
         (turnover_ntd / vol_shares) if vol_shares > 0 else None
     )
+    # TransactionNumber＝官方成交筆數（已驗證 openapi 欄）
+    trade_count: Optional[int] = None
+    try:
+        tc_raw = str(hit.get("TransactionNumber") or "").replace(",", "").strip()
+        if tc_raw and tc_raw not in ("-", "--"):
+            tc = int(float(tc_raw))
+            trade_count = tc if tc > 0 else None
+    except (TypeError, ValueError):
+        trade_count = None
+    # 昨量：庫內上一開市日（openapi 僅當日快照）
+    prev_vol = _prev_volume_lots_db(stock_id, "TWO", db_path, ymd=ymd)
+    # 當日漲跌停＝昨收±10% 升降單位；NextLimit* 是次日板（不准當今日）
+    lu, ld = _listed_limit_prices(prev)
     qavg, w52h, w52l = _hist_stats(stock_id, "TWO", db_path, ymd=ymd)
     if w52h is not None:
         w52h = max(w52h, h)
@@ -696,6 +794,10 @@ def fetch_official_tpex(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
         w52_low=w52l,
         source="tpex:mainboard_daily_close",
         close_label="收盤",
+        prev_volume_lots=prev_vol,
+        trade_count=trade_count,
+        limit_up=lu,
+        limit_down=ld,
     )
 
 
@@ -902,11 +1004,17 @@ def _scrub_em_limit_labels(fig) -> None:
             t.set_text(s.replace("　漲停", "").replace("　跌停", "").replace(" 漲停", "").replace(" 跌停", "").replace("漲停", "").replace("跌停", ""))
 
 
-def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
-    """八格報價格：獨立 axes（主圖上方），data 座標 0–1 鋪滿帶高；不准畫進價圖 ax。
+def _fmt_trade_count(n: Optional[int]) -> str:
+    if n is None or int(n) <= 0:
+        return "—"
+    return f"{int(n):,}"
 
-    格序：今開／最高／成交量／昨收／最低／成交額／日均價｜均價／振幅。
-    不用 transAxes：與全圖 overlay 並存時 axes 變換易把格壓成帶頂細條。
+
+def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
+    """12 格報價格：獨立 axes（主圖上方），上 4＋下 8；不准畫進價圖 ax。
+
+    上排：昨量／成交筆數／漲停價／跌停價（無真數＝—；興櫃漲跌停必 —）。
+    下兩排：今開／最高／成交量／昨收／最低／成交額／日均價｜均價／振幅。
     """
     from ink_chart_theme import DN, INK, MUTE, PAPER, UP, fp
     from matplotlib.patches import FancyBboxPatch
@@ -924,7 +1032,19 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     avg_val = _fmt_face(off.avg_price) if off.avg_price and off.avg_price > 0 else "—"
     turn_val = _fmt_turnover(off.turnover_k) if off.turnover_k and off.turnover_k > 0 else "—"
     amp_val = f"{off.amplitude_pct:.2f}%" if off.amplitude_pct is not None else "—"
+    prev_vol_val = (
+        _fmt_lots(off.prev_volume_lots)
+        if off.prev_volume_lots is not None and off.prev_volume_lots > 0
+        else "—"
+    )
+    # 興櫃無漲跌停：limit_* 必為 None →「—」（不准畫假 ±10%）
+    lu_val = _fmt_face(off.limit_up) if off.limit_up and off.limit_up > 0 else "—"
+    ld_val = _fmt_face(off.limit_down) if off.limit_down and off.limit_down > 0 else "—"
     cells: List[Tuple[str, str, str]] = [
+        ("昨量", prev_vol_val, INK),
+        ("成交筆數", _fmt_trade_count(off.trade_count), INK),
+        ("漲停價", lu_val, UP if lu_val != "—" else MUTE),
+        ("跌停價", ld_val, DN if ld_val != "—" else MUTE),
         ("今開", _fmt_face(off.open), INK),
         ("最高", _fmt_face(off.high), UP),
         ("成交量", _fmt_lots(off.volume_lots), INK),
@@ -936,17 +1056,20 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     ]
 
     cols = 4
+    rows_n = 3
     # 軸內留邊；興櫃註另佔底列
     has_note = off.close_label == "興櫃收" and not (off.low <= off.open <= off.high)
-    pad_x, pad_top = 0.012, 0.05
-    pad_bot = 0.18 if has_note else 0.05
-    gap_x, gap_y = 0.010, 0.04
+    pad_x, pad_top = 0.010, 0.035
+    pad_bot = 0.14 if has_note else 0.032
+    gap_x, gap_y = 0.008, 0.028
     usable_h = 1.0 - pad_top - pad_bot
-    cell_h = (usable_h - gap_y) / 2.0
+    cell_h = (usable_h - gap_y * (rows_n - 1)) / float(rows_n)
     width = 1.0 - 2 * pad_x
     cell_w = (width - gap_x * (cols - 1)) / cols
     edge = "#9AA0A6"
     lab_col = "#3A3A3A"
+    # 三列略縮字級，縮圖仍可讀（約 11／14）
+    lab_fs, val_fs = 10.5, 13.5
     for i, (lab, val, col) in enumerate(cells):
         r, c = divmod(i, cols)
         x = pad_x + c * (cell_w + gap_x)
@@ -954,27 +1077,26 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
         quote_ax.add_patch(
             FancyBboxPatch(
                 (x, y), cell_w, cell_h,
-                boxstyle="square,pad=0.004",
-                facecolor=PAPER, edgecolor=edge, linewidth=1.2,
+                boxstyle="square,pad=0.003",
+                facecolor=PAPER, edgecolor=edge, linewidth=1.15,
                 clip_on=False, zorder=2,
             )
         )
-        # 國字上／數字下（layout arrange）；data 座標鋪滿 quote 帶
         quote_ax.text(
-            x + cell_w * 0.5, y + cell_h * 0.72, lab,
-            fontproperties=fp(11, True), color=lab_col, ha="center", va="center",
+            x + cell_w * 0.5, y + cell_h * 0.70, lab,
+            fontproperties=fp(lab_fs, True), color=lab_col, ha="center", va="center",
             zorder=3, clip_on=False,
         )
         quote_ax.text(
-            x + cell_w * 0.5, y + cell_h * 0.32, val,
-            fontproperties=fp(15, True), color=col, ha="center", va="center",
+            x + cell_w * 0.5, y + cell_h * 0.30, val,
+            fontproperties=fp(val_fs, True), color=col, ha="center", va="center",
             zorder=3, clip_on=False,
         )
     if has_note:
         quote_ax.text(
-            pad_x, 0.035,
-            "註：興櫃開＝前日均價，可高於當日最高",
-            fontproperties=fp(10, False), color=MUTE, ha="left", va="bottom",
+            pad_x, 0.028,
+            "註：興櫃開＝前日均價，可高於當日最高；無漲跌停",
+            fontproperties=fp(9.5, False), color=MUTE, ha="left", va="bottom",
             zorder=3, clip_on=False,
         )
     quote_ax.set_xlim(0, 1)
@@ -1229,7 +1351,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v9：畫布＝大量區 NAV 12.4×9.35；外框左右＝結構三籃筐同套（見 frame-align）
+    # v10：畫布＝大量區 NAV 12.4×9.35；外框共線維持 v9；報價帶加高容 3×4＝12 格
     from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
 
     fig_w = float(VOL_ZONE_FIG_W)  # 12.4
@@ -1237,28 +1359,29 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     dpi = int(BIAOKE_CHART_DPI)  # 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
-    # 外框：結構圖 `_STRUCTURE_BOX_*`（頭欄／八格／價／量同一 left＋同一 width）
+    # 外框：結構圖 `_STRUCTURE_BOX_*`（頭欄／報價格／價／量同一 left＋同一 width）
     frame_x = float(_STRUCTURE_BOX_X)  # 1.6（ov 0–100）
     frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
     frame_left = frame_x / 100.0  # 0.016
     frame_right = (frame_x + frame_w) / 100.0  # 0.982
     # axes：結構 subplots 同套；右標落在 axes 右～外框右的框內白邊（略窄可說明）
     left_f = float(_FIG_LEFT)  # 0.028
-    right_f = float(_STRUCTURE_FIG_RIGHT)  # 0.905（v8 誤用 0.78 把頭欄弄成獨寬）
-    # 底三條／時軸；縫寬統一（價↔八格＝價↔量＝約 0.012）
+    right_f = float(_STRUCTURE_FIG_RIGHT)  # 0.905
+    # 底三條／時軸；縫寬統一；報價帶自價圖／頭欄各讓約 0.02 加高（12 格）
     bars_top = 0.195
     xlab_bot = 0.205
     xlab_top = 0.238
     vol_bot = 0.245
     vol_h = 0.082
-    band_gap = 0.012
+    band_gap = 0.011
     main_bot = vol_bot + vol_h + band_gap
-    main_top = 0.565
+    main_top = 0.545  # v9 0.565 → 讓給報價帶
     quote_band_bot = main_top + band_gap
-    quote_top = 0.735
-    assert quote_band_bot >= main_top + 0.010, "八格底緣必須在價圖頂之上（不准疊進主題區）"
+    quote_top = 0.755  # v9 0.735 → 頭欄略讓
+    assert quote_band_bot >= main_top + 0.010, "報價格底緣必須在價圖頂之上（不准疊進主題區）"
     assert xlab_bot >= bars_top + 0.008, "時軸專帶必須在底三條之上（09 不准被量能削）"
     assert abs(frame_right - frame_left - frame_w / 100.0) < 1e-9
+    assert quote_top - quote_band_bot >= 0.18, "12 格報價帶高度不夠"
 
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot], zorder=2)
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax, zorder=2)
@@ -1272,7 +1395,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ov.axis("off")
     ov.patch.set_alpha(0)
 
-    # 頭欄白底＋八格／價／量外框：同一 frame_x／frame_w（系列感；不准頭欄獨寬）
+    # 頭欄白底＋報價格／價／量外框：同一 frame_x／frame_w（系列感；不准頭欄獨寬）
     name_band_bot = quote_top * 100.0
     for y0, y1, fill in (
         (name_band_bot, 100.0 - float(_STRUCTURE_TOP_PAD) - 0.15, True),
@@ -1378,7 +1501,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             if t.get_bbox_patch() is None:
                 t.set_color(close_col)
 
-    # 八格：獨立 axes；鋪滿共線外框內緣（與頭欄白底同寬），不畫進價圖 ax
+    # 12 格：獨立 axes；鋪滿共線外框內緣（與頭欄白底同寬），不畫進價圖 ax
     # 價／量 axes 維持 FIG_LEFT～STRUCTURE_FIG_RIGHT（略窄＝框內右標／Y 刻度；外框仍共線）
     q_pad = 0.004
     quote_ax = fig.add_axes(
@@ -1393,7 +1516,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     quote_ax.set_facecolor(PAPER)
     quote_ax.patch.set_alpha(1.0)
     _paint_quote_grid(quote_ax, off)
-    # 硬閘：八格底緣必須在價圖頂之上
+    # 硬閘：報價格底緣必須在價圖頂之上
     assert float(quote_ax.get_position().y0) >= float(main_top) - 1e-6
 
     # 路徑
@@ -1452,8 +1575,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     right_labs.sort(key=lambda t: t[0])
     placed_y: List[float] = []
     min_gap = max(y_span * 0.10, abs(prev) * 0.008)
-    # 右標：axes 右～外框右的框內白邊（系列外框共線；仍不切末碼）
-    lab_x = min(right_f + 0.010, frame_right - 0.055)
+    # 右標：axes 右～外框右的框內白邊（v10 略增呼吸；仍不切末碼）
+    lab_x = min(right_f + 0.012, frame_right - 0.052)
     assert lab_x + 0.04 <= frame_right + 1e-6, "右標必須落在共線外框內"
 
     def _data_to_fig_y(yd: float) -> float:
@@ -1678,11 +1801,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v9（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v10（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v9")
+    ap.add_argument("--prefix", default="preview-v10")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
@@ -1726,6 +1849,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "qavg": series.official.q_avg_vol_lots,
                 "w52h": series.official.w52_high,
                 "w52l": series.official.w52_low,
+                "prev_vol": series.official.prev_volume_lots,
+                "trade_count": series.official.trade_count,
+                "limit_up": series.official.limit_up,
+                "limit_down": series.official.limit_down,
                 "notices": series.notices,
             }
         )
