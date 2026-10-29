@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Preview-only v15：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v16：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v15-art-fix-20261030.md（美編審查必改＋建議）：
-骨架留 v14；興櫃「較昨日」永不色底；急殺不准黏撐（撐優先）；
-事件降權／量％再縮；開均現拉開；開＞高勿與壓擠；52週左端短標可讀。
+對齊 docs/intraday-v16-polish-20261030.md：
+均錨貼走線最近分钟；量框略拉高解卡框；量％＝當日量÷近60交易日均量×100。
 
-不准假資料、不准接話筒／合 main。
+不准假資料、不准接話筒／合 main。改量％文案等使用者。
 """
 from __future__ import annotations
 
@@ -908,11 +907,11 @@ def _path_hits_rect(
 
 def _level_anchors(
     xs, ys, highs, lows, opens, off: OfficialDay
-) -> List[Tuple[str, str, float, float, str]]:
-    """回 (短名, 完整國字, x, y_price, color_key)。錨在走線對應點。
+) -> List[Tuple[str, str, float, float, str, float]]:
+    """回 (短名, 完整國字, x, 錨y走線價, color_key, 標文價錢)。
 
-    v14 方案 B：錨＝實心原點（無字）；完整標＝`撐 4,935`／`壓 x`／`開盤 x`／`均 x`／`現價 x`。
-    均價與現價顯示同價 → 併成「均＝現」一標。
+    v16：錨 y **必須**落在價線該分鐘點（不准飄空白）；標文價錢仍用官方開高低收／均。
+    均＝找 |收盤路徑−今日均價| 最小的那根分钟；錨＝(該分 x, 該分走線價)，標文寫官方均價。
     """
     import numpy as np
 
@@ -920,27 +919,32 @@ def _level_anchors(
     ya = np.asarray(ys, dtype=float)
     ha = np.asarray(highs, dtype=float)
     la = np.asarray(lows, dtype=float)
+    oa = np.asarray(opens, dtype=float) if opens is not None else ya
     n = len(ya)
-    out: List[Tuple[str, str, float, float, str]] = []
+    out: List[Tuple[str, str, float, float, str, float]] = []
     if n == 0:
         return out
     i_hi = int(np.nanargmax(ha)) if np.any(np.isfinite(ha)) else int(np.argmax(ya))
-    out.append(("壓", "壓", float(xa[i_hi]), float(off.high), "up"))
-    out.append(("開", "開盤", float(xa[0]), float(off.open), "open"))
+    y_hi = float(ha[i_hi]) if np.isfinite(ha[i_hi]) else float(ya[i_hi])
+    out.append(("壓", "壓", float(xa[i_hi]), y_hi, "up", float(off.high)))
+    y_open = float(oa[0]) if len(oa) and np.isfinite(oa[0]) else float(ya[0])
+    out.append(("開", "開盤", float(xa[0]), y_open, "open", float(off.open)))
     i_lo = int(np.nanargmin(la)) if np.any(np.isfinite(la)) else int(np.argmin(ya))
-    out.append(("撐", "撐", float(xa[i_lo]), float(off.low), "dn"))
+    y_lo = float(la[i_lo]) if np.isfinite(la[i_lo]) else float(ya[i_lo])
+    out.append(("撐", "撐", float(xa[i_lo]), y_lo, "dn", float(off.low)))
     close_px = float(off.close)
     avg = float(off.avg_price) if off.avg_price and float(off.avg_price) > 0 else None
     merge_avg_close = (
         avg is not None and _fmt_face(avg) == _fmt_face(close_px)
     )
     if merge_avg_close:
-        out.append(("均", "均＝現", float(xa[-1]), close_px, "close"))
+        out.append(("均", "均＝現", float(xa[-1]), float(ya[-1]), "close", close_px))
     else:
-        out.append(("現", "現價", float(xa[-1]), close_px, "close"))
+        out.append(("現", "現價", float(xa[-1]), float(ya[-1]), "close", close_px))
         if avg is not None:
             i_avg = int(np.argmin(np.abs(ya - avg)))
-            out.append(("均", "均", float(xa[i_avg]), avg, "avg"))
+            # 錨貼走線該分；標文仍寫官方今日均價（可與該分收略差）
+            out.append(("均", "均", float(xa[i_avg]), float(ya[i_avg]), "avg", avg))
     return out
 
 
@@ -1034,20 +1038,12 @@ def _paint_smart_level_labels(
     }
 
     anchors = _level_anchors(xs, ys, highs, lows, opens, off)
-    # 同價合併顯示仍各留標，但錨 x 必須分開（開／均／現常見擠價）
-    used_x: List[float] = []
-    min_x_sep = max(x_span * 0.06, 12.0)
-    adj_anchors: List[Tuple[str, str, float, float, str]] = []
-    for short, full, ax_, ay_, ck in anchors:
-        xx = float(ax_)
-        for _ in range(10):
-            if all(abs(xx - u) >= min_x_sep for u in used_x):
-                break
-            # 往較空側推
-            xx = xx + min_x_sep if xx < (x0 + x1) * 0.5 else xx - min_x_sep
-            xx = min(max(xx, x0 + x_span * 0.04), x1 - x_span * 0.04)
-        used_x.append(xx)
-        adj_anchors.append((short, full, xx, float(ay_), ck))
+    # v16：實心錨 x/y **鎖死**走線該分钟點，不准為避讓橫推（橫推＝飄空白）。
+    # 標文價錢用官方 label_price；避讓只移完整標，不移錨。
+    adj_anchors: List[Tuple[str, str, float, float, str, float]] = [
+        (short, full, float(ax_), float(ay_), ck, float(lp))
+        for short, full, ax_, ay_, ck, lp in anchors
+    ]
 
     # 完整標候選 offset（資料座標）：短虛線「一點點」
     def _offset_cands(axp: float, ayp: float) -> List[Tuple[float, float]]:
@@ -1073,17 +1069,17 @@ def _paint_smart_level_labels(
     # 先只算位，全部定案再畫（方便互壓後 nudge）
     pending: List[Dict[str, Any]] = []
 
-    for idx, (short, full, axp, ayp, ck) in enumerate(adj_anchors):
+    for idx, (short, full, axp, ayp, ck, label_price) in enumerate(adj_anchors):
         col = color_map.get(ck, ink)
-        px = _fmt_face(ayp)
+        px = _fmt_face(label_price)
         # v14 方案 B：錨＝實心原點（無字）；完整標只在淨空出現一次
         chip_txt = ""
         full_txt = f"{full} {px}"
+        # 原點鎖在走線該分 (axp, ayp)，不准上下／左右漂移
         chip_ay = float(ayp)
         chip_rect = _estimate_label_rect(
             axp, chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
         )
-        # 原點鎖在走線價位，不上下漂移（漂移會離錨失真）
         _ = idx  # 保留交錯偏好用
 
         # 完整標：字級可縮；掃淨空；上下交錯偏好
@@ -1150,7 +1146,9 @@ def _paint_smart_level_labels(
                 "full": full,
                 "full_txt": full_txt,
                 "chip_txt": "",
+                # price＝錨走線 y（避讓空間用）；label_price＝標文官方價
                 "price": float(ayp),
+                "label_price": float(label_price),
                 "col": col,
                 "anchor": (float(axp), float(chip_ay)),
                 "label": (float(lx), float(ly)),
@@ -1576,7 +1574,14 @@ def _paint_vol_ratio_smart(
     ink: str,
     paper: str,
 ) -> Dict[str, Any]:
-    """量／季均％：方案 B 實心原點錨高峰＋短虛線拉淨空「N%」；完整標不准壓柱。"""
+    """量／近60交易日均量％：方案 B 實心原點錨高峰＋短虛線拉淨空「N%」；完整標不准壓柱。
+
+    定義（與 `_paint_range_bars` 同式）：
+      vol_ratio = 當日成交量(張) / q_avg_vol_lots
+      pct = round(vol_ratio * 100)
+    q_avg_vol_lots＝as_of 前近 60 個有量交易日 AVG(volume)（畫面上稱「季均」）。
+    不是該分鐘量÷當日分時均量，也不是對昨量。
+    """
     from ink_chart_theme import fp
     import numpy as np
 
@@ -1596,20 +1601,19 @@ def _paint_vol_ratio_smart(
     y0, y1 = vol_ax.get_ylim()
     x_span = max(float(x1 - x0), 1.0)
     y_span = max(float(y1 - y0), 1e-6)
-    # 實心原點貼峰頂略上（允許近柱；完整標必須離柱）
-    chip_ay = min(ayp + y_span * 0.04, y1 - y_span * 0.10)
+    # 實心原點貼峰頂略上（允許近柱；完整標必須離柱／頂框）
+    chip_ay = min(ayp + y_span * 0.03, y1 - y_span * 0.16)
     chip_rect = _estimate_label_rect(
         axp, chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
     )
-    # 完整標：只掃「高於全日最高柱」的帶（ylim 有 ~8% 頭頂），左右錯開峰
+    # 完整標：只掃「高於全日最高柱」的帶；v16 再內縮，不准卡量框頂線
     max_bar = float(np.max(ba))
     clear_y0 = max_bar + y_span * 0.04  # 標底必須高於最高柱
-    # 若頭頂不夠，略抬 ylim 由呼叫端負責；此處仍盡量貼頂
     top_band = [
-        y1 - y_span * 0.08,
-        y1 - y_span * 0.14,
-        y1 - y_span * 0.20,
-        max(clear_y0 + y_span * 0.02, y1 - y_span * 0.28),
+        y1 - y_span * 0.16,
+        y1 - y_span * 0.22,
+        y1 - y_span * 0.28,
+        max(clear_y0 + y_span * 0.02, y1 - y_span * 0.34),
     ]
     x_opts = [
         x0 + x_span * 0.10,
@@ -1627,7 +1631,7 @@ def _paint_vol_ratio_smart(
     for full_fs in (8.0, 7.5, 7.0, 6.5):
         for lx, ly in cands:
             lx = min(max(lx, x0 + x_span * 0.04), x1 - x_span * 0.04)
-            ly = min(max(ly, clear_y0), y1 - y_span * 0.04)
+            ly = min(max(ly, clear_y0), y1 - y_span * 0.12)
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
@@ -1643,14 +1647,14 @@ def _paint_vol_ratio_smart(
             break
     if chosen is None:
         for lx in (x0 + x_span * 0.08, x1 - x_span * 0.08, x0 + x_span * 0.5):
-            ly = max(clear_y0 + y_span * 0.02, y1 - y_span * 0.06)
+            ly = max(clear_y0 + y_span * 0.02, y1 - y_span * 0.18)
             full_fs = 7.0
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
             if rect[2] < clear_y0:
                 dy = clear_y0 - rect[2] + y_span * 0.01
-                ly = min(ly + dy, y1 - y_span * 0.03)
+                ly = min(ly + dy, y1 - y_span * 0.12)
                 rect = _estimate_label_rect(
                     lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                 )
@@ -1659,7 +1663,7 @@ def _paint_vol_ratio_smart(
                 break
         if chosen is None:
             lx = x1 - x_span * 0.08
-            ly = min(max(clear_y0 + y_span * 0.05, y1 - y_span * 0.05), y1 - y_span * 0.03)
+            ly = min(max(clear_y0 + y_span * 0.05, y1 - y_span * 0.16), y1 - y_span * 0.12)
             full_fs = 6.5
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
@@ -2306,7 +2310,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     xlab_bot = 0.205
     xlab_top = 0.238
     vol_bot = 0.245
-    vol_h = 0.082
+    # v16：量框略拉高，量％標不卡外框／頂線（使用者傾向拉高框）
+    vol_h = 0.108
     band_gap = 0.011
     main_bot = vol_bot + vol_h + band_gap
     main_top = 0.668  # v13 0.545 → 價圖加高
@@ -2574,8 +2579,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
             np.asarray(xs)[miss_mask], np.full(int(np.sum(miss_mask)), stub),
             width=width * 0.55, color="#D0D3D8", alpha=0.45, zorder=1, linewidth=0, align="center",
         )
-    # v14：頭頂留白給量％完整標（實心錨仍貼峰；標虛線拉上）
-    vol_ax.set_ylim(0, max(vmax_s * 1.28, stub * 4))
+    # v16：頭頂留白再加一點，量％完整標不卡框（實心錨仍貼峰；標虛線拉上）
+    vol_ax.set_ylim(0, max(vmax_s * 1.45, stub * 4))
 
     tick_h = [9, 10, 11, 12, 13, 14, 15] if is_em else [9, 10, 11, 12, 13]
     tick_x = [(h - 9) * 60 for h in tick_h]
@@ -2711,10 +2716,10 @@ def default_out_dir() -> str:
     if env:
         return env
     for store in (
+        "/cursor/stores/self/media/intraday-v16-polish-20261030",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v16-polish-20261030",
         "/cursor/stores/self/media/intraday-v15-art-fix-20261030",
         "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v15-art-fix-20261030",
-        "/cursor/stores/self/media/intraday-v14-solid-dot-20261029",
-        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v14-solid-dot-20261029",
     ):
         parent = os.path.dirname(store)
         if os.path.isdir(parent) or os.path.isdir(store):
@@ -2723,11 +2728,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v15（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v16（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v15")
+    ap.add_argument("--prefix", default="preview-v16")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     ap.add_argument(
         "--set",
@@ -2796,7 +2801,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"off={series.official.close} -> {out_path}"
         )
 
-    stamp_day = "20261030" if str(args.prefix).startswith("preview-v15") else "20261029"
+    stamp_day = (
+        "20261030"
+        if str(args.prefix).startswith("preview-v15")
+        or str(args.prefix).startswith("preview-v16")
+        else "20261029"
+    )
     manifest = os.path.join(out_dir, f"{args.prefix}-manifest-{stamp_day}.txt")
     with open(manifest, "w", encoding="utf-8") as f:
         f.write(f"as_of_taipei={datetime.now(TZ).isoformat()}\n")
