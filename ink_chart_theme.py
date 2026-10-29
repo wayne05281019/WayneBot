@@ -1891,9 +1891,13 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     r"^[▲▼]\s*[\d,.]+([\s]+)?[\(（][+\-]?\d+\.\d+%[\)）]$|^0\.00([\s]+)?[\(（]0\.00%[\)）]$"
                 )
                 for _mt in list(header.texts):
+                    # 已墨線新字（開／高／低／壓／撐數字）不准當昨比殘影清掉
+                    if str(_mt.get_gid() or "").startswith("ink:"):
+                        continue
                     _ms = str(_mt.get_text() or "").strip()
+                    # 只清帶 ▲▼ 的昨比／％；裸數字＝表頭開高低，不准誤藏
                     if not _move_re.fullmatch(_ms) and not re.fullmatch(
-                        r"^[▲▼]?[\d,.]+$", _ms
+                        r"^[▲▼][\d,.]+$", _ms
                     ) and not re.fullmatch(r"^[\(（][+\-]?\d+\.\d+%[\)）]$", _ms):
                         continue
                     if not move_plain:

@@ -614,6 +614,55 @@ def _load_index_daily_ohlc(db_path: str, days: int = 120) -> pd.DataFrame:
     return df
 
 
+def market_wide_empty_open_days(
+    db_path: str,
+    start_ymd: str,
+    end_ymd: str,
+) -> set:
+    """開市日曆 ∩ 窗內：上市＋興櫃全市場都無官方列、且已有更晚交易日 → 不准發明停價空柱。
+
+    例 2026-10-23：日曆當開市、TWSE 無列、庫內 listed／EM 皆 0，之後 10/27 已齊
+    → 對齊軸必須 skip invent（興櫃 3595 曾發明量 0 假柱＝倒數第 4 根量棒不見）。
+    不准造假 OHLC；只決定「這天不進軸」。
+    """
+    path = str(db_path or "").strip()
+    start = str(start_ymd or "").replace("-", "")[:8]
+    end = str(end_ymd or "").replace("-", "")[:8]
+    if not path or len(start) != 8 or len(end) != 8 or not os.path.isfile(path):
+        return set()
+    from trading_calendar import iter_tw_open_days
+
+    open_days = iter_tw_open_days(start, end)
+    if not open_days:
+        return set()
+    have: set = set()
+    conn = sqlite3.connect(path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=10000;")
+        for table in ("daily_quotes", "emerging_quotes"):
+            try:
+                rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT replace(date,'-','') AS d
+                    FROM {table}
+                    WHERE replace(date,'-','') BETWEEN ? AND ?
+                    """,
+                    (start, end),
+                ).fetchall()
+            except Exception:
+                rows = []
+            for (d_raw,) in rows:
+                d = str(d_raw or "").replace("-", "")[:8]
+                if len(d) == 8:
+                    have.add(d)
+    finally:
+        conn.close()
+    if not have:
+        return set()
+    max_have = max(have)
+    return {d for d in open_days if d not in have and d < max_have}
+
+
 def missing_open_quote_days(
     stock_id: str,
     db_path: str,
@@ -1229,27 +1278,48 @@ def official_work(
         except Exception:
             sid_hint = ""
     # 呼叫端忘傳 skip 時仍吃庫內 confirmed_absent（2233 10/23 假柱曾讓兩圖分叉）
-    skip_use = skip_invent_dates
-    if skip_use is None and sid_hint:
-        try:
-            from wayne_db import DEFAULT_DB_PATH
+    # 另併全市場空日（上市＋興櫃皆無列且已有更晚日）→ 興櫃也不可發明 10/23 量 0 假柱
+    skip_use = set(skip_invent_dates or set()) if skip_invent_dates is not None else None
+    db_hint = ""
+    try:
+        from wayne_db import DEFAULT_DB_PATH
 
-            db_hint = str(
-                os.environ.get("WAYNE_DB_PATH")
-                or os.environ.get("DB_PATH")
-                or DEFAULT_DB_PATH
-                or ""
-            ).strip()
-            if db_hint and os.path.isfile(db_hint):
+        db_hint = str(
+            os.environ.get("WAYNE_DB_PATH")
+            or os.environ.get("DB_PATH")
+            or DEFAULT_DB_PATH
+            or ""
+        ).strip()
+    except Exception:
+        db_hint = ""
+    if not db_hint:
+        db_hint = str(os.environ.get("WAYNE_DB_PATH") or os.environ.get("DB_PATH") or "").strip()
+    if skip_use is None:
+        skip_use = set()
+        if sid_hint and db_hint and os.path.isfile(db_hint):
+            try:
                 known = load_confirmed_absent_dates(sid_hint, db_hint)
                 if known:
-                    skip_use = known
+                    skip_use |= set(known)
+            except Exception:
+                logger.debug(
+                    "official_work auto absent skip fail sid=%s", sid_hint, exc_info=True
+                )
+    else:
+        skip_use = {str(x).replace("-", "")[:8] for x in skip_use if str(x).replace("-", "")[:8]}
+    if db_hint and os.path.isfile(db_hint) and not work.empty:
+        try:
+            d0 = str(work["date"].iloc[0] or "").replace("-", "")[:8]
+            d1 = str(work["date"].iloc[-1] or "").replace("-", "")[:8]
+            empty_mkt = market_wide_empty_open_days(db_hint, d0, d1)
+            if empty_mkt:
+                skip_use |= set(empty_mkt)
         except Exception:
             logger.debug(
-                "official_work auto absent skip fail sid=%s", sid_hint, exc_info=True
+                "official_work market-empty skip fail sid=%s", sid_hint, exc_info=True
             )
     work = align_ohlc_cached(
-        work, sid_hint, skip_invent_dates=skip_use
+        work, sid_hint, skip_invent_dates=skip_use or None
     )
     if work is None or work.empty:
         return None

@@ -43,6 +43,18 @@ def test_ink_masthead_stacks_move_larger_keeps_close():
     assert "不准為塞昨比縮小" in src or "不准動收" in src or "鎖死原本" in src
     assert "close_fs -=" not in src
     assert "不上色底" in src or "色底只套收價" in src or "普通日不上色底" in src
+    # 昨比清殘影不准誤藏開／高／低數字（須跳過 ink: gid；裸數字不算昨比）
+    assert 'startswith("ink:")' in src or "startswith('ink:')" in src
+    assert r"^[▲▼][\d,.]+$" in src
+    assert r"^[▲▼]?[\d,.]+$" not in src
+
+
+def test_ink_masthead_keeps_open_high_values_visible():
+    """表頭開／高／低墨線數字不可被昨比清殘影設 ink:replaced。"""
+    import ink_chart_theme as ink
+
+    src = inspect.getsource(ink.vol_masthead)
+    assert "開／高／低" in src or "不准當昨比殘影" in src or "不准誤藏" in src
 
 
 def test_header_move_matches_real_prev_math():
