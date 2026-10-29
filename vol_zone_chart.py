@@ -6795,9 +6795,13 @@ def _paint_volume_zone(
             try:
                 from tg_layout import format_move_plain
 
-                # 同列緊湊：去三角後空白，免表頭右緣裁掉％
-                _mv = format_move_plain(move_chg, move_pct).replace("▲ ", "▲").replace(
-                    "▼ ", "▼"
+                # 同列緊湊：去三角空白＋半形括號，塞收右剩餘（收字級不縮）
+                _mv = (
+                    format_move_plain(move_chg, move_pct)
+                    .replace("▲ ", "▲")
+                    .replace("▼ ", "▼")
+                    .replace("（", "(")
+                    .replace("）", ")")
                 )
                 move_bit = " " + _mv
             except Exception:
@@ -6847,10 +6851,11 @@ def _paint_volume_zone(
             fontproperties=_fp(15.0, "bold"),
             color=_TEXT,
         )
-        # 第二排：量測實際字寬後置中；「收XXXX」稍大，漲跌點／％同列較小緊接
+        # 第二排：開高低＋「收XXXX」置中（收字級／位置＝原本）。
+        # 昨比只經 fig._wayne_close_move_plain 交給墨線 masthead 畫在收右剩餘，
+        # 不准在此再畫一層（會疊影／把收擠扁）。
         _fp_intro = _fp(13.0, "bold")
-        _fp_close = _fp(15.6, "bold")  # 收XXXX 稍大一點點
-        _fp_move = _fp(11.2, "bold")  # 漲跌點／％：不用大、不准跨行
+        _fp_close = _fp(15.6, "bold")  # 收XXXX 原本大小；不准為昨比縮小
         _t_left = ax_head.text(
             0.0,
             0.78,
@@ -6875,20 +6880,6 @@ def _paint_volume_zone(
             zorder=13,
             alpha=0.0,
         )
-        _t_move = None
-        if move_bit:
-            _t_move = ax_head.text(
-                0.0,
-                0.78,
-                move_bit,
-                transform=ax_head.transAxes,
-                ha="left",
-                va="top",
-                fontproperties=_fp_move,
-                color=close_ink,
-                zorder=13,
-                alpha=0.0,
-            )
         _t_right = None
         if intro_right:
             _t_right = ax_head.text(
@@ -6914,37 +6905,27 @@ def _paint_volume_zone(
 
             _w_left = _ax_w(_t_left)
             _w_close = _ax_w(_t_close)
-            _w_move = _ax_w(_t_move) if _t_move is not None else 0.0
             _w_right = _ax_w(_t_right) if _t_right is not None else 0.0
-            _w_total = _w_left + _w_close + _w_move + _w_right
+            _w_total = _w_left + _w_close + _w_right
             _x0 = 0.5 - 0.5 * _w_total
             _t_left.set_position((_x0, 0.78))
             _t_left.set_alpha(1.0)
             _t_close.set_position((_x0 + _w_left, 0.78))
             _t_close.set_alpha(1.0)
-            _x_after_close = _x0 + _w_left + _w_close
-            if _t_move is not None:
-                _t_move.set_position((_x_after_close, 0.78))
-                _t_move.set_alpha(1.0)
-                _x_after_close += _w_move
             if _t_right is not None:
-                _t_right.set_position((_x_after_close, 0.78))
+                _t_right.set_position((_x0 + _w_left + _w_close, 0.78))
                 _t_right.set_alpha(1.0)
         except Exception:
             logger.exception("大量區表頭收字置中失敗 sid=%s", sid)
             _t_left.set_alpha(1.0)
             _t_close.set_alpha(1.0)
-            if _t_move is not None:
-                _t_move.set_alpha(1.0)
             if _t_right is not None:
                 _t_right.set_alpha(1.0)
             _t_left.set_ha("right")
             _t_left.set_position((0.50, 0.78))
             _t_close.set_position((0.50, 0.78))
-            if _t_move is not None:
-                _t_move.set_position((0.58, 0.78))
             if _t_right is not None:
-                _t_right.set_position((0.68, 0.78))
+                _t_right.set_position((0.62, 0.78))
         # 日標已改掛主K上框內側；表頭只留介紹＋圖例（原比例）
         try:
             from wayne_navigator import _draw_nav_legend

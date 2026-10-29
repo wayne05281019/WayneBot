@@ -1870,7 +1870,8 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     pass
                 label = cs
                 limit_side = _detect_limit_from_header(header)
-                # 收／現旁同列：先取真昨收漲跌字（字不必大；普通日不上色底）
+                # 收／現：字級／位置鎖死原本（CLOSE_FS＋低右縫）；不准為塞昨比縮小或左移
+                # 昨比點／％：只用收右邊剩餘空間（小字同列；普通日不上色底）
                 move_plain = ""
                 try:
                     move_plain = str(
@@ -1879,7 +1880,7 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                 except Exception:
                     move_plain = ""
                 _move_re = re.compile(
-                    r"^[▲▼]\s*[\d,.]+\（[+\-]?\d+\.\d+%\）$|^0\.00\（0\.00%\）$"
+                    r"^[▲▼]\s*[\d,.]+[\(（][+\-]?\d+\.\d+%[\)）]$|^0\.00[\(（]0\.00%[\)）]$"
                 )
                 for _mt in list(header.texts):
                     _ms = str(_mt.get_text() or "").strip()
@@ -1890,75 +1891,58 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     _mt.set_visible(False)
                     _mt.set_gid("ink:replaced")
                 if move_plain:
-                    move_plain = move_plain.replace("▲ ", "▲").replace("▼ ", "▼")
-                # 時間戳寬：收＋漲跌要整段入鏡，戳可微讓
-                stamp_w = 0.0
-                stamp_gap = ink.pt(8)
-                if stamp is not None:
-                    try:
-                        sw, sh, sd = ink.measure(str(stamp.get_text()), fp(10.0, heavy=False))
-                        stamp_w = sw + ink.pt(16)
-                    except Exception:
-                        stamp_w = ink.pt(140)
-                close_fs = float(CLOSE_FS)
-                move_fs = 12.0 if move_plain else 0.0
-                badge_pad_x = ink.pt(8)
-                low_gap = float(MIN_LOW_CLOSE_GAP)
-                for _ in range(6):
-                    pc = fp(close_fs, heavy=True)
-                    if limit_side == "up":
-                        lab_try = cs if "漲停" in cs else (cs + " 漲停")
-                    elif limit_side == "down":
-                        lab_try = cs if "跌停" in cs else (cs + " 跌停")
-                    else:
-                        lab_try = cs
-                    wc, hc, dc = ink.measure(lab_try, pc)
-                    if limit_side in ("up", "down"):
-                        badge_w = wc + badge_pad_x
-                    else:
-                        badge_w = wc + ink.pt(3)
-                    wm = hm = dm = 0.0
-                    if move_plain:
-                        move_prop = fp(move_fs, heavy=True)
-                        wm, hm, dm = ink.measure(move_plain, move_prop)
-                    need = low_gap + badge_w + (ink.pt(3) + wm if move_plain else 0.0)
-                    room = max(0.0, right_px - ink.pt(2) - stamp_w - stamp_gap - x_low_end)
-                    if need <= room or (close_fs <= 16.5 and move_fs <= 10.5 and low_gap <= ink.pt(12)):
-                        label = lab_try
-                        break
-                    if move_fs > 10.5:
-                        move_fs -= 0.75
-                    elif close_fs > 16.5:
-                        close_fs -= 0.75
-                    elif low_gap > ink.pt(12):
-                        low_gap -= ink.pt(2)
-                    else:
-                        label = lab_try
-                        break
-                pc = fp(close_fs, heavy=True)
-                wc, hc, dc = ink.measure(label, pc)
+                    # 緊湊：去三角空白＋半形括號，好塞收右剩餘（不准動收字級）
+                    move_plain = (
+                        move_plain.replace("▲ ", "▲")
+                        .replace("▼ ", "▼")
+                        .replace("（", "(")
+                        .replace("）", ")")
+                    )
+                pc = fp(CLOSE_FS, heavy=True)
+                badge_pad_x = ink.pt(10)
                 if limit_side == "up":
                     fc = LIMIT_UP
+                    if "漲停" not in label:
+                        label = cs + " 漲停"
+                    wc, hc, dc = ink.measure(label, pc)
                     badge_w = wc + badge_pad_x
                     tc = PAPER
                 elif limit_side == "down":
                     fc = LIMIT_DN
+                    if "跌停" not in label:
+                        label = cs + " 跌停"
+                    wc, hc, dc = ink.measure(label, pc)
                     badge_w = wc + badge_pad_x
                     tc = PAPER
                 else:
                     fc = None
-                    badge_w = wc + ink.pt(3)
+                    wc, hc, dc = ink.measure(label, pc)
+                    badge_w = wc + ink.pt(4)
                     tc = move_tc
-                x_badge = x_low_end + low_gap
-                # 仍超寬：寧願時間戳再讓／縮，不准裁掉漲跌％
-                block_w = badge_w + (ink.pt(3) + (ink.measure(move_plain, fp(move_fs, heavy=True))[0] if move_plain else 0.0))
-                max_right = right_px - ink.pt(2) - (stamp_w + stamp_gap if stamp_w else 0.0)
-                if x_badge + block_w > max_right and stamp_w > 0:
-                    # 戳改小字、縮墊，把空間還給收＋漲跌
-                    stamp_w = max(ink.pt(110), stamp_w * 0.85)
-                    max_right = right_px - ink.pt(2) - stamp_w - stamp_gap
-                if x_badge + block_w > max_right:
-                    x_badge = max(x_low_end + ink.pt(8), max_right - block_w)
+                x_badge = x_low_end + MIN_LOW_CLOSE_GAP
+                # 時間戳微讓：先按「收」右緣讓位（原本邏輯）；昨比再吃收右剩餘
+                stamp_w = 0.0
+                stamp_gap = ink.pt(10)
+                if stamp is not None:
+                    try:
+                        sw, sh, sd = ink.measure(str(stamp.get_text()), fp(10.5, heavy=False))
+                        stamp_w = sw + ink.pt(18)
+                        stamp_right = right_px - ink.pt(2)
+                        stamp_left_need = x_badge + badge_w + stamp_gap
+                        if stamp_left_need + stamp_w > stamp_right:
+                            stamp_right = right_px - ink.pt(1)
+                        stamp.set_fontproperties(fp(10.5, heavy=False))
+                        stamp.set_color(INK2)
+                        stamp.set_bbox(
+                            dict(boxstyle="square,pad=0.28", facecolor=PAPER, edgecolor=RULE, linewidth=0.85)
+                        )
+                        stamp.set_zorder(27)
+                        stamp.set_position((stamp_right / W, mast_cy / H))
+                        stamp.set_va("center")
+                        stamp.set_ha("right")
+                        ink.record(str(stamp.get_text()), [str(stamp.get_text())], "stamp", ink.shell_ext(stamp))
+                    except Exception:
+                        stamp_w = ink.pt(140)
                 if fc is not None:
                     ink.rect(
                         header,
@@ -1991,52 +1975,45 @@ def vol_masthead(ink: Ink, header, legends: List[Legend], panel_left: float) -> 
                     sync_col = tc
                 move_right = x_badge + badge_w
                 if move_plain:
+                    # 昨比只用收字右緣到畫布右的剩餘；只縮昨比，收字級／x 鎖死
+                    close_right = x_badge + float(wc)
+                    room = max(0.0, (right_px - ink.pt(4)) - close_right - ink.pt(3))
+                    move_fs = 12.5
+                    wm = hm = dm = 0.0
                     move_prop = fp(move_fs, heavy=True)
-                    wm, hm, dm = ink.measure(move_plain, move_prop)
-                    mx = x_badge + badge_w + ink.pt(3)
-                    if limit_side == "up":
-                        move_col = UP
-                    elif limit_side == "down":
-                        move_col = DN
-                    else:
-                        move_col = tc
-                    ink.text(
-                        header,
-                        mx,
-                        cy_close - hm / 2 + dm,
-                        move_plain,
-                        prop=move_prop,
-                        color=move_col,
-                        ha="left",
-                        z=22,
-                    )
-                    move_right = mx + wm + ink.pt(2)
-                    ink.record(
-                        move_plain,
-                        [move_plain],
-                        "close_move",
-                        Bbox.from_extents(
-                            mx, cy_close - hm / 2, mx + wm, cy_close + hm / 2
-                        ),
-                    )
-                if stamp is not None:
-                    try:
-                        stamp.set_fontproperties(fp(10.0, heavy=False))
-                        stamp.set_color(INK2)
-                        stamp.set_bbox(
-                            dict(boxstyle="square,pad=0.22", facecolor=PAPER, edgecolor=RULE, linewidth=0.85)
+                    for _ in range(16):
+                        move_prop = fp(move_fs, heavy=True)
+                        wm, hm, dm = ink.measure(move_plain, move_prop)
+                        if wm <= room or move_fs <= 7.0:
+                            break
+                        move_fs -= 0.5
+                    if room > 0 and wm <= room:
+                        mx = close_right + ink.pt(4)
+                        if limit_side == "up":
+                            move_col = UP
+                        elif limit_side == "down":
+                            move_col = DN
+                        else:
+                            move_col = tc
+                        ink.text(
+                            header,
+                            mx,
+                            cy_close - hm / 2 + dm,
+                            move_plain,
+                            prop=move_prop,
+                            color=move_col,
+                            ha="left",
+                            z=22,
                         )
-                        stamp.set_zorder(27)
-                        stamp_right = right_px - ink.pt(2)
-                        stamp_left_need = move_right + stamp_gap
-                        if stamp_left_need + stamp_w > stamp_right:
-                            stamp_right = right_px - ink.pt(1)
-                        stamp.set_position((stamp_right / W, mast_cy / H))
-                        stamp.set_va("center")
-                        stamp.set_ha("right")
-                        ink.record(str(stamp.get_text()), [str(stamp.get_text())], "stamp", ink.shell_ext(stamp))
-                    except Exception:
-                        pass
+                        move_right = mx + wm + ink.pt(2)
+                        ink.record(
+                            move_plain,
+                            [move_plain],
+                            "close_move",
+                            Bbox.from_extents(
+                                mx, cy_close - hm / 2, mx + wm, cy_close + hm / 2
+                            ),
+                        )
                 close_t.set_visible(False)
                 close_t.set_gid("ink:replaced")
                 ink._low_end_x = float(x_low_end)

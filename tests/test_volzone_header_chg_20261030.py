@@ -20,29 +20,33 @@ def test_volzone_header_paints_move_beside_close():
     import vol_zone_chart as vz
 
     src = inspect.getsource(vz)
-    # 收旁同列漲跌
+    # 收旁同列漲跌：本層只交 _wayne_close_move_plain，墨線畫收右
     assert "format_move_plain" in src
     assert "_wayne_close_move_plain" in src
-    assert "_fp_move" in src or "_fp(11.2" in src
-    assert "不准跨行" in src or "同列" in src
-    # 真昨收：優先 hdr_quote change／pct，否則 close−prev
+    assert "不准跨行" in src or "同列" in src or "收右" in src
     chunk = src[src.index("close_bit = f"): src.index("日標已改掛主K上框內側")]
     assert "hdr_quote" in chunk
     assert "prev_close_hdr" in chunk
     assert "format_move_plain" in chunk
-    # 字不必大：move 字級 < close
-    assert "15.6" in chunk
-    assert "11.2" in chunk
+    assert "15.6" in chunk  # 收字級鎖原本
+    assert "_wayne_close_move_plain" in chunk
+    assert "不准在此再畫一層" in chunk or "masthead" in chunk
 
 
-def test_ink_masthead_paints_close_move_no_bg_for_normal():
+def test_ink_masthead_keeps_close_size_move_uses_right_room():
     import ink_chart_theme as ink
 
     src = inspect.getsource(ink.vol_masthead)
     assert "_wayne_close_move_plain" in src
     assert "close_move" in src
     # 普通日漲跌字不加底（色底只套收價）
-    assert "不加底" in src or "不上色底" in src or "色底只套收價" in src
+    assert "不上色底" in src or "色底只套收價" in src
+    # 收字級／位置鎖死原本；只縮昨比
+    assert "CLOSE_FS" in src
+    assert "不准為塞昨比縮小" in src or "不准動收" in src
+    assert "close_fs -=" not in src
+    assert "MIN_LOW_CLOSE_GAP" in src
+    assert "room" in src
 
 
 def test_header_move_matches_real_prev_math():
