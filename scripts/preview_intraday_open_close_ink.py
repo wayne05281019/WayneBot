@@ -627,8 +627,9 @@ def _scrub_em_limit_labels(fig) -> None:
 
 
 def _paint_quote_grid(fig, off: OfficialDay, *, y0: float, left: float, right: float) -> None:
-    """附圖二資訊（墨線扁平等寬格）；無真數欄不上。"""
+    """附圖二資訊（墨線扁平等寬格）；無真數欄不上。v4：字級加大、格加高。"""
     from ink_chart_theme import DN, INK, MUTE, PAPER, RULE, UP, fp
+    from matplotlib.patches import FancyBboxPatch
 
     cells: List[Tuple[str, str, str]] = [
         ("今開", _fmt_face(off.open), INK),
@@ -645,11 +646,9 @@ def _paint_quote_grid(fig, off: OfficialDay, *, y0: float, left: float, right: f
     if off.amplitude_pct is not None:
         cells.append(("振幅", f"{off.amplitude_pct:.2f}%", INK))
 
-    # 最多 2×4
     cols = 4
-    rows = (len(cells) + cols - 1) // cols
-    gap_x, gap_y = 0.008, 0.006
-    cell_h = 0.032
+    gap_x, gap_y = 0.010, 0.008
+    cell_h = 0.038
     width = right - left
     cell_w = (width - gap_x * (cols - 1)) / cols
     for i, (lab, val, col) in enumerate(cells):
@@ -657,107 +656,85 @@ def _paint_quote_grid(fig, off: OfficialDay, *, y0: float, left: float, right: f
         x = left + c * (cell_w + gap_x)
         y = y0 - r * (cell_h + gap_y) - cell_h
         fig.patches.append(
-            __import__("matplotlib.patches", fromlist=["FancyBboxPatch"]).FancyBboxPatch(
+            FancyBboxPatch(
                 (x, y), cell_w, cell_h,
                 boxstyle="square,pad=0.002",
-                facecolor=PAPER, edgecolor=RULE, linewidth=0.85,
+                facecolor=PAPER, edgecolor=RULE, linewidth=0.9,
                 transform=fig.transFigure, clip_on=False,
             )
         )
         fig.text(
-            x + 0.006, y + cell_h * 0.5, lab,
-            fontproperties=fp(9, False), color=MUTE, ha="left", va="center",
+            x + 0.008, y + cell_h * 0.5, lab,
+            fontproperties=fp(10, False), color=MUTE, ha="left", va="center",
             transform=fig.transFigure,
         )
         fig.text(
-            x + cell_w - 0.006, y + cell_h * 0.5, val,
-            fontproperties=fp(11, True), color=col, ha="right", va="center",
+            x + cell_w - 0.008, y + cell_h * 0.5, val,
+            fontproperties=fp(13, True), color=col, ha="right", va="center",
             transform=fig.transFigure,
         )
 
 
 def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right: float) -> None:
-    """底部三條：季均量、日區間、52週區間。"""
+    """v4 底部三條：加高加距、字加大、近標合併，去掉重複長句。"""
     from ink_chart_theme import DN, INK, MUTE, PAPER, RULE, UP, YELLOW, fp
-    from matplotlib.patches import FancyBboxPatch, Rectangle
+    from matplotlib.patches import Rectangle
 
-    bar_h = 0.018
-    gap = 0.028
+    bar_h = 0.022
+    row_pitch = 0.058  # 列距（含標上下）
     width = right - left
+    y = y_bot + 2 * row_pitch + 0.012
 
-    def _row(y: float, title: str, left_lab: str, right_lab: str, frac: float, mark_fracs: List[Tuple[float, str, str]]) -> None:
-        fig.text(left, y + bar_h + 0.004, title, fontproperties=fp(9, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
-        fig.text(left, y - 0.002, left_lab, fontproperties=fp(8, False), color=MUTE, ha="left", va="top", transform=fig.transFigure)
-        fig.text(right, y - 0.002, right_lab, fontproperties=fp(8, False), color=MUTE, ha="right", va="top", transform=fig.transFigure)
-        # track
-        fig.patches.append(
-            Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
-        )
-        f = max(0.0, min(1.0, float(frac)))
-        fig.patches.append(
-            Rectangle((left, y), width * f, bar_h, transform=fig.transFigure, facecolor=DN if f >= 0.5 else UP, edgecolor="none", alpha=0.85, clip_on=False)
-        )
-        for mf, mlab, mside in mark_fracs:
-            mf = max(0.0, min(1.0, float(mf)))
-            mx = left + width * mf
-            fig.patches.append(
-                Rectangle((mx - 0.0012, y - 0.003), 0.0024, bar_h + 0.006, transform=fig.transFigure, facecolor=INK, edgecolor="none", clip_on=False)
-            )
-            va = "bottom" if mside == "above" else "top"
-            ty = y + bar_h + 0.003 if mside == "above" else y - 0.003
-            fig.text(mx, ty, mlab, fontproperties=fp(8, True), color=INK, ha="center", va=va, transform=fig.transFigure,
-                     bbox=dict(boxstyle="square,pad=0.15", facecolor=PAPER, edgecolor=RULE, linewidth=0.7))
-
-    y = y_bot + 2 * (bar_h + gap) + 0.01
-    # 1) 季均量 vs 當日量
-    if off.q_avg_vol_lots and off.q_avg_vol_lots > 0:
-        ratio = off.volume_lots / off.q_avg_vol_lots
-        # 條長＝相對季均；超過 100% 仍滿格，％寫在標
-        frac = min(ratio, 1.0)
-        pct_lab = f"{ratio * 100:.0f}%"
-        _row(
-            y,
-            f"季均量 {_fmt_lots(off.q_avg_vol_lots)}　→　當日 {_fmt_lots(off.volume_lots)}（{pct_lab}）",
-            "季均",
-            "當日",
-            frac,
-            [(min(ratio, 1.0), pct_lab if ratio <= 1.0 else f"{pct_lab}", "above")],
-        )
-    y -= bar_h + gap
-
-    def _mark(mf: float, mlab: str, side: str, *, yb: float) -> None:
+    def _tick(mf: float, yb: float) -> float:
         mf = max(0.0, min(1.0, float(mf)))
         mx = left + width * mf
-        # 貼邊改左右對齊，避免標飛出圖
-        if mf <= 0.08:
-            ha = "left"
-            mx = left
-        elif mf >= 0.92:
-            ha = "right"
-            mx = right
-        else:
-            ha = "center"
         fig.patches.append(
             Rectangle(
-                (left + width * max(0.0, min(1.0, float(mf))) - 0.0012, yb - 0.003),
-                0.0024, bar_h + 0.006,
+                (mx - 0.0014, yb - 0.004), 0.0028, bar_h + 0.008,
                 transform=fig.transFigure, facecolor=INK, edgecolor="none", clip_on=False,
             )
         )
-        ty = yb + bar_h + 0.003 if side == "above" else yb - 0.003
+        return mx
+
+    def _bubble(mx: float, yb: float, text: str, *, side: str, ha: str = "center") -> None:
+        ty = yb + bar_h + 0.005 if side == "above" else yb - 0.005
         va = "bottom" if side == "above" else "top"
         fig.text(
-            mx, ty, mlab, fontproperties=fp(8, True), color=INK, ha=ha, va=va,
+            mx, ty, text, fontproperties=fp(9.5, True), color=INK, ha=ha, va=va,
             transform=fig.transFigure,
-            bbox=dict(boxstyle="square,pad=0.15", facecolor=PAPER, edgecolor=RULE, linewidth=0.7),
+            bbox=dict(boxstyle="square,pad=0.18", facecolor=PAPER, edgecolor=RULE, linewidth=0.85),
         )
 
-    # 2) 日低–日高（興櫃開＝前日均價可落在日高低外 → 超出就不標開盤，避免假貼右緣）
+    # —— 1) 量：左季均／右當日＋倍數；條＝min(當日/季均, 1) 滿格，超量只寫倍數 ——
+    if off.q_avg_vol_lots and off.q_avg_vol_lots > 0:
+        ratio = off.volume_lots / off.q_avg_vol_lots
+        fig.text(left, y + bar_h + 0.006, "量能", fontproperties=fp(10, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
+        fig.patches.append(
+            Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
+        )
+        fig.patches.append(
+            Rectangle(
+                (left, y), width * min(ratio, 1.0), bar_h,
+                transform=fig.transFigure, facecolor=DN if ratio >= 1 else UP, edgecolor="none", alpha=0.88, clip_on=False,
+            )
+        )
+        fig.text(
+            left, y - 0.003, f"季均 {_fmt_lots(off.q_avg_vol_lots)}",
+            fontproperties=fp(9.5, False), color=MUTE, ha="left", va="top", transform=fig.transFigure,
+        )
+        fig.text(
+            right, y - 0.003, f"當日 {_fmt_lots(off.volume_lots)}　{ratio:.1f}×",
+            fontproperties=fp(10.5, True), color=INK, ha="right", va="top", transform=fig.transFigure,
+        )
+    y -= row_pitch
+
+    # —— 2) 日區間：端點大字；最新上、開盤下（開在區間外則省略） ——
     span = off.high - off.low
     if span > 0:
         last_f = (off.close - off.low) / span
         open_in = off.low <= off.open <= off.high
         open_f = (off.open - off.low) / span if open_in else None
+        fig.text(left, y + bar_h + 0.006, "今日區間", fontproperties=fp(10, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
         fig.patches.append(
             Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
         )
@@ -765,57 +742,79 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
             a, b = sorted([open_f, last_f])
             fig.patches.append(
                 Rectangle(
-                    (left + width * a, y), max(width * (b - a), 0.002), bar_h,
+                    (left + width * a, y), max(width * (b - a), 0.003), bar_h,
                     transform=fig.transFigure,
                     facecolor=(DN if off.close < off.open else UP),
                     edgecolor="none", alpha=0.9, clip_on=False,
                 )
             )
         else:
-            # 無開盤點在區間內：只標最新位置色點帶
+            lf = max(0.0, min(1.0, last_f))
             fig.patches.append(
                 Rectangle(
-                    (left + width * max(0.0, min(1.0, last_f)) - 0.004, y),
-                    0.008, bar_h,
+                    (left + width * lf - 0.005, y), 0.010, bar_h,
                     transform=fig.transFigure,
                     facecolor=DN if off.close < off.prev_close else UP,
                     edgecolor="none", alpha=0.95, clip_on=False,
                 )
             )
-        fig.text(left, y + bar_h + 0.004, "日低 — 日高", fontproperties=fp(9, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
-        fig.text(left, y - 0.002, f"日低 {_fmt_face(off.low)}", fontproperties=fp(8, False), color=DN, ha="left", va="top", transform=fig.transFigure)
-        fig.text(right, y - 0.002, f"日高 {_fmt_face(off.high)}", fontproperties=fp(8, False), color=UP, ha="right", va="top", transform=fig.transFigure)
-        if open_f is not None:
-            _mark(open_f, f"開盤 {_fmt_face(off.open)}", "below", yb=y)
-        _mark(last_f, f"最新 {_fmt_face(off.close)}", "above", yb=y)
-    y -= bar_h + gap
+        fig.text(
+            left, y - 0.003, f"{_fmt_face(off.low)}",
+            fontproperties=fp(11, True), color=DN, ha="left", va="top", transform=fig.transFigure,
+        )
+        fig.text(
+            right, y - 0.003, f"{_fmt_face(off.high)}",
+            fontproperties=fp(11, True), color=UP, ha="right", va="top", transform=fig.transFigure,
+        )
+        ha_last = "left" if last_f <= 0.12 else ("right" if last_f >= 0.88 else "center")
+        if open_f is not None and abs(open_f - last_f) < 0.06:
+            _bubble(
+                _tick(last_f, y), y,
+                f"最新 {_fmt_face(off.close)}　開 {_fmt_face(off.open)}",
+                side="above", ha=ha_last,
+            )
+        else:
+            if open_f is not None:
+                _bubble(_tick(open_f, y), y, f"開 {_fmt_face(off.open)}", side="below")
+            _bubble(_tick(last_f, y), y, f"最新 {_fmt_face(off.close)}", side="above", ha=ha_last)
+    y -= row_pitch
 
-    # 3) 52週
+    # —— 3) 52週：近標合併成一氣泡，避免 651／824 互壓 ——
     if off.w52_high is not None and off.w52_low is not None and off.w52_high > off.w52_low:
         span = off.w52_high - off.w52_low
         open_f = (off.open - off.w52_low) / span
         last_f = (off.close - off.w52_low) / span
+        fig.text(left, y + bar_h + 0.006, "52週", fontproperties=fp(10, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
         fig.patches.append(
             Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="none", clip_on=False)
         )
         a, b = sorted([max(0.0, min(1.0, open_f)), max(0.0, min(1.0, last_f))])
         fig.patches.append(
             Rectangle(
-                (left + width * a, y), max(width * (b - a), 0.002), bar_h,
-                transform=fig.transFigure,
-                facecolor=YELLOW, edgecolor="none", alpha=0.85, clip_on=False,
+                (left + width * a, y), max(width * (b - a), 0.003), bar_h,
+                transform=fig.transFigure, facecolor=YELLOW, edgecolor="none", alpha=0.88, clip_on=False,
             )
         )
-        fig.text(left, y + bar_h + 0.004, "52週低 — 52週高", fontproperties=fp(9, True), color=INK, ha="left", va="bottom", transform=fig.transFigure)
-        fig.text(left, y - 0.002, f"52週低 {_fmt_face(off.w52_low)}", fontproperties=fp(8, False), color=DN, ha="left", va="top", transform=fig.transFigure)
-        fig.text(right, y - 0.002, f"52週高 {_fmt_face(off.w52_high)}", fontproperties=fp(8, False), color=UP, ha="right", va="top", transform=fig.transFigure)
-        # 開／最新太近時只留最新在上、開盤在下錯開
-        if abs(open_f - last_f) < 0.04:
-            _mark(open_f, f"開 {_fmt_face(off.open)}", "below", yb=y)
-            _mark(last_f, f"最新 {_fmt_face(off.close)}", "above", yb=y)
+        fig.text(
+            left, y - 0.003, f"{_fmt_face(off.w52_low)}",
+            fontproperties=fp(11, True), color=DN, ha="left", va="top", transform=fig.transFigure,
+        )
+        fig.text(
+            right, y - 0.003, f"{_fmt_face(off.w52_high)}",
+            fontproperties=fp(11, True), color=UP, ha="right", va="top", transform=fig.transFigure,
+        )
+        mid = (max(0.0, min(1.0, open_f)) + max(0.0, min(1.0, last_f))) * 0.5
+        if abs(open_f - last_f) < 0.08:
+            ha = "left" if mid <= 0.18 else ("right" if mid >= 0.82 else "center")
+            _bubble(
+                _tick(mid, y), y,
+                f"最新 {_fmt_face(off.close)}　開 {_fmt_face(off.open)}",
+                side="above", ha=ha,
+            )
         else:
-            _mark(open_f, f"開盤 {_fmt_face(off.open)}", "below", yb=y)
-            _mark(last_f, f"最新 {_fmt_face(off.close)}", "above", yb=y)
+            _bubble(_tick(open_f, y), y, f"開 {_fmt_face(off.open)}", side="below")
+            ha = "left" if last_f <= 0.12 else ("right" if last_f >= 0.88 else "center")
+            _bubble(_tick(last_f, y), y, f"最新 {_fmt_face(off.close)}", side="above", ha=ha)
 
 
 def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
@@ -876,17 +875,17 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # 更高：頭＋報價格＋圖＋量＋三條區間
-    fig_w, fig_h, dpi = 13.2, 10.6, 200
+    # 更高：頭＋報價格＋圖＋量＋三條區間（v4 底加距）
+    fig_w, fig_h, dpi = 13.2, 11.2, 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
     left_f, right_f = 0.055, 0.905
-    # 底：三條區間約 0.16；量 0.10；主圖；頭欄
-    range_top = 0.20
-    vol_h = 0.09
-    vol_bot = range_top + 0.01
+    # 底三條約 0.22；量；主圖；頭欄
+    range_top = 0.235
+    vol_h = 0.085
+    vol_bot = range_top + 0.012
     main_bot = vol_bot + vol_h + 0.012
-    main_top = 0.72  # 頭欄＋報價格在上
+    main_top = 0.70
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
     ax.set_facecolor(PAPER)
@@ -1031,26 +1030,37 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             ax.plot([x0, xc], [a, prev], color=(UP if a >= prev else DN), lw=2.05, zorder=3)
             ax.plot([xc, x1], [prev, b], color=(UP if b >= prev else DN), lw=2.05, zorder=3)
 
-    # 右側股價區間標（ref1 感）
-    for px, lab, col in (
+    # 右側股價區間標：價距小時上下錯開，避免互壓
+    y_span = (hi + pad) - (lo - pad)
+    right_labs = [
         (off.high, f"日高 {_fmt_face(off.high)}", UP),
         (prev, f"昨收 {_fmt_face(prev)}", MUTE),
         (off.low, f"日低 {_fmt_face(off.low)}", DN),
-    ):
+    ]
+    right_labs.sort(key=lambda t: t[0])
+    placed_y: List[float] = []
+    min_gap = max(y_span * 0.06, abs(prev) * 0.004)
+    for px, lab, col in right_labs:
+        yy = float(px)
+        for py in placed_y:
+            if abs(yy - py) < min_gap:
+                yy = py + min_gap if yy >= py else py - min_gap
+        placed_y.append(yy)
         ax.text(
-            0.995, px, f" {lab}",
-            fontproperties=fp(8.5, True), color=col, ha="right", va="center",
+            0.995, yy, f" {lab}",
+            fontproperties=fp(9.5, True), color=col, ha="right", va="center",
             transform=ax.get_yaxis_transform(), zorder=5,
-            bbox=dict(boxstyle="square,pad=0.15", facecolor=PAPER, edgecolor=col, linewidth=0.8),
+            bbox=dict(boxstyle="square,pad=0.18", facecolor=PAPER, edgecolor=col, linewidth=0.85),
         )
 
     if series.gap_after is not None:
         gx0 = _x(series.gap_after)
-        ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.55, zorder=0)
-        vol_ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.55, zorder=0)
+        ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.45, zorder=0)
+        vol_ax.axvspan(gx0, x_end, facecolor=RULE, alpha=0.45, zorder=0)
+        # 小字貼灰帶上緣，不壓路徑
         ax.text(
-            (gx0 + x_end) * 0.5, lo + (hi - lo) * 0.06, "缺資料",
-            fontproperties=fp(11, True), color=MUTE, ha="center", va="bottom", zorder=6,
+            (gx0 + x_end) * 0.5, hi - (hi - lo) * 0.04, "缺資料",
+            fontproperties=fp(10, False), color=MUTE, ha="center", va="top", zorder=6,
         )
 
     _paint_sparse_marks(ax, series, xs, ys, prev)
@@ -1088,34 +1098,60 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
 
 
 def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
+    """Smart labels：避開缺資料邊界假急殺；offset 不蓋折線。"""
     from ink_chart_theme import DN, INK, UP, fp
     import numpy as np
 
-    marks: List[Tuple[float, float, str, str]] = []
+    marks: List[Tuple[float, float, str, str, Tuple[float, float]]] = []
     for x, y in zip(xs, ys):
         if float(y) < prev:
-            marks.append((float(x), float(y), "破昨收", DN))
+            marks.append((float(x), float(y), "破昨收", DN, (10, 14)))
             break
-    if len(ys):
-        i = int(np.argmin(ys))
-        if float(ys[i]) <= prev * 0.97:
-            marks.append((float(xs[i]), float(ys[i]), "急殺", DN))
+    # 急殺：真跌段；缺資料邊界前 5 分內的路徑低點不算（避免假崖）
+    if len(ys) >= 8:
+        gap_cut = None
+        if series.gap_after is not None:
+            gap_cut = (series.gap_after.hour - 9) * 60 + series.gap_after.minute
+        # 找最大 8–20 分跌幅窗
+        best = None
+        for i in range(len(ys)):
+            for j in range(i + 1, len(ys)):
+                mins = float(xs[j] - xs[i])
+                if mins > 20:
+                    break
+                if mins < 8:
+                    continue
+                if gap_cut is not None and float(xs[j]) >= gap_cut - 5:
+                    continue
+                drop = (float(ys[j]) - float(ys[i])) / float(ys[i]) if ys[i] else 0.0
+                if drop <= -0.05 and (best is None or drop < best[0]):
+                    best = (drop, float(xs[j]), float(ys[j]))
+        if best is not None:
+            marks.append((best[1], best[2], "急殺", DN, (8, -16)))
     vs = np.asarray(series.volumes_lots, dtype=float)
     if len(vs) and float(np.max(vs)) > 0:
         med = float(np.median(vs[vs > 0])) if np.any(vs > 0) else 0.0
         i = int(np.argmax(vs))
         if med > 0 and vs[i] >= med * 6:
-            marks.append((float(xs[i]), float(ys[i]), "爆量", UP if ys[i] >= prev else DN))
-    kept: List[Tuple[float, float, str, str]] = []
+            marks.append(
+                (float(xs[i]), float(ys[i]), "爆量", UP if ys[i] >= prev else DN, (8, 16))
+            )
+    kept: List[Tuple[float, float, str, str, Tuple[float, float]]] = []
     for m in marks:
-        if any(abs(m[0] - k[0]) < 18 and m[2] == k[2] for k in kept):
+        if any(abs(m[0] - k[0]) < 22 and m[2] == k[2] for k in kept):
             continue
+        # 同類近鄰也避開
+        if any(abs(m[0] - k[0]) < 14 for k in kept):
+            # 改 offset 方向
+            ox, oy = m[4]
+            m = (m[0], m[1], m[2], m[3], (ox, -oy if oy > 0 else 18))
         kept.append(m)
-    for x, y, lab, col in kept[:3]:
+    for x, y, lab, col, (ox, oy) in kept[:3]:
         ax.annotate(
-            lab, xy=(x, y), xytext=(8, 12), textcoords="offset points",
-            fontproperties=fp(9, True), color=INK,
-            bbox=dict(boxstyle="square,pad=0.22", facecolor="#FFF8E7", edgecolor=col, linewidth=1.0),
+            lab, xy=(x, y), xytext=(ox, oy), textcoords="offset points",
+            fontproperties=fp(10, True), color=INK,
+            bbox=dict(boxstyle="square,pad=0.24", facecolor="#FFF8E7", edgecolor=col, linewidth=1.05),
+            arrowprops=dict(arrowstyle="-", color=col, lw=0.7),
             zorder=7,
         )
 
