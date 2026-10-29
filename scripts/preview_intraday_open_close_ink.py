@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Preview-only v19：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v20：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v19-left-axis-20261030.md：
-Y 刻度貼左框；開盤路徑讓字；無量不畫；平盤淡紅／淡綠；
-上市櫃 xmax=13:30、興櫃=15:00（價／量同窗）。不准假資料／假延長線。
+對齊 docs/intraday-v20-align-20261030.md：
+價／量同一 xlim 與 x_end；不准尾端假延長（真分時結束後不畫線）；
+上市櫃 xmax=13:30、興櫃=15:00。不准假資料。
 """
 from __future__ import annotations
 
@@ -147,7 +147,11 @@ def _densify_1m_path(
     ymd: str,
     sess_end_hm: int,
 ) -> Dict[str, List[Any]]:
-    """盤中缺分：用前一分收盤平鋪（量 0）；不跨日、不捏新價。"""
+    """盤中缺分：用前一分收盤平鋪（量 0）；不跨日、不捏新價。
+
+    v20：只補**最後一筆真分時之前**的中間缺分；不准把路徑假延長到
+    session 收（上市櫃 13:30／興櫃 15:00）——否則量柱無量不畫、價線卻繼續往右。
+    """
     if len(closes) < 2:
         return {
             "times": times, "opens": opens, "highs": highs,
@@ -171,9 +175,12 @@ def _densify_1m_path(
     last_c: Optional[float] = None
     # 先對齊到第一筆真資料，不往前捏開盤前空檔
     first_key = min(by_min.keys())
+    last_key = max(by_min.keys())
     while cur < first_key:
         cur += timedelta(minutes=1)
     while cur <= end:
+        if cur > last_key:
+            break  # 真分時已結束：不准尾端假延長到 session 收
         if cur in by_min:
             o, h, lo, c, v = by_min[cur]
             last_c = c
@@ -184,6 +191,7 @@ def _densify_1m_path(
             out_c.append(c)
             out_v.append(v)
         elif last_c is not None:
+            # 僅中間缺分平鋪
             out_t.append(cur)
             out_o.append(last_c)
             out_h.append(last_c)
@@ -191,14 +199,31 @@ def _densify_1m_path(
             out_c.append(last_c)
             out_v.append(0.0)
         cur += timedelta(minutes=1)
-    return {
-        "times": out_t,
-        "opens": out_o,
-        "highs": out_h,
-        "lows": out_l,
-        "closes": out_c,
-        "volumes_lots": out_v,
-    }
+    return _trim_trailing_zero_vol(
+        {
+            "times": out_t,
+            "opens": out_o,
+            "highs": out_h,
+            "lows": out_l,
+            "closes": out_c,
+            "volumes_lots": out_v,
+        }
+    )
+
+
+def _trim_trailing_zero_vol(path: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
+    """裁掉尾端 vol=0 分钟：價線不准比最後一根真量柱更右（v20 對齊）。
+
+    中間缺分平鋪的 vol=0 仍保留（後面還有真量）。只剝尾巴。
+    """
+    vs = path.get("volumes_lots") or []
+    keys = ("times", "opens", "highs", "lows", "closes", "volumes_lots")
+    while len(vs) > 1 and float(vs[-1] or 0.0) <= 0.0:
+        for k in keys:
+            if path.get(k):
+                path[k].pop()
+        vs = path["volumes_lots"]
+    return path
 
 
 def fetch_yahoo_1m_path(
@@ -2533,16 +2558,23 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         lo = min(lo, float(off.avg_price))
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
-    # v19：左 pad 讓開盤點／線讓出 Y 刻度字寬；右仍頂 x_end
-    ax.set_xlim(-float(x_label_pad), float(x_end))
+    # v20：價／量強制同一 xlim（左 pad 讓刻度字；右＝session x_end）
+    x_lim = (-float(x_label_pad), float(x_end))
+    ax.set_xlim(*x_lim)
+    vol_ax.set_xlim(*x_lim)
+    # 線尾＝最後真分時（densify 已不尾延）；硬閘不准畫過 x_end
+    line_tail_i = int(len(xs) - 1) if len(xs) else -1
+    line_tail_x = float(xs[line_tail_i]) if line_tail_i >= 0 else None
     # 昨收參考虛線（填色基準）；五必標改 v13 圓章＋短虛線，不再拉滿幅水平線搶位
     ax.axhline(prev, color=MUTE, linestyle=(0, (4, 3)), linewidth=1.15, zorder=2, alpha=0.85)
     ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
     ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.16, zorder=1)
-    # 缺分已平鋪；僅跳超大斷層（不應再出現）。連續段用 plot 畫齊。
+    # 缺分已平鋪（僅中間）；連續段用 plot；x>x_end 不畫
     for i in range(len(ys) - 1):
         a, b = float(ys[i]), float(ys[i + 1])
         x0, x1 = float(xs[i]), float(xs[i + 1])
+        if x0 > float(x_end) or x1 > float(x_end):
+            continue
         if x1 - x0 > 8:
             continue
         if (a >= prev and b >= prev) or (a < prev and b < prev):
@@ -2605,30 +2637,44 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     real_mask = vs_arr > 0
     n_flat = 0
     n_zero = int(np.sum(~real_mask))
-    if np.any(real_mask):
-        vol_cols: List[str] = []
-        for i in np.where(real_mask)[0]:
-            yi = float(ys_arr[i])
-            ref = float(prev) if int(i) == 0 else float(ys_arr[int(i) - 1])
-            if yi > ref:
-                vol_cols.append(UP)
-            elif yi < ref:
-                vol_cols.append(DN)
-            else:
-                n_flat += 1
-                vol_cols.append(up_flat if yi >= float(prev) else dn_flat)
+    plot_x: List[float] = []
+    plot_h: List[float] = []
+    plot_c: List[str] = []
+    for i in np.where(real_mask)[0]:
+        if float(xs[i]) > float(x_end) + 1e-9:
+            continue  # 與價線同窗：不准畫過 x_end
+        yi = float(ys_arr[i])
+        ref = float(prev) if int(i) == 0 else float(ys_arr[int(i) - 1])
+        if yi > ref:
+            col = UP
+        elif yi < ref:
+            col = DN
+        else:
+            n_flat += 1
+            col = up_flat if yi >= float(prev) else dn_flat
+        plot_x.append(float(xs[i]))
+        plot_h.append(float(vs_disp[i]))
+        plot_c.append(col)
+    if plot_x:
         vol_ax.bar(
-            xs[real_mask], vs_disp[real_mask], width=width,
-            color=vol_cols, alpha=0.92, zorder=3, linewidth=0, align="center",
+            plot_x, plot_h, width=width,
+            color=plot_c, alpha=0.92, zorder=3, linewidth=0, align="center",
         )
-    # 無量缺分：不畫（路徑仍平鋪前收；量軸留空＝誠實無成交）
+    # 無量缺分：不畫；量軸 ylim 後強制與價軸同一 xlim（bar 不准撐破右緣）
     vol_ax.set_ylim(0, max(vmax_s * 1.18, 0.6))
+    ax.set_xlim(*x_lim)
+    vol_ax.set_xlim(*x_lim)
+    last_vol_i = int(np.where(real_mask)[0][-1]) if np.any(real_mask) else -1
     fig._wayne_vol_bar_meta = {  # type: ignore[attr-defined]
         "n": int(len(vs_arr)),
         "n_zero_undrawn": n_zero,
         "n_real": int(np.sum(real_mask)),
         "n_flat_pale": n_flat,
         "stub_drawn": False,
+        "last_vol_i": last_vol_i,
+        "last_vol_x": float(xs[last_vol_i]) if last_vol_i >= 0 else None,
+        "line_tail_i": line_tail_i,
+        "line_tail_x": line_tail_x,
     }
 
     # 時軸與價／量同一 xmax：上市櫃 13:30(=270)、興櫃 15:00(=360)；標要讀得到終點
@@ -2713,6 +2759,14 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     label_gate["x_end"] = float(x_end)
     label_gate["session_end"] = "15:00" if is_em else "13:30"
     label_gate["time_ticks"] = [list(t) for t in time_ticks]
+    label_gate["line_tail_i"] = line_tail_i
+    label_gate["line_tail_x"] = line_tail_x
+    label_gate["line_tail_hm"] = (
+        times[line_tail_i].strftime("%H:%M") if line_tail_i >= 0 else None
+    )
+    # 收尾再鎖同一 xlim（避免任何 artist 撐軸）
+    ax.set_xlim(*x_lim)
+    vol_ax.set_xlim(*x_lim)
     fig._wayne_label_gate = label_gate  # type: ignore[attr-defined]
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
@@ -2789,10 +2843,10 @@ def default_out_dir() -> str:
     if env:
         return env
     for store in (
+        "/cursor/stores/self/media/intraday-v20-align-20261030",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v20-align-20261030",
         "/cursor/stores/self/media/intraday-v19-left-axis-20261030",
         "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v19-left-axis-20261030",
-        "/cursor/stores/self/media/intraday-v18-gutter-20261030",
-        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v18-gutter-20261030",
     ):
         parent = os.path.dirname(store)
         if os.path.isdir(parent) or os.path.isdir(store):
@@ -2801,11 +2855,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v19（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v20（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v19")
+    ap.add_argument("--prefix", default="preview-v20")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     ap.add_argument(
         "--set",
@@ -2879,7 +2933,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if any(
             str(args.prefix).startswith(p)
             for p in (
-                "preview-v15", "preview-v16", "preview-v17", "preview-v18", "preview-v19",
+                "preview-v15", "preview-v16", "preview-v17",
+                "preview-v18", "preview-v19", "preview-v20",
             )
         )
         else "20261029"
