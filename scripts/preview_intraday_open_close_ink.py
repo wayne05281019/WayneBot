@@ -1084,7 +1084,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     vol_h = 0.078
     vol_bot = range_top + 0.012
     main_bot = vol_bot + vol_h + 0.012
-    main_top = 0.60  # 頭欄名牌＋八格在上
+    main_top = 0.56  # 頭欄名牌＋八格在上（避開右上時間戳）
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot])
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax)
     ax.set_facecolor(PAPER)
@@ -1200,10 +1200,10 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     if is_em:
         _scrub_em_limit_labels(fig)
 
-    # 八格：overlay 高 z，落在名牌／時間戳下、主圖框上（不准幽靈字）
+    # 八格：overlay 高 z，整段落在右上價／時間戳之下（不准幽靈字、不准壓戳）
     _paint_quote_grid(
         ov, off,
-        y_top=83.8,
+        y_top=78.5,
         left=left_f * 100.0,
         right=right_f * 100.0,
     )
