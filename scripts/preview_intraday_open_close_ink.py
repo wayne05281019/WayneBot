@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Preview-only v10：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v11：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v10-extra-cells-20261029.md（上排四格＋下八格＝12）；
-框線共線／真分量柱紅綠維持 v9。
+對齊 docs/intraday-v11-cell-order-20261029.md（12 格閱讀序定稿）；
+框線共線／真分量柱紅綠／12.4×9.35 維持 v9／v10。
 
 - 頭欄／報價格／價／量外框＝結構圖同款 `_STRUCTURE_BOX_X`／`_STRUCTURE_BOX_W`。
-- 上排四格＝昨量／成交筆數／漲停價／跌停價（有真數才填；興櫃漲跌停＝—）。
-- 下兩排八格維持 v8／v9 格序；獨立帶、興櫃 15:00、真數鎖維持。
+- 12 格由上到下、由左至右：今日價 → 量能 → 參考（見 _paint_quote_grid）。
+- 興櫃：漲停／跌停／筆數＝—；獨立帶、15:00、真數鎖維持。
 - 不准接話筒／合 main；臉不寫出處。
 """
 from __future__ import annotations
@@ -67,7 +67,7 @@ class OfficialDay:
     w52_low: Optional[float]
     source: str
     close_label: str  # 收盤 / 興櫃收
-    # v10 上排四格（無真數＝None → 畫面「—」；不准假湊）
+    # v10／v11 加欄（無真數＝None → 畫面「—」；不准假湊）
     prev_volume_lots: Optional[float] = None  # 昨量（張）
     trade_count: Optional[int] = None  # 成交筆數
     limit_up: Optional[float] = None  # 當日漲停價（興櫃無）
@@ -585,7 +585,7 @@ def fetch_official_em(stock_id: str, *, ymd: str, db_path: str) -> Optional[Offi
         w52l = lo
     avg = float(hit["avg_price"]) if hit.get("avg_price") not in (None, "") else c
     to_k = float(hit["turnover_k"]) if hit.get("turnover_k") not in (None, "") else None
-    # 興櫃：無 ±10% 漲跌停、CSV 無成交筆數 → 上排對應格「—」；昨量＝庫內上一開市日真量
+    # 興櫃：無 ±10% 漲跌停、CSV 無成交筆數 → 對應格「—」；昨量＝庫內上一開市日真量
     prev_vol = _prev_volume_lots_db(stock_id, "EM", db_path, ymd=ymd)
     return OfficialDay(
         stock_id=stock_id,
@@ -1011,10 +1011,12 @@ def _fmt_trade_count(n: Optional[int]) -> str:
 
 
 def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
-    """12 格報價格：獨立 axes（主圖上方），上 4＋下 8；不准畫進價圖 ax。
+    """12 格報價格：獨立 axes（主圖上方）；由上到下、由左至右閱讀序。
 
-    上排：昨量／成交筆數／漲停價／跌停價（無真數＝—；興櫃漲跌停必 —）。
-    下兩排：今開／最高／成交量／昨收／最低／成交額／日均價｜均價／振幅。
+    上排（今日價）：今開 → 最高 → 最低 → 昨收
+    中排（量能）：成交量 → 成交額 → 昨量 → 成交筆數
+    下排（參考）：均價｜日均價 → 振幅 → 漲停價 → 跌停價
+    無真數＝—；興櫃漲停／跌停／筆數必 —（不准假 ±10%／假筆數）。
     """
     from ink_chart_theme import DN, INK, MUTE, PAPER, UP, fp
     from matplotlib.patches import FancyBboxPatch
@@ -1041,18 +1043,21 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     lu_val = _fmt_face(off.limit_up) if off.limit_up and off.limit_up > 0 else "—"
     ld_val = _fmt_face(off.limit_down) if off.limit_down and off.limit_down > 0 else "—"
     cells: List[Tuple[str, str, str]] = [
-        ("昨量", prev_vol_val, INK),
-        ("成交筆數", _fmt_trade_count(off.trade_count), INK),
-        ("漲停價", lu_val, UP if lu_val != "—" else MUTE),
-        ("跌停價", ld_val, DN if ld_val != "—" else MUTE),
+        # 上排：今日價（開→高→低→昨收基準）
         ("今開", _fmt_face(off.open), INK),
         ("最高", _fmt_face(off.high), UP),
-        ("成交量", _fmt_lots(off.volume_lots), INK),
-        ("昨收", _fmt_face(off.prev_close), INK),
         ("最低", _fmt_face(off.low), DN),
+        ("昨收", _fmt_face(off.prev_close), INK),
+        # 中排：量能（當日量額 → 昨量對照 → 筆數）
+        ("成交量", _fmt_lots(off.volume_lots), INK),
         ("成交額", turn_val, INK),
+        ("昨量", prev_vol_val, INK),
+        ("成交筆數", _fmt_trade_count(off.trade_count), INK),
+        # 下排：參考（均／振幅 → 停板；興櫃停板＝—）
         (avg_lab, avg_val, INK),
         ("振幅", amp_val, INK),
+        ("漲停價", lu_val, UP if lu_val != "—" else MUTE),
+        ("跌停價", ld_val, DN if ld_val != "—" else MUTE),
     ]
 
     cols = 4
@@ -1351,7 +1356,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v10：畫布＝大量區 NAV 12.4×9.35；外框共線維持 v9；報價帶加高容 3×4＝12 格
+    # v11：畫布＝大量區 NAV 12.4×9.35；外框共線維持 v9；報價帶 3×4＝12 格（閱讀序見 _paint_quote_grid）
     from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
 
     fig_w = float(VOL_ZONE_FIG_W)  # 12.4
@@ -1575,7 +1580,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     right_labs.sort(key=lambda t: t[0])
     placed_y: List[float] = []
     min_gap = max(y_span * 0.10, abs(prev) * 0.008)
-    # 右標：axes 右～外框右的框內白邊（v10 略增呼吸；仍不切末碼）
+    # 右標：axes 右～外框右的框內白邊（略增呼吸；仍不切末碼）
     lab_x = min(right_f + 0.012, frame_right - 0.052)
     assert lab_x + 0.04 <= frame_right + 1e-6, "右標必須落在共線外框內"
 
@@ -1801,11 +1806,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v10（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v11（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v10")
+    ap.add_argument("--prefix", default="preview-v11")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
