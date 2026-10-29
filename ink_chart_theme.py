@@ -469,10 +469,10 @@ def restyle_bands(ax) -> None:
                 p.set_antialiased(False)
             except Exception:
                 pass
-        elif fc in ("#9e9e9e", "#78909c", "#90a4ae") and wide:
-            # 下一層深灰價帶（2026-10-29 鎖臉 α≈0.30）；點紋略留層次
+        elif fc in ("#9e9e9e", "#78909c", "#90a4ae", "#607d8b") and wide:
+            # 下一層深灰價帶（v2c α≈0.38）；點紋略留層次
             p.set_facecolor(LAYER_FACE if fc == "#9e9e9e" else fc)
-            p.set_alpha(0.30 if fc != "#9e9e9e" else 0.45)
+            p.set_alpha(0.38 if fc != "#9e9e9e" else 0.45)
             p.set_hatch("..")
             p.set_hatchcolor(LAYER_HATCH)
             p.set_edgecolor("none")

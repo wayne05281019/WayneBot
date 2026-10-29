@@ -375,8 +375,9 @@ def test_paint_next_layer_defaults_to_deep_band_with_lines():
     assert "draw_layer_lines" in src
     sig = inspect.signature(paint_written_and_next_levels)
     assert sig.parameters["layer_marks"].default == "both"
-    assert float(sig.parameters["band_alpha"].default) >= 0.28
+    assert float(sig.parameters["band_alpha"].default) >= 0.36
     assert str(sig.parameters["color_band"].default).lower() in {
+        "#607d8b",
         "#78909c",
         "#90a4ae",
     }
