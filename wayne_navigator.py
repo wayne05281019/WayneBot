@@ -1875,7 +1875,7 @@ def volume_bar_display_heights(volumes) -> tuple:
 LOOKUP_CANDLE_UP = "#e53935"
 LOOKUP_CANDLE_DN = "#00897b"
 LOOKUP_CANDLE_HALT = "#9e9e9e"
-LOOKUP_QUOTE_FLAT = "#455a64"  # 平盤字色（漲紅跌綠平灰；與 K 柱平盤當紅分開）
+LOOKUP_QUOTE_FLAT = "#0B0B0B"  # 平盤字色（漲紅跌綠平黑；與 K 柱平盤當紅分開）
 LOOKUP_CANDLE_BODY_W = 0.70
 LOOKUP_CANDLE_WICK_LW = 1.40
 LOOKUP_CANDLE_BODY_LW = 0.40
@@ -2971,10 +2971,10 @@ def quote_move_ink(
     down: str = LOOKUP_CANDLE_DN,
     flat: str = LOOKUP_QUOTE_FLAT,
 ) -> str:
-    """查股四張共用：漲紅、跌綠、平灰。優先 change，否則 close−prev，再 pct。
+    """查股四張共用：漲紅、跌綠、平黑。優先 change，否則 close−prev，再 pct。
 
     官方收顯示走 ``_fmt_price``（不准現股跳動改寫 ETF 真收）。
-    K 柱平盤仍可當紅；這裡只定「股價數字／漲跌字」色。
+    K 柱平盤仍可當紅；這裡只定「股價數字／漲跌字」色。漲停／跌停另走 chip。
     """
     v = None
     try:
