@@ -3,7 +3,7 @@
 
 - 頭欄＝結構／大量區同款（nameplate＋spot）。
 - 八格＝**獨立 quote_ax**在頭欄與主圖之間（零重疊價圖／Y 軸）。
-- 畫布 12.4×10.85；邊距對齊結構／大量區 ink 常數。
+- 畫布 12.4×9.35（大量區 NAV）；邊距對齊結構／大量區 ink 常數。
 - 路徑：TW/TWO Yahoo 1m、EM priceByTimes→1 分；缺分平鋪前收（量＝0）。
 - 量柱 log1p＋gamma；缺分極短灰柱（不准假 0 洗白）。
 - 時標在量框下淨空；框線／格線不准切斷。底三條＋右側日高／昨收／日低。
@@ -902,15 +902,17 @@ def _scrub_em_limit_labels(fig) -> None:
 
 
 def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
-    """八格報價格：獨立 axes（主圖上方），axes 座標 0–1；不准畫進價圖 ax。
+    """八格報價格：獨立 axes（主圖上方），data 座標 0–1 鋪滿帶高；不准畫進價圖 ax。
 
     格序：今開／最高／成交量／昨收／最低／成交額／日均價｜均價／振幅。
+    不用 transAxes：與全圖 overlay 並存時 axes 變換易把格壓成帶頂細條。
     """
     from ink_chart_theme import DN, INK, MUTE, PAPER, UP, fp
     from matplotlib.patches import FancyBboxPatch
 
     quote_ax.set_xlim(0, 1)
     quote_ax.set_ylim(0, 1)
+    quote_ax.set_autoscale_on(False)
     quote_ax.set_facecolor(PAPER)
     quote_ax.set_xticks([])
     quote_ax.set_yticks([])
@@ -935,9 +937,9 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     cols = 4
     # 軸內留邊；興櫃註另佔底列
     has_note = off.close_label == "興櫃收" and not (off.low <= off.open <= off.high)
-    pad_x, pad_top = 0.008, 0.06
-    pad_bot = 0.22 if has_note else 0.06
-    gap_x, gap_y = 0.012, 0.06
+    pad_x, pad_top = 0.012, 0.05
+    pad_bot = 0.18 if has_note else 0.05
+    gap_x, gap_y = 0.010, 0.04
     usable_h = 1.0 - pad_top - pad_bot
     cell_h = (usable_h - gap_y) / 2.0
     width = 1.0 - 2 * pad_x
@@ -953,27 +955,29 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
                 (x, y), cell_w, cell_h,
                 boxstyle="square,pad=0.004",
                 facecolor=PAPER, edgecolor=edge, linewidth=1.2,
-                transform=quote_ax.transAxes, clip_on=False, zorder=2,
+                clip_on=False, zorder=2,
             )
         )
-        # 國字上／數字下（layout arrange）
+        # 國字上／數字下（layout arrange）；data 座標鋪滿 quote 帶
         quote_ax.text(
             x + cell_w * 0.5, y + cell_h * 0.72, lab,
             fontproperties=fp(11, True), color=lab_col, ha="center", va="center",
-            transform=quote_ax.transAxes, zorder=3, clip_on=False,
+            zorder=3, clip_on=False,
         )
         quote_ax.text(
             x + cell_w * 0.5, y + cell_h * 0.32, val,
-            fontproperties=fp(16, True), color=col, ha="center", va="center",
-            transform=quote_ax.transAxes, zorder=3, clip_on=False,
+            fontproperties=fp(15, True), color=col, ha="center", va="center",
+            zorder=3, clip_on=False,
         )
     if has_note:
         quote_ax.text(
-            pad_x, 0.04,
+            pad_x, 0.035,
             "註：興櫃開＝前日均價，可高於當日最高",
             fontproperties=fp(10, False), color=MUTE, ha="left", va="bottom",
-            transform=quote_ax.transAxes, zorder=3, clip_on=False,
+            zorder=3, clip_on=False,
         )
+    quote_ax.set_xlim(0, 1)
+    quote_ax.set_ylim(0, 1)
 
 
 def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right: float) -> None:
@@ -1186,11 +1190,11 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v7：寬 12.4＝結構／大量區；高 10.85（八格獨立帶＋底三條）— chart-layout-arrange
-    from vol_zone_chart import VOL_ZONE_FIG_W
+    # v7（layout arrange）：畫布＝大量區 NAV 12.4×9.35；八格獨立帶在價圖上
+    from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
 
     fig_w = float(VOL_ZONE_FIG_W)  # 12.4
-    fig_h = 10.85
+    fig_h = float(VOL_ZONE_FIG_H_NAV)  # 9.35＝圖四同系列；不准自成 10.85
     dpi = int(BIAOKE_CHART_DPI)  # 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
@@ -1201,16 +1205,16 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     vol_h = 0.070
     vol_bot = range_top + xlab_h + 0.006
     main_bot = vol_bot + vol_h + 0.008
-    main_top = 0.58  # 價圖頂
-    quote_band_bot = 0.605  # 八格底；與價圖中間白縫
-    quote_top = 0.76  # 八格帶頂；之上名牌
+    main_top = 0.60  # 價圖頂
+    quote_band_bot = 0.62  # 八格底；與價圖中間白縫
+    quote_top = 0.78  # 八格帶頂；之上名牌
     assert quote_band_bot >= main_top + 0.015, "八格底緣必須在價圖頂之上（不准疊進主題區）"
 
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot], zorder=2)
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax, zorder=2)
     ax.set_facecolor(PAPER)
     vol_ax.set_facecolor(PAPER)
-    # quote_ax 等頭欄 ov 建完再加（mpl 常依建立序後蓋前，zorder 不夠）
+    # quote_ax 等頭欄 ov 建完再加（mpl 常依建立序後蓋前；見下方 zorder=25）
 
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
     ov.set_xlim(0, 100)
@@ -1218,13 +1222,13 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ov.axis("off")
     ov.patch.set_alpha(0)
 
-    # 頭欄白底＝名牌＋八格；與價／量框分開（中間白縫）
-    band_bot = quote_band_bot * 100.0
+    # 頭欄白底只包名牌（quote_top 以上）；八格帶另框，不准白底蓋住 quote_ax
+    name_band_bot = quote_top * 100.0
     ov.add_patch(
         FancyBboxPatch(
-            (_STRUCTURE_BOX_X, band_bot),
+            (_STRUCTURE_BOX_X, name_band_bot),
             _STRUCTURE_BOX_W,
-            100.0 - band_bot - float(_STRUCTURE_TOP_PAD) - 0.15,
+            100.0 - name_band_bot - float(_STRUCTURE_TOP_PAD) - 0.15,
             boxstyle=_STRUCTURE_BOX_STYLE,
             facecolor="#ffffff",
             edgecolor=_STRUCTURE_BOX_EC,
@@ -1235,6 +1239,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         )
     )
     for y0, y1 in (
+        (quote_band_bot * 100.0, quote_top * 100.0),
         (main_bot * 100.0, main_top * 100.0),
         (vol_bot * 100.0, (vol_bot + vol_h) * 100.0),
     ):
