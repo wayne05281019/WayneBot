@@ -1030,25 +1030,38 @@ def struct_header(ink: Ink, ov, frames: List[FancyBboxPatch]) -> None:
             continue
         col = _hex(t.get_color())
         if s.startswith("較昨日"):
-            fc = UP if col == "#e53935" else (DN if col in ("#00897b", "#2e7d32", "#1b5e20") else INK2)
-            # 漲停／跌停：更深底＋字尾標（規則同源 quote_limit_side）
+            # 只漲停紅底／跌停綠底；普通漲跌＝字仍紅／綠、底透明（台股慣例）
             limit_side = _detect_limit_from_header(ov)
             label = s
             if limit_side == "up":
-                fc = LIMIT_UP
                 if "漲停" not in label:
                     label = s + "　漲停"
+                t.set_text(label)
+                t.set_color(PAPER)
+                t.set_fontproperties(fp(t.get_fontsize() - 0.5, heavy=True))
+                t.set_bbox(
+                    dict(boxstyle="square,pad=0.28", facecolor=LIMIT_UP, edgecolor=INK, linewidth=1.2)
+                )
+                if USE_SHADOW:
+                    t.get_bbox_patch().set_path_effects(ink.shadow_effect(2.0))
+                ink.record(s, [label], "change", ink.shell_ext(t))
             elif limit_side == "down":
-                fc = LIMIT_DN
                 if "跌停" not in label:
                     label = s + "　跌停"
-            t.set_text(label)
-            t.set_color(PAPER)
-            t.set_fontproperties(fp(t.get_fontsize() - 0.5, heavy=True))
-            t.set_bbox(dict(boxstyle="square,pad=0.28", facecolor=fc, edgecolor=INK, linewidth=1.2))
-            if USE_SHADOW:
-                t.get_bbox_patch().set_path_effects(ink.shadow_effect(2.0))
-            ink.record(s, [label], "change", ink.shell_ext(t))
+                t.set_text(label)
+                t.set_color(PAPER)
+                t.set_fontproperties(fp(t.get_fontsize() - 0.5, heavy=True))
+                t.set_bbox(
+                    dict(boxstyle="square,pad=0.28", facecolor=LIMIT_DN, edgecolor=INK, linewidth=1.2)
+                )
+                if USE_SHADOW:
+                    t.get_bbox_patch().set_path_effects(ink.shadow_effect(2.0))
+                ink.record(s, [label], "change", ink.shell_ext(t))
+            else:
+                t.set_bbox(None)
+                t.set_fontproperties(fp(t.get_fontsize() - 0.5, heavy=True))
+                # 保留 _paint_spot 已上的漲紅／跌綠字色
+                ink.record(s, [s], "change", ink.ext(t))
         elif re.search(r"\d{4}/\d{2}/\d{2}", s):
             t.set_color(MUTE)
             t.set_fontproperties(fp(max(9.0, t.get_fontsize() - 1.5), heavy=False))
