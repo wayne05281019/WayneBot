@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""Preview-only v8：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v9：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v8-research-layout-20261029.md；修 v7 交叉 FAIL：
-時軸 09／15 與量能／％互壓、底日低壓 52週、右標卡框。
+對齊 docs/intraday-v9-frame-align-20261029.md；修 v8 框線左右不齊：
+頭欄獨用結構全寬、下框縮到 right_f=0.78 → 頭欄獨寬一大截、左緣錯位。
 
-- 頭欄＝結構／大量區同款（nameplate＋spot）。
-- 八格＝**獨立 quote_ax**在頭欄與主圖之間（零重疊價圖／Y 軸）。
-- 畫布 12.4×9.35（大量區 NAV）；邊距對齊結構／大量區 ink 常數。
-- 路徑：TW/TWO Yahoo 1m、EM priceByTimes→1 分；缺分平鋪前收（量＝0）。
-- 量柱 log1p＋gamma；缺分極短灰柱；量能％徽章畫在**量框內**。
-- 時標專帶：上離量框、下離「量能」；09／15 完整。底三條加行距。
-- 右標落在 plot 外白邊（figure 座標），不准卡框切末碼。
-- 建議：有真均價則畫均價細虛線。收／興櫃收：漲紅平黑跌綠。
+- 頭欄／八格／價／量外框＝結構圖同款 `_STRUCTURE_BOX_X`／`_STRUCTURE_BOX_W`（左緣共線、右緣共線）。
+- 價／量／八格 axes＝`_FIG_LEFT`～`_STRUCTURE_FIG_RIGHT`（與結構 subplots 同套）。
+- 右標落在 axes 右～外框右之間的框內白邊（仍過 v8 FAIL#4 不切末碼）。
+- 八格獨立帶、均價線、時軸完整、興櫃 15:00、真數鎖維持。
 - 不准接話筒／合 main；臉不寫出處。
 """
 from __future__ import annotations
@@ -1233,7 +1229,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v8：畫布＝大量區 NAV 12.4×9.35；帶高重分配修時軸／底條／右標（見 research-layout）
+    # v9：畫布＝大量區 NAV 12.4×9.35；外框左右＝結構三籃筐同套（見 frame-align）
     from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
 
     fig_w = float(VOL_ZONE_FIG_W)  # 12.4
@@ -1241,21 +1237,28 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     dpi = int(BIAOKE_CHART_DPI)  # 200
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
-    left_f = float(_FIG_LEFT)  # 0.028 對齊結構圖
-    # plot 右緣縮短，0.78–0.96 給右標白邊（FAIL#4 不准卡框切末碼）
-    right_f = 0.78
-    # 底三條加高；時軸專帶與「量能」標題列錯層拉開
+    # 外框：結構圖 `_STRUCTURE_BOX_*`（頭欄／八格／價／量同一 left＋同一 width）
+    frame_x = float(_STRUCTURE_BOX_X)  # 1.6（ov 0–100）
+    frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
+    frame_left = frame_x / 100.0  # 0.016
+    frame_right = (frame_x + frame_w) / 100.0  # 0.982
+    # axes：結構 subplots 同套；右標落在 axes 右～外框右的框內白邊（略窄可說明）
+    left_f = float(_FIG_LEFT)  # 0.028
+    right_f = float(_STRUCTURE_FIG_RIGHT)  # 0.905（v8 誤用 0.78 把頭欄弄成獨寬）
+    # 底三條／時軸；縫寬統一（價↔八格＝價↔量＝約 0.012）
     bars_top = 0.195
     xlab_bot = 0.205
     xlab_top = 0.238
     vol_bot = 0.245
     vol_h = 0.082
-    main_bot = vol_bot + vol_h + 0.008
+    band_gap = 0.012
+    main_bot = vol_bot + vol_h + band_gap
     main_top = 0.565
-    quote_band_bot = 0.585
+    quote_band_bot = main_top + band_gap
     quote_top = 0.735
-    assert quote_band_bot >= main_top + 0.015, "八格底緣必須在價圖頂之上（不准疊進主題區）"
+    assert quote_band_bot >= main_top + 0.010, "八格底緣必須在價圖頂之上（不准疊進主題區）"
     assert xlab_bot >= bars_top + 0.008, "時軸專帶必須在底三條之上（09 不准被量能削）"
+    assert abs(frame_right - frame_left - frame_w / 100.0) < 1e-9
 
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot], zorder=2)
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax, zorder=2)
@@ -1269,41 +1272,25 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ov.axis("off")
     ov.patch.set_alpha(0)
 
-    # 頭欄白底只包名牌（quote_top 以上）；八格／價／量框寬對齊 plot（右留白邊給右標）
+    # 頭欄白底＋八格／價／量外框：同一 frame_x／frame_w（系列感；不准頭欄獨寬）
     name_band_bot = quote_top * 100.0
-    ov.add_patch(
-        FancyBboxPatch(
-            (_STRUCTURE_BOX_X, name_band_bot),
-            _STRUCTURE_BOX_W,
-            100.0 - name_band_bot - float(_STRUCTURE_TOP_PAD) - 0.15,
-            boxstyle=_STRUCTURE_BOX_STYLE,
-            facecolor="#ffffff",
-            edgecolor=_STRUCTURE_BOX_EC,
-            linewidth=_STRUCTURE_BOX_LW,
-            alpha=1.0,
-            zorder=1,
-            clip_on=False,
-        )
-    )
-    # ov 0–100；plot 框右緣＝right_f，右標落在框外白邊（FAIL#4）
-    box_x = left_f * 100.0
-    box_w = (right_f - left_f) * 100.0
-    for y0, y1 in (
-        (quote_band_bot * 100.0, quote_top * 100.0),
-        (main_bot * 100.0, main_top * 100.0),
-        (vol_bot * 100.0, (vol_bot + vol_h) * 100.0),
+    for y0, y1, fill in (
+        (name_band_bot, 100.0 - float(_STRUCTURE_TOP_PAD) - 0.15, True),
+        (quote_band_bot * 100.0, quote_top * 100.0, False),
+        (main_bot * 100.0, main_top * 100.0, False),
+        (vol_bot * 100.0, (vol_bot + vol_h) * 100.0, False),
     ):
         ov.add_patch(
             FancyBboxPatch(
-                (box_x, y0),
-                box_w,
+                (frame_x, y0),
+                frame_w,
                 max(0.4, y1 - y0),
                 boxstyle=_STRUCTURE_BOX_STYLE,
-                facecolor="none",
+                facecolor="#ffffff" if fill else "none",
                 edgecolor=_STRUCTURE_BOX_EC,
                 linewidth=_STRUCTURE_BOX_LW,
-                alpha=0.98,
-                zorder=0,
+                alpha=1.0 if fill else 0.98,
+                zorder=1 if fill else 0,
                 clip_on=False,
             )
         )
@@ -1391,9 +1378,16 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             if t.get_bbox_patch() is None:
                 t.set_color(close_col)
 
-    # 八格：獨立 axes（主圖上方、建於 ov 之後），不畫進價圖 ax
+    # 八格：獨立 axes；鋪滿共線外框內緣（與頭欄白底同寬），不畫進價圖 ax
+    # 價／量 axes 維持 FIG_LEFT～STRUCTURE_FIG_RIGHT（略窄＝框內右標／Y 刻度；外框仍共線）
+    q_pad = 0.004
     quote_ax = fig.add_axes(
-        [left_f, quote_band_bot, right_f - left_f, quote_top - quote_band_bot],
+        [
+            frame_left + q_pad,
+            quote_band_bot,
+            (frame_right - frame_left) - 2 * q_pad,
+            quote_top - quote_band_bot,
+        ],
         zorder=25,
     )
     quote_ax.set_facecolor(PAPER)
@@ -1458,7 +1452,9 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     right_labs.sort(key=lambda t: t[0])
     placed_y: List[float] = []
     min_gap = max(y_span * 0.10, abs(prev) * 0.008)
-    lab_x = right_f + 0.008  # plot 右外白邊起點；右緣 label_right 內完整
+    # 右標：axes 右～外框右的框內白邊（系列外框共線；仍不切末碼）
+    lab_x = min(right_f + 0.010, frame_right - 0.055)
+    assert lab_x + 0.04 <= frame_right + 1e-6, "右標必須落在共線外框內"
 
     def _data_to_fig_y(yd: float) -> float:
         frac = (yd - y0_data) / max(y1_data - y0_data, 1e-9)
@@ -1504,19 +1500,34 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
 
     _paint_sparse_marks(ax, series, xs, ys, prev)
 
-    # 量柱：log1p＋gamma 抬中段（爆量仍最高）；零量極短灰柱，不准假 0 洗白
+    # 量柱：只畫真量（Yahoo 1m／興櫃 priceByTimes 聚合）；不准造量。
+    # 缺分＝平鋪前收＋vol 0 → 灰 stub（誠實，不是假成交）。
+    # 色＝真該分收 vs 真前分收（首分 vs 昨收）：漲 UP 紅／跌 DN 綠／平灰。
+    # 整段單向＝整排單色屬真象，不准為「看起來有紅有綠」捏點或改色。
     vs_arr = np.asarray(vs, dtype=float)
+    ys_arr = np.asarray(ys, dtype=float)
     vs_log = np.log1p(np.maximum(vs_arr, 0.0))
     vmax_s = float(np.max(vs_log)) if len(vs_log) else 1.0
     vs_disp = np.power(vs_log / vmax_s, 0.55) * vmax_s if vmax_s > 0 else vs_log
     stub = max(vmax_s * 0.05, 0.15)
     width = 0.92
-    real_mask = vs_arr > 0
+    flat_vol = "#9AA0A6"
+    real_mask = vs_arr > 0  # 只著色真量柱；vol=0 一律灰 stub
     if np.any(real_mask):
+        vol_cols: List[str] = []
+        for i in np.where(real_mask)[0]:
+            yi = float(ys_arr[i])
+            # 前一分亦為路徑真值（缺分平鋪前收不算成交，但仍是誠實前收參考）
+            ref = float(prev) if int(i) == 0 else float(ys_arr[int(i) - 1])
+            if yi > ref:
+                vol_cols.append(UP)
+            elif yi < ref:
+                vol_cols.append(DN)
+            else:
+                vol_cols.append(flat_vol)
         vol_ax.bar(
             xs[real_mask], vs_disp[real_mask], width=width,
-            color=[UP if float(y) >= prev else DN for y in np.asarray(ys)[real_mask]],
-            alpha=0.92, zorder=3, linewidth=0, align="center",
+            color=vol_cols, alpha=0.92, zorder=3, linewidth=0, align="center",
         )
     miss_mask = ~real_mask
     if np.any(miss_mask):
@@ -1531,13 +1542,15 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     for a in (ax, vol_ax):
         a.set_xticks(tick_x)
         a.tick_params(axis="x", length=0, labelbottom=False, bottom=False, top=False)
-        a.tick_params(axis="y", colors=MUTE, length=3, labelsize=10)
+        # 外框交給共線 FancyBbox；藏 spines 避免雙框／左右緣差 1px
         for sp in a.spines.values():
-            sp.set_color(INK)
-            sp.set_linewidth(0.95)
+            sp.set_visible(False)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
-    vol_ax.spines["bottom"].set_visible(False)
-    ax.spines["bottom"].set_visible(False)
+    # 價軸刻度改軸內左側，不戳出共線外框
+    ax.tick_params(
+        axis="y", colors=MUTE, length=3, labelsize=10,
+        direction="in", left=True, labelleft=True, right=False, labelright=False, pad=2,
+    )
     # 時間標：xlab 專帶（bars_top 之上、vol_bot 之下）；09／15 完整（FAIL#1/#2）
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
@@ -1545,11 +1558,14 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         lab.set_fontproperties(fp(10, False))
         lab.set_color(MUTE)
     vol_ax.set_yticks([])
-    vol_ax.text(0.01, 0.92, "量(張)", transform=vol_ax.transAxes, fontproperties=fp(10, False), color=MUTE, va="top", ha="left")
+    vol_ax.text(
+        0.01, 0.92, "量(張)", transform=vol_ax.transAxes,
+        fontproperties=fp(10, False), color=MUTE, va="top", ha="left",
+    )
 
-    # 底部三條（％不在此畫）；最高列頂 < bars_top ≤ xlab_bot
+    # 底三條：左／右對齊共線外框（v8 用 left_f～0.82 與框錯位）
     vol_ratio = _paint_range_bars(
-        fig, off, y_bot=0.016, left=left_f, right=min(right_f + 0.04, 0.92),
+        fig, off, y_bot=0.016, left=frame_left, right=frame_right,
     )
     # 量能％徽章畫在**量框內**右上，不准伸進 xlab 壓 15（FAIL#2）
     if vol_ratio is not None and vol_ratio > 0:
@@ -1662,11 +1678,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v8（不接話筒）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v9（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v8")
+    ap.add_argument("--prefix", default="preview-v9")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
