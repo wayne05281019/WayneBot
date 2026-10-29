@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Preview-only v11：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v12：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v11-cell-order-20261029.md（12 格閱讀序定稿）；
-框線共線／真分量柱紅綠／12.4×9.35 維持 v9／v10。
+對齊 docs/intraday-v12-cells-labels-20261029.md（格名／對昨色／主圖五標）；
+框線共線／真分量柱紅綠／12.4×9.35／興櫃 15:00 維持。
 
-- 頭欄／報價格／價／量外框＝結構圖同款 `_STRUCTURE_BOX_X`／`_STRUCTURE_BOX_W`。
-- 12 格由上到下、由左至右：今日價 → 量能 → 參考（見 _paint_quote_grid）。
-- 興櫃：漲停／跌停／筆數＝—；獨立帶、15:00、真數鎖維持。
-- 不准接話筒／合 main；臉不寫出處。
+- 12 格：今開盤價／盤中高低／昨收盤價；今量額對昨紅綠；昨量／昨額；均價／振幅；兩格留白（取消漲跌停）。
+- 主圖必標：開盤／壓／撐／均／現價（虛線連水平；右溝避線）。
+- 不准假資料、不准接話筒／合 main。
 """
 from __future__ import annotations
 
@@ -67,11 +66,12 @@ class OfficialDay:
     w52_low: Optional[float]
     source: str
     close_label: str  # 收盤 / 興櫃收
-    # v10／v11 加欄（無真數＝None → 畫面「—」；不准假湊）
-    prev_volume_lots: Optional[float] = None  # 昨量（張）
-    trade_count: Optional[int] = None  # 成交筆數
-    limit_up: Optional[float] = None  # 當日漲停價（興櫃無）
-    limit_down: Optional[float] = None  # 當日跌停價（興櫃無）
+    # v10+ 加欄（無真數＝None → 畫面「—」；不准假湊）
+    prev_volume_lots: Optional[float] = None  # 昨成交量（張）
+    prev_turnover_k: Optional[float] = None  # 昨成交金額（千元）
+    trade_count: Optional[int] = None  # 保留欄；v12 格改昨額，畫面不用
+    limit_up: Optional[float] = None  # v12 取消停板格
+    limit_down: Optional[float] = None
 
 
 @dataclass
@@ -492,20 +492,20 @@ def _amp(high: float, low: float, prev: float) -> Optional[float]:
     return (high - low) / prev * 100.0
 
 
-def _prev_volume_lots_db(
+def _prev_day_vol_turn_db(
     stock_id: str, market: str, db_path: str, *, ymd: str
-) -> Optional[float]:
-    """上一開市日官方量（張）。庫無則 None；不准編造。"""
+) -> Tuple[Optional[float], Optional[float]]:
+    """上一開市日官方量（張）＋額（千元）。庫無則 (None, None)；不准編造。"""
     if not db_path or not os.path.isfile(db_path):
-        return None
+        return None, None
     table = "emerging_quotes" if str(market).upper() == "EM" else "daily_quotes"
     try:
         conn = sqlite3.connect(db_path, timeout=8.0)
         try:
             row = conn.execute(
                 f"""
-                SELECT volume FROM {table}
-                WHERE stock_id=? AND volume>0
+                SELECT volume, turnover_k FROM {table}
+                WHERE stock_id=?
                   AND REPLACE(CAST(date AS TEXT),'-','') < ?
                 ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC
                 LIMIT 1
@@ -515,29 +515,30 @@ def _prev_volume_lots_db(
         finally:
             conn.close()
     except sqlite3.Error:
-        return None
-    if not row or row[0] is None:
-        return None
-    try:
-        v = float(row[0])
-    except (TypeError, ValueError):
-        return None
-    return v if v > 0 else None
-
-
-def _listed_limit_prices(prev_close: float) -> Tuple[Optional[float], Optional[float]]:
-    """上市櫃當日漲／跌停＝昨收±10% 再依證交所升降單位四捨五入（wayne_navigator 已驗證路徑）。
-    興櫃不准呼叫。特殊處置／初次上市另規不在本預覽硬填。"""
-    from wayne_navigator import _limit_band_px
-
-    if prev_close <= 0:
         return None, None
-    lu = _limit_band_px(prev_close, 0.10)
-    ld = _limit_band_px(prev_close, -0.10)
-    return (
-        float(lu) if lu is not None and float(lu) > 0 else None,
-        float(ld) if ld is not None and float(ld) > 0 else None,
-    )
+    if not row:
+        return None, None
+    vol: Optional[float] = None
+    to_k: Optional[float] = None
+    try:
+        if row[0] is not None and float(row[0]) > 0:
+            vol = float(row[0])
+    except (TypeError, ValueError):
+        vol = None
+    try:
+        if row[1] is not None and float(row[1]) > 0:
+            to_k = float(row[1])
+    except (TypeError, ValueError):
+        to_k = None
+    return vol, to_k
+
+
+def _prev_volume_lots_db(
+    stock_id: str, market: str, db_path: str, *, ymd: str
+) -> Optional[float]:
+    """相容舊呼叫：只回昨量。"""
+    vol, _to = _prev_day_vol_turn_db(stock_id, market, db_path, ymd=ymd)
+    return vol
 
 
 _EM_DAY_CACHE: Dict[str, List[dict]] = {}
@@ -585,8 +586,8 @@ def fetch_official_em(stock_id: str, *, ymd: str, db_path: str) -> Optional[Offi
         w52l = lo
     avg = float(hit["avg_price"]) if hit.get("avg_price") not in (None, "") else c
     to_k = float(hit["turnover_k"]) if hit.get("turnover_k") not in (None, "") else None
-    # 興櫃：無 ±10% 漲跌停、CSV 無成交筆數 → 對應格「—」；昨量＝庫內上一開市日真量
-    prev_vol = _prev_volume_lots_db(stock_id, "EM", db_path, ymd=ymd)
+    # 興櫃：昨量／昨額＝庫內上一開市日；無則格「—」（不准捏）
+    prev_vol, prev_to = _prev_day_vol_turn_db(stock_id, "EM", db_path, ymd=ymd)
     return OfficialDay(
         stock_id=stock_id,
         open=o,
@@ -606,6 +607,7 @@ def fetch_official_em(stock_id: str, *, ymd: str, db_path: str) -> Optional[Offi
         source=str(hit.get("source") or "tpex_esb_csv"),
         close_label="興櫃收",
         prev_volume_lots=prev_vol,
+        prev_turnover_k=prev_to,
         trade_count=None,
         limit_up=None,
         limit_down=None,
@@ -651,16 +653,9 @@ def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
     vol_shares = _f(row[1])
     turnover_ntd = _f(row[2])
     pct = (chg / prev * 100.0) if prev else 0.0
-    # fields: …漲跌價差, 成交筆數, 註記
-    trade_count: Optional[int] = None
-    if len(row) >= 9:
-        try:
-            tc = int(float(str(row[8]).replace(",", "").strip() or "0"))
-            trade_count = tc if tc > 0 else None
-        except (TypeError, ValueError):
-            trade_count = None
-    # 昨量：同月 STOCK_DAY 上一列股數／1000；缺則庫
+    # 昨量／昨額：同月 STOCK_DAY 上一列；缺則庫（不准捏）
     prev_vol: Optional[float] = None
+    prev_to: Optional[float] = None
     if row_idx > 0:
         try:
             prev_vol = _f(rows[row_idx - 1][1]) / 1000.0
@@ -668,9 +663,18 @@ def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
                 prev_vol = None
         except (TypeError, ValueError, IndexError):
             prev_vol = None
-    if prev_vol is None:
-        prev_vol = _prev_volume_lots_db(stock_id, "TW", db_path, ymd=ymd)
-    lu, ld = _listed_limit_prices(prev)
+        try:
+            prev_to = _f(rows[row_idx - 1][2]) / 1000.0
+            if prev_to <= 0:
+                prev_to = None
+        except (TypeError, ValueError, IndexError):
+            prev_to = None
+    if prev_vol is None or prev_to is None:
+        db_vol, db_to = _prev_day_vol_turn_db(stock_id, "TW", db_path, ymd=ymd)
+        if prev_vol is None:
+            prev_vol = db_vol
+        if prev_to is None:
+            prev_to = db_to
     qavg, w52h, w52l = _hist_stats(stock_id, "TW", db_path, ymd=ymd)
     if w52h is not None:
         w52h = max(w52h, h)
@@ -700,9 +704,10 @@ def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
         source="twse:STOCK_DAY",
         close_label="收盤",
         prev_volume_lots=prev_vol,
-        trade_count=trade_count,
-        limit_up=lu,
-        limit_down=ld,
+        prev_turnover_k=prev_to,
+        trade_count=None,
+        limit_up=None,
+        limit_down=None,
     )
 
 
@@ -754,19 +759,8 @@ def fetch_official_tpex(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
     avg = _f(avg_s) if avg_s not in ("", "--", "-") else (
         (turnover_ntd / vol_shares) if vol_shares > 0 else None
     )
-    # TransactionNumber＝官方成交筆數（已驗證 openapi 欄）
-    trade_count: Optional[int] = None
-    try:
-        tc_raw = str(hit.get("TransactionNumber") or "").replace(",", "").strip()
-        if tc_raw and tc_raw not in ("-", "--"):
-            tc = int(float(tc_raw))
-            trade_count = tc if tc > 0 else None
-    except (TypeError, ValueError):
-        trade_count = None
-    # 昨量：庫內上一開市日（openapi 僅當日快照）
-    prev_vol = _prev_volume_lots_db(stock_id, "TWO", db_path, ymd=ymd)
-    # 當日漲跌停＝昨收±10% 升降單位；NextLimit* 是次日板（不准當今日）
-    lu, ld = _listed_limit_prices(prev)
+    # 昨量／昨額：庫內上一開市日（openapi 僅當日快照；無則 —）
+    prev_vol, prev_to = _prev_day_vol_turn_db(stock_id, "TWO", db_path, ymd=ymd)
     qavg, w52h, w52l = _hist_stats(stock_id, "TWO", db_path, ymd=ymd)
     if w52h is not None:
         w52h = max(w52h, h)
@@ -795,9 +789,10 @@ def fetch_official_tpex(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
         source="tpex:mainboard_daily_close",
         close_label="收盤",
         prev_volume_lots=prev_vol,
-        trade_count=trade_count,
-        limit_up=lu,
-        limit_down=ld,
+        prev_turnover_k=prev_to,
+        trade_count=None,
+        limit_up=None,
+        limit_down=None,
     )
 
 
@@ -840,6 +835,68 @@ def _fmt_turnover(turnover_k: float) -> str:
 
 def _fmt_lots(v: float) -> str:
     return f"{int(round(float(v))):,}張"
+
+
+def _paint_price_level_labels(
+    fig,
+    off: OfficialDay,
+    *,
+    close_col: str,
+    y0_data: float,
+    y1_data: float,
+    y_span: float,
+    main_bot: float,
+    main_top: float,
+    right_f: float,
+    frame_right: float,
+    up: str,
+    dn: str,
+    ink: str,
+    paper: str,
+) -> None:
+    """主圖五必標（國字＋價）置右溝；虛線已由 ax.axhline 畫。智慧垂直避互壓；不准省略。"""
+    from ink_chart_theme import fp
+
+    levels: List[Tuple[float, str, str]] = [
+        (float(off.high), f"壓 {_fmt_face(off.high)}", up),
+        (float(off.open), f"開盤 {_fmt_face(off.open)}", "#5C5C5C"),
+        (float(off.close), f"現價 {_fmt_face(off.close)}", close_col),
+        (float(off.low), f"撐 {_fmt_face(off.low)}", dn),
+    ]
+    if off.avg_price and float(off.avg_price) > 0:
+        levels.append((float(off.avg_price), f"均 {_fmt_face(off.avg_price)}", "#5C6BC0"))
+    # 必要標齊：無均價才略「均」；其餘四標必在
+    levels.sort(key=lambda t: t[0], reverse=True)  # 高→低排，再避撞
+
+    min_gap = max(y_span * 0.085, abs(float(off.prev_close)) * 0.006, 1.0)
+    lab_x = min(right_f + 0.010, frame_right - 0.058)
+    assert lab_x + 0.04 <= frame_right + 1e-6, "右標必須落在共線外框內"
+
+    def _data_to_fig_y(yd: float) -> float:
+        frac = (yd - y0_data) / max(y1_data - y0_data, 1e-9)
+        return main_bot + (main_top - main_bot) * frac
+
+    placed_y: List[float] = []
+    for px, lab, col in levels:
+        yy = float(px)
+        # 反覆推開直到與已放標距離夠（必要標不刪，只挪位）
+        for _ in range(12):
+            hit = False
+            for py in placed_y:
+                if abs(yy - py) < min_gap:
+                    yy = py + min_gap if yy >= py else py - min_gap
+                    hit = True
+                    break
+            if not hit:
+                break
+        yy = min(max(yy, y0_data + y_span * 0.015), y1_data - y_span * 0.015)
+        placed_y.append(yy)
+        fig.text(
+            lab_x, _data_to_fig_y(yy), lab,
+            fontproperties=fp(10.5, True), color=col, ha="left", va="center",
+            transform=fig.transFigure, zorder=40, clip_on=False,
+            bbox=dict(boxstyle="square,pad=0.22", facecolor=paper, edgecolor=col, linewidth=0.95),
+        )
 
 
 def _detect_notices(
@@ -1004,20 +1061,49 @@ def _scrub_em_limit_labels(fig) -> None:
             t.set_text(s.replace("　漲停", "").replace("　跌停", "").replace(" 漲停", "").replace(" 跌停", "").replace("漲停", "").replace("跌停", ""))
 
 
-def _fmt_trade_count(n: Optional[int]) -> str:
-    if n is None or int(n) <= 0:
-        return "—"
-    return f"{int(n):,}"
+def _fmt_lots_signed(delta: float) -> str:
+    """今−昨張數；正寫 +N張、負寫 −N張（真差）。"""
+    d = float(delta)
+    n = int(round(abs(d)))
+    if d > 0:
+        return f"+{n:,}張"
+    if d < 0:
+        return f"−{n:,}張"
+    return "±0張"
+
+
+def _vol_vs_prev_cell(off: OfficialDay, *, up: str, dn: str, ink: str) -> Tuple[str, str, Optional[str]]:
+    """今成交量主字／色／副行（±張）。無昨量→主字黑、無副行（不准捏差）。"""
+    main = _fmt_lots(off.volume_lots)
+    pv = off.prev_volume_lots
+    if pv is None or pv <= 0:
+        return main, ink, None
+    diff = float(off.volume_lots) - float(pv)
+    if diff > 0:
+        return main, up, _fmt_lots_signed(diff)
+    if diff < 0:
+        return main, dn, _fmt_lots_signed(diff)
+    return main, ink, "±0張"
+
+
+def _amt_vs_prev_cell(off: OfficialDay, *, up: str, dn: str, ink: str) -> Tuple[str, str, Optional[str]]:
+    """今成交金額主字／色／副行（±％）。無昨額→主字黑、無副行（不准捏％）。"""
+    if not off.turnover_k or off.turnover_k <= 0:
+        return "—", ink, None
+    main = _fmt_turnover(off.turnover_k)
+    pt = off.prev_turnover_k
+    if pt is None or pt <= 0:
+        return main, ink, None
+    pct = (float(off.turnover_k) - float(pt)) / float(pt) * 100.0
+    if pct > 0:
+        return main, up, f"+{pct:.1f}%"
+    if pct < 0:
+        return main, dn, f"{pct:.1f}%"
+    return main, ink, "0.0%"
 
 
 def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
-    """12 格報價格：獨立 axes（主圖上方）；由上到下、由左至右閱讀序。
-
-    上排（今日價）：今開 → 最高 → 最低 → 昨收
-    中排（量能）：成交量 → 成交額 → 昨量 → 成交筆數
-    下排（參考）：均價｜日均價 → 振幅 → 漲停價 → 跌停價
-    無真數＝—；興櫃漲停／跌停／筆數必 —（不准假 ±10%／假筆數）。
-    """
+    """v12：12 格獨立 axes；上價／中量對昨／下均振＋兩留白。不准假停板。"""
     from ink_chart_theme import DN, INK, MUTE, PAPER, UP, fp
     from matplotlib.patches import FancyBboxPatch
 
@@ -1030,52 +1116,51 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     for sp in quote_ax.spines.values():
         sp.set_visible(False)
 
-    avg_lab = "日均價" if off.close_label == "興櫃收" else "均價"
+    avg_lab = "今日均價"
     avg_val = _fmt_face(off.avg_price) if off.avg_price and off.avg_price > 0 else "—"
-    turn_val = _fmt_turnover(off.turnover_k) if off.turnover_k and off.turnover_k > 0 else "—"
     amp_val = f"{off.amplitude_pct:.2f}%" if off.amplitude_pct is not None else "—"
     prev_vol_val = (
         _fmt_lots(off.prev_volume_lots)
         if off.prev_volume_lots is not None and off.prev_volume_lots > 0
         else "—"
     )
-    # 興櫃無漲跌停：limit_* 必為 None →「—」（不准畫假 ±10%）
-    lu_val = _fmt_face(off.limit_up) if off.limit_up and off.limit_up > 0 else "—"
-    ld_val = _fmt_face(off.limit_down) if off.limit_down and off.limit_down > 0 else "—"
-    cells: List[Tuple[str, str, str]] = [
-        # 上排：今日價（開→高→低→昨收基準）
-        ("今開", _fmt_face(off.open), INK),
-        ("最高", _fmt_face(off.high), UP),
-        ("最低", _fmt_face(off.low), DN),
-        ("昨收", _fmt_face(off.prev_close), INK),
-        # 中排：量能（當日量額 → 昨量對照 → 筆數）
-        ("成交量", _fmt_lots(off.volume_lots), INK),
-        ("成交額", turn_val, INK),
-        ("昨量", prev_vol_val, INK),
-        ("成交筆數", _fmt_trade_count(off.trade_count), INK),
-        # 下排：參考（均／振幅 → 停板；興櫃停板＝—）
-        (avg_lab, avg_val, INK),
-        ("振幅", amp_val, INK),
-        ("漲停價", lu_val, UP if lu_val != "—" else MUTE),
-        ("跌停價", ld_val, DN if ld_val != "—" else MUTE),
+    prev_amt_val = (
+        _fmt_turnover(off.prev_turnover_k)
+        if off.prev_turnover_k is not None and off.prev_turnover_k > 0
+        else "—"
+    )
+    vol_main, vol_col, vol_sub = _vol_vs_prev_cell(off, up=UP, dn=DN, ink=INK)
+    amt_main, amt_col, amt_sub = _amt_vs_prev_cell(off, up=UP, dn=DN, ink=INK)
+    # (lab, main, color, sub_or_None)；lab="" 且 main=""＝留白格
+    cells: List[Tuple[str, str, str, Optional[str]]] = [
+        ("今開盤價", _fmt_face(off.open), INK, None),
+        ("盤中最高", _fmt_face(off.high), UP, None),
+        ("盤中最低", _fmt_face(off.low), DN, None),
+        ("昨收盤價", _fmt_face(off.prev_close), INK, None),
+        ("今成交量", vol_main, vol_col, vol_sub),
+        ("今成交金額", amt_main, amt_col, amt_sub),
+        ("昨成交量", prev_vol_val, INK, None),
+        ("昨成交金額", prev_amt_val, INK, None),
+        (avg_lab, avg_val, INK, None),
+        ("今日振幅", amp_val, INK, None),
+        ("", "", MUTE, None),  # 留白（取消漲停）
+        ("", "", MUTE, None),  # 留白（取消跌停）
     ]
 
     cols = 4
     rows_n = 3
-    # 軸內留邊；興櫃註另佔底列
     has_note = off.close_label == "興櫃收" and not (off.low <= off.open <= off.high)
-    pad_x, pad_top = 0.010, 0.035
-    pad_bot = 0.14 if has_note else 0.032
-    gap_x, gap_y = 0.008, 0.028
+    pad_x, pad_top = 0.010, 0.032
+    pad_bot = 0.14 if has_note else 0.028
+    gap_x, gap_y = 0.008, 0.026
     usable_h = 1.0 - pad_top - pad_bot
     cell_h = (usable_h - gap_y * (rows_n - 1)) / float(rows_n)
     width = 1.0 - 2 * pad_x
     cell_w = (width - gap_x * (cols - 1)) / cols
     edge = "#9AA0A6"
     lab_col = "#3A3A3A"
-    # 三列略縮字級，縮圖仍可讀（約 11／14）
-    lab_fs, val_fs = 10.5, 13.5
-    for i, (lab, val, col) in enumerate(cells):
+    lab_fs, val_fs, sub_fs = 9.5, 12.5, 9.5
+    for i, (lab, val, col, sub) in enumerate(cells):
         r, c = divmod(i, cols)
         x = pad_x + c * (cell_w + gap_x)
         y = 1.0 - pad_top - (r + 1) * cell_h - r * gap_y
@@ -1087,20 +1172,34 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
                 clip_on=False, zorder=2,
             )
         )
+        if not lab and not val:
+            continue  # 留白格：只留框
         quote_ax.text(
-            x + cell_w * 0.5, y + cell_h * 0.70, lab,
+            x + cell_w * 0.5, y + cell_h * (0.74 if sub else 0.70), lab,
             fontproperties=fp(lab_fs, True), color=lab_col, ha="center", va="center",
             zorder=3, clip_on=False,
         )
-        quote_ax.text(
-            x + cell_w * 0.5, y + cell_h * 0.30, val,
-            fontproperties=fp(val_fs, True), color=col, ha="center", va="center",
-            zorder=3, clip_on=False,
-        )
+        if sub:
+            quote_ax.text(
+                x + cell_w * 0.5, y + cell_h * 0.40, val,
+                fontproperties=fp(val_fs, True), color=col, ha="center", va="center",
+                zorder=3, clip_on=False,
+            )
+            quote_ax.text(
+                x + cell_w * 0.5, y + cell_h * 0.16, sub,
+                fontproperties=fp(sub_fs, True), color=col, ha="center", va="center",
+                zorder=3, clip_on=False,
+            )
+        else:
+            quote_ax.text(
+                x + cell_w * 0.5, y + cell_h * 0.30, val,
+                fontproperties=fp(val_fs, True), color=col, ha="center", va="center",
+                zorder=3, clip_on=False,
+            )
     if has_note:
         quote_ax.text(
             pad_x, 0.028,
-            "註：興櫃開＝前日均價，可高於當日最高；無漲跌停",
+            "註：興櫃開＝前日均價，可高於當日最高",
             fontproperties=fp(9.5, False), color=MUTE, ha="left", va="bottom",
             zorder=3, clip_on=False,
         )
@@ -1356,7 +1455,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v11：畫布＝大量區 NAV 12.4×9.35；外框共線維持 v9；報價帶 3×4＝12 格（閱讀序見 _paint_quote_grid）
+    # v12：畫布＝大量區 NAV 12.4×9.35；外框共線維持 v9；報價帶 3×4＝12 格
     from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
 
     fig_w = float(VOL_ZONE_FIG_W)  # 12.4
@@ -1533,16 +1632,18 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
     ax.set_xlim(0.0, x_end)
-    ax.axhline(prev, color=MUTE, linestyle=(0, (4, 3)), linewidth=1.35, zorder=2)
-    ax.axhline(off.high, color=UP, linestyle=(0, (2, 3)), linewidth=0.9, alpha=0.7, zorder=2)
-    # 官方日低虛線（興櫃路徑未必碰到）
-    ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=1.0, alpha=0.75, zorder=2)
-    # v8 建議：有真均價畫細虛線（Yahoo／券商慣例）
+    # 昨收參考虛線（填色基準；非五必標之一）
+    ax.axhline(prev, color=MUTE, linestyle=(0, (4, 3)), linewidth=1.15, zorder=2, alpha=0.85)
+    # v12 五必標水平虛線：開盤／壓／撐／均／現價
+    ax.axhline(off.open, color="#5C5C5C", linestyle=(0, (3, 3)), linewidth=0.95, alpha=0.75, zorder=2)
+    ax.axhline(off.high, color=UP, linestyle=(0, (2, 3)), linewidth=0.95, alpha=0.75, zorder=2)
+    ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=1.0, alpha=0.78, zorder=2)
     if off.avg_price and off.avg_price > 0:
         ax.axhline(
-            float(off.avg_price), color="#5C6BC0", linestyle=(0, (6, 4)),
-            linewidth=1.05, alpha=0.85, zorder=2,
+            float(off.avg_price), color="#5C6BC0", linestyle=(0, (5, 3)),
+            linewidth=1.0, alpha=0.85, zorder=2,
         )
+    ax.axhline(off.close, color=close_col, linestyle=(0, (4, 2)), linewidth=1.05, alpha=0.80, zorder=2)
     ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
     ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.16, zorder=1)
     # 缺分已平鋪；僅跳超大斷層（不應再出現）。連續段用 plot 畫齊。
@@ -1561,46 +1662,17 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             ax.plot([x0, xc], [a, prev], color=(UP if a >= prev else DN), lw=2.05, zorder=3)
             ax.plot([xc, x1], [prev, b], color=(UP if b >= prev else DN), lw=2.05, zorder=3)
 
-    # 右側三層必現：日高／昨收／日低（價近合併）；figure 座標落在 plot 外白邊（FAIL#4）
+    # v12 主圖五必標：開盤／壓／撐／均／現價（右溝＋虛線水平；必要標不准省略）
     y_span = (hi + pad) - (lo - pad)
     y0_data, y1_data = lo - pad, hi + pad
-    low_lab = f"官方日低 {_fmt_face(off.low)}" if is_em else f"日低 {_fmt_face(off.low)}"
-    right_labs: List[Tuple[float, str, str]] = []
-    if abs(off.high - prev) / max(y_span, 1e-9) < 0.08:
-        mid = (off.high + prev) * 0.5
-        right_labs.append((mid, f"昨收 {_fmt_face(prev)}／日高 {_fmt_face(off.high)}", "#3A3A3A"))
-    else:
-        right_labs.append((off.high, f"日高 {_fmt_face(off.high)}", UP))
-        right_labs.append((prev, f"昨收 {_fmt_face(prev)}", "#3A3A3A"))
-    right_labs.append((off.low, low_lab, DN))
-    if off.avg_price and off.avg_price > 0:
-        # 均價右小標（與線同色）；過近昨收則略
-        if abs(float(off.avg_price) - prev) / max(y_span, 1e-9) >= 0.06:
-            right_labs.append((float(off.avg_price), f"均 {_fmt_face(off.avg_price)}", "#5C6BC0"))
-    right_labs.sort(key=lambda t: t[0])
-    placed_y: List[float] = []
-    min_gap = max(y_span * 0.10, abs(prev) * 0.008)
-    # 右標：axes 右～外框右的框內白邊（略增呼吸；仍不切末碼）
-    lab_x = min(right_f + 0.012, frame_right - 0.052)
-    assert lab_x + 0.04 <= frame_right + 1e-6, "右標必須落在共線外框內"
-
-    def _data_to_fig_y(yd: float) -> float:
-        frac = (yd - y0_data) / max(y1_data - y0_data, 1e-9)
-        return main_bot + (main_top - main_bot) * frac
-
-    for px, lab, col in right_labs:
-        yy = float(px)
-        for py in placed_y:
-            if abs(yy - py) < min_gap:
-                yy = py + min_gap if yy >= py else py - min_gap
-        yy = min(max(yy, y0_data + y_span * 0.02), y1_data - y_span * 0.02)
-        placed_y.append(yy)
-        fig.text(
-            lab_x, _data_to_fig_y(yy), lab,
-            fontproperties=fp(11, True), color=col, ha="left", va="center",
-            transform=fig.transFigure, zorder=40, clip_on=False,
-            bbox=dict(boxstyle="square,pad=0.26", facecolor=PAPER, edgecolor=col, linewidth=1.0),
-        )
+    _paint_price_level_labels(
+        fig, off,
+        close_col=close_col,
+        y0_data=y0_data, y1_data=y1_data, y_span=y_span,
+        main_bot=main_bot, main_top=main_top,
+        right_f=right_f, frame_right=frame_right,
+        up=UP, dn=DN, ink=INK, paper=PAPER,
+    )
 
     if series.gap_after is not None:
         import matplotlib.patches as mpatches
@@ -1732,14 +1804,15 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
 
 
 def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
-    """Smart labels：避開缺資料邊界假急殺；offset 不蓋折線。"""
+    """走勢重點稀疏標：offset 拉離價線，儘量不壓折線（v12）。"""
     from ink_chart_theme import DN, INK, UP, fp
     import numpy as np
 
     marks: List[Tuple[float, float, str, str, Tuple[float, float]]] = []
     for x, y in zip(xs, ys):
         if float(y) < prev:
-            marks.append((float(x), float(y), "破昨收", DN, (10, 14)))
+            # 破昨收下偏，避開折線
+            marks.append((float(x), float(y), "破昨收", DN, (14, -22)))
             break
     # 急殺：真跌段；缺資料邊界前 5 分內的路徑低點不算（避免假崖）
     if len(ys) >= 8:
@@ -1761,14 +1834,14 @@ def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
                 if drop <= -0.05 and (best is None or drop < best[0]):
                     best = (drop, float(xs[j]), float(ys[j]))
         if best is not None:
-            marks.append((best[1], best[2], "急殺", DN, (8, -16)))
+            marks.append((best[1], best[2], "急殺", DN, (16, -24)))
     vs = np.asarray(series.volumes_lots, dtype=float)
     if len(vs) and float(np.max(vs)) > 0:
         med = float(np.median(vs[vs > 0])) if np.any(vs > 0) else 0.0
         i = int(np.argmax(vs))
         if med > 0 and vs[i] >= med * 6:
             marks.append(
-                (float(xs[i]), float(ys[i]), "爆量", UP if ys[i] >= prev else DN, (8, 16))
+                (float(xs[i]), float(ys[i]), "爆量", UP if ys[i] >= prev else DN, (14, 22))
             )
     kept: List[Tuple[float, float, str, str, Tuple[float, float]]] = []
     for m in marks:
@@ -1806,11 +1879,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v11（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v12（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v11")
+    ap.add_argument("--prefix", default="preview-v12")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
@@ -1855,9 +1928,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "w52h": series.official.w52_high,
                 "w52l": series.official.w52_low,
                 "prev_vol": series.official.prev_volume_lots,
-                "trade_count": series.official.trade_count,
-                "limit_up": series.official.limit_up,
-                "limit_down": series.official.limit_down,
+                "prev_turnover_k": series.official.prev_turnover_k,
                 "notices": series.notices,
             }
         )
