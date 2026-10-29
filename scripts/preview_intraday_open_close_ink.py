@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Preview-only v12：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v13：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v12-cells-labels-20261029.md（格名／對昨色／主圖五標）；
-框線共線／真分量柱紅綠／12.4×9.35／興櫃 15:00 維持。
+對齊 docs/intraday-v13-smart-labels-20261029.md（智能圓章標；修 v12 6274 右溝互壓）；
+格子三排維持 v12；框共線／真分量柱紅綠／12.4×9.35／興櫃 15:00 維持。
 
-- 12 格：今開盤價／盤中高低／昨收盤價；今量額對昨紅綠；昨量／昨額；均價／振幅；兩格留白（取消漲跌停）。
-- 主圖必標：開盤／壓／撐／均／現價（虛線連水平；右溝避線）。
+- 主圖五必標＝大量區 5／10／月／季同概念：走線錨點小圓章（短名＋價）＋短虛線掃淨空完整標。
+- 標不准互壓、不准壓價線；擁擠可縮字；6274 等同價距必過量化閘。
 - 不准假資料、不准接話筒／合 main。
 """
 from __future__ import annotations
@@ -38,12 +38,31 @@ PREVIEW_SYMBOLS: Tuple[Tuple[str, str, str], ...] = (
     ("1303", "南亞", "TW"),
 )
 
+# v13 十檔抽測（含 2383／3595／6274 FAIL 錨＋八檔跨市）
+PREVIEW_V13_SYMBOLS: Tuple[Tuple[str, str, str], ...] = (
+    ("2383", "台光電", "TW"),
+    ("3595", "山太士", "EM"),
+    ("6274", "台燿", "TWO"),
+    ("2330", "台積電", "TW"),
+    ("2454", "聯發科", "TW"),
+    ("2303", "聯電", "TW"),
+    ("1303", "南亞", "TW"),
+    ("3105", "穩懋", "TWO"),
+    ("3081", "聯亞", "TWO"),
+    ("7853", "政美應用", "EM"),
+)
+
 _SLUG = {
     "3595": "shantashi",
     "7853": "zhengmei",
     "2383": "taiguangdian",
     "6274": "taiyao",
     "1303": "nanya",
+    "2330": "tsmc",
+    "2454": "mtk",
+    "2303": "umc",
+    "3105": "winf",
+    "3081": "lianya",
 }
 
 
@@ -837,66 +856,373 @@ def _fmt_lots(v: float) -> str:
     return f"{int(round(float(v))):,}張"
 
 
-def _paint_price_level_labels(
-    fig,
+def _rects_overlap(
+    a: Tuple[float, float, float, float],
+    b: Tuple[float, float, float, float],
+    *,
+    pad: float = 0.0,
+) -> bool:
+    """軸座標盒 (x0,x1,y0,y1) 是否互壓。"""
+    return not (
+        a[1] + pad < b[0]
+        or b[1] + pad < a[0]
+        or a[3] + pad < b[2]
+        or b[3] + pad < a[2]
+    )
+
+
+def _estimate_label_rect(
+    cx: float, cy: float, text: str, *, fs: float, x_span: float, y_span: float, kind: str
+) -> Tuple[float, float, float, float]:
+    """粗估標盒（資料座標）。圓章較窄；完整標依字數。"""
+    n = max(len(text), 1)
+    if kind == "chip":
+        half_x = max(x_span * 0.028, 6.5)
+        half_y = max(y_span * 0.028, abs(cy) * 0.0045, 1.2)
+    else:
+        half_x = max(x_span * (0.018 + 0.007 * min(n, 12)), 10.0)
+        half_y = max(y_span * (0.022 + 0.001 * max(fs - 8.0, 0)), abs(cy) * 0.0035, 1.0)
+    return (cx - half_x, cx + half_x, cy - half_y, cy + half_y)
+
+
+def _path_hits_rect(
+    xs, ys, rect: Tuple[float, float, float, float], *, y_pad: float
+) -> bool:
+    """價折線是否穿進標盒（圓章錨點允許貼線，完整標不准）。"""
+    import numpy as np
+
+    x0, x1, y0, y1 = rect
+    arr_x = np.asarray(xs, dtype=float)
+    arr_y = np.asarray(ys, dtype=float)
+    mask = (arr_x >= x0) & (arr_x <= x1)
+    if not np.any(mask):
+        return False
+    for y in arr_y[mask]:
+        if (y0 - y_pad) <= float(y) <= (y1 + y_pad):
+            return True
+    return False
+
+
+def _level_anchors(
+    xs, ys, highs, lows, opens, off: OfficialDay
+) -> List[Tuple[str, str, float, float, str]]:
+    """回 (短名, 完整國字, x, y_price, color_key)。錨在走線對應點。"""
+    import numpy as np
+
+    xa = np.asarray(xs, dtype=float)
+    ya = np.asarray(ys, dtype=float)
+    ha = np.asarray(highs, dtype=float)
+    la = np.asarray(lows, dtype=float)
+    oa = np.asarray(opens, dtype=float)
+    n = len(ya)
+    out: List[Tuple[str, str, float, float, str]] = []
+    if n == 0:
+        return out
+    # 壓＝盤中最高觸點
+    i_hi = int(np.nanargmax(ha)) if np.any(np.isfinite(ha)) else int(np.argmax(ya))
+    out.append(("壓", "壓", float(xa[i_hi]), float(off.high), "up"))
+    # 開盤＝首分／開
+    out.append(("開", "開盤", float(xa[0]), float(off.open), "open"))
+    # 現價＝末分收
+    out.append(("現", "現價", float(xa[-1]), float(off.close), "close"))
+    # 撐＝盤中最低觸點
+    i_lo = int(np.nanargmin(la)) if np.any(np.isfinite(la)) else int(np.argmin(ya))
+    out.append(("撐", "撐", float(xa[i_lo]), float(off.low), "dn"))
+    # 均＝路徑最貼均價的一分（無真均價則略）
+    if off.avg_price and float(off.avg_price) > 0:
+        avg = float(off.avg_price)
+        i_avg = int(np.argmin(np.abs(ya - avg)))
+        out.append(("均", "均", float(xa[i_avg]), avg, "avg"))
+    return out
+
+
+def _paint_smart_level_labels(
+    ax,
+    xs,
+    ys,
+    highs,
+    lows,
+    opens,
     off: OfficialDay,
     *,
     close_col: str,
-    y0_data: float,
-    y1_data: float,
-    y_span: float,
-    main_bot: float,
-    main_top: float,
-    right_f: float,
-    frame_right: float,
     up: str,
     dn: str,
     ink: str,
     paper: str,
-) -> None:
-    """主圖五必標（國字＋價）置右溝；虛線已由 ax.axhline 畫。智慧垂直避互壓；不准省略。"""
+) -> Dict[str, Any]:
+    """v13 智能標：走線錨點圓章（短名＋價）＋短虛線到淨空完整標。
+
+    對齊大量區 5／10／月／季圓章概念。硬閘：完整標互不壓、不壓價線；必要標不省略。
+    修 v12 FAIL：6274 現價／開盤／均右溝互壓——改不同 x 錨＋掃淨空。
+    """
     from ink_chart_theme import fp
+    import numpy as np
 
-    levels: List[Tuple[float, str, str]] = [
-        (float(off.high), f"壓 {_fmt_face(off.high)}", up),
-        (float(off.open), f"開盤 {_fmt_face(off.open)}", "#5C5C5C"),
-        (float(off.close), f"現價 {_fmt_face(off.close)}", close_col),
-        (float(off.low), f"撐 {_fmt_face(off.low)}", dn),
-    ]
-    if off.avg_price and float(off.avg_price) > 0:
-        levels.append((float(off.avg_price), f"均 {_fmt_face(off.avg_price)}", "#5C6BC0"))
-    # 必要標齊：無均價才略「均」；其餘四標必在
-    levels.sort(key=lambda t: t[0], reverse=True)  # 高→低排，再避撞
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    x_span = max(float(x1 - x0), 1.0)
+    y_span = max(float(y1 - y0), 1.0)
+    color_map = {
+        "up": up,
+        "dn": dn,
+        "open": "#5C5C5C",
+        "close": close_col,
+        "avg": "#5C6BC0",
+        "ink": ink,
+    }
 
-    min_gap = max(y_span * 0.085, abs(float(off.prev_close)) * 0.006, 1.0)
-    lab_x = min(right_f + 0.010, frame_right - 0.058)
-    assert lab_x + 0.04 <= frame_right + 1e-6, "右標必須落在共線外框內"
-
-    def _data_to_fig_y(yd: float) -> float:
-        frac = (yd - y0_data) / max(y1_data - y0_data, 1e-9)
-        return main_bot + (main_top - main_bot) * frac
-
-    placed_y: List[float] = []
-    for px, lab, col in levels:
-        yy = float(px)
-        # 反覆推開直到與已放標距離夠（必要標不刪，只挪位）
-        for _ in range(12):
-            hit = False
-            for py in placed_y:
-                if abs(yy - py) < min_gap:
-                    yy = py + min_gap if yy >= py else py - min_gap
-                    hit = True
-                    break
-            if not hit:
+    anchors = _level_anchors(xs, ys, highs, lows, opens, off)
+    # 同價合併顯示仍各留標，但錨 x 必須分開（開／均／現常見擠價）
+    used_x: List[float] = []
+    min_x_sep = max(x_span * 0.06, 12.0)
+    adj_anchors: List[Tuple[str, str, float, float, str]] = []
+    for short, full, ax_, ay_, ck in anchors:
+        xx = float(ax_)
+        for _ in range(10):
+            if all(abs(xx - u) >= min_x_sep for u in used_x):
                 break
-        yy = min(max(yy, y0_data + y_span * 0.015), y1_data - y_span * 0.015)
-        placed_y.append(yy)
-        fig.text(
-            lab_x, _data_to_fig_y(yy), lab,
-            fontproperties=fp(10.5, True), color=col, ha="left", va="center",
-            transform=fig.transFigure, zorder=40, clip_on=False,
-            bbox=dict(boxstyle="square,pad=0.22", facecolor=paper, edgecolor=col, linewidth=0.95),
+            # 往較空側推
+            xx = xx + min_x_sep if xx < (x0 + x1) * 0.5 else xx - min_x_sep
+            xx = min(max(xx, x0 + x_span * 0.04), x1 - x_span * 0.04)
+        used_x.append(xx)
+        adj_anchors.append((short, full, xx, float(ay_), ck))
+
+    # 完整標候選 offset（資料座標）：短虛線「一點點」
+    def _offset_cands(axp: float, ayp: float) -> List[Tuple[float, float]]:
+        dxs = [x_span * 0.10, x_span * 0.14, -x_span * 0.10, -x_span * 0.14,
+               x_span * 0.18, -x_span * 0.18, x_span * 0.07, -x_span * 0.07]
+        dys = [y_span * 0.08, -y_span * 0.08, y_span * 0.12, -y_span * 0.12,
+               y_span * 0.05, -y_span * 0.05, y_span * 0.16, -y_span * 0.16]
+        out: List[Tuple[float, float]] = []
+        for dx in dxs:
+            for dy in dys:
+                out.append((axp + dx, ayp + dy))
+        # 偏好：錨在左半→標往右上／右下；右半→往左
+        out.sort(key=lambda p: (
+            0 if (axp < (x0 + x1) * 0.55 and p[0] > axp) or (axp >= (x0 + x1) * 0.55 and p[0] < axp) else 1,
+            abs(p[1] - ayp) + abs(p[0] - axp) * 0.3,
+        ))
+        return out
+
+    occupied: List[Tuple[float, float, float, float]] = []
+    placed_meta: List[Dict[str, Any]] = []
+    path_pad = y_span * 0.012
+    box_pad = y_span * 0.008
+    # 先只算位，全部定案再畫（方便互壓後 nudge）
+    pending: List[Dict[str, Any]] = []
+
+    for idx, (short, full, axp, ayp, ck) in enumerate(adj_anchors):
+        col = color_map.get(ck, ink)
+        px = _fmt_face(ayp)
+        chip_txt = f"{short}\n{px}"
+        full_txt = f"{full} {px}"
+        chip_fs = 8.0
+        chip_ay = float(ayp)
+        chip_rect = _estimate_label_rect(
+            axp, chip_ay, chip_txt, fs=chip_fs, x_span=x_span, y_span=y_span, kind="chip"
         )
+        for _ in range(8):
+            if not any(_rects_overlap(chip_rect, o, pad=box_pad) for o in occupied):
+                break
+            chip_ay = chip_ay + (y_span * 0.022 if (idx % 2 == 0) else -y_span * 0.022)
+            chip_ay = min(max(chip_ay, y0 + y_span * 0.03), y1 - y_span * 0.03)
+            chip_rect = _estimate_label_rect(
+                axp, chip_ay, chip_txt, fs=chip_fs, x_span=x_span, y_span=y_span, kind="chip"
+            )
+
+        # 完整標：字級可縮；掃淨空；上下交錯偏好
+        prefer_up = idx % 2 == 0
+        full_fs_options = (9.5, 8.5, 7.5, 7.0)
+        chosen: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
+        cands = _offset_cands(axp, chip_ay)
+        if prefer_up:
+            cands = sorted(cands, key=lambda p: (0 if p[1] >= chip_ay else 1, abs(p[1] - chip_ay)))
+        else:
+            cands = sorted(cands, key=lambda p: (0 if p[1] < chip_ay else 1, abs(p[1] - chip_ay)))
+        for full_fs in full_fs_options:
+            for lx, ly in cands:
+                if not (x0 + x_span * 0.02 <= lx <= x1 - x_span * 0.02):
+                    continue
+                if not (y0 + y_span * 0.03 <= ly <= y1 - y_span * 0.03):
+                    continue
+                dist = ((lx - axp) ** 2 + ((ly - chip_ay) / max(y_span / x_span, 1e-6)) ** 2) ** 0.5
+                if dist > x_span * 0.32:
+                    continue
+                rect = _estimate_label_rect(
+                    lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+                )
+                if any(_rects_overlap(rect, o, pad=box_pad) for o in occupied):
+                    continue
+                if _rects_overlap(rect, chip_rect, pad=box_pad):
+                    continue
+                if _path_hits_rect(xs, ys, rect, y_pad=path_pad):
+                    continue
+                chosen = (lx, ly, full_fs, rect)
+                break
+            if chosen is not None:
+                break
+
+        if chosen is None:
+            full_fs = 7.0
+            fallback = None
+            best_pen = 1e18
+            for lx, ly in cands:
+                lx = min(max(lx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                ly = min(max(ly, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                # 強制拉開：依序上下左右大步
+                for extra_dy in (0.0, y_span * 0.10, -y_span * 0.10, y_span * 0.16, -y_span * 0.16):
+                    ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                    rect = _estimate_label_rect(
+                        lx, ly2, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+                    )
+                    ov = sum(1 for o in occupied if _rects_overlap(rect, o, pad=box_pad * 0.5))
+                    ph = 1 if _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.4) else 0
+                    pen = ov * 20 + ph * 8 + abs(lx - axp) / x_span
+                    if pen < best_pen:
+                        best_pen = pen
+                        fallback = (lx, ly2, full_fs, rect)
+            chosen = fallback
+
+        assert chosen is not None
+        lx, ly, full_fs, full_rect = chosen
+        occupied.append(chip_rect)
+        occupied.append(full_rect)
+        pending.append(
+            {
+                "short": short,
+                "full": full,
+                "full_txt": full_txt,
+                "chip_txt": chip_txt,
+                "price": float(ayp),
+                "col": col,
+                "anchor": (float(axp), float(chip_ay)),
+                "label": (float(lx), float(ly)),
+                "fs": full_fs,
+                "chip_fs": chip_fs,
+                "chip_rect": chip_rect,
+                "full_rect": full_rect,
+            }
+        )
+
+    def _try_set_full(k: int, lx: float, ly: float) -> bool:
+        rect2 = _estimate_label_rect(
+            lx, ly, pending[k]["full_txt"],
+            fs=pending[k]["fs"], x_span=x_span, y_span=y_span, kind="full",
+        )
+        if _rects_overlap(rect2, pending[k]["chip_rect"], pad=box_pad * 0.3):
+            return False
+        for t, p in enumerate(pending):
+            if t == k:
+                continue
+            if _rects_overlap(rect2, p["full_rect"], pad=box_pad * 0.5):
+                return False
+            if _rects_overlap(rect2, p["chip_rect"], pad=box_pad * 0.3):
+                return False
+        if _path_hits_rect(xs, ys, rect2, y_pad=path_pad * 0.45):
+            return False
+        pending[k]["label"] = (lx, ly)
+        pending[k]["full_rect"] = rect2
+        return True
+
+    # 安置後 nudge：互壓推開；壓線則往外緣（軸頂／底淨空）撤離
+    def _nudge_fulls() -> None:
+        for _round in range(36):
+            moved = False
+            # 1) 互壓
+            for i in range(len(pending)):
+                for j in range(i + 1, len(pending)):
+                    if not _rects_overlap(
+                        pending[i]["full_rect"], pending[j]["full_rect"], pad=box_pad * 0.5
+                    ):
+                        continue
+                    step = y_span * 0.04
+                    order = (i, j) if pending[i]["price"] >= pending[j]["price"] else (j, i)
+                    for k, sign in ((order[0], 1.0), (order[1], -1.0)):
+                        lx, ly = pending[k]["label"]
+                        ly2 = min(max(ly + sign * step, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                        if _try_set_full(k, lx, ly2):
+                            moved = True
+            # 2) 壓價線 → 往軸頂／底淨空
+            for k, p in enumerate(pending):
+                if not _path_hits_rect(xs, ys, p["full_rect"], y_pad=path_pad * 0.45):
+                    continue
+                lx, ly = p["label"]
+                # 優先：上緣淨空 → 下緣淨空 → 再左右微移
+                targets = [
+                    (lx, y1 - y_span * 0.06),
+                    (lx, y0 + y_span * 0.06),
+                    (lx + x_span * 0.06, y1 - y_span * 0.08),
+                    (lx - x_span * 0.06, y0 + y_span * 0.08),
+                    (lx + x_span * 0.08, ly + y_span * 0.06),
+                    (lx - x_span * 0.08, ly - y_span * 0.06),
+                ]
+                for tx, ty in targets:
+                    tx = min(max(tx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                    ty = min(max(ty, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                    if _try_set_full(k, tx, ty):
+                        moved = True
+                        break
+            if not moved:
+                break
+
+    _nudge_fulls()
+
+    # 下筆
+    for p in pending:
+        axp, ayp = p["anchor"]
+        lx, ly = p["label"]
+        col = p["col"]
+        ax.plot(
+            [axp, lx], [ayp, ly],
+            linestyle=(0, (2, 2)), color=col, linewidth=0.85, alpha=0.85, zorder=9,
+            solid_capstyle="round",
+        )
+        ax.text(
+            axp, ayp, p["chip_txt"],
+            ha="center", va="center",
+            fontproperties=fp(p["chip_fs"], True), color=col, zorder=11, clip_on=False,
+            linespacing=0.92,
+            bbox=dict(
+                boxstyle="round,pad=0.22", facecolor=paper, edgecolor=col,
+                linewidth=0.95, alpha=0.96,
+            ),
+        )
+        ax.text(
+            lx, ly, p["full_txt"],
+            ha="center", va="center",
+            fontproperties=fp(p["fs"], True), color=col, zorder=12, clip_on=False,
+            bbox=dict(
+                boxstyle="square,pad=0.18", facecolor=paper, edgecolor=col,
+                linewidth=0.9, alpha=0.96,
+            ),
+        )
+        placed_meta.append(p)
+
+    full_rects = [m["full_rect"] for m in placed_meta]
+    overlap_n = 0
+    for i in range(len(full_rects)):
+        for j in range(i + 1, len(full_rects)):
+            if _rects_overlap(full_rects[i], full_rects[j], pad=box_pad * 0.25):
+                overlap_n += 1
+    path_hits = sum(
+        1 for r in full_rects if _path_hits_rect(xs, ys, r, y_pad=path_pad * 0.5)
+    )
+    required = 4 + (1 if off.avg_price and float(off.avg_price) > 0 else 0)
+    gate = {
+        "n_labels": len(placed_meta),
+        "required": required,
+        "full_overlap_pairs": overlap_n,
+        "full_path_hits": path_hits,
+        "pass": bool(
+            len(placed_meta) >= required and overlap_n == 0 and path_hits == 0
+        ),
+        "labels": [
+            {"short": m["short"], "full": m["full"], "price": m["price"], "fs": m["fs"]}
+            for m in placed_meta
+        ],
+    }
+    return gate
 
 
 def _detect_notices(
@@ -1393,7 +1719,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
 
 
 
-def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
+def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tuple[str, Dict[str, Any]]:
     import numpy as np
     import matplotlib
 
@@ -1632,18 +1958,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
     ax.set_xlim(0.0, x_end)
-    # 昨收參考虛線（填色基準；非五必標之一）
+    # 昨收參考虛線（填色基準）；五必標改 v13 圓章＋短虛線，不再拉滿幅水平線搶位
     ax.axhline(prev, color=MUTE, linestyle=(0, (4, 3)), linewidth=1.15, zorder=2, alpha=0.85)
-    # v12 五必標水平虛線：開盤／壓／撐／均／現價
-    ax.axhline(off.open, color="#5C5C5C", linestyle=(0, (3, 3)), linewidth=0.95, alpha=0.75, zorder=2)
-    ax.axhline(off.high, color=UP, linestyle=(0, (2, 3)), linewidth=0.95, alpha=0.75, zorder=2)
-    ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=1.0, alpha=0.78, zorder=2)
-    if off.avg_price and off.avg_price > 0:
-        ax.axhline(
-            float(off.avg_price), color="#5C6BC0", linestyle=(0, (5, 3)),
-            linewidth=1.0, alpha=0.85, zorder=2,
-        )
-    ax.axhline(off.close, color=close_col, linestyle=(0, (4, 2)), linewidth=1.05, alpha=0.80, zorder=2)
     ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
     ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.16, zorder=1)
     # 缺分已平鋪；僅跳超大斷層（不應再出現）。連續段用 plot 畫齊。
@@ -1662,17 +1978,15 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             ax.plot([x0, xc], [a, prev], color=(UP if a >= prev else DN), lw=2.05, zorder=3)
             ax.plot([xc, x1], [prev, b], color=(UP if b >= prev else DN), lw=2.05, zorder=3)
 
-    # v12 主圖五必標：開盤／壓／撐／均／現價（右溝＋虛線水平；必要標不准省略）
-    y_span = (hi + pad) - (lo - pad)
-    y0_data, y1_data = lo - pad, hi + pad
-    _paint_price_level_labels(
-        fig, off,
-        close_col=close_col,
-        y0_data=y0_data, y1_data=y1_data, y_span=y_span,
-        main_bot=main_bot, main_top=main_top,
-        right_f=right_f, frame_right=frame_right,
-        up=UP, dn=DN, ink=INK, paper=PAPER,
+    # v13 主圖五必標：走線錨點圓章＋短虛線掃淨空（修 6274 右溝互壓）
+    label_gate = _paint_smart_level_labels(
+        ax, xs, ys,
+        list(series.highs), list(series.lows), list(series.opens),
+        off,
+        close_col=close_col, up=UP, dn=DN, ink=INK, paper=PAPER,
     )
+    # 掛在 fig 上供 render 回傳／閘門
+    fig._wayne_label_gate = label_gate  # type: ignore[attr-defined]
 
     if series.gap_after is not None:
         import matplotlib.patches as mpatches
@@ -1799,12 +2113,13 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     fig.savefig(out_path, facecolor=PAPER, edgecolor="none")
+    gate = getattr(fig, "_wayne_label_gate", {"pass": False, "n_labels": 0})
     plt.close(fig)
-    return out_path
+    return out_path, dict(gate)
 
 
 def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
-    """走勢重點稀疏標：offset 拉離價線，儘量不壓折線（v12）。"""
+    """走勢重點稀疏標：offset 拉離價線，儘量不壓折線。"""
     from ink_chart_theme import DN, INK, UP, fp
     import numpy as np
 
@@ -1870,6 +2185,8 @@ def default_out_dir() -> str:
     if env:
         return env
     for store in (
+        "/cursor/stores/self/media/intraday-v13-smart-labels-20261029",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v13-smart-labels-20261029",
         "/cursor/stores/self/media/intraday-open-close-chart-20261029",
         "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-open-close-chart-20261029",
     ):
@@ -1879,21 +2196,29 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v12（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v13（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v12")
+    ap.add_argument("--prefix", default="preview-v13")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
+    ap.add_argument(
+        "--set",
+        default="v13",
+        choices=("v13", "base"),
+        help="v13=十檔抽測（含6274）；base=舊五檔",
+    )
     args = ap.parse_args(list(argv) if argv is not None else None)
 
     out_dir = args.out_dir
     os.makedirs(out_dir, exist_ok=True)
     results: List[Dict[str, Any]] = []
     notices_all: Dict[str, List[str]] = {}
+    gates: Dict[str, Any] = {}
     only = {s.strip() for s in str(args.only or "").split(",") if s.strip()}
+    symbols = PREVIEW_V13_SYMBOLS if args.set == "v13" else PREVIEW_SYMBOLS
 
-    for sid, name, market in PREVIEW_SYMBOLS:
+    for sid, name, market in symbols:
         if only and sid not in only:
             continue
         slug = _SLUG.get(sid, sid)
@@ -1902,10 +2227,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if series is None:
             render_empty(out_path, stock_id=sid, name=name, market=market, reason="官方日值或路徑不可用")
             results.append({"stock_id": sid, "name": name, "market": market, "path": out_path, "ok": False, "n": 0})
+            gates[sid] = {"pass": False, "reason": "no_series"}
             print(f"[empty] {sid} {name} -> {out_path}")
             continue
-        render_path(series, out_path, db_path=args.db)
+        _path, gate = render_path(series, out_path, db_path=args.db)
         notices_all[sid] = list(series.notices)
+        gates[sid] = gate
         results.append(
             {
                 "stock_id": sid,
@@ -1913,6 +2240,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "market": market,
                 "path": out_path,
                 "ok": True,
+                "gate_pass": bool(gate.get("pass")),
                 "n": len(series.closes),
                 "path_source": series.path_source,
                 "official_source": series.official.source,
@@ -1930,10 +2258,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "prev_vol": series.official.prev_volume_lots,
                 "prev_turnover_k": series.official.prev_turnover_k,
                 "notices": series.notices,
+                "label_gate": gate,
             }
         )
+        gflag = "GATE_OK" if gate.get("pass") else "GATE_FAIL"
         print(
-            f"[ok] {sid} {name} n={len(series.closes)} "
+            f"[ok] {sid} {name} n={len(series.closes)} {gflag} "
+            f"ov={gate.get('full_overlap_pairs')} path={gate.get('full_path_hits')} "
             f"{series.times[0].strftime('%H:%M')}→{series.times[-1].strftime('%H:%M')} "
             f"off={series.official.close} -> {out_path}"
         )
@@ -1947,14 +2278,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         for r in results:
             f.write(
                 f"{r['stock_id']}\t{r['name']}\t{r['market']}\tok={int(r['ok'])}\t"
-                f"n={r.get('n', 0)}\t{r['path']}\n"
+                f"gate={int(bool(r.get('gate_pass')))}\tn={r.get('n', 0)}\t{r['path']}\n"
             )
             for n in r.get("notices") or []:
                 f.write(f"  notice\t{n}\n")
     with open(os.path.join(out_dir, f"{args.prefix}-notices-20261029.json"), "w", encoding="utf-8") as f:
         json.dump(notices_all, f, ensure_ascii=False, indent=2)
+    with open(os.path.join(out_dir, f"{args.prefix}-label-gate-20261029.json"), "w", encoding="utf-8") as f:
+        json.dump(gates, f, ensure_ascii=False, indent=2)
     print(f"[manifest] {manifest}")
-    return 0 if all(r["ok"] for r in results) else 2
+    ok_all = all(r["ok"] for r in results) and all(
+        bool((gates.get(r["stock_id"]) or {}).get("pass")) for r in results if r.get("ok")
+    )
+    if not ok_all:
+        fails = [
+            r["stock_id"] for r in results
+            if not r.get("ok") or not (gates.get(r["stock_id"]) or {}).get("pass")
+        ]
+        print(f"[gate-fail] {fails}")
+    return 0 if ok_all else 2
 
 
 if __name__ == "__main__":
