@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Preview-only v7：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v8：今日開→收墨線臉（查股第 5 張候選）。
+
+對齊 docs/intraday-v8-research-layout-20261029.md；修 v7 交叉 FAIL：
+時軸 09／15 與量能／％互壓、底日低壓 52週、右標卡框。
 
 - 頭欄＝結構／大量區同款（nameplate＋spot）。
 - 八格＝**獨立 quote_ax**在頭欄與主圖之間（零重疊價圖／Y 軸）。
 - 畫布 12.4×9.35（大量區 NAV）；邊距對齊結構／大量區 ink 常數。
 - 路徑：TW/TWO Yahoo 1m、EM priceByTimes→1 分；缺分平鋪前收（量＝0）。
-- 量柱 log1p＋gamma；缺分極短灰柱（不准假 0 洗白）。
-- 時標在量框下淨空；框線／格線不准切斷。底三條＋右側日高／昨收／日低。
-- 收／興櫃收：漲紅平黑跌綠。不准接話筒／合 main；臉不寫出處。
+- 量柱 log1p＋gamma；缺分極短灰柱；量能％徽章畫在**量框內**。
+- 時標專帶：上離量框、下離「量能」；09／15 完整。底三條加行距。
+- 右標落在 plot 外白邊（figure 座標），不准卡框切末碼。
+- 建議：有真均價則畫均價細虛線。收／興櫃收：漲紅平黑跌綠。
+- 不准接話筒／合 main；臉不寫出處。
 """
 from __future__ import annotations
 
@@ -980,89 +985,108 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     quote_ax.set_ylim(0, 1)
 
 
-def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right: float) -> None:
-    """底部三條：量能％、今日區間、52週；端點＋最新／收盤必現，不准空白帶。"""
-    from ink_chart_theme import DN, INK, MUTE, PAPER, RULE, UP, YELLOW, fp
-    from matplotlib.patches import FancyBboxPatch, Rectangle
+def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right: float) -> Optional[float]:
+    """底部三條：量能／今日區間／52週。
 
-    bar_h = 0.028
-    row_pitch = 0.074
+    v8：％改量框內；**列與列之間零跨列字**——每列文字只在該條上方標題列，
+    收／開小標貼條內側短劃旁（不垂降到下一列）。回傳量／季均比。
+    """
+    from ink_chart_theme import DN, INK, PAPER, RULE, UP, YELLOW, fp
+    from matplotlib.patches import Rectangle
+
+    bar_h = 0.020
+    # 三列均分；標題只在條上，列縫留給下一列標題（不准跨列）
+    row_pitch = 0.062
     width = right - left
-    y = y_bot + 2 * row_pitch + 0.014
+    y = y_bot + 2 * row_pitch + 0.006
     last_lab = "日均" if off.close_label == "興櫃收" else "收盤"
     z = 30
+    vol_ratio: Optional[float] = None
 
     def _tick(mf: float, yb: float) -> float:
         mf = max(0.0, min(1.0, float(mf)))
         mx = left + width * mf
         fig.patches.append(
             Rectangle(
-                (mx - 0.0018, yb - 0.005), 0.0036, bar_h + 0.010,
+                (mx - 0.0015, yb - 0.002), 0.0030, bar_h + 0.004,
                 transform=fig.transFigure, facecolor=INK, edgecolor="none", clip_on=False, zorder=z,
             )
         )
         return mx
 
-    def _bubble(mx: float, yb: float, text: str, *, side: str, ha: str = "center") -> None:
-        ty = yb + bar_h + 0.007 if side == "above" else yb - 0.007
-        va = "bottom" if side == "above" else "top"
+    def _inline_mark(mx: float, yb: float, text: str, *, ha: str = "center") -> None:
+        """收／開標貼在條**上方標題帶**，不垂到下一列。"""
         fig.text(
-            mx, ty, text, fontproperties=fp(12, True), color=INK, ha=ha, va=va,
+            mx, yb + bar_h + 0.003, text,
+            fontproperties=fp(10, True), color=INK, ha=ha, va="bottom",
             transform=fig.transFigure, zorder=z + 1,
-            bbox=dict(boxstyle="square,pad=0.22", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=1.0),
+            bbox=dict(boxstyle="square,pad=0.14", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.8),
         )
 
-    # —— 1) 量能（無季均仍畫當日量，不准空白） ——
-    fig.text(left, y + bar_h + 0.009, "量能", fontproperties=fp(12, True), color=INK, ha="left", va="bottom", transform=fig.transFigure, zorder=z)
+    # —— 1) 量能：標題＋季均／當日全在條上方；條下空白給列縫（FAIL#1/#3） ——
+    fig.text(
+        left, y + bar_h + 0.003, "量能",
+        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
+    q_txt = (
+        f"季均 {_fmt_lots(off.q_avg_vol_lots)}"
+        if off.q_avg_vol_lots and off.q_avg_vol_lots > 0
+        else "季均 —"
+    )
+    fig.text(
+        left + 0.055, y + bar_h + 0.003, q_txt,
+        fontproperties=fp(10, False), color="#3A3A3A", ha="left", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
+    fig.text(
+        right, y + bar_h + 0.003, f"當日 {_fmt_lots(off.volume_lots)}",
+        fontproperties=fp(11, True), color=INK, ha="right", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
     fig.patches.append(
-        Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="#9AA0A6", linewidth=0.7, clip_on=False, zorder=z)
+        Rectangle(
+            (left, y), width, bar_h, transform=fig.transFigure,
+            facecolor=RULE, edgecolor="#9AA0A6", linewidth=0.7, clip_on=False, zorder=z,
+        )
     )
     if off.q_avg_vol_lots and off.q_avg_vol_lots > 0:
-        ratio = off.volume_lots / off.q_avg_vol_lots
-        pct = int(round(ratio * 100))
-        fill_w = width * min(ratio, 1.0)
+        vol_ratio = off.volume_lots / off.q_avg_vol_lots
+        fill_w = width * min(vol_ratio, 1.0)
         fig.patches.append(
             Rectangle(
                 (left, y), fill_w, bar_h,
-                transform=fig.transFigure, facecolor=DN if ratio >= 1 else UP, edgecolor="none", alpha=0.90, clip_on=False, zorder=z,
+                transform=fig.transFigure, facecolor=DN if vol_ratio >= 1 else UP,
+                edgecolor="none", alpha=0.90, clip_on=False, zorder=z,
             )
         )
-        badge_x = left + min(max(fill_w, width * 0.12), width * 0.92)
-        fig.patches.append(
-            FancyBboxPatch(
-                (badge_x - 0.034, y + bar_h + 0.002), 0.068, 0.026,
-                boxstyle="square,pad=0.002",
-                facecolor=DN if ratio >= 1 else UP, edgecolor=INK, linewidth=0.9,
-                transform=fig.transFigure, clip_on=False, zorder=z,
-            )
-        )
-        fig.text(
-            badge_x, y + bar_h + 0.015, f"{pct}%",
-            fontproperties=fp(12, True), color=PAPER, ha="center", va="center", transform=fig.transFigure, zorder=z + 1,
-        )
-        fig.text(
-            left, y - 0.005, f"季均 {_fmt_lots(off.q_avg_vol_lots)}",
-            fontproperties=fp(11, False), color="#3A3A3A", ha="left", va="top", transform=fig.transFigure, zorder=z,
-        )
-    else:
-        fig.text(
-            left, y - 0.005, "季均 —",
-            fontproperties=fp(11, False), color="#3A3A3A", ha="left", va="top", transform=fig.transFigure, zorder=z,
-        )
-    fig.text(
-        right, y - 0.005, f"當日 {_fmt_lots(off.volume_lots)}",
-        fontproperties=fp(13, True), color=INK, ha="right", va="top", transform=fig.transFigure, zorder=z,
-    )
     y -= row_pitch
 
-    # —— 2) 今日區間（高低必標） ——
+    # —— 2) 今日區間：日低／日高／收開全在本列上方帶 ——
     span = max(off.high - off.low, 1e-9)
     last_f = (off.close - off.low) / span
     open_in = off.low <= off.open <= off.high
     open_f = (off.open - off.low) / span if open_in else None
-    fig.text(left, y + bar_h + 0.009, "今日區間", fontproperties=fp(12, True), color=INK, ha="left", va="bottom", transform=fig.transFigure, zorder=z)
+    fig.text(
+        left, y + bar_h + 0.003, "今日區間",
+        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
+    fig.text(
+        left + 0.078, y + bar_h + 0.003, f"日低 {_fmt_face(off.low)}",
+        fontproperties=fp(11, True), color=DN, ha="left", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
+    fig.text(
+        right, y + bar_h + 0.003, f"日高 {_fmt_face(off.high)}",
+        fontproperties=fp(11, True), color=UP, ha="right", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
     fig.patches.append(
-        Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="#9AA0A6", linewidth=0.7, clip_on=False, zorder=z)
+        Rectangle(
+            (left, y), width, bar_h, transform=fig.transFigure,
+            facecolor=RULE, edgecolor="#9AA0A6", linewidth=0.7, clip_on=False, zorder=z,
+        )
     )
     if open_f is not None:
         a, b = sorted([open_f, last_f])
@@ -1084,47 +1108,66 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
                 edgecolor="none", alpha=0.95, clip_on=False, zorder=z,
             )
         )
-    fig.text(left, y - 0.005, f"日低 {_fmt_face(off.low)}", fontproperties=fp(13, True), color=DN, ha="left", va="top", transform=fig.transFigure, zorder=z)
-    fig.text(right, y - 0.005, f"日高 {_fmt_face(off.high)}", fontproperties=fp(13, True), color=UP, ha="right", va="top", transform=fig.transFigure, zorder=z)
-    ha_last = "left" if last_f <= 0.12 else ("right" if last_f >= 0.88 else "center")
-    if open_f is not None and abs(open_f - last_f) < 0.08:
-        _bubble(
-            _tick(last_f, y), y,
-            f"{last_lab} {_fmt_face(off.close)} ≈ 開 {_fmt_face(off.open)}",
-            side="above", ha=ha_last,
-        )
-    else:
-        if open_f is not None:
-            _bubble(_tick(open_f, y), y, f"開盤 {_fmt_face(off.open)}", side="below")
-        _bubble(_tick(last_f, y), y, f"{last_lab} {_fmt_face(off.close)}", side="above", ha=ha_last)
+    # 收／開：置中帶，避開左右日低／日高字
+    mid_lo, mid_hi = 0.22, 0.78
+    marks: List[Tuple[float, str]] = []
+    if open_f is not None and mid_lo <= open_f <= mid_hi:
+        marks.append((open_f, f"開 {_fmt_face(off.open)}"))
+    if mid_lo <= last_f <= mid_hi:
+        marks.append((last_f, f"{last_lab} {_fmt_face(off.close)}"))
+    elif abs(last_f - 0.5) < abs((open_f or 0.5) - 0.5):
+        marks.append((max(mid_lo, min(mid_hi, last_f)), f"{last_lab} {_fmt_face(off.close)}"))
+    # 兩標過近只留收／日均
+    if len(marks) == 2 and abs(marks[0][0] - marks[1][0]) < 0.12:
+        marks = [m for m in marks if last_lab in m[1] or m[1].startswith(last_lab)]
+        if not marks:
+            marks = [(last_f, f"{last_lab} {_fmt_face(off.close)}")]
+    for mf, txt in marks:
+        ha = "left" if mf <= 0.3 else ("right" if mf >= 0.7 else "center")
+        _inline_mark(_tick(mf, y), y, txt, ha=ha)
     y -= row_pitch
 
-    # —— 3) 52週 ——
+    # —— 3) 52週：高低＋現價標都在本列上方 ——
     w_lo = off.w52_low if off.w52_low is not None else off.low
     w_hi = off.w52_high if off.w52_high is not None else off.high
     if w_hi <= w_lo:
         w_hi = w_lo + max(abs(w_lo) * 0.01, 1.0)
     span52 = w_hi - w_lo
-    open_f = (off.open - w_lo) / span52
-    last_f = (off.close - w_lo) / span52
-    fig.text(left, y + bar_h + 0.009, "52週", fontproperties=fp(12, True), color=INK, ha="left", va="bottom", transform=fig.transFigure, zorder=z)
-    fig.patches.append(
-        Rectangle((left, y), width, bar_h, transform=fig.transFigure, facecolor=RULE, edgecolor="#9AA0A6", linewidth=0.7, clip_on=False, zorder=z)
+    last_f52 = (off.close - w_lo) / span52
+    fig.text(
+        left, y + bar_h + 0.003, "52週",
+        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        transform=fig.transFigure, zorder=z,
     )
-    lf = max(0.0, min(1.0, last_f))
+    fig.text(
+        left + 0.048, y + bar_h + 0.003, f"低 {_fmt_face(w_lo)}",
+        fontproperties=fp(11, True), color=DN, ha="left", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
+    fig.text(
+        right, y + bar_h + 0.003, f"高 {_fmt_face(w_hi)}",
+        fontproperties=fp(11, True), color=UP, ha="right", va="bottom",
+        transform=fig.transFigure, zorder=z,
+    )
+    fig.patches.append(
+        Rectangle(
+            (left, y), width, bar_h, transform=fig.transFigure,
+            facecolor=RULE, edgecolor="#9AA0A6", linewidth=0.7, clip_on=False, zorder=z,
+        )
+    )
+    lf = max(0.0, min(1.0, last_f52))
     fig.patches.append(
         Rectangle(
             (left + width * lf - 0.005, y), 0.010, bar_h,
             transform=fig.transFigure, facecolor=YELLOW, edgecolor="none", alpha=0.95, clip_on=False, zorder=z,
         )
     )
-    fig.text(left, y - 0.005, f"52週低 {_fmt_face(w_lo)}", fontproperties=fp(13, True), color=DN, ha="left", va="top", transform=fig.transFigure, zorder=z)
-    fig.text(right, y - 0.005, f"52週高 {_fmt_face(w_hi)}", fontproperties=fp(13, True), color=UP, ha="right", va="top", transform=fig.transFigure, zorder=z)
-    ha = "left" if last_f <= 0.18 else ("right" if last_f >= 0.82 else "center")
-    # 52 週最新掛條下，免與今日區間收盤浮標互壓（layout arrange）
-    _bubble(_tick(last_f, y), y, f"{last_lab} {_fmt_face(off.close)}", side="below", ha=ha)
-    if abs(open_f - last_f) >= 0.08 and off.low <= off.open <= off.high:
-        _bubble(_tick(open_f, y), y, f"開盤 {_fmt_face(off.open)}", side="above")
+    # 現價標：若貼左右端則省略（已有高低），否則置中上方
+    if 0.18 < last_f52 < 0.82:
+        ha = "center"
+        _inline_mark(_tick(last_f52, y), y, f"{last_lab} {_fmt_face(off.close)}", ha=ha)
+
+    return vol_ratio
 
 
 
@@ -1190,7 +1233,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     xs = np.asarray([_x(t) for t in times], dtype=float)
     x_end = 360.0 if is_em else 270.0
 
-    # v7（layout arrange）：畫布＝大量區 NAV 12.4×9.35；八格獨立帶在價圖上
+    # v8：畫布＝大量區 NAV 12.4×9.35；帶高重分配修時軸／底條／右標（見 research-layout）
     from vol_zone_chart import VOL_ZONE_FIG_H_NAV, VOL_ZONE_FIG_W
 
     fig_w = float(VOL_ZONE_FIG_W)  # 12.4
@@ -1199,16 +1242,20 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=PAPER)
 
     left_f = float(_FIG_LEFT)  # 0.028 對齊結構圖
-    right_f = 0.86  # 右標外掛
-    range_top = 0.200
-    xlab_h = 0.032  # 量框下時標淨空（格線／框線不准切斷）
-    vol_h = 0.070
-    vol_bot = range_top + xlab_h + 0.006
+    # plot 右緣縮短，0.78–0.96 給右標白邊（FAIL#4 不准卡框切末碼）
+    right_f = 0.78
+    # 底三條加高；時軸專帶與「量能」標題列錯層拉開
+    bars_top = 0.195
+    xlab_bot = 0.205
+    xlab_top = 0.238
+    vol_bot = 0.245
+    vol_h = 0.082
     main_bot = vol_bot + vol_h + 0.008
-    main_top = 0.60  # 價圖頂
-    quote_band_bot = 0.62  # 八格底；與價圖中間白縫
-    quote_top = 0.78  # 八格帶頂；之上名牌
+    main_top = 0.565
+    quote_band_bot = 0.585
+    quote_top = 0.735
     assert quote_band_bot >= main_top + 0.015, "八格底緣必須在價圖頂之上（不准疊進主題區）"
+    assert xlab_bot >= bars_top + 0.008, "時軸專帶必須在底三條之上（09 不准被量能削）"
 
     ax = fig.add_axes([left_f, main_bot, right_f - left_f, main_top - main_bot], zorder=2)
     vol_ax = fig.add_axes([left_f, vol_bot, right_f - left_f, vol_h], sharex=ax, zorder=2)
@@ -1222,7 +1269,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ov.axis("off")
     ov.patch.set_alpha(0)
 
-    # 頭欄白底只包名牌（quote_top 以上）；八格帶另框，不准白底蓋住 quote_ax
+    # 頭欄白底只包名牌（quote_top 以上）；八格／價／量框寬對齊 plot（右留白邊給右標）
     name_band_bot = quote_top * 100.0
     ov.add_patch(
         FancyBboxPatch(
@@ -1238,6 +1285,9 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             clip_on=False,
         )
     )
+    # ov 0–100；plot 框右緣＝right_f，右標落在框外白邊（FAIL#4）
+    box_x = left_f * 100.0
+    box_w = (right_f - left_f) * 100.0
     for y0, y1 in (
         (quote_band_bot * 100.0, quote_top * 100.0),
         (main_bot * 100.0, main_top * 100.0),
@@ -1245,8 +1295,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ):
         ov.add_patch(
             FancyBboxPatch(
-                (_STRUCTURE_BOX_X, y0),
-                _STRUCTURE_BOX_W,
+                (box_x, y0),
+                box_w,
                 max(0.4, y1 - y0),
                 boxstyle=_STRUCTURE_BOX_STYLE,
                 facecolor="none",
@@ -1355,6 +1405,9 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     # 路徑
     hi = float(max(float(np.max(ys)), prev, off.high, float(np.max(series.highs))))
     lo = float(min(float(np.min(ys)), prev, off.low, float(np.min(series.lows))))
+    if off.avg_price and off.avg_price > 0:
+        hi = max(hi, float(off.avg_price))
+        lo = min(lo, float(off.avg_price))
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
     ax.set_xlim(0.0, x_end)
@@ -1362,6 +1415,12 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
     ax.axhline(off.high, color=UP, linestyle=(0, (2, 3)), linewidth=0.9, alpha=0.7, zorder=2)
     # 官方日低虛線（興櫃路徑未必碰到）
     ax.axhline(off.low, color=DN, linestyle=(0, (2, 3)), linewidth=1.0, alpha=0.75, zorder=2)
+    # v8 建議：有真均價畫細虛線（Yahoo／券商慣例）
+    if off.avg_price and off.avg_price > 0:
+        ax.axhline(
+            float(off.avg_price), color="#5C6BC0", linestyle=(0, (6, 4)),
+            linewidth=1.05, alpha=0.85, zorder=2,
+        )
     ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
     ax.fill_between(xs, prev, ys, where=ys <= prev, interpolate=True, color=DN, alpha=0.16, zorder=1)
     # 缺分已平鋪；僅跳超大斷層（不應再出現）。連續段用 plot 畫齊。
@@ -1380,8 +1439,9 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
             ax.plot([x0, xc], [a, prev], color=(UP if a >= prev else DN), lw=2.05, zorder=3)
             ax.plot([xc, x1], [prev, b], color=(UP if b >= prev else DN), lw=2.05, zorder=3)
 
-    # 右側三層必現：日高／昨收／日低（價近合併；貼右緣外，不准空）
+    # 右側三層必現：日高／昨收／日低（價近合併）；figure 座標落在 plot 外白邊（FAIL#4）
     y_span = (hi + pad) - (lo - pad)
+    y0_data, y1_data = lo - pad, hi + pad
     low_lab = f"官方日低 {_fmt_face(off.low)}" if is_em else f"日低 {_fmt_face(off.low)}"
     right_labs: List[Tuple[float, str, str]] = []
     if abs(off.high - prev) / max(y_span, 1e-9) < 0.08:
@@ -1391,22 +1451,31 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         right_labs.append((off.high, f"日高 {_fmt_face(off.high)}", UP))
         right_labs.append((prev, f"昨收 {_fmt_face(prev)}", "#3A3A3A"))
     right_labs.append((off.low, low_lab, DN))
+    if off.avg_price and off.avg_price > 0:
+        # 均價右小標（與線同色）；過近昨收則略
+        if abs(float(off.avg_price) - prev) / max(y_span, 1e-9) >= 0.06:
+            right_labs.append((float(off.avg_price), f"均 {_fmt_face(off.avg_price)}", "#5C6BC0"))
     right_labs.sort(key=lambda t: t[0])
     placed_y: List[float] = []
     min_gap = max(y_span * 0.10, abs(prev) * 0.008)
+    lab_x = right_f + 0.008  # plot 右外白邊起點；右緣 label_right 內完整
+
+    def _data_to_fig_y(yd: float) -> float:
+        frac = (yd - y0_data) / max(y1_data - y0_data, 1e-9)
+        return main_bot + (main_top - main_bot) * frac
+
     for px, lab, col in right_labs:
         yy = float(px)
         for py in placed_y:
             if abs(yy - py) < min_gap:
                 yy = py + min_gap if yy >= py else py - min_gap
-        yy = min(max(yy, lo - pad * 0.05), hi + pad * 0.05)
+        yy = min(max(yy, y0_data + y_span * 0.02), y1_data - y_span * 0.02)
         placed_y.append(yy)
-        ax.text(
-            1.012, yy, lab,
-            fontproperties=fp(11.5, True), color=col, ha="left", va="center",
-            transform=ax.get_yaxis_transform(), zorder=8,
-            bbox=dict(boxstyle="square,pad=0.28", facecolor=PAPER, edgecolor=col, linewidth=1.05),
-            clip_on=False,
+        fig.text(
+            lab_x, _data_to_fig_y(yy), lab,
+            fontproperties=fp(11, True), color=col, ha="left", va="center",
+            transform=fig.transFigure, zorder=40, clip_on=False,
+            bbox=dict(boxstyle="square,pad=0.26", facecolor=PAPER, edgecolor=col, linewidth=1.0),
         )
 
     if series.gap_after is not None:
@@ -1469,7 +1538,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
     vol_ax.spines["bottom"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
-    # 時間標：量圖框外淨空帶；格線停在軸上側，框線不准切斷數字
+    # 時間標：xlab 專帶（bars_top 之上、vol_bot 之下）；09／15 完整（FAIL#1/#2）
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
     for lab in ax.get_yticklabels():
@@ -1477,19 +1546,40 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> str:
         lab.set_color(MUTE)
     vol_ax.set_yticks([])
     vol_ax.text(0.01, 0.92, "量(張)", transform=vol_ax.transAxes, fontproperties=fp(10, False), color=MUTE, va="top", ha="left")
-    xlab_y = vol_bot - xlab_h * 0.55
+
+    # 底部三條（％不在此畫）；最高列頂 < bars_top ≤ xlab_bot
+    vol_ratio = _paint_range_bars(
+        fig, off, y_bot=0.016, left=left_f, right=min(right_f + 0.04, 0.92),
+    )
+    # 量能％徽章畫在**量框內**右上，不准伸進 xlab 壓 15（FAIL#2）
+    if vol_ratio is not None and vol_ratio > 0:
+        pct = int(round(vol_ratio * 100))
+        badge_col = DN if vol_ratio >= 1 else UP
+        vol_ax.text(
+            0.985, 0.88, f"{pct}%",
+            transform=vol_ax.transAxes, fontproperties=fp(11, True),
+            color=PAPER, ha="right", va="top", zorder=8, clip_on=True,
+            bbox=dict(boxstyle="square,pad=0.28", facecolor=badge_col, edgecolor=INK, linewidth=0.9),
+        )
+
+    xlab_y = 0.5 * (xlab_bot + xlab_top)
     chart_w = right_f - left_f
     for h, tx in zip(tick_h, tick_x):
         xf = left_f + chart_w * (float(tx) / float(x_end))
-        ha = "left" if h == tick_h[0] else ("right" if h == tick_h[-1] else "center")
+        # 左端 09 略內縮、右端 15／13 略內縮，避免貼框削邊
+        if h == tick_h[0]:
+            xf = left_f + 0.006
+            ha = "left"
+        elif h == tick_h[-1]:
+            xf = right_f - 0.006
+            ha = "right"
+        else:
+            ha = "center"
         fig.text(
             xf, xlab_y, f"{h:02d}",
             fontproperties=fp(12, True), color="#3A3A3A", ha=ha, va="center",
             transform=fig.transFigure, clip_on=False, zorder=35,
         )
-
-    # 底部三條用圖框同寬（含右標外的視覺對齊用 chart 右緣）
-    _paint_range_bars(fig, off, y_bot=0.022, left=left_f, right=min(right_f + 0.04, 0.94))
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     fig.savefig(out_path, facecolor=PAPER, edgecolor="none")
@@ -1572,11 +1662,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v7（不接話筒）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v8（不接話筒）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v7")
+    ap.add_argument("--prefix", default="preview-v8")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
