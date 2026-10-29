@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Preview-only v18：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v19：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v18-gutter-20261030.md：
-價軸 Y 刻度移進框內；價／量軸右緣外擴吃掉右側空白；縮圖區加寬讓量柱不那麼密。
-外框仍與十二格共線。不准假資料、不准接話筒／合 main。
+對齊 docs/intraday-v19-left-axis-20261030.md：
+Y 刻度貼左框；開盤路徑讓字；無量不畫；平盤淡紅／淡綠；
+上市櫃 xmax=13:30、興櫃=15:00（價／量同窗）。不准假資料／假延長線。
 """
 from __future__ import annotations
 
@@ -2343,12 +2343,14 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
     frame_left = frame_x / 100.0  # 0.016
     frame_right = (frame_x + frame_w) / 100.0  # 0.982
-    # v18：價／量軸吃掉框內右白邊；左緣微內縮（外框仍與十二格共線）
+    # v19：軸左緣貼外框內側（刻度靠緊左框）；右緣仍吃滿
     # 舊 right_f=_STRUCTURE_FIG_RIGHT=0.905 → 右側大塊空白；改貼近 frame_right
-    left_f = frame_left + 0.010  # ≈0.026；Y 刻度手繪在軸內
-    right_f = frame_right - 0.008  # ≈0.974；線圖／量柱同步加寬
+    left_f = frame_left + 0.004  # ≈0.020；框內僅留一線縫
+    right_f = frame_right - 0.008  # ≈0.974
     assert left_f > frame_left and right_f < frame_right
-    assert (right_f - left_f) >= 0.92, "價／量縮圖區寬度不夠（v18 應吃右側空白）"
+    assert (right_f - left_f) >= 0.93, "價／量縮圖區寬度不夠"
+    # 開盤路徑右移：資料左緣負向 pad，讓 x=0（開）落在刻度字右側（線不准壓字）
+    x_label_pad = max(float(x_end) * 0.125, 30.0)  # 分钟；約軸寬 11–12.5% 給刻度字，線不准壓字
     # v14：時間戳旁黑標 → 頭欄變矮 → 十二格上移 → 價圖加高（智能標不擠）
     bars_top = 0.195
     xlab_bot = 0.205
@@ -2531,7 +2533,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         lo = min(lo, float(off.avg_price))
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
-    ax.set_xlim(0.0, x_end)
+    # v19：左 pad 讓開盤點／線讓出 Y 刻度字寬；右仍頂 x_end
+    ax.set_xlim(-float(x_label_pad), float(x_end))
     # 昨收參考虛線（填色基準）；五必標改 v13 圓章＋短虛線，不再拉滿幅水平線搶位
     ax.axhline(prev, color=MUTE, linestyle=(0, (4, 3)), linewidth=1.15, zorder=2, alpha=0.85)
     ax.fill_between(xs, prev, ys, where=ys >= prev, interpolate=True, color=UP, alpha=0.16, zorder=1)
@@ -2589,45 +2592,57 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         ax.plot([xs[-1]], [ys[-1]], "o", color=INK, markersize=5.5, zorder=8)
 
     # 量柱：只畫真量（Yahoo 1m／興櫃 priceByTimes 聚合）；不准造量。
-    # 缺分＝平鋪前收＋vol 0 → 灰 stub（誠實，不是假成交）。
-    # 色＝真該分收 vs 真前分收（首分 vs 昨收）：漲 UP 紅／跌 DN 綠／平灰。
-    # 整段單向＝整排單色屬真象，不准為「看起來有紅有綠」捏點或改色。
+    # v19：vol=0（缺分平鋪）→ **不畫柱**（舊灰 stub 高度是發明的，易被當假量）。
+    # 色＝該分收 vs 前分收：漲紅／跌綠；平盤真量→相對昨收淡紅／淡綠（不准再灰）。
     vs_arr = np.asarray(vs, dtype=float)
     ys_arr = np.asarray(ys, dtype=float)
     vs_log = np.log1p(np.maximum(vs_arr, 0.0))
     vmax_s = float(np.max(vs_log)) if len(vs_log) else 1.0
     vs_disp = np.power(vs_log / vmax_s, 0.55) * vmax_s if vmax_s > 0 else vs_log
-    stub = max(vmax_s * 0.05, 0.15)
     width = 0.92
-    flat_vol = "#9AA0A6"
-    real_mask = vs_arr > 0  # 只著色真量柱；vol=0 一律灰 stub
+    # 平盤淡色（台股紅漲綠跌語感；真量、非假柱；比舊灰好辨）
+    up_flat, dn_flat = "#E57373", "#4DB6AC"
+    real_mask = vs_arr > 0
+    n_flat = 0
+    n_zero = int(np.sum(~real_mask))
     if np.any(real_mask):
         vol_cols: List[str] = []
         for i in np.where(real_mask)[0]:
             yi = float(ys_arr[i])
-            # 前一分亦為路徑真值（缺分平鋪前收不算成交，但仍是誠實前收參考）
             ref = float(prev) if int(i) == 0 else float(ys_arr[int(i) - 1])
             if yi > ref:
                 vol_cols.append(UP)
             elif yi < ref:
                 vol_cols.append(DN)
             else:
-                vol_cols.append(flat_vol)
+                n_flat += 1
+                vol_cols.append(up_flat if yi >= float(prev) else dn_flat)
         vol_ax.bar(
             xs[real_mask], vs_disp[real_mask], width=width,
             color=vol_cols, alpha=0.92, zorder=3, linewidth=0, align="center",
         )
-    miss_mask = ~real_mask
-    if np.any(miss_mask):
-        vol_ax.bar(
-            np.asarray(xs)[miss_mask], np.full(int(np.sum(miss_mask)), stub),
-            width=width * 0.55, color="#D0D3D8", alpha=0.45, zorder=1, linewidth=0, align="center",
-        )
-    # v17：量圖不再掛 N% 錨；ylim 回復緊湊（僅柱）
-    vol_ax.set_ylim(0, max(vmax_s * 1.18, stub * 4))
+    # 無量缺分：不畫（路徑仍平鋪前收；量軸留空＝誠實無成交）
+    vol_ax.set_ylim(0, max(vmax_s * 1.18, 0.6))
+    fig._wayne_vol_bar_meta = {  # type: ignore[attr-defined]
+        "n": int(len(vs_arr)),
+        "n_zero_undrawn": n_zero,
+        "n_real": int(np.sum(real_mask)),
+        "n_flat_pale": n_flat,
+        "stub_drawn": False,
+    }
 
-    tick_h = [9, 10, 11, 12, 13, 14, 15] if is_em else [9, 10, 11, 12, 13]
-    tick_x = [(h - 9) * 60 for h in tick_h]
+    # 時軸與價／量同一 xmax：上市櫃 13:30(=270)、興櫃 15:00(=360)；標要讀得到終點
+    if is_em:
+        time_ticks: List[Tuple[str, float]] = [
+            ("09", 0.0), ("10", 60.0), ("11", 120.0), ("12", 180.0),
+            ("13", 240.0), ("14", 300.0), ("15", 360.0),
+        ]
+    else:
+        time_ticks = [
+            ("09", 0.0), ("10", 60.0), ("11", 120.0), ("12", 180.0),
+            ("13:30", 270.0),  # 不准只標到 13:00／看起來停在一點
+        ]
+    tick_x = [t[1] for t in time_ticks]
     for a in (ax, vol_ax):
         a.set_xticks(tick_x)
         a.tick_params(axis="x", length=0, labelbottom=False, bottom=False, top=False)
@@ -2635,11 +2650,11 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         for sp in a.spines.values():
             sp.set_visible(False)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
-    # v18：Y 刻度字改軸內手繪（mpl label 即使 direction=in 仍偏軸外，圈圖要框內）
+    # v19：Y 刻度貼左框內側；路徑已用 x_label_pad 右移，字與線分離
     import matplotlib.transforms as mtransforms
 
     ax.tick_params(
-        axis="y", colors=MUTE, length=3.2, labelsize=10,
+        axis="y", colors=MUTE, length=2.4, labelsize=10,
         direction="in", left=True, labelleft=False, right=False, labelright=False,
     )
     # 時間標：xlab 專帶（bars_top 之上、vol_bot 之下）；09／15 完整（FAIL#1/#2）
@@ -2653,13 +2668,13 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         # 整數價免小數；其餘跟 face 一致
         txt = f"{yv:.0f}" if abs(float(yv) - round(float(yv))) < 1e-6 else _fmt_face(float(yv))
         ax.text(
-            0.012, float(yv), txt,
+            0.004, float(yv), txt,  # 貼軸左＝貼外框內側
             transform=y_trans, ha="left", va="center",
             fontproperties=fp(10, False), color=MUTE, zorder=6, clip_on=True,
         )
     vol_ax.set_yticks([])
     vol_ax.text(
-        0.012, 0.90, "量(張)", transform=vol_ax.transAxes,
+        0.004, 0.90, "量(張)", transform=vol_ax.transAxes,
         fontproperties=fp(10, False), color=MUTE, va="top", ha="left",
     )
 
@@ -2670,26 +2685,35 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     # v17：全日對均量改寫十二格；分時量圖不准再掛 N% 錨
     label_gate = dict(getattr(fig, "_wayne_label_gate", {}) or {})
     label_gate["vol_ratio"] = quote_vol_meta
+    label_gate["x_label_pad"] = float(x_label_pad)
+    label_gate["vol_bars"] = dict(getattr(fig, "_wayne_vol_bar_meta", {}) or {})
     fig._wayne_label_gate = label_gate  # type: ignore[attr-defined]
 
     xlab_y = 0.5 * (xlab_bot + xlab_top)
     chart_w = right_f - left_f
-    for h, tx in zip(tick_h, tick_x):
-        xf = left_f + chart_w * (float(tx) / float(x_end))
-        # 左端 09 略內縮、右端 15／13 略內縮，避免貼框削邊
-        if h == tick_h[0]:
+    x_min = -float(x_label_pad)
+    x_span_data = float(x_end) - x_min
+    for i, (tlab, tx) in enumerate(time_ticks):
+        # 對齊 set_xlim(-pad, x_end)；價線／量柱同一窗，終點標＝session 真結束
+        xf = left_f + chart_w * ((float(tx) - x_min) / x_span_data)
+        if i == 0:
             xf = left_f + 0.006
             ha = "left"
-        elif h == tick_h[-1]:
+        elif i == len(time_ticks) - 1:
             xf = right_f - 0.006
             ha = "right"
         else:
             ha = "center"
         fig.text(
-            xf, xlab_y, f"{h:02d}",
-            fontproperties=fp(12, True), color="#3A3A3A", ha=ha, va="center",
+            xf, xlab_y, tlab,
+            fontproperties=fp(11 if ":" in tlab else 12, True), color="#3A3A3A",
+            ha=ha, va="center",
             transform=fig.transFigure, clip_on=False, zorder=35,
         )
+    label_gate["x_end"] = float(x_end)
+    label_gate["session_end"] = "15:00" if is_em else "13:30"
+    label_gate["time_ticks"] = [list(t) for t in time_ticks]
+    fig._wayne_label_gate = label_gate  # type: ignore[attr-defined]
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     fig.savefig(out_path, facecolor=PAPER, edgecolor="none")
@@ -2765,10 +2789,10 @@ def default_out_dir() -> str:
     if env:
         return env
     for store in (
+        "/cursor/stores/self/media/intraday-v19-left-axis-20261030",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v19-left-axis-20261030",
         "/cursor/stores/self/media/intraday-v18-gutter-20261030",
         "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v18-gutter-20261030",
-        "/cursor/stores/self/media/intraday-v17-vol-cell-20261030",
-        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v17-vol-cell-20261030",
     ):
         parent = os.path.dirname(store)
         if os.path.isdir(parent) or os.path.isdir(store):
@@ -2777,11 +2801,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v18（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v19（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v18")
+    ap.add_argument("--prefix", default="preview-v19")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     ap.add_argument(
         "--set",
@@ -2854,7 +2878,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "20261030"
         if any(
             str(args.prefix).startswith(p)
-            for p in ("preview-v15", "preview-v16", "preview-v17", "preview-v18")
+            for p in (
+                "preview-v15", "preview-v16", "preview-v17", "preview-v18", "preview-v19",
+            )
         )
         else "20261029"
     )
