@@ -1205,6 +1205,16 @@ class MainRunner:
         if count > inserted_count:
             inserted_count = count
 
+        # 興櫃與上市櫃日 K 同一趟必跑（2026-10-30 鎖死；失敗＝融合未完成）
+        em_req = self._sync_emerging_required(fuse_to, label="盤後增量")
+        if em_req.get("ok"):
+            logger.info("興櫃官方日均價寫入：%s", em_req.get("stats"))
+        else:
+            logger.error(
+                "興櫃日均價同步未完成（不准略過／不准假 success）：%s",
+                em_req.get("error") or em_req,
+            )
+
         try:
             from chips import update_chips_for_date, backfill_chips
             n = update_chips_for_date(self.db_path, self.today_str)
@@ -1277,13 +1287,6 @@ class MainRunner:
         except Exception as e:
             logger.error("洞燭先機走查失敗: %s", e, exc_info=True)
 
-        try:
-            from emerging_quotes import sync_emerging_quotes
-
-            em = sync_emerging_quotes(self.db_path, cap=fuse_to)
-            logger.info("興櫃官方日均價寫入：%s", em)
-        except Exception as e:
-            logger.warning("興櫃日均價同步略過：%s", e)
         try:
             from fundamentals import sync_fundamentals
             fund = sync_fundamentals(self.db_path)
@@ -1645,6 +1648,53 @@ class MainRunner:
         from import_health import increment_health_ok
 
         return increment_health_ok(health)
+
+    def _sync_emerging_required(
+        self, cap: str, *, label: str = "興櫃"
+    ) -> Dict[str, Any]:
+        """開市日盤後：興櫃與上市櫃日 K 同一趟必跑；失敗不准假 success。
+
+        回傳 ok／em／error。例外或當日列數 < MIN_EM → ok=False（呼叫端蓋 incomplete）。
+        """
+        from emerging_quotes import emerging_rows_on, sync_emerging_quotes
+        from import_health import MIN_EM
+
+        day = str(cap or "").replace("-", "")[:8]
+        out: Dict[str, Any] = {
+            "ok": False,
+            "cap": day,
+            "em": 0,
+            "label": str(label or "興櫃"),
+            "error": "",
+            "stats": {},
+        }
+        if len(day) != 8 or not day.isdigit():
+            out["error"] = f"{out['label']} cap 無效"
+            logger.error("%s", out["error"])
+            return out
+        try:
+            stats = sync_emerging_quotes(self.db_path, cap=day) or {}
+            out["stats"] = dict(stats) if isinstance(stats, dict) else {"raw": stats}
+        except Exception as e:
+            out["error"] = f"{out['label']} sync_emerging_quotes 失敗：{e}"
+            logger.error("%s", out["error"], exc_info=True)
+            return out
+        em = int(emerging_rows_on(self.db_path, day) or 0)
+        out["em"] = em
+        need = int(MIN_EM)
+        if em < need:
+            out["error"] = f"{out['label']} {day} 興櫃 {em}/{need} 未齊"
+            logger.error("%s（融合不准假 success）", out["error"])
+            return out
+        out["ok"] = True
+        logger.info(
+            "%s 興櫃必跑完成 cap=%s em=%s stats=%s",
+            out["label"],
+            day,
+            em,
+            out.get("stats"),
+        )
+        return out
 
     def _refresh_dongzhu_after_close(self, cap: str = "") -> Dict[str, Any]:
         """盤後日K＋法人齊了才重算洞燭。捕捉是機制內任何一檔，不鎖矽格。匯入晚到不准用未收完柱。"""
@@ -2368,13 +2418,14 @@ class MainRunner:
                     from import_health import audit_import, format_audit_plain
 
                     cap = fuse_end_date()
-                    try:
-                        from emerging_quotes import emerging_rows_on, sync_emerging_quotes
-
-                        ems = sync_emerging_quotes(self.db_path, cap=cap)
-                        logger.info("興櫃收盤再寫：%s", ems)
-                    except Exception as e_em:
-                        logger.warning("興櫃收盤再寫略過：%s", e_em)
+                    em_again = self._sync_emerging_required(cap, label="興櫃收盤再寫")
+                    if em_again.get("ok"):
+                        logger.info("興櫃收盤再寫：%s", em_again.get("stats"))
+                    else:
+                        logger.error(
+                            "興櫃收盤再寫未完成（不准略過）：%s",
+                            em_again.get("error") or em_again,
+                        )
                     health = audit_import(self.db_path, cap)
                     try:
                         wd = datetime.strptime(cap, "%Y%m%d").weekday()
@@ -2401,19 +2452,30 @@ class MainRunner:
                                 backfill_chips(self.db_path, days=90)
                             except Exception as e_chip:
                                 logger.warning("補齊輪法人再抓略過：%s", e_chip)
-                            try:
-                                from emerging_quotes import sync_emerging_quotes
-
-                                em = sync_emerging_quotes(self.db_path, cap=cap)
-                                logger.info("興櫃補齊寫入：%s", em)
-                            except Exception as e_em:
-                                logger.warning("興櫃補齊略過：%s", e_em)
+                            em_fill = self._sync_emerging_required(
+                                cap, label="興櫃補齊寫入"
+                            )
+                            if em_fill.get("ok"):
+                                logger.info("興櫃補齊寫入：%s", em_fill.get("stats"))
+                            else:
+                                logger.error(
+                                    "興櫃補齊寫入未完成（不准略過）：%s",
+                                    em_fill.get("error") or em_fill,
+                                )
                             health = audit_import(self.db_path, cap)
                             if self._increment_ok(health):
                                 break
                     elapsed = time.time() - start_time
-                    if not self._increment_ok(health):
+                    # 興櫃缺日／同步失敗 → 一律 incomplete（不准假 success）
+                    em_gate = self._sync_emerging_required(cap, label="融合興櫃閘")
+                    health = dict(health or {})
+                    health["em"] = int(em_gate.get("em") or health.get("em") or 0)
+                    listed_ok = self._increment_ok(health)
+                    if not em_gate.get("ok") or not listed_ok:
                         note = format_audit_plain(health)
+                        err = str(em_gate.get("error") or "").strip()
+                        if err and err not in note:
+                            note = f"{note}；{err}" if note else err
                         self._mark_pipeline("incomplete", note[:500])
                         logger.error("盤後仍待補：%s", note)
                         if notify:
@@ -2424,13 +2486,6 @@ class MainRunner:
                             except Exception:
                                 pass
                         return False
-                    health = dict(health or {})
-                    try:
-                        from emerging_quotes import emerging_rows_on
-
-                        health["em"] = emerging_rows_on(self.db_path, cap)
-                    except Exception:
-                        health.setdefault("em", int(health.get("em") or 0))
                     self._mark_pipeline(
                         "success",
                         f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} "

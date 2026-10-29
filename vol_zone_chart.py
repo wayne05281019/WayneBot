@@ -107,7 +107,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 64
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 67  # v2e：還原淡灰藍平行軌＋收普通日改字色（2026-10-29）
+_VZ_PAINT_VER = 68  # 表頭收旁真昨收漲跌點／％同列（2026-10-30）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -6765,6 +6765,43 @@ def _paint_volume_zone(
             else "收"
         )
         close_bit = f"{close_lab}{_fmt_price(close_px)}"
+        # 收／現旁同列：真昨收漲跌點＋％（字不必大；不准跨行；不准假數）
+        move_bit = ""
+        move_chg = None
+        move_pct = None
+        if hdr_quote and hdr_quote.get("change") is not None and hdr_quote.get("pct") is not None:
+            try:
+                move_chg = float(hdr_quote["change"])
+                move_pct = float(hdr_quote["pct"])
+            except (TypeError, ValueError):
+                move_chg = move_pct = None
+        if (
+            (move_chg is None or move_pct is None)
+            and prev_close_hdr is not None
+            and float(prev_close_hdr or 0) > 0
+            and float(close_px or 0) > 0
+        ):
+            try:
+                prev_v = float(prev_close_hdr)
+                move_chg = round(float(close_px) - prev_v, 4)
+                if abs(move_chg) < 1e-9:
+                    move_chg = 0.0
+                    move_pct = 0.0
+                else:
+                    move_pct = round(move_chg / prev_v * 100.0, 2)
+            except (TypeError, ValueError, ZeroDivisionError):
+                move_chg = move_pct = None
+        if move_chg is not None and move_pct is not None:
+            try:
+                from tg_layout import format_move_plain
+
+                # 同列緊湊：去三角後空白，免表頭右緣裁掉％
+                _mv = format_move_plain(move_chg, move_pct).replace("▲ ", "▲").replace(
+                    "▼ ", "▼"
+                )
+                move_bit = " " + _mv
+            except Exception:
+                move_bit = ""
         _lim = ""
         try:
             from wayne_navigator import LOOKUP_QUOTE_FLAT, quote_limit_side, quote_move_ink
@@ -6773,6 +6810,8 @@ def _paint_volume_zone(
             close_ink = quote_move_ink(
                 close=float(close_px),
                 prev=prev_close_hdr,
+                change=move_chg,
+                pct=move_pct,
                 up=_UP,
                 down=_DN,
                 flat=LOOKUP_QUOTE_FLAT,
@@ -6781,7 +6820,7 @@ def _paint_volume_zone(
                 quote_limit_side(
                     float(close_px),
                     prev_close_hdr,
-                    None,
+                    move_pct,
                 )
                 or ""
             )
@@ -6794,6 +6833,7 @@ def _paint_volume_zone(
         try:
             fig._wayne_close_move_ink = str(close_ink)  # type: ignore[attr-defined]
             fig._wayne_close_limit_side = str(_lim or "")  # type: ignore[attr-defined]
+            fig._wayne_close_move_plain = str(move_bit or "").strip()  # type: ignore[attr-defined]
         except Exception:
             pass
         intro_right = str(ex_title or "")
@@ -6807,9 +6847,10 @@ def _paint_volume_zone(
             fontproperties=_fp(15.0, "bold"),
             color=_TEXT,
         )
-        # 第二排：量測實際字寬後置中，讓「收XXXX」稍大緊接開高低；色＝漲跌
+        # 第二排：量測實際字寬後置中；「收XXXX」稍大，漲跌點／％同列較小緊接
         _fp_intro = _fp(13.0, "bold")
         _fp_close = _fp(15.6, "bold")  # 收XXXX 稍大一點點
+        _fp_move = _fp(11.2, "bold")  # 漲跌點／％：不用大、不准跨行
         _t_left = ax_head.text(
             0.0,
             0.78,
@@ -6834,6 +6875,20 @@ def _paint_volume_zone(
             zorder=13,
             alpha=0.0,
         )
+        _t_move = None
+        if move_bit:
+            _t_move = ax_head.text(
+                0.0,
+                0.78,
+                move_bit,
+                transform=ax_head.transAxes,
+                ha="left",
+                va="top",
+                fontproperties=_fp_move,
+                color=close_ink,
+                zorder=13,
+                alpha=0.0,
+            )
         _t_right = None
         if intro_right:
             _t_right = ax_head.text(
@@ -6859,27 +6914,37 @@ def _paint_volume_zone(
 
             _w_left = _ax_w(_t_left)
             _w_close = _ax_w(_t_close)
+            _w_move = _ax_w(_t_move) if _t_move is not None else 0.0
             _w_right = _ax_w(_t_right) if _t_right is not None else 0.0
-            _w_total = _w_left + _w_close + _w_right
+            _w_total = _w_left + _w_close + _w_move + _w_right
             _x0 = 0.5 - 0.5 * _w_total
             _t_left.set_position((_x0, 0.78))
             _t_left.set_alpha(1.0)
             _t_close.set_position((_x0 + _w_left, 0.78))
             _t_close.set_alpha(1.0)
+            _x_after_close = _x0 + _w_left + _w_close
+            if _t_move is not None:
+                _t_move.set_position((_x_after_close, 0.78))
+                _t_move.set_alpha(1.0)
+                _x_after_close += _w_move
             if _t_right is not None:
-                _t_right.set_position((_x0 + _w_left + _w_close, 0.78))
+                _t_right.set_position((_x_after_close, 0.78))
                 _t_right.set_alpha(1.0)
         except Exception:
             logger.exception("大量區表頭收字置中失敗 sid=%s", sid)
             _t_left.set_alpha(1.0)
             _t_close.set_alpha(1.0)
+            if _t_move is not None:
+                _t_move.set_alpha(1.0)
             if _t_right is not None:
                 _t_right.set_alpha(1.0)
             _t_left.set_ha("right")
             _t_left.set_position((0.50, 0.78))
             _t_close.set_position((0.50, 0.78))
+            if _t_move is not None:
+                _t_move.set_position((0.58, 0.78))
             if _t_right is not None:
-                _t_right.set_position((0.62, 0.78))
+                _t_right.set_position((0.68, 0.78))
         # 日標已改掛主K上框內側；表頭只留介紹＋圖例（原比例）
         try:
             from wayne_navigator import _draw_nav_legend
@@ -6891,6 +6956,19 @@ def _paint_volume_zone(
     elif market_wide:
         # 左：圖名。右：橘標。下一列整行當天開高低收。橘標不准壓住價那一行。
         ax1.set_title("")
+        _mw_move = ""
+        if n >= 2:
+            try:
+                from tg_layout import format_move_plain
+
+                _p0 = float(view.iloc[-2]["close"])
+                _c0 = float(last["close"])
+                if _p0 > 0:
+                    _d0 = round(_c0 - _p0, 4)
+                    _pct0 = 0.0 if abs(_d0) < 1e-9 else round(_d0 / _p0 * 100.0, 2)
+                    _mw_move = " " + format_move_plain(_d0, _pct0)
+            except Exception:
+                _mw_move = ""
         _paint_market_vol_header(
             fig,
             ax1,
@@ -6900,17 +6978,32 @@ def _paint_volume_zone(
                 f"最近 {_md(last.get('date'))} "
                 f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
                 f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
+                f"{_mw_move}"
                 f"{ex_title}"
             ),
             orange=path_shown,
         )
     else:
+        _pl_move = ""
+        if n >= 2:
+            try:
+                from tg_layout import format_move_plain
+
+                _p1 = float(view.iloc[-2]["close"])
+                _c1 = float(last["close"])
+                if _p1 > 0:
+                    _d1 = round(_c1 - _p1, 4)
+                    _pct1 = 0.0 if abs(_d1) < 1e-9 else round(_d1 / _p1 * 100.0, 2)
+                    _pl_move = " " + format_move_plain(_d1, _pct1)
+            except Exception:
+                _pl_move = ""
         title = (
             f"{sid} {name}　大量區專圖（非買訊・{src_note}）\n"
             f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
             f"最近 {_md(last.get('date'))} "
             f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
             f"低{_fmt_price(last['low'])} 收{_fmt_price(last['close'])}"
+            f"{_pl_move}"
             f"{ex_title}"
         )
         ax1.set_title(title, fontproperties=_fp(13, "bold"), pad=14, color=_TEXT)
