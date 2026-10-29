@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Preview-only v16：今日開→收墨線臉（查股第 5 張候選）。
+"""Preview-only v17：今日開→收墨線臉（查股第 5 張候選）。
 
-對齊 docs/intraday-v16-polish-20261030.md：
-均錨貼走線最近分钟；量框略拉高解卡框；量％＝當日量÷近60交易日均量×100。
-
-不准假資料、不准接話筒／合 main。改量％文案等使用者。
+對齊 docs/intraday-v17-vol-cell-20261030.md：
+拿掉分時量圖 N% 錨；十二格一格寫「約N倍均量」（當日全天量÷近60有量日均量）；
+色＝收相對昨收（漲紅／跌綠／平灰）。不准假資料、不准接話筒／合 main。
 """
 from __future__ import annotations
 
@@ -1910,8 +1909,34 @@ def _amt_vs_prev_cell(off: OfficialDay, *, up: str, dn: str, ink: str) -> Tuple[
     return main, ink, "0.0%"
 
 
-def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
-    """v14：12 格；今量／今額主字與 ±張／±％左右並排（壓低格高）。不准假停板。"""
+def _vol_vs_qavg_cell(
+    off: OfficialDay, *, up: str, dn: str, ink: str, mute: str
+) -> Tuple[str, str, str, float]:
+    """十二格「量／均量」：當日全天量÷近60有量日均量。
+
+    回 (lab, 主文, 色, ratio)。無季均／無量→主文「—」、色 mute、ratio=0。
+    色只認收相對昨收：漲＝紅(買多)、跌＝綠(賣多)、平＝灰。不准捏數。
+    """
+    lab = "量／均量"
+    qavg = off.q_avg_vol_lots
+    if not qavg or float(qavg) <= 0 or not off.volume_lots or float(off.volume_lots) <= 0:
+        return lab, "—", mute, 0.0
+    ratio = float(off.volume_lots) / float(qavg)
+    # 白話：約 N.N 倍均量（一眼懂；不再掛分時 N%）
+    main = f"約{ratio:.1f}倍均量"
+    prev = float(off.prev_close) if off.prev_close else 0.0
+    close = float(off.close)
+    if prev > 0 and close > prev:
+        col = up  # 偏買／買入爆量語感 → 紅
+    elif prev > 0 and close < prev:
+        col = dn  # 偏賣／被賣出多 → 綠
+    else:
+        col = mute
+    return lab, main, col, ratio
+
+
+def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
+    """v17：12 格；第三排一格寫全日對均量；另一格留白。不准假停板。"""
     from ink_chart_theme import DN, INK, MUTE, PAPER, UP, fp
     from matplotlib.patches import FancyBboxPatch
 
@@ -1939,6 +1964,9 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
     )
     vol_main, vol_col, vol_sub = _vol_vs_prev_cell(off, up=UP, dn=DN, ink=INK)
     amt_main, amt_col, amt_sub = _amt_vs_prev_cell(off, up=UP, dn=DN, ink=INK)
+    qavg_lab, qavg_val, qavg_col, qavg_ratio = _vol_vs_qavg_cell(
+        off, up=UP, dn=DN, ink=INK, mute=MUTE
+    )
     # (lab, main, color, sub_or_None, side_by_side)；lab="" 且 main=""＝留白格
     cells: List[Tuple[str, str, str, Optional[str], bool]] = [
         ("今開盤價", _fmt_face(off.open), INK, None, False),
@@ -1951,8 +1979,8 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
         ("昨成交金額", prev_amt_val, INK, None, False),
         (avg_lab, avg_val, INK, None, False),
         ("今日振幅", amp_val, INK, None, False),
-        ("", "", MUTE, None, False),  # 留白（取消漲停）
-        ("", "", MUTE, None, False),  # 留白（取消跌停）
+        (qavg_lab, qavg_val, qavg_col, None, False),  # v17：全日對均量
+        ("", "", MUTE, None, False),  # 另一格留白
     ]
 
     cols = 4
@@ -2008,9 +2036,11 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
                 zorder=3, clip_on=False,
             )
         else:
+            # 長主文（如「約7.0倍均量」）略縮字，免頂格
+            vfs = val_fs if len(str(val)) <= 8 else max(9.5, val_fs - 2.5)
             quote_ax.text(
                 x + cell_w * 0.5, y + cell_h * 0.30, val,
-                fontproperties=fp(val_fs, True), color=col, ha="center", va="center",
+                fontproperties=fp(vfs, True), color=col, ha="center", va="center",
                 zorder=3, clip_on=False,
             )
     if has_note:
@@ -2022,6 +2052,17 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> None:
         )
     quote_ax.set_xlim(0, 1)
     quote_ax.set_ylim(0, 1)
+    return {
+        "on_chart": False,
+        "in_quote_cell": True,
+        "pass": True,
+        "text": qavg_val,
+        "ratio": float(qavg_ratio),
+        "pct": int(round(qavg_ratio * 100)) if qavg_ratio > 0 else None,
+        "bar_hit": False,
+        "chip_hit": False,
+        "skipped": qavg_ratio <= 0,
+    }
 
 
 def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right: float) -> Optional[float]:
@@ -2475,7 +2516,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     )
     quote_ax.set_facecolor(PAPER)
     quote_ax.patch.set_alpha(1.0)
-    _paint_quote_grid(quote_ax, off)
+    quote_vol_meta = _paint_quote_grid(quote_ax, off)
     # 硬閘：報價格底緣必須在價圖頂之上
     assert float(quote_ax.get_position().y0) >= float(main_top) - 1e-6
 
@@ -2579,8 +2620,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
             np.asarray(xs)[miss_mask], np.full(int(np.sum(miss_mask)), stub),
             width=width * 0.55, color="#D0D3D8", alpha=0.45, zorder=1, linewidth=0, align="center",
         )
-    # v16：頭頂留白再加一點，量％完整標不卡框（實心錨仍貼峰；標虛線拉上）
-    vol_ax.set_ylim(0, max(vmax_s * 1.45, stub * 4))
+    # v17：量圖不再掛 N% 錨；ylim 回復緊湊（僅柱）
+    vol_ax.set_ylim(0, max(vmax_s * 1.18, stub * 4))
 
     tick_h = [9, 10, 11, 12, 13, 14, 15] if is_em else [9, 10, 11, 12, 13]
     tick_x = [(h - 9) * 60 for h in tick_h]
@@ -2609,18 +2650,12 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     )
 
     # 底三條：左／右對齊共線外框（v8 用 left_f～0.82 與框錯位）
-    vol_ratio = _paint_range_bars(
+    _paint_range_bars(
         fig, off, y_bot=0.016, left=frame_left, right=frame_right,
     )
-    # v14 量％：高峰錨＋短虛線拉淨空（對齊主圖現價 OK；不准壓柱）
-    vol_gate = _paint_vol_ratio_smart(
-        vol_ax, xs, vs_disp, float(vol_ratio) if vol_ratio is not None else 0.0,
-        up=UP, dn=DN, ink=INK, paper=PAPER,
-    )
+    # v17：全日對均量改寫十二格；分時量圖不准再掛 N% 錨
     label_gate = dict(getattr(fig, "_wayne_label_gate", {}) or {})
-    label_gate["vol_ratio"] = vol_gate
-    if vol_gate and vol_gate.get("pass") is False:
-        label_gate["pass"] = False
+    label_gate["vol_ratio"] = quote_vol_meta
     fig._wayne_label_gate = label_gate  # type: ignore[attr-defined]
 
     xlab_y = 0.5 * (xlab_bot + xlab_top)
@@ -2716,10 +2751,10 @@ def default_out_dir() -> str:
     if env:
         return env
     for store in (
+        "/cursor/stores/self/media/intraday-v17-vol-cell-20261030",
+        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v17-vol-cell-20261030",
         "/cursor/stores/self/media/intraday-v16-polish-20261030",
         "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v16-polish-20261030",
-        "/cursor/stores/self/media/intraday-v15-art-fix-20261030",
-        "/cursor/stores/bc-01a0d9ba-b7e3-7f56-802d-4c6e57f8ad9e/media/intraday-v15-art-fix-20261030",
     ):
         parent = os.path.dirname(store)
         if os.path.isdir(parent) or os.path.isdir(store):
@@ -2728,11 +2763,11 @@ def default_out_dir() -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v16（不接話筒；真數；不合主）")
+    ap = argparse.ArgumentParser(description="Preview ink 今日開→收 v17（不接話筒；真數；不合主）")
     ap.add_argument("--out-dir", default=default_out_dir())
     ap.add_argument("--db", default=os.path.join(_ROOT, "data", "wayne_market.db"))
     ap.add_argument("--ymd", default=ASOF_YMD)
-    ap.add_argument("--prefix", default="preview-v16")
+    ap.add_argument("--prefix", default="preview-v17")
     ap.add_argument("--only", default="", help="comma stock ids; empty=all")
     ap.add_argument(
         "--set",
@@ -2803,8 +2838,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     stamp_day = (
         "20261030"
-        if str(args.prefix).startswith("preview-v15")
-        or str(args.prefix).startswith("preview-v16")
+        if any(
+            str(args.prefix).startswith(p)
+            for p in ("preview-v15", "preview-v16", "preview-v17")
+        )
         else "20261029"
     )
     manifest = os.path.join(out_dir, f"{args.prefix}-manifest-{stamp_day}.txt")
