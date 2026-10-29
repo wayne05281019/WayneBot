@@ -530,9 +530,9 @@ def test_vol_zone_main_tag_is_largest_role_tier():
 
     from vol_zone_chart import _paint_key_zone_smart_tags
 
-    assert VOL_ZONE_TAG_PT == 14
+    assert VOL_ZONE_TAG_PT == 12.5
     assert VOL_ZONE_TAG_PT > float(LAYER_TAG_PT)
-    assert float(VOL_ZONE_TAG_PAD) > 0.20
+    assert float(VOL_ZONE_TAG_PAD) >= 0.20
     paint_src = inspect.getsource(_paint_volume_zone)
     key_src = inspect.getsource(_paint_key_zone_smart_tags)
     src = inspect.getsource(render_volume_zone_png) + paint_src + key_src

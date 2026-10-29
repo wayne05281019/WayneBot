@@ -60,11 +60,11 @@ VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
 # 查股結構／大量區 ensure 並行抓月表：上限 3，縮短第二→第三體感；不准跳過真量
 _ENSURE_MONTH_FETCH_WORKERS = 3
-# 現任主大量區壓／撐＝大檔字級（兩者同大）。略縮自舊 16，但仍須明顯大於下一層
-# （biaoke_next_support.LAYER_TAG_PT≈8.5）。大小跟「是否現任主區」走：find_volume_zone
-# 重算後新主區走這條大檔；下一層／更下層永遠小檔——不准寫死文案名決定大小。
-VOL_ZONE_TAG_PT = 14
-VOL_ZONE_TAG_PAD = 0.24  # 主區框；略縮自 0.30，仍大於下一層 LAYER_TAG_PAD
+# 現任主大量區壓／撐＝大檔字級（兩者同大）。2026-10-29 再略縮自 14（減雜訊；
+# 仍明顯大於舊下一層 LAYER_TAG_PT≈8.5）。大小跟「是否現任主區」走：find_volume_zone
+# 重算後新主區走這條大檔；下一層現改淺灰價帶不畫角標。
+VOL_ZONE_TAG_PT = 12.5
+VOL_ZONE_TAG_PAD = 0.21  # 主區框；隨字級略縮，仍大於舊 LAYER_TAG_PAD
 VOL_ZONE_JPEG_QUALITY = 95
 VOL_ZONE_FIG_W = 12.4  # 略放大；左側空白回收給 K 區
 VOL_ZONE_FIG_H_NAV = 9.35

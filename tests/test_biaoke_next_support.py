@@ -362,6 +362,21 @@ def test_layer_tag_size_delta_uniform():
     assert 'layer_labels="smart"' in open("biaoke_chart.py", encoding="utf-8").read()
 
 
+def test_paint_next_layer_defaults_to_grey_band_only():
+    """2026-10-29：下一層產品臉＝淺灰價帶；預設不畫虛線／下一層壓撐標。"""
+    import inspect
+
+    from biaoke_next_support import paint_written_and_next_levels
+
+    src = inspect.getsource(paint_written_and_next_levels)
+    assert 'layer_marks: str = "band"' in src
+    assert "axhspan" in src
+    assert "zorder=0.5" in src
+    assert "draw_layer_lines" in src
+    sig = inspect.signature(paint_written_and_next_levels)
+    assert sig.parameters["layer_marks"].default == "band"
+
+
 def test_paint_uses_cjk_fontproperties():
     """第 4 張水平標必須帶 fontproperties，避免 DejaVu 方塊亂碼。"""
     import inspect
