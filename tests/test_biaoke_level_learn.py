@@ -112,3 +112,5 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "0.382" in src and "0.618" in src and "0.75" in src
     assert "45546" in src and "44210" in src
     assert "C3-3" in src
+    assert "1-4" in src and "動態修正" in src
+    assert "48066" in src or "rule14" in src

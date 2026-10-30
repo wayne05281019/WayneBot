@@ -376,14 +376,15 @@ def _latest_level_thesis(db_path: str) -> Dict[str, str]:
         conn.close()
     snip = str((row["snippet"] if row else "") or "")
     # 他確認的大結構：五波後接下降ABC；10/14夜～10/15日 C 啟動；現況在 C 內
-    thesis = "五波後下降ABC・現在在C"
-    wait = "C 段內細微／前波低（他點過的錨）"
+    # 位階＝當下符合兩則鐵律的預估；穿刺原規劃→動態修正（不是鎖死）
+    thesis = "五波後下降ABC・現在在C（預估・可修正）"
+    wait = "C內細微／1-4鍵／前波低；不符鐵律就改口重畫"
     if "C3-3-1" in snip and "C3-3-2" in snip:
-        thesis = "五波後下降ABC・C內＝C3-3（1→2）"
-        wait = "下一測他點過的 8/25 相對錨；無爆量≠止穩"
+        thesis = "五波後下降ABC・C內＝C3-3（1→2・預估）"
+        wait = "下一測他點過錨；1-4／鐵律不符→動態修正"
     elif "C3-3" in snip:
-        thesis = "五波後下降ABC・C內＝C3-3主跌"
-        wait = "C3-3 段內細微切換＋前波低是否碰到"
+        thesis = "五波後下降ABC・C內＝C3-3主跌（預估）"
+        wait = "C3-3細微＋1-4鍵；穿刺原規劃→重修位階"
     elif "橫台" in snip or "中繼" in snip:
         thesis = "五波後下降ABC・C內橫台中繼"
         wait = "中繼後原方向；不過壓／拖太久→續C"
@@ -804,6 +805,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     - B＝反彈且低於⑤（10/14 高）
     - C＝10/14夜〜10/15日他確認啟動 → 現況 C3-3
     - 黃金切割：他 10/27 台指日盤反彈 0.382／0.618／0.75 壓力
+    - 1-4 鐵律：他 10/21「穿刺48066才1-4不重疊，否則再一組5跌」
+    - 兩則鐵律不符 → 動態修正（他 10/27／10/30）；圖上位階＝當下預估不是鎖死
     日期軸必標；右側價標錯開；不准註解黏成一團。
     """
     try:
@@ -854,6 +857,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         (48613.0, "0.618 48613", "#ffd54f"),
         (49160.0, "0.75 49160", "#ffca28"),
     )
+    # 1-4 鐵律關鍵：他 10/21「穿刺48066才1-4不重疊，否則再一組5跌」
+    # （第一組下跌5完後的反彈；不是亂標支撐）
+    rule14_y = float(y_alow)  # 與 10/13 低／他點 48066 同帶
+    rule14_lab = f"1-4鍵 {_px(rule14_y)}"
 
     fig, (ax, axv) = plt.subplots(
         2,
@@ -936,13 +943,14 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         )
     ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.8, zorder=5)
 
-    # Fib 反彈壓（他用過的）＋關鍵位
+    # Fib 反彈壓＋1-4 鍵（他用過的）
     for y, _lab, col in fib_levels:
         ax.axhline(y, color=col, lw=0.85, ls=(0, (3, 2)), alpha=0.7, zorder=4)
+    ax.axhline(rule14_y, color="#ffffff", lw=1.15, ls=(0, (6, 2)), alpha=0.9, zorder=5)
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B {_px(y_bhi)}", "color": "#40c4ff"},
-        {"x": i_alow, "y": y_alow, "text": f"A低 {_px(y_alow)}", "color": "#ef9a9a"},
+        {"x": i_alow, "y": rule14_y, "text": rule14_lab, "color": "#ffffff"},
         {"x": n - 1, "y": 47637.0, "text": "Fib0.382", "color": "#ffe082"},
         {"x": n - 1, "y": 48613.0, "text": "Fib0.618", "color": "#ffd54f"},
         {"x": n - 1, "y": 49160.0, "text": "Fib0.75", "color": "#ffca28"},
@@ -999,7 +1007,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.938,
-        "⑤終10/6　A↓10/13　B↑10/14（低於⑤）　C啟動10/15（他原文）　虛線＝C進行中　Fib＝他10/27反彈壓",
+        "⑤終10/6　A↓10/13　B↑10/14（低於⑤）　C啟動10/15　白虛線＝1-4鍵（他10/21：穿刺才不重疊）　Fib＝10/27",
         fontproperties=_fp(10, "bold"),
         color=_LIVE_MUTED,
         ha="left",
@@ -1007,8 +1015,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     caps = [
         str(pack.get("thesis") or "五波後下降ABC・現在在C"),
-        "鐵律：⑤高 > B高；現況C3-3；45546已破；44210未到；無爆量≠止穩",
-        str(pack.get("us_note") or "")[:72],
+        "兩則鐵律＋1-4：不符就動態修正（他原文靈魂）；位階＝當下預估不是永遠鎖死",
+        "現況C3-3；45546已破；44210未到；無爆量≠止穩｜"
+        + str(pack.get("us_note") or "")[:42],
     ]
     y = 0.070
     for line in caps:
