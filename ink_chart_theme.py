@@ -2391,7 +2391,8 @@ def vol_labels(ink: Ink, header, main, sig, volume) -> None:
             continue
         if s.startswith("除息") or s.startswith("除權"):
             ink.sticker(t, fc=VIOLET, tc=PAPER, pad=0.24, shadow=False, role="ex_div")
-    # 日況標（10月27日 撐為…）：字級／框略加大，仍靠主圖右內緣、不壓死最近 K
+    # 日況標（10月27日 撐為…）：字級／框略加大。
+    # 第四包底座：paint 已掃 occupied＋k_hits；墨線只美化，不准把框扳回壓 K。
     for t in list(main.texts):
         s = str(t.get_text())
         if "\n" not in s or not t.get_visible() or t.get_bbox_patch() is None:
@@ -2401,7 +2402,6 @@ def vol_labels(ink: Ink, header, main, sig, volume) -> None:
         se = ink.shell_ext(t)
         l1, l2 = s.split("\n", 1)
         size = float(t.get_fontsize())
-        # 比上一版明顯大一點（約 +2.4～+2.8pt）
         p1 = fp(size + 2.8, heavy=True)
         p2 = fp(size + 2.2, heavy=True)
         w1, h1, d1 = ink.measure(l1, p1)
@@ -2411,21 +2411,74 @@ def vol_labels(ink: Ink, header, main, sig, volume) -> None:
         bw = max(w1, w2) + 2 * padx
         hh = h1 + 2 * pady
         bh = h2 + 2 * pady
-        # 右齊主圖內緣，左移不得蓋最近 K（留約 1.2 根寬）
         main_bb = main.get_window_extent(ink.ren)
-        x1 = float(main_bb.x1) - ink.pt(8)
-        x0 = x1 - bw
-        # 若原位偏左，仍靠右
-        if se.x1 < x1 - ink.pt(12):
-            pass
-        cy = 0.5 * (se.y0 + se.y1)
-        ytop = cy + (hh + bh) / 2
-        ybot = ytop - hh - bh
-        # 若頂穿主圖上緣，整塊下移
-        if ytop > float(main_bb.y1) - ink.pt(4):
-            dy = ytop - (float(main_bb.y1) - ink.pt(4))
-            ytop -= dy
-            ybot -= dy
+        # 候選：先保留 paint 掃到的殼心，再試右上／左上；以 K 實體像素碰撞為閘
+        candle_bbs: List[Bbox] = []
+        for p in main.patches:
+            if not isinstance(p, Rectangle):
+                continue
+            try:
+                if str(p.get_gid() or "").startswith("ink:"):
+                    continue
+            except Exception:
+                pass
+            w = abs(float(p.get_width()))
+            if 0.05 <= w <= 1.25 and abs(float(p.get_height())) > 0:
+                try:
+                    candle_bbs.append(p.get_window_extent(ink.ren))
+                except Exception:
+                    pass
+
+        def _hits(box: Bbox) -> int:
+            n_hit = 0
+            for b in candle_bbs:
+                xo = min(float(box.x1), float(b.x1)) - max(float(box.x0), float(b.x0))
+                yo = min(float(box.y1), float(b.y1)) - max(float(box.y0), float(b.y0))
+                if xo > 2.0 and yo > 2.0:
+                    n_hit += 1
+            return n_hit
+
+        margin = ink.pt(4.0)
+        right = float(main_bb.x1) - margin
+        left_lim = float(main_bb.x0) + margin
+        top_lim = float(main_bb.y1) - margin
+        bot_lim = float(main_bb.y0) + margin
+        total_h = hh + bh
+        cands: List[Tuple[float, float, float, float]] = []
+        # 1) paint 原位（殼心）
+        cx = 0.5 * (float(se.x0) + float(se.x1))
+        cy = 0.5 * (float(se.y0) + float(se.y1))
+        x0 = min(max(cx - bw * 0.5, left_lim), right - bw)
+        ytop = min(max(cy + total_h * 0.5, bot_lim + total_h), top_lim)
+        cands.append((x0, ytop - total_h, x0 + bw, ytop))
+        # 2) 右上／左上／右中
+        for x1c, y1c in (
+            (right, top_lim),
+            (left_lim + bw, top_lim),
+            (right, top_lim - total_h * 0.8),
+            (right, bot_lim + total_h + ink.pt(8)),
+        ):
+            x0c = x1c - bw
+            y0c = y1c - total_h
+            if x0c < left_lim - 1 or y0c < bot_lim - 1:
+                continue
+            cands.append((x0c, y0c, x1c, y1c))
+        chosen = None
+        best = None
+        for x0c, y0c, x1c, y1c in cands:
+            box = Bbox.from_extents(x0c, y0c, x1c, y1c)
+            hits = _hits(box)
+            score = (hits, -y1c, -x1c)
+            if best is None or score < best[0]:
+                best = (score, x0c, y0c, x1c, y1c)
+            if hits == 0:
+                chosen = (x0c, y0c, x1c, y1c)
+                break
+        if chosen is None:
+            # 底線：仍壓 K → 藏原標，不准墨線硬蓋（對齊第四包 k_hits＝0）
+            t.set_visible(False)
+            continue
+        x0, ybot, x1, ytop = chosen
         z = 30
         if USE_SHADOW:
             off = ink.pt(2.6)
@@ -2440,7 +2493,6 @@ def vol_labels(ink: Ink, header, main, sig, volume) -> None:
         t.set_zorder(z + 0.3)
         t.set_gid("ink:label")
         ink.move_text_px(t, x0 + padx, ytop - hh + pady + d1, ha="left", va="baseline")
-        # 日框「收／現」：紅漲黑平綠跌（漲停特例仍走表頭 chip；框內字跟 move ink）
         close_col = INK
         try:
             raw_c = getattr(ink.fig, "_wayne_close_move_ink", None)

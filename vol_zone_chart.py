@@ -6434,92 +6434,104 @@ def _paint_volume_zone(
         except Exception:
             logger.exception("大量區平行軌標失敗 sid=%s", sid)
             channel_label_rects = []
-    # 橘框日標：貼主K上框內側，不准掛表頭壓圖例；上緣擠→試右下／中右；仍撞近端 K→略過（底線不准壓 K）
+    # 橘框日標：貼主K上框內側，不准掛表頭壓圖例。
+    # 智慧掃位（第四包 occupied＋k_hits＝0）；不准寫死 axes 分數槽；找不到淨空就略過。
     if path_shown and not market_wide:
-        path_ax_y = 0.985
-        path_va = "top"
-        _path_place = True
+        _path_place = False
+        path_xy: Optional[Tuple[float, float, str, str]] = None  # x,y,ha,va in data
         try:
             y0_ax, y1_ax = ax1.get_ylim()
             y_sp = max(float(y1_ax) - float(y0_ax), 1.0)
-            tail_hi = float(
-                np.nanmax(highs[max(0, int(n) - 12) : int(n)])
-            ) if highs is not None and len(highs) else float(y0_ax)
-            tail_lo = float(
-                np.nanmin(lows[max(0, int(n) - 12) : int(n)])
-            ) if lows is not None and len(lows) else float(y1_ax)
-            top_busy = bool(with_nav_signals) or (
-                tail_hi >= float(y0_ax) + y_sp * 0.78
-            )
-            if top_busy:
-                path_ax_y = 0.14
-                path_va = "bottom"
-                mid_lo = float(y0_ax) + y_sp * 0.18
-                mid_hi = float(y0_ax) + y_sp * 0.42
-                if float(lo or 0) > 0 and mid_lo <= float(lo) <= mid_hi:
-                    path_ax_y = 0.08
-            # 資料座標粗估橘框高度≈ 0.10*ylim；撞近端高低帶→改試其他槽；再撞略過
-            def _path_y_span(axy: float, va: str) -> Tuple[float, float]:
-                if va == "top":
-                    y_hi = float(y0_ax) + float(axy) * y_sp
-                    y_lo = y_hi - y_sp * 0.10
-                elif va == "bottom":
-                    y_lo = float(y0_ax) + float(axy) * y_sp
-                    y_hi = y_lo + y_sp * 0.10
-                else:
-                    mid = float(y0_ax) + float(axy) * y_sp
-                    y_lo, y_hi = mid - y_sp * 0.055, mid + y_sp * 0.055
-                return float(y_lo), float(y_hi)
+            # 兩行橘框約 0.09～0.12 軸高；半寬約近端 18～28 根（依字數）
+            line_n = max(1, str(path_shown).count("\n") + 1)
+            box_h = y_sp * (0.055 + 0.038 * float(line_n))
+            box_w = min(max(14.0, 0.22 * float(n)), 32.0)
+            x_right = float(n) + 1.85
+            x_left = -0.05
+            highs_arr = np.asarray(highs, dtype=float)
+            lows_arr = np.asarray(lows, dtype=float)
 
-            def _path_hits_tail(axy: float, va: str) -> bool:
-                y_lo, y_hi = _path_y_span(axy, va)
-                return not (y_hi < float(tail_lo) or y_lo > float(tail_hi))
-
-            def _path_hits_key(axy: float, va: str) -> bool:
-                """橘框不准蓋「大量區壓／撐」（6919 右下提示貼壓框底）。"""
-                y_lo, y_hi = _path_y_span(axy, va)
-                x_lo_path = float(n) * 0.55  # 右半才可能跟右槽壓撐互壓
-                for ob in _key_occ or []:
+            def _path_occ_hit(x0: float, x1: float, y0: float, y1: float) -> bool:
+                for ob in list(_key_occ or []) + list(channel_label_rects or []):
                     try:
-                        ox0, ox1, oy0, oy1 = (float(v) for v in ob)
+                        ox0, ox1, oy0, oy1 = (float(v) for v in ob[:4])
                     except (TypeError, ValueError, IndexError):
                         continue
-                    if ox1 < x_lo_path:
-                        continue
-                    if not (y_hi < oy0 or y_lo > oy1):
+                    if min(x1, ox1) - max(x0, ox0) > 0.2 and min(y1, oy1) - max(y0, oy0) > 0:
                         return True
                 return False
 
-            trials = [
-                (path_ax_y, path_va),
-                (0.14, "bottom"),
-                (0.08, "bottom"),
-                (0.28, "center"),
-                (0.72, "center"),
-                (0.85, "top"),
-                (0.55, "center"),
-            ]
-            placed_ok = False
-            for axy, va in trials:
-                if _path_hits_tail(axy, va) or _path_hits_key(axy, va):
+            # 候選：右上→左上→右中→左中（依該檔高低空窗，不是固定比例）
+            trials: List[Tuple[float, float, str, str]] = []
+            for y_top in (
+                float(y1_ax) - y_sp * 0.02,
+                float(y1_ax) - y_sp * 0.12,
+                float(y1_ax) - y_sp * 0.22,
+                float(y0_ax) + y_sp * 0.42,
+                float(y0_ax) + y_sp * 0.28,
+                float(y0_ax) + y_sp * 0.18,
+            ):
+                y1b = float(y_top)
+                y0b = y1b - box_h
+                if y0b < float(y0_ax) + y_sp * 0.02:
                     continue
-                path_ax_y, path_va = float(axy), str(va)
-                placed_ok = True
-                break
-            if not placed_ok:
-                _path_place = False
+                for x1b, ha in (
+                    (x_right - 0.15, "right"),
+                    (x_right - box_w * 0.35, "right"),
+                    (x_left + box_w + 0.4, "left"),
+                    (0.5 * float(n), "center"),
+                ):
+                    x0b = x1b - box_w if ha != "left" else x1b
+                    x1_use = x0b + box_w if ha == "left" else x1b
+                    x0_use = x1_use - box_w
+                    trials.append((x0_use, y0b, "left" if ha == "left" else "right", "top"))
+
+            best: Optional[Tuple[Tuple[int, float, float], float, float, str, str]] = None
+            for x0b, y0b, ha, va in trials:
+                x1b = x0b + box_w
+                y1b = y0b + box_h
+                if x0b < x_left - 0.5 or x1b > x_right + 0.5:
+                    continue
+                if _path_occ_hit(x0b, x1b, y0b, y1b):
+                    continue
+                hits = int(
+                    _channel_box_k_hits(
+                        x0b,
+                        x1b,
+                        y0b,
+                        y1b,
+                        n=int(n),
+                        highs=highs_arr,
+                        lows=lows_arr,
+                        span=y_sp,
+                    )
+                )
+                # 主序 k_hits；其次靠上、靠右（縮圖仍讀得到）
+                score = (hits, -float(y1b), -float(x1b))
+                tx = x1b if ha == "right" else x0b
+                ty = y1b if va == "top" else y0b
+                if best is None or score < best[0]:
+                    best = (score, float(tx), float(ty), str(ha), str(va))
+                if hits == 0:
+                    path_xy = (float(tx), float(ty), str(ha), str(va))
+                    _path_place = True
+                    break
+            # 底線：只有 k_hits＝0 才畫；否則略過，不准壓縮圖 K（第四包閘）
+            if not _path_place and best is not None and int(best[0][0]) == 0:
+                path_xy = (best[1], best[2], best[3], best[4])
+                _path_place = True
         except Exception:
-            path_ax_y, path_va = 0.985, "top"
-            _path_place = True
-        if _path_place:
-            # 長句橘框：略離右緣＋關 clip，不准右框／「收####」被切半
+            logger.debug("大量區日況橘框掃位略過 sid=%s", sid, exc_info=True)
+            _path_place = False
+            path_xy = None
+        if _path_place and path_xy is not None:
+            px, py, pha, pva = path_xy
             ax1.text(
-                0.978,
-                float(path_ax_y),
+                float(px),
+                float(py),
                 path_shown,
-                transform=ax1.transAxes,
-                ha="right",
-                va=str(path_va),
+                ha=str(pha),
+                va=str(pva),
                 fontproperties=_fp(8.2, "bold"),
                 color=_CALL,
                 zorder=int(_KEY_Z),
@@ -6588,10 +6600,11 @@ def _paint_volume_zone(
     ax2.yaxis.tick_right()
     ax2.tick_params(labelsize=10)
     configure_lookup_vol_axis(ax2, float(vol_ylim))
-    # 2026-10-29 鎖臉：爆大量／下一層量日貼量圖**上緣匡線下方空帶**，不准壓量柱。
-    y_top = float(_peak_h) / 0.78
+    # 2026-10-29／10-30：爆大量／下一層量日貼量圖上緣空帶；兩標並排不夠就上下錯開，不准壓柱。
+    y_top = float(_peak_h) / 0.70
     ax2.set_ylim(0, float(y_top))
     vol_lab_y = float(y_top) * 0.972
+    vol_lab_y_lo = float(y_top) * 0.90
     _vol_callout_cap = float(y_top) * 0.99
 
     def _vol_day_callout(
@@ -6693,6 +6706,14 @@ def _paint_volume_zone(
             layer_side, spike_side = "right", "left"
     elif with_nav_signals:
         spike_side = "left"
+    # 兩錨太近 → 上下錯開空帶（不准互壓）
+    spike_lab = float(vol_lab_y)
+    layer_lab = float(vol_lab_y)
+    if twin and abs(int(layer_i) - int(spike_i)) < 22:
+        if int(layer_i) < int(spike_i):
+            layer_lab, spike_lab = float(vol_lab_y), float(vol_lab_y_lo)
+        else:
+            spike_lab, layer_lab = float(vol_lab_y), float(vol_lab_y_lo)
 
     _vol_day_callout(
         x=float(spike_i),
@@ -6702,7 +6723,7 @@ def _paint_volume_zone(
         face="#fffde7",
         ink="#5d4037",
         side=spike_side,
-        lab_y=vol_lab_y,
+        lab_y=spike_lab,
     )
     if layer_h > 0 and 0 <= layer_i < int(n):
         layer_md = _md(view["date"].iloc[layer_i]) if "date" in view.columns else ""
@@ -6714,7 +6735,7 @@ def _paint_volume_zone(
             face="#e3f2fd",
             ink="#0d47a1",
             side=layer_side,
-            lab_y=vol_lab_y,
+            lab_y=layer_lab,
         )
         try:
             ax1.axvline(

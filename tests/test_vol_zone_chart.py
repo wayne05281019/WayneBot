@@ -602,19 +602,20 @@ def test_lookup_vol_gives_header_space_from_volume_blank():
     key_src = inspect.getsource(_paint_key_zone_smart_tags)
     assert "head_ratios = [1.28, 3.38, 0.40, 0.98]" in src
     assert "lookup_portrait=False" in inspect.getsource(render_lookup_vol_result)
-    assert "transform=ax1.transAxes" in src or "blended_transform_factory" in src
-    # v12：主區壓／撐沿線智能掃位；日標仍貼主K上框內側
+    # v12：主區壓／撐沿線智能掃位；日標智慧掃位（occupied＋k_hits＝0）
     assert "_paint_key_zone_smart_tags" in src
     assert "大量區壓" in key_src and "_left_tag_tf" not in src
     assert "貼主K上框內側" in src
     assert "if path_shown:" in src
+    assert "_channel_box_k_hits" in src
+    assert "不准寫死 axes 分數槽" in src or "k_hits" in src
     # v9：有導航時頂空略加大，橘框不跟箭頭互壓
     assert "ymax = ymax + (ymax - ymin)" in src
     assert "0.985" in src or "0.992" in src
-    # 2026-10-29：量標掛上緣空帶；ylim 跟 y_top 走（顯示座標）
+    # 2026-10-29／10-30：量標掛上緣空帶；兩標可上下錯開
     assert "vol_lab_y" in src and ("set_ylim(0, float(y_top))" in src or "vol_ylim" in src)
     assert 'va="top"' in src
-    assert "/ 0.78" in src
+    assert "/ 0.70" in src or "/ 0.78" in src
     assert "configure_lookup_vol_axis" in src
     # 主區只留桃色帶，不准再畫壓／撐水平線
     assert "ax1.axhline(hi" not in src
