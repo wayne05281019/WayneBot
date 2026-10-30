@@ -942,12 +942,14 @@ def _estimate_label_rect(
 def _y_price_tick_band(
     ax, *, x_span: float, y_span: float
 ) -> Tuple[float, float, float, float]:
-    """左側股價區間刻度禁區（資料座標）：智能完整標不准壓進此帶。"""
+    """左側股價區間刻度禁區（資料座標）：智能完整標不准壓進此帶。
+
+    刻度已改畫在軸外；軸內禁區極窄，不准再推開開盤起點。
+    """
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
-    # 刻度字貼 axes 左緣；資料窗左緣＝−x_label_pad，禁區涵蓋整條左欄
-    clear_x1 = float(x0) + max(float(x_span) * 0.12, 22.0)
-    return (float(x0), clear_x1, float(y0), float(y1))
+    clear_x1 = max(0.0, float(x0) + max(-float(x0) * 0.6, 1.0))
+    return (float(x0), float(clear_x1), float(y0), float(y1))
 
 
 def _path_hits_rect(
@@ -2500,14 +2502,14 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
     frame_left = frame_x / 100.0  # 0.016
     frame_right = (frame_x + frame_w) / 100.0  # 0.982
-    # v19：軸左緣貼外框內側（刻度靠緊左框）；右緣仍吃滿
+    # 軸左緣略內縮：股價刻度畫在軸外（框內縫），開盤路徑可贴軸左＝貼近刻度
     # 舊 right_f=_STRUCTURE_FIG_RIGHT=0.905 → 右側大塊空白；改貼近 frame_right
-    left_f = frame_left + 0.004  # ≈0.020；框內僅留一線縫
+    left_f = frame_left + 0.026  # ≈0.042；留給 58／59／60 刻度（ha=right）
     right_f = frame_right - 0.008  # ≈0.974
     assert left_f > frame_left and right_f < frame_right
-    assert (right_f - left_f) >= 0.93, "價／量縮圖區寬度不夠"
-    # 開盤路徑右移：資料左緣負向 pad，讓 x=0（開）落在刻度字右側（線不准壓字）
-    x_label_pad = max(float(x_end) * 0.125, 30.0)  # 分钟；約軸寬 11–12.5% 給刻度字，線不准壓字
+    assert (right_f - left_f) >= 0.90, "價／量縮圖區寬度不夠"
+    # 開盤貼軸左（刻度已在軸外）；不准再留左 gutter 把起點推開
+    x_label_pad = 0.0
     # v14：時間戳旁黑標 → 頭欄變矮 → 十二格上移 → 價圖加高（智能標不擠）
     bars_top = 0.195
     xlab_bot = 0.205
@@ -2838,32 +2840,34 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         for sp in a.spines.values():
             sp.set_visible(False)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
-    # v19：Y 刻度貼左框內側；路徑已用 x_label_pad 右移，字與線分離
+    # Y 刻度畫在軸外（axes 負 x、ha=right），開盤 x=0 貼軸左＝貼近股價數字
     import matplotlib.transforms as mtransforms
 
     ax.tick_params(
-        axis="y", colors=MUTE, length=2.4, labelsize=_grid_fs(10),
+        axis="y", colors=MUTE, length=2.0, labelsize=_grid_fs(10),
         direction="in", left=True, labelleft=False, right=False, labelright=False,
     )
     # 時間標：xlab 專帶（bars_top 之上、vol_bot 之下）；09／15 完整（FAIL#1/#2）
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
-    y_trans = mtransforms.blended_transform_factory(ax.transAxes, ax.transData)
     y0, y1 = ax.get_ylim()
+    y_trans = mtransforms.blended_transform_factory(ax.transAxes, ax.transData)
     for yv in ax.get_yticks():
         if not (y0 < float(yv) < y1):
             continue
-        # 整數價免小數；其餘跟 face 一致（左欄區間字＝A；智能標＝B 且不准壓這欄）
+        # 整數價免小數；其餘跟 face 一致（左欄區間字＝A；智能標＝B 且不准壓）
         txt = f"{yv:.0f}" if abs(float(yv) - round(float(yv))) < 1e-6 else _fmt_face(float(yv))
         ax.text(
-            0.004, float(yv), txt,  # 貼軸左＝貼外框內側
-            transform=y_trans, ha="left", va="center",
-            fontproperties=fp(_grid_fs(10), False), color=MUTE, zorder=6, clip_on=True,
+            -0.012, float(yv), txt,
+            transform=y_trans, ha="right", va="center",
+            fontproperties=fp(_grid_fs(10), False), color=MUTE,
+            zorder=36, clip_on=False,
         )
     vol_ax.set_yticks([])
     vol_ax.text(
-        0.004, 0.90, "量(張)", transform=vol_ax.transAxes,
-        fontproperties=fp(_grid_fs(10), False), color=MUTE, va="top", ha="left",
+        -0.012, 0.90, "量(張)", transform=vol_ax.transAxes,
+        fontproperties=fp(_grid_fs(10), False), color=MUTE,
+        va="top", ha="right", zorder=36, clip_on=False,
     )
 
     # 底三條：左／右對齊共線外框（v8 用 left_f～0.82 與框錯位）
