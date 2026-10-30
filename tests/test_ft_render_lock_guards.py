@@ -102,6 +102,40 @@ def test_lookup_bot_awaits_card_before_glance():
     assert src.find("glance_task = asyncio.create_task") < src.find(
         "card_item = await card_render_task"
     )
+    # 排隊時間不准算進 paint 逾時（否則高低卡一慢，介紹／第5張被 wait_for 默默丟）
+    assert "_await_lookup_paint" in src
+
+
+def test_await_lookup_paint_excludes_queue_wait():
+    """單一 worker 排隊 0.4s + 執行 0.05s；timeout=0.2 仍應成功（排隊不算逾時）。"""
+    import asyncio
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from bot_servers import _await_lookup_paint
+
+    ex = ThreadPoolExecutor(max_workers=1)
+
+    def _blocker():
+        time.sleep(0.45)
+        return "blocked"
+
+    def _job():
+        time.sleep(0.05)
+        return "ok"
+
+    async def _run():
+        blocker = ex.submit(_blocker)
+        fut = ex.submit(_job)
+        # fut 排在 blocker 後；若把排隊算進 0.2s 逾時必爆
+        out = await _await_lookup_paint(fut, 0.2)
+        assert out == "ok"
+        blocker.result(timeout=2.0)
+
+    try:
+        asyncio.run(_run())
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
 
 
 def test_pressure_trio_paints_serial_not_parallel_wait_for():

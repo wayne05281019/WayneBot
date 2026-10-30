@@ -13,6 +13,7 @@ from intraday_open_close_chart import (
     _grid_fs,
     _paint_smart_level_labels,
     _y_price_tick_band,
+    prepare_lookup_intraday_series,
     resolve_intraday_asof_ymd,
     resolve_intraday_market,
     render_lookup_intraday_result,
@@ -108,9 +109,18 @@ def test_send_card_passes_card_asof_to_intraday():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "latest_date" in src
     assert "asof_ymd=asof or None" in src
+    assert "prepare_lookup_intraday_series" in src
+    assert "intrad_prep_task" in src
     assert "series is None and not prefer" in inspect.getsource(
-        render_lookup_intraday_result
+        prepare_lookup_intraday_series
     )
+
+
+def test_intraday_caption_stamps_real_ymd():
+    """第 5 張 caption 要標真日戳，不准只寫「當天」讓人猜。"""
+    src = inspect.getsource(render_lookup_intraday_result)
+    assert "day_lab" in src
+    assert "開→收・{day_lab}" in src
 
 
 def test_grid_a_chart_label_b_scales():
