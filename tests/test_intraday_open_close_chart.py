@@ -123,6 +123,38 @@ def test_intraday_caption_stamps_real_ymd():
     assert "開→收・{day_lab}" in src
 
 
+def test_render_intraday_accepts_prepare_tuple(monkeypatch, tmp_path):
+    """series= 若誤傳 prepare 整包 (series,ymd,mkt)，要拆開渲，不准 AttributeError 缺圖。"""
+    calls = {"n": 0}
+
+    class _FakeSeries:
+        official = object()
+
+    def _fake_prepare(*_a, **_k):
+        raise AssertionError("不應再 prepare")
+
+    def _fake_render_path(series, out, db_path=None):
+        calls["n"] += 1
+        assert series is fake
+        open(out, "wb").write(b"x" * 100)
+        return out, {"pass": True}
+
+    fake = _FakeSeries()
+    monkeypatch.setattr(
+        "intraday_open_close_chart.prepare_lookup_intraday_series", _fake_prepare
+    )
+    monkeypatch.setattr("intraday_open_close_chart.render_path", _fake_render_path)
+    out = str(tmp_path / "t.jpg")
+    path, cap = render_lookup_intraday_result(
+        "2330",
+        "台積電",
+        save_path=out,
+        series=(fake, "20261030", "TW"),
+    )
+    assert path == out and calls["n"] == 1
+    assert "2026-10-30" in cap
+
+
 def test_grid_a_chart_label_b_scales():
     """十二宮格 A(+30%)；走勢圖智能標 B(+50%)；頭欄不准吃這兩條。"""
     assert abs(_GRID_FS_SCALE - 1.30) < 1e-9

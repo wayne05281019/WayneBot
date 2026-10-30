@@ -3182,6 +3182,19 @@ def render_lookup_intraday_result(
         name = sid
     ymd = str(series_ymd or "").strip().replace("-", "")[:8]
     mkt = str(series_market or market or "").strip().upper()
+    # 防呆：呼叫端若把 prepare_lookup_intraday_series 整包 tuple 當 series=
+    # （series, ymd, mkt），這裡拆開，不准渲圖 AttributeError 變默默缺第 5 張。
+    if isinstance(series, tuple):
+        if len(series) >= 3:
+            series, ymd_t, mkt_t = series[0], series[1], series[2]
+            if not ymd:
+                ymd = str(ymd_t or "").strip().replace("-", "")[:8]
+            if not mkt:
+                mkt = str(mkt_t or "").strip().upper()
+        elif len(series) >= 1:
+            series = series[0]
+        else:
+            series = None
     if series is None:
         series, ymd, mkt = prepare_lookup_intraday_series(
             sid,
