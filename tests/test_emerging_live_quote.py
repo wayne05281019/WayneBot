@@ -513,6 +513,7 @@ def test_emerging_last_trade_not_close_and_card_helper():
         _CARD,
         _close_chg_color,
         _emerging_last_trade_px,
+        _emerging_session_close_lines,
         _emerging_session_close_prev,
         _paint_close_right,
         _paint_emerging_session_close_frame,
@@ -550,10 +551,17 @@ def test_emerging_last_trade_not_close_and_card_helper():
     assert _emerging_last_trade_px({"quote_source": "daily_quotes", "last_trade": 693}) == 0.0
     assert _close_chg_color(693.0 - 651.61, _CARD) == _CARD["up"]
     assert _close_chg_color(500.0 - 651.61, _CARD) == _CARD["down"]
+    lines, delta = _emerging_session_close_lines(693.0, 651.61)
+    assert lines[0].startswith("收盤價")
+    assert "差價" in lines[1] and "▲" in lines[1]
+    assert "漲幅" in lines[2] and "+" in lines[2]
+    assert delta > 0
+    down_lines, down_d = _emerging_session_close_lines(500.0, 651.61)
+    assert "▼" in down_lines[1] and "-" in down_lines[2]
+    assert down_d < 0
     frame_src = inspect.getsource(_paint_emerging_session_close_frame)
-    assert 'f"收盤價' in frame_src
+    assert "_emerging_session_close_lines" in frame_src
     assert "FancyBboxPatch" in frame_src
-    assert "_close_chg_color" in frame_src
     assert "收盤價" in inspect.getsource(_paint_close_right)
 
 
