@@ -124,3 +124,6 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_render_us_compare_dark" in src
     assert "_ensure_us_index_daily" in src
     assert "費半" in src
+    assert "_morph_note_from_text" in src
+    assert "黃金切割" in src
+    assert "切0.382" in src or "0.382" in src

@@ -384,8 +384,32 @@ def record_level_learn_from_events(
 # ─── 開市／夜盤活畫 ───────────────────────────────────────────
 
 
+def _morph_note_from_text(blob: str) -> str:
+    """型態課：只抽他用過的形態學語，不准抄成買訊。"""
+    t = str(blob or "")
+    if not t:
+        return ""
+    bits: List[str] = []
+    if "上升楔形" in t or ("楔形" in t and "上升" in t):
+        bits.append("上升楔形（漲幅縮→下殺更快・觀察）")
+    if "盤頭" in t or ("末端" in t and ("型態" in t or "形態" in t)):
+        bits.append("漲幅縮短／重疊→盤頭或B反彈末端觀察")
+    if "頸線" in t:
+        bits.append("頸線（外圍／個股他點過才標）")
+    if "頭肩" in t:
+        bits.append("頭肩（費半先行常見）")
+    if ("橫台" in t or "中繼" in t) and "楔形" not in "".join(bits):
+        bits.append("橫台中繼")
+    if "頭部型態" in t or "頭部形態" in t:
+        bits.append("頭部型態＋組合K（轉弱佐證・非買訊）")
+    return "；".join(bits[:3])
+
+
 def _latest_level_thesis(db_path: str) -> Dict[str, str]:
-    """從最近位階 snap／貼文抽出活畫題旨（可遷移結構語，不背死價當唯一）。"""
+    """從最近位階 snap／貼文抽出活畫題旨（可遷移結構語，不背死價當唯一）。
+
+    課綱三科：波浪 · 黃金切割 · 型態（見 wave_fib_morph_curriculum.md）。
+    """
     ensure_tables(db_path)
     conn = sqlite3.connect(db_path, timeout=15.0)
     conn.row_factory = sqlite3.Row
@@ -394,9 +418,33 @@ def _latest_level_thesis(db_path: str) -> Dict[str, str]:
             "SELECT snippet, as_of, post_id FROM biaoke_level_snaps "
             "ORDER BY as_of DESC, created_at DESC LIMIT 1"
         ).fetchone()
+        # 近窗型態：再掃兩則位階文，補形態學句
+        extra = conn.execute(
+            "SELECT snippet FROM biaoke_level_snaps "
+            "ORDER BY as_of DESC, created_at DESC LIMIT 4"
+        ).fetchall()
     finally:
         conn.close()
     snip = str((row["snippet"] if row else "") or "")
+    morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
+    # 庫內近期大盤文也補型態（缺 snap 時）
+    if not _morph_note_from_text(morph_blob):
+        try:
+            conn = sqlite3.connect(db_path, timeout=15.0)
+            try:
+                posts = conn.execute(
+                    "SELECT text FROM biaoke_posts WHERE date>=? "
+                    "AND (text LIKE '%型態%' OR text LIKE '%形態%' OR text LIKE '%楔形%' "
+                    "OR text LIKE '%頸線%' OR text LIKE '%頭肩%' OR text LIKE '%橫台%') "
+                    "ORDER BY date DESC, time DESC LIMIT 6",
+                    ((datetime.now(TAIPEI) - timedelta(days=14)).strftime("%Y-%m-%d"),),
+                ).fetchall()
+            finally:
+                conn.close()
+            morph_blob += " " + " ".join(str(p[0] or "") for p in posts)
+        except Exception:
+            pass
+    morph = _morph_note_from_text(morph_blob)
     # 他確認的大結構：五波後接下降ABC；10/14夜～10/15日 C 啟動；現況在 C 內
     # 位階＝預估（他原文：很容易看錯／不要做太遠）；隨時檢視；誤導或鐵律不符→動態修正
     thesis = "五波後下降ABC・現在在C（預估・隨時檢視）"
@@ -413,11 +461,17 @@ def _latest_level_thesis(db_path: str) -> Dict[str, str]:
     elif "主跌" in snip:
         thesis = "五波後下降ABC・C內主跌（預估）"
         wait = "細微波完整＋降軌；走完一段再重訂位階"
+    if morph and "楔形" in morph:
+        wait = f"{wait}｜型態：{morph}"
+    elif morph:
+        wait = f"{wait}｜型態觀察：{morph}"
     if _REVISE_MARK.search(snip):
-        wait = "他已示警重修／動態修正・圖位＝當下預估"
+        wait = "他已示警重修／動態修正・圖位＝當下預估" + (f"｜{morph}" if morph else "")
     return {
         "thesis": thesis,
-        "wait_struct": wait,
+        "wait_struct": wait[:360],
+        "morph_note": morph[:180],
+        "fib_note": "黃金切割反彈壓 0.382／0.618／0.75（他10/27台指日盤・可修訂）",
         "snippet": snip[:240],
         "as_of": str((row["as_of"] if row else "") or ""),
         "post_id": str((row["post_id"] if row else "") or ""),
@@ -900,6 +954,8 @@ def _build_live_pack(db_path: str) -> Dict[str, Any]:
         "turn_note": turn[:240],
         "vol_note": vol[:240],
         "us_note": us_note[:240],
+        "morph_note": str(thesis_pack.get("morph_note") or "")[:180],
+        "fib_note": str(thesis_pack.get("fib_note") or "")[:120],
         "key_levels": levels,
         "snippet": thesis_pack.get("snippet") or "",
     }
@@ -1199,11 +1255,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ]
     _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
     teach = (
-        "遠窗課（先看這張）\n"
-        "①從遠窗底走到⑤＝上升走完\n"
-        "②之後才開始下降ABC\n"
-        "③細節（Fib／1-4）→看近窗特寫\n"
-        "位階＝預估・不符鐵律會改"
+        "遠窗課＝波浪骨架\n"
+        "①遠窗底→⑤＝上升走完\n"
+        "②之後才下降ABC\n"
+        "③黃金切割＋型態→近窗特寫\n"
+        "預估・不符鐵律會改・非買訊"
     )
     ax.text(
         0.012,
@@ -1400,19 +1456,21 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B {_px(y_bhi)}", "color": "#40c4ff"},
         {"x": i_alow, "y": rule14_y, "text": rule14_lab, "color": "#ffffff"},
-        {"x": n - 1, "y": 49160.0, "text": "Fib0.75", "color": "#ffca28"},
-        {"x": n - 1, "y": 48613.0, "text": "Fib0.618", "color": "#ffd54f"},
-        {"x": n - 1, "y": 47637.0, "text": "Fib0.382", "color": "#ffe082"},
+        {"x": n - 1, "y": 49160.0, "text": "切0.75", "color": "#ffca28"},
+        {"x": n - 1, "y": 48613.0, "text": "切0.618", "color": "#ffd54f"},
+        {"x": n - 1, "y": 47637.0, "text": "切0.382", "color": "#ffe082"},
         {"x": n - 1, "y": 45546.0, "text": "45546已破", "color": "#ffab40"},
         {"x": n - 1, "y": 44210.0, "text": "44210未到", "color": "#82b1ff"},
     ]
     _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
+    morph = str(pack.get("morph_note") or "").strip()
+    morph_line = (morph[:28] + "…") if len(morph) > 28 else (morph or "型態：橫台／楔形／盤頭只觀察")
     teach = (
-        "近窗特寫（預估・會改）\n"
-        "①⑤＝上升終　②A↓第一折　③B↑且＜⑤\n"
-        "④紫虛線C↓＝現在主跌\n"
-        "白＝1-4鍵　黃＝Fib反彈壓\n"
-        "為何有⑤→看遠窗｜外圍→看費半圖"
+        "近窗三科（預估・會改）\n"
+        "波浪：⑤→A↓→B↑＜⑤→C↓現在\n"
+        "黃金切割：黃線0.382／0.618／0.75\n"
+        f"型態：{morph_line}\n"
+        "白＝1-4鐵律｜非買訊｜遠窗／費半另張"
     )
     ax.text(
         0.012,
@@ -1464,7 +1522,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.945,
-        "Fib＝10/27反彈壓　白＝1-4鍵　｜　位階＝預估・隨時檢視・鐵律不符／被誤導→動態修正",
+        "三科：波浪ABC＋黃金切割0.382/0.618/0.75＋型態觀察　｜　預估・隨時檢視・鐵律不符→動態修正",
         fontproperties=_fp(10, "bold"),
         color=_LIVE_MUTED,
         ha="left",
