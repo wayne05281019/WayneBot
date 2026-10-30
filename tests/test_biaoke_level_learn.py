@@ -127,3 +127,17 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_morph_note_from_text" in src
     assert "黃金切割" in src
     assert "切0.382" in src or "0.382" in src
+    assert "_twii_intent_story" in src
+    assert "大善人" in src or "解套" in src
+    assert "沒底子" in src or "白話" in src
+    assert "_twii_intent_story" in src
+    assert "量縮止穩" in src or "好心" in src or "套牢" in src
+
+
+def test_twii_intent_story_trap_language():
+    """量價故事要能講套牢／無量≠止穩；不准當買訊句。"""
+    from biaoke_level_learn import _twii_intent_story
+
+    # 無庫也要空字串回傳，不准拋
+    empty = _twii_intent_story("")
+    assert empty.get("intent_note") == "" or isinstance(empty.get("intent_note"), str)

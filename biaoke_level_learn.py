@@ -517,6 +517,151 @@ def _load_tx60_rows(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
     return out
 
 
+def _bar_vol_tags(
+    opens: Sequence[float],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    vols: Sequence[float],
+    *,
+    i: int,
+    win: int = 20,
+) -> Dict[str, Any]:
+    """單根裸K＋相對近窗量（描述用，不當買訊）。"""
+    n = len(closes)
+    if i < 0 or i >= n:
+        return {}
+    lo = max(0, i - win + 1)
+    wvols = [float(v) for v in vols[lo : i + 1]]
+    v_med = sorted(wvols)[len(wvols) // 2] if wvols else 0.0
+    o, h, l, c, v = (
+        float(opens[i]),
+        float(highs[i]),
+        float(lows[i]),
+        float(closes[i]),
+        float(vols[i]),
+    )
+    body = abs(c - o)
+    rng = max(1.0, h - l)
+    upper = h - max(o, c)
+    lower = min(o, c) - l
+    up = c >= o
+    vol_tag = "平量"
+    if v_med > 0 and v >= v_med * 1.8:
+        vol_tag = "爆量"
+    elif v_med > 0 and v <= v_med * 0.55:
+        vol_tag = "量縮"
+    shape = "中實體"
+    if body / rng < 0.25:
+        shape = "十字／小實體"
+    elif body / rng > 0.7:
+        shape = "長實體"
+    if lower / rng > 0.45 and body / rng < 0.35:
+        shape = "長下影"
+    if upper / rng > 0.45 and body / rng < 0.35:
+        shape = "長上影"
+    return {
+        "up": up,
+        "vol_tag": vol_tag,
+        "shape": shape,
+        "v_med": v_med,
+        "v": v,
+        "close": c,
+        "open": o,
+        "high": h,
+        "low": l,
+    }
+
+
+def _twii_intent_story(db_path: str) -> Dict[str, str]:
+    """加權日K量價故事→主力意圖（教沒底子的學生用白話；不是買訊）。
+
+    老師＝飆大。不懂就查他原文再教：
+    - 無量下跌≠止穩（10/30）
+    - 沒爆量＝籌碼沒換完、沒止跌（10/22）
+    - 主力不是大善人給散戶解套（10/23）
+    - 紅漲後連跌＝套牢加深→別幻想好心拉回
+    """
+    out: Dict[str, str] = {"vol_note": "", "intent_note": "", "turn_note": ""}
+    try:
+        from biaoke_wave import _load_twii_bars
+        from decision_card_signals import candle_up_taiwan
+    except Exception:
+        return out
+    bars = _load_twii_bars(db_path, n=40)
+    if len(bars) < 6:
+        return out
+    opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
+    highs = [float(r.get("high") or 0) for r in bars]
+    lows = [float(r.get("low") or 0) for r in bars]
+    closes = [float(r.get("close") or 0) for r in bars]
+    vols = [float(r.get("volume") or 0) for r in bars]
+    i = len(bars) - 1
+    last = _bar_vol_tags(opens, highs, lows, closes, vols, i=i)
+    if not last:
+        return out
+    # 連跌天數（收盤相對昨收）
+    down_streak = 0
+    for j in range(i, 0, -1):
+        prev_c = closes[j - 1]
+        if not candle_up_taiwan(closes[j], prev_c, opens[j]):
+            down_streak += 1
+        else:
+            break
+    # 套牢鏈：近窗曾有紅漲日，其後連續綠跌≥2
+    trap = False
+    trap_from = ""
+    if down_streak >= 2 and i - down_streak >= 0:
+        k = i - down_streak
+        if candle_up_taiwan(closes[k], closes[k - 1] if k else None, opens[k]):
+            trap = True
+            trap_from = _md(bars[k].get("date"))
+    color = "紅（漲）" if last["up"] else "綠（跌）"
+    # 白話：先講學生看得到的K與量
+    out["vol_note"] = (
+        f"今天這根K是{color}、樣子像「{last['shape']}」；"
+        f"成交量算「{last['vol_tag']}」"
+        f"（今日{_px(last['v'])}，近窗平常大約{_px(last['v_med'])}）"
+    )[:200]
+    # 白話故事：聯想主力意圖（有他原文依據）
+    stories: List[str] = []
+    if (not last["up"]) and last["vol_tag"] == "量縮":
+        stories.append(
+            "量很小還在跌＝無量下跌；他教過：這不是「量縮止穩」，後面常繼續跌"
+        )
+    if (not last["up"]) and last["vol_tag"] != "爆量" and down_streak >= 1:
+        stories.append(
+            "跌的時候量沒爆出來＝籌碼還沒換完，還不能說已經止跌（他10/22量價課）"
+        )
+    if trap:
+        stories.append(
+            f"故事：{trap_from}有人還在買（紅K），接著連跌{down_streak}天＝愈套愈深；"
+            "主力把人套住後，沒義務好心拉上來給大家解套"
+            "（他10/23：主力不是大善人）"
+        )
+    if last["up"] and last["vol_tag"] == "爆量" and last["shape"] == "長上影":
+        stories.append(
+            "爆量卻留很長上影＝上面有人倒貨壓力大；先等第二天K確認，不要急著下判"
+        )
+    if last["shape"] in {"長下影", "十字／小實體"} and last["vol_tag"] != "爆量":
+        stories.append(
+            "只有影線或小實體、量又沒爆＝還沒真的換籌碼；單看一天不能喊止穩"
+        )
+    if not stories:
+        stories.append(
+            "今天量價故事還不清楚；照他習慣：看組合K＋量，最好等第二根再下結論"
+        )
+    out["intent_note"] = "；".join(stories)[:280]
+    if down_streak >= 2:
+        out["turn_note"] = (
+            f"最近連續{down_streak}天收跌；先用「套牢／續跌」故事看，"
+            "不要先假設會拉回來解套"
+        )
+    elif last["up"]:
+        out["turn_note"] = "近窗收漲；還要第二天＋量價一起確認，才像真的轉折"
+    return out
+
+
 def _tx60_read(db_path: str) -> Dict[str, Any]:
     """台指 60 分結構＋量價裸K題旨（不數段）。"""
     rows = _load_tx60_rows(db_path, 80)
@@ -546,29 +691,12 @@ def _tx60_read(db_path: str) -> Dict[str, Any]:
             out["struct_note"] = str(notes[-1])[:180]
     except Exception:
         struct = {}
-    # 裸K／量價：實體、影線、量相對近窗
-    body = abs(float(last["close"]) - float(last["open"]))
-    rng = max(1.0, float(last["high"]) - float(last["low"]))
-    upper = float(last["high"]) - max(float(last["open"]), float(last["close"]))
-    lower = min(float(last["open"]), float(last["close"])) - float(last["low"])
-    vols = [float(r["volume"]) for r in win]
-    v_med = sorted(vols)[len(vols) // 2] if vols else 0.0
-    v_last = float(last["volume"])
-    up = float(last["close"]) >= float(last["open"])
-    vol_tag = "平量"
-    if v_med > 0 and v_last >= v_med * 1.8:
-        vol_tag = "爆量"
-    elif v_med > 0 and v_last <= v_med * 0.55:
-        vol_tag = "量縮"
-    shape = "中實體"
-    if body / rng < 0.25:
-        shape = "十字／小實體"
-    elif body / rng > 0.7:
-        shape = "長實體"
-    if lower / rng > 0.45 and body / rng < 0.35:
-        shape = "長下影"
-    if upper / rng > 0.45 and body / rng < 0.35:
-        shape = "長上影"
+    opens = [float(r["open"]) for r in rows]
+    highs = [float(r["high"]) for r in rows]
+    lows = [float(r["low"]) for r in rows]
+    closes = [float(r["close"]) for r in rows]
+    vols = [float(r["volume"]) for r in rows]
+    tag = _bar_vol_tags(opens, highs, lows, closes, vols, i=len(rows) - 1)
     # 簡易吞沒／孕線（只描述，不當買訊）
     engulf = ""
     if float(last["high"]) >= float(prev["high"]) and float(last["low"]) <= float(
@@ -579,10 +707,10 @@ def _tx60_read(db_path: str) -> Dict[str, Any]:
         prev["low"]
     ):
         engulf = "；孕線收斂"
-    color = "紅漲" if up else "綠跌"
+    color = "紅漲" if tag.get("up") else "綠跌"
     out["vol_note"] = (
-        f"TX60 裸K={color}{shape}{engulf}；量={vol_tag}"
-        f"（{_px(v_last)}／近窗中位{_px(v_med)}）"
+        f"TX60 裸K={color}{tag.get('shape', '')}{engulf}；量={tag.get('vol_tag', '')}"
+        f"（{_px(tag.get('v'))}／近窗中位{_px(tag.get('v_med'))}）"
     )
     # 轉折：相對降軌／近窗高低
     down = out["levels"].get("tx60_down")
@@ -590,8 +718,8 @@ def _tx60_read(db_path: str) -> Dict[str, Any]:
     if down and float(last["close"]) < float(down):
         turn = f"仍在降軌下（軌≈{_px(down)}）；過軌才像扭轉"
     if float(last["low"]) <= swing_lo * 1.001:
-        turn = f"測近窗低{_px(swing_lo)}；要止穩需縮量收回"
-    if float(last["high"]) >= swing_hi * 0.999 and up:
+        turn = f"測近窗低{_px(swing_lo)}；止穩要縮量收回＋第二根確認（非預設解套）"
+    if float(last["high"]) >= swing_hi * 0.999 and tag.get("up"):
         turn = f"碰近窗高{_px(swing_hi)}；爆量長上影＝壓、量縮＝假突破風險"
     out["turn_note"] = turn
     return out
@@ -930,6 +1058,7 @@ def _build_live_pack(db_path: str) -> Dict[str, Any]:
     """彙整庫內多源 → 一包題旨／關鍵位／量價（活化使用）。"""
     thesis_pack = _latest_level_thesis(db_path)
     tx = _tx60_read(db_path)
+    tw = _twii_intent_story(db_path)
     us = _us_lead_read(db_path)
     fut = _futures_day_night(db_path)
     claims = _claim_anchors(db_path)
@@ -940,19 +1069,30 @@ def _build_live_pack(db_path: str) -> Dict[str, Any]:
                 levels[k] = float(v)
             except (TypeError, ValueError):
                 continue
-    turn = str(tx.get("turn_note") or thesis_pack.get("wait_struct") or "")
-    vol = str(tx.get("vol_note") or "")
+    # 日K主力意圖故事優先；TX60 裸K當盤中輔句
+    turn = (
+        str(tw.get("turn_note") or "")
+        or str(tx.get("turn_note") or "")
+        or thesis_pack.get("wait_struct")
+        or ""
+    )
+    vol_parts = [p for p in (tw.get("vol_note"), tx.get("vol_note")) if p]
+    vol = "｜".join(vol_parts)[:240]
+    intent = str(tw.get("intent_note") or "")[:240]
     us_note = str(us.get("note") or "")
     wait = str(thesis_pack.get("wait_struct") or "")
+    if intent:
+        wait = f"{wait}｜量價故事：{intent}"
     if fut.get("note"):
         wait = f"{wait}｜{fut['note']}"
     if claims.get("note"):
         wait = f"{wait}｜{claims['note']}"
     return {
         "thesis": thesis_pack.get("thesis") or "",
-        "wait_struct": wait[:360],
-        "turn_note": turn[:240],
-        "vol_note": vol[:240],
+        "wait_struct": wait[:400],
+        "turn_note": str(turn)[:240],
+        "vol_note": vol,
+        "intent_note": intent,
         "us_note": us_note[:240],
         "morph_note": str(thesis_pack.get("morph_note") or "")[:180],
         "fib_note": str(thesis_pack.get("fib_note") or "")[:120],
@@ -1255,11 +1395,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ]
     _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
     teach = (
-        "遠窗課＝波浪骨架\n"
-        "①遠窗底→⑤＝上升走完\n"
-        "②之後才下降ABC\n"
-        "③黃金切割＋型態→近窗特寫\n"
-        "預估・不符鐵律會改・非買訊"
+        "給沒底子的人：先看遠窗\n"
+        "①左邊從低走到⑤＝上升走完\n"
+        "②走完⑤之後才開始跌（ABC）\n"
+        "③細的切割／型態／量價→翻近窗\n"
+        "老師＝飆大；位階是預估會改；非買訊"
     )
     ax.text(
         0.012,
@@ -1301,8 +1441,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.03,
         0.97,
-        f"教具①遠窗：升完⑤才看得懂為何在C　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
-        fontproperties=_fp(13, "bold"),
+        f"第1張（遠窗）：先看整段故事——升完⑤，才知道現在為什麼在跌　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
@@ -1310,7 +1450,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.03,
         0.942,
-        "只看近窗會問「C從哪來」→遠窗先答：8/25低→10/6⑤＝上升走完｜預估・隨時檢視",
+        "說法：只看後面跌段會懵——左邊8/25低→10/6⑤＝上升走完；之後才ABC。老師＝飆大；預估會改",
         fontproperties=_fp(10, "bold"),
         color=_LIVE_MUTED,
         ha="left",
@@ -1464,13 +1604,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ]
     _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
     morph = str(pack.get("morph_note") or "").strip()
-    morph_line = (morph[:28] + "…") if len(morph) > 28 else (morph or "型態：橫台／楔形／盤頭只觀察")
+    morph_line = (morph[:24] + "…") if len(morph) > 24 else (morph or "楔形／盤頭＝觀察，不是叫你買")
+    intent = str(pack.get("intent_note") or "").strip()
+    # 教具框只留一句最重要的故事，避免牆字
+    intent_one = intent.split("；")[0] if intent else "量價要先講故事：無量跌≠止穩；套牢後別等好心解套"
+    intent_line = (intent_one[:36] + "…") if len(intent_one) > 36 else intent_one
     teach = (
-        "近窗三科（預估・會改）\n"
-        "波浪：⑤→A↓→B↑＜⑤→C↓現在\n"
-        "黃金切割：黃線0.382／0.618／0.75\n"
-        f"型態：{morph_line}\n"
-        "白＝1-4鐵律｜非買訊｜遠窗／費半另張"
+        "第2張（近窗）給沒底子的人\n"
+        "①波浪：⑤走完→A跌→B彈（比⑤低）→C再跌\n"
+        "②黃金切割：黃線0.382／0.618／0.75＝反彈壓\n"
+        f"③型態：{morph_line}\n"
+        f"④量價故事：{intent_line}"
     )
     ax.text(
         0.012,
@@ -1513,8 +1657,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.972,
-        f"教具②近窗特寫：下降ABC・現在在C（C3-3）　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
-        fontproperties=_fp(13, "bold"),
+        f"第2張（近窗）：把跌段放大來看——現在在C（C3-3預估）　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
@@ -1522,26 +1666,26 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.945,
-        "三科：波浪ABC＋黃金切割0.382/0.618/0.75＋型態觀察　｜　預估・隨時檢視・鐵律不符→動態修正",
+        "說法順序：先波浪→再黃金切割→再型態→最後用量價故事猜主力；不懂就查飆大原文；預估會改；非買訊",
         fontproperties=_fp(10, "bold"),
         color=_LIVE_MUTED,
         ha="left",
         va="top",
     )
-    wait = str(pack.get("wait_struct") or "不符鐵律／穿刺原規劃→動態修正重修")
     fig.text(
         0.03,
         0.048,
-        f"{str(pack.get('thesis') or '')}　｜　{wait}"[:90],
+        f"{str(pack.get('thesis') or '')}"[:88],
         fontproperties=_fp(10, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="bottom",
     )
+    intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
     fig.text(
         0.03,
         0.022,
-        ("45546已破・44210未到｜" + str(pack.get("us_note") or "")[:50])[:90],
+        ("量價：" + intent_foot.split("；")[0])[:90],
         fontproperties=_fp(10, "bold"),
         color=_LIVE_MUTED,
         ha="left",
@@ -1675,10 +1819,10 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         bbox=dict(boxstyle="round,pad=0.25", fc="#0b0f14", ec="#546e7a", lw=0.8, alpha=0.9),
     )
     teach = (
-        "外圍課：他看費半先行\n"
-        "黃線先破100＝費半比⑤弱\n"
-        "→近窗C續跌偏壓加大\n"
-        "藍＝納指佐證　不是買訊"
+        "第3張：外圍怎麼幫你想\n"
+        "老師常先看費半（黃線）\n"
+        "黃線比⑤那天弱＝台股偏壓\n"
+        "藍線＝納指陪看；不是買訊"
     )
     ax.text(
         0.012,
@@ -1715,8 +1859,8 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
     fig.text(
         0.03,
         0.975,
-        f"教具③近窗×費半／納指　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}　缺資料已自補 Yahoo／分K",
-        fontproperties=_fp(13, "bold"),
+        f"第3張（外圍）：費半／納指跟台股近窗對照　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}（缺柱會自己補）",
+        fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
@@ -1724,7 +1868,7 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
     fig.text(
         0.03,
         0.948,
-        "老師備課：外圍不看＝近窗C缺半堂課｜費半大弱→台指偏壓（他原文順序）",
+        "說法：黃線是費半（他常先行）；費半弱→台股夜／日偏壓。不懂就回查他原文，不要自己發明",
         fontproperties=_fp(10, "bold"),
         color=_LIVE_MUTED,
         ha="left",
