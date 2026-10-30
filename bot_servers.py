@@ -433,6 +433,13 @@ except ImportError:
     TELEGRAM_AVAILABLE = False
     Update = Any  # type: ignore
     ContextTypes = type("ContextTypes", (), {"DEFAULT_TYPE": Any})  # type: ignore
+    # 不准 NameError 把查股第 5 張 hub 鍵盤打成崩潰；無 telegram 套件時回 None 鍵盤。
+    InlineKeyboardButton = None  # type: ignore
+    InlineKeyboardMarkup = None  # type: ignore
+    ReplyKeyboardMarkup = None  # type: ignore
+    KeyboardButton = None  # type: ignore
+    BotCommand = None  # type: ignore
+    MenuButtonCommands = None  # type: ignore
 
 # 查股：股票四碼＋ETF（被動／主動／兩倍槓桿）。海選仍不收 ETF。
 LOOKUP_CODE_EXAMPLES_HTML = (
@@ -2522,6 +2529,8 @@ class WayneTelegramBot:
     ):
         """查股其餘子鍵：只掛第 5 張當天走勢圖下（第 2／3／4 張不要重複鍵盤）。兩人同一套。"""
         _ = topic
+        if not TELEGRAM_AVAILABLE or InlineKeyboardButton is None or InlineKeyboardMarkup is None:
+            return None
         c = str(code).strip()[:6]
         news = news or {}
         news_label = str(news.get("label") or "").strip()
