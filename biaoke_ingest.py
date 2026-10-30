@@ -1949,6 +1949,13 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大位階學習畫圖／對質略過")
     try:
+        # 稀疏槽活畫：日／夜／納指費半＋量價裸K；隔日對質（不進話筒）
+        from biaoke_level_learn import maybe_paint_open_day_after_ingest
+
+        maybe_paint_open_day_after_ingest(db_path)
+    except Exception:
+        logger.exception("飆大開市活畫略過")
+    try:
         from biaoke_neurons import record_neuron_events
 
         record_neuron_events(db_path, packed)
@@ -2066,6 +2073,14 @@ def start_biaoke_poller() -> Optional[Any]:
             logger.exception("飆大舊推文清除略過")
         while True:
             run_biaoke_ingest_quiet()
+            try:
+                # 無新文時仍走稀疏槽（夜盤／盤中偶爾看一下）
+                from biaoke_level_learn import maybe_paint_open_day_after_ingest
+                from config import get_db_path
+
+                maybe_paint_open_day_after_ingest(get_db_path())
+            except Exception:
+                logger.exception("飆大輪詢活畫略過")
             wait = poll_wait_seconds()
             logger.info("飆大輪詢：%s 秒後再抓公開文／最新文討論串", wait)
             _time.sleep(max(30, int(wait)))

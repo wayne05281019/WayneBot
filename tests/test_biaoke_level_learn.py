@@ -2,17 +2,24 @@
 from __future__ import annotations
 
 import inspect
+import json
 import os
 import sqlite3
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from biaoke_level_learn import (
+    _sparse_slot_id,
     ensure_tables,
     looks_like_level_now,
+    paint_open_day_hypothesis,
     record_level_learn_from_events,
     verify_pending_with_event,
 )
+
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 def test_looks_like_level_now_index_wave():
@@ -22,11 +29,25 @@ def test_looks_like_level_now_index_wave():
     assert not looks_like_level_now("今天天氣不錯")
 
 
-def test_ingest_hooks_level_learn():
-    from biaoke_ingest import _after_ingest_analyze
+def test_ingest_hooks_level_learn_and_live_paint():
+    from biaoke_ingest import _after_ingest_analyze, start_biaoke_poller
 
     src = inspect.getsource(_after_ingest_analyze)
     assert "record_level_learn_from_events" in src
+    assert "maybe_paint_open_day_after_ingest" in src
+    poll = inspect.getsource(start_biaoke_poller)
+    assert "maybe_paint_open_day_after_ingest" in poll
+
+
+def test_sparse_slots_not_every_minute():
+    pre = datetime(2026, 11, 2, 8, 10, tzinfo=TAIPEI)
+    mid = datetime(2026, 11, 2, 11, 20, tzinfo=TAIPEI)
+    night = datetime(2026, 10, 30, 21, 40, tzinfo=TAIPEI)
+    idle = datetime(2026, 11, 2, 10, 5, tzinfo=TAIPEI)
+    assert _sparse_slot_id(pre) == "20261102-pre"
+    assert _sparse_slot_id(mid) == "20261102-mid"
+    assert _sparse_slot_id(night) == "20261030-night"
+    assert _sparse_slot_id(idle) is None
 
 
 def test_verify_pending_optimistic_then_crash(tmp_path):
@@ -57,3 +78,24 @@ def test_record_skips_under_pytest(tmp_path, monkeypatch):
         db, [{"id": "x", "date": "20261030", "time": "09:18", "text": "大盤 C3-3 主跌"}]
     )
     assert stats.get("skipped") == "pytest"
+
+
+def test_paint_skips_under_pytest(tmp_path, monkeypatch):
+    monkeypatch.delenv("WAYNE_LEVEL_LEARN_LIVE", raising=False)
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    out = paint_open_day_hypothesis(db, force=True)
+    assert out.get("skipped") == "pytest"
+
+
+def test_open_day_table_has_vol_fields(tmp_path):
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    cols = {
+        r[1]
+        for r in sqlite3.connect(db).execute(
+            "PRAGMA table_info(biaoke_open_day_paints)"
+        )
+    }
+    for need in ("turn_note", "vol_note", "key_levels", "tx60_path", "us_note", "pending"):
+        assert need in cols
