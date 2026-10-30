@@ -679,49 +679,196 @@ def _build_live_pack(db_path: str) -> Dict[str, Any]:
     }
 
 
-def _overlay_banner(png_path: str, lines: Sequence[str]) -> str:
-    """圖頂疊思考條（量價／題旨一眼可讀；失敗不擋）。"""
-    if not png_path or not os.path.isfile(png_path):
-        return png_path or ""
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-    except Exception:
-        return png_path
-    try:
-        im = Image.open(png_path).convert("RGBA")
-        w, h = im.size
-        band_h = max(72, int(h * 0.09))
-        overlay = Image.new("RGBA", (w, band_h), (255, 255, 255, 230))
-        draw = ImageDraw.Draw(overlay)
-        try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc", 22
+# 活畫深底：話筒縮圖對比（對齊你覺得清楚的黑底讀法）
+_LIVE_BG = "#0b0f14"
+_LIVE_PANEL = "#121820"
+_LIVE_TEXT = "#f2f5f8"
+_LIVE_MUTED = "#b0bec5"
+_LIVE_GRID = "#2a3440"
+_LIVE_UP = "#ff5252"
+_LIVE_DOWN = "#26a69a"
+_LIVE_LV = (
+    ("tx60_down", "#ce93d8", "降軌"),
+    ("tx60_swing_hi", "#ffd54f", "近窗高"),
+    ("tx60_swing_lo", "#81d4fa", "近窗低"),
+    ("tx_night_l", "#ffab91", "夜低"),
+)
+
+
+def _style_live_ax(ax, axv) -> None:
+    ax.set_facecolor(_LIVE_PANEL)
+    axv.set_facecolor(_LIVE_PANEL)
+    for a in (ax, axv):
+        a.tick_params(colors=_LIVE_MUTED, labelsize=10)
+        for sp in a.spines.values():
+            sp.set_color(_LIVE_GRID)
+        a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
+
+
+def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) -> None:
+    n = len(closes)
+    for i in range(n):
+        prev_c = closes[i - 1] if i else None
+        up = candle_up(closes[i], prev_c, opens[i])
+        color = _LIVE_UP if up else _LIVE_DOWN
+        ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.15, zorder=3)
+        y0, y1 = sorted((opens[i], closes[i]))
+        import matplotlib.pyplot as plt
+
+        ax.add_patch(
+            plt.Rectangle(
+                (i - 0.34, y0),
+                0.68,
+                max(y1 - y0, 6),
+                facecolor=color,
+                edgecolor=color,
+                linewidth=0.4,
+                zorder=4,
             )
-            font_s = ImageFont.truetype(
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", 18
-            )
-        except Exception:
-            font = ImageFont.load_default()
-            font_s = font
-        y = 8
-        for i, line in enumerate(list(lines or [])[:4]):
-            t = str(line or "").strip()
-            if not t:
-                continue
-            draw.text((16, y), t[:90], fill=(31, 41, 51, 255), font=font if i == 0 else font_s)
-            y += 26 if i == 0 else 22
-        out = Image.new("RGBA", (w, h + band_h), (255, 255, 255, 255))
-        out.paste(overlay, (0, 0))
-        out.paste(im, (0, band_h))
-        out.convert("RGB").save(png_path, format="PNG", optimize=True)
-        return png_path
+        )
+        axv.bar(i, vols[i], color=color, width=0.68, zorder=3, alpha=0.92)
+
+
+def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
+    """加權日K深底活畫：只標真關鍵位＋量柱＋底部題旨。不准標錯5高。"""
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from decision_card_signals import candle_up_taiwan
+        from biaoke_wave import _load_twii_bars, wave_abc_story
+        from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
-        logger.exception("活畫題旨疊字失敗")
-        return png_path
+        return ""
+    bars = _load_twii_bars(db_path, n=90)
+    if len(bars) < 12 or not save_path:
+        return ""
+    story = wave_abc_story(bars, last_tag="")
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    n = len(bars)
+    opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
+    highs = [float(r.get("high") or 0) for r in bars]
+    lows = [float(r.get("low") or 0) for r in bars]
+    closes = [float(r.get("close") or 0) for r in bars]
+    vols = [float(r.get("volume") or 0) for r in bars]
+    fig, (ax, axv) = plt.subplots(
+        2,
+        1,
+        figsize=(14.8, 9.0),
+        dpi=NAV_CHART_DPI,
+        sharex=True,
+        gridspec_kw=dict(height_ratios=(5.3, 1.55), hspace=0.046),
+    )
+    fig.patch.set_facecolor(_LIVE_BG)
+    _style_live_ax(ax, axv)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    # ABC 骨架（B 過 A 起時標籤已在 story 改過，不會寫錯5高）
+    for key in ("a", "b", "c"):
+        leg = story.get(key) or {}
+        xs = list(leg.get("xs") or [])
+        ys = list(leg.get("ys") or [])
+        if len(xs) < 2:
+            continue
+        dashed = bool(leg.get("unconfirmed"))
+        ax.plot(
+            xs,
+            ys,
+            color=str(leg.get("color") or "#90caf9"),
+            linewidth=1.6,
+            linestyle=(0, (5, 2.5)) if dashed else "-",
+            zorder=6,
+        )
+    # 關鍵位：只用真標；B過A起時 fifth 文案已是 A起
+    for meta_key, color in (
+        ("fifth_high", "#69f0ae"),
+        ("b_high", "#ffd54f"),
+        ("a_done", "#80cbc4"),
+    ):
+        hit = story.get(meta_key) or {}
+        if not hit:
+            continue
+        y = float(hit.get("y") or 0)
+        i = float(hit.get("i") or 0)
+        if y <= 0:
+            continue
+        ax.axhline(y, color=color, linewidth=1.0, linestyle=(0, (4, 3)), zorder=5)
+        ax.text(
+            min(n - 0.8, i + 1.2),
+            y,
+            str(hit.get("text") or "")[:28],
+            fontproperties=_fp(10, "bold"),
+            color=color,
+            ha="left",
+            va="bottom",
+            zorder=8,
+        )
+    levels = pack.get("key_levels") or {}
+    for key, color, lab in _LIVE_LV:
+        if key not in levels:
+            continue
+        y = float(levels[key])
+        ax.axhline(y, color=color, linewidth=0.9, linestyle=(0, (3, 2)), alpha=0.85)
+        ax.text(
+            n - 0.4,
+            y,
+            f"{lab} {_px(y)}",
+            fontproperties=_fp(9, "bold"),
+            color=color,
+            ha="right",
+            va="bottom",
+        )
+    ax.set_xlim(-0.6, n + 0.8)
+    ax.set_ylim(min(lows) - 420, max(highs) + 520)
+    axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
+    axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
+        lab.set_fontproperties(_fp(9, "bold"))
+        lab.set_color(_LIVE_MUTED)
+    last = bars[-1]
+    as_of = _ymd(last.get("date"))
+    fig.text(
+        0.03,
+        0.965,
+        f"加權日K活畫（深底）　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(last.get('close'))}",
+        fontproperties=_fp(13, "bold"),
+        color=_LIVE_TEXT,
+        ha="left",
+        va="top",
+    )
+    # 底部題旨：縮圖先讀這裡
+    caps = [
+        str(pack.get("thesis") or ""),
+        str(pack.get("turn_note") or ""),
+        str(pack.get("vol_note") or ""),
+        str(pack.get("us_note") or ""),
+    ]
+    if story.get("b_over_a_start"):
+        caps.insert(1, "B高已過A起→不准標5高（標錯＝教錯）")
+    y = 0.078
+    for line in caps:
+        t = str(line or "").strip()
+        if not t:
+            continue
+        fig.text(
+            0.03,
+            y,
+            t[:78],
+            fontproperties=_fp(10, "bold"),
+            color=_LIVE_TEXT if y > 0.05 else _LIVE_MUTED,
+            ha="left",
+            va="bottom",
+        )
+        y -= 0.022
+    fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
+    plt.close(fig)
+    if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000:
+        return save_path
+    return ""
 
 
 def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
-    """TX60 裸K＋量柱＋關鍵位（縮圖也要看得出量價）。"""
+    """TX60 深底裸K＋量柱＋關鍵位（縮圖要讀得懂量價）。"""
     rows = _load_tx60_rows(db_path, 64)
     if len(rows) < 8 or not save_path:
         return ""
@@ -744,84 +891,63 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
     fig, (ax, axv) = plt.subplots(
         2,
         1,
-        figsize=(14.5, 8.6),
+        figsize=(14.5, 8.8),
         dpi=NAV_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.2, 1.5), hspace=0.05),
     )
-    fig.patch.set_facecolor("#ffffff")
-    for i in range(n):
-        prev_c = closes[i - 1] if i else None
-        up = candle_up_taiwan(closes[i], prev_c, opens[i])
-        color = "#e53935" if up else "#00897b"
-        ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.1, zorder=3)
-        y0, y1 = sorted((opens[i], closes[i]))
-        ax.add_patch(
-            plt.Rectangle(
-                (i - 0.34, y0),
-                0.68,
-                max(y1 - y0, 6),
-                facecolor=color,
-                edgecolor=color,
-                linewidth=0.4,
-                zorder=4,
-            )
-        )
-        axv.bar(i, vols[i], color=color, width=0.68, zorder=3)
+    fig.patch.set_facecolor(_LIVE_BG)
+    _style_live_ax(ax, axv)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     levels = pack.get("key_levels") or {}
-    for key, col in (
-        ("tx60_down", "#6a1b9a"),
-        ("tx60_swing_hi", "#ad1457"),
-        ("tx60_swing_lo", "#546e7a"),
-    ):
-        if key in levels:
-            ax.axhline(float(levels[key]), color=col, linewidth=0.9, linestyle=(0, (4, 3)))
-            ax.text(
-                n - 0.5,
-                float(levels[key]),
-                f"{key.replace('tx60_', '')} {_px(levels[key])}",
-                fontproperties=_fp(9, "bold"),
-                color=col,
-                ha="right",
-                va="bottom",
-            )
+    for key, col, lab in _LIVE_LV:
+        if key not in levels:
+            continue
+        ax.axhline(float(levels[key]), color=col, linewidth=1.05, linestyle=(0, (4, 3)))
+        ax.text(
+            n - 0.5,
+            float(levels[key]),
+            f"{lab} {_px(levels[key])}",
+            fontproperties=_fp(10, "bold"),
+            color=col,
+            ha="right",
+            va="bottom",
+        )
     ax.set_xlim(-0.6, n + 0.6)
     ax.set_ylim(min(lows) - 180, max(highs) + 280)
     axv.set_ylim(0, (max(vols) if vols else 1) * 1.35)
-    ax.set_title("")
-    fig.text(
-        0.02,
-        0.97,
-        "台指期 60 分　官方柱＋量（細微波觀測底圖，不數段）",
-        fontproperties=_fp(13, "bold"),
-        color="#1f2933",
-        ha="left",
-        va="top",
-    )
-    fig.text(
-        0.02,
-        0.935,
-        str(pack.get("vol_note") or "")[:70],
-        fontproperties=_fp(10, "bold"),
-        color="#37474f",
-        ha="left",
-        va="top",
-    )
-    fig.text(
-        0.02,
-        0.905,
-        str(pack.get("turn_note") or "")[:70],
-        fontproperties=_fp(10, "bold"),
-        color="#37474f",
-        ha="left",
-        va="top",
-    )
-    axv.set_ylabel("量", fontproperties=_fp(10, "bold"))
-    ax.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
-    axv.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
+    axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
-    fig.savefig(save_path, facecolor="#ffffff", bbox_inches="tight")
+        lab.set_color(_LIVE_MUTED)
+    fig.text(
+        0.03,
+        0.965,
+        "台指期 60 分　深底官方柱＋量（細微波底圖，不數段）",
+        fontproperties=_fp(13, "bold"),
+        color=_LIVE_TEXT,
+        ha="left",
+        va="top",
+    )
+    y = 0.07
+    for line in (
+        str(pack.get("vol_note") or ""),
+        str(pack.get("turn_note") or ""),
+        str(pack.get("thesis") or ""),
+    ):
+        if not line.strip():
+            continue
+        fig.text(
+            0.03,
+            y,
+            line[:78],
+            fontproperties=_fp(10, "bold"),
+            color=_LIVE_TEXT,
+            ha="left",
+            va="bottom",
+        )
+        y -= 0.024
+    fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
     if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000:
         return save_path
@@ -1007,21 +1133,9 @@ def paint_open_day_hypothesis(
     chart_path = os.path.join(snap_root, f"{slot_id}.png")
     tx60_path = os.path.join(snap_root, f"{slot_id}-tx60.png")
     try:
-        from biaoke_wave import render_twii_degree_png
-
-        got = render_twii_degree_png(db_path, chart_path)
-        if got and os.path.isfile(got):
-            chart_path = _overlay_banner(
-                got,
-                [
-                    f"活畫 {slot_id}｜{thesis}",
-                    turn_note or wait_struct,
-                    vol_note,
-                    us_note,
-                ],
-            )
-        else:
-            chart_path = ""
+        # 深底活畫：只標不錯的關鍵位；B過A起時不准寫5高
+        got = _render_twii_live_dark(db_path, chart_path, pack)
+        chart_path = got or ""
     except Exception:
         logger.exception("加權活畫渲圖失敗")
         chart_path = ""
