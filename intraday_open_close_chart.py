@@ -30,6 +30,22 @@ logger = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Taipei")
 ASOF_YMD = "20261029"
 
+
+# 頭欄（股名／產業／日期戳／現價）不准放大。
+# 十二宮格＝A(+30%)；走勢圖內標籤＝B(+50%)。格框／圖區尺寸不變。
+_GRID_FS_SCALE = 1.30
+_CHART_LABEL_FS_SCALE = 1.50
+
+
+def _grid_fs(size: float) -> float:
+    """十二宮格／底列字級（使用者鎖 A＝+30%）。"""
+    return float(size) * float(_GRID_FS_SCALE)
+
+
+def _chart_label_fs(size: float) -> float:
+    """走勢圖內標籤／軸刻度字級（使用者鎖 B＝+50%）。"""
+    return float(size) * float(_CHART_LABEL_FS_SCALE)
+
 PREVIEW_SYMBOLS: Tuple[Tuple[str, str, str], ...] = (
     ("3595", "山太士", "EM"),
     ("7853", "政美應用", "EM"),
@@ -899,7 +915,10 @@ def _rects_overlap(
 def _estimate_label_rect(
     cx: float, cy: float, text: str, *, fs: float, x_span: float, y_span: float, kind: str
 ) -> Tuple[float, float, float, float]:
-    """粗估標盒（資料座標）。dot＝實心原點；chip＝舊雙行圓章；full＝完整標。"""
+    """粗估標盒（資料座標）。dot＝實心原點；chip＝舊雙行圓章；full＝完整標。
+
+    full 佔位隨字級放大（B＝+50% 時不准低估，否則會壓到股價刻度／折線）。
+    """
     n = max(len(text), 1)
     if kind == "dot":
         # 實心原點：極小佔位
@@ -909,9 +928,31 @@ def _estimate_label_rect(
         half_x = max(x_span * 0.028, 6.5)
         half_y = max(y_span * 0.028, abs(cy) * 0.0045, 1.2)
     else:
-        half_x = max(x_span * (0.018 + 0.007 * min(n, 14)), 10.0)
-        half_y = max(y_span * (0.022 + 0.001 * max(fs - 8.0, 0)), abs(cy) * 0.0035, 1.0)
+        # 基準約 8.5pt；字級變大 → 盒變大（與 _chart_label_fs 同軌）
+        fs_boost = max(float(fs) / 8.5, 1.0)
+        half_x = max(x_span * (0.018 + 0.007 * min(n, 14)), 10.0) * fs_boost
+        half_y = max(
+            y_span * (0.022 + 0.0015 * max(float(fs) - 8.0, 0)),
+            abs(cy) * 0.0035,
+            1.0,
+        ) * fs_boost
     return (cx - half_x, cx + half_x, cy - half_y, cy + half_y)
+
+
+def _y_price_tick_band(
+    ax, *, x_span: float, y_span: float
+) -> Tuple[float, float, float, float]:
+    """左側股價區間刻度禁區（資料座標）：智能完整標不准壓進此帶。
+
+    刻度在外框內、軸左 gutter（完整可讀，不准被框線切字）；禁區＝整條左欄。
+    """
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    pad = max(0.0, -float(x0))
+    # 右緣≈開盤；整條左 gutter 留給刻度，智能標不准進來
+    clear_x1 = float(x0) + max(pad, float(x_span) * 0.045, 10.0)
+    clear_x1 = min(clear_x1, float(x_span) * 0.07)
+    return (float(x0), float(clear_x1), float(y0), float(y1))
 
 
 def _path_hits_rect(
@@ -1072,27 +1113,38 @@ def _paint_smart_level_labels(
         for short, full, ax_, ay_, ck, lp in anchors
     ]
 
-    # 完整標候選 offset（資料座標）：短虛線「一點點」
+    path_pad = y_span * 0.012
+    box_pad = y_span * 0.008
+    # 股價區間刻度禁區：完整標只走智能淨空，不准壓左欄 58／59／60…
+    tick_band = _y_price_tick_band(ax, x_span=x_span, y_span=y_span)
+    tick_clear_x = float(tick_band[1])
+
+    # 完整標候選 offset（資料座標）：B 字級較大 → 多給遠一點淨空，免壓折線／刻度
     def _offset_cands(axp: float, ayp: float) -> List[Tuple[float, float]]:
-        dxs = [x_span * 0.10, x_span * 0.14, -x_span * 0.10, -x_span * 0.14,
-               x_span * 0.18, -x_span * 0.18, x_span * 0.07, -x_span * 0.07]
-        dys = [y_span * 0.08, -y_span * 0.08, y_span * 0.12, -y_span * 0.12,
-               y_span * 0.05, -y_span * 0.05, y_span * 0.16, -y_span * 0.16]
+        dxs = [
+            x_span * 0.10, x_span * 0.14, -x_span * 0.10, -x_span * 0.14,
+            x_span * 0.18, -x_span * 0.18, x_span * 0.07, -x_span * 0.07,
+            x_span * 0.22, -x_span * 0.22, x_span * 0.26, -x_span * 0.26,
+        ]
+        dys = [
+            y_span * 0.08, -y_span * 0.08, y_span * 0.12, -y_span * 0.12,
+            y_span * 0.05, -y_span * 0.05, y_span * 0.16, -y_span * 0.16,
+            y_span * 0.20, -y_span * 0.20, y_span * 0.24, -y_span * 0.24,
+        ]
         out: List[Tuple[float, float]] = []
         for dx in dxs:
             for dy in dys:
                 out.append((axp + dx, ayp + dy))
-        # 偏好：錨在左半→標往右上／右下；右半→往左
+        # 偏好：錨在左半→標往右上／右下；右半→往左；且優先在刻度禁區右側
         out.sort(key=lambda p: (
+            0 if p[0] >= tick_clear_x + x_span * 0.02 else 1,
             0 if (axp < (x0 + x1) * 0.55 and p[0] > axp) or (axp >= (x0 + x1) * 0.55 and p[0] < axp) else 1,
             abs(p[1] - ayp) + abs(p[0] - axp) * 0.3,
         ))
         return out
 
-    occupied: List[Tuple[float, float, float, float]] = []
+    occupied: List[Tuple[float, float, float, float]] = [tick_band]
     placed_meta: List[Dict[str, Any]] = []
-    path_pad = y_span * 0.012
-    box_pad = y_span * 0.008
     # 先只算位，全部定案再畫（方便互壓後 nudge）
     pending: List[Dict[str, Any]] = []
 
@@ -1111,25 +1163,44 @@ def _paint_smart_level_labels(
 
         # 完整標：字級可縮；掃淨空；上下交錯偏好
         prefer_up = idx % 2 == 0
-        full_fs_options = (9.5, 8.5, 7.5, 7.0)
+        full_fs_options = tuple(_chart_label_fs(x) for x in (9.5, 8.5, 7.5, 7.0))
         chosen: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
         cands = _offset_cands(axp, chip_ay)
         if prefer_up:
-            cands = sorted(cands, key=lambda p: (0 if p[1] >= chip_ay else 1, abs(p[1] - chip_ay)))
+            cands = sorted(
+                cands,
+                key=lambda p: (
+                    0 if p[0] >= tick_clear_x + x_span * 0.02 else 1,
+                    0 if p[1] >= chip_ay else 1,
+                    abs(p[1] - chip_ay),
+                ),
+            )
         else:
-            cands = sorted(cands, key=lambda p: (0 if p[1] < chip_ay else 1, abs(p[1] - chip_ay)))
+            cands = sorted(
+                cands,
+                key=lambda p: (
+                    0 if p[0] >= tick_clear_x + x_span * 0.02 else 1,
+                    0 if p[1] < chip_ay else 1,
+                    abs(p[1] - chip_ay),
+                ),
+            )
         for full_fs in full_fs_options:
             for lx, ly in cands:
                 if not (x0 + x_span * 0.02 <= lx <= x1 - x_span * 0.02):
                     continue
                 if not (y0 + y_span * 0.03 <= ly <= y1 - y_span * 0.03):
                     continue
+                # 完整標中心至少在刻度禁區右側
+                if lx < tick_clear_x + x_span * 0.02:
+                    continue
                 dist = ((lx - axp) ** 2 + ((ly - chip_ay) / max(y_span / x_span, 1e-6)) ** 2) ** 0.5
-                if dist > x_span * 0.32:
+                if dist > x_span * 0.45:
                     continue
                 rect = _estimate_label_rect(
                     lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                 )
+                if rect[0] < tick_clear_x:
+                    continue
                 if any(_rects_overlap(rect, o, pad=box_pad) for o in occupied):
                     continue
                 if _rects_overlap(rect, chip_rect, pad=box_pad):
@@ -1142,25 +1213,62 @@ def _paint_smart_level_labels(
                 break
 
         if chosen is None:
-            full_fs = 7.0
-            fallback = None
-            best_pen = 1e18
-            for lx, ly in cands:
-                lx = min(max(lx, x0 + x_span * 0.02), x1 - x_span * 0.02)
-                ly = min(max(ly, y0 + y_span * 0.03), y1 - y_span * 0.03)
-                # 強制拉開：依序上下左右大步
-                for extra_dy in (0.0, y_span * 0.10, -y_span * 0.10, y_span * 0.16, -y_span * 0.16):
-                    ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
-                    rect = _estimate_label_rect(
-                        lx, ly2, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
-                    )
-                    ov = sum(1 for o in occupied if _rects_overlap(rect, o, pad=box_pad * 0.5))
-                    ph = 1 if _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.4) else 0
-                    pen = ov * 20 + ph * 8 + abs(lx - axp) / x_span
-                    if pen < best_pen:
-                        best_pen = pen
-                        fallback = (lx, ly2, full_fs, rect)
-            chosen = fallback
+            # 退讓掃描：先找「不壓折線＋不進刻度禁區」，再才允許輕觸折線
+            for allow_path in (False, True):
+                for full_fs in full_fs_options + (_chart_label_fs(6.5),):
+                    fallback = None
+                    best_pen = 1e18
+                    for lx, ly in cands:
+                        lx = min(max(lx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
+                        ly = min(max(ly, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                        for extra_dy in (
+                            0.0, y_span * 0.10, -y_span * 0.10, y_span * 0.16,
+                            -y_span * 0.16, y_span * 0.22, -y_span * 0.22,
+                        ):
+                            for extra_dx in (0.0, x_span * 0.06, -x_span * 0.06, x_span * 0.12):
+                                lx2 = min(
+                                    max(lx + extra_dx, tick_clear_x + x_span * 0.02),
+                                    x1 - x_span * 0.02,
+                                )
+                                ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                                rect = _estimate_label_rect(
+                                    lx2, ly2, full_txt, fs=full_fs,
+                                    x_span=x_span, y_span=y_span, kind="full",
+                                )
+                                if rect[0] < tick_clear_x:
+                                    continue
+                                if any(
+                                    _rects_overlap(rect, o, pad=box_pad * 0.5)
+                                    for o in occupied
+                                ):
+                                    continue
+                                ph = _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.4)
+                                if ph and not allow_path:
+                                    continue
+                                pen = (8 if ph else 0) + abs(lx2 - axp) / x_span
+                                if pen < best_pen:
+                                    best_pen = pen
+                                    fallback = (lx2, ly2, full_fs, rect)
+                    if fallback is not None:
+                        chosen = fallback
+                        break
+                if chosen is not None:
+                    break
+
+        if chosen is None:
+            # 必要位階標不准省略：最後仍貼刻度禁區右側淨空
+            full_fs = _chart_label_fs(7.0)
+            lx = min(max(axp + x_span * 0.14, tick_clear_x + x_span * 0.04), x1 - x_span * 0.04)
+            ly = min(max(chip_ay + y_span * 0.10, y0 + y_span * 0.05), y1 - y_span * 0.05)
+            rect = _estimate_label_rect(
+                lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+            )
+            if rect[0] < tick_clear_x:
+                lx = tick_clear_x + (rect[1] - rect[0]) * 0.55
+                rect = _estimate_label_rect(
+                    lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+                )
+            chosen = (lx, ly, full_fs, rect)
 
         assert chosen is not None
         lx, ly, full_fs, full_rect = chosen
@@ -1198,7 +1306,10 @@ def _paint_smart_level_labels(
             float(ex), chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
         )
         # 事件字級小於主標；急殺優先上方／撐對側
-        full_fs_options = (9.0, 8.0, 7.5, 7.0) if is_kill else (9.5, 8.5, 7.5, 7.0)
+        full_fs_options = tuple(
+            _chart_label_fs(x)
+            for x in ((9.0, 8.0, 7.5, 7.0) if is_kill else (9.5, 8.5, 7.5, 7.0))
+        )
         chosen_e: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
         cands = _offset_cands(float(ex), float(ey))
         if is_kill and support_ys:
@@ -1241,9 +1352,13 @@ def _paint_smart_level_labels(
                     continue
                 if not (y0 + y_span * 0.03 <= ly <= y1 - y_span * 0.03):
                     continue
+                if lx < tick_clear_x + x_span * 0.02:
+                    continue
                 rect = _estimate_label_rect(
                     lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                 )
+                if rect[0] < tick_clear_x:
+                    continue
                 if any(_rects_overlap(rect, o, pad=box_pad) for o in occupied):
                     continue
                 if _rects_overlap(rect, chip_rect, pad=box_pad):
@@ -1257,7 +1372,7 @@ def _paint_smart_level_labels(
             if chosen_e is not None:
                 break
         if chosen_e is None:
-            full_fs = 7.0
+            full_fs = _chart_label_fs(7.0)
             best_pen = 1e18
             fallback_e = None
             # 急殺強制候選：軸頂／對側大步
@@ -1266,7 +1381,7 @@ def _paint_smart_level_labels(
                 extra_cands = [
                     (ex + x_span * 0.18, y1 - y_span * 0.08),
                     (ex - x_span * 0.18, y1 - y_span * 0.08),
-                    (x0 + x_span * 0.12, y1 - y_span * 0.10),
+                    (tick_clear_x + x_span * 0.08, y1 - y_span * 0.10),
                     (x1 - x_span * 0.12, y1 - y_span * 0.10),
                     (ex + x_span * 0.22, ey + y_span * 0.18),
                     (ex - x_span * 0.22, ey + y_span * 0.18),
@@ -1274,11 +1389,13 @@ def _paint_smart_level_labels(
             for lx, ly in extra_cands:
                 for extra_dy in (0.0, y_span * 0.14, y_span * 0.22, -y_span * 0.10):
                     for extra_dx in (0.0, x_span * 0.12, -x_span * 0.12, x_span * 0.20, -x_span * 0.20):
-                        lx2 = min(max(lx + extra_dx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                        lx2 = min(max(lx + extra_dx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
                         ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
                         rect = _estimate_label_rect(
                             lx2, ly2, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                         )
+                        if rect[0] < tick_clear_x:
+                            continue
                         if _hits_support(rect):
                             continue
                         ov = sum(1 for o in occupied if _rects_overlap(rect, o, pad=box_pad * 0.5))
@@ -1314,10 +1431,17 @@ def _paint_smart_level_labels(
         )
 
     def _try_set_full(k: int, lx: float, ly: float) -> bool:
+        # nudge 也必須守刻度禁區（不准又漂回壓住 58／59／60）
+        if lx < tick_clear_x + x_span * 0.02:
+            return False
         rect2 = _estimate_label_rect(
             lx, ly, pending[k]["full_txt"],
             fs=pending[k]["fs"], x_span=x_span, y_span=y_span, kind="full",
         )
+        if rect2[0] < tick_clear_x:
+            return False
+        if _rects_overlap(rect2, tick_band, pad=box_pad * 0.2):
+            return False
         if _rects_overlap(rect2, pending[k]["chip_rect"], pad=box_pad * 0.3):
             return False
         for t, p in enumerate(pending):
@@ -1381,12 +1505,15 @@ def _paint_smart_level_labels(
                             targets = [
                                 (lx, ly2),
                                 (
-                                    min(max(lx + sign * x_span * 0.05, x0 + x_span * 0.02), x1 - x_span * 0.02),
+                                    min(
+                                        max(lx + sign * x_span * 0.05, tick_clear_x + x_span * 0.02),
+                                        x1 - x_span * 0.02,
+                                    ),
                                     ly2,
                                 ),
                             ]
                         for tx, ty in targets:
-                            tx = min(max(tx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                            tx = min(max(tx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
                             ty = min(max(ty, y0 + y_span * 0.03), y1 - y_span * 0.03)
                             if _try_set_full(k, tx, ty):
                                 moved = True
@@ -1406,7 +1533,7 @@ def _paint_smart_level_labels(
                     (lx - x_span * 0.08, ly - y_span * 0.06),
                 ]
                 for tx, ty in targets:
-                    tx = min(max(tx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                    tx = min(max(tx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
                     ty = min(max(ty, y0 + y_span * 0.03), y1 - y_span * 0.03)
                     if _try_set_full(k, tx, ty):
                         moved = True
@@ -1490,7 +1617,7 @@ def _paint_smart_level_labels(
         if p.get("kind") == "event":
             face, edge, tc = "#FFFEF8", "#9AA0A6", ink
             lw, pad = 0.65, 0.14
-            fs = min(float(p["fs"]), 8.5)
+            fs = min(float(p["fs"]), _chart_label_fs(8.5))
         else:
             face, edge, tc = paper, col, col
             lw, pad = 0.9, 0.18
@@ -1516,6 +1643,9 @@ def _paint_smart_level_labels(
                 overlap_n += 1
     path_hits = sum(
         1 for r in full_rects if _path_hits_rect(xs, ys, r, y_pad=path_pad * 0.5)
+    )
+    tick_band_hits = sum(
+        1 for r in full_rects if _rects_overlap(r, tick_band, pad=box_pad * 0.15)
     )
     # 均＝現已併 → required=4；否則有均價=5、無均=4
     has_avg = bool(off.avg_price and float(off.avg_price) > 0)
@@ -1545,12 +1675,15 @@ def _paint_smart_level_labels(
         "required": required,
         "full_overlap_pairs": overlap_n,
         "full_path_hits": path_hits,
+        "tick_band_hits": tick_band_hits,
+        "tick_clear_x": float(tick_clear_x),
         "kill_support_hits": kill_support_hits,
         "merged_avg_close": merged_avg,
         "pass": bool(
             len(level_meta) >= required
             and overlap_n == 0
             and path_hits == 0
+            and tick_band_hits == 0
             and kill_support_hits == 0
         ),
         "labels": [
@@ -1655,7 +1788,7 @@ def _paint_vol_ratio_smart(
     cands: List[Tuple[float, float]] = [(x, y) for y in top_band for x in x_opts]
     chosen = None
     # v15：量％字級≤事件標；不准大色塊
-    for full_fs in (8.0, 7.5, 7.0, 6.5):
+    for full_fs in tuple(_chart_label_fs(x) for x in (8.0, 7.5, 7.0, 6.5)):
         for lx, ly in cands:
             lx = min(max(lx, x0 + x_span * 0.04), x1 - x_span * 0.04)
             ly = min(max(ly, clear_y0), y1 - y_span * 0.12)
@@ -1675,7 +1808,7 @@ def _paint_vol_ratio_smart(
     if chosen is None:
         for lx in (x0 + x_span * 0.08, x1 - x_span * 0.08, x0 + x_span * 0.5):
             ly = max(clear_y0 + y_span * 0.02, y1 - y_span * 0.18)
-            full_fs = 7.0
+            full_fs = _chart_label_fs(7.0)
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
@@ -1691,7 +1824,7 @@ def _paint_vol_ratio_smart(
         if chosen is None:
             lx = x1 - x_span * 0.08
             ly = min(max(clear_y0 + y_span * 0.05, y1 - y_span * 0.16), y1 - y_span * 0.12)
-            full_fs = 6.5
+            full_fs = _chart_label_fs(6.5)
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
@@ -2023,7 +2156,8 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
     cell_w = (width - gap_x * (cols - 1)) / cols
     edge = "#9AA0A6"
     lab_col = "#3A3A3A"
-    lab_fs, val_fs, sub_fs = 9.5, 13.0, 9.0  # v15：主數字略增，縮圖第二層可讀
+    # 格框尺寸不變；只放大格內國字／數字（頭欄不准吃這條）
+    lab_fs, val_fs, sub_fs = _grid_fs(9.5), _grid_fs(13.0), _grid_fs(9.0)
     for i, (lab, val, col, sub, side) in enumerate(cells):
         r, c = divmod(i, cols)
         x = pad_x + c * (cell_w + gap_x)
@@ -2046,7 +2180,7 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
         if sub and side:
             # v14：主數字與 +張／+％ 左右並排（一例：4,285張  +3,172張）
             line = f"{val}  {sub}"
-            fs = val_fs if len(line) <= 16 else max(8.5, val_fs - 1.5)
+            fs = val_fs if len(line) <= 16 else max(_grid_fs(8.5), val_fs - _grid_fs(1.5))
             quote_ax.text(
                 x + cell_w * 0.5, y + cell_h * 0.30, line,
                 fontproperties=fp(fs, True), color=col, ha="center", va="center",
@@ -2065,7 +2199,7 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
             )
         else:
             # 長主文（如「約7.0倍均量」）略縮字，免頂格
-            vfs = val_fs if len(str(val)) <= 8 else max(9.5, val_fs - 2.5)
+            vfs = val_fs if len(str(val)) <= 8 else max(_grid_fs(9.5), val_fs - _grid_fs(2.5))
             quote_ax.text(
                 x + cell_w * 0.5, y + cell_h * 0.30, val,
                 fontproperties=fp(vfs, True), color=col, ha="center", va="center",
@@ -2075,7 +2209,7 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
         quote_ax.text(
             pad_x, 0.028,
             "註：興櫃開＝前日均價，可高於當日最高",
-            fontproperties=fp(9.5, False), color=MUTE, ha="left", va="bottom",
+            fontproperties=fp(_grid_fs(9.5), False), color=MUTE, ha="left", va="bottom",
             zorder=3, clip_on=False,
         )
     quote_ax.set_xlim(0, 1)
@@ -2126,7 +2260,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
         """收／開標貼在條**上方標題帶**，不垂到下一列。"""
         fig.text(
             mx, yb + bar_h + 0.003, text,
-            fontproperties=fp(10, True), color=INK, ha=ha, va="bottom",
+            fontproperties=fp(_grid_fs(10), True), color=INK, ha=ha, va="bottom",
             transform=fig.transFigure, zorder=z + 1,
             bbox=dict(boxstyle="square,pad=0.14", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.8),
         )
@@ -2134,7 +2268,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     # —— 1) 量能：標題＋季均／當日全在條上方；條下空白給列縫（FAIL#1/#3） ——
     fig.text(
         left, y + bar_h + 0.003, "量能",
-        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     q_txt = (
@@ -2144,12 +2278,12 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     )
     fig.text(
         left + 0.055, y + bar_h + 0.003, q_txt,
-        fontproperties=fp(10, False), color="#3A3A3A", ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(10), False), color="#3A3A3A", ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         right, y + bar_h + 0.003, f"當日 {_fmt_lots(off.volume_lots)}",
-        fontproperties=fp(11, True), color=INK, ha="right", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="right", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.patches.append(
@@ -2177,17 +2311,17 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     open_f = (off.open - off.low) / span if open_in else None
     fig.text(
         left, y + bar_h + 0.003, "今日區間",
-        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         left + 0.078, y + bar_h + 0.003, f"日低 {_fmt_face(off.low)}",
-        fontproperties=fp(11, True), color=DN, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=DN, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         right, y + bar_h + 0.003, f"日高 {_fmt_face(off.high)}",
-        fontproperties=fp(11, True), color=UP, ha="right", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=UP, ha="right", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.patches.append(
@@ -2244,17 +2378,17 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     last_f52 = (off.close - w_lo) / span52
     fig.text(
         left, y + bar_h + 0.003, "52週",
-        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         left + 0.048, y + bar_h + 0.003, f"低 {_fmt_face(w_lo)}",
-        fontproperties=fp(11, True), color=DN, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=DN, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         right, y + bar_h + 0.003, f"高 {_fmt_face(w_hi)}",
-        fontproperties=fp(11, True), color=UP, ha="right", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=UP, ha="right", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.patches.append(
@@ -2279,7 +2413,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
         fig.text(
             min(tick_x + 0.012, left + width * 0.28), y + bar_h + 0.003,
             f"收 {_fmt_face(off.close)}",
-            fontproperties=fp(9.5, True), color=INK, ha="left", va="bottom",
+            fontproperties=fp(_grid_fs(9.5), True), color=INK, ha="left", va="bottom",
             transform=fig.transFigure, zorder=z + 1,
             bbox=dict(boxstyle="square,pad=0.12", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.7),
         )
@@ -2287,7 +2421,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
         fig.text(
             max(tick_x - 0.012, left + width * 0.72), y + bar_h + 0.003,
             f"收 {_fmt_face(off.close)}",
-            fontproperties=fp(9.5, True), color=INK, ha="right", va="bottom",
+            fontproperties=fp(_grid_fs(9.5), True), color=INK, ha="right", va="bottom",
             transform=fig.transFigure, zorder=z + 1,
             bbox=dict(boxstyle="square,pad=0.12", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.7),
         )
@@ -2371,14 +2505,14 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
     frame_left = frame_x / 100.0  # 0.016
     frame_right = (frame_x + frame_w) / 100.0  # 0.982
-    # v19：軸左緣貼外框內側（刻度靠緊左框）；右緣仍吃滿
+    # 軸左緣貼外框內側；股價刻度畫在框內左 gutter（完整可讀，不准被框線切字）
     # 舊 right_f=_STRUCTURE_FIG_RIGHT=0.905 → 右側大塊空白；改貼近 frame_right
     left_f = frame_left + 0.004  # ≈0.020；框內僅留一線縫
     right_f = frame_right - 0.008  # ≈0.974
     assert left_f > frame_left and right_f < frame_right
-    assert (right_f - left_f) >= 0.93, "價／量縮圖區寬度不夠"
-    # 開盤路徑右移：資料左緣負向 pad，讓 x=0（開）落在刻度字右側（線不准壓字）
-    x_label_pad = max(float(x_end) * 0.125, 30.0)  # 分钟；約軸寬 11–12.5% 給刻度字，線不准壓字
+    assert (right_f - left_f) >= 0.90, "價／量縮圖區寬度不夠"
+    # 左 gutter 夠 58／59／60 完整入框（離框線有呼吸）；開盤在刻度右側（舊 12% 太空）
+    x_label_pad = max(float(x_end) * 0.06, 14.0)  # 分钟；約軸寬 6%
     # v14：時間戳旁黑標 → 頭欄變矮 → 十二格上移 → 價圖加高（智能標不擠）
     bars_top = 0.195
     xlab_bot = 0.205
@@ -2571,8 +2705,10 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         lo = min(lo, float(off.avg_price))
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
-    # v20：價／量強制同一 xlim（左 pad 讓刻度字；右＝session x_end）
+    # v20：價／量強制同一 xlim；開盤貼左（刻度在軸外），右＝session x_end
     x_lim = (-float(x_label_pad), float(x_end))
+    ax.set_xmargin(0.0)
+    vol_ax.set_xmargin(0.0)
     ax.set_xlim(*x_lim)
     vol_ax.set_xlim(*x_lim)
     # 線尾＝最後真分時（densify 已不尾延）；硬閘不准畫過 x_end
@@ -2709,32 +2845,34 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         for sp in a.spines.values():
             sp.set_visible(False)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
-    # v19：Y 刻度貼左框內側；路徑已用 x_label_pad 右移，字與線分離
-    import matplotlib.transforms as mtransforms
-
+    # Y 刻度：資料座標畫在左 gutter 內（外框內），整字可讀，不准被框線切到「59」的 5
     ax.tick_params(
-        axis="y", colors=MUTE, length=2.4, labelsize=10,
+        axis="y", colors=MUTE, length=2.0, labelsize=_grid_fs(10),
         direction="in", left=True, labelleft=False, right=False, labelright=False,
     )
     # 時間標：xlab 專帶（bars_top 之上、vol_bot 之下）；09／15 完整（FAIL#1/#2）
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
-    y_trans = mtransforms.blended_transform_factory(ax.transAxes, ax.transData)
     y0, y1 = ax.get_ylim()
+    x_left, x_right = ax.get_xlim()
+    # 刻度錨在 gutter 內，離左框線約 gutter 40%（整字入框，免「59」的 5 被切）
+    tick_x = float(x_left) + max((-float(x_left)) * 0.40, 4.0)
     for yv in ax.get_yticks():
         if not (y0 < float(yv) < y1):
             continue
-        # 整數價免小數；其餘跟 face 一致
+        # 整數價免小數；其餘跟 face 一致（左欄區間字＝A；智能標＝B 且不准壓）
         txt = f"{yv:.0f}" if abs(float(yv) - round(float(yv))) < 1e-6 else _fmt_face(float(yv))
         ax.text(
-            0.004, float(yv), txt,  # 貼軸左＝貼外框內側
-            transform=y_trans, ha="left", va="center",
-            fontproperties=fp(10, False), color=MUTE, zorder=6, clip_on=True,
+            tick_x, float(yv), txt,
+            ha="left", va="center",
+            fontproperties=fp(_grid_fs(10), False), color=MUTE,
+            zorder=36, clip_on=False,
         )
     vol_ax.set_yticks([])
     vol_ax.text(
-        0.004, 0.90, "量(張)", transform=vol_ax.transAxes,
-        fontproperties=fp(10, False), color=MUTE, va="top", ha="left",
+        0.018, 0.90, "量(張)", transform=vol_ax.transAxes,
+        fontproperties=fp(_grid_fs(10), False), color=MUTE,
+        va="top", ha="left", zorder=36, clip_on=False,
     )
 
     # 底三條：左／右對齊共線外框（v8 用 left_f～0.82 與框錯位）
@@ -2765,7 +2903,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
             ha = "center"
         fig.text(
             xf, xlab_y, tlab,
-            fontproperties=fp(11 if ":" in tlab else 12, True), color="#3A3A3A",
+            fontproperties=fp(_chart_label_fs(11 if ":" in tlab else 12), True), color="#3A3A3A",
             ha=ha, va="center",
             transform=fig.transFigure, clip_on=False, zorder=35,
         )
@@ -2843,7 +2981,7 @@ def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
         # 事件標加大（交叉必改 3.1 ≈28–32px @200dpi → ~11.5–12pt）
         ax.annotate(
             lab, xy=(x, y), xytext=(ox, oy), textcoords="offset points",
-            fontproperties=fp(12, True), color=INK,
+            fontproperties=fp(_chart_label_fs(12), True), color=INK,
             bbox=dict(boxstyle="square,pad=0.32", facecolor="#FFF8E7", edgecolor=col, linewidth=1.15),
             arrowprops=dict(arrowstyle="-", color=col, lw=0.85, shrinkA=0, shrinkB=2),
             zorder=7,
