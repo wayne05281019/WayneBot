@@ -99,3 +99,16 @@ def test_open_day_table_has_vol_fields(tmp_path):
     }
     for need in ("turn_note", "vol_note", "key_levels", "tx60_path", "us_note", "pending"):
         assert need in cols
+
+
+def test_live_dark_renderer_enforces_fifth_above_b():
+    """八浪基本形：活畫原始碼必須守 ⑤高>B高，並帶他用過的 Fib。"""
+    import inspect
+
+    from biaoke_level_learn import _render_twii_live_dark
+
+    src = inspect.getsource(_render_twii_live_dark)
+    assert "y_bhi >= y5" in src
+    assert "0.382" in src and "0.618" in src and "0.75" in src
+    assert "45546" in src and "44210" in src
+    assert "C3-3" in src

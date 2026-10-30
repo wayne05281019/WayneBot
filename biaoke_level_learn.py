@@ -375,19 +375,20 @@ def _latest_level_thesis(db_path: str) -> Dict[str, str]:
     finally:
         conn.close()
     snip = str((row["snippet"] if row else "") or "")
-    thesis = "大盤細微波位階待更新"
-    wait = "等下一結構位（前波低／降軌破／1-4重疊）"
+    # 他確認的大結構：五波後接下降ABC；10/14夜～10/15日 C 啟動；現況在 C 內
+    thesis = "五波後下降ABC・現在在C"
+    wait = "C 段內細微／前波低（他點過的錨）"
     if "C3-3-1" in snip and "C3-3-2" in snip:
-        thesis = "C3-3 主跌進行中（1→2）"
-        wait = "結構下一測＝前波低（他點過的相對錨）；無爆量≠止穩"
+        thesis = "五波後下降ABC・C內＝C3-3（1→2）"
+        wait = "下一測他點過的 8/25 相對錨；無爆量≠止穩"
     elif "C3-3" in snip:
-        thesis = "C3-3 主跌發動／進行中"
-        wait = "段內細微切換＋前波低是否碰到"
+        thesis = "五波後下降ABC・C內＝C3-3主跌"
+        wait = "C3-3 段內細微切換＋前波低是否碰到"
     elif "橫台" in snip or "中繼" in snip:
-        thesis = "橫台中繼（浪4區敘事）"
-        wait = "中繼後原方向；不過壓／拖太久→主跌"
+        thesis = "五波後下降ABC・C內橫台中繼"
+        wait = "中繼後原方向；不過壓／拖太久→續C"
     elif "主跌" in snip:
-        thesis = "主跌段敘事進行中"
+        thesis = "五波後下降ABC・C內主跌"
         wait = "細微波完整結構＋降軌是否破壞"
     return {
         "thesis": thesis,
@@ -729,22 +730,98 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
         axv.bar(i, vols[i], color=color, width=0.68, zorder=3, alpha=0.92)
 
 
+def _bar_index_by_ymd(bars: Sequence[Dict[str, Any]], ymd: str) -> Optional[int]:
+    want = _ymd(ymd)
+    if not want:
+        return None
+    for i, r in enumerate(bars):
+        if _ymd(r.get("date")) == want:
+            return i
+    return None
+
+
+def _md(ymd: Any) -> str:
+    t = _ymd(ymd)
+    return f"{int(t[4:6])}/{int(t[6:8])}" if len(t) == 8 else str(ymd or "")
+
+
+def _place_live_right_labels(
+    ax,
+    notes: Sequence[Dict[str, Any]],
+    *,
+    n: int,
+    ymin: float,
+    ymax: float,
+    fp,
+) -> None:
+    """右側價標：垂直錯開，不准黏成一坨。"""
+    items = [dict(x) for x in (notes or []) if x.get("y") and x.get("text")]
+    if not items:
+        return
+    items.sort(key=lambda d: float(d["y"]), reverse=True)
+    span = max(ymax - ymin, 1.0)
+    gap = max(span * 0.055, 380.0)
+    placed: List[float] = []
+    x_text = n + 0.35
+    for it in items:
+        y = float(it["y"])
+        for py in placed:
+            if abs(y - py) < gap:
+                y = py - gap if y <= py else py + gap
+        y = min(max(y, ymin + gap * 0.4), ymax - gap * 0.35)
+        placed.append(y)
+        color = str(it.get("color") or _LIVE_MUTED)
+        ax.hlines(
+            float(it["y"]),
+            float(it.get("x", n - 1)),
+            x_text - 0.15,
+            colors=color,
+            linewidth=0.7,
+            linestyles=(0, (2, 2)),
+            alpha=0.75,
+            zorder=5,
+        )
+        ax.axhline(float(it["y"]), color=color, linewidth=0.8, linestyle=(0, (4, 3)), alpha=0.55, zorder=4)
+        ax.text(
+            x_text,
+            y,
+            str(it["text"])[:18],
+            fontproperties=fp(10, "bold"),
+            color=color,
+            ha="left",
+            va="center",
+            zorder=9,
+        )
+
+
 def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
-    """加權日K深底活畫：只標真關鍵位＋量柱＋底部題旨。不准標錯5高。"""
+    """加權日K深底：八浪基本形＝上升5＋下降ABC；現在在C。
+
+    硬規則（教科書＋他實戰）：
+    - ⑤終點必須高於 B 高（不然就是畫錯／教錯）
+    - ⑤＝近窗官方最高（2026-10-06）
+    - A＝⑤→首段低（10/13，他點過的 48066 帶）
+    - B＝反彈且低於⑤（10/14 高）
+    - C＝10/14夜〜10/15日他確認啟動 → 現況 C3-3
+    - 黃金切割：他 10/27 台指日盤反彈 0.382／0.618／0.75 壓力
+    日期軸必標；右側價標錯開；不准註解黏成一團。
+    """
     try:
         import matplotlib
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         from decision_card_signals import candle_up_taiwan
-        from biaoke_wave import _load_twii_bars, wave_abc_story
+        from biaoke_wave import _load_twii_bars
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
     bars = _load_twii_bars(db_path, n=90)
-    if len(bars) < 12 or not save_path:
+    if len(bars) < 20 or not save_path:
         return ""
-    story = wave_abc_story(bars, last_tag="")
+    # 看清⑤→ABC：從 9 月中裁
+    i0 = _bar_index_by_ymd(bars, "20260915") or 0
+    bars = list(bars[i0:])
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     n = len(bars)
     opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -752,113 +829,193 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     lows = [float(r.get("low") or 0) for r in bars]
     closes = [float(r.get("close") or 0) for r in bars]
     vols = [float(r.get("volume") or 0) for r in bars]
+
+    i5 = _bar_index_by_ymd(bars, "20261006")
+    i_alow = _bar_index_by_ymd(bars, "20261013")
+    i_bhi = _bar_index_by_ymd(bars, "20261014")
+    i_c = _bar_index_by_ymd(bars, "20261015")
+    if i5 is None or i_alow is None or i_bhi is None or i_c is None:
+        return ""
+    if not (i5 < i_alow < i_bhi <= i_c):
+        return ""
+    y5 = highs[i5]
+    y_alow = lows[i_alow]
+    y_bhi = highs[i_bhi]
+    # 鐵律：B 高必須低於⑤；否則拒畫（不准教錯）
+    if y_bhi >= y5:
+        logger.error("活畫拒畫：B高>=⑤高（違反八浪基本形）")
+        return ""
+    i_now = n - 1
+    y_now = closes[i_now]
+
+    # 他公開的黃金切割反彈壓（台指日盤 10/27）
+    fib_levels = (
+        (47637.0, "0.382 47637", "#ffe082"),
+        (48613.0, "0.618 48613", "#ffd54f"),
+        (49160.0, "0.75 49160", "#ffca28"),
+    )
+
     fig, (ax, axv) = plt.subplots(
         2,
         1,
-        figsize=(14.8, 9.0),
+        figsize=(15.4, 9.6),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(5.3, 1.55), hspace=0.046),
+        gridspec_kw=dict(height_ratios=(5.4, 1.45), hspace=0.05),
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
-    # ABC 骨架（B 過 A 起時標籤已在 story 改過，不會寫錯5高）
-    for key in ("a", "b", "c"):
-        leg = story.get(key) or {}
-        xs = list(leg.get("xs") or [])
-        ys = list(leg.get("ys") or [])
-        if len(xs) < 2:
-            continue
-        dashed = bool(leg.get("unconfirmed"))
+
+    # ⑤終 → A↓ → B↑ → C↓（虛線＝進行中）
+    # ⑤只標終點；A 從⑤連到 A低
+    ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=2.1, zorder=7)
+    ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=2.1, zorder=7)
+    ax.plot(
+        [i_bhi, i_now],
+        [y_bhi, y_now],
+        color="#ea80fc",
+        lw=1.9,
+        ls=(0, (5, 2.4)),
+        zorder=7,
+    )
+    # ⑤終之前淡描上升尾（不數1-5段號，只標終點）
+    if i5 >= 3:
         ax.plot(
-            xs,
-            ys,
-            color=str(leg.get("color") or "#90caf9"),
-            linewidth=1.6,
-            linestyle=(0, (5, 2.5)) if dashed else "-",
-            zorder=6,
+            list(range(max(0, i5 - 12), i5 + 1)),
+            highs[max(0, i5 - 12) : i5 + 1],
+            color="#ff8a80",
+            lw=1.0,
+            alpha=0.35,
+            zorder=5,
         )
-    # 關鍵位：只用真標；B過A起時 fifth 文案已是 A起
-    for meta_key, color in (
-        ("fifth_high", "#69f0ae"),
-        ("b_high", "#ffd54f"),
-        ("a_done", "#80cbc4"),
+
+    for ii, yy, col in (
+        (i5, y5, "#ff8a80"),
+        (i_alow, y_alow, "#ff8a80"),
+        (i_bhi, y_bhi, "#40c4ff"),
+        (i_now, y_now, "#ea80fc"),
     ):
-        hit = story.get(meta_key) or {}
-        if not hit:
-            continue
-        y = float(hit.get("y") or 0)
-        i = float(hit.get("i") or 0)
-        if y <= 0:
-            continue
-        ax.axhline(y, color=color, linewidth=1.0, linestyle=(0, (4, 3)), zorder=5)
+        ax.scatter([ii], [yy], s=48, c=col, zorder=8, edgecolors="#ffffff", linewidths=0.7)
+
+    span = max(max(highs) - min(lows), 1.0)
+    # 圈字：⑤／A／B／C
+    for x, y, lab, col in (
+        (i5, y5 + span * 0.02, "⑤", "#ff8a80"),
+        ((i5 + i_alow) / 2.0, (y5 + y_alow) / 2.0, "A", "#ff8a80"),
+        ((i_alow + i_bhi) / 2.0, (y_alow + y_bhi) / 2.0, "B", "#40c4ff"),
+        ((i_bhi + i_now) / 2.0, (y_bhi + y_now) / 2.0 - span * 0.03, "C", "#ea80fc"),
+    ):
         ax.text(
-            min(n - 0.8, i + 1.2),
+            x,
             y,
-            str(hit.get("text") or "")[:28],
-            fontproperties=_fp(10, "bold"),
-            color=color,
-            ha="left",
-            va="bottom",
-            zorder=8,
+            lab,
+            fontproperties=_fp(15, "bold"),
+            color=col,
+            ha="center",
+            va="center",
+            zorder=9,
+            bbox=dict(boxstyle="circle,pad=0.2", fc="#0b0f14", ec=col, lw=1.2),
         )
-    levels = pack.get("key_levels") or {}
-    for key, color, lab in _LIVE_LV:
-        if key not in levels:
-            continue
-        y = float(levels[key])
-        ax.axhline(y, color=color, linewidth=0.9, linestyle=(0, (3, 2)), alpha=0.85)
+    # 轉折日期（貼點，不擠右欄）
+    for ii, yy, lab, col, va in (
+        (i5, y5, f"⑤終 {_md(bars[i5].get('date'))}", "#ff8a80", "bottom"),
+        (i_alow, y_alow, f"A低 {_md(bars[i_alow].get('date'))}", "#ff8a80", "top"),
+        (i_bhi, y_bhi, f"B高 {_md(bars[i_bhi].get('date'))}", "#40c4ff", "bottom"),
+        (i_c, highs[i_c], "C啟動", "#ea80fc", "bottom"),
+    ):
         ax.text(
-            n - 0.4,
-            y,
-            f"{lab} {_px(y)}",
+            ii,
+            yy + (span * 0.016 if va == "bottom" else -span * 0.016),
+            lab,
             fontproperties=_fp(9, "bold"),
-            color=color,
-            ha="right",
-            va="bottom",
+            color=col,
+            ha="center",
+            va=va,
+            zorder=9,
         )
-    ax.set_xlim(-0.6, n + 0.8)
-    ax.set_ylim(min(lows) - 420, max(highs) + 520)
+    ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.8, zorder=5)
+
+    # Fib 反彈壓（他用過的）＋關鍵位
+    for y, _lab, col in fib_levels:
+        ax.axhline(y, color=col, lw=0.85, ls=(0, (3, 2)), alpha=0.7, zorder=4)
+    right_notes = [
+        {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
+        {"x": i_bhi, "y": y_bhi, "text": f"B {_px(y_bhi)}", "color": "#40c4ff"},
+        {"x": i_alow, "y": y_alow, "text": f"A低 {_px(y_alow)}", "color": "#ef9a9a"},
+        {"x": n - 1, "y": 47637.0, "text": "Fib0.382", "color": "#ffe082"},
+        {"x": n - 1, "y": 48613.0, "text": "Fib0.618", "color": "#ffd54f"},
+        {"x": n - 1, "y": 49160.0, "text": "Fib0.75", "color": "#ffca28"},
+        {"x": n - 1, "y": 45546.0, "text": "45546已破", "color": "#ffab40"},
+        {"x": n - 1, "y": 44210.0, "text": "44210未到", "color": "#82b1ff"},
+    ]
+    ymin = min(min(lows), 44210) - 480
+    ymax = max(highs) + 780
+    _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
+
+    want_dates = {
+        "20261006",
+        "20261013",
+        "20261014",
+        "20261015",
+        "20261022",
+        _ymd(bars[-1].get("date")),
+    }
+    ticks, labels = [], []
+    for i, r in enumerate(bars):
+        d = _ymd(r.get("date"))
+        if d in want_dates or i % 5 == 0:
+            ticks.append(i)
+            labels.append(_md(d))
+    seen = set()
+    t2, l2 = [], []
+    for t, lab in zip(ticks, labels):
+        if t in seen:
+            continue
+        seen.add(t)
+        t2.append(t)
+        l2.append(lab)
+    ax.set_xlim(-0.8, n + 7.2)
+    ax.set_ylim(ymin, ymax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    axv.set_xticks(t2)
+    axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
+
     last = bars[-1]
     as_of = _ymd(last.get("date"))
     fig.text(
         0.03,
-        0.965,
-        f"加權日K活畫（深底）　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(last.get('close'))}",
+        0.970,
+        f"八浪：上升5完 → 下降ABC → 現在在C（C3-3）　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(last.get('close'))}",
         fontproperties=_fp(13, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
     )
-    # 底部題旨：縮圖先讀這裡
+    fig.text(
+        0.03,
+        0.938,
+        "⑤終10/6　A↓10/13　B↑10/14（低於⑤）　C啟動10/15（他原文）　虛線＝C進行中　Fib＝他10/27反彈壓",
+        fontproperties=_fp(10, "bold"),
+        color=_LIVE_MUTED,
+        ha="left",
+        va="top",
+    )
     caps = [
-        str(pack.get("thesis") or ""),
-        str(pack.get("turn_note") or ""),
-        str(pack.get("vol_note") or ""),
-        str(pack.get("us_note") or ""),
+        str(pack.get("thesis") or "五波後下降ABC・現在在C"),
+        "鐵律：⑤高 > B高；現況C3-3；45546已破；44210未到；無爆量≠止穩",
+        str(pack.get("us_note") or "")[:72],
     ]
-    if story.get("b_over_a_start"):
-        caps.insert(1, "B高已過A起→不准標5高（標錯＝教錯）")
-    y = 0.078
+    y = 0.070
     for line in caps:
         t = str(line or "").strip()
         if not t:
             continue
-        fig.text(
-            0.03,
-            y,
-            t[:78],
-            fontproperties=_fp(10, "bold"),
-            color=_LIVE_TEXT if y > 0.05 else _LIVE_MUTED,
-            ha="left",
-            va="bottom",
-        )
+        fig.text(0.03, y, t[:84], fontproperties=_fp(10, "bold"), color=_LIVE_TEXT, ha="left", va="bottom")
         y -= 0.022
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
@@ -900,30 +1057,48 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
     _style_live_ax(ax, axv)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     levels = pack.get("key_levels") or {}
+    lv_notes = []
     for key, col, lab in _LIVE_LV:
         if key not in levels:
             continue
-        ax.axhline(float(levels[key]), color=col, linewidth=1.05, linestyle=(0, (4, 3)))
-        ax.text(
-            n - 0.5,
-            float(levels[key]),
-            f"{lab} {_px(levels[key])}",
-            fontproperties=_fp(10, "bold"),
-            color=col,
-            ha="right",
-            va="bottom",
+        lv_notes.append(
+            {
+                "x": n - 1,
+                "y": float(levels[key]),
+                "text": f"{lab} {_px(levels[key])}",
+                "color": col,
+            }
         )
-    ax.set_xlim(-0.6, n + 0.6)
+    ax.set_xlim(-0.6, n + 5.8)
     ax.set_ylim(min(lows) - 180, max(highs) + 280)
+    _place_live_right_labels(
+        ax,
+        lv_notes,
+        n=n,
+        ymin=min(lows) - 180,
+        ymax=max(highs) + 280,
+        fp=_fp,
+    )
     axv.set_ylim(0, (max(vols) if vols else 1) * 1.35)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
+    # 日期軸：60分 ts=YYYYMMDDHHMM
+    ticks, labs = [], []
+    for i, r in enumerate(rows):
+        ts = str(r.get("ts") or "")
+        if len(ts) < 12:
+            continue
+        if i == 0 or i == n - 1 or i % 8 == 0:
+            ticks.append(i)
+            labs.append(f"{ts[4:6]}/{ts[6:8]} {ts[8:10]}:00")
+    axv.set_xticks(ticks)
+    axv.set_xticklabels(labs, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT, rotation=0)
     fig.text(
         0.03,
         0.965,
-        "台指期 60 分　深底官方柱＋量（細微波底圖，不數段）",
+        "台指期 60 分　深底＋量（C段細微波底圖，不數他沒畫的段）",
         fontproperties=_fp(13, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -931,9 +1106,9 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
     )
     y = 0.07
     for line in (
+        str(pack.get("thesis") or ""),
         str(pack.get("vol_note") or ""),
         str(pack.get("turn_note") or ""),
-        str(pack.get("thesis") or ""),
     ):
         if not line.strip():
             continue
