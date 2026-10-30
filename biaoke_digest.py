@@ -258,11 +258,39 @@ _CMONEY_CHROME = re.compile(
 )
 
 
+# 同學問句常被他用引號包起來回；話筒只要他的判斷，不准把同學原話整段抄給使用者
+_CLASSMATE_QUOTE = re.compile(
+    r"[「\"“][^」\"”]{3,240}[」\"”]"
+)
+_CLASSMATE_LEAD = re.compile(
+    r"^(請問|想請教|老師[，,]?|飆大[，,]?|學長[，,]?|這檔|那檔).{0,40}[？?]"
+)
+
+
+def _strip_classmate_echo(text: str) -> str:
+    """去掉引號裡的同學問句／複述；只留他自己的答。"""
+    s = str(text or "")
+    if not s:
+        return ""
+    s = _CLASSMATE_QUOTE.sub(" ", s)
+    kept: List[str] = []
+    for ln in re.split(r"[\n]+", s):
+        t = ln.strip()
+        if not t:
+            continue
+        if _CLASSMATE_LEAD.search(t) and not re.search(
+            r"(我認為|我覺得|目前|大盤|台指|波浪|量價|主跌|反彈)", t
+        ):
+            continue
+        kept.append(t)
+    return _SPACE.sub(" ", " ".join(kept)).strip()
+
+
 def _scrub_post_text(text: str) -> str:
     try:
         from biaoke_ingest import scrub_cmoney_chrome
 
-        return scrub_cmoney_chrome(text)
+        raw = scrub_cmoney_chrome(text)
     except Exception:
         s = str(text or "")
         if not s:
@@ -272,7 +300,8 @@ def _scrub_post_text(text: str) -> str:
             if _CMONEY_CHROME.search(ln):
                 continue
             kept.append(ln)
-        return "\n".join(kept).strip()
+        raw = "\n".join(kept).strip()
+    return _strip_classmate_echo(raw)
 
 
 def _norm_focus(text: str) -> str:
@@ -332,7 +361,7 @@ def _join_said(parts: Sequence[str], *, shown: Sequence[str]) -> str:
 
 
 def _speak(text: str, limit: int = 220) -> str:
-    """口語重述：像當面講一遍，重點留著，不倒時間牆、不砍條件句。"""
+    """口語重述：像教沒底子的人講一遍；只留他的判斷，不抄同學原話。"""
     s = _scrub_post_text(text or "")
     s = _CHART.sub("（有圖）", s)
     s = _SPACE.sub(" ", s).strip()
@@ -350,6 +379,8 @@ def _speak(text: str, limit: int = 220) -> str:
     )
     s = re.sub(r"未來不是再一次出現這一次大修正，或者走", "後面不是再來一次大修正，就是走出", s)
     s = re.sub(r"做一個大的頭部型態出來", "那種大頭部", s)
+    # 他回同學時常先寫 Yes／對，後面才是重點
+    s = re.sub(r"^(Yes|YES|yes|對|是的|正確)[，,\s]+", "", s)
     s = _SPACE.sub(" ", s).strip()
     s = re.sub(r"^我+", "", s)
     parts = [p.strip(" ，、") for p in re.split(r"[。！？；]", s) if p.strip()]
@@ -358,6 +389,8 @@ def _speak(text: str, limit: int = 220) -> str:
         if _CMONEY_CHROME.search(p):
             continue
         if _NOISE_ONLY.search(p) and not re.search(r"(47578|ASIC|PCB|台光電|夜盤|頭部)", p):
+            continue
+        if _CLASSMATE_LEAD.search(p):
             continue
         if len(p) < 6:
             continue
@@ -368,6 +401,40 @@ def _speak(text: str, limit: int = 220) -> str:
     if out and not out.endswith("。"):
         out += "。"
     return _oral_body(out or s, limit)
+
+
+def format_teach_brief(db_path: str = "") -> str:
+    """空白鍵加一段消化過的白話結論（波浪／切割／型態／量價）；不是買訊。
+
+    資料來自活畫 pack；失敗回空，不准擋主摘要。
+    """
+    if not db_path:
+        return ""
+    try:
+        from biaoke_level_learn import _build_live_pack
+
+        pack = _build_live_pack(db_path) or {}
+    except Exception:
+        return ""
+    thesis = str(pack.get("thesis") or "").strip()
+    morph = str(pack.get("morph_note") or "").strip()
+    intent = str(pack.get("intent_note") or "").strip()
+    fib = str(pack.get("fib_note") or "").strip()
+    if not (thesis or intent or morph):
+        return ""
+    lines = ["<b>白話結論（消化過・非買訊）</b>"]
+    if thesis:
+        lines.append(html_escape(f"波浪：{thesis}"))
+    if fib:
+        lines.append(html_escape(f"黃金切割：{fib}"))
+    if morph:
+        lines.append(html_escape(f"型態：{morph}"))
+    if intent:
+        # 只取第一句故事，避免牆
+        one = intent.split("；")[0].strip()
+        lines.append(html_escape(f"量價／主力：{one}"))
+    lines.append(html_escape("說明：這是彙整他公開說法＋官方柱，不是他本人即時口述。"))
+    return "\n".join(lines)
 
 
 def _when_short(date: str, time_s: str) -> str:
@@ -617,6 +684,15 @@ def format_focus_oral(
             if gates:
                 blocks.append("")
                 blocks.append(gates)
+        except Exception:
+            pass
+    # 空白鍵：消化過的白話結論（波浪／切割／型態／量價），不准抄同學原話
+    if (not stock_links) and db_path:
+        try:
+            brief = format_teach_brief(str(db_path))
+            if brief:
+                blocks.append("")
+                blocks.append(brief)
         except Exception:
             pass
     # 還能問只跟最新主文＋當天以後的自回，不准拿更早一篇的夜盤價來出題。

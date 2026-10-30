@@ -407,6 +407,9 @@ def test_wave_abc_story_a_then_b_same_july29():
     assert _ymd(story["b"]["d1"]).endswith("0908")
     assert abs(float(story["b"]["y1"]) - 47578.24) < 0.01
     assert float(story["b"]["y1"]) > float(story["b"]["y0"])
+    # fixture B高 < A起 → 才准寫 5高
+    assert not story.get("b_over_a_start")
+    assert "5高" in str((story.get("fifth_high") or {}).get("text") or "")
     assert story["c"].get("unconfirmed") is True
     assert "C" in str(story["c"].get("lab") or "")
     legs = locator_abc_legs(story)
@@ -422,6 +425,38 @@ def test_wave_abc_story_a_then_b_same_july29():
     assert "locator_abc_legs" in src
     assert "k_on_top" in src
     assert "wave_path_segments" not in src
+    assert "b_over_a_start" in src
+
+
+def test_wave_abc_never_label_fifth_below_b_high():
+    """B 高過 A 起時：不准把較低的 A 起標成 5高（標錯＝教錯）。"""
+    rows = _abc_rows()
+    rows.append(
+        {
+            "date": "20261006",
+            "open": 49000.0,
+            "high": 49968.92,
+            "low": 48800.0,
+            "close": 49500.0,
+        }
+    )
+    rows.append(
+        {
+            "date": "20261029",
+            "open": 47000.0,
+            "high": 47200.0,
+            "low": 46000.0,
+            "close": 46368.0,
+        }
+    )
+    story = wave_abc_story(rows, last_tag="逃命波C-2")
+    assert story.get("b_over_a_start") is True
+    fifth = str((story.get("fifth_high") or {}).get("text") or "")
+    btxt = str((story.get("b_high") or {}).get("text") or "")
+    assert "5高" not in fifth
+    assert "A起" in fifth
+    assert float(story["b"]["y1"]) > float(story["a"]["y0"])
+    assert "已過A起" in btxt
 
 
 def test_wave_story_redraws_when_he_says_degree_four():
