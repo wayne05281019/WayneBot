@@ -3089,33 +3089,24 @@ def resolve_intraday_asof_ymd(
         return today
 
 
-def render_lookup_intraday_result(
+def prepare_lookup_intraday_series(
     stock_id: str,
     stock_name: str = "",
     db_path: Optional[str] = None,
-    save_path: Optional[str] = None,
     *,
     market: Optional[str] = None,
     asof_ymd: Optional[str] = None,
     card: Optional[Dict[str, Any]] = None,
     hits: Optional[Sequence[Dict[str, Any]]] = None,
-    live_quote: Optional[Dict[str, Any]] = None,  # noqa: ARG001 — 預留；路徑仍只認真分時
-) -> Tuple[str, str]:
-    """查股第 5 張：當天走勢（開→收）v20 墨線臉。不是買訊。
+) -> Tuple[Optional[Any], str, str]:
+    """查股第 5 張：paint 外抓真分時（可與 1–4 張重疊）。回 (series, ymd, market)。
 
-    無真官方日值或真分時路徑 → 回空字串（不上假圖）。
+    無真路徑 → (None, ymd, market)。不准假延長。
     """
     sid = str(stock_id or "").strip()
     if not sid:
-        return "", ""
+        return None, "", ""
     path_db = db_path or os.path.join(_ROOT, "data", "wayne_market.db")
-    out = str(save_path or "").strip()
-    if not out:
-        out = os.path.join(
-            path_db and os.path.dirname(path_db) or ".",
-            "charts",
-            f"{sid}_intraday.png",
-        )
     name = str(stock_name or "").strip()
     if not name and isinstance(card, dict):
         name = str(card.get("stock_name") or card.get("name") or "").strip()
@@ -3124,7 +3115,6 @@ def render_lookup_intraday_result(
     mkt = str(market or "").strip().upper()
     if mkt not in ("TW", "TWO", "EM"):
         mkt = resolve_intraday_market(sid, path_db, hits=hits, card=card)
-    # 跟前四張同一交易日：參數 asof → 高低卡 latest_date／as_of → 開市日
     prefer = str(asof_ymd or "").strip().replace("-", "")[:8]
     if len(prefer) != 8 or not prefer.isdigit():
         prefer = ""
@@ -3151,7 +3141,63 @@ def render_lookup_intraday_result(
         logger.info(
             "查股當天走勢無真路徑 code=%s market=%s ymd=%s", sid, mkt, ymd
         )
+    return series, ymd, mkt
+
+
+def render_lookup_intraday_result(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: Optional[str] = None,
+    save_path: Optional[str] = None,
+    *,
+    market: Optional[str] = None,
+    asof_ymd: Optional[str] = None,
+    card: Optional[Dict[str, Any]] = None,
+    hits: Optional[Sequence[Dict[str, Any]]] = None,
+    live_quote: Optional[Dict[str, Any]] = None,  # noqa: ARG001 — 預留；路徑仍只認真分時
+    series: Optional[Any] = None,
+    series_ymd: Optional[str] = None,
+    series_market: Optional[str] = None,
+) -> Tuple[str, str]:
+    """查股第 5 張：當天走勢（開→收）v20 墨線臉。不是買訊。
+
+    無真官方日值或真分時路徑 → 回空字串（不上假圖）。
+    可吃 prepare_lookup_intraday_series 預抓的 series（paint worker 只渲、不重抓網）。
+    """
+    sid = str(stock_id or "").strip()
+    if not sid:
         return "", ""
+    path_db = db_path or os.path.join(_ROOT, "data", "wayne_market.db")
+    out = str(save_path or "").strip()
+    if not out:
+        out = os.path.join(
+            path_db and os.path.dirname(path_db) or ".",
+            "charts",
+            f"{sid}_intraday.png",
+        )
+    name = str(stock_name or "").strip()
+    if not name and isinstance(card, dict):
+        name = str(card.get("stock_name") or card.get("name") or "").strip()
+    if not name:
+        name = sid
+    ymd = str(series_ymd or "").strip().replace("-", "")[:8]
+    mkt = str(series_market or market or "").strip().upper()
+    if series is None:
+        series, ymd, mkt = prepare_lookup_intraday_series(
+            sid,
+            name,
+            path_db,
+            market=market,
+            asof_ymd=asof_ymd,
+            card=card,
+            hits=hits,
+        )
+    if series is None:
+        return "", ""
+    if mkt not in ("TW", "TWO", "EM"):
+        mkt = resolve_intraday_market(sid, path_db, hits=hits, card=card)
+    if len(ymd) != 8 or not ymd.isdigit():
+        ymd = resolve_intraday_asof_ymd(path_db, prefer=None)
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     try:
         _path, gate = render_path(series, out, db_path=path_db)
@@ -3161,7 +3207,11 @@ def render_lookup_intraday_result(
     if not _path or not os.path.isfile(_path):
         return "", ""
     sess = "09:00–15:00" if mkt == "EM" else "09:00–13:30"
-    cap = f"當天走勢（開→收・{sess}・非買訊）"
+    # caption 標真日戳（跟高低卡 asof／實際分時日），不准只寫「當天」讓人猜
+    day_lab = ymd
+    if len(ymd) == 8 and ymd.isdigit():
+        day_lab = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
+    cap = f"當天走勢（開→收・{day_lab}・{sess}・非買訊）"
     if gate and not gate.get("pass"):
         logger.warning(
             "查股當天走勢 label_gate 未過 code=%s gate=%s", sid, gate

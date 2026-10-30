@@ -529,6 +529,10 @@ class LookupImageTests(unittest.TestCase):
         self.assertGreaterEqual(bot_servers._LOOKUP_PNG_TIMEOUT, bot_servers._CHART_RENDER_TIMEOUT)
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("_LOOKUP_PNG_TIMEOUT", src)
+        self.assertIn("_await_lookup_paint", src)
+        self.assertIn("miss_core", src)
+        self.assertIn("查股第1張", src)
+        self.assertIn("查股第2張", src)
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
