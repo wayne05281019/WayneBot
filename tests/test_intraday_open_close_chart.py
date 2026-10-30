@@ -7,6 +7,12 @@ import os
 
 from bot_servers import WayneTelegramBot, _LOOKUP_CHART_KINDS
 from intraday_open_close_chart import (
+    _CHART_LABEL_FS_SCALE,
+    _GRID_FS_SCALE,
+    _chart_label_fs,
+    _grid_fs,
+    _paint_smart_level_labels,
+    _y_price_tick_band,
     resolve_intraday_asof_ymd,
     resolve_intraday_market,
     render_lookup_intraday_result,
@@ -105,3 +111,34 @@ def test_send_card_passes_card_asof_to_intraday():
     assert "series is None and not prefer" in inspect.getsource(
         render_lookup_intraday_result
     )
+
+
+def test_grid_a_chart_label_b_scales():
+    """十二宮格 A(+30%)；走勢圖智能標 B(+50%)；頭欄不准吃這兩條。"""
+    assert abs(_GRID_FS_SCALE - 1.30) < 1e-9
+    assert abs(_CHART_LABEL_FS_SCALE - 1.50) < 1e-9
+    assert abs(_grid_fs(10) - 13.0) < 1e-9
+    assert abs(_chart_label_fs(10) - 15.0) < 1e-9
+    src = inspect.getsource(_paint_smart_level_labels)
+    assert "_y_price_tick_band" in src
+    assert "tick_band" in src
+    assert "tick_clear_x" in src
+    assert "_chart_label_fs" in src
+    assert "_grid_fs(9.5)" in inspect.getsource(
+        __import__("intraday_open_close_chart", fromlist=["_paint_quote_grid"])._paint_quote_grid
+    )
+
+
+def test_y_price_tick_band_covers_left_gutter():
+    class _Ax:
+        def get_xlim(self):
+            return (-30.0, 270.0)
+
+        def get_ylim(self):
+            return (58.0, 61.5)
+
+    band = _y_price_tick_band(_Ax(), x_span=300.0, y_span=3.5)
+    assert band[0] == -30.0
+    assert band[1] > -30.0
+    assert band[2] == 58.0
+    assert band[3] == 61.5
