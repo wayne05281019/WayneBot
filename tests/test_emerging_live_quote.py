@@ -91,6 +91,7 @@ def test_live_board_uses_average_not_last_trade(monkeypatch):
     assert rt["source"] == "tpex_esb_live"
     assert float(rt["close"]) == 166.71
     assert float(rt["close"]) != 168.0
+    assert float(rt["last_trade"]) == 168.0
     assert float(rt["open"]) == 160.12
     assert float(rt["high"]) == 172.0
     assert float(rt["low"]) == 160.0
@@ -132,9 +133,10 @@ def test_fetch_emerging_tpex_quote_only_today(monkeypatch):
     rt = fetch_emerging_tpex_quote("3595")
     assert rt is not None
     assert rt["source"] == "tpex_esb"
-    # 收＝日均價 1459.45，不是最後成交 1440
+    # 收＝日均價 1459.45，不是最後成交 1440；末筆另欄
     assert float(rt["close"]) == 1459.45
     assert float(rt["avg_price"]) == 1459.45
+    assert float(rt["last_trade"]) == 1440.0
     assert float(rt["high"]) == 1555.0
     assert float(rt["low"]) == 1430.0
     assert float(rt["open"]) == 1493.35
@@ -498,5 +500,70 @@ def test_live_memo_bucket_splits_same_price_new_volume():
         }
     )
     assert a == same
+    assert a != b
+    assert a[0] == b[0]
+
+
+def test_emerging_last_trade_not_close_and_card_helper():
+    """末筆另欄；高低卡 helper 只在興櫃且與收不同才取用。"""
+    from emerging_quotes import parse_emerging_openapi
+    from wayne_navigator import _emerging_last_trade_px
+
+    _as_of, rows = parse_emerging_openapi(
+        [
+            {
+                "Date": "1151030",
+                "SecuritiesCompanyCode": "3595",
+                "CompanyName": "山太士",
+                "PreviousAveragePrice": "651.61",
+                "Highest": "729",
+                "Lowest": "407.5",
+                "Average": "591.62",
+                "LatestPrice": "693",
+                "TransactionVolume": "2447594",
+            }
+        ]
+    )
+    assert len(rows) == 1
+    assert float(rows[0]["close"]) == 591.62
+    assert float(rows[0]["last_trade"]) == 693.0
+    assert float(rows[0]["close"]) != float(rows[0]["last_trade"])
+
+    card = {
+        "quote_source": "emerging_quotes",
+        "listing": "興櫃",
+        "close": 591.62,
+        "last_trade": 693.0,
+    }
+    assert _emerging_last_trade_px(card) == 693.0
+    assert _emerging_last_trade_px({"quote_source": "daily_quotes", "last_trade": 693}) == 0.0
+    assert "末筆" in __import__("inspect").getsource(
+        __import__("wayne_navigator", fromlist=["_paint_close_right"])._paint_close_right
+    )
+
+
+def test_live_card_memo_bucket_includes_last_trade():
+    from wayne_navigator import live_card_memo_bucket
+
+    a = live_card_memo_bucket(
+        {
+            "close": 591.62,
+            "high": 729.0,
+            "low": 407.5,
+            "volume": 2447.6,
+            "last_trade": 680.0,
+            "update_time": "14:50:00",
+        }
+    )
+    b = live_card_memo_bucket(
+        {
+            "close": 591.62,
+            "high": 729.0,
+            "low": 407.5,
+            "volume": 2447.6,
+            "last_trade": 693.0,
+            "update_time": "14:50:00",
+        }
+    )
     assert a != b
     assert a[0] == b[0]

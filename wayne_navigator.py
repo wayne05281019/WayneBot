@@ -728,7 +728,7 @@ def live_card_memo_bucket(live_quote: Optional[dict]):
             return round(v, nd)
         return None
 
-    close = _r("close", "price", "last")
+    close = _r("close", "price")
     if not close:
         return None
     return (
@@ -736,6 +736,7 @@ def live_card_memo_bucket(live_quote: Optional[dict]):
         _r("high"),
         _r("low"),
         _r("volume"),
+        _r("last_trade"),
         str(live_quote.get("update_time") or ""),
     )
 
@@ -1439,6 +1440,21 @@ class NavigatorEngine:
             )
             ex_gap_note = ""
             ex_gap_label = ""
+        _em_last_trade = 0.0
+        if quote_source == "emerging_quotes":
+            try:
+                raw_lt = latest.get("last_trade")
+                if pd.notna(raw_lt) and float(raw_lt or 0) > 0:
+                    _em_last_trade = float(raw_lt)
+            except (TypeError, ValueError):
+                _em_last_trade = 0.0
+            if _em_last_trade <= 0 and isinstance(live_quote, dict):
+                try:
+                    _em_last_trade = float(live_quote.get("last_trade") or 0)
+                except (TypeError, ValueError):
+                    _em_last_trade = 0.0
+            if _em_last_trade < 0:
+                _em_last_trade = 0.0
         payload = {
             "stock_id": str(stock_id),
             "stock_name": face_name,
@@ -1492,6 +1508,7 @@ class NavigatorEngine:
             "high": float(latest.get("high") or 0),
             "low": float(latest.get("low") or 0),
             "volume": float(latest.get("volume") or 0),
+            "last_trade": float(_em_last_trade or 0),
             "bias_monthly": float(latest.get("bias_monthly") or 0),
             "stance": stance,
             "stance_kind": stance_kind,
@@ -3076,10 +3093,38 @@ def _paint_limit_square_center(ax, cx, cy, text, fs, bg, fg, tw, *, pad_x=0.42, 
     )
 
 
+def _emerging_last_trade_px(card, last=None) -> float:
+    """興櫃末筆（LatestPrice／成交欄）。收仍＝日均價；沒真數回 0。"""
+    qs = str((card or {}).get("quote_source") or "")
+    listing = str((card or {}).get("listing") or "")
+    if qs != "emerging_quotes" and not listing.startswith("興櫃"):
+        return 0.0
+    for src in (last, card):
+        if not isinstance(src, dict):
+            continue
+        try:
+            v = float(src.get("last_trade") or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v > 0:
+            return v
+    return 0.0
+
+
 def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card, last=None):
-    """右欄現價或收盤／較昨日漲跌。今日小 K 畫在標籤左邊。淨值改畫左欄。"""
-    close_y = y + price_h * 0.70
-    chg_y = y + price_h * 0.24
+    """右欄現價或收盤／較昨日漲跌。今日小 K 畫在標籤左邊。淨值改畫左欄。
+
+    興櫃：大字仍＝日均價收；旁加一行末筆（與券商大字對得上），不准用末筆改收。
+    """
+    last_px = _emerging_last_trade_px(card, last)
+    try:
+        close_f = float(str(close_s).replace(",", "") or 0)
+    except (TypeError, ValueError):
+        close_f = 0.0
+    show_last = last_px > 0 and (close_f <= 0 or abs(last_px - close_f) > 1e-6)
+    close_y = y + price_h * (0.76 if show_last else 0.70)
+    last_y = y + price_h * 0.48
+    chg_y = y + price_h * (0.20 if show_last else 0.24)
     chg_fs = 15.5
     chip = quote_limit_chip_colors(_card_quote_limit_side(card, last), C)
     if chip:
@@ -3107,6 +3152,17 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
             "今K",
             fontproperties=_fp(8.5, "bold"),
             color=C["ink_soft"],
+            ha="right",
+            va="center",
+            zorder=3,
+        )
+    if show_last:
+        ax.text(
+            px_right,
+            last_y,
+            f"末筆 {_fmt_price(last_px)}",
+            fontproperties=_fp(12.5, "bold"),
+            color=C["ink"],
             ha="right",
             va="center",
             zorder=3,
@@ -5699,6 +5755,7 @@ def render_first_glance_png(
             "close": close_v,
             "yesterday_close": prev_c if prev_c else None,
             "prev_close": prev_c if prev_c else None,
+            "last_trade": dq.get("last_trade") or card.get("last_trade"),
         }
     else:
         close_v = card.get("close")
@@ -5718,6 +5775,7 @@ def render_first_glance_png(
             "close": close_v,
             "yesterday_close": prev_c if prev_c else last.get("yesterday_close"),
             "prev_close": prev_c if prev_c else None,
+            "last_trade": card.get("last_trade") or last.get("last_trade"),
         }
     chg_c = _close_chg_color(chg, C)
     close_s = _fmt_price(close_v)

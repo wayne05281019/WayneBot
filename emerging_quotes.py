@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS emerging_quotes (
     turnover_k REAL NOT NULL,
     pct_change REAL NOT NULL,
     avg_price REAL NOT NULL,
+    last_trade REAL DEFAULT 0,
     foreign_net INTEGER DEFAULT 0,
     trust_net INTEGER DEFAULT 0,
     dealer_net INTEGER DEFAULT 0,
@@ -128,6 +129,7 @@ def parse_emerging_csv(text: str) -> Tuple[str, List[dict]]:
                     "turnover_k": 0.0,
                     "pct_change": 0.0,
                     "avg_price": prev,
+                    "last_trade": 0.0,
                     "no_trade": True,
                     "source": "tpex_esb_csv",
                 }
@@ -152,6 +154,7 @@ def parse_emerging_csv(text: str) -> Tuple[str, List[dict]]:
                 "turnover_k": round(turnover / 1000.0, 2),
                 "pct_change": pct,
                 "avg_price": avg,
+                "last_trade": last if last > 0 else 0.0,
                 "no_trade": False,
                 "source": "tpex_esb_csv",
             }
@@ -192,6 +195,7 @@ def parse_emerging_openapi(items: Iterable[dict]) -> Tuple[str, List[dict]]:
                     "turnover_k": 0.0,
                     "pct_change": 0.0,
                     "avg_price": prev,
+                    "last_trade": 0.0,
                     "no_trade": True,
                     "source": "tpex_esb_openapi",
                 }
@@ -220,6 +224,7 @@ def parse_emerging_openapi(items: Iterable[dict]) -> Tuple[str, List[dict]]:
                 "turnover_k": round(turnover / 1000.0, 2),
                 "pct_change": pct,
                 "avg_price": avg,
+                "last_trade": last if last > 0 else 0.0,
                 "no_trade": False,
                 "source": "tpex_esb_openapi",
             }
@@ -237,9 +242,21 @@ def ensure_emerging_table(db_path: str) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_em_date ON emerging_quotes(date);")
         # 舊庫 volume 曾是 INTEGER affinity，薄量 0.03 可能被存壞；遷成 REAL 後重抓才準
         _migrate_emerging_volume_real(conn)
+        _migrate_emerging_last_trade(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def _migrate_emerging_last_trade(conn: sqlite3.Connection) -> None:
+    """舊庫補 last_trade（末筆）；收仍＝日均價，兩欄不准互代。"""
+    try:
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(emerging_quotes)").fetchall()}
+    except sqlite3.OperationalError:
+        return
+    if "last_trade" in cols:
+        return
+    conn.execute("ALTER TABLE emerging_quotes ADD COLUMN last_trade REAL DEFAULT 0")
 
 
 def _migrate_emerging_volume_real(conn: sqlite3.Connection) -> None:
@@ -272,6 +289,7 @@ def _migrate_emerging_volume_real(conn: sqlite3.Connection) -> None:
             turnover_k REAL NOT NULL,
             pct_change REAL NOT NULL,
             avg_price REAL NOT NULL,
+            last_trade REAL DEFAULT 0,
             foreign_net INTEGER DEFAULT 0,
             trust_net INTEGER DEFAULT 0,
             dealer_net INTEGER DEFAULT 0,
@@ -280,11 +298,15 @@ def _migrate_emerging_volume_real(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    col_names = {str(r[1]) for r in cols}
+    has_lt = "last_trade" in col_names
+    lt_sel = "COALESCE(last_trade, 0)" if has_lt else "0"
     conn.execute(
-        """
+        f"""
         INSERT INTO emerging_quotes__real
         SELECT date, stock_id, stock_name, market, open, high, low, close,
                CAST(volume AS REAL), turnover_k, pct_change, avg_price,
+               {lt_sel},
                foreign_net, trust_net, dealer_net, source
         FROM emerging_quotes;
         """
@@ -324,6 +346,10 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
                 continue
             if not _emerging_bar_ok(o, h, l, c):
                 continue
+            try:
+                lt = float(r.get("last_trade") or 0)
+            except (TypeError, ValueError):
+                lt = 0.0
             payload.append(
                 (
                     as_of,
@@ -338,6 +364,7 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
                     r["turnover_k"],
                     r["pct_change"],
                     r["avg_price"],
+                    lt if lt > 0 else 0.0,
                     r.get("source") or "",
                 )
             )
@@ -348,9 +375,9 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
             """
             INSERT INTO emerging_quotes(
                 date, stock_id, stock_name, market, open, high, low, close,
-                volume, turnover_k, pct_change, avg_price,
+                volume, turnover_k, pct_change, avg_price, last_trade,
                 foreign_net, trust_net, dealer_net, source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,0,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,0,?)
             ON CONFLICT(date, stock_id) DO UPDATE SET
                 stock_name=excluded.stock_name,
                 open=excluded.open,
@@ -361,6 +388,7 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
                 turnover_k=excluded.turnover_k,
                 pct_change=excluded.pct_change,
                 avg_price=excluded.avg_price,
+                last_trade=excluded.last_trade,
                 source=excluded.source
             WHERE instr(lower(excluded.source), 'csv') > 0
                OR instr(lower(COALESCE(emerging_quotes.source, '')), 'csv') = 0;
@@ -717,7 +745,7 @@ def load_stock_bars(db_path: str, stock_id: str, limit: int = 520):
         df = pd.read_sql_query(
             """
             SELECT date, stock_name, open, high, low, close, volume, turnover_k,
-                   pct_change AS change_pct, pct_change
+                   pct_change AS change_pct, pct_change, last_trade
             FROM emerging_quotes
             WHERE stock_id=?
             ORDER BY date DESC

@@ -776,7 +776,9 @@ def _quote_from_tpex_live_board(stock_id: str) -> Optional[Dict[str, Any]]:
     vol = round(shares / 1000.0, 6) if shares > 0 else 0.0
     pct = round((avg - prev) / prev * 100.0, 2) if prev > 0 else 0.0
     chg = round(avg - prev, 2) if prev > 0 else 0.0
-    return {
+    # 成交欄＝末筆；收仍＝日均價，不准互代
+    last_trade = _num(row[10]) if len(row) > 10 else 0.0
+    out = {
         "stock_id": sid,
         "stock_name": str(row[1] or "").strip(),
         "open": open_px,
@@ -794,6 +796,9 @@ def _quote_from_tpex_live_board(stock_id: str) -> Optional[Dict[str, Any]]:
         "emerging": True,
         "as_of": as_of,
     }
+    if last_trade > 0:
+        out["last_trade"] = last_trade
+    return out
 
 
 def fetch_emerging_tpex_quote(stock_id: str) -> Optional[Dict[str, Any]]:
@@ -839,7 +844,7 @@ def fetch_emerging_tpex_quote(stock_id: str) -> Optional[Dict[str, Any]]:
     vol = round(shares / 1000.0, 6) if shares > 0 else 0.0
     pct = round((avg - prev) / prev * 100.0, 2) if prev > 0 else 0.0
     chg = round(avg - prev, 2) if prev > 0 else 0.0
-    return {
+    out = {
         "stock_id": sid,
         "stock_name": str(item.get("CompanyName") or ""),
         "open": open_px,
@@ -857,6 +862,9 @@ def fetch_emerging_tpex_quote(stock_id: str) -> Optional[Dict[str, Any]]:
         "emerging": True,
         "as_of": as_of,
     }
+    if last > 0:
+        out["last_trade"] = last
+    return out
 
 
 def fetch_emerging_live_quote(
@@ -960,7 +968,7 @@ def display_quote_from_card(card: Optional[Dict[str, Any]]) -> Optional[Dict[str
     except Exception:
         in_sess = is_live
     struct_label = "盤中" if (is_live and in_sess) else "收盤"
-    return {
+    out = {
         "stock_id": str(card.get("stock_id") or ""),
         "open": o if o > 0 else close,
         "high": hi if hi > 0 else close,
@@ -985,6 +993,14 @@ def display_quote_from_card(card: Optional[Dict[str, Any]]) -> Optional[Dict[str
         "source": "decision_card",
         "update_time": str(card.get("live_time") or card.get("query_clock") or ""),
     }
+    if emerging:
+        try:
+            lt = float(card.get("last_trade") or 0)
+        except (TypeError, ValueError):
+            lt = 0.0
+        if lt > 0:
+            out["last_trade"] = lt
+    return out
 
 
 def live_quote_from_decision_card(
@@ -1217,6 +1233,12 @@ def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
         out["change_pct"] = sess.get("pct_change", rt.get("pct_change"))
     if sess.get("yesterday_close") or rt.get("yesterday_close"):
         out["yesterday_close"] = sess.get("yesterday_close") or rt.get("yesterday_close")
+    try:
+        lt = float(rt.get("last_trade") or 0)
+    except (TypeError, ValueError):
+        lt = 0.0
+    if lt > 0:
+        out["last_trade"] = lt
     if "turnover_k" in out:
         out["turnover_k"] = round(float(out.get("volume") or 0) * float(out.get("close") or 0), 2)
     if "avg_price" in out:
