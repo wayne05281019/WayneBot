@@ -2096,7 +2096,7 @@ def verify_live_hyps_with_speech(db_path: str, snippet: str) -> int:
 def paint_open_day_hypothesis(
     db_path: str, *, now: Optional[datetime] = None, force: bool = False
 ) -> Dict[str, Any]:
-    """稀疏槽活畫：日盤／夜盤／納指費半＋量價裸K。不進話筒。"""
+    """稀疏槽活畫：日盤／夜盤／納指費半＋量價裸K。空白鍵可取檔送教具（非買訊）。"""
     out: Dict[str, Any] = {"ok": False, "path": "", "tx60_path": "", "slot_id": ""}
     if not db_path:
         return out
@@ -2148,6 +2148,7 @@ def paint_open_day_hypothesis(
     wait_struct = pack.get("wait_struct") or ""
     turn_note = pack.get("turn_note") or ""
     vol_note = pack.get("vol_note") or ""
+    intent_note = pack.get("intent_note") or ""
     us_note = pack.get("us_note") or ""
     key_levels = pack.get("key_levels") or {}
 
@@ -2281,11 +2282,58 @@ def paint_open_day_hypothesis(
         "wait_struct": wait_struct,
         "turn_note": turn_note,
         "vol_note": vol_note,
+        "intent_note": intent_note,
+        "morph_note": pack.get("morph_note") or "",
+        "fib_note": pack.get("fib_note") or "",
         "us_note": us_note,
         "key_levels": key_levels,
         "slot_id": slot_id,
         "as_of": ymd,
     }
+
+
+def latest_teach_kit(db_path: str) -> Dict[str, str]:
+    """話筒空白鍵教具：取最近一槽已存遠／近／外圍路徑（有檔才回）。
+
+    失敗回空 dict；不准擋主摘要。不在這裡重渲（重渲走 paint_open_day_hypothesis）。
+    """
+    out: Dict[str, str] = {
+        "far_path": "",
+        "near_path": "",
+        "us_path": "",
+        "thesis": "",
+        "slot_id": "",
+        "as_of": "",
+    }
+    if not db_path:
+        return out
+    try:
+        ensure_tables(db_path)
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT slot_id, as_of, thesis, far_path, near_path, us_path "
+                "FROM biaoke_open_day_paints "
+                "ORDER BY created_at DESC, slot_id DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("讀教具路徑失敗")
+        return out
+    if not row:
+        return out
+    far, near, us = str(row[3] or ""), str(row[4] or ""), str(row[5] or "")
+    out["slot_id"] = str(row[0] or "")
+    out["as_of"] = str(row[1] or "")
+    out["thesis"] = str(row[2] or "")[:180]
+    if far and os.path.isfile(far):
+        out["far_path"] = far
+    if near and os.path.isfile(near):
+        out["near_path"] = near
+    if us and os.path.isfile(us):
+        out["us_path"] = us
+    return out
 
 
 def maybe_paint_open_day_after_ingest(db_path: str) -> Dict[str, Any]:

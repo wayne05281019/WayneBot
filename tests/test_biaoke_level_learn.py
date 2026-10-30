@@ -141,3 +141,28 @@ def test_twii_intent_story_trap_language():
     # 無庫也要空字串回傳，不准拋
     empty = _twii_intent_story("")
     assert empty.get("intent_note") == "" or isinstance(empty.get("intent_note"), str)
+
+
+def test_latest_teach_kit_reads_paths(tmp_path):
+    from biaoke_level_learn import ensure_tables, latest_teach_kit
+
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    far = tmp_path / "far.png"
+    near = tmp_path / "near.png"
+    far.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
+    near.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_open_day_paints("
+        "slot_id, as_of, thesis, far_path, near_path, us_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("20261030-night", "20261030", "預估在 C", str(far), str(near), "", "t"),
+    )
+    conn.commit()
+    conn.close()
+    kit = latest_teach_kit(db)
+    assert kit["far_path"] == str(far)
+    assert kit["near_path"] == str(near)
+    assert kit["us_path"] == ""
+    assert "C" in kit["thesis"]

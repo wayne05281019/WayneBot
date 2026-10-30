@@ -6618,10 +6618,14 @@ class WayneTelegramBot:
             if not self._actor_op_alive(actor, op_kind, gen):
                 cancelled = True
                 return
-            # 空白鍵：只出口語大盤＋關卡對照，不准再送一排個股藍字／選股狀態（2026-10-24）。
+            # 空白鍵：口語＋關卡＋消化白話；附遠／近／外圍教具圖（不是個股藍字名單）。
             # 類股問句：多檔改名單＋按檔鈕；單檔問句仍一張結構圖。
             try:
-                if q and field_advice:
+                if not q:
+                    await self._send_biaoke_teach_charts(
+                        message, uid, actor=actor, kind=op_kind, gen=gen
+                    )
+                elif field_advice:
                     await self._send_biaoke_advice_charts(
                         message,
                         uid,
@@ -6631,7 +6635,7 @@ class WayneTelegramBot:
                         gen=gen,
                         spoken_html=html or "",
                     )
-                elif q:
+                else:
                     await self._send_biaoke_structure_chart(
                         message, q, uid, actor=actor, kind=op_kind, gen=gen
                     )
@@ -6893,6 +6897,94 @@ class WayneTelegramBot:
                 )
             except Exception:
                 logger.exception("飆大略過提示送出失敗 sid=%s", sid)
+
+    async def _send_biaoke_teach_charts(
+        self,
+        message,
+        uid: str,
+        *,
+        actor: str = "",
+        kind: str = "",
+        gen: int = 0,
+    ) -> None:
+        """空白按飆大：送遠窗／近窗／外圍教具（已存檔優先；缺才強制活畫一次）。
+
+        不是買訊、不是個股結構圖。失敗略過，不准擋文字摘要。
+        """
+        if actor and kind and not self._actor_op_alive(actor, kind, gen):
+            return
+        try:
+            from biaoke_level_learn import latest_teach_kit, paint_open_day_hypothesis
+        except Exception:
+            logger.exception("飆大教具模組略過")
+            return
+        kit: dict = {}
+        try:
+            kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
+        except Exception:
+            logger.exception("讀飆大教具路徑略過")
+            kit = {}
+        need = not any(
+            kit.get(k) for k in ("far_path", "near_path", "us_path")
+        )
+        if need:
+            try:
+                painted = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        paint_open_day_hypothesis, self.db_path, force=True
+                    ),
+                    timeout=_CHART_RENDER_TIMEOUT,
+                )
+                if painted and painted.get("ok"):
+                    kit = {
+                        "far_path": str(painted.get("far_path") or ""),
+                        "near_path": str(painted.get("near_path") or ""),
+                        "us_path": str(painted.get("us_path") or ""),
+                        "thesis": str(painted.get("thesis") or "")[:180],
+                        "slot_id": str(painted.get("slot_id") or ""),
+                        "as_of": str(painted.get("as_of") or ""),
+                    }
+            except asyncio.TimeoutError:
+                logger.warning("飆大教具活畫逾時")
+            except Exception:
+                logger.exception("飆大教具活畫略過")
+        if actor and kind and not self._actor_op_alive(actor, kind, gen):
+            return
+        caps = (
+            ("far_path", "遠窗教具（波浪／切割大圖・非買訊）"),
+            ("near_path", "近窗教具（細微波／量價・非買訊）"),
+            ("us_path", "外圍對照（費半／納指・非買訊）"),
+        )
+        thesis = str(kit.get("thesis") or "").strip()
+        kb = self._biaoke_reply_menu(uid)
+        for key, head in caps:
+            if actor and kind and not self._actor_op_alive(actor, kind, gen):
+                return
+            path = str(kit.get(key) or "").strip()
+            if not path or not os.path.isfile(path):
+                continue
+            if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
+                continue
+            cap = head
+            if thesis:
+                cap = f"{head}\n{thesis}"[:900]
+            try:
+                try:
+                    chat = getattr(message, "chat", None)
+                    if chat is not None and hasattr(chat, "send_action"):
+                        await chat.send_action("upload_photo")
+                except Exception:
+                    pass
+                with open(path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=cap[:900],
+                        reply_markup=kb,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("飆大教具圖送出略過 key=%s", key)
 
     async def _send_biaoke_advice_charts(
         self,
