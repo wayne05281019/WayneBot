@@ -1953,7 +1953,8 @@ _STRUCTURE_CLOSE_PAIR_ADVANCE = 0.92
 _TODAY_CLOSE_RIGHT_INSET_PX = 18
 # 昨收／今收左緣距末日 K（seam）最小資料座標空隙；短影線半寬≈0.45
 # 2026-10-28：再加寬，昨收標必須離開末日豎線／尾 K，不准看成當日價
-_CLOSE_TAG_CANDLE_CLEAR = 11.5
+# 2026-10-30：再加寬；3363 盤中昨收仍貼末日 K／觀察◆ → 縮圖被蓋
+_CLOSE_TAG_CANDLE_CLEAR = 14.5
 
 
 def _dedupe_right_notes(
@@ -5528,10 +5529,13 @@ def render_biaoke_structure_png(
         )
     ]
     _bar_ceiling = max(float(_peak_disp), float(vmax), 1.0)
-    _vol_y_top = float(_bar_ceiling) / 0.78
+    # 上緣空帶加寬：兩標並排／必要時上下錯開，不准壓柱（第四包空帶鎖）
+    _vol_y_top = float(_bar_ceiling) / 0.70
     vol_lab_y = float(_vol_y_top) * 0.985
-    # 「這根＝爆大量　99,999張」約占 9～11 根
-    _VOL_TAG_HALF_BARS = 10.0
+    vol_lab_y_lo = float(_vol_y_top) * 0.90
+    # 「這根＝爆大量　99,999張」約占 12～16 根（查股橫式縮圖）
+    _VOL_TAG_HALF_BARS = 12.0
+    _VOL_TAG_MIN_SEP = 18.0
 
     def _vol_box_span(tx: float, ha: str, half: float = _VOL_TAG_HALF_BARS) -> Tuple[int, int]:
         if ha == "right":
@@ -5562,9 +5566,9 @@ def render_biaoke_structure_png(
         return None
 
     def _pick_vol_anchor(anchor_i: int) -> Tuple[float, str]:
-        """水平錯開兩標；Y 固定上緣空帶。"""
+        """水平錯開兩標；Y 固定上緣空帶。依該檔錨點掃，不准寫死左右。"""
         trials: List[Tuple[float, str]] = []
-        for off in (3.0, 5.0, 6.5, 9.0, 12.0, 15.0):
+        for off in (4.0, 6.0, 9.0, 12.0, 16.0, 20.0, 24.0):
             trials.append((min(float(n) - 1.2, float(anchor_i) + off), "left"))
             trials.append((max(1.0, float(anchor_i) - off), "right"))
         best: Optional[Tuple[float, float, str]] = None
@@ -5585,23 +5589,34 @@ def render_biaoke_structure_png(
         layer_md = _md(work[layer_i].get("date"))
         spike_tx, spike_ha = _pick_vol_anchor(int(spike_i))
         layer_tx, layer_ha = _pick_vol_anchor(int(layer_i))
-        # 兩標太近 → 較晚者再外推
-        if abs(float(spike_tx) - float(layer_tx)) < 8.0:
+        # 兩標太近 → 較晚者再外推；仍近 → 上下錯開（空帶內）
+        stack_y = False
+        if abs(float(spike_tx) - float(layer_tx)) < float(_VOL_TAG_MIN_SEP):
             if int(spike_i) >= int(layer_i):
-                spike_tx, spike_ha = _pick_vol_anchor(int(spike_i))
-                if abs(float(spike_tx) - float(layer_tx)) < 8.0:
-                    spike_tx = min(float(n) - 1.2, max(float(spike_tx), float(layer_tx) + 9.0))
-                    spike_ha = "left"
+                spike_tx = min(
+                    float(n) - 1.2,
+                    max(float(spike_tx), float(layer_tx) + float(_VOL_TAG_MIN_SEP)),
+                )
+                spike_ha = "left"
             else:
-                layer_tx = min(float(n) - 1.2, max(float(layer_tx), float(spike_tx) + 9.0))
+                layer_tx = min(
+                    float(n) - 1.2,
+                    max(float(layer_tx), float(spike_tx) + float(_VOL_TAG_MIN_SEP)),
+                )
                 layer_ha = "left"
+        if abs(float(spike_tx) - float(layer_tx)) < float(_VOL_TAG_MIN_SEP) * 0.85:
+            stack_y = True
         _bump_vol_lab_y_for(spike_tx, spike_ha)
         _bump_vol_lab_y_for(layer_tx, layer_ha)
         ax2.set_ylim(0, float(_vol_y_top))
+        layer_ty = float(vol_lab_y)
+        spike_ty = float(vol_lab_y_lo) if stack_y else float(vol_lab_y)
+        if stack_y and int(layer_i) > int(spike_i):
+            layer_ty, spike_ty = float(vol_lab_y_lo), float(vol_lab_y)
         ax2.annotate(
             f"下一層量日　{layer_md}",
             xy=(float(layer_i), float(layer_disp)),
-            xytext=(float(layer_tx), vol_lab_y),
+            xytext=(float(layer_tx), float(layer_ty)),
             color="#1565c0",
             fontproperties=_fp(10, "bold"),
             ha=str(layer_ha),
@@ -5628,7 +5643,7 @@ def render_biaoke_structure_png(
         ax2.annotate(
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             xy=(float(spike_i), float(spike_disp)),
-            xytext=(float(spike_tx), vol_lab_y),
+            xytext=(float(spike_tx), float(spike_ty)),
             color=_TEXT,
             fontproperties=_fp(10, "bold"),
             ha=str(spike_ha),
