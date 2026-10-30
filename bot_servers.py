@@ -4283,13 +4283,17 @@ class WayneTelegramBot:
         if overtime:
             # 逾時仍出圖：泡泡不准消失；口吻改「仍在出」，避免以為成功結束
             title = "查股逾時仍在出圖"
-            if not now:
-                if "vol" not in sent_ks:
-                    now = "大量撐壓圖"
-                elif "intraday" not in sent_ks:
-                    now = "當天走勢圖"
-                else:
-                    now = "收尾送圖"
+            # 逾時時「現在」必須跟下一張還沒送的對齊（不准卡已送高低卡卻寫大量撐壓）
+            if "glance" not in sent_ks:
+                now = "介紹圖"
+            elif "struct" not in sent_ks and "three" not in sent_ks:
+                now = "結構圖"
+            elif "vol" not in sent_ks and "volzone" not in sent_ks:
+                now = "大量撐壓圖"
+            elif "intraday" not in sent_ks:
+                now = "當天走勢圖"
+            else:
+                now = "收尾送圖"
             if rest:
                 rest = f"{rest}；請稍候，失敗會明示"
             else:
