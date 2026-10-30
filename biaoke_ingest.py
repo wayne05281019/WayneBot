@@ -1942,6 +1942,13 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大演算即時建檔／對質失敗")
     try:
+        # 他一說大盤現況位階 → 立刻畫圖落檔 → 靜默對前一筆／準備下一句（成長迴路）
+        from biaoke_level_learn import record_level_learn_from_events
+
+        record_level_learn_from_events(db_path, packed)
+    except Exception:
+        logger.exception("飆大位階學習畫圖／對質略過")
+    try:
         from biaoke_neurons import record_neuron_events
 
         record_neuron_events(db_path, packed)
