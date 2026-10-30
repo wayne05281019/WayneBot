@@ -505,9 +505,18 @@ def test_live_memo_bucket_splits_same_price_new_volume():
 
 
 def test_emerging_last_trade_not_close_and_card_helper():
-    """末筆另欄；高低卡 helper 只在興櫃且與收不同才取用。"""
+    """末筆另欄標「收盤價」框；高低卡 helper 只在興櫃且與日均價收不同才取用。"""
+    import inspect
+
     from emerging_quotes import parse_emerging_openapi
-    from wayne_navigator import _emerging_last_trade_px
+    from wayne_navigator import (
+        _CARD,
+        _close_chg_color,
+        _emerging_last_trade_px,
+        _emerging_session_close_prev,
+        _paint_close_right,
+        _paint_emerging_session_close_frame,
+    )
 
     _as_of, rows = parse_emerging_openapi(
         [
@@ -534,12 +543,18 @@ def test_emerging_last_trade_not_close_and_card_helper():
         "listing": "興櫃",
         "close": 591.62,
         "last_trade": 693.0,
+        "prev_close": 651.61,
     }
     assert _emerging_last_trade_px(card) == 693.0
+    assert _emerging_session_close_prev(card) == 651.61
     assert _emerging_last_trade_px({"quote_source": "daily_quotes", "last_trade": 693}) == 0.0
-    assert "末筆" in __import__("inspect").getsource(
-        __import__("wayne_navigator", fromlist=["_paint_close_right"])._paint_close_right
-    )
+    assert _close_chg_color(693.0 - 651.61, _CARD) == _CARD["up"]
+    assert _close_chg_color(500.0 - 651.61, _CARD) == _CARD["down"]
+    frame_src = inspect.getsource(_paint_emerging_session_close_frame)
+    assert 'f"收盤價' in frame_src
+    assert "FancyBboxPatch" in frame_src
+    assert "_close_chg_color" in frame_src
+    assert "收盤價" in inspect.getsource(_paint_close_right)
 
 
 def test_live_card_memo_bucket_includes_last_trade():

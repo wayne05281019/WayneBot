@@ -3094,7 +3094,7 @@ def _paint_limit_square_center(ax, cx, cy, text, fs, bg, fg, tw, *, pad_x=0.42, 
 
 
 def _emerging_last_trade_px(card, last=None) -> float:
-    """興櫃末筆（LatestPrice／成交欄）。收仍＝日均價；沒真數回 0。"""
+    """興櫃末筆成交（LatestPrice／成交欄）。大字收仍＝日均價；沒真數回 0。"""
     qs = str((card or {}).get("quote_source") or "")
     listing = str((card or {}).get("listing") or "")
     if qs != "emerging_quotes" and not listing.startswith("興櫃"):
@@ -3111,10 +3111,61 @@ def _emerging_last_trade_px(card, last=None) -> float:
     return 0.0
 
 
+def _emerging_session_close_prev(card, last=None) -> float:
+    """興櫃「收盤價」框對照昨收（前日均價）。"""
+    for src in (last, card):
+        if not isinstance(src, dict):
+            continue
+        for k in ("yesterday_close", "prev_close", "prev"):
+            try:
+                v = float(src.get(k) or 0)
+            except (TypeError, ValueError):
+                v = 0.0
+            if v > 0:
+                return v
+    return 0.0
+
+
+def _paint_emerging_session_close_frame(ax, tw, C, px_right, y_mid, last_px, prev_px):
+    """興櫃末筆改標「收盤價」：相對昨收正紅負綠，白底描邊框。不准改日均價收。"""
+    body = f"收盤價 {_fmt_price(last_px)}"
+    delta = (float(last_px) - float(prev_px)) if prev_px and prev_px > 0 else 0.0
+    ink = _close_chg_color(delta, C)
+    fs = 12.5
+    pad_x, pad_y = 0.85, 0.42
+    tws = tw(body, fs)
+    box_h = max(2.85, fs * 0.22 + pad_y * 2)
+    box_w = tws + pad_x * 2
+    x0 = px_right - box_w
+    y0 = y_mid - box_h / 2
+    ax.add_patch(
+        patches.FancyBboxPatch(
+            (x0, y0),
+            box_w,
+            box_h,
+            boxstyle="round,pad=0.08,rounding_size=0.35",
+            facecolor=C.get("white") or "#FFFFFF",
+            edgecolor=ink,
+            linewidth=1.35,
+            zorder=3,
+        )
+    )
+    ax.text(
+        px_right - pad_x,
+        y_mid,
+        body,
+        fontproperties=_fp(fs, "bold"),
+        color=ink,
+        ha="right",
+        va="center",
+        zorder=4,
+    )
+
+
 def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card, last=None):
     """右欄現價或收盤／較昨日漲跌。今日小 K 畫在標籤左邊。淨值改畫左欄。
 
-    興櫃：大字仍＝日均價收；旁加一行末筆（與券商大字對得上），不准用末筆改收。
+    興櫃：大字仍＝日均價；旁加框「收盤價」＝末筆（相對昨收紅漲綠跌），不准用末筆改日均價收。
     """
     last_px = _emerging_last_trade_px(card, last)
     try:
@@ -3157,15 +3208,14 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
             zorder=3,
         )
     if show_last:
-        ax.text(
+        _paint_emerging_session_close_frame(
+            ax,
+            tw,
+            C,
             px_right,
             last_y,
-            f"末筆 {_fmt_price(last_px)}",
-            fontproperties=_fp(12.5, "bold"),
-            color=C["ink"],
-            ha="right",
-            va="center",
-            zorder=3,
+            last_px,
+            _emerging_session_close_prev(card, last),
         )
     move_body = "　".join(chg_bits)
     move_prefix = ""
