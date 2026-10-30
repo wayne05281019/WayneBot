@@ -3127,7 +3127,7 @@ def _emerging_session_close_prev(card, last=None) -> float:
 
 
 def _emerging_session_close_extra_h(card, last=None) -> float:
-    """有末筆且異於日均價收時，價欄加高給三行框。"""
+    """有末筆且異於日均價收時，價欄加高給三行框（置於較昨日下方）。"""
     last_px = _emerging_last_trade_px(card, last)
     if last_px <= 0:
         return 0.0
@@ -3137,7 +3137,7 @@ def _emerging_session_close_extra_h(card, last=None) -> float:
         close_f = 0.0
     if close_f > 0 and abs(last_px - close_f) <= 1e-6:
         return 0.0
-    return 4.2
+    return 5.6
 
 
 def _emerging_session_close_lines(last_px, prev_px) -> tuple:
@@ -3168,13 +3168,13 @@ def _emerging_session_close_lines(last_px, prev_px) -> tuple:
 
 
 def _paint_emerging_session_close_frame(ax, tw, C, px_right, y_mid, last_px, prev_px):
-    """興櫃框：收盤價／差價／漲幅（末筆對昨收，正紅負綠）。不准改日均價收。"""
+    """興櫃框：收盤價／差價／漲幅（末筆對昨收，正紅負綠）。置於較昨日下方。不准改日均價收。"""
     lines, delta = _emerging_session_close_lines(last_px, prev_px)
     ink = _close_chg_color(delta, C)
-    fs_px, fs_sub = 14.0, 10.5
-    pad_x, pad_y, gap = 0.95, 0.38, 0.22
-    row_h_px = max(2.35, fs_px * 0.20)
-    row_h_sub = max(1.85, fs_sub * 0.20)
+    fs_px, fs_sub = 12.5, 10.0
+    pad_x, pad_y, gap = 0.80, 0.28, 0.10
+    row_h_px = 1.85
+    row_h_sub = 1.40
     inner_h = row_h_px + gap + row_h_sub + gap + row_h_sub
     box_h = inner_h + pad_y * 2
     box_w = max(tw(lines[0], fs_px), tw(lines[1], fs_sub), tw(lines[2], fs_sub)) + pad_x * 2
@@ -3185,10 +3185,10 @@ def _paint_emerging_session_close_frame(ax, tw, C, px_right, y_mid, last_px, pre
             (x0, y0),
             box_w,
             box_h,
-            boxstyle="round,pad=0.08,rounding_size=0.35",
+            boxstyle="round,pad=0.06,rounding_size=0.30",
             facecolor=C.get("white") or "#FFFFFF",
             edgecolor=ink,
-            linewidth=1.35,
+            linewidth=1.25,
             zorder=3,
         )
     )
@@ -3238,10 +3238,10 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     except (TypeError, ValueError):
         close_f = 0.0
     show_last = last_px > 0 and (close_f <= 0 or abs(last_px - close_f) > 1e-6)
-    # 三行框較高：大字上移、漲跌下移，框置中段
-    close_y = y + price_h * (0.82 if show_last else 0.70)
-    last_y = y + price_h * (0.46 if show_last else 0.48)
-    chg_y = y + price_h * (0.12 if show_last else 0.24)
+    # 上→下：日均價大字 → 較昨日 → 收盤價框（框頂須低於較昨日，不准互壓）
+    close_y = y + price_h * (0.88 if show_last else 0.70)
+    chg_y = y + price_h * (0.70 if show_last else 0.24)
+    last_y = y + price_h * 0.30
     chg_fs = 15.5
     chip = quote_limit_chip_colors(_card_quote_limit_side(card, last), C)
     if chip:
@@ -3273,6 +3273,15 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
             va="center",
             zorder=3,
         )
+    move_body = "　".join(chg_bits)
+    move_prefix = ""
+    if ohlc and ohlc[4]:
+        move_prefix = "較昨日　"
+        if tw(move_prefix + move_body, 15.5) > 36.0:
+            chg_fs = 13.5
+    # 漲跌金額／幅度不加方底，方底只套當下股價。
+    ax.text(px_right, chg_y, move_prefix + move_body,
+            fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     if show_last:
         _paint_emerging_session_close_frame(
             ax,
@@ -3283,15 +3292,6 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
             last_px,
             _emerging_session_close_prev(card, last),
         )
-    move_body = "　".join(chg_bits)
-    move_prefix = ""
-    if ohlc and ohlc[4]:
-        move_prefix = "較昨日　"
-        if tw(move_prefix + move_body, 15.5) > 36.0:
-            chg_fs = 13.5
-    # 漲跌金額／幅度不加方底，方底只套當下股價。
-    ax.text(px_right, chg_y, move_prefix + move_body,
-            fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
 
 
 def _paint_price_left(ax, tw, C, x, y, price_h, card, last, prev_c, mc_val):
