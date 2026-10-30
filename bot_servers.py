@@ -61,6 +61,9 @@ _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_MAX = (1920, 2400)
 _LOOKUP_ALBUM_BG = (12, 18, 28)
 _LOOKUP_MIS_TIMEOUT = 2.0
+# 興櫃當日行情表是全市場一包（連線 1.5 秒＋讀 3.5 秒）。
+# 沿用上市櫃 2 秒會在表回來前改畫庫內舊均價，呼叫當下的價對不上。
+_LOOKUP_EMERGING_QUOTE_TIMEOUT = 8.0
 # 大盤／資金頁短 memo（鍵含 as_of／現價桶；雙人共用公開頁）
 _PAGE_HTML_TTL_SEC = 45.0
 _PAGE_HTML_CACHE: Dict[Tuple[Any, ...], Tuple[float, Any]] = {}
@@ -1182,6 +1185,12 @@ class WayneTelegramBot:
     def _hit_is_emerging(self, code: str, hits: list | None = None) -> bool:
         rows = hits if hits is not None else lookup_stocks(self.db_path, code)
         return bool(rows) and listing_is_emerging(rows[0])
+
+    def _lookup_quote_budget(self, code: str, hits: list | None = None) -> float:
+        """上市櫃維持 2 秒。興櫃要等櫃買當日行情表，不准 2 秒就改畫庫內舊價。"""
+        if self._hit_is_emerging(code, hits):
+            return _LOOKUP_EMERGING_QUOTE_TIMEOUT
+        return _LOOKUP_MIS_TIMEOUT
 
     def _em_no_listed_html(self, code: str, hits: list | None = None) -> str:
         h = (hits or lookup_stocks(self.db_path, code) or [{}])[0]
@@ -8713,7 +8722,7 @@ class WayneTelegramBot:
         try:
             live_rt = await asyncio.wait_for(
                 asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                timeout=_LOOKUP_MIS_TIMEOUT,
+                timeout=self._lookup_quote_budget(code, hits),
             )
         except Exception:
             live_rt = None
@@ -9304,11 +9313,16 @@ class WayneTelegramBot:
                 return None
 
         async def _fetch_mis():
-            # 興櫃也抓現價（櫃買 OpenAPI／Yahoo .TWO）；不准再用上市櫃 MIS 空結果略過。
+            # 興櫃也抓現價（櫃買當日行情表／Yahoo .TWO）；不准再用上市櫃 MIS 空結果略過。
+            # 興櫃預算見 _LOOKUP_EMERGING_QUOTE_TIMEOUT，不准跟上市櫃 2 秒一起砍。
             try:
                 return await asyncio.wait_for(
                     asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                    timeout=_LOOKUP_MIS_TIMEOUT,
+                    timeout=(
+                        _LOOKUP_EMERGING_QUOTE_TIMEOUT
+                        if is_em
+                        else _LOOKUP_MIS_TIMEOUT
+                    ),
                 )
             except Exception:
                 return None
