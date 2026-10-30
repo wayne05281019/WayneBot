@@ -2449,9 +2449,19 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         align="left", size=12,
     )
     try:
-        date_part = format_ymd_slash_weekday(ASOF_YMD)
+        # 戳＝這張圖真路徑日（series.times），不准寫死模組常數 ASOF_YMD（會把今天圖標成昨天）
+        _stamp_ymd = ""
+        if times:
+            _t0 = times[0]
+            if getattr(_t0, "tzinfo", None) is None:
+                _t0 = _t0.replace(tzinfo=TZ)
+            else:
+                _t0 = _t0.astimezone(TZ)
+            _stamp_ymd = _t0.strftime("%Y%m%d")
+        date_part = format_ymd_slash_weekday(_stamp_ymd or ASOF_YMD)
     except Exception:
-        date_part = f"{ASOF_YMD[:4]}/{ASOF_YMD[4:6]}/{ASOF_YMD[6:8]}"
+        _fb = _stamp_ymd if "_stamp_ymd" in locals() and _stamp_ymd else ASOF_YMD
+        date_part = f"{_fb[:4]}/{_fb[4:6]}/{_fb[6:8]}" if len(_fb) == 8 else str(_fb)
     stamp = f"{date_part} {board_close_clock_label(emerging=is_em)}".strip()
     stamp_x = float(chip_end) + 1.35
     # 防撞右上價區：最多貼到 spot 左緩衝

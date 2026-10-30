@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖→當天走勢（開→收）；一次一張、好了就送。點開高畫質。完整圖下鈕（產業／報導／籌碼／營收／高低導航圖／K線／觀察／記買入）只掛第 4 張大量區；第 2／3／5 張不要重複鍵盤。導航不塞進自動五張、不送合成三合一
+- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖→當天走勢（開→收）；一次一張、好了就送。點開高畫質。完整圖下鈕（產業／報導／籌碼／營收／高低導航圖／K線／觀察／記買入）只掛第 5 張當天走勢；第 2／3／4 張不要重複鍵盤。導航不塞進自動五張、不送合成三合一
 - 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -2491,7 +2491,7 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """查股其餘子鍵：只掛第 4 張大量撐壓圖下（第 2／3 張不要重複鍵盤）。兩人同一套。"""
+        """查股其餘子鍵：只掛第 5 張當天走勢圖下（第 2／3／4 張不要重複鍵盤）。兩人同一套。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
@@ -3497,7 +3497,7 @@ class WayneTelegramBot:
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
                 + "\n"
-                "3　一次出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖＋當天走勢，點開高畫質。圖下鈕在第4張大量區\n"
+                "3　一次出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖＋當天走勢，點開高畫質。圖下鈕在第5張當天走勢\n"
                 "\n"
                 "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
@@ -9676,6 +9676,12 @@ class WayneTelegramBot:
             def _render_intraday():
                 from intraday_open_close_chart import render_lookup_intraday_result
 
+                # 跟前四張同一交易日：優先吃高低卡 latest_date／as_of
+                asof = ""
+                if isinstance(card, dict):
+                    asof = str(
+                        card.get("latest_date") or card.get("as_of") or ""
+                    ).replace("-", "")[:8]
                 path, cap = render_lookup_intraday_result(
                     code,
                     _stock_caption_name(card, code),
@@ -9684,6 +9690,7 @@ class WayneTelegramBot:
                     card=card if isinstance(card, dict) else None,
                     hits=hits,
                     live_quote=live_rt if isinstance(live_rt, dict) else None,
+                    asof_ymd=asof or None,
                 )
                 if cap:
                     intrad_face[0] = cap
@@ -9771,7 +9778,7 @@ class WayneTelegramBot:
             # 介紹圖在高低卡已 submit 後排隊：卡一畫完 worker 馬上接介紹，與送高低卡重疊。
             # 官方量窗 ensure：進查股就與 MIS／建卡並行（見上方 ensure_task）；結構 prepare 在 paint 外。
             # 順序鎖死：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖 → 當天走勢。一次一張、好了就送。
-            # 完整圖下鈕只掛第 4 張大量區；第 5 張不附鍵盤。
+            # 完整圖下鈕只掛第 5 張當天走勢；第 2／3／4 張不附鍵盤。
             card_queued = asyncio.Event()
             glance_queued = asyncio.Event()
             vol_queued = asyncio.Event()
@@ -9864,7 +9871,7 @@ class WayneTelegramBot:
                         )
                         path = ""
                         continue
-                    # 圖下完整鍵盤只留第 4 張大量區；介紹不附（第 2／3 張不要重複）。
+                    # 圖下完整鍵盤只留第 5 張當天走勢；介紹不附（第 2／3／4 張不要重複）。
                     return ("glance", path, glance_cap, None)
                 return None
 
@@ -10040,7 +10047,7 @@ class WayneTelegramBot:
             if glance_item:
                 kind, path, caption, _mk = glance_item
                 prep = await _prep_for_send(path, kind)
-                # 第 2 張介紹圖：不要附完整圖下鈕（產業／導航仍在第 4 張）。
+                # 第 2 張介紹圖：不要附完整圖下鈕（產業／導航在第 5 張）。
                 ok = await send_photo(prep or path, caption, None, kind=kind)
                 if ok:
                     sent_any = True
@@ -10105,21 +10112,19 @@ class WayneTelegramBot:
             if vol_item:
                 kind, path, caption, _mk = vol_item
                 prep = await _prep_for_send(path, kind)
-                # 第 4 張大量區：保留完整圖下鈕（兩人同一套）。
-                ok = await send_photo(prep or path, caption, hub, kind=kind)
+                # 第 4 張大量區：不附完整圖下鈕（鈕改掛第 5 張；move hub to chart 5）。
+                ok = await send_photo(prep or path, caption, None, kind=kind)
                 if ok:
                     sent_any = True
                     sent_kinds.append(kind)
-                    hub_on = True
                     ready_items.append(vol_item)
                 else:
                     # 上傳失敗：再試一次；仍失敗明示，不准 LOADING 消了就沒圖
                     logger.warning("查股第4張送出失敗，重試 code=%s", code)
-                    ok2 = await send_photo(prep or path, caption, hub, kind=kind)
+                    ok2 = await send_photo(prep or path, caption, None, kind=kind)
                     if ok2:
                         sent_any = True
                         sent_kinds.append(kind)
-                        hub_on = True
                         ready_items.append(vol_item)
             elif "struct" in sent_kinds or "glance" in sent_kinds or "card" in sent_kinds:
                 # paint／memo 空：降載再試一次（仍單 worker；不准 silently 沒第4張）
@@ -10130,13 +10135,12 @@ class WayneTelegramBot:
                 if retry:
                     cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
                     prep = await _prep_for_send(retry, "vol")
-                    ok = await send_photo(prep or retry, cap, hub, kind="vol")
+                    ok = await send_photo(prep or retry, cap, None, kind="vol")
                     if ok:
                         sent_any = True
                         sent_kinds.append("vol")
-                        hub_on = True
 
-            # 第 5 張當天走勢：掛大量區後面；無鍵盤；缺真路徑略過不准擋 1–4／hub
+            # 第 5 張當天走勢：掛完整圖下鈕（兩人同一套）；缺真路徑則文字補 hub
             await _bump_progress("intraday")
             await asyncio.sleep(0)
             try:
@@ -10152,13 +10156,22 @@ class WayneTelegramBot:
             if intrad_item:
                 kind, path, caption, _mk = intrad_item
                 prep = await _prep_for_send(path, kind)
-                ok = await send_photo(prep or path, caption, None, kind=kind)
+                ok = await send_photo(prep or path, caption, hub, kind=kind)
                 if ok:
                     sent_any = True
                     sent_kinds.append(kind)
+                    hub_on = True
                     ready_items.append(intrad_item)
+                else:
+                    logger.warning("查股第5張送出失敗，重試 code=%s", code)
+                    ok2 = await send_photo(prep or path, caption, hub, kind=kind)
+                    if ok2:
+                        sent_any = True
+                        sent_kinds.append(kind)
+                        hub_on = True
+                        ready_items.append(intrad_item)
             elif "vol" in sent_kinds:
-                # 第 5 張可缺（盤前／無分時）；不重試硬灌、不拆 hub
+                # 第 5 張可缺（盤前／無分時）；不重試硬灌；hub 改由下面文字補
                 logger.info("查股第5張略過（無真路徑或 paint 空）code=%s", code)
 
             try:
@@ -10169,10 +10182,10 @@ class WayneTelegramBot:
             st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "glance"})
             st["sent"] = list(sent_kinds)
 
-            # hub 已掛第 4 張＝完成；第 5 張可缺。缺 1–4 才補文字＋hub
+            # hub 已掛第 5 張＝完成；第 5 張缺則文字補 hub。缺 1–4 也補
             core_kinds = ("card", "glance", "struct", "vol")
             if sent_any and not hub_on:
-                if all(k in sent_kinds for k in core_kinds):
+                if "intraday" in sent_kinds or all(k in sent_kinds for k in core_kinds):
                     done_txt = html_escape(_stock_caption_name(card, code) or code)
                 else:
                     miss = [kind_labels[k] for k in core_kinds if k not in sent_kinds]
@@ -10182,6 +10195,7 @@ class WayneTelegramBot:
                         f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
                     )
                 await _reply_visible(done_txt, html=True, markup=hub)
+                hub_on = True
             elif not sent_any:
                 from wayne_navigator import generate_decision_card
 
