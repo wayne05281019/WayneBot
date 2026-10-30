@@ -132,27 +132,28 @@ def test_grid_a_chart_label_b_scales():
 def test_y_price_tick_band_covers_left_gutter():
     class _Ax:
         def get_xlim(self):
-            return (0.0, 270.0)
+            return (-13.0, 270.0)
 
         def get_ylim(self):
             return (58.0, 61.5)
 
-    band = _y_price_tick_band(_Ax(), x_span=270.0, y_span=3.5)
-    assert band[0] == 0.0
-    # 開盤貼左後禁區極窄，不准再吃進圖內
-    assert 0.0 <= band[1] <= 3.0
+    band = _y_price_tick_band(_Ax(), x_span=283.0, y_span=3.5)
+    assert band[0] == -13.0
+    # 禁區蓋左 gutter，右緣貼近開盤，不准再吃進大半圖
+    assert -13.0 < band[1] <= 8.0
     assert band[2] == 58.0
     assert band[3] == 61.5
 
 
 def test_x_label_pad_keeps_open_near_price_ticks():
-    """開盤貼軸左；股價刻度畫在軸外，不准再留左 gutter 空白。"""
+    """股價刻度完整在外框內；左 gutter 約 5.5%，不准 12% 大空白、不准框線切字。"""
     import inspect as _ins
 
     src = _ins.getsource(
         __import__("intraday_open_close_chart", fromlist=["render_path"]).render_path
     )
-    assert "x_label_pad = 0.0" in src
+    assert "* 0.06" in src.split("x_label_pad", 1)[-1][:160]
     assert "0.125" not in src.split("x_label_pad", 1)[-1][:160]
-    assert "-0.012" in src
-    assert 'ha="right"' in src
+    assert "tick_x" in src
+    assert 'ha="left"' in src
+    assert "clip_on=False" in src

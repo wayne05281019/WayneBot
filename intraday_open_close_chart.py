@@ -944,11 +944,14 @@ def _y_price_tick_band(
 ) -> Tuple[float, float, float, float]:
     """左側股價區間刻度禁區（資料座標）：智能完整標不准壓進此帶。
 
-    刻度已改畫在軸外；軸內禁區極窄，不准再推開開盤起點。
+    刻度在外框內、軸左 gutter（完整可讀，不准被框線切字）；禁區＝整條左欄。
     """
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
-    clear_x1 = max(0.0, float(x0) + max(-float(x0) * 0.6, 1.0))
+    pad = max(0.0, -float(x0))
+    # 右緣≈開盤；整條左 gutter 留給刻度，智能標不准進來
+    clear_x1 = float(x0) + max(pad, float(x_span) * 0.045, 10.0)
+    clear_x1 = min(clear_x1, float(x_span) * 0.07)
     return (float(x0), float(clear_x1), float(y0), float(y1))
 
 
@@ -2502,14 +2505,14 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
     frame_left = frame_x / 100.0  # 0.016
     frame_right = (frame_x + frame_w) / 100.0  # 0.982
-    # 軸左緣略內縮：股價刻度畫在軸外（框內縫），開盤路徑可贴軸左＝貼近刻度
+    # 軸左緣貼外框內側；股價刻度畫在框內左 gutter（完整可讀，不准被框線切字）
     # 舊 right_f=_STRUCTURE_FIG_RIGHT=0.905 → 右側大塊空白；改貼近 frame_right
-    left_f = frame_left + 0.026  # ≈0.042；留給 58／59／60 刻度（ha=right）
+    left_f = frame_left + 0.004  # ≈0.020；框內僅留一線縫
     right_f = frame_right - 0.008  # ≈0.974
     assert left_f > frame_left and right_f < frame_right
     assert (right_f - left_f) >= 0.90, "價／量縮圖區寬度不夠"
-    # 開盤貼軸左（刻度已在軸外）；不准再留左 gutter 把起點推開
-    x_label_pad = 0.0
+    # 左 gutter 夠 58／59／60 完整入框（離框線有呼吸）；開盤在刻度右側（舊 12% 太空）
+    x_label_pad = max(float(x_end) * 0.06, 14.0)  # 分钟；約軸寬 6%
     # v14：時間戳旁黑標 → 頭欄變矮 → 十二格上移 → 價圖加高（智能標不擠）
     bars_top = 0.195
     xlab_bot = 0.205
@@ -2702,8 +2705,10 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         lo = min(lo, float(off.avg_price))
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
-    # v20：價／量強制同一 xlim（左 pad 讓刻度字；右＝session x_end）
+    # v20：價／量強制同一 xlim；開盤貼左（刻度在軸外），右＝session x_end
     x_lim = (-float(x_label_pad), float(x_end))
+    ax.set_xmargin(0.0)
+    vol_ax.set_xmargin(0.0)
     ax.set_xlim(*x_lim)
     vol_ax.set_xlim(*x_lim)
     # 線尾＝最後真分時（densify 已不尾延）；硬閘不准畫過 x_end
@@ -2840,9 +2845,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         for sp in a.spines.values():
             sp.set_visible(False)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
-    # Y 刻度畫在軸外（axes 負 x、ha=right），開盤 x=0 貼軸左＝貼近股價數字
-    import matplotlib.transforms as mtransforms
-
+    # Y 刻度：資料座標畫在左 gutter 內（外框內），整字可讀，不准被框線切到「59」的 5
     ax.tick_params(
         axis="y", colors=MUTE, length=2.0, labelsize=_grid_fs(10),
         direction="in", left=True, labelleft=False, right=False, labelright=False,
@@ -2851,23 +2854,25 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
     y0, y1 = ax.get_ylim()
-    y_trans = mtransforms.blended_transform_factory(ax.transAxes, ax.transData)
+    x_left, x_right = ax.get_xlim()
+    # 刻度錨在 gutter 內，離左框線約 gutter 40%（整字入框，免「59」的 5 被切）
+    tick_x = float(x_left) + max((-float(x_left)) * 0.40, 4.0)
     for yv in ax.get_yticks():
         if not (y0 < float(yv) < y1):
             continue
         # 整數價免小數；其餘跟 face 一致（左欄區間字＝A；智能標＝B 且不准壓）
         txt = f"{yv:.0f}" if abs(float(yv) - round(float(yv))) < 1e-6 else _fmt_face(float(yv))
         ax.text(
-            -0.012, float(yv), txt,
-            transform=y_trans, ha="right", va="center",
+            tick_x, float(yv), txt,
+            ha="left", va="center",
             fontproperties=fp(_grid_fs(10), False), color=MUTE,
             zorder=36, clip_on=False,
         )
     vol_ax.set_yticks([])
     vol_ax.text(
-        -0.012, 0.90, "量(張)", transform=vol_ax.transAxes,
+        0.018, 0.90, "量(張)", transform=vol_ax.transAxes,
         fontproperties=fp(_grid_fs(10), False), color=MUTE,
-        va="top", ha="right", zorder=36, clip_on=False,
+        va="top", ha="left", zorder=36, clip_on=False,
     )
 
     # 底三條：左／右對齊共線外框（v8 用 left_f～0.82 與框錯位）
