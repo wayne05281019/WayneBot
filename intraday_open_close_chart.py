@@ -2449,9 +2449,19 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         align="left", size=12,
     )
     try:
-        date_part = format_ymd_slash_weekday(ASOF_YMD)
+        # 戳＝這張圖真路徑日（series.times），不准寫死模組常數 ASOF_YMD（會把今天圖標成昨天）
+        _stamp_ymd = ""
+        if times:
+            _t0 = times[0]
+            if getattr(_t0, "tzinfo", None) is None:
+                _t0 = _t0.replace(tzinfo=TZ)
+            else:
+                _t0 = _t0.astimezone(TZ)
+            _stamp_ymd = _t0.strftime("%Y%m%d")
+        date_part = format_ymd_slash_weekday(_stamp_ymd or ASOF_YMD)
     except Exception:
-        date_part = f"{ASOF_YMD[:4]}/{ASOF_YMD[4:6]}/{ASOF_YMD[6:8]}"
+        _fb = _stamp_ymd if "_stamp_ymd" in locals() and _stamp_ymd else ASOF_YMD
+        date_part = f"{_fb[:4]}/{_fb[4:6]}/{_fb[6:8]}" if len(_fb) == 8 else str(_fb)
     stamp = f"{date_part} {board_close_clock_label(emerging=is_em)}".strip()
     stamp_x = float(chip_end) + 1.35
     # 防撞右上價區：最多貼到 spot 左緩衝
@@ -2976,10 +2986,20 @@ def render_lookup_intraday_result(
     mkt = str(market or "").strip().upper()
     if mkt not in ("TW", "TWO", "EM"):
         mkt = resolve_intraday_market(sid, path_db, hits=hits, card=card)
-    ymd = resolve_intraday_asof_ymd(path_db, prefer=asof_ymd)
+    # 跟前四張同一交易日：參數 asof → 高低卡 latest_date／as_of → 開市日
+    prefer = str(asof_ymd or "").strip().replace("-", "")[:8]
+    if len(prefer) != 8 or not prefer.isdigit():
+        prefer = ""
+        if isinstance(card, dict):
+            prefer = str(
+                card.get("latest_date") or card.get("as_of") or ""
+            ).replace("-", "")[:8]
+            if len(prefer) != 8 or not prefer.isdigit():
+                prefer = ""
+    ymd = resolve_intraday_asof_ymd(path_db, prefer=prefer or None)
     series = build_series(sid, name, mkt, db_path=path_db, ymd=ymd)
-    if series is None:
-        # 今開市日盤前／缺路徑：退最近已開市日（仍只認真數）
+    if series is None and not prefer:
+        # 沒有高低卡指定日才准退前一開市日；有指定日就跟卡走，不准默默換日戳
         try:
             from tw_holidays import previous_tw_trading_day
 

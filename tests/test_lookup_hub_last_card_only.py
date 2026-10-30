@@ -21,7 +21,7 @@ def _png(td: str, name: str) -> str:
 
 
 class LookupHubLastCardOnlyTests(TestCase):
-    def test_hub_markup_only_on_vol_photo(self):
+    def test_hub_markup_only_on_intraday_photo(self):
         td = tempfile.mkdtemp()
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         bot.db_path = os.path.join(td, "x.db")
@@ -129,8 +129,8 @@ class LookupHubLastCardOnlyTests(TestCase):
         self.assertIsNone(by_kind["card"])
         self.assertIsNone(by_kind["glance"])
         self.assertIsNone(by_kind["struct"])
-        self.assertIs(by_kind["vol"], hub)
-        self.assertIsNone(by_kind["intraday"])
+        self.assertIsNone(by_kind["vol"])
+        self.assertIs(by_kind["intraday"], hub)
 
     def test_source_does_not_reattach_hub_on_mid_cards(self):
         import inspect
@@ -140,4 +140,14 @@ class LookupHubLastCardOnlyTests(TestCase):
         self.assertNotIn("markup or hub", src)
         self.assertIn('send_photo(prep or path, caption, hub, kind=kind)', src)
         # 結構／介紹／當天走勢必須顯式 None
-        self.assertGreaterEqual(src.count("caption, None, kind=kind"), 3)
+        self.assertGreaterEqual(src.count("caption, None, kind=kind"), 4)
+
+    def test_source_vol_waits_struct_and_reports_mid_miss(self):
+        """大量區不准搶介紹／結構 paint；中間圖略過要明示「中間缺」。"""
+        import inspect
+
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("struct_queued", src)
+        self.assertIn("struct_queued.wait()", src)
+        self.assertIn("中間缺", src)
+        self.assertIn("asof_ymd=asof or None", src)

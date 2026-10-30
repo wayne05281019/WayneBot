@@ -70,3 +70,38 @@ def test_render_lookup_empty_without_series(tmp_path):
     assert path == ""
     assert cap == ""
     assert not os.path.isfile(out)
+
+
+def test_prefer_asof_does_not_fallback_previous_day(tmp_path, monkeypatch):
+    """高低卡指定日缺路徑 → 回空；不准默默退前一開市日換成錯日戳。"""
+    calls: list[str] = []
+
+    def _fake_build(sid, name, mkt, db_path=None, ymd=None):
+        calls.append(str(ymd or ""))
+        return None
+
+    monkeypatch.setattr(
+        "intraday_open_close_chart.build_series", _fake_build
+    )
+    out = os.path.join(tmp_path, "prefer.png")
+    path, cap = render_lookup_intraday_result(
+        "8234",
+        "新漢",
+        db_path=os.path.join(tmp_path, "x.db"),
+        save_path=out,
+        market="TWO",
+        asof_ymd="20261030",
+        card={"latest_date": "20261030"},
+    )
+    assert path == ""
+    assert cap == ""
+    assert calls == ["20261030"]
+
+
+def test_send_card_passes_card_asof_to_intraday():
+    src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    assert "latest_date" in src
+    assert "asof_ymd=asof or None" in src
+    assert "series is None and not prefer" in inspect.getsource(
+        render_lookup_intraday_result
+    )
