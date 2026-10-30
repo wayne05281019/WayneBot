@@ -165,6 +165,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("volfill", src)
         self.assertIn("ensure_official_volume_window", src)
         self.assertIn("glance_queued", src)
+        self.assertIn("struct_queued", src)
         self.assertLess(
             src.find("create_task(_struct_item())"),
             src.find('await _bump_progress("struct")'),
@@ -173,8 +174,11 @@ class LookupImageTests(unittest.TestCase):
         struct_await = src.find("struct_item = await struct_task")
         self.assertGreater(vol_at, 0)
         self.assertGreater(struct_await, 0)
-        # 大量區提早開，與結構 paint／上傳重疊（仍單 worker）
+        # task 可早開；大量區 paint 等 struct_queued，不准搶介紹／結構
         self.assertLess(vol_at, struct_await)
+        self.assertTrue(
+            ("struct_queued.wait()" in src) or ("struct_queued.wait" in src)
+        )
 
     def test_glance_and_card_render_start_together(self):
         """高低溫度卡先開渲；介紹→結構→大量撐壓一次一張，paint worker 串行。"""

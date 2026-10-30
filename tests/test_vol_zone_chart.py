@@ -138,13 +138,15 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert "ensure_official_volume_window" in src
     assert "volfill" in src
     assert "glance_queued" in src
+    assert "struct_queued" in src
     assert "vol_queued" in src
     vol_at = src.find("vol_task = asyncio.create_task(_vol_item())")
     intrad_at = src.find("intrad_task = asyncio.create_task(_intraday_item())")
     struct_await = src.find("struct_item = await struct_task")
     assert vol_at > 0 and struct_await > 0
-    assert vol_at < struct_await
+    assert vol_at < struct_await  # task 可早開；paint 等 struct_queued
     assert intrad_at > vol_at
+    assert "struct_queued.wait()" in src or "struct_queued.wait" in src
     assert "kind=kind" in src
     # 不准把決策卡還原 ohlc 當撐壓柱
     assert "already_normalized=True" not in src

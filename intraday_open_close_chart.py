@@ -2986,10 +2986,20 @@ def render_lookup_intraday_result(
     mkt = str(market or "").strip().upper()
     if mkt not in ("TW", "TWO", "EM"):
         mkt = resolve_intraday_market(sid, path_db, hits=hits, card=card)
-    ymd = resolve_intraday_asof_ymd(path_db, prefer=asof_ymd)
+    # 跟前四張同一交易日：參數 asof → 高低卡 latest_date／as_of → 開市日
+    prefer = str(asof_ymd or "").strip().replace("-", "")[:8]
+    if len(prefer) != 8 or not prefer.isdigit():
+        prefer = ""
+        if isinstance(card, dict):
+            prefer = str(
+                card.get("latest_date") or card.get("as_of") or ""
+            ).replace("-", "")[:8]
+            if len(prefer) != 8 or not prefer.isdigit():
+                prefer = ""
+    ymd = resolve_intraday_asof_ymd(path_db, prefer=prefer or None)
     series = build_series(sid, name, mkt, db_path=path_db, ymd=ymd)
-    if series is None:
-        # 今開市日盤前／缺路徑：退最近已開市日（仍只認真數）
+    if series is None and not prefer:
+        # 沒有高低卡指定日才准退前一開市日；有指定日就跟卡走，不准默默換日戳
         try:
             from tw_holidays import previous_tw_trading_day
 

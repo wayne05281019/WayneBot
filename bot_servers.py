@@ -9785,6 +9785,7 @@ class WayneTelegramBot:
             # 完整圖下鈕只掛第 5 張當天走勢；第 2／3／4 張不附鍵盤。
             card_queued = asyncio.Event()
             glance_queued = asyncio.Event()
+            struct_queued = asyncio.Event()  # 結構已進 paint／memo；大量區不准搶在介紹／結構前
             vol_queued = asyncio.Event()
 
             # 卡建完後名稱可能比 hits 準；只更新字串，不准重開 ensure（已在跑／memo）。
@@ -9883,49 +9884,59 @@ class WayneTelegramBot:
                 # 官方柱與卡／介紹重疊；paint 前必須等介紹已進 queue，不准插隊。
                 # 同指紋短 TTL：memo 命中不佔 paint／Agg（與卡／介紹／大量區同規）。
                 try:
-                    await asyncio.wait_for(
-                        glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
-                    )
-                except asyncio.TimeoutError:
-                    glance_queued.set()
-                try:
-                    _struct_pack_box[0] = await struct_prep_task
-                except asyncio.CancelledError:
-                    _struct_pack_box[0] = None
-                except Exception:
-                    logger.exception("查股結構 prep await 失敗 code=%s", code)
-                    _struct_pack_box[0] = None
-                from three_in_one_chart import try_lookup_structure_memo
+                    try:
+                        await asyncio.wait_for(
+                            glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        glance_queued.set()
+                    try:
+                        _struct_pack_box[0] = await struct_prep_task
+                    except asyncio.CancelledError:
+                        _struct_pack_box[0] = None
+                    except Exception:
+                        logger.exception("查股結構 prep await 失敗 code=%s", code)
+                        _struct_pack_box[0] = None
+                    from three_in_one_chart import try_lookup_structure_memo
 
-                warm_path, warm_cap = try_lookup_structure_memo(
-                    code,
-                    _stock_caption_name(card, code),
-                    self.db_path,
-                    struct_path_f,
-                    card=card,
-                    pack=_struct_pack_box[0],
-                    live_quote=live_rt if isinstance(live_rt, dict) else None,
-                )
-                if warm_path and self._chart_png_looks_ok(warm_path):
-                    if warm_cap:
-                        struct_face[0] = warm_cap
-                    return (
-                        "struct",
-                        warm_path,
-                        struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）",
-                        None,
+                    warm_path, warm_cap = try_lookup_structure_memo(
+                        code,
+                        _stock_caption_name(card, code),
+                        self.db_path,
+                        struct_path_f,
+                        card=card,
+                        pack=_struct_pack_box[0],
+                        live_quote=live_rt if isinstance(live_rt, dict) else None,
                     )
-                await _set_struct_phase("paint")
-                png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
-                cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
-                if not png:
-                    return None
-                return ("struct", png, cap, None)
+                    if warm_path and self._chart_png_looks_ok(warm_path):
+                        if warm_cap:
+                            struct_face[0] = warm_cap
+                        return (
+                            "struct",
+                            warm_path,
+                            struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）",
+                            None,
+                        )
+                    await _set_struct_phase("paint")
+                    png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
+                    cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
+                    if not png:
+                        return None
+                    return ("struct", png, cap, None)
+                finally:
+                    # 放行大量區 paint（失敗也要放，不准卡死第 4／5 張）
+                    struct_queued.set()
 
             async def _vol_item():
-                # 大量區選窗在 paint 外已開；這裡只等那份，不准再整窗擋住結構圖。
+                # prep 可與介紹重疊；paint 必須等結構已進佇列／memo，不准搶掉介紹／結構。
                 # 同指紋短 TTL：memo 命中不佔 paint 佇列（現價指紋變了會 miss）。
                 try:
+                    try:
+                        await asyncio.wait_for(
+                            struct_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        struct_queued.set()
                     try:
                         _vol_pack_box[0] = await vol_zone_task
                     except asyncio.CancelledError:
@@ -10003,7 +10014,7 @@ class WayneTelegramBot:
             glance_task = asyncio.create_task(_glance_item())
             # 結構提早跑 ensure（已在 ensure_task）；paint 等 glance_queued
             struct_task = asyncio.create_task(_struct_item())
-            # 大量區 paint 與結構／上傳重疊：prep 已在 vol_zone_task，不必等 struct 送完才開
+            # 大量區 prep 可重疊；paint 等 struct_queued（不准搶介紹／結構 worker）
             vol_task = asyncio.create_task(_vol_item())
             # 第 5 張等 vol_queued（paint 進佇列／memo）後再開，不准搶第 4 張 worker
             intrad_task = asyncio.create_task(_intraday_item())
@@ -10186,8 +10197,13 @@ class WayneTelegramBot:
             st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "glance"})
             st["sent"] = list(sent_kinds)
 
-            # hub 已掛第 5 張＝完成；第 5 張缺則文字補 hub。缺 1–4 也補
+            # hub 已掛第 5 張＝完成；第 5 張缺則文字補 hub。缺中間圖必須明示（不准默默略過）
             core_kinds = ("card", "glance", "struct", "vol")
+            miss_mid = [
+                kind_labels[k]
+                for k in ("glance", "struct", "vol")
+                if k not in sent_kinds
+            ]
             if sent_any and not hub_on:
                 if "intraday" in sent_kinds or all(k in sent_kinds for k in core_kinds):
                     done_txt = html_escape(_stock_caption_name(card, code) or code)
@@ -10200,6 +10216,13 @@ class WayneTelegramBot:
                     )
                 await _reply_visible(done_txt, html=True, markup=hub)
                 hub_on = True
+            elif sent_any and miss_mid:
+                # 第 5 張已掛 hub，但中間圖逾時略過 → 一定講清楚
+                await _reply_visible(
+                    f"中間缺：{'、'.join(miss_mid)}。請再打一次代號補圖。",
+                    html=True,
+                    markup=None,
+                )
             elif not sent_any:
                 from wayne_navigator import generate_decision_card
 

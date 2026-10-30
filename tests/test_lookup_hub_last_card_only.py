@@ -141,3 +141,13 @@ class LookupHubLastCardOnlyTests(TestCase):
         self.assertIn('send_photo(prep or path, caption, hub, kind=kind)', src)
         # 結構／介紹／當天走勢必須顯式 None
         self.assertGreaterEqual(src.count("caption, None, kind=kind"), 4)
+
+    def test_source_vol_waits_struct_and_reports_mid_miss(self):
+        """大量區不准搶介紹／結構 paint；中間圖略過要明示「中間缺」。"""
+        import inspect
+
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("struct_queued", src)
+        self.assertIn("struct_queued.wait()", src)
+        self.assertIn("中間缺", src)
+        self.assertIn("asof_ymd=asof or None", src)
