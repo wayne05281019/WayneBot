@@ -469,7 +469,9 @@ class EmergingScreenIsolationTests(unittest.TestCase):
     def test_increment_job_syncs_emerging_not_into_daily_quotes(self):
         src = open("main_runner.py", encoding="utf-8").read()
         self.assertIn("sync_emerging_quotes", src)
-        self.assertIn("cap=fuse_to", src)
+        # 2026-10-30：開市日走 _sync_emerging_required(fuse_to／cap)；不准略過
+        self.assertIn("_sync_emerging_required", src)
+        self.assertIn("fuse_to", src)
         self.assertIn("興櫃補齊寫入", src)
         self.assertIn("興櫃收盤再寫", src)
         emsrc = open("emerging_quotes.py", encoding="utf-8").read()

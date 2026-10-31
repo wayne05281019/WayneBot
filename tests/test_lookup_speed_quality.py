@@ -14,17 +14,26 @@ pytestmark = pytest.mark.production_db
 
 
 def test_lookup_jpeg_quality_floor():
-    from bot_servers import _LOOKUP_JPEG_QUALITY
+    from bot_servers import (
+        _LOOKUP_JPEG_QUALITY,
+        _LOOKUP_JPEG_QUALITY_CHART_FLOOR,
+        _LOOKUP_JPEG_QUALITY_FLOOR,
+        WayneTelegramBot,
+    )
     from wayne_navigator import LOOKUP_JPEG_QUALITY, _savefig_lookup_png
 
     assert LOOKUP_JPEG_QUALITY >= 88
     assert _LOOKUP_JPEG_QUALITY >= 88
+    assert _LOOKUP_JPEG_QUALITY_CHART_FLOOR >= 92
     src = inspect.getsource(_savefig_lookup_png)
     assert "LOOKUP_JPEG_QUALITY" in src
     assert "subsampling" in src
     assert "0" in src
     # 存檔＝FreeType draw；必須進 mpl_render，介紹∥高低卡才不互踩
     assert "mpl_render" in src
+    prep = inspect.getsource(WayneTelegramBot._prepare_lookup_album_photo)
+    assert "_LOOKUP_JPEG_QUALITY_CHART_FLOOR" in prep
+    assert "struct" in prep or "_LOOKUP_CHART_KINDS" in prep
 
 
 def test_optical_lookup_pair_under_contention(tmp_path):

@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """破大量區撐／過壓 → 下一層（次大量區壓+撐）＋飆大原文絕對目標（非買訊）。
 
-產品（2026-10-25 鎖／WB-27）：
+產品（2026-10-25 鎖／WB-27；2026-10-29 話筒臉）：
 - 下一層＝往更早 K 對照出的**次大量區間**（上緣壓＋下緣撐兩條一起）；
   不是單線平行撐、也不把原文目標叫「下一撐」。
 - 收盤有效破主撐才標下一層；收盤有效過主壓對稱標下一層（下一壓）。
+- **畫法（2026-10-29 鎖臉／v2c）**：次大量區間＝K 下**較深**灰價帶（α≈0.38）
+  ＋下一層壓／撐虛線＋數字角標（虛線／數字要留；撐色見 v2b）。
 - 破撐≠立刻換主區（主區仍依 find_volume_zone 近窗爆大量重算）。
 - 平行軌若結構圖仍畫，用通道自己的名，不准搶「下一撐／下一層」。
 - 他寫死絕對價＝「飆大原文目標 {價}・非買訊」；檔別隔離。
@@ -1017,6 +1019,111 @@ def pick_layer_label_along_line(
     return best[1], best[2], best[3]
 
 
+def _flush_smart_layer_pixel_gate(ax, queue, occupied_boxes) -> None:
+    """成對下一層標：整批只 draw 一次再做像素裁切／nudge（結構＋大量少 Agg）。"""
+    if not queue:
+        return
+    try:
+        ax.figure.canvas.draw()
+        ren = ax.figure.canvas.get_renderer()
+    except Exception:
+        return
+    fbb = ax.figure.bbox
+    for item in queue:
+        art = item.get("art")
+        if art is None:
+            continue
+        cx = float(item["cx"])
+        ha = item["ha"]
+        box = item["box"]
+        label = item["label"]
+        lab_y = item["lab_y"]
+        color = item["color"]
+        xmin = float(item["xmin"])
+        _text = item["_text_fn"]
+        _layer_tag_box = item["_layer_tag_box"]
+        _layer_tag_size = item["_layer_tag_size"]
+        try:
+            for _nudge in range(8):
+                bb = art.get_window_extent(renderer=ren)
+                if not (
+                    bb.x0 < fbb.x0 - 1
+                    or bb.x1 > fbb.x1 - 1
+                    or bb.y0 < fbb.y0 - 1
+                    or bb.y1 > fbb.y1 - 1
+                ):
+                    break
+                try:
+                    art.remove()
+                except Exception:
+                    pass
+                cx = float(cx) - 1.2
+                ha = "right"
+                _hw = max(0.5 * (float(box[1]) - float(box[0])), 1.0)
+                box = (
+                    cx - 2.0 * _hw,
+                    cx,
+                    float(box[2]),
+                    float(box[3]),
+                )
+                if float(box[0]) < float(xmin) - 0.55:
+                    art = None
+                    break
+                art = _text(
+                    float(cx),
+                    lab_y,
+                    label,
+                    color=color,
+                    ha=ha,
+                    va="center",
+                    bbox={**_layer_tag_box, "edgecolor": color},
+                    size=float(_layer_tag_size),
+                )
+                ax.figure.canvas.draw()
+                ren = ax.figure.canvas.get_renderer()
+            if art is None:
+                try:
+                    occupied_boxes.pop()
+                except Exception:
+                    pass
+                continue
+            bb = art.get_window_extent(renderer=ren)
+            if (
+                bb.x0 < fbb.x0 - 1
+                or bb.x1 > fbb.x1 - 1
+                or bb.y0 < fbb.y0 - 1
+                or bb.y1 > fbb.y1 - 1
+            ):
+                try:
+                    art.remove()
+                except Exception:
+                    pass
+                try:
+                    occupied_boxes.pop()
+                except Exception:
+                    pass
+                continue
+            occupied_boxes[-1] = box
+            try:
+                from smart_label_metrics import record_smart_label
+
+                record_smart_label(
+                    ax,
+                    kind="layer",
+                    text=str(label),
+                    x0=float(box[0]),
+                    x1=float(box[1]),
+                    y0=float(box[2]),
+                    y1=float(box[3]),
+                    rail_y=float(lab_y),
+                    clipped=False,
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
 def paint_written_and_next_levels(
     ax,
     *,
@@ -1027,24 +1134,29 @@ def paint_written_and_next_levels(
     right_notes: Optional[List[Dict[str, Any]]] = None,
     label_x: Optional[float] = None,
     color_written: str = "#6a1b9a",
-    color_next: str = "#1565c0",
+    color_next: str = "#062e70",  # 下一層撐：再加深（縮圖可讀）
     color_next_press: str = "#ad1457",
     color_none: str = "#546e7a",
-    color_band: str = "#9e9e9e",
-    band_alpha: float = 0.14,
+    color_band: str = "#607d8b",  # v2c：邊界再略深（仍在 K 下）
+    band_alpha: float = 0.38,
     ymin: Optional[float] = None,
     ymax: Optional[float] = None,
     tag_size: float = 10.0,
     layer_labels: str = "right",
     written_labels: str = "auto",
+    layer_marks: str = "both",
     busy_ys: Optional[Sequence[float]] = None,
     highs: Optional[Sequence[float]] = None,
     lows: Optional[Sequence[float]] = None,
     mas: Optional[Sequence[Sequence[float]]] = None,
     occupied: Optional[Sequence[Tuple[float, float, float, float]]] = None,
 ) -> List[float]:
-    """原文目標水平線＋破撐／過壓下一層（次大量區淺灰底＋壓／撐兩線）。
+    """原文目標水平線＋破撐／過壓下一層（次大量區深灰價帶＋壓／撐虛線標）。
 
+    layer_marks（2026-10-29 鎖臉）：
+      - \"both\"＝深灰價帶＋虛線＋角標（產品預設；v2c α≈0.38）
+      - \"band\"＝只畫 K 下灰帶（無虛線／無標）
+      - \"lines\"＝舊虛線＋角標（無灰帶）
     layer_labels：
       - \"smart\"／\"auto\"＝沿該水平線掃位，取擋 K／均線最少（有 highs／lows 時）
       - \"left\"＝偏左固定欄
@@ -1264,73 +1376,77 @@ def paint_written_and_next_levels(
         layer = dict((pack.get("primary") or {}).get("layer") or {})
 
     show_layer = bool(pack.get("broke") or pack.get("over")) and bool(layer)
+    marks = str(layer_marks or "both").strip().lower() or "both"
+    if marks not in ("band", "lines", "both"):
+        marks = "both"
+    draw_band = marks in ("band", "both")
+    draw_layer_lines = marks in ("lines", "both")
     if show_layer:
         lo = _num(layer.get("low") or layer.get("support"))
         hi = _num(layer.get("high") or layer.get("pressure"))
         if lo > 0 and hi > 0 and hi >= lo:
-            # 淺灰底＝次大量區區間帶（不是平行撐細縫；與主區桃色分開）
-            try:
-                ax.axhspan(
-                    lo,
-                    hi,
-                    facecolor=color_band,
-                    edgecolor="none",
-                    alpha=float(band_alpha),
-                    zorder=1,
-                )
-            except Exception:
-                pass
+            # 淺灰價帶＝次大量區（K／影線 z≥3 之上不准蓋；桃色主區 z=0 之下／旁）
+            if draw_band:
+                try:
+                    ax.axhspan(
+                        lo,
+                        hi,
+                        facecolor=color_band,
+                        edgecolor="none",
+                        alpha=float(band_alpha),
+                        zorder=0.5,
+                        clip_on=True,
+                    )
+                except Exception:
+                    pass
+                ys.append(float(lo))
+                ys.append(float(hi))
             _layer_pair_anchor = False
             _layer_prefer_x: Optional[float] = None
-            for y, color, label in (
-                (hi, color_next_press, str(layer.get("label_press") or next_press_label(hi))),
-                (lo, color_next, str(layer.get("label_hold") or next_hold_label(lo))),
-            ):
-                same = any(abs(y - w) < 1e-6 for w in ys)
-                if not same:
-                    try:
-                        ax.hlines(
-                            y,
-                            xmin=xmin,
-                            xmax=xmax,
-                            colors=color,
-                            linestyles=(0, (2.2, 1.6)),
-                            linewidth=1.15,
-                            zorder=4,
-                            alpha=0.9,
-                        )
-                    except Exception:
+            _smart_layer_pixel_queue: List[Dict[str, Any]] = []
+            if draw_layer_lines:
+                for y, color, label in (
+                    (
+                        hi,
+                        color_next_press,
+                        str(layer.get("label_press") or next_press_label(hi)),
+                    ),
+                    (
+                        lo,
+                        color_next,
+                        str(layer.get("label_hold") or next_hold_label(lo)),
+                    ),
+                ):
+                    same = any(abs(y - w) < 1e-6 for w in ys)
+                    if not same:
                         try:
-                            ax.axhline(
+                            ax.hlines(
                                 y,
-                                color=color,
-                                linestyle=(0, (2.2, 1.6)),
+                                xmin=xmin,
+                                xmax=xmax,
+                                colors=color,
+                                linestyles=(0, (2.2, 1.6)),
                                 linewidth=1.15,
                                 zorder=4,
                                 alpha=0.9,
                             )
                         except Exception:
-                            pass
-                    ys.append(y)
-                if layer_mode == "smart" and hi_arr and lo_arr:
-                    # v12：成對壓／撐同垂直帶；代價過高略過（不准硬壓 K）
-                    lab_y = float(y)
-                    label_ys.append(lab_y)
-                    picked = pick_layer_label_along_line(
-                        y=lab_y,
-                        text=label,
-                        xmin=float(xmin),
-                        xmax=float(xmax),
-                        highs=hi_arr,
-                        lows=lo_arr,
-                        mas=mas,
-                        occupied=occupied_boxes,
-                        tag_size=float(_layer_tag_size),
-                        y_span=y_span_for_pick or None,
-                        prefer_x=_layer_prefer_x,
-                    )
-# OPTIONAL：無淨空可略過。第二趟放寬代價但仍硬拒壓 K／超 xmax
-                    if picked is None:
+                            try:
+                                ax.axhline(
+                                    y,
+                                    color=color,
+                                    linestyle=(0, (2.2, 1.6)),
+                                    linewidth=1.15,
+                                    zorder=4,
+                                    alpha=0.9,
+                                )
+                            except Exception:
+                                pass
+                        ys.append(y)
+                    if layer_mode == "smart" and hi_arr and lo_arr:
+                        # v12：成對壓／撐同垂直帶；代價過高略過（不准硬壓 K）
+                        lab_y = float(y)
+                        label_ys.append(lab_y)
                         picked = pick_layer_label_along_line(
                             y=lab_y,
                             text=label,
@@ -1343,175 +1459,122 @@ def paint_written_and_next_levels(
                             tag_size=float(_layer_tag_size),
                             y_span=y_span_for_pick or None,
                             prefer_x=_layer_prefer_x,
-                            max_score=60.0,
                         )
-                    if picked is None:
-
-                        continue
-                    cx, ha, box = picked
-                    # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內
-                    if float(box[1]) > float(xmax) + 0.05:
-                        _hw = max(0.5 * (float(box[1]) - float(box[0])), 1.0)
-                        cx = float(xmax) - 0.08
-                        ha = "right"
-                        box = (
-                            cx - 2.0 * _hw,
-                            cx,
-                            float(box[2]),
-                            float(box[3]),
-                        )
-                        if float(box[0]) < float(xmin) - 0.55:
+                        # OPTIONAL：無淨空可略過。第二趟放寬代價但仍硬拒壓 K／超 xmax
+                        if picked is None:
+                            picked = pick_layer_label_along_line(
+                                y=lab_y,
+                                text=label,
+                                xmin=float(xmin),
+                                xmax=float(xmax),
+                                highs=hi_arr,
+                                lows=lo_arr,
+                                mas=mas,
+                                occupied=occupied_boxes,
+                                tag_size=float(_layer_tag_size),
+                                y_span=y_span_for_pick or None,
+                                prefer_x=_layer_prefer_x,
+                                max_score=60.0,
+                            )
+                        if picked is None:
                             continue
-                    occupied_boxes.append(box)
-                    if _layer_prefer_x is None:
-                        _layer_prefer_x = float(cx)
-                        _layer_pair_anchor = True
-                    try:
-                        art = _text(
-                            float(cx),
-                            lab_y,
-                            label,
-                            color=color,
-                            ha=ha,
-                            va="center",
-                            bbox={**_layer_tag_box, "edgecolor": color},
-                            size=float(_layer_tag_size),
-                        )
-                        # 像素裁切閘：出 figure → 往左 nudge；仍裁才拿掉（不准半句）
+                        cx, ha, box = picked
+                        # 雙保險：盒右緣仍超 xmax → 改 ha=right 釘在 xmax 內
+                        if float(box[1]) > float(xmax) + 0.05:
+                            _hw = max(0.5 * (float(box[1]) - float(box[0])), 1.0)
+                            cx = float(xmax) - 0.08
+                            ha = "right"
+                            box = (
+                                cx - 2.0 * _hw,
+                                cx,
+                                float(box[2]),
+                                float(box[3]),
+                            )
+                            if float(box[0]) < float(xmin) - 0.55:
+                                continue
+                        occupied_boxes.append(box)
+                        if _layer_prefer_x is None:
+                            _layer_prefer_x = float(cx)
+                            _layer_pair_anchor = True
                         try:
-                            ax.figure.canvas.draw()
-                            ren = ax.figure.canvas.get_renderer()
-                            if art is not None:
-                                for _nudge in range(8):
-                                    bb = art.get_window_extent(renderer=ren)
-                                    fbb = ax.figure.bbox
-                                    if not (
-                                        bb.x0 < fbb.x0 - 1
-                                        or bb.x1 > fbb.x1 - 1
-                                        or bb.y0 < fbb.y0 - 1
-                                        or bb.y1 > fbb.y1 - 1
-                                    ):
-                                        break
-                                    try:
-                                        art.remove()
-                                    except Exception:
-                                        pass
-                                    cx = float(cx) - 1.2
-                                    ha = "right"
-                                    _hw = max(
-                                        0.5 * (float(box[1]) - float(box[0])), 1.0
-                                    )
-                                    box = (
-                                        cx - 2.0 * _hw,
-                                        cx,
-                                        float(box[2]),
-                                        float(box[3]),
-                                    )
-                                    if float(box[0]) < float(xmin) - 0.55:
-                                        art = None
-                                        break
-                                    art = _text(
-                                        float(cx),
-                                        lab_y,
-                                        label,
-                                        color=color,
-                                        ha=ha,
-                                        va="center",
-                                        bbox={
-                                            **_layer_tag_box,
-                                            "edgecolor": color,
-                                        },
-                                        size=float(_layer_tag_size),
-                                    )
-                                    ax.figure.canvas.draw()
-                                    ren = ax.figure.canvas.get_renderer()
-                                if art is None:
-                                    occupied_boxes.pop()
-                                    continue
-                                bb = art.get_window_extent(renderer=ren)
-                                fbb = ax.figure.bbox
-                                if (
-                                    bb.x0 < fbb.x0 - 1
-                                    or bb.x1 > fbb.x1 - 1
-                                    or bb.y0 < fbb.y0 - 1
-                                    or bb.y1 > fbb.y1 - 1
-                                ):
-                                    try:
-                                        art.remove()
-                                    except Exception:
-                                        pass
-                                    occupied_boxes.pop()
-                                    continue
-                                # nudge 後同步佔位盒
-                                occupied_boxes[-1] = box
-                        except Exception:
-                            pass
-                        try:
-                            from smart_label_metrics import record_smart_label
-
-                            record_smart_label(
-                                ax,
-                                kind="layer",
-                                text=str(label),
-                                x0=float(box[0]),
-                                x1=float(box[1]),
-                                y0=float(box[2]),
-                                y1=float(box[3]),
-                                rail_y=float(lab_y),
-                                clipped=False,
+                            art = _text(
+                                float(cx),
+                                lab_y,
+                                label,
+                                color=color,
+                                ha=ha,
+                                va="center",
+                                bbox={**_layer_tag_box, "edgecolor": color},
+                                size=float(_layer_tag_size),
+                            )
+                            _smart_layer_pixel_queue.append(
+                                {
+                                    "art": art,
+                                    "cx": cx,
+                                    "ha": ha,
+                                    "box": box,
+                                    "label": label,
+                                    "lab_y": lab_y,
+                                    "color": color,
+                                    "xmin": float(xmin),
+                                    "_text_fn": _text,
+                                    "_layer_tag_box": _layer_tag_box,
+                                    "_layer_tag_size": _layer_tag_size,
+                                }
                             )
                         except Exception:
                             pass
-                    except Exception:
-                        pass
-                elif layer_mode == "left":
-                    # 舊固定左欄；近主區壓撐改第二欄
-                    lab_y = float(y)
-                    lx_left = _left_tag_x(lab_y, label_ys)
-                    label_ys.append(lab_y)
-                    try:
-                        _text(
-                            float(lx_left),
-                            lab_y,
-                            label,
-                            color=color,
-                            transform=ax.get_yaxis_transform(),
-                            ha="left",
-                            va="center",
-                            bbox={**_layer_tag_box, "edgecolor": color},
-                            size=float(_layer_tag_size),
+                    elif layer_mode == "left":
+                        # 舊固定左欄；近主區壓撐改第二欄
+                        lab_y = float(y)
+                        lx_left = _left_tag_x(lab_y, label_ys)
+                        label_ys.append(lab_y)
+                        try:
+                            _text(
+                                float(lx_left),
+                                lab_y,
+                                label,
+                                color=color,
+                                transform=ax.get_yaxis_transform(),
+                                ha="left",
+                                va="center",
+                                bbox={**_layer_tag_box, "edgecolor": color},
+                                size=float(_layer_tag_size),
+                            )
+                        except Exception:
+                            pass
+                    elif layer_mode == "notes" and notes is not None:
+                        lab_y = _label_y(y, label_ys)
+                        notes.append(
+                            {
+                                "x": lx,
+                                "y": lab_y,
+                                "text": label,
+                                "color": color,
+                                "size": float(_layer_tag_size),
+                                "pad": float(LAYER_TAG_PAD),
+                            }
                         )
-                    except Exception:
-                        pass
-                elif layer_mode == "notes" and notes is not None:
-                    lab_y = _label_y(y, label_ys)
-                    notes.append(
-                        {
-                            "x": lx,
-                            "y": lab_y,
-                            "text": label,
-                            "color": color,
-                            "size": float(_layer_tag_size),
-                            "pad": float(LAYER_TAG_PAD),
-                        }
-                    )
-                else:
-                    lab_y = _label_y(y, label_ys)
-                    try:
-                        # v9：右緣下一層標也帶白底，不准被 K／箭頭切字
-                        _text(
-                            0.988,
-                            lab_y,
-                            label,
-                            color=color,
-                            transform=ax.get_yaxis_transform(),
-                            ha="right",
-                            va="center",
-                            bbox={**_layer_tag_box, "edgecolor": color},
-                            size=float(_layer_tag_size),
-                        )
-                    except Exception:
-                        pass
+                    else:
+                        lab_y = _label_y(y, label_ys)
+                        try:
+                            # v9：右緣下一層標也帶白底，不准被 K／箭頭切字
+                            _text(
+                                0.988,
+                                lab_y,
+                                label,
+                                color=color,
+                                transform=ax.get_yaxis_transform(),
+                                ha="right",
+                                va="center",
+                                bbox={**_layer_tag_box, "edgecolor": color},
+                                size=float(_layer_tag_size),
+                            )
+                        except Exception:
+                            pass
+                _flush_smart_layer_pixel_gate(
+                    ax, _smart_layer_pixel_queue, occupied_boxes
+                )
     elif pack.get("broke") or pack.get("over"):
         # 2026-10-27：無下一層＝靜默，不准畫「暫無下一層大量區」佔位
         pass

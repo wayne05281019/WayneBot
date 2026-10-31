@@ -35,6 +35,26 @@ def test_prefetch_mis_skips_outside_live_merge_window():
     _ = evening  # 記錄場景：台北盤後
 
 
+def test_emerging_lookup_waits_past_listed_two_seconds():
+    """興櫃當日行情表超過上市櫃 2 秒。2 秒砍掉會改畫庫內舊均價。"""
+    import bot_servers
+
+    assert bot_servers._LOOKUP_MIS_TIMEOUT <= 2.0
+    assert bot_servers._LOOKUP_EMERGING_QUOTE_TIMEOUT >= 6.0
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    assert bot._lookup_quote_budget("2330", [{"market": "TW", "close": 1}]) == (
+        bot_servers._LOOKUP_MIS_TIMEOUT
+    )
+    assert bot._lookup_quote_budget("3595", [{"market": "EM", "stock_id": "3595"}]) == (
+        bot_servers._LOOKUP_EMERGING_QUOTE_TIMEOUT
+    )
+    locked = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    quick = inspect.getsource(WayneTelegramBot._send_decision_card_quick)
+    assert "_LOOKUP_EMERGING_QUOTE_TIMEOUT" in locked
+    assert "_LOOKUP_MIS_TIMEOUT" in locked
+    assert "_lookup_quote_budget" in quick
+
+
 def test_name_lookup_off_event_loop():
     from bot_servers import WayneTelegramBot
 

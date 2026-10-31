@@ -48,9 +48,10 @@ def test_volzone_ochre_keeps_below_signal_row():
 
     src = inspect.getsource(_paint_volume_zone)
     assert "_vol_callout_cap" in src
-    # 土黄爆大量仍 clip；長「下一層量日」才 clip_on=not long_layer
-    assert "clip_on=not long_layer" in src or "clip_on=True" in src
+    # 量標上緣：長「下一層量日」clip_on=False 防裁半；仍受 _vol_callout_cap 限高
+    assert "clip_on=False" in src or "clip_on=not long_layer" in src
     assert "紫箭" in src or "訊號列" in src
+    assert "long_layer" in src
 
 
 def test_stock_quiet_trend_rail_constants():
@@ -67,6 +68,18 @@ def test_stock_quiet_trend_rail_constants():
     assert float(_STOCK_TREND_RAIL_LW) >= 1.2
     assert isinstance(_STOCK_TREND_RAIL_DASH, tuple)
     assert "with_parallel_channel=True" in inspect.getsource(render_lookup_vol_result)
+    # 平行軌保底不准盲放近端蓋縮圖 K；須 ignore_k=False 掃淨空／軸外溝
+    qsrc = inspect.getsource(paint_vol_zone_parallel_channel)
+    assert "ignore_k=False" in qsrc
+    assert "_recent_cut" in qsrc or "recent_cut" in qsrc
+    assert "ink:quiet-rail" in qsrc
+    assert "n - 3.2" not in qsrc  # 舊盲放右緣
+    # 導航臉漏傳仍開平行軌（v2e／預覽不准再無軌）
+    from vol_zone_chart import render_volume_zone_result
+
+    rsrc = inspect.getsource(render_volume_zone_result)
+    assert "if with_nav_signals:" in rsrc
+    assert "with_parallel_channel = True" in rsrc
     psrc = inspect.getsource(paint_vol_zone_parallel_channel)
     assert "quiet_rails" in psrc
     assert "draw_markers=False" in psrc
@@ -80,13 +93,14 @@ def test_stock_quiet_trend_rail_constants():
 
 
 def test_vol_zone_dpi_sharpness_floor():
-    """結構／大量區不准為快降 DPI；#722 後底線 240、仍輕於導航 320。"""
-    from vol_zone_chart import VOL_ZONE_DPI
+    """結構／大量：paint 可 220 少 Agg；輸出 save 底線 238、仍輕於導航 320。"""
+    from vol_zone_chart import VOL_ZONE_DPI, VOL_ZONE_SAVE_DPI
     from wayne_navigator import NAV_CHART_DPI
 
-    assert int(VOL_ZONE_DPI) >= 240
-    assert int(VOL_ZONE_DPI) < int(NAV_CHART_DPI)
-    assert int(VOL_ZONE_DPI) <= 280  # 防 OOM：不准無上限狂加
+    assert int(VOL_ZONE_DPI) >= 220
+    assert int(VOL_ZONE_SAVE_DPI) >= 238
+    assert int(VOL_ZONE_SAVE_DPI) < int(NAV_CHART_DPI)
+    assert int(VOL_ZONE_SAVE_DPI) <= 280  # 防 OOM：不准無上限狂加
 
 
 def test_lookup_progress_tick_has_hard_elapsed_cap():

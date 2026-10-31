@@ -120,10 +120,12 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "render_lookup_structure_result" in src
     assert "render_lookup_vol_result" in src
+    assert "render_lookup_intraday_result" in src
     assert "render_three_in_one_result" not in src
-    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓；一次一張、好了就送
+    # 順序：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓 → 當天走勢；一次一張、好了就送
     assert "create_task(_struct_item())" in src
     assert "create_task(_vol_item())" in src
+    assert "create_task(_intraday_item())" in src
     assert "_bump_progress" in src
     assert src.find("glance_task = asyncio.create_task") < src.find(
         "card_item = await card_render_task"
@@ -136,9 +138,15 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert "ensure_official_volume_window" in src
     assert "volfill" in src
     assert "glance_queued" in src
-    assert src.find('await _bump_progress("struct")') < src.find(
-        "create_task(_vol_item())"
-    )
+    assert "struct_queued" in src
+    assert "vol_queued" in src
+    vol_at = src.find("vol_task = asyncio.create_task(_vol_item())")
+    intrad_at = src.find("intrad_task = asyncio.create_task(_intraday_item())")
+    struct_await = src.find("struct_item = await struct_task")
+    assert vol_at > 0 and struct_await > 0
+    assert vol_at < struct_await  # task 可早開；paint 等 struct_queued
+    assert intrad_at > vol_at
+    assert "struct_queued.wait()" in src or "struct_queued.wait" in src
     assert "kind=kind" in src
     # 不准把決策卡還原 ohlc 當撐壓柱
     assert "already_normalized=True" not in src
@@ -391,20 +399,24 @@ def test_volume_first_and_find_zone_same_window_synthetic():
 
 
 def _assert_2233_spike_zone(zone: dict, st: dict) -> None:
-    """2233 近窗爆大量：結構＝大量區；lookback=40 滾到 10/27 後 08/25 出窗改 08/26。"""
+    """2233 近窗爆大量：結構＝大量區；lookback=40 滾動後近窗最大日可換，兩圖必須同日。"""
     assert zone and st
     spike = str(zone["date"]).replace("-", "")[:8]
     assert str(st["spike_date"]).replace("-", "")[:8] == spike
     assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
     assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
-    # 08/25 量 3929（高173／低157.5）；出窗後近窗最大為 08/26（177／163.5）
-    assert spike in ("20260825", "20260826"), spike
-    if spike == "20260825":
-        assert abs(float(zone["high"]) - 173.0) < 0.51
-        assert abs(float(zone["low"]) - 157.5) < 0.51
-    else:
-        assert abs(float(zone["high"]) - 177.0) < 0.51
-        assert abs(float(zone["low"]) - 163.5) < 0.51
+    # 近窗 lookback=40 滾動：爆大量日會換；結構／大量區必須同日同高低。
+    # 08/25→08/26→08/27→09/30（CI Release 新柱後 08/27 出窗）
+    assert spike in ("20260825", "20260826", "20260827", "20260930"), spike
+    expect = {
+        "20260825": (173.0, 157.5),
+        "20260826": (177.0, 163.5),
+        "20260827": (179.5, 172.0),
+        "20260930": (171.0, 165.0),
+    }
+    hi, lo = expect[spike]
+    assert abs(float(zone["high"]) - hi) < 0.51
+    assert abs(float(zone["low"]) - lo) < 0.51
 
 
 def test_structure_spike_matches_vol_zone_for_2233():
@@ -529,9 +541,9 @@ def test_vol_zone_main_tag_is_largest_role_tier():
 
     from vol_zone_chart import _paint_key_zone_smart_tags
 
-    assert VOL_ZONE_TAG_PT == 14
+    assert VOL_ZONE_TAG_PT == 11.0
     assert VOL_ZONE_TAG_PT > float(LAYER_TAG_PT)
-    assert float(VOL_ZONE_TAG_PAD) > 0.20
+    assert float(VOL_ZONE_TAG_PAD) >= 0.16
     paint_src = inspect.getsource(_paint_volume_zone)
     key_src = inspect.getsource(_paint_key_zone_smart_tags)
     src = inspect.getsource(render_volume_zone_png) + paint_src + key_src
@@ -598,17 +610,25 @@ def test_lookup_vol_gives_header_space_from_volume_blank():
     key_src = inspect.getsource(_paint_key_zone_smart_tags)
     assert "head_ratios = [1.28, 3.38, 0.40, 0.98]" in src
     assert "lookup_portrait=False" in inspect.getsource(render_lookup_vol_result)
-    assert "transform=ax1.transAxes" in src or "blended_transform_factory" in src
-    # v12：主區壓／撐沿線智能掃位；日標仍貼主K上框內側
+    # v12：主區壓／撐沿線智能掃位；日標智慧掃位（occupied＋k_hits＝0）
     assert "_paint_key_zone_smart_tags" in src
     assert "大量區壓" in key_src and "_left_tag_tf" not in src
     assert "貼主K上框內側" in src
     assert "if path_shown:" in src
+    assert "_channel_box_k_hits" in src
+    assert "不准寫死 axes 分數槽" in src or "k_hits" in src
     # v9：有導航時頂空略加大，橘框不跟箭頭互壓
     assert "ymax = ymax + (ymax - ymin)" in src
     assert "0.985" in src or "0.992" in src
-    # v8／v9：量標貼柱 → ylim 跟 vol_lab_y／y_top 走（不再寫死 1.30）
+    # 2026-10-29／10-30：量標掛上緣空帶；兩標可上下錯開
     assert "vol_lab_y" in src and ("set_ylim(0, float(y_top))" in src or "vol_ylim" in src)
+    assert 'va="top"' in src
+    assert "/ 0.70" in src or "/ 0.78" in src
+    assert "configure_lookup_vol_axis" in src
+    # 主區只留桃色帶，不准再畫壓／撐水平線
+    assert "ax1.axhline(hi" not in src
+    assert "ax1.axhline(lo" not in src
+    assert "ax1.axhspan(lo, hi" in src
 
 
 def test_volume_bars_one_per_traded_day_3081():
