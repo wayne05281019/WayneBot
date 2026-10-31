@@ -145,12 +145,13 @@ def test_market_chart_calls_overlay_and_keeps_us_refresh():
     import bot_servers
     import index_kline_chart as ik
 
+    # 淺底日K仍可畫（備援／舊函式）；大盤專頁改送暗底教具
     assert "paint_biaoke_market_marks" in inspect.getsource(ik.render_index_kline_png)
     page = inspect.getsource(bot_servers.WayneTelegramBot._send_market_page)
-    assert page.index("refresh_us_for_market_page") < page.index("_send_market_kline")
-    assert "C-4機率最高" in inspect.getsource(
-        bot_servers.WayneTelegramBot._send_market_kline
-    )
+    assert page.index("refresh_us_for_market_page") < page.index("_send_market_wave_charts")
+    wave = inspect.getsource(bot_servers.WayneTelegramBot._send_market_wave_charts)
+    assert "paint_open_day_hypothesis" in wave
+    assert "far_path" in wave
 
 
 def test_render_puts_zone_right_of_candles(tmp_path):

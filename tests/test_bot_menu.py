@@ -89,24 +89,20 @@ def test_image_surfaces_wait_vanishes_after_photo():
     industry = inspect.getsource(WayneTelegramBot._send_industry)
     assert industry.index("_start_plain_wait") < industry.index("reply_photo")
     assert industry.index("reply_photo") < industry.index("_stop_plain_wait")
-    kline = inspect.getsource(WayneTelegramBot._send_market_kline)
-    assert kline.index("_start_plain_wait") < kline.index("reply_photo")
-    assert kline.index("reply_photo") < kline.rindex("_stop_plain_wait")
-    assert "加權日K圖這次畫不出來，請稍後再試。" in kline
-    assert "reply_text" in kline
-    vz = inspect.getsource(WayneTelegramBot._send_market_vol_zone)
-    assert vz.index("_start_plain_wait") < vz.index("reply_photo")
-    assert vz.index("reply_photo") < vz.rindex("_stop_plain_wait")
-    assert "加權大量區圖這次畫不出來，請稍後再試。" in vz
-    assert "reply_text" in vz
-    assert "build_market_vol_zone_chart" in vz
-    assert "with_nav_signals=False" in inspect.getsource(
-        __import__("index_kline_chart", fromlist=["build_market_vol_zone_chart"]).build_market_vol_zone_chart
-    )
+    # 大盤附圖＝暗底遠／近／超近（與飆大教具同一套）；不准再送淺底日K／大量區
+    wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert wave.index("_start_plain_wait") < wave.index("reply_photo")
+    assert wave.index("reply_photo") < wave.rindex("_stop_plain_wait")
+    assert "paint_open_day_hypothesis" in wave
+    assert "latest_teach_kit" in wave
+    assert "遠窗" in wave and "近窗" in wave and "超近" in wave
+    assert "大盤教具圖這次畫不出來" in wave
+    assert "submit_mpl_paint" in wave
     page = inspect.getsource(WayneTelegramBot._send_market_page)
-    assert "_send_market_kline" in page
-    assert "_send_market_vol_zone" in page
-    assert page.index("_send_market_kline") < page.index("_send_market_vol_zone")
+    assert "_send_market_wave_charts" in page
+    assert "_send_market_kline" not in page
+    assert "_send_market_vol_zone" not in page
+    assert "遠／近／超近窗" in page
     nav = inspect.getsource(WayneTelegramBot._send_navigation_chart)
     # 導航圖改走 _reply_lookup_photo（TimedOut 視同已送達，不准假重送）
     assert nav.index("_start_plain_wait") < nav.index("_reply_lookup_photo")
