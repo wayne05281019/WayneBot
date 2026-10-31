@@ -6036,7 +6036,7 @@ class WayneTelegramBot:
             wait_h = await self._start_plain_wait(
                 message,
                 text_fn=lambda s: self._wait_bubble(
-                    "大盤進行中", s, now="讀指數", rest="日K・大量區", fill_sec=20.0
+                    "大盤進行中", s, now="讀指數", rest="遠／近／超近窗", fill_sec=20.0
                 ),
             )
             own_wait = True
@@ -6173,7 +6173,7 @@ class WayneTelegramBot:
                             "大盤進行中",
                             0,
                             now="美股・台指・恐懼貪婪",
-                            rest="日K・大量區",
+                            rest="遠／近／超近窗",
                             fill_sec=25.0,
                         ),
                         parse_mode="HTML",
@@ -6185,10 +6185,8 @@ class WayneTelegramBot:
                 wait_h=wait_h,
             )
             await _end_wait()
-            await self._send_market_kline(
-                message, live=live_quote, uid=self._uid_from_message(message)
-            )
-            await self._send_market_vol_zone(
+            # 加權走勢改暗底遠／近／超近（與飆大教具同一套）；不准再送淺底日K／大量區
+            await self._send_market_wave_charts(
                 message, uid=self._uid_from_message(message)
             )
         except Exception as e:
@@ -6323,8 +6321,11 @@ class WayneTelegramBot:
                     f"{self._session_card_face(kind)}這次畫不出來，請稍後再試。"
                 )
 
-    async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:
-        """大盤專頁附圖：加權日 K（淺底）。畫失敗要補白話，不准只停等待泡泡。"""
+    async def _send_market_wave_charts(self, message, *, uid: str = "") -> None:
+        """大盤專頁附圖：暗底遠／近／超近／外圍（與飆大教具同一套）。
+
+        不准再送淺底加權日K／大量區；失敗要補白話，不准只停等待泡泡。
+        """
         from config import skip_chart_warmup
 
         if skip_chart_warmup():
@@ -6332,117 +6333,118 @@ class WayneTelegramBot:
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
-                "日K圖進行中", s, now="加權官方日K", fill_sec=30.0
+                "大盤圖進行中", s, now="遠／近／超近窗", fill_sec=45.0
             ),
         )
-        fail_msg = "加權日K圖這次畫不出來，請稍後再試。"
-        os.makedirs(self.charts_dir, exist_ok=True)
+        fail_msg = "大盤教具圖這次畫不出來，請稍後再試。"
         uid = uid or self._uid_from_message(message)
-        chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "kline", uid)
-        path = ""
-        fail_why = ""
+        sent = 0
         try:
-            from index_kline_chart import build_market_kline_chart
+            from biaoke_level_learn import latest_teach_kit, paint_open_day_hypothesis
             from wayne_navigator import submit_mpl_paint
 
-            path = await asyncio.wait_for(
-                asyncio.wrap_future(
-                    submit_mpl_paint(
-                        lambda: build_market_kline_chart(
-                            chart_path, live=live, db_path=self.db_path
-                        )
-                    )
-                ),
-                timeout=_CHART_RENDER_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            path = ""
-            fail_why = "畫圖逾時。"
-            logger.warning("大盤日K圖逾時")
-        except Exception as exc:
-            path = ""
-            fail_why = f"{exc.__class__.__name__}。"
-            logger.exception("大盤日K圖失敗")
-        try:
-            if not path or not self._market_landscape_chart_ok(path):
-                why = fail_why or self._chart_reject_reason(path)
-                if why == "沒有畫出圖檔。":
-                    await message.reply_text(fail_msg)
-                else:
-                    await message.reply_text(f"加權日K圖這次畫不出來：{why}")
-                return
-            cap = "加權指數日K（K棒・C-4機率最高・第一組未標完成・量）"
+            kit: dict = {}
             try:
-                send_path = self._prepare_lookup_album_photo(path)
-                with open(send_path, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=cap,
-                        parse_mode="HTML",
-                        reply_markup=None,
-                    )
+                kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
             except Exception:
-                logger.exception("大盤日K圖送出失敗")
+                logger.exception("大盤讀教具路徑略過")
+                kit = {}
+            def _core_ready(k: dict) -> bool:
+                # 遠／近／超近三張核心；缺任一就活畫補齊（外圍可缺）
+                for key in ("far_path", "near_path", "micro_path"):
+                    p = str((k or {}).get(key) or "").strip()
+                    if not p or not os.path.isfile(p):
+                        return False
+                return True
+
+            if not _core_ready(kit):
+                try:
+                    painted = await asyncio.wait_for(
+                        asyncio.wrap_future(
+                            submit_mpl_paint(
+                                lambda: paint_open_day_hypothesis(
+                                    self.db_path, force=True
+                                )
+                            )
+                        ),
+                        timeout=_CHART_RENDER_TIMEOUT,
+                    )
+                    if painted and painted.get("ok"):
+                        kit = {
+                            "far_path": str(painted.get("far_path") or ""),
+                            "near_path": str(painted.get("near_path") or ""),
+                            "micro_path": str(painted.get("micro_path") or ""),
+                            "us_path": str(painted.get("us_path") or ""),
+                            "thesis": str(painted.get("thesis") or "")[:180],
+                            "as_of": str(painted.get("as_of") or ""),
+                        }
+                except asyncio.TimeoutError:
+                    logger.warning("大盤教具活畫逾時")
+                except Exception:
+                    logger.exception("大盤教具活畫略過")
+            caps = (
+                ("far_path", "台股大盤・遠窗（波浪／切割・非買訊）"),
+                ("near_path", "台股大盤・近窗（細微波／量價・非買訊）"),
+                ("micro_path", "台股大盤・超近窗（C內小波・非買訊）"),
+                ("us_path", "台股大盤・外圍對照（費半／納指・非買訊）"),
+            )
+            thesis = str(kit.get("thesis") or "").strip()
+            ladder_line = ""
+            try:
+                from biaoke_level_learn import _build_live_pack, _wave_now_ladder
+
+                pack_for_ladder = await asyncio.to_thread(_build_live_pack, self.db_path)
+                if thesis and not str((pack_for_ladder or {}).get("thesis") or "").strip():
+                    pack_for_ladder = dict(pack_for_ladder or {})
+                    pack_for_ladder["thesis"] = thesis
+                if kit.get("as_of") and not (pack_for_ladder or {}).get("chart_as_of"):
+                    pack_for_ladder = dict(pack_for_ladder or {})
+                    pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
+                ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
+                ladder_line = str(ladder.get("one_line") or "")
+                if ladder.get("now_line"):
+                    ladder_line = f"{ladder_line}\n{ladder['now_line']}".strip()
+            except Exception:
+                logger.exception("大盤層級一句略過")
+                ladder_line = ""
+            for key, head in caps:
+                path = str(kit.get(key) or "").strip()
+                if not path or not os.path.isfile(path):
+                    continue
+                if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
+                    continue
+                bits = [head]
+                if ladder_line:
+                    bits.append(ladder_line)
+                elif thesis:
+                    bits.append(thesis)
+                cap = "\n".join(bits)[:900]
+                try:
+                    send_path = self._prepare_lookup_album_photo(path)
+                    with open(send_path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f,
+                            caption=cap[:900],
+                            reply_markup=None,
+                        )
+                    sent += 1
+                except Exception:
+                    logger.exception("大盤教具圖送出略過 key=%s", key)
+            if sent <= 0:
                 await message.reply_text(fail_msg)
+        except Exception:
+            logger.exception("大盤教具圖失敗")
+            await message.reply_text(fail_msg)
         finally:
             await self._stop_plain_wait(*wait_h)
+
+    async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:
+        """相容舊名：大盤加權圖改走暗底遠／近／超近，不再畫淺底日K。"""
+        await self._send_market_wave_charts(message, uid=uid or self._uid_from_message(message))
 
     async def _send_market_vol_zone(self, message, *, uid: str = "") -> None:
-        """大盤專頁附圖：加權大量壓／撐（與個股同一套；非買訊、不疊藍▲紅框）。畫失敗要補白話，不准只停等待泡泡。"""
-        from config import skip_chart_warmup
-
-        if skip_chart_warmup():
-            return
-        wait_h = await self._start_plain_wait(
-            message,
-            text_fn=lambda s: self._wait_bubble(
-                "大量區進行中", s, now="加權大量壓撐", fill_sec=30.0
-            ),
-        )
-        fail_msg = "加權大量區圖這次畫不出來，請稍後再試。"
-        os.makedirs(self.charts_dir, exist_ok=True)
-        uid = uid or self._uid_from_message(message)
-        chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "volzone", uid)
-        path, cap = "", ""
-        try:
-            from index_kline_chart import build_market_vol_zone_chart
-            from wayne_navigator import submit_mpl_paint
-
-            path, cap = await asyncio.wait_for(
-                asyncio.wrap_future(
-                    submit_mpl_paint(
-                        lambda: build_market_vol_zone_chart(
-                            chart_path, db_path=self.db_path
-                        )
-                    )
-                ),
-                timeout=_CHART_RENDER_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            path, cap = "", ""
-            logger.warning("大盤大量區圖逾時")
-        except Exception:
-            path, cap = "", ""
-            logger.exception("大盤大量區圖失敗")
-        try:
-            if not path or not self._chart_png_looks_ok(path):
-                await message.reply_text(fail_msg)
-                return
-            face = (cap or "").strip() or "加權大量區。"
-            try:
-                send_path = self._prepare_lookup_album_photo(path)
-                with open(send_path, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=face[:1024],
-                        parse_mode="HTML",
-                        reply_markup=None,
-                    )
-            except Exception:
-                logger.exception("大盤大量區圖送出失敗")
-                await message.reply_text(fail_msg)
-        finally:
-            await self._stop_plain_wait(*wait_h)
+        """相容舊名：大量區已併進暗底教具；這裡不再另送淺底圖（避免重複）。"""
+        return
 
     def _enter_biaoke_chat(self, message, uid: str = "") -> None:
         uid = str(uid or self._uid_from_message(message) or "")

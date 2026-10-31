@@ -568,13 +568,12 @@ def test_industry_callback_passes_clicker_uid():
     assert "uid or self._uid_from_message" in ind
     nav = inspect.getsource(WayneTelegramBot._send_navigation_chart)
     assert "_scratch_chart_path" in nav
-    twii = inspect.getsource(WayneTelegramBot._send_market_kline)
-    assert "_scratch_chart_path" in twii
-    assert "twii_kline_" not in twii
-    assert "KD" not in twii
-    vz = inspect.getsource(WayneTelegramBot._send_market_vol_zone)
-    assert "_scratch_chart_path" in vz
-    assert "volzone" in vz
+    wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert "latest_teach_kit" in wave
+    assert "paint_open_day_hypothesis" in wave
+    assert "far_path" in wave
+    assert "twii_kline_" not in wave
+    assert "KD" not in wave
 
 
 def test_industry_scratch_path_uses_passed_uid_not_message_user():

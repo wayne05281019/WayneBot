@@ -142,16 +142,26 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_align_us_to_twii_dates" in src
     assert "_sox_abc_anchors_on_axis" in src
     assert "自轉折" in src or "不准抄" in src
-    # 超級近窗：C起自 B；幾何①②不准冒充他說；今＝只認 ≤as_of 的他文
+    # 超級近窗：C起自 B；柱上小波①②不准冒充他說；今＝只認 ≤as_of 的他文
     assert "B高＝C起" in src
-    assert "幾何對讀" in src
+    assert "柱上小波對讀" in src
+    assert "幾何對讀" not in src
     assert "今・C進行中" in src or "不准冒充他說" in src
     assert "_level_break_tag" in src
+    assert "_biaoke_pred_label" in src
+    assert "飆預測" in src
     assert "as_of<=" in src or "chart_as_of" in src
-    assert "C內①②（未稱C3）" in src
+    assert "C內小波①②（未稱C3）" in src
     assert "title_bit" in src or "不准寫死 C3-3" in src
     assert "_paint_c_forecast" in src and "_c_forecast_tip" in src
     assert "預估↓45546" in src or "預估↓44210" in src
+    assert "_paint_window_dual_zones" in src
+    # 近／超近也要黃＋青雙底色（與遠窗對齊）
+    near_blk = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
+    micro_blk = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
+    assert "_paint_window_dual_zones" in near_blk
+    assert "_paint_window_dual_zones" in micro_blk
+    assert "柱上小波（非他說）" in micro_blk or "橙虛＝柱上小波" in micro_blk
 
 
 def test_c_forecast_tip_points_his_next_anchor():
@@ -201,17 +211,21 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "K棒下一層" in block or "K下一層" in src
     assert "def _paint_max_vol_hl_zone" in src
     assert "def _paint_next_sr_zone" in src
-    # 黃底對應交易日：金K標月日＋左標高低都帶日＋豎虛線
-    assert "最大量日" in src[src.index("def _paint_special_candle") : src.index("def _paint_vol_bars_max_yellow")]
+    # 黃底對應交易日：金K標月日（同軸左側空白，不准蓋K）＋左標高低都帶日＋豎虛線
+    special = src[src.index("def _paint_special_candle") : src.index("def _paint_vol_bars_max_yellow")]
+    assert "最大量" in special
+    assert "i) - 0.95" in special or "hl * 0.12" in special
     assert "day_tag" in src[src.index("def _paint_max_vol_hl_zone") : src.index("def _hl_spans_excluding")]
     # 右標確認後畫對應真價虛線；近窗 level_dash=False 不疊線
     place = src[src.index("def _place_live_right_labels") : src.index("def _his_micro_degree")]
     assert "axhline" in place
     assert "level_dash" in place
     assert "level_dash=False" in block or "level_dash=True" in block
-    # C進行中不准進右欄壓近壓
+    # C進行中放 B→今 上方空白，不准蓋縮圖K
     assert "c_lab_x" in block
+    assert "c_seg_hi" in block
     assert "keep_left_of_right=True" in block
+    assert "_biaoke_pred_label" in block
 
 
 def test_far_max_vol_day_matches_official_hl():
@@ -262,8 +276,19 @@ def test_his_micro_degree_and_alt_gate():
     assert "C3-3" in d["chain"]
     assert _alt_path_needed("C3-3-2", "C3-3-1") is True
     assert _alt_path_needed("C3-3-2", "C3-3-2") is False
-    # C／橫台 vs 幾何 C3 不准另畫
+    # C／橫台 vs 柱讀 C3 不准另畫
     assert _alt_path_needed("C", "C3-3-2") is False
+
+
+def test_biaoke_pred_label_no_fake_prob():
+    from biaoke_level_learn import _biaoke_pred_label, _px
+
+    px = _px(44210.0)
+    assert _biaoke_pred_label(44210.0) == f"飆預測{px}"
+    assert _biaoke_pred_label(44210.0, "未到") == f"飆預測{px}未到"
+    # 不准假％：沒傳機率就不帶
+    assert "%" not in _biaoke_pred_label(44210.0, "未到")
+    assert _biaoke_pred_label(44210.0, "未到", prob=80.0) == f"飆預測{px}未到（80%機率）"
 
 
 def test_wave_now_ladder_big_to_small():
