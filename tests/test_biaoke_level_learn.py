@@ -185,45 +185,60 @@ def test_wave_now_ladder_big_to_small():
 
 
 def test_sox_abc_anchors_not_copy_twii_ab():
-    """費半 A/B 要用自己高低；對齊加權月日後不可落在加權 10/13–10/14。"""
-    from biaoke_level_learn import (
-        _align_us_to_twii_dates,
-        _bar_index_by_ymd,
-        _load_us_daily,
-        _sox_abc_anchors_on_axis,
-        _twii_abc_anchors,
-        _ymd,
-    )
-    from biaoke_wave import _load_twii_bars
+    """費半 A/B 用合成柱自算；不准落在加權 A/B 同索引（10/13–10/14 那兩格）。"""
+    from biaoke_level_learn import _sox_abc_anchors_on_axis
 
-    db = "/workspace/data/wayne_market.db"
-    bars = _load_twii_bars(db, n=120)
-    i0 = _bar_index_by_ymd(bars, "20260929") or 0
-    bars = list(bars[i0:])
-    tw = _twii_abc_anchors(bars)
-    assert tw is not None
-    sox = _load_us_daily(db, "SOX", "20260920")
-    aligned = _align_us_to_twii_dates(sox, bars)
-    sax = _sox_abc_anchors_on_axis(
-        aligned["high"], aligned["low"], aligned["close"], i5_hint=tw["i5"]
-    )
+    # 索引對齊加權近窗：0..；⑤＝5、加權A＝8、加權B＝9；費半A應更深（14）、B＝17
+    n = 20
+    highs = [100.0 + i for i in range(n)]
+    lows = [90.0 + i for i in range(n)]
+    closes = [95.0 + i for i in range(n)]
+    # ⑤ 高在 5
+    highs[5] = 140.0
+    # 加權式短 A/B（8/9）故意做淺，費半不該停這
+    lows[8] = 110.0
+    highs[9] = 118.0
+    # 費半真 A 更深低 + 之後反彈 B
+    lows[14] = 95.0
+    highs[17] = 120.0
+    closes[-1] = 105.0
+    sax = _sox_abc_anchors_on_axis(highs, lows, closes, i5_hint=5)
     assert sax is not None
-    # 費半 A／B 不准等於加權 A／B 日（那是上一版抄錯）
-    assert sax["i_alow"] != tw["i_alow"]
-    assert sax["i_bhi"] != tw["i_bhi"]
-    assert _ymd(bars[sax["i_alow"]].get("date")) >= "20261016"
+    assert sax["i5"] == 5
+    assert sax["i_alow"] == 14
+    assert sax["i_bhi"] == 17
+    assert sax["i_alow"] not in (8, 9)
+    assert sax["i_bhi"] not in (8, 9)
     assert sax["y_bhi"] < sax["y5"]
 
 
-def test_thesis_respects_chart_as_of_and_break_tag():
+def test_thesis_respects_chart_as_of_and_break_tag(tmp_path):
     """圖 as_of=10/29 不准吃到 10/30 的 C3-3；45546 未破不准寫已破。"""
-    from biaoke_level_learn import _latest_level_thesis, _level_break_tag
+    import sqlite3
 
-    db = "/workspace/data/wayne_market.db"
+    from biaoke_level_learn import _latest_level_thesis, _level_break_tag, ensure_tables
+
+    db = str(tmp_path / "lvl.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_level_snaps("
+        "post_id, as_of, post_date, post_time, snippet, chart_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("p29", "20261029", "2026-10-29", "12:00", "橫台整理中繼站", "", "t"),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_level_snaps("
+        "post_id, as_of, post_date, post_time, snippet, chart_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("p30", "20261030", "2026-10-30", "09:18", "目前只是C3-3-1轉C3-3-2", "", "t"),
+    )
+    conn.commit()
+    conn.close()
     pack = _latest_level_thesis(db, as_of="20261029")
     assert "C3-3" not in (pack.get("thesis") or "")
     assert "C3-3" not in (pack.get("snippet") or "")
-    # 10/29 前官方低仍高於 45546
+    assert "橫台" in (pack.get("thesis") or pack.get("snippet") or "")
     assert _level_break_tag(45546.0, [46055.0, 45676.0, 46041.0]) == "未破"
     assert _level_break_tag(45546.0, [44726.0]) == "已破"
 
