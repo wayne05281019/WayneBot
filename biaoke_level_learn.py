@@ -1853,9 +1853,9 @@ def _sox_abc_anchors_on_axis(
 
 
 def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
-    """教具①遠窗：七月底⑤起→ABC；加權／費半各附日量；最大量黃柱；淺黃撐壓區間。
+    """教具①遠窗三欄：上費半波浪 → 中加權⑤起／ABC → 下加權日量（最大量黃）。
 
-    四欄：加權價→加權量→費半價→費半量。圖區充裕、右標精簡、撐壓一眼可見。
+    費半指數無官方量 → 不畫費半量。淺黃＝即將撐～壓區間。
     """
     try:
         import math
@@ -1888,7 +1888,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     if not anc:
         return ""
     sox = _load_us_daily(db_path, "SOX", "20260720")
-    soxx = _load_us_daily(db_path, "SOXX", "20260720")
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     n = len(bars)
     opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -1906,48 +1905,133 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     y_far_lo = lows[i_far_lo]
     sox_a = _align_us_to_twii_dates(sox, bars)
     sox_o, sox_h, sox_l, sox_c = sox_a["open"], sox_a["high"], sox_a["low"], sox_a["close"]
-    # ^SOX 無官方量 → 量柱用 SOXX 對齊代理
-    soxx_a = _align_us_to_twii_dates(soxx, bars) if soxx else {"volume": [0.0] * n}
-    sox_v = list(soxx_a.get("volume") or [])
-    if len(sox_v) < n:
-        sox_v = (sox_v + [0.0] * n)[:n]
-    if not any(float(v or 0) > 0 for v in sox_v):
-        sox_v = list(sox_a.get("volume") or [0.0] * n)
     sox_anc = _sox_abc_anchors_on_axis(sox_h, sox_l, sox_c, i5_hint=i5)
-
-    fig, axes = plt.subplots(
-        4,
-        1,
-        figsize=(17.0, 13.0),
-        dpi=NAV_CHART_DPI,
-        sharex=True,
-        gridspec_kw=dict(height_ratios=(3.2, 1.15, 2.45, 1.25), hspace=0.07),
-    )
-    ax, axv, axu, axuv = axes
-    fig.patch.set_facecolor(_LIVE_BG)
-    # 左緣壓緊、右緣留給價標，整體圖區更充裕
-    fig.subplots_adjust(left=0.045, right=0.91, top=0.91, bottom=0.055)
-    for a in axes:
-        a.set_facecolor(_LIVE_PANEL)
-        a.tick_params(colors=_LIVE_MUTED, labelsize=9)
-        for sp in a.spines.values():
-            sp.set_color(_LIVE_GRID)
-        a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
-
-    # 加權價：只畫K，量交給專欄（最大量黃）
-    _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
-    _paint_vol_bars_max_yellow(
-        axv, vols, opens, closes, candle_up_taiwan, fp=_fp, title="加權量"
-    )
-    ymin = min(min(lows), 44210, y_far_lo) - 520
-    ymax = max(highs) + 780
-    # 下一撐／近壓淺黃區間（即將遇到）
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
     sr = _next_support_resist(
         y_now,
         supports=(45546.0, 44210.0, y_alow),
         resists=(47637.0, 48613.0, y_bhi, y5),
     )
+
+    # 上費半 / 中加權 / 下加權量
+    fig, (axu, ax, axv) = plt.subplots(
+        3,
+        1,
+        figsize=(16.8, 12.2),
+        dpi=NAV_CHART_DPI,
+        sharex=True,
+        gridspec_kw=dict(height_ratios=(2.55, 3.45, 1.25), hspace=0.06),
+    )
+    fig.patch.set_facecolor(_LIVE_BG)
+    fig.subplots_adjust(left=0.05, right=0.90, top=0.91, bottom=0.055)
+    for a in (axu, ax, axv):
+        a.set_facecolor(_LIVE_PANEL)
+        a.tick_params(colors=_LIVE_MUTED, labelsize=9)
+        for sp in a.spines.values():
+            sp.set_color(_LIVE_GRID)
+        a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
+
+    fut_x = float(i_now + 4)
+    tip: Dict[str, Any] = {"fut_x": fut_x, "xlim_right": float(n) + 4}
+
+    # —— 上：費半價＋自轉折波浪（不畫費半量）——
+    valid = [
+        i
+        for i, c in enumerate(sox_c)
+        if c == c and c and math.isfinite(float(sox_h[i])) and math.isfinite(float(sox_l[i]))
+    ]
+    if len(valid) >= 5:
+        span_raw = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
+        for i in valid:
+            prev_i = next((j for j in range(i - 1, -1, -1) if sox_c[j] == sox_c[j]), None)
+            prev_c = sox_c[prev_i] if prev_i is not None else None
+            up = candle_up_taiwan(sox_c[i], prev_c, sox_o[i])
+            color = _LIVE_UP if up else _LIVE_DOWN
+            axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=1.05, zorder=3)
+            y0, y1 = sorted((sox_o[i], sox_c[i]))
+            axu.add_patch(
+                plt.Rectangle(
+                    (i - 0.32, y0),
+                    0.64,
+                    max(y1 - y0, span_raw * 0.0015),
+                    facecolor=color,
+                    edgecolor=color,
+                    linewidth=0.3,
+                    zorder=4,
+                )
+            )
+        if sox_anc:
+            s5i, sai, sbi = sox_anc["i5"], sox_anc["i_alow"], sox_anc["i_bhi"]
+            s5, sa, sb, sn = (
+                sox_anc["y5"],
+                sox_anc["y_alow"],
+                sox_anc["y_bhi"],
+                sox_anc["y_now"],
+            )
+            before5 = [i for i in valid if i <= s5i]
+            s_lo_i = min(before5, key=lambda i: float(sox_l[i])) if before5 else s5i
+            s_lo_y = float(sox_l[s_lo_i])
+            sox_sr = _next_support_resist(sn, supports=(sa, s_lo_y), resists=(sb, s5))
+            _paint_sr_zone_yellow(
+                axu,
+                y_now=sn,
+                support=sox_sr.get("support"),
+                resist=sox_sr.get("resist"),
+                fp=_fp,
+                n=n,
+            )
+            axu.plot([s_lo_i, s5i], [s_lo_y, s5], color="#ff8a80", lw=2.1, zorder=7)
+            axu.plot([s5i, sai], [s5, sa], color="#ff8a80", lw=2.0, zorder=7)
+            axu.plot([sai, sbi], [sa, sb], color="#40c4ff", lw=2.0, zorder=7)
+            axu.plot([sbi, i_now], [sb, sn], color="#ea80fc", lw=1.85, zorder=7)
+            s_fut = sn - max((sb - sn) * 0.28, abs(sb - sn) * 0.12)
+            axu.plot(
+                [i_now, fut_x],
+                [sn, s_fut],
+                color="#ea80fc",
+                lw=1.4,
+                ls=(0, (4, 2)),
+                alpha=0.78,
+                zorder=6,
+            )
+            for ii, yy, col in (
+                (s_lo_i, s_lo_y, "#ffab91"),
+                (s5i, s5, "#ff8a80"),
+                (sai, sa, "#ff8a80"),
+                (sbi, sb, "#40c4ff"),
+                (i_now, sn, "#ea80fc"),
+            ):
+                axu.scatter([ii], [yy], s=34, c=col, zorder=8, edgecolors="#fff", linewidths=0.4)
+            span_s = span_raw
+            s_lo_md = _md(bars[s_lo_i].get("date"))
+            for x, y, lab, col, va, ha in (
+                (s_lo_i + 0.8, s_lo_y + span_s * 0.03, f"費⑤起 {s_lo_md}", "#ffab91", "bottom", "left"),
+                (s5i, s5 + span_s * 0.03, "費⑤升完", "#ff8a80", "bottom", "center"),
+                (sai, sa - span_s * 0.03, "費A", "#ff8a80", "top", "center"),
+                (sbi - 0.35, sb + span_s * 0.03, "費B", "#40c4ff", "bottom", "center"),
+                (i_now + 0.45, sn + span_s * 0.04, "費C進行中", "#ea80fc", "bottom", "left"),
+            ):
+                axu.text(
+                    x,
+                    y,
+                    lab,
+                    fontproperties=_fp(9, "bold"),
+                    color=col,
+                    ha=ha,
+                    va=va,
+                    zorder=10,
+                    bbox=dict(boxstyle="round,pad=0.1", fc="#0b0f14", ec=col, lw=0.55, alpha=0.94),
+                )
+            axu.set_ylim(
+                min(x for x in sox_l if x == x) - span_s * 0.12,
+                max(x for x in sox_h if x == x) + span_s * 0.18,
+            )
+    axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+
+    # —— 中：加權價 ——
+    _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
+    ymin = min(min(lows), 44210, y_far_lo) - 520
+    ymax = max(highs) + 780
     _paint_sr_zone_yellow(
         ax,
         y_now=y_now,
@@ -1965,6 +2049,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     tip = _paint_c_forecast(
         ax, i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, fp=_fp, n=n
     )
+    fut_x = float(tip.get("fut_x") or fut_x)
     for ii, yy, col in (
         (i_far_lo, y_far_lo, "#ff8a80"),
         (i5, y5, "#ff8a80"),
@@ -1993,10 +2078,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=10,
             bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.8, alpha=0.94),
         )
-    # 右欄只留結構精標（撐壓已在左黃標，避免右欄再堆）
-    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
     tag_44210 = _level_break_tag(44210.0, c_seg_lows)
-    # 右欄只留⑤／B／今；撐壓已在左黃標，44210 作次撐小字避免與今疊
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B {_px(y_bhi)}", "color": "#40c4ff"},
@@ -2008,115 +2090,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         )
     _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
     ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    ax.set_ylim(ymin, ymax)
 
-    # 費半價＋費半量
-    valid = [
-        i
-        for i, c in enumerate(sox_c)
-        if c == c and c and math.isfinite(float(sox_h[i])) and math.isfinite(float(sox_l[i]))
-    ]
-    fut_x = float(tip.get("fut_x") or (i_now + 4))
-    sn_now = float(sox_c[i_now]) if i_now < len(sox_c) and sox_c[i_now] == sox_c[i_now] else float("nan")
-    if len(valid) >= 5:
-        span_raw = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
-        for i in valid:
-            prev_i = next((j for j in range(i - 1, -1, -1) if sox_c[j] == sox_c[j]), None)
-            prev_c = sox_c[prev_i] if prev_i is not None else None
-            up = candle_up_taiwan(sox_c[i], prev_c, sox_o[i])
-            color = _LIVE_UP if up else _LIVE_DOWN
-            axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=1.0, zorder=3)
-            y0, y1 = sorted((sox_o[i], sox_c[i]))
-            axu.add_patch(
-                plt.Rectangle(
-                    (i - 0.32, y0),
-                    0.64,
-                    max(y1 - y0, span_raw * 0.0015),
-                    facecolor=color,
-                    edgecolor=color,
-                    linewidth=0.3,
-                    zorder=4,
-                )
-            )
-        _paint_vol_bars_max_yellow(
-            axuv,
-            sox_v,
-            sox_o,
-            sox_c,
-            candle_up_taiwan,
-            fp=_fp,
-            title="費半量(SOXX)",
-        )
-        if sox_anc:
-            s5i, sai, sbi = sox_anc["i5"], sox_anc["i_alow"], sox_anc["i_bhi"]
-            s5, sa, sb, sn = (
-                sox_anc["y5"],
-                sox_anc["y_alow"],
-                sox_anc["y_bhi"],
-                sox_anc["y_now"],
-            )
-            before5 = [i for i in valid if i <= s5i]
-            s_lo_i = min(before5, key=lambda i: float(sox_l[i])) if before5 else s5i
-            s_lo_y = float(sox_l[s_lo_i])
-            sox_sr = _next_support_resist(
-                sn,
-                supports=(sa, s_lo_y),
-                resists=(sb, s5),
-            )
-            _paint_sr_zone_yellow(
-                axu,
-                y_now=sn,
-                support=sox_sr.get("support"),
-                resist=sox_sr.get("resist"),
-                fp=_fp,
-                n=n,
-            )
-            axu.plot([s_lo_i, s5i], [s_lo_y, s5], color="#ff8a80", lw=2.05, zorder=7)
-            axu.plot([s5i, sai], [s5, sa], color="#ff8a80", lw=2.0, zorder=7)
-            axu.plot([sai, sbi], [sa, sb], color="#40c4ff", lw=2.0, zorder=7)
-            axu.plot([sbi, i_now], [sb, sn], color="#ea80fc", lw=1.85, zorder=7)
-            s_fut = sn - max((sb - sn) * 0.28, abs(sb - sn) * 0.12)
-            axu.plot(
-                [i_now, fut_x],
-                [sn, s_fut],
-                color="#ea80fc",
-                lw=1.4,
-                ls=(0, (4, 2)),
-                alpha=0.78,
-                zorder=6,
-            )
-            for ii, yy, col in (
-                (s_lo_i, s_lo_y, "#ffab91"),
-                (s5i, s5, "#ff8a80"),
-                (sai, sa, "#ff8a80"),
-                (sbi, sb, "#40c4ff"),
-                (i_now, sn, "#ea80fc"),
-            ):
-                axu.scatter([ii], [yy], s=34, c=col, zorder=8, edgecolors="#fff", linewidths=0.4)
-            span_s = span_raw
-            s_lo_md = _md(bars[s_lo_i].get("date"))
-            for x, y, lab, col, va, ha in (
-                (s_lo_i + 0.8, s_lo_y + span_s * 0.028, f"費⑤起 {s_lo_md}", "#ffab91", "bottom", "left"),
-                (s5i, s5 + span_s * 0.028, "費⑤升完", "#ff8a80", "bottom", "center"),
-                (sai, sa - span_s * 0.028, "費A", "#ff8a80", "top", "center"),
-                (sbi - 0.35, sb + span_s * 0.028, "費B", "#40c4ff", "bottom", "center"),
-                (i_now + 0.4, sn + span_s * 0.035, "費C進行中", "#ea80fc", "bottom", "left"),
-            ):
-                axu.text(
-                    x,
-                    y,
-                    lab,
-                    fontproperties=_fp(9, "bold"),
-                    color=col,
-                    ha=ha,
-                    va=va,
-                    zorder=10,
-                    bbox=dict(boxstyle="round,pad=0.1", fc="#0b0f14", ec=col, lw=0.55, alpha=0.94),
-                )
-            axu.set_ylim(
-                min(x for x in sox_l if x == x) - span_s * 0.12,
-                max(x for x in sox_h if x == x) + span_s * 0.18,
-            )
-    axu.set_ylabel("費半", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    # —— 下：加權日量（最大量黃）——
+    _paint_vol_bars_max_yellow(
+        axv, vols, opens, closes, candle_up_taiwan, fp=_fp, title="加權量"
+    )
+    axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
 
     want = {
         _ymd(bars[0].get("date")),
@@ -2147,15 +2127,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 l2.append(f"{_md(d)}{tag}")
     t2, l2 = _sparse_xticks(t2, l2, min_gap=3)
     x_right = max(n + 5.5, float(tip.get("xlim_right") or n) + 1.6, fut_x + 1.5)
-    for a in axes:
+    for a in (axu, ax, axv):
         a.set_xlim(-0.6, x_right)
-    ax.set_ylim(ymin, ymax)
-    axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
-    if any(float(v or 0) > 0 for v in sox_v):
-        axuv.set_ylim(0, max(float(v or 0) for v in sox_v) * 1.45)
-    axuv.set_xticks(t2)
-    axuv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
-    for a in axes:
+    axv.set_xticks(t2)
+    axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
+    for a in (axu, ax, axv):
         for lab in a.get_yticklabels():
             lab.set_fontproperties(_fp(8, "bold"))
             lab.set_color(_LIVE_MUTED)
@@ -2163,25 +2139,25 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     sup_s = _px(sr["support"]) if sr.get("support") is not None else "—"
     res_s = _px(sr["resist"]) if sr.get("resist") is not None else "—"
     fig.text(
-        0.055,
+        0.05,
         0.975,
-        f"第1張（遠窗）：七月底⑤起→ABC｜費半同軸｜黃底＝即將撐～壓（撐{sup_s}／壓{res_s}）｜{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        f"第1張（遠窗）：上費半｜中加權⑤起→ABC｜下加權量　｜　黃底撐～壓（撐{sup_s}／壓{res_s}）　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
         fontproperties=_fp(11, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
     )
     fig.text(
-        0.055,
+        0.05,
         0.952,
-        "黃量柱＝窗內最大量｜費半量＝SOXX代理（指數無官方量）｜左黃標＝下一撐／近壓｜紫虛＝預估（非買訊）",
+        "費半不畫量（指數無官方量）｜黃量柱＝加權窗內最大量｜左黃標＝下一撐／近壓｜紫虛＝預估（非買訊）",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_MUTED,
         ha="left",
         va="top",
     )
     fig.text(
-        0.055,
+        0.05,
         0.018,
         str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")[:96],
         fontproperties=_fp(10, "bold"),
