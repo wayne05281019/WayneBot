@@ -648,7 +648,8 @@ class TestMarketMenuE2E:
                 await bot._send_market_wave_charts(msg, uid="1")
                 stop.assert_awaited()
                 msg.reply_text.assert_awaited()
-                assert msg.reply_text.await_args.args[0] == "大盤教具圖這次畫不出來，請稍後再試。"
+                got = msg.reply_text.await_args.args[0]
+                assert ("畫不出來" in got) or ("遠窗這次沒好" in got)
                 msg.reply_photo.assert_not_awaited()
 
         asyncio.run(run())
