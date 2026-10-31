@@ -180,6 +180,18 @@ def test_sparse_xticks_no_adjacent_crush():
     assert l == ["10/15", "10/29"]
 
 
+def test_next_support_resist_nearest():
+    from biaoke_level_learn import _next_support_resist
+
+    sr = _next_support_resist(
+        46368.0,
+        supports=(45546.0, 44210.0),
+        resists=(47637.0, 49059.0),
+    )
+    assert sr["support"] == 45546.0
+    assert sr["resist"] == 47637.0
+
+
 def test_his_micro_degree_and_alt_gate():
     from biaoke_level_learn import _alt_path_needed, _his_micro_degree
 
