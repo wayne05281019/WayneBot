@@ -3254,7 +3254,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ymin = min(lows) - 420
     ymax = max(highs) + 720
     span = ymax - ymin
-    # 與遠／近窗同一套雙底色，標籤對得上
+    # 與遠／近窗同一套雙底色；有 c5 時左欄不准再浮 45546（右欄已有）
+    _c_sub_pre = _c_subwave_anchors_vs_biaoke60(
+        highs, lows, bars, i_c=i_c, i_now=i_now
+    )
+    _skip_left = [45546.0, float(_c_sub_pre["y_c5"])] if _c_sub_pre.get("ok") else []
     zone = _paint_window_dual_zones(
         ax,
         highs=highs,
@@ -3265,6 +3269,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         fp=_fp,
         supports=(45546.0, 44210.0),
         resists=(47637.0, 48613.0, y_bhi),
+        skip_label_ys=_skip_left,
     )
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
@@ -3293,10 +3298,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.scatter(his_xs, his_ys, s=46, c="#ea80fc", zorder=8, edgecolors="#fff", linewidths=0.55)
     ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.75, zorder=5)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
-    # C內細浪：與遠／近同一套 c4／c5（對他60分）；橙①②僅輔助，價不同也不取代 c4／c5
-    c_sub = _c_subwave_anchors_vs_biaoke60(
-        highs, lows, bars, i_c=i_c, i_now=i_now
-    )
+    # C內細浪：沿用上面 _c_sub_pre（同遠／近價）；橙①②僅輔助
+    c_sub = _c_sub_pre
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -3306,7 +3309,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        show_label=not bool(c_sub.get("ok")),
+        show_label=False,  # 超近：45546／c5 只走右欄，圖上不准浮
     )
     geom_xs = [i_bhi, i_c1, i_c2, i_now]
     geom_ys = [
