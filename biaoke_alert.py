@@ -1129,6 +1129,66 @@ def _send_family(html: str, *, dedupe_key: str = "", db_path: str = "") -> int:
     return n
 
 
+def _send_family_photos(
+    paths: Sequence[str],
+    *,
+    captions: Optional[Sequence[str]] = None,
+    dedupe_key: str = "",
+    db_path: str = "",
+) -> int:
+    """推白名單兩人教具圖；同一 dedupe_key 每 chat 只送一輪（先占位再送）。不是買訊。"""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return 0
+    files = [str(p) for p in (paths or []) if p and os.path.isfile(p)]
+    if not files:
+        return 0
+    try:
+        from config import allowed_telegram_uids, get_telegram_token
+    except Exception:
+        return 0
+    token = get_telegram_token()
+    uids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
+    if not token or not uids:
+        return 0
+    key = str(dedupe_key or "").strip() or f"photos:{_body_fingerprint('|'.join(files))}"
+    caps = list(captions or [])
+    import requests
+
+    n = 0
+    for cid in uids:
+        if not _claim_chat_dedupe(cid, key, db_path=db_path):
+            logger.info("飆大教具圖 dedupe 略過 chat=%s key=%s", cid, key[:96])
+            continue
+        ok_any = False
+        for i, path in enumerate(files):
+            cap = str(caps[i] if i < len(caps) else "").strip()[:900]
+            try:
+                with open(path, "rb") as fh:
+                    resp = requests.post(
+                        f"https://api.telegram.org/bot{token}/sendPhoto",
+                        data={
+                            "chat_id": cid,
+                            "caption": cap,
+                            "parse_mode": "HTML",
+                        },
+                        files={"photo": fh},
+                        timeout=45,
+                    )
+                if int(getattr(resp, "status_code", 0) or 0) == 200:
+                    ok_any = True
+                else:
+                    logger.error(
+                        "教具圖推播 Telegram %s path=%s",
+                        getattr(resp, "status_code", "?"),
+                        os.path.basename(path),
+                    )
+            except Exception:
+                logger.exception("教具圖推播失敗 uid 略 path=%s", os.path.basename(path))
+        if ok_any:
+            n += 1
+    return n
+
+
 def maybe_push_drop_alert(
     db_path: str,
     events: Sequence[Dict[str, Any]],

@@ -6344,44 +6344,40 @@ class WayneTelegramBot:
             from wayne_navigator import submit_mpl_paint
 
             kit: dict = {}
+            # 每次按台股大盤：強制活畫（盤中疊最新加權顯示柱）；失敗才退回已存檔
             try:
-                kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
-            except Exception:
-                logger.exception("大盤讀教具路徑略過")
-                kit = {}
-            def _core_ready(k: dict) -> bool:
-                # 遠／近／超近三張核心；缺任一就活畫補齊（外圍可缺）
-                for key in ("far_path", "near_path", "micro_path"):
-                    p = str((k or {}).get(key) or "").strip()
-                    if not p or not os.path.isfile(p):
-                        return False
-                return True
-
-            if not _core_ready(kit):
-                try:
-                    painted = await asyncio.wait_for(
-                        asyncio.wrap_future(
-                            submit_mpl_paint(
-                                lambda: paint_open_day_hypothesis(
-                                    self.db_path, force=True
-                                )
+                painted = await asyncio.wait_for(
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            lambda: paint_open_day_hypothesis(
+                                self.db_path, force=True
                             )
-                        ),
-                        timeout=_CHART_RENDER_TIMEOUT,
-                    )
-                    if painted and painted.get("ok"):
-                        kit = {
-                            "far_path": str(painted.get("far_path") or ""),
-                            "near_path": str(painted.get("near_path") or ""),
-                            "micro_path": str(painted.get("micro_path") or ""),
-                            "us_path": str(painted.get("us_path") or ""),
-                            "thesis": str(painted.get("thesis") or "")[:180],
-                            "as_of": str(painted.get("as_of") or ""),
-                        }
-                except asyncio.TimeoutError:
-                    logger.warning("大盤教具活畫逾時")
+                        )
+                    ),
+                    timeout=_CHART_RENDER_TIMEOUT,
+                )
+                if painted and painted.get("ok"):
+                    kit = {
+                        "far_path": str(painted.get("far_path") or ""),
+                        "near_path": str(painted.get("near_path") or ""),
+                        "micro_path": str(painted.get("micro_path") or ""),
+                        "us_path": str(painted.get("us_path") or ""),
+                        "thesis": str(painted.get("thesis") or "")[:180],
+                        "as_of": str(painted.get("as_of") or ""),
+                    }
+            except asyncio.TimeoutError:
+                logger.warning("大盤教具活畫逾時")
+            except Exception:
+                logger.exception("大盤教具活畫略過")
+            if not any(
+                str(kit.get(k) or "").strip() and os.path.isfile(str(kit.get(k) or ""))
+                for k in ("far_path", "near_path", "micro_path")
+            ):
+                try:
+                    kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
                 except Exception:
-                    logger.exception("大盤教具活畫略過")
+                    logger.exception("大盤讀教具路徑略過")
+                    kit = {}
             caps = (
                 ("far_path", "台股大盤・遠窗（波浪／切割・非買訊）"),
                 ("near_path", "台股大盤・近窗（細微波／量價・非買訊）"),
@@ -6916,7 +6912,7 @@ class WayneTelegramBot:
         kind: str = "",
         gen: int = 0,
     ) -> None:
-        """空白按飆大：送遠／近／超級近／外圍教具（已存檔優先；缺才強制活畫一次）。
+        """空白按飆大：每次強制活畫遠／近／超近／外圍（盤中疊最新加權顯示柱），再送圖。
 
         超級近窗＝C 內小波層對齊他說；另色演化只在前提不同才畫。不是買訊。
         """
@@ -6929,35 +6925,32 @@ class WayneTelegramBot:
             return
         kit: dict = {}
         try:
-            kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
+            painted = await asyncio.wait_for(
+                asyncio.to_thread(
+                    paint_open_day_hypothesis, self.db_path, force=True
+                ),
+                timeout=_CHART_RENDER_TIMEOUT,
+            )
+            if painted and painted.get("ok"):
+                kit = {
+                    "far_path": str(painted.get("far_path") or ""),
+                    "near_path": str(painted.get("near_path") or ""),
+                    "micro_path": str(painted.get("micro_path") or ""),
+                    "us_path": str(painted.get("us_path") or ""),
+                    "thesis": str(painted.get("thesis") or "")[:180],
+                    "slot_id": str(painted.get("slot_id") or ""),
+                    "as_of": str(painted.get("as_of") or ""),
+                }
+        except asyncio.TimeoutError:
+            logger.warning("飆大教具活畫逾時")
         except Exception:
-            logger.exception("讀飆大教具路徑略過")
-            kit = {}
-        need = not any(
-            kit.get(k) for k in ("far_path", "near_path", "micro_path", "us_path")
-        )
-        if need:
+            logger.exception("飆大教具活畫略過")
+        if not any(kit.get(k) for k in ("far_path", "near_path", "micro_path", "us_path")):
             try:
-                painted = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        paint_open_day_hypothesis, self.db_path, force=True
-                    ),
-                    timeout=_CHART_RENDER_TIMEOUT,
-                )
-                if painted and painted.get("ok"):
-                    kit = {
-                        "far_path": str(painted.get("far_path") or ""),
-                        "near_path": str(painted.get("near_path") or ""),
-                        "micro_path": str(painted.get("micro_path") or ""),
-                        "us_path": str(painted.get("us_path") or ""),
-                        "thesis": str(painted.get("thesis") or "")[:180],
-                        "slot_id": str(painted.get("slot_id") or ""),
-                        "as_of": str(painted.get("as_of") or ""),
-                    }
-            except asyncio.TimeoutError:
-                logger.warning("飆大教具活畫逾時")
+                kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
             except Exception:
-                logger.exception("飆大教具活畫略過")
+                logger.exception("讀飆大教具路徑略過")
+                kit = {}
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return
         caps = (
