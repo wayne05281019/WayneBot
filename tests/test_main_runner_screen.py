@@ -2071,6 +2071,8 @@ def test_winrate_records_delivery_before_mark(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(runner, "_broadcast_family", lambda *_a, **_k: True)
     monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["1", "2"])
+    ai_calls = []
+    runner._run_ai_desk = lambda *a, **k: ai_calls.append(k) or {}
 
     def _boom(*_a, **_k):
         raise sqlite3.OperationalError("database is locked")
@@ -2081,6 +2083,66 @@ def test_winrate_records_delivery_before_mark(tmp_path, monkeypatch):
     key = pipeline_run_key("20261022")
     assert runner.run_winrate_buypoint(skip_if_done=True, notify=True) is True
     assert runner.push_already_delivered(key) is True
+    assert ai_calls and ai_calls[0].get("notify") is True
+
+
+def test_winrate_triggers_ai_desk_after_roster_save(tmp_path, monkeypatch):
+    """勝率名單落檔後才跑 AI；有買賣才推（本測 stub 成交）。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    from winrate_buypoint import ensure_winrate_table, pipeline_run_key
+
+    path = str(tmp_path / "wr-ai.db")
+    ensure_core_schema(path)
+    ensure_winrate_table(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261029"
+    runner.bot = None
+    rows = [
+        {
+            "stock_id": "6417",
+            "stock_name": "韋僑",
+            "close": 97.5,
+            "pick_close": 97.5,
+        }
+    ]
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261029"
+    )
+    monkeypatch.setattr(
+        "winrate_buypoint.scan_winrate_leave_zero",
+        lambda *_a, **_k: ("20261029", rows),
+    )
+    saved = []
+    import winrate_buypoint as _wr_mod
+
+    _real_save = _wr_mod.save_winrate_roster
+
+    def _save(db, as_of, roster_rows):
+        n = _real_save(db, as_of, roster_rows)
+        saved.append((as_of, n))
+        return n
+
+    monkeypatch.setattr("winrate_buypoint.save_winrate_roster", _save)
+    monkeypatch.setattr(
+        "winrate_buypoint.silent_remember_roster", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(runner, "_broadcast_family", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["9001"])
+    monkeypatch.setattr(runner, "_mark_pipeline", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "record_whitelist_push", lambda *a, **k: None)
+    ai = []
+    runner._run_ai_desk = lambda as_of, results=None, **k: ai.append(
+        {"as_of": as_of, "results": results, **k}
+    ) or {"bought": ["買進"], "sold": []}
+
+    assert runner.run_winrate_buypoint(skip_if_done=False, notify=True) is True
+    assert saved and saved[0][0] == "20261029"
+    assert ai and ai[0]["as_of"] == "20261029"
+    assert ai[0].get("notify") is True
+    assert pipeline_run_key("20261029")
 
 
 def test_force_rescue_skips_when_fresh_morning_claim(tmp_path, monkeypatch):
