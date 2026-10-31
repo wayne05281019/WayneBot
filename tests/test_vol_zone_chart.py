@@ -148,6 +148,21 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert intrad_at > vol_at
     assert "struct_queued.wait()" in src or "struct_queued.wait" in src
     assert "kind=kind" in src
+    # 送第 N 張時同步等第 N+1 paint（單 worker；對話順序仍 2→3→4→5）
+    assert "glance_send_task = asyncio.create_task(_send_glance_if_any())" in src
+    assert "vol_send_task = asyncio.create_task(_send_vol_if_any())" in src
+    assert src.find("glance_send_task = asyncio.create_task") < src.find(
+        "struct_item = await struct_task"
+    )
+    assert src.find("await glance_send_task") < src.find(
+        "struct_send_task = asyncio.create_task"
+    )
+    assert src.find("vol_send_task = asyncio.create_task") < src.find(
+        "intrad_item = await intrad_task"
+    )
+    assert src.find("await vol_send_task") < src.find(
+        'hub_mk=hub, retry_label="第5張"'
+    )
     # 不准把決策卡還原 ohlc 當撐壓柱
     assert "already_normalized=True" not in src
     assert "③壓力不准盤中假柱" in src or "只吃官方原柱" in src

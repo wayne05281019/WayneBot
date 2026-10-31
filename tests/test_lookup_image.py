@@ -149,6 +149,13 @@ class LookupImageTests(unittest.TestCase):
             src.find("glance_task = asyncio.create_task"),
             src.find("card_item = await card_render_task"),
         )
+        # 送第2／4張時同步等第3／5 paint（單 worker；順序仍 2→3→4→5）
+        self.assertIn("glance_send_task", src)
+        self.assertIn("vol_send_task", src)
+        self.assertLess(
+            src.find("vol_send_task = asyncio.create_task"),
+            src.find("intrad_item = await intrad_task"),
+        )
         self.assertLess(
             src.find("card_queued"),
             src.find("glance_task = asyncio.create_task"),

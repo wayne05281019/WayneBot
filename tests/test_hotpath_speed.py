@@ -29,10 +29,12 @@ def test_flow_sector_rows_use_indexed_date():
 def test_lookup_gc_once_after_all_pngs():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     # 高低溫度卡→介紹圖→結構圖→大量撐壓；介紹提早排隊與送卡重疊；只准在全部 PNG 就緒後 gc 一次。
+    # 送第 N 張時同步等第 N+1 paint（三四五體感；不准真並行 Agg）。
     assert "card_item = await card_render_task" in src
     assert "create_task(_struct_item())" in src
     assert "create_task(_vol_item())" in src
     assert "_bump_progress" in src
+    assert "vol_send_task" in src and "glance_send_task" in src
     assert src.index("glance_task = asyncio.create_task") < src.index(
         "card_item = await card_render_task"
     )
