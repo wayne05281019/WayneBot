@@ -1877,10 +1877,15 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
+    # 標題跟當日題旨走：不准寫死 C3-3（他還沒說的那天會教錯）
+    title_bit = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")
+    title_bit = title_bit.replace("五波後下降ABC・", "").strip() or "現在在C（預估）"
+    if len(title_bit) > 28:
+        title_bit = title_bit[:27] + "…"
     fig.text(
         0.03,
         0.972,
-        f"第2張（近窗）：把跌段放大來看——現在在C（C3-3預估）　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        f"第2張（近窗）：把跌段放大來看——{title_bit}　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
         fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -2081,10 +2086,14 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     else:
         alt_note = "另色線未畫：幾何讀法與他說同層（前提相同不准另畫）"
 
+    # 幾何框：他還沒點名 C3-3 時，不准把 geom 代號印成 C3-3-*（會像他說）
+    geom_show = str(geom.get("geom_degree") or "").strip()
+    if not deg_his.startswith("C3") and geom_show.startswith("C3"):
+        geom_show = "C內①②（未稱C3）"
     teach = (
         "第3張（超級近窗）給沒底子的人\n"
         f"他說現在：{his.get('chain') or 'C內'}　｜　標籤層＝{deg_his or 'C進行中'}\n"
-        f"幾何對讀：{geom.get('geom_degree') or '—'}（只對讀・不准冒充他說）\n"
+        f"幾何對讀：{geom_show or '—'}（只對讀・不准冒充他說）\n"
         f"{alt_note}"
     )
     ax.text(

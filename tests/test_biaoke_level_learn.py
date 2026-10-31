@@ -147,6 +147,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "今・C進行中" in src or "不准冒充他說" in src
     assert "_level_break_tag" in src
     assert "as_of<=" in src or "chart_as_of" in src
+    assert "C內①②（未稱C3）" in src
+    assert "title_bit" in src or "不准寫死 C3-3" in src
 
 
 def test_his_micro_degree_and_alt_gate():
