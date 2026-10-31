@@ -4220,15 +4220,22 @@ class WayneTelegramBot:
         rest: str = "",
         fill_sec: float = 45.0,
     ) -> str:
-        """進行中：LOADING＋倒數＋一條小方塊進度條。不要＋－｜框、不要第二種轉圈。好了魔法消逝。"""
+        """進行中：LOADING＋已過秒＋約剩秒＋方塊進度條。不要＋－｜框、不要第二種轉圈。好了魔法消逝。"""
         span = float(fill_sec or 45.0)
+        elapsed = max(0, int(elapsed_sec or 0))
         width = int(WayneTelegramBot._WAIT_SQUARES)
-        filled = int(round(min(1.0, max(0.0, float(elapsed_sec)) / span) * width))
+        filled = int(round(min(1.0, max(0.0, float(elapsed)) / span) * width))
         bar = "■" * filled + "□" * (width - filled)
         head = str(title or "").strip() or "進行中"
         if not head.upper().startswith("LOADING"):
             head = f"LOADING · {head}"
-        lines = [head, bar, f"已 {WayneTelegramBot._format_elapsed(elapsed_sec)}"]
+        lines = [head, bar, f"已 {WayneTelegramBot._format_elapsed(elapsed)}"]
+        # 讀秒／倒數：還沒到預估就寫約剩；超了也要明說還在跑，不准畫面像當掉
+        left = int(round(span - float(elapsed)))
+        if left >= 1:
+            lines.append(f"約剩 {WayneTelegramBot._format_elapsed(left)}")
+        elif span > 0:
+            lines.append("已超過預估，還在跑")
         if now:
             lines.append(f"現在：{now}")
         if rest:
@@ -5440,7 +5447,9 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(uid),
             )
             return
-        prog = {"now": "篩名單", "rest": "壓力區＋高低卡"}
+        # pause＝送圖瞬間暫停改泡泡，避免跟 reply_photo 搶聊天室；其餘時間每秒讀秒
+        prog = {"now": "篩名單", "rest": "壓力區＋高低卡", "pause": False}
+        wait_t0 = time.monotonic()
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
@@ -5451,6 +5460,8 @@ class WayneTelegramBot:
                 fill_sec=40.0,
             ),
         )
+        paint_stop = None
+        paint_task = None
         try:
             as_of, rows, mode = await asyncio.wait_for(
                 asyncio.to_thread(resolve_button_rows, self.db_path),
@@ -5476,27 +5487,42 @@ class WayneTelegramBot:
             chunk, off, has_next = page_slice(rows, offset, limit=PAGE_SIZE)
             head = header_html(as_of, len(rows), mode=mode, offset=off)
             await message.reply_html(head, disable_web_page_preview=True)
-            # 標題出去後停掉每秒改泡泡。逐檔仍 to_thread(render_stock_pair)→送出。
+            # 標題出去後：停掉開場 ticker，改派出圖專用讀秒（預估隨檔數拉長）。
             # 內層 run_mpl_paint 鎖仍留（#492／#493 FreeType）；不准整頁批次 pairs。
-            # 下一檔 load 與上一檔送圖重疊，但 paint 仍一次一檔。
             wait_msg = wait_h[0] if wait_h else None
             n_chunk = len(chunk)
-            # 進出資圖階段先改口，不准名單出了還停在「篩名單」長沉默
+            paint_fill = max(40.0, 25.0 * max(1, n_chunk))
             if wait_msg is not None and n_chunk:
                 prog["now"] = f"出圖 1/{n_chunk}"
                 prog["rest"] = "壓力區＋高低卡"
-                await self._safe_edit_text(
-                    wait_msg,
-                    self._wait_bubble(
-                        "勝率買點進行中",
-                        0,
-                        now=prog["now"],
-                        rest=prog["rest"],
-                        fill_sec=40.0,
-                    ),
-                    parse_mode="HTML",
-                )
-            await self._silence_wait_ticker(wait_h[1] if wait_h else None, wait_h[2] if wait_h else None)
+            await self._silence_wait_ticker(
+                wait_h[1] if wait_h else None, wait_h[2] if wait_h else None
+            )
+            paint_stop = asyncio.Event()
+
+            async def _paint_tick() -> None:
+                while paint_stop is not None and not paint_stop.is_set():
+                    if wait_msg is not None and not prog.get("pause"):
+                        el = int(max(0.0, time.monotonic() - wait_t0))
+                        await self._safe_edit_text(
+                            wait_msg,
+                            self._wait_bubble(
+                                "勝率買點進行中",
+                                el,
+                                now=prog["now"],
+                                rest=prog["rest"],
+                                fill_sec=paint_fill,
+                            ),
+                            parse_mode="HTML",
+                        )
+                    try:
+                        await asyncio.wait_for(paint_stop.wait(), timeout=1.0)
+                        break
+                    except asyncio.TimeoutError:
+                        pass
+
+            if wait_msg is not None and n_chunk:
+                paint_task = asyncio.create_task(_paint_tick())
 
             async def _load_slot(i: int):
                 row = chunk[i] if isinstance(chunk[i], dict) else {}
@@ -5506,14 +5532,10 @@ class WayneTelegramBot:
                     return sid, name, "", "", name
                 hit_v, hit_c = cached_winrate_pair(self.charts_dir, as_of, sid)
                 if hit_v and hit_c:
+                    prog["now"] = f"{sid} {i + 1}/{n_chunk}（快取）"
                     return sid, name, hit_v, hit_c, name
-                prog["now"] = f"{sid} {i + 1}/{n_chunk}"
-                if wait_msg is not None:
-                    await self._safe_edit_text(
-                        wait_msg,
-                        f"勝率買點 {html_escape(sid)} {i + 1}/{n_chunk} 圖準備中",
-                        parse_mode="HTML",
-                    )
+                prog["now"] = f"{sid} {i + 1}/{n_chunk} 圖準備中"
+                prog["rest"] = f"還有 {max(0, n_chunk - i - 1)} 檔"
 
                 def _pair(code=sid, nm=name):
                     return render_stock_pair(
@@ -5559,45 +5581,50 @@ class WayneTelegramBot:
                 label = html_escape(cap_name or name or sid)
                 sent_volume = False
                 sent_card = False
-                if vpath and (os.path.isfile(vpath) or _winrate_photo_ref(vpath) != vpath):
-                    try:
-                        sent_volume = await self._reply_winrate_photo(
-                            message,
-                            vpath,
-                            caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
-                        )
-                    except Exception:
-                        logger.exception("勝率買點壓力區送出失敗 code=%s", sid)
-                        sent_volume = False
-                if cpath and (os.path.isfile(cpath) or _winrate_photo_ref(cpath) != cpath):
-                    try:
-                        sent_card = await self._reply_winrate_photo(
-                            message,
-                            cpath,
-                            caption=f"<b>{html_escape(sid)}</b> {label}　高低溫度卡",
+                prog["now"] = f"{sid} {i + 1}/{n_chunk} 送圖中"
+                prog["pause"] = True
+                try:
+                    if vpath and (os.path.isfile(vpath) or _winrate_photo_ref(vpath) != vpath):
+                        try:
+                            sent_volume = await self._reply_winrate_photo(
+                                message,
+                                vpath,
+                                caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
+                            )
+                        except Exception:
+                            logger.exception("勝率買點壓力區送出失敗 code=%s", sid)
+                            sent_volume = False
+                    if cpath and (os.path.isfile(cpath) or _winrate_photo_ref(cpath) != cpath):
+                        try:
+                            sent_card = await self._reply_winrate_photo(
+                                message,
+                                cpath,
+                                caption=f"<b>{html_escape(sid)}</b> {label}　高低溫度卡",
+                                reply_markup=markup,
+                            )
+                        except Exception:
+                            logger.exception("勝率買點高低卡送出失敗 code=%s", sid)
+                            sent_card = False
+                    if sent_card:
+                        return
+                    if markup is not None:
+                        await message.reply_html(
+                            f"<b>{html_escape(sid)}</b> {label}",
                             reply_markup=markup,
+                            disable_web_page_preview=True,
                         )
-                    except Exception:
-                        logger.exception("勝率買點高低卡送出失敗 code=%s", sid)
-                        sent_card = False
-                if sent_card:
-                    return
-                if markup is not None:
-                    await message.reply_html(
-                        f"<b>{html_escape(sid)}</b> {label}",
-                        reply_markup=markup,
-                        disable_web_page_preview=True,
-                    )
-                else:
-                    gap = pair_gap_html(
-                        sid,
-                        cap_name or name,
-                        is_last=is_last,
-                        has_volume=bool(sent_volume),
-                        has_card=bool(sent_card),
-                    )
-                    if gap:
-                        await message.reply_html(gap, disable_web_page_preview=True)
+                    else:
+                        gap = pair_gap_html(
+                            sid,
+                            cap_name or name,
+                            is_last=is_last,
+                            has_volume=bool(sent_volume),
+                            has_card=bool(sent_card),
+                        )
+                        if gap:
+                            await message.reply_html(gap, disable_web_page_preview=True)
+                finally:
+                    prog["pause"] = False
 
             await chain_roster_slots(n_chunk, _load_slot, _send_slot)
             await self._stop_plain_wait(*wait_h)
@@ -5610,6 +5637,11 @@ class WayneTelegramBot:
             logger.exception("勝率買點查詢失敗")
             await message.reply_text(PHONE_BUSY, reply_markup=self._reply_menu(uid))
         finally:
+            if paint_stop is not None:
+                paint_stop.set()
+            if paint_task is not None:
+                await self._silence_wait_ticker(paint_stop, paint_task)
+                paint_task = None
             self._trade_slot_end(actor, slot_kind)
             await self._stop_plain_wait(*wait_h)
 
