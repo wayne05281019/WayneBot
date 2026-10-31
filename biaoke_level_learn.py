@@ -2534,10 +2534,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
-    c5_near_45546 = bool(
-        c_sub.get("ok")
-        and abs(float(c_sub["y_c5"]) - 45546.0) < max((ymax - ymin) * 0.10, 520.0)
-    )
+    # c5 有值時預估端 45546 也不浮字（右欄已有飆預測＋c5細）
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -2547,7 +2544,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        show_label=not c5_near_45546,
+        show_label=not bool(c_sub.get("ok")),
     )
     fut_x = float(tip.get("fut_x") or fut_x)
     if c_sub.get("ok"):
@@ -2605,9 +2602,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         )
     if c_sub.get("ok"):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        y5c = float(c_sub["y_c5"])
-        # c4 圖上可標；c5 與 45546 太近 → 圖上只留點／線，價改走右欄（不准互壓）
-        near_45546 = abs(y5c - 45546.0) < max(span * 0.10, 520.0)
+        # c4 圖上可標；c5 一律只走右欄（與 45546 太近，浮字必互壓）
         ax.text(
             i4,
             y4 + span * 0.022,
@@ -2626,26 +2621,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 linestyle="dashed",
             ),
         )
-        if not near_45546:
-            i5c = int(c_sub["i_c5_lo"])
-            ax.text(
-                float(i5c),
-                y5c - span * 0.022,
-                f"c5細 {_px(y5c)}",
-                fontproperties=_fp(8, "bold"),
-                color="#ce93d8",
-                ha="center",
-                va="top",
-                zorder=10,
-                bbox=dict(
-                    boxstyle="round,pad=0.1",
-                    fc="#0b0f14",
-                    ec="#ce93d8",
-                    lw=0.55,
-                    alpha=0.9,
-                    linestyle="dashed",
-                ),
-            )
     # 右欄：他點過的位＝飆預測；預估端已標的同價不准再貼
     tip_anchor = tip.get("anchor_y")
     tip_skip = {round(float(tip_anchor), 1)} if tip_anchor is not None else set()
@@ -2919,10 +2894,6 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
-    c5_near_45546 = bool(
-        c_sub.get("ok")
-        and abs(float(c_sub["y_c5"]) - 45546.0) < max((ymax - ymin) * 0.10, 520.0)
-    )
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -2932,7 +2903,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        show_label=not c5_near_45546,
+        show_label=not bool(c_sub.get("ok")),
     )
     if c_sub.get("ok"):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
@@ -3011,8 +2982,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ]
     if c_sub.get("ok"):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        y5c = float(c_sub["y_c5"])
-        near_45546 = abs(y5c - 45546.0) < max(span * 0.10, 520.0)
+        # c5 圖上不浮字（只右欄）；只留 c4 圖內標
         near_lab_specs.append(
             {
                 "x": float(i4),
@@ -3025,20 +2995,6 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 "nudge": "up",
             }
         )
-        # c5 太近 45546：圖上不浮字，右欄已有 c5細
-        if not near_45546:
-            near_lab_specs.append(
-                {
-                    "x": float(c_sub["i_c5_lo"]),
-                    "y": y5c - span * 0.04,
-                    "text": f"c5細 {_px(y5c)}",
-                    "color": "#ce93d8",
-                    "ha": "center",
-                    "va": "top",
-                    "pri": 2,
-                    "nudge": "down",
-                }
-            )
     near_labs = _seat_onchart_labels(
         near_lab_specs,
         ymin=ymin,
@@ -3341,10 +3297,6 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
-    c5_near_45546 = bool(
-        c_sub.get("ok")
-        and abs(float(c_sub["y_c5"]) - 45546.0) < 520.0
-    )
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -3354,7 +3306,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        show_label=not c5_near_45546,
+        show_label=not bool(c_sub.get("ok")),
     )
     geom_xs = [i_bhi, i_c1, i_c2, i_now]
     geom_ys = [
@@ -3418,16 +3370,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ]
     if c_sub.get("ok"):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        y5c = float(c_sub["y_c5"])
-        near_45546 = abs(y5c - 45546.0) < max((c_hi - c_lo) * 0.10, 520.0)
+        # c5 圖上不浮字（只右欄）；只留 c4
         layer_labs.append(
             (i4 + 0.9, y4 + pad * 2.2, f"c4細 {_px(y4)}", "#ce93d8", "bottom", "left")
         )
-        if not near_45546:
-            i5c = int(c_sub["i_c5_lo"])
-            layer_labs.append(
-                (i5c - 0.9, y5c - pad * 2.4, f"c5細 {_px(y5c)}", "#ce93d8", "top", "right")
-            )
     else:
         layer_labs.extend(
             [
