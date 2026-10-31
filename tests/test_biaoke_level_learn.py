@@ -132,6 +132,24 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "沒底子" in src or "白話" in src
     assert "_twii_intent_story" in src
     assert "量縮止穩" in src or "好心" in src or "套牢" in src
+    # 超級近窗：C 內小波層＋另前提才畫另色線
+    assert "_render_twii_super_near_dark" in src
+    assert "_alt_path_needed" in src
+    assert "micro_path" in src
+    assert "另前提" in src or "薄荷" in src
+    # 費半主圖也畫⑤／A／B／C，時間軸對齊加權月日
+    assert "_align_us_to_twii_dates" in src
+    assert "費半 SOX（同月日）" in src
+
+
+def test_his_micro_degree_and_alt_gate():
+    from biaoke_level_learn import _alt_path_needed, _his_micro_degree
+
+    d = _his_micro_degree("目前只是C3-3-1轉C3-3-2")
+    assert d["degree"] == "C3-3-2"
+    assert "C3-3" in d["chain"]
+    assert _alt_path_needed("C3-3-2", "C3-3-1") is True
+    assert _alt_path_needed("C3-3-2", "C3-3-2") is False
 
 
 def test_twii_intent_story_trap_language():
@@ -153,16 +171,19 @@ def test_latest_teach_kit_reads_paths(tmp_path):
     far.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
     near.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
     conn = sqlite3.connect(db)
+    micro = tmp_path / "micro.png"
+    micro.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
     conn.execute(
         "INSERT INTO biaoke_open_day_paints("
-        "slot_id, as_of, thesis, far_path, near_path, us_path, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
-        ("20261030-night", "20261030", "預估在 C", str(far), str(near), "", "t"),
+        "slot_id, as_of, thesis, far_path, near_path, us_path, micro_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        ("20261030-night", "20261030", "預估在 C", str(far), str(near), "", str(micro), "t"),
     )
     conn.commit()
     conn.close()
     kit = latest_teach_kit(db)
     assert kit["far_path"] == str(far)
     assert kit["near_path"] == str(near)
+    assert kit["micro_path"] == str(micro)
     assert kit["us_path"] == ""
     assert "C" in kit["thesis"]

@@ -6907,9 +6907,9 @@ class WayneTelegramBot:
         kind: str = "",
         gen: int = 0,
     ) -> None:
-        """空白按飆大：送遠窗／近窗／外圍教具（已存檔優先；缺才強制活畫一次）。
+        """空白按飆大：送遠／近／超級近／外圍教具（已存檔優先；缺才強制活畫一次）。
 
-        不是買訊、不是個股結構圖。失敗略過，不准擋文字摘要。
+        超級近窗＝C 內小波層對齊他說；另色演化只在前提不同才畫。不是買訊。
         """
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return
@@ -6925,7 +6925,7 @@ class WayneTelegramBot:
             logger.exception("讀飆大教具路徑略過")
             kit = {}
         need = not any(
-            kit.get(k) for k in ("far_path", "near_path", "us_path")
+            kit.get(k) for k in ("far_path", "near_path", "micro_path", "us_path")
         )
         if need:
             try:
@@ -6939,6 +6939,7 @@ class WayneTelegramBot:
                     kit = {
                         "far_path": str(painted.get("far_path") or ""),
                         "near_path": str(painted.get("near_path") or ""),
+                        "micro_path": str(painted.get("micro_path") or ""),
                         "us_path": str(painted.get("us_path") or ""),
                         "thesis": str(painted.get("thesis") or "")[:180],
                         "slot_id": str(painted.get("slot_id") or ""),
@@ -6953,6 +6954,7 @@ class WayneTelegramBot:
         caps = (
             ("far_path", "遠窗教具（波浪／切割大圖・非買訊）"),
             ("near_path", "近窗教具（細微波／量價・非買訊）"),
+            ("micro_path", "超級近窗（C內小波層・對齊他說・非買訊）"),
             ("us_path", "外圍對照（費半／納指・非買訊）"),
         )
         thesis = str(kit.get("thesis") or "").strip()
