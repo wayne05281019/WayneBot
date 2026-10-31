@@ -192,6 +192,15 @@ def test_next_support_resist_nearest():
     assert sr["resist"] == 47637.0
 
 
+def test_far_yellow_band_is_max_vol_day_hl():
+    """遠窗黃帶＝最大量日高低，不是下一錨撐～壓。"""
+    src = open("biaoke_level_learn.py", encoding="utf-8").read()
+    block = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")]
+    assert "_paint_max_vol_hl_zone" in block
+    assert "最大量日K高低" in block or "最大量日" in block
+    assert "def _paint_max_vol_hl_zone" in src
+
+
 def test_his_micro_degree_and_alt_gate():
     from biaoke_level_learn import _alt_path_needed, _his_micro_degree
 
