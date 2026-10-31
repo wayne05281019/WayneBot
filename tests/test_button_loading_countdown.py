@@ -12,15 +12,31 @@ from bot_servers import WayneTelegramBot
 def test_wait_bubble_has_loading_and_elapsed():
     txt0 = WayneTelegramBot._wait_bubble("大盤進行中", 0, now="讀指數", fill_sec=20.0)
     txt12 = WayneTelegramBot._wait_bubble("大盤進行中", 12, now="讀指數", fill_sec=20.0)
+    txt_over = WayneTelegramBot._wait_bubble("大盤進行中", 25, now="讀指數", fill_sec=20.0)
     assert "LOADING" in txt0
     assert "大盤進行中" in txt0
     assert "□" * 10 in txt0
     assert "已 0 秒" in txt0 or "已 0" in txt0
+    assert "約剩" in txt0 and "20 秒" in txt0
     assert "■" in txt12
     assert "已 12 秒" in txt12
+    assert "約剩" in txt12 and "8 秒" in txt12
+    assert "已超過預估，還在跑" in txt_over
     assert "好了這則會消失" in txt0
     for ch in ("⏳", "🔄", "📊", "🔍"):
         assert ch not in txt0
+
+
+def test_winrate_paint_keeps_countdown_ticker():
+    """勝率出圖階段不准改成無秒數靜態句；要有專用讀秒 ticker。"""
+    import inspect
+
+    src = inspect.getsource(WayneTelegramBot._run_winrate_buypoint)
+    assert "_paint_tick" in src
+    assert "約剩" in inspect.getsource(WayneTelegramBot._wait_bubble) or "約剩" in src
+    assert "圖準備中" in src
+    assert 'f"勝率買點 {html_escape(sid)} {i + 1}/{n_chunk} 圖準備中"' not in src
+    assert 'prog["pause"]' in src
 
 
 def test_magic_dismiss_frames_no_emoji():
