@@ -1127,7 +1127,12 @@ def header_html(as_of: str, total: int, *, mode: str = "full", offset: int = 0) 
         return EMPTY_MSG
     start = int(offset) + 1
     end = min(int(offset) + PAGE_SIZE, total)
-    mode_note = "隔日盤中篩（買點仍在且現價更低）" if mode == "filter" else "盤後剛離零（藍▲紅框）"
+    # 話筒臉＝apply_suggest_paint 後（可少於完整 leave_zero）；靜默凍仍是整包。
+    mode_note = (
+        "隔日盤中篩・建議篩後（現價更低）"
+        if mode == "filter"
+        else "剛離零建議篩後（藍▲紅框）"
+    )
     return (
         f"<b>勝率買點</b>　基準日 {html_escape(day_disp)}　"
         f"{start}–{end}/{total}　<i>{html_escape(mode_note)}</i>"
