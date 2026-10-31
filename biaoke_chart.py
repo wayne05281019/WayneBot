@@ -544,7 +544,7 @@ def _channel_width_touch(
         if tv <= 0:
             continue
         width = (tv - base_at) if above else (base_at - tv)
-        if width < span * 0.035 or width > span * 0.85:
+        if width < span * _CHANNEL_WIDTH_MIN or width > span * _CHANNEL_WIDTH_MAX:
             continue
         inside = 0
         total = 0
@@ -574,7 +574,7 @@ def _channel_width_touch(
             continue
         freshness = 1.0 - (n - 1 - kk) / max(n, 1)
         score = ratio * 2.0 + freshness * 0.8 - breach * 0.12
-        score -= abs(width / span - 0.28) * 0.45
+        score -= abs(width / span - _CHANNEL_WIDTH_TARGET) * _CHANNEL_WIDTH_PENALTY
         # 觸點靠近第二連點加分（跟他畫法：通道寬度常由近段極端定）
         score += max(0.0, 1.0 - abs(kk - base_j) / max(n * 0.25, 1)) * 0.35
         if best is None or score > best[2]:
@@ -819,6 +819,30 @@ def channel_prefer_named_rising_or_infer(
     return inferred
 
 
+def _prefer_narrower_channel_candidate(
+    best: Dict[str, Any],
+    cands: Sequence[Dict[str, Any]],
+    *,
+    span: float,
+) -> Dict[str, Any]:
+    """最高分仍過寬時，改採同向較窄且仍合格的候選（分數次佳、寬度優先）。"""
+    if span <= 0 or not best or not cands:
+        return best
+    bw = float(best.get("width") or 0)
+    if bw / span <= _CHANNEL_WIDTH_NARROW_PICK:
+        return best
+    kind = str(best.get("kind") or "")
+    pool = [
+        c
+        for c in cands
+        if str(c.get("kind") or "") == kind
+        and float(c.get("width") or 0) / span <= _CHANNEL_WIDTH_NARROW_PICK
+    ]
+    if not pool:
+        return best
+    return max(pool, key=lambda c: float(c.get("score") or 0))
+
+
 def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """依飆大連點長上升／下降通道（二擇一、兩條平行線）。
 
@@ -1032,11 +1056,19 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "TRUE",
         "yes",
     )
-    if (
-        not _skip_reclass
-        and best["kind"] == "asc"
-        and not best.get("alive")
-    ):
+
+    def _primary_asc_broken() -> bool:
+        if not up:
+            return False
+        ui, uj = int(up[0]), int(up[1])
+        y1, y2 = float(lows[ui]), float(lows[uj])
+        if y1 <= 0 or y2 <= 0:
+            return False
+        base_now = _line_at(float(ui), y1, float(uj), y2, float(n - 1))
+        return _rail_broken(last, base_now, above_is_ok=True)
+
+    def _reclass_asc_break() -> None:
+        nonlocal best, reclass_from
         desc_cands = [c for c in cands if c["kind"] == "desc"]
         if not desc_cands:
             _pack_desc_reclass()
@@ -1044,6 +1076,23 @@ def infer_parallel_channel(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         if desc_cands:
             best = max(desc_cands, key=lambda c: float(c["score"]))
             reclass_from = "asc_break"
+
+    _primary_broken = _primary_asc_broken()
+    if (
+        not _skip_reclass
+        and best["kind"] == "asc"
+        and (not best.get("alive") or _primary_broken)
+    ):
+        _reclass_asc_break()
+
+    best = _prefer_narrower_channel_candidate(best, cands, span=span)
+
+    if (
+        not _skip_reclass
+        and best["kind"] == "asc"
+        and _primary_broken
+    ):
+        _reclass_asc_break()
 
     kind = str(best["kind"])
     (x1, y1, d1), (x2, y2, d2) = best["base"]
@@ -1284,6 +1333,12 @@ def _clip_line(
 # 上升／下降區間雙軌：實線段略長、空隙略短＝可讀不花；結構圖線寬仍細、壓撐主線略清楚。
 _CHANNEL_RAIL_DASH = (0, (1.55, 1.05))
 _CHANNEL_RAIL_LW = 1.15
+# 平行通道寬度閘（近窗高低幅比例；專業預設偏窄，避免大寬包覆把軌畫成「太空」）
+_CHANNEL_WIDTH_MIN = 0.035
+_CHANNEL_WIDTH_MAX = 0.45
+_CHANNEL_WIDTH_TARGET = 0.28
+_CHANNEL_WIDTH_PENALTY = 0.95
+_CHANNEL_WIDTH_NARROW_PICK = 0.35
 
 
 def _paint_extended_rail(
@@ -1434,6 +1489,8 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
                 f"{_md(rows[b].get('date'))}低{_px(lows[b])}，"
                 f"延長到最近約 {_px(y_now)}，收在上面；破這條才像軌壞掉"
             )
+    else:
+        out["up_broken"] = False
     if out["wash"]:
         notes.append("破撐之後又站回，比較像破線洗盤，不是保證")
     elif out.get("distribution"):
