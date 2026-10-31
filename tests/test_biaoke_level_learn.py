@@ -159,6 +159,29 @@ def test_his_micro_degree_and_alt_gate():
     assert "C3-3" in d["chain"]
     assert _alt_path_needed("C3-3-2", "C3-3-1") is True
     assert _alt_path_needed("C3-3-2", "C3-3-2") is False
+    # C／橫台 vs 幾何 C3 不准另畫
+    assert _alt_path_needed("C", "C3-3-2") is False
+
+
+def test_wave_now_ladder_big_to_small():
+    from biaoke_level_learn import _wave_now_ladder
+
+    mid = _wave_now_ladder(
+        {"thesis": "五波後下降ABC・C內橫台中繼（預估）", "chart_as_of": "20261029"}
+    )
+    assert mid["now"] == "C內橫台中繼"
+    assert "五波升完" in mid["chain"] and "C進行中" in mid["chain"]
+    assert "C3-3" not in mid["chain"]
+    deep = _wave_now_ladder(
+        {
+            "thesis": "五波後下降ABC・C內＝C3-3（1→2・預估）",
+            "snippet": "目前只是C3-3-1轉C3-3-2",
+            "chart_as_of": "20261030",
+        }
+    )
+    assert deep["now"] == "C3-3-2"
+    assert "C3-3主跌" in deep["chain"]
+    assert "他說現在：" in deep["one_line"]
 
 
 def test_sox_abc_anchors_not_copy_twii_ab():

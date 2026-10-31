@@ -6958,6 +6958,26 @@ class WayneTelegramBot:
             ("us_path", "外圍對照（費半／納指・非買訊）"),
         )
         thesis = str(kit.get("thesis") or "").strip()
+        ladder_line = ""
+        try:
+            from biaoke_level_learn import _build_live_pack, _wave_now_ladder
+
+            pack_for_ladder = await asyncio.to_thread(_build_live_pack, self.db_path)
+            if thesis and not str(pack_for_ladder.get("thesis") or "").strip():
+                pack_for_ladder = dict(pack_for_ladder or {})
+                pack_for_ladder["thesis"] = thesis
+            if kit.get("as_of") and not pack_for_ladder.get("chart_as_of"):
+                pack_for_ladder = dict(pack_for_ladder or {})
+                pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
+            ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
+            ladder_line = str(ladder.get("one_line") or "")
+            if ladder.get("now_line"):
+                ladder_line = f"{ladder_line}\n{ladder['now_line']}".strip()
+            if not thesis:
+                thesis = str((pack_for_ladder or {}).get("thesis") or "").strip()
+        except Exception:
+            logger.exception("教具層級一句略過")
+            ladder_line = ""
         kb = self._biaoke_reply_menu(uid)
         for key, head in caps:
             if actor and kind and not self._actor_op_alive(actor, kind, gen):
@@ -6967,9 +6987,13 @@ class WayneTelegramBot:
                 continue
             if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
                 continue
-            cap = head
-            if thesis:
-                cap = f"{head}\n{thesis}"[:900]
+            # caption：頭＋他說現在層級（大→小）；一眼看到走到哪一層小波
+            bits = [head]
+            if ladder_line:
+                bits.append(ladder_line)
+            elif thesis:
+                bits.append(thesis)
+            cap = "\n".join(bits)[:900]
             try:
                 try:
                     chat = getattr(message, "chat", None)

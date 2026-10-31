@@ -406,12 +406,13 @@ def _speak(text: str, limit: int = 220) -> str:
 def format_teach_brief(db_path: str = "") -> str:
     """空白鍵加一段消化過的白話結論（波浪／切割／型態／量價）；不是買訊。
 
+    開頭必有『他說現在層級』大→小一條龍，讓人一眼知道走到哪一層小波。
     資料來自活畫 pack；失敗回空，不准擋主摘要。
     """
     if not db_path:
         return ""
     try:
-        from biaoke_level_learn import _build_live_pack
+        from biaoke_level_learn import _build_live_pack, _wave_now_ladder
 
         pack = _build_live_pack(db_path) or {}
     except Exception:
@@ -422,7 +423,17 @@ def format_teach_brief(db_path: str = "") -> str:
     fib = str(pack.get("fib_note") or "").strip()
     if not (thesis or intent or morph):
         return ""
-    lines = ["<b>白話結論（消化過・非買訊）</b>"]
+    try:
+        ladder = _wave_now_ladder(pack)
+    except Exception:
+        ladder = {}
+    lines = ["<b>他說現在走到哪（大→小・預估會改）</b>"]
+    if ladder.get("chain"):
+        lines.append(html_escape(str(ladder["chain"])))
+    if ladder.get("now_line"):
+        lines.append(html_escape(str(ladder["now_line"])))
+    lines.append("")
+    lines.append("<b>白話結論（消化過・非買訊）</b>")
     if thesis:
         lines.append(html_escape(f"波浪：{thesis}"))
     if fib:

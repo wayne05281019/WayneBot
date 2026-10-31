@@ -1377,12 +1377,66 @@ def _geom_c_micro_swings(
 
 
 def _alt_path_needed(his_degree: str, geom_degree: str) -> bool:
-    """另色演化線：只有『跟他約的前提不同』才准畫。同層＝不畫另線。"""
+    """另色演化線：只有同家族細微層互斥才畫（如 C3-3-1 vs C3-3-2）。
+
+    C／橫台 vs 幾何 C3-* 不准另畫——會讓人以為他換前提。同層＝不畫。
+    """
     h = str(his_degree or "").strip()
     g = str(geom_degree or "").strip()
     if not h or not g:
         return False
-    return h != g
+    if h.startswith("C3-3") and g.startswith("C3-3"):
+        return h != g
+    return False
+
+
+def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -> Dict[str, Any]:
+    """他說『現在走到哪一層』：大→小一條龍（預估會改；非買訊）。
+
+    回傳 steps／chain／now／one_line，給話筒文字、圖題、caption 共用。
+    """
+    pack = pack or {}
+    text = " ".join(
+        str(x or "")
+        for x in (
+            blob,
+            pack.get("thesis"),
+            pack.get("snippet"),
+            pack.get("wait_struct"),
+        )
+    )
+    his = _his_micro_degree(text)
+    deg = str(his.get("degree") or "").strip()
+    thesis = str(pack.get("thesis") or text)
+    steps: List[str] = ["五波升完", "下降ABC", "C進行中"]
+    if deg in ("C3-3-1", "C3-3-2"):
+        steps.extend(["C3-3主跌", deg])
+    elif deg.startswith("C3-3") or ("C3-3" in thesis and "橫台" not in thesis):
+        steps.append("C3-3主跌")
+    elif "橫台" in thesis or "中繼" in thesis:
+        steps.append("C內橫台中繼")
+    elif "主跌" in thesis:
+        steps.append("C內主跌")
+    elif deg == "C3":
+        steps.append("C3")
+    now = steps[-1]
+    chain = " → ".join(steps)
+    as_of = _ymd(pack.get("chart_as_of") or pack.get("as_of") or "")
+    as_bit = f"（as_of {as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}）" if len(as_of) == 8 else ""
+    return {
+        "steps": steps,
+        "chain": chain,
+        "now": now,
+        "degree": deg,
+        "one_line": f"他說現在：{chain}",
+        "now_line": f"此刻＝{now}{as_bit}（預估會改・非買訊）",
+        "teach_box": (
+            f"他說現在層級（大→小）\n"
+            f"{chain}\n"
+            f"此刻＝{now}{as_bit}\n"
+            f"預估會改；不是買訊"
+        ),
+    }
 
 
 def _twii_abc_anchors(
@@ -1877,15 +1931,15 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
-    # 標題跟當日題旨走：不准寫死 C3-3（他還沒說的那天會教錯）
-    title_bit = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")
-    title_bit = title_bit.replace("五波後下降ABC・", "").strip() or "現在在C（預估）"
-    if len(title_bit) > 28:
-        title_bit = title_bit[:27] + "…"
+    ladder = _wave_now_ladder(pack)
+    # 標題跟當日層級走：一眼看到大→小走到哪
+    title_bit = str(ladder.get("now") or "").strip() or "現在在C（預估）"
+    if len(title_bit) > 22:
+        title_bit = title_bit[:21] + "…"
     fig.text(
         0.03,
         0.972,
-        f"第2張（近窗）：把跌段放大來看——{title_bit}　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        f"第2張（近窗）：此刻＝{title_bit}　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
         fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -1894,9 +1948,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.945,
-        "說法順序：先波浪→再黃金切割→再型態→最後用量價故事猜主力；不懂就查飆大原文；預估會改；非買訊",
-        fontproperties=_fp(10, "bold"),
-        color=_LIVE_MUTED,
+        str(ladder.get("one_line") or "他說現在：C進行中")[:100],
+        fontproperties=_fp(11, "bold"),
+        color="#ffe082",
         ha="left",
         va="top",
     )
@@ -1972,6 +2026,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         highs, lows, closes, i_bhi=i_bhi, i_c=i_c, i_now=i_now
     )
     need_alt = _alt_path_needed(his.get("degree") or "", geom.get("geom_degree") or "")
+    ladder = _wave_now_ladder(pack)
 
     fig, (ax, axv) = plt.subplots(
         2,
@@ -2027,16 +2082,19 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         linewidths=0.45,
     )
 
-    deg_his = str(his.get("degree") or "").strip()
-    now_lab = f"今＝{deg_his}（預估）" if deg_his else "今・C進行中（預估）"
+    # 標籤避開線路：B／確認靠上；幾何①在下、②在上；今靠右上
+    c_lo = min(float(lows[i]) for i in range(i_bhi, n))
+    c_hi = max(float(highs[i]) for i in range(i_bhi, n))
+    pad = (c_hi - c_lo) * 0.04
+    now_lab = f"今＝{ladder.get('now') or 'C進行中'}（預估）"
     layer_labs = [
-        (i_bhi, y_bhi + span * 0.03, "B高＝C起", "#40c4ff"),
-        (i_c, float(highs[i_c]) + span * 0.045, "10/15日確認", "#ea80fc"),
-        (i_c1, float(lows[i_c1]) - span * 0.035, "幾何①", "#ffab40"),
-        (i_c2, float(highs[i_c2]) + span * 0.03, "幾何②", "#ffab40"),
-        (i_now, y_now + span * 0.025, now_lab, "#ffffff"),
+        (i_bhi, float(highs[i_bhi]) + pad * 1.6, "B高＝C起", "#40c4ff", "bottom"),
+        (i_c - 0.15, c_hi + pad * 2.2, "C起確認\n10/14夜～10/15日", "#ea80fc", "bottom"),
+        (i_c1, float(lows[i_c1]) - pad * 1.8, "幾何①", "#ffab40", "top"),
+        (i_c2, float(highs[i_c2]) + pad * 1.5, "幾何②", "#ffab40", "bottom"),
+        (i_now + 0.15, float(closes[i_now]) + pad * 2.0, now_lab, "#ffffff", "bottom"),
     ]
-    for x, y, lab, col in layer_labs:
+    for x, y, lab, col, va in layer_labs:
         ax.text(
             x,
             y,
@@ -2044,9 +2102,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             fontproperties=_fp(10, "bold"),
             color=col,
             ha="center",
-            va="center",
+            va=va,
             zorder=9,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=col, lw=0.7, alpha=0.9),
+            linespacing=1.15,
+            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.7, alpha=0.92),
         )
 
     # 另前提演化（薄荷虛線）：只有跟他約的不同才畫
@@ -2084,16 +2143,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             zorder=9,
         )
     else:
-        alt_note = "另色線未畫：幾何讀法與他說同層（前提相同不准另畫）"
+        alt_note = "另色線未畫：同家族細微層一致（或他還沒點名C3）"
 
+    deg_his = str(his.get("degree") or "").strip()
     # 幾何框：他還沒點名 C3-3 時，不准把 geom 代號印成 C3-3-*（會像他說）
     geom_show = str(geom.get("geom_degree") or "").strip()
     if not deg_his.startswith("C3") and geom_show.startswith("C3"):
         geom_show = "C內①②（未稱C3）"
     teach = (
-        "第3張（超級近窗）給沒底子的人\n"
-        f"他說現在：{his.get('chain') or 'C內'}　｜　標籤層＝{deg_his or 'C進行中'}\n"
-        f"幾何對讀：{geom_show or '—'}（只對讀・不准冒充他說）\n"
+        f"{ladder.get('teach_box') or '他說現在層級（大→小）'}\n"
+        f"幾何對讀：{geom_show or '—'}（非他說）\n"
         f"{alt_note}"
     )
     ax.text(
@@ -2106,27 +2165,27 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="bottom",
         zorder=12,
-        linespacing=1.35,
+        linespacing=1.3,
         bbox=dict(boxstyle="round,pad=0.35", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.92),
     )
-    # 圖例（他說／幾何／另前提分開）
-    ax.plot([], [], color="#ea80fc", lw=2.4, label="紫實線＝他說路徑（B→今）")
-    ax.plot([], [], color="#ffab40", lw=1.5, ls=(0, (3, 2)), label="橙虛線＝幾何對讀（非他說）")
+    # 圖例放右上，避開左上K線與層級框
+    ax.plot([], [], color="#ea80fc", lw=2.4, label="紫＝他說（B→今）")
+    ax.plot([], [], color="#ffab40", lw=1.5, ls=(0, (3, 2)), label="橙虛＝幾何（非他說）")
     if need_alt:
-        ax.plot([], [], color="#69f0ae", lw=2.0, ls=(0, (5, 2)), label="薄荷虛線＝另前提（不同才畫）")
+        ax.plot([], [], color="#69f0ae", lw=2.0, ls=(0, (5, 2)), label="薄荷＝另前提")
     leg = ax.legend(
-        loc="upper left",
-        fontsize=9,
+        loc="upper right",
+        fontsize=8,
         frameon=True,
         fancybox=True,
-        framealpha=0.85,
+        framealpha=0.9,
     )
     if leg is not None:
         leg.get_frame().set_facecolor("#0b0f14")
         leg.get_frame().set_edgecolor("#546e7a")
         for t in leg.get_texts():
             t.set_color(_LIVE_TEXT)
-            t.set_fontproperties(_fp(9, "bold"))
+            t.set_fontproperties(_fp(8, "bold"))
 
     want_dates = {
         _ymd(bars[i_bhi].get("date")),
@@ -2138,15 +2197,13 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     t2, l2 = [], []
     for i, r in enumerate(bars):
         d = _ymd(r.get("date"))
-        if d in want_dates or i % 2 == 0:
+        if d in want_dates or i % 3 == 0:
             if i not in t2:
                 t2.append(i)
                 l2.append(_md(d))
     ax.set_xlim(x_left, n + 3.5)
-    # 超級近窗 y 也跟 C 段走，避免⑤把尺度拉開
-    c_lo = min(float(lows[i]) for i in range(i_bhi, n))
-    c_hi = max(float(highs[i]) for i in range(i_bhi, n))
-    ax.set_ylim(c_lo - (c_hi - c_lo) * 0.12, c_hi + (c_hi - c_lo) * 0.22)
+    # 超級近窗 y：上方多留空給層級標，下方給幾何①
+    ax.set_ylim(c_lo - (c_hi - c_lo) * 0.16, c_hi + (c_hi - c_lo) * 0.28)
     axv.set_ylim(0, (max(vols[i_bhi:]) if any(vols[i_bhi:]) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axv.set_xticks(t2)
@@ -2158,7 +2215,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     fig.text(
         0.03,
         0.972,
-        f"第3張（超級近窗）：C裡面的小波層　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        f"第3張（超級近窗）：他說現在層級＋C內幾何對讀　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
         fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -2167,16 +2224,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     fig.text(
         0.03,
         0.945,
-        "紫＝他說（B→今）；橙虛＝幾何對讀（非他點名）；薄荷＝另前提才畫；預估會改；非買訊",
-        fontproperties=_fp(10, "bold"),
-        color=_LIVE_MUTED,
+        str(ladder.get("one_line") or "他說現在：C進行中")[:100],
+        fontproperties=_fp(11, "bold"),
+        color="#ffe082",
         ha="left",
         va="top",
     )
     fig.text(
         0.03,
         0.022,
-        (str(pack.get("thesis") or "") + "｜" + (his.get("chain") or ""))[:96],
+        str(ladder.get("now_line") or (pack.get("thesis") or ""))[:96],
         fontproperties=_fp(10, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -2302,15 +2359,26 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
     ):
         ax.scatter([ii], [yy], s=42, c=col, zorder=8, edgecolors="#fff", linewidths=0.5)
     span_tw = max(highs) - min(lows)
-    for x, y, lab, col in (
-        (i5, y5 + span_tw * 0.03, "⑤", "#ff8a80"),
-        ((i5 + i_alow) / 2, (y5 + y_alow) / 2, "A", "#ff8a80"),
-        ((i_alow + i_bhi) / 2, (y_alow + y_bhi) / 2 + span_tw * 0.02, "B", "#40c4ff"),
-        (i_c, float(closes[i_c]) - span_tw * 0.03, "C起", "#ea80fc"),
-        (i_now, y_now + span_tw * 0.02, "C進行中", "#ea80fc"),
-        (fut_x, fut_y, "預估↓", "#ea80fc"),
+    # 標在轉折點旁，不貼線中段（避免 A 浮在半空）
+    for x, y, lab, col, va in (
+        (i5, y5 + span_tw * 0.028, "⑤", "#ff8a80", "bottom"),
+        (i_alow, y_alow - span_tw * 0.025, "A低", "#ff8a80", "top"),
+        (i_bhi, y_bhi + span_tw * 0.028, "B高", "#40c4ff", "bottom"),
+        (i_c, float(highs[i_c]) + span_tw * 0.04, "C起", "#ea80fc", "bottom"),
+        (i_now, y_now + span_tw * 0.03, "C進行中", "#ea80fc", "bottom"),
+        (fut_x, fut_y - span_tw * 0.01, "預估↓", "#ea80fc", "top"),
     ):
-        ax.text(x, y, lab, fontproperties=_fp(11, "bold"), color=col, ha="center", zorder=9)
+        ax.text(
+            x,
+            y,
+            lab,
+            fontproperties=_fp(11, "bold"),
+            color=col,
+            ha="center",
+            va=va,
+            zorder=9,
+            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=col, lw=0.65, alpha=0.9),
+        )
     ax.set_ylabel("加權近窗", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
 
     # 中：費半 K（對齊加權交易日）＋費半自己的⑤／A／B／C
@@ -2367,51 +2435,65 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
             ):
                 axu.scatter([ii], [yy], s=42, c=col, zorder=8, edgecolors="#fff", linewidths=0.5)
             span_s = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
-            for x, y, lab, col in (
-                (s5i, s5 + span_s * 0.03, "⑤", "#ff8a80"),
-                ((s5i + sai) / 2, (s5 + sa) / 2, "A", "#ff8a80"),
-                ((sai + sbi) / 2, (sa + sb) / 2 + span_s * 0.02, "B", "#40c4ff"),
-                (i_now, sn + span_s * 0.02, "C進行中", "#ea80fc"),
-                (fut_x, s_fut, "預估↓", "#ea80fc"),
+            # 費半標在自己轉折點：A＝低點旁、B＝高點旁（不准漂在線中段）
+            for x, y, lab, col, va in (
+                (s5i, s5 + span_s * 0.03, "費⑤", "#ff8a80", "bottom"),
+                (sai, sa - span_s * 0.03, "費A低", "#ff8a80", "top"),
+                (sbi, sb + span_s * 0.03, "費B高", "#40c4ff", "bottom"),
+                (i_now, sn + span_s * 0.035, "費C進行中", "#ea80fc", "bottom"),
+                (fut_x, s_fut - span_s * 0.01, "預估↓", "#ea80fc", "top"),
             ):
                 axu.text(
-                    x, y, lab, fontproperties=_fp(11, "bold"), color=col, ha="center", zorder=9
+                    x,
+                    y,
+                    lab,
+                    fontproperties=_fp(10, "bold"),
+                    color=col,
+                    ha="center",
+                    va=va,
+                    zorder=9,
+                    bbox=dict(
+                        boxstyle="round,pad=0.12", fc="#0b0f14", ec=col, lw=0.65, alpha=0.9
+                    ),
                 )
             axu.axvline(s5i, color="#ff8a80", lw=0.85, ls=(0, (2, 2)), alpha=0.75, zorder=5)
             axu.axvline(sai, color="#ff8a80", lw=0.7, ls=(0, (2, 3)), alpha=0.45, zorder=5)
             axu.axvline(sbi, color="#40c4ff", lw=0.7, ls=(0, (2, 3)), alpha=0.45, zorder=5)
             axu.set_ylim(
-                min(x for x in sox_l if x == x) - span_s * 0.08,
-                max(x for x in sox_h if x == x) + span_s * 0.16,
+                min(x for x in sox_l if x == x) - span_s * 0.12,
+                max(x for x in sox_h if x == x) + span_s * 0.18,
             )
     # 納指收盤線陪看（細、不搶 ABC）
     ix_ok = [v for v in ix_c if v == v and v]
     if len(ix_ok) >= 5:
         axu.plot(range(n), ix_c, color="#4fc3f5", lw=1.15, alpha=0.55, zorder=5, label="納指收（陪看）")
     axu.set_ylabel("費半 SOX（同月日・自轉折）", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
-    leg = axu.legend(loc="upper left", fontsize=9, framealpha=0.85, facecolor="#0b0f14", edgecolor="#546e7a")
+    leg = axu.legend(
+        loc="upper left", fontsize=8, framealpha=0.9, facecolor="#0b0f14", edgecolor="#546e7a"
+    )
     if leg is not None:
         for t in leg.get_texts():
             t.set_color(_LIVE_TEXT)
-            t.set_fontproperties(_fp(9, "bold"))
+            t.set_fontproperties(_fp(8, "bold"))
 
+    # 外圍一句放左下空白，不准壓右側K
     last_note = str(pack.get("us_note") or "")
     axu.text(
-        0.99,
+        0.012,
         0.04,
-        (last_note[:48] or "費半轉折用自己高低；月日軸＝加權") ,
+        (last_note[:42] or "費半轉折＝自己高低；軸＝加權月日"),
         transform=axu.transAxes,
-        fontproperties=_fp(9, "bold"),
+        fontproperties=_fp(8, "bold"),
         color=_LIVE_TEXT,
-        ha="right",
+        ha="left",
         va="bottom",
         zorder=10,
-        bbox=dict(boxstyle="round,pad=0.25", fc="#0b0f14", ec="#546e7a", lw=0.8, alpha=0.9),
+        bbox=dict(boxstyle="round,pad=0.22", fc="#0b0f14", ec="#546e7a", lw=0.8, alpha=0.92),
     )
+    ladder = _wave_now_ladder(pack)
     teach = (
-        "外圍對照（費半主圖）\n"
-        "上下同一條時間軸＝加權的月／日\n"
-        "波浪各自轉折（費半不准抄加權A/B日）\n"
+        f"{ladder.get('one_line') or '他說現在：C進行中'}\n"
+        "上下同一月日軸；費半波浪自轉折\n"
         "C＝進行中；虛線＝預估；非買訊"
     )
     ax.text(
@@ -2424,10 +2506,10 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         ha="left",
         va="bottom",
         zorder=12,
-        linespacing=1.3,
+        linespacing=1.25,
         bbox=dict(boxstyle="round,pad=0.3", fc="#0b0f14", ec="#546e7a", lw=0.85, alpha=0.92),
     )
-    # 時間軸：加權錨＋費半自轉折日都標；格式＝幾月／幾日
+    # 時間軸：只標關鍵日＋稀疏月日，不准加A+費A疊字
     want = {
         _ymd(bars[i5].get("date")),
         _ymd(bars[i_alow].get("date")),
@@ -2435,36 +2517,28 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         _ymd(bars[i_c].get("date")),
         _ymd(bars[-1].get("date")),
     }
-    sox_tag_at: Dict[int, str] = {}
     if sox_anc:
-        for key, tag in (
-            ("i5", "費⑤"),
-            ("i_alow", "費A"),
-            ("i_bhi", "費B"),
-        ):
-            ii = int(sox_anc[key])
-            want.add(_ymd(bars[ii].get("date")))
-            sox_tag_at[ii] = tag
+        for key in ("i_alow", "i_bhi"):
+            want.add(_ymd(bars[int(sox_anc[key])].get("date")))
     t2, l2 = [], []
     for i, r in enumerate(bars):
         d = _ymd(r.get("date"))
-        if d in want or i % 2 == 0:
+        if d in want or i % 4 == 0:
             if i not in t2:
                 t2.append(i)
+                # 單一短註；加權／費半轉折分開看圖上標，軸上不堆
                 tag = ""
                 if i == i5:
-                    tag = "加⑤"
-                elif i == i_alow:
-                    tag = "加A"
-                elif i == i_bhi:
-                    tag = "加B"
+                    tag = "⑤"
                 elif i == i_c:
                     tag = "C起"
-                if i in sox_tag_at:
-                    tag = f"{tag}+{sox_tag_at[i]}" if tag else sox_tag_at[i]
+                elif sox_anc and i == int(sox_anc["i_alow"]):
+                    tag = "費A"
+                elif sox_anc and i == int(sox_anc["i_bhi"]):
+                    tag = "費B"
                 l2.append(f"{_md(d)}{tag}")
     ax.set_xlim(-0.5, max(n + 1.2, fut_x + 0.8))
-    ax.set_ylim(min(lows) - 400, max(highs) + 700)
+    ax.set_ylim(min(lows) - 520, max(highs) + 900)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
     axv.set_ylabel("加權量", fontproperties=_fp(9, "bold"), color=_LIVE_MUTED)
     axv.set_xticks(t2)
