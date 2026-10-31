@@ -144,32 +144,42 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_align_us_to_twii_dates" in src
     assert "_sox_abc_anchors_on_axis" in src
     assert "自轉折" in src or "不准抄" in src
-    # 超級近窗：C起自 B；日K小波①②不准冒充他說；今＝只認 ≤as_of 的他文
+    # 超級近窗：C起自 B；紫虛c4／c5 對他60分；橙①②僅輔助；大＝ABC｜細不取代
     assert "B高＝C起" in src
     assert "日K小波" in src
     assert "柱上讀" not in src
     assert "幾何對讀" not in src
-    assert "今・C進行中" in src or "不准冒充他說" in src
+    assert "大＝ABC｜細＝C內不取代ABC" in src
+    assert "_c_subwave_anchors_vs_biaoke60" in src
+    assert "c4細" in src and "c5細" in src
     assert "_level_break_tag" in src
     assert "_biaoke_pred_label" in src
     assert "飆預測" in src
     assert "_seat_onchart_labels" in src
     assert "maybe_push_level_teach_update" in src
     assert "as_of<=" in src or "chart_as_of" in src
-    assert "C內小波①②（未稱C3）" in src
+    assert "C內小波①②（未稱C3）" in src or "日K小波①②（輔助）" in src
     assert "title_bit" in src or "不准寫死 C3-3" in src
     assert "_paint_c_forecast" in src and "_c_forecast_tip" in src
     # 預估端同價改飆預測（續弱才留預估↓）
     assert "_biaoke_pred_label(45546" in src or "飆預測" in src
     assert "預估↓續弱" in src
     assert "_paint_window_dual_zones" in src
-    # 近／超近也要黃＋青雙底色（與遠窗對齊）
+    # 近／超近也要黃＋青雙底色（與遠窗對齊）；三張同套 c4／c5
     near_blk = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
     micro_blk = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
+    far_blk = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")]
     assert "_paint_window_dual_zones" in near_blk
     assert "_paint_window_dual_zones" in micro_blk
-    assert "日K小波（非他說）" in micro_blk or "橙虛＝日K小波" in micro_blk
+    assert "_c_subwave_anchors_vs_biaoke60" in far_blk
+    assert "_c_subwave_anchors_vs_biaoke60" in near_blk
+    assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
+    assert "日K小波①②（輔助）" in micro_blk or "橙①②僅輔助" in micro_blk
     assert "_seat_onchart_labels" in near_blk
+    # 外圍對照（附圖二）本輪不加 c4／c5 細標
+    us_end = src.find("\ndef ", src.index("def _render_us_compare_dark") + 4)
+    us_blk = src[src.index("def _render_us_compare_dark") : us_end if us_end > 0 else None]
+    assert "_c_subwave_anchors_vs_biaoke60" not in us_blk
 
 
 def test_c_forecast_tip_points_his_next_anchor():
