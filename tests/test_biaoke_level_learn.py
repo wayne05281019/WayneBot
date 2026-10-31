@@ -203,6 +203,26 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "def _paint_next_sr_zone" in src
 
 
+def test_hl_spans_excluding_no_overlap():
+    from biaoke_level_learn import _hl_spans_excluding, _y_inside_hl
+
+    # 青 45546～47637 扣黃 46795～48383 → 只剩 45546～46795（交疊量 0）
+    segs = _hl_spans_excluding(45546.0, 47637.0, ex_lo=46795.0, ex_hi=48383.0)
+    assert len(segs) == 1
+    assert abs(segs[0][0] - 45546.0) < 0.1
+    assert abs(segs[0][1] - 46795.0) < 0.1
+    # 完全在黃內 → 不塗
+    assert _hl_spans_excluding(47000.0, 47500.0, ex_lo=46795.0, ex_hi=48383.0) == []
+    # 青包住黃 → 上下兩段，中間不塗
+    segs2 = _hl_spans_excluding(45000.0, 49000.0, ex_lo=46795.0, ex_hi=48383.0)
+    assert len(segs2) == 2
+    assert abs(segs2[0][1] - 46795.0) < 0.1
+    assert abs(segs2[1][0] - 48383.0) < 0.1
+    # 近壓落在黃帶內 → 左標要改右欄
+    assert _y_inside_hl(47637.0, 46795.0, 48383.0) is True
+    assert _y_inside_hl(45546.0, 46795.0, 48383.0) is False
+
+
 def test_his_micro_degree_and_alt_gate():
     from biaoke_level_learn import _alt_path_needed, _his_micro_degree
 

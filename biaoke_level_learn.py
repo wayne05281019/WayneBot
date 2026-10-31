@@ -1278,6 +1278,34 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
             axv.bar(i, vols[i], color=color, width=0.68, zorder=3, alpha=0.92)
 
 
+def _paint_special_candle(
+    ax,
+    i: int,
+    *,
+    open_: float,
+    high: float,
+    low: float,
+    close: float,
+    color: str = "#ffd54f",
+) -> None:
+    """把指定日K改特殊色（蓋在普通紅綠上）；給最大量日／區間對應那一根用。"""
+    import matplotlib.pyplot as plt
+
+    ax.vlines(i, low, high, color=color, linewidth=1.55, zorder=6)
+    y0, y1 = sorted((float(open_), float(close)))
+    ax.add_patch(
+        plt.Rectangle(
+            (i - 0.36, y0),
+            0.72,
+            max(y1 - y0, 8),
+            facecolor=color,
+            edgecolor="#fff59d",
+            linewidth=0.9,
+            zorder=7,
+        )
+    )
+
+
 def _paint_vol_bars_max_yellow(
     axv,
     vols: Sequence[float],
@@ -1357,10 +1385,8 @@ def _paint_max_vol_hl_zone(
     if y1 <= y0:
         return
     md = _md(date_lab) if _ymd(date_lab) else ""
-    # 底色在K下一層（K＝zorder 3～4）
+    # 只留淺黃底，不准上下虛線（線會把區間跟K攪糊）
     ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
-    ax.axhline(y0, color="#ffeb3b", lw=1.0, ls=(0, (4, 2)), alpha=0.85, zorder=2)
-    ax.axhline(y1, color="#ffeb3b", lw=1.0, ls=(0, (4, 2)), alpha=0.85, zorder=2)
     ax.text(
         0.01,
         y1,
@@ -1387,68 +1413,93 @@ def _paint_max_vol_hl_zone(
     )
 
 
+def _hl_spans_excluding(
+    y0: float,
+    y1: float,
+    *,
+    ex_lo: Optional[float] = None,
+    ex_hi: Optional[float] = None,
+) -> List[Tuple[float, float]]:
+    """回傳 [y0,y1] 扣掉 [ex_lo,ex_hi] 後不相交的段；兩底色不准互疊。"""
+    a, b = (float(y0), float(y1)) if float(y0) <= float(y1) else (float(y1), float(y0))
+    if ex_lo is None or ex_hi is None:
+        return [(a, b)] if b > a else []
+    e0, e1 = (float(ex_lo), float(ex_hi)) if float(ex_lo) <= float(ex_hi) else (float(ex_hi), float(ex_lo))
+    if e1 <= a or e0 >= b:
+        return [(a, b)]
+    out: List[Tuple[float, float]] = []
+    if a < e0:
+        out.append((a, min(e0, b)))
+    if e1 < b:
+        out.append((max(e1, a), b))
+    return [(lo, hi) for lo, hi in out if hi > lo + 0.5]
+
+
+def _y_inside_hl(y: float, lo: Optional[float], hi: Optional[float]) -> bool:
+    """真價是否落在黃帶開區間內（標在這裡會看起來像青底仍蓋過去）。"""
+    if lo is None or hi is None:
+        return False
+    a, b = (float(lo), float(hi)) if float(lo) <= float(hi) else (float(hi), float(lo))
+    return a < float(y) < b
+
+
 def _paint_next_sr_zone(
     ax,
     *,
     support: Optional[float],
     resist: Optional[float],
     fp: Any,
-) -> None:
-    """下一撐～近壓：青色底帶（跟最大量黃帶分開）；底色亦在K下一層。"""
+    exclude_lo: Optional[float] = None,
+    exclude_hi: Optional[float] = None,
+) -> Dict[str, Optional[float]]:
+    """下一撐～近壓：青色底帶；與最大量黃帶重疊處不塗（兩底色不准互疊）。
+
+    回傳落在黃帶內、左欄故意不標的價（呼叫端可改放右欄），避免「近壓」字浮在黃底上像交疊。
+    """
+    skipped: Dict[str, Optional[float]] = {"support": None, "resist": None}
     if support is None and resist is None:
-        return
-    if support is None or resist is None:
-        # 只畫有的那一邊水平線＋標，不硬灌整段
-        for y, lab, va in (
-            (support, "下一撐", "bottom"),
-            (resist, "近壓", "top"),
-        ):
-            if y is None:
-                continue
-            ax.axhline(float(y), color="#4dd0e1", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=2)
+        return skipped
+    # 左標：真價若不在黃帶內才標；在黃帶內 → 交給右欄（不准看起來像青底蓋過黃）
+    if support is not None:
+        if _y_inside_hl(float(support), exclude_lo, exclude_hi):
+            skipped["support"] = float(support)
+        else:
             ax.text(
                 0.01,
-                float(y),
-                f"{lab} {_px(y)}",
+                float(support),
+                f"下一撐 {_px(support)}",
                 transform=ax.get_yaxis_transform(),
                 fontproperties=fp(9, "bold"),
                 color="#b2ebf2",
                 ha="left",
-                va=va,
+                va="top",
                 zorder=11,
                 bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
             )
-        return
+    if resist is not None:
+        if _y_inside_hl(float(resist), exclude_lo, exclude_hi):
+            skipped["resist"] = float(resist)
+        else:
+            ax.text(
+                0.01,
+                float(resist),
+                f"近壓 {_px(resist)}",
+                transform=ax.get_yaxis_transform(),
+                fontproperties=fp(9, "bold"),
+                color="#b2ebf2",
+                ha="left",
+                va="bottom",
+                zorder=11,
+                bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
+            )
+    if support is None or resist is None:
+        return skipped
     y0, y1 = float(support), float(resist)
     if y1 <= y0:
-        return
-    ax.axhspan(y0, y1, facecolor="#4dd0e1", alpha=0.12, zorder=0.4)
-    ax.axhline(y0, color="#4dd0e1", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=2)
-    ax.axhline(y1, color="#4dd0e1", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=2)
-    ax.text(
-        0.01,
-        y1,
-        f"近壓 {_px(y1)}",
-        transform=ax.get_yaxis_transform(),
-        fontproperties=fp(9, "bold"),
-        color="#b2ebf2",
-        ha="left",
-        va="bottom",
-        zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
-    )
-    ax.text(
-        0.01,
-        y0,
-        f"下一撐 {_px(y0)}",
-        transform=ax.get_yaxis_transform(),
-        fontproperties=fp(9, "bold"),
-        color="#b2ebf2",
-        ha="left",
-        va="top",
-        zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
-    )
+        return skipped
+    for lo, hi in _hl_spans_excluding(y0, y1, ex_lo=exclude_lo, ex_hi=exclude_hi):
+        ax.axhspan(lo, hi, facecolor="#4dd0e1", alpha=0.14, zorder=0.4)
+    return skipped
 
 
 def _paint_sr_zone_yellow(
@@ -1461,7 +1512,7 @@ def _paint_sr_zone_yellow(
     n: int,
 ) -> None:
     """相容舊名：改轉呼叫青色下一撐壓（不准再跟最大量黃帶同色）。"""
-    _paint_next_sr_zone(ax, support=support, resist=resist, fp=fp)
+    _paint_next_sr_zone(ax, support=support, resist=resist, fp=fp, exclude_lo=None, exclude_hi=None)
 
 
 def _bar_index_by_ymd(bars: Sequence[Dict[str, Any]], ymd: str) -> Optional[int]:
@@ -1517,11 +1568,12 @@ def _place_live_right_labels(
     if not items:
         return
     span = max(ymax - ymin, 1.0)
-    gap = max(span * 0.078, 520.0)
+    # 遠窗價距大：加大垂直間距，右標不准互壓
+    gap = max(span * 0.095, 680.0)
     # 結構標優先於 Fib 裝飾標
     def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
         t = str(d.get("text") or "")
-        soft = 1 if (t.startswith("Fib") or t.startswith("切")) else 0
+        soft = 1 if (t.startswith("Fib") or t.startswith("切") or t.startswith("錨")) else 0
         return (soft, -float(d["y"]))
 
     items.sort(key=_pri)
@@ -1530,8 +1582,8 @@ def _place_live_right_labels(
     for it in items:
         y0 = float(it["y"])
         t = str(it.get("text") or "")
-        soft = t.startswith("Fib") or t.startswith("切")
-        # Fib／切 真價太靠近已留結構 → 丟字（水平線若外面已畫就夠）
+        soft = t.startswith("Fib") or t.startswith("切") or t.startswith("錨")
+        # Fib／切／錨 真價太靠近已留結構 → 丟字
         if soft and any(abs(y0 - ky) < gap * 0.85 for ky in kept_ys):
             continue
         kept.append(it)
@@ -1539,48 +1591,36 @@ def _place_live_right_labels(
     # 由高到低排文字座，強制最小間距
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
-    x_text = n + 0.55
+    x_text = n + 0.7
     for it in kept:
         y_true = float(it["y"])
-        # 文字永遠離開真價線，不准騎在虛線上
-        y = y_true + gap * 0.16
+        y = y_true + gap * 0.18
         for py in placed:
             if abs(y - py) < gap:
                 y = py - gap
         y = min(max(y, ymin + gap * 0.35), ymax - gap * 0.3)
-        # 仍撞 → 再往下推一格
-        while any(abs(y - py) < gap * 0.92 for py in placed):
+        while any(abs(y - py) < gap * 0.95 for py in placed):
             y -= gap
-            if y < ymin + gap * 0.25:
+            if y < ymin + gap * 0.2:
                 break
-        # 推完仍貼真價 → 再偏一點
         if abs(y - y_true) < gap * 0.12:
-            y = y_true - gap * 0.18
+            y = y_true - gap * 0.2
+        # 最後再跟已放標檢查一次，仍撞就跳過（寧可少標不准壓）
+        if any(abs(y - py) < gap * 0.9 for py in placed):
+            continue
         placed.append(y)
         color = str(it.get("color") or _LIVE_MUTED)
         x0 = float(it.get("x", n - 1))
-        # 真價水平虛線（短）：從錨點拉到右欄；不重複滿幅 axhline（外面已畫）
-        ax.hlines(
-            y_true,
-            x0,
-            x_text - 0.35,
-            colors=color,
-            linewidth=0.75,
-            linestyles=(0, (2, 2)),
-            alpha=0.7,
+        # 短引線到右欄（實線細、短），文字用實心底
+        ax.plot(
+            [x0, x_text - 0.25],
+            [y_true, y],
+            color=color,
+            lw=0.7,
+            alpha=0.55,
             zorder=5,
+            solid_capstyle="round",
         )
-        # 文字偏離真價時：右側小豎引線，讀者對得回價位
-        if abs(y - y_true) > gap * 0.12:
-            ax.vlines(
-                x_text - 0.38,
-                min(y, y_true),
-                max(y, y_true),
-                colors=color,
-                linewidth=0.7,
-                alpha=0.65,
-                zorder=5,
-            )
         ax.text(
             x_text,
             y,
@@ -1591,7 +1631,7 @@ def _place_live_right_labels(
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=color, lw=0.55, alpha=0.94),
+            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=color, lw=0.6, alpha=0.96),
         )
 
 
@@ -2116,17 +2156,15 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # —— 中：加權價（先畫底帶在K下一層，再畫K）——
     ymin = min(min(lows), 44210, y_far_lo) - 520
     ymax = max(highs) + 780
-    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
     tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     sr = _next_support_resist(
         y_now,
         supports=(45546.0, 44210.0),
         resists=(47637.0, 48613.0, y_bhi, y5),
     )
-    # 青＝下一撐～近壓；黃＝最大量日高低；兩者底色都在K棒之下
-    _paint_next_sr_zone(
-        ax, support=sr.get("support"), resist=sr.get("resist"), fp=_fp
-    )
+    # 先黃＝最大量日高低；青＝下一撐～近壓，重疊處不塗青（兩底色不准互疊）
+    y_excl_lo = float(lows[i_vmax]) if i_vmax is not None else None
+    y_excl_hi = float(highs[i_vmax]) if i_vmax is not None else None
     if i_vmax is not None:
         _paint_max_vol_hl_zone(
             ax,
@@ -2135,10 +2173,26 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             date_lab=_ymd(bars[i_vmax].get("date")),
             fp=_fp,
         )
-    # 次撐 44210 若不是「下一撐」再細線標一次
-    if sr.get("support") != 44210.0:
-        ax.axhline(44210.0, color="#82b1ff", lw=0.8, ls=(0, (5, 3)), alpha=0.6, zorder=2)
+    sr_skip = _paint_next_sr_zone(
+        ax,
+        support=sr.get("support"),
+        resist=sr.get("resist"),
+        fp=_fp,
+        exclude_lo=y_excl_lo,
+        exclude_hi=y_excl_hi,
+    )
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
+    # 黃帶對應那一根K＝最大量日，整根改金色（不准只靠外框）
+    if i_vmax is not None:
+        _paint_special_candle(
+            ax,
+            int(i_vmax),
+            open_=float(opens[i_vmax]),
+            high=float(highs[i_vmax]),
+            low=float(lows[i_vmax]),
+            close=float(closes[i_vmax]),
+            color="#ffd54f",
+        )
     ax.axvspan(-0.4, i5 + 0.4, facecolor="#ff8a80", alpha=0.05, zorder=0.2)
     ax.axvspan(i5 + 0.4, n - 0.2, facecolor="#ea80fc", alpha=0.04, zorder=0.2)
     ax.plot([i_far_lo, i5], [y_far_lo, y5], color="#ff8a80", lw=2.35, zorder=7)
@@ -2177,13 +2231,35 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=10,
             bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.8, alpha=0.94),
         )
+    # 右欄精簡：左已有撐壓／最大量標 → 右只留⑤／B／今／次撐（若有），強制拉開不准互壓
+    # 落在黃帶內的青標改右欄（左欄不准浮在黃底上像交疊）
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B {_px(y_bhi)}", "color": "#40c4ff"},
         {"x": i_now, "y": y_now, "text": f"今 {_px(y_now)}", "color": "#ea80fc"},
-        {"x": n - 1, "y": 45546.0, "text": f"錨45546{tag_45546}", "color": "#ffab40"},
-        {"x": n - 1, "y": 44210.0, "text": f"錨44210{tag_44210}", "color": "#82b1ff"},
     ]
+    if sr_skip.get("resist") is not None:
+        right_notes.append(
+            {
+                "x": n - 1,
+                "y": float(sr_skip["resist"]),
+                "text": f"近壓 {_px(sr_skip['resist'])}",
+                "color": "#4dd0e1",
+            }
+        )
+    if sr_skip.get("support") is not None:
+        right_notes.append(
+            {
+                "x": n - 1,
+                "y": float(sr_skip["support"]),
+                "text": f"下一撐 {_px(sr_skip['support'])}",
+                "color": "#4dd0e1",
+            }
+        )
+    if sr.get("support") != 44210.0:
+        right_notes.append(
+            {"x": n - 1, "y": 44210.0, "text": f"次撐44210{tag_44210}", "color": "#82b1ff"}
+        )
     _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
     ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     ax.set_ylim(ymin, ymax)
@@ -2200,20 +2276,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         date_lab=_ymd(bars[i_vmax].get("date")) if i_vmax is not None else "",
     )
     if i_vmax is not None:
-        # 當日K外框加黃，證明與量柱同一根
-        ax.plot(
-            [i_vmax - 0.38, i_vmax + 0.38, i_vmax + 0.38, i_vmax - 0.38, i_vmax - 0.38],
-            [
-                float(lows[i_vmax]),
-                float(lows[i_vmax]),
-                float(highs[i_vmax]),
-                float(highs[i_vmax]),
-                float(lows[i_vmax]),
-            ],
-            color="#ffeb3b",
-            lw=1.35,
-            zorder=9,
-        )
         _paint_max_vol_day_guide((axu, ax, axv), i_vmax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
 
@@ -2276,7 +2338,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.952,
-        "兩種底色都在K棒下一層｜黃＝爆大量日高低｜青＝即將下一撐～近壓｜費半只對浪",
+        "兩底色不交疊｜無上下虛線｜金K＝爆大量日｜黃底＝其高低｜青底＝下一撐～近壓（重疊不塗）｜右標不准互壓",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_MUTED,
         ha="left",
