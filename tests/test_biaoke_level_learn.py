@@ -119,7 +119,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "gap * 0.078" in src or "結構優先" in src
     # 教不懂浪的學生：遠窗／近窗各一張＋外圍費半對照；缺資料自補
     assert "遠窗" in src and "近窗" in src
-    assert "20260825" in src
+    assert "20260728" in src  # 遠窗從七月底⑤起
+    assert "_sox_abc_anchors_on_axis" in src  # 遠窗下方費半自轉折
     assert "_render_twii_far_dark" in src
     assert "_render_us_compare_dark" in src
     assert "_ensure_us_index_daily" in src
@@ -132,6 +133,217 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "沒底子" in src or "白話" in src
     assert "_twii_intent_story" in src
     assert "量縮止穩" in src or "好心" in src or "套牢" in src
+    # 超級近窗：C 內小波層＋另前提才畫另色線
+    assert "_render_twii_super_near_dark" in src
+    assert "_alt_path_needed" in src
+    assert "micro_path" in src
+    assert "另前提" in src or "薄荷" in src
+    # 費半主圖：同月日軸，波浪自轉折（不准抄加權 A/B 日）
+    assert "_align_us_to_twii_dates" in src
+    assert "_sox_abc_anchors_on_axis" in src
+    assert "自轉折" in src or "不准抄" in src
+    # 超級近窗：C起自 B；幾何①②不准冒充他說；今＝只認 ≤as_of 的他文
+    assert "B高＝C起" in src
+    assert "幾何對讀" in src
+    assert "今・C進行中" in src or "不准冒充他說" in src
+    assert "_level_break_tag" in src
+    assert "as_of<=" in src or "chart_as_of" in src
+    assert "C內①②（未稱C3）" in src
+    assert "title_bit" in src or "不准寫死 C3-3" in src
+    assert "_paint_c_forecast" in src and "_c_forecast_tip" in src
+    assert "預估↓45546" in src or "預估↓44210" in src
+
+
+def test_c_forecast_tip_points_his_next_anchor():
+    from biaoke_level_learn import _c_forecast_tip
+
+    # 未破 45546：預估端指他說過的下一錨（只傳 C 段後低，不准塞 9/16 升浪低）
+    tip = _c_forecast_tip(i_now=10, y_now=46368.0, y_ref=49059.0, lows=[46055.0, 45676.0])
+    assert tip["fut_y"] == 45546.0
+    assert "45546" in tip["label"]
+    # 已破：下一錨 44210
+    tip2 = _c_forecast_tip(i_now=10, y_now=45000.0, y_ref=49059.0, lows=[44726.0])
+    assert tip2["fut_y"] == 44210.0
+    assert "44210" in tip2["label"]
+    # 低點明確破 45546 → 下一錨 44210
+    tip3 = _c_forecast_tip(
+        i_now=10, y_now=46368.0, y_ref=49059.0, lows=[45500.0, 46055.0]
+    )
+    assert tip3["fut_y"] == 44210.0
+
+
+def test_sparse_xticks_no_adjacent_crush():
+    from biaoke_level_learn import _sparse_xticks
+
+    i, l = _sparse_xticks([10, 11, 12, 20], ["10/15", "10/16", "10/17", "10/29"], min_gap=3)
+    assert i == [10, 20]
+    assert l == ["10/15", "10/29"]
+
+
+def test_next_support_resist_nearest():
+    from biaoke_level_learn import _next_support_resist
+
+    sr = _next_support_resist(
+        46368.0,
+        supports=(45546.0, 44210.0),
+        resists=(47637.0, 49059.0),
+    )
+    assert sr["support"] == 45546.0
+    assert sr["resist"] == 47637.0
+
+
+def test_far_yellow_band_is_max_vol_day_hl():
+    """遠窗黃帶＝最大量日高低；青帶＝下一撐壓；底色在K下層。"""
+    src = open("biaoke_level_learn.py", encoding="utf-8").read()
+    block = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")]
+    assert "_paint_max_vol_hl_zone" in block
+    assert "_paint_next_sr_zone" in block
+    assert "K棒下一層" in block or "K下一層" in src
+    assert "def _paint_max_vol_hl_zone" in src
+    assert "def _paint_next_sr_zone" in src
+    # 黃底對應交易日：金K標月日＋左標高低都帶日＋豎虛線
+    assert "最大量日" in src[src.index("def _paint_special_candle") : src.index("def _paint_vol_bars_max_yellow")]
+    assert "day_tag" in src[src.index("def _paint_max_vol_hl_zone") : src.index("def _hl_spans_excluding")]
+    # 右標確認後畫對應真價虛線；近窗 level_dash=False 不疊線
+    place = src[src.index("def _place_live_right_labels") : src.index("def _his_micro_degree")]
+    assert "axhline" in place
+    assert "level_dash" in place
+    assert "level_dash=False" in block or "level_dash=True" in block
+    # C進行中不准進右欄壓近壓
+    assert "c_lab_x" in block
+    assert "keep_left_of_right=True" in block
+
+
+def test_far_max_vol_day_matches_official_hl():
+    """黃底高低必須＝窗內最大量那根官方日K高低（同一交易日）。"""
+    from biaoke_level_learn import _bar_index_by_ymd, _twii_abc_anchors, _ymd
+    from biaoke_wave import _load_twii_bars
+
+    bars = _load_twii_bars("data/wayne_market.db", n=260)
+    if len(bars) < 20:
+        return
+    i0 = _bar_index_by_ymd(bars, "20260728") or _bar_index_by_ymd(bars, "20260729") or 0
+    bars = list(bars[i0:])
+    anc = _twii_abc_anchors(bars)
+    if not anc:
+        return
+    vols = [float(r.get("volume") or 0) for r in bars]
+    i_vmax = max(range(len(bars)), key=lambda i: vols[i])
+    assert _ymd(bars[i_vmax].get("date")) == "20261015"
+    assert abs(float(anc["highs"][i_vmax]) - 48382.75) < 0.5
+    assert abs(float(anc["lows"][i_vmax]) - 46795.37890625) < 0.5
+
+
+def test_hl_spans_excluding_no_overlap():
+    from biaoke_level_learn import _hl_spans_excluding, _y_inside_hl
+
+    # 青 45546～47637 扣黃 46795～48383 → 只剩 45546～46795（交疊量 0）
+    segs = _hl_spans_excluding(45546.0, 47637.0, ex_lo=46795.0, ex_hi=48383.0)
+    assert len(segs) == 1
+    assert abs(segs[0][0] - 45546.0) < 0.1
+    assert abs(segs[0][1] - 46795.0) < 0.1
+    # 完全在黃內 → 不塗
+    assert _hl_spans_excluding(47000.0, 47500.0, ex_lo=46795.0, ex_hi=48383.0) == []
+    # 青包住黃 → 上下兩段，中間不塗
+    segs2 = _hl_spans_excluding(45000.0, 49000.0, ex_lo=46795.0, ex_hi=48383.0)
+    assert len(segs2) == 2
+    assert abs(segs2[0][1] - 46795.0) < 0.1
+    assert abs(segs2[1][0] - 48383.0) < 0.1
+    # 近壓落在黃帶內 → 左標要改右欄
+    assert _y_inside_hl(47637.0, 46795.0, 48383.0) is True
+    assert _y_inside_hl(45546.0, 46795.0, 48383.0) is False
+
+
+def test_his_micro_degree_and_alt_gate():
+    from biaoke_level_learn import _alt_path_needed, _his_micro_degree
+
+    d = _his_micro_degree("目前只是C3-3-1轉C3-3-2")
+    assert d["degree"] == "C3-3-2"
+    assert "C3-3" in d["chain"]
+    assert _alt_path_needed("C3-3-2", "C3-3-1") is True
+    assert _alt_path_needed("C3-3-2", "C3-3-2") is False
+    # C／橫台 vs 幾何 C3 不准另畫
+    assert _alt_path_needed("C", "C3-3-2") is False
+
+
+def test_wave_now_ladder_big_to_small():
+    from biaoke_level_learn import _wave_now_ladder
+
+    mid = _wave_now_ladder(
+        {"thesis": "五波後下降ABC・C內橫台中繼（預估）", "chart_as_of": "20261029"}
+    )
+    assert mid["now"] == "C內橫台中繼"
+    assert "五波升完" in mid["chain"] and "C進行中" in mid["chain"]
+    assert "C3-3" not in mid["chain"]
+    deep = _wave_now_ladder(
+        {
+            "thesis": "五波後下降ABC・C內＝C3-3（1→2・預估）",
+            "snippet": "目前只是C3-3-1轉C3-3-2",
+            "chart_as_of": "20261030",
+        }
+    )
+    assert deep["now"] == "C3-3-2"
+    assert "C3-3主跌" in deep["chain"]
+    assert "他說現在：" in deep["one_line"]
+
+
+def test_sox_abc_anchors_not_copy_twii_ab():
+    """費半 A/B 用合成柱自算；不准落在加權 A/B 同索引（10/13–10/14 那兩格）。"""
+    from biaoke_level_learn import _sox_abc_anchors_on_axis
+
+    # 索引對齊加權近窗：0..；⑤＝5、加權A＝8、加權B＝9；費半A應更深（14）、B＝17
+    n = 20
+    highs = [100.0 + i for i in range(n)]
+    lows = [90.0 + i for i in range(n)]
+    closes = [95.0 + i for i in range(n)]
+    # ⑤ 高在 5
+    highs[5] = 140.0
+    # 加權式短 A/B（8/9）故意做淺，費半不該停這
+    lows[8] = 110.0
+    highs[9] = 118.0
+    # 費半真 A 更深低 + 之後反彈 B
+    lows[14] = 95.0
+    highs[17] = 120.0
+    closes[-1] = 105.0
+    sax = _sox_abc_anchors_on_axis(highs, lows, closes, i5_hint=5)
+    assert sax is not None
+    assert sax["i5"] == 5
+    assert sax["i_alow"] == 14
+    assert sax["i_bhi"] == 17
+    assert sax["i_alow"] not in (8, 9)
+    assert sax["i_bhi"] not in (8, 9)
+    assert sax["y_bhi"] < sax["y5"]
+
+
+def test_thesis_respects_chart_as_of_and_break_tag(tmp_path):
+    """圖 as_of=10/29 不准吃到 10/30 的 C3-3；45546 未破不准寫已破。"""
+    import sqlite3
+
+    from biaoke_level_learn import _latest_level_thesis, _level_break_tag, ensure_tables
+
+    db = str(tmp_path / "lvl.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_level_snaps("
+        "post_id, as_of, post_date, post_time, snippet, chart_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("p29", "20261029", "2026-10-29", "12:00", "橫台整理中繼站", "", "t"),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_level_snaps("
+        "post_id, as_of, post_date, post_time, snippet, chart_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("p30", "20261030", "2026-10-30", "09:18", "目前只是C3-3-1轉C3-3-2", "", "t"),
+    )
+    conn.commit()
+    conn.close()
+    pack = _latest_level_thesis(db, as_of="20261029")
+    assert "C3-3" not in (pack.get("thesis") or "")
+    assert "C3-3" not in (pack.get("snippet") or "")
+    assert "橫台" in (pack.get("thesis") or pack.get("snippet") or "")
+    assert _level_break_tag(45546.0, [46055.0, 45676.0, 46041.0]) == "未破"
+    assert _level_break_tag(45546.0, [44726.0]) == "已破"
 
 
 def test_twii_intent_story_trap_language():
@@ -153,16 +365,19 @@ def test_latest_teach_kit_reads_paths(tmp_path):
     far.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
     near.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
     conn = sqlite3.connect(db)
+    micro = tmp_path / "micro.png"
+    micro.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
     conn.execute(
         "INSERT INTO biaoke_open_day_paints("
-        "slot_id, as_of, thesis, far_path, near_path, us_path, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
-        ("20261030-night", "20261030", "預估在 C", str(far), str(near), "", "t"),
+        "slot_id, as_of, thesis, far_path, near_path, us_path, micro_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        ("20261030-night", "20261030", "預估在 C", str(far), str(near), "", str(micro), "t"),
     )
     conn.commit()
     conn.close()
     kit = latest_teach_kit(db)
     assert kit["far_path"] == str(far)
     assert kit["near_path"] == str(near)
+    assert kit["micro_path"] == str(micro)
     assert kit["us_path"] == ""
     assert "C" in kit["thesis"]
