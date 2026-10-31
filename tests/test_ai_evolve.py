@@ -109,6 +109,50 @@ def test_evening_desk_stays_silent_and_digest_is_separate():
     assert "notify: bool = True" in desk
     # 成交後才凍 AI倉；海選 snapshot 常在 AI 前，不准只靠按鈕才記
     assert "snapshot_ai_desk" in desk
+    # 排程推播只在有買賣時寄，不准空倉洗版
+    assert "n_buy or n_sell" in desk
+
+
+def test_winrate_job_runs_ai_desk_after_roster():
+    """AI 倉母體＝勝率買點；21:00 名單落檔後才成交（20:00 太早）。"""
+    import inspect
+
+    from main_runner import MainRunner
+
+    wr = inspect.getsource(MainRunner.run_winrate_buypoint)
+    assert "save_winrate_roster" in wr
+    assert "_run_ai_desk" in wr
+    assert "_ai_desk_has_buy_fills" in wr
+    # 落檔後立刻跑；略過重掃時也要補成交
+    assert wr.index("save_winrate_roster") < wr.rindex("_run_ai_desk")
+
+
+def test_ai_desk_has_buy_fills_gate(tmp_path):
+    from main_runner import MainRunner
+    from screen_review import ensure_ai_fills_table, persist_ai_fill
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "fills-gate.db")
+    ensure_core_schema(path)
+    ensure_ai_fills_table(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner._ai_desk_has_buy_fills("20261029") is False
+    persist_ai_fill(
+        path,
+        user_id="ai_1",
+        as_of="20261029",
+        action="BUY",
+        stock_id="6417",
+        stock_name="韋僑",
+        price=97.5,
+        shares=1000,
+        amount=97500,
+        reason="t",
+        bucket="winrate_active",
+    )
+    assert runner._ai_desk_has_buy_fills("20261029") is True
+    assert runner._ai_desk_has_buy_fills("20261030") is False
 
 
 def test_core_candidates_are_winrate_roster_hard_gate(tmp_path):

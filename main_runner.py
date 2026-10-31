@@ -2185,6 +2185,34 @@ class MainRunner:
                 ok = False
         return ok
 
+    def _ai_desk_has_buy_fills(self, as_of: str) -> bool:
+        """當日 AI 倉是否已有 BUY 成交（補跑／重開不准無限加碼）。"""
+        day = str(as_of or "").replace("-", "")[:8]
+        if not day or not self.db_path:
+            return False
+        try:
+            import sqlite3
+
+            from screen_review import ensure_ai_fills_table
+
+            ensure_ai_fills_table(self.db_path)
+            conn = sqlite3.connect(self.db_path, timeout=8.0)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT 1 FROM ai_fills
+                    WHERE action='BUY'
+                      AND REPLACE(CAST(as_of AS TEXT), '-', '')=?
+                    LIMIT 1
+                    """,
+                    (day,),
+                ).fetchone()
+                return bool(row)
+            finally:
+                conn.close()
+        except Exception:
+            return False
+
     def _run_ai_desk(
         self,
         as_of: str,
@@ -2224,14 +2252,17 @@ class MainRunner:
             for uid in uids:
                 ai = run_ai_desk(self.db_path, uid, results or {}, as_of)
                 last = ai
+                n_buy = len(ai.get("bought") or [])
+                n_sell = len(ai.get("sold") or [])
                 logger.info(
                     "AI 模擬倉 uid=%s 買進 %s 賣出 %s 候選 %s",
                     uid,
-                    len(ai.get("bought") or []),
-                    len(ai.get("sold") or []),
+                    n_buy,
+                    n_sell,
                     ai.get("candidates") or 0,
                 )
-                if notify:
+                # 排程推播只在有實際成交時寄；空倉桌面不准每次 boot／補跑洗版
+                if notify and (n_buy or n_sell):
                     bits = [ai.get("html") or ""]
                     if ai.get("bought"):
                         bits.append("<b>AI 模擬本次買進</b>\n" + "\n".join(ai["bought"]))
@@ -3189,14 +3220,35 @@ class MainRunner:
                 return True
             # 舊鍵 winrate-{as_of} 或掃版本未對齊藍▲ → 不略過，重掃並可再推。
             if status == "success" and roster_is_current(self.db_path, as_of):
-                logger.info("勝率買點 %s 已寄過且名單現行，略過。", key)
+                # 20:00 晚間 AI 早於 21:00 名單 → 常吃空母體；補跑只在當日尚無 BUY 時成交一次
+                if not self._ai_desk_has_buy_fills(as_of):
+                    logger.info(
+                        "勝率買點 %s 已寄過且名單現行；AI 倉當日尚無成交→補跑（有買賣才推）。",
+                        key,
+                    )
+                    try:
+                        self._run_ai_desk(as_of, results={}, notify=bool(notify))
+                    except Exception as e:
+                        logger.warning("勝率已寄後 AI 模擬倉略過：%s", e)
+                else:
+                    logger.info("勝率買點 %s 已寄過且名單現行，AI 倉當日已有成交，略過。", key)
                 return True
             # 當日已寄過、僅掃版失效→重掃刷新名單，不准再推一次（避免換鍵當夜洗版）
             if status == "success" and notify and not roster_is_current(self.db_path, as_of):
                 notify = False
                 logger.info("勝率買點 %s 已寄過但名單非現行→重掃不重寄", key)
             if status == "computed" and not notify and roster_is_current(self.db_path, as_of):
-                logger.info("勝率買點 %s 已算出（不寄），略過。", key)
+                if not self._ai_desk_has_buy_fills(as_of):
+                    logger.info(
+                        "勝率買點 %s 已算出（不寄）；AI 倉當日尚無成交→補跑。",
+                        key,
+                    )
+                    try:
+                        self._run_ai_desk(as_of, results={}, notify=False)
+                    except Exception as e:
+                        logger.warning("勝率 computed 後 AI 模擬倉略過：%s", e)
+                else:
+                    logger.info("勝率買點 %s 已算出（不寄），AI 倉當日已有成交，略過。", key)
                 return True
         if not as_of:
             logger.error("無完整交易日可寫勝率買點")
@@ -3217,6 +3269,15 @@ class MainRunner:
             silent_remember_roster(self.db_path, as_of, rows)
         except Exception:
             logger.debug("勝率買點靜默落檔略過", exc_info=True)
+        # AI 倉母體＝勝率買點；必須等名單落檔後才成交（20:00 晚間太早）。
+        # 當夜重掃若已有 BUY 不再打第二輪（防抄底無限加碼）；notify 有買賣才寄。
+        if not self._ai_desk_has_buy_fills(as_of):
+            try:
+                self._run_ai_desk(as_of, results={}, notify=bool(notify))
+            except Exception as e:
+                logger.warning("勝率名單後 AI 模擬倉略過：%s", e)
+        else:
+            logger.info("勝率名單已落檔但 AI 倉 as_of=%s 已有成交，略過再買", as_of)
         # 建議哪檔過閘篩：推播臉用 paint；roster 落檔仍是完整 AI leave_zero
         push_rows = rows
         try:
