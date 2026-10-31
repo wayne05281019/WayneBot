@@ -416,10 +416,10 @@ def test_page_slice_and_callback():
     assert EMPTY_MSG in header_html("20260930", 0)
     titled = header_html("20261016", 3, mode="full", offset=0)
     assert "leave_zero" not in titled
-    assert "盤後剛離零（藍▲紅框）" in titled
+    assert "剛離零建議篩後（藍▲紅框）" in titled
     filtered = header_html("20261016", 3, mode="filter", offset=0)
     assert "leave_zero" not in filtered
-    assert "隔日盤中篩" in filtered
+    assert "隔日盤中篩・建議篩後" in filtered
 
 
 def test_pair_gap_html_only_when_both_charts_missing_and_not_last():
