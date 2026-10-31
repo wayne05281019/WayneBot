@@ -138,13 +138,15 @@ def test_lookup_sends_four_photos_card_glance_struct_vol():
     assert "ensure_official_volume_window" in src
     assert "volfill" in src
     assert "glance_queued" in src
+    assert "struct_queued" in src
     assert "vol_queued" in src
     vol_at = src.find("vol_task = asyncio.create_task(_vol_item())")
     intrad_at = src.find("intrad_task = asyncio.create_task(_intraday_item())")
     struct_await = src.find("struct_item = await struct_task")
     assert vol_at > 0 and struct_await > 0
-    assert vol_at < struct_await
+    assert vol_at < struct_await  # task 可早開；paint 等 struct_queued
     assert intrad_at > vol_at
+    assert "struct_queued.wait()" in src or "struct_queued.wait" in src
     assert "kind=kind" in src
     # 不准把決策卡還原 ohlc 當撐壓柱
     assert "already_normalized=True" not in src
@@ -403,17 +405,18 @@ def _assert_2233_spike_zone(zone: dict, st: dict) -> None:
     assert str(st["spike_date"]).replace("-", "")[:8] == spike
     assert abs(float(st["spike_high"]) - float(zone["high"])) < 0.51
     assert abs(float(st["spike_low"]) - float(zone["low"])) < 0.51
-    # 08/25（173／157.5）→出窗 08/26（177／163.5）→再滾 10/29 近窗最大 08/27（179.5／172）
-    assert spike in ("20260825", "20260826", "20260827"), spike
-    if spike == "20260825":
-        assert abs(float(zone["high"]) - 173.0) < 0.51
-        assert abs(float(zone["low"]) - 157.5) < 0.51
-    elif spike == "20260826":
-        assert abs(float(zone["high"]) - 177.0) < 0.51
-        assert abs(float(zone["low"]) - 163.5) < 0.51
-    else:
-        assert abs(float(zone["high"]) - 179.5) < 0.51
-        assert abs(float(zone["low"]) - 172.0) < 0.51
+    # 近窗 lookback=40 滾動：爆大量日會換；結構／大量區必須同日同高低。
+    # 08/25→08/26→08/27→09/30（CI Release 新柱後 08/27 出窗）
+    assert spike in ("20260825", "20260826", "20260827", "20260930"), spike
+    expect = {
+        "20260825": (173.0, 157.5),
+        "20260826": (177.0, 163.5),
+        "20260827": (179.5, 172.0),
+        "20260930": (171.0, 165.0),
+    }
+    hi, lo = expect[spike]
+    assert abs(float(zone["high"]) - hi) < 0.51
+    assert abs(float(zone["low"]) - lo) < 0.51
 
 
 def test_structure_spike_matches_vol_zone_for_2233():

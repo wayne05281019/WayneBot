@@ -21,7 +21,7 @@ def _png(td: str, name: str) -> str:
 
 
 class LookupHubLastCardOnlyTests(TestCase):
-    def test_hub_markup_only_on_vol_photo(self):
+    def test_hub_markup_only_on_intraday_photo(self):
         td = tempfile.mkdtemp()
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         bot.db_path = os.path.join(td, "x.db")
@@ -129,8 +129,8 @@ class LookupHubLastCardOnlyTests(TestCase):
         self.assertIsNone(by_kind["card"])
         self.assertIsNone(by_kind["glance"])
         self.assertIsNone(by_kind["struct"])
-        self.assertIs(by_kind["vol"], hub)
-        self.assertIsNone(by_kind["intraday"])
+        self.assertIsNone(by_kind["vol"])
+        self.assertIs(by_kind["intraday"], hub)
 
     def test_source_does_not_reattach_hub_on_mid_cards(self):
         import inspect
@@ -138,6 +138,19 @@ class LookupHubLastCardOnlyTests(TestCase):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         # 舊 bug：介紹用 markup or hub 會把 None 又變回 hub
         self.assertNotIn("markup or hub", src)
-        self.assertIn('send_photo(prep or path, caption, hub, kind=kind)', src)
-        # 結構／介紹／當天走勢必須顯式 None
-        self.assertGreaterEqual(src.count("caption, None, kind=kind"), 3)
+        # 完整鍵盤只掛第 5 張（hub_mk=hub）；前四張走 _send_kind_item 預設 hub_mk=None
+        self.assertIn("hub_mk=hub", src)
+        self.assertIn("_send_kind_item", src)
+        self.assertGreaterEqual(src.count("retry_label=\"第"), 4)
+
+    def test_source_vol_waits_struct_and_reports_mid_miss(self):
+        """大量區不准搶介紹／結構 paint；缺圖（含高低卡）要明示。"""
+        import inspect
+
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("struct_queued", src)
+        self.assertIn("struct_queued.wait()", src)
+        self.assertIn("缺：", src)
+        self.assertIn("miss_core", src)
+        self.assertIn("_await_lookup_paint", src)
+        self.assertIn("asof_ymd=asof or None", src)

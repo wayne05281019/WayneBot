@@ -30,6 +30,22 @@ logger = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Taipei")
 ASOF_YMD = "20261029"
 
+
+# 頭欄（股名／產業／日期戳／現價）不准放大。
+# 十二宮格＝A(+30%)；走勢圖內標籤＝B(+50%)。格框／圖區尺寸不變。
+_GRID_FS_SCALE = 1.30
+_CHART_LABEL_FS_SCALE = 1.50
+
+
+def _grid_fs(size: float) -> float:
+    """十二宮格／底列字級（使用者鎖 A＝+30%）。"""
+    return float(size) * float(_GRID_FS_SCALE)
+
+
+def _chart_label_fs(size: float) -> float:
+    """走勢圖內標籤／軸刻度字級（使用者鎖 B＝+50%）。"""
+    return float(size) * float(_CHART_LABEL_FS_SCALE)
+
 PREVIEW_SYMBOLS: Tuple[Tuple[str, str, str], ...] = (
     ("3595", "山太士", "EM"),
     ("7853", "政美應用", "EM"),
@@ -899,7 +915,10 @@ def _rects_overlap(
 def _estimate_label_rect(
     cx: float, cy: float, text: str, *, fs: float, x_span: float, y_span: float, kind: str
 ) -> Tuple[float, float, float, float]:
-    """粗估標盒（資料座標）。dot＝實心原點；chip＝舊雙行圓章；full＝完整標。"""
+    """粗估標盒（資料座標）。dot＝實心原點；chip＝舊雙行圓章；full＝完整標。
+
+    full 佔位隨字級放大（B＝+50% 時不准低估，否則會壓到股價刻度／折線）。
+    """
     n = max(len(text), 1)
     if kind == "dot":
         # 實心原點：極小佔位
@@ -909,9 +928,31 @@ def _estimate_label_rect(
         half_x = max(x_span * 0.028, 6.5)
         half_y = max(y_span * 0.028, abs(cy) * 0.0045, 1.2)
     else:
-        half_x = max(x_span * (0.018 + 0.007 * min(n, 14)), 10.0)
-        half_y = max(y_span * (0.022 + 0.001 * max(fs - 8.0, 0)), abs(cy) * 0.0035, 1.0)
+        # 基準約 8.5pt；字級變大 → 盒變大（與 _chart_label_fs 同軌）
+        fs_boost = max(float(fs) / 8.5, 1.0)
+        half_x = max(x_span * (0.018 + 0.007 * min(n, 14)), 10.0) * fs_boost
+        half_y = max(
+            y_span * (0.022 + 0.0015 * max(float(fs) - 8.0, 0)),
+            abs(cy) * 0.0035,
+            1.0,
+        ) * fs_boost
     return (cx - half_x, cx + half_x, cy - half_y, cy + half_y)
+
+
+def _y_price_tick_band(
+    ax, *, x_span: float, y_span: float
+) -> Tuple[float, float, float, float]:
+    """左側股價區間刻度禁區（資料座標）：智能完整標不准壓進此帶。
+
+    刻度在外框內、軸左 gutter（完整可讀，不准被框線切字）；禁區＝整條左欄。
+    """
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    pad = max(0.0, -float(x0))
+    # 右緣≈開盤；整條左 gutter 留給刻度，智能標不准進來
+    clear_x1 = float(x0) + max(pad, float(x_span) * 0.045, 10.0)
+    clear_x1 = min(clear_x1, float(x_span) * 0.07)
+    return (float(x0), float(clear_x1), float(y0), float(y1))
 
 
 def _path_hits_rect(
@@ -1129,6 +1170,10 @@ def _paint_smart_level_labels(
         for short, full, ax_, ay_, ck, lp in anchors
     ]
 
+    # 股價區間刻度禁區（main #737）：完整標不准壓左欄刻度
+    tick_band = _y_price_tick_band(ax, x_span=x_span, y_span=y_span)
+    tick_clear_x = float(tick_band[1])
+
     import numpy as np
 
     ya_arr = np.asarray(ys, dtype=float)
@@ -1180,7 +1225,7 @@ def _paint_smart_level_labels(
             late.append((cx, cy))
         return primary + flip + late
 
-    occupied: List[Tuple[float, float, float, float]] = []
+    occupied: List[Tuple[float, float, float, float]] = [tick_band]
     used_connectors: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
     placed_meta: List[Dict[str, Any]] = []
     path_pad = y_span * 0.014
@@ -1197,7 +1242,7 @@ def _paint_smart_level_labels(
             axp, chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
         )
         _ = idx
-        full_fs_options = (9.5, 8.5, 7.5, 7.0)
+        full_fs_options = tuple(_chart_label_fs(x) for x in (9.5, 8.5, 7.5, 7.0))
         chosen: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
         cands = _offset_cands(axp, chip_ay, side_up=prefer_side_up)
         for full_fs in full_fs_options:
@@ -1206,15 +1251,20 @@ def _paint_smart_level_labels(
                     continue
                 if not (y0 + y_span * 0.03 <= ly <= y1 - y_span * 0.03):
                     continue
+                # 完整標中心至少在刻度禁區右側
+                if lx < tick_clear_x + x_span * 0.02:
+                    continue
                 # 標盒必須離線：空白處；貼線／壓線淘汰
                 dist = ((lx - axp) ** 2 + ((ly - chip_ay) / max(y_span / x_span, 1e-6)) ** 2) ** 0.5
-                if dist > x_span * 0.34:
+                if dist > x_span * 0.40:
                     continue
                 if abs(ly - chip_ay) < y_span * 0.035 and abs(lx - axp) < x_span * 0.06:
                     continue  # 太貼錨＝像壓在線上
                 rect = _estimate_label_rect(
                     lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                 )
+                if rect[0] < tick_clear_x:
+                    continue
                 if any(_rects_overlap(rect, o, pad=box_pad) for o in occupied):
                     continue
                 if _rects_overlap(rect, chip_rect, pad=box_pad):
@@ -1229,7 +1279,7 @@ def _paint_smart_level_labels(
                 break
 
         if chosen is None:
-            full_fs = 7.0
+            full_fs = _chart_label_fs(7.0)
             fallback = None
             best_pen = 1e18
             hard_ok = None
@@ -1239,11 +1289,13 @@ def _paint_smart_level_labels(
                         0.0, y_span * 0.10, -y_span * 0.10, y_span * 0.16, -y_span * 0.16,
                         y_span * 0.22, -y_span * 0.22,
                     ):
-                        lx2 = min(max(lx + extra_dx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                        lx2 = min(max(lx + extra_dx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
                         ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
                         rect = _estimate_label_rect(
                             lx2, ly2, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                         )
+                        if rect[0] < tick_clear_x:
+                            continue
                         ov = sum(1 for o in occupied if _rects_overlap(rect, o, pad=box_pad * 0.5))
                         ph = 1 if _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.5) else 0
                         cr = 1 if _connector_crosses_any(
@@ -1262,6 +1314,19 @@ def _paint_smart_level_labels(
                 if hard_ok is not None:
                     break
             chosen = hard_ok if hard_ok is not None else fallback
+            if chosen is None:
+                # 必要位階標不准省略：貼刻度禁區右側淨空
+                lx = min(max(axp + x_span * 0.14, tick_clear_x + x_span * 0.04), x1 - x_span * 0.04)
+                ly = min(max(chip_ay + (y_span * 0.10 if prefer_side_up else -y_span * 0.10), y0 + y_span * 0.05), y1 - y_span * 0.05)
+                rect = _estimate_label_rect(
+                    lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+                )
+                if rect[0] < tick_clear_x:
+                    lx = tick_clear_x + (rect[1] - rect[0]) * 0.55
+                    rect = _estimate_label_rect(
+                        lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+                    )
+                chosen = (lx, ly, full_fs, rect)
 
         assert chosen is not None
         lx, ly, full_fs, full_rect = chosen
@@ -1299,7 +1364,7 @@ def _paint_smart_level_labels(
             float(ex), chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
         )
         # 事件同主側同角；急殺若黏撐才允許翻邊候選（已在 cands 後段）
-        full_fs_options = (9.0, 8.0, 7.5, 7.0) if is_kill else (9.5, 8.5, 7.5, 7.0)
+        full_fs_options = tuple(_chart_label_fs(x) for x in ((9.0, 8.0, 7.5, 7.0) if is_kill else (9.5, 8.5, 7.5, 7.0)))
         chosen_e: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
         cands = _offset_cands(float(ex), float(ey), side_up=prefer_side_up)
         if is_kill and support_ys:
@@ -1358,7 +1423,7 @@ def _paint_smart_level_labels(
             if chosen_e is not None:
                 break
         if chosen_e is None:
-            full_fs = 7.0
+            full_fs = _chart_label_fs(7.0)
             best_pen = 1e18
             fallback_e = None
             hard_ok_e = None
@@ -1369,8 +1434,10 @@ def _paint_smart_level_labels(
                 extra_cands = [
                     (ex + x_span * 0.18, ey + v * y_span * 0.16),
                     (ex - x_span * 0.18, ey + v * y_span * 0.16),
-                    (x0 + x_span * 0.12, ey + v * y_span * 0.18),
+                    (tick_clear_x + x_span * 0.08, ey + v * y_span * 0.18),
                     (x1 - x_span * 0.12, ey + v * y_span * 0.18),
+                    (ex + x_span * 0.22, y1 - y_span * 0.08),
+                    (ex - x_span * 0.22, y1 - y_span * 0.08),
                 ] + extra_cands
             for lx, ly in extra_cands:
                 for extra_dy in (0.0, y_span * 0.14, y_span * 0.22, -y_span * 0.10, -y_span * 0.18):
@@ -1735,6 +1802,7 @@ def _paint_smart_level_labels(
     return gate
 
 
+
 def _bars_hit_rect(
     xs,
     bar_tops,
@@ -1823,7 +1891,7 @@ def _paint_vol_ratio_smart(
     cands: List[Tuple[float, float]] = [(x, y) for y in top_band for x in x_opts]
     chosen = None
     # v15：量％字級≤事件標；不准大色塊
-    for full_fs in (8.0, 7.5, 7.0, 6.5):
+    for full_fs in tuple(_chart_label_fs(x) for x in (8.0, 7.5, 7.0, 6.5)):
         for lx, ly in cands:
             lx = min(max(lx, x0 + x_span * 0.04), x1 - x_span * 0.04)
             ly = min(max(ly, clear_y0), y1 - y_span * 0.12)
@@ -1843,7 +1911,7 @@ def _paint_vol_ratio_smart(
     if chosen is None:
         for lx in (x0 + x_span * 0.08, x1 - x_span * 0.08, x0 + x_span * 0.5):
             ly = max(clear_y0 + y_span * 0.02, y1 - y_span * 0.18)
-            full_fs = 7.0
+            full_fs = _chart_label_fs(7.0)
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
@@ -1859,7 +1927,7 @@ def _paint_vol_ratio_smart(
         if chosen is None:
             lx = x1 - x_span * 0.08
             ly = min(max(clear_y0 + y_span * 0.05, y1 - y_span * 0.16), y1 - y_span * 0.12)
-            full_fs = 6.5
+            full_fs = _chart_label_fs(6.5)
             rect = _estimate_label_rect(
                 lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
             )
@@ -2191,7 +2259,8 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
     cell_w = (width - gap_x * (cols - 1)) / cols
     edge = "#9AA0A6"
     lab_col = "#3A3A3A"
-    lab_fs, val_fs, sub_fs = 9.5, 13.0, 9.0  # v15：主數字略增，縮圖第二層可讀
+    # 格框尺寸不變；只放大格內國字／數字（頭欄不准吃這條）
+    lab_fs, val_fs, sub_fs = _grid_fs(9.5), _grid_fs(13.0), _grid_fs(9.0)
     for i, (lab, val, col, sub, side) in enumerate(cells):
         r, c = divmod(i, cols)
         x = pad_x + c * (cell_w + gap_x)
@@ -2214,7 +2283,7 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
         if sub and side:
             # v14：主數字與 +張／+％ 左右並排（一例：4,285張  +3,172張）
             line = f"{val}  {sub}"
-            fs = val_fs if len(line) <= 16 else max(8.5, val_fs - 1.5)
+            fs = val_fs if len(line) <= 16 else max(_grid_fs(8.5), val_fs - _grid_fs(1.5))
             quote_ax.text(
                 x + cell_w * 0.5, y + cell_h * 0.30, line,
                 fontproperties=fp(fs, True), color=col, ha="center", va="center",
@@ -2233,7 +2302,7 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
             )
         else:
             # 長主文（如「約7.0倍均量」）略縮字，免頂格
-            vfs = val_fs if len(str(val)) <= 8 else max(9.5, val_fs - 2.5)
+            vfs = val_fs if len(str(val)) <= 8 else max(_grid_fs(9.5), val_fs - _grid_fs(2.5))
             quote_ax.text(
                 x + cell_w * 0.5, y + cell_h * 0.30, val,
                 fontproperties=fp(vfs, True), color=col, ha="center", va="center",
@@ -2243,7 +2312,7 @@ def _paint_quote_grid(quote_ax, off: OfficialDay) -> Dict[str, Any]:
         quote_ax.text(
             pad_x, 0.028,
             "註：興櫃開＝前日均價，可高於當日最高",
-            fontproperties=fp(9.5, False), color=MUTE, ha="left", va="bottom",
+            fontproperties=fp(_grid_fs(9.5), False), color=MUTE, ha="left", va="bottom",
             zorder=3, clip_on=False,
         )
     quote_ax.set_xlim(0, 1)
@@ -2294,7 +2363,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
         """收／開標貼在條**上方標題帶**，不垂到下一列。"""
         fig.text(
             mx, yb + bar_h + 0.003, text,
-            fontproperties=fp(10, True), color=INK, ha=ha, va="bottom",
+            fontproperties=fp(_grid_fs(10), True), color=INK, ha=ha, va="bottom",
             transform=fig.transFigure, zorder=z + 1,
             bbox=dict(boxstyle="square,pad=0.14", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.8),
         )
@@ -2302,7 +2371,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     # —— 1) 量能：標題＋季均／當日全在條上方；條下空白給列縫（FAIL#1/#3） ——
     fig.text(
         left, y + bar_h + 0.003, "量能",
-        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     q_txt = (
@@ -2312,12 +2381,12 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     )
     fig.text(
         left + 0.055, y + bar_h + 0.003, q_txt,
-        fontproperties=fp(10, False), color="#3A3A3A", ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(10), False), color="#3A3A3A", ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         right, y + bar_h + 0.003, f"當日 {_fmt_lots(off.volume_lots)}",
-        fontproperties=fp(11, True), color=INK, ha="right", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="right", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.patches.append(
@@ -2345,17 +2414,17 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     open_f = (off.open - off.low) / span if open_in else None
     fig.text(
         left, y + bar_h + 0.003, "今日區間",
-        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         left + 0.078, y + bar_h + 0.003, f"日低 {_fmt_face(off.low)}",
-        fontproperties=fp(11, True), color=DN, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=DN, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         right, y + bar_h + 0.003, f"日高 {_fmt_face(off.high)}",
-        fontproperties=fp(11, True), color=UP, ha="right", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=UP, ha="right", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.patches.append(
@@ -2412,17 +2481,17 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     last_f52 = (off.close - w_lo) / span52
     fig.text(
         left, y + bar_h + 0.003, "52週",
-        fontproperties=fp(11, True), color=INK, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=INK, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         left + 0.048, y + bar_h + 0.003, f"低 {_fmt_face(w_lo)}",
-        fontproperties=fp(11, True), color=DN, ha="left", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=DN, ha="left", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.text(
         right, y + bar_h + 0.003, f"高 {_fmt_face(w_hi)}",
-        fontproperties=fp(11, True), color=UP, ha="right", va="bottom",
+        fontproperties=fp(_grid_fs(11), True), color=UP, ha="right", va="bottom",
         transform=fig.transFigure, zorder=z,
     )
     fig.patches.append(
@@ -2447,7 +2516,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
         fig.text(
             min(tick_x + 0.012, left + width * 0.28), y + bar_h + 0.003,
             f"收 {_fmt_face(off.close)}",
-            fontproperties=fp(9.5, True), color=INK, ha="left", va="bottom",
+            fontproperties=fp(_grid_fs(9.5), True), color=INK, ha="left", va="bottom",
             transform=fig.transFigure, zorder=z + 1,
             bbox=dict(boxstyle="square,pad=0.12", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.7),
         )
@@ -2455,7 +2524,7 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
         fig.text(
             max(tick_x - 0.012, left + width * 0.72), y + bar_h + 0.003,
             f"收 {_fmt_face(off.close)}",
-            fontproperties=fp(9.5, True), color=INK, ha="right", va="bottom",
+            fontproperties=fp(_grid_fs(9.5), True), color=INK, ha="right", va="bottom",
             transform=fig.transFigure, zorder=z + 1,
             bbox=dict(boxstyle="square,pad=0.12", facecolor=PAPER, edgecolor="#9AA0A6", linewidth=0.7),
         )
@@ -2539,14 +2608,14 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     frame_w = float(_STRUCTURE_BOX_W)  # 96.6 → 右緣 98.2
     frame_left = frame_x / 100.0  # 0.016
     frame_right = (frame_x + frame_w) / 100.0  # 0.982
-    # v19：軸左緣貼外框內側（刻度靠緊左框）；右緣仍吃滿
+    # 軸左緣貼外框內側；股價刻度畫在框內左 gutter（完整可讀，不准被框線切字）
     # 舊 right_f=_STRUCTURE_FIG_RIGHT=0.905 → 右側大塊空白；改貼近 frame_right
     left_f = frame_left + 0.004  # ≈0.020；框內僅留一線縫
     right_f = frame_right - 0.008  # ≈0.974
     assert left_f > frame_left and right_f < frame_right
-    assert (right_f - left_f) >= 0.93, "價／量縮圖區寬度不夠"
-    # 開盤路徑右移：資料左緣負向 pad，讓 x=0（開）落在刻度字右側（線不准壓字）
-    x_label_pad = max(float(x_end) * 0.125, 30.0)  # 分钟；約軸寬 11–12.5% 給刻度字，線不准壓字
+    assert (right_f - left_f) >= 0.90, "價／量縮圖區寬度不夠"
+    # 左 gutter 夠 58／59／60 完整入框（離框線有呼吸）；開盤在刻度右側（舊 12% 太空）
+    x_label_pad = max(float(x_end) * 0.06, 14.0)  # 分钟；約軸寬 6%
     # v14：時間戳旁黑標 → 頭欄變矮 → 十二格上移 → 價圖加高（智能標不擠）
     bars_top = 0.195
     xlab_bot = 0.205
@@ -2617,9 +2686,19 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         align="left", size=12,
     )
     try:
-        date_part = format_ymd_slash_weekday(ASOF_YMD)
+        # 戳＝這張圖真路徑日（series.times），不准寫死模組常數 ASOF_YMD（會把今天圖標成昨天）
+        _stamp_ymd = ""
+        if times:
+            _t0 = times[0]
+            if getattr(_t0, "tzinfo", None) is None:
+                _t0 = _t0.replace(tzinfo=TZ)
+            else:
+                _t0 = _t0.astimezone(TZ)
+            _stamp_ymd = _t0.strftime("%Y%m%d")
+        date_part = format_ymd_slash_weekday(_stamp_ymd or ASOF_YMD)
     except Exception:
-        date_part = f"{ASOF_YMD[:4]}/{ASOF_YMD[4:6]}/{ASOF_YMD[6:8]}"
+        _fb = _stamp_ymd if "_stamp_ymd" in locals() and _stamp_ymd else ASOF_YMD
+        date_part = f"{_fb[:4]}/{_fb[4:6]}/{_fb[6:8]}" if len(_fb) == 8 else str(_fb)
     stamp = f"{date_part} {board_close_clock_label(emerging=is_em)}".strip()
     stamp_x = float(chip_end) + 1.35
     # 防撞右上價區：最多貼到 spot 左緩衝
@@ -2729,8 +2808,10 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         lo = min(lo, float(off.avg_price))
     pad = max((hi - lo) * 0.10, abs(prev) * 0.002, 0.5)
     ax.set_ylim(lo - pad, hi + pad)
-    # v20：價／量強制同一 xlim（左 pad 讓刻度字；右＝session x_end）
+    # v20：價／量強制同一 xlim；開盤貼左（刻度在軸外），右＝session x_end
     x_lim = (-float(x_label_pad), float(x_end))
+    ax.set_xmargin(0.0)
+    vol_ax.set_xmargin(0.0)
     ax.set_xlim(*x_lim)
     vol_ax.set_xlim(*x_lim)
     # 線尾＝最後真分時（densify 已不尾延）；硬閘不准畫過 x_end
@@ -2867,32 +2948,34 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         for sp in a.spines.values():
             sp.set_visible(False)
         a.grid(True, axis="both", color=RULE, linewidth=0.7, zorder=0)
-    # v19：Y 刻度貼左框內側；路徑已用 x_label_pad 右移，字與線分離
-    import matplotlib.transforms as mtransforms
-
+    # Y 刻度：資料座標畫在左 gutter 內（外框內），整字可讀，不准被框線切到「59」的 5
     ax.tick_params(
-        axis="y", colors=MUTE, length=2.4, labelsize=10,
+        axis="y", colors=MUTE, length=2.0, labelsize=_grid_fs(10),
         direction="in", left=True, labelleft=False, right=False, labelright=False,
     )
     # 時間標：xlab 專帶（bars_top 之上、vol_bot 之下）；09／15 完整（FAIL#1/#2）
     ax.set_xticklabels([])
     vol_ax.set_xticklabels([])
-    y_trans = mtransforms.blended_transform_factory(ax.transAxes, ax.transData)
     y0, y1 = ax.get_ylim()
+    x_left, x_right = ax.get_xlim()
+    # 刻度錨在 gutter 內，離左框線約 gutter 40%（整字入框，免「59」的 5 被切）
+    tick_x = float(x_left) + max((-float(x_left)) * 0.40, 4.0)
     for yv in ax.get_yticks():
         if not (y0 < float(yv) < y1):
             continue
-        # 整數價免小數；其餘跟 face 一致
+        # 整數價免小數；其餘跟 face 一致（左欄區間字＝A；智能標＝B 且不准壓）
         txt = f"{yv:.0f}" if abs(float(yv) - round(float(yv))) < 1e-6 else _fmt_face(float(yv))
         ax.text(
-            0.004, float(yv), txt,  # 貼軸左＝貼外框內側
-            transform=y_trans, ha="left", va="center",
-            fontproperties=fp(10, False), color=MUTE, zorder=6, clip_on=True,
+            tick_x, float(yv), txt,
+            ha="left", va="center",
+            fontproperties=fp(_grid_fs(10), False), color=MUTE,
+            zorder=36, clip_on=False,
         )
     vol_ax.set_yticks([])
     vol_ax.text(
-        0.004, 0.90, "量(張)", transform=vol_ax.transAxes,
-        fontproperties=fp(10, False), color=MUTE, va="top", ha="left",
+        0.018, 0.90, "量(張)", transform=vol_ax.transAxes,
+        fontproperties=fp(_grid_fs(10), False), color=MUTE,
+        va="top", ha="left", zorder=36, clip_on=False,
     )
 
     # 底三條：左／右對齊共線外框（v8 用 left_f～0.82 與框錯位）
@@ -2923,7 +3006,7 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
             ha = "center"
         fig.text(
             xf, xlab_y, tlab,
-            fontproperties=fp(11 if ":" in tlab else 12, True), color="#3A3A3A",
+            fontproperties=fp(_chart_label_fs(11 if ":" in tlab else 12), True), color="#3A3A3A",
             ha=ha, va="center",
             transform=fig.transFigure, clip_on=False, zorder=35,
         )
@@ -3001,7 +3084,7 @@ def _paint_sparse_marks(ax, series: PathSeries, xs, ys, prev: float) -> None:
         # 事件標加大（交叉必改 3.1 ≈28–32px @200dpi → ~11.5–12pt）
         ax.annotate(
             lab, xy=(x, y), xytext=(ox, oy), textcoords="offset points",
-            fontproperties=fp(12, True), color=INK,
+            fontproperties=fp(_chart_label_fs(12), True), color=INK,
             bbox=dict(boxstyle="square,pad=0.32", facecolor="#FFF8E7", edgecolor=col, linewidth=1.15),
             arrowprops=dict(arrowstyle="-", color=col, lw=0.85, shrinkA=0, shrinkB=2),
             zorder=7,
@@ -3109,6 +3192,61 @@ def resolve_intraday_asof_ymd(
         return today
 
 
+def prepare_lookup_intraday_series(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: Optional[str] = None,
+    *,
+    market: Optional[str] = None,
+    asof_ymd: Optional[str] = None,
+    card: Optional[Dict[str, Any]] = None,
+    hits: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Tuple[Optional[Any], str, str]:
+    """查股第 5 張：paint 外抓真分時（可與 1–4 張重疊）。回 (series, ymd, market)。
+
+    無真路徑 → (None, ymd, market)。不准假延長。
+    """
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return None, "", ""
+    path_db = db_path or os.path.join(_ROOT, "data", "wayne_market.db")
+    name = str(stock_name or "").strip()
+    if not name and isinstance(card, dict):
+        name = str(card.get("stock_name") or card.get("name") or "").strip()
+    if not name:
+        name = sid
+    mkt = str(market or "").strip().upper()
+    if mkt not in ("TW", "TWO", "EM"):
+        mkt = resolve_intraday_market(sid, path_db, hits=hits, card=card)
+    prefer = str(asof_ymd or "").strip().replace("-", "")[:8]
+    if len(prefer) != 8 or not prefer.isdigit():
+        prefer = ""
+        if isinstance(card, dict):
+            prefer = str(
+                card.get("latest_date") or card.get("as_of") or ""
+            ).replace("-", "")[:8]
+            if len(prefer) != 8 or not prefer.isdigit():
+                prefer = ""
+    ymd = resolve_intraday_asof_ymd(path_db, prefer=prefer or None)
+    series = build_series(sid, name, mkt, db_path=path_db, ymd=ymd)
+    if series is None and not prefer:
+        # 沒有高低卡指定日才准退前一開市日；有指定日就跟卡走，不准默默換日戳
+        try:
+            from tw_holidays import previous_tw_trading_day
+
+            prev = previous_tw_trading_day(ymd, path_db)
+        except Exception:
+            prev = ""
+        if prev and prev != ymd:
+            series = build_series(sid, name, mkt, db_path=path_db, ymd=prev)
+            ymd = prev or ymd
+    if series is None:
+        logger.info(
+            "查股當天走勢無真路徑 code=%s market=%s ymd=%s", sid, mkt, ymd
+        )
+    return series, ymd, mkt
+
+
 def render_lookup_intraday_result(
     stock_id: str,
     stock_name: str = "",
@@ -3120,10 +3258,14 @@ def render_lookup_intraday_result(
     card: Optional[Dict[str, Any]] = None,
     hits: Optional[Sequence[Dict[str, Any]]] = None,
     live_quote: Optional[Dict[str, Any]] = None,  # noqa: ARG001 — 預留；路徑仍只認真分時
+    series: Optional[Any] = None,
+    series_ymd: Optional[str] = None,
+    series_market: Optional[str] = None,
 ) -> Tuple[str, str]:
     """查股第 5 張：當天走勢（開→收）v20 墨線臉。不是買訊。
 
     無真官方日值或真分時路徑 → 回空字串（不上假圖）。
+    可吃 prepare_lookup_intraday_series 預抓的 series（paint worker 只渲、不重抓網）。
     """
     sid = str(stock_id or "").strip()
     if not sid:
@@ -3141,27 +3283,37 @@ def render_lookup_intraday_result(
         name = str(card.get("stock_name") or card.get("name") or "").strip()
     if not name:
         name = sid
-    mkt = str(market or "").strip().upper()
+    ymd = str(series_ymd or "").strip().replace("-", "")[:8]
+    mkt = str(series_market or market or "").strip().upper()
+    # 防呆：呼叫端若把 prepare_lookup_intraday_series 整包 tuple 當 series=
+    # （series, ymd, mkt），這裡拆開，不准渲圖 AttributeError 變默默缺第 5 張。
+    if isinstance(series, tuple):
+        if len(series) >= 3:
+            series, ymd_t, mkt_t = series[0], series[1], series[2]
+            if not ymd:
+                ymd = str(ymd_t or "").strip().replace("-", "")[:8]
+            if not mkt:
+                mkt = str(mkt_t or "").strip().upper()
+        elif len(series) >= 1:
+            series = series[0]
+        else:
+            series = None
+    if series is None:
+        series, ymd, mkt = prepare_lookup_intraday_series(
+            sid,
+            name,
+            path_db,
+            market=market,
+            asof_ymd=asof_ymd,
+            card=card,
+            hits=hits,
+        )
+    if series is None:
+        return "", ""
     if mkt not in ("TW", "TWO", "EM"):
         mkt = resolve_intraday_market(sid, path_db, hits=hits, card=card)
-    ymd = resolve_intraday_asof_ymd(path_db, prefer=asof_ymd)
-    series = build_series(sid, name, mkt, db_path=path_db, ymd=ymd)
-    if series is None:
-        # 今開市日盤前／缺路徑：退最近已開市日（仍只認真數）
-        try:
-            from tw_holidays import previous_tw_trading_day
-
-            prev = previous_tw_trading_day(ymd, path_db)
-        except Exception:
-            prev = ""
-        if prev and prev != ymd:
-            series = build_series(sid, name, mkt, db_path=path_db, ymd=prev)
-            ymd = prev or ymd
-    if series is None:
-        logger.info(
-            "查股當天走勢無真路徑 code=%s market=%s ymd=%s", sid, mkt, ymd
-        )
-        return "", ""
+    if len(ymd) != 8 or not ymd.isdigit():
+        ymd = resolve_intraday_asof_ymd(path_db, prefer=None)
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     try:
         _path, gate = render_path(series, out, db_path=path_db)
@@ -3171,7 +3323,11 @@ def render_lookup_intraday_result(
     if not _path or not os.path.isfile(_path):
         return "", ""
     sess = "09:00–15:00" if mkt == "EM" else "09:00–13:30"
-    cap = f"當天走勢（開→收・{sess}・非買訊）"
+    # caption 標真日戳（跟高低卡 asof／實際分時日），不准只寫「當天」讓人猜
+    day_lab = ymd
+    if len(ymd) == 8 and ymd.isdigit():
+        day_lab = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
+    cap = f"當天走勢（開→收・{day_lab}・{sess}・非買訊）"
     if gate and not gate.get("pass"):
         logger.warning(
             "查股當天走勢 label_gate 未過 code=%s gate=%s", sid, gate

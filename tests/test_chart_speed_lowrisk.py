@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import re
 import time
 
 import pytest
@@ -82,8 +83,10 @@ def test_lookup_card_glance_try_memo_before_paint_queue():
     card_paint = src.find("render_decision_card_png(card, card_path_f)")
     assert 0 < card_warm < card_paint
     struct_warm = src.find("try_lookup_structure_memo")
-    struct_paint = src.find('_render_one("struct"')
-    assert 0 < struct_warm < struct_paint
+    # _render_one("struct" 可能跨行（path_hint=…），用正則對齊
+    struct_paint_m = re.search(r'_render_one\(\s*"struct"', src)
+    assert struct_paint_m is not None
+    assert 0 < struct_warm < struct_paint_m.start()
 
 
 def test_try_lookup_structure_memo_hits_without_paint(tmp_path):

@@ -36,8 +36,9 @@ def test_lookup_source_splits_struct_bars_from_volume_zone():
     vol_at = src.find("vol_task = asyncio.create_task(_vol_item())")
     struct_await = src.find("struct_item = await struct_task")
     assert vol_at > 0 and struct_await > 0
-    # 大量區 paint 提早開，與結構 paint／Telegram 上傳重疊（仍單 worker 排隊）
+    # task 可早開；paint 等 struct_queued（不准搶介紹／結構 worker）
     assert vol_at < struct_await
+    assert "struct_queued" in src
     bars = inspect.getsource(
         __import__("vol_zone_chart", fromlist=["prepare_lookup_structure_bars"]).prepare_lookup_structure_bars
     )
