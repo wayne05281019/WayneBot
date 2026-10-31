@@ -137,9 +137,16 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_alt_path_needed" in src
     assert "micro_path" in src
     assert "另前提" in src or "薄荷" in src
-    # 費半主圖也畫⑤／A／B／C，時間軸對齊加權月日
+    # 費半主圖：同月日軸，波浪自轉折（不准抄加權 A/B 日）
     assert "_align_us_to_twii_dates" in src
-    assert "費半 SOX（同月日）" in src
+    assert "_sox_abc_anchors_on_axis" in src
+    assert "自轉折" in src or "不准抄" in src
+    # 超級近窗：C起自 B；幾何①②不准冒充他說；今＝只認 ≤as_of 的他文
+    assert "B高＝C起" in src
+    assert "幾何對讀" in src
+    assert "今・C進行中" in src or "不准冒充他說" in src
+    assert "_level_break_tag" in src
+    assert "as_of<=" in src or "chart_as_of" in src
 
 
 def test_his_micro_degree_and_alt_gate():
@@ -150,6 +157,50 @@ def test_his_micro_degree_and_alt_gate():
     assert "C3-3" in d["chain"]
     assert _alt_path_needed("C3-3-2", "C3-3-1") is True
     assert _alt_path_needed("C3-3-2", "C3-3-2") is False
+
+
+def test_sox_abc_anchors_not_copy_twii_ab():
+    """費半 A/B 要用自己高低；對齊加權月日後不可落在加權 10/13–10/14。"""
+    from biaoke_level_learn import (
+        _align_us_to_twii_dates,
+        _bar_index_by_ymd,
+        _load_us_daily,
+        _sox_abc_anchors_on_axis,
+        _twii_abc_anchors,
+        _ymd,
+    )
+    from biaoke_wave import _load_twii_bars
+
+    db = "/workspace/data/wayne_market.db"
+    bars = _load_twii_bars(db, n=120)
+    i0 = _bar_index_by_ymd(bars, "20260929") or 0
+    bars = list(bars[i0:])
+    tw = _twii_abc_anchors(bars)
+    assert tw is not None
+    sox = _load_us_daily(db, "SOX", "20260920")
+    aligned = _align_us_to_twii_dates(sox, bars)
+    sax = _sox_abc_anchors_on_axis(
+        aligned["high"], aligned["low"], aligned["close"], i5_hint=tw["i5"]
+    )
+    assert sax is not None
+    # 費半 A／B 不准等於加權 A／B 日（那是上一版抄錯）
+    assert sax["i_alow"] != tw["i_alow"]
+    assert sax["i_bhi"] != tw["i_bhi"]
+    assert _ymd(bars[sax["i_alow"]].get("date")) >= "20261016"
+    assert sax["y_bhi"] < sax["y5"]
+
+
+def test_thesis_respects_chart_as_of_and_break_tag():
+    """圖 as_of=10/29 不准吃到 10/30 的 C3-3；45546 未破不准寫已破。"""
+    from biaoke_level_learn import _latest_level_thesis, _level_break_tag
+
+    db = "/workspace/data/wayne_market.db"
+    pack = _latest_level_thesis(db, as_of="20261029")
+    assert "C3-3" not in (pack.get("thesis") or "")
+    assert "C3-3" not in (pack.get("snippet") or "")
+    # 10/29 前官方低仍高於 45546
+    assert _level_break_tag(45546.0, [46055.0, 45676.0, 46041.0]) == "未破"
+    assert _level_break_tag(45546.0, [44726.0]) == "已破"
 
 
 def test_twii_intent_story_trap_language():
