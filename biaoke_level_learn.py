@@ -1352,14 +1352,15 @@ def _paint_max_vol_hl_zone(
     date_lab: str,
     fp: Any,
 ) -> None:
-    """淺黃底＝最大量日那根K的最高～最低（跟個股量價區間同一套：對最大量日縮圖高低）。"""
+    """淺黃底＝最大量日那根K的最高～最低；底色 zorder 低於K棒。"""
     y0, y1 = float(low), float(high)
     if y1 <= y0:
         return
     md = _md(date_lab) if _ymd(date_lab) else ""
-    ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.16, zorder=1)
-    ax.axhline(y0, color="#ffeb3b", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=4)
-    ax.axhline(y1, color="#ffeb3b", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=4)
+    # 底色在K下一層（K＝zorder 3～4）
+    ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
+    ax.axhline(y0, color="#ffeb3b", lw=1.0, ls=(0, (4, 2)), alpha=0.85, zorder=2)
+    ax.axhline(y1, color="#ffeb3b", lw=1.0, ls=(0, (4, 2)), alpha=0.85, zorder=2)
     ax.text(
         0.01,
         y1,
@@ -1386,6 +1387,70 @@ def _paint_max_vol_hl_zone(
     )
 
 
+def _paint_next_sr_zone(
+    ax,
+    *,
+    support: Optional[float],
+    resist: Optional[float],
+    fp: Any,
+) -> None:
+    """下一撐～近壓：青色底帶（跟最大量黃帶分開）；底色亦在K下一層。"""
+    if support is None and resist is None:
+        return
+    if support is None or resist is None:
+        # 只畫有的那一邊水平線＋標，不硬灌整段
+        for y, lab, va in (
+            (support, "下一撐", "bottom"),
+            (resist, "近壓", "top"),
+        ):
+            if y is None:
+                continue
+            ax.axhline(float(y), color="#4dd0e1", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=2)
+            ax.text(
+                0.01,
+                float(y),
+                f"{lab} {_px(y)}",
+                transform=ax.get_yaxis_transform(),
+                fontproperties=fp(9, "bold"),
+                color="#b2ebf2",
+                ha="left",
+                va=va,
+                zorder=11,
+                bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
+            )
+        return
+    y0, y1 = float(support), float(resist)
+    if y1 <= y0:
+        return
+    ax.axhspan(y0, y1, facecolor="#4dd0e1", alpha=0.12, zorder=0.4)
+    ax.axhline(y0, color="#4dd0e1", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=2)
+    ax.axhline(y1, color="#4dd0e1", lw=1.05, ls=(0, (4, 2)), alpha=0.9, zorder=2)
+    ax.text(
+        0.01,
+        y1,
+        f"近壓 {_px(y1)}",
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(9, "bold"),
+        color="#b2ebf2",
+        ha="left",
+        va="bottom",
+        zorder=11,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
+    )
+    ax.text(
+        0.01,
+        y0,
+        f"下一撐 {_px(y0)}",
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(9, "bold"),
+        color="#b2ebf2",
+        ha="left",
+        va="top",
+        zorder=11,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
+    )
+
+
 def _paint_sr_zone_yellow(
     ax,
     *,
@@ -1395,42 +1460,8 @@ def _paint_sr_zone_yellow(
     fp: Any,
     n: int,
 ) -> None:
-    """（舊）下一錨撐～近壓黃帶；遠窗加權改走最大量日高低，此函式留给其他圖若還要用。"""
-    if support is None and resist is None:
-        return
-    y0 = float(support) if support is not None else float(y_now) * 0.98
-    y1 = float(resist) if resist is not None else float(y_now) * 1.02
-    if y1 <= y0:
-        return
-    ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.14, zorder=1)
-    if support is not None:
-        ax.axhline(float(support), color="#ffeb3b", lw=1.05, ls=(0, (4, 2)), alpha=0.85, zorder=4)
-        ax.text(
-            0.01,
-            float(support),
-            f"下一撐 {_px(support)}",
-            transform=ax.get_yaxis_transform(),
-            fontproperties=fp(9, "bold"),
-            color="#ffe082",
-            ha="left",
-            va="bottom",
-            zorder=11,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ffeb3b", lw=0.7, alpha=0.94),
-        )
-    if resist is not None:
-        ax.axhline(float(resist), color="#ffeb3b", lw=1.05, ls=(0, (4, 2)), alpha=0.85, zorder=4)
-        ax.text(
-            0.01,
-            float(resist),
-            f"近壓 {_px(resist)}",
-            transform=ax.get_yaxis_transform(),
-            fontproperties=fp(9, "bold"),
-            color="#ffe082",
-            ha="left",
-            va="top",
-            zorder=11,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ffeb3b", lw=0.7, alpha=0.94),
-        )
+    """相容舊名：改轉呼叫青色下一撐壓（不准再跟最大量黃帶同色）。"""
+    _paint_next_sr_zone(ax, support=support, resist=resist, fp=fp)
 
 
 def _bar_index_by_ymd(bars: Sequence[Dict[str, Any]], ymd: str) -> Optional[int]:
@@ -2082,11 +2113,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         bbox=dict(boxstyle="round,pad=0.16", fc="#0b0f14", ec="#546e7a", lw=0.65, alpha=0.92),
     )
 
-    # —— 中：加權價 ——
-    _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
+    # —— 中：加權價（先畫底帶在K下一層，再畫K）——
     ymin = min(min(lows), 44210, y_far_lo) - 520
     ymax = max(highs) + 780
-    # 淺黃帶＝最大量日K高低（不是下一錨撐～壓）
+    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
+    tag_44210 = _level_break_tag(44210.0, c_seg_lows)
+    sr = _next_support_resist(
+        y_now,
+        supports=(45546.0, 44210.0),
+        resists=(47637.0, 48613.0, y_bhi, y5),
+    )
+    # 青＝下一撐～近壓；黃＝最大量日高低；兩者底色都在K棒之下
+    _paint_next_sr_zone(
+        ax, support=sr.get("support"), resist=sr.get("resist"), fp=_fp
+    )
     if i_vmax is not None:
         _paint_max_vol_hl_zone(
             ax,
@@ -2095,13 +2135,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             date_lab=_ymd(bars[i_vmax].get("date")),
             fp=_fp,
         )
-    # 他說過的錨另用細線（不灌黃底，避免跟最大量日區間搞混）
-    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
-    tag_44210 = _level_break_tag(44210.0, c_seg_lows)
-    ax.axhline(45546.0, color="#ffab40", lw=0.85, ls=(0, (5, 3)), alpha=0.7, zorder=3)
-    ax.axhline(44210.0, color="#82b1ff", lw=0.85, ls=(0, (5, 3)), alpha=0.65, zorder=3)
-    ax.axvspan(-0.4, i5 + 0.4, facecolor="#ff8a80", alpha=0.06, zorder=0)
-    ax.axvspan(i5 + 0.4, n - 0.2, facecolor="#ea80fc", alpha=0.05, zorder=0)
+    # 次撐 44210 若不是「下一撐」再細線標一次
+    if sr.get("support") != 44210.0:
+        ax.axhline(44210.0, color="#82b1ff", lw=0.8, ls=(0, (5, 3)), alpha=0.6, zorder=2)
+    _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
+    ax.axvspan(-0.4, i5 + 0.4, facecolor="#ff8a80", alpha=0.05, zorder=0.2)
+    ax.axvspan(i5 + 0.4, n - 0.2, facecolor="#ea80fc", alpha=0.04, zorder=0.2)
     ax.plot([i_far_lo, i5], [y_far_lo, y5], color="#ff8a80", lw=2.35, zorder=7)
     ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=1.75, alpha=0.85, zorder=7)
     ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=1.75, alpha=0.85, zorder=7)
@@ -2216,17 +2255,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             lab.set_fontproperties(_fp(8, "bold"))
             lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
-    if i_vmax is not None:
-        vz = (
-            f"黃帶＝最大量日{_md(bars[i_vmax].get('date'))} "
-            f"高{_px(highs[i_vmax])}～低{_px(lows[i_vmax])}"
-        )
-    else:
-        vz = "黃帶＝最大量日K高低"
+    vz_y = (
+        f"黃＝最大量{_md(bars[i_vmax].get('date'))} {_px(highs[i_vmax])}～{_px(lows[i_vmax])}"
+        if i_vmax is not None
+        else "黃＝最大量日高低"
+    )
+    vz_c = (
+        f"青＝下一撐{_px(sr['support']) if sr.get('support') is not None else '—'}～"
+        f"近壓{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
+    )
     fig.text(
         0.05,
         0.975,
-        f"第1張（遠窗）：上費半浪｜中加權⑤起→ABC｜下加權量　｜　{vz}　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        f"第1張（遠窗）：上費半浪｜中加權｜下加權量　｜　{vz_y}　｜　{vz_c}　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
         fontproperties=_fp(11, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -2235,7 +2276,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.952,
-        "黃帶定義＝窗內最大量那天K的最高～最低（同個股）｜錨45546／44210另細線｜費半只對浪不畫黃帶",
+        "兩種底色都在K棒下一層｜黃＝爆大量日高低｜青＝即將下一撐～近壓｜費半只對浪",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_MUTED,
         ha="left",
