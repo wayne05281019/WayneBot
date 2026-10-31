@@ -1287,10 +1287,9 @@ def _paint_vol_bars_max_yellow(
     *,
     fp: Any,
     title: str = "量",
+    date_lab: str = "",
 ) -> Optional[int]:
-    """日量柱；窗內最大量那根改黃色並標「最大量」。回傳最大量索引。"""
-    import matplotlib.pyplot as plt
-
+    """日量柱；窗內最大量那根改黃色並標「最大量＋月日」。回傳最大量索引（＝當日K同一格）。"""
     n = len(vols)
     if n == 0 or axv is None:
         return None
@@ -1302,8 +1301,9 @@ def _paint_vol_bars_max_yellow(
         color = "#ffeb3b" if i_max is not None and i == i_max else (_LIVE_UP if up else _LIVE_DOWN)
         axv.bar(i, vals[i], color=color, width=0.68, zorder=3, alpha=0.95 if color == "#ffeb3b" else 0.88)
     if i_max is not None and vals[i_max] > 0:
+        tip = f"最大量 {_md(date_lab)}" if _ymd(date_lab) else "最大量"
         axv.annotate(
-            "最大量",
+            tip,
             xy=(i_max, vals[i_max]),
             xytext=(0, 6),
             textcoords="offset points",
@@ -1316,6 +1316,16 @@ def _paint_vol_bars_max_yellow(
         )
     axv.set_ylabel(title, fontproperties=fp(9, "bold"), color=_LIVE_MUTED)
     return i_max
+
+
+def _paint_max_vol_day_guide(axes: Sequence[Any], i_max: Optional[int]) -> None:
+    """三欄同一 x 畫黃虛線，最大量日與上方K對齊一眼可見。"""
+    if i_max is None:
+        return
+    for a in axes:
+        if a is None:
+            continue
+        a.axvline(float(i_max), color="#ffeb3b", lw=0.95, ls=(0, (3, 2)), alpha=0.75, zorder=5)
 
 
 def _next_support_resist(
@@ -2092,10 +2102,33 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     ax.set_ylim(ymin, ymax)
 
-    # —— 下：加權日量（最大量黃）——
-    _paint_vol_bars_max_yellow(
-        axv, vols, opens, closes, candle_up_taiwan, fp=_fp, title="加權量"
+    # —— 下：加權日量（最大量黃＝與上方同索引當日K對齊）——
+    i_vmax = _paint_vol_bars_max_yellow(
+        axv,
+        vols,
+        opens,
+        closes,
+        candle_up_taiwan,
+        fp=_fp,
+        title="加權量",
+        date_lab=_ymd(bars[max(range(n), key=lambda i: vols[i])].get("date")) if vols else "",
     )
+    if i_vmax is not None:
+        # 當日K外框加黃，證明與量柱同一根
+        ax.plot(
+            [i_vmax - 0.38, i_vmax + 0.38, i_vmax + 0.38, i_vmax - 0.38, i_vmax - 0.38],
+            [
+                float(lows[i_vmax]),
+                float(lows[i_vmax]),
+                float(highs[i_vmax]),
+                float(highs[i_vmax]),
+                float(lows[i_vmax]),
+            ],
+            color="#ffeb3b",
+            lw=1.35,
+            zorder=9,
+        )
+        _paint_max_vol_day_guide((axu, ax, axv), i_vmax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
 
     want = {
@@ -2150,7 +2183,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.952,
-        "費半不畫量（指數無官方量）｜黃量柱＝加權窗內最大量｜左黃標＝下一撐／近壓｜紫虛＝預估（非買訊）",
+        "黃虛線／黃框＝最大量當日（與加權K同一交易日）｜左黃標＝下一撐／近壓｜費半不畫量｜紫虛＝預估（非買訊）",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_MUTED,
         ha="left",
