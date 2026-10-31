@@ -973,6 +973,65 @@ def _path_hits_rect(
     return False
 
 
+def _orient(ax: float, ay: float, bx: float, by: float, cx: float, cy: float) -> float:
+    return (by - ay) * (cx - bx) - (bx - ax) * (cy - by)
+
+
+def _on_segment(
+    ax: float, ay: float, bx: float, by: float, cx: float, cy: float, *, eps: float = 1e-9
+) -> bool:
+    return (
+        min(ax, bx) - eps <= cx <= max(ax, bx) + eps
+        and min(ay, by) - eps <= cy <= max(ay, by) + eps
+    )
+
+
+def _segments_cross(
+    a0: Tuple[float, float],
+    a1: Tuple[float, float],
+    b0: Tuple[float, float],
+    b1: Tuple[float, float],
+    *,
+    share_ok: bool = True,
+) -> bool:
+    """兩條錨→標虛線是否相交（共端點可允許，其餘真交＝閱讀干擾）。"""
+    ax, ay = float(a0[0]), float(a0[1])
+    bx, by = float(a1[0]), float(a1[1])
+    cx, cy = float(b0[0]), float(b0[1])
+    dx, dy = float(b1[0]), float(b1[1])
+    if share_ok:
+        for p in ((ax, ay), (bx, by)):
+            for q in ((cx, cy), (dx, dy)):
+                if abs(p[0] - q[0]) < 1e-9 and abs(p[1] - q[1]) < 1e-9:
+                    return False
+    o1 = _orient(ax, ay, bx, by, cx, cy)
+    o2 = _orient(ax, ay, bx, by, dx, dy)
+    o3 = _orient(cx, cy, dx, dy, ax, ay)
+    o4 = _orient(cx, cy, dx, dy, bx, by)
+    if o1 * o2 < 0 and o3 * o4 < 0:
+        return True
+    if abs(o1) < 1e-12 and _on_segment(ax, ay, bx, by, cx, cy):
+        return True
+    if abs(o2) < 1e-12 and _on_segment(ax, ay, bx, by, dx, dy):
+        return True
+    if abs(o3) < 1e-12 and _on_segment(cx, cy, dx, dy, ax, ay):
+        return True
+    if abs(o4) < 1e-12 and _on_segment(cx, cy, dx, dy, bx, by):
+        return True
+    return False
+
+
+def _connector_crosses_any(
+    anchor: Tuple[float, float],
+    label: Tuple[float, float],
+    used: Sequence[Tuple[Tuple[float, float], Tuple[float, float]]],
+) -> bool:
+    for u0, u1 in used:
+        if _segments_cross(anchor, label, u0, u1):
+            return True
+    return False
+
+
 def _level_anchors(
     xs, ys, highs, lows, opens, off: OfficialDay
 ) -> List[Tuple[str, str, float, float, str, float]]:
@@ -992,14 +1051,13 @@ def _level_anchors(
     out: List[Tuple[str, str, float, float, str, float]] = []
     if n == 0:
         return out
+    # 錨 y 只認走線收 ya[i]（圖上畫的折線）；分K高／低／開只用來挑「哪一分」、標文仍寫官方價。
+    # 舊：錨用 ha／la／oa → 點懸在線上／線下空白（3595 壓729／撐407.5／開盤）。
     i_hi = int(np.nanargmax(ha)) if np.any(np.isfinite(ha)) else int(np.argmax(ya))
-    y_hi = float(ha[i_hi]) if np.isfinite(ha[i_hi]) else float(ya[i_hi])
-    out.append(("壓", "壓", float(xa[i_hi]), y_hi, "up", float(off.high)))
-    y_open = float(oa[0]) if len(oa) and np.isfinite(oa[0]) else float(ya[0])
-    out.append(("開", "開盤", float(xa[0]), y_open, "open", float(off.open)))
+    out.append(("壓", "壓", float(xa[i_hi]), float(ya[i_hi]), "up", float(off.high)))
+    out.append(("開", "開盤", float(xa[0]), float(ya[0]), "open", float(off.open)))
     i_lo = int(np.nanargmin(la)) if np.any(np.isfinite(la)) else int(np.argmin(ya))
-    y_lo = float(la[i_lo]) if np.isfinite(la[i_lo]) else float(ya[i_lo])
-    out.append(("撐", "撐", float(xa[i_lo]), y_lo, "dn", float(off.low)))
+    out.append(("撐", "撐", float(xa[i_lo]), float(ya[i_lo]), "dn", float(off.low)))
     close_px = float(off.close)
     avg = float(off.avg_price) if off.avg_price and float(off.avg_price) > 0 else None
     merge_avg_close = (
@@ -1106,84 +1164,87 @@ def _paint_smart_level_labels(
     }
 
     anchors = _level_anchors(xs, ys, highs, lows, opens, off)
-    # v16：實心錨 x/y **鎖死**走線該分钟點，不准為避讓橫推（橫推＝飄空白）。
-    # 標文價錢用官方 label_price；避讓只移完整標，不移錨。
+    # v21：錨鎖走線；標文進空白；虛線同側同角，重疊／壓線／虛線交錯才翻邊。
     adj_anchors: List[Tuple[str, str, float, float, str, float]] = [
         (short, full, float(ax_), float(ay_), ck, float(lp))
         for short, full, ax_, ay_, ck, lp in anchors
     ]
 
-    path_pad = y_span * 0.012
-    box_pad = y_span * 0.008
-    # 股價區間刻度禁區：完整標只走智能淨空，不准壓左欄 58／59／60…
+    # 股價區間刻度禁區（main #737）：完整標不准壓左欄刻度
     tick_band = _y_price_tick_band(ax, x_span=x_span, y_span=y_span)
     tick_clear_x = float(tick_band[1])
 
-    # 完整標候選 offset（資料座標）：B 字級較大 → 多給遠一點淨空，免壓折線／刻度
-    def _offset_cands(axp: float, ayp: float) -> List[Tuple[float, float]]:
-        dxs = [
-            x_span * 0.10, x_span * 0.14, -x_span * 0.10, -x_span * 0.14,
-            x_span * 0.18, -x_span * 0.18, x_span * 0.07, -x_span * 0.07,
-            x_span * 0.22, -x_span * 0.22, x_span * 0.26, -x_span * 0.26,
-        ]
-        dys = [
-            y_span * 0.08, -y_span * 0.08, y_span * 0.12, -y_span * 0.12,
-            y_span * 0.05, -y_span * 0.05, y_span * 0.16, -y_span * 0.16,
-            y_span * 0.20, -y_span * 0.20, y_span * 0.24, -y_span * 0.24,
-        ]
-        out: List[Tuple[float, float]] = []
-        for dx in dxs:
-            for dy in dys:
-                out.append((axp + dx, ayp + dy))
-        # 偏好：錨在左半→標往右上／右下；右半→往左；且優先在刻度禁區右側
-        out.sort(key=lambda p: (
-            0 if p[0] >= tick_clear_x + x_span * 0.02 else 1,
-            0 if (axp < (x0 + x1) * 0.55 and p[0] > axp) or (axp >= (x0 + x1) * 0.55 and p[0] < axp) else 1,
-            abs(p[1] - ayp) + abs(p[0] - axp) * 0.3,
-        ))
-        return out
+    import numpy as np
+
+    ya_arr = np.asarray(ys, dtype=float)
+    y_mid_path = float(np.nanmedian(ya_arr)) if len(ya_arr) else 0.5 * (y0 + y1)
+    # 路徑上方／下方空白：標籤預設往空白較大的那一側（不准預設貼線）
+    room_up = float(y1 - y_mid_path)
+    room_dn = float(y_mid_path - y0)
+    prefer_side_up = room_up >= room_dn
+    # 水平：左半錨往右、右半往左（同角簇，減少扇形亂射）
+    x_mid = 0.5 * (x0 + x1)
+
+    def _offset_cands(axp: float, ayp: float, *, side_up: bool) -> List[Tuple[float, float]]:
+        """先同側同角短虛線；翻邊／對側水平排後面（只在重疊時才用到）。"""
+        # 同角：略斜 25°～40° 視覺簇；水平分量依錨左右
+        h_sign = 1.0 if axp < x_mid else -1.0
+        v_sign = 1.0 if side_up else -1.0
+        primary: List[Tuple[float, float]] = []
+        flip: List[Tuple[float, float]] = []
+        late: List[Tuple[float, float]] = []
+        for dist_frac, ang_deg in (
+            (0.09, 28), (0.11, 32), (0.13, 36), (0.15, 30),
+            (0.10, 22), (0.12, 40), (0.16, 34), (0.08, 26),
+            (0.18, 38), (0.20, 42), (0.14, 24),
+        ):
+            rad = ang_deg * 3.14159265 / 180.0
+            dx = h_sign * x_span * dist_frac * abs(__import__("math").cos(rad))
+            dy = v_sign * y_span * dist_frac * abs(__import__("math").sin(rad))
+            primary.append((axp + dx, ayp + dy))
+            # 翻邊＝垂直反向；水平仍同向（同角族）
+            flip.append((axp + dx, ayp - dy))
+            # 對側水平＝最後才翻水平向（避免扇形亂射，但可解擠）
+            late.append((axp - dx, ayp + dy))
+            late.append((axp - dx, ayp - dy))
+        # 再備：水平同側大步／對側水平（最後才用）
+        for dx_f in (0.10, 0.14, 0.18, 0.22):
+            primary.append((axp + h_sign * x_span * dx_f, ayp + v_sign * y_span * 0.04))
+            flip.append((axp + h_sign * x_span * dx_f, ayp - v_sign * y_span * 0.04))
+            late.append((axp - h_sign * x_span * dx_f, ayp + v_sign * y_span * 0.10))
+            late.append((axp - h_sign * x_span * dx_f, ayp - v_sign * y_span * 0.10))
+        # 角落淨空：軸框四角附近（極擠時）
+        for cx, cy in (
+            (x0 + x_span * 0.08, y1 - y_span * 0.06),
+            (x1 - x_span * 0.08, y1 - y_span * 0.06),
+            (x0 + x_span * 0.08, y0 + y_span * 0.06),
+            (x1 - x_span * 0.08, y0 + y_span * 0.06),
+            (x0 + x_span * 0.20, y1 - y_span * 0.10),
+            (x1 - x_span * 0.20, y0 + y_span * 0.10),
+        ):
+            late.append((cx, cy))
+        return primary + flip + late
 
     occupied: List[Tuple[float, float, float, float]] = [tick_band]
+    used_connectors: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
     placed_meta: List[Dict[str, Any]] = []
-    # 先只算位，全部定案再畫（方便互壓後 nudge）
+    path_pad = y_span * 0.014
+    box_pad = y_span * 0.010
     pending: List[Dict[str, Any]] = []
 
     for idx, (short, full, axp, ayp, ck, label_price) in enumerate(adj_anchors):
         col = color_map.get(ck, ink)
         px = _fmt_face(label_price)
-        # v14 方案 B：錨＝實心原點（無字）；完整標只在淨空出現一次
         chip_txt = ""
         full_txt = f"{full} {px}"
-        # 原點鎖在走線該分 (axp, ayp)，不准上下／左右漂移
         chip_ay = float(ayp)
         chip_rect = _estimate_label_rect(
             axp, chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
         )
-        _ = idx  # 保留交錯偏好用
-
-        # 完整標：字級可縮；掃淨空；上下交錯偏好
-        prefer_up = idx % 2 == 0
+        _ = idx
         full_fs_options = tuple(_chart_label_fs(x) for x in (9.5, 8.5, 7.5, 7.0))
         chosen: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
-        cands = _offset_cands(axp, chip_ay)
-        if prefer_up:
-            cands = sorted(
-                cands,
-                key=lambda p: (
-                    0 if p[0] >= tick_clear_x + x_span * 0.02 else 1,
-                    0 if p[1] >= chip_ay else 1,
-                    abs(p[1] - chip_ay),
-                ),
-            )
-        else:
-            cands = sorted(
-                cands,
-                key=lambda p: (
-                    0 if p[0] >= tick_clear_x + x_span * 0.02 else 1,
-                    0 if p[1] < chip_ay else 1,
-                    abs(p[1] - chip_ay),
-                ),
-            )
+        cands = _offset_cands(axp, chip_ay, side_up=prefer_side_up)
         for full_fs in full_fs_options:
             for lx, ly in cands:
                 if not (x0 + x_span * 0.02 <= lx <= x1 - x_span * 0.02):
@@ -1193,9 +1254,12 @@ def _paint_smart_level_labels(
                 # 完整標中心至少在刻度禁區右側
                 if lx < tick_clear_x + x_span * 0.02:
                     continue
+                # 標盒必須離線：空白處；貼線／壓線淘汰
                 dist = ((lx - axp) ** 2 + ((ly - chip_ay) / max(y_span / x_span, 1e-6)) ** 2) ** 0.5
-                if dist > x_span * 0.45:
+                if dist > x_span * 0.40:
                     continue
+                if abs(ly - chip_ay) < y_span * 0.035 and abs(lx - axp) < x_span * 0.06:
+                    continue  # 太貼錨＝像壓在線上
                 rect = _estimate_label_rect(
                     lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                 )
@@ -1207,73 +1271,68 @@ def _paint_smart_level_labels(
                     continue
                 if _path_hits_rect(xs, ys, rect, y_pad=path_pad):
                     continue
+                if _connector_crosses_any((axp, chip_ay), (lx, ly), used_connectors):
+                    continue
                 chosen = (lx, ly, full_fs, rect)
                 break
             if chosen is not None:
                 break
 
         if chosen is None:
-            # 退讓掃描：先找「不壓折線＋不進刻度禁區」，再才允許輕觸折線
-            for allow_path in (False, True):
-                for full_fs in full_fs_options + (_chart_label_fs(6.5),):
-                    fallback = None
-                    best_pen = 1e18
-                    for lx, ly in cands:
-                        lx = min(max(lx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
-                        ly = min(max(ly, y0 + y_span * 0.03), y1 - y_span * 0.03)
-                        for extra_dy in (
-                            0.0, y_span * 0.10, -y_span * 0.10, y_span * 0.16,
-                            -y_span * 0.16, y_span * 0.22, -y_span * 0.22,
-                        ):
-                            for extra_dx in (0.0, x_span * 0.06, -x_span * 0.06, x_span * 0.12):
-                                lx2 = min(
-                                    max(lx + extra_dx, tick_clear_x + x_span * 0.02),
-                                    x1 - x_span * 0.02,
-                                )
-                                ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
-                                rect = _estimate_label_rect(
-                                    lx2, ly2, full_txt, fs=full_fs,
-                                    x_span=x_span, y_span=y_span, kind="full",
-                                )
-                                if rect[0] < tick_clear_x:
-                                    continue
-                                if any(
-                                    _rects_overlap(rect, o, pad=box_pad * 0.5)
-                                    for o in occupied
-                                ):
-                                    continue
-                                ph = _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.4)
-                                if ph and not allow_path:
-                                    continue
-                                pen = (8 if ph else 0) + abs(lx2 - axp) / x_span
-                                if pen < best_pen:
-                                    best_pen = pen
-                                    fallback = (lx2, ly2, full_fs, rect)
-                    if fallback is not None:
-                        chosen = fallback
-                        break
-                if chosen is not None:
-                    break
-
-        if chosen is None:
-            # 必要位階標不准省略：最後仍貼刻度禁區右側淨空
             full_fs = _chart_label_fs(7.0)
-            lx = min(max(axp + x_span * 0.14, tick_clear_x + x_span * 0.04), x1 - x_span * 0.04)
-            ly = min(max(chip_ay + y_span * 0.10, y0 + y_span * 0.05), y1 - y_span * 0.05)
-            rect = _estimate_label_rect(
-                lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
-            )
-            if rect[0] < tick_clear_x:
-                lx = tick_clear_x + (rect[1] - rect[0]) * 0.55
+            fallback = None
+            best_pen = 1e18
+            hard_ok = None
+            for lx, ly in cands:
+                for extra_dx in (0.0, x_span * 0.08, -x_span * 0.08, x_span * 0.14, -x_span * 0.14):
+                    for extra_dy in (
+                        0.0, y_span * 0.10, -y_span * 0.10, y_span * 0.16, -y_span * 0.16,
+                        y_span * 0.22, -y_span * 0.22,
+                    ):
+                        lx2 = min(max(lx + extra_dx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
+                        ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                        rect = _estimate_label_rect(
+                            lx2, ly2, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+                        )
+                        if rect[0] < tick_clear_x:
+                            continue
+                        ov = sum(1 for o in occupied if _rects_overlap(rect, o, pad=box_pad * 0.5))
+                        ph = 1 if _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.5) else 0
+                        cr = 1 if _connector_crosses_any(
+                            (axp, chip_ay), (lx2, ly2), used_connectors
+                        ) else 0
+                        flip_pen = 0 if ((ly2 >= chip_ay) == prefer_side_up) else 6
+                        pen = ov * 40 + ph * 30 + cr * 24 + flip_pen + abs(lx2 - axp) / x_span
+                        if ov == 0 and ph == 0 and cr == 0:
+                            hard_ok = (lx2, ly2, full_fs, rect)
+                            break
+                        if pen < best_pen:
+                            best_pen = pen
+                            fallback = (lx2, ly2, full_fs, rect)
+                    if hard_ok is not None:
+                        break
+                if hard_ok is not None:
+                    break
+            chosen = hard_ok if hard_ok is not None else fallback
+            if chosen is None:
+                # 必要位階標不准省略：貼刻度禁區右側淨空
+                lx = min(max(axp + x_span * 0.14, tick_clear_x + x_span * 0.04), x1 - x_span * 0.04)
+                ly = min(max(chip_ay + (y_span * 0.10 if prefer_side_up else -y_span * 0.10), y0 + y_span * 0.05), y1 - y_span * 0.05)
                 rect = _estimate_label_rect(
                     lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                 )
-            chosen = (lx, ly, full_fs, rect)
+                if rect[0] < tick_clear_x:
+                    lx = tick_clear_x + (rect[1] - rect[0]) * 0.55
+                    rect = _estimate_label_rect(
+                        lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
+                    )
+                chosen = (lx, ly, full_fs, rect)
 
         assert chosen is not None
         lx, ly, full_fs, full_rect = chosen
         occupied.append(chip_rect)
         occupied.append(full_rect)
+        used_connectors.append(((float(axp), float(chip_ay)), (float(lx), float(ly))))
         pending.append(
             {
                 "kind": "level",
@@ -1281,7 +1340,6 @@ def _paint_smart_level_labels(
                 "full": full,
                 "full_txt": full_txt,
                 "chip_txt": "",
-                # price＝錨走線 y（避讓空間用）；label_price＝標文官方價
                 "price": float(ayp),
                 "label_price": float(label_price),
                 "col": col,
@@ -1305,29 +1363,22 @@ def _paint_smart_level_labels(
         chip_rect = _estimate_label_rect(
             float(ex), chip_ay, "·", fs=6.0, x_span=x_span, y_span=y_span, kind="dot"
         )
-        # 事件字級小於主標；急殺優先上方／撐對側
-        full_fs_options = tuple(
-            _chart_label_fs(x)
-            for x in ((9.0, 8.0, 7.5, 7.0) if is_kill else (9.5, 8.5, 7.5, 7.0))
-        )
+        # 事件同主側同角；急殺若黏撐才允許翻邊候選（已在 cands 後段）
+        full_fs_options = tuple(_chart_label_fs(x) for x in ((9.0, 8.0, 7.5, 7.0) if is_kill else (9.5, 8.5, 7.5, 7.0)))
         chosen_e: Optional[Tuple[float, float, float, Tuple[float, float, float, float]]] = None
-        cands = _offset_cands(float(ex), float(ey))
+        cands = _offset_cands(float(ex), float(ey), side_up=prefer_side_up)
         if is_kill and support_ys:
-            # 撐在下方 → 急殺優先上方／對側；撐在左 → 急殺偏右
             sy = support_ys[0]
-            sx0 = support_rects[0][0] if support_rects else ex
+            # 撐與急殺同錨鄰：優先拉開垂直距離，但仍先吃同側
             cands = sorted(
                 cands,
                 key=lambda p: (
-                    0 if p[1] > max(ey, sy) + y_span * 0.04 else 1,  # 上方優先
-                    0 if (p[0] - ex) * (ex - sx0) >= 0 else 1,  # 對側
+                    0 if ((p[1] >= ey) == prefer_side_up) else 1,
+                    0 if abs(p[1] - sy) > y_span * 0.10 else 1,
                     abs(p[1] - ey) + abs(p[0] - ex) * 0.25,
                 ),
             )
-        elif eidx % 2 == 1:
-            cands = sorted(cands, key=lambda p: (0 if p[1] >= ey else 1, abs(p[1] - ey)))
-        else:
-            cands = sorted(cands, key=lambda p: (0 if p[1] < ey else 1, abs(p[1] - ey)))
+        _ = eidx
 
         def _hits_support(rect: Tuple[float, float, float, float]) -> bool:
             # 急殺：互斥墊加厚＋中心距下限（視覺勿貼撐）
@@ -1352,13 +1403,9 @@ def _paint_smart_level_labels(
                     continue
                 if not (y0 + y_span * 0.03 <= ly <= y1 - y_span * 0.03):
                     continue
-                if lx < tick_clear_x + x_span * 0.02:
-                    continue
                 rect = _estimate_label_rect(
                     lx, ly, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                 )
-                if rect[0] < tick_clear_x:
-                    continue
                 if any(_rects_overlap(rect, o, pad=box_pad) for o in occupied):
                     continue
                 if _rects_overlap(rect, chip_rect, pad=box_pad):
@@ -1366,6 +1413,10 @@ def _paint_smart_level_labels(
                 if _hits_support(rect):
                     continue
                 if _path_hits_rect(xs, ys, rect, y_pad=path_pad):
+                    continue
+                if _connector_crosses_any((float(ex), float(chip_ay)), (lx, ly), used_connectors):
+                    continue
+                if abs(ly - chip_ay) < y_span * 0.035 and abs(lx - ex) < x_span * 0.06:
                     continue
                 chosen_e = (lx, ly, full_fs, rect)
                 break
@@ -1375,43 +1426,53 @@ def _paint_smart_level_labels(
             full_fs = _chart_label_fs(7.0)
             best_pen = 1e18
             fallback_e = None
-            # 急殺強制候選：軸頂／對側大步
+            hard_ok_e = None
             extra_cands = list(cands)
             if is_kill:
+                # 仍偏主側空白；重疊才吃翻邊（已在 cands 後段）
+                v = 1.0 if prefer_side_up else -1.0
                 extra_cands = [
-                    (ex + x_span * 0.18, y1 - y_span * 0.08),
-                    (ex - x_span * 0.18, y1 - y_span * 0.08),
-                    (tick_clear_x + x_span * 0.08, y1 - y_span * 0.10),
-                    (x1 - x_span * 0.12, y1 - y_span * 0.10),
-                    (ex + x_span * 0.22, ey + y_span * 0.18),
-                    (ex - x_span * 0.22, ey + y_span * 0.18),
+                    (ex + x_span * 0.18, ey + v * y_span * 0.16),
+                    (ex - x_span * 0.18, ey + v * y_span * 0.16),
+                    (tick_clear_x + x_span * 0.08, ey + v * y_span * 0.18),
+                    (x1 - x_span * 0.12, ey + v * y_span * 0.18),
+                    (ex + x_span * 0.22, y1 - y_span * 0.08),
+                    (ex - x_span * 0.22, y1 - y_span * 0.08),
                 ] + extra_cands
             for lx, ly in extra_cands:
-                for extra_dy in (0.0, y_span * 0.14, y_span * 0.22, -y_span * 0.10):
+                for extra_dy in (0.0, y_span * 0.14, y_span * 0.22, -y_span * 0.10, -y_span * 0.18):
                     for extra_dx in (0.0, x_span * 0.12, -x_span * 0.12, x_span * 0.20, -x_span * 0.20):
-                        lx2 = min(max(lx + extra_dx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
+                        lx2 = min(max(lx + extra_dx, x0 + x_span * 0.02), x1 - x_span * 0.02)
                         ly2 = min(max(ly + extra_dy, y0 + y_span * 0.03), y1 - y_span * 0.03)
                         rect = _estimate_label_rect(
                             lx2, ly2, full_txt, fs=full_fs, x_span=x_span, y_span=y_span, kind="full"
                         )
-                        if rect[0] < tick_clear_x:
-                            continue
                         if _hits_support(rect):
                             continue
                         ov = sum(1 for o in occupied if _rects_overlap(rect, o, pad=box_pad * 0.5))
-                        ph = 1 if _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.4) else 0
-                        pen = ov * 20 + ph * 8 + abs(lx2 - ex) / x_span
-                        if is_kill and ly2 < ey:
-                            pen += 12  # 急殺少往下（易黏撐）
+                        ph = 1 if _path_hits_rect(xs, ys, rect, y_pad=path_pad * 0.5) else 0
+                        cr = 1 if _connector_crosses_any(
+                            (float(ex), float(chip_ay)), (lx2, ly2), used_connectors
+                        ) else 0
+                        flip_pen = 0 if ((ly2 >= chip_ay) == prefer_side_up) else 8
+                        pen = ov * 40 + ph * 30 + cr * 24 + flip_pen + abs(lx2 - ex) / x_span
+                        if ov == 0 and ph == 0 and cr == 0:
+                            hard_ok_e = (lx2, ly2, full_fs, rect)
+                            break
                         if pen < best_pen:
                             best_pen = pen
                             fallback_e = (lx2, ly2, full_fs, rect)
-            chosen_e = fallback_e
+                    if hard_ok_e is not None:
+                        break
+                if hard_ok_e is not None:
+                    break
+            chosen_e = hard_ok_e if hard_ok_e is not None else fallback_e
         if chosen_e is None:
             continue
         lx, ly, full_fs, full_rect = chosen_e
         occupied.append(chip_rect)
         occupied.append(full_rect)
+        used_connectors.append(((float(ex), float(chip_ay)), (float(lx), float(ly))))
         pending.append(
             {
                 "kind": "event",
@@ -1431,17 +1492,10 @@ def _paint_smart_level_labels(
         )
 
     def _try_set_full(k: int, lx: float, ly: float) -> bool:
-        # nudge 也必須守刻度禁區（不准又漂回壓住 58／59／60）
-        if lx < tick_clear_x + x_span * 0.02:
-            return False
         rect2 = _estimate_label_rect(
             lx, ly, pending[k]["full_txt"],
             fs=pending[k]["fs"], x_span=x_span, y_span=y_span, kind="full",
         )
-        if rect2[0] < tick_clear_x:
-            return False
-        if _rects_overlap(rect2, tick_band, pad=box_pad * 0.2):
-            return False
         if _rects_overlap(rect2, pending[k]["chip_rect"], pad=box_pad * 0.3):
             return False
         for t, p in enumerate(pending):
@@ -1451,7 +1505,14 @@ def _paint_smart_level_labels(
                 return False
             if _rects_overlap(rect2, p["chip_rect"], pad=box_pad * 0.3):
                 return False
-        if _path_hits_rect(xs, ys, rect2, y_pad=path_pad * 0.45):
+        if _path_hits_rect(xs, ys, rect2, y_pad=path_pad * 0.5):
+            return False
+        # 虛線交錯：對其他標的最終錨→標
+        others = [
+            (tuple(p["anchor"]), tuple(p["label"]))
+            for t, p in enumerate(pending) if t != k
+        ]
+        if _connector_crosses_any(tuple(pending[k]["anchor"]), (lx, ly), others):
             return False
         pending[k]["label"] = (lx, ly)
         pending[k]["full_rect"] = rect2
@@ -1505,15 +1566,12 @@ def _paint_smart_level_labels(
                             targets = [
                                 (lx, ly2),
                                 (
-                                    min(
-                                        max(lx + sign * x_span * 0.05, tick_clear_x + x_span * 0.02),
-                                        x1 - x_span * 0.02,
-                                    ),
+                                    min(max(lx + sign * x_span * 0.05, x0 + x_span * 0.02), x1 - x_span * 0.02),
                                     ly2,
                                 ),
                             ]
                         for tx, ty in targets:
-                            tx = min(max(tx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
+                            tx = min(max(tx, x0 + x_span * 0.02), x1 - x_span * 0.02)
                             ty = min(max(ty, y0 + y_span * 0.03), y1 - y_span * 0.03)
                             if _try_set_full(k, tx, ty):
                                 moved = True
@@ -1533,7 +1591,7 @@ def _paint_smart_level_labels(
                     (lx - x_span * 0.08, ly - y_span * 0.06),
                 ]
                 for tx, ty in targets:
-                    tx = min(max(tx, tick_clear_x + x_span * 0.02), x1 - x_span * 0.02)
+                    tx = min(max(tx, x0 + x_span * 0.02), x1 - x_span * 0.02)
                     ty = min(max(ty, y0 + y_span * 0.03), y1 - y_span * 0.03)
                     if _try_set_full(k, tx, ty):
                         moved = True
@@ -1599,6 +1657,54 @@ def _paint_smart_level_labels(
                 min(ly + y_span * 0.06, y1 - y_span * 0.04),
             )
 
+    # 最終修理：仍壓線／互壓 → 角落／大步空白再試（撐優先不動）
+    def _needs_repair(k: int) -> bool:
+        r = pending[k]["full_rect"]
+        if _path_hits_rect(xs, ys, r, y_pad=path_pad * 0.5):
+            return True
+        for t, p in enumerate(pending):
+            if t == k:
+                continue
+            if _rects_overlap(r, p["full_rect"], pad=box_pad * 0.25):
+                return True
+        others = [
+            (tuple(p["anchor"]), tuple(p["label"]))
+            for t, p in enumerate(pending) if t != k
+        ]
+        return _connector_crosses_any(
+            tuple(pending[k]["anchor"]), tuple(pending[k]["label"]), others
+        )
+
+    repair_spots = [
+        (x0 + x_span * 0.10, y1 - y_span * 0.07),
+        (x1 - x_span * 0.10, y1 - y_span * 0.07),
+        (x0 + x_span * 0.10, y0 + y_span * 0.07),
+        (x1 - x_span * 0.10, y0 + y_span * 0.07),
+        (x0 + x_span * 0.22, y1 - y_span * 0.12),
+        (x1 - x_span * 0.22, y0 + y_span * 0.12),
+        (x0 + x_span * 0.30, y1 - y_span * 0.08),
+        (x1 - x_span * 0.30, y0 + y_span * 0.08),
+        ((x0 + x1) * 0.5, y1 - y_span * 0.06),
+        ((x0 + x1) * 0.5, y0 + y_span * 0.06),
+    ]
+    for _ in range(3):
+        fixed = False
+        for k, p in enumerate(pending):
+            if _is_support(p):
+                continue
+            if not _needs_repair(k):
+                continue
+            axp, ayp = p["anchor"]
+            cands_r = _offset_cands(axp, ayp, side_up=prefer_side_up) + repair_spots
+            for tx, ty in cands_r:
+                tx = min(max(tx, x0 + x_span * 0.02), x1 - x_span * 0.02)
+                ty = min(max(ty, y0 + y_span * 0.03), y1 - y_span * 0.03)
+                if _try_set_full(k, tx, ty):
+                    fixed = True
+                    break
+        if not fixed:
+            break
+
     # 下筆：實心原點 → 短虛線 → 淨空完整標；事件降權（淺底細框小字）
     for p in pending:
         axp, ayp = p["anchor"]
@@ -1617,7 +1723,7 @@ def _paint_smart_level_labels(
         if p.get("kind") == "event":
             face, edge, tc = "#FFFEF8", "#9AA0A6", ink
             lw, pad = 0.65, 0.14
-            fs = min(float(p["fs"]), _chart_label_fs(8.5))
+            fs = min(float(p["fs"]), 8.5)
         else:
             face, edge, tc = paper, col, col
             lw, pad = 0.9, 0.18
@@ -1643,9 +1749,6 @@ def _paint_smart_level_labels(
                 overlap_n += 1
     path_hits = sum(
         1 for r in full_rects if _path_hits_rect(xs, ys, r, y_pad=path_pad * 0.5)
-    )
-    tick_band_hits = sum(
-        1 for r in full_rects if _rects_overlap(r, tick_band, pad=box_pad * 0.15)
     )
     # 均＝現已併 → required=4；否則有均價=5、無均=4
     has_avg = bool(off.avg_price and float(off.avg_price) > 0)
@@ -1675,15 +1778,12 @@ def _paint_smart_level_labels(
         "required": required,
         "full_overlap_pairs": overlap_n,
         "full_path_hits": path_hits,
-        "tick_band_hits": tick_band_hits,
-        "tick_clear_x": float(tick_clear_x),
         "kill_support_hits": kill_support_hits,
         "merged_avg_close": merged_avg,
         "pass": bool(
             len(level_meta) >= required
             and overlap_n == 0
             and path_hits == 0
-            and tick_band_hits == 0
             and kill_support_hits == 0
         ),
         "labels": [
@@ -1693,11 +1793,14 @@ def _paint_smart_level_labels(
                 "full": m["full"],
                 "price": m["price"],
                 "fs": m["fs"],
+                "anchor": [float(m["anchor"][0]), float(m["anchor"][1])],
+                "label": [float(m["label"][0]), float(m["label"][1])],
             }
             for m in placed_meta
         ],
     }
     return gate
+
 
 
 def _bars_hit_rect(

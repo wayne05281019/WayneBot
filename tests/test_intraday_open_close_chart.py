@@ -166,6 +166,10 @@ def test_grid_a_chart_label_b_scales():
     assert "tick_band" in src
     assert "tick_clear_x" in src
     assert "_chart_label_fs" in src
+    # #735：同側同角空白座＋虛線不准交錯；合 main 後仍要留著
+    assert "prefer_side_up" in src
+    assert "_connector_crosses_any" in src
+    assert "used_connectors" in src
     assert "_grid_fs(9.5)" in inspect.getsource(
         __import__("intraday_open_close_chart", fromlist=["_paint_quote_grid"])._paint_quote_grid
     )
