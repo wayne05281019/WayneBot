@@ -10343,8 +10343,12 @@ class WayneTelegramBot:
                 else:
                     logger.warning("查股第2張 paint 空，重試 code=%s", code)
                     glance_item = await _glance_item()
-            # 第 2 張介紹圖：不要附完整圖下鈕（產業／導航在第 5 張）。
-            await _send_kind_item(glance_item, retry_label="第2張")
+            # 送第 2 張時同步等第 3 張 paint（單 worker 不崩；對話順序仍 2→3）
+            async def _send_glance_if_any():
+                # 第 2 張介紹圖：不要附完整圖下鈕（產業／導航在第 5 張）。
+                await _send_kind_item(glance_item, retry_label="第2張")
+
+            glance_send_task = asyncio.create_task(_send_glance_if_any())
 
             if not ensure_task.done() or str(_struct_phase.get("phase") or "") == "volfill":
                 await _bump_progress("volfill")
@@ -10353,8 +10357,8 @@ class WayneTelegramBot:
             else:
                 await _bump_progress("struct")
             await asyncio.sleep(0)
-            # 第 2 張已經在對話最下面。進度泡泡在更上面，這裡再補一句，不准空白乾等。
-            if "glance" in sent_kinds and not struct_task.done():
+            # 介紹已在送／進度在上：再補一句，不准空白乾等第 3 張
+            if glance_item and not struct_task.done():
                 try:
                     gap_msg = await message.reply_text(
                         self._struct_gap_line(str(_struct_phase.get("phase") or ""))
@@ -10371,10 +10375,12 @@ class WayneTelegramBot:
                 code,
                 bool(struct_item),
             )
+            await glance_send_task
 
             async def _send_struct_if_any():
                 await _send_kind_item(struct_item, retry_label="第3張")
 
+            # 送第 3 張時同步等第 4 張 paint
             struct_send_task = asyncio.create_task(_send_struct_if_any())
             t_vol0 = time.monotonic()
             vol_item = await vol_task
@@ -10392,24 +10398,28 @@ class WayneTelegramBot:
 
             await _bump_progress("vol")
             await asyncio.sleep(0)
-            if vol_item:
-                # 第 4 張大量區：不附完整圖下鈕（鈕改掛第 5 張；move hub to chart 5）。
-                await _send_kind_item(vol_item, retry_label="第4張")
-            elif "struct" in sent_kinds or "glance" in sent_kinds or "card" in sent_kinds:
-                # paint／memo 空：降載再試一次（仍單 worker；不准 silently 沒第4張）
-                logger.warning("查股第4張 paint 空，降載重試 code=%s", code)
-                await _bump_progress("vol")
-                retry = await _render_one(
-                    "vol", _render_vol, _LOOKUP_PNG_TIMEOUT, path_hint=vol_path_f
-                )
-                vol_queued.set()
-                if retry:
-                    cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
-                    await _send_kind_item(
-                        ("vol", retry, cap, None), retry_label="第4張"
-                    )
 
-            # 第 5 張當天走勢：掛完整圖下鈕（兩人同一套）；缺真路徑則文字補 hub
+            async def _send_vol_if_any() -> None:
+                if vol_item:
+                    # 第 4 張大量區：不附完整圖下鈕（鈕改掛第 5 張）
+                    await _send_kind_item(vol_item, retry_label="第4張")
+                    return
+                if "struct" in sent_kinds or "glance" in sent_kinds or "card" in sent_kinds:
+                    # paint／memo 空：降載再試一次（仍單 worker；不准 silently 沒第4張）
+                    logger.warning("查股第4張 paint 空，降載重試 code=%s", code)
+                    await _bump_progress("vol")
+                    retry = await _render_one(
+                        "vol", _render_vol, _LOOKUP_PNG_TIMEOUT, path_hint=vol_path_f
+                    )
+                    vol_queued.set()
+                    if retry:
+                        cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
+                        await _send_kind_item(
+                            ("vol", retry, cap, None), retry_label="第4張"
+                        )
+
+            # 送第 4 張時同步等第 5 張 paint（體感三四五加速；畫質不變、不准真並行 Agg）
+            vol_send_task = asyncio.create_task(_send_vol_if_any())
             await _bump_progress("intraday")
             await asyncio.sleep(0)
             try:
@@ -10417,6 +10427,7 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("查股當天走勢 await 失敗 code=%s", code)
                 intrad_item = None
+            await vol_send_task
             logger.info(
                 "查股階段 intrad done code=%s ok=%s",
                 code,
