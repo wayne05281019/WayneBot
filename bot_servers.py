@@ -6321,10 +6321,117 @@ class WayneTelegramBot:
                     f"{self._session_card_face(kind)}這次畫不出來，請稍後再試。"
                 )
 
+    @staticmethod
+    def _market_teach_trio_caps() -> tuple:
+        """大盤加權教具固定三張：遠／近／超近（外圍另送）。"""
+        return (
+            ("far_path", "遠窗"),
+            ("near_path", "近窗"),
+            ("micro_path", "超近窗"),
+        )
+
+    def _market_teach_path_ok(self, path: str) -> bool:
+        p = str(path or "").strip()
+        return bool(
+            p
+            and os.path.isfile(p)
+            and self._png_looks_ok(p, min_bytes=8_000, min_w=480, min_h=280)
+        )
+
+    def _merge_market_teach_kit(self, primary: dict, fallback: dict) -> dict:
+        """活畫缺哪張就用已存檔補；不准因近窗有了就整包跳過遠／超近。"""
+        out = dict(primary or {})
+        fb = dict(fallback or {})
+        for key in ("far_path", "near_path", "micro_path", "us_path"):
+            if self._market_teach_path_ok(out.get(key)):
+                continue
+            alt = str(fb.get(key) or "").strip()
+            if self._market_teach_path_ok(alt):
+                out[key] = alt
+        for key in ("thesis", "as_of", "slot_id"):
+            if not str(out.get(key) or "").strip() and str(fb.get(key) or "").strip():
+                out[key] = fb.get(key)
+        return out
+
+    async def _send_market_teach_trio_album(
+        self,
+        message,
+        items: list,
+        *,
+        caption: str = "",
+    ) -> int:
+        """遠／近／超近一次相簿送出。失敗再改逐張。回傳成功張數。"""
+        if not items:
+            return 0
+        paths = []
+        for _key, _label, path in items:
+            try:
+                send_path = self._prepare_lookup_album_photo(path)
+            except Exception:
+                send_path = path
+            if send_path and os.path.isfile(send_path):
+                paths.append(send_path)
+            elif self._market_teach_path_ok(path):
+                paths.append(path)
+        if len(paths) < 1:
+            return 0
+        # ≥2 張走相簿＝一次出齊；單張才逐張
+        if len(paths) >= 2:
+            try:
+                from telegram import InputFile, InputMediaPhoto
+
+                handles = []
+                try:
+                    media = []
+                    for i, send_path in enumerate(paths):
+                        fh = open(send_path, "rb")
+                        handles.append(fh)
+                        fname = os.path.basename(send_path) or f"twii-{i}.png"
+                        file_obj = InputFile(fh, filename=fname)
+                        if i == 0 and caption:
+                            media.append(
+                                InputMediaPhoto(
+                                    media=file_obj, caption=str(caption)[:1024]
+                                )
+                            )
+                        else:
+                            media.append(InputMediaPhoto(media=file_obj))
+                    await message.reply_media_group(
+                        media=media,
+                        read_timeout=45,
+                        write_timeout=60,
+                        connect_timeout=20,
+                    )
+                    return len(paths)
+                finally:
+                    for fh in handles:
+                        try:
+                            fh.close()
+                        except Exception:
+                            pass
+            except Exception:
+                logger.exception("大盤遠近超近相簿失敗，改逐張")
+        sent = 0
+        for i, (_key, label, path) in enumerate(items):
+            try:
+                send_path = self._prepare_lookup_album_photo(path)
+                bit = str(caption or "") if i == 0 else f"台股大盤・{label}（非買訊）"
+                with open(send_path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=bit[:900],
+                        reply_markup=None,
+                    )
+                sent += 1
+            except Exception:
+                logger.exception("大盤教具逐張送出略過 label=%s", label)
+        return sent
+
     async def _send_market_wave_charts(self, message, *, uid: str = "") -> None:
-        """大盤專頁附圖：暗底遠／近／超近／外圍（與飆大教具同一套）。
+        """大盤專頁附圖：暗底遠／近／超近一次三張＋外圍（與飆大教具同一套）。
 
         不准再送淺底加權日K／大量區；失敗要補白話，不准只停等待泡泡。
+        活畫若只出近窗，必須用已存檔把遠／超近補齊後再送，不准只丟第二張。
         """
         from config import skip_chart_warmup
 
@@ -6344,7 +6451,7 @@ class WayneTelegramBot:
             from wayne_navigator import submit_mpl_paint
 
             kit: dict = {}
-            # 每次按台股大盤：強制活畫（盤中疊最新加權顯示柱）；失敗才退回已存檔
+            # 每次按台股大盤：強制活畫（盤中疊最新加權顯示柱）
             try:
                 painted = await asyncio.wait_for(
                     asyncio.wrap_future(
@@ -6369,21 +6476,28 @@ class WayneTelegramBot:
                 logger.warning("大盤教具活畫逾時")
             except Exception:
                 logger.exception("大盤教具活畫略過")
+            stored: dict = {}
+            try:
+                stored = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
+            except Exception:
+                logger.exception("大盤讀教具路徑略過")
+                stored = {}
+            # 缺哪張補哪張（根因：活畫 ok 但只出近窗時舊邏輯不再讀已存檔）
+            kit = self._merge_market_teach_kit(kit, stored)
             if not any(
-                str(kit.get(k) or "").strip() and os.path.isfile(str(kit.get(k) or ""))
+                self._market_teach_path_ok(kit.get(k))
                 for k in ("far_path", "near_path", "micro_path")
             ):
-                try:
-                    kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
-                except Exception:
-                    logger.exception("大盤讀教具路徑略過")
-                    kit = {}
-            caps = (
-                ("far_path", "台股大盤・遠窗（波浪／切割・非買訊）"),
-                ("near_path", "台股大盤・近窗（細微波／量價・非買訊）"),
-                ("micro_path", "台股大盤・超近窗（C內小波・非買訊）"),
-                ("us_path", "台股大盤・外圍對照（費半／納指・非買訊）"),
-            )
+                kit = self._merge_market_teach_kit(stored, {})
+            trio_caps = self._market_teach_trio_caps()
+            trio_items = []
+            missing = []
+            for key, label in trio_caps:
+                path = str(kit.get(key) or "").strip()
+                if self._market_teach_path_ok(path):
+                    trio_items.append((key, label, path))
+                else:
+                    missing.append(label)
             thesis = str(kit.get("thesis") or "").strip()
             ladder_line = ""
             try:
@@ -6403,31 +6517,47 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("大盤層級一句略過")
                 ladder_line = ""
-            for key, head in caps:
-                path = str(kit.get(key) or "").strip()
-                if not path or not os.path.isfile(path):
-                    continue
-                if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
-                    continue
-                bits = [head]
-                if ladder_line:
-                    bits.append(ladder_line)
-                elif thesis:
-                    bits.append(thesis)
-                cap = "\n".join(bits)[:900]
+            order_zh = "、".join(label for _k, label in trio_caps)
+            bits = [
+                f"台股大盤・遠／近／超近（一次三張・{order_zh}・非買訊）",
+            ]
+            if ladder_line:
+                bits.append(ladder_line)
+            elif thesis:
+                bits.append(thesis)
+            if missing:
+                bits.append(f"這次缺：{'、'.join(missing)}")
+            trio_cap = "\n".join(bits)[:1024]
+            sent = await self._send_market_teach_trio_album(
+                message, trio_items, caption=trio_cap
+            )
+            # 外圍對照另張（不佔三張名額）
+            us_path = str(kit.get("us_path") or "").strip()
+            if self._market_teach_path_ok(us_path):
                 try:
-                    send_path = self._prepare_lookup_album_photo(path)
+                    send_path = self._prepare_lookup_album_photo(us_path)
+                    us_bits = ["台股大盤・外圍對照（費半／納指・非買訊）"]
+                    if ladder_line:
+                        us_bits.append(ladder_line)
                     with open(send_path, "rb") as f:
                         await message.reply_photo(
                             photo=f,
-                            caption=cap[:900],
+                            caption="\n".join(us_bits)[:900],
                             reply_markup=None,
                         )
                     sent += 1
                 except Exception:
-                    logger.exception("大盤教具圖送出略過 key=%s", key)
+                    logger.exception("大盤外圍對照送出略過")
             if sent <= 0:
                 await message.reply_text(fail_msg)
+            elif missing and len(trio_items) < 3:
+                try:
+                    await message.reply_text(
+                        f"大盤教具應一次三張（遠／近／超近），這次缺：{'、'.join(missing)}。"
+                        "請稍後再按一次台股大盤。"
+                    )
+                except Exception:
+                    pass
         except Exception:
             logger.exception("大盤教具圖失敗")
             await message.reply_text(fail_msg)
