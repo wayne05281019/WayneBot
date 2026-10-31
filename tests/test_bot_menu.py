@@ -89,16 +89,21 @@ def test_image_surfaces_wait_vanishes_after_photo():
     industry = inspect.getsource(WayneTelegramBot._send_industry)
     assert industry.index("_start_plain_wait") < industry.index("reply_photo")
     assert industry.index("reply_photo") < industry.index("_stop_plain_wait")
-    # 大盤附圖＝暗底遠／近／超近（與飆大教具同一套）；不准再送淺底日K／大量區
+    # 大盤附圖＝暗底遠／近／超近一次三張；活畫缺張要用已存檔補，不准只出近窗
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
-    assert wave.index("_start_plain_wait") < wave.index("reply_photo")
-    assert wave.index("reply_photo") < wave.rindex("_stop_plain_wait")
+    assert wave.index("_start_plain_wait") < wave.index("_send_market_teach_trio_album")
+    assert "_merge_market_teach_kit" in wave
+    assert "一次三張" in wave
     assert "paint_open_day_hypothesis" in wave
     assert "force=True" in wave
     assert "latest_teach_kit" in wave
-    assert "遠窗" in wave and "近窗" in wave and "超近" in wave
+    assert "遠／近／超近" in wave
     assert "大盤教具圖這次畫不出來" in wave
     assert "submit_mpl_paint" in wave
+    trio = inspect.getsource(WayneTelegramBot._market_teach_trio_caps)
+    assert "遠窗" in trio and "近窗" in trio and "超近窗" in trio
+    album = inspect.getsource(WayneTelegramBot._send_market_teach_trio_album)
+    assert "reply_media_group" in album
     teach = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
     assert "force=True" in teach
     assert "paint_open_day_hypothesis" in teach
