@@ -201,6 +201,37 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "K棒下一層" in block or "K下一層" in src
     assert "def _paint_max_vol_hl_zone" in src
     assert "def _paint_next_sr_zone" in src
+    # 黃底對應交易日：金K標月日＋左標高低都帶日＋豎虛線
+    assert "最大量日" in src[src.index("def _paint_special_candle") : src.index("def _paint_vol_bars_max_yellow")]
+    assert "day_tag" in src[src.index("def _paint_max_vol_hl_zone") : src.index("def _hl_spans_excluding")]
+    # 右標確認後畫對應真價虛線；近窗 level_dash=False 不疊線
+    place = src[src.index("def _place_live_right_labels") : src.index("def _his_micro_degree")]
+    assert "axhline" in place
+    assert "level_dash" in place
+    assert "level_dash=False" in block or "level_dash=True" in block
+    # C進行中不准進右欄壓近壓
+    assert "c_lab_x" in block
+    assert "keep_left_of_right=True" in block
+
+
+def test_far_max_vol_day_matches_official_hl():
+    """黃底高低必須＝窗內最大量那根官方日K高低（同一交易日）。"""
+    from biaoke_level_learn import _bar_index_by_ymd, _twii_abc_anchors, _ymd
+    from biaoke_wave import _load_twii_bars
+
+    bars = _load_twii_bars("data/wayne_market.db", n=260)
+    if len(bars) < 20:
+        return
+    i0 = _bar_index_by_ymd(bars, "20260728") or _bar_index_by_ymd(bars, "20260729") or 0
+    bars = list(bars[i0:])
+    anc = _twii_abc_anchors(bars)
+    if not anc:
+        return
+    vols = [float(r.get("volume") or 0) for r in bars]
+    i_vmax = max(range(len(bars)), key=lambda i: vols[i])
+    assert _ymd(bars[i_vmax].get("date")) == "20261015"
+    assert abs(float(anc["highs"][i_vmax]) - 48382.75) < 0.5
+    assert abs(float(anc["lows"][i_vmax]) - 46795.37890625) < 0.5
 
 
 def test_hl_spans_excluding_no_overlap():

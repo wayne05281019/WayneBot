@@ -1287,8 +1287,13 @@ def _paint_special_candle(
     low: float,
     close: float,
     color: str = "#ffd54f",
+    date_lab: str = "",
+    fp: Any = None,
 ) -> None:
-    """把指定日K改特殊色（蓋在普通紅綠上）；給最大量日／區間對應那一根用。"""
+    """把指定日K改特殊色（蓋在普通紅綠上）；給最大量日／區間對應那一根用。
+
+    date_lab 有值時在K上方標月日，讓底色帶一眼對到哪個交易日。
+    """
     import matplotlib.pyplot as plt
 
     ax.vlines(i, low, high, color=color, linewidth=1.55, zorder=6)
@@ -1304,6 +1309,19 @@ def _paint_special_candle(
             zorder=7,
         )
     )
+    md = _md(date_lab) if _ymd(date_lab) else ""
+    if md and fp is not None:
+        ax.text(
+            float(i),
+            float(high),
+            f"最大量日 {md}",
+            fontproperties=fp(8, "bold"),
+            color="#ffd54f",
+            ha="center",
+            va="bottom",
+            zorder=12,
+            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ffeb3b", lw=0.7, alpha=0.95),
+        )
 
 
 def _paint_vol_bars_max_yellow(
@@ -1347,13 +1365,13 @@ def _paint_vol_bars_max_yellow(
 
 
 def _paint_max_vol_day_guide(axes: Sequence[Any], i_max: Optional[int]) -> None:
-    """三欄同一 x 畫黃虛線，最大量日與上方K對齊一眼可見。"""
+    """三欄同一 x 畫黃虛線，最大量日與上方金K／黃底／量柱對齊一眼可見。"""
     if i_max is None:
         return
     for a in axes:
         if a is None:
             continue
-        a.axvline(float(i_max), color="#ffeb3b", lw=0.95, ls=(0, (3, 2)), alpha=0.75, zorder=5)
+        a.axvline(float(i_max), color="#ffeb3b", lw=1.15, ls=(0, (4, 2)), alpha=0.88, zorder=5)
 
 
 def _next_support_resist(
@@ -1380,17 +1398,21 @@ def _paint_max_vol_hl_zone(
     date_lab: str,
     fp: Any,
 ) -> None:
-    """淺黃底＝最大量日那根K的最高～最低；底色 zorder 低於K棒。"""
+    """淺黃底＝最大量日那根K的最高～最低；底色 zorder 低於K棒。
+
+    左標一定帶交易日月日，跟金K／量柱黃／豎虛線同一日，不准只寫高低不寫日。
+    """
     y0, y1 = float(low), float(high)
     if y1 <= y0:
         return
     md = _md(date_lab) if _ymd(date_lab) else ""
-    # 只留淺黃底，不准上下虛線（線會把區間跟K攪糊）
+    day_tag = f"{md} " if md else ""
+    # 只留淺黃底，不准上下虛線框（框會跟K攪糊）；對齊交易日靠豎虛線＋金K＋左標月日
     ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
     ax.text(
         0.01,
         y1,
-        f"最大量日高 {_px(y1)}" + (f" ({md})" if md else ""),
+        f"{day_tag}最大量日高 {_px(y1)}",
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(9, "bold"),
         color="#ffe082",
@@ -1402,7 +1424,7 @@ def _paint_max_vol_hl_zone(
     ax.text(
         0.01,
         y0,
-        f"最大量日低 {_px(y0)}",
+        f"{day_tag}最大量日低 {_px(y0)}",
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(9, "bold"),
         color="#ffe082",
@@ -1460,10 +1482,19 @@ def _paint_next_sr_zone(
     if support is None and resist is None:
         return skipped
     # 左標：真價若不在黃帶內才標；在黃帶內 → 交給右欄（不准看起來像青底蓋過黃）
+    # 左標有畫的 → 同價水平虛線（位階不是某日K，但是他點過的真價）
     if support is not None:
         if _y_inside_hl(float(support), exclude_lo, exclude_hi):
             skipped["support"] = float(support)
         else:
+            ax.axhline(
+                float(support),
+                color="#4dd0e1",
+                lw=0.85,
+                ls=(0, (3, 2)),
+                alpha=0.55,
+                zorder=4,
+            )
             ax.text(
                 0.01,
                 float(support),
@@ -1480,6 +1511,14 @@ def _paint_next_sr_zone(
         if _y_inside_hl(float(resist), exclude_lo, exclude_hi):
             skipped["resist"] = float(resist)
         else:
+            ax.axhline(
+                float(resist),
+                color="#4dd0e1",
+                lw=0.85,
+                ls=(0, (3, 2)),
+                alpha=0.55,
+                zorder=4,
+            )
             ax.text(
                 0.01,
                 float(resist),
@@ -1558,18 +1597,21 @@ def _place_live_right_labels(
     ymin: float,
     ymax: float,
     fp,
+    level_dash: bool = True,
+    min_gap: Optional[float] = None,
 ) -> None:
     """右側價標：結構優先、近距去重、垂直拉開，不准字壓字／字騎線。
 
-    Fib 與 B／1-4 太近就只留結構標（線仍可畫在外面）；文字 Y 與價線 Y 分開，
-    用短引線接到真價；文字一律實心底，水平線不准切開字。
+    確認過的右標預設在真價畫對應水平虛線；文字 Y 與價線 Y 分開，短引線接到真價。
+    note 可設 dash=False；呼叫端 level_dash=False 時整批不畫虛線（近窗已自畫線）。
     """
     items = [dict(x) for x in (notes or []) if x.get("y") is not None and x.get("text")]
     if not items:
         return
     span = max(ymax - ymin, 1.0)
     # 遠窗價距大：加大垂直間距，右標不准互壓
-    gap = max(span * 0.095, 680.0)
+    gap = float(min_gap) if min_gap is not None else max(span * 0.095, 680.0)
+    gap = max(gap, span * 0.08, 520.0)
     # 結構標優先於 Fib 裝飾標
     def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
         t = str(d.get("text") or "")
@@ -1611,7 +1653,17 @@ def _place_live_right_labels(
         placed.append(y)
         color = str(it.get("color") or _LIVE_MUTED)
         x0 = float(it.get("x", n - 1))
-        # 短引線到右欄（實線細、短），文字用實心底
+        # 確認過的右標 → 真價水平虛線（字用實心底，不准騎線）
+        if level_dash and it.get("dash", True):
+            ax.axhline(
+                y_true,
+                color=color,
+                lw=0.85,
+                ls=(0, (3, 2)),
+                alpha=0.55,
+                zorder=4,
+            )
+        # 短引線到右欄，文字用實心底蓋住虛線穿過處
         ax.plot(
             [x0, x_text - 0.25],
             [y_true, y],
@@ -1770,8 +1822,13 @@ def _paint_c_forecast(
     lows: Sequence[float],
     fp: Any,
     n: int,
+    show_label: bool = True,
+    keep_left_of_right: bool = False,
 ) -> Dict[str, Any]:
-    """在今之後畫預估虛線＋標；回傳 tip 方便調 xlim。"""
+    """在今之後畫預估虛線＋標；回傳 tip 方便調 xlim。
+
+    keep_left_of_right＝True 時標停在右欄左側，不准跟右價標互壓。
+    """
     tip = _c_forecast_tip(i_now=i_now, y_now=y_now, y_ref=y_ref, lows=lows)
     fut_x, fut_y = float(tip["fut_x"]), float(tip["fut_y"])
     ax.plot(
@@ -1784,19 +1841,25 @@ def _paint_c_forecast(
         zorder=6,
     )
     ax.scatter([fut_x], [fut_y], s=28, c="#ea80fc", zorder=7, edgecolors="#fff", linewidths=0.4)
-    # 標在端點下方，不准騎在虛線／水平錨線上
     lab_y = float(fut_y) - max(abs(float(y_now) - float(fut_y)) * 0.1, 120.0)
-    ax.text(
-        fut_x + 0.2,
-        lab_y,
-        str(tip["label"]),
-        fontproperties=fp(9, "bold"),
-        color="#ea80fc",
-        ha="left",
-        va="top",
-        zorder=10,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ea80fc", lw=0.65, alpha=0.94),
-    )
+    if show_label:
+        # 遠窗：標靠端點但必須停在右欄左側，不准壓右價標
+        lab_x = float(fut_x) + 0.2
+        ha = "left"
+        if keep_left_of_right:
+            lab_x = min(float(fut_x) - 0.35, float(n) - 2.8)
+            ha = "right"
+        ax.text(
+            lab_x,
+            lab_y,
+            str(tip["label"]),
+            fontproperties=fp(9, "bold"),
+            color="#ea80fc",
+            ha=ha,
+            va="top",
+            zorder=10,
+            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ea80fc", lw=0.65, alpha=0.94),
+        )
     tip["xlim_right"] = max(float(n) + 1.2, fut_x + 2.2)
     tip["lab_y"] = lab_y
     return tip
@@ -2182,7 +2245,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         exclude_hi=y_excl_hi,
     )
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
-    # 黃帶對應那一根K＝最大量日，整根改金色（不准只靠外框）
+    # 黃帶對應那一根K＝最大量日，整根改金色＋標月日（底色／金K／量柱／豎線同一交易日）
     if i_vmax is not None:
         _paint_special_candle(
             ax,
@@ -2192,6 +2255,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(lows[i_vmax]),
             close=float(closes[i_vmax]),
             color="#ffd54f",
+            date_lab=_ymd(bars[i_vmax].get("date")),
+            fp=_fp,
         )
     ax.axvspan(-0.4, i5 + 0.4, facecolor="#ff8a80", alpha=0.05, zorder=0.2)
     ax.axvspan(i5 + 0.4, n - 0.2, facecolor="#ea80fc", alpha=0.04, zorder=0.2)
@@ -2200,7 +2265,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=1.75, alpha=0.85, zorder=7)
     ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=1.85, zorder=7)
     tip = _paint_c_forecast(
-        ax, i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, fp=_fp, n=n
+        ax,
+        i_now=i_now,
+        y_now=y_now,
+        y_ref=y_bhi,
+        lows=c_seg_lows,
+        fp=_fp,
+        n=n,
+        keep_left_of_right=True,
     )
     fut_x = float(tip.get("fut_x") or fut_x)
     for ii, yy, col in (
@@ -2213,12 +2285,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ax.scatter([ii], [yy], s=40, c=col, zorder=8, edgecolors="#fff", linewidths=0.55)
     span = ymax - ymin
     far_lo_md = _md(bars[i_far_lo].get("date"))
+    # 浪名標：C進行中必須停在今點左側，不准進右欄去壓「近壓／今」
+    c_lab_x = float(i_now) - max(2.8, min(5.0, (i_now - i_bhi) * 0.35))
     for x, y, lab, col, ha, va in (
         (i_far_lo + 1.0, y_far_lo + span * 0.028, f"⑤起 {far_lo_md}", "#ffab91", "left", "bottom"),
         (i5, y5 + span * 0.028, "⑤升完", "#ff8a80", "center", "bottom"),
         (i_alow, y_alow - span * 0.03, "A", "#ff8a80", "center", "top"),
         (i_bhi - 0.7, y_bhi + span * 0.028, "B", "#40c4ff", "center", "bottom"),
-        (min(i_now + 1.2, n + 0.2), y_now + span * 0.055, "C進行中", "#ea80fc", "left", "bottom"),
+        (c_lab_x, y_now + span * 0.045, "C進行中", "#ea80fc", "center", "bottom"),
     ):
         ax.text(
             x,
@@ -2231,7 +2305,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=10,
             bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.8, alpha=0.94),
         )
-    # 右欄精簡：左已有撐壓／最大量標 → 右只留⑤／B／今／次撐（若有），強制拉開不准互壓
+    # 右欄：確認過的真價＋對應橫向虛線；垂直拉開不准互壓（浪名不進右欄）
     # 落在黃帶內的青標改右欄（左欄不准浮在黃底上像交疊）
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
@@ -2260,7 +2334,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         right_notes.append(
             {"x": n - 1, "y": 44210.0, "text": f"次撐44210{tag_44210}", "color": "#82b1ff"}
         )
-    _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
+    _place_live_right_labels(
+        ax,
+        right_notes,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        fp=_fp,
+        level_dash=True,
+        min_gap=max((ymax - ymin) * 0.11, 760.0),
+    )
     ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     ax.set_ylim(ymin, ymax)
 
@@ -2338,7 +2421,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.952,
-        "兩底色不交疊｜無上下虛線｜金K＝爆大量日｜黃底＝其高低｜青底＝下一撐～近壓（重疊不塗）｜右標不准互壓",
+        "黃底＝最大量交易日高低（金K＋豎線同日）｜青＝他點過位階｜右標＝確認價＋橫向虛線｜標不准互壓｜兩底色不交疊",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_MUTED,
         ha="left",
@@ -2491,7 +2574,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         {"x": n - 1, "y": 45546.0, "text": f"45546{tag_45546}", "color": "#ffab40"},
         {"x": n - 1, "y": 44210.0, "text": f"44210{tag_44210}", "color": "#82b1ff"},
     ]
-    _place_live_right_labels(ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp)
+    # 近窗已自畫 fib／錨虛線 → 右標函式不准再疊一層
+    _place_live_right_labels(
+        ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp, level_dash=False
+    )
     morph = str(pack.get("morph_note") or "").strip()
     morph_line = (morph[:24] + "…") if len(morph) > 24 else (morph or "楔形／盤頭＝觀察，不是叫你買")
     intent = str(pack.get("intent_note") or "").strip()
@@ -3260,6 +3346,8 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
         ymin=min(lows) - 180,
         ymax=max(highs) + 280,
         fp=_fp,
+        level_dash=True,
+        min_gap=max((max(highs) - min(lows)) * 0.12, 420.0),
     )
     axv.set_ylim(0, (max(vols) if vols else 1) * 1.35)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
