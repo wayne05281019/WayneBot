@@ -25,8 +25,8 @@ def test_prepare_skips_reencode_when_png_named_jpeg():
         assert not os.path.isfile(path + ".hq.jpg")
 
 
-def test_prepare_magic_jpeg_skips_pil_open(monkeypatch):
-    """魔術字已是 JPEG 且容量合格：不准再 Image.open（第二次送圖熱點）。"""
+def test_prepare_magic_jpeg_skips_reencode_when_wh_ok():
+    """魔術字 JPEG＋容量＋寬高都合格：回原檔，不准再壓 .hq.jpg。"""
     from PIL import Image
 
     with tempfile.TemporaryDirectory() as td:
@@ -34,13 +34,28 @@ def test_prepare_magic_jpeg_skips_pil_open(monkeypatch):
         Image.new("RGB", (900, 1100), (10, 20, 30)).save(
             path, "JPEG", quality=95, subsampling=0
         )
-
-        def _boom(*_a, **_k):
-            raise AssertionError("prepare 不該再開 PIL")
-
-        monkeypatch.setattr(Image, "open", _boom)
         out = WayneTelegramBot._prepare_native_lookup_jpeg(path)
         assert out == path
+        assert not os.path.isfile(path + ".hq.jpg")
+
+
+def test_prepare_magic_jpeg_oversized_wh_is_resized():
+    """產業長圖常已是 JPEG：寬+高>10000 必須縮小，不准早退原檔。"""
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "industry.png")
+        Image.new("RGB", (3240, 9996), (240, 240, 240)).save(
+            path, "JPEG", quality=85, subsampling=0
+        )
+        with open(path, "rb") as f:
+            assert f.read(3) == b"\xff\xd8\xff"
+        out = WayneTelegramBot._prepare_native_lookup_jpeg(path)
+        assert out != path
+        assert out.endswith(".hq.jpg")
+        with Image.open(out) as im:
+            assert im.format == "JPEG"
+            assert sum(im.size) <= 10000
 
 
 def test_prepare_still_converts_true_png():

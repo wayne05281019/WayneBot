@@ -4946,8 +4946,15 @@ class WayneTelegramBot:
         except OSError:
             magic_jpeg = False
             sz0 = 0
+        # 容量合格仍要核寬+高≤10000：產業長圖常已是 JPEG，早退會讓話筒 sendPhoto 直接拒。
         if magic_jpeg and 0 < sz0 <= _LOOKUP_TG_MAX_BYTES - 64:
-            return path
+            try:
+                with Image.open(path) as probe:
+                    pw, ph = probe.size
+                if (pw, ph) == WayneTelegramBot._fit_lookup_photo_wh(pw, ph):
+                    return path
+            except Exception:
+                pass
         try:
             im = Image.open(path)
             im.load()

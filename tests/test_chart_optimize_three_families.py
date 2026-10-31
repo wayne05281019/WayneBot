@@ -109,9 +109,10 @@ def test_biaoke_broken_rail_and_dpi(tmp_path):
     else:
         assert (
             info.get("up_pts")
+            or info.get("down_pts")
             or (info.get("channel") or {}).get("kind")
             or info.get("spike_i") is not None
-            or info.get("n")
+            or int(info.get("n") or 0) >= 8
         )
     src = inspect.getsource(render_biaoke_structure_png)
     assert "不是買訊" in src

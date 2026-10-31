@@ -1483,12 +1483,13 @@ def test_asc_break_reclass_to_desc_2454(production_db):
 
     官方柱滾動後可能又走出升通道；有 `asc_break` 才鎖 tip／caption，
     否則只鎖 kind∈asc/desc（源碼契約見 test_asc_break_reclass_source_contract）。
+    窗滾後樣本可能暫時不再走破升改判；不准鎖死舊窗把 full-suite 打紅。
     """
     from biaoke_brain import load_bars
     from biaoke_chart import _BARS, chart_caption, infer_parallel_channel
 
     work = load_bars(production_db, "2454", n=360)[-_BARS:]
-    ch = infer_parallel_channel(work)
+    ch = infer_parallel_channel(work) or {}
     assert ch.get("kind") in ("asc", "desc")
     if ch.get("reclass_from") == "asc_break":
         assert ch.get("kind") == "desc"
@@ -1500,6 +1501,9 @@ def test_asc_break_reclass_to_desc_2454(production_db):
         # caption 吃 tip，結構／大量區同一句
         cap = chart_caption({"channel": ch, "struct": {}, "last_bar": work[-1]}, sid="2454")
         assert "舊升通道失效" in cap
+    else:
+        (i, _y1, _d1), (j, _y2, _d2) = ch["base"]
+        assert int(j) - int(i) >= 5
 
 
 def test_asc_break_reclass_source_contract():

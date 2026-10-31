@@ -1426,6 +1426,9 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         up = _asc_low_pair(lo_p, lows)
     out["down_track"] = down
     out["up_track"] = up
+    # 無上升連點時仍給 bool，避免窗滾後缺鍵讓出圖／測試當 None。
+    out["up_broken"] = False
+    out["up_steep"] = False
     n = len(rows)
     notes: List[str] = []
     last_bar = out.get("last_bar") or {}

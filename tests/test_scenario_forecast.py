@@ -186,6 +186,11 @@ def test_ema_and_caption_not_buy_signal():
     )
     assert "不保證" in cap and "不是買訊" in cap
     assert "(3)" in cap or "(1)" in cap
+    assert cap.startswith("3035 智原　")
+    # 股名誤成代號時不准黏成 30353035
+    dup = format_scenario_caption("3035", "3035", {"caption_bits": []})
+    assert dup.startswith("3035　")
+    assert "30353035" not in dup
 
 
 def test_desc_press_and_ladders_geometry():
