@@ -119,7 +119,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "gap * 0.078" in src or "結構優先" in src
     # 教不懂浪的學生：遠窗／近窗各一張＋外圍費半對照；缺資料自補
     assert "遠窗" in src and "近窗" in src
-    assert "20260825" in src
+    assert "20260728" in src  # 遠窗從七月底⑤起
+    assert "_sox_abc_anchors_on_axis" in src  # 遠窗下方費半自轉折
     assert "_render_twii_far_dark" in src
     assert "_render_us_compare_dark" in src
     assert "_ensure_us_index_daily" in src
