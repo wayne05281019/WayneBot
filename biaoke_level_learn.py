@@ -1390,6 +1390,76 @@ def _alt_path_needed(his_degree: str, geom_degree: str) -> bool:
     return False
 
 
+def _c_forecast_tip(
+    *,
+    i_now: int,
+    y_now: float,
+    y_ref: float,
+    lows: Sequence[float],
+) -> Dict[str, Any]:
+    """C 段『預估未來』虛線端點：只指向他說過的下一錨（45546→44210），不准發明新價。
+
+    回傳 fut_x／fut_y／label；繪圖端用虛線＋「預估↓…（會改・非買訊）」。
+    """
+    fut_x = float(i_now + max(3, 4))
+    tag = _level_break_tag(45546.0, lows)
+    if tag != "已破":
+        fut_y = 45546.0
+        lab = "預估↓45546"
+    else:
+        fut_y = 44210.0
+        lab = "預估↓44210"
+    # 今已低於該錨：略往下延伸示意續弱，仍不發明具體新價標
+    if float(y_now) <= float(fut_y) + 1.0:
+        drop = max(abs(float(y_ref) - float(y_now)) * 0.12, 180.0)
+        fut_y = float(y_now) - drop
+        lab = "預估↓續弱"
+    return {
+        "fut_x": fut_x,
+        "fut_y": float(fut_y),
+        "label": lab,
+        "note": "虛線＝預估未來（會改・非買訊）",
+    }
+
+
+def _paint_c_forecast(
+    ax: Any,
+    *,
+    i_now: int,
+    y_now: float,
+    y_ref: float,
+    lows: Sequence[float],
+    fp: Any,
+    n: int,
+) -> Dict[str, Any]:
+    """在今之後畫預估虛線＋標；回傳 tip 方便調 xlim。"""
+    tip = _c_forecast_tip(i_now=i_now, y_now=y_now, y_ref=y_ref, lows=lows)
+    fut_x, fut_y = float(tip["fut_x"]), float(tip["fut_y"])
+    ax.plot(
+        [i_now, fut_x],
+        [y_now, fut_y],
+        color="#ea80fc",
+        lw=1.55,
+        ls=(0, (4, 2)),
+        alpha=0.8,
+        zorder=6,
+    )
+    ax.scatter([fut_x], [fut_y], s=28, c="#ea80fc", zorder=7, edgecolors="#fff", linewidths=0.4)
+    ax.text(
+        fut_x,
+        fut_y,
+        str(tip["label"]),
+        fontproperties=fp(9, "bold"),
+        color="#ea80fc",
+        ha="left",
+        va="center",
+        zorder=9,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ea80fc", lw=0.65, alpha=0.92),
+    )
+    tip["xlim_right"] = max(float(n) + 1.2, fut_x + 1.4)
+    return tip
+
+
 def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -> Dict[str, Any]:
     """他說『現在走到哪一層』：大→小一條龍（預估會改；非買訊）。
 
@@ -1622,13 +1692,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ax.plot([i_far_lo, i5], [y_far_lo, y5], color="#ff8a80", lw=2.4, zorder=7)
     ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=1.8, alpha=0.85, zorder=7)
     ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=1.8, alpha=0.85, zorder=7)
-    ax.plot(
-        [i_bhi, i_now],
-        [y_bhi, y_now],
-        color="#ea80fc",
-        lw=1.7,
-        ls=(0, (5, 2)),
-        zorder=7,
+    # 已走路徑實線；預估未來另畫虛線（不准把進行中 C 標成預估完）
+    # 已破／未破只看 C 段後低點，不准拿升浪期 9/16 低去判「已破」
+    c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
+    ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=1.9, zorder=7)
+    tip = _paint_c_forecast(
+        ax, i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, fp=_fp, n=n
     )
     for ii, yy, col in (
         (i_far_lo, y_far_lo, "#ff8a80"),
@@ -1644,7 +1713,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         (i5, y5 + span * 0.025, "⑤升完", "#ff8a80"),
         ((i5 + i_alow) / 2, (y5 + y_alow) / 2, "A", "#ff8a80"),
         ((i_alow + i_bhi) / 2, (y_alow + y_bhi) / 2, "B", "#40c4ff"),
-        ((i_bhi + i_now) / 2, (y_bhi + y_now) / 2 - span * 0.02, "C↓預估", "#ea80fc"),
+        (i_now, y_now + span * 0.02, "C進行中", "#ea80fc"),
     ):
         ax.text(
             x,
@@ -1659,8 +1728,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         )
     ax.axhline(44210.0, color="#82b1ff", lw=0.9, ls=(0, (4, 3)), alpha=0.6, zorder=4)
     ax.axhline(45546.0, color="#ffab40", lw=0.85, ls=(0, (4, 3)), alpha=0.55, zorder=4)
-    tag_45546 = _level_break_tag(45546.0, lows)
-    tag_44210 = _level_break_tag(44210.0, lows)
+    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
+    tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B {_px(y_bhi)}", "color": "#40c4ff"},
@@ -1673,8 +1742,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         "給沒底子的人：先看遠窗\n"
         "①左邊從低走到⑤＝上升走完\n"
         "②走完⑤之後才開始跌（ABC）\n"
-        "③細的切割／型態／量價→翻近窗\n"
-        "老師＝飆大；位階是預估會改；非買訊"
+        "③紫虛＝預估未來（非買訊）\n"
+        "老師＝飆大；位階會改"
     )
     ax.text(
         0.012,
@@ -1703,7 +1772,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             if i not in t2:
                 t2.append(i)
                 l2.append(_md(d))
-    ax.set_xlim(-0.8, n + 7.2)
+    ax.set_xlim(-0.8, max(n + 7.2, float(tip.get("xlim_right") or n) + 2.0))
     ax.set_ylim(ymin, ymax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
@@ -1725,7 +1794,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.03,
         0.942,
-        "說法：只看後面跌段會懵——左邊8/25低→10/6⑤＝上升走完；之後才ABC。老師＝飆大；預估會改",
+        "實線＝已走；紫虛＝預估未來（只指他說過的下一錨・會改・非買訊）",
         fontproperties=_fp(10, "bold"),
         color=_LIVE_MUTED,
         ha="left",
@@ -1811,13 +1880,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ax.axvspan(i5 + 0.35, n - 0.15, facecolor="#ea80fc", alpha=0.07, zorder=1)
     ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=2.5, zorder=7)
     ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=2.5, zorder=7)
-    ax.plot(
-        [i_bhi, i_now],
-        [y_bhi, y_now],
-        color="#ea80fc",
-        lw=2.3,
-        ls=(0, (5, 2.2)),
-        zorder=7,
+    # 已走 C 實線；預估未來虛線另畫（已破只看 C 段後）
+    c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
+    ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=2.3, zorder=7)
+    tip = _paint_c_forecast(
+        ax, i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, fp=_fp, n=n
     )
     for ii, yy, col in (
         (i5, y5, "#ff8a80"),
@@ -1867,8 +1934,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ax.axhline(rule14_y, color="#ffffff", lw=1.2, ls=(0, (6, 2)), alpha=0.92, zorder=5)
     ax.axhline(45546.0, color="#ffab40", lw=0.85, ls=(0, (4, 3)), alpha=0.55, zorder=4)
     ax.axhline(44210.0, color="#82b1ff", lw=0.85, ls=(0, (4, 3)), alpha=0.55, zorder=4)
-    tag_45546 = _level_break_tag(45546.0, lows)
-    tag_44210 = _level_break_tag(44210.0, lows)
+    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
+    tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B {_px(y_bhi)}", "color": "#40c4ff"},
@@ -1921,7 +1988,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             if i not in t2:
                 t2.append(i)
                 l2.append(_md(d))
-    ax.set_xlim(-0.6, n + 7.5)
+    ax.set_xlim(-0.6, max(n + 7.5, float(tip.get("xlim_right") or n) + 2.0))
     ax.set_ylim(ymin, ymax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
@@ -1948,8 +2015,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.945,
-        str(ladder.get("one_line") or "他說現在：C進行中")[:100],
-        fontproperties=_fp(11, "bold"),
+        f"{str(ladder.get('one_line') or '他說現在：C進行中')[:72]}｜紫虛＝預估未來（非買訊）",
+        fontproperties=_fp(10, "bold"),
         color="#ffe082",
         ha="left",
         va="top",
@@ -2053,6 +2120,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.plot(his_xs, his_ys, color="#ea80fc", lw=2.6, zorder=7, label="他說路徑")
     ax.scatter(his_xs, his_ys, s=46, c="#ea80fc", zorder=8, edgecolors="#fff", linewidths=0.55)
     ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.75, zorder=5)
+    c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
+    tip = _paint_c_forecast(
+        ax,
+        i_now=i_now,
+        y_now=float(closes[i_now]),
+        y_ref=y_bhi,
+        lows=c_seg_lows,
+        fp=_fp,
+        n=n,
+    )
 
     # 幾何對讀（細線＋①②）：只對讀，圖例分開；不准冒充他說
     geom_xs = [i_bhi, i_c1, i_c2, i_now]
@@ -2169,7 +2246,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         bbox=dict(boxstyle="round,pad=0.35", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.92),
     )
     # 圖例放右上，避開左上K線與層級框
-    ax.plot([], [], color="#ea80fc", lw=2.4, label="紫＝他說（B→今）")
+    ax.plot([], [], color="#ea80fc", lw=2.4, label="紫實＝他說（B→今）")
+    ax.plot([], [], color="#ea80fc", lw=1.5, ls=(0, (4, 2)), label="紫虛＝預估未來")
     ax.plot([], [], color="#ffab40", lw=1.5, ls=(0, (3, 2)), label="橙虛＝幾何（非他說）")
     if need_alt:
         ax.plot([], [], color="#69f0ae", lw=2.0, ls=(0, (5, 2)), label="薄荷＝另前提")
@@ -2201,9 +2279,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             if i not in t2:
                 t2.append(i)
                 l2.append(_md(d))
-    ax.set_xlim(x_left, n + 3.5)
-    # 超級近窗 y：上方多留空給層級標，下方給幾何①
-    ax.set_ylim(c_lo - (c_hi - c_lo) * 0.16, c_hi + (c_hi - c_lo) * 0.28)
+    ax.set_xlim(x_left, max(n + 3.5, float(tip.get("xlim_right") or n) + 1.2))
+    # 超級近窗 y：上方多留空給層級標，下方給幾何①／預估端
+    y_bot = min(c_lo, float(tip.get("fut_y") or c_lo)) - (c_hi - c_lo) * 0.16
+    ax.set_ylim(y_bot, c_hi + (c_hi - c_lo) * 0.28)
     axv.set_ylim(0, (max(vols[i_bhi:]) if any(vols[i_bhi:]) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axv.set_xticks(t2)
@@ -2348,9 +2427,12 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
     ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=2.2, zorder=7)
     ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=2.2, zorder=7)
     ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=2.0, zorder=7)
-    fut_x = min(i_now + max(3, (i_now - i_bhi) // 2), n + 2)
-    fut_y = y_now - (y_bhi - y_now) * 0.35
-    ax.plot([i_now, fut_x], [y_now, fut_y], color="#ea80fc", lw=1.5, ls=(0, (4, 2)), alpha=0.75, zorder=6)
+    c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
+    tip_tw = _paint_c_forecast(
+        ax, i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, fp=_fp, n=n
+    )
+    fut_x = float(tip_tw["fut_x"])
+    fut_y = float(tip_tw["fut_y"])
     for ii, yy, col in (
         (i5, y5, "#ff8a80"),
         (i_alow, y_alow, "#ff8a80"),
@@ -2359,14 +2441,13 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
     ):
         ax.scatter([ii], [yy], s=42, c=col, zorder=8, edgecolors="#fff", linewidths=0.5)
     span_tw = max(highs) - min(lows)
-    # 標在轉折點旁，不貼線中段（避免 A 浮在半空）
+    # 標在轉折點旁，不貼線中段（避免 A 浮在半空）；預估標由 _paint_c_forecast 畫
     for x, y, lab, col, va in (
         (i5, y5 + span_tw * 0.028, "⑤", "#ff8a80", "bottom"),
         (i_alow, y_alow - span_tw * 0.025, "A低", "#ff8a80", "top"),
         (i_bhi, y_bhi + span_tw * 0.028, "B高", "#40c4ff", "bottom"),
         (i_c, float(highs[i_c]) + span_tw * 0.04, "C起", "#ea80fc", "bottom"),
         (i_now, y_now + span_tw * 0.03, "C進行中", "#ea80fc", "bottom"),
-        (fut_x, fut_y - span_tw * 0.01, "預估↓", "#ea80fc", "top"),
     ):
         ax.text(
             x,

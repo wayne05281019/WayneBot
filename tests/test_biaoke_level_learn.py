@@ -149,6 +149,26 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "as_of<=" in src or "chart_as_of" in src
     assert "C內①②（未稱C3）" in src
     assert "title_bit" in src or "不准寫死 C3-3" in src
+    assert "_paint_c_forecast" in src and "_c_forecast_tip" in src
+    assert "預估↓45546" in src or "預估↓44210" in src
+
+
+def test_c_forecast_tip_points_his_next_anchor():
+    from biaoke_level_learn import _c_forecast_tip
+
+    # 未破 45546：預估端指他說過的下一錨（只傳 C 段後低，不准塞 9/16 升浪低）
+    tip = _c_forecast_tip(i_now=10, y_now=46368.0, y_ref=49059.0, lows=[46055.0, 45676.0])
+    assert tip["fut_y"] == 45546.0
+    assert "45546" in tip["label"]
+    # 已破：下一錨 44210
+    tip2 = _c_forecast_tip(i_now=10, y_now=45000.0, y_ref=49059.0, lows=[44726.0])
+    assert tip2["fut_y"] == 44210.0
+    assert "44210" in tip2["label"]
+    # 低點明確破 45546 → 下一錨 44210
+    tip3 = _c_forecast_tip(
+        i_now=10, y_now=46368.0, y_ref=49059.0, lows=[45500.0, 46055.0]
+    )
+    assert tip3["fut_y"] == 44210.0
 
 
 def test_his_micro_degree_and_alt_gate():
