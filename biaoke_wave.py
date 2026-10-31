@@ -1421,9 +1421,13 @@ def wave_abc_story(
 ) -> Dict[str, Any]:
     """2026 ABC 主線，給完全不懂波浪的人看。
 
-    A 起＝6/23 第五波高；A 完＝7/29 低，同一天就是 B 起；
-    B 高＝7/29 之後官方最高（對得上 9/8）；C 從 B 高往現在，虛線未確認。
+    A 起＝6/23 官方高；A 完＝7/29 低，同一天就是 B 起；
+    B 高＝7/29 之後官方最高；C 從 B 高往現在，虛線未確認。
     A 和 B 必須接在同一個 7/29 低，線不准斷。
+
+    硬規則：B 高若已超過 A 起高，**不准**再把 A 起標成「5高」
+    （第五波高不能比 B 高低——標錯＝教錯）。此時只標「A起」，
+    B 高註「已過A起」；縮圖也不再疊假 1–5。
     """
     bars = list(rows or [])
     out: Dict[str, Any] = {}
@@ -1449,12 +1453,6 @@ def wave_abc_story(
         "color": "#2e7d32",
         "unconfirmed": False,
     }
-    out["fifth_high"] = {
-        "i": i_a,
-        "y": y_a,
-        "date": str(bars[i_a].get("date") or ""),
-        "text": f"5高 {_md_slash(bars[i_a].get('date'))} {_px(y_a)}＝A起",
-    }
     out["a_done"] = {
         "i": i_low,
         "y": y_low,
@@ -1470,6 +1468,29 @@ def wave_abc_story(
             i_b = i
     if i_b is None or y_b <= 0:
         return out
+    # B 已過 A 起高 → A 起不是「還成立的第五波高」，不准寫 5高
+    b_over_a = bool(y_b > y_a * 1.0001)
+    out["b_over_a_start"] = b_over_a
+    if b_over_a:
+        out["fifth_high"] = {
+            "i": i_a,
+            "y": y_a,
+            "date": str(bars[i_a].get("date") or ""),
+            "text": f"A起 {_md_slash(bars[i_a].get('date'))} {_px(y_a)}",
+            "overtaken": True,
+        }
+        b_hi_text = (
+            f"{_md_slash(bars[i_b].get('date'))} B高 {_px(y_b)}（已過A起）"
+        )
+    else:
+        out["fifth_high"] = {
+            "i": i_a,
+            "y": y_a,
+            "date": str(bars[i_a].get("date") or ""),
+            "text": f"5高 {_md_slash(bars[i_a].get('date'))} {_px(y_a)}＝A起",
+            "overtaken": False,
+        }
+        b_hi_text = f"{_md_slash(bars[i_b].get('date'))} B高 {_px(y_b)}"
     out["b"] = {
         "xs": [float(i_low), float(i_b)],
         "ys": [y_low, y_b],
@@ -1486,7 +1507,7 @@ def wave_abc_story(
         "i": i_b,
         "y": y_b,
         "date": str(bars[i_b].get("date") or ""),
-        "text": f"{_md_slash(bars[i_b].get('date'))} B高 {_px(y_b)}",
+        "text": b_hi_text,
     }
     last_i = len(bars) - 1
     if last_i > i_b:
@@ -2204,10 +2225,19 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             ha="left",
             va="top",
         )
+        if story.get("b_over_a_start"):
+            abc_line = (
+                f"綠A＝A起→7/29　藍B＝同低→B高（已過A起，不准再叫5高）"
+                f"　虛線＝{c_lab}（隨近窗）"
+            )
+        else:
+            abc_line = (
+                f"綠A＝5高→7/29　藍B＝同低→B高　虛線＝{c_lab}（隨近窗）"
+            )
         fig.text(
             _FIG_LEFT,
             0.908,
-            f"綠A＝5高→7/29　藍B＝同低→B高　虛線＝{c_lab}（隨近窗）",
+            abc_line,
             fontproperties=_fp(9, "bold"),
             color="#37474f",
             ha="left",
@@ -2254,12 +2284,16 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         if long_bars and len(long_bars) > n + 16:
             loc_legs = locator_abc_legs(long_story)
             loc_marks: list = []
-            peak_i = _ymd_index(long_bars, _ABC_A_START)
-            start_i = _ymd_index(long_bars, "20250409")
-            if peak_i is not None:
-                five = infer_impulse_five(long_bars, peak_i=peak_i, start_i=start_i)
-                loc_legs = impulse_five_legs(five) + loc_legs
-                loc_marks = impulse_five_marks(five, size=13)
+            # B 已過 A 起高時，不准再把 6/23 當五浪峰疊 1–5（會教成5高低於B高）
+            if not (story.get("b_over_a_start") or long_story.get("b_over_a_start")):
+                peak_i = _ymd_index(long_bars, _ABC_A_START)
+                start_i = _ymd_index(long_bars, "20250409")
+                if peak_i is not None:
+                    five = infer_impulse_five(
+                        long_bars, peak_i=peak_i, start_i=start_i
+                    )
+                    loc_legs = impulse_five_legs(five) + loc_legs
+                    loc_marks = impulse_five_marks(five, size=13)
             paint_locator_inset(
                 fig,
                 long_bars,

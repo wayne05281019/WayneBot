@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖；一次一張、好了就送。點開高畫質。完整圖下鈕（產業／報導／籌碼／營收／高低導航圖／K線／觀察／記買入）只掛第 4 張大量區；第 2／3 張不要重複鍵盤。導航不塞進自動四張、不送合成三合一
+- 打股票代號 → 上市／上櫃／興櫃一律高低溫度卡→介紹圖→結構圖→大量撐壓圖→當天走勢（開→收）；一次一張、好了就送。點開高畫質。完整圖下鈕（產業／報導／籌碼／營收／高低導航圖／K線／觀察／記買入）只掛第 5 張當天走勢；第 2／3／4 張不要重複鍵盤。導航不塞進自動五張、不送合成三合一
 - 勝率買點 / 海選 / 當沖 / 隔日沖 / 壓撐觀察 / 剛脫離零 / 洞燭先機 / 持股 / 加入觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -37,6 +37,37 @@ _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
+# 單一 paint worker：排隊時間不准算進逾時（否則高低卡一慢，介紹／後張 wait_for 先爆，話筒缺 1／2／5）。
+_LOOKUP_PAINT_POLL_S = 0.02
+_LOOKUP_PAINT_SALVAGE_GRACE_S = 1.25
+
+
+async def _await_lookup_paint(
+    fut,
+    timeout_s: float,
+    *,
+    path_hint: str = "",
+    looks_ok=None,
+):
+    """等單一 mpl worker 真的開始跑才算逾時；逾時後若 hint 檔已合格仍回該路徑。"""
+    while not fut.done() and not fut.running():
+        await asyncio.sleep(_LOOKUP_PAINT_POLL_S)
+    try:
+        return await asyncio.wait_for(asyncio.wrap_future(fut), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        hint = str(path_hint or "").strip()
+        checker = looks_ok
+        if hint and callable(checker) and checker(hint):
+            logger.warning("paint 逾時但檔已就緒 path=%s", hint)
+            return hint
+        if hint:
+            await asyncio.sleep(_LOOKUP_PAINT_SALVAGE_GRACE_S)
+            if callable(checker) and checker(hint):
+                logger.warning("paint 逾時寬限後檔就緒 path=%s", hint)
+                return hint
+        raise
+
+
 # 名單／頁面：盤中慢路徑＋冷啟，短逾時會逼使用者重按。
 _FLOW_HTML_TIMEOUT = float(os.getenv("WAYNE_FLOW_HTML_TIMEOUT", "30"))
 _MARKET_PAGE_TIMEOUT = float(os.getenv("WAYNE_MARKET_PAGE_TIMEOUT", "45"))
@@ -51,7 +82,7 @@ _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 _LOOKUP_JPEG_QUALITY = 95
 _LOOKUP_JPEG_QUALITY_FLOOR = 88
 # 結構／大量撐壓（第3／4張）：PNG→JPEG 或超大檔縮 quality 時不准掉到會糊細 K／灰柱
-_LOOKUP_CHART_KINDS = frozenset({"struct", "vol", "chart", "three"})
+_LOOKUP_CHART_KINDS = frozenset({"struct", "vol", "chart", "three", "intraday"})
 _LOOKUP_JPEG_QUALITY_CHART_FLOOR = 92
 # 查股相關圖一律原生像素送出（高低卡／介紹／結構／大量／籌碼／產業／導航）。
 # 不准再 4:5 letterbox 白底外框墊版——會把內容縮成細條（籌碼橫表尤甚）。
@@ -61,6 +92,9 @@ _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_MAX = (1920, 2400)
 _LOOKUP_ALBUM_BG = (12, 18, 28)
 _LOOKUP_MIS_TIMEOUT = 2.0
+# 興櫃當日行情表是全市場一包（連線 1.5 秒＋讀 3.5 秒）。
+# 沿用上市櫃 2 秒會在表回來前改畫庫內舊均價，呼叫當下的價對不上。
+_LOOKUP_EMERGING_QUOTE_TIMEOUT = 8.0
 # 大盤／資金頁短 memo（鍵含 as_of／現價桶；雙人共用公開頁）
 _PAGE_HTML_TTL_SEC = 45.0
 _PAGE_HTML_CACHE: Dict[Tuple[Any, ...], Tuple[float, Any]] = {}
@@ -399,6 +433,13 @@ except ImportError:
     TELEGRAM_AVAILABLE = False
     Update = Any  # type: ignore
     ContextTypes = type("ContextTypes", (), {"DEFAULT_TYPE": Any})  # type: ignore
+    # 不准 NameError 把查股第 5 張 hub 鍵盤打成崩潰；無 telegram 套件時回 None 鍵盤。
+    InlineKeyboardButton = None  # type: ignore
+    InlineKeyboardMarkup = None  # type: ignore
+    ReplyKeyboardMarkup = None  # type: ignore
+    KeyboardButton = None  # type: ignore
+    BotCommand = None  # type: ignore
+    MenuButtonCommands = None  # type: ignore
 
 # 查股：股票四碼＋ETF（被動／主動／兩倍槓桿）。海選仍不收 ETF。
 LOOKUP_CODE_EXAMPLES_HTML = (
@@ -1183,6 +1224,12 @@ class WayneTelegramBot:
         rows = hits if hits is not None else lookup_stocks(self.db_path, code)
         return bool(rows) and listing_is_emerging(rows[0])
 
+    def _lookup_quote_budget(self, code: str, hits: list | None = None) -> float:
+        """上市櫃維持 2 秒。興櫃要等櫃買當日行情表，不准 2 秒就改畫庫內舊價。"""
+        if self._hit_is_emerging(code, hits):
+            return _LOOKUP_EMERGING_QUOTE_TIMEOUT
+        return _LOOKUP_MIS_TIMEOUT
+
     def _em_no_listed_html(self, code: str, hits: list | None = None) -> str:
         h = (hits or lookup_stocks(self.db_path, code) or [{}])[0]
         sid = html_escape(h.get("stock_id") or code)
@@ -1198,7 +1245,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖（非買訊）；導航不在這四張裡。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖＋當天走勢（非買訊）；導航不在這五張裡。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1727,9 +1774,7 @@ class WayneTelegramBot:
 
             async def _paint_one(fn, timeout_s):
                 fut = submit_mpl_paint(fn)
-                return await asyncio.wait_for(
-                    asyncio.wrap_future(fut), timeout=timeout_s
-                )
+                return await _await_lookup_paint(fut, timeout_s)
 
             try:
                 vz_path, vz_cap = await _paint_one(_vz, _LOOKUP_PNG_TIMEOUT)
@@ -2075,7 +2120,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖。",
+            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖＋當天走勢。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -2089,7 +2134,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
         await message.reply_html(
-            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖。",
+            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖＋當天走勢。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -2482,8 +2527,10 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """查股其餘子鍵：只掛第 4 張大量撐壓圖下（第 2／3 張不要重複鍵盤）。兩人同一套。"""
+        """查股其餘子鍵：只掛第 5 張當天走勢圖下（第 2／3／4 張不要重複鍵盤）。兩人同一套。"""
         _ = topic
+        if not TELEGRAM_AVAILABLE or InlineKeyboardButton is None or InlineKeyboardMarkup is None:
+            return None
         c = str(code).strip()[:6]
         news = news or {}
         news_label = str(news.get("label") or "").strip()
@@ -3488,7 +3535,7 @@ class WayneTelegramBot:
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
                 + "\n"
-                "3　一次出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖，點開高畫質。圖下鈕在最後一張大量區\n"
+                "3　一次出高低溫度卡＋介紹圖＋結構圖＋大量撐壓圖＋當天走勢，點開高畫質。圖下鈕在第5張當天走勢\n"
                 "\n"
                 "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
@@ -4203,6 +4250,7 @@ class WayneTelegramBot:
             "card": "高低溫度卡",
             "struct": "結構圖",
             "vol": "大量撐壓圖",
+            "intraday": "當天走勢圖",
             "volfill": "補官方量",
             "three": "結構圖",
             "volzone": "大量撐壓圖",
@@ -4212,7 +4260,7 @@ class WayneTelegramBot:
             "table": "讀高低卡",
             "album": "送圖",
         }
-        order = ("quote", "card", "glance", "struct", "vol")
+        order = ("quote", "card", "glance", "struct", "vol", "intraday")
         sent_ks = [str(k) for k in (sent or [])]
         cur = str(current or "")
         now = labels.get(cur, "")
@@ -4227,6 +4275,8 @@ class WayneTelegramBot:
             now = "結構圖"
         if cur in ("vol", "volzone") and "card" in sent_ks:
             now = "大量撐壓圖"
+        if cur == "intraday" and "vol" in sent_ks:
+            now = "當天走勢圖"
         if cur == "both":
             rest = labels["album"]
         elif cur == "quote":
@@ -4245,6 +4295,7 @@ class WayneTelegramBot:
                 "glance",
                 "struct",
                 "vol",
+                "intraday",
                 "volfill",
                 "three",
                 "volzone",
@@ -4258,7 +4309,7 @@ class WayneTelegramBot:
             rest = "、".join(labels[k] for k in order if k not in skip)
         sent_txt = "、".join(
             labels[k]
-            for k in ("card", "glance", "struct", "vol")
+            for k in ("card", "glance", "struct", "vol", "intraday")
             if k in sent_ks and k in labels
         )
         # _wait_bubble 會加「接著：」前綴；這裡只寫已送／還有，不准再疊一個接著
@@ -4270,8 +4321,17 @@ class WayneTelegramBot:
         if overtime:
             # 逾時仍出圖：泡泡不准消失；口吻改「仍在出」，避免以為成功結束
             title = "查股逾時仍在出圖"
-            if not now:
-                now = "大量撐壓圖" if "vol" not in sent_ks else "收尾送圖"
+            # 逾時時「現在」必須跟下一張還沒送的對齊（不准卡已送高低卡卻寫大量撐壓）
+            if "glance" not in sent_ks:
+                now = "介紹圖"
+            elif "struct" not in sent_ks and "three" not in sent_ks:
+                now = "結構圖"
+            elif "vol" not in sent_ks and "volzone" not in sent_ks:
+                now = "大量撐壓圖"
+            elif "intraday" not in sent_ks:
+                now = "當天走勢圖"
+            else:
+                now = "收尾送圖"
             if rest:
                 rest = f"{rest}；請稍候，失敗會明示"
             else:
@@ -6565,10 +6625,14 @@ class WayneTelegramBot:
             if not self._actor_op_alive(actor, op_kind, gen):
                 cancelled = True
                 return
-            # 空白鍵：只出口語大盤＋關卡對照，不准再送一排個股藍字／選股狀態（2026-10-24）。
+            # 空白鍵：口語＋關卡＋消化白話；附遠／近／外圍教具圖（不是個股藍字名單）。
             # 類股問句：多檔改名單＋按檔鈕；單檔問句仍一張結構圖。
             try:
-                if q and field_advice:
+                if not q:
+                    await self._send_biaoke_teach_charts(
+                        message, uid, actor=actor, kind=op_kind, gen=gen
+                    )
+                elif field_advice:
                     await self._send_biaoke_advice_charts(
                         message,
                         uid,
@@ -6578,7 +6642,7 @@ class WayneTelegramBot:
                         gen=gen,
                         spoken_html=html or "",
                     )
-                elif q:
+                else:
                     await self._send_biaoke_structure_chart(
                         message, q, uid, actor=actor, kind=op_kind, gen=gen
                     )
@@ -6840,6 +6904,94 @@ class WayneTelegramBot:
                 )
             except Exception:
                 logger.exception("飆大略過提示送出失敗 sid=%s", sid)
+
+    async def _send_biaoke_teach_charts(
+        self,
+        message,
+        uid: str,
+        *,
+        actor: str = "",
+        kind: str = "",
+        gen: int = 0,
+    ) -> None:
+        """空白按飆大：送遠窗／近窗／外圍教具（已存檔優先；缺才強制活畫一次）。
+
+        不是買訊、不是個股結構圖。失敗略過，不准擋文字摘要。
+        """
+        if actor and kind and not self._actor_op_alive(actor, kind, gen):
+            return
+        try:
+            from biaoke_level_learn import latest_teach_kit, paint_open_day_hypothesis
+        except Exception:
+            logger.exception("飆大教具模組略過")
+            return
+        kit: dict = {}
+        try:
+            kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
+        except Exception:
+            logger.exception("讀飆大教具路徑略過")
+            kit = {}
+        need = not any(
+            kit.get(k) for k in ("far_path", "near_path", "us_path")
+        )
+        if need:
+            try:
+                painted = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        paint_open_day_hypothesis, self.db_path, force=True
+                    ),
+                    timeout=_CHART_RENDER_TIMEOUT,
+                )
+                if painted and painted.get("ok"):
+                    kit = {
+                        "far_path": str(painted.get("far_path") or ""),
+                        "near_path": str(painted.get("near_path") or ""),
+                        "us_path": str(painted.get("us_path") or ""),
+                        "thesis": str(painted.get("thesis") or "")[:180],
+                        "slot_id": str(painted.get("slot_id") or ""),
+                        "as_of": str(painted.get("as_of") or ""),
+                    }
+            except asyncio.TimeoutError:
+                logger.warning("飆大教具活畫逾時")
+            except Exception:
+                logger.exception("飆大教具活畫略過")
+        if actor and kind and not self._actor_op_alive(actor, kind, gen):
+            return
+        caps = (
+            ("far_path", "遠窗教具（波浪／切割大圖・非買訊）"),
+            ("near_path", "近窗教具（細微波／量價・非買訊）"),
+            ("us_path", "外圍對照（費半／納指・非買訊）"),
+        )
+        thesis = str(kit.get("thesis") or "").strip()
+        kb = self._biaoke_reply_menu(uid)
+        for key, head in caps:
+            if actor and kind and not self._actor_op_alive(actor, kind, gen):
+                return
+            path = str(kit.get(key) or "").strip()
+            if not path or not os.path.isfile(path):
+                continue
+            if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
+                continue
+            cap = head
+            if thesis:
+                cap = f"{head}\n{thesis}"[:900]
+            try:
+                try:
+                    chat = getattr(message, "chat", None)
+                    if chat is not None and hasattr(chat, "send_action"):
+                        await chat.send_action("upload_photo")
+                except Exception:
+                    pass
+                with open(path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=cap[:900],
+                        reply_markup=kb,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("飆大教具圖送出略過 key=%s", key)
 
     async def _send_biaoke_advice_charts(
         self,
@@ -7324,7 +7476,7 @@ class WayneTelegramBot:
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律高低溫度卡、介紹圖、結構圖、大量撐壓圖。",
+            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。上市／上櫃／興櫃一律高低溫度卡、介紹圖、結構圖、大量撐壓圖、當天走勢。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "industry": "產業說明：請先選一檔。會送一張圖卡。同業＝同一產業鏈才比；跨族檔另標他還有的鏈。",
@@ -8625,7 +8777,15 @@ class WayneTelegramBot:
             """回傳 ok／timedout／retry／fail。"""
             try:
                 with open(path, "rb") as f:
-                    kwargs = {"photo": f, "caption": (cap or "")[:1024], "reply_markup": mk}
+                    kwargs = {
+                        "photo": f,
+                        "caption": (cap or "")[:1024],
+                        "reply_markup": mk,
+                        # 高低卡／介紹大圖：寫／讀逾時要夠，不准短預設把第 1／2 張丟成 TimedOut
+                        "read_timeout": 90.0,
+                        "write_timeout": 120.0,
+                        "connect_timeout": 30.0,
+                    }
                     if mode:
                         kwargs["parse_mode"] = mode
                     await message.reply_photo(**kwargs)
@@ -8720,7 +8880,7 @@ class WayneTelegramBot:
         try:
             live_rt = await asyncio.wait_for(
                 asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                timeout=_LOOKUP_MIS_TIMEOUT,
+                timeout=self._lookup_quote_budget(code, hits),
             )
         except Exception:
             live_rt = None
@@ -9311,11 +9471,16 @@ class WayneTelegramBot:
                 return None
 
         async def _fetch_mis():
-            # 興櫃也抓現價（櫃買 OpenAPI／Yahoo .TWO）；不准再用上市櫃 MIS 空結果略過。
+            # 興櫃也抓現價（櫃買當日行情表／Yahoo .TWO）；不准再用上市櫃 MIS 空結果略過。
+            # 興櫃預算見 _LOOKUP_EMERGING_QUOTE_TIMEOUT，不准跟上市櫃 2 秒一起砍。
             try:
                 return await asyncio.wait_for(
                     asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                    timeout=_LOOKUP_MIS_TIMEOUT,
+                    timeout=(
+                        _LOOKUP_EMERGING_QUOTE_TIMEOUT
+                        if is_em
+                        else _LOOKUP_MIS_TIMEOUT
+                    ),
                 )
             except Exception:
                 return None
@@ -9605,14 +9770,44 @@ class WayneTelegramBot:
                 pass
             struct_path_f = self._scratch_chart_path(self.charts_dir, code, "struct", uid_key)
             vol_path_f = self._scratch_chart_path(self.charts_dir, code, "vol", uid_key)
+            intrad_path_f = self._scratch_chart_path(
+                self.charts_dir, code, "intraday", uid_key
+            )
             struct_face = [
                 "結構圖（非買訊）　買點只認藍▲紅框　止穩◆＝觀察　橘六角觀察＝外資預警（還在測試・非買）"
             ]
             vol_face = ["大量撐壓圖。"]
+            intrad_face = ["當天走勢（開→收・非買訊）"]
 
             # 結構 paint 閉包吃預先 prepare 的 pack（由 _struct_item 填入）
             _struct_pack_box: list = [None]
             _vol_pack_box: list = [None]
+            # 第 5 張分時：paint 外預抓，與 1–4 張重疊（興櫃拉網常 >10s，不准占 worker）
+            _intrad_prep_box: list = [None]
+
+            async def _run_intraday_prep():
+                from intraday_open_close_chart import prepare_lookup_intraday_series
+
+                asof = ""
+                if isinstance(card, dict):
+                    asof = str(
+                        card.get("latest_date") or card.get("as_of") or ""
+                    ).replace("-", "")[:8]
+                try:
+                    return await asyncio.to_thread(
+                        prepare_lookup_intraday_series,
+                        code,
+                        _stock_caption_name(card, code),
+                        self.db_path,
+                        card=card if isinstance(card, dict) else None,
+                        hits=hits,
+                        asof_ymd=asof or None,
+                    )
+                except Exception:
+                    logger.exception("查股當天走勢 prep 失敗 code=%s", code)
+                    return None, "", ""
+
+            intrad_prep_task = asyncio.create_task(_run_intraday_prep())
 
             def _render_struct():
                 from three_in_one_chart import render_lookup_structure_result
@@ -9653,40 +9848,80 @@ class WayneTelegramBot:
                     vol_face[0] = cap
                 return path
 
+            def _render_intraday():
+                from intraday_open_close_chart import render_lookup_intraday_result
+
+                # 跟前四張同一交易日：優先吃高低卡 latest_date／as_of
+                asof = ""
+                if isinstance(card, dict):
+                    asof = str(
+                        card.get("latest_date") or card.get("as_of") or ""
+                    ).replace("-", "")[:8]
+                prep = _intrad_prep_box[0]
+                series = ymd_p = mkt_p = None
+                if isinstance(prep, tuple) and len(prep) >= 3:
+                    series, ymd_p, mkt_p = prep[0], prep[1], prep[2]
+                path, cap = render_lookup_intraday_result(
+                    code,
+                    _stock_caption_name(card, code),
+                    self.db_path,
+                    intrad_path_f,
+                    card=card if isinstance(card, dict) else None,
+                    hits=hits,
+                    live_quote=live_rt if isinstance(live_rt, dict) else None,
+                    asof_ymd=asof or None,
+                    series=series,
+                    series_ymd=ymd_p or None,
+                    series_market=mkt_p or None,
+                )
+                if cap:
+                    intrad_face[0] = cap
+                return path or ""
+
             kind_labels = {
                 "glance": "介紹圖",
                 "card": "高低溫度卡",
                 "struct": "結構圖",
                 "vol": "大量撐壓圖",
+                "intraday": "當天走勢圖",
             }
-            render_plan_kinds = ("card", "glance", "struct", "vol")
+            render_plan_kinds = ("card", "glance", "struct", "vol", "intraday")
             sent_kinds: list[str] = []
             ready_items: list = []
 
             from wayne_navigator import submit_mpl_paint
 
-            async def _render_one(kind, fn, timeout_s) -> str:
+            def _looks_ok_for_kind(kind: str, path: str) -> bool:
+                # 當天走勢＝橫式（對齊大盤 landscape）；不准用直式 min_h=900 整張丟掉。
+                if kind == "intraday":
+                    return self._market_landscape_chart_ok(path)
+                if kind in ("chart", "struct", "vol", "three"):
+                    return self._chart_png_looks_ok(path)
+                return self._png_looks_ok(path)
+
+            async def _render_one(kind, fn, timeout_s, *, path_hint: str = "") -> str:
                 attempts = 2
                 path = ""
                 for attempt in range(attempts):
                     try:
                         # 單一 paint worker：雙人同時查／壓撐並行時不准互踩 FreeType
+                        # 排隊時間不准算進逾時（見 _await_lookup_paint）
                         fut = submit_mpl_paint(fn)
-                        path = await asyncio.wait_for(
-                            asyncio.wrap_future(fut), timeout=timeout_s
+                        path = await _await_lookup_paint(
+                            fut,
+                            timeout_s,
+                            path_hint=path_hint,
+                            looks_ok=lambda p, k=kind: _looks_ok_for_kind(k, p),
                         )
                     except asyncio.TimeoutError:
                         logger.warning("看這檔 %s 逾時 code=%s attempt=%s", kind, code, attempt + 1)
+                        if path_hint and _looks_ok_for_kind(kind, path_hint):
+                            return path_hint
                         return ""
                     except Exception:
                         logger.exception("看這檔 %s 產圖失敗 code=%s", kind, code)
                         return ""
-                    looks_ok = (
-                        self._chart_png_looks_ok(path)
-                        if kind in ("chart", "struct", "vol", "three")
-                        else self._png_looks_ok(path)
-                    )
-                    if not looks_ok:
+                    if not _looks_ok_for_kind(kind, path):
                         logger.warning(
                             "殘缺圖重試 kind=%s code=%s attempt=%s size=%s",
                             kind,
@@ -9733,9 +9968,12 @@ class WayneTelegramBot:
             # 高低卡不需 tape：卡建完立刻開渲，跟抓 tape 重疊。
             # 介紹圖在高低卡已 submit 後排隊：卡一畫完 worker 馬上接介紹，與送高低卡重疊。
             # 官方量窗 ensure：進查股就與 MIS／建卡並行（見上方 ensure_task）；結構 prepare 在 paint 外。
-            # 順序鎖死：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖。一次一張、好了就送。
+            # 順序鎖死：高低溫度卡 → 介紹圖 → 結構圖 → 大量撐壓圖 → 當天走勢。一次一張、好了就送。
+            # 完整圖下鈕只掛第 5 張當天走勢；第 2／3／4 張不附鍵盤。
             card_queued = asyncio.Event()
             glance_queued = asyncio.Event()
+            struct_queued = asyncio.Event()  # 結構已進 paint／memo；大量區不准搶在介紹／結構前
+            vol_queued = asyncio.Event()
 
             # 卡建完後名稱可能比 hits 準；只更新字串，不准重開 ensure（已在跑／memo）。
             _vol_ensure_name = _stock_caption_name(card, code) or _vol_ensure_name
@@ -9744,6 +9982,7 @@ class WayneTelegramBot:
                 """先 submit 再放行介紹圖排隊；await 完才回傳要送的高低卡。
 
                 同人連查同指紋：短 TTL memo 命中就複製，不佔 paint 佇列。
+                排隊時間不准算進逾時；逾時後若 card_path_f 已寫完仍送，不准默默丟第 1 張。
                 """
                 from wayne_navigator import try_decision_card_memo
 
@@ -9759,14 +9998,19 @@ class WayneTelegramBot:
                             lambda: render_decision_card_png(card, card_path_f)
                         )
                         card_queued.set()
-                        path = await asyncio.wait_for(
-                            asyncio.wrap_future(fut), timeout=_LOOKUP_PNG_TIMEOUT
+                        path = await _await_lookup_paint(
+                            fut,
+                            _LOOKUP_PNG_TIMEOUT,
+                            path_hint=card_path_f,
+                            looks_ok=self._png_looks_ok,
                         )
                     except asyncio.TimeoutError:
                         card_queued.set()
                         logger.warning(
                             "看這檔 card 逾時 code=%s attempt=%s", code, attempt + 1
                         )
+                        if self._png_looks_ok(card_path_f):
+                            return ("card", card_path_f, card_cap, None)
                         return None
                     except Exception:
                         card_queued.set()
@@ -9788,6 +10032,7 @@ class WayneTelegramBot:
                 """submit 後放行結構 ensure→paint；不准結構插隊搶在介紹之前。
 
                 同人連查同指紋：短 TTL memo 命中就複製，不佔 paint 佇列。
+                排隊時間不准算進逾時；逾時後若 glance_path 已寫完仍送，不准默默丟第 2 張。
                 """
                 from wayne_navigator import try_glance_memo
 
@@ -9803,14 +10048,19 @@ class WayneTelegramBot:
                     try:
                         fut = submit_mpl_paint(_render_glance)
                         glance_queued.set()
-                        path = await asyncio.wait_for(
-                            asyncio.wrap_future(fut), timeout=_LOOKUP_PNG_TIMEOUT
+                        path = await _await_lookup_paint(
+                            fut,
+                            _LOOKUP_PNG_TIMEOUT,
+                            path_hint=glance_path,
+                            looks_ok=self._png_looks_ok,
                         )
                     except asyncio.TimeoutError:
                         glance_queued.set()
                         logger.warning(
                             "看這檔 glance 逾時 code=%s attempt=%s", code, attempt + 1
                         )
+                        if self._png_looks_ok(glance_path):
+                            return ("glance", glance_path, glance_cap, None)
                         return None
                     except Exception:
                         glance_queued.set()
@@ -9825,7 +10075,7 @@ class WayneTelegramBot:
                         )
                         path = ""
                         continue
-                    # 圖下完整鍵盤只留第 4 張大量區；介紹不附（第 2／3 張不要重複）。
+                    # 圖下完整鍵盤只留第 5 張當天走勢；介紹不附（第 2／3／4 張不要重複）。
                     return ("glance", path, glance_cap, None)
                 return None
 
@@ -9833,80 +10083,134 @@ class WayneTelegramBot:
                 # 官方柱與卡／介紹重疊；paint 前必須等介紹已進 queue，不准插隊。
                 # 同指紋短 TTL：memo 命中不佔 paint／Agg（與卡／介紹／大量區同規）。
                 try:
-                    await asyncio.wait_for(
-                        glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
-                    )
-                except asyncio.TimeoutError:
-                    glance_queued.set()
-                try:
-                    _struct_pack_box[0] = await struct_prep_task
-                except asyncio.CancelledError:
-                    _struct_pack_box[0] = None
-                except Exception:
-                    logger.exception("查股結構 prep await 失敗 code=%s", code)
-                    _struct_pack_box[0] = None
-                from three_in_one_chart import try_lookup_structure_memo
+                    try:
+                        await asyncio.wait_for(
+                            glance_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        glance_queued.set()
+                    try:
+                        _struct_pack_box[0] = await struct_prep_task
+                    except asyncio.CancelledError:
+                        _struct_pack_box[0] = None
+                    except Exception:
+                        logger.exception("查股結構 prep await 失敗 code=%s", code)
+                        _struct_pack_box[0] = None
+                    from three_in_one_chart import try_lookup_structure_memo
 
-                warm_path, warm_cap = try_lookup_structure_memo(
-                    code,
-                    _stock_caption_name(card, code),
-                    self.db_path,
-                    struct_path_f,
-                    card=card,
-                    pack=_struct_pack_box[0],
-                    live_quote=live_rt if isinstance(live_rt, dict) else None,
-                )
-                if warm_path and self._chart_png_looks_ok(warm_path):
-                    if warm_cap:
-                        struct_face[0] = warm_cap
-                    return (
-                        "struct",
-                        warm_path,
-                        struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）",
-                        None,
+                    warm_path, warm_cap = try_lookup_structure_memo(
+                        code,
+                        _stock_caption_name(card, code),
+                        self.db_path,
+                        struct_path_f,
+                        card=card,
+                        pack=_struct_pack_box[0],
+                        live_quote=live_rt if isinstance(live_rt, dict) else None,
                     )
-                await _set_struct_phase("paint")
-                png = await _render_one("struct", _render_struct, _LOOKUP_PNG_TIMEOUT)
-                cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
-                if not png:
-                    return None
-                return ("struct", png, cap, None)
+                    if warm_path and self._chart_png_looks_ok(warm_path):
+                        if warm_cap:
+                            struct_face[0] = warm_cap
+                        return (
+                            "struct",
+                            warm_path,
+                            struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）",
+                            None,
+                        )
+                    await _set_struct_phase("paint")
+                    png = await _render_one(
+                        "struct",
+                        _render_struct,
+                        _LOOKUP_PNG_TIMEOUT,
+                        path_hint=struct_path_f,
+                    )
+                    cap = struct_face[0] if struct_face and struct_face[0] else "結構圖（非買訊）"
+                    if not png:
+                        return None
+                    return ("struct", png, cap, None)
+                finally:
+                    # 放行大量區 paint（失敗也要放，不准卡死第 4／5 張）
+                    struct_queued.set()
 
             async def _vol_item():
-                # 大量區選窗在 paint 外已開；這裡只等那份，不准再整窗擋住結構圖。
+                # prep 可與介紹重疊；paint 必須等結構已進佇列／memo，不准搶掉介紹／結構。
                 # 同指紋短 TTL：memo 命中不佔 paint 佇列（現價指紋變了會 miss）。
                 try:
-                    _vol_pack_box[0] = await vol_zone_task
-                except asyncio.CancelledError:
-                    _vol_pack_box[0] = None
-                except Exception:
-                    logger.exception("查股大量區 prep await 失敗 code=%s", code)
-                    _vol_pack_box[0] = None
-                from vol_zone_chart import try_lookup_vol_memo
+                    try:
+                        await asyncio.wait_for(
+                            struct_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        struct_queued.set()
+                    try:
+                        _vol_pack_box[0] = await vol_zone_task
+                    except asyncio.CancelledError:
+                        _vol_pack_box[0] = None
+                    except Exception:
+                        logger.exception("查股大量區 prep await 失敗 code=%s", code)
+                        _vol_pack_box[0] = None
+                    from vol_zone_chart import try_lookup_vol_memo
 
-                zone_pack = _vol_pack_box[0]
-                if isinstance(zone_pack, dict):
-                    zone_pack = dict(zone_pack)
-                    zone_pack["out"] = vol_path_f
-                    warm = try_lookup_vol_memo(
-                        zone_pack,
-                        vol_path_f,
-                        card=card,
-                        with_nav_signals=True,
-                        lookup_portrait=False,
-                        with_parallel_channel=True,
-                        with_ma5_ma10=True,
-                        db_path=self.db_path,
+                    zone_pack = _vol_pack_box[0]
+                    if isinstance(zone_pack, dict):
+                        zone_pack = dict(zone_pack)
+                        zone_pack["out"] = vol_path_f
+                        warm = try_lookup_vol_memo(
+                            zone_pack,
+                            vol_path_f,
+                            card=card,
+                            with_nav_signals=True,
+                            lookup_portrait=False,
+                            with_parallel_channel=True,
+                            with_ma5_ma10=True,
+                            db_path=self.db_path,
+                        )
+                        if warm and warm[0] and self._chart_png_looks_ok(warm[0]):
+                            if warm[1]:
+                                vol_face[0] = warm[1]
+                            return ("vol", warm[0], vol_face[0], None)
+                    png = await _render_one(
+                        "vol", _render_vol, _LOOKUP_PNG_TIMEOUT, path_hint=vol_path_f
                     )
-                    if warm and warm[0] and self._chart_png_looks_ok(warm[0]):
-                        if warm[1]:
-                            vol_face[0] = warm[1]
-                        return ("vol", warm[0], vol_face[0], None)
-                png = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
-                cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
+                    cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
+                    if not png:
+                        return None
+                    return ("vol", png, cap, None)
+                finally:
+                    # 放行第 5 張排隊（失敗／取消也要放，不准卡死）
+                    vol_queued.set()
+
+            async def _intraday_item():
+                """第 5 張：等第 4 張已進 paint／memo，再串行渲當天走勢；失敗略過不准擋 1–4。
+
+                分時抓取已在 paint 外與 1–4 重疊；這裡只等 prep＋paint。
+                """
+                try:
+                    await asyncio.wait_for(
+                        vol_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    vol_queued.set()
+                try:
+                    _intrad_prep_box[0] = await intrad_prep_task
+                except asyncio.CancelledError:
+                    _intrad_prep_box[0] = None
+                except Exception:
+                    logger.exception("查股當天走勢 prep await 失敗 code=%s", code)
+                    _intrad_prep_box[0] = None
+                png = await _render_one(
+                    "intraday",
+                    _render_intraday,
+                    _LOOKUP_PNG_TIMEOUT,
+                    path_hint=intrad_path_f,
+                )
                 if not png:
                     return None
-                return ("vol", png, cap, None)
+                cap = (
+                    intrad_face[0]
+                    if intrad_face and intrad_face[0]
+                    else "當天走勢（開→收・非買訊）"
+                )
+                return ("intraday", png, cap, None)
 
             card_render_task = asyncio.create_task(_card_item())
             try:
@@ -9929,8 +10233,10 @@ class WayneTelegramBot:
             glance_task = asyncio.create_task(_glance_item())
             # 結構提早跑 ensure（已在 ensure_task）；paint 等 glance_queued
             struct_task = asyncio.create_task(_struct_item())
-            # 大量區 paint 與結構／上傳重疊：prep 已在 vol_zone_task，不必等 struct 送完才開
+            # 大量區 prep 可重疊；paint 等 struct_queued（不准搶介紹／結構 worker）
             vol_task = asyncio.create_task(_vol_item())
+            # 第 5 張等 vol_queued（paint 進佇列／memo）後再開，不准搶第 4 張 worker
+            intrad_task = asyncio.create_task(_intraday_item())
             async def _prep_for_send(path: str, kind: str) -> str:
                 """JPEG 魔術字＋容量合格直接送；真 PNG 才 to_thread 轉碼。"""
                 if not path or not os.path.isfile(path):
@@ -9948,15 +10254,45 @@ class WayneTelegramBot:
                     self._prepare_lookup_album_photo, path, kind
                 )
 
-            card_item = await card_render_task
-            if card_item:
-                kind, path, caption, markup = card_item
+            async def _send_kind_item(item, *, hub_mk=None, retry_label: str = "") -> bool:
+                """送一張；失敗再試一次。不准高低卡／介紹 silently 略過。"""
+                nonlocal sent_any
+                if not item:
+                    return False
+                kind, path, caption, _mk = item
                 prep = await _prep_for_send(path, kind)
-                ok = await send_photo(prep or path, caption, None, kind=kind)
+                ok = await send_photo(prep or path, caption, hub_mk, kind=kind)
                 if ok:
                     sent_any = True
-                    sent_kinds.append(kind)
-                    ready_items.append(card_item)
+                    if kind not in sent_kinds:
+                        sent_kinds.append(kind)
+                    ready_items.append(item)
+                    return True
+                logger.warning(
+                    "查股%s送出失敗，重試 code=%s kind=%s",
+                    retry_label or kind,
+                    code,
+                    kind,
+                )
+                ok2 = await send_photo(prep or path, caption, hub_mk, kind=kind)
+                if ok2:
+                    sent_any = True
+                    if kind not in sent_kinds:
+                        sent_kinds.append(kind)
+                    ready_items.append(item)
+                    return True
+                return False
+
+            card_item = await card_render_task
+            if not card_item:
+                # 逾時後 worker 可能已寫完；先救檔，再降載重渲（不准 silently 沒第 1 張）
+                if self._png_looks_ok(card_path_f):
+                    card_item = ("card", card_path_f, card_cap, None)
+                    logger.warning("查股第1張逾時救檔 code=%s", code)
+                else:
+                    logger.warning("查股第1張 paint 空，重試 code=%s", code)
+                    card_item = await _card_item()
+            await _send_kind_item(card_item, retry_label="第1張")
             # 高低卡已出：若還在補官方量就明示，不准長沉默只跳秒
             if not ensure_task.done():
                 await _bump_progress("volfill")
@@ -9972,15 +10308,15 @@ class WayneTelegramBot:
                 bool(glance_item),
                 ensure_task.done(),
             )
-            if glance_item:
-                kind, path, caption, _mk = glance_item
-                prep = await _prep_for_send(path, kind)
-                # 第 2 張介紹圖：不要附完整圖下鈕（產業／導航仍在第 4 張）。
-                ok = await send_photo(prep or path, caption, None, kind=kind)
-                if ok:
-                    sent_any = True
-                    sent_kinds.append(kind)
-                    ready_items.append(glance_item)
+            if not glance_item:
+                if self._png_looks_ok(glance_path):
+                    glance_item = ("glance", glance_path, glance_cap, None)
+                    logger.warning("查股第2張逾時救檔 code=%s", code)
+                else:
+                    logger.warning("查股第2張 paint 空，重試 code=%s", code)
+                    glance_item = await _glance_item()
+            # 第 2 張介紹圖：不要附完整圖下鈕（產業／導航在第 5 張）。
+            await _send_kind_item(glance_item, retry_label="第2張")
 
             if not ensure_task.done() or str(_struct_phase.get("phase") or "") == "volfill":
                 await _bump_progress("volfill")
@@ -10009,16 +10345,7 @@ class WayneTelegramBot:
             )
 
             async def _send_struct_if_any():
-                nonlocal sent_any, hub_on
-                if not struct_item:
-                    return
-                kind, path, caption, _mk = struct_item
-                prep = await _prep_for_send(path, kind)
-                ok = await send_photo(prep or path, caption, None, kind=kind)
-                if ok:
-                    sent_any = True
-                    sent_kinds.append(kind)
-                    ready_items.append(struct_item)
+                await _send_kind_item(struct_item, retry_label="第3張")
 
             struct_send_task = asyncio.create_task(_send_struct_if_any())
             t_vol0 = time.monotonic()
@@ -10038,37 +10365,62 @@ class WayneTelegramBot:
             await _bump_progress("vol")
             await asyncio.sleep(0)
             if vol_item:
-                kind, path, caption, _mk = vol_item
-                prep = await _prep_for_send(path, kind)
-                # 第 4 張大量區：保留完整圖下鈕（兩人同一套）。
-                ok = await send_photo(prep or path, caption, hub, kind=kind)
-                if ok:
-                    sent_any = True
-                    sent_kinds.append(kind)
-                    hub_on = True
-                    ready_items.append(vol_item)
-                else:
-                    # 上傳失敗：再試一次；仍失敗明示，不准 LOADING 消了就沒圖
-                    logger.warning("查股第4張送出失敗，重試 code=%s", code)
-                    ok2 = await send_photo(prep or path, caption, hub, kind=kind)
-                    if ok2:
-                        sent_any = True
-                        sent_kinds.append(kind)
-                        hub_on = True
-                        ready_items.append(vol_item)
+                # 第 4 張大量區：不附完整圖下鈕（鈕改掛第 5 張；move hub to chart 5）。
+                await _send_kind_item(vol_item, retry_label="第4張")
             elif "struct" in sent_kinds or "glance" in sent_kinds or "card" in sent_kinds:
                 # paint／memo 空：降載再試一次（仍單 worker；不准 silently 沒第4張）
                 logger.warning("查股第4張 paint 空，降載重試 code=%s", code)
                 await _bump_progress("vol")
-                retry = await _render_one("vol", _render_vol, _LOOKUP_PNG_TIMEOUT)
+                retry = await _render_one(
+                    "vol", _render_vol, _LOOKUP_PNG_TIMEOUT, path_hint=vol_path_f
+                )
+                vol_queued.set()
                 if retry:
                     cap = vol_face[0] if vol_face and vol_face[0] else "大量撐壓圖。"
-                    prep = await _prep_for_send(retry, "vol")
-                    ok = await send_photo(prep or retry, cap, hub, kind="vol")
-                    if ok:
-                        sent_any = True
-                        sent_kinds.append("vol")
-                        hub_on = True
+                    await _send_kind_item(
+                        ("vol", retry, cap, None), retry_label="第4張"
+                    )
+
+            # 第 5 張當天走勢：掛完整圖下鈕（兩人同一套）；缺真路徑則文字補 hub
+            await _bump_progress("intraday")
+            await asyncio.sleep(0)
+            try:
+                intrad_item = await intrad_task
+            except Exception:
+                logger.exception("查股當天走勢 await 失敗 code=%s", code)
+                intrad_item = None
+            logger.info(
+                "查股階段 intrad done code=%s ok=%s",
+                code,
+                bool(intrad_item),
+            )
+            if not intrad_item and (
+                "vol" in sent_kinds or "struct" in sent_kinds or "card" in sent_kinds
+            ):
+                # paint 空再試一次（有真路徑才會出；仍無則下面文字補 hub）
+                logger.warning("查股第5張 paint 空，重試 code=%s", code)
+                retry5 = await _render_one(
+                    "intraday",
+                    _render_intraday,
+                    _LOOKUP_PNG_TIMEOUT,
+                    path_hint=intrad_path_f,
+                )
+                if retry5:
+                    cap5 = (
+                        intrad_face[0]
+                        if intrad_face and intrad_face[0]
+                        else "當天走勢（開→收・非買訊）"
+                    )
+                    intrad_item = ("intraday", retry5, cap5, None)
+            if intrad_item:
+                ok5 = await _send_kind_item(
+                    intrad_item, hub_mk=hub, retry_label="第5張"
+                )
+                if ok5:
+                    hub_on = True
+            elif "vol" in sent_kinds or "struct" in sent_kinds or "card" in sent_kinds:
+                # 第 5 張可缺（盤前／無分時）；hub 改由下面文字補
+                logger.info("查股第5張略過（無真路徑或 paint 空）code=%s", code)
 
             try:
                 gc.collect()
@@ -10078,16 +10430,29 @@ class WayneTelegramBot:
             st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "glance"})
             st["sent"] = list(sent_kinds)
 
+            # hub 已掛第 5 張＝完成；第 5 張缺則文字補 hub。缺任何一張必須明示（含高低卡）
+            core_kinds = ("card", "glance", "struct", "vol")
+            miss_core = [
+                kind_labels[k] for k in core_kinds if k not in sent_kinds
+            ]
             if sent_any and not hub_on:
-                if len(sent_kinds) >= len(render_plan_kinds):
+                if "intraday" in sent_kinds or all(k in sent_kinds for k in core_kinds):
                     done_txt = html_escape(_stock_caption_name(card, code) or code)
                 else:
-                    miss = [kind_labels[k] for k in render_plan_kinds if k not in sent_kinds]
                     done_txt = (
-                        f"已送 {len(sent_kinds)}/{len(render_plan_kinds)} 張"
-                        f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
+                        f"已送 {len([k for k in sent_kinds if k in core_kinds])}"
+                        f"/{len(core_kinds)} 張"
+                        f"（缺：{'、'.join(miss_core)}）。請再打一次代號補圖。"
                     )
                 await _reply_visible(done_txt, html=True, markup=hub)
+                hub_on = True
+            elif sent_any and miss_core:
+                # 第 5 張已掛 hub，但前四張有缺（含高低卡）→ 一定講清楚，不准只報「中間」
+                await _reply_visible(
+                    f"缺：{'、'.join(miss_core)}。請再打一次代號補圖。",
+                    html=True,
+                    markup=None,
+                )
             elif not sent_any:
                 from wayne_navigator import generate_decision_card
 
@@ -10129,6 +10494,16 @@ class WayneTelegramBot:
             for _pend in (struct_prep_task, vol_zone_task):
                 if _pend is not None and not _pend.done():
                     _pend.cancel()
+            try:
+                if "intrad_prep_task" in locals() and intrad_prep_task is not None and not intrad_prep_task.done():
+                    intrad_prep_task.cancel()
+            except Exception:
+                pass
+            try:
+                if "intrad_task" in locals() and intrad_task is not None and not intrad_task.done():
+                    intrad_task.cancel()
+            except Exception:
+                pass
             if gap_msg is not None:
                 await self._delete_message(gap_msg)
                 gap_msg = None

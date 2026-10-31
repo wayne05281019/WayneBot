@@ -142,6 +142,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("card_queued", src)
         self.assertIn("create_task(_struct_item())", src)
         self.assertIn("create_task(_vol_item())", src)
+        self.assertIn("create_task(_intraday_item())", src)
         self.assertIn("_bump_progress", src)
         # 介紹圖在 await 高低卡完成之前就排隊，與送卡重疊
         self.assertLess(
@@ -164,6 +165,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("volfill", src)
         self.assertIn("ensure_official_volume_window", src)
         self.assertIn("glance_queued", src)
+        self.assertIn("struct_queued", src)
         self.assertLess(
             src.find("create_task(_struct_item())"),
             src.find('await _bump_progress("struct")'),
@@ -172,8 +174,11 @@ class LookupImageTests(unittest.TestCase):
         struct_await = src.find("struct_item = await struct_task")
         self.assertGreater(vol_at, 0)
         self.assertGreater(struct_await, 0)
-        # 大量區提早開，與結構 paint／上傳重疊（仍單 worker）
+        # task 可早開；大量區 paint 等 struct_queued，不准搶介紹／結構
         self.assertLess(vol_at, struct_await)
+        self.assertTrue(
+            ("struct_queued.wait()" in src) or ("struct_queued.wait" in src)
+        )
 
     def test_glance_and_card_render_start_together(self):
         """高低溫度卡先開渲；介紹→結構→大量撐壓一次一張，paint worker 串行。"""
@@ -220,6 +225,11 @@ class LookupImageTests(unittest.TestCase):
             time.sleep(0.05)
             return _png("v.png"), "大量撐壓圖（非買訊）"
 
+        def _intrad(*_a, **_k):
+            started["intraday"] = time.monotonic()
+            time.sleep(0.02)
+            return _png("i.png"), "當天走勢（開→收・非買訊）"
+
         class _Engine:
             def __init__(self, *_a, **_k):
                 pass
@@ -248,6 +258,9 @@ class LookupImageTests(unittest.TestCase):
                 "three_in_one_chart.render_lookup_structure_result", side_effect=_struct
             ), patch(
                 "vol_zone_chart.render_lookup_vol_result", side_effect=_vol
+            ), patch(
+                "intraday_open_close_chart.render_lookup_intraday_result",
+                side_effect=_intrad,
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -282,12 +295,14 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("card", started)
         self.assertIn("struct", started)
         self.assertIn("vol", started)
-        # 卡先、介紹、結構、大量撐壓
+        self.assertIn("intraday", started)
+        # 卡先、介紹、結構、大量撐壓、當天走勢
         self.assertGreaterEqual(started["glance"] - started["card"], 0.2)
         self.assertGreaterEqual(started["struct"] - started["glance"], 0.0)
         self.assertGreaterEqual(started["vol"] - started["struct"], 0.0)
+        self.assertGreaterEqual(started["intraday"] - started["vol"], 0.0)
         self.assertEqual(message.reply_media_group.await_count, 0)
-        self.assertGreaterEqual(message.reply_photo.await_count, 4)
+        self.assertGreaterEqual(message.reply_photo.await_count, 5)
         caps = [
             str(c.kwargs.get("caption") or "")
             for c in message.reply_photo.await_args_list
@@ -297,6 +312,7 @@ class LookupImageTests(unittest.TestCase):
             any("大量撐壓" in c or "大量區" in c or "爆大量" in c for c in caps),
             caps,
         )
+        self.assertTrue(any("當天走勢" in c for c in caps), caps)
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
@@ -513,6 +529,10 @@ class LookupImageTests(unittest.TestCase):
         self.assertGreaterEqual(bot_servers._LOOKUP_PNG_TIMEOUT, bot_servers._CHART_RENDER_TIMEOUT)
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("_LOOKUP_PNG_TIMEOUT", src)
+        self.assertIn("_await_lookup_paint", src)
+        self.assertIn("miss_core", src)
+        self.assertIn("查股第1張", src)
+        self.assertIn("查股第2張", src)
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
@@ -620,6 +640,9 @@ class LookupImageTests(unittest.TestCase):
             ), patch(
                 "vol_zone_chart.render_lookup_vol_result",
                 side_effect=lambda *_a, **_k: (_png("v.png"), "大量撐壓圖（非買訊）"),
+            ), patch(
+                "intraday_open_close_chart.render_lookup_intraday_result",
+                side_effect=lambda *_a, **_k: (_png("i.png"), "當天走勢（開→收・非買訊）"),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(

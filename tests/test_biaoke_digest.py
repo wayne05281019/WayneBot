@@ -852,14 +852,14 @@ def test_blank_focus_no_stock_blue_links_and_has_gates(tmp_path):
 
 
 def test_blank_send_biaoke_page_skips_advice_charts():
-    """按飆大空白：不准再送結構圖按檔名單／個股藍字鍵盤。"""
+    """按飆大空白：不准再送結構圖按檔名單；改送教具圖。"""
     import asyncio
     import inspect
     from unittest.mock import AsyncMock, MagicMock, patch
 
     src = inspect.getsource(WayneTelegramBot._send_biaoke_page)
-    assert "不准再送一排個股藍字" in src or "空白鍵：只出口語" in src
-    assert "if q and field_advice" in src
+    assert "教具" in src or "_send_biaoke_teach_charts" in src
+    assert "if not q" in src
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = ""
@@ -878,6 +878,7 @@ def test_blank_send_biaoke_page_skips_advice_charts():
     bot._biaoke_reply_menu = MagicMock(return_value=None)
     bot._send_biaoke_advice_charts = AsyncMock()
     bot._send_biaoke_structure_chart = AsyncMock()
+    bot._send_biaoke_teach_charts = AsyncMock()
     msg = MagicMock()
     msg.reply_html = AsyncMock()
     msg.reply_text = AsyncMock()
@@ -888,6 +889,31 @@ def test_blank_send_biaoke_page_skips_advice_charts():
         asyncio.run(bot._send_biaoke_page(msg, ask="", uid="11"))
     bot._send_biaoke_advice_charts.assert_not_awaited()
     bot._send_biaoke_structure_chart.assert_not_awaited()
+    bot._send_biaoke_teach_charts.assert_awaited()
     assert msg.reply_html.await_count >= 1
     sent = msg.reply_html.await_args.args[0]
     assert "關卡 × 官方已收" in sent or "飆大現在在講" in sent
+
+
+def test_strip_classmate_echo_keeps_his_judgment():
+    from biaoke_digest import _scrub_post_text, _speak
+
+    raw = (
+        '「請問老師台光電還能抱嗎？」Yes，目前我認為整理時間會比 ABF 短很多，'
+        "昨天錯殺居多。"
+    )
+    scrubbed = _scrub_post_text(raw)
+    assert "請問老師" not in scrubbed
+    spoken = _speak(raw, 200)
+    assert "請問" not in spoken
+    assert "錯殺" in spoken or "整理" in spoken
+
+
+def test_format_teach_brief_empty_db_ok(tmp_path):
+    from biaoke_digest import format_teach_brief
+
+    assert format_teach_brief("") == ""
+    db = str(tmp_path / "empty.db")
+    # 無活畫 pack 也要空字串，不准拋
+    out = format_teach_brief(db)
+    assert out == "" or "白話結論" in out

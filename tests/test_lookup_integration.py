@@ -106,7 +106,7 @@ class LookupIntegrationTests(unittest.TestCase):
             self.assertLess(timings["chart"], 20.0)
 
     def test_send_card_to_locked_posts_three_photos(self):
-        """高低溫度卡→介紹圖→結構圖→大量撐壓：四張逐張 reply_photo，不再走相簿。"""
+        """高低溫度卡→介紹圖→結構圖→大量撐壓（＋可有當天走勢）：逐張 reply_photo，不再走相簿。"""
         bot = _bare_bot(self.db, tempfile.mkdtemp())
         message = _message(999001, 111)
 
@@ -121,6 +121,9 @@ class LookupIntegrationTests(unittest.TestCase):
                 bot, "_cache_lookup_ctx"
             ), patch.object(
                 bot, "_remember_card"
+            ), patch(
+                "intraday_open_close_chart.render_lookup_intraday_result",
+                return_value=("", ""),
             ):
                 await bot._send_card_to_locked(
                     message,
@@ -132,7 +135,7 @@ class LookupIntegrationTests(unittest.TestCase):
 
         asyncio.run(_run())
 
-        # 查股主路徑四張 reply_photo；相簿只留 helper，不再被呼叫。
+        # 查股主路徑至少四張 reply_photo（第5張可缺真路徑）；相簿只留 helper，不再被呼叫。
         self.assertEqual(message.reply_media_group.await_count, 0)
         self.assertGreaterEqual(message.reply_photo.await_count, 4)
         caps = []

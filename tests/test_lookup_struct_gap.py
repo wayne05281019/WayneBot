@@ -36,8 +36,9 @@ def test_lookup_source_splits_struct_bars_from_volume_zone():
     vol_at = src.find("vol_task = asyncio.create_task(_vol_item())")
     struct_await = src.find("struct_item = await struct_task")
     assert vol_at > 0 and struct_await > 0
-    # 大量區 paint 提早開，與結構 paint／Telegram 上傳重疊（仍單 worker 排隊）
+    # task 可早開；paint 等 struct_queued（不准搶介紹／結構 worker）
     assert vol_at < struct_await
+    assert "struct_queued" in src
     bars = inspect.getsource(
         __import__("vol_zone_chart", fromlist=["prepare_lookup_structure_bars"]).prepare_lookup_structure_bars
     )
@@ -188,7 +189,11 @@ def test_struct_paint_does_not_wait_for_volume_zone():
                 [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
             )
 
-    asyncio.run(_run())
+    with patch(
+        "intraday_open_close_chart.render_lookup_intraday_result",
+        return_value=("", ""),
+    ):
+        asyncio.run(_run())
     assert "struct" in marks and "zone_end" in marks
     assert marks["struct"] < marks["zone_end"]
 
@@ -280,7 +285,11 @@ def test_gap_line_while_official_volume_still_running():
                 [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
             )
 
-    asyncio.run(_run())
+    with patch(
+        "intraday_open_close_chart.render_lookup_intraday_result",
+        return_value=("", ""),
+    ):
+        asyncio.run(_run())
     texts = [str(c.args[0]) for c in message.reply_text.await_args_list if c.args]
     assert any("結構圖在等官方成交量" in t for t in texts), texts
     # 第 3 張仍有送出

@@ -100,8 +100,9 @@ def test_timedout_still_no_resend():
 
 
 def test_send_card_still_four_kinds_not_two_only():
-    """使用者否決「查股只自動兩張」；冷啟加速不准改成兩張。"""
+    """使用者否決「查股只自動兩張」；冷啟加速不准改成兩張（現為五張含當天走勢）。"""
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-    assert 'render_plan_kinds = ("card", "glance", "struct", "vol")' in src
+    assert 'render_plan_kinds = ("card", "glance", "struct", "vol", "intraday")' in src
     assert "_struct_item" in src
     assert "_vol_item" in src
+    assert "_intraday_item" in src

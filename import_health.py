@@ -186,6 +186,54 @@ def count_markets(db_path: str, yyyymmdd: str) -> Tuple[int, int, int]:
     return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
 
 
+def latest_complete_emerging_date(
+    db_path: str,
+    *,
+    min_em: int = MIN_EM,
+    now=None,
+    cap: Optional[str] = None,
+) -> Optional[str]:
+    """興櫃全日已進庫的最新開市日（列數 ≥ MIN_EM），不晚於 fuse_end。
+
+    上市櫃未齊時，興櫃官方日若已齊，查股／大量區仍可用這日（不准卡死在昨收）。
+    """
+    from trading_calendar import fuse_end_trading_date, is_trading_weekday, normalize_ymd
+
+    if cap:
+        cap = normalize_ymd(cap)
+    if not cap or len(cap) != 8:
+        cap = fuse_end_trading_date(now)
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return None
+    need = max(int(min_em or 0), int(MIN_EM))
+    try:
+        conn = sqlite3.connect(path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                """
+                SELECT REPLACE(CAST(date AS TEXT), '-', '') AS d, COUNT(*) AS n
+                FROM emerging_quotes
+                GROUP BY d
+                ORDER BY d DESC
+                LIMIT 40
+                """
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    for d_raw, n in rows:
+        d = normalize_ymd(d_raw)
+        if not d or d > cap:
+            continue
+        if not is_trading_weekday(d):
+            continue
+        if int(n or 0) >= need:
+            return d
+    return None
+
+
 def latest_complete_quote_date(
     db_path: str,
     min_tw: int = MIN_TW,

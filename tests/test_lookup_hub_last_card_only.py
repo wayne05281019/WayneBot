@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股四張圖：完整圖下鈕只掛第 4 張大量區；第 2／3 張不要重複鍵盤。"""
+"""查股五張圖：完整圖下鈕只掛第 4 張大量區；第 2／3／5 張不要重複鍵盤。"""
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +21,7 @@ def _png(td: str, name: str) -> str:
 
 
 class LookupHubLastCardOnlyTests(TestCase):
-    def test_hub_markup_only_on_vol_photo(self):
+    def test_hub_markup_only_on_intraday_photo(self):
         td = tempfile.mkdtemp()
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         bot.db_path = os.path.join(td, "x.db")
@@ -83,6 +83,12 @@ class LookupHubLastCardOnlyTests(TestCase):
                     _png(td, "v.png"),
                     "大量撐壓圖（非買訊）",
                 ),
+            ), patch(
+                "intraday_open_close_chart.render_lookup_intraday_result",
+                side_effect=lambda *_a, **_k: (
+                    _png(td, "i.png"),
+                    "當天走勢（開→收・非買訊）",
+                ),
             ), patch.object(
                 bot, "_prefetch_mis_quote", return_value=None
             ), patch.object(
@@ -118,12 +124,13 @@ class LookupHubLastCardOnlyTests(TestCase):
 
         asyncio.run(_run())
         kinds = [k for k, _ in send_markups]
-        self.assertEqual(kinds, ["card", "glance", "struct", "vol"])
+        self.assertEqual(kinds, ["card", "glance", "struct", "vol", "intraday"])
         by_kind = {k: mk for k, mk in send_markups}
         self.assertIsNone(by_kind["card"])
         self.assertIsNone(by_kind["glance"])
         self.assertIsNone(by_kind["struct"])
-        self.assertIs(by_kind["vol"], hub)
+        self.assertIsNone(by_kind["vol"])
+        self.assertIs(by_kind["intraday"], hub)
 
     def test_source_does_not_reattach_hub_on_mid_cards(self):
         import inspect
@@ -131,6 +138,19 @@ class LookupHubLastCardOnlyTests(TestCase):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         # 舊 bug：介紹用 markup or hub 會把 None 又變回 hub
         self.assertNotIn("markup or hub", src)
-        self.assertIn('send_photo(prep or path, caption, hub, kind=kind)', src)
-        # 結構／介紹必須顯式 None
-        self.assertGreaterEqual(src.count("caption, None, kind=kind"), 2)
+        # 完整鍵盤只掛第 5 張（hub_mk=hub）；前四張走 _send_kind_item 預設 hub_mk=None
+        self.assertIn("hub_mk=hub", src)
+        self.assertIn("_send_kind_item", src)
+        self.assertGreaterEqual(src.count("retry_label=\"第"), 4)
+
+    def test_source_vol_waits_struct_and_reports_mid_miss(self):
+        """大量區不准搶介紹／結構 paint；缺圖（含高低卡）要明示。"""
+        import inspect
+
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("struct_queued", src)
+        self.assertIn("struct_queued.wait()", src)
+        self.assertIn("缺：", src)
+        self.assertIn("miss_core", src)
+        self.assertIn("_await_lookup_paint", src)
+        self.assertIn("asof_ymd=asof or None", src)
