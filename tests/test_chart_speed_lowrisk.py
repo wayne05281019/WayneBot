@@ -169,15 +169,12 @@ def test_market_session_cards_keep_progress_bubble():
 
     page = inspect.getsource(WayneTelegramBot._send_market_page)
     sess = inspect.getsource(WayneTelegramBot._send_market_session_cards)
-    assert "wait_h=wait_h" in page
-    assert "美股・台指・恐懼貪婪" in page
+    # 教具先出；美股卡自己開等待泡泡（不准搶遠窗順位）
+    assert page.index("_send_market_wave_charts") < page.index("_send_market_session_cards")
+    assert "美股・台指・恐懼貪婪" in sess or "美股・台指・恐懼貪婪" in page
     assert "美股走勢圖" in sess
-    # 附圖段：先 session_cards（帶 wait_h）再 _end_wait，不准文字一出就消泡泡
-    anchor = page.find("美股・台指・恐懼貪婪")
-    assert anchor > 0
-    assert page.find("_send_market_session_cards", anchor) < page.find(
-        "await _end_wait()", anchor
-    )
+    assert "_start_plain_wait" in sess
+    assert "own_wait" in sess
 
 
 def test_ensure_vol_ttl_at_least_five_minutes():

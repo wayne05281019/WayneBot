@@ -223,7 +223,8 @@ def test_market_page_sends_cards_after_text():
 
     src = inspect.getsource(WayneTelegramBot._send_market_page)
     assert src.index("reply_html") < src.index("_send_market_session_cards")
-    assert src.index("_send_market_session_cards") < src.index("_send_market_wave_charts")
+    # 教具遠／近／超近先出；美股卡改後面（不准拖一分鐘才出第1張）
+    assert src.index("_send_market_wave_charts") < src.index("_send_market_session_cards")
     assert "refresh_us_for_market_page" in src
     assert "assemble_session_cards" in src
 
