@@ -171,6 +171,14 @@ def test_c_forecast_tip_points_his_next_anchor():
     assert tip3["fut_y"] == 44210.0
 
 
+def test_sparse_xticks_no_adjacent_crush():
+    from biaoke_level_learn import _sparse_xticks
+
+    i, l = _sparse_xticks([10, 11, 12, 20], ["10/15", "10/16", "10/17", "10/29"], min_gap=3)
+    assert i == [10, 20]
+    assert l == ["10/15", "10/29"]
+
+
 def test_his_micro_degree_and_alt_gate():
     from biaoke_level_learn import _alt_path_needed, _his_micro_degree
 

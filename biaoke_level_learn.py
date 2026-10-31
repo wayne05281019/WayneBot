@@ -1206,6 +1206,26 @@ def _md(ymd: Any) -> str:
     return f"{int(t[4:6])}/{int(t[6:8])}" if len(t) == 8 else str(ymd or "")
 
 
+def _sparse_xticks(
+    idxs: Sequence[int],
+    labels: Sequence[str],
+    *,
+    min_gap: int = 2,
+) -> Tuple[List[int], List[str]]:
+    """日期刻度稀釋：相鄰索引少於 min_gap 只留前一個，不准 10/15 壓 10/16。"""
+    pairs = sorted(((int(i), str(lab)) for i, lab in zip(idxs, labels)), key=lambda t: t[0])
+    out_i: List[int] = []
+    out_l: List[str] = []
+    last = -10**9
+    for i, lab in pairs:
+        if out_i and i - last < int(min_gap):
+            continue
+        out_i.append(i)
+        out_l.append(lab)
+        last = i
+    return out_i, out_l
+
+
 def _place_live_right_labels(
     ax,
     notes: Sequence[Dict[str, Any]],
@@ -1215,10 +1235,10 @@ def _place_live_right_labels(
     ymax: float,
     fp,
 ) -> None:
-    """右側價標：結構優先、近距去重、垂直拉開，不准字壓字。
+    """右側價標：結構優先、近距去重、垂直拉開，不准字壓字／字騎線。
 
     Fib 與 B／1-4 太近就只留結構標（線仍可畫在外面）；文字 Y 與價線 Y 分開，
-    用短引線接到真價，避免 Fib0.75／B／0.618 黏成一團。
+    用短引線接到真價；文字一律實心底，水平線不准切開字。
     """
     items = [dict(x) for x in (notes or []) if x.get("y") is not None and x.get("text")]
     if not items:
@@ -1228,7 +1248,7 @@ def _place_live_right_labels(
     # 結構標優先於 Fib 裝飾標
     def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
         t = str(d.get("text") or "")
-        soft = 1 if t.startswith("Fib") else 0
+        soft = 1 if (t.startswith("Fib") or t.startswith("切")) else 0
         return (soft, -float(d["y"]))
 
     items.sort(key=_pri)
@@ -1236,8 +1256,9 @@ def _place_live_right_labels(
     kept_ys: List[float] = []
     for it in items:
         y0 = float(it["y"])
-        soft = str(it.get("text") or "").startswith("Fib")
-        # Fib 真價太靠近已留結構 → 丟字（水平線若外面已畫就夠）
+        t = str(it.get("text") or "")
+        soft = t.startswith("Fib") or t.startswith("切")
+        # Fib／切 真價太靠近已留結構 → 丟字（水平線若外面已畫就夠）
         if soft and any(abs(y0 - ky) < gap * 0.85 for ky in kept_ys):
             continue
         kept.append(it)
@@ -1248,7 +1269,8 @@ def _place_live_right_labels(
     x_text = n + 0.55
     for it in kept:
         y_true = float(it["y"])
-        y = y_true
+        # 文字永遠離開真價線，不准騎在虛線上
+        y = y_true + gap * 0.16
         for py in placed:
             if abs(y - py) < gap:
                 y = py - gap
@@ -1258,6 +1280,9 @@ def _place_live_right_labels(
             y -= gap
             if y < ymin + gap * 0.25:
                 break
+        # 推完仍貼真價 → 再偏一點
+        if abs(y - y_true) < gap * 0.12:
+            y = y_true - gap * 0.18
         placed.append(y)
         color = str(it.get("color") or _LIVE_MUTED)
         x0 = float(it.get("x", n - 1))
@@ -1265,7 +1290,7 @@ def _place_live_right_labels(
         ax.hlines(
             y_true,
             x0,
-            x_text - 0.2,
+            x_text - 0.35,
             colors=color,
             linewidth=0.75,
             linestyles=(0, (2, 2)),
@@ -1273,9 +1298,9 @@ def _place_live_right_labels(
             zorder=5,
         )
         # 文字偏離真價時：右側小豎引線，讀者對得回價位
-        if abs(y - y_true) > gap * 0.15:
+        if abs(y - y_true) > gap * 0.12:
             ax.vlines(
-                x_text - 0.22,
+                x_text - 0.38,
                 min(y, y_true),
                 max(y, y_true),
                 colors=color,
@@ -1291,8 +1316,9 @@ def _place_live_right_labels(
             color=color,
             ha="left",
             va="center",
-            zorder=9,
+            zorder=10,
             clip_on=False,
+            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=color, lw=0.55, alpha=0.94),
         )
 
 
@@ -1445,18 +1471,21 @@ def _paint_c_forecast(
         zorder=6,
     )
     ax.scatter([fut_x], [fut_y], s=28, c="#ea80fc", zorder=7, edgecolors="#fff", linewidths=0.4)
+    # 標在端點下方，不准騎在虛線／水平錨線上
+    lab_y = float(fut_y) - max(abs(float(y_now) - float(fut_y)) * 0.1, 120.0)
     ax.text(
-        fut_x,
-        fut_y,
+        fut_x + 0.2,
+        lab_y,
         str(tip["label"]),
         fontproperties=fp(9, "bold"),
         color="#ea80fc",
         ha="left",
-        va="center",
-        zorder=9,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ea80fc", lw=0.65, alpha=0.92),
+        va="top",
+        zorder=10,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ea80fc", lw=0.65, alpha=0.94),
     )
-    tip["xlim_right"] = max(float(n) + 1.2, fut_x + 1.4)
+    tip["xlim_right"] = max(float(n) + 1.2, fut_x + 2.2)
+    tip["lab_y"] = lab_y
     return tip
 
 
@@ -1708,12 +1737,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ):
         ax.scatter([ii], [yy], s=44, c=col, zorder=8, edgecolors="#fff", linewidths=0.6)
     span = ymax - ymin
-    for x, y, lab, col in (
-        (i_far_lo, y_far_lo - span * 0.03, "遠窗底", "#ffab91"),
-        (i5, y5 + span * 0.025, "⑤升完", "#ff8a80"),
-        ((i5 + i_alow) / 2, (y5 + y_alow) / 2, "A", "#ff8a80"),
-        ((i_alow + i_bhi) / 2, (y_alow + y_bhi) / 2, "B", "#40c4ff"),
-        (i_now, y_now + span * 0.02, "C進行中", "#ea80fc"),
+    # 浪標貼轉折點外緣，不准騎斜線中段／壓左軸數字
+    for x, y, lab, col, ha, va in (
+        (i_far_lo + 1.2, y_far_lo + span * 0.035, "遠窗底", "#ffab91", "left", "bottom"),
+        (i5, y5 + span * 0.035, "⑤升完", "#ff8a80", "center", "bottom"),
+        (i_alow, y_alow - span * 0.04, "A", "#ff8a80", "center", "top"),
+        (i_bhi - 0.8, y_bhi + span * 0.035, "B", "#40c4ff", "center", "bottom"),
+        (i_now + 0.6, y_now + span * 0.055, "C進行中", "#ea80fc", "left", "bottom"),
     ):
         ax.text(
             x,
@@ -1721,10 +1751,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             lab,
             fontproperties=_fp(12, "bold"),
             color=col,
-            ha="center",
-            va="center",
-            zorder=9,
-            bbox=dict(boxstyle="round,pad=0.18", fc="#0b0f14", ec=col, lw=0.9, alpha=0.9),
+            ha=ha,
+            va=va,
+            zorder=10,
+            bbox=dict(boxstyle="round,pad=0.18", fc="#0b0f14", ec=col, lw=0.9, alpha=0.94),
         )
     ax.axhline(44210.0, color="#82b1ff", lw=0.9, ls=(0, (4, 3)), alpha=0.6, zorder=4)
     ax.axhline(45546.0, color="#ffab40", lw=0.85, ls=(0, (4, 3)), alpha=0.55, zorder=4)
@@ -1745,18 +1775,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         "③紫虛＝預估未來（非買訊）\n"
         "老師＝飆大；位階會改"
     )
+    # 說明框改放圖上方空白（升浪上緣外），不准壓左下K／軸／趨勢線
     ax.text(
-        0.012,
         0.02,
+        0.98,
         teach,
         transform=ax.transAxes,
         fontproperties=_fp(9, "bold"),
         color=_LIVE_TEXT,
         ha="left",
-        va="bottom",
+        va="top",
         zorder=12,
-        linespacing=1.35,
-        bbox=dict(boxstyle="round,pad=0.32", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.92),
+        linespacing=1.3,
+        bbox=dict(boxstyle="round,pad=0.28", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.96),
     )
     want = {
         _ymd(bars[0].get("date")),
@@ -1772,6 +1803,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             if i not in t2:
                 t2.append(i)
                 l2.append(_md(d))
+    t2, l2 = _sparse_xticks(t2, l2, min_gap=3)
     ax.set_xlim(-0.8, max(n + 7.2, float(tip.get("xlim_right") or n) + 2.0))
     ax.set_ylim(ymin, ymax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
@@ -1894,29 +1926,30 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ):
         ax.scatter([ii], [yy], s=56, c=col, zorder=8, edgecolors="#ffffff", linewidths=0.7)
     span = max(ymax - ymin, 1.0)
-    for x, y, lab, col in (
-        (i5, y5 + span * 0.02, "⑤", "#ff8a80"),
-        ((i5 + i_alow) / 2.0, (y5 + y_alow) / 2.0, "A↓", "#ff8a80"),
-        ((i_alow + i_bhi) / 2.0, (y_alow + y_bhi) / 2.0 + span * 0.012, "B↑", "#40c4ff"),
-        (i_now, y_now - span * 0.03, "C進行中", "#ea80fc"),
+    # 圓標貼轉折外緣：⑤在峰上、A在谷下、B在峰上、C在今右上空白，不准壓K／騎線
+    for x, y, lab, col, ha, va in (
+        (i5, y5 + span * 0.045, "⑤", "#ff8a80", "center", "bottom"),
+        (i_alow - 0.55, y_alow - span * 0.045, "A↓", "#ff8a80", "center", "top"),
+        (i_bhi - 0.7, y_bhi + span * 0.04, "B↑", "#40c4ff", "center", "bottom"),
+        (i_now + 1.1, y_now + span * 0.06, "C進行中", "#ea80fc", "left", "bottom"),
     ):
         ax.text(
             x,
             y,
             lab,
-            fontproperties=_fp(15, "bold"),
+            fontproperties=_fp(14, "bold"),
             color=col,
-            ha="center",
-            va="center",
-            zorder=9,
-            bbox=dict(boxstyle="circle,pad=0.22", fc="#0b0f14", ec=col, lw=1.25),
+            ha=ha,
+            va=va,
+            zorder=10,
+            bbox=dict(boxstyle="circle,pad=0.2", fc="#0b0f14", ec=col, lw=1.2),
         )
     ax.axvline(i_c, color="#ea80fc", lw=0.95, ls=(0, (2, 2)), alpha=0.8, zorder=5)
     for xx, yy, lab, col, va, ha in (
-        (i5 - 0.6, y5 + span * 0.04, f"升完⑤ {_md(bars[i5].get('date'))}", "#ff8a80", "bottom", "center"),
-        (i_alow + 1.2, y_alow - span * 0.035, f"A低 {_md(bars[i_alow].get('date'))}", "#ff8a80", "top", "center"),
-        (i_bhi + 1.4, y_bhi + span * 0.045, f"B高＜⑤ {_md(bars[i_bhi].get('date'))}", "#40c4ff", "bottom", "center"),
-        (i_c - 0.2, ymax - span * 0.04, "C起 10/14夜～10/15日", "#ea80fc", "top", "right"),
+        (i5 - 0.4, y5 + span * 0.07, f"升完⑤ {_md(bars[i5].get('date'))}", "#ff8a80", "bottom", "center"),
+        (i_alow - 0.9, y_alow - span * 0.07, f"A低 {_md(bars[i_alow].get('date'))}", "#ff8a80", "top", "center"),
+        (i_bhi - 0.5, y_bhi + span * 0.07, f"B高＜⑤ {_md(bars[i_bhi].get('date'))}", "#40c4ff", "bottom", "center"),
+        (i_c + 0.55, ymax - span * 0.035, "C起 10/14夜～10/15日", "#ea80fc", "top", "left"),
     ):
         ax.text(
             xx,
@@ -1926,8 +1959,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             color=col,
             ha=ha,
             va=va,
-            zorder=9,
-            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.7, alpha=0.9),
+            zorder=10,
+            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.7, alpha=0.94),
         )
     for y, _lab, col in fib_levels:
         ax.axhline(y, color=col, lw=0.85, ls=(0, (3, 2)), alpha=0.55, zorder=4)
@@ -1961,8 +1994,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         f"④量價故事：{intent_line}"
     )
     ax.text(
-        0.012,
-        0.02,
+        0.018,
+        0.08,
         teach,
         transform=ax.transAxes,
         fontproperties=_fp(9, "bold"),
@@ -1971,12 +2004,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         va="bottom",
         zorder=12,
         linespacing=1.35,
-        bbox=dict(boxstyle="round,pad=0.35", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.92),
+        bbox=dict(boxstyle="round,pad=0.32", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.96),
     )
     want_dates = {
         "20261006",
         "20261013",
-        "20261014",
         "20261015",
         "20261022",
         _ymd(bars[-1].get("date")),
@@ -1984,10 +2016,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     t2, l2 = [], []
     for i, r in enumerate(bars):
         d = _ymd(r.get("date"))
-        if d in want_dates or i % 3 == 0:
+        if d in want_dates or i % 4 == 0:
             if i not in t2:
                 t2.append(i)
                 l2.append(_md(d))
+    t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
     ax.set_xlim(-0.6, max(n + 7.5, float(tip.get("xlim_right") or n) + 2.0))
     ax.set_ylim(ymin, ymax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
@@ -2159,30 +2192,31 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         linewidths=0.45,
     )
 
-    # 標籤避開線路：B／確認靠上；幾何①在下、②在上；今靠右上
+    # 標籤避開線路：B靠峰右上；C起確認再上移離豎線；幾何①下／②上；今再上移離K與紫實線
     c_lo = min(float(lows[i]) for i in range(i_bhi, n))
     c_hi = max(float(highs[i]) for i in range(i_bhi, n))
     pad = (c_hi - c_lo) * 0.04
     now_lab = f"今＝{ladder.get('now') or 'C進行中'}（預估）"
     layer_labs = [
-        (i_bhi, float(highs[i_bhi]) + pad * 1.6, "B高＝C起", "#40c4ff", "bottom"),
-        (i_c - 0.15, c_hi + pad * 2.2, "C起確認\n10/14夜～10/15日", "#ea80fc", "bottom"),
-        (i_c1, float(lows[i_c1]) - pad * 1.8, "幾何①", "#ffab40", "top"),
-        (i_c2, float(highs[i_c2]) + pad * 1.5, "幾何②", "#ffab40", "bottom"),
-        (i_now + 0.15, float(closes[i_now]) + pad * 2.0, now_lab, "#ffffff", "bottom"),
+        # B 標放在峰左側，避開 i_c 紫豎虛線
+        (i_bhi - 0.85, float(highs[i_bhi]) + pad * 1.4, "B高＝C起", "#40c4ff", "bottom", "right"),
+        (i_c + 0.85, c_hi + pad * 3.0, "C起確認\n10/14夜～10/15日", "#ea80fc", "bottom", "left"),
+        (i_c1, float(lows[i_c1]) - pad * 2.2, "幾何①", "#ffab40", "top", "center"),
+        (i_c2, float(highs[i_c2]) + pad * 1.8, "幾何②", "#ffab40", "bottom", "center"),
+        (i_now + 0.55, float(closes[i_now]) + pad * 3.4, now_lab, "#ffffff", "bottom", "left"),
     ]
-    for x, y, lab, col, va in layer_labs:
+    for x, y, lab, col, va, ha in layer_labs:
         ax.text(
             x,
             y,
             lab,
             fontproperties=_fp(10, "bold"),
             color=col,
-            ha="center",
+            ha=ha,
             va=va,
-            zorder=9,
+            zorder=10,
             linespacing=1.15,
-            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.7, alpha=0.92),
+            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.7, alpha=0.94),
         )
 
     # 另前提演化（薄荷虛線）：只有跟他約的不同才畫
@@ -2233,8 +2267,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         f"{alt_note}"
     )
     ax.text(
-        0.012,
-        0.02,
+        0.018,
+        0.08,
         teach,
         transform=ax.transAxes,
         fontproperties=_fp(9, "bold"),
@@ -2243,7 +2277,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         va="bottom",
         zorder=12,
         linespacing=1.3,
-        bbox=dict(boxstyle="round,pad=0.35", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.92),
+        bbox=dict(boxstyle="round,pad=0.32", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.96),
     )
     # 圖例放右上，避開左上K線與層級框
     ax.plot([], [], color="#ea80fc", lw=2.4, label="紫實＝他說（B→今）")
@@ -2256,7 +2290,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         fontsize=8,
         frameon=True,
         fancybox=True,
-        framealpha=0.9,
+        framealpha=0.92,
     )
     if leg is not None:
         leg.get_frame().set_facecolor("#0b0f14")
@@ -2279,10 +2313,13 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             if i not in t2:
                 t2.append(i)
                 l2.append(_md(d))
+    t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
     ax.set_xlim(x_left, max(n + 3.5, float(tip.get("xlim_right") or n) + 1.2))
     # 超級近窗 y：上方多留空給層級標，下方給幾何①／預估端
-    y_bot = min(c_lo, float(tip.get("fut_y") or c_lo)) - (c_hi - c_lo) * 0.16
-    ax.set_ylim(y_bot, c_hi + (c_hi - c_lo) * 0.28)
+    y_bot = min(c_lo, float(tip.get("fut_y") or c_lo), float(tip.get("lab_y") or c_lo)) - (
+        c_hi - c_lo
+    ) * 0.18
+    ax.set_ylim(y_bot, c_hi + (c_hi - c_lo) * 0.34)
     axv.set_ylim(0, (max(vols[i_bhi:]) if any(vols[i_bhi:]) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axv.set_xticks(t2)
