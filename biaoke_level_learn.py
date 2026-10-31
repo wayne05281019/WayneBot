@@ -500,10 +500,145 @@ def _twii_bars_for_teach(
 
 
 def _bar_clock_tag(bars: Sequence[Dict[str, Any]]) -> str:
-    """末日若為盤中疊加 →『盤中』；否則『收』（不准把未收當收）。"""
+    """末日若為盤中疊加 →『盤中』；否則『收』（不准把未收當收）。
+
+    教具標題請用 `_teach_query_clock`（含查詢當下 HH:MM）；本函式留相容。
+    """
     if bars and int((bars[-1] or {}).get("live_session") or 0) == 1:
         return "盤中"
     return "收"
+
+
+def _parse_query_at(raw: Any) -> Optional[datetime]:
+    if isinstance(raw, datetime):
+        dt = raw
+    else:
+        s = str(raw or "").strip()
+        if not s:
+            return None
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except Exception:
+            return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=TAIPEI)
+    return dt.astimezone(TAIPEI)
+
+
+def _teach_query_clock(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+    generated_at: Optional[datetime] = None,
+) -> str:
+    """遠／近／超近標題時鐘：一律帶查詢當下 HH:MM（三張同 pack['query_at']）。
+
+    盤中合併窗／已疊 MIS 顯示柱 →『盤中 HH:MM』；
+    其餘 →『查詢 HH:MM｜收』（不准把未收當收，也不准標題沒鐘點）。
+    """
+    dt = None
+    if isinstance(pack, dict):
+        dt = _parse_query_at(pack.get("query_at"))
+    if dt is None:
+        dt = generated_at or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    hm = dt.strftime("%H:%M")
+    live_bar = bool(bars) and int((bars[-1] or {}).get("live_session") or 0) == 1
+    live_win = False
+    try:
+        from live_quote import is_live_merge_window
+
+        live_win = bool(is_live_merge_window(dt))
+    except Exception:
+        live_win = False
+    if live_bar or live_win:
+        return f"盤中 {hm}"
+    return f"查詢 {hm}｜收"
+
+
+def _thesis_cap_for_query(
+    db_path: str, *, now: Optional[datetime] = None
+) -> str:
+    """活畫題旨日上限：開市日用查詢當日（對齊他最新文）；柱 as_of 仍另算。
+
+    盤中未收柱仍不當官方收；這裡只放寬「他文可讀到今天」。
+    """
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    today = dt.strftime("%Y%m%d")
+    chart = ""
+    try:
+        chart = _twii_chart_as_of(db_path)
+    except Exception:
+        chart = ""
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        if is_tw_open_calendar_day(today):
+            return max(x for x in (chart, today) if x)
+    except Exception:
+        pass
+    try:
+        from live_quote import is_live_merge_window
+
+        if is_live_merge_window(dt):
+            return max(x for x in (chart, today) if x)
+    except Exception:
+        pass
+    return chart or today
+
+
+def _latest_biaoke_index_snip(
+    db_path: str,
+    cap_ymd: str,
+    *,
+    now: Optional[datetime] = None,
+) -> str:
+    """≤cap 日、且時間 ≤ 查詢當下的最新大盤相關他文（主文／自回）。"""
+    cap = _ymd(cap_ymd)
+    if not db_path or not cap:
+        return ""
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    cap_dash = f"{cap[:4]}-{cap[4:6]}-{cap[6:8]}"
+    today_dash = dt.strftime("%Y-%m-%d")
+    hm = dt.strftime("%H:%M")
+    since = (dt - timedelta(days=21)).strftime("%Y-%m-%d")
+    try:
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                "SELECT date, time, text FROM biaoke_posts "
+                "WHERE date>=? AND date<=? "
+                "ORDER BY date DESC, time DESC LIMIT 40",
+                (since, cap_dash),
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return ""
+    for date_s, time_s, text in rows or ():
+        d = str(date_s or "").strip()
+        t = str(time_s or "").strip()
+        blob = str(text or "")
+        if not blob:
+            continue
+        # 同一查詢日：不准吃到牆鐘之後的文
+        if d == today_dash and t and t > hm:
+            continue
+        if not (_INDEXISH.search(blob) or looks_like_level_now(blob)):
+            continue
+        return re.sub(r"\s+", " ", blob).strip()[:400]
+    return ""
 
 
 def _seat_onchart_labels(
@@ -546,13 +681,21 @@ def _seat_onchart_labels(
     return placed
 
 
-def _latest_level_thesis(db_path: str, as_of: str = "") -> Dict[str, str]:
+def _latest_level_thesis(
+    db_path: str, as_of: str = "", *, now: Optional[datetime] = None
+) -> Dict[str, str]:
     """從最近位階 snap／貼文抽出活畫題旨（可遷移結構語，不背死價當唯一）。
 
     課綱三科：波浪 · 黃金切割 · 型態（見 wave_fib_morph_curriculum.md）。
-    as_of＝圖的收盤日：只准用 ≤ 該日的他文／snap，不准拿隔日 C3-3 回填昨天的圖。
+    as_of＝題旨上限日：只准用 ≤ 該日的他文／snap，不准拿隔日 C3-3 回填昨天的圖。
+    活畫另可把 as_of 放到查詢當日，對齊他最新發文（柱仍未收不當收）。
     """
     ensure_tables(db_path)
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
     cap = _ymd(as_of) or _twii_chart_as_of(db_path)
     conn = sqlite3.connect(db_path, timeout=15.0)
     conn.row_factory = sqlite3.Row
@@ -571,12 +714,18 @@ def _latest_level_thesis(db_path: str, as_of: str = "") -> Dict[str, str]:
     finally:
         conn.close()
     snip = str((row["snippet"] if row else "") or "")
+    # 對齊查詢當下最新大盤文：正文像現況位階就覆蓋 snap（仍卡 ≤cap／牆鐘）
+    post_snip = _latest_biaoke_index_snip(db_path, cap, now=dt)
+    if post_snip and (not snip or looks_like_level_now(post_snip)):
+        snip = post_snip
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
+    if post_snip:
+        morph_blob = f"{morph_blob} {post_snip}"
     # 庫內近期大盤文也補型態（缺 snap 時）；同樣卡 as_of
     if not _morph_note_from_text(morph_blob):
         try:
             cap_dash = f"{cap[:4]}-{cap[4:6]}-{cap[6:8]}" if len(cap) == 8 else cap
-            since = (datetime.now(TAIPEI) - timedelta(days=14)).strftime("%Y-%m-%d")
+            since = (dt - timedelta(days=14)).strftime("%Y-%m-%d")
             conn = sqlite3.connect(db_path, timeout=15.0)
             try:
                 posts = conn.execute(
@@ -1374,10 +1523,22 @@ def _paint_window_dual_zones(
     }
 
 
-def _build_live_pack(db_path: str) -> Dict[str, Any]:
-    """彙整庫內多源 → 一包題旨／關鍵位／量價（活化使用）。"""
+def _build_live_pack(
+    db_path: str, *, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """彙整庫內多源 → 一包題旨／關鍵位／量價（活化使用）。
+
+    now＝查詢當下（台北）；題旨對齊 ≤ 查詢日的最新飆大文；
+    chart_as_of 仍＝已收完整柱末日（盤中未收不當收）。
+    """
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
     chart_as_of = _twii_chart_as_of(db_path)
-    thesis_pack = _latest_level_thesis(db_path, as_of=chart_as_of)
+    thesis_cap = _thesis_cap_for_query(db_path, now=dt)
+    thesis_pack = _latest_level_thesis(db_path, as_of=thesis_cap, now=dt)
     tx = _tx60_read(db_path)
     tw = _twii_intent_story(db_path)
     us = _us_lead_read(db_path)
@@ -1420,6 +1581,8 @@ def _build_live_pack(db_path: str) -> Dict[str, Any]:
         "key_levels": levels,
         "snippet": thesis_pack.get("snippet") or "",
         "chart_as_of": chart_as_of,
+        "thesis_as_of": thesis_cap,
+        "query_at": dt.isoformat(),
     }
 
 
@@ -2759,7 +2922,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         0.05,
         0.975,
         f"第1張（遠窗）：上費半浪｜中加權｜下加權量　｜　{vz_y}　｜　{vz_c}{c_sub_bit}　｜　"
-        f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} {_bar_clock_tag(bars)} {_px(closes[-1])}",
+        f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} {_teach_query_clock(bars, pack=pack)} {_px(closes[-1])}",
         fontproperties=_fp(11, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -3134,7 +3297,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
-    clock = _bar_clock_tag(bars)
+    clock = _teach_query_clock(bars, pack=pack)
     ladder = _wave_now_ladder(pack)
     # 標題跟當日層級走：一眼看到大→小走到哪；雙底色與遠窗對齊
     title_bit = str(ladder.get("now") or "").strip() or "現在在C（預估）"
@@ -3615,7 +3778,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         0.03,
         0.972,
         f"第3張（超近窗）：C內細浪（對齊他60分・不取代ABC）　｜　{vz_y}　｜　{vz_c}"
-        f"{c_sub_bit}　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} {_bar_clock_tag(bars)} {_px(closes[-1])}",
+        f"{c_sub_bit}　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} {_teach_query_clock(bars, pack=pack)} {_px(closes[-1])}",
         fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -4246,18 +4409,20 @@ def paint_open_day_hypothesis(
     except Exception:
         logger.exception("活畫隔日對質略過")
 
-    pack = _build_live_pack(db_path)
-    # 盤中：MIS 加權只疊顯示柱（不寫庫、不當官方收）
+    pack = _build_live_pack(db_path, now=dt)
+    # 盤中：MIS 加權只疊顯示柱（不寫庫、不當官方收）；三張同包同查詢戳
     try:
         from live_quote import fetch_mis_index_quote, is_live_merge_window
 
-        if is_live_merge_window():
+        if is_live_merge_window(dt):
             live_tw = fetch_mis_index_quote(fresh=True)
             if live_tw:
                 pack = dict(pack or {})
                 pack["live_twii"] = live_tw
     except Exception:
         logger.debug("活畫盤中加權疊加略過", exc_info=True)
+    pack = dict(pack or {})
+    pack["query_at"] = dt.isoformat()
     thesis = pack.get("thesis") or ""
     wait_struct = pack.get("wait_struct") or ""
     turn_note = pack.get("turn_note") or ""
@@ -4418,6 +4583,8 @@ def paint_open_day_hypothesis(
         "micro_degree_geom": pack.get("micro_degree_geom") or "",
         "slot_id": slot_id,
         "as_of": ymd,
+        "query_at": str(pack.get("query_at") or dt.isoformat()),
+        "thesis_as_of": str(pack.get("thesis_as_of") or ""),
     }
 
 

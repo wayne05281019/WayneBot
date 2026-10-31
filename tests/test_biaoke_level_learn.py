@@ -176,6 +176,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
     assert "日K小波①②（輔助）" in micro_blk or "橙①②僅輔助" in micro_blk
     assert "_seat_onchart_labels" in near_blk
+    # 三張標題都要查詢當下時鐘（盤中 HH:MM／收盤標籤），不准只寫盤中／收
+    assert "_teach_query_clock" in far_blk
+    assert "_teach_query_clock" in near_blk
+    assert "_teach_query_clock" in micro_blk
+    assert "def _teach_query_clock" in src
+    assert "def _thesis_cap_for_query" in src
+    assert "_latest_biaoke_index_snip" in src
     # 外圍對照（附圖二）本輪不加 c4／c5 細標
     us_end = src.find("\ndef ", src.index("def _render_us_compare_dark") + 4)
     us_blk = src[src.index("def _render_us_compare_dark") : us_end if us_end > 0 else None]
@@ -389,6 +396,74 @@ def test_thesis_respects_chart_as_of_and_break_tag(tmp_path):
     assert "橫台" in (pack.get("thesis") or pack.get("snippet") or "")
     assert _level_break_tag(45546.0, [46055.0, 45676.0, 46041.0]) == "未破"
     assert _level_break_tag(45546.0, [44726.0]) == "已破"
+
+
+def test_teach_query_clock_shows_wall_hhmm():
+    """三張教具時鐘：一律查詢當下 HH:MM；盤中／收都要有鐘點。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _teach_query_clock
+
+    tz = ZoneInfo("Asia/Taipei")
+    # 用平日 10:17，避免週末被合併窗判成休市
+    live_bars = [{"date": "20261030", "live_session": 1, "close": 46000}]
+    pack = {"query_at": datetime(2026, 10, 30, 10, 17, tzinfo=tz).isoformat()}
+    clock = _teach_query_clock(live_bars, pack=pack)
+    assert clock == "盤中 10:17"
+    # 合併窗到 16:30；之後／週末才標「查詢 HH:MM｜收」
+    closed = _teach_query_clock(
+        [{"date": "20261030", "close": 46000}],
+        pack={"query_at": datetime(2026, 10, 30, 17, 5, tzinfo=tz).isoformat()},
+    )
+    assert closed == "查詢 17:05｜收"
+
+
+def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
+    """開市日題旨 cap＝查詢日：吃得到當天最新位階文，吃不到牆鐘之後的文。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _latest_level_thesis, ensure_tables
+
+    db = str(tmp_path / "lvl2.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, text TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_level_snaps("
+        "post_id, as_of, post_date, post_time, snippet, chart_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("old", "20261030", "2026-10-30", "09:00", "橫台整理中繼站", "", "t"),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        ("n1", "2026-10-31", "09:05", "大盤目前只是C3-3-1轉C3-3-2，細微波進行中"),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        ("n2", "2026-10-31", "11:00", "大盤確認主跌段發動，動態修正位階"),
+    )
+    conn.commit()
+    conn.close()
+    tz = ZoneInfo("Asia/Taipei")
+    before = _latest_level_thesis(
+        db,
+        as_of="20261031",
+        now=datetime(2026, 10, 31, 10, 0, tzinfo=tz),
+    )
+    assert "C3-3" in (before.get("snippet") or before.get("thesis") or "")
+    assert "主跌" not in (before.get("snippet") or "")
+    after = _latest_level_thesis(
+        db,
+        as_of="20261031",
+        now=datetime(2026, 10, 31, 11, 30, tzinfo=tz),
+    )
+    assert "主跌" in (after.get("snippet") or after.get("thesis") or "")
 
 
 def test_twii_intent_story_trap_language():

@@ -107,6 +107,9 @@ def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
     assert "第1張・遠窗" in caps[0]
     assert "第2張・近窗" in caps[1]
     assert "第3張・超近窗" in caps[2]
+    # 三張 caption 都要有查詢當下台北時間
+    for c in caps:
+        assert "查詢 " in c and "台北" in c
 
 
 def test_market_wave_blocks_near_if_far_missing(tmp_path, monkeypatch):

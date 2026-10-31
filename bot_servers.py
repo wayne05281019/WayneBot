@@ -6450,13 +6450,32 @@ class WayneTelegramBot:
         sent = 0
         failed = []
         intro = str(caption or "").strip()
+        # 三張都標查詢當下（台北）；從 intro 抽一行，避免休市齊檔只有第1張有戳
+        q_line = ""
+        for ln in intro.splitlines():
+            if ln.startswith("查詢 ") and "台北" in ln:
+                q_line = ln.strip()
+                break
+        if not q_line:
+            try:
+                from zoneinfo import ZoneInfo
+
+                q_line = (
+                    f"查詢 {datetime.now(ZoneInfo('Asia/Taipei')).strftime('%m/%d %H:%M')}"
+                    "（台北）"
+                )
+            except Exception:
+                q_line = ""
         for i, (_key, label, path) in enumerate(items):
             n = i + 1
             bits = [f"台股大盤・第{n}張・{label}（非買訊）"]
             if i == 0 and intro:
                 bits.append(intro)
-            elif ladder_line:
-                bits.append(str(ladder_line)[:400])
+            else:
+                if q_line:
+                    bits.append(q_line)
+                if ladder_line:
+                    bits.append(str(ladder_line)[:400])
             ok = await self._send_market_teach_one(
                 message, path, caption="\n".join(bits), label=label
             )
@@ -6484,8 +6503,18 @@ class WayneTelegramBot:
                 from datetime import datetime
                 from zoneinfo import ZoneInfo
 
-                pack = _build_live_pack(self.db_path) or {}
                 dt = datetime.now(ZoneInfo("Asia/Taipei"))
+                pack = dict(_build_live_pack(self.db_path, now=dt) or {})
+                pack["query_at"] = dt.isoformat()
+                try:
+                    from live_quote import fetch_mis_index_quote, is_live_merge_window
+
+                    if is_live_merge_window(dt):
+                        live_tw = fetch_mis_index_quote(fresh=True)
+                        if live_tw:
+                            pack["live_twii"] = live_tw
+                except Exception:
+                    pass
                 slot = _sparse_slot_id(dt, force=True) or f"force-far-{dt.strftime('%Y%m%d-%H%M')}"
                 out = os.path.join(_paint_dir(self.db_path), f"{slot}-far.png")
                 return _render_twii_far_dark(self.db_path, out, pack) or ""
@@ -6630,9 +6659,18 @@ class WayneTelegramBot:
                 ladder_line = ""
 
             order_zh = "、".join(label for _k, label in trio_caps)
+            # 三張共用查詢當下台北時間（盤中活畫寫進圖戳；caption 也標，休市齊檔照樣有）
+            try:
+                from zoneinfo import ZoneInfo
+
+                q_wall = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%m/%d %H:%M")
+            except Exception:
+                q_wall = ""
             intro_bits = [
                 f"順序固定：第1遠窗→第2近窗→第3超近窗（{order_zh}・非買訊）",
             ]
+            if q_wall:
+                intro_bits.append(f"查詢 {q_wall}（台北）")
             if ladder_line:
                 intro_bits.append(ladder_line)
             elif thesis:
