@@ -1981,15 +1981,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             before5 = [i for i in valid if i <= s5i]
             s_lo_i = min(before5, key=lambda i: float(sox_l[i])) if before5 else s5i
             s_lo_y = float(sox_l[s_lo_i])
-            sox_sr = _next_support_resist(sn, supports=(sa, s_lo_y), resists=(sb, s5))
-            _paint_sr_zone_yellow(
-                axu,
-                y_now=sn,
-                support=sox_sr.get("support"),
-                resist=sox_sr.get("resist"),
-                fp=_fp,
-                n=n,
-            )
+            # 費半無官方量、他也沒點名費半價錨 → 不准畫「下一撐／近壓」黃區
+            # 只留自轉折浪線，撐壓區間只畫在加權（45546／44210／切割）
             axu.plot([s_lo_i, s5i], [s_lo_y, s5], color="#ff8a80", lw=2.1, zorder=7)
             axu.plot([s5i, sai], [s5, sa], color="#ff8a80", lw=2.0, zorder=7)
             axu.plot([sai, sbi], [sa, sb], color="#40c4ff", lw=2.0, zorder=7)
@@ -2037,6 +2030,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 max(x for x in sox_h if x == x) + span_s * 0.18,
             )
     axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    axu.text(
+        0.012,
+        0.04,
+        "費半＝自轉折浪對照（無官方量→不畫撐壓黃區）",
+        transform=axu.transAxes,
+        fontproperties=_fp(8, "bold"),
+        color=_LIVE_MUTED,
+        ha="left",
+        va="bottom",
+        zorder=10,
+        bbox=dict(boxstyle="round,pad=0.16", fc="#0b0f14", ec="#546e7a", lw=0.65, alpha=0.92),
+    )
 
     # —— 中：加權價 ——
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
@@ -2174,7 +2179,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.975,
-        f"第1張（遠窗）：上費半｜中加權⑤起→ABC｜下加權量　｜　黃底撐～壓（撐{sup_s}／壓{res_s}）　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
+        f"第1張（遠窗）：上費半浪｜中加權⑤起→ABC｜下加權量　｜　加權黃底撐～壓（撐{sup_s}／壓{res_s}）　｜　{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} 收 {_px(closes[-1])}",
         fontproperties=_fp(11, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -2183,7 +2188,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.952,
-        "黃虛線／黃框＝最大量當日（與加權K同一交易日）｜左黃標＝下一撐／近壓｜費半不畫量｜紫虛＝預估（非買訊）",
+        "加權撐壓＝他說過的錨／切割（可對量）｜費半只對浪、不畫撐壓黃區（無官方量）｜黃虛線＝加權最大量日",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_MUTED,
         ha="left",
