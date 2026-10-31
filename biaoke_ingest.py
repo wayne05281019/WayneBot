@@ -1941,20 +1941,29 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         verify_due(db_path)
     except Exception:
         logger.exception("飆大演算即時建檔／對質失敗")
+    level_seen = 0
     try:
         # 他一說大盤現況位階 → 立刻畫圖落檔 → 靜默對前一筆／準備下一句（成長迴路）
         from biaoke_level_learn import record_level_learn_from_events
 
-        record_level_learn_from_events(db_path, packed)
+        level_stats = record_level_learn_from_events(db_path, packed) or {}
+        level_seen = int(level_stats.get("seen") or 0)
     except Exception:
         logger.exception("飆大位階學習畫圖／對質略過")
     try:
-        # 稀疏槽活畫：日／夜／納指費半＋量價裸K；隔日對質（不進話筒）
+        # 稀疏槽活畫；他說新點位則 force 重畫遠／近／超近
         from biaoke_level_learn import maybe_paint_open_day_after_ingest
 
-        maybe_paint_open_day_after_ingest(db_path)
+        maybe_paint_open_day_after_ingest(db_path, force=bool(level_seen))
     except Exception:
         logger.exception("飆大開市活畫略過")
+    try:
+        # 文內有他點的最新大盤價 → 重畫後推兩支話筒（文＋教具圖）；不准假點
+        from biaoke_level_learn import maybe_push_level_teach_update
+
+        maybe_push_level_teach_update(db_path, packed)
+    except Exception:
+        logger.exception("飆大點位教具推播略過")
     try:
         from biaoke_neurons import record_neuron_events
 

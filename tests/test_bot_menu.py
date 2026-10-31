@@ -94,10 +94,14 @@ def test_image_surfaces_wait_vanishes_after_photo():
     assert wave.index("_start_plain_wait") < wave.index("reply_photo")
     assert wave.index("reply_photo") < wave.rindex("_stop_plain_wait")
     assert "paint_open_day_hypothesis" in wave
+    assert "force=True" in wave
     assert "latest_teach_kit" in wave
     assert "遠窗" in wave and "近窗" in wave and "超近" in wave
     assert "大盤教具圖這次畫不出來" in wave
     assert "submit_mpl_paint" in wave
+    teach = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
+    assert "force=True" in teach
+    assert "paint_open_day_hypothesis" in teach
     page = inspect.getsource(WayneTelegramBot._send_market_page)
     assert "_send_market_wave_charts" in page
     assert "_send_market_kline" not in page
