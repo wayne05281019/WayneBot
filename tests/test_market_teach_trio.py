@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""大盤遠／近／超近一次三張：缺張要補齊，不准只出近窗。"""
+"""大盤遠／近／超近：第1張必遠窗；休市齊檔不重畫；缺遠窗不准只出近窗。"""
 from __future__ import annotations
 
 import os
@@ -39,8 +39,8 @@ def test_merge_market_teach_kit_fills_missing_far_and_micro(tmp_path):
     assert merged["micro_path"] == str(micro)
 
 
-def test_market_wave_sends_trio_album_even_if_paint_only_near(tmp_path, monkeypatch):
-    """活畫只出近窗時，仍要用已存遠／超近湊滿一次三張相簿。"""
+def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
+    """休市齊檔：不重畫；第1張遠窗→近→超近逐張，caption 標第N張。"""
     import asyncio
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -49,6 +49,7 @@ def test_market_wave_sends_trio_album_even_if_paint_only_near(tmp_path, monkeypa
     bot._uid_from_message = lambda _m: "1"
     bot._start_plain_wait = AsyncMock(return_value=(MagicMock(), MagicMock(), MagicMock()))
     bot._stop_plain_wait = AsyncMock()
+    bot._safe_edit_text = AsyncMock()
     bot._prepare_lookup_album_photo = lambda p, *a, **k: p
 
     near = tmp_path / "near.png"
@@ -59,24 +60,12 @@ def test_market_wave_sends_trio_album_even_if_paint_only_near(tmp_path, monkeypa
     _png(str(micro))
     assert bot._market_teach_path_ok(str(far))
 
-    from concurrent.futures import Future
+    paint_calls = {"n": 0}
 
-    fut = Future()
-    fut.set_result(
-        {
-            "ok": True,
-            "near_path": str(near),
-            "far_path": "",
-            "micro_path": "",
-            "us_path": "",
-            "thesis": "t",
-            "as_of": "20261031",
-        }
-    )
-    monkeypatch.setattr(
-        "wayne_navigator.submit_mpl_paint",
-        lambda fn: fut,
-    )
+    def _no_paint(*_a, **_k):
+        paint_calls["n"] += 1
+        raise AssertionError("休市齊檔不准 force 重畫")
+
     monkeypatch.setattr(
         "biaoke_level_learn.latest_teach_kit",
         lambda *_a, **_k: {
@@ -89,6 +78,10 @@ def test_market_wave_sends_trio_album_even_if_paint_only_near(tmp_path, monkeypa
         },
     )
     monkeypatch.setattr(
+        "biaoke_level_learn.paint_open_day_hypothesis",
+        _no_paint,
+    )
+    monkeypatch.setattr(
         "biaoke_level_learn._build_live_pack",
         lambda *_a, **_k: {"thesis": "t", "chart_as_of": "20261031"},
     )
@@ -96,19 +89,93 @@ def test_market_wave_sends_trio_album_even_if_paint_only_near(tmp_path, monkeypa
         "biaoke_level_learn._wave_now_ladder",
         lambda *_a, **_k: {"one_line": "層級一句", "now_line": ""},
     )
-    monkeypatch.setattr(
-        "config.skip_chart_warmup",
-        lambda: False,
-    )
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda: False)
+    monkeypatch.setattr("config.skip_chart_warmup", lambda: False)
 
     msg = MagicMock()
-    msg.reply_media_group = AsyncMock(return_value=[MagicMock(), MagicMock(), MagicMock()])
+    msg.reply_media_group = AsyncMock()
     msg.reply_photo = AsyncMock()
     msg.reply_text = AsyncMock()
 
     asyncio.run(bot._send_market_wave_charts(msg, uid="1"))
-    assert msg.reply_media_group.await_count == 1
-    media = msg.reply_media_group.await_args.kwargs.get("media") or msg.reply_media_group.await_args.args[0]
-    assert len(media) == 3
-    cap = getattr(media[0], "caption", None) or ""
-    assert "一次三張" in cap or "遠／近／超近" in cap
+    assert paint_calls["n"] == 0
+    assert msg.reply_media_group.await_count == 0
+    assert msg.reply_photo.await_count == 3
+    caps = []
+    for call in msg.reply_photo.await_args_list:
+        caps.append(call.kwargs.get("caption") or "")
+    assert "第1張・遠窗" in caps[0]
+    assert "第2張・近窗" in caps[1]
+    assert "第3張・超近窗" in caps[2]
+
+
+def test_market_wave_blocks_near_if_far_missing(tmp_path, monkeypatch):
+    """遠窗缺且重渲失敗：白話停，不准只出近窗。"""
+    import asyncio
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = str(tmp_path / "m.db")
+    bot.charts_dir = str(tmp_path)
+    bot._uid_from_message = lambda _m: "1"
+    bot._start_plain_wait = AsyncMock(return_value=(MagicMock(), MagicMock(), MagicMock()))
+    bot._stop_plain_wait = AsyncMock()
+    bot._safe_edit_text = AsyncMock()
+    bot._prepare_lookup_album_photo = lambda p, *a, **k: p
+    bot._retry_market_far_paint = AsyncMock(return_value="")
+
+    near = tmp_path / "near.png"
+    micro = tmp_path / "micro.png"
+    _png(str(near))
+    _png(str(micro))
+
+    from concurrent.futures import Future
+
+    fut = Future()
+    fut.set_result(
+        {
+            "ok": True,
+            "near_path": str(near),
+            "far_path": "",
+            "micro_path": str(micro),
+            "us_path": "",
+            "thesis": "t",
+            "as_of": "20261031",
+        }
+    )
+    monkeypatch.setattr("wayne_navigator.submit_mpl_paint", lambda fn: fut)
+    monkeypatch.setattr(
+        "biaoke_level_learn.latest_teach_kit",
+        lambda *_a, **_k: {
+            "far_path": "",
+            "near_path": str(near),
+            "micro_path": str(micro),
+            "us_path": "",
+            "thesis": "t",
+            "as_of": "20261031",
+        },
+    )
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda: True)
+    monkeypatch.setattr("config.skip_chart_warmup", lambda: False)
+    monkeypatch.setattr(
+        "biaoke_level_learn._build_live_pack",
+        lambda *_a, **_k: {"thesis": "t"},
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._wave_now_ladder",
+        lambda *_a, **_k: {"one_line": "", "now_line": ""},
+    )
+
+    msg = MagicMock()
+    msg.reply_photo = AsyncMock()
+    msg.reply_text = AsyncMock()
+    asyncio.run(bot._send_market_wave_charts(msg, uid="1"))
+    assert msg.reply_photo.await_count == 0
+    assert msg.reply_text.await_count >= 1
+    assert "遠窗" in (msg.reply_text.await_args.args[0] if msg.reply_text.await_args.args else "")
+
+
+def test_market_page_sends_teach_before_session_cards():
+    import inspect
+
+    src = inspect.getsource(WayneTelegramBot._send_market_page)
+    assert src.index("_send_market_wave_charts") < src.index("_send_market_session_cards")

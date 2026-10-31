@@ -6195,31 +6195,17 @@ class WayneTelegramBot:
         try:
             for i, part in enumerate(parts):
                 await message.reply_html(part, disable_web_page_preview=True)
-            # 文字已出：進度改成附圖階段，不准空白乾等美股／台指／恐懼貪婪
-            if wait_h is not None:
-                status_msg = wait_h[0] if wait_h else None
-                if status_msg is not None:
-                    await self._safe_edit_text(
-                        status_msg,
-                        self._wait_bubble(
-                            "大盤進行中",
-                            0,
-                            now="美股・台指・恐懼貪婪",
-                            rest="遠／近／超近窗",
-                            fill_sec=25.0,
-                        ),
-                        parse_mode="HTML",
-                    )
+            await _end_wait()
+            # 討論版教具先出：遠／近／超近（不准先畫美股卡拖到一分鐘才出第1張）
+            await self._send_market_wave_charts(
+                message, uid=self._uid_from_message(message)
+            )
+            # 美股／台指／恐懼貪婪在教具之後（次要對照，不准搶遠窗順位）
             await self._send_market_session_cards(
                 message,
                 card_bundle,
                 uid=self._uid_from_message(message),
-                wait_h=wait_h,
-            )
-            await _end_wait()
-            # 加權走勢改暗底遠／近／超近（與飆大教具同一套）；不准再送淺底日K／大量區
-            await self._send_market_wave_charts(
-                message, uid=self._uid_from_message(message)
+                wait_h=None,
             )
         except Exception as e:
             logger.exception("大盤 HTML 送出失敗")
@@ -6302,56 +6288,76 @@ class WayneTelegramBot:
             "fear": "恐懼與貪婪圖",
         }
         status_msg = wait_h[0] if wait_h else None
+        own_wait = False
+        if status_msg is None and session_card_jobs(bundle):
+            wait_h = await self._start_plain_wait(
+                message,
+                text_fn=lambda s: self._wait_bubble(
+                    "大盤進行中",
+                    s,
+                    now="美股・台指・恐懼貪婪",
+                    rest="對照圖",
+                    fill_sec=25.0,
+                ),
+            )
+            status_msg = wait_h[0] if wait_h else None
+            own_wait = True
         t0 = time.monotonic()
-        for kind, spec in session_card_jobs(bundle):
-            if status_msg is not None:
-                elapsed = int(time.monotonic() - t0)
-                await self._safe_edit_text(
-                    status_msg,
-                    self._wait_bubble(
-                        "大盤進行中",
-                        elapsed,
-                        now=phase_now.get(kind, self._session_card_face(kind)),
-                        rest="日K・大量區",
-                        fill_sec=25.0,
-                    ),
-                    parse_mode="HTML",
-                )
-            path = self._scratch_chart_path(self.charts_dir, "MKT", kind, uid)
-            heading = str((spec or {}).get("heading") or "")
-            try:
-                from wayne_navigator import submit_mpl_paint
-
-                drawn = await asyncio.wait_for(
-                    asyncio.wrap_future(
-                        submit_mpl_paint(
-                            lambda p=path, k=kind, s=spec: self._paint_session_card_file(
-                                p, k, s
-                            )
-                        )
-                    ),
-                    timeout=_CHART_RENDER_TIMEOUT,
-                )
-            except Exception:
-                logger.exception("大盤走勢圖失敗 %s", kind)
-                drawn = ""
-            if not drawn or not self._market_landscape_chart_ok(drawn):
-                why = self._chart_reject_reason(drawn)
-                await message.reply_text(f"{self._session_card_face(kind)}這次畫不出來：{why}")
-                continue
-            try:
-                send_path = self._prepare_lookup_album_photo(drawn)
-                with open(send_path, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=heading[:1024],
-                        reply_markup=None,
+        try:
+            for kind, spec in session_card_jobs(bundle):
+                if status_msg is not None:
+                    elapsed = int(time.monotonic() - t0)
+                    await self._safe_edit_text(
+                        status_msg,
+                        self._wait_bubble(
+                            "大盤進行中",
+                            elapsed,
+                            now=phase_now.get(kind, self._session_card_face(kind)),
+                            rest="對照圖",
+                            fill_sec=25.0,
+                        ),
+                        parse_mode="HTML",
                     )
-            except Exception:
-                logger.exception("大盤走勢圖送出失敗 %s", kind)
-                await message.reply_text(
-                    f"{self._session_card_face(kind)}這次畫不出來，請稍後再試。"
-                )
+                path = self._scratch_chart_path(self.charts_dir, "MKT", kind, uid)
+                heading = str((spec or {}).get("heading") or "")
+                try:
+                    from wayne_navigator import submit_mpl_paint
+
+                    drawn = await asyncio.wait_for(
+                        asyncio.wrap_future(
+                            submit_mpl_paint(
+                                lambda p=path, k=kind, s=spec: self._paint_session_card_file(
+                                    p, k, s
+                                )
+                            )
+                        ),
+                        timeout=_CHART_RENDER_TIMEOUT,
+                    )
+                except Exception:
+                    logger.exception("大盤走勢圖失敗 %s", kind)
+                    drawn = ""
+                if not drawn or not self._market_landscape_chart_ok(drawn):
+                    why = self._chart_reject_reason(drawn)
+                    await message.reply_text(
+                        f"{self._session_card_face(kind)}這次畫不出來：{why}"
+                    )
+                    continue
+                try:
+                    send_path = self._prepare_lookup_album_photo(drawn)
+                    with open(send_path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f,
+                            caption=heading[:1024],
+                            reply_markup=None,
+                        )
+                except Exception:
+                    logger.exception("大盤走勢圖送出失敗 %s", kind)
+                    await message.reply_text(
+                        f"{self._session_card_face(kind)}這次畫不出來，請稍後再試。"
+                    )
+        finally:
+            if own_wait and wait_h is not None:
+                await self._stop_plain_wait(*wait_h)
 
     @staticmethod
     def _market_teach_trio_caps() -> tuple:
@@ -6385,85 +6391,119 @@ class WayneTelegramBot:
                 out[key] = fb.get(key)
         return out
 
+    async def _send_market_teach_one(
+        self,
+        message,
+        path: str,
+        *,
+        caption: str,
+        label: str = "",
+    ) -> bool:
+        """單張教具送出；轉檔失敗改原檔再試一次。遠窗失敗不准默默跳過。"""
+        if not self._market_teach_path_ok(path):
+            return False
+        last_err = None
+        for attempt in range(2):
+            try:
+                send_path = path
+                if attempt == 0:
+                    try:
+                        send_path = self._prepare_lookup_album_photo(path)
+                    except Exception as e:
+                        last_err = e
+                        send_path = path
+                if not send_path or not os.path.isfile(send_path):
+                    send_path = path
+                with open(send_path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=str(caption or "")[:900],
+                        reply_markup=None,
+                        read_timeout=60,
+                        write_timeout=90,
+                        connect_timeout=20,
+                    )
+                return True
+            except Exception as e:
+                last_err = e
+                logger.exception(
+                    "大盤教具單張送出失敗 label=%s attempt=%s", label, attempt
+                )
+        if last_err:
+            logger.warning("大盤教具單張放棄 label=%s err=%s", label, last_err)
+        return False
+
     async def _send_market_teach_trio_album(
         self,
         message,
         items: list,
         *,
         caption: str = "",
-    ) -> int:
-        """遠／近／超近一次相簿送出。失敗再改逐張。回傳成功張數。"""
-        if not items:
-            return 0
-        paths = []
-        for _key, _label, path in items:
-            try:
-                send_path = self._prepare_lookup_album_photo(path)
-            except Exception:
-                send_path = path
-            if send_path and os.path.isfile(send_path):
-                paths.append(send_path)
-            elif self._market_teach_path_ok(path):
-                paths.append(path)
-        if len(paths) < 1:
-            return 0
-        # ≥2 張走相簿＝一次出齊；單張才逐張
-        if len(paths) >= 2:
-            try:
-                from telegram import InputFile, InputMediaPhoto
+        ladder_line: str = "",
+    ) -> tuple:
+        """遠→近→超近逐張送（每張標第N張）。回傳 (成功數, 失敗標籤)。
 
-                handles = []
-                try:
-                    media = []
-                    for i, send_path in enumerate(paths):
-                        fh = open(send_path, "rb")
-                        handles.append(fh)
-                        fname = os.path.basename(send_path) or f"twii-{i}.png"
-                        file_obj = InputFile(fh, filename=fname)
-                        if i == 0 and caption:
-                            media.append(
-                                InputMediaPhoto(
-                                    media=file_obj, caption=str(caption)[:1024]
-                                )
-                            )
-                        else:
-                            media.append(InputMediaPhoto(media=file_obj))
-                    await message.reply_media_group(
-                        media=media,
-                        read_timeout=45,
-                        write_timeout=60,
-                        connect_timeout=20,
-                    )
-                    return len(paths)
-                finally:
-                    for fh in handles:
-                        try:
-                            fh.close()
-                        except Exception:
-                            pass
-            except Exception:
-                logger.exception("大盤遠近超近相簿失敗，改逐張")
+        不用相簿：相簿失敗時舊邏輯會從近窗起跳，話筒看起來缺遠窗、順序錯。
+        """
+        if not items:
+            return 0, []
         sent = 0
+        failed = []
+        intro = str(caption or "").strip()
         for i, (_key, label, path) in enumerate(items):
-            try:
-                send_path = self._prepare_lookup_album_photo(path)
-                bit = str(caption or "") if i == 0 else f"台股大盤・{label}（非買訊）"
-                with open(send_path, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=bit[:900],
-                        reply_markup=None,
-                    )
+            n = i + 1
+            bits = [f"台股大盤・第{n}張・{label}（非買訊）"]
+            if i == 0 and intro:
+                bits.append(intro)
+            elif ladder_line:
+                bits.append(str(ladder_line)[:400])
+            ok = await self._send_market_teach_one(
+                message, path, caption="\n".join(bits), label=label
+            )
+            if ok:
                 sent += 1
-            except Exception:
-                logger.exception("大盤教具逐張送出略過 label=%s", label)
-        return sent
+            else:
+                failed.append(label)
+                # 第1張遠窗失敗：立刻停，不准接著丟近／超近假裝順序對
+                if i == 0:
+                    break
+        return sent, failed
+
+    async def _retry_market_far_paint(self) -> str:
+        """遠窗缺檔時單獨重渲一次（不准整包重畫拖一分鐘）。"""
+        try:
+            from biaoke_level_learn import (
+                _build_live_pack,
+                _paint_dir,
+                _render_twii_far_dark,
+                _sparse_slot_id,
+            )
+            from wayne_navigator import submit_mpl_paint
+
+            def _one():
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+
+                pack = _build_live_pack(self.db_path) or {}
+                dt = datetime.now(ZoneInfo("Asia/Taipei"))
+                slot = _sparse_slot_id(dt, force=True) or f"force-far-{dt.strftime('%Y%m%d-%H%M')}"
+                out = os.path.join(_paint_dir(self.db_path), f"{slot}-far.png")
+                return _render_twii_far_dark(self.db_path, out, pack) or ""
+
+            got = await asyncio.wait_for(
+                asyncio.wrap_future(submit_mpl_paint(_one)),
+                timeout=min(60.0, _CHART_RENDER_TIMEOUT),
+            )
+            return str(got or "")
+        except Exception:
+            logger.exception("大盤遠窗單張重渲失敗")
+            return ""
 
     async def _send_market_wave_charts(self, message, *, uid: str = "") -> None:
-        """大盤專頁附圖：暗底遠／近／超近一次三張＋外圍（與飆大教具同一套）。
+        """大盤專頁附圖：暗底遠／近／超近（第1→2→3）＋外圍。
 
-        不准再送淺底加權日K／大量區；失敗要補白話，不准只停等待泡泡。
-        活畫若只出近窗，必須用已存檔把遠／超近補齊後再送，不准只丟第二張。
+        休市有齊檔就先送已存，不准每次強制五張重畫拖一分鐘。
+        遠窗必到；缺就單張重渲，仍缺則白話停，不准只出近／超近。
         """
         from config import skip_chart_warmup
 
@@ -6472,7 +6512,7 @@ class WayneTelegramBot:
         wait_h = await self._start_plain_wait(
             message,
             text_fn=lambda s: self._wait_bubble(
-                "大盤圖進行中", s, now="遠／近／超近窗", fill_sec=45.0
+                "大盤圖進行中", s, now="第1張遠窗", rest="近／超近窗", fill_sec=25.0
             ),
         )
         fail_msg = "大盤教具圖這次畫不出來，請稍後再試。"
@@ -6482,45 +6522,76 @@ class WayneTelegramBot:
             from biaoke_level_learn import latest_teach_kit, paint_open_day_hypothesis
             from wayne_navigator import submit_mpl_paint
 
-            kit: dict = {}
-            # 每次按台股大盤：強制活畫（盤中疊最新加權顯示柱）
-            try:
-                painted = await asyncio.wait_for(
-                    asyncio.wrap_future(
-                        submit_mpl_paint(
-                            lambda: paint_open_day_hypothesis(
-                                self.db_path, force=True
-                            )
-                        )
-                    ),
-                    timeout=_CHART_RENDER_TIMEOUT,
-                )
-                if painted and painted.get("ok"):
-                    kit = {
-                        "far_path": str(painted.get("far_path") or ""),
-                        "near_path": str(painted.get("near_path") or ""),
-                        "micro_path": str(painted.get("micro_path") or ""),
-                        "us_path": str(painted.get("us_path") or ""),
-                        "thesis": str(painted.get("thesis") or "")[:180],
-                        "as_of": str(painted.get("as_of") or ""),
-                    }
-            except asyncio.TimeoutError:
-                logger.warning("大盤教具活畫逾時")
-            except Exception:
-                logger.exception("大盤教具活畫略過")
             stored: dict = {}
             try:
                 stored = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
             except Exception:
                 logger.exception("大盤讀教具路徑略過")
                 stored = {}
-            # 缺哪張補哪張（根因：活畫 ok 但只出近窗時舊邏輯不再讀已存檔）
-            kit = self._merge_market_teach_kit(kit, stored)
-            if not any(
-                self._market_teach_path_ok(kit.get(k))
-                for k in ("far_path", "near_path", "micro_path")
-            ):
+            trio_keys = ("far_path", "near_path", "micro_path")
+            stored_ok = all(self._market_teach_path_ok(stored.get(k)) for k in trio_keys)
+            live_on = False
+            try:
+                from live_quote import is_live_merge_window
+
+                live_on = bool(is_live_merge_window())
+            except Exception:
+                live_on = False
+
+            kit: dict = dict(stored) if stored_ok else {}
+            # 盤中才強制活畫疊顯示柱；休市齊檔直接送，省掉一分鐘重畫
+            if live_on or not stored_ok:
+                try:
+                    painted = await asyncio.wait_for(
+                        asyncio.wrap_future(
+                            submit_mpl_paint(
+                                lambda: paint_open_day_hypothesis(
+                                    self.db_path, force=True
+                                )
+                            )
+                        ),
+                        timeout=_CHART_RENDER_TIMEOUT,
+                    )
+                    if painted and painted.get("ok"):
+                        kit = self._merge_market_teach_kit(
+                            {
+                                "far_path": str(painted.get("far_path") or ""),
+                                "near_path": str(painted.get("near_path") or ""),
+                                "micro_path": str(painted.get("micro_path") or ""),
+                                "us_path": str(painted.get("us_path") or ""),
+                                "thesis": str(painted.get("thesis") or "")[:180],
+                                "as_of": str(painted.get("as_of") or ""),
+                            },
+                            stored,
+                        )
+                except asyncio.TimeoutError:
+                    logger.warning("大盤教具活畫逾時")
+                    kit = self._merge_market_teach_kit(kit, stored)
+                except Exception:
+                    logger.exception("大盤教具活畫略過")
+                    kit = self._merge_market_teach_kit(kit, stored)
+            if not any(self._market_teach_path_ok(kit.get(k)) for k in trio_keys):
                 kit = self._merge_market_teach_kit(stored, {})
+
+            # 遠窗硬閘：缺就單張重渲，仍缺不准送近／超近
+            if not self._market_teach_path_ok(kit.get("far_path")):
+                if wait_h and wait_h[0] is not None:
+                    await self._safe_edit_text(
+                        wait_h[0],
+                        self._wait_bubble(
+                            "大盤圖進行中",
+                            0,
+                            now="補畫遠窗",
+                            rest="近／超近窗",
+                            fill_sec=20.0,
+                        ),
+                        parse_mode="HTML",
+                    )
+                far2 = await self._retry_market_far_paint()
+                if self._market_teach_path_ok(far2):
+                    kit = dict(kit or {})
+                    kit["far_path"] = far2
+
             trio_caps = self._market_teach_trio_caps()
             trio_items = []
             missing = []
@@ -6530,6 +6601,14 @@ class WayneTelegramBot:
                     trio_items.append((key, label, path))
                 else:
                     missing.append(label)
+
+            if "遠窗" in missing or not trio_items or trio_items[0][0] != "far_path":
+                await message.reply_text(
+                    "大盤教具第1張遠窗這次沒好（上費半／中加權／下量），"
+                    "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
+                )
+                return
+
             thesis = str(kit.get("thesis") or "").strip()
             ladder_line = ""
             try:
@@ -6549,40 +6628,53 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("大盤層級一句略過")
                 ladder_line = ""
+
             order_zh = "、".join(label for _k, label in trio_caps)
-            bits = [
-                f"台股大盤・遠／近／超近（一次三張・{order_zh}・非買訊）",
+            intro_bits = [
+                f"順序固定：第1遠窗→第2近窗→第3超近窗（{order_zh}・非買訊）",
             ]
             if ladder_line:
-                bits.append(ladder_line)
+                intro_bits.append(ladder_line)
             elif thesis:
-                bits.append(thesis)
+                intro_bits.append(thesis)
             if missing:
-                bits.append(f"這次缺：{'、'.join(missing)}")
-            trio_cap = "\n".join(bits)[:1024]
-            sent = await self._send_market_teach_trio_album(
-                message, trio_items, caption=trio_cap
+                intro_bits.append(f"這次缺：{'、'.join(missing)}")
+            trio_cap = "\n".join(intro_bits)[:1024]
+
+            if wait_h and wait_h[0] is not None:
+                await self._safe_edit_text(
+                    wait_h[0],
+                    self._wait_bubble(
+                        "大盤圖進行中",
+                        0,
+                        now="送出遠／近／超近",
+                        rest="",
+                        fill_sec=15.0,
+                    ),
+                    parse_mode="HTML",
+                )
+
+            n_sent, failed = await self._send_market_teach_trio_album(
+                message, trio_items, caption=trio_cap, ladder_line=ladder_line
             )
-            # 外圍對照另張（不佔三張名額）
+            sent = int(n_sent or 0)
+            failed = list(failed or [])
+            if failed:
+                missing = list(dict.fromkeys([*missing, *failed]))
+
+            # 外圍對照另張（不佔三張名額；遠窗沒出就不送外圍搶順位）
             us_path = str(kit.get("us_path") or "").strip()
-            if self._market_teach_path_ok(us_path):
-                try:
-                    send_path = self._prepare_lookup_album_photo(us_path)
-                    us_bits = ["台股大盤・外圍對照（費半／納指・非買訊）"]
-                    if ladder_line:
-                        us_bits.append(ladder_line)
-                    with open(send_path, "rb") as f:
-                        await message.reply_photo(
-                            photo=f,
-                            caption="\n".join(us_bits)[:900],
-                            reply_markup=None,
-                        )
+            if sent >= 1 and self._market_teach_path_ok(us_path):
+                us_bits = ["台股大盤・外圍對照（費半／納指・非買訊）"]
+                if ladder_line:
+                    us_bits.append(ladder_line)
+                if await self._send_market_teach_one(
+                    message, us_path, caption="\n".join(us_bits), label="外圍"
+                ):
                     sent += 1
-                except Exception:
-                    logger.exception("大盤外圍對照送出略過")
             if sent <= 0:
                 await message.reply_text(fail_msg)
-            elif missing and len(trio_items) < 3:
+            elif missing and len([x for x in trio_items if x[1] not in failed]) < 3:
                 try:
                     await message.reply_text(
                         f"大盤教具應一次三張（遠／近／超近），這次缺：{'、'.join(missing)}。"
