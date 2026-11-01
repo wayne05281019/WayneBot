@@ -213,9 +213,12 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     # 黃框：遠窗上移進標題列右緣（不准擋費半K）；近／超近讓出白字標題
     assert "_tw_stamp_y = 0.982" in far_blk
     assert "_sox_stamp_y = 0.948" in far_blk
-    # 近窗黃戳對齊 39385～31892 空檔；縮圖同帶右移
-    assert "39385" in near_blk and "31892" in near_blk
-    assert "_fig_rect_band_right" in near_blk or "_fig_xy_from_axes_data" in near_blk
+    # 大B末標假突破；近窗黃戳對紅橫杠～41800；縮圖／遠窗對紅框空檔
+    assert "假突破" in src
+    assert "假突破" in far_blk and "假突破" in near_blk
+    assert "41800" in near_blk
+    assert "_fig_rect_from_data_box" in src
+    assert "_fig_xy_from_axes_data" in near_blk
     # 超近：縮圖貼左層級框右側、頂不高過 44042；圖例色線併左下
     assert "44042" in micro_blk
     assert "AnchoredOffsetbox" in micro_blk
@@ -223,14 +226,12 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "他說 B→今" in micro_blk
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
-    assert "_flash_spec_from_pivots" in src  # 縮圖閃折＝主圖官方柱錨
-    # 八浪縮圖：遠＝右下且右標在左框外；近＝右帶；超近＝左框右＋C閃
-    assert "_far_ins" in far_blk or "縮圖左框線外" in far_blk or "x1" in far_blk
-    assert "31892" in near_blk and "_sy393" in near_blk
+    assert "_flash_spec_from_pivots" in src
+    assert "_far_ins" in far_blk or "_fig_rect_from_data_box" in far_blk
+    assert "20260520" in near_blk or "_near_inset" in near_blk
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src
-    assert "44042" in micro_blk
     # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
     assert "[i_b_end, i_c, i_now]" in far_blk
     assert "緩坡" in src or "非垂直" in src

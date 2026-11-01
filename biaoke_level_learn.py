@@ -822,6 +822,32 @@ def _fig_rect_band_right(
     return (float(x_left_frac), float(bottom), float(width), float(height))
 
 
+def _fig_rect_from_data_box(
+    ax: Any,
+    fig: Any,
+    *,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    min_w: float = 0.12,
+    min_h: float = 0.10,
+) -> Tuple[float, float, float, float]:
+    """把軸上 data 矩形轉成 figure fraction 縮圖框（給紅框空檔定位）。"""
+    fx0, fy0 = _fig_xy_from_axes_data(ax, fig, float(x0), float(y0))
+    fx1, fy1 = _fig_xy_from_axes_data(ax, fig, float(x1), float(y1))
+    left = min(fx0, fx1)
+    bottom = min(fy0, fy1)
+    width = max(float(min_w), abs(fx1 - fx0))
+    height = max(float(min_h), abs(fy1 - fy0))
+    # 不准超出 figure
+    if left + width > 0.98:
+        width = max(float(min_w), 0.98 - left)
+    if bottom + height > 0.92:
+        height = max(float(min_h), 0.92 - bottom)
+    return (float(left), float(bottom), float(width), float(height))
+
+
 def _paint_stamp_hbox(
     fig,
     kids: List[Any],
@@ -4930,7 +4956,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ax,
         i_b_end,
         y_b_end,
-        f"大B末 {_md(bars[i_b_end].get('date'))}",
+        f"大B末＝假突破 {_md(bars[i_b_end].get('date'))}",
         "#ffd54f",
         _fp,
         side="auto",
@@ -4945,7 +4971,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
         {"x": i5e, "y": y5e, "text": f"⑤終 {_px(y5e)}", "color": "#40c4ff"},
         {"x": i_alow, "y": y_alow, "text": f"大A底 {_px(y_alow)}", "color": "#ff8a80"},
-        {"x": i_b_end, "y": y_b_end, "text": f"大B末 {_px(y_b_end)}", "color": "#ffd54f"},
+        {
+            "x": i_b_end,
+            "y": y_b_end,
+            "text": f"大B末＝假突破 {_px(y_b_end)}",
+            "color": "#ffd54f",
+        },
         {"x": i_now, "y": y_now, "text": f"大C今 {_px(y_now)}", "color": "#ea80fc"},
     ]
     # 近窗細分（若窗內有）淡標，不搶大結構
@@ -5107,7 +5138,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 elif d == "20260729" or i == i_alow:
                     tag = "大A底"
                 elif i == i_b_end or d == "20261006":
-                    tag = "大B末"
+                    tag = "大B末假突破"
                 l2.append(f"{_md(d)}{tag}")
     # 費半官方日晚於加權軸：x 軸補日期（加權那格不畫假K）
     for j, d in enumerate(sox_extra_dates):
@@ -5302,13 +5333,28 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：加權軸右側外邊距（軸內右標全在縮圖左框線外）
-    _axpos_far = ax.get_position()
-    _far_ins = (
-        min(0.90, float(_axpos_far.x1) + 0.012),
-        float(_axpos_far.y0) + 0.018,
-        0.095,
-        0.100,
+    # 八浪縮圖：紅框空檔＝大B反彈段中下（約8/下～9/中、價在A底～B末中段）
+    _i_far_l = (
+        _bar_index_by_ymd(bars, "20260811")
+        or _bar_index_by_ymd(bars, "20260820")
+        or int(i_alow + max(2, (i_b_end - i_alow) // 3))
+    )
+    _i_far_r = (
+        _bar_index_by_ymd(bars, "20260922")
+        or _bar_index_by_ymd(bars, "20260915")
+        or int(i_alow + max(4, 2 * (i_b_end - i_alow) // 3))
+    )
+    _y_far_lo = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.22
+    _y_far_hi = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.55
+    _far_ins = _fig_rect_from_data_box(
+        ax,
+        fig,
+        x0=float(_i_far_l),
+        y0=_y_far_lo,
+        x1=float(_i_far_r),
+        y1=_y_far_hi,
+        min_w=0.13,
+        min_h=0.11,
     )
     _paint_eight_wave_inset(
         fig,
@@ -5737,7 +5783,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ax,
         i_b_end,
         y_b_end,
-        f"大B末＝C起峰 {_md(bars[i_b_end].get('date'))}",
+        f"大B末＝假突破 {_md(bars[i_b_end].get('date'))}",
         "#ffd54f",
         _fp,
         side="auto",
@@ -5774,7 +5820,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
         {"x": i5e, "y": y5e, "text": f"⑤末 {_px(y5e)}", "color": "#40c4ff"},
         {"x": i_alow, "y": y_alow, "text": rule14_lab, "color": "#ff8a80"},
-        {"x": i_b_end, "y": y_b_end, "text": f"大B末 {_px(y_b_end)}", "color": "#ffd54f"},
+        {
+            "x": i_b_end,
+            "y": y_b_end,
+            "text": f"大B末＝假突破 {_px(y_b_end)}",
+            "color": "#ffd54f",
+        },
         {"x": i_now, "y": y_now, "text": f"大C今 {_px(y_now)}", "color": "#ea80fc"},
     ]
     for y_fib, lab_fib, col_fib in fib_levels:
@@ -5964,21 +6015,19 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="top",
     )
-    # 近窗：黃戳下移到 39385～31892 空檔右緣（貼 39385 下），不准壓大B末／不准壓縮圖
+    # 近窗：黃戳對齊使用者紅橫杠＝B升段右側空檔（約 9～10月、價～42k；tight後對質）
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
-    _sx393, _sy393 = _fig_xy_from_axes_data(ax, fig, float(n) + 1.0, 39385.0)
-    _sx318, _sy318 = _fig_xy_from_axes_data(ax, fig, float(n) + 1.0, 31892.0)
-    if _sy393 < _sy318:
-        _sy393, _sy318 = _sy318, _sy393
-    _stamp_y = float(_sy393) - 0.018  # 剛在 39385 虛線下方
+    _stamp_y_data = 41800.0
+    _sx_st, _sy_st = _fig_xy_from_axes_data(ax, fig, float(n) - 8.0, _stamp_y_data)
     _paint_teach_query_stamp(
         fig,
         bars,
         pack=pack,
         close=closes[-1],
         fp=_fp,
-        x=0.992,
-        y=_stamp_y,
+        x=min(0.92, max(0.72, float(_sx_st) + 0.14)),
+        y=float(_sy_st),
+        ha="right",
     )
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
@@ -5995,12 +6044,27 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗縮圖：⑤末標下方右側；落在 39385～31892 之間，頂上讓出黃戳高度
-    _ins_top = min(float(_sy393) - 0.055, _stamp_y - 0.048)
-    _ins_bot = float(_sy318) + 0.016
-    _ins_h = max(0.10, _ins_top - _ins_bot)
-    # 略靠左，右緣不准壓 39385／31892 右欄字
-    _near_inset = (0.705, _ins_bot, 0.155, _ins_h)
+    # 近窗縮圖：紅框空檔＝⑤上升段左下（約5/下～7/中、價 33k～38.5k）
+    _i_near_l = (
+        _bar_index_by_ymd(bars, "20260520")
+        or _bar_index_by_ymd(bars, "20260515")
+        or int(i5s + max(2, (i5e - i5s) // 4))
+    )
+    _i_near_r = (
+        _bar_index_by_ymd(bars, "20260715")
+        or _bar_index_by_ymd(bars, "20260710")
+        or int(i5s + max(4, (i5e - i5s) // 2))
+    )
+    _near_inset = _fig_rect_from_data_box(
+        ax,
+        fig,
+        x0=float(_i_near_l),
+        y0=32800.0,
+        x1=float(_i_near_r),
+        y1=38500.0,
+        min_w=0.16,
+        min_h=0.14,
+    )
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -6431,7 +6495,12 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     tip_anchor = tip.get("anchor_y")
     tip_skip: set = set()
     right_notes = [
-        {"x": i_b_peak, "y": y_b_peak, "text": f"大B末 {_px(y_b_peak)}", "color": "#40c4ff"},
+        {
+            "x": i_b_peak,
+            "y": y_b_peak,
+            "text": f"大B末＝假突破 {_px(y_b_peak)}",
+            "color": "#40c4ff",
+        },
         {"x": i_now, "y": float(closes[i_now]), "text": f"今 {_px(closes[i_now])}", "color": "#ea80fc"},
     ]
     # 超近圖上不准浮預估標 → 端點錨改上右欄（跟遠窗同一套）
