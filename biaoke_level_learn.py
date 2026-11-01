@@ -4075,7 +4075,7 @@ def _paint_eight_wave_inset(
     )
     foot = "藍＝1→5｜粉＝A｜金虛＝B｜紫＝C"
     if c_flash:
-        foot = "紫粗＝大C｜細閃＝C內①→⑤｜金圈＝此刻"
+        foot = "A在框外｜B起細閃①→⑤＝大C｜金圈＝此刻"
     ax.text(
         0.02,
         0.02,
