@@ -4201,7 +4201,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # 相容舊變名（預估／雙底色仍用近窗 B 高當 y_ref 時用大B末）
     i5, y5 = i_b_end, y_b_end
     i_bhi, y_bhi = i_b_end, y_b_end
-    i_far_lo, y_far_lo = i_alow, y_alow
     sox_a = _align_us_to_twii_dates(sox, bars)
     # 加權完整柱末日之後若費半還有官方日 → 只延長費半軸（不准造假加權 OHLC）
     sox_a, sox_extra_dates = _extend_us_ohlc_past_twii(
