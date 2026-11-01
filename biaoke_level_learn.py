@@ -2602,27 +2602,55 @@ def _place_live_right_labels(
     # 間距只跟價窗比例走。不准絕對 floor 把真價標漂離（費半 10445↔9865）。
     gap = float(min_gap) if min_gap is not None else span * 0.09
     gap = max(gap, span * 0.055)
+    # 浪／細浪硬標可互近一點（c5↔今、c4↔鄰近飆預測）；不准被軟標／預測擠掉
+    gap_wave = max(span * 0.028, 220.0)
+
+    def _tier(t: str) -> int:
+        """0=浪／細浪／今（必留）→1=飆預測等→2=Fib／切／錨（可丟）。"""
+        s = str(t or "")
+        if s.startswith("Fib") or s.startswith("切") or s.startswith("錨"):
+            return 2
+        if (
+            "c4細" in s
+            or "c5細" in s
+            or s.startswith("⑤")
+            or s.startswith("A低")
+            or s.startswith("B高")
+            or s.startswith("C今")
+            or s.startswith("今 ")
+            or s.startswith("今　")
+            or s.startswith("費")
+        ):
+            return 0
+        return 1
 
     def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
-        t = str(d.get("text") or "")
-        soft = 1 if (t.startswith("Fib") or t.startswith("切") or t.startswith("錨")) else 0
-        return (soft, -float(d["y"]))
+        return (_tier(str(d.get("text") or "")), -float(d["y"]))
+
+    def _collide(y0: float, tier: int, kept_ys: List[float], kept_tiers: List[int]) -> bool:
+        for ky, kt in zip(kept_ys, kept_tiers):
+            # 兩個浪標：用較緊間距，才留得下 c4／c5／今
+            thresh = gap_wave if (tier == 0 and kt == 0) else gap * 0.85
+            if abs(y0 - ky) < thresh:
+                return True
+        return False
 
     items.sort(key=_pri)
     kept: List[Dict[str, Any]] = []
     kept_ys: List[float] = []
+    kept_tiers: List[int] = []
     for it in items:
         y0 = float(it["y"])
         t = str(it.get("text") or "")
-        soft = t.startswith("Fib") or t.startswith("切") or t.startswith("錨")
-        if soft and any(abs(y0 - ky) < gap * 0.85 for ky in kept_ys):
-            continue
-        if (not soft) and any(abs(y0 - ky) < gap * 0.85 for ky in kept_ys):
+        tier = _tier(t)
+        if _collide(y0, tier, kept_ys, kept_tiers):
             continue
         kept.append(it)
         kept_ys.append(y0)
+        kept_tiers.append(tier)
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
+    placed_tiers: List[int] = []
     # 同一右欄：預設 n+2.55（夠長標「7/29低…」）；可被 x_col／x_text_min 拉開
     x_label = float(x_col) if x_col is not None else float(n) + 2.55
     if x_text_min is not None:
@@ -2634,9 +2662,11 @@ def _place_live_right_labels(
         y_true = float(it["y"])
         if y_true < ymin or y_true > ymax:
             continue
-        if any(abs(y_true - py) < gap * 0.85 for py in placed):
+        tier = _tier(str(it.get("text") or ""))
+        if _collide(y_true, tier, placed, placed_tiers):
             continue
         placed.append(y_true)
+        placed_tiers.append(tier)
         color = str(it.get("color") or _LIVE_MUTED)
         try:
             x_from = float(it.get("x"))
@@ -4706,7 +4736,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             }
         )
         have_ys.add(round(float(yv), 1))
-    # 與遠窗同一套：同欄右標＋自點位拉滿虛線
+    # 與遠窗同一套：同欄右標＋自點位拉滿虛線；比例間距（不准絕對 floor）
     x_near_col = float(n) + 2.55
     try:
         x_near_col = max(x_near_col, float(tip.get("fut_x") or n) + 0.85)
@@ -4720,6 +4750,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ymax=ymax,
         fp=_fp,
         level_dash=True,
+        min_gap=(ymax - ymin) * 0.055,
         x_col=x_near_col,
     )
     _finish_last_twii_candle(
@@ -5315,10 +5346,17 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="top",
     )
+    # 不准 [:40] 把「C3-3-4」裁成「C3-3」；尾碼必須完整
+    _ol = str(ladder.get("one_line") or "他說現在：C進行中")
+    _now = str(ladder.get("now") or "").strip()
+    if len(_ol) > 52 and _now and _ol.endswith(_now):
+        _ol = f"他說現在：…→{_now}"
+    elif len(_ol) > 52:
+        _ol = _ol[:51] + "…"
     fig.text(
         0.03,
         0.945,
-        f"{str(ladder.get('one_line') or '他說現在：C進行中')[:40]}｜"
+        f"{_ol}｜"
         "大＝ABC｜細＝C內不取代ABC｜紫虛c4→c5對他60分｜橙①②僅輔助",
         fontproperties=_fp(11, "bold"),
         color="#ce93d8",
