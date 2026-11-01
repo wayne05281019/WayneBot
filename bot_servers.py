@@ -70,7 +70,12 @@ async def _await_lookup_paint(
 
 # 名單／頁面：盤中慢路徑＋冷啟，短逾時會逼使用者重按。
 _FLOW_HTML_TIMEOUT = float(os.getenv("WAYNE_FLOW_HTML_TIMEOUT", "30"))
-_MARKET_PAGE_TIMEOUT = float(os.getenv("WAYNE_MARKET_PAGE_TIMEOUT", "45"))
+# 大盤文字：外網（美股／CNN）必須有子逾時；總預算含冷啟 DB。
+_MARKET_PAGE_TIMEOUT = float(os.getenv("WAYNE_MARKET_PAGE_TIMEOUT", "70"))
+_MARKET_US_REFRESH_TIMEOUT = float(os.getenv("WAYNE_MARKET_US_REFRESH_TIMEOUT", "12"))
+_MARKET_CNN_TIMEOUT = float(os.getenv("WAYNE_MARKET_CNN_TIMEOUT", "8"))
+_MARKET_ANALYZE_TIMEOUT = float(os.getenv("WAYNE_MARKET_ANALYZE_TIMEOUT", "28"))
+_MARKET_MIS_TIMEOUT = float(os.getenv("WAYNE_MARKET_MIS_TIMEOUT", "6"))
 _DONGZHU_TIMEOUT = float(os.getenv("WAYNE_DONGZHU_TIMEOUT", "45"))
 _TRADE_BUCKET_TIMEOUT = float(os.getenv("WAYNE_TRADE_BUCKET_TIMEOUT", "75"))
 _LEAVE_ZERO_TIMEOUT = float(os.getenv("WAYNE_LEAVE_ZERO_TIMEOUT", "120"))
@@ -6087,29 +6092,83 @@ class WayneTelegramBot:
         try:
 
             def _build():
-                from concurrent.futures import ThreadPoolExecutor
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 
                 from live_quote import fetch_mis_index_quote
                 from taiwan_market import analyze_taiwan_market, format_taiwan_market_page_html
 
+                live = None
+                snap: dict = {}
                 with ThreadPoolExecutor(max_workers=2) as ex:
                     live_f = ex.submit(fetch_mis_index_quote)
                     snap_f = ex.submit(
                         analyze_taiwan_market, self.db_path, None, db_only=True, page_light=True
                     )
-                    live = live_f.result()
-                    snap = snap_f.result()
+                    try:
+                        live = live_f.result(timeout=_MARKET_MIS_TIMEOUT)
+                    except FutTimeout:
+                        logger.warning("大盤 MIS 子逾時 %.0fs", _MARKET_MIS_TIMEOUT)
+                        live = None
+                    except Exception:
+                        logger.debug("大盤 MIS 略過", exc_info=True)
+                        live = None
+                    try:
+                        snap = snap_f.result(timeout=_MARKET_ANALYZE_TIMEOUT) or {}
+                    except FutTimeout:
+                        logger.warning("大盤 analyze 子逾時 %.0fs", _MARKET_ANALYZE_TIMEOUT)
+                        snap = {"ok": False, "regime": "unknown", "brief": "加權讀取較慢"}
+                    except Exception:
+                        logger.exception("大盤 analyze 失敗")
+                        snap = {"ok": False, "regime": "unknown", "brief": "加權讀取異常"}
                 as_of = str((snap or {}).get("as_of") or "")[:8]
-                from us_overnight import refresh_us_for_market_page
+                from us_overnight import load_us_overnight, refresh_us_for_market_page
 
-                us_press = refresh_us_for_market_page(self.db_path, as_of)
+                us_press: dict = {}
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as us_ex:
+                        us_f = us_ex.submit(refresh_us_for_market_page, self.db_path, as_of)
+                        us_press = us_f.result(timeout=_MARKET_US_REFRESH_TIMEOUT) or {}
+                except FutTimeout:
+                    logger.warning(
+                        "大盤美股刷新子逾時 %.0fs → 改用庫內列", _MARKET_US_REFRESH_TIMEOUT
+                    )
+                    try:
+                        us_press = load_us_overnight(self.db_path, as_of) or {}
+                    except Exception:
+                        us_press = {}
+                    if not us_press:
+                        us_press = {
+                            "ok": False,
+                            "_press_miss": True,
+                            "_fallback": True,
+                            "regime": "unknown",
+                            "us_session": "",
+                        }
+                except Exception:
+                    logger.exception("大盤美股刷新失敗")
+                    try:
+                        us_press = load_us_overnight(self.db_path, as_of) or {}
+                    except Exception:
+                        us_press = {
+                            "ok": False,
+                            "_press_miss": True,
+                            "_fallback": True,
+                            "regime": "unknown",
+                        }
                 try:
                     from cnn_fear import fetch_cnn_fear_greed
 
-                    fg = fetch_cnn_fear_greed(str((us_press or {}).get("us_session") or ""))
+                    with ThreadPoolExecutor(max_workers=1) as cnn_ex:
+                        fg_f = cnn_ex.submit(
+                            fetch_cnn_fear_greed,
+                            str((us_press or {}).get("us_session") or ""),
+                        )
+                        fg = fg_f.result(timeout=_MARKET_CNN_TIMEOUT)
                     if fg and isinstance(us_press, dict):
                         us_press = dict(us_press)
                         us_press["cnn_fear"] = fg
+                except FutTimeout:
+                    logger.warning("大盤 CNN 子逾時 %.0fs", _MARKET_CNN_TIMEOUT)
                 except Exception:
                     logger.debug("CNN Fear & Greed 略過", exc_info=True)
                 live_px = None
@@ -6130,7 +6189,7 @@ class WayneTelegramBot:
                 hit = _PAGE_HTML_CACHE.get(memo_key)
                 if hit and (now - float(hit[0])) < _PAGE_HTML_TTL_SEC:
                     return hit[1]
-                # 文字先出；盤後卡（期交所 zip）慢或逾時不准吃掉整頁 45 秒預算。
+                # 文字先出；美股／CNN／盤後卡子逾時不准吃掉整頁預算。
                 html = format_taiwan_market_page_html(
                     self.db_path, live=live, snap=snap, us_snap=us_press
                 )
@@ -6173,10 +6232,24 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await _end_wait()
-            await message.reply_text(
-                "大盤讀取逾時，請稍後再按一次。",
-                reply_markup=self._keyboard(),
-            )
+            # 文字逾時仍先送遠／近／超近，不准整頁空白只回「逾時」
+            try:
+                await message.reply_text(
+                    "大盤文字讀取較慢，先送教具圖；稍後可再按一次台股大盤。",
+                    reply_markup=self._keyboard(),
+                )
+            except Exception:
+                pass
+            try:
+                await self._send_market_wave_charts(
+                    message, uid=self._uid_from_message(message)
+                )
+            except Exception:
+                logger.exception("大盤逾時後教具仍失敗")
+                await message.reply_text(
+                    "大盤讀取逾時，請稍後再按一次。",
+                    reply_markup=self._keyboard(),
+                )
             return
         except Exception:
             logger.exception("大盤專頁失敗")
