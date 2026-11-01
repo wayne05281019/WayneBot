@@ -1,0 +1,165 @@
+# 十年回測｜序0 凍結報告
+
+時區：`Asia/Taipei`。凍結時刻：`2026-11-01T19:12:26.977363+08:00`。
+鍋標：`實驗室`（照片凍結；非他說／非我估判斷）。
+
+## 照片庫覆蓋
+
+| 包 | 符號 | 列數 | 起 | 迄 | 口徑 |
+|----|------|------|----|----|------|
+| A | TWII／raw_quote | 2430 | 20161031 | 20261030 | Asia/Taipei calendar from UTC stamp |
+| A | TWII／yahoo_adjclose | 2430 | 20161031 | 20261030 | Asia/Taipei calendar from UTC stamp｜十年高低語意用還原列 |
+| C | 2330／raw_quote | 2430 | 20161031 | 20261030 | Asia/Taipei; adjclose=還原權息；quote=未還原 |
+| C | 2330／yahoo_adjclose | 2430 | 20161031 | 20261030 | Asia/Taipei; adjclose=還原權息；quote=未還原｜十年高低語意用還原列 |
+| D | IXIC／raw_quote | 2514 | 20161031 | 20261030 | America/New_York session day; map to TW as-of via prior US close |
+| D | IXIC／yahoo_adjclose | 2514 | 20161031 | 20261030 | America/New_York session day; map to TW as-of via prior US close｜十年高低語意用還原列 |
+| D | SOX／raw_quote | 2514 | 20161031 | 20261030 | America/New_York session day; map to TW as-of via prior US close |
+| D | SOX／yahoo_adjclose | 2514 | 20161031 | 20261030 | America/New_York session day; map to TW as-of via prior US close｜十年高低語意用還原列 |
+
+## 缺口（只標缺）
+
+- **B／2330_15／minute_gap**：minute_bars 2330/15 僅 202606240900→202610301330 n=1592；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **B／2330_60／minute_gap**：minute_bars 2330/60 僅 202409160900→202610301330 n=2586；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **B／SOX_15／minute_gap**：minute_bars SOX/15 僅 202606222130→202610302337 n=2426；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **B／SOX_60／minute_gap**：minute_bars SOX/60 僅 202409162130→202610302337 n=3746；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **B／TWII_15／minute_gap**：minute_bars TWII/15 僅 202606240900→202610301330 n=1592；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **B／TWII_60／minute_gap**：minute_bars TWII/60 僅 202409160900→202610301330 n=2590；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **B／TX／futures_history_short**：台指期日盤 futures_daily TX regular 僅 20240301→20261030 n=645；十年窗更早缺；轉倉／連續契約未凍成單一連續序列
+- **B／TX_15／minute_gap**：minute_bars TX/15 僅 202608051500→202610301330 n=4316；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **B／TX_60／minute_gap**：minute_bars TX/60 僅 202608051500→202610301300 n=1135；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）
+- **E／us_overnight／short_history**：us_overnight 僅 n=14 span 20260903→20261030；油／匯／完整美股已收十年未凍進該表（SOX/IXIC 已另凍 lab_daily）
+- **F／biaoke_posts／corpus_not_seeded_local**：本機 biaoke_posts n=0＜1700；融合底圖應在 Render／archive_1709，本實驗室本輪不重抓社團、不進話筒
+- **G／DC／digest_missing**：docs/expert_notes/dc_wave/dc-wave-digest.md 本分支缺檔；DC 末端／motive 全表待補，不准冒充他說
+
+## 指紋抽樣（同一日重跑應一致）
+
+- `TWII@20261030/w20` → `6544a9ccfeccccd1`
+- `TWII@20261030/w20_rerun` → `6544a9ccfeccccd1`
+- `2330@20261030/w20` → `4aabc04c86bffe73`
+- `2330@20261030/w20_rerun` → `4aabc04c86bffe73`
+- `IXIC@20261030/w20` → `678e38ab833bd224`
+- `IXIC@20261030/w20_rerun` → `678e38ab833bd224`
+- `SOX@20261030/w20` → `3dc31276bd6f5d8c`
+- `SOX@20261030/w20_rerun` → `3dc31276bd6f5d8c`
+
+## 本機市場庫盤點（只讀）
+
+```json
+{
+  "ok": true,
+  "path": "/workspace/data/wayne_market.db",
+  "TWII": {
+    "n": 2430,
+    "mn": "20161031",
+    "mx": "20261030"
+  },
+  "2330_daily_quotes": {
+    "n": 503,
+    "mn": "20231201",
+    "mx": "20261030"
+  },
+  "futures_daily": [
+    {
+      "symbol": "TE",
+      "session": "night",
+      "n": 53,
+      "mn": "20260807",
+      "mx": "20261030"
+    },
+    {
+      "symbol": "TE",
+      "session": "regular",
+      "n": 53,
+      "mn": "20260807",
+      "mx": "20261030"
+    },
+    {
+      "symbol": "TX",
+      "session": "night",
+      "n": 641,
+      "mn": "20240301",
+      "mx": "20261030"
+    },
+    {
+      "symbol": "TX",
+      "session": "regular",
+      "n": 645,
+      "mn": "20240301",
+      "mx": "20261030"
+    }
+  ],
+  "minute_bars": [
+    {
+      "stock_id": "2330",
+      "interval": "15",
+      "n": 1592,
+      "mn": "202606240900",
+      "mx": "202610301330"
+    },
+    {
+      "stock_id": "2330",
+      "interval": "60",
+      "n": 2586,
+      "mn": "202409160900",
+      "mx": "202610301330"
+    },
+    {
+      "stock_id": "8210",
+      "interval": "60",
+      "n": 2415,
+      "mn": "202409160900",
+      "mx": "202609151330"
+    },
+    {
+      "stock_id": "SOX",
+      "interval": "15",
+      "n": 2426,
+      "mn": "202606222130",
+      "mx": "202610302337"
+    },
+    {
+      "stock_id": "SOX",
+      "interval": "60",
+      "n": 3746,
+      "mn": "202409162130",
+      "mx": "202610302337"
+    },
+    {
+      "stock_id": "TWII",
+      "interval": "15",
+      "n": 1592,
+      "mn": "202606240900",
+      "mx": "202610301330"
+    },
+    {
+      "stock_id": "TWII",
+      "interval": "60",
+      "n": 2590,
+      "mn": "202409160900",
+      "mx": "202610301330"
+    },
+    {
+      "stock_id": "TX",
+      "interval": "15",
+      "n": 4316,
+      "mn": "202608051500",
+      "mx": "202610301330"
+    },
+    {
+      "stock_id": "TX",
+      "interval": "60",
+      "n": 1135,
+      "mn": "202608051500",
+      "mx": "202610301300"
+    }
+  ],
+  "us_overnight": {
+    "n": 14,
+    "mn": "20260903",
+    "mx": "20261030"
+  },
+  "biaoke_posts_n": 0
+}
+```
+
+不是買訊。不准寫回黃金買點／海選／洞燭。

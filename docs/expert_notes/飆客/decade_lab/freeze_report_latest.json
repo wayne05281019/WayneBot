@@ -1,0 +1,358 @@
+{
+  "frozen_at": "2026-11-01T19:12:26.977363+08:00",
+  "tz": "Asia/Taipei",
+  "pot": "實驗室",
+  "lab_db": "/workspace/data/decade_lab.db",
+  "market_db": "/workspace/data/wayne_market.db",
+  "fetch_stats": {
+    "TWII": {
+      "ok": true,
+      "yahoo_bars": 2430,
+      "upsert_rows": 4860,
+      "span": [
+        "20161031",
+        "20261030"
+      ],
+      "source": "yahoo_lab",
+      "yahoo_sym": "^TWII"
+    },
+    "TWII_market_backfill": {
+      "ok": true,
+      "via": "sync_index_daily",
+      "rows": 2430,
+      "latest": "20261030",
+      "latest_source": "twse",
+      "fmtqik_volume_fill": 5
+    },
+    "2330": {
+      "ok": true,
+      "yahoo_bars": 2430,
+      "upsert_rows": 4860,
+      "span": [
+        "20161031",
+        "20261030"
+      ],
+      "source": "yahoo_lab",
+      "yahoo_sym": "2330.TW"
+    },
+    "SOX": {
+      "ok": true,
+      "yahoo_bars": 2514,
+      "upsert_rows": 5028,
+      "span": [
+        "20161031",
+        "20261030"
+      ],
+      "source": "yahoo_lab",
+      "yahoo_sym": "^SOX"
+    },
+    "IXIC": {
+      "ok": true,
+      "yahoo_bars": 2514,
+      "upsert_rows": 5028,
+      "span": [
+        "20161031",
+        "20261030"
+      ],
+      "source": "yahoo_lab",
+      "yahoo_sym": "^IXIC"
+    }
+  },
+  "lab_spans": [
+    {
+      "pack": "A",
+      "symbol": "TWII",
+      "adj_kind": "raw_quote",
+      "n": 2430,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "Asia/Taipei calendar from UTC stamp"
+    },
+    {
+      "pack": "A",
+      "symbol": "TWII",
+      "adj_kind": "yahoo_adjclose",
+      "n": 2430,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "Asia/Taipei calendar from UTC stamp｜十年高低語意用還原列"
+    },
+    {
+      "pack": "C",
+      "symbol": "2330",
+      "adj_kind": "raw_quote",
+      "n": 2430,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "Asia/Taipei; adjclose=還原權息；quote=未還原"
+    },
+    {
+      "pack": "C",
+      "symbol": "2330",
+      "adj_kind": "yahoo_adjclose",
+      "n": 2430,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "Asia/Taipei; adjclose=還原權息；quote=未還原｜十年高低語意用還原列"
+    },
+    {
+      "pack": "D",
+      "symbol": "IXIC",
+      "adj_kind": "raw_quote",
+      "n": 2514,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "America/New_York session day; map to TW as-of via prior US close"
+    },
+    {
+      "pack": "D",
+      "symbol": "IXIC",
+      "adj_kind": "yahoo_adjclose",
+      "n": 2514,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "America/New_York session day; map to TW as-of via prior US close｜十年高低語意用還原列"
+    },
+    {
+      "pack": "D",
+      "symbol": "SOX",
+      "adj_kind": "raw_quote",
+      "n": 2514,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "America/New_York session day; map to TW as-of via prior US close"
+    },
+    {
+      "pack": "D",
+      "symbol": "SOX",
+      "adj_kind": "yahoo_adjclose",
+      "n": 2514,
+      "mn": "20161031",
+      "mx": "20261030",
+      "tz_rule": "America/New_York session day; map to TW as-of via prior US close｜十年高低語意用還原列"
+    }
+  ],
+  "gaps": [
+    {
+      "pack": "B",
+      "symbol": "2330_15",
+      "kind": "minute_gap",
+      "detail": "minute_bars 2330/15 僅 202606240900→202610301330 n=1592；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "2330_60",
+      "kind": "minute_gap",
+      "detail": "minute_bars 2330/60 僅 202409160900→202610301330 n=2586；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "SOX_15",
+      "kind": "minute_gap",
+      "detail": "minute_bars SOX/15 僅 202606222130→202610302337 n=2426；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "SOX_60",
+      "kind": "minute_gap",
+      "detail": "minute_bars SOX/60 僅 202409162130→202610302337 n=3746；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "TWII_15",
+      "kind": "minute_gap",
+      "detail": "minute_bars TWII/15 僅 202606240900→202610301330 n=1592；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "TWII_60",
+      "kind": "minute_gap",
+      "detail": "minute_bars TWII/60 僅 202409160900→202610301330 n=2590；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "TX",
+      "kind": "futures_history_short",
+      "detail": "台指期日盤 futures_daily TX regular 僅 20240301→20261030 n=645；十年窗更早缺；轉倉／連續契約未凍成單一連續序列",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "TX_15",
+      "kind": "minute_gap",
+      "detail": "minute_bars TX/15 僅 202608051500→202610301330 n=4316；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "B",
+      "symbol": "TX_60",
+      "kind": "minute_gap",
+      "detail": "minute_bars TX/60 僅 202608051500→202610301300 n=1135；更早年分鐘缺窗標缺（Yahoo 日盤可補日K，分鐘不腦補）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "E",
+      "symbol": "us_overnight",
+      "kind": "short_history",
+      "detail": "us_overnight 僅 n=14 span 20260903→20261030；油／匯／完整美股已收十年未凍進該表（SOX/IXIC 已另凍 lab_daily）",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "F",
+      "symbol": "biaoke_posts",
+      "kind": "corpus_not_seeded_local",
+      "detail": "本機 biaoke_posts n=0＜1700；融合底圖應在 Render／archive_1709，本實驗室本輪不重抓社團、不進話筒",
+      "as_of": "20261101"
+    },
+    {
+      "pack": "G",
+      "symbol": "DC",
+      "kind": "digest_missing",
+      "detail": "docs/expert_notes/dc_wave/dc-wave-digest.md 本分支缺檔；DC 末端／motive 全表待補，不准冒充他說",
+      "as_of": "20261101"
+    }
+  ],
+  "calibers": {
+    "A_TWII": "Yahoo ^TWII 日K；Asia/Taipei 日；指數非還原；量為 Yahoo 指數量（與證交所 FMTQIK 張數口徑不同，對質用價優先）",
+    "B_TX": "期交所近月日／夜分 session；未建連續契約；轉倉週降權；缺窗標缺不腦補",
+    "C_2330": "Yahoo 2330.TW；raw_quote=未還原；yahoo_adjclose=還原權息（十年高低語意用還原列）；本機 daily_quotes 另有官方未還原短史",
+    "D_US": "Yahoo ^SOX/^IXIC；America/New_York session day；對台北開市日 as-of＝嚴格早於該台北日的最近美股已收",
+    "DST": "美股夏令：用 America/New_York ZoneInfo，不手調 UTC-4/5"
+  },
+  "fingerprints": {
+    "TWII@20261030/w20": "6544a9ccfeccccd1",
+    "TWII@20261030/w20_rerun": "6544a9ccfeccccd1",
+    "2330@20261030/w20": "4aabc04c86bffe73",
+    "2330@20261030/w20_rerun": "4aabc04c86bffe73",
+    "IXIC@20261030/w20": "678e38ab833bd224",
+    "IXIC@20261030/w20_rerun": "678e38ab833bd224",
+    "SOX@20261030/w20": "3dc31276bd6f5d8c",
+    "SOX@20261030/w20_rerun": "3dc31276bd6f5d8c"
+  },
+  "market_inventory": {
+    "ok": true,
+    "path": "/workspace/data/wayne_market.db",
+    "TWII": {
+      "n": 2430,
+      "mn": "20161031",
+      "mx": "20261030"
+    },
+    "2330_daily_quotes": {
+      "n": 503,
+      "mn": "20231201",
+      "mx": "20261030"
+    },
+    "futures_daily": [
+      {
+        "symbol": "TE",
+        "session": "night",
+        "n": 53,
+        "mn": "20260807",
+        "mx": "20261030"
+      },
+      {
+        "symbol": "TE",
+        "session": "regular",
+        "n": 53,
+        "mn": "20260807",
+        "mx": "20261030"
+      },
+      {
+        "symbol": "TX",
+        "session": "night",
+        "n": 641,
+        "mn": "20240301",
+        "mx": "20261030"
+      },
+      {
+        "symbol": "TX",
+        "session": "regular",
+        "n": 645,
+        "mn": "20240301",
+        "mx": "20261030"
+      }
+    ],
+    "minute_bars": [
+      {
+        "stock_id": "2330",
+        "interval": "15",
+        "n": 1592,
+        "mn": "202606240900",
+        "mx": "202610301330"
+      },
+      {
+        "stock_id": "2330",
+        "interval": "60",
+        "n": 2586,
+        "mn": "202409160900",
+        "mx": "202610301330"
+      },
+      {
+        "stock_id": "8210",
+        "interval": "60",
+        "n": 2415,
+        "mn": "202409160900",
+        "mx": "202609151330"
+      },
+      {
+        "stock_id": "SOX",
+        "interval": "15",
+        "n": 2426,
+        "mn": "202606222130",
+        "mx": "202610302337"
+      },
+      {
+        "stock_id": "SOX",
+        "interval": "60",
+        "n": 3746,
+        "mn": "202409162130",
+        "mx": "202610302337"
+      },
+      {
+        "stock_id": "TWII",
+        "interval": "15",
+        "n": 1592,
+        "mn": "202606240900",
+        "mx": "202610301330"
+      },
+      {
+        "stock_id": "TWII",
+        "interval": "60",
+        "n": 2590,
+        "mn": "202409160900",
+        "mx": "202610301330"
+      },
+      {
+        "stock_id": "TX",
+        "interval": "15",
+        "n": 4316,
+        "mn": "202608051500",
+        "mx": "202610301330"
+      },
+      {
+        "stock_id": "TX",
+        "interval": "60",
+        "n": 1135,
+        "mn": "202608051500",
+        "mx": "202610301300"
+      }
+    ],
+    "us_overnight": {
+      "n": 14,
+      "mn": "20260903",
+      "mx": "20261030"
+    },
+    "biaoke_posts_n": 0
+  },
+  "notes": [
+    "圖務收尾（教具排版／PR#750）與本實驗室分開驗收",
+    "不是買訊；不准寫回黃金買點／海選／洞燭",
+    "盤中未收不當收；本輪 Yahoo 只凍已回傳日K"
+  ]
+}
