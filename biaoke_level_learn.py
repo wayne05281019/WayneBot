@@ -423,36 +423,37 @@ def _twii_chart_as_of(db_path: str) -> str:
     return datetime.now(TAIPEI).strftime("%Y%m%d")
 
 
-def _merge_live_twii_display_bar(
-    bars: Sequence[Dict[str, Any]], live: Optional[Dict[str, Any]]
+def _merge_live_index_display_bar(
+    bars: Sequence[Dict[str, Any]],
+    live: Optional[Dict[str, Any]],
+    *,
+    today: str,
 ) -> List[Dict[str, Any]]:
-    """盤中顯示用：把 MIS 加權疊成當日未收柱（只渲染、不寫庫、不當官方收）。"""
+    """把即時 OHLC 疊成當日未收柱（只渲染、不寫庫、不當官方收）。"""
     out = [dict(r) for r in (bars or [])]
     if not live or not out:
         return out
-    try:
-        from live_quote import is_live_merge_window
-    except Exception:
+    day = _ymd(today) or str(today or "").replace("-", "")[:8]
+    if len(day) != 8:
         return out
-    try:
-        if not is_live_merge_window():
-            return out
-    except Exception:
-        return out
-    today = datetime.now(TAIPEI).strftime("%Y%m%d")
     try:
         px = float(live.get("price") or live.get("close") or 0)
         o = float(live.get("open") or px or 0)
         h = float(live.get("high") or max(o, px) or 0)
         lo = float(live.get("low") or min(o, px) or 0)
-        vol = float(live.get("volume") or live.get("vol") or 0)
+        vol = float(
+            live.get("volume")
+            or live.get("vol")
+            or live.get("volume_proxy")
+            or 0
+        )
     except (TypeError, ValueError):
         return out
     if px <= 0:
         return out
     last = out[-1]
     last_d = _ymd(last.get("date"))
-    if last_d == today:
+    if last_d == day:
         try:
             h = max(h, float(last.get("high") or 0), px)
             lo = min(
@@ -474,11 +475,11 @@ def _merge_live_twii_display_bar(
             "live_session": 1,
         }
         return out
-    if last_d and last_d > today:
+    if last_d and last_d > day:
         return out
     out.append(
         {
-            "date": today,
+            "date": day,
             "open": o,
             "high": h,
             "low": lo if lo > 0 else px,
@@ -488,6 +489,37 @@ def _merge_live_twii_display_bar(
         }
     )
     return out
+
+
+def _merge_live_twii_display_bar(
+    bars: Sequence[Dict[str, Any]], live: Optional[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """盤中顯示用：把 MIS 加權疊成當日未收柱（只渲染、不寫庫、不當官方收）。"""
+    if not live:
+        return [dict(r) for r in (bars or [])]
+    try:
+        from live_quote import is_live_merge_window
+    except Exception:
+        return [dict(r) for r in (bars or [])]
+    try:
+        if not is_live_merge_window():
+            return [dict(r) for r in (bars or [])]
+    except Exception:
+        return [dict(r) for r in (bars or [])]
+    today = datetime.now(TAIPEI).strftime("%Y%m%d")
+    return _merge_live_index_display_bar(bars, live, today=today)
+
+
+def _merge_live_sox_display_bar(
+    bars: Sequence[Dict[str, Any]], live: Optional[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """美股現金盤中：Yahoo 費半當日未收柱疊顯示（不寫庫）。"""
+    if not live:
+        return [dict(r) for r in (bars or [])]
+    day = _ymd(live.get("date")) or ""
+    if len(day) != 8:
+        return [dict(r) for r in (bars or [])]
+    return _merge_live_index_display_bar(bars, live, today=day)
 
 
 def _twii_bars_for_teach(
@@ -2030,6 +2062,57 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=f"次回測4/28低{_px(lv)}",
         )
 
+    # 他最新文抽出的大盤／台指點位 → 進預測列（虛線／右標跟著換；不准發明）
+    seen_tw = {round(float(r["level"]), 1) for r in out["tw"]}
+    try:
+        from biaoke_walk import extract_index_levels
+
+        for hit in extract_index_levels(s) or []:
+            try:
+                lv = float(hit.get("level"))
+            except (TypeError, ValueError):
+                continue
+            if not (35000.0 <= lv <= 60000.0):
+                continue
+            key = round(lv, 1)
+            if key in seen_tw:
+                continue
+            seen_tw.add(key)
+            role = str(hit.get("role") or "點位")
+            _add(
+                "tw",
+                level=lv,
+                ref_ymd="",
+                role=role,
+                tag="未到",
+                label=f"飆預測{_px(lv)}",
+            )
+    except Exception:
+        logger.debug("題旨抽大盤點位略過", exc_info=True)
+    # 費半點位：文內「費半…數字」或既有 10445／9865 外的他寫價
+    seen_sox = {round(float(r["level"]), 1) for r in out["sox"]}
+    for m in re.finditer(
+        r"費半[^0-9]{0,16}(\d{4,5}(?:\.\d+)?)", s
+    ):
+        try:
+            lv = float(m.group(1))
+        except (TypeError, ValueError):
+            continue
+        if not (7000.0 <= lv <= 16000.0):
+            continue
+        key = round(lv, 1)
+        if key in seen_sox:
+            continue
+        seen_sox.add(key)
+        _add(
+            "sox",
+            level=lv,
+            ref_ymd="",
+            role="費半點位",
+            tag="未到",
+            label=f"費半{_px(lv)}",
+        )
+
     bits = []
     for row in out["tw"]:
         bits.append(str(row.get("label") or ""))
@@ -2040,8 +2123,8 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
 
 
 def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
-    """加權撐位：舊錨＋他最新寫死點（高→低）。"""
-    vals = [45546.0, 44210.0]
+    """加權撐位：他最新寫死點優先＋舊錨備援（高→低）。"""
+    vals: List[float] = []
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             v = float(row.get("level"))
@@ -2049,33 +2132,57 @@ def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ..
             continue
         if v >= 20000:
             vals.append(v)
+    for k, raw in ((pack or {}).get("key_levels") or {}).items():
+        if not str(k).startswith(("pred_tw_", "claim_")):
+            continue
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if v >= 20000:
+            vals.append(v)
+    # 舊錨只在他沒點新價時當備援；有他點就跟著他的梯子走
+    if not vals:
+        vals = [45546.0, 44210.0]
+    else:
+        for fixed in (45546.0, 44210.0):
+            if any(abs(fixed - v) < 1.0 for v in vals):
+                vals.append(fixed)
     return tuple(sorted(set(vals), reverse=True))
 
 
 def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
-    """預估虛線下一錨順序（近→遠）。有周一 44042 就插在 45546 後。"""
-    has_44042 = any(
-        abs(float(r.get("level") or 0) - 44042.0) < 0.6
-        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
-    )
-    has_39384 = any(
-        abs(float(r.get("level") or 0) - 39384.0) < 2.0
-        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
-    )
-    out: List[float] = [45546.0]
-    if has_44042:
-        out.append(44042.0)
-    out.append(44210.0)
-    if has_39384:
-        out.append(39384.0)
-    # 去重保序
-    seen = set()
-    uniq: List[float] = []
-    for v in out:
-        if v in seen:
+    """預估虛線下一錨順序（高→低）：跟他最新題旨點位走；沒點才退回 45546→44210。
+
+    只吃 pred_levels.tw 與 key_levels 的 pred_tw_*（他寫死預測錨）。
+    不准把舊 claim_* 歷史宣稱混進虛線梯，否則端點／右標會卡在舊價。
+    """
+    his: List[float] = []
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            v = float(row.get("level"))
+        except (TypeError, ValueError):
             continue
-        seen.add(v)
-        uniq.append(v)
+        if 30000.0 <= v <= 60000.0:
+            his.append(v)
+    for k, raw in ((pack or {}).get("key_levels") or {}).items():
+        if not str(k).startswith("pred_tw_"):
+            continue
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if 30000.0 <= v <= 60000.0:
+            his.append(v)
+    if not his:
+        return (45546.0, 44210.0)
+    # 他點過的價高→低；1 點內視為同錨（避免 39384／39384.9 雙標）
+    ordered = sorted(his, reverse=True)
+    uniq: List[float] = []
+    for v in ordered:
+        if any(abs(v - u) < 1.0 for u in uniq):
+            continue
+        uniq.append(round(v, 1))
     return tuple(uniq)
 
 
@@ -3367,7 +3474,7 @@ def _c_forecast_tip(
 ) -> Dict[str, Any]:
     """C 段預估虛線端點：只指向他說過的下一錨，不准發明新價。
 
-    預設 45546→44210；題旨有周一破台指 44042 時改走該階梯（見 _tw_tip_anchors）。
+    錨梯＝_tw_tip_anchors（他最新點位高→低；沒點才退回 45546→44210）。
     端點標＝『飆預測』（與右欄／青帶同一套）；不准再寫多餘的「預估↓同價」。
     今已低於錨才用『預估↓續弱』（沒有具體他說價可標）。
     """
@@ -3846,6 +3953,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     if not anc:
         return ""
     sox = _load_us_daily(db_path, "SOX", "20260420" if need_apr else "20260720")
+    if (pack or {}).get("live_sox"):
+        sox = _merge_live_sox_display_bar(sox, (pack or {}).get("live_sox"))
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     n = len(bars)
     opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -4070,7 +4179,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # 上下多留：高點浪名在尖上、低點浪名在尖下，不准被裁、也不准回頭蓋K
     ymin = min([min(lows), y_far_lo] + list(tw_supports)) - 720
     ymax = max(highs) + 1100
-    tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     sr = _next_support_resist(
         y_now,
         supports=tw_supports,
@@ -4083,8 +4191,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     skip_lab_ys = (
         [float(tip_pre["anchor_y"])] if tip_pre.get("anchor_y") is not None else []
     )
-    # 44210／45546 右欄會標 → 左欄不准再貼同價
-    skip_lab_ys = list(skip_lab_ys) + [44210.0, 45546.0]
+    # 他點過的錨會上右欄 → 左欄不准再貼同價
+    skip_lab_ys = list(skip_lab_ys) + [float(v) for v in tip_anchors]
     # 先黃＝最大量日高低；青＝飆預測位階帶，重疊處不塗青（兩底色不准互疊）
     y_excl_lo = float(lows[i_vmax]) if i_vmax is not None else None
     y_excl_hi = float(highs[i_vmax]) if i_vmax is not None else None
@@ -4230,15 +4338,21 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "color": "#4dd0e1",
             }
         )
-    if round(44210.0, 1) not in tip_skip:
+    # 他最新錨（虛線梯）上右欄；跟著題旨換，不准寫死單一 44210
+    for anch in tip_anchors:
+        if round(float(anch), 1) in tip_skip:
+            continue
         right_notes.append(
             {
                 "x": n_axis - 1,
-                "y": 44210.0,
-                "text": _biaoke_pred_label(44210.0, tag_44210),
+                "y": float(anch),
+                "text": _biaoke_pred_label(
+                    float(anch), _level_break_tag(float(anch), c_seg_lows)
+                ),
                 "color": "#82b1ff",
             }
         )
+        tip_skip.add(round(float(anch), 1))
     right_notes.extend(
         _tw_pred_right_notes(
             pack, n=n_axis, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
@@ -4798,8 +4912,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     skip_lab_ys = (
         [float(tip_pre["anchor_y"])] if tip_pre.get("anchor_y") is not None else []
     )
-    # 44210／45546 走右欄 → 左欄不准再貼同價壓虛線
-    skip_lab_ys = list(skip_lab_ys) + [44210.0, 45546.0]
+    # 他點錨走右欄 → 左欄不准再貼同價壓虛線
+    skip_lab_ys = list(skip_lab_ys) + [float(v) for v in tip_anchors]
     # 與遠窗同一套雙底色（黃＝最大量日高低、青＝飆預測位階帶）
     zone = _paint_window_dual_zones(
         ax,
@@ -4949,12 +5063,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             ax, i4, y4, f"c4細 {_px(y4)}", "#ce93d8", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=9
         )
     # Fib／錨／撐壓虛線改走右標函式（自 note['x'] 連到同欄標左緣），不准再左一截短虛線
-    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
-    tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}
     tip_anchor = tip.get("anchor_y")
-    tip_skip = {round(float(tip_anchor), 1)} if tip_anchor is not None else set()
+    tip_skip: set = set()
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B高 {_px(y_bhi)}", "color": "#40c4ff"},
@@ -4986,24 +5098,37 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 "color": "#ce93d8",
             }
         )
-    if round(45546.0, 1) not in tip_skip:
+    # 圖上若沒浮預估標（有 c4／c5 時 show_label=False）→ 端點錨改上右欄
+    if tip_anchor is not None and bool(c_sub.get("ok")):
         right_notes.append(
             {
                 "x": 0,
-                "y": 45546.0,
-                "text": _biaoke_pred_label(45546.0, tag_45546),
-                "color": "#ffab40",
+                "y": float(tip_anchor),
+                "text": _biaoke_pred_label(
+                    float(tip_anchor),
+                    _level_break_tag(float(tip_anchor), c_seg_lows),
+                ),
+                "color": "#ea80fc",
             }
         )
-    if round(44210.0, 1) not in tip_skip:
+        tip_skip.add(round(float(tip_anchor), 1))
+    elif tip_anchor is not None:
+        tip_skip.add(round(float(tip_anchor), 1))
+    # 他最新錨（虛線梯）上右欄；跟著題旨換，不准寫死 45546／44210
+    for anch in tip_anchors:
+        if round(float(anch), 1) in tip_skip:
+            continue
         right_notes.append(
             {
                 "x": 0,
-                "y": 44210.0,
-                "text": _biaoke_pred_label(44210.0, tag_44210),
+                "y": float(anch),
+                "text": _biaoke_pred_label(
+                    float(anch), _level_break_tag(float(anch), c_seg_lows)
+                ),
                 "color": "#82b1ff",
             }
         )
+        tip_skip.add(round(float(anch), 1))
     right_notes.extend(
         _tw_pred_right_notes(
             pack, n=n, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
@@ -5220,11 +5345,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ymin = min([min(lows)] + list(tw_supports)) - 420
     ymax = max(highs) + 720
     span = ymax - ymin
-    # 與遠／近窗同一套雙底色；有 c5 時左欄不准再浮 45546（右欄已有）
+    # 與遠／近窗同一套雙底色；他點錨／c5 走右欄 → 左欄不准再浮同價
     _c_sub_pre = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
-    _skip_left = [44210.0, 45546.0]
+    _skip_left = [float(v) for v in tip_anchors]
     if _c_sub_pre.get("ok"):
         _skip_left.append(float(_c_sub_pre["y_c5"]))
     zone = _paint_window_dual_zones(
@@ -5525,21 +5650,41 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ) - (c_hi - c_lo) * 0.18
     y_top = max([c_hi] + zone_ys) + (c_hi - c_lo) * 0.34
     ax.set_ylim(y_bot, y_top)
-    tag_45546 = _level_break_tag(45546.0, c_seg_lows)
-    tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     tip_anchor = tip.get("anchor_y")
-    tip_skip = {round(float(tip_anchor), 1)} if tip_anchor is not None else set()
+    tip_skip: set = set()
     right_notes = [
         {"x": i_bhi, "y": y_bhi, "text": f"B高 {_px(y_bhi)}", "color": "#40c4ff"},
         {"x": i_now, "y": float(closes[i_now]), "text": f"今 {_px(closes[i_now])}", "color": "#ea80fc"},
-        {"x": 0, "y": 45546.0, "text": _biaoke_pred_label(45546.0, tag_45546), "color": "#ffab40"},
-        {
-            "x": 0,
-            "y": 44210.0,
-            "text": _biaoke_pred_label(44210.0, tag_44210),
-            "color": "#82b1ff",
-        },
     ]
+    # 超近圖上不准浮預估標 → 端點錨改上右欄（跟遠窗同一套）
+    if tip_anchor is not None:
+        right_notes.append(
+            {
+                "x": 0,
+                "y": float(tip_anchor),
+                "text": _biaoke_pred_label(
+                    float(tip_anchor),
+                    _level_break_tag(float(tip_anchor), c_seg_lows),
+                ),
+                "color": "#ea80fc",
+            }
+        )
+        tip_skip.add(round(float(tip_anchor), 1))
+    # 他最新錨（虛線梯）上右欄；跟著題旨換，不准寫死 45546／44210
+    for anch in tip_anchors:
+        if round(float(anch), 1) in tip_skip:
+            continue
+        right_notes.append(
+            {
+                "x": 0,
+                "y": float(anch),
+                "text": _biaoke_pred_label(
+                    float(anch), _level_break_tag(float(anch), c_seg_lows)
+                ),
+                "color": "#82b1ff",
+            }
+        )
+        tip_skip.add(round(float(anch), 1))
     if c_sub.get("ok"):
         right_notes.append(
             {
@@ -5732,7 +5877,8 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         _ensure_us_index_daily(db_path)
     except Exception:
         logger.exception("外圍教具補資料略過")
-    bars = _load_twii_bars(db_path, n=120)
+    # 與遠／近／超近同一套：盤中 MIS 加權疊柱
+    bars = _twii_bars_for_teach(db_path, 120, pack)
     if len(bars) < 12 or not save_path:
         return ""
     i0 = (
@@ -5743,6 +5889,8 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
     bars = list(bars[i0:])
     anc = _twii_abc_anchors(bars)
     sox = _load_us_daily(db_path, "SOX", "20260920")
+    if (pack or {}).get("live_sox"):
+        sox = _merge_live_sox_display_bar(sox, (pack or {}).get("live_sox"))
     ixic = _load_us_daily(db_path, "IXIC", "20260920")
     if not anc or (len(sox) < 5 and len(ixic) < 5):
         return ""
@@ -6301,18 +6449,25 @@ def paint_open_day_hypothesis(
     _ensure_teach_index_bars(db_path)
 
     pack = _build_live_pack(db_path, now=dt)
-    # 盤中：MIS 加權只疊顯示柱（不寫庫、不當官方收）；三張同包同查詢戳
+    # 盤中：MIS 加權／Yahoo 費半只疊顯示柱（不寫庫、不當官方收）；三張同包同查詢戳
+    pack = dict(pack or {})
     try:
         from live_quote import fetch_mis_index_quote, is_live_merge_window
 
         if is_live_merge_window(dt):
             live_tw = fetch_mis_index_quote(fresh=True)
             if live_tw:
-                pack = dict(pack or {})
                 pack["live_twii"] = live_tw
     except Exception:
         logger.debug("活畫盤中加權疊加略過", exc_info=True)
-    pack = dict(pack or {})
+    try:
+        from us_overnight import fetch_live_sox_display_bar
+
+        live_sox = fetch_live_sox_display_bar(dt)
+        if live_sox:
+            pack["live_sox"] = live_sox
+    except Exception:
+        logger.debug("活畫盤中費半疊加略過", exc_info=True)
     pack["query_at"] = dt.isoformat()
     thesis = pack.get("thesis") or ""
     wait_struct = pack.get("wait_struct") or ""

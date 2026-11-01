@@ -291,6 +291,96 @@ def _fetch_symbol(sym: str, *, session_open: bool = False, timeout: float = 20) 
     return {"symbol": meta.get("symbol") or sym, "price": px, "pct": pct, "chg": chg, "session": session}
 
 
+def fetch_live_sox_display_bar(
+    now: Optional[datetime] = None, *, force: bool = False
+) -> Optional[Dict[str, Any]]:
+    """美股現金盤中：Yahoo ^SOX 當日未收 OHLC（只渲染、不寫庫、不當官方收）。
+
+    費半指數量常為 0 → 另帶 SOXX 量代理（標 volume_proxy）。非現金盤中回 None。
+    """
+    phase = us_tape_phase(now)
+    if phase != "regular" and not force:
+        return None
+    try:
+        url = _chart_url("^SOX", interval="1d", range_="5d")
+        resp = _SESSION.get(url, timeout=20)
+        resp.raise_for_status()
+        result = (resp.json().get("chart") or {}).get("result") or []
+        if not result:
+            return None
+        block = result[0]
+        meta = block.get("meta") or {}
+        qblock = ((block.get("indicators") or {}).get("quote") or [{}])[0]
+        opens = qblock.get("open") or []
+        highs = qblock.get("high") or []
+        lows = qblock.get("low") or []
+        closes = qblock.get("close") or []
+        vols = qblock.get("volume") or []
+        last_px = _as_float(meta.get("regularMarketPrice"))
+        if last_px is None or last_px <= 0:
+            last_px = _as_float(closes[-1]) if closes else None
+        if last_px is None or last_px <= 0:
+            return None
+        o = _as_float(opens[-1]) if opens else None
+        h = _as_float(highs[-1]) if highs else None
+        lo = _as_float(lows[-1]) if lows else None
+        if o is None or o <= 0:
+            o = _as_float(meta.get("regularMarketOpen")) or last_px
+        day_hi = _as_float(meta.get("regularMarketDayHigh"))
+        day_lo = _as_float(meta.get("regularMarketDayLow"))
+        if day_hi is not None and day_hi > 0:
+            h = max(h or 0, day_hi, last_px, o)
+        else:
+            h = max(h or 0, last_px, o)
+        if day_lo is not None and day_lo > 0:
+            lo = min(x for x in (lo, day_lo, last_px, o) if x and x > 0)
+        else:
+            lo = min(x for x in (lo, last_px, o) if x and x > 0)
+        vol = float(vols[-1] or 0) if vols else 0.0
+        ts = int(meta.get("regularMarketTime") or 0)
+        if not ts and (block.get("timestamp") or []):
+            ts = int(block["timestamp"][-1])
+        if not ts:
+            return None
+        session = datetime.fromtimestamp(ts, tz=NY).strftime("%Y%m%d")
+        expected = expected_us_print_session(now)
+        if expected and session != expected and not force:
+            # 抓到的日不是此刻該有的美股交易日 → 不當盤中疊柱
+            return None
+        soxx_vol = 0.0
+        try:
+            time.sleep(0.05)
+            s_url = _chart_url("SOXX", interval="1d", range_="5d")
+            s_resp = _SESSION.get(s_url, timeout=12)
+            s_resp.raise_for_status()
+            s_res = (s_resp.json().get("chart") or {}).get("result") or []
+            if s_res:
+                sq = ((s_res[0].get("indicators") or {}).get("quote") or [{}])[0]
+                sv = sq.get("volume") or []
+                if sv:
+                    soxx_vol = float(sv[-1] or 0)
+                sm = s_res[0].get("meta") or {}
+                mv = _as_float(sm.get("regularMarketVolume"))
+                if mv is not None and mv > soxx_vol:
+                    soxx_vol = float(mv)
+        except Exception:
+            logger.debug("SOXX 量代理略過", exc_info=True)
+        return {
+            "date": session,
+            "open": float(o),
+            "high": float(h),
+            "low": float(lo),
+            "close": float(last_px),
+            "volume": float(vol),
+            "volume_proxy": float(soxx_vol),
+            "live_session": 1,
+            "symbol": "SOX",
+        }
+    except Exception:
+        logger.exception("費半盤中疊柱抓不到")
+        return None
+
+
 def _fetch_post_last(sym: str) -> Optional[Dict[str, Any]]:
     url = _chart_url(sym, interval="1m", range_="1d", include_prepost=True)
     resp = _SESSION.get(url, timeout=20)

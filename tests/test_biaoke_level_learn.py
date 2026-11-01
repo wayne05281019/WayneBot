@@ -818,6 +818,46 @@ def test_thesis_pred_levels_sox_next_support_apr28():
     pack = {"pred_levels": pred}
     anchors = _tw_tip_anchors(pack)
     assert 44042.0 in anchors
+    assert any(abs(v - 39384) < 2 for v in anchors)
+    # 有他點 → 虛線梯跟他走，不准只剩舊錨 45546→44210
+    assert anchors[0] >= anchors[-1]
+    assert 44042.0 in anchors or any(abs(v - 39384) < 2 for v in anchors)
+
+
+def test_c_forecast_tip_follows_biaoke_tip_anchors():
+    """飆大點位換了 → 預估虛線端點跟著換。"""
+    from biaoke_level_learn import _c_forecast_tip, _px, _tw_tip_anchors
+
+    pack = {
+        "pred_levels": {
+            "tw": [
+                {"level": 44042.0, "label": "飆預測44042"},
+                {"level": 39384.0, "label": "飆預測39384"},
+            ],
+            "sox": [],
+        }
+    }
+    anchors = _tw_tip_anchors(pack)
+    assert 44042.0 in anchors and 39384.0 in anchors
+    tip = _c_forecast_tip(
+        i_now=10,
+        y_now=46368.0,
+        y_ref=49059.0,
+        lows=[46055.0, 45676.0],
+        anchors=anchors,
+    )
+    assert tip["fut_y"] == 44042.0
+    assert tip["anchor_y"] == 44042.0
+    assert _px(44042.0) in tip["label"]
+    tip2 = _c_forecast_tip(
+        i_now=10,
+        y_now=43000.0,
+        y_ref=49059.0,
+        lows=[43500.0],
+        anchors=anchors,
+    )
+    assert tip2["fut_y"] == 39384.0
+    assert _px(39384.0) in tip2["label"]
 
 
 def test_snip_prefers_main_over_short_reply(tmp_path):
@@ -1081,6 +1121,50 @@ def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
     assert out[-1]["date"] == "20261030"
     assert out[-1]["close"] == 45200.0
     assert int(out[-1].get("live_session") or 0) == 1
+
+
+def test_merge_live_sox_display_bar_overlays_session():
+    """費半盤中 Yahoo 疊顯示柱：跟 live date 走、不寫庫。"""
+    from biaoke_level_learn import _merge_live_sox_display_bar
+
+    bars = [
+        {
+            "date": "20261028",
+            "open": 10000,
+            "high": 10100,
+            "low": 9900,
+            "close": 10050,
+            "volume": 0,
+        }
+    ]
+    live = {
+        "date": "20261029",
+        "open": 10200.0,
+        "high": 10350.0,
+        "low": 10150.0,
+        "close": 10300.0,
+        "volume": 0,
+        "volume_proxy": 1_200_000,
+        "live_session": 1,
+    }
+    out = _merge_live_sox_display_bar(bars, live)
+    assert len(out) == 2
+    assert out[-1]["date"] == "20261029"
+    assert out[-1]["close"] == 10300.0
+    assert int(out[-1].get("live_session") or 0) == 1
+
+
+def test_near_micro_right_notes_follow_tip_anchors():
+    """近／超近右欄飆預測錨跟 tip_anchors，不准寫死 45546／44210。"""
+    from biaoke_level_learn import _render_twii_live_dark, _render_twii_super_near_dark
+
+    near = inspect.getsource(_render_twii_live_dark)
+    micro = inspect.getsource(_render_twii_super_near_dark)
+    for blk in (near, micro):
+        assert "for anch in tip_anchors:" in blk
+        assert '"y": 45546.0' not in blk
+        assert '"y": 44210.0' not in blk
+        assert "anchors=tip_anchors" in blk
 
 
 def test_finish_last_twii_used_by_near_and_micro():
