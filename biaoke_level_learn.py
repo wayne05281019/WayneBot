@@ -143,6 +143,7 @@ def ensure_tables(db_path: str) -> None:
             ("near_path", "TEXT NOT NULL DEFAULT ''"),
             ("us_path", "TEXT NOT NULL DEFAULT ''"),
             ("micro_path", "TEXT NOT NULL DEFAULT ''"),
+            ("mine_path", "TEXT NOT NULL DEFAULT ''"),
             ("pending", "INTEGER NOT NULL DEFAULT 1"),
             ("verdict", "TEXT NOT NULL DEFAULT ''"),
             ("checked_at", "TEXT NOT NULL DEFAULT ''"),
@@ -1416,32 +1417,61 @@ def _us_lead_read(db_path: str) -> Dict[str, Any]:
 
 
 def _futures_day_night(db_path: str) -> Dict[str, Any]:
-    """活化 futures_daily 日／夜最近一筆。"""
-    out: Dict[str, Any] = {"levels": {}, "note": ""}
+    """大台 TX／電子 TE：日盤＋夜盤（電子盤）最近柱。
+
+    我估隔夜順位：TX夜 vs 前日日盤最直接；TE夜交叉電子氣氛。不准假數。
+    """
+    out: Dict[str, Any] = {"levels": {}, "note": "", "tx_night_pct": None, "te_night_pct": None}
     conn = sqlite3.connect(db_path, timeout=15.0)
     try:
-        night = conn.execute(
-            "SELECT date, open, high, low, close, volume FROM futures_daily "
-            "WHERE symbol='TX' AND session='night' ORDER BY date DESC LIMIT 1"
-        ).fetchone()
-        day = conn.execute(
-            "SELECT date, open, high, low, close, volume FROM futures_daily "
-            "WHERE symbol='TX' AND session='regular' ORDER BY date DESC LIMIT 1"
-        ).fetchone()
+        def _last(sym: str, session: str):
+            return conn.execute(
+                "SELECT date, open, high, low, close, volume, pct_change FROM futures_daily "
+                "WHERE symbol=? AND session=? ORDER BY date DESC LIMIT 1",
+                (sym, session),
+            ).fetchone()
+
+        tx_n, tx_d = _last("TX", "night"), _last("TX", "regular")
+        te_n, te_d = _last("TE", "night"), _last("TE", "regular")
     finally:
         conn.close()
-    parts = []
-    if night:
-        out["levels"]["tx_night_c"] = float(night[4])
-        out["levels"]["tx_night_l"] = float(night[3])
-        out["levels"]["tx_night_h"] = float(night[2])
-        parts.append(
-            f"夜盤{night[0]} 收{_px(night[4])}（高{_px(night[2])}低{_px(night[3])}）"
-        )
-    if day:
-        out["levels"]["tx_day_c"] = float(day[4])
-        parts.append(f"日盤{day[0]} 收{_px(day[4])}")
-    out["note"] = "；".join(parts)
+    parts: List[str] = []
+    if tx_n:
+        out["levels"]["tx_night_c"] = float(tx_n[4])
+        out["levels"]["tx_night_l"] = float(tx_n[3])
+        out["levels"]["tx_night_h"] = float(tx_n[2])
+        try:
+            out["tx_night_pct"] = float(tx_n[6]) if tx_n[6] is not None else None
+        except (TypeError, ValueError):
+            out["tx_night_pct"] = None
+        # 相對最近日盤收：夜盤消化美股後的跳空氣氛
+        if tx_d and float(tx_d[4]) > 0:
+            gap = (float(tx_n[4]) - float(tx_d[4])) / float(tx_d[4]) * 100.0
+            out["tx_night_vs_day_pct"] = gap
+            parts.append(
+                f"大台夜{tx_n[0]}收{_px(tx_n[4])}（vs日{_px(tx_d[4])} {gap:+.2f}%）"
+            )
+        else:
+            parts.append(
+                f"大台夜{tx_n[0]}收{_px(tx_n[4])}（高{_px(tx_n[2])}低{_px(tx_n[3])}）"
+            )
+    if tx_d:
+        out["levels"]["tx_day_c"] = float(tx_d[4])
+        if not tx_n:
+            parts.append(f"大台日{tx_d[0]}收{_px(tx_d[4])}")
+    if te_n:
+        out["levels"]["te_night_c"] = float(te_n[4])
+        try:
+            out["te_night_pct"] = float(te_n[6]) if te_n[6] is not None else None
+        except (TypeError, ValueError):
+            out["te_night_pct"] = None
+        pct_s = ""
+        if out["te_night_pct"] is not None:
+            pct_s = f" {out['te_night_pct']:+.2f}%"
+        parts.append(f"電子夜{te_n[0]}收{float(te_n[4]):.1f}{pct_s}")
+    if te_d:
+        out["levels"]["te_day_c"] = float(te_d[4])
+    out["note"] = "；".join(parts)[:240]
     return out
 
 
@@ -1799,8 +1829,10 @@ def _build_live_pack(
         "morph_note": str(thesis_pack.get("morph_note") or "")[:180],
         "fib_note": str(thesis_pack.get("fib_note") or "")[:120],
         "key_levels": levels,
+        # pred_levels＝他原文抽出（獨立源）；不准把 self_pred 寫進來
         "pred_levels": pred,
         "pred_note": str(pred.get("note") or "")[:280],
+        "_fut_snap": fut,
         "snippet": thesis_pack.get("snippet") or "",
         "chart_as_of": chart_as_of,
         "thesis_as_of": thesis_cap,
@@ -2508,6 +2540,263 @@ def _alt_path_needed(his_degree: str, geom_degree: str) -> bool:
     if h.startswith("C3-3") and g.startswith("C3-3"):
         return h != g
     return False
+
+
+def _self_pred_label(price: float, basis: str) -> str:
+    """我的判斷預估標：必須帶依據；≠他說／飆預測。
+
+    單向：可讀他的當參考；不准把我估回寫成他的依據或標成飆預測。
+    """
+    b = str(basis or "").strip()[:28]
+    if b:
+        return f"我估{_px(price)}｜{b}"
+    return f"我估{_px(price)}｜依據未寫＝不准"
+
+
+def _near_his_level(lv: float, his: Sequence[float], *, tol: float = 80.0) -> bool:
+    try:
+        x = float(lv)
+    except (TypeError, ValueError):
+        return False
+    for h in his:
+        try:
+            if abs(x - float(h)) <= tol:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def _build_self_pred_levels(
+    pack: Optional[Dict[str, Any]],
+    *,
+    y_now: float,
+    y5: float,
+    y_alow: float,
+    y_bhi: float,
+    highs: Sequence[float],
+    lows: Sequence[float],
+    vols: Sequence[float],
+    bars: Sequence[Dict[str, Any]],
+    db_path: str = "",
+) -> Dict[str, Any]:
+    """我的判斷預估（≠他說・非買訊）。
+
+    依據優先序（我評估後鎖）：
+    1) 官方加權轉折距（⑤／A／B 等長或 1.618 延伸）
+    2) 近窗官方高低／最大量日高低
+    3) 庫內費半／納指已收（他比照美股→我也比照；SOX 對台半導體有實證領先文獻）
+    每筆必帶 basis；與他寫死位太近就不另標「我估」（避免冒充他的）。
+    """
+    pack = pack or {}
+    his_lv: List[float] = []
+    his_notes: List[Dict[str, Any]] = []
+    for row in ((pack.get("pred_levels") or {}).get("tw") or []):
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        his_lv.append(lv)
+        his_notes.append(
+            {
+                "level": lv,
+                "label": f"他說{str(row.get('label') or _px(lv))[:22]}",
+                "color": "#90a4ae",
+                "source": "his",
+            }
+        )
+    for fixed in (45546.0, 44210.0):
+        if not _near_his_level(fixed, his_lv, tol=1.0):
+            his_lv.append(fixed)
+            his_notes.append(
+                {
+                    "level": fixed,
+                    "label": f"他說錨{_px(fixed)}",
+                    "color": "#78909c",
+                    "source": "his",
+                }
+            )
+
+    mine: List[Dict[str, Any]] = []
+    yn = float(y_now)
+    # 1) 官方轉折：B 高 − (⑤−A) 等長 C；再 1.618 延伸
+    leg = float(y5) - float(y_alow)
+    if leg > 200:
+        c_eq = float(y_bhi) - leg
+        c_ext = float(y_bhi) - 1.618 * leg
+        if c_eq > 20000 and not _near_his_level(c_eq, his_lv):
+            mine.append(
+                {
+                    "level": c_eq,
+                    "label": _self_pred_label(c_eq, "官方⑤→A等長C"),
+                    "basis": "加權官方轉折：B高−(⑤高−A低)",
+                    "color": "#ffcc80",
+                    "source": "mine",
+                    "kind": "equal_c",
+                }
+            )
+        if c_ext > 20000 and not _near_his_level(c_ext, his_lv):
+            mine.append(
+                {
+                    "level": c_ext,
+                    "label": _self_pred_label(c_ext, "官方1.618延伸"),
+                    "basis": "加權官方轉折：B高−1.618×(⑤高−A低)",
+                    "color": "#ffb74d",
+                    "source": "mine",
+                    "kind": "ext1618",
+                }
+            )
+    # 2) 近窗官方低／最大量日低（價離舊區才當候選撐）
+    n = len(lows)
+    if n >= 8:
+        win = list(range(max(0, n - 20), n))
+        swing_lo = min(float(lows[i]) for i in win)
+        if swing_lo < yn - 80 and not _near_his_level(swing_lo, his_lv):
+            mine.append(
+                {
+                    "level": swing_lo,
+                    "label": _self_pred_label(swing_lo, "近窗官方低"),
+                    "basis": "近20根加權官方最低",
+                    "color": "#ffe082",
+                    "source": "mine",
+                    "kind": "swing_lo",
+                }
+            )
+        if any(float(vols[i] or 0) > 0 for i in win):
+            i_vmax = max(win, key=lambda i: float(vols[i] or 0))
+            vmax_lo = float(lows[i_vmax])
+            md = _md(bars[i_vmax].get("date")) if i_vmax < len(bars) else ""
+            if vmax_lo < yn - 40 and not _near_his_level(vmax_lo, his_lv):
+                mine.append(
+                    {
+                        "level": vmax_lo,
+                        "label": _self_pred_label(vmax_lo, f"{md}最大量低" if md else "最大量低"),
+                        "basis": f"官方最大量日低{_px(vmax_lo)}" + (f"（{md}）" if md else ""),
+                        "color": "#ffd54f",
+                        "source": "mine",
+                        "kind": "vmax_lo",
+                    }
+                )
+    # 3) 隔夜氣氛（只當偏壓句，不准發明加權假目標價）
+    # 順位：大台夜 vs 日 → 電子夜 → 費半／納指／TSM（庫內 us_overnight／us_note）
+    bias_bits: List[str] = []
+    tx_vs = None
+    te_pct = None
+    try:
+        fut = pack.get("_fut_snap") or {}
+        if not fut and db_path:
+            fut = _futures_day_night(db_path)
+        tx_vs = fut.get("tx_night_vs_day_pct")
+        te_pct = fut.get("te_night_pct")
+    except Exception:
+        fut = {}
+    if tx_vs is not None:
+        try:
+            g = float(tx_vs)
+            if g <= -1.0:
+                bias_bits.append(f"大台夜vs日{g:+.2f}%→開盤偏壓")
+            elif g >= 1.0:
+                bias_bits.append(f"大台夜vs日{g:+.2f}%→開盤偏多")
+            else:
+                bias_bits.append(f"大台夜vs日{g:+.2f}%")
+        except (TypeError, ValueError):
+            pass
+    if te_pct is not None:
+        try:
+            t = float(te_pct)
+            if t <= -1.5:
+                bias_bits.append(f"電子夜{t:+.2f}%→電子偏弱")
+            elif t >= 1.5:
+                bias_bits.append(f"電子夜{t:+.2f}%→電子偏強")
+        except (TypeError, ValueError):
+            pass
+    us_note = str(pack.get("us_note") or "")
+    sox_pct = ixic_pct = tsm_pct = vix = None
+    m = re.search(r"費半([+\-]?\d+(?:\.\d+)?)%", us_note)
+    if m:
+        try:
+            sox_pct = float(m.group(1))
+        except ValueError:
+            sox_pct = None
+    m2 = re.search(r"納指([+\-]?\d+(?:\.\d+)?)%", us_note)
+    if m2:
+        try:
+            ixic_pct = float(m2.group(1))
+        except ValueError:
+            ixic_pct = None
+    # 完整 us_overnight 列（四大／龍頭／VIX／油匯）— 有才用
+    if db_path:
+        try:
+            conn = sqlite3.connect(db_path, timeout=10.0)
+            try:
+                row = conn.execute(
+                    "SELECT sox_pct, ixic_pct, spx_pct, dji_pct, vix, tsm_pct, nvda_pct, "
+                    "nq_f_pct, payload FROM us_overnight ORDER BY as_of DESC LIMIT 1"
+                ).fetchone()
+            finally:
+                conn.close()
+            if row:
+                sox_pct = sox_pct if sox_pct is not None else (
+                    float(row[0]) if row[0] is not None else None
+                )
+                ixic_pct = ixic_pct if ixic_pct is not None else (
+                    float(row[1]) if row[1] is not None else None
+                )
+                vix = float(row[4]) if row[4] is not None else None
+                tsm_pct = float(row[5]) if row[5] is not None else None
+                try:
+                    payload = json.loads(row[8] or "{}")
+                except Exception:
+                    payload = {}
+                brent = payload.get("brent_pct")
+                usdtwd = payload.get("usdtwd_pct")
+                if vix is not None and vix >= 30:
+                    bias_bits.append(f"VIX{vix:.1f}→系統險")
+                elif vix is not None and vix >= 25:
+                    bias_bits.append(f"VIX{vix:.1f}→偏險")
+                if tsm_pct is not None and abs(tsm_pct) >= 2.0:
+                    bias_bits.append(f"TSM{tsm_pct:+.2f}%")
+                if sox_pct is not None and sox_pct <= -2.0:
+                    bias_bits.append(f"費半{sox_pct:+.2f}%→偏壓")
+                elif sox_pct is not None and sox_pct >= 2.0:
+                    bias_bits.append(f"費半{sox_pct:+.2f}%→偏多")
+                elif ixic_pct is not None and ixic_pct <= -1.5:
+                    bias_bits.append(f"納指{ixic_pct:+.2f}%→風險收斂")
+                if brent is not None and abs(float(brent)) >= 2.0:
+                    bias_bits.append(f"Brent{float(brent):+.2f}%")
+                if usdtwd is not None and abs(float(usdtwd)) >= 0.3:
+                    bias_bits.append(f"美金台幣{float(usdtwd):+.2f}%")
+        except Exception:
+            logger.debug("我估讀 us_overnight 略過", exc_info=True)
+    us_bias = "；".join(bias_bits[:5])
+    # 去重：同價只留一筆我估
+    kept: List[Dict[str, Any]] = []
+    seen: List[float] = []
+    for row in sorted(mine, key=lambda d: float(d["level"]), reverse=True):
+        lv = float(row["level"])
+        if any(abs(lv - s) < 40 for s in seen):
+            continue
+        seen.append(lv)
+        kept.append(row)
+        if len(kept) >= 4:
+            break
+    refs = [
+        "隔夜A：大台夜／電子夜／TSM／SOX／NQ（開盤氣氛；盤中≠延續）",
+        "價位：加權官方轉折等長／1.618／近窗低／最大量低",
+        "文獻：TX夜比美四大更直接；美股資訊多在跳空用完",
+    ]
+    if us_bias:
+        refs.insert(0, us_bias)
+    return {
+        "mine": kept,
+        "his_aux": his_notes[:6],
+        "us_bias": us_bias,
+        "refs": refs,
+        "note": "｜".join(
+            [f"{r['label']}" for r in kept[:3]]
+            + ([us_bias] if us_bias else [])
+        )[:280],
+    }
 
 
 def _c_forecast_tip(
@@ -3447,6 +3736,182 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 va="bottom",
             )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
+    plt.close(fig)
+    return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
+
+
+def _render_twii_self_pred_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
+    """專圖：主＝我的判斷預估；淡＝他說位輔助。≠買訊。
+
+    依據＝官方加權轉折／量＋庫內費半／納指；與他說分欄標清。
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from decision_card_signals import candle_up_taiwan
+        from wayne_navigator import NAV_CHART_DPI, _fp
+    except Exception:
+        return ""
+    bars = _twii_bars_for_teach(db_path, 120, pack)
+    if len(bars) < 16 or not save_path:
+        return ""
+    i0 = (
+        _bar_index_by_ymd(bars, "20260929")
+        or _bar_index_by_ymd(bars, "20260925")
+        or _bar_index_by_ymd(bars, "20260915")
+        or 0
+    )
+    bars = list(bars[i0:])
+    anc = _twii_abc_anchors(bars)
+    if not anc:
+        return ""
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    n = len(bars)
+    opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
+    highs, lows, closes = anc["highs"], anc["lows"], anc["closes"]
+    vols = [float(r.get("volume") or 0) for r in bars]
+    i5, i_alow, i_bhi = anc["i5"], anc["i_alow"], anc["i_bhi"]
+    i_now = anc["i_now"]
+    y5, y_alow, y_bhi, y_now = anc["y5"], anc["y_alow"], anc["y_bhi"], anc["y_now"]
+    self_pack = _build_self_pred_levels(
+        pack,
+        y_now=float(y_now),
+        y5=float(y5),
+        y_alow=float(y_alow),
+        y_bhi=float(y_bhi),
+        highs=highs,
+        lows=lows,
+        vols=vols,
+        bars=bars,
+        db_path=db_path,
+    )
+    # 掛回 pack 給敘述用
+    if isinstance(pack, dict):
+        pack["self_pred"] = self_pack
+
+    fig, (ax, axv) = plt.subplots(
+        2,
+        1,
+        figsize=(14.8, 9.2),
+        dpi=NAV_CHART_DPI,
+        sharex=True,
+        gridspec_kw=dict(height_ratios=(5.4, 1.35), hspace=0.05),
+    )
+    fig.patch.set_facecolor(_LIVE_BG)
+    _style_live_ax(ax, axv)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=1.6, alpha=0.75, zorder=6)
+    ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=1.6, alpha=0.75, zorder=6)
+    ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=1.7, zorder=6)
+    for ii, yy, col in (
+        (i5, y5, "#ff8a80"),
+        (i_alow, y_alow, "#ff8a80"),
+        (i_bhi, y_bhi, "#40c4ff"),
+        (i_now, y_now, "#ea80fc"),
+    ):
+        ax.scatter([ii], [yy], s=36, c=col, zorder=8, edgecolors="#fff", linewidths=0.45)
+    _pin_pivot_name(ax, i5, y5, "⑤", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.3, fontsize=9)
+    _pin_pivot_name(ax, i_alow, y_alow, "A", "#ff8a80", _fp, side="auto", tip="low", n=n, pad_x=0.3, fontsize=9)
+    _pin_pivot_name(ax, i_bhi, y_bhi, "B", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.3, fontsize=9)
+
+    mine_ys = [float(r["level"]) for r in (self_pack.get("mine") or [])]
+    his_ys = [float(r["level"]) for r in (self_pack.get("his_aux") or [])]
+    y_lo = min([min(lows)] + mine_ys + his_ys)
+    y_hi = max([max(highs)] + mine_ys + his_ys)
+    span = max(y_hi - y_lo, 1.0)
+    ymin, ymax = y_lo - span * 0.12, y_hi + span * 0.14
+    ax.set_ylim(ymin, ymax)
+    ax.set_xlim(-0.5, n + 4.2)
+
+    right: List[Dict[str, Any]] = []
+    # 主：我估（亮）
+    for row in self_pack.get("mine") or []:
+        right.append(
+            {
+                "x": n - 1,
+                "y": float(row["level"]),
+                "text": str(row.get("label") or "")[:26],
+                "color": str(row.get("color") or "#ffcc80"),
+            }
+        )
+    # 輔：他說（淡灰，互撞時 _place 會丟低優先——他說標以「他」開頭不算 soft，所以用較淡色且放後面）
+    for row in self_pack.get("his_aux") or []:
+        right.append(
+            {
+                "x": n - 1,
+                "y": float(row["level"]),
+                "text": str(row.get("label") or "")[:26],
+                "color": str(row.get("color") or "#78909c"),
+            }
+        )
+    # 今
+    right.append(
+        {
+            "x": n - 1,
+            "y": float(y_now),
+            "text": f"今{_px(float(y_now))}",
+            "color": "#ea80fc",
+        }
+    )
+    _place_live_right_labels(
+        ax,
+        right,
+        n=n,
+        ymin=ymin,
+        ymax=ymax,
+        fp=_fp,
+        level_dash=True,
+        min_gap=(ymax - ymin) * 0.07,
+    )
+    ax.set_ylabel("加權・我估主圖", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
+    axv.set_ylabel("量", fontproperties=_fp(9, "bold"), color=_LIVE_MUTED)
+    ticks, labs = [], []
+    for i, r in enumerate(bars):
+        if i == 0 or i == n - 1 or i % 5 == 0 or i in (i5, i_alow, i_bhi):
+            ticks.append(i)
+            labs.append(_md(r.get("date")))
+    axv.set_xticks(ticks)
+    axv.set_xticklabels(labs, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT)
+    for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
+        lab.set_fontproperties(_fp(9, "bold"))
+        lab.set_color(_LIVE_MUTED)
+
+    fig.text(
+        0.03,
+        0.975,
+        "我的判斷預估（主・橘）｜他說位階（輔・灰）｜≠買訊｜不准當他的下一步",
+        fontproperties=_fp(12, "bold"),
+        color=_LIVE_TEXT,
+        ha="left",
+        va="top",
+    )
+    ref_line = "；".join(str(x) for x in (self_pack.get("refs") or [])[:2])[:110]
+    fig.text(
+        0.03,
+        0.948,
+        ref_line or "依據＝官方柱幾何＋庫內美股已收",
+        fontproperties=_fp(9, "bold"),
+        color=_LIVE_MUTED,
+        ha="left",
+        va="top",
+    )
+    us_bias = str(self_pack.get("us_bias") or "")
+    ax.text(
+        0.012,
+        0.04,
+        (us_bias or "美股依據見上欄；無％＝庫內尚無已收")[:48],
+        transform=ax.transAxes,
+        fontproperties=_fp(8, "bold"),
+        color="#ffcc80" if us_bias else _LIVE_MUTED,
+        ha="left",
+        va="bottom",
+        zorder=12,
+        bbox=dict(boxstyle="round,pad=0.18", fc="#0b0f14", ec="#ffcc80", lw=0.7, alpha=0.92),
+    )
+    fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.2)
     plt.close(fig)
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
 
