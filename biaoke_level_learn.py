@@ -573,13 +573,13 @@ def _finish_last_twii_candle(
 
 
 def _bar_clock_tag(bars: Sequence[Dict[str, Any]]) -> str:
-    """末日若為盤中疊加 →『盤中』；否則『收』（不准把未收當收）。
+    """末日若為盤中疊加 →『盤中』；否則『收盤』（不准把未收當收）。
 
     教具標題請用 `_teach_query_clock`（含查詢當下 HH:MM）；本函式留相容。
     """
     if bars and int((bars[-1] or {}).get("live_session") or 0) == 1:
         return "盤中"
-    return "收"
+    return "收盤"
 
 
 def _parse_query_at(raw: Any) -> Optional[datetime]:
@@ -598,17 +598,42 @@ def _parse_query_at(raw: Any) -> Optional[datetime]:
     return dt.astimezone(TAIPEI)
 
 
+def _teach_session_phase_word(dt: datetime) -> str:
+    """查詢戳時段字：盤前／市撮（試搓）／盤中／收盤。只認台北牆鐘＋開市日。"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        open_day = bool(is_tw_open_calendar_day(dt.strftime("%Y%m%d")))
+    except Exception:
+        open_day = dt.weekday() < 5
+    if not open_day:
+        return "收盤"
+    hm = int(dt.hour) * 60 + int(dt.minute)
+    # 試搓＝市撮：08:30 ≤ t < 09:00；更早＝盤前；09:00–13:30＝盤中；其後＝收盤
+    if hm < 8 * 60 + 30:
+        return "盤前"
+    if hm < 9 * 60:
+        return "市撮"
+    if hm < 13 * 60 + 30:
+        return "盤中"
+    return "收盤"
+
+
 def _teach_query_clock(
     bars: Sequence[Dict[str, Any]],
     *,
     pack: Optional[Dict[str, Any]] = None,
     generated_at: Optional[datetime] = None,
 ) -> str:
-    """遠／近／超近標題時鐘：一律帶查詢當下 HH:MM（三張同 pack['query_at']）。
+    """遠／近／超近時鐘：時段字＋查詢當下 HH:MM（三張同 pack['query_at']）。
 
-    盤中合併窗／已疊 MIS 顯示柱 →『盤中 HH:MM』；
-    其餘 →『查詢 HH:MM｜收』（不准把未收當收，也不准標題沒鐘點）。
+    盤前／市撮／盤中／收盤；不准把未收當收盤，也不准標題沒鐘點。
     """
+    del bars  # 時段跟牆鐘；末柱 live_session 不覆寫市撮／盤前
     dt = None
     if isinstance(pack, dict):
         dt = _parse_query_at(pack.get("query_at"))
@@ -619,23 +644,14 @@ def _teach_query_clock(
     else:
         dt = dt.astimezone(TAIPEI)
     hm = dt.strftime("%H:%M")
-    live_bar = bool(bars) and int((bars[-1] or {}).get("live_session") or 0) == 1
-    live_win = False
-    try:
-        from live_quote import is_live_merge_window
-
-        live_win = bool(is_live_merge_window(dt))
-    except Exception:
-        live_win = False
-    if live_bar or live_win:
-        return f"盤中 {hm}"
-    return f"查詢 {hm}｜收"
+    return f"{_teach_session_phase_word(dt)} {hm}"
 
 
-# 教具查詢戳：螢光黃框＋大字（三張同一套；一眼讀日期／盤中或收／價）
+# 教具查詢戳：黃框白底；日期／時段黑字；價／漲跌台股紅漲綠跌
 _TEACH_STAMP_EDGE = "#ffff00"
-_TEACH_STAMP_FACE = "#1a2200"
-_TEACH_STAMP_TEXT = "#ffff66"
+_TEACH_STAMP_FACE = "#ffffff"
+_TEACH_STAMP_META = "#111111"
+_TEACH_STAMP_TEXT = "#111111"  # 相容舊讀；實畫走分段色
 
 
 def _day_change_vs_prev(
@@ -665,6 +681,15 @@ def _day_change_vs_prev(
     return out
 
 
+def _chg_paint_color(sign: int) -> str:
+    """台股慣例：漲紅跌綠；平盤黑。"""
+    if int(sign or 0) > 0:
+        return _LIVE_UP
+    if int(sign or 0) < 0:
+        return _LIVE_DOWN
+    return _TEACH_STAMP_META
+
+
 def _prev_bar_close(bars: Sequence[Dict[str, Any]]) -> Optional[float]:
     """前一個交易日收（bars 倒數第二根有收才算）。"""
     if not bars or len(bars) < 2:
@@ -682,7 +707,7 @@ def _teach_stamp_line(
     pack: Optional[Dict[str, Any]] = None,
     close: Optional[float] = None,
 ) -> str:
-    """查詢戳一行：YYYY-MM-DD ＋盤中/收＋價＋相對前一日漲跌點／％。"""
+    """查詢戳一行（純文字）：YYYY-MM-DD ＋時段鐘＋價＋相對前一日漲跌點／％。"""
     as_of = _ymd(bars[-1].get("date")) if bars else ""
     day = (
         f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}"
@@ -718,7 +743,7 @@ def _paint_teach_query_stamp(
     y: float = 0.958,
     ha: str = "right",
 ) -> None:
-    """三張教具共用：螢光黃框標查詢日／盤中或收／當時價／相對前一日漲跌（字加大）。
+    """三張教具共用：黃框白底；日期／時段黑；價與漲跌紅漲綠跌（對前一交易日）。
 
     預設貼右、略離上緣，不准壓標題白字；近／超近可再調 y 適中。
     """
@@ -729,27 +754,144 @@ def _paint_teach_query_stamp(
             from wayne_navigator import _fp as fp
         except Exception:
             return
-    # 有漲跌字稍長：略縮字級仍一眼可讀
-    line = _teach_stamp_line(bars, pack=pack, close=close)
-    fsz = 15 if ("（" in line and len(line) > 36) else 17
-    fig.text(
-        float(x),
-        float(y),
-        line,
-        fontproperties=fp(fsz, "bold"),
-        color=_TEACH_STAMP_TEXT,
-        ha=str(ha or "right"),
-        va="top",
-        zorder=40,
-        clip_on=False,
-        bbox=dict(
+    from matplotlib.offsetbox import AnnotationBbox, HPacker, TextArea
+
+    as_of = _ymd(bars[-1].get("date")) if bars else ""
+    day = (
+        f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}"
+        if len(as_of) == 8
+        else (as_of or "—")
+    )
+    clock = _teach_query_clock(bars, pack=pack)
+    px_v = close
+    if px_v is None:
+        try:
+            px_v = float(bars[-1].get("close") or 0)
+        except (TypeError, ValueError):
+            px_v = 0.0
+    try:
+        px_s = _px(float(px_v or 0))
+    except (TypeError, ValueError):
+        px_s = "—"
+    chg = _day_change_vs_prev(px_v, _prev_bar_close(bars))
+    chg_s = str(chg.get("text") or "").strip()
+    chg_col = _chg_paint_color(int(chg.get("sign") or 0))
+    line_len = len(f"{day}  {clock}  {px_s}  {chg_s}")
+    fsz = 15 if (chg_s and line_len > 36) else 17
+    kids = [
+        TextArea(
+            f"{day}  {clock}  ",
+            textprops={
+                "color": _TEACH_STAMP_META,
+                "fontproperties": fp(fsz, "bold"),
+            },
+        ),
+        TextArea(
+            px_s,
+            textprops={
+                "color": chg_col,
+                "fontproperties": fp(fsz, "bold"),
+            },
+        ),
+    ]
+    if chg_s:
+        kids.append(
+            TextArea(
+                f"  {chg_s}",
+                textprops={
+                    "color": chg_col,
+                    "fontproperties": fp(fsz, "bold"),
+                },
+            )
+        )
+    pack_box = HPacker(children=kids, align="center", pad=0, sep=0)
+    ha_s = str(ha or "right")
+    if ha_s == "left":
+        box_alignment = (0.0, 1.0)
+    elif ha_s == "center":
+        box_alignment = (0.5, 1.0)
+    else:
+        box_alignment = (1.0, 1.0)
+    ab = AnnotationBbox(
+        pack_box,
+        (float(x), float(y)),
+        xycoords="figure fraction",
+        box_alignment=box_alignment,
+        pad=0.32,
+        frameon=True,
+        bboxprops=dict(
             boxstyle="round,pad=0.40",
             facecolor=_TEACH_STAMP_FACE,
             edgecolor=_TEACH_STAMP_EDGE,
             linewidth=2.6,
-            alpha=0.98,
+        ),
+        zorder=40,
+    )
+    fig.add_artist(ab)
+
+
+def _paint_index_last_chg_tip(
+    ax,
+    *,
+    i: float,
+    high: float,
+    low: float,
+    close: float,
+    prev_close: Optional[float],
+    label_prefix: str = "費半",
+    fp=None,
+    x_col: Optional[float] = None,
+) -> None:
+    """指數末根旁標：白底黃框＋紅漲綠跌；放右欄上空，不准壓縮圖K。"""
+    if ax is None or fp is None:
+        return
+    del high, low
+    chg = _day_change_vs_prev(close, prev_close)
+    chg_s = str(chg.get("text") or "").strip()
+    col = _chg_paint_color(int(chg.get("sign") or 0))
+    try:
+        px_s = _px(float(close))
+    except (TypeError, ValueError):
+        px_s = "—"
+    bits = [f"{label_prefix}{px_s}"]
+    if chg_s:
+        bits.append(chg_s)
+    try:
+        ymin, ymax = [float(v) for v in ax.get_ylim()]
+        span = max(1.0, ymax - ymin)
+    except Exception:
+        ymin, ymax, span = float(close) * 0.9, float(close) * 1.1, abs(float(close)) * 0.2
+    try:
+        x0, x1 = [float(v) for v in ax.get_xlim()]
+    except Exception:
+        x0, x1 = 0.0, float(i) + 4.0
+    # 右欄上方空檔（跌後上空）；與末根K水平錯開
+    x_lab = float(x_col) if x_col is not None else max(float(i) + 2.8, x1 - 2.2)
+    y_lab = float(ymax) - span * 0.10
+    ax.text(
+        x_lab,
+        y_lab,
+        " ".join(bits),
+        fontproperties=fp(10, "bold"),
+        color=col,
+        ha="left",
+        va="top",
+        zorder=17,
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.28",
+            facecolor=_TEACH_STAMP_FACE,
+            edgecolor=_TEACH_STAMP_EDGE,
+            linewidth=1.8,
         ),
     )
+    # 右欄要容得下長標
+    need_right = x_lab + 4.8
+    if need_right > x1:
+        try:
+            ax.set_xlim(x0, need_right)
+        except Exception:
+            pass
 
 
 def _thesis_cap_for_query(
@@ -4062,12 +4204,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             pack, n=n_axis, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
         )
     )
-    # 費半＋加權同一右欄：對齊最長標「7/29低…」；虛線自點位連到標左緣
-    x_right_col = float(n_axis) + 2.55
+    # 費半右欄再外推：末根縮圖K與費C今／漲跌黃框不准互壓
+    x_right_col = float(n_axis) + 3.45
     try:
-        x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 0.85)
+        x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 1.35)
     except (TypeError, ValueError):
         pass
+    x_sox_col = x_right_col + 0.55
     if _sox_right_deferred and _sox_ylabel_span is not None:
         # 費半價窗窄：間距略鬆才留得下 A低10445＋次回測9865＋費C今
         _place_live_right_labels(
@@ -4079,7 +4222,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             fp=_fp,
             level_dash=True,
             min_gap=(float(_sox_ylabel_span[1]) - float(_sox_ylabel_span[0])) * 0.045,
-            x_col=x_right_col,
+            x_col=x_sox_col,
         )
     _place_live_right_labels(
         ax,
@@ -4177,12 +4320,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             t2.append(i)
             l2.append(f"{_md(d)}費半")
     t2, l2 = _sparse_xticks(t2, l2, min_gap=3)
-    # 右標／xlim 跟最長軸（費半可多日）；加權右標仍貼加權末日
+    # 右標／xlim 跟最長軸（費半可多日）；加權右標仍貼加權末日；費半黃框右欄要留空
     x_right = max(
         n_axis + 8.6,
         n_tw + 8.6,
         float(tip.get("xlim_right") or n_tw) + 2.0,
         fut_x + 2.0,
+        float(x_sox_col) + 5.2,
     )
     # 拉到4/28 時左側多留一格，首根回測K不准被裁掉
     x_left = -1.35 if need_apr else -0.6
@@ -4220,33 +4364,45 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=16,
             clip_on=False,
         )
-        # 費半末根：標收＋相對前一日漲跌點／％（與黃框同一套讀法）
-        _sox_chg = _day_change_vs_prev(float(_sox_last_repaint["c"]), _prev_c)
-        _sox_bits = [f"費半{_px(float(_sox_last_repaint['c']))}"]
-        if _sox_chg.get("text"):
-            _sox_bits.append(str(_sox_chg["text"]))
-        _sox_col = (
-            _LIVE_UP
-            if int(_sox_chg.get("sign") or 0) > 0
-            else (_LIVE_DOWN if int(_sox_chg.get("sign") or 0) < 0 else _TEACH_STAMP_TEXT)
+        # 費半末根：白底黃框＋紅漲綠跌；右欄上空，不准壓縮圖K
+        _paint_index_last_chg_tip(
+            axu,
+            i=float(_sox_last_repaint["i"]),
+            high=float(_sox_last_repaint["h"]),
+            low=float(_sox_last_repaint["l"]),
+            close=float(_sox_last_repaint["c"]),
+            prev_close=_prev_c,
+            label_prefix="費半",
+            fp=_fp,
+            x_col=float(x_sox_col),
         )
-        axu.text(
-            float(_sox_last_repaint["i"]) + 0.55,
-            float(_sox_last_repaint["c"]),
-            " ".join(_sox_bits),
-            fontproperties=_fp(10, "bold"),
-            color=_sox_col,
-            ha="left",
-            va="center",
-            zorder=17,
+        # 標完再蓋一次末根K，保證標籤就算貼近也不蓋死縮圖柱
+        _paint_one_live_candle(
+            axu,
+            int(_sox_last_repaint["i"]),
+            open_=float(_sox_last_repaint["o"]),
+            high=float(_sox_last_repaint["h"]),
+            low=float(_sox_last_repaint["l"]),
+            close=float(_sox_last_repaint["c"]),
+            prev_c=_prev_c,
+            candle_up=candle_up_taiwan,
+            min_body=float(_sox_last_repaint["min_body"]),
+            width=0.86,
+            wick_lw=2.05,
+            z_wick=18,
+            z_body=19,
+            edgecolor="#ffffff",
+            edge_lw=0.9,
+        )
+        axu.scatter(
+            [float(_sox_last_repaint["i"])],
+            [float(_sox_last_repaint["c"])],
+            s=52,
+            facecolors="none",
+            edgecolors="#ea80fc",
+            linewidths=1.5,
+            zorder=20,
             clip_on=False,
-            bbox=dict(
-                boxstyle="round,pad=0.28",
-                facecolor=_TEACH_STAMP_FACE,
-                edgecolor=_TEACH_STAMP_EDGE,
-                linewidth=1.8,
-                alpha=0.96,
-            ),
         )
     if _tw_last_repaint:
         ax.scatter(
@@ -4301,9 +4457,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 黃框再下移到雙行標題下方右側，不准壓白字
+    # 黃框在雙行標題下右側；略抬高，少壓費半縮圖區
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
+        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.905
     )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")[:56]

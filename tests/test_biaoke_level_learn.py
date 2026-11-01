@@ -188,10 +188,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_paint_teach_query_stamp" in micro_blk
     assert "def _teach_query_clock" in src
     assert "def _paint_teach_query_stamp" in src
+    assert "def _paint_index_last_chg_tip" in src
     assert "_TEACH_STAMP_EDGE" in src
+    assert '_TEACH_STAMP_FACE = "#ffffff"' in src or "_TEACH_STAMP_FACE = '#ffffff'" in src
+    assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
     # 黃框：遠／近／超近都下移讓出白字標題（不准貼上緣壓字）
-    assert "y=0.855" in far_blk
+    assert "y=0.905" in far_blk
     assert "y=0.93" in near_blk
     assert "y=0.93" in micro_blk
     assert "subplots_adjust" in near_blk
@@ -556,24 +559,35 @@ def test_schedule_ingest_paint_defaults_to_full_panels():
 
 
 def test_teach_query_clock_shows_wall_hhmm():
-    """三張教具時鐘：一律查詢當下 HH:MM；盤中／收都要有鐘點。"""
+    """三張教具時鐘：時段字＋HH:MM；盤前／市撮／盤中／收盤。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    from biaoke_level_learn import _teach_query_clock, _teach_stamp_line
+    from biaoke_level_learn import (
+        _teach_query_clock,
+        _teach_session_phase_word,
+        _teach_stamp_line,
+        _TEACH_STAMP_FACE,
+    )
 
     tz = ZoneInfo("Asia/Taipei")
-    # 用平日 10:17，避免週末被合併窗判成休市
+    assert _TEACH_STAMP_FACE.lower() in ("#ffffff", "#fff", "white")
+    # 用平日 10:17＝盤中
     live_bars = [{"date": "20261030", "live_session": 1, "close": 46000}]
     pack = {"query_at": datetime(2026, 10, 30, 10, 17, tzinfo=tz).isoformat()}
     clock = _teach_query_clock(live_bars, pack=pack)
     assert clock == "盤中 10:17"
-    # 合併窗到 16:30；之後／週末才標「查詢 HH:MM｜收」
+    assert _teach_session_phase_word(datetime(2026, 10, 30, 8, 10, tzinfo=tz)) == "盤前"
+    assert _teach_session_phase_word(datetime(2026, 10, 30, 8, 45, tzinfo=tz)) == "市撮"
+    assert _teach_query_clock(
+        live_bars,
+        pack={"query_at": datetime(2026, 10, 30, 8, 45, tzinfo=tz).isoformat()},
+    ) == "市撮 08:45"
     closed = _teach_query_clock(
         [{"date": "20261030", "close": 46000}],
         pack={"query_at": datetime(2026, 10, 30, 17, 5, tzinfo=tz).isoformat()},
     )
-    assert closed == "查詢 17:05｜收"
+    assert closed == "收盤 17:05"
     stamp = _teach_stamp_line(
         [
             {"date": "20261029", "close": 45500.0},
@@ -583,7 +597,7 @@ def test_teach_query_clock_shows_wall_hhmm():
         close=45211.83,
     )
     assert "2026-10-30" in stamp
-    assert "查詢 17:05｜收" in stamp
+    assert "收盤 17:05" in stamp
     assert "45,212" in stamp
     # 相對前一個交易日（不是前天）
     assert "−288" in stamp or "-288" in stamp
