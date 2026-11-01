@@ -123,7 +123,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "x_col" in src or "同一右欄" in src or "結構優先" in src
     # 教不懂浪的學生：遠窗／近窗各一張＋外圍費半對照；缺資料自補
     assert "遠窗" in src and "近窗" in src
-    assert "20260728" in src  # 遠窗從七月底大A底
+    assert "20260331" in src  # 遠窗自3月底（推進⑤起4/1）
     assert "_sox_abc_anchors_on_axis" in src  # 遠窗下方費半自轉折
     assert "_render_twii_far_dark" in src
     assert "_render_us_compare_dark" in src
@@ -177,6 +177,12 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_c_subwave_anchors_vs_biaoke60" in far_blk
     assert "_c_subwave_anchors_vs_biaoke60" in near_blk
     assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
+    # 三張都掛八浪縮圖；近／超近 detail 框此刻
+    assert "_paint_eight_wave_inset" in far_blk
+    assert "_paint_eight_wave_inset" in near_blk
+    assert "_paint_eight_wave_inset" in micro_blk
+    assert "detail=True" in near_blk and "detail=True" in micro_blk
+    assert "_twii_macro_wave_anchors" in src
     assert "日K小波①②（輔助）" in micro_blk or "橙①②僅輔助" in micro_blk
     # 浪名釘轉折點同價Y（左右錯開），不准再漂空＋_seat 上推
     assert "_pin_pivot_name" in far_blk
@@ -311,11 +317,11 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert '"low"' in pin and '"top"' in pin
     assert "不准蓋住縮圖K" in pin or "整盒不准蓋住縮圖K" in pin
     assert 'tip="high"' in block and 'tip="low"' in block
-    # 近A／近B 字釘轉折尖點；大A底／大B末另標；不准再寫⑤起
-    assert 'y_alow,\n        "近A低"' in block or '"近A低"' in block
-    assert '"近B高"' in block and 'side="auto"' in block
+    # 大結構：⑤起4/1／⑤終6/23／大A底／大B末；近窗細分另淡標
     assert '"大A底' in block and '"大B末' in block
-    assert "⑤起" not in block
+    assert "⑤起" in block and "⑤終" in block
+    assert "20260401" in block and "20260623" in block
+    assert "_paint_eight_wave_inset" in block
     assert "i_now, y_now, \"C進行中\"" in block or "i_now, y_now" in block
     assert "keep_left_of_right=True" in block
     assert "_biaoke_pred_label" in block
@@ -751,35 +757,37 @@ def test_far_teach_rolls_left_when_over_max():
     """遠窗超過固定根數 → 只留最右一段（新日進來刪最左）。"""
     from biaoke_level_learn import _FAR_TEACH_MAX_BARS, _far_teach_roll_bars
 
-    assert _FAR_TEACH_MAX_BARS == 126
-    rows = [{"date": f"2026{i:04d}", "close": float(i)} for i in range(1, 140)]
+    assert _FAR_TEACH_MAX_BARS == 152
+    rows = [{"date": f"2026{i:04d}", "close": float(i)} for i in range(1, 180)]
     got = _far_teach_roll_bars(rows, max_bars=_FAR_TEACH_MAX_BARS)
-    assert len(got) == 126
-    assert got[0]["date"] == rows[-126]["date"]
+    assert len(got) == 152
+    assert got[0]["date"] == rows[-152]["date"]
     assert got[-1]["date"] == rows[-1]["date"]
     short = _far_teach_roll_bars(rows[:50], max_bars=_FAR_TEACH_MAX_BARS)
     assert len(short) == 50
 
 
-def test_far_twii_big_a_low_is_729_not_april():
-    """遠窗拉到4/28後，大A底仍須是7/29低，不准改用四月窗底；且標成大A／大B不是⑤起。"""
+def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
+    """遠窗自3月底：推進⑤＝4/1→6/23；大A底仍＝7/29，不准用四月窗底當A。"""
     import inspect
 
     from biaoke_level_learn import _render_twii_far_dark
 
     src = inspect.getsource(_render_twii_far_dark)
+    assert "20260331" in src
+    assert "20260401" in src and "20260623" in src
     assert "20260729" in src
     assert "大A底" in src
-    assert "大B" in src or "大B反彈" in src
-    assert "⑤起" not in src
-    assert "不准用窗內最低" in src or "不准把四月" in src or "跳過 7/29" in src
+    assert "⑤起" in src and "⑤終" in src
+    assert "_twii_macro_wave_anchors" in src
+    assert "_paint_eight_wave_inset" in src
     assert "_far_teach_roll_bars" in src or "_FAR_TEACH_MAX_BARS" in src
     from biaoke_level_learn import (
         _FAR_TEACH_MAX_BARS,
         _bar_index_by_ymd,
         _build_live_pack,
         _far_teach_roll_bars,
-        _twii_abc_anchors,
+        _twii_macro_wave_anchors,
         _twii_bars_for_teach,
         _ymd,
     )
@@ -790,17 +798,23 @@ def test_far_twii_big_a_low_is_729_not_april():
     pack = _build_live_pack(
         db, now=datetime(2026, 11, 1, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
     )
-    bars = _twii_bars_for_teach(db, 320, pack)
-    i0 = _bar_index_by_ymd(bars, "20260428") or 0
+    bars = _twii_bars_for_teach(db, 400, pack)
+    i0 = (
+        _bar_index_by_ymd(bars, "20260331")
+        or _bar_index_by_ymd(bars, "20260401")
+        or 0
+    )
     bars = _far_teach_roll_bars(list(bars[i0:]), max_bars=_FAR_TEACH_MAX_BARS)
-    anc = _twii_abc_anchors(bars)
-    assert anc
-    i5 = int(anc["i5"])
-    i729 = _bar_index_by_ymd(bars, "20260729")
-    assert i729 is not None and i729 < i5
+    mac = _twii_macro_wave_anchors(bars)
+    assert mac
+    assert _ymd(bars[int(mac["i5_start"])].get("date")) in ("20260331", "20260401")
+    assert _ymd(bars[int(mac["i5_end"])].get("date")) == "20260623"
+    assert _ymd(bars[int(mac["i_alow"])].get("date")) in ("20260728", "20260729")
     lows = [float(r.get("low") or 0) for r in bars]
-    # 窗內最低在四月 → 若誤用 min 會錯；正確大A底＝7/29
-    i_min = min(range(0, i5 + 1), key=lambda i: lows[i])
+    i729 = int(mac["i_alow"])
+    i5e = int(mac["i5_end"])
+    # 窗內最低可在四月 → 大A底仍釘 7/29，不准用 min
+    i_min = min(range(0, i5e + 1), key=lambda i: lows[i])
     assert _ymd(bars[i_min].get("date")) < "20260701"
     assert abs(float(lows[i729]) - 39384.85) < 2.0
 
