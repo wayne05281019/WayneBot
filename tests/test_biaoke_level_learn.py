@@ -264,9 +264,13 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "x_dash0" in place
     assert "min_gap=(ymax - ymin) * 0.055" in block
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
-    assert "n + 8.6" in block
+    # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
+    assert "n_axis + 8.6" in block or "n + 8.6" in block
     assert "right=0.98" in block
     assert "right=0.90" not in block
+    assert "_extend_us_ohlc_past_twii" in block or "_extend_us_ohlc_past_twii" in src
+    assert "_FAR_SOX_MIN_BODY_FRAC" in src
+    assert "facecolors=\"none\"" in block or "facecolors='none'" in block
     # 浪名：high 在尖上、low 在尖下，不准左右蓋住縮圖K
     pin = src[src.index("def _pin_pivot_name") : src.index("def _c_path_label_xy")]
     assert '"high"' in pin and '"bottom"' in pin
