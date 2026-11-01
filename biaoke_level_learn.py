@@ -1127,39 +1127,67 @@ def _latest_biaoke_index_snip(
     return (snip, best_pid) if with_id else snip
 
 
+def _reserve_avoid_zone(
+    ax: Any, x0: float, y0: float, x1: float, y1: float
+) -> None:
+    """登記圖上禁區（縮圖／黃戳／主線空檔）；智慧標不准坐進去。"""
+    if ax is None:
+        return
+    zs = getattr(ax, "_wayne_avoid_zones", None)
+    if zs is None:
+        ax._wayne_avoid_zones = []
+        zs = ax._wayne_avoid_zones
+    zs.append(
+        (
+            float(min(x0, x1)),
+            float(min(y0, y1)),
+            float(max(x0, x1)),
+            float(max(y0, y1)),
+        )
+    )
+
+
 def _seat_onchart_labels(
     cands: Sequence[Dict[str, Any]],
     *,
     ymin: float,
     ymax: float,
     min_gap: float,
+    avoid_zones: Optional[Sequence[Tuple[float, float, float, float]]] = None,
 ) -> List[Dict[str, Any]]:
-    """智慧標座位：同圖內標垂直拉開，仍撞就丟掉（寧可少標不准互壓／蓋字）。"""
+    """智慧標座位：同圖內標垂直拉開，仍撞就丟掉（寧可少標不准互壓／蓋字／蓋縮圖）。"""
     items = [dict(c) for c in (cands or []) if c.get("text") is not None]
     if not items:
         return []
     span = max(ymax - ymin, 1.0)
     gap = max(float(min_gap), span * 0.045, 180.0)
+    zones = [tuple(z) for z in (avoid_zones or []) if z is not None]
+
+    def _in_zone(x: float, y: float, min_dx: float) -> bool:
+        for zx0, zy0, zx1, zy1 in zones:
+            if (zx0 - min_dx) <= x <= (zx1 + min_dx) and zy0 <= y <= zy1:
+                return True
+        return False
+
     items.sort(key=lambda d: (-int(d.get("pri") or 0), -float(d.get("y") or 0)))
     placed: List[Dict[str, Any]] = []
     used: List[Tuple[float, float]] = []  # (x, y)
     for it in items:
         x = float(it.get("x") or 0)
         y = float(it.get("y") or 0)
-        for _ in range(8):
+        min_dx = float(it.get("min_dx") or 1.2)
+        nudge_up = (it.get("nudge") or "up") == "up"
+        for _ in range(10):
             hit = any(
-                abs(x - ux) < float(it.get("min_dx") or 1.2)
-                and abs(y - uy) < gap * 0.92
-                for ux, uy in used
-            )
+                abs(x - ux) < min_dx and abs(y - uy) < gap * 0.92 for ux, uy in used
+            ) or _in_zone(x, y, min_dx)
             if not hit:
                 break
-            y = y + gap * (0.55 if (it.get("nudge") or "up") == "up" else -0.55)
+            y = y + gap * (0.55 if nudge_up else -0.55)
         y = min(max(y, ymin + gap * 0.25), ymax - gap * 0.25)
         if any(
-            abs(x - ux) < float(it.get("min_dx") or 1.2) and abs(y - uy) < gap * 0.88
-            for ux, uy in used
-        ):
+            abs(x - ux) < min_dx and abs(y - uy) < gap * 0.88 for ux, uy in used
+        ) or _in_zone(x, y, min_dx):
             continue
         used.append((x, y))
         it["x"], it["y"] = x, y
@@ -2896,8 +2924,9 @@ def _pin_pivot_name(
     fontsize: int = 10,
     zorder: int = 10,
     clear_dy: Optional[float] = None,
+    pri: int = 5,
 ) -> None:
-    """浪名智慧標：尖點對準，整盒不准蓋住縮圖K。
+    """浪名智慧標：尖點對準，整盒不准蓋住縮圖K；走座位，不准互壓／蓋禁區。
 
     tip=high → 整盒在高點上方；tip=low → 整盒在低點下方（含 bbox pad 也離尖）；
     tip=mid → 左右錯開到柱外（C／今）。
@@ -2907,6 +2936,7 @@ def _pin_pivot_name(
         y_lo, y_hi = ax.get_ylim()
         span = max(float(y_hi) - float(y_lo), 1.0)
     except Exception:
+        y_lo, y_hi = float(y) - 1.0, float(y) + 1.0
         span = max(abs(float(y)) * 0.08, 1.0)
     # bbox pad 會往尖點回吃一截 → 必須再撐開，整盒才離得開K
     lift = float(clear_dy) if clear_dy is not None else max(span * 0.04, abs(float(y)) * 0.002)
@@ -2934,10 +2964,49 @@ def _pin_pivot_name(
         elif side == "right":
             xx = float(x) + float(pad_x)
             ha = "left"
+    seats = getattr(ax, "_wayne_pin_seats", None)
+    if seats is None:
+        ax._wayne_pin_seats = []
+        seats = ax._wayne_pin_seats
+    avoid = list(getattr(ax, "_wayne_avoid_zones", None) or [])
+    prior = [
+        {
+            "x": float(sx),
+            "y": float(sy),
+            "text": f"__seat{i}",
+            "pri": 100,
+            "min_dx": 1.35,
+        }
+        for i, (sx, sy) in enumerate(seats)
+    ]
+    lab_s = str(lab)
+    seated = _seat_onchart_labels(
+        prior
+        + [
+            {
+                "x": float(xx),
+                "y": float(yy),
+                "text": lab_s,
+                "pri": int(pri),
+                "nudge": "up" if tip_k == "high" else "down",
+                "min_dx": 1.35,
+            }
+        ],
+        ymin=float(y_lo),
+        ymax=float(y_hi),
+        min_gap=span * 0.05,
+        avoid_zones=avoid,
+    )
+    mine = [r for r in seated if str(r.get("text")) == lab_s]
+    if not mine:
+        return
+    xx = float(mine[0]["x"])
+    yy = float(mine[0]["y"])
+    seats.append((xx, yy))
     ax.text(
         xx,
         yy,
-        str(lab),
+        lab_s,
         fontproperties=fp(int(fontsize), "bold"),
         color=color,
         ha=ha,
@@ -3004,8 +3073,8 @@ def _place_live_right_labels(
     # 間距只跟價窗比例走。不准絕對 floor 把真價標漂離（費半 10445↔9865）。
     gap = float(min_gap) if min_gap is not None else span * 0.09
     gap = max(gap, span * 0.055)
-    # 浪／細浪硬標可互近一點（c5↔今、c4↔鄰近飆預測）；不准被軟標／預測擠掉
-    gap_wave = max(span * 0.028, 220.0)
+    # 浪／細浪硬標可互近，仍留呼吸；c5(45677)↔今(45212) 差值約 465 必須雙留
+    gap_wave = max(span * 0.033, 360.0)
 
     def _tier(t: str) -> int:
         """0=浪／細浪／今（必留）→1=飆預測等→2=Fib／切／錨（可丟）。"""
@@ -4913,6 +4982,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     }
     # 先定 ylim 再釘浪名：lift／字級才對最終軸距，整盒不准蓋K
     ax.set_ylim(ymin, ymax)
+    # 遠窗縮圖禁區（B 反彈中下空檔），智慧標不准坐進縮圖
+    _i_far_l0 = (
+        _bar_index_by_ymd(bars, "20260811")
+        or _bar_index_by_ymd(bars, "20260820")
+        or int(i_alow + max(2, (i_b_end - i_alow) // 3))
+    )
+    _i_far_r0 = (
+        _bar_index_by_ymd(bars, "20260922")
+        or _bar_index_by_ymd(bars, "20260915")
+        or int(i_alow + max(4, 2 * (i_b_end - i_alow) // 3))
+    )
+    _y_far_lo0 = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.22
+    _y_far_hi0 = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.55
+    _reserve_avoid_zone(ax, float(_i_far_l0), _y_far_lo0, float(_i_far_r0), _y_far_hi0)
     _pin_pivot_name(
         ax,
         i5s,
@@ -5278,9 +5361,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 加權／費半黃框上移進標題列右緣，不准擋費半縮圖K
+    # 加權／費半黃框：加權貼最上；費半在桃色副標下一行，不准擋桃色字／費半K
     _tw_stamp_y = 0.982
-    _sox_stamp_y = 0.948
+    _sox_stamp_y = 0.918
     _paint_teach_query_stamp(
         fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=_tw_stamp_y
     )
@@ -5344,17 +5427,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         or _bar_index_by_ymd(bars, "20260915")
         or int(i_alow + max(4, 2 * (i_b_end - i_alow) // 3))
     )
-    _y_far_lo = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.22
-    _y_far_hi = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.55
+    # 略上移進 A～B 空檔中心，底邊離大B金虛≥間隙
+    _y_far_lo = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.30
+    _y_far_hi = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.58
     _far_ins = _fig_rect_from_data_box(
         ax,
         fig,
-        x0=float(_i_far_l),
+        x0=float(_i_far_l) + 2.0,
         y0=_y_far_lo,
-        x1=float(_i_far_r),
+        x1=float(_i_far_r) + 1.0,
         y1=_y_far_hi,
-        min_w=0.13,
-        min_h=0.11,
+        min_w=0.12,
+        min_h=0.10,
     )
     _paint_eight_wave_inset(
         fig,
@@ -5740,6 +5824,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     span = max(ymax - ymin, 1.0)
     ax.axvline(i_c, color="#ea80fc", lw=0.95, ls=(0, (2, 2)), alpha=0.8, zorder=5)
+    # 禁區先登記：黃戳帶＋右下縮圖帶，智慧標不准蓋主線／縮圖／戳
+    _reserve_avoid_zone(ax, float(n) - 24.0, 40500.0, float(n) + 5.0, 43300.0)
+    _reserve_avoid_zone(ax, float(n) * 0.55, 31800.0, float(n) - 0.5, 39200.0)
     _pin_pivot_name(
         ax,
         i5s,
@@ -5805,12 +5892,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         pad_x=1.05,
         fontsize=9,
     )
-    if c_sub.get("ok"):
-        i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        # c5 圖上不浮字（只右欄）；c4 釘在細高點
-        _pin_pivot_name(
-            ax, i4, y4, f"c4細 {_px(y4)}", "#ce93d8", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=9
-        )
+    # c4／c5 只走右欄，不准再浮主圖壓紫C線／K
     # Fib／錨／撐壓虛線改走右標函式（自 note['x'] 連到同欄標左緣），不准再左一截短虛線
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}
@@ -6015,17 +6097,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="top",
     )
-    # 近窗：黃戳對齊使用者紅橫杠＝B升段右側空檔（約 9～10月、價～42k；tight後對質）
+    # 近窗：黃戳對齊紅橫杠空檔，略離大B金虛線（價～41200、偏右）
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
-    _stamp_y_data = 41800.0
-    _sx_st, _sy_st = _fig_xy_from_axes_data(ax, fig, float(n) - 8.0, _stamp_y_data)
+    _stamp_y_data = 41200.0
+    _sx_st, _sy_st = _fig_xy_from_axes_data(ax, fig, float(n) - 4.0, _stamp_y_data)
     _paint_teach_query_stamp(
         fig,
         bars,
         pack=pack,
         close=closes[-1],
         fp=_fp,
-        x=min(0.92, max(0.72, float(_sx_st) + 0.14)),
+        x=min(0.94, max(0.78, float(_sx_st) + 0.10)),
         y=float(_sy_st),
         ha="right",
     )
@@ -6044,27 +6126,14 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗縮圖：紅框空檔＝⑤上升段左下（約5/下～7/中、價 33k～38.5k）
-    _i_near_l = (
-        _bar_index_by_ymd(bars, "20260520")
-        or _bar_index_by_ymd(bars, "20260515")
-        or int(i5s + max(2, (i5e - i5s) // 4))
-    )
-    _i_near_r = (
-        _bar_index_by_ymd(bars, "20260715")
-        or _bar_index_by_ymd(bars, "20260710")
-        or int(i5s + max(4, (i5e - i5s) // 2))
-    )
-    _near_inset = _fig_rect_from_data_box(
-        ax,
-        fig,
-        x0=float(_i_near_l),
-        y0=32800.0,
-        x1=float(_i_near_r),
-        y1=38500.0,
-        min_w=0.16,
-        min_h=0.14,
-    )
+    # 近窗縮圖：右下偏上空檔（離量欄、離黃戳、離主浪線）
+    _sy_hi = _fig_xy_from_axes_data(ax, fig, float(n) - 2.0, 39800.0)[1]
+    _sy_lo = _fig_xy_from_axes_data(ax, fig, float(n) - 2.0, 34800.0)[1]
+    if _sy_hi < _sy_lo:
+        _sy_hi, _sy_lo = _sy_lo, _sy_hi
+    _ins_bot = float(_sy_lo) + 0.01
+    _ins_h = max(0.12, min(0.155, float(_sy_hi) - _ins_bot - 0.018))
+    _near_inset = (0.70, _ins_bot, 0.165, _ins_h)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -6435,14 +6504,14 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         pad=2,
         sep=3,
     )
-    # 左下層級框：固定軸內比例，後面縮圖靠它右側、同面積
-    _leg_ax_x, _leg_ax_y = 0.012, 0.045
+    # 左下層級框：貼量欄上；稍低起步讓與縮圖同高時頂仍≤44042
+    _leg_ax_x, _leg_ax_y = 0.012, 0.028
     _leg_ax_w, _leg_ax_h = 0.24, 0.30
     anchored = AnchoredOffsetbox(
         loc="lower left",
         child=box,
-        pad=0.42,
-        borderpad=0.55,
+        pad=0.32,
+        borderpad=0.40,
         frameon=True,
         bbox_to_anchor=(_leg_ax_x, _leg_ax_y),
         bbox_transform=ax.transAxes,
@@ -6645,10 +6714,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="top",
     )
-    # 超近：黃戳回右上（縮圖改去左框右側，不再搶右上）
+    # 超近：黃戳再降半行，與桃色副標拉開
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.93
+        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))[:64]
     fig.text(
@@ -6660,21 +6729,17 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="bottom",
     )
-    # 縮圖＝左層級框右側、同面積；頂不高過飆預測 44042 虛線
-    _axpos = ax.get_position()
-    _ins_ax_x = _leg_ax_x + _leg_ax_w + 0.02
-    _ins_ax_y = _leg_ax_y
-    _ins_w = _leg_ax_w * float(_axpos.width)
-    _ins_h = _leg_ax_h * float(_axpos.height)
-    _ins_left = float(_axpos.x0) + _ins_ax_x * float(_axpos.width)
-    _ins_bot = float(_axpos.y0) + _ins_ax_y * float(_axpos.height)
-    _cap_x, _fy_cap = _fig_xy_from_axes_data(ax, fig, 0.0, 44042.0)
-    if _ins_bot + _ins_h > float(_fy_cap) - 0.012:
-        _ins_h = max(0.10, float(_fy_cap) - 0.012 - _ins_bot)
-        # 高度被 44042 裁短 → 加寬保同面積
-        _area = (_leg_ax_w * float(_axpos.width)) * (_leg_ax_h * float(_axpos.height))
-        if _ins_h > 1e-6:
-            _ins_w = min(0.28, _area / _ins_h)
+    # 縮圖強制＝左框同底同高同寬（量測後原樣複製；不准單邊裁高）
+    fig.canvas.draw()
+    _renderer = fig.canvas.get_renderer()
+    _bb = anchored.get_window_extent(_renderer)
+    _inv = fig.transFigure.inverted()
+    _lx0, _ly0 = _inv.transform((_bb.x0, _bb.y0))
+    _lx1, _ly1 = _inv.transform((_bb.x1, _bb.y1))
+    _ins_bot = float(_ly0)
+    _ins_h = max(0.12, float(_ly1) - float(_ly0))
+    _ins_w = max(0.14, float(_lx1) - float(_lx0))
+    _ins_left = float(_lx1) + 0.010
     _paint_eight_wave_inset(
         fig,
         fp=_fp,

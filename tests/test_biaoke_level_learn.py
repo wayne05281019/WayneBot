@@ -212,23 +212,24 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _thesis_cap_for_query" in src
     # 黃框：遠窗上移進標題列右緣（不准擋費半K）；近／超近讓出白字標題
     assert "_tw_stamp_y = 0.982" in far_blk
-    assert "_sox_stamp_y = 0.948" in far_blk
-    # 大B末標假突破；近窗黃戳對紅橫杠～41800；縮圖／遠窗對紅框空檔
+    assert "_sox_stamp_y = 0.918" in far_blk
+    # 大B末標假突破；近窗黃戳～41200；縮圖右下空檔；智慧標座位接上
     assert "假突破" in src
     assert "假突破" in far_blk and "假突破" in near_blk
-    assert "41800" in near_blk
-    assert "_fig_rect_from_data_box" in src
+    assert "41200" in near_blk
+    assert "_reserve_avoid_zone" in src
+    assert "_seat_onchart_labels" in src
     assert "_fig_xy_from_axes_data" in near_blk
-    # 超近：縮圖貼左層級框右側、頂不高過 44042；圖例色線併左下
-    assert "44042" in micro_blk
+    # 超近：黃戳在桃色下一行；左框／縮圖同底同高
+    assert "y=0.855" in micro_blk
     assert "AnchoredOffsetbox" in micro_blk
-    assert "_leg_ax_w" in micro_blk or "_ins_left" in micro_blk
+    assert "get_window_extent" in micro_blk
     assert "他說 B→今" in micro_blk
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
     assert "_flash_spec_from_pivots" in src
     assert "_far_ins" in far_blk or "_fig_rect_from_data_box" in far_blk
-    assert "20260520" in near_blk or "_near_inset" in near_blk
+    assert "_near_inset" in near_blk and "0.70" in near_blk
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src
