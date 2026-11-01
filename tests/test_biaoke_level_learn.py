@@ -243,10 +243,12 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "不准再貼" in special or "量欄已有" in special
     assert "ax.text" not in special
     assert "day_tag" in src[src.index("def _paint_max_vol_hl_zone") : src.index("def _hl_spans_excluding")]
-    # 右標確認後畫對應真價虛線；近窗 level_dash=False 不疊線
+    # 右標：真價水平虛線可留；不准再畫點→標籤斜引線（會整張凌亂）
     place = src[src.index("def _place_live_right_labels") : src.index("def _his_micro_degree")]
     assert "axhline" in place
     assert "level_dash" in place
+    assert "不准" in place and "斜虛線" in place
+    assert "ax.plot(" not in place
     assert "level_dash=False" in block or "level_dash=True" in block
     # C進行中放 B→今 上方空白，不准蓋縮圖K
     assert "c_lab_x" in block
@@ -572,6 +574,28 @@ def test_thesis_reads_333_to_334_without_c_prefix(tmp_path):
     assert "3→4" in (out.get("thesis") or "")
     assert "抄底" in (out.get("wait_struct") or "") or "破底" in (out.get("wait_struct") or "")
     assert out.get("post_id") == "n334"
+
+
+def test_thesis_pred_levels_sox_next_support_apr28():
+    """A已破→下一撐＝4/28 9865；台指 44042／7/29 39384 都要抽出。"""
+    from biaoke_level_learn import _thesis_pred_levels, _tw_tip_anchors
+
+    snip = (
+        "破台指期破44042。"
+        "未來如果還有第三組末跌段，7/29低點39384必破。"
+        "7/29 A波低點10445必破，星期五低點10439已經破A波低點。"
+        "接下來會去測4/28 9865，如果破，大盤走5波下跌的機率就高很多。"
+    )
+    pred = _thesis_pred_levels(snip, "data/wayne_market.db")
+    tw_lv = {round(float(r["level"])) for r in pred["tw"]}
+    sox_roles = {str(r.get("role")): float(r["level"]) for r in pred["sox"]}
+    assert 44042 in tw_lv
+    assert any(abs(v - 39384) < 2 for v in tw_lv)
+    assert "A波低" in sox_roles and abs(sox_roles["A波低"] - 10445) < 2
+    assert "次回測" in sox_roles and abs(sox_roles["次回測"] - 9865) < 2
+    pack = {"pred_levels": pred}
+    anchors = _tw_tip_anchors(pack)
+    assert 44042.0 in anchors
 
 
 def test_snip_prefers_main_over_short_reply(tmp_path):

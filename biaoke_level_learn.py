@@ -660,7 +660,8 @@ def _latest_biaoke_index_snip(
             best_pid = sid
     if not best_blob:
         return empty
-    snip = re.sub(r"\s+", " ", best_blob).strip()[:400]
+    # 留足長：11/1 文第3點才寫費半10445／4/28 9865，截太短會漏預測點
+    snip = re.sub(r"\s+", " ", best_blob).strip()[:900]
     return (snip, best_pid) if with_id else snip
 
 
@@ -802,7 +803,8 @@ def _latest_level_thesis(
         "wait_struct": wait[:360],
         "morph_note": morph[:180],
         "fib_note": "黃金切割反彈壓 0.382／0.618／0.75（他10/27台指日盤・可修訂）",
-        "snippet": snip[:240],
+        "snippet": snip[:320],
+        "snippet_full": snip[:900],
         "as_of": str((row["as_of"] if row else "") or cap),
         "post_id": post_id,
         "chart_as_of": cap,
@@ -1080,17 +1082,29 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         for sym, yid in pairs:
-            # 近 40 根已夠近窗對照就先跳過抓
+            # 近窗夠、且已有 4/28 前後柱 → 跳過；否則拉 1y（教具要標他點過的回測日K）
             n_have = conn.execute(
                 "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=?",
                 (sym, "20260901"),
             ).fetchone()[0]
-            if int(n_have or 0) >= 25:
+            n_apr = conn.execute(
+                "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=? AND date<=?",
+                (sym, "20260420", "20260510"),
+            ).fetchone()[0]
+            n_jul = conn.execute(
+                "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=? AND date<=?",
+                (sym, "20260725", "20260802"),
+            ).fetchone()[0]
+            if (
+                int(n_have or 0) >= 25
+                and int(n_apr or 0) >= 3
+                and int(n_jul or 0) >= 3
+            ):
                 stats[sym] = int(n_have)
                 continue
             url = (
                 f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
-                f"?interval=1d&range=3mo"
+                f"?interval=1d&range=1y"
             )
             try:
                 resp = requests.get(url, timeout=12, headers=ua)
@@ -1510,6 +1524,157 @@ def _biaoke_pred_label(
     return base
 
 
+def _official_bar_low(db_path: str, symbol: str, ymd: str) -> Optional[float]:
+    """官方日K低；缺柱回 None（不准假數）。"""
+    d = _ymd(ymd)
+    sym = str(symbol or "").upper()
+    if not db_path or not d or not sym:
+        return None
+    try:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+        try:
+            row = conn.execute(
+                "SELECT low FROM index_daily WHERE symbol=? AND date=?",
+                (sym, d),
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    if not row or row[0] is None:
+        return None
+    try:
+        return float(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
+    """從他最新題旨抽出寫死預測點＋回測日（只認原文數字，不准發明）。
+
+    回傳 tw／sox 列：level／ref_ymd／ref_md／role／tag／label／note。
+    """
+    s = str(snip or "")
+    out: Dict[str, Any] = {"tw": [], "sox": [], "note": ""}
+    if not s:
+        return out
+
+    def _add(bucket: str, *, level: float, ref_ymd: str, role: str, tag: str, label: str) -> None:
+        row = {
+            "level": float(level),
+            "ref_ymd": _ymd(ref_ymd),
+            "ref_md": _md(ref_ymd) if _ymd(ref_ymd) else "",
+            "role": role,
+            "tag": tag,
+            "label": label,
+        }
+        out[bucket].append(row)
+
+    # 台指／大盤
+    if re.search(r"44042", s):
+        _add(
+            "tw",
+            level=44042.0,
+            ref_ymd="",
+            role="周一破台指",
+            tag="未到",
+            label=f"飆預測{_px(44042)}周一破台指",
+        )
+    if re.search(r"39384", s) and re.search(r"7\s*/\s*29|7月29", s):
+        off = _official_bar_low(db_path, "TWII", "20260729")
+        tag = "第三組才必破"
+        lab = f"7/29低{_px(39384)}（第三組末跌）"
+        if off is not None and abs(off - 39384.0) <= 2.0:
+            lab = f"7/29低{_px(off)}（第三組末跌）"
+        _add(
+            "tw",
+            level=float(off) if off is not None and abs(off - 39384.0) <= 2.0 else 39384.0,
+            ref_ymd="20260729",
+            role="第三組末跌",
+            tag=tag,
+            label=lab,
+        )
+
+    # 費半：7/29 A波低 10445；周五 10439 已破；次回測 4/28 9865
+    if re.search(r"10445", s) and re.search(r"7\s*/\s*29|A\s*波", s):
+        off = _official_bar_low(db_path, "SOX", "20260729")
+        fri = _official_bar_low(db_path, "SOX", "20261030")
+        tag = "已破" if (fri is not None and fri < 10445.0 - 0.5) or re.search(
+            r"10439.*已破|已經破A", s
+        ) else "未破"
+        lv = float(off) if off is not None and abs(off - 10445.0) <= 2.0 else 10445.0
+        lab = f"7/29 A波低{_px(lv)}{tag}"
+        if fri is not None and tag == "已破":
+            lab = f"7/29 A波低{_px(lv)}已破（周五低{_px(fri)}）"
+        _add(
+            "sox",
+            level=lv,
+            ref_ymd="20260729",
+            role="A波低",
+            tag=tag,
+            label=lab,
+        )
+    if re.search(r"9865", s) and re.search(r"4\s*/\s*28", s):
+        off = _official_bar_low(db_path, "SOX", "20260428")
+        lv = float(off) if off is not None and abs(off - 9865.0) <= 2.0 else 9865.0
+        _add(
+            "sox",
+            level=lv,
+            ref_ymd="20260428",
+            role="次回測",
+            tag="未到",
+            label=f"次回測4/28低{_px(lv)}",
+        )
+
+    bits = []
+    for row in out["tw"]:
+        bits.append(str(row.get("label") or ""))
+    for row in out["sox"]:
+        bits.append(str(row.get("label") or ""))
+    out["note"] = "｜".join(b for b in bits if b)[:280]
+    return out
+
+
+def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
+    """加權撐位：舊錨＋他最新寫死點（高→低）。"""
+    vals = [45546.0, 44210.0]
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            v = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if v >= 20000:
+            vals.append(v)
+    return tuple(sorted(set(vals), reverse=True))
+
+
+def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
+    """預估虛線下一錨順序（近→遠）。有周一 44042 就插在 45546 後。"""
+    has_44042 = any(
+        abs(float(r.get("level") or 0) - 44042.0) < 0.6
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+    )
+    has_39384 = any(
+        abs(float(r.get("level") or 0) - 39384.0) < 2.0
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+    )
+    out: List[float] = [45546.0]
+    if has_44042:
+        out.append(44042.0)
+    out.append(44210.0)
+    if has_39384:
+        out.append(39384.0)
+    # 去重保序
+    seen = set()
+    uniq: List[float] = []
+    for v in out:
+        if v in seen:
+            continue
+        seen.add(v)
+        uniq.append(v)
+    return tuple(uniq)
+
+
 def _paint_window_dual_zones(
     ax,
     *,
@@ -1603,9 +1768,29 @@ def _build_live_pack(
         wait = f"{wait}｜{fut['note']}"
     if claims.get("note"):
         wait = f"{wait}｜{claims['note']}"
+    pred = _thesis_pred_levels(
+        str(
+            thesis_pack.get("snippet_full")
+            or thesis_pack.get("snippet")
+            or ""
+        ),
+        db_path,
+    )
+    if pred.get("note"):
+        wait = f"{wait}｜預測點：{pred['note']}"
+    for row in (pred.get("tw") or []):
+        try:
+            levels[f"pred_tw_{int(float(row['level']))}"] = float(row["level"])
+        except (TypeError, ValueError, KeyError):
+            continue
+    for row in (pred.get("sox") or []):
+        try:
+            levels[f"pred_sox_{int(float(row['level']))}"] = float(row["level"])
+        except (TypeError, ValueError, KeyError):
+            continue
     return {
         "thesis": thesis_pack.get("thesis") or "",
-        "wait_struct": wait[:400],
+        "wait_struct": wait[:480],
         "turn_note": str(turn)[:240],
         "vol_note": vol,
         "intent_note": intent,
@@ -1613,6 +1798,8 @@ def _build_live_pack(
         "morph_note": str(thesis_pack.get("morph_note") or "")[:180],
         "fib_note": str(thesis_pack.get("fib_note") or "")[:120],
         "key_levels": levels,
+        "pred_levels": pred,
+        "pred_note": str(pred.get("note") or "")[:280],
         "snippet": thesis_pack.get("snippet") or "",
         "chart_as_of": chart_as_of,
         "thesis_as_of": thesis_cap,
@@ -1993,8 +2180,9 @@ def _place_live_right_labels(
 ) -> None:
     """右側價標：結構優先、近距去重、垂直拉開，不准字壓字／字騎線。
 
-    確認過的右標預設在真價畫對應水平虛線；文字 Y 與價線 Y 分開，短引線接到真價。
-    note 可設 dash=False；呼叫端 level_dash=False 時整批不畫虛線（近窗已自畫線）。
+    確認過的右標預設在真價畫水平虛線；文字盡量貼真價 Y，撞了才垂直錯開。
+    **不准**再畫「點→標籤」斜虛線引線（會整張凌亂）。
+    note 可設 dash=False；呼叫端 level_dash=False 時整批不畫水平虛線。
     """
     items = [dict(x) for x in (notes or []) if x.get("y") is not None and x.get("text")]
     if not items:
@@ -2024,26 +2212,21 @@ def _place_live_right_labels(
     # 由高到低排文字座，強制最小間距
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
-    x_text = n + 0.7
+    x_text = n + 0.55
     for it in kept:
         y_true = float(it["y"])
-        y = y_true + gap * 0.18
-        for py in placed:
-            if abs(y - py) < gap:
-                y = py - gap
-        y = min(max(y, ymin + gap * 0.35), ymax - gap * 0.3)
+        # 先貼真價；撞了才往下錯（不准斜虛線連回真價）
+        y = y_true
         while any(abs(y - py) < gap * 0.95 for py in placed):
             y -= gap
             if y < ymin + gap * 0.2:
                 break
-        if abs(y - y_true) < gap * 0.12:
-            y = y_true - gap * 0.2
+        y = min(max(y, ymin + gap * 0.25), ymax - gap * 0.25)
         # 最後再跟已放標檢查一次，仍撞就跳過（寧可少標不准壓）
         if any(abs(y - py) < gap * 0.9 for py in placed):
             continue
         placed.append(y)
         color = str(it.get("color") or _LIVE_MUTED)
-        x0 = float(it.get("x", n - 1))
         # 確認過的右標 → 真價水平虛線（字用實心底，不准騎線）
         if level_dash and it.get("dash", True):
             ax.axhline(
@@ -2051,23 +2234,13 @@ def _place_live_right_labels(
                 color=color,
                 lw=0.85,
                 ls=(0, (3, 2)),
-                alpha=0.55,
+                alpha=0.5,
                 zorder=4,
             )
-        # 短引線到右欄，文字用實心底蓋住虛線穿過處
-        ax.plot(
-            [x0, x_text - 0.25],
-            [y_true, y],
-            color=color,
-            lw=0.7,
-            alpha=0.55,
-            zorder=5,
-            solid_capstyle="round",
-        )
         ax.text(
             x_text,
             y,
-            str(it["text"])[:16],
+            str(it["text"])[:18],
             fontproperties=fp(10, "bold"),
             color=color,
             ha="left",
@@ -2242,23 +2415,33 @@ def _c_forecast_tip(
     y_now: float,
     y_ref: float,
     lows: Sequence[float],
+    anchors: Sequence[float] = (45546.0, 44210.0),
 ) -> Dict[str, Any]:
-    """C 段預估虛線端點：只指向他說過的下一錨（45546→44210），不准發明新價。
+    """C 段預估虛線端點：只指向他說過的下一錨，不准發明新價。
 
+    預設 45546→44210；題旨有周一破台指 44042 時改走該階梯（見 _tw_tip_anchors）。
     端點標＝『飆預測』（與右欄／青帶同一套）；不准再寫多餘的「預估↓同價」。
     今已低於錨才用『預估↓續弱』（沒有具體他說價可標）。
     """
     fut_x = float(i_now + max(3, 4))
-    tag_45546 = _level_break_tag(45546.0, lows)
-    anchor_y: Optional[float]
-    if tag_45546 != "已破":
-        fut_y = 45546.0
-        anchor_y = 45546.0
-        lab = _biaoke_pred_label(45546.0, tag_45546)
+    chain = [float(x) for x in (anchors or (45546.0, 44210.0)) if x]
+    if not chain:
+        chain = [45546.0, 44210.0]
+    anchor_y: Optional[float] = None
+    fut_y = float(chain[-1])
+    lab = _biaoke_pred_label(fut_y, _level_break_tag(fut_y, lows))
+    for a in chain:
+        tag = _level_break_tag(a, lows)
+        if tag != "已破":
+            fut_y = float(a)
+            anchor_y = float(a)
+            lab = _biaoke_pred_label(a, tag)
+            break
     else:
-        fut_y = 44210.0
-        anchor_y = 44210.0
-        lab = _biaoke_pred_label(44210.0, _level_break_tag(44210.0, lows))
+        # 全破：仍標最後一錨狀態
+        fut_y = float(chain[-1])
+        anchor_y = float(chain[-1])
+        lab = _biaoke_pred_label(fut_y, _level_break_tag(fut_y, lows))
     # 今已低於該錨：略往下延伸示意續弱，仍不發明具體新價標
     if float(y_now) <= float(fut_y) + 1.0:
         drop = max(abs(float(y_ref) - float(y_now)) * 0.12, 180.0)
@@ -2285,12 +2468,15 @@ def _paint_c_forecast(
     n: int,
     show_label: bool = True,
     keep_left_of_right: bool = False,
+    anchors: Sequence[float] = (45546.0, 44210.0),
 ) -> Dict[str, Any]:
     """在今之後畫預估虛線＋標；回傳 tip 方便調 xlim。
 
     keep_left_of_right＝True 時標停在右欄左側，不准跟右價標互壓。
     """
-    tip = _c_forecast_tip(i_now=i_now, y_now=y_now, y_ref=y_ref, lows=lows)
+    tip = _c_forecast_tip(
+        i_now=i_now, y_now=y_now, y_ref=y_ref, lows=lows, anchors=anchors
+    )
     fut_x, fut_y = float(tip["fut_x"]), float(tip["fut_y"])
     ax.plot(
         [i_now, fut_x],
@@ -2504,6 +2690,134 @@ def _sox_abc_anchors_on_axis(
     }
 
 
+def _paint_sox_thesis_preds(
+    ax: Any,
+    *,
+    bars: Sequence[Dict[str, Any]],
+    sox_o: Sequence[float],
+    sox_h: Sequence[float],
+    sox_l: Sequence[float],
+    sox_c: Sequence[float],
+    pack: Dict[str, Any],
+    fp: Any,
+    i_now: int,
+    n: int,
+    ymin: float,
+    ymax: float,
+) -> None:
+    """費半上欄：已破 A → 下一撐（大量圖概念＝青帶＋金K回測日）；右欄標，不准點連虛線。"""
+    import math
+
+    preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
+    if not preds:
+        return
+    broken = next((r for r in preds if str(r.get("role") or "") == "A波低"), None)
+    nxt = next((r for r in preds if str(r.get("role") or "") == "次回測"), None)
+    y_hi = float(broken["level"]) if broken else None
+    y_lo = float(nxt["level"]) if nxt else None
+    # 青帶＝已破A低 → 次回測低（下一撐壓區）；跟加權青帶同一套讀法
+    if y_hi is not None and y_lo is not None and y_hi > y_lo:
+        ax.axhspan(y_lo, y_hi, facecolor="#4dd0e1", alpha=0.14, zorder=0.4)
+        ax.text(
+            0.012,
+            0.96,
+            f"青＝已破A{_px(y_hi)}→下一撐{_px(y_lo)}（4/28回測）",
+            transform=ax.transAxes,
+            fontproperties=fp(8, "bold"),
+            color="#4dd0e1",
+            ha="left",
+            va="top",
+            zorder=12,
+            bbox=dict(
+                boxstyle="round,pad=0.14", fc="#0b0f14", ec="#4dd0e1", lw=0.6, alpha=0.92
+            ),
+        )
+    right: List[Dict[str, Any]] = []
+    for row in preds:
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        ref = _ymd(row.get("ref_ymd"))
+        lab = str(row.get("label") or f"費{_px(lv)}")
+        col = "#ffab40" if "已破" in str(row.get("tag") or lab) else "#4dd0e1"
+        ii = _bar_index_by_ymd(bars, ref) if ref else None
+        if ii is not None and 0 <= ii < len(sox_l):
+            # 回測日金K＋豎導線（對齊大量圖：看得到那一根）
+            oo = float(sox_o[ii]) if ii < len(sox_o) else lv
+            hh = float(sox_h[ii]) if ii < len(sox_h) else lv
+            ll = float(sox_l[ii]) if math.isfinite(float(sox_l[ii])) else lv
+            cc = float(sox_c[ii]) if ii < len(sox_c) else lv
+            _paint_special_candle(
+                ax,
+                int(ii),
+                open_=oo,
+                high=hh,
+                low=ll,
+                close=cc,
+                color="#ffd54f",
+                date_lab=ref,
+                fp=fp,
+            )
+            ax.axvline(ii, color="#ffd54f", lw=0.85, ls=(0, (2, 2)), alpha=0.7, zorder=3)
+        right.append(
+            {
+                "x": n - 1,
+                "y": lv,
+                "text": lab[:18],
+                "color": col,
+            }
+        )
+    if right:
+        _place_live_right_labels(
+            ax,
+            right,
+            n=n,
+            ymin=ymin,
+            ymax=ymax,
+            fp=fp,
+            level_dash=True,
+            min_gap=max((ymax - ymin) * 0.1, 180.0),
+        )
+
+
+def _tw_pred_right_notes(
+    pack: Dict[str, Any],
+    *,
+    n: int,
+    lows: Sequence[float],
+    tip_skip: Optional[set] = None,
+) -> List[Dict[str, Any]]:
+    """加權右欄：他最新寫死點（44042／39384…）。"""
+    skip = tip_skip or set()
+    out: List[Dict[str, Any]] = []
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if round(lv, 1) in skip:
+            continue
+        tag = str(row.get("tag") or "")
+        if tag in {"未到", "未破", "已破"}:
+            text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) if tag == "未到" else tag)
+        else:
+            text = str(row.get("label") or _biaoke_pred_label(lv))
+        # 周一破台指：狀態跟官方柱
+        if abs(lv - 44042.0) < 0.6:
+            text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) + "周一")
+        out.append(
+            {
+                "x": n - 1,
+                "y": lv,
+                "text": text[:28],
+                "color": "#82b1ff" if lv < 45000 else "#4dd0e1",
+            }
+        )
+        skip.add(round(lv, 1))
+    return out
+
+
 def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
     """教具①遠窗三欄：上費半波浪 → 中加權⑤起／ABC → 下加權日量（最大量黃）。
 
@@ -2524,11 +2838,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _ensure_us_index_daily(db_path)
     except Exception:
         logger.exception("遠窗費半補資料略過")
-    bars = _twii_bars_for_teach(db_path, 260, pack)
+    bars = _twii_bars_for_teach(db_path, 320, pack)
     if len(bars) < 20 or not save_path:
         return ""
+    # 費半已破A→次回測4/28：上下同軸拉長到該日K，青帶才畫得出下一撐
+    need_apr = bool(((pack or {}).get("pred_levels") or {}).get("sox"))
     i0 = (
-        _bar_index_by_ymd(bars, "20260728")
+        (_bar_index_by_ymd(bars, "20260428") if need_apr else None)
+        or _bar_index_by_ymd(bars, "20260728")
         or _bar_index_by_ymd(bars, "20260729")
         or _bar_index_by_ymd(bars, "20260725")
         or _bar_index_by_ymd(bars, "20260825")
@@ -2538,7 +2855,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     anc = _twii_abc_anchors(bars)
     if not anc:
         return ""
-    sox = _load_us_daily(db_path, "SOX", "20260720")
+    sox = _load_us_daily(db_path, "SOX", "20260420" if need_apr else "20260720")
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     n = len(bars)
     opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -2619,30 +2936,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             before5 = [i for i in valid if i <= s5i]
             s_lo_i = min(before5, key=lambda i: float(sox_l[i])) if before5 else s5i
             s_lo_y = float(sox_l[s_lo_i])
-            # 費半無官方量、他也沒點名費半價錨 → 不准畫飆預測青帶
-            # 只留自轉折浪線，位階帶只畫在加權（45546／44210／切割）
+            # 費半無官方量 → 不畫撐壓黃區；他點過的 A／次回測低另標（見 pred_levels）
             axu.plot([s_lo_i, s5i], [s_lo_y, s5], color="#ff8a80", lw=2.1, zorder=7)
             axu.plot([s5i, sai], [s5, sa], color="#ff8a80", lw=2.0, zorder=7)
             axu.plot([sai, sbi], [sa, sb], color="#40c4ff", lw=2.0, zorder=7)
             axu.plot([sbi, i_now], [sb, sn], color="#ea80fc", lw=1.85, zorder=7)
-            s_fut = sn - max((sb - sn) * 0.28, abs(sb - sn) * 0.12)
-            axu.plot(
-                [i_now, fut_x],
-                [sn, s_fut],
-                color="#ea80fc",
-                lw=1.4,
-                ls=(0, (4, 2)),
-                alpha=0.78,
-                zorder=6,
-            )
-            for ii, yy, col in (
-                (s_lo_i, s_lo_y, "#ffab91"),
-                (s5i, s5, "#ff8a80"),
-                (sai, sa, "#ff8a80"),
-                (sbi, sb, "#40c4ff"),
-                (i_now, sn, "#ea80fc"),
-            ):
-                axu.scatter([ii], [yy], s=34, c=col, zorder=8, edgecolors="#fff", linewidths=0.4)
             span_s = span_raw
             s_lo_md = _md(bars[s_lo_i].get("date"))
             # 費C進行中放 B→今 上方空白，不准蓋住縮圖K
@@ -2667,15 +2965,42 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     zorder=10,
                     bbox=dict(boxstyle="round,pad=0.1", fc="#0b0f14", ec=col, lw=0.55, alpha=0.94),
                 )
-            axu.set_ylim(
-                min(x for x in sox_l if x == x) - span_s * 0.12,
-                max(x for x in sox_h if x == x) + span_s * 0.18,
+            for ii, yy, col in (
+                (s_lo_i, s_lo_y, "#ffab91"),
+                (s5i, s5, "#ff8a80"),
+                (sai, sa, "#ff8a80"),
+                (sbi, sb, "#40c4ff"),
+                (i_now, sn, "#ea80fc"),
+            ):
+                axu.scatter([ii], [yy], s=34, c=col, zorder=8, edgecolors="#fff", linewidths=0.4)
+            sox_pred_ys = [
+                float(r.get("level"))
+                for r in ((pack or {}).get("pred_levels") or {}).get("sox") or []
+                if r.get("level") is not None
+            ]
+            y_lo_s = min([x for x in sox_l if x == x] + sox_pred_ys)
+            y_hi_s = max([x for x in sox_h if x == x] + sox_pred_ys)
+            # 先定 y 再畫青帶／右標，否則標會裁掉
+            axu.set_ylim(y_lo_s - span_s * 0.14, y_hi_s + span_s * 0.2)
+            _paint_sox_thesis_preds(
+                axu,
+                bars=bars,
+                sox_o=sox_o,
+                sox_h=sox_h,
+                sox_l=sox_l,
+                sox_c=sox_c,
+                pack=pack,
+                fp=_fp,
+                i_now=i_now,
+                n=n,
+                ymin=y_lo_s - span_s * 0.14,
+                ymax=y_hi_s + span_s * 0.2,
             )
     axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axu.text(
         0.012,
         0.04,
-        "費半＝自轉折浪對照（無官方量→不畫撐壓黃區）",
+        "費半＝自轉折浪＋他點過回測日低（無官方量→不畫撐壓黃區）",
         transform=axu.transAxes,
         fontproperties=_fp(8, "bold"),
         color=_LIVE_MUTED,
@@ -2686,16 +3011,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
 
     # —— 中：加權價（先畫底帶在K下一層，再畫K）——
-    ymin = min(min(lows), 44210, y_far_lo) - 520
+    tw_supports = _tw_support_ladder(pack)
+    tip_anchors = _tw_tip_anchors(pack)
+    ymin = min([min(lows), y_far_lo] + list(tw_supports)) - 520
     ymax = max(highs) + 780
     tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     sr = _next_support_resist(
         y_now,
-        supports=(45546.0, 44210.0),
+        supports=tw_supports,
         resists=(47637.0, 48613.0, y_bhi, y5),
     )
     # 預估端先算：同價只留端點「飆預測」，左青帶／右欄不准再貼一次
-    tip_pre = _c_forecast_tip(i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows)
+    tip_pre = _c_forecast_tip(
+        i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, anchors=tip_anchors
+    )
     skip_lab_ys = (
         [float(tip_pre["anchor_y"])] if tip_pre.get("anchor_y") is not None else []
     )
@@ -2753,30 +3082,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        show_label=not bool(c_sub.get("ok")),
+        # 遠窗長軸：細浪留給近／超近，這裡只出結構＋預測點
+        show_label=True,
+        anchors=tip_anchors,
     )
     fut_x = float(tip.get("fut_x") or fut_x)
-    if c_sub.get("ok"):
-        i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        i5c, y5c = int(c_sub["i_c5_lo"]), float(c_sub["y_c5"])
-        ax.plot(
-            [i4, i5c],
-            [y4, y5c],
-            color="#ce93d8",
-            lw=1.15,
-            ls=(0, (2.2, 1.6)),
-            alpha=0.9,
-            zorder=6.5,
-        )
-        ax.scatter(
-            [i4, i5c],
-            [y4, y5c],
-            s=28,
-            c="#ce93d8",
-            zorder=8,
-            edgecolors="#fff",
-            linewidths=0.45,
-        )
     for ii, yy, col in (
         (i_far_lo, y_far_lo, "#ff8a80"),
         (i5, y5, "#ff8a80"),
@@ -2809,28 +3119,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=10,
             bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.8, alpha=0.94),
         )
-    if c_sub.get("ok"):
-        i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        # c4 圖上可標；c5 一律只走右欄（與 45546 太近，浮字必互壓）
-        ax.text(
-            i4,
-            y4 + span * 0.022,
-            f"c4細 {_px(y4)}",
-            fontproperties=_fp(8, "bold"),
-            color="#ce93d8",
-            ha="center",
-            va="bottom",
-            zorder=10,
-            bbox=dict(
-                boxstyle="round,pad=0.1",
-                fc="#0b0f14",
-                ec="#ce93d8",
-                lw=0.55,
-                alpha=0.9,
-                linestyle="dashed",
-            ),
-        )
-    # 右欄：他點過的位＝飆預測；預估端已標的同價不准再貼
+    # 右欄：遠窗只留大結構＋他最新預測點；細c4／c5 留給近／超近（長軸少標才不亂）
     tip_anchor = tip.get("anchor_y")
     tip_skip = {round(float(tip_anchor), 1)} if tip_anchor is not None else set()
     right_notes = [
@@ -2839,32 +3128,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         {"x": i_alow, "y": y_alow, "text": f"A低 {_px(y_alow)}", "color": "#ff8a80"},
         {"x": i_now, "y": y_now, "text": f"今 {_px(y_now)}", "color": "#ea80fc"},
     ]
-    if c_sub.get("ok"):
-        right_notes.append(
-            {
-                "x": int(c_sub["i_c4_hi"]),
-                "y": float(c_sub["y_c4"]),
-                "text": f"c4細 {_px(c_sub['y_c4'])}",
-                "color": "#ce93d8",
-            }
-        )
-        right_notes.append(
-            {
-                "x": int(c_sub["i_c5_lo"]),
-                "y": float(c_sub["y_c5"]),
-                "text": f"c5細 {_px(c_sub['y_c5'])}",
-                "color": "#ce93d8",
-            }
-        )
-    if sr_skip.get("resist") is not None and round(float(sr_skip["resist"]), 1) not in tip_skip:
-        right_notes.append(
-            {
-                "x": n - 1,
-                "y": float(sr_skip["resist"]),
-                "text": _biaoke_pred_label(float(sr_skip["resist"])),
-                "color": "#4dd0e1",
-            }
-        )
     if sr_skip.get("support") is not None and round(float(sr_skip["support"]), 1) not in tip_skip:
         right_notes.append(
             {
@@ -2874,7 +3137,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "color": "#4dd0e1",
             }
         )
-    if sr.get("support") != 44210.0 and round(44210.0, 1) not in tip_skip:
+    if round(44210.0, 1) not in tip_skip:
         right_notes.append(
             {
                 "x": n - 1,
@@ -2883,6 +3146,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "color": "#82b1ff",
             }
         )
+    right_notes.extend(
+        _tw_pred_right_notes(pack, n=n, lows=c_seg_lows, tip_skip=tip_skip)
+    )
     _place_live_right_labels(
         ax,
         right_notes,
@@ -2891,8 +3157,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ymax=ymax,
         fp=_fp,
         level_dash=True,
-        # c5 與 45546 很近：右標強制拉開
-        min_gap=max((ymax - ymin) * 0.12, 820.0),
+        min_gap=max((ymax - ymin) * 0.09, 900.0),
     )
     ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     ax.set_ylim(ymin, ymax)
@@ -2915,14 +3180,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     want = {
         _ymd(bars[0].get("date")),
         _ymd(bars[i_far_lo].get("date")),
+        "20260428",
+        "20260729",
         "20260825",
         "20261006",
         "20261015",
+        "20261030",
         _ymd(bars[-1].get("date")),
     }
     if sox_anc:
         for key in ("i5", "i_alow", "i_bhi"):
             want.add(_ymd(bars[int(sox_anc[key])].get("date")))
+    for row in ((pack or {}).get("pred_levels") or {}).get("sox") or []:
+        want.add(_ymd(row.get("ref_ymd")))
     t2, l2 = [], []
     for i, r in enumerate(bars):
         d = _ymd(r.get("date"))
@@ -2930,7 +3200,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             if i not in t2:
                 t2.append(i)
                 tag = ""
-                if i == i_far_lo:
+                if d == "20260428":
+                    tag = "費次回測"
+                elif d == "20260729":
+                    tag = "費A低"
+                elif i == i_far_lo:
                     tag = "⑤起"
                 elif i == i5:
                     tag = "⑤"
@@ -2941,8 +3215,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 l2.append(f"{_md(d)}{tag}")
     t2, l2 = _sparse_xticks(t2, l2, min_gap=3)
     x_right = max(n + 5.5, float(tip.get("xlim_right") or n) + 1.6, fut_x + 1.5)
+    # 拉到4/28 時左側多留一格，首根回測K不准被裁掉
+    x_left = -1.35 if need_apr else -0.6
     for a in (axu, ax, axv):
-        a.set_xlim(-0.6, x_right)
+        a.set_xlim(x_left, x_right)
     axv.set_xticks(t2)
     axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
     for a in (axu, ax, axv):
@@ -2959,15 +3235,15 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
         f"{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
     )
-    c_sub_bit = ""
-    if c_sub.get("ok"):
-        c_sub_bit = (
-            f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}（C內・對他60分）"
-        )
+    sox_bit = ""
+    sox_preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
+    if sox_preds:
+        sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
+    pred_foot = str(pack.get("pred_note") or "")[:72]
     fig.text(
         0.05,
         0.975,
-        f"第1張（遠窗）：上費半浪｜中加權｜下加權量　｜　{vz_y}　｜　{vz_c}{c_sub_bit}　｜　"
+        f"第1張（遠窗）：上費半浪｜中加權｜下加權量　｜　{vz_y}　｜　{vz_c}{sox_bit}　｜　"
         f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]} {_teach_query_clock(bars, pack=pack)} {_px(closes[-1])}",
         fontproperties=_fp(11, "bold"),
         color=_LIVE_TEXT,
@@ -2977,18 +3253,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.952,
-        "大＝日K ⑤→A→B→C｜細＝C內紫虛c4／c5（他60分1–5對齊・不取代ABC）｜"
-        "黃底＝最大量日高低｜青＝飆預測｜標不准互壓",
+        "大＝日K ⑤→A→B→C｜黃＝最大量日高低｜青＝下一撐壓／飆預測｜"
+        "右標＝水平虛線對真價（無斜引線）｜細浪見近／超近",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
         va="top",
     )
-    foot = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")[:56]
+    foot = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")[:48]
+    if pred_foot:
+        foot = f"{foot}｜{pred_foot}"[:110]
     fig.text(
         0.05,
         0.018,
-        f"{foot}｜大＝ABC｜細＝C內不取代ABC（他60分1–5）",
+        foot,
         fontproperties=_fp(10, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -3058,10 +3336,18 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    ymin = min(min(lows), 44210) - 480
+    tw_supports = _tw_support_ladder(pack)
+    tip_anchors = _tw_tip_anchors(pack)
+    ymin = min([min(lows)] + list(tw_supports)) - 480
     ymax = max(highs) + 860
     # 預估端先算：同價只留端點飆預測
-    tip_pre = _c_forecast_tip(i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=list(lows[i_c : i_now + 1]) or list(lows[i_bhi:]))
+    tip_pre = _c_forecast_tip(
+        i_now=i_now,
+        y_now=y_now,
+        y_ref=y_bhi,
+        lows=list(lows[i_c : i_now + 1]) or list(lows[i_bhi:]),
+        anchors=tip_anchors,
+    )
     skip_lab_ys = (
         [float(tip_pre["anchor_y"])] if tip_pre.get("anchor_y") is not None else []
     )
@@ -3074,7 +3360,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         bars=bars,
         y_now=y_now,
         fp=_fp,
-        supports=(45546.0, 44210.0),
+        supports=tw_supports,
         resists=(47637.0, 48613.0, y_bhi, y5),
         skip_label_ys=skip_lab_ys,
     )
@@ -3113,6 +3399,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         n=n,
         keep_left_of_right=True,
         show_label=not bool(c_sub.get("ok")),
+        anchors=tip_anchors,
     )
     if c_sub.get("ok"):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
@@ -3233,6 +3520,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ax.axhline(rule14_y, color="#ffffff", lw=1.2, ls=(0, (6, 2)), alpha=0.92, zorder=5)
     ax.axhline(45546.0, color="#ffab40", lw=0.85, ls=(0, (4, 3)), alpha=0.55, zorder=4)
     ax.axhline(44210.0, color="#82b1ff", lw=0.85, ls=(0, (4, 3)), alpha=0.55, zorder=4)
+    for _lv in tw_supports:
+        if abs(float(_lv) - 45546.0) < 0.6 or abs(float(_lv) - 44210.0) < 0.6:
+            continue
+        ax.axhline(float(_lv), color="#82b1ff", lw=0.85, ls=(0, (4, 3)), alpha=0.55, zorder=4)
     tag_45546 = _level_break_tag(45546.0, c_seg_lows)
     tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     sr = zone.get("sr") or {}
@@ -3282,6 +3573,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 "color": "#82b1ff",
             }
         )
+    right_notes.extend(
+        _tw_pred_right_notes(pack, n=n, lows=c_seg_lows, tip_skip=tip_skip)
+    )
     # 落在黃帶內的青標改右欄（與遠窗同一套；已有同價／預估端則不重複）
     have_ys = {round(float(n0["y"]), 1) for n0 in right_notes} | tip_skip
     for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
@@ -3460,7 +3754,9 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    ymin = min(lows) - 420
+    tw_supports = _tw_support_ladder(pack)
+    tip_anchors = _tw_tip_anchors(pack)
+    ymin = min([min(lows)] + list(tw_supports)) - 420
     ymax = max(highs) + 720
     span = ymax - ymin
     # 與遠／近窗同一套雙底色；有 c5 時左欄不准再浮 45546（右欄已有）
@@ -3476,7 +3772,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         bars=bars,
         y_now=float(y_now),
         fp=_fp,
-        supports=(45546.0, 44210.0),
+        supports=tw_supports,
         resists=(47637.0, 48613.0, y_bhi),
         skip_label_ys=_skip_left,
     )
@@ -3519,6 +3815,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         n=n,
         keep_left_of_right=True,
         show_label=False,  # 超近：45546／c5 只走右欄，圖上不准浮
+        anchors=tip_anchors,
     )
     geom_xs = [i_bhi, i_c1, i_c2, i_now]
     geom_ys = [
@@ -3738,8 +4035,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             sr.get("resist"),
             zone.get("y_excl_lo"),
             zone.get("y_excl_hi"),
-            45546.0,
-            44210.0,
+            *list(tw_supports),
         )
         if v is not None
     ]
@@ -3750,6 +4046,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.set_ylim(y_bot, y_top)
     tag_45546 = _level_break_tag(45546.0, c_seg_lows)
     tag_44210 = _level_break_tag(44210.0, c_seg_lows)
+    tip_anchor = tip.get("anchor_y")
+    tip_skip = {round(float(tip_anchor), 1)} if tip_anchor is not None else set()
     right_notes = [
         {"x": i_bhi, "y": y_bhi, "text": f"B高 {_px(y_bhi)}", "color": "#40c4ff"},
         {"x": i_now, "y": float(closes[i_now]), "text": f"今 {_px(closes[i_now])}", "color": "#ea80fc"},
@@ -3773,7 +4071,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
                 "color": "#ce93d8",
             }
         )
-    have_ys = {round(float(n0["y"]), 1) for n0 in right_notes}
+    right_notes.extend(
+        _tw_pred_right_notes(pack, n=n, lows=c_seg_lows, tip_skip=tip_skip)
+    )
+    have_ys = {round(float(n0["y"]), 1) for n0 in right_notes} | tip_skip
     for key, col in (("resist", "#4dd0e1"), ("support", "#4dd0e1")):
         yv = sr_skip.get(key)
         if yv is None:

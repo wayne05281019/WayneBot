@@ -444,6 +444,17 @@ def format_teach_brief(db_path: str = "") -> str:
         # 只取第一句故事，避免牆
         one = intent.split("；")[0].strip()
         lines.append(html_escape(f"量價／主力：{one}"))
+    pred_note = str(pack.get("pred_note") or "").strip()
+    if not pred_note:
+        pred = pack.get("pred_levels") or {}
+        bits = []
+        for row in (pred.get("tw") or []) + (pred.get("sox") or []):
+            lab = str((row or {}).get("label") or "").strip()
+            if lab:
+                bits.append(lab)
+        pred_note = "｜".join(bits)
+    if pred_note:
+        lines.append(html_escape(f"預測點：{pred_note}"))
     lines.append(html_escape("說明：這是彙整他公開說法＋官方柱，不是他本人即時口述。"))
     return "\n".join(lines)
 
