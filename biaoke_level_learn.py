@@ -3745,7 +3745,7 @@ def _paint_eight_wave_inset(
         sp.set_linewidth(1.0)
     ax.set_xticks([])
     ax.set_yticks([])
-    # 簡化八浪折線（起→1→2→3→4→5→A→B→C）
+    # 簡化八浪折線；色碼跟主圖一致：藍⑤／粉A／金虛B／紫C
     pts = [
         (0.0, 0.22),
         (0.10, 0.42),  # 1
@@ -3757,10 +3757,52 @@ def _paint_eight_wave_inset(
         (0.82, 0.68),  # B
         (0.98, 0.18),  # C
     ]
-    xs, ys = zip(*pts)
-    ax.plot(xs[:6], ys[:6], color="#40c4ff", lw=1.55, zorder=3)
-    ax.plot(xs[5:], ys[5:], color="#ff8a80", lw=1.55, zorder=3)
+    col_imp, col_a, col_b, col_c = "#40c4ff", "#ff8a80", "#ffd54f", "#ea80fc"
+    # 推進1→5（藍）
+    ax.plot(
+        [pts[i][0] for i in range(0, 6)],
+        [pts[i][1] for i in range(0, 6)],
+        color=col_imp,
+        lw=1.55,
+        zorder=3,
+    )
+    # 修正A（粉）
+    ax.plot(
+        [pts[5][0], pts[6][0]],
+        [pts[5][1], pts[6][1]],
+        color=col_a,
+        lw=1.55,
+        zorder=3,
+    )
+    # 修正B（金虛＝主圖大B）
+    ax.plot(
+        [pts[6][0], pts[7][0]],
+        [pts[6][1], pts[7][1]],
+        color=col_b,
+        lw=1.7,
+        ls=(0, (5, 1.6)),
+        zorder=3,
+    )
+    # 修正C（紫）
+    ax.plot(
+        [pts[7][0], pts[8][0]],
+        [pts[7][1], pts[8][1]],
+        color=col_c,
+        lw=1.55,
+        zorder=3,
+    )
     labs = ["", "1", "2", "3", "4", "5", "A", "B", "C"]
+    pt_cols = [
+        "#90a4ae",
+        col_imp,
+        col_imp,
+        col_imp,
+        col_imp,
+        col_imp,
+        col_a,
+        col_b,
+        col_c,
+    ]
     key_map = {
         "5": 5,
         "⑤": 5,
@@ -3778,12 +3820,19 @@ def _paint_eight_wave_inset(
         if nk == k or nk.upper().startswith(str(k).upper()):
             hi = v
             break
-    # 高亮此刻那一段（像對照圖黃光）：端點 hi 與其前一段
+    # 高亮此刻：只墊底層光暈（z 低於色線），不准金光蓋掉粉A／金虛B／紫C
     if 1 <= hi < len(pts):
         seg_x = [pts[hi - 1][0], pts[hi][0]]
         seg_y = [pts[hi - 1][1], pts[hi][1]]
-        ax.plot(seg_x, seg_y, color="#ffd54f", lw=5.2, alpha=0.35, zorder=2, solid_capstyle="round")
-        ax.plot(seg_x, seg_y, color="#ffd54f", lw=2.4, zorder=4, solid_capstyle="round")
+        ax.plot(
+            seg_x,
+            seg_y,
+            color="#ffe082",
+            lw=6.0,
+            alpha=0.28,
+            zorder=2,
+            solid_capstyle="round",
+        )
     for i, (x, y) in enumerate(pts):
         if i == 0:
             ax.text(
@@ -3797,7 +3846,7 @@ def _paint_eight_wave_inset(
                 zorder=5,
             )
             continue
-        col = "#40c4ff" if i <= 5 else "#ff8a80"
+        col = pt_cols[i]
         ax.scatter(
             [x],
             [y],
@@ -3890,7 +3939,7 @@ def _paint_eight_wave_inset(
     ax.text(
         0.02,
         0.02,
-        "藍＝推進1→5｜紅＝修正A→B→C",
+        "藍＝1→5｜粉＝A｜金虛＝B｜紫＝C",
         fontproperties=fp(6, "bold"),
         color="#90a4ae",
         ha="left",
@@ -4230,8 +4279,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     fig.patch.set_facecolor(_LIVE_BG)
     # bottom 加高：腳註多行完整數字＋不壓 x 軸日期
+    # top 略降：標題列＋雙黃框上移進頁眉，不准擋費半縮圖K
     # right 收到 0.98：右標水平往左貼K，不准再留 10% 空溝把標甩飛
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.91, bottom=0.125)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.88, bottom=0.125)
     for a in (axu, ax, axv):
         a.set_facecolor(_LIVE_PANEL)
         a.tick_params(colors=_LIVE_MUTED, labelsize=9)
@@ -4894,9 +4944,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 加權黃框右上；費半黃框同字級／同框高、貼在加權下方留縫，兩標不准互壓
-    _tw_stamp_y = 0.905
-    _sox_stamp_y = 0.848
+    # 加權／費半黃框上移進標題列右緣，不准擋費半縮圖K
+    _tw_stamp_y = 0.982
+    _sox_stamp_y = 0.948
     _paint_teach_query_stamp(
         fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=_tw_stamp_y
     )
@@ -4949,13 +4999,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：貼加權欄右下，避開上欄費半K／黃框
+    # 八浪縮圖：加權欄中下空檔（大A後橫盤區），不准擋右緣近窗K
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=False,
-        rect=(0.76, 0.36, 0.21, 0.19),
+        rect=(0.36, 0.30, 0.24, 0.20),
         title="八浪對位（遠）",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
@@ -5580,13 +5630,13 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗：八浪縮圖細框此刻（避開右上黃框；大結構在修正 C）
+    # 近窗：八浪縮圖改左下空檔（早段下方），不准擋右緣近K／黃框
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=True,
-        rect=(0.74, 0.52, 0.23, 0.30),
+        rect=(0.08, 0.26, 0.26, 0.30),
         title="八浪對位（近・框此刻）",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
@@ -6126,13 +6176,13 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="bottom",
     )
-    # 超近窗：八浪縮圖更細框選此刻（同近窗 detail；避開黃框）
+    # 超近窗：八浪縮圖改右下空檔，不准擋右上黃框／左下層級框
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=True,
-        rect=(0.74, 0.52, 0.23, 0.30),
+        rect=(0.70, 0.26, 0.26, 0.30),
         title="八浪對位（超近・框此刻）",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
