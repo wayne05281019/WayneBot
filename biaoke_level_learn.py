@@ -657,10 +657,15 @@ _TEACH_STAMP_TEXT = "#111111"  # 相容舊讀；實畫走分段色
 def _day_change_vs_prev(
     close: Optional[float], prev_close: Optional[float]
 ) -> Dict[str, Any]:
-    """相對前一個交易日收：漲跌點數與％（不是前天）。"""
+    """相對前一個交易日收：漲跌點數與％（不是前天）。
+
+    顯示序：漲幅％ → 差異點數（價在呼叫端先寫）。
+    """
     out: Dict[str, Any] = {
         "pts": None,
         "pct": None,
+        "pct_text": "",
+        "pts_text": "",
         "text": "",
         "sign": 0,
     }
@@ -676,8 +681,10 @@ def _day_change_vs_prev(
     out["pts"] = pts
     out["pct"] = pct
     out["sign"] = 1 if pts > 0 else (-1 if pts < 0 else 0)
-    # ＋320（＋0.70%）／−320（−0.70%）
-    out["text"] = f"{pts:+,.0f}（{pct:+.2f}%）"
+    out["pct_text"] = f"（{pct:+.2f}%）"
+    out["pts_text"] = f"{pts:+,.0f}"
+    # 價｜漲幅｜點數
+    out["text"] = f"{out['pct_text']} {out['pts_text']}"
     return out
 
 
@@ -701,13 +708,25 @@ def _prev_bar_close(bars: Sequence[Dict[str, Any]]) -> Optional[float]:
     return v if v > 0 else None
 
 
+# 加權／費半黃框同一字級與框高；費半字少→寬自然較短
+_TEACH_STAMP_FS = 17
+_TEACH_STAMP_FS_LONG = 15
+_TEACH_STAMP_BOX_PAD = 0.40
+_TEACH_STAMP_BOX_LW = 2.6
+
+
+def _teach_stamp_fsz(*parts: str) -> int:
+    line = "".join(str(p or "") for p in parts)
+    return _TEACH_STAMP_FS_LONG if len(line) > 36 else _TEACH_STAMP_FS
+
+
 def _teach_stamp_line(
     bars: Sequence[Dict[str, Any]],
     *,
     pack: Optional[Dict[str, Any]] = None,
     close: Optional[float] = None,
 ) -> str:
-    """查詢戳一行（純文字）：YYYY-MM-DD ＋時段鐘＋價＋相對前一日漲跌點／％。"""
+    """查詢戳一行（純文字）：日期＋時段鐘＋價＋漲幅％＋點數。"""
     as_of = _ymd(bars[-1].get("date")) if bars else ""
     day = (
         f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}"
@@ -732,6 +751,47 @@ def _teach_stamp_line(
     return f"{day}  {clock}  {px_s}"
 
 
+def _stamp_box_alignment(ha: str) -> Tuple[float, float]:
+    ha_s = str(ha or "right")
+    if ha_s == "left":
+        return (0.0, 1.0)
+    if ha_s == "center":
+        return (0.5, 1.0)
+    return (1.0, 1.0)
+
+
+def _paint_stamp_hbox(
+    fig,
+    kids: List[Any],
+    *,
+    x: float,
+    y: float,
+    ha: str = "right",
+    zorder: float = 40,
+) -> None:
+    """黃邊白底圓角框（加權／費半共用框高與線寬）。"""
+    from matplotlib.offsetbox import AnnotationBbox, HPacker
+
+    if fig is None or not kids:
+        return
+    ab = AnnotationBbox(
+        HPacker(children=kids, align="center", pad=0, sep=0),
+        (float(x), float(y)),
+        xycoords="figure fraction",
+        box_alignment=_stamp_box_alignment(ha),
+        pad=0.32,
+        frameon=True,
+        bboxprops=dict(
+            boxstyle=f"round,pad={_TEACH_STAMP_BOX_PAD}",
+            facecolor=_TEACH_STAMP_FACE,
+            edgecolor=_TEACH_STAMP_EDGE,
+            linewidth=_TEACH_STAMP_BOX_LW,
+        ),
+        zorder=float(zorder),
+    )
+    fig.add_artist(ab)
+
+
 def _paint_teach_query_stamp(
     fig,
     bars: Sequence[Dict[str, Any]],
@@ -743,7 +803,7 @@ def _paint_teach_query_stamp(
     y: float = 0.958,
     ha: str = "right",
 ) -> None:
-    """三張教具共用：黃框白底；日期／時段黑；價與漲跌紅漲綠跌（對前一交易日）。
+    """三張教具共用：黃框白底；日期／時段黑；價→漲幅％→點數（紅漲綠跌）。
 
     預設貼右、略離上緣，不准壓標題白字；近／超近可再調 y 適中。
     """
@@ -754,7 +814,7 @@ def _paint_teach_query_stamp(
             from wayne_navigator import _fp as fp
         except Exception:
             return
-    from matplotlib.offsetbox import AnnotationBbox, HPacker, TextArea
+    from matplotlib.offsetbox import TextArea
 
     as_of = _ymd(bars[-1].get("date")) if bars else ""
     day = (
@@ -774,10 +834,10 @@ def _paint_teach_query_stamp(
     except (TypeError, ValueError):
         px_s = "—"
     chg = _day_change_vs_prev(px_v, _prev_bar_close(bars))
-    chg_s = str(chg.get("text") or "").strip()
+    pct_s = str(chg.get("pct_text") or "").strip()
+    pts_s = str(chg.get("pts_text") or "").strip()
     chg_col = _chg_paint_color(int(chg.get("sign") or 0))
-    line_len = len(f"{day}  {clock}  {px_s}  {chg_s}")
-    fsz = 15 if (chg_s and line_len > 36) else 17
+    fsz = _teach_stamp_fsz(day, clock, px_s, pct_s, pts_s)
     kids = [
         TextArea(
             f"{day}  {clock}  ",
@@ -794,104 +854,83 @@ def _paint_teach_query_stamp(
             },
         ),
     ]
-    if chg_s:
+    if pct_s:
         kids.append(
             TextArea(
-                f"  {chg_s}",
+                f"  {pct_s}",
                 textprops={
                     "color": chg_col,
                     "fontproperties": fp(fsz, "bold"),
                 },
             )
         )
-    pack_box = HPacker(children=kids, align="center", pad=0, sep=0)
-    ha_s = str(ha or "right")
-    if ha_s == "left":
-        box_alignment = (0.0, 1.0)
-    elif ha_s == "center":
-        box_alignment = (0.5, 1.0)
-    else:
-        box_alignment = (1.0, 1.0)
-    ab = AnnotationBbox(
-        pack_box,
-        (float(x), float(y)),
-        xycoords="figure fraction",
-        box_alignment=box_alignment,
-        pad=0.32,
-        frameon=True,
-        bboxprops=dict(
-            boxstyle="round,pad=0.40",
-            facecolor=_TEACH_STAMP_FACE,
-            edgecolor=_TEACH_STAMP_EDGE,
-            linewidth=2.6,
-        ),
-        zorder=40,
-    )
-    fig.add_artist(ab)
+    if pts_s:
+        kids.append(
+            TextArea(
+                f"  {pts_s}",
+                textprops={
+                    "color": chg_col,
+                    "fontproperties": fp(fsz, "bold"),
+                },
+            )
+        )
+    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, zorder=40)
 
 
 def _paint_index_last_chg_tip(
-    ax,
+    fig,
     *,
-    i: float,
-    high: float,
-    low: float,
     close: float,
     prev_close: Optional[float],
     label_prefix: str = "費半",
     fp=None,
-    x_col: Optional[float] = None,
+    x: float = 0.995,
+    y: float = 0.848,
+    ha: str = "right",
 ) -> None:
-    """指數末根旁標：白底黃框＋紅漲綠跌；放右欄上空，不准壓縮圖K。"""
-    if ax is None or fp is None:
+    """費半漲跌黃框：與加權同字級／同框高；字少故較短；圖層座標，不准壓加權黃框。"""
+    if fig is None or fp is None:
         return
-    del high, low
+    from matplotlib.offsetbox import TextArea
+
     chg = _day_change_vs_prev(close, prev_close)
-    chg_s = str(chg.get("text") or "").strip()
+    pct_s = str(chg.get("pct_text") or "").strip()
+    pts_s = str(chg.get("pts_text") or "").strip()
     col = _chg_paint_color(int(chg.get("sign") or 0))
     try:
         px_s = _px(float(close))
     except (TypeError, ValueError):
         px_s = "—"
-    bits = [f"{label_prefix}{px_s}"]
-    if chg_s:
-        bits.append(chg_s)
-    try:
-        ymin, ymax = [float(v) for v in ax.get_ylim()]
-        span = max(1.0, ymax - ymin)
-    except Exception:
-        ymin, ymax, span = float(close) * 0.9, float(close) * 1.1, abs(float(close)) * 0.2
-    try:
-        x0, x1 = [float(v) for v in ax.get_xlim()]
-    except Exception:
-        x0, x1 = 0.0, float(i) + 4.0
-    # 右欄上方空檔（跌後上空）；與末根K水平錯開
-    x_lab = float(x_col) if x_col is not None else max(float(i) + 2.8, x1 - 2.2)
-    y_lab = float(ymax) - span * 0.10
-    ax.text(
-        x_lab,
-        y_lab,
-        " ".join(bits),
-        fontproperties=fp(10, "bold"),
-        color=col,
-        ha="left",
-        va="top",
-        zorder=17,
-        clip_on=False,
-        bbox=dict(
-            boxstyle="round,pad=0.28",
-            facecolor=_TEACH_STAMP_FACE,
-            edgecolor=_TEACH_STAMP_EDGE,
-            linewidth=1.8,
+    # 與加權同一套字級／框；前綴黑字，價→％→點數紅漲綠跌
+    fsz = _TEACH_STAMP_FS
+    kids = [
+        TextArea(
+            f"{label_prefix}  ",
+            textprops={
+                "color": _TEACH_STAMP_META,
+                "fontproperties": fp(fsz, "bold"),
+            },
         ),
-    )
-    # 右欄要容得下長標
-    need_right = x_lab + 4.8
-    if need_right > x1:
-        try:
-            ax.set_xlim(x0, need_right)
-        except Exception:
-            pass
+        TextArea(
+            px_s,
+            textprops={"color": col, "fontproperties": fp(fsz, "bold")},
+        ),
+    ]
+    if pct_s:
+        kids.append(
+            TextArea(
+                f"  {pct_s}",
+                textprops={"color": col, "fontproperties": fp(fsz, "bold")},
+            )
+        )
+    if pts_s:
+        kids.append(
+            TextArea(
+                f"  {pts_s}",
+                textprops={"color": col, "fontproperties": fp(fsz, "bold")},
+            )
+        )
+    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, zorder=41)
 
 
 def _thesis_cap_for_query(
@@ -3881,6 +3920,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ]
     sox_min_body = _candle_span_min_body(sox_h, sox_l, frac=_FAR_SOX_MIN_BODY_FRAC)
     _sox_last_repaint: Optional[Dict[str, Any]] = None
+    _sox_chg_tip: Optional[Dict[str, Any]] = None
     _sox_right_deferred: List[Dict[str, Any]] = []
     _sox_ylabel_span: Optional[Tuple[float, float]] = None
     if len(valid) >= 5:
@@ -4364,19 +4404,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=16,
             clip_on=False,
         )
-        # 費半末根：白底黃框＋紅漲綠跌；右欄上空，不准壓縮圖K
-        _paint_index_last_chg_tip(
-            axu,
-            i=float(_sox_last_repaint["i"]),
-            high=float(_sox_last_repaint["h"]),
-            low=float(_sox_last_repaint["l"]),
-            close=float(_sox_last_repaint["c"]),
-            prev_close=_prev_c,
-            label_prefix="費半",
-            fp=_fp,
-            x_col=float(x_sox_col),
-        )
-        # 標完再蓋一次末根K，保證標籤就算貼近也不蓋死縮圖柱
+        # 末根K再蓋一次（空心 tip 已在上）；費半漲跌黃框改圖層座標、與加權黃框錯開
         _paint_one_live_candle(
             axu,
             int(_sox_last_repaint["i"]),
@@ -4404,6 +4432,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=20,
             clip_on=False,
         )
+        # 暫存給標題列下方畫費半黃框（與加權黃框同字級、垂直錯開）
+        _sox_chg_tip = {
+            "close": float(_sox_last_repaint["c"]),
+            "prev": _prev_c,
+        }
     if _tw_last_repaint:
         ax.scatter(
             [float(_tw_last_repaint["i"])],
@@ -4457,10 +4490,23 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 黃框在雙行標題下右側；略抬高，少壓費半縮圖區
+    # 加權黃框右上；費半黃框同字級／同框高、貼在加權下方留縫，兩標不准互壓
+    _tw_stamp_y = 0.905
+    _sox_stamp_y = 0.848
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.905
+        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=_tw_stamp_y
     )
+    if _sox_chg_tip:
+        _paint_index_last_chg_tip(
+            fig,
+            close=float(_sox_chg_tip["close"]),
+            prev_close=_sox_chg_tip.get("prev"),
+            label_prefix="費半",
+            fp=_fp,
+            x=0.995,
+            y=_sox_stamp_y,
+            ha="right",
+        )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")[:56]
     fig.text(

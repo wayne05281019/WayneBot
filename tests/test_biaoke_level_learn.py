@@ -193,10 +193,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert '_TEACH_STAMP_FACE = "#ffffff"' in src or "_TEACH_STAMP_FACE = '#ffffff'" in src
     assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
-    # 黃框：遠／近／超近都下移讓出白字標題（不准貼上緣壓字）
-    assert "y=0.905" in far_blk
+    # 黃框：遠窗加權／費半垂直錯開同字級；近／超近讓出白字標題
+    assert "_tw_stamp_y = 0.905" in far_blk
+    assert "_sox_stamp_y = 0.848" in far_blk
     assert "y=0.93" in near_blk
     assert "y=0.93" in micro_blk
+    assert "_TEACH_STAMP_FS" in src
+    assert "_paint_stamp_hbox" in src
     assert "subplots_adjust" in near_blk
     assert "subplots_adjust" in micro_blk
     # 右標同欄 x_col；虛線自 note['x'] 連到標左緣（不准左一截短虛線）
@@ -605,7 +608,7 @@ def test_teach_query_clock_shows_wall_hhmm():
 
 
 def test_day_change_vs_prev_trading_day():
-    """漲跌＝對前一個交易日收；缺前收就不標。"""
+    """漲跌＝對前一個交易日收；顯示序價→漲幅％→點數。"""
     from biaoke_level_learn import _day_change_vs_prev, _prev_bar_close, _teach_stamp_line
 
     assert _prev_bar_close([{"close": 100}]) is None
@@ -613,16 +616,26 @@ def test_day_change_vs_prev_trading_day():
     up = _day_change_vs_prev(110.0, 100.0)
     assert up["pts"] == 10.0
     assert abs(float(up["pct"]) - 10.0) < 1e-9
-    assert "＋10" in up["text"] or "+10" in up["text"]
+    assert "＋10" in up["pts_text"] or "+10" in up["pts_text"]
+    assert "10.00%" in up["pct_text"]
+    # text＝漲幅％在前、點數在後
+    assert up["text"].index("%") < len(up["pct_text"])
+    assert up["pts_text"] in up["text"]
+    assert up["text"].index(up["pct_text"]) < up["text"].index(up["pts_text"])
     dn = _day_change_vs_prev(45212.0, 45532.0)
     assert dn["pts"] == -320.0
-    assert "−320" in dn["text"] or "-320" in dn["text"]
+    assert "−320" in dn["pts_text"] or "-320" in dn["pts_text"]
     line = _teach_stamp_line(
         [{"date": "20261029", "close": 45532}, {"date": "20261030", "close": 45212}],
         close=45212,
     )
     assert "45,212" in line
     assert "%" in line
+    # 價 → ％ → 點數
+    i_px = line.index("45,212")
+    i_pct = line.index("%")
+    i_pts = max(line.find("−320"), line.find("-320"))
+    assert i_px < i_pct < i_pts
 
 
 def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
