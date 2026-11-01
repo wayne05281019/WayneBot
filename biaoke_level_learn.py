@@ -792,6 +792,36 @@ def _stamp_box_alignment(ha: str) -> Tuple[float, float]:
     return (1.0, 1.0)
 
 
+def _fig_xy_from_axes_data(ax: Any, fig: Any, x_data: float, y_data: float) -> Tuple[float, float]:
+    """把軸上 data 座標轉成 figure fraction（給黃戳／縮圖對齊虛線位）。"""
+    try:
+        disp = ax.transData.transform((float(x_data), float(y_data)))
+        fx, fy = fig.transFigure.inverted().transform(disp)
+        return float(fx), float(fy)
+    except Exception:
+        return 0.5, 0.5
+
+
+def _fig_rect_band_right(
+    ax: Any,
+    fig: Any,
+    *,
+    y_top: float,
+    y_bot: float,
+    x_left_frac: float = 0.78,
+    width: float = 0.17,
+    pad: float = 0.012,
+) -> Tuple[float, float, float, float]:
+    """右欄兩條橫虛線之間的縮圖框（figure fraction）。"""
+    _xl, fy_top = _fig_xy_from_axes_data(ax, fig, 0.0, float(y_top))
+    _xl2, fy_bot = _fig_xy_from_axes_data(ax, fig, 0.0, float(y_bot))
+    if fy_top < fy_bot:
+        fy_top, fy_bot = fy_bot, fy_top
+    bottom = fy_bot + float(pad)
+    height = max(0.08, (fy_top - fy_bot) - 2.0 * float(pad))
+    return (float(x_left_frac), float(bottom), float(width), float(height))
+
+
 def _paint_stamp_hbox(
     fig,
     kids: List[Any],
@@ -4977,13 +5007,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             pack, n=n_axis, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
         )
     )
-    # 費半右欄再外推：末根縮圖K與費C今／漲跌黃框不准互壓
-    x_right_col = float(n_axis) + 3.45
+    # 右標必須停在八浪縮圖左框線外（縮圖更靠右下）；不准再外推去壓縮圖
+    x_right_col = float(n_axis) + 1.95
     try:
-        x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 1.35)
+        x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 0.35)
     except (TypeError, ValueError):
         pass
-    x_sox_col = x_right_col + 0.55
+    x_sox_col = x_right_col + 0.40
     if _sox_right_deferred and _sox_ylabel_span is not None:
         # 費半價窗窄：間距略鬆才留得下 A低10445＋次回測9865＋費C今
         _place_live_right_labels(
@@ -5272,13 +5302,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：縮小貼加權欄右下緣，盡量不壓K／浪線／右標
+    # 八浪縮圖：加權軸右側外邊距（軸內右標全在縮圖左框線外）
+    _axpos_far = ax.get_position()
+    _far_ins = (
+        min(0.90, float(_axpos_far.x1) + 0.012),
+        float(_axpos_far.y0) + 0.018,
+        0.095,
+        0.100,
+    )
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=False,
-        rect=(0.812, 0.268, 0.145, 0.118),
+        rect=_far_ins,
         title="八浪對位",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
@@ -5927,10 +5964,21 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="top",
     )
-    # 近窗：留上緣；黃框在標題列右上（略低於頂），不准掉進K線區、不准壓左側白字
+    # 近窗：黃戳下移到 39385～31892 空檔右緣（貼 39385 下），不准壓大B末／不准壓縮圖
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
+    _sx393, _sy393 = _fig_xy_from_axes_data(ax, fig, float(n) + 1.0, 39385.0)
+    _sx318, _sy318 = _fig_xy_from_axes_data(ax, fig, float(n) + 1.0, 31892.0)
+    if _sy393 < _sy318:
+        _sy393, _sy318 = _sy318, _sy393
+    _stamp_y = float(_sy393) - 0.018  # 剛在 39385 虛線下方
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.93
+        fig,
+        bars,
+        pack=pack,
+        close=closes[-1],
+        fp=_fp,
+        x=0.992,
+        y=_stamp_y,
     )
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
@@ -5947,13 +5995,18 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗：左下再縮小，少壓底圖
+    # 近窗縮圖：⑤末標下方右側；落在 39385～31892 之間，頂上讓出黃戳高度
+    _ins_top = min(float(_sy393) - 0.055, _stamp_y - 0.048)
+    _ins_bot = float(_sy318) + 0.016
+    _ins_h = max(0.10, _ins_top - _ins_bot)
+    # 略靠左，右緣不准壓 39385／31892 右欄字
+    _near_inset = (0.705, _ins_bot, 0.155, _ins_h)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=True,
-        rect=(0.08, 0.24, 0.18, 0.22),
+        rect=_near_inset,
         title="八浪對位",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
@@ -6318,13 +6371,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         pad=2,
         sep=3,
     )
+    # 左下層級框：固定軸內比例，後面縮圖靠它右側、同面積
+    _leg_ax_x, _leg_ax_y = 0.012, 0.045
+    _leg_ax_w, _leg_ax_h = 0.24, 0.30
     anchored = AnchoredOffsetbox(
         loc="lower left",
         child=box,
         pad=0.42,
         borderpad=0.55,
         frameon=True,
-        bbox_to_anchor=(0.012, 0.04),
+        bbox_to_anchor=(_leg_ax_x, _leg_ax_y),
         bbox_transform=ax.transAxes,
     )
     anchored.patch.set_boxstyle("round,pad=0.4")
@@ -6520,10 +6576,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="top",
     )
-    # 超近窗：黃框略下移＋左移，完整顯示；縮圖改右上圈處
+    # 超近：黃戳回右上（縮圖改去左框右側，不再搶右上）
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.78, y=0.88
+        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.93
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))[:64]
     fig.text(
@@ -6535,7 +6591,21 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="bottom",
     )
-    # 八浪縮圖：右上空檔；C閃折①～⑤＝主圖 flash_pivots 同一套官方柱錨
+    # 縮圖＝左層級框右側、同面積；頂不高過飆預測 44042 虛線
+    _axpos = ax.get_position()
+    _ins_ax_x = _leg_ax_x + _leg_ax_w + 0.02
+    _ins_ax_y = _leg_ax_y
+    _ins_w = _leg_ax_w * float(_axpos.width)
+    _ins_h = _leg_ax_h * float(_axpos.height)
+    _ins_left = float(_axpos.x0) + _ins_ax_x * float(_axpos.width)
+    _ins_bot = float(_axpos.y0) + _ins_ax_y * float(_axpos.height)
+    _cap_x, _fy_cap = _fig_xy_from_axes_data(ax, fig, 0.0, 44042.0)
+    if _ins_bot + _ins_h > float(_fy_cap) - 0.012:
+        _ins_h = max(0.10, float(_fy_cap) - 0.012 - _ins_bot)
+        # 高度被 44042 裁短 → 加寬保同面積
+        _area = (_leg_ax_w * float(_axpos.width)) * (_leg_ax_h * float(_axpos.height))
+        if _ins_h > 1e-6:
+            _ins_w = min(0.28, _area / _ins_h)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -6543,7 +6613,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         detail=True,
         c_flash=True,
         flash_pivots=flash_pivots,
-        rect=(0.78, 0.58, 0.19, 0.24),
+        rect=(_ins_left, _ins_bot, _ins_w, _ins_h),
         title="八浪・C閃",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
