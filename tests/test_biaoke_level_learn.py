@@ -575,6 +575,45 @@ def test_thesis_reads_333_to_334_without_c_prefix(tmp_path):
     assert out.get("post_id") == "n334"
 
 
+def test_far_twii_wave5_start_is_729_not_april():
+    """遠窗拉到4/28後，加權⑤起仍須是7/29低，不准改用四月窗底。"""
+    import inspect
+
+    from biaoke_level_learn import _render_twii_far_dark
+
+    src = inspect.getsource(_render_twii_far_dark)
+    assert '20260729' in src
+    assert "不准用窗內最低" in src or "不准把四月" in src or "跳過 7/29" in src
+    # 活邏輯：同軸四月窗下，⑤起索引＝7/29
+    from biaoke_level_learn import (
+        _bar_index_by_ymd,
+        _build_live_pack,
+        _twii_abc_anchors,
+        _twii_bars_for_teach,
+        _ymd,
+    )
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    db = "data/wayne_market.db"
+    pack = _build_live_pack(
+        db, now=datetime(2026, 11, 1, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    bars = _twii_bars_for_teach(db, 320, pack)
+    i0 = _bar_index_by_ymd(bars, "20260428") or 0
+    bars = list(bars[i0:])
+    anc = _twii_abc_anchors(bars)
+    assert anc
+    i5 = int(anc["i5"])
+    i729 = _bar_index_by_ymd(bars, "20260729")
+    assert i729 is not None and i729 < i5
+    lows = [float(r.get("low") or 0) for r in bars]
+    # 窗內最低在四月 → 若誤用 min 會錯；正確⑤起＝7/29
+    i_min = min(range(0, i5 + 1), key=lambda i: lows[i])
+    assert _ymd(bars[i_min].get("date")) < "20260701"
+    assert abs(float(lows[i729]) - 39384.85) < 2.0
+
+
 def test_thesis_pred_levels_sox_next_support_apr28():
     """A已破→下一撐＝4/28 9865；台指 44042／7/29 39384 都要抽出。"""
     from biaoke_level_learn import _thesis_pred_levels, _tw_tip_anchors

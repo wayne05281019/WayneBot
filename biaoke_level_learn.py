@@ -2881,8 +2881,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         anc["y_bhi"],
         anc["y_now"],
     )
-    i_far_lo = min(range(0, i5 + 1), key=lambda i: lows[i]) if i5 > 0 else 0
-    y_far_lo = lows[i_far_lo]
+    # ⑤起＝他確認的 7/29 低（≈39384）。拉長到 4/28 只為費半次回測同軸，
+    # 不准用窗內最低（4/29≈38896）當⑤起，否則浪線會跳過 7/29。
+    i_far_lo = _bar_index_by_ymd(bars, "20260729")
+    if i_far_lo is None or not (0 <= i_far_lo < i5):
+        i_far_lo = _bar_index_by_ymd(bars, "20260728")
+    if i_far_lo is None or not (0 <= i_far_lo < i5):
+        # 後備：⑤前近窗最低（仍優先靠近 7 月底，不准退回四月）
+        lo_i0 = _bar_index_by_ymd(bars, "20260701") or 0
+        i_far_lo = (
+            min(range(lo_i0, i5 + 1), key=lambda i: lows[i]) if i5 > lo_i0 else 0
+        )
+    y_far_lo = float(lows[i_far_lo])
     sox_a = _align_us_to_twii_dates(sox, bars)
     sox_o, sox_h, sox_l, sox_c = sox_a["open"], sox_a["high"], sox_a["low"], sox_a["close"]
     sox_anc = _sox_abc_anchors_on_axis(sox_h, sox_l, sox_c, i5_hint=i5)
