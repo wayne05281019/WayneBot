@@ -161,7 +161,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_seat_onchart_labels" in src
     assert "maybe_push_level_teach_update" in src
     assert "as_of<=" in src or "chart_as_of" in src
-    assert "C內小波①②（未稱C3）" in src or "日K小波①②（輔助）" in src
+    assert "C內小波①②（未稱C3）" in src or "日K小波①～⑤（＝縮圖）" in src or "日K小波①②（輔助）" in src
     assert "title_bit" in src or "不准寫死 C3-3" in src
     assert "_paint_c_forecast" in src and "_c_forecast_tip" in src
     # 預估端同價改飆預測（續弱才留預估↓）
@@ -183,7 +183,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_paint_eight_wave_inset" in micro_blk
     assert "detail=True" in near_blk and "detail=True" in micro_blk
     assert "_twii_macro_wave_anchors" in src
-    assert "日K小波①②（輔助）" in micro_blk or "橙①②僅輔助" in micro_blk
+    assert (
+        "日K小波①～⑤（＝縮圖）" in micro_blk
+        or "日K小波①②（輔助）" in micro_blk
+        or "橙①②僅輔助" in micro_blk
+    )
+    assert "_c_teach_flash_pivots" in src
+    assert "flash_pivots=" in micro_blk
     # 浪名釘轉折點同價Y（左右錯開），不准再漂空＋_seat 上推
     assert "_pin_pivot_name" in far_blk
     assert "_pin_pivot_name" in near_blk
@@ -210,7 +216,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "他說 B→今" in micro_blk
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
-    assert "0.59" in src and "flash_spec" in src  # 真窗①跌幅比例
+    assert "_flash_spec_from_pivots" in src  # 縮圖閃折＝主圖官方柱錨
     # 八浪縮圖：遠＝右下縮小；近＝左下；超近＝右上＋C內閃折
     assert "0.812, 0.268" in far_blk or "(0.812, 0.268" in far_blk
     assert "0.08, 0.24" in near_blk or "(0.08, 0.24" in near_blk

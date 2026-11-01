@@ -3740,6 +3740,110 @@ def _c_flash_step(now_key: str) -> int:
     return 4
 
 
+def _c_teach_flash_pivots(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    *,
+    i_bhi: int,
+    i_c: int,
+    i_now: int,
+    c_sub: Optional[Dict[str, Any]] = None,
+) -> List[Tuple[int, float, str]]:
+    """超近主圖日K小波＝縮圖閃折同一套官方柱錨：B→①→②→③→④→⑤。
+
+    點位只取已收柱高低，不准發明價。①＝C起日低；②＝其後反彈高；
+    ③＝②後更深低（優先早於④日）；④＝他60分對得上的 c4 高（否則③後反彈高）；
+    ⑤＝今收（進行中）。左右圖必須同序同價，不准各算一套。
+    """
+    out: List[Tuple[int, float, str]] = []
+    n = min(len(highs), len(lows), len(closes))
+    if not (0 <= i_bhi < i_c <= i_now < n):
+        return out
+    y_b = float(highs[i_bhi])
+    out.append((int(i_bhi), y_b, "B"))
+    # ①：C 起確認日低（第一段急殺）
+    i1 = int(i_c)
+    y1 = float(lows[i1])
+    out.append((i1, y1, "①"))
+    # ④候選：c4 細高（他60分對得上）
+    i4: Optional[int] = None
+    y4: Optional[float] = None
+    if isinstance(c_sub, dict) and c_sub.get("ok"):
+        try:
+            i4c = int(c_sub["i_c4_hi"])
+            y4c = float(c_sub["y_c4"])
+            if i1 < i4c <= i_now:
+                i4, y4 = i4c, y4c
+        except (TypeError, ValueError, KeyError):
+            i4, y4 = None, None
+    # ②：①後、④前（若無④則到今前）反彈最高
+    i2_hi = (i4 - 1) if i4 is not None and i4 > i1 + 1 else i_now
+    if i2_hi <= i1:
+        i2_hi = min(i1 + 1, i_now)
+    i2 = max(range(i1 + 1, i2_hi + 1), key=lambda i: float(highs[i])) if i1 < i2_hi else min(i1 + 1, i_now)
+    y2 = float(highs[i2])
+    out.append((int(i2), y2, "②"))
+    # ③：②後、④前（含④日低）更深低；④同日則取該日低，x 仍用④日
+    i3_hi = i4 if i4 is not None and i4 >= i2 else i_now
+    if i3_hi < i2:
+        i3_hi = i_now
+    i3 = min(range(i2, i3_hi + 1), key=lambda i: float(lows[i])) if i2 <= i3_hi else i2
+    y3 = float(lows[i3])
+    out.append((int(i3), y3, "③"))
+    # ④：c4；若無則③後反彈高
+    if i4 is None or y4 is None:
+        if i3 < i_now:
+            i4 = max(range(i3, i_now + 1), key=lambda i: float(highs[i]))
+            y4 = float(highs[i4])
+        else:
+            i4, y4 = i3, float(highs[i3])
+    out.append((int(i4), float(y4), "④"))
+    # ⑤：今收（進行中；未走完仍釘今）
+    out.append((int(i_now), float(closes[i_now]), "⑤"))
+    return out
+
+
+def _flash_spec_from_pivots(
+    pivots: Sequence[Tuple[int, float, str]],
+) -> List[Tuple[float, float, str]]:
+    """把官方柱錨換成縮圖 (t, drop, lab)；t／drop 都對真窗比例，不准另編振幅。"""
+    if len(pivots) < 2:
+        return []
+    i0, y0, _ = pivots[0]
+    iN, yN, _ = pivots[-1]
+    span_i = max(1, int(iN) - int(i0))
+    # 跌幅基準：B 高 → ⑤（若⑤高於B則用窗內最低）
+    y_lo = min(float(y) for _i, y, _lab in pivots)
+    drop_span = max(1.0, float(y0) - float(y_lo))
+    spec: List[Tuple[float, float, str]] = []
+    raw: List[Tuple[float, float, str, int]] = []
+    for i, y, lab in pivots:
+        t = (int(i) - int(i0)) / float(span_i)
+        drop = (float(y0) - float(y)) / drop_span
+        if drop < 0.0:
+            drop = 0.0
+        if drop > 1.0:
+            drop = 1.0
+        if t < 0.0:
+            t = 0.0
+        if t > 1.0:
+            t = 1.0
+        raw.append((t, drop, str(lab), int(i)))
+    # 同日高低（③低④高）在縮圖略錯開 t，否則垂直疊標讀不出閃折
+    for j in range(1, len(raw)):
+        t0, d0, lab0, i_a = raw[j - 1]
+        t1, d1, lab1, i_b = raw[j]
+        if i_a == i_b and abs(t1 - t0) < 1e-9:
+            raw[j - 1] = (max(0.0, t0 - 0.035), d0, lab0, i_a)
+            raw[j] = (min(1.0, t1 + 0.035), d1, lab1, i_b)
+    spec = [(t, d, lab) for t, d, lab, _i in raw]
+    # 端點鎖死，避免浮點把 B／⑤ 漂離黃框角
+    spec[0] = (0.0, 0.0, spec[0][2])
+    spec[-1] = (1.0, min(1.0, max(0.0, (float(y0) - float(yN)) / drop_span)), spec[-1][2])
+    return spec
+
+
 def _paint_eight_wave_inset(
     fig: Any,
     *,
@@ -3747,6 +3851,7 @@ def _paint_eight_wave_inset(
     now_key: str = "C",
     detail: bool = False,
     c_flash: bool = False,
+    flash_pivots: Optional[Sequence[Tuple[int, float, str]]] = None,
     rect: Sequence[float] = (0.72, 0.62, 0.26, 0.28),
     title: str = "八浪對位",
 ) -> None:
@@ -3917,23 +4022,25 @@ def _paint_eight_wave_inset(
             va="center",
             zorder=6,
         )
-    # 超近：黃框只包 B→C；閃折用真窗跌幅比例（非亂振幅）
-    # 真窗：B高→①10/15低→②反彈高→③更深低→④c4反彈（此刻）→⑤續下
+    # 超近：黃框只包 B→C；閃折＝主圖同一套官方柱錨（flash_pivots），不准另編點
+    # 真窗：B高→①C起日低→②反彈高→③更深低→④c4反彈→⑤今收
     flash_pts: List[Tuple[float, float]] = []
     flash_step = 0
     if c_flash and hi >= 8:
         bx, by = pts[7]
         cx, cy = pts[8]
         dx, dy = cx - bx, cy - by
-        # (t沿B→C, drop跌幅0=B／1=C末, 標) — drop 對齊官方柱相對位置
-        flash_spec = [
-            (0.00, 0.00, "B"),
-            (0.18, 0.59, "①"),  # 10/15 低 ≈−5.9成路程
-            (0.32, 0.40, "②"),  # 反彈（高於①）
-            (0.52, 0.78, "③"),  # 續殺更深
-            (0.70, 0.45, "④"),  # c4 反彈＝此刻 C3-3-4
-            (1.00, 1.00, "⑤"),  # 續下（未走完）
-        ]
+        # 優先用主圖傳入的官方柱錨；缺才退回近似比例（仍須六點）
+        flash_spec = _flash_spec_from_pivots(list(flash_pivots or ()))
+        if len(flash_spec) < 6:
+            flash_spec = [
+                (0.00, 0.00, "B"),
+                (0.10, 0.59, "①"),
+                (0.20, 0.40, "②"),
+                (0.40, 0.75, "③"),
+                (0.60, 0.45, "④"),
+                (1.00, 1.00, "⑤"),
+            ]
         for t, drop, _lab in flash_spec:
             flash_pts.append((bx + dx * t, by + dy * drop))
         flash_pts[0] = (bx, by)
@@ -4022,7 +4129,8 @@ def _paint_eight_wave_inset(
             # 細註：大結構對位（⑤＝4/1→6/23；今在修正 C）
             note = "⑤＝4/1→6/23｜今在修正C"
             if c_flash:
-                note = "閃折對真窗：①急殺②彈③殺④今⑤續"
+                # 與主圖橙線同錨：④＝c4；⑤＝今收；金圈＝浪級此刻（C3-3-x）
+                note = "閃＝主圖：①急殺②彈③殺④c4⑤今"
             ax.text(
                 0.50,
                 0.98,
@@ -5894,7 +6002,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.scatter(his_xs, his_ys, s=46, c="#ea80fc", zorder=8, edgecolors="#fff", linewidths=0.55)
     ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.75, zorder=5)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
-    # C內細浪：沿用上面 _c_sub_pre（同遠／近價）；橙①②僅輔助
+    # C內細浪：沿用上面 _c_sub_pre（同遠／近價）；橙①～⑤＝縮圖閃折同一套錨
     c_sub = _c_sub_pre
     tip = _paint_c_forecast(
         ax,
@@ -5908,39 +6016,46 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         show_label=False,  # 超近：45546／c5 只走右欄，圖上不准浮
         anchors=tip_anchors,
     )
-    geom_xs = [i_bhi, i_c1, i_c2, i_now]
-    geom_ys = [
-        float(highs[i_bhi]),
-        float(lows[i_c1]),
-        float(highs[i_c2]),
-        float(closes[i_now]),
-    ]
+    flash_pivots = _c_teach_flash_pivots(
+        highs, lows, closes, i_bhi=i_bhi, i_c=i_c, i_now=i_now, c_sub=c_sub
+    )
+    if len(flash_pivots) >= 6:
+        geom_xs = [int(p[0]) for p in flash_pivots]
+        geom_ys = [float(p[1]) for p in flash_pivots]
+    else:
+        geom_xs = [i_bhi, i_c1, i_c2, i_now]
+        geom_ys = [
+            float(highs[i_bhi]),
+            float(lows[i_c1]),
+            float(highs[i_c2]),
+            float(closes[i_now]),
+        ]
     ax.plot(
         geom_xs,
         geom_ys,
         color="#ffab40",
-        lw=1.35,
+        lw=1.55,
         ls=(0, (3, 2)),
-        alpha=0.75,
+        alpha=0.9,
         zorder=6,
-        label="日K小波①②（輔助）",
+        label="日K小波①～⑤（＝縮圖）",
     )
     ax.scatter(
-        [i_c1, i_c2],
-        [float(lows[i_c1]), float(highs[i_c2])],
-        s=28,
+        geom_xs,
+        geom_ys,
+        s=32,
         c="#ffab40",
         zorder=7,
         edgecolors="#fff",
-        linewidths=0.4,
-        alpha=0.85,
+        linewidths=0.45,
+        alpha=0.95,
     )
     if c_sub.get("ok"):
-        i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
+        i4s, y4s = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
         i5c, y5c = int(c_sub["i_c5_lo"]), float(c_sub["y_c5"])
         ax.plot(
-            [i4, i5c],
-            [y4, y5c],
+            [i4s, i5c],
+            [y4s, y5c],
             color="#ce93d8",
             lw=2.0,
             ls=(0, (2.2, 1.6)),
@@ -5949,8 +6064,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             label="C內細c4→c5（對他60分）",
         )
         ax.scatter(
-            [i4, i5c],
-            [y4, y5c],
+            [i4s, i5c],
+            [y4s, y5c],
             s=44,
             c="#ce93d8",
             zorder=8,
@@ -5958,7 +6073,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             linewidths=0.55,
         )
 
-    # 轉折浪名釘同價Y；說明句（C起確認／今＝）才准略離柱，不准再漂高空
+    # 轉折浪名釘同價Y；①～⑤與縮圖同錨；說明句才准略離柱
     c_lo = min(float(lows[i]) for i in range(i_bhi, n))
     c_hi = max(float(highs[i]) for i in range(i_bhi, n))
     pad = (c_hi - c_lo) * 0.04
@@ -5976,39 +6091,31 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         pad_x=0.4,
         fontsize=10,
     )
-    if c_sub.get("ok"):
-        i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        _pin_pivot_name(
-            ax, i4, y4, f"c4細 {_px(y4)}", "#ce93d8", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=10
-        )
-    else:
-        _pin_pivot_name(
-            ax,
-            i_c1,
-            float(lows[i_c1]),
-            "小波①低",
-            "#ffab40",
-            _fp,
-            side="left",
-            tip="low",
-            n=n,
-            pad_x=0.4,
-            fontsize=10,
-        )
+    # ①～⑤ 全釘（與右縮圖一一對）；④旁附 c4 價方便對他60分
+    _flash_side = {"①": "left", "②": "right", "③": "left", "④": "right", "⑤": "left"}
+    _flash_tip = {"①": "low", "②": "high", "③": "low", "④": "high", "⑤": "mid"}
+    for _fi, _fy, _flab in flash_pivots:
+        if _flab == "B":
+            continue
+        _name = f"{_flab} {_px(_fy)}"
+        if _flab == "④" and c_sub.get("ok"):
+            _name = f"④＝c4 {_px(_fy)}"
+        if _flab == "⑤":
+            _name = f"⑤今 {_px(_fy)}"
         _pin_pivot_name(
             ax,
-            i_c2,
-            float(highs[i_c2]),
-            "小波②高",
+            int(_fi),
+            float(_fy),
+            _name,
             "#ffab40",
             _fp,
-            side="right",
-            tip="high",
+            side=_flash_side.get(_flab, "auto"),
+            tip=_flash_tip.get(_flab, "mid"),
             n=n,
-            pad_x=0.4,
-            fontsize=10,
+            pad_x=0.35,
+            fontsize=9,
         )
-    # 說明句：貼在 C 起／今 旁，Y 仍用真價（不准漂到段上方空白）
+    # 說明句：C 起確認（Y 用真價）；今層級字另釘，避免跟⑤價標疊
     _pin_pivot_name(
         ax,
         i_c,
@@ -6019,7 +6126,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         side="right",
         tip="mid",
         n=n,
-        pad_x=0.45,
+        pad_x=0.55,
         fontsize=9,
     )
     _pin_pivot_name(
@@ -6029,10 +6136,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         now_lab,
         "#ffffff",
         _fp,
-        side="left",
+        side="right",
         tip="mid",
         n=n,
-        pad_x=0.45,
+        pad_x=0.55,
         fontsize=9,
     )
 
@@ -6356,13 +6463,14 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="bottom",
     )
-    # 八浪縮圖：右上空檔（原圈處）；C內緩坡閃折①～⑤；A 在黃框外
+    # 八浪縮圖：右上空檔；C閃折①～⑤＝主圖 flash_pivots 同一套官方柱錨
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=True,
         c_flash=True,
+        flash_pivots=flash_pivots,
         rect=(0.78, 0.58, 0.19, 0.24),
         title="八浪・C閃",
     )
