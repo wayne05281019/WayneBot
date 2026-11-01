@@ -4173,7 +4173,7 @@ def _paint_eight_wave_inset(
     )
     foot = "藍＝1→5｜粉＝A｜金虛＝B｜紫＝C"
     if c_flash:
-        foot = "A框外｜B→①…⑤對官方柱｜金圈＝此刻"
+        foot = "A框外｜B＝大B末真高→①…⑤｜金圈＝此刻"
     ax.text(
         0.02,
         0.02,
@@ -5927,8 +5927,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     vols = [float(r.get("volume") or 0) for r in bars]
     i_bhi, i_c, i_now = anc["i_bhi"], anc["i_c"], anc["i_now"]
     y_bhi, y_now = anc["y_bhi"], anc["y_now"]
-    # 視覺裁切：B 高前半根起（⑤只當鐵律錨，不佔畫面）
-    x_left = max(-0.4, float(i_bhi) - 0.8)
+    # 超近閃折／浪階對縮圖：B 峰＝大B末＝近⑤日（10/6 真高），不准用近B(10/14)假高峰
+    i_b_peak = int(anc["i5"])
+    y_b_peak = float(anc["y5"])
+    # 視覺裁切：自大B末前半根起，讓縮圖 B 峰同根看得見
+    x_left = max(-0.4, float(i_b_peak) - 0.8)
 
     blob = " ".join(
         str(pack.get(k) or "")
@@ -5936,7 +5939,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     )
     his = _his_micro_degree(blob)
     geom = _geom_c_micro_swings(
-        highs, lows, closes, i_bhi=i_bhi, i_c=i_c, i_now=i_now
+        highs, lows, closes, i_bhi=i_b_peak, i_c=i_c, i_now=i_now
     )
     need_alt = _alt_path_needed(his.get("degree") or "", geom.get("geom_degree") or "")
     ladder = _wave_now_ladder(pack)
@@ -5992,23 +5995,22 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         _paint_max_vol_day_guide((ax, axv), int(i_vmax))
     ax.axvspan(i_c - 0.35, n - 0.15, facecolor="#ea80fc", alpha=0.08, zorder=1)
 
-    # 他說路徑：只連他點過的結構——B高＝C起 → 今（進行中）
-    # 柱上小波①②不准畫進「他說路徑」（他沒點過那兩日轉折）
+    # 他說路徑：大B末（真高峰）→ 今；柱上小波①～⑤另走橙線（＝縮圖）
     i_c1 = int(geom.get("i_c1_lo") or i_c)
     i_c2 = int(geom.get("i_c2_hi") or i_now)
-    his_xs = [i_bhi, i_now]
-    his_ys = [float(highs[i_bhi]), float(closes[i_now])]
+    his_xs = [i_b_peak, i_now]
+    his_ys = [y_b_peak, float(closes[i_now])]
     ax.plot(his_xs, his_ys, color="#ea80fc", lw=2.6, zorder=7, label="他說路徑")
     ax.scatter(his_xs, his_ys, s=46, c="#ea80fc", zorder=8, edgecolors="#fff", linewidths=0.55)
     ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.75, zorder=5)
-    c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
+    c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_b_peak:])
     # C內細浪：沿用上面 _c_sub_pre（同遠／近價）；橙①～⑤＝縮圖閃折同一套錨
     c_sub = _c_sub_pre
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
         y_now=float(closes[i_now]),
-        y_ref=y_bhi,
+        y_ref=y_b_peak,
         lows=c_seg_lows,
         fp=_fp,
         n=n,
@@ -6016,16 +6018,17 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         show_label=False,  # 超近：45546／c5 只走右欄，圖上不准浮
         anchors=tip_anchors,
     )
+    # 閃折 B＝大B末真高（10/6），不准用近B(10/14)——那根不是最高、對不齊縮圖
     flash_pivots = _c_teach_flash_pivots(
-        highs, lows, closes, i_bhi=i_bhi, i_c=i_c, i_now=i_now, c_sub=c_sub
+        highs, lows, closes, i_bhi=i_b_peak, i_c=i_c, i_now=i_now, c_sub=c_sub
     )
     if len(flash_pivots) >= 6:
         geom_xs = [int(p[0]) for p in flash_pivots]
         geom_ys = [float(p[1]) for p in flash_pivots]
     else:
-        geom_xs = [i_bhi, i_c1, i_c2, i_now]
+        geom_xs = [i_b_peak, i_c1, i_c2, i_now]
         geom_ys = [
-            float(highs[i_bhi]),
+            y_b_peak,
             float(lows[i_c1]),
             float(highs[i_c2]),
             float(closes[i_now]),
@@ -6073,16 +6076,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             linewidths=0.55,
         )
 
-    # 轉折浪名釘同價Y；①～⑤與縮圖同錨；說明句才准略離柱
-    c_lo = min(float(lows[i]) for i in range(i_bhi, n))
-    c_hi = max(float(highs[i]) for i in range(i_bhi, n))
+    # 轉折浪名釘同價Y；B峰＝大B末真高；①～⑤與縮圖同錨
+    c_lo = min(float(lows[i]) for i in range(i_b_peak, n))
+    c_hi = max(float(highs[i]) for i in range(i_b_peak, n))
     pad = (c_hi - c_lo) * 0.04
     now_lab = f"今＝{ladder.get('now') or 'C進行中'}（預估）"
     _pin_pivot_name(
         ax,
-        i_bhi,
-        float(highs[i_bhi]),
-        "B高＝C起",
+        i_b_peak,
+        y_b_peak,
+        f"大B末 {_md(bars[i_b_peak].get('date'))}",
         "#40c4ff",
         _fp,
         side="left",
@@ -6091,6 +6094,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         pad_x=0.4,
         fontsize=10,
     )
+    # 近B(10/14)不是高峰、不是縮圖B——不釘名，免再跟大B末搶浪階
     # ①～⑤ 全釘（與右縮圖一一對）；④旁附 c4 價方便對他60分
     _flash_side = {"①": "left", "②": "right", "③": "left", "④": "right", "⑤": "left"}
     _flash_tip = {"①": "low", "②": "high", "③": "low", "④": "high", "⑤": "mid"}
@@ -6120,7 +6124,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ax,
         i_c,
         float(closes[i_c]) if i_c < len(closes) else float(highs[i_c]),
-        "C起確認 10/14夜～10/15日",
+        "C起確認 10/15（峰在大B末）",
         "#ea80fc",
         _fp,
         side="right",
@@ -6264,6 +6268,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.add_artist(anchored)
 
     want_dates = {
+        _ymd(bars[i_b_peak].get("date")),
         _ymd(bars[i_bhi].get("date")),
         _ymd(bars[i_c].get("date")),
         _ymd(bars[i_c1].get("date")),
@@ -6302,7 +6307,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     tip_anchor = tip.get("anchor_y")
     tip_skip: set = set()
     right_notes = [
-        {"x": i_bhi, "y": y_bhi, "text": f"B高 {_px(y_bhi)}", "color": "#40c4ff"},
+        {"x": i_b_peak, "y": y_b_peak, "text": f"大B末 {_px(y_b_peak)}", "color": "#40c4ff"},
         {"x": i_now, "y": float(closes[i_now]), "text": f"今 {_px(closes[i_now])}", "color": "#ea80fc"},
     ]
     # 超近圖上不准浮預估標 → 端點錨改上右欄（跟遠窗同一套）
@@ -6401,7 +6406,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ymin=y_bot,
         ymax=y_top,
     )
-    axv.set_ylim(0, (max(vols[i_bhi:]) if any(vols[i_bhi:]) else 1) * 1.4)
+    axv.set_ylim(0, (max(vols[i_b_peak:]) if any(vols[i_b_peak:]) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axv.set_xticks(t2)
     axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)

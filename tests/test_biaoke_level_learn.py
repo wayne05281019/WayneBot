@@ -146,8 +146,9 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_align_us_to_twii_dates" in src
     assert "_sox_abc_anchors_on_axis" in src
     assert "自轉折" in src or "不准抄" in src
-    # 超級近窗：C起自 B；紫虛c4／c5 對他60分；橙①②僅輔助；大＝A底→B反彈→C
-    assert "B高＝C起" in src
+    # 超級近窗：閃折B＝大B末真高（非近B假峰）；紫虛c4／c5；橙①～⑤＝縮圖
+    assert "大B末" in src
+    assert "不准用近B" in src
     assert "日K小波" in src
     assert "柱上讀" not in src
     assert "幾何對讀" not in src
