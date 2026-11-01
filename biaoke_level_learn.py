@@ -1603,9 +1603,10 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             r"10439.*已破|已經破A", s
         ) else "未破"
         lv = float(off) if off is not None and abs(off - 10445.0) <= 2.0 else 10445.0
-        lab = f"7/29 A波低{_px(lv)}{tag}"
+        # 右標／腳註要短且完整：周五低改寫進 tag 旁短註，不准長句被裁半截
+        lab = f"7/29 A低{_px(lv)}{tag}"
         if fri is not None and tag == "已破":
-            lab = f"7/29 A波低{_px(lv)}已破（周五低{_px(fri)}）"
+            lab = f"7/29 A低{_px(lv)}已破·周五{_px(fri)}"
         _add(
             "sox",
             level=lv,
@@ -2167,6 +2168,82 @@ def _sparse_xticks(
     return out_i, out_l
 
 
+def _pin_pivot_name(
+    ax,
+    x: float,
+    y: float,
+    lab: str,
+    color: str,
+    fp,
+    *,
+    side: str = "auto",
+    tip: str = "mid",
+    n: Optional[int] = None,
+    pad_x: float = 0.35,
+    fontsize: int = 10,
+    zorder: int = 10,
+) -> None:
+    """浪名標釘在轉折點：貼尖點，左右只留極短錯開；不准再漂空。
+
+    tip：high＝盒底貼高點（字在尖上）、low＝盒頂貼低點（字在尖下）、
+    mid＝盒心貼真價（C／今）。side：left／right／auto。
+    """
+    xx = float(x) + float(pad_x)
+    ha = "left"
+    use_left = side == "left" or (
+        side == "auto" and n is not None and float(x) >= max(float(n) * 0.62, 1.0)
+    )
+    if use_left:
+        xx = float(x) - float(pad_x)
+        ha = "right"
+    elif side == "right":
+        xx = float(x) + float(pad_x)
+        ha = "left"
+    # 一律盒心釘真價 Y（在點上）；high／low 只作語意標記，不准再上下漂開
+    va = "center"
+    ax.text(
+        xx,
+        float(y),
+        str(lab),
+        fontproperties=fp(int(fontsize), "bold"),
+        color=color,
+        ha=ha,
+        va=va,
+        zorder=int(zorder),
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.12",
+            fc="#0b0f14",
+            ec=color,
+            lw=0.7,
+            alpha=0.94,
+        ),
+    )
+
+
+def _c_path_label_xy(
+    i0: float,
+    y0: float,
+    i1: float,
+    y1: float,
+    *,
+    i_avoid: Optional[float] = None,
+) -> Tuple[float, float]:
+    """C進行中釘在 B→今 折線上；若有最大量日，選離它最遠的參數 t。"""
+
+    def _xy(t: float) -> Tuple[float, float]:
+        return (
+            float(i0) + (float(i1) - float(i0)) * t,
+            float(y0) + (float(y1) - float(y0)) * t,
+        )
+
+    if i_avoid is None:
+        return _xy(0.42)
+    cands = (0.18, 0.28, 0.38, 0.48, 0.58, 0.68, 0.78, 0.88)
+    t_best = max(cands, key=lambda t: abs(_xy(t)[0] - float(i_avoid)))
+    return _xy(t_best)
+
+
 def _place_live_right_labels(
     ax,
     notes: Sequence[Dict[str, Any]],
@@ -2180,7 +2257,7 @@ def _place_live_right_labels(
 ) -> None:
     """右側價標：結構優先、近距去重、垂直拉開，不准字壓字／字騎線。
 
-    確認過的右標預設在真價畫水平虛線；文字盡量貼真價 Y，撞了才垂直錯開。
+    確認過的右標預設在真價畫右緣短虛線；文字盡量貼真價 Y，撞了才垂直錯開。
     **不准**再畫「點→標籤」斜虛線引線（會整張凌亂）。
     note 可設 dash=False；呼叫端 level_dash=False 時整批不畫水平虛線。
     """
@@ -2249,10 +2326,11 @@ def _place_live_right_labels(
                     zorder=5,
                     edgecolors="none",
                 )
+        # 26 字夠「次回測4/28低9,865」；不准再 [:18] 裁成「…已破 (周」
         ax.text(
             x_text,
             y,
-            str(it["text"])[:18],
+            str(it["text"])[:26],
             fontproperties=fp(10, "bold"),
             color=color,
             ha="left",
@@ -2500,25 +2578,35 @@ def _paint_c_forecast(
         zorder=6,
     )
     ax.scatter([fut_x], [fut_y], s=28, c="#ea80fc", zorder=7, edgecolors="#fff", linewidths=0.4)
-    lab_y = float(fut_y) - max(abs(float(y_now) - float(fut_y)) * 0.1, 120.0)
+    lab_y = float(fut_y)
     if show_label:
-        # 遠窗：標靠端點但必須停在右欄左側，不准壓右價標
-        lab_x = float(fut_x) + 0.2
-        ha = "left"
+        # 預估端標釘在端點同價；遠窗停右欄左側，不准壓右價標、不准漂到端點下方
         if keep_left_of_right:
-            lab_x = min(float(fut_x) - 0.35, float(n) - 2.8)
-            ha = "right"
-        ax.text(
-            lab_x,
-            lab_y,
-            str(tip["label"]),
-            fontproperties=fp(9, "bold"),
-            color="#ea80fc",
-            ha=ha,
-            va="top",
-            zorder=10,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ea80fc", lw=0.65, alpha=0.94),
-        )
+            _pin_pivot_name(
+                ax,
+                min(float(fut_x), float(n) - 2.4),
+                lab_y,
+                str(tip["label"]),
+                "#ea80fc",
+                fp,
+                side="left",
+                n=n,
+                pad_x=0.45,
+                fontsize=9,
+            )
+        else:
+            _pin_pivot_name(
+                ax,
+                float(fut_x),
+                lab_y,
+                str(tip["label"]),
+                "#ea80fc",
+                fp,
+                side="right",
+                n=n,
+                pad_x=0.45,
+                fontsize=9,
+            )
     tip["xlim_right"] = max(float(n) + 1.2, fut_x + 2.2)
     tip["lab_y"] = lab_y
     return tip
@@ -2776,7 +2864,7 @@ def _paint_sox_thesis_preds(
             {
                 "x": n - 1,
                 "y": lv,
-                "text": lab[:18],
+                "text": lab[:26],
                 "color": col,
             }
         )
@@ -2904,13 +2992,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig, (axu, ax, axv) = plt.subplots(
         3,
         1,
-        figsize=(16.8, 12.2),
+        figsize=(16.8, 12.9),
         dpi=NAV_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(2.55, 3.45, 1.25), hspace=0.06),
     )
     fig.patch.set_facecolor(_LIVE_BG)
-    fig.subplots_adjust(left=0.05, right=0.90, top=0.91, bottom=0.055)
+    # bottom 加高：腳註多行完整數字＋不壓 x 軸日期
+    fig.subplots_adjust(left=0.05, right=0.90, top=0.91, bottom=0.125)
     for a in (axu, ax, axv):
         a.set_facecolor(_LIVE_PANEL)
         a.tick_params(colors=_LIVE_MUTED, labelsize=9)
@@ -2965,28 +3054,42 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             axu.plot([sbi, i_now], [sb, sn], color="#ea80fc", lw=1.85, zorder=7)
             span_s = span_raw
             s_lo_md = _md(bars[s_lo_i].get("date"))
-            # 費C進行中放 B→今 上方空白，不准蓋住縮圖K
-            s_c_hi = max(float(sox_h[i]) for i in range(sbi, i_now + 1)) if i_now > sbi else sn
-            s_c_x = float(sbi + i_now) * 0.5
-            s_c_y = s_c_hi + span_s * 0.06
-            for x, y, lab, col, va, ha in (
-                (s_lo_i + 0.8, s_lo_y + span_s * 0.03, f"費⑤起 {s_lo_md}", "#ffab91", "bottom", "left"),
-                (s5i, s5 + span_s * 0.03, "費⑤升完", "#ff8a80", "bottom", "center"),
-                (sai, sa - span_s * 0.03, "費A", "#ff8a80", "top", "center"),
-                (sbi - 0.35, sb + span_s * 0.03, "費B", "#40c4ff", "bottom", "center"),
-                (s_c_x, s_c_y, "費C進行中", "#ea80fc", "bottom", "center"),
-            ):
-                axu.text(
-                    x,
-                    y,
-                    lab,
-                    fontproperties=_fp(9, "bold"),
-                    color=col,
-                    ha=ha,
-                    va=va,
-                    zorder=10,
-                    bbox=dict(boxstyle="round,pad=0.1", fc="#0b0f14", ec=col, lw=0.55, alpha=0.94),
-                )
+            # 浪名貼尖點；費C釘「今」真價（進行中＝當下點，不准漂在折線中段蓋K）
+            _pin_pivot_name(
+                axu,
+                s_lo_i,
+                s_lo_y,
+                f"費⑤起 {s_lo_md}",
+                "#ffab91",
+                _fp,
+                side="right",
+                tip="low",
+                n=n,
+                pad_x=0.4,
+                fontsize=9,
+            )
+            _pin_pivot_name(
+                axu, s5i, s5, "費⑤升完", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=9
+            )
+            _pin_pivot_name(
+                axu, sai, sa, "費A", "#ff8a80", _fp, side="auto", tip="low", n=n, pad_x=0.22, fontsize=9
+            )
+            _pin_pivot_name(
+                axu, sbi, sb, "費B", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=9
+            )
+            _pin_pivot_name(
+                axu,
+                i_now,
+                sn,
+                "費C進行中",
+                "#ea80fc",
+                _fp,
+                side="right",
+                tip="mid",
+                n=n,
+                pad_x=0.4,
+                fontsize=9,
+            )
             for ii, yy, col in (
                 (s_lo_i, s_lo_y, "#ffab91"),
                 (s5i, s5, "#ff8a80"),
@@ -3002,8 +3105,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ]
             y_lo_s = min([x for x in sox_l if x == x] + sox_pred_ys)
             y_hi_s = max([x for x in sox_h if x == x] + sox_pred_ys)
-            # 先定 y 再畫青帶／右標，否則標會裁掉
-            axu.set_ylim(y_lo_s - span_s * 0.14, y_hi_s + span_s * 0.2)
+            # 先定 y 再畫青帶／右標；下緣加高，不准「次回測9,865」盒底被裁
+            axu.set_ylim(y_lo_s - span_s * 0.22, y_hi_s + span_s * 0.2)
             _paint_sox_thesis_preds(
                 axu,
                 bars=bars,
@@ -3015,7 +3118,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 fp=_fp,
                 i_now=i_now,
                 n=n,
-                ymin=y_lo_s - span_s * 0.14,
+                ymin=y_lo_s - span_s * 0.22,
                 ymax=y_hi_s + span_s * 0.2,
             )
     axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
@@ -3094,7 +3197,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
     )
-    # c5 有值時預估端 45546 也不浮字（右欄已有飆預測＋c5細）
+    # 遠窗：預估端點只畫點＋虛線，字改右欄（不准「飆預測」浮在K／黃線上）
     tip = _paint_c_forecast(
         ax,
         i_now=i_now,
@@ -3104,8 +3207,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
         n=n,
         keep_left_of_right=True,
-        # 遠窗長軸：細浪留給近／超近，這裡只出結構＋預測點
-        show_label=True,
+        show_label=False,
         anchors=tip_anchors,
     )
     fut_x = float(tip.get("fut_x") or fut_x)
@@ -3117,39 +3219,53 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         (i_now, y_now, "#ea80fc"),
     ):
         ax.scatter([ii], [yy], s=40, c=col, zorder=8, edgecolors="#fff", linewidths=0.55)
-    span = ymax - ymin
     far_lo_md = _md(bars[i_far_lo].get("date"))
-    # 浪名標：C進行中放在 B→今 段上方空白，不准蓋住縮圖K
-    c_seg_hi = max(float(highs[i]) for i in range(i_bhi, i_now + 1)) if i_now > i_bhi else y_now
-    c_lab_x = float(i_bhi + i_now) * 0.5
-    c_lab_y = c_seg_hi + span * 0.07
-    for x, y, lab, col, ha, va in (
-        (i_far_lo + 1.0, y_far_lo + span * 0.028, f"⑤起 {far_lo_md}", "#ffab91", "left", "bottom"),
-        (i5, y5 + span * 0.028, "⑤升完", "#ff8a80", "center", "bottom"),
-        (i_alow, y_alow - span * 0.03, "A低", "#ff8a80", "center", "top"),
-        (i_bhi - 0.7, y_bhi + span * 0.028, "B高", "#40c4ff", "center", "bottom"),
-        (c_lab_x, c_lab_y, "C進行中", "#ea80fc", "center", "bottom"),
-    ):
-        ax.text(
-            x,
-            y,
-            lab,
-            fontproperties=_fp(10, "bold"),
-            color=col,
-            ha=ha,
-            va=va,
-            zorder=10,
-            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=col, lw=0.8, alpha=0.94),
-        )
+    # 浪名貼尖點；C進行中釘「今」（進行中＝當下點，避開最大量黃K）
+    _pin_pivot_name(
+        ax,
+        i_far_lo,
+        y_far_lo,
+        f"⑤起 {far_lo_md}",
+        "#ffab91",
+        _fp,
+        side="right",
+        tip="low",
+        n=n,
+        pad_x=0.4,
+        fontsize=10,
+    )
+    _pin_pivot_name(
+        ax, i5, y5, "⑤升完", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=10
+    )
+    _pin_pivot_name(
+        ax, i_alow, y_alow, "A低", "#ff8a80", _fp, side="auto", tip="low", n=n, pad_x=0.22, fontsize=10
+    )
+    _pin_pivot_name(
+        ax, i_bhi, y_bhi, "B高", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=10
+    )
+    _pin_pivot_name(
+        ax, i_now, y_now, "C進行中", "#ea80fc", _fp, side="right", tip="mid", n=n, pad_x=0.4, fontsize=10
+    )
     # 右欄：遠窗只留大結構＋他最新預測點；細c4／c5 留給近／超近（長軸少標才不亂）
-    tip_anchor = tip.get("anchor_y")
-    tip_skip = {round(float(tip_anchor), 1)} if tip_anchor is not None else set()
+    # 預估端字已關 → tip_skip 空，45546 等改走右欄／青帶左標
+    tip_skip: set = set()
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B高 {_px(y_bhi)}", "color": "#40c4ff"},
         {"x": i_alow, "y": y_alow, "text": f"A低 {_px(y_alow)}", "color": "#ff8a80"},
         {"x": i_now, "y": y_now, "text": f"今 {_px(y_now)}", "color": "#ea80fc"},
     ]
+    tip_anchor = tip.get("anchor_y")
+    if tip_anchor is not None:
+        right_notes.append(
+            {
+                "x": n - 1,
+                "y": float(tip_anchor),
+                "text": _biaoke_pred_label(float(tip_anchor)),
+                "color": "#ea80fc",
+            }
+        )
+        tip_skip.add(round(float(tip_anchor), 1))
     if sr_skip.get("support") is not None and round(float(sr_skip["support"]), 1) not in tip_skip:
         right_notes.append(
             {
@@ -3261,7 +3377,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     sox_preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
     if sox_preds:
         sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
-    pred_foot = str(pack.get("pred_note") or "")[:72]
+    # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
+    pred_foot = str(pack.get("pred_note") or "")[:240]
     fig.text(
         0.05,
         0.975,
@@ -3276,25 +3393,49 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         0.05,
         0.952,
         "大＝日K ⑤→A→B→C｜黃＝最大量日高低｜青＝下一撐壓／飆預測｜"
-        "右標＝水平虛線對真價（無斜引線）｜細浪見近／超近",
+        "浪名釘轉折點｜右標＝右緣短虛線對真價（無斜引線）｜細浪見近／超近",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
         va="top",
     )
-    foot = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")[:48]
-    if pred_foot:
-        foot = f"{foot}｜{pred_foot}"[:110]
+    # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
+    foot_main = str(pack.get("thesis") or "五波後下降ABC・現在在C（預估）")[:56]
     fig.text(
         0.05,
-        0.018,
-        foot,
+        0.048,
+        foot_main,
         fontproperties=_fp(10, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="bottom",
     )
-    fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.18)
+    if pred_foot:
+        chunks: List[str] = []
+        cur = ""
+        for part in str(pred_foot).split("｜"):
+            part = part.strip()
+            if not part:
+                continue
+            cand = f"{cur}｜{part}" if cur else part
+            if len(cand) > 62 and cur:
+                chunks.append(cur)
+                cur = part
+            else:
+                cur = cand
+        if cur:
+            chunks.append(cur)
+        for i, line in enumerate(chunks[:4]):
+            fig.text(
+                0.05,
+                0.032 - i * 0.014,
+                line,
+                fontproperties=_fp(8, "bold"),
+                color=_LIVE_MUTED,
+                ha="left",
+                va="bottom",
+            )
+    fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
 
@@ -3452,90 +3593,65 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ):
         ax.scatter([ii], [yy], s=56, c=col, zorder=8, edgecolors="#ffffff", linewidths=0.7)
     span = max(ymax - ymin, 1.0)
-    # 智慧標：一組帶日期文字即可（不准再疊圓標擋說明）；C進行中在 B→今 上方空白
-    c_seg_hi = max(float(highs[i]) for i in range(i_bhi, i_now + 1)) if i_now > i_bhi else y_now
+    # 浪名釘轉折點同價Y（左右錯開）；C釘 B→今 折線中點
     ax.axvline(i_c, color="#ea80fc", lw=0.95, ls=(0, (2, 2)), alpha=0.8, zorder=5)
-    near_lab_specs = [
-        {
-            "x": float(i5),
-            "y": y5 + span * 0.055,
-            "text": f"升完⑤ {_md(bars[i5].get('date'))}",
-            "color": "#ff8a80",
-            "ha": "center",
-            "va": "bottom",
-            "pri": 3,
-            "nudge": "up",
-        },
-        {
-            "x": float(i_alow),
-            "y": y_alow - span * 0.055,
-            "text": f"A低 {_md(bars[i_alow].get('date'))}",
-            "color": "#ff8a80",
-            "ha": "center",
-            "va": "top",
-            "pri": 3,
-            "nudge": "down",
-        },
-        {
-            "x": float(i_bhi) - 0.35,
-            "y": y_bhi + span * 0.055,
-            "text": f"B高＜⑤ {_md(bars[i_bhi].get('date'))}",
-            "color": "#40c4ff",
-            "ha": "center",
-            "va": "bottom",
-            "pri": 3,
-            "nudge": "up",
-        },
-        {
-            "x": float(i_bhi + i_now) * 0.5,
-            "y": c_seg_hi + span * 0.09,
-            "text": "C進行中",
-            "color": "#ea80fc",
-            "ha": "center",
-            "va": "bottom",
-            "pri": 4,
-            "nudge": "up",
-            "min_dx": 2.0,
-        },
-    ]
+    _pin_pivot_name(
+        ax,
+        i5,
+        y5,
+        f"升完⑤ {_md(bars[i5].get('date'))}",
+        "#ff8a80",
+        _fp,
+        side="auto",
+        tip="high",
+        n=n,
+        pad_x=0.35,
+        fontsize=9,
+    )
+    _pin_pivot_name(
+        ax,
+        i_alow,
+        y_alow,
+        f"A低 {_md(bars[i_alow].get('date'))}",
+        "#ff8a80",
+        _fp,
+        side="auto",
+        tip="low",
+        n=n,
+        pad_x=0.35,
+        fontsize=9,
+    )
+    _pin_pivot_name(
+        ax,
+        i_bhi,
+        y_bhi,
+        f"B高＜⑤ {_md(bars[i_bhi].get('date'))}",
+        "#40c4ff",
+        _fp,
+        side="auto",
+        tip="high",
+        n=n,
+        pad_x=0.35,
+        fontsize=9,
+    )
+    _pin_pivot_name(
+        ax,
+        i_now,
+        y_now,
+        "C進行中",
+        "#ea80fc",
+        _fp,
+        side="right",
+        tip="mid",
+        n=n,
+        pad_x=0.4,
+        fontsize=9,
+    )
     if c_sub.get("ok"):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        # c5 圖上不浮字（只右欄）；只留 c4 圖內標
-        near_lab_specs.append(
-            {
-                "x": float(i4),
-                "y": y4 + span * 0.04,
-                "text": f"c4細 {_px(y4)}",
-                "color": "#ce93d8",
-                "ha": "center",
-                "va": "bottom",
-                "pri": 2,
-                "nudge": "up",
-            }
-        )
-    near_labs = _seat_onchart_labels(
-        near_lab_specs,
-        ymin=ymin,
-        ymax=ymax,
-        min_gap=span * 0.06,
-    )
-    for lab in near_labs:
-        ax.text(
-            float(lab["x"]),
-            float(lab["y"]),
-            str(lab["text"]),
-            fontproperties=_fp(9, "bold"),
-            color=str(lab["color"]),
-            ha=str(lab.get("ha") or "center"),
-            va=str(lab.get("va") or "bottom"),
-            zorder=10,
-            bbox=dict(
-                boxstyle="round,pad=0.14",
-                fc="#0b0f14",
-                ec=str(lab["color"]),
-                lw=0.7,
-                alpha=0.94,
-            ),
+        # c5 圖上不浮字（只右欄）；c4 釘在細高點
+        _pin_pivot_name(
+            ax, i4, y4, f"c4細 {_px(y4)}", "#ce93d8", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=9
         )
     for y, _lab, col in fib_levels:
         ax.axhline(y, color=col, lw=0.85, ls=(0, (3, 2)), alpha=0.55, zorder=4)
@@ -3889,67 +4005,83 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             linewidths=0.55,
         )
 
-    # 標籤：B／C起＋c4／c5（同遠近價）為主；①②降為輔助
+    # 轉折浪名釘同價Y；說明句（C起確認／今＝）才准略離柱，不准再漂高空
     c_lo = min(float(lows[i]) for i in range(i_bhi, n))
     c_hi = max(float(highs[i]) for i in range(i_bhi, n))
     pad = (c_hi - c_lo) * 0.04
     now_lab = f"今＝{ladder.get('now') or 'C進行中'}（預估）"
-    layer_labs = [
-        (i_bhi - 0.95, float(highs[i_bhi]) + pad * 1.6, "B高＝C起", "#40c4ff", "bottom", "right"),
-        (i_c + 0.95, c_hi + pad * 3.4, "C起確認\n10/14夜～10/15日", "#ea80fc", "bottom", "left"),
-        (i_now - 0.4, c_hi + pad * 5.2, now_lab, "#ffffff", "bottom", "right"),
-    ]
+    _pin_pivot_name(
+        ax,
+        i_bhi,
+        float(highs[i_bhi]),
+        "B高＝C起",
+        "#40c4ff",
+        _fp,
+        side="left",
+        tip="high",
+        n=n,
+        pad_x=0.4,
+        fontsize=10,
+    )
     if c_sub.get("ok"):
         i4, y4 = int(c_sub["i_c4_hi"]), float(c_sub["y_c4"])
-        # c5 圖上不浮字（只右欄）；只留 c4
-        layer_labs.append(
-            (i4 + 0.9, y4 + pad * 2.2, f"c4細 {_px(y4)}", "#ce93d8", "bottom", "left")
+        _pin_pivot_name(
+            ax, i4, y4, f"c4細 {_px(y4)}", "#ce93d8", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=10
         )
     else:
-        layer_labs.extend(
-            [
-                (i_c1 - 1.15, float(lows[i_c1]) - pad * 3.0, "小波①低", "#ffab40", "top", "right"),
-                (i_c2 + 1.15, float(highs[i_c2]) + pad * 2.6, "小波②高", "#ffab40", "bottom", "left"),
-            ]
+        _pin_pivot_name(
+            ax,
+            i_c1,
+            float(lows[i_c1]),
+            "小波①低",
+            "#ffab40",
+            _fp,
+            side="left",
+            tip="low",
+            n=n,
+            pad_x=0.4,
+            fontsize=10,
         )
-    seated = _seat_onchart_labels(
-        [
-            {
-                "x": float(x),
-                "y": float(y),
-                "text": lab,
-                "color": col,
-                "ha": ha,
-                "va": va,
-                "pri": 2,
-                "nudge": "up" if va == "bottom" else "down",
-                "min_dx": 1.4,
-            }
-            for x, y, lab, col, va, ha in layer_labs
-        ],
-        ymin=c_lo - (c_hi - c_lo) * 0.22,
-        ymax=c_hi + (c_hi - c_lo) * 0.42,
-        min_gap=(c_hi - c_lo) * 0.07,
+        _pin_pivot_name(
+            ax,
+            i_c2,
+            float(highs[i_c2]),
+            "小波②高",
+            "#ffab40",
+            _fp,
+            side="right",
+            tip="high",
+            n=n,
+            pad_x=0.4,
+            fontsize=10,
+        )
+    # 說明句：貼在 C 起／今 旁，Y 仍用真價（不准漂到段上方空白）
+    _pin_pivot_name(
+        ax,
+        i_c,
+        float(closes[i_c]) if i_c < len(closes) else float(highs[i_c]),
+        "C起確認 10/14夜～10/15日",
+        "#ea80fc",
+        _fp,
+        side="right",
+        tip="mid",
+        n=n,
+        pad_x=0.45,
+        fontsize=9,
     )
-    for lab in seated:
-        ax.text(
-            float(lab["x"]),
-            float(lab["y"]),
-            str(lab["text"]),
-            fontproperties=_fp(10, "bold"),
-            color=str(lab["color"]),
-            ha=str(lab.get("ha") or "center"),
-            va=str(lab.get("va") or "bottom"),
-            zorder=10,
-            linespacing=1.15,
-            bbox=dict(
-                boxstyle="round,pad=0.14",
-                fc="#0b0f14",
-                ec=str(lab["color"]),
-                lw=0.7,
-                alpha=0.94,
-            ),
-        )
+    _pin_pivot_name(
+        ax,
+        i_now,
+        float(closes[i_now]),
+        now_lab,
+        "#ffffff",
+        _fp,
+        side="left",
+        tip="mid",
+        n=n,
+        pad_x=0.45,
+        fontsize=9,
+    )
 
     # 另前提演化（薄荷虛線）：只有跟他約的不同才畫
     if need_alt:
@@ -4300,26 +4432,26 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         (i_now, y_now, "#ea80fc"),
     ):
         ax.scatter([ii], [yy], s=42, c=col, zorder=8, edgecolors="#fff", linewidths=0.5)
-    span_tw = max(highs) - min(lows)
-    # 標在轉折點旁，不貼線中段（避免 A 浮在半空）；預估標由 _paint_c_forecast 畫
-    for x, y, lab, col, va in (
-        (i5, y5 + span_tw * 0.028, "⑤", "#ff8a80", "bottom"),
-        (i_alow, y_alow - span_tw * 0.025, "A低", "#ff8a80", "top"),
-        (i_bhi, y_bhi + span_tw * 0.028, "B高", "#40c4ff", "bottom"),
-        (i_c, float(highs[i_c]) + span_tw * 0.04, "C起", "#ea80fc", "bottom"),
-        (i_now, y_now + span_tw * 0.03, "C進行中", "#ea80fc", "bottom"),
-    ):
-        ax.text(
-            x,
-            y,
-            lab,
-            fontproperties=_fp(11, "bold"),
-            color=col,
-            ha="center",
-            va=va,
-            zorder=9,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=col, lw=0.65, alpha=0.9),
-        )
+    # 浪名貼尖點；預估標由 _paint_c_forecast 畫
+    _pin_pivot_name(ax, i5, y5, "⑤", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=11)
+    _pin_pivot_name(ax, i_alow, y_alow, "A低", "#ff8a80", _fp, side="auto", tip="low", n=n, pad_x=0.35, fontsize=11)
+    _pin_pivot_name(ax, i_bhi, y_bhi, "B高", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=11)
+    _pin_pivot_name(
+        ax,
+        i_c,
+        float(closes[i_c]) if i_c < len(closes) else y_now,
+        "C起",
+        "#ea80fc",
+        _fp,
+        side="left",
+        tip="mid",
+        n=n,
+        pad_x=0.4,
+        fontsize=11,
+    )
+    _pin_pivot_name(
+        ax, i_now, y_now, "C進行中", "#ea80fc", _fp, side="left", tip="mid", n=n, pad_x=0.45, fontsize=11
+    )
     ax.set_ylabel("加權近窗", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
 
     # 中：費半 K（對齊加權交易日）＋費半自己的⑤／A／B／C
@@ -4376,27 +4508,22 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
             ):
                 axu.scatter([ii], [yy], s=42, c=col, zorder=8, edgecolors="#fff", linewidths=0.5)
             span_s = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
-            # 費半標在自己轉折點：A＝低點旁、B＝高點旁（不准漂在線中段）
-            for x, y, lab, col, va in (
-                (s5i, s5 + span_s * 0.03, "費⑤", "#ff8a80", "bottom"),
-                (sai, sa - span_s * 0.03, "費A低", "#ff8a80", "top"),
-                (sbi, sb + span_s * 0.03, "費B高", "#40c4ff", "bottom"),
-                (i_now, sn + span_s * 0.035, "費C進行中", "#ea80fc", "bottom"),
-                (fut_x, s_fut - span_s * 0.01, "預估↓", "#ea80fc", "top"),
-            ):
-                axu.text(
-                    x,
-                    y,
-                    lab,
-                    fontproperties=_fp(10, "bold"),
-                    color=col,
-                    ha="center",
-                    va=va,
-                    zorder=9,
-                    bbox=dict(
-                        boxstyle="round,pad=0.12", fc="#0b0f14", ec=col, lw=0.65, alpha=0.9
-                    ),
-                )
+            # 費半浪名貼尖點；預估↓釘端點
+            _pin_pivot_name(
+                axu, s5i, s5, "費⑤", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=10
+            )
+            _pin_pivot_name(
+                axu, sai, sa, "費A低", "#ff8a80", _fp, side="auto", tip="low", n=n, pad_x=0.35, fontsize=10
+            )
+            _pin_pivot_name(
+                axu, sbi, sb, "費B高", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=10
+            )
+            _pin_pivot_name(
+                axu, i_now, sn, "費C進行中", "#ea80fc", _fp, side="left", tip="mid", n=n, pad_x=0.45, fontsize=10
+            )
+            _pin_pivot_name(
+                axu, fut_x, s_fut, "預估↓", "#ea80fc", _fp, side="right", tip="mid", n=n, pad_x=0.4, fontsize=10
+            )
             axu.axvline(s5i, color="#ff8a80", lw=0.85, ls=(0, (2, 2)), alpha=0.75, zorder=5)
             axu.axvline(sai, color="#ff8a80", lw=0.7, ls=(0, (2, 3)), alpha=0.45, zorder=5)
             axu.axvline(sbi, color="#40c4ff", lw=0.7, ls=(0, (2, 3)), alpha=0.45, zorder=5)

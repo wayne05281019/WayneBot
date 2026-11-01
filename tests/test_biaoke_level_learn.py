@@ -175,7 +175,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_c_subwave_anchors_vs_biaoke60" in near_blk
     assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
     assert "日K小波①②（輔助）" in micro_blk or "橙①②僅輔助" in micro_blk
-    assert "_seat_onchart_labels" in near_blk
+    # 浪名釘轉折點同價Y（左右錯開），不准再漂空＋_seat 上推
+    assert "_pin_pivot_name" in far_blk
+    assert "_pin_pivot_name" in near_blk
+    assert "_pin_pivot_name" in micro_blk
+    assert "_pin_pivot_name" in src
     # 三張標題都要查詢當下時鐘（盤中 HH:MM／收盤標籤），不准只寫盤中／收
     assert "_teach_query_clock" in far_blk
     assert "_teach_query_clock" in near_blk
@@ -249,11 +253,17 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "不准橫貫" in place or "右緣" in place
     assert "axhline" not in place
     assert "level_dash=False" in block or "level_dash=True" in block
-    # C進行中放 B→今 上方空白，不准蓋縮圖K
-    assert "c_lab_x" in block
-    assert "c_seg_hi" in block
+    # C進行中釘「今」真價；浪名 tip=high/low 貼尖點（不准漂空）
+    assert "_pin_pivot_name" in block
+    assert 'tip="high"' in block and 'tip="low"' in block
+    assert "i_now, y_now, \"C進行中\"" in block or "i_now, y_now" in block
     assert "keep_left_of_right=True" in block
     assert "_biaoke_pred_label" in block
+    assert "浪名釘轉折點" in block or "浪名貼尖點" in block
+    # 腳註多行：不准 [:72] 裁成「9,」；完整 pred_note 再換行
+    assert "pred_foot[:72]" not in block
+    assert "pred_foot" in block
+    assert "[:240]" in block or "pred_note" in block
 
 
 def test_far_max_vol_day_matches_official_hl():
