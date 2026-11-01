@@ -202,6 +202,8 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_MARKET_ALIASES or t in MENU_BTN_WINRATE_ALIASES:
         return True
+    if t in MENU_BTN_WAVE_STATUS_ALIASES or t in MENU_BTN_CHONG_ALIASES:
+        return True
     if t in MENU_BTN_WATCH_ALIASES or t in MENU_BTN_PRESSURE_ALIASES:
         return True
     if t in MENU_BTN_LEAVE_ZERO_ALIASES or t in MENU_BTN_DONGZHU_ALIASES:
@@ -210,7 +212,19 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_LEAVE_DONGZHU_ALIASES:
         return True
-    if t in ("當沖", "隔日沖", "隔沖", "隔日", "持股", "持倉", "成交", "復盤"):
+    if t in (
+        "當沖",
+        "隔日沖",
+        "隔沖",
+        "隔日",
+        MENU_BTN_WAVE_STATUS,
+        MENU_BTN_CHONG,
+        "波浪",
+        "持股",
+        "持倉",
+        "成交",
+        "復盤",
+    ):
         return True
     if parse_intent(t) is not None:
         return True
@@ -468,6 +482,15 @@ MENU_BTN_SCREEN_ALIASES = (
     "海選名單",
     "盤後海選",
 )
+MENU_BTN_WAVE_STATUS = "波浪現況"
+MENU_BTN_WAVE_STATUS_ALIASES = (
+    MENU_BTN_WAVE_STATUS,
+    "波浪",
+    "未接",
+    "波浪未接",
+)
+MENU_BTN_CHONG = "沖區"
+MENU_BTN_CHONG_ALIASES = (MENU_BTN_CHONG, "短線沖", "沖")
 MENU_BTN_MARKET = "台股大盤"
 MENU_BTN_MARKET_ALIASES = (
     MENU_BTN_MARKET,
@@ -572,8 +595,8 @@ MENU_ROW1 = (
     MENU_BTN_FLOW,
 )
 MENU_ROW2 = (
-    "當沖",
-    "隔日沖",
+    MENU_BTN_WAVE_STATUS,
+    MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
     MENU_BTN_AI,
     MENU_BTN_STREAK,
@@ -610,7 +633,9 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v31：下排「隔日沖」後加「壓撐觀察」＝上六下七；三標籤自選，只觀察不是買訊。
 # v32：上排「觀察」改「加入觀察」；舊「觀察」仍認。
 # v33：第一排最左「勝率買點」；海選右移成第 2；接 MENU_BTN_WATCH；上七下七。訊號＝leave_zero 藍▲紅框。
-MENU_LAYOUT_VERSION = "33"
+# v34：下排「當沖」→「波浪現況」（三張位階圖＋敘述）；「隔日沖」→「沖區」（子選當沖／隔日沖）。
+#      台股大盤不再附送三張教具；打字「當沖」「隔日沖」仍可叫出。背後名單落檔照留。
+MENU_LAYOUT_VERSION = "34"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -1955,7 +1980,7 @@ class WayneTelegramBot:
         uid = str(uid or self._menu_uid_from_message(message))
         actor = self._actor_key(message, uid=uid)
         text = (
-            "兩排已更新：第一排勝率買點…資金輪動，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排勝率買點…資金輪動，第二排波浪現況／沖區…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
             else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
         )
@@ -3707,9 +3732,9 @@ class WayneTelegramBot:
             from screen_sessions import screen_session_has_data
 
             if screen_session_has_data(self.db_path, as_of):
-                note = "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。"
+                note = "名單已寫入快取。短線可按主選單「沖區」再選當沖／隔日沖（也可直接打字）。"
                 if result.get("from_cache"):
-                    note = "今日海選已有快照，直接讀快取。可按「當沖」「隔日沖」複核。"
+                    note = "今日海選已有快照，直接讀快取。短線可按「沖區」或打字當沖／隔日沖。"
                 await message.reply_text(note, reply_markup=hub)
         except Exception:
             pass
@@ -5416,6 +5441,55 @@ class WayneTelegramBot:
             loader=self.screener.screen_overnight,
         )
 
+    def _chong_zone_keyboard(self):
+        """沖區子選：當沖／隔日沖（主選單已收成一顆）。"""
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("當沖", callback_data="daytrade"),
+                    InlineKeyboardButton("隔日沖", callback_data="overnight"),
+                ]
+            ]
+        )
+
+    async def chong_zone_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        msg = update.effective_message
+        await msg.reply_text(
+            "沖區（盤中節奏・非黃金買點）\n選下面一項；也可直接打字「當沖」或「隔日沖」。",
+            reply_markup=self._chong_zone_keyboard(),
+        )
+
+    async def wave_status_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """波浪現況：層級敘述＋遠／近／超近三張（非買訊）。"""
+        msg = update.effective_message
+        uid = self._uid_from_message(msg)
+        brief = ""
+        try:
+            from biaoke_digest import format_teach_brief
+
+            brief = await asyncio.to_thread(format_teach_brief, self.db_path) or ""
+        except Exception:
+            logger.exception("波浪現況敘述略過")
+            brief = ""
+        if brief:
+            try:
+                await msg.reply_html(
+                    brief[:3500],
+                    disable_web_page_preview=True,
+                    reply_markup=self._keyboard(),
+                )
+            except Exception:
+                await msg.reply_text(
+                    "波浪現況（預估・非買訊）",
+                    reply_markup=self._keyboard(),
+                )
+        else:
+            await msg.reply_text(
+                "波浪現況（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
+                reply_markup=self._keyboard(),
+            )
+        await self._send_market_wave_charts(msg, uid=uid)
+
     async def leave_zero_cmd(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, pick: str = ""
     ):
@@ -6234,24 +6308,11 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await _end_wait()
-            # 文字逾時仍先送遠／近／超近，不准整頁空白只回「逾時」
-            try:
-                await message.reply_text(
-                    "大盤文字讀取較慢，先送教具圖；稍後可再按一次台股大盤。",
-                    reply_markup=self._keyboard(),
-                )
-            except Exception:
-                pass
-            try:
-                await self._send_market_wave_charts(
-                    message, uid=self._uid_from_message(message)
-                )
-            except Exception:
-                logger.exception("大盤逾時後教具仍失敗")
-                await message.reply_text(
-                    "大盤讀取逾時，請稍後再按一次。",
-                    reply_markup=self._keyboard(),
-                )
+            # 教具改走「波浪現況」；大盤逾時只回文字，不准再拖三張圖
+            await message.reply_text(
+                "大盤讀取逾時，請稍後再按一次。位階圖請按「波浪現況」。",
+                reply_markup=self._keyboard(),
+            )
             return
         except Exception:
             logger.exception("大盤專頁失敗")
@@ -6271,11 +6332,7 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 await message.reply_html(part, disable_web_page_preview=True)
             await _end_wait()
-            # 討論版教具先出：遠／近／超近（不准先畫美股卡拖到一分鐘才出第1張）
-            await self._send_market_wave_charts(
-                message, uid=self._uid_from_message(message)
-            )
-            # 美股／台指／恐懼貪婪在教具之後（次要對照，不准搶遠窗順位）
+            # 遠／近／超近改走「波浪現況」／飆大空白；大盤只留環境文字＋盤後卡
             await self._send_market_session_cards(
                 message,
                 card_bundle,
@@ -8553,14 +8610,27 @@ class WayneTelegramBot:
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.market_cmd(update, context)
             return
+        if text in MENU_BTN_WAVE_STATUS_ALIASES:
+            logger.info("主選單：波浪現況 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
+            await self.wave_status_cmd(update, context)
+            return
+        if text in MENU_BTN_CHONG_ALIASES:
+            logger.info("主選單：沖區 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
+            await self.chong_zone_cmd(update, context)
+            return
         if text == "當沖":
-            logger.info("主選單：當沖 uid=%s", uid)
+            # 隱藏入口：打字仍可叫出（主選單已改波浪現況／沖區）
+            logger.info("打字：當沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.daytrade_cmd(update, context)
             return
         if text in ("隔日沖", "隔沖", "隔日"):
-            logger.info("主選單：隔日沖 uid=%s", uid)
+            logger.info("打字：隔日沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.overnight_cmd(update, context)

@@ -148,10 +148,14 @@ def test_market_chart_calls_overlay_and_keeps_us_refresh():
     # 淺底日K仍可畫（備援／舊函式）；大盤專頁改送暗底教具
     assert "paint_biaoke_market_marks" in inspect.getsource(ik.render_index_kline_png)
     page = inspect.getsource(bot_servers.WayneTelegramBot._send_market_page)
-    assert page.index("refresh_us_for_market_page") < page.index("_send_market_wave_charts")
+    assert "refresh_us_for_market_page" in page
+    assert "_send_market_wave_charts" not in page
     wave = inspect.getsource(bot_servers.WayneTelegramBot._send_market_wave_charts)
     assert "paint_open_day_hypothesis" in wave
     assert "far_path" in wave
+    assert "format_teach_brief" in inspect.getsource(
+        bot_servers.WayneTelegramBot.wave_status_cmd
+    )
 
 
 def test_render_puts_zone_right_of_candles(tmp_path):

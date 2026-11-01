@@ -90,14 +90,24 @@ def _seed_market_db(path: str) -> str:
 class TestMarketMenuE2E:
     def test_layout_version_and_button_label(self):
         assert MENU_BTN_MARKET == "台股大盤"
-        assert MENU_LAYOUT_VERSION == "33"
+        assert MENU_LAYOUT_VERSION == "34"
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         row1 = [b.text for b in bot._reply_menu().keyboard[0]]
         row2 = [b.text for b in bot._reply_menu().keyboard[1]]
         from bot_servers import MENU_BTN_AI, MENU_BTN_BIAOKE_FACE, MENU_BTN_DONGZHU, MENU_BTN_FLOW, MENU_BTN_LEAVE_ZERO, MENU_BTN_PRESSURE, MENU_BTN_STREAK, MENU_BTN_WINRATE
 
         assert row1 == [MENU_BTN_WINRATE, "海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-        assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
+        from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+
+        assert row2 == [
+            MENU_BTN_WAVE_STATUS,
+            MENU_BTN_CHONG,
+            MENU_BTN_PRESSURE,
+            MENU_BTN_AI,
+            MENU_BTN_STREAK,
+            MENU_BTN_LEAVE_ZERO,
+            MENU_BTN_DONGZHU,
+        ]
         assert "刷新" not in row1 + row2
         assert "回報" not in row1 + row2
 
@@ -674,11 +684,6 @@ class TestMarketMenuE2E:
                 bot, "_send_market_wave_charts", new_callable=AsyncMock
             ) as wave, patch("taiwan_market._fetch_index_daily"):
                 st.return_value = (MagicMock(), None, None)
-
-                async def _wave_fail(message, **kwargs):
-                    await message.reply_text("大盤教具圖這次畫不出來，請稍後再試。")
-
-                wave.side_effect = _wave_fail
                 with patch(
                     "us_overnight.refresh_us_for_market_page",
                     return_value={
@@ -696,10 +701,10 @@ class TestMarketMenuE2E:
                     },
                 ):
                     await bot._send_market_page(msg)
+                # v34：大盤不再送教具，失敗也不該拖波浪圖
+                wave.assert_not_awaited()
 
         asyncio.run(run())
         msg.reply_html.assert_awaited()
         body = msg.reply_html.await_args.args[0]
         assert "台股大盤" in body
-        texts = [c.args[0] for c in msg.reply_text.await_args_list]
-        assert "大盤教具圖這次畫不出來，請稍後再試。" in texts

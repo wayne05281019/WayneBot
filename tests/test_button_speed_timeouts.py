@@ -35,11 +35,13 @@ def test_button_timeouts_are_not_too_tight():
     src = inspect.getsource(WayneTelegramBot.run_polling)
     assert ".read_timeout(60.0)" in src or ".read_timeout(60)" in src
     page = inspect.getsource(WayneTelegramBot._send_market_page)
-    # 美股／CNN 必須有子逾時，不准拖死整頁；文字逾時仍送教具
+    # 美股／CNN 必須有子逾時，不准拖死整頁；教具改走波浪現況（v34）
     assert "_MARKET_US_REFRESH_TIMEOUT" in page
     assert "_MARKET_CNN_TIMEOUT" in page
-    assert "_send_market_wave_charts" in page
-    assert "先送教具圖" in page
+    assert "_send_market_wave_charts" not in page
+    assert "波浪現況" in page
+    wave = inspect.getsource(WayneTelegramBot.wave_status_cmd)
+    assert "_send_market_wave_charts" in wave
 
 
 def test_leave_zero_pick_defers_mis_to_candidates_only():

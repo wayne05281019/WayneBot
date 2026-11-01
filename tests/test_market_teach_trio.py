@@ -181,7 +181,12 @@ def test_market_page_sends_teach_before_session_cards():
     import inspect
 
     src = inspect.getsource(WayneTelegramBot._send_market_page)
-    assert src.index("_send_market_wave_charts") < src.index("_send_market_session_cards")
+    # v34：教具改走波浪現況；大盤頁不再先送三張
+    assert "_send_market_wave_charts" not in src
+    assert "_send_market_session_cards" in src
+    from bot_servers import MENU_BTN_WAVE_STATUS
+
+    assert MENU_BTN_WAVE_STATUS == "波浪現況"
 
 
 def test_market_wave_phone_paint_uses_trio_panels_only():
