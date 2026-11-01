@@ -120,7 +120,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "48066" in src or "rule14" in src
     assert "預估" in src and ("隨時檢視" in src or "重新修訂" in src)
     assert "_REVISE_MARK" in src
-    assert "gap * 0.078" in src or "結構優先" in src
+    assert "x_col" in src or "同一右欄" in src or "結構優先" in src
     # 教不懂浪的學生：遠窗／近窗各一張＋外圍費半對照；缺資料自補
     assert "遠窗" in src and "近窗" in src
     assert "20260728" in src  # 遠窗從七月底⑤起
@@ -190,9 +190,15 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _paint_teach_query_stamp" in src
     assert "_TEACH_STAMP_EDGE" in src
     assert "def _thesis_cap_for_query" in src
-    # 飆預測長標／44210 字往右，虛線不准被標籤壓住
-    assert "x_text_base" in src or "x_off" in src
-    assert "x_off" in near_blk and "1.15" in near_blk
+    # 黃框：遠／近／超近都下移讓出白字標題（不准貼上緣壓字）
+    assert "y=0.855" in far_blk
+    assert "y=0.848" in near_blk
+    assert "y=0.848" in micro_blk
+    # 右標同欄 x_col；虛線自 note['x'] 連到標左緣（不准左一截短虛線）
+    assert "x_col" in src
+    assert "x_near_col" in near_blk or "x_col=" in near_blk
+    assert "level_dash=True" in near_blk
+    assert "level_dash=False" not in near_blk[near_blk.index("_place_live_right_labels") :]
     assert "x_end" in src
     assert "_latest_biaoke_index_snip" in src
     # 外圍對照（附圖二）本輪不加 c4／c5 細標；費半右欄要接他寫死預測點
@@ -258,18 +264,21 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "不准再貼" in special or "量欄已有" in special
     assert "ax.text" not in special
     assert "day_tag" in src[src.index("def _paint_max_vol_hl_zone") : src.index("def _hl_spans_excluding")]
-    # 右標：只准最後一根K右側外側短價線；不准伸進柱區、不准假轉折點 scatter
+    # 右標：同一欄 x_col；虛線自轉折／末日 note['x'] 連到標左緣；字 Y＝真價
     place = src[src.index("def _place_live_right_labels") : src.index("def _his_micro_degree")]
     assert "level_dash" in place
-    assert "不准橫貫" in place or "右緣" in place or "外側" in place
+    assert "x_col" in place
+    assert "x_from" in place
+    assert "x_dash_end" in place
+    assert "同一右欄" in place or "同欄" in place or "x_label" in place
     assert "n - 0.85" not in place
     assert "ax.scatter" not in place
     assert "axhline" not in place
-    assert "level_dash=False" in block or "level_dash=True" in block
-    # 水平往左貼最後一根K右側；不准再漂到 n+1.15、不准 right=0.90 把標甩進圖外溝
-    assert "n) + 0.18" in place or "n + 0.18" in place
+    assert "level_dash=True" in block
+    # 右欄預設 n+2.55（對齊長標）；不准再漂到 n+1.15、不准 right=0.90 把標甩進圖外溝
+    assert "2.55" in place
     assert "n) + 1.15" not in place and "n + 1.15" not in place
-    assert "x_dash0" in place
+    assert "x_right_col" in block or "x_col=x_right_col" in block
     assert "min_gap=(ymax - ymin) * 0.055" in block
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
     # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
