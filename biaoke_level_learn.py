@@ -3917,46 +3917,36 @@ def _paint_eight_wave_inset(
             va="center",
             zorder=6,
         )
-    # 超近：黃框＝只包 B→C 閃折；A 必須在框外。路徑 B→①→②→③→④→⑤＝C，不准繞去 A
+    # 超近：黃框只包 B→C；閃折用真窗跌幅比例（非亂振幅）
+    # 真窗：B高→①10/15低→②反彈高→③更深低→④c4反彈（此刻）→⑤續下
     flash_pts: List[Tuple[float, float]] = []
     flash_step = 0
     if c_flash and hi >= 8:
-        import math
-
         bx, by = pts[7]
         cx, cy = pts[8]
         dx, dy = cx - bx, cy - by
-        ln = math.hypot(dx, dy) or 1.0
-        nx, ny = -dy / ln, dx / ln
-        # 振幅小、貼緩坡；①在下②在上…金圈④＝此刻
+        # (t沿B→C, drop跌幅0=B／1=C末, 標) — drop 對齊官方柱相對位置
         flash_spec = [
-            (0.00, 0.00, "B"),  # 與大B同點，連續起點
-            (0.20, -0.038, "①"),
-            (0.38, 0.024, "②"),
-            (0.56, -0.032, "③"),
-            (0.74, 0.022, "④"),
-            (1.00, 0.00, "⑤"),
+            (0.00, 0.00, "B"),
+            (0.18, 0.59, "①"),  # 10/15 低 ≈−5.9成路程
+            (0.32, 0.40, "②"),  # 反彈（高於①）
+            (0.52, 0.78, "③"),  # 續殺更深
+            (0.70, 0.45, "④"),  # c4 反彈＝此刻 C3-3-4
+            (1.00, 1.00, "⑤"),  # 續下（未走完）
         ]
-        for t, off, _lab in flash_spec:
-            flash_pts.append((bx + dx * t + nx * off, by + dy * t + ny * off))
+        for t, drop, _lab in flash_spec:
+            flash_pts.append((bx + dx * t, by + dy * drop))
         flash_pts[0] = (bx, by)
         flash_pts[-1] = (cx, cy)
-        # 相鄰段長度檢查：若異常短／跳空就線性重插（防幾何錯位）
-        for k in range(1, len(flash_pts)):
-            x0, y0 = flash_pts[k - 1]
-            x1, y1 = flash_pts[k]
-            if math.hypot(x1 - x0, y1 - y0) < 1e-6:
-                t = flash_spec[k][0]
-                flash_pts[k] = (bx + dx * t, by + dy * t)
         fx = [p[0] for p in flash_pts]
         fy = [p[1] for p in flash_pts]
         ax.plot(fx, fy, color="#0b0f14", lw=2.35, zorder=6.1, solid_capstyle="round")
         ax.plot(fx, fy, color="#ffffff", lw=1.45, zorder=6.2, solid_capstyle="round")
         ax.plot(fx, fy, color="#ff5252", lw=1.05, zorder=6.3, solid_capstyle="round")
         flash_step = _c_flash_step(nk)
-        for j, ((x, y), (_t, _o, lab)) in enumerate(zip(flash_pts, flash_spec)):
+        for j, ((x, y), (_t, _d, lab)) in enumerate(zip(flash_pts, flash_spec)):
             if lab == "B":
-                continue  # 大B 已標在框外
+                continue
             step_i = j
             is_now = step_i == flash_step
             ax.scatter(
@@ -4032,7 +4022,7 @@ def _paint_eight_wave_inset(
             # 細註：大結構對位（⑤＝4/1→6/23；今在修正 C）
             note = "⑤＝4/1→6/23｜今在修正C"
             if c_flash:
-                note = "C內①→⑤對真窗緩下（非垂直）"
+                note = "閃折對真窗：①急殺②彈③殺④今⑤續"
             ax.text(
                 0.50,
                 0.98,
@@ -4075,7 +4065,7 @@ def _paint_eight_wave_inset(
     )
     foot = "藍＝1→5｜粉＝A｜金虛＝B｜紫＝C"
     if c_flash:
-        foot = "A在框外｜B起細閃①→⑤＝大C｜金圈＝此刻"
+        foot = "A框外｜B→①…⑤對官方柱｜金圈＝此刻"
     ax.text(
         0.02,
         0.02,
@@ -6088,35 +6078,83 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     geom_show = str(geom.get("geom_degree") or "").strip()
     if not deg_his.startswith("C3") and geom_show.startswith("C3"):
         geom_show = "C內小波①②（未稱C3）"
-    # 線色說明併進左下層級框（不再另開左上圖例壓K）
-    line_bits = [
-        "紫實＝他說B→今",
-        "紫虛＝預估",
-        "橙虛＝日K小波（非他說）",
+    # 左下合併框：層級字＋色線樣本（不准寫「紫／橙」國字，色自己秀）
+    from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
+
+    hierarchy = str(ladder.get("teach_box") or "他說現在層級（大→小）")
+    geom_line = f"日K小波：{geom_show or '—'}（柱上自讀，非口述）"
+    kids_txt = [
+        TextArea(
+            hierarchy,
+            textprops={"color": _LIVE_TEXT, "fontproperties": _fp(9, "bold")},
+        ),
+        TextArea(
+            geom_line,
+            textprops={"color": _LIVE_MUTED, "fontproperties": _fp(8, "bold")},
+        ),
+        TextArea(
+            str(alt_note),
+            textprops={"color": _LIVE_MUTED, "fontproperties": _fp(8, "bold")},
+        ),
     ]
-    if need_alt:
-        line_bits.append("薄荷＝另前提")
+    swatch_rows = [
+        ("#ea80fc", "-", 2.2, "他說 B→今"),
+        ("#ea80fc", "--", 1.6, "預估"),
+        ("#ffab40", "--", 1.6, "日K小波"),
+    ]
     if c_sub.get("ok"):
-        line_bits.append("紫細虛＝C內c4→c5")
-    teach = (
-        f"{ladder.get('teach_box') or '他說現在層級（大→小）'}\n"
-        f"線色：{'｜'.join(line_bits)}\n"
-        f"日K小波：{geom_show or '—'}（橙虛＝柱上自讀，不是他口述）\n"
-        f"{alt_note}"
+        swatch_rows.append(("#ce93d8", "--", 1.7, "C內 c4→c5"))
+    if need_alt:
+        swatch_rows.append(("#69f0ae", "--", 1.8, "另前提"))
+    # 用短色線＋角色字（角色可中文，色名不准寫）
+    swatch_pack_rows = []
+    for col, ls, lw, role in swatch_rows:
+        # 色線以 Unicode 線段上色近似（Agg 無 Line2D in TextArea）
+        swatch_pack_rows.append(
+            HPacker(
+                children=[
+                    TextArea(
+                        "━━" if ls == "-" else "┅┅",
+                        textprops={
+                            "color": col,
+                            "fontproperties": _fp(10, "bold"),
+                        },
+                    ),
+                    TextArea(
+                        f"  {role}",
+                        textprops={
+                            "color": _LIVE_TEXT,
+                            "fontproperties": _fp(8, "bold"),
+                        },
+                    ),
+                ],
+                align="center",
+                pad=0,
+                sep=2,
+            )
+        )
+    box = VPacker(
+        children=kids_txt + swatch_pack_rows,
+        align="left",
+        pad=2,
+        sep=3,
     )
-    ax.text(
-        0.018,
-        0.06,
-        teach,
-        transform=ax.transAxes,
-        fontproperties=_fp(8, "bold"),
-        color=_LIVE_TEXT,
-        ha="left",
-        va="bottom",
-        zorder=12,
-        linespacing=1.25,
-        bbox=dict(boxstyle="round,pad=0.28", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.96),
+    anchored = AnchoredOffsetbox(
+        loc="lower left",
+        child=box,
+        pad=0.42,
+        borderpad=0.55,
+        frameon=True,
+        bbox_to_anchor=(0.012, 0.04),
+        bbox_transform=ax.transAxes,
     )
+    anchored.patch.set_boxstyle("round,pad=0.4")
+    anchored.patch.set_facecolor("#0b0f14")
+    anchored.patch.set_edgecolor("#546e7a")
+    anchored.patch.set_alpha(0.96)
+    anchored.patch.set_linewidth(0.95)
+    anchored.set_zorder(12)
+    ax.add_artist(anchored)
 
     want_dates = {
         _ymd(bars[i_bhi].get("date")),

@@ -204,10 +204,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_tw_stamp_y = 0.982" in far_blk
     assert "_sox_stamp_y = 0.948" in far_blk
     assert "y=0.93" in near_blk
-    # 超近：黃框下移左移；縮圖改右上；圖例併左下層級框
+    # 超近：黃框下移左移；縮圖改右上；圖例色線併左下（不准寫紫／橙國字）
     assert "x=0.78, y=0.88" in micro_blk or "x=0.78" in micro_blk
-    assert "線色：" in micro_blk
+    assert "AnchoredOffsetbox" in micro_blk
+    assert "他說 B→今" in micro_blk
+    assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
+    assert "0.59" in src and "flash_spec" in src  # 真窗①跌幅比例
     # 八浪縮圖：遠＝右下縮小；近＝左下；超近＝右上＋C內閃折
     assert "0.812, 0.268" in far_blk or "(0.812, 0.268" in far_blk
     assert "0.08, 0.24" in near_blk or "(0.08, 0.24" in near_blk
