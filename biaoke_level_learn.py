@@ -426,13 +426,6 @@ def _merge_live_twii_display_bar(
     """盤中顯示用：把 MIS 加權疊成當日未收柱（只渲染、不寫庫、不當官方收）。"""
     out = [dict(r) for r in (bars or [])]
     if not live or not out:
-        # #region agent log
-        try:
-            import json as _json
-            open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"B","location":"biaoke_level_learn.py:_merge_live_twii_display_bar","message":"merge_skip_no_live_or_empty","data":{"n_in":len(bars or []),"has_live":bool(live)},"timestamp":int(datetime.now().timestamp()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
         return out
     try:
         from live_quote import is_live_merge_window
@@ -440,13 +433,6 @@ def _merge_live_twii_display_bar(
         return out
     try:
         if not is_live_merge_window():
-            # #region agent log
-            try:
-                import json as _json
-                open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"B","location":"biaoke_level_learn.py:_merge_live_twii_display_bar","message":"merge_skip_outside_window","data":{"n_in":len(out),"last_d":_ymd(out[-1].get("date"))},"timestamp":int(datetime.now().timestamp()*1000)})+"\n")
-            except Exception:
-                pass
-            # #endregion
             return out
     except Exception:
         return out
@@ -484,13 +470,6 @@ def _merge_live_twii_display_bar(
             "volume": vol,
             "live_session": 1,
         }
-        # #region agent log
-        try:
-            import json as _json
-            open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"B","location":"biaoke_level_learn.py:_merge_live_twii_display_bar","message":"merge_overwrite_today","data":{"today":today,"o":o,"h":h,"lo":lo,"px":px,"vol":vol,"degenerate":abs(h-lo)<1e-9 and abs(o-px)<1e-9},"timestamp":int(datetime.now().timestamp()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
         return out
     if last_d and last_d > today:
         return out
@@ -505,13 +484,6 @@ def _merge_live_twii_display_bar(
             "live_session": 1,
         }
     )
-    # #region agent log
-    try:
-        import json as _json
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"B","location":"biaoke_level_learn.py:_merge_live_twii_display_bar","message":"merge_append_today","data":{"today":today,"prev_last_d":last_d,"o":o,"h":h,"lo":lo,"px":px,"n_out":len(out),"degenerate":abs(h-(lo if lo>0 else px))<1e-9 and abs(o-px)<1e-9},"timestamp":int(datetime.now().timestamp()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     return out
 
 
@@ -2015,29 +1987,6 @@ def _style_live_ax(ax, axv) -> None:
 def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) -> None:
     n = len(closes)
     min_body = _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC)
-    # #region agent log
-    try:
-        import json as _json, math as _math
-        _li = n - 1 if n else -1
-        _o = float(opens[_li]) if _li >= 0 and _li < len(opens) else None
-        _h = float(highs[_li]) if _li >= 0 else None
-        _l = float(lows[_li]) if _li >= 0 else None
-        _c = float(closes[_li]) if _li >= 0 else None
-        _bad = None
-        if _li >= 0:
-            _bad = {
-                "nan": any(x is None or not _math.isfinite(x) for x in (_o, _h, _l, _c)),
-                "nonpos": any((x or 0) <= 0 for x in (_o, _h, _l, _c) if x is not None),
-                "wick": None if _h is None or _l is None else float(_h) - float(_l),
-                "body": None if _o is None or _c is None else abs(float(_c) - float(_o)),
-                "body_drawn": None if _o is None or _c is None else max(abs(float(_c) - float(_o)), float(min_body)),
-                "min_body": float(min_body),
-            }
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"A","location":"biaoke_level_learn.py:_paint_live_candles:entry","message":"paint_entry","data":{"n":n,"len_o":len(opens),"len_h":len(highs),"len_l":len(lows),"len_v":len(vols) if vols is not None else None,"last_i":_li,"last_ohlc":{"o":_o,"h":_h,"l":_l,"c":_c},"last_quality":_bad,"has_axv":axv is not None,"min_body":float(min_body)},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-    except Exception:
-        pass
-    # #endregion
-    _last_painted = -1
     for i in range(n):
         prev_c = closes[i - 1] if i else None
         up = candle_up(closes[i], prev_c, opens[i])
@@ -2060,20 +2009,6 @@ def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) ->
         )
         if axv is not None:
             axv.bar(i, vols[i], color=color, width=0.68, zorder=3, alpha=0.92)
-        _last_painted = i
-    # #region agent log
-    try:
-        import json as _json
-        _n_patches = len(getattr(ax, "patches", []) or [])
-        _xlim = None
-        try:
-            _xlim = list(ax.get_xlim())
-        except Exception:
-            _xlim = None
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"A","location":"biaoke_level_learn.py:_paint_live_candles:exit","message":"paint_exit","data":{"n":n,"last_painted":_last_painted,"skipped_last":bool(n and _last_painted != n - 1),"n_patches":_n_patches,"xlim_after_paint":_xlim,"last_body_x":None if n <= 0 else [n - 1 - 0.34, n - 1 + 0.34],"min_body":float(min_body)},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-    except Exception:
-        pass
-    # #endregion
 
 
 def _paint_special_candle(
@@ -3490,17 +3425,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     n_axis = len(sox_c)
     sox_anc = _sox_abc_anchors_on_axis(sox_h, sox_l, sox_c, i5_hint=i5)
     sox_i_now = int(sox_anc["i_now"]) if sox_anc else (n_axis - 1)
-    sox_y_now = float(sox_anc["y_now"]) if sox_anc else float(sox_c[-1] if sox_c else 0)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
-    # 最大量日＝黃帶定義來源（跟個股一樣：那天K最高～最低）
-    i_vmax = max(range(n), key=lambda i: float(vols[i] or 0)) if any(float(v or 0) > 0 for v in vols) else None
-    # #region agent log
-    try:
-        import json as _json
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"D","location":"biaoke_level_learn.py:_render_twii_far_dark:sox_extend","message":"sox_trailing_past_twii","data":{"n_tw":n_tw,"n_axis":n_axis,"extra_dates":list(sox_extra_dates),"sox_i_now":sox_i_now,"sox_y_now":sox_y_now,"last_twii":_ymd(bars[-1].get("date"))},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-    except Exception:
-        pass
-    # #endregion
+    # 最大量日＝黃帶定義來源（跟個股一樣：那天K最高～最低）；量只認加權 n_tw，不准造 SOX-only 日量
+    i_vmax = (
+        max(range(n_tw), key=lambda i: float(vols[i] or 0))
+        if n_tw and any(float(v or 0) > 0 for v in vols[:n_tw])
+        else None
+    )
 
     # 上費半 / 中加權 / 下加權量
     fig, (axu, ax, axv) = plt.subplots(
@@ -3533,30 +3464,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     ]
     sox_min_body = _candle_span_min_body(sox_h, sox_l, frac=_FAR_SOX_MIN_BODY_FRAC)
     _sox_last_repaint: Optional[Dict[str, Any]] = None
-    # #region agent log
-    try:
-        import json as _json
-        _si = n_axis - 1
-        _sox_last = {
-            "i": _si,
-            "in_valid": _si in valid,
-            "o": float(sox_o[_si]) if _si < len(sox_o) else None,
-            "h": float(sox_h[_si]) if _si < len(sox_h) else None,
-            "l": float(sox_l[_si]) if _si < len(sox_l) else None,
-            "c": float(sox_c[_si]) if _si < len(sox_c) else None,
-            "date": (
-                _ymd(bars[_si].get("date"))
-                if _si < n_tw
-                else (sox_extra_dates[_si - n_tw] if _si >= n_tw else None)
-            ),
-        }
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"D","location":"biaoke_level_learn.py:_render_twii_far_dark:sox_valid","message":"sox_valid_vs_last","data":{"n_tw":n_tw,"n_axis":n_axis,"i_now_tw":i_now,"sox_i_now":sox_i_now,"n_valid":len(valid),"last_valid":valid[-1] if valid else None,"sox_last":_sox_last,"sox_min_body":sox_min_body},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-    except Exception:
-        pass
-    # #endregion
     if len(valid) >= 5:
         span_raw = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
-        _sox_painted_last = -1
         for i in valid:
             prev_i = next((j for j in range(i - 1, -1, -1) if sox_c[j] == sox_c[j]), None)
             prev_c = sox_c[prev_i] if prev_i is not None else None
@@ -3577,17 +3486,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     zorder=6,
                 )
             )
-            _sox_painted_last = i
-        # #region agent log
-        try:
-            import json as _json
-            _si = n_axis - 1
-            _y0,_y1 = sorted((float(sox_o[_si]), float(sox_c[_si]))) if _si in valid else (None, None)
-            _bh = max((_y1 - _y0), float(sox_min_body)) if _y0 is not None else None
-            open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"E","location":"biaoke_level_learn.py:_render_twii_far_dark:sox_paint","message":"sox_paint_last","data":{"sox_painted_last":_sox_painted_last,"skipped_last":_sox_painted_last != n_axis - 1,"span_raw":span_raw,"sox_min_body":sox_min_body,"last_body_h":_bh,"last_body_h_vs_span":None if _bh is None or not span_raw else _bh / span_raw,"last_wick":None if _si not in valid else float(sox_h[_si]) - float(sox_l[_si]),"n_axu_patches":len(getattr(axu,"patches",[]) or [])},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-        except Exception:
-            pass
-        # #endregion
         if sox_anc:
             s5i, sai, sbi = sox_anc["i5"], sox_anc["i_alow"], sox_anc["i_bhi"]
             s5, sa, sb, sn = (
@@ -3741,18 +3639,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         skip_label_ys=skip_lab_ys,
     )
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
-    # #region agent log
-    try:
-        import json as _json, math as _math
-        _li = n - 1
-        _body = abs(float(closes[_li]) - float(opens[_li])) if _li >= 0 else None
-        _wick = float(highs[_li]) - float(lows[_li]) if _li >= 0 else None
-        _yspan = float(ymax) - float(ymin)
-        _mb = _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC)
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"E","location":"biaoke_level_learn.py:_render_twii_far_dark:twii_after_paint","message":"twii_last_geometry","data":{"n":n,"i_now":i_now,"last_date":_ymd(bars[_li].get("date")) if _li >= 0 else None,"last_ohlc":{"o":float(opens[_li]),"h":float(highs[_li]),"l":float(lows[_li]),"c":float(closes[_li])},"body":_body,"min_body":_mb,"body_drawn":max(_body or 0, float(_mb)),"wick":_wick,"yspan":_yspan,"body_vs_yspan":None if not _yspan else max(_body or 0, float(_mb)) / _yspan,"wick_vs_yspan":None if not _yspan or _wick is None else _wick / _yspan,"n_ax_patches":len(getattr(ax,"patches",[]) or [])},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-    except Exception:
-        pass
-    # #endregion
     # 黃帶對應那一根K＝最大量日：金K＋豎線；「最大量」字只留量欄
     if i_vmax is not None:
         _paint_special_candle(
@@ -3993,16 +3879,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     # 拉到4/28 時左側多留一格，首根回測K不准被裁掉
     x_left = -1.35 if need_apr else -0.6
-    # #region agent log
-    try:
-        import json as _json
-        _li = n_axis - 1
-        _candle_x0, _candle_x1 = (_li - 0.39, _li + 0.39) if _li >= 0 else (None, None)
-        _clipped = None if _candle_x0 is None else (_candle_x1 < x_left or _candle_x0 > x_right)
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"C","location":"biaoke_level_learn.py:_render_twii_far_dark:xlim","message":"xlim_vs_last_candle_and_tip","data":{"n_tw":n_tw,"n_axis":n_axis,"i_now":i_now,"sox_i_now":sox_i_now,"extra_dates":list(sox_extra_dates),"fut_x":fut_x,"x_left":x_left,"x_right":x_right,"last_candle_x":[_candle_x0,_candle_x1],"last_clipped_by_xlim":_clipped,"tip_scatter_x_tw":i_now,"tip_scatter_x_sox":sox_i_now,"right_label_x_text_tw":float(n_tw)+0.18,"gap_after_last_to_xlim_right":None if _candle_x1 is None else x_right - _candle_x1,"n_ax_patches":len(getattr(ax,"patches",[]) or []),"n_axu_patches":len(getattr(axu,"patches",[]) or [])},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-    except Exception:
-        pass
-    # #endregion
     for a in (axu, ax, axv):
         a.set_xlim(x_left, x_right)
     # xlim 定完再蓋末根費半K（避免右標／裁切吃掉周五官方柱）
@@ -4036,13 +3912,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=16,
             clip_on=False,
         )
-        # #region agent log
-        try:
-            import json as _json
-            open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"E","location":"biaoke_level_learn.py:_render_twii_far_dark:final_repaint","message":"final_last_candle_repaint","data":{"sox_i":_sox_last_repaint["i"],"sox_min_body":_sox_last_repaint["min_body"],"sox_ohlc":{"o":_sox_last_repaint["o"],"h":_sox_last_repaint["h"],"l":_sox_last_repaint["l"],"c":_sox_last_repaint["c"]},"tw_i":_tw_last_repaint["i"] if _tw_last_repaint else None,"tw_min_body":_tw_last_repaint["min_body"] if _tw_last_repaint else None},"timestamp":int(datetime.now().timestamp()*1000),"runId":"post-fix"})+"\n")
-        except Exception:
-            pass
-        # #endregion
     if _tw_last_repaint:
         ax.scatter(
             [float(_tw_last_repaint["i"])],
@@ -5199,24 +5068,15 @@ def _align_us_to_twii_dates(
     closes: List[float] = []
     volumes: List[float] = []
     last: Optional[Dict[str, Any]] = None
-    # #region agent log
-    _align_tail: List[Dict[str, Any]] = []
-    # #endregion
     for r in bars:
         d = _ymd(r.get("date"))
         hit = by.get(d)
         if hit and float(hit.get("close") or 0) > 0:
             last = hit
             volumes.append(float(hit.get("volume") or 0))
-            # #region agent log
-            _mode = "hit"
-            # #endregion
         else:
             # 美股休／缺日：價可延前收對齊軸，量不准假灌
             volumes.append(0.0)
-            # #region agent log
-            _mode = "fill" if last else "nan"
-            # #endregion
         if last:
             opens.append(float(last.get("open") or last.get("close") or 0))
             highs.append(float(last.get("high") or last.get("close") or 0))
@@ -5227,20 +5087,6 @@ def _align_us_to_twii_dates(
             highs.append(float("nan"))
             lows.append(float("nan"))
             closes.append(float("nan"))
-        # #region agent log
-        _align_tail.append({"d": d, "mode": _mode, "c": closes[-1]})
-        if len(_align_tail) > 6:
-            _align_tail = _align_tail[-6:]
-        # #endregion
-    # #region agent log
-    try:
-        import json as _json, math as _math
-        _li = len(closes) - 1
-        _lc = closes[_li] if _li >= 0 else None
-        open("/opt/cursor/logs/debug.log","a").write(_json.dumps({"hypothesisId":"D","location":"biaoke_level_learn.py:_align_us_to_twii_dates","message":"align_tail","data":{"n_bars":len(bars),"n_us":len(us_rows),"n_out":len(closes),"last_i":_li,"last_finite":bool(_lc is not None and _lc == _lc and _math.isfinite(float(_lc)) and float(_lc) > 0),"tail":_align_tail},"timestamp":int(datetime.now().timestamp()*1000),"runId":"pre-fix"})+"\n")
-    except Exception:
-        pass
-    # #endregion
     return {"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}
 
 
