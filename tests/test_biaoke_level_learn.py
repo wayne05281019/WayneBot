@@ -187,10 +187,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _teach_query_clock" in src
     assert "def _thesis_cap_for_query" in src
     assert "_latest_biaoke_index_snip" in src
-    # 外圍對照（附圖二）本輪不加 c4／c5 細標
+    # 外圍對照（附圖二）本輪不加 c4／c5 細標；費半右欄要接他寫死預測點
     us_end = src.find("\ndef ", src.index("def _render_us_compare_dark") + 4)
     us_blk = src[src.index("def _render_us_compare_dark") : us_end if us_end > 0 else None]
     assert "_c_subwave_anchors_vs_biaoke60" not in us_blk
+    assert "_paint_sox_thesis_preds" in us_blk
+    assert "sox_pred_ys" in us_blk
+    assert 'fut_x, s_fut, "預估↓"' not in us_blk
 
 
 def test_c_forecast_tip_points_his_next_anchor():
@@ -261,7 +264,9 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert '"low"' in pin and '"top"' in pin
     assert "不准蓋住縮圖K" in pin or "整盒不准蓋住縮圖K" in pin
     assert 'tip="high"' in block and 'tip="low"' in block
-    assert 'side="left"' in block  # A／B 讓開黃K
+    # A／B 字釘轉折尖點正上／正下（side=auto），不准再往左漂到別根K
+    assert 'y_alow, "A低"' in block and 'side="auto"' in block
+    assert 'y_bhi, "B高"' in block
     assert "i_now, y_now, \"C進行中\"" in block or "i_now, y_now" in block
     assert "keep_left_of_right=True" in block
     assert "_biaoke_pred_label" in block

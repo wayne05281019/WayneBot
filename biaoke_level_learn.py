@@ -2275,9 +2275,10 @@ def _place_live_right_labels(
     level_dash: bool = True,
     min_gap: Optional[float] = None,
 ) -> None:
-    """右側價標：結構優先、近距去重、垂直拉開，不准字壓字／字騎線。
+    """右側價標：結構優先、近距去重；字與短線 Y 必須＝真價。
 
-    確認過的右標預設在真價畫右緣短虛線；文字盡量貼真價 Y，撞了才垂直錯開。
+    確認過的右標預設在真價畫右緣短虛線。真價互撞→丟低優先，**不准**把字 Y 漂離真價
+    （費半 10445↔9865 差 ~580，絕對 floor 曾把「9,865」漂到 ~9,175＝延伸對不起來）。
     **不准**再畫「點→標籤」斜虛線引線（會整張凌亂）。
     note 可設 dash=False；呼叫端 level_dash=False 時整批不畫水平虛線。
     """
@@ -2285,9 +2286,10 @@ def _place_live_right_labels(
     if not items:
         return
     span = max(ymax - ymin, 1.0)
-    # 遠窗價距大：加大垂直間距，右標不准互壓
-    gap = float(min_gap) if min_gap is not None else max(span * 0.095, 680.0)
-    gap = max(gap, span * 0.08, 520.0)
+    # 間距只跟價窗比例走。不准絕對 floor 520／680：費半 10445↔9865 只差 ~580，
+    # 硬 floor 會把「9,865」字漂到 ~9,175，延伸對不到真價＝錯離譜。
+    gap = float(min_gap) if min_gap is not None else span * 0.09
+    gap = max(gap, span * 0.055)
     # 結構標優先於 Fib 裝飾標
     def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
         t = str(d.get("text") or "")
@@ -2304,9 +2306,12 @@ def _place_live_right_labels(
         # Fib／切／錨 真價太靠近已留結構 → 丟字
         if soft and any(abs(y0 - ky) < gap * 0.85 for ky in kept_ys):
             continue
+        # 結構／預測：真價互撞 → 丟低優先，不准把字 Y 漂離真價
+        if (not soft) and any(abs(y0 - ky) < gap * 0.85 for ky in kept_ys):
+            continue
         kept.append(it)
         kept_ys.append(y0)
-    # 由高到低排文字座，強制最小間距
+    # 由高到低；字與短線 Y 必須＝真價（延伸才對得上）
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
     # 字與短線都只准在最後一根K**右側**空白；不准伸進柱區變假點
@@ -2314,19 +2319,13 @@ def _place_live_right_labels(
     x_text = float(n) + 1.15
     for it in kept:
         y_true = float(it["y"])
-        # 先貼真價；撞了才往下錯（不准斜虛線連回真價）
-        y = y_true
-        while any(abs(y - py) < gap * 0.95 for py in placed):
-            y -= gap
-            if y < ymin + gap * 0.2:
-                break
-        y = min(max(y, ymin + gap * 0.25), ymax - gap * 0.25)
-        # 最後再跟已放標檢查一次，仍撞就跳過（寧可少標不准壓）
-        if any(abs(y - py) < gap * 0.9 for py in placed):
+        if y_true < ymin or y_true > ymax:
             continue
-        placed.append(y)
+        if any(abs(y_true - py) < gap * 0.85 for py in placed):
+            continue
+        placed.append(y_true)
         color = str(it.get("color") or _LIVE_MUTED)
-        # 右緣外側短價線（起點 > n，不准蓋最後幾根K、不准畫假轉折點）
+        # 右緣外側短價線：Y＝真價（起點 > n）
         if level_dash and it.get("dash", True):
             ax.plot(
                 [x_tick0, x_text - 0.15],
@@ -2338,10 +2337,10 @@ def _place_live_right_labels(
                 zorder=4,
                 solid_capstyle="butt",
             )
-        # 26 字夠「次回測4/28低9,865」；不准再 [:18] 裁成「…已破 (周」
+        # 字釘真價 Y；26 字夠完整「次回測4/28低9,865」
         ax.text(
             x_text,
-            y,
+            y_true,
             str(it["text"])[:26],
             fontproperties=fp(10, "bold"),
             color=color,
@@ -2900,7 +2899,8 @@ def _paint_sox_thesis_preds(
             ymax=ymax,
             fp=fp,
             level_dash=True,
-            min_gap=max((ymax - ymin) * 0.1, 180.0),
+            # 比例間距即可；不准絕對 floor 把真價標互擠掉或漂離
+            min_gap=(ymax - ymin) * 0.08,
         )
 
 
@@ -3251,12 +3251,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _pin_pivot_name(
         ax, i5, y5, "⑤升完", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=10
     )
-    # A／B 緊貼 10/15 黃K：標往左側空位，上下離尖，不准蓋黃柱／縮圖K
+    # A／B：字釘在轉折點正上／正下（對齊尖點＝使用者紅框位），不准左右漂到別根K
     _pin_pivot_name(
-        ax, i_alow, y_alow, "A低", "#ff8a80", _fp, side="left", tip="low", n=n, pad_x=1.1, fontsize=10
+        ax, i_alow, y_alow, "A低", "#ff8a80", _fp, side="auto", tip="low", n=n, pad_x=0.2, fontsize=10
     )
     _pin_pivot_name(
-        ax, i_bhi, y_bhi, "B高", "#40c4ff", _fp, side="left", tip="high", n=n, pad_x=1.1, fontsize=10
+        ax, i_bhi, y_bhi, "B高", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.2, fontsize=10
     )
     # 遠窗：C進行中只留轉折點（紫點），字併右欄「C今」——不准再蓋最後幾根縮圖K
     tip_skip: set = set()
@@ -4519,7 +4519,16 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
             ):
                 axu.scatter([ii], [yy], s=42, c=col, zorder=8, edgecolors="#fff", linewidths=0.5)
             span_s = max(x for x in sox_h if x == x) - min(x for x in sox_l if x == x)
-            # 費半浪名貼尖點；預估↓釘端點
+            sox_pred_ys = [
+                float(r.get("level"))
+                for r in ((pack or {}).get("pred_levels") or {}).get("sox") or []
+                if r.get("level") is not None
+            ]
+            y_lo_s = min([x for x in sox_l if x == x] + sox_pred_ys + [float(s_fut)])
+            y_hi_s = max([x for x in sox_h if x == x] + sox_pred_ys)
+            # 先定 ylim（含他寫死 10445／9865）再釘浪名；右欄真價延伸才對得上
+            axu.set_ylim(y_lo_s - span_s * 0.18, y_hi_s + span_s * 0.16)
+            # 費半浪名貼尖點；費C／預測點字走右欄（不准再釘「預估↓」假端點）
             _pin_pivot_name(
                 axu, s5i, s5, "費⑤", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=10
             )
@@ -4529,18 +4538,24 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
             _pin_pivot_name(
                 axu, sbi, sb, "費B高", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.35, fontsize=10
             )
-            _pin_pivot_name(
-                axu, i_now, sn, "費C進行中", "#ea80fc", _fp, side="left", tip="mid", n=n, pad_x=0.45, fontsize=10
-            )
-            _pin_pivot_name(
-                axu, fut_x, s_fut, "預估↓", "#ea80fc", _fp, side="right", tip="mid", n=n, pad_x=0.4, fontsize=10
-            )
             axu.axvline(s5i, color="#ff8a80", lw=0.85, ls=(0, (2, 2)), alpha=0.75, zorder=5)
             axu.axvline(sai, color="#ff8a80", lw=0.7, ls=(0, (2, 3)), alpha=0.45, zorder=5)
             axu.axvline(sbi, color="#40c4ff", lw=0.7, ls=(0, (2, 3)), alpha=0.45, zorder=5)
-            axu.set_ylim(
-                min(x for x in sox_l if x == x) - span_s * 0.12,
-                max(x for x in sox_h if x == x) + span_s * 0.18,
+            _paint_sox_thesis_preds(
+                axu,
+                bars=bars,
+                sox_o=sox_o,
+                sox_h=sox_h,
+                sox_l=sox_l,
+                sox_c=sox_c,
+                pack=pack,
+                fp=_fp,
+                i_now=i_now,
+                n=n,
+                ymin=y_lo_s - span_s * 0.18,
+                ymax=y_hi_s + span_s * 0.16,
+                now_y=float(sn),
+                now_lab=f"費C今{_px(float(sn))}",
             )
     # 納指收盤線陪看（細、不搶 ABC）
     ix_ok = [v for v in ix_c if v == v and v]
