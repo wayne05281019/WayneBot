@@ -4982,20 +4982,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     }
     # 先定 ylim 再釘浪名：lift／字級才對最終軸距，整盒不准蓋K
     ax.set_ylim(ymin, ymax)
-    # 遠窗縮圖禁區（B 反彈中下空檔），智慧標不准坐進縮圖
-    _i_far_l0 = (
-        _bar_index_by_ymd(bars, "20260811")
-        or _bar_index_by_ymd(bars, "20260820")
-        or int(i_alow + max(2, (i_b_end - i_alow) // 3))
-    )
-    _i_far_r0 = (
-        _bar_index_by_ymd(bars, "20260922")
-        or _bar_index_by_ymd(bars, "20260915")
-        or int(i_alow + max(4, 2 * (i_b_end - i_alow) // 3))
-    )
-    _y_far_lo0 = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.22
-    _y_far_hi0 = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.55
-    _reserve_avoid_zone(ax, float(_i_far_l0), _y_far_lo0, float(_i_far_r0), _y_far_hi0)
+    # 遠窗八浪縮圖在軸右側外邊距（見文末），軸內不再留縮圖禁區
     _pin_pivot_name(
         ax,
         i5s,
@@ -5416,29 +5403,17 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：紅框空檔＝大B反彈段中下（約8/下～9/中、價在A底～B末中段）
-    _i_far_l = (
-        _bar_index_by_ymd(bars, "20260811")
-        or _bar_index_by_ymd(bars, "20260820")
-        or int(i_alow + max(2, (i_b_end - i_alow) // 3))
-    )
-    _i_far_r = (
-        _bar_index_by_ymd(bars, "20260922")
-        or _bar_index_by_ymd(bars, "20260915")
-        or int(i_alow + max(4, 2 * (i_b_end - i_alow) // 3))
-    )
-    # 略上移進 A～B 空檔中心，底邊離大B金虛≥間隙
-    _y_far_lo = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.30
-    _y_far_hi = float(y_alow) + (float(y_b_end) - float(y_alow)) * 0.58
+    # 八浪縮圖：末日K右側留白低帶（xlim 右欄溝），不准壓軸內每天縮圖K／主浪線
+    _ys = max(float(ymax) - float(ymin), 1.0)
     _far_ins = _fig_rect_from_data_box(
         ax,
         fig,
-        x0=float(_i_far_l) + 2.0,
-        y0=_y_far_lo,
-        x1=float(_i_far_r) + 1.0,
-        y1=_y_far_hi,
-        min_w=0.12,
-        min_h=0.10,
+        x0=float(n_tw) + 0.6,
+        y0=float(ymin) + _ys * 0.12,
+        x1=float(n_axis) + 7.0,
+        y1=float(ymin) + _ys * 0.34,
+        min_w=0.10,
+        min_h=0.09,
     )
     _paint_eight_wave_inset(
         fig,
