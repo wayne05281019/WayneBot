@@ -123,7 +123,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "x_col" in src or "同一右欄" in src or "結構優先" in src
     # 教不懂浪的學生：遠窗／近窗各一張＋外圍費半對照；缺資料自補
     assert "遠窗" in src and "近窗" in src
-    assert "20260728" in src  # 遠窗從七月底⑤起
+    assert "20260728" in src  # 遠窗從七月底大A底
     assert "_sox_abc_anchors_on_axis" in src  # 遠窗下方費半自轉折
     assert "_render_twii_far_dark" in src
     assert "_render_us_compare_dark" in src
@@ -146,12 +146,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_align_us_to_twii_dates" in src
     assert "_sox_abc_anchors_on_axis" in src
     assert "自轉折" in src or "不准抄" in src
-    # 超級近窗：C起自 B；紫虛c4／c5 對他60分；橙①②僅輔助；大＝ABC｜細不取代
+    # 超級近窗：C起自 B；紫虛c4／c5 對他60分；橙①②僅輔助；大＝A底→B反彈→C
     assert "B高＝C起" in src
     assert "日K小波" in src
     assert "柱上讀" not in src
     assert "幾何對讀" not in src
-    assert "大＝ABC｜細＝C內不取代ABC" in src
+    assert "大＝A底→B反彈→C" in src or "大A底" in src
+    assert "C走完≠新五波升" in src
     assert "_c_subwave_anchors_vs_biaoke60" in src
     assert "c4細" in src and "c5細" in src
     assert "_level_break_tag" in src
@@ -310,13 +311,15 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert '"low"' in pin and '"top"' in pin
     assert "不准蓋住縮圖K" in pin or "整盒不准蓋住縮圖K" in pin
     assert 'tip="high"' in block and 'tip="low"' in block
-    # A／B 字釘轉折尖點正上／正下（side=auto），不准再往左漂到別根K
-    assert 'y_alow, "A低"' in block and 'side="auto"' in block
-    assert 'y_bhi, "B高"' in block
+    # 近A／近B 字釘轉折尖點；大A底／大B末另標；不准再寫⑤起
+    assert 'y_alow,\n        "近A低"' in block or '"近A低"' in block
+    assert '"近B高"' in block and 'side="auto"' in block
+    assert '"大A底' in block and '"大B末' in block
+    assert "⑤起" not in block
     assert "i_now, y_now, \"C進行中\"" in block or "i_now, y_now" in block
     assert "keep_left_of_right=True" in block
     assert "_biaoke_pred_label" in block
-    assert "浪名釘轉折點" in block or "浪名貼尖點" in block or "智慧標" in pin
+    assert "金虛線" in block or "大B反彈" in block or "智慧標" in pin
     # 腳註多行：不准 [:72] 裁成「9,」；完整 pred_note 再換行
     assert "pred_foot[:72]" not in block
     assert "pred_foot" in block
@@ -433,14 +436,16 @@ def test_wave_now_ladder_big_to_small():
     from biaoke_level_learn import _wave_now_ladder
 
     mid = _wave_now_ladder(
-        {"thesis": "五波後下降ABC・C內橫台中繼（預估）", "chart_as_of": "20261029"}
+        {"thesis": "大A→大B→大C｜C內橫台中繼（預估）", "chart_as_of": "20261029"}
     )
     assert mid["now"] == "C內橫台中繼"
-    assert "五波升完" in mid["chain"] and "C進行中" in mid["chain"]
+    assert "大A底7/29" in mid["chain"] and "大B反彈" in mid["chain"]
+    assert "大C進行中" in mid["chain"]
+    assert "五波升完" not in mid["chain"]
     assert "C3-3" not in mid["chain"]
     deep = _wave_now_ladder(
         {
-            "thesis": "五波後下降ABC・C內＝C3-3（1→2・預估）",
+            "thesis": "大A→大B→大C｜C內＝C3-3（1→2・預估）",
             "snippet": "目前只是C3-3-1轉C3-3-2",
             "chart_as_of": "20261030",
         }
@@ -450,7 +455,7 @@ def test_wave_now_ladder_big_to_small():
     assert "他說現在：" in deep["one_line"]
     to4 = _wave_now_ladder(
         {
-            "thesis": "五波後下降ABC・C內＝C3-3（3→4・預估）",
+            "thesis": "大A→大B→大C｜C內＝C3-3（3→4・預估）",
             "snippet": "目前應該是3-3-3完成轉3-3-4機率最高",
             "thesis_as_of": "20261101",
         }
@@ -756,17 +761,19 @@ def test_far_teach_rolls_left_when_over_max():
     assert len(short) == 50
 
 
-def test_far_twii_wave5_start_is_729_not_april():
-    """遠窗拉到4/28後，加權⑤起仍須是7/29低，不准改用四月窗底。"""
+def test_far_twii_big_a_low_is_729_not_april():
+    """遠窗拉到4/28後，大A底仍須是7/29低，不准改用四月窗底；且標成大A／大B不是⑤起。"""
     import inspect
 
     from biaoke_level_learn import _render_twii_far_dark
 
     src = inspect.getsource(_render_twii_far_dark)
-    assert '20260729' in src
+    assert "20260729" in src
+    assert "大A底" in src
+    assert "大B" in src or "大B反彈" in src
+    assert "⑤起" not in src
     assert "不准用窗內最低" in src or "不准把四月" in src or "跳過 7/29" in src
     assert "_far_teach_roll_bars" in src or "_FAR_TEACH_MAX_BARS" in src
-    # 活邏輯：同軸四月窗下，⑤起索引＝7/29
     from biaoke_level_learn import (
         _FAR_TEACH_MAX_BARS,
         _bar_index_by_ymd,
@@ -792,10 +799,29 @@ def test_far_twii_wave5_start_is_729_not_april():
     i729 = _bar_index_by_ymd(bars, "20260729")
     assert i729 is not None and i729 < i5
     lows = [float(r.get("low") or 0) for r in bars]
-    # 窗內最低在四月 → 若誤用 min 會錯；正確⑤起＝7/29
+    # 窗內最低在四月 → 若誤用 min 會錯；正確大A底＝7/29
     i_min = min(range(0, i5 + 1), key=lambda i: lows[i])
     assert _ymd(bars[i_min].get("date")) < "20260701"
     assert abs(float(lows[i729]) - 39384.85) < 2.0
+
+
+def test_thesis_and_ladder_say_big_abc_not_wave5_from_july():
+    """題旨／層級鏈：大A→大B→大C；不准再寫五波升完讓人把7/29當上升⑤起。"""
+    from biaoke_level_learn import _build_live_pack, _wave_now_ladder
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    pack = _build_live_pack(
+        "data/wayne_market.db",
+        now=datetime(2026, 11, 1, 13, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    thesis = str((pack or {}).get("thesis") or "")
+    assert "大A" in thesis or "大B" in thesis or "大C" in thesis
+    assert "五波後下降ABC" not in thesis
+    ladder = _wave_now_ladder(pack or {})
+    assert "大A底7/29" in ladder["steps"]
+    assert "大B反彈" in ladder["steps"]
+    assert "五波升完" not in ladder["steps"]
 
 
 def test_thesis_pred_levels_sox_next_support_apr28():
