@@ -165,6 +165,60 @@ def test_fundamentals_fingerprint_changes_when_sept_arrives(tmp_path):
     assert after[0] == "202609"
 
 
+def test_fundamentals_fingerprint_ignores_updated_at_bump(tmp_path):
+    """ensure 重寫 updated_at 不准讓介紹圖 memo 失效。"""
+    db = str(tmp_path / "fp2.db")
+    _seed_em(db)
+    a = stock_fundamentals_fingerprint(db, "7853")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE monthly_revenue SET updated_at=? WHERE stock_id=? AND yyyymm=?",
+        ("2099-01-01T00:00:00", "7853", "202608"),
+    )
+    conn.commit()
+    conn.close()
+    b = stock_fundamentals_fingerprint(db, "7853")
+    assert a == b
+
+
+def test_ensure_thin_respects_ttl_not_force(tmp_path, monkeypatch):
+    """檔期偏薄仍要補，但不准升成 force 拆 TTL（暖路徑會被全市場重抓拖死）。"""
+    import fundamentals as fund_mod
+
+    db = str(tmp_path / "thin_ttl.db")
+    _seed_em(db)
+    cover = filing_month_coverage(db, "202609")
+    assert cover["thin"] is True
+    calls = {"n": 0}
+    # 清掉他測留下的 TTL，否則第一次就被 skip
+    fund_mod._FILING_SYNC_STATE["monthly_ym"] = ""
+    fund_mod._FILING_SYNC_STATE["monthly_at"] = 0.0
+
+    def fake_mops(yyyymm):
+        calls["n"] += 1
+        return parse_t21sc03_html(FIXTURE_7853_SEP, yyyymm, "EM"), []
+
+    monkeypatch.setattr("fundamentals.previous_calendar_yyyymm", lambda today_ymd="": "202609")
+    monkeypatch.setattr("fundamentals._get", lambda url: [])
+    monkeypatch.setattr("fundamentals.fetch_mops_monthly_filings", fake_mops)
+    monkeypatch.setattr(
+        "fundamentals.fetch_mops_emerging_monthly_history",
+        lambda *a, **k: ([], []),
+    )
+    monkeypatch.setattr("fundamentals.emerging_monthly_gap_months", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "fundamentals.refresh_announced_income",
+        lambda *a, **k: {"ok": True, "skipped": "test"},
+    )
+    monkeypatch.setattr("universe.stock_is_emerging", lambda *_a, **_k: True)
+    monkeypatch.setattr("universe.card_asset_type", lambda *_a, **_k: "STOCK")
+    monkeypatch.setattr("universe.is_etf_asset", lambda *_a, **_k: False)
+
+    ensure_stock_fundamentals(db, "7853")
+    ensure_stock_fundamentals(db, "7853")
+    assert calls["n"] == 1
+
+
 def test_closed_and_morning_skip_still_refresh_sidecars():
     src = open("main_runner.py", encoding="utf-8").read()
     # 休市 skip increment 仍對側車（含上一收盤未齊仍 skip 重融合）

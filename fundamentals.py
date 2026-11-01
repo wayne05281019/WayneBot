@@ -933,7 +933,11 @@ def filing_month_coverage(db_path: str, yyyymm: str = "") -> Dict[str, Any]:
 
 
 def stock_fundamentals_fingerprint(db_path: str, stock_id: str) -> tuple:
-    """介紹圖 memo 要吃營收／季報指紋，否則補月後仍吐舊圖。"""
+    """介紹圖 memo 要吃營收／季報指紋，否則補月後仍吐舊圖。
+
+    只鎖畫面上會變的數（期別／營收／EPS），不准吃 updated_at：
+    ensure 每次碰庫會刷新時戳，吃進去會讓暖路徑必 miss。
+    """
     m = get_latest_monthly(db_path, stock_id) or {}
     q = get_latest_income(db_path, stock_id) or {}
     try:
@@ -944,14 +948,22 @@ def stock_fundamentals_fingerprint(db_path: str, stock_id: str) -> tuple:
         eps = round(float(q.get("eps") or 0), 4)
     except (TypeError, ValueError):
         eps = 0.0
+    try:
+        mom = round(float(m.get("mom_pct") or 0), 2) if m.get("mom_pct") is not None else None
+    except (TypeError, ValueError):
+        mom = None
+    try:
+        yoy = round(float(m.get("yoy_pct") or 0), 2) if m.get("yoy_pct") is not None else None
+    except (TypeError, ValueError):
+        yoy = None
     return (
         str(m.get("yyyymm") or ""),
         rev,
-        str(m.get("updated_at") or ""),
+        mom,
+        yoy,
         int(q.get("year") or 0),
         int(q.get("season") or 0),
         eps,
-        str(q.get("updated_at") or ""),
     )
 
 
@@ -1145,12 +1157,14 @@ def ensure_stock_fundamentals(
     filing = previous_calendar_yyyymm()
     has_month = stock_month_row(path, sid, filing) is not None
     cover = filing_month_coverage(path, filing)
+    # thin＝檔期偏薄，仍要嘗試補；但不准把 thin 升成 force（會拆 TTL，
+    # 月初未齊時每檔查股／memo 都重抓全市場，暖路徑必超時）。
     need_month = force or (not has_month) or bool(cover.get("thin"))
     if need_month:
         out["monthly"] = refresh_announced_monthly(
             path,
             filing,
-            force=force or bool(cover.get("thin")),
+            force=force,
             reason=f"ensure {sid} filing={filing} has={has_month} thin={cover.get('thin')}",
         )
         has_month = stock_month_row(path, sid, filing) is not None
