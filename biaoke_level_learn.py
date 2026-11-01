@@ -2182,28 +2182,48 @@ def _pin_pivot_name(
     pad_x: float = 0.35,
     fontsize: int = 10,
     zorder: int = 10,
+    clear_dy: Optional[float] = None,
 ) -> None:
-    """浪名標釘在轉折點：貼尖點，左右只留極短錯開；不准再漂空。
+    """浪名智慧標：尖點對準，整盒不准蓋住縮圖K。
 
-    tip：high＝盒底貼高點（字在尖上）、low＝盒頂貼低點（字在尖下）、
-    mid＝盒心貼真價（C／今）。side：left／right／auto。
+    tip=high → 整盒在高點上方；tip=low → 整盒在低點下方（含 bbox pad 也離尖）；
+    tip=mid → 左右錯開到柱外（C／今）。
     """
-    xx = float(x) + float(pad_x)
-    ha = "left"
-    use_left = side == "left" or (
-        side == "auto" and n is not None and float(x) >= max(float(n) * 0.62, 1.0)
-    )
-    if use_left:
-        xx = float(x) - float(pad_x)
-        ha = "right"
-    elif side == "right":
+    tip_k = str(tip or "mid").lower()
+    try:
+        y_lo, y_hi = ax.get_ylim()
+        span = max(float(y_hi) - float(y_lo), 1.0)
+    except Exception:
+        span = max(abs(float(y)) * 0.08, 1.0)
+    # bbox pad 會往尖點回吃一截 → 必須再撐開，整盒才離得開K
+    lift = float(clear_dy) if clear_dy is not None else max(span * 0.04, abs(float(y)) * 0.002)
+    yy = float(y)
+    if tip_k in {"high", "low"}:
+        # 上下離尖；若指定 left／right 再水平讓開（A／B 緊貼黃K時必讓）
+        va = "bottom" if tip_k == "high" else "top"
+        yy = float(y) + lift if tip_k == "high" else float(y) - lift
+        if side == "left":
+            xx, ha = float(x) - max(float(pad_x), 0.7), "right"
+        elif side == "right":
+            xx, ha = float(x) + max(float(pad_x), 0.7), "left"
+        else:
+            xx, ha = float(x), "center"
+    else:
         xx = float(x) + float(pad_x)
         ha = "left"
-    # 一律盒心釘真價 Y（在點上）；high／low 只作語意標記，不准再上下漂開
-    va = "center"
+        va = "center"
+        use_left = side == "left" or (
+            side == "auto" and n is not None and float(x) >= max(float(n) * 0.62, 1.0)
+        )
+        if use_left:
+            xx = float(x) - float(pad_x)
+            ha = "right"
+        elif side == "right":
+            xx = float(x) + float(pad_x)
+            ha = "left"
     ax.text(
         xx,
-        float(y),
+        yy,
         str(lab),
         fontproperties=fp(int(fontsize), "bold"),
         color=color,
@@ -2212,11 +2232,11 @@ def _pin_pivot_name(
         zorder=int(zorder),
         clip_on=False,
         bbox=dict(
-            boxstyle="round,pad=0.12",
+            boxstyle="round,pad=0.1",
             fc="#0b0f14",
             ec=color,
-            lw=0.7,
-            alpha=0.94,
+            lw=0.65,
+            alpha=0.9,
         ),
     )
 
@@ -2289,7 +2309,9 @@ def _place_live_right_labels(
     # 由高到低排文字座，強制最小間距
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
-    x_text = n + 0.55
+    # 字與短線都只准在最後一根K**右側**空白；不准伸進柱區變假點
+    x_tick0 = float(n) + 0.35
+    x_text = float(n) + 1.15
     for it in kept:
         y_true = float(it["y"])
         # 先貼真價；撞了才往下錯（不准斜虛線連回真價）
@@ -2304,28 +2326,18 @@ def _place_live_right_labels(
             continue
         placed.append(y)
         color = str(it.get("color") or _LIVE_MUTED)
-        # 真價只在右緣畫短價線（不准橫貫全圖、不准斜引線）
+        # 右緣外側短價線（起點 > n，不准蓋最後幾根K、不准畫假轉折點）
         if level_dash and it.get("dash", True):
             ax.plot(
-                [n - 0.85, x_text - 0.2],
+                [x_tick0, x_text - 0.15],
                 [y_true, y_true],
                 color=color,
-                lw=0.95,
+                lw=0.9,
                 ls=(0, (3, 2)),
-                alpha=0.7,
+                alpha=0.65,
                 zorder=4,
                 solid_capstyle="butt",
             )
-            if abs(y - y_true) > gap * 0.35:
-                # 字被迫錯開時：真價短線＋字旁一小點，仍不准斜線連過去
-                ax.scatter(
-                    [n - 0.85],
-                    [y_true],
-                    s=12,
-                    c=color,
-                    zorder=5,
-                    edgecolors="none",
-                )
         # 26 字夠「次回測4/28低9,865」；不准再 [:18] 裁成「…已破 (周」
         ax.text(
             x_text,
@@ -2804,6 +2816,8 @@ def _paint_sox_thesis_preds(
     n: int,
     ymin: float,
     ymax: float,
+    now_y: Optional[float] = None,
+    now_lab: str = "",
 ) -> None:
     """費半上欄：已破 A → 下一撐（大量圖概念＝青帶＋金K回測日）；右欄標，不准點連虛線。"""
     import math
@@ -2866,6 +2880,15 @@ def _paint_sox_thesis_preds(
                 "y": lv,
                 "text": lab[:26],
                 "color": col,
+            }
+        )
+    if now_y is not None:
+        right.append(
+            {
+                "x": n - 1,
+                "y": float(now_y),
+                "text": (now_lab or f"費C今{_px(float(now_y))}")[:26],
+                "color": "#ea80fc",
             }
         )
     if right:
@@ -3054,7 +3077,15 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             axu.plot([sbi, i_now], [sb, sn], color="#ea80fc", lw=1.85, zorder=7)
             span_s = span_raw
             s_lo_md = _md(bars[s_lo_i].get("date"))
-            # 浪名貼尖點；費C釘「今」真價（進行中＝當下點，不准漂在折線中段蓋K）
+            sox_pred_ys = [
+                float(r.get("level"))
+                for r in ((pack or {}).get("pred_levels") or {}).get("sox") or []
+                if r.get("level") is not None
+            ]
+            y_lo_s = min([x for x in sox_l if x == x] + sox_pred_ys)
+            y_hi_s = max([x for x in sox_h if x == x] + sox_pred_ys)
+            # 先定 ylim 再釘浪名（lift 依最終軸距算，整盒才離得開K）
+            axu.set_ylim(y_lo_s - span_s * 0.22, y_hi_s + span_s * 0.22)
             _pin_pivot_name(
                 axu,
                 s_lo_i,
@@ -3077,19 +3108,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             _pin_pivot_name(
                 axu, sbi, sb, "費B", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=9
             )
-            _pin_pivot_name(
-                axu,
-                i_now,
-                sn,
-                "費C進行中",
-                "#ea80fc",
-                _fp,
-                side="right",
-                tip="mid",
-                n=n,
-                pad_x=0.4,
-                fontsize=9,
-            )
+            # 費C同加權：只留紫點，字走右欄（避免蓋最後幾根費半K）
             for ii, yy, col in (
                 (s_lo_i, s_lo_y, "#ffab91"),
                 (s5i, s5, "#ff8a80"),
@@ -3098,15 +3117,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 (i_now, sn, "#ea80fc"),
             ):
                 axu.scatter([ii], [yy], s=34, c=col, zorder=8, edgecolors="#fff", linewidths=0.4)
-            sox_pred_ys = [
-                float(r.get("level"))
-                for r in ((pack or {}).get("pred_levels") or {}).get("sox") or []
-                if r.get("level") is not None
-            ]
-            y_lo_s = min([x for x in sox_l if x == x] + sox_pred_ys)
-            y_hi_s = max([x for x in sox_h if x == x] + sox_pred_ys)
-            # 先定 y 再畫青帶／右標；下緣加高，不准「次回測9,865」盒底被裁
-            axu.set_ylim(y_lo_s - span_s * 0.22, y_hi_s + span_s * 0.2)
             _paint_sox_thesis_preds(
                 axu,
                 bars=bars,
@@ -3119,7 +3129,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 i_now=i_now,
                 n=n,
                 ymin=y_lo_s - span_s * 0.22,
-                ymax=y_hi_s + span_s * 0.2,
+                ymax=y_hi_s + span_s * 0.22,
+                now_y=float(sn),
+                now_lab=f"費C今{_px(float(sn))}",
             )
     axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axu.text(
@@ -3138,8 +3150,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # —— 中：加權價（先畫底帶在K下一層，再畫K）——
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
-    ymin = min([min(lows), y_far_lo] + list(tw_supports)) - 520
-    ymax = max(highs) + 780
+    # 上下多留：高點浪名在尖上、低點浪名在尖下，不准被裁、也不准回頭蓋K
+    ymin = min([min(lows), y_far_lo] + list(tw_supports)) - 720
+    ymax = max(highs) + 1100
     tag_44210 = _level_break_tag(44210.0, c_seg_lows)
     sr = _next_support_resist(
         y_now,
@@ -3219,8 +3232,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         (i_now, y_now, "#ea80fc"),
     ):
         ax.scatter([ii], [yy], s=40, c=col, zorder=8, edgecolors="#fff", linewidths=0.55)
+    # 先定 ylim 再釘浪名：lift／字級才對最終軸距，整盒不准蓋K
+    ax.set_ylim(ymin, ymax)
     far_lo_md = _md(bars[i_far_lo].get("date"))
-    # 浪名貼尖點；C進行中釘「今」（進行中＝當下點，避開最大量黃K）
     _pin_pivot_name(
         ax,
         i_far_lo,
@@ -3237,23 +3251,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _pin_pivot_name(
         ax, i5, y5, "⑤升完", "#ff8a80", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=10
     )
+    # A／B 緊貼 10/15 黃K：標往左側空位，上下離尖，不准蓋黃柱／縮圖K
     _pin_pivot_name(
-        ax, i_alow, y_alow, "A低", "#ff8a80", _fp, side="auto", tip="low", n=n, pad_x=0.22, fontsize=10
+        ax, i_alow, y_alow, "A低", "#ff8a80", _fp, side="left", tip="low", n=n, pad_x=1.1, fontsize=10
     )
     _pin_pivot_name(
-        ax, i_bhi, y_bhi, "B高", "#40c4ff", _fp, side="auto", tip="high", n=n, pad_x=0.22, fontsize=10
+        ax, i_bhi, y_bhi, "B高", "#40c4ff", _fp, side="left", tip="high", n=n, pad_x=1.1, fontsize=10
     )
-    _pin_pivot_name(
-        ax, i_now, y_now, "C進行中", "#ea80fc", _fp, side="right", tip="mid", n=n, pad_x=0.4, fontsize=10
-    )
-    # 右欄：遠窗只留大結構＋他最新預測點；細c4／c5 留給近／超近（長軸少標才不亂）
-    # 預估端字已關 → tip_skip 空，45546 等改走右欄／青帶左標
+    # 遠窗：C進行中只留轉折點（紫點），字併右欄「C今」——不准再蓋最後幾根縮圖K
     tip_skip: set = set()
     right_notes = [
         {"x": i5, "y": y5, "text": f"⑤ {_px(y5)}", "color": "#ff8a80"},
         {"x": i_bhi, "y": y_bhi, "text": f"B高 {_px(y_bhi)}", "color": "#40c4ff"},
         {"x": i_alow, "y": y_alow, "text": f"A低 {_px(y_alow)}", "color": "#ff8a80"},
-        {"x": i_now, "y": y_now, "text": f"今 {_px(y_now)}", "color": "#ea80fc"},
+        {"x": i_now, "y": y_now, "text": f"C今 {_px(y_now)}", "color": "#ea80fc"},
     ]
     tip_anchor = tip.get("anchor_y")
     if tip_anchor is not None:
@@ -3298,7 +3309,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         min_gap=max((ymax - ymin) * 0.09, 900.0),
     )
     ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
-    ax.set_ylim(ymin, ymax)
 
     # —— 下：加權日量（最大量黃＝與上方同索引當日K對齊）——
     _paint_vol_bars_max_yellow(
@@ -3352,7 +3362,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     tag = "費B"
                 l2.append(f"{_md(d)}{tag}")
     t2, l2 = _sparse_xticks(t2, l2, min_gap=3)
-    x_right = max(n + 5.5, float(tip.get("xlim_right") or n) + 1.6, fut_x + 1.5)
+    # 右標文字在 n+1.15 起，右側要留夠寬才不裁字
+    x_right = max(n + 7.2, float(tip.get("xlim_right") or n) + 2.2, fut_x + 2.0)
     # 拉到4/28 時左側多留一格，首根回測K不准被裁掉
     x_left = -1.35 if need_apr else -0.6
     for a in (axu, ax, axv):
@@ -3644,7 +3655,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         side="right",
         tip="mid",
         n=n,
-        pad_x=0.4,
+        pad_x=1.05,
         fontsize=9,
     )
     if c_sub.get("ok"):

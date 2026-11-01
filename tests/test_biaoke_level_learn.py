@@ -247,19 +247,25 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "不准再貼" in special or "量欄已有" in special
     assert "ax.text" not in special
     assert "day_tag" in src[src.index("def _paint_max_vol_hl_zone") : src.index("def _hl_spans_excluding")]
-    # 右標：只准右緣短價線；不准橫貫 axhline、不准點→標籤斜引線
+    # 右標：只准最後一根K右側外側短價線；不准伸進柱區、不准假轉折點 scatter
     place = src[src.index("def _place_live_right_labels") : src.index("def _his_micro_degree")]
     assert "level_dash" in place
-    assert "不准橫貫" in place or "右緣" in place
+    assert "不准橫貫" in place or "右緣" in place or "外側" in place
+    assert "n - 0.85" not in place
+    assert "ax.scatter" not in place
     assert "axhline" not in place
     assert "level_dash=False" in block or "level_dash=True" in block
-    # C進行中釘「今」真價；浪名 tip=high/low 貼尖點（不准漂空）
-    assert "_pin_pivot_name" in block
+    # 浪名：high 在尖上、low 在尖下，不准左右蓋住縮圖K
+    pin = src[src.index("def _pin_pivot_name") : src.index("def _c_path_label_xy")]
+    assert '"high"' in pin and '"bottom"' in pin
+    assert '"low"' in pin and '"top"' in pin
+    assert "不准蓋住縮圖K" in pin or "整盒不准蓋住縮圖K" in pin
     assert 'tip="high"' in block and 'tip="low"' in block
+    assert 'side="left"' in block  # A／B 讓開黃K
     assert "i_now, y_now, \"C進行中\"" in block or "i_now, y_now" in block
     assert "keep_left_of_right=True" in block
     assert "_biaoke_pred_label" in block
-    assert "浪名釘轉折點" in block or "浪名貼尖點" in block
+    assert "浪名釘轉折點" in block or "浪名貼尖點" in block or "智慧標" in pin
     # 腳註多行：不准 [:72] 裁成「9,」；完整 pred_note 再換行
     assert "pred_foot[:72]" not in block
     assert "pred_foot" in block
