@@ -305,6 +305,8 @@ def test_his_micro_degree_and_alt_gate():
     assert _alt_path_needed("C3-3-2", "C3-3-2") is False
     # C／橫台 vs 柱讀 C3 不准另畫
     assert _alt_path_needed("C", "C3-3-2") is False
+    d334 = _his_micro_degree("3-3-3完成轉3-3-4機率最高；C3-3跌勢運行中")
+    assert d334["degree"] == "C3-3-4"
 
 
 def test_biaoke_pred_label_no_fake_prob():
@@ -337,6 +339,15 @@ def test_wave_now_ladder_big_to_small():
     assert deep["now"] == "C3-3-2"
     assert "C3-3主跌" in deep["chain"]
     assert "他說現在：" in deep["one_line"]
+    to4 = _wave_now_ladder(
+        {
+            "thesis": "五波後下降ABC・C內＝C3-3（3→4・預估）",
+            "snippet": "目前應該是3-3-3完成轉3-3-4機率最高",
+            "thesis_as_of": "20261101",
+        }
+    )
+    assert to4["now"] == "C3-3-4"
+    assert "C3-3主跌" in to4["chain"]
 
 
 def test_sox_abc_anchors_not_copy_twii_ab():
@@ -504,6 +515,107 @@ def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
         now=datetime(2026, 10, 31, 11, 30, tzinfo=tz),
     )
     assert "主跌" in (after.get("snippet") or after.get("thesis") or "")
+
+
+def test_thesis_cap_includes_weekend_posts(tmp_path, monkeypatch):
+    """休市／週末他也會發文：題旨 cap 必須含查詢當日，不准卡在上一個開市柱日。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _thesis_cap_for_query
+
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_chart_as_of", lambda _db: "20261030"
+    )
+    tz = ZoneInfo("Asia/Taipei")
+    # 2026-11-01 週日
+    cap = _thesis_cap_for_query(
+        str(tmp_path / "x.db"),
+        now=datetime(2026, 11, 1, 12, 30, tzinfo=tz),
+    )
+    assert cap == "20261101"
+
+
+def test_thesis_reads_333_to_334_without_c_prefix(tmp_path):
+    """11/1 夜盤文：3-3-3→3-3-4（不一定寫 C 前綴）要進題旨。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _latest_level_thesis, ensure_tables
+
+    db = str(tmp_path / "lvl334.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, text TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        (
+            "n334",
+            "2026-11-01",
+            "11:49",
+            "星期五夜盤C3-3跌勢運行中並未完成。"
+            "目前應該是3-3-3完成轉3-3-4機率最高，下周一絕對不能去抄底。",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    tz = ZoneInfo("Asia/Taipei")
+    out = _latest_level_thesis(
+        db,
+        as_of="20261101",
+        now=datetime(2026, 11, 1, 12, 30, tzinfo=tz),
+    )
+    assert "3→4" in (out.get("thesis") or "")
+    assert "抄底" in (out.get("wait_struct") or "") or "破底" in (out.get("wait_struct") or "")
+    assert out.get("post_id") == "n334"
+
+
+def test_snip_prefers_main_over_short_reply(tmp_path):
+    """同日短自回不准蓋長篇位階主文。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import _latest_biaoke_index_snip, ensure_tables
+
+    db = str(tmp_path / "snip.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, text TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        (
+            "main187",
+            "2026-11-01",
+            "11:49",
+            "星期五夜盤C3-3跌勢運行中並未完成。"
+            "由周五夜盤來拆解波浪位階，目前應該是3-3-3完成轉3-3-4機率最高，"
+            "第二組下跌推動脈動連主跌段都還未完成，下周一絕對不能去抄底破底。",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        ("main187:c48-2", "2026-11-01", "12:03", "費辦根本沒跌完，從細微波看的出來，不要想太多"),
+    )
+    conn.commit()
+    conn.close()
+    tz = ZoneInfo("Asia/Taipei")
+    snip, pid = _latest_biaoke_index_snip(
+        db,
+        "20261101",
+        now=datetime(2026, 11, 1, 12, 30, tzinfo=tz),
+        with_id=True,
+    )
+    assert "3-3-4" in snip
+    assert pid == "main187"
+    assert "費辦" not in snip
 
 
 def test_twii_intent_story_trap_language():

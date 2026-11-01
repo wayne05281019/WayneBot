@@ -562,9 +562,10 @@ def _teach_query_clock(
 def _thesis_cap_for_query(
     db_path: str, *, now: Optional[datetime] = None
 ) -> str:
-    """活畫題旨日上限：開市日用查詢當日（對齊他最新文）；柱 as_of 仍另算。
+    """活畫題旨日上限：永遠可讀到查詢當日他文（週末／休市他也會發）；柱 as_of 仍另算。
 
-    盤中未收柱仍不當官方收；這裡只放寬「他文可讀到今天」。
+    盤中未收柱仍不當官方收。同日文還要卡牆鐘（見 _latest_biaoke_index_snip）。
+    2026-11-01：週日新文被卡在上一個開市日 cap＝漏題旨／三張不跟文。
     """
     dt = now or datetime.now(TAIPEI)
     if dt.tzinfo is None:
@@ -577,21 +578,7 @@ def _thesis_cap_for_query(
         chart = _twii_chart_as_of(db_path)
     except Exception:
         chart = ""
-    try:
-        from trading_calendar import is_tw_open_calendar_day
-
-        if is_tw_open_calendar_day(today):
-            return max(x for x in (chart, today) if x)
-    except Exception:
-        pass
-    try:
-        from live_quote import is_live_merge_window
-
-        if is_live_merge_window(dt):
-            return max(x for x in (chart, today) if x)
-    except Exception:
-        pass
-    return chart or today
+    return max(x for x in (chart, today) if x)
 
 
 def _latest_biaoke_index_snip(
@@ -599,11 +586,17 @@ def _latest_biaoke_index_snip(
     cap_ymd: str,
     *,
     now: Optional[datetime] = None,
-) -> str:
-    """≤cap 日、且時間 ≤ 查詢當下的最新大盤相關他文（主文／自回）。"""
+    with_id: bool = False,
+):
+    """≤cap 日、且時間 ≤ 查詢當下的最新大盤相關他文（主文優先於短回）。
+
+    短自回（「費半沒跌完」）也會命中細微波關鍵字；不准蓋掉同日長篇位階主文。
+    with_id=True 時回 (snip, post_id)；否則只回 snip 字串。
+    """
+    empty = ("", "") if with_id else ""
     cap = _ymd(cap_ymd)
     if not db_path or not cap:
-        return ""
+        return empty
     dt = now or datetime.now(TAIPEI)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -617,7 +610,7 @@ def _latest_biaoke_index_snip(
         conn = sqlite3.connect(db_path, timeout=15.0)
         try:
             rows = conn.execute(
-                "SELECT date, time, text FROM biaoke_posts "
+                "SELECT id, date, time, text FROM biaoke_posts "
                 "WHERE date>=? AND date<=? "
                 "ORDER BY date DESC, time DESC LIMIT 40",
                 (since, cap_dash),
@@ -625,8 +618,11 @@ def _latest_biaoke_index_snip(
         finally:
             conn.close()
     except Exception:
-        return ""
-    for date_s, time_s, text in rows or ():
+        return empty
+    best_blob = ""
+    best_pid = ""
+    best_score = -1
+    for pid, date_s, time_s, text in rows or ():
         d = str(date_s or "").strip()
         t = str(time_s or "").strip()
         blob = str(text or "")
@@ -637,8 +633,35 @@ def _latest_biaoke_index_snip(
             continue
         if not (_INDEXISH.search(blob) or looks_like_level_now(blob)):
             continue
-        return re.sub(r"\s+", " ", blob).strip()[:400]
-    return ""
+        score = 0
+        if looks_like_level_now(blob):
+            score += 10
+        if _INDEXISH.search(blob):
+            score += 3
+        if re.search(
+            r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底",
+            blob,
+        ):
+            score += 12
+        n = len(blob)
+        if n >= 120:
+            score += 6
+        if n >= 240:
+            score += 6
+        # 主文 id 無 :c；短樓下回文降權
+        sid = str(pid or "")
+        if ":c" not in sid:
+            score += 10
+        elif n < 80:
+            score -= 8
+        if score > best_score:
+            best_score = score
+            best_blob = blob
+            best_pid = sid
+    if not best_blob:
+        return empty
+    snip = re.sub(r"\s+", " ", best_blob).strip()[:400]
+    return (snip, best_pid) if with_id else snip
 
 
 def _seat_onchart_labels(
@@ -714,10 +737,15 @@ def _latest_level_thesis(
     finally:
         conn.close()
     snip = str((row["snippet"] if row else "") or "")
+    post_id = str((row["post_id"] if row else "") or "")
     # 對齊查詢當下最新大盤文：正文像現況位階就覆蓋 snap（仍卡 ≤cap／牆鐘）
-    post_snip = _latest_biaoke_index_snip(db_path, cap, now=dt)
+    post_snip, post_snip_id = _latest_biaoke_index_snip(
+        db_path, cap, now=dt, with_id=True
+    )
     if post_snip and (not snip or looks_like_level_now(post_snip)):
         snip = post_snip
+        if post_snip_id:
+            post_id = post_snip_id
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -745,10 +773,16 @@ def _latest_level_thesis(
     # 位階＝預估（他原文：很容易看錯／不要做太遠）；隨時檢視；誤導或鐵律不符→動態修正
     thesis = "五波後下降ABC・現在在C（預估・隨時檢視）"
     wait = "不符鐵律／穿刺原規劃／被誤導→重修位階"
+    # 他細微標號有時寫 C3-3-x、有時只寫 3-3-x（11/1 夜盤文）
+    has_333 = ("C3-3-3" in snip) or bool(re.search(r"(?<![0-9])3-3-3(?![0-9])", snip))
+    has_334 = ("C3-3-4" in snip) or bool(re.search(r"(?<![0-9])3-3-4(?![0-9])", snip))
     if "C3-3-1" in snip and "C3-3-2" in snip:
         thesis = "五波後下降ABC・C內＝C3-3（1→2・預估）"
         wait = "下一測他點過錨；鐵律不符→動態修正重訂"
-    elif "C3-3" in snip:
+    elif has_333 and has_334:
+        thesis = "五波後下降ABC・C內＝C3-3（3→4・預估）"
+        wait = "第二組主跌未完；他點周一破底／勿抄底；鐵律不符→重修"
+    elif "C3-3" in snip or has_333 or has_334:
         thesis = "五波後下降ABC・C內＝C3-3主跌（預估）"
         wait = "隨時檢視細微；穿刺原規劃→重修"
     elif "橫台" in snip or "中繼" in snip:
@@ -770,7 +804,7 @@ def _latest_level_thesis(
         "fib_note": "黃金切割反彈壓 0.382／0.618／0.75（他10/27台指日盤・可修訂）",
         "snippet": snip[:240],
         "as_of": str((row["as_of"] if row else "") or cap),
-        "post_id": str((row["post_id"] if row else "") or ""),
+        "post_id": post_id,
         "chart_as_of": cap,
     }
 
@@ -2048,7 +2082,14 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
     """從他原文／題旨抽出『現在在哪一層小波』（只認他寫過的代號）。"""
     s = str(blob or "")
     degree = ""
-    if re.search(r"C3-3-2|C3‑3‑2", s):
+    # 細微可寫 C3-3-x 或裸 3-3-x；轉段語（3→4／完成轉）優先較新的那一層
+    if re.search(r"C3-3-4|(?<![0-9])3-3-4(?![0-9])|3→4|3\-3\-3完成轉3\-3\-4", s):
+        degree = "C3-3-4"
+    elif re.search(r"C3-3-3|(?<![0-9])3-3-3(?![0-9])", s) and not re.search(
+        r"3→4|轉3-3-4|轉C3-3-4", s
+    ):
+        degree = "C3-3-3"
+    elif re.search(r"C3-3-2|C3‑3‑2", s):
         degree = "C3-3-2"
     elif re.search(r"C3-3-1|C3‑3‑1", s):
         degree = "C3-3-1"
@@ -2061,7 +2102,7 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
     chain = "五波→ABC→C"
     if degree.startswith("C3"):
         chain = "五波→ABC→C→C3-3" if "C3-3" in degree else "五波→ABC→C→C3"
-    if degree in ("C3-3-1", "C3-3-2"):
+    if degree in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
         chain = f"五波→ABC→C→C3-3→{degree}"
     return {"degree": degree, "chain": chain, "raw": s[:160]}
 
@@ -2304,8 +2345,10 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     deg = str(his.get("degree") or "").strip()
     thesis = str(pack.get("thesis") or text)
     steps: List[str] = ["五波升完", "下降ABC", "C進行中"]
-    if deg in ("C3-3-1", "C3-3-2"):
+    if deg in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
         steps.extend(["C3-3主跌", deg])
+    elif "3→4" in thesis:
+        steps.extend(["C3-3主跌", "C3-3-4"])
     elif deg.startswith("C3-3") or ("C3-3" in thesis and "橫台" not in thesis):
         steps.append("C3-3主跌")
     elif "橫台" in thesis or "中繼" in thesis:
@@ -2316,7 +2359,10 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         steps.append("C3")
     now = steps[-1]
     chain = " → ".join(steps)
-    as_of = _ymd(pack.get("chart_as_of") or pack.get("as_of") or "")
+    # 層級文字對齊他文日（thesis_as_of）；柱 as_of 是圖軸，不准蓋題旨日
+    as_of = _ymd(
+        pack.get("thesis_as_of") or pack.get("chart_as_of") or pack.get("as_of") or ""
+    )
     as_bit = f"（as_of {as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}）" if len(as_of) == 8 else ""
     return {
         "steps": steps,
