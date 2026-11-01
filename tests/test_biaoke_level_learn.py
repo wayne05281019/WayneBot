@@ -204,17 +204,21 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_tw_stamp_y = 0.982" in far_blk
     assert "_sox_stamp_y = 0.948" in far_blk
     assert "y=0.93" in near_blk
-    assert "y=0.93" in micro_blk
-    # 八浪縮圖：遠＝右下縮小；近＝左下；超近＝右下＋C內閃折
+    # 超近：黃框下移左移；縮圖改右上；圖例併左下層級框
+    assert "x=0.78, y=0.88" in micro_blk or "x=0.78" in micro_blk
+    assert "線色：" in micro_blk
+    assert "ax.legend" not in micro_blk
+    # 八浪縮圖：遠＝右下縮小；近＝左下；超近＝右上＋C內閃折
     assert "0.812, 0.268" in far_blk or "(0.812, 0.268" in far_blk
     assert "0.08, 0.24" in near_blk or "(0.08, 0.24" in near_blk
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src
-    assert "0.78, 0.20" in micro_blk or "(0.78, 0.20" in micro_blk
+    assert "0.78, 0.58" in micro_blk or "(0.78, 0.58" in micro_blk
     # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
     assert "[i_b_end, i_c, i_now]" in far_blk
     assert "緩坡" in src or "非垂直" in src
+    assert "不准把 A 包進去" in src or "A 必須在黃框" in src
     assert "_TEACH_STAMP_FS" in src
     assert "_paint_stamp_hbox" in src
     assert "subplots_adjust" in near_blk

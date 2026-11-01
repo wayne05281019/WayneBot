@@ -3763,19 +3763,19 @@ def _paint_eight_wave_inset(
     ax.set_xticks([])
     ax.set_yticks([])
     # 簡化八浪折線；色碼跟主圖一致：藍⑤／粉A／金虛B／紫C
-    # 順序必須 起→1…5→A→B→C（x 遞增）；不准 B 跑到 A 左邊造成斷線感
+    # 鐵律：起→1…5→A→B→C 的 x 嚴格遞增；A 必須在黃框（B→C）左側外
     if c_flash:
-        # 左半推進略壓；右半 A→B→C 緩坡＋閃折空間（對真窗約 −8%）
+        # 左：推進；中：A低→B反彈（都在黃框外）；右黃框：只裝 B→C 緩坡閃折
         pts = [
-            (0.0, 0.22),
-            (0.08, 0.40),  # 1
-            (0.14, 0.30),  # 2
-            (0.28, 0.76),  # 3
-            (0.36, 0.56),  # 4
-            (0.46, 0.90),  # 5
-            (0.56, 0.46),  # A
-            (0.66, 0.68),  # B
-            (0.98, 0.40),  # C 緩下
+            (0.00, 0.20),
+            (0.07, 0.38),  # 1
+            (0.12, 0.28),  # 2
+            (0.22, 0.72),  # 3
+            (0.28, 0.52),  # 4
+            (0.36, 0.88),  # 5
+            (0.44, 0.40),  # A（黃框外・左下）
+            (0.54, 0.66),  # B（黃框左緣＝C起）
+            (0.97, 0.38),  # C 緩下末
         ]
     else:
         pts = [
@@ -3815,23 +3815,24 @@ def _paint_eight_wave_inset(
         ls=(0, (5, 1.6)),
         zorder=3,
     )
-    # 修正C（紫）；超近閃折時加粗當底，但斜率已緩
-    ax.plot(
-        [pts[7][0], pts[8][0]],
-        [pts[7][1], pts[8][1]],
-        color=col_c,
-        lw=3.4 if c_flash else 1.55,
-        alpha=0.50 if c_flash else 1.0,
-        zorder=3,
-        solid_capstyle="round",
-    )
-    if not c_flash:
+    # 修正C：無閃折時畫紫實線；有閃折時只留極淡底軸，主路徑改細閃（避免雙線錯位）
+    if c_flash:
+        ax.plot(
+            [pts[7][0], pts[8][0]],
+            [pts[7][1], pts[8][1]],
+            color=col_c,
+            lw=2.4,
+            alpha=0.22,
+            zorder=2.5,
+            solid_capstyle="round",
+        )
+    else:
         ax.plot(
             [pts[7][0], pts[8][0]],
             [pts[7][1], pts[8][1]],
             color=col_c,
             lw=1.55,
-            zorder=3.1,
+            zorder=3,
         )
     labs = ["", "1", "2", "3", "4", "5", "A", "B", "C"]
     pt_cols = [
@@ -3888,7 +3889,7 @@ def _paint_eight_wave_inset(
                 zorder=5,
             )
             continue
-        # 超近閃折時 C 端點讓給微觀⑤，大C字略淡
+        # 超近閃折：C 端點讓給微觀⑤；B 標在黃框左緣外上方，不准跟①搶位
         if c_flash and i == 8:
             continue
         col = pt_cols[i]
@@ -3901,9 +3902,14 @@ def _paint_eight_wave_inset(
             edgecolors="#fff",
             linewidths=0.35,
         )
+        lab_dx, lab_dy = 0.0, (0.07 if i in (1, 3, 5, 7) else -0.09)
+        if c_flash and i == 6:  # A：標在點左下，遠離黃框
+            lab_dx, lab_dy = -0.02, -0.08
+        if c_flash and i == 7:  # B：標在點左上，黃框外
+            lab_dx, lab_dy = -0.02, 0.08
         ax.text(
-            x,
-            y + (0.07 if i in (1, 3, 5, 7) else -0.09),
+            x + lab_dx,
+            y + lab_dy,
             labs[i],
             fontproperties=fp(7 if not detail else 8, "bold"),
             color=col,
@@ -3911,7 +3917,7 @@ def _paint_eight_wave_inset(
             va="center",
             zorder=6,
         )
-    # 超近：黃框內細閃①～⑤；形狀對真窗（先急殺再緩下＋小反彈），自 B 尖接上不准斷
+    # 超近：黃框＝只包 B→C 閃折；A 必須在框外。路徑 B→①→②→③→④→⑤＝C，不准繞去 A
     flash_pts: List[Tuple[float, float]] = []
     flash_step = 0
     if c_flash and hi >= 8:
@@ -3922,29 +3928,35 @@ def _paint_eight_wave_inset(
         dx, dy = cx - bx, cy - by
         ln = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / ln, dx / ln
-        # 相對真窗：①急殺→②小彈→③續殺→④反彈（今）→⑤續下；全程貼 B→C 緩坡
+        # 振幅小、貼緩坡；①在下②在上…金圈④＝此刻
         flash_spec = [
-            (0.00, 0.00, ""),
-            (0.22, -0.040, "①"),
-            (0.38, 0.026, "②"),
-            (0.56, -0.034, "③"),
-            (0.74, 0.024, "④"),
+            (0.00, 0.00, "B"),  # 與大B同點，連續起點
+            (0.20, -0.038, "①"),
+            (0.38, 0.024, "②"),
+            (0.56, -0.032, "③"),
+            (0.74, 0.022, "④"),
             (1.00, 0.00, "⑤"),
         ]
         for t, off, _lab in flash_spec:
             flash_pts.append((bx + dx * t + nx * off, by + dy * t + ny * off))
-        # 起終鎖死 B／C；中段也禁止跳空（相鄰點必須連得上）
         flash_pts[0] = (bx, by)
         flash_pts[-1] = (cx, cy)
+        # 相鄰段長度檢查：若異常短／跳空就線性重插（防幾何錯位）
+        for k in range(1, len(flash_pts)):
+            x0, y0 = flash_pts[k - 1]
+            x1, y1 = flash_pts[k]
+            if math.hypot(x1 - x0, y1 - y0) < 1e-6:
+                t = flash_spec[k][0]
+                flash_pts[k] = (bx + dx * t, by + dy * t)
         fx = [p[0] for p in flash_pts]
         fy = [p[1] for p in flash_pts]
-        ax.plot(fx, fy, color="#0b0f14", lw=2.2, zorder=6.1, solid_capstyle="round")
-        ax.plot(fx, fy, color="#ffffff", lw=1.35, zorder=6.2, solid_capstyle="round")
-        ax.plot(fx, fy, color="#ff5252", lw=0.95, zorder=6.3, solid_capstyle="round")
+        ax.plot(fx, fy, color="#0b0f14", lw=2.35, zorder=6.1, solid_capstyle="round")
+        ax.plot(fx, fy, color="#ffffff", lw=1.45, zorder=6.2, solid_capstyle="round")
+        ax.plot(fx, fy, color="#ff5252", lw=1.05, zorder=6.3, solid_capstyle="round")
         flash_step = _c_flash_step(nk)
         for j, ((x, y), (_t, _o, lab)) in enumerate(zip(flash_pts, flash_spec)):
-            if not lab:
-                continue
+            if lab == "B":
+                continue  # 大B 已標在框外
             step_i = j
             is_now = step_i == flash_step
             ax.scatter(
@@ -3985,12 +3997,13 @@ def _paint_eight_wave_inset(
         y_b = min(y0, pts[max(0, hi - 1)][1]) - 0.12
         y_t = max(y0, pts[max(0, hi - 1)][1]) + 0.14
         if c_flash and flash_pts:
+            # 黃框只包閃折（自 B 起），不准把 A 包進去造成「B→A→①」錯位感
             xs_f = [p[0] for p in flash_pts]
             ys_f = [p[1] for p in flash_pts]
-            x_l = min(xs_f) - 0.06
-            x_r = max(xs_f) + 0.08
-            y_b = min(ys_f) - 0.10
-            y_t = max(ys_f) + 0.12
+            x_l = max(pts[7][0] - 0.02, min(xs_f) - 0.03)
+            x_r = max(xs_f) + 0.06
+            y_b = min(ys_f) - 0.08
+            y_t = max(ys_f) + 0.10
         if detail:
             ax.add_patch(
                 plt.Rectangle(
@@ -6075,44 +6088,35 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     geom_show = str(geom.get("geom_degree") or "").strip()
     if not deg_his.startswith("C3") and geom_show.startswith("C3"):
         geom_show = "C內小波①②（未稱C3）"
+    # 線色說明併進左下層級框（不再另開左上圖例壓K）
+    line_bits = [
+        "紫實＝他說B→今",
+        "紫虛＝預估",
+        "橙虛＝日K小波（非他說）",
+    ]
+    if need_alt:
+        line_bits.append("薄荷＝另前提")
+    if c_sub.get("ok"):
+        line_bits.append("紫細虛＝C內c4→c5")
     teach = (
         f"{ladder.get('teach_box') or '他說現在層級（大→小）'}\n"
-        f"日K小波：{geom_show or '—'}（橙虛＝用加權日K自己讀出的小波，不是他口述）\n"
+        f"線色：{'｜'.join(line_bits)}\n"
+        f"日K小波：{geom_show or '—'}（橙虛＝柱上自讀，不是他口述）\n"
         f"{alt_note}"
     )
     ax.text(
         0.018,
-        0.08,
+        0.06,
         teach,
         transform=ax.transAxes,
-        fontproperties=_fp(9, "bold"),
+        fontproperties=_fp(8, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="bottom",
         zorder=12,
-        linespacing=1.3,
-        bbox=dict(boxstyle="round,pad=0.32", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.96),
+        linespacing=1.25,
+        bbox=dict(boxstyle="round,pad=0.28", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.96),
     )
-    # 圖例改左上，避開右上螢光黃查詢框
-    ax.plot([], [], color="#ea80fc", lw=2.4, label="紫實＝他說（B→今）")
-    ax.plot([], [], color="#ea80fc", lw=1.5, ls=(0, (4, 2)), label="紫虛＝預估未來")
-    ax.plot([], [], color="#ffab40", lw=1.5, ls=(0, (3, 2)), label="橙虛＝日K小波（非他說）")
-    if need_alt:
-        ax.plot([], [], color="#69f0ae", lw=2.0, ls=(0, (5, 2)), label="薄荷＝另前提")
-    leg = ax.legend(
-        loc="upper left",
-        bbox_to_anchor=(0.02, 0.98),
-        fontsize=8,
-        frameon=True,
-        fancybox=True,
-        framealpha=0.92,
-    )
-    if leg is not None:
-        leg.get_frame().set_facecolor("#0b0f14")
-        leg.get_frame().set_edgecolor("#546e7a")
-        for t in leg.get_texts():
-            t.set_color(_LIVE_TEXT)
-            t.set_fontproperties(_fp(8, "bold"))
 
     want_dates = {
         _ymd(bars[i_bhi].get("date")),
@@ -6223,9 +6227,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             }
         )
         have_ys.add(round(float(yv), 1))
-    x_micro_col = float(n) + 2.55
+    # 右標略往左：給右上八浪縮圖讓位，不准被縮圖裁掉
+    x_micro_col = float(n) + 1.55
     try:
-        x_micro_col = max(x_micro_col, float(tip.get("fut_x") or n) + 0.85)
+        x_micro_col = max(x_micro_col, float(tip.get("fut_x") or n) + 0.35)
     except (TypeError, ValueError):
         pass
     _place_live_right_labels(
@@ -6298,10 +6303,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="top",
     )
-    # 超近窗：留上緣；黃框在標題列右上，圖例已改左上不互壓
+    # 超近窗：黃框略下移＋左移，完整顯示；縮圖改右上圈處
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.93
+        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.78, y=0.88
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))[:64]
     fig.text(
@@ -6313,14 +6318,14 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="bottom",
     )
-    # 超近窗：右下再縮小，少壓底圖K／量；C內緩坡閃折①～⑤
+    # 八浪縮圖：右上空檔（原圈處）；C內緩坡閃折①～⑤；A 在黃框外
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=True,
         c_flash=True,
-        rect=(0.78, 0.20, 0.18, 0.22),
+        rect=(0.78, 0.58, 0.19, 0.24),
         title="八浪・C閃",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
