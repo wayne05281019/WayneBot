@@ -277,6 +277,14 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "ax.scatter" not in place
     assert "axhline" not in place
     assert "level_dash=True" in block
+    # 浪／細浪硬標優先，不准被鄰近飆預測擠掉（c4↔47,637、今↔c5）
+    assert "gap_wave" in place and "c4細" in place and "_tier" in place
+    near_src = src[src.index("def _render_twii_live_dark") : src.index("def _render_twii_super_near_dark")]
+    micro_src = src[src.index("def _render_twii_super_near_dark") : src.index("def _render_us_compare_dark")]
+    assert "min_gap=(ymax - ymin) * 0.055" in near_src
+    # 超近窗標題不准把 C3-3-4 裁成 C3-3（保留 now 尾碼）
+    assert 'one_line")[:40]' not in micro_src and "one_line')[:40]" not in micro_src
+    assert "_now" in micro_src
     # 右欄預設 n+2.55（對齊長標）；不准再漂到 n+1.15、不准 right=0.90 把標甩進圖外溝
     assert "2.55" in place
     assert "n) + 1.15" not in place and "n + 1.15" not in place
@@ -1025,3 +1033,38 @@ def test_finish_last_twii_used_by_near_and_micro():
     assert "_twii_bars_for_teach" in far
     src = inspect.getsource(_finish_last_twii_candle)
     assert "facecolors=\"none\"" in src or "facecolors='none'" in src
+
+
+def test_place_live_right_labels_keeps_c4_c5_now():
+    """浪／細浪硬標優先：c4／c5／今 不准被鄰近飆預測擠掉。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from biaoke_level_learn import _place_live_right_labels, _px
+    from wayne_navigator import _fp
+
+    fig, ax = plt.subplots()
+    notes = [
+        {"x": 10, "y": 49969.0, "text": "⑤ 49,969", "color": "#ff8a80"},
+        {"x": 12, "y": 47637.0, "text": "飆預測 47,637", "color": "#4dd0e1"},
+        {"x": 14, "y": 47332.0, "text": f"c4細 {_px(47332.0)}", "color": "#ce93d8"},
+        {"x": 16, "y": 45677.0, "text": f"c5細 {_px(45677.0)}", "color": "#ce93d8"},
+        {"x": 18, "y": 45212.0, "text": f"今 {_px(45212.0)}", "color": "#ea80fc"},
+        {"x": 0, "y": 44210.0, "text": "飆預測 44,210未破", "color": "#82b1ff"},
+    ]
+    _place_live_right_labels(
+        ax,
+        notes,
+        n=20,
+        ymin=39000,
+        ymax=52000,
+        fp=_fp,
+        level_dash=True,
+        min_gap=(52000 - 39000) * 0.055,
+    )
+    texts = [t.get_text() for t in ax.texts]
+    plt.close(fig)
+    assert any("c4細" in t for t in texts), texts
+    assert any("c5細" in t for t in texts), texts
+    assert any(t.startswith("今") for t in texts), texts
