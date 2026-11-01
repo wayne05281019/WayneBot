@@ -575,13 +575,40 @@ def test_teach_query_clock_shows_wall_hhmm():
     )
     assert closed == "查詢 17:05｜收"
     stamp = _teach_stamp_line(
-        [{"date": "20261030", "close": 45211.83}],
+        [
+            {"date": "20261029", "close": 45500.0},
+            {"date": "20261030", "close": 45211.83},
+        ],
         pack={"query_at": datetime(2026, 10, 30, 17, 5, tzinfo=tz).isoformat()},
         close=45211.83,
     )
     assert "2026-10-30" in stamp
     assert "查詢 17:05｜收" in stamp
     assert "45,212" in stamp
+    # 相對前一個交易日（不是前天）
+    assert "−288" in stamp or "-288" in stamp
+    assert "%" in stamp
+
+
+def test_day_change_vs_prev_trading_day():
+    """漲跌＝對前一個交易日收；缺前收就不標。"""
+    from biaoke_level_learn import _day_change_vs_prev, _prev_bar_close, _teach_stamp_line
+
+    assert _prev_bar_close([{"close": 100}]) is None
+    assert _prev_bar_close([{"close": 100}, {"close": 110}]) == 100.0
+    up = _day_change_vs_prev(110.0, 100.0)
+    assert up["pts"] == 10.0
+    assert abs(float(up["pct"]) - 10.0) < 1e-9
+    assert "＋10" in up["text"] or "+10" in up["text"]
+    dn = _day_change_vs_prev(45212.0, 45532.0)
+    assert dn["pts"] == -320.0
+    assert "−320" in dn["text"] or "-320" in dn["text"]
+    line = _teach_stamp_line(
+        [{"date": "20261029", "close": 45532}, {"date": "20261030", "close": 45212}],
+        close=45212,
+    )
+    assert "45,212" in line
+    assert "%" in line
 
 
 def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):

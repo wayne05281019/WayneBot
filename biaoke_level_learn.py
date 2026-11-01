@@ -638,13 +638,51 @@ _TEACH_STAMP_FACE = "#1a2200"
 _TEACH_STAMP_TEXT = "#ffff66"
 
 
+def _day_change_vs_prev(
+    close: Optional[float], prev_close: Optional[float]
+) -> Dict[str, Any]:
+    """相對前一個交易日收：漲跌點數與％（不是前天）。"""
+    out: Dict[str, Any] = {
+        "pts": None,
+        "pct": None,
+        "text": "",
+        "sign": 0,
+    }
+    try:
+        c = float(close) if close is not None else None
+        p = float(prev_close) if prev_close is not None else None
+    except (TypeError, ValueError):
+        return out
+    if c is None or p is None or p <= 0:
+        return out
+    pts = c - p
+    pct = pts / p * 100.0
+    out["pts"] = pts
+    out["pct"] = pct
+    out["sign"] = 1 if pts > 0 else (-1 if pts < 0 else 0)
+    # ＋320（＋0.70%）／−320（−0.70%）
+    out["text"] = f"{pts:+,.0f}（{pct:+.2f}%）"
+    return out
+
+
+def _prev_bar_close(bars: Sequence[Dict[str, Any]]) -> Optional[float]:
+    """前一個交易日收（bars 倒數第二根有收才算）。"""
+    if not bars or len(bars) < 2:
+        return None
+    try:
+        v = float(bars[-2].get("close") or 0)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
 def _teach_stamp_line(
     bars: Sequence[Dict[str, Any]],
     *,
     pack: Optional[Dict[str, Any]] = None,
     close: Optional[float] = None,
 ) -> str:
-    """查詢戳一行：YYYY-MM-DD ＋盤中/收＋價（能一行就一行）。"""
+    """查詢戳一行：YYYY-MM-DD ＋盤中/收＋價＋相對前一日漲跌點／％。"""
     as_of = _ymd(bars[-1].get("date")) if bars else ""
     day = (
         f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}"
@@ -662,6 +700,10 @@ def _teach_stamp_line(
         px_s = _px(float(px_v or 0))
     except (TypeError, ValueError):
         px_s = "—"
+    chg = _day_change_vs_prev(px_v, _prev_bar_close(bars))
+    chg_s = str(chg.get("text") or "").strip()
+    if chg_s:
+        return f"{day}  {clock}  {px_s}  {chg_s}"
     return f"{day}  {clock}  {px_s}"
 
 
@@ -676,7 +718,7 @@ def _paint_teach_query_stamp(
     y: float = 0.958,
     ha: str = "right",
 ) -> None:
-    """三張教具共用：螢光黃框標查詢日／盤中或收／當時價（字加大）。
+    """三張教具共用：螢光黃框標查詢日／盤中或收／當時價／相對前一日漲跌（字加大）。
 
     預設貼右、略離上緣，不准壓標題白字；近／超近可再調 y 適中。
     """
@@ -687,11 +729,14 @@ def _paint_teach_query_stamp(
             from wayne_navigator import _fp as fp
         except Exception:
             return
+    # 有漲跌字稍長：略縮字級仍一眼可讀
+    line = _teach_stamp_line(bars, pack=pack, close=close)
+    fsz = 15 if ("（" in line and len(line) > 36) else 17
     fig.text(
         float(x),
         float(y),
-        _teach_stamp_line(bars, pack=pack, close=close),
-        fontproperties=fp(17, "bold"),
+        line,
+        fontproperties=fp(fsz, "bold"),
         color=_TEACH_STAMP_TEXT,
         ha=str(ha or "right"),
         va="top",
@@ -4146,6 +4191,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # xlim 定完再蓋末根費半K（避免右標／裁切吃掉周五官方柱）
     if _sox_last_repaint:
         _prev = _sox_last_repaint.get("prev")
+        _prev_c = float(sox_c[_prev]) if _prev is not None else None
         _paint_one_live_candle(
             axu,
             int(_sox_last_repaint["i"]),
@@ -4153,7 +4199,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             high=float(_sox_last_repaint["h"]),
             low=float(_sox_last_repaint["l"]),
             close=float(_sox_last_repaint["c"]),
-            prev_c=float(sox_c[_prev]) if _prev is not None else None,
+            prev_c=_prev_c,
             candle_up=candle_up_taiwan,
             min_body=float(_sox_last_repaint["min_body"]),
             width=0.86,
@@ -4173,6 +4219,34 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             linewidths=1.5,
             zorder=16,
             clip_on=False,
+        )
+        # 費半末根：標收＋相對前一日漲跌點／％（與黃框同一套讀法）
+        _sox_chg = _day_change_vs_prev(float(_sox_last_repaint["c"]), _prev_c)
+        _sox_bits = [f"費半{_px(float(_sox_last_repaint['c']))}"]
+        if _sox_chg.get("text"):
+            _sox_bits.append(str(_sox_chg["text"]))
+        _sox_col = (
+            _LIVE_UP
+            if int(_sox_chg.get("sign") or 0) > 0
+            else (_LIVE_DOWN if int(_sox_chg.get("sign") or 0) < 0 else _TEACH_STAMP_TEXT)
+        )
+        axu.text(
+            float(_sox_last_repaint["i"]) + 0.55,
+            float(_sox_last_repaint["c"]),
+            " ".join(_sox_bits),
+            fontproperties=_fp(10, "bold"),
+            color=_sox_col,
+            ha="left",
+            va="center",
+            zorder=17,
+            clip_on=False,
+            bbox=dict(
+                boxstyle="round,pad=0.28",
+                facecolor=_TEACH_STAMP_FACE,
+                edgecolor=_TEACH_STAMP_EDGE,
+                linewidth=1.8,
+                alpha=0.96,
+            ),
         )
     if _tw_last_repaint:
         ax.scatter(
