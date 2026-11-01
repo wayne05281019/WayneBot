@@ -290,6 +290,47 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "[:240]" in block or "pred_note" in block
 
 
+def test_extend_us_ohlc_past_twii_keeps_official_only():
+    """加權軸後只准追加已收美股日；不准造假加權／不准灌空量當真柱。"""
+    from biaoke_level_learn import _align_us_to_twii_dates, _extend_us_ohlc_past_twii, _ymd
+
+    bars = [
+        {"date": "20261028", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 10},
+        {"date": "20261029", "open": 1.5, "high": 2, "low": 1.4, "close": 1.6, "volume": 11},
+    ]
+    us = [
+        {"date": "20261028", "open": 100, "high": 110, "low": 99, "close": 105, "volume": 1},
+        {"date": "20261029", "open": 105, "high": 112, "low": 104, "close": 108, "volume": 1},
+        {"date": "20261030", "open": 108, "high": 109, "low": 104.39, "close": 106.89, "volume": 1},
+    ]
+    aligned = _align_us_to_twii_dates(us, bars)
+    assert len(aligned["close"]) == 2
+    ext, extra = _extend_us_ohlc_past_twii(aligned, us, "20261029")
+    assert extra == ["20261030"]
+    assert len(ext["close"]) == 3
+    assert abs(float(ext["low"][-1]) - 104.39) < 1e-6
+    assert abs(float(ext["close"][-1]) - 106.89) < 1e-6
+    # 沒有更晚官方日 → 不延長
+    ext2, extra2 = _extend_us_ohlc_past_twii(aligned, us[:2], "20261029")
+    assert extra2 == []
+    assert len(ext2["close"]) == 2
+    assert _ymd("20261030") == "20261030"
+
+
+def test_candle_span_min_body_keeps_far_sox_visible():
+    """遠窗費半末根不可因 body≪span 變成看不見的細線。"""
+    from biaoke_level_learn import _FAR_SOX_MIN_BODY_FRAC, _candle_span_min_body
+
+    highs = [15000.0, 12000.0, 11620.0]
+    lows = [10000.0, 10400.0, 11360.0]
+    mb = _candle_span_min_body(highs, lows, frac=_FAR_SOX_MIN_BODY_FRAC)
+    span = 5000.0
+    assert mb >= span * _FAR_SOX_MIN_BODY_FRAC * 0.9
+    # 末根真實 body 22 時，畫出來至少用 min_body
+    real_body = 22.0
+    assert max(real_body, mb) / span >= _FAR_SOX_MIN_BODY_FRAC * 0.9
+
+
 def test_far_max_vol_day_matches_official_hl():
     """黃底高低必須＝窗內最大量那根官方日K高低（同一交易日）。"""
     from biaoke_level_learn import _bar_index_by_ymd, _twii_abc_anchors, _ymd
