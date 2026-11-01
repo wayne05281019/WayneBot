@@ -2227,16 +2227,28 @@ def _place_live_right_labels(
             continue
         placed.append(y)
         color = str(it.get("color") or _LIVE_MUTED)
-        # 確認過的右標 → 真價水平虛線（字用實心底，不准騎線）
+        # 真價只在右緣畫短價線（不准橫貫全圖、不准斜引線）
         if level_dash and it.get("dash", True):
-            ax.axhline(
-                y_true,
+            ax.plot(
+                [n - 0.85, x_text - 0.2],
+                [y_true, y_true],
                 color=color,
-                lw=0.85,
+                lw=0.95,
                 ls=(0, (3, 2)),
-                alpha=0.5,
+                alpha=0.7,
                 zorder=4,
+                solid_capstyle="butt",
             )
+            if abs(y - y_true) > gap * 0.35:
+                # 字被迫錯開時：真價短線＋字旁一小點，仍不准斜線連過去
+                ax.scatter(
+                    [n - 0.85],
+                    [y_true],
+                    s=12,
+                    c=color,
+                    zorder=5,
+                    edgecolors="none",
+                )
         ax.text(
             x_text,
             y,

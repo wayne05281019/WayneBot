@@ -243,12 +243,11 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "不准再貼" in special or "量欄已有" in special
     assert "ax.text" not in special
     assert "day_tag" in src[src.index("def _paint_max_vol_hl_zone") : src.index("def _hl_spans_excluding")]
-    # 右標：真價水平虛線可留；不准再畫點→標籤斜引線（會整張凌亂）
+    # 右標：只准右緣短價線；不准橫貫 axhline、不准點→標籤斜引線
     place = src[src.index("def _place_live_right_labels") : src.index("def _his_micro_degree")]
-    assert "axhline" in place
     assert "level_dash" in place
-    assert "不准" in place and "斜虛線" in place
-    assert "ax.plot(" not in place
+    assert "不准橫貫" in place or "右緣" in place
+    assert "axhline" not in place
     assert "level_dash=False" in block or "level_dash=True" in block
     # C進行中放 B→今 上方空白，不准蓋縮圖K
     assert "c_lab_x" in block
