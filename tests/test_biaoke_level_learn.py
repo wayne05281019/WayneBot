@@ -35,7 +35,9 @@ def test_ingest_hooks_level_learn_and_live_paint():
     src = inspect.getsource(_after_ingest_analyze)
     assert "record_level_learn_from_events" in src
     assert "maybe_paint_open_day_after_ingest" in src
-    assert "force=bool(level_seen)" in src
+    # 他自己新文／貼圖或位階都要 force 重渲三張
+    assert "his_fresh" in src
+    assert "force=bool(level_seen or his_fresh)" in src
     assert "maybe_push_level_teach_update" in src
     poll = inspect.getsource(start_biaoke_poller)
     assert "maybe_paint_open_day_after_ingest" in poll
@@ -486,7 +488,7 @@ def test_thesis_respects_chart_as_of_and_break_tag(tmp_path):
 
 
 def test_paint_panels_trio_skips_us_and_tx60_in_source():
-    """話筒 trio 模式原始碼：試畫／補美股／外圍／TX60 只在 full 才跑。"""
+    """話筒 trio：外圍／TX60／內部試畫只在 full；官方日K同步 trio 也要先跑。"""
     from pathlib import Path
 
     src = Path(__file__).resolve().parents[1].joinpath("biaoke_level_learn.py").read_text(
@@ -497,10 +499,13 @@ def test_paint_panels_trio_skips_us_and_tx60_in_source():
     ]
     assert 'panels: str = "full"' in block
     assert 'mode == "full"' in block
-    # 內部試畫／補美股日K 必須包在 full 分支
-    for name in ("snapshot_and_score_twii", "_ensure_us_index_daily"):
-        at = block.index(name)
-        assert block.rfind('mode == "full"', 0, at) > 0
+    # 三張必先同步最新官方日K（trio／full 都跑）；不准再卡在 complete_bar 前一日
+    assert "_ensure_teach_index_bars" in block
+    ensure_at = block.index("_ensure_teach_index_bars")
+    assert block.rfind('mode == "full"', 0, ensure_at) < 0
+    # 內部試畫仍只在 full
+    snap_at = block.index("snapshot_and_score_twii")
+    assert block.rfind('mode == "full"', 0, snap_at) > 0
     # 外圍／TX60 必須包在 full 分支，不准 trio 無條件畫
     us_at = block.index("_render_us_compare_dark")
     full_guard = block.rfind('mode == "full"', 0, us_at)
@@ -906,3 +911,92 @@ def test_boot_wires_teach_kit_restore_background():
     # 必須在 listen 前就排背景，且不准擋 /health（sleep 後再畫）
     assert src.index("teach-kit-restore") < src.index("bot.run_polling()")
     assert "time.sleep(12)" in src[src.index("def _restore_teach_kit_bg") :]
+
+
+def test_teach_twii_bars_include_latest_index_day_past_complete_bar():
+    """教具 teach=True 必須吃到 index_daily 最新日；不准被 complete_bar 卡掉。"""
+    from biaoke_level_learn import _twii_bars_for_teach, _twii_chart_as_of, _ymd
+    from biaoke_wave import _complete_bar_ymd, _load_twii_bars
+
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        pytest.skip("no market db")
+    cap = _complete_bar_ymd(db)
+    teach = _load_twii_bars(db, n=8, teach=True)
+    capped = _load_twii_bars(db, n=8, teach=False)
+    assert teach and capped
+    teach_last = _ymd(teach[-1].get("date"))
+    cap_last = _ymd(capped[-1].get("date"))
+    assert teach_last
+    assert teach_last >= cap_last
+    if cap and teach_last > cap:
+        # 官方指數已有更新日時，教具一定要比 complete_bar 新
+        assert teach_last > cap
+    assert _twii_chart_as_of(db) == teach_last
+    bars = _twii_bars_for_teach(db, 120, {})
+    assert _ymd(bars[-1].get("date")) == teach_last
+
+
+def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
+    """盤中 MIS 疊顯示柱：只渲染、不寫庫、標 live_session。"""
+    from biaoke_level_learn import _merge_live_twii_display_bar
+
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda: True)
+    bars = [
+        {
+            "date": "20261029",
+            "open": 1,
+            "high": 2,
+            "low": 1,
+            "close": 1.5,
+            "volume": 10,
+        }
+    ]
+    live = {
+        "price": 45200.0,
+        "open": 45100.0,
+        "high": 45300.0,
+        "low": 45000.0,
+        "volume": 99,
+    }
+    # 固定「今天」為 20261030 方便測 append
+    monkeypatch.setattr(
+        "biaoke_level_learn.datetime",
+        type(
+            "D",
+            (),
+            {
+                "now": staticmethod(
+                    lambda tz=None: datetime(2026, 10, 30, 10, 30, tzinfo=TAIPEI)
+                )
+            },
+        ),
+    )
+    out = _merge_live_twii_display_bar(bars, live)
+    assert len(out) == 2
+    assert out[-1]["date"] == "20261030"
+    assert out[-1]["close"] == 45200.0
+    assert int(out[-1].get("live_session") or 0) == 1
+
+
+def test_finish_last_twii_used_by_near_and_micro():
+    """近／超近右標後必蓋回末日縮圖K；遠窗亦有末根重畫。"""
+    from biaoke_level_learn import (
+        _finish_last_twii_candle,
+        _render_twii_far_dark,
+        _render_twii_live_dark,
+        _render_twii_super_near_dark,
+    )
+
+    near = inspect.getsource(_render_twii_live_dark)
+    micro = inspect.getsource(_render_twii_super_near_dark)
+    far = inspect.getsource(_render_twii_far_dark)
+    assert "_finish_last_twii_candle" in near
+    assert "_finish_last_twii_candle" in micro
+    assert "_paint_one_live_candle" in far
+    assert "_tw_last_repaint" in far
+    assert "_twii_bars_for_teach" in near
+    assert "_twii_bars_for_teach" in micro
+    assert "_twii_bars_for_teach" in far
+    src = inspect.getsource(_finish_last_twii_candle)
+    assert "facecolors=\"none\"" in src or "facecolors='none'" in src

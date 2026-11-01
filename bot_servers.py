@@ -6635,7 +6635,11 @@ class WayneTelegramBot:
                 from datetime import datetime
                 from zoneinfo import ZoneInfo
 
+                from biaoke_level_learn import _ensure_teach_index_bars
+
                 dt = datetime.now(ZoneInfo("Asia/Taipei"))
+                # 單張遠窗補渲也要先同步最新官方日K，不准畫到缺末日
+                _ensure_teach_index_bars(self.db_path)
                 pack = dict(_build_live_pack(self.db_path, now=dt) or {})
                 pack["query_at"] = dt.isoformat()
                 try:
@@ -6663,7 +6667,8 @@ class WayneTelegramBot:
     async def _send_market_wave_charts(self, message, *, uid: str = "") -> None:
         """大盤專頁附圖：暗底遠／近／超近（第1→2→3）＋外圍。
 
-        休市有齊檔就先送已存，不准每次強制五張重畫拖一分鐘。
+        波浪現況／話筒查一律 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
+        （盤中 MIS 疊柱；逾時／失敗才退回已存）。外圍仍用已存，不准 trio 順手畫滿五張。
         遠窗必到；缺就單張重渲，仍缺則白話停，不准只出近／超近。
         """
         from config import skip_chart_warmup
@@ -6700,46 +6705,47 @@ class WayneTelegramBot:
                 live_on = False
 
             kit: dict = dict(stored) if stored_ok else {}
-            # 盤中／缺檔才重渲；話筒只畫遠近超近（panels=trio），外圍用已存
-            if live_on or not stored_ok:
-                paint_lock = getattr(self, "_market_teach_paint_lock", None)
-                if paint_lock is None:
-                    paint_lock = asyncio.Lock()
-                    self._market_teach_paint_lock = paint_lock
+            # 波浪現況／話筒查：一定 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
+            # （盤中 MIS 疊柱、飆大新文後也要立刻對得上；缺檔／逾時才退回已存）
+            _ = live_on  # 保留探測；重渲策略不再因休市跳過
+            paint_lock = getattr(self, "_market_teach_paint_lock", None)
+            if paint_lock is None:
+                paint_lock = asyncio.Lock()
+                self._market_teach_paint_lock = paint_lock
 
-                async def _paint_trio() -> dict:
-                    return await asyncio.wait_for(
-                        asyncio.wrap_future(
-                            submit_mpl_paint(
-                                lambda: paint_open_day_hypothesis(
-                                    self.db_path, force=True, panels="trio"
-                                )
+            async def _paint_trio() -> dict:
+                return await asyncio.wait_for(
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            lambda: paint_open_day_hypothesis(
+                                self.db_path, force=True, panels="trio"
                             )
-                        ),
-                        timeout=_CHART_RENDER_TIMEOUT,
-                    )
-
-                try:
-                    async with paint_lock:
-                        painted = await _paint_trio()
-                    if painted and painted.get("ok"):
-                        kit = self._merge_market_teach_kit(
-                            {
-                                "far_path": str(painted.get("far_path") or ""),
-                                "near_path": str(painted.get("near_path") or ""),
-                                "micro_path": str(painted.get("micro_path") or ""),
-                                "us_path": str(painted.get("us_path") or ""),
-                                "thesis": str(painted.get("thesis") or "")[:180],
-                                "as_of": str(painted.get("as_of") or ""),
-                            },
-                            stored,
                         )
-                except asyncio.TimeoutError:
-                    logger.warning("大盤教具活畫逾時")
-                    kit = self._merge_market_teach_kit(kit, stored)
-                except Exception:
-                    logger.exception("大盤教具活畫略過")
-                    kit = self._merge_market_teach_kit(kit, stored)
+                    ),
+                    timeout=_CHART_RENDER_TIMEOUT,
+                )
+
+            try:
+                async with paint_lock:
+                    painted = await _paint_trio()
+                if painted and painted.get("ok"):
+                    kit = self._merge_market_teach_kit(
+                        {
+                            "far_path": str(painted.get("far_path") or ""),
+                            "near_path": str(painted.get("near_path") or ""),
+                            "micro_path": str(painted.get("micro_path") or ""),
+                            "us_path": str(painted.get("us_path") or ""),
+                            "thesis": str(painted.get("thesis") or "")[:180],
+                            "as_of": str(painted.get("as_of") or ""),
+                        },
+                        stored,
+                    )
+            except asyncio.TimeoutError:
+                logger.warning("大盤教具活畫逾時")
+                kit = self._merge_market_teach_kit(kit, stored)
+            except Exception:
+                logger.exception("大盤教具活畫略過")
+                kit = self._merge_market_teach_kit(kit, stored)
             if not any(self._market_teach_path_ok(kit.get(k)) for k in trio_keys):
                 kit = self._merge_market_teach_kit(stored, {})
 

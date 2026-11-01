@@ -99,7 +99,7 @@ def test_image_surfaces_wait_vanishes_after_photo():
     industry = inspect.getsource(WayneTelegramBot._send_industry)
     assert industry.index("_start_plain_wait") < industry.index("reply_photo")
     assert industry.index("reply_photo") < industry.index("_stop_plain_wait")
-    # 大盤附圖＝暗底遠／近／超近；休市齊檔先送；遠窗硬閘；教具先於美股卡
+    # 大盤附圖＝暗底遠／近／超近；話筒一律 force 重渲；遠窗硬閘
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert wave.index("_start_plain_wait") < wave.index("_send_market_teach_trio_album")
     assert "_merge_market_teach_kit" in wave

@@ -408,11 +408,14 @@ def _morph_note_from_text(blob: str) -> str:
 
 
 def _twii_chart_as_of(db_path: str) -> str:
-    """活畫用的加權 as_of＝已收完整柱末日（盤中未收不准當收）。"""
+    """活畫／教具 as_of＝加權指數最新已收官方柱（盤中未收不准當收）。
+
+    教具必須畫到最新交易日縮圖K，不准被 daily_quotes 完整日卡在前一日。
+    """
     try:
         from biaoke_wave import _load_twii_bars
 
-        bars = _load_twii_bars(db_path, n=8)
+        bars = _load_twii_bars(db_path, n=8, teach=True)
     except Exception:
         bars = []
     if bars:
@@ -490,14 +493,83 @@ def _merge_live_twii_display_bar(
 def _twii_bars_for_teach(
     db_path: str, n: int, pack: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
-    """教具用加權柱：完整官方柱＋（盤中）MIS 顯示疊加。"""
+    """教具用加權柱：指數最新已收官方柱＋（盤中）MIS 顯示疊加。
+
+    遠／近／超近三張都必須畫到最新交易日縮圖K；盤中查／飆大新文要立刻對得上。
+    """
     from biaoke_wave import _load_twii_bars
 
-    bars = list(_load_twii_bars(db_path, n=n) or [])
+    bars = list(_load_twii_bars(db_path, n=n, teach=True) or [])
     live = (pack or {}).get("live_twii") if isinstance(pack, dict) else None
     if live:
         bars = _merge_live_twii_display_bar(bars, live)
     return bars
+
+
+def _ensure_teach_index_bars(db_path: str) -> None:
+    """活畫前補齊加權／費半最新官方日K（失敗不擋出圖）。"""
+    if not db_path:
+        return
+    try:
+        from taiwan_market import sync_index_daily
+
+        sync_index_daily(db_path, range_="3mo")
+    except Exception:
+        logger.exception("教具補加權日K略過")
+    try:
+        _ensure_us_index_daily(db_path)
+    except Exception:
+        logger.exception("教具補費半日K略過")
+
+
+def _finish_last_twii_candle(
+    ax,
+    *,
+    i_now: int,
+    opens: Sequence[float],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    candle_up,
+    ymin: float,
+    ymax: float,
+) -> None:
+    """近／超近／遠窗共用：右標後蓋回末日縮圖K＋空心 tip，不准被紫點吃掉。"""
+    if ax is None or i_now < 0 or i_now >= len(closes):
+        return
+    span = max(float(ymax) - float(ymin), 1.0)
+    min_body = max(
+        _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC),
+        span * 0.02,
+    )
+    prev_c = float(closes[i_now - 1]) if i_now > 0 else None
+    _paint_one_live_candle(
+        ax,
+        int(i_now),
+        open_=float(opens[i_now]),
+        high=float(highs[i_now]),
+        low=float(lows[i_now]),
+        close=float(closes[i_now]),
+        prev_c=prev_c,
+        candle_up=candle_up,
+        min_body=float(min_body),
+        width=0.72,
+        wick_lw=1.55,
+        z_wick=14,
+        z_body=15,
+        edgecolor="#ffffff",
+        edge_lw=0.9,
+    )
+    ax.scatter(
+        [float(i_now)],
+        [float(closes[i_now])],
+        s=42,
+        facecolors="none",
+        edgecolors="#ea80fc",
+        linewidths=1.15,
+        zorder=16,
+        clip_on=False,
+    )
 
 
 def _bar_clock_tag(bars: Sequence[Dict[str, Any]]) -> str:
@@ -4331,9 +4403,18 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         (i5, y5, "#ff8a80"),
         (i_alow, y_alow, "#ff8a80"),
         (i_bhi, y_bhi, "#40c4ff"),
-        (i_now, y_now, "#ea80fc"),
     ):
         ax.scatter([ii], [yy], s=56, c=col, zorder=8, edgecolors="#ffffff", linewidths=0.7)
+    # 今＝空心 tip，末日K稍後蓋回（不准實心紫點吃掉最新縮圖K）
+    ax.scatter(
+        [i_now],
+        [y_now],
+        s=56,
+        facecolors="none",
+        edgecolors="#ea80fc",
+        linewidths=1.2,
+        zorder=8,
+    )
     span = max(ymax - ymin, 1.0)
     # 浪名釘轉折點同價Y（左右錯開）；C釘 B→今 折線中點
     ax.axvline(i_c, color="#ea80fc", lw=0.95, ls=(0, (2, 2)), alpha=0.8, zorder=5)
@@ -4476,6 +4557,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     # 近窗已自畫 fib／錨虛線 → 右標函式不准再疊一層
     _place_live_right_labels(
         ax, right_notes, n=n, ymin=ymin, ymax=ymax, fp=_fp, level_dash=False
+    )
+    _finish_last_twii_candle(
+        ax,
+        i_now=i_now,
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_up_taiwan,
+        ymin=ymin,
+        ymax=ymax,
     )
     morph = str(pack.get("morph_note") or "").strip()
     morph_line = (morph[:24] + "…") if len(morph) > 24 else (morph or "楔形／盤頭＝觀察，不是叫你買")
@@ -4997,6 +5089,17 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         level_dash=True,
         # c5(45677) 與 45546 很近：拉開右標，不准互壓
         min_gap=max((y_top - y_bot) * 0.12, 520.0),
+    )
+    _finish_last_twii_candle(
+        ax,
+        i_now=i_now,
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        candle_up=candle_up_taiwan,
+        ymin=y_bot,
+        ymax=y_top,
     )
     axv.set_ylim(0, (max(vols[i_bhi:]) if any(vols[i_bhi:]) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
@@ -5677,6 +5780,9 @@ def paint_open_day_hypothesis(
     except Exception:
         logger.exception("活畫隔日對質略過")
 
+    # 三張必畫最新交易日縮圖K：先同步加權／費半官方日，再組 pack／盤中疊柱
+    _ensure_teach_index_bars(db_path)
+
     pack = _build_live_pack(db_path, now=dt)
     # 盤中：MIS 加權只疊顯示柱（不寫庫、不當官方收）；三張同包同查詢戳
     try:
@@ -5699,7 +5805,7 @@ def paint_open_day_hypothesis(
     us_note = pack.get("us_note") or ""
     key_levels = pack.get("key_levels") or {}
 
-    # 排程 full 才跑內部試畫／補美股；話筒 trio 跳過減壓
+    # 排程 full 才跑內部試畫；美股日K已在 _ensure_teach_index_bars
     if mode == "full":
         try:
             from biaoke_forecast import snapshot_and_score_twii
@@ -5707,10 +5813,6 @@ def paint_open_day_hypothesis(
             snapshot_and_score_twii(db_path, ymd)
         except Exception:
             logger.exception("開市日內部試畫略過")
-        try:
-            _ensure_us_index_daily(db_path)
-        except Exception:
-            logger.exception("活畫補美股日K略過")
 
     snap_root = _paint_dir(db_path)
     near_path = os.path.join(snap_root, f"{slot_id}-near.png")
@@ -5823,8 +5925,16 @@ def paint_open_day_hypothesis(
     finally:
         conn.close()
 
+    # 回傳 as_of＝加權最新已收柱日（或盤中疊加顯示日）；不准用日曆 ymd 把週末查詢寫成假收盤日
+    chart_as_of = _ymd(pack.get("chart_as_of")) or _twii_chart_as_of(db_path) or ymd
+    try:
+        live_bars = _twii_bars_for_teach(db_path, 8, pack)
+        if live_bars:
+            chart_as_of = _ymd(live_bars[-1].get("date")) or chart_as_of
+    except Exception:
+        pass
     logger.info(
-        "活畫 slot=%s thesis=%s far=%s near=%s micro=%s us=%s tx60=%s",
+        "活畫 slot=%s thesis=%s far=%s near=%s micro=%s us=%s tx60=%s as_of=%s",
         slot_id,
         thesis,
         bool(far_path),
@@ -5832,6 +5942,7 @@ def paint_open_day_hypothesis(
         bool(micro_path),
         bool(us_path),
         bool(tx60_path),
+        chart_as_of,
     )
     return {
         "ok": bool(near_path or far_path or us_path or micro_path or tx60_path),
@@ -5853,7 +5964,7 @@ def paint_open_day_hypothesis(
         "micro_degree_his": pack.get("micro_degree_his") or "",
         "micro_degree_geom": pack.get("micro_degree_geom") or "",
         "slot_id": slot_id,
-        "as_of": ymd,
+        "as_of": chart_as_of,
         "query_at": str(pack.get("query_at") or dt.isoformat()),
         "thesis_as_of": str(pack.get("thesis_as_of") or ""),
         "panels": mode,

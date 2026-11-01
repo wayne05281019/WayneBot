@@ -1951,10 +1951,19 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大位階學習畫圖／對質略過")
     try:
-        # 稀疏槽活畫；他說新點位則 force 重畫遠／近／超近
+        # 他自己新文／自回／貼圖／新點位 → force 重渲遠近超近，立刻對最新K＋標籤
+        # （路人 bystander／社團 club 不當他的判斷，不觸發 force）
+        his_fresh = any(
+            (not ev.get("club"))
+            and str(ev.get("kind") or "") != "bystander"
+            and str(ev.get("voice") or "") != "bystander"
+            for ev in (packed or [])
+        )
         from biaoke_level_learn import maybe_paint_open_day_after_ingest
 
-        maybe_paint_open_day_after_ingest(db_path, force=bool(level_seen))
+        maybe_paint_open_day_after_ingest(
+            db_path, force=bool(level_seen or his_fresh)
+        )
     except Exception:
         logger.exception("飆大開市活畫略過")
     try:
