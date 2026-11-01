@@ -182,3 +182,29 @@ def test_market_page_sends_teach_before_session_cards():
 
     src = inspect.getsource(WayneTelegramBot._send_market_page)
     assert src.index("_send_market_wave_charts") < src.index("_send_market_session_cards")
+
+
+def test_market_wave_phone_paint_uses_trio_panels_only():
+    """話筒重渲只准 panels=trio：遠近超近，不准整包外圍＋TX60。"""
+    import inspect
+
+    wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert 'panels="trio"' in wave or "panels='trio'" in wave
+    assert "force=True" in wave
+    assert "_market_teach_paint_lock" in wave
+    # 休市齊檔不准重渲：只在 live_on 或缺檔才 paint
+    assert "live_on or not stored_ok" in wave
+    # 話筒熱路徑不准默認 full／不帶 panels
+    assert "paint_open_day_hypothesis(\n" in wave or "paint_open_day_hypothesis(" in wave
+    assert 'panels="full"' not in wave and "panels='full'" not in wave
+    from biaoke_level_learn import paint_open_day_hypothesis, maybe_paint_open_day_after_ingest
+
+    src = inspect.getsource(paint_open_day_hypothesis)
+    assert 'panels: str = "full"' in src
+    assert 'mode == "full"' in src
+    assert "_render_us_compare_dark" in src
+    assert "_render_tx60_png" in src
+    # 排程／ingest 鉤子仍預設 full（不傳 panels）
+    maybe = inspect.getsource(maybe_paint_open_day_after_ingest)
+    assert "paint_open_day_hypothesis(db_path, force=force)" in maybe
+    assert 'panels="trio"' not in maybe

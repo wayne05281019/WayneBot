@@ -697,6 +697,8 @@ class WayneTelegramBot:
         # 按人分開。同一顆連按仍擋；不同顆互不卡住。壓撐也走同一套，不准再共用 actor 一把。
         self._trade_running: set[str] = set()
         self._screening_gate = asyncio.Lock()
+        # 大盤教具重渲單飛：連按不准疊三輪五張 matplotlib
+        self._market_teach_paint_lock = asyncio.Lock()
         self._screening_global_owner: str = ""
         self._screening_build_task = None
         self._menu_fade_gen: Dict[str, int] = {}
@@ -6641,19 +6643,28 @@ class WayneTelegramBot:
                 live_on = False
 
             kit: dict = dict(stored) if stored_ok else {}
-            # 盤中才強制活畫疊顯示柱；休市齊檔直接送，省掉一分鐘重畫
+            # 盤中／缺檔才重渲；話筒只畫遠近超近（panels=trio），外圍用已存
             if live_on or not stored_ok:
-                try:
-                    painted = await asyncio.wait_for(
+                paint_lock = getattr(self, "_market_teach_paint_lock", None)
+                if paint_lock is None:
+                    paint_lock = asyncio.Lock()
+                    self._market_teach_paint_lock = paint_lock
+
+                async def _paint_trio() -> dict:
+                    return await asyncio.wait_for(
                         asyncio.wrap_future(
                             submit_mpl_paint(
                                 lambda: paint_open_day_hypothesis(
-                                    self.db_path, force=True
+                                    self.db_path, force=True, panels="trio"
                                 )
                             )
                         ),
                         timeout=_CHART_RENDER_TIMEOUT,
                     )
+
+                try:
+                    async with paint_lock:
+                        painted = await _paint_trio()
                     if painted and painted.get("ok"):
                         kit = self._merge_market_teach_kit(
                             {

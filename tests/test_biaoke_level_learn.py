@@ -398,6 +398,46 @@ def test_thesis_respects_chart_as_of_and_break_tag(tmp_path):
     assert _level_break_tag(45546.0, [44726.0]) == "已破"
 
 
+def test_paint_panels_trio_skips_us_and_tx60_in_source():
+    """話筒 trio 模式原始碼：試畫／補美股／外圍／TX60 只在 full 才跑。"""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1].joinpath("biaoke_level_learn.py").read_text(
+        encoding="utf-8"
+    )
+    block = src[
+        src.index("def paint_open_day_hypothesis") : src.index("def latest_teach_kit")
+    ]
+    assert 'panels: str = "full"' in block
+    assert 'mode == "full"' in block
+    # 內部試畫／補美股日K 必須包在 full 分支
+    for name in ("snapshot_and_score_twii", "_ensure_us_index_daily"):
+        at = block.index(name)
+        assert block.rfind('mode == "full"', 0, at) > 0
+    # 外圍／TX60 必須包在 full 分支，不准 trio 無條件畫
+    us_at = block.index("_render_us_compare_dark")
+    full_guard = block.rfind('mode == "full"', 0, us_at)
+    assert full_guard > 0
+    tx_at = block.index("_render_tx60_png")
+    assert block.rfind('mode == "full"', 0, tx_at) > 0
+
+
+def test_schedule_ingest_paint_defaults_to_full_panels():
+    """排程／ingest 活畫走預設 full，不准寫死 panels=trio。"""
+    from pathlib import Path
+
+    from biaoke_level_learn import maybe_paint_open_day_after_ingest
+
+    root = Path(__file__).resolve().parents[1]
+    maybe = inspect.getsource(maybe_paint_open_day_after_ingest)
+    assert "paint_open_day_hypothesis(db_path, force=force)" in maybe
+    assert 'panels="trio"' not in maybe and "panels='trio'" not in maybe
+    ingest = (root / "biaoke_ingest.py").read_text(encoding="utf-8")
+    assert "maybe_paint_open_day_after_ingest" in ingest
+    # 呼叫點不傳 panels → 預設 full
+    assert 'panels="trio"' not in ingest
+
+
 def test_teach_query_clock_shows_wall_hhmm():
     """三張教具時鐘：一律查詢當下 HH:MM；盤中／收都要有鐘點。"""
     from datetime import datetime
@@ -501,3 +541,119 @@ def test_latest_teach_kit_reads_paths(tmp_path):
     assert kit["micro_path"] == str(micro)
     assert kit["us_path"] == ""
     assert "C" in kit["thesis"]
+
+
+def test_latest_teach_kit_skips_missing_files(tmp_path):
+    """Redeploy 後 DB 列還在、PNG 不見 → 不准回幽靈路徑。"""
+    from biaoke_level_learn import ensure_tables, latest_teach_kit, teach_kit_needs_restore
+
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    ghost_far = str(tmp_path / "gone-far.png")
+    ghost_near = str(tmp_path / "gone-near.png")
+    ghost_micro = str(tmp_path / "gone-micro.png")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_open_day_paints("
+        "slot_id, as_of, thesis, far_path, near_path, us_path, micro_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "20261030-night",
+            "20261030",
+            "預估在 C",
+            ghost_far,
+            ghost_near,
+            "",
+            ghost_micro,
+            "t",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    kit = latest_teach_kit(db)
+    assert kit["far_path"] == ""
+    assert kit["near_path"] == ""
+    assert kit["micro_path"] == ""
+    assert kit["thesis"]  # 說法仍可讀
+    assert teach_kit_needs_restore(db) is True
+
+
+def test_teach_kit_needs_restore_false_when_trio_on_disk(tmp_path):
+    from biaoke_level_learn import ensure_tables, teach_kit_needs_restore
+
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    far = tmp_path / "far.png"
+    near = tmp_path / "near.png"
+    micro = tmp_path / "micro.png"
+    for p in (far, near, micro):
+        p.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 200)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_open_day_paints("
+        "slot_id, as_of, thesis, far_path, near_path, us_path, micro_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        ("20261030-night", "20261030", "預估在 C", str(far), str(near), "", str(micro), "t"),
+    )
+    conn.commit()
+    conn.close()
+    assert teach_kit_needs_restore(db) is False
+
+
+def test_maybe_restore_teach_kit_skips_under_pytest(tmp_path, monkeypatch):
+    """缺檔時會呼叫 paint；pytest 下 paint 略過，不准擋。"""
+    from biaoke_level_learn import ensure_tables, maybe_restore_teach_kit
+
+    monkeypatch.delenv("WAYNE_LEVEL_LEARN_LIVE", raising=False)
+    db = str(tmp_path / "t.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_open_day_paints("
+        "slot_id, as_of, thesis, far_path, near_path, us_path, micro_path, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "20261030-night",
+            "20261030",
+            "預估在 C",
+            str(tmp_path / "missing-far.png"),
+            str(tmp_path / "missing-near.png"),
+            "",
+            str(tmp_path / "missing-micro.png"),
+            "t",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    out = maybe_restore_teach_kit(db)
+    assert out.get("restored") is False
+    assert out.get("skipped") == "pytest" or out.get("ok") is False
+
+
+def test_maybe_paint_after_ingest_restores_when_sparse_skips():
+    """稀疏窗外略過時，原始碼必須接到缺檔補渲（部署後週末）。"""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1].joinpath("biaoke_level_learn.py").read_text(
+        encoding="utf-8"
+    )
+    block = src[
+        src.index("def maybe_paint_open_day_after_ingest") : src.index(
+            "def _level_events_with_prices"
+        )
+    ]
+    assert "maybe_restore_teach_kit" in block
+    assert "off_hours" in block
+    assert "slot_done" in block
+
+
+def test_boot_wires_teach_kit_restore_background():
+    import main as main_mod
+
+    src = inspect.getsource(main_mod.run_web)
+    assert "teach-kit-restore" in src
+    assert "maybe_restore_teach_kit" in src
+    assert "teach_kit_needs_restore" in src
+    # 必須在 listen 前就排背景，且不准擋 /health（sleep 後再畫）
+    assert src.index("teach-kit-restore") < src.index("bot.run_polling()")
+    assert "time.sleep(12)" in src[src.index("def _restore_teach_kit_bg") :]

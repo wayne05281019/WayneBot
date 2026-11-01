@@ -4360,14 +4360,26 @@ def verify_live_hyps_with_speech(db_path: str, snippet: str) -> int:
 
 
 def paint_open_day_hypothesis(
-    db_path: str, *, now: Optional[datetime] = None, force: bool = False
+    db_path: str,
+    *,
+    now: Optional[datetime] = None,
+    force: bool = False,
+    panels: str = "full",
 ) -> Dict[str, Any]:
-    """稀疏槽活畫：日盤／夜盤／納指費半＋量價裸K。空白鍵可取檔送教具（非買訊）。"""
+    """稀疏槽活畫：日盤／夜盤／納指費半＋量價裸K。空白鍵可取檔送教具（非買訊）。
+
+    panels:
+      - full＝遠／近／超近＋外圍＋TX60（排程／ingest）
+      - trio＝話筒熱路徑只畫遠／近／超近（減壓；外圍用已存）
+    """
     out: Dict[str, Any] = {"ok": False, "path": "", "tx60_path": "", "slot_id": ""}
     if not db_path:
         return out
     if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_LEVEL_LEARN_LIVE") != "1":
         return {**out, "skipped": "pytest"}
+    mode = str(panels or "full").strip().lower()
+    if mode not in {"full", "trio"}:
+        mode = "full"
     dt = now or datetime.now(TAIPEI)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -4431,19 +4443,18 @@ def paint_open_day_hypothesis(
     us_note = pack.get("us_note") or ""
     key_levels = pack.get("key_levels") or {}
 
-    # 內部試畫（既有 evolve）
-    try:
-        from biaoke_forecast import snapshot_and_score_twii
+    # 排程 full 才跑內部試畫／補美股；話筒 trio 跳過減壓
+    if mode == "full":
+        try:
+            from biaoke_forecast import snapshot_and_score_twii
 
-        snapshot_and_score_twii(db_path, ymd)
-    except Exception:
-        logger.exception("開市日內部試畫略過")
-
-    # 缺費半／納指日K先自己補（老師備課）
-    try:
-        _ensure_us_index_daily(db_path)
-    except Exception:
-        logger.exception("活畫補美股日K略過")
+            snapshot_and_score_twii(db_path, ymd)
+        except Exception:
+            logger.exception("開市日內部試畫略過")
+        try:
+            _ensure_us_index_daily(db_path)
+        except Exception:
+            logger.exception("活畫補美股日K略過")
 
     snap_root = _paint_dir(db_path)
     near_path = os.path.join(snap_root, f"{slot_id}-near.png")
@@ -4483,18 +4494,22 @@ def paint_open_day_hypothesis(
         logger.exception("超級近窗渲圖失敗")
         micro_path = ""
 
-    try:
-        got_us = _render_us_compare_dark(db_path, us_path, pack)
-        us_path = got_us or ""
-    except Exception:
-        logger.exception("外圍對照渲圖失敗")
+    if mode == "full":
+        try:
+            got_us = _render_us_compare_dark(db_path, us_path, pack)
+            us_path = got_us or ""
+        except Exception:
+            logger.exception("外圍對照渲圖失敗")
+            us_path = ""
+        try:
+            got60 = _render_tx60_png(db_path, tx60_path, pack)
+            tx60_path = got60 or ""
+        except Exception:
+            logger.exception("TX60 活畫渲圖失敗")
+            tx60_path = ""
+    else:
+        # 話筒 trio：外圍／TX60 留空，ON CONFLICT 保留庫內舊檔
         us_path = ""
-
-    try:
-        got60 = _render_tx60_png(db_path, tx60_path, pack)
-        tx60_path = got60 or ""
-    except Exception:
-        logger.exception("TX60 活畫渲圖失敗")
         tx60_path = ""
 
     conn = sqlite3.connect(db_path, timeout=30.0)
@@ -4585,6 +4600,7 @@ def paint_open_day_hypothesis(
         "as_of": ymd,
         "query_at": str(pack.get("query_at") or dt.isoformat()),
         "thesis_as_of": str(pack.get("thesis_as_of") or ""),
+        "panels": mode,
     }
 
 
@@ -4641,16 +4657,74 @@ def latest_teach_kit(db_path: str) -> Dict[str, str]:
     return out
 
 
+def teach_kit_needs_restore(db_path: str) -> bool:
+    """庫有教具列，但遠／近／超近有檔路徑在磁碟缺 → True。
+
+    無列／路徑欄全空＝False（不准憑空硬補）。latest_teach_kit 已跳過缺檔。
+    """
+    if not db_path:
+        return False
+    try:
+        ensure_tables(db_path)
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT far_path, near_path, COALESCE(micro_path,'') "
+                "FROM biaoke_open_day_paints "
+                "ORDER BY created_at DESC, slot_id DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return False
+    if not row:
+        return False
+    wrote = [str(p or "").strip() for p in row]
+    if not any(wrote):
+        return False
+    kit = latest_teach_kit(db_path)
+    return not all(str(kit.get(k) or "").strip() for k in ("far_path", "near_path", "micro_path"))
+
+
+def maybe_restore_teach_kit(db_path: str) -> Dict[str, Any]:
+    """開機／閒置：庫有列、trio 檔缺才 force 補渲；檔齊不重畫。不擋 /health。"""
+    out: Dict[str, Any] = {"ok": False, "restored": False}
+    if not teach_kit_needs_restore(db_path):
+        return {**out, "ok": True, "skipped": "present_or_empty"}
+    try:
+        painted = paint_open_day_hypothesis(db_path, force=True, panels="trio")
+    except Exception:
+        logger.exception("教具缺檔補渲失敗")
+        return {**out, "error": "exception"}
+    ok = bool(painted.get("ok"))
+    return {
+        **out,
+        **painted,
+        "ok": ok,
+        "restored": ok,
+    }
+
+
 def maybe_paint_open_day_after_ingest(
     db_path: str, *, force: bool = False
 ) -> Dict[str, Any]:
-    """抓文／輪詢後：稀疏槽活畫；force＝他說新點位／話筒按鍵時強制重渲。"""
+    """抓文／輪詢後：稀疏槽活畫；force＝他說新點位／話筒按鍵時強制重渲。
+
+    稀疏窗外／休市略過時：若庫有列但 trio 檔缺，順便補渲（部署後週末不必逼話筒現畫）。
+    """
     try:
         verify_live_hyps_next_day(db_path)
     except Exception:
         logger.exception("活畫隔日對質鉤子失敗")
     try:
-        return paint_open_day_hypothesis(db_path, force=force)
+        painted = paint_open_day_hypothesis(db_path, force=force)
+        if painted.get("ok") or force:
+            return painted
+        if painted.get("skipped") in {"off_hours", "closed", "slot_done"}:
+            restored = maybe_restore_teach_kit(db_path)
+            if restored.get("restored"):
+                return restored
+        return painted
     except Exception:
         logger.exception("開市日活畫鉤子失敗")
         return {"ok": False, "error": "exception"}
