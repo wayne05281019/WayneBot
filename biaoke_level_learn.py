@@ -2346,9 +2346,11 @@ def _place_live_right_labels(
     # 由高到低；字與短線 Y 必須＝真價（延伸才對得上）
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
-    # 字與短線都只准在最後一根K**右側**空白；不准伸進柱區變假點
-    x_tick0 = float(n) + 0.35
-    x_text = float(n) + 1.15
+    # 水平往左貼最後一根K：字起點 n+0.18；虛線從近末段K拉到字前，往左對真價
+    # 不准再漂到 n+1.15（字離K太遠、對不齊）
+    x_dash0 = max(float(n) - 2.4, 0.0)
+    x_tick0 = float(n) + 0.04
+    x_text = float(n) + 0.18
     for it in kept:
         y_true = float(it["y"])
         if y_true < ymin or y_true > ymax:
@@ -2357,30 +2359,30 @@ def _place_live_right_labels(
             continue
         placed.append(y_true)
         color = str(it.get("color") or _LIVE_MUTED)
-        # 右緣外側短價線：Y＝真價（起點 > n）
+        # 水平虛線 Y＝真價：往左跨近末段K，對齊用；不准只剩右緣小節對不到
         if level_dash and it.get("dash", True):
             ax.plot(
-                [x_tick0, x_text - 0.15],
+                [x_dash0, x_tick0],
                 [y_true, y_true],
                 color=color,
-                lw=0.9,
+                lw=0.85,
                 ls=(0, (3, 2)),
-                alpha=0.65,
+                alpha=0.55,
                 zorder=4,
                 solid_capstyle="butt",
             )
-        # 字釘真價 Y；26 字夠完整「次回測4/28低9,865」
+        # 字釘真價 Y、水平貼K右側；字級 9 讓長標進軸內（26 字約需 7 data）
         ax.text(
             x_text,
             y_true,
             str(it["text"])[:26],
-            fontproperties=fp(10, "bold"),
+            fontproperties=fp(9, "bold"),
             color=color,
             ha="left",
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=dict(boxstyle="round,pad=0.14", fc="#0b0f14", ec=color, lw=0.6, alpha=0.96),
+            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=color, lw=0.6, alpha=0.96),
         )
 
 
@@ -3311,7 +3313,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     fig.patch.set_facecolor(_LIVE_BG)
     # bottom 加高：腳註多行完整數字＋不壓 x 軸日期
-    fig.subplots_adjust(left=0.05, right=0.90, top=0.91, bottom=0.125)
+    # right 收到 0.98：右標水平往左貼K，不准再留 10% 空溝把標甩飛
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.91, bottom=0.125)
     for a in (axu, ax, axv):
         a.set_facecolor(_LIVE_PANEL)
         a.tick_params(colors=_LIVE_MUTED, labelsize=9)
@@ -3595,7 +3598,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ymax=ymax,
         fp=_fp,
         level_dash=True,
-        min_gap=max((ymax - ymin) * 0.09, 900.0),
+        # 比例間距；不准絕對 floor 900 把真價標漂掉／擠掉
+        min_gap=(ymax - ymin) * 0.055,
     )
     ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
 
@@ -3651,8 +3655,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     tag = "費B"
                 l2.append(f"{_md(d)}{tag}")
     t2, l2 = _sparse_xticks(t2, l2, min_gap=3)
-    # 右標文字在 n+1.15 起，右側要留夠寬才不裁字
-    x_right = max(n + 7.2, float(tip.get("xlim_right") or n) + 2.2, fut_x + 2.0)
+    # 右標水平往左貼K（約 n+0.18）；右側留寬≥8 data 才夠長中文標進軸內，不准溢到圖外溝
+    x_right = max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0, fut_x + 2.0)
     # 拉到4/28 時左側多留一格，首根回測K不准被裁掉
     x_left = -1.35 if need_apr else -0.6
     for a in (axu, ax, axv):
@@ -4241,7 +4245,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 t2.append(i)
                 l2.append(_md(d))
     t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
-    ax.set_xlim(-0.6, max(n + 7.5, float(tip.get("xlim_right") or n) + 2.0))
+    # 右標水平往左貼K；近窗留寬≥8 data 夠長標進軸內
+    ax.set_xlim(-0.6, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
     ax.set_ylim(ymin, ymax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
@@ -5175,7 +5180,8 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
                 "color": col,
             }
         )
-    ax.set_xlim(-0.6, n + 5.8)
+    # 右標水平往左貼K；60 分圖留寬夠長標進軸內
+    ax.set_xlim(-0.6, n + 8.0)
     ax.set_ylim(min(lows) - 180, max(highs) + 280)
     _place_live_right_labels(
         ax,
@@ -5185,7 +5191,8 @@ def _render_tx60_png(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
         ymax=max(highs) + 280,
         fp=_fp,
         level_dash=True,
-        min_gap=max((max(highs) - min(lows)) * 0.12, 420.0),
+        # 比例間距；不准絕對 floor 把真價標互擠掉
+        min_gap=(max(highs) - min(lows)) * 0.12,
     )
     axv.set_ylim(0, (max(vols) if vols else 1) * 1.35)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)

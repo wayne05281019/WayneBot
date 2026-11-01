@@ -258,6 +258,15 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "ax.scatter" not in place
     assert "axhline" not in place
     assert "level_dash=False" in block or "level_dash=True" in block
+    # 水平往左貼最後一根K右側；不准再漂到 n+1.15、不准 right=0.90 把標甩進圖外溝
+    assert "n) + 0.18" in place or "n + 0.18" in place
+    assert "n) + 1.15" not in place and "n + 1.15" not in place
+    assert "x_dash0" in place
+    assert "min_gap=(ymax - ymin) * 0.055" in block
+    assert "900.0" not in block[block.index("_place_live_right_labels") :]
+    assert "n + 8.6" in block
+    assert "right=0.98" in block
+    assert "right=0.90" not in block
     # 浪名：high 在尖上、low 在尖下，不准左右蓋住縮圖K
     pin = src[src.index("def _pin_pivot_name") : src.index("def _c_path_label_xy")]
     assert '"high"' in pin and '"bottom"' in pin
