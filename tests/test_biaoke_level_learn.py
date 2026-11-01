@@ -182,12 +182,18 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_pin_pivot_name" in near_blk
     assert "_pin_pivot_name" in micro_blk
     assert "_pin_pivot_name" in src
-    # 三張標題都要查詢當下時鐘（盤中 HH:MM／收盤標籤），不准只寫盤中／收
-    assert "_teach_query_clock" in far_blk
-    assert "_teach_query_clock" in near_blk
-    assert "_teach_query_clock" in micro_blk
+    # 三張共用螢光黃查詢戳（日期／盤中或收／價）；時鐘邏輯仍走 _teach_query_clock
+    assert "_paint_teach_query_stamp" in far_blk
+    assert "_paint_teach_query_stamp" in near_blk
+    assert "_paint_teach_query_stamp" in micro_blk
     assert "def _teach_query_clock" in src
+    assert "def _paint_teach_query_stamp" in src
+    assert "_TEACH_STAMP_EDGE" in src
     assert "def _thesis_cap_for_query" in src
+    # 飆預測長標／44210 字往右，虛線不准被標籤壓住
+    assert "x_text_base" in src or "x_off" in src
+    assert "x_off" in near_blk and "1.15" in near_blk
+    assert "x_end" in src
     assert "_latest_biaoke_index_snip" in src
     # 外圍對照（附圖二）本輪不加 c4／c5 細標；費半右欄要接他寫死預測點
     us_end = src.find("\ndef ", src.index("def _render_us_compare_dark") + 4)
@@ -535,7 +541,7 @@ def test_teach_query_clock_shows_wall_hhmm():
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    from biaoke_level_learn import _teach_query_clock
+    from biaoke_level_learn import _teach_query_clock, _teach_stamp_line
 
     tz = ZoneInfo("Asia/Taipei")
     # 用平日 10:17，避免週末被合併窗判成休市
@@ -549,6 +555,14 @@ def test_teach_query_clock_shows_wall_hhmm():
         pack={"query_at": datetime(2026, 10, 30, 17, 5, tzinfo=tz).isoformat()},
     )
     assert closed == "查詢 17:05｜收"
+    stamp = _teach_stamp_line(
+        [{"date": "20261030", "close": 45211.83}],
+        pack={"query_at": datetime(2026, 10, 30, 17, 5, tzinfo=tz).isoformat()},
+        close=45211.83,
+    )
+    assert "2026-10-30" in stamp
+    assert "查詢 17:05｜收" in stamp
+    assert "45,212" in stamp
 
 
 def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
