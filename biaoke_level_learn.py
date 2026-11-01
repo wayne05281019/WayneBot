@@ -2646,7 +2646,8 @@ def _place_live_right_labels(
         if x_from >= x_label - 0.25:
             x_from = max(0.0, float(n) - 1.0)
         x_from = max(0.0, float(x_from))
-        x_dash_end = max(x_from + 0.2, x_label - 0.18)
+        # 虛線停在標籤左緣外，不准切進框內數字
+        x_dash_end = max(x_from + 0.2, x_label - 0.55)
         if level_dash and it.get("dash", True) and x_dash_end > x_from + 0.15:
             ax.plot(
                 [x_from, x_dash_end],
@@ -3518,7 +3519,8 @@ def _tw_pred_right_notes(
         # 周一破台指：狀態跟官方柱
         if abs(lv - 44042.0) < 0.6:
             text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) + "周一")
-        x_note = max(int(n) - 1, 0)
+        # 近／超近窗沒有 ref 日柱時從窗左拉滿，不准縮成末日短樁
+        x_note = 0
         ref = _ymd(row.get("ref_ymd"))
         if bars and ref:
             ii = _bar_index_by_ymd(bars, ref)
@@ -4641,7 +4643,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     for y_fib, lab_fib, col_fib in fib_levels:
         right_notes.append(
             {
-                "x": n - 1,
+                "x": 0,
                 "y": float(y_fib),
                 "text": f"切{lab_fib}" if lab_fib == "0.75" else _biaoke_pred_label(float(y_fib)),
                 "color": col_fib,
@@ -4667,7 +4669,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     if round(45546.0, 1) not in tip_skip:
         right_notes.append(
             {
-                "x": n - 1,
+                "x": 0,
                 "y": 45546.0,
                 "text": _biaoke_pred_label(45546.0, tag_45546),
                 "color": "#ffab40",
@@ -4676,7 +4678,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     if round(44210.0, 1) not in tip_skip:
         right_notes.append(
             {
-                "x": n - 1,
+                "x": 0,
                 "y": 44210.0,
                 "text": _biaoke_pred_label(44210.0, tag_44210),
                 "color": "#82b1ff",
@@ -4697,7 +4699,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             continue
         right_notes.append(
             {
-                "x": n - 1,
+                "x": 0,
                 "y": float(yv),
                 "text": _biaoke_pred_label(float(yv)),
                 "color": col,
@@ -4808,9 +4810,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="top",
     )
-    # 近窗黃框適中下移，不准貼上緣壓白字
+    # 近窗：留上緣；黃框在標題列右上（略低於頂），不准掉進K線區、不准壓左側白字
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.848
+        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.93
     )
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
@@ -5144,14 +5147,15 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         linespacing=1.3,
         bbox=dict(boxstyle="round,pad=0.32", fc="#0b0f14", ec="#546e7a", lw=0.9, alpha=0.96),
     )
-    # 圖例放右上，避開左上K線與層級框
+    # 圖例改左上，避開右上螢光黃查詢框
     ax.plot([], [], color="#ea80fc", lw=2.4, label="紫實＝他說（B→今）")
     ax.plot([], [], color="#ea80fc", lw=1.5, ls=(0, (4, 2)), label="紫虛＝預估未來")
     ax.plot([], [], color="#ffab40", lw=1.5, ls=(0, (3, 2)), label="橙虛＝日K小波（非他說）")
     if need_alt:
         ax.plot([], [], color="#69f0ae", lw=2.0, ls=(0, (5, 2)), label="薄荷＝另前提")
     leg = ax.legend(
-        loc="upper right",
+        loc="upper left",
+        bbox_to_anchor=(0.02, 0.98),
         fontsize=8,
         frameon=True,
         fancybox=True,
@@ -5207,9 +5211,9 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     right_notes = [
         {"x": i_bhi, "y": y_bhi, "text": f"B高 {_px(y_bhi)}", "color": "#40c4ff"},
         {"x": i_now, "y": float(closes[i_now]), "text": f"今 {_px(closes[i_now])}", "color": "#ea80fc"},
-        {"x": n - 1, "y": 45546.0, "text": _biaoke_pred_label(45546.0, tag_45546), "color": "#ffab40"},
+        {"x": 0, "y": 45546.0, "text": _biaoke_pred_label(45546.0, tag_45546), "color": "#ffab40"},
         {
-            "x": n - 1,
+            "x": 0,
             "y": 44210.0,
             "text": _biaoke_pred_label(44210.0, tag_44210),
             "color": "#82b1ff",
@@ -5246,7 +5250,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             continue
         right_notes.append(
             {
-                "x": n - 1,
+                "x": 0,
                 "y": float(yv),
                 "text": _biaoke_pred_label(float(yv)),
                 "color": col,
@@ -5266,8 +5270,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ymax=y_top,
         fp=_fp,
         level_dash=True,
-        # c5(45677) 與 45546 很近：拉開右標，不准互壓
-        min_gap=max((y_top - y_bot) * 0.12, 520.0),
+        # 與遠窗同比例間距；不准 520 絕對 floor 把右標擠掉
+        min_gap=(y_top - y_bot) * 0.055,
         x_col=x_micro_col,
     )
     _finish_last_twii_candle(
@@ -5321,9 +5325,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="top",
     )
-    # 超近窗黃框下移，讓出白字標題
+    # 超近窗：留上緣；黃框在標題列右上，圖例已改左上不互壓
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.848
+        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.93
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))[:64]
     fig.text(
@@ -6350,6 +6355,22 @@ def maybe_push_level_teach_update(
     uids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
     if not uids:
         return {**stats, "skipped": "no_uid"}
+    # 同日同組價＝重複，不重推（主文＋自回各寫一次仍只發一輪）
+    as_of_d = str(row.get("date") or "").replace("-", "")[:8]
+    lv_fp = "|".join(
+        sorted(
+            {
+                f"{round(float(h.get('level')), 1)}"
+                for h in (row.get("levels") or [])
+                if h.get("level") is not None
+            }
+        )
+    )
+    if as_of_d and lv_fp:
+        fp_key = f"level_teach:fp:{as_of_d}:{lv_fp}"
+        if not _claim_chat_dedupe(uids[0], fp_key, db_path=db_path):
+            stats["skipped"] = "same_levels"
+            return stats
     # 用 alert 表級鍵（不綁單一 chat）— 佔第一人失敗＝已送過
     if not _claim_chat_dedupe(uids[0], dedupe, db_path=db_path):
         stats["skipped"] = 1

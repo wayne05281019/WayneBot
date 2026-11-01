@@ -192,8 +192,10 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _thesis_cap_for_query" in src
     # 黃框：遠／近／超近都下移讓出白字標題（不准貼上緣壓字）
     assert "y=0.855" in far_blk
-    assert "y=0.848" in near_blk
-    assert "y=0.848" in micro_blk
+    assert "y=0.93" in near_blk
+    assert "y=0.93" in micro_blk
+    assert "subplots_adjust" in near_blk
+    assert "subplots_adjust" in micro_blk
     # 右標同欄 x_col；虛線自 note['x'] 連到標左緣（不准左一截短虛線）
     assert "x_col" in src
     assert "x_near_col" in near_blk or "x_col=" in near_blk
