@@ -688,6 +688,20 @@ def test_thesis_reads_333_to_334_without_c_prefix(tmp_path):
     assert out.get("post_id") == "n334"
 
 
+def test_far_teach_rolls_left_when_over_max():
+    """遠窗超過固定根數 → 只留最右一段（新日進來刪最左）。"""
+    from biaoke_level_learn import _FAR_TEACH_MAX_BARS, _far_teach_roll_bars
+
+    assert _FAR_TEACH_MAX_BARS == 126
+    rows = [{"date": f"2026{i:04d}", "close": float(i)} for i in range(1, 140)]
+    got = _far_teach_roll_bars(rows, max_bars=_FAR_TEACH_MAX_BARS)
+    assert len(got) == 126
+    assert got[0]["date"] == rows[-126]["date"]
+    assert got[-1]["date"] == rows[-1]["date"]
+    short = _far_teach_roll_bars(rows[:50], max_bars=_FAR_TEACH_MAX_BARS)
+    assert len(short) == 50
+
+
 def test_far_twii_wave5_start_is_729_not_april():
     """遠窗拉到4/28後，加權⑤起仍須是7/29低，不准改用四月窗底。"""
     import inspect
@@ -697,10 +711,13 @@ def test_far_twii_wave5_start_is_729_not_april():
     src = inspect.getsource(_render_twii_far_dark)
     assert '20260729' in src
     assert "不准用窗內最低" in src or "不准把四月" in src or "跳過 7/29" in src
+    assert "_far_teach_roll_bars" in src or "_FAR_TEACH_MAX_BARS" in src
     # 活邏輯：同軸四月窗下，⑤起索引＝7/29
     from biaoke_level_learn import (
+        _FAR_TEACH_MAX_BARS,
         _bar_index_by_ymd,
         _build_live_pack,
+        _far_teach_roll_bars,
         _twii_abc_anchors,
         _twii_bars_for_teach,
         _ymd,
@@ -714,7 +731,7 @@ def test_far_twii_wave5_start_is_729_not_april():
     )
     bars = _twii_bars_for_teach(db, 320, pack)
     i0 = _bar_index_by_ymd(bars, "20260428") or 0
-    bars = list(bars[i0:])
+    bars = _far_teach_roll_bars(list(bars[i0:]), max_bars=_FAR_TEACH_MAX_BARS)
     anc = _twii_abc_anchors(bars)
     assert anc
     i5 = int(anc["i5"])

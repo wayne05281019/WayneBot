@@ -2000,6 +2000,19 @@ _LIVE_DOWN = "#26a69a"
 # 遠窗縮圖：絕對 min body=6 對費半／加權價軸幾乎看不見；改跟價窗比例走
 _LIVE_CANDLE_MIN_BODY_FRAC = 0.01
 _FAR_SOX_MIN_BODY_FRAC = 0.018
+# 遠窗固定根數（約 2026-04-28→2026-10-30）：每多一根最新日K，最左刪一根，軸寬不變、標籤不走樣
+_FAR_TEACH_MAX_BARS = 126
+
+
+def _far_teach_roll_bars(
+    bars: Sequence[Dict[str, Any]], *, max_bars: int = _FAR_TEACH_MAX_BARS
+) -> List[Dict[str, Any]]:
+    """遠窗滾動裁切：超過 max_bars 只留最右（最新）一段。"""
+    rows = list(bars or [])
+    cap = max(20, int(max_bars or _FAR_TEACH_MAX_BARS))
+    if len(rows) > cap:
+        return rows[-cap:]
+    return rows
 _LIVE_LV = (
     ("tx60_down", "#ce93d8", "降軌"),
     ("tx60_swing_hi", "#ffd54f", "近窗高"),
@@ -3601,7 +3614,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         or _bar_index_by_ymd(bars, "20260825")
         or 0
     )
-    bars = list(bars[i0:])
+    # 先切故事起點，再固定根數滾動：每新增一日刪最左一根，不准軸越拉越長
+    bars = _far_teach_roll_bars(list(bars[i0:]), max_bars=_FAR_TEACH_MAX_BARS)
     anc = _twii_abc_anchors(bars)
     if not anc:
         return ""
