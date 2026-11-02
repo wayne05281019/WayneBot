@@ -41,7 +41,7 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_WINRATE == "勝率買點"
     assert MENU_BTN_WATCH == "加入觀察"
-    assert MENU_LAYOUT_VERSION == "34"
+    assert MENU_LAYOUT_VERSION == "35"
     from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -119,7 +119,7 @@ def test_image_surfaces_wait_vanishes_after_photo():
     assert "force=True" in teach
     assert "paint_open_day_hypothesis" in teach
     page = inspect.getsource(WayneTelegramBot._send_market_page)
-    # v34：大盤不再附送教具；波浪現況／飆大空白才出三張
+    # v34：大盤不再附送教具；波浪位階／飆大空白才出三張
     assert "_send_market_wave_charts" not in page
     assert "_send_market_session_cards" in page
     assert "_send_market_kline" not in page
@@ -328,7 +328,7 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert row1[1] == "海選"
     assert row2[-2] == MENU_BTN_LEAVE_ZERO
     assert row2[-1] == MENU_BTN_DONGZHU
-    assert row2[0] == "波浪現況"
+    assert row2[0] == "波浪位階"
     bot._mark_menu_layout_ok.assert_called_once_with("1")
 
 

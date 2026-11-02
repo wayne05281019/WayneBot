@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""大盤文字：美股／CNN 子逾時；整頁逾時只回文字（教具改走波浪現況）。"""
+"""大盤文字：美股／CNN 子逾時；整頁逾時只回文字（教具改走波浪位階）。"""
 from __future__ import annotations
 
 import asyncio
@@ -68,7 +68,7 @@ def test_market_page_us_refresh_timeout_falls_back_to_cache(tmp_path):
 
 
 def test_market_page_total_timeout_points_to_wave_status(tmp_path):
-    """整頁逾時：只回文字並指波浪現況；不准再拖三張圖。"""
+    """整頁逾時：只回文字並指波浪位階；不准再拖三張圖。"""
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = str(tmp_path / "m.db")
     bot.charts_dir = str(tmp_path)
@@ -92,6 +92,6 @@ def test_market_page_total_timeout_points_to_wave_status(tmp_path):
         asyncio.run(bot._send_market_page(msg))
 
     texts = [str(c.args[0]) for c in msg.reply_text.await_args_list if c.args]
-    assert any("波浪現況" in t for t in texts)
+    assert any("波浪位階" in t for t in texts)
     assert any("逾時" in t for t in texts)
     bot._send_market_wave_charts.assert_not_awaited()

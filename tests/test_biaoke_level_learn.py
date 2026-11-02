@@ -1191,8 +1191,9 @@ def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
         "high": 45300.0,
         "low": 45000.0,
         "volume": 99,
+        "date": "20261030",
     }
-    # 固定「今天」為 20261030 方便測 append
+    # 固定牆鐘；日以 live.date 為準
     monkeypatch.setattr(
         "biaoke_level_learn.datetime",
         type(
@@ -1209,6 +1210,7 @@ def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
     assert len(out) == 2
     assert out[-1]["date"] == "20261030"
     assert out[-1]["close"] == 45200.0
+    assert float(out[-1]["volume"]) == 99.0
     assert int(out[-1].get("live_session") or 0) == 1
 
 

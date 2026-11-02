@@ -482,9 +482,10 @@ MENU_BTN_SCREEN_ALIASES = (
     "海選名單",
     "盤後海選",
 )
-MENU_BTN_WAVE_STATUS = "波浪現況"
+MENU_BTN_WAVE_STATUS = "波浪位階"
 MENU_BTN_WAVE_STATUS_ALIASES = (
     MENU_BTN_WAVE_STATUS,
+    "波浪現況",  # v34 舊鈕名；仍認
     "波浪",
     "未接",
     "波浪未接",
@@ -635,7 +636,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v33：第一排最左「勝率買點」；海選右移成第 2；接 MENU_BTN_WATCH；上七下七。訊號＝leave_zero 藍▲紅框。
 # v34：下排「當沖」→「波浪現況」（三張位階圖＋敘述）；「隔日沖」→「沖區」（子選當沖／隔日沖）。
 #      台股大盤不再附送三張教具；打字「當沖」「隔日沖」仍可叫出。背後名單落檔照留。
-MENU_LAYOUT_VERSION = "34"
+# v35：下排「波浪現況」→「波浪位階」（同三張＋敘述）；沖區子選不變。
+MENU_LAYOUT_VERSION = "35"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -1980,7 +1982,7 @@ class WayneTelegramBot:
         uid = str(uid or self._menu_uid_from_message(message))
         actor = self._actor_key(message, uid=uid)
         text = (
-            "兩排已更新：第一排勝率買點…資金輪動，第二排波浪現況／沖區…洞燭先機。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排勝率買點…資金輪動，第二排波浪位階／沖區…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
             else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
         )
@@ -5460,7 +5462,7 @@ class WayneTelegramBot:
         )
 
     async def wave_status_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """波浪現況：層級敘述＋遠／近／超近三張（非買訊）。"""
+        """波浪位階：層級敘述＋遠／近／超近三張（非買訊）。"""
         msg = update.effective_message
         uid = self._uid_from_message(msg)
         brief = ""
@@ -5469,7 +5471,7 @@ class WayneTelegramBot:
 
             brief = await asyncio.to_thread(format_teach_brief, self.db_path) or ""
         except Exception:
-            logger.exception("波浪現況敘述略過")
+            logger.exception("波浪位階敘述略過")
             brief = ""
         if brief:
             try:
@@ -5480,12 +5482,12 @@ class WayneTelegramBot:
                 )
             except Exception:
                 await msg.reply_text(
-                    "波浪現況（預估・非買訊）",
+                    "波浪位階（預估・非買訊）",
                     reply_markup=self._keyboard(),
                 )
         else:
             await msg.reply_text(
-                "波浪現況（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
+                "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
                 reply_markup=self._keyboard(),
             )
         await self._send_market_wave_charts(msg, uid=uid)
@@ -6308,9 +6310,9 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await _end_wait()
-            # 教具改走「波浪現況」；大盤逾時只回文字，不准再拖三張圖
+            # 教具改走「波浪位階」；大盤逾時只回文字，不准再拖三張圖
             await message.reply_text(
-                "大盤讀取逾時，請稍後再按一次。位階圖請按「波浪現況」。",
+                "大盤讀取逾時，請稍後再按一次。位階圖請按「波浪位階」。",
                 reply_markup=self._keyboard(),
             )
             return
@@ -6332,7 +6334,7 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 await message.reply_html(part, disable_web_page_preview=True)
             await _end_wait()
-            # 遠／近／超近改走「波浪現況」／飆大空白；大盤只留環境文字＋盤後卡
+            # 遠／近／超近改走「波浪位階」／飆大空白；大盤只留環境文字＋盤後卡
             await self._send_market_session_cards(
                 message,
                 card_bundle,
@@ -6667,8 +6669,8 @@ class WayneTelegramBot:
     async def _send_market_wave_charts(self, message, *, uid: str = "") -> None:
         """大盤專頁附圖：暗底遠／近／超近（第1→2→3）＋外圍。
 
-        波浪現況／話筒查一律 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
-        （盤中 MIS 疊柱；逾時／失敗才退回已存）。外圍仍用已存，不准 trio 順手畫滿五張。
+        波浪位階／話筒查一律 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
+        （盤中 MIS 疊柱＋量；逾時／失敗才退回已存）。外圍仍用已存，不准 trio 順手畫滿五張。
         遠窗必到；缺就單張重渲，仍缺則白話停，不准只出近／超近。
         """
         from config import skip_chart_warmup
@@ -6705,8 +6707,8 @@ class WayneTelegramBot:
                 live_on = False
 
             kit: dict = dict(stored) if stored_ok else {}
-            # 波浪現況／話筒查：一定 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
-            # （盤中 MIS 疊柱、飆大新文後也要立刻對得上；缺檔／逾時才退回已存）
+            # 波浪位階／話筒查：一定 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
+            # （盤中 MIS 疊柱＋量、飆大新文後也要立刻對得上；缺檔／逾時才退回已存）
             _ = live_on  # 保留探測；重渲策略不再因休市跳過
             paint_lock = getattr(self, "_market_teach_paint_lock", None)
             if paint_lock is None:
@@ -6847,16 +6849,7 @@ class WayneTelegramBot:
             if failed:
                 missing = list(dict.fromkeys([*missing, *failed]))
 
-            # 外圍對照另張（不佔三張名額；遠窗沒出就不送外圍搶順位）
-            us_path = str(kit.get("us_path") or "").strip()
-            if sent >= 1 and self._market_teach_path_ok(us_path):
-                us_bits = ["台股大盤・外圍對照（費半／納指・非買訊）"]
-                if ladder_line:
-                    us_bits.append(ladder_line)
-                if await self._send_market_teach_one(
-                    message, us_path, caption="\n".join(us_bits), label="外圍"
-                ):
-                    sent += 1
+            # 外圍對照不再附送（飆大／波浪位階都只出遠／近／超近三張）
             if sent <= 0:
                 await message.reply_text(fail_msg)
             elif missing and len([x for x in trio_items if x[1] not in failed]) < 3:
@@ -7351,9 +7344,10 @@ class WayneTelegramBot:
         kind: str = "",
         gen: int = 0,
     ) -> None:
-        """空白按飆大：每次強制活畫遠／近／超近／外圍（盤中疊最新加權顯示柱），再送圖。
+        """空白按飆大：每次強制活畫遠／近／超近三張（盤中疊最新加權顯示柱），再送圖。
 
-        超級近窗＝C 內小波層對齊他說；另色演化只在前提不同才畫。不是買訊。
+        超級近窗＝C 內細浪①～⑤＋C3-3-x（對齊附圖三）；不准再附外圍對照第四張。
+        另色演化只在前提不同才畫。不是買訊。
         """
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return
@@ -7375,7 +7369,6 @@ class WayneTelegramBot:
                     "far_path": str(painted.get("far_path") or ""),
                     "near_path": str(painted.get("near_path") or ""),
                     "micro_path": str(painted.get("micro_path") or ""),
-                    "us_path": str(painted.get("us_path") or ""),
                     "thesis": str(painted.get("thesis") or "")[:180],
                     "slot_id": str(painted.get("slot_id") or ""),
                     "as_of": str(painted.get("as_of") or ""),
@@ -7384,7 +7377,7 @@ class WayneTelegramBot:
             logger.warning("飆大教具活畫逾時")
         except Exception:
             logger.exception("飆大教具活畫略過")
-        if not any(kit.get(k) for k in ("far_path", "near_path", "micro_path", "us_path")):
+        if not any(kit.get(k) for k in ("far_path", "near_path", "micro_path")):
             try:
                 kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
             except Exception:
@@ -7392,11 +7385,11 @@ class WayneTelegramBot:
                 kit = {}
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return
+        # 只送三張：遠／近／超近。外圍對照（us_path）多餘，不准再出第4張。
         caps = (
             ("far_path", "遠窗教具（波浪／切割大圖・非買訊）"),
             ("near_path", "近窗教具（細微波／量價・非買訊）"),
-            ("micro_path", "超級近窗（C內小波層・對齊他說・非買訊）"),
-            ("us_path", "外圍對照（費半／納指・非買訊）"),
+            ("micro_path", "超級近窗（C內細浪①～⑤・對齊他說・非買訊）"),
         )
         thesis = str(kit.get("thesis") or "").strip()
         ladder_line = ""
@@ -8617,7 +8610,7 @@ class WayneTelegramBot:
             await self.market_cmd(update, context)
             return
         if text in MENU_BTN_WAVE_STATUS_ALIASES:
-            logger.info("主選單：波浪現況 uid=%s", uid)
+            logger.info("主選單：波浪位階 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.wave_status_cmd(update, context)
@@ -8629,7 +8622,7 @@ class WayneTelegramBot:
             await self.chong_zone_cmd(update, context)
             return
         if text == "當沖":
-            # 隱藏入口：打字仍可叫出（主選單已改波浪現況／沖區）
+            # 隱藏入口：打字仍可叫出（主選單已改波浪位階／沖區）
             logger.info("打字：當沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)

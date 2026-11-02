@@ -44,7 +44,7 @@ def test_reply_keyboard_matches_menu_layout():
     assert row2 == ROW2_LABELS
     assert row2[2] == MENU_BTN_PRESSURE
     assert row2[-1] == MENU_BTN_DONGZHU
-    assert MENU_LAYOUT_VERSION == "34"
+    assert MENU_LAYOUT_VERSION == "35"
 
 
 def test_picture_guide_cancelled_stubs_remain():

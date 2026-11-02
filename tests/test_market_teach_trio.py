@@ -205,12 +205,12 @@ def test_market_page_sends_teach_before_session_cards():
     import inspect
 
     src = inspect.getsource(WayneTelegramBot._send_market_page)
-    # v34：教具改走波浪現況；大盤頁不再先送三張
+    # v34：教具改走波浪位階；大盤頁不再先送三張
     assert "_send_market_wave_charts" not in src
     assert "_send_market_session_cards" in src
     from bot_servers import MENU_BTN_WAVE_STATUS
 
-    assert MENU_BTN_WAVE_STATUS == "波浪現況"
+    assert MENU_BTN_WAVE_STATUS == "波浪位階"
 
 
 def test_market_wave_phone_paint_uses_trio_panels_only():
@@ -221,7 +221,7 @@ def test_market_wave_phone_paint_uses_trio_panels_only():
     assert 'panels="trio"' in wave or "panels='trio'" in wave
     assert "force=True" in wave
     assert "_market_teach_paint_lock" in wave
-    # 話筒／波浪現況一律 force 重渲；不准再卡 live_on／齊檔才 paint
+    # 話筒／波浪位階一律 force 重渲；不准再卡 live_on／齊檔才 paint
     assert "live_on or not stored_ok" not in wave
     assert "force=True, panels=" in wave or 'force=True, panels=' in wave
     # 話筒熱路徑不准默認 full／不帶 panels
