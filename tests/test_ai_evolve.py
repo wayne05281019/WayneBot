@@ -466,6 +466,26 @@ def test_bloated_account_rewipes_to_500k(tmp_path):
     assert "500,000" in pages or "500000" in pages
 
 
+def test_bloated_ignores_normal_profit_assets(tmp_path):
+    """總資產因持股市值 >75 萬但現金正常 → 不准當灌爆清掉。"""
+    path = str(tmp_path / "profit.db")
+    ensure_core_schema(path)
+    from portfolio_engine import PortfolioEngine
+    from ai_trader import TOTAL_CAPITAL, _ai_account_bloated, ai_user_id
+
+    eng = PortfolioEngine(path)
+    uid = ai_user_id("9005")
+    eng.ensure_user_exists(uid)
+    # 模擬真買：現金扣掉、抱市值；總資產可高於 50 萬
+    eng.buy(uid, "20261101", "2330", "台積電", 100.0, 2000, reason="測")
+    s = eng.get_portfolio_summary(
+        uid, {"2330": {"close": 200.0}}
+    )  # 市值漲一倍
+    assert s["cash"] < TOTAL_CAPITAL
+    assert s["total_assets"] > TOTAL_CAPITAL * 1.5 or s["stock_market_value"] > 0
+    assert _ai_account_bloated(s) is False
+
+
 def test_fill_dedupe_and_persist_idempotent(tmp_path):
     path = str(tmp_path / "dedupe.db")
     ensure_core_schema(path)

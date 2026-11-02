@@ -474,21 +474,27 @@ def mark_ai_restart_done(db_path: str, user_id: str) -> None:
 
 
 def _ai_account_bloated(summary: Dict[str, Any]) -> bool:
-    """總資產／現金／持倉數明顯超出 50 萬假錢口徑 → 要重設。"""
+    """現金／本金／槽位明顯超出 50 萬假錢口徑 → 要重設。
+
+    不准只看總資產：假錢正常獲利可高於 50 萬；測試種子也可能現金未扣、市值仍在。
+    使用者灌爆案＝現金遠超本金（雙重入帳）或本金欄被改或持倉爆槽。
+    """
     try:
-        assets = float(summary.get("total_assets") or 0)
         cash = float(summary.get("cash") or 0)
         initial = float(summary.get("initial_capital") or 0)
         npos = int(summary.get("positions_count") or 0)
+        market = float(summary.get("stock_market_value") or 0)
     except (TypeError, ValueError):
         return False
-    if assets > TOTAL_CAPITAL * 1.5:
-        return True
-    if cash > TOTAL_CAPITAL * 1.25:
-        return True
     if initial > 0 and abs(initial - TOTAL_CAPITAL) > 1.0:
         return True
     if npos > MAX_ACTIVE_NAMES + int(DIP_SLOTS):
+        return True
+    # 現金明顯灌爆（使用者案 ~75.8 萬）；賣出瞬間現金抬升不准誤清
+    if cash > TOTAL_CAPITAL * 1.5:
+        return True
+    # 現金已超本金，且現金+市值仍誇張（雙重入帳）；門檻避開「種子未扣現金再賣出」誤傷
+    if cash > TOTAL_CAPITAL * 1.2 and (cash + market) > TOTAL_CAPITAL * 2.5:
         return True
     return False
 
