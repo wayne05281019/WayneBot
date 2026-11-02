@@ -9824,9 +9824,12 @@ class WayneTelegramBot:
         await lock.acquire()
         wait_msg = None
         early_ensure = None
+        early_fund = None
         try:
             # 官方量補洞跟「送進度泡泡／查代號」同時開始，第 2 張出去前能先跑完。
             early_ensure = self._schedule_lookup_vol_ensure(code)
+            # 營收／季報 ensure 與 MIS／官方量重疊；介紹圖不准再同步卡 10 秒以上。
+            early_fund = self._schedule_lookup_fund_ensure(code)
             try:
                 wait_msg = await message.reply_text(
                     self._chart_progress_text(0, current="quote"),
@@ -9915,12 +9918,22 @@ class WayneTelegramBot:
                     )
                 return
             await self._send_card_to_locked(
-                message, code, uid, actor, hits, wait_msg=wait_msg, ensure_task=early_ensure
+                message,
+                code,
+                uid,
+                actor,
+                hits,
+                wait_msg=wait_msg,
+                ensure_task=early_ensure,
+                fund_task=early_fund,
             )
             early_ensure = None
+            early_fund = None
         finally:
             if early_ensure is not None and not early_ensure.done():
                 early_ensure.cancel()
+            if early_fund is not None and not early_fund.done():
+                early_fund.cancel()
             lock.release()
 
     def _schedule_lookup_vol_ensure(self, code: str, stock_name: str = ""):
@@ -9951,6 +9964,25 @@ class WayneTelegramBot:
 
         return asyncio.create_task(_run())
 
+    def _schedule_lookup_fund_ensure(self, code: str):
+        """查股一進代號就補月營收／季報。與 MIS／官方量重疊；介紹圖只等結果、不重抓。"""
+        from fundamentals import ensure_stock_fundamentals
+
+        sid = str(code or "").strip()
+
+        async def _run():
+            if not sid:
+                return {}
+            try:
+                return await asyncio.to_thread(
+                    ensure_stock_fundamentals, self.db_path, sid
+                )
+            except Exception:
+                logger.exception("查股提早 fundamentals ensure 失敗 code=%s", sid)
+                return {}
+
+        return asyncio.create_task(_run())
+
     async def _send_card_to_locked(
         self,
         message,
@@ -9960,6 +9992,7 @@ class WayneTelegramBot:
         hits: list,
         wait_msg=None,
         ensure_task=None,
+        fund_task=None,
     ):
         lookup_faded = False
         sent_any = False
@@ -9972,6 +10005,9 @@ class WayneTelegramBot:
         op_t0 = time.monotonic()
         # 先進度／typing，再等 MIS；不然盤中現價 1～2s 泡泡停在 0 秒像當掉。
         self._op_state_map()[actor] = {"sent": [], "current": "quote", "t0": op_t0}
+        # 營收 ensure 與 MIS／官方量重疊；沒提早開就在這裡補開。
+        if fund_task is None:
+            fund_task = self._schedule_lookup_fund_ensure(code)
         if wait_msg is None:
             try:
                 wait_msg = await message.reply_text(
@@ -10601,16 +10637,42 @@ class WayneTelegramBot:
                     return ("card", path, card_cap, None)
                 return None
 
+            async def _await_fund_ensure() -> bool:
+                """paint／memo 前等營收 ensure；失敗仍放行（介紹可畫舊指紋）。"""
+                if fund_task is None:
+                    return False
+                t0 = time.monotonic()
+                try:
+                    await fund_task
+                    logger.info(
+                        "查股階段 fund_ensure done %.1fs code=%s",
+                        time.monotonic() - t0,
+                        code,
+                    )
+                    return True
+                except asyncio.CancelledError:
+                    return False
+                except Exception:
+                    logger.exception("查股 fund_ensure await 失敗 code=%s", code)
+                    return False
+
             async def _glance_item():
                 """submit 後放行結構 ensure→paint；不准結構插隊搶在介紹之前。
 
                 同人連查同指紋：短 TTL memo 命中就複製，不佔 paint 佇列。
                 排隊時間不准算進逾時；逾時後若 glance_path 已寫完仍送，不准默默丟第 2 張。
+                營收 ensure 已在進查股時與 MIS 重疊；這裡只等結果，不准再同步重抓。
                 """
                 from wayne_navigator import try_glance_memo
 
+                fund_ok = await _await_fund_ensure()
                 warm = try_glance_memo(
-                    code, card, tape if isinstance(tape, dict) else {}, glance_path, self.db_path
+                    code,
+                    card,
+                    tape if isinstance(tape, dict) else {},
+                    glance_path,
+                    self.db_path,
+                    fundamentals_ready=fund_ok,
                 )
                 if warm and self._png_looks_ok(warm):
                     glance_queued.set()
@@ -10619,7 +10681,17 @@ class WayneTelegramBot:
                 path = ""
                 for attempt in range(attempts):
                     try:
-                        fut = submit_mpl_paint(_render_glance)
+                        fut = submit_mpl_paint(
+                            lambda: render_first_glance_png(
+                                code,
+                                card,
+                                tape,
+                                glance_path,
+                                self.db_path,
+                                ohlc=ohlc,
+                                fundamentals_ready=fund_ok,
+                            )
+                        )
                         glance_queued.set()
                         path = await _await_lookup_paint(
                             fut,
@@ -10793,12 +10865,8 @@ class WayneTelegramBot:
             if not isinstance(tape, dict):
                 tape = {}
 
-            def _render_glance():
-                return render_first_glance_png(
-                    code, card, tape, glance_path, self.db_path, ohlc=ohlc
-                )
-
             # 等高低卡進 queue 再排介紹圖（Event；不准只靠 sleep(0) 賭排程）
+            # 介紹 paint 閉包在 _glance_item 內（帶 fundamentals_ready），不再另定義 _render_glance。
             try:
                 await asyncio.wait_for(card_queued.wait(), timeout=_LOOKUP_PNG_TIMEOUT)
             except asyncio.TimeoutError:

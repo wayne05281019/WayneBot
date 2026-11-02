@@ -472,21 +472,25 @@ def try_glance_memo(
     tape: Optional[dict],
     save_path: str,
     db_path: str = "",
+    *,
+    fundamentals_ready: bool = False,
 ) -> str:
     """暖路徑：同指紋介紹圖短 TTL 命中就複製，不進 paint／Agg。
 
     指紋含卡＋tape＋營收；現價變或營收補進會 miss。miss 回 ""。
+    fundamentals_ready=True：呼叫端已在 paint 外 ensure 過，這裡不再同步重抓。
     """
     if not card or card.get("error") or not save_path or not stock_id:
         return ""
     dbp = db_path or get_db_path()
-    try:
-        # 與 render_first_glance_png 同序：先 ensure 再指紋，不准鎖死舊營收圖
-        from fundamentals import ensure_stock_fundamentals
+    if not fundamentals_ready:
+        try:
+            # 與 render_first_glance_png 同序：先 ensure 再指紋，不准鎖死舊營收圖
+            from fundamentals import ensure_stock_fundamentals
 
-        ensure_stock_fundamentals(dbp, stock_id)
-    except Exception:
-        pass
+            ensure_stock_fundamentals(dbp, stock_id)
+        except Exception:
+            pass
     try:
         from fundamentals import stock_fundamentals_fingerprint
 
@@ -5320,22 +5324,26 @@ def render_first_glance_png(
     save_path: str,
     db_path: str = None,
     ohlc=None,
+    *,
+    fundamentals_ready: bool = False,
 ) -> str:
     """介紹卡外框＝勝率買點高低卡（H×0.076）。內文回流、字不壓線。180日導航改獨立鈕。
 
     量字／savefig 與高低卡共用 mpl_render；memo 先查再進 Agg。
+    fundamentals_ready=True：查股路徑已在 paint 外 ensure，這裡不再同步重抓網路。
     """
     _ = ohlc
     if not card or card.get("error"):
         return ""
     dbp = db_path or get_db_path()
-    try:
-        # 先 ensure 再指紋：缺九月營收時補進庫，memo 才不會鎖死舊八月圖
-        from fundamentals import ensure_stock_fundamentals
+    if not fundamentals_ready:
+        try:
+            # 先 ensure 再指紋：缺九月營收時補進庫，memo 才不會鎖死舊八月圖
+            from fundamentals import ensure_stock_fundamentals
 
-        ensure_stock_fundamentals(dbp, stock_id)
-    except Exception:
-        pass
+            ensure_stock_fundamentals(dbp, stock_id)
+        except Exception:
+            pass
     try:
         from fundamentals import stock_fundamentals_fingerprint
 
