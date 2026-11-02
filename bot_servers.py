@@ -4493,6 +4493,7 @@ class WayneTelegramBot:
         """LOADING／進度 edit：必須有硬上限，不准一則卡住凍住全部秒數。
 
         Telegram flood／連線掛死時跳過這拍，讓 ticker 下一秒繼續。
+        「訊息未改」當成功，避免同秒重試被當成失敗而畫面假死。
         """
         if msg is None:
             return False
@@ -4502,7 +4503,10 @@ class WayneTelegramBot:
                 timeout=float(self._EDIT_WAIT_TIMEOUT_S),
             )
             return True
-        except Exception:
+        except Exception as exc:
+            err = str(exc or "").lower()
+            if "not modified" in err or "message is not modified" in err:
+                return True
             return False
 
     def _ensure_progress_orphan_table(self) -> None:
@@ -5606,7 +5610,7 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(uid),
             )
             return
-        # pause＝送圖瞬間暫停改泡泡，避免跟 reply_photo 搶聊天室；其餘時間每秒讀秒
+        # pause＝送圖時降頻改泡泡（仍要跳秒），避免跟 reply_photo 狂搶；不准整段停表假死
         prog = {"now": "篩名單", "rest": "壓力區＋高低卡", "pause": False}
         wait_t0 = time.monotonic()
         wait_h = await self._start_plain_wait(
@@ -5660,22 +5664,28 @@ class WayneTelegramBot:
             paint_stop = asyncio.Event()
 
             async def _paint_tick() -> None:
+                # 準備圖：每秒；送圖 pause：最多 2.5 秒一拍——讀秒仍走，不准停在 1:26／1:50
+                last_edit_m = 0.0
                 while paint_stop is not None and not paint_stop.is_set():
-                    if wait_msg is not None and not prog.get("pause"):
-                        el = int(max(0.0, time.monotonic() - wait_t0))
-                        await self._safe_edit_text(
-                            wait_msg,
-                            self._wait_bubble(
-                                "勝率買點進行中",
-                                el,
-                                now=prog["now"],
-                                rest=prog["rest"],
-                                fill_sec=paint_fill,
-                            ),
-                            parse_mode="HTML",
-                        )
+                    if wait_msg is not None:
+                        now_m = time.monotonic()
+                        gap = 2.5 if prog.get("pause") else 1.0
+                        if last_edit_m <= 0.0 or (now_m - last_edit_m) >= gap:
+                            el = int(max(0.0, now_m - wait_t0))
+                            await self._safe_edit_text(
+                                wait_msg,
+                                self._wait_bubble(
+                                    "勝率買點進行中",
+                                    el,
+                                    now=prog["now"],
+                                    rest=prog["rest"],
+                                    fill_sec=paint_fill,
+                                ),
+                                parse_mode="HTML",
+                            )
+                            last_edit_m = time.monotonic()
                     try:
-                        await asyncio.wait_for(paint_stop.wait(), timeout=1.0)
+                        await asyncio.wait_for(paint_stop.wait(), timeout=0.5)
                         break
                     except asyncio.TimeoutError:
                         pass

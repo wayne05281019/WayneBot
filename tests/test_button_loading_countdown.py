@@ -37,6 +37,34 @@ def test_winrate_paint_keeps_countdown_ticker():
     assert "圖準備中" in src
     assert 'f"勝率買點 {html_escape(sid)} {i + 1}/{n_chunk} 圖準備中"' not in src
     assert 'prog["pause"]' in src
+    # 送圖 pause 只准降頻，不准 if not pause 才 edit（會讓讀秒停在 1:50）
+    tick_src = src[src.index("async def _paint_tick") : src.index("async def _load_slot")]
+    assert "not prog.get(\"pause\")" not in tick_src
+    assert "and not prog.get(\"pause\")" not in tick_src
+    assert "gap = 2.5 if prog.get(\"pause\")" in tick_src
+    assert "_safe_edit_text" in tick_src
+
+
+def test_safe_edit_text_not_modified_is_ok():
+    """Telegram『訊息未改』不准當失敗，否則讀秒會以為全程 edit 掛掉。"""
+
+    class _Msg:
+        def __init__(self):
+            self.n = 0
+
+        async def edit_text(self, *_a, **_k):
+            self.n += 1
+            raise RuntimeError("Message is not modified")
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._EDIT_WAIT_TIMEOUT_S = 2.0
+    msg = _Msg()
+
+    async def _run():
+        return await bot._safe_edit_text(msg, "x")
+
+    assert asyncio.run(_run()) is True
+    assert msg.n == 1
 
 
 def test_magic_dismiss_frames_no_emoji():
