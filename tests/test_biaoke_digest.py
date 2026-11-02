@@ -926,7 +926,7 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
 
     def _fake_pack(_db):
         return {
-            "thesis": "五波後下降ABC・C內橫台中繼（預估）",
+            "thesis": "大A→大B→大C｜C內橫台中繼（預估）",
             "morph_note": "楔形觀察",
             "intent_note": "無量跌≠止穩",
             "fib_note": "0.382／0.618",
@@ -937,6 +937,7 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_pack)
     out = format_teach_brief("x.db")
     assert "他說現在走到哪" in out
-    assert "五波升完" in out and "C進行中" in out
+    assert "大A底7/29" in out and "大B反彈" in out and "大C進行中" in out
+    assert "五波升完" not in out
     assert "C內橫台中繼" in out
     assert "白話結論" in out

@@ -8,19 +8,29 @@ from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
     MENU_BTN_BIAOKE_FACE,
+    MENU_BTN_CHONG,
     MENU_BTN_FLOW,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_DONGZHU,
     MENU_BTN_PRESSURE,
     MENU_BTN_STREAK,
+    MENU_BTN_WAVE_STATUS,
     MENU_LAYOUT_VERSION,
     WayneTelegramBot,
     MENU_BTN_WATCH,
 )
 
 ROW1 = ["勝率買點", "海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-ROW2_LABELS = ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
+ROW2_LABELS = [
+    MENU_BTN_WAVE_STATUS,
+    MENU_BTN_CHONG,
+    MENU_BTN_PRESSURE,
+    MENU_BTN_AI,
+    MENU_BTN_STREAK,
+    MENU_BTN_LEAVE_ZERO,
+    MENU_BTN_DONGZHU,
+]
 
 
 def test_reply_keyboard_matches_menu_layout():
@@ -34,7 +44,7 @@ def test_reply_keyboard_matches_menu_layout():
     assert row2 == ROW2_LABELS
     assert row2[2] == MENU_BTN_PRESSURE
     assert row2[-1] == MENU_BTN_DONGZHU
-    assert MENU_LAYOUT_VERSION == "33"
+    assert MENU_LAYOUT_VERSION == "34"
 
 
 def test_picture_guide_cancelled_stubs_remain():

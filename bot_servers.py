@@ -70,7 +70,12 @@ async def _await_lookup_paint(
 
 # 名單／頁面：盤中慢路徑＋冷啟，短逾時會逼使用者重按。
 _FLOW_HTML_TIMEOUT = float(os.getenv("WAYNE_FLOW_HTML_TIMEOUT", "30"))
-_MARKET_PAGE_TIMEOUT = float(os.getenv("WAYNE_MARKET_PAGE_TIMEOUT", "45"))
+# 大盤文字：外網（美股／CNN）必須有子逾時；總預算含冷啟 DB。
+_MARKET_PAGE_TIMEOUT = float(os.getenv("WAYNE_MARKET_PAGE_TIMEOUT", "70"))
+_MARKET_US_REFRESH_TIMEOUT = float(os.getenv("WAYNE_MARKET_US_REFRESH_TIMEOUT", "12"))
+_MARKET_CNN_TIMEOUT = float(os.getenv("WAYNE_MARKET_CNN_TIMEOUT", "8"))
+_MARKET_ANALYZE_TIMEOUT = float(os.getenv("WAYNE_MARKET_ANALYZE_TIMEOUT", "28"))
+_MARKET_MIS_TIMEOUT = float(os.getenv("WAYNE_MARKET_MIS_TIMEOUT", "6"))
 _DONGZHU_TIMEOUT = float(os.getenv("WAYNE_DONGZHU_TIMEOUT", "45"))
 _TRADE_BUCKET_TIMEOUT = float(os.getenv("WAYNE_TRADE_BUCKET_TIMEOUT", "75"))
 _LEAVE_ZERO_TIMEOUT = float(os.getenv("WAYNE_LEAVE_ZERO_TIMEOUT", "120"))
@@ -197,6 +202,8 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_MARKET_ALIASES or t in MENU_BTN_WINRATE_ALIASES:
         return True
+    if t in MENU_BTN_WAVE_STATUS_ALIASES or t in MENU_BTN_CHONG_ALIASES:
+        return True
     if t in MENU_BTN_WATCH_ALIASES or t in MENU_BTN_PRESSURE_ALIASES:
         return True
     if t in MENU_BTN_LEAVE_ZERO_ALIASES or t in MENU_BTN_DONGZHU_ALIASES:
@@ -205,7 +212,19 @@ def _text_escapes_pending(text: str) -> bool:
         return True
     if t in MENU_BTN_LEAVE_DONGZHU_ALIASES:
         return True
-    if t in ("當沖", "隔日沖", "隔沖", "隔日", "持股", "持倉", "成交", "復盤"):
+    if t in (
+        "當沖",
+        "隔日沖",
+        "隔沖",
+        "隔日",
+        MENU_BTN_WAVE_STATUS,
+        MENU_BTN_CHONG,
+        "波浪",
+        "持股",
+        "持倉",
+        "成交",
+        "復盤",
+    ):
         return True
     if parse_intent(t) is not None:
         return True
@@ -463,6 +482,15 @@ MENU_BTN_SCREEN_ALIASES = (
     "海選名單",
     "盤後海選",
 )
+MENU_BTN_WAVE_STATUS = "波浪現況"
+MENU_BTN_WAVE_STATUS_ALIASES = (
+    MENU_BTN_WAVE_STATUS,
+    "波浪",
+    "未接",
+    "波浪未接",
+)
+MENU_BTN_CHONG = "沖區"
+MENU_BTN_CHONG_ALIASES = (MENU_BTN_CHONG, "短線沖", "沖")
 MENU_BTN_MARKET = "台股大盤"
 MENU_BTN_MARKET_ALIASES = (
     MENU_BTN_MARKET,
@@ -567,8 +595,8 @@ MENU_ROW1 = (
     MENU_BTN_FLOW,
 )
 MENU_ROW2 = (
-    "當沖",
-    "隔日沖",
+    MENU_BTN_WAVE_STATUS,
+    MENU_BTN_CHONG,
     MENU_BTN_PRESSURE,
     MENU_BTN_AI,
     MENU_BTN_STREAK,
@@ -605,7 +633,9 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v31：下排「隔日沖」後加「壓撐觀察」＝上六下七；三標籤自選，只觀察不是買訊。
 # v32：上排「觀察」改「加入觀察」；舊「觀察」仍認。
 # v33：第一排最左「勝率買點」；海選右移成第 2；接 MENU_BTN_WATCH；上七下七。訊號＝leave_zero 藍▲紅框。
-MENU_LAYOUT_VERSION = "33"
+# v34：下排「當沖」→「波浪現況」（三張位階圖＋敘述）；「隔日沖」→「沖區」（子選當沖／隔日沖）。
+#      台股大盤不再附送三張教具；打字「當沖」「隔日沖」仍可叫出。背後名單落檔照留。
+MENU_LAYOUT_VERSION = "34"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -692,6 +722,8 @@ class WayneTelegramBot:
         # 按人分開。同一顆連按仍擋；不同顆互不卡住。壓撐也走同一套，不准再共用 actor 一把。
         self._trade_running: set[str] = set()
         self._screening_gate = asyncio.Lock()
+        # 大盤教具重渲單飛：連按不准疊三輪五張 matplotlib
+        self._market_teach_paint_lock = asyncio.Lock()
         self._screening_global_owner: str = ""
         self._screening_build_task = None
         self._menu_fade_gen: Dict[str, int] = {}
@@ -1948,7 +1980,7 @@ class WayneTelegramBot:
         uid = str(uid or self._menu_uid_from_message(message))
         actor = self._actor_key(message, uid=uid)
         text = (
-            "兩排已更新：第一排勝率買點…資金輪動，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排勝率買點…資金輪動，第二排波浪現況／沖區…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
             else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
         )
@@ -3700,9 +3732,9 @@ class WayneTelegramBot:
             from screen_sessions import screen_session_has_data
 
             if screen_session_has_data(self.db_path, as_of):
-                note = "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。"
+                note = "名單已寫入快取。短線可按主選單「沖區」再選當沖／隔日沖（也可直接打字）。"
                 if result.get("from_cache"):
-                    note = "今日海選已有快照，直接讀快取。可按「當沖」「隔日沖」複核。"
+                    note = "今日海選已有快照，直接讀快取。短線可按「沖區」或打字當沖／隔日沖。"
                 await message.reply_text(note, reply_markup=hub)
         except Exception:
             pass
@@ -5409,6 +5441,55 @@ class WayneTelegramBot:
             loader=self.screener.screen_overnight,
         )
 
+    def _chong_zone_keyboard(self):
+        """沖區子選：當沖／隔日沖（主選單已收成一顆）。"""
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("當沖", callback_data="daytrade"),
+                    InlineKeyboardButton("隔日沖", callback_data="overnight"),
+                ]
+            ]
+        )
+
+    async def chong_zone_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        msg = update.effective_message
+        await msg.reply_text(
+            "沖區（盤中節奏・非黃金買點）\n選下面一項；也可直接打字「當沖」或「隔日沖」。",
+            reply_markup=self._chong_zone_keyboard(),
+        )
+
+    async def wave_status_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """波浪現況：層級敘述＋遠／近／超近三張（非買訊）。"""
+        msg = update.effective_message
+        uid = self._uid_from_message(msg)
+        brief = ""
+        try:
+            from biaoke_digest import format_teach_brief
+
+            brief = await asyncio.to_thread(format_teach_brief, self.db_path) or ""
+        except Exception:
+            logger.exception("波浪現況敘述略過")
+            brief = ""
+        if brief:
+            try:
+                await msg.reply_html(
+                    brief[:3500],
+                    disable_web_page_preview=True,
+                    reply_markup=self._keyboard(),
+                )
+            except Exception:
+                await msg.reply_text(
+                    "波浪現況（預估・非買訊）",
+                    reply_markup=self._keyboard(),
+                )
+        else:
+            await msg.reply_text(
+                "波浪現況（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
+                reply_markup=self._keyboard(),
+            )
+        await self._send_market_wave_charts(msg, uid=uid)
+
     async def leave_zero_cmd(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, pick: str = ""
     ):
@@ -6087,29 +6168,83 @@ class WayneTelegramBot:
         try:
 
             def _build():
-                from concurrent.futures import ThreadPoolExecutor
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 
                 from live_quote import fetch_mis_index_quote
                 from taiwan_market import analyze_taiwan_market, format_taiwan_market_page_html
 
+                live = None
+                snap: dict = {}
                 with ThreadPoolExecutor(max_workers=2) as ex:
                     live_f = ex.submit(fetch_mis_index_quote)
                     snap_f = ex.submit(
                         analyze_taiwan_market, self.db_path, None, db_only=True, page_light=True
                     )
-                    live = live_f.result()
-                    snap = snap_f.result()
+                    try:
+                        live = live_f.result(timeout=_MARKET_MIS_TIMEOUT)
+                    except FutTimeout:
+                        logger.warning("大盤 MIS 子逾時 %.0fs", _MARKET_MIS_TIMEOUT)
+                        live = None
+                    except Exception:
+                        logger.debug("大盤 MIS 略過", exc_info=True)
+                        live = None
+                    try:
+                        snap = snap_f.result(timeout=_MARKET_ANALYZE_TIMEOUT) or {}
+                    except FutTimeout:
+                        logger.warning("大盤 analyze 子逾時 %.0fs", _MARKET_ANALYZE_TIMEOUT)
+                        snap = {"ok": False, "regime": "unknown", "brief": "加權讀取較慢"}
+                    except Exception:
+                        logger.exception("大盤 analyze 失敗")
+                        snap = {"ok": False, "regime": "unknown", "brief": "加權讀取異常"}
                 as_of = str((snap or {}).get("as_of") or "")[:8]
-                from us_overnight import refresh_us_for_market_page
+                from us_overnight import load_us_overnight, refresh_us_for_market_page
 
-                us_press = refresh_us_for_market_page(self.db_path, as_of)
+                us_press: dict = {}
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as us_ex:
+                        us_f = us_ex.submit(refresh_us_for_market_page, self.db_path, as_of)
+                        us_press = us_f.result(timeout=_MARKET_US_REFRESH_TIMEOUT) or {}
+                except FutTimeout:
+                    logger.warning(
+                        "大盤美股刷新子逾時 %.0fs → 改用庫內列", _MARKET_US_REFRESH_TIMEOUT
+                    )
+                    try:
+                        us_press = load_us_overnight(self.db_path, as_of) or {}
+                    except Exception:
+                        us_press = {}
+                    if not us_press:
+                        us_press = {
+                            "ok": False,
+                            "_press_miss": True,
+                            "_fallback": True,
+                            "regime": "unknown",
+                            "us_session": "",
+                        }
+                except Exception:
+                    logger.exception("大盤美股刷新失敗")
+                    try:
+                        us_press = load_us_overnight(self.db_path, as_of) or {}
+                    except Exception:
+                        us_press = {
+                            "ok": False,
+                            "_press_miss": True,
+                            "_fallback": True,
+                            "regime": "unknown",
+                        }
                 try:
                     from cnn_fear import fetch_cnn_fear_greed
 
-                    fg = fetch_cnn_fear_greed(str((us_press or {}).get("us_session") or ""))
+                    with ThreadPoolExecutor(max_workers=1) as cnn_ex:
+                        fg_f = cnn_ex.submit(
+                            fetch_cnn_fear_greed,
+                            str((us_press or {}).get("us_session") or ""),
+                        )
+                        fg = fg_f.result(timeout=_MARKET_CNN_TIMEOUT)
                     if fg and isinstance(us_press, dict):
                         us_press = dict(us_press)
                         us_press["cnn_fear"] = fg
+                except FutTimeout:
+                    logger.warning("大盤 CNN 子逾時 %.0fs", _MARKET_CNN_TIMEOUT)
                 except Exception:
                     logger.debug("CNN Fear & Greed 略過", exc_info=True)
                 live_px = None
@@ -6130,7 +6265,7 @@ class WayneTelegramBot:
                 hit = _PAGE_HTML_CACHE.get(memo_key)
                 if hit and (now - float(hit[0])) < _PAGE_HTML_TTL_SEC:
                     return hit[1]
-                # 文字先出；盤後卡（期交所 zip）慢或逾時不准吃掉整頁 45 秒預算。
+                # 文字先出；美股／CNN／盤後卡子逾時不准吃掉整頁預算。
                 html = format_taiwan_market_page_html(
                     self.db_path, live=live, snap=snap, us_snap=us_press
                 )
@@ -6173,8 +6308,9 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await _end_wait()
+            # 教具改走「波浪現況」；大盤逾時只回文字，不准再拖三張圖
             await message.reply_text(
-                "大盤讀取逾時，請稍後再按一次。",
+                "大盤讀取逾時，請稍後再按一次。位階圖請按「波浪現況」。",
                 reply_markup=self._keyboard(),
             )
             return
@@ -6196,11 +6332,7 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 await message.reply_html(part, disable_web_page_preview=True)
             await _end_wait()
-            # 討論版教具先出：遠／近／超近（不准先畫美股卡拖到一分鐘才出第1張）
-            await self._send_market_wave_charts(
-                message, uid=self._uid_from_message(message)
-            )
-            # 美股／台指／恐懼貪婪在教具之後（次要對照，不准搶遠窗順位）
+            # 遠／近／超近改走「波浪現況」／飆大空白；大盤只留環境文字＋盤後卡
             await self._send_market_session_cards(
                 message,
                 card_bundle,
@@ -6503,7 +6635,11 @@ class WayneTelegramBot:
                 from datetime import datetime
                 from zoneinfo import ZoneInfo
 
+                from biaoke_level_learn import _ensure_teach_index_bars
+
                 dt = datetime.now(ZoneInfo("Asia/Taipei"))
+                # 單張遠窗補渲也要先同步最新官方日K，不准畫到缺末日
+                _ensure_teach_index_bars(self.db_path)
                 pack = dict(_build_live_pack(self.db_path, now=dt) or {})
                 pack["query_at"] = dt.isoformat()
                 try:
@@ -6531,7 +6667,8 @@ class WayneTelegramBot:
     async def _send_market_wave_charts(self, message, *, uid: str = "") -> None:
         """大盤專頁附圖：暗底遠／近／超近（第1→2→3）＋外圍。
 
-        休市有齊檔就先送已存，不准每次強制五張重畫拖一分鐘。
+        波浪現況／話筒查一律 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
+        （盤中 MIS 疊柱；逾時／失敗才退回已存）。外圍仍用已存，不准 trio 順手畫滿五張。
         遠窗必到；缺就單張重渲，仍缺則白話停，不准只出近／超近。
         """
         from config import skip_chart_warmup
@@ -6568,37 +6705,47 @@ class WayneTelegramBot:
                 live_on = False
 
             kit: dict = dict(stored) if stored_ok else {}
-            # 盤中才強制活畫疊顯示柱；休市齊檔直接送，省掉一分鐘重畫
-            if live_on or not stored_ok:
-                try:
-                    painted = await asyncio.wait_for(
-                        asyncio.wrap_future(
-                            submit_mpl_paint(
-                                lambda: paint_open_day_hypothesis(
-                                    self.db_path, force=True
-                                )
+            # 波浪現況／話筒查：一定 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
+            # （盤中 MIS 疊柱、飆大新文後也要立刻對得上；缺檔／逾時才退回已存）
+            _ = live_on  # 保留探測；重渲策略不再因休市跳過
+            paint_lock = getattr(self, "_market_teach_paint_lock", None)
+            if paint_lock is None:
+                paint_lock = asyncio.Lock()
+                self._market_teach_paint_lock = paint_lock
+
+            async def _paint_trio() -> dict:
+                return await asyncio.wait_for(
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            lambda: paint_open_day_hypothesis(
+                                self.db_path, force=True, panels="trio"
                             )
-                        ),
-                        timeout=_CHART_RENDER_TIMEOUT,
-                    )
-                    if painted and painted.get("ok"):
-                        kit = self._merge_market_teach_kit(
-                            {
-                                "far_path": str(painted.get("far_path") or ""),
-                                "near_path": str(painted.get("near_path") or ""),
-                                "micro_path": str(painted.get("micro_path") or ""),
-                                "us_path": str(painted.get("us_path") or ""),
-                                "thesis": str(painted.get("thesis") or "")[:180],
-                                "as_of": str(painted.get("as_of") or ""),
-                            },
-                            stored,
                         )
-                except asyncio.TimeoutError:
-                    logger.warning("大盤教具活畫逾時")
-                    kit = self._merge_market_teach_kit(kit, stored)
-                except Exception:
-                    logger.exception("大盤教具活畫略過")
-                    kit = self._merge_market_teach_kit(kit, stored)
+                    ),
+                    timeout=_CHART_RENDER_TIMEOUT,
+                )
+
+            try:
+                async with paint_lock:
+                    painted = await _paint_trio()
+                if painted and painted.get("ok"):
+                    kit = self._merge_market_teach_kit(
+                        {
+                            "far_path": str(painted.get("far_path") or ""),
+                            "near_path": str(painted.get("near_path") or ""),
+                            "micro_path": str(painted.get("micro_path") or ""),
+                            "us_path": str(painted.get("us_path") or ""),
+                            "thesis": str(painted.get("thesis") or "")[:180],
+                            "as_of": str(painted.get("as_of") or ""),
+                        },
+                        stored,
+                    )
+            except asyncio.TimeoutError:
+                logger.warning("大盤教具活畫逾時")
+                kit = self._merge_market_teach_kit(kit, stored)
+            except Exception:
+                logger.exception("大盤教具活畫略過")
+                kit = self._merge_market_teach_kit(kit, stored)
             if not any(self._market_teach_path_ok(kit.get(k)) for k in trio_keys):
                 kit = self._merge_market_teach_kit(stored, {})
 
@@ -8469,14 +8616,27 @@ class WayneTelegramBot:
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.market_cmd(update, context)
             return
+        if text in MENU_BTN_WAVE_STATUS_ALIASES:
+            logger.info("主選單：波浪現況 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
+            await self.wave_status_cmd(update, context)
+            return
+        if text in MENU_BTN_CHONG_ALIASES:
+            logger.info("主選單：沖區 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._cancel_actor_ops(actor, dismiss=True)
+            await self.chong_zone_cmd(update, context)
+            return
         if text == "當沖":
-            logger.info("主選單：當沖 uid=%s", uid)
+            # 隱藏入口：打字仍可叫出（主選單已改波浪現況／沖區）
+            logger.info("打字：當沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.daytrade_cmd(update, context)
             return
         if text in ("隔日沖", "隔沖", "隔日"):
-            logger.info("主選單：隔日沖 uid=%s", uid)
+            logger.info("打字：隔日沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self._cancel_actor_ops(actor, dismiss=True)
             await self.overnight_cmd(update, context)

@@ -1695,6 +1695,30 @@ def run_web():
             logger.exception("公司行事建檔失敗")
 
     threading.Thread(target=_warm_company_events, daemon=True, name="company-events").start()
+
+    def _restore_teach_kit_bg():
+        """Redeploy／週末：DB 列在、PNG 不見時背景補 trio；不准擋 /health。"""
+        try:
+            time.sleep(12)
+            from biaoke_level_learn import maybe_restore_teach_kit, teach_kit_needs_restore
+
+            dbp = get_db_path()
+            if not teach_kit_needs_restore(dbp):
+                logger.info("教具缺檔補渲略過：檔齊或無列")
+                return
+            try:
+                from wayne_navigator import run_mpl_paint
+
+                stats = run_mpl_paint(lambda: maybe_restore_teach_kit(dbp))
+            except Exception:
+                stats = maybe_restore_teach_kit(dbp)
+            logger.info("教具缺檔補渲：%s", stats)
+        except Exception:
+            logger.exception("教具缺檔補渲失敗")
+
+    threading.Thread(
+        target=_restore_teach_kit_bg, daemon=True, name="teach-kit-restore"
+    ).start()
     start_market_backfill(delay_s=backfill_delay_s)
     if daily_scheduler_enabled():
         start_daily_scheduler()

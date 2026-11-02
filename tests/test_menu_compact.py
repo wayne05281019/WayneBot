@@ -27,7 +27,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "33"
+    assert MENU_LAYOUT_VERSION == "34"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
@@ -37,7 +37,17 @@ def test_full_menu_is_two_rows_no_compact():
         MENU_BTN_MARKET,
         MENU_BTN_FLOW,
     )
-    assert MENU_ROW2 == ("當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU)
+    from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+
+    assert MENU_ROW2 == (
+        MENU_BTN_WAVE_STATUS,
+        MENU_BTN_CHONG,
+        MENU_BTN_PRESSURE,
+        MENU_BTN_AI,
+        MENU_BTN_STREAK,
+        MENU_BTN_LEAVE_ZERO,
+        MENU_BTN_DONGZHU,
+    )
     assert "刷新" not in MENU_ROW1 + MENU_ROW2
     assert "回報" not in MENU_ROW1 + MENU_ROW2
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -56,7 +66,8 @@ def test_old_compact_flag_cannot_shrink_keyboard(tmp_path):
     assert len(kb.keyboard) == 2
     labels = [b.text for row in kb.keyboard for b in row]
     assert labels == list(MENU_ROW1) + list(MENU_ROW2)
-    assert "當沖" in labels
+    assert "波浪現況" in labels
+    assert "沖區" in labels
     assert MENU_BTN_AI in labels
     assert bot._menu_compact_on("9") is False
 

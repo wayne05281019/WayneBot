@@ -102,7 +102,17 @@ def test_menu_buttons_exist_in_order_seven_plus_seven():
     from bot_servers import MENU_BTN_WINRATE, MENU_BTN_WATCH
 
     assert row1 == [MENU_BTN_WINRATE, "海選", "持股", MENU_BTN_WATCH, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW]
-    assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
+    from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+
+    assert row2 == [
+        MENU_BTN_WAVE_STATUS,
+        MENU_BTN_CHONG,
+        MENU_BTN_PRESSURE,
+        MENU_BTN_AI,
+        MENU_BTN_STREAK,
+        MENU_BTN_LEAVE_ZERO,
+        MENU_BTN_DONGZHU,
+    ]
 
 
 def test_help_script_ready_for_brother_video():

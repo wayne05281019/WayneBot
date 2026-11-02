@@ -23,12 +23,14 @@ from ai_trader import ai_user_id
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
+    MENU_BTN_CHONG,
     MENU_BTN_DONGZHU,
     MENU_BTN_FLOW,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_PRESSURE,
     MENU_BTN_STREAK,
+    MENU_BTN_WAVE_STATUS,
     MENU_FULL_ALIASES,
     MENU_ROW1,
     MENU_ROW2,
@@ -73,7 +75,11 @@ def _msg(uid: int, text: str = ""):
 
 
 def _update(message):
-    return SimpleNamespace(message=message, effective_user=message.from_user)
+    return SimpleNamespace(
+        message=message,
+        effective_message=message,
+        effective_user=message.from_user,
+    )
 
 
 def _bind_hit(hits: dict[str, list[str]], name: str):
@@ -155,6 +161,8 @@ def _bot(db: str) -> WayneTelegramBot:
     bot.flow_cmd = _bind_hit(hits, "資金")
     bot.daytrade_cmd = _bind_hit(hits, "當沖")
     bot.overnight_cmd = _bind_hit(hits, "隔日沖")
+    bot.wave_status_cmd = _bind_hit(hits, "波浪現況")
+    bot.chong_zone_cmd = _bind_hit(hits, "沖區")
     bot.pressure_cmd = _bind_hit(hits, "壓撐觀察")
     bot.leave_zero_cmd = _bind_hit(hits, "剛脫離零")
     bot.dongzhu_cmd = _bind_hit(hits, MENU_BTN_DONGZHU)
@@ -330,8 +338,8 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         "飆大",
         MENU_BTN_MARKET,
         MENU_BTN_FLOW,
-        "當沖",
-        "隔日沖",
+        MENU_BTN_WAVE_STATUS,
+        MENU_BTN_CHONG,
         MENU_BTN_PRESSURE,
         MENU_BTN_AI,
         MENU_BTN_STREAK,
@@ -362,7 +370,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("勝率買點", "海選", "持股", "加入觀察", "飆客", "大盤", "資金", "當沖", "隔日沖", "壓撐觀察", "AI倉", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
+        for need in ("勝率買點", "海選", "持股", "加入觀察", "飆客", "大盤", "資金", "波浪現況", "沖區", "壓撐觀察", "AI倉", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

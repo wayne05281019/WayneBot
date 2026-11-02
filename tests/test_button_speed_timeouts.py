@@ -13,19 +13,35 @@ from bot_servers import (
     _DONGZHU_TIMEOUT,
     _FLOW_HTML_TIMEOUT,
     _LEAVE_ZERO_TIMEOUT,
+    _MARKET_ANALYZE_TIMEOUT,
+    _MARKET_CNN_TIMEOUT,
+    _MARKET_MIS_TIMEOUT,
     _MARKET_PAGE_TIMEOUT,
+    _MARKET_US_REFRESH_TIMEOUT,
     _TRADE_BUCKET_TIMEOUT,
 )
 
 
 def test_button_timeouts_are_not_too_tight():
     assert _FLOW_HTML_TIMEOUT >= 25.0
-    assert _MARKET_PAGE_TIMEOUT >= 40.0
+    assert _MARKET_PAGE_TIMEOUT >= 60.0
+    assert _MARKET_US_REFRESH_TIMEOUT <= 20.0
+    assert _MARKET_CNN_TIMEOUT <= 12.0
+    assert _MARKET_ANALYZE_TIMEOUT <= 40.0
+    assert _MARKET_MIS_TIMEOUT <= 10.0
     assert _DONGZHU_TIMEOUT >= 40.0
     assert _TRADE_BUCKET_TIMEOUT >= 60.0
     assert _LEAVE_ZERO_TIMEOUT >= 90.0
     src = inspect.getsource(WayneTelegramBot.run_polling)
     assert ".read_timeout(60.0)" in src or ".read_timeout(60)" in src
+    page = inspect.getsource(WayneTelegramBot._send_market_page)
+    # 美股／CNN 必須有子逾時，不准拖死整頁；教具改走波浪現況（v34）
+    assert "_MARKET_US_REFRESH_TIMEOUT" in page
+    assert "_MARKET_CNN_TIMEOUT" in page
+    assert "_send_market_wave_charts" not in page
+    assert "波浪現況" in page
+    wave = inspect.getsource(WayneTelegramBot.wave_status_cmd)
+    assert "_send_market_wave_charts" in wave
 
 
 def test_leave_zero_pick_defers_mis_to_candidates_only():

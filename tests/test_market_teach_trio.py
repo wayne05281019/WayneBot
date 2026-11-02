@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""大盤遠／近／超近：第1張必遠窗；休市齊檔不重畫；缺遠窗不准只出近窗。"""
+"""大盤遠／近／超近：第1張必遠窗；話筒一律 force 重渲；缺遠窗不准只出近窗。"""
 from __future__ import annotations
 
 import os
+from concurrent.futures import Future
 from unittest.mock import AsyncMock, MagicMock
 
 from bot_servers import WayneTelegramBot
@@ -40,7 +41,7 @@ def test_merge_market_teach_kit_fills_missing_far_and_micro(tmp_path):
 
 
 def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
-    """休市齊檔：不重畫；第1張遠窗→近→超近逐張，caption 標第N張。"""
+    """話筒查一律 force 重渲；第1張遠窗→近→超近逐張，caption 標第N張。"""
     import asyncio
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -55,16 +56,35 @@ def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
     near = tmp_path / "near.png"
     far = tmp_path / "far.png"
     micro = tmp_path / "micro.png"
+    near2 = tmp_path / "near2.png"
+    far2 = tmp_path / "far2.png"
+    micro2 = tmp_path / "micro2.png"
     _png(str(near))
     _png(str(far))
     _png(str(micro))
+    _png(str(near2))
+    _png(str(far2))
+    _png(str(micro2))
     assert bot._market_teach_path_ok(str(far))
 
     paint_calls = {"n": 0}
 
-    def _no_paint(*_a, **_k):
+    def _paint(*_a, **_k):
         paint_calls["n"] += 1
-        raise AssertionError("休市齊檔不准 force 重畫")
+        return {
+            "ok": True,
+            "far_path": str(far2),
+            "near_path": str(near2),
+            "micro_path": str(micro2),
+            "us_path": "",
+            "thesis": "fresh",
+            "as_of": "20261030",
+        }
+
+    def _submit(fn):
+        out = Future()
+        out.set_result(fn())
+        return out
 
     monkeypatch.setattr(
         "biaoke_level_learn.latest_teach_kit",
@@ -74,16 +94,14 @@ def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
             "micro_path": str(micro),
             "us_path": "",
             "thesis": "t",
-            "as_of": "20261031",
+            "as_of": "20261029",
         },
     )
-    monkeypatch.setattr(
-        "biaoke_level_learn.paint_open_day_hypothesis",
-        _no_paint,
-    )
+    monkeypatch.setattr("biaoke_level_learn.paint_open_day_hypothesis", _paint)
+    monkeypatch.setattr("wayne_navigator.submit_mpl_paint", _submit)
     monkeypatch.setattr(
         "biaoke_level_learn._build_live_pack",
-        lambda *_a, **_k: {"thesis": "t", "chart_as_of": "20261031"},
+        lambda *_a, **_k: {"thesis": "fresh", "chart_as_of": "20261030"},
     )
     monkeypatch.setattr(
         "biaoke_level_learn._wave_now_ladder",
@@ -98,9 +116,15 @@ def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
     msg.reply_text = AsyncMock()
 
     asyncio.run(bot._send_market_wave_charts(msg, uid="1"))
-    assert paint_calls["n"] == 0
+    assert paint_calls["n"] >= 1
     assert msg.reply_media_group.await_count == 0
     assert msg.reply_photo.await_count == 3
+    # 送出的是 force 重渲後的新檔，不准偷懶送舊存
+    sent_paths = []
+    for call in msg.reply_photo.await_args_list:
+        photo = call.kwargs.get("photo")
+        sent_paths.append(getattr(photo, "name", None) or str(photo))
+    assert any("far2" in str(p) for p in sent_paths)
     caps = []
     for call in msg.reply_photo.await_args_list:
         caps.append(call.kwargs.get("caption") or "")
@@ -181,4 +205,37 @@ def test_market_page_sends_teach_before_session_cards():
     import inspect
 
     src = inspect.getsource(WayneTelegramBot._send_market_page)
-    assert src.index("_send_market_wave_charts") < src.index("_send_market_session_cards")
+    # v34：教具改走波浪現況；大盤頁不再先送三張
+    assert "_send_market_wave_charts" not in src
+    assert "_send_market_session_cards" in src
+    from bot_servers import MENU_BTN_WAVE_STATUS
+
+    assert MENU_BTN_WAVE_STATUS == "波浪現況"
+
+
+def test_market_wave_phone_paint_uses_trio_panels_only():
+    """話筒重渲只准 panels=trio：遠近超近，不准整包外圍＋TX60。"""
+    import inspect
+
+    wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert 'panels="trio"' in wave or "panels='trio'" in wave
+    assert "force=True" in wave
+    assert "_market_teach_paint_lock" in wave
+    # 話筒／波浪現況一律 force 重渲；不准再卡 live_on／齊檔才 paint
+    assert "live_on or not stored_ok" not in wave
+    assert "force=True, panels=" in wave or 'force=True, panels=' in wave
+    # 話筒熱路徑不准默認 full／不帶 panels
+    assert "paint_open_day_hypothesis(\n" in wave or "paint_open_day_hypothesis(" in wave
+    assert 'panels="full"' not in wave and "panels='full'" not in wave
+    from biaoke_level_learn import paint_open_day_hypothesis, maybe_paint_open_day_after_ingest
+
+    src = inspect.getsource(paint_open_day_hypothesis)
+    assert 'panels: str = "full"' in src
+    assert 'mode == "full"' in src
+    assert "_render_us_compare_dark" in src
+    assert "_render_tx60_png" in src
+    assert "_ensure_teach_index_bars" in src
+    # 排程／ingest 鉤子仍預設 full（不傳 panels）
+    maybe = inspect.getsource(maybe_paint_open_day_after_ingest)
+    assert "paint_open_day_hypothesis(db_path, force=force)" in maybe
+    assert 'panels="trio"' not in maybe

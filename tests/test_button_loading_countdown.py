@@ -1212,7 +1212,7 @@ def test_error_handler_skips_cancelled_no_start_prompt():
 def test_menu_buttons_escape_pending_without_back_main():
     from bot_servers import _text_escapes_pending
 
-    for t in ("海選", "資金輪動", "當沖", "隔日沖", "台股大盤", "回主選單", "勝率買點"):
+    for t in ("海選", "資金輪動", "波浪現況", "沖區", "當沖", "隔日沖", "台股大盤", "回主選單", "勝率買點"):
         assert _text_escapes_pending(t) is True, t
     assert _text_escapes_pending("亂打xyz") is False
 

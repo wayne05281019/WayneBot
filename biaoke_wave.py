@@ -1164,7 +1164,15 @@ def format_wave_eyes() -> str:
     return EYES
 
 
-def _load_twii_bars(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
+def _load_twii_bars(
+    db_path: str, n: int = 80, *, teach: bool = False
+) -> List[Dict[str, Any]]:
+    """讀加權日K。
+
+    teach=True（教具遠／近／超近）：吃 index_daily 最新已收官方柱，
+    不准被 daily_quotes 完整日（海選閘）卡掉最新交易日縮圖K。
+    teach=False：仍跟 complete_bar 對齊（海選／決策母體）。
+    """
     if not db_path or not os.path.isfile(db_path):
         return []
     try:
@@ -1185,9 +1193,10 @@ def _load_twii_bars(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
         return []
     out = [dict(r) for r in rows]
     out.reverse()
-    cap = _complete_bar_ymd(db_path)
-    if cap:
-        out = [r for r in out if _ymd(r.get("date")) <= cap]
+    if not teach:
+        cap = _complete_bar_ymd(db_path)
+        if cap:
+            out = [r for r in out if _ymd(r.get("date")) <= cap]
     return out
 
 

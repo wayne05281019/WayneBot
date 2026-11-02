@@ -43,7 +43,8 @@ def test_context_uid_keeps_full_keyboard_without_arg(tmp_path):
         kb = bot._keyboard()
         labels = [b.text for row in kb.keyboard for b in row]
         assert labels == list(MENU_ROW1) + list(MENU_ROW2)
-        assert "當沖" in labels
+        assert "波浪現況" in labels
+        assert "沖區" in labels
         assert MENU_BTN_MARKET in labels
     finally:
         _ACTIVE_PHONE_UID.reset(token)

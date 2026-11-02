@@ -41,7 +41,9 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_WINRATE == "勝率買點"
     assert MENU_BTN_WATCH == "加入觀察"
-    assert MENU_LAYOUT_VERSION == "33"
+    assert MENU_LAYOUT_VERSION == "34"
+    from bot_servers import MENU_BTN_CHONG, MENU_BTN_WAVE_STATUS
+
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -57,7 +59,15 @@ def test_reply_menu_is_two_rows_not_three():
         MENU_BTN_MARKET,
         MENU_BTN_FLOW,
     ]
-    assert row2 == ["當沖", "隔日沖", MENU_BTN_PRESSURE, MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
+    assert row2 == [
+        MENU_BTN_WAVE_STATUS,
+        MENU_BTN_CHONG,
+        MENU_BTN_PRESSURE,
+        MENU_BTN_AI,
+        MENU_BTN_STREAK,
+        MENU_BTN_LEAVE_ZERO,
+        MENU_BTN_DONGZHU,
+    ]
     assert "刷新" not in row1 + row2
     assert "回報" not in row1 + row2
     assert row1[0] == MENU_BTN_WINRATE
@@ -89,7 +99,7 @@ def test_image_surfaces_wait_vanishes_after_photo():
     industry = inspect.getsource(WayneTelegramBot._send_industry)
     assert industry.index("_start_plain_wait") < industry.index("reply_photo")
     assert industry.index("reply_photo") < industry.index("_stop_plain_wait")
-    # 大盤附圖＝暗底遠／近／超近；休市齊檔先送；遠窗硬閘；教具先於美股卡
+    # 大盤附圖＝暗底遠／近／超近；話筒一律 force 重渲；遠窗硬閘
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert wave.index("_start_plain_wait") < wave.index("_send_market_teach_trio_album")
     assert "_merge_market_teach_kit" in wave
@@ -109,11 +119,17 @@ def test_image_surfaces_wait_vanishes_after_photo():
     assert "force=True" in teach
     assert "paint_open_day_hypothesis" in teach
     page = inspect.getsource(WayneTelegramBot._send_market_page)
-    assert "_send_market_wave_charts" in page
-    assert page.index("_send_market_wave_charts") < page.index("_send_market_session_cards")
+    # v34：大盤不再附送教具；波浪現況／飆大空白才出三張
+    assert "_send_market_wave_charts" not in page
+    assert "_send_market_session_cards" in page
     assert "_send_market_kline" not in page
     assert "_send_market_vol_zone" not in page
-    assert "遠／近／超近窗" in page
+    wave_btn = inspect.getsource(WayneTelegramBot.wave_status_cmd)
+    assert "format_teach_brief" in wave_btn
+    assert "_send_market_wave_charts" in wave_btn
+    chong_kb = inspect.getsource(WayneTelegramBot._chong_zone_keyboard)
+    assert 'callback_data="daytrade"' in chong_kb
+    assert 'callback_data="overnight"' in chong_kb
     nav = inspect.getsource(WayneTelegramBot._send_navigation_chart)
     # 導航圖改走 _reply_lookup_photo（TimedOut 視同已送達，不准假重送）
     assert nav.index("_start_plain_wait") < nav.index("_reply_lookup_photo")
@@ -312,7 +328,7 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert row1[1] == "海選"
     assert row2[-2] == MENU_BTN_LEAVE_ZERO
     assert row2[-1] == MENU_BTN_DONGZHU
-    assert row2[0] == "當沖"
+    assert row2[0] == "波浪現況"
     bot._mark_menu_layout_ok.assert_called_once_with("1")
 
 
