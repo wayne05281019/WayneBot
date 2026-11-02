@@ -7349,19 +7349,62 @@ def verify_live_hyps_with_speech(db_path: str, snippet: str) -> int:
     return n
 
 
+def prepare_wave_live_pack(
+    db_path: str, *, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """波浪／教具共用準備：ensure 加權／費半日K＋組 pack＋盤中 MIS／SOX 疊柱。
+
+    話筒遠／近／超近同按一次只准跑一回；paint 可帶 pack 進來不再重抓。
+    盤中未收不當官方收；不寫庫。
+    """
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    if db_path:
+        try:
+            _ensure_teach_index_bars(db_path)
+        except Exception:
+            logger.debug("prepare_wave ensure 略過", exc_info=True)
+    pack = dict(_build_live_pack(db_path, now=dt) or {})
+    try:
+        from live_quote import fetch_mis_index_quote, is_live_merge_window
+
+        if is_live_merge_window(dt):
+            live_tw = fetch_mis_index_quote(fresh=True)
+            if live_tw:
+                pack["live_twii"] = live_tw
+    except Exception:
+        logger.debug("prepare_wave 盤中加權略過", exc_info=True)
+    try:
+        from us_overnight import fetch_live_sox_display_bar
+
+        live_sox = fetch_live_sox_display_bar(dt)
+        if live_sox:
+            pack["live_sox"] = live_sox
+    except Exception:
+        logger.debug("prepare_wave 盤中費半略過", exc_info=True)
+    pack["query_at"] = dt.isoformat()
+    pack["_prep_now"] = dt
+    return pack
+
+
 def paint_open_day_hypothesis(
     db_path: str,
     *,
     now: Optional[datetime] = None,
     force: bool = False,
     panels: str = "full",
+    pack: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """稀疏槽活畫：日盤／夜盤／納指費半＋量價裸K。空白鍵可取檔送教具（非買訊）。
 
     panels:
       - full＝遠／近／超近＋外圍＋TX60（排程／ingest）
       - trio＝話筒熱路徑只畫遠／近／超近（減壓；外圍用已存）
-      - far＝只畫遠窗（費半上／加權下；飆大空白鍵加速）
+      - far／near／micro＝單窗（話筒 send∥paint：遠先畫先送）
+    pack：呼叫端已 prepare_wave_live_pack 時傳入，不准再 ensure／重抓。
     """
     out: Dict[str, Any] = {"ok": False, "path": "", "tx60_path": "", "slot_id": ""}
     if not db_path:
@@ -7369,13 +7412,22 @@ def paint_open_day_hypothesis(
     if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_LEVEL_LEARN_LIVE") != "1":
         return {**out, "skipped": "pytest"}
     mode = str(panels or "full").strip().lower()
-    if mode not in {"full", "trio", "far"}:
+    if mode not in {"full", "trio", "far", "near", "micro"}:
         mode = "full"
     dt = now or datetime.now(TAIPEI)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
     else:
         dt = dt.astimezone(TAIPEI)
+    if isinstance(pack, dict) and pack.get("_prep_now") is not None:
+        try:
+            dt = pack["_prep_now"]
+            if getattr(dt, "tzinfo", None) is None:
+                dt = dt.replace(tzinfo=TAIPEI)
+            else:
+                dt = dt.astimezone(TAIPEI)
+        except Exception:
+            pass
     ymd = dt.strftime("%Y%m%d")
     try:
         from trading_calendar import is_tw_open_calendar_day
@@ -7412,30 +7464,15 @@ def paint_open_day_hypothesis(
     except Exception:
         logger.exception("活畫隔日對質略過")
 
-    # 三張必畫最新交易日縮圖K：先同步加權／費半官方日，再組 pack／盤中疊柱
-    _ensure_teach_index_bars(db_path)
-
-    pack = _build_live_pack(db_path, now=dt)
-    # 盤中：MIS 加權／Yahoo 費半只疊顯示柱（不寫庫、不當官方收）；三張同包同查詢戳
-    pack = dict(pack or {})
-    try:
-        from live_quote import fetch_mis_index_quote, is_live_merge_window
-
-        if is_live_merge_window(dt):
-            live_tw = fetch_mis_index_quote(fresh=True)
-            if live_tw:
-                pack["live_twii"] = live_tw
-    except Exception:
-        logger.debug("活畫盤中加權疊加略過", exc_info=True)
-    try:
-        from us_overnight import fetch_live_sox_display_bar
-
-        live_sox = fetch_live_sox_display_bar(dt)
-        if live_sox:
-            pack["live_sox"] = live_sox
-    except Exception:
-        logger.debug("活畫盤中費半疊加略過", exc_info=True)
-    pack["query_at"] = dt.isoformat()
+    if isinstance(pack, dict) and pack:
+        pack = dict(pack)
+        pack.pop("_prep_now", None)
+        if not pack.get("query_at"):
+            pack["query_at"] = dt.isoformat()
+    else:
+        # 三張必畫最新交易日縮圖K：先同步加權／費半官方日，再組 pack／盤中疊柱
+        pack = prepare_wave_live_pack(db_path, now=dt)
+        pack.pop("_prep_now", None)
     thesis = pack.get("thesis") or ""
     wait_struct = pack.get("wait_struct") or ""
     turn_note = pack.get("turn_note") or ""
@@ -7460,9 +7497,21 @@ def paint_open_day_hypothesis(
     micro_path = os.path.join(snap_root, f"{slot_id}-micro.png")
     chart_path = os.path.join(snap_root, f"{slot_id}.png")  # 兼容＝近窗特寫
     tx60_path = os.path.join(snap_root, f"{slot_id}-tx60.png")
-    do_near = mode in {"full", "trio"}
+    # 話筒 send∥paint：遠先畫；trio／full 也改遠→近→超近，與送出順序一致
     do_far = mode in {"full", "trio", "far"}
-    do_micro = mode in {"full", "trio"}
+    do_near = mode in {"full", "trio", "near"}
+    do_micro = mode in {"full", "trio", "micro"}
+
+    if do_far:
+        try:
+            got_far = _render_twii_far_dark(db_path, far_path, pack)
+            far_path = got_far or ""
+        except Exception:
+            logger.exception("遠窗教具渲圖失敗")
+            far_path = ""
+    else:
+        far_path = ""
+
     if do_near:
         try:
             got_near = _render_twii_live_dark(db_path, near_path, pack)
@@ -7483,16 +7532,6 @@ def paint_open_day_hypothesis(
     else:
         near_path = ""
         chart_path = ""
-
-    if do_far:
-        try:
-            got_far = _render_twii_far_dark(db_path, far_path, pack)
-            far_path = got_far or ""
-        except Exception:
-            logger.exception("遠窗教具渲圖失敗")
-            far_path = ""
-    else:
-        far_path = ""
 
     if do_micro:
         try:
