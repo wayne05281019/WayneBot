@@ -165,10 +165,13 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(str(row["升降"]), "降溫急")
 
     def test_4915_author_card_aug31_zero_green(self):
-        """致伸作者卡 8/31：0.0% 綠底白字、60低。"""
+        """致伸作者卡 8/31：0.0% 綠底白字、60低。
+
+        釘 as_of＝8/31，避免庫尖端滾出 lookback=40 後缺列。
+        """
         from wayne_navigator import _CARD, profit_cell_style
 
-        row = self._row(self._card("4915"), "20260831")
+        row = self._row(self._card("4915", as_of="20260831"), "20260831")
         self.assertAlmostEqual(float(row["close"]), 59.4, places=1)
         self.assertEqual(row["獲利"], "0.0%")
         self.assertEqual(self._shown_alert(row), "60低")
@@ -226,8 +229,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(str(row["120日量"]), "第22名")
 
     def test_2530_20260831_zero_temp_vol(self):
-        """華建 8/31 獲利 0.0% 起漲故事：鎖溫度／量排名。"""
-        row = self._row(self._card("2530"), "20260831")
+        """華建 8/31 獲利 0.0% 起漲故事：鎖溫度／量排名。
+
+        釘 as_of＝8/31，避免庫尖端滾出 lookback=40 後缺列。
+        """
+        row = self._row(self._card("2530", as_of="20260831"), "20260831")
         self.assertEqual(row["獲利"], "0.0%")
         self.assertEqual(self._shown_alert(row), "20低")
         self.assertEqual(str(row["溫度計"]), "7.2 °C")
