@@ -395,6 +395,70 @@ def test_focus_oral_board_prefers_latest_main_not_older():
         assert "光通訊" in field_html or "聯亞" in field_html
 
 
+def test_focus_oral_fuses_rest_reply_without_repeating_opening():
+    """11/2 夜：主文＋同文自回／短句開頭不准在大盤＋他還說各唸一次。"""
+    full = (
+        "要去休息了，除非晚一點出現反向下殺。這是我個人看法 僅供參考 盈虧自負。"
+        "今天夜盤前一小時方向根本沒出來 不要亂下單。"
+        "因為我一直堅持我的看法 台股今年爆巨量，且從30000漲到50000，一定會洗盤，"
+        "既然是洗盤 就代表一定會做技術面幅度不小的修正。"
+        "只能說方向是震盪往下，但震盪很大盤期指說實話也不好操作。"
+    )
+    html = format_focus_oral(
+        [
+            {
+                "id": "m1",
+                "kind": "post",
+                "date": "2026-11-02",
+                "time": "23:00",
+                "text": full,
+            }
+        ],
+        [
+            {
+                "id": "r1",
+                "kind": "reply",
+                "date": "2026-11-02",
+                "time": "23:33",
+                "text": full,
+            }
+        ],
+        now=datetime(2026, 11, 3, 0, 20, tzinfo=ZoneInfo("Asia/Taipei")),
+        stock_links=False,
+    )
+    assert "<b>大盤</b>" in html
+    assert html.count("要去休息了") == 1
+    assert "洗盤" in html
+    if "<b>他還說</b>" in html:
+        said = html.split("<b>他還說</b>", 1)[1].split("<b>", 1)[0]
+        assert "要去休息了" not in said
+
+
+def test_gates_skip_how_when_already_in_board():
+    """關卡列：大盤已講過的長敘述不准每關再貼「他說」。"""
+    from biaoke_digest import format_index_gates_confront_html
+
+    how = "台股今年爆巨量，且從30000漲到50000，一定會洗盤"
+    posts = [
+        {
+            "id": "m1",
+            "kind": "post",
+            "date": "2026-11-02",
+            "time": "23:00",
+            "text": f"因為我一直堅持我的看法 {how}，既然是洗盤就會修正。",
+        }
+    ]
+    board = f"因為我一直堅持我的看法 {how}，既然是洗盤就會修正。"
+    html = format_index_gates_confront_html(
+        "",
+        posts=posts,
+        now=datetime(2026, 11, 3, 0, 20, tzinfo=ZoneInfo("Asia/Taipei")),
+        skip_how_shown=[board],
+    )
+    if "50000" in html or "30000" in html:
+        assert html.count("他說：") == 0
+
+
 def test_focus_oral_does_not_repeat_board_in_said():
     """大盤欄講過的，他還說不准再貼同一段（話筒不重複）。"""
     board = (

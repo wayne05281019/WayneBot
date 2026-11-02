@@ -460,7 +460,8 @@ _BOARD_REPLY = re.compile(
     r"(C\s*波|B\s*[-‐‑‒–—]?c|B\s*波|主跌|止跌|抄底|空手|減碼|逃命|"
     r"下降軌道|反彈不過|做多安全|無止跌|破前低|"
     r"48066|45000|47729|48697|49239|47000|47600|47300|"
-    r"下星期[一二]|星期二絕對|不要再介入|撤出觀望)"
+    r"下星期[一二]|星期二絕對|不要再介入|撤出觀望|"
+    r"要去休息|反向下殺|不要亂下單|夜盤前|盈虧自負|洗盤|震盪往下)"
 )
 _NOISE_ONLY = re.compile(r"(出書|90%\s*老師|我自己都沒|說實話|看盤當下寫|很有心)")
 # CMoney 頁面「加入 google 偏好」宣傳；不是他正文（他真講去 google 查型態另算）
@@ -520,36 +521,52 @@ def _norm_focus(text: str) -> str:
     return re.sub(r"\s+", "", str(text or ""))
 
 
-def _overlaps_shown(bit: str, shown: Sequence[str], *, min_chars: int = 20) -> bool:
-    """句／段是否已在大盤／族群／PCB（或已收進他還說）出現過。"""
+def _overlaps_shown(bit: str, shown: Sequence[str], *, min_chars: int = 10) -> bool:
+    """句／段是否已在大盤／族群／PCB（或已收進他還說）出現過。
+
+    短句（「要去休息了…」約 17 字）也要算重疊；舊門檻 20 會漏掉，話筒就重複貼。
+    """
     n = _norm_focus(bit)
-    if len(n) < min_chars:
+    if len(n) < max(6, int(min_chars)):
         return False
     for s in shown:
         t = _norm_focus(s)
         if not t:
             continue
-        if n in t or t in n:
+        if n == t or n in t or t in n:
             return True
-        head = min(36, len(n), len(t))
-        if head >= 20 and n[:head] == t[:head]:
+        head = min(28, len(n), len(t))
+        if head >= 10 and n[:head] == t[:head]:
             return True
     return False
 
 
 def _strip_shown_sentences(bit: str, shown: Sequence[str]) -> str:
-    """一則樓下前半複述大盤、後半才是新話 → 只留新句。"""
+    """一則樓下前半複述大盤、後半才是新話 → 只留新句。
+
+    整段已是大盤／已示欄子集 → 直接空（不准再把開頭短句貼進「他還說」）。
+    """
     s = str(bit or "").strip()
     if not s:
         return ""
-    if not _overlaps_shown(s, shown):
+    n = _norm_focus(s)
+    for raw in shown:
+        t = _norm_focus(raw)
+        if not t:
+            continue
+        # 完全相同、或這段已整包出現在已示欄 → 不重複
+        if n == t or (len(n) >= 10 and n in t):
+            return ""
+    if not _overlaps_shown(s, shown, min_chars=10):
         return s
     parts = [p.strip(" ，、") for p in re.split(r"[。！？；]", s) if p.strip()]
     keep: List[str] = []
     for p in parts:
-        if len(p) < 8:
+        if len(_norm_focus(p)) < 8:
             continue
-        if _overlaps_shown(p, shown) or _overlaps_shown(p, keep):
+        if _overlaps_shown(p, shown, min_chars=8) or _overlaps_shown(
+            p, keep, min_chars=8
+        ):
             continue
         keep.append(p)
     if not keep:
@@ -557,6 +574,15 @@ def _strip_shown_sentences(bit: str, shown: Sequence[str]) -> str:
     out = "。".join(keep)
     if not out.endswith("。"):
         out += "。"
+    # 掐完若仍只是已示欄的開頭複述，丟掉
+    if _overlaps_shown(out, shown, min_chars=10) and len(_norm_focus(out)) <= max(
+        (len(_norm_focus(x)) for x in shown if x), default=0
+    ):
+        on = _norm_focus(out)
+        for raw in shown:
+            t = _norm_focus(raw)
+            if t and (on in t or on == t):
+                return ""
     return out
 
 
@@ -934,7 +960,7 @@ def format_focus_oral(
     latest_t = str(latest.get("text") or "")
     if board and re.search(r"(否則|如果|一定要過)", board + latest_t) and "如果句" not in board:
         board = board.rstrip("。") + "。這句還是如果句，不是已確認主升。"
-    # 主文後大盤自回併進大盤欄（口語一句接一句，國中生也讀得懂）
+    # 主文後大盤自回併進大盤欄（口語一句接一句；同義短句不准另開「他還說」）
     if after_board:
         merged = _join_said([board] + after_board[:6], shown=[])
         if merged:
@@ -942,6 +968,10 @@ def format_focus_oral(
     shown = [x for x in (board, field, pcb) if x]
     # 他還說＝主文沒進上面三欄的補充＋樓下；已講過的大盤／族群／PCB 整段丟掉
     said = _join_said([preview] + spare[:2] + extra[:3], shown=shown)
+    # 再保險：他還說若只是大盤欄開頭複述，整欄拿掉（智慧融合，不重複唸）
+    if said and board and _overlaps_shown(said, [board], min_chars=10):
+        said2 = _strip_shown_sentences(said, [board])
+        said = said2
     blocks: List[str] = [
         "<b>飆大現在在講</b>",
         html_escape(f"最新　{when}" if when else "最新"),
@@ -1012,6 +1042,7 @@ def format_focus_oral(
                 str(db_path),
                 posts=list(cleaned_mains) + list(cleaned_replies),
                 now=now,
+                skip_how_shown=[x for x in (board, field, pcb, said) if x],
             )
             if gates:
                 blocks.append("")
@@ -1292,7 +1323,8 @@ def _collect_open_index_gates(
             ctx = str(hit.get("ctx") or "").strip()
             role = str(hit.get("role") or "點位")
             how = _SPACE.sub(" ", ctx).strip()
-            how = _oral_body(how, 120)
+            # 關卡「他說」只留短上下文；長洗盤敘述留給大盤欄，不准每關重貼一次
+            how = _oral_body(how, 56)
             by_lv[key] = {
                 "level": key,
                 "role": role,
@@ -1310,10 +1342,12 @@ def format_index_gates_confront_html(
     posts: Optional[Sequence[Dict[str, Any]]] = None,
     now: Optional[datetime] = None,
     days: int = 21,
+    skip_how_shown: Optional[Sequence[str]] = None,
 ) -> str:
     """他自己點過的加權／台指關 × 最新官方已收。一眼對：關、他怎麼說、柱有沒碰到。
 
     路人價不收；盤中未收不當印到。不是買訊、不是可點個股清單。
+    skip_how_shown：大盤／他還說已唸過的敘述，關卡列不再貼「他說：」長複誦。
     """
     path = str(db_path or "").strip()
     rows_in = list(posts or [])
@@ -1355,6 +1389,7 @@ def format_index_gates_confront_html(
         "txn": None,
         "asof_note": "",
     }
+    shown_how = [str(x) for x in (skip_how_shown or []) if str(x or "").strip()]
     lines: List[str] = ["<b>關卡 × 官方已收</b>"]
     note = str(bars.get("asof_note") or "").strip()
     if note:
@@ -1368,7 +1403,10 @@ def format_index_gates_confront_html(
         head = f"{_px_face(lv)}（{role}）"
         lines.append("")
         lines.append(html_escape(head))
-        if how:
+        # 大盤欄已講過的洗盤長句，關卡只留官方對照，不准每關再貼一次「他說」
+        if how and not (
+            shown_how and _overlaps_shown(how, shown_how, min_chars=10)
+        ):
             lines.append(html_escape(f"他說：{how}"))
         lines.append(html_escape(f"官方：{touch}"))
     return "\n".join(lines)
