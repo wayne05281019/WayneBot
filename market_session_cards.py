@@ -748,13 +748,129 @@ def _tx_card_from_db(now: Optional[datetime] = None) -> Optional[Dict[str, Any]]
     return None
 
 
+def _wall_in_tx_night(now: datetime) -> bool:
+    """台北牆鐘是否在台指期夜盤窗（15:00–05:00）。"""
+    hm = int(now.hour) * 100 + int(now.minute)
+    return hm >= 1500 or hm < 500
+
+
+def _evening_start_ymd(now: datetime) -> str:
+    """目前夜盤起日：05:00 前算昨曆日，其餘用當日。"""
+    if int(now.hour) < 5:
+        return (now - timedelta(days=1)).strftime("%Y%m%d")
+    return now.strftime("%Y%m%d")
+
+
+def build_tx_night_card_from_mis_1m(
+    pack: Dict[str, Any],
+    prev_close: Optional[float],
+    *,
+    evening_ymd: str = "",
+) -> Optional[Dict[str, Any]]:
+    """MIS 夜盤 1 分官方柱 → 與 zip 同一張電子盤臉。不准捏假柱。"""
+    if not isinstance(pack, dict):
+        return None
+    prev = float(prev_close or 0)
+    if prev <= 0:
+        ref = pack.get("ref")
+        try:
+            prev = float(ref or 0)
+        except (TypeError, ValueError):
+            prev = 0.0
+    if prev <= 0:
+        return None
+    eve = str(evening_ymd or pack.get("date") or "").replace("-", "")[:8]
+    if len(eve) != 8:
+        return None
+    # 週末起日（六日）不當夜盤起標；週五夜 OK
+    if _is_weekend(eve):
+        return None
+    ticks = pack.get("ticks") or []
+    series: List[float] = []
+    volumes: List[int] = []
+    xs: List[float] = []
+    highs: List[float] = []
+    lows: List[float] = []
+    last_stamp = ""
+    for item in ticks:
+        if not isinstance(item, (list, tuple)) or len(item) < 5:
+            continue
+        stamp = str(item[0] or "").strip()
+        if len(stamp) == 4:
+            stamp = stamp + "00"
+        if len(stamp) < 6:
+            continue
+        try:
+            px = float(item[4])
+            hi = float(item[2]) if item[2] not in (None, "") else px
+            lo = float(item[3]) if item[3] not in (None, "") else px
+            vol = int(round(float(item[5]))) if len(item) > 5 else 0
+        except (TypeError, ValueError):
+            continue
+        if px <= 0:
+            continue
+        series.append(px)
+        volumes.append(max(0, vol))
+        xs.append(float(_bucket_minutes(stamp[:6])))
+        highs.append(hi if hi > 0 else px)
+        lows.append(lo if lo > 0 else px)
+        last_stamp = stamp[:6]
+    if len(series) < 2 or not last_stamp:
+        return None
+    # 報價列有總量／現價時覆蓋末值（比最後一根 1 分更貼即時）
+    try:
+        live_last = float(pack.get("close") or 0)
+    except (TypeError, ValueError):
+        live_last = 0.0
+    if live_last > 0:
+        series[-1] = live_last
+    ma: List[float] = []
+    win = 5
+    for i in range(len(series)):
+        chunk = series[max(0, i - win + 1) : i + 1]
+        ma.append(sum(chunk) / len(chunk))
+    card = _card(
+        name="台指電子盤",
+        last=float(series[-1]),
+        prev=prev,
+        series=series,
+        integers=True,
+    )
+    if card is None:
+        return None
+    card["session"] = eve
+    card["month"] = ""
+    card["volumes"] = volumes
+    card["xs"] = xs
+    card["ma"] = ma
+    card["high"] = float(max(highs + ([live_last] if live_last > 0 else [])))
+    card["low"] = float(min(lows + ([live_last] if live_last > 0 else [])))
+    asof = str(pack.get("update_time") or "").strip()
+    if not asof:
+        asof = f"{last_stamp[:2]}:{last_stamp[2:4]}:{last_stamp[4:6]}"
+    card["asof_time"] = asof
+    card["last_qty"] = int(volumes[-1]) if volumes else 0
+    try:
+        total_vol = int(pack.get("volume") or 0)
+    except (TypeError, ValueError):
+        total_vol = 0
+    card["volume"] = total_vol if total_vol > 0 else int(sum(volumes))
+    card["source"] = "taifex_mis"
+    card["source_label"] = "期交所夜盤即時１分"
+    card["is_realtime"] = True
+    if pack.get("symbol"):
+        card["symbol"] = str(pack.get("symbol"))
+    return card
+
+
 def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
     """最新一檔期交所逐筆夜盤。沒有 15:00 起的官方成交就不上圖。
 
-    Daily_YYYY_MM_DD.zip 含「前一晚盤後＋當日日盤」。要畫最新夜盤必須吃最新 zip；
-    結算價缺漏時改歷史／庫內補，不准退回更舊 zip 卻標成現況。
-    Zip 全失敗／逾時 → 改吃庫內已同步的 TX 夜盤分 K，再不行才用 TX／TE 日盤＋夜盤
-    官方 OHLC 表（標清來源／時段）；不准假數、不准盤中未收當收。
+    夜盤進行中（台北 15:00–05:00）：優先期交所 MIS 即時 1 分，標題／走勢對齊當夜，
+    不准再用上週五 zip 冒充現況。
+    其餘時段：Daily_YYYY_MM_DD.zip（前一晚盤後＋當日日盤）；結算缺漏改歷史／庫內補，
+    不准退回更舊 zip 卻標成現況。Zip 全失敗／逾時 → 庫內 TX 夜盤分 K，再不行才用
+    TX／TE 日盤＋夜盤官方 OHLC 表；不准假數、不准盤中未收當收。
     """
     ref_now = now
     if ref_now is None:
@@ -763,6 +879,40 @@ def fetch_tx_after_hours_card(now: Optional[datetime] = None) -> Dict[str, Any]:
         ref_now = ref_now.replace(tzinfo=TP)
     else:
         ref_now = ref_now.astimezone(TP)
+
+    # 夜盤窗：先吃 MIS 即時，日期＝當夜起日（例 11/02 15:00 起），不准停在上週 zip。
+    if _wall_in_tx_night(ref_now):
+        try:
+            from market_ticker import fetch_tx_night_chart_1m
+
+            pack = fetch_tx_night_chart_1m(timeout=6.0)
+        except Exception:
+            logger.debug("台指電子盤 MIS 即時略過", exc_info=True)
+            pack = None
+        if isinstance(pack, dict) and pack.get("ticks"):
+            eve = str(pack.get("date") or "").replace("-", "")[:8]
+            if len(eve) != 8:
+                eve = _evening_start_ymd(ref_now)
+            prev = _regular_settlement(eve, "")
+            if prev is None or float(prev or 0) <= 0:
+                try:
+                    prev = float(pack.get("ref") or 0) or None
+                except (TypeError, ValueError):
+                    prev = None
+            live_card = build_tx_night_card_from_mis_1m(pack, prev, evening_ymd=eve)
+            if live_card is not None:
+                logger.info(
+                    "台指電子盤改用 MIS 夜盤即時 session=%s bars=%s last=%s",
+                    live_card.get("session"),
+                    len(live_card.get("series") or []),
+                    live_card.get("last"),
+                )
+                return {
+                    "card": live_card,
+                    "missing": False,
+                    "source": "taifex_mis",
+                }
+
     ymds: List[str] = []
     # 大盤專頁總逾時約 45s：頁面／zip 不可各吃滿半分鐘，失敗就缺圖。
     try:
@@ -1222,7 +1372,8 @@ def render_tx_electronic_board(path: str, card: Dict[str, Any], *, heading: str)
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=_BG)
     fig.text(0.04, 0.965, heading, color=_TITLE, fontproperties=_fp(22, "bold"), ha="left", va="top")
     src = str(card.get("source_label") or "").strip()
-    if src and str(card.get("source") or "").startswith("db:"):
+    src_key = str(card.get("source") or "")
+    if src and (src_key.startswith("db:") or src_key == "taifex_mis" or card.get("is_realtime")):
         fig.text(
             0.04, 0.925, f"來源　{src}",
             color=_MUTED, fontproperties=_fp(12, "bold"), ha="left", va="top",
