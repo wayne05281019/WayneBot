@@ -21,8 +21,8 @@ MAX_SLOTS = MAX_ACTIVE_NAMES  # 相容舊測試／畫面槽位語意
 CORE_SLOTS = MAX_ACTIVE_NAMES  # 操作桶可滿 3 檔
 DIP_SLOTS = 1  # 大盤超跌才動抄底（動用保留額）
 # 重跑：清空舊部位＋舊成交／fills；台北 2026-10-13 起買新的
-# v20261013_wipe：使用者看到舊買賣殘留 → 再清一次（含 trade_logs／ai_fills）
-RESTART_PARAM_KEY = "ai_desk_restart_v20261013_wipe"
+# v20261103_capfix：總資產被灌爆／成交重複洗版 → 再清一次，本金鎖回 50 萬
+RESTART_PARAM_KEY = "ai_desk_restart_v20261103_capfix"
 RESTART_BUY_FROM = "20261013"
 STOP_PCT = -7.0
 TAKE_PCT = 8.0
@@ -473,19 +473,46 @@ def mark_ai_restart_done(db_path: str, user_id: str) -> None:
     _param_set(db_path, f"{RESTART_PARAM_KEY}:{uid}", 1.0)
 
 
-def ensure_ai_restart_applied(engine: PortfolioEngine, user_id: str) -> bool:
-    """每位 AI 戶只完整清空一次（v20261013_wipe：部位＋舊買賣紀錄）。
+def _ai_account_bloated(summary: Dict[str, Any]) -> bool:
+    """總資產／現金／持倉數明顯超出 50 萬假錢口徑 → 要重設。"""
+    try:
+        assets = float(summary.get("total_assets") or 0)
+        cash = float(summary.get("cash") or 0)
+        initial = float(summary.get("initial_capital") or 0)
+        npos = int(summary.get("positions_count") or 0)
+    except (TypeError, ValueError):
+        return False
+    if assets > TOTAL_CAPITAL * 1.5:
+        return True
+    if cash > TOTAL_CAPITAL * 1.25:
+        return True
+    if initial > 0 and abs(initial - TOTAL_CAPITAL) > 1.0:
+        return True
+    if npos > MAX_ACTIVE_NAMES + int(DIP_SLOTS):
+        return True
+    return False
 
+
+def ensure_ai_restart_applied(engine: PortfolioEngine, user_id: str) -> bool:
+    """每位 AI 戶完整清空一次（本金鎖 50 萬；部位＋舊買賣紀錄）。
+
+    若帳戶已被灌到遠超 50 萬／槽位爆掉，即使舊旗標在也再清一次。
     只動該人 ai_{uid} 假錢倉；不碰真實持股／觀察／海選／勝率買點推播。
     """
     ensure_ai_tables(engine.db_path)
     key = f"{RESTART_PARAM_KEY}:{user_id}"
-    if _param_get(engine.db_path, key) is not None:
+    flagged = _param_get(engine.db_path, key) is not None
+    bloated = False
+    try:
+        bloated = _ai_account_bloated(engine.get_portfolio_summary(user_id, {}) or {})
+    except Exception:
+        bloated = False
+    if flagged and not bloated:
         return False
     reset_ai_account(
         engine,
         user_id,
-        note="2026-10-13 全清舊買賣；總50萬＝30操作＋20抄底；今日起買新的",
+        note="2026-11-03 本金鎖回50萬；清重複成交；30操作＋20抄底",
     )
     _param_set(engine.db_path, key, 1.0)
     return True
@@ -765,9 +792,39 @@ def _realized_pnl(engine: PortfolioEngine, user_id: str) -> float:
     return float(row[0] or 0) if row else 0.0
 
 
+def _fill_row_key(row: Dict[str, Any]) -> tuple:
+    try:
+        px = round(float(row.get("price") or 0), 2)
+    except (TypeError, ValueError):
+        px = 0.0
+    return (
+        str(row.get("date") or ""),
+        str(row.get("action") or "").upper(),
+        str(row.get("stock_id") or ""),
+        int(row.get("shares") or 0),
+        px,
+        str(row.get("reason") or "")[:96],
+    )
+
+
+def _dedupe_fill_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """同一日同股同價同理由只留一筆（話筒不准洗版）。"""
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        key = _fill_row_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
 def _recent_fills(engine: PortfolioEngine, user_id: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """最近真買賣；略過 RESET／0 股殘列，避免話筒還看到清空備註。"""
+    """最近真買賣；略過 RESET／0 股殘列；同鍵去重，避免話筒重複洗版。"""
     conn = engine._get_connection()
+    # 多抓再去重，避免重複列把真成交擠掉
+    fetch_n = max(24, int(limit) * 4)
     rows = conn.execute(
         """
         SELECT date, action, stock_id, stock_name, shares, price, realized_pnl, pnl_pct, reason
@@ -778,10 +835,49 @@ def _recent_fills(engine: PortfolioEngine, user_id: str, limit: int = 8) -> List
           AND COALESCE(stock_id,'') NOT IN ('','RESET')
         ORDER BY id DESC LIMIT ?
         """,
-        (user_id, int(limit)),
+        (user_id, fetch_n),
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return _dedupe_fill_rows([dict(r) for r in rows])[: int(limit)]
+
+
+def _trade_logged_today(
+    engine: PortfolioEngine, user_id: str, as_of: str, stock_id: str, action: str
+) -> bool:
+    """當日同股同向已有成交列 → 不准再記／再賣入帳。"""
+    day = str(as_of or "").replace("-", "")[:8]
+    sid = str(stock_id or "").strip()
+    act = str(action or "").upper()
+    if not day or not sid or act not in ("BUY", "SELL"):
+        return False
+    conn = engine._get_connection()
+    row = conn.execute(
+        """
+        SELECT 1 FROM trade_logs
+        WHERE user_id=? AND replace(date,'-','')=? AND stock_id=? AND UPPER(action)=?
+          AND COALESCE(shares,0) > 0
+        LIMIT 1
+        """,
+        (user_id, day, sid, act),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def _drop_orphan_position(engine: PortfolioEngine, user_id: str, stock_id: str) -> None:
+    """當日已記賣出卻還留倉 → 只清倉、不再入帳現金（防雙重入帳灌爆）。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return
+    conn = engine._get_connection()
+    try:
+        conn.execute(
+            "DELETE FROM user_positions WHERE user_id=? AND stock_id=?",
+            (user_id, sid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _fmt_ymd(raw: str) -> str:
@@ -848,18 +944,21 @@ def format_ai_desk_pages(
     size_mult = _load_size_mult(engine.db_path, user_id)
     initial = float(s.get("initial_capital") or TOTAL_CAPITAL)
     slot = slot_notional(initial, size_mult)
-    used = int(s["positions_count"])
+    used_raw = int(s["positions_count"])
+    # 畫面槽位鎖 3；爆槽數字不准寫成 4/3
+    used = min(used_raw, MAX_ACTIVE_NAMES)
     reasons = _last_buy_reasons(engine, user_id)
     realized = _realized_pnl(engine, user_id)
     unreal = sum(float(p.get("unrealized_pnl") or 0) for p in s["positions"])
 
     empty = max(0, MAX_ACTIVE_NAMES - used)
-    dots = ("●" * min(used, MAX_ACTIVE_NAMES)) + ("○" * empty)
+    dots = ("●" * used) + ("○" * empty)
     reserve = cash_reserve_floor(initial)
     head = [
         section_eq("AI 模擬帳戶"),
         "假錢對照組，不是真下單。",
-        "總 50 萬＝可動用 30 萬＋留 20 萬抄底。",
+        "本金固定 50 萬＝可動用 30 萬＋留 20 萬抄底。",
+        "總資產應約在 50 萬上下，不是真帳戶增值。",
         "勝率買點隔日最多 3 檔（含零股）。",
         "停損 −7%、停利 ＋8%。理由必落檔。",
         "",
@@ -877,10 +976,12 @@ def format_ai_desk_pages(
         "<b>槽位</b>",
         kv_compact("已用槽", f"{dots}　{used}/{MAX_ACTIVE_NAMES}"),
         kv_compact("每槽上限", f"{slot:,.0f}　倍數 {size_mult:.2f}"),
-        kv_compact("本金", f"{initial:,.0f}"),
+        kv_compact("本金", f"{TOTAL_CAPITAL:,.0f}"),
         "可動用 30 萬操作；留 20 萬大跌加碼。",
         "操作買進不得吃保留額。",
     ]
+    if used_raw > MAX_ACTIVE_NAMES:
+        head.append(f"持倉 {used_raw} 檔超過上限，下輪會整理回 {MAX_ACTIVE_NAMES} 檔。")
     pages: List[str] = []
     if not s["positions"]:
         head.extend(["", "────────────────", "<b>持倉</b>"])
@@ -1155,6 +1256,27 @@ def run_ai_desk(
     )
 
     sold = []
+
+    def _safe_sell(sid: str, price: float, shares: int, reason: str) -> None:
+        """當日已記賣出 → 只清殘倉不入帳；否則才真賣。"""
+        sid = str(sid or "").strip()
+        if not sid or float(price or 0) <= 0:
+            return
+        if _trade_logged_today(engine, user_id, as_of, sid, "SELL"):
+            _drop_orphan_position(engine, user_id, sid)
+            return
+        r = engine.sell(
+            user_id,
+            as_of,
+            sid,
+            float(price),
+            shares=int(shares or 0) or None,
+            reason=reason,
+        )
+        if r.get("success"):
+            sold.append(r["msg"])
+            _record_fill(db_path, user_id, as_of, "SELL", r, reason=reason or "")
+
     # 舊模擬倉若抱著 ETF，先用官方收盤清掉。
     for p in list(seed["positions"]):
         sid = str(p.get("stock_id") or "")
@@ -1164,43 +1286,45 @@ def run_ai_desk(
         price = _official_close(quotes, sid)
         if price <= 0:
             continue
-        r = engine.sell(
-            user_id,
-            as_of,
-            sid,
-            price,
-            shares=int(p.get("shares") or 0),
-            reason="非現股／KY，清出模擬槽",
-        )
-        if r.get("success"):
-            sold.append(r["msg"])
-            _record_fill(db_path, user_id, as_of, "SELL", r, reason="非現股／KY，清出模擬槽")
+        _safe_sell(sid, price, int(p.get("shares") or 0), "非現股／KY，清出模擬槽")
 
     for sig in engine.evaluate_exit_signals(user_id, quotes):
-        r = engine.sell(
-            user_id, as_of, sig["stock_id"], float(sig["current_price"]),
-            shares=int(sig["shares"]), reason=sig["reason"],
+        _safe_sell(
+            sig["stock_id"],
+            float(sig["current_price"]),
+            int(sig["shares"]),
+            sig.get("reason") or "",
         )
-        if r.get("success"):
-            sold.append(r["msg"])
-            _record_fill(db_path, user_id, as_of, "SELL", r, reason=sig.get("reason") or "")
 
     summary = engine.get_portfolio_summary(user_id, quotes)
     for p in list(summary["positions"]):
         if p["pnl_pct"] <= STOP_PCT:
-            r = engine.sell(user_id, as_of, p["stock_id"], p["current_price"], reason="紀律停損 -7%")
-            if r.get("success"):
-                sold.append(r["msg"])
-                _record_fill(db_path, user_id, as_of, "SELL", r, reason="紀律停損 -7%")
+            _safe_sell(p["stock_id"], p["current_price"], int(p.get("shares") or 0), "紀律停損 -7%")
         elif p["pnl_pct"] >= TAKE_PCT:
-            r = engine.sell(user_id, as_of, p["stock_id"], p["current_price"], reason="紀律停利 +8%")
-            if r.get("success"):
-                sold.append(r["msg"])
-                _record_fill(db_path, user_id, as_of, "SELL", r, reason="紀律停利 +8%")
+            _safe_sell(p["stock_id"], p["current_price"], int(p.get("shares") or 0), "紀律停利 +8%")
 
     summary = engine.get_portfolio_summary(user_id, quotes)
     held = {p["stock_id"] for p in summary["positions"]}
-    max_held = market_deploy_cap(db_path, as_of, results)
+    # 爆槽時先把多餘檔當日清出，畫面不准長期 4/3
+    if len(held) > MAX_ACTIVE_NAMES:
+        extras = sorted(
+            summary["positions"],
+            key=lambda x: float(x.get("unrealized_pnl") or 0),
+        )
+        for p in extras:
+            if len(held) <= MAX_ACTIVE_NAMES:
+                break
+            sid = str(p.get("stock_id") or "")
+            if not sid or sid not in held:
+                continue
+            px = float(p.get("current_price") or p.get("cost_price") or 0)
+            if px <= 0:
+                continue
+            _safe_sell(sid, px, int(p.get("shares") or 0), "超過 3 檔上限，清出多餘槽")
+            held.discard(sid)
+        summary = engine.get_portfolio_summary(user_id, quotes)
+        held = {p["stock_id"] for p in summary["positions"]}
+    max_held = min(int(market_deploy_cap(db_path, as_of, results) or 0), MAX_ACTIVE_NAMES)
     slots = max(0, max_held - len(held))
     bought = []
     researched = []
@@ -1225,6 +1349,10 @@ def run_ai_desk(
             sid = str(it.get("stock_id") or it.get("code") or "")
             if sid in held:
                 continue
+            if _trade_logged_today(engine, user_id, as_of, sid, "BUY"):
+                continue
+            if _trade_logged_today(engine, user_id, as_of, sid, "SELL"):
+                continue  # 當日已賣過的不准當日又買回洗版
             price = float(it.get("close") or 0)
             name = it.get("stock_name") or it.get("name") or sid
             if price <= 0:
@@ -1278,6 +1406,10 @@ def run_ai_desk(
                 continue
             # 新開檔仍受操作最多 3 檔限制；已持有可加碼
             if sid not in held and len(held) >= MAX_ACTIVE_NAMES:
+                continue
+            if sid not in held and _trade_logged_today(engine, user_id, as_of, sid, "BUY"):
+                continue
+            if sid not in held and _trade_logged_today(engine, user_id, as_of, sid, "SELL"):
                 continue
             logged = _research_and_log_buy(
                 db_path,

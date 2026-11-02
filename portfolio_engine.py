@@ -247,10 +247,19 @@ class PortfolioEngine:
 
         conn = self._get_connection()
         cursor = conn.cursor()
+        # 立刻鎖寫，避免兩路同時賣同一檔把現金入帳兩次
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError:
+            pass
         cursor.execute("SELECT * FROM user_positions WHERE user_id = ? AND stock_id = ?", (str(user_id), stock_id))
         pos = cursor.fetchone()
 
         if not pos:
+            try:
+                conn.rollback()
+            except sqlite3.OperationalError:
+                pass
             conn.close()
             return {"success": False, "msg": f"持倉中無標的 {stock_id}"}
 

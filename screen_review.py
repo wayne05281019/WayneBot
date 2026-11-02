@@ -675,7 +675,26 @@ def persist_ai_fill(
             bucket = str(row[0] or "")
     from datetime import datetime
 
+    uid = str(user_id or "wayne_ai")
+    act = str(action or "").upper()
+    px = float(price)
+    sh = int(shares)
+    why = str(reason or "")
     conn = sqlite3.connect(db_path)
+    # 同日同股同向同價同股數同理由只留一筆，避免復盤／話筒洗版
+    dup = conn.execute(
+        """
+        SELECT 1 FROM ai_fills
+        WHERE user_id=? AND as_of=? AND stock_id=? AND UPPER(action)=?
+          AND shares=? AND ABS(price - ?) < 0.005
+          AND COALESCE(reason,'')=?
+        LIMIT 1
+        """,
+        (uid, as_of, sid, act, sh, px, why),
+    ).fetchone()
+    if dup:
+        conn.close()
+        return
     conn.execute(
         """
         INSERT INTO ai_fills(
@@ -684,15 +703,15 @@ def persist_ai_fill(
         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
-            str(user_id or "wayne_ai"),
+            uid,
             as_of,
             sid,
             str(stock_name or ""),
-            str(action or "").upper(),
-            float(price),
-            int(shares),
+            act,
+            px,
+            sh,
             float(amount or 0),
-            str(reason or ""),
+            why,
             bucket,
             float(realized_pnl or 0),
             float(pnl_pct or 0),
@@ -799,6 +818,20 @@ def _ai_fill_stats(db_path: str, limit_days: int = 20, user_id: Optional[str] = 
                 (key, *days),
             ).fetchall()
         rows = [r for r in rows if _pick_is_equity(str(r[0] or ""), str(r[1] or ""))]
+        # 同日同股同隔日％去重，桶統計不准被重複成交灌水
+        seen_keys = set()
+        uniq = []
+        for r in rows:
+            try:
+                pct = round(float(r[2]), 2)
+            except (TypeError, ValueError):
+                pct = 0.0
+            k = (str(r[0] or ""), pct)
+            if k in seen_keys:
+                continue
+            seen_keys.add(k)
+            uniq.append(r)
+        rows = uniq
         n = len(rows)
         if not n:
             out.append((key, 0, 0.0, 0.0))
@@ -807,6 +840,23 @@ def _ai_fill_stats(db_path: str, limit_days: int = 20, user_id: Optional[str] = 
         hits = sum(1 for r in rows if float(r[2]) > 0)
         out.append((key, n, avg, hits / n))
     conn.close()
+    return out
+
+
+def _dedupe_ai_review_fills(rows: list) -> list:
+    """同日同股同隔日％只留一筆（最近買進不准洗版）。"""
+    seen = set()
+    out = []
+    for r in rows or []:
+        try:
+            pct = round(float(r[2]), 2)
+        except (TypeError, ValueError, IndexError):
+            pct = 0.0
+        key = (str(r[0] or ""), str(r[4] or ""), pct)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
     return out
 
 
@@ -826,7 +876,9 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
         (uid,),
     ).fetchall()
     conn.close()
-    fills = [r for r in fills if _pick_is_equity(str(r[0] or ""), str(r[1] or ""))]
+    fills = _dedupe_ai_review_fills(
+        [r for r in fills if _pick_is_equity(str(r[0] or ""), str(r[1] or ""))]
+    )
     n = len(fills)
     if n <= 0:
         return (
