@@ -925,13 +925,12 @@ def test_format_teach_brief_empty_db_ok(tmp_path):
     db = str(tmp_path / "empty.db")
     # 無活畫 pack 也要空字串，不准拋
     out = format_teach_brief(db)
-    assert out == "" or "白話結論" in out
+    assert out == "" or "波浪位階" in out
 
 
 def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
-    """有 pack 時白話結論必須先寫他說現在層級（大→小）。"""
+    """短敘：層級＋此刻；不准再堆白話結論牆。"""
     from biaoke_digest import format_teach_brief
-    import biaoke_digest as bd
 
     def _fake_pack(_db):
         return {
@@ -945,11 +944,14 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
 
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_pack)
     out = format_teach_brief("x.db")
-    assert "他說現在走到哪" in out
+    assert "波浪位階" in out
     assert "大A底7/29" in out and "大B反彈" in out and "大C進行中" in out
     assert "五波升完" not in out
     assert "C內橫台中繼" in out
-    assert "白話結論" in out
+    assert "白話結論" not in out
+    assert "說明：這是彙整" not in out
+    assert "黃金切割" not in out
+    assert "量價／主力" not in out
 
 
 def test_scrub_expired_forward_drops_past_monday_keeps_valid():

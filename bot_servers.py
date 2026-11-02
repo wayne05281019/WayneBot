@@ -6602,16 +6602,17 @@ class WayneTelegramBot:
                 q_line = ""
         for i, (_key, label, path) in enumerate(items):
             n = i + 1
-            bits = [f"台股大盤・第{n}張・{label}（非買訊）"]
+            bits = [f"第{n}張・{label}"]
             if i == 0 and intro:
                 bits.append(intro)
             else:
                 if q_line:
                     bits.append(q_line)
                 if ladder_line:
-                    bits.append(str(ladder_line)[:400])
+                    # 只留層級第一行，不准整段贅詞跟每張重複
+                    bits.append(str(ladder_line).splitlines()[0].strip()[:120])
             ok = await self._send_market_teach_one(
-                message, path, caption="\n".join(bits), label=label
+                message, path, caption="\n".join(bits)[:500], label=label
             )
             if ok:
                 sent += 1
@@ -6815,18 +6816,21 @@ class WayneTelegramBot:
                 q_wall = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%m/%d %H:%M")
             except Exception:
                 q_wall = ""
-            intro_bits = [
-                f"順序固定：第1遠窗→第2近窗→第3超近窗（{order_zh}・非買訊）",
-            ]
+            # caption 精簡：張序＋查詢時＋層級一句；不准再堆順序說明／贅詞
+            intro_bits = [f"遠／近／超近・非買訊"]
             if q_wall:
                 intro_bits.append(f"查詢 {q_wall}（台北）")
+            short_ladder = ""
             if ladder_line:
-                intro_bits.append(ladder_line)
+                short_ladder = str(ladder_line).splitlines()[0].strip()[:120]
             elif thesis:
-                intro_bits.append(thesis)
+                short_ladder = str(thesis)[:120]
+            if short_ladder:
+                intro_bits.append(short_ladder)
             if missing:
-                intro_bits.append(f"這次缺：{'、'.join(missing)}")
-            trio_cap = "\n".join(intro_bits)[:1024]
+                intro_bits.append(f"缺：{'、'.join(missing)}")
+            trio_cap = "\n".join(intro_bits)[:500]
+            _ = order_zh  # 保留 trio 標籤來源；caption 不再複述
 
             if wait_h and wait_h[0] is not None:
                 await self._safe_edit_text(

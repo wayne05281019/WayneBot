@@ -616,11 +616,7 @@ def _speak(text: str, limit: int = 220) -> str:
 
 
 def format_teach_brief(db_path: str = "") -> str:
-    """空白鍵加一段消化過的白話結論（波浪／切割／型態／量價）；不是買訊。
-
-    開頭必有『他說現在層級』大→小一條龍，讓人一眼知道走到哪一層小波。
-    資料來自活畫 pack；失敗回空，不准擋主摘要。
-    """
+    """波浪位階短敘：層級一條＋此刻＋最多兩個價；不准贅詞牆。非買訊。"""
     if not db_path:
         return ""
     try:
@@ -630,59 +626,52 @@ def format_teach_brief(db_path: str = "") -> str:
     except Exception:
         return ""
     thesis = str(pack.get("thesis") or "").strip()
-    morph = str(pack.get("morph_note") or "").strip()
-    intent = str(pack.get("intent_note") or "").strip()
-    fib = str(pack.get("fib_note") or "").strip()
-    if not (thesis or intent or morph):
+    if not thesis and not (
+        pack.get("intent_note") or pack.get("morph_note") or pack.get("pred_note")
+    ):
         return ""
     try:
         ladder = _wave_now_ladder(pack)
     except Exception:
         ladder = {}
-    lines = ["<b>他說現在走到哪（大→小・預估會改）</b>"]
-    if ladder.get("chain"):
-        lines.append(html_escape(str(ladder["chain"])))
-    if ladder.get("now_line"):
-        lines.append(html_escape(str(ladder["now_line"])))
-    lines.append("")
-    lines.append("<b>白話結論（消化過・非買訊）</b>")
-    if thesis:
-        lines.append(html_escape(f"波浪：{thesis}"))
-    if fib:
-        lines.append(html_escape(f"黃金切割：{fib}"))
-    if morph:
-        lines.append(html_escape(f"型態：{morph}"))
-    if intent:
-        # 只取第一句故事，避免牆
-        one = intent.split("；")[0].strip()
-        lines.append(html_escape(f"量價／主力：{one}"))
+    lines: List[str] = ["<b>波浪位階（預估・非買訊）</b>"]
+    chain = str(ladder.get("chain") or "").strip()
+    now = str(ladder.get("now") or "").strip()
+    if chain:
+        lines.append(html_escape(chain))
+    elif thesis:
+        lines.append(html_escape(thesis))
+    if now:
+        as_of = ""
+        m = re.search(r"as_of\s*(\d{4}-\d{2}-\d{2}|\d{8})", str(ladder.get("now_line") or ""))
+        if m:
+            as_of = m.group(1)
+        bit = f"此刻＝{now}" + (f"（{as_of}）" if as_of else "")
+        lines.append(html_escape(bit))
     pred_note = str(pack.get("pred_note") or "").strip()
     if not pred_note:
         pred = pack.get("pred_levels") or {}
         bits = []
-        for row in (pred.get("tw") or []) + (pred.get("sox") or []):
+        for row in (pred.get("tw") or [])[:2]:
             lab = str((row or {}).get("label") or "").strip()
             if lab:
                 bits.append(lab)
         pred_note = "｜".join(bits)
     if pred_note:
-        # 拿掉已過日曆錨的「周一破」這類過期前瞻（留仍有效的價位句）
         bits = []
         for raw in re.split(r"[｜|]", pred_note):
             bit = raw.strip()
             if not bit:
                 continue
             if re.search(r"周一破|週一破|明日|明天", bit):
-                # 有明確價仍留價，過期時間詞去掉
-                bit2 = re.sub(r"(周一|週一)破", "破", bit)
-                bit2 = re.sub(r"(明日|明天)", "", bit2).strip(" ・")
-                if bit2:
-                    bits.append(bit2)
-                continue
-            bits.append(bit)
+                bit = re.sub(r"(周一|週一)破", "破", bit)
+                bit = re.sub(r"(明日|明天)", "", bit).strip(" ・")
+            if bit:
+                bits.append(bit)
+            if len(bits) >= 2:
+                break
         if bits:
-            lines.append(html_escape(f"預測點：{'｜'.join(bits)}"))
-    lines.append(html_escape("說明：這是彙整他公開說法＋官方柱，不是他本人即時口述。"))
+            lines.append(html_escape("｜".join(bits)))
     return "\n".join(lines)
 
 
