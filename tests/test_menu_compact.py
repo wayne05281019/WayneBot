@@ -27,7 +27,7 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "34"
+    assert MENU_LAYOUT_VERSION == "35"
     assert MENU_ROW1 == (
         MENU_BTN_WINRATE,
         "海選",
@@ -66,7 +66,7 @@ def test_old_compact_flag_cannot_shrink_keyboard(tmp_path):
     assert len(kb.keyboard) == 2
     labels = [b.text for row in kb.keyboard for b in row]
     assert labels == list(MENU_ROW1) + list(MENU_ROW2)
-    assert "波浪現況" in labels
+    assert "波浪位階" in labels
     assert "沖區" in labels
     assert MENU_BTN_AI in labels
     assert bot._menu_compact_on("9") is False

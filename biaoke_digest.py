@@ -220,10 +220,222 @@ def normalize_biaoke_button(text: str) -> str:
 
 
 def _oral_body(text: str, limit: int = 280) -> str:
+    """口語裁切：優先在句號／問嘆號收束，不准半句「接下來會去測8…」這種斷字。"""
     s = _CHART.sub("（有圖）", text or "")
     s = _SPACE.sub(" ", s).strip()
     n = max(40, int(limit))
-    return s if len(s) <= n else s[: n - 1] + "…"
+    if len(s) <= n:
+        return s
+    window = s[:n]
+    best = -1
+    for sep in ("。", "！", "？", "；", "…"):
+        i = window.rfind(sep)
+        if i >= max(24, n // 3):
+            best = max(best, i)
+    if best >= 0:
+        return window[: best + 1]
+    # 沒句號才退到頓號／空白，仍不准中間切開數字
+    for sep in ("，", "、", " "):
+        i = window.rfind(sep)
+        if i >= max(24, n // 3):
+            cut = window[:i].rstrip("，、 ")
+            return cut + "…"
+    return s[: n - 1] + "…"
+
+
+_FWD_WEEKDAY = {
+    "一": 0,
+    "二": 1,
+    "三": 2,
+    "四": 3,
+    "五": 4,
+    "六": 5,
+    "日": 6,
+    "天": 6,
+}
+_FWD_REL = re.compile(
+    r"(下星期|下週|這星期|這週)?([一二三四五六日天])"
+    r"|(明天|後天|今晚|明天晚上|明天早盤|明早)"
+)
+
+
+def _post_dt(date_s: str, time_s: str = "") -> Optional[datetime]:
+    d = str(date_s or "").strip()
+    t = str(time_s or "").strip() or "12:00"
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})$", d)
+    if not m:
+        digits = re.sub(r"\D", "", d)
+        if len(digits) >= 8:
+            m = re.match(r"(\d{4})(\d{2})(\d{2})", digits)
+    if not m:
+        return None
+    try:
+        hh, mm = 12, 0
+        tm = re.match(r"(\d{1,2}):(\d{2})", t)
+        if tm:
+            hh, mm = int(tm.group(1)), int(tm.group(2))
+        return datetime(
+            int(m.group(1)), int(m.group(2)), int(m.group(3)), hh, mm, tzinfo=TAIPEI
+        )
+    except ValueError:
+        return None
+
+
+def _forward_target_date(post_dt: datetime, sentence: str) -> Optional[datetime]:
+    """從「下周一／周一／明天」推他當時指的日；推不出就不判過期。"""
+    s = sentence or ""
+    if "明天" in s or "明早" in s or "明天早" in s or "明天晚" in s:
+        return (post_dt + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    if "後天" in s:
+        return (post_dt + timedelta(days=2)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    if "今晚" in s:
+        return post_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    # 周一／週一／下星期一／這週二…（「周」「週」都認）
+    m = re.search(
+        r"(下星期|下個星期|下週|下個週|這星期|這個星期|這週|這個週)?"
+        r"(星期|週|周)?([一二三四五六日天])",
+        s,
+    )
+    if not m:
+        return None
+    wd = _FWD_WEEKDAY.get(m.group(3))
+    if wd is None:
+        return None
+    prefix = m.group(1) or ""
+    base = post_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    delta = (wd - base.weekday()) % 7
+    if prefix.startswith("下"):
+        # 下週X＝下一個該曜日（不含當天）
+        if delta == 0:
+            delta = 7
+    elif not prefix.startswith("這"):
+        # 裸「周一」：盤後再講＝下一個該曜
+        if delta == 0 and post_dt.hour >= 15:
+            delta = 7
+    return base + timedelta(days=delta)
+
+
+_FWD_TRIGGER = re.compile(
+    r"下星期|下個星期|下週|下個週|這星期|這週|"
+    r"明天|後天|今晚|明早|"
+    r"下周一|下週一|下周二|下週二|下周三|下週三|下周四|下週四|下周五|下週五|"
+    r"星期[一二三四五六日天]|週[一二三四五六日天]|周[一二三四五六日天]"
+)
+
+
+def _forward_expired(
+    target: Optional[datetime],
+    today,
+    clock: datetime,
+    *,
+    sentence: str = "",
+) -> bool:
+    if target is None:
+        return False
+    if target.date() < today:
+        return True
+    if target.date() != today:
+        return False
+    # 「今晚」＝當日夜盤窗，盤後到深夜仍有效；隔日才過期
+    if "今晚" in (sentence or ""):
+        return False
+    # 其他「今天／周一＝今天」：過午盤（13:30）前瞻窗關閉
+    if clock.hour > 13 or (clock.hour == 13 and clock.minute >= 30):
+        return True
+    return False
+
+
+def _scrub_expired_forward(
+    text: str,
+    *,
+    post_date: str = "",
+    post_time: str = "",
+    now: Optional[datetime] = None,
+) -> str:
+    """過期的「下周一／明天…」前瞻子句拿掉；同句裡仍有效的判斷要留。"""
+    s = _SPACE.sub(" ", text or "").strip()
+    if not s:
+        return ""
+    clock = now or taipei_now()
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=TAIPEI)
+    else:
+        clock = clock.astimezone(TAIPEI)
+    today = clock.date()
+    post_dt = _post_dt(post_date, post_time) or clock
+
+    def _keep_clause(bit: str) -> bool:
+        bit = bit.strip()
+        if not bit:
+            return False
+        # 「上星期／上週四」＝回顧已發生，不是前瞻；不准當過期句整段刪掉
+        if re.search(r"上(星期|個星期|週|個週|周|個周)", bit):
+            return True
+        if not _FWD_TRIGGER.search(bit):
+            return True
+        return not _forward_expired(
+            _forward_target_date(post_dt, bit),
+            today,
+            clock,
+            sentence=bit,
+        )
+
+    # 先按句號切；句內若夾過期前瞻，再按逗號只丟過期子句
+    sentences = re.split(r"(?<=[。！？；])", s)
+    keep: List[str] = []
+    for sent in sentences:
+        bit = sent.strip()
+        if not bit:
+            continue
+        if not _FWD_TRIGGER.search(bit):
+            keep.append(bit)
+            continue
+        if ("，" in bit or "、" in bit) and len(bit) >= 12:
+            clauses = re.split(r"(?<=[，、])", bit)
+            kept_c = [c for c in clauses if _keep_clause(c)]
+            if not kept_c:
+                continue
+            merged = "".join(kept_c).strip(" ，、")
+            # 原句有句號結尾就補回，避免後面黏成一團
+            if bit[-1] in "。！？；" and merged and merged[-1] not in "。！？；":
+                merged += bit[-1]
+            if merged:
+                keep.append(merged)
+            continue
+        if _keep_clause(bit):
+            keep.append(bit)
+    out = "".join(keep).strip(" ，、")
+    return _SPACE.sub(" ", out).strip()
+
+
+def _reply_answer_line(
+    text: str,
+    reply_to: str = "",
+    *,
+    limit: int = 220,
+) -> str:
+    """自回要講清楚在答什麼；同學問句只留短引，不准整段蓋過他的判斷。"""
+    spoken = _speak(text, limit)
+    if not spoken:
+        return ""
+    ask = _SPACE.sub(" ", str(reply_to or "")).strip()
+    ask = _CLASSMATE_QUOTE.sub("", ask)
+    ask = _SPACE.sub(" ", ask).strip(" 「」\"“”")
+    if not ask or len(ask) < 4:
+        return spoken
+    # 他文裡已引同學句就不再加「回」
+    if ask[:12] in (text or ""):
+        return spoken
+    # 引號內不准留問嘆號：後面 _join_said／句切會被「？」切開，變成上文不接下文
+    short = _oral_body(ask, 36).rstrip("…。？！?")
+    short = re.sub(r"[？！?]", "", short).strip(" ，、")
+    if not short:
+        return spoken
+    return f"回「{short}」：{spoken}"
 
 
 _NOISE = re.compile(
@@ -404,11 +616,7 @@ def _speak(text: str, limit: int = 220) -> str:
 
 
 def format_teach_brief(db_path: str = "") -> str:
-    """空白鍵加一段消化過的白話結論（波浪／切割／型態／量價）；不是買訊。
-
-    開頭必有『他說現在層級』大→小一條龍，讓人一眼知道走到哪一層小波。
-    資料來自活畫 pack；失敗回空，不准擋主摘要。
-    """
+    """波浪位階短敘：層級一條＋此刻＋最多兩個價；不准贅詞牆。非買訊。"""
     if not db_path:
         return ""
     try:
@@ -418,44 +626,52 @@ def format_teach_brief(db_path: str = "") -> str:
     except Exception:
         return ""
     thesis = str(pack.get("thesis") or "").strip()
-    morph = str(pack.get("morph_note") or "").strip()
-    intent = str(pack.get("intent_note") or "").strip()
-    fib = str(pack.get("fib_note") or "").strip()
-    if not (thesis or intent or morph):
+    if not thesis and not (
+        pack.get("intent_note") or pack.get("morph_note") or pack.get("pred_note")
+    ):
         return ""
     try:
         ladder = _wave_now_ladder(pack)
     except Exception:
         ladder = {}
-    lines = ["<b>他說現在走到哪（大→小・預估會改）</b>"]
-    if ladder.get("chain"):
-        lines.append(html_escape(str(ladder["chain"])))
-    if ladder.get("now_line"):
-        lines.append(html_escape(str(ladder["now_line"])))
-    lines.append("")
-    lines.append("<b>白話結論（消化過・非買訊）</b>")
-    if thesis:
-        lines.append(html_escape(f"波浪：{thesis}"))
-    if fib:
-        lines.append(html_escape(f"黃金切割：{fib}"))
-    if morph:
-        lines.append(html_escape(f"型態：{morph}"))
-    if intent:
-        # 只取第一句故事，避免牆
-        one = intent.split("；")[0].strip()
-        lines.append(html_escape(f"量價／主力：{one}"))
+    lines: List[str] = ["<b>波浪位階（預估・非買訊）</b>"]
+    chain = str(ladder.get("chain") or "").strip()
+    now = str(ladder.get("now") or "").strip()
+    if chain:
+        lines.append(html_escape(chain))
+    elif thesis:
+        lines.append(html_escape(thesis))
+    if now:
+        as_of = ""
+        m = re.search(r"as_of\s*(\d{4}-\d{2}-\d{2}|\d{8})", str(ladder.get("now_line") or ""))
+        if m:
+            as_of = m.group(1)
+        bit = f"此刻＝{now}" + (f"（{as_of}）" if as_of else "")
+        lines.append(html_escape(bit))
     pred_note = str(pack.get("pred_note") or "").strip()
     if not pred_note:
         pred = pack.get("pred_levels") or {}
         bits = []
-        for row in (pred.get("tw") or []) + (pred.get("sox") or []):
+        for row in (pred.get("tw") or [])[:2]:
             lab = str((row or {}).get("label") or "").strip()
             if lab:
                 bits.append(lab)
         pred_note = "｜".join(bits)
     if pred_note:
-        lines.append(html_escape(f"預測點：{pred_note}"))
-    lines.append(html_escape("說明：這是彙整他公開說法＋官方柱，不是他本人即時口述。"))
+        bits = []
+        for raw in re.split(r"[｜|]", pred_note):
+            bit = raw.strip()
+            if not bit:
+                continue
+            if re.search(r"周一破|週一破|明日|明天", bit):
+                bit = re.sub(r"(周一|週一)破", "破", bit)
+                bit = re.sub(r"(明日|明天)", "", bit).strip(" ・")
+            if bit:
+                bits.append(bit)
+            if len(bits) >= 2:
+                break
+        if bits:
+            lines.append(html_escape("｜".join(bits)))
     return "\n".join(lines)
 
 
@@ -511,8 +727,9 @@ def _noise_reply(text: str) -> bool:
 def _numbered_bits(text: str) -> List[str]:
     raw = _SPACE.sub(" ", text or "").strip()
     raw = re.sub(r"^重要留言看法分享\s*", "", raw)
-    parts = re.split(r"(?:^|\s)\d+\.\s+", raw)
-    bits = [p.strip().rstrip("。") for p in parts if p and len(p.strip()) >= 12]
+    # 「1. …。2. …」句號後常直接接下一號；用 lookbehind 保住前句句號
+    parts = re.split(r"(?:(?<=^)|(?<=[\s。；]))\d+\.\s+", raw)
+    bits = [p.strip().rstrip("。") for p in parts if p and len(p.strip()) >= 6]
     if len(bits) >= 2:
         return bits
     return [raw] if raw else []
@@ -532,10 +749,24 @@ def format_focus_oral(
     stock_links=False（話筒空白鍵）：不准文內個股藍字／可點清單。
     include_gates=True：附他自己點過的加權／台指關 × 最新官方已收對照。
     """
+    clock = now
+    if clock is not None:
+        if clock.tzinfo is None:
+            clock = clock.replace(tzinfo=TAIPEI)
+        else:
+            clock = clock.astimezone(TAIPEI)
+    else:
+        clock = taipei_now()
     cleaned_mains: List[Dict[str, Any]] = []
     for p in mains:
         row = dict(p)
-        row["text"] = _scrub_post_text(str(row.get("text") or ""))
+        raw = _scrub_post_text(str(row.get("text") or ""))
+        row["text"] = _scrub_expired_forward(
+            raw,
+            post_date=str(row.get("date") or ""),
+            post_time=str(row.get("time") or ""),
+            now=clock,
+        )
         if str(row.get("text") or "").strip():
             cleaned_mains.append(row)
     if not cleaned_mains:
@@ -546,7 +777,23 @@ def format_focus_oral(
         if str(p.get("kind") or "") == "bystander":
             continue
         row = dict(p)
-        row["text"] = _scrub_post_text(str(row.get("text") or ""))
+        raw = _scrub_post_text(str(row.get("text") or ""))
+        row["text"] = _scrub_expired_forward(
+            raw,
+            post_date=str(row.get("date") or ""),
+            post_time=str(row.get("time") or ""),
+            now=clock,
+        )
+        # reply_to＝同學／樓問句，要留著標「回什麼」；不准走 _scrub_post_text
+        # （那條會依 _CLASSMATE_LEAD 把「老師…？」整段清掉）
+        ask_raw = _SPACE.sub(" ", str(row.get("reply_to_text") or "")).strip()
+        try:
+            from biaoke_ingest import scrub_cmoney_chrome
+
+            ask_raw = scrub_cmoney_chrome(ask_raw)
+        except Exception:
+            ask_raw = _CMONEY_CHROME.sub(" ", ask_raw)
+        row["reply_to_text"] = _SPACE.sub(" ", ask_raw).strip()
         t = str(row.get("text") or "").strip()
         if t and not _noise_reply(t):
             cleaned_replies.append(row)
@@ -567,16 +814,16 @@ def format_focus_oral(
     newer_short = False
     for bit in _numbered_bits(str(latest.get("text") or "")):
         if not board and _BOARD.search(bit):
-            board = _speak(bit, 260)
+            board = _speak(bit, 420)
         elif not field and _FIELD.search(bit):
-            field = _speak(bit, 140)
+            field = _speak(bit, 200)
         elif not pcb and _PCB.search(bit):
-            pcb = _speak(bit, 140)
+            pcb = _speak(bit, 200)
         else:
-            spare.append(_speak(bit, 140))
+            spare.append(_speak(bit, 200))
     # 大盤欄只認最新主文；舊主文不准回填把「現在在講」鎖在更早一天。
     if not board:
-        board = _speak(str(latest.get("text") or ""), 260)
+        board = _speak(str(latest.get("text") or ""), 420)
     for p in mains[1:]:
         t = str(p.get("text") or "")
         if re.search(r"整理三個月|全面減碼", t):
@@ -600,22 +847,34 @@ def format_focus_oral(
             continue
         if re.search(r"比ABF短|錯殺", t):
             newer_short = True
-            pcb = _speak(t, 140)
+            pcb = _reply_answer_line(
+                t, str(p.get("reply_to_text") or ""), limit=160
+            ) or _speak(t, 140)
             continue
         if not pcb and _PCB.search(t):
-            pcb = _speak(t, 140)
+            pcb = _reply_answer_line(
+                t, str(p.get("reply_to_text") or ""), limit=160
+            ) or _speak(t, 140)
             continue
         day = str(p.get("date") or "")
         if day and latest_day and day < latest_day:
             continue
-        # 最新主文之後的自回：大盤／關卡／空手句要進口語，不准整段丟掉。
+        # 最新主文之後的自回：大盤／關卡／空手句併大盤欄；其餘自回（含回別人）進「他還說」。
+        # 有 reply_to 要標他在回什麼，不准上文不接下文。
         if _row_key(p) >= _row_key(latest):
+            bit = _reply_answer_line(
+                t, str(p.get("reply_to_text") or ""), limit=220
+            )
+            if not bit:
+                continue
             if _BOARD_REPLY.search(t):
-                bit = _speak(t, 120)
-                if bit:
-                    after_board.append(bit)
+                after_board.append(bit)
+            else:
+                extra.append(bit)
             continue
-        extra.append(_speak(t, 100))
+        extra.append(
+            _reply_answer_line(t, str(p.get("reply_to_text") or ""), limit=160)
+        )
     if older_long and newer_short:
         pcb = (
             "前一天還說台光電至少整理三個月、PCB 全面減碼；"
@@ -709,6 +968,7 @@ def format_focus_oral(
         except Exception:
             pass
     # 空白鍵：消化過的白話結論（波浪／切割／型態／量價），不准抄同學原話
+    # 過期預測點（「周一破」已過且未應驗句）由 format_teach_brief 內層收斂；這裡只附現況
     if (not stock_links) and db_path:
         try:
             brief = format_teach_brief(str(db_path))
@@ -905,7 +1165,13 @@ def _px_face(val: Optional[float]) -> str:
     return f"{val:.2f}".rstrip("0").rstrip(".")
 
 
-def _gate_touch_line(level: float, bar: Optional[Dict[str, Any]]) -> str:
+def _gate_touch_line(
+    level: float,
+    bar: Optional[Dict[str, Any]],
+    *,
+    ctx: str = "",
+) -> str:
+    """關卡 vs 已收柱：區間碰到／高未到／低未到／低已破。不准把「還沒跌到」標成已破。"""
     if not bar:
         return "尚無對應已收柱"
     hi = bar.get("high")
@@ -923,10 +1189,16 @@ def _gate_touch_line(level: float, bar: Optional[Dict[str, Any]]) -> str:
     ).strip()
     if l <= level <= h:
         return f"區間碰到　{face}"
-    if level > h:
-        gap = level - h
-        return f"高未到（差{_px_face(gap)}）　{face}"
-    return f"低已破　{face}"
+    if level < l:
+        # 整根都在關卡上方＝還沒跌到
+        gap = l - level
+        return f"低未到（差{_px_face(gap)}）　{face}"
+    # level > h：整根在關卡下方。下檔目標＝已破；上檔壓力＝高未到
+    blob = str(ctx or "")
+    if re.search(r"(必破|破底|下測|下看|支撐|低點|末跌|主跌)", blob):
+        return f"低已破　{face}"
+    gap = level - h
+    return f"高未到（差{_px_face(gap)}）　{face}"
 
 
 def _gate_bar_for_role(
@@ -970,8 +1242,7 @@ def _collect_open_index_gates(
             ctx = str(hit.get("ctx") or "").strip()
             role = str(hit.get("role") or "點位")
             how = _SPACE.sub(" ", ctx).strip()
-            if len(how) > 72:
-                how = how[:71] + "…"
+            how = _oral_body(how, 120)
             by_lv[key] = {
                 "level": key,
                 "role": role,
@@ -1043,7 +1314,7 @@ def format_index_gates_confront_html(
         role = str(g.get("role") or "點位")
         how = str(g.get("how") or "")
         bar = _gate_bar_for_role(role, bars, how)
-        touch = _gate_touch_line(lv, bar)
+        touch = _gate_touch_line(lv, bar, ctx=f"{role} {how}")
         head = f"{_px_face(lv)}（{role}）"
         lines.append("")
         lines.append(html_escape(head))

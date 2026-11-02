@@ -170,7 +170,7 @@ def test_market_session_cards_keep_progress_bubble():
     page = inspect.getsource(WayneTelegramBot._send_market_page)
     sess = inspect.getsource(WayneTelegramBot._send_market_session_cards)
     # 教具先出；美股卡自己開等待泡泡（不准搶遠窗順位）
-    # v34：大盤頁不再掛教具；波浪現況才出三張
+    # v34：大盤頁不再掛教具；波浪位階才出三張
     assert "_send_market_wave_charts" not in page
     assert "_send_market_session_cards" in page
     assert "美股・台指・恐懼貪婪" in sess or "美股・台指・恐懼貪婪" in page

@@ -270,10 +270,18 @@ def test_focus_oral_strips_cmoney_google_chrome():
     assert "喜愛的內容" not in html
 
 
-def test_format_latest_focus_scopes_replies_to_latest_two_threads(tmp_path):
+def test_format_latest_focus_scopes_replies_to_latest_two_threads(tmp_path, monkeypatch):
     """按飆大只組最新兩則主文＋這兩串自回；別串舊回不准混進。"""
     from biaoke_desk import upsert_biaoke_posts
     from biaoke_digest import format_latest_focus
+    import biaoke_digest as bd
+
+    # 釘在發文當日傍晚：測的是串範圍，不是過期 scrub（明天／下周一隔日才過期）
+    monkeypatch.setattr(
+        bd,
+        "taipei_now",
+        lambda: datetime(2026, 10, 15, 17, 30, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
 
     db = str(tmp_path / "w.db")
     upsert_biaoke_posts(
@@ -685,15 +693,16 @@ def test_gold_tail_follows_latest_voice_not_old_script(tmp_path):
     assert "零股" in tail
     assert "5700" in tail
     assert "大立光" in tail
-    assert "99%" in tail
+    # 99%／八成：進黃金常收成「超過九成」；原文可在他還說
+    assert ("99%" in html) or ("超過九成" in tail)
     assert "台指期" in tail
     # 主文後含「抄底」的自回會併進大盤口語（2026-10-24）
     assert "行有餘力" in html
-    assert "8成" in tail
+    assert ("8成" in html) or ("八成" in html) or ("超過九成" in tail)
     assert "違反人性" not in tail
-    assert "命中機率高" in tail
-    assert "空股票" in tail
-    assert "蕭明道" in tail
+    assert "命中機率高" in html
+    assert "空股票" in html
+    assert "蕭明道" in html
     assert "不是買訊" not in html
     from biaoke_desk import upsert_biaoke_posts
 
@@ -916,13 +925,12 @@ def test_format_teach_brief_empty_db_ok(tmp_path):
     db = str(tmp_path / "empty.db")
     # 無活畫 pack 也要空字串，不准拋
     out = format_teach_brief(db)
-    assert out == "" or "白話結論" in out
+    assert out == "" or "波浪位階" in out
 
 
 def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
-    """有 pack 時白話結論必須先寫他說現在層級（大→小）。"""
+    """短敘：層級＋此刻；不准再堆白話結論牆。"""
     from biaoke_digest import format_teach_brief
-    import biaoke_digest as bd
 
     def _fake_pack(_db):
         return {
@@ -936,8 +944,97 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
 
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_pack)
     out = format_teach_brief("x.db")
-    assert "他說現在走到哪" in out
+    assert "波浪位階" in out
     assert "大A底7/29" in out and "大B反彈" in out and "大C進行中" in out
     assert "五波升完" not in out
     assert "C內橫台中繼" in out
-    assert "白話結論" in out
+    assert "白話結論" not in out
+    assert "說明：這是彙整" not in out
+    assert "黃金切割" not in out
+    assert "量價／主力" not in out
+
+
+def test_scrub_expired_forward_drops_past_monday_keeps_valid():
+    """過期「下周一」整子句拿掉；同句夜盤／空手仍留；上星期四回顧不准刪。"""
+    from biaoke_digest import _scrub_expired_forward, _oral_body, _gate_touch_line
+
+    now = datetime(2026, 11, 2, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    out = _scrub_expired_forward(
+        "夜盤續弱，下周一早盤要看破不破，空手觀望。",
+        post_date="2026-10-30",
+        post_time="16:00",
+        now=now,
+    )
+    assert "下周一" not in out
+    assert "夜盤續弱" in out and "空手觀望" in out
+    recall = _scrub_expired_forward(
+        "上星期四台股出現最大的事件就是兩檔超過萬元價股王、股后跌停。",
+        post_date="2026-10-11",
+        post_time="09:43",
+        now=now,
+    )
+    assert "上星期四" in recall and "股王" in recall
+    # 句切優先句號，不准半句「接下來會去測8…」
+    long = "接下來會去測8500這一帶支撐是否有效。若守住才談反彈。"
+    cut = _oral_body(long, 40)
+    assert "測8500" in cut
+    assert not cut.endswith("測8…")
+    bar = {
+        "high": 28000,
+        "low": 27500,
+        "close": 27800,
+        "date": "20261102",
+        "label": "加權",
+    }
+    assert "低未到" in _gate_touch_line(27000, bar, ctx="支撐")
+    assert "低已破" in _gate_touch_line(29000, bar, ctx="必破 主跌")
+    assert "高未到" in _gate_touch_line(29000, bar, ctx="壓力")
+
+
+def test_focus_oral_reply_context_and_no_expired_monday():
+    """自回要標回什麼；同學問句不准被 scrub 清掉；過期前瞻不准進大盤欄。"""
+    now = datetime(2026, 11, 2, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    html = format_focus_oral(
+        [
+            {
+                "date": "2026-10-30",
+                "time": "16:00",
+                "text": "1. 夜盤續弱，下周一早盤要看破不破，空手觀望。2. ASIC 還是多頭。",
+            }
+        ],
+        [
+            {
+                "date": "2026-10-30",
+                "time": "16:30",
+                "text": "不要再介入。",
+                "kind": "reply",
+                "reply_to_text": "老師明天還會買嗎？",
+            },
+            {
+                "date": "2026-10-30",
+                "time": "17:00",
+                "text": "台光電錯殺居多。",
+                "kind": "reply",
+                "reply_to_text": "PCB還能不能抱？",
+            },
+        ],
+        now=now,
+        stock_links=False,
+    )
+    assert "下周一" not in html
+    assert "夜盤續弱" in html and "空手觀望" in html
+    assert "ASIC" in html
+    assert "回「老師明天還會買嗎」" in html
+    assert "回「PCB還能不能抱」" in html
+
+
+def test_biaoke_teach_charts_only_three_no_us_outer():
+    """空白飆大只送遠／近／超近；不准再出外圍對照第4張。"""
+    import inspect
+
+    src = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
+    assert '("us_path"' not in src
+    assert "外圍對照" in src  # 註解說明不准附
+    assert "micro_path" in src and "far_path" in src and "near_path" in src
+    wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    assert "外圍對照另張" not in wave

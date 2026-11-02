@@ -1317,15 +1317,24 @@ def _parse_mis_index_item(item: dict, fallback_name: str) -> Optional[Dict[str, 
     if px <= 0:
         return None
     pct = round((px - y) / y * 100.0, 2) if y > 0 else _num(item.get("zf") or item.get("ch"))
+    # 加權 t00 沒有個股欄 v：成交量在 m（與 index_daily.volume 同量級）；v／tv 當備援
+    vol = _num(item.get("v"))
+    if vol <= 0:
+        vol = _num(item.get("m"))
+    if vol <= 0:
+        vol = _num(item.get("tv"))
+    day = str(item.get("d") or item.get("^") or "").replace("/", "").replace("-", "")[:8]
     return {
         "close": px,
+        "price": px,  # 教具疊柱／黃戳同一價
         "pct_change": pct,
         "yesterday_close": y if y > 0 else None,
         "open": _num(item.get("o")),
         "high": _num(item.get("h")),
         "low": _num(item.get("l")),
-        "volume": _num(item.get("v")),
-        "update_time": item.get("t") or "",
+        "volume": vol if vol > 0 else 0.0,
+        "date": day if len(day) == 8 else "",
+        "update_time": item.get("t") or item.get("%") or "",
         "name": item.get("n") or fallback_name,
         "is_realtime": True,
     }

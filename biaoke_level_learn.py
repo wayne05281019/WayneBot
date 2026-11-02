@@ -462,7 +462,12 @@ def _merge_live_index_display_bar(
                 px,
             )
             o = float(last.get("open") or o or px)
-            vol = max(vol, float(last.get("volume") or 0))
+            # 盤中累積量以即時為準；即時缺才留庫內
+            last_vol = float(last.get("volume") or 0)
+            if vol > 0:
+                vol = max(vol, last_vol)
+            else:
+                vol = last_vol
         except (TypeError, ValueError):
             pass
         out[-1] = {
@@ -494,7 +499,10 @@ def _merge_live_index_display_bar(
 def _merge_live_twii_display_bar(
     bars: Sequence[Dict[str, Any]], live: Optional[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """盤中顯示用：把 MIS 加權疊成當日未收柱（只渲染、不寫庫、不當官方收）。"""
+    """盤中顯示用：把 MIS 加權疊成當日未收柱（只渲染、不寫庫、不當官方收）。
+
+    末K OHLC＋成交量都疊；量認 MIS（加權用 m），不准留 0 假柱。
+    """
     if not live:
         return [dict(r) for r in (bars or [])]
     try:
@@ -506,7 +514,9 @@ def _merge_live_twii_display_bar(
             return [dict(r) for r in (bars or [])]
     except Exception:
         return [dict(r) for r in (bars or [])]
-    today = datetime.now(TAIPEI).strftime("%Y%m%d")
+    today = _ymd(live.get("date")) if isinstance(live, dict) else ""
+    if len(today or "") != 8:
+        today = datetime.now(TAIPEI).strftime("%Y%m%d")
     return _merge_live_index_display_bar(bars, live, today=today)
 
 
