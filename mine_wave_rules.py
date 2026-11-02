@@ -185,3 +185,168 @@ def lengths_from_pivots(
     for i in range(len(pts) - 1):
         out[str(i + 1)] = abs(float(pts[i + 1]) - float(pts[i]))
     return out
+
+
+# --- 序C：Fib／等長／交替（一律 source=mine／我估；≠他說） ---
+
+DEFAULT_RETRACE_RATIOS: Tuple[float, ...] = (0.382, 0.5, 0.618, 0.75, 0.786)
+DEFAULT_EXT_RATIOS: Tuple[float, ...] = (1.0, 1.272, 1.618, 2.618)
+
+
+def fib_retracement_levels(
+    swing_high: Number,
+    swing_low: Number,
+    *,
+    ratios: Sequence[float] = DEFAULT_RETRACE_RATIOS,
+    direction: str = "bounce_from_low",
+) -> Dict[str, Any]:
+    """回撤／反彈 Fib 位（價）。
+
+    ``bounce_from_low``：低→高區間的回升壓力＝ low + r×(high−low)。
+    ``pullback_from_high``：高→低區間的回檔支撐＝ high − r×(high−low)。
+    與鐵律衝突時呼叫端必須鐵律優先。不是買訊。
+    """
+    hi, lo = _f(swing_high), _f(swing_low)
+    if hi is None or lo is None:
+        return {
+            "ok": False,
+            "direction": direction,
+            "levels": {},
+            "span": None,
+            "basis": "缺高低",
+        }
+    if hi < lo:
+        hi, lo = lo, hi
+    span = hi - lo
+    if span <= 0:
+        return {
+            "ok": False,
+            "direction": direction,
+            "levels": {},
+            "span": span,
+            "basis": "span≤0",
+        }
+    levels: Dict[str, float] = {}
+    for r in ratios:
+        rf = _f(r)
+        if rf is None:
+            continue
+        key = f"{rf:g}"
+        if direction == "pullback_from_high":
+            levels[key] = float(hi - rf * span)
+        else:
+            levels[key] = float(lo + rf * span)
+    return {
+        "ok": True,
+        "direction": direction,
+        "swing_high": hi,
+        "swing_low": lo,
+        "span": float(span),
+        "levels": levels,
+        "basis": "fib_retracement; pot=DC→我估",
+    }
+
+
+def fib_extension_targets(
+    start: Number,
+    end: Number,
+    *,
+    ratios: Sequence[float] = DEFAULT_EXT_RATIOS,
+    from_price: Optional[Number] = None,
+) -> Dict[str, Any]:
+    """投影／延伸目標（等長 C＝1.0；1.272／1.618／2.618）。
+
+    以 ``start→end`` 為參考浪價距；自 ``from_price``（缺則＝end）同向延伸。
+    **≠** 擴延 1618 閘（五浪群內 L_max 比）。
+    """
+    a, b = _f(start), _f(end)
+    if a is None or b is None:
+        return {"ok": False, "targets": {}, "basis": "缺起迄"}
+    span = b - a
+    if abs(span) < 1e-12:
+        return {"ok": False, "targets": {}, "span": 0.0, "basis": "span≈0"}
+    origin = _f(from_price) if from_price is not None else b
+    if origin is None:
+        return {"ok": False, "targets": {}, "basis": "缺投影起點"}
+    targets: Dict[str, float] = {}
+    for r in ratios:
+        rf = _f(r)
+        if rf is None:
+            continue
+        targets[f"{rf:g}"] = float(origin + rf * span)
+    return {
+        "ok": True,
+        "start": a,
+        "end": b,
+        "from_price": origin,
+        "span": float(span),
+        "targets": targets,
+        "basis": "fib_extension_projection; pot=DC→我估; ≠extension_1618_gate",
+    }
+
+
+def wave_equality_guide(
+    length_ref: Number,
+    length_compare: Number,
+    *,
+    tol: float = 0.05,
+) -> Dict[str, Any]:
+    """波浪等長指引：compare／ref ≈ 1 ± tol → equal 候選。我估指引，非他說。"""
+    a, b = _f(length_ref), _f(length_compare)
+    if a is None or b is None or a <= 0:
+        return {
+            "ok": False,
+            "ratio": None,
+            "equalish": None,
+            "basis": "缺長度",
+        }
+    ratio = b / a
+    return {
+        "ok": True,
+        "ratio": float(ratio),
+        "equalish": abs(ratio - 1.0) <= float(tol),
+        "tol": float(tol),
+        "length_ref": float(a),
+        "length_compare": float(b),
+        "basis": "wave_equality_guide; pot=DC→我估",
+    }
+
+
+def alternation_2_4_hint(
+    w2_retrace_pct: Number,
+    w4_retrace_pct: Number,
+    *,
+    sharp_lt: float = 0.5,
+    flat_ge: float = 0.5,
+) -> Dict[str, Any]:
+    """2 與 4 交替粗檢：一銳一平（回撤％相對 0.5）。我估指引。"""
+    r2, r4 = _f(w2_retrace_pct), _f(w4_retrace_pct)
+    if r2 is None or r4 is None:
+        return {
+            "ok": False,
+            "alternates": None,
+            "w2_kind": None,
+            "w4_kind": None,
+            "basis": "缺回撤％",
+        }
+
+    def _kind(r: float) -> str:
+        if r < sharp_lt:
+            return "sharp"
+        if r >= flat_ge:
+            return "flat_or_deep"
+        return "mid"
+
+    k2, k4 = _kind(r2), _kind(r4)
+    alt = (k2 == "sharp" and k4 == "flat_or_deep") or (
+        k2 == "flat_or_deep" and k4 == "sharp"
+    )
+    return {
+        "ok": True,
+        "alternates": bool(alt),
+        "w2_kind": k2,
+        "w4_kind": k4,
+        "w2_retrace_pct": float(r2),
+        "w4_retrace_pct": float(r4),
+        "basis": "2_4_alternation_hint; pot=DC→我估",
+    }
