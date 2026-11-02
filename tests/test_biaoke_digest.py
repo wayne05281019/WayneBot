@@ -929,8 +929,8 @@ def test_format_teach_brief_empty_db_ok(tmp_path):
 
 
 def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
-    """短敘：層級＋此刻；不准再堆白話結論牆。"""
-    from biaoke_digest import format_teach_brief
+    """波浪位階文：層級／此刻／結構讀法分類清楚；不准空洞半句、不准贅詞說明牆。"""
+    from biaoke_digest import format_teach_brief, format_wave_level_one_liner
 
     def _fake_pack(_db):
         return {
@@ -940,18 +940,66 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
             "fib_note": "0.382／0.618",
             "chart_as_of": "20261029",
             "snippet": "橫台整理中繼站",
+            "pred_note": "加權支撐44210｜費半頸線",
         }
 
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_pack)
     out = format_teach_brief("x.db")
     assert "波浪位階" in out
+    assert "層級（大→小）" in out
     assert "大A底7/29" in out and "大B反彈" in out and "大C進行中" in out
     assert "五波升完" not in out
     assert "C內橫台中繼" in out
-    assert "白話結論" not in out
+    assert "結構讀法" in out
+    assert "波浪：" in out
+    assert "黃金切割：" in out
+    assert "型態：" in out
+    assert "量價／主力：" in out
+    assert "關鍵價" in out
     assert "說明：這是彙整" not in out
-    assert "黃金切割" not in out
-    assert "量價／主力" not in out
+    # C3-3-4 路徑：超近細浪句＋飆大一層級對照
+    def _fake_c334(_db):
+        return {
+            "thesis": "大A→大B→大C｜C內＝C3-3（3→4・預估）",
+            "snippet": "目前應該是3-3-3完成轉3-3-4機率最高",
+            "morph_note": "下降中",
+            "chart_as_of": "20261101",
+            "thesis_as_of": "20261101",
+        }
+
+    monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_c334)
+    out334 = format_teach_brief("x.db")
+    assert "C3-3-4" in out334
+    assert "細浪①～⑤" in out334
+    one = format_wave_level_one_liner("x.db")
+    assert "此刻＝C3-3-4" in one
+    assert "波浪位階" in one
+    assert "結構讀法" not in one
+
+
+def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):
+    """飆大空白鍵：口語為主；不准整段波浪位階敘述塞進來。"""
+    from biaoke_digest import format_focus_oral
+
+    monkeypatch.setattr(
+        "biaoke_digest.format_wave_level_one_liner",
+        lambda _db: "大盤層級此刻＝C3-3-4（細節請按「波浪位階」・非買訊）",
+    )
+    monkeypatch.setattr(
+        "biaoke_digest.format_teach_brief",
+        lambda _db: "<b>波浪位階</b>\n不該出現在飆大",
+    )
+    html = format_focus_oral(
+        [{"date": "2026-11-01", "time": "21:00", "text": "1. 夜盤續弱，空手觀望。2. ASIC 還是多頭。"}],
+        [],
+        now=datetime(2026, 11, 2, 14, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+        db_path="x.db",
+        stock_links=False,
+    )
+    assert "夜盤續弱" in html and "ASIC" in html
+    assert "此刻＝C3-3-4" in html
+    assert "不該出現在飆大" not in html
+    assert "結構讀法" not in html
 
 
 def test_scrub_expired_forward_drops_past_monday_keeps_valid():

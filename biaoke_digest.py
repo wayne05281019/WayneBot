@@ -616,7 +616,11 @@ def _speak(text: str, limit: int = 220) -> str:
 
 
 def format_teach_brief(db_path: str = "") -> str:
-    """波浪位階短敘：層級一條＋此刻＋最多兩個價；不准贅詞牆。非買訊。"""
+    """波浪位階專用敘述：層級／此刻／結構讀法／關鍵價，各自標清楚。
+
+    只服務「波浪位階」鍵。飆大空白鍵走 format_focus_oral，不准把整段塞回去。
+    非買訊；失敗回空，不准擋主摘要。
+    """
     if not db_path:
         return ""
     try:
@@ -626,36 +630,64 @@ def format_teach_brief(db_path: str = "") -> str:
     except Exception:
         return ""
     thesis = str(pack.get("thesis") or "").strip()
-    if not thesis and not (
-        pack.get("intent_note") or pack.get("morph_note") or pack.get("pred_note")
-    ):
+    morph = str(pack.get("morph_note") or "").strip()
+    intent = str(pack.get("intent_note") or "").strip()
+    fib = str(pack.get("fib_note") or "").strip()
+    wait = str(pack.get("wait_struct") or "").strip()
+    if not (thesis or intent or morph or pack.get("pred_note")):
         return ""
     try:
         ladder = _wave_now_ladder(pack)
     except Exception:
         ladder = {}
     lines: List[str] = ["<b>波浪位階（預估・非買訊）</b>"]
+    lines.append("<b>層級（大→小）</b>")
     chain = str(ladder.get("chain") or "").strip()
-    now = str(ladder.get("now") or "").strip()
     if chain:
         lines.append(html_escape(chain))
     elif thesis:
         lines.append(html_escape(thesis))
-    if now:
-        as_of = ""
-        m = re.search(r"as_of\s*(\d{4}-\d{2}-\d{2}|\d{8})", str(ladder.get("now_line") or ""))
-        if m:
-            as_of = m.group(1)
-        bit = f"此刻＝{now}" + (f"（{as_of}）" if as_of else "")
-        lines.append(html_escape(bit))
+    now_line = str(ladder.get("now_line") or "").strip()
+    if now_line:
+        lines.append(html_escape(now_line))
+    else:
+        now = str(ladder.get("now") or "").strip()
+        if now:
+            lines.append(html_escape(f"此刻＝{now}（預估會改・非買訊）"))
+    # 超近窗對齊：C3-3-x 時明示細浪①～⑤（附圖三）
+    now = str(ladder.get("now") or "").strip()
+    if re.search(r"C3-3-\d|C3-3主跌", now):
+        lines.append(html_escape(f"超近窗＝細浪①～⑤・此刻落在{now}"))
+    struct_bits: List[str] = []
+    if thesis:
+        struct_bits.append(f"波浪：{thesis}")
+    if fib:
+        struct_bits.append(f"黃金切割：{fib}")
+    if morph:
+        struct_bits.append(f"型態：{morph}")
+    if intent:
+        one = intent.split("；")[0].strip()
+        if one:
+            struct_bits.append(f"量價／主力：{one}")
+    if wait:
+        one_w = re.split(r"[；。]", wait)[0].strip()
+        if one_w:
+            struct_bits.append(f"還在等：{one_w}")
+    if struct_bits:
+        lines.append("")
+        lines.append("<b>結構讀法</b>")
+        for bit in struct_bits:
+            lines.append(html_escape(bit))
     pred_note = str(pack.get("pred_note") or "").strip()
     if not pred_note:
         pred = pack.get("pred_levels") or {}
         bits = []
-        for row in (pred.get("tw") or [])[:2]:
+        for row in (pred.get("tw") or []) + (pred.get("sox") or []):
             lab = str((row or {}).get("label") or "").strip()
             if lab:
                 bits.append(lab)
+            if len(bits) >= 4:
+                break
         pred_note = "｜".join(bits)
     if pred_note:
         bits = []
@@ -668,11 +700,30 @@ def format_teach_brief(db_path: str = "") -> str:
                 bit = re.sub(r"(明日|明天)", "", bit).strip(" ・")
             if bit:
                 bits.append(bit)
-            if len(bits) >= 2:
+            if len(bits) >= 4:
                 break
         if bits:
+            lines.append("")
+            lines.append("<b>關鍵價</b>")
             lines.append(html_escape("｜".join(bits)))
     return "\n".join(lines)
+
+
+def format_wave_level_one_liner(db_path: str = "") -> str:
+    """飆大空白鍵用：只附一層級對照句，細節請按波浪位階。"""
+    if not db_path:
+        return ""
+    try:
+        from biaoke_level_learn import _build_live_pack, _wave_now_ladder
+
+        pack = _build_live_pack(db_path) or {}
+        ladder = _wave_now_ladder(pack)
+    except Exception:
+        return ""
+    now = str(ladder.get("now") or "").strip()
+    if not now:
+        return ""
+    return html_escape(f"大盤層級此刻＝{now}（細節請按「波浪位階」・非買訊）")
 
 
 def _when_short(date: str, time_s: str) -> str:
@@ -967,14 +1018,13 @@ def format_focus_oral(
                 blocks.append(gates)
         except Exception:
             pass
-    # 空白鍵：消化過的白話結論（波浪／切割／型態／量價），不准抄同學原話
-    # 過期預測點（「周一破」已過且未應驗句）由 format_teach_brief 內層收斂；這裡只附現況
+    # 空白飆大：口語為主；波浪整段敘述歸「波浪位階」鍵，這裡只附一層級對照句
     if (not stock_links) and db_path:
         try:
-            brief = format_teach_brief(str(db_path))
-            if brief:
+            one = format_wave_level_one_liner(str(db_path))
+            if one:
                 blocks.append("")
-                blocks.append(brief)
+                blocks.append(one)
         except Exception:
             pass
     # 還能問只跟最新主文＋當天以後的自回，不准拿更早一篇的夜盤價來出題。
