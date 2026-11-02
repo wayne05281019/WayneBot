@@ -1,0 +1,24 @@
+{
+  "written_at": "2026-11-03T03:44:47.826854+08:00",
+  "tz": "Asia/Taipei",
+  "n_seed": 8,
+  "n_counted": 8,
+  "hit_freq": {
+    "量先價行单條對照": 8,
+    "套牢鏈": 2,
+    "沒爆量破低": 3,
+    "兩根確認": 1,
+    "跳空": 1,
+    "量價背離（僅連續攻擊）": 2
+  },
+  "jsonl": "docs/expert_notes/飆客/decade_lab/seq_d_barek_latest.jsonl",
+  "md": "docs/expert_notes/飆客/decade_lab/seq_d_barek_latest.md",
+  "not_buy_signal": true,
+  "pot": "實驗室",
+  "skipped": [
+    "news_crowd",
+    "half_mountain_index",
+    "five_piece_same_point",
+    "official_limit_flag"
+  ]
+}
