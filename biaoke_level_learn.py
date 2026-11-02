@@ -6249,16 +6249,31 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     need_alt = _alt_path_needed(his.get("degree") or "", geom.get("geom_degree") or "")
     ladder = _wave_now_ladder(pack)
 
-    fig, (ax, axv) = plt.subplots(
+    # 超近窗鎖定上下分層（抄近窗主K在上）：上＝縮圖K、中＝說明＋八浪、下＝量
+    # 不准再把說明／八浪疊進橫圖中下方壓住K（已錯三四次）
+    fig = plt.figure(figsize=(15.6, 11.4), dpi=NAV_CHART_DPI)
+    _gs = fig.add_gridspec(
+        3,
         2,
-        1,
-        figsize=(15.6, 9.6),
-        dpi=NAV_CHART_DPI,
-        sharex=True,
-        gridspec_kw=dict(height_ratios=(5.5, 1.25), hspace=0.04),
+        height_ratios=(5.4, 2.55, 1.15),
+        width_ratios=(1.12, 1.0),
+        hspace=0.10,
+        wspace=0.05,
     )
+    ax = fig.add_subplot(_gs[0, :])
+    ax_leg = fig.add_subplot(_gs[1, 0])
+    ax_wave_host = fig.add_subplot(_gs[1, 1])
+    axv = fig.add_subplot(_gs[2, :], sharex=ax)
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
+    for _ax_info in (ax_leg, ax_wave_host):
+        _ax_info.set_facecolor("#0b0f14")
+        for _sp in _ax_info.spines.values():
+            _sp.set_color("#546e7a")
+            _sp.set_linewidth(0.95)
+        _ax_info.set_xticks([])
+        _ax_info.set_yticks([])
+        _ax_info.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
     ymin = min([min(lows)] + list(tw_supports)) - 420
@@ -6494,11 +6509,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     geom_show = str(geom.get("geom_degree") or "").strip()
     if not deg_his.startswith("C3") and geom_show.startswith("C3"):
         geom_show = "C內小波①②（未稱C3）"
-    # 左下合併框：層級字＋色線樣本（不准寫「紫／橙」國字，色自己秀）
-    from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
-
+    # 中排左＝說明框（層級／色線）；不准再疊進上方縮圖K
     hierarchy = str(ladder.get("teach_box") or "他說現在層級（大→小）")
-    # 強制把此刻尾碼寫進框首行可見處（防 teach_box 被舊 pack 裁成裸 C）
     now_vis = str(ladder.get("now") or deg_his or "").strip()
     if now_vis and now_vis not in hierarchy:
         hierarchy = f"{hierarchy}\n此刻＝{now_vis}"
@@ -6506,81 +6518,41 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         geom_line = f"日K小波柱讀：{geom_show}（口述此刻＝{deg_his}）"
     else:
         geom_line = f"日K小波：{geom_show or '—'}（柱上自讀，非口述）"
-    kids_txt = [
-        TextArea(
-            hierarchy,
-            textprops={"color": _LIVE_TEXT, "fontproperties": _fp(9, "bold")},
-        ),
-        TextArea(
-            geom_line,
-            textprops={"color": _LIVE_MUTED, "fontproperties": _fp(8, "bold")},
-        ),
-        TextArea(
-            str(alt_note),
-            textprops={"color": _LIVE_MUTED, "fontproperties": _fp(8, "bold")},
-        ),
-    ]
     swatch_rows = [
-        ("#ffab40", "-", 2.2, "細浪＝縮圖 B→①…⑤"),
-        ("#ea80fc", "-", 1.4, "他說 B→今（淡）"),
-        ("#ea80fc", "--", 1.6, "預估"),
+        ("#ffab40", "━━", "細浪＝縮圖 B→①…⑤"),
+        ("#ea80fc", "━━", "他說 B→今（淡）"),
+        ("#ea80fc", "┅┅", "預估"),
     ]
     if c_sub.get("ok"):
-        swatch_rows.append(("#ce93d8", "-", 1.7, "c5細點"))
+        swatch_rows.append(("#ce93d8", "━━", "c5細點"))
     if need_alt:
-        swatch_rows.append(("#69f0ae", "--", 1.8, "另前提"))
-    # 用短色線＋角色字（角色可中文，色名不准寫）
-    swatch_pack_rows = []
-    for col, ls, lw, role in swatch_rows:
-        # 色線以 Unicode 線段上色近似（Agg 無 Line2D in TextArea）
-        swatch_pack_rows.append(
-            HPacker(
-                children=[
-                    TextArea(
-                        "━━" if ls == "-" else "┅┅",
-                        textprops={
-                            "color": col,
-                            "fontproperties": _fp(10, "bold"),
-                        },
-                    ),
-                    TextArea(
-                        f"  {role}",
-                        textprops={
-                            "color": _LIVE_TEXT,
-                            "fontproperties": _fp(8, "bold"),
-                        },
-                    ),
-                ],
-                align="center",
-                pad=0,
-                sep=2,
-            )
+        swatch_rows.append(("#69f0ae", "┅┅", "另前提"))
+    ax_leg.text(
+        0.04,
+        0.96,
+        "\n".join([hierarchy, geom_line, str(alt_note)]),
+        transform=ax_leg.transAxes,
+        ha="left",
+        va="top",
+        fontproperties=_fp(9, "bold"),
+        color=_LIVE_TEXT,
+        linespacing=1.28,
+        zorder=3,
+    )
+    # 色線樣本（不准寫紫／橙國字；色自己秀）
+    _sw_y0 = 0.42
+    for i, (col, mark, role) in enumerate(swatch_rows):
+        ax_leg.text(
+            0.04,
+            _sw_y0 - i * 0.11,
+            f"{mark}  {role}",
+            transform=ax_leg.transAxes,
+            ha="left",
+            va="top",
+            fontproperties=_fp(9, "bold"),
+            color=col,
+            zorder=4,
         )
-    box = VPacker(
-        children=kids_txt + swatch_pack_rows,
-        align="left",
-        pad=2,
-        sep=3,
-    )
-    # 左下層級框：貼量欄上；稍低起步讓與縮圖同高時頂仍≤44042
-    _leg_ax_x, _leg_ax_y = 0.012, 0.028
-    _leg_ax_w, _leg_ax_h = 0.24, 0.30
-    anchored = AnchoredOffsetbox(
-        loc="lower left",
-        child=box,
-        pad=0.32,
-        borderpad=0.40,
-        frameon=True,
-        bbox_to_anchor=(_leg_ax_x, _leg_ax_y),
-        bbox_transform=ax.transAxes,
-    )
-    anchored.patch.set_boxstyle("round,pad=0.4")
-    anchored.patch.set_facecolor("#0b0f14")
-    anchored.patch.set_edgecolor("#546e7a")
-    anchored.patch.set_alpha(0.96)
-    anchored.patch.set_linewidth(0.95)
-    anchored.set_zorder(12)
-    ax.add_artist(anchored)
 
     want_dates = {
         _ymd(bars[i_b_peak].get("date")),
@@ -6697,7 +6669,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             }
         )
         have_ys.add(round(float(yv), 1))
-    # 右標略往左：給右上八浪縮圖讓位，不准被縮圖裁掉
+    # 右標略往左：超近中排已給八浪／說明，右欄仍不准被裁掉
     x_micro_col = float(n) + 1.55
     try:
         x_micro_col = max(x_micro_col, float(tip.get("fut_x") or n) + 0.35)
@@ -6772,31 +6744,25 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="top",
     )
-    # 超近：黃戳再降半行，與桃色副標拉開
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
+    # 上K／中說明＋八浪／下量：頁邊留給標題與量軸
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.06)
     _paint_teach_query_stamp(
         fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))[:64]
     fig.text(
         0.03,
-        0.018,
-        f"{foot_m}｜{_macro_wave_calendar_line()}｜細＝C內震盪｜C走完≠新五波升",
+        0.012,
+        f"{foot_m}｜{_macro_wave_calendar_line()}｜上＝縮圖K｜中＝說明＋八浪｜下＝量｜C走完≠新五波升",
         fontproperties=_fp(10, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="bottom",
     )
-    # 縮圖：鎖超近基準吋（遠／近同尺）；左緣貼左框右外側、底與左框齊
+    # 中排右＝八浪縮圖（與說明同列、在K下方）；鎖超近基準吋填滿右格
     fig.canvas.draw()
-    _renderer = fig.canvas.get_renderer()
-    _bb = anchored.get_window_extent(_renderer)
-    _inv = fig.transFigure.inverted()
-    _lx0, _ly0 = _inv.transform((_bb.x0, _bb.y0))
-    _lx1, _ly1 = _inv.transform((_bb.x1, _bb.y1))
-    _ins_w, _ins_h = _teach_eight_wave_inset_wh(fig)
-    _ins_bot = float(_ly0)
-    _ins_left = float(_lx1) + 0.010
+    _pos = ax_wave_host.get_position()
+    ax_wave_host.set_visible(False)
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -6804,7 +6770,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         detail=True,
         c_flash=True,
         flash_pivots=flash_pivots,
-        rect=(_ins_left, _ins_bot, _ins_w, _ins_h),
+        rect=(float(_pos.x0), float(_pos.y0), float(_pos.width), float(_pos.height)),
         title="八浪・C閃",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
@@ -7395,6 +7361,7 @@ def paint_open_day_hypothesis(
     panels:
       - full＝遠／近／超近＋外圍＋TX60（排程／ingest）
       - trio＝話筒熱路徑只畫遠／近／超近（減壓；外圍用已存）
+      - far＝只畫遠窗（費半上／加權下；飆大空白鍵加速）
     """
     out: Dict[str, Any] = {"ok": False, "path": "", "tx60_path": "", "slot_id": ""}
     if not db_path:
@@ -7402,7 +7369,7 @@ def paint_open_day_hypothesis(
     if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_LEVEL_LEARN_LIVE") != "1":
         return {**out, "skipped": "pytest"}
     mode = str(panels or "full").strip().lower()
-    if mode not in {"full", "trio"}:
+    if mode not in {"full", "trio", "far"}:
         mode = "full"
     dt = now or datetime.now(TAIPEI)
     if dt.tzinfo is None:
@@ -7493,35 +7460,48 @@ def paint_open_day_hypothesis(
     micro_path = os.path.join(snap_root, f"{slot_id}-micro.png")
     chart_path = os.path.join(snap_root, f"{slot_id}.png")  # 兼容＝近窗特寫
     tx60_path = os.path.join(snap_root, f"{slot_id}-tx60.png")
-    try:
-        got_near = _render_twii_live_dark(db_path, near_path, pack)
-        near_path = got_near or ""
-        # 主檔＝近窗（舊讀 chart_path 的路徑仍可用）
-        if near_path:
-            try:
-                import shutil
+    do_near = mode in {"full", "trio"}
+    do_far = mode in {"full", "trio", "far"}
+    do_micro = mode in {"full", "trio"}
+    if do_near:
+        try:
+            got_near = _render_twii_live_dark(db_path, near_path, pack)
+            near_path = got_near or ""
+            # 主檔＝近窗（舊讀 chart_path 的路徑仍可用）
+            if near_path:
+                try:
+                    import shutil
 
-                shutil.copy2(near_path, chart_path)
-            except Exception:
-                chart_path = near_path
-        else:
-            chart_path = ""
-    except Exception:
-        logger.exception("近窗特寫渲圖失敗")
-        near_path = chart_path = ""
+                    shutil.copy2(near_path, chart_path)
+                except Exception:
+                    chart_path = near_path
+            else:
+                chart_path = ""
+        except Exception:
+            logger.exception("近窗特寫渲圖失敗")
+            near_path = chart_path = ""
+    else:
+        near_path = ""
+        chart_path = ""
 
-    try:
-        got_far = _render_twii_far_dark(db_path, far_path, pack)
-        far_path = got_far or ""
-    except Exception:
-        logger.exception("遠窗教具渲圖失敗")
+    if do_far:
+        try:
+            got_far = _render_twii_far_dark(db_path, far_path, pack)
+            far_path = got_far or ""
+        except Exception:
+            logger.exception("遠窗教具渲圖失敗")
+            far_path = ""
+    else:
         far_path = ""
 
-    try:
-        got_micro = _render_twii_super_near_dark(db_path, micro_path, pack)
-        micro_path = got_micro or ""
-    except Exception:
-        logger.exception("超級近窗渲圖失敗")
+    if do_micro:
+        try:
+            got_micro = _render_twii_super_near_dark(db_path, micro_path, pack)
+            micro_path = got_micro or ""
+        except Exception:
+            logger.exception("超級近窗渲圖失敗")
+            micro_path = ""
+    else:
         micro_path = ""
 
     if mode == "full":
@@ -7538,7 +7518,7 @@ def paint_open_day_hypothesis(
             logger.exception("TX60 活畫渲圖失敗")
             tx60_path = ""
     else:
-        # 話筒 trio：外圍／TX60 留空，ON CONFLICT 保留庫內舊檔
+        # 話筒 trio／far：外圍／TX60 留空，ON CONFLICT 保留庫內舊檔
         us_path = ""
         tx60_path = ""
 

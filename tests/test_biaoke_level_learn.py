@@ -220,10 +220,12 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_reserve_avoid_zone" in src
     assert "_seat_onchart_labels" in src
     assert "_fig_xy_from_axes_data" in near_blk
-    # 超近：黃戳在桃色下一行；左框／縮圖同底同高
+    # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
     assert "y=0.855" in micro_blk
-    assert "AnchoredOffsetbox" in micro_blk
-    assert "get_window_extent" in micro_blk
+    assert "add_gridspec" in micro_blk
+    assert "height_ratios=(5.4, 2.55, 1.15)" in micro_blk
+    assert "ax_leg" in micro_blk and "ax_wave_host" in micro_blk
+    assert "AnchoredOffsetbox" not in micro_blk
     assert "他說 B→今" in micro_blk
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
@@ -232,11 +234,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_eight_wave_inset_rect_left_of_vmax" in far_blk
     assert "_eight_wave_inset_rect_left_of_vmax" in near_blk
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
-    assert "_teach_eight_wave_inset_wh" in micro_blk
     assert "_near_inset" in near_blk
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src
+    assert 'panels="far"' in src or "panels: str" in src
     # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
     assert "[i_b_end, i_c, i_now]" in far_blk
     assert "緩坡" in src or "非垂直" in src
