@@ -3922,13 +3922,19 @@ def _macro_wave_calendar_line() -> str:
 
 
 def _eight_wave_now_key(pack: Optional[Dict[str, Any]] = None) -> str:
-    """從層級鏈取八浪縮圖此刻鍵（大結構落在修正波 C）。"""
+    """從層級鏈取八浪縮圖此刻鍵（大結構落在修正波 C）。
+
+    C3-3-x 細碼必須完整保留給閃折①～⑤，不准裁成裸 C。
+    """
     now = str((_wave_now_ladder(pack) or {}).get("now") or "").strip()
     if not now:
         return "C"
     u = now.upper().replace(" ", "")
-    if u.startswith("C"):
-        return now if len(now) <= 8 else "C"
+    m = re.search(r"C3-3-[1-5]", now, flags=re.I)
+    if m:
+        return m.group(0)
+    if "C3-3" in u or u.startswith("C"):
+        return "C"
     if "⑤" in now or u.startswith("5"):
         return "⑤"
     if u.startswith("A") or "大A" in now:
@@ -6484,6 +6490,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
 
     deg_his = str(his.get("degree") or "").strip()
     # 柱讀框：他還沒點名 C3-3 時，不准把 geom 代號印成 C3-3-*（會像他說）
+    # 他已點 C3-3-x：左框主標以他說為準；柱讀只當副標，不准蓋過口述尾碼
     geom_show = str(geom.get("geom_degree") or "").strip()
     if not deg_his.startswith("C3") and geom_show.startswith("C3"):
         geom_show = "C內小波①②（未稱C3）"
@@ -6491,7 +6498,14 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
 
     hierarchy = str(ladder.get("teach_box") or "他說現在層級（大→小）")
-    geom_line = f"日K小波：{geom_show or '—'}（柱上自讀，非口述）"
+    # 強制把此刻尾碼寫進框首行可見處（防 teach_box 被舊 pack 裁成裸 C）
+    now_vis = str(ladder.get("now") or deg_his or "").strip()
+    if now_vis and now_vis not in hierarchy:
+        hierarchy = f"{hierarchy}\n此刻＝{now_vis}"
+    if deg_his.startswith("C3-3-") and geom_show and geom_show != deg_his:
+        geom_line = f"日K小波柱讀：{geom_show}（口述此刻＝{deg_his}）"
+    else:
+        geom_line = f"日K小波：{geom_show or '—'}（柱上自讀，非口述）"
     kids_txt = [
         TextArea(
             hierarchy,

@@ -6600,6 +6600,11 @@ class WayneTelegramBot:
                 )
             except Exception:
                 q_line = ""
+        ladder_lines = [
+            ln.strip()
+            for ln in str(ladder_line or "").splitlines()
+            if ln.strip()
+        ][:3]
         for i, (_key, label, path) in enumerate(items):
             n = i + 1
             bits = [f"第{n}張・{label}"]
@@ -6608,11 +6613,20 @@ class WayneTelegramBot:
             else:
                 if q_line:
                     bits.append(q_line)
-                if ladder_line:
-                    # 只留層級第一行，不准整段贅詞跟每張重複
-                    bits.append(str(ladder_line).splitlines()[0].strip()[:120])
+                bits.extend(ladder_lines)
+                # 第3張超近：明示細浪①～⑤（對齊附圖三）
+                if i == 2 or "超近" in str(label):
+                    now_bit = ""
+                    for ln in ladder_lines:
+                        if "此刻＝" in ln:
+                            now_bit = ln
+                            break
+                    if now_bit and "細浪" not in "\n".join(bits):
+                        bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
+                    elif not now_bit:
+                        bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
             ok = await self._send_market_teach_one(
-                message, path, caption="\n".join(bits)[:500], label=label
+                message, path, caption="\n".join(bits)[:900], label=label
             )
             if ok:
                 sent += 1
@@ -6790,6 +6804,7 @@ class WayneTelegramBot:
 
             thesis = str(kit.get("thesis") or "").strip()
             ladder_line = ""
+            ladder_now = ""
             try:
                 from biaoke_level_learn import _build_live_pack, _wave_now_ladder
 
@@ -6801,12 +6816,20 @@ class WayneTelegramBot:
                     pack_for_ladder = dict(pack_for_ladder or {})
                     pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
                 ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
-                ladder_line = str(ladder.get("one_line") or "")
+                ladder_now = str(ladder.get("now") or "").strip()
+                # caption 要清楚：層級鏈＋此刻整句；不准裁成幾乎沒意義的半句
+                bits_l = []
+                if ladder.get("one_line"):
+                    bits_l.append(str(ladder["one_line"]).strip())
                 if ladder.get("now_line"):
-                    ladder_line = f"{ladder_line}\n{ladder['now_line']}".strip()
+                    bits_l.append(str(ladder["now_line"]).strip())
+                ladder_line = "\n".join(bits_l).strip()
+                if not ladder_line and thesis:
+                    ladder_line = thesis[:180]
             except Exception:
                 logger.exception("大盤層級一句略過")
                 ladder_line = ""
+                ladder_now = ""
 
             order_zh = "、".join(label for _k, label in trio_caps)
             # 三張共用查詢當下台北時間（盤中活畫寫進圖戳；caption 也標，休市齊檔照樣有）
@@ -6816,20 +6839,21 @@ class WayneTelegramBot:
                 q_wall = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%m/%d %H:%M")
             except Exception:
                 q_wall = ""
-            # caption 精簡：張序＋查詢時＋層級一句；不准再堆順序說明／贅詞
-            intro_bits = [f"遠／近／超近・非買訊"]
+            # caption：張序＋查詢時＋層級／此刻；超近另標細浪①～⑤
+            intro_bits = ["遠／近／超近・非買訊"]
             if q_wall:
                 intro_bits.append(f"查詢 {q_wall}（台北）")
-            short_ladder = ""
             if ladder_line:
-                short_ladder = str(ladder_line).splitlines()[0].strip()[:120]
+                intro_bits.extend(
+                    ln.strip() for ln in str(ladder_line).splitlines() if ln.strip()
+                )
             elif thesis:
-                short_ladder = str(thesis)[:120]
-            if short_ladder:
-                intro_bits.append(short_ladder)
+                intro_bits.append(str(thesis)[:160])
+            if ladder_now and re.search(r"C3-3", ladder_now):
+                intro_bits.append(f"超近＝細浪①～⑤・此刻＝{ladder_now}")
             if missing:
                 intro_bits.append(f"缺：{'、'.join(missing)}")
-            trio_cap = "\n".join(intro_bits)[:500]
+            trio_cap = "\n".join(intro_bits)[:900]
             _ = order_zh  # 保留 trio 標籤來源；caption 不再複述
 
             if wait_h and wait_h[0] is not None:
@@ -7397,6 +7421,7 @@ class WayneTelegramBot:
         )
         thesis = str(kit.get("thesis") or "").strip()
         ladder_line = ""
+        ladder_now = ""
         try:
             from biaoke_level_learn import _build_live_pack, _wave_now_ladder
 
@@ -7408,13 +7433,20 @@ class WayneTelegramBot:
                 pack_for_ladder = dict(pack_for_ladder or {})
                 pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
             ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
-            # 只留一層級句，不准再跟 now_line 疊成牆
-            ladder_line = str(ladder.get("one_line") or ladder.get("chain") or "").strip()
+            ladder_now = str(ladder.get("now") or "").strip()
+            # 飆大圖說：層級鏈＋此刻；口語正文另在文字泡，這裡不塞整段結構讀法
+            bits_l = []
+            if ladder.get("one_line"):
+                bits_l.append(str(ladder["one_line"]).strip())
+            if ladder.get("now_line"):
+                bits_l.append(str(ladder["now_line"]).strip())
+            ladder_line = "\n".join(bits_l).strip()
             if not thesis:
                 thesis = str((pack_for_ladder or {}).get("thesis") or "").strip()
         except Exception:
             logger.exception("教具層級一句略過")
             ladder_line = ""
+            ladder_now = ""
         kb = self._biaoke_reply_menu(uid)
         for key, head in caps:
             if actor and kind and not self._actor_op_alive(actor, kind, gen):
@@ -7426,10 +7458,17 @@ class WayneTelegramBot:
                 continue
             bits = [head]
             if ladder_line:
-                bits.append(ladder_line[:120])
+                bits.extend(
+                    ln.strip() for ln in ladder_line.splitlines() if ln.strip()
+                )
             elif thesis:
-                bits.append(thesis[:120])
-            cap = "\n".join(bits)[:400]
+                bits.append(thesis[:160])
+            if key == "micro_path":
+                if ladder_now:
+                    bits.append(f"超近＝細浪①～⑤・此刻＝{ladder_now}")
+                else:
+                    bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
+            cap = "\n".join(bits)[:900]
             try:
                 try:
                     chat = getattr(message, "chat", None)
