@@ -420,3 +420,225 @@ def test_run_ai_desk_respects_buy_gate(tmp_path):
     conn.close()
     assert n_reason >= 1
     assert n_research >= 1
+
+
+def test_bloated_account_rewipes_to_500k(tmp_path):
+    path = str(tmp_path / "bloat.db")
+    ensure_core_schema(path)
+    from portfolio_engine import PortfolioEngine
+    from ai_trader import (
+        RESTART_PARAM_KEY,
+        TOTAL_CAPITAL,
+        _ai_account_bloated,
+        ai_user_id,
+        ensure_ai_restart_applied,
+        ensure_ai_tables,
+        format_ai_desk_pages,
+    )
+
+    eng = PortfolioEngine(path)
+    ensure_ai_tables(path)
+    uid = ai_user_id("9002")
+    eng.ensure_user_exists(uid)
+    # 先標記已重設，再把現金灌爆 → 必須再清
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)",
+        (f"{RESTART_PARAM_KEY}:{uid}", 1.0),
+    )
+    conn.execute(
+        "UPDATE user_funds SET cash=?, initial_capital=? WHERE user_id=?",
+        (2_500_000.0, TOTAL_CAPITAL, uid),
+    )
+    conn.commit()
+    conn.close()
+    s = eng.get_portfolio_summary(uid, {})
+    assert _ai_account_bloated(s) is True
+    assert ensure_ai_restart_applied(eng, uid) is True
+    s2 = eng.get_portfolio_summary(uid, {})
+    assert s2["cash"] == TOTAL_CAPITAL
+    assert s2["total_assets"] == TOTAL_CAPITAL
+    assert _ai_account_bloated(s2) is False
+    assert ensure_ai_restart_applied(eng, uid) is False
+    pages = "\n".join(format_ai_desk_pages(eng, "9002"))
+    assert "本金固定 50 萬" in pages
+    assert "總資產應約在 50 萬上下" in pages
+    assert "500,000" in pages or "500000" in pages
+
+
+def test_bloated_ignores_normal_profit_assets(tmp_path):
+    """總資產因持股市值 >75 萬但現金正常 → 不准當灌爆清掉。"""
+    path = str(tmp_path / "profit.db")
+    ensure_core_schema(path)
+    from portfolio_engine import PortfolioEngine
+    from ai_trader import TOTAL_CAPITAL, _ai_account_bloated, ai_user_id
+
+    eng = PortfolioEngine(path)
+    uid = ai_user_id("9005")
+    eng.ensure_user_exists(uid)
+    # 模擬真買：現金扣掉、抱市值；總資產可高於 50 萬
+    eng.buy(uid, "20261101", "2330", "台積電", 100.0, 2000, reason="測")
+    s = eng.get_portfolio_summary(
+        uid, {"2330": {"close": 200.0}}
+    )  # 市值漲一倍
+    assert s["cash"] < TOTAL_CAPITAL
+    assert s["total_assets"] > TOTAL_CAPITAL * 1.5 or s["stock_market_value"] > 0
+    assert _ai_account_bloated(s) is False
+
+
+def test_fill_dedupe_and_persist_idempotent(tmp_path):
+    path = str(tmp_path / "dedupe.db")
+    ensure_core_schema(path)
+    from portfolio_engine import PortfolioEngine
+    from ai_trader import (
+        _dedupe_fill_rows,
+        _recent_fills,
+        ai_user_id,
+        ensure_ai_tables,
+    )
+    from screen_review import (
+        ensure_ai_fills_table,
+        format_ai_review_html,
+        persist_ai_fill,
+    )
+
+    eng = PortfolioEngine(path)
+    ensure_ai_tables(path)
+    uid = ai_user_id("9003")
+    eng.ensure_user_exists(uid)
+    conn = sqlite3.connect(path)
+    now = "2026-11-02 12:00:00"
+    for _ in range(5):
+        conn.execute(
+            """
+            INSERT INTO trade_logs
+            (user_id, date, stock_id, stock_name, action, shares, price, amount,
+             fee, tax, realized_pnl, pnl_pct, reason, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                uid,
+                "20261102",
+                "6568",
+                "宏觀",
+                "SELL",
+                778,
+                123.0,
+                95000.0,
+                20.0,
+                30.0,
+                -4702.0,
+                -4.7,
+                "風控停損：跌破防守線",
+                now,
+            ),
+        )
+    conn.commit()
+    conn.close()
+    rows = _recent_fills(eng, uid, 8)
+    assert len(rows) == 1
+    assert rows[0]["stock_id"] == "6568"
+    assert len(_dedupe_fill_rows(rows + rows)) == 1
+
+    ensure_ai_fills_table(path)
+    for _ in range(3):
+        persist_ai_fill(
+            path,
+            as_of="20261030",
+            stock_id="1558",
+            stock_name="伸興",
+            action="BUY",
+            price=105.0,
+            shares=971,
+            user_id=uid,
+            reason="勝率買點",
+            bucket="leave_zero",
+            pnl_pct=0.0,
+        )
+    conn = sqlite3.connect(path)
+    n = conn.execute(
+        "SELECT COUNT(*) FROM ai_fills WHERE user_id=? AND stock_id=?",
+        (uid, "1558"),
+    ).fetchone()[0]
+    # 隔日％人工填上，測復盤去重
+    conn.execute(
+        "UPDATE ai_fills SET next_pct=?, next_date=?, next_close=? WHERE user_id=? AND stock_id=?",
+        (-0.5, "20261031", 104.5, uid, "1558"),
+    )
+    # 再塞一筆重複（舊資料路徑）同鍵
+    conn.execute(
+        """
+        INSERT INTO ai_fills(
+            user_id, as_of, stock_id, stock_name, action, price, shares, amount,
+            reason, bucket, realized_pnl, pnl_pct, next_date, next_close, next_pct, created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            uid,
+            "20261030",
+            "1558",
+            "伸興",
+            "BUY",
+            105.0,
+            971,
+            0,
+            "勝率買點-舊",
+            "leave_zero",
+            0,
+            0,
+            "20261031",
+            104.5,
+            -0.5,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    assert n == 1  # persist 冪等
+    html = format_ai_review_html(path, user_id=uid)
+    assert "1筆模擬買進" in html
+    assert html.count("最近買進") == 1
+    assert html.count("伸興") == 1
+    assert "2. " not in html.split("最近買進", 1)[-1]
+
+
+def test_slot_display_clamps_to_3(tmp_path):
+    path = str(tmp_path / "slots.db")
+    ensure_core_schema(path)
+    from portfolio_engine import PortfolioEngine
+    from ai_trader import MAX_ACTIVE_NAMES, ai_user_id, ensure_ai_tables, format_ai_desk_pages
+
+    eng = PortfolioEngine(path)
+    ensure_ai_tables(path)
+    uid = ai_user_id("9004")
+    eng.ensure_user_exists(uid)
+    # 直接塞 4 檔持倉（模擬舊灌爆）
+    conn = sqlite3.connect(path)
+    for i, sid in enumerate(("2330", "2454", "2303", "2317")):
+        conn.execute(
+            """
+            INSERT INTO user_positions
+            (user_id, stock_id, stock_name, shares, cost_price, highest_price, buy_date, warning_days, strategy_type)
+            VALUES (?,?,?,?,?,?,?,?,?)
+            """,
+            (uid, sid, f"名{i}", 100, 100.0, 100.0, "20261101", 0, "WINRATE"),
+        )
+    conn.execute(
+        "UPDATE user_funds SET cash=? WHERE user_id=?",
+        (100_000.0, uid),
+    )
+    conn.commit()
+    conn.close()
+    # 灌爆會被 ensure_ai_user 重設；這裡測顯示夾緊：先關重設旗標路徑用 format 前直接讀 summary
+    # 用 mock：暫時讓 ensure_ai_restart_applied 不做事
+    import ai_trader as at
+
+    old = at.ensure_ai_restart_applied
+    at.ensure_ai_restart_applied = lambda *a, **k: False
+    try:
+        pages = "\n".join(format_ai_desk_pages(eng, "9004"))
+    finally:
+        at.ensure_ai_restart_applied = old
+    assert f"{MAX_ACTIVE_NAMES}/{MAX_ACTIVE_NAMES}" in pages or "3/3" in pages
+    assert "4/3" not in pages
+    assert "持倉 4 檔超過上限" in pages
