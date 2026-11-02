@@ -953,7 +953,7 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
 
 
 def test_scrub_expired_forward_drops_past_monday_keeps_valid():
-    """過期「下周一」整子句拿掉；同句夜盤／空手仍留。"""
+    """過期「下周一」整子句拿掉；同句夜盤／空手仍留；上星期四回顧不准刪。"""
     from biaoke_digest import _scrub_expired_forward, _oral_body, _gate_touch_line
 
     now = datetime(2026, 11, 2, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
@@ -965,6 +965,13 @@ def test_scrub_expired_forward_drops_past_monday_keeps_valid():
     )
     assert "下周一" not in out
     assert "夜盤續弱" in out and "空手觀望" in out
+    recall = _scrub_expired_forward(
+        "上星期四台股出現最大的事件就是兩檔超過萬元價股王、股后跌停。",
+        post_date="2026-10-11",
+        post_time="09:43",
+        now=now,
+    )
+    assert "上星期四" in recall and "股王" in recall
     # 句切優先句號，不准半句「接下來會去測8…」
     long = "接下來會去測8500這一帶支撐是否有效。若守住才談反彈。"
     cut = _oral_body(long, 40)
