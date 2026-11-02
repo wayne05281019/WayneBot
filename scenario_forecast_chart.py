@@ -45,7 +45,8 @@ _CAL_PER_BAR = 1.4
 
 # 同人連按／同檔翻回：短 TTL 複製整張（path＋caption＋meta），不進 paint。
 # 指紋含末日柱＋決策卡現價／時戳＋DC rules 版；變了必 miss。不准造假柱。
-_SF_RENDER_TTL_SEC = 90.0
+# 對齊查股／壓力區 memo TTL 180（指紋含現價，變價仍 miss）。
+_SF_RENDER_TTL_SEC = 180.0
 _SF_RENDER_LOCK = threading.Lock()
 _SF_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str, Dict[str, Any]]] = {}
 _SF_RENDER_MEMO_MAX = 48

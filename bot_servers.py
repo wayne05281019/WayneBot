@@ -1918,8 +1918,14 @@ class WayneTelegramBot:
                     logger.exception("壓撐三張・高低卡送出失敗")
             else:
                 await message.reply_text(f"{code} 高低溫度卡暫無法出。")
+            chip_img = ""
             try:
-                chip_img = await _paint_one(_chips, _LOOKUP_PNG_TIMEOUT)
+                if not is_em:
+                    from chips import try_chips_memo
+
+                    chip_img = try_chips_memo(code, self.db_path, chips_path) or ""
+                if not chip_img:
+                    chip_img = await _paint_one(_chips, _LOOKUP_PNG_TIMEOUT)
             except Exception:
                 logger.exception("壓撐三張・籌碼產圖失敗 code=%s", code)
                 chip_img = ""
@@ -8101,17 +8107,26 @@ class WayneTelegramBot:
             text_fn=lambda s: self._wait_bubble("籌碼圖進行中", s, now="法人張數", fill_sec=20.0),
         )
         try:
+            from chips import try_chips_memo
             from wayne_navigator import submit_mpl_paint
 
             _chips_out = self._scratch_chart_path(self.charts_dir, code, "chips", uid)
-            chip_img = await asyncio.wait_for(
-                asyncio.wrap_future(
-                    submit_mpl_paint(
-                        generate_chips_image, code, self.db_path, _chips_out
-                    )
-                ),
-                timeout=_LOOKUP_PNG_TIMEOUT,
-            )
+            chip_img = ""
+            try:
+                chip_img = await asyncio.to_thread(
+                    try_chips_memo, code, self.db_path, _chips_out
+                )
+            except Exception:
+                chip_img = ""
+            if not chip_img:
+                chip_img = await asyncio.wait_for(
+                    asyncio.wrap_future(
+                        submit_mpl_paint(
+                            generate_chips_image, code, self.db_path, _chips_out
+                        )
+                    ),
+                    timeout=_LOOKUP_PNG_TIMEOUT,
+                )
             if chip_img:
                 try:
                     send_path = self._prepare_lookup_album_photo(chip_img)

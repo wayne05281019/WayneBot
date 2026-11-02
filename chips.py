@@ -669,6 +669,53 @@ def render_chips_png(
     return save_path
 
 
+def _chips_memo_key(sid: str, rows: List[Dict[str, Any]], limit: int) -> tuple:
+    """籌碼圖 memo 指紋：列日／筆數／首列券商＋買超；變了必 miss。"""
+    from wayne_navigator import CARD_PNG_DPI, LOOKUP_JPEG_QUALITY
+
+    as_of = str(rows[0].get("date") or rows[0].get("as_of") or "")
+    broker0 = str(rows[0].get("broker") or rows[0].get("name") or "")
+    buy0 = str(rows[0].get("buy") or rows[0].get("buy_lots") or "")
+    return (
+        "chips",
+        str(sid or ""),
+        as_of,
+        int(limit or 15),
+        len(rows),
+        broker0,
+        buy0,
+        int(CARD_PNG_DPI),
+        int(LOOKUP_JPEG_QUALITY),
+    )
+
+
+def try_chips_memo(
+    stock_id: str,
+    db_path: str = None,
+    save_path: str = None,
+    limit: int = 15,
+) -> str:
+    """暖路徑：同分點指紋命中就複製檔，不進 mpl 佇列。"""
+    path = db_path or get_db_path()
+    sid = str(stock_id or "").strip()
+    rows = load_major_player_rows(path, sid, limit=limit, allow_fetch=False)
+    if not rows:
+        return ""
+    try:
+        from config import get_charts_dir
+
+        charts = get_charts_dir()
+    except Exception:
+        charts = os.path.join("data", "charts")
+    out = save_path or os.path.join(charts, f"{sid}_chips.png")
+    try:
+        from wayne_navigator import _lookup_render_memo_get
+
+        return _lookup_render_memo_get(_chips_memo_key(sid, rows, limit), out) or ""
+    except Exception:
+        return ""
+
+
 def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = None, limit: int = 15) -> str:
     path = db_path or get_db_path()
     sid = str(stock_id or "").strip()
@@ -684,26 +731,11 @@ def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = No
     # 短快取：同分點列指紋＋查股 JPEG 參數
     try:
         from wayne_navigator import (
-            LOOKUP_JPEG_QUALITY,
-            CARD_PNG_DPI,
             _lookup_render_memo_get,
             _lookup_render_memo_put,
         )
 
-        as_of = str(rows[0].get("date") or rows[0].get("as_of") or "")
-        broker0 = str(rows[0].get("broker") or rows[0].get("name") or "")
-        buy0 = str(rows[0].get("buy") or rows[0].get("buy_lots") or "")
-        key = (
-            "chips",
-            sid,
-            as_of,
-            int(limit or 15),
-            len(rows),
-            broker0,
-            buy0,
-            int(CARD_PNG_DPI),
-            int(LOOKUP_JPEG_QUALITY),
-        )
+        key = _chips_memo_key(sid, rows, limit)
         hit = _lookup_render_memo_get(key, out)
         if hit:
             return hit
