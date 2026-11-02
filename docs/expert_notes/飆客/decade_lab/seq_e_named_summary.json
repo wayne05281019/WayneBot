@@ -1,0 +1,19 @@
+{
+  "written_at": "2026-11-03T05:03:07.834998+08:00",
+  "tz": "Asia/Taipei",
+  "n_seed": 10,
+  "n_counted": 10,
+  "n_fwd_positive": 10,
+  "jsonl": "docs/expert_notes/飆客/decade_lab/seq_e_named_latest.jsonl",
+  "md": "docs/expert_notes/飆客/decade_lab/seq_e_named_latest.md",
+  "not_buy_signal": true,
+  "pot": "實驗室＋他說附原文",
+  "skipped": [
+    "survivor_blind_controls",
+    "margin_large_holder",
+    "basis_futures",
+    "mystery_instrument",
+    "ma60_lower_track",
+    "how_to_sell_track"
+  ]
+}
