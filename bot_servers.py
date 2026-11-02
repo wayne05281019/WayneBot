@@ -1607,8 +1607,13 @@ class WayneTelegramBot:
             await message.reply_html(head, disable_web_page_preview=True)
             # 還原 bdda259 舊好：逐檔畫完就送。外層改走 submit_mpl_paint
             #（保留 #492／#493 FreeType 單一 worker）；不准整頁 two_phase。
+            # prepare＋memo 在 worker 外：名單連按／點檔三張可命中，少重複進 paint。
             from pressure_support_watch import pressure_card_html
-            from vol_zone_chart import render_lookup_vol_result
+            from vol_zone_chart import (
+                prepare_volume_zone,
+                render_lookup_vol_result,
+                try_lookup_vol_memo,
+            )
             from wayne_navigator import submit_mpl_paint
 
             sent = 0
@@ -1631,24 +1636,43 @@ class WayneTelegramBot:
                 out = self._scratch_chart_path(
                     self.charts_dir, code, f"ps_{tag}", uid
                 )
-
-                def _render(_c=code, _n=name, _p=out):
-                    # 與查股第 4 張同一入口（橫式＋導航＋5／10／月／季）
-                    return render_lookup_vol_result(
-                        _c,
-                        _n,
-                        self.db_path,
-                        _p,
-                    )
-
+                pack = None
                 try:
-                    path, cap = await asyncio.wait_for(
-                        asyncio.wrap_future(submit_mpl_paint(_render)),
-                        timeout=60.0,
+                    pack = await asyncio.to_thread(
+                        prepare_volume_zone, code, name, self.db_path, out
                     )
                 except Exception:
-                    logger.exception("壓撐壓力區圖失敗 code=%s", code)
+                    logger.exception("壓撐名單 prepare 略過 code=%s", code)
+                    pack = None
+                path, cap = "", ""
+                try:
+                    warm = try_lookup_vol_memo(
+                        pack, out, db_path=self.db_path
+                    )
+                    if warm and warm[0]:
+                        path, cap = warm[0], warm[1]
+                except Exception:
                     path, cap = "", ""
+                if not path:
+
+                    def _render(_c=code, _n=name, _p=out, _pack=pack):
+                        # 與查股第 4 張同一入口（橫式＋導航＋5／10／月／季）
+                        return render_lookup_vol_result(
+                            _c,
+                            _n,
+                            self.db_path,
+                            _p,
+                            pack=_pack,
+                        )
+
+                    try:
+                        path, cap = await asyncio.wait_for(
+                            asyncio.wrap_future(submit_mpl_paint(_render)),
+                            timeout=60.0,
+                        )
+                    except Exception:
+                        logger.exception("壓撐壓力區圖失敗 code=%s", code)
+                        path, cap = "", ""
                 kb = InlineKeyboardMarkup(
                     [self._pressure_pick_row(code, name, tag)]
                 )
@@ -1745,10 +1769,23 @@ class WayneTelegramBot:
             if hits:
                 name = str(hits[0].get("stock_name") or "")
 
-            def _build_card():
+            # 盤中疊價與查股同一套 MIS 預取；休市／非合併窗回 None＝官方收臉
+            live_rt = None
+            try:
+                live_rt = await asyncio.wait_for(
+                    asyncio.to_thread(self._prefetch_mis_quote, code, hits),
+                    timeout=_LOOKUP_MIS_TIMEOUT + 1.0,
+                )
+            except Exception:
+                live_rt = None
+
+            def _build_card(_live=live_rt):
                 engine = NavigatorEngine(self.db_path)
                 card = engine.get_decision_card(
-                    code, lookback=20, merge_live=False, live_quote=None
+                    code,
+                    lookback=20,
+                    merge_live=True,
+                    live_quote=_live,
                 )
                 if isinstance(card, dict):
                     try:
@@ -1784,9 +1821,23 @@ class WayneTelegramBot:
             # 壓力區／高低卡／籌碼共用一把 FreeType 鎖＋單一 paint worker。
             # 不准 create_task 三線並行：等鎖時間會被 wait_for 算進逾時，
             # 逾時後執行緒仍占鎖，下一檔（含查股）全面掛。
-            from wayne_navigator import submit_mpl_paint
+            from vol_zone_chart import prepare_volume_zone, try_lookup_vol_memo
+            from wayne_navigator import submit_mpl_paint, try_decision_card_memo
 
-            def _vz():
+            vz_pack = None
+            try:
+                vz_pack = await asyncio.to_thread(
+                    prepare_volume_zone,
+                    code,
+                    name,
+                    self.db_path,
+                    vol_path,
+                )
+            except Exception:
+                logger.exception("壓撐三張・壓力區 prepare 略過 code=%s", code)
+                vz_pack = None
+
+            def _vz(_pack=vz_pack):
                 # 與查股第 4 張同一入口（橫式＋導航＋5／10／月／季）
                 return render_lookup_vol_result(
                     code,
@@ -1794,6 +1845,7 @@ class WayneTelegramBot:
                     self.db_path,
                     vol_path,
                     card=card or None,
+                    pack=_pack,
                 )
 
             def _card_png():
@@ -1810,13 +1862,26 @@ class WayneTelegramBot:
                 fut = submit_mpl_paint(fn)
                 return await _await_lookup_paint(fut, timeout_s)
 
+            vz_path, vz_cap = "", ""
             try:
-                vz_path, vz_cap = await _paint_one(_vz, _LOOKUP_PNG_TIMEOUT)
+                warm_vz = try_lookup_vol_memo(
+                    vz_pack,
+                    vol_path,
+                    card=card or None,
+                    db_path=self.db_path,
+                )
+                if warm_vz and warm_vz[0]:
+                    vz_path, vz_cap = warm_vz[0], warm_vz[1]
+                else:
+                    vz_path, vz_cap = await _paint_one(_vz, _LOOKUP_PNG_TIMEOUT)
             except Exception:
                 logger.exception("壓撐三張・壓力區產圖失敗 code=%s", code)
                 vz_path, vz_cap = "", ""
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
+            live_note = ""
+            if isinstance(card, dict) and card.get("is_live"):
+                live_note = "・盤中即時"
             if vz_path and os.path.isfile(vz_path):
                 try:
                     send_path = self._prepare_lookup_album_photo(vz_path)
@@ -1825,15 +1890,19 @@ class WayneTelegramBot:
                             photo=f,
                             caption=(
                                 vz_cap
-                                or f"{code} 壓力區・{tag_l}（只觀察，不是買訊）"
+                                or f"{code} 壓力區・{tag_l}{live_note}（只觀察，不是買訊）"
                             )[:900],
                         )
                 except Exception:
                     logger.exception("壓撐三張・壓力區送出失敗")
             else:
                 await message.reply_text(f"{code} 壓力區圖暫無法出。")
+            cpath = ""
             try:
-                cpath = await _paint_one(_card_png, _LOOKUP_PNG_TIMEOUT)
+                if card:
+                    cpath = try_decision_card_memo(card, card_path) or ""
+                if not cpath:
+                    cpath = await _paint_one(_card_png, _LOOKUP_PNG_TIMEOUT)
             except Exception:
                 logger.exception("壓撐三張・高低卡產圖失敗 code=%s", code)
                 cpath = ""
@@ -1842,7 +1911,8 @@ class WayneTelegramBot:
                     send_path = self._prepare_lookup_album_photo(cpath)
                     with open(send_path, "rb") as f:
                         await message.reply_photo(
-                            photo=f, caption=f"{name}　高低溫度卡"
+                            photo=f,
+                            caption=f"{name}　高低溫度卡{live_note}",
                         )
                 except Exception:
                     logger.exception("壓撐三張・高低卡送出失敗")

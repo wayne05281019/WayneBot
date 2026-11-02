@@ -162,6 +162,9 @@ def test_lookup_and_vol_memo_ttl_at_least_ninety():
 
     assert float(wn._LOOKUP_RENDER_TTL_SEC) >= 90.0
     assert float(vz._VZ_RENDER_TTL_SEC) >= 90.0
+    # 加速：同指紋可留更久；現價進指紋，變了仍 miss
+    assert float(wn._LOOKUP_RENDER_TTL_SEC) >= 180.0
+    assert float(vz._VZ_RENDER_TTL_SEC) >= 180.0
 
 
 def test_market_session_cards_keep_progress_bubble():

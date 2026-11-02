@@ -887,6 +887,76 @@ def test_chain_roster_slots_flat_gap_and_one_paint():
     assert max(gaps) < min(gaps) * 1.75, gaps
 
 
+def test_winrate_live_skips_day_disk_cache(tmp_path, monkeypatch):
+    """盤中：不准吃／寫日快取；merge_live 開；休市仍走磁碟加速。"""
+    import os
+
+    from winrate_buypoint import render_stock_pair
+
+    seen = {"merge": [], "n": 0}
+
+    class _FakeEng:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def get_decision_card(self, sid, **kw):
+            seen["merge"].append(bool(kw.get("merge_live")))
+            return {
+                "stock_id": sid,
+                "stock_name": f"名{sid}",
+                "table": [],
+                "is_live": bool(kw.get("merge_live")),
+            }
+
+    def _fake_vz(sid, name, db_path, save_path, df=None, **kw):
+        seen["n"] += 1
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        with open(save_path, "wb") as f:
+            f.write(b"x" * 25_000)
+        return save_path, "cap"
+
+    def _fake_card_png(card, path):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(b"y" * 12_000)
+        return path
+
+    monkeypatch.setattr("wayne_navigator.NavigatorEngine", _FakeEng)
+    monkeypatch.setattr("vol_zone_chart.render_volume_zone_result", _fake_vz)
+    monkeypatch.setattr("vol_zone_chart.prepare_volume_zone", lambda *a, **k: None)
+    monkeypatch.setattr("vol_zone_chart.try_lookup_vol_memo", lambda *a, **k: None)
+    monkeypatch.setattr("wayne_navigator.render_decision_card_png", _fake_card_png)
+    monkeypatch.setattr("wayne_navigator.try_decision_card_memo", lambda *a, **k: "")
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda *a, **k: True)
+
+    charts = str(tmp_path / "charts")
+    db = str(tmp_path / "x.db")
+    render_stock_pair(
+        db, "2330", "台積電", charts_dir=charts, uid="u", as_of="20261016", reuse_cache=True
+    )
+    assert seen["merge"] == [True]
+    assert seen["n"] == 1
+    # 盤中不准落日快取
+    cache_root = os.path.join(charts, "wr_pair_cache")
+    if os.path.isdir(cache_root):
+        for root, _dirs, files in os.walk(cache_root):
+            assert not files, root
+
+    # 休市：可寫快取、第二次命中不再 paint
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda *a, **k: False)
+    seen["merge"].clear()
+    seen["n"] = 0
+    render_stock_pair(
+        db, "2330", "台積電", charts_dir=charts, uid="u", as_of="20261016", reuse_cache=True
+    )
+    assert seen["merge"] == [False]
+    assert seen["n"] == 1
+    render_stock_pair(
+        db, "2330", "台積電", charts_dir=charts, uid="u2", as_of="20261016", reuse_cache=True
+    )
+    assert seen["n"] == 1  # 第二次吃磁碟
+
+
 def test_cached_winrate_pair_repeat_skips_paint(tmp_path, monkeypatch):
     """再按同一基準日：磁碟快取命中，不准重畫，後面的檔不准比第一檔慢一截。"""
     import os
@@ -920,6 +990,8 @@ def test_cached_winrate_pair_repeat_skips_paint(tmp_path, monkeypatch):
     monkeypatch.setattr("vol_zone_chart.render_volume_zone_result", _fake_vz)
     monkeypatch.setattr("vol_zone_chart.prepare_volume_zone", lambda *a, **k: None)
     monkeypatch.setattr("wayne_navigator.render_decision_card_png", _fake_card_png)
+    # 休市才寫／吃日快取；測重複命中必須關盤中窗
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda *a, **k: False)
 
     charts = str(tmp_path / "charts")
     db = str(tmp_path / "x.db")

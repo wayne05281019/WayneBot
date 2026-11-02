@@ -137,11 +137,12 @@ _STANCE_NOTE_STACK = 2.58
 _LR_PRIM_DY = 1.78
 _LR_SEC_DY = 1.92
 
-# 同人連查／同檔翻回：90s 內指紋不變就複製，不進 paint。盤中現價進指紋，變了必 miss。
-_LOOKUP_RENDER_TTL_SEC = 90.0
+# 同人連查／同檔翻回：指紋不變就複製，不進 paint。盤中現價進指紋，變了必 miss。
+# 180s：盤後／同價連按更快；指紋含現價／時戳，盤中變價仍必重渲（不准假即時）。
+_LOOKUP_RENDER_TTL_SEC = 180.0
 _LOOKUP_RENDER_LOCK = Lock()
 _LOOKUP_RENDER_MEMO: dict = {}
-_LOOKUP_RENDER_MEMO_MAX = 96
+_LOOKUP_RENDER_MEMO_MAX = 128
 
 
 def clear_lookup_render_cache() -> None:
