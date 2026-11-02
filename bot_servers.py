@@ -5545,6 +5545,16 @@ class WayneTelegramBot:
         """波浪位階：層級敘述＋遠／近／超近三張（非買訊）。"""
         msg = update.effective_message
         uid = self._uid_from_message(msg)
+        # 敘述與 ensure／pack 重疊；出圖路徑接走同一包，不准再重抓
+        pack_task = None
+        try:
+            from biaoke_level_learn import prepare_wave_live_pack
+
+            pack_task = asyncio.create_task(
+                asyncio.to_thread(prepare_wave_live_pack, self.db_path)
+            )
+        except Exception:
+            pack_task = None
         brief = ""
         try:
             from biaoke_digest import format_teach_brief
@@ -5570,7 +5580,7 @@ class WayneTelegramBot:
                 "波浪位階（預估・非買訊）\n先送遠／近／超近三張；敘述這次沒湊齊。",
                 reply_markup=self._keyboard(),
             )
-        await self._send_market_wave_charts(msg, uid=uid)
+        await self._send_market_wave_charts(msg, uid=uid, pack_task=pack_task)
 
     async def leave_zero_cmd(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, pick: str = ""
@@ -6767,16 +6777,19 @@ class WayneTelegramBot:
             logger.exception("大盤遠窗單張重渲失敗")
             return ""
 
-    async def _send_market_wave_charts(self, message, *, uid: str = "") -> None:
-        """大盤專頁附圖：暗底遠／近／超近（第1→2→3）＋外圍。
+    async def _send_market_wave_charts(
+        self, message, *, uid: str = "", pack_task=None
+    ) -> None:
+        """大盤專頁附圖：暗底遠／近／超近（第1→2→3）。
 
-        波浪位階／話筒查一律 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
-        （盤中 MIS 疊柱＋量；逾時／失敗才退回已存）。外圍仍用已存，不准 trio 順手畫滿五張。
-        遠窗必到；缺就單張重渲，仍缺則白話停，不准只出近／超近。
+        一律 force 重渲；prep-once 共用 pack；遠→近→超近單 Agg，送第 N 張時 paint 第 N+1。
+        遠窗必到；缺就單張重渲，仍缺則白話停。外圍不准 trio 順手畫。
         """
         from config import skip_chart_warmup
 
         if skip_chart_warmup():
+            if pack_task is not None and not pack_task.done():
+                pack_task.cancel()
             return
         wait_h = await self._start_plain_wait(
             message,
@@ -6788,7 +6801,12 @@ class WayneTelegramBot:
         uid = uid or self._uid_from_message(message)
         sent = 0
         try:
-            from biaoke_level_learn import latest_teach_kit, paint_open_day_hypothesis
+            from biaoke_level_learn import (
+                latest_teach_kit,
+                paint_open_day_hypothesis,
+                prepare_wave_live_pack,
+                _wave_now_ladder,
+            )
             from wayne_navigator import submit_mpl_paint
 
             stored: dict = {}
@@ -6797,113 +6815,54 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("大盤讀教具路徑略過")
                 stored = {}
-            trio_keys = ("far_path", "near_path", "micro_path")
-            stored_ok = all(self._market_teach_path_ok(stored.get(k)) for k in trio_keys)
-            live_on = False
+
+            # prep-once：與讀存檔／泡泡重疊；失敗再補一次
+            pack: dict = {}
             try:
-                from live_quote import is_live_merge_window
-
-                live_on = bool(is_live_merge_window())
+                if pack_task is not None:
+                    pack = await pack_task or {}
+                    pack_task = None
+                else:
+                    pack = await asyncio.to_thread(prepare_wave_live_pack, self.db_path) or {}
             except Exception:
-                live_on = False
+                logger.exception("波浪 prep pack 略過")
+                pack = {}
+                if pack_task is not None and not pack_task.done():
+                    pack_task.cancel()
+                    pack_task = None
+            if not isinstance(pack, dict):
+                pack = {}
 
-            kit: dict = dict(stored) if stored_ok else {}
-            # 波浪位階／話筒查：一定 force 重渲遠近超近，對齊最新交易日縮圖K＋最新題旨標籤
-            # （盤中 MIS 疊柱＋量、飆大新文後也要立刻對得上；缺檔／逾時才退回已存）
-            _ = live_on  # 保留探測；重渲策略不再因休市跳過
             paint_lock = getattr(self, "_market_teach_paint_lock", None)
             if paint_lock is None:
                 paint_lock = asyncio.Lock()
                 self._market_teach_paint_lock = paint_lock
 
-            async def _paint_trio() -> dict:
+            async def _paint_panel(panel: str) -> dict:
                 return await asyncio.wait_for(
                     asyncio.wrap_future(
                         submit_mpl_paint(
-                            lambda: paint_open_day_hypothesis(
-                                self.db_path, force=True, panels="trio"
+                            lambda p=panel: paint_open_day_hypothesis(
+                                self.db_path,
+                                force=True,
+                                panels=p,
+                                pack=pack or None,
                             )
                         )
                     ),
                     timeout=_CHART_RENDER_TIMEOUT,
                 )
 
-            try:
-                async with paint_lock:
-                    painted = await _paint_trio()
-                if painted and painted.get("ok"):
-                    kit = self._merge_market_teach_kit(
-                        {
-                            "far_path": str(painted.get("far_path") or ""),
-                            "near_path": str(painted.get("near_path") or ""),
-                            "micro_path": str(painted.get("micro_path") or ""),
-                            "us_path": str(painted.get("us_path") or ""),
-                            "thesis": str(painted.get("thesis") or "")[:180],
-                            "as_of": str(painted.get("as_of") or ""),
-                        },
-                        stored,
-                    )
-            except asyncio.TimeoutError:
-                logger.warning("大盤教具活畫逾時")
-                kit = self._merge_market_teach_kit(kit, stored)
-            except Exception:
-                logger.exception("大盤教具活畫略過")
-                kit = self._merge_market_teach_kit(kit, stored)
-            if not any(self._market_teach_path_ok(kit.get(k)) for k in trio_keys):
-                kit = self._merge_market_teach_kit(stored, {})
+            kit: dict = {}
+            thesis = str(pack.get("thesis") or stored.get("thesis") or "").strip()
+            as_of = str(pack.get("chart_as_of") or stored.get("as_of") or "").strip()
 
-            # 遠窗硬閘：缺就單張重渲，仍缺不准送近／超近
-            if not self._market_teach_path_ok(kit.get("far_path")):
-                if wait_h and wait_h[0] is not None:
-                    await self._safe_edit_text(
-                        wait_h[0],
-                        self._wait_bubble(
-                            "大盤圖進行中",
-                            0,
-                            now="補畫遠窗",
-                            rest="近／超近窗",
-                            fill_sec=20.0,
-                        ),
-                        parse_mode="HTML",
-                    )
-                far2 = await self._retry_market_far_paint()
-                if self._market_teach_path_ok(far2):
-                    kit = dict(kit or {})
-                    kit["far_path"] = far2
-
-            trio_caps = self._market_teach_trio_caps()
-            trio_items = []
-            missing = []
-            for key, label in trio_caps:
-                path = str(kit.get(key) or "").strip()
-                if self._market_teach_path_ok(path):
-                    trio_items.append((key, label, path))
-                else:
-                    missing.append(label)
-
-            if "遠窗" in missing or not trio_items or trio_items[0][0] != "far_path":
-                await message.reply_text(
-                    "大盤教具第1張遠窗這次沒好（上費半／中加權／下量），"
-                    "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
-                )
-                return
-
-            thesis = str(kit.get("thesis") or "").strip()
+            # 層級一句用同一 pack，不准再 _build_live_pack
             ladder_line = ""
             ladder_now = ""
             try:
-                from biaoke_level_learn import _build_live_pack, _wave_now_ladder
-
-                pack_for_ladder = await asyncio.to_thread(_build_live_pack, self.db_path)
-                if thesis and not str((pack_for_ladder or {}).get("thesis") or "").strip():
-                    pack_for_ladder = dict(pack_for_ladder or {})
-                    pack_for_ladder["thesis"] = thesis
-                if kit.get("as_of") and not (pack_for_ladder or {}).get("chart_as_of"):
-                    pack_for_ladder = dict(pack_for_ladder or {})
-                    pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
-                ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
+                ladder = _wave_now_ladder(pack or {"thesis": thesis})
                 ladder_now = str(ladder.get("now") or "").strip()
-                # caption 要清楚：層級鏈＋此刻整句；不准裁成幾乎沒意義的半句
                 bits_l = []
                 if ladder.get("one_line"):
                     bits_l.append(str(ladder["one_line"]).strip())
@@ -6917,15 +6876,12 @@ class WayneTelegramBot:
                 ladder_line = ""
                 ladder_now = ""
 
-            order_zh = "、".join(label for _k, label in trio_caps)
-            # 三張共用查詢當下台北時間（盤中活畫寫進圖戳；caption 也標，休市齊檔照樣有）
             try:
                 from zoneinfo import ZoneInfo
 
                 q_wall = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%m/%d %H:%M")
             except Exception:
                 q_wall = ""
-            # caption：張序＋查詢時＋層級／此刻；超近另標細浪①～⑤
             intro_bits = ["遠／近／超近・非買訊"]
             if q_wall:
                 intro_bits.append(f"查詢 {q_wall}（台北）")
@@ -6937,36 +6893,192 @@ class WayneTelegramBot:
                 intro_bits.append(str(thesis)[:160])
             if ladder_now and re.search(r"C3-3", ladder_now):
                 intro_bits.append(f"超近＝細浪①～⑤・此刻＝{ladder_now}")
-            if missing:
-                intro_bits.append(f"缺：{'、'.join(missing)}")
             trio_cap = "\n".join(intro_bits)[:900]
-            _ = order_zh  # 保留 trio 標籤來源；caption 不再複述
+            trio_caps = self._market_teach_trio_caps()
+            label_by_key = {k: lab for k, lab in trio_caps}
 
-            if wait_h and wait_h[0] is not None:
-                await self._safe_edit_text(
-                    wait_h[0],
-                    self._wait_bubble(
-                        "大盤圖進行中",
-                        0,
-                        now="送出遠／近／超近",
-                        rest="",
-                        fill_sec=15.0,
-                    ),
-                    parse_mode="HTML",
+            async with paint_lock:
+                # 1) 先畫遠窗（硬閘）
+                try:
+                    far_painted = await _paint_panel("far")
+                except asyncio.TimeoutError:
+                    logger.warning("大盤遠窗活畫逾時")
+                    far_painted = {}
+                except Exception:
+                    logger.exception("大盤遠窗活畫略過")
+                    far_painted = {}
+                far_path = str((far_painted or {}).get("far_path") or "")
+                if far_painted:
+                    thesis = str(far_painted.get("thesis") or thesis)[:180]
+                    as_of = str(far_painted.get("as_of") or as_of)
+                if not self._market_teach_path_ok(far_path):
+                    far_path = str(stored.get("far_path") or "")
+                if not self._market_teach_path_ok(far_path):
+                    if wait_h and wait_h[0] is not None:
+                        await self._safe_edit_text(
+                            wait_h[0],
+                            self._wait_bubble(
+                                "大盤圖進行中",
+                                0,
+                                now="補畫遠窗",
+                                rest="近／超近窗",
+                                fill_sec=20.0,
+                            ),
+                            parse_mode="HTML",
+                        )
+                    far2 = await self._retry_market_far_paint()
+                    if self._market_teach_path_ok(far2):
+                        far_path = far2
+                if not self._market_teach_path_ok(far_path):
+                    await message.reply_text(
+                        "大盤教具第1張遠窗這次沒好（上費半／中加權／下量），"
+                        "先不送近窗以免順序錯。請稍後再按一次台股大盤。"
+                    )
+                    return
+
+                # 2) 開近窗 paint，同時送遠窗
+                near_fut = submit_mpl_paint(
+                    lambda: paint_open_day_hypothesis(
+                        self.db_path, force=True, panels="near", pack=pack or None
+                    )
                 )
+                if wait_h and wait_h[0] is not None:
+                    await self._safe_edit_text(
+                        wait_h[0],
+                        self._wait_bubble(
+                            "大盤圖進行中",
+                            0,
+                            now="送出遠窗・畫近窗",
+                            rest="超近窗",
+                            fill_sec=18.0,
+                        ),
+                        parse_mode="HTML",
+                    )
+                ok_far = await self._send_market_teach_one(
+                    message,
+                    far_path,
+                    caption="\n".join(
+                        [f"第1張・{label_by_key.get('far_path', '遠窗')}", trio_cap]
+                    )[:900],
+                    label=label_by_key.get("far_path", "遠窗"),
+                )
+                if ok_far:
+                    sent += 1
+                else:
+                    await message.reply_text(
+                        "大盤教具第1張遠窗送不出，先不送近／超近。請稍後再按一次。"
+                    )
+                    return
 
-            n_sent, failed = await self._send_market_teach_trio_album(
-                message, trio_items, caption=trio_cap, ladder_line=ladder_line
-            )
-            sent = int(n_sent or 0)
-            failed = list(failed or [])
-            if failed:
-                missing = list(dict.fromkeys([*missing, *failed]))
+                try:
+                    near_painted = await asyncio.wait_for(
+                        asyncio.wrap_future(near_fut),
+                        timeout=_CHART_RENDER_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("大盤近窗活畫逾時")
+                    near_painted = {}
+                except Exception:
+                    logger.exception("大盤近窗活畫略過")
+                    near_painted = {}
+                near_path = str((near_painted or {}).get("near_path") or "")
+                if not self._market_teach_path_ok(near_path):
+                    near_path = str(stored.get("near_path") or "")
 
-            # 外圍對照不再附送（飆大／波浪位階都只出遠／近／超近三張）
+                # 3) 開超近 paint，同時送近窗
+                micro_fut = submit_mpl_paint(
+                    lambda: paint_open_day_hypothesis(
+                        self.db_path, force=True, panels="micro", pack=pack or None
+                    )
+                )
+                missing = []
+                if self._market_teach_path_ok(near_path):
+                    if wait_h and wait_h[0] is not None:
+                        await self._safe_edit_text(
+                            wait_h[0],
+                            self._wait_bubble(
+                                "大盤圖進行中",
+                                0,
+                                now="送出近窗・畫超近",
+                                rest="",
+                                fill_sec=15.0,
+                            ),
+                            parse_mode="HTML",
+                        )
+                    near_bits = [f"第2張・{label_by_key.get('near_path', '近窗')}"]
+                    if q_wall:
+                        near_bits.append(f"查詢 {q_wall}（台北）")
+                    near_bits.extend(
+                        [
+                            ln.strip()
+                            for ln in str(ladder_line or "").splitlines()
+                            if ln.strip()
+                        ][:3]
+                    )
+                    ok_near = await self._send_market_teach_one(
+                        message,
+                        near_path,
+                        caption="\n".join(near_bits)[:900],
+                        label=label_by_key.get("near_path", "近窗"),
+                    )
+                    if ok_near:
+                        sent += 1
+                    else:
+                        missing.append(label_by_key.get("near_path", "近窗"))
+                else:
+                    missing.append(label_by_key.get("near_path", "近窗"))
+
+                try:
+                    micro_painted = await asyncio.wait_for(
+                        asyncio.wrap_future(micro_fut),
+                        timeout=_CHART_RENDER_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("大盤超近活畫逾時")
+                    micro_painted = {}
+                except Exception:
+                    logger.exception("大盤超近活畫略過")
+                    micro_painted = {}
+                micro_path = str((micro_painted or {}).get("micro_path") or "")
+                if not self._market_teach_path_ok(micro_path):
+                    micro_path = str(stored.get("micro_path") or "")
+
+                if self._market_teach_path_ok(micro_path):
+                    micro_bits = [f"第3張・{label_by_key.get('micro_path', '超近窗')}"]
+                    if q_wall:
+                        micro_bits.append(f"查詢 {q_wall}（台北）")
+                    micro_bits.extend(
+                        [
+                            ln.strip()
+                            for ln in str(ladder_line or "").splitlines()
+                            if ln.strip()
+                        ][:3]
+                    )
+                    micro_bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
+                    ok_micro = await self._send_market_teach_one(
+                        message,
+                        micro_path,
+                        caption="\n".join(micro_bits)[:900],
+                        label=label_by_key.get("micro_path", "超近窗"),
+                    )
+                    if ok_micro:
+                        sent += 1
+                    else:
+                        missing.append(label_by_key.get("micro_path", "超近窗"))
+                else:
+                    missing.append(label_by_key.get("micro_path", "超近窗"))
+
+                kit = {
+                    "far_path": far_path,
+                    "near_path": near_path,
+                    "micro_path": micro_path,
+                    "thesis": thesis,
+                    "as_of": as_of,
+                }
+
             if sent <= 0:
                 await message.reply_text(fail_msg)
-            elif missing and len([x for x in trio_items if x[1] not in failed]) < 3:
+            elif missing:
                 try:
                     await message.reply_text(
                         f"大盤教具應一次三張（遠／近／超近），這次缺：{'、'.join(missing)}。"
@@ -6974,10 +7086,13 @@ class WayneTelegramBot:
                     )
                 except Exception:
                     pass
+            _ = kit  # 路徑已送；保留合併語意給後續擴充
         except Exception:
             logger.exception("大盤教具圖失敗")
             await message.reply_text(fail_msg)
         finally:
+            if pack_task is not None and not pack_task.done():
+                pack_task.cancel()
             await self._stop_plain_wait(*wait_h)
 
     async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:

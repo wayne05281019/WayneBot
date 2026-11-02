@@ -98,11 +98,12 @@ def test_market_wave_sends_numbered_trio_far_first(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr("biaoke_level_learn.paint_open_day_hypothesis", _paint)
+    monkeypatch.setattr("biaoke_level_learn.prepare_wave_live_pack", lambda *_a, **_k: {
+        "thesis": "fresh",
+        "chart_as_of": "20261030",
+        "query_at": "2026-10-30T12:00:00+08:00",
+    })
     monkeypatch.setattr("wayne_navigator.submit_mpl_paint", _submit)
-    monkeypatch.setattr(
-        "biaoke_level_learn._build_live_pack",
-        lambda *_a, **_k: {"thesis": "fresh", "chart_as_of": "20261030"},
-    )
     monkeypatch.setattr(
         "biaoke_level_learn._wave_now_ladder",
         lambda *_a, **_k: {"one_line": "層級一句", "now_line": ""},
@@ -184,12 +185,24 @@ def test_market_wave_blocks_near_if_far_missing(tmp_path, monkeypatch):
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda: True)
     monkeypatch.setattr("config.skip_chart_warmup", lambda: False)
     monkeypatch.setattr(
-        "biaoke_level_learn._build_live_pack",
+        "biaoke_level_learn.prepare_wave_live_pack",
         lambda *_a, **_k: {"thesis": "t"},
     )
     monkeypatch.setattr(
         "biaoke_level_learn._wave_now_ladder",
         lambda *_a, **_k: {"one_line": "", "now_line": ""},
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn.paint_open_day_hypothesis",
+        lambda *_a, **_k: {
+            "ok": True,
+            "near_path": str(near),
+            "far_path": "",
+            "micro_path": str(micro),
+            "us_path": "",
+            "thesis": "t",
+            "as_of": "20261031",
+        },
     )
 
     msg = MagicMock()
@@ -214,28 +227,49 @@ def test_market_page_sends_teach_before_session_cards():
 
 
 def test_market_wave_phone_paint_uses_trio_panels_only():
-    """話筒重渲只准 panels=trio：遠近超近，不准整包外圍＋TX60。"""
+    """話筒：prep-once＋遠→近→超近單窗 paint；send∥next；不准整包 full／外圍。"""
     import inspect
 
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
-    assert 'panels="trio"' in wave or "panels='trio'" in wave
+    assert "prepare_wave_live_pack" in wave
+    assert '_paint_panel("far")' in wave or "_paint_panel('far')" in wave
+    assert 'panels="near"' in wave or "panels='near'" in wave
+    assert 'panels="micro"' in wave or "panels='micro'" in wave
     assert "force=True" in wave
     assert "_market_teach_paint_lock" in wave
-    # 話筒／波浪位階一律 force 重渲；不准再卡 live_on／齊檔才 paint
-    assert "live_on or not stored_ok" not in wave
-    assert "force=True, panels=" in wave or 'force=True, panels=' in wave
-    # 話筒熱路徑不准默認 full／不帶 panels
-    assert "paint_open_day_hypothesis(\n" in wave or "paint_open_day_hypothesis(" in wave
+    # 送遠時已開近窗 paint（send∥paint）
+    assert wave.index('panels="near"') < wave.index("_send_market_teach_one")
+    assert wave.index('panels="near"') < wave.index('panels="micro"')
+    assert "submit_mpl_paint" in wave
     assert 'panels="full"' not in wave and "panels='full'" not in wave
-    from biaoke_level_learn import paint_open_day_hypothesis, maybe_paint_open_day_after_ingest
+    assert 'panels="trio"' not in wave and "panels='trio'" not in wave
+    from biaoke_level_learn import (
+        paint_open_day_hypothesis,
+        maybe_paint_open_day_after_ingest,
+        prepare_wave_live_pack,
+    )
 
     src = inspect.getsource(paint_open_day_hypothesis)
     assert 'panels: str = "full"' in src
     assert 'mode == "full"' in src
     assert "_render_us_compare_dark" in src
     assert "_render_tx60_png" in src
-    assert "_ensure_teach_index_bars" in src
+    assert "prepare_wave_live_pack" in inspect.getsource(prepare_wave_live_pack)
+    assert "_ensure_teach_index_bars" in inspect.getsource(prepare_wave_live_pack)
     # 排程／ingest 鉤子仍預設 full（不傳 panels）
     maybe = inspect.getsource(maybe_paint_open_day_after_ingest)
     assert "paint_open_day_hypothesis(db_path, force=force)" in maybe
     assert 'panels="trio"' not in maybe
+
+
+def test_market_wave_send_overlaps_next_paint_contract():
+    """遠送出前已 submit 近窗；近送出前已 submit 超近；仍單 worker。"""
+    import inspect
+
+    from wayne_navigator import _MPL_PAINT_EXECUTOR
+
+    wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
+    # 近窗 fut 在送遠窗之前；超近在近窗 panels 之後
+    assert wave.index('panels="near"') < wave.index("_send_market_teach_one")
+    assert wave.index('panels="near"') < wave.index('panels="micro"')
+    assert getattr(_MPL_PAINT_EXECUTOR, "_max_workers", 1) == 1
