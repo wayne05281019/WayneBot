@@ -1967,6 +1967,8 @@ def _futures_day_night(db_path: str) -> Dict[str, Any]:
     我估隔夜順位：TX夜 vs 前日日盤最直接；TE夜交叉電子氣氛。不准假數。
     """
     out: Dict[str, Any] = {"levels": {}, "note": "", "tx_night_pct": None, "te_night_pct": None}
+    if not db_path or not os.path.isfile(db_path):
+        return out
     conn = sqlite3.connect(db_path, timeout=15.0)
     try:
         def _last(sym: str, session: str):
@@ -1978,6 +1980,9 @@ def _futures_day_night(db_path: str) -> Dict[str, Any]:
 
         tx_n, tx_d = _last("TX", "night"), _last("TX", "regular")
         te_n, te_d = _last("TE", "night"), _last("TE", "regular")
+    except sqlite3.OperationalError:
+        # 煙霧／空庫沒 futures_daily：不准炸 pack；有正式庫再寫夜盤注
+        return out
     finally:
         conn.close()
     parts: List[str] = []
