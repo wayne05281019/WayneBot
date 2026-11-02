@@ -7372,10 +7372,9 @@ class WayneTelegramBot:
         kind: str = "",
         gen: int = 0,
     ) -> None:
-        """空白按飆大：每次強制活畫遠／近／超近三張（盤中疊最新加權顯示柱），再送圖。
+        """空白按飆大：只送遠窗一張（上費半／下加權），加速出圖。
 
-        超級近窗＝C 內細浪①～⑤＋C3-3-x（對齊附圖三）；不准再附外圍對照第四張。
-        另色演化只在前提不同才畫。不是買訊。
+        近／超近改走「波浪位階」鍵一次三張。不准再附外圍第4張。不是買訊。
         """
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return
@@ -7386,26 +7385,28 @@ class WayneTelegramBot:
             return
         kit: dict = {}
         try:
+            # panels=far：只渲費半上／加權下，省近／超近兩張時間
             painted = await asyncio.wait_for(
                 asyncio.to_thread(
-                    paint_open_day_hypothesis, self.db_path, force=True
+                    paint_open_day_hypothesis,
+                    self.db_path,
+                    force=True,
+                    panels="far",
                 ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )
             if painted and painted.get("ok"):
                 kit = {
                     "far_path": str(painted.get("far_path") or ""),
-                    "near_path": str(painted.get("near_path") or ""),
-                    "micro_path": str(painted.get("micro_path") or ""),
                     "thesis": str(painted.get("thesis") or "")[:180],
                     "slot_id": str(painted.get("slot_id") or ""),
                     "as_of": str(painted.get("as_of") or ""),
                 }
         except asyncio.TimeoutError:
-            logger.warning("飆大教具活畫逾時")
+            logger.warning("飆大遠窗活畫逾時")
         except Exception:
-            logger.exception("飆大教具活畫略過")
-        if not any(kit.get(k) for k in ("far_path", "near_path", "micro_path")):
+            logger.exception("飆大遠窗活畫略過")
+        if not str(kit.get("far_path") or "").strip():
             try:
                 kit = await asyncio.to_thread(latest_teach_kit, self.db_path) or {}
             except Exception:
@@ -7413,15 +7414,13 @@ class WayneTelegramBot:
                 kit = {}
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return
-        # 只送三張：遠／近／超近。外圍對照（us_path）多餘，不准再出第4張。
-        caps = (
-            ("far_path", "第1張・遠窗"),
-            ("near_path", "第2張・近窗"),
-            ("micro_path", "第3張・超近窗"),
-        )
+        path = str(kit.get("far_path") or "").strip()
+        if not path or not os.path.isfile(path):
+            return
+        if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
+            return
         thesis = str(kit.get("thesis") or "").strip()
         ladder_line = ""
-        ladder_now = ""
         try:
             from biaoke_level_learn import _build_live_pack, _wave_now_ladder
 
@@ -7433,8 +7432,6 @@ class WayneTelegramBot:
                 pack_for_ladder = dict(pack_for_ladder or {})
                 pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
             ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
-            ladder_now = str(ladder.get("now") or "").strip()
-            # 飆大圖說：層級鏈＋此刻；口語正文另在文字泡，這裡不塞整段結構讀法
             bits_l = []
             if ladder.get("one_line"):
                 bits_l.append(str(ladder["one_line"]).strip())
@@ -7446,46 +7443,30 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("教具層級一句略過")
             ladder_line = ""
-            ladder_now = ""
+        bits = ["遠窗・上費半／下加權・非買訊", "近／超近請按「波浪位階」"]
+        if ladder_line:
+            bits.extend(ln.strip() for ln in ladder_line.splitlines() if ln.strip())
+        elif thesis:
+            bits.append(thesis[:160])
+        cap = "\n".join(bits)[:900]
         kb = self._biaoke_reply_menu(uid)
-        for key, head in caps:
-            if actor and kind and not self._actor_op_alive(actor, kind, gen):
-                return
-            path = str(kit.get(key) or "").strip()
-            if not path or not os.path.isfile(path):
-                continue
-            if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
-                continue
-            bits = [head]
-            if ladder_line:
-                bits.extend(
-                    ln.strip() for ln in ladder_line.splitlines() if ln.strip()
-                )
-            elif thesis:
-                bits.append(thesis[:160])
-            if key == "micro_path":
-                if ladder_now:
-                    bits.append(f"超近＝細浪①～⑤・此刻＝{ladder_now}")
-                else:
-                    bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
-            cap = "\n".join(bits)[:900]
+        try:
             try:
-                try:
-                    chat = getattr(message, "chat", None)
-                    if chat is not None and hasattr(chat, "send_action"):
-                        await chat.send_action("upload_photo")
-                except Exception:
-                    pass
-                with open(path, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=cap[:900],
-                        reply_markup=kb,
-                    )
-            except asyncio.CancelledError:
-                raise
+                chat = getattr(message, "chat", None)
+                if chat is not None and hasattr(chat, "send_action"):
+                    await chat.send_action("upload_photo")
             except Exception:
-                logger.exception("飆大教具圖送出略過 key=%s", key)
+                pass
+            with open(path, "rb") as f:
+                await message.reply_photo(
+                    photo=f,
+                    caption=cap[:900],
+                    reply_markup=kb,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("飆大遠窗圖送出略過")
 
     async def _send_biaoke_advice_charts(
         self,

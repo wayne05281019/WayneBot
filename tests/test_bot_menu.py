@@ -118,8 +118,9 @@ def test_image_surfaces_wait_vanishes_after_photo():
     teach = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
     assert "force=True" in teach
     assert "paint_open_day_hypothesis" in teach
+    assert "panels=\"far\"" in teach or "panels='far'" in teach
     page = inspect.getsource(WayneTelegramBot._send_market_page)
-    # v34：大盤不再附送教具；波浪位階／飆大空白才出三張
+    # v34：大盤不再附送教具；波浪位階出三張；飆大空白只出遠窗
     assert "_send_market_wave_charts" not in page
     assert "_send_market_session_cards" in page
     assert "_send_market_kline" not in page

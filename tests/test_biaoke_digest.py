@@ -1076,13 +1076,17 @@ def test_focus_oral_reply_context_and_no_expired_monday():
     assert "回「PCB還能不能抱」" in html
 
 
-def test_biaoke_teach_charts_only_three_no_us_outer():
-    """空白飆大只送遠／近／超近；不准再出外圍對照第4張。"""
+def test_biaoke_teach_charts_only_far_no_us_outer():
+    """空白飆大只送遠窗一張（費半上／加權下）；近／超近改波浪位階。"""
     import inspect
 
     src = inspect.getsource(WayneTelegramBot._send_biaoke_teach_charts)
     assert '("us_path"' not in src
-    assert "外圍對照" in src  # 註解說明不准附
-    assert "micro_path" in src and "far_path" in src and "near_path" in src
+    assert "panels=\"far\"" in src or "panels='far'" in src
+    assert "far_path" in src
+    assert "micro_path" not in src or "近／超近請按" in src
+    assert "near_path" not in src or "波浪位階" in src
+    assert "上費半" in src and "下加權" in src
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert "外圍對照另張" not in wave
+    assert "micro_path" in wave and "far_path" in wave and "near_path" in wave
