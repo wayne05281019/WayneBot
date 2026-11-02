@@ -1,0 +1,120 @@
+{
+  "written_at": "2026-11-03T05:59:01.839230+08:00",
+  "tz": "Asia/Taipei",
+  "seq": "F0",
+  "not_buy_signal": true,
+  "tracks": [
+    {
+      "track": "teacher_market_confront",
+      "pot": "他說／實驗室結局",
+      "n_counted": 8,
+      "n_decided": 8,
+      "outcome_counts": {
+        "偏": 4,
+        "對": 1,
+        "他改口": 3
+      },
+      "hit_rate_among_decided": 0.125,
+      "gate_n20": false,
+      "replace_live": false,
+      "note": "勝率不准與其他軌混；未過閘不准換現況編碼"
+    },
+    {
+      "track": "mine_fib_dc_seq_c",
+      "pot": "DC→我估",
+      "n_counted": 8,
+      "n_decided": 0,
+      "outcome_counts": {
+        "未完": 8
+      },
+      "hit_rate_among_decided": null,
+      "gate_n20": false,
+      "replace_live": false,
+      "note": "勝率不准與其他軌混；未過閘不准換現況編碼"
+    },
+    {
+      "track": "lab_barek_seq_d",
+      "pot": "實驗室",
+      "n_counted": 8,
+      "n_decided": 0,
+      "outcome_counts": {
+        "未完": 8
+      },
+      "hit_rate_among_decided": null,
+      "gate_n20": false,
+      "replace_live": false,
+      "note": "勝率不准與其他軌混；未過閘不准換現況編碼"
+    },
+    {
+      "track": "teacher_named_seq_e",
+      "pot": "他說＋實驗室報酬",
+      "n_counted": 10,
+      "n_decided": 10,
+      "outcome_counts": {
+        "對": 10
+      },
+      "hit_rate_among_decided": 1.0,
+      "gate_n20": false,
+      "replace_live": false,
+      "note": "勝率不准與其他軌混；未過閘不准換現況編碼"
+    }
+  ],
+  "rule_era_cuts": [
+    {
+      "from": "2023-12",
+      "tag": "裸K／不看均線指標",
+      "note": "2023-12-21 起"
+    },
+    {
+      "from": "2025-06",
+      "tag": "量先價行可重複句",
+      "note": "2025-06-05"
+    },
+    {
+      "from": "2025-11",
+      "tag": "台積量價否決權強化",
+      "note": "2025-11-21 檢討"
+    },
+    {
+      "from": "2026-02",
+      "tag": "三買點＋產業波浪量價",
+      "note": "2026-02"
+    },
+    {
+      "from": "2026-04",
+      "tag": "細微波四步教材大綱",
+      "note": "2026-04-07"
+    },
+    {
+      "from": "2026-07",
+      "tag": "夜盤15分＋下降壓＋台積抓A低",
+      "note": "2026-07"
+    }
+  ],
+  "era_label_n": 36,
+  "era_freq": {
+    "裸K／不看均線指標": 8,
+    "量先價行可重複句": 9,
+    "台積量價否決權強化": 3,
+    "三買點＋產業波浪量價": 3,
+    "夜盤15分＋下降壓＋台積抓A低": 12,
+    "細微波四步教材大綱": 1
+  },
+  "teach_replay_sample": {
+    "status": "skipped",
+    "reason": "教具遠／近／超近回放需出圖對齊當日照片欄；與實驗室分驗，本批不渲圖"
+  },
+  "phone_sync": {
+    "status": "blocked",
+    "reason": "能講的天未到；不准同步話筒說法"
+  },
+  "replace_gate": {
+    "rule": "n≥20 且贏該軌現況才換並再生下一版",
+    "any_track_ready": false,
+    "action": "none"
+  },
+  "anti_lookahead": {
+    "as_of_required": true,
+    "note": "各序 JSONL flags.as_of_cutoff；後續觸及／報酬分欄 post_as_of"
+  }
+}
