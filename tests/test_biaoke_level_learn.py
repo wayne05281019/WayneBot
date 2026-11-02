@@ -228,10 +228,12 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
     assert "_flash_spec_from_pivots" in src
-    # 遠窗縮圖必須在末日K右側留白溝（不准壓中段每天K）
-    assert "不准壓軸內每天縮圖K" in far_blk
-    assert "n_tw) + 0.6" in far_blk or "n_tw + 0.6" in far_blk
-    assert "_near_inset" in near_blk and "0.70" in near_blk
+    # 遠／近八浪縮圖＝超近同吋大小，右緣貼垂直黃虛線（最大量日）左側
+    assert "_eight_wave_inset_rect_left_of_vmax" in far_blk
+    assert "_eight_wave_inset_rect_left_of_vmax" in near_blk
+    assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
+    assert "_teach_eight_wave_inset_wh" in micro_blk
+    assert "_near_inset" in near_blk
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src

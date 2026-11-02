@@ -684,6 +684,10 @@ _TEACH_STAMP_EDGE = "#ffff00"
 _TEACH_STAMP_FACE = "#ffffff"
 _TEACH_STAMP_META = "#111111"
 _TEACH_STAMP_TEXT = "#111111"  # 相容舊讀；實畫走分段色
+# 八浪縮圖鎖超近窗實測大小（fig 15.6×9.6 → fraction）；遠／近換算同吋後放黃虛線左
+_TEACH_EIGHT_WAVE_INSET_REF_FIG = (15.6, 9.6)
+_TEACH_EIGHT_WAVE_INSET_W_FRAC = 0.221
+_TEACH_EIGHT_WAVE_INSET_H_FRAC = 0.194
 
 
 def _day_change_vs_prev(
@@ -800,6 +804,58 @@ def _fig_xy_from_axes_data(ax: Any, fig: Any, x_data: float, y_data: float) -> T
         return float(fx), float(fy)
     except Exception:
         return 0.5, 0.5
+
+
+def _teach_eight_wave_inset_wh(fig: Any) -> Tuple[float, float]:
+    """超近窗八浪縮圖同吋寬高 → 此 fig 的 fraction（遠／近／超近一模一樣大小）。"""
+    rw, rh = _TEACH_EIGHT_WAVE_INSET_REF_FIG
+    try:
+        fw, fh = fig.get_size_inches()
+    except Exception:
+        fw, fh = rw, rh
+    w_in = float(_TEACH_EIGHT_WAVE_INSET_W_FRAC) * float(rw)
+    h_in = float(_TEACH_EIGHT_WAVE_INSET_H_FRAC) * float(rh)
+    return (
+        max(0.10, w_in / max(float(fw), 0.1)),
+        max(0.08, h_in / max(float(fh), 0.1)),
+    )
+
+
+def _eight_wave_inset_rect_left_of_vmax(
+    ax: Any,
+    fig: Any,
+    *,
+    i_vmax: Optional[int],
+    ymin: float,
+    ymax: float,
+    n_bars: int,
+    gap_fig: float = 0.008,
+) -> Tuple[float, float, float, float]:
+    """與超近窗同寬同高；右緣貼垂直黃虛線（最大量日）左側，低空帶。"""
+    w, h = _teach_eight_wave_inset_wh(fig)
+    ys = max(float(ymax) - float(ymin), 1.0)
+    y_bot = float(ymin) + ys * 0.10
+    iv = int(i_vmax) if i_vmax is not None else max(0, int(n_bars) - 8)
+    fx_v, fy_bot = _fig_xy_from_axes_data(ax, fig, float(iv), y_bot)
+    left = float(fx_v) - float(gap_fig) - float(w)
+    bottom = float(fy_bot)
+    try:
+        pos = ax.get_position()
+        min_left = float(pos.x0) + 0.012
+        max_bottom = float(pos.y0) + float(pos.height) * 0.48 - float(h)
+        min_bottom = float(pos.y0) + 0.012
+    except Exception:
+        min_left, max_bottom, min_bottom = 0.04, 0.55, 0.08
+    if left < min_left:
+        left = min_left
+    if bottom > max_bottom:
+        bottom = max(min_bottom, max_bottom)
+    if bottom < min_bottom:
+        bottom = min_bottom
+    # 不准右緣跨過黃虛線
+    if left + w > float(fx_v) - float(gap_fig):
+        left = max(min_left, float(fx_v) - float(gap_fig) - float(w))
+    return (float(left), float(bottom), float(w), float(h))
 
 
 def _fig_rect_band_right(
@@ -4982,7 +5038,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     }
     # 先定 ylim 再釘浪名：lift／字級才對最終軸距，整盒不准蓋K
     ax.set_ylim(ymin, ymax)
-    # 遠窗八浪縮圖在軸右側外邊距（見文末），軸內不再留縮圖禁區
+    # 遠窗八浪縮圖＝超近同尺、黃虛線左側（見文末）
     _pin_pivot_name(
         ax,
         i5s,
@@ -5108,7 +5164,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             pack, n=n_axis, lows=c_seg_lows, tip_skip=tip_skip, bars=bars
         )
     )
-    # 右標必須停在八浪縮圖左框線外（縮圖更靠右下）；不准再外推去壓縮圖
+    # 右標在末日右側；八浪縮圖已改黃虛線左，不再跟右欄搶位
     x_right_col = float(n_axis) + 1.95
     try:
         x_right_col = max(x_right_col, float(tip.get("fut_x") or n_axis) + 0.35)
@@ -5403,17 +5459,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：末日K右側留白低帶（xlim 右欄溝），不准壓軸內每天縮圖K／主浪線
-    _ys = max(float(ymax) - float(ymin), 1.0)
-    _far_ins = _fig_rect_from_data_box(
+    # 八浪縮圖：超近窗同吋大小，右緣貼垂直黃虛線（最大量日）左側低空帶
+    _far_ins = _eight_wave_inset_rect_left_of_vmax(
         ax,
         fig,
-        x0=float(n_tw) + 0.6,
-        y0=float(ymin) + _ys * 0.12,
-        x1=float(n_axis) + 7.0,
-        y1=float(ymin) + _ys * 0.34,
-        min_w=0.10,
-        min_h=0.09,
+        i_vmax=i_vmax,
+        ymin=float(ymin),
+        ymax=float(ymax),
+        n_bars=n_tw,
     )
     _paint_eight_wave_inset(
         fig,
@@ -6101,14 +6154,15 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗縮圖：右下偏上空檔（離量欄、離黃戳、離主浪線）
-    _sy_hi = _fig_xy_from_axes_data(ax, fig, float(n) - 2.0, 39800.0)[1]
-    _sy_lo = _fig_xy_from_axes_data(ax, fig, float(n) - 2.0, 34800.0)[1]
-    if _sy_hi < _sy_lo:
-        _sy_hi, _sy_lo = _sy_lo, _sy_hi
-    _ins_bot = float(_sy_lo) + 0.01
-    _ins_h = max(0.12, min(0.155, float(_sy_hi) - _ins_bot - 0.018))
-    _near_inset = (0.70, _ins_bot, 0.165, _ins_h)
+    # 近窗縮圖：超近窗同吋大小，右緣貼垂直黃虛線（最大量日）左側
+    _near_inset = _eight_wave_inset_rect_left_of_vmax(
+        ax,
+        fig,
+        i_vmax=int(i_vmax) if i_vmax is not None else None,
+        ymin=float(ymin),
+        ymax=float(ymax),
+        n_bars=n,
+    )
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -6704,16 +6758,15 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ha="left",
         va="bottom",
     )
-    # 縮圖強制＝左框同底同高同寬（量測後原樣複製；不准單邊裁高）
+    # 縮圖：鎖超近基準吋（遠／近同尺）；左緣貼左框右外側、底與左框齊
     fig.canvas.draw()
     _renderer = fig.canvas.get_renderer()
     _bb = anchored.get_window_extent(_renderer)
     _inv = fig.transFigure.inverted()
     _lx0, _ly0 = _inv.transform((_bb.x0, _bb.y0))
     _lx1, _ly1 = _inv.transform((_bb.x1, _bb.y1))
+    _ins_w, _ins_h = _teach_eight_wave_inset_wh(fig)
     _ins_bot = float(_ly0)
-    _ins_h = max(0.12, float(_ly1) - float(_ly0))
-    _ins_w = max(0.14, float(_lx1) - float(_lx0))
     _ins_left = float(_lx1) + 0.010
     _paint_eight_wave_inset(
         fig,
