@@ -1,0 +1,16 @@
+{
+  "written_at": "2026-11-03T02:58:00.149820+08:00",
+  "tz": "Asia/Taipei",
+  "n_seed": 8,
+  "n_counted": 8,
+  "n_fib_ok": 8,
+  "n_ext1618_pass": 3,
+  "n_weekly_2330": 8,
+  "jsonl": "docs/expert_notes/飆客/decade_lab/seq_c_measure_latest.jsonl",
+  "md": "docs/expert_notes/飆客/decade_lab/seq_c_measure_latest.md",
+  "not_buy_signal": true,
+  "pot": "DC→我估",
+  "skipped": [
+    "dc_ending_diagonal_curriculum"
+  ]
+}

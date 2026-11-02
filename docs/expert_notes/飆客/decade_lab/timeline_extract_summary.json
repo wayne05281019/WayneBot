@@ -1,0 +1,14 @@
+{
+  "extracted_at": "2026-11-01T19:12:42.744282+08:00",
+  "tz": "Asia/Taipei",
+  "sources": [
+    "docs/expert_notes/飆客/knowhow.md",
+    "docs/expert_notes/飆客/backtest_18m.md"
+  ],
+  "n_total": 23,
+  "n_錯案": 11,
+  "n_改口": 12,
+  "n_硬句": 6,
+  "jsonl": "docs/expert_notes/飆客/decade_lab/timeline_wrong_revision_hard_latest.jsonl",
+  "note": "空代號不算；本檔是年表材料。不是買訊。"
+}

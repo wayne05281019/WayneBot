@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from mine_wave_rules import (
     EXT_RATIO,
+    alternation_2_4_hint,
     check_w1_w4_overlap,
     detect_extension_1618,
+    fib_extension_targets,
+    fib_retracement_levels,
     leading_diagonal_flags,
     lengths_from_pivots,
     price_ranges_overlap,
+    wave_equality_guide,
     wave_price_length,
 )
 
@@ -89,3 +93,31 @@ def test_lengths_from_pivots():
     # motive 1/3/5 only for extension gate in callers
     r = detect_extension_1618({"1": d["1"], "3": d["3"], "5": 50.0})
     assert r["pass"] is False  # 160/100=1.6 < 1.618
+
+
+def test_fib_retracement_bounce_and_pullback():
+    bounce = fib_retracement_levels(1000, 0, ratios=(0.382, 0.618), direction="bounce_from_low")
+    assert bounce["ok"] is True
+    assert abs(bounce["levels"]["0.382"] - 382.0) < 1e-9
+    assert abs(bounce["levels"]["0.618"] - 618.0) < 1e-9
+    pull = fib_retracement_levels(1000, 0, ratios=(0.382,), direction="pullback_from_high")
+    assert abs(pull["levels"]["0.382"] - 618.0) < 1e-9
+
+
+def test_fib_extension_equal_and_1618():
+    # start 100→end 200 span+100；自 200 投影
+    t = fib_extension_targets(100, 200, ratios=(1.0, 1.618))
+    assert t["ok"] is True
+    assert abs(t["targets"]["1"] - 300.0) < 1e-9
+    assert abs(t["targets"]["1.618"] - 361.8) < 1e-9
+
+
+def test_wave_equality_and_alternation():
+    eq = wave_equality_guide(100, 102, tol=0.05)
+    assert eq["equalish"] is True
+    alt = alternation_2_4_hint(0.3, 0.7)
+    assert alt["alternates"] is True
+    assert alt["w2_kind"] == "sharp"
+    assert alt["w4_kind"] == "flat_or_deep"
+    same = alternation_2_4_hint(0.6, 0.65)
+    assert same["alternates"] is False
