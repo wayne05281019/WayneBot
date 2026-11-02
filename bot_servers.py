@@ -7391,9 +7391,9 @@ class WayneTelegramBot:
             return
         # 只送三張：遠／近／超近。外圍對照（us_path）多餘，不准再出第4張。
         caps = (
-            ("far_path", "遠窗教具（波浪／切割大圖・非買訊）"),
-            ("near_path", "近窗教具（細微波／量價・非買訊）"),
-            ("micro_path", "超級近窗（C內細浪①～⑤・對齊他說・非買訊）"),
+            ("far_path", "第1張・遠窗"),
+            ("near_path", "第2張・近窗"),
+            ("micro_path", "第3張・超近窗"),
         )
         thesis = str(kit.get("thesis") or "").strip()
         ladder_line = ""
@@ -7408,9 +7408,8 @@ class WayneTelegramBot:
                 pack_for_ladder = dict(pack_for_ladder or {})
                 pack_for_ladder["chart_as_of"] = str(kit.get("as_of") or "")
             ladder = _wave_now_ladder(pack_for_ladder or {"thesis": thesis})
-            ladder_line = str(ladder.get("one_line") or "")
-            if ladder.get("now_line"):
-                ladder_line = f"{ladder_line}\n{ladder['now_line']}".strip()
+            # 只留一層級句，不准再跟 now_line 疊成牆
+            ladder_line = str(ladder.get("one_line") or ladder.get("chain") or "").strip()
             if not thesis:
                 thesis = str((pack_for_ladder or {}).get("thesis") or "").strip()
         except Exception:
@@ -7425,13 +7424,12 @@ class WayneTelegramBot:
                 continue
             if not self._png_looks_ok(path, min_bytes=8_000, min_w=480, min_h=280):
                 continue
-            # caption：頭＋他說現在層級（大→小）；一眼看到走到哪一層小波
             bits = [head]
             if ladder_line:
-                bits.append(ladder_line)
+                bits.append(ladder_line[:120])
             elif thesis:
-                bits.append(thesis)
-            cap = "\n".join(bits)[:900]
+                bits.append(thesis[:120])
+            cap = "\n".join(bits)[:400]
             try:
                 try:
                     chat = getattr(message, "chat", None)
