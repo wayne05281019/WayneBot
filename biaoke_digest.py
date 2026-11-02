@@ -372,6 +372,9 @@ def _scrub_expired_forward(
         bit = bit.strip()
         if not bit:
             return False
+        # 「上星期／上週四」＝回顧已發生，不是前瞻；不准當過期句整段刪掉
+        if re.search(r"上(星期|個星期|週|個週|周|個周)", bit):
+            return True
         if not _FWD_TRIGGER.search(bit):
             return True
         return not _forward_expired(
