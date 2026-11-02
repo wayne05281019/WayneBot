@@ -55,6 +55,10 @@ def test_lookup_gc_once_after_all_pngs():
     assert src.index("create_task(_vol_item())") < gc_at
     assert src.index("ensure_task = asyncio.create_task") < pair_at
     assert src.index("struct_prep_task = asyncio.create_task") < pair_at
+    # 營收 ensure 必須在介紹 paint 前開（與 MIS／官方量重疊）
+    entry = inspect.getsource(WayneTelegramBot._send_card_to)
+    assert "_schedule_lookup_fund_ensure" in entry
+    assert "fund_task" in src
 
 
 def test_decision_card_quick_shares_lookup_timeouts():

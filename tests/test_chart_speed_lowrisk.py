@@ -89,6 +89,27 @@ def test_lookup_card_glance_try_memo_before_paint_queue():
     assert 0 < struct_warm < struct_paint_m.start()
 
 
+def test_lookup_fund_ensure_overlaps_before_glance():
+    """營收 ensure 進查股就開，介紹 memo／paint 只等結果、不准再同步重抓。"""
+    from bot_servers import WayneTelegramBot
+    from wayne_navigator import render_first_glance_png, try_glance_memo
+
+    entry = inspect.getsource(WayneTelegramBot._send_card_to)
+    locked = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+    assert "_schedule_lookup_fund_ensure" in entry
+    assert "fund_task=early_fund" in entry
+    assert "_await_fund_ensure" in locked
+    assert "fundamentals_ready=fund_ok" in locked
+    # memo／paint 前必須先 await fund
+    assert locked.index("_await_fund_ensure") < locked.index("try_glance_memo")
+    glance_src = inspect.getsource(try_glance_memo)
+    paint_src = inspect.getsource(render_first_glance_png)
+    assert "fundamentals_ready" in glance_src
+    assert "fundamentals_ready" in paint_src
+    assert "if not fundamentals_ready:" in glance_src
+    assert "if not fundamentals_ready:" in paint_src
+
+
 def test_try_lookup_structure_memo_hits_without_paint(tmp_path):
     from three_in_one_chart import (
         render_lookup_structure_result,
