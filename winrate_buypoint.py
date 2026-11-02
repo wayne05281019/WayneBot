@@ -934,8 +934,16 @@ def render_page_pairs(
     回傳與 rows 同序的 (vz_path, card_path, caption_name)；失敗格空字串。
     同 as_of＋SCAN_KIND 的官方日圖跨人共用磁碟快取；uid 只影響工作檔名，不拆內容。
     """
-    from vol_zone_chart import prepare_volume_zone, render_volume_zone_result
-    from wayne_navigator import render_decision_card_png, run_mpl_paint
+    from vol_zone_chart import (
+        prepare_volume_zone,
+        render_volume_zone_result,
+        try_lookup_vol_memo,
+    )
+    from wayne_navigator import (
+        render_decision_card_png,
+        run_mpl_paint,
+        try_decision_card_memo,
+    )
 
     charts = charts_dir or os.path.join(os.path.dirname(db_path) or ".", "charts")
     os.makedirs(charts, exist_ok=True)
@@ -944,6 +952,15 @@ def render_page_pairs(
     cache_dir = _pair_cache_dir(charts, day) if day else ""
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
+    # 盤中：不准吃／寫當日收盤磁碟快取（會假即時）；休市仍走 wr_pair_cache 加速
+    live_on = False
+    try:
+        from live_quote import is_live_merge_window
+
+        live_on = bool(is_live_merge_window())
+    except Exception:
+        live_on = False
+    use_disk = bool(reuse_cache and cache_dir and not live_on)
 
     jobs: List[Dict[str, Any]] = []
     for row in rows or []:
@@ -958,7 +975,7 @@ def render_page_pairs(
         vz_work = os.path.join(charts, f"{sid}_wr_vz_{safe_uid}.jpg")
         card_work = os.path.join(charts, f"{sid}_wr_card_{safe_uid}.jpg")
         cvz = ccard = ""
-        if reuse_cache and cache_dir:
+        if use_disk:
             cvz, ccard = _cache_pair_paths(cache_dir, sid)
         jobs.append(
             {
@@ -982,7 +999,7 @@ def render_page_pairs(
             continue
         cvz, ccard = job["cache_vz"], job["cache_card"]
         if (
-            reuse_cache
+            use_disk
             and _cache_file_ok(cvz)
             and _cache_file_ok(ccard, min_bytes=8_000)
         ):
@@ -997,7 +1014,7 @@ def render_page_pairs(
 
     # 冷路徑串行 paint：壓力區與高低卡不准執行緒重疊搶 FreeType
     #（#489 曾讓「下一檔壓區∥上一檔卡」互踩，查股上詮／大立光等同業列多的圖較易中）。
-    # 整頁加速靠磁碟 wr_pair_cache，不靠畫布並行。
+    # 整頁加速靠磁碟 wr_pair_cache（休市）＋ memo；盤中疊價不准寫進日快取。
     from wayne_navigator import NavigatorEngine
 
     eng = NavigatorEngine(db_path)
@@ -1007,7 +1024,10 @@ def render_page_pairs(
         card: Dict[str, Any] = {}
         try:
             card = eng.get_decision_card(
-                sid, lookback=20, merge_live=False, live_quote=None
+                sid,
+                lookback=20,
+                merge_live=bool(live_on),
+                live_quote=None,
             ) or {}
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
@@ -1033,40 +1053,57 @@ def render_page_pairs(
                 db_path,
                 job["vz_work"],
             )
-            nav_signal_work = None
-            if pack:
-                try:
-                    from wayne_navigator import _load_ohlc
-
-                    nav_signal_work = _load_ohlc(sid, db_path, 180)
-                except Exception:
-                    logger.debug("勝率買點導航柱預載略過 code=%s", sid, exc_info=True)
-                    nav_signal_work = None
-            vpath, _cap = run_mpl_paint(
-                render_volume_zone_result,
-                sid,
-                name,
-                db_path,
+            warm_vz = try_lookup_vol_memo(
+                pack,
                 job["vz_work"],
                 card=card or None,
-                with_nav_signals=True,
-                with_ma5_ma10=True,  # 與查股／壓撐同一新臉（5／10／月／季）
-                pack=pack,
-                nav_signal_work=nav_signal_work,
+                db_path=db_path,
             )
+            if warm_vz and warm_vz[0]:
+                vpath = str(warm_vz[0] or "")
+            else:
+                nav_signal_work = None
+                if pack:
+                    try:
+                        from wayne_navigator import _load_ohlc
+
+                        nav_signal_work = _load_ohlc(sid, db_path, 180)
+                    except Exception:
+                        logger.debug(
+                            "勝率買點導航柱預載略過 code=%s", sid, exc_info=True
+                        )
+                        nav_signal_work = None
+                vpath, _cap = run_mpl_paint(
+                    render_volume_zone_result,
+                    sid,
+                    name,
+                    db_path,
+                    job["vz_work"],
+                    card=card or None,
+                    with_nav_signals=True,
+                    with_ma5_ma10=True,  # 與查股／壓撐同一新臉（5／10／月／季）
+                    pack=pack,
+                    nav_signal_work=nav_signal_work,
+                )
         except Exception:
             logger.exception("勝率買點壓力區失敗 code=%s", sid)
             vpath = ""
         cpath = ""
         if card:
             try:
-                cpath = str(
-                    run_mpl_paint(render_decision_card_png, card, job["card_work"]) or ""
-                )
+                cpath = try_decision_card_memo(card, job["card_work"]) or ""
+                if not cpath:
+                    cpath = str(
+                        run_mpl_paint(
+                            render_decision_card_png, card, job["card_work"]
+                        )
+                        or ""
+                    )
             except Exception:
                 logger.exception("勝率買點決策卡 PNG 失敗 code=%s", sid)
                 cpath = ""
-        if reuse_cache and cache_dir:
+        # 盤中即時臉不准寫進日快取（會毒跨人／下一次假收）
+        if use_disk and not (isinstance(card, dict) and card.get("is_live")):
             if _cache_file_ok(vpath):
                 _copy_into(vpath, job["cache_vz"])
             if _cache_file_ok(cpath, min_bytes=8_000):

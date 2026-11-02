@@ -157,11 +157,28 @@ def test_scenario_try_memo_before_paint_in_bot():
 
 
 def test_lookup_and_vol_memo_ttl_at_least_ninety():
+    import scenario_forecast_chart as sf
     import vol_zone_chart as vz
     import wayne_navigator as wn
 
     assert float(wn._LOOKUP_RENDER_TTL_SEC) >= 90.0
     assert float(vz._VZ_RENDER_TTL_SEC) >= 90.0
+    # 加速：同指紋可留更久；現價進指紋，變了仍 miss
+    assert float(wn._LOOKUP_RENDER_TTL_SEC) >= 180.0
+    assert float(vz._VZ_RENDER_TTL_SEC) >= 180.0
+    assert float(sf._SF_RENDER_TTL_SEC) >= 180.0
+
+
+def test_try_chips_memo_before_paint_in_bot():
+    from bot_servers import WayneTelegramBot
+
+    chips_src = inspect.getsource(WayneTelegramBot._send_chips_to)
+    assert "try_chips_memo" in chips_src
+    warm = chips_src.find("try_chips_memo")
+    paint = chips_src.find("submit_mpl_paint")
+    assert 0 < warm < paint
+    trio = inspect.getsource(WayneTelegramBot._send_pressure_stock_trio)
+    assert "try_chips_memo" in trio
 
 
 def test_market_session_cards_keep_progress_bubble():

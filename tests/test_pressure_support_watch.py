@@ -352,6 +352,13 @@ def test_pressure_bot_paths_share_nav_volzone_layout():
     assert "pressure_card_html" in src
     assert "_pressure_section_keyboard" in src
     assert "tag_label" in trio
+    # 三張：盤中疊價＋memo；名單：prepare＋memo（仍不准整頁 live 洗 MIS）
+    assert "merge_live=True" in trio
+    assert "_prefetch_mis_quote" in trio
+    assert "try_decision_card_memo" in trio
+    assert "try_lookup_vol_memo" in trio
+    assert "prepare_volume_zone" in src
+    assert "try_lookup_vol_memo" in src
     tio = open("three_in_one_chart.py", encoding="utf-8").read()
     assert "with_nav_signals=True" in tio
     assert "render_lookup_structure_result" in bot_src
