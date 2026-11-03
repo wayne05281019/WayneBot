@@ -120,11 +120,13 @@ def test_winrate_job_runs_ai_desk_after_roster():
     from main_runner import MainRunner
 
     wr = inspect.getsource(MainRunner.run_winrate_buypoint)
+    desk = inspect.getsource(MainRunner._run_ai_desk)
     assert "save_winrate_roster" in wr
     assert "_run_ai_desk" in wr
-    assert "_ai_desk_has_buy_fills" in wr
-    # 落檔後立刻跑；略過重掃時也要補成交
+    # 落檔後立刻跑；已 BUY 閘改在 _run_ai_desk 按人 skip_new_buys
     assert wr.index("save_winrate_roster") < wr.rindex("_run_ai_desk")
+    assert "_ai_desk_has_buy_fills" in desk
+    assert "skip_new_buys" in desk
 
 
 def test_ai_desk_has_buy_fills_gate(tmp_path):
@@ -137,7 +139,7 @@ def test_ai_desk_has_buy_fills_gate(tmp_path):
     ensure_ai_fills_table(path)
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
-    assert runner._ai_desk_has_buy_fills("20261029") is False
+    assert runner._ai_desk_has_buy_fills("20261029", user_id="ai_1") is False
     persist_ai_fill(
         path,
         user_id="ai_1",
@@ -151,8 +153,65 @@ def test_ai_desk_has_buy_fills_gate(tmp_path):
         reason="t",
         bucket="winrate_active",
     )
+    assert runner._ai_desk_has_buy_fills("20261029", user_id="ai_1") is True
+    # 一人成交不准擋另一人
+    assert runner._ai_desk_has_buy_fills("20261029", user_id="ai_2") is False
+    assert runner._ai_desk_has_buy_fills("20261030", user_id="ai_1") is False
+    # 空 user_id＝後備任一戶
     assert runner._ai_desk_has_buy_fills("20261029") is True
-    assert runner._ai_desk_has_buy_fills("20261030") is False
+
+
+def test_dip_add_not_repeated_on_rerun(tmp_path, monkeypatch):
+    """晚間／boot 重跑：同日 dip_add 不准打第二筆。"""
+    from ai_trader import (
+        _ai_fill_logged_today,
+        ai_user_id,
+        ensure_ai_user,
+        run_ai_desk,
+    )
+    from portfolio_engine import PortfolioEngine
+    from screen_review import ensure_ai_fills_table, persist_ai_fill
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "dip.db")
+    ensure_core_schema(path)
+    ensure_ai_fills_table(path)
+    eng = PortfolioEngine(path)
+    uid = "9007"
+    user_id = ensure_ai_user(eng, uid)
+    as_of = "20261029"
+    persist_ai_fill(
+        path,
+        user_id=user_id,
+        as_of=as_of,
+        action="BUY",
+        stock_id="2330",
+        stock_name="台積電",
+        price=100.0,
+        shares=1000,
+        amount=100000,
+        reason="大跌加碼",
+        bucket="dip_add",
+    )
+    assert _ai_fill_logged_today(
+        path, user_id, as_of, action="BUY", bucket="dip_add"
+    )
+    monkeypatch.setattr("ai_trader.buys_allowed_on", lambda *_a, **_k: True)
+    monkeypatch.setattr("ai_trader.market_is_dip", lambda *_a, **_k: True)
+
+    def _cands(*_a, dip_only=False, **_k):
+        # 操作桶空；只測抄底重跑閘
+        if dip_only:
+            return [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}]
+        return []
+
+    monkeypatch.setattr("ai_trader._candidates", _cands)
+    monkeypatch.setattr(
+        "ai_trader._research_and_log_buy",
+        lambda *_a, **_k: {"reason": "大跌加碼：當日勝率買點"},
+    )
+    out = run_ai_desk(path, uid, {}, as_of, skip_new_buys=False)
+    assert out.get("bought") == []
 
 
 def test_core_candidates_are_winrate_roster_hard_gate(tmp_path):

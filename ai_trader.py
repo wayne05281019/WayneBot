@@ -870,6 +870,51 @@ def _trade_logged_today(
     return row is not None
 
 
+def _ai_fill_logged_today(
+    db_path: str,
+    user_id: str,
+    as_of: str,
+    *,
+    action: str = "BUY",
+    bucket: str = "",
+    stock_id: str = "",
+) -> bool:
+    """ai_fills 當日是否已有同向成交（可鎖桶／可鎖股）。補跑不准無限加碼。"""
+    day = str(as_of or "").replace("-", "")[:8]
+    uid = str(user_id or "").strip()
+    act = str(action or "").upper()
+    if not day or not uid or act not in ("BUY", "SELL"):
+        return False
+    try:
+        from screen_review import ensure_ai_fills_table
+
+        ensure_ai_fills_table(db_path)
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            sql = """
+                SELECT 1 FROM ai_fills
+                WHERE user_id=?
+                  AND REPLACE(CAST(as_of AS TEXT), '-', '')=?
+                  AND UPPER(action)=?
+                  AND COALESCE(shares,0) > 0
+            """
+            args: List[Any] = [uid, day, act]
+            b = str(bucket or "").strip()
+            if b:
+                sql += " AND bucket=?"
+                args.append(b)
+            sid = str(stock_id or "").strip()
+            if sid:
+                sql += " AND stock_id=?"
+                args.append(sid)
+            sql += " LIMIT 1"
+            return bool(conn.execute(sql, tuple(args)).fetchone())
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+
 def _drop_orphan_position(engine: PortfolioEngine, user_id: str, stock_id: str) -> None:
     """當日已記賣出卻還留倉 → 只清倉、不再入帳現金（防雙重入帳灌爆）。"""
     sid = str(stock_id or "").strip()
@@ -1225,7 +1270,10 @@ def run_ai_desk(
     telegram_uid: str,
     results: Dict[str, List[Dict[str, Any]]],
     as_of: str,
+    *,
+    skip_new_buys: bool = False,
 ) -> Dict[str, Any]:
+    """假錢操盤。skip_new_buys＝當日已有 BUY 時只做出場／清槽，不准再買／再抄底。"""
     engine = PortfolioEngine(db_path)
     user_id = ensure_ai_user(engine, telegram_uid)
     try:
@@ -1335,7 +1383,7 @@ def run_ai_desk(
     bought = []
     researched = []
     initial = float(summary.get("initial_capital") or TOTAL_CAPITAL)
-    allow_buy = buys_allowed_on(as_of)
+    allow_buy = buys_allowed_on(as_of) and not bool(skip_new_buys)
 
     # 選前：對母體做研究落檔（即使今日還不能買，也先研）
     cands_preview = _candidates(results, db_path, as_of=as_of)
@@ -1397,7 +1445,11 @@ def run_ai_desk(
             break
 
     # 大跌才動 20 萬保留額加碼（同一勝率買點母體；可加碼已持有）
-    if allow_buy and market_is_dip(db_path, as_of, results):
+    # 當日已有 dip_add 成交 → 整段略過（晚間／boot 重跑不准打光保留額）
+    dip_already = _ai_fill_logged_today(
+        db_path, user_id, as_of, action="BUY", bucket="dip_add"
+    )
+    if allow_buy and (not dip_already) and market_is_dip(db_path, as_of, results):
         dip_cands = _candidates(results, db_path, dip_only=True, as_of=as_of)
         for it in dip_cands:
             sid = str(it.get("stock_id") or it.get("code") or "")
@@ -1416,6 +1468,11 @@ def run_ai_desk(
             if sid not in held and _trade_logged_today(engine, user_id, as_of, sid, "BUY"):
                 continue
             if sid not in held and _trade_logged_today(engine, user_id, as_of, sid, "SELL"):
+                continue
+            # 同股當日已抄底過 → 不准再加一筆
+            if _ai_fill_logged_today(
+                db_path, user_id, as_of, action="BUY", bucket="dip_add", stock_id=sid
+            ):
                 continue
             logged = _research_and_log_buy(
                 db_path,
