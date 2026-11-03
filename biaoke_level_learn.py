@@ -695,9 +695,10 @@ _TEACH_STAMP_FACE = "#ffffff"
 _TEACH_STAMP_META = "#111111"
 _TEACH_STAMP_TEXT = "#111111"  # 相容舊讀；實畫走分段色
 # 八浪縮圖鎖超近窗實測大小（fig 15.6×9.6 → fraction）；遠／近換算同吋後放黃虛線左
+# 略放大仍鎖同吋；右緣不准跨黃虛線（見 _eight_wave_inset_rect_left_of_vmax）
 _TEACH_EIGHT_WAVE_INSET_REF_FIG = (15.6, 9.6)
-_TEACH_EIGHT_WAVE_INSET_W_FRAC = 0.221
-_TEACH_EIGHT_WAVE_INSET_H_FRAC = 0.194
+_TEACH_EIGHT_WAVE_INSET_W_FRAC = 0.278
+_TEACH_EIGHT_WAVE_INSET_H_FRAC = 0.238
 
 
 def _day_change_vs_prev(
@@ -841,10 +842,14 @@ def _eight_wave_inset_rect_left_of_vmax(
     n_bars: int,
     gap_fig: float = 0.008,
 ) -> Tuple[float, float, float, float]:
-    """與超近窗同寬同高；右緣貼垂直黃虛線（最大量日）左側，低空帶。"""
+    """與超近窗同寬同高；右緣貼垂直黃虛線（最大量日）左側，低空帶。
+
+    貼底帶放，避開大B金虛線中段，縮圖框不准被浪線「穿框」。
+    """
     w, h = _teach_eight_wave_inset_wh(fig)
     ys = max(float(ymax) - float(ymin), 1.0)
-    y_bot = float(ymin) + ys * 0.10
+    # 更貼底：少擋 K、少被 B 反彈虛線斜穿
+    y_bot = float(ymin) + ys * 0.055
     iv = int(i_vmax) if i_vmax is not None else max(0, int(n_bars) - 8)
     fx_v, fy_bot = _fig_xy_from_axes_data(ax, fig, float(iv), y_bot)
     left = float(fx_v) - float(gap_fig) - float(w)
@@ -852,10 +857,10 @@ def _eight_wave_inset_rect_left_of_vmax(
     try:
         pos = ax.get_position()
         min_left = float(pos.x0) + 0.012
-        max_bottom = float(pos.y0) + float(pos.height) * 0.48 - float(h)
-        min_bottom = float(pos.y0) + 0.012
+        max_bottom = float(pos.y0) + float(pos.height) * 0.42 - float(h)
+        min_bottom = float(pos.y0) + 0.010
     except Exception:
-        min_left, max_bottom, min_bottom = 0.04, 0.55, 0.08
+        min_left, max_bottom, min_bottom = 0.04, 0.52, 0.08
     if left < min_left:
         left = min_left
     if bottom > max_bottom:
@@ -2680,21 +2685,22 @@ def _paint_teach_hud(
     x_chip = 0.028
     y_chip = y0 + h * 0.38
     for lab, col in chip_rows[:5]:
-        short = lab if len(lab) <= 24 else (lab[:23] + "…")
+        # 略縮長標＋加框墊：字不准貼邊，也不准互壓
+        short = lab if len(lab) <= 20 else (lab[:19] + "…")
         fig.text(
             x_chip,
             y_chip,
             short,
-            fontproperties=fp(7, "bold"),
+            fontproperties=fp(8, "bold"),
             color=col or _LIVE_ACCENT,
             ha="left",
             va="center",
             zorder=21,
-            bbox=_teach_chip_bbox(col or _LIVE_ACCENT, pad=0.28, lw=1.15, alpha=0.95),
+            bbox=_teach_chip_bbox(col or _LIVE_ACCENT, pad=0.36, lw=1.25, alpha=0.97),
         )
-        # 全形約 0.011／字；加框墊
-        x_chip += 0.018 + min(0.22, 0.0105 * max(4, len(short)))
-        if x_chip > 0.74:
+        # 全形約 0.012／字；加框墊與縫
+        x_chip += 0.022 + min(0.24, 0.0122 * max(4, len(short)))
+        if x_chip > 0.72:
             break
     if meta:
         fig.text(
@@ -3483,13 +3489,13 @@ def _place_live_right_labels(
             x_label,
             y_true,
             str(it["text"])[:28],
-            fontproperties=fp(9, "bold"),
+            fontproperties=fp(10, "bold"),
             color=color,
             ha="left",
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=_teach_chip_bbox(color, pad=0.2, lw=1.35, alpha=0.97),
+            bbox=_teach_chip_bbox(color, pad=0.24, lw=1.4, alpha=0.97),
         )
 
 
@@ -4055,22 +4061,18 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         steps.append("C3")
     now = steps[-1]
     chain = " → ".join(steps)
-    # 層級文字對齊他文日（thesis_as_of）；柱 as_of 是圖軸，不准蓋題旨日
-    as_of = _ymd(
-        pack.get("thesis_as_of") or pack.get("chart_as_of") or pack.get("as_of") or ""
-    )
-    as_bit = f"（as_of {as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}）" if len(as_of) == 8 else ""
+    # 話筒／教具畫面不准寫英文 as_of；題旨日只在黃戳，層級框只留浪階
     return {
         "steps": steps,
         "chain": chain,
         "now": now,
         "degree": deg,
         "one_line": f"他說現在：{chain}",
-        "now_line": f"此刻＝{now}{as_bit}（預估會改・非買訊）",
+        "now_line": f"此刻＝{now}（預估會改・非買訊）",
         "teach_box": (
             f"他說現在層級（大→小）\n"
             f"{chain}\n"
-            f"此刻＝{now}{as_bit}\n"
+            f"此刻＝{now}\n"
             f"預估會改；不是買訊"
         ),
     }
@@ -4335,10 +4337,15 @@ def _paint_eight_wave_inset(
     except Exception:
         return
     ax = fig.add_axes(list(rect))
-    ax.set_facecolor("#171310")
+    # 不透明暖墨底＋整框琥珀邊：主圖浪線不准「穿框」看起來像切字
+    ax.set_facecolor("#14110e")
+    ax.patch.set_alpha(1.0)
+    ax.set_zorder(28)
+    ax.set_navigate(False)
     for side, sp in ax.spines.items():
-        sp.set_color(_LIVE_ACCENT if side in ("left", "top") else "#4a3f34")
-        sp.set_linewidth(1.45 if side in ("left", "top") else 1.05)
+        sp.set_color(_LIVE_ACCENT)
+        sp.set_linewidth(1.85)
+        sp.set_zorder(30)
     ax.set_xticks([])
     ax.set_yticks([])
     # 簡化八浪折線；色碼跟主圖一致：藍⑤／粉A／金虛B／紫C
@@ -4374,7 +4381,7 @@ def _paint_eight_wave_inset(
         [pts[i][0] for i in range(0, 6)],
         [pts[i][1] for i in range(0, 6)],
         color=col_imp,
-        lw=1.55,
+        lw=1.85,
         zorder=3,
     )
     # 修正A（粉）
@@ -4382,7 +4389,7 @@ def _paint_eight_wave_inset(
         [pts[5][0], pts[6][0]],
         [pts[5][1], pts[6][1]],
         color=col_a,
-        lw=1.55,
+        lw=1.85,
         zorder=3,
     )
     # 修正B（金虛＝主圖大B）
@@ -4390,7 +4397,7 @@ def _paint_eight_wave_inset(
         [pts[6][0], pts[7][0]],
         [pts[6][1], pts[7][1]],
         color=col_b,
-        lw=1.7,
+        lw=1.95,
         ls=(0, (5, 1.6)),
         zorder=3,
     )
@@ -4400,7 +4407,7 @@ def _paint_eight_wave_inset(
             [pts[7][0], pts[8][0]],
             [pts[7][1], pts[8][1]],
             color=col_c,
-            lw=2.4,
+            lw=2.6,
             alpha=0.22,
             zorder=2.5,
             solid_capstyle="round",
@@ -4410,7 +4417,7 @@ def _paint_eight_wave_inset(
             [pts[7][0], pts[8][0]],
             [pts[7][1], pts[8][1]],
             color=col_c,
-            lw=1.55,
+            lw=1.85,
             zorder=3,
         )
     labs = ["", "1", "2", "3", "4", "5", "A", "B", "C"]
@@ -4461,7 +4468,7 @@ def _paint_eight_wave_inset(
                 x - 0.01,
                 y - 0.08,
                 "起",
-                fontproperties=fp(6, "bold"),
+                fontproperties=fp(7, "bold"),
                 color="#90a4ae",
                 ha="center",
                 va="top",
@@ -4475,11 +4482,11 @@ def _paint_eight_wave_inset(
         ax.scatter(
             [x],
             [y],
-            s=18 if not detail else 26,
+            s=22 if not detail else 30,
             c=col,
             zorder=5,
             edgecolors="#fff",
-            linewidths=0.35,
+            linewidths=0.4,
         )
         lab_dx, lab_dy = 0.0, (0.07 if i in (1, 3, 5, 7) else -0.09)
         if c_flash and i == 6:  # A：標在點左下，遠離黃框
@@ -4490,7 +4497,7 @@ def _paint_eight_wave_inset(
             x + lab_dx,
             y + lab_dy,
             labs[i],
-            fontproperties=fp(7 if not detail else 8, "bold"),
+            fontproperties=fp(8 if not detail else 9, "bold"),
             color=col,
             ha="center",
             va="center",
@@ -4533,17 +4540,17 @@ def _paint_eight_wave_inset(
             ax.scatter(
                 [x],
                 [y],
-                s=36 if is_now else 20,
+                s=42 if is_now else 26,
                 c="#ffd54f" if is_now else "#ffffff",
                 zorder=7,
                 edgecolors="#111111",
-                linewidths=0.5,
+                linewidths=0.55,
             )
             ax.text(
-                x + 0.012,
-                y + (0.045 if lab in ("②", "④") else -0.05),
+                x + 0.014,
+                y + (0.05 if lab in ("②", "④") else -0.055),
                 lab,
-                fontproperties=fp(7 if is_now else 6, "bold"),
+                fontproperties=fp(8 if is_now else 7, "bold"),
                 color="#ffd54f" if is_now else "#ffffff",
                 ha="left",
                 va="center",
@@ -4554,10 +4561,10 @@ def _paint_eight_wave_inset(
             ax.scatter(
                 [sx],
                 [sy],
-                s=72,
+                s=84,
                 facecolors="none",
                 edgecolors="#ffd54f",
-                linewidths=1.55,
+                linewidths=1.7,
                 zorder=9,
             )
     # 此刻框：detail＝近／超近要框選＋註；遠窗只圈點
@@ -4583,7 +4590,7 @@ def _paint_eight_wave_inset(
                     y_t - y_b,
                     fill=False,
                     ec="#ffd54f",
-                    lw=1.7,
+                    lw=2.05,
                     zorder=7,
                 )
             )
@@ -4594,7 +4601,7 @@ def _paint_eight_wave_inset(
                 (x_l + x_r) / 2,
                 min(1.05, y_t + 0.02),
                 tip,
-                fontproperties=fp(7, "bold"),
+                fontproperties=fp(8, "bold"),
                 color="#ffd54f",
                 ha="center",
                 va="bottom",
@@ -4609,7 +4616,7 @@ def _paint_eight_wave_inset(
                 0.50,
                 0.98,
                 note,
-                fontproperties=fp(6, "bold"),
+                fontproperties=fp(7, "bold"),
                 color="#ffe082",
                 ha="center",
                 va="top",
@@ -4620,29 +4627,30 @@ def _paint_eight_wave_inset(
             ax.scatter(
                 [x0],
                 [y0],
-                s=58,
+                s=64,
                 facecolors="none",
                 edgecolors="#ffd54f",
-                linewidths=1.55,
+                linewidths=1.7,
                 zorder=7,
             )
             ax.text(
                 x0,
                 y0 - 0.14,
                 f"今={nk}",
-                fontproperties=fp(6, "bold"),
+                fontproperties=fp(7, "bold"),
                 color="#ffd54f",
                 ha="center",
                 va="top",
                 zorder=8,
             )
-    ax.set_xlim(-0.04, 1.06)
-    ax.set_ylim(0.0, 1.10)
+    # 折線吃滿框：少留黑空，字／點仍不貼邊
+    ax.set_xlim(-0.02, 1.03)
+    ax.set_ylim(0.01, 1.06)
     ax.set_title(
         title,
-        fontproperties=fp(8, "bold"),
+        fontproperties=fp(9, "bold"),
         color=_LIVE_ACCENT,
-        pad=2,
+        pad=3,
         loc="left",
     )
     foot = "藍＝1→5｜粉＝A｜金虛＝B｜紫＝C"
@@ -4652,7 +4660,7 @@ def _paint_eight_wave_inset(
         0.02,
         0.02,
         foot,
-        fontproperties=fp(6, "bold"),
+        fontproperties=fp(7, "bold"),
         color=_LIVE_MUTED,
         ha="left",
         va="bottom",
@@ -6343,8 +6351,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 t2.append(i)
                 l2.append(_md(d))
     t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
-    # 右標水平往左貼K；近窗留寬≥8 data 夠長標進軸內
-    _near_x_right = max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0)
+    # 右標水平往左貼K；近窗留寬夠長標（含「大B末=假突破」）進軸內，不准裁字
+    _near_x_right = max(
+        float(x_near_col) + 6.8,
+        n + 10.2,
+        float(tip.get("xlim_right") or n) + 2.4,
+    )
     ax.set_xlim(-0.6, _near_x_right)
     _paint_right_rail_panel(ax, x0=float(n) + 0.55, x1=float(_near_x_right))
     _paint_right_rail_panel(axv, x0=float(n) + 0.55, x1=float(_near_x_right))
@@ -6371,19 +6383,14 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
         f"{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
     )
-    c_sub_bit = ""
-    if c_sub.get("ok"):
-        c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}"
+    # 圖例晶片只寫色義；細價已在右欄／釘點，不准再塞長串把晶片裁成「…」
     _paint_teach_hud(
         fig,
         title=f"第2張・近窗　此刻＝{title_bit}",
         chips=[
             (vz_y, "#ffd54f"),
             (vz_c, "#4dd0e1"),
-            (
-                (f"細c4／c5{c_sub_bit}" if c_sub_bit else "細＝C內c4／c5"),
-                "#ce93d8",
-            ),
+            ("細＝C內c4／c5", "#ce93d8"),
             ("C走完≠新五波升", "#ffab91"),
         ],
         meta=(
@@ -6393,18 +6400,16 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fp=_fp,
     )
     _paint_teach_foot_bar(fig, y=0.0, height=0.045)
-    # 近窗：黃戳對齊紅橫杠空檔，略離大B金虛線（價～41200、偏右）
+    # 近窗：黃戳貼頁眉下右，不准再坐在 K 腰線擋浪／蠟燭
     fig.subplots_adjust(left=0.05, right=0.98, top=0.88, bottom=0.08)
-    _stamp_y_data = 41200.0
-    _sx_st, _sy_st = _fig_xy_from_axes_data(ax, fig, float(n) - 4.0, _stamp_y_data)
     _paint_teach_query_stamp(
         fig,
         bars,
         pack=pack,
         close=closes[-1],
         fp=_fp,
-        x=min(0.94, max(0.78, float(_sx_st) + 0.10)),
-        y=float(_sy_st),
+        x=0.995,
+        y=0.855,
         ha="right",
     )
     # 單行腳：不准雙行疊字蓋數字
@@ -6498,14 +6503,15 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
 
     # 超近窗鎖定上下分層（抄近窗主K在上）：上＝縮圖K、中＝說明＋八浪、下＝量
     # 不准再把說明／八浪疊進橫圖中下方壓住K（已錯三四次）
+    # 中排略加高、右格略加寬：八浪有效空間放大，仍不壓上排 K
     fig = plt.figure(figsize=(15.6, 11.4), dpi=NAV_CHART_DPI)
     _gs = fig.add_gridspec(
         3,
         2,
-        height_ratios=(5.4, 2.55, 1.15),
-        width_ratios=(1.12, 1.0),
+        height_ratios=(5.15, 2.9, 1.15),
+        width_ratios=(0.98, 1.18),
         hspace=0.10,
-        wspace=0.05,
+        wspace=0.04,
     )
     ax = fig.add_subplot(_gs[0, :])
     ax_leg = fig.add_subplot(_gs[1, 0])
@@ -6636,20 +6642,20 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         ax.scatter(
             [gx],
             [gy],
-            s=78 if is_now else 44,
+            s=92 if is_now else 54,
             c="#ffd54f" if is_now else "#ffab40",
             zorder=8.5,
             edgecolors="#111111",
-            linewidths=0.7,
+            linewidths=0.75,
         )
         if is_now:
             ax.scatter(
                 [gx],
                 [gy],
-                s=130,
+                s=148,
                 facecolors="none",
                 edgecolors="#ffd54f",
-                linewidths=1.8,
+                linewidths=1.95,
                 zorder=8.6,
             )
     # c5 只釘點（對他60分），不再另畫紫折線搶①～⑤浪階
@@ -6694,8 +6700,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             side=_flash_side.get(_flab, "auto"),
             tip=_flash_tip.get(_flab, "mid"),
             n=n,
-            pad_x=0.35,
-            fontsize=10 if _flab == "B" else 9,
+            pad_x=0.4,
+            fontsize=11 if _flab == "B" else 10,
         )
     # 說明句：C 起確認（Y 用真價）；今層級字另釘，避免跟⑤價標疊
     _pin_pivot_name(
@@ -6708,8 +6714,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         side="right",
         tip="mid",
         n=n,
-        pad_x=0.55,
-        fontsize=9,
+        pad_x=0.62,
+        fontsize=10,
     )
     _pin_pivot_name(
         ax,
@@ -6721,8 +6727,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         side="right",
         tip="mid",
         n=n,
-        pad_x=0.55,
-        fontsize=9,
+        pad_x=0.62,
+        fontsize=10,
     )
 
     # 另前提演化（薄荷虛線）：只有跟他約的不同才畫
@@ -6793,22 +6799,22 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         transform=ax_leg.transAxes,
         ha="left",
         va="top",
-        fontproperties=_fp(9, "bold"),
+        fontproperties=_fp(10, "bold"),
         color=_LIVE_TEXT,
-        linespacing=1.28,
+        linespacing=1.32,
         zorder=3,
     )
     # 色線樣本（不准寫紫／橙國字；色自己秀）
-    _sw_y0 = 0.42
+    _sw_y0 = 0.40
     for i, (col, mark, role) in enumerate(swatch_rows):
         ax_leg.text(
             0.04,
-            _sw_y0 - i * 0.11,
+            _sw_y0 - i * 0.105,
             f"{mark}  {role}",
             transform=ax_leg.transAxes,
             ha="left",
             va="top",
-            fontproperties=_fp(9, "bold"),
+            fontproperties=_fp(10, "bold"),
             color=col,
             zorder=4,
         )
@@ -6977,9 +6983,6 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
         f"{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
     )
-    c_sub_bit = ""
-    if c_sub.get("ok"):
-        c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}（同遠／近）"
     # 不准 [:40] 把「C3-3-4」裁成「C3-3」；尾碼必須完整
     _ol = str(ladder.get("one_line") or "現在走到：C進行中")
     _now = str(ladder.get("now") or "").strip()
@@ -6993,10 +6996,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         chips=[
             (vz_y, "#ffd54f"),
             (vz_c, "#4dd0e1"),
-            (
-                (f"細c4／c5{c_sub_bit}" if c_sub_bit else "細浪①～⑤"),
-                "#ce93d8",
-            ),
+            ("細浪①～⑤＝縮圖", "#ce93d8"),
             ("C走完≠新五波升", "#ffab91"),
         ],
         meta=f"{_ol}｜{_macro_wave_calendar_line()}",

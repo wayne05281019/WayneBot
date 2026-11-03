@@ -213,17 +213,16 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     # 黃框：遠窗上移進標題列右緣（不准擋費半K）；近／超近讓出白字標題
     assert "_tw_stamp_y = 0.982" in far_blk
     assert "_sox_stamp_y = 0.918" in far_blk
-    # 大B末標假突破；近窗黃戳～41200；縮圖右下空檔；智慧標座位接上
+    # 大B末標假突破；近／超近黃戳貼頁眉下右（不准坐K腰線）；智慧標座位接上
     assert "假突破" in src
     assert "假突破" in far_blk and "假突破" in near_blk
-    assert "41200" in near_blk
+    assert "y=0.855" in near_blk
     assert "_reserve_avoid_zone" in src
     assert "_seat_onchart_labels" in src
-    assert "_fig_xy_from_axes_data" in near_blk
     # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
     assert "y=0.855" in micro_blk
     assert "add_gridspec" in micro_blk
-    assert "height_ratios=(5.4, 2.55, 1.15)" in micro_blk
+    assert "height_ratios=(5.15, 2.9, 1.15)" in micro_blk
     assert "ax_leg" in micro_blk and "ax_wave_host" in micro_blk
     assert "AnchoredOffsetbox" not in micro_blk
     assert "他說 B→今" in micro_blk
