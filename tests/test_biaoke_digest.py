@@ -993,7 +993,7 @@ def test_format_teach_brief_empty_db_ok(tmp_path):
 
 
 def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
-    """波浪位階文：層級／此刻／結構讀法分類清楚；不准空洞半句、不准贅詞說明牆。"""
+    """波浪位階文：現在走到／怎麼讀／關鍵價；不准重複層級、不准英文 as_of。"""
     from biaoke_digest import format_teach_brief, format_wave_level_one_liner
 
     def _fake_pack(_db):
@@ -1010,15 +1010,17 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_pack)
     out = format_teach_brief("x.db")
     assert "波浪位階" in out
-    assert "層級（大→小）" in out
+    assert "現在走到" in out
     assert "大A底7/29" in out and "大B反彈" in out and "大C進行中" in out
     assert "五波升完" not in out
-    assert "C內橫台中繼" in out
-    assert "結構讀法" in out
-    assert "波浪：" in out
-    assert "黃金切割：" in out
-    assert "型態：" in out
-    assert "量價／主力：" in out
+    assert "落在「C內橫台中繼」" in out
+    assert "題旨日 10/29" in out
+    assert "as_of" not in out
+    assert "怎麼讀" in out
+    assert "波浪：" not in out  # 不准再重貼層級鏈
+    assert "切割　" in out
+    assert "型態　" in out
+    assert "量價　" in out
     assert "關鍵價" in out
     assert "說明：這是彙整" not in out
     # C3-3-4 路徑：超近細浪句＋飆大一層級對照
@@ -1035,10 +1037,11 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
     out334 = format_teach_brief("x.db")
     assert "C3-3-4" in out334
     assert "細浪①～⑤" in out334
+    assert "as_of" not in out334
     one = format_wave_level_one_liner("x.db")
-    assert "此刻＝C3-3-4" in one
+    assert "落在「C3-3-4」" in one
     assert "波浪位階" in one
-    assert "結構讀法" not in one
+    assert "怎麼讀" not in one
 
 
 def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):
@@ -1047,7 +1050,7 @@ def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):
 
     monkeypatch.setattr(
         "biaoke_digest.format_wave_level_one_liner",
-        lambda _db: "大盤層級此刻＝C3-3-4（細節請按「波浪位階」・非買訊）",
+        lambda _db: "大盤現在落在「C3-3-4」（細節按「波浪位階」・非買訊）",
     )
     monkeypatch.setattr(
         "biaoke_digest.format_teach_brief",
@@ -1061,9 +1064,9 @@ def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):
         stock_links=False,
     )
     assert "夜盤續弱" in html and "ASIC" in html
-    assert "此刻＝C3-3-4" in html
+    assert "落在「C3-3-4」" in html
     assert "不該出現在飆大" not in html
-    assert "結構讀法" not in html
+    assert "怎麼讀" not in html
 
 
 def test_scrub_expired_forward_drops_past_monday_keeps_valid():

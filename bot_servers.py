@@ -79,6 +79,9 @@ _MARKET_MIS_TIMEOUT = float(os.getenv("WAYNE_MARKET_MIS_TIMEOUT", "6"))
 _DONGZHU_TIMEOUT = float(os.getenv("WAYNE_DONGZHU_TIMEOUT", "45"))
 _TRADE_BUCKET_TIMEOUT = float(os.getenv("WAYNE_TRADE_BUCKET_TIMEOUT", "75"))
 _LEAVE_ZERO_TIMEOUT = float(os.getenv("WAYNE_LEAVE_ZERO_TIMEOUT", "120"))
+# 勝率買點按鈕：roster 缺／掃版舊會當場重掃全市場藍▲，120s 會假逾時（話筒 1:59 然後警告）。
+_WINRATE_RESOLVE_TIMEOUT = float(os.getenv("WAYNE_WINRATE_RESOLVE_TIMEOUT", "300"))
+_WINRATE_WAIT_MAX_S = float(os.getenv("WAYNE_WINRATE_WAIT_MAX_S", "360"))
 # Telegram 相簿點開上限：寬+高 ≤10000、檔 ≤10MB、長寬比 ≤20。源圖原尺寸送，超過才縮小。
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
@@ -4704,11 +4707,14 @@ class WayneTelegramBot:
         actor: str = "",
         kind: str = "",
         gen: int = 0,
+        max_elapsed: float | None = None,
+        overtime_keep: bool = False,
     ):
         """查股那種連續更新的方塊。不掛鍵盤，免得刪掉時把主選單收走。
 
         有 actor/kind/gen 時：過期 generation 不准再 edit；海選／飆大各自一則。
         edit_text 一律 ≤2s：海選全掃再重，飆大 LOADING 秒數也不准凍住。
+        max_elapsed／overtime_keep：勝率當場重掃可超過預設 120s，不准先收框再丟假逾時。
         """
         if actor and kind and not self._actor_op_alive(actor, kind, gen):
             return None, None, None
@@ -4720,7 +4726,11 @@ class WayneTelegramBot:
         # 秒數從氣泡真的送出後算：send 卡住時不准一出現就是「已 6 秒」。
         t0 = time.monotonic()
         stop = asyncio.Event()
-        max_elapsed = float(getattr(self, "_WAIT_MAX_ELAPSED_S", 120.0) or 120.0)
+        max_elapsed = float(
+            max_elapsed
+            if max_elapsed is not None
+            else (getattr(self, "_WAIT_MAX_ELAPSED_S", 120.0) or 120.0)
+        )
 
         async def _tick() -> None:
             while not stop.is_set():
@@ -4730,15 +4740,8 @@ class WayneTelegramBot:
                         await asyncio.wait_for(chat.send_action("typing"), timeout=1.0)
                 except Exception:
                     pass
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=1.0)
-                    break
-                except asyncio.TimeoutError:
-                    pass
-                if actor and kind and not self._actor_op_alive(actor, kind, gen):
-                    break
                 elapsed = time.monotonic() - t0
-                if elapsed >= max_elapsed:
+                if elapsed >= max_elapsed and not overtime_keep:
                     # 硬上限：收起殘框，不准永遠停在「已 N 秒」
                     try:
                         await self._dismiss_progress_now(wait_msg)
@@ -4753,6 +4756,15 @@ class WayneTelegramBot:
                     text_fn(int(elapsed)),
                     parse_mode="HTML",
                 )
+                # overtime_keep：過預估上限改慢拍續跳秒，重掃／出圖仍在跑
+                tick_gap = 5.0 if (elapsed >= max_elapsed and overtime_keep) else 1.0
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=tick_gap)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+                if actor and kind and not self._actor_op_alive(actor, kind, gen):
+                    break
 
         task = asyncio.create_task(_tick())
         if actor and kind:
@@ -5621,7 +5633,7 @@ class WayneTelegramBot:
             )
             return
         # pause＝送圖時降頻改泡泡（仍要跳秒），避免跟 reply_photo 狂搶；不准整段停表假死
-        prog = {"now": "篩名單", "rest": "壓力區＋高低卡", "pause": False}
+        prog = {"now": "讀／補掃藍▲名單", "rest": "壓力區＋高低卡", "pause": False}
         wait_t0 = time.monotonic()
         wait_h = await self._start_plain_wait(
             message,
@@ -5630,15 +5642,17 @@ class WayneTelegramBot:
                 s,
                 now=prog["now"],
                 rest=prog["rest"],
-                fill_sec=40.0,
+                fill_sec=float(_WINRATE_WAIT_MAX_S),
             ),
+            max_elapsed=float(_WINRATE_WAIT_MAX_S),
+            overtime_keep=True,
         )
         paint_stop = None
         paint_task = None
         try:
             as_of, rows, mode = await asyncio.wait_for(
                 asyncio.to_thread(resolve_button_rows, self.db_path),
-                timeout=_LEAVE_ZERO_TIMEOUT,
+                timeout=_WINRATE_RESOLVE_TIMEOUT,
             )
             if mode == "filter" and rows:
                 try:
@@ -5809,7 +5823,8 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
         except asyncio.TimeoutError:
             await message.reply_text(
-                "⚠️ 勝率買點查詢逾時。請稍後再按一次。",
+                "⚠️ 勝率買點名單重建逾時（盤後藍▲全掃較久）。"
+                "請稍後再按一次；晚上 21:00 名單齊了會比較快。",
                 reply_markup=self._reply_menu(uid),
             )
         except Exception:
@@ -6703,24 +6718,35 @@ class WayneTelegramBot:
         ][:3]
         for i, (_key, label, path) in enumerate(items):
             n = i + 1
-            bits = [f"第{n}張・{label}"]
-            if i == 0 and intro:
-                bits.append(intro)
-            else:
+            # 三張配文各寫重點：遠＝大結構一條；近／超近不重貼整段層級
+            if i == 0:
+                bits = [f"第1張・遠窗・大結構"]
+                if intro:
+                    bits.append(intro)
+                elif q_line:
+                    bits.append(q_line)
+                    bits.extend(ladder_lines[:2])
+            elif i == 1:
+                bits = [f"第2張・近窗・看C段"]
                 if q_line:
                     bits.append(q_line)
-                bits.extend(ladder_lines)
-                # 第3張超近：明示細浪①～⑤（對齊附圖三）
-                if i == 2 or "超近" in str(label):
-                    now_bit = ""
-                    for ln in ladder_lines:
-                        if "此刻＝" in ln:
-                            now_bit = ln
+                bits.append("同層級・預估會改・非買訊")
+            else:
+                bits = [f"第3張・超近窗・細浪"]
+                if q_line:
+                    bits.append(q_line)
+                now_bit = ""
+                for ln in ladder_lines:
+                    if "落在「" in ln:
+                        # 從「落在「X」・…」抽出 X
+                        m = re.search(r"落在「([^」]+)」", ln)
+                        if m:
+                            now_bit = m.group(1)
                             break
-                    if now_bit and "細浪" not in "\n".join(bits):
-                        bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
-                    elif not now_bit:
-                        bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
+                if now_bit:
+                    bits.append(f"落在「{now_bit}」・細浪①～⑤・非買訊")
+                else:
+                    bits.append("細浪①～⑤・對齊縮圖閃折・非買訊")
             ok = await self._send_market_teach_one(
                 message, path, caption="\n".join(bits)[:900], label=label
             )
@@ -6764,7 +6790,7 @@ class WayneTelegramBot:
                             pack["live_twii"] = live_tw
                 except Exception:
                     pass
-                slot = _sparse_slot_id(dt, force=True) or f"force-far-{dt.strftime('%Y%m%d-%H%M')}"
+                slot = _sparse_slot_id(dt, force=True) or f"force-{dt.strftime('%Y%m%d')}"
                 out = os.path.join(_paint_dir(self.db_path), f"{slot}-far.png")
                 return _render_twii_far_dark(self.db_path, out, pack) or ""
 
@@ -6882,17 +6908,23 @@ class WayneTelegramBot:
                 q_wall = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%m/%d %H:%M")
             except Exception:
                 q_wall = ""
-            intro_bits = ["遠／近／超近・非買訊"]
+            # 遠窗配文：查詢戳＋現在走到／落在（最多兩行）；近／超近各自短配文
+            intro_bits: list = []
             if q_wall:
                 intro_bits.append(f"查詢 {q_wall}（台北）")
             if ladder_line:
                 intro_bits.extend(
-                    ln.strip() for ln in str(ladder_line).splitlines() if ln.strip()
+                    [
+                        ln.strip()
+                        for ln in str(ladder_line).splitlines()
+                        if ln.strip()
+                    ][:2]
                 )
             elif thesis:
-                intro_bits.append(str(thesis)[:160])
-            if ladder_now and re.search(r"C3-3", ladder_now):
-                intro_bits.append(f"超近＝細浪①～⑤・此刻＝{ladder_now}")
+                intro_bits.append("預估會改・非買訊")
+                intro_bits.append(str(thesis)[:120])
+            else:
+                intro_bits.append("預估會改・非買訊")
             trio_cap = "\n".join(intro_bits)[:900]
             trio_caps = self._market_teach_trio_caps()
             label_by_key = {k: lab for k, lab in trio_caps}
@@ -6958,7 +6990,7 @@ class WayneTelegramBot:
                     message,
                     far_path,
                     caption="\n".join(
-                        [f"第1張・{label_by_key.get('far_path', '遠窗')}", trio_cap]
+                        [f"第1張・遠窗・大結構", trio_cap]
                     )[:900],
                     label=label_by_key.get("far_path", "遠窗"),
                 )
@@ -7005,16 +7037,10 @@ class WayneTelegramBot:
                             ),
                             parse_mode="HTML",
                         )
-                    near_bits = [f"第2張・{label_by_key.get('near_path', '近窗')}"]
+                    near_bits = [f"第2張・近窗・看C段"]
                     if q_wall:
                         near_bits.append(f"查詢 {q_wall}（台北）")
-                    near_bits.extend(
-                        [
-                            ln.strip()
-                            for ln in str(ladder_line or "").splitlines()
-                            if ln.strip()
-                        ][:3]
-                    )
+                    near_bits.append("同層級・預估會改・非買訊")
                     ok_near = await self._send_market_teach_one(
                         message,
                         near_path,
@@ -7044,17 +7070,13 @@ class WayneTelegramBot:
                     micro_path = str(stored.get("micro_path") or "")
 
                 if self._market_teach_path_ok(micro_path):
-                    micro_bits = [f"第3張・{label_by_key.get('micro_path', '超近窗')}"]
+                    micro_bits = [f"第3張・超近窗・細浪"]
                     if q_wall:
                         micro_bits.append(f"查詢 {q_wall}（台北）")
-                    micro_bits.extend(
-                        [
-                            ln.strip()
-                            for ln in str(ladder_line or "").splitlines()
-                            if ln.strip()
-                        ][:3]
-                    )
-                    micro_bits.append("超近＝細浪①～⑤（對齊縮圖閃折）")
+                    if ladder_now:
+                        micro_bits.append(f"落在「{ladder_now}」・細浪①～⑤・非買訊")
+                    else:
+                        micro_bits.append("細浪①～⑤・對齊縮圖閃折・非買訊")
                     ok_micro = await self._send_market_teach_one(
                         message,
                         micro_path,

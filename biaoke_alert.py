@@ -859,19 +859,51 @@ def _close_band_plain(
     return f"現在收在{band}、還沒過他較高的關"
 
 
+def _close_near_level(
+    bar_close: float, level: float, *, pct: float = 0.006, abs_pts: float = 280.0
+) -> bool:
+    """收還算「在關附近」才准寫卡在附近。
+
+    相對 0.6% 與絕對 280 點取較寬者；遠拋離（例如收 43308、關 44042）不准硬貼附近。
+    """
+    try:
+        c = float(bar_close)
+        lv = float(level)
+    except (TypeError, ValueError):
+        return False
+    if lv <= 0:
+        return False
+    return abs(c - lv) <= max(float(abs_pts), abs(lv) * float(pct))
+
+
 def _plain_wait_clause(
     read_now: str,
     levels: Sequence[float],
     bar_close: Optional[float],
 ) -> str:
-    """還要再看／還卡在哪：最多一個關鍵位（且收仍在其下），其餘白話。"""
+    """還要再看／還卡在哪：最多一個關鍵位（且收仍在其下、真的靠近），其餘白話。"""
     key = _key_level_mentioned(read_now, levels)
     if key and bar_close is not None:
         try:
             c = float(bar_close)
             for lv in levels:
-                if _level_face(float(lv)) == key and c < float(lv):
+                if _level_face(float(lv)) != key:
+                    continue
+                if c >= float(lv):
+                    break
+                if _close_near_level(c, float(lv)):
                     return f"還卡在 {key} 附近，還要再看大盤怎麼走"
+                # 柱碰到過、但收已明顯離開：不准寫「附近」嚇成還卡著
+                return "已經離開他剛碰到的關，還要再看大盤怎麼走"
+        except (TypeError, ValueError):
+            pass
+    # 近窗沒點名：改挑收下方最近一關，且真的靠近才寫卡在附近
+    if bar_close is not None and levels:
+        try:
+            c = float(bar_close)
+            above = sorted(float(x) for x in levels if float(x) > c)
+            if above and _close_near_level(c, above[0]):
+                return f"還卡在 {_level_face(above[0])} 附近，還要再看大盤怎麼走"
         except (TypeError, ValueError):
             pass
     return "還要再看大盤怎麼走"
@@ -1491,7 +1523,9 @@ def maybe_push_marked_level_hits(
     未收盤不當收。一般新文不走這條。不准逐則堆幾月幾號舊文。
     同根柱一次碰到多個已點位 → 國中生一句（標題「飆大提醒·大盤碰到關卡」）；
     不准關卡串／收點串／之上之下表／機器規則句上話筒（2026-10-13 教訓）。
-    先 claim 再送：同日同位／同關卡正文不重推；真新關卡仍兩支話筒各一則。
+    先 claim 再送：同日同位／同關卡正文不重推。
+    同交易日整日只准一則（`idx:day:{ymd}`）：ingest／tape／deploy 換版
+    就算關卡集合先後不同，也不准拆成兩則洗話筒（2026-11-03 45546＋44042）。
     """
     del now  # 官方柱是否已收走 is_official_daily_bar；保留參數相容呼叫端
     stats = {"checked": 0, "pushed": 0, "skipped": 0, "levels": 0}
@@ -1501,6 +1535,12 @@ def maybe_push_marked_level_hits(
     if not bar:
         return {**stats, "skipped": "no_official"}
     bar_ymd = str(bar["date"])
+    day_key = f"idx:day:{bar_ymd}"
+    # 同日已寄過關卡提醒 → 後到的子集／換版重跑一律略過
+    if _level_already(db_path, day_key):
+        stats["skipped"] = 1
+        stats["day_latched"] = 1
+        return stats
     hi = float(bar["high"])
     lo = float(bar["low"])
     posts = _load_marked_index_posts(db_path)
@@ -1615,6 +1655,16 @@ def maybe_push_marked_level_hits(
                 [f"同日同關卡正文 n={len(pending)}"],
             )
         )
+    # 日鎖：與 level／body 同批 claim；任一路徑先佔到就不准再寄第二則
+    claim_rows.append(
+        (
+            day_key,
+            "",
+            0.0,
+            bar_ymd,
+            [f"同日關卡提醒一則 n={len(pending)}"],
+        )
+    )
     # 先占位再送：ingest＋tape 雙呼叫／多 worker 也不洗版
     if not _claim_level_batch(db_path, claim_rows):
         stats["skipped"] += len(pending)

@@ -63,6 +63,45 @@ def test_resolve_asof_ymd_prefer():
     assert resolve_intraday_asof_ymd(prefer="2026-10-29") == "20261029"
 
 
+def test_fetch_official_twse_matches_zero_padded_roc_day(monkeypatch):
+    """證交所日列是 115/11/03；mmdd 必須零墊，1–9 日不准 miss 掉官方列。"""
+    import requests
+
+    import intraday_open_close_chart as ioc
+
+    payload = {
+        "stat": "OK",
+        "data": [
+            [
+                "115/11/03",
+                "1,000,000",
+                "100,000,000",
+                "100.00",
+                "110.00",
+                "99.00",
+                "105.00",
+                "+5.00",
+                "1,000",
+                "",
+            ]
+        ],
+    }
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return payload
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp())
+    monkeypatch.setattr(ioc, "_hist_stats", lambda *a, **k: (None, None, None))
+    monkeypatch.setattr(ioc, "_prev_day_vol_turn_db", lambda *a, **k: (None, None))
+    off = ioc.fetch_official_twse("2383", ymd="20261103", db_path="/tmp/x.db")
+    assert off is not None
+    assert float(off.close) == 105.0
+    assert float(off.open) == 100.0
+
+
 def test_render_lookup_empty_without_series(tmp_path):
     """無真官方／分時 → 回空，不准假圖。"""
     out = os.path.join(tmp_path, "x.png")

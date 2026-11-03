@@ -1368,10 +1368,11 @@ def _latest_level_thesis(
 
 
 def _sparse_slot_id(dt: datetime, *, force: bool = False) -> Optional[str]:
-    """稀疏槽 id；不在窗＝None。force 另開 force- 槽。"""
+    """稀疏槽 id；不在窗＝None。force 一天一槽覆寫（不准每分堆 PNG 吃永久碟）。"""
     ymd = dt.strftime("%Y%m%d")
     if force:
-        return f"force-{ymd}-{dt.strftime('%H%M')}"
+        # 話筒重開／補渲共用 force-{ymd}，遠近超近覆寫同檔；舊 force-{ymd}-{HHMM} 由 disk_guard 清
+        return f"force-{ymd}"
     hm = dt.hour * 60 + dt.minute
     for name, lo, hi in _SPARSE_SLOTS:
         if lo <= hm <= hi:
@@ -3807,23 +3808,36 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         steps.append("C3")
     now = steps[-1]
     chain = " → ".join(steps)
-    # 層級文字對齊他文日（thesis_as_of）；柱 as_of 是圖軸，不准蓋題旨日
+    # 層級文字對齊他文日（thesis_as_of）；柱日是圖軸，不准蓋題旨日。
+    # 話筒只用「題旨日 M/D」，不准寫英文 as_of。
     as_of = _ymd(
         pack.get("thesis_as_of") or pack.get("chart_as_of") or pack.get("as_of") or ""
     )
-    as_bit = f"（as_of {as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}）" if len(as_of) == 8 else ""
+    if len(as_of) == 8:
+        day_zh = f"{int(as_of[4:6])}/{int(as_of[6:8])}"
+        day_bit = f"題旨日 {day_zh}"
+    else:
+        day_zh = ""
+        day_bit = ""
     return {
         "steps": steps,
         "chain": chain,
         "now": now,
         "degree": deg,
-        "one_line": f"他說現在：{chain}",
-        "now_line": f"此刻＝{now}{as_bit}（預估會改・非買訊）",
+        "day_zh": day_zh,
+        "day_bit": day_bit,
+        "one_line": f"現在走到：{chain}",
+        "now_line": (
+            f"落在「{now}」"
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        ),
         "teach_box": (
-            f"他說現在層級（大→小）\n"
+            f"現在走到（大→小）\n"
             f"{chain}\n"
-            f"此刻＝{now}{as_bit}\n"
-            f"預估會改；不是買訊"
+            f"落在「{now}」"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
         ),
     }
 
