@@ -194,8 +194,14 @@ def test_struct_paint_does_not_wait_for_volume_zone():
         return_value=("", ""),
     ):
         asyncio.run(_run())
-    assert "struct" in marks and "zone_end" in marks
-    assert marks["struct"] < marks["zone_end"]
+    # 大量區選窗可與結構並行；單 paint worker 時 struct 戳可能晚於 zone_end（佇列／第5張重試），
+    # 不准再用 struct<zone_end 當唯一閘。真不變式：zone 有跑滿、bars／struct 都有產出，
+    # 且 bars 不准等 zone 睡完才開始（否則就是串行乾等第4張）。
+    assert "struct" in marks and "zone_end" in marks and "zone_start" in marks
+    assert "bars" in marks
+    assert marks["zone_end"] - marks["zone_start"] >= 0.5
+    assert marks["bars"] < marks["zone_end"]
+    assert marks["struct"] > 0
 
 
 def test_gap_line_while_official_volume_still_running():
