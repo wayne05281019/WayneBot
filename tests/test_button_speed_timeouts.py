@@ -19,6 +19,8 @@ from bot_servers import (
     _MARKET_PAGE_TIMEOUT,
     _MARKET_US_REFRESH_TIMEOUT,
     _TRADE_BUCKET_TIMEOUT,
+    _WINRATE_RESOLVE_TIMEOUT,
+    _WINRATE_WAIT_MAX_S,
 )
 
 
@@ -32,6 +34,13 @@ def test_button_timeouts_are_not_too_tight():
     assert _DONGZHU_TIMEOUT >= 40.0
     assert _TRADE_BUCKET_TIMEOUT >= 60.0
     assert _LEAVE_ZERO_TIMEOUT >= 90.0
+    # 勝率按鈕當場重掃藍▲：不准 120s 假逾時（話筒 1:59 警告）
+    assert _WINRATE_RESOLVE_TIMEOUT >= 240.0
+    assert _WINRATE_WAIT_MAX_S >= _WINRATE_RESOLVE_TIMEOUT
+    wr = inspect.getsource(WayneTelegramBot._run_winrate_buypoint)
+    assert "_WINRATE_RESOLVE_TIMEOUT" in wr
+    assert "overtime_keep=True" in wr
+    assert "名單重建逾時" in wr
     src = inspect.getsource(WayneTelegramBot.run_polling)
     assert ".read_timeout(60.0)" in src or ".read_timeout(60)" in src
     page = inspect.getsource(WayneTelegramBot._send_market_page)

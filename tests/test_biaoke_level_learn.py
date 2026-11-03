@@ -506,7 +506,9 @@ def test_wave_now_ladder_big_to_small():
     )
     assert deep["now"] == "C3-3-2"
     assert "C3-3主跌" in deep["chain"]
-    assert "他說現在：" in deep["one_line"]
+    assert "現在走到：" in deep["one_line"]
+    assert "as_of" not in deep["now_line"]
+    assert "題旨日" in deep["day_bit"]
     to4 = _wave_now_ladder(
         {
             "thesis": "大A→大B→大C｜C內＝C3-3（3→4・預估）",
@@ -516,6 +518,9 @@ def test_wave_now_ladder_big_to_small():
     )
     assert to4["now"] == "C3-3-4"
     assert "C3-3主跌" in to4["chain"]
+    assert "落在「C3-3-4」" in to4["now_line"]
+    assert "題旨日 11/1" in to4["now_line"]
+    assert "as_of" not in to4["now_line"] and "as_of" not in to4["teach_box"]
 
 
 def test_sox_abc_anchors_not_copy_twii_ab():
