@@ -182,29 +182,56 @@ def fetch_chips_for_date(session: requests.Session, yyyymmdd: str) -> Dict[str, 
     return merged
 
 
+def _connect(db_path: str, *, timeout_s: float = 30.0, busy_ms: int = 15000) -> sqlite3.Connection:
+    """寫籌碼要等 busy：開機／早報窗常跟海選搶鎖，不准立刻 locked 炸掉。"""
+    conn = sqlite3.connect(str(db_path), timeout=max(1.0, float(timeout_s)))
+    try:
+        conn.execute(f"PRAGMA busy_timeout={int(busy_ms)}")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
 def apply_chips_to_quotes(db_path: str, yyyymmdd: str, chips: Dict[str, Dict[str, int]]) -> int:
     if not chips:
         return 0
     day = str(yyyymmdd or "").replace("-", "")[:8]
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    updated = 0
-    for sid, c in chips.items():
-        cur.execute(
-            """UPDATE daily_quotes SET foreign_net=?, trust_net=?, dealer_net=?
-               WHERE replace(date,'-','')=? AND stock_id=?""",
-            (
-                int(c.get("foreign_net", 0) or 0),
-                int(c.get("trust_net", 0) or 0),
-                int(c.get("dealer_net", 0) or 0),
-                day,
-                sid,
-            ),
-        )
-        updated += cur.rowcount
-    conn.commit()
-    conn.close()
-    return updated
+    last_err: Optional[BaseException] = None
+    for attempt in range(6):
+        conn = None
+        try:
+            conn = _connect(db_path)
+            cur = conn.cursor()
+            updated = 0
+            for sid, c in chips.items():
+                cur.execute(
+                    """UPDATE daily_quotes SET foreign_net=?, trust_net=?, dealer_net=?
+                       WHERE replace(date,'-','')=? AND stock_id=?""",
+                    (
+                        int(c.get("foreign_net", 0) or 0),
+                        int(c.get("trust_net", 0) or 0),
+                        int(c.get("dealer_net", 0) or 0),
+                        day,
+                        sid,
+                    ),
+                )
+                updated += cur.rowcount
+            conn.commit()
+            return updated
+        except sqlite3.OperationalError as e:
+            last_err = e
+            if "locked" not in str(e).lower():
+                raise
+            time.sleep(0.35 * (attempt + 1))
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+    if last_err is not None:
+        raise last_err
+    return 0
 
 
 def update_chips_for_date(db_path: str, yyyymmdd: str, session: Optional[requests.Session] = None) -> int:
@@ -219,7 +246,7 @@ def update_chips_for_date(db_path: str, yyyymmdd: str, session: Optional[request
 
 def backfill_chips(db_path: str = None, days: int = 30, sleep_s: float = 0.45) -> Dict[str, Any]:
     path = db_path or get_db_path()
-    conn = sqlite3.connect(path)
+    conn = _connect(path, timeout_s=15.0, busy_ms=8000)
     dates = [
         str(r[0]).replace("-", "")[:8]
         for r in conn.execute(
