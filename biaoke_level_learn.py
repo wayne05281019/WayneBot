@@ -694,8 +694,8 @@ _TEACH_STAMP_EDGE = "#ffff00"
 _TEACH_STAMP_FACE = "#ffffff"
 _TEACH_STAMP_META = "#111111"
 _TEACH_STAMP_TEXT = "#111111"  # 相容舊讀；實畫走分段色
-# 八浪縮圖鎖超近窗實測大小（fig 15.6×9.6 → fraction）
-# 遠／近：矮獨立列內置中小卡（見 _eight_wave_card_ax_in_host）；不准壓 K、不准整列撐滿
+# 八浪縮圖鎖超近窗實測大小（fig 15.6×9.6 → fraction；相容舊 inset）
+# 遠／近／超近構圖統一：中排左＝對位說明、右＝八浪小圖吃滿格；不准壓 K
 _TEACH_EIGHT_WAVE_INSET_REF_FIG = (15.6, 9.6)
 _TEACH_EIGHT_WAVE_INSET_W_FRAC = 0.248
 _TEACH_EIGHT_WAVE_INSET_H_FRAC = 0.220
@@ -703,7 +703,8 @@ _TEACH_EIGHT_WAVE_INSET_H_FRAC = 0.220
 _TEACH_FIG_LEFT = 0.05
 _TEACH_FIG_RIGHT = 0.98
 _TEACH_FIG_TOP = 0.88
-_TEACH_HSPACE = 0.06
+_TEACH_HSPACE = 0.055
+_TEACH_MID_WSPACE = 0.035
 
 
 def _day_change_vs_prev(
@@ -4389,6 +4390,87 @@ def _flash_spec_from_pivots(
     return spec
 
 
+def _style_teach_mid_panel(ax: Any) -> None:
+    """中排說明／八浪格：暖墨面板＋琥珀左緣，跟 HUD 同一語言。"""
+    if ax is None:
+        return
+    ax.set_facecolor(_LIVE_PANEL)
+    ax.patch.set_alpha(1.0)
+    ax.patch.set_visible(True)
+    for side, sp in ax.spines.items():
+        sp.set_visible(True)
+        sp.set_color(_LIVE_ACCENT if side == "left" else _LIVE_PANEL_EDGE)
+        sp.set_linewidth(1.35 if side == "left" else 0.95)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+
+
+def _paint_teach_eight_wave_legend(
+    ax: Any,
+    *,
+    fp: Any,
+    now_key: str,
+    pack: Optional[Dict[str, Any]] = None,
+    detail: bool = False,
+    c_flash: bool = False,
+) -> None:
+    """中排左：對位讀法（色碼＋此刻）；右格才是八浪小圖。"""
+    if ax is None:
+        return
+    _style_teach_mid_panel(ax)
+    ladder = _wave_now_ladder(pack or {})
+    now = str(now_key or ladder.get("now") or "C").strip() or "C"
+    one = str(ladder.get("one_line") or "").strip()
+    if len(one) > 40:
+        one = one[:39] + "…"
+    lines = [
+        ("八浪對位・怎麼讀", _LIVE_ACCENT, 11),
+        (one or "大結構對齊教科書八浪", _LIVE_TEXT, 9),
+        (f"此刻＝{now}", "#ffd54f", 10),
+    ]
+    if detail and not c_flash:
+        lines.append(("右圖黃框＝落在哪一段", "#ffe082", 8))
+    if c_flash:
+        lines.append(("右圖黃框＝C內①～⑤閃折", "#ffe082", 8))
+    lines.append(("小圖＝結構對位・不是價位", _LIVE_MUTED, 8))
+    y = 0.94
+    for text, col, fs in lines:
+        ax.text(
+            0.05,
+            y,
+            text,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontproperties=fp(int(fs), "bold"),
+            color=col,
+            zorder=3,
+        )
+        y -= 0.13 if fs >= 10 else 0.11
+    # 色碼樣本列：填滿左格下半，一眼對上右圖線色
+    swatches = [
+        ("#40c4ff", "━━ 1→5 推進"),
+        ("#ff8a80", "━━ A 修正"),
+        ("#ffd54f", "┅┅ B 反彈"),
+        ("#ea80fc", "━━ C 進行"),
+    ]
+    y = min(y, 0.42)
+    for col, lab in swatches:
+        ax.text(
+            0.05,
+            y,
+            lab,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontproperties=fp(9, "bold"),
+            color=col,
+            zorder=4,
+        )
+        y -= 0.10
+
+
 def _paint_eight_wave_inset(
     fig: Any,
     *,
@@ -4403,8 +4485,8 @@ def _paint_eight_wave_inset(
 ) -> None:
     """三張教具共用：教科書八浪縮圖；detail 框此刻；c_flash＝超近在C內畫下殺閃折①～⑤。
 
-    遠／近／超近一律傳 gridspec 的 host `ax`：畫進獨立列，不准 fig.add_axes 飄浮、
-    不准再 set_visible(False) 讓 bbox_inches=tight 把列裁掉後框蓋回 K。
+    遠／近／超近一律傳中排右格 `ax`：小圖吃滿右格，不准整列漂浮小卡、
+    不准 set_visible(False) 讓 tight 裁列後蓋回 K。
     """
     try:
         import matplotlib.pyplot as plt
@@ -4412,7 +4494,7 @@ def _paint_eight_wave_inset(
         return
     if ax is None:
         ax = fig.add_axes(list(rect))
-    # 不透明暖墨底＋琥珀邊（獨立列本身就是卡片）
+    # 不透明暖墨底＋琥珀邊（右格本身就是小圖卡）
     ax.set_facecolor("#14110e")
     ax.patch.set_alpha(1.0)
     ax.patch.set_visible(True)
@@ -4420,7 +4502,7 @@ def _paint_eight_wave_inset(
     for side, sp in ax.spines.items():
         sp.set_visible(True)
         sp.set_color(_LIVE_ACCENT if side in ("left", "top") else "#4a3f34")
-        sp.set_linewidth(1.55 if side in ("left", "top") else 1.15)
+        sp.set_linewidth(1.85 if side in ("left", "top") else 1.25)
     ax.set_xticks([])
     ax.set_yticks([])
     ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
@@ -4724,9 +4806,9 @@ def _paint_eight_wave_inset(
     ax.set_ylim(0.01, 1.06)
     ax.set_title(
         title,
-        fontproperties=fp(9, "bold"),
+        fontproperties=fp(11, "bold"),
         color=_LIVE_ACCENT,
-        pad=3,
+        pad=4,
         loc="left",
     )
     foot = "藍＝1→5｜粉＝A｜金虛＝B｜紫＝C"
@@ -4736,7 +4818,7 @@ def _paint_eight_wave_inset(
         0.02,
         0.02,
         foot,
-        fontproperties=fp(7, "bold"),
+        fontproperties=fp(8, "bold"),
         color=_LIVE_MUTED,
         ha="left",
         va="bottom",
@@ -5064,18 +5146,22 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         else None
     )
 
-    # 上費半 / 中加權 / 矮間隔列（置中八浪小卡）/ 量——小卡連框不准壓任何縮圖K
-    fig = plt.figure(figsize=(16.8, 12.8), dpi=NAV_CHART_DPI)
+    # 上費半｜中加權｜中排左說明＋右八浪｜量——八浪不准壓任何縮圖K
+    fig = plt.figure(figsize=(16.8, 13.2), dpi=NAV_CHART_DPI)
     _gs_far = fig.add_gridspec(
         4,
         1,
-        height_ratios=(2.55, 3.75, 0.88, 1.18),
+        height_ratios=(2.40, 3.45, 1.65, 1.12),
         hspace=_TEACH_HSPACE,
     )
     axu = fig.add_subplot(_gs_far[0, 0])
     ax = fig.add_subplot(_gs_far[1, 0], sharex=axu)
-    # 八浪 host 不准 sharex：縮圖用 0～1 座標，跟 K 日軸脫鉤
-    ax_wave_host = fig.add_subplot(_gs_far[2, 0])
+    _gs_far_mid = _gs_far[2].subgridspec(
+        1, 2, width_ratios=(1.05, 1.20), wspace=_TEACH_MID_WSPACE
+    )
+    ax_leg = fig.add_subplot(_gs_far_mid[0, 0])
+    # 八浪格不准 sharex：縮圖用 0～1 座標，跟 K 日軸脫鉤
+    ax_wave_host = fig.add_subplot(_gs_far_mid[0, 1])
     axv = fig.add_subplot(_gs_far[3, 0], sharex=axu)
     fig.patch.set_facecolor(_LIVE_BG)
     # bottom 加高：腳註多行完整數字＋不壓 x 軸日期
@@ -5087,14 +5173,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         bottom=0.125,
     )
     _style_teach_axes((axu, ax, axv))
-    # host＝安靜間隔帶（頁底色）；小卡另掛 inset，不准整列撐成大卡
-    ax_wave_host.set_facecolor(_LIVE_BG)
-    for _sp in ax_wave_host.spines.values():
-        _sp.set_visible(False)
-    ax_wave_host.set_xticks([])
-    ax_wave_host.set_yticks([])
-    ax_wave_host.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-    ax_wave_host.patch.set_alpha(1.0)
+    _style_teach_mid_panel(ax_leg)
+    _style_teach_mid_panel(ax_wave_host)
 
     fut_x = float(i_now + 4)
     tip: Dict[str, Any] = {"fut_x": fut_x, "xlim_right": float(n) + 4}
@@ -5824,18 +5904,17 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 矮獨立列內置中八浪小卡（host 不 hide，tight 才留得住間隔）
-    try:
-        fig.canvas.draw()
-    except Exception:
-        pass
-    _ew_card = _eight_wave_card_ax_in_host(ax_wave_host, fig)
+    # 中排：左對位說明｜右八浪小圖吃滿格（不准 hide）
+    _nk_far = _eight_wave_now_key(pack)
+    _paint_teach_eight_wave_legend(
+        ax_leg, fp=_fp, now_key=_nk_far, pack=pack, detail=False
+    )
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
-        now_key=_eight_wave_now_key(pack),
+        now_key=_nk_far,
         detail=False,
-        ax=_ew_card,
+        ax=ax_wave_host,
         title="八浪對位",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
@@ -6080,27 +6159,26 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     rule14_y = float(y_alow)
     rule14_lab = f"大A底＝1-4 {_px(rule14_y)}"
 
-    # 三列：加權K｜矮間隔列（置中八浪小卡）｜量——小卡連框不准壓縮圖K
-    fig = plt.figure(figsize=(15.6, 10.6), dpi=NAV_CHART_DPI)
+    # 三列：加權K｜中排左說明＋右八浪｜量——八浪不准壓縮圖K
+    fig = plt.figure(figsize=(15.6, 11.0), dpi=NAV_CHART_DPI)
     _gs_near = fig.add_gridspec(
         3,
         1,
-        height_ratios=(5.70, 1.05, 1.22),
+        height_ratios=(5.25, 1.70, 1.15),
         hspace=_TEACH_HSPACE,
     )
     ax = fig.add_subplot(_gs_near[0, 0])
-    # 八浪 host 不准 sharex：縮圖用 0～1 座標，跟 K 日軸脫鉤
-    ax_wave_host = fig.add_subplot(_gs_near[1, 0])
+    _gs_near_mid = _gs_near[1].subgridspec(
+        1, 2, width_ratios=(1.05, 1.20), wspace=_TEACH_MID_WSPACE
+    )
+    ax_leg = fig.add_subplot(_gs_near_mid[0, 0])
+    # 八浪格不准 sharex：縮圖用 0～1 座標，跟 K 日軸脫鉤
+    ax_wave_host = fig.add_subplot(_gs_near_mid[0, 1])
     axv = fig.add_subplot(_gs_near[2, 0], sharex=ax)
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    ax_wave_host.set_facecolor(_LIVE_BG)
-    for _sp in ax_wave_host.spines.values():
-        _sp.set_visible(False)
-    ax_wave_host.set_xticks([])
-    ax_wave_host.set_yticks([])
-    ax_wave_host.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-    ax_wave_host.patch.set_alpha(1.0)
+    _style_teach_mid_panel(ax_leg)
+    _style_teach_mid_panel(ax_wave_host)
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
     ymin = min([min(lows)] + list(tw_supports)) - 480
@@ -6531,18 +6609,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 矮獨立列內置中八浪小卡（host 不 hide）
-    try:
-        fig.canvas.draw()
-    except Exception:
-        pass
-    _ew_card = _eight_wave_card_ax_in_host(ax_wave_host, fig)
+    # 中排：左對位說明｜右八浪小圖吃滿格（不准 hide）
+    _nk_near = _eight_wave_now_key(pack)
+    _paint_teach_eight_wave_legend(
+        ax_leg, fp=_fp, now_key=_nk_near, pack=pack, detail=True
+    )
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
-        now_key=_eight_wave_now_key(pack),
+        now_key=_nk_near,
         detail=True,
-        ax=_ew_card,
+        ax=ax_wave_host,
         title="八浪對位",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
@@ -6602,15 +6679,15 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     need_alt = _alt_path_needed(his.get("degree") or "", geom.get("geom_degree") or "")
     ladder = _wave_now_ladder(pack)
 
-    # 超近窗鎖定上下分層：上＝縮圖K、中＝說明＋八浪小圖、下＝量
-    fig = plt.figure(figsize=(15.6, 11.2), dpi=NAV_CHART_DPI)
+    # 超近窗鎖定上下分層：上＝縮圖K、中＝說明＋八浪小圖、下＝量（與遠／近同構）
+    fig = plt.figure(figsize=(15.6, 11.3), dpi=NAV_CHART_DPI)
     _gs = fig.add_gridspec(
         3,
         2,
-        height_ratios=(5.55, 2.35, 1.15),
-        width_ratios=(1.12, 1.0),
-        hspace=_TEACH_HSPACE + 0.02,
-        wspace=0.05,
+        height_ratios=(5.35, 2.45, 1.15),
+        width_ratios=(1.05, 1.20),
+        hspace=_TEACH_HSPACE + 0.015,
+        wspace=_TEACH_MID_WSPACE,
     )
     ax = fig.add_subplot(_gs[0, :])
     ax_leg = fig.add_subplot(_gs[1, 0])
@@ -6618,14 +6695,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     axv = fig.add_subplot(_gs[2, :], sharex=ax)
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
-    for _ax_info in (ax_leg, ax_wave_host):
-        _ax_info.set_facecolor(_LIVE_PANEL)
-        for _side, _sp in _ax_info.spines.items():
-            _sp.set_color(_LIVE_ACCENT if _side == "left" else _LIVE_PANEL_EDGE)
-            _sp.set_linewidth(1.15 if _side == "left" else 0.9)
-        _ax_info.set_xticks([])
-        _ax_info.set_yticks([])
-        _ax_info.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+    _style_teach_mid_panel(ax_leg)
+    _style_teach_mid_panel(ax_wave_host)
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
     ymin = min([min(lows)] + list(tw_supports)) - 420

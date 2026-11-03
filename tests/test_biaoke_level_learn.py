@@ -222,22 +222,23 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
     assert "y=0.855" in micro_blk
     assert "add_gridspec" in micro_blk
-    assert "height_ratios=(5.55, 2.35, 1.15)" in micro_blk
+    assert "height_ratios=(5.35, 2.45, 1.15)" in micro_blk
     assert "ax_leg" in micro_blk and "ax_wave_host" in micro_blk
     assert "AnchoredOffsetbox" not in micro_blk
     assert "他說 B→今" in micro_blk
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
     assert "_flash_spec_from_pivots" in src
-    # 遠／近：矮獨立列＋列內置中八浪小卡；host 不准 hide（tight 才留列）
+    # 遠／近／超近同構：中排左說明＋右八浪吃滿格；不准 hide
     assert "ax_wave_host" in far_blk and "ax_wave_host" in near_blk
-    assert "_eight_wave_card_ax_in_host" in far_blk
-    assert "_eight_wave_card_ax_in_host" in near_blk
-    assert "ax=_ew_card" in far_blk and "ax=_ew_card" in near_blk
+    assert "ax_leg" in far_blk and "ax_leg" in near_blk
+    assert "_paint_teach_eight_wave_legend" in far_blk
+    assert "_paint_teach_eight_wave_legend" in near_blk
+    assert "ax=ax_wave_host" in far_blk and "ax=ax_wave_host" in near_blk
     assert "ax=ax_wave_host" in micro_blk
-    assert "height_ratios=(2.55, 3.75, 0.88, 1.18)" in far_blk
-    assert "height_ratios=(5.70, 1.05, 1.22)" in near_blk
-    # 不准 hide 整個 host（會被 tight 裁掉）；spine 關可見除外
+    assert "height_ratios=(2.40, 3.45, 1.65, 1.12)" in far_blk
+    assert "height_ratios=(5.25, 1.70, 1.15)" in near_blk
+    assert "subgridspec" in far_blk and "subgridspec" in near_blk
     assert "ax_wave_host.set_visible(False)" not in far_blk
     assert "ax_wave_host.set_visible(False)" not in near_blk
     assert "ax_wave_host.set_visible(False)" not in micro_blk
@@ -251,6 +252,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "sharex" not in _near_host_ln
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
     assert "_TEACH_FIG_LEFT" in src and "_TEACH_HSPACE" in src
+    assert "_TEACH_MID_WSPACE" in src
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src
