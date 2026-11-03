@@ -1204,6 +1204,49 @@ def promote_if_ready(db_path: str) -> Dict[str, Any]:
     return out
 
 
+def _maybe_backfill_level_oral(db_path: str) -> Dict[str, Any]:
+    """位階口語 snaps 太稀才回補歷史文（不渲 PNG、不推話筒）。已密則跳過。"""
+    out: Dict[str, Any] = {"ran": False, "inserted": 0}
+    if not db_path or not os.path.isfile(db_path):
+        return out
+    try:
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            n = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                    "AND name='biaoke_level_snaps'"
+                ).fetchone()[0]
+            )
+            if not n:
+                return out
+            snaps = int(conn.execute("SELECT COUNT(*) FROM biaoke_level_snaps").fetchone()[0])
+        finally:
+            conn.close()
+        if snaps >= 100:
+            return {**out, "snaps": snaps, "skipped": "dense"}
+        # 延遲載入腳本核心，避免循環 import
+        import importlib.util
+        from pathlib import Path
+
+        script = Path(__file__).resolve().parent / "scripts" / "biaoke_level_sample_backfill.py"
+        if not script.is_file():
+            return {**out, "error": "missing_script"}
+        spec = importlib.util.spec_from_file_location("biaoke_level_sample_backfill", script)
+        if spec is None or spec.loader is None:
+            return {**out, "error": "load_fail"}
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        dbp = Path(db_path)
+        items = mod._load_levelish(dbp)
+        ins = mod.insert_missing_snaps(dbp, items)
+        ver = mod.verify_all_chronological(dbp)
+        out.update({"ran": True, "snaps_before": snaps, **ins, "verify_marked": ver.get("marked")})
+    except Exception:
+        logger.exception("位階口語回補略過")
+    return out
+
+
 def night_tick(db_path: str, as_of: str = "") -> Dict[str, Any]:
     """盤後節奏：覆盤分軌＋凍 live_judge＋§13 閘。失敗吞掉；不推話筒、不改買訊。"""
     out: Dict[str, Any] = {
@@ -1211,10 +1254,12 @@ def night_tick(db_path: str, as_of: str = "") -> Dict[str, Any]:
         "snapshot": 0,
         "gate": {},
         "promoted": False,
+        "level_oral_backfill": {},
     }
     if not db_path:
         return out
     try:
+        out["level_oral_backfill"] = _maybe_backfill_level_oral(db_path)
         out["scored"] = verify_diverge_due(db_path)
         out["snapshot"] = snapshot_biaoke_diverge(db_path, as_of=as_of)
         promo = promote_if_ready(db_path)

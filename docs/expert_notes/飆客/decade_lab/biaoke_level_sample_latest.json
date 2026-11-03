@@ -1,0 +1,34 @@
+{
+  "written_at": "2026-11-03T13:59:56.209109+08:00",
+  "tz": "Asia/Taipei",
+  "not_buy_signal": true,
+  "no_phone_push": true,
+  "no_png": true,
+  "insert": {
+    "inserted": 520,
+    "skipped_existing": 11,
+    "levelish": 531
+  },
+  "verify": {
+    "marked": 521,
+    "still_pending": 1,
+    "verdicts": {
+      "": 1,
+      "偏": 331,
+      "對": 199
+    },
+    "n_days": 340,
+    "n_decided_days": 340
+  },
+  "diverge": {
+    "scored": 2401,
+    "promoted": false,
+    "gate_n_ok": true,
+    "promote_ready": false,
+    "one_liner": "明確優化狀態：分軌 n=437 夠但下一版未贏現況，不改碼。"
+  },
+  "gate_note": {
+    "level_snaps": "位階口語軌：獨立判決日往 n≥20 收；未過閘不改話筒編碼",
+    "diverge": "明確優化狀態：分軌 n=437 夠但下一版未贏現況，不改碼。"
+  }
+}
