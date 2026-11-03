@@ -2477,16 +2477,18 @@ def _build_live_pack(
     }
 
 
-# 活畫深底：墨藍交易桌（話筒縮圖仍要一眼讀得出數字，不准花俏蓋價）
-_LIVE_BG = "#070b12"
-_LIVE_PANEL = "#0e1520"
-_LIVE_PANEL_EDGE = "#1c2736"
-_LIVE_TEXT = "#eef3f8"
-_LIVE_MUTED = "#9aa8b5"
-_LIVE_GRID = "#1a2430"
-_LIVE_UP = "#ff5a5a"
-_LIVE_DOWN = "#2bbbad"
-_LIVE_CHIP_FC = "#0a1018"
+# 活畫深底：暖墨指揮台（元素全留；縮圖遠看也要跟舊版一眼不同）
+_LIVE_BG = "#0b0908"
+_LIVE_PANEL = "#14110f"
+_LIVE_PANEL_EDGE = "#2a221c"
+_LIVE_HUD = "#100e0c"
+_LIVE_ACCENT = "#ffb300"
+_LIVE_TEXT = "#f6f1e8"
+_LIVE_MUTED = "#a89a88"
+_LIVE_GRID = "#241c16"
+_LIVE_UP = "#ff4d4d"
+_LIVE_DOWN = "#26c6a8"
+_LIVE_CHIP_FC = "#1a1512"
 # 遠窗縮圖：絕對 min body=6 對費半／加權價軸幾乎看不見；改跟價窗比例走
 _LIVE_CANDLE_MIN_BODY_FRAC = 0.01
 _FAR_SOX_MIN_BODY_FRAC = 0.018
@@ -2505,12 +2507,12 @@ def _far_teach_roll_bars(
     return rows
 
 
-def _teach_chip_bbox(edge: str, *, pad: float = 0.18, lw: float = 0.85, alpha: float = 0.94) -> Dict[str, Any]:
-    """浪名／註解共用晶片框：圓角＋深底，邊緣跟浪色走。"""
+def _teach_chip_bbox(edge: str, *, pad: float = 0.22, lw: float = 1.35, alpha: float = 0.96) -> Dict[str, Any]:
+    """浪名／註解晶片：厚邊＋暖墨底（話筒縮圖遠看也讀得到框）。"""
     return {
         "boxstyle": f"round,pad={float(pad)}",
         "fc": _LIVE_CHIP_FC,
-        "ec": str(edge or _LIVE_MUTED),
+        "ec": str(edge or _LIVE_ACCENT),
         "lw": float(lw),
         "alpha": float(alpha),
     }
@@ -2528,7 +2530,7 @@ def _wave_line(
     zorder: float = 7,
     glow: bool = True,
 ) -> None:
-    """結構浪線：底下淡光暈＋上層實線（電話縮圖更立體，不准改錨點資料）。"""
+    """結構浪線：雙層光暈＋實線（遠看也要有體積；不准改錨點）。"""
     if ax is None:
         return
     xlist = list(xs)
@@ -2541,17 +2543,27 @@ def _wave_line(
             xlist,
             ylist,
             color=color,
-            lw=float(lw) * 3.1,
-            alpha=min(0.22, float(alpha) * 0.28),
+            lw=float(lw) * 7.2,
+            alpha=min(0.16, float(alpha) * 0.22),
             ls=ls,
-            zorder=float(zorder) - 0.4,
+            zorder=float(zorder) - 0.6,
+            **kw,
+        )
+        ax.plot(
+            xlist,
+            ylist,
+            color=color,
+            lw=float(lw) * 3.6,
+            alpha=min(0.34, float(alpha) * 0.42),
+            ls=ls,
+            zorder=float(zorder) - 0.3,
             **kw,
         )
     ax.plot(
         xlist,
         ylist,
         color=color,
-        lw=float(lw),
+        lw=float(lw) * 1.08,
         alpha=float(alpha),
         ls=ls,
         zorder=float(zorder),
@@ -2560,17 +2572,130 @@ def _wave_line(
 
 
 def _style_teach_axes(axes) -> None:
-    """三張教具共用面板：深底、細格、低調邊框。"""
+    """三張教具共用面板：暖墨底、低調格、左側略強調。"""
     for a in axes:
         if a is None:
             continue
         a.set_facecolor(_LIVE_PANEL)
-        a.tick_params(colors=_LIVE_MUTED, labelsize=9, length=3.2, width=0.6)
-        for sp in a.spines.values():
-            sp.set_color(_LIVE_PANEL_EDGE)
-            sp.set_linewidth(0.9)
-        a.grid(True, linestyle=(0, (1.1, 2.0)), linewidth=0.45, color=_LIVE_GRID, alpha=0.9)
+        a.tick_params(colors=_LIVE_MUTED, labelsize=9, length=3.5, width=0.7)
+        for side, sp in a.spines.items():
+            sp.set_color(_LIVE_ACCENT if side == "left" else _LIVE_PANEL_EDGE)
+            sp.set_linewidth(1.35 if side == "left" else 0.85)
+        a.grid(True, linestyle=(0, (1.0, 2.4)), linewidth=0.4, color=_LIVE_GRID, alpha=0.85)
         a.set_axisbelow(True)
+
+
+def _paint_teach_hud(
+    fig,
+    *,
+    title: str,
+    meta: str,
+    fp,
+    top: float = 0.905,
+    height: float = 0.095,
+) -> None:
+    """頁眉指揮條：琥珀豎條＋暖墨板；標題醒目、圖例淡化。元素仍全寫，只分層。"""
+    if fig is None:
+        return
+    try:
+        from matplotlib.patches import Rectangle
+    except Exception:
+        return
+    y0 = float(top)
+    h = float(height)
+    fig.patches.append(
+        Rectangle(
+            (0.0, y0),
+            1.0,
+            h,
+            transform=fig.transFigure,
+            facecolor=_LIVE_HUD,
+            edgecolor="none",
+            zorder=-2,
+            clip_on=False,
+        )
+    )
+    fig.patches.append(
+        Rectangle(
+            (0.0, y0),
+            0.012,
+            h,
+            transform=fig.transFigure,
+            facecolor=_LIVE_ACCENT,
+            edgecolor="none",
+            zorder=-1,
+            clip_on=False,
+        )
+    )
+    # 底部分隔細線
+    fig.patches.append(
+        Rectangle(
+            (0.0, y0),
+            1.0,
+            0.0028,
+            transform=fig.transFigure,
+            facecolor=_LIVE_ACCENT,
+            alpha=0.35,
+            edgecolor="none",
+            zorder=-1,
+            clip_on=False,
+        )
+    )
+    fig.text(
+        0.028,
+        y0 + h * 0.62,
+        str(title or ""),
+        fontproperties=fp(13, "bold"),
+        color=_LIVE_TEXT,
+        ha="left",
+        va="center",
+        zorder=20,
+    )
+    if meta:
+        fig.text(
+            0.028,
+            y0 + h * 0.22,
+            str(meta)[:180],
+            fontproperties=fp(8, "bold"),
+            color=_LIVE_MUTED,
+            ha="left",
+            va="center",
+            zorder=20,
+        )
+
+
+def _paint_teach_foot_bar(fig, *, y: float = 0.0, height: float = 0.052) -> None:
+    """頁腳暖墨條＋琥珀豎條（腳註字仍由呼叫端畫）。"""
+    if fig is None:
+        return
+    try:
+        from matplotlib.patches import Rectangle
+    except Exception:
+        return
+    fig.patches.append(
+        Rectangle(
+            (0.0, float(y)),
+            1.0,
+            float(height),
+            transform=fig.transFigure,
+            facecolor=_LIVE_HUD,
+            edgecolor="none",
+            zorder=-2,
+            clip_on=False,
+        )
+    )
+    fig.patches.append(
+        Rectangle(
+            (0.0, float(y)),
+            0.012,
+            float(height),
+            transform=fig.transFigure,
+            facecolor=_LIVE_ACCENT,
+            edgecolor="none",
+            zorder=-1,
+            clip_on=False,
+        )
+    )
 
 
 _LIVE_LV = (
@@ -2706,28 +2831,43 @@ def _style_live_ax(ax, axv) -> None:
 def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) -> None:
     n = len(closes)
     min_body = _candle_span_min_body(highs, lows, frac=_LIVE_CANDLE_MIN_BODY_FRAC)
+    import matplotlib.pyplot as plt
+
+    last_c = None
     for i in range(n):
         prev_c = closes[i - 1] if i else None
         up = candle_up(closes[i], prev_c, opens[i])
         color = _LIVE_UP if up else _LIVE_DOWN
+        rim = "#ffcdd2" if up else "#b2dfdb"
         # wick/body z 高於底帶、低於空心 tip；末根另蓋回
-        ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.35, zorder=5)
+        ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.55, zorder=5, alpha=0.95)
         y0, y1 = sorted((opens[i], closes[i]))
-        import matplotlib.pyplot as plt
-
         ax.add_patch(
             plt.Rectangle(
-                (i - 0.34, y0),
-                0.68,
+                (i - 0.36, y0),
+                0.72,
                 max(y1 - y0, float(min_body)),
                 facecolor=color,
-                edgecolor=color,
-                linewidth=0.45,
+                edgecolor=rim,
+                linewidth=0.65,
                 zorder=6,
+                alpha=0.98,
             )
         )
         if axv is not None:
-            axv.bar(i, vols[i], color=color, width=0.68, zorder=3, alpha=0.92)
+            axv.bar(i, vols[i], color=color, width=0.72, zorder=3, alpha=0.9)
+        last_c = color
+    # 末日柔光：縮圖一眼看到「現在這根」
+    if n >= 1 and last_c:
+        ax.scatter(
+            [n - 1],
+            [closes[-1]],
+            s=220,
+            c=last_c,
+            alpha=0.12,
+            zorder=4.5,
+            linewidths=0,
+        )
 
 
 def _paint_special_candle(
@@ -3304,7 +3444,7 @@ def _place_live_right_labels(
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=color, lw=0.65, alpha=0.96),
+            bbox=_teach_chip_bbox(color, pad=0.16, lw=1.15, alpha=0.96),
         )
 
 
@@ -4150,10 +4290,10 @@ def _paint_eight_wave_inset(
     except Exception:
         return
     ax = fig.add_axes(list(rect))
-    ax.set_facecolor("#0a121a")
-    for sp in ax.spines.values():
-        sp.set_color("#3d5166")
-        sp.set_linewidth(1.15)
+    ax.set_facecolor("#171310")
+    for side, sp in ax.spines.items():
+        sp.set_color(_LIVE_ACCENT if side in ("left", "top") else "#4a3f34")
+        sp.set_linewidth(1.45 if side in ("left", "top") else 1.05)
     ax.set_xticks([])
     ax.set_yticks([])
     # 簡化八浪折線；色碼跟主圖一致：藍⑤／粉A／金虛B／紫C
@@ -4456,7 +4596,7 @@ def _paint_eight_wave_inset(
     ax.set_title(
         title,
         fontproperties=fp(8, "bold"),
-        color="#eceff1",
+        color=_LIVE_ACCENT,
         pad=2,
         loc="left",
     )
@@ -4468,7 +4608,7 @@ def _paint_eight_wave_inset(
         0.02,
         foot,
         fontproperties=fp(6, "bold"),
-        color="#90a4ae",
+        color=_LIVE_MUTED,
         ha="left",
         va="bottom",
         transform=ax.transAxes,
@@ -4833,18 +4973,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             up = candle_up_taiwan(sox_c[i], prev_c, sox_o[i])
             color = _LIVE_UP if up else _LIVE_DOWN
             # 遠窗費半：加粗影線＋價窗比例最小實體（舊 0.15%→看不見）
-            axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=1.55, zorder=5)
+            axu.vlines(i, sox_l[i], sox_h[i], color=color, linewidth=1.55, zorder=5, alpha=0.95)
             y0, y1 = sorted((sox_o[i], sox_c[i]))
             _bh = max(y1 - y0, float(sox_min_body))
+            rim = "#ffcdd2" if up else "#b2dfdb"
             axu.add_patch(
                 plt.Rectangle(
                     (i - 0.36, y0),
                     0.72,
                     _bh,
                     facecolor=color,
-                    edgecolor=color,
-                    linewidth=0.45,
+                    edgecolor=rim,
+                    linewidth=0.65,
                     zorder=6,
+                    alpha=0.98,
                 )
             )
         # 費半跟加權同一日曆錨：⑤起4/1→⑤終6/23→A底7/29→B末10/6→C
@@ -5463,26 +5605,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
     # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
     pred_foot = str(pack.get("pred_note") or "")[:240]
-    # 頁眉兩層：上行＝窗名＋結構；下行＝色帶／日曆（淡色，不准跟黃戳搶）
-    fig.text(
-        0.05,
-        0.975,
-        "第1張・遠窗　上費半浪｜中加權大ABC｜下加權量",
-        fontproperties=_fp(12, "bold"),
-        color=_LIVE_TEXT,
-        ha="left",
-        va="top",
+    # 頁眉指揮條（元素全留，分層：窗名／圖例）
+    _paint_teach_hud(
+        fig,
+        title="第1張・遠窗　上費半浪｜中加權大ABC｜下加權量",
+        meta=(
+            f"{vz_y}　｜　{vz_c}　｜　{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
+            f"費半同軸｜C走完≠新五波升{sox_bit}"
+        ),
+        fp=_fp,
+        top=0.905,
+        height=0.095,
     )
-    fig.text(
-        0.05,
-        0.952,
-        f"{vz_y}　｜　{vz_c}　｜　{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
-        f"費半同軸｜C走完≠新五波升{sox_bit}",
-        fontproperties=_fp(8, "bold"),
-        color=_LIVE_MUTED,
-        ha="left",
-        va="top",
-    )
+    _paint_teach_foot_bar(fig, y=0.0, height=0.058)
     # 加權／費半黃框：加權貼最上；費半在桃色副標下一行，不准擋桃色字／費半K
     _tw_stamp_y = 0.982
     _sox_stamp_y = 0.918
@@ -6185,26 +6320,19 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     c_sub_bit = ""
     if c_sub.get("ok"):
         c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}"
-    fig.text(
-        0.03,
-        0.972,
-        f"第2張・近窗　此刻＝{title_bit}",
-        fontproperties=_fp(13, "bold"),
-        color=_LIVE_TEXT,
-        ha="left",
-        va="top",
+    _paint_teach_hud(
+        fig,
+        title=f"第2張・近窗　此刻＝{title_bit}",
+        meta=(
+            f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　"
+            f"{str(ladder.get('one_line') or '現在走到：C進行中')[:40]}｜"
+            f"{_macro_wave_calendar_line()}｜C走完≠新五波升"
+        ),
+        fp=_fp,
+        top=0.905,
+        height=0.095,
     )
-    fig.text(
-        0.03,
-        0.945,
-        f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　"
-        f"{str(ladder.get('one_line') or '現在走到：C進行中')[:40]}｜"
-        f"{_macro_wave_calendar_line()}｜C走完≠新五波升",
-        fontproperties=_fp(8, "bold"),
-        color=_LIVE_MUTED,
-        ha="left",
-        va="top",
-    )
+    _paint_teach_foot_bar(fig, y=0.0, height=0.045)
     # 近窗：黃戳對齊紅橫杠空檔，略離大B金虛線（價～41200、偏右）
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
     _stamp_y_data = 41200.0
@@ -6789,15 +6917,6 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     c_sub_bit = ""
     if c_sub.get("ok"):
         c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}（同遠／近）"
-    fig.text(
-        0.03,
-        0.972,
-        "第3張・超近窗　C內細浪①～⑤（對齊縮圖・不取代大ABC）",
-        fontproperties=_fp(13, "bold"),
-        color=_LIVE_TEXT,
-        ha="left",
-        va="top",
-    )
     # 不准 [:40] 把「C3-3-4」裁成「C3-3」；尾碼必須完整
     _ol = str(ladder.get("one_line") or "現在走到：C進行中")
     _now = str(ladder.get("now") or "").strip()
@@ -6805,15 +6924,18 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         _ol = f"現在走到：…→{_now}"
     elif len(_ol) > 52:
         _ol = _ol[:51] + "…"
-    fig.text(
-        0.03,
-        0.945,
-        f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　{_ol}｜{_macro_wave_calendar_line()}｜C走完≠新五波升",
-        fontproperties=_fp(8, "bold"),
-        color=_LIVE_MUTED,
-        ha="left",
-        va="top",
+    _paint_teach_hud(
+        fig,
+        title="第3張・超近窗　C內細浪①～⑤（對齊縮圖・不取代大ABC）",
+        meta=(
+            f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　{_ol}｜"
+            f"{_macro_wave_calendar_line()}｜C走完≠新五波升"
+        ),
+        fp=_fp,
+        top=0.905,
+        height=0.095,
     )
+    _paint_teach_foot_bar(fig, y=0.0, height=0.042)
     # 上K／中說明＋八浪／下量：頁邊留給標題與量軸
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.06)
     _paint_teach_query_stamp(
