@@ -2477,14 +2477,16 @@ def _build_live_pack(
     }
 
 
-# 活畫深底：話筒縮圖對比（對齊你覺得清楚的黑底讀法）
-_LIVE_BG = "#0b0f14"
-_LIVE_PANEL = "#121820"
-_LIVE_TEXT = "#f2f5f8"
-_LIVE_MUTED = "#b0bec5"
-_LIVE_GRID = "#2a3440"
-_LIVE_UP = "#ff5252"
-_LIVE_DOWN = "#26a69a"
+# 活畫深底：墨藍交易桌（話筒縮圖仍要一眼讀得出數字，不准花俏蓋價）
+_LIVE_BG = "#070b12"
+_LIVE_PANEL = "#0e1520"
+_LIVE_PANEL_EDGE = "#1c2736"
+_LIVE_TEXT = "#eef3f8"
+_LIVE_MUTED = "#9aa8b5"
+_LIVE_GRID = "#1a2430"
+_LIVE_UP = "#ff5a5a"
+_LIVE_DOWN = "#2bbbad"
+_LIVE_CHIP_FC = "#0a1018"
 # 遠窗縮圖：絕對 min body=6 對費半／加權價軸幾乎看不見；改跟價窗比例走
 _LIVE_CANDLE_MIN_BODY_FRAC = 0.01
 _FAR_SOX_MIN_BODY_FRAC = 0.018
@@ -2501,6 +2503,76 @@ def _far_teach_roll_bars(
     if len(rows) > cap:
         return rows[-cap:]
     return rows
+
+
+def _teach_chip_bbox(edge: str, *, pad: float = 0.18, lw: float = 0.85, alpha: float = 0.94) -> Dict[str, Any]:
+    """浪名／註解共用晶片框：圓角＋深底，邊緣跟浪色走。"""
+    return {
+        "boxstyle": f"round,pad={float(pad)}",
+        "fc": _LIVE_CHIP_FC,
+        "ec": str(edge or _LIVE_MUTED),
+        "lw": float(lw),
+        "alpha": float(alpha),
+    }
+
+
+def _wave_line(
+    ax,
+    xs,
+    ys,
+    color: str,
+    *,
+    lw: float = 2.0,
+    ls: str = "-",
+    alpha: float = 1.0,
+    zorder: float = 7,
+    glow: bool = True,
+) -> None:
+    """結構浪線：底下淡光暈＋上層實線（電話縮圖更立體，不准改錨點資料）。"""
+    if ax is None:
+        return
+    xlist = list(xs)
+    ylist = list(ys)
+    if len(xlist) < 2 or len(ylist) < 2:
+        return
+    kw = dict(solid_capstyle="round", solid_joinstyle="round")
+    if glow and ls == "-":
+        ax.plot(
+            xlist,
+            ylist,
+            color=color,
+            lw=float(lw) * 3.1,
+            alpha=min(0.22, float(alpha) * 0.28),
+            ls=ls,
+            zorder=float(zorder) - 0.4,
+            **kw,
+        )
+    ax.plot(
+        xlist,
+        ylist,
+        color=color,
+        lw=float(lw),
+        alpha=float(alpha),
+        ls=ls,
+        zorder=float(zorder),
+        **kw,
+    )
+
+
+def _style_teach_axes(axes) -> None:
+    """三張教具共用面板：深底、細格、低調邊框。"""
+    for a in axes:
+        if a is None:
+            continue
+        a.set_facecolor(_LIVE_PANEL)
+        a.tick_params(colors=_LIVE_MUTED, labelsize=9, length=3.2, width=0.6)
+        for sp in a.spines.values():
+            sp.set_color(_LIVE_PANEL_EDGE)
+            sp.set_linewidth(0.9)
+        a.grid(True, linestyle=(0, (1.1, 2.0)), linewidth=0.45, color=_LIVE_GRID, alpha=0.9)
+        a.set_axisbelow(True)
+
+
 _LIVE_LV = (
     ("tx60_down", "#ce93d8", "降軌"),
     ("tx60_swing_hi", "#ffd54f", "近窗高"),
@@ -2625,13 +2697,10 @@ def _extend_us_ohlc_past_twii(
 
 
 def _style_live_ax(ax, axv) -> None:
-    ax.set_facecolor(_LIVE_PANEL)
-    axv.set_facecolor(_LIVE_PANEL)
+    _style_teach_axes((ax, axv))
     for a in (ax, axv):
-        a.tick_params(colors=_LIVE_MUTED, labelsize=10)
-        for sp in a.spines.values():
-            sp.set_color(_LIVE_GRID)
-        a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
+        if a is not None:
+            a.tick_params(labelsize=10)
 
 
 def _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up) -> None:
@@ -2730,7 +2799,7 @@ def _paint_vol_bars_max_yellow(
             fontproperties=fp(8, "bold"),
             color="#ffeb3b",
             zorder=10,
-            bbox=dict(boxstyle="round,pad=0.1", fc="#0b0f14", ec="#ffeb3b", lw=0.55, alpha=0.94),
+            bbox=_teach_chip_bbox("#ffeb3b", pad=0.12, lw=0.7, alpha=0.94),
         )
     axv.set_ylabel(title, fontproperties=fp(9, "bold"), color=_LIVE_MUTED)
     return i_max
@@ -2780,7 +2849,7 @@ def _paint_max_vol_hl_zone(
     md = _md(date_lab) if _ymd(date_lab) else ""
     day_tag = f"{md} " if md else ""
     # 只留淺黃底，不准上下虛線框（框會跟K攪糊）；對齊交易日靠豎虛線＋金K＋左標月日
-    ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
+    ax.axhspan(y0, y1, facecolor="#ffd54f", alpha=0.13, zorder=0.5)
     ax.text(
         0.01,
         y1,
@@ -2791,7 +2860,7 @@ def _paint_max_vol_hl_zone(
         ha="left",
         va="bottom",
         zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ffeb3b", lw=0.7, alpha=0.94),
+        bbox=_teach_chip_bbox("#ffeb3b", pad=0.14, lw=0.75, alpha=0.94),
     )
     ax.text(
         0.01,
@@ -2803,7 +2872,7 @@ def _paint_max_vol_hl_zone(
         ha="left",
         va="top",
         zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ffeb3b", lw=0.7, alpha=0.94),
+        bbox=_teach_chip_bbox("#ffeb3b", pad=0.14, lw=0.75, alpha=0.94),
     )
 
 
@@ -3084,13 +3153,7 @@ def _pin_pivot_name(
         va=va,
         zorder=int(zorder),
         clip_on=False,
-        bbox=dict(
-            boxstyle="round,pad=0.1",
-            fc="#0b0f14",
-            ec=color,
-            lw=0.65,
-            alpha=0.9,
-        ),
+        bbox=_teach_chip_bbox(color, pad=0.16, lw=0.8, alpha=0.93),
     )
 
 
@@ -4087,10 +4150,10 @@ def _paint_eight_wave_inset(
     except Exception:
         return
     ax = fig.add_axes(list(rect))
-    ax.set_facecolor("#0e151c")
+    ax.set_facecolor("#0a121a")
     for sp in ax.spines.values():
-        sp.set_color("#546e7a")
-        sp.set_linewidth(1.0)
+        sp.set_color("#3d5166")
+        sp.set_linewidth(1.15)
     ax.set_xticks([])
     ax.set_yticks([])
     # 簡化八浪折線；色碼跟主圖一致：藍⑤／粉A／金虛B／紫C
@@ -4746,12 +4809,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # top 略降：標題列＋雙黃框上移進頁眉，不准擋費半縮圖K
     # right 收到 0.98：右標水平往左貼K，不准再留 10% 空溝把標甩飛
     fig.subplots_adjust(left=0.05, right=0.98, top=0.88, bottom=0.125)
-    for a in (axu, ax, axv):
-        a.set_facecolor(_LIVE_PANEL)
-        a.tick_params(colors=_LIVE_MUTED, labelsize=9)
-        for sp in a.spines.values():
-            sp.set_color(_LIVE_GRID)
-        a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
+    _style_teach_axes((axu, ax, axv))
 
     fut_x = float(i_now + 4)
     tip: Dict[str, Any] = {"fut_x": fut_x, "xlim_right": float(n) + 4}
@@ -4797,8 +4855,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             sya = float(sox_l[sa]) if sox_l[sa] == sox_l[sa] else float(sox_c[sa])
             syb = float(sox_h[sb]) if sox_h[sb] == sox_h[sb] else float(sox_c[sb])
             sn = float(sox_c[sox_i_now])
-            axu.plot([s5s, s5e], [sy5s, sy5e], color="#40c4ff", lw=2.2, zorder=7)
-            axu.plot([s5e, sa], [sy5e, sya], color="#ff8a80", lw=2.0, zorder=7)
+            _wave_line(axu, [s5s, s5e], [sy5s, sy5e], "#40c4ff", lw=2.25, zorder=7)
+            _wave_line(axu, [s5e, sa], [sy5e, sya], "#ff8a80", lw=2.05, zorder=7)
             axu.plot(
                 [sa, sb],
                 [sya, syb],
@@ -4806,6 +4864,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 lw=2.2,
                 ls=(0, (7, 2.2)),
                 zorder=7,
+                solid_capstyle="round",
             )
             # 費C：自費B末連到今（中經 C 起日若有柱），不准大B末後斷線
             sox_c_xs = [sb]
@@ -4820,7 +4879,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 sox_c_ys.append(float(sox_c[i_c]))
             sox_c_xs.append(sox_i_now)
             sox_c_ys.append(sn)
-            axu.plot(sox_c_xs, sox_c_ys, color="#ea80fc", lw=1.85, zorder=7)
+            _wave_line(axu, sox_c_xs, sox_c_ys, "#ea80fc", lw=1.95, zorder=7)
             span_s = span_raw
             sox_pred_ys = [
                 float(r.get("level"))
@@ -4962,14 +5021,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             date_lab=_ymd(bars[i_vmax].get("date")),
             fp=_fp,
         )
-    # 底色：藍＝推進⑤；金＝大B；紫＝大C
-    ax.axvspan(i5s - 0.4, i5e + 0.4, facecolor="#40c4ff", alpha=0.06, zorder=0.2)
-    ax.axvspan(i_alow - 0.2, i_b_end + 0.4, facecolor="#ffd54f", alpha=0.05, zorder=0.2)
-    ax.axvspan(i_c - 0.2, n - 0.2, facecolor="#ea80fc", alpha=0.05, zorder=0.2)
+    # 底色：藍＝推進⑤；金＝大B；紫＝大C（更淡，讓K／浪線主視覺）
+    ax.axvspan(i5s - 0.4, i5e + 0.4, facecolor="#40c4ff", alpha=0.04, zorder=0.2)
+    ax.axvspan(i_alow - 0.2, i_b_end + 0.4, facecolor="#ffd54f", alpha=0.035, zorder=0.2)
+    ax.axvspan(i_c - 0.2, n - 0.2, facecolor="#ea80fc", alpha=0.035, zorder=0.2)
     # 推進⑤：4/1→6/23（藍實線）
-    ax.plot([i5s, i5e], [y5s, y5e], color="#40c4ff", lw=2.6, zorder=7)
+    _wave_line(ax, [i5s, i5e], [y5s, y5e], "#40c4ff", lw=2.65, zorder=7)
     # 大A：6/23→7/29（粉）
-    ax.plot([i5e, i_alow], [y5e, y_alow], color="#ff8a80", lw=2.35, zorder=7)
+    _wave_line(ax, [i5e, i_alow], [y5e, y_alow], "#ff8a80", lw=2.4, zorder=7)
     # 大B：7/29→10/6（金虛線）
     ax.plot(
         [i_alow, i_b_end],
@@ -4981,14 +5040,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         solid_capstyle="round",
     )
     # 大C：自大B末連到今（經 C 起 10/15），紫線不准在 10/6 後斷開
-    ax.plot(
+    _wave_line(
+        ax,
         [i_b_end, i_c, i_now],
         [y_b_end, float(closes[i_c]), y_now],
-        color="#ea80fc",
-        lw=2.1,
+        "#ea80fc",
+        lw=2.2,
         zorder=7,
-        solid_capstyle="round",
-        solid_joinstyle="round",
     )
     # 近窗細分淡線（不搶大結構）
     if anc:
@@ -5405,12 +5463,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
     # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
     pred_foot = str(pack.get("pred_note") or "")[:240]
-    # 白字標題縮短讓出右上；費半青註改第二行，不准跟黃框互壓
+    # 頁眉兩層：上行＝窗名＋結構；下行＝色帶／日曆（淡色，不准跟黃戳搶）
     fig.text(
         0.05,
         0.975,
-        f"第1張（遠窗・自3月底）：上費半浪｜中加權推進⑤／大ABC｜下加權量　｜　{vz_y}　｜　{vz_c}",
-        fontproperties=_fp(11, "bold"),
+        "第1張・遠窗　上費半浪｜中加權大ABC｜下加權量",
+        fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
@@ -5418,10 +5476,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.text(
         0.05,
         0.952,
-        f"{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
+        f"{vz_y}　｜　{vz_c}　｜　{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
         f"費半同軸｜C走完≠新五波升{sox_bit}",
-        fontproperties=_fp(9, "bold"),
-        color="#ce93d8",
+        fontproperties=_fp(8, "bold"),
+        color=_LIVE_MUTED,
         ha="left",
         va="top",
     )
@@ -5795,12 +5853,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         )
         _paint_max_vol_day_guide((ax, axv), int(i_vmax))
     # 大結構色帶／折線＝遠窗／縮圖同一套（⑤→A→B→C）；C內震盪不准再叫近A／近B
-    ax.axvspan(i5s - 0.35, i5e + 0.35, facecolor="#40c4ff", alpha=0.05, zorder=0.2)
-    ax.axvspan(i5e - 0.2, i_alow + 0.2, facecolor="#ff8a80", alpha=0.05, zorder=0.2)
-    ax.axvspan(i_alow - 0.2, i_b_end + 0.35, facecolor="#ffd54f", alpha=0.05, zorder=0.2)
-    ax.axvspan(i_b_end + 0.35, n - 0.15, facecolor="#ea80fc", alpha=0.07, zorder=0.2)
-    ax.plot([i5s, i5e], [y5s, y5e], color="#40c4ff", lw=2.5, zorder=7)  # 推進⑤
-    ax.plot([i5e, i_alow], [y5e, y_alow], color="#ff8a80", lw=2.5, zorder=7)  # 大A
+    ax.axvspan(i5s - 0.35, i5e + 0.35, facecolor="#40c4ff", alpha=0.035, zorder=0.2)
+    ax.axvspan(i5e - 0.2, i_alow + 0.2, facecolor="#ff8a80", alpha=0.035, zorder=0.2)
+    ax.axvspan(i_alow - 0.2, i_b_end + 0.35, facecolor="#ffd54f", alpha=0.035, zorder=0.2)
+    ax.axvspan(i_b_end + 0.35, n - 0.15, facecolor="#ea80fc", alpha=0.045, zorder=0.2)
+    _wave_line(ax, [i5s, i5e], [y5s, y5e], "#40c4ff", lw=2.55, zorder=7)  # 推進⑤
+    _wave_line(ax, [i5e, i_alow], [y5e, y_alow], "#ff8a80", lw=2.55, zorder=7)  # 大A
     ax.plot(
         [i_alow, i_b_end],
         [y_alow, y_b_end],
@@ -5808,16 +5866,16 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         lw=2.7,
         ls=(0, (8, 2.4)),
         zorder=7,
+        solid_capstyle="round",
     )  # 大B
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_b_end:])
-    ax.plot(
+    _wave_line(
+        ax,
         [i_b_end, i_c, i_now],
         [y_b_end, float(closes[i_c]), y_now],
-        color="#ea80fc",
-        lw=2.45,
+        "#ea80fc",
+        lw=2.5,
         zorder=7,
-        solid_capstyle="round",
-        solid_joinstyle="round",
     )  # 大C
     c_sub = _c_subwave_anchors_vs_biaoke60(
         highs, lows, bars, i_c=i_c, i_now=i_now
@@ -6130,8 +6188,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.972,
-        f"第2張（近窗）：此刻＝{title_bit}　｜　{vz_y}　｜　{vz_c}{c_sub_bit}",
-        fontproperties=_fp(12, "bold"),
+        f"第2張・近窗　此刻＝{title_bit}",
+        fontproperties=_fp(13, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
@@ -6139,10 +6197,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     fig.text(
         0.03,
         0.945,
-        f"{str(ladder.get('one_line') or '他說現在：C進行中')[:40]}｜"
-        f"{_macro_wave_calendar_line()}｜細＝C內c4／c5｜C走完≠新五波升",
-        fontproperties=_fp(9, "bold"),
-        color="#ce93d8",
+        f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　"
+        f"{str(ladder.get('one_line') or '現在走到：C進行中')[:40]}｜"
+        f"{_macro_wave_calendar_line()}｜C走完≠新五波升",
+        fontproperties=_fp(8, "bold"),
+        color=_LIVE_MUTED,
         ha="left",
         va="top",
     )
@@ -6313,15 +6372,17 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             fp=_fp,
         )
         _paint_max_vol_day_guide((ax, axv), int(i_vmax))
-    ax.axvspan(i_c - 0.35, n - 0.15, facecolor="#ea80fc", alpha=0.08, zorder=1)
+    ax.axvspan(i_c - 0.35, n - 0.15, facecolor="#ea80fc", alpha=0.05, zorder=1)
 
     # 超近主視覺＝縮圖同套細浪；他說 B→今 只留淡底，不准搶橙線浪階
     i_c1 = int(geom.get("i_c1_lo") or i_c)
     i_c2 = int(geom.get("i_c2_hi") or i_now)
     his_xs = [i_b_peak, i_now]
     his_ys = [y_b_peak, float(closes[i_now])]
-    ax.plot(his_xs, his_ys, color="#ea80fc", lw=1.35, alpha=0.35, zorder=5, label="他說路徑")
-    ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.55, zorder=4)
+    _wave_line(
+        ax, his_xs, his_ys, "#ea80fc", lw=1.35, alpha=0.35, zorder=5, glow=False
+    )
+    ax.axvline(i_c, color="#ea80fc", lw=0.9, ls=(0, (2, 2)), alpha=0.45, zorder=4)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_b_peak:])
     c_sub = _c_sub_pre
     tip = _paint_c_forecast(
@@ -6355,8 +6416,18 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.plot(
         geom_xs,
         geom_ys,
-        color="#0b0f14",
-        lw=3.4,
+        color="#ffab40",
+        lw=4.6,
+        alpha=0.22,
+        solid_capstyle="round",
+        solid_joinstyle="round",
+        zorder=6.15,
+    )
+    ax.plot(
+        geom_xs,
+        geom_ys,
+        color=_LIVE_BG,
+        lw=3.35,
         solid_capstyle="round",
         solid_joinstyle="round",
         zorder=6.2,
@@ -6364,8 +6435,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     ax.plot(
         geom_xs,
         geom_ys,
-        color="#ffab40",
-        lw=2.15,
+        color="#ffb74d",
+        lw=2.2,
         solid_capstyle="round",
         solid_joinstyle="round",
         zorder=6.4,
@@ -6721,26 +6792,25 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     fig.text(
         0.03,
         0.972,
-        f"第3張（超近窗）：C內細浪（對齊他60分・不取代ABC）　｜　{vz_y}　｜　{vz_c}"
-        f"{c_sub_bit}",
-        fontproperties=_fp(12, "bold"),
+        "第3張・超近窗　C內細浪①～⑤（對齊縮圖・不取代大ABC）",
+        fontproperties=_fp(13, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="top",
     )
     # 不准 [:40] 把「C3-3-4」裁成「C3-3」；尾碼必須完整
-    _ol = str(ladder.get("one_line") or "他說現在：C進行中")
+    _ol = str(ladder.get("one_line") or "現在走到：C進行中")
     _now = str(ladder.get("now") or "").strip()
     if len(_ol) > 52 and _now and _ol.endswith(_now):
-        _ol = f"他說現在：…→{_now}"
+        _ol = f"現在走到：…→{_now}"
     elif len(_ol) > 52:
         _ol = _ol[:51] + "…"
     fig.text(
         0.03,
         0.945,
-        f"{_ol}｜{_macro_wave_calendar_line()}｜超近＝C內震盪①～⑤｜C走完≠新五波升",
-        fontproperties=_fp(9, "bold"),
-        color="#ce93d8",
+        f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　{_ol}｜{_macro_wave_calendar_line()}｜C走完≠新五波升",
+        fontproperties=_fp(8, "bold"),
+        color=_LIVE_MUTED,
         ha="left",
         va="top",
     )
@@ -6878,18 +6948,15 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
         gridspec_kw=dict(height_ratios=(3.0, 3.0, 1.05), hspace=0.05),
     )
     fig.patch.set_facecolor(_LIVE_BG)
+    _style_teach_axes((ax, axu, axv))
     for a in (ax, axu, axv):
-        a.set_facecolor(_LIVE_PANEL)
-        a.tick_params(colors=_LIVE_MUTED, labelsize=10)
-        for sp in a.spines.values():
-            sp.set_color(_LIVE_GRID)
-        a.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_LIVE_GRID)
+        a.tick_params(labelsize=10)
 
     # 上：加權＋⑤／A／B／C進行中（中段不准標成 C 已完）
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
-    ax.plot([i5, i_alow], [y5, y_alow], color="#ff8a80", lw=2.2, zorder=7)
-    ax.plot([i_alow, i_bhi], [y_alow, y_bhi], color="#40c4ff", lw=2.2, zorder=7)
-    ax.plot([i_bhi, i_now], [y_bhi, y_now], color="#ea80fc", lw=2.0, zorder=7)
+    _wave_line(ax, [i5, i_alow], [y5, y_alow], "#ff8a80", lw=2.25, zorder=7)
+    _wave_line(ax, [i_alow, i_bhi], [y_alow, y_bhi], "#40c4ff", lw=2.25, zorder=7)
+    _wave_line(ax, [i_bhi, i_now], [y_bhi, y_now], "#ea80fc", lw=2.05, zorder=7)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
     tip_tw = _paint_c_forecast(
         ax, i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, fp=_fp, n=n
