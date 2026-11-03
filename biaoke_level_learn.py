@@ -4406,6 +4406,35 @@ def _style_teach_mid_panel(ax: Any) -> None:
     ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
 
+def _teach_legend_level_bits(pack: Optional[Dict[str, Any]]) -> Tuple[str, str]:
+    """中排說明用：他說過的點位｜預估點位各一行（只列真數，不准發明）。"""
+    anchors = list(_tw_tip_anchors(pack) or ())
+    his_bits: List[str] = []
+    for v in anchors[:4]:
+        try:
+            his_bits.append(_px(float(v)))
+        except (TypeError, ValueError):
+            continue
+    his_line = ("他說 " + "／".join(his_bits)) if his_bits else "他說點位＝右欄標"
+    pred_bits: List[str] = []
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if lv < 20000:
+            continue
+        tag = str(row.get("tag") or row.get("role") or "").strip()
+        face = _px(lv)
+        pred_bits.append(f"{face}{tag}" if tag else face)
+        if len(pred_bits) >= 3:
+            break
+    if not pred_bits and his_bits:
+        pred_bits = his_bits[:3]
+    pred_line = ("預估 " + "／".join(pred_bits)) if pred_bits else "預估＝右欄飆預測"
+    return his_line[:44], pred_line[:44]
+
+
 def _paint_teach_eight_wave_legend(
     ax: Any,
     *,
@@ -4415,29 +4444,35 @@ def _paint_teach_eight_wave_legend(
     detail: bool = False,
     c_flash: bool = False,
 ) -> None:
-    """中排左：對位讀法（色碼＋此刻）；右格才是八浪小圖。"""
+    """中排左：對位讀法＋他說／預估點位摘要；右格才是八浪小圖。
+
+    鐵律：只整理已有欄，不准發明新價；完整標仍在主圖右欄／戳。
+    """
     if ax is None:
         return
     _style_teach_mid_panel(ax)
     ladder = _wave_now_ladder(pack or {})
     now = str(now_key or ladder.get("now") or "C").strip() or "C"
     one = str(ladder.get("one_line") or "").strip()
-    if len(one) > 40:
-        one = one[:39] + "…"
+    if len(one) > 36:
+        one = one[:35] + "…"
+    his_line, pred_line = _teach_legend_level_bits(pack)
     lines = [
-        ("八浪對位・怎麼讀", _LIVE_ACCENT, 11),
+        ("對位說明・八浪怎麼讀", _LIVE_ACCENT, 11),
         (one or "大結構對齊教科書八浪", _LIVE_TEXT, 9),
         (f"此刻＝{now}", "#ffd54f", 10),
+        (his_line, "#4dd0e1", 8),
+        (pred_line, "#ce93d8", 8),
     ]
     if detail and not c_flash:
         lines.append(("右圖黃框＝落在哪一段", "#ffe082", 8))
     if c_flash:
         lines.append(("右圖黃框＝C內①～⑤閃折", "#ffe082", 8))
-    lines.append(("小圖＝結構對位・不是價位", _LIVE_MUTED, 8))
-    y = 0.94
+    lines.append(("小圖＝結構・主圖＝K／標／軸／量", _LIVE_MUTED, 8))
+    y = 0.955
     for text, col, fs in lines:
         ax.text(
-            0.05,
+            0.045,
             y,
             text,
             transform=ax.transAxes,
@@ -4447,28 +4482,32 @@ def _paint_teach_eight_wave_legend(
             color=col,
             zorder=3,
         )
-        y -= 0.13 if fs >= 10 else 0.11
-    # 色碼樣本列：填滿左格下半，一眼對上右圖線色
+        y -= 0.105 if fs >= 10 else 0.088
+    # 色碼樣本：一眼對上右圖／主圖浪線
     swatches = [
-        ("#40c4ff", "━━ 1→5 推進"),
-        ("#ff8a80", "━━ A 修正"),
-        ("#ffd54f", "┅┅ B 反彈"),
-        ("#ea80fc", "━━ C 進行"),
+        ("#40c4ff", "━━ 1→5"),
+        ("#ff8a80", "━━ A"),
+        ("#ffd54f", "┅┅ B"),
+        ("#ea80fc", "━━ C"),
     ]
-    y = min(y, 0.42)
+    y = min(y - 0.02, 0.34)
+    x0 = 0.045
     for col, lab in swatches:
         ax.text(
-            0.05,
+            x0,
             y,
             lab,
             transform=ax.transAxes,
             ha="left",
             va="top",
-            fontproperties=fp(9, "bold"),
+            fontproperties=fp(8, "bold"),
             color=col,
             zorder=4,
         )
-        y -= 0.10
+        x0 += 0.23
+        if x0 > 0.85:
+            x0 = 0.045
+            y -= 0.10
 
 
 def _paint_eight_wave_inset(
@@ -5151,13 +5190,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _gs_far = fig.add_gridspec(
         4,
         1,
-        height_ratios=(2.40, 3.45, 1.65, 1.12),
+        height_ratios=(2.35, 3.40, 1.80, 1.12),
         hspace=_TEACH_HSPACE,
     )
     axu = fig.add_subplot(_gs_far[0, 0])
     ax = fig.add_subplot(_gs_far[1, 0], sharex=axu)
     _gs_far_mid = _gs_far[2].subgridspec(
-        1, 2, width_ratios=(1.05, 1.20), wspace=_TEACH_MID_WSPACE
+        1, 2, width_ratios=(1.08, 1.18), wspace=_TEACH_MID_WSPACE
     )
     ax_leg = fig.add_subplot(_gs_far_mid[0, 0])
     # 八浪格不准 sharex：縮圖用 0～1 座標，跟 K 日軸脫鉤
@@ -6164,12 +6203,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     _gs_near = fig.add_gridspec(
         3,
         1,
-        height_ratios=(5.25, 1.70, 1.15),
+        height_ratios=(5.15, 1.85, 1.15),
         hspace=_TEACH_HSPACE,
     )
     ax = fig.add_subplot(_gs_near[0, 0])
     _gs_near_mid = _gs_near[1].subgridspec(
-        1, 2, width_ratios=(1.05, 1.20), wspace=_TEACH_MID_WSPACE
+        1, 2, width_ratios=(1.08, 1.18), wspace=_TEACH_MID_WSPACE
     )
     ax_leg = fig.add_subplot(_gs_near_mid[0, 0])
     # 八浪格不准 sharex：縮圖用 0～1 座標，跟 K 日軸脫鉤
@@ -6962,16 +7001,19 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         swatch_rows.append(("#ce93d8", "━━", "c5細點"))
     if need_alt:
         swatch_rows.append(("#69f0ae", "┅┅", "另前提"))
+    _his_ln, _pred_ln = _teach_legend_level_bits(pack)
     ax_leg.text(
         0.04,
         0.96,
-        "\n".join([hierarchy, geom_line, str(alt_note)]),
+        "\n".join(
+            [hierarchy, geom_line, str(alt_note), _his_ln, _pred_ln]
+        ),
         transform=ax_leg.transAxes,
         ha="left",
         va="top",
         fontproperties=_fp(9, "bold"),
         color=_LIVE_TEXT,
-        linespacing=1.28,
+        linespacing=1.22,
         zorder=3,
     )
     # 色線樣本（不准寫紫／橙國字；色自己秀）

@@ -236,9 +236,19 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_paint_teach_eight_wave_legend" in near_blk
     assert "ax=ax_wave_host" in far_blk and "ax=ax_wave_host" in near_blk
     assert "ax=ax_wave_host" in micro_blk
-    assert "height_ratios=(2.40, 3.45, 1.65, 1.12)" in far_blk
-    assert "height_ratios=(5.25, 1.70, 1.15)" in near_blk
+    assert "height_ratios=(2.35, 3.40, 1.80, 1.12)" in far_blk
+    assert "height_ratios=(5.15, 1.85, 1.15)" in near_blk
     assert "subgridspec" in far_blk and "subgridspec" in near_blk
+    # 必留元素：K／雙底色／右欄他說＋預估／量／軸／黃戳／八浪
+    for blk in (far_blk, near_blk, micro_blk):
+        assert "_paint_eight_wave_inset" in blk
+        assert "_paint_teach_query_stamp" in blk
+        assert "_sparse_xticks" in blk
+        assert "_place_live_right_labels" in blk
+        assert "_tw_tip_anchors" in blk
+    assert "_paint_vol_bars_max_yellow" in far_blk
+    assert "_paint_window_dual_zones" in near_blk and "_paint_window_dual_zones" in micro_blk
+    assert "_teach_legend_level_bits" in src
     assert "ax_wave_host.set_visible(False)" not in far_blk
     assert "ax_wave_host.set_visible(False)" not in near_blk
     assert "ax_wave_host.set_visible(False)" not in micro_blk
