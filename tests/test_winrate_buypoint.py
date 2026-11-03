@@ -700,6 +700,8 @@ def test_render_page_pairs_cache_and_align(tmp_path, monkeypatch):
     monkeypatch.setattr("wayne_navigator.NavigatorEngine", _FakeEng)
     monkeypatch.setattr("vol_zone_chart.render_volume_zone_result", _fake_vz)
     monkeypatch.setattr("wayne_navigator.render_decision_card_png", _fake_card_png)
+    # 休市才寫／吃日快取；盤中窗會關掉 reuse，測被時段污染
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda *a, **k: False)
 
     charts = str(tmp_path / "charts")
     rows = [

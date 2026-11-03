@@ -96,8 +96,16 @@ def test_insert_missing_and_verify_no_png(tmp_path):
 
 def test_scripts_not_on_sys_path_after_load():
     before = list(sys.path)
-    _load_backfill_mod()
     scripts = str(ROOT / "scripts")
-    # 載入後不准把 scripts 目錄插到 path 前端（避免遮蔽根目錄同名模組）
-    assert sys.path[0] != scripts
-    assert before[0] == sys.path[0] or scripts not in sys.path[:3]
+    before_idx = before.index(scripts) if scripts in before else None
+    _load_backfill_mod()
+    after = list(sys.path)
+    # 載入不准新增 scripts，也不准把它推到比原本更前（會遮蔽根目錄同名模組）
+    assert after.count(scripts) == before.count(scripts)
+    if before_idx is None:
+        assert scripts not in after
+    else:
+        assert after.index(scripts) >= before_idx
+    # 若原本就不在前端，載入後也不准變前端
+    if before and before[0] != scripts:
+        assert after[0] != scripts
