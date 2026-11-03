@@ -222,20 +222,25 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
     assert "y=0.855" in micro_blk
     assert "add_gridspec" in micro_blk
-    assert "height_ratios=(5.4, 2.55, 1.15)" in micro_blk
+    assert "height_ratios=(5.55, 2.35, 1.15)" in micro_blk
     assert "ax_leg" in micro_blk and "ax_wave_host" in micro_blk
     assert "AnchoredOffsetbox" not in micro_blk
     assert "他說 B→今" in micro_blk
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
     assert "_flash_spec_from_pivots" in src
-    # 遠／近八浪獨立列：直接畫進 host，不准 hide＋tight 裁列後蓋回 K
+    # 遠／近：矮獨立列＋列內置中八浪小卡；host 不准 hide（tight 才留列）
     assert "ax_wave_host" in far_blk and "ax_wave_host" in near_blk
-    assert "ax=ax_wave_host" in far_blk and "ax=ax_wave_host" in near_blk
+    assert "_eight_wave_card_ax_in_host" in far_blk
+    assert "_eight_wave_card_ax_in_host" in near_blk
+    assert "ax=_ew_card" in far_blk and "ax=_ew_card" in near_blk
     assert "ax=ax_wave_host" in micro_blk
-    assert "set_visible(False)" not in far_blk
-    assert "set_visible(False)" not in near_blk
-    assert "set_visible(False)" not in micro_blk
+    assert "height_ratios=(2.55, 3.75, 0.88, 1.18)" in far_blk
+    assert "height_ratios=(5.70, 1.05, 1.22)" in near_blk
+    # 不准 hide 整個 host（會被 tight 裁掉）；spine 關可見除外
+    assert "ax_wave_host.set_visible(False)" not in far_blk
+    assert "ax_wave_host.set_visible(False)" not in near_blk
+    assert "ax_wave_host.set_visible(False)" not in micro_blk
     _far_host_ln = next(
         ln for ln in far_blk.splitlines() if "ax_wave_host = fig.add_subplot" in ln
     )
@@ -245,6 +250,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "sharex" not in _far_host_ln
     assert "sharex" not in _near_host_ln
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
+    assert "_TEACH_FIG_LEFT" in src and "_TEACH_HSPACE" in src
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src
@@ -354,7 +360,7 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
     # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
     assert "n_axis + 8.6" in block or "n + 8.6" in block
-    assert "right=0.98" in block
+    assert "_TEACH_FIG_RIGHT" in block or "right=0.98" in block
     assert "right=0.90" not in block
     assert "_extend_us_ohlc_past_twii" in block or "_extend_us_ohlc_past_twii" in src
     assert "_FAR_SOX_MIN_BODY_FRAC" in src
