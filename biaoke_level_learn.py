@@ -1368,10 +1368,11 @@ def _latest_level_thesis(
 
 
 def _sparse_slot_id(dt: datetime, *, force: bool = False) -> Optional[str]:
-    """稀疏槽 id；不在窗＝None。force 另開 force- 槽。"""
+    """稀疏槽 id；不在窗＝None。force 一天一槽覆寫（不准每分堆 PNG 吃永久碟）。"""
     ymd = dt.strftime("%Y%m%d")
     if force:
-        return f"force-{ymd}-{dt.strftime('%H%M')}"
+        # 話筒重開／補渲共用 force-{ymd}，遠近超近覆寫同檔；舊 force-{ymd}-{HHMM} 由 disk_guard 清
+        return f"force-{ymd}"
     hm = dt.hour * 60 + dt.minute
     for name, lo, hi in _SPARSE_SLOTS:
         if lo <= hm <= hi:

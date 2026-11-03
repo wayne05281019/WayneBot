@@ -1,18 +1,20 @@
-"""永久碟空間守衛：只刪白名單內可重建出圖快取／暫存。
+"""永久碟空間守衛：只刪可重建出圖快取／暫存；話筒功能／查詢數字不動。
 
-使用者鎖死（2026-10-04 改口）：
+使用者鎖死（2026-10-04 改口；2026-11-03 補教具 PNG）：
 - 白天：正常用；不准追高 free（舊 2.5GB／2GB 目標取消）
 - 緊急：free ≈ 200～300MB 才強制清白名單可重建檔
-- 每天台北 00:00：例行只清白名單（_lookup_memo／wr_pair_cache／根層 scratch）
-- 絕對不准刪：靜默對質／默默落檔、持股、觀察、AI倉、pending、tg 私人狀態、
-  官方柱、飆大必要材料、archive_1709、wayne_market.db、.corrupt-*；
+- 每天台北 00:00：例行清白名單（_lookup_memo／wr_pair_cache／根層 scratch）
+  ＋清過期可重建教具 PNG（open_day_paints；DB 對質列／官方柱／他文不動）
+- 絕對不准刪：靜默對質／默默落檔（數字欄）、持股、觀察、AI倉、pending、tg 私人狀態、
+  官方柱、飆大必要材料（文＋附圖 aux）、archive_1709、wayne_market.db、.corrupt-*；
   偉權與哥哥兩人資料都留
+- 教具 PNG 可重建：從官方柱重渲；只留近窗日檔給話筒熱路徑；舊 force-時分堆叠必清
 - 碟緊時不准 VACUUM（暫吃空間會更痛）
 - 必要資料（DB＋必要 archive）持續成長：追 durable 用量趨勢，預估撐到緊急線還剩多久；
   跑道低（＜約 30 天或 free＜約 900MB）才推偉權＋哥哥兩支話筒，去重不日刷；
   訊息只講大概能撐多久／現在剩多少／建議考慮加購 Render 碟；不准自作主張買
 
-做法：路徑白名單鎖死；從不對 SQLite 下 DELETE／DROP；checkpoint 可回收 WAL；
+做法：路徑白名單鎖死；從不對 SQLite 下 DELETE／DROP 私人列；checkpoint 可回收 WAL；
 VACUUM 只在 free 夠寬裕時。
 """
 
@@ -56,6 +58,22 @@ _RUNWAY_STATE_NAME = "disk_runway_state.json"
 ALLOW_CHART_SUBDIRS: Tuple[str, ...] = (
     "_lookup_memo",
     "wr_pair_cache",
+)
+
+# 教具活畫 PNG（可從官方柱重渲）：相對 data_dir；不准動 aux 原文附圖
+TEACH_PAINT_DIR_NAME = "biaoke_open_day_paints"
+LEVEL_SNAP_DIR_NAME = "biaoke_level_snaps"
+# 話筒熱路徑留近 N 個台北曆日的教具圖；更舊只留 DB 數字／對質列
+DEFAULT_TEACH_PAINT_KEEP_DAYS = 2
+DEFAULT_LEVEL_SNAP_KEEP_DAYS = 14
+# 舊 force-{ymd}-{HHMM} 每分一槽：一律可清（已改 force-{ymd} 覆寫）
+_OLD_FORCE_MINUTE_RE = re.compile(
+    r"^force-(\d{8})-(\d{4})(?:-|\.|$)",
+    re.IGNORECASE,
+)
+_TEACH_YMD_RE = re.compile(
+    r"^(?:force-)?(\d{8})(?:-|\.|$)",
+    re.IGNORECASE,
 )
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
@@ -750,6 +768,186 @@ def _try_vacuum_if_room(db_path: str, *, free_mb: float) -> str:
         return f"fail:{exc}"
 
 
+def _is_teach_paint_image(name: str) -> bool:
+    lower = str(name or "").lower()
+    if lower.endswith(".hq.jpg") or lower.endswith(".hq.jpeg"):
+        return True
+    return any(lower.endswith(suf) for suf in _IMAGE_SUFFIXES)
+
+
+def _teach_paint_stem(name: str) -> str:
+    base = os.path.basename(str(name or ""))
+    stem = base
+    for suf in (".png.hq.jpg", ".hq.jpg", ".hq.jpeg", ".jpeg", ".jpg", ".png", ".webp"):
+        if stem.lower().endswith(suf):
+            stem = stem[: -len(suf)]
+            break
+    return stem
+
+
+def _teach_paint_ymd(name: str) -> str:
+    """檔名取出台北曆日 YYYYMMDD；認不出＝空（保守不刪）。"""
+    stem = _teach_paint_stem(name)
+    m = _OLD_FORCE_MINUTE_RE.match(stem)
+    if m:
+        return m.group(1)
+    m2 = _TEACH_YMD_RE.match(stem)
+    if m2:
+        return m2.group(1)
+    # level snap：20261030_postid...
+    if len(stem) >= 8 and stem[:8].isdigit() and stem[8:9] in ("_", "-"):
+        return stem[:8]
+    return ""
+
+
+def _keep_ymd_cutoff(keep_days: int, *, now: Optional[datetime] = None) -> str:
+    dt = now or _taipei_now()
+    if dt.tzinfo is None:
+        pass
+    days = max(0, int(keep_days))
+    cut = (dt - timedelta(days=days)).strftime("%Y%m%d")
+    return cut
+
+
+def should_delete_teach_paint_file(
+    name: str,
+    *,
+    keep_ymd: str,
+    purge_old_force_minutes: bool = True,
+) -> bool:
+    """可重建教具圖是否該刪。認不出日期＝False（保守）。"""
+    if not _is_teach_paint_image(name):
+        return False
+    stem = _teach_paint_stem(name)
+    if purge_old_force_minutes and _OLD_FORCE_MINUTE_RE.match(stem):
+        return True
+    ymd = _teach_paint_ymd(name)
+    if not ymd or len(ymd) != 8:
+        return False
+    return ymd < str(keep_ymd)
+
+
+def purge_rebuildable_teach_paints(
+    data_dir: str,
+    *,
+    keep_days: int = DEFAULT_TEACH_PAINT_KEEP_DAYS,
+    level_keep_days: int = DEFAULT_LEVEL_SNAP_KEEP_DAYS,
+    now: Optional[datetime] = None,
+    db_path: str = "",
+) -> Dict[str, Any]:
+    """清可重建教具／位階快照 PNG；DB 列與飙大 aux 原文附圖絕對不動。
+
+    - 舊 force-{ymd}-{HHMM}* 一律刪（已改一日一槽覆寫）
+    - 其餘 open_day_paints：早於 keep_days 的圖刪；話筒要圖時從柱重渲
+    - level_snaps 圖：較長保留窗，過期才刪
+    """
+    root = data_dir or "."
+    dt = now or _taipei_now()
+    keep_ymd = _keep_ymd_cutoff(keep_days, now=dt)
+    level_keep_ymd = _keep_ymd_cutoff(level_keep_days, now=dt)
+    stats: Dict[str, Any] = {
+        "files": 0,
+        "mb": 0.0,
+        "keep_ymd": keep_ymd,
+        "level_keep_ymd": level_keep_ymd,
+        "parts": {},
+    }
+    deleted_paths: List[str] = []
+
+    def _purge_dir(subdir: str, *, keep: str, old_force: bool) -> Tuple[int, float]:
+        path = os.path.join(root, subdir)
+        if not os.path.isdir(path):
+            return 0, 0.0
+        n = 0
+        mb = 0.0
+        try:
+            names = os.listdir(path)
+        except OSError:
+            return 0, 0.0
+        for name in names:
+            fp = os.path.join(path, name)
+            if not os.path.isfile(fp):
+                continue
+            if not should_delete_teach_paint_file(
+                name, keep_ymd=keep, purge_old_force_minutes=old_force
+            ):
+                continue
+            try:
+                sz = os.path.getsize(fp) / (1024 * 1024)
+            except OSError:
+                sz = 0.0
+            try:
+                os.unlink(fp)
+            except OSError:
+                continue
+            n += 1
+            mb += sz
+            deleted_paths.append(fp)
+        return n, mb
+
+    n, mb = _purge_dir(TEACH_PAINT_DIR_NAME, keep=keep_ymd, old_force=True)
+    stats["parts"]["open_day_paints"] = {"files": n, "mb": round(mb, 2)}
+    stats["files"] += n
+    stats["mb"] += mb
+
+    n, mb = _purge_dir(LEVEL_SNAP_DIR_NAME, keep=level_keep_ymd, old_force=False)
+    stats["parts"]["level_snaps"] = {"files": n, "mb": round(mb, 2)}
+    stats["files"] += n
+    stats["mb"] += mb
+
+    # 路徑欄指到已刪檔 → 清空字串，下次話筒重渲；不准 DELETE 列
+    dbp = db_path or os.path.join(root, "wayne_market.db")
+    cleared = 0
+    if deleted_paths and dbp and os.path.isfile(dbp):
+        try:
+            conn = sqlite3.connect(dbp, timeout=30.0)
+            try:
+                cols = (
+                    "chart_path",
+                    "tx60_path",
+                    "far_path",
+                    "near_path",
+                    "us_path",
+                    "micro_path",
+                    "mine_path",
+                )
+                for fp in deleted_paths:
+                    for col in cols:
+                        try:
+                            cur = conn.execute(
+                                f"UPDATE biaoke_open_day_paints SET {col}='' "
+                                f"WHERE {col}=?",
+                                (fp,),
+                            )
+                            cleared += int(cur.rowcount or 0)
+                        except sqlite3.Error:
+                            continue
+                    try:
+                        cur = conn.execute(
+                            "UPDATE biaoke_level_snaps SET chart_path='' "
+                            "WHERE chart_path=?",
+                            (fp,),
+                        )
+                        cleared += int(cur.rowcount or 0)
+                    except sqlite3.Error:
+                        pass
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            logger.exception("教具圖清完後路徑欄清空略過")
+    stats["paths_cleared"] = cleared
+    stats["mb"] = round(float(stats["mb"]), 2)
+    if stats["files"]:
+        logger.info(
+            "教具可重建圖已清 %d 檔約 %.1fMB（keep≥%s；舊 force-時分全清）",
+            stats["files"],
+            stats["mb"],
+            keep_ymd,
+        )
+    return stats
+
+
 def cleanup_rebuildable_charts(
     charts_dir: str,
     *,
@@ -836,12 +1034,11 @@ def ensure_disk_headroom(
     force: bool = False,
     mode: str = "",
 ) -> Dict[str, Any]:
-    """開機／白天緊急／午夜例行：只清白名單；從不刪私人列。
+    """開機／白天緊急／午夜例行：清白名單＋可重建教具圖；從不刪私人列。
 
-    - daytime／boot：free ＜緊急線（~250MB）才強清白名單；不准追 2.5GB
-    - midnight：例行全清白名單
-    - force 且非午夜：等同緊急巡檢（仍只在 below 緊急線才清，除非 mode=midnight）
-    - 碟緊不准 VACUUM
+    - daytime／boot：一律清過期／舊 force-時分教具 PNG；free ＜緊急線才強清白名單
+    - midnight：例行全清白名單＋教具過期圖
+    - 不准追 2.5GB；碟緊不准 VACUUM
     """
     try:
         from config import get_charts_dir, get_db_path
@@ -874,6 +1071,14 @@ def ensure_disk_headroom(
         "mode": mode_s or ("midnight" if is_midnight else "daytime"),
     }
 
+    # 教具 PNG 可重建：白天也清舊堆（不追高 free、不碰私人／aux／DB 列）
+    teach_stats: Dict[str, Any] = {}
+    try:
+        teach_stats = purge_rebuildable_teach_paints(root, db_path=dbp)
+    except Exception:
+        logger.exception("教具可重建圖清理失敗")
+        teach_stats = {"files": 0, "mb": 0.0, "error": "purge_failed"}
+
     if is_midnight:
         need = True
         aggressive = True
@@ -883,10 +1088,16 @@ def ensure_disk_headroom(
         aggressive = True
         reason = "emergency"
     else:
-        # 白天／開機：空間夠 → 不追趕、不清、不 VACUUM；仍記 durable 跑道並視需要預警
-        result["after"] = before
+        # 白天／開機：空間夠 → 不追趕白名單、不 VACUUM；仍清教具舊圖＋記跑道
+        after_day = disk_usage_mb(root)
+        result["after"] = after_day
         result["reason"] = "ok_daytime"
-        result["freed_mb_approx"] = 0.0
+        result["teach_paints"] = teach_stats
+        result["cleaned"] = bool(int(teach_stats.get("files") or 0) > 0)
+        result["stats"] = {"teach_paints": teach_stats}
+        result["freed_mb_approx"] = round(
+            float(after_day.get("free") or 0.0) - float(before.get("free") or 0.0), 2
+        )
         try:
             result["runway"] = maybe_push_runway_alert(
                 data_dir=root,
@@ -898,17 +1109,19 @@ def ensure_disk_headroom(
             logger.exception("碟跑道預警失敗")
             result["runway"] = {"skipped": "error"}
         if force and not below_emergency:
-            # force 也不准白天追高 free；只記一筆
             logger.info(
-                "磁碟守衛：白天略過（free %.1f MB ≥ 緊急線 %.0f MB；不追高 free）",
+                "磁碟守衛：白天不追高 free（free %.1f MB ≥ 緊急線 %.0f MB）；"
+                "教具可重建圖清 %s 檔",
                 free,
                 min_free,
+                teach_stats.get("files") or 0,
             )
         return result
 
     if not need:
         result["after"] = before
         result["reason"] = "ok"
+        result["teach_paints"] = teach_stats
         return result
 
     stats = cleanup_rebuildable_charts(
@@ -920,8 +1133,14 @@ def ensure_disk_headroom(
         disk_usage_fn=disk_usage_mb,
         chase_target=below_emergency and not is_midnight,
     )
+    stats["teach_paints"] = teach_stats
+    stats["files"] = int(stats.get("files") or 0) + int(teach_stats.get("files") or 0)
+    stats["mb"] = round(
+        float(stats.get("mb") or 0.0) + float(teach_stats.get("mb") or 0.0), 2
+    )
     result["cleaned"] = True
     result["stats"] = stats
+    result["teach_paints"] = teach_stats
     result["reason"] = reason
 
     mid = disk_usage_mb(root)
