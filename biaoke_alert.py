@@ -1523,7 +1523,9 @@ def maybe_push_marked_level_hits(
     未收盤不當收。一般新文不走這條。不准逐則堆幾月幾號舊文。
     同根柱一次碰到多個已點位 → 國中生一句（標題「飆大提醒·大盤碰到關卡」）；
     不准關卡串／收點串／之上之下表／機器規則句上話筒（2026-10-13 教訓）。
-    先 claim 再送：同日同位／同關卡正文不重推；真新關卡仍兩支話筒各一則。
+    先 claim 再送：同日同位／同關卡正文不重推。
+    同交易日整日只准一則（`idx:day:{ymd}`）：ingest／tape／deploy 換版
+    就算關卡集合先後不同，也不准拆成兩則洗話筒（2026-11-03 45546＋44042）。
     """
     del now  # 官方柱是否已收走 is_official_daily_bar；保留參數相容呼叫端
     stats = {"checked": 0, "pushed": 0, "skipped": 0, "levels": 0}
@@ -1533,6 +1535,12 @@ def maybe_push_marked_level_hits(
     if not bar:
         return {**stats, "skipped": "no_official"}
     bar_ymd = str(bar["date"])
+    day_key = f"idx:day:{bar_ymd}"
+    # 同日已寄過關卡提醒 → 後到的子集／換版重跑一律略過
+    if _level_already(db_path, day_key):
+        stats["skipped"] = 1
+        stats["day_latched"] = 1
+        return stats
     hi = float(bar["high"])
     lo = float(bar["low"])
     posts = _load_marked_index_posts(db_path)
@@ -1647,6 +1655,16 @@ def maybe_push_marked_level_hits(
                 [f"同日同關卡正文 n={len(pending)}"],
             )
         )
+    # 日鎖：與 level／body 同批 claim；任一路徑先佔到就不准再寄第二則
+    claim_rows.append(
+        (
+            day_key,
+            "",
+            0.0,
+            bar_ymd,
+            [f"同日關卡提醒一則 n={len(pending)}"],
+        )
+    )
     # 先占位再送：ingest＋tape 雙呼叫／多 worker 也不洗版
     if not _claim_level_batch(db_path, claim_rows):
         stats["skipped"] += len(pending)
