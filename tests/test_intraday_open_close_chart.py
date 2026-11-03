@@ -242,3 +242,89 @@ def test_x_label_pad_keeps_open_near_price_ticks():
     assert "tick_x" in src
     assert 'ha="left"' in src
     assert "clip_on=False" in src
+
+
+def test_emerging_intraday_roundtrip_keeps_afternoon(tmp_path):
+    """興櫃午後分時要落庫；隔日讀回仍有 13:30 後點，不准只剩 1m 切到 13:29。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import intraday_open_close_chart as ioc
+
+    db = os.path.join(tmp_path, "em.db")
+    TP = ZoneInfo("Asia/Taipei")
+    ymd = "20261102"
+    times = []
+    closes = []
+    for hm in list(range(900, 1330)) + list(range(1331, 1501)):
+        h, m = divmod(hm, 100)
+        if m >= 60:
+            continue
+        times.append(datetime(2026, 11, 2, h, m, tzinfo=TP))
+        closes.append(700.0 + (hm % 17))
+    n = len(times)
+    path = {
+        "times": times,
+        "opens": list(closes),
+        "highs": [c + 1 for c in closes],
+        "lows": [c - 1 for c in closes],
+        "closes": closes,
+        "volumes_lots": [1.0] * n,
+        "source": "yahoo:priceByTimes:1m:3595.TWO",
+        "n_after_1330": sum(1 for t in times if t.hour * 100 + t.minute > 1330),
+    }
+    written = ioc.save_emerging_intraday_1m(db, "3595", ymd, path)
+    assert written >= 100
+    loaded = ioc.load_emerging_intraday_1m(db, "3595", ymd)
+    assert loaded is not None
+    assert int(loaded.get("n_after_1330") or 0) > 0
+    assert loaded["times"][-1].hour * 100 + loaded["times"][-1].minute >= 1500
+
+
+def test_fetch_intraday_em_prefers_db_afternoon(tmp_path, monkeypatch):
+    """Yahoo 隔日吐不出該日 → 走落庫午後，不准 silent 退 1m。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import intraday_open_close_chart as ioc
+
+    db = os.path.join(tmp_path, "em2.db")
+    TP = ZoneInfo("Asia/Taipei")
+    ymd = "20261102"
+    times = [
+        datetime(2026, 11, 2, 10, 0, tzinfo=TP),
+        datetime(2026, 11, 2, 14, 0, tzinfo=TP),
+        datetime(2026, 11, 2, 15, 0, tzinfo=TP),
+    ]
+    closes = [700.0, 750.0, 754.0]
+    path = {
+        "times": times,
+        "opens": closes,
+        "highs": closes,
+        "lows": closes,
+        "closes": closes,
+        "volumes_lots": [1.0, 2.0, 1.0],
+        "source": "yahoo:priceByTimes:1m:3595.TWO",
+        "n_after_1330": 2,
+    }
+    assert ioc.save_emerging_intraday_1m(db, "3595", ymd, path) == 3
+
+    monkeypatch.setattr(ioc, "fetch_yahoo_price_by_times", lambda *a, **k: None)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("不准退 Yahoo 1m chart")
+
+    monkeypatch.setattr(ioc, "fetch_yahoo_1m_path", _boom)
+    got = ioc.fetch_intraday_path("3595", "EM", db_path=db, ymd=ymd)
+    assert got is not None
+    assert int(got.get("n_after_1330") or 0) >= 2
+    assert got["times"][-1].hour >= 15
+
+
+def test_sync_emerging_triggers_intraday_snapshot():
+    import inspect
+
+    from main_runner import MainRunner
+
+    src = inspect.getsource(MainRunner._sync_emerging_required)
+    assert "snapshot_emerging_intraday_day" in src

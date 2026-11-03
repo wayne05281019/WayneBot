@@ -1694,6 +1694,14 @@ class MainRunner:
             em,
             out.get("stats"),
         )
+        # Yahoo 興櫃午後分時隔日就沒：盤後興櫃齊了立刻落庫當日 1 分，查股第 5 張才畫得到 13:30–15:00
+        try:
+            from intraday_open_close_chart import snapshot_emerging_intraday_day
+
+            snap = snapshot_emerging_intraday_day(self.db_path, day, limit=80)
+            out["intraday_snap"] = snap
+        except Exception:
+            logger.exception("%s 興櫃分時落庫略過 cap=%s", out["label"], day)
         return out
 
     def _refresh_dongzhu_after_close(self, cap: str = "") -> Dict[str, Any]:
