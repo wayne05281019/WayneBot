@@ -383,6 +383,267 @@ def _aggregate_prints_to_1m(
     }
 
 
+def ensure_emerging_intraday_table(db_path: str) -> None:
+    """興櫃 1 分路徑落庫：Yahoo priceByTimes 只有當天，隔日查要靠這裡。"""
+    if not db_path:
+        return
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS emerging_intraday_1m (
+                stock_id TEXT NOT NULL,
+                ymd TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                o REAL NOT NULL,
+                h REAL NOT NULL,
+                l REAL NOT NULL,
+                c REAL NOT NULL,
+                v REAL NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (stock_id, ymd, ts)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_em_intraday_sid_ymd "
+            "ON emerging_intraday_1m(stock_id, ymd)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _path_to_em_bars(path: Dict[str, Any]) -> List[Dict[str, Any]]:
+    times = list(path.get("times") or [])
+    opens = list(path.get("opens") or [])
+    highs = list(path.get("highs") or [])
+    lows = list(path.get("lows") or [])
+    closes = list(path.get("closes") or [])
+    vols = list(path.get("volumes_lots") or [])
+    out: List[Dict[str, Any]] = []
+    n = min(len(times), len(opens), len(highs), len(lows), len(closes), len(vols))
+    for i in range(n):
+        t = times[i]
+        try:
+            if hasattr(t, "strftime"):
+                ts = t.strftime("%Y%m%d%H%M")
+            else:
+                ts = str(t).replace("-", "").replace(":", "").replace(" ", "")[:12]
+            if len(ts) < 12:
+                continue
+            out.append(
+                {
+                    "t": ts[:12],
+                    "o": float(opens[i]),
+                    "h": float(highs[i]),
+                    "l": float(lows[i]),
+                    "c": float(closes[i]),
+                    "v": float(vols[i] or 0),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def save_emerging_intraday_1m(
+    db_path: str,
+    stock_id: str,
+    ymd: str,
+    path: Dict[str, Any],
+) -> int:
+    """把當日興櫃 1 分路徑寫進庫；隔日查股第 5 張才能畫 13:30–15:00。"""
+    sid = str(stock_id or "").strip()
+    day = str(ymd or "").replace("-", "")[:8]
+    if not db_path or not sid or len(day) != 8 or not day.isdigit():
+        return 0
+    bars = _path_to_em_bars(path)
+    if len(bars) < 2:
+        return 0
+    # 路徑日必須對得上 ymd（Yahoo 只吐「現在這盤」）
+    if not any(str(b["t"]).startswith(day) for b in bars):
+        return 0
+    ensure_emerging_intraday_table(db_path)
+    src = str(path.get("source") or "yahoo:priceByTimes")[:120]
+    written = 0
+    conn = sqlite3.connect(db_path, timeout=60.0)
+    try:
+        for b in bars:
+            ts = str(b["t"])
+            if not ts.startswith(day):
+                continue
+            conn.execute(
+                """
+                INSERT INTO emerging_intraday_1m(stock_id, ymd, ts, o, h, l, c, v, source)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(stock_id, ymd, ts) DO UPDATE SET
+                    o=excluded.o, h=excluded.h, l=excluded.l,
+                    c=excluded.c, v=excluded.v, source=excluded.source
+                """,
+                (
+                    sid,
+                    day,
+                    ts,
+                    float(b["o"]),
+                    float(b["h"]),
+                    float(b["l"]),
+                    float(b["c"]),
+                    float(b["v"]),
+                    src,
+                ),
+            )
+            written += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return written
+
+
+def load_emerging_intraday_1m(
+    db_path: str,
+    stock_id: str,
+    ymd: str,
+) -> Optional[Dict[str, Any]]:
+    """讀興櫃當日已落庫 1 分路徑；無／不足 → None。"""
+    sid = str(stock_id or "").strip()
+    day = str(ymd or "").replace("-", "")[:8]
+    if not db_path or not sid or len(day) != 8 or not os.path.isfile(db_path):
+        return None
+    ensure_emerging_intraday_table(db_path)
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            rows = conn.execute(
+                """
+                SELECT ts, o, h, l, c, v, source FROM emerging_intraday_1m
+                WHERE stock_id=? AND ymd=?
+                ORDER BY ts
+                """,
+                (sid, day),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    if len(rows) < 2:
+        return None
+    times: List[datetime] = []
+    opens: List[float] = []
+    highs: List[float] = []
+    lows: List[float] = []
+    closes: List[float] = []
+    vols: List[float] = []
+    src = ""
+    for ts, o, h, lo, c, v, source in rows:
+        raw = str(ts or "")
+        if len(raw) < 12 or not raw.startswith(day):
+            continue
+        try:
+            dt = datetime(
+                int(raw[0:4]),
+                int(raw[4:6]),
+                int(raw[6:8]),
+                int(raw[8:10]),
+                int(raw[10:12]),
+                tzinfo=TZ,
+            )
+            times.append(dt)
+            opens.append(float(o))
+            highs.append(float(h))
+            lows.append(float(lo))
+            closes.append(float(c))
+            vols.append(float(v or 0))
+            if source:
+                src = str(source)
+        except (TypeError, ValueError):
+            continue
+    if len(closes) < 2:
+        return None
+    n_after = sum(1 for t in times if t.hour * 100 + t.minute > 1330)
+    return {
+        "yahoo_symbol": f"{sid}.TWO",
+        "times": times,
+        "closes": closes,
+        "volumes_lots": vols,
+        "opens": opens,
+        "highs": highs,
+        "lows": lows,
+        "source": src or f"db:emerging_intraday_1m:{sid}",
+        "prints_n": len(closes),
+        "pages": 0,
+        "raw_1m_n": len(closes),
+        "dense_n": len(closes),
+        "n_after_1330": n_after,
+        "path_min": min(lows),
+        "path_max": max(highs),
+        "from_db": True,
+    }
+
+
+def snapshot_emerging_intraday_day(
+    db_path: str,
+    ymd: str = "",
+    *,
+    limit: int = 80,
+) -> Dict[str, Any]:
+    """盤後：對當日有量興櫃抓 priceByTimes 落庫（Yahoo 隔日就沒午後了）。"""
+    day = str(ymd or "").replace("-", "")[:8]
+    out: Dict[str, Any] = {
+        "ok": False,
+        "ymd": day,
+        "tried": 0,
+        "saved": 0,
+        "skipped": 0,
+        "error": "",
+    }
+    if not db_path or len(day) != 8 or not day.isdigit():
+        out["error"] = "bad args"
+        return out
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            rows = conn.execute(
+                """
+                SELECT stock_id FROM emerging_quotes
+                WHERE REPLACE(CAST(date AS TEXT),'-','')=? AND COALESCE(volume,0)>0
+                ORDER BY COALESCE(volume,0) DESC
+                LIMIT ?
+                """,
+                (day, max(1, int(limit))),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        out["error"] = str(exc)
+        return out
+    for (sid,) in rows:
+        sid = str(sid or "").strip()
+        if not sid:
+            continue
+        out["tried"] += 1
+        cached = load_emerging_intraday_1m(db_path, sid, day)
+        if cached and int(cached.get("n_after_1330") or 0) > 0:
+            out["skipped"] += 1
+            continue
+        path = fetch_yahoo_price_by_times(sid, ymd=day, yahoo_suffix="TWO")
+        if path is None:
+            continue
+        n = save_emerging_intraday_1m(db_path, sid, day, path)
+        if n > 0:
+            out["saved"] += 1
+        time.sleep(0.08)
+    out["ok"] = True
+    logger.info(
+        "興櫃分時落庫 ymd=%s tried=%s saved=%s skipped=%s",
+        day,
+        out["tried"],
+        out["saved"],
+        out["skipped"],
+    )
+    return out
+
+
 def fetch_yahoo_price_by_times(
     stock_id: str,
     *,
@@ -393,6 +654,7 @@ def fetch_yahoo_price_by_times(
     """興櫃分時：Yahoo TW ``StockServices.priceByTimes``（約 5 秒彙整，可到 15:00）。
 
     面值仍走官方日表；此路徑只負責折線形狀。非官方逐筆。
+    注意：API 幾乎只留「當盤」；隔日查必須先讀 emerging_intraday_1m 落庫。
     """
     import requests
 
@@ -495,11 +757,26 @@ def fetch_intraday_path(
     db_path: Optional[str] = None,
     ymd: str = ASOF_YMD,
 ) -> Optional[Dict[str, Any]]:
-    """上市櫃＝Yahoo 1m chart；興櫃＝priceByTimes（午後可到 15:00）。"""
+    """上市櫃＝Yahoo 1m chart；興櫃＝priceByTimes（午後可到 15:00）＋落庫回讀。"""
     if str(market).upper() == "EM":
+        day = str(ymd or "").replace("-", "")[:8]
+        cached = None
+        if db_path and len(day) == 8:
+            cached = load_emerging_intraday_1m(db_path, stock_id, day)
+            # 已有午後＝完整當日，直接用（隔日 Yahoo 已吐不出該日）
+            if cached and int(cached.get("n_after_1330") or 0) > 0:
+                return cached
         path = fetch_yahoo_price_by_times(stock_id, ymd=ymd, yahoo_suffix="TWO")
         if path is not None:
+            if db_path:
+                try:
+                    save_emerging_intraday_1m(db_path, stock_id, day, path)
+                except Exception:
+                    logger.exception("興櫃分時落庫失敗 sid=%s ymd=%s", stock_id, day)
             return path
+        if cached is not None:
+            # 至少有上午落庫也比 1m 假切 13:30 好（仍可能 gap）
+            return cached
         sys.stderr.write(f"[em-fallback-1m] {stock_id}: priceByTimes miss → chart 1m\n")
     return fetch_yahoo_1m_path(stock_id, market, db_path=db_path, ymd=ymd)
 
