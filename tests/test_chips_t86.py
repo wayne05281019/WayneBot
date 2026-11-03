@@ -221,3 +221,48 @@ def test_parse_tpex_2724_20260915_dealer_minus_382_shares_is_zero_lots():
     assert got["trust_net"] == 0
     assert got["dealer_net"] == 0
     assert got["three_net"] == 0
+
+
+def test_apply_chips_retries_through_short_lock(tmp_path, monkeypatch):
+    """開機／早報窗 DB locked：busy＋重試後仍要寫進，不准整段近窗重抓炸掉。"""
+    import sqlite3
+
+    import chips
+    from chips import apply_chips_to_quotes
+
+    db = str(tmp_path / "t.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes(
+            date TEXT, stock_id TEXT,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )
+        """
+    )
+    conn.execute("INSERT INTO daily_quotes VALUES ('20261103','2330',0,0,0)")
+    conn.commit()
+    conn.close()
+
+    real_connect = chips._connect
+    calls = {"n": 0}
+
+    def _flaky_connect(path, **kwargs):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise sqlite3.OperationalError("database is locked")
+        return real_connect(path, **kwargs)
+
+    monkeypatch.setattr(chips, "_connect", _flaky_connect)
+    monkeypatch.setattr(chips.time, "sleep", lambda *_a, **_k: None)
+    n = apply_chips_to_quotes(
+        db, "20261103", {"2330": {"foreign_net": 12, "trust_net": 3, "dealer_net": -1}}
+    )
+    assert n == 1
+    assert calls["n"] >= 3
+    c = sqlite3.connect(db)
+    row = c.execute(
+        "SELECT foreign_net, trust_net, dealer_net FROM daily_quotes WHERE stock_id='2330'"
+    ).fetchone()
+    c.close()
+    assert row == (12, 3, -1)
