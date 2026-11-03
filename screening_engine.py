@@ -640,10 +640,15 @@ class ScreeningEngine:
             if not sid:
                 continue
             q = by_id.get(sid) or {}
+            # 目標日官方收優先：不准舊 session pick_close 配今日漲跌％（話筒價錯）。
+            # 無目標日柱才退回海選當日 pick_close。
+            official_close = q.get("close")
+            pick_close = sr.get("pick_close")
+            close_v = official_close if official_close is not None else pick_close
             item: Dict[str, Any] = {
                 "stock_id": sid,
                 "stock_name": sr.get("stock_name") or q.get("stock_name") or "",
-                "close": sr.get("pick_close") if sr.get("pick_close") is not None else q.get("close"),
+                "close": close_v,
                 "hi20_close": sr.get("hi20_close"),
                 "entry_price": sr.get("entry_price"),
                 "defense_price": sr.get("defense_price"),
@@ -662,11 +667,14 @@ class ScreeningEngine:
                     item[key] = q[key]
             if bucket_key in ("day_trade", "overnight"):
                 try:
-                    close_v = float(item.get("close") or 0)
+                    close_f = float(item.get("close") or 0)
                 except (TypeError, ValueError):
-                    close_v = 0.0
-                if close_v > 0:
+                    close_f = 0.0
+                if close_f > 0:
                     item["ratio_plan"] = bucket_key
+                    # 推算＋3%／＋6%／切入要以目標日官方收，不准鎖死舊 pick。
+                    if official_close is not None:
+                        item["entry_price"] = close_f
                     try:
                         avg_v = float(item.get("avg_price") or 0)
                     except (TypeError, ValueError):

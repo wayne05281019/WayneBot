@@ -106,6 +106,47 @@ def test_screen_daytrade_empty_without_full_scan(tmp_path, monkeypatch):
     assert eng.screen_daytrade("20260828") == []
 
 
+def test_enrich_prefers_target_day_official_close_over_stale_pick(tmp_path, monkeypatch):
+    """舊海選 pick_close 不准蓋掉目標日官方收（否則漲跌％是今日、價卻是舊日）。"""
+    from screening_engine import ScreeningEngine
+    from screen_sessions import ensure_screen_session_table, save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _mk_db(db)
+    conn = sqlite3.connect(db)
+    # 目標日新收；舊 session 仍鎖 282.5
+    conn.execute(
+        "INSERT INTO daily_quotes VALUES ('3006','晶豪科','TW','20261103',242.5,15631,3933181.38,-7.09,64,6,-418,251.62)"
+    )
+    conn.commit()
+    conn.close()
+    ensure_screen_session_table(db)
+    save_screen_session(
+        db,
+        "20261029",
+        "morning",
+        {
+            "day_trade": [
+                {
+                    "stock_id": "3006",
+                    "stock_name": "晶豪科",
+                    "close": 282.5,
+                    "entry_price": 282.5,
+                    "hi20_close": 286.0,
+                }
+            ]
+        },
+    )
+
+    eng = ScreeningEngine(db_path=db)
+    monkeypatch.setattr(eng, "get_latest_trading_date", lambda: "20261103")
+    rows = eng.screen_daytrade("20261103")
+    assert len(rows) == 1
+    assert float(rows[0]["close"]) == 242.5
+    assert float(rows[0]["entry_price"]) == 242.5
+    assert float(rows[0]["pct_change"]) == pytest.approx(-7.09)
+
+
 def test_live_vol_rank_120_batch():
     import sqlite3
 
