@@ -176,6 +176,36 @@ def test_screen_daytrade_rejects_multi_day_stale_blank_fallback(tmp_path, monkey
     assert eng.screen_daytrade("20261103") == []
 
 
+def test_leave_zero_rejects_multi_day_stale_blank_fallback(tmp_path, monkeypatch):
+    """剛離零同樣不准空白回退到隔很多天的舊 leave_zero／golden_buy。"""
+    from screening_engine import ScreeningEngine
+    from screen_sessions import ensure_screen_session_table, save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _mk_db(db)
+    ensure_screen_session_table(db)
+    save_screen_session(
+        db,
+        "20261029",
+        "morning",
+        {
+            "leave_zero": [
+                {"stock_id": "3105", "stock_name": "穩懋", "close": 500}
+            ],
+            "golden_buy": [
+                {"stock_id": "2330", "stock_name": "台積電", "close": 900}
+            ],
+        },
+    )
+
+    eng = ScreeningEngine(db_path=db)
+    monkeypatch.setattr(eng, "get_latest_trading_date", lambda: "20261103")
+    monkeypatch.setattr(
+        "live_quote.is_live_merge_window", lambda: False
+    )
+    assert eng.screen_leave_zero_now("20261103") == []
+
+
 def test_live_vol_rank_120_batch():
     import sqlite3
 
