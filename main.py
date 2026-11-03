@@ -1185,6 +1185,16 @@ def start_watchdog():
 
         while True:
             try:
+                # 先把已寄回執補蓋 pipeline success，再補跑／告警；
+                # 避免「話筒已收到、pipeline 無紀錄」再嚇一則排程未完成。
+                try:
+                    from main_runner import MainRunner
+
+                    _wd = MainRunner()
+                    _wd.reconcile_push_deliveries(prefix="midday-")
+                    _wd.reconcile_push_deliveries(prefix="screen-")
+                except Exception:
+                    logger.exception("死人開關 reconcile 失敗")
                 try:
                     retry_missed_owned_jobs()
                 except Exception:
