@@ -642,10 +642,10 @@ def _speak(text: str, limit: int = 220) -> str:
 
 
 def format_teach_brief(db_path: str = "") -> str:
-    """波浪位階專用敘述：層級／此刻／結構讀法／關鍵價，各自標清楚。
+    """波浪位階開場敘述：現在走到哪／怎麼讀／關鍵價。給人讀，不准重複堆同一句。
 
-    只服務「波浪位階」鍵。飆大空白鍵走 format_focus_oral，不准把整段塞回去。
-    非買訊；失敗回空，不准擋主摘要。
+    只服務「波浪位階」鍵。飆大空白鍵走 format_focus_oral。
+    非買訊；失敗回空，不准擋主摘要。不准寫英文 as_of。
     """
     if not db_path:
         return ""
@@ -666,42 +666,42 @@ def format_teach_brief(db_path: str = "") -> str:
         ladder = _wave_now_ladder(pack)
     except Exception:
         ladder = {}
-    lines: List[str] = ["<b>波浪位階（預估・非買訊）</b>"]
-    lines.append("<b>層級（大→小）</b>")
+    lines: List[str] = ["<b>波浪位階・預估・非買訊</b>"]
+    lines.append("")
+    lines.append("<b>現在走到</b>")
     chain = str(ladder.get("chain") or "").strip()
     if chain:
         lines.append(html_escape(chain))
     elif thesis:
         lines.append(html_escape(thesis))
-    now_line = str(ladder.get("now_line") or "").strip()
-    if now_line:
-        lines.append(html_escape(now_line))
-    else:
-        now = str(ladder.get("now") or "").strip()
-        if now:
-            lines.append(html_escape(f"此刻＝{now}（預估會改・非買訊）"))
-    # 超近窗對齊：C3-3-x 時明示細浪①～⑤（附圖三）
     now = str(ladder.get("now") or "").strip()
+    day_bit = str(ladder.get("day_bit") or "").strip()
+    if now:
+        # 層級鏈已含現況時，只補「落在哪一段」＋題旨日，不准再整句重貼
+        sit = f"落在「{now}」"
+        if day_bit:
+            sit += f"・{day_bit}"
+        lines.append(html_escape(sit))
+    # 超近窗對齊：C3-3-x 時點一下細浪（圖第三張）
     if re.search(r"C3-3-\d|C3-3主跌", now):
-        lines.append(html_escape(f"超近窗＝細浪①～⑤・此刻落在{now}"))
+        lines.append(html_escape(f"超近細浪①～⑤・落在{now}"))
     struct_bits: List[str] = []
-    if thesis:
-        struct_bits.append(f"波浪：{thesis}")
+    # 不准再貼一次「波浪：大A→大B→大C」（上面已寫現在走到）
     if fib:
-        struct_bits.append(f"黃金切割：{fib}")
+        struct_bits.append(f"切割　{fib}")
     if morph:
-        struct_bits.append(f"型態：{morph}")
+        struct_bits.append(f"型態　{morph}")
     if intent:
         one = intent.split("；")[0].strip()
         if one:
-            struct_bits.append(f"量價／主力：{one}")
+            struct_bits.append(f"量價　{one}")
     if wait:
         one_w = re.split(r"[；。]", wait)[0].strip()
         if one_w:
-            struct_bits.append(f"還在等：{one_w}")
+            struct_bits.append(f"等待　{one_w}")
     if struct_bits:
         lines.append("")
-        lines.append("<b>結構讀法</b>")
+        lines.append("<b>怎麼讀</b>")
         for bit in struct_bits:
             lines.append(html_escape(bit))
     pred_note = str(pack.get("pred_note") or "").strip()
@@ -749,7 +749,7 @@ def format_wave_level_one_liner(db_path: str = "") -> str:
     now = str(ladder.get("now") or "").strip()
     if not now:
         return ""
-    return html_escape(f"大盤層級此刻＝{now}（細節請按「波浪位階」・非買訊）")
+    return html_escape(f"大盤現在落在「{now}」（細節按「波浪位階」・非買訊）")
 
 
 def _when_short(date: str, time_s: str) -> str:
