@@ -204,6 +204,35 @@ def test_leave_zero_rejects_multi_day_stale_blank_fallback(tmp_path, monkeypatch
         "live_quote.is_live_merge_window", lambda: False
     )
     assert eng.screen_leave_zero_now("20261103") == []
+    assert eng.leave_zero_cache_ready("20261103") is False
+
+
+def test_leave_zero_cache_ready_accepts_prev_trading_day(tmp_path, monkeypatch):
+    from screening_engine import ScreeningEngine
+    from screen_sessions import ensure_screen_session_table, save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _mk_db(db)
+    ensure_screen_session_table(db)
+    save_screen_session(
+        db,
+        "20261102",
+        "morning",
+        {"leave_zero": [{"stock_id": "3105", "stock_name": "穩懋", "close": 500}]},
+    )
+    eng = ScreeningEngine(db_path=db)
+    monkeypatch.setattr(eng, "get_latest_trading_date", lambda: "20261103")
+    assert eng.leave_zero_cache_ready("20261103") is True
+
+
+def test_leave_zero_empty_copy_uses_cache_ready_gate():
+    """空名單且快取未就緒 → 話筒說名單尚未就緒，不准誤說沒有昨零今離。"""
+    from pathlib import Path
+
+    src = Path("bot_servers.py").read_text(encoding="utf-8")
+    assert "leave_zero_cache_ready" in src
+    assert "今日名單尚未就緒" in src
+    assert "此刻沒有昨零今離的檔。" in src
 
 
 def test_live_vol_rank_120_batch():

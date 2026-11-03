@@ -715,6 +715,21 @@ class ScreeningEngine:
             return load_bucket_rows(self.db_path, bucket_key, latest)
         return []
 
+    def leave_zero_cache_ready(self, target_date: Optional[str] = None) -> bool:
+        """剛離零可否讀新鮮海選桶（目標日或上一開市日有 leave_zero／golden_buy）。"""
+        from screen_sessions import latest_bucket_as_of
+
+        target = str(target_date or self.get_latest_trading_date() or "").replace("-", "")[
+            :8
+        ]
+        if not target:
+            return False
+        for bucket in ("leave_zero", "golden_buy"):
+            latest = latest_bucket_as_of(self.db_path, bucket)
+            if latest and self._session_as_of_fresh_enough(latest, target):
+                return True
+        return False
+
     def _screen_trade_bucket_from_cache(
         self, bucket_key: str, target_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:

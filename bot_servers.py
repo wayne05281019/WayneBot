@@ -6199,6 +6199,19 @@ class WayneTelegramBot:
             empty = (
                 "此刻沒有昨零今離的檔。" if live_on else "最近完整收沒有昨零今離的檔。"
             )
+            # 海選快取過舊／缺檔時不准說「沒有昨零今離」——與當沖同一句「名單尚未就緒」
+            try:
+                if not self.screener.leave_zero_cache_ready():
+                    from trading_calendar import format_trading_date_zh
+
+                    as_of = self.screener.get_latest_trading_date()
+                    as_of_label = format_trading_date_zh(as_of)
+                    empty = (
+                        f"今日名單尚未就緒（今早海選未完成，基準日 {as_of_label}）。"
+                        "請按主選單「海選」執行後再查。"
+                    )
+            except Exception:
+                logger.debug("剛離零快取就緒檢查略過", exc_info=True)
             extra = ""
             try:
                 from sanchi_clocks import sanchi_note_html
