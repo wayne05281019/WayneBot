@@ -73,6 +73,47 @@ def _ensure(store: str) -> None:
         conn.close()
 
 
+def _keep_extra_value(val: Any) -> bool:
+    """可否寫進 extra。numpy 空陣列不准再用 ``==``／``not in []``（會炸）。"""
+    if val is None:
+        return False
+    # 先辨識 ndarray：任何 ``val == ""`` 都會 Ambiguous
+    try:
+        size = getattr(val, "size", None)
+        dtype = getattr(val, "dtype", None)
+        if (
+            size is not None
+            and dtype is not None
+            and not isinstance(val, (bytes, bytearray, memoryview, str))
+        ):
+            return int(size) > 0
+    except (TypeError, ValueError):
+        return False
+    if isinstance(val, str) and val == "":
+        return False
+    if isinstance(val, dict) and not val:
+        return False
+    if isinstance(val, (list, tuple)) and len(val) == 0:
+        return False
+    return True
+
+
+def _jsonable_extra(val: Any) -> Any:
+    """extra 要 json.dumps；numpy 標量／陣列轉原生。"""
+    try:
+        shape = getattr(val, "shape", None)
+        if shape == () and hasattr(val, "item"):
+            return val.item()
+    except Exception:
+        pass
+    try:
+        if hasattr(val, "tolist") and getattr(val, "dtype", None) is not None:
+            return val.tolist()
+    except Exception:
+        pass
+    return val
+
+
 def _num(val: Any) -> Optional[float]:
     if val is None or val == "":
         return None
@@ -336,8 +377,10 @@ def remember_rows(
             for key in _EXTRA_KEEP:
                 if key == "src":
                     continue
-                if raw.get(key) not in (None, "", {}, []):
-                    extra[key] = raw.get(key) if key != "live" else True
+                val = raw.get(key)
+                if not _keep_extra_value(val):
+                    continue
+                extra[key] = True if key == "live" else _jsonable_extra(val)
             if src:
                 extra["src"] = str(src)
             bar = dict(bars.get(sid) or {})
