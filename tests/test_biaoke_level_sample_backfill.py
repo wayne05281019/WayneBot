@@ -2,19 +2,27 @@
 """位階口語樣本回補：只插缺列、不洗判決、不渲圖。"""
 from __future__ import annotations
 
+import importlib.util
 import sqlite3
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 
 from biaoke_level_learn import ensure_tables  # noqa: E402
-from biaoke_level_sample_backfill import (  # noqa: E402
-    insert_missing_snaps,
-    verify_all_chronological,
-)
+
+
+def _load_backfill_mod():
+    """用檔案路徑載入，不准把 scripts/ 插進 sys.path（會撞 biaoke_witness）。"""
+    script = ROOT / "scripts" / "biaoke_level_sample_backfill.py"
+    spec = importlib.util.spec_from_file_location(
+        "biaoke_level_sample_backfill_testmod", script
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _seed_posts(db: Path) -> None:
@@ -44,11 +52,10 @@ def _seed_posts(db: Path) -> None:
     ensure_tables(str(db))
 
 
-def test_insert_missing_and_verify_no_png(tmp_path, monkeypatch):
+def test_insert_missing_and_verify_no_png(tmp_path):
     db = tmp_path / "t.db"
     _seed_posts(db)
-    monkeypatch.setenv("WAYNE_DB_PATH", str(db))
-    # load via insert API with crafted items
+    mod = _load_backfill_mod()
     items = [
         {
             "post_id": "a1",
@@ -72,12 +79,12 @@ def test_insert_missing_and_verify_no_png(tmp_path, monkeypatch):
             "snippet": "大盤細微波確認 A 波低，C3-3 延續",
         },
     ]
-    r1 = insert_missing_snaps(db, items)
+    r1 = mod.insert_missing_snaps(db, items)
     assert r1["inserted"] == 3
-    r2 = insert_missing_snaps(db, items)
+    r2 = mod.insert_missing_snaps(db, items)
     assert r2["inserted"] == 0
     assert r2["skipped_existing"] == 3
-    ver = verify_all_chronological(db)
+    ver = mod.verify_all_chronological(db)
     assert ver["marked"] >= 1
     con = sqlite3.connect(str(db))
     charts = con.execute(
@@ -85,3 +92,12 @@ def test_insert_missing_and_verify_no_png(tmp_path, monkeypatch):
     ).fetchone()[0]
     con.close()
     assert charts == 0
+
+
+def test_scripts_not_on_sys_path_after_load():
+    before = list(sys.path)
+    _load_backfill_mod()
+    scripts = str(ROOT / "scripts")
+    # 載入後不准把 scripts 目錄插到 path 前端（避免遮蔽根目錄同名模組）
+    assert sys.path[0] != scripts
+    assert before[0] == sys.path[0] or scripts not in sys.path[:3]
