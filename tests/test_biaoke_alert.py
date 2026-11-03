@@ -834,11 +834,12 @@ def test_format_seven_levels_one_oral_sentence_not_table():
     assert "今天加權碰到飆大以前講過的關了" in html
     assert "中間偏低" in html
     assert "還沒過他較高的關" in html
-    assert "還卡在 48900 附近" in html  # 最多一個關鍵位
-    assert "還要再看大盤怎麼走" in html
+    # 收 48341 離 48900 約 559 點＞附近閘 → 不准硬寫「卡在 48900 附近」
+    assert "還卡在 48900 附近" not in html
+    assert "已經離開他剛碰到的關" in html or "還要再看大盤怎麼走" in html
     assert "不是買訊" in html
     listed = sum(1 for lv in levels if str(lv) in html)
-    assert listed == 1  # 只准一個關鍵位
+    assert listed == 0  # 遠離開不准貼關鍵位數字
     assert "48341" not in html  # 收點不上主句
     assert "48218" not in html
     assert "研判" not in html
@@ -849,6 +850,74 @@ def test_format_seven_levels_one_oral_sentence_not_table():
     assert "不拆泡泡" not in html
     assert "官方碰到已點位" not in html
     assert html.count("\n") <= 3
+
+
+def test_level_hit_far_below_44042_not_stuck_nearby():
+    """復現 2026-11-03：收 43308、關 44042 已遠離開，不准寫卡在附近。"""
+    from biaoke_alert import format_multi_level_hit_synthesis
+
+    html = format_multi_level_hit_synthesis(
+        levels=[
+            {
+                "level": 44042.0,
+                "note": "加權",
+                "sources": [
+                    {
+                        "date": "2026-10-27",
+                        "time": "21:00",
+                        "text": "台指還卡在 44042；周一破才像續弱。",
+                    }
+                ],
+            },
+            {
+                "level": 45546.0,
+                "note": "加權",
+                "sources": [
+                    {
+                        "date": "2026-10-22",
+                        "time": "20:00",
+                        "text": "45546 未破。",
+                    }
+                ],
+            },
+        ],
+        bar_date="20261103",
+        bar_high=44800.0,
+        bar_low=43000.0,
+        bar_close=43308.0,
+    )
+    assert "飆大提醒·大盤碰到關卡" in html
+    assert "今天加權碰到飆大以前講過的關了" in html
+    assert "收在偏低" in html
+    assert "還卡在 44042 附近" not in html
+    assert "還卡在 45546 附近" not in html
+    assert "已經離開他剛碰到的關" in html
+    assert "不是買訊" in html
+    assert "43308" not in html
+
+
+def test_level_hit_truly_near_still_says_stuck():
+    """收真的貼關（<280 點／0.6%）才准「還卡在Ｘ附近」。"""
+    from biaoke_alert import format_level_hit_synthesis
+
+    html = format_level_hit_synthesis(
+        level=44042.0,
+        bar_date="20261103",
+        bar_high=44120.0,
+        bar_low=43880.0,
+        bar_close=43920.0,
+        note="加權",
+        sources=[
+            {
+                "date": "2026-10-27",
+                "time": "21:00",
+                "text": "還卡在 44042 附近。",
+            }
+        ],
+    )
+    assert "還卡在 44042 附近" in html
+    assert "已經離開" not in html
+    assert "不是買訊" in html
 
 
 def test_format_multi_level_hit_lists_above_below():

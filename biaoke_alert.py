@@ -859,19 +859,51 @@ def _close_band_plain(
     return f"現在收在{band}、還沒過他較高的關"
 
 
+def _close_near_level(
+    bar_close: float, level: float, *, pct: float = 0.006, abs_pts: float = 280.0
+) -> bool:
+    """收還算「在關附近」才准寫卡在附近。
+
+    相對 0.6% 與絕對 280 點取較寬者；遠拋離（例如收 43308、關 44042）不准硬貼附近。
+    """
+    try:
+        c = float(bar_close)
+        lv = float(level)
+    except (TypeError, ValueError):
+        return False
+    if lv <= 0:
+        return False
+    return abs(c - lv) <= max(float(abs_pts), abs(lv) * float(pct))
+
+
 def _plain_wait_clause(
     read_now: str,
     levels: Sequence[float],
     bar_close: Optional[float],
 ) -> str:
-    """還要再看／還卡在哪：最多一個關鍵位（且收仍在其下），其餘白話。"""
+    """還要再看／還卡在哪：最多一個關鍵位（且收仍在其下、真的靠近），其餘白話。"""
     key = _key_level_mentioned(read_now, levels)
     if key and bar_close is not None:
         try:
             c = float(bar_close)
             for lv in levels:
-                if _level_face(float(lv)) == key and c < float(lv):
+                if _level_face(float(lv)) != key:
+                    continue
+                if c >= float(lv):
+                    break
+                if _close_near_level(c, float(lv)):
                     return f"還卡在 {key} 附近，還要再看大盤怎麼走"
+                # 柱碰到過、但收已明顯離開：不准寫「附近」嚇成還卡著
+                return "已經離開他剛碰到的關，還要再看大盤怎麼走"
+        except (TypeError, ValueError):
+            pass
+    # 近窗沒點名：改挑收下方最近一關，且真的靠近才寫卡在附近
+    if bar_close is not None and levels:
+        try:
+            c = float(bar_close)
+            above = sorted(float(x) for x in levels if float(x) > c)
+            if above and _close_near_level(c, above[0]):
+                return f"還卡在 {_level_face(above[0])} 附近，還要再看大盤怎麼走"
         except (TypeError, ValueError):
             pass
     return "還要再看大盤怎麼走"
