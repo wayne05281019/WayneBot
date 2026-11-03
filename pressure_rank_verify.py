@@ -63,7 +63,23 @@ def _ymd(raw: Any) -> str:
 
 def _num(val: Any, default: float = 0.0) -> float:
     try:
-        if val is None or val == "":
+        if val is None:
+            return default
+        # ndarray：``val == ""`` 會 Ambiguous；空／多元素不當數
+        size = getattr(val, "size", None)
+        dtype = getattr(val, "dtype", None)
+        if (
+            size is not None
+            and dtype is not None
+            and not isinstance(val, (str, bytes, bytearray, memoryview))
+        ):
+            if int(size) != 1:
+                return default
+            if getattr(val, "shape", None) == ():
+                val = val.item()
+            else:
+                val = val.reshape(-1)[0]
+        if isinstance(val, str) and val == "":
             return default
         return float(val)
     except (TypeError, ValueError):
@@ -387,6 +403,9 @@ def persist_ranked(
     variant = str(variant or "").strip()
     if not day or not tag or not variant:
         return 0
+    # 與 judge_tape 同閘：numpy 空陣列不准 ``not in []``／``== ""`` 炸掉整日壓撐落檔
+    from judge_tape import _jsonable_extra, _keep_extra_value
+
     conn = sqlite3.connect(store, timeout=8.0)
     n = 0
     try:
@@ -398,19 +417,20 @@ def persist_ranked(
             sid = str(raw.get("stock_id") or raw.get("code") or "").strip()
             if not sid:
                 continue
-            extra = {
-                k: raw.get(k)
-                for k in (
-                    "vol_thin_bonus",
-                    "weak_k",
-                    "wash",
-                    "dump_pause",
-                    "half_mountain",
-                    "attack_vol",
-                    "why",
-                )
-                if raw.get(k) not in (None, "", [], {})
-            }
+            extra = {}
+            for k in (
+                "vol_thin_bonus",
+                "weak_k",
+                "wash",
+                "dump_pause",
+                "half_mountain",
+                "attack_vol",
+                "why",
+            ):
+                val = raw.get(k)
+                if not _keep_extra_value(val):
+                    continue
+                extra[k] = _jsonable_extra(val)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO pressure_rank_tape(

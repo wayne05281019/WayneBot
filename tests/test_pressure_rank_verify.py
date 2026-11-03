@@ -269,3 +269,39 @@ def test_phone_switches_only_when_first_promotes(tmp_path, monkeypatch):
     )
     # still empty pool, but path must not raise when first is on
     assert screen_pressure_support(db, TAG_TEST_PRESS) == []
+
+
+def test_persist_ranked_tolerates_numpy_empty_extra(tmp_path):
+    """列上 numpy 空陣列不准炸掉壓撐靜默落檔。"""
+    import json
+
+    import numpy as np
+
+    db = str(tmp_path / "m.db")
+    n = persist_ranked(
+        db,
+        "20261103",
+        TAG_TEST_PRESS,
+        VARIANT_CURRENT,
+        [
+            _row(
+                stock_id="2330",
+                stock_name="台積電",
+                why=np.array([]),
+                weak_k=np.array([1.0]),
+                wash={},
+            )
+        ],
+    )
+    assert n == 1
+    store = ensure_tables(db)
+    c = sqlite3.connect(store)
+    extra = json.loads(
+        c.execute(
+            "SELECT extra FROM pressure_rank_tape WHERE sid='2330'"
+        ).fetchone()[0]
+    )
+    c.close()
+    assert "why" not in extra
+    assert "wash" not in extra
+    assert extra.get("weak_k") == [1.0]
