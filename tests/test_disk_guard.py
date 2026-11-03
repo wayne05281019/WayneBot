@@ -71,7 +71,7 @@ def test_is_allowlisted_deletable_paths(tmp_path: Path):
 
 
 def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
-    """白天 free≥緊急線：不准清、不准追高 free。"""
+    """白天 free≥緊急線：不准清白名單／不准追高 free；教具舊圖仍可清。"""
     charts = tmp_path / "charts"
     memo = charts / "_lookup_memo"
     memo.mkdir(parents=True)
@@ -86,6 +86,7 @@ def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         dg, "_try_vacuum_if_room", lambda *_a, **_k: vacuum_calls.append(1) or "ok"
     )
+    monkeypatch.setattr(dg, "maybe_push_runway_alert", lambda **_k: {"skipped": "test"})
     out = dg.ensure_disk_headroom(
         data_dir=str(tmp_path),
         charts_dir=str(charts),
@@ -94,7 +95,7 @@ def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
         mode="daytime",
     )
     assert out["reason"] == "ok_daytime"
-    assert out["cleaned"] is False
+    # 無過期教具圖 → cleaned False；有則只清教具，白名單仍留
     assert kept.exists()
     assert vacuum_calls == []
     assert db.exists()
@@ -333,6 +334,110 @@ def test_disk_guard_source_has_no_table_delete():
     assert '.corrupt-' in src
     assert "maybe_push_runway_alert" in src
     assert "DEFAULT_WARN_FREE_MB" in src
+    assert "purge_rebuildable_teach_paints" in src
+    assert "biaoke_open_day_paints" in src
+
+
+def test_should_delete_old_force_minute_always():
+    keep = "20261102"
+    assert dg.should_delete_teach_paint_file(
+        "force-20261103-1836-far.png", keep_ymd=keep
+    )
+    assert dg.should_delete_teach_paint_file(
+        "force-20261031-2056-near.png.hq.jpg", keep_ymd=keep
+    )
+    # 新一日一槽：只依 keep 窗
+    assert not dg.should_delete_teach_paint_file(
+        "force-20261103-far.png", keep_ymd=keep
+    )
+    assert dg.should_delete_teach_paint_file(
+        "force-20261030-far.png", keep_ymd=keep
+    )
+    assert not dg.should_delete_teach_paint_file(
+        "20261103-close-near.png", keep_ymd=keep
+    )
+    assert dg.should_delete_teach_paint_file(
+        "20261028-after-micro.png", keep_ymd=keep
+    )
+
+
+def test_purge_teach_paints_keeps_recent_and_aux(tmp_path: Path, monkeypatch):
+    """清舊教具圖；aux 原文附圖／DB／近窗日檔保留。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    paints = tmp_path / "biaoke_open_day_paints"
+    paints.mkdir()
+    aux = tmp_path / "biaoke_aux_charts"
+    aux.mkdir()
+    (aux / "187_0.bin").write_bytes(b"jpeg-keep")
+    old = paints / "force-20261028-1200-far.png"
+    old.write_bytes(b"o" * 2000)
+    minute = paints / "force-20261103-1836-near.png"
+    minute.write_bytes(b"m" * 2000)
+    keep = paints / "force-20261103-far.png"
+    keep.write_bytes(b"k" * 2000)
+    sparse = paints / "20261103-close-micro.png"
+    sparse.write_bytes(b"s" * 2000)
+    db = tmp_path / "wayne_market.db"
+    conn = __import__("sqlite3").connect(str(db))
+    conn.execute(
+        "CREATE TABLE biaoke_open_day_paints("
+        "slot_id TEXT PRIMARY KEY, far_path TEXT, near_path TEXT, "
+        "chart_path TEXT, thesis TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_open_day_paints(slot_id, far_path, near_path, chart_path, thesis) "
+        "VALUES (?,?,?,?,?)",
+        (
+            "force-20261028-1200",
+            str(old),
+            str(minute),
+            "",
+            "大C進行中",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 11, 3, 19, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    stats = dg.purge_rebuildable_teach_paints(
+        str(tmp_path), keep_days=2, now=now, db_path=str(db)
+    )
+    assert stats["files"] >= 2
+    assert not old.exists()
+    assert not minute.exists()
+    assert keep.exists()
+    assert sparse.exists()
+    assert (aux / "187_0.bin").exists()
+    row = __import__("sqlite3").connect(str(db)).execute(
+        "SELECT far_path, near_path, thesis FROM biaoke_open_day_paints"
+    ).fetchone()
+    assert row[0] == "" and row[1] == ""
+    assert row[2] == "大C進行中"
+
+
+def test_daytime_still_purges_stale_teach_paints(tmp_path: Path, monkeypatch):
+    paints = tmp_path / "biaoke_open_day_paints"
+    paints.mkdir()
+    stale = paints / "force-20261001-0900-far.png"
+    stale.write_bytes(b"x" * 5000)
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"db")
+    monkeypatch.setattr(
+        dg, "disk_usage_mb", lambda _p: {"total": 15000, "used": 5000, "free": 10000}
+    )
+    monkeypatch.setattr(dg, "maybe_push_runway_alert", lambda **_k: {"skipped": "test"})
+    out = dg.ensure_disk_headroom(
+        data_dir=str(tmp_path),
+        charts_dir=str(charts),
+        db_path=str(db),
+        mode="daytime",
+    )
+    assert out["reason"] == "ok_daytime"
+    assert not stale.exists()
+    assert int((out.get("teach_paints") or {}).get("files") or 0) >= 1
 
 
 def test_iter_allowlisted_never_walks_outside_charts(tmp_path: Path):

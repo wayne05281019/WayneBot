@@ -6790,7 +6790,7 @@ class WayneTelegramBot:
                             pack["live_twii"] = live_tw
                 except Exception:
                     pass
-                slot = _sparse_slot_id(dt, force=True) or f"force-far-{dt.strftime('%Y%m%d-%H%M')}"
+                slot = _sparse_slot_id(dt, force=True) or f"force-{dt.strftime('%Y%m%d')}"
                 out = os.path.join(_paint_dir(self.db_path), f"{slot}-far.png")
                 return _render_twii_far_dark(self.db_path, out, pack) or ""
 

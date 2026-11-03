@@ -54,6 +54,16 @@ def test_sparse_slots_not_every_minute():
     assert _sparse_slot_id(idle) is None
 
 
+def test_force_slot_one_per_day_overwrite():
+    """話筒重開不准每分堆 force-HHMM PNG；一日一槽覆寫。"""
+    a = datetime(2026, 11, 3, 18, 0, tzinfo=TAIPEI)
+    b = datetime(2026, 11, 3, 18, 36, tzinfo=TAIPEI)
+    c = datetime(2026, 11, 2, 9, 1, tzinfo=TAIPEI)
+    assert _sparse_slot_id(a, force=True) == "force-20261103"
+    assert _sparse_slot_id(b, force=True) == "force-20261103"
+    assert _sparse_slot_id(c, force=True) == "force-20261102"
+
+
 def test_verify_pending_optimistic_then_crash(tmp_path):
     db = str(tmp_path / "t.db")
     ensure_tables(db)
