@@ -687,7 +687,9 @@ def fetch_official_twse(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
     data = resp.json() or {}
     if str(data.get("stat") or "") != "OK":
         return None
-    mmdd = f"{int(ymd[4:6])}/{int(ymd[6:8])}"
+    # 必須零墊月／日：int 去零會讓 11/3 對不上證交所「115/11/03」→
+    # 每月 1–9 日官方列整段 miss → 查股第 5 張當天走勢默默缺圖。
+    mmdd = f"{int(ymd[4:6]):02d}/{int(ymd[6:8]):02d}"
     rows = list(data.get("data") or [])
     row = None
     row_idx = -1
