@@ -222,19 +222,29 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
     assert "y=0.855" in micro_blk
     assert "add_gridspec" in micro_blk
-    assert "height_ratios=(5.15, 2.9, 1.15)" in micro_blk
+    assert "height_ratios=(5.4, 2.55, 1.15)" in micro_blk
     assert "ax_leg" in micro_blk and "ax_wave_host" in micro_blk
     assert "AnchoredOffsetbox" not in micro_blk
     assert "他說 B→今" in micro_blk
     assert "紫實" not in micro_blk and "橙虛" not in micro_blk
     assert "ax.legend" not in micro_blk
     assert "_flash_spec_from_pivots" in src
-    # 遠／近八浪卡整框只准掛量能軸；連邊框不准壓縮圖 K（超近本來就在中排）
-    assert "_eight_wave_inset_rect_on_volume" in far_blk
-    assert "_eight_wave_inset_rect_on_volume" in near_blk
+    # 遠／近八浪獨立列：直接畫進 host，不准 hide＋tight 裁列後蓋回 K
+    assert "ax_wave_host" in far_blk and "ax_wave_host" in near_blk
+    assert "ax=ax_wave_host" in far_blk and "ax=ax_wave_host" in near_blk
+    assert "ax=ax_wave_host" in micro_blk
+    assert "set_visible(False)" not in far_blk
+    assert "set_visible(False)" not in near_blk
+    assert "set_visible(False)" not in micro_blk
+    _far_host_ln = next(
+        ln for ln in far_blk.splitlines() if "ax_wave_host = fig.add_subplot" in ln
+    )
+    _near_host_ln = next(
+        ln for ln in near_blk.splitlines() if "ax_wave_host = fig.add_subplot" in ln
+    )
+    assert "sharex" not in _far_host_ln
+    assert "sharex" not in _near_host_ln
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
-    assert "_near_inset" in near_blk
-    assert "axv" in far_blk and "axv" in near_blk
     assert "c_flash=True" in micro_blk
     assert "c_flash=True" not in near_blk
     assert "_c_flash_step" in src
