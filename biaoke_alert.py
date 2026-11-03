@@ -1340,6 +1340,45 @@ def _level_already(db_path: str, alert_key: str) -> bool:
         conn.close()
 
 
+def _bar_day_level_alerted(db_path: str, bar_ymd: str) -> bool:
+    """同根官方柱日是否已推過任何關卡提醒（含舊版只記 idx:lv、尚未寫 idx:day）。"""
+    day = str(bar_ymd or "").replace("-", "")[:8]
+    if not db_path or len(day) != 8:
+        return False
+    if _level_already(db_path, f"idx:day:{day}"):
+        return True
+    _ensure(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM biaoke_level_alerts WHERE bar_date=? LIMIT 1",
+            (day,),
+        ).fetchone()
+        return bool(row)
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
+def _ensure_day_latch(db_path: str, bar_ymd: str, *, reason: str) -> None:
+    """補寫 idx:day，避免舊版只留 lv 鍵時晚上又拆第二則。"""
+    day = str(bar_ymd or "").replace("-", "")[:8]
+    if not db_path or len(day) != 8:
+        return
+    key = f"idx:day:{day}"
+    if _level_already(db_path, key):
+        return
+    _mark_level(
+        db_path,
+        key,
+        post_id="",
+        level=0.0,
+        bar_date=day,
+        reasons=[reason[:400]],
+    )
+
+
 def _mark_level(
     db_path: str,
     alert_key: str,
@@ -1536,8 +1575,13 @@ def maybe_push_marked_level_hits(
         return {**stats, "skipped": "no_official"}
     bar_ymd = str(bar["date"])
     day_key = f"idx:day:{bar_ymd}"
-    # 同日已寄過關卡提醒 → 後到的子集／換版重跑一律略過
-    if _level_already(db_path, day_key):
+    # 同日已寄過關卡提醒（含舊版只記 lv／body、尚未寫 day）→ 後到子集／夜盤重對一律略過
+    if _bar_day_level_alerted(db_path, bar_ymd):
+        _ensure_day_latch(
+            db_path,
+            bar_ymd,
+            reason=f"同日已有關卡推播 bar={bar_ymd}（補 day 鎖）",
+        )
         stats["skipped"] = 1
         stats["day_latched"] = 1
         return stats
