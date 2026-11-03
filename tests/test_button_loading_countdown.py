@@ -1167,6 +1167,9 @@ def test_plain_wait_hard_cap_dismisses_frozen_bubble():
     src = inspect.getsource(WayneTelegramBot._start_plain_wait)
     assert "_WAIT_MAX_ELAPSED_S" in src
     assert "_dismiss_progress_now" in src
+    # 勝率長掃可 overtime_keep，不准先收框再丟假逾時
+    assert "overtime_keep" in src
+    assert "max_elapsed" in src
 
 
 def test_lookup_defers_struct_vol_prep_until_after_card():
