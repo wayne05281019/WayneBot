@@ -834,6 +834,43 @@ def _teach_eight_wave_inset_wh(fig: Any) -> Tuple[float, float]:
     )
 
 
+def _eight_wave_inset_rect_on_volume(
+    axv: Any,
+    fig: Any,
+    *,
+    side: str = "left",
+) -> Tuple[float, float, float, float]:
+    """八浪卡整框（含邊）只准落在量能軸內。
+
+    鐵律：連框架都不准壓到上方縮圖 K。量能列較矮時等比縮到裝得進。
+    """
+    w, h = _teach_eight_wave_inset_wh(fig)
+    try:
+        pos = axv.get_position()
+    except Exception:
+        return (0.05, 0.06, float(w), float(h))
+    pad_x = 0.012
+    pad_bot = 0.010
+    # 上緣多留空：量能軸頂＝K 底；框線不准貼到、更不准跨進 K
+    pad_top = 0.022
+    shadow_pad = 0.008
+    max_w = max(0.08, float(pos.width) - 2 * pad_x - shadow_pad)
+    max_h = max(0.05, float(pos.height) - pad_top - pad_bot - shadow_pad)
+    scale = min(1.0, max_w / max(float(w), 1e-6), max_h / max(float(h), 1e-6))
+    w2 = float(w) * float(scale)
+    h2 = float(h) * float(scale)
+    if str(side or "left") == "right":
+        left = float(pos.x1) - pad_x - w2
+    else:
+        left = float(pos.x0) + pad_x
+    top_limit = float(pos.y1) - pad_top
+    bottom = top_limit - h2
+    if bottom < float(pos.y0) + pad_bot:
+        bottom = float(pos.y0) + pad_bot
+        h2 = min(h2, top_limit - bottom)
+    return (float(left), float(bottom), float(w2), float(h2))
+
+
 def _eight_wave_inset_rect_left_of_vmax(
     ax: Any,
     fig: Any,
@@ -844,13 +881,12 @@ def _eight_wave_inset_rect_left_of_vmax(
     n_bars: int,
     gap_fig: float = 0.008,
 ) -> Tuple[float, float, float, float]:
-    """與超近窗同寬同高；右緣貼垂直黃虛線（最大量日）左側，低空帶。
+    """舊位：K 軸內黃虛線左（已停用遠／近；保留給測試／相容）。
 
-    貼底帶放，避開大B金虛線中段，縮圖框不准被浪線「穿框」。
+    新規則請用 `_eight_wave_inset_rect_on_volume`：不准壓縮圖 K。
     """
     w, h = _teach_eight_wave_inset_wh(fig)
     ys = max(float(ymax) - float(ymin), 1.0)
-    # 更貼底：少擋 K、少被 B 反彈虛線斜穿
     y_bot = float(ymin) + ys * 0.055
     iv = int(i_vmax) if i_vmax is not None else max(0, int(n_bars) - 8)
     fx_v, fy_bot = _fig_xy_from_axes_data(ax, fig, float(iv), y_bot)
@@ -869,7 +905,6 @@ def _eight_wave_inset_rect_left_of_vmax(
         bottom = max(min_bottom, max_bottom)
     if bottom < min_bottom:
         bottom = min_bottom
-    # 不准右緣跨過黃虛線
     if left + w > float(fx_v) - float(gap_fig):
         left = max(min_left, float(fx_v) - float(gap_fig) - float(w))
     return (float(left), float(bottom), float(w), float(h))
@@ -5759,15 +5794,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：超近窗同吋大小，右緣貼垂直黃虛線（最大量日）左側低空帶
-    _far_ins = _eight_wave_inset_rect_left_of_vmax(
-        ax,
-        fig,
-        i_vmax=i_vmax,
-        ymin=float(ymin),
-        ymax=float(ymax),
-        n_bars=n_tw,
-    )
+    # 八浪卡整框只准掛量能軸內；連邊框不准壓上方縮圖 K
+    try:
+        fig.canvas.draw()
+    except Exception:
+        pass
+    _far_ins = _eight_wave_inset_rect_on_volume(axv, fig, side="left")
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
@@ -6455,15 +6487,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗縮圖：超近窗同吋大小，右緣貼垂直黃虛線（最大量日）左側
-    _near_inset = _eight_wave_inset_rect_left_of_vmax(
-        ax,
-        fig,
-        i_vmax=int(i_vmax) if i_vmax is not None else None,
-        ymin=float(ymin),
-        ymax=float(ymax),
-        n_bars=n,
-    )
+    # 八浪卡整框只准掛量能軸內；連邊框不准壓上方縮圖 K
+    try:
+        fig.canvas.draw()
+    except Exception:
+        pass
+    _near_inset = _eight_wave_inset_rect_on_volume(axv, fig, side="left")
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
