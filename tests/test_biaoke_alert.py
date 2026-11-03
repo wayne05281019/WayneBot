@@ -605,12 +605,12 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
     # 不准拆三泡
     assert sent[0].count("<b>飆大提醒·大盤碰到關卡</b>") == 1
 
-    # 同日再跑不重推；每位鍵已記
+    # 同日再跑不重推（日鎖 idx:day 或每位鍵已記）
     sent.clear()
     b = maybe_push_marked_level_hits(db)
     assert b["pushed"] == 0
     assert sent == []
-    assert b["skipped"] >= 3
+    assert b.get("day_latched") == 1 or b["skipped"] >= 3
 
 
 def test_level_hit_claim_before_send_blocks_dual_caller(monkeypatch, tmp_path):
@@ -718,6 +718,69 @@ def test_level_hit_same_body_same_day_not_repushed(monkeypatch, tmp_path):
     sent.clear()
     b = maybe_push_marked_level_hits(db)
     assert b["pushed"] == 0
+    assert sent == []
+
+
+def test_level_hit_same_day_second_level_batch_not_repushed(monkeypatch, tmp_path):
+    """復現 2026-11-03：先推 45546、後又掃到 44042 → 同日不准第二則。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db = str(tmp_path / "day_latch.db")
+    ensure_biaoke_posts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    # 當日高低包住兩關；收遠低於 44042
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20261103','TWII',45000,45600,43000,43308)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p45546','2026-10-22','20:00','post',?)",
+        ("45546 未破，還卡在這邊。",),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261103",
+    )
+    sent = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: sent.append(h) or 2,
+    )
+    a = maybe_push_marked_level_hits(
+        db, now=datetime(2026, 11, 3, 18, 52, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert a["pushed"] == 1
+    assert len(sent) == 1
+    assert "45546" in sent[0] or "關" in sent[0]
+    # 第二批才「發現」44042（模擬 ingest／換版後關卡集合變大）
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p44042','2026-10-27','21:00','post',?)",
+        ("破台指期破44042。",),
+    )
+    conn.commit()
+    conn.close()
+    sent.clear()
+    b = maybe_push_marked_level_hits(db)
+    assert b.get("pushed") == 0
+    assert b.get("day_latched") == 1
     assert sent == []
 
 
