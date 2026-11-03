@@ -103,6 +103,44 @@ def test_remember_skips_sid_without_official_ohlcv(tmp_path):
         assert cnt == 0
 
 
+def test_remember_rows_tolerates_numpy_empty_extra(tmp_path):
+    """興櫃列常帶 numpy 空陣列；不准 remember_rows 因 ``not in []`` 炸掉整軌。"""
+    import numpy as np
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"3105": 500.0}, "20260915")
+    n = remember_rows(
+        db,
+        "em_leave_zero",
+        [
+            {
+                "stock_id": "3105",
+                "stock_name": "穩懋",
+                "close": 500.0,
+                "why": np.array([]),
+                "five": np.array([1.0, 2.0]),
+                "live": np.array([]),
+            }
+        ],
+        as_of="20260915",
+        pick="rule",
+        src="emerging",
+    )
+    assert n == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    extra = json.loads(
+        conn.execute(
+            "SELECT extra FROM live_judge WHERE sid='3105' AND kind='em_leave_zero'"
+        ).fetchone()[0]
+    )
+    conn.close()
+    assert "why" not in extra  # 空陣列略過
+    assert "live" not in extra
+    assert extra.get("five") == [1.0, 2.0]
+    assert extra.get("src") == "emerging"
+
+
 def test_unclosed_bar_is_not_used_for_score(tmp_path):
     db = str(tmp_path / "wayne_market.db")
     _seed(db, {"1101": 50.0}, "20260915")
