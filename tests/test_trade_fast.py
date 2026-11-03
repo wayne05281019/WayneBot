@@ -114,7 +114,7 @@ def test_enrich_prefers_target_day_official_close_over_stale_pick(tmp_path, monk
     db = str(tmp_path / "t.db")
     _mk_db(db)
     conn = sqlite3.connect(db)
-    # 目標日新收；舊 session 仍鎖 282.5
+    # 目標日新收；上一開市日 session 仍鎖 282.5
     conn.execute(
         "INSERT INTO daily_quotes VALUES ('3006','晶豪科','TW','20261103',242.5,15631,3933181.38,-7.09,64,6,-418,251.62)"
     )
@@ -123,7 +123,7 @@ def test_enrich_prefers_target_day_official_close_over_stale_pick(tmp_path, monk
     ensure_screen_session_table(db)
     save_screen_session(
         db,
-        "20261029",
+        "20261102",
         "morning",
         {
             "day_trade": [
@@ -145,6 +145,35 @@ def test_enrich_prefers_target_day_official_close_over_stale_pick(tmp_path, monk
     assert float(rows[0]["close"]) == 242.5
     assert float(rows[0]["entry_price"]) == 242.5
     assert float(rows[0]["pct_change"]) == pytest.approx(-7.09)
+
+
+def test_screen_daytrade_rejects_multi_day_stale_blank_fallback(tmp_path, monkeypatch):
+    """今日無海選時，不准空白回退到隔很多天的舊當沖名單。"""
+    from screening_engine import ScreeningEngine
+    from screen_sessions import ensure_screen_session_table, save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _mk_db(db)
+    ensure_screen_session_table(db)
+    save_screen_session(
+        db,
+        "20261029",
+        "morning",
+        {
+            "day_trade": [
+                {
+                    "stock_id": "3006",
+                    "stock_name": "晶豪科",
+                    "close": 282.5,
+                    "entry_price": 282.5,
+                }
+            ]
+        },
+    )
+
+    eng = ScreeningEngine(db_path=db)
+    monkeypatch.setattr(eng, "get_latest_trading_date", lambda: "20261103")
+    assert eng.screen_daytrade("20261103") == []
 
 
 def test_live_vol_rank_120_batch():

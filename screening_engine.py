@@ -684,15 +684,34 @@ class ScreeningEngine:
             out.append(item)
         return out
 
+    def _trade_session_as_of_fresh_enough(self, session_as_of: str, target_date: str) -> bool:
+        """當沖／隔日沖空白回退：只准目標日或上一開市日，不准隔很多天舊名單。"""
+        ta = str(target_date or "").replace("-", "")[:8]
+        sa = str(session_as_of or "").replace("-", "")[:8]
+        if not ta or not sa or len(ta) != 8 or len(sa) != 8:
+            return False
+        if sa == ta:
+            return True
+        try:
+            from tw_holidays import previous_tw_trading_day
+
+            prev = previous_tw_trading_day(ta, self.db_path)
+        except Exception:
+            prev = ""
+        return bool(prev) and sa == str(prev).replace("-", "")[:8]
+
     def _screen_trade_bucket_from_cache(
         self, bucket_key: str, target_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        from screen_sessions import load_bucket_rows
+        from screen_sessions import latest_bucket_as_of, load_bucket_rows
 
         target_date = target_date or self.get_latest_trading_date()
         rows = load_bucket_rows(self.db_path, bucket_key, target_date)
         if not rows:
-            rows = load_bucket_rows(self.db_path, bucket_key, "")
+            # 空白 as_of 會抓該桶最新日；過舊則當空名單，不准顯示隔很多天的舊當沖。
+            latest = latest_bucket_as_of(self.db_path, bucket_key)
+            if latest and self._trade_session_as_of_fresh_enough(latest, str(target_date or "")):
+                rows = load_bucket_rows(self.db_path, bucket_key, latest)
         if not rows:
             _remember_live_judges(self.db_path, bucket_key, [], as_of=str(target_date or ""))
             return []
