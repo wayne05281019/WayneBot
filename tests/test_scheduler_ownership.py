@@ -315,6 +315,10 @@ def test_watchdog_loop_retries_before_alert():
 
     src = inspect.getsource(main.start_watchdog)
     assert "retry_missed_owned_jobs" in src
+    # 告警前先 reconcile 已寄回執，避免 midday／早報誤報「無紀錄」
+    assert "reconcile_push_deliveries" in src
+    assert src.index("reconcile_push_deliveries") < src.index("retry_missed_owned_jobs")
+    assert 'prefix="midday-"' in src and 'prefix="screen-"' in src
     body = inspect.getsource(main.retry_missed_owned_jobs)
     assert "release_publish" not in body
     assert "run_morning_screen" in body
