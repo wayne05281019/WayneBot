@@ -6195,22 +6195,11 @@ class WayneTelegramBot:
                 "趨勢已向上的排前面。滿五星＝按表該買。四星＝趨勢已向上且獲利還在帶、沒少追。"
                 "還沒向上最高兩星。只列前8檔。未收盤不寫進官方收。"
             )
+            # 話筒剛離零＝screen_leave_zero_pick 全市場高低卡掃，不靠海選 screen_sessions。
+            # 空名單＝真沒有昨零今離（或基準日缺柱）；不准誤說「請按海選」。
             empty = (
                 "此刻沒有昨零今離的檔。" if live_on else "最近完整收沒有昨零今離的檔。"
             )
-            # 海選快取過舊／缺檔時不准說「沒有昨零今離」——與當沖同一句「名單尚未就緒」
-            try:
-                if not self.screener.leave_zero_cache_ready():
-                    from trading_calendar import format_trading_date_zh
-
-                    as_of = self.screener.get_latest_trading_date()
-                    as_of_label = format_trading_date_zh(as_of)
-                    empty = (
-                        f"今日名單尚未就緒（今早海選未完成，基準日 {as_of_label}）。"
-                        "請按主選單「海選」執行後再查。"
-                    )
-            except Exception:
-                logger.debug("剛離零快取就緒檢查略過", exc_info=True)
             extra = ""
             try:
                 from sanchi_clocks import sanchi_note_html
