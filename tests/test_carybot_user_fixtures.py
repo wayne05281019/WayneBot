@@ -112,8 +112,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(card["cal60_low"]), 33.75, places=2)
 
     def test_2324_profit_floor_carybot_uses_cal60_only(self):
-        """CaryBot 9/1 列獲利 18.2%＝只用 60曆日低 33.75（未貼 20 日低時與 CaryBot 一致）。"""
-        card = self._card("2324")
+        """CaryBot 9/1 列獲利 18.2%＝只用 60曆日低 33.75（未貼 20 日低時與 CaryBot 一致）。
+
+        釘 as_of＝9/1，避免庫尖端滾出 lookback=40 後缺列。
+        """
+        card = self._card("2324", as_of="20260901")
         row = self._row(card, "20260901")
         self.assertAlmostEqual(float(row["close"]), 39.9, places=1)
         self.assertEqual(row["獲利"], "18.2%")
@@ -124,8 +127,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(self._shown_alert(row), "No")
 
     def test_2324_20260902_temp_vol_low_cells(self):
-        """仁寶 9/2 列：5低＋最低溫＋價未新低；溫度／量排名一起鎖。"""
-        row = self._row(self._card("2324"), "20260902")
+        """仁寶 9/2 列：5低＋最低溫＋價未新低；溫度／量排名一起鎖。
+
+        釘 as_of＝9/2，避免庫尖端滾出 lookback=40 後缺列。
+        """
+        row = self._row(self._card("2324", as_of="20260902"), "20260902")
         self.assertAlmostEqual(float(row["close"]), 39.7, places=1)
         self.assertEqual(self._shown_alert(row), "5低")
         self.assertEqual(str(row["溫度計"]), "42.5 °C")
@@ -135,10 +141,13 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["bias_monthly"]), 0.4, places=1)
 
     def test_4915_author_card_sep4_cells(self):
-        """致伸作者卡 9/4：2.4% 白底紅、20高、最高溫 69.3°C、量第102名。"""
+        """致伸作者卡 9/4：2.4% 白底紅、20高、最高溫 69.3°C、量第102名。
+
+        釘 as_of＝9/4，避免庫尖端滾出 lookback=40 後缺列。
+        """
         from wayne_navigator import _CARD, bias_cell_style, profit_cell_style, temp_cell_style
 
-        row = self._row(self._card("4915"), "20260904")
+        row = self._row(self._card("4915", as_of="20260904"), "20260904")
         self.assertAlmostEqual(float(row["close"]), 60.8, places=1)
         self.assertEqual(row["獲利"], "2.4%")
         self.assertEqual(self._shown_alert(row), "最高價")
@@ -154,10 +163,13 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(bias_cell_style(float(row["bias_monthly"]), _CARD["white"])[1], _CARD["up"])
 
     def test_4915_author_card_sep3_leave_zero_green(self):
-        """致伸作者卡 9/3：0.3% 實綠底紅字、60低、降溫。"""
+        """致伸作者卡 9/3：0.3% 實綠底紅字、60低、降溫。
+
+        釘 as_of＝9/3，避免庫尖端滾出 lookback=40 後缺列。
+        """
         from wayne_navigator import _CARD, bias_cell_style, profit_cell_style
 
-        row = self._row(self._card("4915"), "20260903")
+        row = self._row(self._card("4915", as_of="20260903"), "20260903")
         self.assertAlmostEqual(float(row["close"]), 59.6, places=1)
         self.assertEqual(row["獲利"], "0.3%")
         self.assertEqual(self._shown_alert(row), "60低")
@@ -182,8 +194,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(fg, _CARD["white"])
 
     def test_2408_20260903_ten_low_min_temp_vol(self):
-        """南亞科 9/3 作者卡：貼 10 低、最低溫＋價未新低；鎖溫度／量。"""
-        row = self._row(self._card("2408"), "20260903")
+        """南亞科 9/3 作者卡：貼 10 低、最低溫＋價未新低；鎖溫度／量。
+
+        釘 as_of＝9/3，避免庫尖端滾出 lookback=40 後缺列。
+        """
+        row = self._row(self._card("2408", as_of="20260903"), "20260903")
         self.assertAlmostEqual(float(row["close"]), 477.5, places=1)
         self.assertEqual(str(row["高低"]), "10低")
         self.assertEqual(self._shown_alert(row), "10低")
@@ -209,8 +224,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(self._shown_alert(row), "10低")
 
     def test_3105_20260901_peak_temp_vol(self):
-        """穩懋 9/1：20高、最高溫 79.6°C、120日量第5名（表頭量能徽章用）。"""
-        row = self._row(self._card("3105"), "20260901")
+        """穩懋 9/1：20高、最高溫 79.6°C、120日量第5名（表頭量能徽章用）。
+
+        釘 as_of＝9/1，避免庫尖端滾出 lookback=40 後缺列。
+        """
+        row = self._row(self._card("3105", as_of="20260901"), "20260901")
         self.assertAlmostEqual(float(row["close"]), 492.0, places=1)
         self.assertEqual(self._shown_alert(row), "最高價")
         self.assertEqual(str(row["溫度計"]), "79.6 °C")
@@ -219,8 +237,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["bias_monthly"]), 25.2, places=1)
 
     def test_3105_20260902_k20_high_temp_vol(self):
-        """穩懋 9/2：收 469.5／20高 492 → K20高；鎖溫度／量。"""
-        row = self._row(self._card("3105"), "20260902")
+        """穩懋 9/2：收 469.5／20高 492 → K20高；鎖溫度／量。
+
+        釘 as_of＝9/2，避免庫尖端滾出 lookback=40 後缺列。
+        """
+        row = self._row(self._card("3105", as_of="20260902"), "20260902")
         self.assertAlmostEqual(float(row["close"]), 469.5, places=1)
         self.assertEqual(row["預警"], "K20高")
         self.assertEqual(self._shown_alert(row), "K20高")
@@ -260,8 +281,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertLess(self._temp(row), 16.0)
 
     def test_3008_20260902_price_high_not_cary_temp_scale(self):
-        """大立光 9/2 截圖價 7810、20高。Cary 溫度 90.4 是另一把尺，不鎖成回歸。"""
-        row = self._row(self._card("3008"), "20260902")
+        """大立光 9/2 截圖價 7810、20高。Cary 溫度 90.4 是另一把尺，不鎖成回歸。
+
+        釘 as_of＝9/2，避免庫尖端滾出 lookback=40 後缺列。
+        """
+        row = self._row(self._card("3008", as_of="20260902"), "20260902")
         self.assertAlmostEqual(float(row["close"]), 7810.0, places=0)
         self.assertEqual(self._shown_alert(row), "最高價")
         self.assertEqual(str(row["120日量"]), "第14名")
