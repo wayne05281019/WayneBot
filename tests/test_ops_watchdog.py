@@ -141,6 +141,19 @@ def test_missed_jobs_midday_success_clears(tmp_path, monkeypatch):
     assert missed_jobs(path, now=now) == []
 
 
+def test_missed_jobs_midday_delivery_clears_without_pipeline(tmp_path, monkeypatch):
+    """有 Telegram 回執但 pipeline 無紀錄＝已寄過，不准再告警（查股途中嚇到）。"""
+    path = _make_db(tmp_path, runs={"screen-20260902": "success"})
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    from pipeline_delivery import record_push_delivery
+
+    assert record_push_delivery(path, "midday-20260902", kind="midday", n_ok=2)
+    now = datetime(2026, 9, 2, 14, 0)
+    kinds = {m["kind"] for m in missed_jobs(path, now=now)}
+    assert "midday_review" not in kinds
+
+
 def test_missed_jobs_success_clears(tmp_path, monkeypatch):
     path = _make_db(tmp_path, runs={"screen-20260902": "success"})
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")

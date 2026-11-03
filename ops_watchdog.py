@@ -356,6 +356,16 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
         status = _pipeline_status(db_path, run_key)
         if status == "success":
             continue
+        # 已有 Telegram 回執＝已寄過（與 pipeline_stamps.delivered 對齊）；
+        # 不准因 pipeline 仍無紀錄／computed 又丟「排程未完成」嚇到查股途中。
+        if kind in ("morning_screen", "midday_review") and run_key:
+            try:
+                from pipeline_delivery import push_delivery_recorded
+
+                if push_delivery_recorded(db_path, run_key):
+                    continue
+            except Exception:
+                pass
         if kind == "morning_screen" and status == "running":
             row = _pipeline_rows(db_path, [run_key]).get(run_key) or {}
             notes = str(row.get("notes") or "")
