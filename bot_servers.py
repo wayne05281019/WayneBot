@@ -5465,10 +5465,9 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
             wait_h = (None, None, None)
             if not rows:
-                from screen_sessions import screen_session_has_data
-
+                # 以該桶新鮮度為準：今日有別桶海選、當沖桶卻停在多日前 → 仍算未就緒
                 as_of = self.screener.get_latest_trading_date()
-                if not screen_session_has_data(self.db_path, as_of):
+                if not self.screener.trade_bucket_cache_ready(bucket_key, as_of):
                     from trading_calendar import format_trading_date_zh
 
                     as_of_label = format_trading_date_zh(as_of)

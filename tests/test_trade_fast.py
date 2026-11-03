@@ -225,14 +225,57 @@ def test_leave_zero_cache_ready_accepts_prev_trading_day(tmp_path, monkeypatch):
     assert eng.leave_zero_cache_ready("20261103") is True
 
 
+def test_trade_bucket_cache_ready_ignores_other_bucket_on_target_day(tmp_path, monkeypatch):
+    """今日只有別桶海選、當沖桶停在多日前 → 當沖快取未就緒。"""
+    from screening_engine import ScreeningEngine
+    from screen_sessions import ensure_screen_session_table, save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _mk_db(db)
+    ensure_screen_session_table(db)
+    save_screen_session(
+        db,
+        "20261103",
+        "morning",
+        {"leave_zero": [{"stock_id": "3105", "stock_name": "穩懋", "close": 500}]},
+    )
+    save_screen_session(
+        db,
+        "20261029",
+        "morning",
+        {
+            "day_trade": [
+                {
+                    "stock_id": "3006",
+                    "stock_name": "晶豪科",
+                    "close": 282.5,
+                    "entry_price": 282.5,
+                }
+            ]
+        },
+    )
+    eng = ScreeningEngine(db_path=db)
+    monkeypatch.setattr(eng, "get_latest_trading_date", lambda: "20261103")
+    assert eng.trade_bucket_cache_ready("day_trade", "20261103") is False
+    assert eng.screen_daytrade("20261103") == []
+    assert eng.leave_zero_cache_ready("20261103") is True
+
+
 def test_leave_zero_empty_copy_uses_cache_ready_gate():
     """空名單且快取未就緒 → 話筒說名單尚未就緒，不准誤說沒有昨零今離。"""
     from pathlib import Path
 
     src = Path("bot_servers.py").read_text(encoding="utf-8")
     assert "leave_zero_cache_ready" in src
+    assert "trade_bucket_cache_ready" in src
     assert "今日名單尚未就緒" in src
     assert "此刻沒有昨零今離的檔。" in src
+    # 當沖空名單改認該桶新鮮度，不准只看「今日有沒有任海選列」
+    trade_empty = src.split("async def _run_trade_bucket")[1].split(
+        "async def daytrade_cmd"
+    )[0]
+    assert "trade_bucket_cache_ready" in trade_empty
+    assert "screen_session_has_data" not in trade_empty
 
 
 def test_live_vol_rank_120_batch():
