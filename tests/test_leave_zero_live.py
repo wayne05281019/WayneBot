@@ -435,9 +435,6 @@ def test_leave_zero_cmd_pick_zero_is_profit_zero(tmp_path):
     with patch("live_quote.is_live_merge_window", return_value=True), patch(
         "trading_calendar.is_tw_equity_session", return_value=True
     ), patch(
-        "screening_engine.ScreeningEngine.leave_zero_cache_ready",
-        return_value=True,
-    ), patch(
         "screening_engine.ScreeningEngine.screen_leave_zero_pick",
         return_value=[],
     ) as pick_fn:
@@ -449,6 +446,7 @@ def test_leave_zero_cmd_pick_zero_is_profit_zero(tmp_path):
     assert "剛脫離零" in html
     assert "昨獲利貼零" in html
     assert "前8檔" in html
+    assert "沒有昨零今離" in html
     assert "尚未就緒" not in html
     assert "請按主選單「海選」" not in html
     assert "獲利為零" not in html
@@ -470,9 +468,6 @@ def test_leave_zero_cmd_days_copy_names_real_green(tmp_path):
     with patch("live_quote.is_live_merge_window", return_value=True), patch(
         "trading_calendar.is_tw_equity_session", return_value=True
     ), patch(
-        "screening_engine.ScreeningEngine.leave_zero_cache_ready",
-        return_value=True,
-    ), patch(
         "screening_engine.ScreeningEngine.screen_leave_zero_pick",
         return_value=[],
     ):
@@ -486,12 +481,13 @@ def test_leave_zero_cmd_days_copy_names_real_green(tmp_path):
     assert "脫離1" not in html
     assert "雙綠" not in html
     assert "前8檔" in html
+    assert "沒有昨零今離" in html
     assert "尚未就緒" not in html
     assert "請按主選單「海選」" not in html
 
 
-def test_leave_zero_cmd_cache_not_ready_prompts_screen(tmp_path):
-    """海選快取過舊／缺檔：空名單要說尚未就緒，不准誤說沒有昨零今離。"""
+def test_leave_zero_cmd_empty_does_not_blame_screen_cache(tmp_path):
+    """全市場掃空＝沒有昨零今離；海選快取狀態不准改成「請按海選」。"""
     import asyncio
 
     db = str(tmp_path / "stale.db")
@@ -506,9 +502,6 @@ def test_leave_zero_cmd_cache_not_ready_prompts_screen(tmp_path):
         "screening_engine.ScreeningEngine.leave_zero_cache_ready",
         return_value=False,
     ), patch(
-        "screening_engine.ScreeningEngine.get_latest_trading_date",
-        return_value="20261103",
-    ), patch(
         "screening_engine.ScreeningEngine.screen_leave_zero_pick",
         return_value=[],
     ):
@@ -516,9 +509,9 @@ def test_leave_zero_cmd_cache_not_ready_prompts_screen(tmp_path):
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
-    assert "尚未就緒" in html
-    assert "請按主選單「海選」" in html
-    assert "沒有昨零今離" not in html
+    assert "沒有昨零今離" in html
+    assert "尚未就緒" not in html
+    assert "請按主選單「海選」" not in html
 
 
 def test_leave_zero_cmd_off_hours_still_picks_days(tmp_path):

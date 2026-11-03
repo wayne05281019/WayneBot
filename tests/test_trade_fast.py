@@ -261,15 +261,19 @@ def test_trade_bucket_cache_ready_ignores_other_bucket_on_target_day(tmp_path, m
     assert eng.leave_zero_cache_ready("20261103") is True
 
 
-def test_leave_zero_empty_copy_uses_cache_ready_gate():
-    """空名單且快取未就緒 → 話筒說名單尚未就緒，不准誤說沒有昨零今離。"""
+def test_leave_zero_empty_copy_does_not_use_screen_cache_gate():
+    """剛離零話筒走全市場掃；空名單文案不准綁海選 cache ready。"""
     from pathlib import Path
 
     src = Path("bot_servers.py").read_text(encoding="utf-8")
-    assert "leave_zero_cache_ready" in src
     assert "trade_bucket_cache_ready" in src
     assert "今日名單尚未就緒" in src
     assert "此刻沒有昨零今離的檔。" in src
+    leave_empty = src.split("async def _run_leave_zero_now")[1].split(
+        "async def "
+    )[0]
+    assert "leave_zero_cache_ready" not in leave_empty
+    assert "請按主選單「海選」" not in leave_empty
     # 當沖空名單改認該桶新鮮度，不准只看「今日有沒有任海選列」
     trade_empty = src.split("async def _run_trade_bucket")[1].split(
         "async def daytrade_cmd"
