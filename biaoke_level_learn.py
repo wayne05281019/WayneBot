@@ -2585,16 +2585,41 @@ def _style_teach_axes(axes) -> None:
         a.set_axisbelow(True)
 
 
+def _paint_right_rail_panel(ax, *, x0: float, x1: float) -> None:
+    """右欄價梯底板：K 區與右標分層，標籤仍全畫，不准吃掉數字。"""
+    if ax is None:
+        return
+    try:
+        lo = float(x0)
+        hi = float(x1)
+    except (TypeError, ValueError):
+        return
+    if hi <= lo + 0.2:
+        return
+    ax.axvspan(
+        lo,
+        hi,
+        facecolor="#0e0a08",
+        edgecolor="none",
+        alpha=0.88,
+        zorder=0.28,
+    )
+    # 雙線分隔：外琥珀＋內淡線，縮圖遠看也分得出價梯卡
+    ax.axvline(lo, color=_LIVE_ACCENT, lw=1.55, alpha=0.72, zorder=0.45)
+    ax.axvline(lo + 0.12, color=_LIVE_ACCENT, lw=0.55, alpha=0.28, zorder=0.46)
+
+
 def _paint_teach_hud(
     fig,
     *,
     title: str,
-    meta: str,
+    meta: str = "",
     fp,
-    top: float = 0.905,
-    height: float = 0.095,
+    chips: Optional[Sequence[Tuple[str, str]]] = None,
+    top: float = 0.888,
+    height: float = 0.112,
 ) -> None:
-    """頁眉指揮條：琥珀豎條＋暖墨板；標題醒目、圖例淡化。元素仍全寫，只分層。"""
+    """頁眉指揮條：標題＋圖例晶片列＋日曆淡行。元素全留，只換成可掃的層級。"""
     if fig is None:
         return
     try:
@@ -2627,15 +2652,14 @@ def _paint_teach_hud(
             clip_on=False,
         )
     )
-    # 底部分隔細線
     fig.patches.append(
         Rectangle(
             (0.0, y0),
             1.0,
-            0.0028,
+            0.0032,
             transform=fig.transFigure,
             facecolor=_LIVE_ACCENT,
-            alpha=0.35,
+            alpha=0.4,
             edgecolor="none",
             zorder=-1,
             clip_on=False,
@@ -2643,20 +2667,41 @@ def _paint_teach_hud(
     )
     fig.text(
         0.028,
-        y0 + h * 0.62,
+        y0 + h * 0.72,
         str(title or ""),
-        fontproperties=fp(13, "bold"),
+        fontproperties=fp(14, "bold"),
         color=_LIVE_TEXT,
         ha="left",
         va="center",
         zorder=20,
     )
+    # 圖例改晶片橫列（仍是同一批資訊，不准刪；寬度用字數估，避免中途 canvas.draw）
+    chip_rows = [(str(a), str(b)) for a, b in (chips or []) if str(a or "").strip()]
+    x_chip = 0.028
+    y_chip = y0 + h * 0.38
+    for lab, col in chip_rows[:5]:
+        short = lab if len(lab) <= 24 else (lab[:23] + "…")
+        fig.text(
+            x_chip,
+            y_chip,
+            short,
+            fontproperties=fp(7, "bold"),
+            color=col or _LIVE_ACCENT,
+            ha="left",
+            va="center",
+            zorder=21,
+            bbox=_teach_chip_bbox(col or _LIVE_ACCENT, pad=0.28, lw=1.15, alpha=0.95),
+        )
+        # 全形約 0.011／字；加框墊
+        x_chip += 0.018 + min(0.22, 0.0105 * max(4, len(short)))
+        if x_chip > 0.74:
+            break
     if meta:
         fig.text(
             0.028,
-            y0 + h * 0.22,
-            str(meta)[:180],
-            fontproperties=fp(8, "bold"),
+            y0 + h * 0.12,
+            str(meta)[:168],
+            fontproperties=fp(7, "bold"),
             color=_LIVE_MUTED,
             ha="left",
             va="center",
@@ -3428,9 +3473,9 @@ def _place_live_right_labels(
                 [x_from, x_dash_end],
                 [y_true, y_true],
                 color=color,
-                lw=1.05,
-                ls=(0, (3.2, 2.0)),
-                alpha=0.82,
+                lw=1.2,
+                ls=(0, (3.0, 1.7)),
+                alpha=0.9,
                 zorder=5,
                 solid_capstyle="butt",
             )
@@ -3444,7 +3489,7 @@ def _place_live_right_labels(
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=_teach_chip_bbox(color, pad=0.16, lw=1.15, alpha=0.96),
+            bbox=_teach_chip_bbox(color, pad=0.2, lw=1.35, alpha=0.97),
         )
 
 
@@ -5507,6 +5552,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     x_left = -1.35 if need_apr else -0.6
     for a in (axu, ax, axv):
         a.set_xlim(x_left, x_right)
+    # 右欄價梯底板：K 區與右標分層（標籤全留；三層同線對齊）
+    _rail0 = float(n_axis) + 0.42
+    for _a in (axu, ax, axv):
+        _paint_right_rail_panel(_a, x0=_rail0, x1=float(x_right))
     # xlim 定完再蓋末根費半K（避免右標／裁切吃掉周五官方柱）
     if _sox_last_repaint:
         _prev = _sox_last_repaint.get("prev")
@@ -5605,17 +5654,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
     # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
     pred_foot = str(pack.get("pred_note") or "")[:240]
-    # 頁眉指揮條（元素全留，分層：窗名／圖例）
+    # 頁眉：窗名＋圖例晶片＋日曆淡行（元素全留）
     _paint_teach_hud(
         fig,
         title="第1張・遠窗　上費半浪｜中加權大ABC｜下加權量",
-        meta=(
-            f"{vz_y}　｜　{vz_c}　｜　{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
-            f"費半同軸｜C走完≠新五波升{sox_bit}"
-        ),
+        chips=[
+            (vz_y, "#ffd54f"),
+            (vz_c, "#4dd0e1"),
+            ("藍⑤｜粉A｜金虛B｜紫C", "#ce93d8"),
+            ("費半同軸", "#81d4fa"),
+            ("C走完≠新五波升", "#ffab91"),
+        ],
+        meta=f"{_macro_wave_calendar_line()}{sox_bit}",
         fp=_fp,
-        top=0.905,
-        height=0.095,
     )
     _paint_teach_foot_bar(fig, y=0.0, height=0.058)
     # 加權／費半黃框：加權貼最上；費半在桃色副標下一行，不准擋桃色字／費半K
@@ -6293,7 +6344,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 l2.append(_md(d))
     t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
     # 右標水平往左貼K；近窗留寬≥8 data 夠長標進軸內
-    ax.set_xlim(-0.6, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
+    _near_x_right = max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0)
+    ax.set_xlim(-0.6, _near_x_right)
+    _paint_right_rail_panel(ax, x0=float(n) + 0.55, x1=float(_near_x_right))
+    _paint_right_rail_panel(axv, x0=float(n) + 0.55, x1=float(_near_x_right))
     ax.set_ylim(ymin, ymax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
@@ -6323,18 +6377,24 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     _paint_teach_hud(
         fig,
         title=f"第2張・近窗　此刻＝{title_bit}",
+        chips=[
+            (vz_y, "#ffd54f"),
+            (vz_c, "#4dd0e1"),
+            (
+                (f"細c4／c5{c_sub_bit}" if c_sub_bit else "細＝C內c4／c5"),
+                "#ce93d8",
+            ),
+            ("C走完≠新五波升", "#ffab91"),
+        ],
         meta=(
-            f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　"
-            f"{str(ladder.get('one_line') or '現在走到：C進行中')[:40]}｜"
-            f"{_macro_wave_calendar_line()}｜C走完≠新五波升"
+            f"{str(ladder.get('one_line') or '現在走到：C進行中')[:44]}｜"
+            f"{_macro_wave_calendar_line()}"
         ),
         fp=_fp,
-        top=0.905,
-        height=0.095,
     )
     _paint_teach_foot_bar(fig, y=0.0, height=0.045)
     # 近窗：黃戳對齊紅橫杠空檔，略離大B金虛線（價～41200、偏右）
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.88, bottom=0.08)
     _stamp_y_data = 41200.0
     _sx_st, _sy_st = _fig_xy_from_axes_data(ax, fig, float(n) - 4.0, _stamp_y_data)
     _paint_teach_query_stamp(
@@ -6454,10 +6514,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
     for _ax_info in (ax_leg, ax_wave_host):
-        _ax_info.set_facecolor("#0b0f14")
-        for _sp in _ax_info.spines.values():
-            _sp.set_color("#546e7a")
-            _sp.set_linewidth(0.95)
+        _ax_info.set_facecolor(_LIVE_PANEL)
+        for _side, _sp in _ax_info.spines.items():
+            _sp.set_color(_LIVE_ACCENT if _side == "left" else _LIVE_PANEL_EDGE)
+            _sp.set_linewidth(1.15 if _side == "left" else 0.9)
         _ax_info.set_xticks([])
         _ax_info.set_yticks([])
         _ax_info.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
@@ -6770,7 +6830,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
                 l2.append(_md(d))
     t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
     # 右欄飆預測字往右移後，xlim 要夠寬，不准裁掉標籤
-    ax.set_xlim(x_left, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
+    _micro_x_right = max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0)
+    ax.set_xlim(x_left, _micro_x_right)
+    _paint_right_rail_panel(ax, x0=float(n) + 0.35, x1=float(_micro_x_right))
+    _paint_right_rail_panel(axv, x0=float(n) + 0.35, x1=float(_micro_x_right))
     # 超級近窗 y：上方多留空給層級標，下方給小波①／預估端；雙底色價也要進窗
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}
@@ -6927,17 +6990,21 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     _paint_teach_hud(
         fig,
         title="第3張・超近窗　C內細浪①～⑤（對齊縮圖・不取代大ABC）",
-        meta=(
-            f"{vz_y}　｜　{vz_c}{c_sub_bit}　｜　{_ol}｜"
-            f"{_macro_wave_calendar_line()}｜C走完≠新五波升"
-        ),
+        chips=[
+            (vz_y, "#ffd54f"),
+            (vz_c, "#4dd0e1"),
+            (
+                (f"細c4／c5{c_sub_bit}" if c_sub_bit else "細浪①～⑤"),
+                "#ce93d8",
+            ),
+            ("C走完≠新五波升", "#ffab91"),
+        ],
+        meta=f"{_ol}｜{_macro_wave_calendar_line()}",
         fp=_fp,
-        top=0.905,
-        height=0.095,
     )
     _paint_teach_foot_bar(fig, y=0.0, height=0.042)
     # 上K／中說明＋八浪／下量：頁邊留給標題與量軸
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.06)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.88, bottom=0.06)
     _paint_teach_query_stamp(
         fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
     )
