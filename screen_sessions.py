@@ -216,6 +216,27 @@ def load_session_results(
     return out
 
 
+def latest_bucket_as_of(db_path: str, bucket: str) -> str:
+    """該桶最新海選基準日（YYYYMMDD）；無則空字串。"""
+    ensure_screen_session_table(db_path)
+    bucket = str(bucket or "").strip()
+    if not bucket:
+        return ""
+    conn = _connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT as_of FROM screen_sessions
+            WHERE bucket=?
+            ORDER BY as_of DESC LIMIT 1
+            """,
+            (bucket,),
+        ).fetchone()
+        return str(row[0] or "").replace("-", "")[:8] if row else ""
+    finally:
+        conn.close()
+
+
 def load_bucket_rows(
     db_path: str,
     bucket: str,
@@ -239,7 +260,7 @@ def load_bucket_rows(
                 """,
                 (bucket,),
             ).fetchone()
-            as_of = str(row[0]) if row else ""
+            as_of = str(row[0] or "").replace("-", "")[:8] if row else ""
         if not as_of:
             return []
         sessions = [session] if session in ("morning", "evening") else ("morning", "evening")

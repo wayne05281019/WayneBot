@@ -640,10 +640,15 @@ class ScreeningEngine:
             if not sid:
                 continue
             q = by_id.get(sid) or {}
+            # 目標日官方收優先：不准舊 session pick_close 配今日漲跌％（話筒價錯）。
+            # 無目標日柱才退回海選當日 pick_close。
+            official_close = q.get("close")
+            pick_close = sr.get("pick_close")
+            close_v = official_close if official_close is not None else pick_close
             item: Dict[str, Any] = {
                 "stock_id": sid,
                 "stock_name": sr.get("stock_name") or q.get("stock_name") or "",
-                "close": sr.get("pick_close") if sr.get("pick_close") is not None else q.get("close"),
+                "close": close_v,
                 "hi20_close": sr.get("hi20_close"),
                 "entry_price": sr.get("entry_price"),
                 "defense_price": sr.get("defense_price"),
@@ -662,11 +667,14 @@ class ScreeningEngine:
                     item[key] = q[key]
             if bucket_key in ("day_trade", "overnight"):
                 try:
-                    close_v = float(item.get("close") or 0)
+                    close_f = float(item.get("close") or 0)
                 except (TypeError, ValueError):
-                    close_v = 0.0
-                if close_v > 0:
+                    close_f = 0.0
+                if close_f > 0:
                     item["ratio_plan"] = bucket_key
+                    # 推算＋3%／＋6%／切入要以目標日官方收，不准鎖死舊 pick。
+                    if official_close is not None:
+                        item["entry_price"] = close_f
                     try:
                         avg_v = float(item.get("avg_price") or 0)
                     except (TypeError, ValueError):
@@ -676,15 +684,42 @@ class ScreeningEngine:
             out.append(item)
         return out
 
+    def _session_as_of_fresh_enough(self, session_as_of: str, target_date: str) -> bool:
+        """海選桶空白回退：只准目標日或上一開市日，不准隔很多天舊名單。"""
+        ta = str(target_date or "").replace("-", "")[:8]
+        sa = str(session_as_of or "").replace("-", "")[:8]
+        if not ta or not sa or len(ta) != 8 or len(sa) != 8:
+            return False
+        if sa == ta:
+            return True
+        try:
+            from tw_holidays import previous_tw_trading_day
+
+            prev = previous_tw_trading_day(ta, self.db_path)
+        except Exception:
+            prev = ""
+        return bool(prev) and sa == str(prev).replace("-", "")[:8]
+
+    def _load_bucket_rows_fresh(
+        self, bucket_key: str, target_date: str
+    ) -> List[Dict[str, Any]]:
+        """讀目標日桶；無則只回退上一開市日，過舊當空。"""
+        from screen_sessions import latest_bucket_as_of, load_bucket_rows
+
+        target = str(target_date or "").replace("-", "")[:8]
+        rows = load_bucket_rows(self.db_path, bucket_key, target)
+        if rows:
+            return rows
+        latest = latest_bucket_as_of(self.db_path, bucket_key)
+        if latest and self._session_as_of_fresh_enough(latest, target):
+            return load_bucket_rows(self.db_path, bucket_key, latest)
+        return []
+
     def _screen_trade_bucket_from_cache(
         self, bucket_key: str, target_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        from screen_sessions import load_bucket_rows
-
         target_date = target_date or self.get_latest_trading_date()
-        rows = load_bucket_rows(self.db_path, bucket_key, target_date)
-        if not rows:
-            rows = load_bucket_rows(self.db_path, bucket_key, "")
+        rows = self._load_bucket_rows_fresh(bucket_key, str(target_date or ""))
         if not rows:
             _remember_live_judges(self.db_path, bucket_key, [], as_of=str(target_date or ""))
             return []
@@ -859,16 +894,12 @@ class ScreeningEngine:
             profit_pct_cal60_series,
         )
         from live_quote import is_live_merge_window
-        from screen_sessions import load_bucket_rows
         from universe import is_screen_equity
 
         as_of = str(target_date or self.get_latest_trading_date() or "").replace("-", "")[:8]
-        lz_rows = load_bucket_rows(self.db_path, "leave_zero", as_of)
-        if not lz_rows:
-            lz_rows = load_bucket_rows(self.db_path, "leave_zero", "")
-        gb_rows = load_bucket_rows(self.db_path, "golden_buy", as_of)
-        if not gb_rows:
-            gb_rows = load_bucket_rows(self.db_path, "golden_buy", "")
+        # 與當沖同一閘：空白回退只准目標日／上一開市日，不准隔很多天舊離零名單。
+        lz_rows = self._load_bucket_rows_fresh("leave_zero", as_of)
+        gb_rows = self._load_bucket_rows_fresh("golden_buy", as_of)
         by_id: Dict[str, Dict[str, Any]] = {}
         lz_ids = set()
         for sr in lz_rows:
