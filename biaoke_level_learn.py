@@ -697,8 +697,9 @@ _TEACH_STAMP_TEXT = "#111111"  # 相容舊讀；實畫走分段色
 # 八浪縮圖鎖超近窗實測大小（fig 15.6×9.6 → fraction）；遠／近換算同吋後放黃虛線左
 # 略放大仍鎖同吋；右緣不准跨黃虛線（見 _eight_wave_inset_rect_left_of_vmax）
 _TEACH_EIGHT_WAVE_INSET_REF_FIG = (15.6, 9.6)
-_TEACH_EIGHT_WAVE_INSET_W_FRAC = 0.278
-_TEACH_EIGHT_WAVE_INSET_H_FRAC = 0.238
+# 美術優先：八浪是「卡片」不是貼紙；略再放大吃滿黃虛線左側空帶
+_TEACH_EIGHT_WAVE_INSET_W_FRAC = 0.305
+_TEACH_EIGHT_WAVE_INSET_H_FRAC = 0.255
 
 
 def _day_change_vs_prev(
@@ -756,10 +757,11 @@ def _prev_bar_close(bars: Sequence[Dict[str, Any]]) -> Optional[float]:
 
 
 # 加權／費半黃框同一字級與框高；費半字少→寬自然較短
-_TEACH_STAMP_FS = 17
-_TEACH_STAMP_FS_LONG = 15
-_TEACH_STAMP_BOX_PAD = 0.40
-_TEACH_STAMP_BOX_LW = 2.6
+# 美術：戳要清楚但不准搶過 K／頁眉（略降字級與線寬）
+_TEACH_STAMP_FS = 15
+_TEACH_STAMP_FS_LONG = 13
+_TEACH_STAMP_BOX_PAD = 0.32
+_TEACH_STAMP_BOX_LW = 2.0
 
 
 def _teach_stamp_fsz(*parts: str) -> int:
@@ -2535,7 +2537,11 @@ def _wave_line(
     zorder: float = 7,
     glow: bool = True,
 ) -> None:
-    """結構浪線：雙層光暈＋實線（遠看也要有體積；不准改錨點）。"""
+    """結構浪線：單層淡光暈＋實線。
+
+    美術優先序：K 最清楚 → 浪次之。光暈只暗示體積，不准蓋燭。
+    錨點／路徑不准改。
+    """
     if ax is None:
         return
     xlist = list(xs)
@@ -2548,27 +2554,17 @@ def _wave_line(
             xlist,
             ylist,
             color=color,
-            lw=float(lw) * 7.2,
-            alpha=min(0.16, float(alpha) * 0.22),
+            lw=float(lw) * 3.8,
+            alpha=min(0.18, float(alpha) * 0.26),
             ls=ls,
-            zorder=float(zorder) - 0.6,
-            **kw,
-        )
-        ax.plot(
-            xlist,
-            ylist,
-            color=color,
-            lw=float(lw) * 3.6,
-            alpha=min(0.34, float(alpha) * 0.42),
-            ls=ls,
-            zorder=float(zorder) - 0.3,
+            zorder=float(zorder) - 0.4,
             **kw,
         )
     ax.plot(
         xlist,
         ylist,
         color=color,
-        lw=float(lw) * 1.08,
+        lw=float(lw) * 1.05,
         alpha=float(alpha),
         ls=ls,
         zorder=float(zorder),
@@ -4336,7 +4332,20 @@ def _paint_eight_wave_inset(
         import matplotlib.pyplot as plt
     except Exception:
         return
-    ax = fig.add_axes(list(rect))
+    # 底影：讓八浪讀成「卡片」而不是浮貼
+    try:
+        rx, ry, rw, rh = [float(v) for v in rect]
+        sh = fig.add_axes([rx + 0.005, ry - 0.006, rw, rh], zorder=26)
+        sh.set_facecolor("#000000")
+        sh.patch.set_alpha(0.38)
+        sh.set_xticks([])
+        sh.set_yticks([])
+        for _sp in sh.spines.values():
+            _sp.set_visible(False)
+        sh.set_navigate(False)
+    except Exception:
+        pass
+    ax = fig.add_axes(list(rect), zorder=28)
     # 不透明暖墨底＋整框琥珀邊：主圖浪線不准「穿框」看起來像切字
     ax.set_facecolor("#14110e")
     ax.patch.set_alpha(1.0)
@@ -4344,10 +4353,28 @@ def _paint_eight_wave_inset(
     ax.set_navigate(False)
     for side, sp in ax.spines.items():
         sp.set_color(_LIVE_ACCENT)
-        sp.set_linewidth(1.85)
+        sp.set_linewidth(2.05)
         sp.set_zorder(30)
     ax.set_xticks([])
     ax.set_yticks([])
+    # 頂欄色帶：卡片抬頭區（標題坐在上面）
+    try:
+        from matplotlib.patches import Rectangle as _Rect
+
+        ax.add_patch(
+            _Rect(
+                (0.0, 0.905),
+                1.0,
+                0.095,
+                transform=ax.transAxes,
+                facecolor="#1c1712",
+                edgecolor="none",
+                zorder=1,
+                clip_on=False,
+            )
+        )
+    except Exception:
+        pass
     # 簡化八浪折線；色碼跟主圖一致：藍⑤／粉A／金虛B／紫C
     # 鐵律：起→1…5→A→B→C 的 x 嚴格遞增；A 必須在黃框（B→C）左側外
     if c_flash:
@@ -5662,18 +5689,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
     # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
     pred_foot = str(pack.get("pred_note") or "")[:240]
-    # 頁眉：窗名＋圖例晶片＋日曆淡行（元素全留）
+    # 頁眉：晶片只留色義短標；完整價帶下沉 meta（元素全留、層級分開）
     _paint_teach_hud(
         fig,
         title="第1張・遠窗　上費半浪｜中加權大ABC｜下加權量",
         chips=[
-            (vz_y, "#ffd54f"),
-            (vz_c, "#4dd0e1"),
+            ("黃＝最大量日高低", "#ffd54f"),
+            ("青＝飆預測帶", "#4dd0e1"),
             ("藍⑤｜粉A｜金虛B｜紫C", "#ce93d8"),
             ("費半同軸", "#81d4fa"),
             ("C走完≠新五波升", "#ffab91"),
         ],
-        meta=f"{_macro_wave_calendar_line()}{sox_bit}",
+        meta=f"{vz_y}｜{vz_c}｜{_macro_wave_calendar_line()}{sox_bit}",
         fp=_fp,
     )
     _paint_teach_foot_bar(fig, y=0.0, height=0.058)
@@ -6383,18 +6410,19 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
         f"{_px(sr['resist']) if sr.get('resist') is not None else '—'}"
     )
-    # 圖例晶片只寫色義；細價已在右欄／釘點，不准再塞長串把晶片裁成「…」
+    # 圖例晶片只寫色義；完整價帶＋層級下沉 meta
     _paint_teach_hud(
         fig,
         title=f"第2張・近窗　此刻＝{title_bit}",
         chips=[
-            (vz_y, "#ffd54f"),
-            (vz_c, "#4dd0e1"),
+            ("黃＝最大量日高低", "#ffd54f"),
+            ("青＝飆預測帶", "#4dd0e1"),
             ("細＝C內c4／c5", "#ce93d8"),
             ("C走完≠新五波升", "#ffab91"),
         ],
         meta=(
-            f"{str(ladder.get('one_line') or '現在走到：C進行中')[:44]}｜"
+            f"{vz_y}｜{vz_c}｜"
+            f"{str(ladder.get('one_line') or '現在走到：C進行中')[:40]}｜"
             f"{_macro_wave_calendar_line()}"
         ),
         fp=_fp,
@@ -6522,11 +6550,40 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     for _ax_info in (ax_leg, ax_wave_host):
         _ax_info.set_facecolor(_LIVE_PANEL)
         for _side, _sp in _ax_info.spines.items():
-            _sp.set_color(_LIVE_ACCENT if _side == "left" else _LIVE_PANEL_EDGE)
-            _sp.set_linewidth(1.15 if _side == "left" else 0.9)
+            _sp.set_color(_LIVE_ACCENT)
+            _sp.set_linewidth(1.55)
         _ax_info.set_xticks([])
         _ax_info.set_yticks([])
         _ax_info.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+    # 左欄抬頭：跟八浪卡同一套「卡片」語言
+    try:
+        from matplotlib.patches import Rectangle as _LegRect
+
+        ax_leg.add_patch(
+            _LegRect(
+                (0.0, 0.90),
+                1.0,
+                0.10,
+                transform=ax_leg.transAxes,
+                facecolor="#1c1712",
+                edgecolor="none",
+                zorder=1,
+                clip_on=False,
+            )
+        )
+        ax_leg.text(
+            0.04,
+            0.95,
+            "說明・層級",
+            transform=ax_leg.transAxes,
+            ha="left",
+            va="center",
+            fontproperties=_fp(9, "bold"),
+            color=_LIVE_ACCENT,
+            zorder=4,
+        )
+    except Exception:
+        pass
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
     ymin = min([min(lows)] + list(tw_supports)) - 420
@@ -6794,7 +6851,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         swatch_rows.append(("#69f0ae", "┅┅", "另前提"))
     ax_leg.text(
         0.04,
-        0.96,
+        0.86,
         "\n".join([hierarchy, geom_line, str(alt_note)]),
         transform=ax_leg.transAxes,
         ha="left",
@@ -6805,11 +6862,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         zorder=3,
     )
     # 色線樣本（不准寫紫／橙國字；色自己秀）
-    _sw_y0 = 0.40
+    _sw_y0 = 0.34
     for i, (col, mark, role) in enumerate(swatch_rows):
         ax_leg.text(
             0.04,
-            _sw_y0 - i * 0.105,
+            _sw_y0 - i * 0.10,
             f"{mark}  {role}",
             transform=ax_leg.transAxes,
             ha="left",
@@ -6994,12 +7051,12 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         fig,
         title="第3張・超近窗　C內細浪①～⑤（對齊縮圖・不取代大ABC）",
         chips=[
-            (vz_y, "#ffd54f"),
-            (vz_c, "#4dd0e1"),
+            ("黃＝最大量日高低", "#ffd54f"),
+            ("青＝飆預測帶", "#4dd0e1"),
             ("細浪①～⑤＝縮圖", "#ce93d8"),
             ("C走完≠新五波升", "#ffab91"),
         ],
-        meta=f"{_ol}｜{_macro_wave_calendar_line()}",
+        meta=f"{vz_y}｜{vz_c}｜{_ol}｜{_macro_wave_calendar_line()}",
         fp=_fp,
     )
     _paint_teach_foot_bar(fig, y=0.0, height=0.042)
