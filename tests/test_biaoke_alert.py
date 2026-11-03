@@ -784,6 +784,65 @@ def test_level_hit_same_day_second_level_batch_not_repushed(monkeypatch, tmp_pat
     assert sent == []
 
 
+def test_level_hit_old_lv_keys_without_day_still_block_evening(monkeypatch, tmp_path):
+    """舊版只記 idx:lv、沒寫 idx:day：夜盤重對不准再拆第二則（21:39 雙推）。"""
+    import sqlite3
+
+    from biaoke_alert import maybe_push_marked_level_hits
+    from biaoke_desk import ensure_biaoke_posts_table
+
+    db = str(tmp_path / "old_lv.db")
+    ensure_biaoke_posts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily(date, symbol, open, high, low, close) "
+        "VALUES ('20261103','TWII',45000,45600,42000,43308)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) "
+        "VALUES ('p1','2026-10-22','20:00','post',?)",
+        ("45546 與 44042 都還在。",),
+    )
+    # 模擬舊推播：只留 lv 鍵、沒有 idx:day
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_level_alerts ("
+        "alert_key TEXT PRIMARY KEY, post_id TEXT, level REAL, "
+        "bar_date TEXT, reasons TEXT, sent_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_level_alerts(alert_key, post_id, level, bar_date, reasons, sent_at) "
+        "VALUES ('idx:lv:45546:20261103','p1',45546,'20261103','舊推','2026-11-03 18:50:00')"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "trading_calendar.is_official_daily_bar",
+        lambda ymd, now=None: str(ymd).replace("-", "")[:8] == "20261103",
+    )
+    sent = []
+    monkeypatch.setattr(
+        "biaoke_alert._send_family",
+        lambda h, **kw: sent.append(h) or 2,
+    )
+    out = maybe_push_marked_level_hits(db)
+    assert out.get("pushed") == 0
+    assert out.get("day_latched") == 1
+    assert sent == []
+    # 補上 day 鎖
+    row = sqlite3.connect(db).execute(
+        "SELECT 1 FROM biaoke_level_alerts WHERE alert_key='idx:day:20261103'"
+    ).fetchone()
+    assert row
+
+
 def test_urgent_same_body_hours_later_not_repushed(tmp_path, monkeypatch):
     """復現 2026-10-20：09:57 主文 10:03 急推後，14:04 同原文不准再推。"""
     from datetime import datetime
