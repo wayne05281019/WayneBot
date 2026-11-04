@@ -83,8 +83,10 @@ def _load_twii(conn: sqlite3.Connection) -> List[Dict[str, float]]:
     return out
 
 
-def _pivots(bars: Sequence[Dict[str, float]], look: int = PIVOT_LOOK) -> List[Dict[str, Any]]:
+def _pivots(bars: Sequence[Dict[str, float]], look: Optional[int] = None) -> List[Dict[str, Any]]:
     """轉折：±look 窗高低極值（實驗室幾何，不冒充他說）。"""
+    if look is None:
+        look = int(PIVOT_LOOK)
     pts: List[Dict[str, Any]] = []
     n = len(bars)
     for i in range(look, n - look):
