@@ -179,6 +179,22 @@ IDEA_CATALOG: List[Dict[str, Any]] = [
         "fetch": "用已存 TWII 柱重切規則（不必新抓）",
         "best_window_taipei": "任何離峰；優先週末批次",
     },
+    {
+        "id": "mtf_q_volume_climax",
+        "kind": "volume",
+        "why_zh": "季／年線爆巨量＋創高耗時（飆大圖文：2021≈3年／2024≈1年）",
+        "store": "mtf_q_bars／mtf_q_climaxes jsonl.gz",
+        "fetch": "官方日柱＋market_tape 合成（不必存圖）",
+        "best_window_taipei": "盤後；週末重測",
+    },
+    {
+        "id": "named_support_729",
+        "kind": "level",
+        "why_zh": "他點名關鍵低（如 7/29）有效跌破＝中長期橫整假設失效",
+        "store": "path_forecast factors 數字欄",
+        "fetch": "已有 TWII 低點",
+        "best_window_taipei": "每日盤後",
+    },
 ]
 
 

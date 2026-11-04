@@ -83,6 +83,12 @@ FACTOR_PACK = (
     "inst_foreign_yi_p90",
     "inst_2330_foreign_net",
     "inst_2330_foreign_ge_3k",
+    # G 多週期量價（季／年線＋爆巨量；飆大圖文參考）
+    "mtf_dist_ath_pct",
+    "mtf_amount_pctile_60",
+    "mtf_volume_climax",
+    "mtf_qtd_range_pct",
+    "mtf_named_support_broken",
 )
 
 # 可沿用旗標權重：用 reusable_quant 的 edge 符號當票（正 edge→偏多票）
@@ -243,6 +249,14 @@ def _load_edge_votes() -> Dict[str, float]:
             votes[k] = float(v)
     except Exception:
         pass
+    # 多週期爆巨量／距高（飆大季年線參考，過閘才進）
+    try:
+        from scripts.decade_lab_mtf_volume import load_mtf_votes
+
+        for k, v in load_mtf_votes().items():
+            votes[k] = float(v)
+    except Exception:
+        pass
     return votes
 
 
@@ -391,6 +405,18 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
         add("inst_2330_foreign_ge_3k", True)
     elif factors.get("inst_2330_foreign_le_m8k"):
         add("inst_2330_foreign_le_m8k", True)
+    # 多週期爆巨量
+    add("mtf_volume_climax_d3", bool(factors.get("mtf_volume_climax")))
+    add(
+        "mtf_climax_near_ath_d3",
+        bool(factors.get("mtf_volume_climax"))
+        and (_f(factors.get("mtf_dist_ath_pct")) or -99) >= -3.0,
+    )
+    add(
+        "mtf_climax_deep_discount_d3",
+        bool(factors.get("mtf_volume_climax"))
+        and (_f(factors.get("mtf_dist_ath_pct")) or 0) <= -15.0,
+    )
     return lit
 
 
@@ -407,6 +433,22 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
         bias = "down"
     else:
         bias = "range"
+    # 飆大參考：高檔爆巨量後中期偏橫整——短窗分數不夠強就改觀望（不是自動空）
+    near_ath = (_f(factors.get("mtf_dist_ath_pct")) or -99) >= -5.0
+    if (
+        bool(factors.get("mtf_volume_climax"))
+        and near_ath
+        and bias in {"up", "down"}
+        and abs(score) < 0.90
+    ):
+        bias = "range"
+        lit = list(lit) + [{"code": "mtf_climax_near_ath_soft_range", "edge": 0.0}]
+    # 他點名支撐有效跌破 → 橫整假設失效，保留原方向票（可偏空若分數空）
+    if bool(factors.get("mtf_named_support_broken")) and score > -0.2:
+        score = score - 0.25
+        lit = list(lit) + [{"code": "mtf_named_support_broken", "edge": -0.25}]
+        if score < -0.35:
+            bias = "down"
     # 必要因素：至少有 twii＋ixic，否則不可完整覆盤歸因
     need = {"twii_ret", "ixic_prior_ret"}
     have = set(factors.keys())
@@ -627,6 +669,33 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             inst_f, inst_m = snapshot_inst_factors(conn, day)
             factors.update(inst_f)
             missing.extend(inst_m)
+            try:
+                from scripts.decade_lab_mtf_volume import (
+                    _load_daily as _mtf_daily,
+                    _load_tape_amount,
+                    snapshot_mtf_factors,
+                )
+
+                # 輕量：每輪重載過重；改用函式外快取
+                if "_mtf_bars" not in run_backtest.__dict__:
+                    run_backtest._mtf_bars = _mtf_daily(conn)  # type: ignore[attr-defined]
+                    run_backtest._mtf_tape = _load_tape_amount(conn)  # type: ignore[attr-defined]
+                    # 他點 2026/7/29 低＝橫整失效參考
+                    run_backtest._mtf_sup = None  # type: ignore[attr-defined]
+                    for _b in run_backtest._mtf_bars:  # type: ignore[attr-defined]
+                        if _b["date"] == "20260729":
+                            run_backtest._mtf_sup = float(_b["low"])  # type: ignore[attr-defined]
+                            break
+                mtf_f, mtf_m = snapshot_mtf_factors(
+                    run_backtest._mtf_bars,  # type: ignore[attr-defined]
+                    run_backtest._mtf_tape,  # type: ignore[attr-defined]
+                    day,
+                    named_support=run_backtest._mtf_sup,  # type: ignore[attr-defined]
+                )
+                factors.update(mtf_f)
+                missing.extend(mtf_m)
+            except Exception:
+                missing.append("mtf_snapshot")
             decision = decide_path(factors, missing, votes)
             if any(str(x.get("code") or "").startswith("inst_") for x in (decision.get("why") or [])):
                 inst_lit_days += 1

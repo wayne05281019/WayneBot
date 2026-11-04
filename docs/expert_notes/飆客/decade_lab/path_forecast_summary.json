@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T10:39:26",
+  "written_at": "2026-11-04T10:50:43",
   "tz": "Asia/Taipei",
   "goal_zh": "預判大盤漲勢（方向）及幅度",
   "investor_output": [
@@ -43,32 +43,37 @@
     "inst_foreign_yi_p85",
     "inst_foreign_yi_p90",
     "inst_2330_foreign_net",
-    "inst_2330_foreign_ge_3k"
+    "inst_2330_foreign_ge_3k",
+    "mtf_dist_ath_pct",
+    "mtf_amount_pctile_60",
+    "mtf_volume_climax",
+    "mtf_qtd_range_pct",
+    "mtf_named_support_broken"
   ],
   "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。",
   "wrote": 5419,
-  "scored_n": 566,
-  "directional_n": 566,
-  "hit": 328,
-  "miss": 238,
-  "hit_rate_directional": 0.5795053003533569,
-  "amp_n": 328,
-  "amp_hit": 188,
-  "amp_miss": 140,
-  "hit_rate_amplitude": 0.573170731707317,
-  "amp_mae_pct": 1.2703,
+  "scored_n": 609,
+  "directional_n": 609,
+  "hit": 346,
+  "miss": 263,
+  "hit_rate_directional": 0.5681444991789819,
+  "amp_n": 346,
+  "amp_hit": 196,
+  "amp_miss": 150,
+  "hit_rate_amplitude": 0.5664739884393064,
+  "amp_mae_pct": 1.2463,
   "by_bias": {
     "up": {
-      "n": 382,
-      "hit": 228,
-      "miss": 154,
-      "hit_rate": 0.5968586387434555
+      "n": 422,
+      "hit": 245,
+      "miss": 177,
+      "hit_rate": 0.580568720379147
     },
     "down": {
-      "n": 184,
-      "hit": 100,
-      "miss": 84,
-      "hit_rate": 0.5434782608695652
+      "n": 187,
+      "hit": 101,
+      "miss": 86,
+      "hit_rate": 0.5401069518716578
     }
   },
   "by_amp_class": {
@@ -79,25 +84,25 @@
       "hit_rate": 1.0
     },
     "small": {
-      "n": 128,
-      "hit": 68,
-      "miss": 60,
-      "hit_rate": 0.53125
+      "n": 138,
+      "hit": 73,
+      "miss": 65,
+      "hit_rate": 0.5289855072463768
     },
     "mid": {
-      "n": 145,
-      "hit": 89,
-      "miss": 56,
-      "hit_rate": 0.6137931034482759
+      "n": 155,
+      "hit": 93,
+      "miss": 62,
+      "hit_rate": 0.6
     },
     "large": {
-      "n": 54,
-      "hit": 30,
-      "miss": 24,
-      "hit_rate": 0.5555555555555556
+      "n": 52,
+      "hit": 29,
+      "miss": 23,
+      "hit_rate": 0.5576923076923077
     }
   },
-  "inst_lit_days": 63,
+  "inst_lit_days": 108,
   "inst_votes": [
     "inst_2330_foreign_ge_3k",
     "inst_foreign_yi_p80",

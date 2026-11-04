@@ -1,14 +1,14 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T10:39:26",
+  "written_at": "2026-11-04T10:50:43",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
-  "reason_zh": "走勢預測方向準度 0.580 仍偏弱（n=566）→ 記錄補因並排程重測；幅度 MAE 1.27pt 偏大（n=328）→ 目標幅度要重切；因素不足不計分占比 34.4%；why 空包占比 83.9% → 投票因素點不亮，覆盤無從歸因；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "reason_zh": "走勢預測方向準度 0.568 仍偏弱（n=609）→ 記錄補因並排程重測；幅度 MAE 1.25pt 偏大（n=346）→ 目標幅度要重切；因素不足不計分占比 33.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.5795053003533569,
-      "directional_n": 566,
+      "hit_rate_directional": 0.5681444991789819,
+      "directional_n": 609,
       "factor_pack": [
         "twii_ret",
         "twii_wick",
@@ -38,11 +38,16 @@
         "inst_foreign_yi_p85",
         "inst_foreign_yi_p90",
         "inst_2330_foreign_net",
-        "inst_2330_foreign_ge_3k"
+        "inst_2330_foreign_ge_3k",
+        "mtf_dist_ath_pct",
+        "mtf_amount_pctile_60",
+        "mtf_volume_climax",
+        "mtf_qtd_range_pct",
+        "mtf_named_support_broken"
       ],
-      "hit_rate_amplitude": 0.573170731707317,
-      "amp_n": 328,
-      "amp_mae_pct": 1.2703
+      "hit_rate_amplitude": 0.5664739884393064,
+      "amp_n": 346,
+      "amp_mae_pct": 1.2463
     },
     "wave": {
       "adopt": {
@@ -54,9 +59,9 @@
     },
     "lab": {
       "n": 5419,
-      "insufficient_n": 1863,
-      "watch_n": 2990,
-      "empty_why_n": 4544
+      "insufficient_n": 1823,
+      "watch_n": 2987,
+      "empty_why_n": 95
     },
     "coverage": {
       "ok": true,
@@ -137,8 +142,8 @@
       "futures_daily": 1462
     },
     "lab_frac": {
-      "insufficient": 0.34379036722642553,
-      "empty_why": 0.8385310942978409
+      "insufficient": 0.336408931537184,
+      "empty_why": 0.0175309097619487
     }
   },
   "ideas": [
