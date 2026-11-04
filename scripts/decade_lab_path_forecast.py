@@ -911,8 +911,8 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
         if any(c.startswith("after_tw_down2") for c in active) and "chips_margin_z_le_m1" in active:
             bias = "range"
             lit = list(lit) + [{"code": "abc_crash_bounce_soft_range", "edge": 0.0}]
-        # 修正浪極弱看漲（分數很低）→ 觀望（20260709）
-        if abs(float(score or 0.0)) < 0.35:
+        # 修正浪極弱看漲＋wave_struct_up → 觀望（20260709；勿無 wave 就擋以免 n 掉）
+        if abs(float(score or 0.0)) < 0.35 and "wave_struct_up" in active:
             bias = "range"
             lit = list(lit) + [{"code": "abc_weak_up_soft_range", "edge": 0.0}]
     # 支撐已破＋弱多 → 觀望
