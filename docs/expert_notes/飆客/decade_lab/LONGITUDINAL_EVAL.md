@@ -79,9 +79,10 @@
 
 ---
 
-## 與 #798–800 對齊（不重複空吹）
+## 與 #798–802 對齊（不重複空吹）
 
 - **#798 CONTINUOUS_REDO**：A 測法／B small amp／C 位階三軌 — 本縱和採為執行序。  
 - **#799 level_bar**：現況鍵採納；hybrid 未贏 — C 軌繼續，不上話筒。  
 - **#800 path 稽核**：前瞻修＋`sample_audit.integrity_ok=false` — **dir 滿不准當過關**。  
-- **本 PR**：Mine 縱和＋優先序；**立刻可跑**＝OOS 封印測法（修錯優先於再堆指標）＋§13 `path_oos_seal_vnext`。
+- **#802 remaster（bc-8e32d25d）**：`GOAL_LONGITUDINAL_ASSESSMENT`＋`path_score_integrity`；**當時未帶 Mine**。本檔以 Mine 三塊為底覆蓋／合併其結論，不另開平行空吹。  
+- **本分支**：Mine 縱和＋優先序；**立刻可跑**＝OOS 封印測法（修錯優先於再堆指標）＋§13 `path_oos_seal_vnext`。
