@@ -1021,7 +1021,8 @@ def _oos_holdout(
 
     主閘仍看全窗 n≥20；此塊只加測有沒有過擬合。
     sealed=True（預設）：holdout 不夠厚就不准縮窗假裝 ok；要 n≥holdout+min_in_sample。
-    注意：若 soft_range／票權在 holdout 窗附近依錯單調過，此切窗不算真封印。
+    注意：holdout_n=5 的薄窗≠封印 holdout；真閘看 ``_oos_seal_gate``。
+    若 soft_range／票權在 holdout 窗附近依錯單調過，此切窗不算真封印。
     """
     ordered = sorted(
         [r for r in scored if r.get("bias") in {"up", "down"}],
@@ -1081,6 +1082,7 @@ def _oos_holdout(
             "in_sample": _slice_stats(ordered),
             "holdout": _slice_stats([]),
             "holdout_as_of": [],
+            "seal_grade": "too_thin",
         }
     if n >= want + 8:
         h = want
@@ -1094,10 +1096,76 @@ def _oos_holdout(
         "sealed_ok": h >= 20 and len(ins) >= int(min_in_sample),
         "holdout_n": h,
         "target_holdout_n": want,
-        "note_zh": "非封印縮窗對照；規則曾依近窗錯單改寫則不算真 holdout",
+        "note_zh": (
+            "最末窗只驗不調；主閘仍用全窗 gate_n20；"
+            "薄窗（<20）不算封印——見 oos_seal／path_oos_seal_vnext；"
+            "規則曾依近窗錯單改寫則不算真 holdout"
+        ),
         "in_sample": _slice_stats(ins),
         "holdout": _slice_stats(oos),
         "holdout_as_of": [str(r.get("as_of") or "") for r in oos],
+        "seal_grade": "sealed" if h >= 20 else "thin_not_seal",
+    }
+
+
+def _oos_seal_gate(
+    scored: Sequence[Dict[str, Any]],
+    *,
+    min_holdout: int = 20,
+    frac: float = 0.20,
+) -> Dict[str, Any]:
+    """封印樣本外閘（修測法：薄 OOS＝假 holdout）。
+
+    規則：holdout_n = max(min_holdout, ceil(n * frac))，且 holdout_n ≤ n//2。
+    未達 → seal_ok=false（不准把 dir 滿當過關）。過閘後 holdout 只驗不調。
+    """
+    import math
+
+    ordered = sorted(
+        [r for r in scored if r.get("bias") in {"up", "down"}],
+        key=lambda r: str(r.get("as_of") or ""),
+    )
+    n = len(ordered)
+    need_n = int(min_holdout) * 2
+    want = max(int(min_holdout), int(math.ceil(n * float(frac)))) if n else int(min_holdout)
+    if n < need_n or want > n // 2:
+        return {
+            "seal_ok": False,
+            "holdout_n": 0,
+            "scored_n": n,
+            "need_scored_n": need_n,
+            "want_holdout_n": want,
+            "min_holdout": int(min_holdout),
+            "frac": float(frac),
+            "reason_zh": (
+                f"計分日 n={n} 不足封印（要≥{need_n} 才能 holdout≥{min_holdout} 且 ≤n/2）；"
+                "薄窗5日≠真 holdout"
+            ),
+            "in_sample": _slice_stats(ordered),
+            "holdout": _slice_stats([]),
+            "holdout_as_of": [],
+            "forbid_dir_100_boast_zh": "seal 未過時禁止把 hit_rate_directional=1.0 當成果（稀釋／踢難案風險）",
+            "not_buy_signal": True,
+            "phone_sync": "blocked",
+        }
+    h = want
+    ins = ordered[:-h]
+    oos = ordered[-h:]
+    return {
+        "seal_ok": True,
+        "holdout_n": h,
+        "scored_n": n,
+        "need_scored_n": need_n,
+        "want_holdout_n": want,
+        "min_holdout": int(min_holdout),
+        "frac": float(frac),
+        "reason_zh": "封印窗只驗不調；主閘仍分軌 n≥20 且贏現況才換",
+        "in_sample": _slice_stats(ins),
+        "holdout": _slice_stats(oos),
+        "holdout_as_of": [str(r.get("as_of") or "") for r in oos],
+        "forbid_dir_100_boast_zh": "即使 holdout 方向滿，仍須看 call_rate／small amp／WAVE_NEURONS；不准單報 100%",
+        "not_buy_signal": True,
+        "phone_sync": "blocked",
     }
 
 
@@ -1967,6 +2035,7 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "gate_n20": (hit + miss) >= 20,
             "gate_integrity": bool(audit.get("method_integrity_ok")),
             "oos_holdout": oos_blob,
+            "oos_seal": _oos_seal_gate(scored, min_holdout=20, frac=0.20),
             "oos_holdout_legacy_unsealed": oos_legacy,
             "amp_class_def": {
                 "micro": "|amp|<0.6",
@@ -1993,16 +2062,18 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。"
                 "幅度偏了回查波動／市況／波浪相位／急跌反彈切片。"
                 "range＝觀望不計分。因素不足→factor_gap_queue。封印樣本外只驗不調。"
+                "禁止把方向100%當過關（稀釋／soft_range）；真OOS看oos_seal。"
             ),
             "path_gates_zh": (
                 "chop+abc軟觀望；margin_kill要同向確認；支撐破×融資殺中性化；"
                 "false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票；"
-                "crash_bounce／wick_chop 只調 amp；封印 oos holdout≥20"
+                "crash_bounce／wick_chop 只調 amp；oos薄窗≠封印；封印≥20計分日或末20%"
             ),
             "not_buy_signal": True,
             "phone_sync": "blocked",
             "WAVE_NEURONS_MATCH": False,
             "storage": "decade_lab.path_forecast + json/gz；不准 PNG",
+            "forbid_dir_100_boast": True,
         }
         lab.close()
     finally:

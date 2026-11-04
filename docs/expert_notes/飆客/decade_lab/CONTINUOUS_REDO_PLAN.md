@@ -29,6 +29,7 @@
 
 ## 本輪已開
 
-- 稽核代理：樣本／測法
-- 位階代理：波浪位階加強迴圈
-- 本代理：small 幅度下一版候選＋本計畫落檔
+- 稽核代理：樣本／測法（#800）
+- 位階代理：波浪位階加強迴圈（#799）
+- 本代理：small 幅度下一版候選＋本計畫落檔（#798）
+- **縱和代理（接 Mine）：** `LONGITUDINAL_EVAL`／`PRIORITY_ROADMAP`；OOS 封印 `scripts/decade_lab_path_oos_seal.py`＋§13 `path_oos_seal_vnext`（修測法優先；禁止報 dir 100%）
