@@ -297,12 +297,18 @@ def test_twii_forecast_hooks_fuse_not_telegram():
 
     src = Path("main_runner.py").read_text(encoding="utf-8")
     assert "snapshot_and_score_twii" in src
+    assert "record_twii_session_preopen" in src or "_record_twii_session_preopen" in src
+    assert "twii-session" in src
     i = src.find("def _refresh_twii_forecast_after_close")
     assert i > 0
-    chunk = src[i : i + 700]
+    chunk = src[i : i + 900]
     assert "send_telegram" not in chunk
     assert "snapshot_and_score_twii" in chunk
     assert src.find("sync_index_daily") < src.find("_refresh_twii_forecast_after_close")
+    # 當日盤勢落檔在早報路徑，但不准跟寄話筒綁在一起當預報文案
+    assert "不准塞進早報" in src
+    assert "_record_twii_session_preopen" in src
+    assert "send_telegram" not in src[src.find("def _record_twii_session_preopen") : src.find("def _record_twii_session_preopen") + 500]
     try_src = Path("biaoke_forecast.py").read_text(encoding="utf-8")
     a = try_src.find("def record_twii_try")
     b = try_src.find("def _judge_stock", a)
@@ -312,11 +318,88 @@ def test_twii_forecast_hooks_fuse_not_telegram():
     assert "1-2-3-4-5" not in body
     assert "第5波" not in body
     assert "_evolve_store" in body
+    sess = try_src.find("def record_twii_session_preopen")
+    assert sess > 0
+    assert "不進話筒" in try_src[sess : sess + 1200]
+    assert "after_open" in try_src[sess : sess + 2500]
     from biaoke_wave import format_twii_plain
     import inspect
 
     cap = inspect.getsource(format_twii_plain)
     assert "內部試畫" not in cap
+    assert "開盤前當日盤勢" not in cap
+
+
+def test_twii_session_preopen_before_open_then_score(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_forecast import (
+        KIND_TWII_SESSION,
+        record_twii_session_preopen,
+        verify_twii_session,
+    )
+
+    db = str(tmp_path / "sess.db")
+    store = str(tmp_path / "wayne_evolve.db")
+    # 連續開市日前置柱＋昨收 20261103
+    rows = []
+    px = 45000.0
+    day0 = date(2026, 10, 1)
+    for i in range(25):
+        d = (day0 + timedelta(days=i)).strftime("%Y%m%d")
+        rows.append((d, px, px + 100, px - 80, px + 20))
+        px += 40
+    rows.append(("20261103", 44480, 44610, 43190, 43307))
+    _seed_twii(db, rows)
+    session = "20261104"
+    pre = datetime(2026, 11, 4, 6, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    rec = record_twii_session_preopen(db, session, now=pre)
+    assert not rec.get("skipped"), rec
+    assert rec.get("as_of") == session
+    assert rec.get("key") in {"up", "down", "range"}
+    assert float(rec.get("last_close") or 0) == 43307.0
+    conn = sqlite3.connect(store)
+    mark, label, key = conn.execute(
+        "SELECT mark, label, key FROM biaoke_forecast WHERE kind=? AND as_of=?",
+        (KIND_TWII_SESSION, session),
+    ).fetchone()
+    conn.close()
+    assert mark == "開盤前當日盤勢"
+    assert "不進話筒" in label
+    after = datetime(2026, 11, 4, 9, 5, tzinfo=ZoneInfo("Asia/Taipei"))
+    skip = record_twii_session_preopen(db, session, now=after)
+    assert skip.get("skipped") == "after_open"
+    # 強制方向往下再對質
+    conn = sqlite3.connect(store)
+    conn.execute(
+        "UPDATE biaoke_forecast SET key='down' WHERE kind=? AND as_of=?",
+        (KIND_TWII_SESSION, session),
+    )
+    conn.commit()
+    conn.close()
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?,?)",
+        (session, "TWII", 43200, 43500, 42000, 42100, 1, 0),
+    )
+    conn.commit()
+    conn.close()
+    n = verify_twii_session(db)
+    assert n >= 1
+    conn = sqlite3.connect(store)
+    verd, hit = conn.execute(
+        """
+        SELECT v.verdict, r.hit FROM biaoke_forecast v
+        LEFT JOIN silent_twii_rates r ON r.kind=?
+        WHERE v.kind=? AND v.as_of=?
+        """,
+        (KIND_TWII_SESSION, KIND_TWII_SESSION, session),
+    ).fetchone()
+    conn.close()
+    assert "對得上往下" in verd
+    assert "還沒走完" not in verd
+    assert int(hit or 0) >= 1
 
 
 def test_ensure_wave_inputs_skips_under_pytest(tmp_path, monkeypatch):

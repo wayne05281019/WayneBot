@@ -1628,6 +1628,26 @@ def run_web():
             except Exception:
                 logger.exception("啟動法人近窗重抓失敗")
             try:
+                # 開市日且仍未開盤：補偷記當日盤勢（不推話筒）。開盤後略過。
+                from biaoke_forecast import record_twii_session_preopen
+                from config import taipei_today_str
+
+                sess = record_twii_session_preopen(get_db_path(), taipei_today_str()) or {}
+                if sess.get("skipped"):
+                    logger.info(
+                        "啟動當日盤勢略過 as_of=%s reason=%s",
+                        sess.get("as_of"),
+                        sess.get("skipped"),
+                    )
+                else:
+                    logger.info(
+                        "啟動當日盤勢落檔 as_of=%s key=%s",
+                        sess.get("as_of"),
+                        sess.get("key"),
+                    )
+            except Exception:
+                logger.exception("啟動當日盤勢落檔失敗")
+            try:
                 import sqlite3
 
                 from emerging_quotes import sync_emerging_quotes

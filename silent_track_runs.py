@@ -49,6 +49,7 @@ TRACK_LABELS: Dict[str, str] = {
     "winrate-buypoint": "勝率買點靜默凍",
     "score-live": "當下判斷打分",
     "twii-forecast": "大盤默默落檔",
+    "twii-session": "開盤前當日盤勢",
     "screen-review": "海選復盤對帳",
 }
 

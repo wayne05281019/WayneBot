@@ -1749,12 +1749,34 @@ class MainRunner:
 
         out = snapshot_and_score_twii(self.db_path, cap) or {}
         logger.info(
-            "大盤默默落檔 twii=%s try=%s scored=%s cap=%s",
+            "大盤默默落檔 twii=%s try=%s scored=%s session=%s session_scored=%s cap=%s",
             out.get("twii"),
             out.get("try"),
             out.get("scored"),
+            out.get("session"),
+            out.get("session_scored"),
             out.get("cap"),
         )
+        return out
+
+    def _record_twii_session_preopen(self, session_ymd: str = "") -> Dict[str, Any]:
+        """開市日開盤前偷偷記當日盤勢。不推話筒。"""
+        from biaoke_forecast import record_twii_session_preopen
+
+        out = record_twii_session_preopen(self.db_path, session_ymd) or {}
+        if out.get("skipped"):
+            logger.info(
+                "開盤前當日盤勢略過 as_of=%s reason=%s",
+                out.get("as_of"),
+                out.get("skipped"),
+            )
+        else:
+            logger.info(
+                "開盤前當日盤勢落檔 as_of=%s key=%s prior=%s",
+                out.get("as_of"),
+                out.get("key"),
+                out.get("prior_as_of"),
+            )
         return out
 
     def _run_post_fuse_silent_tracks(
@@ -3068,6 +3090,20 @@ class MainRunner:
                     )
             except Exception as e:
                 logger.warning("美股隔夜略過：%s", e)
+            # 開盤前當日盤勢：只偷偷記，不准塞進早報／話筒。
+            try:
+                from config import taipei_today_str
+                from silent_track_runs import run_tracked
+
+                sess_day = str(taipei_today_str() or as_of or "").replace("-", "")[:8]
+                run_tracked(
+                    self.db_path,
+                    "twii-session",
+                    sess_day,
+                    lambda: self._record_twii_session_preopen(sess_day),
+                )
+            except Exception as e:
+                logger.warning("開盤前當日盤勢落檔略過：%s", e)
             if claimed:
                 self.touch_pipeline_running(key)
             screening = None
