@@ -113,14 +113,23 @@ except ImportError:
     PortfolioEngine = None
 
 try:
-    from bot_servers import WayneTelegramBot, chunk_telegram_text
+    from bot_servers import WayneTelegramBot, chunk_telegram_html, chunk_telegram_text
 except ImportError:
     WayneTelegramBot = None
 
     def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
         if not text:
             return []
-        return [text[i:i + limit] for i in range(0, len(text), limit)]
+        return [text[i : i + limit] for i in range(0, len(text), limit)]
+
+    def chunk_telegram_html(text: str, limit: int = 3500, **_kw) -> List[str]:
+        # 後備：無 tg_layout 時仍避免把超長 HTML 硬切半截標籤（見 send_telegram_message）。
+        try:
+            from tg_layout import chunk_telegram_html as _chunk_html
+
+            return _chunk_html(text, limit)
+        except Exception:
+            return chunk_telegram_text(text, limit)
 
 
 class MainRunner:
@@ -1087,9 +1096,16 @@ class MainRunner:
         if not text:
             return False
         target = chat_id or getattr(self, "chat_id", None)
+        # 正式推播走 HTML；naive 字元切片會切開 <a>/<b> → Telegram 拒收後半、
+        # 前半已進話筒，catch-up 再當失敗重寄＝12:45 比價連寄根因之一。
+        raw = str(text)
+        if "<" in raw and ">" in raw:
+            parts = chunk_telegram_html(raw)
+        else:
+            parts = chunk_telegram_text(raw)
         ok = True
         n = 0
-        for part in chunk_telegram_text(text):
+        for part in parts:
             n += 1
             if self._send_one(part, target) is False:
                 ok = False
@@ -1116,6 +1132,81 @@ class MainRunner:
             if self.send_telegram_message(text, chat_id=cid) is False:
                 ok = False
         return ok
+
+    def _broadcast_family_once(
+        self,
+        text: str,
+        *,
+        pipeline_key: str,
+        kind: str = "midday",
+    ) -> int:
+        """白名單各寄一次；任一成功立刻落回執，失敗者同輪再試一次，不准跨輪洗已成功的人。
+
+        回傳成功人數。n_ok>0 時呼叫端應標 success（擋 12:46–13:30 每分補跑連寄）；
+        僅全數失敗才准 computed 重搶。
+        """
+        if not text:
+            return 0
+        key = str(pipeline_key or "").strip()
+        ids = self._family_chat_ids()
+        if key and self.push_already_delivered(key):
+            # 別條／上一輪已寄出：不准再打 Telegram（含部分成功回執）。
+            return max(1, len(ids) or 1)
+        if not ids:
+            owner = str(getattr(self, "chat_id", None) or "").strip()
+            ids = [owner] if owner else []
+        if not ids:
+            ok = bool(self.send_telegram_message(text))
+            if ok and key:
+                try:
+                    self.record_whitelist_push(key, kind=kind, n_ok=1, notes=kind)
+                except Exception:
+                    logger.exception("白名單回執寫入失敗 key=%s", key)
+            return 1 if ok else 0
+
+        ok_ids: list = []
+        pending = [str(c).strip() for c in ids if str(c).strip()]
+
+        def _record(n_ok: int, note: str) -> None:
+            if not key or n_ok <= 0:
+                return
+            try:
+                self.record_whitelist_push(
+                    key, kind=kind, n_ok=n_ok, notes=note
+                )
+            except Exception:
+                logger.exception("白名單回執寫入失敗 key=%s", key)
+
+        for attempt in (1, 2):
+            still: list = []
+            for cid in pending:
+                if self.send_telegram_message(text, chat_id=cid) is False:
+                    still.append(cid)
+                    continue
+                if cid not in ok_ids:
+                    ok_ids.append(cid)
+                _record(
+                    len(ok_ids),
+                    f"{kind}-partial" if len(ok_ids) < len(ids) else kind,
+                )
+            pending = still
+            if not pending:
+                break
+            if attempt == 1 and pending:
+                logger.warning(
+                    "%s 白名單尚未送到 %s/%s，同輪再試一次",
+                    kind,
+                    len(pending),
+                    len(ids),
+                )
+        if pending:
+            logger.error(
+                "%s 白名單仍有 %s 人沒送到（已成功 %s；已落回執擋連寄）",
+                kind,
+                len(pending),
+                len(ok_ids),
+            )
+        return len(ok_ids)
 
     def _send_one(self, text: str, chat_id: str) -> bool:
         if self.bot and hasattr(self.bot, "send_message"):
@@ -3481,24 +3572,31 @@ class MainRunner:
 
         out = run_midday_review(self.db_path, as_of)
         html = out.get("html") or ""
-        sent_ok = True
-        if html:
-            sent_ok = bool(self._broadcast_family(html)) and sent_ok
-        if sent_ok:
-            # 先回執再蓋戳：蓋戳失敗仍不准重開／補跑當未寄再寄
-            n_chats = len(self._family_chat_ids() or []) or (1 if html else 0)
-            self.record_whitelist_push(
-                key, kind="midday", n_ok=n_chats, notes="midday"
-            )
+        # MIS 抓價可能拖長；寄出前再確認回執，避免別條已寄仍打出去。
+        if self.honor_push_delivery(key, notes="midday-before-send"):
+            logger.info("12:45 比價 %s 寄出前已有回執，略過。", key)
+            return True
+        if not html:
+            # 無內容仍標 success：避免空窗補跑空轉；不是寄失敗。
+            try:
+                self._mark_pipeline("success", "midday empty", run_date=key, retries=12)
+            except Exception:
+                logger.exception("12:45 空內容蓋戳失敗 key=%s", key)
+            return True
+        # 任一白名單成功就落回執＋success：擋 12:46–13:30 每分補跑把已成功的人洗版。
+        # 全數失敗才 computed 准重搶。失敗的人同輪已再試一次（_broadcast_family_once）。
+        n_ok = int(
+            self._broadcast_family_once(html, pipeline_key=key, kind="midday") or 0
+        )
+        if n_ok > 0:
             try:
                 self._mark_pipeline("success", "midday", run_date=key, retries=12)
             except Exception:
                 logger.exception("12:45 已寄出但蓋戳失敗 key=%s（回執已記）", key)
-        else:
-            # 明確寄失敗才放 computed，讓 12:46–13:30 補跑可再寄；不准假 success。
-            self._mark_pipeline("computed", "midday send-failed", run_date=key)
-            logger.error("12:45 比價已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
-        return bool(sent_ok)
+            return True
+        self._mark_pipeline("computed", "midday send-failed", run_date=key)
+        logger.error("12:45 比價已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
+        return False
 
     def run_typhoon_peek(self) -> bool:
         """22:15／05:10 抓人事行政總處；北市全日／上午停班才記台股休市。"""
