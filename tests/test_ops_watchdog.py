@@ -253,6 +253,22 @@ def test_missed_jobs_flags_increment_after_1645(tmp_path, monkeypatch):
     assert "morning_screen" in kinds
 
 
+def test_missed_jobs_flags_false_increment_success(tmp_path, monkeypatch):
+    """pipeline success 但柱停在昨日＝仍算漏融合（查股價不對根因）。"""
+    path = _make_db(tmp_path, runs={"20261104": "success"})
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20261104")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20261103",
+    )
+    now = datetime(2026, 11, 4, 19, 30)
+    missed = [m for m in missed_jobs(path, now=now) if m["kind"] == "increment"]
+    assert len(missed) == 1
+    assert missed[0]["status"] == "success"
+    assert missed[0]["run_date"] == "20261104"
+
+
 def test_missed_jobs_skips_fresh_increment_running(tmp_path, monkeypatch):
     from zoneinfo import ZoneInfo
 

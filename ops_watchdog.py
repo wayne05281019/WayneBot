@@ -354,8 +354,19 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
         if not run_key or run_key.endswith("-none"):
             continue
         status = _pipeline_status(db_path, run_key)
-        if status == "success":
+        # 融合：假 success（柱未齊到今日）仍算漏，不准因 pipeline 蓋戳就略過告警／補跑。
+        if status == "success" and kind != "increment":
             continue
+        if status == "success" and kind == "increment":
+            try:
+                from import_health import latest_complete_quote_date
+
+                complete = str(latest_complete_quote_date(db_path, now=ref) or "").strip()
+            except Exception:
+                complete = ""
+            if complete and complete == run_key:
+                continue
+            # fall through → missed（假 success／柱落後）
         # 已有 Telegram 回執＝已寄過（與 pipeline_stamps.delivered 對齊）；
         # 不准因 pipeline 仍無紀錄／computed 又丟「排程未完成」嚇到查股途中。
         if kind in ("morning_screen", "midday_review") and run_key:
@@ -384,7 +395,7 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
                 # 租約未過期＝融合仍在跑，不當漏（對齊 increment claim stale）。
                 if age is not None and age < float(INCREMENT_RUNNING_STALE_SEC):
                     continue
-        if kind == "increment":
+        if kind == "increment" and status != "success":
             try:
                 from import_health import latest_complete_quote_date
 

@@ -359,6 +359,106 @@ def test_boot_backfill_uses_increment_job():
     # 06:30 前不准開機融合：避 /live 健檢重啟循環
     assert "06:30 前" in src
     assert "健檢重啟循環" in src
+    # 16:30 前不准開機融合：避用昨日柱蓋今日 success
+    assert "16:30 前" in src
+    assert "昨日柱蓋今日融合 success" in src
+
+
+def test_increment_job_skips_before_fuse_window():
+    """fuse_end 仍是昨日時不准搶今日鍵蓋 success。"""
+    import inspect
+
+    from main_runner import MainRunner
+
+    src = inspect.getsource(MainRunner.run_increment_job)
+    assert "盤後融合窗未開" in src
+    assert "cap mismatch" in src
+    assert "demote_increment_success_without_bars" in src
+
+
+def test_demote_increment_success_without_bars(tmp_path, monkeypatch):
+    """16:30 後：success 但柱未齊到 fuse_end → 降成 computed。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner
+
+    db = tmp_path / "wayne.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE pipeline_runs "
+        "(run_date TEXT PRIMARY KEY, finished_at TEXT, status TEXT, notes TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO pipeline_runs VALUES (?, ?, ?, ?)",
+        ("20261104", "2026-11-04 16:29:00", "success", "increment already-complete cap=20261103"),
+    )
+    conn.commit()
+    conn.close()
+
+    tw = ZoneInfo("Asia/Taipei")
+    now = datetime(2026, 11, 4, 19, 30, tzinfo=tw)
+    monkeypatch.setattr("config.fuse_end_date", lambda _now=None: "20261104")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20261103",
+    )
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = str(db)
+    runner.today_str = "20261104"
+    n = runner.demote_increment_success_without_bars(now=now)
+    assert n == 1
+    conn = sqlite3.connect(db)
+    status, notes = conn.execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("20261104",),
+    ).fetchone()
+    conn.close()
+    assert status == "computed"
+    assert "false-success" in notes
+
+
+def test_already_completed_today_rejects_false_increment_success(tmp_path, monkeypatch):
+    import sqlite3
+
+    from main_runner import MainRunner
+
+    db = tmp_path / "wayne.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE pipeline_runs "
+        "(run_date TEXT PRIMARY KEY, finished_at TEXT, status TEXT, notes TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO pipeline_runs VALUES (?, ?, ?, ?)",
+        ("20261104", "x", "success", "fake"),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20261103",
+    )
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = str(db)
+    runner.today_str = "20261104"
+    assert runner.already_completed_today("20261104") is False
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *_a, **_k: "20261104",
+    )
+    assert runner.already_completed_today("20261104") is True
+
+
+def test_catch_up_demotes_false_increment_success():
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.catch_up_missed_jobs)
+    fuse_chunk = src.split("if need_fuse:")[1].split("if need_midday:")[0]
+    assert "demote_increment_success_without_bars" in fuse_chunk
 
 
 def test_catch_up_skips_screen_cache_before_morning():

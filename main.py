@@ -860,6 +860,15 @@ def catch_up_missed_jobs(now=None) -> None:
                     logger.info("補跑清掉 orphan increment-claim %s 筆，改為可融合", n_inc)
             except Exception:
                 logger.exception("補跑清 orphan increment-claim 失敗（不擋）")
+            try:
+                n_fake = runner.demote_increment_success_without_bars()
+                if n_fake:
+                    logger.info(
+                        "補跑降假 fusion success %s 筆（柱未齊到 fuse_end），改為可融合",
+                        n_fake,
+                    )
+            except Exception:
+                logger.exception("補跑降假 fusion success 失敗（不擋）")
             runner.run_increment_job(
                 skip_if_done=True, notify=scheduler_may_push("fuse")
             )
@@ -1295,6 +1304,13 @@ def start_market_backfill(delay_s: float = 0):
             if mins_bf < (6 * 60 + 30):
                 logger.info(
                     "啟動後融合略過：台北 06:30 前（避 Render 健檢重啟循環）"
+                )
+                return
+            # 16:30 前 fuse_end 仍是昨日；開機若搶今日鍵會用昨日柱蓋今日 success，
+            # 16:30／補跑就略過 → 查股停在昨日。準點／補跑再融。
+            if mins_bf < (16 * 60 + 30):
+                logger.info(
+                    "啟動後融合略過：台北 16:30 前（避用昨日柱蓋今日融合 success）"
                 )
                 return
             logger.info("啟動後融合官方日K／法人／財報（不推播）")

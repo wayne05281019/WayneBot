@@ -190,6 +190,19 @@ class MainRunner:
     def already_completed_today(self, run_date: str = None) -> bool:
         key = run_date or self.today_str
         if self.pipeline_status(key) == "success":
+            # 盤後融合鍵＝純 YYYYMMDD：success 還要官方柱齊到該日。
+            # 16:30 前開機曾用昨日柱蓋今日 success → 不准當完成。
+            if len(str(key)) == 8 and str(key).isdigit():
+                try:
+                    from import_health import latest_complete_quote_date
+
+                    complete = str(
+                        latest_complete_quote_date(self.db_path) or ""
+                    ).strip()
+                except Exception:
+                    complete = ""
+                if not complete or complete < str(key):
+                    return False
             return True
         # 寄出回執也算完成（蓋戳失敗仍不准重寄）
         return self.push_already_delivered(key)
@@ -746,6 +759,114 @@ class MainRunner:
                 "開機清 orphan morning-claim 連續 DB locked，放棄本輪：%s",
                 last_err,
             )
+        return 0
+
+    def demote_increment_success_without_bars(
+        self,
+        *,
+        retries: int = 8,
+        now=None,
+    ) -> int:
+        """16:30 後：純 YYYYMMDD 的 fusion success 但官方柱未齊到 fuse_end → computed。
+
+        根因：16:30 前開機融合搶今日鍵、用昨日完整柱蓋今日 success，
+        之後 skip_if_done／try_claim 都略過 → 查股停在昨日。
+        """
+        try:
+            from config import fuse_end_date, taipei_now
+            from import_health import latest_complete_quote_date
+
+            ref = now or taipei_now()
+            mins = ref.hour * 60 + ref.minute
+            if mins < (16 * 60 + 30):
+                return 0
+            cap = str(fuse_end_date(ref) or "").strip()
+            if len(cap) != 8 or not cap.isdigit():
+                return 0
+            complete = str(
+                latest_complete_quote_date(self.db_path, now=ref) or ""
+            ).strip()
+            if complete and complete >= cap:
+                return 0
+        except Exception:
+            logger.exception("判斷假 fusion success 失敗")
+            return 0
+        last_err: Exception | None = None
+        for attempt in range(max(1, int(retries))):
+            conn = None
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=60.0)
+                conn.execute("PRAGMA busy_timeout=30000;")
+                rows = conn.execute(
+                    """
+                    SELECT run_date, notes
+                    FROM pipeline_runs
+                    WHERE status = 'success'
+                      AND length(run_date) = 8
+                      AND run_date GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+                      AND run_date = ?
+                    """,
+                    (cap,),
+                ).fetchall()
+                if not rows:
+                    return 0
+                stamp = taipei_stamp()
+                note = (
+                    f"increment false-success demote "
+                    f"complete={complete or 'none'} cap={cap}"
+                )
+                n = 0
+                for run_date, _notes in rows:
+                    cur = conn.execute(
+                        """
+                        UPDATE pipeline_runs
+                        SET status = 'computed',
+                            notes = ?,
+                            finished_at = ?
+                        WHERE run_date = ? AND status = 'success'
+                        """,
+                        (note[:500], stamp, run_date),
+                    )
+                    n += int(cur.rowcount or 0)
+                conn.commit()
+                if n:
+                    logger.warning(
+                        "降假 fusion success %s 筆（complete=%s cap=%s）",
+                        n,
+                        complete or "none",
+                        cap,
+                    )
+                return n
+            except sqlite3.OperationalError as e:
+                last_err = e
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                logger.warning(
+                    "降假 fusion success DB busy（%s/%s）：%s",
+                    attempt + 1,
+                    retries,
+                    e,
+                )
+                time.sleep(1.5 * (attempt + 1))
+            except Exception:
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                logger.exception("降假 fusion success 失敗")
+                return 0
+            finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+        if last_err is not None:
+            logger.warning("降假 fusion success 連續 DB locked，放棄本輪：%s", last_err)
         return 0
 
     def demote_orphaned_increment_claims(
@@ -2540,6 +2661,20 @@ class MainRunner:
             except Exception:
                 logger.exception("休市日靜默各軌補跑失敗")
             return True
+        # 16:30 前 fuse_end 仍是昨日：不准搶今日鍵／蓋今日 success（查股會停昨日）。
+        cap_window = str(fuse_end_date() or "").strip()
+        if cap_window != str(self.today_str):
+            logger.info(
+                "盤後融合窗未開（fuse_end=%s today=%s），略過今日融合鍵",
+                cap_window,
+                self.today_str,
+            )
+            return True
+        # 假 success（柱未齊）先降，否則 try_claim 會當已成功略過。
+        try:
+            self.demote_increment_success_without_bars()
+        except Exception:
+            logger.exception("融合前降假 success 失敗（不擋）")
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，仍對官方側車（月營收續補）。", self.today_str)
             self._refresh_official_sidecars()
@@ -2663,6 +2798,12 @@ class MainRunner:
                                 )
                             except Exception:
                                 pass
+                        return False
+                    # 不准用昨日完整柱蓋今日 success（16:30 前開窗錯位防護）。
+                    if str(cap) != str(self.today_str):
+                        note = f"cap mismatch fuse_end={cap} today={self.today_str}"
+                        self._mark_pipeline("incomplete", note[:500])
+                        logger.error("盤後融合拒蓋 success：%s", note)
                         return False
                     self._mark_pipeline(
                         "success",
