@@ -43,6 +43,14 @@ def test_winrate_paint_keeps_countdown_ticker():
     assert "and not prog.get(\"pause\")" not in tick_src
     assert "gap = 2.5 if prog.get(\"pause\")" in tick_src
     assert "_safe_edit_text" in tick_src
+    # 長掃後出圖：fill 必須含已耗秒，不准立刻「已超過預估」假逾時
+    assert "spent +" in src or "spent + max" in src
+    assert "paint_fill = spent" in src
+    # 名單重建逾時只包 resolve，不准出圖 TimeoutError 冒充名單逾時
+    assert "名單重建逾時只包 resolve" in src
+    resolve_chunk = src[src.index("try:") : src.index("if mode == \"filter\"")]
+    assert "asyncio.wait_for" in resolve_chunk
+    assert "TimeoutError" in resolve_chunk
 
 
 def test_safe_edit_text_not_modified_is_ok():

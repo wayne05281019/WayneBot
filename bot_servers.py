@@ -4441,8 +4441,11 @@ class WayneTelegramBot:
         if overtime:
             # 逾時仍出圖：泡泡不准消失；口吻改「仍在出」，避免以為成功結束
             title = "查股逾時仍在出圖"
-            # 逾時時「現在」必須跟下一張還沒送的對齊（不准卡已送高低卡卻寫大量撐壓）
-            if "glance" not in sent_ks:
+            # 逾時時「現在」必須跟下一張還沒送的對齊（順序＝高低卡→介紹→結構→大量→走勢）。
+            # 不准跳過高低卡直接寫介紹圖（話筒 2 分後還在渲卡卻顯示介紹＝假進度）。
+            if "card" not in sent_ks:
+                now = "高低溫度卡"
+            elif "glance" not in sent_ks:
                 now = "介紹圖"
             elif "struct" not in sent_ks and "three" not in sent_ks:
                 now = "結構圖"
@@ -5649,10 +5652,19 @@ class WayneTelegramBot:
         paint_stop = None
         paint_task = None
         try:
-            as_of, rows, mode = await asyncio.wait_for(
-                asyncio.to_thread(resolve_button_rows, self.db_path),
-                timeout=_WINRATE_RESOLVE_TIMEOUT,
-            )
+            # 名單重建逾時只包 resolve：不准出圖／送圖的 TimeoutError 冒充「名單重建逾時」。
+            try:
+                as_of, rows, mode = await asyncio.wait_for(
+                    asyncio.to_thread(resolve_button_rows, self.db_path),
+                    timeout=_WINRATE_RESOLVE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                await message.reply_text(
+                    "⚠️ 勝率買點名單重建逾時（盤後藍▲全掃較久）。"
+                    "請稍後再按一次；晚上 21:00 名單齊了會比較快。",
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
             if mode == "filter" and rows:
                 try:
                     from winrate_buypoint import silent_remember_filter
@@ -5677,7 +5689,9 @@ class WayneTelegramBot:
             # 內層 run_mpl_paint 鎖仍留（#492／#493 FreeType）；不准整頁批次 pairs。
             wait_msg = wait_h[0] if wait_h else None
             n_chunk = len(chunk)
-            paint_fill = max(40.0, 25.0 * max(1, n_chunk))
+            # fill＝已耗（含名單重掃）＋本頁出圖預估；否則長掃後立刻「已超過預估」假逾時。
+            spent = max(0.0, time.monotonic() - wait_t0)
+            paint_fill = spent + max(40.0, 25.0 * max(1, n_chunk))
             if wait_msg is not None and n_chunk:
                 prog["now"] = f"出圖 1/{n_chunk}"
                 prog["rest"] = "壓力區＋高低卡"
@@ -5820,12 +5834,6 @@ class WayneTelegramBot:
 
             await chain_roster_slots(n_chunk, _load_slot, _send_slot)
             await self._stop_plain_wait(*wait_h)
-        except asyncio.TimeoutError:
-            await message.reply_text(
-                "⚠️ 勝率買點名單重建逾時（盤後藍▲全掃較久）。"
-                "請稍後再按一次；晚上 21:00 名單齊了會比較快。",
-                reply_markup=self._reply_menu(uid),
-            )
         except Exception:
             logger.exception("勝率買點查詢失敗")
             await message.reply_text(PHONE_BUSY, reply_markup=self._reply_menu(uid))
@@ -10712,12 +10720,14 @@ class WayneTelegramBot:
                 if wait_msg is None:
                     return
                 elapsed = int(time.monotonic() - op_t0)
+                max_el = float(getattr(self, "_WAIT_MAX_ELAPSED_S", 120.0) or 120.0)
                 await self._safe_edit_text(
                     wait_msg,
                     self._chart_progress_text(
                         elapsed,
                         sent=st_b.get("sent") or [],
                         current=current,
+                        overtime=elapsed >= max_el,
                     ),
                     parse_mode="HTML",
                 )
