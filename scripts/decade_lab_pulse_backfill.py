@@ -264,7 +264,7 @@ def backfill_market_margin(
     todo = [x for x in days if x not in have]
     wrote = 0
     errors = 0
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(__import__('datetime').timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for i, ymd in enumerate(todo):
         try:
             row = fetch_twse_market_margin(ymd)
