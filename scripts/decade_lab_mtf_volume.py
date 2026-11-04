@@ -401,6 +401,28 @@ def verify_teacher_claims_quarterly(
     return claims
 
 
+# 飆大點名低點（例 7/29 A波低）：只准 as_of ≥ 該日才當 named_support（不准回灌到更早日）
+BIAOKE_NAMED_SUPPORT_YMD = "20260729"
+
+
+def named_support_asof(
+    bars: Sequence[Dict[str, float]],
+    as_of: str,
+    *,
+    named_day: str = BIAOKE_NAMED_SUPPORT_YMD,
+) -> Optional[float]:
+    """回傳點名支撐價；as_of 早於點名日 → None（防 look-ahead）。"""
+    day = _ymd(as_of)
+    nd = _ymd(named_day)
+    if not day or not nd or day < nd:
+        return None
+    for b in bars:
+        if b.get("date") == nd:
+            px = float(b.get("low") or 0.0)
+            return px if px > 0 else None
+    return None
+
+
 def snapshot_mtf_factors(
     bars: Sequence[Dict[str, float]],
     tape: Dict[str, float],

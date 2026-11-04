@@ -1,0 +1,14 @@
+{
+  "written_at": "2026-11-04T20:45:00+08:00",
+  "tz": "Asia/Taipei",
+  "track": "path_amp_small_vnext",
+  "status": "collecting",
+  "parent_summary": "path_forecast_summary.json",
+  "problem_zh": "現況 amp small 命中約 0.4；dir 已滿，下一版只殺 small 幅度，不准改 bias／買訊",
+  "hypothesis_zh": "chop＋低波動時 rv20 仍高估→改 chop 縮放 0.78→0.62；bear 小反彈另軌不與 crash_bounce 混",
+  "gate_zh": "獨立交易日 n≥20 且 amp_hit_rate（small 子集）贏現況；空名單不算；OOS 加厚≥8 日只驗不調",
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "WAVE_NEURONS_MATCH": false,
+  "next_after_replace_zh": "過閘換編碼後立刻再生 path_amp_small_vnext2（波動分位切片）"
+}

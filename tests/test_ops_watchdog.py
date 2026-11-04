@@ -435,6 +435,7 @@ def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    # 16:30 後 fuse_end＝今日，才對得上 pipeline 鍵 20260902（14:00 仍是昨日鍵）。
     now = datetime(2026, 9, 2, 17, 0)
     stamps = pipeline_stamps(path, now=now)
     assert stamps["morning_screen"]["delivered"] is True
@@ -533,7 +534,7 @@ def test_watchdog_scan_alerts_on_stale_release(tmp_path, monkeypatch):
         runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    # 融合 success 要柱齊才不當漏（假 success 閘）；本測只盯 release
+    # 柱齊才不當假 success；否則 missed 會多一筆 increment。本測只盯 release。
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date", lambda *a, **k: "20260902"
     )

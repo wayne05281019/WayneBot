@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T14:15:56",
+  "written_at": "2026-11-04T20:54:59",
   "tz": "Asia/Taipei",
   "purpose_zh": "驗證學習：波浪（含細微波／碎形）＋飆大五件＋他說過的全部；服務大盤方向＋幅度主判；不是買訊",
   "corpus": {
@@ -128,8 +128,21 @@
   "WAVE_NEURONS_MATCH": false,
   "not_buy_signal": true,
   "next_zh": [
+    "位→柱下一鍵 level_bar_vnext_explicit_hybrid 續收集（未贏不准換）",
     "細微波未過閘→續收他點過的大盤細微波句對官方柱",
     "五件交叉日另對質同日官方柱（叠位）",
     "WAVE_NEURONS_MATCH 未真對齊前不准上話筒、不准發明 5／9"
-  ]
+  ],
+  "level_bar_hit": {
+    "ok": true,
+    "current_variant": "level_bar_fwd5_role_infer",
+    "current_n": 92,
+    "current_hit": 0.6413043478260869,
+    "next_variant": "level_bar_vnext_explicit_hybrid",
+    "next_n": 54,
+    "next_hit": 0.5555555555555556,
+    "replace": false,
+    "phone_sync": "blocked",
+    "WAVE_NEURONS_MATCH": false
+  }
 }

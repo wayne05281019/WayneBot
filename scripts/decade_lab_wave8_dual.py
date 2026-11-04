@@ -224,19 +224,42 @@ def _phase_from_pivots(pivots: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     return {"phase": "unknown", "cycle": "none", "bias": "range", "gate": {}}
 
 
+def confirmed_pivots_asof(
+    pivots_all: Sequence[Dict[str, Any]],
+    as_of_i: int,
+    *,
+    look: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """只留 as_of 當日已右窗確認的樞紐（不准用未來柱證實的轉折）。
+
+    `_pivots` 用 ±look；點在 j 要等到 j+look 才能確認。as_of=i 時只准 j+look ≤ i。
+    """
+    L = int(PIVOT_LOOK if look is None else look)
+    out: List[Dict[str, Any]] = []
+    for p in pivots_all:
+        j = int(p.get("i") or -1)
+        if j < 0:
+            continue
+        if j + L <= as_of_i:
+            out.append(p)
+    return out
+
+
 def snapshot_wave_asof(
     bars: Sequence[Dict[str, float]],
     pivots_all: Sequence[Dict[str, Any]],
     as_of: str,
+    *,
+    look: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """as-of 當日波浪主結構快照（只准用當日與以前樞紐）。供路徑預測當主判。"""
+    """as-of 當日波浪主結構快照（只准用當日與以前、且已右窗確認的樞紐）。供路徑預測當主判。"""
     day = _ymd(as_of)
     day_i = {b["date"]: i for i, b in enumerate(bars)}
     i = day_i.get(day)
     if i is None:
         return {"ok": False, "bias": "range", "phase": "unknown", "missing": "wave_as_of"}
-    # 樞紐截止到當日
-    hist = [p for p in pivots_all if int(p.get("i") or -1) <= i]
+    # 樞紐：指數 ≤ as_of，且右窗 look 根已走完（修前瞻）
+    hist = confirmed_pivots_asof(pivots_all, i, look=look)
     if len(hist) < 4:
         return {"ok": False, "bias": "range", "phase": "unknown", "missing": "wave_pivots"}
     phase = _phase_from_pivots(hist)
@@ -533,6 +556,40 @@ def run_dual() -> Dict[str, Any]:
                 }
             )
 
+    # §13 下一鍵：飆大軌 hybrid（明確點位→柱；否則方向）— 另檔量化，這裡只掛指標
+    biaoke_next: Dict[str, Any] = {
+        "variant": "level_bar_vnext_explicit_hybrid",
+        "rule_zh": "degree_turns：明確點位多數決柱對質，否則方向窗",
+        "source": "biaoke_level_bar_hit_latest.json",
+        "replace": False,
+        "phone_sync": "blocked",
+        "note_zh": "勝率分軌；未贏現況／未對齊神經元不准上話筒",
+    }
+    try:
+        hit_path = OUT_DIR / "biaoke_level_bar_hit_latest.json"
+        if hit_path.is_file():
+            blob = json.loads(hit_path.read_text(encoding="utf-8"))
+            nv = blob.get("next_variant") or {}
+            tracks_hit = blob.get("tracks") or {}
+            cur_key = str(blob.get("current_variant") or "")
+            cur_s = tracks_hit.get(cur_key) or {}
+            nxt_s = tracks_hit.get(str(nv.get("variant") or "")) or {}
+            biaoke_next.update(
+                {
+                    "n_decided": nv.get("n_decided") or nxt_s.get("n_decided"),
+                    "hit_rate": nv.get("hit_rate") or nxt_s.get("hit_rate"),
+                    "vs_current": {
+                        "current_variant": cur_key,
+                        "current_hit_rate": cur_s.get("hit_rate"),
+                        "edge": (nv.get("vs_current") or {}).get("edge"),
+                    },
+                    "gate_n20": bool(nv.get("gate_n20") or nxt_s.get("gate_n20")),
+                    "replace": bool(nv.get("replace")),
+                }
+            )
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+
     summary = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
@@ -549,6 +606,14 @@ def run_dual() -> Dict[str, Any]:
         "disagree_n": len(disagree),
         "disagree_sample": disagree[:25],
         "self_fix": self_fix,
+        "next_variant": {
+            "variant": "textbook_vnext_fwd3",
+            "rule_zh": "現況#5 規則、對質窗改 FWD_N=3",
+            "note_zh": "FWD窗不同＝不可直接替換閘；另軌收集",
+            "phone_sync": "blocked",
+            "replace": False,
+        },
+        "biaoke_next_variant": biaoke_next,
         "not_buy_signal": True,
         "phone_sync": "blocked",
         "wave_neurons_match": False,
