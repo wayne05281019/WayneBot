@@ -1016,6 +1016,7 @@ def _oos_holdout(
     """時間切窗樣本外：最末 holdout_n 個已計分日只驗、不調參。
 
     主閘仍看全窗 n≥20；此塊只加測有沒有過擬合。
+    注意：若 soft_range／票權在 holdout 窗附近依錯單調過，此切窗不算真封印。
     """
     ordered = sorted(
         [r for r in scored if r.get("bias") in {"up", "down"}],
@@ -1042,10 +1043,61 @@ def _oos_holdout(
     return {
         "ok": True,
         "holdout_n": h,
-        "note_zh": "最末窗只驗不調；主閘仍用全窗 gate_n20",
+        "note_zh": "最末窗只驗不調；主閘仍用全窗 gate_n20；規則曾依近窗錯單改寫則不算真 holdout",
         "in_sample": _slice_stats(ins),
         "holdout": _slice_stats(oos),
         "holdout_as_of": [str(r.get("as_of") or "") for r in oos],
+    }
+
+
+def _sample_audit(
+    *,
+    wrote: int,
+    range_n: int,
+    insuff_n: int,
+    soft_range_n: int,
+    dir_n: int,
+    hit_rate: Optional[float],
+    by_amp_class: Dict[str, Any],
+    oos: Dict[str, Any],
+) -> Dict[str, Any]:
+    """樣本／測法稽核：抓灌水（range 稀釋、前瞻已修、OOS 過薄、small amp 弱）。"""
+    call_rate = (dir_n / wrote) if wrote else 0.0
+    small = by_amp_class.get("small") or {}
+    small_n = int(small.get("n") or 0)
+    small_hr = small.get("hit_rate")
+    reasons: List[str] = []
+    if call_rate < 0.02 and dir_n < 50:
+        reasons.append("call_rate_too_low_range_dilution")
+    if soft_range_n >= max(10, dir_n):
+        reasons.append("soft_range_dominates_calls")
+    if small_n < 20 or (small_hr is not None and float(small_hr) < 0.55):
+        reasons.append("small_amp_gate_fail")
+    holdout_n = int(oos.get("holdout_n") or 0)
+    if holdout_n < 20:
+        reasons.append("oos_holdout_too_thin")
+    # 已鎖：神經元未對齊不准上話筒
+    reasons.append("WAVE_NEURONS_MATCH_false")
+    return {
+        "wrote": wrote,
+        "range_n": range_n,
+        "insuff_n": insuff_n,
+        "soft_range_n": soft_range_n,
+        "directional_n": dir_n,
+        "call_rate": round(call_rate, 6),
+        "look_ahead_fixes": [
+            "named_support_gated_by_asof",
+            "wave_pivot_right_confirm",
+        ],
+        "range_exclusion_zh": "range／觀望不計方向勝率（故意）；錯單改 soft_range 會把難案踢出計分＝灌水風險",
+        "oos_risk_zh": "最末5計分日≠封印 holdout；soft_range 註解若點名同窗錯單＝規則洩漏",
+        "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘檔＝樣本內污染，下一版要 walk-forward",
+        "integrity_ok": len([r for r in reasons if r != "WAVE_NEURONS_MATCH_false"]) == 0,
+        "integrity_blockers": reasons,
+        "why_phone_blocked_zh": (
+            "dir 滿仍不上話筒：① WAVE_NEURONS_MATCH=false；② phone_sync 硬鎖；"
+            "③ 不是買訊；④ 樣本 integrity 未過（稀釋／OOS 薄／small amp）。"
+        ),
     }
 
 
@@ -1398,6 +1450,9 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         ensure_lab(lab)
         wrote = 0
         scored = []
+        range_n = 0
+        insuff_n = 0
+        soft_range_n = 0
         days = tw_days[:-3]  # need forward
         if max_days > 0:
             days = days[-max_days:]
@@ -1523,17 +1578,15 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 if "_mtf_bars" not in run_backtest.__dict__:
                     run_backtest._mtf_bars = _mtf_daily(conn)  # type: ignore[attr-defined]
                     run_backtest._mtf_tape = _load_tape_amount(conn)  # type: ignore[attr-defined]
-                    # 他點 2026/7/29 低＝橫整失效參考
-                    run_backtest._mtf_sup = None  # type: ignore[attr-defined]
-                    for _b in run_backtest._mtf_bars:  # type: ignore[attr-defined]
-                        if _b["date"] == "20260729":
-                            run_backtest._mtf_sup = float(_b["low"])  # type: ignore[attr-defined]
-                            break
+                from scripts.decade_lab_mtf_volume import named_support_asof
+
+                # 點名支撐只准 as_of≥點名日（修：舊碼整段回測都灌 20260729 低＝前瞻）
+                _mtf_sup = named_support_asof(run_backtest._mtf_bars, day)  # type: ignore[attr-defined]
                 mtf_f, mtf_m = snapshot_mtf_factors(
                     run_backtest._mtf_bars,  # type: ignore[attr-defined]
                     run_backtest._mtf_tape,  # type: ignore[attr-defined]
                     day,
-                    named_support=run_backtest._mtf_sup,  # type: ignore[attr-defined]
+                    named_support=_mtf_sup,
                 )
                 factors.update(mtf_f)
                 missing.extend(mtf_m)
@@ -1703,6 +1756,15 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             }
             upsert_forecast(lab, rec)
             wrote += 1
+            if decision["bias"] == "range":
+                range_n += 1
+            if (not decision["reviewable"]) or ("因素不足" in verd):
+                insuff_n += 1
+            if any(
+                str(x.get("code") or "").endswith("soft_range")
+                for x in (decision.get("why") or [])
+            ):
+                soft_range_n += 1
             if decision["reviewable"] and ("對得上" in verd or "偏了" in verd):
                 scored.append(
                     {
@@ -1766,6 +1828,18 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 "miss": m,
                 "hit_rate": (h / (h + m)) if (h + m) else None,
             }
+        oos_blob = _oos_holdout(scored, holdout_n=5)
+        dir_hit_rate = (hit / (hit + miss)) if (hit + miss) else None
+        audit = _sample_audit(
+            wrote=wrote,
+            range_n=range_n,
+            insuff_n=insuff_n,
+            soft_range_n=soft_range_n,
+            dir_n=hit + miss,
+            hit_rate=dir_hit_rate,
+            by_amp_class=by_amp_class,
+            oos=oos_blob,
+        )
         summary = {
             "written_at": _now(),
             "tz": "Asia/Taipei",
@@ -1781,7 +1855,7 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "directional_n": hit + miss,
             "hit": hit,
             "miss": miss,
-            "hit_rate_directional": (hit / (hit + miss)) if (hit + miss) else None,
+            "hit_rate_directional": dir_hit_rate,
             "amp_n": amp_hit + amp_miss,
             "amp_hit": amp_hit,
             "amp_miss": amp_miss,
@@ -1800,7 +1874,21 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "structural_primary": "wave",
             "biaoke_learn": "見 biaoke_wave_learn_latest（五件／細微波／他說過的）",
             "gate_n20": (hit + miss) >= 20,
-            "oos_holdout": _oos_holdout(scored, holdout_n=5),
+            "oos_holdout": oos_blob,
+            "amp_class_def": {
+                "micro": "|amp|<0.6",
+                "small": "0.6≤|amp|<1.5",
+                "mid": "1.5≤|amp|<3.0",
+                "large": "|amp|≥3.0",
+                "note_zh": "分類看預測 |amp_pct|，不是實際報酬",
+            },
+            "sample_audit": audit,
+            "next_gates_zh": (
+                "下一版必測：① small amp n≥20 且勝率不輸 mid／全窗；"
+                "② OOS 加厚（≥20 計分日或末 20% 曆日，規則封印後只驗）；"
+                "③ WAVE_NEURONS_MATCH＝true 波浪位階對質過才談話筒。"
+                "dir 滿＋gate_n20 仍不准上話筒。"
+            ),
             "purpose_zh": (
                 "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／"
                 "支撐衝突中性／假彈連錯／幅度分市況／台積量價確認）；飆大五件／細微波另學；"

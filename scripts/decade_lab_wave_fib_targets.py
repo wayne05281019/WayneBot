@@ -120,7 +120,7 @@ def snapshot_wave_fib_targets(
     as_of: str,
 ) -> Tuple[Dict[str, Any], List[str]]:
     """as-of 收盤後：最近完成樞紐段 → 黃金切割目標價（含幅度％）。"""
-    from scripts.decade_lab_wave8_dual import _phase_from_pivots
+    from scripts.decade_lab_wave8_dual import _phase_from_pivots, confirmed_pivots_asof
 
     day = _ymd(as_of)
     factors: Dict[str, Any] = {}
@@ -129,7 +129,8 @@ def snapshot_wave_fib_targets(
     i = day_i.get(day)
     if i is None:
         return factors, ["wave_fib_as_of"]
-    hist = [p for p in pivots_all if int(p.get("i") or -1) <= i]
+    # 與 snapshot_wave_asof 同：右窗未確認的樞紐不准進（修前瞻）
+    hist = confirmed_pivots_asof(pivots_all, i)
     if len(hist) < 2:
         return factors, ["wave_fib_pivots"]
 

@@ -196,7 +196,7 @@
   "oos_holdout": {
     "ok": true,
     "holdout_n": 5,
-    "note_zh": "最末窗只驗不調；主閘仍用全窗 gate_n20",
+    "note_zh": "最末窗只驗不調；主閘仍用全窗 gate_n20；規則曾依近窗錯單改寫則不算真 holdout",
     "in_sample": {
       "n": 19,
       "hit": 19,
@@ -223,7 +223,8 @@
       "20260728",
       "20260729",
       "20260911"
-    ]
+    ],
+    "contamination_risk_zh": "soft_range 註解點名 202607xx／20261005 與 holdout 同帶＝規則洩漏風險"
   },
   "purpose_zh": "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／支撐衝突中性／假彈連錯／幅度分市況／台積量價確認）；飆大五件／細微波另學；法人外資必進；急跌反彈幅度切片＋樣本外切窗加測；不是買訊不上話筒",
   "reverse_think_zh": "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。幅度偏了回查波動／市況／波浪相位／急跌反彈切片。range＝觀望不計分。因素不足→factor_gap_queue。樣本外只驗不調。",
@@ -231,5 +232,40 @@
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "WAVE_NEURONS_MATCH": false,
-  "storage": "decade_lab.path_forecast + json/gz；不准 PNG"
+  "storage": "decade_lab.path_forecast + json/gz；不准 PNG",
+  "amp_class_def": {
+    "micro": "|amp|<0.6",
+    "small": "0.6≤|amp|<1.5",
+    "mid": "1.5≤|amp|<3.0",
+    "large": "|amp|≥3.0",
+    "note_zh": "分類看預測 |amp_pct|，不是實際報酬"
+  },
+  "sample_audit": {
+    "wrote": 5419,
+    "range_n": 5395,
+    "insuff_n": 0,
+    "soft_range_n": 1,
+    "directional_n": 24,
+    "call_rate": 0.004429,
+    "look_ahead_fixes": [
+      "named_support_gated_by_asof",
+      "wave_pivot_right_confirm"
+    ],
+    "range_exclusion_zh": "range／觀望不計方向勝率（故意）；錯單改 soft_range 會把難案踢出計分＝灌水風險",
+    "oos_risk_zh": "最末5計分日≠封印 holdout；soft_range 註解若點名同窗錯單＝規則洩漏",
+    "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘檔＝樣本內污染，下一版要 walk-forward",
+    "integrity_ok": false,
+    "integrity_blockers": [
+      "call_rate_too_low_range_dilution",
+      "small_amp_gate_fail",
+      "oos_holdout_too_thin",
+      "WAVE_NEURONS_MATCH_false"
+    ],
+    "why_phone_blocked_zh": "dir 滿仍不上話筒：① WAVE_NEURONS_MATCH=false；② phone_sync 硬鎖；③ 不是買訊；④ 樣本 integrity 未過（稀釋／OOS 薄／small amp）。",
+    "published_scored_n": 24,
+    "audit_basis_zh": "以已合 main 之 summary／scored 稽核；本機 wayne_market.db 僅 TWII 無法重算全因素",
+    "code_fixes_zh": "已修：named_support as_of 閘；波浪／wave_fib 樞紐右窗確認；摘要加 integrity／next_gates",
+    "rescore_pending_zh": "合進後用 Render 厚庫重跑 scripts/decade_lab_path_forecast.py 覆寫 scored／summary"
+  },
+  "next_gates_zh": "下一版必測：① small amp n≥20 且勝率不輸 mid／全窗；② OOS 加厚（≥20 計分日或末 20% 曆日，規則封印後只驗）；③ WAVE_NEURONS_MATCH＝true 波浪位階對質過才談話筒。dir 滿＋gate_n20 仍不准上話筒。"
 }
