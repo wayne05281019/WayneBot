@@ -1,0 +1,23 @@
+{
+  "written_at": "2026-11-04T08:26:06",
+  "tz": "Asia/Taipei",
+  "tape": {
+    "ok": true,
+    "wrote_rows": 685,
+    "months": 35,
+    "failed_months": [],
+    "failed_n": 0,
+    "table_n": 685,
+    "from": "20240102",
+    "to": "20261103"
+  },
+  "tsmc": {
+    "ok": true,
+    "wrote_raw": 2429,
+    "wrote_adj": 2429,
+    "n": 2429,
+    "from": "20161103",
+    "to": "20261103",
+    "note": "lab only；話筒查股仍認官方 daily_quotes"
+  }
+}
