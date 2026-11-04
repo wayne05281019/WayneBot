@@ -582,7 +582,7 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
         "michael_gap_south_bounce",
         "michael_gap_south_fx_ma",  # 嚴變體優先於裸 fx_ok
         "michael_gap_south_fx_ok",
-        "michael_gap_south_after_night",
+        # after_night 語料有用、量化過閘，但進 path 主判易孤票踩空 → 只收集／soft 另議
         "michael_gap_south_after_strong",
     )
     _cands = [
@@ -889,9 +889,11 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
             and not str(x.get("code")).startswith("margin_kill_blocked")
             and not str(x.get("code")).startswith("conflict_")
         ]
-        if _active_m == ["michael_gap_south_fx_ok"]:
+        # 任一麥可旗孤票 → 觀望（檢測有用；單獨當主判方法錯）
+        _michael_only = [c for c in _active_m if c.startswith("michael_")]
+        if len(_active_m) == 1 and _michael_only:
             bias = "range"
-            lit = list(lit) + [{"code": "michael_fx_ok_alone_soft_range", "edge": 0.0}]
+            lit = list(lit) + [{"code": "michael_alone_soft_range", "edge": 0.0}]
     # 修正浪內只剩 wave_struct_up → 觀望（20260708）
     if bias == "up" and in_abc:
         active = [

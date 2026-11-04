@@ -1,14 +1,14 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T16:27:32",
+  "written_at": "2026-11-04T16:36:20",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
   "reason_zh": "因素不足不計分占比 93.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.8260869565217391,
-      "directional_n": 23,
+      "hit_rate_directional": 0.8636363636363636,
+      "directional_n": 22,
       "factor_pack": [
         "wave_bias",
         "wave_phase",
@@ -70,6 +70,7 @@
         "michael_gap_south_fx_ok",
         "michael_gap_south_fx_ma",
         "michael_gap_south_bear_wick",
+        "michael_gap_south_after_night",
         "michael_gap_south",
         "michael_wick_flip_risk",
         "michael_fail_upper",
@@ -98,7 +99,7 @@
     "lab": {
       "n": 5419,
       "insufficient_n": 5074,
-      "watch_n": 322,
+      "watch_n": 323,
       "empty_why_n": 62
     },
     "coverage": {

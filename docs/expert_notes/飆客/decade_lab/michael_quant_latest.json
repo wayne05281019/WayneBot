@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T16:26:25",
+  "written_at": "2026-11-04T16:35:12",
   "tz": "Asia/Taipei",
   "source": "michael_self_module",
   "note_zh": "自研模組：麥可長文→日K變體；有用指標深挖不棄；當日空／三日回歸分軌（檢測窗對齊）；不取代飆大；不是買訊",
@@ -41,6 +41,16 @@
       "note_zh": "檢測＝當日開收；不准套三日窗；不進 path 三日票"
     },
     {
+      "flag": "michael_gap_south_after_night",
+      "n": 20,
+      "fwd3_avg": 1.5056,
+      "edge3": 1.3836,
+      "vote": 1.3836,
+      "hit_rate_side": 0.7,
+      "gate": "hard",
+      "source": "michael_self_module"
+    },
+    {
       "flag": "michael_gap_south_fx_ok",
       "n": 25,
       "fwd3_avg": 1.4679,
@@ -75,6 +85,7 @@
     "michael_gap_south_bear_wick",
     "michael_gap_south_bounce",
     "michael_gap_south_intraday_down",
+    "michael_gap_south_after_night",
     "michael_gap_south_fx_ok",
     "michael_gap_south_after_strong"
   ],

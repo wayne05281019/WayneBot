@@ -143,8 +143,8 @@ def test_macro_only_down_soft_range():
     assert any(x["code"] == "macro_only_down_soft_range" for x in out2["why"])
 
 
-def test_michael_fx_ok_alone_soft_range():
-    # 裸外資 gap 孤票不准當唯一看漲主判
+def test_michael_alone_soft_range():
+    # 麥可硬旗孤票不准當唯一看漲主判
     out = decide_path(
         {
             "twii_ret": -0.5,
@@ -158,7 +158,7 @@ def test_michael_fx_ok_alone_soft_range():
         {"michael_gap_south_fx_ok": 1.35},
     )
     assert out["bias"] == "range"
-    assert any(x["code"] == "michael_fx_ok_alone_soft_range" for x in out["why"])
+    assert any(x["code"] == "michael_alone_soft_range" for x in out["why"])
 
 
 def test_abc_up_call_streak():
