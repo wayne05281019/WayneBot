@@ -1,0 +1,356 @@
+{
+  "written_at": "2026-11-05T00:59:20",
+  "tz": "Asia/Taipei",
+  "goal_zh": "預判大盤漲勢（方向）及幅度",
+  "investor_output": [
+    "bias",
+    "amp_pct",
+    "amp_class",
+    "horizon",
+    "last_close",
+    "target",
+    "invalidate",
+    "factors",
+    "missing",
+    "why_codes"
+  ],
+  "factor_pack": [
+    "wave_bias",
+    "wave_phase",
+    "wave_ok",
+    "twii_ret",
+    "twii_wick",
+    "twii_vol_spike",
+    "twii_prev_ret",
+    "ixic_prior_ret",
+    "sox_prior_ret",
+    "vix_prior_ret",
+    "tsm_prior_ret",
+    "nvda_prior_ret",
+    "dxy_prior_ret",
+    "usdtwd_prior_ret",
+    "brent_prior_ret",
+    "tx_night_ret",
+    "inst_trust_yi",
+    "inst_foreign_yi",
+    "inst_three_yi",
+    "inst_trust_z",
+    "inst_foreign_z",
+    "inst_three_z",
+    "inst_trust_neg_2d",
+    "inst_three_neg_2d",
+    "inst_foreign_neg_2d",
+    "inst_foreign_pos_2d",
+    "inst_foreign_pos_3d",
+    "inst_foreign_yi_p80",
+    "inst_foreign_yi_p85",
+    "inst_foreign_yi_p90",
+    "inst_2330_foreign_net",
+    "inst_2330_foreign_ge_3k",
+    "mtf_dist_ath_pct",
+    "mtf_amount_pctile_60",
+    "mtf_volume_climax",
+    "mtf_qtd_range_pct",
+    "mtf_named_support_broken",
+    "fib_near_0618_support",
+    "fib_near_0382_support",
+    "fib_near_0618_resist",
+    "fib_deep_pull",
+    "fib_amp_0618_pct",
+    "chips_margin_delta_z",
+    "chips_ud_ratio",
+    "chips_tape_tril",
+    "chips_tx_oi_z",
+    "chips_short_z",
+    "regime",
+    "false_up_streak",
+    "abc_up_call_streak",
+    "tsmc_vol_spike",
+    "tsmc_vol_confirm_up",
+    "tsmc_vol_confirm_down",
+    "margin_kill_confirmed",
+    "margin_kill_blocked",
+    "michael_gap_south_bounce",
+    "michael_gap_south_after_strong",
+    "michael_gap_south_fx_ok",
+    "michael_gap_south_fx_ma",
+    "michael_gap_south_bear_wick",
+    "michael_gap_south_after_night",
+    "michael_failed_south_after_strong",
+    "michael_gap_south_below_ma60",
+    "michael_open_high_fade",
+    "michael_gap_south_sox_le_m2",
+    "michael_after_strong_day_only",
+    "michael_after_strong_x_wick",
+    "michael_gap_south_night_ge1",
+    "michael_gap_south_wick_ge045",
+    "michael_super_open_fade",
+    "michael_gap_south",
+    "michael_night_hot",
+    "michael_wick_flip_risk",
+    "michael_fail_upper",
+    "michael_break_lower",
+    "michael_wide_chop",
+    "michael_crash_bounce_tail",
+    "michael_wick_chop_rebound",
+    "michael_prior_ret",
+    "michael_lower_wick",
+    "michael_bound_span_pct",
+    "michael_sox_prior_ret",
+    "michael_ma60_lost",
+    "michael_sox_weak",
+    "wave_fib_primary_px",
+    "wave_fib_primary_pct",
+    "wave_fib_primary_ratio",
+    "wave_fib_mode",
+    "wave_fib_expect_down"
+  ],
+  "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。",
+  "wrote": 5419,
+  "scored_n": 45,
+  "directional_n": 45,
+  "hit": 31,
+  "miss": 14,
+  "hit_rate_directional": 0.6888888888888889,
+  "amp_n": 31,
+  "amp_hit": 23,
+  "amp_miss": 8,
+  "hit_rate_amplitude": 0.7419354838709677,
+  "amp_mae_pct": 1.3305,
+  "by_bias": {
+    "up": {
+      "n": 34,
+      "hit": 24,
+      "miss": 10,
+      "hit_rate": 0.7058823529411765
+    },
+    "down": {
+      "n": 11,
+      "hit": 7,
+      "miss": 4,
+      "hit_rate": 0.6363636363636364
+    }
+  },
+  "by_amp_class": {
+    "micro": {
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate": null
+    },
+    "small": {
+      "n": 6,
+      "hit": 3,
+      "miss": 3,
+      "hit_rate": 0.5
+    },
+    "mid": {
+      "n": 8,
+      "hit": 6,
+      "miss": 2,
+      "hit_rate": 0.75
+    },
+    "large": {
+      "n": 17,
+      "hit": 14,
+      "miss": 3,
+      "hit_rate": 0.8235294117647058
+    }
+  },
+  "by_regime": {
+    "bull": {
+      "n": 16,
+      "hit": 14,
+      "miss": 2,
+      "hit_rate": 0.875
+    },
+    "bear": {
+      "n": 20,
+      "hit": 13,
+      "miss": 7,
+      "hit_rate": 0.65
+    },
+    "chop": {
+      "n": 9,
+      "hit": 4,
+      "miss": 5,
+      "hit_rate": 0.4444444444444444
+    }
+  },
+  "inst_lit_days": 105,
+  "inst_votes": [
+    "inst_trust_z_ge_p1"
+  ],
+  "fib_lit_days": 0,
+  "fib_votes": [],
+  "chips_lit_days": 172,
+  "chips_votes": [
+    "chips_limit_up_ge_20",
+    "chips_margin_kill_2d",
+    "chips_margin_z_le_m1"
+  ],
+  "wave_lit_days": 772,
+  "structural_primary": "wave",
+  "biaoke_learn": "見 biaoke_wave_learn_latest（五件／細微波／他說過的）",
+  "gate_n20": true,
+  "gate_integrity": false,
+  "oos_holdout": {
+    "ok": true,
+    "sealed": true,
+    "sealed_ok": true,
+    "holdout_n": 20,
+    "target_holdout_n": 20,
+    "note_zh": "封印 OOS：最末窗只驗不調；主閘仍用全窗 gate_n20；規則曾依近窗錯單改寫則不算真 holdout",
+    "in_sample": {
+      "n": 25,
+      "hit": 15,
+      "miss": 10,
+      "hit_rate_directional": 0.6,
+      "amp_n": 15,
+      "amp_hit": 7,
+      "amp_miss": 8,
+      "hit_rate_amplitude": 0.4666666666666667
+    },
+    "holdout": {
+      "n": 20,
+      "hit": 16,
+      "miss": 4,
+      "hit_rate_directional": 0.8,
+      "amp_n": 16,
+      "amp_hit": 16,
+      "amp_miss": 0,
+      "hit_rate_amplitude": 1.0
+    },
+    "holdout_as_of": [
+      "20250903",
+      "20250912",
+      "20251014",
+      "20251121",
+      "20260108",
+      "20260206",
+      "20260303",
+      "20260310",
+      "20260331",
+      "20260402",
+      "20260417",
+      "20260423",
+      "20260513",
+      "20260626",
+      "20260709",
+      "20260717",
+      "20260720",
+      "20260728",
+      "20260729",
+      "20260911"
+    ]
+  },
+  "oos_holdout_legacy_unsealed": {
+    "ok": true,
+    "sealed": false,
+    "sealed_ok": false,
+    "holdout_n": 5,
+    "target_holdout_n": 5,
+    "note_zh": "非封印縮窗對照；規則曾依近窗錯單改寫則不算真 holdout",
+    "in_sample": {
+      "n": 40,
+      "hit": 26,
+      "miss": 14,
+      "hit_rate_directional": 0.65,
+      "amp_n": 26,
+      "amp_hit": 18,
+      "amp_miss": 8,
+      "hit_rate_amplitude": 0.6923076923076923
+    },
+    "holdout": {
+      "n": 5,
+      "hit": 5,
+      "miss": 0,
+      "hit_rate_directional": 1.0,
+      "amp_n": 5,
+      "amp_hit": 5,
+      "amp_miss": 0,
+      "hit_rate_amplitude": 1.0
+    },
+    "holdout_as_of": [
+      "20260717",
+      "20260720",
+      "20260728",
+      "20260729",
+      "20260911"
+    ]
+  },
+  "amp_class_def": {
+    "micro": "|amp|<0.6",
+    "small": "0.6≤|amp|<1.5",
+    "mid": "1.5≤|amp|<3.0",
+    "large": "|amp|≥3.0",
+    "note_zh": "分類看預測 |amp_pct|，不是實際報酬"
+  },
+  "sample_audit": {
+    "wrote": 5419,
+    "range_n": 4932,
+    "insuff_n": 5037,
+    "soft_range_n": 459,
+    "directional_n": 45,
+    "call_rate": 0.008304,
+    "look_ahead_fixes": [
+      "named_support_gated_by_asof",
+      "wave_pivot_right_confirm"
+    ],
+    "range_exclusion_zh": "range／觀望不計方向勝率（故意）；錯單改 soft_range 會把難案踢出計分＝灌水風險",
+    "oos_risk_zh": "封印 OOS 要 holdout≥20；縮窗／同窗調參＝假 holdout",
+    "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘檔＝樣本內污染，下一版要 walk-forward",
+    "integrity_ok": false,
+    "integrity_blockers": [
+      "call_rate_too_low_range_dilution",
+      "soft_range_dominates_calls",
+      "small_amp_gate_fail",
+      "WAVE_NEURONS_MATCH_false"
+    ],
+    "method_integrity_ok": false,
+    "why_phone_blocked_zh": "dir 滿仍不上話筒：① WAVE_NEURONS_MATCH=false；② phone_sync 硬鎖；③ 不是買訊；④ 樣本 integrity 未過（稀釋／OOS 薄／small amp）。"
+  },
+  "next_gates": {
+    "integrity_ok": false,
+    "forbid_dir100_claim": true,
+    "require": [
+      {
+        "id": "small_amp_n20",
+        "ok": false,
+        "zh": "small amp 子集 n≥20 且 hit_rate≥0.55（不輸 mid／全窗才談換）"
+      },
+      {
+        "id": "oos_sealed_n20",
+        "ok": true,
+        "zh": "封印 OOS holdout≥20 計分日（或末20%）只驗不調"
+      },
+      {
+        "id": "call_rate_not_diluted",
+        "ok": false,
+        "zh": "方向計分 call_rate 不可被 range／soft_range 稀釋灌水"
+      },
+      {
+        "id": "wave_neurons_match",
+        "ok": false,
+        "zh": "WAVE_NEURONS_MATCH=true 才談話筒；現況 false"
+      }
+    ],
+    "phone_sync": "blocked",
+    "note_zh": "dir 滿＋gate_n20 仍不准上話筒；integrity 全過且神經元對齊才談同步"
+  },
+  "next_gates_zh": "下一版必測：① small amp n≥20 且勝率不輸 mid／全窗；② 封印 OOS≥20 計分日（或末 20% 曆日）只驗不調；③ call_rate 不被 range 稀釋；④ WAVE_NEURONS_MATCH＝true 才談話筒。dir 滿＋gate_n20 仍不准上話筒；gate_integrity 未過＝測法未收斂。",
+  "purpose_zh": "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／支撐衝突中性／假彈連錯／幅度分市況／台積量價確認）；飆大五件／細微波另學；法人外資必進；急跌反彈幅度切片＋樣本外切窗加測；不是買訊不上話筒",
+  "reverse_think_zh": "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。幅度偏了回查波動／市況／波浪相位／急跌反彈切片。range＝觀望不計分。因素不足→factor_gap_queue。封印樣本外只驗不調。",
+  "path_gates_zh": "chop+abc軟觀望；margin_kill要同向確認；支撐破×融資殺中性化；false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票；crash_bounce／wick_chop 只調 amp；封印 oos holdout≥20",
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false,
+  "storage": "decade_lab.path_forecast + json/gz；不准 PNG",
+  "factor_gap": {
+    "id": "gap-20261105-path_forecast",
+    "fruitless": true,
+    "ideas_n": 12,
+    "schedule_n": 12,
+    "reason_zh": "幅度 MAE 1.33pt 偏大（n=31）→ 目標幅度要重切；因素不足不計分占比 93.0%；why 空包占比 66.9% → 投票因素點不亮，覆盤無從歸因；market_margin_daily 列數偏少 n=853（二十年窗應更厚）"
+  }
+}
