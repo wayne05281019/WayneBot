@@ -20,14 +20,14 @@ def test_biaoke_bias_mapping():
 def test_iron_and_judge():
     from scripts.decade_lab_wave8_dual import _phase_from_pivots
 
-    # 人工上漲 1-2-3-4-5（第3段擴延 ≥1.618×次長）
+    # 人工上漲 1-2-3-4-5（最長／次長 ≥1.618）
     pts = [
         {"px": 100, "kind": "L"},
         {"px": 110, "kind": "H"},  # w1=10
         {"px": 105, "kind": "L"},  # w2=5
-        {"px": 130, "kind": "H"},  # w3=25 (≥1.618×10)
-        {"px": 120, "kind": "L"},  # w4=10；不重疊 w1
-        {"px": 140, "kind": "H"},  # w5=20
+        {"px": 145, "kind": "H"},  # w3=40（≥1.618×w5）
+        {"px": 130, "kind": "L"},  # w4=15；不重疊 w1[100,110]
+        {"px": 150, "kind": "H"},  # w5=20
     ]
     m = _iron_motive(pts)
     assert "lens" in m
