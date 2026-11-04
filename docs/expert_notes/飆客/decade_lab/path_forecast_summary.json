@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T17:15:38",
+  "written_at": "2026-11-04T18:16:32",
   "tz": "Asia/Taipei",
   "goal_zh": "預判大盤漲勢（方向）及幅度",
   "investor_output": [
@@ -91,6 +91,12 @@
     "michael_fail_upper",
     "michael_break_lower",
     "michael_wide_chop",
+    "michael_crash_bounce_tail",
+    "michael_wick_chop_rebound",
+    "michael_prior_ret",
+    "michael_lower_wick",
+    "michael_bound_span_pct",
+    "michael_sox_prior_ret",
     "michael_ma60_lost",
     "michael_sox_weak",
     "wave_fib_primary_px",
@@ -101,26 +107,26 @@
   ],
   "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。",
   "wrote": 5419,
-  "scored_n": 20,
-  "directional_n": 20,
-  "hit": 20,
+  "scored_n": 24,
+  "directional_n": 24,
+  "hit": 24,
   "miss": 0,
   "hit_rate_directional": 1.0,
-  "amp_n": 20,
-  "amp_hit": 17,
-  "amp_miss": 3,
-  "hit_rate_amplitude": 0.85,
-  "amp_mae_pct": 1.3063,
+  "amp_n": 24,
+  "amp_hit": 20,
+  "amp_miss": 4,
+  "hit_rate_amplitude": 0.8333333333333334,
+  "amp_mae_pct": 1.3089,
   "by_bias": {
     "up": {
-      "n": 14,
-      "hit": 14,
+      "n": 15,
+      "hit": 15,
       "miss": 0,
       "hit_rate": 1.0
     },
     "down": {
-      "n": 6,
-      "hit": 6,
+      "n": 9,
+      "hit": 9,
       "miss": 0,
       "hit_rate": 1.0
     }
@@ -133,28 +139,28 @@
       "hit_rate": null
     },
     "small": {
-      "n": 2,
+      "n": 5,
       "hit": 2,
+      "miss": 3,
+      "hit_rate": 0.4
+    },
+    "mid": {
+      "n": 7,
+      "hit": 7,
       "miss": 0,
       "hit_rate": 1.0
     },
-    "mid": {
-      "n": 8,
-      "hit": 7,
-      "miss": 1,
-      "hit_rate": 0.875
-    },
     "large": {
-      "n": 10,
-      "hit": 8,
-      "miss": 2,
-      "hit_rate": 0.8
+      "n": 12,
+      "hit": 11,
+      "miss": 1,
+      "hit_rate": 0.9166666666666666
     }
   },
   "by_regime": {
     "bull": {
-      "n": 9,
-      "hit": 9,
+      "n": 12,
+      "hit": 12,
       "miss": 0,
       "hit_rate": 1.0
     },
@@ -165,8 +171,8 @@
       "hit_rate": 1.0
     },
     "chop": {
-      "n": 4,
-      "hit": 4,
+      "n": 5,
+      "hit": 5,
       "miss": 0,
       "hit_rate": 1.0
     }
@@ -177,7 +183,7 @@
   ],
   "fib_lit_days": 0,
   "fib_votes": [],
-  "chips_lit_days": 80,
+  "chips_lit_days": 141,
   "chips_votes": [
     "chips_limit_up_ge_20",
     "chips_margin_kill_2d",
@@ -187,9 +193,41 @@
   "structural_primary": "wave",
   "biaoke_learn": "見 biaoke_wave_learn_latest（五件／細微波／他說過的）",
   "gate_n20": true,
-  "purpose_zh": "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／支撐衝突中性／假彈連錯／幅度分市況／台積量價確認）；飆大五件／細微波另學；法人外資必進；不是買訊不上話筒",
-  "reverse_think_zh": "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。幅度偏了回查波動／市況／波浪相位。range＝觀望不計分。因素不足→factor_gap_queue。",
-  "path_gates_zh": "chop+abc軟觀望；margin_kill要同向確認；支撐破×融資殺中性化；false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票",
+  "oos_holdout": {
+    "ok": true,
+    "holdout_n": 5,
+    "note_zh": "最末窗只驗不調；主閘仍用全窗 gate_n20",
+    "in_sample": {
+      "n": 19,
+      "hit": 19,
+      "miss": 0,
+      "hit_rate_directional": 1.0,
+      "amp_n": 19,
+      "amp_hit": 15,
+      "amp_miss": 4,
+      "hit_rate_amplitude": 0.7894736842105263
+    },
+    "holdout": {
+      "n": 5,
+      "hit": 5,
+      "miss": 0,
+      "hit_rate_directional": 1.0,
+      "amp_n": 5,
+      "amp_hit": 5,
+      "amp_miss": 0,
+      "hit_rate_amplitude": 1.0
+    },
+    "holdout_as_of": [
+      "20260717",
+      "20260720",
+      "20260728",
+      "20260729",
+      "20260911"
+    ]
+  },
+  "purpose_zh": "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／支撐衝突中性／假彈連錯／幅度分市況／台積量價確認）；飆大五件／細微波另學；法人外資必進；急跌反彈幅度切片＋樣本外切窗加測；不是買訊不上話筒",
+  "reverse_think_zh": "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。幅度偏了回查波動／市況／波浪相位／急跌反彈切片。range＝觀望不計分。因素不足→factor_gap_queue。樣本外只驗不調。",
+  "path_gates_zh": "chop+abc軟觀望；margin_kill要同向確認；支撐破×融資殺中性化；false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票；crash_bounce／wick_chop 只調 amp；oos 最末5日",
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "WAVE_NEURONS_MATCH": false,

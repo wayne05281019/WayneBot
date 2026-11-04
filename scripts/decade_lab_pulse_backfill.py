@@ -6,6 +6,7 @@
 1. market_tape_daily：證交所 FMTQIK 全日成交金額（元）— 給「≥1.3兆」口徑
 2. market_margin_daily：MI_MARGN 大盤融資金額（仟元）長史
 3. decade_lab.db lab_daily：2330 Yahoo 十年（raw＋adj）— 市值龍頭對照；標明非官方
+4. index_daily OTC：櫃買指數（TPEX 日成交量值指數／tradingIndex；台北日）
 
 原則：只存日彙總／必要 OHLC，不准堆 PNG；缺就標缺；不是買訊；不准寫回話筒。
 """
@@ -399,6 +400,174 @@ def backfill_tsmc_lab(lab_db: Path, *, range_: str = "10y") -> Dict[str, Any]:
     }
 
 
+def _roc_date_to_ymd(s: str) -> str:
+    """113/11/01 → 20241101。"""
+    parts = str(s or "").strip().replace("-", "/").split("/")
+    if len(parts) != 3:
+        return ""
+    try:
+        y = int(parts[0]) + 1911
+        m = int(parts[1])
+        d = int(parts[2])
+        return f"{y:04d}{m:02d}{d:02d}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _f_num(v: Any) -> Optional[float]:
+    try:
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            v = v.replace(",", "")
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    if n != n:
+        return None
+    return n
+
+
+def fetch_tpex_otc_month(yyyy: int, mm: int) -> List[Dict[str, Any]]:
+    """櫃買指數月窗（TPEX tradingIndex；欄位 close＝指數收）。"""
+    # 新站
+    url = (
+        "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingIndex"
+        f"?date={yyyy:04d}/{mm:02d}/01&response=json"
+    )
+    data: List[Any] = []
+    try:
+        resp = SESSION.get(url, timeout=45)
+        resp.raise_for_status()
+        payload = resp.json()
+        tables = payload.get("tables") or []
+        if tables:
+            data = tables[0].get("data") or []
+    except Exception:
+        data = []
+    if not data:
+        # 舊站 ROC 日
+        roc_y = yyyy - 1911
+        url2 = (
+            "https://www.tpex.org.tw/web/stock/aftertrading/daily_trading_index/"
+            f"st41_result.php?l=zh-tw&d={roc_y}/{mm:02d}/01"
+        )
+        try:
+            resp = SESSION.get(url2, timeout=45)
+            resp.raise_for_status()
+            payload = resp.json()
+            tables = payload.get("tables") or []
+            data = (tables[0].get("data") if tables else None) or payload.get("aaData") or []
+        except Exception:
+            return []
+    out: List[Dict[str, Any]] = []
+    for row in data:
+        if not isinstance(row, (list, tuple)) or len(row) < 6:
+            continue
+        ymd = _roc_date_to_ymd(row[0])
+        close = _f_num(row[4])
+        chg = _f_num(row[5])
+        if not ymd or close is None or close <= 0:
+            continue
+        out.append(
+            {
+                "date": ymd,
+                "close": close,
+                "pct_change": chg,
+                "volume": _f_num(str(row[1]).replace(",", "")) if row[1] is not None else None,
+            }
+        )
+    return out
+
+
+def backfill_otc_index(
+    db_path: Path, *, from_ym: str = "201001", sleep_s: float = 0.2, max_months: int = 0
+) -> Dict[str, Any]:
+    """補 index_daily symbol=OTC（櫃買指數）。缺就不硬填假數。"""
+    from scripts.decade_lab_outer_backfill import ensure_index
+
+    raw = str(from_ym or "201001").replace("/", "").replace("-", "")
+    if len(raw) == 6:
+        y0, m0 = int(raw[:4]), int(raw[4:6])
+    elif len(raw) == 8:
+        y0, m0 = int(raw[:4]), int(raw[4:6])
+    else:
+        y0, m0 = 2010, 1
+    end = datetime.now(TAIPEI).date()
+    months: List[Tuple[int, int]] = []
+    y, m = y0, m0
+    while (y, m) <= (end.year, end.month):
+        months.append((y, m))
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+    if max_months > 0:
+        months = months[-int(max_months) :]
+
+    path = Path(db_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), timeout=60.0)
+    wrote = 0
+    errors = 0
+    stamp = _now()
+    try:
+        ensure_index(conn)
+        for i, (yy, mm) in enumerate(months):
+            try:
+                bars = fetch_tpex_otc_month(yy, mm)
+            except Exception:
+                errors += 1
+                bars = []
+            for b in bars:
+                day = b["date"]
+                c = float(b["close"])
+                conn.execute(
+                    """
+                    INSERT INTO index_daily(
+                        date, symbol, open, high, low, close, volume, pct_change, regime, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(date, symbol) DO UPDATE SET
+                        open=excluded.open, high=excluded.high, low=excluded.low,
+                        close=excluded.close, volume=excluded.volume,
+                        pct_change=excluded.pct_change, regime=excluded.regime,
+                        updated_at=excluded.updated_at
+                    """,
+                    (
+                        day,
+                        "OTC",
+                        c,
+                        c,
+                        c,
+                        c,
+                        b.get("volume"),
+                        b.get("pct_change"),
+                        "tpex_trading_index",
+                        stamp,
+                    ),
+                )
+                wrote += 1
+            conn.commit()
+            if i < len(months) - 1:
+                time.sleep(max(0.0, sleep_s))
+        n, mn, mx = conn.execute(
+            "SELECT COUNT(*), MIN(date), MAX(date) FROM index_daily WHERE symbol='OTC'"
+        ).fetchone()
+    finally:
+        conn.close()
+    return {
+        "ok": True,
+        "months": len(months),
+        "wrote": wrote,
+        "errors": errors,
+        "table_n": int(n or 0),
+        "from": mn,
+        "to": mx,
+        "source": "tpex_trading_index",
+        "note_zh": "櫃買指數；Yahoo 無長史改官方月窗",
+    }
+
+
 def main() -> int:
     import argparse
 
@@ -406,11 +575,15 @@ def main() -> int:
     ap.add_argument("--tape-from", default="201701")
     ap.add_argument("--margin-from", default="20230101")
     ap.add_argument("--margin-max-days", type=int, default=400)
+    ap.add_argument("--otc-from", default="201001")
+    ap.add_argument("--otc-max-months", type=int, default=0)
     ap.add_argument("--skip-tape", action="store_true")
     ap.add_argument("--skip-margin", action="store_true")
     ap.add_argument("--skip-tsmc", action="store_true")
+    ap.add_argument("--skip-otc", action="store_true")
     ap.add_argument("--tape-sleep", type=float, default=0.35)
     ap.add_argument("--margin-sleep", type=float, default=0.22)
+    ap.add_argument("--otc-sleep", type=float, default=0.18)
     args = ap.parse_args()
 
     out: Dict[str, Any] = {"written_at": _now(), "tz": "Asia/Taipei"}
@@ -424,6 +597,14 @@ def main() -> int:
             from_ymd=args.margin_from,
             sleep_s=args.margin_sleep,
             max_days=args.margin_max_days,
+        )
+    if not args.skip_otc:
+        print("… TPEX OTC 櫃買指數 → index_daily", flush=True)
+        out["otc"] = backfill_otc_index(
+            MARKET_DB,
+            from_ym=args.otc_from,
+            sleep_s=args.otc_sleep,
+            max_months=args.otc_max_months,
         )
     if not args.skip_tsmc:
         print("… Yahoo 2330 → decade_lab.lab_daily", flush=True)

@@ -1,13 +1,15 @@
 {
-  "written_at": "2026-11-04T08:48:10",
+  "written_at": "2026-11-04T18:09:13",
   "tz": "Asia/Taipei",
-  "margin": {
+  "otc": {
     "ok": true,
-    "todo": 184,
-    "wrote": 172,
+    "months": 203,
+    "wrote": 4125,
     "errors": 0,
-    "table_n": 390,
-    "from": "20241112",
-    "to": "20261103"
+    "table_n": 4125,
+    "from": "20100104",
+    "to": "20261104",
+    "source": "tpex_trading_index",
+    "note_zh": "櫃買指數；Yahoo 無長史改官方月窗"
   }
 }

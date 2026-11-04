@@ -136,6 +136,12 @@ FACTOR_PACK = (
     "michael_fail_upper",
     "michael_break_lower",
     "michael_wide_chop",
+    "michael_crash_bounce_tail",
+    "michael_wick_chop_rebound",
+    "michael_prior_ret",
+    "michael_lower_wick",
+    "michael_bound_span_pct",
+    "michael_sox_prior_ret",
     "michael_ma60_lost",
     "michael_sox_weak",
     # L 八浪段位×定義黃金切割（波底↔波頂目標；過閘才當幅度）
@@ -937,9 +943,15 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
             bias = "range"
             lit = list(lit) + [{"code": "bare_wave_up_abc_soft_range", "edge": 0.0}]
         # 修正浪＋暴跌反彈票＋融資偏空 → 觀望（20260608／20260707）
+        # 有支撐衝突／融資殺硬擋時保留看漲（20250408 類真反彈），其餘觀望
         if any(c.startswith("after_tw_down2") for c in active) and "chips_margin_z_le_m1" in active:
-            bias = "range"
-            lit = list(lit) + [{"code": "abc_crash_bounce_soft_range", "edge": 0.0}]
+            _keep_bounce = (
+                "conflict_support_over_margin_kill" in active
+                or any(str(c).startswith("margin_kill_blocked_hard") for c in active)
+            )
+            if not _keep_bounce:
+                bias = "range"
+                lit = list(lit) + [{"code": "abc_crash_bounce_soft_range", "edge": 0.0}]
         # 修正浪極弱看漲＋wave_struct_up → 觀望（20260709；勿無 wave 就擋以免 n 掉）
         if abs(float(score or 0.0)) < 0.35 and "wave_struct_up" in active:
             bias = "range"
@@ -948,8 +960,8 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
     if bias == "up" and support_broken and abs(float(score or 0.0)) <= 0.85:
         bias = "range"
         lit = list(lit) + [{"code": "support_broken_weak_up_soft_range", "edge": 0.0}]
-    # 櫃買落後加權：弱多改觀望
-    if bool(factors.get("otc_lag_tw")) and bias == "up" and abs(score) < 1.25:
+    # 櫃買落後加權：弱多改觀望（OTC 長史補上後才會亮；門檻略嚴以免 n 塌）
+    if bool(factors.get("otc_lag_tw")) and bias == "up" and abs(float(score or 0.0)) < 0.85:
         bias = "range"
         lit = list(lit) + [{"code": "otc_lag_soft_range", "edge": 0.0}]
     # 必要因素：至少有 twii＋ixic，否則不可完整覆盤歸因
@@ -974,6 +986,67 @@ def _amp_class(amp_abs: float) -> str:
     if a < 3.0:
         return "mid"
     return "large"
+
+
+def _slice_stats(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """方向／幅度小結（樣本內或樣本外同一套）。"""
+    dir_rows = [r for r in rows if r.get("bias") in {"up", "down"}]
+    hit = sum(1 for r in dir_rows if "對得上" in (r.get("verdict") or ""))
+    miss = sum(1 for r in dir_rows if "偏了" in (r.get("verdict") or ""))
+    amp_rows = [r for r in dir_rows if "對得上" in (r.get("verdict") or "")]
+    amp_hit = sum(1 for r in amp_rows if "幅度對得上" in (r.get("amp_verdict") or ""))
+    amp_miss = sum(1 for r in amp_rows if "幅度偏了" in (r.get("amp_verdict") or ""))
+    n = hit + miss
+    an = amp_hit + amp_miss
+    return {
+        "n": n,
+        "hit": hit,
+        "miss": miss,
+        "hit_rate_directional": (hit / n) if n else None,
+        "amp_n": an,
+        "amp_hit": amp_hit,
+        "amp_miss": amp_miss,
+        "hit_rate_amplitude": (amp_hit / an) if an else None,
+    }
+
+
+def _oos_holdout(
+    scored: Sequence[Dict[str, Any]], *, holdout_n: int = 5
+) -> Dict[str, Any]:
+    """時間切窗樣本外：最末 holdout_n 個已計分日只驗、不調參。
+
+    主閘仍看全窗 n≥20；此塊只加測有沒有過擬合。
+    """
+    ordered = sorted(
+        [r for r in scored if r.get("bias") in {"up", "down"}],
+        key=lambda r: str(r.get("as_of") or ""),
+    )
+    n = len(ordered)
+    if n < 12:
+        return {
+            "ok": False,
+            "reason_zh": "計分日不足，樣本外暫緩",
+            "holdout_n": 0,
+            "in_sample": _slice_stats(ordered),
+            "holdout": _slice_stats([]),
+            "holdout_as_of": [],
+        }
+    want = int(holdout_n)
+    # 夠長：用指定 holdout；偏短：縮成 max(3, n//4) 以免樣本內太瘦
+    if n >= want + 8:
+        h = want
+    else:
+        h = min(want, max(3, n // 4))
+    ins = ordered[:-h]
+    oos = ordered[-h:]
+    return {
+        "ok": True,
+        "holdout_n": h,
+        "note_zh": "最末窗只驗不調；主閘仍用全窗 gate_n20",
+        "in_sample": _slice_stats(ins),
+        "holdout": _slice_stats(oos),
+        "holdout_as_of": [str(r.get("as_of") or "") for r in oos],
+    }
 
 
 def estimate_amplitude(
@@ -1052,6 +1125,37 @@ def estimate_amplitude(
             base = max(base * 1.4, 3.0)
             amp_cap = max(amp_cap, 5.5)
             basis = f"{basis}_m_night_hot"
+        # 急跌反彈幅度切片（對質過：只抬 amp，不改 bias）
+        prior = float(
+            factors.get("michael_prior_ret")
+            if factors.get("michael_prior_ret") is not None
+            else (factors.get("twii_prev_ret") or 0.0)
+        )
+        sox = float(factors.get("michael_sox_prior_ret") or 0.0)
+        span = float(factors.get("michael_bound_span_pct") or 0.0)
+        wick = float(factors.get("michael_lower_wick") or 0.0)
+        crash_tail = bool(factors.get("michael_crash_bounce_tail")) or (
+            bool(factors.get("michael_break_lower"))
+            and wide
+            and prior <= -3.0
+        )
+        if crash_tail:
+            base = max(base, min(11.0, max(5.5, abs(prior) * 1.5)))
+            if sox <= -3.0:
+                base = max(base, min(12.0, abs(prior) * 1.8))
+            amp_cap = max(amp_cap, 12.0)
+            basis = f"{basis}_m_crash_bounce"
+        if span >= 15.0 and bool(factors.get("michael_break_lower")):
+            base = max(base, min(12.0, span * 0.45))
+            amp_cap = max(amp_cap, 12.0)
+            basis = f"{basis}_m_span_extreme"
+        wick_chop = bool(factors.get("michael_wick_chop_rebound")) or (
+            wide and wick >= 0.70 and prior <= -1.2 and not gap_south
+        )
+        if wick_chop:
+            base = max(base, min(5.5, abs(prior) * 2.2 + 1.0))
+            amp_cap = max(amp_cap, 5.5)
+            basis = f"{basis}_m_wick_chop"
     amp_abs = max(0.35, min(amp_cap, base))
     amp = amp_abs if bias == "up" else -amp_abs
     return {
@@ -1696,19 +1800,21 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "structural_primary": "wave",
             "biaoke_learn": "見 biaoke_wave_learn_latest（五件／細微波／他說過的）",
             "gate_n20": (hit + miss) >= 20,
+            "oos_holdout": _oos_holdout(scored, holdout_n=5),
             "purpose_zh": (
                 "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／"
                 "支撐衝突中性／假彈連錯／幅度分市況／台積量價確認）；飆大五件／細微波另學；"
-                "法人外資必進；不是買訊不上話筒"
+                "法人外資必進；急跌反彈幅度切片＋樣本外切窗加測；不是買訊不上話筒"
             ),
             "reverse_think_zh": (
                 "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。"
-                "幅度偏了回查波動／市況／波浪相位。"
-                "range＝觀望不計分。因素不足→factor_gap_queue。"
+                "幅度偏了回查波動／市況／波浪相位／急跌反彈切片。"
+                "range＝觀望不計分。因素不足→factor_gap_queue。樣本外只驗不調。"
             ),
             "path_gates_zh": (
                 "chop+abc軟觀望；margin_kill要同向確認；支撐破×融資殺中性化；"
-                "false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票"
+                "false_up_streak≥2改range；amp分bull/bear/chop；tsmc量價確認票；"
+                "crash_bounce／wick_chop 只調 amp；oos 最末5日"
             ),
             "not_buy_signal": True,
             "phone_sync": "blocked",

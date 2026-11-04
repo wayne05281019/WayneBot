@@ -116,6 +116,67 @@ def test_michael_hard_bounce_variant():
     assert f.get("michael_gap_south_below_ma60") is True  # 擴大軟閘母體
 
 
+def test_michael_crash_bounce_tail_flags():
+    """急跌反彈切片旗標：破位＋寬震盪＋昨跌深。"""
+    twii = {}
+    days = []
+    y, m, d = 2025, 1, 1
+    # 前 60 日緩跌建季線；近 10 日高低拉開 ≥3% 寬震盪
+    px = 22000.0
+    for i in range(70):
+        day = f"{y}{m:02d}{d:02d}"
+        days.append(day)
+        if i < 60:
+            hi, lo, c = px + 40, px - 40, px
+            ret = -0.05
+            px *= 0.999
+        else:
+            # 寬幅震盪帶
+            hi, lo = 21500.0, 20500.0
+            c = 21000.0 + (i - 60) * 20
+            ret = 0.2
+        twii[day] = {
+            "open": c,
+            "high": hi,
+            "low": lo,
+            "close": c,
+            "ret": ret,
+            "ret_ok": True,
+        }
+        d += 1
+        if d > 28:
+            d = 1
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+    prev = days[-2]
+    last = days[-1]
+    twii[prev]["ret"] = -3.5
+    twii[prev]["close"] = 20900.0
+    twii[last] = {
+        "open": 20800.0,
+        "high": 20850.0,
+        "low": 20300.0,
+        "close": 20400.0,  # 破近窗低 20500
+        "ret": -2.4,
+        "ret_ok": True,
+    }
+    f, _ = snapshot_michael_factors(
+        twii=twii,
+        tx_reg={},
+        tx_night={},
+        sox={prev: {"ret": -3.2}},
+        tw_days=days,
+        as_of=last,
+        foreign_z=0.0,
+    )
+    assert f.get("michael_break_lower") is True
+    assert f.get("michael_wide_chop") is True
+    assert float(f.get("michael_prior_ret") or 0) <= -3.0
+    assert f.get("michael_crash_bounce_tail") is True
+
+
 def test_michael_failed_south_after_strong():
     """昨強＋gap_south 但當日收紅＝向南失敗（三日回歸變體）。"""
     twii, days, last = _series_below_ma60_then_gap_south()

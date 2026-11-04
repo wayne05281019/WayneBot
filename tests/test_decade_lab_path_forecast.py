@@ -5,6 +5,7 @@ from scripts.decade_lab_path_forecast import (
     _judge,
     _judge_amp,
     _margin_kill_direction_ok,
+    _oos_holdout,
     _targets,
     decide_path,
     estimate_amplitude,
@@ -256,6 +257,73 @@ def test_amp_michael_method_variants():
     )
     assert abs(shrink["amp_pct"]) <= 2.6
     assert "m_bounce_shrink" in str(shrink.get("amp_basis") or "")
+
+
+def test_amp_crash_bounce_tail_slice():
+    """急跌反彈幅度切片：破位＋寬震盪＋昨大跌 → 抬 amp 底。"""
+    amp = estimate_amplitude(
+        "up",
+        1.0,
+        {
+            "michael_crash_bounce_tail": True,
+            "michael_break_lower": True,
+            "michael_wide_chop": True,
+            "michael_prior_ret": -4.0,
+            "michael_sox_prior_ret": -3.5,
+            "michael_bound_span_pct": 18.0,
+            "michael_gap_south": False,
+        },
+        realized_abs_ret=0.8,
+    )
+    assert abs(amp["amp_pct"]) >= 7.0
+    assert "m_crash_bounce" in str(amp.get("amp_basis") or "")
+
+
+def test_amp_wick_chop_rebound_slice():
+    amp = estimate_amplitude(
+        "up",
+        1.0,
+        {
+            "michael_wick_chop_rebound": True,
+            "michael_wide_chop": True,
+            "michael_lower_wick": 0.85,
+            "michael_prior_ret": -1.5,
+            "michael_gap_south": False,
+        },
+        realized_abs_ret=0.5,
+    )
+    assert abs(amp["amp_pct"]) >= 3.0
+    assert "m_wick_chop" in str(amp.get("amp_basis") or "")
+
+
+def test_oos_holdout_split():
+    def _mk(n: int):
+        rows = []
+        for i in range(n):
+            day = f"2026{1 + i // 28:02d}{(i % 28) + 1:02d}"
+            rows.append(
+                {
+                    "as_of": day,
+                    "bias": "up" if i % 2 == 0 else "down",
+                    "verdict": "對得上往上" if i % 3 else "偏了沒往上：x",
+                    "amp_verdict": (
+                        "幅度對得上：估+1 實+1" if i % 2 == 0 else "幅度偏了：估+1 實+3"
+                    ),
+                }
+            )
+        return rows
+
+    small = _oos_holdout(_mk(12), holdout_n=5)
+    assert small["ok"] is True
+    # n=12 時 holdout = min(5, max(3, n//4)) = 3
+    assert small["holdout_n"] == 3
+    assert small["in_sample"]["n"] + small["holdout"]["n"] == 12
+
+    big = _oos_holdout(_mk(20), holdout_n=5)
+    assert big["ok"] is True
+    assert big["holdout_n"] == 5
+    assert len(big["holdout_as_of"]) == 5
+    assert big["in_sample"]["n"] + big["holdout"]["n"] == 20
 
 
 def test_support_beats_margin_kill():

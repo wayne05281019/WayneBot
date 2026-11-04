@@ -17,6 +17,9 @@
   - gap_south + 空頭 + 下影≥0.30（bear_wick）
   - **變化**：昨強後 gap_south 但當日收紅＝向南失敗 → 三日偏多（failed_south_after_strong）
 - 擴大軟閘：below_ma60；open_high_fade；sox≤-2%；純日漲後缺口；after_strong×下影
+- 急跌反彈幅度切片（只調三日 amp，不改方向票）：
+  - crash_bounce_tail：破位＋寬震盪＋昨跌≤-3%
+  - wick_chop_rebound：寬震盪＋下影≥0.70＋昨跌≤-1.2%＋非缺口南
 - 檢測窗分軌：當日空不准套三日 fwd
 """
 from __future__ import annotations
@@ -148,8 +151,22 @@ def snapshot_michael_factors(
             factors.get("michael_bound_span_pct") is not None
             and float(factors["michael_bound_span_pct"]) >= 3.0
         )
+        # 急跌反彈幅度切片（只進 amp；不准當方向硬票）
+        factors["michael_crash_bounce_tail"] = bool(
+            bool(factors.get("michael_break_lower"))
+            and bool(factors.get("michael_wide_chop"))
+            and prior_ret <= -3.0
+        )
+        factors["michael_wick_chop_rebound"] = bool(
+            bool(factors.get("michael_wide_chop"))
+            and wick_today >= 0.70
+            and prior_ret <= -1.2
+            and not gap_south
+        )
     else:
         missing.append("michael_bounds")
+        factors["michael_crash_bounce_tail"] = False
+        factors["michael_wick_chop_rebound"] = False
 
     regime = ""
     below_ma60 = False
