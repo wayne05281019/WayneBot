@@ -1,14 +1,14 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T10:29:10",
+  "written_at": "2026-11-04T10:39:26",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
-  "reason_zh": "走勢預測方向準度 0.599 仍偏弱（n=740）→ 記錄補因並排程重測；幅度 MAE 1.25pt 偏大（n=443）→ 目標幅度要重切；why 空包占比 85.0% → 投票因素點不亮，覆盤無從歸因；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "reason_zh": "走勢預測方向準度 0.580 仍偏弱（n=566）→ 記錄補因並排程重測；幅度 MAE 1.27pt 偏大（n=328）→ 目標幅度要重切；因素不足不計分占比 34.4%；why 空包占比 83.9% → 投票因素點不亮，覆盤無從歸因；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.5986486486486486,
-      "directional_n": 740,
+      "hit_rate_directional": 0.5795053003533569,
+      "directional_n": 566,
       "factor_pack": [
         "twii_ret",
         "twii_wick",
@@ -22,11 +22,27 @@
         "dxy_prior_ret",
         "usdtwd_prior_ret",
         "brent_prior_ret",
-        "tx_night_ret"
+        "tx_night_ret",
+        "inst_trust_yi",
+        "inst_foreign_yi",
+        "inst_three_yi",
+        "inst_trust_z",
+        "inst_foreign_z",
+        "inst_three_z",
+        "inst_trust_neg_2d",
+        "inst_three_neg_2d",
+        "inst_foreign_neg_2d",
+        "inst_foreign_pos_2d",
+        "inst_foreign_pos_3d",
+        "inst_foreign_yi_p80",
+        "inst_foreign_yi_p85",
+        "inst_foreign_yi_p90",
+        "inst_2330_foreign_net",
+        "inst_2330_foreign_ge_3k"
       ],
-      "hit_rate_amplitude": 0.5688487584650113,
-      "amp_n": 443,
-      "amp_mae_pct": 1.254
+      "hit_rate_amplitude": 0.573170731707317,
+      "amp_n": 328,
+      "amp_mae_pct": 1.2703
     },
     "wave": {
       "adopt": {
@@ -38,9 +54,9 @@
     },
     "lab": {
       "n": 5419,
-      "insufficient_n": 3,
-      "watch_n": 4676,
-      "empty_why_n": 4607
+      "insufficient_n": 1863,
+      "watch_n": 2990,
+      "empty_why_n": 4544
     },
     "coverage": {
       "ok": true,
@@ -121,8 +137,8 @@
       "futures_daily": 1462
     },
     "lab_frac": {
-      "insufficient": 0.0005536076766931168,
-      "empty_why": 0.8501568555083964
+      "insufficient": 0.34379036722642553,
+      "empty_why": 0.8385310942978409
     }
   },
   "ideas": [

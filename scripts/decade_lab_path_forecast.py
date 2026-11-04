@@ -66,6 +66,23 @@ FACTOR_PACK = (
     "brent_prior_ret",
     # E 期貨夜盤（有才納；缺標缺）
     "tx_night_ret",
+    # F 法人＝外資＋投信＋自營（TWSE BFI82U 市場級；不准假成本）
+    "inst_trust_yi",
+    "inst_foreign_yi",
+    "inst_three_yi",
+    "inst_trust_z",
+    "inst_foreign_z",
+    "inst_three_z",
+    "inst_trust_neg_2d",
+    "inst_three_neg_2d",
+    "inst_foreign_neg_2d",
+    "inst_foreign_pos_2d",
+    "inst_foreign_pos_3d",
+    "inst_foreign_yi_p80",
+    "inst_foreign_yi_p85",
+    "inst_foreign_yi_p90",
+    "inst_2330_foreign_net",
+    "inst_2330_foreign_ge_3k",
 )
 
 # 可沿用旗標權重：用 reusable_quant 的 edge 符號當票（正 edge→偏多票）
@@ -207,18 +224,25 @@ def _wick(bar: Dict[str, float]) -> float:
 def _load_edge_votes() -> Dict[str, float]:
     path = OUT_DIR / "reusable_quant_latest.json"
     votes = dict(DEFAULT_EDGE_VOTES)
-    if not path.is_file():
-        return votes
+    if path.is_file():
+        try:
+            blob = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            blob = {}
+        for r in blob.get("reusable") or blob.get("flags") or []:
+            flag = str(r.get("flag") or r.get("code") or r.get("id") or "")
+            edge = _f(r.get("edge3") or r.get("vote"))
+            n = int(r.get("n") or 0)
+            if flag and edge is not None and n >= 20:
+                votes[flag] = float(edge)
+    # 法人／投信模組：過閘旗標必併入（使用者鎖：一定要用）
     try:
-        blob = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return votes
-    for r in blob.get("reusable") or []:
-        flag = str(r.get("flag") or "")
-        edge = _f(r.get("edge3"))
-        n = int(r.get("n") or 0)
-        if flag and edge is not None and n >= 20:
-            votes[flag] = float(edge)
+        from scripts.decade_lab_inst_module import load_inst_votes
+
+        for k, v in load_inst_votes().items():
+            votes[k] = float(v)
+    except Exception:
+        pass
     return votes
 
 
@@ -331,6 +355,42 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
         add("brent_up_tw_down", br >= 2.0 and tw <= -0.8)
     if fx is not None:
         add("fx_up_tw_down", fx >= 0.4 and tw <= -0.8)
+    # 法人＝外資＋投信＋自營（市場級 BFI；z／分位／連買賣／2330外資）
+    tz = _f(factors.get("inst_trust_z"))
+    fz = _f(factors.get("inst_foreign_z"))
+    z3 = _f(factors.get("inst_three_z"))
+    if tz is not None:
+        add("inst_trust_z_le_m1", tz <= -1.0)
+        add("inst_trust_z_ge_p1", tz >= 1.0)
+    if fz is not None:
+        add("inst_foreign_z_ge_p1", fz >= 1.0)
+        add("inst_foreign_z_le_m1", fz <= -1.0)
+    if z3 is not None:
+        add("inst_three_z_le_m1", z3 <= -1.0)
+        add("inst_three_z_ge_p1", z3 >= 1.0)
+    add("inst_trust_neg_2d", bool(factors.get("inst_trust_neg_2d")))
+    add("inst_three_neg_2d", bool(factors.get("inst_three_neg_2d")))
+    add("inst_foreign_neg_2d", bool(factors.get("inst_foreign_neg_2d")))
+    add("inst_foreign_pos_2d", bool(factors.get("inst_foreign_pos_2d")))
+    add("inst_foreign_pos_3d", bool(factors.get("inst_foreign_pos_3d")))
+    # 外資分位只點最強一檔，避免 p80/p85/p90 同日重複灌票
+    if factors.get("inst_foreign_yi_p90"):
+        add("inst_foreign_yi_p90", True)
+    elif factors.get("inst_foreign_yi_p85"):
+        add("inst_foreign_yi_p85", True)
+    elif factors.get("inst_foreign_yi_p80"):
+        add("inst_foreign_yi_p80", True)
+    elif factors.get("inst_foreign_yi_p10"):
+        add("inst_foreign_yi_p10", True)
+    elif factors.get("inst_foreign_yi_p15"):
+        add("inst_foreign_yi_p15", True)
+    # 2330 外資：大買與大賣反彈互斥，取單邊
+    if factors.get("inst_2330_foreign_ge_5k"):
+        add("inst_2330_foreign_ge_5k", True)
+    elif factors.get("inst_2330_foreign_ge_3k"):
+        add("inst_2330_foreign_ge_3k", True)
+    elif factors.get("inst_2330_foreign_le_m8k"):
+        add("inst_2330_foreign_le_m8k", True)
     return lit
 
 
@@ -519,6 +579,10 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
     votes = _load_edge_votes()
     conn = sqlite3.connect(str(MARKET_DB), timeout=60.0)
     try:
+        from scripts.decade_lab_inst_module import ensure as ensure_inst
+        from scripts.decade_lab_inst_module import snapshot_inst_factors
+
+        ensure_inst(conn)
         twii = _load_sym(conn, "TWII")
         ixic = _load_sym(conn, "IXIC")
         sox = _load_sym(conn, "SOX")
@@ -529,173 +593,184 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         usdtwd = _load_sym(conn, "USDTWD")
         brent = _load_sym(conn, "BRENT")
         tx_night = _load_tx_night(conn)
+
+        tw_days = sorted(twii.keys())
+        # segment horizon＝後 3 根；預測日用「當日收盤後」視角對下一窗（用當日因素預測未來，對質用後3日收）
+        # 為免偷看：factors 用 as_of 當日已知（收盤後建檔）
+        lab = sqlite3.connect(str(LAB_DB), timeout=60.0)
+        ensure_lab(lab)
+        wrote = 0
+        scored = []
+        days = tw_days[:-3]  # need forward
+        if max_days > 0:
+            days = days[-max_days:]
+        inst_lit_days = 0
+        for day in days:
+            if day not in twii or not twii[day].get("ret_ok"):
+                continue
+            factors, missing = snapshot_factors(
+                twii=twii,
+                ixic=ixic,
+                sox=sox,
+                vix=vix,
+                tsm=tsm,
+                nvda=nvda,
+                dxy=dxy,
+                usdtwd=usdtwd,
+                brent=brent,
+                tx_night=tx_night,
+                tw_days=tw_days,
+                as_of=day,
+            )
+            if not factors:
+                continue
+            inst_f, inst_m = snapshot_inst_factors(conn, day)
+            factors.update(inst_f)
+            missing.extend(inst_m)
+            decision = decide_path(factors, missing, votes)
+            if any(str(x.get("code") or "").startswith("inst_") for x in (decision.get("why") or [])):
+                inst_lit_days += 1
+            last = twii[day]["close"]
+            # 近 20 日 |ret| 均（as-of 前，不含未來）
+            i0 = tw_days.index(day)
+            prior_abs = [
+                abs(float(twii[tw_days[j]]["ret"]))
+                for j in range(max(0, i0 - 20), i0)
+                if twii[tw_days[j]].get("ret_ok")
+            ]
+            rv = (sum(prior_abs) / len(prior_abs)) if len(prior_abs) >= 5 else None
+            amp_info = estimate_amplitude(
+                decision["bias"],
+                float(decision["score"] or 0.0),
+                factors,
+                realized_abs_ret=rv,
+            )
+            amp_pct = float(amp_info["amp_pct"])
+            tgt, inv = _targets(decision["bias"], last, amp_pct)
+            # forward close
+            i = tw_days.index(day)
+            fut = twii[tw_days[i + 3]]["close"]
+            actual_ret = ((fut / last - 1.0) * 100.0) if last > 0 else 0.0
+            verd = (
+                _judge(decision["bias"], last, fut, inv)
+                if decision["reviewable"]
+                else "因素不足不計分"
+            )
+            amp_verd = (
+                _judge_amp(decision["bias"], amp_pct, actual_ret)
+                if decision["reviewable"]
+                else "因素不足不計幅度"
+            )
+            rec = {
+                "as_of": day,
+                "horizon": "segment3",
+                "bias": decision["bias"],
+                "amp_pct": amp_pct,
+                "amp_class": amp_info.get("amp_class"),
+                "last_close": last,
+                "target": tgt,
+                "invalidate": inv,
+                "factors": factors,
+                "missing": decision["missing"],
+                "why": decision["why"],
+                "score": decision["score"],
+                "verdict": verd,
+                "amp_verdict": amp_verd,
+                "actual_ret_pct": round(actual_ret, 4),
+                "check_close": fut,
+                "checked_at": _now(),
+                "created_at": _now(),
+                "reviewable": decision["reviewable"],
+            }
+            upsert_forecast(lab, rec)
+            wrote += 1
+            if decision["reviewable"] and ("對得上" in verd or "偏了" in verd):
+                scored.append(
+                    {
+                        "as_of": day,
+                        "bias": decision["bias"],
+                        "amp_pct": amp_pct,
+                        "amp_class": amp_info.get("amp_class"),
+                        "actual_ret_pct": round(actual_ret, 4),
+                        "verdict": verd,
+                        "amp_verdict": amp_verd,
+                        "score": decision["score"],
+                        "why": decision["why"],
+                    }
+                )
+        lab.commit()
+
+        # 投資人可用：只計有方向（up/down）的對質
+        dir_rows = [r for r in scored if r.get("bias") in {"up", "down"}]
+        hit = sum(1 for r in dir_rows if "對得上" in r["verdict"])
+        miss = sum(1 for r in dir_rows if "偏了" in r["verdict"])
+        amp_rows = [r for r in dir_rows if "對得上" in (r.get("verdict") or "")]
+        amp_hit = sum(1 for r in amp_rows if "幅度對得上" in (r.get("amp_verdict") or ""))
+        amp_miss = sum(1 for r in amp_rows if "幅度偏了" in (r.get("amp_verdict") or ""))
+        abs_err = [
+            abs(abs(float(r.get("amp_pct") or 0)) - abs(float(r.get("actual_ret_pct") or 0)))
+            for r in amp_rows
+        ]
+        mae = (sum(abs_err) / len(abs_err)) if abs_err else None
+        by_bias = {}
+        for b in ("up", "down"):
+            sub = [r for r in dir_rows if r.get("bias") == b]
+            h = sum(1 for r in sub if "對得上" in r["verdict"])
+            m = sum(1 for r in sub if "偏了" in r["verdict"])
+            by_bias[b] = {
+                "n": h + m,
+                "hit": h,
+                "miss": m,
+                "hit_rate": (h / (h + m)) if (h + m) else None,
+            }
+        by_amp_class: Dict[str, Any] = {}
+        for cls in ("micro", "small", "mid", "large"):
+            sub = [r for r in amp_rows if r.get("amp_class") == cls]
+            ah = sum(1 for r in sub if "幅度對得上" in (r.get("amp_verdict") or ""))
+            am = sum(1 for r in sub if "幅度偏了" in (r.get("amp_verdict") or ""))
+            by_amp_class[cls] = {
+                "n": ah + am,
+                "hit": ah,
+                "miss": am,
+                "hit_rate": (ah / (ah + am)) if (ah + am) else None,
+            }
+        summary = {
+            "written_at": _now(),
+            "tz": "Asia/Taipei",
+            "goal_zh": "預判大盤漲勢（方向）及幅度",
+            "investor_output": list(INVESTOR_OUTPUT),
+            "factor_pack": list(FACTOR_PACK),
+            "my_responsibility_zh": (
+                "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。"
+                "法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。"
+            ),
+            "wrote": wrote,
+            "scored_n": len(scored),
+            "directional_n": hit + miss,
+            "hit": hit,
+            "miss": miss,
+            "hit_rate_directional": (hit / (hit + miss)) if (hit + miss) else None,
+            "amp_n": amp_hit + amp_miss,
+            "amp_hit": amp_hit,
+            "amp_miss": amp_miss,
+            "hit_rate_amplitude": (amp_hit / (amp_hit + amp_miss)) if (amp_hit + amp_miss) else None,
+            "amp_mae_pct": round(mae, 4) if mae is not None else None,
+            "by_bias": by_bias,
+            "by_amp_class": by_amp_class,
+            "inst_lit_days": inst_lit_days,
+            "inst_votes": sorted(k for k in votes if str(k).startswith("inst_")),
+            "gate_n20": (hit + miss) >= 20,
+            "reverse_think_zh": (
+                "目標是漲勢＋幅度。法人／投信票必用；幅度偏了回查波動／夜盤／外圍／法人強度。"
+                "range＝觀望不計分。因素不足→factor_gap_queue。"
+            ),
+            "not_buy_signal": True,
+            "phone_sync": "blocked",
+            "storage": "decade_lab.path_forecast + json/gz；不准 PNG",
+        }
+        lab.close()
     finally:
         conn.close()
-
-    tw_days = sorted(twii.keys())
-    # segment horizon＝後 3 根；預測日用「當日收盤後」視角對下一窗（用當日因素預測未來，對質用後3日收）
-    # 為免偷看：factors 用 as_of 當日已知（收盤後建檔）
-    lab = sqlite3.connect(str(LAB_DB), timeout=60.0)
-    ensure_lab(lab)
-    wrote = 0
-    scored = []
-    days = tw_days[:-3]  # need forward
-    if max_days > 0:
-        days = days[-max_days:]
-    for day in days:
-        if day not in twii or not twii[day].get("ret_ok"):
-            continue
-        factors, missing = snapshot_factors(
-            twii=twii,
-            ixic=ixic,
-            sox=sox,
-            vix=vix,
-            tsm=tsm,
-            nvda=nvda,
-            dxy=dxy,
-            usdtwd=usdtwd,
-            brent=brent,
-            tx_night=tx_night,
-            tw_days=tw_days,
-            as_of=day,
-        )
-        if not factors:
-            continue
-        decision = decide_path(factors, missing, votes)
-        last = twii[day]["close"]
-        # 近 20 日 |ret| 均（as-of 前，不含未來）
-        i0 = tw_days.index(day)
-        prior_abs = [
-            abs(float(twii[tw_days[j]]["ret"]))
-            for j in range(max(0, i0 - 20), i0)
-            if twii[tw_days[j]].get("ret_ok")
-        ]
-        rv = (sum(prior_abs) / len(prior_abs)) if len(prior_abs) >= 5 else None
-        amp_info = estimate_amplitude(
-            decision["bias"],
-            float(decision["score"] or 0.0),
-            factors,
-            realized_abs_ret=rv,
-        )
-        amp_pct = float(amp_info["amp_pct"])
-        tgt, inv = _targets(decision["bias"], last, amp_pct)
-        # forward close
-        i = tw_days.index(day)
-        fut = twii[tw_days[i + 3]]["close"]
-        actual_ret = ((fut / last - 1.0) * 100.0) if last > 0 else 0.0
-        verd = _judge(decision["bias"], last, fut, inv) if decision["reviewable"] else "因素不足不計分"
-        amp_verd = (
-            _judge_amp(decision["bias"], amp_pct, actual_ret)
-            if decision["reviewable"]
-            else "因素不足不計幅度"
-        )
-        rec = {
-            "as_of": day,
-            "horizon": "segment3",
-            "bias": decision["bias"],
-            "amp_pct": amp_pct,
-            "amp_class": amp_info.get("amp_class"),
-            "last_close": last,
-            "target": tgt,
-            "invalidate": inv,
-            "factors": factors,
-            "missing": decision["missing"],
-            "why": decision["why"],
-            "score": decision["score"],
-            "verdict": verd,
-            "amp_verdict": amp_verd,
-            "actual_ret_pct": round(actual_ret, 4),
-            "check_close": fut,
-            "checked_at": _now(),
-            "created_at": _now(),
-            "reviewable": decision["reviewable"],
-        }
-        upsert_forecast(lab, rec)
-        wrote += 1
-        if decision["reviewable"] and ("對得上" in verd or "偏了" in verd):
-            scored.append(
-                {
-                    "as_of": day,
-                    "bias": decision["bias"],
-                    "amp_pct": amp_pct,
-                    "amp_class": amp_info.get("amp_class"),
-                    "actual_ret_pct": round(actual_ret, 4),
-                    "verdict": verd,
-                    "amp_verdict": amp_verd,
-                    "score": decision["score"],
-                    "why": decision["why"],
-                }
-            )
-    lab.commit()
-
-    # 投資人可用：只計有方向（up/down）的對質
-    dir_rows = [r for r in scored if r.get("bias") in {"up", "down"}]
-    hit = sum(1 for r in dir_rows if "對得上" in r["verdict"])
-    miss = sum(1 for r in dir_rows if "偏了" in r["verdict"])
-    amp_rows = [r for r in dir_rows if "對得上" in (r.get("verdict") or "")]
-    amp_hit = sum(1 for r in amp_rows if "幅度對得上" in (r.get("amp_verdict") or ""))
-    amp_miss = sum(1 for r in amp_rows if "幅度偏了" in (r.get("amp_verdict") or ""))
-    # 幅度誤差（方向對的樣本）
-    abs_err = [
-        abs(abs(float(r.get("amp_pct") or 0)) - abs(float(r.get("actual_ret_pct") or 0)))
-        for r in amp_rows
-    ]
-    mae = (sum(abs_err) / len(abs_err)) if abs_err else None
-    by_bias = {}
-    for b in ("up", "down"):
-        sub = [r for r in dir_rows if r.get("bias") == b]
-        h = sum(1 for r in sub if "對得上" in r["verdict"])
-        m = sum(1 for r in sub if "偏了" in r["verdict"])
-        by_bias[b] = {
-            "n": h + m,
-            "hit": h,
-            "miss": m,
-            "hit_rate": (h / (h + m)) if (h + m) else None,
-        }
-    by_amp_class: Dict[str, Any] = {}
-    for cls in ("micro", "small", "mid", "large"):
-        sub = [r for r in amp_rows if r.get("amp_class") == cls]
-        ah = sum(1 for r in sub if "幅度對得上" in (r.get("amp_verdict") or ""))
-        am = sum(1 for r in sub if "幅度偏了" in (r.get("amp_verdict") or ""))
-        by_amp_class[cls] = {
-            "n": ah + am,
-            "hit": ah,
-            "miss": am,
-            "hit_rate": (ah / (ah + am)) if (ah + am) else None,
-        }
-    summary = {
-        "written_at": _now(),
-        "tz": "Asia/Taipei",
-        "goal_zh": "預判大盤漲勢（方向）及幅度",
-        "investor_output": list(INVESTOR_OUTPUT),
-        "factor_pack": list(FACTOR_PACK),
-        "my_responsibility_zh": (
-            "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。"
-            "要納入哪些因素、怎麼切、怎麼估幅度＝程式責任；使用者只收結果與覆盤。"
-        ),
-        "wrote": wrote,
-        "scored_n": len(scored),
-        "directional_n": hit + miss,
-        "hit": hit,
-        "miss": miss,
-        "hit_rate_directional": (hit / (hit + miss)) if (hit + miss) else None,
-        "amp_n": amp_hit + amp_miss,
-        "amp_hit": amp_hit,
-        "amp_miss": amp_miss,
-        "hit_rate_amplitude": (amp_hit / (amp_hit + amp_miss)) if (amp_hit + amp_miss) else None,
-        "amp_mae_pct": round(mae, 4) if mae is not None else None,
-        "by_bias": by_bias,
-        "by_amp_class": by_amp_class,
-        "gate_n20": (hit + miss) >= 20,
-        "reverse_think_zh": (
-            "目標是漲勢＋幅度。只對方向不夠；幅度偏了要回查波動／夜盤／外圍強度是否估錯。"
-            "range＝觀望不計分。因素不足→factor_gap_queue。"
-        ),
-        "not_buy_signal": True,
-        "phone_sync": "blocked",
-        "storage": "decade_lab.path_forecast + json/gz；不准 PNG",
-    }
-    lab.close()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "path_forecast_summary.json").write_text(
@@ -704,7 +779,6 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
     with gzip.open(OUT_DIR / "path_forecast_scored_latest.jsonl.gz", "wt", encoding="utf-8") as f:
         for r in scored[-5000:]:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    # 因素不足／準度偏弱 → 記錄發想＋排程補抓重測（不准吞掉）
     try:
         from scripts.decade_lab_factor_gap_queue import record_gap
 
@@ -716,7 +790,7 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "schedule_n": len(gap.get("schedule") or []),
             "reason_zh": (gap.get("reason_zh") or "")[:300],
         }
-    except Exception as exc:  # noqa: BLE001 — 缺口佇列失敗不准擋主回測落檔
+    except Exception as exc:  # noqa: BLE001
         summary["factor_gap_error"] = str(exc)[:200]
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return summary

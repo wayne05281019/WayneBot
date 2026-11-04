@@ -1,0 +1,59 @@
+{
+  "written_at": "2026-11-04T10:39:07",
+  "tz": "Asia/Taipei",
+  "bfi_n": 249,
+  "scored_days": 227,
+  "base_mean3": 0.2944,
+  "flags": [
+    {
+      "code": "inst_foreign_yi_p90",
+      "n": 29,
+      "mean3": 1.5951,
+      "edge3": 1.3007,
+      "bias": "up",
+      "hit_rate_side": 0.6552,
+      "vote": 1.3007
+    },
+    {
+      "code": "inst_foreign_yi_p85",
+      "n": 36,
+      "mean3": 1.2543,
+      "edge3": 0.9599,
+      "bias": "up",
+      "hit_rate_side": 0.5833,
+      "vote": 0.9599
+    },
+    {
+      "code": "inst_foreign_yi_p80",
+      "n": 42,
+      "mean3": 1.1411,
+      "edge3": 0.8467,
+      "bias": "up",
+      "hit_rate_side": 0.5952,
+      "vote": 0.8467
+    },
+    {
+      "code": "inst_three_z_ge_p1",
+      "n": 39,
+      "mean3": 1.0692,
+      "edge3": 0.7748,
+      "bias": "up",
+      "hit_rate_side": 0.5641,
+      "vote": 0.7748
+    },
+    {
+      "code": "inst_2330_foreign_ge_3k",
+      "n": 26,
+      "mean3": 1.012,
+      "edge3": 0.7176,
+      "bias": "up",
+      "hit_rate_side": 0.5769,
+      "vote": 0.7176
+    }
+  ],
+  "n_flags": 5,
+  "gate": "n>=20 & |edge3|>=0.25",
+  "goal_zh": "法人／投信模組提高大盤漲勢＋幅度判斷成功率",
+  "not_buy_signal": true,
+  "phone_sync": "blocked"
+}
