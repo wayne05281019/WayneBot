@@ -533,6 +533,40 @@ def run_dual() -> Dict[str, Any]:
                 }
             )
 
+    # §13 下一鍵：飆大軌 hybrid（明確點位→柱；否則方向）— 另檔量化，這裡只掛指標
+    biaoke_next: Dict[str, Any] = {
+        "variant": "level_bar_vnext_explicit_hybrid",
+        "rule_zh": "degree_turns：明確點位多數決柱對質，否則方向窗",
+        "source": "biaoke_level_bar_hit_latest.json",
+        "replace": False,
+        "phone_sync": "blocked",
+        "note_zh": "勝率分軌；未贏現況／未對齊神經元不准上話筒",
+    }
+    try:
+        hit_path = OUT_DIR / "biaoke_level_bar_hit_latest.json"
+        if hit_path.is_file():
+            blob = json.loads(hit_path.read_text(encoding="utf-8"))
+            nv = blob.get("next_variant") or {}
+            tracks_hit = blob.get("tracks") or {}
+            cur_key = str(blob.get("current_variant") or "")
+            cur_s = tracks_hit.get(cur_key) or {}
+            nxt_s = tracks_hit.get(str(nv.get("variant") or "")) or {}
+            biaoke_next.update(
+                {
+                    "n_decided": nv.get("n_decided") or nxt_s.get("n_decided"),
+                    "hit_rate": nv.get("hit_rate") or nxt_s.get("hit_rate"),
+                    "vs_current": {
+                        "current_variant": cur_key,
+                        "current_hit_rate": cur_s.get("hit_rate"),
+                        "edge": (nv.get("vs_current") or {}).get("edge"),
+                    },
+                    "gate_n20": bool(nv.get("gate_n20") or nxt_s.get("gate_n20")),
+                    "replace": bool(nv.get("replace")),
+                }
+            )
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+
     summary = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
@@ -549,6 +583,14 @@ def run_dual() -> Dict[str, Any]:
         "disagree_n": len(disagree),
         "disagree_sample": disagree[:25],
         "self_fix": self_fix,
+        "next_variant": {
+            "variant": "textbook_vnext_fwd3",
+            "rule_zh": "現況#5 規則、對質窗改 FWD_N=3",
+            "note_zh": "FWD窗不同＝不可直接替換閘；另軌收集",
+            "phone_sync": "blocked",
+            "replace": False,
+        },
+        "biaoke_next_variant": biaoke_next,
         "not_buy_signal": True,
         "phone_sync": "blocked",
         "wave_neurons_match": False,
