@@ -296,7 +296,14 @@ def pipeline_stamps(db_path: str, *, now: Optional[datetime] = None) -> Dict[str
 def _expected_run_keys(db_path: str, now: datetime) -> Dict[str, str]:
     """每個排程今天該留下的 pipeline_runs 鍵值。"""
     today = now.strftime("%Y%m%d")
-    keys = {"increment": today}
+    # 盤後融合鍵＝fuse_end（開市日 16:30 後＝今日）；不准用純日曆日誤認跨午夜假 success。
+    try:
+        from trading_calendar import fuse_end_trading_date
+
+        inc_key = str(fuse_end_trading_date(now) or today).replace("-", "")[:8] or today
+    except Exception:
+        inc_key = today
+    keys = {"increment": inc_key}
     try:
         from tw_holidays import closed_tw_session
 
@@ -306,6 +313,8 @@ def _expected_run_keys(db_path: str, now: datetime) -> Dict[str, str]:
     if closed:
         ymd = str(closed.get("ymd") or today).strip() or today
         # 休市：海選略過鍵＋精簡早報鍵；12:45 用 midday-closed-*（整段不寄）。
+        # 休市日融合略過戳也用休市日曆鍵（與 MainRunner.increment_pipeline_key 對齊）。
+        keys["increment"] = ymd
         keys["morning_screen"] = f"us-digest-{ymd}"
         keys["midday_review"] = f"midday-closed-{ymd}"
         return keys
@@ -355,7 +364,21 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
             continue
         status = _pipeline_status(db_path, run_key)
         if status == "success":
-            continue
+            # 融合假 success（跨午夜用日曆日蓋戳、柱仍停昨天）不准當已完成。
+            if kind == "increment":
+                try:
+                    from import_health import latest_complete_quote_date
+
+                    complete = str(
+                        latest_complete_quote_date(db_path, now=ref) or ""
+                    ).replace("-", "")[:8]
+                except Exception:
+                    complete = ""
+                if complete and complete >= run_key:
+                    continue
+                # 柱未齊 → 當漏跑，讓死人開關／補跑降戳後真融
+            else:
+                continue
         # 已有 Telegram 回執＝已寄過（與 pipeline_stamps.delivered 對齊）；
         # 不准因 pipeline 仍無紀錄／computed 又丟「排程未完成」嚇到查股途中。
         if kind in ("morning_screen", "midday_review") and run_key:

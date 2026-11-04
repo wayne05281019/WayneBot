@@ -860,6 +860,15 @@ def catch_up_missed_jobs(now=None) -> None:
                     logger.info("補跑清掉 orphan increment-claim %s 筆，改為可融合", n_inc)
             except Exception:
                 logger.exception("補跑清 orphan increment-claim 失敗（不擋）")
+            try:
+                n_fake = runner.demote_premature_increment_success(now=now)
+                if n_fake:
+                    logger.info(
+                        "補跑降假盤後融合 success %s 筆（跨午夜誤標），改為可真融",
+                        n_fake,
+                    )
+            except Exception:
+                logger.exception("補跑降假盤後融合 success 失敗（不擋）")
             runner.run_increment_job(
                 skip_if_done=True, notify=scheduler_may_push("fuse")
             )
@@ -959,6 +968,14 @@ def retry_missed_owned_jobs(now=None) -> list:
             if mins < (6 * 60 + 30):
                 logger.info("死人開關：台北 06:30 前不補跑 fuse（避健檢重啟循環）")
                 continue
+            try:
+                n_fake = runner.demote_premature_increment_success(now=now)
+                if n_fake:
+                    logger.info(
+                        "死人開關降假盤後融合 success %s 筆，改為可真融", n_fake
+                    )
+            except Exception:
+                logger.exception("死人開關降假盤後融合 success 失敗（不擋）")
             runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
         ran.append(kind)
     return ran
