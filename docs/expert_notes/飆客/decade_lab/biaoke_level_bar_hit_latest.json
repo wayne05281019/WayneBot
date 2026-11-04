@@ -1,9 +1,9 @@
 {
-  "written_at": "2026-11-04T20:54:46",
+  "written_at": "2026-11-05T01:06:49",
   "tz": "Asia/Taipei",
   "purpose_zh": "收緊位階對質：他點過的位→官方柱碰到沒→對／偏／未完",
-  "twii_n": 1244,
-  "twii_from": "20210915",
+  "twii_n": 5423,
+  "twii_from": "20061102",
   "twii_to": "20261103",
   "fwd_n": 5,
   "tol_pct": 0.005,
@@ -22,101 +22,106 @@
   },
   "tracks": {
     "level_bar_fwd5_role_infer": {
-      "n_rows": 92,
-      "n_decided": 92,
-      "hit": 59,
-      "miss": 33,
-      "hit_rate": 0.6413043478260869,
+      "n_rows": 114,
+      "n_decided": 112,
+      "hit": 69,
+      "miss": 43,
+      "hit_rate": 0.6160714285714286,
       "gate_n20": true,
-      "n_days": 39,
+      "n_days": 46,
       "outcome_counts": {
-        "對": 59,
-        "偏": 33
+        "對": 69,
+        "偏": 43,
+        "未完": 2
       },
       "role_counts": {
-        "break": 31,
-        "pressure": 33,
-        "support": 25,
+        "break": 43,
+        "pressure": 39,
+        "support": 29,
         "touch": 3
       },
       "pot": "他說／飆預測",
       "window": "fwd_only"
     },
     "wrong_window_incl_day0": {
-      "n_rows": 92,
-      "n_decided": 92,
-      "hit": 59,
-      "miss": 33,
-      "hit_rate": 0.6413043478260869,
+      "n_rows": 114,
+      "n_decided": 112,
+      "hit": 70,
+      "miss": 42,
+      "hit_rate": 0.625,
       "gate_n20": true,
-      "n_days": 39,
+      "n_days": 46,
       "outcome_counts": {
-        "對": 59,
-        "偏": 33
+        "對": 70,
+        "偏": 42,
+        "未完": 2
       },
       "role_counts": {
-        "break": 31,
-        "pressure": 33,
-        "support": 25,
+        "break": 43,
+        "pressure": 39,
+        "support": 29,
         "touch": 3
       },
       "pot": "對照／不准採用",
       "window": "incl_day0"
     },
     "levelish_explicit_fwd5": {
-      "n_rows": 191,
-      "n_decided": 191,
+      "n_rows": 215,
+      "n_decided": 210,
       "hit": 114,
-      "miss": 77,
-      "hit_rate": 0.5968586387434555,
+      "miss": 96,
+      "hit_rate": 0.5428571428571428,
       "gate_n20": true,
-      "n_days": 99,
+      "n_days": 110,
       "outcome_counts": {
         "對": 114,
-        "偏": 77
+        "偏": 96,
+        "未完": 5
       },
       "role_counts": {
-        "break": 74,
-        "pressure": 93,
-        "support": 24
+        "break": 89,
+        "pressure": 100,
+        "support": 26
       },
       "pot": "加樣本",
       "window": "fwd_only"
     },
     "level_bar_vnext_explicit_hybrid": {
-      "n_rows": 67,
-      "n_decided": 54,
+      "n_rows": 71,
+      "n_decided": 60,
       "hit": 30,
-      "miss": 24,
-      "hit_rate": 0.5555555555555556,
+      "miss": 30,
+      "hit_rate": 0.5,
       "gate_n20": true,
-      "n_days": 49,
+      "n_days": 55,
       "outcome_counts": {
-        "缺柱": 10,
+        "缺柱": 7,
         "對": 30,
-        "偏": 24,
-        "觀望不計分": 3
+        "偏": 30,
+        "觀望不計分": 3,
+        "未完": 1
       },
       "role_counts": {},
       "pot": "他說／飆預測・下一鍵",
       "window": "level_or_direction"
     },
     "level_bar_explicit_tol3": {
-      "n_rows": 46,
-      "n_decided": 46,
-      "hit": 24,
-      "miss": 22,
-      "hit_rate": 0.5217391304347826,
+      "n_rows": 58,
+      "n_decided": 56,
+      "hit": 25,
+      "miss": 31,
+      "hit_rate": 0.44642857142857145,
       "gate_n20": true,
-      "n_days": 24,
+      "n_days": 28,
       "outcome_counts": {
-        "對": 24,
-        "偏": 22
+        "對": 25,
+        "偏": 31,
+        "未完": 2
       },
       "role_counts": {
-        "break": 21,
+        "break": 31,
         "pressure": 17,
-        "support": 8
+        "support": 10
       },
       "pot": "下一鍵旁枝",
       "window": "fwd_only"
@@ -126,11 +131,11 @@
   "next_variant": {
     "variant": "level_bar_vnext_explicit_hybrid",
     "rule_zh": "degree_turns：明確點位多數決柱對質，否則方向窗 fallback",
-    "n_decided": 54,
-    "hit_rate": 0.5555555555555556,
+    "n_decided": 60,
+    "hit_rate": 0.5,
     "vs_current": {
-      "current_hit_rate": 0.6413043478260869,
-      "edge": -0.08574879227053134
+      "current_hit_rate": 0.6160714285714286,
+      "edge": -0.1160714285714286
     },
     "gate_n20": true,
     "replace": false,
