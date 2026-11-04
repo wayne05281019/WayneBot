@@ -543,6 +543,20 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
     with gzip.open(OUT_DIR / "path_forecast_scored_latest.jsonl.gz", "wt", encoding="utf-8") as f:
         for r in scored[-5000:]:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    # 因素不足／準度偏弱 → 記錄發想＋排程補抓重測（不准吞掉）
+    try:
+        from scripts.decade_lab_factor_gap_queue import record_gap
+
+        gap = record_gap(source="path_forecast", path_summary=summary)
+        summary["factor_gap"] = {
+            "id": gap.get("id"),
+            "fruitless": gap.get("fruitless"),
+            "ideas_n": len(gap.get("ideas") or []),
+            "schedule_n": len(gap.get("schedule") or []),
+            "reason_zh": (gap.get("reason_zh") or "")[:300],
+        }
+    except Exception as exc:  # noqa: BLE001 — 缺口佇列失敗不准擋主回測落檔
+        summary["factor_gap_error"] = str(exc)[:200]
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return summary
 

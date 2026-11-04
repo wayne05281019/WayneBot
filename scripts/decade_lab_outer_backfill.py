@@ -57,6 +57,11 @@ OUTER_SERIES: Tuple[Tuple[str, str, str], ...] = (
     ("NVDA", "NVDA", "輝達"),
     ("NQ_F", "NQ=F", "那指期"),
     ("ES_F", "ES=F", "標普期"),
+    # 因素缺口佇列發想：流動性／避險／廣度代理（數字長史）
+    ("US10Y", "^TNX", "美債10年殖利率"),
+    ("USDJPY", "USDJPY=X", "美元日圓"),
+    ("GOLD", "GC=F", "黃金期"),
+    ("COPPER", "HG=F", "銅期"),
 )
 
 STILL_MISSING = [
@@ -66,6 +71,8 @@ STILL_MISSING = [
     "futures_inst_oi 長史（現僅近窗）",
     "market_margin_daily 更長窗（MI_MARGN 續補）",
     "market_tape_daily 2006–2016（FMTQIK 月檔續補）",
+    "OTC 櫃買長史（官方／Yahoo 另補）",
+    "2330 vs TSM ADR 溢價日表（由兩源合成）",
 ]
 
 

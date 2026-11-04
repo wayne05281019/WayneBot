@@ -1,0 +1,293 @@
+{
+  "id": "gap-20261104-after_macro_fetch",
+  "written_at": "2026-11-04T10:26:20",
+  "tz": "Asia/Taipei",
+  "source": "after_macro_fetch",
+  "fruitless": true,
+  "reason_zh": "走勢預測方向準度 0.599 仍偏弱（n=740）→ 記錄補因並排程重測；why 空包占比 85.0% → 投票因素點不亮，覆盤無從歸因；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "evidence": {
+    "path": {
+      "hit_rate_directional": 0.5986486486486486,
+      "directional_n": 740,
+      "factor_pack": [
+        "twii_ret",
+        "twii_wick",
+        "twii_vol_spike",
+        "twii_prev_ret",
+        "ixic_prior_ret",
+        "sox_prior_ret",
+        "vix_prior_ret",
+        "tsm_prior_ret",
+        "nvda_prior_ret",
+        "dxy_prior_ret",
+        "usdtwd_prior_ret",
+        "brent_prior_ret",
+        "tx_night_ret"
+      ]
+    },
+    "wave": {
+      "adopt": {
+        "pick": "textbook_8cycle",
+        "reason": "textbook hit_rate 0.7442 > biaoke 0.4655"
+      },
+      "textbook_hit": 0.7441860465116279,
+      "textbook_n": 43
+    },
+    "lab": {
+      "n": 5419,
+      "insufficient_n": 3,
+      "watch_n": 0,
+      "empty_why_n": 4607
+    },
+    "coverage": {
+      "ok": true,
+      "symbols": {
+        "TWII": {
+          "n": 5423,
+          "from": "20061102",
+          "to": "20261103"
+        },
+        "IXIC": {
+          "n": 5029,
+          "from": "20061106",
+          "to": "20261103"
+        },
+        "SOX": {
+          "n": 5029,
+          "from": "20061106",
+          "to": "20261103"
+        },
+        "VIX": {
+          "n": 5032,
+          "from": "20061103",
+          "to": "20261103"
+        },
+        "DXY": {
+          "n": 5033,
+          "from": "20061103",
+          "to": "20261103"
+        },
+        "USDTWD": {
+          "n": 5184,
+          "from": "20061105",
+          "to": "20261103"
+        },
+        "BRENT": {
+          "n": 4796,
+          "from": "20070730",
+          "to": "20261103"
+        },
+        "TSM": {
+          "n": 5029,
+          "from": "20061106",
+          "to": "20261103"
+        },
+        "NVDA": {
+          "n": 5029,
+          "from": "20061106",
+          "to": "20261103"
+        },
+        "US10Y": {
+          "n": 5028,
+          "from": "20061103",
+          "to": "20261103"
+        },
+        "USDJPY": {
+          "n": 5186,
+          "from": "20061105",
+          "to": "20261103"
+        },
+        "GOLD": {
+          "n": 5030,
+          "from": "20061103",
+          "to": "20261103"
+        },
+        "COPPER": {
+          "n": 5032,
+          "from": "20061103",
+          "to": "20261103"
+        },
+        "OTC": {
+          "n": 0,
+          "from": "",
+          "to": ""
+        }
+      },
+      "market_margin_daily": 390,
+      "market_tape_daily": 2696,
+      "futures_daily": 1462
+    },
+    "lab_frac": {
+      "insufficient": 0.0005536076766931168,
+      "empty_why": 0.8501568555083964
+    }
+  },
+  "ideas": [
+    {
+      "id": "margin_balance_long",
+      "kind": "chips",
+      "why_zh": "融資餘額長窗：過熱／殺融資常領先加權轉折",
+      "store": "market_margin_daily（數字表）",
+      "fetch": "MI_MARGN 官方續補",
+      "best_window_taipei": "盤後 16:00–18:00；長史週末補"
+    },
+    {
+      "id": "tape_adv_dec_long",
+      "kind": "breadth",
+      "why_zh": "漲跌家數／成交值分位：廣度背離＝單一權值騙線可歸因",
+      "store": "market_tape_daily",
+      "fetch": "FMTQIK 月檔 2006–2016 續補",
+      "best_window_taipei": "盤後 15:30–17:00；長史週末"
+    },
+    {
+      "id": "inst_buy_sell_daily",
+      "kind": "flow",
+      "why_zh": "外資／投信合計買賣超：資金面確認方向，錯了能歸因",
+      "store": "三法／投信日表（張數，不准假成本）",
+      "fetch": "TWSE T86／投信彙整（數字）",
+      "best_window_taipei": "盤後 16:30–20:00"
+    },
+    {
+      "id": "tx_oi_inst_long",
+      "kind": "futures",
+      "why_zh": "台指期法人 OI／未平倉：夜盤方向與隔日開盤落差可覆盤",
+      "store": "futures_daily／OI 長史",
+      "fetch": "TAIFEX 報表長史",
+      "best_window_taipei": "盤後 15:30–17:30；夜盤後 05:00–06:30"
+    },
+    {
+      "id": "te_futures_long",
+      "kind": "futures",
+      "why_zh": "電子期 TE：半導體鏈與 SOX／台積連動的台股端確認",
+      "store": "futures TE 日 K",
+      "fetch": "TAIFEX／Yahoo 補長史標來源",
+      "best_window_taipei": "盤後；長史週末"
+    },
+    {
+      "id": "fear_greed_daily",
+      "kind": "sentiment",
+      "why_zh": "恐懼貪婪極端：極端恐懼後反彈／貪婪後回吐可量化",
+      "store": "fear_greed_daily（單欄數字）",
+      "fetch": "CNN Fear&Greed 歷史（文字數字）",
+      "best_window_taipei": "每日美盤後約 05:00–07:00"
+    },
+    {
+      "id": "active_etf_flow",
+      "kind": "flow",
+      "why_zh": "主動 ETF／投信賣壓流：被動買盤外的主動殺盤",
+      "store": "etf_flow_daily",
+      "fetch": "公開 ETF 申贖／投信報告彙整",
+      "best_window_taipei": "盤後或週五彙整"
+    },
+    {
+      "id": "otc_index",
+      "kind": "breadth",
+      "why_zh": "櫃買指數：中小型廣度，加權被權值綁架時可對質",
+      "store": "index_daily: OTC",
+      "fetch": "官方／Yahoo 櫃買",
+      "best_window_taipei": "盤後 15:00–16:30"
+    },
+    {
+      "id": "tsm_adr_premium",
+      "kind": "lead",
+      "why_zh": "2330 vs TSM ADR 溢價：隔日開盤預期與權值導向",
+      "store": "日表兩欄價差％",
+      "fetch": "既有 2330 官方柱＋TSM Yahoo",
+      "best_window_taipei": "美收後～開盤前 06:00–08:50"
+    },
+    {
+      "id": "tx_night_full",
+      "kind": "futures",
+      "why_zh": "台指夜盤完整長史：開盤跳空歸因；缺則夜盤票常空轉",
+      "store": "futures night bars",
+      "fetch": "既有 TX 夜盤管線續補缺年",
+      "best_window_taipei": "日盤前 08:00–08:50；夜盤後 05:00"
+    },
+    {
+      "id": "vix_term_vvix",
+      "kind": "sentiment",
+      "why_zh": "VIX 期限／VVIX：恐慌結構，不只現貨 VIX 一日漲跌",
+      "store": "index_daily 附加欄或獨立表",
+      "fetch": "CBOE／Yahoo 可取得者",
+      "best_window_taipei": "美盤後"
+    },
+    {
+      "id": "wave_fractal_mtf",
+      "kind": "structure",
+      "why_zh": "波浪子浪／多週期對齊：日線八循環不夠時的下一刀",
+      "store": "decade_lab 對質列（數字），不准 PNG",
+      "fetch": "用已存 TWII 柱重切規則（不必新抓）",
+      "best_window_taipei": "任何離峰；優先週末批次"
+    }
+  ],
+  "schedule": [
+    {
+      "at": "2026-11-04T15:40:00",
+      "kind": "fetch_tw_official",
+      "note_zh": "盤後：漲跌家數／融資／法人流"
+    },
+    {
+      "at": "2026-11-04T16:40:00",
+      "kind": "fetch_futures_oi",
+      "note_zh": "盤後：TX／TE／OI"
+    },
+    {
+      "at": "2026-11-04T22:40:00",
+      "kind": "retest_path",
+      "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
+    },
+    {
+      "at": "2026-11-05T05:30:00",
+      "kind": "fetch_us_macro",
+      "note_zh": "美盤後：美債／日圓／金銅／恐懼"
+    },
+    {
+      "at": "2026-11-05T06:30:00",
+      "kind": "fetch_adr_premium",
+      "note_zh": "早報前：TSM ADR 溢價"
+    },
+    {
+      "at": "2026-11-05T15:40:00",
+      "kind": "fetch_tw_official",
+      "note_zh": "盤後：漲跌家數／融資／法人流"
+    },
+    {
+      "at": "2026-11-05T16:40:00",
+      "kind": "fetch_futures_oi",
+      "note_zh": "盤後：TX／TE／OI"
+    },
+    {
+      "at": "2026-11-05T22:40:00",
+      "kind": "retest_path",
+      "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
+    },
+    {
+      "at": "2026-11-06T05:30:00",
+      "kind": "fetch_us_macro",
+      "note_zh": "美盤後：美債／日圓／金銅／恐懼"
+    },
+    {
+      "at": "2026-11-06T06:30:00",
+      "kind": "fetch_adr_premium",
+      "note_zh": "早報前：TSM ADR 溢價"
+    },
+    {
+      "at": "2026-11-06T15:40:00",
+      "kind": "fetch_tw_official",
+      "note_zh": "盤後：漲跌家數／融資／法人流"
+    },
+    {
+      "at": "2026-11-06T16:40:00",
+      "kind": "fetch_futures_oi",
+      "note_zh": "盤後：TX／TE／OI"
+    }
+  ],
+  "status": "queued",
+  "actions_zh": [
+    "缺序列→適合窗抓數字／gz（不准 PNG）",
+    "抓完→重跑 path_forecast／wave8_dual／reusable_quant",
+    "n≥20 且贏現況才換編碼；勝率分軌不混；不上話筒"
+  ],
+  "not_buy_signal": true,
+  "phone_sync": "blocked"
+}

@@ -1,0 +1,27 @@
+{
+  "written_at": "2026-11-04T10:26:19",
+  "tz": "Asia/Taipei",
+  "series": {
+    "US10Y": {
+      "yahoo": "^TNX",
+      "fetched": 5028,
+      "wrote": 5028
+    },
+    "USDJPY": {
+      "yahoo": "USDJPY=X",
+      "fetched": 5186,
+      "wrote": 5186
+    },
+    "GOLD": {
+      "yahoo": "GC=F",
+      "fetched": 5031,
+      "wrote": 5031
+    },
+    "COPPER": {
+      "yahoo": "HG=F",
+      "fetched": 5033,
+      "wrote": 5033
+    }
+  },
+  "note_zh": "因素缺口佇列：適合窗立刻補美債／日圓／金／銅長史；待重測 path"
+}
