@@ -161,6 +161,32 @@ def test_michael_alone_soft_range():
     assert any(x["code"] == "michael_alone_soft_range" for x in out["why"])
 
 
+def test_michael_gap_x_limit_up_soft_range():
+    # 缺口南／向南失敗 × 漲停熱 → 觀望（20261005 類）
+    out = decide_path(
+        {
+            "twii_ret": 0.5,
+            "ixic_prior_ret": 0.2,
+            "regime": "bull",
+            "wave_ok": False,
+            "twii_vol_spike": True,
+            "chips_limit_up_ge_20": True,
+            "michael_gap_south": True,
+            "michael_gap_south_fx_ok": True,
+            "michael_failed_south_after_strong": True,
+        },
+        [],
+        {
+            "tw_vol_spike": 0.41,
+            "chips_limit_up_ge_20": 0.55,
+            "michael_gap_south_fx_ok": 1.35,
+            "michael_failed_south_after_strong": 0.41,
+        },
+    )
+    assert out["bias"] == "range"
+    assert any(x["code"] == "michael_gap_x_limit_up_soft_range" for x in out["why"])
+
+
 def test_abc_up_call_streak():
     out = decide_path(
         {
@@ -187,6 +213,49 @@ def test_amp_regime_scale():
     bear = estimate_amplitude("up", 1.0, {"regime": "bear"}, realized_abs_ret=0.8)
     assert abs(chop["amp_pct"]) < abs(base["amp_pct"])
     assert abs(bear["amp_pct"]) > abs(base["amp_pct"])
+
+
+def test_amp_michael_method_variants():
+    """由麥可做法變化微調三日幅度：破位寬震盪抬、bounce 大估收、after_night 抬底。"""
+    rv = 0.8
+    plain = estimate_amplitude("up", 1.0, {}, realized_abs_ret=rv)
+    break_chop = estimate_amplitude(
+        "up",
+        1.0,
+        {
+            "michael_break_lower": True,
+            "michael_wide_chop": True,
+            "michael_gap_south": False,
+        },
+        realized_abs_ret=rv,
+    )
+    assert abs(break_chop["amp_pct"]) > abs(plain["amp_pct"])
+    assert abs(break_chop["amp_pct"]) >= 3.8
+    assert "m_break_chop" in str(break_chop.get("amp_basis") or "")
+
+    after_night = estimate_amplitude(
+        "up",
+        1.0,
+        {"michael_gap_south_after_night": True, "michael_gap_south": True},
+        realized_abs_ret=rv,
+    )
+    assert abs(after_night["amp_pct"]) >= 3.8
+    assert "m_after_night" in str(after_night.get("amp_basis") or "")
+
+    # 高估收縮：大估＋bounce＋寬震盪、且無 after_night
+    shrink = estimate_amplitude(
+        "up",
+        3.5,
+        {
+            "michael_gap_south_bounce": True,
+            "michael_wide_chop": True,
+            "michael_gap_south": True,
+            "regime": "bear",  # 先把 base 抬過 3.5 再收
+        },
+        realized_abs_ret=2.2,
+    )
+    assert abs(shrink["amp_pct"]) <= 2.6
+    assert "m_bounce_shrink" in str(shrink.get("amp_basis") or "")
 
 
 def test_support_beats_margin_kill():

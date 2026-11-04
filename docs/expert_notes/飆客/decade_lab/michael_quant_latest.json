@@ -1,11 +1,25 @@
 {
-  "written_at": "2026-11-04T17:01:01",
+  "written_at": "2026-11-04T17:14:33",
   "tz": "Asia/Taipei",
   "source": "michael_self_module",
   "note_zh": "自研模組：麥可長文→日K變體；有用指標深挖不棄；當日空／三日回歸分軌（檢測窗對齊）；不取代飆大；不是買訊",
   "n_days": 5419,
   "base3": 0.122,
   "flags": [
+    {
+      "flag": "michael_super_open_fade",
+      "n": 45,
+      "fwd3_avg": null,
+      "same_day_oc_avg": -2.2062,
+      "edge3": -2.2062,
+      "vote": -2.2062,
+      "hit_rate_side": 1.0,
+      "gate": "hard",
+      "horizon": "same_day_open_close",
+      "path_vote": false,
+      "source": "michael_self_module",
+      "note_zh": "檢測＝當日開收；不准套三日窗；不進 path 三日票"
+    },
     {
       "flag": "michael_gap_south_bear_wick",
       "n": 24,
@@ -71,6 +85,46 @@
       "source": "michael_self_module"
     },
     {
+      "flag": "michael_failed_south_after_strong",
+      "n": 69,
+      "fwd3_avg": 0.5367,
+      "edge3": 0.4146,
+      "vote": 0.4146,
+      "hit_rate_side": 0.5507,
+      "gate": "hard",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_after_strong_x_wick",
+      "n": 24,
+      "fwd3_avg": 1.2695,
+      "edge3": 1.1475,
+      "vote": 0.45,
+      "hit_rate_side": 0.5417,
+      "gate": "soft",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_gap_south_sox_le_m2",
+      "n": 63,
+      "fwd3_avg": 0.8471,
+      "edge3": 0.7251,
+      "vote": 0.3988,
+      "hit_rate_side": 0.5238,
+      "gate": "soft",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_after_strong_day_only",
+      "n": 78,
+      "fwd3_avg": 0.802,
+      "edge3": 0.68,
+      "vote": 0.374,
+      "hit_rate_side": 0.5128,
+      "gate": "soft",
+      "source": "michael_self_module"
+    },
+    {
       "flag": "michael_open_high_fade",
       "n": 149,
       "fwd3_avg": 0.571,
@@ -102,12 +156,14 @@
     }
   ],
   "hard_flags": [
+    "michael_super_open_fade",
     "michael_gap_south_bear_wick",
     "michael_gap_south_bounce",
     "michael_gap_south_intraday_down",
     "michael_gap_south_after_night",
     "michael_gap_south_fx_ok",
-    "michael_gap_south_after_strong"
+    "michael_gap_south_after_strong",
+    "michael_failed_south_after_strong"
   ],
   "gate": "hard: n>=20 & |edge|>=0.25 & side>=0.55；soft 降權；當日空另軌",
   "not_buy_signal": true,

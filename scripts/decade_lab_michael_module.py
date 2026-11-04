@@ -8,16 +8,16 @@
 - 有用指標不准輕易放棄：裸 gap_south 側向未過硬閘時，改切市況／下影／季線變體深挖。
 - 加測抬大盤方向勝率；不取代飆大主文；不是買訊；不上話筒。
 
-深挖結論（已落碼；有用就擴大測）：
-- 當日 open→close：開高走低 n≈149 全收綠 → 當沖空（michael_gap_south_intraday_down）
+深挖結論（已落碼；有用就擴大／由做法變化）：
+- 當日 open→close：開高走低 → 當沖空（intraday_down／super_open_fade）
 - 三日窗硬閘回歸（偏多票）：
-  - gap_south + 季線下 + 下影≥0.30
-  - gap_south + 季線下 + 昨漲≥1.5%
-  - gap_south + 外資 z≥0（孤票 path 端擋）
-  - gap_south + 空頭市況 + 下影≥0.30
-- 擴大軟閘（續收）：gap_south + 季線下（無下影門）；開高走低嚴格版
-- 近閘收集：夜盤≥1%、下影≥0.45（n≈19）
-- 檢測窗分軌：當日空不准套三日 fwd；三日回歸票才進 path
+  - gap_south + 季線下 + 下影≥0.30（bounce）
+  - gap_south + 季線下 + 昨漲≥1.5%（after_strong）
+  - gap_south + 外資 z≥0（fx_ok；孤票 path 擋）
+  - gap_south + 空頭 + 下影≥0.30（bear_wick）
+  - **變化**：昨強後 gap_south 但當日收紅＝向南失敗 → 三日偏多（failed_south_after_strong）
+- 擴大軟閘：below_ma60；open_high_fade；sox≤-2%；純日漲後缺口；after_strong×下影
+- 檢測窗分軌：當日空不准套三日 fwd
 """
 from __future__ import annotations
 
@@ -223,6 +223,23 @@ def snapshot_michael_factors(
             night is not None and night >= 1.0
         )
         factors["michael_gap_south_wick_ge045"] = bool(wick_today >= 0.45)
+        # 做法變化：向南失敗（昨強／缺口南但當日收紅）→ 三日回歸多
+        factors["michael_failed_south_after_strong"] = bool(
+            prior_ret >= 1.5 and c > o
+        )
+        factors["michael_super_open_fade"] = bool(
+            gap >= 1.2 and c < o and ret <= -0.5
+        )  # 當日空檢測用；三日窗另評
+        factors["michael_gap_south_sox_le_m2"] = bool(
+            float(factors.get("michael_sox_prior_ret") or 0) <= -2.0
+        )
+        factors["michael_after_strong_day_only"] = bool(
+            prior_ret >= 1.5
+            and (night is None or abs(float(night)) < 0.5)
+        )
+        factors["michael_after_strong_x_wick"] = bool(
+            prior_ret >= 1.5 and wick_today >= 0.30
+        )
     else:
         factors["michael_gap_south_bounce"] = False
         factors["michael_gap_south_after_strong"] = False
@@ -234,6 +251,11 @@ def snapshot_michael_factors(
         factors["michael_open_high_fade"] = False
         factors["michael_gap_south_night_ge1"] = False
         factors["michael_gap_south_wick_ge045"] = False
+        factors["michael_failed_south_after_strong"] = False
+        factors["michael_super_open_fade"] = False
+        factors["michael_gap_south_sox_le_m2"] = False
+        factors["michael_after_strong_day_only"] = False
+        factors["michael_after_strong_x_wick"] = False
 
     if day in tx_reg:
         factors["michael_tx_ret"] = round(float(tx_reg[day].get("ret") or 0.0), 4)
@@ -330,15 +352,19 @@ def quantify_michael(conn: sqlite3.Connection) -> Dict[str, Any]:
         "michael_gap_south_fx_ok",
         "michael_gap_south_fx_ma",
         "michael_gap_south_bear_wick",
+        "michael_failed_south_after_strong",  # 做法變化：向南失敗→三日多
         "michael_gap_south_after_night",  # 語料：夜盤熱→日向南（過閘；path 主判暫不投）
         # 擴大軟閘
         "michael_gap_south_below_ma60",
         "michael_open_high_fade",
+        "michael_gap_south_sox_le_m2",
+        "michael_after_strong_day_only",
+        "michael_after_strong_x_wick",
         "michael_gap_south_night_ge1",  # 近閘收集
         "michael_gap_south_wick_ge045",
         # 基底軟閘（三日回歸）
         "michael_gap_south",
-        # 注意：intraday_down 是當日 open→close 概念，不准用三日窗當檢測（方法錯會誤判）
+        # 注意：intraday_down／super_open_fade 是當日概念，不准用三日窗當檢測
         "michael_wick_flip_risk",
         "michael_fail_upper",
         "michael_break_lower",
@@ -383,43 +409,49 @@ def quantify_michael(conn: sqlite3.Connection) -> Dict[str, Any]:
     for code in codes:
         add(code)
 
-    # 當日空偏：檢測窗＝open→close（不准誤用三日 fwd；方法錯會把當日空當三日多）
-    intradaily: List[float] = []
-    for d in days:
-        if not day_f[d].get("michael_gap_south_intraday_down"):
-            continue
-        bar = twii.get(d) or {}
-        o = _f(bar.get("open"))
-        c = _f(bar.get("close"))
-        if o and c and o > 0:
-            intradaily.append((c / o - 1.0) * 100.0)
-    if len(intradaily) >= MIN_N:
-        m = sum(intradaily) / len(intradaily)
-        edge = m  # vs 0
-        hit = sum(1 for x in intradaily if x < -0.15) / len(intradaily)
+    # 當日空偏：檢測窗＝open→close（不准誤用三日 fwd）
+    def _add_same_day(flag: str) -> None:
+        xs: List[float] = []
+        for d in days:
+            if not day_f[d].get(flag):
+                continue
+            bar = twii.get(d) or {}
+            o = _f(bar.get("open"))
+            c = _f(bar.get("close"))
+            if o and c and o > 0:
+                xs.append((c / o - 1.0) * 100.0)
+        if len(xs) < MIN_N:
+            return
+        m = sum(xs) / len(xs)
+        edge = m
+        hit = sum(1 for x in xs if x < -0.15) / len(xs)
         hard = edge <= -0.25 and hit >= MIN_SIDE_HIT
         soft = (not hard) and edge <= -0.15 and hit >= SOFT_SIDE_HIT
-        if hard or soft:
-            vote = float(edge)
-            if soft:
-                mag = min(MAX_SOFT_VOTE, abs(vote) * 0.55)
-                vote = -mag
-            flags.append(
-                {
-                    "flag": "michael_gap_south_intraday_down",
-                    "n": len(intradaily),
-                    "fwd3_avg": None,
-                    "same_day_oc_avg": round(m, 4),
-                    "edge3": round(edge, 4),
-                    "vote": round(vote, 4),
-                    "hit_rate_side": round(hit, 4),
-                    "gate": "hard" if hard else "soft",
-                    "horizon": "same_day_open_close",
-                    "path_vote": False,
-                    "source": "michael_self_module",
-                    "note_zh": "檢測＝當日開收；不准套三日窗；不進 path 三日票",
-                }
-            )
+        if not hard and not soft:
+            return
+        vote = float(edge)
+        if soft:
+            mag = min(MAX_SOFT_VOTE, abs(vote) * 0.55)
+            vote = -mag
+        flags.append(
+            {
+                "flag": flag,
+                "n": len(xs),
+                "fwd3_avg": None,
+                "same_day_oc_avg": round(m, 4),
+                "edge3": round(edge, 4),
+                "vote": round(vote, 4),
+                "hit_rate_side": round(hit, 4),
+                "gate": "hard" if hard else "soft",
+                "horizon": "same_day_open_close",
+                "path_vote": False,
+                "source": "michael_self_module",
+                "note_zh": "檢測＝當日開收；不准套三日窗；不進 path 三日票",
+            }
+        )
+
+    _add_same_day("michael_gap_south_intraday_down")
+    _add_same_day("michael_super_open_fade")
 
     flags.sort(key=lambda r: (r.get("gate") != "hard", -abs(r.get("edge3") or 0)))
     out = {

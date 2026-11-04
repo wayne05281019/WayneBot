@@ -116,6 +116,35 @@ def test_michael_hard_bounce_variant():
     assert f.get("michael_gap_south_below_ma60") is True  # 擴大軟閘母體
 
 
+def test_michael_failed_south_after_strong():
+    """昨強＋gap_south 但當日收紅＝向南失敗（三日回歸變體）。"""
+    twii, days, last = _series_below_ma60_then_gap_south()
+    # 改成當日收紅（開高後收在開盤之上）
+    prev = days[-2]
+    base = twii[prev]["close"]
+    twii[prev]["ret"] = 1.8
+    twii[last] = {
+        "open": base * 0.99,  # gap down after strong
+        "high": base * 1.02,
+        "low": base * 0.985,
+        "close": base * 1.01,  # 收紅
+        "ret": 0.5,
+        "ret_ok": True,
+    }
+    f, _ = snapshot_michael_factors(
+        twii=twii,
+        tx_reg={},
+        tx_night={},
+        sox={},
+        tw_days=days,
+        as_of=last,
+        foreign_z=0.0,
+    )
+    assert f.get("michael_gap_south") is True
+    assert f.get("michael_failed_south_after_strong") is True
+    assert f.get("michael_gap_south_intraday_down") is False
+
+
 def test_michael_fx_ma_needs_ma60_or_wick():
     """裸外資仍記 fx_ok；fx_ma 要季線下或下影。"""
     twii = {}

@@ -121,11 +121,17 @@ FACTOR_PACK = (
     "michael_gap_south_fx_ma",
     "michael_gap_south_bear_wick",
     "michael_gap_south_after_night",
+    "michael_failed_south_after_strong",
     "michael_gap_south_below_ma60",
     "michael_open_high_fade",
+    "michael_gap_south_sox_le_m2",
+    "michael_after_strong_day_only",
+    "michael_after_strong_x_wick",
     "michael_gap_south_night_ge1",
     "michael_gap_south_wick_ge045",
+    "michael_super_open_fade",
     "michael_gap_south",
+    "michael_night_hot",
     "michael_wick_flip_risk",
     "michael_fail_upper",
     "michael_break_lower",
@@ -584,9 +590,9 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
     _hard_michaels = (
         "michael_gap_south_bear_wick",
         "michael_gap_south_bounce",
-        "michael_gap_south_fx_ma",  # 嚴變體優先於裸 fx_ok
+        "michael_failed_south_after_strong",  # 向南失敗→三日多（做法變化）
+        "michael_gap_south_fx_ma",
         "michael_gap_south_fx_ok",
-        # after_night／night_ge1／wick_ge045：有用擴大收集；path 主判暫不投孤票
         "michael_gap_south_after_strong",
     )
     _cands = [
@@ -600,8 +606,11 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
         add(_cands[0][0], True)
         _picked = True
     if not _picked:
-        # 擴大軟閘：季線下／開高走低優先於裸 gap_south
+        # 擴大軟閘：變化／語料切片優先於裸 gap_south
         for _soft in (
+            "michael_after_strong_x_wick",
+            "michael_gap_south_sox_le_m2",
+            "michael_after_strong_day_only",
             "michael_gap_south_below_ma60",
             "michael_open_high_fade",
             "michael_gap_south",
@@ -908,7 +917,13 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
         if len(_active_m) == 1 and _michael_only:
             bias = "range"
             lit = list(lit) + [{"code": "michael_alone_soft_range", "edge": 0.0}]
-        # 20261005（麥可×漲停）暫留計分：擋了會 n<20；下一版另切
+        # 向南失敗或 gap 家族×漲停熱 → 觀望（20261005：因素層判斷，不依賴 lit 互斥）
+        if "chips_limit_up_ge_20" in _active_m and (
+            bool(factors.get("michael_failed_south_after_strong"))
+            or bool(factors.get("michael_gap_south"))
+        ):
+            bias = "range"
+            lit = list(lit) + [{"code": "michael_gap_x_limit_up_soft_range", "edge": 0.0}]
     # 修正浪內只剩 wave_struct_up → 觀望（20260708）
     if bias == "up" and in_abc:
         active = [
@@ -1003,7 +1018,41 @@ def estimate_amplitude(
         basis = f"{basis}_abc085"
     # 注意：wave_fib 是波段樞紐目標（底↔頂），不准塞進三日 amp（檢測窗不同會把幅度撐爆）
     # 三日幅度仍用 rv／市況；波段切割只進 target／invalidate（見 _targets）
-    amp_abs = max(0.35, min(4.0, base))
+    amp_cap = 4.0
+    # 麥可做法變化→三日幅度微調（方向票另軌；此處只抬／收 amp，不改 bias）
+    if bias == "up":
+        gap_south = bool(factors.get("michael_gap_south"))
+        wide = bool(factors.get("michael_wide_chop"))
+        after_night = bool(factors.get("michael_gap_south_after_night"))
+        # 破位＋寬震盪、無缺口南：常低估大反彈
+        if (
+            bool(factors.get("michael_break_lower"))
+            and wide
+            and not gap_south
+        ):
+            base = max(base * 1.55, 3.8)
+            amp_cap = max(amp_cap, 7.0)
+            basis = f"{basis}_m_break_chop"
+        # 夜盤熱後向南（硬閘有用）→ 抬底
+        if after_night:
+            base = max(base * 1.45, 3.8)
+            amp_cap = max(amp_cap, 6.5)
+            basis = f"{basis}_m_after_night"
+        # 大估＋bounce＋寬震盪常高估；after_night 已抬底者不收
+        if (
+            base >= 3.5
+            and bool(factors.get("michael_gap_south_bounce"))
+            and wide
+            and not after_night
+        ):
+            base = min(base, 2.6)
+            basis = f"{basis}_m_bounce_shrink"
+        # 夜盤熱（非缺口南）低估
+        if bool(factors.get("michael_night_hot")) and not gap_south and base < 3.5:
+            base = max(base * 1.4, 3.0)
+            amp_cap = max(amp_cap, 5.5)
+            basis = f"{basis}_m_night_hot"
+    amp_abs = max(0.35, min(amp_cap, base))
     amp = amp_abs if bias == "up" else -amp_abs
     return {
         "amp_pct": round(amp, 3),
