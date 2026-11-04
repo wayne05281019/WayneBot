@@ -1,0 +1,105 @@
+{
+  "written_at": "2026-11-04T08:34:10",
+  "tz": "Asia/Taipei",
+  "range": "10y",
+  "series": {
+    "VIX": {
+      "yahoo": "^VIX",
+      "note": "恐慌指數",
+      "wrote": 2515,
+      "table_n": 2515,
+      "from": "20161103",
+      "to": "20261103",
+      "ok": true
+    },
+    "DJI": {
+      "yahoo": "^DJI",
+      "note": "道瓊",
+      "wrote": 2512,
+      "table_n": 2512,
+      "from": "20161104",
+      "to": "20261103",
+      "ok": true
+    },
+    "SPX": {
+      "yahoo": "^GSPC",
+      "note": "標普",
+      "wrote": 2512,
+      "table_n": 2512,
+      "from": "20161104",
+      "to": "20261103",
+      "ok": true
+    },
+    "BRENT": {
+      "yahoo": "BZ=F",
+      "note": "布蘭特原油",
+      "wrote": 2515,
+      "table_n": 2515,
+      "from": "20161103",
+      "to": "20261103",
+      "ok": true
+    },
+    "DXY": {
+      "yahoo": "DX-Y.NYB",
+      "note": "美元指數",
+      "wrote": 2514,
+      "table_n": 2514,
+      "from": "20161103",
+      "to": "20261103",
+      "ok": true
+    },
+    "USDTWD": {
+      "yahoo": "TWD=X",
+      "note": "美元兌台幣",
+      "wrote": 2601,
+      "table_n": 2601,
+      "from": "20161103",
+      "to": "20261103",
+      "ok": true
+    },
+    "TSM": {
+      "yahoo": "TSM",
+      "note": "台積美股",
+      "wrote": 2512,
+      "table_n": 2512,
+      "from": "20161104",
+      "to": "20261103",
+      "ok": true
+    },
+    "NVDA": {
+      "yahoo": "NVDA",
+      "note": "輝達",
+      "wrote": 2512,
+      "table_n": 2512,
+      "from": "20161104",
+      "to": "20261103",
+      "ok": true
+    },
+    "NQ_F": {
+      "yahoo": "NQ=F",
+      "note": "那指期",
+      "wrote": 2515,
+      "table_n": 2515,
+      "from": "20161103",
+      "to": "20261103",
+      "ok": true
+    },
+    "ES_F": {
+      "yahoo": "ES=F",
+      "note": "標普期",
+      "wrote": 2515,
+      "table_n": 2515,
+      "from": "20161103",
+      "to": "20261103",
+      "ok": true
+    }
+  },
+  "still_missing": [
+    "active_etf_flow_daily（主動 ETF／投信賣壓日流）",
+    "fear_greed_daily（CNN 恐懼貪婪長史）",
+    "TE futures 長史（現僅近窗）",
+    "futures_inst_oi 長史（現僅近窗）",
+    "market_margin_daily 更長窗（MI_MARGN 續補）"
+  ],
+  "note": "yahoo 外圍／美股領導長史→index_daily；非 TWSE 官方柱；不是買訊"
+}
