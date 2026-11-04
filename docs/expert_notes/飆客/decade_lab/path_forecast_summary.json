@@ -1,0 +1,55 @@
+{
+  "written_at": "2026-11-04T08:44:11",
+  "tz": "Asia/Taipei",
+  "investor_output": [
+    "bias",
+    "horizon",
+    "last_close",
+    "target",
+    "invalidate",
+    "factors",
+    "missing",
+    "why_codes"
+  ],
+  "factor_pack": [
+    "twii_ret",
+    "twii_wick",
+    "twii_vol_spike",
+    "twii_prev_ret",
+    "ixic_prior_ret",
+    "sox_prior_ret",
+    "vix_prior_ret",
+    "tsm_prior_ret",
+    "nvda_prior_ret",
+    "dxy_prior_ret",
+    "usdtwd_prior_ret",
+    "brent_prior_ret",
+    "tx_night_ret"
+  ],
+  "my_responsibility_zh": "最終答案＝走勢預測（方向／目標／失效／依據）。要納入哪些因素、怎麼切、怎麼投票＝程式責任；使用者只收結果與覆盤。",
+  "wrote": 5419,
+  "scored_n": 740,
+  "directional_n": 740,
+  "hit": 443,
+  "miss": 297,
+  "hit_rate_directional": 0.5986486486486486,
+  "by_bias": {
+    "up": {
+      "n": 481,
+      "hit": 296,
+      "miss": 185,
+      "hit_rate": 0.6153846153846154
+    },
+    "down": {
+      "n": 259,
+      "hit": 147,
+      "miss": 112,
+      "hit_rate": 0.5675675675675675
+    }
+  },
+  "gate_n20": true,
+  "reverse_think_zh": "混算 range 會把勝率拉垮；投資人要的是有方向的對錯。range＝觀望不計分。下一輪提高出方向門檻／補夜盤融資票。",
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "storage": "decade_lab.path_forecast + json/gz；不准 PNG"
+}
