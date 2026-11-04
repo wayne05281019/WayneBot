@@ -315,6 +315,13 @@ def run_dual() -> Dict[str, Any]:
         gate_ok = bool((phase.get("gate") or {}).get("ok"))
         # 認真：鐵律未過不准出方向（觀望），避免隨便標號灌水
         bias = str(phase.get("bias") or "range") if gate_ok else "range"
+        # 自修#4：ABC B 回撤須落在 0.382–0.786（靜默對質贏 HTF-only →換）
+        if bias in {"up", "down"} and phase.get("phase") == "corrective_abc":
+            lens = (phase.get("gate") or {}).get("lens") or []
+            if len(lens) >= 2 and float(lens[0]) > 0:
+                br = float(lens[1]) / float(lens[0])
+                if not (0.382 <= br <= 0.786):
+                    bias = "range"
         htf_ok = _htf_agree(bars, i, bias) if bias in {"up", "down"} else True
         if bias in {"up", "down"} and not htf_ok:
             bias = "range"

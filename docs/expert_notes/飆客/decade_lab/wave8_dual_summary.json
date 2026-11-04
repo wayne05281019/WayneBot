@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T09:43:40",
+  "written_at": "2026-11-04T09:44:02",
   "tz": "Asia/Taipei",
   "twii_n": 5423,
   "twii_from": "20061102",
@@ -9,16 +9,16 @@
   "tracks": {
     "textbook_8cycle": {
       "n_rows": 821,
-      "n_decided": 106,
-      "hit": 75,
-      "miss": 31,
-      "hit_rate": 0.7075471698113207,
+      "n_decided": 59,
+      "hit": 43,
+      "miss": 16,
+      "hit_rate": 0.7288135593220338,
       "gate_n20": true,
       "outcome_counts": {
-        "對": 75,
-        "偏": 31,
+        "對": 43,
+        "偏": 16,
         "未完": 0,
-        "觀望不計分": 715,
+        "觀望不計分": 762,
         "缺柱": 0
       },
       "pot": "實驗室"
@@ -42,7 +42,7 @@
   },
   "adopt": {
     "pick": "textbook_8cycle",
-    "reason": "textbook hit_rate 0.7075 > biaoke 0.4655"
+    "reason": "textbook hit_rate 0.7288 > biaoke 0.4655"
   },
   "disagree_n": 1,
   "disagree_sample": [
@@ -61,7 +61,7 @@
     "textbook_miss_reason_top": [
       [
         "bias_wrong",
-        31
+        16
       ]
     ],
     "next_rule_candidates": [
@@ -86,6 +86,12 @@
       "hit_rate_before": 0.6997,
       "hit_rate_after": 0.7075,
       "rule_zh": "方向須與近20日收盤趨勢同向，否則觀望"
+    },
+    "reusable_finding_fib": {
+      "id": "wave8_abc_fib_htf",
+      "n": 59,
+      "hit_rate_after": 0.7288,
+      "rule_zh": "ABC B回撤0.382–0.786＋HTF20"
     }
   },
   "not_buy_signal": true,
@@ -93,19 +99,18 @@
   "wave_neurons_match": false,
   "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。",
   "next_variant": {
-    "variant": "textbook_vnext_fib_htf",
-    "rule_zh": "現況＋ABC B回撤0.382–0.786＋HTF20",
-    "n_decided": 59,
-    "hit": 43,
-    "miss": 16,
-    "hit_rate": 0.7288135593220338,
+    "variant": "textbook_vnext_ext2",
+    "rule_zh": "現況#4＋impulse擴延比≥2.0",
+    "n_decided": 43,
+    "hit": 32,
+    "miss": 11,
+    "hit_rate": 0.7441860465116279,
     "vs_current": {
-      "current_hit_rate": 0.7075471698113207,
-      "edge": 0.021266389510713135
+      "current_hit_rate": 0.7288135593220338,
+      "edge": 0.015372487189594053
     },
     "gate_n20": true,
     "replace": true,
-    "phone_sync": "blocked",
-    "not_buy_signal": true
+    "phone_sync": "blocked"
   }
 }
