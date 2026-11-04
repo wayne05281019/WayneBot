@@ -46,6 +46,12 @@ def test_is_allowlisted_deletable_paths(tmp_path: Path):
     pair.write_bytes(b"y")
     scratch = charts / _scratch_name()
     scratch.write_bytes(b"z")
+    hq = charts / (scratch.name + ".hq.jpg")
+    hq.write_bytes(b"h")
+    wr_work = charts / "2330_wr_card_8772209416.jpg"
+    wr_work.write_bytes(b"w")
+    wr_hq = charts / "2330_wr_vz_1.jpg.hq.jpg"
+    wr_hq.write_bytes(b"wh")
     marks = charts / "marks" / "keep.png"
     marks.parent.mkdir(parents=True)
     marks.write_bytes(b"k")
@@ -62,6 +68,9 @@ def test_is_allowlisted_deletable_paths(tmp_path: Path):
     assert dg.is_allowlisted_deletable(str(memo_file), root)
     assert dg.is_allowlisted_deletable(str(pair), root)
     assert dg.is_allowlisted_deletable(str(scratch), root)
+    assert dg.is_allowlisted_deletable(str(hq), root)
+    assert dg.is_allowlisted_deletable(str(wr_work), root)
+    assert dg.is_allowlisted_deletable(str(wr_hq), root)
     assert not dg.is_allowlisted_deletable(str(marks), root)
     assert not dg.is_allowlisted_deletable(str(plain), root)
     assert not dg.is_allowlisted_deletable(str(archive), root)
@@ -70,8 +79,73 @@ def test_is_allowlisted_deletable_paths(tmp_path: Path):
     assert not dg.is_allowlisted_deletable(str(tmp_path / "wayne_market.db"), root)
 
 
+def test_inventory_flags_corrupt_and_safe_delete(tmp_path: Path):
+    """分項：corrupt 單列；scratch／wr 工作檔算可刪；aux／DB 不算。"""
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    scratch = charts / _scratch_name()
+    scratch.write_bytes(b"s" * 2_000_000)
+    wr = charts / "6417_wr_vz_1.jpg"
+    wr.write_bytes(b"w" * 1_000_000)
+    paints = tmp_path / "biaoke_open_day_paints"
+    paints.mkdir()
+    old = paints / "force-20261001-1200-far.png"
+    old.write_bytes(b"o" * 500_000)
+    aux = tmp_path / "biaoke_aux_charts"
+    aux.mkdir()
+    (aux / "keep.bin").write_bytes(b"a" * 300_000)
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"d" * 4_000_000)
+    corrupt = tmp_path / "wayne_market.db.corrupt-20261104"
+    corrupt.write_bytes(b"c" * 3_000_000)
+    (tmp_path / "archive_1709.json.gz").write_bytes(b"z" * 200_000)
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime(2026, 11, 5, 0, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    inv = dg.inventory_data_disk(
+        str(tmp_path), charts_dir=str(charts), db_path=str(db), now=now
+    )
+    assert inv["corrupt_n"] == 1
+    assert inv["corrupt_mb"] >= 2.5
+    assert inv["class_mb"]["allowlist"] >= 2.5
+    assert inv["class_mb"]["teach_purgable"] >= 0.4
+    assert inv["class_mb"]["aux"] >= 0.2
+    assert inv["class_mb"]["db_live"] >= 3.5
+    assert inv["safe_delete_mb"] >= inv["class_mb"]["allowlist"]
+    assert inv["ask_before_delete_mb"] == inv["corrupt_mb"]
+    assert inv["corrupt_keep_best"]
+    assert inv["corrupt_reclaim_if_keep_best_mb"] == 0.0  # 只有一份 → 留最佳＝0
+    names = {p["name"] for p in inv["parts"]}
+    assert "wayne_market.db.corrupt-20261104" in names or "wayne_market.db" in names
+
+
+def test_audit_corrupt_copies_reclaim_estimate(tmp_path: Path, monkeypatch):
+    """兩份 corrupt：只讀估「留最佳可省多少」；真檔不刪。"""
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"L" * 2_000_000)
+    c1 = tmp_path / "wayne_market.db.corrupt-111"
+    c2 = tmp_path / "wayne_market.db.corrupt-222"
+    c1.write_bytes(b"A" * 3_000_000)
+    c2.write_bytes(b"B" * 5_000_000)
+    monkeypatch.setattr(
+        "import_health.db_quick_check_ok", lambda *_a, **_k: True
+    )
+    monkeypatch.setattr(
+        "db_recover.completeness_counts",
+        lambda p: (2000, 10) if "222" in str(p) else (1500, 5),
+    )
+    out = dg.audit_corrupt_copies(str(db), data_dir=str(tmp_path))
+    assert out["ok"] is True
+    assert out["corrupt_n"] == 2
+    assert out["keep_best"] == "wayne_market.db.corrupt-222"
+    assert out["reclaim_if_keep_best_mb"] >= 2.5
+    assert c1.exists() and c2.exists()
+
+
 def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
-    """白天 free≥緊急線：不准清白名單／不准追高 free；教具舊圖仍可清。"""
+    """白天 free≥預警線且無跑道預警：不准清白名單；教具舊圖仍可清。"""
     charts = tmp_path / "charts"
     memo = charts / "_lookup_memo"
     memo.mkdir(parents=True)
@@ -87,6 +161,11 @@ def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
         dg, "_try_vacuum_if_room", lambda *_a, **_k: vacuum_calls.append(1) or "ok"
     )
     monkeypatch.setattr(dg, "maybe_push_runway_alert", lambda **_k: {"skipped": "test"})
+    monkeypatch.setattr(
+        dg,
+        "estimate_disk_runway",
+        lambda **_k: {"need_warn": False, "runway_days": 90, "trend": "flat"},
+    )
     out = dg.ensure_disk_headroom(
         data_dir=str(tmp_path),
         charts_dir=str(charts),
@@ -99,6 +178,39 @@ def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
     assert kept.exists()
     assert vacuum_calls == []
     assert db.exists()
+
+
+def test_boot_purges_allowlisted_even_when_free_ok(tmp_path: Path, monkeypatch):
+    """開機：確定可重建白名單立刻清（不等緊急線）。"""
+    charts = tmp_path / "charts"
+    memo = charts / "_lookup_memo"
+    memo.mkdir(parents=True)
+    drop = memo / "boot.jpg"
+    drop.write_bytes(b"b" * 4000)
+    wr = charts / "2330_wr_card_1.jpg"
+    wr.write_bytes(b"w" * 3000)
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"db")
+    corrupt = tmp_path / "wayne_market.db.corrupt-keep"
+    corrupt.write_bytes(b"c" * 5000)
+    monkeypatch.setattr(
+        dg, "disk_usage_mb", lambda _p: {"total": 15000, "used": 5000, "free": 2700}
+    )
+    monkeypatch.setattr(dg, "_try_wal_checkpoint", lambda _p: "ok")
+    monkeypatch.setattr(dg, "_try_vacuum_if_room", lambda *_a, **_k: "ok")
+    monkeypatch.setattr(dg, "maybe_push_runway_alert", lambda **_k: {"skipped": "test"})
+    out = dg.ensure_disk_headroom(
+        data_dir=str(tmp_path),
+        charts_dir=str(charts),
+        db_path=str(db),
+        mode="boot",
+    )
+    assert out["reason"] == "boot_safe_purge"
+    assert out["cleaned"] is True
+    assert not drop.exists()
+    assert not wr.exists()
+    assert db.exists()
+    assert corrupt.exists()
 
 
 def test_emergency_purges_allowlisted_only(tmp_path: Path, monkeypatch):
@@ -527,8 +639,17 @@ def test_runway_estimate_and_dedupe_alert(tmp_path: Path, monkeypatch):
     )
     monkeypatch.setattr(
         dg,
-        "measure_durable_mb",
-        lambda *_a, **_k: {"durable_mb": 400.0, "rebuildable_mb": 10.0},
+        "inventory_data_disk",
+        lambda *_a, **_k: {
+            "durable_mb": 400.0,
+            "rebuildable_mb": 10.0,
+            "safe_delete_mb": 10.0,
+            "corrupt_n": 0,
+            "corrupt_mb": 0.0,
+            "class_mb": {},
+            "parts": [],
+            "top": [],
+        },
     )
     sent: list = []
     out = dg.maybe_push_runway_alert(

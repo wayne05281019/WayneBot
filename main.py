@@ -521,11 +521,18 @@ class HealthHandler(BaseHTTPRequestHandler):
         """Ops 救援（需 X-Wayne-Ops-Secret）：
         - POST /ops/force-morning：常駐碟內立刻補寄今早海選兩支話筒
         - POST /ops/repair-market-db：缺 daily_quotes／壞庫時裝 Release＋救私人／飆大
+        - POST /ops/disk-audit：只讀碟分項＋.corrupt-* 救援副本估量（不刪）
+        - POST /ops/purge-rebuildable-disk：只刪確定可重建快取／過期教具
         """
         import json
 
         route = self.path.split("?")[0]
-        if route not in ("/ops/force-morning", "/ops/repair-market-db"):
+        if route not in (
+            "/ops/force-morning",
+            "/ops/repair-market-db",
+            "/ops/disk-audit",
+            "/ops/purge-rebuildable-disk",
+        ):
             self.send_response(404)
             self.end_headers()
             return
@@ -564,7 +571,47 @@ class HealthHandler(BaseHTTPRequestHandler):
             except Exception:
                 req_json = {}
         try:
-            if route == "/ops/repair-market-db":
+            if route == "/ops/disk-audit":
+                from disk_guard import audit_corrupt_copies, inventory_data_disk
+                from config import get_charts_dir, get_db_path
+
+                dbp = get_db_path()
+                root = os.path.dirname(dbp) or "."
+                inv = inventory_data_disk(
+                    root, charts_dir=get_charts_dir(), db_path=dbp, top_n=20
+                )
+                corrupt = audit_corrupt_copies(dbp, data_dir=root)
+                result = {
+                    "ok": True,
+                    "inventory": {
+                        "durable_mb": inv.get("durable_mb"),
+                        "rebuildable_mb": inv.get("rebuildable_mb"),
+                        "safe_delete_mb": inv.get("safe_delete_mb"),
+                        "class_mb": inv.get("class_mb"),
+                        "parts": inv.get("parts"),
+                        "top": inv.get("top"),
+                    },
+                    "corrupt": corrupt,
+                    "deleted": False,
+                    "note": "只讀；corrupt 未刪。要刪救援副本需另令。",
+                }
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+            elif route == "/ops/purge-rebuildable-disk":
+                from disk_guard import purge_confirmed_rebuildable
+
+                logger.info("ops /ops/purge-rebuildable-disk：只清可重建白名單＋過期教具")
+                purged = purge_confirmed_rebuildable()
+                result = {
+                    "ok": True,
+                    "deleted": True,
+                    "kind": "rebuildable_only",
+                    "result": purged,
+                    "note": "未動 DB／.corrupt-*／aux／archive／近窗教具",
+                }
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+            elif route == "/ops/repair-market-db":
                 # 預設 force_release：過舊完整日／缺表都要換公開 Release
                 force_release = True
                 if "force_release" in req_json:
