@@ -1,0 +1,14 @@
+{
+  "variant": "textbook_vnext_fwd3",
+  "rule_zh": "現況#5 規則、對質窗改 FWD_N=3",
+  "n_decided": 43,
+  "hit_rate": 0.7674418604651163,
+  "vs_current": {
+    "current_hit_rate": 0.7441860465116279,
+    "note": "不同對質窗，僅參考不准直接混比"
+  },
+  "gate_n20": true,
+  "replace": false,
+  "phone_sync": "blocked",
+  "note_zh": "FWD窗不同＝不可直接替換閘；另軌收集"
+}

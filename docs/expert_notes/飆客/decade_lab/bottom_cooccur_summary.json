@@ -1,0 +1,57 @@
+{
+  "written_at": "2026-11-04T08:38:55+08:00",
+  "tz": "Asia/Taipei",
+  "db": "/workspace/data/wayne_market.db",
+  "twii_n": 5423,
+  "twii_from": "20061102",
+  "twii_to": "20261103",
+  "params": {
+    "look": 15,
+    "bounce_n": 10,
+    "bounce_pct": 4.0,
+    "pre_n": 5,
+    "vol_spike_mult": 1.5,
+    "wick_min": 0.45,
+    "limit_down_pctl": 80.0,
+    "limit_down_cut": 116.20000000000002
+  },
+  "n_trough": 90,
+  "n_cooccur_ge3": 11,
+  "n_cooccur_ge4": 2,
+  "pct_cooccur_ge3": 0.12222222222222222,
+  "pct_cooccur_ge4": 0.022222222222222223,
+  "factor_hit_rate_at_trough": {
+    "vol_spike": 0.15555555555555556,
+    "twii_lower_wick": 0.6555555555555556,
+    "tsm_vol_spike": 0.6666666666666666,
+    "tsm_lower_wick": 0.4166666666666667,
+    "limit_down_spike": 0.08333333333333333,
+    "down_dominate": 1.0
+  },
+  "factor_base_rate_all_breadth_days": {
+    "vol_spike": 0.07722772277227723,
+    "twii_lower_wick": 0.5742574257425742,
+    "tsm_vol_spike": 0.3188118811881188,
+    "tsm_lower_wick": 0.6118811881188119,
+    "limit_down_spike": 0.041584158415841586,
+    "down_dominate": 0.8475247524752475
+  },
+  "lift_vs_base": {
+    "vol_spike": 2.014,
+    "twii_lower_wick": 1.142,
+    "tsm_vol_spike": 2.091,
+    "tsm_lower_wick": 0.681,
+    "limit_down_spike": 2.004,
+    "down_dominate": 1.18
+  },
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "gaps": [
+    "成交金額≥1.3兆×≥2日：本庫無兆元口徑官方序列",
+    "融資餘額大減：market_margin_daily 過短",
+    "主動式 ETF 投信轉賣：無專序列",
+    "台積／跌停：僅 2023-12 起可對齊 breadth／2330"
+  ],
+  "base_pct_cooccur_ge3": 0.5128712871287129,
+  "base_n_breadth_days": 505
+}

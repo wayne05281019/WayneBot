@@ -1,0 +1,99 @@
+{
+  "written_at": "2026-11-04T09:44:28",
+  "tz": "Asia/Taipei",
+  "twii_n": 5423,
+  "twii_from": "20061102",
+  "twii_to": "20261103",
+  "fwd_n": 5,
+  "pivot_look": 3,
+  "tracks": {
+    "textbook_8cycle": {
+      "n_rows": 821,
+      "n_decided": 43,
+      "hit": 32,
+      "miss": 11,
+      "hit_rate": 0.7441860465116279,
+      "gate_n20": true,
+      "outcome_counts": {
+        "對": 32,
+        "偏": 11,
+        "未完": 0,
+        "觀望不計分": 778,
+        "缺柱": 0
+      },
+      "pot": "實驗室"
+    },
+    "biaoke_degree": {
+      "n_rows": 71,
+      "n_decided": 58,
+      "hit": 27,
+      "miss": 31,
+      "hit_rate": 0.46551724137931033,
+      "gate_n20": true,
+      "outcome_counts": {
+        "對": 27,
+        "偏": 31,
+        "未完": 1,
+        "觀望不計分": 5,
+        "缺柱": 7
+      },
+      "pot": "他說／飆預測"
+    }
+  },
+  "adopt": {
+    "pick": "textbook_8cycle",
+    "reason": "textbook hit_rate 0.7442 > biaoke 0.4655"
+  },
+  "disagree_n": 0,
+  "disagree_sample": [],
+  "self_fix": {
+    "triggered": false,
+    "textbook_miss_reason_top": [
+      [
+        "bias_wrong",
+        11
+      ]
+    ],
+    "next_rule_candidates": [
+      "已落地：motive 凑滿→預期反向進 ABC（自修#2）",
+      "已落地：末升／邪惡第五→down",
+      "已落地：HTF20 同向閘（自修#3，靜默對質略贏→換）",
+      "下一版：ABC B 回撤 0.382–0.786＋HTF（vnext）",
+      "下一版：子浪碎形確認",
+      "FWD_N 5→3 對齊當日盤勢軌"
+    ],
+    "note_zh": "偏多於對→自己改切法再生；不等使用者提醒。",
+    "reusable_finding": {
+      "id": "wave8_post_motive_expect_opposite",
+      "n": 95,
+      "hit_rate_before": 0.1368,
+      "hit_rate_after": 0.6842,
+      "rule_zh": "1-2-3-4-5鐵律＋擴延過關＝推進結束，後窗預期反向進修正"
+    },
+    "reusable_finding_htf": {
+      "id": "wave8_htf20_align",
+      "n": 106,
+      "hit_rate_before": 0.6997,
+      "hit_rate_after": 0.7075,
+      "rule_zh": "方向須與近20日收盤趨勢同向，否則觀望"
+    }
+  },
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "wave_neurons_match": false,
+  "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。",
+  "next_variant": {
+    "variant": "textbook_vnext_fwd3",
+    "rule_zh": "現況#5 規則、對質窗改 FWD_N=3",
+    "n_decided": 43,
+    "hit_rate": 0.7674418604651163,
+    "vs_current": {
+      "current_hit_rate": 0.7441860465116279,
+      "note": "不同對質窗，僅參考不准直接混比"
+    },
+    "gate_n20": true,
+    "replace": false,
+    "phone_sync": "blocked",
+    "note_zh": "FWD窗不同＝不可直接替換閘；另軌收集"
+  }
+}

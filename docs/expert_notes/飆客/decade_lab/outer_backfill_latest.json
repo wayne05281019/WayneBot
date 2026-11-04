@@ -1,0 +1,134 @@
+{
+  "written_at": "2026-11-04T08:37:36",
+  "tz": "Asia/Taipei",
+  "range": "20y",
+  "series": {
+    "TWII": {
+      "yahoo": "^TWII",
+      "note": "加權（Yahoo 補長史；話筒仍認官方融合柱）",
+      "wrote": 2991,
+      "table_n": 5423,
+      "from": "20061102",
+      "to": "20261103",
+      "ok": true
+    },
+    "IXIC": {
+      "yahoo": "^IXIC",
+      "note": "那指",
+      "wrote": 5029,
+      "table_n": 5029,
+      "from": "20061106",
+      "to": "20261103",
+      "ok": true
+    },
+    "SOX": {
+      "yahoo": "^SOX",
+      "note": "費半",
+      "wrote": 5029,
+      "table_n": 5029,
+      "from": "20061106",
+      "to": "20261103",
+      "ok": true
+    },
+    "VIX": {
+      "yahoo": "^VIX",
+      "note": "恐慌指數",
+      "wrote": 5032,
+      "table_n": 5032,
+      "from": "20061103",
+      "to": "20261103",
+      "ok": true
+    },
+    "DJI": {
+      "yahoo": "^DJI",
+      "note": "道瓊",
+      "wrote": 5029,
+      "table_n": 5029,
+      "from": "20061106",
+      "to": "20261103",
+      "ok": true
+    },
+    "SPX": {
+      "yahoo": "^GSPC",
+      "note": "標普",
+      "wrote": 5029,
+      "table_n": 5029,
+      "from": "20061106",
+      "to": "20261103",
+      "ok": true
+    },
+    "BRENT": {
+      "yahoo": "BZ=F",
+      "note": "布蘭特原油",
+      "wrote": 4796,
+      "table_n": 4796,
+      "from": "20070730",
+      "to": "20261103",
+      "ok": true
+    },
+    "DXY": {
+      "yahoo": "DX-Y.NYB",
+      "note": "美元指數",
+      "wrote": 5033,
+      "table_n": 5033,
+      "from": "20061103",
+      "to": "20261103",
+      "ok": true
+    },
+    "USDTWD": {
+      "yahoo": "TWD=X",
+      "note": "美元兌台幣",
+      "wrote": 5184,
+      "table_n": 5184,
+      "from": "20061105",
+      "to": "20261103",
+      "ok": true
+    },
+    "TSM": {
+      "yahoo": "TSM",
+      "note": "台積美股",
+      "wrote": 5029,
+      "table_n": 5029,
+      "from": "20061106",
+      "to": "20261103",
+      "ok": true
+    },
+    "NVDA": {
+      "yahoo": "NVDA",
+      "note": "輝達",
+      "wrote": 5029,
+      "table_n": 5029,
+      "from": "20061106",
+      "to": "20261103",
+      "ok": true
+    },
+    "NQ_F": {
+      "yahoo": "NQ=F",
+      "note": "那指期",
+      "wrote": 5032,
+      "table_n": 5032,
+      "from": "20061103",
+      "to": "20261103",
+      "ok": true
+    },
+    "ES_F": {
+      "yahoo": "ES=F",
+      "note": "標普期",
+      "wrote": 5032,
+      "table_n": 5032,
+      "from": "20061103",
+      "to": "20261103",
+      "ok": true
+    }
+  },
+  "still_missing": [
+    "active_etf_flow_daily（主動 ETF／投信賣壓日流）",
+    "fear_greed_daily（CNN 恐懼貪婪長史）",
+    "TE futures 長史（現僅近窗）",
+    "futures_inst_oi 長史（現僅近窗）",
+    "market_margin_daily 更長窗（MI_MARGN 續補）",
+    "market_tape_daily 2006–2016（FMTQIK 月檔續補）"
+  ],
+  "note": "yahoo 外圍／美股領導長史→index_daily；非 TWSE 官方柱；不是買訊",
+  "rule_reset_zh": "上一輪找不出可過關脈絡＝規則／切法不對，不是沒資料。先重抓約20年數字柱，再重訂可對質規則重跑；不准堆圖。"
+}

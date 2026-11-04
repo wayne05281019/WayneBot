@@ -1,0 +1,16 @@
+{
+  "variant": "textbook_vnext_fib_htf",
+  "rule_zh": "現況＋ABC B回撤0.382–0.786＋HTF20",
+  "n_decided": 59,
+  "hit": 43,
+  "miss": 16,
+  "hit_rate": 0.7288135593220338,
+  "vs_current": {
+    "current_hit_rate": 0.7075471698113207,
+    "edge": 0.021266389510713135
+  },
+  "gate_n20": true,
+  "replace": true,
+  "phone_sync": "blocked",
+  "not_buy_signal": true
+}

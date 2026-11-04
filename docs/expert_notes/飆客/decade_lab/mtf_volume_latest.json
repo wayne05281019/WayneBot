@@ -1,0 +1,318 @@
+{
+  "written_at": "2026-11-04T10:52:44",
+  "tz": "Asia/Taipei",
+  "source_zh": "飆大季／年線圖＋爆巨量文；官方日柱／tape 量化",
+  "twii_n": 5423,
+  "q_bars": 81,
+  "y_bars": 21,
+  "climax_n": 137,
+  "q_climax_n": 19,
+  "q_climaxes": [
+    {
+      "key": "2024Q1",
+      "end": "20240331",
+      "high": 20397.0703125,
+      "metric": 21.7292,
+      "source": "tape_trillion",
+      "amount_trillion": 21.7292,
+      "mult_vs_med": 1.951,
+      "local_max": true
+    },
+    {
+      "key": "2024Q2",
+      "end": "20240630",
+      "high": 23406.099609375,
+      "metric": 28.3947,
+      "source": "tape_trillion",
+      "amount_trillion": 28.3947,
+      "mult_vs_med": 2.511,
+      "local_max": true
+    },
+    {
+      "key": "2024Q3",
+      "end": "20240930",
+      "high": 24416.669921875,
+      "metric": 26.579,
+      "source": "tape_trillion",
+      "amount_trillion": 26.579,
+      "mult_vs_med": 2.226,
+      "local_max": false
+    },
+    {
+      "key": "2025Q3",
+      "end": "20250930",
+      "high": 26394.029296875,
+      "metric": 27.5514,
+      "source": "tape_trillion",
+      "amount_trillion": 27.5514,
+      "mult_vs_med": 1.902,
+      "local_max": true
+    },
+    {
+      "key": "2025Q4",
+      "end": "20251231",
+      "high": 29009.810546875,
+      "metric": 32.9757,
+      "source": "tape_trillion",
+      "amount_trillion": 32.9757,
+      "mult_vs_med": 2.276,
+      "local_max": true
+    },
+    {
+      "key": "2026Q1",
+      "end": "20260331",
+      "high": 35579.33984375,
+      "metric": 44.387,
+      "source": "tape_trillion",
+      "amount_trillion": 44.387,
+      "mult_vs_med": 2.23,
+      "local_max": true
+    },
+    {
+      "key": "2026Q2",
+      "end": "20260630",
+      "high": 48218.87109375,
+      "metric": 74.5358,
+      "source": "tape_trillion",
+      "amount_trillion": 74.5358,
+      "mult_vs_med": 3.61,
+      "local_max": true
+    },
+    {
+      "key": "2026Q3",
+      "end": "20260930",
+      "high": 48601.53125,
+      "metric": 60.4505,
+      "source": "tape_trillion",
+      "amount_trillion": 60.4505,
+      "mult_vs_med": 2.782,
+      "local_max": false
+    }
+  ],
+  "teacher_claims_check_quarterly": {
+    "2021": {
+      "ok": true,
+      "years_median": 2.5,
+      "expect_years": 3.0,
+      "n": 3,
+      "sample": {
+        "climax_key": "2021Q1",
+        "barrier_high": 16579.17,
+        "quarters_to_new_high": 9,
+        "years_approx": 2.25,
+        "new_high_key": "2023Q2",
+        "required_drawdown_pct": 12.0,
+        "saw_drawdown": true,
+        "still_waiting": false
+      }
+    },
+    "2024": {
+      "ok": true,
+      "years_median": 1.25,
+      "expect_years": 1.0,
+      "n": 3,
+      "sample": {
+        "climax_key": "2024Q1",
+        "barrier_high": 20397.07,
+        "quarters_to_new_high": 5,
+        "years_approx": 1.25,
+        "new_high_key": "2025Q2",
+        "required_drawdown_pct": 12.0,
+        "saw_drawdown": true,
+        "still_waiting": false
+      }
+    }
+  },
+  "support_20260729_low": 39384.8515625,
+  "ttnh_sample": [
+    {
+      "climax_date": "20080224",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1769,
+      "new_high_date": "20150423",
+      "years_approx": 7.02,
+      "quarters_approx": 28.08,
+      "still_waiting": false
+    },
+    {
+      "climax_date": "20080323",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1750,
+      "new_high_date": "20150423",
+      "years_approx": 6.94,
+      "quarters_approx": 27.78,
+      "still_waiting": false
+    },
+    {
+      "climax_date": "20080413",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1736,
+      "new_high_date": "20150423",
+      "years_approx": 6.89,
+      "quarters_approx": 27.56,
+      "still_waiting": false
+    },
+    {
+      "climax_date": "20090315",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1509,
+      "new_high_date": "20150423",
+      "years_approx": 5.99,
+      "quarters_approx": 23.95,
+      "still_waiting": false
+    },
+    {
+      "climax_date": "20090329",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1499,
+      "new_high_date": "20150423",
+      "years_approx": 5.95,
+      "quarters_approx": 23.79,
+      "still_waiting": false
+    },
+    {
+      "climax_date": "20090405",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1495,
+      "new_high_date": "20150423",
+      "years_approx": 5.93,
+      "quarters_approx": 23.73,
+      "still_waiting": false
+    },
+    {
+      "climax_date": "20090412",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1490,
+      "new_high_date": "20150423",
+      "years_approx": 5.91,
+      "quarters_approx": 23.65,
+      "still_waiting": false
+    },
+    {
+      "climax_date": "20090419",
+      "prior_ath": 9859.65,
+      "days_to_new_high": 1485,
+      "new_high_date": "20150423",
+      "years_approx": 5.89,
+      "quarters_approx": 23.57,
+      "still_waiting": false
+    }
+  ],
+  "q_ttnh_sample": [
+    {
+      "climax_key": "2024Q1",
+      "barrier_high": 20397.07,
+      "quarters_to_new_high": 5,
+      "years_approx": 1.25,
+      "new_high_key": "2025Q2",
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": true,
+      "still_waiting": false
+    },
+    {
+      "climax_key": "2024Q2",
+      "barrier_high": 23406.1,
+      "quarters_to_new_high": 5,
+      "years_approx": 1.25,
+      "new_high_key": "2025Q3",
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": true,
+      "still_waiting": false
+    },
+    {
+      "climax_key": "2024Q3",
+      "barrier_high": 24416.67,
+      "quarters_to_new_high": 4,
+      "years_approx": 1.0,
+      "new_high_key": "2025Q3",
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": true,
+      "still_waiting": false
+    },
+    {
+      "climax_key": "2025Q3",
+      "barrier_high": 26394.03,
+      "quarters_to_new_high": null,
+      "years_approx": null,
+      "new_high_key": null,
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": false,
+      "still_waiting": true
+    },
+    {
+      "climax_key": "2025Q4",
+      "barrier_high": 29009.81,
+      "quarters_to_new_high": null,
+      "years_approx": null,
+      "new_high_key": null,
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": false,
+      "still_waiting": true
+    },
+    {
+      "climax_key": "2026Q1",
+      "barrier_high": 35579.34,
+      "quarters_to_new_high": null,
+      "years_approx": null,
+      "new_high_key": null,
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": false,
+      "still_waiting": true
+    },
+    {
+      "climax_key": "2026Q2",
+      "barrier_high": 48218.87,
+      "quarters_to_new_high": null,
+      "years_approx": null,
+      "new_high_key": null,
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": true,
+      "still_waiting": true
+    },
+    {
+      "climax_key": "2026Q3",
+      "barrier_high": 48601.53,
+      "quarters_to_new_high": null,
+      "years_approx": null,
+      "new_high_key": null,
+      "required_drawdown_pct": 12.0,
+      "saw_drawdown": false,
+      "still_waiting": true
+    }
+  ],
+  "ttnh_waiting_n": 0,
+  "flags": [
+    {
+      "code": "mtf_volume_climax_d60",
+      "n": 136,
+      "mean": 5.9574,
+      "edge": 3.4011,
+      "hit_rate_side": 0.7206,
+      "bias": "up",
+      "vote": 3.4011,
+      "horizon_days": 60
+    },
+    {
+      "code": "mtf_climax_near_ath_d60",
+      "n": 80,
+      "mean": 5.6161,
+      "edge": 3.0598,
+      "hit_rate_side": 0.8,
+      "bias": "up",
+      "vote": 3.0598,
+      "horizon_days": 60
+    }
+  ],
+  "n_flags": 2,
+  "factor_ideas_zh": [
+    "爆巨量（日成交值高分位＋倍數）",
+    "季線爆巨量＋創高耗時（對質他說 2021≈3年／2024≈1年）",
+    "距 ATH％、季振幅、YTD",
+    "他點名低點（如 7/29）有效跌破＝橫整假設失效",
+    "高檔巨量 vs 深跌巨量分開對質",
+    "巨量後中期偏整理（range），不是自動空單"
+  ],
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "wave_note_zh": "不准發明 5／9；此模組只做量價／位階失效數字"
+}

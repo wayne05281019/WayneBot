@@ -1,0 +1,132 @@
+{
+  "written_at": "2026-11-04T12:02:07",
+  "tz": "Asia/Taipei",
+  "goal_zh": "預判大盤漲勢（方向）及幅度",
+  "investor_output": [
+    "bias",
+    "amp_pct",
+    "amp_class",
+    "horizon",
+    "last_close",
+    "target",
+    "invalidate",
+    "factors",
+    "missing",
+    "why_codes"
+  ],
+  "factor_pack": [
+    "twii_ret",
+    "twii_wick",
+    "twii_vol_spike",
+    "twii_prev_ret",
+    "ixic_prior_ret",
+    "sox_prior_ret",
+    "vix_prior_ret",
+    "tsm_prior_ret",
+    "nvda_prior_ret",
+    "dxy_prior_ret",
+    "usdtwd_prior_ret",
+    "brent_prior_ret",
+    "tx_night_ret",
+    "inst_trust_yi",
+    "inst_foreign_yi",
+    "inst_three_yi",
+    "inst_trust_z",
+    "inst_foreign_z",
+    "inst_three_z",
+    "inst_trust_neg_2d",
+    "inst_three_neg_2d",
+    "inst_foreign_neg_2d",
+    "inst_foreign_pos_2d",
+    "inst_foreign_pos_3d",
+    "inst_foreign_yi_p80",
+    "inst_foreign_yi_p85",
+    "inst_foreign_yi_p90",
+    "inst_2330_foreign_net",
+    "inst_2330_foreign_ge_3k",
+    "mtf_dist_ath_pct",
+    "mtf_amount_pctile_60",
+    "mtf_volume_climax",
+    "mtf_qtd_range_pct",
+    "mtf_named_support_broken",
+    "fib_near_0618_support",
+    "fib_near_0382_support",
+    "fib_near_0618_resist",
+    "fib_deep_pull",
+    "fib_amp_0618_pct",
+    "chips_margin_delta_z",
+    "chips_ud_ratio",
+    "chips_tape_tril",
+    "chips_tx_oi_z",
+    "chips_short_z"
+  ],
+  "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。",
+  "wrote": 500,
+  "scored_n": 105,
+  "directional_n": 105,
+  "hit": 64,
+  "miss": 41,
+  "hit_rate_directional": 0.6095238095238096,
+  "amp_n": 64,
+  "amp_hit": 38,
+  "amp_miss": 26,
+  "hit_rate_amplitude": 0.59375,
+  "amp_mae_pct": 1.5443,
+  "by_bias": {
+    "up": {
+      "n": 70,
+      "hit": 44,
+      "miss": 26,
+      "hit_rate": 0.6285714285714286
+    },
+    "down": {
+      "n": 35,
+      "hit": 20,
+      "miss": 15,
+      "hit_rate": 0.5714285714285714
+    }
+  },
+  "by_amp_class": {
+    "micro": {
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate": null
+    },
+    "small": {
+      "n": 3,
+      "hit": 2,
+      "miss": 1,
+      "hit_rate": 0.6666666666666666
+    },
+    "mid": {
+      "n": 42,
+      "hit": 25,
+      "miss": 17,
+      "hit_rate": 0.5952380952380952
+    },
+    "large": {
+      "n": 19,
+      "hit": 11,
+      "miss": 8,
+      "hit_rate": 0.5789473684210527
+    }
+  },
+  "inst_lit_days": 30,
+  "inst_votes": [
+    "inst_trust_z_ge_p1"
+  ],
+  "fib_lit_days": 0,
+  "fib_votes": [],
+  "chips_lit_days": 104,
+  "chips_votes": [
+    "chips_limit_up_ge_20",
+    "chips_margin_kill_2d",
+    "chips_margin_z_le_m1"
+  ],
+  "gate_n20": true,
+  "reverse_think_zh": "目標是漲勢＋幅度。法人／投信／黃金切割／籌碼多面向票必用；幅度偏了回查波動／夜盤／外圍／法人／切割跨度。range＝觀望不計分。因素不足→factor_gap_queue。",
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "storage": "decade_lab.path_forecast + json/gz；不准 PNG"
+}

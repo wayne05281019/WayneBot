@@ -1,0 +1,23 @@
+{
+  "written_at": "2026-11-04T10:58:57",
+  "tz": "Asia/Taipei",
+  "bfi_n": 559,
+  "scored_days": 537,
+  "base_mean3": 0.2579,
+  "flags": [
+    {
+      "code": "inst_trust_z_ge_p1",
+      "n": 105,
+      "mean3": -0.0545,
+      "edge3": -0.3124,
+      "bias": "down",
+      "hit_rate_side": 0.381,
+      "vote": -0.3124
+    }
+  ],
+  "n_flags": 1,
+  "gate": "n>=20 & |edge3|>=0.25",
+  "goal_zh": "法人／投信模組提高大盤漲勢＋幅度判斷成功率",
+  "not_buy_signal": true,
+  "phone_sync": "blocked"
+}
