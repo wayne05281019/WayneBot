@@ -49,6 +49,7 @@ def test_try_decision_card_memo_hits_without_paint(tmp_path):
 
 def test_try_glance_memo_hits_without_paint(tmp_path):
     from chip_tape import build_tape
+    from fundamentals import ensure_stock_fundamentals
     from wayne_navigator import (
         NavigatorEngine,
         clear_lookup_render_cache,
@@ -58,14 +59,21 @@ def test_try_glance_memo_hits_without_paint(tmp_path):
 
     clear_lookup_render_cache()
     db = get_db_path()
+    # 對齊話筒：paint 外 ensure 一次，memo／paint 帶 fundamentals_ready，
+    # 不准第二次同步重抓讓指紋抖動 → 暖路徑假 miss（full-suite flaky）。
+    ensure_stock_fundamentals(db, "2330")
     card = NavigatorEngine(db).get_decision_card("2330", lookback=20, merge_live=False)
     ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
     tape = build_tape(db, "2330", merge_live=False) or {}
     a = str(tmp_path / "g1.jpg")
-    assert render_first_glance_png("2330", card, tape, a, db, ohlc=ohlc)
+    assert render_first_glance_png(
+        "2330", card, tape, a, db, ohlc=ohlc, fundamentals_ready=True
+    )
     b = str(tmp_path / "g2.jpg")
     t0 = time.perf_counter()
-    hit = try_glance_memo("2330", card, tape, b, db)
+    hit = try_glance_memo(
+        "2330", card, tape, b, db, fundamentals_ready=True
+    )
     assert hit and os.path.isfile(hit)
     assert time.perf_counter() - t0 < 0.35
 
