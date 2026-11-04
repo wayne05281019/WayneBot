@@ -1266,6 +1266,7 @@ def _bare_screen_bot():
     bot._screening_gate = asyncio.Lock()
     bot._screening_global_owner = ""
     bot._screening_build_task = None
+    bot._screening_build_claim = asyncio.Lock()
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
