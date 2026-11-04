@@ -534,6 +534,126 @@ class MainRunner:
             stop.set()
             t.join(timeout=2.0)
 
+    def increment_pipeline_key(self, *, now=None, closed=None) -> str:
+        """盤後融合 pipeline 鍵＝fuse_end（16:30 前＝上一開市日），不是牆鐘日曆日。
+
+        跨午夜補跑若用 taipei_today_str 蓋 success，會把「昨天收」標成「今天融合成功」，
+        真・16:30 被 skip_if_done 擋掉、查股日 K 停昨天（2026-11-04 事故）。
+        休市日仍用日曆鍵（與 screen-closed／watchdog 對齊）。
+        """
+        if closed is not None:
+            ymd = str((closed or {}).get("ymd") or "").replace("-", "")[:8]
+            return ymd if len(ymd) == 8 else str(self.today_str)
+        try:
+            cap = str(fuse_end_date(now) or "").replace("-", "")[:8]
+        except Exception:
+            cap = ""
+        return cap if len(cap) == 8 else str(self.today_str)
+
+    def demote_premature_increment_success(self, *, now=None) -> int:
+        """降「還沒收盤／柱未齊」就標成當日融合 success 的假戳。
+
+        1) finished_at 早於該鍵日台北 16:30 → 盤沒收完不可能融完當日
+        2) 鍵＝目前 fuse_end，但 latest_complete < 鍵 → 柱沒齊卻 success
+        只動 8 碼日曆鍵；不准動 screen-*／sv-*／us-digest-*。
+        """
+        from zoneinfo import ZoneInfo
+
+        ref = now or taipei_now()
+        if getattr(ref, "tzinfo", None) is None:
+            ref = ref.replace(tzinfo=ZoneInfo("Asia/Taipei"))
+        else:
+            ref = ref.astimezone(ZoneInfo("Asia/Taipei"))
+        try:
+            fuse_cap = str(fuse_end_date(ref) or "").replace("-", "")[:8]
+        except Exception:
+            fuse_cap = ""
+        try:
+            from import_health import latest_complete_quote_date
+
+            latest = str(latest_complete_quote_date(self.db_path, now=ref) or "").replace(
+                "-", ""
+            )[:8]
+        except Exception:
+            latest = ""
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT run_date, finished_at, notes
+                FROM pipeline_runs
+                WHERE status = 'success'
+                  AND length(run_date) = 8
+                  AND run_date GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+                  AND run_date NOT LIKE 'screen-%'
+                """
+            ).fetchall()
+            n = 0
+            for run_date, finished_at, notes in rows:
+                key = str(run_date or "").strip()
+                if not (key.isdigit() and len(key) == 8):
+                    continue
+                note = str(notes or "")
+                # 休市 skip increment 準成 success＝當日故意不融，不准當假戳拆掉
+                if "tw closed" in note and "skip increment" in note:
+                    continue
+                premature = False
+                reason = ""
+                fin_raw = str(finished_at or "").strip()
+                if fin_raw:
+                    try:
+                        from datetime import timezone
+
+                        raw = fin_raw
+                        if raw.endswith("Z"):
+                            raw = raw[:-1] + "+00:00"
+                        fin_dt = datetime.fromisoformat(raw)
+                        if fin_dt.tzinfo is None:
+                            fin_dt = fin_dt.replace(tzinfo=timezone.utc)
+                        fin_tw = fin_dt.astimezone(ZoneInfo("Asia/Taipei"))
+                        gate = datetime.strptime(key, "%Y%m%d").replace(
+                            hour=16, minute=30, second=0, microsecond=0,
+                            tzinfo=ZoneInfo("Asia/Taipei"),
+                        )
+                        if fin_tw < gate:
+                            premature = True
+                            reason = "before-1630"
+                    except Exception:
+                        pass
+                if (
+                    not premature
+                    and fuse_cap
+                    and key == fuse_cap
+                    and latest
+                    and latest < key
+                ):
+                    premature = True
+                    reason = f"latest-{latest}<key"
+                if not premature:
+                    continue
+                if "premature-increment" not in note:
+                    note = (note + f" premature-increment-{reason}").strip()
+                conn.execute(
+                    """
+                    UPDATE pipeline_runs
+                    SET status = 'computed', notes = ?
+                    WHERE run_date = ? AND status = 'success'
+                    """,
+                    (note[:500], key),
+                )
+                n += 1
+                logger.warning(
+                    "降假盤後融合 success→computed key=%s reason=%s",
+                    key,
+                    reason,
+                )
+            if n:
+                conn.commit()
+            return n
+        finally:
+            conn.close()
+
     def demote_premature_morning_screens(self) -> int:
         """盤後當日補跑若先標 screen-{as_of} success，隔天 06:30 會略過、吃不到美股隔夜。
 
@@ -2482,7 +2602,15 @@ class MainRunner:
     def run_increment_job(self, skip_if_done: bool = False, notify: bool = True) -> bool:
         from tw_holidays import closed_tw_session, refresh_tw_holiday_calendar, refresh_tw_typhoon_halt
 
+        try:
+            n_pre = int(self.demote_premature_increment_success() or 0)
+            if n_pre:
+                logger.info("盤後融合前降假 success %s 筆，改為可真融", n_pre)
+        except Exception:
+            logger.exception("降假盤後融合 success 失敗（不擋）")
+
         closed = closed_tw_session(db_path=self.db_path)
+        fuse_key = self.increment_pipeline_key(closed=closed)
         if closed:
             # 2026-10-26 鎖死：早報／休市鍵已認「今日無開盤」→ 當日不准 16:30 融合、
             # 不准 fuse 補跑、不准推「資料處理中」。開市日才進 busy_window 融合本體。
@@ -2533,6 +2661,7 @@ class MainRunner:
                 f"cap={cap_closed} tw={health_closed.get('tw')} "
                 f"two={health_closed.get('two')} em={health_closed.get('em')} "
                 f"{note_tail}",
+                run_date=fuse_key,
             )
             # 融合 success ≠ 各靜默軌都寫進庫；休市仍補跑缺／失敗軌（無 busy）
             try:
@@ -2540,8 +2669,8 @@ class MainRunner:
             except Exception:
                 logger.exception("休市日靜默各軌補跑失敗")
             return True
-        if skip_if_done and self.already_completed_today():
-            logger.info("ℹ️ %s 盤後融合已成功，仍對官方側車（月營收續補）。", self.today_str)
+        if skip_if_done and self.already_completed_today(fuse_key):
+            logger.info("ℹ️ %s 盤後融合已成功，仍對官方側車（月營收續補）。", fuse_key)
             self._refresh_official_sidecars()
             # 融合已成功仍要補跑缺／失敗的靜默軌（不准被融合 success 蓋掉）
             try:
@@ -2560,7 +2689,7 @@ class MainRunner:
         if (
             skip_if_done
             and cap_ready
-            and str(cap_ready) == str(self.today_str)
+            and str(cap_ready) == str(fuse_key)
             and self._increment_ok(health_ready)
         ):
             self._mark_pipeline(
@@ -2568,6 +2697,7 @@ class MainRunner:
                 f"increment already-complete cap={cap_ready} "
                 f"tw={health_ready.get('tw')} two={health_ready.get('two')} "
                 f"em={health_ready.get('em')}",
+                run_date=fuse_key,
             )
             logger.info("ℹ️ %s 官方柱已齊，補蓋盤後融合紀錄（不重抓）", cap_ready)
             try:
@@ -2576,15 +2706,15 @@ class MainRunner:
                 logger.exception("柱齊補蓋後靜默各軌補跑失敗")
             return True
         if not self.try_claim_pipeline(
-            self.today_str,
+            fuse_key,
             notes="increment-claim",
             stale_running_sec=int(INCREMENT_RUNNING_STALE_SEC),
             allow_stale_running=True,
         ):
-            logger.info("ℹ️ %s 盤後融合進行中或已成功，略過。", self.today_str)
+            logger.info("ℹ️ %s 盤後融合進行中或已成功，略過。", fuse_key)
             return True
         start_time = time.time()
-        key = str(self.today_str)
+        key = str(fuse_key)
         try:
             from busy_window_notice import busy_window
 
@@ -2654,7 +2784,9 @@ class MainRunner:
                         err = str(em_gate.get("error") or "").strip()
                         if err and err not in note:
                             note = f"{note}；{err}" if note else err
-                        self._mark_pipeline("incomplete", note[:500])
+                        self._mark_pipeline(
+                            "incomplete", note[:500], run_date=key
+                        )
                         logger.error("盤後仍待補：%s", note)
                         if notify:
                             try:
@@ -2668,6 +2800,7 @@ class MainRunner:
                         "success",
                         f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} "
                         f"two={health.get('two')} em={health.get('em')}",
+                        run_date=key,
                     )
                     logger.info(
                         "🎉 === 盤後融合完畢 上市%s 上櫃%s 興櫃%s（%.1fs）===",
@@ -2712,6 +2845,7 @@ class MainRunner:
                 self._mark_pipeline(
                     "incomplete",
                     f"increment crashed: {type(exc).__name__}: {exc}"[:500],
+                    run_date=key,
                 )
             except Exception:
                 logger.exception("盤後融合 crash 蓋戳失敗 key=%s", key)

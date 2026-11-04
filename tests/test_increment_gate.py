@@ -415,6 +415,9 @@ def test_catch_up_skips_fuse_on_guangfu_makeup_holiday(monkeypatch):
         def demote_orphaned_increment_claims(self, **kw):
             return 0
 
+        def demote_premature_increment_success(self, **kw):
+            return 0
+
         def demote_orphaned_morning_claims(self, **kw):
             return 0
 
@@ -532,8 +535,9 @@ def test_increment_job_closed_never_enters_busy_even_if_prior_incomplete(
     runner._increment_ok = lambda health: False  # type: ignore[method-assign]
     runner._refresh_official_sidecars = lambda: None  # type: ignore[method-assign]
     runner._run_post_fuse_silent_tracks = lambda *a, **k: {}  # type: ignore[method-assign]
+    runner.demote_premature_increment_success = lambda **kw: 0  # type: ignore[method-assign]
     runner._mark_pipeline = lambda status, notes="", **kw: marks.append(  # type: ignore[method-assign]
-        (status, notes)
+        (status, notes, kw.get("run_date"))
     )
 
     def _no_busy(*a, **k):
@@ -550,6 +554,140 @@ def test_increment_job_closed_never_enters_busy_even_if_prior_incomplete(
     assert "skip increment" in marks[0][1]
     assert "光復節補假" in marks[0][1]
     assert "prior_incomplete" in marks[0][1]
+    assert marks[0][2] == "20261026"
+
+
+def test_demote_premature_increment_before_1630(tmp_path):
+    """跨午夜用日曆日蓋 success（finished_at 在當日 16:30 前）→ 必須降 computed。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    db = tmp_path / "premature_inc.db"
+    ensure_core_schema(str(db))
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "INSERT INTO pipeline_runs(run_date, finished_at, status, notes) VALUES (?,?,?,?)",
+        (
+            "20261104",
+            "2026-11-04T01:12:11+08:00",
+            "success",
+            "increment elapsed=2311.4s tw=1322 two=896 em=367",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = str(db)
+    runner.today_str = "20261104"
+    now = datetime(2026, 11, 4, 19, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert runner.demote_premature_increment_success(now=now) == 1
+    st = sqlite3.connect(str(db)).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date='20261104'"
+    ).fetchone()
+    assert st[0] == "computed"
+    assert "premature-increment-before-1630" in st[1]
+
+
+def test_demote_premature_increment_latest_lag(tmp_path, monkeypatch):
+    """鍵＝fuse_end 但 latest_complete 落後 → 假 success 降 computed。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    db = tmp_path / "lag_inc.db"
+    ensure_core_schema(str(db))
+    # finished_at 故意晚於 16:30，只測 latest 落後閘
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "INSERT INTO pipeline_runs(run_date, finished_at, status, notes) VALUES (?,?,?,?)",
+        (
+            "20261104",
+            "2026-11-04T17:00:00+08:00",
+            "success",
+            "increment elapsed=100s tw=1322 two=896 em=367",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = str(db)
+    runner.today_str = "20261104"
+    monkeypatch.setattr("main_runner.fuse_end_date", lambda *a, **k: "20261104")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *a, **k: "20261103",
+    )
+    now = datetime(2026, 11, 4, 19, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert runner.demote_premature_increment_success(now=now) == 1
+    st = sqlite3.connect(str(db)).execute(
+        "SELECT status FROM pipeline_runs WHERE run_date='20261104'"
+    ).fetchone()
+    assert st[0] == "computed"
+
+
+def test_increment_pipeline_key_uses_fuse_end(monkeypatch):
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.today_str = "20261104"
+    monkeypatch.setattr("main_runner.fuse_end_date", lambda *a, **k: "20261103")
+    assert runner.increment_pipeline_key() == "20261103"
+    assert (
+        runner.increment_pipeline_key(closed={"ymd": "20261104", "zh": "休"})
+        == "20261104"
+    )
+
+
+def test_missed_jobs_flags_fake_increment_success(tmp_path, monkeypatch):
+    """假 success＋柱停昨天 → 死人開關仍認漏跑。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from ops_watchdog import missed_jobs
+    from wayne_db import ensure_core_schema
+
+    db = tmp_path / "miss_inc.db"
+    ensure_core_schema(str(db))
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "INSERT INTO pipeline_runs(run_date, finished_at, status, notes) VALUES (?,?,?,?)",
+        (
+            "20261104",
+            "2026-11-04T01:12:11+08:00",
+            "success",
+            "increment elapsed=1s",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "trading_calendar.fuse_end_trading_date", lambda *a, **k: "20261104"
+    )
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date",
+        lambda *a, **k: "20261103",
+    )
+    monkeypatch.setattr(
+        "tw_holidays.closed_tw_session", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_market_holiday", lambda *a, **k: False
+    )
+    monkeypatch.setattr("ops_watchdog._watchdog_job_owned", lambda kind: True)
+    now = datetime(2026, 11, 4, 19, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    missed = missed_jobs(str(db), now=now)
+    kinds = {m["kind"] for m in missed}
+    assert "increment" in kinds
 
 
 def test_pipeline_stamp_and_finished_at_are_taipei():
