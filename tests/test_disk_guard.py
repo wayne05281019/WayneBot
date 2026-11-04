@@ -152,7 +152,6 @@ def test_audit_corrupt_prefers_completeness_not_size(tmp_path: Path, monkeypatch
     big = tmp_path / "wayne_market.db.corrupt-big"
     small.write_bytes(b"S" * 2_000_000)
     big.write_bytes(b"B" * 8_000_000)
-    monkeypatch.setattr("import_health.db_quick_check_ok", lambda *_a, **_k: True)
 
     def _counts(p):
         if "small" in str(p):
@@ -164,10 +163,35 @@ def test_audit_corrupt_prefers_completeness_not_size(tmp_path: Path, monkeypatch
     monkeypatch.setattr("db_recover.completeness_counts", _counts)
     out = dg.audit_corrupt_copies(str(db), data_dir=str(tmp_path), deep_limit=10)
     assert out["size_is_not_truth"] is True
+    assert out["probe_mode"] == "light_counts"
     assert out["largest_file"] == "wayne_market.db.corrupt-big"
     assert out["keep_best"] == "wayne_market.db.corrupt-small"
     assert out["largest_is_completeness_best"] is False
     assert out["recommend_keep"] == "wayne_market.db.corrupt-small"
+
+
+def test_audit_corrupt_async_writes_result(tmp_path: Path, monkeypatch):
+    """背景對質寫結果檔；不刪真檔。"""
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"L" * 500_000)
+    c1 = tmp_path / "wayne_market.db.corrupt-1"
+    c1.write_bytes(b"A" * 800_000)
+    monkeypatch.setattr("db_recover.completeness_counts", lambda p: (1760, 10))
+    started = dg.start_corrupt_audit_async(
+        str(db), data_dir=str(tmp_path), deep_limit=3, max_seconds=30
+    )
+    assert started["started"] is True
+    deadline = time.time() + 5
+    out = {}
+    while time.time() < deadline:
+        out = dg.load_corrupt_audit_result(data_dir=str(tmp_path), db_path=str(db))
+        if out.get("ready") and out.get("ok"):
+            break
+        time.sleep(0.05)
+    assert out.get("ready") is True
+    assert out.get("ok") is True
+    assert out.get("keep_best")
+    assert c1.exists()
 
 
 def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):

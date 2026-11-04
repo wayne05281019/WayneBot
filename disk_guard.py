@@ -427,17 +427,123 @@ def _corrupt_rank_key(row: Dict[str, Any]) -> Tuple[Any, ...]:
     )
 
 
+_AUDIT_RESULT_NAME = "disk_corrupt_audit_latest.json"
+_audit_lock = threading.Lock()
+_audit_running = False
+
+
+def corrupt_audit_result_path(data_dir: str = "", db_path: str = "") -> str:
+    try:
+        from config import get_db_path
+    except Exception:
+        get_db_path = lambda: os.path.join("data", "wayne_market.db")  # type: ignore
+    dbp = db_path or get_db_path()
+    root = data_dir or os.path.dirname(dbp) or "."
+    return os.path.join(root, _AUDIT_RESULT_NAME)
+
+
+def load_corrupt_audit_result(
+    data_dir: str = "", db_path: str = ""
+) -> Dict[str, Any]:
+    path = corrupt_audit_result_path(data_dir=data_dir, db_path=db_path)
+    if not os.path.isfile(path):
+        return {"ok": False, "ready": False, "error": "no_result_yet", "path": path}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            data = dict(data)
+            data["ready"] = True
+            data["path"] = path
+            return data
+    except Exception as exc:
+        return {"ok": False, "ready": False, "error": f"read:{exc}", "path": path}
+    return {"ok": False, "ready": False, "error": "bad_json", "path": path}
+
+
+def _probe_corrupt_light(cand: str) -> Tuple[bool, int, int]:
+    """輕量可讀：能開庫＋計數就當 readable。不准對救援做 PRAGMA quick_check（會卡死 HTTP）。"""
+    try:
+        from db_recover import completeness_counts
+    except Exception:
+        return False, 0, 0
+    try:
+        biaoke_n, priv_n = completeness_counts(cand)
+        # 打得開就算可讀；空庫也算探過（biaoke=0）
+        return True, int(biaoke_n or 0), int(priv_n or 0)
+    except Exception:
+        return False, 0, 0
+
+
+def start_corrupt_audit_async(
+    db_path: str = "",
+    *,
+    data_dir: str = "",
+    deep_limit: int = 8,
+    max_seconds: float = 240.0,
+    names: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """背景跑完整度對質，結果寫 data/disk_corrupt_audit_latest.json。不准刪檔。"""
+    global _audit_running
+    with _audit_lock:
+        if _audit_running:
+            return {
+                "ok": True,
+                "started": False,
+                "running": True,
+                "note": "已有一輪在跑；稍後讀結果檔。",
+            }
+        _audit_running = True
+
+    out_path = corrupt_audit_result_path(data_dir=data_dir, db_path=db_path)
+
+    def _runner() -> None:
+        global _audit_running
+        try:
+            result = audit_corrupt_copies(
+                db_path,
+                data_dir=data_dir,
+                deep_limit=deep_limit,
+                max_seconds=max_seconds,
+                names=names,
+            )
+            result["finished_at"] = time.time()
+            result["finished_at_taipei"] = _taipei_now().strftime("%Y-%m-%d %H:%M:%S")
+            tmp = out_path + ".tmp"
+            os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(result, fh, ensure_ascii=False)
+            os.replace(tmp, out_path)
+        except Exception:
+            logger.exception("corrupt audit async 失敗")
+        finally:
+            with _audit_lock:
+                _audit_running = False
+
+    threading.Thread(target=_runner, name="corrupt-audit", daemon=True).start()
+    return {
+        "ok": True,
+        "started": True,
+        "running": True,
+        "result_path": out_path,
+        "deep_limit": int(deep_limit),
+        "max_seconds": float(max_seconds),
+        "note": "背景對質中；稍後 POST /ops/disk-audit {\"result\":1} 讀結果。未刪。",
+    }
+
+
 def audit_corrupt_copies(
     db_path: str = "",
     *,
     data_dir: str = "",
-    deep_limit: int = 20,
-    max_seconds: float = 90.0,
+    deep_limit: int = 8,
+    max_seconds: float = 120.0,
+    names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """只讀對質：完整度決定留哪份，不是檔案最大。
 
     1) 先列齊所有 .corrupt-* 大小（不開庫）
-    2) 只對「最大 deep_limit 份」做 quick_check＋biaoke／私人計數（限時）
+    2) 只對「最大 deep_limit 份」做輕量計數（不跑 PRAGMA quick_check）
     3) 排名：可讀 → biaoke → 私人 → mtime；（大小僅並列最後）
     4) 與正式庫比：live 已可讀且完整度不輸 → 備援可大幅刪
 
@@ -452,7 +558,6 @@ def audit_corrupt_copies(
     root = data_dir or os.path.dirname(dbp) or "."
     try:
         from db_recover import MIN_BIAOKE_RESTORE, completeness_counts, list_corrupt_candidates
-        from import_health import db_quick_check_ok
     except Exception as exc:
         return {"ok": False, "error": f"import:{exc}", "files": []}
 
@@ -462,10 +567,12 @@ def audit_corrupt_copies(
     live_ok = False
     if dbp and os.path.isfile(dbp):
         try:
-            live_ok = bool(db_quick_check_ok(dbp, min_bytes=1))
             live_biaoke, live_priv = completeness_counts(dbp)
+            live_ok = True
         except Exception:
             live_ok = False
+
+    name_filter = {str(n).strip() for n in (names or []) if str(n).strip()}
 
     # 1) 全列大小
     listed: List[Dict[str, Any]] = []
@@ -495,18 +602,25 @@ def audit_corrupt_copies(
         )
 
     by_size = sorted(listed, key=lambda r: float(r.get("total_mb") or 0), reverse=True)
-    deep_n = max(1, int(deep_limit or 20))
-    to_probe = by_size[:deep_n]
-    # 同大小群抽 1 份（若還沒在 to_probe）
+    deep_n = max(1, int(deep_limit or 8))
+    if name_filter:
+        to_probe = [r for r in listed if str(r.get("name") or "") in name_filter]
+    else:
+        to_probe = by_size[:deep_n]
+        # 同大小群抽 1 份（若還沒在 to_probe）
+        size_buckets_pre: Dict[int, List[Dict[str, Any]]] = {}
+        for r in listed:
+            size_buckets_pre.setdefault(int(round(float(r.get("mb") or 0))), []).append(r)
+        for _sz, group in size_buckets_pre.items():
+            if len(group) < 2:
+                continue
+            pick = max(group, key=lambda r: float(r.get("mtime") or 0))
+            if pick not in to_probe and len(to_probe) < deep_n + 5:
+                to_probe.append(pick)
+
     size_buckets: Dict[int, List[Dict[str, Any]]] = {}
     for r in listed:
         size_buckets.setdefault(int(round(float(r.get("mb") or 0))), []).append(r)
-    for _sz, group in size_buckets.items():
-        if len(group) < 2:
-            continue
-        pick = max(group, key=lambda r: float(r.get("mtime") or 0))
-        if pick not in to_probe and len(to_probe) < deep_n + 5:
-            to_probe.append(pick)
 
     probed_n = 0
     timed_out = False
@@ -515,14 +629,7 @@ def audit_corrupt_copies(
             timed_out = True
             break
         cand = str(row.get("path") or "")
-        readable = False
-        biaoke_n = priv_n = 0
-        try:
-            readable = bool(db_quick_check_ok(cand, min_bytes=1))
-            if readable:
-                biaoke_n, priv_n = completeness_counts(cand)
-        except Exception:
-            readable = False
+        readable, biaoke_n, priv_n = _probe_corrupt_light(cand)
         row["probed"] = True
         row["readable"] = bool(readable)
         row["biaoke_n"] = int(biaoke_n)
@@ -621,6 +728,7 @@ def audit_corrupt_copies(
         "ok": True,
         "root": root,
         "size_is_not_truth": True,
+        "probe_mode": "light_counts",
         "rank_rule_zh": "可讀 → biaoke → 私人列 → mtime；（大小最後）",
         "live": {
             "path": os.path.basename(dbp),

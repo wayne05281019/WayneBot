@@ -572,46 +572,87 @@ class HealthHandler(BaseHTTPRequestHandler):
                 req_json = {}
         try:
             if route == "/ops/disk-audit":
-                from disk_guard import audit_corrupt_copies, inventory_data_disk
+                from disk_guard import (
+                    audit_corrupt_copies,
+                    inventory_data_disk,
+                    load_corrupt_audit_result,
+                    start_corrupt_audit_async,
+                )
                 from config import get_charts_dir, get_db_path
 
                 dbp = get_db_path()
                 root = os.path.dirname(dbp) or "."
-                # 預設只做救援完整度對質（快）；inventory=1 才掃全碟分項
-                want_inv = bool(req_json.get("inventory"))
-                deep_limit = int(req_json.get("deep_limit") or 20)
-                max_seconds = float(req_json.get("max_seconds") or 90)
-                inv = None
-                if want_inv:
-                    inv = inventory_data_disk(
-                        root, charts_dir=get_charts_dir(), db_path=dbp, top_n=20
+                # result=1：讀背景結果；async=1：背景開跑立刻回；否則同步輕量探
+                if req_json.get("result"):
+                    corrupt = load_corrupt_audit_result(data_dir=root, db_path=dbp)
+                    result = {
+                        "ok": bool(corrupt.get("ok")),
+                        "corrupt": corrupt,
+                        "deleted": False,
+                        "note": "讀已落檔結果；未刪。",
+                    }
+                    body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                elif req_json.get("async") or req_json.get("background"):
+                    deep_limit = int(req_json.get("deep_limit") or 8)
+                    max_seconds = float(req_json.get("max_seconds") or 240)
+                    names = req_json.get("names")
+                    if not isinstance(names, list):
+                        names = None
+                    started = start_corrupt_audit_async(
+                        dbp,
+                        data_dir=root,
+                        deep_limit=deep_limit,
+                        max_seconds=max_seconds,
+                        names=names,
                     )
-                corrupt = audit_corrupt_copies(
-                    dbp,
-                    data_dir=root,
-                    deep_limit=deep_limit,
-                    max_seconds=max_seconds,
-                )
-                result = {
-                    "ok": True,
-                    "inventory": (
-                        {
-                            "durable_mb": inv.get("durable_mb"),
-                            "rebuildable_mb": inv.get("rebuildable_mb"),
-                            "safe_delete_mb": inv.get("safe_delete_mb"),
-                            "class_mb": inv.get("class_mb"),
-                            "parts": inv.get("parts"),
-                            "top": inv.get("top"),
-                        }
-                        if inv
-                        else None
-                    ),
-                    "corrupt": corrupt,
-                    "deleted": False,
-                    "note": "只讀完整度對質；最大檔≠最正確；未刪。要刪需另令。",
-                }
-                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
-                self.send_response(200)
+                    result = {
+                        "ok": True,
+                        "started": started,
+                        "deleted": False,
+                        "note": "背景完整度對質；稍後 result=1 取。最大檔≠最正確；未刪。",
+                    }
+                    body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                else:
+                    want_inv = bool(req_json.get("inventory"))
+                    deep_limit = int(req_json.get("deep_limit") or 8)
+                    max_seconds = float(req_json.get("max_seconds") or 90)
+                    names = req_json.get("names")
+                    if not isinstance(names, list):
+                        names = None
+                    inv = None
+                    if want_inv:
+                        inv = inventory_data_disk(
+                            root, charts_dir=get_charts_dir(), db_path=dbp, top_n=20
+                        )
+                    corrupt = audit_corrupt_copies(
+                        dbp,
+                        data_dir=root,
+                        deep_limit=deep_limit,
+                        max_seconds=max_seconds,
+                        names=names,
+                    )
+                    result = {
+                        "ok": True,
+                        "inventory": (
+                            {
+                                "durable_mb": inv.get("durable_mb"),
+                                "rebuildable_mb": inv.get("rebuildable_mb"),
+                                "safe_delete_mb": inv.get("safe_delete_mb"),
+                                "class_mb": inv.get("class_mb"),
+                                "parts": inv.get("parts"),
+                                "top": inv.get("top"),
+                            }
+                            if inv
+                            else None
+                        ),
+                        "corrupt": corrupt,
+                        "deleted": False,
+                        "note": "只讀輕量完整度對質；最大檔≠最正確；未刪。要刪需另令。",
+                    }
+                    body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
             elif route == "/ops/purge-rebuildable-disk":
                 from disk_guard import purge_confirmed_rebuildable
 
