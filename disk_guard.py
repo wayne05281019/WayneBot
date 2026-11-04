@@ -235,6 +235,7 @@ def inventory_data_disk(
     parts: Dict[str, Dict[str, Any]] = {}
     top_candidates: List[Tuple[float, str, str]] = []
     corrupt_n = 0
+    corrupt_files: List[Dict[str, Any]] = []
 
     def _bump_part(label: str, sz: float, cls: str) -> None:
         slot = parts.setdefault(
@@ -311,6 +312,25 @@ def inventory_data_disk(
                 class_files[cls] = int(class_files.get(cls) or 0) + 1
                 if cls == "db_corrupt":
                     corrupt_n += 1
+                    rel = (
+                        _norm(fp)[len(_norm(root)) :].lstrip("/")
+                        or os.path.basename(fp)
+                    )
+                    try:
+                        mtime = os.path.getmtime(fp)
+                    except OSError:
+                        mtime = 0.0
+                    corrupt_files.append(
+                        {
+                            "path": rel,
+                            "name": os.path.basename(fp),
+                            "mb": round(sz, 2),
+                            "mtime": mtime,
+                            "sidecar": bool(
+                                str(name).endswith("-wal") or str(name).endswith("-shm")
+                            ),
+                        }
+                    )
                 _bump_part(_top_label(fp), sz, cls)
                 top_candidates.append((sz, _norm(fp)[len(_norm(root)) :].lstrip("/") or os.path.basename(fp), cls))
     except OSError:
@@ -348,6 +368,30 @@ def inventory_data_disk(
         {"name": k, "mb": round(float(v["mb"]), 2), "files": int(v["files"]), "class": v.get("class")}
         for k, v in sorted(parts.items(), key=lambda kv: float(kv[1]["mb"]), reverse=True)
     ]
+    # 救援副本：先報「若只留最大 1 份本尊＋其 sidecar，其餘可省多少」——不准這裡真刪
+    bodies = [c for c in corrupt_files if not c.get("sidecar")]
+    bodies_sorted = sorted(bodies, key=lambda c: (float(c.get("mb") or 0), float(c.get("mtime") or 0)), reverse=True)
+    keep_name = str(bodies_sorted[0]["name"]) if bodies_sorted else ""
+    keep_prefix = keep_name  # sidecar = keep_name-wal / -shm
+    reclaim = 0.0
+    reclaim_names: List[str] = []
+    for c in corrupt_files:
+        nm = str(c.get("name") or "")
+        if not keep_name:
+            reclaim += float(c.get("mb") or 0)
+            reclaim_names.append(nm)
+            continue
+        if nm == keep_name or nm.startswith(keep_prefix + "-"):
+            continue
+        reclaim += float(c.get("mb") or 0)
+        reclaim_names.append(nm)
+    # 同大小本尊（差 <1MB）標可能重複
+    size_buckets: Dict[str, List[str]] = {}
+    for c in bodies_sorted:
+        key = f"{round(float(c.get('mb') or 0)):.0f}"
+        size_buckets.setdefault(key, []).append(str(c.get("name") or ""))
+    dup_groups = [v for v in size_buckets.values() if len(v) >= 2]
+
     return {
         "durable_mb": round(durable, 2),
         "rebuildable_mb": round(rebuildable, 2),
@@ -355,6 +399,13 @@ def inventory_data_disk(
         "class_files": class_files,
         "corrupt_n": corrupt_n,
         "corrupt_mb": round(float(class_mb["db_corrupt"]), 2),
+        "corrupt_files": sorted(
+            corrupt_files, key=lambda c: float(c.get("mb") or 0), reverse=True
+        )[:40],
+        "corrupt_keep_best": keep_name or None,
+        "corrupt_reclaim_if_keep_best_mb": round(reclaim, 2),
+        "corrupt_reclaim_names": reclaim_names[:40],
+        "corrupt_same_size_groups": dup_groups[:10],
         "parts": parts_out[:40],
         "top": top,
         "teach_keep_ymd": keep_ymd,
@@ -362,6 +413,147 @@ def inventory_data_disk(
         "safe_delete_mb": round(rebuildable, 2),
         "ask_before_delete_mb": round(float(class_mb["db_corrupt"]), 2),
     }
+
+
+def audit_corrupt_copies(
+    db_path: str = "",
+    *,
+    data_dir: str = "",
+) -> Dict[str, Any]:
+    """只讀：列出每份 .corrupt-* 大小／可否開／biaoke／私人列，並估「只留最佳 1 份」可省多少。
+
+    不准刪檔。正式庫本身不進可刪名單。
+    """
+    try:
+        from config import get_db_path
+    except Exception:
+        get_db_path = lambda: os.path.join("data", "wayne_market.db")  # type: ignore
+
+    dbp = db_path or get_db_path()
+    root = data_dir or os.path.dirname(dbp) or "."
+    try:
+        from db_recover import completeness_counts, list_corrupt_candidates
+        from import_health import db_quick_check_ok
+    except Exception as exc:
+        return {"ok": False, "error": f"import:{exc}", "files": []}
+
+    live_mb = _file_mb(dbp) if dbp and os.path.isfile(dbp) else 0.0
+    live_biaoke = live_priv = 0
+    live_ok = False
+    if dbp and os.path.isfile(dbp):
+        try:
+            live_ok = bool(db_quick_check_ok(dbp, min_bytes=1))
+            live_biaoke, live_priv = completeness_counts(dbp)
+        except Exception:
+            live_ok = False
+
+    files: List[Dict[str, Any]] = []
+    for cand in list_corrupt_candidates(dbp):
+        name = os.path.basename(cand)
+        mb = _file_mb(cand)
+        wal_mb = _file_mb(cand + "-wal")
+        shm_mb = _file_mb(cand + "-shm")
+        try:
+            mtime = os.path.getmtime(cand)
+        except OSError:
+            mtime = 0.0
+        readable = False
+        biaoke_n = priv_n = 0
+        try:
+            readable = bool(db_quick_check_ok(cand, min_bytes=1))
+            if readable:
+                biaoke_n, priv_n = completeness_counts(cand)
+        except Exception:
+            readable = False
+        files.append(
+            {
+                "name": name,
+                "mb": round(mb, 2),
+                "wal_mb": round(wal_mb, 2),
+                "shm_mb": round(shm_mb, 2),
+                "total_mb": round(mb + wal_mb + shm_mb, 2),
+                "mtime": mtime,
+                "readable": readable,
+                "biaoke_n": int(biaoke_n),
+                "private_n": int(priv_n),
+            }
+        )
+
+    # 最佳＝可讀優先，再比 biaoke→private→mtime→size
+    ranked = sorted(
+        files,
+        key=lambda r: (
+            1 if r.get("readable") else 0,
+            int(r.get("biaoke_n") or 0),
+            int(r.get("private_n") or 0),
+            float(r.get("mtime") or 0),
+            float(r.get("mb") or 0),
+        ),
+        reverse=True,
+    )
+    keep = ranked[0] if ranked else None
+    keep_name = str(keep["name"]) if keep else None
+    reclaim = 0.0
+    drop: List[str] = []
+    for r in files:
+        nm = str(r.get("name") or "")
+        if keep_name and nm == keep_name:
+            continue
+        reclaim += float(r.get("total_mb") or 0)
+        drop.append(nm)
+
+    # 同大小（四捨五入到 MB）且可讀狀態相同 → 可能重複堆叠
+    buckets: Dict[str, List[str]] = {}
+    for r in files:
+        key = f"{round(float(r.get('mb') or 0)):.0f}|{'R' if r.get('readable') else 'X'}"
+        buckets.setdefault(key, []).append(str(r.get("name") or ""))
+    same_size = [v for v in buckets.values() if len(v) >= 2]
+
+    # 相對正式庫：內容完整度不超過 live 且可讀 → 較像多餘備份
+    dominated = []
+    if live_ok:
+        for r in files:
+            if int(r.get("biaoke_n") or 0) <= int(live_biaoke) and int(
+                r.get("private_n") or 0
+            ) <= int(live_priv):
+                dominated.append(str(r.get("name") or ""))
+
+    return {
+        "ok": True,
+        "root": root,
+        "live": {
+            "path": os.path.basename(dbp),
+            "mb": round(live_mb, 2),
+            "readable": live_ok,
+            "biaoke_n": int(live_biaoke),
+            "private_n": int(live_priv),
+        },
+        "files": ranked,
+        "corrupt_n": len(files),
+        "corrupt_total_mb": round(sum(float(r.get("total_mb") or 0) for r in files), 2),
+        "keep_best": keep_name,
+        "reclaim_if_keep_best_mb": round(reclaim, 2),
+        "drop_if_keep_best": drop,
+        "same_size_groups": same_size,
+        "dominated_by_live": dominated,
+        "note": "只讀估量；未刪。正式庫不刪。若 live 已可讀且完整，drop 清單多半可省。",
+    }
+
+
+def purge_confirmed_rebuildable(
+    *,
+    data_dir: str = "",
+    charts_dir: str = "",
+    db_path: str = "",
+) -> Dict[str, Any]:
+    """立刻刪確定可重建：白名單快取＋過期教具。不碰 DB／corrupt／aux／archive／近窗教具。"""
+    return ensure_disk_headroom(
+        data_dir=data_dir,
+        charts_dir=charts_dir,
+        db_path=db_path,
+        force=True,
+        mode="boot",
+    )
 
 
 def _runway_free_bucket(free_mb: float, warn_free_mb: float, min_free_mb: float) -> str:
@@ -741,6 +933,14 @@ def disk_health_fields(
             fields["disk_safe_delete_mb"] = inv.get("safe_delete_mb")
             fields["disk_corrupt_n"] = inv.get("corrupt_n")
             fields["disk_corrupt_mb"] = inv.get("corrupt_mb")
+            fields["disk_corrupt_files"] = inv.get("corrupt_files")
+            fields["disk_corrupt_keep_best"] = inv.get("corrupt_keep_best")
+            fields["disk_corrupt_reclaim_if_keep_best_mb"] = inv.get(
+                "corrupt_reclaim_if_keep_best_mb"
+            )
+            fields["disk_corrupt_same_size_groups"] = inv.get(
+                "corrupt_same_size_groups"
+            )
             fields["disk_class_mb"] = inv.get("class_mb")
             fields["disk_parts"] = inv.get("parts")
             fields["disk_top"] = inv.get("top")
@@ -1233,9 +1433,11 @@ def ensure_disk_headroom(
 ) -> Dict[str, Any]:
     """開機／白天緊急／午夜例行：清白名單＋可重建教具圖；從不刪私人列。
 
-    - daytime／boot：一律清過期／舊 force-時分教具 PNG；free ＜緊急線才強清白名單
-    - midnight：例行全清白名單＋教具過期圖
-    - 不准追 2.5GB；碟緊不准 VACUUM
+    - boot：一律清確定可重建白名單（memo／pair／scratch／wr／hq）＋過期教具
+      （2026-11-05 使用者鎖：確定可刪就刪，不准乾等緊急線）
+    - daytime：free＜預警線或跑道 need_warn → 同上清白名單；否則只清過期教具
+    - midnight／emergency：全清白名單＋教具過期圖
+    - 不准刪 DB／.corrupt-*／aux／archive／近窗教具；不准追 2.5GB；碟緊不准 VACUUM
     """
     try:
         from config import get_charts_dir, get_db_path
@@ -1254,7 +1456,9 @@ def ensure_disk_headroom(
     target = float(target_free_mb)
     mode_s = str(mode or "").strip().lower()
     is_midnight = mode_s == "midnight"
+    is_boot = mode_s == "boot"
     below_emergency = free < min_free
+    below_warn_free = free < float(DEFAULT_WARN_FREE_MB)
 
     result: Dict[str, Any] = {
         "root": root,
@@ -1276,6 +1480,27 @@ def ensure_disk_headroom(
         logger.exception("教具可重建圖清理失敗")
         teach_stats = {"files": 0, "mb": 0.0, "error": "purge_failed"}
 
+    runway_need = False
+    if not (is_midnight or below_emergency or is_boot or below_warn_free):
+        # 空間尚可時仍看跑道：短跑道／growing 預警 → 清白名單
+        try:
+            est = estimate_disk_runway(
+                data_dir=root,
+                charts_dir=charts,
+                db_path=dbp,
+                min_free_mb=min_free,
+                record=False,
+            )
+            runway_need = bool(est.get("need_warn"))
+            result["runway_precheck"] = {
+                "need_warn": runway_need,
+                "runway_days": est.get("runway_days"),
+                "trend": est.get("trend"),
+            }
+        except Exception:
+            logger.exception("碟跑道預檢失敗")
+            runway_need = False
+
     if is_midnight:
         need = True
         aggressive = True
@@ -1284,8 +1509,16 @@ def ensure_disk_headroom(
         need = True
         aggressive = True
         reason = "emergency"
+    elif is_boot:
+        need = True
+        aggressive = True
+        reason = "boot_safe_purge"
+    elif below_warn_free or runway_need:
+        need = True
+        aggressive = True
+        reason = "warn_safe_purge"
     else:
-        # 白天／開機：空間夠 → 不追趕白名單、不 VACUUM；仍清教具舊圖＋記跑道
+        # 白天：無預警 → 不追白名單、不 VACUUM；仍清教具舊圖＋記跑道
         after_day = disk_usage_mb(root)
         result["after"] = after_day
         result["reason"] = "ok_daytime"
@@ -1307,10 +1540,8 @@ def ensure_disk_headroom(
             result["runway"] = {"skipped": "error"}
         if force and not below_emergency:
             logger.info(
-                "磁碟守衛：白天不追高 free（free %.1f MB ≥ 緊急線 %.0f MB）；"
-                "教具可重建圖清 %s 檔",
+                "磁碟守衛：無預警不追白名單（free %.1f MB）；教具可重建圖清 %s 檔",
                 free,
-                min_free,
                 teach_stats.get("files") or 0,
             )
         return result
