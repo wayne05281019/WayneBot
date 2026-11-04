@@ -176,11 +176,22 @@ def _phase_from_pivots(pivots: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """八循環位階假設：最近若凑滿 motive 則標 impulse；否則若 ABC 則 corrective。"""
     if len(pivots) >= 6:
         m = _iron_motive(pivots)
-        if m.get("ok"):
+        # 自修：僅鐵律過＋擴延比過關才出方向（否則當未確認）
+        if m.get("ok") and m.get("ext_pass"):
             return {
                 "phase": "impulse_12345",
                 "cycle": "8wave_motive_leg",
                 "bias": "up" if m.get("up") else "down",
+                "gate": m,
+            }
+        if m.get("ok"):
+            m = dict(m)
+            m["ok"] = False
+            m["reasons"] = list(m.get("reasons") or []) + ["ext_not_1618"]
+            return {
+                "phase": "impulse_weak",
+                "cycle": "8wave_motive_leg",
+                "bias": "range",
                 "gate": m,
             }
     if len(pivots) >= 4:

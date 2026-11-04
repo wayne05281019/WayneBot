@@ -1,24 +1,24 @@
 {
-  "written_at": "2026-11-04T08:53:37",
+  "written_at": "2026-11-04T08:58:00",
   "tz": "Asia/Taipei",
   "twii_n": 5423,
   "twii_from": "20061102",
   "twii_to": "20261103",
   "fwd_n": 5,
-  "pivot_look": 4,
+  "pivot_look": 3,
   "tracks": {
     "textbook_8cycle": {
       "n_rows": 821,
-      "n_decided": 472,
-      "hit": 211,
-      "miss": 261,
-      "hit_rate": 0.4470338983050847,
+      "n_decided": 363,
+      "hit": 202,
+      "miss": 161,
+      "hit_rate": 0.5564738292011019,
       "gate_n20": true,
       "outcome_counts": {
-        "對": 211,
-        "偏": 261,
+        "對": 202,
+        "偏": 161,
         "未完": 0,
-        "觀望不計分": 349,
+        "觀望不計分": 458,
         "缺柱": 0
       },
       "pot": "實驗室"
@@ -41,8 +41,8 @@
     }
   },
   "adopt": {
-    "pick": "biaoke_degree",
-    "reason": "biaoke hit_rate 0.4483 > textbook 0.4470"
+    "pick": "textbook_8cycle",
+    "reason": "textbook hit_rate 0.5565 > biaoke 0.4483"
   },
   "disagree_n": 1,
   "disagree_sample": [
@@ -57,11 +57,11 @@
     }
   ],
   "self_fix": {
-    "triggered": true,
+    "triggered": false,
     "textbook_miss_reason_top": [
       [
         "bias_wrong",
-        261
+        161
       ]
     ],
     "next_rule_candidates": [
@@ -78,9 +78,8 @@
   "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。",
   "self_fix_runs": [
     {
-      "from_look": 3,
-      "to_look": 4,
-      "why": "textbook miss>hit"
+      "skipped": true,
+      "why": "textbook not miss-dominant"
     }
   ]
 }
