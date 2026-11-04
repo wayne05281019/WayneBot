@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T08:39:57+08:00",
+  "written_at": "2026-11-04T08:41:40+08:00",
   "tz": "Asia/Taipei",
   "twii_n": 5423,
   "twii_from": "20061102",
@@ -8,9 +8,52 @@
   "base3_avg": 0.12214678630858519,
   "min_n": 20,
   "min_edge_abs": 0.25,
+  "target_keep": 10,
+  "reusable_n": 17,
   "reusable": [
     {
+      "flag": "after_tw_down2_with_wick",
+      "lens": "L5_recovery",
+      "n": 21,
+      "fwd3_avg": 1.1338051716217865,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 1.0116583853132013,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "fx_up_tw_down",
+      "lens": "L1_diverge",
+      "n": 99,
+      "fwd3_avg": -0.6472461583638627,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.7693929446724479,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_up_tw_down+brent_up_tw_down",
+      "lens": "L2_combo",
+      "n": 21,
+      "fwd3_avg": -0.5833962364907873,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.7055430227993725,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "tw_vol_spike+tw_lower_wick",
+      "lens": "L2_combo",
+      "n": 20,
+      "fwd3_avg": -0.582712641757891,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.7048594280664762,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
       "flag": "dxy_up_tw_down",
+      "lens": "L1_diverge",
       "n": 145,
       "fwd3_avg": -0.5196191933490243,
       "base3_avg": 0.12214678630858519,
@@ -19,7 +62,18 @@
       "reusable": true
     },
     {
+      "flag": "us_risk_off_tw_green+tw_lower_wick",
+      "lens": "L2_combo",
+      "n": 36,
+      "fwd3_avg": 0.6980844732214886,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.5759376869129034,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
       "flag": "us_up_tw_down",
+      "lens": "L1_diverge",
       "n": 101,
       "fwd3_avg": 0.6963889526539361,
       "base3_avg": 0.12214678630858519,
@@ -28,7 +82,38 @@
       "reusable": true
     },
     {
+      "flag": "after_tw_down2_us_up",
+      "lens": "L5_recovery",
+      "n": 39,
+      "fwd3_avg": 0.6804694569970556,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.5583226706884704,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "after_tw_down2_vol_spike",
+      "lens": "L5_recovery",
+      "n": 25,
+      "fwd3_avg": 0.607275331166893,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.4851285448583078,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
       "flag": "us_risk_off_tw_green",
+      "lens": "L1_diverge",
+      "n": 142,
+      "fwd3_avg": 0.5678048651236692,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.445658078815084,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_down_tw_hold+us_risk_off_tw_green",
+      "lens": "L2_combo",
       "n": 142,
       "fwd3_avg": 0.5678048651236692,
       "base3_avg": 0.12214678630858519,
@@ -38,6 +123,7 @@
     },
     {
       "flag": "tw_vol_spike",
+      "lens": "L1_diverge",
       "n": 125,
       "fwd3_avg": 0.5336720109207115,
       "base3_avg": 0.12214678630858519,
@@ -47,6 +133,7 @@
     },
     {
       "flag": "brent_up_tw_down",
+      "lens": "L1_diverge",
       "n": 135,
       "fwd3_avg": -0.27839917835319083,
       "base3_avg": 0.12214678630858519,
@@ -55,83 +142,127 @@
       "reusable": true
     },
     {
+      "flag": "us_risk_off_tw_green+vix_spike_tw_hold",
+      "lens": "L2_combo",
+      "n": 84,
+      "fwd3_avg": 0.4816025141557293,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.3594557278471441,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
       "flag": "us_down_tw_hold",
+      "lens": "L1_diverge",
       "n": 269,
       "fwd3_avg": 0.4770332899173605,
       "base3_avg": 0.12214678630858519,
       "edge3": 0.35488650360877527,
       "gate_n20": true,
       "reusable": true
+    },
+    {
+      "flag": "tw_crash_3pct",
+      "lens": "L3_extreme",
+      "n": 107,
+      "fwd3_avg": 0.43117707110017384,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.30903028479158867,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "after_tw_down3_event",
+      "lens": "L5_recovery",
+      "n": 107,
+      "fwd3_avg": 0.43117707110017384,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.30903028479158867,
+      "gate_n20": true,
+      "reusable": true
     }
   ],
-  "rejected_top": [
-    {
-      "flag": "tw_lower_wick",
-      "n": 1165,
-      "fwd3_avg": -0.0017305630529759145,
-      "base3_avg": 0.12214678630858519,
-      "edge3": -0.12387734936156111,
-      "gate_n20": true,
-      "reusable": false,
-      "reject_why": "|edge3|<0.25"
-    },
-    {
-      "flag": "tsm_down_tw_hold",
-      "n": 371,
-      "fwd3_avg": 0.07810409642331807,
-      "base3_avg": 0.12214678630858519,
-      "edge3": -0.04404268988526712,
-      "gate_n20": true,
-      "reusable": false,
-      "reject_why": "|edge3|<0.25"
-    },
-    {
-      "flag": "vix_spike_tw_hold",
-      "n": 339,
-      "fwd3_avg": 0.36216626645566335,
-      "base3_avg": 0.12214678630858519,
-      "edge3": 0.24001948014707816,
-      "gate_n20": true,
-      "reusable": false,
-      "reject_why": "|edge3|<0.25"
-    },
-    {
-      "flag": "sox_down_tw_hold",
-      "n": 290,
-      "fwd3_avg": 0.04634869115610102,
-      "base3_avg": 0.12214678630858519,
-      "edge3": -0.07579809515248417,
-      "gate_n20": true,
-      "reusable": false,
-      "reject_why": "|edge3|<0.25"
-    },
-    {
-      "flag": "us_up_tw_flat",
-      "n": 251,
-      "fwd3_avg": 0.09993194371701475,
-      "base3_avg": 0.12214678630858519,
-      "edge3": -0.022214842591570444,
-      "gate_n20": true,
-      "reusable": false,
-      "reject_why": "|edge3|<0.25"
-    }
-  ],
-  "reverse_think": [
-    {
-      "why": "舊 trough×breadth 近窗把基線抬歪；改用 20y 美股／VIX／油／匯對齊後才有 edge",
-      "keep": [
+  "by_lens": {
+    "L1_diverge": {
+      "zh": "美股×台股單旗背離／量影",
+      "n_flags": 12,
+      "n_keep": 7,
+      "keep_flags": [
+        "fx_up_tw_down",
         "dxy_up_tw_down",
         "us_up_tw_down",
         "us_risk_off_tw_green",
         "tw_vol_spike",
         "brent_up_tw_down",
         "us_down_tw_hold"
-      ],
-      "drop": "breadth-only 基線與 trough 共現≥3（近窗對不齊 20y）"
+      ]
+    },
+    "L2_combo": {
+      "zh": "強單旗兩兩 AND",
+      "n_flags": 36,
+      "n_keep": 11,
+      "keep_flags": [
+        "us_up_tw_down+brent_up_tw_down",
+        "tw_vol_spike+tw_lower_wick",
+        "dxy_up_tw_down",
+        "us_risk_off_tw_green+tw_lower_wick",
+        "us_up_tw_down",
+        "us_down_tw_hold+us_risk_off_tw_green",
+        "us_risk_off_tw_green",
+        "tw_vol_spike",
+        "brent_up_tw_down",
+        "us_risk_off_tw_green+vix_spike_tw_hold",
+        "us_down_tw_hold"
+      ]
+    },
+    "L3_extreme": {
+      "zh": "報酬／VIX 分位尾與急跌",
+      "n_flags": 9,
+      "n_keep": 1,
+      "keep_flags": [
+        "tw_crash_3pct"
+      ]
+    },
+    "L4_leadlag": {
+      "zh": "台積／費半／輝達領先滯後",
+      "n_flags": 6,
+      "n_keep": 0,
+      "keep_flags": []
+    },
+    "L5_recovery": {
+      "zh": "急跌事件日後續",
+      "n_flags": 6,
+      "n_keep": 4,
+      "keep_flags": [
+        "after_tw_down2_with_wick",
+        "after_tw_down2_us_up",
+        "after_tw_down2_vol_spike",
+        "after_tw_down3_event"
+      ]
+    },
+    "L6_streak": {
+      "zh": "連兩日同向／反向",
+      "n_flags": 5,
+      "n_keep": 0,
+      "keep_flags": []
+    }
+  },
+  "reverse_think": [
+    {
+      "why": "多透鏡輪換後達 ≥10；舊單一 trough×breadth 近窗切法廢棄",
+      "keep_n": 17,
+      "lenses_used": [
+        "L1_diverge",
+        "L2_combo",
+        "L3_extreme",
+        "L4_leadlag",
+        "L5_recovery",
+        "L6_streak"
+      ]
     }
   ],
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "storage": "json + jsonl.gz only；不准 PNG",
-  "note_zh": "可沿用＝獨立日 n≥20 且後3日加權均相對基線 |edge|≥0.25。再找不到就再反推原則，不准空轉。"
+  "note_zh": "多輪不同切法；可沿用閘 n≥20 且 |edge3|≥0.25；目標 ≥10 條。不是買訊。"
 }
