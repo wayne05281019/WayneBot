@@ -1,0 +1,86 @@
+{
+  "written_at": "2026-11-04T08:53:37",
+  "tz": "Asia/Taipei",
+  "twii_n": 5423,
+  "twii_from": "20061102",
+  "twii_to": "20261103",
+  "fwd_n": 5,
+  "pivot_look": 4,
+  "tracks": {
+    "textbook_8cycle": {
+      "n_rows": 821,
+      "n_decided": 472,
+      "hit": 211,
+      "miss": 261,
+      "hit_rate": 0.4470338983050847,
+      "gate_n20": true,
+      "outcome_counts": {
+        "對": 211,
+        "偏": 261,
+        "未完": 0,
+        "觀望不計分": 349,
+        "缺柱": 0
+      },
+      "pot": "實驗室"
+    },
+    "biaoke_degree": {
+      "n_rows": 71,
+      "n_decided": 58,
+      "hit": 26,
+      "miss": 32,
+      "hit_rate": 0.4482758620689655,
+      "gate_n20": true,
+      "outcome_counts": {
+        "對": 26,
+        "偏": 32,
+        "未完": 1,
+        "觀望不計分": 5,
+        "缺柱": 7
+      },
+      "pot": "他說／飆預測"
+    }
+  },
+  "adopt": {
+    "pick": "biaoke_degree",
+    "reason": "biaoke hit_rate 0.4483 > textbook 0.4470"
+  },
+  "disagree_n": 1,
+  "disagree_sample": [
+    {
+      "as_of": "20260729",
+      "textbook_bias": "up",
+      "textbook_verdict": "對",
+      "biaoke_bias": "down",
+      "biaoke_tag": "波浪四",
+      "biaoke_verdict": "偏",
+      "actual": "up"
+    }
+  ],
+  "self_fix": {
+    "triggered": true,
+    "textbook_miss_reason_top": [
+      [
+        "bias_wrong",
+        261
+      ]
+    ],
+    "next_rule_candidates": [
+      "pivot_look 3→4／5 重跑",
+      "FWD_N 5→3 對齊當日盤勢軌",
+      "impulse 未過鐵律不准出方向（改觀望）",
+      "down_done／A波低 對質窗改 FWD_N=3"
+    ],
+    "note_zh": "偏多於對→自己改切法再生；不等使用者提醒。"
+  },
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "wave_neurons_match": false,
+  "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。",
+  "self_fix_runs": [
+    {
+      "from_look": 3,
+      "to_look": 4,
+      "why": "textbook miss>hit"
+    }
+  ]
+}
