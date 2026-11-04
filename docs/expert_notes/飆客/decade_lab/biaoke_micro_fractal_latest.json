@@ -1,0 +1,14 @@
+{
+  "written_at": "2026-11-04T14:15:55",
+  "tz": "Asia/Taipei",
+  "n_micro_posts": 172,
+  "n_decided": 74,
+  "hit": 31,
+  "miss": 43,
+  "hit_rate": 0.4189189189189189,
+  "gate_n20": true,
+  "rule_zh": "細微波／碎形只驗證他點過的大盤語；個股不數浪",
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false
+}

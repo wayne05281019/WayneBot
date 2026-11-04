@@ -21,6 +21,8 @@ def test_investor_contract_and_factor_pack():
         "tx_night_ret",
         "fib_near_0618_support",
         "chips_margin_delta_z",
+        "wave_bias",
+        "wave_phase",
     ):
         assert k in FACTOR_PACK
 

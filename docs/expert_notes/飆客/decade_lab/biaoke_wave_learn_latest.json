@@ -1,0 +1,135 @@
+{
+  "written_at": "2026-11-04T14:15:56",
+  "tz": "Asia/Taipei",
+  "purpose_zh": "驗證學習：波浪（含細微波／碎形）＋飆大五件＋他說過的全部；服務大盤方向＋幅度主判；不是買訊",
+  "corpus": {
+    "n_posts_spoken": 3501,
+    "n_with_five_tool": 1369,
+    "n_with_micro_fractal": 172,
+    "pct_five": 0.391,
+    "pct_micro": 0.0491,
+    "learn_scope_zh": "主文＋樓下自回全部；路人正文不當他的判斷"
+  },
+  "five_cooccur": {
+    "written_at": "2026-11-04T14:15:55",
+    "tz": "Asia/Taipei",
+    "n_posts": 3501,
+    "counts": {
+      "ge1": 1369,
+      "ge3": 104,
+      "ge4": 14,
+      "all5": 2
+    },
+    "samples": [
+      {
+        "post_id": "175075735",
+        "date": "20251121",
+        "tags": [
+          "wave",
+          "morph",
+          "vol",
+          "keyk"
+        ],
+        "snip": "我這一次犯了一個錯誤，輕忽11/5台積電的高檔出大量，其實當時就有注意。但大盤當天沒出大量還留下引線，因此犯了致命疏忽。\n結論用台積電來進行量價結構分析更能準確整體台股的走向。\n在此對長期追蹤我的粉絲致歉，但經過這一次檢討，只會使我的技術分"
+      },
+      {
+        "post_id": "176162083",
+        "date": "20260114",
+        "tags": [
+          "wave",
+          "morph",
+          "vol",
+          "keyk"
+        ],
+        "snip": "現在最重要是台積電的星期四法說股價反應，台積電法說之後星期五股價一定會爆大量，問題是爆大量上漲收紅還是大黑K棒，等於台股未來是否能夠續漲的攤牌。因為我用目前的波浪位階來看，目前台積電及大盤的波浪位階是定位在5，台積電的上漲目標價很難突破17"
+      }
+    ],
+    "note_zh": "五件叠同一則＝交叉候選；仍須官方柱對質才算學成",
+    "not_buy_signal": true
+  },
+  "five_bt": {
+    "written_at": "2026-11-04T14:15:56",
+    "tz": "Asia/Taipei",
+    "source": "biaoke_five_bt",
+    "n_posts": 3501,
+    "n_tool": 1340,
+    "last_official": "20261103",
+    "tools": {
+      "wave": {
+        "n": 204,
+        "hit": 137,
+        "miss": 63,
+        "pending": 4,
+        "hit_rate": 0.685,
+        "gate_n20": true
+      },
+      "morph": {
+        "n": 164,
+        "hit": 35,
+        "miss": 129,
+        "pending": 0,
+        "hit_rate": 0.21341463414634146,
+        "gate_n20": true
+      },
+      "vol": {
+        "n": 807,
+        "hit": 508,
+        "miss": 253,
+        "pending": 46,
+        "hit_rate": 0.6675427069645203,
+        "gate_n20": true
+      },
+      "keyk": {
+        "n": 11,
+        "hit": 3,
+        "miss": 7,
+        "pending": 1,
+        "hit_rate": 0.3,
+        "gate_n20": false
+      },
+      "leader": {
+        "n": 92,
+        "hit": 53,
+        "miss": 38,
+        "pending": 1,
+        "hit_rate": 0.5824175824175825,
+        "gate_n20": true
+      }
+    },
+    "five_zh": [
+      "波浪",
+      "形態",
+      "量價結構",
+      "關鍵K",
+      "碎形線"
+    ],
+    "not_buy_signal": true,
+    "phone_sync": "blocked",
+    "WAVE_NEURONS_MATCH": false
+  },
+  "micro_fractal": {
+    "n_decided": 74,
+    "hit_rate": 0.4189189189189189,
+    "gate_n20": true
+  },
+  "wave8_structure": {
+    "ok": true,
+    "adopt": "textbook_8cycle",
+    "textbook_hit": 0.7441860465116279,
+    "textbook_n": 43,
+    "biaoke_hit": 0.46551724137931033,
+    "biaoke_n": 58,
+    "structural_primary": "wave",
+    "phone_sync": "blocked",
+    "WAVE_NEURONS_MATCH": false
+  },
+  "learn_ready_for_phone": false,
+  "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false,
+  "not_buy_signal": true,
+  "next_zh": [
+    "細微波未過閘→續收他點過的大盤細微波句對官方柱",
+    "五件交叉日另對質同日官方柱（叠位）",
+    "WAVE_NEURONS_MATCH 未真對齊前不准上話筒、不准發明 5／9"
+  ]
+}

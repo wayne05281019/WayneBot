@@ -48,6 +48,10 @@ INVESTOR_OUTPUT = (
 
 # 我負責納入的因素包（正反：預測要準＋錯了能歸因）
 FACTOR_PACK = (
+    # A0 波浪主結構（教課書八循環；飆大軌另對質）
+    "wave_bias",
+    "wave_phase",
+    "wave_ok",
     # A 結構
     "twii_ret",
     "twii_wick",
@@ -285,6 +289,14 @@ def _load_edge_votes() -> Dict[str, float]:
             votes[k] = float(v)
     except Exception:
         pass
+    # 宏觀／ADR／跳空／基差／背離加測包（過閘才進；波浪主判外確認）
+    try:
+        from scripts.decade_lab_path_extras import load_extras_votes
+
+        for k, v in load_extras_votes().items():
+            votes[k] = float(v)
+    except Exception:
+        pass
     return votes
 
 
@@ -507,21 +519,55 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
     add("chips_tx_oi_rise", bool(factors.get("chips_tx_oi_rise")))
     add("chips_short_z_ge_p1", bool(factors.get("chips_short_z_ge_p1")))
     add("chips_short_z_le_m1", bool(factors.get("chips_short_z_le_m1")))
+    # 加測包：宏觀／跳空／連漲跌／ADR／基差／背離
+    add("tw_down_streak_ge3", bool(factors.get("tw_down_streak_ge3")))
+    add("tw_up_streak_ge3", bool(factors.get("tw_up_streak_ge3")))
+    add("tw_gap_up_ge_0_8", bool(factors.get("tw_gap_up_ge_0_8")))
+    add("tw_gap_dn_le_m0_8", bool(factors.get("tw_gap_dn_le_m0_8")))
+    add("us10y_up_tw_down", bool(factors.get("us10y_up_tw_down")))
+    add("yen_up_tw_down", bool(factors.get("yen_up_tw_down")))
+    add("gold_up_risk_off", bool(factors.get("gold_up_risk_off")))
+    add("copper_down_risk_off", bool(factors.get("copper_down_risk_off")))
+    add("vix_z_ge_p1", bool(factors.get("vix_z_ge_p1")))
+    add("vix_z_le_m1", bool(factors.get("vix_z_le_m1")))
+    add("us_tw_diverge_2d", bool(factors.get("us_tw_diverge_2d")))
+    add("adr_tw_lag", bool(factors.get("adr_tw_lag")))
+    add("adr_tw_lead", bool(factors.get("adr_tw_lead")))
+    add("tx_contango_ge_0_4", bool(factors.get("tx_contango_ge_0_4")))
+    add("tx_backward_le_m0_4", bool(factors.get("tx_backward_le_m0_4")))
     return lit
 
 
 def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str, float]) -> Dict[str, Any]:
-    """產出投資人要的預測列。因素不夠仍給 bias，但標 reviewable=false。"""
+    """產出投資人要的預測列。因素不夠仍給 bias，但標 reviewable=false。
+
+    主判順序（鎖死）：波浪結構 → 再疊法人／籌碼／切割／宏觀確認或否決。
+    飆大軌另對質學習；不准雜訊票蓋掉波浪主判。
+    """
     last = None
     # last_close must be passed via factors helper — caller fills
     lit = _lit_why(factors, votes)
     score = sum(float(x["edge"]) for x in lit)
+    wave_bias = str(factors.get("wave_bias") or "")
+    wave_ok = bool(factors.get("wave_ok"))
     # 結構微調：大跌＋下影偏多；美元／油漲＋台跌偏空已在票裡
     if score > 0.35:
         bias = "up"
     elif score < -0.35:
         bias = "down"
     else:
+        bias = "range"
+    # 波浪主結構：有明確方向時，弱雜訊票不准蓋掉；分數空窗則跟波浪
+    if wave_ok and wave_bias in {"up", "down"}:
+        lit = list(lit) + [{"code": f"wave_struct_{wave_bias}", "edge": 0.85 if wave_bias == "up" else -0.85}]
+        score = sum(float(x["edge"]) for x in lit)
+        if abs(score) < 1.10 and bias != wave_bias:
+            # 雜訊與波浪打架且不夠強 → 跟波浪
+            bias = wave_bias
+        elif bias == "range":
+            bias = wave_bias
+    elif wave_ok and wave_bias == "range" and abs(score) < 0.90:
+        # 波浪觀望時，弱票也不硬出方向
         bias = "range"
     # 飆大參考：高檔爆巨量後中期偏橫整——短窗分數不夠強就改觀望（不是自動空）
     near_ath = (_f(factors.get("mtf_dist_ath_pct")) or -99) >= -5.0
@@ -758,6 +804,35 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         usdtwd = _load_sym(conn, "USDTWD")
         brent = _load_sym(conn, "BRENT")
         tx_night = _load_tx_night(conn)
+        us10y = _load_sym(conn, "US10Y")
+        usdjpy = _load_sym(conn, "USDJPY")
+        gold = _load_sym(conn, "GOLD")
+        copper = _load_sym(conn, "COPPER")
+        # 2330 日K（ADR 對照）
+        tw2330: Dict[str, Dict[str, float]] = {}
+        _prev2330 = None
+        for _d, _c in conn.execute(
+            "SELECT REPLACE(CAST(date AS TEXT),'-',''), close FROM daily_quotes WHERE stock_id='2330' ORDER BY 1"
+        ):
+            _day = _ymd(_d)
+            _cc = _f(_c)
+            if not _day or not _cc:
+                continue
+            _ret = ((_cc / _prev2330 - 1.0) * 100.0) if _prev2330 else None
+            tw2330[_day] = {"close": _cc, "ret": _ret or 0.0, "ret_ok": _ret is not None}
+            _prev2330 = _cc
+        tx_night_px: Dict[str, float] = {}
+        try:
+            for _d, _c in conn.execute(
+                "SELECT REPLACE(CAST(date AS TEXT),'-',''), close FROM futures_daily "
+                "WHERE symbol='TX' AND session='night'"
+            ):
+                _day = _ymd(_d)
+                _cc = _f(_c)
+                if _day and _cc:
+                    tx_night_px[_day] = _cc
+        except sqlite3.Error:
+            pass
 
         tw_days = sorted(twii.keys())
         # segment horizon＝後 3 根；預測日用「當日收盤後」視角對下一窗（用當日因素預測未來，對質用後3日收）
@@ -772,6 +847,20 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         inst_lit_days = 0
         fib_lit_days = 0
         chips_lit_days = 0
+        wave_lit_days = 0
+        # 波浪主結構快取（TWII 柱＋樞紐一次）
+        try:
+            from scripts.decade_lab_wave8_dual import (
+                _load_twii as _wave_twii,
+                _pivots as _wave_pivots,
+                snapshot_wave_asof,
+            )
+
+            run_backtest._wave_bars = _wave_twii(conn)  # type: ignore[attr-defined]
+            run_backtest._wave_pivots = _wave_pivots(run_backtest._wave_bars)  # type: ignore[attr-defined]
+        except Exception:
+            run_backtest._wave_bars = []  # type: ignore[attr-defined]
+            run_backtest._wave_pivots = []  # type: ignore[attr-defined]
         for day in days:
             if day not in twii or not twii[day].get("ret_ok"):
                 continue
@@ -791,6 +880,20 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             )
             if not factors:
                 continue
+            # 波浪＝主結構
+            try:
+                w = snapshot_wave_asof(
+                    run_backtest._wave_bars,  # type: ignore[attr-defined]
+                    run_backtest._wave_pivots,  # type: ignore[attr-defined]
+                    day,
+                )
+                factors["wave_bias"] = w.get("bias") or "range"
+                factors["wave_phase"] = w.get("phase")
+                factors["wave_ok"] = bool(w.get("ok"))
+                factors["wave_gate_ok"] = bool(w.get("gate_ok"))
+                factors["wave_htf_ok"] = bool(w.get("htf_ok"))
+            except Exception:
+                missing.append("wave_snapshot")
             inst_f, inst_m = snapshot_inst_factors(conn, day)
             factors.update(inst_f)
             missing.extend(inst_m)
@@ -857,6 +960,28 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             factors["fib_upper_x_limit_up"] = bool(
                 factors.get("fib_upper_third") and factors.get("chips_limit_up_ge_20")
             )
+            try:
+                from scripts.decade_lab_path_extras import snapshot_extras
+
+                ex_f, ex_m = snapshot_extras(
+                    twii=twii,
+                    ixic=ixic,
+                    sox=sox,
+                    vix=vix,
+                    us10y=us10y,
+                    usdjpy=usdjpy,
+                    gold=gold,
+                    copper=copper,
+                    tsm=tsm,
+                    tw2330=tw2330,
+                    tx_night_px=tx_night_px,
+                    tw_days=tw_days,
+                    as_of=day,
+                )
+                factors.update(ex_f)
+                missing.extend(ex_m)
+            except Exception:
+                missing.append("extras_snapshot")
             decision = decide_path(factors, missing, votes)
             why_codes = [str(x.get("code") or "") for x in (decision.get("why") or [])]
             if any(c.startswith("inst_") for c in why_codes):
@@ -865,6 +990,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 fib_lit_days += 1
             if any(c.startswith("chips_") for c in why_codes):
                 chips_lit_days += 1
+            if any(c.startswith("wave_") for c in why_codes):
+                wave_lit_days += 1
             last = twii[day]["close"]
             # 近 20 日 |ret| 均（as-of 前，不含未來）
             i0 = tw_days.index(day)
@@ -902,6 +1029,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 "bias": decision["bias"],
                 "amp_pct": amp_pct,
                 "amp_class": amp_info.get("amp_class"),
+                "regime": factors.get("regime") or "",
+                "wave_phase": factors.get("wave_phase") or "",
                 "last_close": last,
                 "target": tgt,
                 "invalidate": inv,
@@ -931,6 +1060,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                         "amp_verdict": amp_verd,
                         "score": decision["score"],
                         "why": decision["why"],
+                        "regime": factors.get("regime") or "",
+                        "wave_phase": factors.get("wave_phase") or "",
                     }
                 )
         lab.commit()
@@ -969,6 +1100,17 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 "miss": am,
                 "hit_rate": (ah / (ah + am)) if (ah + am) else None,
             }
+        by_regime: Dict[str, Any] = {}
+        for reg in ("bull", "bear", "chop"):
+            sub = [r for r in dir_rows if r.get("regime") == reg]
+            h = sum(1 for r in sub if "對得上" in r["verdict"])
+            m = sum(1 for r in sub if "偏了" in r["verdict"])
+            by_regime[reg] = {
+                "n": h + m,
+                "hit": h,
+                "miss": m,
+                "hit_rate": (h / (h + m)) if (h + m) else None,
+            }
         summary = {
             "written_at": _now(),
             "tz": "Asia/Taipei",
@@ -992,20 +1134,29 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "amp_mae_pct": round(mae, 4) if mae is not None else None,
             "by_bias": by_bias,
             "by_amp_class": by_amp_class,
+            "by_regime": by_regime,
             "inst_lit_days": inst_lit_days,
             "inst_votes": sorted(k for k in votes if str(k).startswith("inst_")),
             "fib_lit_days": fib_lit_days,
             "fib_votes": sorted(k for k in votes if str(k).startswith("fib_")),
             "chips_lit_days": chips_lit_days,
             "chips_votes": sorted(k for k in votes if str(k).startswith("chips_")),
+            "wave_lit_days": wave_lit_days,
+            "structural_primary": "wave",
+            "biaoke_learn": "見 biaoke_wave_learn_latest（五件／細微波／他說過的）",
             "gate_n20": (hit + miss) >= 20,
+            "purpose_zh": (
+                "預判大盤方向＋幅度；波浪主結構；飆大五件／細微波／他說過的並列學習對質；"
+                "法人外資必進；錯了能歸因；不足記缺口再測；不是買訊不上話筒"
+            ),
             "reverse_think_zh": (
-                "目標是漲勢＋幅度。法人／投信／黃金切割／籌碼多面向票必用；"
-                "幅度偏了回查波動／夜盤／外圍／法人／切割跨度。"
+                "波浪主判→法人／籌碼／切割／宏觀確認或否決；飆大軌另學另比。"
+                "幅度偏了回查波動／夜盤／外圍／法人／切割跨度／波浪相位。"
                 "range＝觀望不計分。因素不足→factor_gap_queue。"
             ),
             "not_buy_signal": True,
             "phone_sync": "blocked",
+            "WAVE_NEURONS_MATCH": False,
             "storage": "decade_lab.path_forecast + json/gz；不准 PNG",
         }
         lab.close()

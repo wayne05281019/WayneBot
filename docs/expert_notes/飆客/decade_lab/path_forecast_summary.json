@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T12:02:07",
+  "written_at": "2026-11-04T14:18:36",
   "tz": "Asia/Taipei",
   "goal_zh": "預判大盤漲勢（方向）及幅度",
   "investor_output": [
@@ -15,6 +15,9 @@
     "why_codes"
   ],
   "factor_pack": [
+    "wave_bias",
+    "wave_phase",
+    "wave_ok",
     "twii_ret",
     "twii_wick",
     "twii_vol_spike",
@@ -61,29 +64,29 @@
     "chips_short_z"
   ],
   "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。",
-  "wrote": 500,
-  "scored_n": 105,
-  "directional_n": 105,
-  "hit": 64,
-  "miss": 41,
-  "hit_rate_directional": 0.6095238095238096,
-  "amp_n": 64,
-  "amp_hit": 38,
-  "amp_miss": 26,
-  "hit_rate_amplitude": 0.59375,
-  "amp_mae_pct": 1.5443,
+  "wrote": 5419,
+  "scored_n": 77,
+  "directional_n": 77,
+  "hit": 56,
+  "miss": 21,
+  "hit_rate_directional": 0.7272727272727273,
+  "amp_n": 56,
+  "amp_hit": 35,
+  "amp_miss": 21,
+  "hit_rate_amplitude": 0.625,
+  "amp_mae_pct": 1.6844,
   "by_bias": {
     "up": {
-      "n": 70,
-      "hit": 44,
-      "miss": 26,
-      "hit_rate": 0.6285714285714286
+      "n": 69,
+      "hit": 50,
+      "miss": 19,
+      "hit_rate": 0.7246376811594203
     },
     "down": {
-      "n": 35,
-      "hit": 20,
-      "miss": 15,
-      "hit_rate": 0.5714285714285714
+      "n": 8,
+      "hit": 6,
+      "miss": 2,
+      "hit_rate": 0.75
     }
   },
   "by_amp_class": {
@@ -94,25 +97,45 @@
       "hit_rate": null
     },
     "small": {
-      "n": 3,
-      "hit": 2,
-      "miss": 1,
-      "hit_rate": 0.6666666666666666
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate": null
     },
     "mid": {
-      "n": 42,
-      "hit": 25,
-      "miss": 17,
-      "hit_rate": 0.5952380952380952
+      "n": 26,
+      "hit": 17,
+      "miss": 9,
+      "hit_rate": 0.6538461538461539
     },
     "large": {
-      "n": 19,
-      "hit": 11,
-      "miss": 8,
-      "hit_rate": 0.5789473684210527
+      "n": 30,
+      "hit": 18,
+      "miss": 12,
+      "hit_rate": 0.6
     }
   },
-  "inst_lit_days": 30,
+  "by_regime": {
+    "bull": {
+      "n": 33,
+      "hit": 24,
+      "miss": 9,
+      "hit_rate": 0.7272727272727273
+    },
+    "bear": {
+      "n": 15,
+      "hit": 14,
+      "miss": 1,
+      "hit_rate": 0.9333333333333333
+    },
+    "chop": {
+      "n": 29,
+      "hit": 18,
+      "miss": 11,
+      "hit_rate": 0.6206896551724138
+    }
+  },
+  "inst_lit_days": 105,
   "inst_votes": [
     "inst_trust_z_ge_p1"
   ],
@@ -124,9 +147,14 @@
     "chips_margin_kill_2d",
     "chips_margin_z_le_m1"
   ],
+  "wave_lit_days": 621,
+  "structural_primary": "wave",
+  "biaoke_learn": "見 biaoke_wave_learn_latest（五件／細微波／他說過的）",
   "gate_n20": true,
-  "reverse_think_zh": "目標是漲勢＋幅度。法人／投信／黃金切割／籌碼多面向票必用；幅度偏了回查波動／夜盤／外圍／法人／切割跨度。range＝觀望不計分。因素不足→factor_gap_queue。",
+  "purpose_zh": "預判大盤方向＋幅度；波浪主結構；飆大五件／細微波／他說過的並列學習對質；法人外資必進；錯了能歸因；不足記缺口再測；不是買訊不上話筒",
+  "reverse_think_zh": "波浪主判→法人／籌碼／切割／宏觀確認或否決；飆大軌另學另比。幅度偏了回查波動／夜盤／外圍／法人／切割跨度／波浪相位。range＝觀望不計分。因素不足→factor_gap_queue。",
   "not_buy_signal": true,
   "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false,
   "storage": "decade_lab.path_forecast + json/gz；不准 PNG"
 }
