@@ -430,17 +430,19 @@ def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
         runs={
             "screen-20260902": "success",
             "midday-20260902": "computed",
+            # 融合鍵＝fuse_end：16:30 後才是當日；14:00 會讀昨開市日鍵
             "20260902": "success",
         },
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    now = datetime(2026, 9, 2, 14, 0)
+    now = datetime(2026, 9, 2, 17, 0)
     stamps = pipeline_stamps(path, now=now)
     assert stamps["morning_screen"]["delivered"] is True
     assert stamps["morning_screen"]["status"] == "success"
     assert stamps["morning_screen"]["finished_at"]
     assert stamps["midday_review"]["delivered"] is False
     assert stamps["midday_review"]["status"] == "computed"
+    assert stamps["increment"]["key"] == "20260902"
     assert stamps["increment"]["status"] == "success"
     assert "delivered" not in stamps["increment"]
 
@@ -531,6 +533,10 @@ def test_watchdog_scan_alerts_on_stale_release(tmp_path, monkeypatch):
         runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    # 融合 success 要柱齊才不當漏（假 success 閘）；本測只盯 release
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *a, **k: "20260902"
+    )
     now = datetime(2026, 9, 2, 19, 0)
     old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))
     monkeypatch.setattr(requests, "head", _fake_head(old))
@@ -553,6 +559,9 @@ def test_watchdog_release_check_can_be_disabled(tmp_path, monkeypatch):
         runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *a, **k: "20260902"
+    )
     now = datetime(2026, 9, 2, 19, 0)
     old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))
     monkeypatch.setattr(requests, "head", _fake_head(old))
