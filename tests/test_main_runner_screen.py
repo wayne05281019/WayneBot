@@ -757,7 +757,7 @@ def test_midday_does_not_mark_when_telegram_rejects(tmp_path, monkeypatch):
     runner.chat_id = "9001"
     runner.bot = object()
     runner.token = "x"
-    runner._broadcast_family = lambda _t: False
+    runner._broadcast_family_once = lambda *_a, **_k: 0
     runner.send_telegram_message = lambda *_a, **_k: False
     monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
     monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
@@ -786,7 +786,9 @@ def test_midday_claim_blocks_second_push(tmp_path, monkeypatch):
         r.chat_id = "9001"
         r.bot = object()
         r.token = "x"
-        r._broadcast_family = lambda t: sent.append(t) or True
+        r._broadcast_family_once = (
+            lambda t, pipeline_key="", kind="midday": sent.append(t) or 1
+        )
         return r
 
     monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
@@ -819,7 +821,9 @@ def test_midday_always_claims_even_when_skip_if_done_false(tmp_path, monkeypatch
         r.chat_id = "9001"
         r.bot = object()
         r.token = "x"
-        r._broadcast_family = lambda t: sent.append(t) or True
+        r._broadcast_family_once = (
+            lambda t, pipeline_key="", kind="midday": sent.append(t) or 1
+        )
         return r
 
     monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
@@ -852,7 +856,9 @@ def test_midday_stale_running_does_not_resend(tmp_path, monkeypatch):
     runner.chat_id = "9001"
     runner.bot = object()
     runner.token = "x"
-    runner._broadcast_family = lambda t: sent.append(t) or True
+    runner._broadcast_family_once = (
+        lambda t, pipeline_key="", kind="midday": sent.append(t) or 1
+    )
 
     monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
     monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
@@ -889,7 +895,9 @@ def test_midday_computed_allows_one_retry(tmp_path, monkeypatch):
     runner.chat_id = "9001"
     runner.bot = object()
     runner.token = "x"
-    runner._broadcast_family = lambda t: sent.append(t) or True
+    runner._broadcast_family_once = (
+        lambda t, pipeline_key="", kind="midday": sent.append(t) or 1
+    )
 
     monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
     monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
@@ -2021,7 +2029,14 @@ def test_midday_records_delivery_before_mark(tmp_path, monkeypatch):
         "midday_review.run_midday_review",
         lambda *_a, **_k: {"html": "<b>比價</b>"},
     )
-    monkeypatch.setattr(runner, "_broadcast_family", lambda *_a, **_k: True)
+
+    def _once(_text, pipeline_key="", kind="midday"):
+        runner.record_whitelist_push(
+            str(pipeline_key), kind=kind, n_ok=2, notes=kind
+        )
+        return 2
+
+    monkeypatch.setattr(runner, "_broadcast_family_once", _once)
     monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["1", "2"])
 
     def _boom(*_a, **_k):
@@ -2039,6 +2054,81 @@ def test_midday_records_delivery_before_mark(tmp_path, monkeypatch):
         )
         is False
     )
+
+
+def test_midday_partial_family_success_latches_no_resend(tmp_path, monkeypatch):
+    """一人成功一人失敗：仍落回執＋success，補跑不准把成功的人再洗一輪。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "midday-partial.db")
+    ensure_core_schema(path)
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261104"
+    runner.chat_id = "9001"
+    runner.bot = object()
+    runner.token = "x"
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261103"
+    )
+    monkeypatch.setattr(
+        "midday_review.run_midday_review",
+        lambda *_a, **_k: {"html": "<b>12:45 雙時段比價</b>", "line_share": ""},
+    )
+    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["9001", "8772209416"])
+    calls = []
+
+    def _send(text, chat_id=None):
+        calls.append(str(chat_id))
+        # 偉權成功；哥哥一直失敗（同輪會再試一次）
+        return str(chat_id) == "9001"
+
+    runner.send_telegram_message = _send  # type: ignore
+    assert runner.run_midday_review(skip_if_done=True) is True
+    assert runner.pipeline_status("midday-20261103") == "success"
+    assert runner.push_already_delivered("midday-20261103") is True
+    assert calls.count("9001") == 1
+    assert calls.count("8772209416") == 2  # 同輪失敗再試一次
+    # 補跑／準點再進：已寄過，不准再打
+    n_before = len(calls)
+    assert runner.run_midday_review(skip_if_done=True) is True
+    assert len(calls) == n_before
+
+
+def test_send_telegram_message_uses_html_aware_chunk(tmp_path, monkeypatch):
+    """超長 HTML 不准 naive 切開 <a>；否則 Telegram 拒收後半→誤標失敗→連寄。"""
+    from main_runner import MainRunner
+    from midday_review import format_midday_html
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = str(tmp_path / "chunk.db")
+    runner.chat_id = "9001"
+    runner.bot = None
+    runner.token = ""
+    parts_seen = []
+
+    def _send_one(part, _chat_id):
+        parts_seen.append(part)
+        return True
+
+    runner._send_one = _send_one  # type: ignore
+    lines = [
+        (
+            f'<a href="https://tw.stock.yahoo.com/quote/{i:04d}.TW">'
+            f"{i:04d} 測試股</a>　開 100.0　現 101.5　(+1.5%)"
+        )
+        for i in range(1, 80)
+    ]
+    html = format_midday_html(
+        "20261103", {"leave_zero": lines, "golden_buy": lines[:20]}
+    )
+    assert len(html) > 3500
+    assert runner.send_telegram_message(html, chat_id="9001") is True
+    assert len(parts_seen) >= 2
+    for p in parts_seen:
+        assert p.count("<a ") == p.count("</a>"), "切片不可拆半截 <a>"
 
 
 def test_winrate_records_delivery_before_mark(tmp_path, monkeypatch):
