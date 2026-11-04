@@ -266,3 +266,48 @@ def test_apply_chips_retries_through_short_lock(tmp_path, monkeypatch):
     ).fetchone()
     c.close()
     assert row == (12, 3, -1)
+
+
+def test_rebake_continues_after_one_day_locked(tmp_path, monkeypatch):
+    """單日重試用盡仍 locked：續跑後面殘值日，不准整段開機重抓炸掉。"""
+    import sqlite3
+
+    import chips
+    from chips import rebake_share_as_lot_chip_dates
+
+    db = str(tmp_path / "rebake.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes(
+            date TEXT, stock_id TEXT, volume INTEGER,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )
+        """
+    )
+    # 股當張殘值：three=100、vol=1 → 進殘值日清單
+    for day, sid in (("20261102", "2330"), ("20261103", "2330")):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?)",
+            (day, sid, 1, 100, 0, 0),
+        )
+    conn.commit()
+    conn.close()
+
+    calls: list[str] = []
+
+    def _fake_update(path, day, session=None):
+        calls.append(str(day))
+        if str(day) == "20261102":
+            raise sqlite3.OperationalError("database is locked")
+        return 7
+
+    monkeypatch.setattr(chips, "update_chips_for_date", _fake_update)
+    monkeypatch.setattr(chips.time, "sleep", lambda *_a, **_k: None)
+    out = rebake_share_as_lot_chip_dates(db, since_ymd="20261101", sleep_s=0)
+    assert calls == ["20261102", "20261103"]
+    assert out["dates"] == 2
+    assert out["updated_rows"] == 7
+    assert out["failed_n"] == 1
+    assert out["failed_dates"] == ["20261102"]
+    assert ("20261103", 7) in out["detail"]

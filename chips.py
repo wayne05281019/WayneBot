@@ -408,7 +408,10 @@ def rebake_share_as_lot_chip_dates(
     sleep_s: float = 0.45,
     max_dates: int = 120,
 ) -> Dict[str, Any]:
-    """對仍有股當張殘值的交易日，整日重抓上市＋上櫃 T86 覆寫成張。"""
+    """對仍有股當張殘值的交易日，整日重抓上市＋上櫃 T86 覆寫成張。
+
+    單日仍 locked／busy（重試用盡）不准整段中止；記失敗日、續下一日。
+    """
     path = db_path or get_db_path()
     days = dates_with_share_as_lot_residue(path, since_ymd=since_ymd)
     if max_dates > 0:
@@ -417,10 +420,18 @@ def rebake_share_as_lot_chip_dates(
     sess.headers.update(HEADERS)
     total = 0
     done: List[Tuple[str, int]] = []
+    failed: List[str] = []
     for i, d in enumerate(days):
-        n = update_chips_for_date(path, d, sess)
-        total += n
-        done.append((d, n))
+        try:
+            n = update_chips_for_date(path, d, sess)
+            total += n
+            done.append((d, n))
+        except sqlite3.OperationalError as e:
+            msg = str(e).lower()
+            if "locked" not in msg and "busy" not in msg:
+                raise
+            logger.warning("法人殘值日 %s 寫入仍 locked，續下一日：%s", d, e)
+            failed.append(str(d))
         if i < len(days) - 1:
             time.sleep(max(0.0, float(sleep_s)))
     left = dates_with_share_as_lot_residue(path, since_ymd=since_ymd)
@@ -428,6 +439,8 @@ def rebake_share_as_lot_chip_dates(
         "dates": len(days),
         "updated_rows": total,
         "detail": done[:12],
+        "failed_dates": failed[:12],
+        "failed_n": len(failed),
         "still_residue_dates": len(left),
     }
 
