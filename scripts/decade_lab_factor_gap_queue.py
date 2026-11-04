@@ -76,6 +76,22 @@ IDEA_CATALOG: List[Dict[str, Any]] = [
         "best_window_taipei": "盤後 16:00–18:00；長史週末補",
     },
     {
+        "id": "fib_golden_cut_full",
+        "kind": "structure",
+        "why_zh": "黃金切割完整：0.382／0.5／0.618／0.75／0.786 近位＋1.618 延伸幅度",
+        "store": "decade_lab_fib_module（由 TWII 柱算，不准 PNG）",
+        "fetch": "用已存 TWII 高低收重切",
+        "best_window_taipei": "盤後隨時；長史可重跑",
+    },
+    {
+        "id": "chips_multi_angle",
+        "kind": "chips",
+        "why_zh": "籌碼多面向：融資z／廣度／成交值分位／TX OI／融券彙總",
+        "store": "decade_lab_chips_module",
+        "fetch": "既有官方表＋週末長史補",
+        "best_window_taipei": "盤後 15:40–17:30；長史週末",
+    },
+    {
         "id": "tape_adv_dec_long",
         "kind": "breadth",
         "why_zh": "漲跌家數／成交值分位：廣度背離＝單一權值騙線可歸因",

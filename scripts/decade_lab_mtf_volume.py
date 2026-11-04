@@ -469,7 +469,7 @@ def quantify_mtf_edges(conn: sqlite3.Connection) -> Dict[str, Any]:
     ybars = aggregate_mtf(bars, tape, "Y")
     q_climaxes = quarterly_volume_climaxes(qbars)
     q_ttnh = quarters_to_new_high(qbars, q_climaxes)
-    claims = verify_teacher_claims_quarterly(q_ttnh)
+    claims = verify_teacher_claims_quarterly(q_ttnh, q_climaxes)
 
     # 日級：爆巨量後 3／60 日方向
     day_i = {b["date"]: i for i, b in enumerate(bars)}

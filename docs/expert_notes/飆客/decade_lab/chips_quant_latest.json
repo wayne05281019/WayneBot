@@ -1,0 +1,55 @@
+{
+  "written_at": "2026-11-04T12:00:17",
+  "tz": "Asia/Taipei",
+  "coverage": {
+    "margin_n": 390,
+    "breadth_n": 505,
+    "tape_n": 2696,
+    "tx_oi_n": 650,
+    "short_agg_n": 34,
+    "scored_days": 2397
+  },
+  "base_mean3": 0.1625,
+  "flags": [
+    {
+      "code": "chips_margin_kill_2d",
+      "n": 31,
+      "mean3": 1.7249,
+      "edge3": 1.5625,
+      "bias": "up",
+      "hit_rate_side": 0.7097,
+      "vote": 1.5625
+    },
+    {
+      "code": "chips_margin_z_le_m1",
+      "n": 52,
+      "mean3": 0.9721,
+      "edge3": 0.8097,
+      "bias": "up",
+      "hit_rate_side": 0.5577,
+      "vote": 0.8097
+    },
+    {
+      "code": "chips_limit_up_ge_20",
+      "n": 29,
+      "mean3": -0.3862,
+      "edge3": -0.5486,
+      "bias": "down",
+      "hit_rate_side": 0.5517,
+      "vote": -0.5486
+    }
+  ],
+  "n_flags": 3,
+  "angles_zh": [
+    "融資餘額增減 z／連殺",
+    "漲跌家數比／跌停簇",
+    "成交值分位",
+    "台指期 OI z／日變化",
+    "融券餘額彙總 z（有才）"
+  ],
+  "gate": "n>=20 & |edge3|>=0.25 & side_hit>=0.55",
+  "goal_zh": "籌碼多面向提高大盤漲勢＋幅度判斷",
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "inst_separate_zh": "法人金額流見 decade_lab_inst_module"
+}

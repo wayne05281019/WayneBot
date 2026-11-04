@@ -13,7 +13,15 @@ from scripts.decade_lab_path_forecast import (
 def test_investor_contract_and_factor_pack():
     for k in ("bias", "amp_pct", "amp_class", "horizon", "target", "invalidate", "factors", "missing"):
         assert k in INVESTOR_OUTPUT
-    for k in ("twii_ret", "ixic_prior_ret", "tsm_prior_ret", "dxy_prior_ret", "tx_night_ret"):
+    for k in (
+        "twii_ret",
+        "ixic_prior_ret",
+        "tsm_prior_ret",
+        "dxy_prior_ret",
+        "tx_night_ret",
+        "fib_near_0618_support",
+        "chips_margin_delta_z",
+    ):
         assert k in FACTOR_PACK
 
 
@@ -42,3 +50,17 @@ def test_decide_and_judge():
     assert "幅度對得上" in _judge_amp("up", 1.0, 0.9)
     assert "幅度偏了" in _judge_amp("up", 1.0, 3.5)
     assert "方向偏了" in _judge_amp("up", 1.0, -0.5)
+    # 黃金切割位優先當目標／失效
+    tgt2, inv2 = _targets(
+        "down",
+        20000.0,
+        1.0,
+        {
+            "fib_pull_0.618": 19000.0,
+            "fib_bounce_0.786": 20500.0,
+            "fib_swing_low": 18500.0,
+            "fib_swing_high": 21000.0,
+        },
+    )
+    assert tgt2 == 19000.0
+    assert inv2 == 20500.0

@@ -1,0 +1,114 @@
+{
+  "written_at": "2026-11-04T12:01:58",
+  "tz": "Asia/Taipei",
+  "scored_days": 5401,
+  "base_mean3": 0.119,
+  "flags": [],
+  "n_flags": 0,
+  "soft_flags": [
+    {
+      "code": "fib_near_0750_support",
+      "n": 896,
+      "mean3": -0.0741,
+      "edge3": -0.1932,
+      "bias": "down",
+      "hit_rate_side": 0.3482,
+      "vote": -0.1932
+    },
+    {
+      "code": "fib_near_0786_support",
+      "n": 847,
+      "mean3": -0.0448,
+      "edge3": -0.1639,
+      "bias": "down",
+      "hit_rate_side": 0.3412,
+      "vote": -0.1639
+    },
+    {
+      "code": "fib_deep_pull",
+      "n": 692,
+      "mean3": 0.0167,
+      "edge3": -0.1023,
+      "bias": "down",
+      "hit_rate_side": 0.3685,
+      "vote": -0.1023
+    },
+    {
+      "code": "fib_lower_third",
+      "n": 1098,
+      "mean3": -0.0377,
+      "edge3": -0.1567,
+      "bias": "down",
+      "hit_rate_side": 0.3679,
+      "vote": -0.1567
+    },
+    {
+      "code": "fib_nearest_is_0.75",
+      "n": 277,
+      "mean3": -0.0495,
+      "edge3": -0.1686,
+      "bias": "down",
+      "hit_rate_side": 0.3682,
+      "vote": -0.1686
+    },
+    {
+      "code": "fib_nearest_is_0.786",
+      "n": 742,
+      "mean3": 0.0075,
+      "edge3": -0.1116,
+      "bias": "down",
+      "hit_rate_side": 0.3666,
+      "vote": -0.1116
+    },
+    {
+      "code": "fib_0618sup_x_foreign_pos",
+      "n": 26,
+      "mean3": 0.2533,
+      "edge3": 0.1343,
+      "bias": "up",
+      "hit_rate_side": 0.5385,
+      "vote": 0.1343
+    }
+  ],
+  "n_soft": 7,
+  "ratios": [
+    0.382,
+    0.5,
+    0.618,
+    0.75,
+    0.786
+  ],
+  "ext_ratios": [
+    1.0,
+    1.272,
+    1.618,
+    2.618
+  ],
+  "near_pct": 1.0,
+  "zone_pct": 1.5,
+  "pos_band": 0.05,
+  "swing_look": 60,
+  "amp_candidates": {
+    "span_x_0382": {
+      "n": 5401,
+      "hit": 1226,
+      "hit_rate": 0.227
+    },
+    "span_x_0618": {
+      "n": 5401,
+      "hit": 343,
+      "hit_rate": 0.0635
+    },
+    "pull_depth": {
+      "n": 5294,
+      "hit": 1750,
+      "hit_rate": 0.3306
+    },
+    "note_zh": "切割幅度候選；未贏 RV 主幹前不換"
+  },
+  "gate": "n>=20 & |edge3|>=0.25 & side_hit>=0.55",
+  "also_in_wave8_zh": "擴延≥1.618；ABC B回撤0.382–0.786 已在 wave8_dual",
+  "goal_zh": "黃金切割完整進路徑方向＋幅度驗證",
+  "not_buy_signal": true,
+  "phone_sync": "blocked"
+}

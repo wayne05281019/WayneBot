@@ -1,14 +1,14 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T10:50:43",
+  "written_at": "2026-11-04T12:02:07",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
-  "reason_zh": "走勢預測方向準度 0.568 仍偏弱（n=609）→ 記錄補因並排程重測；幅度 MAE 1.25pt 偏大（n=346）→ 目標幅度要重切；因素不足不計分占比 33.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "reason_zh": "走勢預測方向準度 0.610 仍偏弱（n=105）→ 記錄補因並排程重測；幅度 MAE 1.54pt 偏大（n=64）→ 目標幅度要重切；因素不足不計分占比 36.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.5681444991789819,
-      "directional_n": 609,
+      "hit_rate_directional": 0.6095238095238096,
+      "directional_n": 105,
       "factor_pack": [
         "twii_ret",
         "twii_wick",
@@ -43,11 +43,21 @@
         "mtf_amount_pctile_60",
         "mtf_volume_climax",
         "mtf_qtd_range_pct",
-        "mtf_named_support_broken"
+        "mtf_named_support_broken",
+        "fib_near_0618_support",
+        "fib_near_0382_support",
+        "fib_near_0618_resist",
+        "fib_deep_pull",
+        "fib_amp_0618_pct",
+        "chips_margin_delta_z",
+        "chips_ud_ratio",
+        "chips_tape_tril",
+        "chips_tx_oi_z",
+        "chips_short_z"
       ],
-      "hit_rate_amplitude": 0.5664739884393064,
-      "amp_n": 346,
-      "amp_mae_pct": 1.2463
+      "hit_rate_amplitude": 0.59375,
+      "amp_n": 64,
+      "amp_mae_pct": 1.5443
     },
     "wave": {
       "adopt": {
@@ -59,9 +69,9 @@
     },
     "lab": {
       "n": 5419,
-      "insufficient_n": 1823,
-      "watch_n": 2987,
-      "empty_why_n": 95
+      "insufficient_n": 1981,
+      "watch_n": 2833,
+      "empty_why_n": 74
     },
     "coverage": {
       "ok": true,
@@ -142,8 +152,8 @@
       "futures_daily": 1462
     },
     "lab_frac": {
-      "insufficient": 0.336408931537184,
-      "empty_why": 0.0175309097619487
+      "insufficient": 0.3655656025096881,
+      "empty_why": 0.013655656025096882
     }
   },
   "ideas": [
@@ -154,6 +164,22 @@
       "store": "market_margin_daily（數字表）",
       "fetch": "MI_MARGN 官方續補",
       "best_window_taipei": "盤後 16:00–18:00；長史週末補"
+    },
+    {
+      "id": "fib_golden_cut_full",
+      "kind": "structure",
+      "why_zh": "黃金切割完整：0.382／0.5／0.618／0.75／0.786 近位＋1.618 延伸幅度",
+      "store": "decade_lab_fib_module（由 TWII 柱算，不准 PNG）",
+      "fetch": "用已存 TWII 高低收重切",
+      "best_window_taipei": "盤後隨時；長史可重跑"
+    },
+    {
+      "id": "chips_multi_angle",
+      "kind": "chips",
+      "why_zh": "籌碼多面向：融資z／廣度／成交值分位／TX OI／融券彙總",
+      "store": "decade_lab_chips_module",
+      "fetch": "既有官方表＋週末長史補",
+      "best_window_taipei": "盤後 15:40–17:30；長史週末"
     },
     {
       "id": "tape_adv_dec_long",
@@ -226,22 +252,6 @@
       "store": "futures night bars",
       "fetch": "既有 TX 夜盤管線續補缺年",
       "best_window_taipei": "日盤前 08:00–08:50；夜盤後 05:00"
-    },
-    {
-      "id": "vix_term_vvix",
-      "kind": "sentiment",
-      "why_zh": "VIX 期限／VVIX：恐慌結構，不只現貨 VIX 一日漲跌",
-      "store": "index_daily 附加欄或獨立表",
-      "fetch": "CBOE／Yahoo 可取得者",
-      "best_window_taipei": "美盤後"
-    },
-    {
-      "id": "wave_fractal_mtf",
-      "kind": "structure",
-      "why_zh": "波浪子浪／多週期對齊：日線八循環不夠時的下一刀",
-      "store": "decade_lab 對質列（數字），不准 PNG",
-      "fetch": "用已存 TWII 柱重切規則（不必新抓）",
-      "best_window_taipei": "任何離峰；優先週末批次"
     }
   ],
   "schedule": [

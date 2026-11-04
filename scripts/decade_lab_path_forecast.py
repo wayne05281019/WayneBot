@@ -89,6 +89,18 @@ FACTOR_PACK = (
     "mtf_volume_climax",
     "mtf_qtd_range_pct",
     "mtf_named_support_broken",
+    # H 黃金切割（回撤 0.382／0.5／0.618／0.75／0.786＋延伸）
+    "fib_near_0618_support",
+    "fib_near_0382_support",
+    "fib_near_0618_resist",
+    "fib_deep_pull",
+    "fib_amp_0618_pct",
+    # I 籌碼多面向（融資／廣度／成交值／TX OI／融券；法人另見 F）
+    "chips_margin_delta_z",
+    "chips_ud_ratio",
+    "chips_tape_tril",
+    "chips_tx_oi_z",
+    "chips_short_z",
 )
 
 # 可沿用旗標權重：用 reusable_quant 的 edge 符號當票（正 edge→偏多票）
@@ -257,6 +269,22 @@ def _load_edge_votes() -> Dict[str, float]:
             votes[k] = float(v)
     except Exception:
         pass
+    # 黃金切割完整位（過閘才進）
+    try:
+        from scripts.decade_lab_fib_module import load_fib_votes
+
+        for k, v in load_fib_votes().items():
+            votes[k] = float(v)
+    except Exception:
+        pass
+    # 籌碼多面向（融資／廣度／量能／OI／融券；過閘才進）
+    try:
+        from scripts.decade_lab_chips_module import load_chips_votes
+
+        for k, v in load_chips_votes().items():
+            votes[k] = float(v)
+    except Exception:
+        pass
     return votes
 
 
@@ -417,6 +445,68 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
         bool(factors.get("mtf_volume_climax"))
         and (_f(factors.get("mtf_dist_ath_pct")) or 0) <= -15.0,
     )
+    # 黃金切割：支撐／壓力近位＋深修（互斥取最強一檔支撐）
+    if factors.get("fib_near_0618_support"):
+        add("fib_near_0618_support", True)
+    elif factors.get("fib_near_0500_support"):
+        add("fib_near_0500_support", True)
+    elif factors.get("fib_near_0382_support"):
+        add("fib_near_0382_support", True)
+    elif factors.get("fib_near_0750_support"):
+        add("fib_near_0750_support", True)
+    elif factors.get("fib_near_0786_support"):
+        add("fib_near_0786_support", True)
+    if factors.get("fib_near_0618_resist"):
+        add("fib_near_0618_resist", True)
+    elif factors.get("fib_near_0382_resist"):
+        add("fib_near_0382_resist", True)
+    elif factors.get("fib_near_0750_resist"):
+        add("fib_near_0750_resist", True)
+    add("fib_deep_pull", bool(factors.get("fib_deep_pull")))
+    add("fib_upper_third", bool(factors.get("fib_upper_third")))
+    add("fib_lower_third", bool(factors.get("fib_lower_third")))
+    add("fib_mid_band", bool(factors.get("fib_mid_band")))
+    if factors.get("fib_nearest_is_0.618"):
+        add("fib_nearest_is_0.618", True)
+    elif factors.get("fib_nearest_is_0.5"):
+        add("fib_nearest_is_0.5", True)
+    elif factors.get("fib_nearest_is_0.382"):
+        add("fib_nearest_is_0.382", True)
+    elif factors.get("fib_nearest_is_0.75"):
+        add("fib_nearest_is_0.75", True)
+    elif factors.get("fib_nearest_is_0.786"):
+        add("fib_nearest_is_0.786", True)
+    # 切割×籌碼／外資共現
+    add("fib_lower_x_margin_kill", bool(factors.get("fib_lower_x_margin_kill")))
+    add("fib_0618sup_x_foreign_pos", bool(factors.get("fib_0618sup_x_foreign_pos")))
+    add("fib_deep_x_margin_z", bool(factors.get("fib_deep_x_margin_z")))
+    add("fib_upper_x_limit_up", bool(factors.get("fib_upper_x_limit_up")))
+    # 籌碼：融資／廣度／成交值／OI／融券
+    add("chips_margin_z_le_m1", bool(factors.get("chips_margin_z_le_m1")))
+    add("chips_margin_z_ge_p1", bool(factors.get("chips_margin_z_ge_p1")))
+    add("chips_margin_kill_2d", bool(factors.get("chips_margin_kill_2d")))
+    add("chips_margin_add_2d", bool(factors.get("chips_margin_add_2d")))
+    add("chips_ud_le_0_6", bool(factors.get("chips_ud_le_0_6")))
+    add("chips_ud_ge_1_5", bool(factors.get("chips_ud_ge_1_5")))
+    if factors.get("chips_limit_down_ge_40"):
+        add("chips_limit_down_ge_40", True)
+    elif factors.get("chips_limit_down_ge_20"):
+        add("chips_limit_down_ge_20", True)
+    add("chips_limit_up_ge_20", bool(factors.get("chips_limit_up_ge_20")))
+    if factors.get("chips_tape_p90"):
+        add("chips_tape_p90", True)
+    elif factors.get("chips_tape_p80"):
+        add("chips_tape_p80", True)
+    elif factors.get("chips_tape_p10"):
+        add("chips_tape_p10", True)
+    elif factors.get("chips_tape_p20"):
+        add("chips_tape_p20", True)
+    add("chips_tx_oi_z_ge_p1", bool(factors.get("chips_tx_oi_z_ge_p1")))
+    add("chips_tx_oi_z_le_m1", bool(factors.get("chips_tx_oi_z_le_m1")))
+    add("chips_tx_oi_drop", bool(factors.get("chips_tx_oi_drop")))
+    add("chips_tx_oi_rise", bool(factors.get("chips_tx_oi_rise")))
+    add("chips_short_z_ge_p1", bool(factors.get("chips_short_z_ge_p1")))
+    add("chips_short_z_le_m1", bool(factors.get("chips_short_z_le_m1")))
     return lit
 
 
@@ -507,14 +597,47 @@ def estimate_amplitude(
     }
 
 
-def _targets(bias: str, last_close: float, amp_pct: float = 0.8) -> Tuple[float, float]:
-    """目標＝預估幅度；失效＝反向約一半幅度（破了＝方向判斷作廢）。"""
+def _targets(
+    bias: str,
+    last_close: float,
+    amp_pct: float = 0.8,
+    factors: Optional[Dict[str, Any]] = None,
+) -> Tuple[float, float]:
+    """目標／失效。有黃金切割位時優先用切割價（0.382／0.618／0.786），否則用幅度％。"""
     if last_close <= 0:
         return last_close, last_close
+    f = factors or {}
+    # 切割目標：多→反彈側／前高；空→回檔側／前低
     if bias == "up":
+        cand = [
+            _f(f.get("fib_bounce_0.618")),
+            _f(f.get("fib_bounce_0.382")),
+            _f(f.get("fib_swing_high")),
+        ]
+        inv_c = [
+            _f(f.get("fib_pull_0.786")),
+            _f(f.get("fib_swing_low")),
+        ]
+        tgt = next((x for x in cand if x is not None and x > last_close), None)
+        inv = next((x for x in inv_c if x is not None and x < last_close), None)
+        if tgt is not None and inv is not None:
+            return float(tgt), float(inv)
         a = abs(float(amp_pct) or 0.8) / 100.0
         return last_close * (1.0 + a), last_close * (1.0 - a * 0.5)
     if bias == "down":
+        cand = [
+            _f(f.get("fib_pull_0.618")),
+            _f(f.get("fib_pull_0.382")),
+            _f(f.get("fib_swing_low")),
+        ]
+        inv_c = [
+            _f(f.get("fib_bounce_0.786")),
+            _f(f.get("fib_swing_high")),
+        ]
+        tgt = next((x for x in cand if x is not None and x < last_close), None)
+        inv = next((x for x in inv_c if x is not None and x > last_close), None)
+        if tgt is not None and inv is not None:
+            return float(tgt), float(inv)
         a = abs(float(amp_pct) or 0.8) / 100.0
         return last_close * (1.0 - a), last_close * (1.0 + a * 0.5)
     return last_close, last_close * 0.985
@@ -647,6 +770,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         if max_days > 0:
             days = days[-max_days:]
         inst_lit_days = 0
+        fib_lit_days = 0
+        chips_lit_days = 0
         for day in days:
             if day not in twii or not twii[day].get("ret_ok"):
                 continue
@@ -696,9 +821,50 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 missing.extend(mtf_m)
             except Exception:
                 missing.append("mtf_snapshot")
+            try:
+                from scripts.decade_lab_fib_module import load_twii as _fib_twii
+                from scripts.decade_lab_fib_module import snapshot_fib_factors
+
+                if "_fib_bars" not in run_backtest.__dict__:
+                    run_backtest._fib_bars = _fib_twii(conn)  # type: ignore[attr-defined]
+                fib_f, fib_m = snapshot_fib_factors(run_backtest._fib_bars, day)  # type: ignore[attr-defined]
+                factors.update(fib_f)
+                missing.extend(fib_m)
+            except Exception:
+                missing.append("fib_snapshot")
+            try:
+                from scripts.decade_lab_chips_module import snapshot_chips_factors
+
+                chips_f, chips_m = snapshot_chips_factors(conn, day)
+                factors.update(chips_f)
+                missing.extend(chips_m)
+            except Exception:
+                missing.append("chips_snapshot")
+            # 切割×籌碼／外資共現（快照層合成，供 lit／投票）
+            factors["fib_lower_x_margin_kill"] = bool(
+                factors.get("fib_lower_third") and factors.get("chips_margin_kill_2d")
+            )
+            factors["fib_0618sup_x_foreign_pos"] = bool(
+                factors.get("fib_near_0618_support")
+                and (
+                    factors.get("inst_foreign_pos_2d")
+                    or (_f(factors.get("inst_foreign_z")) or 0) >= 0.5
+                )
+            )
+            factors["fib_deep_x_margin_z"] = bool(
+                factors.get("fib_deep_pull") and factors.get("chips_margin_z_le_m1")
+            )
+            factors["fib_upper_x_limit_up"] = bool(
+                factors.get("fib_upper_third") and factors.get("chips_limit_up_ge_20")
+            )
             decision = decide_path(factors, missing, votes)
-            if any(str(x.get("code") or "").startswith("inst_") for x in (decision.get("why") or [])):
+            why_codes = [str(x.get("code") or "") for x in (decision.get("why") or [])]
+            if any(c.startswith("inst_") for c in why_codes):
                 inst_lit_days += 1
+            if any(c.startswith("fib_") for c in why_codes):
+                fib_lit_days += 1
+            if any(c.startswith("chips_") for c in why_codes):
+                chips_lit_days += 1
             last = twii[day]["close"]
             # 近 20 日 |ret| 均（as-of 前，不含未來）
             i0 = tw_days.index(day)
@@ -715,7 +881,7 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 realized_abs_ret=rv,
             )
             amp_pct = float(amp_info["amp_pct"])
-            tgt, inv = _targets(decision["bias"], last, amp_pct)
+            tgt, inv = _targets(decision["bias"], last, amp_pct, factors)
             # forward close
             i = tw_days.index(day)
             fut = twii[tw_days[i + 3]]["close"]
@@ -828,9 +994,14 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "by_amp_class": by_amp_class,
             "inst_lit_days": inst_lit_days,
             "inst_votes": sorted(k for k in votes if str(k).startswith("inst_")),
+            "fib_lit_days": fib_lit_days,
+            "fib_votes": sorted(k for k in votes if str(k).startswith("fib_")),
+            "chips_lit_days": chips_lit_days,
+            "chips_votes": sorted(k for k in votes if str(k).startswith("chips_")),
             "gate_n20": (hit + miss) >= 20,
             "reverse_think_zh": (
-                "目標是漲勢＋幅度。法人／投信票必用；幅度偏了回查波動／夜盤／外圍／法人強度。"
+                "目標是漲勢＋幅度。法人／投信／黃金切割／籌碼多面向票必用；"
+                "幅度偏了回查波動／夜盤／外圍／法人／切割跨度。"
                 "range＝觀望不計分。因素不足→factor_gap_queue。"
             ),
             "not_buy_signal": True,
