@@ -1,0 +1,17 @@
+{
+  "variant": "textbook_vnext_htf20",
+  "rule_zh": "現況八循環＋推進反向後，再要求近20日趨勢同向才出方向",
+  "n_decided": 106,
+  "hit": 75,
+  "miss": 31,
+  "hit_rate": 0.7075471698113207,
+  "vs_current": {
+    "current_hit_rate": 0.6997,
+    "edge": 0.00784716981132072
+  },
+  "gate_n20": true,
+  "replace": true,
+  "phone_sync": "blocked",
+  "not_buy_signal": true,
+  "note_zh": "下一版靜默候選；未過閘不准換現況、不上話筒。"
+}

@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T09:30:30",
+  "written_at": "2026-11-04T09:43:40",
   "tz": "Asia/Taipei",
   "twii_n": 5423,
   "twii_from": "20061102",
@@ -9,16 +9,16 @@
   "tracks": {
     "textbook_8cycle": {
       "n_rows": 821,
-      "n_decided": 363,
-      "hit": 254,
-      "miss": 109,
-      "hit_rate": 0.699724517906336,
+      "n_decided": 106,
+      "hit": 75,
+      "miss": 31,
+      "hit_rate": 0.7075471698113207,
       "gate_n20": true,
       "outcome_counts": {
-        "對": 254,
-        "偏": 109,
+        "對": 75,
+        "偏": 31,
         "未完": 0,
-        "觀望不計分": 458,
+        "觀望不計分": 715,
         "缺柱": 0
       },
       "pot": "實驗室"
@@ -42,9 +42,9 @@
   },
   "adopt": {
     "pick": "textbook_8cycle",
-    "reason": "textbook hit_rate 0.6997 > biaoke 0.4655"
+    "reason": "textbook hit_rate 0.7075 > biaoke 0.4655"
   },
-  "disagree_n": 2,
+  "disagree_n": 1,
   "disagree_sample": [
     {
       "as_of": "20250623",
@@ -54,15 +54,6 @@
       "biaoke_tag": "細微波主跌",
       "biaoke_verdict": "偏",
       "actual": "up"
-    },
-    {
-      "as_of": "20260729",
-      "textbook_bias": "up",
-      "textbook_verdict": "對",
-      "biaoke_bias": "down",
-      "biaoke_tag": "波浪四",
-      "biaoke_verdict": "偏",
-      "actual": "up"
     }
   ],
   "self_fix": {
@@ -70,14 +61,15 @@
     "textbook_miss_reason_top": [
       [
         "bias_wrong",
-        109
+        31
       ]
     ],
     "next_rule_candidates": [
       "已落地：motive 凑滿→預期反向進 ABC（自修#2）",
       "已落地：末升／邪惡第五→down",
-      "下一版：子浪碎形確認／多週期對齊",
-      "下一版：ABC B 回撤 0.382–0.786 再出方向",
+      "已落地：HTF20 同向閘（自修#3，靜默對質略贏→換）",
+      "下一版：ABC B 回撤 0.382–0.786＋HTF（vnext）",
+      "下一版：子浪碎形確認",
       "FWD_N 5→3 對齊當日盤勢軌"
     ],
     "note_zh": "偏多於對→自己改切法再生；不等使用者提醒。",
@@ -87,10 +79,33 @@
       "hit_rate_before": 0.1368,
       "hit_rate_after": 0.6842,
       "rule_zh": "1-2-3-4-5鐵律＋擴延過關＝推進結束，後窗預期反向進修正"
+    },
+    "reusable_finding_htf": {
+      "id": "wave8_htf20_align",
+      "n": 106,
+      "hit_rate_before": 0.6997,
+      "hit_rate_after": 0.7075,
+      "rule_zh": "方向須與近20日收盤趨勢同向，否則觀望"
     }
   },
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "wave_neurons_match": false,
-  "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。"
+  "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。",
+  "next_variant": {
+    "variant": "textbook_vnext_fib_htf",
+    "rule_zh": "現況＋ABC B回撤0.382–0.786＋HTF20",
+    "n_decided": 59,
+    "hit": 43,
+    "miss": 16,
+    "hit_rate": 0.7288135593220338,
+    "vs_current": {
+      "current_hit_rate": 0.7075471698113207,
+      "edge": 0.021266389510713135
+    },
+    "gate_n20": true,
+    "replace": true,
+    "phone_sync": "blocked",
+    "not_buy_signal": true
+  }
 }

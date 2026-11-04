@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from scripts.decade_lab_wave8_dual import (
     _biaoke_bias,
+    _htf_agree,
     _iron_abc,
     _iron_motive,
     _judge_dir,
@@ -41,3 +42,9 @@ def test_iron_and_judge():
     assert _judge_dir("range", "up") == "觀望不計分"
     a = _iron_abc(pts[:4])
     assert "kind" in a
+    # HTF：近窗上漲不該擋 up；大反向才擋
+    bars = [{"close": 100.0 + i} for i in range(25)]
+    assert _htf_agree(bars, 24, "up") is True
+    bars_dn = [{"close": 200.0 - i} for i in range(25)]
+    assert _htf_agree(bars_dn, 24, "up") is False
+    assert _htf_agree(bars_dn, 24, "down") is True

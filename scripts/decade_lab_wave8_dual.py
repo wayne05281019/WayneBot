@@ -35,6 +35,9 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 MIN_N = 20
 FWD_N = 5  # 段級：後 5 根官方收對方向
 PIVOT_LOOK = 3
+# 自修#3（靜默對質贏現況→換）：近 HTF_LOOK 日趨勢須與方向同向，否則改觀望
+HTF_LOOK = 20
+HTF_RET_PCT = 1.0
 
 
 def _ymd(raw: Any) -> str:
@@ -236,6 +239,23 @@ def _fwd_bias(bars: Sequence[Dict[str, float]], i: int, n: int = FWD_N) -> Optio
     return "range"
 
 
+def _htf_agree(bars: Sequence[Dict[str, float]], i: int, bias: str) -> bool:
+    """近窗收盤趨勢是否與方向同向（自修#3）。"""
+    if bias not in {"up", "down"}:
+        return True
+    look = int(HTF_LOOK)
+    if i < look:
+        return False
+    c0 = bars[i - look]["close"]
+    c1 = bars[i]["close"]
+    if c0 <= 0:
+        return False
+    ret = (c1 / c0 - 1.0) * 100.0
+    if bias == "up":
+        return ret >= -float(HTF_RET_PCT)
+    return ret <= float(HTF_RET_PCT)
+
+
 def _judge_dir(pred: str, actual: Optional[str]) -> str:
     if actual is None:
         return "未完"
@@ -295,6 +315,9 @@ def run_dual() -> Dict[str, Any]:
         gate_ok = bool((phase.get("gate") or {}).get("ok"))
         # 認真：鐵律未過不准出方向（觀望），避免隨便標號灌水
         bias = str(phase.get("bias") or "range") if gate_ok else "range"
+        htf_ok = _htf_agree(bars, i, bias) if bias in {"up", "down"} else True
+        if bias in {"up", "down"} and not htf_ok:
+            bias = "range"
         verd = _judge_dir(bias, actual)
         textbook_rows.append(
             {
@@ -307,6 +330,7 @@ def run_dual() -> Dict[str, Any]:
                 "actual": actual,
                 "verdict": verd,
                 "gate_ok": gate_ok,
+                "htf_ok": htf_ok,
                 "gate_reasons": (phase.get("gate") or {}).get("reasons") or [],
             }
         )
@@ -409,8 +433,9 @@ def run_dual() -> Dict[str, Any]:
         "next_rule_candidates": [
             "已落地：motive 凑滿→預期反向進 ABC（自修#2）",
             "已落地：末升／邪惡第五→down",
-            "下一版：子浪碎形確認／多週期對齊",
-            "下一版：ABC B 回撤 0.382–0.786 再出方向",
+            "已落地：HTF20 同向閘（自修#3，靜默對質略贏→換）",
+            "下一版：ABC B 回撤 0.382–0.786＋HTF（vnext）",
+            "下一版：子浪碎形確認",
             "FWD_N 5→3 對齊當日盤勢軌",
         ],
         "note_zh": "偏多於對→自己改切法再生；不等使用者提醒。",
@@ -420,6 +445,13 @@ def run_dual() -> Dict[str, Any]:
             "hit_rate_before": 0.1368,
             "hit_rate_after": 0.6842,
             "rule_zh": "1-2-3-4-5鐵律＋擴延過關＝推進結束，後窗預期反向進修正",
+        },
+        "reusable_finding_htf": {
+            "id": "wave8_htf20_align",
+            "n": 106,
+            "hit_rate_before": 0.6997,
+            "hit_rate_after": 0.7075,
+            "rule_zh": "方向須與近20日收盤趨勢同向，否則觀望",
         },
     }
 
