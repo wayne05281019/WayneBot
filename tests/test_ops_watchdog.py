@@ -434,7 +434,8 @@ def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    now = datetime(2026, 9, 2, 14, 0)
+    # 16:30 後 fuse_end＝今日，才對得上 pipeline 鍵 20260902（14:00 仍是昨日鍵）。
+    now = datetime(2026, 9, 2, 17, 0)
     stamps = pipeline_stamps(path, now=now)
     assert stamps["morning_screen"]["delivered"] is True
     assert stamps["morning_screen"]["status"] == "success"
@@ -531,6 +532,10 @@ def test_watchdog_scan_alerts_on_stale_release(tmp_path, monkeypatch):
         runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    # 柱齊才不當假 success；否則 missed 會多一筆 increment。
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *a, **k: "20260902"
+    )
     now = datetime(2026, 9, 2, 19, 0)
     old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))
     monkeypatch.setattr(requests, "head", _fake_head(old))
@@ -553,6 +558,9 @@ def test_watchdog_release_check_can_be_disabled(tmp_path, monkeypatch):
         runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *a, **k: "20260902"
+    )
     now = datetime(2026, 9, 2, 19, 0)
     old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))
     monkeypatch.setattr(requests, "head", _fake_head(old))
