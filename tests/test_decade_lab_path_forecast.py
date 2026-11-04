@@ -4,6 +4,7 @@ from scripts.decade_lab_path_forecast import (
     INVESTOR_OUTPUT,
     _judge,
     _judge_amp,
+    _margin_kill_direction_ok,
     _targets,
     decide_path,
     estimate_amplitude,
@@ -66,3 +67,89 @@ def test_decide_and_judge():
     )
     assert tgt2 == 19000.0
     assert inv2 == 20500.0
+
+
+def test_margin_kill_direction_gate():
+    ok, why = _margin_kill_direction_ok({"chips_margin_kill_2d": True})
+    assert ok is False and why == "no_confirm"
+    ok2, why2 = _margin_kill_direction_ok(
+        {
+            "chips_margin_kill_2d": True,
+            "mtf_named_support_broken": True,
+            "inst_foreign_pos_2d": True,
+        }
+    )
+    assert ok2 is False and why2 == "hard_veto"
+    ok3, _ = _margin_kill_direction_ok(
+        {"chips_margin_kill_2d": True, "inst_foreign_pos_2d": True}
+    )
+    assert ok3 is True
+
+
+def test_chop_abc_soft_range_and_false_up():
+    votes = {"us_up_tw_down": 0.5}
+    # 震盪＋修正浪＋弱票 → range
+    out = decide_path(
+        {
+            "twii_ret": -0.2,
+            "ixic_prior_ret": 0.1,
+            "regime": "chop",
+            "wave_ok": True,
+            "wave_bias": "up",
+            "wave_phase": "corrective_abc",
+            "chips_margin_kill_2d": True,  # 無確認 → blocked
+        },
+        [],
+        votes,
+    )
+    assert out["bias"] == "range"
+    codes = [x["code"] for x in out["why"]]
+    assert any("chop_abc" in c or "soft_range" in c or "margin_kill_blocked" in c for c in codes)
+
+    # 假彈連錯 ≥2 → 修正浪看漲改觀望
+    out2 = decide_path(
+        {
+            "twii_ret": 0.2,
+            "ixic_prior_ret": 0.1,
+            "regime": "bull",
+            "wave_ok": True,
+            "wave_bias": "up",
+            "wave_phase": "corrective_abc",
+            "false_up_streak": 2,
+            "inst_foreign_pos_2d": True,
+            "chips_margin_kill_2d": True,
+        },
+        [],
+        {"inst_foreign_pos_2d": 0.6, "chips_margin_kill_2d": 1.5},
+    )
+    assert out2["bias"] == "range"
+    assert any(x["code"] == "false_up_streak_soft_range" for x in out2["why"])
+
+
+def test_amp_regime_scale():
+    base = estimate_amplitude("up", 1.0, {}, realized_abs_ret=0.8)
+    chop = estimate_amplitude("up", 1.0, {"regime": "chop"}, realized_abs_ret=0.8)
+    bear = estimate_amplitude("up", 1.0, {"regime": "bear"}, realized_abs_ret=0.8)
+    assert abs(chop["amp_pct"]) < abs(base["amp_pct"])
+    assert abs(bear["amp_pct"]) > abs(base["amp_pct"])
+
+
+def test_support_beats_margin_kill():
+    votes = {"chips_margin_kill_2d": 1.56, "inst_foreign_pos_2d": 0.5}
+    out = decide_path(
+        {
+            "twii_ret": -1.0,
+            "ixic_prior_ret": 0.2,
+            "chips_margin_kill_2d": True,
+            "inst_foreign_pos_2d": True,
+            "mtf_named_support_broken": True,
+            "wave_ok": False,
+        },
+        [],
+        votes,
+    )
+    codes = [x["code"] for x in out["why"]]
+    assert "conflict_support_over_margin_kill" in codes
+    assert "chips_margin_kill_2d" not in codes
+    # 衝突中性化：拆掉融資殺反彈票後改觀望，不准單靠衝突硬空
+    assert out["bias"] == "range"

@@ -1,14 +1,14 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T14:18:36",
+  "written_at": "2026-11-04T15:43:34",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
-  "reason_zh": "幅度 MAE 1.68pt 偏大（n=56）→ 目標幅度要重切；因素不足不計分占比 93.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "reason_zh": "幅度 MAE 1.68pt 偏大（n=34）→ 目標幅度要重切；因素不足不計分占比 93.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.7272727272727273,
-      "directional_n": 77,
+      "hit_rate_directional": 0.7906976744186046,
+      "directional_n": 43,
       "factor_pack": [
         "wave_bias",
         "wave_phase",
@@ -56,11 +56,18 @@
         "chips_ud_ratio",
         "chips_tape_tril",
         "chips_tx_oi_z",
-        "chips_short_z"
+        "chips_short_z",
+        "regime",
+        "false_up_streak",
+        "tsmc_vol_spike",
+        "tsmc_vol_confirm_up",
+        "tsmc_vol_confirm_down",
+        "margin_kill_confirmed",
+        "margin_kill_blocked"
       ],
-      "hit_rate_amplitude": 0.625,
-      "amp_n": 56,
-      "amp_mae_pct": 1.6844
+      "hit_rate_amplitude": 0.6176470588235294,
+      "amp_n": 34,
+      "amp_mae_pct": 1.6787
     },
     "wave": {
       "adopt": {
@@ -73,7 +80,7 @@
     "lab": {
       "n": 5419,
       "insufficient_n": 5074,
-      "watch_n": 268,
+      "watch_n": 302,
       "empty_why_n": 66
     },
     "coverage": {
@@ -259,11 +266,6 @@
   ],
   "schedule": [
     {
-      "at": "2026-11-04T15:40:00",
-      "kind": "fetch_tw_official",
-      "note_zh": "盤後：漲跌家數／融資／法人流"
-    },
-    {
       "at": "2026-11-04T16:40:00",
       "kind": "fetch_futures_oi",
       "note_zh": "盤後：TX／TE／OI"
@@ -317,6 +319,11 @@
       "at": "2026-11-06T16:40:00",
       "kind": "fetch_futures_oi",
       "note_zh": "盤後：TX／TE／OI"
+    },
+    {
+      "at": "2026-11-06T22:40:00",
+      "kind": "retest_path",
+      "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
     }
   ],
   "status": "queued",

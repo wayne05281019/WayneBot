@@ -105,6 +105,14 @@ FACTOR_PACK = (
     "chips_tape_tril",
     "chips_tx_oi_z",
     "chips_short_z",
+    # J 錯單補強閘（震盪／修正浪／融資殺方向／假彈連錯／台積量價確認）
+    "regime",
+    "false_up_streak",
+    "tsmc_vol_spike",
+    "tsmc_vol_confirm_up",
+    "tsmc_vol_confirm_down",
+    "margin_kill_confirmed",
+    "margin_kill_blocked",
 )
 
 # 可沿用旗標權重：用 reusable_quant 的 edge 符號當票（正 edge→偏多票）
@@ -494,9 +502,13 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
     add("fib_deep_x_margin_z", bool(factors.get("fib_deep_x_margin_z")))
     add("fib_upper_x_limit_up", bool(factors.get("fib_upper_x_limit_up")))
     # 籌碼：融資／廣度／成交值／OI／融券
+    # 融資連殺：只在「方向閘」通過時灌偏多票；被擋時改記 blocked（不投多）
     add("chips_margin_z_le_m1", bool(factors.get("chips_margin_z_le_m1")))
     add("chips_margin_z_ge_p1", bool(factors.get("chips_margin_z_ge_p1")))
-    add("chips_margin_kill_2d", bool(factors.get("chips_margin_kill_2d")))
+    if factors.get("margin_kill_confirmed") or (
+        factors.get("chips_margin_kill_2d") and not factors.get("margin_kill_blocked")
+    ):
+        add("chips_margin_kill_2d", True)
     add("chips_margin_add_2d", bool(factors.get("chips_margin_add_2d")))
     add("chips_ud_le_0_6", bool(factors.get("chips_ud_le_0_6")))
     add("chips_ud_ge_1_5", bool(factors.get("chips_ud_ge_1_5")))
@@ -538,18 +550,79 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
     return lit
 
 
+def _margin_kill_direction_ok(factors: Dict[str, Any]) -> Tuple[bool, str]:
+    """融資連殺偏多票的方向閘。
+
+    回測錯單顯示 kill_2d 常被當反彈，卻在修正浪尾／支撐破／外資空時踩空。
+    通過＝至少一項同向確認，且沒有硬否決。
+    """
+    if not factors.get("chips_margin_kill_2d"):
+        return False, "no_kill"
+    hard_veto = bool(factors.get("mtf_named_support_broken")) or (
+        str(factors.get("wave_bias") or "") == "down"
+        and str(factors.get("wave_phase") or "").startswith("corrective_abc")
+    )
+    if hard_veto:
+        return False, "hard_veto"
+    confirm = any(
+        (
+            bool(factors.get("inst_foreign_pos_2d")),
+            bool(factors.get("inst_foreign_pos_3d")),
+            (_f(factors.get("inst_foreign_z")) or 0.0) >= 0.5,
+            bool(factors.get("chips_ud_ge_1_5")),
+            bool(factors.get("fib_0618sup_x_foreign_pos")),
+            bool(factors.get("fib_lower_x_margin_kill")),
+            bool(factors.get("tsmc_vol_confirm_up")),
+            str(factors.get("wave_bias") or "") == "up"
+            and str(factors.get("wave_phase") or "").startswith("impulse"),
+        )
+    )
+    if not confirm:
+        return False, "no_confirm"
+    return True, "confirmed"
+
+
+def _chop_abc_up_confirm(factors: Dict[str, Any], score: float) -> bool:
+    """震盪＋修正浪看漲：要夠強的確認，否則改 range。"""
+    if abs(float(score or 0.0)) < 1.35:
+        return False
+    hits = 0
+    if bool(factors.get("inst_foreign_pos_2d")) or (_f(factors.get("inst_foreign_z")) or 0) >= 0.8:
+        hits += 1
+    if bool(factors.get("margin_kill_confirmed")):
+        hits += 1
+    if bool(factors.get("tsmc_vol_confirm_up")):
+        hits += 1
+    if bool(factors.get("fib_0618sup_x_foreign_pos")) or bool(factors.get("fib_deep_x_margin_z")):
+        hits += 1
+    if not bool(factors.get("mtf_named_support_broken")):
+        hits += 0  # 支撐沒破不算加分，破了直接否（下面）
+    if bool(factors.get("mtf_named_support_broken")):
+        return False
+    return hits >= 2
+
+
 def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str, float]) -> Dict[str, Any]:
     """產出投資人要的預測列。因素不夠仍給 bias，但標 reviewable=false。
 
     主判順序（鎖死）：波浪結構 → 再疊法人／籌碼／切割／宏觀確認或否決。
     飆大軌另對質學習；不准雜訊票蓋掉波浪主判。
+    錯單補強：融資殺方向閘、支撐破衝突、震盪修正浪軟觀望、假彈連錯降權。
     """
-    last = None
-    # last_close must be passed via factors helper — caller fills
+    # 融資連殺方向閘先寫進 factors，再點亮 lit（避免錯方向灌多票）
+    mk_ok, mk_why = _margin_kill_direction_ok(factors)
+    if factors.get("chips_margin_kill_2d"):
+        factors["margin_kill_confirmed"] = bool(mk_ok)
+        factors["margin_kill_blocked"] = not bool(mk_ok)
+        factors["margin_kill_gate"] = mk_why
+
     lit = _lit_why(factors, votes)
     score = sum(float(x["edge"]) for x in lit)
     wave_bias = str(factors.get("wave_bias") or "")
     wave_ok = bool(factors.get("wave_ok"))
+    wave_phase = str(factors.get("wave_phase") or "")
+    regime = str(factors.get("regime") or "")
+    in_abc = wave_phase.startswith("corrective_abc")
     # 結構微調：大跌＋下影偏多；美元／油漲＋台跌偏空已在票裡
     if score > 0.35:
         bias = "up"
@@ -579,12 +652,52 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
     ):
         bias = "range"
         lit = list(lit) + [{"code": "mtf_climax_near_ath_soft_range", "edge": 0.0}]
-    # 他點名支撐有效跌破 → 橫整假設失效，保留原方向票（可偏空若分數空）
-    if bool(factors.get("mtf_named_support_broken")) and score > -0.2:
+    # 他點名支撐有效跌破 → 融資殺反彈票作廢；衝突以「中性化」為主，不准單靠衝突硬推空
+    # （對質：硬推空會把反彈段打成 down 錯單）
+    support_broken = bool(factors.get("mtf_named_support_broken"))
+    if support_broken and (factors.get("chips_margin_kill_2d") or factors.get("margin_kill_confirmed")):
+        lit = [x for x in lit if x.get("code") != "chips_margin_kill_2d"]
+        lit = list(lit) + [{"code": "conflict_support_over_margin_kill", "edge": 0.0}]
+        score = sum(float(x["edge"]) for x in lit)
+        factors["margin_kill_blocked"] = True
+        factors["margin_kill_confirmed"] = False
+        if score < -0.55:
+            bias = "down"
+        elif score > 0.55:
+            bias = "up"
+        else:
+            bias = "range"
+    elif support_broken and score > -0.2:
+        # 無融資殺衝突時維持原輕量否決（可偏空）
         score = score - 0.25
         lit = list(lit) + [{"code": "mtf_named_support_broken", "edge": -0.25}]
         if score < -0.35:
             bias = "down"
+    # 融資殺被擋：記一筆（可歸因），不另加分
+    if factors.get("margin_kill_blocked") and factors.get("chips_margin_kill_2d"):
+        lit = list(lit) + [{"code": f"margin_kill_blocked_{factors.get('margin_kill_gate') or 'x'}", "edge": 0.0}]
+    # 台積量價確認：同向微加權（飆大說法；非主判）
+    if bias == "up" and factors.get("tsmc_vol_confirm_up"):
+        lit = list(lit) + [{"code": "tsmc_vol_confirm_up", "edge": 0.28}]
+        score = sum(float(x["edge"]) for x in lit)
+    elif bias == "down" and factors.get("tsmc_vol_confirm_down"):
+        lit = list(lit) + [{"code": "tsmc_vol_confirm_down", "edge": -0.28}]
+        score = sum(float(x["edge"]) for x in lit)
+    # 假彈連錯：修正浪內連續看漲偏了 → 降權改觀望
+    false_up = int(factors.get("false_up_streak") or 0)
+    if false_up >= 2 and bias == "up" and in_abc:
+        bias = "range"
+        lit = list(lit) + [{"code": "false_up_streak_soft_range", "edge": 0.0}]
+        score = sum(float(x["edge"]) for x in lit if x.get("code") != "wave_struct_up")
+    # 震盪＋修正浪：看漲要雙確認，否則 range（錯單最集中）
+    if regime == "chop" and in_abc and bias == "up":
+        if not _chop_abc_up_confirm(factors, score):
+            bias = "range"
+            lit = list(lit) + [{"code": "chop_abc_soft_range", "edge": 0.0}]
+    # 櫃買落後加權（權值撐盤、中小倒）：弱多改觀望
+    if bool(factors.get("otc_lag_tw")) and bias == "up" and abs(score) < 1.25:
+        bias = "range"
+        lit = list(lit) + [{"code": "otc_lag_soft_range", "edge": 0.0}]
     # 必要因素：至少有 twii＋ixic，否則不可完整覆盤歸因
     need = {"twii_ret", "ixic_prior_ret"}
     have = set(factors.keys())
@@ -618,8 +731,8 @@ def estimate_amplitude(
 ) -> Dict[str, Any]:
     """估幅度％。漲勢為正、跌勢為負；range＝0。
 
-    自修：純票強度 MAE 大；近窗實現波動（日均 |ret| ×√3）準度較高，改為主幹，
-    票強度／量能／VIX／夜盤只做微調。
+    自修：純票強度 MAE 大；近窗實現波動（日均 |ret| ×√3）準度較高，改為主幹。
+    分市況縮放：震盪收斂、空頭略放、多頭中性——壓 MAE 高估。
     """
     if bias not in {"up", "down"}:
         return {"amp_pct": 0.0, "amp_class": "micro", "amp_basis": "range_no_amp"}
@@ -634,7 +747,22 @@ def estimate_amplitude(
         basis = "score_fallback"
         if bool(factors.get("twii_vol_spike")):
             base += 0.20
-    amp_abs = max(0.40, min(4.0, base))
+    regime = str(factors.get("regime") or "")
+    if regime == "chop":
+        base *= 0.78
+        basis = f"{basis}_chop078"
+    elif regime == "bear":
+        base *= 1.08
+        basis = f"{basis}_bear108"
+    elif regime == "bull":
+        base *= 0.95
+        basis = f"{basis}_bull095"
+    # 修正浪看漲時幅度再收一點（假彈常高估）
+    phase = str(factors.get("wave_phase") or "")
+    if bias == "up" and phase.startswith("corrective_abc"):
+        base *= 0.85
+        basis = f"{basis}_abc085"
+    amp_abs = max(0.35, min(4.0, base))
     amp = amp_abs if bias == "up" else -amp_abs
     return {
         "amp_pct": round(amp, 3),
@@ -808,19 +936,25 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         usdjpy = _load_sym(conn, "USDJPY")
         gold = _load_sym(conn, "GOLD")
         copper = _load_sym(conn, "COPPER")
-        # 2330 日K（ADR 對照）
+        # 2330 日K（ADR 對照＋量價確認）
         tw2330: Dict[str, Dict[str, float]] = {}
         _prev2330 = None
-        for _d, _c in conn.execute(
-            "SELECT REPLACE(CAST(date AS TEXT),'-',''), close FROM daily_quotes WHERE stock_id='2330' ORDER BY 1"
+        for _d, _c, _vol in conn.execute(
+            "SELECT REPLACE(CAST(date AS TEXT),'-',''), close, volume FROM daily_quotes WHERE stock_id='2330' ORDER BY 1"
         ):
             _day = _ymd(_d)
             _cc = _f(_c)
             if not _day or not _cc:
                 continue
             _ret = ((_cc / _prev2330 - 1.0) * 100.0) if _prev2330 else None
-            tw2330[_day] = {"close": _cc, "ret": _ret or 0.0, "ret_ok": _ret is not None}
+            tw2330[_day] = {
+                "close": _cc,
+                "ret": _ret or 0.0,
+                "ret_ok": _ret is not None,
+                "volume": _f(_vol) or 0.0,
+            }
             _prev2330 = _cc
+        otc = _load_sym(conn, "OTC")
         tx_night_px: Dict[str, float] = {}
         try:
             for _d, _c in conn.execute(
@@ -848,6 +982,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         fib_lit_days = 0
         chips_lit_days = 0
         wave_lit_days = 0
+        false_up_streak = 0  # 修正浪內連續看漲偏了（無未來：只消化 as_of+3 已到的案）
+        pending_false: List[Dict[str, Any]] = []
         # 波浪主結構快取（TWII 柱＋樞紐一次）
         try:
             from scripts.decade_lab_wave8_dual import (
@@ -864,6 +1000,23 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         for day in days:
             if day not in twii or not twii[day].get("ret_ok"):
                 continue
+            i_day = tw_days.index(day)
+            # 先消化已到期的假彈案（resolve_i <= 今日），再進 decide（不准偷看）
+            still_pending: List[Dict[str, Any]] = []
+            for p in pending_false:
+                if int(p["resolve_i"]) <= i_day:
+                    fut_c = twii[tw_days[int(p["resolve_i"])]]["close"]
+                    verd_p = _judge(str(p["bias"]), float(p["last"]), float(fut_c), float(p["inv"]))
+                    if p.get("bias") == "up" and p.get("in_abc"):
+                        if "對得上" in verd_p:
+                            false_up_streak = 0
+                        elif "偏了" in verd_p:
+                            false_up_streak += 1
+                    elif p.get("bias") != "up":
+                        false_up_streak = 0
+                else:
+                    still_pending.append(p)
+            pending_false = still_pending
             factors, missing = snapshot_factors(
                 twii=twii,
                 ixic=ixic,
@@ -977,11 +1130,13 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                     tx_night_px=tx_night_px,
                     tw_days=tw_days,
                     as_of=day,
+                    otc=otc or None,
                 )
                 factors.update(ex_f)
                 missing.extend(ex_m)
             except Exception:
                 missing.append("extras_snapshot")
+            factors["false_up_streak"] = int(false_up_streak)
             decision = decide_path(factors, missing, votes)
             why_codes = [str(x.get("code") or "") for x in (decision.get("why") or [])]
             if any(c.startswith("inst_") for c in why_codes):
@@ -1009,8 +1164,18 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             )
             amp_pct = float(amp_info["amp_pct"])
             tgt, inv = _targets(decision["bias"], last, amp_pct, factors)
+            # 登記假彈案：3 根後才結案進 streak（今日 decide 看不到本件結果）
+            pending_false.append(
+                {
+                    "bias": decision["bias"],
+                    "in_abc": str(factors.get("wave_phase") or "").startswith("corrective_abc"),
+                    "last": last,
+                    "inv": inv,
+                    "resolve_i": i_day + 3,
+                }
+            )
             # forward close
-            i = tw_days.index(day)
+            i = i_day
             fut = twii[tw_days[i + 3]]["close"]
             actual_ret = ((fut / last - 1.0) * 100.0) if last > 0 else 0.0
             verd = (

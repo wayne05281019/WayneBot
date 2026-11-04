@@ -130,6 +130,7 @@ def snapshot_extras(
     tx_night_px: Dict[str, float],
     tw_days: Sequence[str],
     as_of: str,
+    otc: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Tuple[Dict[str, Any], List[str]]:
     day = _ymd(as_of)
     factors: Dict[str, Any] = {}
@@ -241,6 +242,48 @@ def snapshot_extras(
     else:
         missing.append("adr_premium")
 
+    # 台積量價→大盤確認（飆大：用台積量價看整體台股；只當確認不是主判）
+    if day in tw2330:
+        bar2330 = tw2330[day]
+        vols = [
+            float(tw2330[tw_days[j]].get("volume") or 0.0)
+            for j in range(max(0, i - 20), i)
+            if tw_days[j] in tw2330 and (tw2330[tw_days[j]].get("volume") or 0) > 0
+        ]
+        # tw_days 是 TWII 日；2330 可能缺日 → 改用 2330 自己的日前窗
+        if len(vols) < 8:
+            keys2330 = sorted(tw2330)
+            if day in keys2330:
+                ii = keys2330.index(day)
+                vols = [
+                    float(tw2330[keys2330[j]].get("volume") or 0.0)
+                    for j in range(max(0, ii - 20), ii)
+                    if (tw2330[keys2330[j]].get("volume") or 0) > 0
+                ]
+        v0 = float(bar2330.get("volume") or 0.0)
+        if len(vols) >= 8 and v0 > 0:
+            med = sorted(vols)[len(vols) // 2]
+            spike = bool(med > 0 and v0 >= med * 1.8)
+            factors["tsmc_vol_spike"] = spike
+            ret2330 = float(bar2330.get("ret") or 0.0)
+            # 爆量收紅＝偏多確認；爆量收黑＝偏空確認（量價結構代理）
+            factors["tsmc_vol_confirm_up"] = bool(spike and ret2330 >= 0.8)
+            factors["tsmc_vol_confirm_down"] = bool(spike and ret2330 <= -0.8)
+        else:
+            missing.append("tsmc_vol")
+    else:
+        missing.append("tsmc_vol")
+
+    # 櫃買 OTC：有長史才比廣度（加權被權值綁架時對質）；缺就不硬填
+    if otc and day in otc and otc[day].get("ret_ok"):
+        otc_r = float(otc[day]["ret"])
+        tw_r = float(bar.get("ret") or 0.0)
+        factors["otc_ret"] = otc_r
+        factors["otc_lag_tw"] = bool(otc_r <= -0.8 and tw_r >= 0.3)
+        factors["otc_lead_tw"] = bool(otc_r >= 0.8 and tw_r <= -0.3)
+    elif otc is not None:
+        missing.append("otc_ret")
+
     # 現貨－夜盤基差
     if day in tx_night_px and bar["close"] > 0:
         basis = (tx_night_px[day] / bar["close"] - 1.0) * 100.0
@@ -263,19 +306,25 @@ def quantify_extras(conn: sqlite3.Connection) -> Dict[str, Any]:
     gold = _load_sym(conn, "GOLD")
     copper = _load_sym(conn, "COPPER")
     tsm = _load_sym(conn, "TSM")
-    # 2330 from daily_quotes
+    # 2330 from daily_quotes（含量，供量價確認）
     tw2330: Dict[str, Dict[str, float]] = {}
     prev = None
-    for d, c in conn.execute(
-        "SELECT REPLACE(CAST(date AS TEXT),'-',''), close FROM daily_quotes WHERE stock_id='2330' ORDER BY 1"
+    for d, c, vol in conn.execute(
+        "SELECT REPLACE(CAST(date AS TEXT),'-',''), close, volume FROM daily_quotes WHERE stock_id='2330' ORDER BY 1"
     ):
         day = _ymd(d)
         cc = _f(c)
         if not day or not cc:
             continue
         ret = ((cc / prev - 1.0) * 100.0) if prev else None
-        tw2330[day] = {"close": cc, "ret": ret or 0.0, "ret_ok": ret is not None}
+        tw2330[day] = {
+            "close": cc,
+            "ret": ret or 0.0,
+            "ret_ok": ret is not None,
+            "volume": _f(vol) or 0.0,
+        }
         prev = cc
+    otc = _load_sym(conn, "OTC")
     tx_night = _load_tx_night_close(conn)
     tw_days = sorted(twii.keys())
     idx = {d: i for i, d in enumerate(tw_days)}
@@ -302,6 +351,7 @@ def quantify_extras(conn: sqlite3.Connection) -> Dict[str, Any]:
             tx_night_px=tx_night,
             tw_days=tw_days,
             as_of=d,
+            otc=otc or None,
         )
         if f:
             day_f[d] = f
@@ -327,6 +377,10 @@ def quantify_extras(conn: sqlite3.Connection) -> Dict[str, Any]:
         "adr_tw_lead",
         "tx_contango_ge_0_4",
         "tx_backward_le_m0_4",
+        "tsmc_vol_confirm_up",
+        "tsmc_vol_confirm_down",
+        "otc_lag_tw",
+        "otc_lead_tw",
     ]
 
     def add(code: str) -> None:
