@@ -296,6 +296,33 @@ def load_wave_structure_vote() -> Dict[str, Any]:
     }
 
 
+def load_level_bar_hit() -> Dict[str, Any]:
+    """讀位→柱靜默對質摘要（沒檔＝略過，不准假數）。"""
+    p = OUT_DIR / "biaoke_level_bar_hit_latest.json"
+    if not p.exists():
+        return {"ok": False}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"ok": False}
+    cur = str(d.get("current_variant") or "")
+    nxt = d.get("next_variant") or {}
+    tracks = d.get("tracks") or {}
+    cur_s = tracks.get(cur) or {}
+    return {
+        "ok": True,
+        "current_variant": cur,
+        "current_n": cur_s.get("n_decided"),
+        "current_hit": cur_s.get("hit_rate"),
+        "next_variant": nxt.get("variant"),
+        "next_n": nxt.get("n_decided"),
+        "next_hit": nxt.get("hit_rate"),
+        "replace": bool(nxt.get("replace")),
+        "phone_sync": "blocked",
+        "WAVE_NEURONS_MATCH": WAVE_NEURONS_MATCH,
+    }
+
+
 def run_all(db_path: Path = MARKET_DB) -> Dict[str, Any]:
     conn = sqlite3.connect(str(db_path), timeout=60.0)
     try:
@@ -307,6 +334,7 @@ def run_all(db_path: Path = MARKET_DB) -> Dict[str, Any]:
         conn.close()
     five = run_five_bt_refresh(db_path)
     wave = load_wave_structure_vote()
+    level_bar = load_level_bar_hit()
     # 學成閘：五件各軌／細微波 n≥20 且命中可讀；神經元對齊另鎖
     learn_ready = bool(
         WAVE_NEURONS_MATCH
@@ -330,11 +358,13 @@ def run_all(db_path: Path = MARKET_DB) -> Dict[str, Any]:
             "gate_n20": micro.get("gate_n20"),
         },
         "wave8_structure": wave,
+        "level_bar_hit": level_bar,
         "learn_ready_for_phone": learn_ready,
         "phone_sync": "blocked",
         "WAVE_NEURONS_MATCH": WAVE_NEURONS_MATCH,
         "not_buy_signal": True,
         "next_zh": [
+            "位→柱下一鍵 level_bar_vnext_explicit_hybrid 續收集（未贏不准換）",
             "細微波未過閘→續收他點過的大盤細微波句對官方柱",
             "五件交叉日另對質同日官方柱（叠位）",
             "WAVE_NEURONS_MATCH 未真對齊前不准上話筒、不准發明 5／9",

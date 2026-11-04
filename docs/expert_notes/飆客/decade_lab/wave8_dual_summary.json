@@ -95,5 +95,21 @@
     "replace": false,
     "phone_sync": "blocked",
     "note_zh": "FWD窗不同＝不可直接替換閘；另軌收集"
+  },
+  "biaoke_next_variant": {
+    "variant": "level_bar_vnext_explicit_hybrid",
+    "rule_zh": "degree_turns：明確點位多數決柱對質，否則方向窗 fallback",
+    "source": "biaoke_level_bar_hit_latest.json",
+    "n_decided": 54,
+    "hit_rate": 0.5555555555555556,
+    "vs_current": {
+      "current_variant": "level_bar_fwd5_role_infer",
+      "current_hit_rate": 0.6413043478260869,
+      "edge": -0.08574879227053134
+    },
+    "gate_n20": true,
+    "replace": false,
+    "phone_sync": "blocked",
+    "note_zh": "勝率分軌；未贏現況／未對齊神經元不准上話筒"
   }
 }
