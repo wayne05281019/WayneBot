@@ -322,6 +322,11 @@ def run_dual() -> Dict[str, Any]:
                 br = float(lens[1]) / float(lens[0])
                 if not (0.382 <= br <= 0.786):
                     bias = "range"
+        # 自修#5：impulse 擴延比 ≥2.0 才出方向（靜默對質贏 #4 →換）
+        if bias in {"up", "down"} and phase.get("phase") == "impulse_12345":
+            er = float((phase.get("gate") or {}).get("ext_ratio") or 0.0)
+            if er < 2.0:
+                bias = "range"
         htf_ok = _htf_agree(bars, i, bias) if bias in {"up", "down"} else True
         if bias in {"up", "down"} and not htf_ok:
             bias = "range"
