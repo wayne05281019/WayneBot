@@ -9,6 +9,7 @@ from scripts.decade_lab_path_forecast import (
     _margin_kill_direction_ok,
     _oos_holdout,
     _sample_audit,
+    _oos_seal_gate,
     _targets,
     decide_path,
     estimate_amplitude,
@@ -328,6 +329,33 @@ def test_oos_holdout_split():
     assert big["holdout_n"] == 5
     assert len(big["holdout_as_of"]) == 5
     assert big["in_sample"]["n"] + big["holdout"]["n"] == 20
+    assert big["seal_grade"] == "thin_not_seal"
+
+
+def test_oos_seal_gate_blocks_thin_and_passes_thick():
+    def _mk(n: int):
+        rows = []
+        for i in range(n):
+            day = f"2026{1 + i // 28:02d}{(i % 28) + 1:02d}"
+            rows.append(
+                {
+                    "as_of": day,
+                    "bias": "up" if i % 2 == 0 else "down",
+                    "verdict": "對得上往上",
+                    "amp_verdict": "幅度對得上：估+1 實+1",
+                }
+            )
+        return rows
+
+    thin = _oos_seal_gate(_mk(24), min_holdout=20, frac=0.20)
+    assert thin["seal_ok"] is False
+    assert thin["need_scored_n"] == 40
+    assert "禁止" in str(thin.get("forbid_dir_100_boast_zh") or "")
+
+    thick = _oos_seal_gate(_mk(40), min_holdout=20, frac=0.20)
+    assert thick["seal_ok"] is True
+    assert thick["holdout_n"] == 20
+    assert thick["in_sample"]["n"] + thick["holdout"]["n"] == 40
 
 
 def test_amp_class_thresholds():

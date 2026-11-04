@@ -1,0 +1,53 @@
+{
+  "written_at": "2026-11-04T23:16:47+08:00",
+  "tz": "Asia/Taipei",
+  "track": "path_oos_seal",
+  "source_rows": "scored_gz",
+  "parent_summary": "docs/expert_notes/飆客/decade_lab/path_forecast_summary.json",
+  "summary_directional_n": 24,
+  "summary_wrote": 5419,
+  "summary_call_rate": 0.004429,
+  "summary_hit_rate_directional": 1.0,
+  "boast_dir_100_blocked": true,
+  "seal": {
+    "seal_ok": false,
+    "holdout_n": 0,
+    "scored_n": 24,
+    "need_scored_n": 40,
+    "want_holdout_n": 20,
+    "min_holdout": 20,
+    "frac": 0.2,
+    "reason_zh": "計分日 n=24 不足封印（要≥40 才能 holdout≥20 且 ≤n/2）；薄窗5日≠真 holdout",
+    "in_sample": {
+      "n": 24,
+      "hit": 24,
+      "miss": 0,
+      "hit_rate_directional": 1.0,
+      "amp_n": 24,
+      "amp_hit": 20,
+      "amp_miss": 4,
+      "hit_rate_amplitude": 0.8333333333333334
+    },
+    "holdout": {
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate_directional": null,
+      "amp_n": 0,
+      "amp_hit": 0,
+      "amp_miss": 0,
+      "hit_rate_amplitude": null
+    },
+    "holdout_as_of": [],
+    "forbid_dir_100_boast_zh": "seal 未過時禁止把 hit_rate_directional=1.0 當成果（稀釋／踢難案風險）",
+    "not_buy_signal": true,
+    "phone_sync": "blocked"
+  },
+  "gate_zh": "過閘＝seal_ok 且 holdout_n≥20；規則封印後 holdout 只驗不調；禁止報方向100%；不是買訊；phone_sync=blocked",
+  "replace_live": false,
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false,
+  "next_key": "path_oos_seal_vnext",
+  "aligned_mine_zh": "對 USER_ASKS_MINE B 測法／C OOS；修錯優先於堆指標"
+}
