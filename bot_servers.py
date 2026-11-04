@@ -7369,11 +7369,19 @@ class WayneTelegramBot:
                 cancelled = True
         finally:
             await _stop_wait()
-            if (
-                self._actor_op_alive(actor, op_kind, gen)
-                and not delivered
-                and not cancelled
-            ):
+            # 讀秒收掉後一定要有下文：成功已 delivered；取消／失敗都要一句，
+            # 不准「讀秒消失、圖與字都沒有」。
+            if delivered:
+                pass
+            elif cancelled or not self._actor_op_alive(actor, op_kind, gen):
+                try:
+                    await message.reply_text(
+                        "這則已中斷，請再打一次。",
+                        reply_markup=self._biaoke_reply_menu(uid),
+                    )
+                except Exception:
+                    logger.exception("飆大中斷提示送出失敗")
+            else:
                 try:
                     await message.reply_text(
                         PHONE_BUSY, reply_markup=self._biaoke_reply_menu(uid)
@@ -7874,6 +7882,14 @@ class WayneTelegramBot:
                     pass
                 return
             if gen and not self._actor_op_alive(actor, kind, gen):
+                # 讀秒會在 finally 收掉；不准無圖又無字（話筒以為當機）。
+                try:
+                    await message.reply_text(
+                        f"{name} {sid} 結構圖略過：已中斷，請再打一次",
+                        reply_markup=self._biaoke_reply_menu(uid),
+                    )
+                except Exception:
+                    pass
                 return
             png = str((built or {}).get("path") or "")
             if not png or not self._png_looks_ok(
