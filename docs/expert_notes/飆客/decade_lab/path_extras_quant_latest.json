@@ -1,0 +1,39 @@
+{
+  "written_at": "2026-11-04T14:15:54",
+  "tz": "Asia/Taipei",
+  "scored_days": 5420,
+  "base_mean3": 0.122,
+  "flags": [],
+  "n_flags": 0,
+  "regime_baseline": {
+    "bull": {
+      "n": 1866,
+      "mean3": 0.1711
+    },
+    "bear": {
+      "n": 892,
+      "mean3": 0.0088
+    },
+    "chop": {
+      "n": 2602,
+      "mean3": 0.1194
+    }
+  },
+  "ideas_zh": [
+    "美債／日圓／金銅／VIX",
+    "ADR溢價代理",
+    "美台背離2日",
+    "連漲跌／跳空",
+    "夜盤基差",
+    "分市況母體"
+  ],
+  "missing_hard_zh": [
+    "OTC長史",
+    "VVIX",
+    "TX夜盤OI常為0"
+  ],
+  "gate": "n>=20 & |edge|>=0.25 & side_hit>=0.55",
+  "goal_zh": "提高大盤方向＋幅度判斷；波浪主判外確認／否決",
+  "not_buy_signal": true,
+  "phone_sync": "blocked"
+}

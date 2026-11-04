@@ -1,15 +1,18 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T12:02:07",
+  "written_at": "2026-11-04T18:16:32",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
-  "fruitless": true,
-  "reason_zh": "走勢預測方向準度 0.610 仍偏弱（n=105）→ 記錄補因並排程重測；幅度 MAE 1.54pt 偏大（n=64）→ 目標幅度要重切；因素不足不計分占比 36.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "fruitless": false,
+  "reason_zh": "幅度 MAE 1.31pt 偏大（n=24）→ 目標幅度要重切；因素不足不計分占比 93.3%；market_margin_daily 列數偏少 n=809（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.6095238095238096,
-      "directional_n": 105,
+      "hit_rate_directional": 1.0,
+      "directional_n": 24,
       "factor_pack": [
+        "wave_bias",
+        "wave_phase",
+        "wave_ok",
         "twii_ret",
         "twii_wick",
         "twii_vol_spike",
@@ -53,11 +56,53 @@
         "chips_ud_ratio",
         "chips_tape_tril",
         "chips_tx_oi_z",
-        "chips_short_z"
+        "chips_short_z",
+        "regime",
+        "false_up_streak",
+        "abc_up_call_streak",
+        "tsmc_vol_spike",
+        "tsmc_vol_confirm_up",
+        "tsmc_vol_confirm_down",
+        "margin_kill_confirmed",
+        "margin_kill_blocked",
+        "michael_gap_south_bounce",
+        "michael_gap_south_after_strong",
+        "michael_gap_south_fx_ok",
+        "michael_gap_south_fx_ma",
+        "michael_gap_south_bear_wick",
+        "michael_gap_south_after_night",
+        "michael_failed_south_after_strong",
+        "michael_gap_south_below_ma60",
+        "michael_open_high_fade",
+        "michael_gap_south_sox_le_m2",
+        "michael_after_strong_day_only",
+        "michael_after_strong_x_wick",
+        "michael_gap_south_night_ge1",
+        "michael_gap_south_wick_ge045",
+        "michael_super_open_fade",
+        "michael_gap_south",
+        "michael_night_hot",
+        "michael_wick_flip_risk",
+        "michael_fail_upper",
+        "michael_break_lower",
+        "michael_wide_chop",
+        "michael_crash_bounce_tail",
+        "michael_wick_chop_rebound",
+        "michael_prior_ret",
+        "michael_lower_wick",
+        "michael_bound_span_pct",
+        "michael_sox_prior_ret",
+        "michael_ma60_lost",
+        "michael_sox_weak",
+        "wave_fib_primary_px",
+        "wave_fib_primary_pct",
+        "wave_fib_primary_ratio",
+        "wave_fib_mode",
+        "wave_fib_expect_down"
       ],
-      "hit_rate_amplitude": 0.59375,
-      "amp_n": 64,
-      "amp_mae_pct": 1.5443
+      "hit_rate_amplitude": 0.8333333333333334,
+      "amp_n": 24,
+      "amp_mae_pct": 1.3089
     },
     "wave": {
       "adopt": {
@@ -69,9 +114,9 @@
     },
     "lab": {
       "n": 5419,
-      "insufficient_n": 1981,
-      "watch_n": 2833,
-      "empty_why_n": 74
+      "insufficient_n": 5058,
+      "watch_n": 337,
+      "empty_why_n": 60
     },
     "coverage": {
       "ok": true,
@@ -142,18 +187,18 @@
           "to": "20261103"
         },
         "OTC": {
-          "n": 0,
-          "from": "",
-          "to": ""
+          "n": 4125,
+          "from": "20100104",
+          "to": "20261104"
         }
       },
-      "market_margin_daily": 390,
+      "market_margin_daily": 809,
       "market_tape_daily": 2696,
       "futures_daily": 1462
     },
     "lab_frac": {
-      "insufficient": 0.3655656025096881,
-      "empty_why": 0.013655656025096882
+      "insufficient": 0.933382542904595,
+      "empty_why": 0.011072153533862336
     }
   },
   "ideas": [
@@ -230,14 +275,6 @@
       "best_window_taipei": "盤後或週五彙整"
     },
     {
-      "id": "otc_index",
-      "kind": "breadth",
-      "why_zh": "櫃買指數：中小型廣度，加權被權值綁架時可對質",
-      "store": "index_daily: OTC",
-      "fetch": "官方／Yahoo 櫃買",
-      "best_window_taipei": "盤後 15:00–16:30"
-    },
-    {
       "id": "tsm_adr_premium",
       "kind": "lead",
       "why_zh": "2330 vs TSM ADR 溢價：隔日開盤預期與權值導向",
@@ -252,19 +289,17 @@
       "store": "futures night bars",
       "fetch": "既有 TX 夜盤管線續補缺年",
       "best_window_taipei": "日盤前 08:00–08:50；夜盤後 05:00"
+    },
+    {
+      "id": "vix_term_vvix",
+      "kind": "sentiment",
+      "why_zh": "VIX 期限／VVIX：恐慌結構，不只現貨 VIX 一日漲跌",
+      "store": "index_daily 附加欄或獨立表",
+      "fetch": "CBOE／Yahoo 可取得者",
+      "best_window_taipei": "美盤後"
     }
   ],
   "schedule": [
-    {
-      "at": "2026-11-04T15:40:00",
-      "kind": "fetch_tw_official",
-      "note_zh": "盤後：漲跌家數／融資／法人流"
-    },
-    {
-      "at": "2026-11-04T16:40:00",
-      "kind": "fetch_futures_oi",
-      "note_zh": "盤後：TX／TE／OI"
-    },
     {
       "at": "2026-11-04T22:40:00",
       "kind": "retest_path",
@@ -314,6 +349,16 @@
       "at": "2026-11-06T16:40:00",
       "kind": "fetch_futures_oi",
       "note_zh": "盤後：TX／TE／OI"
+    },
+    {
+      "at": "2026-11-06T22:40:00",
+      "kind": "retest_path",
+      "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
+    },
+    {
+      "at": "2026-11-07T10:00:00",
+      "kind": "backfill_long",
+      "note_zh": "週末長史補洞（margin／tape／TE）"
     }
   ],
   "status": "queued",

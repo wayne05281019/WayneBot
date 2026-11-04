@@ -731,6 +731,8 @@ class WayneTelegramBot:
         self._market_teach_paint_lock = asyncio.Lock()
         self._screening_global_owner: str = ""
         self._screening_build_task = None
+        # 建檔認領鎖：兩次按在讀快取 await 後同時醒來時，不准各開一輪全掃
+        self._screening_build_claim = asyncio.Lock()
         self._menu_fade_gen: Dict[str, int] = {}
         self._menu_pin_msgs: Dict[str, object] = {}
         self._menu_pin_at: Dict[str, float] = {}
@@ -4092,12 +4094,18 @@ class WayneTelegramBot:
 
                 return build_and_cache_full_screening(self.db_path)
 
-            inflight = getattr(self, "_screening_build_task", None)
-            if isinstance(inflight, asyncio.Task) and not inflight.done():
-                build_task = inflight
-            else:
-                build_task = asyncio.create_task(asyncio.to_thread(_build_and_cache))
-                self._screening_build_task = build_task
+            # 讀快取 await 後兩邊可能同時到這裡；認領必須原子，否則 CI 會建兩輪
+            claim = getattr(self, "_screening_build_claim", None)
+            if not isinstance(claim, asyncio.Lock):
+                claim = asyncio.Lock()
+                self._screening_build_claim = claim
+            async with claim:
+                inflight = getattr(self, "_screening_build_task", None)
+                if isinstance(inflight, asyncio.Task) and not inflight.done():
+                    build_task = inflight
+                else:
+                    build_task = asyncio.create_task(asyncio.to_thread(_build_and_cache))
+                    self._screening_build_task = build_task
 
             async def _late_deliver():
                 try:

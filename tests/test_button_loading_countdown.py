@@ -1274,6 +1274,7 @@ def _bare_screen_bot():
     bot._screening_gate = asyncio.Lock()
     bot._screening_global_owner = ""
     bot._screening_build_task = None
+    bot._screening_build_claim = asyncio.Lock()
     bot._actor_op_gen = {}
     bot._actor_op_kind = {}
     bot._actor_waits = {}
@@ -1621,9 +1622,12 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
     monkeypatch.setattr(
         "screening_engine.load_cached_full_screening", lambda *_a, **_k: None
     )
-    monkeypatch.setattr(
-        "screening_engine.screen_cache_ready", lambda *_a, **_k: False
-    )
+    # 拖慢 cache_ready：兩次按在認領建檔前交錯醒來（CI 曾雙建）
+    def _cache_ready_slow(_db=None):
+        _t.sleep(0.05)
+        return False
+
+    monkeypatch.setattr("screening_engine.screen_cache_ready", _cache_ready_slow)
     n = {"build": 0}
     release = asyncio.Event()
 
@@ -1652,19 +1656,16 @@ def test_second_screen_press_joins_inflight_loading(monkeypatch):
 
     async def run():
         t1 = asyncio.create_task(bot._run_manual_screening(msg1, "u1"))
-        for _ in range(80):
-            if getattr(bot, "_screening_build_task", None) is not None:
-                break
-            await asyncio.sleep(0.02)
+        await asyncio.sleep(0.02)
         t2 = asyncio.create_task(bot._run_manual_screening(msg2, "u1"))
-        await asyncio.sleep(0.15)
+        await asyncio.sleep(0.25)
         first2 = str(msg2.reply_text.await_args_list[0].args[0])
         assert "LOADING" in first2
         assert "逾時" not in first2
         assert "已超過 3 分鐘" not in first2
         release.set()
-        await asyncio.wait_for(t1, timeout=3.0)
-        await asyncio.wait_for(t2, timeout=3.0)
+        await asyncio.wait_for(t1, timeout=5.0)
+        await asyncio.wait_for(t2, timeout=5.0)
         assert n["build"] == 1
         assert bot._reply_screening_payload.await_count >= 1
 

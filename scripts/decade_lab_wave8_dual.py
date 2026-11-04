@@ -224,6 +224,50 @@ def _phase_from_pivots(pivots: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     return {"phase": "unknown", "cycle": "none", "bias": "range", "gate": {}}
 
 
+def snapshot_wave_asof(
+    bars: Sequence[Dict[str, float]],
+    pivots_all: Sequence[Dict[str, Any]],
+    as_of: str,
+) -> Dict[str, Any]:
+    """as-of 當日波浪主結構快照（只准用當日與以前樞紐）。供路徑預測當主判。"""
+    day = _ymd(as_of)
+    day_i = {b["date"]: i for i, b in enumerate(bars)}
+    i = day_i.get(day)
+    if i is None:
+        return {"ok": False, "bias": "range", "phase": "unknown", "missing": "wave_as_of"}
+    # 樞紐截止到當日
+    hist = [p for p in pivots_all if int(p.get("i") or -1) <= i]
+    if len(hist) < 4:
+        return {"ok": False, "bias": "range", "phase": "unknown", "missing": "wave_pivots"}
+    phase = _phase_from_pivots(hist)
+    gate_ok = bool((phase.get("gate") or {}).get("ok"))
+    bias = str(phase.get("bias") or "range") if gate_ok else "range"
+    if bias in {"up", "down"} and phase.get("phase") == "corrective_abc":
+        lens = (phase.get("gate") or {}).get("lens") or []
+        if len(lens) >= 2 and float(lens[0]) > 0:
+            br = float(lens[1]) / float(lens[0])
+            if not (0.382 <= br <= 0.786):
+                bias = "range"
+    if bias in {"up", "down"} and phase.get("phase") == "impulse_12345":
+        er = float((phase.get("gate") or {}).get("ext_ratio") or 0.0)
+        if er < 2.0:
+            bias = "range"
+    htf_ok = _htf_agree(bars, i, bias) if bias in {"up", "down"} else True
+    if bias in {"up", "down"} and not htf_ok:
+        bias = "range"
+    return {
+        "ok": True,
+        "bias": bias,
+        "phase": phase.get("phase"),
+        "cycle": phase.get("cycle"),
+        "gate_ok": gate_ok,
+        "htf_ok": htf_ok,
+        "ext_ratio": (phase.get("gate") or {}).get("ext_ratio"),
+        "structural_primary": True,
+        "phone_sync": "blocked",
+    }
+
+
 def _fwd_bias(bars: Sequence[Dict[str, float]], i: int, n: int = FWD_N) -> Optional[str]:
     if i < 0 or i + n >= len(bars):
         return None

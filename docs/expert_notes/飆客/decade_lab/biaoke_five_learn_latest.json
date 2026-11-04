@@ -1,0 +1,60 @@
+{
+  "written_at": "2026-11-04T14:15:56",
+  "tz": "Asia/Taipei",
+  "source": "biaoke_five_bt",
+  "n_posts": 3501,
+  "n_tool": 1340,
+  "last_official": "20261103",
+  "tools": {
+    "wave": {
+      "n": 204,
+      "hit": 137,
+      "miss": 63,
+      "pending": 4,
+      "hit_rate": 0.685,
+      "gate_n20": true
+    },
+    "morph": {
+      "n": 164,
+      "hit": 35,
+      "miss": 129,
+      "pending": 0,
+      "hit_rate": 0.21341463414634146,
+      "gate_n20": true
+    },
+    "vol": {
+      "n": 807,
+      "hit": 508,
+      "miss": 253,
+      "pending": 46,
+      "hit_rate": 0.6675427069645203,
+      "gate_n20": true
+    },
+    "keyk": {
+      "n": 11,
+      "hit": 3,
+      "miss": 7,
+      "pending": 1,
+      "hit_rate": 0.3,
+      "gate_n20": false
+    },
+    "leader": {
+      "n": 92,
+      "hit": 53,
+      "miss": 38,
+      "pending": 1,
+      "hit_rate": 0.5824175824175825,
+      "gate_n20": true
+    }
+  },
+  "five_zh": [
+    "波浪",
+    "形態",
+    "量價結構",
+    "關鍵K",
+    "碎形線"
+  ],
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false
+}
