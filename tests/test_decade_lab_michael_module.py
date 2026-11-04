@@ -113,6 +113,7 @@ def test_michael_hard_bounce_variant():
     assert f.get("michael_gap_south_bounce") is True
     assert f.get("michael_gap_south_fx_ok") is True
     assert f.get("michael_gap_south_fx_ma") is True  # 外資＋季線下
+    assert f.get("michael_gap_south_below_ma60") is True  # 擴大軟閘母體
 
 
 def test_michael_fx_ma_needs_ma60_or_wick():

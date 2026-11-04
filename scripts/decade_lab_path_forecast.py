@@ -121,6 +121,10 @@ FACTOR_PACK = (
     "michael_gap_south_fx_ma",
     "michael_gap_south_bear_wick",
     "michael_gap_south_after_night",
+    "michael_gap_south_below_ma60",
+    "michael_open_high_fade",
+    "michael_gap_south_night_ge1",
+    "michael_gap_south_wick_ge045",
     "michael_gap_south",
     "michael_wick_flip_risk",
     "michael_fail_upper",
@@ -582,7 +586,7 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
         "michael_gap_south_bounce",
         "michael_gap_south_fx_ma",  # 嚴變體優先於裸 fx_ok
         "michael_gap_south_fx_ok",
-        # after_night 語料有用、量化過閘，但進 path 主判易孤票踩空 → 只收集／soft 另議
+        # after_night／night_ge1／wick_ge045：有用擴大收集；path 主判暫不投孤票
         "michael_gap_south_after_strong",
     )
     _cands = [
@@ -596,13 +600,23 @@ def _lit_why(factors: Dict[str, Any], votes: Dict[str, float]) -> List[Dict[str,
         add(_cands[0][0], True)
         _picked = True
     if not _picked:
-        _abc = str(factors.get("wave_phase") or "").startswith("corrective_abc")
-        _gap_ok = bool(factors.get("michael_gap_south")) and (
-            not _abc
-            or bool(factors.get("inst_foreign_pos_2d"))
-            or (_f(factors.get("inst_foreign_z")) or 0) >= 0.5
-        )
-        add("michael_gap_south", _gap_ok)
+        # 擴大軟閘：季線下／開高走低優先於裸 gap_south
+        for _soft in (
+            "michael_gap_south_below_ma60",
+            "michael_open_high_fade",
+            "michael_gap_south",
+        ):
+            if factors.get(_soft) and _soft in votes:
+                _abc = str(factors.get("wave_phase") or "").startswith("corrective_abc")
+                if _soft == "michael_gap_south" and _abc:
+                    if not (
+                        bool(factors.get("inst_foreign_pos_2d"))
+                        or (_f(factors.get("inst_foreign_z")) or 0) >= 0.5
+                    ):
+                        continue
+                add(_soft, True)
+                _picked = True
+                break
     add("michael_wick_flip_risk", bool(factors.get("michael_wick_flip_risk")))
     add("michael_fail_upper", bool(factors.get("michael_fail_upper")))
     add("michael_break_lower", bool(factors.get("michael_break_lower")))

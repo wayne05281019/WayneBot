@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T16:50:31",
+  "written_at": "2026-11-04T17:01:01",
   "tz": "Asia/Taipei",
   "source": "michael_self_module",
   "note_zh": "自研模組：麥可長文→日K變體；有用指標深挖不棄；當日空／三日回歸分軌（檢測窗對齊）；不取代飆大；不是買訊",
@@ -71,12 +71,32 @@
       "source": "michael_self_module"
     },
     {
+      "flag": "michael_open_high_fade",
+      "n": 149,
+      "fwd3_avg": 0.571,
+      "edge3": 0.449,
+      "vote": 0.247,
+      "hit_rate_side": 0.4899,
+      "gate": "soft",
+      "source": "michael_self_module"
+    },
+    {
       "flag": "michael_gap_south",
       "n": 285,
       "fwd3_avg": 0.5572,
       "edge3": 0.4352,
       "vote": 0.2394,
       "hit_rate_side": 0.4807,
+      "gate": "soft",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_gap_south_below_ma60",
+      "n": 142,
+      "fwd3_avg": 0.5303,
+      "edge3": 0.4083,
+      "vote": 0.2246,
+      "hit_rate_side": 0.507,
       "gate": "soft",
       "source": "michael_self_module"
     }

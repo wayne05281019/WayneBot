@@ -8,13 +8,15 @@
 - 有用指標不准輕易放棄：裸 gap_south 側向未過硬閘時，改切市況／下影／季線變體深挖。
 - 加測抬大盤方向勝率；不取代飆大主文；不是買訊；不上話筒。
 
-深挖結論（已落碼）：
-- 當日 open→close：gap_south ≈65% 收綠 → 當沖空視角成立（michael_gap_south_intraday_down）
+深挖結論（已落碼；有用就擴大測）：
+- 當日 open→close：開高走低 n≈149 全收綠 → 當沖空（michael_gap_south_intraday_down）
 - 三日窗硬閘回歸（偏多票）：
   - gap_south + 季線下 + 下影≥0.30
   - gap_south + 季線下 + 昨漲≥1.5%
-  - gap_south + 外資 z≥0 +（季線下或下影≥0.25）（裸外資易孤票踩空）
+  - gap_south + 外資 z≥0（孤票 path 端擋）
   - gap_south + 空頭市況 + 下影≥0.30
+- 擴大軟閘（續收）：gap_south + 季線下（無下影門）；開高走低嚴格版
+- 近閘收集：夜盤≥1%、下影≥0.45（n≈19）
 - 檢測窗分軌：當日空不准套三日 fwd；三日回歸票才進 path
 """
 from __future__ import annotations
@@ -214,6 +216,13 @@ def snapshot_michael_factors(
         factors["michael_gap_south_bear_wick"] = bool(
             regime == "bear" and wick_today >= 0.30
         )  # n≈24 edge≈+1.93 side≈0.75
+        # 擴大軟閘／近閘收集（有用就加大母體測）
+        factors["michael_gap_south_below_ma60"] = bool(below_ma60)
+        factors["michael_open_high_fade"] = bool(open_high_fade)
+        factors["michael_gap_south_night_ge1"] = bool(
+            night is not None and night >= 1.0
+        )
+        factors["michael_gap_south_wick_ge045"] = bool(wick_today >= 0.45)
     else:
         factors["michael_gap_south_bounce"] = False
         factors["michael_gap_south_after_strong"] = False
@@ -221,6 +230,10 @@ def snapshot_michael_factors(
         factors["michael_gap_south_fx_ma"] = False
         factors["michael_gap_south_bear_wick"] = False
         factors["michael_gap_south_after_night"] = False
+        factors["michael_gap_south_below_ma60"] = False
+        factors["michael_open_high_fade"] = False
+        factors["michael_gap_south_night_ge1"] = False
+        factors["michael_gap_south_wick_ge045"] = False
 
     if day in tx_reg:
         factors["michael_tx_ret"] = round(float(tx_reg[day].get("ret") or 0.0), 4)
@@ -317,7 +330,12 @@ def quantify_michael(conn: sqlite3.Connection) -> Dict[str, Any]:
         "michael_gap_south_fx_ok",
         "michael_gap_south_fx_ma",
         "michael_gap_south_bear_wick",
-        "michael_gap_south_after_night",  # 語料：夜盤熱→日向南
+        "michael_gap_south_after_night",  # 語料：夜盤熱→日向南（過閘；path 主判暫不投）
+        # 擴大軟閘
+        "michael_gap_south_below_ma60",
+        "michael_open_high_fade",
+        "michael_gap_south_night_ge1",  # 近閘收集
+        "michael_gap_south_wick_ge045",
         # 基底軟閘（三日回歸）
         "michael_gap_south",
         # 注意：intraday_down 是當日 open→close 概念，不准用三日窗當檢測（方法錯會誤判）
@@ -469,7 +487,7 @@ def extract_michael_corpus(conn: sqlite3.Connection, *, limit_articles: int = 12
           )
           AND IFNULL(reply_to,'') != ''
         GROUP BY 1
-        HAVING n >= 2
+        HAVING n >= 1
         ORDER BY n DESC
         """
     ).fetchall()

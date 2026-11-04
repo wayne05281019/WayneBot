@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T16:51:45",
+  "written_at": "2026-11-04T17:02:06",
   "tz": "Asia/Taipei",
   "goal_zh": "預判大盤漲勢（方向）及幅度",
   "investor_output": [
@@ -76,6 +76,10 @@
     "michael_gap_south_fx_ma",
     "michael_gap_south_bear_wick",
     "michael_gap_south_after_night",
+    "michael_gap_south_below_ma60",
+    "michael_open_high_fade",
+    "michael_gap_south_night_ge1",
+    "michael_gap_south_wick_ge045",
     "michael_gap_south",
     "michael_wick_flip_risk",
     "michael_fail_upper",
@@ -91,22 +95,22 @@
   ],
   "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。法人／投信一定納入判斷；要納入哪些因素、怎麼切＝程式責任。",
   "wrote": 5419,
-  "scored_n": 20,
-  "directional_n": 20,
-  "hit": 19,
+  "scored_n": 21,
+  "directional_n": 21,
+  "hit": 20,
   "miss": 1,
-  "hit_rate_directional": 0.95,
-  "amp_n": 19,
-  "amp_hit": 11,
+  "hit_rate_directional": 0.9523809523809523,
+  "amp_n": 20,
+  "amp_hit": 12,
   "amp_miss": 8,
-  "hit_rate_amplitude": 0.5789473684210527,
-  "amp_mae_pct": 1.9153,
+  "hit_rate_amplitude": 0.6,
+  "amp_mae_pct": 1.8293,
   "by_bias": {
     "up": {
-      "n": 14,
-      "hit": 13,
+      "n": 15,
+      "hit": 14,
       "miss": 1,
-      "hit_rate": 0.9285714285714286
+      "hit_rate": 0.9333333333333333
     },
     "down": {
       "n": 6,
@@ -129,10 +133,10 @@
       "hit_rate": 1.0
     },
     "mid": {
-      "n": 12,
-      "hit": 6,
+      "n": 13,
+      "hit": 7,
       "miss": 6,
-      "hit_rate": 0.5
+      "hit_rate": 0.5384615384615384
     },
     "large": {
       "n": 4,
@@ -143,10 +147,10 @@
   },
   "by_regime": {
     "bull": {
-      "n": 9,
-      "hit": 8,
+      "n": 10,
+      "hit": 9,
       "miss": 1,
-      "hit_rate": 0.8888888888888888
+      "hit_rate": 0.9
     },
     "bear": {
       "n": 7,
