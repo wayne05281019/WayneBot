@@ -12,21 +12,30 @@ def test_biaoke_bias_mapping():
     assert _biaoke_bias("retest", "第五波測底") == "up"
     assert _biaoke_bias("down", "逃命波C-2") == "down"
     assert _biaoke_bias("up", "主升段") == "up"
+    assert _biaoke_bias("up", "末升段") == "down"  # 末端→預期修正
+    assert _biaoke_bias("up", "邪惡第五波") == "down"
     assert _biaoke_bias("side", "位階四") == "range"
 
 
 def test_iron_and_judge():
-    # 人工上漲 1-2-3-4-5 端點（L H L H L H）
+    from scripts.decade_lab_wave8_dual import _phase_from_pivots
+
+    # 人工上漲 1-2-3-4-5（第3段擴延 ≥1.618×次長）
     pts = [
         {"px": 100, "kind": "L"},
-        {"px": 110, "kind": "H"},
-        {"px": 105, "kind": "L"},
-        {"px": 125, "kind": "H"},
-        {"px": 115, "kind": "L"},
-        {"px": 130, "kind": "H"},
+        {"px": 110, "kind": "H"},  # w1=10
+        {"px": 105, "kind": "L"},  # w2=5
+        {"px": 130, "kind": "H"},  # w3=25 (≥1.618×10)
+        {"px": 120, "kind": "L"},  # w4=10；不重疊 w1
+        {"px": 140, "kind": "H"},  # w5=20
     ]
     m = _iron_motive(pts)
     assert "lens" in m
+    assert m.get("ok") and m.get("ext_pass")
+    # 凑滿推進＝預期反向進修正（不上漲續抱）
+    ph = _phase_from_pivots(pts)
+    assert ph["phase"] == "impulse_12345"
+    assert ph["bias"] == "down"
     assert _judge_dir("up", "up") == "對"
     assert _judge_dir("up", "down") == "偏"
     assert _judge_dir("range", "up") == "觀望不計分"

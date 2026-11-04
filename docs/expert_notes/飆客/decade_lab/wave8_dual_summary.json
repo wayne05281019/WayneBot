@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T09:19:20",
+  "written_at": "2026-11-04T09:30:30",
   "tz": "Asia/Taipei",
   "twii_n": 5423,
   "twii_from": "20061102",
@@ -10,13 +10,13 @@
     "textbook_8cycle": {
       "n_rows": 821,
       "n_decided": 363,
-      "hit": 202,
-      "miss": 161,
-      "hit_rate": 0.5564738292011019,
+      "hit": 254,
+      "miss": 109,
+      "hit_rate": 0.699724517906336,
       "gate_n20": true,
       "outcome_counts": {
-        "對": 202,
-        "偏": 161,
+        "對": 254,
+        "偏": 109,
         "未完": 0,
         "觀望不計分": 458,
         "缺柱": 0
@@ -26,13 +26,13 @@
     "biaoke_degree": {
       "n_rows": 71,
       "n_decided": 58,
-      "hit": 26,
-      "miss": 32,
-      "hit_rate": 0.4482758620689655,
+      "hit": 27,
+      "miss": 31,
+      "hit_rate": 0.46551724137931033,
       "gate_n20": true,
       "outcome_counts": {
-        "對": 26,
-        "偏": 32,
+        "對": 27,
+        "偏": 31,
         "未完": 1,
         "觀望不計分": 5,
         "缺柱": 7
@@ -42,10 +42,19 @@
   },
   "adopt": {
     "pick": "textbook_8cycle",
-    "reason": "textbook hit_rate 0.5565 > biaoke 0.4483"
+    "reason": "textbook hit_rate 0.6997 > biaoke 0.4655"
   },
-  "disagree_n": 1,
+  "disagree_n": 2,
   "disagree_sample": [
+    {
+      "as_of": "20250623",
+      "textbook_bias": "up",
+      "textbook_verdict": "對",
+      "biaoke_bias": "down",
+      "biaoke_tag": "細微波主跌",
+      "biaoke_verdict": "偏",
+      "actual": "up"
+    },
     {
       "as_of": "20260729",
       "textbook_bias": "up",
@@ -61,53 +70,27 @@
     "textbook_miss_reason_top": [
       [
         "bias_wrong",
-        161
+        109
       ]
     ],
     "next_rule_candidates": [
-      "pivot_look 3→4／5 重跑",
-      "FWD_N 5→3 對齊當日盤勢軌",
-      "impulse 未過鐵律不准出方向（改觀望）",
-      "down_done／A波低 對質窗改 FWD_N=3"
+      "已落地：motive 凑滿→預期反向進 ABC（自修#2）",
+      "已落地：末升／邪惡第五→down",
+      "下一版：子浪碎形確認／多週期對齊",
+      "下一版：ABC B 回撤 0.382–0.786 再出方向",
+      "FWD_N 5→3 對齊當日盤勢軌"
     ],
-    "note_zh": "偏多於對→自己改切法再生；不等使用者提醒。"
+    "note_zh": "偏多於對→自己改切法再生；不等使用者提醒。",
+    "reusable_finding": {
+      "id": "wave8_post_motive_expect_opposite",
+      "n": 95,
+      "hit_rate_before": 0.1368,
+      "hit_rate_after": 0.6842,
+      "rule_zh": "1-2-3-4-5鐵律＋擴延過關＝推進結束，後窗預期反向進修正"
+    }
   },
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "wave_neurons_match": false,
-  "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。",
-  "self_fix_runs": [
-    {
-      "tried": [
-        {
-          "look": 3,
-          "n": 363,
-          "hit_rate": 0.5564738292011019,
-          "hit": 202,
-          "miss": 161
-        },
-        {
-          "look": 4,
-          "n": 363,
-          "hit_rate": 0.5564738292011019,
-          "hit": 202,
-          "miss": 161
-        },
-        {
-          "look": 5,
-          "n": 363,
-          "hit_rate": 0.5564738292011019,
-          "hit": 202,
-          "miss": 161
-        }
-      ],
-      "kept": {
-        "look": 3,
-        "n": 363,
-        "hit_rate": 0.5564738292011019,
-        "hit": 202,
-        "miss": 161
-      }
-    }
-  ]
+  "note_zh": "兩套都驗證；準度高者採用。勝率分軌不混。未過閘／神經元未對＝不上話筒。"
 }

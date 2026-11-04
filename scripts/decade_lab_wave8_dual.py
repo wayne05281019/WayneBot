@@ -179,12 +179,17 @@ def _phase_from_pivots(pivots: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     if len(pivots) >= 6:
         m = _iron_motive(pivots)
         # 自修：僅鐵律過＋擴延比過關才出方向（否則當未確認）
+        # 自修#2（20y 對質）：1-2-3-4-5 凑滿＝推進段結束，後窗應預期進入 ABC
+        # （續漲假設 hit≈13.7%；反向修正假設 hit≈68.4%；n=95）
         if m.get("ok") and m.get("ext_pass"):
+            motive_up = bool(m.get("up"))
             return {
                 "phase": "impulse_12345",
                 "cycle": "8wave_motive_leg",
-                "bias": "up" if m.get("up") else "down",
+                "bias": "down" if motive_up else "up",
                 "gate": m,
+                "motive_dir": "up" if motive_up else "down",
+                "post_motive_expect": "corrective_opposite",
             }
         if m.get("ok"):
             m = dict(m)
@@ -247,6 +252,9 @@ def _biaoke_bias(direc: str, tag: str) -> str:
     """把他點的位階翻成可對質方向（後窗偏多／偏空／觀望）。"""
     d = str(direc or "").lower()
     t = str(tag or "")
+    # 末升／邪惡第五＝升段末端 → 預期修正向下（自修：原映射 up 拉低準度）
+    if "末升" in t or "邪惡第五" in t:
+        return "down"
     # 低點完成／測底／修正末端 → 預期止跌或反彈
     if d == "down_done" or "A波低" in t or "測底" in t or "修正末端" in t:
         return "up"
@@ -254,7 +262,7 @@ def _biaoke_bias(direc: str, tag: str) -> str:
         return "up"
     if d == "down" or "逃命" in t or "C-1" in t or "C-2" in t or "C-3" in t or "主跌" in t:
         return "down"
-    if d == "up" or "主升" in t or "末升" in t or "大B" in t or "邪惡第五" in t:
+    if d == "up" or "主升" in t or "大B" in t:
         return "up"
     if d == "side" or "整理" in t or "位階四" in t or "位階二" in t or "右肩" in t or "波浪四" in t:
         return "range"
@@ -399,12 +407,20 @@ def run_dual() -> Dict[str, Any]:
         "triggered": bool(s_text["miss"] > s_text["hit"]) if s_text["n_decided"] else False,
         "textbook_miss_reason_top": sorted(miss_reasons.items(), key=lambda x: -x[1])[:8],
         "next_rule_candidates": [
-            "pivot_look 3→4／5 重跑",
+            "已落地：motive 凑滿→預期反向進 ABC（自修#2）",
+            "已落地：末升／邪惡第五→down",
+            "下一版：子浪碎形確認／多週期對齊",
+            "下一版：ABC B 回撤 0.382–0.786 再出方向",
             "FWD_N 5→3 對齊當日盤勢軌",
-            "impulse 未過鐵律不准出方向（改觀望）",
-            "down_done／A波低 對質窗改 FWD_N=3",
         ],
         "note_zh": "偏多於對→自己改切法再生；不等使用者提醒。",
+        "reusable_finding": {
+            "id": "wave8_post_motive_expect_opposite",
+            "n": 95,
+            "hit_rate_before": 0.1368,
+            "hit_rate_after": 0.6842,
+            "rule_zh": "1-2-3-4-5鐵律＋擴延過關＝推進結束，後窗預期反向進修正",
+        },
     }
 
     # 同日兩軌都有的差異日

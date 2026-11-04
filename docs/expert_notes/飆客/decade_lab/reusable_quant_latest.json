@@ -180,6 +180,15 @@
       "edge3": 0.30903028479158867,
       "gate_n20": true,
       "reusable": true
+    },
+    {
+      "id": "wave8_post_motive_expect_opposite",
+      "lens": "wave8_self_fix",
+      "n": 95,
+      "edge3_note": "hit_rate 0.1368→0.6842 on FWD_N=5 directional",
+      "hit_rate_after": 0.6842,
+      "rule_zh": "1-2-3-4-5鐵律+擴延過關＝推進結束，後窗預期反向進修正",
+      "source": "decade_lab_wave8_dual self_fix#2"
     }
   ],
   "by_lens": {
@@ -264,5 +273,187 @@
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "storage": "json + jsonl.gz only；不准 PNG",
-  "note_zh": "多輪不同切法；可沿用閘 n≥20 且 |edge3|≥0.25；目標 ≥10 條。不是買訊。"
+  "note_zh": "多輪不同切法；可沿用閘 n≥20 且 |edge3|≥0.25；目標 ≥10 條。不是買訊。",
+  "flags": [
+    {
+      "flag": "after_tw_down2_with_wick",
+      "lens": "L5_recovery",
+      "n": 21,
+      "fwd3_avg": 1.1338051716217865,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 1.0116583853132013,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "fx_up_tw_down",
+      "lens": "L1_diverge",
+      "n": 99,
+      "fwd3_avg": -0.6472461583638627,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.7693929446724479,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_up_tw_down+brent_up_tw_down",
+      "lens": "L2_combo",
+      "n": 21,
+      "fwd3_avg": -0.5833962364907873,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.7055430227993725,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "tw_vol_spike+tw_lower_wick",
+      "lens": "L2_combo",
+      "n": 20,
+      "fwd3_avg": -0.582712641757891,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.7048594280664762,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "dxy_up_tw_down",
+      "lens": "L1_diverge",
+      "n": 145,
+      "fwd3_avg": -0.5196191933490243,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.6417659796576095,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_risk_off_tw_green+tw_lower_wick",
+      "lens": "L2_combo",
+      "n": 36,
+      "fwd3_avg": 0.6980844732214886,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.5759376869129034,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_up_tw_down",
+      "lens": "L1_diverge",
+      "n": 101,
+      "fwd3_avg": 0.6963889526539361,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.5742421663453509,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "after_tw_down2_us_up",
+      "lens": "L5_recovery",
+      "n": 39,
+      "fwd3_avg": 0.6804694569970556,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.5583226706884704,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "after_tw_down2_vol_spike",
+      "lens": "L5_recovery",
+      "n": 25,
+      "fwd3_avg": 0.607275331166893,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.4851285448583078,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_risk_off_tw_green",
+      "lens": "L1_diverge",
+      "n": 142,
+      "fwd3_avg": 0.5678048651236692,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.445658078815084,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_down_tw_hold+us_risk_off_tw_green",
+      "lens": "L2_combo",
+      "n": 142,
+      "fwd3_avg": 0.5678048651236692,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.445658078815084,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "tw_vol_spike",
+      "lens": "L1_diverge",
+      "n": 125,
+      "fwd3_avg": 0.5336720109207115,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.41152522461212626,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "brent_up_tw_down",
+      "lens": "L1_diverge",
+      "n": 135,
+      "fwd3_avg": -0.27839917835319083,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.40054596466177605,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_risk_off_tw_green+vix_spike_tw_hold",
+      "lens": "L2_combo",
+      "n": 84,
+      "fwd3_avg": 0.4816025141557293,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.3594557278471441,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_down_tw_hold",
+      "lens": "L1_diverge",
+      "n": 269,
+      "fwd3_avg": 0.4770332899173605,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.35488650360877527,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "tw_crash_3pct",
+      "lens": "L3_extreme",
+      "n": 107,
+      "fwd3_avg": 0.43117707110017384,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.30903028479158867,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "after_tw_down3_event",
+      "lens": "L5_recovery",
+      "n": 107,
+      "fwd3_avg": 0.43117707110017384,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.30903028479158867,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "id": "wave8_post_motive_expect_opposite",
+      "lens": "wave8_self_fix",
+      "n": 95,
+      "edge3_note": "hit_rate 0.1368→0.6842 on FWD_N=5 directional",
+      "hit_rate_after": 0.6842,
+      "rule_zh": "1-2-3-4-5鐵律+擴延過關＝推進結束，後窗預期反向進修正",
+      "source": "decade_lab_wave8_dual self_fix#2"
+    }
+  ],
+  "n_flags": 18
 }
