@@ -42,7 +42,11 @@ SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": UA})
 
 # symbol_in_db, yahoo_ticker, note
+# 約 20 年重抓：上一輪十年窗＋舊規則找不出脈絡＝切法不對，不是沒資訊。
 OUTER_SERIES: Tuple[Tuple[str, str, str], ...] = (
+    ("TWII", "^TWII", "加權（Yahoo 補長史；話筒仍認官方融合柱）"),
+    ("IXIC", "^IXIC", "那指"),
+    ("SOX", "^SOX", "費半"),
     ("VIX", "^VIX", "恐慌指數"),
     ("DJI", "^DJI", "道瓊"),
     ("SPX", "^GSPC", "標普"),
@@ -61,6 +65,7 @@ STILL_MISSING = [
     "TE futures 長史（現僅近窗）",
     "futures_inst_oi 長史（現僅近窗）",
     "market_margin_daily 更長窗（MI_MARGN 續補）",
+    "market_tape_daily 2006–2016（FMTQIK 月檔續補）",
 ]
 
 
@@ -156,36 +161,65 @@ def fetch_yahoo(sym: str, range_: str = "10y") -> List[Dict[str, Any]]:
 def upsert_bars(
     conn: sqlite3.Connection, symbol: str, bars: Sequence[Dict[str, Any]], *, stamp: str
 ) -> int:
+    """寫入精簡數字柱。TWII／已有官方列：只補缺日，不准覆寫官方開高低收量。"""
     wrote = 0
+    protect = symbol in {"TWII"}
     for b in bars:
         day = str(b.get("date") or "")
         c = _f(b.get("close"))
         if len(day) != 8 or not c or c <= 0:
             continue
-        conn.execute(
-            """
-            INSERT INTO index_daily(
-                date, symbol, open, high, low, close, volume, pct_change, regime, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(date, symbol) DO UPDATE SET
-                open=excluded.open, high=excluded.high, low=excluded.low,
-                close=excluded.close, volume=excluded.volume,
-                pct_change=excluded.pct_change, regime=excluded.regime,
-                updated_at=excluded.updated_at
-            """,
-            (
-                day,
-                symbol,
-                _f(b.get("open")),
-                _f(b.get("high")),
-                _f(b.get("low")),
-                c,
-                _f(b.get("volume")),
-                _f(b.get("pct_change")),
-                "yahoo_outer",
-                stamp,
-            ),
-        )
+        if protect:
+            exists = conn.execute(
+                "SELECT 1 FROM index_daily WHERE date=? AND symbol=? LIMIT 1",
+                (day, symbol),
+            ).fetchone()
+            if exists:
+                continue
+            conn.execute(
+                """
+                INSERT INTO index_daily(
+                    date, symbol, open, high, low, close, volume, pct_change, regime, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    day,
+                    symbol,
+                    _f(b.get("open")),
+                    _f(b.get("high")),
+                    _f(b.get("low")),
+                    c,
+                    _f(b.get("volume")),
+                    _f(b.get("pct_change")),
+                    "yahoo_gapfill_20y",
+                    stamp,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO index_daily(
+                    date, symbol, open, high, low, close, volume, pct_change, regime, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(date, symbol) DO UPDATE SET
+                    open=excluded.open, high=excluded.high, low=excluded.low,
+                    close=excluded.close, volume=excluded.volume,
+                    pct_change=excluded.pct_change, regime=excluded.regime,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    day,
+                    symbol,
+                    _f(b.get("open")),
+                    _f(b.get("high")),
+                    _f(b.get("low")),
+                    c,
+                    _f(b.get("volume")),
+                    _f(b.get("pct_change")),
+                    "yahoo_outer",
+                    stamp,
+                ),
+            )
         wrote += 1
     return wrote
 
@@ -234,10 +268,14 @@ def main() -> int:
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--range", default="10y")
+    ap.add_argument("--range", default="20y")
     ap.add_argument("--sleep", type=float, default=0.12)
     args = ap.parse_args()
     summary = backfill_all(MARKET_DB, range_=args.range, sleep_s=args.sleep)
+    summary["rule_reset_zh"] = (
+        "上一輪找不出可過關脈絡＝規則／切法不對，不是沒資料。"
+        "先重抓約20年數字柱，再重訂可對質規則重跑；不准堆圖。"
+    )
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / "outer_backfill_latest.json"
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

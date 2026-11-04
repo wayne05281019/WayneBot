@@ -7,7 +7,20 @@ from scripts.decade_lab_outer_backfill import OUTER_SERIES, STILL_MISSING, ensur
 
 def test_outer_series_covers_oil_fx_vix_us_leaders():
     syms = {s for s, _, _ in OUTER_SERIES}
-    for need in ("VIX", "BRENT", "DXY", "USDTWD", "DJI", "SPX", "TSM", "NVDA", "NQ_F"):
+    for need in (
+        "TWII",
+        "IXIC",
+        "SOX",
+        "VIX",
+        "BRENT",
+        "DXY",
+        "USDTWD",
+        "DJI",
+        "SPX",
+        "TSM",
+        "NVDA",
+        "NQ_F",
+    ):
         assert need in syms
     assert any("active_etf" in x for x in STILL_MISSING)
     assert any("fear_greed" in x for x in STILL_MISSING)

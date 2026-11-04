@@ -1,0 +1,137 @@
+{
+  "written_at": "2026-11-04T08:39:57+08:00",
+  "tz": "Asia/Taipei",
+  "twii_n": 5423,
+  "twii_from": "20061102",
+  "twii_to": "20261103",
+  "aligned_flag_days": 5419,
+  "base3_avg": 0.12214678630858519,
+  "min_n": 20,
+  "min_edge_abs": 0.25,
+  "reusable": [
+    {
+      "flag": "dxy_up_tw_down",
+      "n": 145,
+      "fwd3_avg": -0.5196191933490243,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.6417659796576095,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_up_tw_down",
+      "n": 101,
+      "fwd3_avg": 0.6963889526539361,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.5742421663453509,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_risk_off_tw_green",
+      "n": 142,
+      "fwd3_avg": 0.5678048651236692,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.445658078815084,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "tw_vol_spike",
+      "n": 125,
+      "fwd3_avg": 0.5336720109207115,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.41152522461212626,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "brent_up_tw_down",
+      "n": 135,
+      "fwd3_avg": -0.27839917835319083,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.40054596466177605,
+      "gate_n20": true,
+      "reusable": true
+    },
+    {
+      "flag": "us_down_tw_hold",
+      "n": 269,
+      "fwd3_avg": 0.4770332899173605,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.35488650360877527,
+      "gate_n20": true,
+      "reusable": true
+    }
+  ],
+  "rejected_top": [
+    {
+      "flag": "tw_lower_wick",
+      "n": 1165,
+      "fwd3_avg": -0.0017305630529759145,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.12387734936156111,
+      "gate_n20": true,
+      "reusable": false,
+      "reject_why": "|edge3|<0.25"
+    },
+    {
+      "flag": "tsm_down_tw_hold",
+      "n": 371,
+      "fwd3_avg": 0.07810409642331807,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.04404268988526712,
+      "gate_n20": true,
+      "reusable": false,
+      "reject_why": "|edge3|<0.25"
+    },
+    {
+      "flag": "vix_spike_tw_hold",
+      "n": 339,
+      "fwd3_avg": 0.36216626645566335,
+      "base3_avg": 0.12214678630858519,
+      "edge3": 0.24001948014707816,
+      "gate_n20": true,
+      "reusable": false,
+      "reject_why": "|edge3|<0.25"
+    },
+    {
+      "flag": "sox_down_tw_hold",
+      "n": 290,
+      "fwd3_avg": 0.04634869115610102,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.07579809515248417,
+      "gate_n20": true,
+      "reusable": false,
+      "reject_why": "|edge3|<0.25"
+    },
+    {
+      "flag": "us_up_tw_flat",
+      "n": 251,
+      "fwd3_avg": 0.09993194371701475,
+      "base3_avg": 0.12214678630858519,
+      "edge3": -0.022214842591570444,
+      "gate_n20": true,
+      "reusable": false,
+      "reject_why": "|edge3|<0.25"
+    }
+  ],
+  "reverse_think": [
+    {
+      "why": "舊 trough×breadth 近窗把基線抬歪；改用 20y 美股／VIX／油／匯對齊後才有 edge",
+      "keep": [
+        "dxy_up_tw_down",
+        "us_up_tw_down",
+        "us_risk_off_tw_green",
+        "tw_vol_spike",
+        "brent_up_tw_down",
+        "us_down_tw_hold"
+      ],
+      "drop": "breadth-only 基線與 trough 共現≥3（近窗對不齊 20y）"
+    }
+  ],
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "storage": "json + jsonl.gz only；不准 PNG",
+  "note_zh": "可沿用＝獨立日 n≥20 且後3日加權均相對基線 |edge|≥0.25。再找不到就再反推原則，不准空轉。"
+}
