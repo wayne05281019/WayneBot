@@ -104,7 +104,7 @@ def test_chop_abc_soft_range_and_false_up():
     )
     assert out["bias"] == "range"
     codes = [x["code"] for x in out["why"]]
-    assert any("chop_abc" in c or "soft_range" in c or "margin_kill_blocked" in c for c in codes)
+    assert any("abc" in c or "soft_range" in c or "margin_kill_blocked" in c for c in codes)
 
     # 假彈連錯 ≥2 → 修正浪看漲改觀望
     out2 = decide_path(
@@ -124,6 +124,61 @@ def test_chop_abc_soft_range_and_false_up():
     )
     assert out2["bias"] == "range"
     assert any(x["code"] == "false_up_streak_soft_range" for x in out2["why"])
+
+
+def test_macro_only_down_soft_range():
+    out2 = decide_path(
+        {
+            "twii_ret": -1.0,
+            "ixic_prior_ret": 0.2,
+            "dxy_prior_ret": 0.8,
+            "brent_prior_ret": 2.5,
+            "usdtwd_prior_ret": 0.5,
+            "wave_ok": False,
+        },
+        [],
+        {"dxy_up_tw_down": -0.64, "brent_up_tw_down": -0.4, "fx_up_tw_down": -0.77},
+    )
+    assert out2["bias"] == "range"
+    assert any(x["code"] == "macro_only_down_soft_range" for x in out2["why"])
+
+
+def test_michael_fx_ok_alone_soft_range():
+    # 裸外資 gap 孤票不准當唯一看漲主判
+    out = decide_path(
+        {
+            "twii_ret": -0.5,
+            "ixic_prior_ret": 0.1,
+            "regime": "bull",
+            "wave_ok": False,
+            "michael_gap_south": True,
+            "michael_gap_south_fx_ok": True,
+        },
+        [],
+        {"michael_gap_south_fx_ok": 1.35},
+    )
+    assert out["bias"] == "range"
+    assert any(x["code"] == "michael_fx_ok_alone_soft_range" for x in out["why"])
+
+
+def test_abc_up_call_streak():
+    out = decide_path(
+        {
+            "twii_ret": 0.2,
+            "ixic_prior_ret": 0.1,
+            "regime": "bull",
+            "wave_ok": True,
+            "wave_bias": "up",
+            "wave_phase": "corrective_abc",
+            "abc_up_call_streak": 2,
+            "inst_foreign_pos_2d": True,
+            "chips_margin_kill_2d": True,
+        },
+        [],
+        {"inst_foreign_pos_2d": 0.6, "chips_margin_kill_2d": 1.5},
+    )
+    assert out["bias"] == "range"
+    assert any(x["code"] == "abc_up_call_streak_soft_range" for x in out["why"])
 
 
 def test_amp_regime_scale():

@@ -1,0 +1,84 @@
+{
+  "written_at": "2026-11-04T16:26:25",
+  "tz": "Asia/Taipei",
+  "source": "michael_self_module",
+  "note_zh": "自研模組：麥可長文→日K變體；有用指標深挖不棄；當日空／三日回歸分軌（檢測窗對齊）；不取代飆大；不是買訊",
+  "n_days": 5419,
+  "base3": 0.122,
+  "flags": [
+    {
+      "flag": "michael_gap_south_bear_wick",
+      "n": 24,
+      "fwd3_avg": 2.0548,
+      "edge3": 1.9328,
+      "vote": 1.9328,
+      "hit_rate_side": 0.75,
+      "gate": "hard",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_gap_south_bounce",
+      "n": 32,
+      "fwd3_avg": 1.7549,
+      "edge3": 1.6329,
+      "vote": 1.6329,
+      "hit_rate_side": 0.6562,
+      "gate": "hard",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_gap_south_intraday_down",
+      "n": 185,
+      "fwd3_avg": null,
+      "same_day_oc_avg": -1.4909,
+      "edge3": -1.4909,
+      "vote": -1.4909,
+      "hit_rate_side": 0.9784,
+      "gate": "hard",
+      "horizon": "same_day_open_close",
+      "path_vote": false,
+      "source": "michael_self_module",
+      "note_zh": "檢測＝當日開收；不准套三日窗；不進 path 三日票"
+    },
+    {
+      "flag": "michael_gap_south_fx_ok",
+      "n": 25,
+      "fwd3_avg": 1.4679,
+      "edge3": 1.3459,
+      "vote": 1.3459,
+      "hit_rate_side": 0.64,
+      "gate": "hard",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_gap_south_after_strong",
+      "n": 52,
+      "fwd3_avg": 0.959,
+      "edge3": 0.837,
+      "vote": 0.837,
+      "hit_rate_side": 0.5769,
+      "gate": "hard",
+      "source": "michael_self_module"
+    },
+    {
+      "flag": "michael_gap_south",
+      "n": 285,
+      "fwd3_avg": 0.5572,
+      "edge3": 0.4352,
+      "vote": 0.2394,
+      "hit_rate_side": 0.4807,
+      "gate": "soft",
+      "source": "michael_self_module"
+    }
+  ],
+  "hard_flags": [
+    "michael_gap_south_bear_wick",
+    "michael_gap_south_bounce",
+    "michael_gap_south_intraday_down",
+    "michael_gap_south_fx_ok",
+    "michael_gap_south_after_strong"
+  ],
+  "gate": "hard: n>=20 & |edge|>=0.25 & side>=0.55；soft 降權；當日空另軌",
+  "not_buy_signal": true,
+  "phone_sync": "blocked"
+}

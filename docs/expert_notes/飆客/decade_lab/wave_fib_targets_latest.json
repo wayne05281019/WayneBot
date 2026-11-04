@@ -1,0 +1,139 @@
+{
+  "written_at": "2026-11-04T16:26:25",
+  "tz": "Asia/Taipei",
+  "source": "wave_fib_targets",
+  "note_zh": "八浪樞紐段底↔頂／頂↔底 × 定義黃金切割率；觀測＝實際回撤／延伸比 − 定義率，正負帶 ±0.08；過閘才進 path 幅度",
+  "ratio_band": 0.08,
+  "tol_pct": 1.5,
+  "min_n": 20,
+  "band_baseline": 0.16,
+  "nearest_share_gate": 0.28,
+  "n_segments": 824,
+  "n_retrace": 490,
+  "n_extension": 4,
+  "retrace": [
+    {
+      "ratio": "0.382",
+      "kind": "retrace_next_pivot",
+      "n": 490,
+      "hit_in_band": 0.2082,
+      "baseline": 0.16,
+      "lift": 0.0482,
+      "ratio_band": 0.08,
+      "tol_pct": 1.5,
+      "gate": "hard",
+      "note_zh": "切割率固定；帶內命中相對均勻基線抬升才算有用"
+    },
+    {
+      "ratio": "0.5",
+      "kind": "retrace_next_pivot",
+      "n": 490,
+      "hit_in_band": 0.1837,
+      "baseline": 0.16,
+      "lift": 0.0237,
+      "ratio_band": 0.08,
+      "tol_pct": 1.5,
+      "gate": "observe",
+      "note_zh": "切割率固定；帶內命中相對均勻基線抬升才算有用"
+    },
+    {
+      "ratio": "0.618",
+      "kind": "retrace_next_pivot",
+      "n": 490,
+      "hit_in_band": 0.1735,
+      "baseline": 0.16,
+      "lift": 0.0135,
+      "ratio_band": 0.08,
+      "tol_pct": 1.5,
+      "gate": "observe",
+      "note_zh": "切割率固定；帶內命中相對均勻基線抬升才算有用"
+    },
+    {
+      "ratio": "0.75",
+      "kind": "retrace_next_pivot",
+      "n": 490,
+      "hit_in_band": 0.1612,
+      "baseline": 0.16,
+      "lift": 0.0012,
+      "ratio_band": 0.08,
+      "tol_pct": 1.5,
+      "gate": "observe",
+      "note_zh": "切割率固定；帶內命中相對均勻基線抬升才算有用"
+    },
+    {
+      "ratio": "0.786",
+      "kind": "retrace_next_pivot",
+      "n": 490,
+      "hit_in_band": 0.1469,
+      "baseline": 0.16,
+      "lift": -0.0131,
+      "ratio_band": 0.08,
+      "tol_pct": 1.5,
+      "gate": "observe",
+      "note_zh": "切割率固定；帶內命中相對均勻基線抬升才算有用"
+    }
+  ],
+  "extension": [],
+  "nearest_retrace": [
+    {
+      "ratio": "0.786",
+      "kind": "nearest_retrace",
+      "n": 188,
+      "share": 0.3837,
+      "uniform": 0.2,
+      "gate": "hard",
+      "note_zh": "下一樞紐最靠近哪一個定義切割率"
+    },
+    {
+      "ratio": "0.382",
+      "kind": "nearest_retrace",
+      "n": 128,
+      "share": 0.2612,
+      "uniform": 0.2,
+      "gate": "observe",
+      "note_zh": "下一樞紐最靠近哪一個定義切割率"
+    },
+    {
+      "ratio": "0.5",
+      "kind": "nearest_retrace",
+      "n": 68,
+      "share": 0.1388,
+      "uniform": 0.2,
+      "gate": "observe",
+      "note_zh": "下一樞紐最靠近哪一個定義切割率"
+    },
+    {
+      "ratio": "0.618",
+      "kind": "nearest_retrace",
+      "n": 63,
+      "share": 0.1286,
+      "uniform": 0.2,
+      "gate": "observe",
+      "note_zh": "下一樞紐最靠近哪一個定義切割率"
+    },
+    {
+      "ratio": "0.75",
+      "kind": "nearest_retrace",
+      "n": 43,
+      "share": 0.0878,
+      "uniform": 0.2,
+      "gate": "observe",
+      "note_zh": "下一樞紐最靠近哪一個定義切割率"
+    }
+  ],
+  "nearest_extension": [],
+  "primary": {
+    "ratio": "0.786",
+    "kind": "retrace_next_pivot",
+    "n": 490,
+    "hit_in_band": 0.3837,
+    "share": 0.3837,
+    "selection": "nearest_mode",
+    "ratio_band": 0.08,
+    "gate": "hard",
+    "note_zh": "主目標＝回撤段最鄰近定義率（過均勻基線）"
+  },
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false
+}

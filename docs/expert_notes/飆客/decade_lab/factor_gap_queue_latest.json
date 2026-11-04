@@ -1,14 +1,14 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T15:43:34",
+  "written_at": "2026-11-04T16:27:32",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
-  "reason_zh": "幅度 MAE 1.68pt 偏大（n=34）→ 目標幅度要重切；因素不足不計分占比 93.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "reason_zh": "因素不足不計分占比 93.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.7906976744186046,
-      "directional_n": 43,
+      "hit_rate_directional": 0.8260869565217391,
+      "directional_n": 23,
       "factor_pack": [
         "wave_bias",
         "wave_phase",
@@ -59,15 +59,33 @@
         "chips_short_z",
         "regime",
         "false_up_streak",
+        "abc_up_call_streak",
         "tsmc_vol_spike",
         "tsmc_vol_confirm_up",
         "tsmc_vol_confirm_down",
         "margin_kill_confirmed",
-        "margin_kill_blocked"
+        "margin_kill_blocked",
+        "michael_gap_south_bounce",
+        "michael_gap_south_after_strong",
+        "michael_gap_south_fx_ok",
+        "michael_gap_south_fx_ma",
+        "michael_gap_south_bear_wick",
+        "michael_gap_south",
+        "michael_wick_flip_risk",
+        "michael_fail_upper",
+        "michael_break_lower",
+        "michael_wide_chop",
+        "michael_ma60_lost",
+        "michael_sox_weak",
+        "wave_fib_primary_px",
+        "wave_fib_primary_pct",
+        "wave_fib_primary_ratio",
+        "wave_fib_mode",
+        "wave_fib_expect_down"
       ],
-      "hit_rate_amplitude": 0.6176470588235294,
-      "amp_n": 34,
-      "amp_mae_pct": 1.6787
+      "hit_rate_amplitude": 0.5789473684210527,
+      "amp_n": 19,
+      "amp_mae_pct": 1.9153
     },
     "wave": {
       "adopt": {
@@ -80,8 +98,8 @@
     "lab": {
       "n": 5419,
       "insufficient_n": 5074,
-      "watch_n": 302,
-      "empty_why_n": 66
+      "watch_n": 322,
+      "empty_why_n": 62
     },
     "coverage": {
       "ok": true,
@@ -163,7 +181,7 @@
     },
     "lab_frac": {
       "insufficient": 0.9363351171802916,
-      "empty_why": 0.01217936888724857
+      "empty_why": 0.011441225318324415
     }
   },
   "ideas": [
