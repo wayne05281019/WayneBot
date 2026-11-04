@@ -1157,15 +1157,46 @@ def ensure_stock_fundamentals(
     filing = previous_calendar_yyyymm()
     has_month = stock_month_row(path, sid, filing) is not None
     cover = filing_month_coverage(path, filing)
-    # thin＝檔期偏薄，仍要嘗試補；但不准把 thin 升成 force（會拆 TTL，
-    # 月初未齊時每檔查股／memo 都重抓全市場，暖路徑必超時）。
-    need_month = force or (not has_month) or bool(cover.get("thin"))
-    if need_month:
+    latest_m = get_latest_monthly(path, sid)
+    has_any_month = latest_m is not None
+    # thin＝檔期偏薄仍要補，但不准把 thin 升成 force（會拆 TTL）。
+    # 本檔已有近月、只是當期全市場未齊：同步全抓會堵介紹圖 10～30s，畫質無關。
+    # → 同步略過，背景補；缺任何月營收／force 才同步擋。
+    thin = bool(cover.get("thin"))
+    need_month = force or (not has_month)
+    if need_month and thin and has_any_month and not force:
+        out["monthly"] = {
+            "ok": True,
+            "skipped": "thin_has_recent",
+            "yyyymm": filing,
+            "reason": f"ensure {sid} thin defer; latest={latest_m.get('yyyymm')}",
+        }
+        out["deferred_thin_refresh"] = True
+        try:
+            import threading
+
+            def _bg_thin() -> None:
+                try:
+                    refresh_announced_monthly(
+                        path,
+                        filing,
+                        force=False,
+                        reason=f"bg thin {sid} filing={filing}",
+                    )
+                except Exception:
+                    logger.debug("背景補薄檔期月營收略過", exc_info=True)
+
+            threading.Thread(
+                target=_bg_thin, name=f"fund-thin-{sid}", daemon=True
+            ).start()
+        except Exception:
+            logger.debug("背景薄檔期 thread 略過", exc_info=True)
+    elif need_month:
         out["monthly"] = refresh_announced_monthly(
             path,
             filing,
             force=force,
-            reason=f"ensure {sid} filing={filing} has={has_month} thin={cover.get('thin')}",
+            reason=f"ensure {sid} filing={filing} has={has_month} thin={thin}",
         )
         has_month = stock_month_row(path, sid, filing) is not None
     out["has_filing_month"] = has_month
@@ -1699,8 +1730,17 @@ def _ytd_yoy_delta_k(m: Dict[str, Any]) -> float:
     return 0.0
 
 
-def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
-    """[(標籤, 值), ...] 給第一眼圖／文字共用。金額一律億元，不再顯示 MoM/YoY％。"""
+def glance_fundamentals_plain(
+    stock_id: str,
+    db_path: str = None,
+    *,
+    skip_ensure: bool = False,
+) -> list:
+    """[(標籤, 值), ...] 給第一眼圖／文字共用。金額一律億元，不再顯示 MoM/YoY％。
+
+    skip_ensure=True：查股已在 paint 外 ensure（或薄檔期已放行近月），
+    這裡不准再同步重抓全市場堵出圖。
+    """
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
     try:
@@ -1723,10 +1763,11 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
             return rows
     except Exception:
         pass
-    try:
-        ensure_stock_fundamentals(path, sid)
-    except Exception:
-        logger.debug("介紹卡 ensure 月營收／季報略過", exc_info=True)
+    if not skip_ensure:
+        try:
+            ensure_stock_fundamentals(path, sid)
+        except Exception:
+            logger.debug("介紹卡 ensure 月營收／季報略過", exc_info=True)
     emerging = False
     try:
         from universe import stock_is_emerging
