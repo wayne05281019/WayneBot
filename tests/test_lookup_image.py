@@ -574,6 +574,21 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("結構圖", txt)
         self.assertIn("大量撐壓圖", txt)
 
+    def test_chart_progress_overtime_starts_at_card_not_glance(self):
+        """逾時仍出圖：還沒送高低卡時「現在」不准跳寫介紹圖（假進度）。"""
+        txt = WayneTelegramBot._chart_progress_text(
+            130, sent=[], current="card", overtime=True
+        )
+        self.assertIn("查股逾時仍在出圖", txt)
+        self.assertIn("現在：高低溫度卡", txt)
+        self.assertNotIn("現在：介紹圖", txt)
+        # 已送高低卡才輪到介紹
+        txt2 = WayneTelegramBot._chart_progress_text(
+            130, sent=["card"], current="glance", overtime=True
+        )
+        self.assertIn("現在：介紹圖", txt2)
+        self.assertIn("已送高低溫度卡", txt2)
+
     def test_chart_progress_table_stage(self):
         txt = WayneTelegramBot._chart_progress_text(1, current="table")
         self.assertIn("讀高低卡", txt)
