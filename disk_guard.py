@@ -3,7 +3,8 @@
 使用者鎖死（2026-10-04 改口；2026-11-03 補教具 PNG）：
 - 白天：正常用；不准追高 free（舊 2.5GB／2GB 目標取消）
 - 緊急：free ≈ 200～300MB 才強制清白名單可重建檔
-- 每天台北 00:00：例行清白名單（_lookup_memo／wr_pair_cache／根層 scratch）
+- 每天台北 00:00：例行清白名單（_lookup_memo／wr_pair_cache／根層 scratch／
+  勝率 wr 工作檔／其 .hq.jpg sidecar）
   ＋清過期可重建教具 PNG（open_day_paints；DB 對質列／官方柱／他文不動）
 - 絕對不准刪：靜默對質／默默落檔（數字欄）、持股、觀察、AI倉、pending、tg 私人狀態、
   官方柱、飆大必要材料（文＋附圖 aux）、archive_1709、wayne_market.db、.corrupt-*；
@@ -82,6 +83,13 @@ _SCRATCH_BASENAME_RE = re.compile(
     r"^.+_.+_.+_\d+_\d+_\d+\.(?:png|jpe?g|webp)$",
     re.IGNORECASE,
 )
+# 勝率工作檔（可重建；正式快取在 wr_pair_cache）：{sid}_wr_{card|vz}_{uid}.jpg
+_WR_WORK_BASENAME_RE = re.compile(
+    r"^[0-9A-Za-z]{1,8}_wr_(?:card|vz)_\d+\.jpe?g$",
+    re.IGNORECASE,
+)
+# scratch／工作圖旁的 Telegram 再壓 sidecar（可重建）
+_HQ_SIDECAR_SUFFIXES = (".png.hq.jpg", ".jpg.hq.jpg", ".jpeg.hq.jpg", ".hq.jpg", ".hq.jpeg")
 
 _started = False
 _lock = threading.Lock()
@@ -146,20 +154,151 @@ def _save_runway_state(path: str, state: Dict[str, Any]) -> None:
         logger.exception("寫入碟跑道狀態失敗")
 
 
+def _is_hq_sidecar_of_rebuildable_chart(name: str) -> bool:
+    """charts 根層 .hq.jpg 是否掛在可重建 scratch／勝率工作檔旁。"""
+    base = os.path.basename(str(name or ""))
+    lower = base.lower()
+    stem = base
+    for suf in _HQ_SIDECAR_SUFFIXES:
+        if lower.endswith(suf):
+            stem = base[: -len(suf)]
+            break
+    else:
+        return False
+    if not stem:
+        return False
+    # stem 可能仍帶 .png／.jpg
+    if _SCRATCH_BASENAME_RE.match(stem):
+        return True
+    if _WR_WORK_BASENAME_RE.match(stem):
+        return True
+    # 2330_card_…_1.png.hq.jpg → strip 後已是 scratch；再試補副檔名
+    for ext in (".png", ".jpg", ".jpeg", ".webp"):
+        if _SCRATCH_BASENAME_RE.match(stem + ext) or _WR_WORK_BASENAME_RE.match(
+            stem + ext
+        ):
+            return True
+    return False
+
+
 def measure_durable_mb(
     data_dir: str,
     charts_dir: str = "",
     db_path: str = "",
 ) -> Dict[str, float]:
     """量 durable（不可重建）用量：DB＋必要 archive／私人／官方柱等；排除白名單快取。"""
+    inv = inventory_data_disk(data_dir, charts_dir=charts_dir, db_path=db_path)
+    return {
+        "durable_mb": float(inv.get("durable_mb") or 0.0),
+        "rebuildable_mb": float(inv.get("rebuildable_mb") or 0.0),
+    }
+
+
+def inventory_data_disk(
+    data_dir: str,
+    charts_dir: str = "",
+    db_path: str = "",
+    *,
+    top_n: int = 20,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """只讀盤點：誰在吃永久碟、哪些是確定可重建可刪。
+
+    不准刪任何檔。class：
+    - allowlist：午夜／緊急可清白名單（memo／pair／scratch／wr 工作檔／hq sidecar）
+    - teach_purgable：過期教具／位階圖（可從官方柱重渲）
+    - teach_hot：近窗教具（話筒熱路徑暫留）
+    - db_live：正式庫＋WAL／SHM
+    - db_corrupt：.corrupt-* 救援副本（現況規則不准自動刪）
+    - archive：1709／club 必要 archive
+    - aux：飆大原文附圖
+    - other：其餘（含 decade_lab、狀態 JSON…）— 預設當必要，未盤清不准刪
+    """
     root = data_dir or "."
     charts = charts_dir or os.path.join(root, "charts")
     dbp = db_path or os.path.join(root, "wayne_market.db")
-    durable = 0.0
-    rebuildable = 0.0
+    dt = now or _taipei_now()
+    keep_ymd = _keep_ymd_cutoff(DEFAULT_TEACH_PAINT_KEEP_DAYS, now=dt)
+    level_keep_ymd = _keep_ymd_cutoff(DEFAULT_LEVEL_SNAP_KEEP_DAYS, now=dt)
+
+    class_mb: Dict[str, float] = {
+        "allowlist": 0.0,
+        "teach_purgable": 0.0,
+        "teach_hot": 0.0,
+        "db_live": 0.0,
+        "db_corrupt": 0.0,
+        "archive": 0.0,
+        "aux": 0.0,
+        "other": 0.0,
+    }
+    class_files: Dict[str, int] = {k: 0 for k in class_mb}
+    parts: Dict[str, Dict[str, Any]] = {}
+    top_candidates: List[Tuple[float, str, str]] = []
+    corrupt_n = 0
+
+    def _bump_part(label: str, sz: float, cls: str) -> None:
+        slot = parts.setdefault(
+            label, {"mb": 0.0, "files": 0, "class": cls}
+        )
+        slot["mb"] = round(float(slot["mb"]) + sz, 3)
+        slot["files"] = int(slot["files"]) + 1
+        # 多類混在同一頂層時標 mixed
+        if slot.get("class") not in (cls, "mixed") and slot.get("files", 0) > 1:
+            slot["class"] = "mixed"
+
+    def _classify(fp: str, name: str) -> str:
+        ap = _norm(fp)
+        base = os.path.basename(ap)
+        low = ap.lower()
+        base_l = base.lower()
+        if charts and is_allowlisted_deletable(fp, charts):
+            return "allowlist"
+        if ".corrupt-" in base_l:
+            return "db_corrupt"
+        if base_l == os.path.basename(dbp).lower() or base_l in (
+            os.path.basename(dbp).lower() + "-wal",
+            os.path.basename(dbp).lower() + "-shm",
+        ):
+            return "db_live"
+        if base_l.startswith("wayne_market.db"):
+            # 含意外副本名
+            if ".corrupt-" in base_l:
+                return "db_corrupt"
+            return "db_live"
+        if "archive_1709" in low or "archive_club" in low:
+            return "archive"
+        if f"/{TEACH_PAINT_DIR_NAME}/" in low.replace("\\", "/") or low.rstrip(
+            "/"
+        ).endswith(f"/{TEACH_PAINT_DIR_NAME}"):
+            if should_delete_teach_paint_file(
+                name, keep_ymd=keep_ymd, purge_old_force_minutes=True
+            ):
+                return "teach_purgable"
+            return "teach_hot"
+        if f"/{LEVEL_SNAP_DIR_NAME}/" in low.replace("\\", "/") or low.rstrip(
+            "/"
+        ).endswith(f"/{LEVEL_SNAP_DIR_NAME}"):
+            if should_delete_teach_paint_file(
+                name, keep_ymd=level_keep_ymd, purge_old_force_minutes=False
+            ):
+                return "teach_purgable"
+            return "teach_hot"
+        if "biaoke_aux" in low:
+            return "aux"
+        return "other"
+
+    def _top_label(fp: str) -> str:
+        ap = _norm(fp)
+        root_n = _norm(root).rstrip("/")
+        if ap == root_n:
+            return "."
+        if ap.startswith(root_n + "/"):
+            rel = ap[len(root_n) + 1 :]
+            return rel.split("/", 1)[0] or "."
+        return os.path.basename(ap) or "external"
+
     try:
         for dirpath, dirnames, filenames in os.walk(root):
-            # 不進 .git 之類
             dirnames[:] = [d for d in dirnames if d not in (".git", "__pycache__")]
             for name in filenames:
                 fp = os.path.join(dirpath, name)
@@ -167,23 +306,61 @@ def measure_durable_mb(
                     sz = os.path.getsize(fp) / (1024 * 1024)
                 except OSError:
                     continue
-                if charts and is_allowlisted_deletable(fp, charts):
-                    rebuildable += sz
-                else:
-                    durable += sz
+                cls = _classify(fp, name)
+                class_mb[cls] = float(class_mb.get(cls) or 0.0) + sz
+                class_files[cls] = int(class_files.get(cls) or 0) + 1
+                if cls == "db_corrupt":
+                    corrupt_n += 1
+                _bump_part(_top_label(fp), sz, cls)
+                top_candidates.append((sz, _norm(fp)[len(_norm(root)) :].lstrip("/") or os.path.basename(fp), cls))
     except OSError:
         pass
-    # DB 可能在 root 外；補上
+
+    # DB 在 data_dir 外
     for extra in (dbp, dbp + "-wal", dbp + "-shm"):
         if not extra or not os.path.isfile(extra):
             continue
         ap = _norm(extra)
         if ap.startswith(_norm(root).rstrip("/") + "/") or ap == _norm(root):
             continue
-        durable += _file_mb(extra)
+        sz = _file_mb(extra)
+        class_mb["db_live"] += sz
+        class_files["db_live"] += 1
+        _bump_part(os.path.basename(extra), sz, "db_live")
+        top_candidates.append((sz, os.path.basename(extra), "db_live"))
+
+    rebuildable = (
+        float(class_mb["allowlist"])
+        + float(class_mb["teach_purgable"])
+    )
+    durable = sum(
+        float(class_mb[k])
+        for k in ("teach_hot", "db_live", "db_corrupt", "archive", "aux", "other")
+    )
+    top_candidates.sort(key=lambda x: x[0], reverse=True)
+    top = [
+        {"path": p, "mb": round(sz, 2), "class": cls}
+        for sz, p, cls in top_candidates[: max(1, int(top_n))]
+        if sz >= 0.05
+    ]
+    # parts 依 mb 排序
+    parts_out = [
+        {"name": k, "mb": round(float(v["mb"]), 2), "files": int(v["files"]), "class": v.get("class")}
+        for k, v in sorted(parts.items(), key=lambda kv: float(kv[1]["mb"]), reverse=True)
+    ]
     return {
         "durable_mb": round(durable, 2),
         "rebuildable_mb": round(rebuildable, 2),
+        "class_mb": {k: round(float(v), 2) for k, v in class_mb.items()},
+        "class_files": class_files,
+        "corrupt_n": corrupt_n,
+        "corrupt_mb": round(float(class_mb["db_corrupt"]), 2),
+        "parts": parts_out[:40],
+        "top": top,
+        "teach_keep_ymd": keep_ymd,
+        "level_keep_ymd": level_keep_ymd,
+        "safe_delete_mb": round(rebuildable, 2),
+        "ask_before_delete_mb": round(float(class_mb["db_corrupt"]), 2),
     }
 
 
@@ -241,8 +418,12 @@ def estimate_disk_runway(
     warn_free = float(warn_free_mb)
     warn_d = float(warn_days)
     ts = float(now_ts if now_ts is not None else time.time())
-    sizes = measure_durable_mb(root, charts_dir=charts, db_path=dbp)
-    durable = float(sizes.get("durable_mb") or 0.0)
+    inv = inventory_data_disk(root, charts_dir=charts, db_path=dbp, top_n=15)
+    durable = float(inv.get("durable_mb") or 0.0)
+    sizes = {
+        "durable_mb": durable,
+        "rebuildable_mb": float(inv.get("rebuildable_mb") or 0.0),
+    }
 
     state_path = _runway_state_path(root)
     with _runway_lock:
@@ -331,6 +512,7 @@ def estimate_disk_runway(
         "reasons": reasons,
         "snapshot_n": len(snaps),
         "free_bucket": _runway_free_bucket(free, warn_free, min_free),
+        "inventory": inv,
         "days_bucket": _runway_days_bucket(runway_days),
         "state_path": state_path,
         "last_alert": (state.get("last_alert") if isinstance(state, dict) else None),
@@ -553,6 +735,15 @@ def disk_health_fields(
         fields["disk_runway_days"] = est.get("runway_days")
         fields["disk_durable_mb"] = est.get("durable_mb")
         fields["disk_runway_trend"] = est.get("trend")
+        inv = est.get("inventory") if isinstance(est.get("inventory"), dict) else {}
+        if inv:
+            fields["disk_rebuildable_mb"] = inv.get("rebuildable_mb")
+            fields["disk_safe_delete_mb"] = inv.get("safe_delete_mb")
+            fields["disk_corrupt_n"] = inv.get("corrupt_n")
+            fields["disk_corrupt_mb"] = inv.get("corrupt_mb")
+            fields["disk_class_mb"] = inv.get("class_mb")
+            fields["disk_parts"] = inv.get("parts")
+            fields["disk_top"] = inv.get("top")
         if alert == "ok" and est.get("need_warn"):
             fields["disk_alert"] = "runway_warn"
             fields["disk_alert_zh"] = format_runway_alert_zh(est).replace("\n", " ")
@@ -591,9 +782,15 @@ def is_allowlisted_deletable(path: str, charts_dir: str) -> bool:
     # 白名單子目錄整樹
     if parts[0] in ALLOW_CHART_SUBDIRS:
         return os.path.isfile(path)
-    # 只准 charts 根層 scratch 圖，不准進 marks／其他子目錄
-    if len(parts) == 1 and _SCRATCH_BASENAME_RE.match(parts[0]):
-        return os.path.isfile(path)
+    # 只准 charts 根層可重建圖，不准進 marks／其他子目錄
+    if len(parts) == 1:
+        name = parts[0]
+        if _SCRATCH_BASENAME_RE.match(name):
+            return os.path.isfile(path)
+        if _WR_WORK_BASENAME_RE.match(name):
+            return os.path.isfile(path)
+        if _is_hq_sidecar_of_rebuildable_chart(name):
+            return os.path.isfile(path)
     return False
 
 
