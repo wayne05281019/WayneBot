@@ -154,10 +154,14 @@ def test_volzone_quiet_rail_footnote_not_in_foot1():
     """淡灰藍說明不准塞進 foot1 第一行（Reviewer-A：整行左右裁切）。"""
     import inspect
 
-    from vol_zone_chart import _paint_volume_zone
+    from vol_zone_chart import _paint_volume_zone, vol_zone_parallel_rail_foot_bits
 
     src = inspect.getsource(_paint_volume_zone)
     assert "quiet_bit" in src
+    assert "vol_zone_parallel_rail_foot_bits" in src
     # foot1 組句後面不准再插 quiet_bit
     assert 'f"{quiet_bit}"' not in src.split("foot1 = (")[1].split("foot2 = (")[0]
-    assert "淡灰藍虛線＝平行趨勢" in src
+    # 字串在誠實腳註 helper（有軌才寫淡灰藍；無軌寫推不出）
+    hsrc = inspect.getsource(vol_zone_parallel_rail_foot_bits)
+    assert "淡灰藍虛線＝平行趨勢" in hsrc
+    assert "推不出合格平行軌" in hsrc
