@@ -144,6 +144,32 @@ def test_audit_corrupt_copies_reclaim_estimate(tmp_path: Path, monkeypatch):
     assert c1.exists() and c2.exists()
 
 
+def test_audit_corrupt_prefers_completeness_not_size(tmp_path: Path, monkeypatch):
+    """較小但 biaoke／私人較完整的救援贏過最大檔。"""
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"L" * 1_000_000)
+    small = tmp_path / "wayne_market.db.corrupt-small"
+    big = tmp_path / "wayne_market.db.corrupt-big"
+    small.write_bytes(b"S" * 2_000_000)
+    big.write_bytes(b"B" * 8_000_000)
+    monkeypatch.setattr("import_health.db_quick_check_ok", lambda *_a, **_k: True)
+
+    def _counts(p):
+        if "small" in str(p):
+            return (1800, 20)
+        if "big" in str(p):
+            return (900, 2)
+        return (1700, 10)  # live
+
+    monkeypatch.setattr("db_recover.completeness_counts", _counts)
+    out = dg.audit_corrupt_copies(str(db), data_dir=str(tmp_path), deep_limit=10)
+    assert out["size_is_not_truth"] is True
+    assert out["largest_file"] == "wayne_market.db.corrupt-big"
+    assert out["keep_best"] == "wayne_market.db.corrupt-small"
+    assert out["largest_is_completeness_best"] is False
+    assert out["recommend_keep"] == "wayne_market.db.corrupt-small"
+
+
 def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
     """白天 free≥預警線且無跑道預警：不准清白名單；教具舊圖仍可清。"""
     charts = tmp_path / "charts"

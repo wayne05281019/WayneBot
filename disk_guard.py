@@ -415,14 +415,33 @@ def inventory_data_disk(
     }
 
 
+def _corrupt_rank_key(row: Dict[str, Any]) -> Tuple[Any, ...]:
+    """救援完整度排序：可讀→biaoke→私人→mtime；大小最後（不准當真理）。"""
+    return (
+        1 if row.get("readable") else 0,
+        1 if row.get("probed") else 0,
+        int(row.get("biaoke_n") or 0),
+        int(row.get("private_n") or 0),
+        float(row.get("mtime") or 0),
+        float(row.get("mb") or 0),
+    )
+
+
 def audit_corrupt_copies(
     db_path: str = "",
     *,
     data_dir: str = "",
+    deep_limit: int = 20,
+    max_seconds: float = 90.0,
 ) -> Dict[str, Any]:
-    """只讀：列出每份 .corrupt-* 大小／可否開／biaoke／私人列，並估「只留最佳 1 份」可省多少。
+    """只讀對質：完整度決定留哪份，不是檔案最大。
 
-    不准刪檔。正式庫本身不進可刪名單。
+    1) 先列齊所有 .corrupt-* 大小（不開庫）
+    2) 只對「最大 deep_limit 份」做 quick_check＋biaoke／私人計數（限時）
+    3) 排名：可讀 → biaoke → 私人 → mtime；（大小僅並列最後）
+    4) 與正式庫比：live 已可讀且完整度不輸 → 備援可大幅刪
+
+    不准刪檔。
     """
     try:
         from config import get_db_path
@@ -432,11 +451,12 @@ def audit_corrupt_copies(
     dbp = db_path or get_db_path()
     root = data_dir or os.path.dirname(dbp) or "."
     try:
-        from db_recover import completeness_counts, list_corrupt_candidates
+        from db_recover import MIN_BIAOKE_RESTORE, completeness_counts, list_corrupt_candidates
         from import_health import db_quick_check_ok
     except Exception as exc:
         return {"ok": False, "error": f"import:{exc}", "files": []}
 
+    t0 = time.time()
     live_mb = _file_mb(dbp) if dbp and os.path.isfile(dbp) else 0.0
     live_biaoke = live_priv = 0
     live_ok = False
@@ -447,7 +467,8 @@ def audit_corrupt_copies(
         except Exception:
             live_ok = False
 
-    files: List[Dict[str, Any]] = []
+    # 1) 全列大小
+    listed: List[Dict[str, Any]] = []
     for cand in list_corrupt_candidates(dbp):
         name = os.path.basename(cand)
         mb = _file_mb(cand)
@@ -457,6 +478,43 @@ def audit_corrupt_copies(
             mtime = os.path.getmtime(cand)
         except OSError:
             mtime = 0.0
+        listed.append(
+            {
+                "path": cand,
+                "name": name,
+                "mb": round(mb, 2),
+                "wal_mb": round(wal_mb, 2),
+                "shm_mb": round(shm_mb, 2),
+                "total_mb": round(mb + wal_mb + shm_mb, 2),
+                "mtime": mtime,
+                "probed": False,
+                "readable": None,
+                "biaoke_n": None,
+                "private_n": None,
+            }
+        )
+
+    by_size = sorted(listed, key=lambda r: float(r.get("total_mb") or 0), reverse=True)
+    deep_n = max(1, int(deep_limit or 20))
+    to_probe = by_size[:deep_n]
+    # 同大小群抽 1 份（若還沒在 to_probe）
+    size_buckets: Dict[int, List[Dict[str, Any]]] = {}
+    for r in listed:
+        size_buckets.setdefault(int(round(float(r.get("mb") or 0))), []).append(r)
+    for _sz, group in size_buckets.items():
+        if len(group) < 2:
+            continue
+        pick = max(group, key=lambda r: float(r.get("mtime") or 0))
+        if pick not in to_probe and len(to_probe) < deep_n + 5:
+            to_probe.append(pick)
+
+    probed_n = 0
+    timed_out = False
+    for row in to_probe:
+        if (time.time() - t0) >= float(max_seconds):
+            timed_out = True
+            break
+        cand = str(row.get("path") or "")
         readable = False
         biaoke_n = priv_n = 0
         try:
@@ -465,78 +523,146 @@ def audit_corrupt_copies(
                 biaoke_n, priv_n = completeness_counts(cand)
         except Exception:
             readable = False
-        files.append(
-            {
-                "name": name,
-                "mb": round(mb, 2),
-                "wal_mb": round(wal_mb, 2),
-                "shm_mb": round(shm_mb, 2),
-                "total_mb": round(mb + wal_mb + shm_mb, 2),
-                "mtime": mtime,
-                "readable": readable,
-                "biaoke_n": int(biaoke_n),
-                "private_n": int(priv_n),
-            }
-        )
+        row["probed"] = True
+        row["readable"] = bool(readable)
+        row["biaoke_n"] = int(biaoke_n)
+        row["private_n"] = int(priv_n)
+        probed_n += 1
 
-    # 最佳＝可讀優先，再比 biaoke→private→mtime→size
-    ranked = sorted(
-        files,
-        key=lambda r: (
-            1 if r.get("readable") else 0,
-            int(r.get("biaoke_n") or 0),
-            int(r.get("private_n") or 0),
-            float(r.get("mtime") or 0),
-            float(r.get("mb") or 0),
-        ),
-        reverse=True,
-    )
-    keep = ranked[0] if ranked else None
-    keep_name = str(keep["name"]) if keep else None
+    probed_rows = [r for r in listed if r.get("probed")]
+    ranked_probed = sorted(probed_rows, key=_corrupt_rank_key, reverse=True)
+
+    # 最佳救援＝探過的完整度冠軍（不是最大檔）
+    best = ranked_probed[0] if ranked_probed else None
+    keep_name = str(best["name"]) if best else None
+
+    live_beats_best = False
+    if live_ok and best and best.get("readable"):
+        live_beats_best = (int(live_biaoke), int(live_priv)) >= (
+            int(best.get("biaoke_n") or 0),
+            int(best.get("private_n") or 0),
+        )
+    elif live_ok and (not best or not best.get("readable")):
+        live_beats_best = True
+
+    # 建議：live 夠用 → 最多留 1 份完整度最佳備援；否則留最佳救援當救命
+    if live_ok and live_biaoke >= int(MIN_BIAOKE_RESTORE):
+        recommend_keep = keep_name  # 仍留 1 份備援（完整度最佳）
+        recommend_mode = "keep_one_backup"
+        reason_zh = (
+            f"正式庫可讀且飆大≥{MIN_BIAOKE_RESTORE}（biaoke={live_biaoke} 私人={live_priv}）。"
+            f"救援只留完整度最佳 1 份備援（不是最大檔）；其餘可刪。"
+        )
+    elif keep_name:
+        recommend_keep = keep_name
+        recommend_mode = "keep_best_rescue"
+        reason_zh = (
+            "正式庫不夠完整或不可讀時，留完整度最佳救援（可讀→biaoke→私人→時間）；"
+            "大小不作主判。"
+        )
+    else:
+        recommend_keep = None
+        recommend_mode = "none_probed"
+        reason_zh = "尚未探到可讀救援；不准只依檔案大小刪。"
+
     reclaim = 0.0
     drop: List[str] = []
-    for r in files:
+    for r in listed:
         nm = str(r.get("name") or "")
-        if keep_name and nm == keep_name:
+        if recommend_keep and nm == recommend_keep:
             continue
         reclaim += float(r.get("total_mb") or 0)
         drop.append(nm)
 
-    # 同大小（四捨五入到 MB）且可讀狀態相同 → 可能重複堆叠
-    buckets: Dict[str, List[str]] = {}
-    for r in files:
-        key = f"{round(float(r.get('mb') or 0)):.0f}|{'R' if r.get('readable') else 'X'}"
-        buckets.setdefault(key, []).append(str(r.get("name") or ""))
-    same_size = [v for v in buckets.values() if len(v) >= 2]
+    same_size = [
+        [str(x.get("name") or "") for x in grp]
+        for grp in size_buckets.values()
+        if len(grp) >= 2
+    ]
+    same_size.sort(key=len, reverse=True)
 
-    # 相對正式庫：內容完整度不超過 live 且可讀 → 較像多餘備份
     dominated = []
     if live_ok:
-        for r in files:
+        for r in probed_rows:
+            if not r.get("readable"):
+                dominated.append(str(r.get("name") or ""))
+                continue
             if int(r.get("biaoke_n") or 0) <= int(live_biaoke) and int(
                 r.get("private_n") or 0
             ) <= int(live_priv):
                 dominated.append(str(r.get("name") or ""))
 
+    largest = by_size[0] if by_size else None
+    largest_is_best = bool(
+        largest
+        and keep_name
+        and str(largest.get("name") or "") == keep_name
+    )
+
+    # 回傳：探過的詳列在前，其餘只帶大小
+    out_files: List[Dict[str, Any]] = []
+    for r in ranked_probed + [x for x in by_size if not x.get("probed")]:
+        out_files.append(
+            {
+                "name": r.get("name"),
+                "mb": r.get("mb"),
+                "wal_mb": r.get("wal_mb"),
+                "shm_mb": r.get("shm_mb"),
+                "total_mb": r.get("total_mb"),
+                "mtime": r.get("mtime"),
+                "probed": bool(r.get("probed")),
+                "readable": r.get("readable"),
+                "biaoke_n": r.get("biaoke_n"),
+                "private_n": r.get("private_n"),
+            }
+        )
+
     return {
         "ok": True,
         "root": root,
+        "size_is_not_truth": True,
+        "rank_rule_zh": "可讀 → biaoke → 私人列 → mtime；（大小最後）",
         "live": {
             "path": os.path.basename(dbp),
             "mb": round(live_mb, 2),
             "readable": live_ok,
             "biaoke_n": int(live_biaoke),
             "private_n": int(live_priv),
+            "biaoke_ok": int(live_biaoke) >= int(MIN_BIAOKE_RESTORE),
         },
-        "files": ranked,
-        "corrupt_n": len(files),
-        "corrupt_total_mb": round(sum(float(r.get("total_mb") or 0) for r in files), 2),
+        "files": out_files,
+        "corrupt_n": len(listed),
+        "corrupt_total_mb": round(
+            sum(float(r.get("total_mb") or 0) for r in listed), 2
+        ),
+        "deep_limit": deep_n,
+        "probed_n": probed_n,
+        "timed_out": timed_out,
+        "elapsed_s": round(time.time() - t0, 2),
+        "largest_file": (largest or {}).get("name"),
+        "largest_mb": (largest or {}).get("mb"),
+        "largest_is_completeness_best": largest_is_best,
         "keep_best": keep_name,
+        "keep_best_score": {
+            "readable": (best or {}).get("readable"),
+            "biaoke_n": (best or {}).get("biaoke_n"),
+            "private_n": (best or {}).get("private_n"),
+            "mb": (best or {}).get("mb"),
+        }
+        if best
+        else None,
+        "live_beats_best_backup": live_beats_best,
+        "recommend_mode": recommend_mode,
+        "recommend_keep": recommend_keep,
+        "recommend_reason_zh": reason_zh,
+        "reclaim_if_follow_recommend_mb": round(reclaim, 2),
+        "drop_if_follow_recommend": drop,
+        # 相容舊欄位名
         "reclaim_if_keep_best_mb": round(reclaim, 2),
         "drop_if_keep_best": drop,
-        "same_size_groups": same_size,
+        "same_size_groups": same_size[:15],
         "dominated_by_live": dominated,
-        "note": "只讀估量；未刪。正式庫不刪。若 live 已可讀且完整，drop 清單多半可省。",
+        "note": "只讀對質；未刪。正式庫不刪。最大檔≠最正確。",
     }
 
 

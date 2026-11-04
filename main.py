@@ -577,23 +577,38 @@ class HealthHandler(BaseHTTPRequestHandler):
 
                 dbp = get_db_path()
                 root = os.path.dirname(dbp) or "."
-                inv = inventory_data_disk(
-                    root, charts_dir=get_charts_dir(), db_path=dbp, top_n=20
+                # 預設只做救援完整度對質（快）；inventory=1 才掃全碟分項
+                want_inv = bool(req_json.get("inventory"))
+                deep_limit = int(req_json.get("deep_limit") or 20)
+                max_seconds = float(req_json.get("max_seconds") or 90)
+                inv = None
+                if want_inv:
+                    inv = inventory_data_disk(
+                        root, charts_dir=get_charts_dir(), db_path=dbp, top_n=20
+                    )
+                corrupt = audit_corrupt_copies(
+                    dbp,
+                    data_dir=root,
+                    deep_limit=deep_limit,
+                    max_seconds=max_seconds,
                 )
-                corrupt = audit_corrupt_copies(dbp, data_dir=root)
                 result = {
                     "ok": True,
-                    "inventory": {
-                        "durable_mb": inv.get("durable_mb"),
-                        "rebuildable_mb": inv.get("rebuildable_mb"),
-                        "safe_delete_mb": inv.get("safe_delete_mb"),
-                        "class_mb": inv.get("class_mb"),
-                        "parts": inv.get("parts"),
-                        "top": inv.get("top"),
-                    },
+                    "inventory": (
+                        {
+                            "durable_mb": inv.get("durable_mb"),
+                            "rebuildable_mb": inv.get("rebuildable_mb"),
+                            "safe_delete_mb": inv.get("safe_delete_mb"),
+                            "class_mb": inv.get("class_mb"),
+                            "parts": inv.get("parts"),
+                            "top": inv.get("top"),
+                        }
+                        if inv
+                        else None
+                    ),
                     "corrupt": corrupt,
                     "deleted": False,
-                    "note": "只讀；corrupt 未刪。要刪救援副本需另令。",
+                    "note": "只讀完整度對質；最大檔≠最正確；未刪。要刪需另令。",
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
