@@ -1,10 +1,10 @@
 {
-  "id": "gap-20261104-after_macro_fetch",
-  "written_at": "2026-11-04T10:26:20",
+  "id": "gap-20261104-path_forecast",
+  "written_at": "2026-11-04T10:28:56",
   "tz": "Asia/Taipei",
-  "source": "after_macro_fetch",
+  "source": "path_forecast",
   "fruitless": true,
-  "reason_zh": "走勢預測方向準度 0.599 仍偏弱（n=740）→ 記錄補因並排程重測；why 空包占比 85.0% → 投票因素點不亮，覆盤無從歸因；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
+  "reason_zh": "走勢預測方向準度 0.599 仍偏弱（n=740）→ 記錄補因並排程重測；幅度準度 0.445 < 0.50（n=443）→ 漲勢幅度估法不足，要補波動／夜盤／外圍強度；why 空包占比 85.0% → 投票因素點不亮，覆盤無從歸因；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
       "hit_rate_directional": 0.5986486486486486,
@@ -23,7 +23,10 @@
         "usdtwd_prior_ret",
         "brent_prior_ret",
         "tx_night_ret"
-      ]
+      ],
+      "hit_rate_amplitude": 0.44469525959367945,
+      "amp_n": 443,
+      "amp_mae_pct": 1.4315
     },
     "wave": {
       "adopt": {
@@ -36,7 +39,7 @@
     "lab": {
       "n": 5419,
       "insufficient_n": 3,
-      "watch_n": 0,
+      "watch_n": 4676,
       "empty_why_n": 4607
     },
     "coverage": {

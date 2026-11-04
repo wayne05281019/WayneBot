@@ -347,6 +347,20 @@ def diagnose_fruitless(
         reasons.append(
             f"走勢預測方向準度 {float(hr):.3f} 仍偏弱（n={dn}）→ 記錄補因並排程重測"
         )
+    amp_hr = path_summary.get("hit_rate_amplitude")
+    amp_n = int(path_summary.get("amp_n") or 0)
+    mae = path_summary.get("amp_mae_pct")
+    evidence["path"]["hit_rate_amplitude"] = amp_hr
+    evidence["path"]["amp_n"] = amp_n
+    evidence["path"]["amp_mae_pct"] = mae
+    if amp_n >= MIN_SCORED and amp_hr is not None and float(amp_hr) < 0.50:
+        reasons.append(
+            f"幅度準度 {float(amp_hr):.3f} < 0.50（n={amp_n}）→ 漲勢幅度估法不足，要補波動／夜盤／外圍強度"
+        )
+    elif amp_n >= MIN_SCORED and mae is not None and float(mae) > 1.2:
+        reasons.append(
+            f"幅度 MAE {float(mae):.2f}pt 偏大（n={amp_n}）→ 目標幅度要重切"
+        )
 
     if lab.get("n"):
         frac_insuf = lab["insufficient_n"] / max(1, lab["n"])

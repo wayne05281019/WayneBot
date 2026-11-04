@@ -1,8 +1,11 @@
 {
-  "written_at": "2026-11-04T08:44:11",
+  "written_at": "2026-11-04T10:28:56",
   "tz": "Asia/Taipei",
+  "goal_zh": "預判大盤漲勢（方向）及幅度",
   "investor_output": [
     "bias",
+    "amp_pct",
+    "amp_class",
     "horizon",
     "last_close",
     "target",
@@ -26,13 +29,18 @@
     "brent_prior_ret",
     "tx_night_ret"
   ],
-  "my_responsibility_zh": "最終答案＝走勢預測（方向／目標／失效／依據）。要納入哪些因素、怎麼切、怎麼投票＝程式責任；使用者只收結果與覆盤。",
+  "my_responsibility_zh": "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。要納入哪些因素、怎麼切、怎麼估幅度＝程式責任；使用者只收結果與覆盤。",
   "wrote": 5419,
   "scored_n": 740,
   "directional_n": 740,
   "hit": 443,
   "miss": 297,
   "hit_rate_directional": 0.5986486486486486,
+  "amp_n": 443,
+  "amp_hit": 197,
+  "amp_miss": 246,
+  "hit_rate_amplitude": 0.44469525959367945,
+  "amp_mae_pct": 1.4315,
   "by_bias": {
     "up": {
       "n": 481,
@@ -47,8 +55,34 @@
       "hit_rate": 0.5675675675675675
     }
   },
+  "by_amp_class": {
+    "micro": {
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate": null
+    },
+    "small": {
+      "n": 396,
+      "hit": 175,
+      "miss": 221,
+      "hit_rate": 0.44191919191919193
+    },
+    "mid": {
+      "n": 47,
+      "hit": 22,
+      "miss": 25,
+      "hit_rate": 0.46808510638297873
+    },
+    "large": {
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate": null
+    }
+  },
   "gate_n20": true,
-  "reverse_think_zh": "混算 range 會把勝率拉垮；投資人要的是有方向的對錯。range＝觀望不計分。下一輪提高出方向門檻／補夜盤融資票。",
+  "reverse_think_zh": "目標是漲勢＋幅度。只對方向不夠；幅度偏了要回查波動／夜盤／外圍強度是否估錯。range＝觀望不計分。因素不足→factor_gap_queue。",
   "not_buy_signal": true,
   "phone_sync": "blocked",
   "storage": "decade_lab.path_forecast + json/gz；不准 PNG"

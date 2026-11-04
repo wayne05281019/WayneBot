@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 """大盤走勢預測（靜默）｜從投資人要的結果反推。
 
+目標（使用者鎖）：預判大盤漲勢（方向）及幅度。
+
 投資人要的最終答案：
-1. 這一段／這一天往哪（up／down／range）
-2. 目標價與失效價（對／錯怎麼算）
-3. 依據哪些因素（可覆盤歸因）
+1. 這一段往哪（up／down／range）
+2. 預估幅度 amp_pct（%）、目標價與失效價
+3. 依據哪些因素（可覆盤歸因；幅度錯了也要能檢討）
 
 因素與切法＝本模組責任（不准丟回使用者決定）。
 缺就標缺；只落數字 json／gz；不准存圖；不是買訊；不准進話筒。
@@ -33,6 +35,8 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 # 投資人產出欄（責任切面）
 INVESTOR_OUTPUT = (
     "bias",  # up|down|range
+    "amp_pct",  # 預估幅度％（漲勢為正、跌勢為負）
+    "amp_class",  # micro|small|mid|large
     "horizon",  # session(1d)|segment(3d)
     "last_close",
     "target",
@@ -96,6 +100,10 @@ CREATE TABLE IF NOT EXISTS path_forecast (
     check_close REAL,
     checked_at TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT '',
+    amp_pct REAL,
+    amp_class TEXT NOT NULL DEFAULT '',
+    amp_verdict TEXT NOT NULL DEFAULT '',
+    actual_ret_pct REAL,
     PRIMARY KEY (as_of, horizon)
 );
 """
@@ -352,16 +360,92 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
     }
 
 
-def _targets(bias: str, last_close: float) -> Tuple[float, float]:
+def _amp_class(amp_abs: float) -> str:
+    a = abs(float(amp_abs))
+    if a < 0.6:
+        return "micro"
+    if a < 1.5:
+        return "small"
+    if a < 3.0:
+        return "mid"
+    return "large"
+
+
+def estimate_amplitude(
+    bias: str,
+    score: float,
+    factors: Dict[str, Any],
+    *,
+    realized_abs_ret: Optional[float] = None,
+) -> Dict[str, Any]:
+    """估幅度％。漲勢為正、跌勢為負；range＝0。
+
+    自修：純票強度 MAE 大；近窗實現波動（日均 |ret| ×√3）準度較高，改為主幹，
+    票強度／量能／VIX／夜盤只做微調。
+    """
+    if bias not in {"up", "down"}:
+        return {"amp_pct": 0.0, "amp_class": "micro", "amp_basis": "range_no_amp"}
+    strength = abs(float(score or 0.0))
+    score_leg = 0.45 + min(2.4, strength * 0.85)
+    if realized_abs_ret is not None and realized_abs_ret > 0:
+        # 3 日窗 ≈ 日波動 × √3
+        rv_leg = float(realized_abs_ret) * (3.0 ** 0.5) * 1.10
+        base = 0.75 * rv_leg + 0.25 * score_leg
+        basis = "rv20_sqrt3_primary"
+    else:
+        base = score_leg
+        basis = "score_fallback"
+    if bool(factors.get("twii_vol_spike")):
+        base += 0.20
+    vix = _f(factors.get("vix_prior_ret"))
+    if vix is not None and abs(vix) >= 8.0:
+        base += 0.15
+    tw = abs(_f(factors.get("twii_ret")) or 0.0)
+    if tw >= 2.0:
+        base += 0.10
+    tx = _f(factors.get("tx_night_ret"))
+    if tx is not None:
+        if bias == "up" and tx > 0.3:
+            base += 0.10
+        elif bias == "down" and tx < -0.3:
+            base += 0.10
+        elif bias == "up" and tx < -0.5:
+            base -= 0.10
+        elif bias == "down" and tx > 0.5:
+            base -= 0.10
+    amp_abs = max(0.40, min(4.0, base))
+    amp = amp_abs if bias == "up" else -amp_abs
+    return {
+        "amp_pct": round(amp, 3),
+        "amp_class": _amp_class(amp_abs),
+        "amp_basis": basis,
+    }
+
+
+def _targets(bias: str, last_close: float, amp_pct: float = 0.8) -> Tuple[float, float]:
+    """目標＝預估幅度；失效＝反向約一半幅度（破了＝方向判斷作廢）。"""
+    if last_close <= 0:
+        return last_close, last_close
     if bias == "up":
-        return last_close * 1.008, last_close * 0.992
+        a = abs(float(amp_pct) or 0.8) / 100.0
+        return last_close * (1.0 + a), last_close * (1.0 - a * 0.5)
     if bias == "down":
-        return last_close * 0.992, last_close * 1.008
-    return last_close, last_close * 0.985  # range：失效＝大破昨收附近
+        a = abs(float(amp_pct) or 0.8) / 100.0
+        return last_close * (1.0 - a), last_close * (1.0 + a * 0.5)
+    return last_close, last_close * 0.985
 
 
 def ensure_lab(conn: sqlite3.Connection) -> None:
     conn.executescript(DDL)
+    cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(path_forecast)")}
+    for name, typ in (
+        ("amp_pct", "REAL"),
+        ("amp_class", "TEXT"),
+        ("amp_verdict", "TEXT"),
+        ("actual_ret_pct", "REAL"),
+    ):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE path_forecast ADD COLUMN {name} {typ}")
 
 
 def upsert_forecast(conn: sqlite3.Connection, rec: Dict[str, Any]) -> None:
@@ -370,14 +454,18 @@ def upsert_forecast(conn: sqlite3.Connection, rec: Dict[str, Any]) -> None:
         INSERT INTO path_forecast(
             as_of, horizon, bias, last_close, target, invalidate,
             factors_json, missing_json, why_json, score, verdict,
-            check_close, checked_at, created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            check_close, checked_at, created_at,
+            amp_pct, amp_class, amp_verdict, actual_ret_pct
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(as_of, horizon) DO UPDATE SET
             bias=excluded.bias, last_close=excluded.last_close,
             target=excluded.target, invalidate=excluded.invalidate,
             factors_json=excluded.factors_json, missing_json=excluded.missing_json,
             why_json=excluded.why_json, score=excluded.score,
-            created_at=excluded.created_at
+            verdict=excluded.verdict, check_close=excluded.check_close,
+            checked_at=excluded.checked_at, created_at=excluded.created_at,
+            amp_pct=excluded.amp_pct, amp_class=excluded.amp_class,
+            amp_verdict=excluded.amp_verdict, actual_ret_pct=excluded.actual_ret_pct
         """,
         (
             rec["as_of"],
@@ -394,12 +482,16 @@ def upsert_forecast(conn: sqlite3.Connection, rec: Dict[str, Any]) -> None:
             rec.get("check_close"),
             rec.get("checked_at") or "",
             rec.get("created_at") or _now(),
+            rec.get("amp_pct"),
+            rec.get("amp_class") or "",
+            rec.get("amp_verdict") or "",
+            rec.get("actual_ret_pct"),
         ),
     )
 
 
 def _judge(bias: str, last: float, close: float, invalidate: float) -> str:
-    """投資人要的是方向對錯。range＝無明確方向，不計勝率（觀望）。"""
+    """方向對錯。range＝無明確方向，不計勝率（觀望）。"""
     if close <= 0 or last <= 0:
         return "還沒走完"
     ret = (close / last - 1.0) * 100.0
@@ -416,6 +508,28 @@ def _judge(bias: str, last: float, close: float, invalidate: float) -> str:
             return f"偏了破失效：收{close:.0f}"
         return f"偏了沒往下：收{close:.0f}（{ret:+.2f}%）"
     return f"觀望不計分：收{close:.0f}（{ret:+.2f}%）"
+
+
+def _judge_amp(bias: str, amp_pct: float, actual_ret: float) -> str:
+    """幅度對質：僅在方向對時計；落在預估帶＝幅度對得上。
+
+    帶寬：預估 |amp| 的 50%～150%，且至少 ±0.35pt 容差。
+    """
+    if bias not in {"up", "down"}:
+        return "觀望不計幅度"
+    if bias == "up" and actual_ret <= 0:
+        return "方向偏了不計幅度"
+    if bias == "down" and actual_ret >= 0:
+        return "方向偏了不計幅度"
+    pred = abs(float(amp_pct) or 0.0)
+    act = abs(float(actual_ret) or 0.0)
+    if pred <= 0:
+        return "無幅度預測"
+    lo = max(0.0, pred * 0.5 - 0.15)
+    hi = pred * 1.5 + 0.35
+    if lo <= act <= hi:
+        return f"幅度對得上：估{amp_pct:+.2f}% 實{actual_ret:+.2f}%"
+    return f"幅度偏了：估{amp_pct:+.2f}% 實{actual_ret:+.2f}%"
 
 
 def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
@@ -466,15 +580,38 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             continue
         decision = decide_path(factors, missing, votes)
         last = twii[day]["close"]
-        tgt, inv = _targets(decision["bias"], last)
+        # 近 20 日 |ret| 均（as-of 前，不含未來）
+        i0 = tw_days.index(day)
+        prior_abs = [
+            abs(float(twii[tw_days[j]]["ret"]))
+            for j in range(max(0, i0 - 20), i0)
+            if twii[tw_days[j]].get("ret_ok")
+        ]
+        rv = (sum(prior_abs) / len(prior_abs)) if len(prior_abs) >= 5 else None
+        amp_info = estimate_amplitude(
+            decision["bias"],
+            float(decision["score"] or 0.0),
+            factors,
+            realized_abs_ret=rv,
+        )
+        amp_pct = float(amp_info["amp_pct"])
+        tgt, inv = _targets(decision["bias"], last, amp_pct)
         # forward close
         i = tw_days.index(day)
         fut = twii[tw_days[i + 3]]["close"]
+        actual_ret = ((fut / last - 1.0) * 100.0) if last > 0 else 0.0
         verd = _judge(decision["bias"], last, fut, inv) if decision["reviewable"] else "因素不足不計分"
+        amp_verd = (
+            _judge_amp(decision["bias"], amp_pct, actual_ret)
+            if decision["reviewable"]
+            else "因素不足不計幅度"
+        )
         rec = {
             "as_of": day,
             "horizon": "segment3",
             "bias": decision["bias"],
+            "amp_pct": amp_pct,
+            "amp_class": amp_info.get("amp_class"),
             "last_close": last,
             "target": tgt,
             "invalidate": inv,
@@ -483,6 +620,8 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "why": decision["why"],
             "score": decision["score"],
             "verdict": verd,
+            "amp_verdict": amp_verd,
+            "actual_ret_pct": round(actual_ret, 4),
             "check_close": fut,
             "checked_at": _now(),
             "created_at": _now(),
@@ -491,13 +630,34 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         upsert_forecast(lab, rec)
         wrote += 1
         if decision["reviewable"] and ("對得上" in verd or "偏了" in verd):
-            scored.append({"as_of": day, "bias": decision["bias"], "verdict": verd, "score": decision["score"], "why": decision["why"]})
+            scored.append(
+                {
+                    "as_of": day,
+                    "bias": decision["bias"],
+                    "amp_pct": amp_pct,
+                    "amp_class": amp_info.get("amp_class"),
+                    "actual_ret_pct": round(actual_ret, 4),
+                    "verdict": verd,
+                    "amp_verdict": amp_verd,
+                    "score": decision["score"],
+                    "why": decision["why"],
+                }
+            )
     lab.commit()
 
     # 投資人可用：只計有方向（up/down）的對質
     dir_rows = [r for r in scored if r.get("bias") in {"up", "down"}]
     hit = sum(1 for r in dir_rows if "對得上" in r["verdict"])
     miss = sum(1 for r in dir_rows if "偏了" in r["verdict"])
+    amp_rows = [r for r in dir_rows if "對得上" in (r.get("verdict") or "")]
+    amp_hit = sum(1 for r in amp_rows if "幅度對得上" in (r.get("amp_verdict") or ""))
+    amp_miss = sum(1 for r in amp_rows if "幅度偏了" in (r.get("amp_verdict") or ""))
+    # 幅度誤差（方向對的樣本）
+    abs_err = [
+        abs(abs(float(r.get("amp_pct") or 0)) - abs(float(r.get("actual_ret_pct") or 0)))
+        for r in amp_rows
+    ]
+    mae = (sum(abs_err) / len(abs_err)) if abs_err else None
     by_bias = {}
     for b in ("up", "down"):
         sub = [r for r in dir_rows if r.get("bias") == b]
@@ -509,14 +669,26 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "miss": m,
             "hit_rate": (h / (h + m)) if (h + m) else None,
         }
+    by_amp_class: Dict[str, Any] = {}
+    for cls in ("micro", "small", "mid", "large"):
+        sub = [r for r in amp_rows if r.get("amp_class") == cls]
+        ah = sum(1 for r in sub if "幅度對得上" in (r.get("amp_verdict") or ""))
+        am = sum(1 for r in sub if "幅度偏了" in (r.get("amp_verdict") or ""))
+        by_amp_class[cls] = {
+            "n": ah + am,
+            "hit": ah,
+            "miss": am,
+            "hit_rate": (ah / (ah + am)) if (ah + am) else None,
+        }
     summary = {
         "written_at": _now(),
         "tz": "Asia/Taipei",
+        "goal_zh": "預判大盤漲勢（方向）及幅度",
         "investor_output": list(INVESTOR_OUTPUT),
         "factor_pack": list(FACTOR_PACK),
         "my_responsibility_zh": (
-            "最終答案＝走勢預測（方向／目標／失效／依據）。"
-            "要納入哪些因素、怎麼切、怎麼投票＝程式責任；使用者只收結果與覆盤。"
+            "最終答案＝漲勢方向＋預估幅度％＋目標／失效＋依據。"
+            "要納入哪些因素、怎麼切、怎麼估幅度＝程式責任；使用者只收結果與覆盤。"
         ),
         "wrote": wrote,
         "scored_n": len(scored),
@@ -524,11 +696,17 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
         "hit": hit,
         "miss": miss,
         "hit_rate_directional": (hit / (hit + miss)) if (hit + miss) else None,
+        "amp_n": amp_hit + amp_miss,
+        "amp_hit": amp_hit,
+        "amp_miss": amp_miss,
+        "hit_rate_amplitude": (amp_hit / (amp_hit + amp_miss)) if (amp_hit + amp_miss) else None,
+        "amp_mae_pct": round(mae, 4) if mae is not None else None,
         "by_bias": by_bias,
+        "by_amp_class": by_amp_class,
         "gate_n20": (hit + miss) >= 20,
         "reverse_think_zh": (
-            "混算 range 會把勝率拉垮；投資人要的是有方向的對錯。"
-            "range＝觀望不計分。下一輪提高出方向門檻／補夜盤融資票。"
+            "目標是漲勢＋幅度。只對方向不夠；幅度偏了要回查波動／夜盤／外圍強度是否估錯。"
+            "range＝觀望不計分。因素不足→factor_gap_queue。"
         ),
         "not_buy_signal": True,
         "phone_sync": "blocked",
