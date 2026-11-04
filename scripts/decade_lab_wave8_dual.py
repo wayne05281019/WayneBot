@@ -224,19 +224,42 @@ def _phase_from_pivots(pivots: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     return {"phase": "unknown", "cycle": "none", "bias": "range", "gate": {}}
 
 
+def confirmed_pivots_asof(
+    pivots_all: Sequence[Dict[str, Any]],
+    as_of_i: int,
+    *,
+    look: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """只留 as_of 當日已右窗確認的樞紐（不准用未來柱證實的轉折）。
+
+    `_pivots` 用 ±look；點在 j 要等到 j+look 才能確認。as_of=i 時只准 j+look ≤ i。
+    """
+    L = int(PIVOT_LOOK if look is None else look)
+    out: List[Dict[str, Any]] = []
+    for p in pivots_all:
+        j = int(p.get("i") or -1)
+        if j < 0:
+            continue
+        if j + L <= as_of_i:
+            out.append(p)
+    return out
+
+
 def snapshot_wave_asof(
     bars: Sequence[Dict[str, float]],
     pivots_all: Sequence[Dict[str, Any]],
     as_of: str,
+    *,
+    look: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """as-of 當日波浪主結構快照（只准用當日與以前樞紐）。供路徑預測當主判。"""
+    """as-of 當日波浪主結構快照（只准用當日與以前、且已右窗確認的樞紐）。供路徑預測當主判。"""
     day = _ymd(as_of)
     day_i = {b["date"]: i for i, b in enumerate(bars)}
     i = day_i.get(day)
     if i is None:
         return {"ok": False, "bias": "range", "phase": "unknown", "missing": "wave_as_of"}
-    # 樞紐截止到當日
-    hist = [p for p in pivots_all if int(p.get("i") or -1) <= i]
+    # 樞紐：指數 ≤ as_of，且右窗 look 根已走完（修前瞻）
+    hist = confirmed_pivots_asof(pivots_all, i, look=look)
     if len(hist) < 4:
         return {"ok": False, "bias": "range", "phase": "unknown", "missing": "wave_pivots"}
     phase = _phase_from_pivots(hist)
