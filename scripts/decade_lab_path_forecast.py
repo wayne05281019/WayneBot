@@ -388,31 +388,14 @@ def estimate_amplitude(
     strength = abs(float(score or 0.0))
     score_leg = 0.45 + min(2.4, strength * 0.85)
     if realized_abs_ret is not None and realized_abs_ret > 0:
-        # 3 日窗 ≈ 日波動 × √3
-        rv_leg = float(realized_abs_ret) * (3.0 ** 0.5) * 1.10
-        base = 0.75 * rv_leg + 0.25 * score_leg
-        basis = "rv20_sqrt3_primary"
+        # 自修對質：純 rv20×√3×1.1 準度最高；混票強度／外加碼反而變差 → 不混
+        base = float(realized_abs_ret) * (3.0 ** 0.5) * 1.10
+        basis = "rv20_sqrt3"
     else:
         base = score_leg
         basis = "score_fallback"
-    if bool(factors.get("twii_vol_spike")):
-        base += 0.20
-    vix = _f(factors.get("vix_prior_ret"))
-    if vix is not None and abs(vix) >= 8.0:
-        base += 0.15
-    tw = abs(_f(factors.get("twii_ret")) or 0.0)
-    if tw >= 2.0:
-        base += 0.10
-    tx = _f(factors.get("tx_night_ret"))
-    if tx is not None:
-        if bias == "up" and tx > 0.3:
-            base += 0.10
-        elif bias == "down" and tx < -0.3:
-            base += 0.10
-        elif bias == "up" and tx < -0.5:
-            base -= 0.10
-        elif bias == "down" and tx > 0.5:
-            base -= 0.10
+        if bool(factors.get("twii_vol_spike")):
+            base += 0.20
     amp_abs = max(0.40, min(4.0, base))
     amp = amp_abs if bias == "up" else -amp_abs
     return {

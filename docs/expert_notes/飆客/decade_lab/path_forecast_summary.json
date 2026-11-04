@@ -1,5 +1,5 @@
 {
-  "written_at": "2026-11-04T10:28:56",
+  "written_at": "2026-11-04T10:29:10",
   "tz": "Asia/Taipei",
   "goal_zh": "預判大盤漲勢（方向）及幅度",
   "investor_output": [
@@ -37,10 +37,10 @@
   "miss": 297,
   "hit_rate_directional": 0.5986486486486486,
   "amp_n": 443,
-  "amp_hit": 197,
-  "amp_miss": 246,
-  "hit_rate_amplitude": 0.44469525959367945,
-  "amp_mae_pct": 1.4315,
+  "amp_hit": 252,
+  "amp_miss": 191,
+  "hit_rate_amplitude": 0.5688487584650113,
+  "amp_mae_pct": 1.254,
   "by_bias": {
     "up": {
       "n": 481,
@@ -57,28 +57,28 @@
   },
   "by_amp_class": {
     "micro": {
-      "n": 0,
-      "hit": 0,
+      "n": 1,
+      "hit": 1,
       "miss": 0,
-      "hit_rate": null
+      "hit_rate": 1.0
     },
     "small": {
-      "n": 396,
-      "hit": 175,
-      "miss": 221,
-      "hit_rate": 0.44191919191919193
+      "n": 178,
+      "hit": 97,
+      "miss": 81,
+      "hit_rate": 0.5449438202247191
     },
     "mid": {
-      "n": 47,
-      "hit": 22,
-      "miss": 25,
-      "hit_rate": 0.46808510638297873
+      "n": 210,
+      "hit": 127,
+      "miss": 83,
+      "hit_rate": 0.6047619047619047
     },
     "large": {
-      "n": 0,
-      "hit": 0,
-      "miss": 0,
-      "hit_rate": null
+      "n": 54,
+      "hit": 27,
+      "miss": 27,
+      "hit_rate": 0.5
     }
   },
   "gate_n20": true,
