@@ -2410,6 +2410,96 @@ def _market_channel_anchor_caption(ch: Dict[str, Any], *, upper: bool) -> str:
     return head
 
 
+def channel_has_drawable_rails(channel: Optional[Dict[str, Any]]) -> bool:
+    """有可畫的平行雙軌現價才算有軌（空 dict／缺 rail／base＝無軌）。"""
+    ch = channel or {}
+    try:
+        rail = float(ch.get("rail_now") or 0)
+        base = float(ch.get("base_now") or 0)
+    except (TypeError, ValueError):
+        return False
+    return bool(ch.get("kind")) and rail > 0 and base > 0
+
+
+def vol_zone_parallel_rail_foot_bits(
+    *,
+    with_parallel_channel: bool,
+    with_nav_signals: bool,
+    channel: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """大量區腳註／短行：有畫軌才講軌；推不出＝缺資料提示，不准假寫雙線。
+
+    回傳 quiet_bit／foot2／foot1_suffix／has_rails。不准改買訊。
+    """
+    has = bool(with_parallel_channel) and channel_has_drawable_rails(channel)
+    ch = channel or {}
+    quiet_bit = ""
+    foot1_suffix = ""
+    if with_nav_signals:
+        if with_parallel_channel and has:
+            quiet_bit = "淡灰藍虛線＝平行趨勢（標名＋最新價・不數浪）"
+        elif with_parallel_channel:
+            quiet_bit = "本圖推不出合格平行軌（不數浪・非買訊）"
+        foot2 = (
+            "止穩◆＝近60低首觸後再走≥3日、期間未破該低、收在底上才亮（觀察非買）。"
+            "橘六角「觀察」＝外資賣升級（超比爬升／分位）或賣超佔量≥20%才亮"
+            "（還在測試・非買；千金不靠5000張）。無成交＝灰短K＋量柱貼底，不准挖洞。"
+        )
+        return {
+            "has_rails": has,
+            "quiet_bit": quiet_bit,
+            "foot1_suffix": foot1_suffix,
+            "foot2": foot2,
+        }
+    if not with_parallel_channel:
+        return {
+            "has_rails": False,
+            "quiet_bit": "",
+            "foot1_suffix": "",
+            "foot2": (
+                "高觸壓、收未過＝測壓（非買訊）。"
+                "止穩◆＝60低首觸後≥3日未破底；橘六角＝外資賣升級／賣超佔量≥20%（還在測試・非買）。"
+                "無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
+            ),
+        }
+    if not has:
+        return {
+            "has_rails": False,
+            "quiet_bit": "",
+            "foot1_suffix": "",
+            "foot2": (
+                "高觸壓、收未過＝測壓（非買訊）。"
+                "本圖推不出合格平行軌（不數浪・非買訊）。"
+                "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
+                "無成交＝灰短K＋量柱貼底，不准挖洞。"
+            ),
+        }
+    ch_lab = str(ch.get("label") or "").strip()
+    if ch_lab:
+        foot1_suffix = f"　{ch_lab}"
+    # 失效升軌且未改畫下降：腳註必須明說「未畫」，不准因 label 已含同句就退回「改畫下降壓」
+    if not bool(ch.get("alive")) and str(ch.get("kind") or "") == "asc":
+        foot2 = (
+            "高觸壓、收未過＝測壓（非買訊）。舊升通道已失效（灰線僅對照）；"
+            "尚無合格下降壓＝本圖未畫下降壓。"
+            "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
+            "無成交＝灰短K＋量柱貼底，不准挖洞。"
+        )
+    else:
+        foot2 = (
+            "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）；"
+            "官方收破升軌則升通道失效改畫下降壓。"
+            "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
+            "無成交＝灰短K＋量柱貼底，不准挖洞。"
+        )
+    return {
+        "has_rails": True,
+        "quiet_bit": "",
+        "foot1_suffix": foot1_suffix,
+        "foot2": foot2,
+    }
+
+
 def _channel_text_box_data(
     ax, text: str, *, n: int, ymin: float, ymax: float, fs: float = 7.6
 ) -> Tuple[float, float]:
@@ -7093,57 +7183,28 @@ def _paint_volume_zone(
         ma_foot = "橙＝五日、青＝十日、黃＝月線(MA20)、藍紫＝季線(MA60)。"
     else:
         ma_foot = "黃＝月線(MA20)、藍紫＝季線(MA60)。"
-    quiet_bit = ""
+    # 腳註誠實：有畫軌才講雙線／淡灰藍；推不出＝缺資料提示（不准假寫有軌）
+    _rail_bits = vol_zone_parallel_rail_foot_bits(
+        with_parallel_channel=bool(with_parallel_channel),
+        with_nav_signals=bool(with_nav_signals),
+        channel=channel if isinstance(channel, dict) else {},
+    )
+    quiet_bit = str(_rail_bits.get("quiet_bit") or "")
     if with_nav_signals:
         # 淡灰藍說明獨立短行：不准塞進 foot1／foot2（2026-10-28 Reviewer-A 裁切）
-        quiet_bit = (
-            "淡灰藍虛線＝平行趨勢（標名＋最新價・不數浪）"
-            if with_parallel_channel
-            else ""
-        )
         foot1 = (
             f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}"
             "除權／除息缺口是息差不是崩。高觸壓、收未過＝測壓（非買訊）。"
             "買點＝藍▲紅框；60低＝純藍▲。箭頭／殘影＝導航同一套。"
         )
-        # 兩觀察標出現時機（灰字；永遠非買訊）
-        foot2 = (
-            "止穩◆＝近60低首觸後再走≥3日、期間未破該低、收在底上才亮（觀察非買）。"
-            "橘六角「觀察」＝外資賣升級（超比爬升／分位）或賣超佔量≥20%才亮"
-            "（還在測試・非買；千金不靠5000張）。無成交＝灰短K＋量柱貼底，不准挖洞。"
-        )
+        foot2 = str(_rail_bits.get("foot2") or "")
     else:
-        foot1 = f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}除權／除息缺口是息差不是崩。"
-        if with_parallel_channel:
-            foot2 = (
-                "高觸壓、收未過＝測壓（非買訊）。雙線＝可重算上升軌／下降壓（不數浪）；"
-                "官方收破升軌則升通道失效改畫下降壓。"
-                "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
-                "無成交＝灰短K＋量柱貼底，不准挖洞。"
-            )
-            if channel:
-                ch_lab = str(channel.get("label") or "").strip()
-                if ch_lab:
-                    foot1 = f"{foot1}　{ch_lab}"
-                # 失效升軌且未改畫下降：腳註明說，不准寫得像已改畫
-                if (
-                    not bool(channel.get("alive"))
-                    and str(channel.get("kind") or "") == "asc"
-                    and "未畫下降壓" not in foot1
-                    and "未改畫下降壓" not in foot2
-                ):
-                    foot2 = (
-                        "高觸壓、收未過＝測壓（非買訊）。舊升通道已失效（灰線僅對照）；"
-                        "尚無合格下降壓＝本圖未畫下降壓。"
-                        "止穩◆／橘六角見疊導航訊號的大量區或高低導航圖說。"
-                        "無成交＝灰短K＋量柱貼底，不准挖洞。"
-                    )
-        else:
-            foot2 = (
-                "高觸壓、收未過＝測壓（非買訊）。"
-                "止穩◆＝60低首觸後≥3日未破底；橘六角＝外資賣升級／賣超佔量≥20%（還在測試・非買）。"
-                "無成交＝灰短K＋量柱貼底，不准挖洞。導航圖另按。"
-            )
+        foot1 = (
+            f"桃色帶＝大量區（近窗仍有效爆大量日官方高低）。{ma_foot}"
+            "除權／除息缺口是息差不是崩。"
+            f"{_rail_bits.get('foot1_suffix') or ''}"
+        )
+        foot2 = str(_rail_bits.get("foot2") or "")
     # 有 quiet 短行時三行；否則維持兩行（不准左右裁切）
     if quiet_bit:
         fig.text(
