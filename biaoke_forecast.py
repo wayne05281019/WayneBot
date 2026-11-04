@@ -12,14 +12,18 @@ import os
 import re
 import sqlite3
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 KIND_TWII = "twii"
 KIND_TWII_TRY = "twii_try"
+KIND_TWII_SESSION = "twii_session"
 TWII_TRY_HORIZON = 10
+TWII_SESSION_HORIZON = 1
 TWII_WORST = 43500.0
+# 當日盤勢「整理」：相對昨收絕對報酬 ≤ 此％算 range 對得上
+TWII_SESSION_RANGE_PCT = 0.6
 # 他 9/24 改口：教師節周一放假，下星期二有效過近高才算主升。
 CHI_TUE_DUE = "20260929"
 CHI_GATE = 3595.0
@@ -326,6 +330,236 @@ def _try_impulse(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         return {}
 
 
+def _before_tw_session_open(session_ymd: str, now: Optional[datetime] = None) -> bool:
+    """開市日 09:00 前（含前一晚）才准寫當日盤勢；開盤後不准開始／改寫預測。"""
+    day = _ymd(session_ymd)
+    if len(day) != 8:
+        return False
+    stamp = now or datetime.now(TAIPEI)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=TAIPEI)
+    else:
+        stamp = stamp.astimezone(TAIPEI)
+    today = stamp.strftime("%Y%m%d")
+    if today < day:
+        return True
+    if today > day:
+        return False
+    return (stamp.hour, stamp.minute) < (9, 0)
+
+
+def _twii_bar_on(db_path: str, ymd: str) -> Optional[Dict[str, Any]]:
+    day = _ymd(ymd)
+    if not db_path or not os.path.isfile(db_path) or len(day) != 8:
+        return None
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        row = conn.execute(
+            """
+            SELECT date, open, high, low, close FROM index_daily
+            WHERE (symbol='TWII' OR symbol='^TWII')
+              AND REPLACE(CAST(date AS TEXT),'-','')=?
+            LIMIT 1
+            """,
+            (day,),
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        return {
+            "date": row[0],
+            "open": float(row[1] or 0),
+            "high": float(row[2] or 0),
+            "low": float(row[3] or 0),
+            "close": float(row[4] or 0),
+        }
+    except (TypeError, ValueError):
+        return None
+
+
+def _prior_twii_close(db_path: str, before_ymd: str) -> Tuple[str, float]:
+    day = _ymd(before_ymd)
+    if not db_path or not os.path.isfile(db_path) or len(day) != 8:
+        return "", 0.0
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        row = conn.execute(
+            """
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), close FROM index_daily
+            WHERE (symbol='TWII' OR symbol='^TWII')
+              AND REPLACE(CAST(date AS TEXT),'-','')<?
+              AND close IS NOT NULL AND close > 0
+            ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC
+            LIMIT 1
+            """,
+            (day,),
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        conn.close()
+    if not row:
+        return "", 0.0
+    try:
+        return _ymd(row[0]), float(row[1] or 0)
+    except (TypeError, ValueError):
+        return "", 0.0
+
+
+def _session_bias_key(*, direc: str, tag: str, last_c: float, legs: Sequence[Dict[str, Any]]) -> str:
+    d = str(direc or "").strip().lower()
+    t = str(tag or "")
+    if d in {"down", "retest"} or "逃命" in t or "A波低" in t or "C-" in t:
+        return "down"
+    if d in {"up"} or "主升" in t or "末升" in t or "大B" in t:
+        return "up"
+    ups = downs = 0
+    for leg in legs or []:
+        try:
+            y = float(leg.get("y") or 0)
+        except (TypeError, ValueError):
+            continue
+        if y <= 0 or last_c <= 0:
+            continue
+        if y > last_c * 1.002:
+            ups += 1
+        elif y < last_c * 0.998:
+            downs += 1
+    if downs > ups:
+        return "down"
+    if ups > downs:
+        return "up"
+    return "range"
+
+
+def record_twii_session_preopen(
+    db_path: str,
+    session_ymd: str = "",
+    *,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """開盤前偷偷記「當日盤勢」方向。as_of＝該開市日。不進話筒。不是買訊。
+
+    開盤後（≥09:00）不准新建／改寫；休市日略過。
+    """
+    from trading_calendar import is_tw_open_calendar_day
+
+    day = _ymd(session_ymd)
+    if not day:
+        try:
+            from config import taipei_today_str
+
+            day = _ymd(taipei_today_str())
+        except Exception:
+            day = datetime.now(TAIPEI).strftime("%Y%m%d")
+    if not db_path or len(day) != 8:
+        return {"skipped": "bad_args", "as_of": day}
+    if not is_tw_open_calendar_day(day):
+        return {"skipped": "closed", "as_of": day}
+    if not _before_tw_session_open(day, now=now):
+        return {"skipped": "after_open", "as_of": day}
+    prior_ymd, prior_c = _prior_twii_close(db_path, day)
+    if prior_c <= 0:
+        return {"skipped": "no_prior", "as_of": day}
+    tag = direc = ""
+    legs: List[Dict[str, Any]] = []
+    try:
+        from biaoke_wave import last_two, wave_extend_rays, wave_path_points, _load_twii_bars
+
+        bars = _load_twii_bars(db_path, n=220)
+        bars = [b for b in bars if _ymd(b.get("date")) < day]
+        last_turn, _prev = last_two(db_path, as_of=prior_ymd or day)
+        tag = str((last_turn or {}).get("tag") or "")
+        direc = str((last_turn or {}).get("direc") or "")
+        pts = wave_path_points(db_path, bars) if bars else []
+        rays = wave_extend_rays(pts, len(bars), tag) if bars else []
+        from silent_progress import simulate_next_legs
+
+        legs = simulate_next_legs(tag, prior_c, rays)
+    except Exception:
+        tag = direc = ""
+        legs = []
+    key = _session_bias_key(direc=direc, tag=tag, last_c=prior_c, legs=legs)
+    target = None
+    if key == "down":
+        target = float(TWII_WORST) if prior_c > TWII_WORST else prior_c * 0.99
+    elif key == "up":
+        for leg in legs:
+            try:
+                y = float(leg.get("y") or 0)
+            except (TypeError, ValueError):
+                continue
+            if y > prior_c:
+                target = y
+                break
+        if target is None:
+            target = prior_c * 1.01
+    else:
+        target = prior_c
+    store = _evolve_store(db_path)
+    created = _now()
+    try:
+        ensure_forecast_table(store)
+        conn = sqlite3.connect(store, timeout=15.0)
+        try:
+            old = conn.execute(
+                "SELECT created_at, verdict FROM biaoke_forecast WHERE kind=? AND stock_id=? AND as_of=?",
+                (KIND_TWII_SESSION, "TWII", day),
+            ).fetchone()
+        finally:
+            conn.close()
+        if old:
+            old_created, old_verdict = old[0], str(old[1] or "")
+            if old_created and "對得上" in old_verdict and "還沒走完" not in old_verdict:
+                return {
+                    "skipped": "already_scored",
+                    "as_of": day,
+                    "key": key,
+                }
+            if old_created:
+                created = str(old_created)
+    except sqlite3.Error:
+        pass
+    path = [{"off": 0, "y": prior_c}]
+    if target:
+        path.append({"off": 1, "y": float(target)})
+    rec = {
+        "kind": KIND_TWII_SESSION,
+        "stock_id": "TWII",
+        "as_of": day,
+        "horizon": TWII_SESSION_HORIZON,
+        "key": key,
+        "last_close": prior_c,
+        "target": target,
+        "spike_high": None,
+        "spike_low": None,
+        "down_fut": None,
+        "up_fut": None,
+        "mark": "開盤前當日盤勢",
+        "label": "不進話筒。不是保證。",
+        "path_json": json.dumps(path, ensure_ascii=False),
+        "rays_json": "[]",
+        "verdict": "",
+        "check_n": 0,
+        "check_high": None,
+        "check_low": None,
+        "check_close": None,
+        "checked_at": "",
+        "created_at": created,
+    }
+    _upsert(store, rec)
+    _refresh_twii_session_rates(store)
+    out = dict(rec)
+    out["prior_as_of"] = prior_ymd
+    out["tag"] = tag
+    out["direc"] = direc
+    return out
+
+
 def record_twii_try(
     db_path: str,
     bars: Sequence[Dict[str, Any]],
@@ -593,6 +827,39 @@ def _judge_twii(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
     return bit
 
 
+def _judge_twii_session(row: Dict[str, Any], bar: Optional[Dict[str, Any]]) -> str:
+    """對質開盤前當日盤勢：只認 as_of 當日官方加權柱。"""
+    if not bar or float(bar.get("close") or 0) <= 0:
+        return "還沒走完（當日還沒官方加權柱）"
+    hi = float(bar.get("high") or 0)
+    lo = float(bar.get("low") or 0)
+    close = float(bar.get("close") or 0)
+    key = str(row.get("key") or "")
+    try:
+        a = float(row.get("last_close") or 0)
+    except (TypeError, ValueError):
+        a = 0.0
+    if a <= 0:
+        return f"後來高{_px(hi)}低{_px(lo)}收{_px(close)}"
+    ret_pct = (close / a - 1.0) * 100.0
+    if key == "down":
+        if close < a:
+            return f"對得上往下：收{_px(close)}（昨收{_px(a)}）"
+        if close > a * 1.005:
+            return f"偏了沒往下：收{_px(close)}（昨收{_px(a)}）"
+        return f"後來收{_px(close)}（昨收{_px(a)}）"
+    if key == "up":
+        if close > a:
+            return f"對得上往上：收{_px(close)}（昨收{_px(a)}）"
+        if close < a * 0.995:
+            return f"偏了沒往上：收{_px(close)}（昨收{_px(a)}）"
+        return f"後來收{_px(close)}（昨收{_px(a)}）"
+    # range
+    if abs(ret_pct) <= float(TWII_SESSION_RANGE_PCT):
+        return f"對得上整理：收{_px(close)}（昨收{_px(a)}，{ret_pct:+.2f}%）"
+    return f"偏了沒整理：收{_px(close)}（昨收{_px(a)}，{ret_pct:+.2f}%）"
+
+
 def _judge_twii_try(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
     if not later:
         return "還沒走完（之後還沒官方加權柱）"
@@ -683,7 +950,7 @@ def verify_due(db_path: str, sid: str = "") -> int:
             db_path, str(row.get("stock_id") or ""), str(row.get("as_of") or ""), int(row.get("horizon") or 0)
         )
         kind = str(row.get("kind") or "")
-        if kind == KIND_TWII_TRY:
+        if kind in {KIND_TWII_TRY, KIND_TWII_SESSION}:
             continue
         if kind == KIND_TWII:
             verdict = _judge_twii(row, later)
@@ -778,6 +1045,102 @@ def verify_twii_try(db_path: str) -> int:
     conn.close()
     _refresh_twii_try_rates(store)
     return n
+
+
+def verify_twii_session(db_path: str) -> int:
+    """對質開盤前當日盤勢：只認 as_of 當日官方加權收。不進話筒。"""
+    store = _evolve_store(db_path)
+    if not store or not os.path.isfile(store):
+        return 0
+    ensure_forecast_table(store)
+    conn = sqlite3.connect(store, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT * FROM biaoke_forecast WHERE kind=?",
+            (KIND_TWII_SESSION,),
+        ).fetchall()
+    except sqlite3.Error:
+        conn.close()
+        return 0
+    n = 0
+    stamp = _now()
+    for raw in rows:
+        row = dict(raw)
+        verd = str(row.get("verdict") or "")
+        if verd and "還沒走完" not in verd and ("對得上" in verd or "偏了" in verd):
+            continue
+        bar = _twii_bar_on(db_path, str(row.get("as_of") or ""))
+        verdict = _judge_twii_session(row, bar)
+        hi = lo = cl = None
+        check_n = 0
+        if bar and float(bar.get("close") or 0) > 0:
+            hi = float(bar.get("high") or 0)
+            lo = float(bar.get("low") or 0)
+            cl = float(bar.get("close") or 0)
+            check_n = 1
+        conn.execute(
+            """
+            UPDATE biaoke_forecast
+            SET verdict=?, check_n=?, check_high=?, check_low=?, check_close=?, checked_at=?
+            WHERE kind=? AND stock_id=? AND as_of=?
+            """,
+            (
+                verdict,
+                check_n,
+                hi,
+                lo,
+                cl,
+                stamp,
+                row.get("kind"),
+                row.get("stock_id"),
+                row.get("as_of"),
+            ),
+        )
+        n += 1
+    conn.commit()
+    conn.close()
+    _refresh_twii_session_rates(store)
+    return n
+
+
+def _refresh_twii_session_rates(store: str) -> None:
+    if not store:
+        return
+    parent = os.path.dirname(os.path.abspath(store))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(store, timeout=8.0)
+    try:
+        conn.executescript(_TRY_RATES_DDL)
+        rows = conn.execute(
+            "SELECT verdict FROM biaoke_forecast WHERE kind=?",
+            (KIND_TWII_SESSION,),
+        ).fetchall()
+        hit = miss = pending = 0
+        for (verdict,) in rows:
+            t = str(verdict or "")
+            if "還沒走完" in t or not t:
+                pending += 1
+            elif "偏了" in t:
+                miss += 1
+            elif "對得上" in t:
+                hit += 1
+            else:
+                pending += 1
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO silent_twii_rates(
+                kind, n, hit, miss, pending, updated_at
+            ) VALUES (?,?,?,?,?,?)
+            """,
+            (KIND_TWII_SESSION, hit + miss + pending, hit, miss, pending, _now()),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
 
 
 def _refresh_twii_try_rates(store: str) -> None:
@@ -1096,21 +1459,27 @@ def ensure_wave_inputs(db_path: str, as_of: str = "") -> Dict[str, Any]:
 
 
 def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
-    """盤後齊了：內部試畫＋覆盤包。不寫問位階、不改洞燭名單／海選／AI倉／黃金買點、不推話筒。"""
+    """盤後齊了：內部試畫＋覆盤包＋對質開盤前當日盤勢。不寫問位階、不改洞燭名單／海選／AI倉／黃金買點、不推話筒。"""
     cap_ymd = _ymd(cap)
     if not db_path:
-        return {"twii": 0, "try": 0, "scored": 0, "cap": cap_ymd}
+        return {"twii": 0, "try": 0, "scored": 0, "session": 0, "cap": cap_ymd}
     try:
         ensure_wave_inputs(db_path, cap_ymd)
     except Exception:
         pass
     scored = 0
+    session_scored = 0
     try:
         scored = int(verify_twii_try(db_path) or 0)
     except Exception:
         scored = 0
+    try:
+        session_scored = int(verify_twii_session(db_path) or 0)
+    except Exception:
+        session_scored = 0
     rec: Dict[str, Any] = {}
     try_rec: Dict[str, Any] = {}
+    session_draft: Dict[str, Any] = {}
     try:
         from biaoke_wave import _complete_bar_ymd, _load_twii_bars, last_two, wave_extend_rays, wave_path_points
 
@@ -1178,9 +1547,21 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
             try_rec = record_twii_try(db_path, bars) or {}
         except Exception:
             rec, try_rec = {}, {}
+    # 盤後先偷記「下一個開市日」當日盤勢草稿；明早 06:30 還可覆寫（仍須開盤前）。
+    try:
+        from trading_calendar import next_open_calendar_day_after
+
+        nxt = next_open_calendar_day_after(cap_ymd or _ymd((try_rec or {}).get("as_of")))
+        if nxt:
+            session_draft = record_twii_session_preopen(db_path, nxt) or {}
+    except Exception:
+        session_draft = {}
     return {
         "twii": 0,
         "try": 1 if try_rec else 0,
         "scored": scored,
+        "session": 1 if session_draft and not session_draft.get("skipped") else 0,
+        "session_scored": session_scored,
+        "session_as_of": _ymd((session_draft or {}).get("as_of")),
         "cap": cap_ymd or _ymd((try_rec or {}).get("as_of")),
     }
