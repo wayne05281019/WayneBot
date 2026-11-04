@@ -1,0 +1,192 @@
+{
+  "written_at": "2026-11-04T21:07:30+0800",
+  "tz": "Asia/Taipei",
+  "track": "path_score_integrity_v1",
+  "status": "collecting",
+  "parent_summary": "path_forecast_summary.json",
+  "scored_source": "docs/expert_notes/飆客/decade_lab/path_forecast_scored_latest.jsonl.gz",
+  "problem_zh": "現況測法：range 稀釋＋OOS 薄＋small amp 弱 → dir 滿是假漂亮；本鍵只修測法閘，不堆新指標、不改 bias",
+  "hypothesis_zh": "封印 OOS≥20＋call_rate／small amp 硬閘擋住灌水後，厚庫重跑才准談幅度／波浪下一槓桿",
+  "directional_n": 24,
+  "hit": 24,
+  "miss": 0,
+  "hit_rate_directional": 1.0,
+  "by_amp_class": {
+    "micro": {
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate": null
+    },
+    "small": {
+      "n": 5,
+      "hit": 2,
+      "miss": 3,
+      "hit_rate": 0.4
+    },
+    "mid": {
+      "n": 7,
+      "hit": 7,
+      "miss": 0,
+      "hit_rate": 1.0
+    },
+    "large": {
+      "n": 12,
+      "hit": 11,
+      "miss": 1,
+      "hit_rate": 0.9166666666666666
+    }
+  },
+  "oos_holdout": {
+    "ok": false,
+    "sealed": true,
+    "sealed_ok": false,
+    "reason_zh": "封印 OOS 要 holdout≥20 且樣本內≥20；現計分日 n=24＜40，不准縮窗灌水",
+    "holdout_n": 0,
+    "target_holdout_n": 20,
+    "in_sample": {
+      "n": 24,
+      "hit": 24,
+      "miss": 0,
+      "hit_rate_directional": 1.0,
+      "amp_n": 24,
+      "amp_hit": 20,
+      "amp_miss": 4,
+      "hit_rate_amplitude": 0.8333333333333334
+    },
+    "holdout": {
+      "n": 0,
+      "hit": 0,
+      "miss": 0,
+      "hit_rate_directional": null,
+      "amp_n": 0,
+      "amp_hit": 0,
+      "amp_miss": 0,
+      "hit_rate_amplitude": null
+    },
+    "holdout_as_of": [],
+    "note_zh": "規則封印後只驗；不足就不算真 holdout"
+  },
+  "oos_holdout_legacy_unsealed": {
+    "ok": true,
+    "sealed": false,
+    "sealed_ok": false,
+    "holdout_n": 5,
+    "target_holdout_n": 5,
+    "note_zh": "非封印縮窗對照；規則曾依近窗錯單改寫則不算真 holdout",
+    "in_sample": {
+      "n": 19,
+      "hit": 19,
+      "miss": 0,
+      "hit_rate_directional": 1.0,
+      "amp_n": 19,
+      "amp_hit": 15,
+      "amp_miss": 4,
+      "hit_rate_amplitude": 0.7894736842105263
+    },
+    "holdout": {
+      "n": 5,
+      "hit": 5,
+      "miss": 0,
+      "hit_rate_directional": 1.0,
+      "amp_n": 5,
+      "amp_hit": 5,
+      "amp_miss": 0,
+      "hit_rate_amplitude": 1.0
+    },
+    "holdout_as_of": [
+      "20260717",
+      "20260720",
+      "20260728",
+      "20260729",
+      "20260911"
+    ]
+  },
+  "sample_audit": {
+    "wrote": 5419,
+    "range_n": 5395,
+    "insuff_n": 0,
+    "soft_range_n": 1,
+    "directional_n": 24,
+    "call_rate": 0.004429,
+    "look_ahead_fixes": [
+      "named_support_gated_by_asof",
+      "wave_pivot_right_confirm"
+    ],
+    "range_exclusion_zh": "range／觀望不計方向勝率（故意）；錯單改 soft_range 會把難案踢出計分＝灌水風險",
+    "oos_risk_zh": "封印 OOS 要 holdout≥20；縮窗／同窗調參＝假 holdout",
+    "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘檔＝樣本內污染，下一版要 walk-forward",
+    "integrity_ok": false,
+    "integrity_blockers": [
+      "call_rate_too_low_range_dilution",
+      "small_amp_gate_fail",
+      "oos_holdout_too_thin",
+      "WAVE_NEURONS_MATCH_false"
+    ],
+    "method_integrity_ok": false,
+    "why_phone_blocked_zh": "dir 滿仍不上話筒：① WAVE_NEURONS_MATCH=false；② phone_sync 硬鎖；③ 不是買訊；④ 樣本 integrity 未過（稀釋／OOS 薄／small amp）。"
+  },
+  "next_gates": {
+    "integrity_ok": false,
+    "forbid_dir100_claim": true,
+    "require": [
+      {
+        "id": "small_amp_n20",
+        "ok": false,
+        "zh": "small amp 子集 n≥20 且 hit_rate≥0.55（不輸 mid／全窗才談換）"
+      },
+      {
+        "id": "oos_sealed_n20",
+        "ok": false,
+        "zh": "封印 OOS holdout≥20 計分日（或末20%）只驗不調"
+      },
+      {
+        "id": "call_rate_not_diluted",
+        "ok": false,
+        "zh": "方向計分 call_rate 不可被 range／soft_range 稀釋灌水"
+      },
+      {
+        "id": "wave_neurons_match",
+        "ok": false,
+        "zh": "WAVE_NEURONS_MATCH=true 才談話筒；現況 false"
+      }
+    ],
+    "phone_sync": "blocked",
+    "note_zh": "dir 滿＋gate_n20 仍不准上話筒；integrity 全過且神經元對齊才談同步"
+  },
+  "honest_vs_published": {
+    "published_hit_rate_directional": 1.0,
+    "published_scored_n": 24,
+    "forbid_claim_zh": "禁止宣稱方向 100%／已可上話筒；測法 integrity 未過",
+    "call_rate": 0.004429,
+    "range_dilution": true,
+    "small_amp": {
+      "n": 5,
+      "hit": 2,
+      "miss": 3,
+      "hit_rate": 0.4
+    },
+    "legacy_oos_holdout_n": 5,
+    "sealed_oos_ok": false
+  },
+  "gate_n20": true,
+  "gate_integrity": false,
+  "replace": false,
+  "replace_zh": "測法閘未過不准換 path 現況編碼；過閘後再生 walk-forward 票權鍵",
+  "next_variant": {
+    "variant": "path_score_integrity_vnext_walkforward",
+    "rule_zh": "edge 票權改 walk-forward（只用 as_of 以前過閘旗）；OOS 封印後只驗",
+    "gate_zh": "n≥20 且 method_integrity_ok；small amp 不輸現況；不准改買訊",
+    "status": "queued"
+  },
+  "aligned_user_goals": [
+    "一／可回放判斷工場：as-of＋封印 OOS＝測法先對",
+    "一／兩套驗證比準度：sealed vs legacy 雙列",
+    "二／雙套驗證？／規則錯要重抓：本鍵答測法錯優先",
+    "三／as-of 防前瞻·OOS·分軌：前瞻已修於 path；本鍵鎖 OOS"
+  ],
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "WAVE_NEURONS_MATCH": false,
+  "note_zh": "厚庫重跑 scripts/decade_lab_path_forecast.py 後再跑本腳本覆寫本摘要"
+}

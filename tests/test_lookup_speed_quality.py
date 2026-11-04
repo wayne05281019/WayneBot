@@ -122,6 +122,7 @@ def test_decision_card_render_memo(tmp_path):
 
 def test_glance_render_memo(tmp_path):
     from chip_tape import build_tape
+    from fundamentals import ensure_stock_fundamentals
     from wayne_navigator import (
         NavigatorEngine,
         clear_lookup_render_cache,
@@ -130,15 +131,21 @@ def test_glance_render_memo(tmp_path):
 
     clear_lookup_render_cache()
     db = get_db_path()
+    # 對齊話筒：ensure 一次＋fundamentals_ready，暖路徑不准被二次 ensure 抖指紋打穿
+    ensure_stock_fundamentals(db, "2330")
     card = NavigatorEngine(db).get_decision_card("2330", lookback=20, merge_live=False)
     ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
     tape = build_tape(db, "2330", merge_live=False) or {}
     a = str(tmp_path / "g1.jpg")
     b = str(tmp_path / "g2.jpg")
-    p1 = render_first_glance_png("2330", card, tape, a, db, ohlc=ohlc)
+    p1 = render_first_glance_png(
+        "2330", card, tape, a, db, ohlc=ohlc, fundamentals_ready=True
+    )
     assert p1 and os.path.isfile(p1)
     t0 = time.perf_counter()
-    p2 = render_first_glance_png("2330", card, tape, b, db, ohlc=ohlc)
+    p2 = render_first_glance_png(
+        "2330", card, tape, b, db, ohlc=ohlc, fundamentals_ready=True
+    )
     assert p2 and os.path.isfile(p2)
     assert time.perf_counter() - t0 < 0.15
 
@@ -209,6 +216,7 @@ def test_lookup_pair_threaded_safe_under_shared_ft_lock(tmp_path):
 def test_lookup_memo_survives_scratch_delete(tmp_path):
     """memo 存穩定副本；scratch 刪了暖路徑仍命中。"""
     from chip_tape import build_tape
+    from fundamentals import ensure_stock_fundamentals
     from wayne_navigator import (
         NavigatorEngine,
         clear_lookup_render_cache,
@@ -218,17 +226,28 @@ def test_lookup_memo_survives_scratch_delete(tmp_path):
 
     clear_lookup_render_cache()
     db = get_db_path()
+    ensure_stock_fundamentals(db, "2330")
     card = NavigatorEngine(db).get_decision_card("2330", lookback=20, merge_live=False)
     ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
     tape = build_tape(db, "2330", merge_live=False) or {}
     scratch_g = str(tmp_path / "scratch_g.jpg")
     scratch_c = str(tmp_path / "scratch_c.jpg")
-    assert render_first_glance_png("2330", card, tape, scratch_g, db, ohlc=ohlc)
+    assert render_first_glance_png(
+        "2330", card, tape, scratch_g, db, ohlc=ohlc, fundamentals_ready=True
+    )
     assert render_decision_card_png(card, scratch_c)
     os.remove(scratch_g)
     os.remove(scratch_c)
     t0 = time.perf_counter()
-    g2 = render_first_glance_png("2330", card, tape, str(tmp_path / "g2.jpg"), db, ohlc=ohlc)
+    g2 = render_first_glance_png(
+        "2330",
+        card,
+        tape,
+        str(tmp_path / "g2.jpg"),
+        db,
+        ohlc=ohlc,
+        fundamentals_ready=True,
+    )
     c2 = render_decision_card_png(card, str(tmp_path / "c2.jpg"))
     elapsed = time.perf_counter() - t0
     assert g2 and c2 and os.path.isfile(g2) and os.path.isfile(c2)

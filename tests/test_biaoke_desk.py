@@ -294,6 +294,10 @@ def test_biaoke_page_has_no_inside_menu():
     assert "uid=uid" in struct_src
     assert "is_wave_question" in struct_src
     assert "_send_biaoke_twii_degree_chart" in struct_src
+    # 讀秒收掉後不准無圖又無字
+    assert "已中斷，請再打一次" in struct_src
+    page_src = inspect.getsource(WayneTelegramBot._send_biaoke_page)
+    assert "這則已中斷，請再打一次" in page_src
     origin = inspect.getsource(WayneTelegramBot._send_biaoke_origin_charts)
     assert "pick_charts" in origin
     assert "public_only" in origin

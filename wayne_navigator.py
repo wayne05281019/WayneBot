@@ -5374,7 +5374,10 @@ def render_first_glance_png(
     try:
         from fundamentals import glance_fundamentals_plain, glance_fund_split_layout
 
-        fund_rows = glance_fundamentals_plain(stock_id, dbp)
+        # fundamentals_ready：paint 外已 ensure／薄檔期已放行；這裡 skip 同步全抓，畫質不變。
+        fund_rows = glance_fundamentals_plain(
+            stock_id, dbp, skip_ensure=bool(fundamentals_ready)
+        )
         fund_split = glance_fund_split_layout(stock_id, dbp)
     except Exception:
         fund_rows = []

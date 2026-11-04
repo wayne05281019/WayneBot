@@ -430,6 +430,7 @@ def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
         runs={
             "screen-20260902": "success",
             "midday-20260902": "computed",
+            # 融合鍵＝fuse_end：16:30 後才是當日；14:00 會讀昨開市日鍵
             "20260902": "success",
         },
     )
@@ -442,6 +443,7 @@ def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
     assert stamps["morning_screen"]["finished_at"]
     assert stamps["midday_review"]["delivered"] is False
     assert stamps["midday_review"]["status"] == "computed"
+    assert stamps["increment"]["key"] == "20260902"
     assert stamps["increment"]["status"] == "success"
     assert "delivered" not in stamps["increment"]
 
@@ -532,7 +534,7 @@ def test_watchdog_scan_alerts_on_stale_release(tmp_path, monkeypatch):
         runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
     )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    # 柱齊才不當假 success；否則 missed 會多一筆 increment。
+    # 柱齊才不當假 success；否則 missed 會多一筆 increment。本測只盯 release。
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date", lambda *a, **k: "20260902"
     )

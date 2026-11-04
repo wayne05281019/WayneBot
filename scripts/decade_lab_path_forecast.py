@@ -1011,11 +1011,16 @@ def _slice_stats(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _oos_holdout(
-    scored: Sequence[Dict[str, Any]], *, holdout_n: int = 5
+    scored: Sequence[Dict[str, Any]],
+    *,
+    holdout_n: int = 20,
+    sealed: bool = True,
+    min_in_sample: int = 20,
 ) -> Dict[str, Any]:
     """時間切窗樣本外：最末 holdout_n 個已計分日只驗、不調參。
 
     主閘仍看全窗 n≥20；此塊只加測有沒有過擬合。
+    sealed=True（預設）：holdout 不夠厚就不准縮窗假裝 ok；要 n≥holdout+min_in_sample。
     注意：holdout_n=5 的薄窗≠封印 holdout；真閘看 ``_oos_seal_gate``。
     若 soft_range／票權在 holdout 窗附近依錯單調過，此切窗不算真封印。
     """
@@ -1024,18 +1029,61 @@ def _oos_holdout(
         key=lambda r: str(r.get("as_of") or ""),
     )
     n = len(ordered)
+    want = max(1, int(holdout_n))
+    # 夠長時可再加厚到末 20% 曆日計分（仍 ≥ want）
+    want_pct = max(want, int((n * 0.20) + 0.999)) if n else want
+    target_h = want_pct if sealed else want
+
+    if sealed:
+        need = target_h + int(min_in_sample)
+        if n < need:
+            return {
+                "ok": False,
+                "sealed": True,
+                "sealed_ok": False,
+                "reason_zh": (
+                    f"封印 OOS 要 holdout≥{want} 且樣本內≥{min_in_sample}；"
+                    f"現計分日 n={n}＜{need}，不准縮窗灌水"
+                ),
+                "holdout_n": 0,
+                "target_holdout_n": target_h,
+                "in_sample": _slice_stats(ordered),
+                "holdout": _slice_stats([]),
+                "holdout_as_of": [],
+                "note_zh": "規則封印後只驗；不足就不算真 holdout",
+            }
+        h = target_h
+        ins = ordered[:-h]
+        oos = ordered[-h:]
+        return {
+            "ok": True,
+            "sealed": True,
+            "sealed_ok": True,
+            "holdout_n": h,
+            "target_holdout_n": target_h,
+            "note_zh": (
+                "封印 OOS：最末窗只驗不調；主閘仍用全窗 gate_n20；"
+                "規則曾依近窗錯單改寫則不算真 holdout"
+            ),
+            "in_sample": _slice_stats(ins),
+            "holdout": _slice_stats(oos),
+            "holdout_as_of": [str(r.get("as_of") or "") for r in oos],
+        }
+
+    # 舊／寬鬆：偏短可縮窗（僅對照；integrity 仍會因 holdout_n<20 擋）
     if n < 12:
         return {
             "ok": False,
+            "sealed": False,
+            "sealed_ok": False,
             "reason_zh": "計分日不足，樣本外暫緩",
             "holdout_n": 0,
+            "target_holdout_n": want,
             "in_sample": _slice_stats(ordered),
             "holdout": _slice_stats([]),
             "holdout_as_of": [],
             "seal_grade": "too_thin",
         }
-    want = int(holdout_n)
-    # 夠長：用指定 holdout；偏短：縮成 max(3, n//4) 以免樣本內太瘦
     if n >= want + 8:
         h = want
     else:
@@ -1044,7 +1092,10 @@ def _oos_holdout(
     oos = ordered[-h:]
     return {
         "ok": True,
+        "sealed": False,
+        "sealed_ok": h >= 20 and len(ins) >= int(min_in_sample),
         "holdout_n": h,
+        "target_holdout_n": want,
         "note_zh": (
             "最末窗只驗不調；主閘仍用全窗 gate_n20；"
             "薄窗（<20）不算封印——見 oos_seal／path_oos_seal_vnext；"
@@ -1118,6 +1169,40 @@ def _oos_seal_gate(
     }
 
 
+def _next_gates(audit: Dict[str, Any], oos: Dict[str, Any]) -> Dict[str, Any]:
+    """機器可讀下一閘（禁止把 dir 滿當過關）。"""
+    blockers = list(audit.get("integrity_blockers") or [])
+    return {
+        "integrity_ok": bool(audit.get("integrity_ok")),
+        "forbid_dir100_claim": True,
+        "require": [
+            {
+                "id": "small_amp_n20",
+                "ok": "small_amp_gate_fail" not in blockers,
+                "zh": "small amp 子集 n≥20 且 hit_rate≥0.55（不輸 mid／全窗才談換）",
+            },
+            {
+                "id": "oos_sealed_n20",
+                "ok": bool(oos.get("sealed_ok")) and "oos_holdout_too_thin" not in blockers,
+                "zh": "封印 OOS holdout≥20 計分日（或末20%）只驗不調",
+            },
+            {
+                "id": "call_rate_not_diluted",
+                "ok": "call_rate_too_low_range_dilution" not in blockers
+                and "soft_range_dominates_calls" not in blockers,
+                "zh": "方向計分 call_rate 不可被 range／soft_range 稀釋灌水",
+            },
+            {
+                "id": "wave_neurons_match",
+                "ok": "WAVE_NEURONS_MATCH_false" not in blockers,
+                "zh": "WAVE_NEURONS_MATCH=true 才談話筒；現況 false",
+            },
+        ],
+        "phone_sync": "blocked",
+        "note_zh": "dir 滿＋gate_n20 仍不准上話筒；integrity 全過且神經元對齊才談同步",
+    }
+
+
 def _sample_audit(
     *,
     wrote: int,
@@ -1142,10 +1227,12 @@ def _sample_audit(
     if small_n < 20 or (small_hr is not None and float(small_hr) < 0.55):
         reasons.append("small_amp_gate_fail")
     holdout_n = int(oos.get("holdout_n") or 0)
-    if holdout_n < 20:
+    sealed_ok = bool(oos.get("sealed_ok"))
+    if holdout_n < 20 or not sealed_ok:
         reasons.append("oos_holdout_too_thin")
     # 已鎖：神經元未對齊不准上話筒
     reasons.append("WAVE_NEURONS_MATCH_false")
+    method_blockers = [r for r in reasons if r != "WAVE_NEURONS_MATCH_false"]
     return {
         "wrote": wrote,
         "range_n": range_n,
@@ -1158,10 +1245,11 @@ def _sample_audit(
             "wave_pivot_right_confirm",
         ],
         "range_exclusion_zh": "range／觀望不計方向勝率（故意）；錯單改 soft_range 會把難案踢出計分＝灌水風險",
-        "oos_risk_zh": "最末5計分日≠封印 holdout；soft_range 註解若點名同窗錯單＝規則洩漏",
+        "oos_risk_zh": "封印 OOS 要 holdout≥20；縮窗／同窗調參＝假 holdout",
         "vote_fit_zh": "edge 票權來自全樣 reusable／各模組過閘檔＝樣本內污染，下一版要 walk-forward",
-        "integrity_ok": len([r for r in reasons if r != "WAVE_NEURONS_MATCH_false"]) == 0,
+        "integrity_ok": len(method_blockers) == 0,
         "integrity_blockers": reasons,
+        "method_integrity_ok": len(method_blockers) == 0,
         "why_phone_blocked_zh": (
             "dir 滿仍不上話筒：① WAVE_NEURONS_MATCH=false；② phone_sync 硬鎖；"
             "③ 不是買訊；④ 樣本 integrity 未過（稀釋／OOS 薄／small amp）。"
@@ -1896,7 +1984,9 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 "miss": m,
                 "hit_rate": (h / (h + m)) if (h + m) else None,
             }
-        oos_blob = _oos_holdout(scored, holdout_n=5)
+        oos_blob = _oos_holdout(scored, holdout_n=20, sealed=True)
+        # 對照：舊縮窗 OOS（不准當過關依據）
+        oos_legacy = _oos_holdout(scored, holdout_n=5, sealed=False)
         dir_hit_rate = (hit / (hit + miss)) if (hit + miss) else None
         audit = _sample_audit(
             wrote=wrote,
@@ -1908,6 +1998,7 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             by_amp_class=by_amp_class,
             oos=oos_blob,
         )
+        next_gates = _next_gates(audit, oos_blob)
         summary = {
             "written_at": _now(),
             "tz": "Asia/Taipei",
@@ -1942,8 +2033,10 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "structural_primary": "wave",
             "biaoke_learn": "見 biaoke_wave_learn_latest（五件／細微波／他說過的）",
             "gate_n20": (hit + miss) >= 20,
+            "gate_integrity": bool(audit.get("method_integrity_ok")),
             "oos_holdout": oos_blob,
             "oos_seal": _oos_seal_gate(scored, min_holdout=20, frac=0.20),
+            "oos_holdout_legacy_unsealed": oos_legacy,
             "amp_class_def": {
                 "micro": "|amp|<0.6",
                 "small": "0.6≤|amp|<1.5",
@@ -1952,11 +2045,13 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
                 "note_zh": "分類看預測 |amp_pct|，不是實際報酬",
             },
             "sample_audit": audit,
+            "next_gates": next_gates,
             "next_gates_zh": (
                 "下一版必測：① small amp n≥20 且勝率不輸 mid／全窗；"
-                "② OOS 加厚（≥20 計分日或末 20% 曆日，規則封印後只驗）；"
-                "③ WAVE_NEURONS_MATCH＝true 波浪位階對質過才談話筒。"
-                "dir 滿＋gate_n20 仍不准上話筒。"
+                "② 封印 OOS≥20 計分日（或末 20% 曆日）只驗不調；"
+                "③ call_rate 不被 range 稀釋；"
+                "④ WAVE_NEURONS_MATCH＝true 才談話筒。"
+                "dir 滿＋gate_n20 仍不准上話筒；gate_integrity 未過＝測法未收斂。"
             ),
             "purpose_zh": (
                 "預判大盤方向＋幅度；波浪主結構；錯單閘（震盪修正浪／融資殺方向／"
@@ -1966,7 +2061,7 @@ def run_backtest(*, max_days: int = 0) -> Dict[str, Any]:
             "reverse_think_zh": (
                 "波浪主判→法人／籌碼／切割／宏觀確認或否決；錯單閘先擋假多再投票。"
                 "幅度偏了回查波動／市況／波浪相位／急跌反彈切片。"
-                "range＝觀望不計分。因素不足→factor_gap_queue。樣本外只驗不調。"
+                "range＝觀望不計分。因素不足→factor_gap_queue。封印樣本外只驗不調。"
                 "禁止把方向100%當過關（稀釋／soft_range）；真OOS看oos_seal。"
             ),
             "path_gates_zh": (

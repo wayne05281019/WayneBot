@@ -1,6 +1,7 @@
 # Path／波浪 連續重做計畫（2026-11-04）
 
 不是買訊。`phone_sync=blocked` 直到位階神經元對齊且過閘。
+縱和總評與路線圖：`GOAL_LONGITUDINAL_ASSESSMENT.md`；測法閘：`path_score_integrity`。
 
 ## 為什麼上一輪「有數字卻像沒結果」
 
