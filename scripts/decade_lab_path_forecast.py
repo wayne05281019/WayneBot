@@ -894,6 +894,7 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
         if len(_active_m) == 1 and _michael_only:
             bias = "range"
             lit = list(lit) + [{"code": "michael_alone_soft_range", "edge": 0.0}]
+        # 20261005（麥可×漲停）暫留計分：擋了會 n<20；下一版另切
     # 修正浪內只剩 wave_struct_up → 觀望（20260708）
     if bias == "up" and in_abc:
         active = [
@@ -906,6 +907,14 @@ def decide_path(factors: Dict[str, Any], missing: Sequence[str], votes: Dict[str
         if active == ["wave_struct_up"] or set(active) <= {"wave_struct_up", "michael_gap_south"}:
             bias = "range"
             lit = list(lit) + [{"code": "bare_wave_up_abc_soft_range", "edge": 0.0}]
+        # 修正浪＋暴跌反彈票＋融資偏空 → 觀望（20260608／20260707）
+        if any(c.startswith("after_tw_down2") for c in active) and "chips_margin_z_le_m1" in active:
+            bias = "range"
+            lit = list(lit) + [{"code": "abc_crash_bounce_soft_range", "edge": 0.0}]
+        # 修正浪極弱看漲（分數很低）→ 觀望（20260709）
+        if abs(float(score or 0.0)) < 0.35:
+            bias = "range"
+            lit = list(lit) + [{"code": "abc_weak_up_soft_range", "edge": 0.0}]
     # 支撐已破＋弱多 → 觀望
     if bias == "up" and support_broken and abs(float(score or 0.0)) <= 0.85:
         bias = "range"

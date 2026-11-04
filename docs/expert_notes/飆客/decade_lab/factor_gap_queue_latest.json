@@ -1,14 +1,14 @@
 {
   "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T16:36:20",
+  "written_at": "2026-11-04T16:50:14",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
   "fruitless": true,
   "reason_zh": "因素不足不計分占比 93.6%；庫內缺長史：OTC；market_margin_daily 列數偏少 n=390（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 0.8636363636363636,
-      "directional_n": 22,
+      "hit_rate_directional": 1.0,
+      "directional_n": 19,
       "factor_pack": [
         "wave_bias",
         "wave_phase",
@@ -99,7 +99,7 @@
     "lab": {
       "n": 5419,
       "insufficient_n": 5074,
-      "watch_n": 323,
+      "watch_n": 326,
       "empty_why_n": 62
     },
     "coverage": {
@@ -285,11 +285,6 @@
   ],
   "schedule": [
     {
-      "at": "2026-11-04T16:40:00",
-      "kind": "fetch_futures_oi",
-      "note_zh": "盤後：TX／TE／OI"
-    },
-    {
       "at": "2026-11-04T22:40:00",
       "kind": "retest_path",
       "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
@@ -343,6 +338,11 @@
       "at": "2026-11-06T22:40:00",
       "kind": "retest_path",
       "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
+    },
+    {
+      "at": "2026-11-07T10:00:00",
+      "kind": "backfill_long",
+      "note_zh": "週末長史補洞（margin／tape／TE）"
     }
   ],
   "status": "queued",
