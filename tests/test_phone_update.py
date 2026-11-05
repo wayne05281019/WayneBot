@@ -36,6 +36,7 @@ def test_meta_update_mechanism_note_is_rejected(monkeypatch):
 
     monkeypatch.delenv("WAYNE_UPDATE_NOTE", raising=False)
     monkeypatch.setattr(pu, "_git_head_note", lambda: "")
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
     monkeypatch.setattr(
         pu,
         "_file_note",
@@ -46,6 +47,33 @@ def test_meta_update_mechanism_note_is_rejected(monkeypatch):
     assert "正在更新什麼" not in phone_update_starting(
         "abc", note="開機會先說正在更新什麼，好了再說更新完成"
     )
+
+
+def test_schedule_wait_note_at_fuse_window():
+    """16:30 左右更新＝講盤後融合等候句，不准內部說明。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from phone_update import phone_schedule_wait_note, phone_update_starting
+
+    now = datetime(2026, 11, 5, 16, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    note = phone_schedule_wait_note(now=now)
+    assert "盤後資料正在下載融合中" in note
+    assert "請耐心等待" in note
+    start = phone_update_starting("deadbeef", note=note, now=now)
+    assert "盤後資料正在下載融合中" in start
+    assert "正在更新什麼" not in start
+
+
+def test_schedule_wait_note_beats_product_note(monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import phone_update as pu
+
+    monkeypatch.setenv("WAYNE_UPDATE_NOTE", "查股兩張圖一次畫完")
+    now = datetime(2026, 11, 5, 16, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert "盤後資料正在下載融合中" in pu.phone_update_note(now=now)
 
 
 def test_notice_is_spoken_without_sha(monkeypatch):
