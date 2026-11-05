@@ -1500,6 +1500,7 @@ def run_ai_desk(
 
     _snapshot(engine, db_path, user_id, as_of, quotes, lesson)
     persist_ai_lesson(db_path, user_id, as_of, lesson)
+    final = engine.get_portfolio_summary(user_id, quotes)
     return {
         "sold": sold,
         "bought": bought,
@@ -1513,6 +1514,12 @@ def run_ai_desk(
         "buys_allowed": allow_buy,
         "html": format_ai_desk_html(engine, telegram_uid, quotes),
         "user_id": user_id,
+        "position_count": len(final.get("positions") or []),
+        "summary": {
+            "position_count": len(final.get("positions") or []),
+            "cash": final.get("cash"),
+            "equity": final.get("total_equity") or final.get("equity"),
+        },
     }
 
 
