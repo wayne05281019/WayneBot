@@ -328,3 +328,90 @@ def test_sync_emerging_triggers_intraday_snapshot():
 
     src = inspect.getsource(MainRunner._sync_emerging_required)
     assert "snapshot_emerging_intraday_day" in src
+
+
+def test_overlay_live_replaces_stale_tpex_yesterday_close():
+    """上櫃日收 API 盤中仍吐昨列時，現價／開高低要改吃 live（6274）。"""
+    from intraday_open_close_chart import (
+        OfficialDay,
+        apply_live_quote_to_series,
+        overlay_official_day_with_live,
+    )
+    from dataclasses import replace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from intraday_open_close_chart import PathSeries
+
+    stale = OfficialDay(
+        stock_id="6274",
+        open=1130.0,
+        high=1145.0,
+        low=1010.0,
+        close=1115.0,
+        prev_close=1090.0,
+        volume_lots=19039.0,
+        turnover_k=20724863.0,
+        avg_price=1088.51,
+        pct_change=2.29,
+        change=25.0,
+        amplitude_pct=12.39,
+        q_avg_vol_lots=8300.0,
+        w52_high=1920.0,
+        w52_low=374.0,
+        source="tpex:mainboard_daily_close",
+        close_label="收盤",
+        prev_volume_lots=11140.0,
+        prev_turnover_k=12624605.0,
+    )
+    live = {
+        "stock_id": "6274",
+        "open": 1030.0,
+        "high": 1045.0,
+        "low": 1005.0,
+        "close": 1005.0,
+        "volume": 9983.0,
+        "pct_change": -9.87,
+        "change": -110.0,
+        "yesterday_close": 1115.0,
+        "update_time": "11:55:53",
+        "is_realtime": True,
+    }
+    got = overlay_official_day_with_live(stale, live, path_last=1005.0)
+    assert got.close == 1005.0
+    assert got.open == 1030.0
+    assert got.high == 1045.0
+    assert got.low == 1005.0
+    assert got.prev_close == 1115.0
+    assert got.change == -110.0
+    assert abs(got.pct_change + 9.87) < 0.02
+    assert got.prev_volume_lots == 19039.0  # 昨列量升成昨量
+    assert "+live" in got.source
+    assert got.close_label == "現價"
+
+    TP = ZoneInfo("Asia/Taipei")
+    series = PathSeries(
+        stock_id="6274",
+        name="台燿",
+        market="TWO",
+        times=[datetime(2026, 11, 5, 9, 0, tzinfo=TP), datetime(2026, 11, 5, 11, 37, tzinfo=TP)],
+        closes=[1045.0, 1005.0],
+        volumes_lots=[10.0, 20.0],
+        opens=[1045.0, 1005.0],
+        highs=[1045.0, 1005.0],
+        lows=[1045.0, 1005.0],
+        path_source="test",
+        path_end=datetime(2026, 11, 5, 11, 37, tzinfo=TP),
+        gap_after=None,
+        official=stale,
+    )
+    out = apply_live_quote_to_series(series, live)
+    assert out is not None
+    assert out.official.close == 1005.0
+    assert out.official.close_label == "現價"
+
+
+def test_render_lookup_intraday_applies_live_quote():
+    src = inspect.getsource(render_lookup_intraday_result)
+    assert "apply_live_quote_to_series" in src
+    assert "live_quote" in src
