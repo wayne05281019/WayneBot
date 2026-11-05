@@ -18,12 +18,34 @@ def test_update_note_is_this_change():
     assert any("\u4e00" <= ch <= "\u9fff" for ch in note)
     assert "feat:" not in note.lower()
     assert "git_sha" not in note
+    # 不准再把通知機制本身推上話筒
+    assert "正在更新什麼" not in note
+    assert "開機會先說" not in note
+    assert "再說更新完成" not in note
     title = phone_update_title()
     assert title == note
     notice = phone_update_notice("ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
     assert "git_sha" not in notice
     assert "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991" not in notice
     assert note.split("完成")[0] in notice
+
+
+def test_meta_update_mechanism_note_is_rejected(monkeypatch):
+    """「開機會先說正在更新什麼…」這類內部說明＝無效口語。"""
+    import phone_update as pu
+
+    monkeypatch.delenv("WAYNE_UPDATE_NOTE", raising=False)
+    monkeypatch.setattr(pu, "_git_head_note", lambda: "")
+    monkeypatch.setattr(
+        pu,
+        "_file_note",
+        lambda: pu._clean_note("開機會先說正在更新什麼，好了再說更新完成"),
+    )
+    assert phone_update_note() == ""
+    assert phone_update_starting("abc") == UPDATE_START
+    assert "正在更新什麼" not in phone_update_starting(
+        "abc", note="開機會先說正在更新什麼，好了再說更新完成"
+    )
 
 
 def test_notice_is_spoken_without_sha(monkeypatch):

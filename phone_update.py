@@ -16,6 +16,12 @@ _COMMIT_PREFIX = re.compile(
     re.I,
 )
 _HEX = re.compile(r"\b[0-9a-f]{12,}\b", re.I)
+# 把「通知機制本身」寫進話筒＝沒人看得懂；這類一律當無效
+_META_NOTE = re.compile(
+    r"(正在更新什麼|再說更新完成|開機推.{0,4}正在更新|就緒再推|"
+    r"開機會先說|兩支話筒各收開始|同\s*SHA\s*不)",
+    re.I,
+)
 
 
 def phone_git_sha() -> str:
@@ -31,6 +37,19 @@ def _has_han(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 
 
+def _is_meta_update_note(text: str) -> bool:
+    """在講通知怎麼講／開機流程＝不准當話筒口語。"""
+    t = str(text or "").strip()
+    if not t:
+        return False
+    if _META_NOTE.search(t):
+        return True
+    # 整句只剩「正在更新／更新完成」也不算產品改動
+    if t in (UPDATE_START, UPDATE_DONE, f"{UPDATE_START}：", f"{UPDATE_START}:"):
+        return True
+    return False
+
+
 def _clean_note(raw: str) -> str:
     t = str(raw or "").replace("\r", "").split("\n", 1)[0].strip()
     t = _COMMIT_PREFIX.sub("", t).strip()
@@ -38,7 +57,10 @@ def _clean_note(raw: str) -> str:
         return ""
     t = _HEX.sub("", t)
     t = re.sub(r"\s+", " ", t).strip(" ，,")
-    return t[:80]
+    t = t[:80]
+    if _is_meta_update_note(t):
+        return ""
+    return t
 
 
 def _git_head_note() -> str:
@@ -100,11 +122,15 @@ def phone_update_lines(sha: str | None = None, *, note: str | None = None) -> li
 
 
 def phone_update_starting(sha: str | None = None, *, note: str | None = None) -> str:
-    """偉權／哥哥手機：開機／部署開始更新。不准貼程式代碼。"""
+    """偉權／哥哥手機：開機／部署開始更新。不准貼程式代碼。
+
+    沒有可懂的產品口語 → 只回「正在更新」，不准把內部說明句接在冒號後。
+    """
     _ = sha
     title = phone_update_title(note)
     if title:
         if title.startswith(UPDATE_START):
+            # 整句已是「正在更新：…」；若後面仍是 meta 已在 _clean_note 清掉
             return title[:80]
         return f"{UPDATE_START}：{title}"[:80]
     return UPDATE_START
