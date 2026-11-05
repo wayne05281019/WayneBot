@@ -269,8 +269,9 @@ class MainRunner:
     def release_pre_winrate_morning_face(self, run_date: str) -> bool:
         """§14／#822：舊海選早報回執不准擋「勝率買點＋大量圖」新臉。
 
-        screen-* 若已有回執但 kind／notes 不是 morning-winrate → 清回執、
-        success→computed，回 True＝可重寄新臉。已是 morning-winrate 則不動（防雙寄）。
+        只清「有回執且非 morning-winrate」的舊臉（海選／morning-digest 等）。
+        已是 morning-winrate（回執或 pipeline notes）→ 不動（防雙寄）。
+        無回執的 success（測試 stub／honor 前）也不動，交給 skip／claim。
         """
         key = str(run_date or "").strip()
         if not key.startswith("screen-") or key.startswith("screen-closed-"):
@@ -285,21 +286,35 @@ class MainRunner:
         kind = str(rec.get("kind") or "").strip()
         notes = str(rec.get("notes") or "").strip()
         face_ok = kind.startswith("morning-winrate") or ("morning-winrate" in notes)
-        status = self.pipeline_status(key)
-        has_del = bool(str(rec.get("run_date") or "").strip())
         if face_ok:
             return False
-        if not has_del and status != "success":
-            return False
-        cleared = False
-        if has_del:
+        pipe_notes = ""
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
             try:
-                cleared = bool(
-                    clear_push_delivery(self.db_path, key, bak_suffix=".pre-wrvol")
-                )
-            except Exception:
-                logger.exception("清舊海選早報回執失敗 key=%s", key)
-                return False
+                row = conn.execute(
+                    "SELECT notes FROM pipeline_runs WHERE run_date=?",
+                    (key,),
+                ).fetchone()
+                pipe_notes = str((row[0] if row else "") or "")
+            finally:
+                conn.close()
+        except Exception:
+            pipe_notes = ""
+        if "morning-winrate" in pipe_notes:
+            return False
+        has_del = bool(str(rec.get("run_date") or "").strip())
+        # 無舊回執＝沒有「海選臉」可換；不准把僅標 success 的鍵降成 computed 造成重寄
+        if not has_del:
+            return False
+        try:
+            cleared = bool(
+                clear_push_delivery(self.db_path, key, bak_suffix=".pre-wrvol")
+            )
+        except Exception:
+            logger.exception("清舊海選早報回執失敗 key=%s", key)
+            return False
+        status = self.pipeline_status(key)
         if status == "success":
             try:
                 self._mark_pipeline(

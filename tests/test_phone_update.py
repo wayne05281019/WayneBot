@@ -65,6 +65,32 @@ def test_schedule_wait_note_at_fuse_window():
     assert "正在更新什麼" not in start
 
 
+def test_schedule_wait_note_and_so_on_windows():
+    """以此類推：早報／尾盤／彙整／晚間／勝率各有人話等候句。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from phone_update import phone_schedule_wait_note, phone_update_starting
+
+    cases = (
+        (6, 35, "勝率買點與大量圖"),
+        (12, 45, "尾盤雙時段比價"),
+        (17, 45, "盤後彙整進行中"),
+        (20, 5, "晚間模擬倉"),
+        (21, 10, "勝率買點名單"),
+        (1, 5, "隔日盤後彙整"),
+    )
+    tz = ZoneInfo("Asia/Taipei")
+    for hour, minute, needle in cases:
+        now = datetime(2026, 11, 5, hour, minute, tzinfo=tz)
+        note = phone_schedule_wait_note(now=now)
+        assert needle in note, (hour, minute, note)
+        start = phone_update_starting("deadbeef", note=note, now=now)
+        assert needle in start
+        assert "正在更新什麼" not in start
+        assert "feat:" not in start.lower()
+
+
 def test_schedule_wait_note_beats_product_note(monkeypatch):
     from datetime import datetime
     from zoneinfo import ZoneInfo

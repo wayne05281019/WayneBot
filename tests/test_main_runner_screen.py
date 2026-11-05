@@ -1868,11 +1868,11 @@ def test_push_screening_keeps_sent_ok_when_mark_fails(monkeypatch, tmp_path):
 
 
 def test_send_ok_mark_fail_force_morning_does_not_resend(tmp_path, monkeypatch):
-    """2026-10-23：Telegram 2/2 後蓋戳失敗，第二次 force 不准再寄。"""
+    """Telegram 2/2 後蓋戳失敗，第二次 force 不准再寄（新臉＝morning-winrate）。"""
     import sqlite3
 
-    import main_runner as mr
     from main_runner import MainRunner
+    from pipeline_delivery import record_push_delivery
     from wayne_db import ensure_core_schema
 
     path = str(tmp_path / "dup-force.db")
@@ -1882,40 +1882,19 @@ def test_send_ok_mark_fail_force_morning_does_not_resend(tmp_path, monkeypatch):
     runner.today_str = "20261023"
     runner.token = "x"
     runner.chat_id = "111"
-    runner.bot = type(
-        "B",
-        (),
-        {"send_screening_report": staticmethod(lambda *a, **k: True)},
-    )()
-    monkeypatch.setattr(runner, "_family_chat_ids", lambda: ["111", "222"])
-    monkeypatch.setattr(runner, "_push_morning_session_cards", lambda *a, **k: None)
-    monkeypatch.setattr(mr.time, "sleep", lambda *_a, **_k: None)
 
-    # 模擬 DB 蓋戳永遠 locked（寄出回執仍要靠檔／表寫成）
-    real_mark = runner._mark_pipeline
+    # 模擬：勝率早報已寄出回執，但 pipeline 蓋戳當時 locked → 仍卡 running
+    # delivered_at 用「今天」時戳：否則開市日舊回執放行會清掉同鍵（§14 as_of lag）
+    from config import taipei_stamp
 
-    def _mark_boom(*a, **k):
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(runner, "_mark_pipeline", _mark_boom)
-
-    screening = {
-        "status": "success",
-        "payload": [{"html": "海選"}],
-        "message": "海選",
-        "results": {},
-    }
-    ok = runner._push_screening(
-        screening,
-        as_of="20261022",
-        morning_digest=True,
-        pipeline_run_date="screen-20261022",
+    record_push_delivery(
+        path,
+        "screen-20261022",
+        kind="morning-winrate",
+        n_ok=2,
+        notes="morning-winrate n=3",
+        delivered_at=taipei_stamp(),
     )
-    assert ok is True
-    assert runner.push_already_delivered("screen-20261022") is True
-
-    # pipeline 仍可能不是 success（蓋戳失敗）
-    # 模擬仍卡在 running morning-claim
     conn = sqlite3.connect(path)
     conn.execute(
         "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
@@ -1923,12 +1902,12 @@ def test_send_ok_mark_fail_force_morning_does_not_resend(tmp_path, monkeypatch):
     )
     conn.commit()
     conn.close()
+    assert runner.push_already_delivered("screen-20261022") is True
 
     # force demote 不准降有回執的鍵
     assert runner.demote_orphaned_morning_claims(force=True) == 0
 
-    # reconcile／honor 補標 success（用真 _mark_pipeline）
-    monkeypatch.setattr(runner, "_mark_pipeline", real_mark)
+    # reconcile／honor 補標 success
     assert runner.honor_push_delivery("screen-20261022") is True
     assert runner.pipeline_status("screen-20261022") == "success"
 
