@@ -745,13 +745,24 @@ def test_teach_query_clock_shows_wall_hhmm():
         ],
         pack={"query_at": datetime(2026, 10, 30, 17, 5, tzinfo=tz).isoformat()},
         close=45211.83,
+        label_prefix="加權",
     )
-    assert "2026-10-30" in stamp
-    assert "收盤 17:05" in stamp
+    # 名稱 → M/D收盤 → 價 →（漲幅％）→ 較前日點數
+    assert stamp.startswith("加權 10/30收盤")
     assert "45,212" in stamp
-    # 相對前一個交易日（不是前天）
     assert "−288" in stamp or "-288" in stamp
     assert "%" in stamp
+    live_stamp = _teach_stamp_line(
+        [
+            {"date": "20261029", "close": 45500.0},
+            {"date": "20261030", "close": 45211.83, "live_session": 1},
+        ],
+        pack={"query_at": datetime(2026, 10, 30, 10, 17, tzinfo=tz).isoformat()},
+        close=45211.83,
+        label_prefix="加權",
+    )
+    assert "加權 10/30盤中 查詢當下為10:17" in live_stamp
+    assert live_stamp.index("查詢當下為10:17") < live_stamp.index("45,212")
 
 
 def test_day_change_vs_prev_trading_day():
@@ -1076,9 +1087,143 @@ def test_ensure_us_index_daily_always_refreshes_recent():
     assert "_yahoo_us_index_upsert" in src
     assert "近窗夠、且已有 4/28" not in src
     assert 'stats[sym] = int(n_have)\n                continue' not in src
+    assert "_reconcile_us_index_last_close" in src
     upsert_src = inspect.getsource(_yahoo_us_index_upsert)
     assert "America/New_York" in upsert_src
     assert "Asia/Taipei" not in upsert_src
+
+
+def test_soxx_volume_proxy_always_refreshes_near_window():
+    """SOXX 量代理不准「已有≥40列」整段跳過；日期美東；價跳兇只動量。"""
+    import inspect
+
+    from biaoke_level_learn import _ensure_soxx_volume_proxy, _sox_daily_from_minutes
+
+    src = inspect.getsource(_ensure_soxx_volume_proxy)
+    assert "if int(n_have or 0) >= 40:\n            return int(n_have)" not in src
+    assert 'range_ = "6mo" if n_have < 40 else "1mo"' in src
+    assert "America/New_York" in src
+    assert "只更新量" in src or "SET volume=?" in src
+    min_src = inspect.getsource(_sox_daily_from_minutes)
+    assert "DO NOTHING" in min_src
+    assert "astimezone(ny)" in min_src
+    assert "substr(ts,1,8)" not in min_src
+
+
+def test_stamp_md_phase_close_or_intraday_before_numbers():
+    """遠窗白底戳：名稱＋M/D收盤｜盤中 查詢當下為HH:MM →價→％→點數。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _stamp_md_phase,
+        _stamp_when_bit,
+        _tx_night_session_live,
+    )
+
+    assert _stamp_md_phase("20261105", live=False) == "11/5收盤"
+    assert _stamp_md_phase("20261105", live=True) == "11/5盤中"
+    assert _stamp_when_bit("20261105", live=False) == "11/5收盤"
+    assert (
+        _stamp_when_bit("20261105", live=True, query_hm="07:20")
+        == "11/5盤中 查詢當下為07:20"
+    )
+    assert (
+        _stamp_when_bit("20261105", live=True, query_hm="04:59:58")
+        == "11/5盤中 查詢當下為04:59"
+    )
+    tz = ZoneInfo("Asia/Taipei")
+    assert _tx_night_session_live(datetime(2026, 11, 5, 21, 0, tzinfo=tz)) is True
+    assert _tx_night_session_live(datetime(2026, 11, 6, 4, 59, tzinfo=tz)) is True
+    assert _tx_night_session_live(datetime(2026, 11, 6, 7, 20, tzinfo=tz)) is False
+    assert _tx_night_session_live(datetime(2026, 11, 6, 10, 0, tzinfo=tz)) is False
+
+
+def test_reconcile_sox_last_close_patches_stale_intraday(tmp_path, monkeypatch):
+    """已收後庫內末日若偏離 Yahoo 現價 → 覆寫成官方收（修 9185→9011）。"""
+    import sys
+    import types
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import biaoke_level_learn as m
+
+    db = tmp_path / "t.db"
+    conn = __import__("sqlite3").connect(str(db))
+    conn.execute(
+        """
+        CREATE TABLE index_daily(
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL,
+            close REAL, volume REAL, pct_change REAL, updated_at TEXT,
+            PRIMARY KEY(date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?,?,?)",
+        ("20261104", "SOX", 10485.0, 10652.0, 10064.0, 10268.65, 0, None, "t"),
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?,?,?)",
+        ("20261105", "SOX", 9806.0, 9838.0, 9060.0, 9185.62, 0, None, "t"),
+    )
+    conn.commit()
+    conn.close()
+
+    ts = int(
+        datetime(2026, 11, 5, 16, 0, tzinfo=ZoneInfo("America/New_York")).timestamp()
+    )
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "regularMarketPrice": 9011.1376953125,
+                                "regularMarketTime": ts,
+                                "regularMarketOpen": 9806.3115234375,
+                                "regularMarketDayHigh": 9838.130859375,
+                                "regularMarketDayLow": 8997.3857421875,
+                            },
+                            "timestamp": [ts],
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "open": [9806.3115234375],
+                                        "high": [9838.130859375],
+                                        "low": [8997.3857421875],
+                                        "close": [9011.1376953125],
+                                        "volume": [0],
+                                    }
+                                ]
+                            },
+                        }
+                    ]
+                }
+            }
+
+    fake_us = types.ModuleType("us_overnight")
+    fake_us.us_tape_phase = lambda *_a, **_k: "closed"
+    monkeypatch.setitem(sys.modules, "us_overnight", fake_us)
+    fake_req = types.ModuleType("requests")
+    fake_req.get = lambda *_a, **_k: _Resp()
+    monkeypatch.setitem(sys.modules, "requests", fake_req)
+
+    ok = m._reconcile_us_index_last_close(str(db), sym="SOX", yid="^SOX")
+    assert ok is True
+    conn = __import__("sqlite3").connect(str(db))
+    close = conn.execute(
+        "SELECT close, pct_change FROM index_daily WHERE symbol='SOX' AND date='20261105'"
+    ).fetchone()
+    conn.close()
+    assert close is not None
+    assert abs(float(close[0]) - 9011.1376953125) < 0.01
+    assert float(close[1]) < -12.0
 
 
 def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
