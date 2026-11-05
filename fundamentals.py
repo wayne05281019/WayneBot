@@ -1203,22 +1203,53 @@ def ensure_stock_fundamentals(
     out["filing_month"] = filing
     out["coverage"] = cover
     q = get_latest_income(path, sid)
-    if force or q is None:
+    behind = bool(q) and income_row_behind_filing_target(q)
+    if force or q is None or behind:
+        # 本檔落後日曆應公告季時，不准被全市場 income TTL 擋住
         out["income"] = refresh_announced_income(
             path,
-            force=force,
-            reason=f"ensure {sid} income missing={q is None}",
+            force=bool(force or behind),
+            reason=(
+                f"ensure {sid} income missing={q is None} behind={behind}"
+                f" latest={(str(q.get('year')) + 'Q' + str(q.get('season'))) if q else ''}"
+            ),
         )
+        q = get_latest_income(path, sid)
     out["latest_month"] = (get_latest_monthly(path, sid) or {}).get("yyyymm") or ""
     out["latest_quarter"] = (
         f"{int(q['year'])}Q{int(q['season'])}" if q else ""
     )
-    if out.get("income") and q is None:
-        q2 = get_latest_income(path, sid)
-        out["latest_quarter"] = (
-            f"{int(q2['year'])}Q{int(q2['season'])}" if q2 else ""
-        )
+    out["income_behind_target"] = bool(
+        q and income_row_behind_filing_target(q)
+    )
     return out
+
+
+def filing_income_target_season(today_ymd: str = "") -> Tuple[int, int]:
+    """日曆上目前應開始公告的最新累計季（與 emerging_income_seasons 門檻同一套）。"""
+    seasons = emerging_income_seasons(today_ymd)
+    if not seasons:
+        return (0, 0)
+    return max((int(y), int(s)) for y, s in seasons)
+
+
+def income_row_behind_filing_target(
+    row: Optional[Dict[str, Any]],
+    today_ymd: str = "",
+) -> bool:
+    """本檔最新季報是否落後於日曆應公告季（有 Q2 仍要補已開窗的前三季）。"""
+    if not row:
+        return True
+    ty, ts = filing_income_target_season(today_ymd)
+    if ty <= 0 or ts <= 0:
+        return False
+    try:
+        y, s = int(row.get("year") or 0), int(row.get("season") or 0)
+    except (TypeError, ValueError):
+        return True
+    if y <= 0 or s <= 0:
+        return True
+    return (y, s) < (ty, ts)
 
 
 def get_latest_monthly(db_path: str, stock_id: str) -> Optional[Dict[str, Any]]:
@@ -1637,7 +1668,12 @@ def glance_fund_split_layout(stock_id: str, db_path: str = None) -> Optional[Dic
     bottom: List[Tuple[str, str]] = []
     bottom_season = ""
     if q:
-        bottom_season = f"{int(q['year'])}年第{int(q['season'])}季"
+        try:
+            from industry_brief import format_season_zh
+
+            bottom_season = format_season_zh(q["year"], q["season"])
+        except Exception:
+            bottom_season = f"{int(q['year'])}年第{int(q['season'])}季"
         rev_q = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev_q * 100.0, 1) if rev_q else None
         npm = round(float(q.get("net_income") or 0) / rev_q * 100.0, 1) if rev_q else None

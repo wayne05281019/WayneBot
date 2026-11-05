@@ -330,12 +330,24 @@ def format_month_zh(yyyymm: str) -> str:
 
 
 def format_season_zh(year, season) -> str:
+    """綜合損益季別標籤：觀測站／OpenAPI 多為年初至該期累計。
+
+    2＝上半年、3＝前三季、4＝全年；1 仍稱第1季。不准把累計列誤標成單季。
+    """
     try:
         y, s = int(year), int(season)
     except (TypeError, ValueError):
         return "—"
     if y <= 0 or s <= 0:
         return "—"
+    if s == 1:
+        return f"{y}年第1季"
+    if s == 2:
+        return f"{y}年上半年"
+    if s == 3:
+        return f"{y}年前三季"
+    if s == 4:
+        return f"{y}年全年"
     return f"{y}年第{s}季"
 
 
