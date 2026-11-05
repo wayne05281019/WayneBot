@@ -790,6 +790,131 @@ def purge_confirmed_rebuildable(
     )
 
 
+def purge_corrupt_copies_keeping(
+    db_path: str = "",
+    *,
+    data_dir: str = "",
+    keep_names: Optional[Iterable[str]] = None,
+    confirm: bool = False,
+) -> Dict[str, Any]:
+    """只刪 .corrupt-* 舊救援副本；正式庫永不刪。
+
+    必須 confirm=True，且 keep_names 每份都還在碟上才動手。
+    只刪 basename 符合 ``{live}.corrupt-`` 的本尊＋其 -wal／-shm。
+    """
+    try:
+        from config import get_db_path
+    except Exception:
+        get_db_path = lambda: os.path.join("data", "wayne_market.db")  # type: ignore
+
+    dbp = db_path or get_db_path()
+    root = data_dir or os.path.dirname(dbp) or "."
+    live_name = os.path.basename(dbp)
+    keep = {str(n).strip() for n in (keep_names or []) if str(n).strip()}
+    # 正式庫名若誤塞進 keep 也無妨；刪除名單永遠不含它
+    keep.discard(live_name)
+
+    out: Dict[str, Any] = {
+        "ok": False,
+        "deleted": False,
+        "live": live_name,
+        "keep": sorted(keep),
+        "deleted_names": [],
+        "deleted_mb": 0.0,
+        "kept_ok": [],
+        "missing_keep": [],
+        "error": "",
+    }
+    if not confirm:
+        out["error"] = "need_confirm"
+        return out
+    if not keep:
+        out["error"] = "need_keep_names"
+        return out
+    if not dbp or not os.path.isfile(dbp):
+        out["error"] = "live_db_missing"
+        return out
+
+    try:
+        from db_recover import list_corrupt_candidates
+    except Exception as exc:
+        out["error"] = f"import:{exc}"
+        return out
+
+    # 要留的必須先在
+    for name in sorted(keep):
+        path = os.path.join(root, name)
+        if not name.startswith(f"{live_name}.corrupt-"):
+            out["error"] = f"keep_not_corrupt:{name}"
+            return out
+        if not os.path.isfile(path):
+            out["missing_keep"].append(name)
+    if out["missing_keep"]:
+        out["error"] = "missing_keep"
+        return out
+    out["kept_ok"] = sorted(keep)
+
+    deleted_names: List[str] = []
+    deleted_mb = 0.0
+    root_abs = os.path.abspath(root)
+    for cand in list_corrupt_candidates(dbp):
+        name = os.path.basename(cand)
+        if name in keep:
+            continue
+        # 雙保險：必須在 data 目錄、檔名必須是 live.corrupt-*
+        if os.path.abspath(os.path.dirname(cand)) != root_abs:
+            continue
+        if not name.startswith(f"{live_name}.corrupt-"):
+            continue
+        for path in (cand, cand + "-wal", cand + "-shm"):
+            if not os.path.isfile(path):
+                continue
+            try:
+                deleted_mb += _file_mb(path)
+                os.remove(path)
+                deleted_names.append(os.path.basename(path))
+            except OSError:
+                logger.exception("刪 corrupt 失敗 path=%s", path)
+                out["error"] = f"delete_failed:{os.path.basename(path)}"
+                out["deleted_names"] = deleted_names
+                out["deleted_mb"] = round(deleted_mb, 2)
+                return out
+
+    # 刪後再確認 keep／live 都在
+    if not os.path.isfile(dbp):
+        out["error"] = "live_vanished_abort"
+        out["deleted_names"] = deleted_names
+        out["deleted_mb"] = round(deleted_mb, 2)
+        return out
+    for name in keep:
+        if not os.path.isfile(os.path.join(root, name)):
+            out["error"] = f"keep_vanished:{name}"
+            out["deleted_names"] = deleted_names
+            out["deleted_mb"] = round(deleted_mb, 2)
+            return out
+
+    remaining = [os.path.basename(c) for c in list_corrupt_candidates(dbp)]
+    out.update(
+        {
+            "ok": True,
+            "deleted": True,
+            "deleted_names": deleted_names,
+            "deleted_n": len([n for n in deleted_names if not n.endswith(("-wal", "-shm"))]),
+            "deleted_mb": round(deleted_mb, 2),
+            "remaining_corrupt": remaining,
+            "remaining_n": len(remaining),
+        }
+    )
+    logger.info(
+        "已刪舊救援 corrupt bodies=%s mb=%.1f keep=%s remaining=%s",
+        out["deleted_n"],
+        out["deleted_mb"],
+        sorted(keep),
+        remaining,
+    )
+    return out
+
+
 def _runway_free_bucket(free_mb: float, warn_free_mb: float, min_free_mb: float) -> str:
     free = float(free_mb)
     if free < float(min_free_mb):
