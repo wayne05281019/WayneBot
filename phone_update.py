@@ -9,6 +9,7 @@ import re
 import subprocess
 
 UPDATE_DONE = "更新完成"
+UPDATE_START = "正在更新"
 _NOTE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "phone_update_note.txt")
 _COMMIT_PREFIX = re.compile(
     r"^(feat|fix|docs|test|chore|refactor|perf|build|ci)(\([^)]+\))?:\s*",
@@ -98,6 +99,17 @@ def phone_update_lines(sha: str | None = None, *, note: str | None = None) -> li
     return lines
 
 
+def phone_update_starting(sha: str | None = None, *, note: str | None = None) -> str:
+    """偉權／哥哥手機：開機／部署開始更新。不准貼程式代碼。"""
+    _ = sha
+    title = phone_update_title(note)
+    if title:
+        if title.startswith(UPDATE_START):
+            return title[:80]
+        return f"{UPDATE_START}：{title}"[:80]
+    return UPDATE_START
+
+
 def phone_update_notice(sha: str, *, note: str | None = None) -> str:
     """偉權／哥哥手機：這次改了什麼＋更新完成。不准貼程式代碼。"""
     return "\n".join(phone_update_lines(sha, note=note))
@@ -108,11 +120,11 @@ def phone_code_reply(sha: str | None = None) -> str:
     return phone_update_notice(sha if sha is not None else phone_git_sha() or "")
 
 
-def phone_health_fields(sha: str | None = None) -> dict:
+def phone_health_fields(sha: str | None = None, *, updating: bool = False) -> dict:
     """畫面 /health 另留 git_sha 給核對；手機文案不含這欄。"""
     full = str(sha if sha is not None else phone_git_sha() or "").strip()[:40]
     return {
         "git_sha": full,
-        "update": UPDATE_DONE,
+        "update": UPDATE_START if updating else UPDATE_DONE,
         "update_note": phone_update_title(),
     }
