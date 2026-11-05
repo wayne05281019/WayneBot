@@ -705,6 +705,37 @@ def test_day_change_vs_prev_trading_day():
     assert i_px < i_pct < i_pts
 
 
+def test_us_real_close_pair_skips_twii_ffill_flat():
+    """費半黃框：對真實美股日算漲跌，不准因加權軸前收填日變假 +0%。"""
+    from biaoke_level_learn import (
+        _align_us_to_twii_dates,
+        _day_change_vs_prev,
+        _us_real_close_pair,
+    )
+
+    sox = [
+        {"date": "20261102", "open": 10762, "high": 10890, "low": 10300, "close": 10328},
+        {"date": "20261103", "open": 10574, "high": 10761, "low": 10530, "close": 10600},
+    ]
+    tw_bars = [
+        {"date": "20261103", "close": 43307},
+        {"date": "20261104", "close": 42948},
+        {"date": "20261105", "close": 41575},
+    ]
+    aligned = _align_us_to_twii_dates(sox, tw_bars)
+    # 對齊軸末兩根都被前收填成 10600 → 假平盤
+    assert aligned["close"][-1] == aligned["close"][-2] == 10600.0
+    fake = _day_change_vs_prev(aligned["close"][-1], aligned["close"][-2])
+    assert fake["sign"] == 0
+    pair = _us_real_close_pair(sox)
+    assert pair["asof"] == "20261103"
+    assert pair["close"] == 10600.0
+    assert pair["prev_close"] == 10328.0
+    real = _day_change_vs_prev(pair["close"], pair["prev_close"])
+    assert real["sign"] > 0
+    assert abs(float(real["pts"]) - 272.0) < 1e-6
+
+
 def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
     """開市日題旨 cap＝查詢日：吃得到當天最新位階文，吃不到牆鐘之後的文。"""
     import sqlite3

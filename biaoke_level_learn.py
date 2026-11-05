@@ -1031,6 +1031,53 @@ def _paint_teach_query_stamp(
     _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, zorder=40)
 
 
+def _us_real_close_pair(
+    us_rows: Sequence[Dict[str, Any]],
+    live: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """費半黃框用：只認真實美股日K（＋可選盤中 live），不准吃加權軸前收填日。
+
+    加權軸缺美股日時 `_align_us_to_twii_dates` 會前收填滿 → 末兩根同價 →
+    黃框假平盤 +0%。這裡改回原始 SOX 列算漲跌。
+    """
+    rows = [
+        dict(r)
+        for r in (us_rows or [])
+        if float((r or {}).get("close") or 0) > 0 and _ymd((r or {}).get("date"))
+    ]
+    rows.sort(key=lambda r: _ymd(r.get("date")))
+    if live and float((live or {}).get("close") or 0) > 0:
+        day = _ymd(live.get("date"))
+        if len(day) == 8:
+            payload = {
+                "date": day,
+                "open": live.get("open") or live.get("close"),
+                "high": live.get("high") or live.get("close"),
+                "low": live.get("low") or live.get("close"),
+                "close": live.get("close"),
+            }
+            if rows and _ymd(rows[-1].get("date")) == day:
+                rows[-1] = payload
+            elif not rows or day > _ymd(rows[-1].get("date")):
+                rows.append(payload)
+    if not rows:
+        return {"close": None, "prev_close": None, "asof": "", "n": 0}
+    close = float(rows[-1].get("close") or 0)
+    asof = _ymd(rows[-1].get("date"))
+    prev_close: Optional[float] = None
+    if len(rows) >= 2:
+        try:
+            prev_close = float(rows[-2].get("close") or 0) or None
+        except (TypeError, ValueError):
+            prev_close = None
+    return {
+        "close": close if close > 0 else None,
+        "prev_close": prev_close,
+        "asof": asof,
+        "n": len(rows),
+    }
+
+
 def _paint_index_last_chg_tip(
     fig,
     *,
@@ -1041,8 +1088,13 @@ def _paint_index_last_chg_tip(
     x: float = 0.995,
     y: float = 0.848,
     ha: str = "right",
+    asof_ymd: str = "",
+    chart_asof: str = "",
 ) -> None:
-    """費半漲跌黃框：與加權同字級／同框高；字少故較短；圖層座標，不准壓加權黃框。"""
+    """費半漲跌黃框：與加權同字級／同框高；字少故較短；圖層座標，不准壓加權黃框。
+
+    asof_ymd＝費半真實收日；若落後加權題旨日，框上標「M/D收」，不准裝成當日平盤。
+    """
     if fig is None or fp is None:
         return
     from matplotlib.offsetbox import TextArea
@@ -1051,6 +1103,21 @@ def _paint_index_last_chg_tip(
     pct_s = str(chg.get("pct_text") or "").strip()
     pts_s = str(chg.get("pts_text") or "").strip()
     col = _chg_paint_color(int(chg.get("sign") or 0))
+    asof = _ymd(asof_ymd)
+    chart_d = _ymd(chart_asof)
+    stale = bool(asof and chart_d and asof < chart_d)
+    # 缺新美股收又算出平盤＝前收填日假象；改標收日，不准 +0.00%
+    if stale and int(chg.get("sign") or 0) == 0:
+        pct_s = f"（{_md(asof)}收）"
+        pts_s = ""
+        col = _TEACH_STAMP_META
+    elif stale and asof:
+        # 有真漲跌也標收日，避免以為是加權同日費半
+        tag = f"{_md(asof)}收"
+        if pct_s:
+            pct_s = f"（{tag} {pct_s.strip('（）')}）"
+        else:
+            pct_s = f"（{tag}）"
     try:
         px_s = _px(float(close))
     except (TypeError, ValueError):
@@ -5381,10 +5448,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=20,
             clip_on=False,
         )
-        # 暫存給標題列下方畫費半黃框（與加權黃框同字級、垂直錯開）
+        # 黃框漲跌改吃真實美股日K（不准對齊軸前收填日造成假 +0%）
+        _pair = _us_real_close_pair(sox, (pack or {}).get("live_sox"))
         _sox_chg_tip = {
-            "close": float(_sox_last_repaint["c"]),
-            "prev": _prev_c,
+            "close": float(_pair["close"] or _sox_last_repaint["c"]),
+            "prev": _pair.get("prev_close"),
+            "asof": str(_pair.get("asof") or ""),
         }
     if _tw_last_repaint:
         ax.scatter(
@@ -5455,6 +5524,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             x=0.995,
             y=_sox_stamp_y,
             ha="right",
+            asof_ymd=str(_sox_chg_tip.get("asof") or ""),
+            chart_asof=str(as_of or ""),
         )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
