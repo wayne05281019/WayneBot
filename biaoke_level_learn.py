@@ -3199,6 +3199,7 @@ def _resolve_teach_vol_sr(
         "primary": None,
         "next": None,
         "i_primary": None,
+        "i_next": None,
         "earliest_ymd": "",
     }
     if len(rows) < 4:
@@ -3275,6 +3276,12 @@ def _resolve_teach_vol_sr(
         nd = _ymd((out["next"] or {}).get("date"))
         if nd and (not out["earliest_ymd"] or nd < out["earliest_ymd"]):
             out["earliest_ymd"] = nd
+        i_nx = None
+        for i, r in enumerate(rows):
+            if _ymd(r.get("date")) == nd:
+                i_nx = i
+                break
+        out["i_next"] = i_nx
     return out
 
 
@@ -3522,17 +3529,41 @@ def _far_teach_roll_bars(
 def _remap_teach_vol_sr_index(
     sr: Dict[str, Any], bars: Sequence[Dict[str, Any]]
 ) -> Dict[str, Any]:
-    """切片後重算大量撐壓日索引；日期不在窗內 → i_primary=None（黃帶仍可畫價）。"""
+    """切片後重算大量撐壓／下一層日索引；日期不在窗內 → i_*=None（底色仍可畫價）。"""
     out = dict(sr or {})
-    pd = _ymd(((out.get("primary") or {}) or {}).get("date"))
     out["i_primary"] = None
-    if not pd:
-        return out
-    for i, r in enumerate(bars or []):
-        if _ymd(r.get("date")) == pd:
-            out["i_primary"] = i
-            break
+    out["i_next"] = None
+    by_ymd = {_ymd(r.get("date")): i for i, r in enumerate(bars or []) if _ymd(r.get("date"))}
+    pd = _ymd(((out.get("primary") or {}) or {}).get("date"))
+    if pd and pd in by_ymd:
+        out["i_primary"] = int(by_ymd[pd])
+    nd = _ymd(((out.get("next") or {}) or {}).get("date"))
+    if nd and nd in by_ymd:
+        out["i_next"] = int(by_ymd[nd])
     return out
+
+
+def _vol_sr_index_on_axis(
+    sr: Optional[Dict[str, Any]],
+    *,
+    axis_ymds: Sequence[str],
+) -> Tuple[Optional[int], Optional[int]]:
+    """把大量撐壓／下一層日期對到本欄 x 索引（費半／電子盤／加權各算各的）。"""
+    pack = sr if isinstance(sr, dict) else {}
+    by = {_ymd(d): i for i, d in enumerate(axis_ymds or []) if _ymd(d)}
+    i_pri = by.get(_ymd(((pack.get("primary") or {}) or {}).get("date")))
+    i_nxt = by.get(_ymd(((pack.get("next") or {}) or {}).get("date")))
+    return (
+        int(i_pri) if i_pri is not None else None,
+        int(i_nxt) if i_nxt is not None else None,
+    )
+
+
+# 遠窗各欄豎導：黃＝當前大量撐壓日K；亮桃＝下一層大量日K（不准跨欄共用加權日）
+_VOL_SR_GUIDE_PRIMARY = "#ffeb3b"
+_VOL_SR_GUIDE_NEXT = "#ff8aa0"  # 亮桃紅
+_VOL_SR_CANDLE_PRIMARY = "#ffd54f"
+_VOL_SR_CANDLE_NEXT = "#ff8aa0"
 
 
 def _teach_vol_sr_title_bit(
@@ -3560,7 +3591,7 @@ def _teach_vol_sr_title_bit(
         bit = "黃＝大量撐壓"
     if nxt.get("date") and nxt.get("high") is not None and nxt.get("low") is not None:
         bit += (
-            f"｜灰＝下一層{_md(nxt.get('date'))} "
+            f"｜亮桃／灰＝下一層{_md(nxt.get('date'))} "
             f"{_px(nxt.get('high'))}～{_px(nxt.get('low'))}"
         )
     return bit
@@ -3857,13 +3888,93 @@ def _paint_vol_bars_max_yellow(
 
 
 def _paint_max_vol_day_guide(axes: Sequence[Any], i_max: Optional[int]) -> None:
-    """三欄同一 x 畫黃虛線，最大量日與上方金K／黃底／量柱對齊一眼可見。"""
+    """相容舊呼叫：同一儀器多欄（價＋量）畫黃虛線。遠窗跨商品請改 `_paint_vol_sr_day_guides`。"""
     if i_max is None:
         return
     for a in axes:
-        if a is None:
-            continue
-        a.axvline(float(i_max), color="#ffeb3b", lw=1.15, ls=(0, (4, 2)), alpha=0.88, zorder=5)
+        _paint_vol_sr_day_guides(a, i_primary=int(i_max), i_next=None)
+
+
+def _paint_vol_sr_day_guides(
+    ax: Any,
+    *,
+    i_primary: Optional[int] = None,
+    i_next: Optional[int] = None,
+) -> None:
+    """單欄各自畫豎導：黃＝當前大量撐壓日；亮桃＝下一層大量日。
+
+    費半／電子盤／加權爆大量日不一定同一天 → 不准把加權 10/15 豎線拉到上兩欄。
+    """
+    if ax is None:
+        return
+    if i_primary is not None:
+        ax.axvline(
+            float(i_primary),
+            color=_VOL_SR_GUIDE_PRIMARY,
+            lw=1.15,
+            ls=(0, (4, 2)),
+            alpha=0.90,
+            zorder=5,
+        )
+    if i_next is not None and (i_primary is None or int(i_next) != int(i_primary)):
+        ax.axvline(
+            float(i_next),
+            color=_VOL_SR_GUIDE_NEXT,
+            lw=1.15,
+            ls=(0, (3, 2)),
+            alpha=0.88,
+            zorder=5,
+        )
+
+
+def _paint_vol_sr_mark_on_axis(
+    ax: Any,
+    *,
+    opens: Sequence[float],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    i_primary: Optional[int] = None,
+    i_next: Optional[int] = None,
+    date_primary: str = "",
+    date_next: str = "",
+    fp: Any = None,
+) -> None:
+    """單欄：當前大量日金K＋黃豎線；下一層日亮桃K＋桃豎線。"""
+    if ax is None:
+        return
+    n = min(len(opens), len(highs), len(lows), len(closes))
+
+    def _ok(i: Optional[int]) -> bool:
+        return i is not None and 0 <= int(i) < n and float(highs[int(i)]) == float(highs[int(i)])
+
+    if _ok(i_next):
+        ii = int(i_next)
+        _paint_special_candle(
+            ax,
+            ii,
+            open_=float(opens[ii]),
+            high=float(highs[ii]),
+            low=float(lows[ii]),
+            close=float(closes[ii]),
+            color=_VOL_SR_CANDLE_NEXT,
+            date_lab=date_next,
+            fp=fp,
+        )
+    if _ok(i_primary):
+        ii = int(i_primary)
+        _paint_special_candle(
+            ax,
+            ii,
+            open_=float(opens[ii]),
+            high=float(highs[ii]),
+            low=float(lows[ii]),
+            close=float(closes[ii]),
+            color=_VOL_SR_CANDLE_PRIMARY,
+            date_lab=date_primary,
+            fp=fp,
+        )
+    _paint_vol_sr_day_guides(ax, i_primary=i_primary, i_next=i_next)
 
 
 def _next_support_resist(
@@ -4291,12 +4402,12 @@ def _place_live_right_labels(
             or s.startswith("今 ")
             or s.startswith("今　")
             or s.startswith("費")
-            or s.startswith("電盤大量")
-            or s.startswith("電盤即時")
+            or "電盤大量" in s
+            or "電盤即時" in s
         ):
             return 0
         # 電盤下一層／飆預測可丟，優先保住大量撐壓＋即時
-        if s.startswith("電盤下一層") or ("飆預測" in s and "電盤" not in s):
+        if "電盤下一層" in s or ("飆預測" in s and "電盤" not in s):
             return 2
         return 1
 
@@ -6203,10 +6314,30 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 fp=_fp,
                 direction=str(nxt.get("direction") or "below"),
             )
+    # 費半自己的爆大量日（常≠加權 10/15）：金K／亮桃K＋本欄豎線
+    _sox_axis_ymds = [_ymd(bars[i].get("date")) for i in range(n_tw)]
+    if sox_extra_dates:
+        _sox_axis_ymds.extend(_ymd(d) for d in sox_extra_dates)
+    while len(_sox_axis_ymds) < n_axis:
+        _sox_axis_ymds.append("")
+    _sox_axis_ymds = _sox_axis_ymds[:n_axis]
+    _sox_i_pri, _sox_i_nxt = _vol_sr_index_on_axis(sox_vol_sr, axis_ymds=_sox_axis_ymds)
+    _paint_vol_sr_mark_on_axis(
+        axu,
+        opens=sox_o,
+        highs=sox_h,
+        lows=sox_l,
+        closes=sox_c,
+        i_primary=_sox_i_pri,
+        i_next=_sox_i_nxt,
+        date_primary=str((sox_vol_sr.get("primary") or {}).get("date") or ""),
+        date_next=str((sox_vol_sr.get("next") or {}).get("date") or ""),
+        fp=_fp,
+    )
     axu.text(
         0.012,
         0.04,
-        "費半＝自轉折浪＋大量撐壓（量＝SOXX 代理）＋下一層",
+        "費半＝自轉折浪＋大量撐壓（量＝SOXX 代理）＋下一層｜黃豎＝費半爆大量日",
         transform=axu.transAxes,
         fontproperties=_fp(8, "bold"),
         color=_LIVE_MUTED,
@@ -6264,11 +6395,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             # 左標關掉：右欄已有電盤大量壓／撐，左右雙貼會卡死中欄
             labels=False,
         )
+        _tx_pri_md = _md(pri.get("date"))
+        _tx_pri_tag = f"{_tx_pri_md} " if _tx_pri_md else ""
         _tx_right_notes.append(
             {
                 "x": n_tw - 1,
                 "y": float(pri["high"]),
-                "text": f"電盤大量壓 {_px(pri['high'])}",
+                "text": f"{_tx_pri_tag}電盤大量壓 {_px(pri['high'])}",
                 "color": "#ffe082",
             }
         )
@@ -6276,7 +6409,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             {
                 "x": n_tw - 1,
                 "y": float(pri["low"]),
-                "text": f"電盤大量撐 {_px(pri['low'])}",
+                "text": f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}",
                 "color": "#ffe082",
             }
         )
@@ -6292,20 +6425,22 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 # 左標改走右欄，避免與青帶／即時擠在底段卡住
                 labels=False,
             )
+            _tx_nxt_md = _md(nxt.get("date"))
+            _tx_nxt_tag = f"{_tx_nxt_md} " if _tx_nxt_md else ""
             _tx_right_notes.append(
                 {
                     "x": n_tw - 1,
                     "y": float(nxt["high"]),
-                    "text": f"電盤下一層壓 {_px(nxt['high'])}",
-                    "color": "#cfd8dc",
+                    "text": f"{_tx_nxt_tag}電盤下一層壓 {_px(nxt['high'])}",
+                    "color": "#ff8aa0",
                 }
             )
             _tx_right_notes.append(
                 {
                     "x": n_tw - 1,
                     "y": float(nxt["low"]),
-                    "text": f"電盤下一層撐 {_px(nxt['low'])}",
-                    "color": "#cfd8dc",
+                    "text": f"{_tx_nxt_tag}電盤下一層撐 {_px(nxt['low'])}",
+                    "color": "#ff8aa0",
                 }
             )
     tx_now = float(tx_c[tx_valid[-1]]) if tx_valid else None
@@ -6431,6 +6566,21 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pad = max(120.0, (hi_v - lo_v) * 0.08)
         axt.set_ylim(lo_v - pad, hi_v + pad)
         _tx_ylabel_span = (lo_v - pad, hi_v + pad)
+    # 電子盤自己的爆大量日（常≠加權 10/15）：金K／亮桃K＋本欄豎線
+    _tx_axis_ymds = [_ymd(bars[i].get("date")) for i in range(n_tw)]
+    _tx_i_pri, _tx_i_nxt = _vol_sr_index_on_axis(tx_vol_sr, axis_ymds=_tx_axis_ymds)
+    _paint_vol_sr_mark_on_axis(
+        axt,
+        opens=tx_o,
+        highs=tx_h,
+        lows=tx_l,
+        closes=tx_c,
+        i_primary=_tx_i_pri,
+        i_next=_tx_i_nxt,
+        date_primary=str((tx_vol_sr.get("primary") or {}).get("date") or ""),
+        date_next=str((tx_vol_sr.get("next") or {}).get("date") or ""),
+        fp=_fp,
+    )
     _set_upright_ylabel(axt, "台指電子盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
     # 不再貼左下長說明：會跟右標／戳／K互卡；說明改靠戳＋右欄
 
@@ -6469,19 +6619,27 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     if zone.get("i_vmax") is not None:
         i_vmax = int(zone["i_vmax"])
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
-    # 黃帶對應那一根K＝大量撐壓日：金K＋豎線；字只留左標／量欄
-    if i_vmax is not None:
-        _paint_special_candle(
-            ax,
-            int(i_vmax),
-            open_=float(opens[i_vmax]),
-            high=float(highs[i_vmax]),
-            low=float(lows[i_vmax]),
-            close=float(closes[i_vmax]),
-            color="#ffd54f",
-            date_lab=_ymd(bars[i_vmax].get("date")),
-            fp=_fp,
+    # 加權自己的大量撐壓日金K＋下一層亮桃K（豎線稍後只畫在加權價／量欄）
+    _tw_i_pri = int(i_vmax) if i_vmax is not None else None
+    _tw_i_nxt = far_vol_sr.get("i_next") if isinstance(far_vol_sr, dict) else None
+    if _tw_i_nxt is None and isinstance(far_vol_sr, dict):
+        _tw_i_pri2, _tw_i_nxt = _vol_sr_index_on_axis(
+            far_vol_sr, axis_ymds=[_ymd(r.get("date")) for r in bars]
         )
+        if _tw_i_pri is None:
+            _tw_i_pri = _tw_i_pri2
+    _paint_vol_sr_mark_on_axis(
+        ax,
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        i_primary=_tw_i_pri,
+        i_next=int(_tw_i_nxt) if _tw_i_nxt is not None else None,
+        date_primary=_ymd(bars[_tw_i_pri].get("date")) if _tw_i_pri is not None else "",
+        date_next=_ymd(((far_vol_sr or {}).get("next") or {}).get("date")),
+        fp=_fp,
+    )
     # 底色：藍＝推進⑤；金＝大B；紫＝大C
     ax.axvspan(i5s - 0.4, i5e + 0.4, facecolor="#40c4ff", alpha=0.06, zorder=0.2)
     ax.axvspan(i_alow - 0.2, i_b_end + 0.4, facecolor="#ffd54f", alpha=0.05, zorder=0.2)
@@ -6785,8 +6943,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         date_lab=_ymd(bars[i_vmax].get("date")) if i_vmax is not None else "",
     )
     _set_upright_ylabel(axv, "加權量", fp=_fp, color=_LIVE_MUTED, fontsize=9)
-    if i_vmax is not None:
-        _paint_max_vol_day_guide((axu, axt, ax, axv), i_vmax)
+    # 加權 10/15 黃豎線只畫加權價＋量；不准延伸到費半／電子盤（各自爆大量日不同）
+    _paint_vol_sr_day_guides(axv, i_primary=_tw_i_pri, i_next=_tw_i_nxt)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
 
     want = {

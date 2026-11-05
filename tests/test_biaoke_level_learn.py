@@ -261,6 +261,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "labels=False" in far_blk
     assert "0.11" in far_blk  # 電子盤右標間距
     assert "nudge=True" in far_blk  # 字盒疏開、虛線仍貼真價
+    # 各欄各自爆大量日豎線；不准加權 10/15 貫穿費半／電子盤
+    assert "_paint_vol_sr_mark_on_axis" in far_blk
+    assert "def _paint_vol_sr_day_guides" in src
+    assert "_VOL_SR_GUIDE_NEXT" in src
+    assert "_paint_max_vol_day_guide((axu, axt, ax, axv)" not in far_blk
     assert "_paint_tx_after_hours_tip" in far_blk
     assert "_TEACH_STAMP_EDGE_TX" in src
     assert "def _resolve_tx_after_hours_tip" in src
