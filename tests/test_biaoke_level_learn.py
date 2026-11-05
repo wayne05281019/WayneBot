@@ -1134,6 +1134,32 @@ def test_thesis_pred_levels_sox_next_support_apr28():
     assert 44042.0 in anchors or any(abs(v - 39384) < 2 for v in anchors)
 
 
+def test_sox_pred_cascade_to_feb25_8498_when_9865_broken():
+    """劇本一：破9865 → 測2/25高8498；現價已破則次回測改已破並掛再回測。"""
+    from biaoke_level_learn import _refresh_sox_pred_cascade, _thesis_pred_levels
+
+    snip = (
+        "7/29 A波低點10445必破，星期五低點10439已經破A波低點。"
+        "接下來會去測4/28 9865。"
+        "第一套劇本：費城半導體指數必破9865，會去測2/25高點8498。"
+    )
+    pred = _thesis_pred_levels(snip, "data/wayne_market.db")
+    roles = {str(r.get("role")): r for r in pred["sox"]}
+    assert "再回測" in roles
+    assert abs(float(roles["再回測"]["level"]) - 8498) < 3
+    # 僅寫到9865、現價已破 → 階梯仍要掛8498
+    snip2 = (
+        "7/29 A波低點10445必破，星期五低點10439已經破A波低點。"
+        "接下來會去測4/28 9865，如果破，大盤走5波下跌的機率就高很多。"
+    )
+    pred2 = _thesis_pred_levels(snip2, "data/wayne_market.db")
+    pred2 = _refresh_sox_pred_cascade(pred2, "data/wayne_market.db", sox_px=9310.0)
+    roles2 = {str(r.get("role")): r for r in pred2["sox"]}
+    assert roles2["次回測"]["tag"] == "已破"
+    assert "再回測" in roles2 and abs(float(roles2["再回測"]["level"]) - 8498) < 3
+    assert "2/25" in str(roles2["再回測"].get("label") or "")
+
+
 def test_c_forecast_tip_follows_biaoke_tip_anchors():
     """飆大點位換了 → 預估虛線端點跟著換。"""
     from biaoke_level_learn import _c_forecast_tip, _px, _tw_tip_anchors

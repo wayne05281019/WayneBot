@@ -2231,17 +2231,20 @@ def _biaoke_pred_label(
     return base
 
 
-def _official_bar_low(db_path: str, symbol: str, ymd: str) -> Optional[float]:
-    """官方日K低；缺柱回 None（不准假數）。"""
+def _official_bar_field(
+    db_path: str, symbol: str, ymd: str, field: str
+) -> Optional[float]:
+    """官方日K 單欄（open/high/low/close）；缺柱回 None（不准假數）。"""
     d = _ymd(ymd)
     sym = str(symbol or "").upper()
-    if not db_path or not d or not sym:
+    col = str(field or "").lower()
+    if not db_path or not d or not sym or col not in ("open", "high", "low", "close"):
         return None
     try:
         conn = sqlite3.connect(db_path, timeout=10.0)
         try:
             row = conn.execute(
-                "SELECT low FROM index_daily WHERE symbol=? AND date=?",
+                f"SELECT {col} FROM index_daily WHERE symbol=? AND date=?",
                 (sym, d),
             ).fetchone()
         finally:
@@ -2256,10 +2259,107 @@ def _official_bar_low(db_path: str, symbol: str, ymd: str) -> Optional[float]:
         return None
 
 
+def _official_bar_low(db_path: str, symbol: str, ymd: str) -> Optional[float]:
+    """官方日K低；缺柱回 None（不准假數）。"""
+    return _official_bar_field(db_path, symbol, ymd, "low")
+
+
+def _official_bar_high(db_path: str, symbol: str, ymd: str) -> Optional[float]:
+    """官方日K高；缺柱回 None（不准假數）。"""
+    return _official_bar_field(db_path, symbol, ymd, "high")
+
+
+def _sox_latest_px(db_path: str, *, live: Optional[Dict[str, Any]] = None) -> float:
+    """費半最新價：盤中即時優先，否則庫內最新收（出圖對撐壓用）。"""
+    try:
+        px = float((live or {}).get("close") or (live or {}).get("price") or 0)
+        if px > 0:
+            return px
+    except (TypeError, ValueError):
+        pass
+    if not db_path:
+        return 0.0
+    try:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+        try:
+            row = conn.execute(
+                "SELECT close FROM index_daily WHERE symbol='SOX' "
+                "AND close IS NOT NULL AND close>0 ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return 0.0
+    try:
+        return float(row[0]) if row and row[0] is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _refresh_sox_pred_cascade(
+    pred: Dict[str, Any],
+    db_path: str = "",
+    *,
+    sox_px: float = 0.0,
+) -> Dict[str, Any]:
+    """費半撐壓階梯：4/28 9865 撐不住 → 回測 2/25 8498（使用者鎖死）。
+
+    題旨原文只寫到 9865；破了之後下一層＝官方 2/25 高 8498，不准停在已破的 9865。
+    """
+    out = dict(pred or {})
+    rows = [dict(r) for r in (out.get("sox") or [])]
+    if not rows:
+        return out
+    px = float(sox_px or 0)
+    if px <= 0:
+        px = _sox_latest_px(db_path)
+    nxt = next((r for r in rows if str(r.get("role") or "") == "次回測"), None)
+    reb = next((r for r in rows if str(r.get("role") or "") == "再回測"), None)
+    if nxt:
+        try:
+            lv_nxt = float(nxt.get("level") or 0)
+        except (TypeError, ValueError):
+            lv_nxt = 0.0
+        if px > 0 and lv_nxt > 0 and px < lv_nxt - 0.5:
+            nxt["tag"] = "已破"
+            nxt["label"] = f"4/28低{_px(lv_nxt)}已破"
+            if reb is None:
+                off_hi = _official_bar_high(db_path, "SOX", "20260225")
+                # 他劇本一：破9865→測2/25高8498（官方高對質）
+                lv = (
+                    float(off_hi)
+                    if off_hi is not None and abs(float(off_hi) - 8498.0) <= 3.0
+                    else 8498.0
+                )
+                rows.append(
+                    {
+                        "level": lv,
+                        "ref_ymd": "20260225",
+                        "ref_md": _md("20260225"),
+                        "role": "再回測",
+                        "tag": "未到",
+                        "label": f"再回測2/25高{_px(lv)}",
+                    }
+                )
+            else:
+                # 文內已有再回測列：9865 破了就維持未到標，不准還寫次回測未到
+                if str(reb.get("tag") or "") != "已破":
+                    reb["tag"] = "未到"
+    bits = []
+    for row in (out.get("tw") or []):
+        bits.append(str(row.get("label") or ""))
+    for row in rows:
+        bits.append(str(row.get("label") or ""))
+    out["sox"] = rows
+    out["note"] = "｜".join(b for b in bits if b)[:280]
+    return out
+
+
 def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     """從他最新題旨抽出寫死預測點＋回測日（只認原文數字，不准發明）。
 
     回傳 tw／sox 列：level／ref_ymd／ref_md／role／tag／label／note。
+    4/28 9865 若已破 → `_refresh_sox_pred_cascade` 掛 2/25 8498。
     """
     s = str(snip or "")
     out: Dict[str, Any] = {"tw": [], "sox": [], "note": ""}
@@ -2333,6 +2433,22 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag="未到",
             label=f"次回測4/28低{_px(lv)}",
         )
+    # 劇本一：破9865 → 測2/25高8498（他原文；官方高對質）
+    if re.search(r"8498", s) and re.search(r"2\s*/\s*25", s):
+        off_hi = _official_bar_high(db_path, "SOX", "20260225")
+        lv = (
+            float(off_hi)
+            if off_hi is not None and abs(float(off_hi) - 8498.0) <= 3.0
+            else 8498.0
+        )
+        _add(
+            "sox",
+            level=lv,
+            ref_ymd="20260225",
+            role="再回測",
+            tag="未到",
+            label=f"再回測2/25高{_px(lv)}",
+        )
 
     # 他最新文抽出的大盤／台指點位 → 進預測列（虛線／右標跟著換；不准發明）
     seen_tw = {round(float(r["level"]), 1) for r in out["tw"]}
@@ -2385,13 +2501,8 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=f"費半{_px(lv)}",
         )
 
-    bits = []
-    for row in out["tw"]:
-        bits.append(str(row.get("label") or ""))
-    for row in out["sox"]:
-        bits.append(str(row.get("label") or ""))
-    out["note"] = "｜".join(b for b in bits if b)[:280]
-    return out
+    # 庫內最新費半價：9865 已破就掛 2/25 8498（盤中 live 在 prepare 再刷一次）
+    return _refresh_sox_pred_cascade(out, db_path)
 
 
 def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
@@ -4939,17 +5050,33 @@ def _paint_sox_thesis_preds(
     preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
     if not preds:
         return []
-    broken = next((r for r in preds if str(r.get("role") or "") == "A波低"), None)
+    broken_a = next((r for r in preds if str(r.get("role") or "") == "A波低"), None)
     nxt = next((r for r in preds if str(r.get("role") or "") == "次回測"), None)
-    y_hi = float(broken["level"]) if broken else None
-    y_lo = float(nxt["level"]) if nxt else None
-    # 青帶＝已破A低 → 次回測低（下一撐壓區）；跟加權青帶同一套讀法
+    reb = next((r for r in preds if str(r.get("role") or "") == "再回測"), None)
+    # 青帶＝上一已破撐 → 現在下一撐；9865 已破則對 2/25 8498
+    y_hi = y_lo = None
+    band_lab = ""
+    try:
+        if reb and nxt and str(nxt.get("tag") or "") == "已破":
+            y_hi = float(nxt["level"])
+            y_lo = float(reb["level"])
+            band_lab = (
+                f"青＝已破4/28{_px(y_hi)}→下一撐{_px(y_lo)}（2/25回測）"
+            )
+        elif broken_a and nxt:
+            y_hi = float(broken_a["level"])
+            y_lo = float(nxt["level"])
+            band_lab = (
+                f"青＝已破A{_px(y_hi)}→下一撐{_px(y_lo)}（4/28回測）"
+            )
+    except (TypeError, ValueError, KeyError):
+        y_hi = y_lo = None
     if y_hi is not None and y_lo is not None and y_hi > y_lo:
         ax.axhspan(y_lo, y_hi, facecolor="#4dd0e1", alpha=0.14, zorder=0.4)
         ax.text(
             0.012,
             0.96,
-            f"青＝已破A{_px(y_hi)}→下一撐{_px(y_lo)}（4/28回測）",
+            band_lab,
             transform=ax.transAxes,
             fontproperties=fp(8, "bold"),
             color="#4dd0e1",
@@ -5092,18 +5219,24 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     bars = _twii_bars_for_teach(db_path, 400, pack)
     if len(bars) < 20 or not save_path:
         return ""
-    # 預設滾動；大量撐壓／下一層／⑤起日若更早 → 左側自動拉長（最右＝最新）
+    # 預設滾動；大量撐壓／下一層／⑤起日／費半回測日若更早 → 左側自動拉長
+    keep_ymds: List[str] = ["20260331", "20260401"]
+    for row in ((pack or {}).get("pred_levels") or {}).get("sox") or []:
+        rd = _ymd(row.get("ref_ymd"))
+        if rd:
+            keep_ymds.append(rd)
     bars, far_vol_sr = _far_teach_bars_keeping_vol_sr(
         list(bars),
         max_bars=_FAR_TEACH_MAX_BARS,
         vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
-        keep_ymds=("20260331", "20260401"),
+        keep_ymds=tuple(dict.fromkeys(keep_ymds)),
     )
     mac = _twii_macro_wave_anchors(bars)
     anc = _twii_abc_anchors(bars)  # 近窗細分（右標／預估仍可參考）
     if not mac:
         return ""
-    sox = _load_us_daily(db_path, "SOX", "20260320")
+    sox_since = min(keep_ymds + ["20260220"]) if keep_ymds else "20260220"
+    sox = _load_us_daily(db_path, "SOX", sox_since)
     if (pack or {}).get("live_sox"):
         sox = _merge_live_sox_display_bar(sox, (pack or {}).get("live_sox"))
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -5715,6 +5848,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _ymd(bars[i5s].get("date")),
         _ymd(bars[i5e].get("date")),
         _ymd(bars[i_alow].get("date")),
+        "20260225",
         "20260401",
         "20260428",
         "20260623",
@@ -5737,6 +5871,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     tag = "⑤起"
                 elif i == i5e or d == "20260623":
                     tag = "⑤終"
+                elif d == "20260225":
+                    tag = "費再回測"
                 elif d == "20260428":
                     tag = "費次回測"
                 elif d == "20260729" or i == i_alow:
@@ -5858,10 +5994,14 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     sox_bit = ""
     sox_preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
+    sox_bit = ""
     if sox_preds:
-        sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
-    # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
-    pred_foot = str(pack.get("pred_note") or "")[:240]
+        if any(str(r.get("role") or "") == "再回測" for r in sox_preds):
+            sox_bit = "｜費半青＝已破4/28→下一撐（2/25＝8498回測K同軸）"
+        else:
+            sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
+    # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」；也不准裁掉 2/25 8498
+    pred_foot = str(pack.get("pred_note") or "")[:280]
     # 白字標題縮短讓出右上；費半青註改第二行，不准跟黃框互壓
     left_d = _ymd(bars[0].get("date")) if bars else ""
     fig.text(
@@ -7858,6 +7998,24 @@ def prepare_wave_live_pack(
             pack["live_sox"] = live_sox
     except Exception:
         logger.debug("prepare_wave 盤中費半略過", exc_info=True)
+        live_sox = None
+    # 即時價若已破 4/28 9865 → 掛 2/25 8498 再回測（撐壓對最新價）
+    try:
+        pred = pack.get("pred_levels") if isinstance(pack.get("pred_levels"), dict) else {}
+        px = _sox_latest_px(db_path, live=pack.get("live_sox") or live_sox)
+        refreshed = _refresh_sox_pred_cascade(pred, db_path, sox_px=px)
+        pack["pred_levels"] = refreshed
+        if refreshed.get("note"):
+            pack["pred_note"] = str(refreshed.get("note") or "")[:280]
+            for row in refreshed.get("sox") or []:
+                try:
+                    pack.setdefault("key_levels", {})[
+                        f"pred_sox_{int(float(row['level']))}"
+                    ] = float(row["level"])
+                except (TypeError, ValueError, KeyError):
+                    continue
+    except Exception:
+        logger.debug("prepare_wave 費半撐壓階梯略過", exc_info=True)
     pack["query_at"] = dt.isoformat()
     pack["_prep_now"] = dt
     return pack
