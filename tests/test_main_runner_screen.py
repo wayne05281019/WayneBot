@@ -2482,3 +2482,40 @@ def test_force_rescue_yields_to_fuse_window(monkeypatch):
     later = datetime(2026, 11, 5, 17, 5, tzinfo=tw)
     monkeypatch.setattr("config.taipei_now", lambda: later)
     assert runner.should_yield_to_market_fuse(now=later) is False
+
+
+def test_release_pre_winrate_morning_face(tmp_path):
+    """舊海選回執不准擋勝率大量圖新臉。"""
+    from main_runner import MainRunner
+    from pipeline_delivery import load_push_delivery, record_push_delivery
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "pre-wrvol.db")
+    ensure_core_schema(path)
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT INTO pipeline_runs(run_date, finished_at, status, notes) VALUES "
+        "('screen-20261105','2026-11-05T06:35:00+08:00','success','old')"
+    )
+    conn.commit()
+    conn.close()
+    record_push_delivery(
+        path, "screen-20261105", kind="morning-screen", n_ok=2, notes="海選早報"
+    )
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261105"
+    assert runner.release_pre_winrate_morning_face("screen-20261105") is True
+    assert runner.pipeline_status("screen-20261105") == "computed"
+    assert load_push_delivery(path, "screen-20261105") is None
+    record_push_delivery(
+        path,
+        "screen-20261105",
+        kind="morning-winrate",
+        n_ok=2,
+        notes="morning-winrate n=3",
+    )
+    runner._mark_pipeline("success", "wr", run_date="screen-20261105")
+    assert runner.release_pre_winrate_morning_face("screen-20261105") is False

@@ -77,9 +77,12 @@ def test_schedule_wait_note_beats_product_note(monkeypatch):
 
 
 def test_notice_is_spoken_without_sha(monkeypatch):
+    import phone_update as pu
+
     monkeypatch.setenv("WAYNE_UPDATE_NOTE", "查股兩張圖一次畫完、同一則出現")
     monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
     monkeypatch.delenv("GITHUB_SHA", raising=False)
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
     note = phone_update_note()
     assert note == "查股兩張圖一次畫完、同一則出現"
     assert phone_update_title() == note
@@ -117,6 +120,7 @@ def test_git_note_beats_stale_file(monkeypatch, tmp_path):
     import phone_update as pu
 
     monkeypatch.delenv("WAYNE_UPDATE_NOTE", raising=False)
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
     stale = tmp_path / "phone_update_note.txt"
     stale.write_text("飆大改口語講當下重點\n", encoding="utf-8")
     monkeypatch.setattr(pu, "_NOTE_FILE", str(stale))
@@ -149,11 +153,14 @@ def test_same_note_different_sha_does_not_renotify(tmp_path, monkeypatch):
 
 def test_push_phone_update_starting_then_done_dedupe(tmp_path, monkeypatch):
     """開始更新與更新完畢各推一次；同 SHA 不重送開始。"""
+    import phone_update as pu
+
     monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
     monkeypatch.delenv("DB_PATH", raising=False)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("WAYNE_UPDATE_NOTE", "早報舊回執放行並閃過融合")
     monkeypatch.setenv("RENDER_GIT_COMMIT", "dddddddddddddddddddddddddddddddddddddddd")
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
     monkeypatch.setattr("bot_servers.skip_telegram_polling", lambda: False)
     sent = []
 
