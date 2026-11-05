@@ -188,6 +188,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     far_blk = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")]
     assert "_paint_window_dual_zones" in near_blk
     assert "_paint_window_dual_zones" in micro_blk
+    assert "vol_sr=near_vol_sr" in near_blk or "大量撐壓" in near_blk
+    assert "vol_sr=micro_vol_sr" in micro_blk or "大量撐壓" in micro_blk
+    assert "_far_teach_bars_keeping_vol_sr" in far_blk
+    assert "_paint_next_layer_vol_zone" in far_blk
+    assert "SOXX" in far_blk and "大量撐壓" in far_blk
     assert "_c_subwave_anchors_vs_biaoke60" in far_blk
     assert "_c_subwave_anchors_vs_biaoke60" in near_blk
     assert "_c_subwave_anchors_vs_biaoke60" in micro_blk
@@ -317,14 +322,18 @@ def test_next_support_resist_nearest():
 
 
 def test_far_yellow_band_is_max_vol_day_hl():
-    """遠窗黃帶＝最大量日高低；青帶＝下一撐壓；底色在K下層。"""
+    """遠窗黃帶＝大量撐壓高低；灰＝下一層；青帶＝下一撐壓；底色在K下層。"""
     src = open("biaoke_level_learn.py", encoding="utf-8").read()
     block = src[src.index("def _render_twii_far_dark") : src.index("def _render_twii_live_dark")]
-    assert "_paint_max_vol_hl_zone" in block
-    assert "_paint_next_sr_zone" in block
+    assert "_paint_window_dual_zones" in block
+    assert "_paint_max_vol_hl_zone" in block or "_paint_window_dual_zones" in block
+    assert "_paint_next_layer_vol_zone" in block or "_paint_window_dual_zones" in block
     assert "K棒下一層" in block or "K下一層" in src
     assert "def _paint_max_vol_hl_zone" in src
     assert "def _paint_next_sr_zone" in src
+    assert "def _paint_next_layer_vol_zone" in src
+    assert "def _resolve_teach_vol_sr" in src
+    assert "_far_teach_bars_keeping_vol_sr" in block
     # 金K只改色；「最大量」字只留量欄（價圖不准再貼黃字標）
     special = src[src.index("def _paint_special_candle") : src.index("def _paint_vol_bars_max_yellow")]
     assert "不准再貼" in special or "量欄已有" in special
@@ -927,6 +936,82 @@ def test_far_teach_rolls_left_when_over_max():
     assert len(short) == 50
 
 
+def test_far_teach_extends_left_for_vol_sr_date():
+    """大量撐壓日若被滾動裁掉 → 左側自動拉到該日，最右仍＝最新。"""
+    from biaoke_level_learn import (
+        _FAR_TEACH_MAX_BARS,
+        _far_teach_bars_keeping_vol_sr,
+        _far_teach_roll_bars,
+    )
+
+    # 200 根；第 20 根爆大量且高仍壓著收 → 滾動後會被裁掉，必須拉回
+    rows = []
+    for i in range(1, 201):
+        d = f"2026{i:04d}"
+        rows.append(
+            {
+                "date": d,
+                "open": 100.0,
+                "high": 110.0 if i != 20 else 150.0,
+                "low": 90.0 if i != 20 else 80.0,
+                "close": 100.0,
+                "volume": 1.0 if i != 20 else 9999.0,
+            }
+        )
+    rolled = _far_teach_roll_bars(rows, max_bars=_FAR_TEACH_MAX_BARS)
+    assert str(rolled[0]["date"]).replace("-", "")[:8] > "20260020"
+    got, sr = _far_teach_bars_keeping_vol_sr(
+        rows,
+        max_bars=_FAR_TEACH_MAX_BARS,
+        vol_lookback=199,
+        keep_ymds=(),  # 只測撐壓日拉長，不強制浪階日
+    )
+    assert (sr.get("primary") or {}).get("date") == "20260020"
+    assert got[0]["date"] == "20260020"
+    assert got[-1]["date"] == rows[-1]["date"]
+    assert len(got) > _FAR_TEACH_MAX_BARS
+
+
+def test_far_teach_keep_wave_floor_and_vol_sr():
+    """浪階起點＋更早撐壓日：左側取最早需求，最右仍最新。"""
+    from biaoke_level_learn import _far_teach_bars_keeping_vol_sr
+
+    rows = []
+    for i in range(1, 201):
+        rows.append(
+            {
+                "date": f"2026{i:04d}",
+                "open": 100.0,
+                "high": 150.0 if i == 15 else 110.0,
+                "low": 80.0 if i == 15 else 90.0,
+                "close": 100.0,
+                "volume": 9999.0 if i == 15 else 1.0,
+            }
+        )
+    got, sr = _far_teach_bars_keeping_vol_sr(
+        rows,
+        max_bars=80,
+        vol_lookback=199,
+        keep_ymds=("20260030",),
+    )
+    assert (sr.get("primary") or {}).get("date") == "20260015"
+    assert got[0]["date"] == "20260015"  # 撐壓早於 keep → 取更早
+    assert got[-1]["date"] == rows[-1]["date"]
+
+
+def test_teach_vol_sr_title_bit_has_next_layer():
+    from biaoke_level_learn import _teach_vol_sr_title_bit
+
+    bit = _teach_vol_sr_title_bit(
+        {
+            "primary": {"date": "20260328", "high": 22000, "low": 21000},
+            "next": {"date": "20260415", "high": 20500, "low": 19800},
+        }
+    )
+    assert "大量撐壓" in bit and "下一層" in bit
+    assert "22000" in bit or "22,000" in bit or "22,000".replace(",", "") in bit.replace(",", "")
+
+
 def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
     """遠窗自3月底：推進⑤＝4/1→6/23；大A底仍＝7/29，不准用四月窗底當A。"""
     import inspect
@@ -941,12 +1026,12 @@ def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
     assert "⑤起" in src and "⑤終" in src
     assert "_twii_macro_wave_anchors" in src
     assert "_paint_eight_wave_inset" in src
-    assert "_far_teach_roll_bars" in src or "_FAR_TEACH_MAX_BARS" in src
+    assert "_far_teach_bars_keeping_vol_sr" in src or "_FAR_TEACH_MAX_BARS" in src
     from biaoke_level_learn import (
         _FAR_TEACH_MAX_BARS,
-        _bar_index_by_ymd,
+        _FAR_TEACH_VOL_LOOKBACK,
         _build_live_pack,
-        _far_teach_roll_bars,
+        _far_teach_bars_keeping_vol_sr,
         _twii_macro_wave_anchors,
         _twii_bars_for_teach,
         _ymd,
@@ -963,16 +1048,14 @@ def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
     bars = _twii_bars_for_teach(db, 400, pack)
     if len(bars) < 80:
         pytest.skip("twii bars too short")
-    i0 = (
-        _bar_index_by_ymd(bars, "20260331")
-        or _bar_index_by_ymd(bars, "20260401")
-        or 0
+    bars, _sr = _far_teach_bars_keeping_vol_sr(
+        list(bars),
+        max_bars=_FAR_TEACH_MAX_BARS,
+        vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
+        keep_ymds=("20260331", "20260401"),
     )
-    bars = _far_teach_roll_bars(list(bars[i0:]), max_bars=_FAR_TEACH_MAX_BARS)
     mac = _twii_macro_wave_anchors(bars)
-    if not mac:
-        pytest.skip("macro anchors unavailable")
-    assert mac
+    assert mac, "macro anchors must stay after vol-SR left-extend"
     assert _ymd(bars[int(mac["i5_start"])].get("date")) in ("20260331", "20260401")
     assert _ymd(bars[int(mac["i5_end"])].get("date")) == "20260623"
     assert _ymd(bars[int(mac["i_alow"])].get("date")) in ("20260728", "20260729")

@@ -1982,6 +1982,21 @@ def _load_us_daily(
     return out
 
 
+def _soxx_volume_by_date(db_path: str, since: str = "20260301") -> Dict[str, float]:
+    """SOXX 日量字典（費半指數無官方量 → 教具大量撐壓用代理）。"""
+    out: Dict[str, float] = {}
+    try:
+        _ensure_soxx_volume_proxy(db_path)
+    except Exception:
+        logger.exception("SOXX 量代理補抓略過")
+    for r in _load_us_daily(db_path, "SOXX", since=since):
+        d = _ymd(r.get("date"))
+        v = float(r.get("volume") or 0)
+        if d and v > 0:
+            out[d] = v
+    return out
+
+
 def _us_lead_read(db_path: str) -> Dict[str, Any]:
     """納指／費半先行（活化 us_overnight；他的外圍順序）。缺柱先自己補。"""
     out: Dict[str, Any] = {"note": "", "levels": {}}
@@ -2422,6 +2437,144 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
     return tuple(uniq)
 
 
+def _resolve_teach_vol_sr(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    lookback: int = 40,
+) -> Dict[str, Any]:
+    """教具大量撐壓＋下一層（對齊結構圖／大量區規則；不是買訊）。
+
+    primary＝volume_first 仍有效爆大量日高低；破撐／過壓後才掛下一層大量區。
+    """
+    rows = list(bars or [])
+    out: Dict[str, Any] = {
+        "primary": None,
+        "next": None,
+        "i_primary": None,
+        "earliest_ymd": "",
+    }
+    if len(rows) < 4:
+        return out
+    lb = max(int(lookback or 40), 1)
+    try:
+        from biaoke_brain import volume_first_price
+        from biaoke_next_support import find_secondary_vol_zone
+    except Exception:
+        logger.exception("教具大量撐壓匯入略過")
+        return out
+    try:
+        vf = volume_first_price(rows, lookback=lb) or {}
+    except Exception:
+        logger.exception("教具 volume_first 略過")
+        vf = {}
+    spike_d = _ymd(vf.get("spike_date"))
+    hi = float(vf.get("spike_high") or 0)
+    lo = float(vf.get("spike_low") or 0)
+    if spike_d and hi > 0 and lo > 0 and hi >= lo:
+        i_pri = None
+        for i, r in enumerate(rows):
+            if _ymd(r.get("date")) == spike_d:
+                i_pri = i
+                break
+        out["primary"] = {
+            "date": spike_d,
+            "high": hi,
+            "low": lo,
+            "volume": float(vf.get("spike_vol") or 0),
+            "broke_support": not bool(vf.get("above_support")),
+            "broke_press": bool(vf.get("broke_resistance")),
+        }
+        out["i_primary"] = i_pri
+        out["earliest_ymd"] = spike_d
+    primary = out.get("primary") or {}
+    if not primary:
+        return out
+    close = float((rows[-1] or {}).get("close") or 0)
+    nxt = None
+    try:
+        if primary.get("broke_support"):
+            nxt = find_secondary_vol_zone(
+                rows,
+                direction="below",
+                ref_lo=float(primary["low"]),
+                exclude_date=str(primary.get("date") or ""),
+                lookback=max(lb, 80),
+                close=close,
+                allow_earlier=True,
+            )
+        elif primary.get("broke_press"):
+            nxt = find_secondary_vol_zone(
+                rows,
+                direction="above",
+                ref_hi=float(primary["high"]),
+                exclude_date=str(primary.get("date") or ""),
+                lookback=max(lb, 80),
+                close=close,
+                allow_earlier=True,
+            )
+    except Exception:
+        logger.exception("教具下一層大量區略過")
+        nxt = None
+    if nxt:
+        out["next"] = {
+            "date": _ymd(nxt.get("date")),
+            "high": float(nxt.get("high") or nxt.get("pressure") or 0),
+            "low": float(nxt.get("low") or nxt.get("support") or 0),
+            "direction": str(nxt.get("direction") or ""),
+            "label_hold": str(nxt.get("label_hold") or ""),
+            "label_press": str(nxt.get("label_press") or ""),
+        }
+        nd = _ymd((out["next"] or {}).get("date"))
+        if nd and (not out["earliest_ymd"] or nd < out["earliest_ymd"]):
+            out["earliest_ymd"] = nd
+    return out
+
+
+def _paint_next_layer_vol_zone(
+    ax,
+    *,
+    high: float,
+    low: float,
+    date_lab: str,
+    fp: Any,
+    direction: str = "below",
+) -> None:
+    """下一層大量區灰帶（對齊結構圖下一層；暗底教具可讀）。"""
+    y0, y1 = float(low), float(high)
+    if y1 <= y0:
+        return
+    md = _md(date_lab) if _ymd(date_lab) else ""
+    day_tag = f"{md} " if md else ""
+    ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.20, zorder=0.45)
+    press = f"{day_tag}下一層壓 {_px(y1)}"
+    hold = f"{day_tag}下一層撐 {_px(y0)}"
+    ax.text(
+        0.01,
+        y1,
+        press,
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(8.5, "bold"),
+        color="#cfd8dc",
+        ha="left",
+        va="bottom",
+        zorder=11,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#78909c", lw=0.7, alpha=0.94),
+    )
+    ax.text(
+        0.01,
+        y0,
+        hold,
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(8.5, "bold"),
+        color="#cfd8dc",
+        ha="left",
+        va="top",
+        zorder=11,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#78909c", lw=0.7, alpha=0.94),
+    )
+    _ = direction
+
+
 def _paint_window_dual_zones(
     ax,
     *,
@@ -2434,23 +2587,51 @@ def _paint_window_dual_zones(
     supports: Sequence[float] = (45546.0, 44210.0),
     resists: Sequence[float] = (47637.0, 48613.0),
     skip_label_ys: Optional[Sequence[float]] = None,
+    vol_lookback: int = 40,
+    vol_sr: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """遠／近／超近共用：黃＝最大量日高低、青＝飆預測位階帶（不交疊）；底色在K下層。"""
+    """遠／近／超近共用：黃＝大量撐壓、灰＝下一層大量區、青＝飆預測位階帶；底色在K下層。"""
     n = len(highs)
-    i_vmax: Optional[int] = None
-    if n and any(float(v or 0) > 0 for v in vols):
+    sr_pack = vol_sr if isinstance(vol_sr, dict) else _resolve_teach_vol_sr(
+        bars, lookback=int(vol_lookback or 40)
+    )
+    primary = (sr_pack or {}).get("primary") or {}
+    nxt = (sr_pack or {}).get("next") or {}
+    i_vmax = (sr_pack or {}).get("i_primary")
+    if i_vmax is None and n and any(float(v or 0) > 0 for v in vols):
+        # 備援：窗內絕對最大量（無 volume_first 時仍要有黃帶）
         i_vmax = max(range(n), key=lambda i: float(vols[i] or 0))
+        primary = {
+            "date": _ymd(bars[i_vmax].get("date")),
+            "high": float(highs[i_vmax]),
+            "low": float(lows[i_vmax]),
+        }
     sr = _next_support_resist(float(y_now), supports=supports, resists=resists)
-    y_excl_lo = float(lows[i_vmax]) if i_vmax is not None else None
-    y_excl_hi = float(highs[i_vmax]) if i_vmax is not None else None
-    if i_vmax is not None:
+    y_excl_lo = float(primary["low"]) if primary.get("low") is not None else None
+    y_excl_hi = float(primary["high"]) if primary.get("high") is not None else None
+    if primary.get("high") and primary.get("low"):
         _paint_max_vol_hl_zone(
             ax,
-            high=float(highs[i_vmax]),
-            low=float(lows[i_vmax]),
-            date_lab=_ymd(bars[i_vmax].get("date")),
+            high=float(primary["high"]),
+            low=float(primary["low"]),
+            date_lab=str(primary.get("date") or ""),
             fp=fp,
         )
+    if nxt.get("high") and nxt.get("low"):
+        _paint_next_layer_vol_zone(
+            ax,
+            high=float(nxt["high"]),
+            low=float(nxt["low"]),
+            date_lab=str(nxt.get("date") or ""),
+            fp=fp,
+            direction=str(nxt.get("direction") or "below"),
+        )
+        # 下一層帶也列入青帶避讓
+        try:
+            y_excl_lo = min(float(y_excl_lo), float(nxt["low"])) if y_excl_lo is not None else float(nxt["low"])
+            y_excl_hi = max(float(y_excl_hi), float(nxt["high"])) if y_excl_hi is not None else float(nxt["high"])
+        except (TypeError, ValueError):
+            pass
     # 青位階虛線只畫到末日K右緣；右欄飆預測字在更右，不准字盒壓線
     sr_skip = _paint_next_sr_zone(
         ax,
@@ -2468,6 +2649,7 @@ def _paint_window_dual_zones(
         "i_vmax": i_vmax,
         "y_excl_lo": y_excl_lo,
         "y_excl_hi": y_excl_hi,
+        "vol_sr": sr_pack,
     }
 
 
@@ -2569,8 +2751,10 @@ _LIVE_DOWN = "#26a69a"
 # 遠窗縮圖：絕對 min body=6 對費半／加權價軸幾乎看不見；改跟價窗比例走
 _LIVE_CANDLE_MIN_BODY_FRAC = 0.01
 _FAR_SOX_MIN_BODY_FRAC = 0.018
-# 遠窗固定根數（約 2026-03-31→最新）：含推進⑤＝4/1→6/23；每多一日刪最左
+# 遠窗預設根數（約 2026-03-31→最新）：含推進⑤＝4/1→6/23；每多一日刪最左
+# 若大量撐壓／下一層日期更早 → `_far_teach_bars_keeping_vol_sr` 自動拉長左側
 _FAR_TEACH_MAX_BARS = 152
+_FAR_TEACH_VOL_LOOKBACK = 200
 
 
 def _far_teach_roll_bars(
@@ -2582,6 +2766,110 @@ def _far_teach_roll_bars(
     if len(rows) > cap:
         return rows[-cap:]
     return rows
+
+
+def _remap_teach_vol_sr_index(
+    sr: Dict[str, Any], bars: Sequence[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """切片後重算大量撐壓日索引；日期不在窗內 → i_primary=None（黃帶仍可畫價）。"""
+    out = dict(sr or {})
+    pd = _ymd(((out.get("primary") or {}) or {}).get("date"))
+    out["i_primary"] = None
+    if not pd:
+        return out
+    for i, r in enumerate(bars or []):
+        if _ymd(r.get("date")) == pd:
+            out["i_primary"] = i
+            break
+    return out
+
+
+def _teach_vol_sr_title_bit(
+    vol_sr: Optional[Dict[str, Any]],
+    *,
+    bars: Sequence[Dict[str, Any]] = (),
+    highs: Sequence[float] = (),
+    lows: Sequence[float] = (),
+    i_vmax: Optional[int] = None,
+) -> str:
+    """三窗標題共用：黃＝大量撐壓｜灰＝下一層。"""
+    pri = ((vol_sr or {}).get("primary") or {}) if isinstance(vol_sr, dict) else {}
+    nxt = ((vol_sr or {}).get("next") or {}) if isinstance(vol_sr, dict) else {}
+    if pri.get("date") and pri.get("high") is not None and pri.get("low") is not None:
+        bit = (
+            f"黃＝大量撐壓{_md(pri.get('date'))} "
+            f"{_px(pri.get('high'))}～{_px(pri.get('low'))}"
+        )
+    elif i_vmax is not None and bars and highs and lows:
+        bit = (
+            f"黃＝大量撐壓{_md(bars[int(i_vmax)].get('date'))} "
+            f"{_px(highs[int(i_vmax)])}～{_px(lows[int(i_vmax)])}"
+        )
+    else:
+        bit = "黃＝大量撐壓"
+    if nxt.get("date") and nxt.get("high") is not None and nxt.get("low") is not None:
+        bit += (
+            f"｜灰＝下一層{_md(nxt.get('date'))} "
+            f"{_px(nxt.get('high'))}～{_px(nxt.get('low'))}"
+        )
+    return bit
+
+
+def _far_teach_bars_keeping_vol_sr(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    max_bars: int = _FAR_TEACH_MAX_BARS,
+    vol_lookback: int = _FAR_TEACH_VOL_LOOKBACK,
+    keep_ymds: Sequence[str] = ("20260331", "20260401"),
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """遠窗切片：預設滾動；大量撐壓／下一層／浪階起點若被裁掉 → 左側拉到該日。
+
+    例：要測的撐壓在 3/28，滾動後最左是 4 月底 → 改最左＝3/28、最右＝最近交易日。
+    keep_ymds＝推進⑤起日必須進窗（可超過 max_bars）；撐壓日另由 earliest_ymd 拉。
+    """
+    story = list(bars or [])
+    lb = max(40, int(vol_lookback or _FAR_TEACH_VOL_LOOKBACK))
+    if len(story) > 1:
+        lb = min(lb, len(story) - 1)
+    sr = _resolve_teach_vol_sr(story, lookback=lb)
+    rolled = _far_teach_roll_bars(story, max_bars=max_bars)
+    if not rolled:
+        return rolled, sr
+    need_dates: List[str] = []
+    early = _ymd((sr or {}).get("earliest_ymd"))
+    if early:
+        need_dates.append(early)
+    for raw in keep_ymds or ():
+        kd = _ymd(raw)
+        if not kd:
+            continue
+        if _bar_index_by_ymd(story, kd) is not None:
+            need_dates.append(kd)
+            continue
+        # 缺精確日 → 取第一個 ≥ 該日的交易日
+        for r in story:
+            d = _ymd(r.get("date"))
+            if d and d >= kd:
+                need_dates.append(d)
+                break
+    if not need_dates:
+        return rolled, _remap_teach_vol_sr_index(sr, rolled)
+    need = min(need_dates)
+    left = _ymd(rolled[0].get("date"))
+    if left and need >= left:
+        return rolled, _remap_teach_vol_sr_index(sr, rolled)
+    # 左側拉到最早需求日（可超過 max_bars）
+    i_need = _bar_index_by_ymd(story, need)
+    if i_need is None:
+        for i, r in enumerate(story):
+            d = _ymd(r.get("date"))
+            if d and d >= need:
+                i_need = i
+                break
+    if i_need is None:
+        return rolled, _remap_teach_vol_sr_index(sr, rolled)
+    extended = story[int(i_need) :]
+    return extended, _remap_teach_vol_sr_index(sr, extended)
 _LIVE_LV = (
     ("tx60_down", "#ce93d8", "降軌"),
     ("tx60_swing_hi", "#ffd54f", "近窗高"),
@@ -2851,7 +3139,7 @@ def _paint_max_vol_hl_zone(
     date_lab: str,
     fp: Any,
 ) -> None:
-    """淺黃底＝最大量日那根K的最高～最低；底色 zorder 低於K棒。
+    """淺黃底＝大量撐壓（爆大量日最高～最低）；底色 zorder 低於K棒。
 
     左標一定帶交易日月日，跟金K／量柱黃／豎虛線同一日，不准只寫高低不寫日。
     """
@@ -2865,7 +3153,7 @@ def _paint_max_vol_hl_zone(
     ax.text(
         0.01,
         y1,
-        f"{day_tag}最大量日高 {_px(y1)}",
+        f"{day_tag}大量壓 {_px(y1)}",
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(9, "bold"),
         color="#ffe082",
@@ -2877,7 +3165,7 @@ def _paint_max_vol_hl_zone(
     ax.text(
         0.01,
         y0,
-        f"{day_tag}最大量日低 {_px(y0)}",
+        f"{day_tag}大量撐 {_px(y0)}",
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(9, "bold"),
         color="#ffe082",
@@ -4783,14 +5071,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     bars = _twii_bars_for_teach(db_path, 400, pack)
     if len(bars) < 20 or not save_path:
         return ""
-    # 遠窗故事起點＝3 月底（推進⑤起 4/1 要進窗）
-    i0 = (
-        _bar_index_by_ymd(bars, "20260331")
-        or _bar_index_by_ymd(bars, "20260328")
-        or _bar_index_by_ymd(bars, "20260401")
-        or 0
+    # 預設滾動；大量撐壓／下一層／⑤起日若更早 → 左側自動拉長（最右＝最新）
+    bars, far_vol_sr = _far_teach_bars_keeping_vol_sr(
+        list(bars),
+        max_bars=_FAR_TEACH_MAX_BARS,
+        vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
+        keep_ymds=("20260331", "20260401"),
     )
-    bars = _far_teach_roll_bars(list(bars[i0:]), max_bars=_FAR_TEACH_MAX_BARS)
     mac = _twii_macro_wave_anchors(bars)
     anc = _twii_abc_anchors(bars)  # 近窗細分（右標／預估仍可參考）
     if not mac:
@@ -4828,12 +5115,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     sox_anc = _sox_abc_anchors_on_axis(sox_h, sox_l, sox_c, i5_hint=i5)
     sox_i_now = int(sox_anc["i_now"]) if sox_anc else (n_axis - 1)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
-    # 最大量日＝黃帶定義來源（跟個股一樣：那天K最高～最低）；量只認加權 n_tw，不准造 SOX-only 日量
-    i_vmax = (
-        max(range(n_tw), key=lambda i: float(vols[i] or 0))
-        if n_tw and any(float(v or 0) > 0 for v in vols[:n_tw])
-        else None
-    )
+    # 大量撐壓＝volume_first；無則退窗內最大量。量只認加權 n_tw。
+    i_vmax = far_vol_sr.get("i_primary") if isinstance(far_vol_sr, dict) else None
+    if i_vmax is None and n_tw and any(float(v or 0) > 0 for v in vols[:n_tw]):
+        i_vmax = max(range(n_tw), key=lambda i: float(vols[i] or 0))
 
     # 上費半 / 中加權 / 下加權量
     fig, (axu, ax, axv) = plt.subplots(
@@ -4997,10 +5282,65 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "min_body": max(float(sox_min_body), float(span_raw) * 0.035),
             }
     axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    # 費半大量撐壓：指數無量 → SOXX ETF 量代理對齊同日（標清楚）
+    sox_vol_map = _soxx_volume_by_date(db_path)
+    sox_rows_for_vol: List[Dict[str, Any]] = []
+    for i in range(n_axis):
+        d = (
+            _ymd(bars[i].get("date"))
+            if i < n_tw
+            else (
+                _ymd(sox_extra_dates[i - n_tw])
+                if sox_extra_dates and (i - n_tw) < len(sox_extra_dates)
+                else ""
+            )
+        )
+        if not d:
+            continue
+        if not (
+            i < len(sox_c)
+            and sox_c[i] == sox_c[i]
+            and math.isfinite(float(sox_h[i]))
+            and math.isfinite(float(sox_l[i]))
+        ):
+            continue
+        sox_rows_for_vol.append(
+            {
+                "date": d,
+                "open": float(sox_o[i]) if sox_o[i] == sox_o[i] else float(sox_c[i]),
+                "high": float(sox_h[i]),
+                "low": float(sox_l[i]),
+                "close": float(sox_c[i]),
+                "volume": float(sox_vol_map.get(d) or 0),
+            }
+        )
+    sox_vol_sr = _resolve_teach_vol_sr(
+        sox_rows_for_vol,
+        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(sox_rows_for_vol) - 1)),
+    )
+    if (sox_vol_sr.get("primary") or {}).get("high"):
+        pri = sox_vol_sr["primary"]
+        _paint_max_vol_hl_zone(
+            axu,
+            high=float(pri["high"]),
+            low=float(pri["low"]),
+            date_lab=str(pri.get("date") or ""),
+            fp=_fp,
+        )
+        if (sox_vol_sr.get("next") or {}).get("high"):
+            nxt = sox_vol_sr["next"]
+            _paint_next_layer_vol_zone(
+                axu,
+                high=float(nxt["high"]),
+                low=float(nxt["low"]),
+                date_lab=str(nxt.get("date") or ""),
+                fp=_fp,
+                direction=str(nxt.get("direction") or "below"),
+            )
     axu.text(
         0.012,
         0.04,
-        "費半＝自轉折浪＋他點過回測日低（無官方量→不畫撐壓黃區）",
+        "費半＝自轉折浪＋大量撐壓（量＝SOXX 代理）＋下一層",
         transform=axu.transAxes,
         fontproperties=_fp(8, "bold"),
         color=_LIVE_MUTED,
@@ -5016,11 +5356,6 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # 上下多留：高點浪名在尖上、低點浪名在尖下，不准被裁、也不准回頭蓋K
     ymin = min([min(lows), y5s, y_alow] + list(tw_supports)) - 720
     ymax = max([max(highs), y5e, y_b_end]) + 1100
-    sr = _next_support_resist(
-        y_now,
-        supports=tw_supports,
-        resists=(47637.0, 48613.0, y_b_end, y5e),
-    )
     # 預估端先算：同價只留端點「飆預測」，左青帶／右欄不准再貼一次
     tip_pre = _c_forecast_tip(
         i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, anchors=tip_anchors
@@ -5030,29 +5365,27 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     # 他點過的錨會上右欄 → 左欄不准再貼同價
     skip_lab_ys = list(skip_lab_ys) + [float(v) for v in tip_anchors]
-    # 先黃＝最大量日高低；青＝飆預測位階帶，重疊處不塗青（兩底色不准互疊）
-    y_excl_lo = float(lows[i_vmax]) if i_vmax is not None else None
-    y_excl_hi = float(highs[i_vmax]) if i_vmax is not None else None
-    if i_vmax is not None:
-        _paint_max_vol_hl_zone(
-            ax,
-            high=float(highs[i_vmax]),
-            low=float(lows[i_vmax]),
-            date_lab=_ymd(bars[i_vmax].get("date")),
-            fp=_fp,
-        )
-    sr_skip = _paint_next_sr_zone(
+    # 黃＝大量撐壓、灰＝下一層、青＝飆預測位階帶（兩底色不准互疊）
+    zone = _paint_window_dual_zones(
         ax,
-        support=sr.get("support"),
-        resist=sr.get("resist"),
+        highs=highs,
+        lows=lows,
+        vols=vols,
+        bars=bars,
+        y_now=y_now,
         fp=_fp,
-        exclude_lo=y_excl_lo,
-        exclude_hi=y_excl_hi,
+        supports=tw_supports,
+        resists=(47637.0, 48613.0, y_b_end, y5e),
         skip_label_ys=skip_lab_ys,
-        x_end=float(n) + 0.12,
+        vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
+        vol_sr=far_vol_sr,
     )
+    sr = zone.get("sr") or {}
+    sr_skip = zone.get("sr_skip") or {}
+    if zone.get("i_vmax") is not None:
+        i_vmax = int(zone["i_vmax"])
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
-    # 黃帶對應那一根K＝最大量日：金K＋豎線；「最大量」字只留量欄
+    # 黃帶對應那一根K＝大量撐壓日：金K＋豎線；字只留左標／量欄
     if i_vmax is not None:
         _paint_special_candle(
             ax,
@@ -5495,10 +5828,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             lab.set_fontproperties(_fp(8, "bold"))
             lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
-    vz_y = (
-        f"黃＝最大量{_md(bars[i_vmax].get('date'))} {_px(highs[i_vmax])}～{_px(lows[i_vmax])}"
-        if i_vmax is not None
-        else "黃＝最大量日高低"
+    vz_y = _teach_vol_sr_title_bit(
+        far_vol_sr, bars=bars, highs=highs, lows=lows, i_vmax=i_vmax
     )
     vz_c = (
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
@@ -5511,10 +5842,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
     pred_foot = str(pack.get("pred_note") or "")[:240]
     # 白字標題縮短讓出右上；費半青註改第二行，不准跟黃框互壓
+    left_d = _ymd(bars[0].get("date")) if bars else ""
     fig.text(
         0.05,
         0.975,
-        f"第1張（遠窗・自3月底）：上費半浪｜中加權推進⑤／大ABC｜下加權量　｜　{vz_y}　｜　{vz_c}",
+        f"第1張（遠窗・{_md(left_d) or '自3月底'}→最新）：上費半浪｜中加權推進⑤／大ABC｜下加權量　｜　{vz_y}　｜　{vz_c}",
         fontproperties=_fp(11, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -5801,17 +6133,20 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
-    bars = _twii_bars_for_teach(db_path, 220, pack)
-    if len(bars) < 16 or not save_path:
+    bars_full = _twii_bars_for_teach(db_path, 220, pack)
+    if len(bars_full) < 16 or not save_path:
         return ""
+    # 大量撐壓／下一層＝結構圖同一套（先在完整柱算，再切片畫黃／灰帶）
+    near_vol_sr = _resolve_teach_vol_sr(bars_full, lookback=40)
     # 近窗＝大結構特寫：從⑤起入窗，⑤／A／B 起末與遠窗／縮圖同一日曆
     i0 = (
-        _bar_index_by_ymd(bars, "20260401")
-        or _bar_index_by_ymd(bars, "20260331")
-        or _bar_index_by_ymd(bars, "20260325")
+        _bar_index_by_ymd(bars_full, "20260401")
+        or _bar_index_by_ymd(bars_full, "20260331")
+        or _bar_index_by_ymd(bars_full, "20260325")
         or 0
     )
-    bars = list(bars[i0:])
+    bars = list(bars_full[i0:])
+    near_vol_sr = _remap_teach_vol_sr_index(near_vol_sr, bars)
     mac = _twii_macro_wave_anchors(bars)
     if not mac:
         return ""
@@ -5873,7 +6208,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     # 他點錨走右欄 → 左欄不准再貼同價壓虛線
     skip_lab_ys = list(skip_lab_ys) + [float(v) for v in tip_anchors]
-    # 與遠窗同一套雙底色（黃＝最大量日高低、青＝飆預測位階帶）
+    # 與遠窗同一套雙底色（黃＝大量撐壓、灰＝下一層、青＝飆預測位階帶）
     zone = _paint_window_dual_zones(
         ax,
         highs=highs,
@@ -5885,6 +6220,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         supports=tw_supports,
         resists=(47637.0, 48613.0, y_b_end, y5e),
         skip_label_ys=skip_lab_ys,
+        vol_lookback=40,
+        vol_sr=near_vol_sr,
     )
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
@@ -6222,10 +6559,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     title_bit = str(ladder.get("now") or "").strip() or "現在在C（預估）"
     if len(title_bit) > 22:
         title_bit = title_bit[:21] + "…"
-    vz_y = (
-        f"黃＝最大量{_md(bars[int(i_vmax)].get('date'))} {_px(highs[int(i_vmax)])}～{_px(lows[int(i_vmax)])}"
-        if i_vmax is not None
-        else "黃＝最大量日高低"
+    vz_y = _teach_vol_sr_title_bit(
+        zone.get("vol_sr") or near_vol_sr,
+        bars=bars,
+        highs=highs,
+        lows=lows,
+        i_vmax=i_vmax,
     )
     vz_c = (
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
@@ -6317,17 +6656,20 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
-    bars = _twii_bars_for_teach(db_path, 120, pack)
-    if len(bars) < 16 or not save_path:
+    bars_full = _twii_bars_for_teach(db_path, 220, pack)
+    if len(bars_full) < 16 or not save_path:
         return ""
+    # 大量撐壓／下一層＝結構圖同一套（完整柱算完再裁超近窗）
+    micro_vol_sr = _resolve_teach_vol_sr(bars_full, lookback=40)
     # 資料窗仍留⑤錨（鐵律要⑤）；畫面 xlim 再裁到 B／C 超級近窗
     i0 = (
-        _bar_index_by_ymd(bars, "20261006")
-        or _bar_index_by_ymd(bars, "20260929")
-        or _bar_index_by_ymd(bars, "20260925")
+        _bar_index_by_ymd(bars_full, "20261006")
+        or _bar_index_by_ymd(bars_full, "20260929")
+        or _bar_index_by_ymd(bars_full, "20260925")
         or 0
     )
-    bars = list(bars[i0:])
+    bars = list(bars_full[i0:])
+    micro_vol_sr = _remap_teach_vol_sr_index(micro_vol_sr, bars)
     anc = _twii_abc_anchors(bars)
     if not anc:
         return ""
@@ -6403,6 +6745,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         supports=tw_supports,
         resists=(47637.0, 48613.0, y_bhi),
         skip_label_ys=_skip_left,
+        vol_lookback=40,
+        vol_sr=micro_vol_sr,
     )
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
@@ -6812,10 +7156,12 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
-    vz_y = (
-        f"黃＝最大量{_md(bars[int(i_vmax)].get('date'))} {_px(highs[int(i_vmax)])}～{_px(lows[int(i_vmax)])}"
-        if i_vmax is not None
-        else "黃＝最大量日高低"
+    vz_y = _teach_vol_sr_title_bit(
+        zone.get("vol_sr") or micro_vol_sr,
+        bars=bars,
+        highs=highs,
+        lows=lows,
+        i_vmax=i_vmax,
     )
     vz_c = (
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
