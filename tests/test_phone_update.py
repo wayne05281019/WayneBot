@@ -153,3 +153,31 @@ def test_push_phone_update_starting_then_done_dedupe(tmp_path, monkeypatch):
     remember_notified_sha(sha, note="早報舊回執放行並閃過融合")
     assert should_notify_phone_update_start(sha) is False
     assert should_notify_phone_update(sha, note="早報舊回執放行並閃過融合") is False
+
+
+def test_start_same_note_different_sha_does_not_renotify(tmp_path, monkeypatch):
+    """同句「正在更新」口語換 SHA 不准再推（20:37／20:42 雙推）。"""
+    monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr("bot_servers.skip_telegram_polling", lambda: False)
+    from bot_servers import (
+        remember_started_sha,
+        should_notify_phone_update_start,
+    )
+
+    note = "開機會先說正在更新什麼，好了再說更新完成"
+    remember_started_sha("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", note=note)
+    assert (
+        should_notify_phone_update_start(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", note=note
+        )
+        is False
+    )
+    assert (
+        should_notify_phone_update_start(
+            "cccccccccccccccccccccccccccccccccccccccc",
+            note="更新通知改講人話，不再推內部說明句",
+        )
+        is True
+    )
