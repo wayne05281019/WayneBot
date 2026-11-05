@@ -5870,9 +5870,14 @@ def _paint_sox_thesis_preds(
         ref = _ymd(row.get("ref_ymd"))
         lab = str(row.get("label") or f"費{_px(lv)}")
         col = "#ffab40" if "已破" in str(row.get("tag") or lab) else "#4dd0e1"
+        role = str(row.get("role") or "")
         ii = _bar_index_by_ymd(bars, ref) if ref else None
-        if ii is not None and 0 <= ii < len(sox_l):
-            # 回測日金K＋豎導線（對齊大量圖：看得到那一根）
+        # 只在「次回測／再回測」日畫金K＋豎線；A波低本身已有浪名，不准再豎一條誤導成大量日
+        if (
+            role in {"次回測", "再回測"}
+            and ii is not None
+            and 0 <= ii < len(sox_l)
+        ):
             oo = float(sox_o[ii]) if ii < len(sox_o) else lv
             hh = float(sox_h[ii]) if ii < len(sox_h) else lv
             ll = float(sox_l[ii]) if math.isfinite(float(sox_l[ii])) else lv
@@ -6347,7 +6352,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         bbox=dict(boxstyle="round,pad=0.16", fc="#0b0f14", ec="#546e7a", lw=0.65, alpha=0.92),
     )
 
-    # —— 次上：台指電子盤（夜盤日K＋大量撐壓／下一層／青帶／即時末K）——
+    # —— 次上：台指電子盤（夜盤日K＋大量撐壓／下一層／即時末K）——
+    # 鎖死：電子盤撐壓只認大量規則（volume_first＋破後次大量）；
+    # 題旨沒有他講死的電子盤下一撐，不准套加權／費半 pred_levels。
     _tx_last_repaint: Optional[Dict[str, Any]] = None
     _tx_right_notes: List[Dict[str, Any]] = []
     _tx_ylabel_span: Optional[Tuple[float, float]] = None
@@ -6640,10 +6647,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         date_next=_ymd(((far_vol_sr or {}).get("next") or {}).get("date")),
         fp=_fp,
     )
-    # 底色：藍＝推進⑤；金＝大B；紫＝大C
-    ax.axvspan(i5s - 0.4, i5e + 0.4, facecolor="#40c4ff", alpha=0.06, zorder=0.2)
-    ax.axvspan(i_alow - 0.2, i_b_end + 0.4, facecolor="#ffd54f", alpha=0.05, zorder=0.2)
-    ax.axvspan(i_c - 0.2, n - 0.2, facecolor="#ea80fc", alpha=0.05, zorder=0.2)
+    # 遠窗不加權浪段大底色（⑤／B／C axvspan）：兩大塊半透底圖擋K，只留折線
     # 推進⑤：4/1→6/23（藍實線）
     ax.plot([i5s, i5e], [y5s, y5e], color="#40c4ff", lw=2.6, zorder=7)
     # 大A：6/23→7/29（粉）
@@ -7163,17 +7167,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 三戳偏右下但讓出右標欄；避讓撐壓底色＋右標價位
+    # 三戳：共用同一個 figure 右緣 x（ha=right → 框右邊對齊），Y 各自避讓
+    _stamp_clear = 0.26
     _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_bottom_right(
         axu,
         fig,
+        right_clear_frac=_stamp_clear,
         avoid_spans=_vol_sr_avoid_spans(sox_vol_sr),
         avoid_ys=[float(n.get("y")) for n in (_sox_right_deferred or []) if n.get("y") is not None],
     )
     _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_bottom_right(
         axt,
         fig,
-        right_clear_frac=0.30,
+        right_clear_frac=_stamp_clear,
         avoid_spans=_vol_sr_avoid_spans(tx_vol_sr),
         avoid_ys=[float(n.get("y")) for n in (_tx_right_notes or []) if n.get("y") is not None],
     )
@@ -7186,9 +7192,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_bottom_right(
         ax,
         fig,
+        right_clear_frac=_stamp_clear,
         avoid_spans=_tw_avoid,
         avoid_ys=[float(n.get("y")) for n in (right_notes or []) if n.get("y") is not None],
     )
+    # 強制三戳同一右緣（取最右合法錨，避免某一欄 clear 漂掉）
+    try:
+        _pos_r = float(ax.get_position().x0) + float(ax.get_position().width) * (
+            1.0 - float(_stamp_clear)
+        )
+    except Exception:
+        _pos_r = max(float(_sox_stamp_x), float(_tx_stamp_x), float(_tw_stamp_x))
+    _stamp_right_x = float(_pos_r)
     if _sox_chg_tip:
         _paint_index_last_chg_tip(
             fig,
@@ -7196,7 +7211,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_sox_chg_tip.get("prev"),
             label_prefix="費半",
             fp=_fp,
-            x=_sox_stamp_x,
+            x=_stamp_right_x,
             y=_sox_stamp_y,
             ha="right",
             va="bottom",
@@ -7212,7 +7227,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_tx_chg_tip.get("prev"),
             label_prefix="台指電子盤",
             fp=_fp,
-            x=_tx_stamp_x,
+            x=_stamp_right_x,
             y=_tx_stamp_y,
             ha="right",
             va="bottom",
@@ -7235,7 +7250,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_tx_chg_tip.get("prev"),
             label_prefix=str(_tx_chg_tip.get("label") or "台指電子盤"),
             fp=_fp,
-            x=_tx_stamp_x,
+            x=_stamp_right_x,
             y=_tx_stamp_y,
             ha="right",
             va="bottom",
@@ -7248,7 +7263,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pack=pack,
         close=closes[-1],
         fp=_fp,
-        x=_tw_stamp_x,
+        x=_stamp_right_x,
         y=_tw_stamp_y,
         ha="right",
         va="bottom",

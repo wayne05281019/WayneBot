@@ -266,6 +266,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _paint_vol_sr_day_guides" in src
     assert "_VOL_SR_GUIDE_NEXT" in src
     assert "_paint_max_vol_day_guide((axu, axt, ax, axv)" not in far_blk
+    # 三戳同一右緣；加權不加浪段大底色；費A低不准豎導
+    assert "_stamp_right_x" in far_blk
+    assert 'facecolor="#40c4ff", alpha=0.06' not in far_blk
+    assert 'facecolor="#ea80fc", alpha=0.05' not in far_blk
+    assert '"次回測", "再回測"' in src or "'次回測', '再回測'" in src
+    # 電子盤撐壓只認大量規則，不准套題旨 pred_levels
+    assert "電子盤撐壓只認大量規則" in far_blk
     assert "_paint_tx_after_hours_tip" in far_blk
     assert "_TEACH_STAMP_EDGE_TX" in src
     assert "def _resolve_tx_after_hours_tip" in src
