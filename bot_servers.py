@@ -1999,6 +1999,27 @@ class WayneTelegramBot:
             self._menu_pin_at = {}
         self._menu_pin_at[key] = time.monotonic()
 
+    def _unstick_biaoke_when_pinning_main(self, actor: str) -> None:
+        """釘主選單＝離開飆大視窗。不准鍵盤已是主選單、pending 還卡 biaoke:chat。"""
+        key = str(actor or "")
+        if not key:
+            return
+        pending = getattr(self, "_pending", None)
+        if pending is None:
+            return
+        cur = str(pending.get(key) or "")
+        if cur in ("biaoke:chat", "biaoke:ask"):
+            try:
+                pending.pop(key, None)
+            except Exception:
+                pass
+            hist = getattr(self, "_biaoke_hist", None)
+            if hist is not None:
+                try:
+                    hist.pop(key, None)
+                except Exception:
+                    pass
+
     async def _pin_reply_menu(self, message) -> None:
         """把兩排主選單釘在輸入框區；訊息必須留下，刪掉會讓許多客戶端把鍵盤一起收掉。
 
@@ -2007,6 +2028,7 @@ class WayneTelegramBot:
         同一人冷卻內最多一則「主選單已掛上」，避免海選 LOADING 與 /menu 連刷。
         """
         actor = self._actor_key(message)
+        self._unstick_biaoke_when_pinning_main(actor)
         if self._menu_pin_is_fresh(actor):
             return
         prev = getattr(self, "_menu_pin_msgs", None)
@@ -2062,6 +2084,7 @@ class WayneTelegramBot:
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
         actor = self._actor_key(message, uid=uid)
+        self._unstick_biaoke_when_pinning_main(actor)
         text = (
             "兩排已更新：第一排勝率買點…資金輪動，第二排波浪位階／沖區…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
