@@ -3660,10 +3660,10 @@ class MainRunner:
         return bool((not notify) or sent_ok)
 
     def run_midday_review(self, skip_if_done: bool = True) -> bool:
-        """開市日 12:45 雙時段比價：白名單只寄一次。
+        """雙時段比價函式體保留供單測／手動；排程／補跑／死人開關已永久不呼叫。
 
         內容＝今早 06:30 剛離零＋還在零，開盤 vs 約 12:45 現價。
-        準點／catch-up／watchdog／CLI／重開都走這裡。無論 skip_if_done，
+        準點排程已刪；若手動 CLI 仍走這裡。無論 skip_if_done，
         都必須先原子搶 midday-{as_of}；已 success 或未明確失敗的 running 一律不寄。
         skip_if_done 保留相容，不再允許無鎖強寄（#469 鎖死）。
         """

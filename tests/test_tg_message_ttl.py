@@ -271,10 +271,10 @@ def test_purge_source_does_not_touch_schedulers():
     assert "save_actor_pending" not in src
 
 
-def test_clock_windows_cover_morning_midday_fuse_dc_midnight():
-    """早報／12:45 海選／融合／DC／午夜 disk_guard 鐘點都要略過。"""
+def test_clock_windows_cover_morning_fuse_dc_midnight():
+    """早報／融合／DC／午夜 disk_guard 鐘點都要略過；12:45 比價已停用不佔重窗。"""
     assert ttl._mins_in_heavy_window(6 * 60 + 30) is True
-    assert ttl._mins_in_heavy_window(12 * 60 + 45) is True
+    assert ttl._mins_in_heavy_window(12 * 60 + 45) is False
     assert ttl._mins_in_heavy_window(16 * 60 + 30) is True
     assert ttl._mins_in_heavy_window(3 * 60 + 30) is True
     assert ttl._mins_in_heavy_window(0) is True

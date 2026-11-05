@@ -64,8 +64,8 @@ def test_render_data_role_pushes_morning(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     assert config.scheduler_owns("morning") is True
     assert config.scheduler_may_push("morning") is True
-    assert config.scheduler_owns("midday") is True
-    assert config.scheduler_may_push("midday") is True
+    assert config.scheduler_owns("midday") is False
+    assert config.scheduler_may_push("midday") is False
     assert config.scheduler_owns("fuse") is True
     assert config.scheduler_may_push("fuse") is False
     assert config.scheduler_owns("evening") is True
@@ -79,7 +79,7 @@ def test_main_scheduler_slots_match_clocks():
     assert '(2, 45, "open_check")' in src
     assert '(3, 0, "dc_sf_silent")' in src
     assert '(6, 30, "morning")' in src
-    assert '(12, 45, "midday")' in src
+    assert '(12, 45, "midday")' not in src
     assert '(16, 30, "fuse")' in src
     assert '(20, 0, "evening")' in src
     assert '(21, 0, "winrate")' in src
@@ -92,7 +92,7 @@ def test_main_scheduler_slots_match_clocks():
     assert "WAYNE_SCREEN_NOTIFY=0 不寄" in header
     assert "Render 常駐 06:30" not in header
     runner = _read("main_runner.py")
-    for clock in ("06:30", "12:45", "16:30", "20:00", "21:00"):
+    for clock in ("06:30", "16:30", "20:00", "21:00"):
         assert clock in runner or clock in src, clock
     assert "不是海選" in runner
     assert HELP_TOPICS == {}

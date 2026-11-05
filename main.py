@@ -881,12 +881,7 @@ def catch_up_missed_jobs(now=None) -> None:
         return
     need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
-    # 尾盤補寄：準點 12:45 歸排程；補跑從 12:46 起，避免與準點同一分鐘雙寄。
-    # 過了 13:30「現在要做的事」已過期；晚上重開不准再丟。
-    need_midday = (
-        scheduler_owns("midday")
-        and (12 * 60 + 46) <= mins < (13 * 60 + 30)
-    )
+    # 雙時段比價（原 12:45 midday）已永久停用：不准補跑、不准再寄。
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
     # 準點／過 21:00：補寄。另：盤後基準日名單不是現行藍▲掃（card_lz_paint）
     # → 重開立刻補掃並推，不必空等 21:00（錯推更正／部署後重推）。
@@ -914,7 +909,7 @@ def catch_up_missed_jobs(now=None) -> None:
         except Exception:
             logger.exception("補跑 dc_sf_silent 失敗（不擋）")
     if not any(
-        (need_fuse, need_morning, need_midday, need_evening, need_winrate, need_open_check)
+        (need_fuse, need_morning, need_evening, need_winrate, need_open_check)
     ):
         # 平日重開也要確保最新完整日有海選快取（例如 pipeline success 但 sessions 被清掉）。
         _ensure_screen_cache(runner)
@@ -1004,13 +999,6 @@ def catch_up_missed_jobs(now=None) -> None:
             runner.run_increment_job(
                 skip_if_done=True, notify=scheduler_may_push("fuse")
             )
-    if need_midday:
-        try:
-            runner.reconcile_push_deliveries(prefix="midday-")
-        except Exception:
-            logger.exception("補跑 midday reconcile 失敗（不擋）")
-        logger.info("補跑：已過台灣 12:45，若尾盤可切沒寄過就補寄")
-        runner.run_midday_review(skip_if_done=True)
     if need_evening:
         logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
         runner.run_evening_screen(skip_if_done=True, notify=False)
@@ -1061,12 +1049,11 @@ def catch_up_missed_jobs(now=None) -> None:
 _RETRYABLE_WATCHDOG = {
     "increment": "fuse",
     "morning_screen": "morning",
-    "midday_review": "midday",
 }
 
 
 def retry_missed_owned_jobs(now=None) -> list:
-    """死人開關先補跑本行程擁有的融合／海選／尾盤，再決定要不要告警。不重試 Release zip。"""
+    """死人開關先補跑本行程擁有的融合／海選，再決定要不要告警。不重試 Release zip。"""
     from config import get_db_path, scheduler_may_push, scheduler_owns
     from main_runner import MainRunner
     from ops_watchdog import missed_jobs
@@ -1075,8 +1062,8 @@ def retry_missed_owned_jobs(now=None) -> list:
     kinds = {m["kind"] for m in missed}
     ran: list = []
     runner = None
-    # 先融合再海選再尾盤，名單才吃得到剛補上的收盤。
-    for kind in ("increment", "morning_screen", "midday_review"):
+    # 先融合再海選，名單才吃得到剛補上的收盤。（雙時段比價已停用）
+    for kind in ("increment", "morning_screen"):
         if kind not in kinds:
             continue
         job = _RETRYABLE_WATCHDOG[kind]
@@ -1086,13 +1073,6 @@ def retry_missed_owned_jobs(now=None) -> list:
         logger.info("死人開關補跑 %s", kind)
         if kind == "morning_screen":
             runner.run_morning_screen(skip_if_done=True)
-        elif kind == "midday_review":
-            now = now or _taipei_now()
-            mins = now.hour * 60 + now.minute
-            if mins >= 13 * 60 + 30:
-                logger.info("尾盤已過 13:30，死人開關不補寄 12:45")
-                continue
-            runner.run_midday_review(skip_if_done=True)
         else:
             now = now or _taipei_now()
             mins = now.hour * 60 + now.minute
@@ -1148,7 +1128,9 @@ def run_scheduled_job(kind: str) -> None:
     if kind == "morning":
         runner.run_morning_screen(skip_if_done=True, notify=push)
     elif kind == "midday":
-        runner.run_midday_review(skip_if_done=True)
+        # 雙時段比價已永久停用；舊呼叫／殘鍵一律略過，不准再寄。
+        logger.info("排程 midday 已停用，略過")
+        return
     elif kind == "evening":
         runner.run_evening_screen(skip_if_done=True, notify=False)
     elif kind == "winrate":
@@ -1162,7 +1144,7 @@ def run_scheduled_job(kind: str) -> None:
             logger.exception("排程 open_check 失敗（不擋）")
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
-    if kind in ("morning", "midday", "fuse", "evening", "winrate", "typhoon", "open_check"):
+    if kind in ("morning", "fuse", "evening", "winrate", "typhoon", "open_check"):
         try:
             from biaoke_ingest import run_biaoke_ingest_quiet
 
@@ -1190,7 +1172,7 @@ def start_daily_scheduler():
         logger.info("WAYNE_SCHEDULER_ROLE=off：本行程不跑任何排程")
         return None
     logger.info(
-        "排程角色 %s（data＝常駐寄 06:30 海選與 12:45 尾盤；GHA 只算名單不寄）",
+        "排程角色 %s（data＝常駐寄 06:30 海選；雙時段比價已停用；GHA 只算名單不寄）",
         role,
     )
 
@@ -1200,11 +1182,11 @@ def start_daily_scheduler():
         now = _taipei_now()
         # open_check＝02:45（輕）；dc_sf_silent＝03:00（03:00–04:00 窗；與飆大 01:00 錯開）
         # 盤後彙整已錯開官方融合：17:40／18:50／22:30（見 biaoke_absorb）
+        # 雙時段比價（原 12:45 midday）已永久刪除，不准再排。
         slots = (
             (2, 45, "open_check"),
             (3, 0, "dc_sf_silent"),
             (6, 30, "morning"),
-            (12, 45, "midday"),
             (16, 30, "fuse"),
             (20, 0, "evening"),
             (21, 0, "winrate"),
@@ -1232,7 +1214,7 @@ def start_daily_scheduler():
         return best
 
     def _loop():
-        # 長睡若被前一檔拖過 06:30，下一檔要到 12:45 才醒，開市日早報會漏。
+        # 長睡若被前一檔拖過 06:30，下一檔要到 16:30 才醒，開市日早報會漏。
         # 每輪先補跑、睡眠切片，漏了就在下一分鐘內補寄（§14）。
         _slice_s = 60.0
         # §14：orphan morning／increment claim 必須開機立刻降，不准空等 180s 聽筒窗才清。
@@ -1340,7 +1322,6 @@ def start_watchdog():
                     from main_runner import MainRunner
 
                     _wd = MainRunner()
-                    _wd.reconcile_push_deliveries(prefix="midday-")
                     _wd.reconcile_push_deliveries(prefix="screen-")
                 except Exception:
                     logger.exception("死人開關 reconcile 失敗")

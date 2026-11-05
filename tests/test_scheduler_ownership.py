@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config  # noqa: E402
 import main  # noqa: E402
 
-ALL_JOBS = ("morning", "midday", "fuse", "evening", "winrate", "typhoon", "open_check")
+ALL_JOBS = ("morning", "fuse", "evening", "winrate", "typhoon", "open_check")
+RETIRED_JOBS = ("midday",)
 
 
 def test_default_role_is_data(monkeypatch):
@@ -48,10 +49,14 @@ def test_data_role_pushes_morning_on_resident(monkeypatch):
     assert config.scheduler_may_push("morning") is True
 
 
-def test_data_role_keeps_midday_because_gha_has_no_such_cron(monkeypatch):
+def test_data_role_midday_retired(monkeypatch):
+    """雙時段比價已永久停用：任何角色都不擁有／不推 midday。"""
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    assert config.scheduler_owns("midday") is True
-    assert config.scheduler_may_push("midday") is True
+    assert config.scheduler_owns("midday") is False
+    assert config.scheduler_may_push("midday") is False
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    assert config.scheduler_owns("midday") is False
+    assert config.scheduler_may_push("midday") is False
 
 
 def test_data_role_pushes_winrate_at_2100(monkeypatch):
@@ -69,7 +74,7 @@ def test_data_role_refreshes_silently(monkeypatch):
 
 def test_off_role_owns_nothing(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "off")
-    for job in ALL_JOBS:
+    for job in ALL_JOBS + RETIRED_JOBS:
         assert config.scheduler_owns(job) is False
         assert config.scheduler_may_push(job) is False
 
@@ -79,6 +84,9 @@ def test_full_role_owns_everything(monkeypatch):
     for job in ALL_JOBS:
         assert config.scheduler_owns(job) is True
         assert config.scheduler_may_push(job) is True
+    for job in RETIRED_JOBS:
+        assert config.scheduler_owns(job) is False
+        assert config.scheduler_may_push(job) is False
 
 
 def test_every_job_has_exactly_one_pusher(monkeypatch):
@@ -88,7 +96,7 @@ def test_every_job_has_exactly_one_pusher(monkeypatch):
     local_pushers = {j for j in ALL_JOBS if config.scheduler_may_push(j)}
     assert local_pushers & gha_telegram_jobs == set()
     assert "morning" in local_pushers
-    assert "midday" in local_pushers
+    assert "midday" not in local_pushers
     assert "winrate" in local_pushers
     assert "open_check" not in local_pushers
 
@@ -158,10 +166,13 @@ def test_dispatch_runs_typhoon_on_data_role(monkeypatch, recorder):
     assert [c[0] for c in recorder.calls] == ["typhoon"]
 
 
-def test_dispatch_runs_owned_job(monkeypatch, recorder):
+def test_dispatch_skips_retired_midday(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     main.run_scheduled_job("midday")
-    assert [c[0] for c in recorder.calls] == ["midday"]
+    assert recorder.calls == []
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    main.run_scheduled_job("midday")
+    assert recorder.calls == []
 
 
 def test_dispatch_silences_fuse_in_data_role(monkeypatch, recorder):
@@ -315,15 +326,16 @@ def test_watchdog_loop_retries_before_alert():
 
     src = inspect.getsource(main.start_watchdog)
     assert "retry_missed_owned_jobs" in src
-    # 告警前先 reconcile 已寄回執，避免 midday／早報誤報「無紀錄」
+    # 告警前先 reconcile 已寄回執，避免早報誤報「無紀錄」
     assert "reconcile_push_deliveries" in src
     assert src.index("reconcile_push_deliveries") < src.index("retry_missed_owned_jobs")
-    assert 'prefix="midday-"' in src and 'prefix="screen-"' in src
+    assert 'prefix="screen-"' in src
+    assert 'prefix="midday-"' not in src
     body = inspect.getsource(main.retry_missed_owned_jobs)
     assert "release_publish" not in body
     assert "run_morning_screen" in body
     assert "run_increment_job" in body
-    assert "run_midday_review" in body
+    assert "run_midday_review" not in body
 
 
 def test_watchdog_retry_runs_morning_before_alert(monkeypatch, recorder):
@@ -381,7 +393,7 @@ def test_watchdog_retry_skips_fuse_before_0630(monkeypatch, recorder):
     assert "fuse" not in [c[0] for c in recorder.calls]
 
 
-def test_watchdog_retry_runs_midday_before_alert(monkeypatch, recorder):
+def test_watchdog_retry_ignores_retired_midday(monkeypatch, recorder):
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -392,60 +404,24 @@ def test_watchdog_retry_runs_midday_before_alert(monkeypatch, recorder):
         lambda *_a, **_k: [{"kind": "midday_review", "run_date": "midday-20260908"}],
     )
     now = datetime(2026, 9, 22, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
-    ran = main.retry_missed_owned_jobs(now)
-    assert ran == ["midday_review"]
-    assert [c[0] for c in recorder.calls] == ["midday"]
-    assert recorder.calls[0][1]["skip_if_done"] is True
-
-
-def test_watchdog_retry_skips_midday_after_1330(monkeypatch, recorder):
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
-    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
-    monkeypatch.setattr(
-        "ops_watchdog.missed_jobs",
-        lambda *_a, **_k: [{"kind": "midday_review", "run_date": "midday-20260908"}],
-    )
-    now = datetime(2026, 9, 22, 20, 47, tzinfo=ZoneInfo("Asia/Taipei"))
     ran = main.retry_missed_owned_jobs(now)
     assert ran == []
     assert recorder.calls == []
 
 
-def test_catch_up_midday_only_in_tail_window(monkeypatch, recorder):
+def test_catch_up_never_runs_retired_midday(monkeypatch, recorder):
+    """雙時段比價已刪：12:45／12:46／13:00 補跑都不再觸發 midday。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    now = datetime(2026, 9, 22, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
-    main.catch_up_missed_jobs(now)
-    assert [c[0] for c in recorder.calls] == ["open_check", "morning", "midday"]
-    assert recorder.calls[-1][1]["skip_if_done"] is True
-
-
-def test_catch_up_skips_midday_at_exact_1245(monkeypatch, recorder):
-    """12:45 準點歸排程；補跑從 12:46 才開，避免與準點同一分鐘雙寄。"""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
-    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    now = datetime(2026, 9, 22, 12, 45, tzinfo=ZoneInfo("Asia/Taipei"))
-    main.catch_up_missed_jobs(now)
-    kinds = [c[0] for c in recorder.calls]
-    assert "midday" not in kinds
-    assert "morning" in kinds
-
-
-def test_catch_up_midday_from_1246(monkeypatch, recorder):
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
-    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    now = datetime(2026, 9, 22, 12, 46, tzinfo=ZoneInfo("Asia/Taipei"))
-    main.catch_up_missed_jobs(now)
-    assert "midday" in [c[0] for c in recorder.calls]
+    for hm in ((12, 45), (12, 46), (13, 0)):
+        recorder.calls.clear()
+        now = datetime(2026, 9, 22, hm[0], hm[1], tzinfo=ZoneInfo("Asia/Taipei"))
+        main.catch_up_missed_jobs(now)
+        kinds = [c[0] for c in recorder.calls]
+        assert "midday" not in kinds
+        assert "morning" in kinds
 
 
 def test_catch_up_winrate_after_2100(monkeypatch, recorder):
