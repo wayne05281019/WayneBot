@@ -415,3 +415,75 @@ def test_render_lookup_intraday_applies_live_quote():
     src = inspect.getsource(render_lookup_intraday_result)
     assert "apply_live_quote_to_series" in src
     assert "live_quote" in src
+
+
+def test_resolve_session_official_uses_prev_plus_live_when_today_missing(monkeypatch):
+    """上市盤中 STOCK_DAY 尚無今日列（6442）→ 上一日＋live，不准整張沒圖。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import intraday_open_close_chart as ioc
+
+    today = "20261105"
+    yest = "20261104"
+    scaffold = ioc.OfficialDay(
+        stock_id="6442",
+        open=1155.0,
+        high=1160.0,
+        low=1045.0,
+        close=1130.0,
+        prev_close=1140.0,
+        volume_lots=2863.0,
+        turnover_k=3171848.0,
+        avg_price=1107.0,
+        pct_change=-0.88,
+        change=-10.0,
+        amplitude_pct=10.0,
+        q_avg_vol_lots=2500.0,
+        w52_high=2540.0,
+        w52_low=857.0,
+        source="twse:STOCK_DAY",
+        close_label="收盤",
+        prev_volume_lots=2143.0,
+        prev_turnover_k=2526456.0,
+    )
+    live = {
+        "stock_id": "6442",
+        "open": 1110.0,
+        "high": 1150.0,
+        "low": 1040.0,
+        "close": 1097.5,
+        "volume": 1517.0,
+        "pct_change": -2.88,
+        "change": -32.5,
+        "yesterday_close": 1130.0,
+        "update_time": "12:01:56",
+        "is_realtime": True,
+    }
+
+    def _fake_fetch(sid, market, *, ymd, db_path):
+        if ymd == today:
+            return None
+        if ymd == yest:
+            return scaffold
+        return None
+
+    monkeypatch.setattr(ioc, "fetch_official", _fake_fetch)
+    monkeypatch.setattr(
+        "tw_holidays.previous_tw_trading_day", lambda ymd, *_a, **_k: yest
+    )
+    got = ioc.resolve_session_official_day(
+        "6442", "TW", ymd=today, db_path=":memory:", live_quote=live
+    )
+    assert got is not None
+    assert got.close == 1097.5
+    assert got.open == 1110.0
+    assert got.prev_close == 1130.0
+    assert got.close_label == "現價"
+    assert "+live" in got.source or got.source == "live_quote"
+
+
+def test_prepare_lookup_accepts_live_quote_kw():
+    src = inspect.getsource(prepare_lookup_intraday_series)
+    assert "live_quote" in src
+    assert "build_series" in src

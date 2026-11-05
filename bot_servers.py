@@ -10614,6 +10614,8 @@ class WayneTelegramBot:
                         card=card if isinstance(card, dict) else None,
                         hits=hits,
                         asof_ymd=asof or None,
+                        # 盤中常尚無今日日收列（6442）；prep 就要帶 live，不准等 paint 才發現 official-miss
+                        live_quote=live_rt if isinstance(live_rt, dict) else None,
                     )
                 except Exception:
                     logger.exception("查股當天走勢 prep 失敗 code=%s", code)
