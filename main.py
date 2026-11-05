@@ -523,6 +523,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         - POST /ops/repair-market-db：缺 daily_quotes／壞庫時裝 Release＋救私人／飆大
         - POST /ops/disk-audit：只讀碟分項＋.corrupt-* 救援副本估量（不刪）
         - POST /ops/purge-rebuildable-disk：只刪確定可重建快取／過期教具
+        - POST /ops/purge-corrupt-keep：只刪未列在 keep 的 .corrupt-*（正式庫永不刪）
         """
         import json
 
@@ -532,6 +533,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             "/ops/repair-market-db",
             "/ops/disk-audit",
             "/ops/purge-rebuildable-disk",
+            "/ops/purge-corrupt-keep",
         ):
             self.send_response(404)
             self.end_headers()
@@ -667,6 +669,33 @@ class HealthHandler(BaseHTTPRequestHandler):
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
+            elif route == "/ops/purge-corrupt-keep":
+                from disk_guard import purge_corrupt_copies_keeping
+                from config import get_db_path
+
+                keep = req_json.get("keep") or []
+                if not isinstance(keep, list):
+                    keep = []
+                confirm = bool(req_json.get("confirm"))
+                logger.info(
+                    "ops /ops/purge-corrupt-keep confirm=%s keep=%s",
+                    confirm,
+                    keep,
+                )
+                purged = purge_corrupt_copies_keeping(
+                    get_db_path(),
+                    keep_names=keep,
+                    confirm=confirm,
+                )
+                result = {
+                    "ok": bool(purged.get("ok")),
+                    "deleted": bool(purged.get("deleted")),
+                    "kind": "corrupt_keep",
+                    "result": purged,
+                    "note": "只刪未列 keep 的 .corrupt-*；正式庫永不刪。",
+                }
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if purged.get("ok") else 400)
             elif route == "/ops/repair-market-db":
                 # 預設 force_release：過舊完整日／缺表都要換公開 Release
                 force_release = True

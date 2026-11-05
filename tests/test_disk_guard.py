@@ -194,6 +194,40 @@ def test_audit_corrupt_async_writes_result(tmp_path: Path, monkeypatch):
     assert c1.exists()
 
 
+def test_purge_corrupt_keeps_named_and_live(tmp_path: Path):
+    """鎖死 keep：正式庫＋兩份備援留下；其餘 corrupt 刪。"""
+    db = tmp_path / "wayne_market.db"
+    db.write_bytes(b"L" * 100_000)
+    k1 = tmp_path / "wayne_market.db.corrupt-keep1"
+    k2 = tmp_path / "wayne_market.db.corrupt-keep2"
+    drop = tmp_path / "wayne_market.db.corrupt-drop"
+    k1.write_bytes(b"K" * 50_000)
+    k2.write_bytes(b"K" * 60_000)
+    drop.write_bytes(b"D" * 80_000)
+    (tmp_path / "wayne_market.db.corrupt-drop-wal").write_bytes(b"W" * 1000)
+    # 無 confirm 不准刪
+    denied = dg.purge_corrupt_copies_keeping(
+        str(db),
+        data_dir=str(tmp_path),
+        keep_names=[k1.name, k2.name],
+        confirm=False,
+    )
+    assert denied["ok"] is False
+    assert drop.exists()
+    out = dg.purge_corrupt_copies_keeping(
+        str(db),
+        data_dir=str(tmp_path),
+        keep_names=[k1.name, k2.name],
+        confirm=True,
+    )
+    assert out["ok"] is True
+    assert db.exists() and k1.exists() and k2.exists()
+    assert not drop.exists()
+    assert not (tmp_path / "wayne_market.db.corrupt-drop-wal").exists()
+    assert out["remaining_n"] == 2
+    assert set(out["remaining_corrupt"]) == {k1.name, k2.name}
+
+
 def test_daytime_skips_when_above_emergency(tmp_path: Path, monkeypatch):
     """白天 free≥預警線且無跑道預警：不准清白名單；教具舊圖仍可清。"""
     charts = tmp_path / "charts"
