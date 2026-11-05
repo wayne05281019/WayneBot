@@ -17,6 +17,9 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 TABLE = "tg_actor_pending"
 # 超過就當過期，避免半年前的連買精靈突然接上
 TTL_HOURS = 72
+# 飆大視窗：閒置太久仍掛著，鍵盤卻常被釘回主選單 → 打代號會誤進「用飆大看這檔」
+BIAOKE_PENDING_TTL_HOURS = 2
+_BIAOKE_PURPOSES = frozenset({"biaoke:chat", "biaoke:ask"})
 _HIST_CAP = 12
 
 
@@ -68,11 +71,17 @@ def _parse_ts(raw: str) -> Optional[datetime]:
     return dt.astimezone(TAIPEI)
 
 
-def _fresh(updated_at: str) -> bool:
+def _fresh(updated_at: str, *, hours: float = TTL_HOURS) -> bool:
     dt = _parse_ts(updated_at)
     if dt is None:
         return False
-    return datetime.now(TAIPEI) - dt <= timedelta(hours=TTL_HOURS)
+    return datetime.now(TAIPEI) - dt <= timedelta(hours=float(hours))
+
+
+def _ttl_hours_for_purpose(purpose: str) -> float:
+    if str(purpose or "").strip() in _BIAOKE_PURPOSES:
+        return float(BIAOKE_PENDING_TTL_HOURS)
+    return float(TTL_HOURS)
 
 
 def _clip_hist(hist: Any) -> List[Any]:
@@ -196,7 +205,7 @@ def load_actor_pending(db_path: str, actor: str) -> Tuple[str, List[Any]]:
         str(row[1] or "[]"),
         str(row[2] or ""),
     )
-    if not _fresh(updated_at):
+    if not _fresh(updated_at, hours=_ttl_hours_for_purpose(purpose)):
         clear_actor_pending(db_path, actor)
         return "", []
     try:

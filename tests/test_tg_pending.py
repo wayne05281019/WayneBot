@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from tg_pending import (
+    BIAOKE_PENDING_TTL_HOURS,
     BiaokeHistMap,
     PendingMap,
     TTL_HOURS,
@@ -84,6 +85,41 @@ def test_expired_pending_ignored(monkeypatch):
         conn.commit()
         conn.close()
         assert load_actor_pending(db, "2:2") == ("", [])
+    finally:
+        os.unlink(db)
+
+
+def test_biaoke_pending_expires_sooner_than_generic():
+    """飆大視窗閒置逾 BIAOKE_PENDING_TTL 就清，避免主選單打代號仍進飆大搜股。"""
+    db = _db()
+    try:
+        import sqlite3
+
+        save_actor_pending(db, "3:3", "biaoke:chat", hist=[{"ask": "2330"}])
+        mid = (
+            datetime.now(TAIPEI) - timedelta(hours=BIAOKE_PENDING_TTL_HOURS + 0.5)
+        ).strftime("%Y-%m-%dT%H:%M:%S")
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "UPDATE tg_actor_pending SET updated_at=? WHERE actor_key=?",
+            (mid, "3:3"),
+        )
+        conn.commit()
+        conn.close()
+        assert load_actor_pending(db, "3:3") == ("", [])
+        # 非飆大用途仍可用較長 TTL
+        save_actor_pending(db, "4:4", "report", hist=[])
+        still = (
+            datetime.now(TAIPEI) - timedelta(hours=BIAOKE_PENDING_TTL_HOURS + 0.5)
+        ).strftime("%Y-%m-%dT%H:%M:%S")
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "UPDATE tg_actor_pending SET updated_at=? WHERE actor_key=?",
+            (still, "4:4"),
+        )
+        conn.commit()
+        conn.close()
+        assert load_actor_pending(db, "4:4")[0] == "report"
     finally:
         os.unlink(db)
 

@@ -455,6 +455,19 @@ def test_leave_biaoke_clears_only_that_uid():
     assert "主選單" in html
 
 
+def test_pin_main_menu_unsticks_biaoke_pending():
+    """釘主選單時若還卡 biaoke:chat，清掉，之後打代號才走查股。"""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {"1:1": "biaoke:chat"}
+    bot._biaoke_hist = {"1:1": [{"ask": "x"}]}
+    bot._unstick_biaoke_when_pinning_main("1:1")
+    assert "1:1" not in bot._pending
+    assert "1:1" not in bot._biaoke_hist
+
+
 def test_screen_from_biaoke_clears_pending():
     import asyncio
     from types import SimpleNamespace
