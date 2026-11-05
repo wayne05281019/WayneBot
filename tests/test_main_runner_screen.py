@@ -1932,6 +1932,10 @@ def test_send_ok_mark_fail_force_morning_does_not_resend(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261022"
     )
+    # 彙整窗不准短路這則「已有回執不准重寄」測
+    monkeypatch.setattr(
+        runner, "should_yield_to_db_heavy_window", lambda now=None, fuse_only=False: False
+    )
     out = runner.force_rescue_morning()
     # reconcile 已把 key 標 success → 不再當成未寄去跑 morning（或跑了也因 skip 不寄）
     assert out.get("delivered") is True or runner.pipeline_status("screen-20261022") == "success"
