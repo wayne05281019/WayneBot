@@ -122,7 +122,7 @@ def test_prefer_asof_does_not_fallback_previous_day(tmp_path, monkeypatch):
     """高低卡指定日缺路徑 → 回空；不准默默退前一開市日換成錯日戳。"""
     calls: list[str] = []
 
-    def _fake_build(sid, name, mkt, db_path=None, ymd=None):
+    def _fake_build(sid, name, mkt, db_path=None, ymd=None, live_quote=None, **_kw):
         calls.append(str(ymd or ""))
         return None
 
