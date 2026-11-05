@@ -574,6 +574,11 @@ def test_morning_success_without_sessions_rebuilds_cache(tmp_path, monkeypatch):
     )
     conn.commit()
     conn.close()
+    # 鎖定「當日」：不准被本機／CI 真實台北日觸發 §14 舊回執放行重寄
+    monkeypatch.setattr("config.taipei_today_str", lambda: "20260909")
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda ymd: ymd == "20260909"
+    )
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
     runner.today_str = "20260909"
@@ -2246,6 +2251,8 @@ def test_force_rescue_skips_when_fresh_morning_claim(tmp_path, monkeypatch):
     runner.db_path = path
     runner.today_str = "20261027"
     called = {"demote": 0, "morning": 0}
+    # CI 若落在 16:25–17:00 不准被融合讓路短路掉 inflight 測
+    monkeypatch.setattr(runner, "should_yield_to_market_fuse", lambda now=None: False)
     monkeypatch.setattr(runner, "reconcile_push_deliveries", lambda **k: 0)
     monkeypatch.setattr(runner, "morning_claim_is_fresh_running", lambda: True)
     monkeypatch.setattr(
