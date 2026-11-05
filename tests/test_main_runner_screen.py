@@ -2347,6 +2347,11 @@ def test_morning_open_day_reissues_after_holiday_same_as_of(tmp_path, monkeypatc
     conn.commit()
     conn.close()
 
+    monkeypatch.setattr("config.taipei_today_str", lambda: "20261027")
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda ymd: ymd == "20261027"
+    )
+
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
     runner.today_str = "20261027"
@@ -2406,3 +2411,101 @@ def test_morning_open_day_reissues_after_holiday_same_as_of(tmp_path, monkeypatc
     n1 = sends["n"]
     assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
     assert sends["n"] == n1
+
+
+def test_release_stale_unstamped_receipt_as_of_lag(tmp_path, monkeypatch):
+    """§14：回執時戳壞掉／空字，但 as_of < 今日開市日 → 仍放行（2026-11-05 實況）。"""
+    import sqlite3
+
+    from main_runner import MainRunner
+    from pipeline_delivery import (
+        ensure_delivery_schema,
+        push_delivery_recorded,
+        record_push_delivery,
+    )
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "unstamped.db")
+    ensure_core_schema(path)
+    ensure_delivery_schema(path)
+    # 有回執列但 delivered_at 空；pipeline success
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_deliveries "
+        "(run_date, delivered_at, kind, n_ok, notes) VALUES (?,?,?,?,?)",
+        ("screen-20261104", "", "morning-digest", 2, "bad-stamp"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20261104", "2026-11-04T06:32:00+08:00", "success", "morning"),
+    )
+    conn.commit()
+    conn.close()
+    assert push_delivery_recorded(path, "screen-20261104") is True
+
+    monkeypatch.setattr("config.taipei_today_str", lambda: "20261105")
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda ymd: ymd == "20261105"
+    )
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261104"  # 故意凍結昨日；函式內要刷新
+    assert runner.release_stale_morning_delivery_for_open_day("screen-20261104") is True
+    assert runner.today_str == "20261105"
+    assert runner.pipeline_status("screen-20261104") == "computed"
+    assert push_delivery_recorded(path, "screen-20261104") is False
+
+
+def test_release_stale_same_day_receipt_still_blocks(tmp_path, monkeypatch):
+    """同日回執仍擋，防雙寄。"""
+    from main_runner import MainRunner
+    from pipeline_delivery import record_push_delivery
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "sameday.db")
+    ensure_core_schema(path)
+    record_push_delivery(
+        path,
+        "screen-20261104",
+        kind="morning-digest",
+        n_ok=2,
+        delivered_at="2026-11-05T06:32:00+08:00",
+    )
+    monkeypatch.setattr("config.taipei_today_str", lambda: "20261105")
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda ymd: True
+    )
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20261105"
+    assert runner.release_stale_morning_delivery_for_open_day("screen-20261104") is False
+
+
+def test_force_rescue_yields_to_fuse_window(monkeypatch):
+    """16:25–17:00 開市日：force-morning 讓路盤後融合。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = ":memory:"
+    tw = ZoneInfo("Asia/Taipei")
+    now = datetime(2026, 11, 5, 16, 28, tzinfo=tw)
+    monkeypatch.setattr("config.taipei_now", lambda: now)
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda ymd: True
+    )
+    assert runner.should_yield_to_market_fuse(now=now) is True
+    called = {"n": 0}
+    runner.reconcile_push_deliveries = lambda **k: called.__setitem__("n", called["n"] + 1) or 0
+    runner.morning_claim_is_fresh_running = lambda: False
+    out = runner.force_rescue_morning()
+    assert out.get("ok") is True
+    assert out.get("yielded_to_fuse") is True
+    assert called["n"] == 0
+    # 過窗後（17:05）不讓路
+    later = datetime(2026, 11, 5, 17, 5, tzinfo=tw)
+    monkeypatch.setattr("config.taipei_now", lambda: later)
+    assert runner.should_yield_to_market_fuse(now=later) is False
