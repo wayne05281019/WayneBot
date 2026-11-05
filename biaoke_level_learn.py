@@ -6160,18 +6160,17 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="top",
     )
-    # 近窗：黃戳對齊紅橫杠空檔，略離大B金虛線（價～41200、偏右）
+    # 近窗黃戳：貼標題列右緣（與遠窗同策略）。不准再釘價位空檔～41200——
+    # 盤中價／C線走到那帶會整塊蓋住觀測位（黃匡白標互壓）。
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
-    _stamp_y_data = 41200.0
-    _sx_st, _sy_st = _fig_xy_from_axes_data(ax, fig, float(n) - 4.0, _stamp_y_data)
     _paint_teach_query_stamp(
         fig,
         bars,
         pack=pack,
         close=closes[-1],
         fp=_fp,
-        x=min(0.94, max(0.78, float(_sx_st) + 0.10)),
-        y=float(_sy_st),
+        x=0.995,
+        y=0.982,
         ha="right",
     )
     # 單行腳：不准雙行疊字蓋數字
