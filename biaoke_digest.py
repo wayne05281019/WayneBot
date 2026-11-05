@@ -521,6 +521,22 @@ def _norm_focus(text: str) -> str:
     return re.sub(r"\s+", "", str(text or ""))
 
 
+def _drop_stale_sox_distance(text: str) -> str:
+    """已改口「9865會破」後，拿掉同欄「還有一段距離」舊句，避免按鍵自相矛盾。"""
+    s = str(text or "").strip()
+    if not s:
+        return ""
+    # 句級清：同句同時講 9865＋還有一段距離
+    parts = re.split(r"(?<=[。！？；])", s)
+    kept: List[str] = []
+    for part in parts:
+        if re.search(r"9865", part) and re.search(r"還有一段距離|連9865都沒到", part):
+            continue
+        kept.append(part)
+    out = _SPACE.sub(" ", "".join(kept)).strip(" ，,")
+    return out
+
+
 def _overlaps_shown(bit: str, shown: Sequence[str], *, min_chars: int = 10) -> bool:
     """句／段是否已在大盤／族群／PCB（或已收進他還說）出現過。
 
@@ -993,6 +1009,11 @@ def format_focus_oral(
     if said and board and _overlaps_shown(said, [board], min_chars=10):
         said2 = _strip_shown_sentences(said, [board])
         said = said2
+    # 後句改口壓前：已說「9865會破」就不准再留「還有一段距離」（開盤按鍵不准自相矛盾）
+    blob_all = " ".join(x for x in (board, said, *(extra or []), *(after_board or [])) if x)
+    if re.search(r"9865\s*會破|會破.{0,6}9865", blob_all):
+        board = _drop_stale_sox_distance(board)
+        said = _drop_stale_sox_distance(said)
     blocks: List[str] = [
         "<b>飆大現在在講</b>",
         html_escape(f"最新　{when}" if when else "最新"),

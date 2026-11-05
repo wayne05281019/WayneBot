@@ -1209,3 +1209,16 @@ def test_sox_9865_official_not_twii(tmp_path):
     assert "費半" in glued and "9865" in glued
     assert "低已破他說的9865" in glued
     assert not ("加權" in glued and "9865" in glued)
+
+
+def test_drop_stale_sox_distance_when_will_break():
+    """已改口9865會破 → 拿掉還有一段距離舊句。"""
+    from biaoke_digest import _drop_stale_sox_distance
+
+    s = (
+        "費城半導體至少殺到9865附近，目前還有一段距離。"
+        "其實我認為9865會破，因為大盤要整理大概兩年。"
+    )
+    out = _drop_stale_sox_distance(s)
+    assert "還有一段距離" not in out
+    assert "9865會破" in out
