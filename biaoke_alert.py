@@ -976,6 +976,32 @@ def _pick_level_thesis(rows: Sequence[Dict[str, Any]]) -> str:
 LEVEL_HIT_TITLE = "飆大提醒·大盤碰到關卡"
 
 
+def _pick_hit_level_face(
+    read_now: str,
+    levels: Sequence[float],
+    bar_close: Optional[float],
+) -> str:
+    """這次話筒只點一個已講過的關：近窗原文優先，否則收下方最近關。"""
+    key = _key_level_mentioned(read_now, levels)
+    if key:
+        return key
+    if bar_close is None or not levels:
+        if levels:
+            try:
+                return _level_face(max(float(x) for x in levels))
+            except (TypeError, ValueError):
+                return ""
+        return ""
+    try:
+        c = float(bar_close)
+        above = sorted(float(x) for x in levels if float(x) > c)
+        if above:
+            return _level_face(above[0])
+        return _level_face(max(float(x) for x in levels))
+    except (TypeError, ValueError):
+        return ""
+
+
 def _plain_level_hit_body(
     *,
     faces: Sequence[str],
@@ -986,19 +1012,58 @@ def _plain_level_hit_body(
     levels_for_side: Sequence[float],
     read_now: str,
 ) -> str:
-    """話筒正文：國中生也看得懂的一句＋下一行「不是買訊」。
+    """話筒正文：一條判斷＋「不是買訊」。
 
-    不准收點數字串、不准完整關卡清單、不准機器規則句。
-    詳細關卡／收點只打 log；主句最多一個「還卡在Ｘ附近」。
+    碰到哪關（他已講過的價）→ 收還卡附近／已離開／已站上 → 還要再看。
+    不准「碰到＋還沒過＋已離開」叠成自相矛盾；不准完整關卡清單、不准收點數字。
     """
     del faces, bar_date, bar_high, bar_low  # 細節留 log，不上主句
-    band = _close_band_plain(bar_close, levels_for_side)
-    wait = _plain_wait_clause(read_now, levels_for_side, bar_close)
-    main = "今天加權碰到飆大以前講過的關了"
-    if band:
-        main += "；" + band + "，" + wait
+    key = _pick_hit_level_face(read_now, levels_for_side, bar_close)
+    stood = False
+    near = False
+    if key and bar_close is not None:
+        try:
+            c = float(bar_close)
+            lv = next(
+                float(x)
+                for x in levels_for_side
+                if _level_face(float(x)) == key
+            )
+            if c >= lv:
+                stood = True
+            elif _close_near_level(c, lv):
+                near = True
+        except (StopIteration, TypeError, ValueError):
+            pass
+    if key:
+        if stood:
+            main = (
+                f"今天加權碰到他講過的 {key}，現在已經站上，"
+                "還要再看大盤怎麼走。"
+            )
+        elif near:
+            main = (
+                f"今天加權碰到他講過的 {key}，現在還卡在附近、還沒過，"
+                "還要再看大盤怎麼走。"
+            )
+        else:
+            main = (
+                f"今天加權盤中碰到他講過的 {key}，收已經離開、還沒過，"
+                "還要再看大盤怎麼走。"
+            )
     else:
-        main += "，" + wait
+        wait = _plain_wait_clause(read_now, levels_for_side, bar_close)
+        if wait.startswith("已經離開"):
+            main = (
+                "今天加權盤中碰到他以前講過的關，收已經離開、還沒過，"
+                "還要再看大盤怎麼走。"
+            )
+        elif wait.startswith("還卡在"):
+            main = f"今天加權碰到他以前講過的關，{wait}。"
+        else:
+            main = (
+                "今天加權碰到他以前講過的關，還沒過，還要再看大盤怎麼走。"
+            )
     if not main.endswith("。"):
         main += "。"
     return "\n".join(

@@ -478,9 +478,13 @@ def test_marked_level_hit_pushes_synthesis_not_post_dump(monkeypatch, tmp_path):
     assert sent
     html = sent[0]
     assert "飆大提醒·大盤碰到關卡" in html
-    assert "今天加權碰到飆大以前講過的關" in html
+    assert "今天加權" in html and "講過的" in html
     assert "不是買訊" in html
     assert "站上" in html or "還沒過" in html or "還要再看" in html
+    # 不准「碰到＋還沒過＋已離開」叠句
+    assert not (
+        "還沒過" in html and "已經離開" in html and "這些關都還沒過" in html
+    )
     # 同一點位只一則；舊長文不整篇塞；機器規則句不上話筒
     assert html.count("飆大提醒·大盤碰到關卡") == 1
     assert "以前也講過震盪" not in html
@@ -525,8 +529,8 @@ def test_format_level_hit_synthesis_no_date_catalog():
         ],
     )
     assert "飆大提醒·大盤碰到關卡" in html
-    assert "今天加權碰到飆大以前講過的關" in html
-    assert "站上" in html  # 收在關上 → 白話已站上
+    assert "講過的 48601" in html
+    assert "已經站上" in html  # 收在關上 → 白話已站上
     assert "還要再看大盤怎麼走" in html
     assert "他原文 2026-09-22" not in html
     assert "同點另有" not in html
@@ -535,6 +539,7 @@ def test_format_level_hit_synthesis_no_date_catalog():
     assert "加權點位" not in html
     assert "在這位之上" not in html
     assert "48650" not in html  # 收點數字不上主句
+    assert "這些關都還沒過" not in html
 
 
 def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
@@ -598,10 +603,11 @@ def test_multi_level_same_bar_one_coalesced_push(monkeypatch, tmp_path):
     assert len(sent) == 1
     html = sent[0]
     assert html.count("飆大提醒·大盤碰到關卡") == 1
-    assert "今天加權碰到飆大以前講過的關" in html
-    assert "還沒過" in html or "中間" in html or "偏" in html
+    assert "講過的" in html
+    assert "還卡在附近" in html or "已經站上" in html or "收已經離開" in html
     assert "還要再看大盤怎麼走" in html
     assert "不是買訊" in html
+    assert "這些關都還沒過" not in html
     assert "併成一則" not in html
     assert "不拆泡泡" not in html
     assert "在這位之上" not in html
@@ -958,15 +964,12 @@ def test_format_seven_levels_one_oral_sentence_not_table():
         bar_close=48341.3,
     )
     assert "<b>飆大提醒·大盤碰到關卡</b>" in html
-    assert "今天加權碰到飆大以前講過的關了" in html
-    assert "中間偏低" in html
-    assert "還沒過他較高的關" in html
-    # 收 48341 離 48900 約 559 點＞附近閘 → 不准硬寫「卡在 48900 附近」
+    # 收 48341 離 48900 約 559 點＞附近閘 → 寫離開；准點他已講過的這一關
+    assert "講過的 48900" in html
+    assert "收已經離開、還沒過" in html
     assert "還卡在 48900 附近" not in html
-    assert "已經離開他剛碰到的關" in html or "還要再看大盤怎麼走" in html
+    assert "這些關都還沒過" not in html
     assert "不是買訊" in html
-    listed = sum(1 for lv in levels if str(lv) in html)
-    assert listed == 0  # 遠離開不准貼關鍵位數字
     assert "48341" not in html  # 收點不上主句
     assert "48218" not in html
     assert "研判" not in html
@@ -1014,11 +1017,11 @@ def test_level_hit_far_below_44042_not_stuck_nearby():
         bar_close=43308.0,
     )
     assert "飆大提醒·大盤碰到關卡" in html
-    assert "今天加權碰到飆大以前講過的關了" in html
-    assert "收在偏低" in html
+    assert "講過的 44042" in html
+    assert "收已經離開、還沒過" in html
     assert "還卡在 44042 附近" not in html
     assert "還卡在 45546 附近" not in html
-    assert "已經離開他剛碰到的關" in html
+    assert "這些關都還沒過" not in html
     assert "不是買訊" in html
     assert "43308" not in html
 
@@ -1042,8 +1045,9 @@ def test_level_hit_truly_near_still_says_stuck():
             }
         ],
     )
-    assert "還卡在 44042 附近" in html
-    assert "已經離開" not in html
+    assert "講過的 44042" in html
+    assert "還卡在附近" in html
+    assert "收已經離開" not in html
     assert "不是買訊" in html
 
 
@@ -1093,10 +1097,11 @@ def test_format_multi_level_hit_lists_above_below():
         bar_close=49302,
     )
     assert "飆大提醒·大盤碰到關卡" in html
-    assert "今天加權碰到飆大以前講過的關了" in html
-    assert "還沒過他較高的關" in html or "中間" in html
+    assert "講過的" in html
+    assert "還卡在附近" in html or "已經站上" in html or "收已經離開" in html
     assert "還要再看大盤怎麼走" in html
     assert "不是買訊" in html
+    assert "這些關都還沒過" not in html
     assert "併成一則" not in html
     assert "不拆泡泡" not in html
     assert "在這位之上" not in html
