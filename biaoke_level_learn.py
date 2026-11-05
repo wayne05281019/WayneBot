@@ -971,20 +971,28 @@ def _eight_wave_inset_rect_left_of_vmax(
     ymax: float,
     n_bars: int,
     gap_fig: float = 0.008,
+    scale: float = 1.0,
+    pin_bottom: bool = False,
 ) -> Tuple[float, float, float, float]:
-    """與超近窗同寬同高；右緣貼垂直黃虛線（最大量日）左側，低空帶。"""
+    """與超近窗同寬同高（可 scale 縮小）；右緣貼垂直黃虛線左側。
+
+    pin_bottom＝遠窗：貼加權欄左下縮小，不准擋任何縮圖K。
+    """
     w, h = _teach_eight_wave_inset_wh(fig)
+    sc = max(0.35, min(1.0, float(scale or 1.0)))
+    w, h = float(w) * sc, float(h) * sc
     ys = max(float(ymax) - float(ymin), 1.0)
-    y_bot = float(ymin) + ys * 0.10
+    y_bot = float(ymin) + ys * (0.04 if pin_bottom else 0.10)
     iv = int(i_vmax) if i_vmax is not None else max(0, int(n_bars) - 8)
     fx_v, fy_bot = _fig_xy_from_axes_data(ax, fig, float(iv), y_bot)
     left = float(fx_v) - float(gap_fig) - float(w)
     bottom = float(fy_bot)
     try:
         pos = ax.get_position()
-        min_left = float(pos.x0) + 0.012
-        max_bottom = float(pos.y0) + float(pos.height) * 0.48 - float(h)
-        min_bottom = float(pos.y0) + 0.012
+        min_left = float(pos.x0) + 0.010
+        max_frac = 0.26 if pin_bottom else 0.48
+        max_bottom = float(pos.y0) + float(pos.height) * max_frac - float(h)
+        min_bottom = float(pos.y0) + (0.005 if pin_bottom else 0.012)
     except Exception:
         min_left, max_bottom, min_bottom = 0.04, 0.55, 0.08
     if left < min_left:
@@ -997,6 +1005,24 @@ def _eight_wave_inset_rect_left_of_vmax(
     if left + w > float(fx_v) - float(gap_fig):
         left = max(min_left, float(fx_v) - float(gap_fig) - float(w))
     return (float(left), float(bottom), float(w), float(h))
+
+
+def _fig_stamp_xy_axes_top_right(
+    ax: Any,
+    fig: Any,
+    *,
+    inset_x: float = 0.010,
+    inset_y: float = 0.024,
+) -> Tuple[float, float]:
+    """該圖框內右上角（figure fraction）→ 白底戳各自歸屬本欄。"""
+    try:
+        pos = ax.get_position()
+        return (
+            float(pos.x1) - float(inset_x),
+            float(pos.y1) - float(inset_y),
+        )
+    except Exception:
+        return (0.995, 0.95)
 
 
 def _fig_rect_band_right(
@@ -5724,13 +5750,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     tx_h = list(tx_a["high"])
     tx_l = list(tx_a["low"])
     tx_c = list(tx_a["close"])
-    # 費半可延長軸；台指期只畫加權日軸長度（夜盤跟台股曆）
+    tx_v = list(tx_a.get("volume") or [])
+    # 費半可延長軸；台指電子盤只畫加權日軸長度（夜盤跟台股曆）
     while len(tx_c) < n_tw:
         tx_o.append(float("nan"))
         tx_h.append(float("nan"))
         tx_l.append(float("nan"))
         tx_c.append(float("nan"))
+        tx_v.append(0.0)
+    while len(tx_v) < n_tw:
+        tx_v.append(0.0)
     tx_o, tx_h, tx_l, tx_c = tx_o[:n_tw], tx_h[:n_tw], tx_l[:n_tw], tx_c[:n_tw]
+    tx_v = [float(x or 0) for x in tx_v[:n_tw]]
     i_tx_live = _apply_live_tx_to_axis(
         tx_o=tx_o,
         tx_h=tx_h,
@@ -5749,21 +5780,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     if i_vmax is None and n_tw and any(float(v or 0) > 0 for v in vols[:n_tw]):
         i_vmax = max(range(n_tw), key=lambda i: float(vols[i] or 0))
 
-    # 上費半 / 台指電子盤 / 加權日K / 下加權量；底圖加高讓三價軸並看清楚
-    # Telegram sendPhoto 硬限寬+高≤10000；16.8×16.4@320 會超 → 略收仍比舊三欄高
+    # 上費半 / 台指電子盤 / 加權日K / 下加權量；加權欄略高；欄間留空給日期
+    # Telegram sendPhoto 硬限寬+高≤10000；存檔後仍會 _shrink_png_for_telegram
     fig, (axu, axt, ax, axv) = plt.subplots(
         4,
         1,
-        figsize=(15.6, 15.0),
+        figsize=(15.6, 15.2),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(2.35, 2.35, 2.55, 1.05), hspace=0.055),
+        gridspec_kw=dict(height_ratios=(2.05, 2.20, 3.20, 0.95), hspace=0.12),
     )
     fig.patch.set_facecolor(_LIVE_BG)
-    # bottom 加高：腳註多行完整數字＋不壓 x 軸日期
-    # top 略降：標題列＋三戳（費半黃／台指電子盤紅／加權黃）進頁眉，不准擋費半縮圖K
-    # right 收到 0.98：右標水平往左貼K，不准再留 10% 空溝把標甩飛
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.10)
+    # top：標題列；戳改各欄右上，頁眉不再塞三戳
+    # right 收到 0.98：右標水平往左貼K
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.935, bottom=0.095)
     for a in (axu, axt, ax, axv):
         a.set_facecolor(_LIVE_PANEL)
         a.tick_params(colors=_LIVE_MUTED, labelsize=9)
@@ -5980,14 +6010,142 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         bbox=dict(boxstyle="round,pad=0.16", fc="#0b0f14", ec="#546e7a", lw=0.65, alpha=0.92),
     )
 
-    # —— 次上：台指電子盤（夜盤日K；與費半同時段並看）——
+    # —— 次上：台指電子盤（夜盤日K＋大量撐壓／下一層／青帶／即時末K）——
     _tx_last_repaint: Optional[Dict[str, Any]] = None
+    _tx_right_notes: List[Dict[str, Any]] = []
+    _tx_ylabel_span: Optional[Tuple[float, float]] = None
     tx_valid = [
         i
         for i, c in enumerate(tx_c)
         if c == c and c and math.isfinite(float(tx_h[i])) and math.isfinite(float(tx_l[i]))
     ]
     tx_min_body = _candle_span_min_body(tx_h, tx_l, frac=_FAR_SOX_MIN_BODY_FRAC)
+    tx_rows_for_vol: List[Dict[str, Any]] = []
+    for i in range(n_tw):
+        if i not in tx_valid and not (
+            i < len(tx_c)
+            and tx_c[i] == tx_c[i]
+            and math.isfinite(float(tx_h[i]))
+            and math.isfinite(float(tx_l[i]))
+        ):
+            continue
+        d = _ymd(bars[i].get("date")) if i < len(bars) else ""
+        if not d:
+            continue
+        tx_rows_for_vol.append(
+            {
+                "date": d,
+                "open": float(tx_o[i]) if tx_o[i] == tx_o[i] else float(tx_c[i]),
+                "high": float(tx_h[i]),
+                "low": float(tx_l[i]),
+                "close": float(tx_c[i]),
+                "volume": float(tx_v[i] if i < len(tx_v) else 0),
+            }
+        )
+    tx_vol_sr = _resolve_teach_vol_sr(
+        tx_rows_for_vol,
+        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(tx_rows_for_vol) - 1)),
+    )
+    # 撐壓底色先畫在K下層
+    if (tx_vol_sr.get("primary") or {}).get("high"):
+        pri = tx_vol_sr["primary"]
+        _paint_max_vol_hl_zone(
+            axt,
+            high=float(pri["high"]),
+            low=float(pri["low"]),
+            date_lab=str(pri.get("date") or ""),
+            fp=_fp,
+        )
+        _tx_right_notes.append(
+            {
+                "x": n_tw - 1,
+                "y": float(pri["high"]),
+                "text": f"電盤大量壓 {_px(pri['high'])}",
+                "color": "#ffe082",
+            }
+        )
+        _tx_right_notes.append(
+            {
+                "x": n_tw - 1,
+                "y": float(pri["low"]),
+                "text": f"電盤大量撐 {_px(pri['low'])}",
+                "color": "#ffe082",
+            }
+        )
+        if (tx_vol_sr.get("next") or {}).get("high"):
+            nxt = tx_vol_sr["next"]
+            _paint_next_layer_vol_zone(
+                axt,
+                high=float(nxt["high"]),
+                low=float(nxt["low"]),
+                date_lab=str(nxt.get("date") or ""),
+                fp=_fp,
+                direction=str(nxt.get("direction") or "below"),
+            )
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(nxt["high"]),
+                    "text": f"電盤下一層壓 {_px(nxt['high'])}",
+                    "color": "#cfd8dc",
+                }
+            )
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(nxt["low"]),
+                    "text": f"電盤下一層撐 {_px(nxt['low'])}",
+                    "color": "#cfd8dc",
+                }
+            )
+    tx_now = float(tx_c[tx_valid[-1]]) if tx_valid else None
+    if tx_now and tx_now > 0:
+        tx_sup = []
+        tx_res = []
+        for key in ("primary", "next"):
+            row = tx_vol_sr.get(key) or {}
+            if row.get("low"):
+                tx_sup.append(float(row["low"]))
+            if row.get("high"):
+                tx_res.append(float(row["high"]))
+        tx_sr = _next_support_resist(float(tx_now), supports=tx_sup, resists=tx_res)
+        _tx_pri = tx_vol_sr.get("primary") or {}
+        try:
+            _tx_ex_lo = (
+                float(_tx_pri["low"]) if _tx_pri.get("low") is not None else None
+            )
+            _tx_ex_hi = (
+                float(_tx_pri["high"]) if _tx_pri.get("high") is not None else None
+            )
+        except (TypeError, ValueError):
+            _tx_ex_lo = _tx_ex_hi = None
+        _paint_next_sr_zone(
+            axt,
+            support=tx_sr.get("support"),
+            resist=tx_sr.get("resist"),
+            fp=_fp,
+            exclude_lo=_tx_ex_lo,
+            exclude_hi=_tx_ex_hi,
+            x_end=float(n_tw) + 0.12,
+        )
+        if tx_sr.get("support") is not None:
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(tx_sr["support"]),
+                    "text": _biaoke_pred_label(float(tx_sr["support"])),
+                    "color": "#4dd0e1",
+                }
+            )
+        if tx_sr.get("resist") is not None:
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(tx_sr["resist"]),
+                    "text": _biaoke_pred_label(float(tx_sr["resist"])),
+                    "color": "#4dd0e1",
+                }
+            )
     if len(tx_valid) >= 2:
         for i in tx_valid:
             prev_i = next((j for j in range(i - 1, -1, -1) if tx_c[j] == tx_c[j]), None)
@@ -6008,7 +6166,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     zorder=6,
                 )
             )
-        # 末根：即時夜盤或庫內夜盤；白邊＋tip 圈，與費半／加權同口更新
+        # 末根：即時夜盤或庫內夜盤；白邊＋tip 圈
         tip_i = int(i_tx_live) if i_tx_live is not None else int(tx_valid[-1])
         if 0 <= tip_i < len(tx_c) and tx_c[tip_i] == tx_c[tip_i]:
             prev_i = next(
@@ -6023,15 +6181,33 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "prev": float(tx_c[prev_i]) if prev_i is not None else None,
                 "min_body": float(tx_min_body),
             }
+            _tx_right_notes.append(
+                {
+                    "x": tip_i,
+                    "y": float(tx_c[tip_i]),
+                    "text": f"電盤即時 {_px(tx_c[tip_i])}",
+                    "color": "#ea80fc",
+                }
+            )
         lo_v = min(float(tx_l[i]) for i in tx_valid)
         hi_v = max(float(tx_h[i]) for i in tx_valid)
-        pad = max(80.0, (hi_v - lo_v) * 0.06)
+        # 撐壓帶也納入 ylim，標籤不被裁
+        for row in (tx_vol_sr.get("primary"), tx_vol_sr.get("next")):
+            if not row:
+                continue
+            try:
+                lo_v = min(lo_v, float(row.get("low") or lo_v))
+                hi_v = max(hi_v, float(row.get("high") or hi_v))
+            except (TypeError, ValueError):
+                pass
+        pad = max(120.0, (hi_v - lo_v) * 0.08)
         axt.set_ylim(lo_v - pad, hi_v + pad)
+        _tx_ylabel_span = (lo_v - pad, hi_v + pad)
     axt.set_ylabel("台指電子盤", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axt.text(
         0.012,
         0.04,
-        "台指電子盤＝夜盤日K（與費半同時段；紅框＝即時）",
+        "台指電子盤＝夜盤日K＋大量撐壓／下一層（紅框＝即時）",
         transform=axt.transAxes,
         fontproperties=_fp(8, "bold"),
         color=_LIVE_MUTED,
@@ -6332,6 +6508,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             min_gap=(float(_sox_ylabel_span[1]) - float(_sox_ylabel_span[0])) * 0.045,
             x_col=x_sox_col,
         )
+    if _tx_right_notes and _tx_ylabel_span is not None:
+        # 電子盤右標＋水平虛線（大量／下一層／青帶／即時）
+        _place_live_right_labels(
+            axt,
+            _tx_right_notes,
+            n=n_tw,
+            ymin=float(_tx_ylabel_span[0]),
+            ymax=float(_tx_ylabel_span[1]),
+            fp=_fp,
+            level_dash=True,
+            min_gap=(float(_tx_ylabel_span[1]) - float(_tx_ylabel_span[0])) * 0.050,
+            x_col=x_right_col + 0.15,
+        )
     _place_live_right_labels(
         ax,
         right_notes,
@@ -6548,8 +6737,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=16,
             clip_on=False,
         )
-    axv.set_xticks(t2)
-    axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
+    # 欄間小間距放日期：費半／電子盤／加權三欄底緣都標（量欄仍有完整軸）
+    for a in (axu, axt, ax, axv):
+        a.set_xticks(t2)
+        a.set_xticklabels(l2, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT)
+        a.tick_params(axis="x", labelbottom=True, length=3, pad=2)
     for a in (axu, axt, ax, axv):
         for lab in a.get_yticklabels():
             lab.set_fontproperties(_fp(8, "bold"))
@@ -6593,10 +6785,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 戳序對齊四欄：最上費半黃 → 台指電子盤紅 → 加權黃（上下略留白）
-    _sox_stamp_y = 0.982
-    _tx_stamp_y = 0.950
-    _tw_stamp_y = 0.918
+    # 三戳各自歸屬本欄右上（費半黃／電子盤紅／加權黃），不准堆頁眉
+    _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_top_right(axu, fig)
+    _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_top_right(axt, fig)
+    _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_top_right(ax, fig)
     if _sox_chg_tip:
         _paint_index_last_chg_tip(
             fig,
@@ -6604,7 +6796,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_sox_chg_tip.get("prev"),
             label_prefix="費半",
             fp=_fp,
-            x=0.995,
+            x=_sox_stamp_x,
             y=_sox_stamp_y,
             ha="right",
             asof_ymd=str(_sox_chg_tip.get("asof") or ""),
@@ -6618,7 +6810,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_tx_last_repaint.get("prev"),
             label_prefix="台指電子盤",
             fp=_fp,
-            x=0.995,
+            x=_tx_stamp_x,
             y=_tx_stamp_y,
             ha="right",
             clock=str(
@@ -6640,14 +6832,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 prev_close=_tx_tip.get("prev"),
                 label_prefix=str(_tx_tip.get("label") or "台指電子盤"),
                 fp=_fp,
-                x=0.995,
+                x=_tx_stamp_x,
                 y=_tx_stamp_y,
                 ha="right",
                 clock=str(_tx_tip.get("clock") or ""),
                 asof_ymd=str(_tx_tip.get("asof") or ""),
             )
     _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=_tw_stamp_y
+        fig,
+        bars,
+        pack=pack,
+        close=closes[-1],
+        fp=_fp,
+        x=_tw_stamp_x,
+        y=_tw_stamp_y,
     )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
@@ -6687,7 +6885,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：超近窗同吋大小，右緣貼垂直黃虛線（最大量日）左側低空帶
+    # 八浪縮圖：遠窗縮小貼加權左下，不准擋任何縮圖K
     _far_ins = _eight_wave_inset_rect_left_of_vmax(
         ax,
         fig,
@@ -6695,6 +6893,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ymin=float(ymin),
         ymax=float(ymax),
         n_bars=n_tw,
+        scale=0.52,
+        pin_bottom=True,
     )
     _paint_eight_wave_inset(
         fig,
@@ -6702,7 +6902,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         now_key=_eight_wave_now_key(pack),
         detail=False,
         rect=_far_ins,
-        title="八浪對位",
+        title="八浪",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)

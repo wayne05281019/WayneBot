@@ -225,9 +225,10 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert '_TEACH_STAMP_FACE = "#ffffff"' in src or "_TEACH_STAMP_FACE = '#ffffff'" in src
     assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
-    # 遠窗四欄：費半→台指電子盤→加權日盤→加權量；底圖加高
-    assert "figsize=(15.6, 15.0)" in far_blk
-    assert "height_ratios=(2.35, 2.35, 2.55, 1.05)" in far_blk
+    # 遠窗四欄：費半→台指電子盤→加權日盤（加權較高）→量；欄間日期
+    assert "figsize=(15.6, 15.2)" in far_blk
+    assert "height_ratios=(2.05, 2.20, 3.20, 0.95)" in far_blk
+    assert "hspace=0.12" in far_blk
     assert "_shrink_png_for_telegram" in far_blk
     assert "_TG_PHOTO_MAX_WH_SUM" in src
     assert "def _shrink_png_for_telegram" in src
@@ -236,10 +237,15 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_load_tx_futures_daily" in src
     assert "_ensure_paint_live_tx" in src
     assert "_apply_live_tx_to_axis" in far_blk
-    # 戳序對齊四欄：費半黃最上 → 台指電子盤紅中 → 加權黃（上下略留白）
-    assert "_sox_stamp_y = 0.982" in far_blk
-    assert "_tx_stamp_y = 0.950" in far_blk
-    assert "_tw_stamp_y = 0.918" in far_blk
+    # 電子盤撐壓底色＋右標虛線＋即時K
+    assert "tx_vol_sr" in far_blk
+    assert "_tx_right_notes" in far_blk
+    assert "電盤" in far_blk
+    # 三戳各歸本欄右上；八浪縮小貼底
+    assert "_fig_stamp_xy_axes_top_right" in far_blk
+    assert "def _fig_stamp_xy_axes_top_right" in src
+    assert "scale=0.52" in far_blk and "pin_bottom=True" in far_blk
+    assert "labelbottom=True" in far_blk
     assert "_paint_tx_after_hours_tip" in far_blk
     assert "_TEACH_STAMP_EDGE_TX" in src
     assert "def _resolve_tx_after_hours_tip" in src
