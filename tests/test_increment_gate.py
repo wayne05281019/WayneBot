@@ -390,7 +390,7 @@ def test_catch_up_skips_fuse_on_closed_day():
     src = inspect.getsource(main.catch_up_missed_jobs)
     assert "跳過盤後融合補跑" in src
     assert "closed_tw_session" in src
-    fuse_chunk = src.split("if need_fuse:")[1].split("if need_midday:")[0]
+    fuse_chunk = src.split("if need_fuse:")[1].split("if need_evening:")[0]
     assert "closed_fuse" in fuse_chunk
     assert "now=now" in fuse_chunk
     assert "run_increment_job" in fuse_chunk

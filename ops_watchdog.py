@@ -36,12 +36,7 @@ JOB_SPECS: Dict[str, Dict[str, Any]] = {
         "due_minutes": 6 * 60 + 40,
         "key": "screen",
     },
-    "midday_review": {
-        "label": "12:45 比價",
-        "scheduled": "12:45",
-        "due_minutes": 13 * 60 + 15,
-        "key": "midday",
-    },
+    # 雙時段比價（原 midday_review 12:45）已永久停用，不准再盯／補寄。
 }
 
 HEARTBEAT_POLLING = "telegram_polling"
@@ -62,7 +57,6 @@ INCREMENT_RUNNING_STALE_SEC = 300
 _WATCHDOG_SCHEDULER_JOB = {
     "increment": "fuse",
     "morning_screen": "morning",
-    "midday_review": "midday",
 }
 
 
@@ -279,7 +273,7 @@ def pipeline_stamps(db_path: str, *, now: Optional[datetime] = None) -> Dict[str
             "finished_at": str(row.get("finished_at") or ""),
             "notes": str(row.get("notes") or ""),
         }
-        if kind in ("morning_screen", "midday_review"):
+        if kind == "morning_screen":
             delivered = status == "success"
             if not delivered and key:
                 try:
@@ -312,22 +306,18 @@ def _expected_run_keys(db_path: str, now: datetime) -> Dict[str, str]:
         closed = None
     if closed:
         ymd = str(closed.get("ymd") or today).strip() or today
-        # 休市：海選略過鍵＋精簡早報鍵；12:45 用 midday-closed-*（整段不寄）。
+        # 休市：海選略過鍵＋精簡早報鍵。雙時段比價已停用，不再寫 midday-closed-*。
         # 休市日融合略過戳也用休市日曆鍵（與 MainRunner.increment_pipeline_key 對齊）。
         keys["increment"] = ymd
         keys["morning_screen"] = f"us-digest-{ymd}"
-        keys["midday_review"] = f"midday-closed-{ymd}"
         return keys
     try:
         from trading_calendar import morning_screen_pipeline_key
 
         screen_key = morning_screen_pipeline_key(db_path, now=now)
         keys["morning_screen"] = screen_key
-        as_of = str(screen_key or "").split("-", 1)[-1] or "none"
-        keys["midday_review"] = f"midday-{as_of}"
     except Exception:
         keys["morning_screen"] = "screen-none"
-        keys["midday_review"] = "midday-none"
     return keys
 
 
@@ -354,7 +344,7 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
     for kind, spec in JOB_SPECS.items():
         if not _watchdog_job_owned(kind):
             continue
-        # 休市日：只盯 us-digest 精簡早報；12:45 整段故意不寄、融合等也不告警。
+        # 休市日：只盯 us-digest 精簡早報；融合等也不告警。
         if closed_today and kind != "morning_screen":
             continue
         if minutes < int(spec["due_minutes"]):
@@ -381,7 +371,7 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
                 continue
         # 已有 Telegram 回執＝已寄過（與 pipeline_stamps.delivered 對齊）；
         # 不准因 pipeline 仍無紀錄／computed 又丟「排程未完成」嚇到查股途中。
-        if kind in ("morning_screen", "midday_review") and run_key:
+        if kind == "morning_screen" and run_key:
             try:
                 from pipeline_delivery import push_delivery_recorded
 
@@ -496,15 +486,8 @@ def format_watchdog_alert(missed: List[Dict[str, Any]]) -> str:
         return ""
     lines = ["⏰ <b>排程未完成</b>"]
     for m in missed:
-        extra = ""
-        if m.get("kind") == "midday_review":
-            cal = str(m.get("calendar") or "").strip()
-            key = str(m.get("run_date") or "")
-            as_of = key.split("-", 1)[-1] if "-" in key else ""
-            if cal and as_of and as_of != cal:
-                extra = f"（{cal[:4]}/{cal[4:6]}/{cal[6:8]} 窗，對照今早名單）"
         lines.append(
-            f"• {m['label']}（預定 {m['scheduled']}）{extra}：{m['status']}　<code>{m['run_date']}</code>"
+            f"• {m['label']}（預定 {m['scheduled']}）：{m['status']}　<code>{m['run_date']}</code>"
         )
     lines.append("")
     lines.append("<i>若今日為國定假日／停市，可忽略此提醒。</i>")

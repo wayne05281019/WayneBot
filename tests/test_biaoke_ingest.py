@@ -309,7 +309,7 @@ def test_ingest_hook_is_on_product_clocks():
     quiet_src = inspect.getsource(bi.run_biaoke_ingest_quiet)
     assert "PYTEST_CURRENT_TEST" in quiet_src
     assert "WAYNE_BIAOKE_INGEST_LIVE" in quiet_src
-    assert 'kind in ("morning", "midday", "fuse", "evening", "winrate", "typhoon", "open_check")' in src
+    assert 'kind in ("morning", "fuse", "evening", "winrate", "typhoon", "open_check")' in src
     boot = inspect.getsource(main.run_web)
     assert "start_biaoke_poller" in boot
     assert "restore_universe_if_wiped" in boot

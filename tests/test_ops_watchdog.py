@@ -120,17 +120,18 @@ def test_missed_jobs_flags_morning_in_data_role(tmp_path, monkeypatch):
     assert "morning_screen" in kinds
 
 
-def test_missed_jobs_flags_midday_after_deadline(tmp_path, monkeypatch):
+def test_missed_jobs_never_flags_retired_midday(tmp_path, monkeypatch):
+    """雙時段比價已停用：過 12:45 死線也不再盯 midday_review。"""
     path = _make_db(tmp_path)
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 13, 20)
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
-    assert kinds == {"morning_screen", "midday_review"}
-    assert all(m["run_date"] != "midday-none" for m in missed_jobs(path, now=now))
+    assert "midday_review" not in kinds
+    assert kinds == {"morning_screen"}
 
 
-def test_missed_jobs_midday_success_clears(tmp_path, monkeypatch):
+def test_missed_jobs_midday_success_irrelevant(tmp_path, monkeypatch):
     path = _make_db(
         tmp_path,
         runs={"screen-20260902": "success", "midday-20260902": "success"},
@@ -139,19 +140,6 @@ def test_missed_jobs_midday_success_clears(tmp_path, monkeypatch):
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 13, 20)
     assert missed_jobs(path, now=now) == []
-
-
-def test_missed_jobs_midday_delivery_clears_without_pipeline(tmp_path, monkeypatch):
-    """有 Telegram 回執但 pipeline 無紀錄＝已寄過，不准再告警（查股途中嚇到）。"""
-    path = _make_db(tmp_path, runs={"screen-20260902": "success"})
-    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
-    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    from pipeline_delivery import record_push_delivery
-
-    assert record_push_delivery(path, "midday-20260902", kind="midday", n_ok=2)
-    now = datetime(2026, 9, 2, 14, 0)
-    kinds = {m["kind"] for m in missed_jobs(path, now=now)}
-    assert "midday_review" not in kinds
 
 
 def test_missed_jobs_success_clears(tmp_path, monkeypatch):
@@ -233,10 +221,8 @@ def test_missed_jobs_flags_both_after_evening(tmp_path, monkeypatch):
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 19, 0)  # 過了 16:45 融合死線
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
-    assert kinds == {"increment", "morning_screen", "midday_review"}
-    midday = next(m for m in missed_jobs(path, now=now) if m["kind"] == "midday_review")
-    assert midday["calendar"] == "20260902"
-    assert midday["run_date"] == "midday-20260902"
+    assert kinds == {"increment", "morning_screen"}
+    assert "midday_review" not in kinds
 
 
 def test_missed_jobs_flags_increment_after_1645(tmp_path, monkeypatch):
@@ -309,7 +295,7 @@ def test_missed_jobs_increment_quiet_when_bars_complete(tmp_path, monkeypatch):
     now = datetime(2026, 9, 2, 19, 0)
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
     assert "increment" not in kinds
-    assert "midday_review" in kinds
+    assert "midday_review" not in kinds
     assert "morning_screen" in kinds
 
 
@@ -362,10 +348,10 @@ def test_watchdog_scan_alerts_once(tmp_path, monkeypatch):
 
     first = watchdog_scan(path, now=now, check_release=False)
     assert first["enabled"] is True
-    assert len(first["alerts"]) == 3
+    assert len(first["alerts"]) == 2  # increment + morning；midday 已停用
 
     second = watchdog_scan(path, now=now, check_release=False)
-    assert len(second["missed"]) == 3
+    assert len(second["missed"]) == 2
     assert second["alerts"] == []
 
 
@@ -385,7 +371,7 @@ def test_watchdog_scan_no_claim_is_readonly(tmp_path, monkeypatch):
     now = datetime(2026, 9, 2, 19, 0)
     a = watchdog_scan(path, now=now, claim=False, check_release=False)
     b = watchdog_scan(path, now=now, claim=False, check_release=False)
-    assert len(a["alerts"]) == len(b["alerts"]) == 3
+    assert len(a["alerts"]) == len(b["alerts"]) == 2
 
 
 def test_format_watchdog_alert():
@@ -397,31 +383,14 @@ def test_format_watchdog_alert():
     assert "06:30" in text
     assert "screen-20260902" in text
     assert "國定假日" in text
-    midday = format_watchdog_alert(
-        [
-            {
-                "kind": "midday_review",
-                "label": "12:45 比價",
-                "scheduled": "12:45",
-                "run_date": "midday-20261005",
-                "status": "無紀錄",
-                "calendar": "20261006",
-            }
-        ]
-    )
-    assert "12:45 比價" in midday
-    assert "2026/10/06 窗" in midday
-    assert "對照今早名單" in midday
-    assert "midday-20261005" in midday
-
-
 def test_watchdog_payload_shape(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     payload = watchdog_payload(path)
     assert set(payload) >= {"enabled", "missed", "missed_n", "polling_alive", "polling_age_s", "jobs"}
     assert payload["missed_n"] == len(payload["missed"])
-    assert set(payload["jobs"]) >= {"morning_screen", "midday_review", "increment"}
+    assert set(payload["jobs"]) >= {"morning_screen", "increment"}
+    assert "midday_review" not in payload["jobs"]
 
 
 def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
@@ -429,7 +398,6 @@ def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
         tmp_path,
         runs={
             "screen-20260902": "success",
-            "midday-20260902": "computed",
             # 融合鍵＝fuse_end：16:30 後才是當日；14:00 會讀昨開市日鍵
             "20260902": "success",
         },
@@ -441,8 +409,7 @@ def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
     assert stamps["morning_screen"]["delivered"] is True
     assert stamps["morning_screen"]["status"] == "success"
     assert stamps["morning_screen"]["finished_at"]
-    assert stamps["midday_review"]["delivered"] is False
-    assert stamps["midday_review"]["status"] == "computed"
+    assert "midday_review" not in stamps
     assert stamps["increment"]["key"] == "20260902"
     assert stamps["increment"]["status"] == "success"
     assert "delivered" not in stamps["increment"]

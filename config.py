@@ -193,7 +193,7 @@ def taipei_now():
 
 
 def taipei_stamp(now=None) -> str:
-    """排程／紀錄時戳：台北 ISO（含 +08:00）。不准用機器 UTC 去對 06:30／12:45／16:30。"""
+    """排程／紀錄時戳：台北 ISO（含 +08:00）。不准用機器 UTC 去對 06:30／16:30。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -243,13 +243,14 @@ def daily_scheduler_enabled() -> bool:
 
 # 推播單一真相：只在 Render 常駐寄話筒。GHA 與 Render 碟不同，
 # pipeline_runs／skip_if_done 不能跨機防重——防雙寄靠 GHA 永不寄訊。
-# 06:30／12:45 推播歸常駐（WAYNE_SCHEDULER_ROLE=data＋scheduler_may_push）。
+# 06:30 推播歸常駐（WAYNE_SCHEDULER_ROLE=data＋scheduler_may_push）。
+# 雙時段比價（原 12:45 midday）已永久停用，不准再推。
 # GHA morning_screen／increment 只算名單、蓋 zip；WAYNE_SCREEN_NOTIFY 必須 0。
 SCHEDULER_ROLES = ("data", "full", "off")
 
 
 def scheduler_role() -> str:
-    """data＝常駐算數＋只推 morning／midday；full＝連其他推播；off＝不排程。"""
+    """data＝常駐算數＋只推 morning／winrate；full＝連其他推播；off＝不排程。"""
     raw = (os.getenv("WAYNE_SCHEDULER_ROLE") or "").strip().lower()
     if raw in SCHEDULER_ROLES:
         return raw
@@ -261,13 +262,16 @@ def scheduler_role() -> str:
 def scheduler_owns(job: str) -> bool:
     """這個行程要不要跑該 job 的「算數」。
 
-    data／full：常駐跑 morning／midday／fuse／evening／typhoon／open_check。
+    data／full：常駐跑 morning／fuse／evening／typhoon／open_check（midday 已停用）。
     是否寄 Telegram 另看 scheduler_may_push（與 owns 分開，避免以為 owns＝可寄）。
     GHA 行程不設 WAYNE_SCHEDULER_ROLE=data 常駐迴圈；它走 --once 算數，靠
     WAYNE_SCREEN_NOTIFY=0 禁寄（見 assert_gha_screen_muted）。
     """
     role = scheduler_role()
     if role == "off":
+        return False
+    # 雙時段比價已永久停用：任何角色都不擁有 midday 算數。
+    if str(job or "").strip().lower() == "midday":
         return False
     if role == "full":
         return True
@@ -276,13 +280,15 @@ def scheduler_owns(job: str) -> bool:
 
 
 def scheduler_may_push(job: str) -> bool:
-    """可不可以寄話筒。data 只准 morning／midday／winrate；GHA 必須另被 screen_notify 關掉。"""
+    """可不可以寄話筒。data 只准 morning／winrate；GHA 必須另被 screen_notify 關掉。"""
     role = scheduler_role()
     if role == "off":
         return False
+    if str(job or "").strip().lower() == "midday":
+        return False
     if role == "full":
         return True
-    return str(job or "").strip().lower() in ("morning", "midday", "winrate")
+    return str(job or "").strip().lower() in ("morning", "winrate")
 
 
 def screen_notify_enabled() -> bool:
