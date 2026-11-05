@@ -2196,8 +2196,11 @@ def test_force_rescue_skips_when_fresh_morning_claim(tmp_path, monkeypatch):
     runner.db_path = path
     runner.today_str = "20261027"
     called = {"demote": 0, "morning": 0}
-    # CI 若落在 16:25–17:00 不准被融合讓路短路掉 inflight 測
+    # CI 若落在 16:25–17:00／彙整窗，不准被讓路短路掉 inflight 測
     monkeypatch.setattr(runner, "should_yield_to_market_fuse", lambda now=None: False)
+    monkeypatch.setattr(
+        runner, "should_yield_to_db_heavy_window", lambda now=None, fuse_only=False: False
+    )
     monkeypatch.setattr(runner, "reconcile_push_deliveries", lambda **k: 0)
     monkeypatch.setattr(runner, "morning_claim_is_fresh_running", lambda: True)
     monkeypatch.setattr(
