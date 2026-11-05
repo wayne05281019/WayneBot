@@ -122,7 +122,7 @@ def test_prefer_asof_does_not_fallback_previous_day(tmp_path, monkeypatch):
     """高低卡指定日缺路徑 → 回空；不准默默退前一開市日換成錯日戳。"""
     calls: list[str] = []
 
-    def _fake_build(sid, name, mkt, db_path=None, ymd=None):
+    def _fake_build(sid, name, mkt, db_path=None, ymd=None, live_quote=None, **_kw):
         calls.append(str(ymd or ""))
         return None
 
@@ -328,3 +328,162 @@ def test_sync_emerging_triggers_intraday_snapshot():
 
     src = inspect.getsource(MainRunner._sync_emerging_required)
     assert "snapshot_emerging_intraday_day" in src
+
+
+def test_overlay_live_replaces_stale_tpex_yesterday_close():
+    """上櫃日收 API 盤中仍吐昨列時，現價／開高低要改吃 live（6274）。"""
+    from intraday_open_close_chart import (
+        OfficialDay,
+        apply_live_quote_to_series,
+        overlay_official_day_with_live,
+    )
+    from dataclasses import replace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from intraday_open_close_chart import PathSeries
+
+    stale = OfficialDay(
+        stock_id="6274",
+        open=1130.0,
+        high=1145.0,
+        low=1010.0,
+        close=1115.0,
+        prev_close=1090.0,
+        volume_lots=19039.0,
+        turnover_k=20724863.0,
+        avg_price=1088.51,
+        pct_change=2.29,
+        change=25.0,
+        amplitude_pct=12.39,
+        q_avg_vol_lots=8300.0,
+        w52_high=1920.0,
+        w52_low=374.0,
+        source="tpex:mainboard_daily_close",
+        close_label="收盤",
+        prev_volume_lots=11140.0,
+        prev_turnover_k=12624605.0,
+    )
+    live = {
+        "stock_id": "6274",
+        "open": 1030.0,
+        "high": 1045.0,
+        "low": 1005.0,
+        "close": 1005.0,
+        "volume": 9983.0,
+        "pct_change": -9.87,
+        "change": -110.0,
+        "yesterday_close": 1115.0,
+        "update_time": "11:55:53",
+        "is_realtime": True,
+    }
+    got = overlay_official_day_with_live(stale, live, path_last=1005.0)
+    assert got.close == 1005.0
+    assert got.open == 1030.0
+    assert got.high == 1045.0
+    assert got.low == 1005.0
+    assert got.prev_close == 1115.0
+    assert got.change == -110.0
+    assert abs(got.pct_change + 9.87) < 0.02
+    assert got.prev_volume_lots == 19039.0  # 昨列量升成昨量
+    assert "+live" in got.source
+    assert got.close_label == "現價"
+
+    TP = ZoneInfo("Asia/Taipei")
+    series = PathSeries(
+        stock_id="6274",
+        name="台燿",
+        market="TWO",
+        times=[datetime(2026, 11, 5, 9, 0, tzinfo=TP), datetime(2026, 11, 5, 11, 37, tzinfo=TP)],
+        closes=[1045.0, 1005.0],
+        volumes_lots=[10.0, 20.0],
+        opens=[1045.0, 1005.0],
+        highs=[1045.0, 1005.0],
+        lows=[1045.0, 1005.0],
+        path_source="test",
+        path_end=datetime(2026, 11, 5, 11, 37, tzinfo=TP),
+        gap_after=None,
+        official=stale,
+    )
+    out = apply_live_quote_to_series(series, live)
+    assert out is not None
+    assert out.official.close == 1005.0
+    assert out.official.close_label == "現價"
+
+
+def test_render_lookup_intraday_applies_live_quote():
+    src = inspect.getsource(render_lookup_intraday_result)
+    assert "apply_live_quote_to_series" in src
+    assert "live_quote" in src
+
+
+def test_resolve_session_official_uses_prev_plus_live_when_today_missing(monkeypatch):
+    """上市盤中 STOCK_DAY 尚無今日列（6442）→ 上一日＋live，不准整張沒圖。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import intraday_open_close_chart as ioc
+
+    today = "20261105"
+    yest = "20261104"
+    scaffold = ioc.OfficialDay(
+        stock_id="6442",
+        open=1155.0,
+        high=1160.0,
+        low=1045.0,
+        close=1130.0,
+        prev_close=1140.0,
+        volume_lots=2863.0,
+        turnover_k=3171848.0,
+        avg_price=1107.0,
+        pct_change=-0.88,
+        change=-10.0,
+        amplitude_pct=10.0,
+        q_avg_vol_lots=2500.0,
+        w52_high=2540.0,
+        w52_low=857.0,
+        source="twse:STOCK_DAY",
+        close_label="收盤",
+        prev_volume_lots=2143.0,
+        prev_turnover_k=2526456.0,
+    )
+    live = {
+        "stock_id": "6442",
+        "open": 1110.0,
+        "high": 1150.0,
+        "low": 1040.0,
+        "close": 1097.5,
+        "volume": 1517.0,
+        "pct_change": -2.88,
+        "change": -32.5,
+        "yesterday_close": 1130.0,
+        "update_time": "12:01:56",
+        "is_realtime": True,
+    }
+
+    def _fake_fetch(sid, market, *, ymd, db_path):
+        if ymd == today:
+            return None
+        if ymd == yest:
+            return scaffold
+        return None
+
+    monkeypatch.setattr(ioc, "fetch_official", _fake_fetch)
+    monkeypatch.setattr(
+        "tw_holidays.previous_tw_trading_day", lambda ymd, *_a, **_k: yest
+    )
+    got = ioc.resolve_session_official_day(
+        "6442", "TW", ymd=today, db_path=":memory:", live_quote=live
+    )
+    assert got is not None
+    assert got.close == 1097.5
+    assert got.open == 1110.0
+    assert got.prev_close == 1130.0
+    assert got.close_label == "現價"
+    assert "+live" in got.source or got.source == "live_quote"
+
+
+def test_prepare_lookup_accepts_live_quote_kw():
+    src = inspect.getsource(prepare_lookup_intraday_series)
+    assert "live_quote" in src
+    assert "build_series" in src

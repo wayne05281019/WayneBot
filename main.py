@@ -524,6 +524,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         - POST /ops/disk-audit：只讀碟分項＋.corrupt-* 救援副本估量（不刪）
         - POST /ops/purge-rebuildable-disk：只刪確定可重建快取／過期教具
         - POST /ops/purge-corrupt-keep：只刪未列在 keep 的 .corrupt-*（正式庫永不刪）
+        - POST /ops/biaoke-search：只讀正式庫 biaoke_posts（不准外抓 CMoney）
         """
         import json
 
@@ -534,6 +535,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             "/ops/disk-audit",
             "/ops/purge-rebuildable-disk",
             "/ops/purge-corrupt-keep",
+            "/ops/biaoke-search",
         ):
             self.send_response(404)
             self.end_headers()
@@ -696,6 +698,61 @@ class HealthHandler(BaseHTTPRequestHandler):
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")
                 self.send_response(200 if purged.get("ok") else 400)
+            elif route == "/ops/biaoke-search":
+                # 只讀正式碟 biaoke_posts；給代理對最新回文，不准再外抓 CMoney。
+                import sqlite3
+                from config import get_db_path
+
+                q = str(req_json.get("q") or req_json.get("query") or "").strip()
+                since = str(req_json.get("since") or "").strip()[:10]
+                limit = int(req_json.get("limit") or 30)
+                limit = max(1, min(limit, 80))
+                rows_out = []
+                err = ""
+                try:
+                    if not q:
+                        raise ValueError("empty q")
+                    conn = sqlite3.connect(get_db_path(), timeout=30.0)
+                    conn.row_factory = sqlite3.Row
+                    sql = (
+                        "SELECT id, date, time, kind, layer, parent, "
+                        "substr(text, 1, 800) AS text FROM biaoke_posts "
+                        "WHERE text LIKE ? "
+                    )
+                    args: list = [f"%{q}%"]
+                    if since:
+                        sql += " AND date >= ? "
+                        args.append(since)
+                    sql += " ORDER BY date DESC, time DESC LIMIT ?"
+                    args.append(limit)
+                    for r in conn.execute(sql, args):
+                        rows_out.append(
+                            {
+                                "id": r["id"],
+                                "date": r["date"],
+                                "time": r["time"],
+                                "kind": r["kind"],
+                                "layer": r["layer"],
+                                "parent": r["parent"],
+                                "text": r["text"],
+                            }
+                        )
+                    conn.close()
+                except Exception as exc:
+                    err = str(exc)
+                    logger.exception("ops /ops/biaoke-search 失敗")
+                result = {
+                    "ok": not err,
+                    "kind": "biaoke_search",
+                    "q": q,
+                    "since": since,
+                    "n": len(rows_out),
+                    "rows": rows_out,
+                    "error": err,
+                    "note": "只讀正式庫；不抓 CMoney。",
+                }
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if not err else 400)
             elif route == "/ops/repair-market-db":
                 # 預設 force_release：過舊完整日／缺表都要換公開 Release
                 force_release = True

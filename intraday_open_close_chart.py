@@ -15,7 +15,7 @@ import re
 import sqlite3
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote as url_quote
@@ -1133,6 +1133,280 @@ def fetch_official_tpex(stock_id: str, *, ymd: str, db_path: str) -> Optional[Of
         limit_up=None,
         limit_down=None,
     )
+
+
+def overlay_official_day_with_live(
+    off: OfficialDay,
+    live: Optional[Dict[str, Any]],
+    *,
+    path_last: Optional[float] = None,
+) -> OfficialDay:
+    """盤中把即時報價疊進官方日欄。
+
+    上櫃／上市「日收盤」API 在 13:30 前常仍吐「昨收」整列；分時路徑已是今日，
+    頭欄／現價標若仍釘昨收 → 線在 1005、標寫 1115（6274）。live 有真數才疊；
+    不准捏。路徑仍只認真分時。
+    """
+    if off is None or not isinstance(live, dict):
+        return off
+    if not (live.get("is_realtime") or live.get("is_live")):
+        return off
+    try:
+        close = float(live.get("close") or 0)
+    except (TypeError, ValueError):
+        close = 0.0
+    if close <= 0:
+        return off
+    try:
+        prev = float(
+            live.get("yesterday_close") or live.get("prev_close") or 0
+        )
+    except (TypeError, ValueError):
+        prev = 0.0
+    try:
+        o = float(live.get("open") or 0)
+        hi = float(live.get("high") or 0)
+        lo = float(live.get("low") or 0)
+        vol = float(live.get("volume") or 0)
+    except (TypeError, ValueError):
+        o = hi = lo = vol = 0.0
+    if o <= 0 or hi <= 0 or lo <= 0:
+        # 缺開高低就不疊整列（只改收會跟區間互打）
+        return off
+    # 昨收日收 API 吐昨整列：off.close ≈ live.昨收
+    stale_yest = False
+    if prev > 0:
+        tol = max(0.02, abs(prev) * 1e-4)
+        stale_yest = abs(float(off.close) - prev) <= tol
+    # 已與 live 同價且非昨收列 → 不必重疊
+    if (
+        not stale_yest
+        and abs(float(off.close) - close) <= max(0.02, abs(close) * 1e-4)
+        and abs(float(off.open) - o) <= max(0.02, abs(o) * 1e-4)
+    ):
+        return off
+    if prev <= 0:
+        prev = float(off.prev_close) if float(off.prev_close) > 0 else close
+    chg = float(live.get("change") or 0)
+    try:
+        pct = float(live.get("pct_change") or live.get("change_pct") or 0)
+    except (TypeError, ValueError):
+        pct = 0.0
+    if prev > 0 and (
+        abs(chg) < 1e-12
+        or abs((close - prev) - chg) > max(0.05, abs(prev) * 1e-3)
+    ):
+        chg = close - prev
+        pct = (chg / prev * 100.0) if prev else 0.0
+    # 日收 API 若是昨列：其量／額＝昨量昨額，疊完當 prev_*
+    if stale_yest:
+        prev_vol = float(off.volume_lots) if float(off.volume_lots) > 0 else off.prev_volume_lots
+        prev_to = (
+            float(off.turnover_k)
+            if off.turnover_k is not None and float(off.turnover_k) > 0
+            else off.prev_turnover_k
+        )
+    else:
+        prev_vol = off.prev_volume_lots
+        prev_to = off.prev_turnover_k
+    vol_lots = vol if vol > 0 else float(off.volume_lots)
+    try:
+        from live_quote import lookup_price_label
+
+        lab = lookup_price_label(live) or "現價"
+    except Exception:
+        lab = "現價"
+    w52h = off.w52_high
+    w52l = off.w52_low
+    if w52h is not None:
+        w52h = max(float(w52h), hi, close)
+    else:
+        w52h = max(hi, close)
+    if w52l is not None:
+        w52l = min(float(w52l), lo, close)
+    else:
+        w52l = min(lo, close)
+    # 路徑末價僅作對質日誌；畫面 OHLC 認 live
+    if path_last is not None:
+        try:
+            pl = float(path_last)
+            if pl > 0 and abs(pl - close) > max(1.0, abs(close) * 0.03):
+                logger.info(
+                    "第5張 live 與分時末價偏離 stock=%s live=%.4f path=%.4f",
+                    off.stock_id,
+                    close,
+                    pl,
+                )
+        except (TypeError, ValueError):
+            pass
+    src = str(off.source or "").strip()
+    if "+live" not in src:
+        src = f"{src}+live" if src else "live_quote"
+    return replace(
+        off,
+        open=o,
+        high=hi,
+        low=lo,
+        close=close,
+        prev_close=prev,
+        volume_lots=vol_lots,
+        turnover_k=None,  # 盤中即時常無額；不准留昨額假冒今額
+        avg_price=None,
+        pct_change=pct,
+        change=chg,
+        amplitude_pct=_amp(hi, lo, prev),
+        w52_high=w52h,
+        w52_low=w52l,
+        source=src,
+        close_label=lab,
+        prev_volume_lots=prev_vol,
+        prev_turnover_k=prev_to,
+    )
+
+
+def apply_live_quote_to_series(
+    series: Optional[PathSeries],
+    live: Optional[Dict[str, Any]],
+) -> Optional[PathSeries]:
+    """查股第 5 張：有盤中 live 就疊官方日欄；無真 live 不動。"""
+    if series is None or not isinstance(live, dict):
+        return series
+    path_last = None
+    if series.closes:
+        try:
+            path_last = float(series.closes[-1])
+        except (TypeError, ValueError, IndexError):
+            path_last = None
+    new_off = overlay_official_day_with_live(
+        series.official, live, path_last=path_last
+    )
+    if new_off is series.official:
+        return series
+    notices = _detect_notices(
+        list(series.times),
+        list(series.closes),
+        list(series.volumes_lots),
+        new_off,
+        market=series.market,
+    )
+    return replace(series, official=new_off, notices=notices)
+
+
+def official_day_from_live(
+    stock_id: str,
+    live: Dict[str, Any],
+    *,
+    db_path: str,
+    ymd: str,
+    market: str = "",
+) -> Optional[OfficialDay]:
+    """盤中尚無今日日收列時，用即時報價組官方日欄骨架（不准捏價）。"""
+    if not isinstance(live, dict):
+        return None
+    if not (live.get("is_realtime") or live.get("is_live")):
+        return None
+    try:
+        close = float(live.get("close") or 0)
+        o = float(live.get("open") or 0)
+        hi = float(live.get("high") or 0)
+        lo = float(live.get("low") or 0)
+        prev = float(live.get("yesterday_close") or live.get("prev_close") or 0)
+        vol = float(live.get("volume") or 0)
+    except (TypeError, ValueError):
+        return None
+    if close <= 0 or o <= 0 or hi <= 0 or lo <= 0 or prev <= 0:
+        return None
+    chg = float(live.get("change") or (close - prev))
+    try:
+        pct = float(live.get("pct_change") or live.get("change_pct") or 0)
+    except (TypeError, ValueError):
+        pct = (chg / prev * 100.0) if prev else 0.0
+    if abs((close - prev) - chg) > max(0.05, abs(prev) * 1e-3):
+        chg = close - prev
+        pct = (chg / prev * 100.0) if prev else 0.0
+    mkt = str(market or "").strip().upper() or "TW"
+    qavg, w52h, w52l = _hist_stats(stock_id, mkt, db_path, ymd=ymd)
+    if w52h is not None:
+        w52h = max(float(w52h), hi, close)
+    else:
+        w52h = max(hi, close)
+    if w52l is not None:
+        w52l = min(float(w52l), lo, close)
+    else:
+        w52l = min(lo, close)
+    try:
+        from live_quote import lookup_price_label
+
+        lab = lookup_price_label(live) or "現價"
+    except Exception:
+        lab = "現價"
+    # 昨量：庫內上一開市日（有才填）
+    prev_vol, prev_to = _prev_day_vol_turn_db(stock_id, mkt, db_path, ymd=ymd)
+    return OfficialDay(
+        stock_id=str(stock_id),
+        open=o,
+        high=hi,
+        low=lo,
+        close=close,
+        prev_close=prev,
+        volume_lots=vol if vol > 0 else 0.0,
+        turnover_k=None,
+        avg_price=None,
+        pct_change=pct,
+        change=chg,
+        amplitude_pct=_amp(hi, lo, prev),
+        q_avg_vol_lots=qavg,
+        w52_high=w52h,
+        w52_low=w52l,
+        source="live_quote",
+        close_label=lab,
+        prev_volume_lots=prev_vol,
+        prev_turnover_k=prev_to,
+    )
+
+
+def resolve_session_official_day(
+    stock_id: str,
+    market: str,
+    *,
+    ymd: str,
+    db_path: str,
+    live_quote: Optional[Dict[str, Any]] = None,
+) -> Optional[OfficialDay]:
+    """取第 5 張官方日欄：今日日收 →（缺）上一日收＋live 疊 →（再缺）純 live。"""
+    off = fetch_official(stock_id, market, ymd=ymd, db_path=db_path)
+    if off is not None:
+        return off
+    live = live_quote if isinstance(live_quote, dict) else None
+    if live is None:
+        return None
+    prev = ""
+    try:
+        from tw_holidays import previous_tw_trading_day
+
+        prev = str(previous_tw_trading_day(ymd, db_path) or "").replace("-", "")[:8]
+    except Exception:
+        prev = ""
+    if prev and prev != ymd:
+        scaffold = fetch_official(stock_id, market, ymd=prev, db_path=db_path)
+        if scaffold is not None:
+            merged = overlay_official_day_with_live(scaffold, live)
+            if merged is not None and float(merged.close) > 0:
+                logger.info(
+                    "第5張官方日列缺今日，改上一日＋live stock=%s ymd=%s prev=%s",
+                    stock_id,
+                    ymd,
+                    prev,
+                )
+                return merged
+    built = official_day_from_live(
+        stock_id, live, db_path=db_path, ymd=ymd, market=market
+    )
+    if built is not None:
+        logger.info(
+            "第5張官方日列缺今日，改純 live stock=%s ymd=%s", stock_id, ymd
+        )
+    return built
 
 
 def fetch_official(stock_id: str, market: str, *, ymd: str, db_path: str) -> Optional[OfficialDay]:
@@ -2321,8 +2595,15 @@ def build_series(
     *,
     db_path: str,
     ymd: str = ASOF_YMD,
+    live_quote: Optional[Dict[str, Any]] = None,
 ) -> Optional[PathSeries]:
-    off = fetch_official(stock_id, market, ymd=ymd, db_path=db_path)
+    off = resolve_session_official_day(
+        stock_id,
+        market,
+        ymd=ymd,
+        db_path=db_path,
+        live_quote=live_quote if isinstance(live_quote, dict) else None,
+    )
     if off is None:
         sys.stderr.write(f"[official-miss] {stock_id}\n")
         return None
@@ -2623,7 +2904,12 @@ def _paint_range_bars(fig, off: OfficialDay, *, y_bot: float, left: float, right
     row_pitch = 0.062
     width = right - left
     y = y_bot + 2 * row_pitch + 0.006
-    last_lab = "日均" if off.close_label == "興櫃收" else "收盤"
+    if off.close_label == "興櫃收":
+        last_lab = "日均"
+    elif off.close_label == "現價" or "+live" in str(off.source or ""):
+        last_lab = "現價"
+    else:
+        last_lab = "收盤"
     z = 30
     vol_ratio: Optional[float] = None
 
@@ -2978,7 +3264,18 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
     except Exception:
         _fb = _stamp_ymd if "_stamp_ymd" in locals() and _stamp_ymd else ASOF_YMD
         date_part = f"{_fb[:4]}/{_fb[4:6]}/{_fb[6:8]}" if len(_fb) == 8 else str(_fb)
-    stamp = f"{date_part} {board_close_clock_label(emerging=is_em)}".strip()
+    is_live_off = (
+        off.close_label == "現價" or "+live" in str(off.source or "")
+    )
+    if is_live_off and times:
+        _pe = times[-1]
+        if getattr(_pe, "tzinfo", None) is None:
+            _pe = _pe.replace(tzinfo=TZ)
+        else:
+            _pe = _pe.astimezone(TZ)
+        stamp = f"{date_part} 盤中 {_pe.strftime('%H:%M')}".strip()
+    else:
+        stamp = f"{date_part} {board_close_clock_label(emerging=is_em)}".strip()
     stamp_x = float(chip_end) + 1.35
     # 防撞右上價區：最多貼到 spot 左緩衝
     stamp_x = min(stamp_x, float(_SPOT_X_NO_LOCATOR) - 28.0)
@@ -2997,8 +3294,8 @@ def render_path(series: PathSeries, out_path: str, *, db_path: str = "") -> Tupl
         "prev": off.prev_close,
         "change": off.change,
         "pct": off.pct_change,
-        "label": off.close_label,
-        "is_live": False,
+        "label": off.close_label if off.close_label else ("現價" if is_live_off else "收盤"),
+        "is_live": bool(is_live_off),
     }
     # 興櫃無漲跌停：spot 先以 0 漲跌畫（不判停），事後補真字＋透明底
     _paint_spot(
@@ -3480,10 +3777,12 @@ def prepare_lookup_intraday_series(
     asof_ymd: Optional[str] = None,
     card: Optional[Dict[str, Any]] = None,
     hits: Optional[Sequence[Dict[str, Any]]] = None,
+    live_quote: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[Any], str, str]:
     """查股第 5 張：paint 外抓真分時（可與 1–4 張重疊）。回 (series, ymd, market)。
 
     無真路徑 → (None, ymd, market)。不准假延長。
+    盤中無今日日收列時可帶 live_quote 組骨架（6442 光聖）。
     """
     sid = str(stock_id or "").strip()
     if not sid:
@@ -3507,7 +3806,10 @@ def prepare_lookup_intraday_series(
             if len(prefer) != 8 or not prefer.isdigit():
                 prefer = ""
     ymd = resolve_intraday_asof_ymd(path_db, prefer=prefer or None)
-    series = build_series(sid, name, mkt, db_path=path_db, ymd=ymd)
+    live = live_quote if isinstance(live_quote, dict) else None
+    series = build_series(
+        sid, name, mkt, db_path=path_db, ymd=ymd, live_quote=live
+    )
     if series is None and not prefer:
         # 沒有高低卡指定日才准退前一開市日；有指定日就跟卡走，不准默默換日戳
         try:
@@ -3517,7 +3819,9 @@ def prepare_lookup_intraday_series(
         except Exception:
             prev = ""
         if prev and prev != ymd:
-            series = build_series(sid, name, mkt, db_path=path_db, ymd=prev)
+            series = build_series(
+                sid, name, mkt, db_path=path_db, ymd=prev, live_quote=live
+            )
             ymd = prev or ymd
     if series is None:
         logger.info(
@@ -3536,7 +3840,7 @@ def render_lookup_intraday_result(
     asof_ymd: Optional[str] = None,
     card: Optional[Dict[str, Any]] = None,
     hits: Optional[Sequence[Dict[str, Any]]] = None,
-    live_quote: Optional[Dict[str, Any]] = None,  # noqa: ARG001 — 預留；路徑仍只認真分時
+    live_quote: Optional[Dict[str, Any]] = None,
     series: Optional[Any] = None,
     series_ymd: Optional[str] = None,
     series_market: Optional[str] = None,
@@ -3545,6 +3849,7 @@ def render_lookup_intraday_result(
 
     無真官方日值或真分時路徑 → 回空字串（不上假圖）。
     可吃 prepare_lookup_intraday_series 預抓的 series（paint worker 只渲、不重抓網）。
+    盤中 live_quote 疊進頭欄／現價標（日收 API 未更新時不准釘昨收）；路徑仍只認真分時。
     """
     sid = str(stock_id or "").strip()
     if not sid:
@@ -3577,6 +3882,7 @@ def render_lookup_intraday_result(
             series = series[0]
         else:
             series = None
+    live = live_quote if isinstance(live_quote, dict) else None
     if series is None:
         series, ymd, mkt = prepare_lookup_intraday_series(
             sid,
@@ -3586,6 +3892,7 @@ def render_lookup_intraday_result(
             asof_ymd=asof_ymd,
             card=card,
             hits=hits,
+            live_quote=live,
         )
     if series is None:
         return "", ""
@@ -3593,6 +3900,7 @@ def render_lookup_intraday_result(
         mkt = resolve_intraday_market(sid, path_db, hits=hits, card=card)
     if len(ymd) != 8 or not ymd.isdigit():
         ymd = resolve_intraday_asof_ymd(path_db, prefer=None)
+    series = apply_live_quote_to_series(series, live)
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     try:
         _path, gate = render_path(series, out, db_path=path_db)
