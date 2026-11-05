@@ -1620,6 +1620,57 @@ def _thesis_cap_for_query(
     return max(x for x in (chart, today) if x)
 
 
+def _biaoke_level_snip_score(blob: str, *, is_main: bool) -> int:
+    """位階題旨打分：長主文＞短回；短「費半沒跌完」不准蓋長篇。"""
+    score = 0
+    if looks_like_level_now(blob):
+        score += 10
+    if _INDEXISH.search(blob):
+        score += 3
+    if re.search(
+        r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
+        r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5|"
+        r"第二組下跌|落底確認|劇本",
+        blob,
+    ):
+        score += 12
+    n = len(blob)
+    if n >= 120:
+        score += 6
+    if n >= 240:
+        score += 6
+    if is_main:
+        score += 10
+    elif n < 80:
+        score -= 8
+    return score
+
+
+def _reply_level_delta(blob: str) -> bool:
+    """樓下自回是否帶大盤／費半點位或改口（依時間序併進題旨；個股回測不收）。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    # 明確大盤／費半數字或改口
+    if re.search(
+        r"45546|46292|44210|44042|39384|42000|41000|40000|35000|38000|"
+        r"9865|10445|8498|47500",
+        s,
+    ):
+        return True
+    # 改口／假跌破：要有大盤戰場，且不是「還是會破三日低」這種空話
+    if re.search(r"假跌破|劇本一|有效穿刺|1\s*[-–]?\s*4\s*重疊", s) and _INDEXISH.search(
+        s
+    ):
+        return True
+    if re.search(r"(?:9865|10445|8498).{0,6}會破|會破.{0,6}(?:9865|10445|8498)", s):
+        return True
+    return bool(
+        _INDEXISH.search(s)
+        and re.search(r"(?<![0-9])(?:3[5-9]|4[0-9])\d{3}(?:\.\d+)?(?![0-9])", s)
+    )
+
+
 def _latest_biaoke_index_snip(
     db_path: str,
     cap_ymd: str,
@@ -1627,9 +1678,12 @@ def _latest_biaoke_index_snip(
     now: Optional[datetime] = None,
     with_id: bool = False,
 ):
-    """≤cap 日、且時間 ≤ 查詢當下的最新大盤相關他文（主文優先於短回）。
+    """≤cap 日、且時間 ≤ 查詢當下的最新大盤題旨（主文＋同串他回，依時間序）。
 
-    短自回（「費半沒跌完」）也會命中細微波關鍵字；不准蓋掉同日長篇位階主文。
+    不准只掃最新 40 列：討論串自回一多會把主文擠出窗，誤抓短回當題旨。
+    做法：先在主文池（kind=post／無 :c）挑最新長篇位階主文；再依時間序併入
+    同串他回的點位／改口句（例如 9865會破、35000-38000）；同日前一篇劇本主文
+    若寫了 8498／35000~38000 而最新主文沒寫，也併入（後文改口壓前文）。
     with_id=True 時回 (snip, post_id)；否則只回 snip 字串。
     """
     empty = ("", "") if with_id else ""
@@ -1645,67 +1699,157 @@ def _latest_biaoke_index_snip(
     today_dash = dt.strftime("%Y-%m-%d")
     hm = dt.strftime("%H:%M")
     since = (dt - timedelta(days=21)).strftime("%Y-%m-%d")
+
+    def _ok_clock(d: str, t: str) -> bool:
+        if d == today_dash and t and t > hm:
+            return False
+        return True
+
+    def _fetch_mains(conn: sqlite3.Connection):
+        # 正式庫有 kind；測試／舊庫可能沒有 → 退回只認無 :c 的主文 id
+        try:
+            return conn.execute(
+                "SELECT id, date, time, text FROM biaoke_posts "
+                "WHERE date>=? AND date<=? "
+                "AND (kind='post' OR (IFNULL(kind,'') IN ('','post') AND id NOT LIKE '%:%')) "
+                "ORDER BY date DESC, time DESC LIMIT 30",
+                (since, cap_dash),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return conn.execute(
+                "SELECT id, date, time, text FROM biaoke_posts "
+                "WHERE date>=? AND date<=? AND id NOT LIKE '%:%' "
+                "ORDER BY date DESC, time DESC LIMIT 30",
+                (since, cap_dash),
+            ).fetchall()
+
     try:
         conn = sqlite3.connect(db_path, timeout=15.0)
         try:
-            rows = conn.execute(
-                "SELECT id, date, time, text FROM biaoke_posts "
-                "WHERE date>=? AND date<=? "
-                "ORDER BY date DESC, time DESC LIMIT 40",
-                (since, cap_dash),
-            ).fetchall()
+            mains = _fetch_mains(conn)
         finally:
             conn.close()
     except Exception:
         return empty
+
     best_blob = ""
     best_pid = ""
-    best_key = (-1, "", "")  # score, date, time — 同分取較新
-    for pid, date_s, time_s, text in rows or ():
+    best_key = (-1, "", "")
+    best_date = ""
+    best_time = ""
+    for pid, date_s, time_s, text in mains or ():
         d = str(date_s or "").strip()
         t = str(time_s or "").strip()
         blob = str(text or "")
-        if not blob:
-            continue
-        # 同一查詢日：不准吃到牆鐘之後的文
-        if d == today_dash and t and t > hm:
+        sid = str(pid or "")
+        # 無 kind 欄時仍擋樓下 id（含 :c）
+        if ":c" in sid or (":" in sid and sid.split(":", 1)[0].isdigit()):
+            # id 形如 187:xxx 的回文／附篇；純主文數字 id 放行
+            if ":c" in sid:
+                continue
+        if not blob or not _ok_clock(d, t):
             continue
         if not (_INDEXISH.search(blob) or looks_like_level_now(blob)):
             continue
-        score = 0
-        if looks_like_level_now(blob):
-            score += 10
-        if _INDEXISH.search(blob):
-            score += 3
-        if re.search(
-            r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
-            r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5",
-            blob,
-        ):
-            score += 12
-        n = len(blob)
-        if n >= 120:
-            score += 6
-        if n >= 240:
-            score += 6
-        # 主文 id 無 :c；短樓下回文降權
-        sid = str(pid or "")
-        if ":c" not in sid:
-            score += 10
-        elif n < 80:
-            score -= 8
-        # 查詢當日大盤現況回文優先：避免短「假跌破／走3-5」被昨日長主文蓋掉
-        if d == today_dash and looks_like_level_now(blob) and _INDEXISH.search(blob):
-            score += 18
+        score = _biaoke_level_snip_score(blob, is_main=True)
         key = (score, d, t)
         if key > best_key:
             best_key = key
             best_blob = blob
             best_pid = sid
-    if not best_blob:
+            best_date = d
+            best_time = t
+    if not best_blob or not best_pid:
         return empty
-    # 留足長：11/1 文第3點才寫費半10445／4/28 9865，截太短會漏預測點
-    snip = re.sub(r"\s+", " ", best_blob).strip()[:900]
+
+    aid = best_pid.split(":", 1)[0]
+    extras: List[str] = []
+    try:
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            # 同日前一篇位階主文（劇本一 8498／35000~38000 常寫在較早那篇）
+            try:
+                prior = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE date=? AND id!=? "
+                    "AND (kind='post' OR (IFNULL(kind,'') IN ('','post') AND id NOT LIKE '%:%')) "
+                    "ORDER BY time DESC LIMIT 4",
+                    (best_date, best_pid),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                prior = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE date=? AND id!=? AND id NOT LIKE '%:%' "
+                    "ORDER BY time DESC LIMIT 4",
+                    (best_date, best_pid),
+                ).fetchall()
+            prior_bits: List[str] = []
+            for pid, date_s, time_s, text in prior or ():
+                d = str(date_s or "").strip()
+                t = str(time_s or "").strip()
+                blob = str(text or "")
+                if not blob or not _ok_clock(d, t):
+                    continue
+                if t >= best_time:
+                    continue
+                flat = re.sub(r"\s+", " ", blob).strip()
+                # 只抽劇本／8498／35000~38000 句，不准整篇塞進來擠掉凌晨改口
+                for m in re.finditer(
+                    r"[^。｜]{0,40}(?:劇本一|第一套劇本)[^。｜]{0,120}"
+                    r"|[^。｜]{0,40}8498[^。｜]{0,40}"
+                    r"|[^。｜]{0,40}35000\s*[-~～到至]\s*38000[^。｜]{0,40}"
+                    r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}",
+                    flat,
+                ):
+                    bit = m.group(0).strip(" ，,")
+                    if bit and bit not in prior_bits:
+                        prior_bits.append(bit)
+                if prior_bits:
+                    extras.extend(prior_bits[:3])
+                    break
+            # 同串他回：依時間序併點位／改口（牆鐘之後的不准吃）
+            try:
+                reps = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE id LIKE ? AND IFNULL(kind,'reply')='reply' "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (f"{aid}:%",),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                reps = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE id LIKE ? "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (f"{aid}:%",),
+                ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        reps = []
+    reply_bits: List[str] = []
+    for pid, date_s, time_s, text in reps or ():
+        d = str(date_s or "").strip()
+        t = str(time_s or "").strip()
+        blob = str(text or "")
+        if not blob or not _ok_clock(d, t):
+            continue
+        # 主文當日：只收主文時間之後；跨日回文全收（仍卡牆鐘）
+        if d == best_date and t and best_time and t < best_time:
+            continue
+        if not _reply_level_delta(blob):
+            continue
+        reply_bits.append(re.sub(r"\s+", " ", blob).strip())
+    # 主文 → 同日劇本句 → 同串他回（時間序；後句改口壓前）。回文優先保留。
+    main_flat = re.sub(r"\s+", " ", best_blob).strip()
+    parts = [main_flat] + extras + reply_bits
+    joined = "｜".join(p for p in parts if p)
+    if len(joined) > 1600:
+        # 裁主文中段，保住頭尾關鍵＋全部回文改口
+        keep_tail = "｜".join(extras + reply_bits)
+        budget = max(400, 1600 - len(keep_tail) - 1)
+        joined = main_flat[:budget].rstrip() + ("｜" + keep_tail if keep_tail else "")
+        joined = joined[:1600]
+    snip = joined
     return (snip, best_pid) if with_id else snip
 
 
@@ -1852,7 +1996,16 @@ def _latest_level_thesis(
     has_35 = bool(
         re.search(r"C3-5|(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])", snip)
     )
-    if "C3-3-1" in snip and "C3-3-2" in snip:
+    c35_done = bool(
+        re.search(r"C3-5\s*完成|第二組下跌脈動.*(?:完成|落底)", snip)
+    )
+    # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
+    if c35_done or (
+        has_35 and re.search(r"落底確認|目前開始反彈|反彈能否穿刺", snip)
+    ):
+        thesis = "大A→大B→大C｜C內＝C3-5完成（第二組落底・預估）"
+        wait = "反彈觀察穿刺45546；破不了→第三組；轉震盪看46292；C走完≠新五波升"
+    elif "C3-3-1" in snip and "C3-3-2" in snip:
         thesis = "大A→大B→大C｜C內＝C3-3（1→2・預估）"
         wait = "下一測他點過錨；C走完≠新五波升；鐵律不符→重修"
     elif has_333 and has_334:
@@ -1882,7 +2035,7 @@ def _latest_level_thesis(
         "morph_note": morph[:180],
         "fib_note": "黃金切割反彈壓 0.382／0.618／0.75（他10/27台指日盤・可修訂）",
         "snippet": snip[:320],
-        "snippet_full": snip[:900],
+        "snippet_full": snip[:1600],
         "as_of": str((row["as_of"] if row else "") or cap),
         "post_id": post_id,
         "chart_as_of": cap,
@@ -2993,7 +3146,28 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
         }
         out[bucket].append(row)
 
-    # 台指／大盤
+    # 台指／大盤（依他最新主文＋同串回文時間序；後句改口壓前）
+    if re.search(r"46292", s):
+        _add(
+            "tw",
+            level=46292.0,
+            ref_ymd="",
+            role="轉震盪",
+            tag="未到",
+            label=f"飆預測{_px(46292)}轉震盪",
+        )
+    if re.search(r"45546", s):
+        role = "反彈穿刺" if re.search(r"穿刺|反彈", s) else "點位"
+        _add(
+            "tw",
+            level=45546.0,
+            ref_ymd="20260916",
+            role=role,
+            tag="未到",
+            label=f"飆預測{_px(45546)}反彈穿刺"
+            if role == "反彈穿刺"
+            else f"飆預測{_px(45546)}",
+        )
     if re.search(r"44042", s):
         _add(
             "tw",
@@ -3017,6 +3191,24 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 劇本一／凌晨改口：大盤 35000~38000（區間兩端都標，不准發明中間價）
+    if re.search(r"35000\s*[-~～到至]\s*38000|35000.{0,8}38000", s):
+        _add(
+            "tw",
+            level=38000.0,
+            ref_ymd="",
+            role="劇本一上沿",
+            tag="未到",
+            label=f"飆預測{_px(38000)}劇本一上沿",
+        )
+        _add(
+            "tw",
+            level=35000.0,
+            ref_ymd="",
+            role="劇本一下沿",
+            tag="未到",
+            label=f"飆預測{_px(35000)}劇本一下沿",
+        )
 
     # 費半：7/29 A波低 10445；周五 10439 已破；次回測 4/28 9865
     if re.search(r"10445", s) and re.search(r"7\s*/\s*29|A\s*波", s):
@@ -3038,16 +3230,24 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
-    if re.search(r"9865", s) and re.search(r"4\s*/\s*28", s):
+    # 9865：文內「4/28」或「殺到／會破／必破 9865」都收；凌晨改口「會破」優先
+    if re.search(r"9865", s) and re.search(
+        r"4\s*/\s*28|殺到|會破|必破|至少.*9865|測.*9865", s
+    ):
         off = _official_bar_low(db_path, "SOX", "20260428")
         lv = float(off) if off is not None and abs(off - 9865.0) <= 2.0 else 9865.0
+        tag = "未到"
+        lab = f"次回測4/28低{_px(lv)}"
+        if re.search(r"9865\s*會破|會破.{0,6}9865|必破\s*9865|9865\s*必破", s):
+            tag = "會破"
+            lab = f"4/28低{_px(lv)}會破"
         _add(
             "sox",
             level=lv,
             ref_ymd="20260428",
             role="次回測",
-            tag="未到",
-            label=f"次回測4/28低{_px(lv)}",
+            tag=tag,
+            label=lab,
         )
     # 劇本一：破9865 → 測2/25高8498（他原文；官方高對質）
     if re.search(r"8498", s) and re.search(r"2\s*/\s*25", s):
@@ -3151,16 +3351,21 @@ def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ..
 
 
 def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
-    """預估虛線下一錨順序（高→低）：跟他最新題旨點位走；沒點才退回 45546→44210。
+    """預估虛線下一錨順序（高→低）：跟他最新題旨下跌目標走；沒點才退回 45546→44210。
 
     只吃 pred_levels.tw 與 key_levels 的 pred_tw_*（他寫死預測錨）。
+    反彈穿刺／轉震盪＝上方觀察壓，進右標、不准當下跌虛線下一錨。
     不准把舊 claim_* 歷史宣稱混進虛線梯，否則端點／右標會卡在舊價。
     """
+    _OVERHEAD = {"反彈穿刺", "轉震盪"}
     his: List[float] = []
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             v = float(row.get("level"))
         except (TypeError, ValueError):
+            continue
+        role = str(row.get("role") or "")
+        if role in _OVERHEAD:
             continue
         if 30000.0 <= v <= 60000.0:
             his.append(v)
@@ -3171,6 +3376,16 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
             v = float(raw)
         except (TypeError, ValueError):
             continue
+        # key_levels 無 role：上方壓位若已在 pred 列就略；裸數字仍收
+        if abs(v - 46292.0) < 0.6 or abs(v - 45546.0) < 0.6:
+            # 僅當 pred 列標成上方壓時才排除；舊錨 45546 當下跌目標時仍可進梯
+            tw_rows = ((pack or {}).get("pred_levels") or {}).get("tw") or []
+            if any(
+                abs(float(r.get("level") or 0) - v) < 0.6
+                and str(r.get("role") or "") in _OVERHEAD
+                for r in tw_rows
+            ):
+                continue
         if 30000.0 <= v <= 60000.0:
             his.append(v)
     if not his:
@@ -4958,10 +5173,13 @@ def _c_forecast_tip(
     chain = [float(x) for x in (anchors or (45546.0, 44210.0)) if x]
     if not chain:
         chain = [45546.0, 44210.0]
+    # 下跌預估虛線只指向「仍低於現價」的下一錨；上方壓（45546穿刺／46292／站穩47500）不當下一錨
+    below = [a for a in chain if float(a) < float(y_now) - 1.0]
+    use_chain = below if below else chain
     anchor_y: Optional[float] = None
-    fut_y = float(chain[-1])
+    fut_y = float(use_chain[-1])
     lab = _biaoke_pred_label(fut_y, _level_break_tag(fut_y, lows))
-    for a in chain:
+    for a in use_chain:
         tag = _level_break_tag(a, lows)
         if tag != "已破":
             fut_y = float(a)
@@ -4970,8 +5188,8 @@ def _c_forecast_tip(
             break
     else:
         # 全破：仍標最後一錨狀態
-        fut_y = float(chain[-1])
-        anchor_y = float(chain[-1])
+        fut_y = float(use_chain[-1])
+        anchor_y = float(use_chain[-1])
         lab = _biaoke_pred_label(fut_y, _level_break_tag(fut_y, lows))
     # 今已低於該錨：略往下延伸示意續弱，仍不發明具體新價標
     if float(y_now) <= float(fut_y) + 1.0:
@@ -5937,10 +6155,23 @@ def _tw_pred_right_notes(
     lows: Sequence[float],
     tip_skip: Optional[set] = None,
     bars: Optional[Sequence[Dict[str, Any]]] = None,
+    highs: Optional[Sequence[float]] = None,
 ) -> List[Dict[str, Any]]:
     """加權右欄：他最新寫死點（44042／39384…）；有 ref 日則虛線從那根拉。"""
     skip = tip_skip or set()
     out: List[Dict[str, Any]] = []
+    hi_vals: List[float] = []
+    if highs:
+        try:
+            hi_vals = [float(x) for x in highs if x is not None]
+        except (TypeError, ValueError):
+            hi_vals = []
+    if not hi_vals and bars:
+        for b in bars:
+            try:
+                hi_vals.append(float(b.get("high")))
+            except (TypeError, ValueError, AttributeError):
+                continue
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             lv = float(row.get("level"))
@@ -5953,9 +6184,28 @@ def _tw_pred_right_notes(
             text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) if tag == "未到" else tag)
         else:
             text = str(row.get("label") or _biaoke_pred_label(lv))
-        # 周一破台指：狀態跟官方柱
+        role = str(row.get("role") or "")
+        # 周一破台指／反彈穿刺／轉震盪：狀態跟官方柱
         if abs(lv - 44042.0) < 0.6:
             text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) + "周一")
+        elif role in {"反彈穿刺", "轉震盪"}:
+            # 上方觀察壓：看「現在」有無站回／向上穿刺，不准拿下跌低點標成「已破」
+            now_px = None
+            if bars:
+                try:
+                    now_px = float(bars[-1].get("close"))
+                except (TypeError, ValueError, AttributeError, IndexError):
+                    now_px = None
+            if now_px is None and lows:
+                try:
+                    now_px = float(lows[-1])
+                except (TypeError, ValueError, IndexError):
+                    now_px = None
+            st = "已穿" if (now_px is not None and now_px >= lv - 0.5) else "未穿"
+            suffix = "穿刺" if role == "反彈穿刺" else "轉震盪"
+            text = _biaoke_pred_label(lv, st + suffix)
+        elif role in {"劇本一上沿", "劇本一下沿"}:
+            text = str(row.get("label") or _biaoke_pred_label(lv))
         # 近／超近窗沒有 ref 日柱時從窗左拉滿，不准縮成末日短樁
         x_note = 0
         ref = _ymd(row.get("ref_ymd"))

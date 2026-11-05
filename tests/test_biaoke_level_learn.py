@@ -863,8 +863,8 @@ def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
     assert "主跌" in (after.get("snippet") or after.get("thesis") or "")
 
 
-def test_same_day_fake_break_reply_beats_yesterday_long_post(tmp_path):
-    """11/5 短回『走3-5／1 4重疊／假跌破』要蓋過昨日長篇 C3-5 主文。"""
+def test_same_day_fake_break_reply_merges_into_main_chrono(tmp_path):
+    """11/5 短回『假跌破』依時間序併進主文；不准短回蓋掉 C3-5 主文當唯一題旨。"""
     import sqlite3
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -907,12 +907,15 @@ def test_same_day_fake_break_reply_beats_yesterday_long_post(tmp_path):
     snip, pid = _latest_biaoke_index_snip(
         db, "20261105", now=now, with_id=True
     )
-    assert pid.endswith("269")
+    assert pid == "187684179"
+    assert "C3-5完成" in snip
     assert "假跌破" in snip
     pack = _latest_level_thesis(db, as_of="20261105", now=now)
-    assert "假跌破" in (pack.get("snippet") or "")
-    assert "C3-5" in (pack.get("thesis") or "")
-    assert _his_micro_degree(pack.get("snippet") or "")["degree"] == "C3-5"
+    assert "假跌破" in (pack.get("snippet_full") or pack.get("snippet") or "")
+    assert "C3-5完成" in (pack.get("thesis") or "")
+    assert _his_micro_degree(pack.get("snippet_full") or pack.get("snippet") or "")[
+        "degree"
+    ] == "C3-5"
 
 
 def test_thesis_cap_includes_weekend_posts(tmp_path, monkeypatch):
@@ -1259,22 +1262,29 @@ def test_snip_prefers_main_over_short_reply(tmp_path):
     conn = sqlite3.connect(db)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS biaoke_posts("
-        "id TEXT PRIMARY KEY, date TEXT, time TEXT, text TEXT)"
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
     )
     conn.execute(
-        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
         (
             "main187",
             "2026-11-01",
             "11:49",
+            "post",
             "星期五夜盤C3-3跌勢運行中並未完成。"
             "由周五夜盤來拆解波浪位階，目前應該是3-3-3完成轉3-3-4機率最高，"
             "第二組下跌推動脈動連主跌段都還未完成，下周一絕對不能去抄底破底。",
         ),
     )
     conn.execute(
-        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
-        ("main187:c48-2", "2026-11-01", "12:03", "費辦根本沒跌完，從細微波看的出來，不要想太多"),
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        (
+            "main187:c48-2",
+            "2026-11-01",
+            "12:03",
+            "reply",
+            "費辦根本沒跌完，從細微波看的出來，不要想太多",
+        ),
     )
     conn.commit()
     conn.close()
@@ -1288,6 +1298,119 @@ def test_snip_prefers_main_over_short_reply(tmp_path):
     assert "3-3-4" in snip
     assert pid == "main187"
     assert "費辦" not in snip
+
+
+def test_snip_main_plus_thread_chrono_not_drowned(tmp_path):
+    """討論串自回再多也要先抓主文；凌晨改口依時間序併進題旨。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _latest_biaoke_index_snip,
+        _latest_level_thesis,
+        _thesis_pred_levels,
+        _tw_tip_anchors,
+        ensure_tables,
+    )
+
+    db = str(tmp_path / "chrono.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, kind TEXT, text TEXT)"
+    )
+    prior = (
+        "第一套劇本，大盤走5段3段下殺，則7/29低點必破，大盤會跌到35000~38000之間，"
+        "此時搭配費城半導體指數必破9865，會去測2/25高點8498。"
+    )
+    main = (
+        "夜盤第二組下跌脈動已經完成落底確認，但是進場交易風險極高。"
+        "夜盤目前已經確認第二組下跌脈動完成也就是說C3-5完成，目前開始反彈，"
+        "先觀察反彈能否穿刺45546，如果沒辦法穿刺，則再下去走第三組下跌機率很高。"
+        "真正要轉震盪整理46292，才能化解短期下跌勢。"
+        "因為我怎麼看費城半導體至少殺到9865附近，目前還有一段距離。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("187638311", "2026-11-04", "13:16", "post", prior),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        ("187684179", "2026-11-04", "18:49", "post", main),
+    )
+    # 塞很多短回，模擬討論串灌庫把 LIMIT 擠爆
+    for i in range(50):
+        conn.execute(
+            "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+            (
+                f"187684179:c{i}",
+                "2026-11-05",
+                f"{10 + (i // 60):02d}:{i % 60:02d}",
+                "reply",
+                "空手一星期觀察就好",
+            ),
+        )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        (
+            "187684179:c269",
+            "2026-11-05",
+            "12:34",
+            "reply",
+            "大盤是今天走3-5沒錯，但夜盤昨天晚上1 4穿刺，可能不是有效穿刺，假跌破。",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        (
+            "187684179:c325-1",
+            "2026-11-06",
+            "00:02",
+            "reply",
+            "其實我認為9865會破，因為大盤要整理大概兩年",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, kind, text) VALUES (?,?,?,?,?)",
+        (
+            "187684179:c325-2",
+            "2026-11-06",
+            "00:03",
+            "reply",
+            "大盤非常有機會到35000-38000之間",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    tz = ZoneInfo("Asia/Taipei")
+    now = datetime(2026, 11, 6, 1, 20, tzinfo=tz)
+    snip, pid = _latest_biaoke_index_snip(
+        db, "20261106", now=now, with_id=True
+    )
+    assert pid == "187684179"
+    assert "C3-5完成" in snip
+    assert "45546" in snip and "46292" in snip
+    assert "8498" in snip  # 同日較早劇本主文併入
+    assert "9865會破" in snip
+    assert "35000-38000" in snip or "35000~38000" in snip
+    # 短「走3-5／假跌破」不准當唯一題旨蓋掉主文
+    assert not snip.startswith("大盤是今天走3-5")
+    thesis = _latest_level_thesis(db, as_of="20261106", now=now)
+    assert "C3-5完成" in thesis["thesis"]
+    pred = _thesis_pred_levels(snip, db)
+    roles = {str(r.get("role")): r for r in (pred.get("tw") or [])}
+    assert "反彈穿刺" in roles and abs(float(roles["反彈穿刺"]["level"]) - 45546) < 1
+    assert "轉震盪" in roles and abs(float(roles["轉震盪"]["level"]) - 46292) < 1
+    assert any(abs(float(r["level"]) - 35000) < 1 for r in pred["tw"])
+    assert any(abs(float(r["level"]) - 38000) < 1 for r in pred["tw"])
+    sox = {str(r.get("role")): r for r in (pred.get("sox") or [])}
+    assert "次回測" in sox
+    assert "再回測" in sox and abs(float(sox["再回測"]["level"]) - 8498) < 3
+    # 上方壓不准當下跌虛線下一錨
+    tips = _tw_tip_anchors({"pred_levels": pred})
+    assert all(abs(t - 45546) > 1 and abs(t - 46292) > 1 for t in tips)
 
 
 def test_twii_intent_story_trap_language():
