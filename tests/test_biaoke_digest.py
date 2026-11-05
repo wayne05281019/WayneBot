@@ -993,37 +993,42 @@ def test_format_teach_brief_empty_db_ok(tmp_path):
 
 
 def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
-    """波浪位階文：現在走到／怎麼讀／關鍵價；不准重複層級、不准英文 as_of。"""
+    """波浪位階文：現在／怎麼看／盯著的價；人話一句，不准術語叠鏈。"""
     from biaoke_digest import format_teach_brief, format_wave_level_one_liner
 
     def _fake_pack(_db):
         return {
             "thesis": "大A→大B→大C｜C內橫台中繼（預估）",
-            "morph_note": "楔形觀察",
-            "intent_note": "無量跌≠止穩",
-            "fib_note": "0.382／0.618",
+            "morph_note": "橫台中繼",
+            "intent_note": "跌的時候量沒爆出來＝籌碼還沒換完，還不能說已經止跌",
+            "fib_note": "黃金切割反彈壓 0.382／0.618／0.75（他10/27台指日盤・可修訂）",
+            "wait_struct": "中繼後原方向",
             "chart_as_of": "20261029",
             "snippet": "橫台整理中繼站",
-            "pred_note": "加權支撐44210｜費半頸線",
+            "pred_note": "飆預測45,546｜飆預測46,292",
         }
 
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_pack)
     out = format_teach_brief("x.db")
     assert "波浪位階" in out
-    assert "現在走到" in out
-    assert "大A底7/29" in out and "大B反彈" in out and "大C進行中" in out
+    assert "<b>現在</b>" in out
+    assert "大A底（7/29）" in out and "大B反彈" in out and "大C下跌中" in out
     assert "五波升完" not in out
-    assert "落在「C內橫台中繼」" in out
-    assert "題旨日 10/29" in out
+    assert "橫盤中繼" in out or "橫台中繼" in out
+    assert "題旨 10/29" in out
     assert "as_of" not in out
-    assert "怎麼讀" in out
-    assert "波浪：" not in out  # 不准再重貼層級鏈
-    assert "切割　" in out
-    assert "型態　" in out
-    assert "量價　" in out
-    assert "關鍵價" in out
+    assert "怎麼看" in out
+    assert "切割　" not in out  # 舊術語標籤拿掉
+    assert "· 反彈壓：" in out
+    assert "· 型態：" in out
+    assert "· 量：" in out
+    assert "· 下一步：" in out
+    assert "續走原來的下跌方向" in out
+    assert "盯著的價" in out
+    assert "45,546" in out and "46,292" in out
+    assert "大A底7/29 → 大B反彈 → 大C進行中 → C內橫台中繼" not in out
     assert "說明：這是彙整" not in out
-    # C3-3-4 路徑：超近細浪句＋飆大一層級對照
+
     def _fake_c334(_db):
         return {
             "thesis": "大A→大B→大C｜C內＝C3-3（3→4・預估）",
@@ -1036,12 +1041,12 @@ def test_format_teach_brief_has_ladder_when_pack_ok(monkeypatch):
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake_c334)
     out334 = format_teach_brief("x.db")
     assert "C3-3-4" in out334
-    assert "細浪①～⑤" in out334
+    assert "細浪" in out334 or "目前落在" in out334
     assert "as_of" not in out334
     one = format_wave_level_one_liner("x.db")
     assert "落在「C3-3-4」" in one
     assert "波浪位階" in one
-    assert "怎麼讀" not in one
+    assert "怎麼看" not in one
 
 
 def test_focus_oral_blank_uses_one_liner_not_full_wave_brief(monkeypatch):

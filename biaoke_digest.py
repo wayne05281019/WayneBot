@@ -641,8 +641,28 @@ def _speak(text: str, limit: int = 220) -> str:
     return _oral_body(out or s, limit)
 
 
+def _plain_wave_now_phrase(now: str) -> str:
+    """波浪位階『目前落在』一句人話；不准只丟代號讓人猜。"""
+    n = str(now or "").strip()
+    if not n:
+        return ""
+    if n == "C內橫台中繼":
+        return "大C下跌裡的橫盤中繼（暫時橫著，還沒宣告止跌）"
+    if n == "C內主跌":
+        return "大C裡的主跌段"
+    if n == "C3-3主跌":
+        return "大C裡的 C3-3 主跌"
+    if re.match(r"C3-3-\d$", n):
+        return f"大C細浪 {n}（超近窗那張）"
+    if n == "C3":
+        return "大C 的 C3 段"
+    if n == "大C進行中":
+        return "大C下跌進行中"
+    return n
+
+
 def format_teach_brief(db_path: str = "") -> str:
-    """波浪位階開場敘述：現在走到哪／怎麼讀／關鍵價。給人讀，不准重複堆同一句。
+    """波浪位階開場敘述：現在走到哪／怎麼看／盯著的價。給人讀，不准術語叠句。
 
     只服務「波浪位階」鍵。飆大空白鍵走 format_focus_oral。
     非買訊；失敗回空，不准擋主摘要。不准寫英文 as_of。
@@ -666,42 +686,41 @@ def format_teach_brief(db_path: str = "") -> str:
         ladder = _wave_now_ladder(pack)
     except Exception:
         ladder = {}
-    lines: List[str] = ["<b>波浪位階・預估・非買訊</b>"]
-    lines.append("")
-    lines.append("<b>現在走到</b>")
-    chain = str(ladder.get("chain") or "").strip()
-    if chain:
-        lines.append(html_escape(chain))
+    lines: List[str] = ["<b>波浪位階・預估・非買訊</b>", ""]
+    now = str(ladder.get("now") or "").strip()
+    day_zh = str(ladder.get("day_zh") or "").strip()
+    lines.append("<b>現在</b>")
+    # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
+    lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
+    if now:
+        sit = f"目前落在：{_plain_wave_now_phrase(now)}"
+        if day_zh:
+            sit += f"（題旨 {day_zh}）"
+        lines.append(html_escape(sit))
     elif thesis:
         lines.append(html_escape(thesis))
-    now = str(ladder.get("now") or "").strip()
-    day_bit = str(ladder.get("day_bit") or "").strip()
-    if now:
-        # 層級鏈已含現況時，只補「落在哪一段」＋題旨日，不准再整句重貼
-        sit = f"落在「{now}」"
-        if day_bit:
-            sit += f"・{day_bit}"
-        lines.append(html_escape(sit))
-    # 超近窗對齊：C3-3-x 時點一下細浪（圖第三張）
-    if re.search(r"C3-3-\d|C3-3主跌", now):
-        lines.append(html_escape(f"超近細浪①～⑤・落在{now}"))
     struct_bits: List[str] = []
-    # 不准再貼一次「波浪：大A→大B→大C」（上面已寫現在走到）
     if fib:
-        struct_bits.append(f"切割　{fib}")
+        # 去掉「黃金切割反彈壓」叠字；直接講反彈壓
+        fib_s = re.sub(r"^黃金切割反彈壓\s*", "", fib).strip() or fib
+        struct_bits.append(f"· 反彈壓：{fib_s}")
     if morph:
-        struct_bits.append(f"型態　{morph}")
+        morph_s = morph.replace("；", "；").strip()
+        struct_bits.append(f"· 型態：{morph_s}")
     if intent:
         one = intent.split("；")[0].strip()
         if one:
-            struct_bits.append(f"量價　{one}")
+            struct_bits.append(f"· 量：{one}")
     if wait:
         one_w = re.split(r"[；。]", wait)[0].strip()
         if one_w:
-            struct_bits.append(f"等待　{one_w}")
+            # 「中繼後原方向」補一句人話
+            if one_w in ("中繼後原方向", "中繼後走原方向"):
+                one_w = "中繼結束後，多半續走原來的下跌方向"
+            struct_bits.append(f"· 下一步：{one_w}")
     if struct_bits:
         lines.append("")
-        lines.append("<b>怎麼讀</b>")
+        lines.append("<b>怎麼看</b>")
         for bit in struct_bits:
             lines.append(html_escape(bit))
     pred_note = str(pack.get("pred_note") or "").strip()
@@ -724,13 +743,15 @@ def format_teach_brief(db_path: str = "") -> str:
             if re.search(r"周一破|週一破|明日|明天", bit):
                 bit = re.sub(r"(周一|週一)破", "破", bit)
                 bit = re.sub(r"(明日|明天)", "", bit).strip(" ・")
+            # 「飆預測45,546」保留數字，拿掉重複前綴堆叠可讀性
+            bit = re.sub(r"^飆預測\s*", "", bit).strip() or bit
             if bit:
                 bits.append(bit)
             if len(bits) >= 4:
                 break
         if bits:
             lines.append("")
-            lines.append("<b>關鍵價</b>")
+            lines.append("<b>盯著的價（他講過）</b>")
             lines.append(html_escape("｜".join(bits)))
     return "\n".join(lines)
 
