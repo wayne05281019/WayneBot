@@ -225,9 +225,26 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert '_TEACH_STAMP_FACE = "#ffffff"' in src or "_TEACH_STAMP_FACE = '#ffffff'" in src
     assert "市撮" in src and "盤前" in src and "收盤" in src
     assert "def _thesis_cap_for_query" in src
-    # 黃框：遠窗上移進標題列右緣（不准擋費半K）；近／超近讓出白字標題
-    assert "_tw_stamp_y = 0.982" in far_blk
-    assert "_sox_stamp_y = 0.918" in far_blk
+    # 遠窗四欄：費半→台指電子盤→加權日盤→加權量；底圖加高
+    assert "figsize=(15.6, 15.0)" in far_blk
+    assert "height_ratios=(2.35, 2.35, 2.55, 1.05)" in far_blk
+    assert "_shrink_png_for_telegram" in far_blk
+    assert "_TG_PHOTO_MAX_WH_SUM" in src
+    assert "def _shrink_png_for_telegram" in src
+    assert "axt" in far_blk and "台指電子盤" in far_blk
+    assert "台指期盤後" not in far_blk
+    assert "_load_tx_futures_daily" in src
+    assert "_ensure_paint_live_tx" in src
+    assert "_apply_live_tx_to_axis" in far_blk
+    # 戳序對齊四欄：費半黃最上 → 台指電子盤紅中 → 加權黃（上下略留白）
+    assert "_sox_stamp_y = 0.982" in far_blk
+    assert "_tx_stamp_y = 0.950" in far_blk
+    assert "_tw_stamp_y = 0.918" in far_blk
+    assert "_paint_tx_after_hours_tip" in far_blk
+    assert "_TEACH_STAMP_EDGE_TX" in src
+    assert "def _resolve_tx_after_hours_tip" in src
+    assert "def _paint_tx_after_hours_tip" in src
+    assert "費半｜台指電子盤｜加權日盤" in far_blk
     # 大B末標假突破；近窗黃戳改貼標題列右緣（不准釘 41200 價位空檔蓋柱）
     assert "假突破" in src
     assert "假突破" in far_blk and "假突破" in near_blk
