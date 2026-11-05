@@ -18,6 +18,10 @@ def test_update_note_is_this_change():
     assert any("\u4e00" <= ch <= "\u9fff" for ch in note)
     assert "feat:" not in note.lower()
     assert "git_sha" not in note
+    # 不准再把通知機制本身推上話筒
+    assert "正在更新什麼" not in note
+    assert "開機會先說" not in note
+    assert "再說更新完成" not in note
     title = phone_update_title()
     assert title == note
     notice = phone_update_notice("ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
@@ -26,10 +30,85 @@ def test_update_note_is_this_change():
     assert note.split("完成")[0] in notice
 
 
+def test_meta_update_mechanism_note_is_rejected(monkeypatch):
+    """「開機會先說正在更新什麼…」這類內部說明＝無效口語。"""
+    import phone_update as pu
+
+    monkeypatch.delenv("WAYNE_UPDATE_NOTE", raising=False)
+    monkeypatch.setattr(pu, "_git_head_note", lambda: "")
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
+    monkeypatch.setattr(
+        pu,
+        "_file_note",
+        lambda: pu._clean_note("開機會先說正在更新什麼，好了再說更新完成"),
+    )
+    assert phone_update_note() == ""
+    assert phone_update_starting("abc") == UPDATE_START
+    assert "正在更新什麼" not in phone_update_starting(
+        "abc", note="開機會先說正在更新什麼，好了再說更新完成"
+    )
+
+
+def test_schedule_wait_note_at_fuse_window():
+    """16:30 左右更新＝講盤後融合等候句，不准內部說明。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from phone_update import phone_schedule_wait_note, phone_update_starting
+
+    now = datetime(2026, 11, 5, 16, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    note = phone_schedule_wait_note(now=now)
+    assert "盤後資料正在下載融合中" in note
+    assert "請耐心等待" in note
+    start = phone_update_starting("deadbeef", note=note, now=now)
+    assert "盤後資料正在下載融合中" in start
+    assert "正在更新什麼" not in start
+
+
+def test_schedule_wait_note_and_so_on_windows():
+    """以此類推：早報／尾盤／彙整／晚間／勝率各有人話等候句。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from phone_update import phone_schedule_wait_note, phone_update_starting
+
+    cases = (
+        (6, 35, "勝率買點與大量圖"),
+        (12, 45, "尾盤雙時段比價"),
+        (17, 45, "盤後彙整進行中"),
+        (20, 5, "晚間模擬倉"),
+        (21, 10, "勝率買點名單"),
+        (1, 5, "隔日盤後彙整"),
+    )
+    tz = ZoneInfo("Asia/Taipei")
+    for hour, minute, needle in cases:
+        now = datetime(2026, 11, 5, hour, minute, tzinfo=tz)
+        note = phone_schedule_wait_note(now=now)
+        assert needle in note, (hour, minute, note)
+        start = phone_update_starting("deadbeef", note=note, now=now)
+        assert needle in start
+        assert "正在更新什麼" not in start
+        assert "feat:" not in start.lower()
+
+
+def test_schedule_wait_note_beats_product_note(monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import phone_update as pu
+
+    monkeypatch.setenv("WAYNE_UPDATE_NOTE", "查股兩張圖一次畫完")
+    now = datetime(2026, 11, 5, 16, 40, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert "盤後資料正在下載融合中" in pu.phone_update_note(now=now)
+
+
 def test_notice_is_spoken_without_sha(monkeypatch):
+    import phone_update as pu
+
     monkeypatch.setenv("WAYNE_UPDATE_NOTE", "查股兩張圖一次畫完、同一則出現")
     monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
     monkeypatch.delenv("GITHUB_SHA", raising=False)
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
     note = phone_update_note()
     assert note == "查股兩張圖一次畫完、同一則出現"
     assert phone_update_title() == note
@@ -67,6 +146,7 @@ def test_git_note_beats_stale_file(monkeypatch, tmp_path):
     import phone_update as pu
 
     monkeypatch.delenv("WAYNE_UPDATE_NOTE", raising=False)
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
     stale = tmp_path / "phone_update_note.txt"
     stale.write_text("飆大改口語講當下重點\n", encoding="utf-8")
     monkeypatch.setattr(pu, "_NOTE_FILE", str(stale))
@@ -99,11 +179,14 @@ def test_same_note_different_sha_does_not_renotify(tmp_path, monkeypatch):
 
 def test_push_phone_update_starting_then_done_dedupe(tmp_path, monkeypatch):
     """開始更新與更新完畢各推一次；同 SHA 不重送開始。"""
+    import phone_update as pu
+
     monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
     monkeypatch.delenv("DB_PATH", raising=False)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("WAYNE_UPDATE_NOTE", "早報舊回執放行並閃過融合")
     monkeypatch.setenv("RENDER_GIT_COMMIT", "dddddddddddddddddddddddddddddddddddddddd")
+    monkeypatch.setattr(pu, "phone_schedule_wait_note", lambda now=None: "")
     monkeypatch.setattr("bot_servers.skip_telegram_polling", lambda: False)
     sent = []
 
@@ -131,3 +214,31 @@ def test_push_phone_update_starting_then_done_dedupe(tmp_path, monkeypatch):
     remember_notified_sha(sha, note="早報舊回執放行並閃過融合")
     assert should_notify_phone_update_start(sha) is False
     assert should_notify_phone_update(sha, note="早報舊回執放行並閃過融合") is False
+
+
+def test_start_same_note_different_sha_does_not_renotify(tmp_path, monkeypatch):
+    """同句「正在更新」口語換 SHA 不准再推（20:37／20:42 雙推）。"""
+    monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr("bot_servers.skip_telegram_polling", lambda: False)
+    from bot_servers import (
+        remember_started_sha,
+        should_notify_phone_update_start,
+    )
+
+    note = "開機會先說正在更新什麼，好了再說更新完成"
+    remember_started_sha("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", note=note)
+    assert (
+        should_notify_phone_update_start(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", note=note
+        )
+        is False
+    )
+    assert (
+        should_notify_phone_update_start(
+            "cccccccccccccccccccccccccccccccccccccccc",
+            note="更新通知改講人話，不再推內部說明句",
+        )
+        is True
+    )

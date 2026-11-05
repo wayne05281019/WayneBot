@@ -266,6 +266,74 @@ class MainRunner:
         logger.info("已有寄出回執，略過重寄並補標 success key=%s", key)
         return True
 
+    def release_pre_winrate_morning_face(self, run_date: str) -> bool:
+        """§14／#822：舊海選早報回執不准擋「勝率買點＋大量圖」新臉。
+
+        只清「有回執且非 morning-winrate」的舊臉（海選／morning-digest 等）。
+        已是 morning-winrate（回執或 pipeline notes）→ 不動（防雙寄）。
+        無回執的 success（測試 stub／honor 前）也不動，交給 skip／claim。
+        """
+        key = str(run_date or "").strip()
+        if not key.startswith("screen-") or key.startswith("screen-closed-"):
+            return False
+        try:
+            from pipeline_delivery import clear_push_delivery, load_push_delivery
+
+            rec = load_push_delivery(self.db_path, key) or {}
+        except Exception:
+            logger.exception("查早報回執臉略過 key=%s", key)
+            return False
+        kind = str(rec.get("kind") or "").strip()
+        notes = str(rec.get("notes") or "").strip()
+        face_ok = kind.startswith("morning-winrate") or ("morning-winrate" in notes)
+        if face_ok:
+            return False
+        pipe_notes = ""
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            try:
+                row = conn.execute(
+                    "SELECT notes FROM pipeline_runs WHERE run_date=?",
+                    (key,),
+                ).fetchone()
+                pipe_notes = str((row[0] if row else "") or "")
+            finally:
+                conn.close()
+        except Exception:
+            pipe_notes = ""
+        if "morning-winrate" in pipe_notes:
+            return False
+        has_del = bool(str(rec.get("run_date") or "").strip())
+        # 無舊回執＝沒有「海選臉」可換；不准把僅標 success 的鍵降成 computed 造成重寄
+        if not has_del:
+            return False
+        try:
+            cleared = bool(
+                clear_push_delivery(self.db_path, key, bak_suffix=".pre-wrvol")
+            )
+        except Exception:
+            logger.exception("清舊海選早報回執失敗 key=%s", key)
+            return False
+        status = self.pipeline_status(key)
+        if status == "success":
+            try:
+                self._mark_pipeline(
+                    "computed",
+                    "pre-wrvol face remorning",
+                    run_date=key,
+                    retries=8,
+                )
+            except Exception:
+                logger.exception("舊海選 success→computed 失敗 key=%s", key)
+                return False
+        logger.info(
+            "§14 舊海選早報已放行，改寄勝率大量圖 key=%s kind=%s cleared=%s",
+            key,
+            kind or "(none)",
+            cleared,
+        )
+        return True
+
     def release_stale_morning_delivery_for_open_day(self, run_date: str) -> bool:
         """§14：開市日必寄。as_of 未前進時 screen-{as_of} 舊開市日回執不准擋今日真寄。
 
@@ -1146,6 +1214,13 @@ class MainRunner:
                     pin_as_of = ""
         except Exception:
             logger.exception("force_rescue 開市日舊回執放行略過")
+        # #822 換臉：舊海選回執不准擋勝率＋大量圖
+        try:
+            if out.get("key") and self.release_pre_winrate_morning_face(str(out["key"])):
+                out["reissued_pre_wrvol"] = True
+                pin_as_of = ""
+        except Exception:
+            logger.exception("force_rescue 舊海選臉放行略過")
         try:
             # 救援路徑：釘基準日，避免 fuse 把 latest 推到今日後寄錯鍵／略過
             if pin_as_of:
@@ -3390,6 +3465,10 @@ class MainRunner:
                 self.release_stale_morning_delivery_for_open_day(key)
             except Exception:
                 logger.exception("開市日舊回執放行略過 key=%s", key)
+            try:
+                self.release_pre_winrate_morning_face(key)
+            except Exception:
+                logger.exception("舊海選臉放行略過 key=%s", key)
         rebuild_only = False
         if skip_if_done and as_of:
             from screen_sessions import (
@@ -3489,6 +3568,10 @@ class MainRunner:
                 self.release_stale_morning_delivery_for_open_day(key)
             except Exception:
                 logger.exception("補齊後開市日舊回執放行略過 key=%s", key)
+            try:
+                self.release_pre_winrate_morning_face(key)
+            except Exception:
+                logger.exception("補齊後舊海選臉放行略過 key=%s", key)
         # 補齊後再判一次：並行路徑可能已寄完；running 交給下面 claim。
         if skip_if_done:
             from screen_sessions import (

@@ -364,8 +364,21 @@ def should_notify_phone_update(sha: str, note: str | None = None) -> bool:
     return True
 
 
+def started_note_is(note: str) -> bool:
+    """同一句「正在更新」口語已推過就不重送（換 SHA 也不准洗版）。"""
+    t = str(note or "").strip()[:80]
+    if not t:
+        return False
+    _sha, got = _read_started_record()
+    return got == t
+
+
 def should_notify_phone_update_start(sha: str, note: str | None = None) -> bool:
-    """新版開機先推「正在更新」。同一 SHA 不重送；已推完完成也不再推開始。"""
+    """新版開機先推「正在更新」。
+
+    同一 SHA 不重送；已推完完成也不再推開始。
+    同一口語換 SHA（redeploy 同句爛文案）也不准再推——2026-11-05 20:37／20:42 雙推根因。
+    """
     if skip_telegram_polling():
         return False
     if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -373,7 +386,19 @@ def should_notify_phone_update_start(sha: str, note: str | None = None) -> bool:
     s = str(sha or "").strip()[:40]
     if not s or started_sha_is(s) or notified_sha_is(s):
         return False
-    _ = note
+    spoken = str(note if note is not None else "").strip()[:80]
+    if not spoken:
+        try:
+            from phone_update import phone_update_note
+
+            spoken = phone_update_note()
+        except Exception:
+            spoken = ""
+    # 沒有可懂產品口語 → 不准只推空的「正在更新」洗版
+    if not spoken:
+        return False
+    if started_note_is(spoken) or notified_note_is(spoken):
+        return False
     return True
 
 
@@ -416,7 +441,7 @@ def _sync_send_whitelist_text(text: str) -> int:
 
 
 def push_phone_update_starting(*, sha: str = "", note: str | None = None) -> int:
-    """開機／部署：兩支話筒推「正在更新：…」。"""
+    """開機／部署：兩支話筒推「正在更新：…」。無口語／同句已推過 → 不寄。"""
     s = str(sha or phone_git_sha() or "").strip()[:40]
     try:
         from phone_update import phone_update_note
@@ -424,9 +449,9 @@ def push_phone_update_starting(*, sha: str = "", note: str | None = None) -> int
         spoken = str(note if note is not None else phone_update_note() or "").strip()
     except Exception:
         spoken = str(note or "").strip()
-    if not should_notify_phone_update_start(s, note=spoken):
+    if not spoken or not should_notify_phone_update_start(s, note=spoken):
         return 0
-    text = phone_update_starting(s, note=spoken or None)
+    text = phone_update_starting(s, note=spoken)
     n = _sync_send_whitelist_text(text)
     if n:
         try:
