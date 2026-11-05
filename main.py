@@ -525,6 +525,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         - POST /ops/purge-rebuildable-disk：只刪確定可重建快取／過期教具
         - POST /ops/purge-corrupt-keep：只刪未列在 keep 的 .corrupt-*（正式庫永不刪）
         - POST /ops/biaoke-search：只讀正式庫 biaoke_posts（不准外抓 CMoney）
+        - POST /ops/ai-desk-status：只讀白名單各人 AI 假錢倉（持倉／現金／近成交）
         """
         import json
 
@@ -536,6 +537,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             "/ops/purge-rebuildable-disk",
             "/ops/purge-corrupt-keep",
             "/ops/biaoke-search",
+            "/ops/ai-desk-status",
         ):
             self.send_response(404)
             self.end_headers()
@@ -750,6 +752,95 @@ class HealthHandler(BaseHTTPRequestHandler):
                     "rows": rows_out,
                     "error": err,
                     "note": "只讀正式庫；不抓 CMoney。",
+                }
+                body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if not err else 400)
+            elif route == "/ops/ai-desk-status":
+                # 只讀正式碟 AI 假錢倉；診斷空帳／雙人是否都有部位。不改庫、不下單。
+                import sqlite3
+                from config import allowed_telegram_uids, get_db_path
+                from ai_trader import (
+                    AI_USER_LEGACY,
+                    RESTART_PARAM_KEY,
+                    TOTAL_CAPITAL,
+                    ai_user_id,
+                )
+
+                err = ""
+                desks = []
+                try:
+                    path = get_db_path()
+                    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30.0)
+                    conn.row_factory = sqlite3.Row
+                    uids = list(allowed_telegram_uids())
+                    if not uids:
+                        uids = []
+                    targets = [ai_user_id(u) for u in uids]
+                    # 附帶舊 wayne_ai（若還在）方便對質，不主動建戶
+                    if AI_USER_LEGACY not in targets:
+                        targets.append(AI_USER_LEGACY)
+                    for ai_uid in targets:
+                        tg = ai_uid[3:] if ai_uid.startswith("ai_") else ""
+                        fund = conn.execute(
+                            "SELECT cash, initial_capital, updated_at FROM user_funds WHERE user_id=?",
+                            (ai_uid,),
+                        ).fetchone()
+                        pos_rows = conn.execute(
+                            "SELECT stock_id, stock_name, shares, cost_price, buy_date, strategy_type "
+                            "FROM user_positions WHERE user_id=? ORDER BY stock_id",
+                            (ai_uid,),
+                        ).fetchall()
+                        fills = []
+                        try:
+                            for r in conn.execute(
+                                "SELECT as_of, stock_id, action, shares, price, bucket, created_at "
+                                "FROM ai_fills WHERE user_id=? ORDER BY rowid DESC LIMIT 8",
+                                (ai_uid,),
+                            ):
+                                fills.append(dict(r))
+                        except sqlite3.OperationalError:
+                            fills = []
+                        restart_v = None
+                        try:
+                            row = conn.execute(
+                                "SELECT v FROM ai_params WHERE k=?",
+                                (f"{RESTART_PARAM_KEY}:{ai_uid}",),
+                            ).fetchone()
+                            restart_v = None if row is None else float(row[0])
+                        except sqlite3.OperationalError:
+                            restart_v = None
+                        desks.append(
+                            {
+                                "ai_uid": ai_uid,
+                                "tg_uid": tg or None,
+                                "has_fund": fund is not None,
+                                "cash": None if fund is None else float(fund["cash"] or 0),
+                                "initial_capital": (
+                                    None
+                                    if fund is None
+                                    else float(fund["initial_capital"] or 0)
+                                ),
+                                "fund_updated_at": (
+                                    None if fund is None else fund["updated_at"]
+                                ),
+                                "positions_n": len(pos_rows),
+                                "positions": [dict(r) for r in pos_rows],
+                                "recent_fills": fills,
+                                "restart_flag": restart_v,
+                                "cap_expected": TOTAL_CAPITAL,
+                            }
+                        )
+                    conn.close()
+                except Exception as exc:
+                    err = str(exc)
+                    logger.exception("ops /ops/ai-desk-status 失敗")
+                result = {
+                    "ok": not err,
+                    "kind": "ai_desk_status",
+                    "n": len(desks),
+                    "desks": desks,
+                    "error": err,
+                    "note": "只讀；不下單、不建戶、不清倉。",
                 }
                 body = json.dumps(result, ensure_ascii=False).encode("utf-8")
                 self.send_response(200 if not err else 400)
