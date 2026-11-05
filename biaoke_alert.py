@@ -655,19 +655,28 @@ def _claim_chat_dedupe(chat_id: str, dedupe_key: str, *, db_path: str = "") -> b
 
 
 def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, Any]) -> str:
-    """急推：完整他原文到兩支手機。加權現價、程式標籤不進對話框。"""
-    kind = "樓下" if (event.get("kind") or "") == "reply" else "主文"
+    """急推：完整他原文到兩支手機。加權現價、程式標籤不進對話框。
+
+    句式（2026-11-05 鎖）：
+    飆大急推
+    {日期} {時間} 飆大現在發文說：
+    {正文}
+    （擷取自原文）。
+    不准再寫「他原文／樓下／主文／對原文用」。
+    """
+    del judged, move  # 加權／研判標籤不准進急推對話框
     body = str(event.get("text") or "").strip()
     if len(body) > _TG_BODY_MAX:
         body = body[: _TG_BODY_MAX - 1] + "…"
+    day = html_escape(str(event.get("date") or "").strip())
+    hm = html_escape(str(event.get("time") or "").strip())
+    when = " ".join(p for p in (day, hm) if p).strip()
+    lead = f"{when} 飆大現在發文說：" if when else "飆大現在發文說："
     bits = [
         "<b>飆大急推</b>",
-        (
-            f"他原文 {html_escape(str(event.get('date') or ''))} "
-            f"{html_escape(str(event.get('time') or ''))} {kind}："
-        ),
+        lead,
         html_escape(body),
-        "對原文用。",
+        "（擷取自原文）。",
     ]
     return "\n".join(bits)
 

@@ -247,14 +247,17 @@ def test_escape_wave_caution_is_not_exit_command():
         j,
         _move(294, y=45862.52),
     )
-    assert "他原文" in html
+    assert "飆大現在發文說" in html
+    assert "他原文" not in html
+    assert "樓下" not in html
     assert "10:47" in html
     assert "漲不動" in html
     assert "研判：" not in html
     assert "沒過按鈕" not in html
     assert "怕錯過" not in html
     assert "飆大急推" in html
-    assert "對原文用" in html
+    assert "（擷取自原文）。" in html
+    assert "對原文用" not in html
     assert "程式標籤（不是他原文）" not in html
     assert "官方加權盤中現價" not in html
 
@@ -334,8 +337,10 @@ def test_screenshot_old_replies_are_inbox_not_push():
         {"push": False, "score": 0, "reasons": ["出清／逃命／先回收"]},
         move,
     )
-    assert "他原文" in html
+    assert "飆大現在發文說" in html
+    assert "他原文" not in html
     assert "幾乎全部賣光" in html
+    assert "（擷取自原文）。" in html
     assert "官方加權盤中現價" not in html
     assert "程式標籤" not in html
 
