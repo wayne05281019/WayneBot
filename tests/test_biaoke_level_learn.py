@@ -476,6 +476,27 @@ def test_his_micro_degree_and_alt_gate():
     assert _alt_path_needed("C", "C3-3-2") is False
     d334 = _his_micro_degree("3-3-3完成轉3-3-4機率最高；C3-3跌勢運行中")
     assert d334["degree"] == "C3-3-4"
+    # 11/5：空格「1 4重疊」＋走3-5／假跌破（只認他寫過）
+    d35 = _his_micro_degree(
+        "大盤是今天走3-5沒錯，但夜盤昨天晚上 1 4穿刺，照理說 1 4重疊，"
+        "但可能不是有效穿刺，因此我一直認為今天是假跌破"
+    )
+    assert d35["degree"] == "C3-5"
+    assert "C3-5" in d35["chain"]
+
+
+def test_looks_like_level_now_spaced_14_and_fake_break():
+    """他常寫『1 4重疊』不是『1-4重疊』；假跌破＋大盤要過閘。"""
+    from biaoke_level_learn import looks_like_level_now
+
+    oral = (
+        "大盤是今天走3-5沒錯，但夜盤昨天晚上 1 4穿刺， 照理說 1 4重疊，"
+        "但可能不是有效穿刺，因此我一直認為今天是假跌破 "
+        "也許因為模糊地帶判斷有點小失誤， 所以我今天並沒有下空單。"
+    )
+    assert looks_like_level_now(oral) is True
+    # 純個股 1 4重疊、無大盤戰場 → 不准進大盤位階閘
+    assert looks_like_level_now("光聖回測波浪一， 1 4重疊附近") is False
 
 
 def test_biaoke_pred_label_no_fake_prob():
@@ -750,6 +771,58 @@ def test_thesis_follows_latest_biaoke_post_up_to_query(tmp_path):
         now=datetime(2026, 10, 31, 11, 30, tzinfo=tz),
     )
     assert "主跌" in (after.get("snippet") or after.get("thesis") or "")
+
+
+def test_same_day_fake_break_reply_beats_yesterday_long_post(tmp_path):
+    """11/5 短回『走3-5／1 4重疊／假跌破』要蓋過昨日長篇 C3-5 主文。"""
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_level_learn import (
+        _his_micro_degree,
+        _latest_biaoke_index_snip,
+        _latest_level_thesis,
+        ensure_tables,
+    )
+
+    db = str(tmp_path / "fakebreak.db")
+    ensure_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS biaoke_posts("
+        "id TEXT PRIMARY KEY, date TEXT, time TEXT, text TEXT)"
+    )
+    parent = (
+        "夜盤第二組下跌脈動已經完成落底確認，也就是說C3-5完成，目前開始反彈，"
+        "先觀察反彈能否穿刺45546。真正要轉震盪整理46292。最後結論：目前的盤勢大盤並沒有止穩，看細微波。"
+    )
+    oral = (
+        "大盤是今天走3-5沒錯，但夜盤昨天晚上 1 4穿刺， 照理說 1 4重疊，"
+        "但可能不是有效穿刺，因此我一直認為今天是假跌破 "
+        "也許因為模糊地帶判斷有點小失誤， 所以我今天並沒有下空單。"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        ("187684179", "2026-11-04", "18:49", parent),
+    )
+    conn.execute(
+        "INSERT INTO biaoke_posts(id, date, time, text) VALUES (?,?,?,?)",
+        ("187684179:c187684179-269", "2026-11-05", "12:34", oral),
+    )
+    conn.commit()
+    conn.close()
+    tz = ZoneInfo("Asia/Taipei")
+    now = datetime(2026, 11, 5, 15, 0, tzinfo=tz)
+    snip, pid = _latest_biaoke_index_snip(
+        db, "20261105", now=now, with_id=True
+    )
+    assert pid.endswith("269")
+    assert "假跌破" in snip
+    pack = _latest_level_thesis(db, as_of="20261105", now=now)
+    assert "假跌破" in (pack.get("snippet") or "")
+    assert "C3-5" in (pack.get("thesis") or "")
+    assert _his_micro_degree(pack.get("snippet") or "")["degree"] == "C3-5"
 
 
 def test_thesis_cap_includes_weekend_posts(tmp_path, monkeypatch):

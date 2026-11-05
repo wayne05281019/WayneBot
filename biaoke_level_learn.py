@@ -32,7 +32,9 @@ _LEVEL_NOW = re.compile(
     r"波浪位階|細微波|主跌段|初跌段|末跌段|"
     r"C\s*波|C\d|C3-\d|B\s*波|B-[abc]|"
     r"橫台|中繼站|第[一二三四五1-5]波|第[1-5]小浪|"
-    r"1-4\s*重疊|鐵律|破底翻|第二隻腳|第二支腳|"
+    # 他常寫「1 4重疊／1-4重疊」；假跌破／有效穿刺／走3-5＝大盤現況位階口語
+    r"1\s*[-–]?\s*4\s*重疊|假跌破|有效穿刺|(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])|"
+    r"鐵律|破底翻|第二隻腳|第二支腳|"
     r"動態修正|重新修訂|重新規劃|穿刺原規劃|"
     r"目前只是|目前是走|現在是走|確認.*發動|準備啟動"
     r")",
@@ -1149,7 +1151,7 @@ def _latest_biaoke_index_snip(
         return empty
     best_blob = ""
     best_pid = ""
-    best_score = -1
+    best_key = (-1, "", "")  # score, date, time — 同分取較新
     for pid, date_s, time_s, text in rows or ():
         d = str(date_s or "").strip()
         t = str(time_s or "").strip()
@@ -1167,7 +1169,8 @@ def _latest_biaoke_index_snip(
         if _INDEXISH.search(blob):
             score += 3
         if re.search(
-            r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底",
+            r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
+            r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5",
             blob,
         ):
             score += 12
@@ -1182,8 +1185,12 @@ def _latest_biaoke_index_snip(
             score += 10
         elif n < 80:
             score -= 8
-        if score > best_score:
-            best_score = score
+        # 查詢當日大盤現況回文優先：避免短「假跌破／走3-5」被昨日長主文蓋掉
+        if d == today_dash and looks_like_level_now(blob) and _INDEXISH.search(blob):
+            score += 18
+        key = (score, d, t)
+        if key > best_key:
+            best_key = key
             best_blob = blob
             best_pid = sid
     if not best_blob:
@@ -1333,6 +1340,9 @@ def _latest_level_thesis(
     # 他細微標號有時寫 C3-3-x、有時只寫 3-3-x（11/1 夜盤文）
     has_333 = ("C3-3-3" in snip) or bool(re.search(r"(?<![0-9])3-3-3(?![0-9])", snip))
     has_334 = ("C3-3-4" in snip) or bool(re.search(r"(?<![0-9])3-3-4(?![0-9])", snip))
+    has_35 = bool(
+        re.search(r"C3-5|(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])", snip)
+    )
     if "C3-3-1" in snip and "C3-3-2" in snip:
         thesis = "大A→大B→大C｜C內＝C3-3（1→2・預估）"
         wait = "下一測他點過錨；C走完≠新五波升；鐵律不符→重修"
@@ -1342,6 +1352,9 @@ def _latest_level_thesis(
     elif "C3-3" in snip or has_333 or has_334:
         thesis = "大A→大B→大C｜C內＝C3-3主跌（預估）"
         wait = "隨時檢視細微；C走完≠新五波升；穿刺→重修"
+    elif has_35:
+        thesis = "大A→大B→大C｜C內＝C3-5（預估）"
+        wait = "他認走3-5；1 4／假跌破隨時檢視；C走完≠新五波升"
     elif "橫台" in snip or "中繼" in snip:
         thesis = "大A→大B→大C｜C內橫台中繼（預估）"
         wait = "中繼後原方向；C走完≠新五波升；不符就改"
@@ -3263,6 +3276,9 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         degree = "C3-3-1"
     elif re.search(r"C3-3", s):
         degree = "C3-3"
+    elif re.search(r"C3-5|(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])", s):
+        # 他寫 C3-5／今天走3-5（11/5 假跌破回文）；不准發明沒寫過的段號
+        degree = "C3-5"
     elif re.search(r"C3-", s):
         degree = "C3"
     elif re.search(r"(現在在C|下降ABC.*C|主跌段)", s):
@@ -3270,6 +3286,8 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
     chain = "五波→ABC→C"
     if degree.startswith("C3"):
         chain = "五波→ABC→C→C3-3" if "C3-3" in degree else "五波→ABC→C→C3"
+    if degree == "C3-5":
+        chain = "五波→ABC→C→C3-5"
     if degree in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
         chain = f"五波→ABC→C→C3-3→{degree}"
     return {"degree": degree, "chain": chain, "raw": s[:160]}
@@ -3800,6 +3818,10 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         steps.extend(["C3-3主跌", "C3-3-4"])
     elif deg.startswith("C3-3") or ("C3-3" in thesis and "橫台" not in thesis):
         steps.append("C3-3主跌")
+    elif deg == "C3-5" or "C3-5" in thesis or re.search(
+        r"(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])", thesis
+    ):
+        steps.append("C3-5")
     elif "橫台" in thesis or "中繼" in thesis:
         steps.append("C內橫台中繼")
     elif "主跌" in thesis:
