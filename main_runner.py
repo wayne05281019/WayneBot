@@ -272,18 +272,24 @@ class MainRunner:
 
         僅 screen-*（不含 screen-closed-*）。回執台北日 < 今日開市日曆日 → 清回執＋
         降 success→computed，回 True＝已放行可重寄。同日回執仍擋（防雙寄）。
+
+        2026-11-05：時戳壞掉／只有 success 無回執日時，若 as_of < 今日開市日曆日仍放行
+        （否則 screen-昨日 會整日略過，16:30 融合後 as_of 前進就永遠補不回）。
         """
         key = str(run_date or "").strip()
         if not key.startswith("screen-") or key.startswith("screen-closed-"):
             return False
-        today = str(getattr(self, "today_str", "") or "").strip()
-        if len(today) != 8:
-            try:
-                from config import taipei_now
+        # 跨午夜不准沿用 __init__ 凍結的 today_str
+        try:
+            from config import taipei_today_str
 
-                today = taipei_now().strftime("%Y%m%d")
-            except Exception:
-                return False
+            today = str(taipei_today_str() or "").strip()
+        except Exception:
+            today = str(getattr(self, "today_str", "") or "").strip()
+        if len(today) != 8:
+            return False
+        self.today_str = today
+        as_of = key[len("screen-") :] if key.startswith("screen-") else ""
         try:
             from trading_calendar import is_tw_open_calendar_day
 
@@ -324,14 +330,22 @@ class MainRunner:
                     delivered_ymd = delivery_taipei_ymd(str(row[0] or ""))
             except Exception:
                 logger.debug("讀 pipeline finished_at 略過 key=%s", key, exc_info=True)
-        if not delivered_ymd:
-            # 有回執檔但時戳壞掉：保守不放行（避免同日雙寄）
-            if push_delivery_recorded(self.db_path, key):
-                return False
+        # 今日已寄（回執日≥今日）→ 不准放行（防同日雙寄）
+        if delivered_ymd and delivered_ymd >= today:
             return False
-        if delivered_ymd >= today:
+        has_receipt = False
+        try:
+            has_receipt = bool(push_delivery_recorded(self.db_path, key))
+        except Exception:
+            has_receipt = False
+        status = self.pipeline_status(key)
+        as_of_lag = bool(as_of and len(as_of) == 8 and as_of < today)
+        prior_day = bool(delivered_ymd and delivered_ymd < today)
+        # 時戳壞掉／缺日：開市日且 as_of 仍停在昨日（或更早）→ 仍放行，不准卡死 §14
+        stuck_lag = bool(as_of_lag and (has_receipt or status == "success"))
+        if not prior_day and not stuck_lag:
             return False
-        # 舊開市日（或更早）回執：清掉才能搶鎖真寄
+        # 舊開市日（或更早）回執／卡死 success：清掉才能搶鎖真寄
         try:
             clear_push_delivery(
                 self.db_path, key, bak_suffix=f".bak-reissue-{today}"
@@ -339,11 +353,11 @@ class MainRunner:
         except Exception:
             logger.exception("清舊開市日回執失敗 key=%s", key)
             return False
-        if self.pipeline_status(key) == "success":
+        if status == "success":
             try:
                 self._mark_pipeline(
                     "computed",
-                    f"§14 open-day reissue demote prior={delivered_ymd}",
+                    f"§14 open-day reissue demote prior={delivered_ymd or 'unstamped'}",
                     run_date=key,
                     retries=8,
                 )
@@ -351,11 +365,42 @@ class MainRunner:
                 logger.exception("舊開市日 success 降級失敗 key=%s", key)
                 return False
         logger.info(
-            "§14 開市日放行重寄：%s 回執日 %s < 今日 %s（as_of 未前進）",
+            "§14 開市日放行重寄：%s 回執日 %s < 今日 %s（as_of=%s lag=%s）",
             key,
-            delivered_ymd,
+            delivered_ymd or "unstamped",
             today,
+            as_of,
+            as_of_lag,
         )
+        return True
+
+    def should_yield_to_market_fuse(self, now=None) -> bool:
+        """官方 16:30 盤後融合準點窗：force-morning／重鎖庫救援要讓路。
+
+        開市日 16:25–17:00（台北）一律讓路。不准用「昨日 fuse success」誤判放行
+        （盤中 fuse_end 仍是昨收日）。休市日無 16:30 融合則不讓。
+        """
+        try:
+            from config import taipei_now
+
+            now = now or taipei_now()
+        except Exception:
+            return False
+        try:
+            mins = int(now.hour) * 60 + int(now.minute)
+            ymd = now.strftime("%Y%m%d")
+        except Exception:
+            return False
+        if mins < 16 * 60 + 25 or mins >= 17 * 60:
+            return False
+        try:
+            from trading_calendar import is_tw_open_calendar_day
+
+            if not is_tw_open_calendar_day(ymd):
+                return False
+        except Exception:
+            # 判斷失敗時寧可讓路，不准搶融合鎖
+            return True
         return True
 
     def reconcile_push_deliveries(self, *, prefix: str = "") -> int:
@@ -965,12 +1010,14 @@ class MainRunner:
             )
         return 0
 
-    def force_rescue_morning(self) -> Dict[str, Any]:
+    def force_rescue_morning(self, *, ignore_fuse_window: bool = False) -> Dict[str, Any]:
         """§14 救援：在常駐碟上強制降 morning-claim，立刻補寄白名單兩人。
 
         只准 web 常駐呼叫（掛永久碟）；不准 Render 無碟 one-off job。
         若 screen-{as_of} 仍未 success，即使 fuse cap 已往後走，仍針對該 as_of 補寄
         （不准被當日盤後融合把基準日洗成「今天」而略過今早漏寄）。
+
+        16:25–17:00 盤後融合準點窗預設讓路（ignore_fuse_window=True 才硬搶）。
         """
         out: Dict[str, Any] = {
             "ok": False,
@@ -980,6 +1027,18 @@ class MainRunner:
             "key": "",
             "error": "",
         }
+        if not ignore_fuse_window:
+            try:
+                if self.should_yield_to_market_fuse():
+                    out["ok"] = True
+                    out["yielded_to_fuse"] = True
+                    out["note"] = "16:30 fuse window; defer force-morning"
+                    logger.info(
+                        "§14 force-rescue：盤後融合準點窗讓路（不搶 DB 鎖）"
+                    )
+                    return out
+            except Exception:
+                logger.exception("force_rescue 融合讓路判斷略過")
         # 先把「已寄出但蓋戳失敗」的回執補成 success，再 demote／補寄（防 2026-10-23 雙寄）
         try:
             out["reconciled"] = int(
@@ -3099,6 +3158,14 @@ class MainRunner:
             return self._run_closed_day_morning_digest(
                 closed, skip_if_done=skip_if_done, notify=notify
             )
+
+        # 跨午夜補跑：刷新台北日，release_stale 才不會用凍結的昨日
+        try:
+            from config import taipei_today_str
+
+            self.today_str = str(taipei_today_str() or self.today_str)
+        except Exception:
+            pass
 
         if notify:
             demoted = self.demote_premature_morning_screens()
