@@ -291,6 +291,15 @@ def scheduler_may_push(job: str) -> bool:
     return str(job or "").strip().lower() in ("morning", "winrate")
 
 
+def winrate_evening_notify_enabled() -> bool:
+    """21:00 勝率預設只落檔＋AI、不寄話筒（06:30 早報才寄大量圖）。
+
+    緊急要晚上再推才設 WAYNE_WINRATE_NOTIFY=1。
+    """
+    raw = (os.getenv("WAYNE_WINRATE_NOTIFY") or "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def screen_notify_enabled() -> bool:
     """海選算出後要不要寄。GHA 必須 0；常駐預設 1。"""
     raw = (os.getenv("WAYNE_SCREEN_NOTIFY") or "1").strip().lower()

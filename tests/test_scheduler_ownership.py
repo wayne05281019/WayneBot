@@ -63,6 +63,11 @@ def test_data_role_pushes_winrate_at_2100(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     assert config.scheduler_owns("winrate") is True
     assert config.scheduler_may_push("winrate") is True
+    # 21:00 預設不寄話筒（06:30 早報才寄）；緊急才開 WAYNE_WINRATE_NOTIFY
+    monkeypatch.delenv("WAYNE_WINRATE_NOTIFY", raising=False)
+    assert config.winrate_evening_notify_enabled() is False
+    monkeypatch.setenv("WAYNE_WINRATE_NOTIFY", "1")
+    assert config.winrate_evening_notify_enabled() is True
 
 
 def test_data_role_refreshes_silently(monkeypatch):
@@ -214,6 +219,7 @@ def test_catch_up_after_2100_runs_winrate_on_data_role(monkeypatch, recorder):
     from zoneinfo import ZoneInfo
 
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.delenv("WAYNE_WINRATE_NOTIFY", raising=False)
     now = datetime(2026, 9, 4, 21, 16, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
     kinds = [c[0] for c in recorder.calls]
@@ -221,7 +227,20 @@ def test_catch_up_after_2100_runs_winrate_on_data_role(monkeypatch, recorder):
     assert kinds == ["open_check", "morning", "fuse", "evening", "winrate"]
     wr = [c for c in recorder.calls if c[0] == "winrate"][0]
     assert wr[1]["skip_if_done"] is True
-    assert wr[1]["notify"] is True
+    # 預設不寄；話筒改 06:30 早報
+    assert wr[1]["notify"] is False
+
+
+def test_winrate_dispatch_silent_unless_env(monkeypatch, recorder):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.delenv("WAYNE_WINRATE_NOTIFY", raising=False)
+    main.run_scheduled_job("winrate")
+    assert recorder.calls[0][0] == "winrate"
+    assert recorder.calls[0][1]["notify"] is False
+    recorder.calls.clear()
+    monkeypatch.setenv("WAYNE_WINRATE_NOTIFY", "1")
+    main.run_scheduled_job("winrate")
+    assert recorder.calls[0][1]["notify"] is True
 
 
 def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
@@ -429,6 +448,7 @@ def test_catch_up_winrate_after_2100(monkeypatch, recorder):
     from zoneinfo import ZoneInfo
 
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.delenv("WAYNE_WINRATE_NOTIFY", raising=False)
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261001"
     )
@@ -439,15 +459,16 @@ def test_catch_up_winrate_after_2100(monkeypatch, recorder):
     assert "winrate" in kinds
     wr = [c for c in recorder.calls if c[0] == "winrate"][0]
     assert wr[1]["skip_if_done"] is True
-    assert wr[1]["notify"] is True
+    assert wr[1]["notify"] is False  # 話筒改 06:30；21:00 只落檔
 
 
 def test_catch_up_winrate_stale_roster_before_2100(monkeypatch, recorder):
-    """錯推更正／部署後：名單不是現行藍▲掃 → 中午重開也立刻補寄。"""
+    """錯推更正／部署後：名單不是現行藍▲掃 → 中午重開也立刻重掃（預設不寄）。"""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.delenv("WAYNE_WINRATE_NOTIFY", raising=False)
     monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261001"
@@ -458,7 +479,7 @@ def test_catch_up_winrate_stale_roster_before_2100(monkeypatch, recorder):
     kinds = [c[0] for c in recorder.calls]
     assert "winrate" in kinds
     wr = [c for c in recorder.calls if c[0] == "winrate"][0]
-    assert wr[1]["notify"] is True
+    assert wr[1]["notify"] is False
 
 
 def test_catch_up_skips_winrate_when_roster_current_before_2100(monkeypatch, recorder):

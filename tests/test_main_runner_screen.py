@@ -2478,7 +2478,73 @@ def test_force_rescue_yields_to_fuse_window(monkeypatch):
     assert out.get("ok") is True
     assert out.get("yielded_to_fuse") is True
     assert called["n"] == 0
-    # 過窗後（17:05）不讓路
+    # 過窗後（17:05）不讓路 16:30 融合；但仍可能落在 17:40 彙整緩衝
     later = datetime(2026, 11, 5, 17, 5, tzinfo=tw)
     monkeypatch.setattr("config.taipei_now", lambda: later)
     assert runner.should_yield_to_market_fuse(now=later) is False
+    assert runner.should_yield_to_db_heavy_window(now=later) is False
+
+
+def test_force_rescue_yields_to_absorb_windows(monkeypatch):
+    """17:40／18:50／22:30 彙整緩衝：force-morning 也讓路。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = ":memory:"
+    tw = ZoneInfo("Asia/Taipei")
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda ymd: True
+    )
+    for hh, mm in ((17, 40), (18, 50), (22, 30)):
+        now = datetime(2026, 11, 5, hh, mm, tzinfo=tw)
+        assert runner.should_yield_to_db_heavy_window(now=now) is True
+        assert runner.should_yield_to_market_fuse(now=now) is False
+        monkeypatch.setattr("config.taipei_now", lambda n=now: n)
+        called = {"n": 0}
+        runner.reconcile_push_deliveries = (
+            lambda **k: called.__setitem__("n", called["n"] + 1) or 0
+        )
+        runner.morning_claim_is_fresh_running = lambda: False
+        out = runner.force_rescue_morning()
+        assert out.get("ok") is True
+        assert out.get("yielded_to_fuse") is True
+        assert called["n"] == 0
+
+
+def test_run_ai_desk_visits_every_family_uid(tmp_path, monkeypatch):
+    """白名單兩人：_run_ai_desk 必須每人各跑一輪（一人成交不准擋另一人）。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+
+    path = str(tmp_path / "ai-dual.db")
+    ensure_core_schema(path)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "8772209416")
+    seen: list = []
+
+    def _fake_run(db, uid, results, as_of, *, skip_new_buys=False):
+        seen.append(str(uid))
+        return {
+            "bought": [],
+            "sold": [],
+            "candidates": 0,
+            "position_count": 0,
+            "summary": {"position_count": 0},
+            "html": "",
+            "user_id": f"ai_{uid}",
+        }
+
+    monkeypatch.setattr("ai_trader.run_ai_desk", _fake_run)
+    monkeypatch.setattr("ai_trader.ai_user_id", lambda u: f"ai_{u}")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.chat_id = "9001"
+    runner._ai_desk_has_buy_fills = lambda *a, **k: False
+    runner.send_telegram_message = lambda *a, **k: True
+    out = runner._run_ai_desk("20261105", results={}, notify=False)
+    assert sorted(seen) == ["8772209416", "9001"]
+    assert sorted(out.get("family_uids") or []) == ["8772209416", "9001"]
+    assert set((out.get("per_uid") or {}).keys()) == {"9001", "8772209416"}

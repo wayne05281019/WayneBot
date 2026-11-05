@@ -379,6 +379,16 @@ class MainRunner:
         開市日 16:25–17:00（台北）一律讓路。不准用「昨日 fuse success」誤判放行
         （盤中 fuse_end 仍是昨收日）。休市日無 16:30 融合則不讓。
         """
+        return self.should_yield_to_db_heavy_window(now=now, fuse_only=True)
+
+    def should_yield_to_db_heavy_window(
+        self, now=None, *, fuse_only: bool = False
+    ) -> bool:
+        """force-morning 讓路窗：16:30 融合＋盤後飆大彙整（17:40／18:50／22:30）。
+
+        開市日才讓 16:25–17:00。彙整窗前後各留約 15 分緩衝，避免再搶鎖。
+        fuse_only=True 時只認 16:30 融合（相容舊測／舊呼叫）。
+        """
         try:
             from config import taipei_now
 
@@ -390,17 +400,31 @@ class MainRunner:
             ymd = now.strftime("%Y%m%d")
         except Exception:
             return False
-        if mins < 16 * 60 + 25 or mins >= 17 * 60:
-            return False
-        try:
-            from trading_calendar import is_tw_open_calendar_day
 
-            if not is_tw_open_calendar_day(ymd):
-                return False
-        except Exception:
-            # 判斷失敗時寧可讓路，不准搶融合鎖
-            return True
-        return True
+        def _open_day() -> bool:
+            try:
+                from trading_calendar import is_tw_open_calendar_day
+
+                return bool(is_tw_open_calendar_day(ymd))
+            except Exception:
+                # 判斷失敗時寧可讓路，不准搶融合鎖
+                return True
+
+        # 16:25–17:00 官方盤後融合
+        if 16 * 60 + 25 <= mins < 17 * 60:
+            return _open_day()
+        if fuse_only:
+            return False
+        # 盤後彙整錯開窗（biaoke_absorb _AFTER_CLOSE_HMS）
+        absorb_windows = (
+            (17 * 60 + 35, 18 * 60 + 5),   # 17:40
+            (18 * 60 + 45, 19 * 60 + 15),  # 18:50
+            (22 * 60 + 25, 22 * 60 + 55),  # 22:30
+        )
+        for lo, hi in absorb_windows:
+            if lo <= mins < hi:
+                return _open_day()
+        return False
 
     def reconcile_push_deliveries(self, *, prefix: str = "") -> int:
         """掃有回執但 pipeline 非 success 的鍵，補標 success（force／catch-up 前必跑）。"""
@@ -1016,7 +1040,8 @@ class MainRunner:
         若 screen-{as_of} 仍未 success，即使 fuse cap 已往後走，仍針對該 as_of 補寄
         （不准被當日盤後融合把基準日洗成「今天」而略過今早漏寄）。
 
-        16:25–17:00 盤後融合準點窗預設讓路（ignore_fuse_window=True 才硬搶）。
+        16:25–17:00 盤後融合、以及 17:40／18:50／22:30 彙整緩衝窗預設讓路
+        （ignore_fuse_window=True 才硬搶）。
         """
         out: Dict[str, Any] = {
             "ok": False,
@@ -1028,16 +1053,16 @@ class MainRunner:
         }
         if not ignore_fuse_window:
             try:
-                if self.should_yield_to_market_fuse():
+                if self.should_yield_to_db_heavy_window():
                     out["ok"] = True
                     out["yielded_to_fuse"] = True
-                    out["note"] = "16:30 fuse window; defer force-morning"
+                    out["note"] = "db-heavy window; defer force-morning"
                     logger.info(
-                        "§14 force-rescue：盤後融合準點窗讓路（不搶 DB 鎖）"
+                        "§14 force-rescue：盤後融合／彙整窗讓路（不搶 DB 鎖）"
                     )
                     return out
             except Exception:
-                logger.exception("force_rescue 融合讓路判斷略過")
+                logger.exception("force_rescue 重鎖窗讓路判斷略過")
         # 先把「已寄出但蓋戳失敗」的回執補成 success，再 demote／補寄（防 2026-10-23 雙寄）
         try:
             out["reconciled"] = int(
@@ -2564,6 +2589,9 @@ class MainRunner:
                 return {}
 
             last: Dict[str, Any] = {}
+            per_uid: Dict[str, Any] = {}
+            # 雙人全同：白名單每個 uid 都要跑一遍；一人成交不准擋另一人
+            logger.info("AI 模擬倉本輪 uid=%s", ",".join(uids))
             for uid in uids:
                 ai_uid = ai_user_id(uid)
                 # 該戶當日已有 BUY → 只做出場／清槽，不准再買／再抄底（雙人分開算）
@@ -2575,15 +2603,52 @@ class MainRunner:
                     as_of,
                     skip_new_buys=skip_buys,
                 )
+                # 空倉＋當日未 BUY＋母體有候選 → 再強制買一輪（防 env／略過漏建哥哥戶）
+                def _pos_n(payload: Dict[str, Any]) -> int:
+                    try:
+                        if payload.get("position_count") is not None:
+                            return int(payload.get("position_count") or 0)
+                        return int(
+                            (payload.get("summary") or {}).get("position_count") or 0
+                        )
+                    except Exception:
+                        return 0
+
+                n_pos = _pos_n(ai)
+                if (
+                    not skip_buys
+                    and n_pos <= 0
+                    and not (ai.get("bought") or [])
+                    and int(ai.get("candidates") or 0) > 0
+                ):
+                    logger.info(
+                        "AI 模擬倉 uid=%s 空倉有候選→強制再買一輪", uid
+                    )
+                    ai = run_ai_desk(
+                        self.db_path,
+                        uid,
+                        results or {},
+                        as_of,
+                        skip_new_buys=False,
+                    )
+                    n_pos = _pos_n(ai)
                 last = ai
                 n_buy = len(ai.get("bought") or [])
                 n_sell = len(ai.get("sold") or [])
+                per_uid[str(uid)] = {
+                    "bought": n_buy,
+                    "sold": n_sell,
+                    "candidates": ai.get("candidates") or 0,
+                    "positions": n_pos,
+                    "skip_buys": skip_buys,
+                }
                 logger.info(
-                    "AI 模擬倉 uid=%s 買進 %s 賣出 %s 候選 %s skip_buys=%s",
+                    "AI 模擬倉 uid=%s 買進 %s 賣出 %s 候選 %s 持倉 %s skip_buys=%s",
                     uid,
                     n_buy,
                     n_sell,
                     ai.get("candidates") or 0,
+                    n_pos,
                     skip_buys,
                 )
                 # 排程推播只在有實際成交時寄；空倉桌面不准每次 boot／補跑洗版
@@ -2598,6 +2663,10 @@ class MainRunner:
                     text = "\n\n".join(x for x in bits if x)
                     if text:
                         self.send_telegram_message(text, chat_id=uid)
+            if isinstance(last, dict):
+                last = dict(last)
+                last["per_uid"] = per_uid
+                last["family_uids"] = list(uids)
             # 成交後才凍 AI倉名單；失敗不擋話筒／海選（海選 snapshot 常在 AI 成交前）。
             try:
                 from button_silent_verify import snapshot_ai_desk
@@ -3664,7 +3733,11 @@ class MainRunner:
         return True
 
     def run_winrate_buypoint(self, skip_if_done: bool = False, notify: bool = True) -> bool:
-        """21:00 勝率買點：盤後 leave_zero（藍▲）名單落檔並推播壓力區＋高低卡。"""
+        """21:00 勝率買點：盤後 leave_zero（藍▲）名單落檔＋AI 倉。
+
+        話筒臉改由 06:30 早報寄勝率＋大量圖；排程預設 notify=False
+        （見 winrate_evening_notify_enabled）。傳入 notify=True 仍可緊急補寄。
+        """
         from import_health import latest_complete_quote_date
         from tw_holidays import closed_tw_session
         from winrate_buypoint import (
