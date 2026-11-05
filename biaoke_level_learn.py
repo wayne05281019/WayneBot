@@ -534,6 +534,104 @@ def _merge_live_sox_display_bar(
     return _merge_live_index_display_bar(bars, live, today=day)
 
 
+def _ensure_paint_live_sox(
+    pack: Optional[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    """出圖當下再抓費半即時（force）；黃框指數與末根縮圖K必須同口價一起更新。"""
+    dt = now or datetime.now(TAIPEI)
+    if getattr(dt, "tzinfo", None) is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    live: Optional[Dict[str, Any]] = None
+    try:
+        from us_overnight import fetch_live_sox_display_bar, us_tape_phase
+
+        # 現金盤中每次出圖重抓；非盤中不造假即時
+        if us_tape_phase(dt) == "regular":
+            live = fetch_live_sox_display_bar(dt, force=True)
+    except Exception:
+        logger.debug("出圖費半即時略過", exc_info=True)
+        live = None
+    if live and isinstance(pack, dict):
+        pack["live_sox"] = live
+        try:
+            pred = (
+                pack.get("pred_levels")
+                if isinstance(pack.get("pred_levels"), dict)
+                else {}
+            )
+            pack["pred_levels"] = _refresh_sox_pred_cascade(
+                pred, "", sox_px=float(live.get("close") or 0)
+            )
+        except Exception:
+            logger.debug("出圖費半撐壓階梯略過", exc_info=True)
+        return live
+    if isinstance(pack, dict) and isinstance(pack.get("live_sox"), dict):
+        return pack.get("live_sox")
+    return None
+
+
+def _apply_live_sox_to_axis(
+    *,
+    sox_o: List[float],
+    sox_h: List[float],
+    sox_l: List[float],
+    sox_c: List[float],
+    tw_bars: Sequence[Dict[str, Any]],
+    live: Optional[Dict[str, Any]],
+    n_tw: int,
+) -> Optional[int]:
+    """即時 OHLC 寫進對齊軸對應格；回傳更新索引（黃框／縮圖K共用）。"""
+    if not live or not sox_c:
+        return None
+    day = _ymd(live.get("date"))
+    try:
+        px = float(live.get("close") or 0)
+        o = float(live.get("open") or px)
+        h = float(live.get("high") or max(o, px))
+        lo = float(live.get("low") or min(o, px))
+    except (TypeError, ValueError):
+        return None
+    if not day or px <= 0:
+        return None
+    i_hit: Optional[int] = None
+    for i, r in enumerate(tw_bars or []):
+        if i >= int(n_tw):
+            break
+        if _ymd(r.get("date")) == day:
+            i_hit = i
+            break
+    if i_hit is None:
+        # 加權軸後延伸的美股日
+        if len(sox_c) > int(n_tw):
+            i_hit = len(sox_c) - 1
+        elif tw_bars and _ymd((tw_bars[-1] or {}).get("date")) == day:
+            i_hit = max(0, int(n_tw) - 1)
+        else:
+            return None
+    if not (0 <= int(i_hit) < len(sox_c)):
+        return None
+    i = int(i_hit)
+
+    def _finite(v: float, fallback: float) -> float:
+        try:
+            x = float(v)
+            return x if x == x else fallback
+        except (TypeError, ValueError):
+            return fallback
+
+    old_h = _finite(sox_h[i] if i < len(sox_h) else px, px)
+    old_l = _finite(sox_l[i] if i < len(sox_l) else px, px)
+    sox_o[i] = o
+    sox_c[i] = px
+    sox_h[i] = max(h, px, o, old_h)
+    sox_l[i] = min(x for x in (lo, px, o, old_l) if x and x == x)
+    return i
+
+
 def _twii_bars_for_teach(
     db_path: str, n: int, pack: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
@@ -693,6 +791,37 @@ def _teach_query_clock(
 
 # 教具查詢戳：黃框白底；日期／時段黑字；價／漲跌台股紅漲綠跌
 _TEACH_STAMP_EDGE = "#ffff00"
+# 遠窗台指電子盤：紅框白底（夾在加權／費半兩黃框中間）
+_TEACH_STAMP_EDGE_TX = "#e53935"
+# Telegram Bot sendPhoto：寬+高須 ≤10000，否則 PHOTO_INVALID_DIMENSIONS
+_TG_PHOTO_MAX_WH_SUM = 9900
+
+
+def _shrink_png_for_telegram(path: str, *, max_sum: int = _TG_PHOTO_MAX_WH_SUM) -> str:
+    """話筒送圖前：若寬+高超限就等比縮小寫回同一檔。不准裁內容。"""
+    if not path or not os.path.isfile(path):
+        return path
+    try:
+        from PIL import Image
+    except Exception:
+        return path
+    try:
+        im = Image.open(path)
+        w, h = im.size
+        lim = int(max_sum or _TG_PHOTO_MAX_WH_SUM)
+        if w + h <= lim or w <= 0 or h <= 0:
+            im.close()
+            return path
+        scale = float(lim) / float(w + h)
+        nw = max(1, int(w * scale))
+        nh = max(1, int(h * scale))
+        out = im.resize((nw, nh), Image.Resampling.LANCZOS)
+        im.close()
+        out.save(path, format="PNG", optimize=True)
+        out.close()
+    except Exception:
+        logger.debug("Telegram 圖縮略過 path=%s", path, exc_info=True)
+    return path
 _TEACH_STAMP_FACE = "#ffffff"
 _TEACH_STAMP_META = "#111111"
 _TEACH_STAMP_TEXT = "#111111"  # 相容舊讀；實畫走分段色
@@ -799,13 +928,67 @@ def _teach_stamp_line(
     return f"{day}  {clock}  {px_s}"
 
 
-def _stamp_box_alignment(ha: str) -> Tuple[float, float]:
+def _stamp_box_alignment(ha: str, va: str = "top") -> Tuple[float, float]:
     ha_s = str(ha or "right")
-    if ha_s == "left":
-        return (0.0, 1.0)
-    if ha_s == "center":
-        return (0.5, 1.0)
-    return (1.0, 1.0)
+    va_s = str(va or "top")
+    hx = 0.0 if ha_s == "left" else (0.5 if ha_s == "center" else 1.0)
+    vy = 0.0 if va_s == "bottom" else (0.5 if va_s == "center" else 1.0)
+    return (hx, vy)
+
+
+def _stack_upright_ylabel(text: str) -> str:
+    """左軸標題正讀由上而下：漢字逐字、英文詞整段，不准橫躺歪頭看。"""
+    parts: List[str] = []
+    buf: List[str] = []
+    for ch in str(text or ""):
+        if ch.isspace():
+            if buf:
+                parts.append("".join(buf))
+                buf = []
+            continue
+        if "\u4e00" <= ch <= "\u9fff" or ch in "／·・":
+            if buf:
+                parts.append("".join(buf))
+                buf = []
+            parts.append(ch)
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append("".join(buf))
+    return "\n".join(parts) if parts else str(text or "")
+
+
+def _set_upright_ylabel(ax: Any, text: str, *, fp: Any, color: str, fontsize: float = 10) -> None:
+    """遠窗三欄左軸：逐字正讀由上而下（不用 set_ylabel 橫躺）。"""
+    if ax is None:
+        return
+    # 清掉預設橫躺 ylabel
+    try:
+        ax.set_ylabel("")
+    except Exception:
+        pass
+    parts = [p for p in _stack_upright_ylabel(text).split("\n") if p]
+    if not parts:
+        return
+    n = len(parts)
+    # 垂直置中；字距隨欄高自適應
+    span = 0.62 if n <= 4 else min(0.78, 0.12 * n)
+    y0 = 0.5 + span / 2.0
+    step = span / max(n - 1, 1)
+    for i, part in enumerate(parts):
+        ax.text(
+            -0.055,
+            y0 - i * step,
+            part,
+            transform=ax.transAxes,
+            fontproperties=fp(fontsize, "bold"),
+            color=color,
+            rotation=0,
+            ha="center",
+            va="center",
+            clip_on=False,
+            zorder=30,
+        )
 
 
 def _fig_xy_from_axes_data(ax: Any, fig: Any, x_data: float, y_data: float) -> Tuple[float, float]:
@@ -842,20 +1025,28 @@ def _eight_wave_inset_rect_left_of_vmax(
     ymax: float,
     n_bars: int,
     gap_fig: float = 0.008,
+    scale: float = 1.0,
+    pin_bottom: bool = False,
 ) -> Tuple[float, float, float, float]:
-    """與超近窗同寬同高；右緣貼垂直黃虛線（最大量日）左側，低空帶。"""
+    """與超近窗同寬同高（可 scale 縮小）；右緣貼垂直黃虛線左側。
+
+    pin_bottom＝遠窗：貼加權欄左下縮小，不准擋任何縮圖K。
+    """
     w, h = _teach_eight_wave_inset_wh(fig)
+    sc = max(0.35, min(1.0, float(scale or 1.0)))
+    w, h = float(w) * sc, float(h) * sc
     ys = max(float(ymax) - float(ymin), 1.0)
-    y_bot = float(ymin) + ys * 0.10
+    y_bot = float(ymin) + ys * (0.04 if pin_bottom else 0.10)
     iv = int(i_vmax) if i_vmax is not None else max(0, int(n_bars) - 8)
     fx_v, fy_bot = _fig_xy_from_axes_data(ax, fig, float(iv), y_bot)
     left = float(fx_v) - float(gap_fig) - float(w)
     bottom = float(fy_bot)
     try:
         pos = ax.get_position()
-        min_left = float(pos.x0) + 0.012
-        max_bottom = float(pos.y0) + float(pos.height) * 0.48 - float(h)
-        min_bottom = float(pos.y0) + 0.012
+        min_left = float(pos.x0) + 0.010
+        max_frac = 0.26 if pin_bottom else 0.48
+        max_bottom = float(pos.y0) + float(pos.height) * max_frac - float(h)
+        min_bottom = float(pos.y0) + (0.005 if pin_bottom else 0.012)
     except Exception:
         min_left, max_bottom, min_bottom = 0.04, 0.55, 0.08
     if left < min_left:
@@ -868,6 +1059,81 @@ def _eight_wave_inset_rect_left_of_vmax(
     if left + w > float(fx_v) - float(gap_fig):
         left = max(min_left, float(fx_v) - float(gap_fig) - float(w))
     return (float(left), float(bottom), float(w), float(h))
+
+
+def _vol_sr_avoid_spans(vol_sr: Optional[Dict[str, Any]]) -> List[Tuple[float, float]]:
+    """大量黃帶／下一層灰帶的價窗，給白底戳避讓。"""
+    out: List[Tuple[float, float]] = []
+    if not isinstance(vol_sr, dict):
+        return out
+    for key in ("primary", "next"):
+        row = vol_sr.get(key) or {}
+        try:
+            lo = float(row.get("low"))
+            hi = float(row.get("high"))
+        except (TypeError, ValueError):
+            continue
+        if hi > lo > 0:
+            out.append((lo, hi))
+    return out
+
+
+def _fig_stamp_xy_axes_bottom_right(
+    ax: Any,
+    fig: Any,
+    *,
+    right_clear_frac: float = 0.24,
+    inset_y_frac: float = 0.045,
+    stamp_h_data_frac: float = 0.10,
+    avoid_spans: Optional[Sequence[Tuple[float, float]]] = None,
+    avoid_ys: Optional[Sequence[float]] = None,
+) -> Tuple[float, float]:
+    """該圖框內偏右下；右緣讓出右標欄，不准壓右下價標／撐壓底色。"""
+    try:
+        pos = ax.get_position()
+        ymin, ymax = ax.get_ylim()
+    except Exception:
+        return (0.78, 0.12)
+    # 右對齊錨點停在欄寬 (1-right_clear) 處，白底戳往左長，右標仍看得見
+    clear = max(0.14, min(0.36, float(right_clear_frac)))
+    x = float(pos.x0) + float(pos.width) * (1.0 - clear)
+    span = max(float(ymax) - float(ymin), 1.0)
+    stamp_h = span * float(stamp_h_data_frac)
+    bands = [
+        (min(float(a), float(b)), max(float(a), float(b)))
+        for a, b in (avoid_spans or [])
+        if a is not None and b is not None
+    ]
+    # 右標單點也當薄帶避讓
+    pad_y = span * 0.028
+    for raw in avoid_ys or []:
+        try:
+            yy = float(raw)
+        except (TypeError, ValueError):
+            continue
+        bands.append((yy - pad_y, yy + pad_y))
+
+    def _hit(y0: float, y1: float) -> bool:
+        for a, b in bands:
+            if y0 < b and y1 > a:
+                return True
+        return False
+
+    # 自底往上找不擋底色／右標的錨點（va=bottom → 戳在錨點之上）
+    y_data = float(ymin) + span * float(inset_y_frac)
+    for _ in range(28):
+        if not _hit(y_data, y_data + stamp_h):
+            break
+        y_data += stamp_h * 0.40
+        if y_data + stamp_h >= float(ymax) - span * 0.04:
+            y_data = float(ymin) + span * float(inset_y_frac)
+            break
+    try:
+        _fx, y = _fig_xy_from_axes_data(ax, fig, 0.0, float(y_data))
+    except Exception:
+        y = float(pos.y0) + 0.028
+    y = max(float(pos.y0) + 0.012, min(float(y), float(pos.y1) - 0.04))
+    return (float(x), float(y))
 
 
 def _fig_rect_band_right(
@@ -923,9 +1189,11 @@ def _paint_stamp_hbox(
     x: float,
     y: float,
     ha: str = "right",
+    va: str = "top",
     zorder: float = 40,
+    edgecolor: Optional[str] = None,
 ) -> None:
-    """黃邊白底圓角框（加權／費半共用框高與線寬）。"""
+    """白底圓角框（加權／費半黃邊；台指電子盤紅邊；共用框高與線寬）。"""
     from matplotlib.offsetbox import AnnotationBbox, HPacker
 
     if fig is None or not kids:
@@ -934,13 +1202,13 @@ def _paint_stamp_hbox(
         HPacker(children=kids, align="center", pad=0, sep=0),
         (float(x), float(y)),
         xycoords="figure fraction",
-        box_alignment=_stamp_box_alignment(ha),
+        box_alignment=_stamp_box_alignment(ha, va),
         pad=0.32,
         frameon=True,
         bboxprops=dict(
             boxstyle=f"round,pad={_TEACH_STAMP_BOX_PAD}",
             facecolor=_TEACH_STAMP_FACE,
-            edgecolor=_TEACH_STAMP_EDGE,
+            edgecolor=str(edgecolor or _TEACH_STAMP_EDGE),
             linewidth=_TEACH_STAMP_BOX_LW,
         ),
         zorder=float(zorder),
@@ -958,10 +1226,11 @@ def _paint_teach_query_stamp(
     x: float = 0.995,
     y: float = 0.958,
     ha: str = "right",
+    va: str = "top",
 ) -> None:
     """三張教具共用：黃框白底；日期／時段黑；價→漲幅％→點數（紅漲綠跌）。
 
-    預設貼右、略離上緣，不准壓標題白字；近／超近可再調 y 適中。
+    預設貼右、略離上緣，不准壓標題白字；遠窗可改右下 va=bottom。
     """
     if fig is None or not bars:
         return
@@ -1030,7 +1299,7 @@ def _paint_teach_query_stamp(
                 },
             )
         )
-    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, zorder=40)
+    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, va=va, zorder=40)
 
 
 def _us_real_close_pair(
@@ -1090,6 +1359,7 @@ def _paint_index_last_chg_tip(
     x: float = 0.995,
     y: float = 0.848,
     ha: str = "right",
+    va: str = "top",
     asof_ymd: str = "",
     chart_asof: str = "",
 ) -> None:
@@ -1153,7 +1423,179 @@ def _paint_index_last_chg_tip(
                 textprops={"color": col, "fontproperties": fp(fsz, "bold")},
             )
         )
-    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, zorder=41)
+    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, va=va, zorder=41)
+
+
+def _resolve_tx_after_hours_tip(
+    db_path: str, pack: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
+    """台指電子盤戳用價：夜盤 MIS 即時優先。
+
+    漲跌對照＝官方 CRefPrice（參考價／日盤結算），不准用前一夜盤收當前收
+   （否則會把 −4.5% 算成 −8.7%）。
+    """
+    close: Optional[float] = None
+    prev: Optional[float] = None
+    asof = ""
+    clock = ""
+    # 0) pack 已抓的 live_tx（同口 OHLC＋ref）
+    live0 = (pack or {}).get("live_tx") if isinstance(pack, dict) else None
+    if isinstance(live0, dict) and float(live0.get("close") or 0) > 0:
+        close = float(live0["close"])
+        clock = str(live0.get("update_time") or "").strip()
+        asof = _ymd(live0.get("date")) or ""
+        for key in ("ref", "prev_close"):
+            try:
+                r = float(live0.get(key) or 0)
+            except (TypeError, ValueError):
+                r = 0.0
+            if r > 0:
+                prev = r
+                break
+        if prev is None:
+            try:
+                pct = live0.get("pct_change")
+                if pct is not None and abs(float(pct) + 100.0) > 1e-9:
+                    prev = close / (1.0 + float(pct) / 100.0)
+                    if prev <= 0:
+                        prev = None
+            except (TypeError, ValueError):
+                prev = None
+    # 1) 夜盤即時 MIS
+    if close is None:
+        try:
+            from market_ticker import fetch_tx_live
+
+            q = fetch_tx_live(night=True, timeout=2.5)
+        except Exception:
+            q = None
+        if isinstance(q, dict) and float(q.get("close") or 0) > 0:
+            close = float(q["close"])
+            clock = str(q.get("update_time") or "").strip()
+            try:
+                r = float(q.get("ref") or q.get("prev_close") or 0)
+            except (TypeError, ValueError):
+                r = 0.0
+            if r > 0:
+                prev = r
+            else:
+                pct = q.get("pct_change")
+                try:
+                    if pct is not None and abs(float(pct) + 100.0) > 1e-9:
+                        prev = close / (1.0 + float(pct) / 100.0)
+                        if prev <= 0:
+                            prev = None
+                except (TypeError, ValueError):
+                    prev = None
+            asof = datetime.now(TAIPEI).strftime("%Y%m%d")
+    # 2) 庫內：現價＝夜盤收；前收＝同日／最近日盤結算（對齊官方參考），不准前一夜
+    fut = (pack or {}).get("_fut_snap") if isinstance(pack, dict) else None
+    if not isinstance(fut, dict) or not (fut.get("levels") or {}):
+        try:
+            fut = _futures_day_night(db_path)
+        except Exception:
+            fut = {}
+    levels = (fut or {}).get("levels") or {}
+    if close is None:
+        try:
+            nc = float(levels.get("tx_night_c") or 0)
+        except (TypeError, ValueError):
+            nc = 0.0
+        if nc > 0:
+            close = nc
+            note = str((fut or {}).get("note") or "")
+            m = re.search(r"大台夜(\d{8})", note)
+            if m:
+                asof = m.group(1)
+    if prev is None:
+        try:
+            dc = float(levels.get("tx_day_c") or 0)
+        except (TypeError, ValueError):
+            dc = 0.0
+        if dc > 0:
+            prev = dc
+    if close is None or close <= 0:
+        return None
+    return {
+        "close": float(close),
+        "prev": float(prev) if prev and prev > 0 else None,
+        "asof": _ymd(asof) or "",
+        "clock": clock,
+        "label": "台指電子盤",
+    }
+
+
+def _paint_tx_after_hours_tip(
+    fig,
+    *,
+    close: float,
+    prev_close: Optional[float] = None,
+    label_prefix: str = "台指電子盤",
+    fp=None,
+    x: float = 0.995,
+    y: float = 0.950,
+    ha: str = "right",
+    va: str = "bottom",
+    clock: str = "",
+    asof_ymd: str = "",
+) -> None:
+    """遠窗專用：紅框白底；貼電子盤欄右下（避撐壓底色）。"""
+    if fig is None or fp is None:
+        return
+    from matplotlib.offsetbox import TextArea
+
+    chg = _day_change_vs_prev(close, prev_close)
+    pct_s = str(chg.get("pct_text") or "").strip()
+    pts_s = str(chg.get("pts_text") or "").strip()
+    col = _chg_paint_color(int(chg.get("sign") or 0))
+    try:
+        px_s = _px(float(close))
+    except (TypeError, ValueError):
+        px_s = "—"
+    meta = str(label_prefix or "台指電子盤")
+    asof = _ymd(asof_ymd)
+    if clock:
+        meta = f"{meta} {clock}"
+    elif asof:
+        meta = f"{meta} {_md(asof)}"
+    fsz = _TEACH_STAMP_FS
+    kids = [
+        TextArea(
+            f"{meta}  ",
+            textprops={
+                "color": _TEACH_STAMP_META,
+                "fontproperties": fp(fsz, "bold"),
+            },
+        ),
+        TextArea(
+            px_s,
+            textprops={"color": col, "fontproperties": fp(fsz, "bold")},
+        ),
+    ]
+    if pct_s:
+        kids.append(
+            TextArea(
+                f"  {pct_s}",
+                textprops={"color": col, "fontproperties": fp(fsz, "bold")},
+            )
+        )
+    if pts_s:
+        kids.append(
+            TextArea(
+                f"  {pts_s}",
+                textprops={"color": col, "fontproperties": fp(fsz, "bold")},
+            )
+        )
+    _paint_stamp_hbox(
+        fig,
+        kids,
+        x=x,
+        y=y,
+        ha=ha,
+        va=va,
+        zorder=42,
+        edgecolor=_TEACH_STAMP_EDGE_TX,
+    )
 
 
 def _thesis_cap_for_query(
@@ -1178,6 +1620,57 @@ def _thesis_cap_for_query(
     return max(x for x in (chart, today) if x)
 
 
+def _biaoke_level_snip_score(blob: str, *, is_main: bool) -> int:
+    """位階題旨打分：長主文＞短回；短「費半沒跌完」不准蓋長篇。"""
+    score = 0
+    if looks_like_level_now(blob):
+        score += 10
+    if _INDEXISH.search(blob):
+        score += 3
+    if re.search(
+        r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
+        r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5|"
+        r"第二組下跌|落底確認|劇本",
+        blob,
+    ):
+        score += 12
+    n = len(blob)
+    if n >= 120:
+        score += 6
+    if n >= 240:
+        score += 6
+    if is_main:
+        score += 10
+    elif n < 80:
+        score -= 8
+    return score
+
+
+def _reply_level_delta(blob: str) -> bool:
+    """樓下自回是否帶大盤／費半點位或改口（依時間序併進題旨；個股回測不收）。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    # 明確大盤／費半數字或改口
+    if re.search(
+        r"45546|46292|44210|44042|39384|42000|41000|40000|35000|38000|"
+        r"9865|10445|8498|47500",
+        s,
+    ):
+        return True
+    # 改口／假跌破：要有大盤戰場，且不是「還是會破三日低」這種空話
+    if re.search(r"假跌破|劇本一|有效穿刺|1\s*[-–]?\s*4\s*重疊", s) and _INDEXISH.search(
+        s
+    ):
+        return True
+    if re.search(r"(?:9865|10445|8498).{0,6}會破|會破.{0,6}(?:9865|10445|8498)", s):
+        return True
+    return bool(
+        _INDEXISH.search(s)
+        and re.search(r"(?<![0-9])(?:3[5-9]|4[0-9])\d{3}(?:\.\d+)?(?![0-9])", s)
+    )
+
+
 def _latest_biaoke_index_snip(
     db_path: str,
     cap_ymd: str,
@@ -1185,9 +1678,12 @@ def _latest_biaoke_index_snip(
     now: Optional[datetime] = None,
     with_id: bool = False,
 ):
-    """≤cap 日、且時間 ≤ 查詢當下的最新大盤相關他文（主文優先於短回）。
+    """≤cap 日、且時間 ≤ 查詢當下的最新大盤題旨（主文＋同串他回，依時間序）。
 
-    短自回（「費半沒跌完」）也會命中細微波關鍵字；不准蓋掉同日長篇位階主文。
+    不准只掃最新 40 列：討論串自回一多會把主文擠出窗，誤抓短回當題旨。
+    做法：先在主文池（kind=post／無 :c）挑最新長篇位階主文；再依時間序併入
+    同串他回的點位／改口句（例如 9865會破、35000-38000）；同日前一篇劇本主文
+    若寫了 8498／35000~38000 而最新主文沒寫，也併入（後文改口壓前文）。
     with_id=True 時回 (snip, post_id)；否則只回 snip 字串。
     """
     empty = ("", "") if with_id else ""
@@ -1203,67 +1699,165 @@ def _latest_biaoke_index_snip(
     today_dash = dt.strftime("%Y-%m-%d")
     hm = dt.strftime("%H:%M")
     since = (dt - timedelta(days=21)).strftime("%Y-%m-%d")
+
+    def _ok_clock(d: str, t: str) -> bool:
+        if d == today_dash and t and t > hm:
+            return False
+        return True
+
+    def _fetch_mains(conn: sqlite3.Connection):
+        # 正式庫有 kind；測試／舊庫可能沒有 → 退回只認無 :c 的主文 id
+        try:
+            return conn.execute(
+                "SELECT id, date, time, text FROM biaoke_posts "
+                "WHERE date>=? AND date<=? "
+                "AND (kind='post' OR (IFNULL(kind,'') IN ('','post') AND id NOT LIKE '%:%')) "
+                "ORDER BY date DESC, time DESC LIMIT 30",
+                (since, cap_dash),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return conn.execute(
+                "SELECT id, date, time, text FROM biaoke_posts "
+                "WHERE date>=? AND date<=? AND id NOT LIKE '%:%' "
+                "ORDER BY date DESC, time DESC LIMIT 30",
+                (since, cap_dash),
+            ).fetchall()
+
     try:
         conn = sqlite3.connect(db_path, timeout=15.0)
         try:
-            rows = conn.execute(
-                "SELECT id, date, time, text FROM biaoke_posts "
-                "WHERE date>=? AND date<=? "
-                "ORDER BY date DESC, time DESC LIMIT 40",
-                (since, cap_dash),
-            ).fetchall()
+            mains = _fetch_mains(conn)
         finally:
             conn.close()
     except Exception:
         return empty
+
     best_blob = ""
     best_pid = ""
-    best_key = (-1, "", "")  # score, date, time — 同分取較新
-    for pid, date_s, time_s, text in rows or ():
+    best_key = (-1, "", "")
+    best_date = ""
+    best_time = ""
+    for pid, date_s, time_s, text in mains or ():
         d = str(date_s or "").strip()
         t = str(time_s or "").strip()
         blob = str(text or "")
-        if not blob:
-            continue
-        # 同一查詢日：不准吃到牆鐘之後的文
-        if d == today_dash and t and t > hm:
+        sid = str(pid or "")
+        # 無 kind 欄時仍擋樓下 id（含 :c）
+        if ":c" in sid or (":" in sid and sid.split(":", 1)[0].isdigit()):
+            # id 形如 187:xxx 的回文／附篇；純主文數字 id 放行
+            if ":c" in sid:
+                continue
+        if not blob or not _ok_clock(d, t):
             continue
         if not (_INDEXISH.search(blob) or looks_like_level_now(blob)):
             continue
-        score = 0
-        if looks_like_level_now(blob):
-            score += 10
-        if _INDEXISH.search(blob):
-            score += 3
-        if re.search(
-            r"波浪位階|主跌段|C3-\d|(?<![0-9])3-3-\d|重新修訂|動態修正|不能去抄底|破底|"
-            r"假跌破|有效穿刺|1\s*[-–]?\s*4\s*重疊|(?:今天)?走\s*3-5",
-            blob,
-        ):
-            score += 12
-        n = len(blob)
-        if n >= 120:
-            score += 6
-        if n >= 240:
-            score += 6
-        # 主文 id 無 :c；短樓下回文降權
-        sid = str(pid or "")
-        if ":c" not in sid:
-            score += 10
-        elif n < 80:
-            score -= 8
-        # 查詢當日大盤現況回文優先：避免短「假跌破／走3-5」被昨日長主文蓋掉
-        if d == today_dash and looks_like_level_now(blob) and _INDEXISH.search(blob):
-            score += 18
+        score = _biaoke_level_snip_score(blob, is_main=True)
         key = (score, d, t)
         if key > best_key:
             best_key = key
             best_blob = blob
             best_pid = sid
-    if not best_blob:
+            best_date = d
+            best_time = t
+    if not best_blob or not best_pid:
         return empty
-    # 留足長：11/1 文第3點才寫費半10445／4/28 9865，截太短會漏預測點
-    snip = re.sub(r"\s+", " ", best_blob).strip()[:900]
+
+    aid = best_pid.split(":", 1)[0]
+    extras: List[str] = []
+    try:
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            # 同日前一篇位階主文（劇本一 8498／35000~38000 常寫在較早那篇）
+            try:
+                prior = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE date=? AND id!=? "
+                    "AND (kind='post' OR (IFNULL(kind,'') IN ('','post') AND id NOT LIKE '%:%')) "
+                    "ORDER BY time DESC LIMIT 4",
+                    (best_date, best_pid),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                prior = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE date=? AND id!=? AND id NOT LIKE '%:%' "
+                    "ORDER BY time DESC LIMIT 4",
+                    (best_date, best_pid),
+                ).fetchall()
+            prior_bits: List[str] = []
+            for pid, date_s, time_s, text in prior or ():
+                d = str(date_s or "").strip()
+                t = str(time_s or "").strip()
+                blob = str(text or "")
+                if not blob or not _ok_clock(d, t):
+                    continue
+                if t >= best_time:
+                    continue
+                flat = re.sub(r"\s+", " ", blob).strip()
+                # 只抽劇本／8498／35000~38000 句，不准整篇塞進來擠掉凌晨改口
+                for m in re.finditer(
+                    r"[^。｜]{0,40}(?:劇本一|第一套劇本)[^。｜]{0,120}"
+                    r"|[^。｜]{0,40}8498[^。｜]{0,40}"
+                    r"|[^。｜]{0,40}35000\s*[-~～到至]\s*38000[^。｜]{0,40}"
+                    r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}",
+                    flat,
+                ):
+                    bit = m.group(0).strip(" ，,")
+                    if bit and bit not in prior_bits:
+                        prior_bits.append(bit)
+                if prior_bits:
+                    extras.extend(prior_bits[:3])
+                    break
+            # 同串他回：依時間序併點位／改口（牆鐘之後的不准吃）
+            try:
+                reps = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE id LIKE ? AND IFNULL(kind,'reply')='reply' "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (f"{aid}:%",),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                reps = conn.execute(
+                    "SELECT id, date, time, text FROM biaoke_posts "
+                    "WHERE id LIKE ? "
+                    "ORDER BY date ASC, time ASC, id ASC",
+                    (f"{aid}:%",),
+                ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        reps = []
+    reply_bits: List[str] = []
+    seen_reply: set = set()
+    for pid, date_s, time_s, text in reps or ():
+        d = str(date_s or "").strip()
+        t = str(time_s or "").strip()
+        blob = str(text or "")
+        if not blob or not _ok_clock(d, t):
+            continue
+        # 主文當日：只收主文時間之後；跨日回文全收（仍卡牆鐘）
+        if d == best_date and t and best_time and t < best_time:
+            continue
+        if not _reply_level_delta(blob):
+            continue
+        flat = re.sub(r"\s+", " ", blob).strip()
+        # 去重：同句重貼／句首多一個點，不准堆兩次
+        key = re.sub(r"^[\.\s]+", "", flat)
+        key = re.sub(r"\s+", "", key)[:96]
+        if key in seen_reply:
+            continue
+        seen_reply.add(key)
+        reply_bits.append(flat)
+    # 主文 → 同日劇本句 → 同串他回（時間序；後句改口壓前）。回文優先保留。
+    main_flat = re.sub(r"\s+", " ", best_blob).strip()
+    parts = [main_flat] + extras + reply_bits
+    joined = "｜".join(p for p in parts if p)
+    if len(joined) > 1600:
+        # 裁主文中段，保住頭尾關鍵＋全部回文改口
+        keep_tail = "｜".join(extras + reply_bits)
+        budget = max(400, 1600 - len(keep_tail) - 1)
+        joined = main_flat[:budget].rstrip() + ("｜" + keep_tail if keep_tail else "")
+        joined = joined[:1600]
+    snip = joined
     return (snip, best_pid) if with_id else snip
 
 
@@ -1410,7 +2004,16 @@ def _latest_level_thesis(
     has_35 = bool(
         re.search(r"C3-5|(?:今天)?走\s*3-5|(?<![0-9])3-5(?![0-9])", snip)
     )
-    if "C3-3-1" in snip and "C3-3-2" in snip:
+    c35_done = bool(
+        re.search(r"C3-5\s*完成|第二組下跌脈動.*(?:完成|落底)", snip)
+    )
+    # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
+    if c35_done or (
+        has_35 and re.search(r"落底確認|目前開始反彈|反彈能否穿刺", snip)
+    ):
+        thesis = "大A→大B→大C｜C內＝C3-5完成（第二組落底・預估）"
+        wait = "反彈觀察穿刺45546；破不了→第三組；轉震盪看46292；C走完≠新五波升"
+    elif "C3-3-1" in snip and "C3-3-2" in snip:
         thesis = "大A→大B→大C｜C內＝C3-3（1→2・預估）"
         wait = "下一測他點過錨；C走完≠新五波升；鐵律不符→重修"
     elif has_333 and has_334:
@@ -1440,7 +2043,7 @@ def _latest_level_thesis(
         "morph_note": morph[:180],
         "fib_note": "黃金切割反彈壓 0.382／0.618／0.75（他10/27台指日盤・可修訂）",
         "snippet": snip[:320],
-        "snippet_full": snip[:900],
+        "snippet_full": snip[:1600],
         "as_of": str((row["as_of"] if row else "") or cap),
         "post_id": post_id,
         "chart_as_of": cap,
@@ -1695,16 +2298,100 @@ def _tx60_read(db_path: str) -> Dict[str, Any]:
     return out
 
 
+def _yahoo_us_index_upsert(
+    conn: sqlite3.Connection,
+    *,
+    sym: str,
+    yid: str,
+    range_: str,
+    ua: Dict[str, str],
+) -> int:
+    """Yahoo 美股指數日K UPSERT；日期用美東，不准用台北日切錯欄。"""
+    try:
+        import requests
+    except Exception:
+        return 0
+    from zoneinfo import ZoneInfo
+
+    ny = ZoneInfo("America/New_York")
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
+        f"?interval=1d&range={range_}"
+    )
+    try:
+        resp = requests.get(url, timeout=12, headers=ua)
+        if resp.status_code != 200:
+            return 0
+        block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
+        block = block[0] or {}
+        stamps = block.get("timestamp") or []
+        q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
+    except Exception:
+        logger.exception("補%s日K失敗", sym)
+        return 0
+    written = 0
+    for ts, op, hi, lo, cl, vol in zip(
+        stamps,
+        q.get("open") or [],
+        q.get("high") or [],
+        q.get("low") or [],
+        q.get("close") or [],
+        q.get("volume") or [],
+    ):
+        if cl is None or op is None:
+            continue
+        try:
+            dt = datetime.fromtimestamp(int(ts), tz=ny)
+        except (TypeError, ValueError, OSError):
+            continue
+        d = dt.strftime("%Y%m%d")
+        o = float(op)
+        c = float(cl)
+        h = float(hi if hi is not None else max(o, c))
+        l = float(lo if lo is not None else min(o, c))
+        v = float(vol or 0)
+        conn.execute(
+            """
+            INSERT INTO index_daily(
+                date, symbol, open, high, low, close, volume, pct_change, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(date, symbol) DO UPDATE SET
+                open=excluded.open, high=excluded.high, low=excluded.low,
+                close=excluded.close, volume=excluded.volume,
+                updated_at=excluded.updated_at
+            """,
+            (d, sym, o, h, l, c, v, None, _now()),
+        )
+        written += 1
+    if written:
+        conn.commit()
+        rows = conn.execute(
+            "SELECT date, close FROM index_daily WHERE symbol=? ORDER BY date",
+            (sym,),
+        ).fetchall()
+        prev = None
+        for d, c in rows:
+            if prev and prev > 0 and c:
+                pct = (float(c) / float(prev) - 1.0) * 100.0
+                conn.execute(
+                    "UPDATE index_daily SET pct_change=? WHERE date=? AND symbol=?",
+                    (pct, d, sym),
+                )
+            prev = float(c) if c else prev
+        conn.commit()
+    return written
+
+
 def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
-    """缺費半／納指日K就自己去 Yahoo 補進 index_daily（教具用；失敗不擋活畫）。
+    """費半／納指日K：出圖前必刷新近窗，撐壓才對得上最新價（失敗不擋活畫）。
 
     符號：SOX／IXIC。TWII 官方柱不走這條。
+    舊邏輯「近窗夠就整段跳過」會卡在過期收（例如費半停 11/3＝10600），已廢。
     """
     stats = {"SOX": 0, "IXIC": 0}
     if not db_path:
         return stats
     try:
-        import requests
         from taiwan_market import ensure_index_daily_table
     except Exception:
         return stats
@@ -1719,11 +2406,6 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         for sym, yid in pairs:
-            # 近窗夠、且已有 4/28 前後柱 → 跳過；否則拉 1y（教具要標他點過的回測日K）
-            n_have = conn.execute(
-                "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=?",
-                (sym, "20260901"),
-            ).fetchone()[0]
             n_apr = conn.execute(
                 "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=? AND date<=?",
                 (sym, "20260420", "20260510"),
@@ -1732,80 +2414,22 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
                 "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=? AND date<=?",
                 (sym, "20260725", "20260802"),
             ).fetchone()[0]
-            if (
-                int(n_have or 0) >= 25
-                and int(n_apr or 0) >= 3
-                and int(n_jul or 0) >= 3
-            ):
-                stats[sym] = int(n_have)
-                continue
-            url = (
-                f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
-                f"?interval=1d&range=1y"
+            # 缺歷史錨 → 拉 1y；否則每次出圖仍拉 1mo 覆寫近窗（含當日未收）
+            need_hist = int(n_apr or 0) < 3 or int(n_jul or 0) < 3
+            range_ = "1y" if need_hist else "1mo"
+            written = _yahoo_us_index_upsert(
+                conn, sym=sym, yid=yid, range_=range_, ua=ua
             )
-            try:
-                resp = requests.get(url, timeout=12, headers=ua)
-                if resp.status_code != 200:
-                    continue
-                block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
-                block = block[0] or {}
-                stamps = block.get("timestamp") or []
-                q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
-            except Exception:
-                logger.exception("補%s日K失敗", sym)
-                continue
-            written = 0
-            for ts, op, hi, lo, cl, vol in zip(
-                stamps,
-                q.get("open") or [],
-                q.get("high") or [],
-                q.get("low") or [],
-                q.get("close") or [],
-                q.get("volume") or [],
-            ):
-                if cl is None or op is None:
-                    continue
-                try:
-                    dt = datetime.fromtimestamp(int(ts), tz=TAIPEI)
-                except (TypeError, ValueError, OSError):
-                    continue
-                d = dt.strftime("%Y%m%d")
-                o = float(op)
-                c = float(cl)
-                h = float(hi if hi is not None else max(o, c))
-                l = float(lo if lo is not None else min(o, c))
-                v = float(vol or 0)
-                pct = None
-                conn.execute(
-                    """
-                    INSERT INTO index_daily(
-                        date, symbol, open, high, low, close, volume, pct_change, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(date, symbol) DO UPDATE SET
-                        open=excluded.open, high=excluded.high, low=excluded.low,
-                        close=excluded.close, volume=excluded.volume,
-                        updated_at=excluded.updated_at
-                    """,
-                    (d, sym, o, h, l, c, v, pct, _now()),
+            if written <= 0 and need_hist:
+                # 1y 失敗再試近窗，至少讓末日別空白
+                written = _yahoo_us_index_upsert(
+                    conn, sym=sym, yid=yid, range_="1mo", ua=ua
                 )
-                written += 1
-            conn.commit()
-            stats[sym] = written
-            # 補 pct_change（對前收）
-            rows = conn.execute(
-                "SELECT date, close FROM index_daily WHERE symbol=? ORDER BY date",
-                (sym,),
-            ).fetchall()
-            prev = None
-            for d, c in rows:
-                if prev and prev > 0 and c:
-                    pct = (float(c) / float(prev) - 1.0) * 100.0
-                    conn.execute(
-                        "UPDATE index_daily SET pct_change=? WHERE date=? AND symbol=?",
-                        (pct, d, sym),
-                    )
-                prev = float(c) if c else prev
-            conn.commit()
+            n_have = conn.execute(
+                "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=?",
+                (sym, "20260901"),
+            ).fetchone()[0]
+            stats[sym] = int(written or n_have or 0)
     finally:
         conn.close()
     # Yahoo 失敗時：費半還可從 minute_bars 日切（庫內已有 SOX 分K）
@@ -1979,6 +2603,195 @@ def _load_us_daily(
                 "pct": float(r[6]) if r[6] is not None else None,
             }
         )
+    return out
+
+
+def _load_tx_futures_daily(
+    db_path: str,
+    *,
+    session: str = "night",
+    since: str = "20260301",
+) -> List[Dict[str, Any]]:
+    """讀 futures_daily 大台 TX（night＝盤後／電子盤；regular＝日盤）。缺就空。"""
+    sess = str(session or "night").strip().lower() or "night"
+    if sess not in {"night", "regular"}:
+        sess = "night"
+    since_s = _ymd(since) or "20260301"
+    if not db_path or not os.path.isfile(db_path):
+        return []
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        rows = conn.execute(
+            "SELECT date, open, high, low, close, volume, pct_change "
+            "FROM futures_daily WHERE symbol='TX' AND session=? AND date>=? "
+            "ORDER BY date",
+            (sess, since_s),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        try:
+            c = float(r[4] or 0)
+        except (TypeError, ValueError):
+            c = 0.0
+        if c <= 0:
+            continue
+        out.append(
+            {
+                "date": str(r[0]),
+                "open": float(r[1] or c),
+                "high": float(r[2] or c),
+                "low": float(r[3] or c),
+                "close": c,
+                "volume": float(r[5] or 0),
+                "pct": float(r[6]) if r[6] is not None else None,
+                "session": sess,
+            }
+        )
+    return out
+
+
+def _ensure_paint_live_tx(
+    pack: Optional[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    """出圖當下抓台指電子盤即時 OHLC；遠窗台指電子盤欄＋紅框同口價。"""
+    dt = now or datetime.now(TAIPEI)
+    if getattr(dt, "tzinfo", None) is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    live: Optional[Dict[str, Any]] = None
+    try:
+        from biaoke_verify import fetch_tx_ohlc
+
+        live = fetch_tx_ohlc(night=True, timeout=3.0)
+    except Exception:
+        live = None
+    if not (isinstance(live, dict) and float(live.get("close") or 0) > 0):
+        try:
+            from market_ticker import fetch_tx_live
+
+            q = fetch_tx_live(night=True, timeout=2.5)
+        except Exception:
+            q = None
+        if isinstance(q, dict) and float(q.get("close") or 0) > 0:
+            px = float(q["close"])
+            live = {
+                "date": "",
+                "session": "night",
+                "open": px,
+                "high": px,
+                "low": px,
+                "close": px,
+                "pct_change": q.get("pct_change"),
+                "update_time": q.get("update_time"),
+                "source": "taifex_mis",
+                "is_realtime": True,
+            }
+            try:
+                r = float(q.get("ref") or q.get("prev_close") or 0)
+            except (TypeError, ValueError):
+                r = 0.0
+            if r > 0:
+                live["ref"] = r
+                live["prev_close"] = r
+    if not (isinstance(live, dict) and float(live.get("close") or 0) > 0):
+        if isinstance(pack, dict) and isinstance(pack.get("live_tx"), dict):
+            return pack.get("live_tx")
+        return None
+    # 夜盤起日：05:00 前算昨曆日（與電子盤卡同一套）
+    eve = _ymd(live.get("date")) or ""
+    if len(eve) != 8:
+        try:
+            from market_session_cards import _evening_start_ymd
+
+            eve = _evening_start_ymd(dt)
+        except Exception:
+            eve = (
+                (dt - timedelta(days=1)).strftime("%Y%m%d")
+                if int(dt.hour) < 5
+                else dt.strftime("%Y%m%d")
+            )
+        live = {**live, "date": eve}
+    if isinstance(pack, dict):
+        pack["live_tx"] = live
+    return live
+
+
+def _apply_live_tx_to_axis(
+    *,
+    tx_o: List[float],
+    tx_h: List[float],
+    tx_l: List[float],
+    tx_c: List[float],
+    tw_bars: Sequence[Dict[str, Any]],
+    live: Optional[Dict[str, Any]],
+) -> Optional[int]:
+    """夜盤即時寫進加權日軸對齊格；回傳更新索引。"""
+    if not live or not tx_c or not tw_bars:
+        return None
+    try:
+        px = float(live.get("close") or 0)
+    except (TypeError, ValueError):
+        return None
+    if px <= 0:
+        return None
+    eve = _ymd(live.get("date")) or ""
+    idx: Optional[int] = None
+    if eve:
+        for i, r in enumerate(tw_bars):
+            if _ymd(r.get("date")) == eve:
+                idx = i
+                break
+    if idx is None:
+        idx = len(tw_bars) - 1
+    if idx < 0 or idx >= len(tx_c):
+        return None
+    try:
+        o = float(live.get("open") or px)
+        h = float(live.get("high") or px)
+        lo = float(live.get("low") or px)
+    except (TypeError, ValueError):
+        o = h = lo = px
+    # 已有庫內柱：只抬高低／改收，不准把官方開改掉
+    prev_c = float(tx_c[idx]) if tx_c[idx] == tx_c[idx] and tx_c[idx] else 0.0
+    if prev_c > 0:
+        try:
+            o0 = float(tx_o[idx]) if tx_o[idx] == tx_o[idx] else o
+        except (TypeError, ValueError):
+            o0 = o
+        o = o0 if o0 > 0 else o
+        try:
+            h0 = float(tx_h[idx]) if tx_h[idx] == tx_h[idx] else h
+            l0 = float(tx_l[idx]) if tx_l[idx] == tx_l[idx] else lo
+        except (TypeError, ValueError):
+            h0, l0 = h, lo
+        h = max(h0, h, px, o)
+        lo = min(x for x in (l0, lo, px, o) if x and x > 0)
+    tx_o[idx] = o
+    tx_h[idx] = h
+    tx_l[idx] = lo
+    tx_c[idx] = px
+    return int(idx)
+
+
+def _soxx_volume_by_date(db_path: str, since: str = "20260301") -> Dict[str, float]:
+    """SOXX 日量字典（費半指數無官方量 → 教具大量撐壓用代理）。"""
+    out: Dict[str, float] = {}
+    try:
+        _ensure_soxx_volume_proxy(db_path)
+    except Exception:
+        logger.exception("SOXX 量代理補抓略過")
+    for r in _load_us_daily(db_path, "SOXX", since=since):
+        d = _ymd(r.get("date"))
+        v = float(r.get("volume") or 0)
+        if d and v > 0:
+            out[d] = v
     return out
 
 
@@ -2195,17 +3008,20 @@ def _biaoke_pred_label(
     return base
 
 
-def _official_bar_low(db_path: str, symbol: str, ymd: str) -> Optional[float]:
-    """官方日K低；缺柱回 None（不准假數）。"""
+def _official_bar_field(
+    db_path: str, symbol: str, ymd: str, field: str
+) -> Optional[float]:
+    """官方日K 單欄（open/high/low/close）；缺柱回 None（不准假數）。"""
     d = _ymd(ymd)
     sym = str(symbol or "").upper()
-    if not db_path or not d or not sym:
+    col = str(field or "").lower()
+    if not db_path or not d or not sym or col not in ("open", "high", "low", "close"):
         return None
     try:
         conn = sqlite3.connect(db_path, timeout=10.0)
         try:
             row = conn.execute(
-                "SELECT low FROM index_daily WHERE symbol=? AND date=?",
+                f"SELECT {col} FROM index_daily WHERE symbol=? AND date=?",
                 (sym, d),
             ).fetchone()
         finally:
@@ -2220,10 +3036,107 @@ def _official_bar_low(db_path: str, symbol: str, ymd: str) -> Optional[float]:
         return None
 
 
+def _official_bar_low(db_path: str, symbol: str, ymd: str) -> Optional[float]:
+    """官方日K低；缺柱回 None（不准假數）。"""
+    return _official_bar_field(db_path, symbol, ymd, "low")
+
+
+def _official_bar_high(db_path: str, symbol: str, ymd: str) -> Optional[float]:
+    """官方日K高；缺柱回 None（不准假數）。"""
+    return _official_bar_field(db_path, symbol, ymd, "high")
+
+
+def _sox_latest_px(db_path: str, *, live: Optional[Dict[str, Any]] = None) -> float:
+    """費半最新價：盤中即時優先，否則庫內最新收（出圖對撐壓用）。"""
+    try:
+        px = float((live or {}).get("close") or (live or {}).get("price") or 0)
+        if px > 0:
+            return px
+    except (TypeError, ValueError):
+        pass
+    if not db_path:
+        return 0.0
+    try:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+        try:
+            row = conn.execute(
+                "SELECT close FROM index_daily WHERE symbol='SOX' "
+                "AND close IS NOT NULL AND close>0 ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return 0.0
+    try:
+        return float(row[0]) if row and row[0] is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _refresh_sox_pred_cascade(
+    pred: Dict[str, Any],
+    db_path: str = "",
+    *,
+    sox_px: float = 0.0,
+) -> Dict[str, Any]:
+    """費半撐壓階梯：4/28 9865 撐不住 → 回測 2/25 8498（使用者鎖死）。
+
+    題旨原文只寫到 9865；破了之後下一層＝官方 2/25 高 8498，不准停在已破的 9865。
+    """
+    out = dict(pred or {})
+    rows = [dict(r) for r in (out.get("sox") or [])]
+    if not rows:
+        return out
+    px = float(sox_px or 0)
+    if px <= 0:
+        px = _sox_latest_px(db_path)
+    nxt = next((r for r in rows if str(r.get("role") or "") == "次回測"), None)
+    reb = next((r for r in rows if str(r.get("role") or "") == "再回測"), None)
+    if nxt:
+        try:
+            lv_nxt = float(nxt.get("level") or 0)
+        except (TypeError, ValueError):
+            lv_nxt = 0.0
+        if px > 0 and lv_nxt > 0 and px < lv_nxt - 0.5:
+            nxt["tag"] = "已破"
+            nxt["label"] = f"4/28低{_px(lv_nxt)}已破"
+            if reb is None:
+                off_hi = _official_bar_high(db_path, "SOX", "20260225")
+                # 他劇本一：破9865→測2/25高8498（官方高對質）
+                lv = (
+                    float(off_hi)
+                    if off_hi is not None and abs(float(off_hi) - 8498.0) <= 3.0
+                    else 8498.0
+                )
+                rows.append(
+                    {
+                        "level": lv,
+                        "ref_ymd": "20260225",
+                        "ref_md": _md("20260225"),
+                        "role": "再回測",
+                        "tag": "未到",
+                        "label": f"再回測2/25高{_px(lv)}",
+                    }
+                )
+            else:
+                # 文內已有再回測列：9865 破了就維持未到標，不准還寫次回測未到
+                if str(reb.get("tag") or "") != "已破":
+                    reb["tag"] = "未到"
+    bits = []
+    for row in (out.get("tw") or []):
+        bits.append(str(row.get("label") or ""))
+    for row in rows:
+        bits.append(str(row.get("label") or ""))
+    out["sox"] = rows
+    out["note"] = "｜".join(b for b in bits if b)[:280]
+    return out
+
+
 def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
     """從他最新題旨抽出寫死預測點＋回測日（只認原文數字，不准發明）。
 
     回傳 tw／sox 列：level／ref_ymd／ref_md／role／tag／label／note。
+    4/28 9865 若已破 → `_refresh_sox_pred_cascade` 掛 2/25 8498。
     """
     s = str(snip or "")
     out: Dict[str, Any] = {"tw": [], "sox": [], "note": ""}
@@ -2241,7 +3154,28 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
         }
         out[bucket].append(row)
 
-    # 台指／大盤
+    # 台指／大盤（依他最新主文＋同串回文時間序；後句改口壓前）
+    if re.search(r"46292", s):
+        _add(
+            "tw",
+            level=46292.0,
+            ref_ymd="",
+            role="轉震盪",
+            tag="未到",
+            label=f"飆預測{_px(46292)}轉震盪",
+        )
+    if re.search(r"45546", s):
+        role = "反彈穿刺" if re.search(r"穿刺|反彈", s) else "點位"
+        _add(
+            "tw",
+            level=45546.0,
+            ref_ymd="20260916",
+            role=role,
+            tag="未到",
+            label=f"飆預測{_px(45546)}反彈穿刺"
+            if role == "反彈穿刺"
+            else f"飆預測{_px(45546)}",
+        )
     if re.search(r"44042", s):
         _add(
             "tw",
@@ -2265,6 +3199,24 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
+    # 劇本一／凌晨改口：大盤 35000~38000（區間兩端都標，不准發明中間價）
+    if re.search(r"35000\s*[-~～到至]\s*38000|35000.{0,8}38000", s):
+        _add(
+            "tw",
+            level=38000.0,
+            ref_ymd="",
+            role="劇本一上沿",
+            tag="未到",
+            label=f"飆預測{_px(38000)}劇本一上沿",
+        )
+        _add(
+            "tw",
+            level=35000.0,
+            ref_ymd="",
+            role="劇本一下沿",
+            tag="未到",
+            label=f"飆預測{_px(35000)}劇本一下沿",
+        )
 
     # 費半：7/29 A波低 10445；周五 10439 已破；次回測 4/28 9865
     if re.search(r"10445", s) and re.search(r"7\s*/\s*29|A\s*波", s):
@@ -2286,16 +3238,40 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
-    if re.search(r"9865", s) and re.search(r"4\s*/\s*28", s):
+    # 9865：文內「4/28」或「殺到／會破／必破 9865」都收；凌晨改口「會破」優先
+    if re.search(r"9865", s) and re.search(
+        r"4\s*/\s*28|殺到|會破|必破|至少.*9865|測.*9865", s
+    ):
         off = _official_bar_low(db_path, "SOX", "20260428")
         lv = float(off) if off is not None and abs(off - 9865.0) <= 2.0 else 9865.0
+        tag = "未到"
+        lab = f"次回測4/28低{_px(lv)}"
+        if re.search(r"9865\s*會破|會破.{0,6}9865|必破\s*9865|9865\s*必破", s):
+            tag = "會破"
+            lab = f"4/28低{_px(lv)}會破"
         _add(
             "sox",
             level=lv,
             ref_ymd="20260428",
             role="次回測",
+            tag=tag,
+            label=lab,
+        )
+    # 劇本一：破9865 → 測2/25高8498（他原文；官方高對質）
+    if re.search(r"8498", s) and re.search(r"2\s*/\s*25", s):
+        off_hi = _official_bar_high(db_path, "SOX", "20260225")
+        lv = (
+            float(off_hi)
+            if off_hi is not None and abs(float(off_hi) - 8498.0) <= 3.0
+            else 8498.0
+        )
+        _add(
+            "sox",
+            level=lv,
+            ref_ymd="20260225",
+            role="再回測",
             tag="未到",
-            label=f"次回測4/28低{_px(lv)}",
+            label=f"再回測2/25高{_px(lv)}",
         )
 
     # 他最新文抽出的大盤／台指點位 → 進預測列（虛線／右標跟著換；不准發明）
@@ -2349,13 +3325,8 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             label=f"費半{_px(lv)}",
         )
 
-    bits = []
-    for row in out["tw"]:
-        bits.append(str(row.get("label") or ""))
-    for row in out["sox"]:
-        bits.append(str(row.get("label") or ""))
-    out["note"] = "｜".join(b for b in bits if b)[:280]
-    return out
+    # 庫內最新費半價：9865 已破就掛 2/25 8498（盤中 live 在 prepare 再刷一次）
+    return _refresh_sox_pred_cascade(out, db_path)
 
 
 def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
@@ -2388,16 +3359,21 @@ def _tw_support_ladder(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ..
 
 
 def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
-    """預估虛線下一錨順序（高→低）：跟他最新題旨點位走；沒點才退回 45546→44210。
+    """預估虛線下一錨順序（高→低）：跟他最新題旨下跌目標走；沒點才退回 45546→44210。
 
     只吃 pred_levels.tw 與 key_levels 的 pred_tw_*（他寫死預測錨）。
+    反彈穿刺／轉震盪＝上方觀察壓，進右標、不准當下跌虛線下一錨。
     不准把舊 claim_* 歷史宣稱混進虛線梯，否則端點／右標會卡在舊價。
     """
+    _OVERHEAD = {"反彈穿刺", "轉震盪"}
     his: List[float] = []
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             v = float(row.get("level"))
         except (TypeError, ValueError):
+            continue
+        role = str(row.get("role") or "")
+        if role in _OVERHEAD:
             continue
         if 30000.0 <= v <= 60000.0:
             his.append(v)
@@ -2408,6 +3384,16 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
             v = float(raw)
         except (TypeError, ValueError):
             continue
+        # key_levels 無 role：上方壓位若已在 pred 列就略；裸數字仍收
+        if abs(v - 46292.0) < 0.6 or abs(v - 45546.0) < 0.6:
+            # 僅當 pred 列標成上方壓時才排除；舊錨 45546 當下跌目標時仍可進梯
+            tw_rows = ((pack or {}).get("pred_levels") or {}).get("tw") or []
+            if any(
+                abs(float(r.get("level") or 0) - v) < 0.6
+                and str(r.get("role") or "") in _OVERHEAD
+                for r in tw_rows
+            ):
+                continue
         if 30000.0 <= v <= 60000.0:
             his.append(v)
     if not his:
@@ -2422,6 +3408,154 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
     return tuple(uniq)
 
 
+def _resolve_teach_vol_sr(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    lookback: int = 40,
+) -> Dict[str, Any]:
+    """教具大量撐壓＋下一層（對齊結構圖／大量區規則；不是買訊）。
+
+    primary＝volume_first 仍有效爆大量日高低；破撐／過壓後才掛下一層大量區。
+    """
+    rows = list(bars or [])
+    out: Dict[str, Any] = {
+        "primary": None,
+        "next": None,
+        "i_primary": None,
+        "i_next": None,
+        "earliest_ymd": "",
+    }
+    if len(rows) < 4:
+        return out
+    lb = max(int(lookback or 40), 1)
+    try:
+        from biaoke_brain import volume_first_price
+        from biaoke_next_support import find_secondary_vol_zone
+    except Exception:
+        logger.exception("教具大量撐壓匯入略過")
+        return out
+    try:
+        vf = volume_first_price(rows, lookback=lb) or {}
+    except Exception:
+        logger.exception("教具 volume_first 略過")
+        vf = {}
+    spike_d = _ymd(vf.get("spike_date"))
+    hi = float(vf.get("spike_high") or 0)
+    lo = float(vf.get("spike_low") or 0)
+    if spike_d and hi > 0 and lo > 0 and hi >= lo:
+        i_pri = None
+        for i, r in enumerate(rows):
+            if _ymd(r.get("date")) == spike_d:
+                i_pri = i
+                break
+        out["primary"] = {
+            "date": spike_d,
+            "high": hi,
+            "low": lo,
+            "volume": float(vf.get("spike_vol") or 0),
+            "broke_support": not bool(vf.get("above_support")),
+            "broke_press": bool(vf.get("broke_resistance")),
+        }
+        out["i_primary"] = i_pri
+        out["earliest_ymd"] = spike_d
+    primary = out.get("primary") or {}
+    if not primary:
+        return out
+    close = float((rows[-1] or {}).get("close") or 0)
+    nxt = None
+    try:
+        if primary.get("broke_support"):
+            nxt = find_secondary_vol_zone(
+                rows,
+                direction="below",
+                ref_lo=float(primary["low"]),
+                exclude_date=str(primary.get("date") or ""),
+                lookback=max(lb, 80),
+                close=close,
+                allow_earlier=True,
+            )
+        elif primary.get("broke_press"):
+            nxt = find_secondary_vol_zone(
+                rows,
+                direction="above",
+                ref_hi=float(primary["high"]),
+                exclude_date=str(primary.get("date") or ""),
+                lookback=max(lb, 80),
+                close=close,
+                allow_earlier=True,
+            )
+    except Exception:
+        logger.exception("教具下一層大量區略過")
+        nxt = None
+    if nxt:
+        out["next"] = {
+            "date": _ymd(nxt.get("date")),
+            "high": float(nxt.get("high") or nxt.get("pressure") or 0),
+            "low": float(nxt.get("low") or nxt.get("support") or 0),
+            "direction": str(nxt.get("direction") or ""),
+            "label_hold": str(nxt.get("label_hold") or ""),
+            "label_press": str(nxt.get("label_press") or ""),
+        }
+        nd = _ymd((out["next"] or {}).get("date"))
+        if nd and (not out["earliest_ymd"] or nd < out["earliest_ymd"]):
+            out["earliest_ymd"] = nd
+        i_nx = None
+        for i, r in enumerate(rows):
+            if _ymd(r.get("date")) == nd:
+                i_nx = i
+                break
+        out["i_next"] = i_nx
+    return out
+
+
+def _paint_next_layer_vol_zone(
+    ax,
+    *,
+    high: float,
+    low: float,
+    date_lab: str,
+    fp: Any,
+    direction: str = "below",
+    labels: bool = True,
+) -> None:
+    """下一層大量區灰帶（對齊結構圖下一層；暗底教具可讀）。"""
+    y0, y1 = float(low), float(high)
+    if y1 <= y0:
+        return
+    md = _md(date_lab) if _ymd(date_lab) else ""
+    day_tag = f"{md} " if md else ""
+    ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.20, zorder=0.45)
+    if not labels:
+        return
+    press = f"{day_tag}下一層壓 {_px(y1)}"
+    hold = f"{day_tag}下一層撐 {_px(y0)}"
+    ax.text(
+        0.01,
+        y1,
+        press,
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(8.5, "bold"),
+        color="#cfd8dc",
+        ha="left",
+        va="bottom",
+        zorder=11,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#78909c", lw=0.7, alpha=0.94),
+    )
+    ax.text(
+        0.01,
+        y0,
+        hold,
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(8.5, "bold"),
+        color="#cfd8dc",
+        ha="left",
+        va="top",
+        zorder=11,
+        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#78909c", lw=0.7, alpha=0.94),
+    )
+    _ = direction
+
+
 def _paint_window_dual_zones(
     ax,
     *,
@@ -2434,23 +3568,51 @@ def _paint_window_dual_zones(
     supports: Sequence[float] = (45546.0, 44210.0),
     resists: Sequence[float] = (47637.0, 48613.0),
     skip_label_ys: Optional[Sequence[float]] = None,
+    vol_lookback: int = 40,
+    vol_sr: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """遠／近／超近共用：黃＝最大量日高低、青＝飆預測位階帶（不交疊）；底色在K下層。"""
+    """遠／近／超近共用：黃＝大量撐壓、灰＝下一層大量區、青＝飆預測位階帶；底色在K下層。"""
     n = len(highs)
-    i_vmax: Optional[int] = None
-    if n and any(float(v or 0) > 0 for v in vols):
+    sr_pack = vol_sr if isinstance(vol_sr, dict) else _resolve_teach_vol_sr(
+        bars, lookback=int(vol_lookback or 40)
+    )
+    primary = (sr_pack or {}).get("primary") or {}
+    nxt = (sr_pack or {}).get("next") or {}
+    i_vmax = (sr_pack or {}).get("i_primary")
+    if i_vmax is None and n and any(float(v or 0) > 0 for v in vols):
+        # 備援：窗內絕對最大量（無 volume_first 時仍要有黃帶）
         i_vmax = max(range(n), key=lambda i: float(vols[i] or 0))
+        primary = {
+            "date": _ymd(bars[i_vmax].get("date")),
+            "high": float(highs[i_vmax]),
+            "low": float(lows[i_vmax]),
+        }
     sr = _next_support_resist(float(y_now), supports=supports, resists=resists)
-    y_excl_lo = float(lows[i_vmax]) if i_vmax is not None else None
-    y_excl_hi = float(highs[i_vmax]) if i_vmax is not None else None
-    if i_vmax is not None:
+    y_excl_lo = float(primary["low"]) if primary.get("low") is not None else None
+    y_excl_hi = float(primary["high"]) if primary.get("high") is not None else None
+    if primary.get("high") and primary.get("low"):
         _paint_max_vol_hl_zone(
             ax,
-            high=float(highs[i_vmax]),
-            low=float(lows[i_vmax]),
-            date_lab=_ymd(bars[i_vmax].get("date")),
+            high=float(primary["high"]),
+            low=float(primary["low"]),
+            date_lab=str(primary.get("date") or ""),
             fp=fp,
         )
+    if nxt.get("high") and nxt.get("low"):
+        _paint_next_layer_vol_zone(
+            ax,
+            high=float(nxt["high"]),
+            low=float(nxt["low"]),
+            date_lab=str(nxt.get("date") or ""),
+            fp=fp,
+            direction=str(nxt.get("direction") or "below"),
+        )
+        # 下一層帶也列入青帶避讓
+        try:
+            y_excl_lo = min(float(y_excl_lo), float(nxt["low"])) if y_excl_lo is not None else float(nxt["low"])
+            y_excl_hi = max(float(y_excl_hi), float(nxt["high"])) if y_excl_hi is not None else float(nxt["high"])
+        except (TypeError, ValueError):
+            pass
     # 青位階虛線只畫到末日K右緣；右欄飆預測字在更右，不准字盒壓線
     sr_skip = _paint_next_sr_zone(
         ax,
@@ -2468,6 +3630,7 @@ def _paint_window_dual_zones(
         "i_vmax": i_vmax,
         "y_excl_lo": y_excl_lo,
         "y_excl_hi": y_excl_hi,
+        "vol_sr": sr_pack,
     }
 
 
@@ -2569,8 +3732,10 @@ _LIVE_DOWN = "#26a69a"
 # 遠窗縮圖：絕對 min body=6 對費半／加權價軸幾乎看不見；改跟價窗比例走
 _LIVE_CANDLE_MIN_BODY_FRAC = 0.01
 _FAR_SOX_MIN_BODY_FRAC = 0.018
-# 遠窗固定根數（約 2026-03-31→最新）：含推進⑤＝4/1→6/23；每多一日刪最左
+# 遠窗預設根數（約 2026-03-31→最新）：含推進⑤＝4/1→6/23；每多一日刪最左
+# 若大量撐壓／下一層日期更早 → `_far_teach_bars_keeping_vol_sr` 自動拉長左側
 _FAR_TEACH_MAX_BARS = 152
+_FAR_TEACH_VOL_LOOKBACK = 200
 
 
 def _far_teach_roll_bars(
@@ -2582,6 +3747,134 @@ def _far_teach_roll_bars(
     if len(rows) > cap:
         return rows[-cap:]
     return rows
+
+
+def _remap_teach_vol_sr_index(
+    sr: Dict[str, Any], bars: Sequence[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """切片後重算大量撐壓／下一層日索引；日期不在窗內 → i_*=None（底色仍可畫價）。"""
+    out = dict(sr or {})
+    out["i_primary"] = None
+    out["i_next"] = None
+    by_ymd = {_ymd(r.get("date")): i for i, r in enumerate(bars or []) if _ymd(r.get("date"))}
+    pd = _ymd(((out.get("primary") or {}) or {}).get("date"))
+    if pd and pd in by_ymd:
+        out["i_primary"] = int(by_ymd[pd])
+    nd = _ymd(((out.get("next") or {}) or {}).get("date"))
+    if nd and nd in by_ymd:
+        out["i_next"] = int(by_ymd[nd])
+    return out
+
+
+def _vol_sr_index_on_axis(
+    sr: Optional[Dict[str, Any]],
+    *,
+    axis_ymds: Sequence[str],
+) -> Tuple[Optional[int], Optional[int]]:
+    """把大量撐壓／下一層日期對到本欄 x 索引（費半／電子盤／加權各算各的）。"""
+    pack = sr if isinstance(sr, dict) else {}
+    by = {_ymd(d): i for i, d in enumerate(axis_ymds or []) if _ymd(d)}
+    i_pri = by.get(_ymd(((pack.get("primary") or {}) or {}).get("date")))
+    i_nxt = by.get(_ymd(((pack.get("next") or {}) or {}).get("date")))
+    return (
+        int(i_pri) if i_pri is not None else None,
+        int(i_nxt) if i_nxt is not None else None,
+    )
+
+
+# 遠窗各欄豎導：黃＝當前大量撐壓日K；亮桃＝下一層大量日K（不准跨欄共用加權日）
+_VOL_SR_GUIDE_PRIMARY = "#ffeb3b"
+_VOL_SR_GUIDE_NEXT = "#ff8aa0"  # 亮桃紅
+_VOL_SR_CANDLE_PRIMARY = "#ffd54f"
+_VOL_SR_CANDLE_NEXT = "#ff8aa0"
+
+
+def _teach_vol_sr_title_bit(
+    vol_sr: Optional[Dict[str, Any]],
+    *,
+    bars: Sequence[Dict[str, Any]] = (),
+    highs: Sequence[float] = (),
+    lows: Sequence[float] = (),
+    i_vmax: Optional[int] = None,
+) -> str:
+    """三窗標題共用：黃＝大量撐壓｜灰＝下一層。"""
+    pri = ((vol_sr or {}).get("primary") or {}) if isinstance(vol_sr, dict) else {}
+    nxt = ((vol_sr or {}).get("next") or {}) if isinstance(vol_sr, dict) else {}
+    if pri.get("date") and pri.get("high") is not None and pri.get("low") is not None:
+        bit = (
+            f"黃＝大量撐壓{_md(pri.get('date'))} "
+            f"{_px(pri.get('high'))}～{_px(pri.get('low'))}"
+        )
+    elif i_vmax is not None and bars and highs and lows:
+        bit = (
+            f"黃＝大量撐壓{_md(bars[int(i_vmax)].get('date'))} "
+            f"{_px(highs[int(i_vmax)])}～{_px(lows[int(i_vmax)])}"
+        )
+    else:
+        bit = "黃＝大量撐壓"
+    if nxt.get("date") and nxt.get("high") is not None and nxt.get("low") is not None:
+        bit += (
+            f"｜亮桃／灰＝下一層{_md(nxt.get('date'))} "
+            f"{_px(nxt.get('high'))}～{_px(nxt.get('low'))}"
+        )
+    return bit
+
+
+def _far_teach_bars_keeping_vol_sr(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    max_bars: int = _FAR_TEACH_MAX_BARS,
+    vol_lookback: int = _FAR_TEACH_VOL_LOOKBACK,
+    keep_ymds: Sequence[str] = ("20260331", "20260401"),
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """遠窗切片：預設滾動；大量撐壓／下一層／浪階起點若被裁掉 → 左側拉到該日。
+
+    例：要測的撐壓在 3/28，滾動後最左是 4 月底 → 改最左＝3/28、最右＝最近交易日。
+    keep_ymds＝推進⑤起日必須進窗（可超過 max_bars）；撐壓日另由 earliest_ymd 拉。
+    """
+    story = list(bars or [])
+    lb = max(40, int(vol_lookback or _FAR_TEACH_VOL_LOOKBACK))
+    if len(story) > 1:
+        lb = min(lb, len(story) - 1)
+    sr = _resolve_teach_vol_sr(story, lookback=lb)
+    rolled = _far_teach_roll_bars(story, max_bars=max_bars)
+    if not rolled:
+        return rolled, sr
+    need_dates: List[str] = []
+    early = _ymd((sr or {}).get("earliest_ymd"))
+    if early:
+        need_dates.append(early)
+    for raw in keep_ymds or ():
+        kd = _ymd(raw)
+        if not kd:
+            continue
+        if _bar_index_by_ymd(story, kd) is not None:
+            need_dates.append(kd)
+            continue
+        # 缺精確日 → 取第一個 ≥ 該日的交易日
+        for r in story:
+            d = _ymd(r.get("date"))
+            if d and d >= kd:
+                need_dates.append(d)
+                break
+    if not need_dates:
+        return rolled, _remap_teach_vol_sr_index(sr, rolled)
+    need = min(need_dates)
+    left = _ymd(rolled[0].get("date"))
+    if left and need >= left:
+        return rolled, _remap_teach_vol_sr_index(sr, rolled)
+    # 左側拉到最早需求日（可超過 max_bars）
+    i_need = _bar_index_by_ymd(story, need)
+    if i_need is None:
+        for i, r in enumerate(story):
+            d = _ymd(r.get("date"))
+            if d and d >= need:
+                i_need = i
+                break
+    if i_need is None:
+        return rolled, _remap_teach_vol_sr_index(sr, rolled)
+    extended = story[int(i_need) :]
+    return extended, _remap_teach_vol_sr_index(sr, extended)
 _LIVE_LV = (
     ("tx60_down", "#ce93d8", "降軌"),
     ("tx60_swing_hi", "#ffd54f", "近窗高"),
@@ -2818,13 +4111,93 @@ def _paint_vol_bars_max_yellow(
 
 
 def _paint_max_vol_day_guide(axes: Sequence[Any], i_max: Optional[int]) -> None:
-    """三欄同一 x 畫黃虛線，最大量日與上方金K／黃底／量柱對齊一眼可見。"""
+    """相容舊呼叫：同一儀器多欄（價＋量）畫黃虛線。遠窗跨商品請改 `_paint_vol_sr_day_guides`。"""
     if i_max is None:
         return
     for a in axes:
-        if a is None:
-            continue
-        a.axvline(float(i_max), color="#ffeb3b", lw=1.15, ls=(0, (4, 2)), alpha=0.88, zorder=5)
+        _paint_vol_sr_day_guides(a, i_primary=int(i_max), i_next=None)
+
+
+def _paint_vol_sr_day_guides(
+    ax: Any,
+    *,
+    i_primary: Optional[int] = None,
+    i_next: Optional[int] = None,
+) -> None:
+    """單欄各自畫豎導：黃＝當前大量撐壓日；亮桃＝下一層大量日。
+
+    費半／電子盤／加權爆大量日不一定同一天 → 不准把加權 10/15 豎線拉到上兩欄。
+    """
+    if ax is None:
+        return
+    if i_primary is not None:
+        ax.axvline(
+            float(i_primary),
+            color=_VOL_SR_GUIDE_PRIMARY,
+            lw=1.15,
+            ls=(0, (4, 2)),
+            alpha=0.90,
+            zorder=5,
+        )
+    if i_next is not None and (i_primary is None or int(i_next) != int(i_primary)):
+        ax.axvline(
+            float(i_next),
+            color=_VOL_SR_GUIDE_NEXT,
+            lw=1.15,
+            ls=(0, (3, 2)),
+            alpha=0.88,
+            zorder=5,
+        )
+
+
+def _paint_vol_sr_mark_on_axis(
+    ax: Any,
+    *,
+    opens: Sequence[float],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    i_primary: Optional[int] = None,
+    i_next: Optional[int] = None,
+    date_primary: str = "",
+    date_next: str = "",
+    fp: Any = None,
+) -> None:
+    """單欄：當前大量日金K＋黃豎線；下一層日亮桃K＋桃豎線。"""
+    if ax is None:
+        return
+    n = min(len(opens), len(highs), len(lows), len(closes))
+
+    def _ok(i: Optional[int]) -> bool:
+        return i is not None and 0 <= int(i) < n and float(highs[int(i)]) == float(highs[int(i)])
+
+    if _ok(i_next):
+        ii = int(i_next)
+        _paint_special_candle(
+            ax,
+            ii,
+            open_=float(opens[ii]),
+            high=float(highs[ii]),
+            low=float(lows[ii]),
+            close=float(closes[ii]),
+            color=_VOL_SR_CANDLE_NEXT,
+            date_lab=date_next,
+            fp=fp,
+        )
+    if _ok(i_primary):
+        ii = int(i_primary)
+        _paint_special_candle(
+            ax,
+            ii,
+            open_=float(opens[ii]),
+            high=float(highs[ii]),
+            low=float(lows[ii]),
+            close=float(closes[ii]),
+            color=_VOL_SR_CANDLE_PRIMARY,
+            date_lab=date_primary,
+            fp=fp,
+        )
+    _paint_vol_sr_day_guides(ax, i_primary=i_primary, i_next=i_next)
 
 
 def _next_support_resist(
@@ -2850,10 +4223,12 @@ def _paint_max_vol_hl_zone(
     low: float,
     date_lab: str,
     fp: Any,
+    labels: bool = True,
 ) -> None:
-    """淺黃底＝最大量日那根K的最高～最低；底色 zorder 低於K棒。
+    """淺黃底＝大量撐壓（爆大量日最高～最低）；底色 zorder 低於K棒。
 
     左標一定帶交易日月日，跟金K／量柱黃／豎虛線同一日，不准只寫高低不寫日。
+    labels=False：只留底色（遠窗電子盤改走右欄疏開，左欄不准再卡一坨）。
     """
     y0, y1 = float(low), float(high)
     if y1 <= y0:
@@ -2862,10 +4237,12 @@ def _paint_max_vol_hl_zone(
     day_tag = f"{md} " if md else ""
     # 只留淺黃底，不准上下虛線框（框會跟K攪糊）；對齊交易日靠豎虛線＋金K＋左標月日
     ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
+    if not labels:
+        return
     ax.text(
         0.01,
         y1,
-        f"{day_tag}最大量日高 {_px(y1)}",
+        f"{day_tag}大量壓 {_px(y1)}",
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(9, "bold"),
         color="#ffe082",
@@ -2877,7 +4254,7 @@ def _paint_max_vol_hl_zone(
     ax.text(
         0.01,
         y0,
-        f"{day_tag}最大量日低 {_px(y0)}",
+        f"{day_tag}大量撐 {_px(y0)}",
         transform=ax.get_yaxis_transform(),
         fontproperties=fp(9, "bold"),
         color="#ffe082",
@@ -3210,10 +4587,13 @@ def _place_live_right_labels(
     min_gap: Optional[float] = None,
     x_text_min: Optional[float] = None,
     x_col: Optional[float] = None,
+    nudge: bool = False,
+    fontsize: float = 9,
 ) -> None:
     """右側價標：全部對齊同一右欄；同色水平虛線從指定點位連到標籤。
 
     - 字 Y＝真價（不准漂離）；真價互撞→丟低優先。
+    - nudge=True：虛線仍貼真價，字盒可上下微挪，避免框貼框卡住。
     - 字 X＝同一欄（預設對齊長標如「7/29低…」那欄），不准左一截右一截。
     - 虛線：note['x']（轉折／末日）→ 標籤左緣，顏色＝標籤色。
     note 可設 dash=False；level_dash=False 時整批不畫虛線。
@@ -3227,6 +4607,8 @@ def _place_live_right_labels(
     gap = max(gap, span * 0.055)
     # 浪／細浪硬標可互近，仍留呼吸；c5(45677)↔今(45212) 差值約 465 必須雙留
     gap_wave = max(span * 0.033, 360.0)
+    # 字盒視覺高度約略；nudge 用這個當最小字距（框高約 5% 窗，再加呼吸）
+    box_gap = max(gap * 0.95, span * 0.062)
 
     def _tier(t: str) -> int:
         """0=浪／細浪／今（必留）→1=飆預測等→2=Fib／切／錨（可丟）。"""
@@ -3243,8 +4625,13 @@ def _place_live_right_labels(
             or s.startswith("今 ")
             or s.startswith("今　")
             or s.startswith("費")
+            or "電盤大量" in s
+            or "電盤即時" in s
         ):
             return 0
+        # 電盤下一層／飆預測可丟，優先保住大量撐壓＋即時
+        if "電盤下一層" in s or ("飆預測" in s and "電盤" not in s):
+            return 2
         return 1
 
     def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
@@ -3274,6 +4661,7 @@ def _place_live_right_labels(
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
     placed_tiers: List[int] = []
+    draw_items: List[Tuple[Dict[str, Any], float]] = []
     # 同一右欄：預設 n+2.55（夠長標「7/29低…」）；可被 x_col／x_text_min 拉開
     x_label = float(x_col) if x_col is not None else float(n) + 2.55
     if x_text_min is not None:
@@ -3286,10 +4674,28 @@ def _place_live_right_labels(
         if y_true < ymin or y_true > ymax:
             continue
         tier = _tier(str(it.get("text") or ""))
-        if _collide(y_true, tier, placed, placed_tiers):
+        if (not nudge) and _collide(y_true, tier, placed, placed_tiers):
             continue
         placed.append(y_true)
         placed_tiers.append(tier)
+        draw_items.append((it, y_true))
+    # nudge：由高到低把字盒撐開；虛線仍用真價
+    draw_ys: List[float] = [y for _, y in draw_items]
+    if nudge and len(draw_ys) >= 2:
+        # 高→低
+        for i in range(1, len(draw_ys)):
+            ceiling = draw_ys[i - 1] - box_gap
+            if draw_ys[i] > ceiling:
+                draw_ys[i] = ceiling
+        # 低→高回推，避免沉到窗底又互壓
+        for i in range(len(draw_ys) - 2, -1, -1):
+            floor = draw_ys[i + 1] + box_gap
+            if draw_ys[i] < floor:
+                draw_ys[i] = floor
+        lo_b = float(ymin) + span * 0.02
+        hi_b = float(ymax) - span * 0.02
+        draw_ys = [max(lo_b, min(hi_b, y)) for y in draw_ys]
+    for (it, y_true), y_draw in zip(draw_items, draw_ys):
         color = str(it.get("color") or _LIVE_MUTED)
         try:
             x_from = float(it.get("x"))
@@ -3312,17 +4718,28 @@ def _place_live_right_labels(
                 zorder=5,
                 solid_capstyle="butt",
             )
+            # 字盒若被 nudge 離真價，短豎線連回真價水平線
+            if abs(float(y_draw) - float(y_true)) > span * 0.008:
+                ax.plot(
+                    [x_dash_end, x_dash_end],
+                    [y_true, y_draw],
+                    color=color,
+                    lw=0.85,
+                    alpha=0.55,
+                    zorder=5,
+                    solid_capstyle="butt",
+                )
         ax.text(
             x_label,
-            y_true,
+            float(y_draw),
             str(it["text"])[:28],
-            fontproperties=fp(9, "bold"),
+            fontproperties=fp(float(fontsize), "bold"),
             color=color,
             ha="left",
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=color, lw=0.65, alpha=0.96),
+            bbox=dict(boxstyle="round,pad=0.10", fc="#0b0f14", ec=color, lw=0.65, alpha=0.96),
         )
 
 
@@ -3764,10 +5181,13 @@ def _c_forecast_tip(
     chain = [float(x) for x in (anchors or (45546.0, 44210.0)) if x]
     if not chain:
         chain = [45546.0, 44210.0]
+    # 下跌預估虛線只指向「仍低於現價」的下一錨；上方壓（45546穿刺／46292／站穩47500）不當下一錨
+    below = [a for a in chain if float(a) < float(y_now) - 1.0]
+    use_chain = below if below else chain
     anchor_y: Optional[float] = None
-    fut_y = float(chain[-1])
+    fut_y = float(use_chain[-1])
     lab = _biaoke_pred_label(fut_y, _level_break_tag(fut_y, lows))
-    for a in chain:
+    for a in use_chain:
         tag = _level_break_tag(a, lows)
         if tag != "已破":
             fut_y = float(a)
@@ -3776,8 +5196,8 @@ def _c_forecast_tip(
             break
     else:
         # 全破：仍標最後一錨狀態
-        fut_y = float(chain[-1])
-        anchor_y = float(chain[-1])
+        fut_y = float(use_chain[-1])
+        anchor_y = float(use_chain[-1])
         lab = _biaoke_pred_label(fut_y, _level_break_tag(fut_y, lows))
     # 今已低於該錨：略往下延伸示意續弱，仍不發明具體新價標
     if float(y_now) <= float(fut_y) + 1.0:
@@ -4630,17 +6050,33 @@ def _paint_sox_thesis_preds(
     preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
     if not preds:
         return []
-    broken = next((r for r in preds if str(r.get("role") or "") == "A波低"), None)
+    broken_a = next((r for r in preds if str(r.get("role") or "") == "A波低"), None)
     nxt = next((r for r in preds if str(r.get("role") or "") == "次回測"), None)
-    y_hi = float(broken["level"]) if broken else None
-    y_lo = float(nxt["level"]) if nxt else None
-    # 青帶＝已破A低 → 次回測低（下一撐壓區）；跟加權青帶同一套讀法
+    reb = next((r for r in preds if str(r.get("role") or "") == "再回測"), None)
+    # 青帶＝上一已破撐 → 現在下一撐；9865 已破則對 2/25 8498
+    y_hi = y_lo = None
+    band_lab = ""
+    try:
+        if reb and nxt and str(nxt.get("tag") or "") == "已破":
+            y_hi = float(nxt["level"])
+            y_lo = float(reb["level"])
+            band_lab = (
+                f"青＝已破4/28{_px(y_hi)}→下一撐{_px(y_lo)}（2/25回測）"
+            )
+        elif broken_a and nxt:
+            y_hi = float(broken_a["level"])
+            y_lo = float(nxt["level"])
+            band_lab = (
+                f"青＝已破A{_px(y_hi)}→下一撐{_px(y_lo)}（4/28回測）"
+            )
+    except (TypeError, ValueError, KeyError):
+        y_hi = y_lo = None
     if y_hi is not None and y_lo is not None and y_hi > y_lo:
         ax.axhspan(y_lo, y_hi, facecolor="#4dd0e1", alpha=0.14, zorder=0.4)
         ax.text(
             0.012,
             0.96,
-            f"青＝已破A{_px(y_hi)}→下一撐{_px(y_lo)}（4/28回測）",
+            band_lab,
             transform=ax.transAxes,
             fontproperties=fp(8, "bold"),
             color="#4dd0e1",
@@ -4660,9 +6096,14 @@ def _paint_sox_thesis_preds(
         ref = _ymd(row.get("ref_ymd"))
         lab = str(row.get("label") or f"費{_px(lv)}")
         col = "#ffab40" if "已破" in str(row.get("tag") or lab) else "#4dd0e1"
+        role = str(row.get("role") or "")
         ii = _bar_index_by_ymd(bars, ref) if ref else None
-        if ii is not None and 0 <= ii < len(sox_l):
-            # 回測日金K＋豎導線（對齊大量圖：看得到那一根）
+        # 只在「次回測／再回測」日畫金K＋豎線；A波低本身已有浪名，不准再豎一條誤導成大量日
+        if (
+            role in {"次回測", "再回測"}
+            and ii is not None
+            and 0 <= ii < len(sox_l)
+        ):
             oo = float(sox_o[ii]) if ii < len(sox_o) else lv
             hh = float(sox_h[ii]) if ii < len(sox_h) else lv
             ll = float(sox_l[ii]) if math.isfinite(float(sox_l[ii])) else lv
@@ -4722,10 +6163,23 @@ def _tw_pred_right_notes(
     lows: Sequence[float],
     tip_skip: Optional[set] = None,
     bars: Optional[Sequence[Dict[str, Any]]] = None,
+    highs: Optional[Sequence[float]] = None,
 ) -> List[Dict[str, Any]]:
     """加權右欄：他最新寫死點（44042／39384…）；有 ref 日則虛線從那根拉。"""
     skip = tip_skip or set()
     out: List[Dict[str, Any]] = []
+    hi_vals: List[float] = []
+    if highs:
+        try:
+            hi_vals = [float(x) for x in highs if x is not None]
+        except (TypeError, ValueError):
+            hi_vals = []
+    if not hi_vals and bars:
+        for b in bars:
+            try:
+                hi_vals.append(float(b.get("high")))
+            except (TypeError, ValueError, AttributeError):
+                continue
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             lv = float(row.get("level"))
@@ -4738,9 +6192,28 @@ def _tw_pred_right_notes(
             text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) if tag == "未到" else tag)
         else:
             text = str(row.get("label") or _biaoke_pred_label(lv))
-        # 周一破台指：狀態跟官方柱
+        role = str(row.get("role") or "")
+        # 周一破台指／反彈穿刺／轉震盪：狀態跟官方柱
         if abs(lv - 44042.0) < 0.6:
             text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) + "周一")
+        elif role in {"反彈穿刺", "轉震盪"}:
+            # 上方觀察壓：看「現在」有無站回／向上穿刺，不准拿下跌低點標成「已破」
+            now_px = None
+            if bars:
+                try:
+                    now_px = float(bars[-1].get("close"))
+                except (TypeError, ValueError, AttributeError, IndexError):
+                    now_px = None
+            if now_px is None and lows:
+                try:
+                    now_px = float(lows[-1])
+                except (TypeError, ValueError, IndexError):
+                    now_px = None
+            st = "已穿" if (now_px is not None and now_px >= lv - 0.5) else "未穿"
+            suffix = "穿刺" if role == "反彈穿刺" else "轉震盪"
+            text = _biaoke_pred_label(lv, st + suffix)
+        elif role in {"劇本一上沿", "劇本一下沿"}:
+            text = str(row.get("label") or _biaoke_pred_label(lv))
         # 近／超近窗沒有 ref 日柱時從窗左拉滿，不准縮成末日短樁
         x_note = 0
         ref = _ymd(row.get("ref_ymd"))
@@ -4761,8 +6234,9 @@ def _tw_pred_right_notes(
 
 
 def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
-    """教具①遠窗三欄：上費半浪 → 中加權推進⑤／大ABC → 下加權日量。
+    """教具①遠窗四欄：上費半 → 台指電子盤 → 加權日K推進⑤／大ABC → 下加權日量。
 
+    費半與台指電子盤同時段並看（即時查閱）；底圖加高讓三條價軸都清楚。
     推進⑤＝4/1→6/23；大A底7/29；大B末10/6；大C起10/15。費半同軸數。
     """
     try:
@@ -4783,21 +6257,30 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     bars = _twii_bars_for_teach(db_path, 400, pack)
     if len(bars) < 20 or not save_path:
         return ""
-    # 遠窗故事起點＝3 月底（推進⑤起 4/1 要進窗）
-    i0 = (
-        _bar_index_by_ymd(bars, "20260331")
-        or _bar_index_by_ymd(bars, "20260328")
-        or _bar_index_by_ymd(bars, "20260401")
-        or 0
+    # 預設滾動；大量撐壓／下一層／⑤起日／費半回測日若更早 → 左側自動拉長
+    keep_ymds: List[str] = ["20260331", "20260401"]
+    for row in ((pack or {}).get("pred_levels") or {}).get("sox") or []:
+        rd = _ymd(row.get("ref_ymd"))
+        if rd:
+            keep_ymds.append(rd)
+    bars, far_vol_sr = _far_teach_bars_keeping_vol_sr(
+        list(bars),
+        max_bars=_FAR_TEACH_MAX_BARS,
+        vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
+        keep_ymds=tuple(dict.fromkeys(keep_ymds)),
     )
-    bars = _far_teach_roll_bars(list(bars[i0:]), max_bars=_FAR_TEACH_MAX_BARS)
     mac = _twii_macro_wave_anchors(bars)
     anc = _twii_abc_anchors(bars)  # 近窗細分（右標／預估仍可參考）
     if not mac:
         return ""
-    sox = _load_us_daily(db_path, "SOX", "20260320")
-    if (pack or {}).get("live_sox"):
-        sox = _merge_live_sox_display_bar(sox, (pack or {}).get("live_sox"))
+    sox_since = min(keep_ymds + ["20260220"]) if keep_ymds else "20260220"
+    # 出圖當下重抓費半即時：黃框指數＋末根縮圖K同口更新
+    live_sox = _ensure_paint_live_sox(pack)
+    sox = _load_us_daily(db_path, "SOX", sox_since)
+    if live_sox or (pack or {}).get("live_sox"):
+        sox = _merge_live_sox_display_bar(
+            sox, live_sox or (pack or {}).get("live_sox")
+        )
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     n = len(bars)
     opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -4822,34 +6305,76 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     sox_a, sox_extra_dates = _extend_us_ohlc_past_twii(
         sox_a, sox, _ymd(bars[-1].get("date"))
     )
-    sox_o, sox_h, sox_l, sox_c = sox_a["open"], sox_a["high"], sox_a["low"], sox_a["close"]
+    sox_o = list(sox_a["open"])
+    sox_h = list(sox_a["high"])
+    sox_l = list(sox_a["low"])
+    sox_c = list(sox_a["close"])
     n_tw = int(n)
     n_axis = len(sox_c)
+    i_live = _apply_live_sox_to_axis(
+        sox_o=sox_o,
+        sox_h=sox_h,
+        sox_l=sox_l,
+        sox_c=sox_c,
+        tw_bars=bars,
+        live=live_sox or (pack or {}).get("live_sox"),
+        n_tw=n_tw,
+    )
+    # 台指電子盤（夜盤日K）對齊加權日軸；出圖當下再疊夜盤即時
+    tx_since = _ymd(bars[0].get("date")) if bars else "20260301"
+    tx_rows = _load_tx_futures_daily(db_path, session="night", since=tx_since or "20260301")
+    live_tx = _ensure_paint_live_tx(pack)
+    tx_a = _align_us_to_twii_dates(tx_rows, bars)
+    tx_o = list(tx_a["open"])
+    tx_h = list(tx_a["high"])
+    tx_l = list(tx_a["low"])
+    tx_c = list(tx_a["close"])
+    tx_v = list(tx_a.get("volume") or [])
+    # 費半可延長軸；台指電子盤只畫加權日軸長度（夜盤跟台股曆）
+    while len(tx_c) < n_tw:
+        tx_o.append(float("nan"))
+        tx_h.append(float("nan"))
+        tx_l.append(float("nan"))
+        tx_c.append(float("nan"))
+        tx_v.append(0.0)
+    while len(tx_v) < n_tw:
+        tx_v.append(0.0)
+    tx_o, tx_h, tx_l, tx_c = tx_o[:n_tw], tx_h[:n_tw], tx_l[:n_tw], tx_c[:n_tw]
+    tx_v = [float(x or 0) for x in tx_v[:n_tw]]
+    i_tx_live = _apply_live_tx_to_axis(
+        tx_o=tx_o,
+        tx_h=tx_h,
+        tx_l=tx_l,
+        tx_c=tx_c,
+        tw_bars=bars,
+        live=live_tx or (pack or {}).get("live_tx"),
+    )
     sox_anc = _sox_abc_anchors_on_axis(sox_h, sox_l, sox_c, i5_hint=i5)
     sox_i_now = int(sox_anc["i_now"]) if sox_anc else (n_axis - 1)
+    if i_live is not None:
+        sox_i_now = int(i_live)
     c_seg_lows = list(lows[i_c : i_now + 1]) or list(lows[i_bhi:])
-    # 最大量日＝黃帶定義來源（跟個股一樣：那天K最高～最低）；量只認加權 n_tw，不准造 SOX-only 日量
-    i_vmax = (
-        max(range(n_tw), key=lambda i: float(vols[i] or 0))
-        if n_tw and any(float(v or 0) > 0 for v in vols[:n_tw])
-        else None
-    )
+    # 大量撐壓＝volume_first；無則退窗內最大量。量只認加權 n_tw。
+    i_vmax = far_vol_sr.get("i_primary") if isinstance(far_vol_sr, dict) else None
+    if i_vmax is None and n_tw and any(float(v or 0) > 0 for v in vols[:n_tw]):
+        i_vmax = max(range(n_tw), key=lambda i: float(vols[i] or 0))
 
-    # 上費半 / 中加權 / 下加權量
-    fig, (axu, ax, axv) = plt.subplots(
-        3,
+    # 上費半 / 台指電子盤 / 加權日K / 下加權量；加權欄略高；欄間留空給日期
+    # Telegram sendPhoto 硬限寬+高≤10000；存檔後仍會 _shrink_png_for_telegram
+    fig, (axu, axt, ax, axv) = plt.subplots(
+        4,
         1,
-        figsize=(16.8, 12.9),
+        figsize=(15.6, 15.2),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(2.55, 3.45, 1.25), hspace=0.06),
+        gridspec_kw=dict(height_ratios=(2.05, 2.20, 3.20, 0.95), hspace=0.12),
     )
     fig.patch.set_facecolor(_LIVE_BG)
-    # bottom 加高：腳註多行完整數字＋不壓 x 軸日期
-    # top 略降：標題列＋雙黃框上移進頁眉，不准擋費半縮圖K
-    # right 收到 0.98：右標水平往左貼K，不准再留 10% 空溝把標甩飛
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.88, bottom=0.125)
-    for a in (axu, ax, axv):
+    # top：標題列；戳改各欄右上，頁眉不再塞三戳
+    # right 收到 0.98：右標水平往左貼K
+    # left 加寬：逐字正讀左軸標題要空間（不准橫躺）
+    fig.subplots_adjust(left=0.088, right=0.978, top=0.935, bottom=0.095)
+    for a in (axu, axt, ax, axv):
         a.set_facecolor(_LIVE_PANEL)
         a.tick_params(colors=_LIVE_MUTED, labelsize=9)
         for sp in a.spines.values():
@@ -4996,11 +6521,86 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ),
                 "min_body": max(float(sox_min_body), float(span_raw) * 0.035),
             }
-    axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    _set_upright_ylabel(axu, "費半 SOX", fp=_fp, color=_LIVE_MUTED, fontsize=10)
+    # 費半大量撐壓：指數無量 → SOXX ETF 量代理對齊同日（標清楚）
+    sox_vol_map = _soxx_volume_by_date(db_path)
+    sox_rows_for_vol: List[Dict[str, Any]] = []
+    for i in range(n_axis):
+        d = (
+            _ymd(bars[i].get("date"))
+            if i < n_tw
+            else (
+                _ymd(sox_extra_dates[i - n_tw])
+                if sox_extra_dates and (i - n_tw) < len(sox_extra_dates)
+                else ""
+            )
+        )
+        if not d:
+            continue
+        if not (
+            i < len(sox_c)
+            and sox_c[i] == sox_c[i]
+            and math.isfinite(float(sox_h[i]))
+            and math.isfinite(float(sox_l[i]))
+        ):
+            continue
+        sox_rows_for_vol.append(
+            {
+                "date": d,
+                "open": float(sox_o[i]) if sox_o[i] == sox_o[i] else float(sox_c[i]),
+                "high": float(sox_h[i]),
+                "low": float(sox_l[i]),
+                "close": float(sox_c[i]),
+                "volume": float(sox_vol_map.get(d) or 0),
+            }
+        )
+    sox_vol_sr = _resolve_teach_vol_sr(
+        sox_rows_for_vol,
+        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(sox_rows_for_vol) - 1)),
+    )
+    if (sox_vol_sr.get("primary") or {}).get("high"):
+        pri = sox_vol_sr["primary"]
+        _paint_max_vol_hl_zone(
+            axu,
+            high=float(pri["high"]),
+            low=float(pri["low"]),
+            date_lab=str(pri.get("date") or ""),
+            fp=_fp,
+        )
+        if (sox_vol_sr.get("next") or {}).get("high"):
+            nxt = sox_vol_sr["next"]
+            _paint_next_layer_vol_zone(
+                axu,
+                high=float(nxt["high"]),
+                low=float(nxt["low"]),
+                date_lab=str(nxt.get("date") or ""),
+                fp=_fp,
+                direction=str(nxt.get("direction") or "below"),
+            )
+    # 費半自己的爆大量日（常≠加權 10/15）：金K／亮桃K＋本欄豎線
+    _sox_axis_ymds = [_ymd(bars[i].get("date")) for i in range(n_tw)]
+    if sox_extra_dates:
+        _sox_axis_ymds.extend(_ymd(d) for d in sox_extra_dates)
+    while len(_sox_axis_ymds) < n_axis:
+        _sox_axis_ymds.append("")
+    _sox_axis_ymds = _sox_axis_ymds[:n_axis]
+    _sox_i_pri, _sox_i_nxt = _vol_sr_index_on_axis(sox_vol_sr, axis_ymds=_sox_axis_ymds)
+    _paint_vol_sr_mark_on_axis(
+        axu,
+        opens=sox_o,
+        highs=sox_h,
+        lows=sox_l,
+        closes=sox_c,
+        i_primary=_sox_i_pri,
+        i_next=_sox_i_nxt,
+        date_primary=str((sox_vol_sr.get("primary") or {}).get("date") or ""),
+        date_next=str((sox_vol_sr.get("next") or {}).get("date") or ""),
+        fp=_fp,
+    )
     axu.text(
         0.012,
         0.04,
-        "費半＝自轉折浪＋他點過回測日低（無官方量→不畫撐壓黃區）",
+        "費半＝自轉折浪＋大量撐壓（量＝SOXX 代理）＋下一層｜黃豎＝費半爆大量日",
         transform=axu.transAxes,
         fontproperties=_fp(8, "bold"),
         color=_LIVE_MUTED,
@@ -5010,17 +6610,251 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         bbox=dict(boxstyle="round,pad=0.16", fc="#0b0f14", ec="#546e7a", lw=0.65, alpha=0.92),
     )
 
-    # —— 中：加權價（先畫底帶在K下一層，再畫K）——
+    # —— 次上：台指電子盤（夜盤日K＋大量撐壓／下一層／即時末K）——
+    # 鎖死：電子盤撐壓只認大量規則（volume_first＋破後次大量）；
+    # 題旨沒有他講死的電子盤下一撐，不准套加權／費半 pred_levels。
+    _tx_last_repaint: Optional[Dict[str, Any]] = None
+    _tx_right_notes: List[Dict[str, Any]] = []
+    _tx_ylabel_span: Optional[Tuple[float, float]] = None
+    tx_valid = [
+        i
+        for i, c in enumerate(tx_c)
+        if c == c and c and math.isfinite(float(tx_h[i])) and math.isfinite(float(tx_l[i]))
+    ]
+    tx_min_body = _candle_span_min_body(tx_h, tx_l, frac=_FAR_SOX_MIN_BODY_FRAC)
+    tx_rows_for_vol: List[Dict[str, Any]] = []
+    for i in range(n_tw):
+        if i not in tx_valid and not (
+            i < len(tx_c)
+            and tx_c[i] == tx_c[i]
+            and math.isfinite(float(tx_h[i]))
+            and math.isfinite(float(tx_l[i]))
+        ):
+            continue
+        d = _ymd(bars[i].get("date")) if i < len(bars) else ""
+        if not d:
+            continue
+        tx_rows_for_vol.append(
+            {
+                "date": d,
+                "open": float(tx_o[i]) if tx_o[i] == tx_o[i] else float(tx_c[i]),
+                "high": float(tx_h[i]),
+                "low": float(tx_l[i]),
+                "close": float(tx_c[i]),
+                "volume": float(tx_v[i] if i < len(tx_v) else 0),
+            }
+        )
+    tx_vol_sr = _resolve_teach_vol_sr(
+        tx_rows_for_vol,
+        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(tx_rows_for_vol) - 1)),
+    )
+    # 撐壓底色先畫在K下層
+    if (tx_vol_sr.get("primary") or {}).get("high"):
+        pri = tx_vol_sr["primary"]
+        _paint_max_vol_hl_zone(
+            axt,
+            high=float(pri["high"]),
+            low=float(pri["low"]),
+            date_lab=str(pri.get("date") or ""),
+            fp=_fp,
+            # 左標關掉：右欄已有電盤大量壓／撐，左右雙貼會卡死中欄
+            labels=False,
+        )
+        _tx_pri_md = _md(pri.get("date"))
+        _tx_pri_tag = f"{_tx_pri_md} " if _tx_pri_md else ""
+        _tx_right_notes.append(
+            {
+                "x": n_tw - 1,
+                "y": float(pri["high"]),
+                "text": f"{_tx_pri_tag}電盤大量壓 {_px(pri['high'])}",
+                "color": "#ffe082",
+            }
+        )
+        _tx_right_notes.append(
+            {
+                "x": n_tw - 1,
+                "y": float(pri["low"]),
+                "text": f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}",
+                "color": "#ffe082",
+            }
+        )
+        if (tx_vol_sr.get("next") or {}).get("high"):
+            nxt = tx_vol_sr["next"]
+            _paint_next_layer_vol_zone(
+                axt,
+                high=float(nxt["high"]),
+                low=float(nxt["low"]),
+                date_lab=str(nxt.get("date") or ""),
+                fp=_fp,
+                direction=str(nxt.get("direction") or "below"),
+                # 左標改走右欄，避免與青帶／即時擠在底段卡住
+                labels=False,
+            )
+            _tx_nxt_md = _md(nxt.get("date"))
+            _tx_nxt_tag = f"{_tx_nxt_md} " if _tx_nxt_md else ""
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(nxt["high"]),
+                    "text": f"{_tx_nxt_tag}電盤下一層壓 {_px(nxt['high'])}",
+                    "color": "#ff8aa0",
+                }
+            )
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(nxt["low"]),
+                    "text": f"{_tx_nxt_tag}電盤下一層撐 {_px(nxt['low'])}",
+                    "color": "#ff8aa0",
+                }
+            )
+    tx_now = float(tx_c[tx_valid[-1]]) if tx_valid else None
+    if tx_now and tx_now > 0:
+        tx_sup = []
+        tx_res = []
+        for key in ("primary", "next"):
+            row = tx_vol_sr.get(key) or {}
+            if row.get("low"):
+                tx_sup.append(float(row["low"]))
+            if row.get("high"):
+                tx_res.append(float(row["high"]))
+        tx_sr = _next_support_resist(float(tx_now), supports=tx_sup, resists=tx_res)
+        _tx_pri = tx_vol_sr.get("primary") or {}
+        try:
+            _tx_ex_lo = (
+                float(_tx_pri["low"]) if _tx_pri.get("low") is not None else None
+            )
+            _tx_ex_hi = (
+                float(_tx_pri["high"]) if _tx_pri.get("high") is not None else None
+            )
+        except (TypeError, ValueError):
+            _tx_ex_lo = _tx_ex_hi = None
+        _tx_skip_lab: List[float] = []
+        for row in (tx_vol_sr.get("primary"), tx_vol_sr.get("next")):
+            if not row:
+                continue
+            for k in ("high", "low"):
+                try:
+                    if row.get(k) is not None:
+                        _tx_skip_lab.append(float(row[k]))
+                except (TypeError, ValueError):
+                    pass
+        for v in (tx_sr.get("support"), tx_sr.get("resist")):
+            if v is not None:
+                try:
+                    _tx_skip_lab.append(float(v))
+                except (TypeError, ValueError):
+                    pass
+        _paint_next_sr_zone(
+            axt,
+            support=tx_sr.get("support"),
+            resist=tx_sr.get("resist"),
+            fp=_fp,
+            exclude_lo=_tx_ex_lo,
+            exclude_hi=_tx_ex_hi,
+            # 青帶左標也關掉：底段擠爆；數字只留右欄疏開
+            skip_label_ys=_tx_skip_lab,
+            x_end=float(n_tw) + 0.12,
+        )
+        if tx_sr.get("support") is not None:
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(tx_sr["support"]),
+                    "text": _biaoke_pred_label(float(tx_sr["support"])),
+                    "color": "#4dd0e1",
+                }
+            )
+        if tx_sr.get("resist") is not None:
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(tx_sr["resist"]),
+                    "text": _biaoke_pred_label(float(tx_sr["resist"])),
+                    "color": "#4dd0e1",
+                }
+            )
+    if len(tx_valid) >= 2:
+        for i in tx_valid:
+            prev_i = next((j for j in range(i - 1, -1, -1) if tx_c[j] == tx_c[j]), None)
+            prev_c = tx_c[prev_i] if prev_i is not None else None
+            up = candle_up_taiwan(tx_c[i], prev_c, tx_o[i])
+            color = _LIVE_UP if up else _LIVE_DOWN
+            axt.vlines(i, tx_l[i], tx_h[i], color=color, linewidth=1.55, zorder=5)
+            y0, y1 = sorted((tx_o[i], tx_c[i]))
+            _bh = max(y1 - y0, float(tx_min_body))
+            axt.add_patch(
+                plt.Rectangle(
+                    (i - 0.36, y0),
+                    0.72,
+                    _bh,
+                    facecolor=color,
+                    edgecolor=color,
+                    linewidth=0.45,
+                    zorder=6,
+                )
+            )
+        # 末根：即時夜盤或庫內夜盤；白邊＋tip 圈
+        tip_i = int(i_tx_live) if i_tx_live is not None else int(tx_valid[-1])
+        if 0 <= tip_i < len(tx_c) and tx_c[tip_i] == tx_c[tip_i]:
+            prev_i = next(
+                (j for j in range(tip_i - 1, -1, -1) if tx_c[j] == tx_c[j]), None
+            )
+            _tx_last_repaint = {
+                "i": tip_i,
+                "o": float(tx_o[tip_i]),
+                "h": float(tx_h[tip_i]),
+                "l": float(tx_l[tip_i]),
+                "c": float(tx_c[tip_i]),
+                "prev": float(tx_c[prev_i]) if prev_i is not None else None,
+                "min_body": float(tx_min_body),
+            }
+            _tx_right_notes.append(
+                {
+                    "x": tip_i,
+                    "y": float(tx_c[tip_i]),
+                    "text": f"電盤即時 {_px(tx_c[tip_i])}",
+                    "color": "#ea80fc",
+                }
+            )
+        lo_v = min(float(tx_l[i]) for i in tx_valid)
+        hi_v = max(float(tx_h[i]) for i in tx_valid)
+        # 撐壓帶也納入 ylim，標籤不被裁
+        for row in (tx_vol_sr.get("primary"), tx_vol_sr.get("next")):
+            if not row:
+                continue
+            try:
+                lo_v = min(lo_v, float(row.get("low") or lo_v))
+                hi_v = max(hi_v, float(row.get("high") or hi_v))
+            except (TypeError, ValueError):
+                pass
+        pad = max(120.0, (hi_v - lo_v) * 0.08)
+        axt.set_ylim(lo_v - pad, hi_v + pad)
+        _tx_ylabel_span = (lo_v - pad, hi_v + pad)
+    # 電子盤自己的爆大量日（常≠加權 10/15）：金K／亮桃K＋本欄豎線
+    _tx_axis_ymds = [_ymd(bars[i].get("date")) for i in range(n_tw)]
+    _tx_i_pri, _tx_i_nxt = _vol_sr_index_on_axis(tx_vol_sr, axis_ymds=_tx_axis_ymds)
+    _paint_vol_sr_mark_on_axis(
+        axt,
+        opens=tx_o,
+        highs=tx_h,
+        lows=tx_l,
+        closes=tx_c,
+        i_primary=_tx_i_pri,
+        i_next=_tx_i_nxt,
+        date_primary=str((tx_vol_sr.get("primary") or {}).get("date") or ""),
+        date_next=str((tx_vol_sr.get("next") or {}).get("date") or ""),
+        fp=_fp,
+    )
+    _set_upright_ylabel(axt, "台指電子盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
+    # 不再貼左下長說明：會跟右標／戳／K互卡；說明改靠戳＋右欄
+
+    # —— 中：加權日盤價（先畫底帶在K下一層，再畫K）——
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
     # 上下多留：高點浪名在尖上、低點浪名在尖下，不准被裁、也不准回頭蓋K
     ymin = min([min(lows), y5s, y_alow] + list(tw_supports)) - 720
     ymax = max([max(highs), y5e, y_b_end]) + 1100
-    sr = _next_support_resist(
-        y_now,
-        supports=tw_supports,
-        resists=(47637.0, 48613.0, y_b_end, y5e),
-    )
     # 預估端先算：同價只留端點「飆預測」，左青帶／右欄不准再貼一次
     tip_pre = _c_forecast_tip(
         i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, anchors=tip_anchors
@@ -5030,45 +6864,48 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     # 他點過的錨會上右欄 → 左欄不准再貼同價
     skip_lab_ys = list(skip_lab_ys) + [float(v) for v in tip_anchors]
-    # 先黃＝最大量日高低；青＝飆預測位階帶，重疊處不塗青（兩底色不准互疊）
-    y_excl_lo = float(lows[i_vmax]) if i_vmax is not None else None
-    y_excl_hi = float(highs[i_vmax]) if i_vmax is not None else None
-    if i_vmax is not None:
-        _paint_max_vol_hl_zone(
-            ax,
-            high=float(highs[i_vmax]),
-            low=float(lows[i_vmax]),
-            date_lab=_ymd(bars[i_vmax].get("date")),
-            fp=_fp,
-        )
-    sr_skip = _paint_next_sr_zone(
+    # 黃＝大量撐壓、灰＝下一層、青＝飆預測位階帶（兩底色不准互疊）
+    zone = _paint_window_dual_zones(
         ax,
-        support=sr.get("support"),
-        resist=sr.get("resist"),
+        highs=highs,
+        lows=lows,
+        vols=vols,
+        bars=bars,
+        y_now=y_now,
         fp=_fp,
-        exclude_lo=y_excl_lo,
-        exclude_hi=y_excl_hi,
+        supports=tw_supports,
+        resists=(47637.0, 48613.0, y_b_end, y5e),
         skip_label_ys=skip_lab_ys,
-        x_end=float(n) + 0.12,
+        vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
+        vol_sr=far_vol_sr,
     )
+    sr = zone.get("sr") or {}
+    sr_skip = zone.get("sr_skip") or {}
+    if zone.get("i_vmax") is not None:
+        i_vmax = int(zone["i_vmax"])
     _paint_live_candles(ax, None, opens, highs, lows, closes, vols, candle_up_taiwan)
-    # 黃帶對應那一根K＝最大量日：金K＋豎線；「最大量」字只留量欄
-    if i_vmax is not None:
-        _paint_special_candle(
-            ax,
-            int(i_vmax),
-            open_=float(opens[i_vmax]),
-            high=float(highs[i_vmax]),
-            low=float(lows[i_vmax]),
-            close=float(closes[i_vmax]),
-            color="#ffd54f",
-            date_lab=_ymd(bars[i_vmax].get("date")),
-            fp=_fp,
+    # 加權自己的大量撐壓日金K＋下一層亮桃K（豎線稍後只畫在加權價／量欄）
+    _tw_i_pri = int(i_vmax) if i_vmax is not None else None
+    _tw_i_nxt = far_vol_sr.get("i_next") if isinstance(far_vol_sr, dict) else None
+    if _tw_i_nxt is None and isinstance(far_vol_sr, dict):
+        _tw_i_pri2, _tw_i_nxt = _vol_sr_index_on_axis(
+            far_vol_sr, axis_ymds=[_ymd(r.get("date")) for r in bars]
         )
-    # 底色：藍＝推進⑤；金＝大B；紫＝大C
-    ax.axvspan(i5s - 0.4, i5e + 0.4, facecolor="#40c4ff", alpha=0.06, zorder=0.2)
-    ax.axvspan(i_alow - 0.2, i_b_end + 0.4, facecolor="#ffd54f", alpha=0.05, zorder=0.2)
-    ax.axvspan(i_c - 0.2, n - 0.2, facecolor="#ea80fc", alpha=0.05, zorder=0.2)
+        if _tw_i_pri is None:
+            _tw_i_pri = _tw_i_pri2
+    _paint_vol_sr_mark_on_axis(
+        ax,
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        i_primary=_tw_i_pri,
+        i_next=int(_tw_i_nxt) if _tw_i_nxt is not None else None,
+        date_primary=_ymd(bars[_tw_i_pri].get("date")) if _tw_i_pri is not None else "",
+        date_next=_ymd(((far_vol_sr or {}).get("next") or {}).get("date")),
+        fp=_fp,
+    )
+    # 遠窗不加權浪段大底色（⑤／B／C axvspan）：兩大塊半透底圖擋K，只留折線
     # 推進⑤：4/1→6/23（藍實線）
     ax.plot([i5s, i5e], [y5s, y5e], color="#40c4ff", lw=2.6, zorder=7)
     # 大A：6/23→7/29（粉）
@@ -5308,6 +7145,21 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             min_gap=(float(_sox_ylabel_span[1]) - float(_sox_ylabel_span[0])) * 0.045,
             x_col=x_sox_col,
         )
+    if _tx_right_notes and _tx_ylabel_span is not None:
+        # 電子盤右標：真價虛線＋字盒 nudge 疏開，不准框貼框卡住
+        _place_live_right_labels(
+            axt,
+            _tx_right_notes,
+            n=n_tw,
+            ymin=float(_tx_ylabel_span[0]),
+            ymax=float(_tx_ylabel_span[1]),
+            fp=_fp,
+            level_dash=True,
+            min_gap=(float(_tx_ylabel_span[1]) - float(_tx_ylabel_span[0])) * 0.11,
+            x_col=x_right_col + 0.15,
+            nudge=True,
+            fontsize=8.5,
+        )
     _place_live_right_labels(
         ax,
         right_notes,
@@ -5339,7 +7191,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edgecolor="#ffffff",
             edge_lw=0.9,
         )
-    ax.set_ylabel("加權", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    _set_upright_ylabel(ax, "加權日盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
 
     # —— 下：加權日量（最大量黃＝與上方同索引當日K對齊）——
     _paint_vol_bars_max_yellow(
@@ -5352,8 +7204,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         title="加權量",
         date_lab=_ymd(bars[i_vmax].get("date")) if i_vmax is not None else "",
     )
-    if i_vmax is not None:
-        _paint_max_vol_day_guide((axu, ax, axv), i_vmax)
+    _set_upright_ylabel(axv, "加權量", fp=_fp, color=_LIVE_MUTED, fontsize=9)
+    # 加權 10/15 黃豎線只畫加權價＋量；不准延伸到費半／電子盤（各自爆大量日不同）
+    _paint_vol_sr_day_guides(axv, i_primary=_tw_i_pri, i_next=_tw_i_nxt)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
 
     want = {
@@ -5361,6 +7214,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         _ymd(bars[i5s].get("date")),
         _ymd(bars[i5e].get("date")),
         _ymd(bars[i_alow].get("date")),
+        "20260225",
         "20260401",
         "20260428",
         "20260623",
@@ -5383,6 +7237,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     tag = "⑤起"
                 elif i == i5e or d == "20260623":
                     tag = "⑤終"
+                elif d == "20260225":
+                    tag = "費再回測"
                 elif d == "20260428":
                     tag = "費次回測"
                 elif d == "20260729" or i == i_alow:
@@ -5408,7 +7264,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # 遠窗自 3 月底起：左側多留一格，⑤起首根不准被裁
     need_apr = True
     x_left = -1.35 if need_apr else -0.6
-    for a in (axu, ax, axv):
+    for a in (axu, axt, ax, axv):
         a.set_xlim(x_left, x_right)
     # xlim 定完再蓋末根費半K（避免右標／裁切吃掉周五官方柱）
     if _sox_last_repaint:
@@ -5470,13 +7326,46 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=20,
             clip_on=False,
         )
-        # 黃框漲跌改吃真實美股日K（不准對齊軸前收填日造成假 +0%）
+        # 黃框指數＝末根縮圖K同口價（出圖當下 live）；前收仍走真實美股列
         _pair = _us_real_close_pair(sox, (pack or {}).get("live_sox"))
         _sox_chg_tip = {
-            "close": float(_pair["close"] or _sox_last_repaint["c"]),
+            "close": float(_sox_last_repaint["c"]),
             "prev": _pair.get("prev_close"),
-            "asof": str(_pair.get("asof") or ""),
+            "asof": str(
+                _ymd(((pack or {}).get("live_sox") or {}).get("date"))
+                or _pair.get("asof")
+                or ""
+            ),
         }
+    if _tx_last_repaint:
+        _prev_tx = _tx_last_repaint.get("prev")
+        _paint_one_live_candle(
+            axt,
+            int(_tx_last_repaint["i"]),
+            open_=float(_tx_last_repaint["o"]),
+            high=float(_tx_last_repaint["h"]),
+            low=float(_tx_last_repaint["l"]),
+            close=float(_tx_last_repaint["c"]),
+            prev_c=_prev_tx,
+            candle_up=candle_up_taiwan,
+            min_body=float(_tx_last_repaint["min_body"]),
+            width=0.86,
+            wick_lw=2.05,
+            z_wick=18,
+            z_body=19,
+            edgecolor="#ffffff",
+            edge_lw=0.9,
+        )
+        axt.scatter(
+            [float(_tx_last_repaint["i"])],
+            [float(_tx_last_repaint["c"])],
+            s=52,
+            facecolors="none",
+            edgecolors="#ea80fc",
+            linewidths=1.5,
+            zorder=20,
+            clip_on=False,
+        )
     if _tw_last_repaint:
         ax.scatter(
             [float(_tw_last_repaint["i"])],
@@ -5488,17 +7377,18 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=16,
             clip_on=False,
         )
-    axv.set_xticks(t2)
-    axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
-    for a in (axu, ax, axv):
+    # 欄間小間距放日期：費半／電子盤／加權三欄底緣都標（量欄仍有完整軸）
+    for a in (axu, axt, ax, axv):
+        a.set_xticks(t2)
+        a.set_xticklabels(l2, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT)
+        a.tick_params(axis="x", labelbottom=True, length=3, pad=2)
+    for a in (axu, axt, ax, axv):
         for lab in a.get_yticklabels():
             lab.set_fontproperties(_fp(8, "bold"))
             lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
-    vz_y = (
-        f"黃＝最大量{_md(bars[i_vmax].get('date'))} {_px(highs[i_vmax])}～{_px(lows[i_vmax])}"
-        if i_vmax is not None
-        else "黃＝最大量日高低"
+    vz_y = _teach_vol_sr_title_bit(
+        far_vol_sr, bars=bars, highs=highs, lows=lows, i_vmax=i_vmax
     )
     vz_c = (
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
@@ -5506,15 +7396,20 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     sox_bit = ""
     sox_preds = ((pack or {}).get("pred_levels") or {}).get("sox") or []
+    sox_bit = ""
     if sox_preds:
-        sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
-    # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」
-    pred_foot = str(pack.get("pred_note") or "")[:240]
+        if any(str(r.get("role") or "") == "再回測" for r in sox_preds):
+            sox_bit = "｜費半青＝已破4/28→下一撐（2/25＝8498回測K同軸）"
+        else:
+            sox_bit = "｜費半青＝已破A→下一撐（4/28回測K同軸）"
+    # 不准 [:72]：會把「次回測4/28低9,865」裁成「9,」；也不准裁掉 2/25 8498
+    pred_foot = str(pack.get("pred_note") or "")[:280]
     # 白字標題縮短讓出右上；費半青註改第二行，不准跟黃框互壓
+    left_d = _ymd(bars[0].get("date")) if bars else ""
     fig.text(
         0.05,
-        0.975,
-        f"第1張（遠窗・自3月底）：上費半浪｜中加權推進⑤／大ABC｜下加權量　｜　{vz_y}　｜　{vz_c}",
+        0.982,
+        f"第1張（遠窗・{_md(left_d) or '自3月底'}→最新）：費半｜台指電子盤｜加權日盤⑤／ABC｜加權量　｜　{vz_y}　｜　{vz_c}",
         fontproperties=_fp(11, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -5522,20 +7417,51 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     )
     fig.text(
         0.05,
-        0.952,
+        0.961,
         f"{_macro_wave_calendar_line()}｜藍⑤｜粉A｜金虛B｜紫C｜"
-        f"費半同軸｜C走完≠新五波升{sox_bit}",
+        f"費半＋台指電子盤同時段｜C走完≠新五波升{sox_bit}",
         fontproperties=_fp(9, "bold"),
         color="#ce93d8",
         ha="left",
         va="top",
     )
-    # 加權／費半黃框：加權貼最上；費半在桃色副標下一行，不准擋桃色字／費半K
-    _tw_stamp_y = 0.982
-    _sox_stamp_y = 0.918
-    _paint_teach_query_stamp(
-        fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=_tw_stamp_y
+    # 三戳：共用同一個 figure 右緣 x（ha=right → 框右邊對齊），Y 各自避讓
+    _stamp_clear = 0.26
+    _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_bottom_right(
+        axu,
+        fig,
+        right_clear_frac=_stamp_clear,
+        avoid_spans=_vol_sr_avoid_spans(sox_vol_sr),
+        avoid_ys=[float(n.get("y")) for n in (_sox_right_deferred or []) if n.get("y") is not None],
     )
+    _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_bottom_right(
+        axt,
+        fig,
+        right_clear_frac=_stamp_clear,
+        avoid_spans=_vol_sr_avoid_spans(tx_vol_sr),
+        avoid_ys=[float(n.get("y")) for n in (_tx_right_notes or []) if n.get("y") is not None],
+    )
+    _tw_avoid = _vol_sr_avoid_spans(far_vol_sr)
+    try:
+        if sr.get("support") is not None and sr.get("resist") is not None:
+            _tw_avoid.append((float(sr["support"]), float(sr["resist"])))
+    except (TypeError, ValueError, AttributeError):
+        pass
+    _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_bottom_right(
+        ax,
+        fig,
+        right_clear_frac=_stamp_clear,
+        avoid_spans=_tw_avoid,
+        avoid_ys=[float(n.get("y")) for n in (right_notes or []) if n.get("y") is not None],
+    )
+    # 強制三戳同一右緣（取最右合法錨，避免某一欄 clear 漂掉）
+    try:
+        _pos_r = float(ax.get_position().x0) + float(ax.get_position().width) * (
+            1.0 - float(_stamp_clear)
+        )
+    except Exception:
+        _pos_r = max(float(_sox_stamp_x), float(_tx_stamp_x), float(_tw_stamp_x))
+    _stamp_right_x = float(_pos_r)
     if _sox_chg_tip:
         _paint_index_last_chg_tip(
             fig,
@@ -5543,12 +7469,63 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_sox_chg_tip.get("prev"),
             label_prefix="費半",
             fp=_fp,
-            x=0.995,
+            x=_stamp_right_x,
             y=_sox_stamp_y,
             ha="right",
+            va="bottom",
             asof_ymd=str(_sox_chg_tip.get("asof") or ""),
             chart_asof=str(as_of or ""),
         )
+    # 漲跌一律對官方參考價（CRefPrice）；不准用前一夜盤收當 prev
+    _tx_chg_tip = _resolve_tx_after_hours_tip(db_path, pack)
+    if _tx_last_repaint and _tx_chg_tip:
+        _paint_tx_after_hours_tip(
+            fig,
+            close=float(_tx_last_repaint["c"]),
+            prev_close=_tx_chg_tip.get("prev"),
+            label_prefix="台指電子盤",
+            fp=_fp,
+            x=_stamp_right_x,
+            y=_tx_stamp_y,
+            ha="right",
+            va="bottom",
+            clock=str(
+                _tx_chg_tip.get("clock")
+                or ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
+                or ""
+            ),
+            asof_ymd=str(
+                _tx_chg_tip.get("asof")
+                or _ymd(((live_tx or (pack or {}).get("live_tx") or {}).get("date")))
+                or (bars[_tx_last_repaint["i"]].get("date") if bars else "")
+                or ""
+            ),
+        )
+    elif _tx_chg_tip:
+        _paint_tx_after_hours_tip(
+            fig,
+            close=float(_tx_chg_tip["close"]),
+            prev_close=_tx_chg_tip.get("prev"),
+            label_prefix=str(_tx_chg_tip.get("label") or "台指電子盤"),
+            fp=_fp,
+            x=_stamp_right_x,
+            y=_tx_stamp_y,
+            ha="right",
+            va="bottom",
+            clock=str(_tx_chg_tip.get("clock") or ""),
+            asof_ymd=str(_tx_chg_tip.get("asof") or ""),
+        )
+    _paint_teach_query_stamp(
+        fig,
+        bars,
+        pack=pack,
+        close=closes[-1],
+        fp=_fp,
+        x=_stamp_right_x,
+        y=_tw_stamp_y,
+        ha="right",
+        va="bottom",
+    )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
         pack.get("thesis") or "推進⑤＝4/1→6/23｜大A底7/29→大B→大C進行中（預估）"
@@ -5587,7 +7564,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：超近窗同吋大小，右緣貼垂直黃虛線（最大量日）左側低空帶
+    # 八浪縮圖：縮小貼加權左下，再往左推，不准擋右下白底戳／縮圖K
     _far_ins = _eight_wave_inset_rect_left_of_vmax(
         ax,
         fig,
@@ -5595,17 +7572,33 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ymin=float(ymin),
         ymax=float(ymax),
         n_bars=n_tw,
+        scale=0.46,
+        pin_bottom=True,
     )
+    try:
+        _ins_l, _ins_b, _ins_w, _ins_h = _far_ins
+        _axpos = ax.get_position()
+        # 右緣鎖在欄寬 40% 內，把空間留給右下加權黃戳
+        _max_right = float(_axpos.x0) + float(_axpos.width) * 0.40
+        if _ins_l + _ins_w > _max_right:
+            _ins_l = max(float(_axpos.x0) + 0.006, _max_right - _ins_w)
+        _far_ins = (float(_ins_l), float(_ins_b), float(_ins_w), float(_ins_h))
+    except Exception:
+        pass
     _paint_eight_wave_inset(
         fig,
         fp=_fp,
         now_key=_eight_wave_now_key(pack),
         detail=False,
         rect=_far_ins,
-        title="八浪對位",
+        title="八浪",
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
+    if not (os.path.isfile(save_path) and os.path.getsize(save_path) > 4000):
+        return ""
+    # 四欄加高後易觸 Telegram 寬+高上限 → 等比縮到可 sendPhoto
+    _shrink_png_for_telegram(save_path)
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
 
 
@@ -5801,17 +7794,20 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
-    bars = _twii_bars_for_teach(db_path, 220, pack)
-    if len(bars) < 16 or not save_path:
+    bars_full = _twii_bars_for_teach(db_path, 220, pack)
+    if len(bars_full) < 16 or not save_path:
         return ""
+    # 大量撐壓／下一層＝結構圖同一套（先在完整柱算，再切片畫黃／灰帶）
+    near_vol_sr = _resolve_teach_vol_sr(bars_full, lookback=40)
     # 近窗＝大結構特寫：從⑤起入窗，⑤／A／B 起末與遠窗／縮圖同一日曆
     i0 = (
-        _bar_index_by_ymd(bars, "20260401")
-        or _bar_index_by_ymd(bars, "20260331")
-        or _bar_index_by_ymd(bars, "20260325")
+        _bar_index_by_ymd(bars_full, "20260401")
+        or _bar_index_by_ymd(bars_full, "20260331")
+        or _bar_index_by_ymd(bars_full, "20260325")
         or 0
     )
-    bars = list(bars[i0:])
+    bars = list(bars_full[i0:])
+    near_vol_sr = _remap_teach_vol_sr_index(near_vol_sr, bars)
     mac = _twii_macro_wave_anchors(bars)
     if not mac:
         return ""
@@ -5873,7 +7869,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     # 他點錨走右欄 → 左欄不准再貼同價壓虛線
     skip_lab_ys = list(skip_lab_ys) + [float(v) for v in tip_anchors]
-    # 與遠窗同一套雙底色（黃＝最大量日高低、青＝飆預測位階帶）
+    # 與遠窗同一套雙底色（黃＝大量撐壓、灰＝下一層、青＝飆預測位階帶）
     zone = _paint_window_dual_zones(
         ax,
         highs=highs,
@@ -5885,6 +7881,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         supports=tw_supports,
         resists=(47637.0, 48613.0, y_b_end, y5e),
         skip_label_ys=skip_lab_ys,
+        vol_lookback=40,
+        vol_sr=near_vol_sr,
     )
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
@@ -6222,10 +8220,12 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     title_bit = str(ladder.get("now") or "").strip() or "現在在C（預估）"
     if len(title_bit) > 22:
         title_bit = title_bit[:21] + "…"
-    vz_y = (
-        f"黃＝最大量{_md(bars[int(i_vmax)].get('date'))} {_px(highs[int(i_vmax)])}～{_px(lows[int(i_vmax)])}"
-        if i_vmax is not None
-        else "黃＝最大量日高低"
+    vz_y = _teach_vol_sr_title_bit(
+        zone.get("vol_sr") or near_vol_sr,
+        bars=bars,
+        highs=highs,
+        lows=lows,
+        i_vmax=i_vmax,
     )
     vz_c = (
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
@@ -6317,17 +8317,20 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         from wayne_navigator import NAV_CHART_DPI, _fp
     except Exception:
         return ""
-    bars = _twii_bars_for_teach(db_path, 120, pack)
-    if len(bars) < 16 or not save_path:
+    bars_full = _twii_bars_for_teach(db_path, 220, pack)
+    if len(bars_full) < 16 or not save_path:
         return ""
+    # 大量撐壓／下一層＝結構圖同一套（完整柱算完再裁超近窗）
+    micro_vol_sr = _resolve_teach_vol_sr(bars_full, lookback=40)
     # 資料窗仍留⑤錨（鐵律要⑤）；畫面 xlim 再裁到 B／C 超級近窗
     i0 = (
-        _bar_index_by_ymd(bars, "20261006")
-        or _bar_index_by_ymd(bars, "20260929")
-        or _bar_index_by_ymd(bars, "20260925")
+        _bar_index_by_ymd(bars_full, "20261006")
+        or _bar_index_by_ymd(bars_full, "20260929")
+        or _bar_index_by_ymd(bars_full, "20260925")
         or 0
     )
-    bars = list(bars[i0:])
+    bars = list(bars_full[i0:])
+    micro_vol_sr = _remap_teach_vol_sr_index(micro_vol_sr, bars)
     anc = _twii_abc_anchors(bars)
     if not anc:
         return ""
@@ -6403,6 +8406,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         supports=tw_supports,
         resists=(47637.0, 48613.0, y_bhi),
         skip_label_ys=_skip_left,
+        vol_lookback=40,
+        vol_sr=micro_vol_sr,
     )
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
@@ -6812,10 +8817,12 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
     as_of = _ymd(bars[-1].get("date"))
-    vz_y = (
-        f"黃＝最大量{_md(bars[int(i_vmax)].get('date'))} {_px(highs[int(i_vmax)])}～{_px(lows[int(i_vmax)])}"
-        if i_vmax is not None
-        else "黃＝最大量日高低"
+    vz_y = _teach_vol_sr_title_bit(
+        zone.get("vol_sr") or micro_vol_sr,
+        bars=bars,
+        highs=highs,
+        lows=lows,
+        i_vmax=i_vmax,
     )
     vz_c = (
         f"青＝飆預測{_px(sr['support']) if sr.get('support') is not None else '—'}～"
@@ -7491,6 +9498,24 @@ def prepare_wave_live_pack(
             pack["live_sox"] = live_sox
     except Exception:
         logger.debug("prepare_wave 盤中費半略過", exc_info=True)
+        live_sox = None
+    # 即時價若已破 4/28 9865 → 掛 2/25 8498 再回測（撐壓對最新價）
+    try:
+        pred = pack.get("pred_levels") if isinstance(pack.get("pred_levels"), dict) else {}
+        px = _sox_latest_px(db_path, live=pack.get("live_sox") or live_sox)
+        refreshed = _refresh_sox_pred_cascade(pred, db_path, sox_px=px)
+        pack["pred_levels"] = refreshed
+        if refreshed.get("note"):
+            pack["pred_note"] = str(refreshed.get("note") or "")[:280]
+            for row in refreshed.get("sox") or []:
+                try:
+                    pack.setdefault("key_levels", {})[
+                        f"pred_sox_{int(float(row['level']))}"
+                    ] = float(row["level"])
+                except (TypeError, ValueError, KeyError):
+                    continue
+    except Exception:
+        logger.debug("prepare_wave 費半撐壓階梯略過", exc_info=True)
     pack["query_at"] = dt.isoformat()
     pack["_prep_now"] = dt
     return pack

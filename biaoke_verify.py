@@ -96,7 +96,8 @@ def fetch_tx_ohlc(*, night: bool = True, timeout: float = 6.0) -> Optional[Dict[
         return None
     t = str(row.get("CTime") or "").strip()
     clock = f"{t[0:2]}:{t[2:4]}:{t[4:6]}" if len(t) >= 6 else t
-    return {
+    ref = _num_or_none(row.get("CRefPrice"))
+    out = {
         "date": _ymd(row.get("CDate")),
         "session": "night" if night else "regular",
         "symbol": str(row.get("SymbolID") or ""),
@@ -110,6 +111,11 @@ def fetch_tx_ohlc(*, night: bool = True, timeout: float = 6.0) -> Optional[Dict[
         "source": "taifex_mis",
         "is_realtime": True,
     }
+    # 官方漲跌對照＝參考價；不准拿前一夜盤收當前收
+    if ref and ref > 0:
+        out["ref"] = float(ref)
+        out["prev_close"] = float(ref)
+    return out
 
 
 def _twii_rows(db_path: str, since: str = "20260801") -> List[Dict[str, Any]]:

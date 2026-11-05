@@ -1162,3 +1162,63 @@ def test_biaoke_teach_charts_only_far_no_us_outer():
     wave = inspect.getsource(WayneTelegramBot._send_market_wave_charts)
     assert "外圍對照另張" not in wave
     assert "micro_path" in wave and "far_path" in wave and "near_path" in wave
+
+
+def test_sox_9865_official_not_twii(tmp_path):
+    """費半9865不准拿去對加權；破了要寫低已破。"""
+    import sqlite3
+    from biaoke_reweave import _levels_from_posts, _touch_phrase, voice_gold_lines
+
+    assert "低已破" in _touch_phrase(9838.0, 9051.0, 9865.0)
+    posts = [
+        {
+            "id": "m",
+            "kind": "post",
+            "date": "2026-11-04",
+            "time": "18:49",
+            "text": "大盤未止穩。費城半導體至少殺到9865附近。",
+        },
+        {
+            "id": "m:c1",
+            "kind": "reply",
+            "date": "2026-11-06",
+            "time": "00:02",
+            "text": "其實我認為9865會破，因為大盤要整理大概兩年",
+        },
+    ]
+    levels = _levels_from_posts(posts)
+    assert ("SOX", 9865.0) in levels
+    assert not any(s == "TWII" and abs(p - 9865.0) < 1 for s, p in levels)
+    db = str(tmp_path / "sox.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily("
+        "date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL)"
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?)",
+        ("20261105", "SOX", 9806.0, 9838.0, 9051.0, 9208.0, 0),
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?)",
+        ("20261105", "TWII", 42666.0, 42873.0, 41513.0, 41574.0, 1),
+    )
+    conn.commit()
+    conn.close()
+    glued = "\n".join(voice_gold_lines(posts, db))
+    assert "費半" in glued and "9865" in glued
+    assert "低已破他說的9865" in glued
+    assert not ("加權" in glued and "9865" in glued)
+
+
+def test_drop_stale_sox_distance_when_will_break():
+    """已改口9865會破 → 拿掉還有一段距離舊句。"""
+    from biaoke_digest import _drop_stale_sox_distance
+
+    s = (
+        "費城半導體至少殺到9865附近，目前還有一段距離。"
+        "其實我認為9865會破，因為大盤要整理大概兩年。"
+    )
+    out = _drop_stale_sox_distance(s)
+    assert "還有一段距離" not in out
+    assert "9865會破" in out
