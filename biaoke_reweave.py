@@ -142,9 +142,11 @@ _LEAD_QUOTE = re.compile(
 _ANCHORS = ("聯亞", "大立光", "奇鋐", "奇宏", "創意", "台積電", "台指期")
 _IF_EXAMPLE = re.compile(r"如果|舉例|譬如")
 _LEVEL_NUM = re.compile(r"(?<!\d)(\d{4,6})(?!\d)")
-# 台指期比「大盤」先配：同一句同時出現時，數字靠誰近就跟誰。
+# 台指期／費半比「大盤」先配：同一句同時出現時，數字靠誰近就跟誰。
+# 費半必須獨立系列：9865／8498／10445 不准拿去對加權柱。
 _SERIES_WORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("TX", ("台指期",)),
+    ("SOX", ("費城半導體", "費半", "費城", "SOX", "費辦")),
     ("TWII", ("加權", "大盤")),
     ("2330", ("台積電",)),
     ("3443", ("創意",)),
@@ -154,6 +156,7 @@ _SERIES_WORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 )
 _SERIES_LABEL = {
     "TX": "台指期",
+    "SOX": "費半",
     "TWII": "加權",
     "2330": "台積電",
     "3443": "創意",
@@ -342,6 +345,13 @@ def _load_official_bar(db_path: str, series: str) -> Optional[Dict[str, Any]]:
                 "ORDER BY date DESC LIMIT 6"
             ).fetchall()
             session = "regular"
+        elif series == "SOX":
+            rows = conn.execute(
+                "SELECT date, open, high, low, close, volume "
+                "FROM index_daily WHERE symbol='SOX' AND close IS NOT NULL "
+                "ORDER BY date DESC LIMIT 6"
+            ).fetchall()
+            session = "regular"
         else:
             rows = conn.execute(
                 "SELECT date, open, high, low, close, volume "
@@ -382,12 +392,15 @@ def _load_official_bar(db_path: str, series: str) -> Optional[Dict[str, Any]]:
 
 
 def _touch_phrase(high: float, low: float, px: float) -> str:
+    """對官方柱：包住／還在上方／已整根跌破。下跌目標破了不准寫「高還沒到」。"""
     p = _fmt_px(px)
     if low <= px <= high:
         return f"這根高低包住他說的{p}"
-    if high < px:
-        return f"高還沒到他說的{p}"
-    return f"低還在他說的{p}之上"
+    if low > px:
+        # 整根都在關卡上方＝還沒跌到
+        return f"低還在他說的{p}之上"
+    # high < px：整根都在關卡下方＝已破（費半9865／大盤支撐同理）
+    return f"低已破他說的{p}"
 
 
 def _series_near(sentence: str, start: int, end: int) -> str:
@@ -434,11 +447,24 @@ def _levels_from_posts(posts: Sequence[Dict[str, Any]]) -> List[Tuple[str, float
                 num = m.group(1)
                 if num.startswith("202"):
                     continue
-                series = _series_near(sent, m.start(), m.end()) or local or named or last
+                px = float(num)
+                # 費半點位窗：即使同句有「大盤」，9865／8498／10445 仍跟費半
+                if 7000.0 <= px <= 16000.0 and (
+                    named == "SOX"
+                    or any(
+                        w in sent
+                        for w in ("費半", "費城", "費辦", "SOX", "費城半導體")
+                    )
+                ):
+                    series = "SOX"
+                else:
+                    series = _series_near(sent, m.start(), m.end()) or local or named or last
                 if not series:
                     continue
+                # 費半價不准被 last=TWII 帶走
+                if series == "TWII" and 7000.0 <= px <= 16000.0:
+                    continue
                 local = series
-                px = float(num)
                 key = (series, px)
                 if key in seen:
                     continue
@@ -518,7 +544,32 @@ def voice_gold_lines(
     chunks: List[str] = []
     shown_now = [str(x) for x in shown if str(x or "").strip()]
     picked: List[Dict[str, Any]] = []
-    for rep in later:
+    # 先收有點位／改口的自回，再補時間序其餘；總量封頂，不准整串倒進按鍵
+    _LEVELISH = re.compile(
+        r"45546|46292|44210|44042|39384|42000|41000|40000|35000|38000|"
+        r"9865|10445|8498|47500|會破|必破|已破|穿刺|假跌破|劇本|費半|費城|C3-"
+    )
+    scored: List[Tuple[int, Dict[str, Any]]] = []
+    for i, rep in enumerate(later):
+        raw = _clean_voice(str(rep.get("text") or ""))
+        if not raw:
+            continue
+        if _SKIP_REPLY.search(raw) and not _LEVELISH.search(raw):
+            continue
+        pri = 2 if _LEVELISH.search(raw) else 0
+        scored.append((pri * 1000 + i, rep))
+    # 時間序保留：同優先內照原序；點位句整段提前但仍按時間
+    level_first = [r for _, r in sorted(
+        [(s, r) for s, r in scored if s >= 1000], key=lambda x: x[0]
+    )]
+    rest = [r for _, r in sorted(
+        [(s, r) for s, r in scored if s < 1000], key=lambda x: x[0]
+    )]
+    ordered_reps = level_first + rest
+    seen_clip: set = set()
+    for rep in ordered_reps:
+        if len(chunks) >= 8:
+            break
         raw = _clean_voice(str(rep.get("text") or ""))
         anchored = _anchored_text(rep)
         clip = _lianya_kept(raw)
@@ -528,6 +579,10 @@ def voice_gold_lines(
             clip = _own_clip(anchored, shown_now + chunks, limit=220)
         if not clip:
             continue
+        dedupe_key = re.sub(r"\s+", "", clip)[:72]
+        if dedupe_key in seen_clip:
+            continue
+        seen_clip.add(dedupe_key)
         picked.append(rep)
         if not _already_shown(clip, shown_now + chunks):
             chunks.append(clip)

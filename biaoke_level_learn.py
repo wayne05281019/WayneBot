@@ -1827,6 +1827,7 @@ def _latest_biaoke_index_snip(
     except Exception:
         reps = []
     reply_bits: List[str] = []
+    seen_reply: set = set()
     for pid, date_s, time_s, text in reps or ():
         d = str(date_s or "").strip()
         t = str(time_s or "").strip()
@@ -1838,7 +1839,14 @@ def _latest_biaoke_index_snip(
             continue
         if not _reply_level_delta(blob):
             continue
-        reply_bits.append(re.sub(r"\s+", " ", blob).strip())
+        flat = re.sub(r"\s+", " ", blob).strip()
+        # 去重：同句重貼／句首多一個點，不准堆兩次
+        key = re.sub(r"^[\.\s]+", "", flat)
+        key = re.sub(r"\s+", "", key)[:96]
+        if key in seen_reply:
+            continue
+        seen_reply.add(key)
+        reply_bits.append(flat)
     # 主文 → 同日劇本句 → 同串他回（時間序；後句改口壓前）。回文優先保留。
     main_flat = re.sub(r"\s+", " ", best_blob).strip()
     parts = [main_flat] + extras + reply_bits

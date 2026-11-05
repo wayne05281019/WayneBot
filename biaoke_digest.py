@@ -1343,6 +1343,16 @@ def _collect_open_index_gates(
             key = round(lv, 2)
             ctx = str(hit.get("ctx") or "").strip()
             role = str(hit.get("role") or "點位")
+            blob = f"{text} {ctx}"
+            # 他最新題旨鎖定角色：反彈穿刺／轉震盪／劇本一，不准全叫「點位」
+            if abs(key - 45546.0) < 1.0 and re.search(r"穿刺|反彈", blob):
+                role = "反彈穿刺"
+            elif abs(key - 46292.0) < 1.0 and re.search(r"轉震盪|震盪整理", blob):
+                role = "轉震盪"
+            elif abs(key - 38000.0) < 1.0 and re.search(r"35000|劇本", blob):
+                role = "劇本一上沿"
+            elif abs(key - 35000.0) < 1.0 and re.search(r"38000|劇本", blob):
+                role = "劇本一下沿"
             how = _SPACE.sub(" ", ctx).strip()
             # 關卡「他說」只留短上下文；長洗盤敘述留給大盤欄，不准每關重貼一次
             how = _oral_body(how, 56)
@@ -1567,14 +1577,17 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 24
     ]
     if not mains:
         return ""
-    latest = list(reversed(mains[-max(1, int(n_main)) :]))
+    # 主文／自回一律先依時間序排；最新兩則主文＋兩串自回（含樓中樓）
+    mains_chrono = sorted(mains, key=_row_key)
+    latest = list(reversed(mains_chrono[-max(1, int(n_main)) :]))
     root_ids = {_thread_root_id(p) for p in latest if _thread_root_id(p)}
-    thread_replies = [
-        p for p in replies if _thread_root_id(p) in root_ids
-    ]
-    # 兩串內按時間取最近 n_reply 則自回（含樓中樓）
+    thread_replies = sorted(
+        [p for p in replies if _thread_root_id(p) in root_ids],
+        key=_row_key,
+    )
+    # 兩串內取最近 n_reply 則；傳入 oral 時維持時間由舊到新，改口才壓得住
     latest_replies = (
-        list(reversed(thread_replies[-max(0, int(n_reply)) :])) if n_reply else []
+        thread_replies[-max(0, int(n_reply)) :] if n_reply else []
     )
     return format_focus_oral(
         latest,
