@@ -241,14 +241,26 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "tx_vol_sr" in far_blk
     assert "_tx_right_notes" in far_blk
     assert "電盤" in far_blk
-    # 三戳各歸本欄右下（避撐壓底色）；八浪再往左不擋戳
+    # 三戳偏右下但讓出右標欄；避撐壓底色＋右標；八浪再往左
     assert "_fig_stamp_xy_axes_bottom_right" in far_blk
     assert "def _fig_stamp_xy_axes_bottom_right" in src
+    assert "right_clear_frac" in src
     assert "_vol_sr_avoid_spans" in far_blk
+    assert "avoid_ys" in far_blk
     assert 'va="bottom"' in far_blk
+    assert "CRefPrice" in src or "參考價" in src
+    assert "_tx_chg_tip = _resolve_tx_after_hours_tip" in far_blk
     assert "scale=0.46" in far_blk and "pin_bottom=True" in far_blk
     assert "0.40" in far_blk  # 八浪右緣鎖左 40%
     assert "labelbottom=True" in far_blk
+    # 左軸逐字正讀；電子盤左標全關改右欄疏開（大量＋下一層）
+    assert "_set_upright_ylabel" in far_blk
+    assert "def _stack_upright_ylabel" in src
+    assert "rotation=0" in src
+    assert "clip_on=False" in src  # 左軸逐字 ax.text
+    assert "labels=False" in far_blk
+    assert "0.11" in far_blk  # 電子盤右標間距
+    assert "nudge=True" in far_blk  # 字盒疏開、虛線仍貼真價
     assert "_paint_tx_after_hours_tip" in far_blk
     assert "_TEACH_STAMP_EDGE_TX" in src
     assert "def _resolve_tx_after_hours_tip" in src
@@ -392,7 +404,7 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
     # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
     assert "n_axis + 8.6" in block or "n + 8.6" in block
-    assert "right=0.98" in block
+    assert "right=0.978" in block or "right=0.98" in block
     assert "right=0.90" not in block
     assert "_extend_us_ohlc_past_twii" in block or "_extend_us_ohlc_past_twii" in src
     assert "_FAR_SOX_MIN_BODY_FRAC" in src

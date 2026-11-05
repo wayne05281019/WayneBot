@@ -936,6 +936,61 @@ def _stamp_box_alignment(ha: str, va: str = "top") -> Tuple[float, float]:
     return (hx, vy)
 
 
+def _stack_upright_ylabel(text: str) -> str:
+    """左軸標題正讀由上而下：漢字逐字、英文詞整段，不准橫躺歪頭看。"""
+    parts: List[str] = []
+    buf: List[str] = []
+    for ch in str(text or ""):
+        if ch.isspace():
+            if buf:
+                parts.append("".join(buf))
+                buf = []
+            continue
+        if "\u4e00" <= ch <= "\u9fff" or ch in "／·・":
+            if buf:
+                parts.append("".join(buf))
+                buf = []
+            parts.append(ch)
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append("".join(buf))
+    return "\n".join(parts) if parts else str(text or "")
+
+
+def _set_upright_ylabel(ax: Any, text: str, *, fp: Any, color: str, fontsize: float = 10) -> None:
+    """遠窗三欄左軸：逐字正讀由上而下（不用 set_ylabel 橫躺）。"""
+    if ax is None:
+        return
+    # 清掉預設橫躺 ylabel
+    try:
+        ax.set_ylabel("")
+    except Exception:
+        pass
+    parts = [p for p in _stack_upright_ylabel(text).split("\n") if p]
+    if not parts:
+        return
+    n = len(parts)
+    # 垂直置中；字距隨欄高自適應
+    span = 0.62 if n <= 4 else min(0.78, 0.12 * n)
+    y0 = 0.5 + span / 2.0
+    step = span / max(n - 1, 1)
+    for i, part in enumerate(parts):
+        ax.text(
+            -0.055,
+            y0 - i * step,
+            part,
+            transform=ax.transAxes,
+            fontproperties=fp(fontsize, "bold"),
+            color=color,
+            rotation=0,
+            ha="center",
+            va="center",
+            clip_on=False,
+            zorder=30,
+        )
+
+
 def _fig_xy_from_axes_data(ax: Any, fig: Any, x_data: float, y_data: float) -> Tuple[float, float]:
     """把軸上 data 座標轉成 figure fraction（給黃戳／縮圖對齊虛線位）。"""
     try:
@@ -1027,18 +1082,21 @@ def _fig_stamp_xy_axes_bottom_right(
     ax: Any,
     fig: Any,
     *,
-    inset_x: float = 0.010,
+    right_clear_frac: float = 0.24,
     inset_y_frac: float = 0.045,
     stamp_h_data_frac: float = 0.10,
     avoid_spans: Optional[Sequence[Tuple[float, float]]] = None,
+    avoid_ys: Optional[Sequence[float]] = None,
 ) -> Tuple[float, float]:
-    """該圖框內右下角；若會壓到撐壓底色帶就上移到最近空檔。"""
+    """該圖框內偏右下；右緣讓出右標欄，不准壓右下價標／撐壓底色。"""
     try:
         pos = ax.get_position()
         ymin, ymax = ax.get_ylim()
     except Exception:
-        return (0.995, 0.12)
-    x = float(pos.x1) - float(inset_x)
+        return (0.78, 0.12)
+    # 右對齊錨點停在欄寬 (1-right_clear) 處，白底戳往左長，右標仍看得見
+    clear = max(0.14, min(0.36, float(right_clear_frac)))
+    x = float(pos.x0) + float(pos.width) * (1.0 - clear)
     span = max(float(ymax) - float(ymin), 1.0)
     stamp_h = span * float(stamp_h_data_frac)
     bands = [
@@ -1046,6 +1104,14 @@ def _fig_stamp_xy_axes_bottom_right(
         for a, b in (avoid_spans or [])
         if a is not None and b is not None
     ]
+    # 右標單點也當薄帶避讓
+    pad_y = span * 0.028
+    for raw in avoid_ys or []:
+        try:
+            yy = float(raw)
+        except (TypeError, ValueError):
+            continue
+        bands.append((yy - pad_y, yy + pad_y))
 
     def _hit(y0: float, y1: float) -> bool:
         for a, b in bands:
@@ -1053,14 +1119,13 @@ def _fig_stamp_xy_axes_bottom_right(
                 return True
         return False
 
-    # 自底往上找不擋底色帶的錨點（va=bottom → 戳在錨點之上）
+    # 自底往上找不擋底色／右標的錨點（va=bottom → 戳在錨點之上）
     y_data = float(ymin) + span * float(inset_y_frac)
-    for _ in range(24):
+    for _ in range(28):
         if not _hit(y_data, y_data + stamp_h):
             break
-        y_data += stamp_h * 0.42
+        y_data += stamp_h * 0.40
         if y_data + stamp_h >= float(ymax) - span * 0.04:
-            # 找最大空檔中點當備援
             y_data = float(ymin) + span * float(inset_y_frac)
             break
     try:
@@ -1364,31 +1429,66 @@ def _paint_index_last_chg_tip(
 def _resolve_tx_after_hours_tip(
     db_path: str, pack: Optional[Dict[str, Any]] = None
 ) -> Optional[Dict[str, Any]]:
-    """台指電子盤戳用價：夜盤 MIS 即時優先；沒接到才吃庫內夜盤 vs 日盤。不准假數。"""
+    """台指電子盤戳用價：夜盤 MIS 即時優先。
+
+    漲跌對照＝官方 CRefPrice（參考價／日盤結算），不准用前一夜盤收當前收
+   （否則會把 −4.5% 算成 −8.7%）。
+    """
     close: Optional[float] = None
     prev: Optional[float] = None
     asof = ""
     clock = ""
-    # 1) 夜盤即時
-    try:
-        from market_ticker import fetch_tx_live
-
-        q = fetch_tx_live(night=True, timeout=2.5)
-    except Exception:
-        q = None
-    if isinstance(q, dict) and float(q.get("close") or 0) > 0:
-        close = float(q["close"])
-        clock = str(q.get("update_time") or "").strip()
-        pct = q.get("pct_change")
+    # 0) pack 已抓的 live_tx（同口 OHLC＋ref）
+    live0 = (pack or {}).get("live_tx") if isinstance(pack, dict) else None
+    if isinstance(live0, dict) and float(live0.get("close") or 0) > 0:
+        close = float(live0["close"])
+        clock = str(live0.get("update_time") or "").strip()
+        asof = _ymd(live0.get("date")) or ""
+        for key in ("ref", "prev_close"):
+            try:
+                r = float(live0.get(key) or 0)
+            except (TypeError, ValueError):
+                r = 0.0
+            if r > 0:
+                prev = r
+                break
+        if prev is None:
+            try:
+                pct = live0.get("pct_change")
+                if pct is not None and abs(float(pct) + 100.0) > 1e-9:
+                    prev = close / (1.0 + float(pct) / 100.0)
+                    if prev <= 0:
+                        prev = None
+            except (TypeError, ValueError):
+                prev = None
+    # 1) 夜盤即時 MIS
+    if close is None:
         try:
-            if pct is not None and abs(float(pct) + 100.0) > 1e-9:
-                prev = close / (1.0 + float(pct) / 100.0)
-                if prev <= 0:
+            from market_ticker import fetch_tx_live
+
+            q = fetch_tx_live(night=True, timeout=2.5)
+        except Exception:
+            q = None
+        if isinstance(q, dict) and float(q.get("close") or 0) > 0:
+            close = float(q["close"])
+            clock = str(q.get("update_time") or "").strip()
+            try:
+                r = float(q.get("ref") or q.get("prev_close") or 0)
+            except (TypeError, ValueError):
+                r = 0.0
+            if r > 0:
+                prev = r
+            else:
+                pct = q.get("pct_change")
+                try:
+                    if pct is not None and abs(float(pct) + 100.0) > 1e-9:
+                        prev = close / (1.0 + float(pct) / 100.0)
+                        if prev <= 0:
+                            prev = None
+                except (TypeError, ValueError):
                     prev = None
-        except (TypeError, ValueError):
-            prev = None
-        asof = datetime.now(TAIPEI).strftime("%Y%m%d")
-    # 2) pack／庫內夜盤
+            asof = datetime.now(TAIPEI).strftime("%Y%m%d")
+    # 2) 庫內：現價＝夜盤收；前收＝同日／最近日盤結算（對齊官方參考），不准前一夜
     fut = (pack or {}).get("_fut_snap") if isinstance(pack, dict) else None
     if not isinstance(fut, dict) or not (fut.get("levels") or {}):
         try:
@@ -2432,6 +2532,13 @@ def _ensure_paint_live_tx(
                 "source": "taifex_mis",
                 "is_realtime": True,
             }
+            try:
+                r = float(q.get("ref") or q.get("prev_close") or 0)
+            except (TypeError, ValueError):
+                r = 0.0
+            if r > 0:
+                live["ref"] = r
+                live["prev_close"] = r
     if not (isinstance(live, dict) and float(live.get("close") or 0) > 0):
         if isinstance(pack, dict) and isinstance(pack.get("live_tx"), dict):
             return pack.get("live_tx")
@@ -3179,6 +3286,7 @@ def _paint_next_layer_vol_zone(
     date_lab: str,
     fp: Any,
     direction: str = "below",
+    labels: bool = True,
 ) -> None:
     """下一層大量區灰帶（對齊結構圖下一層；暗底教具可讀）。"""
     y0, y1 = float(low), float(high)
@@ -3187,6 +3295,8 @@ def _paint_next_layer_vol_zone(
     md = _md(date_lab) if _ymd(date_lab) else ""
     day_tag = f"{md} " if md else ""
     ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.20, zorder=0.45)
+    if not labels:
+        return
     press = f"{day_tag}下一層壓 {_px(y1)}"
     hold = f"{day_tag}下一層撐 {_px(y0)}"
     ax.text(
@@ -3779,10 +3889,12 @@ def _paint_max_vol_hl_zone(
     low: float,
     date_lab: str,
     fp: Any,
+    labels: bool = True,
 ) -> None:
     """淺黃底＝大量撐壓（爆大量日最高～最低）；底色 zorder 低於K棒。
 
     左標一定帶交易日月日，跟金K／量柱黃／豎虛線同一日，不准只寫高低不寫日。
+    labels=False：只留底色（遠窗電子盤改走右欄疏開，左欄不准再卡一坨）。
     """
     y0, y1 = float(low), float(high)
     if y1 <= y0:
@@ -3791,6 +3903,8 @@ def _paint_max_vol_hl_zone(
     day_tag = f"{md} " if md else ""
     # 只留淺黃底，不准上下虛線框（框會跟K攪糊）；對齊交易日靠豎虛線＋金K＋左標月日
     ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
+    if not labels:
+        return
     ax.text(
         0.01,
         y1,
@@ -4139,10 +4253,13 @@ def _place_live_right_labels(
     min_gap: Optional[float] = None,
     x_text_min: Optional[float] = None,
     x_col: Optional[float] = None,
+    nudge: bool = False,
+    fontsize: float = 9,
 ) -> None:
     """右側價標：全部對齊同一右欄；同色水平虛線從指定點位連到標籤。
 
     - 字 Y＝真價（不准漂離）；真價互撞→丟低優先。
+    - nudge=True：虛線仍貼真價，字盒可上下微挪，避免框貼框卡住。
     - 字 X＝同一欄（預設對齊長標如「7/29低…」那欄），不准左一截右一截。
     - 虛線：note['x']（轉折／末日）→ 標籤左緣，顏色＝標籤色。
     note 可設 dash=False；level_dash=False 時整批不畫虛線。
@@ -4156,6 +4273,8 @@ def _place_live_right_labels(
     gap = max(gap, span * 0.055)
     # 浪／細浪硬標可互近，仍留呼吸；c5(45677)↔今(45212) 差值約 465 必須雙留
     gap_wave = max(span * 0.033, 360.0)
+    # 字盒視覺高度約略；nudge 用這個當最小字距（框高約 5% 窗，再加呼吸）
+    box_gap = max(gap * 0.95, span * 0.062)
 
     def _tier(t: str) -> int:
         """0=浪／細浪／今（必留）→1=飆預測等→2=Fib／切／錨（可丟）。"""
@@ -4172,8 +4291,13 @@ def _place_live_right_labels(
             or s.startswith("今 ")
             or s.startswith("今　")
             or s.startswith("費")
+            or s.startswith("電盤大量")
+            or s.startswith("電盤即時")
         ):
             return 0
+        # 電盤下一層／飆預測可丟，優先保住大量撐壓＋即時
+        if s.startswith("電盤下一層") or ("飆預測" in s and "電盤" not in s):
+            return 2
         return 1
 
     def _pri(d: Dict[str, Any]) -> Tuple[int, float]:
@@ -4203,6 +4327,7 @@ def _place_live_right_labels(
     kept.sort(key=lambda d: float(d["y"]), reverse=True)
     placed: List[float] = []
     placed_tiers: List[int] = []
+    draw_items: List[Tuple[Dict[str, Any], float]] = []
     # 同一右欄：預設 n+2.55（夠長標「7/29低…」）；可被 x_col／x_text_min 拉開
     x_label = float(x_col) if x_col is not None else float(n) + 2.55
     if x_text_min is not None:
@@ -4215,10 +4340,28 @@ def _place_live_right_labels(
         if y_true < ymin or y_true > ymax:
             continue
         tier = _tier(str(it.get("text") or ""))
-        if _collide(y_true, tier, placed, placed_tiers):
+        if (not nudge) and _collide(y_true, tier, placed, placed_tiers):
             continue
         placed.append(y_true)
         placed_tiers.append(tier)
+        draw_items.append((it, y_true))
+    # nudge：由高到低把字盒撐開；虛線仍用真價
+    draw_ys: List[float] = [y for _, y in draw_items]
+    if nudge and len(draw_ys) >= 2:
+        # 高→低
+        for i in range(1, len(draw_ys)):
+            ceiling = draw_ys[i - 1] - box_gap
+            if draw_ys[i] > ceiling:
+                draw_ys[i] = ceiling
+        # 低→高回推，避免沉到窗底又互壓
+        for i in range(len(draw_ys) - 2, -1, -1):
+            floor = draw_ys[i + 1] + box_gap
+            if draw_ys[i] < floor:
+                draw_ys[i] = floor
+        lo_b = float(ymin) + span * 0.02
+        hi_b = float(ymax) - span * 0.02
+        draw_ys = [max(lo_b, min(hi_b, y)) for y in draw_ys]
+    for (it, y_true), y_draw in zip(draw_items, draw_ys):
         color = str(it.get("color") or _LIVE_MUTED)
         try:
             x_from = float(it.get("x"))
@@ -4241,17 +4384,28 @@ def _place_live_right_labels(
                 zorder=5,
                 solid_capstyle="butt",
             )
+            # 字盒若被 nudge 離真價，短豎線連回真價水平線
+            if abs(float(y_draw) - float(y_true)) > span * 0.008:
+                ax.plot(
+                    [x_dash_end, x_dash_end],
+                    [y_true, y_draw],
+                    color=color,
+                    lw=0.85,
+                    alpha=0.55,
+                    zorder=5,
+                    solid_capstyle="butt",
+                )
         ax.text(
             x_label,
-            y_true,
+            float(y_draw),
             str(it["text"])[:28],
-            fontproperties=fp(9, "bold"),
+            fontproperties=fp(float(fontsize), "bold"),
             color=color,
             ha="left",
             va="center",
             zorder=10,
             clip_on=False,
-            bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec=color, lw=0.65, alpha=0.96),
+            bbox=dict(boxstyle="round,pad=0.10", fc="#0b0f14", ec=color, lw=0.65, alpha=0.96),
         )
 
 
@@ -5844,7 +5998,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig.patch.set_facecolor(_LIVE_BG)
     # top：標題列；戳改各欄右上，頁眉不再塞三戳
     # right 收到 0.98：右標水平往左貼K
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.935, bottom=0.095)
+    # left 加寬：逐字正讀左軸標題要空間（不准橫躺）
+    fig.subplots_adjust(left=0.088, right=0.978, top=0.935, bottom=0.095)
     for a in (axu, axt, ax, axv):
         a.set_facecolor(_LIVE_PANEL)
         a.tick_params(colors=_LIVE_MUTED, labelsize=9)
@@ -5992,7 +6147,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ),
                 "min_body": max(float(sox_min_body), float(span_raw) * 0.035),
             }
-    axu.set_ylabel("費半 SOX", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    _set_upright_ylabel(axu, "費半 SOX", fp=_fp, color=_LIVE_MUTED, fontsize=10)
     # 費半大量撐壓：指數無量 → SOXX ETF 量代理對齊同日（標清楚）
     sox_vol_map = _soxx_volume_by_date(db_path)
     sox_rows_for_vol: List[Dict[str, Any]] = []
@@ -6106,6 +6261,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(pri["low"]),
             date_lab=str(pri.get("date") or ""),
             fp=_fp,
+            # 左標關掉：右欄已有電盤大量壓／撐，左右雙貼會卡死中欄
+            labels=False,
         )
         _tx_right_notes.append(
             {
@@ -6132,6 +6289,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 date_lab=str(nxt.get("date") or ""),
                 fp=_fp,
                 direction=str(nxt.get("direction") or "below"),
+                # 左標改走右欄，避免與青帶／即時擠在底段卡住
+                labels=False,
             )
             _tx_right_notes.append(
                 {
@@ -6170,6 +6329,22 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             )
         except (TypeError, ValueError):
             _tx_ex_lo = _tx_ex_hi = None
+        _tx_skip_lab: List[float] = []
+        for row in (tx_vol_sr.get("primary"), tx_vol_sr.get("next")):
+            if not row:
+                continue
+            for k in ("high", "low"):
+                try:
+                    if row.get(k) is not None:
+                        _tx_skip_lab.append(float(row[k]))
+                except (TypeError, ValueError):
+                    pass
+        for v in (tx_sr.get("support"), tx_sr.get("resist")):
+            if v is not None:
+                try:
+                    _tx_skip_lab.append(float(v))
+                except (TypeError, ValueError):
+                    pass
         _paint_next_sr_zone(
             axt,
             support=tx_sr.get("support"),
@@ -6177,6 +6352,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             fp=_fp,
             exclude_lo=_tx_ex_lo,
             exclude_hi=_tx_ex_hi,
+            # 青帶左標也關掉：底段擠爆；數字只留右欄疏開
+            skip_label_ys=_tx_skip_lab,
             x_end=float(n_tw) + 0.12,
         )
         if tx_sr.get("support") is not None:
@@ -6254,19 +6431,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pad = max(120.0, (hi_v - lo_v) * 0.08)
         axt.set_ylim(lo_v - pad, hi_v + pad)
         _tx_ylabel_span = (lo_v - pad, hi_v + pad)
-    axt.set_ylabel("台指電子盤", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
-    axt.text(
-        0.012,
-        0.04,
-        "台指電子盤＝夜盤日K＋大量撐壓／下一層（紅框＝即時）",
-        transform=axt.transAxes,
-        fontproperties=_fp(8, "bold"),
-        color=_LIVE_MUTED,
-        ha="left",
-        va="bottom",
-        zorder=10,
-        bbox=dict(boxstyle="round,pad=0.16", fc="#0b0f14", ec="#e53935", lw=0.75, alpha=0.92),
-    )
+    _set_upright_ylabel(axt, "台指電子盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
+    # 不再貼左下長說明：會跟右標／戳／K互卡；說明改靠戳＋右欄
 
     # —— 中：加權日盤價（先畫底帶在K下一層，再畫K）——
     tw_supports = _tw_support_ladder(pack)
@@ -6560,7 +6726,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             x_col=x_sox_col,
         )
     if _tx_right_notes and _tx_ylabel_span is not None:
-        # 電子盤右標＋水平虛線（大量／下一層／青帶／即時）
+        # 電子盤右標：真價虛線＋字盒 nudge 疏開，不准框貼框卡住
         _place_live_right_labels(
             axt,
             _tx_right_notes,
@@ -6569,8 +6735,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ymax=float(_tx_ylabel_span[1]),
             fp=_fp,
             level_dash=True,
-            min_gap=(float(_tx_ylabel_span[1]) - float(_tx_ylabel_span[0])) * 0.050,
+            min_gap=(float(_tx_ylabel_span[1]) - float(_tx_ylabel_span[0])) * 0.11,
             x_col=x_right_col + 0.15,
+            nudge=True,
+            fontsize=8.5,
         )
     _place_live_right_labels(
         ax,
@@ -6603,7 +6771,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             edgecolor="#ffffff",
             edge_lw=0.9,
         )
-    ax.set_ylabel("加權日盤", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+    _set_upright_ylabel(ax, "加權日盤", fp=_fp, color=_LIVE_MUTED, fontsize=10)
 
     # —— 下：加權日量（最大量黃＝與上方同索引當日K對齊）——
     _paint_vol_bars_max_yellow(
@@ -6616,6 +6784,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         title="加權量",
         date_lab=_ymd(bars[i_vmax].get("date")) if i_vmax is not None else "",
     )
+    _set_upright_ylabel(axv, "加權量", fp=_fp, color=_LIVE_MUTED, fontsize=9)
     if i_vmax is not None:
         _paint_max_vol_day_guide((axu, axt, ax, axv), i_vmax)
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.45)
@@ -6836,12 +7005,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 三戳各自歸屬本欄右下（費半黃／電子盤紅／加權黃）；避讓撐壓底色帶
+    # 三戳偏右下但讓出右標欄；避讓撐壓底色＋右標價位
     _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_bottom_right(
-        axu, fig, avoid_spans=_vol_sr_avoid_spans(sox_vol_sr)
+        axu,
+        fig,
+        avoid_spans=_vol_sr_avoid_spans(sox_vol_sr),
+        avoid_ys=[float(n.get("y")) for n in (_sox_right_deferred or []) if n.get("y") is not None],
     )
     _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_bottom_right(
-        axt, fig, avoid_spans=_vol_sr_avoid_spans(tx_vol_sr)
+        axt,
+        fig,
+        right_clear_frac=0.30,
+        avoid_spans=_vol_sr_avoid_spans(tx_vol_sr),
+        avoid_ys=[float(n.get("y")) for n in (_tx_right_notes or []) if n.get("y") is not None],
     )
     _tw_avoid = _vol_sr_avoid_spans(far_vol_sr)
     try:
@@ -6850,7 +7026,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     except (TypeError, ValueError, AttributeError):
         pass
     _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_bottom_right(
-        ax, fig, avoid_spans=_tw_avoid
+        ax,
+        fig,
+        avoid_spans=_tw_avoid,
+        avoid_ys=[float(n.get("y")) for n in (right_notes or []) if n.get("y") is not None],
     )
     if _sox_chg_tip:
         _paint_index_last_chg_tip(
@@ -6866,12 +7045,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             asof_ymd=str(_sox_chg_tip.get("asof") or ""),
             chart_asof=str(as_of or ""),
         )
-    # 紅框價＝台指電子盤欄末根同口（即時優先）
-    if _tx_last_repaint:
+    # 漲跌一律對官方參考價（CRefPrice）；不准用前一夜盤收當 prev
+    _tx_chg_tip = _resolve_tx_after_hours_tip(db_path, pack)
+    if _tx_last_repaint and _tx_chg_tip:
         _paint_tx_after_hours_tip(
             fig,
             close=float(_tx_last_repaint["c"]),
-            prev_close=_tx_last_repaint.get("prev"),
+            prev_close=_tx_chg_tip.get("prev"),
             label_prefix="台指電子盤",
             fp=_fp,
             x=_tx_stamp_x,
@@ -6879,31 +7059,31 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ha="right",
             va="bottom",
             clock=str(
-                ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
+                _tx_chg_tip.get("clock")
+                or ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
                 or ""
             ),
             asof_ymd=str(
-                _ymd(((live_tx or (pack or {}).get("live_tx") or {}).get("date")))
+                _tx_chg_tip.get("asof")
+                or _ymd(((live_tx or (pack or {}).get("live_tx") or {}).get("date")))
                 or (bars[_tx_last_repaint["i"]].get("date") if bars else "")
                 or ""
             ),
         )
-    else:
-        _tx_tip = _resolve_tx_after_hours_tip(db_path, pack)
-        if _tx_tip:
-            _paint_tx_after_hours_tip(
-                fig,
-                close=float(_tx_tip["close"]),
-                prev_close=_tx_tip.get("prev"),
-                label_prefix=str(_tx_tip.get("label") or "台指電子盤"),
-                fp=_fp,
-                x=_tx_stamp_x,
-                y=_tx_stamp_y,
-                ha="right",
-                va="bottom",
-                clock=str(_tx_tip.get("clock") or ""),
-                asof_ymd=str(_tx_tip.get("asof") or ""),
-            )
+    elif _tx_chg_tip:
+        _paint_tx_after_hours_tip(
+            fig,
+            close=float(_tx_chg_tip["close"]),
+            prev_close=_tx_chg_tip.get("prev"),
+            label_prefix=str(_tx_chg_tip.get("label") or "台指電子盤"),
+            fp=_fp,
+            x=_tx_stamp_x,
+            y=_tx_stamp_y,
+            ha="right",
+            va="bottom",
+            clock=str(_tx_chg_tip.get("clock") or ""),
+            asof_ymd=str(_tx_chg_tip.get("asof") or ""),
+        )
     _paint_teach_query_stamp(
         fig,
         bars,

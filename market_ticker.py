@@ -93,15 +93,21 @@ def fetch_tx_live(*, night: bool = False, timeout: float = 2.2) -> Optional[Dict
         if not px or px <= 0:
             return None
         pct = _num_or_none(row.get("CDiffRate"))
+        # 官方漲跌對照＝CRefPrice（日盤結算／參考價），不准用前一夜盤收
+        ref = _num_or_none(row.get("CRefPrice"))
         t = str(row.get("CTime") or "").strip()
         clock = f"{t[0:2]}:{t[2:4]}:{t[4:6]}" if len(t) >= 6 else t
-        return {
+        out = {
             "close": px,
             "pct_change": pct,
             "update_time": clock,
             "symbol": row.get("SymbolID"),
             "is_realtime": True,
         }
+        if ref and ref > 0:
+            out["ref"] = float(ref)
+            out["prev_close"] = float(ref)
+        return out
     except Exception:
         logger.debug("期交所即時失敗 night=%s", night, exc_info=True)
         return None
