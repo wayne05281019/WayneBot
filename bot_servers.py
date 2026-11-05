@@ -120,6 +120,7 @@ from phone_update import (
     phone_code_reply,
     phone_git_sha,
     phone_update_notice,
+    phone_update_starting,
 )
 from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import (
@@ -257,10 +258,28 @@ def _notified_sha_path() -> str:
     return os.path.join(parent, ".wayne_notified_sha")
 
 
+def _started_sha_path() -> str:
+    db = get_db_path()
+    parent = os.path.dirname(os.path.abspath(db)) or "data"
+    return os.path.join(parent, ".wayne_update_started_sha")
+
+
 def _read_notified_record() -> tuple[str, str]:
     """永久碟旁：已推過的 SHA＋口語。第一行 SHA，第二行 note。"""
     try:
         with open(_notified_sha_path(), encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except Exception:
+        return "", ""
+    sha = (lines[0] if lines else "").strip()[:40]
+    note = (lines[1] if len(lines) > 1 else "").strip()[:80]
+    return sha, note
+
+
+def _read_started_record() -> tuple[str, str]:
+    """永久碟旁：已推過「正在更新」的 SHA＋口語。"""
+    try:
+        with open(_started_sha_path(), encoding="utf-8") as f:
             lines = f.read().splitlines()
     except Exception:
         return "", ""
@@ -277,6 +296,14 @@ def notified_sha_is(sha: str) -> bool:
     return got == s
 
 
+def started_sha_is(sha: str) -> bool:
+    s = str(sha or "").strip()[:40]
+    if not s:
+        return True
+    got, _note = _read_started_record()
+    return got == s
+
+
 def notified_note_is(note: str) -> bool:
     """同一句口語已推過就不重送（避免舊 note 檔每次 redeploy 洗版）。"""
     t = str(note or "").strip()[:80]
@@ -286,11 +313,10 @@ def notified_note_is(note: str) -> bool:
     return got == t
 
 
-def remember_notified_sha(sha: str, note: str = "") -> None:
+def _write_sha_note(path: str, sha: str, note: str = "") -> None:
     s = str(sha or "").strip()[:40]
     if not s:
         return
-    path = _notified_sha_path()
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -306,6 +332,14 @@ def remember_notified_sha(sha: str, note: str = "") -> None:
         f.write(s + "\n")
         if spoken:
             f.write(spoken + "\n")
+
+
+def remember_notified_sha(sha: str, note: str = "") -> None:
+    _write_sha_note(_notified_sha_path(), sha, note)
+
+
+def remember_started_sha(sha: str, note: str = "") -> None:
+    _write_sha_note(_started_sha_path(), sha, note)
 
 
 def should_notify_phone_update(sha: str, note: str | None = None) -> bool:
@@ -328,6 +362,78 @@ def should_notify_phone_update(sha: str, note: str | None = None) -> bool:
     if spoken and notified_note_is(spoken):
         return False
     return True
+
+
+def should_notify_phone_update_start(sha: str, note: str | None = None) -> bool:
+    """新版開機先推「正在更新」。同一 SHA 不重送；已推完完成也不再推開始。"""
+    if skip_telegram_polling():
+        return False
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    s = str(sha or "").strip()[:40]
+    if not s or started_sha_is(s) or notified_sha_is(s):
+        return False
+    _ = note
+    return True
+
+
+def _sync_send_whitelist_text(text: str) -> int:
+    """只 sendMessage，不開 getUpdates。回傳成功人數。"""
+    raw = str(text or "").strip()
+    if not raw:
+        return 0
+    try:
+        from config import allowed_telegram_uids, get_telegram_token
+    except Exception:
+        return 0
+    token = str(get_telegram_token() or "").strip()
+    uids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
+    if not token or not uids:
+        return 0
+    import requests
+
+    n = 0
+    for cid in uids:
+        try:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={
+                    "chat_id": cid,
+                    "text": raw,
+                    "disable_web_page_preview": True,
+                },
+                timeout=15,
+            )
+            if int(getattr(resp, "status_code", 0) or 0) == 200:
+                n += 1
+            else:
+                logger.error(
+                    "話筒更新推播 HTTP %s", getattr(resp, "status_code", "?")
+                )
+        except Exception:
+            logger.exception("話筒更新推播失敗 uid 略")
+    return n
+
+
+def push_phone_update_starting(*, sha: str = "", note: str | None = None) -> int:
+    """開機／部署：兩支話筒推「正在更新：…」。"""
+    s = str(sha or phone_git_sha() or "").strip()[:40]
+    try:
+        from phone_update import phone_update_note
+
+        spoken = str(note if note is not None else phone_update_note() or "").strip()
+    except Exception:
+        spoken = str(note or "").strip()
+    if not should_notify_phone_update_start(s, note=spoken):
+        return 0
+    text = phone_update_starting(s, note=spoken or None)
+    n = _sync_send_whitelist_text(text)
+    if n:
+        try:
+            remember_started_sha(s, note=spoken)
+        except Exception:
+            logger.exception("正在更新 SHA 沒寫成")
+    return n
 
 
 def _http_url(url: str) -> str:
@@ -11967,6 +12073,11 @@ class WayneTelegramBot:
                 install_bot_hooks(app.bot, db_path=getattr(self, "db_path", "") or "")
             except Exception:
                 logger.exception("tg_message_ttl Bot hook 失敗")
+            try:
+                # 聽筒起來當下若開機推播還沒送，補一則「正在更新」
+                push_phone_update_starting()
+            except Exception:
+                logger.exception("手機正在更新通知失敗")
             try:
                 await self._notify_phones_updated(app)
             except Exception:

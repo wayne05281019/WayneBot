@@ -1720,6 +1720,15 @@ def run_web():
     # 健檢必須比任何 DB／重模組 import 更早綁埠。
     # wayne_db 等 import 若卡住或炸，Render /live 會一直 502 → update_failed 空轉。
     start_health_server(get_port())
+    # 新版一上線就跟兩支話筒說「正在更新：…」（只 sendMessage，不搶 getUpdates）
+    try:
+        from bot_servers import push_phone_update_starting
+
+        n_start = push_phone_update_starting()
+        if n_start:
+            logger.info("話筒正在更新推播 %s 人", n_start)
+    except Exception:
+        logger.exception("話筒正在更新推播失敗（不擋開機）")
     # 碟滿會讓 SQLite「database or disk is full」→ Failed。先清可重建出圖快取並排程週期掃。
     try:
         from disk_guard import ensure_disk_headroom, start_disk_guard
