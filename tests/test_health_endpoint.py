@@ -436,3 +436,76 @@ def test_ops_force_morning_requires_secret_and_runs_on_disk(serve, monkeypatch):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_ops_ai_desk_status_readonly(serve, monkeypatch):
+    """POST /ops/ai-desk-status：只讀白名單 AI 假錢倉，401 無密鑰。"""
+    import urllib.request
+
+    get, db, main = serve
+    code, _ = get("/live")
+    assert code == 200
+
+    monkeypatch.setenv("WAYNE_OPS_SECRET", "test-ops-secret")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "111")
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "222")
+    importlib.reload(main)
+    main._PROCESS_STARTED_AT = 0.0
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), main.HealthHandler)
+    port = httpd.server_address[1]
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+
+    def _post(path, headers=None):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}{path}",
+            data=b"{}",
+            method="POST",
+            headers=headers or {"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read().decode("utf-8"))
+
+    try:
+        code, body = _post("/ops/ai-desk-status")
+        assert code == 401
+
+        # seed one AI position for ai_111
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT OR REPLACE INTO user_funds"
+            " (user_id, cash, initial_capital, created_at, updated_at)"
+            " VALUES ('ai_111', 100000, 500000, '2026-11-05 12:00:00', '2026-11-05 12:00:00')"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO user_positions"
+            " (user_id, stock_id, stock_name, shares, cost_price, highest_price,"
+            " buy_date, warning_days, strategy_type)"
+            " VALUES ('ai_111', '2330', '台積電', 100, 1000, 1000, '20261103', 0, 'WINRATE')"
+        )
+        conn.commit()
+        conn.close()
+
+        code, body = _post(
+            "/ops/ai-desk-status",
+            headers={
+                "Content-Type": "application/json",
+                "X-Wayne-Ops-Secret": "test-ops-secret",
+            },
+        )
+        assert code == 200
+        assert body.get("ok") is True
+        assert body.get("kind") == "ai_desk_status"
+        desks = {d["ai_uid"]: d for d in body.get("desks") or []}
+        assert "ai_111" in desks
+        assert desks["ai_111"]["positions_n"] == 1
+        assert desks["ai_111"]["positions"][0]["stock_id"] == "2330"
+        assert desks["ai_111"]["cash"] == 100000
+        # 哥哥戶即使空帳也要列到（has_fund 可 False）
+        assert "ai_222" in desks
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
