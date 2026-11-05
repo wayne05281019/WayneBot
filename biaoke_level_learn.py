@@ -928,13 +928,12 @@ def _teach_stamp_line(
     return f"{day}  {clock}  {px_s}"
 
 
-def _stamp_box_alignment(ha: str) -> Tuple[float, float]:
+def _stamp_box_alignment(ha: str, va: str = "top") -> Tuple[float, float]:
     ha_s = str(ha or "right")
-    if ha_s == "left":
-        return (0.0, 1.0)
-    if ha_s == "center":
-        return (0.5, 1.0)
-    return (1.0, 1.0)
+    va_s = str(va or "top")
+    hx = 0.0 if ha_s == "left" else (0.5 if ha_s == "center" else 1.0)
+    vy = 0.0 if va_s == "bottom" else (0.5 if va_s == "center" else 1.0)
+    return (hx, vy)
 
 
 def _fig_xy_from_axes_data(ax: Any, fig: Any, x_data: float, y_data: float) -> Tuple[float, float]:
@@ -1007,22 +1006,69 @@ def _eight_wave_inset_rect_left_of_vmax(
     return (float(left), float(bottom), float(w), float(h))
 
 
-def _fig_stamp_xy_axes_top_right(
+def _vol_sr_avoid_spans(vol_sr: Optional[Dict[str, Any]]) -> List[Tuple[float, float]]:
+    """大量黃帶／下一層灰帶的價窗，給白底戳避讓。"""
+    out: List[Tuple[float, float]] = []
+    if not isinstance(vol_sr, dict):
+        return out
+    for key in ("primary", "next"):
+        row = vol_sr.get(key) or {}
+        try:
+            lo = float(row.get("low"))
+            hi = float(row.get("high"))
+        except (TypeError, ValueError):
+            continue
+        if hi > lo > 0:
+            out.append((lo, hi))
+    return out
+
+
+def _fig_stamp_xy_axes_bottom_right(
     ax: Any,
     fig: Any,
     *,
     inset_x: float = 0.010,
-    inset_y: float = 0.024,
+    inset_y_frac: float = 0.045,
+    stamp_h_data_frac: float = 0.10,
+    avoid_spans: Optional[Sequence[Tuple[float, float]]] = None,
 ) -> Tuple[float, float]:
-    """該圖框內右上角（figure fraction）→ 白底戳各自歸屬本欄。"""
+    """該圖框內右下角；若會壓到撐壓底色帶就上移到最近空檔。"""
     try:
         pos = ax.get_position()
-        return (
-            float(pos.x1) - float(inset_x),
-            float(pos.y1) - float(inset_y),
-        )
+        ymin, ymax = ax.get_ylim()
     except Exception:
-        return (0.995, 0.95)
+        return (0.995, 0.12)
+    x = float(pos.x1) - float(inset_x)
+    span = max(float(ymax) - float(ymin), 1.0)
+    stamp_h = span * float(stamp_h_data_frac)
+    bands = [
+        (min(float(a), float(b)), max(float(a), float(b)))
+        for a, b in (avoid_spans or [])
+        if a is not None and b is not None
+    ]
+
+    def _hit(y0: float, y1: float) -> bool:
+        for a, b in bands:
+            if y0 < b and y1 > a:
+                return True
+        return False
+
+    # 自底往上找不擋底色帶的錨點（va=bottom → 戳在錨點之上）
+    y_data = float(ymin) + span * float(inset_y_frac)
+    for _ in range(24):
+        if not _hit(y_data, y_data + stamp_h):
+            break
+        y_data += stamp_h * 0.42
+        if y_data + stamp_h >= float(ymax) - span * 0.04:
+            # 找最大空檔中點當備援
+            y_data = float(ymin) + span * float(inset_y_frac)
+            break
+    try:
+        _fx, y = _fig_xy_from_axes_data(ax, fig, 0.0, float(y_data))
+    except Exception:
+        y = float(pos.y0) + 0.028
+    y = max(float(pos.y0) + 0.012, min(float(y), float(pos.y1) - 0.04))
+    return (float(x), float(y))
 
 
 def _fig_rect_band_right(
@@ -1078,6 +1124,7 @@ def _paint_stamp_hbox(
     x: float,
     y: float,
     ha: str = "right",
+    va: str = "top",
     zorder: float = 40,
     edgecolor: Optional[str] = None,
 ) -> None:
@@ -1090,7 +1137,7 @@ def _paint_stamp_hbox(
         HPacker(children=kids, align="center", pad=0, sep=0),
         (float(x), float(y)),
         xycoords="figure fraction",
-        box_alignment=_stamp_box_alignment(ha),
+        box_alignment=_stamp_box_alignment(ha, va),
         pad=0.32,
         frameon=True,
         bboxprops=dict(
@@ -1114,10 +1161,11 @@ def _paint_teach_query_stamp(
     x: float = 0.995,
     y: float = 0.958,
     ha: str = "right",
+    va: str = "top",
 ) -> None:
     """三張教具共用：黃框白底；日期／時段黑；價→漲幅％→點數（紅漲綠跌）。
 
-    預設貼右、略離上緣，不准壓標題白字；近／超近可再調 y 適中。
+    預設貼右、略離上緣，不准壓標題白字；遠窗可改右下 va=bottom。
     """
     if fig is None or not bars:
         return
@@ -1186,7 +1234,7 @@ def _paint_teach_query_stamp(
                 },
             )
         )
-    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, zorder=40)
+    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, va=va, zorder=40)
 
 
 def _us_real_close_pair(
@@ -1246,6 +1294,7 @@ def _paint_index_last_chg_tip(
     x: float = 0.995,
     y: float = 0.848,
     ha: str = "right",
+    va: str = "top",
     asof_ymd: str = "",
     chart_asof: str = "",
 ) -> None:
@@ -1309,7 +1358,7 @@ def _paint_index_last_chg_tip(
                 textprops={"color": col, "fontproperties": fp(fsz, "bold")},
             )
         )
-    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, zorder=41)
+    _paint_stamp_hbox(fig, kids, x=x, y=y, ha=ha, va=va, zorder=41)
 
 
 def _resolve_tx_after_hours_tip(
@@ -1386,10 +1435,11 @@ def _paint_tx_after_hours_tip(
     x: float = 0.995,
     y: float = 0.950,
     ha: str = "right",
+    va: str = "bottom",
     clock: str = "",
     asof_ymd: str = "",
 ) -> None:
-    """遠窗專用：紅框白底；夾在加權／費半兩黃框中間，上下略留白。"""
+    """遠窗專用：紅框白底；貼電子盤欄右下（避撐壓底色）。"""
     if fig is None or fp is None:
         return
     from matplotlib.offsetbox import TextArea
@@ -1442,6 +1492,7 @@ def _paint_tx_after_hours_tip(
         x=x,
         y=y,
         ha=ha,
+        va=va,
         zorder=42,
         edgecolor=_TEACH_STAMP_EDGE_TX,
     )
@@ -6785,10 +6836,22 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 三戳各自歸屬本欄右上（費半黃／電子盤紅／加權黃），不准堆頁眉
-    _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_top_right(axu, fig)
-    _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_top_right(axt, fig)
-    _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_top_right(ax, fig)
+    # 三戳各自歸屬本欄右下（費半黃／電子盤紅／加權黃）；避讓撐壓底色帶
+    _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_bottom_right(
+        axu, fig, avoid_spans=_vol_sr_avoid_spans(sox_vol_sr)
+    )
+    _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_bottom_right(
+        axt, fig, avoid_spans=_vol_sr_avoid_spans(tx_vol_sr)
+    )
+    _tw_avoid = _vol_sr_avoid_spans(far_vol_sr)
+    try:
+        if sr.get("support") is not None and sr.get("resist") is not None:
+            _tw_avoid.append((float(sr["support"]), float(sr["resist"])))
+    except (TypeError, ValueError, AttributeError):
+        pass
+    _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_bottom_right(
+        ax, fig, avoid_spans=_tw_avoid
+    )
     if _sox_chg_tip:
         _paint_index_last_chg_tip(
             fig,
@@ -6799,6 +6862,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             x=_sox_stamp_x,
             y=_sox_stamp_y,
             ha="right",
+            va="bottom",
             asof_ymd=str(_sox_chg_tip.get("asof") or ""),
             chart_asof=str(as_of or ""),
         )
@@ -6813,6 +6877,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             x=_tx_stamp_x,
             y=_tx_stamp_y,
             ha="right",
+            va="bottom",
             clock=str(
                 ((live_tx or (pack or {}).get("live_tx") or {}).get("update_time"))
                 or ""
@@ -6835,6 +6900,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 x=_tx_stamp_x,
                 y=_tx_stamp_y,
                 ha="right",
+                va="bottom",
                 clock=str(_tx_tip.get("clock") or ""),
                 asof_ymd=str(_tx_tip.get("asof") or ""),
             )
@@ -6846,6 +6912,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         fp=_fp,
         x=_tw_stamp_x,
         y=_tw_stamp_y,
+        ha="right",
+        va="bottom",
     )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截
     foot_main = str(
@@ -6885,7 +6953,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 ha="left",
                 va="bottom",
             )
-    # 八浪縮圖：遠窗縮小貼加權左下，不准擋任何縮圖K
+    # 八浪縮圖：縮小貼加權左下，再往左推，不准擋右下白底戳／縮圖K
     _far_ins = _eight_wave_inset_rect_left_of_vmax(
         ax,
         fig,
@@ -6893,9 +6961,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ymin=float(ymin),
         ymax=float(ymax),
         n_bars=n_tw,
-        scale=0.52,
+        scale=0.46,
         pin_bottom=True,
     )
+    try:
+        _ins_l, _ins_b, _ins_w, _ins_h = _far_ins
+        _axpos = ax.get_position()
+        # 右緣鎖在欄寬 40% 內，把空間留給右下加權黃戳
+        _max_right = float(_axpos.x0) + float(_axpos.width) * 0.40
+        if _ins_l + _ins_w > _max_right:
+            _ins_l = max(float(_axpos.x0) + 0.006, _max_right - _ins_w)
+        _far_ins = (float(_ins_l), float(_ins_b), float(_ins_w), float(_ins_h))
+    except Exception:
+        pass
     _paint_eight_wave_inset(
         fig,
         fp=_fp,

@@ -241,10 +241,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "tx_vol_sr" in far_blk
     assert "_tx_right_notes" in far_blk
     assert "電盤" in far_blk
-    # 三戳各歸本欄右上；八浪縮小貼底
-    assert "_fig_stamp_xy_axes_top_right" in far_blk
-    assert "def _fig_stamp_xy_axes_top_right" in src
-    assert "scale=0.52" in far_blk and "pin_bottom=True" in far_blk
+    # 三戳各歸本欄右下（避撐壓底色）；八浪再往左不擋戳
+    assert "_fig_stamp_xy_axes_bottom_right" in far_blk
+    assert "def _fig_stamp_xy_axes_bottom_right" in src
+    assert "_vol_sr_avoid_spans" in far_blk
+    assert 'va="bottom"' in far_blk
+    assert "scale=0.46" in far_blk and "pin_bottom=True" in far_blk
+    assert "0.40" in far_blk  # 八浪右緣鎖左 40%
     assert "labelbottom=True" in far_blk
     assert "_paint_tx_after_hours_tip" in far_blk
     assert "_TEACH_STAMP_EDGE_TX" in src
