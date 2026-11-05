@@ -1695,16 +1695,100 @@ def _tx60_read(db_path: str) -> Dict[str, Any]:
     return out
 
 
+def _yahoo_us_index_upsert(
+    conn: sqlite3.Connection,
+    *,
+    sym: str,
+    yid: str,
+    range_: str,
+    ua: Dict[str, str],
+) -> int:
+    """Yahoo 美股指數日K UPSERT；日期用美東，不准用台北日切錯欄。"""
+    try:
+        import requests
+    except Exception:
+        return 0
+    from zoneinfo import ZoneInfo
+
+    ny = ZoneInfo("America/New_York")
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
+        f"?interval=1d&range={range_}"
+    )
+    try:
+        resp = requests.get(url, timeout=12, headers=ua)
+        if resp.status_code != 200:
+            return 0
+        block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
+        block = block[0] or {}
+        stamps = block.get("timestamp") or []
+        q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
+    except Exception:
+        logger.exception("補%s日K失敗", sym)
+        return 0
+    written = 0
+    for ts, op, hi, lo, cl, vol in zip(
+        stamps,
+        q.get("open") or [],
+        q.get("high") or [],
+        q.get("low") or [],
+        q.get("close") or [],
+        q.get("volume") or [],
+    ):
+        if cl is None or op is None:
+            continue
+        try:
+            dt = datetime.fromtimestamp(int(ts), tz=ny)
+        except (TypeError, ValueError, OSError):
+            continue
+        d = dt.strftime("%Y%m%d")
+        o = float(op)
+        c = float(cl)
+        h = float(hi if hi is not None else max(o, c))
+        l = float(lo if lo is not None else min(o, c))
+        v = float(vol or 0)
+        conn.execute(
+            """
+            INSERT INTO index_daily(
+                date, symbol, open, high, low, close, volume, pct_change, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(date, symbol) DO UPDATE SET
+                open=excluded.open, high=excluded.high, low=excluded.low,
+                close=excluded.close, volume=excluded.volume,
+                updated_at=excluded.updated_at
+            """,
+            (d, sym, o, h, l, c, v, None, _now()),
+        )
+        written += 1
+    if written:
+        conn.commit()
+        rows = conn.execute(
+            "SELECT date, close FROM index_daily WHERE symbol=? ORDER BY date",
+            (sym,),
+        ).fetchall()
+        prev = None
+        for d, c in rows:
+            if prev and prev > 0 and c:
+                pct = (float(c) / float(prev) - 1.0) * 100.0
+                conn.execute(
+                    "UPDATE index_daily SET pct_change=? WHERE date=? AND symbol=?",
+                    (pct, d, sym),
+                )
+            prev = float(c) if c else prev
+        conn.commit()
+    return written
+
+
 def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
-    """缺費半／納指日K就自己去 Yahoo 補進 index_daily（教具用；失敗不擋活畫）。
+    """費半／納指日K：出圖前必刷新近窗，撐壓才對得上最新價（失敗不擋活畫）。
 
     符號：SOX／IXIC。TWII 官方柱不走這條。
+    舊邏輯「近窗夠就整段跳過」會卡在過期收（例如費半停 11/3＝10600），已廢。
     """
     stats = {"SOX": 0, "IXIC": 0}
     if not db_path:
         return stats
     try:
-        import requests
         from taiwan_market import ensure_index_daily_table
     except Exception:
         return stats
@@ -1719,11 +1803,6 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         for sym, yid in pairs:
-            # 近窗夠、且已有 4/28 前後柱 → 跳過；否則拉 1y（教具要標他點過的回測日K）
-            n_have = conn.execute(
-                "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=?",
-                (sym, "20260901"),
-            ).fetchone()[0]
             n_apr = conn.execute(
                 "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=? AND date<=?",
                 (sym, "20260420", "20260510"),
@@ -1732,80 +1811,22 @@ def _ensure_us_index_daily(db_path: str) -> Dict[str, int]:
                 "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=? AND date<=?",
                 (sym, "20260725", "20260802"),
             ).fetchone()[0]
-            if (
-                int(n_have or 0) >= 25
-                and int(n_apr or 0) >= 3
-                and int(n_jul or 0) >= 3
-            ):
-                stats[sym] = int(n_have)
-                continue
-            url = (
-                f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
-                f"?interval=1d&range=1y"
+            # 缺歷史錨 → 拉 1y；否則每次出圖仍拉 1mo 覆寫近窗（含當日未收）
+            need_hist = int(n_apr or 0) < 3 or int(n_jul or 0) < 3
+            range_ = "1y" if need_hist else "1mo"
+            written = _yahoo_us_index_upsert(
+                conn, sym=sym, yid=yid, range_=range_, ua=ua
             )
-            try:
-                resp = requests.get(url, timeout=12, headers=ua)
-                if resp.status_code != 200:
-                    continue
-                block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
-                block = block[0] or {}
-                stamps = block.get("timestamp") or []
-                q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
-            except Exception:
-                logger.exception("補%s日K失敗", sym)
-                continue
-            written = 0
-            for ts, op, hi, lo, cl, vol in zip(
-                stamps,
-                q.get("open") or [],
-                q.get("high") or [],
-                q.get("low") or [],
-                q.get("close") or [],
-                q.get("volume") or [],
-            ):
-                if cl is None or op is None:
-                    continue
-                try:
-                    dt = datetime.fromtimestamp(int(ts), tz=TAIPEI)
-                except (TypeError, ValueError, OSError):
-                    continue
-                d = dt.strftime("%Y%m%d")
-                o = float(op)
-                c = float(cl)
-                h = float(hi if hi is not None else max(o, c))
-                l = float(lo if lo is not None else min(o, c))
-                v = float(vol or 0)
-                pct = None
-                conn.execute(
-                    """
-                    INSERT INTO index_daily(
-                        date, symbol, open, high, low, close, volume, pct_change, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(date, symbol) DO UPDATE SET
-                        open=excluded.open, high=excluded.high, low=excluded.low,
-                        close=excluded.close, volume=excluded.volume,
-                        updated_at=excluded.updated_at
-                    """,
-                    (d, sym, o, h, l, c, v, pct, _now()),
+            if written <= 0 and need_hist:
+                # 1y 失敗再試近窗，至少讓末日別空白
+                written = _yahoo_us_index_upsert(
+                    conn, sym=sym, yid=yid, range_="1mo", ua=ua
                 )
-                written += 1
-            conn.commit()
-            stats[sym] = written
-            # 補 pct_change（對前收）
-            rows = conn.execute(
-                "SELECT date, close FROM index_daily WHERE symbol=? ORDER BY date",
-                (sym,),
-            ).fetchall()
-            prev = None
-            for d, c in rows:
-                if prev and prev > 0 and c:
-                    pct = (float(c) / float(prev) - 1.0) * 100.0
-                    conn.execute(
-                        "UPDATE index_daily SET pct_change=? WHERE date=? AND symbol=?",
-                        (pct, d, sym),
-                    )
-                prev = float(c) if c else prev
-            conn.commit()
+            n_have = conn.execute(
+                "SELECT COUNT(*) FROM index_daily WHERE symbol=? AND date>=?",
+                (sym, "20260901"),
+            ).fetchone()[0]
+            stats[sym] = int(written or n_have or 0)
     finally:
         conn.close()
     # Yahoo 失敗時：費半還可從 minute_bars 日切（庫內已有 SOX 分K）

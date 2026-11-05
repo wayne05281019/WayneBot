@@ -1012,6 +1012,22 @@ def test_teach_vol_sr_title_bit_has_next_layer():
     assert "22000" in bit or "22,000" in bit or "22,000".replace(",", "") in bit.replace(",", "")
 
 
+def test_ensure_us_index_daily_always_refreshes_recent():
+    """出圖前費半／納指必刷新近窗；不准「近窗夠就整段跳過」卡舊收。"""
+    import inspect
+
+    from biaoke_level_learn import _ensure_us_index_daily, _yahoo_us_index_upsert
+
+    src = inspect.getsource(_ensure_us_index_daily)
+    assert 'range_ = "1y" if need_hist else "1mo"' in src
+    assert "_yahoo_us_index_upsert" in src
+    assert "近窗夠、且已有 4/28" not in src
+    assert 'stats[sym] = int(n_have)\n                continue' not in src
+    upsert_src = inspect.getsource(_yahoo_us_index_upsert)
+    assert "America/New_York" in upsert_src
+    assert "Asia/Taipei" not in upsert_src
+
+
 def test_far_twii_macro_wave5_apr_to_jun_and_big_a_729():
     """遠窗自3月底：推進⑤＝4/1→6/23；大A底仍＝7/29，不准用四月窗底當A。"""
     import inspect
