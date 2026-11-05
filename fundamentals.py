@@ -1204,17 +1204,47 @@ def ensure_stock_fundamentals(
     out["coverage"] = cover
     q = get_latest_income(path, sid)
     behind = bool(q) and income_row_behind_filing_target(q)
-    if force or q is None or behind:
-        # 本檔落後日曆應公告季時，不准被全市場 income TTL 擋住
+    latest_q_label = (
+        f"{int(q['year'])}Q{int(q['season'])}" if q else ""
+    )
+    if force or q is None:
+        # 缺季報／force：同步補。落後日曆季有現列時改背景（不准堵介紹圖 8～30s）
         out["income"] = refresh_announced_income(
             path,
-            force=bool(force or behind),
+            force=bool(force or q is None),
             reason=(
                 f"ensure {sid} income missing={q is None} behind={behind}"
-                f" latest={(str(q.get('year')) + 'Q' + str(q.get('season'))) if q else ''}"
+                f" latest={latest_q_label}"
             ),
         )
         q = get_latest_income(path, sid)
+    elif behind:
+        out["income"] = {
+            "ok": True,
+            "skipped": "behind_deferred",
+            "reason": f"ensure {sid} income behind defer; latest={latest_q_label}",
+        }
+        out["deferred_income_refresh"] = True
+        try:
+            import threading
+
+            def _bg_income() -> None:
+                try:
+                    refresh_announced_income(
+                        path,
+                        force=True,
+                        reason=(
+                            f"bg behind {sid} latest={latest_q_label}"
+                        ),
+                    )
+                except Exception:
+                    logger.debug("背景補落後季報略過", exc_info=True)
+
+            threading.Thread(
+                target=_bg_income, name=f"fund-income-{sid}", daemon=True
+            ).start()
+        except Exception:
+            logger.debug("背景落後季報 thread 略過", exc_info=True)
     out["latest_month"] = (get_latest_monthly(path, sid) or {}).get("yyyymm") or ""
     out["latest_quarter"] = (
         f"{int(q['year'])}Q{int(q['season'])}" if q else ""

@@ -100,8 +100,22 @@ def test_ensure_refreshes_when_behind(tmp_path: Path, monkeypatch):
         lambda *a, **k: {"yyyymm": "202609"},
     )
 
+    class _ImmediateThread:
+        def __init__(self, target=None, *a, **k):
+            self._target = target
+
+        def start(self):
+            if self._target:
+                self._target()
+
+    import threading as _th
+
+    monkeypatch.setattr(_th, "Thread", _ImmediateThread)
+
     out = ensure_stock_fundamentals(db, "3595")
+    assert out.get("deferred_income_refresh") is True
+    assert (out.get("income") or {}).get("skipped") == "behind_deferred"
     assert calls["n"] == 1
     assert calls.get("force") is True
-    assert "behind=True" in str(calls.get("reason") or "")
+    assert "behind" in str(calls.get("reason") or "")
     assert out.get("latest_quarter") == "2026Q2"
