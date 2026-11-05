@@ -223,13 +223,16 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     # 黃框：遠窗上移進標題列右緣（不准擋費半K）；近／超近讓出白字標題
     assert "_tw_stamp_y = 0.982" in far_blk
     assert "_sox_stamp_y = 0.918" in far_blk
-    # 大B末標假突破；近窗黃戳～41200；縮圖右下空檔；智慧標座位接上
+    # 大B末標假突破；近窗黃戳改貼標題列右緣（不准釘 41200 價位空檔蓋柱）
     assert "假突破" in src
     assert "假突破" in far_blk and "假突破" in near_blk
-    assert "41200" in near_blk
+    assert "_stamp_y_data" not in near_blk
+    assert "y=0.982" in near_blk
+    assert "x=0.995" in near_blk
     assert "_reserve_avoid_zone" in src
     assert "_seat_onchart_labels" in src
-    assert "_fig_xy_from_axes_data" in near_blk
+    # 近窗黃戳改用 figure 分數；資料座標換算工具仍給其他標座用
+    assert "def _fig_xy_from_axes_data" in src
     # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
     assert "y=0.855" in micro_blk
     assert "add_gridspec" in micro_blk
