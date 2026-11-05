@@ -1064,7 +1064,10 @@ def catch_up_missed_jobs(now=None) -> None:
             runner.reconcile_push_deliveries(prefix="winrate-bp-")
         except Exception:
             logger.exception("補跑 winrate reconcile 失敗（不擋）")
-        wr_notify = scheduler_may_push("winrate")
+        from config import winrate_evening_notify_enabled
+
+        # 話筒臉改 06:30 勝率＋大量圖；21:00 預設只落檔／AI（WAYNE_WINRATE_NOTIFY=1 才寄）
+        wr_notify = scheduler_may_push("winrate") and winrate_evening_notify_enabled()
         try:
             from datetime import datetime
             from zoneinfo import ZoneInfo
@@ -1097,7 +1100,10 @@ def catch_up_missed_jobs(now=None) -> None:
                 "並補寄" if wr_notify else "（不寄）",
             )
         else:
-            logger.info("補跑：已過台灣 21:00，若勝率買點沒寄過就補寄")
+            logger.info(
+                "補跑：已過台灣 21:00，勝率買點落檔／AI%s",
+                "並補寄" if wr_notify else "（話筒不寄；早報才寄）",
+            )
         runner.run_winrate_buypoint(skip_if_done=True, notify=wr_notify)
     # 平日補跑之後仍確認快取在；success 但 sessions 空會被 morning 路徑補，這裡再兜一次。
     _ensure_screen_cache(runner)
@@ -1164,7 +1170,11 @@ def run_scheduled_job(kind: str) -> None:
     同一個工作被 GHA 與 Render 各跑一次時，兩邊的 pipeline_runs 互相看不到，
     skip_if_done 失效，使用者就會收到兩份一樣的推播。
     """
-    from config import scheduler_may_push, scheduler_owns
+    from config import (
+        scheduler_may_push,
+        scheduler_owns,
+        winrate_evening_notify_enabled,
+    )
     from main_runner import MainRunner
 
     if not scheduler_owns(kind):
@@ -1191,7 +1201,9 @@ def run_scheduled_job(kind: str) -> None:
     elif kind == "evening":
         runner.run_evening_screen(skip_if_done=True, notify=False)
     elif kind == "winrate":
-        runner.run_winrate_buypoint(skip_if_done=True, notify=push)
+        # 話筒改 06:30 早報；21:00 預設只落檔＋AI（WAYNE_WINRATE_NOTIFY=1 才寄）
+        wr_push = bool(push) and winrate_evening_notify_enabled()
+        runner.run_winrate_buypoint(skip_if_done=True, notify=wr_push)
     elif kind == "typhoon":
         runner.run_typhoon_peek()
     elif kind == "open_check":
