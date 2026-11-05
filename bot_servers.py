@@ -5993,10 +5993,12 @@ class WayneTelegramBot:
         mode: str = "full",
         uid: str = "",
         pairs: List[Tuple[str, str, str]] | None = None,
+        vol_only: bool = False,
     ) -> bool:
-        """21:00 同步推播一頁（≤15）。回傳是否至少送出開頭／空文。
+        """同步推播一頁勝率買點（≤15）。回傳是否至少送出開頭／空文。
 
         pairs：可傳已渲好的 (vz, card, name) 同序清單，雙人推播只渲一次。
+        vol_only：06:30 早報只要大量撐壓圖，不附高低卡（§14 2026-11-05）。
         """
         from winrate_buypoint import (
             EMPTY_MSG,
@@ -6029,6 +6031,7 @@ class WayneTelegramBot:
             )
         if len(rendered) < len(chunk):
             rendered = list(rendered) + [("", "", "")] * (len(chunk) - len(rendered))
+        vol_caption = "大量撐壓" if vol_only else "壓力區間"
         for i, row in enumerate(chunk):
             sid = str(row.get("stock_id") or "").strip()
             name = str(row.get("stock_name") or "")
@@ -6051,12 +6054,13 @@ class WayneTelegramBot:
                     ]
                 )
             has_volume = bool(vpath and os.path.isfile(vpath))
-            has_card = bool(cpath and os.path.isfile(cpath))
+            has_card = bool(cpath and os.path.isfile(cpath)) and not vol_only
             if has_volume:
                 self._send_photo(
                     dest,
                     vpath,
-                    caption=f"<b>{html_escape(sid)}</b> {label}　壓力區間",
+                    caption=f"<b>{html_escape(sid)}</b> {label}　{vol_caption}",
+                    reply_markup=markup if (vol_only or not has_card) else None,
                 )
             if has_card:
                 self._send_photo(
@@ -6065,7 +6069,7 @@ class WayneTelegramBot:
                     caption=f"<b>{html_escape(sid)}</b> {label}　高低溫度卡",
                     reply_markup=markup,
                 )
-            elif markup is not None:
+            elif markup is not None and not has_volume:
                 self._send_html(
                     dest,
                     f"<b>{html_escape(sid)}</b> {label}",
