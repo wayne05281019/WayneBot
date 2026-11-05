@@ -6,11 +6,10 @@
 # 盤後時間：台灣週一～五 16:30 只融合行情（不寄海選）
 #   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）WAYNE_JOB=increment
 #   - Render 常駐執行緒同樣 16:30
-# 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
-#   - 常駐 data 角色 06:30 寄出（有效 token＋按開始的話筒）
-#   - GHA cron 30 22 * * 0-4 仍跑 morning_screen 算名單、蓋 zip；WAYNE_SCREEN_NOTIFY=0 不寄
-#   - 真休市日（連假／北市停班／颱風）：不跑海選；仍寄美股＋環境精簡早報（us-digest-*）；
-#     台股段寫「今日無開盤，因為〇〇」；screen-closed-* 記略過海選；不准改買訊
+# 早報：台灣週一～五 06:30 寄勝率買點＋大量撐壓圖（§14；海選不推話筒）
+#   - 常駐 data 角色 06:30 寄出（有效 token＋白名單兩人）
+#   - GHA cron 30 22 * * 0-4 仍跑 morning_screen 後台算／落檔；WAYNE_SCREEN_NOTIFY=0 不寄
+#   - 真休市日（連假／北市停班／颱風）：不寄勝率早報；screen-closed-* 記略過；不准改買訊
 # 12:45 雙時段比價：只對照今早剛離零＋還在零；開盤 vs 約 12:45 現價
 #   - 休市日整段略過（midday-closed-*；連「今天沒開盤」也不寄）
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
@@ -30,7 +29,7 @@
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
 #   7. 興櫃 emerging_quotes（櫃買當日行情表／日表；不寫進上市櫃 daily_quotes）
 #   8. 匯入健康檢查；上市／上櫃／興櫃沒齊就不標成功、不覆蓋完整舊資料
-# 海選 06:30 寄給偉權與哥哥（兩人已在白名單）；12:45 只比剛離零＋還在零開盤／現價。盤後 16:30 只融合；20:00 不寄。
+# 06:30 勝率買點＋大量圖寄給偉權與哥哥；海選只後台落檔。盤後 16:30 只融合；20:00／21:00 見各排程。
 # 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
 # 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR；收盤後再看盤後（ADR／那指期續勢）。
 # 盤中期貨不看。大跌併入 06:30 早報彙整開頭，不另寄。逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
@@ -3109,14 +3108,145 @@ class MainRunner:
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
 
+    def _push_morning_winrate(
+        self,
+        as_of: str,
+        *,
+        pipeline_run_date: str = "",
+    ) -> bool:
+        """§14 06:30 話筒臉：勝率買點＋每檔一張大量撐壓圖（海選不推）。
+
+        名單優先讀既有 winrate roster；沒有再掃 leave_zero 藍▲並落檔。
+        回傳白名單是否都寄到。
+        """
+        pkey = str(pipeline_run_date or "").strip()
+        if pkey:
+            try:
+                already = self.push_already_delivered(pkey) or (
+                    self.pipeline_status(pkey) == "success"
+                )
+            except Exception:
+                already = False
+            if already:
+                logger.info(
+                    "早報勝率已有寄出回執／success，略過重寄 key=%s", pkey
+                )
+                return True
+        day = str(as_of or "").replace("-", "")[:8]
+        rows: List[Dict[str, Any]] = []
+        try:
+            from winrate_buypoint import (
+                apply_suggest_paint,
+                load_winrate_roster,
+                save_winrate_roster,
+                scan_winrate_leave_zero,
+                silent_remember_roster,
+            )
+
+            rows = list(load_winrate_roster(self.db_path, day) or [])
+            if not rows:
+                day2, scanned = scan_winrate_leave_zero(self.db_path, as_of=day)
+                day = str(day2 or day)
+                rows = list(scanned or [])
+                if rows:
+                    save_winrate_roster(self.db_path, day, rows)
+                    try:
+                        silent_remember_roster(self.db_path, day, rows)
+                    except Exception:
+                        logger.debug("早報勝率靜默落檔略過", exc_info=True)
+            push_rows = rows
+            try:
+                push_rows = apply_suggest_paint(self.db_path, rows, as_of=day)
+            except Exception:
+                logger.debug("早報勝率建議篩略過", exc_info=True)
+                push_rows = rows
+        except Exception:
+            logger.exception("早報勝率名單準備失敗 as_of=%s", day)
+            push_rows = []
+
+        ids = self._family_chat_ids()
+        dests = ids or ([str(self.chat_id)] if getattr(self, "chat_id", None) else [])
+        dests = [d for d in dests if d]
+        if not dests:
+            logger.warning("早報勝率無白名單收件人")
+            return False
+        if not push_rows:
+            from winrate_buypoint import EMPTY_MSG
+
+            sent_ok = bool(self._broadcast_family(EMPTY_MSG))
+            if sent_ok and pkey:
+                self.record_whitelist_push(
+                    pkey, kind="morning-winrate", n_ok=0, notes="morning-winrate empty"
+                )
+            return sent_ok
+        if not (self.bot and hasattr(self.bot, "push_winrate_buypoint_page")):
+            from winrate_buypoint import header_html
+
+            sent_ok = bool(
+                self._broadcast_family(header_html(day, len(push_rows), mode="morning"))
+            )
+            logger.info("早報勝率無 bot 圖推，只寄標題（%s 檔）", len(push_rows))
+            if sent_ok and pkey:
+                self.record_whitelist_push(
+                    pkey,
+                    kind="morning-winrate",
+                    n_ok=len(push_rows),
+                    notes="morning-winrate header-only",
+                )
+            return sent_ok
+
+        page_pairs = None
+        try:
+            from winrate_buypoint import PAGE_SIZE, page_slice, render_page_pairs
+
+            chunk, _off, _more = page_slice(push_rows, 0, limit=PAGE_SIZE)
+            page_pairs = render_page_pairs(
+                self.db_path,
+                chunk,
+                charts_dir=getattr(self.bot, "charts_dir", "") or "",
+                uid="wr_morning",
+                as_of=day,
+                reuse_cache=True,
+            )
+        except Exception:
+            logger.exception("早報勝率整頁預渲失敗，改逐人出圖")
+            page_pairs = None
+
+        ok_n = 0
+        for cid in dests:
+            try:
+                if self.bot.push_winrate_buypoint_page(
+                    cid,
+                    push_rows,
+                    as_of=day,
+                    offset=0,
+                    mode="morning",
+                    uid=str(cid),
+                    pairs=page_pairs,
+                    vol_only=True,
+                ):
+                    ok_n += 1
+            except Exception as e:
+                logger.warning("早報勝率寄出失敗 dest=%s: %s", cid, e)
+        sent_ok = ok_n == len(dests) and ok_n > 0
+        logger.info("早報勝率寄出成功 %d/%d 人 n=%s", ok_n, len(dests), len(push_rows))
+        if sent_ok and pkey:
+            self.record_whitelist_push(
+                pkey,
+                kind="morning-winrate",
+                n_ok=len(push_rows),
+                notes=f"morning-winrate n={len(push_rows)}",
+            )
+        return sent_ok
+
     def run_morning_screen(self, skip_if_done: bool = False, notify: bool = True) -> bool:
-        """開市日 06:30 海選＋加權研究等同輪附帶：白名單只寄一次。
+        """開市日 06:30：後台海選落檔＋話筒寄勝率買點大量圖（§14）。
 
         準點／catch-up／watchdog／CLI／重開都走這裡。notify=True 時，
         補齊基準日後、任何 Telegram 寄出前，必須原子搶 screen-{as_of}；
         success 永不重寄；fresh running（租約未過期）不重搶防雙寄；
         租約過期／computed／crash 可重搶補寄（§14，與 midday 永久擋 stale 不同）。
-        加權指數研究／資金輪動／月營收／雷達都在 _push_screening，同一把鎖。
+        話筒臉＝勝率買點＋大量撐壓圖；海選不准再推到話筒。
         """
         from import_health import latest_complete_quote_date
         from tw_holidays import (
@@ -3351,7 +3481,7 @@ class MainRunner:
                 logger.info("早上海選 %s 已寄過或進行中，略過。", key)
                 return True
             claimed = True
-        logger.info("☀️ 台灣 06:30 海選，基準日 %s", as_of)
+        logger.info("☀️ 台灣 06:30 勝率買點早報（大量圖），基準日 %s", as_of)
 
         def _run_morning_body() -> bool:
             try:
@@ -3405,6 +3535,7 @@ class MainRunner:
                 logger.error("四大選股失敗: %s", e, exc_info=True)
             if claimed:
                 self.touch_pipeline_running(key)
+            # 海選仍後台算／session 落檔；話筒改寄勝率買點＋大量圖（§14 2026-11-05）。
             sent_ok = True
             if notify:
                 # demote／別條搶走 claim 後，本執行緒不准再寄（防整套雙寄）
@@ -3412,63 +3543,51 @@ class MainRunner:
                     st_now = self.pipeline_status(key)
                     if self.push_already_delivered(key) or st_now == "success":
                         logger.info(
-                            "早上海選 %s 寄出前已有回執／success，中止本條", key
+                            "早報勝率 %s 寄出前已有回執／success，中止本條", key
                         )
                         return True
                     if st_now != "running":
                         logger.warning(
-                            "早上海選 %s claim 已非 running（%s），中止寄送防雙寄",
+                            "早報勝率 %s claim 已非 running（%s），中止寄送防雙寄",
                             key,
                             st_now or "missing",
                         )
                         return False
                 sent_ok = bool(
-                    self._push_screening(
-                        screening,
-                        as_of=as_of,
-                        morning_digest=True,
-                        us_snap=us_snap or None,
-                        pipeline_run_date=key,
-                    )
+                    self._push_morning_winrate(as_of, pipeline_run_date=key)
                 )
             else:
-                logger.info("早上海選不寄 Telegram（notify=0），只寫快照")
-                if self._screening_delivered(screening):
-                    try:
-                        self._run_ai_desk(
-                            as_of or self.today_str,
-                            results=(screening or {}).get("results") or {},
-                            notify=False,
-                        )
-                    except Exception as e:
-                        logger.warning("無推播早報仍跑 AI 模擬倉略過：%s", e)
-            delivered = self._screening_delivered(screening)
-            if delivered and sent_ok:
-                if notify or rebuild_only:
-                    # 已寄出：蓋戳必須盡力成功；失敗再 raise 會讓外層改 computed→重寄。
-                    try:
-                        self._mark_pipeline(
-                            "success", "morning", run_date=key, retries=12
-                        )
-                    except Exception:
-                        logger.exception(
-                            "早上海選已寄出但最終蓋戳仍失敗 key=%s（勿當未寄）",
-                            key,
-                        )
-                else:
-                    # GHA notify=0 只算名單。若標 success，Release zip 灌進 Render
-                    # 會讓 skip_if_done 以為已寄過（401 那天就是這樣）。
-                    self._mark_pipeline("computed", "morning notify-off", run_date=key)
-                    logger.info("早上海選已算出但不標已寄過（notify=0）%s", key)
-            elif delivered and not sent_ok:
-                # 已搶鎖但沒送到：放 computed，讓 catch-up／watchdog 可補寄；不准卡 running。
+                logger.info("早報不寄 Telegram（notify=0），海選／勝率只寫快照")
+            # AI 倉母體仍可吃海選／勝率；早報推播失敗不准擋落檔後的模擬。
+            try:
+                self._run_ai_desk(
+                    as_of or self.today_str,
+                    results=(screening or {}).get("results") or {},
+                    notify=False,
+                )
+            except Exception as e:
+                logger.warning("早報後 AI 模擬倉略過：%s", e)
+            if notify and sent_ok:
+                try:
+                    self._mark_pipeline(
+                        "success", "morning-winrate", run_date=key, retries=12
+                    )
+                except Exception:
+                    logger.exception(
+                        "早報勝率已寄出但最終蓋戳仍失敗 key=%s（勿當未寄）",
+                        key,
+                    )
+                return True
+            if not notify:
+                # GHA notify=0 只算／落檔。不准標 success 讓 skip_if_done 誤以為已寄。
+                self._mark_pipeline("computed", "morning notify-off", run_date=key)
+                logger.info("早報已算出但不標已寄過（notify=0）%s", key)
+                return True
+            # 已搶鎖但沒送到：放 computed，讓 catch-up／watchdog 可補寄；不准卡 running。
+            if claimed:
                 self._mark_pipeline("computed", "morning send-failed", run_date=key)
-                logger.error("早上海選已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
-            else:
-                if claimed:
-                    self._mark_pipeline("computed", "morning empty", run_date=key)
-                logger.error("早上海選未產出名單，基準日 %s", as_of)
-            return bool(delivered and sent_ok)
+            logger.error("早報勝率 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
+            return False
 
         try:
             from busy_window_notice import busy_window

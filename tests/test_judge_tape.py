@@ -546,8 +546,9 @@ def test_agents_silent_record_is_rank_three():
     assert "1→14 的名次" in text
     assert "13. 靜默對質贏了就換並再生下一版" in text
     assert "## 13. 靜默對質贏了就換並再生下一版" in text
-    assert "14. 開市日必寄海選早報" in text
-    assert "## 14. 開市日必寄海選早報" in text
+    assert "14. 開市日必寄勝率買點＋大量圖" in text
+    assert "## 14. 開市日必寄勝率買點＋大量圖" in text
+    assert "海選不推話筒" in text or "不准再當 06:30 推播內容" in text
     assert "8772209416" in text
     assert "screen-closed-" in text
     assert "同 PR／同件" in text or "同件必須再生下一版" in text
@@ -555,7 +556,7 @@ def test_agents_silent_record_is_rank_three():
     i4 = text.find("## 4. 不准假資料")
     i_silent = text.find("### 默默落檔")
     i13 = text.find("## 13. 靜默對質贏了就換並再生下一版")
-    i14 = text.find("## 14. 開市日必寄海選早報")
+    i14 = text.find("## 14. 開市日必寄勝率買點＋大量圖")
     assert 0 < i3 < i_silent < i4
     assert i13 > i4
     assert i14 > i13

@@ -352,7 +352,10 @@ def test_morning_screen_does_not_mark_when_telegram_rejects(tmp_path, monkeypatc
     runner.db_path = path
     runner.today_str = "20260909"
     runner.chat_id = "9001"
-    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: False)})()
+    runner.bot = type("B", (), {})()
+    runner._push_morning_winrate = lambda *a, **k: False
+    runner._morning_wr_stubbed = True
+    runner._run_ai_desk = lambda *a, **k: {}
 
     monkeypatch.setattr("tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {})
     monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
@@ -385,7 +388,9 @@ def test_morning_screen_marks_only_after_telegram_accepts(tmp_path, monkeypatch)
     runner.db_path = path
     runner.today_str = "20260909"
     runner.chat_id = "9001"
-    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: True)})()
+    runner.bot = type("B", (), {})()
+    runner._push_morning_winrate = lambda *a, **k: True
+    runner._morning_wr_stubbed = True
     runner._format_watch_radar_section = lambda uid="": ""
     runner._run_ai_desk = lambda *a, **k: {}
     runner.send_telegram_message = lambda *a, **k: None
@@ -481,6 +486,10 @@ def _stub_morning_deps(monkeypatch, runner):
     monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
     monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
     runner._refresh_official_sidecars = lambda: None
+    # §14 2026-11-05：話筒改寄勝率買點＋大量圖；單測預設視為寄成。
+    if not getattr(runner, "_morning_wr_stubbed", False):
+        runner._push_morning_winrate = lambda *a, **k: True
+        runner._morning_wr_stubbed = True
 
 
 def test_morning_notify_off_marks_computed_not_success(tmp_path, monkeypatch):
@@ -1576,7 +1585,7 @@ def test_refresh_official_sidecars_hard_timeout(monkeypatch):
 
 
 def test_morning_double_call_sends_once(tmp_path, monkeypatch):
-    """連續兩次 run_morning_screen：白名單各只收到一輪海選（加權併入彙整，不另寄）。"""
+    """連續兩次 run_morning_screen：勝率早報只推一輪（§14 防雙寄）。"""
     import sqlite3
 
     from main_runner import MainRunner
@@ -1590,76 +1599,29 @@ def test_morning_double_call_sends_once(tmp_path, monkeypatch):
     monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "8772209416")
 
     pushes = []
-    extras = []
-    screenings = []
 
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
     runner.today_str = "20260909"
     runner.chat_id = "9001"
-
-    def _send_screen(screening, chat_id=None):
-        pushes.append(chat_id)
-        screenings.append((chat_id, screening))
-        return True
-
-    runner.bot = type(
-        "B",
-        (),
-        {"send_screening_report": staticmethod(_send_screen)},
-    )()
+    runner.bot = type("B", (), {})()
     runner._run_ai_desk = lambda *a, **k: {}
     runner._format_watch_radar_section = lambda uid="": ""
-    runner.send_telegram_message = lambda text, chat_id=None: extras.append(
-        (chat_id, text)
-    ) or True
     runner.token = ""
     _stub_morning_deps(monkeypatch, runner)
 
-    def _screen_with_message(**_k):
-        from screen_sessions import save_screen_session
+    def _wr(as_of, pipeline_run_date=""):
+        pushes.append((as_of, pipeline_run_date))
+        return True
 
-        save_screen_session(
-            path,
-            "20260908",
-            "morning",
-            {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 1.0}]},
-        )
-        # format_taiwan_market_brief_html 只在 screening 有 message 時才當附帶寄出
-        return {
-            "status": "success",
-            "payload": [
-                {"mark_key": "market", "html": "＝＝大盤狀況＝＝", "picks": []},
-                {"mark_key": "leave_zero", "html": "海選", "picks": []},
-            ],
-            "message": "海選本文",
-            "results": {},
-        }
-
-    monkeypatch.setattr("main_runner.run_full_screening", _screen_with_message)
-    monkeypatch.setattr(
-        "taiwan_market.format_taiwan_market_brief_html",
-        lambda *_a, **_k: "＝＝台灣加權指數研究＝＝\n測試",
-    )
-    monkeypatch.setattr(
-        "taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False}
-    )
-    monkeypatch.setattr("money_flow.format_sector_rotation_html", lambda *_a, **_k: "")
-    monkeypatch.setattr("fundamentals.format_hot_revenue_html", lambda *_a, **_k: "")
+    runner._push_morning_winrate = _wr
+    runner._morning_wr_stubbed = True
 
     assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
     assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
 
-    assert sorted(pushes) == ["8772209416", "9001"]
-    assert not any("加權指數研究" in (e[1] or "") for e in extras)
-    for uid in ("9001", "8772209416"):
-        blob = " ".join(
-            p.get("html") or ""
-            for _, scr in screenings
-            if _ == uid
-            for p in (scr.get("payload") or [])
-        )
-        assert "加權指數研究" in blob
+    assert len(pushes) == 1
+    assert pushes[0][0] == "20260908"
     assert (
         sqlite3.connect(path)
         .execute(
@@ -1667,7 +1629,7 @@ def test_morning_double_call_sends_once(tmp_path, monkeypatch):
             ("screen-20260908",),
         )
         .fetchone()
-        == ("success", "morning")
+        == ("success", "morning-winrate")
     )
 
 
@@ -1687,8 +1649,11 @@ def test_morning_send_failed_marks_computed_for_retry(tmp_path, monkeypatch):
     runner.db_path = path
     runner.today_str = "20260909"
     runner.chat_id = "9001"
-    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: False)})()
+    runner.bot = type("B", (), {})()
+    runner._run_ai_desk = lambda *a, **k: {}
     _stub_morning_deps(monkeypatch, runner)
+    runner._push_morning_winrate = lambda *a, **k: False
+    runner._morning_wr_stubbed = True
 
     assert runner.run_morning_screen(skip_if_done=True, notify=True) is False
     row = sqlite3.connect(path).execute(
@@ -1728,20 +1693,19 @@ def test_morning_stale_running_reclaims_and_sends_both(tmp_path, monkeypatch):
     runner.db_path = path
     runner.today_str = "20261020"
     runner.chat_id = "9001"
-    runner.bot = type(
-        "B",
-        (),
-        {
-            "send_screening_report": staticmethod(
-                lambda *a, **k: pushes.append(k.get("chat_id")) or True
-            )
-        },
-    )()
+    runner.bot = type("B", (), {})()
     runner._run_ai_desk = lambda *a, **k: {}
     runner._format_watch_radar_section = lambda uid="": ""
     runner.send_telegram_message = lambda *a, **k: True
     runner.token = ""
     _stub_morning_deps(monkeypatch, runner)
+
+    def _wr(as_of, pipeline_run_date=""):
+        pushes.extend(["9001", "8772209416"])
+        return True
+
+    runner._push_morning_winrate = _wr
+    runner._morning_wr_stubbed = True
     monkeypatch.setattr(
         "import_health.latest_complete_quote_date", lambda *_a, **_k: "20261019"
     )
@@ -1781,7 +1745,7 @@ def test_morning_stale_running_reclaims_and_sends_both(tmp_path, monkeypatch):
         ("screen-20261019",),
     ).fetchone()
     assert row[0] == "success"
-    assert "morning" in row[1]
+    assert "morning-winrate" in row[1]
 
 
 def test_morning_crash_marks_computed_for_retry(tmp_path, monkeypatch):
@@ -1800,13 +1764,15 @@ def test_morning_crash_marks_computed_for_retry(tmp_path, monkeypatch):
     runner.db_path = path
     runner.today_str = "20260909"
     runner.chat_id = "9001"
-    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: True)})()
+    runner.bot = type("B", (), {})()
+    runner._run_ai_desk = lambda *a, **k: {}
     _stub_morning_deps(monkeypatch, runner)
 
     def _boom(*_a, **_k):
         raise RuntimeError("simulated morning crash")
 
-    runner._push_screening = _boom  # type: ignore
+    runner._push_morning_winrate = _boom  # type: ignore
+    runner._morning_wr_stubbed = True
 
     with pytest.raises(RuntimeError, match="simulated morning crash"):
         runner.run_morning_screen(skip_if_done=True, notify=True)
@@ -2366,17 +2332,17 @@ def test_morning_open_day_reissues_after_holiday_same_as_of(tmp_path, monkeypatc
     runner.token = "x"
     sends = {"n": 0}
 
-    def _send_report(*_a, **_k):
+    def _wr(*_a, **_k):
         sends["n"] += 1
         return True
 
-    runner.bot = type(
-        "B", (), {"send_screening_report": staticmethod(_send_report)}
-    )()
+    runner.bot = type("B", (), {})()
     runner._format_watch_radar_section = lambda uid="": ""
     runner._run_ai_desk = lambda *a, **k: {}
     runner.send_telegram_message = lambda *a, **k: None
     runner._push_morning_session_cards = lambda *a, **k: None
+    runner._push_morning_winrate = _wr
+    runner._morning_wr_stubbed = True
     runner._refresh_official_sidecars = lambda: None
     runner.demote_premature_morning_screens = lambda: 0
     runner.demote_holiday_skip_morning_screens = lambda: 0
