@@ -227,8 +227,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _thesis_cap_for_query" in src
     # 遠窗四欄：費半→台指電子盤→加權日盤（加權較高）→量；欄間日期
     assert "figsize=(15.6, 15.2)" in far_blk
-    assert "height_ratios=(2.05, 2.20, 3.20, 0.95)" in far_blk
-    assert "hspace=0.12" in far_blk
+    assert "height_ratios=(2.15, 2.30, 3.30, 0.95)" in far_blk
+    assert "hspace=0.18" in far_blk
     assert "_shrink_png_for_telegram" in far_blk
     assert "_TG_PHOTO_MAX_WH_SUM" in src
     assert "def _shrink_png_for_telegram" in src
@@ -243,6 +243,7 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "電盤" in far_blk
     # 三戳鎖各欄 axes 左上（上緣下方）；transAxes 才不被 tight 裁出框外
     assert "_stamp_ax_x" in far_blk and "_stamp_ax_y" in far_blk
+    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in far_blk
     assert "ax=axu" in far_blk and "ax=axt" in far_blk
     assert 'ha="left"' in far_blk and 'va="top"' in far_blk
     assert "def _fig_stamp_xy_axes_top_left" in src
@@ -422,7 +423,7 @@ def test_far_yellow_band_is_max_vol_day_hl():
     assert "2.55" in place
     assert "n) + 1.15" not in place and "n + 1.15" not in place
     assert "x_right_col" in block or "x_col=x_right_col" in block
-    assert "min_gap=(ymax - ymin) * 0.055" in block
+    assert "min_gap=(ymax - ymin) * 0.055" in block or "0.062 if _c9_now else 0.055" in block
     assert "900.0" not in block[block.index("_place_live_right_labels") :]
     # 遠窗 xlim 跟最長軸（費半可晚於加權）；舊寫 n+8.6，現況 n_axis+8.6
     assert "n_axis + 8.6" in block or "n + 8.6" in block

@@ -2014,7 +2014,8 @@ _TODAY_CLOSE_RIGHT_INSET_PX = 18
 # 昨收／今收左緣距末日 K（seam）最小資料座標空隙；短影線半寬≈0.45
 # 2026-10-28：再加寬，昨收標必須離開末日豎線／尾 K，不准看成當日價
 # 2026-10-30：再加寬；3363 盤中昨收仍貼末日 K／觀察◆ → 縮圖被蓋
-_CLOSE_TAG_CANDLE_CLEAR = 14.5
+# 2026-11-06：長陰末日（3595）再加寬，並排昨收｜今收不准貼縮圖 K
+_CLOSE_TAG_CANDLE_CLEAR = 18.0
 
 
 def _dedupe_right_notes(
@@ -2188,12 +2189,16 @@ def _close_tags_lower_right_y(
     ymax: float,
     *,
     avoid_price: float = 0.0,
+    tip_high: float = 0.0,
+    tip_low: float = 0.0,
 ) -> float:
     """昨收／今收錨點 Y。
 
     2026-10-28：相對價窗右下空白（約 12～20% 軸高），不准寫死 550～950
     （中價股如 6213 會落在現價帶，昨收標＋seam 虛線易被看成「最近一天價錢」）。
     必與現價／avoid_price 拉開；軸內無空窗才貼下緣。
+    2026-11-06：末日長陰（3595）錨點若落在 tip K 高低內 → 壓到 tip 低下方空帶，
+    不准昨收｜今收跟縮圖 K 卡成一團。
     """
     y0 = float(ymin)
     y1 = float(ymax)
@@ -2221,6 +2226,62 @@ def _close_tags_lower_right_y(
     # 最終再確認離現價
     if ap > 0 and abs(ay - ap) < span * 0.22:
         ay = float(max(y0 + pad, min(ay, ap - span * 0.25)))
+    # 末日 K 高低帶：錨點不准落在 tip 影線／實體垂直範圍內（長陰尤甚）
+    th = float(tip_high or 0.0)
+    tl = float(tip_low or 0.0)
+    if th > 0 and tl > 0 and th >= tl:
+        tip_pad = max(span * 0.04, abs(th - tl) * 0.10, abs(ap) * 0.012 if ap else 0.0)
+        tip_lo_b = float(tl) - tip_pad
+        tip_hi_b = float(th) + tip_pad
+        below = float(tl) - max(span * 0.07, tip_pad * 1.5)
+        above = float(th) + max(span * 0.07, tip_pad * 1.5)
+        below_ok = below >= y0 + pad
+        above_ok = above <= y1 - pad
+        tip_mid = 0.5 * (float(tl) + float(th))
+        # tip 在下半（急殺長陰常見）→ 優先尖上大片空白；上半才壓低
+        prefer_above = tip_mid <= (y0 + span * 0.55)
+
+        def _pick_away() -> float:
+            if prefer_above and above_ok:
+                return float(above)
+            if (not prefer_above) and below_ok:
+                return float(below)
+            if above_ok and below_ok:
+                # 兩邊都有空：挑離 tip 中點較遠、且離現價夠遠的
+                cand = [above, below]
+                cand.sort(
+                    key=lambda y: (
+                        abs(float(y) - tip_mid),
+                        abs(float(y) - ap) if ap > 0 else 0.0,
+                    ),
+                    reverse=True,
+                )
+                return float(cand[0])
+            if above_ok:
+                return float(above)
+            if below_ok:
+                return float(below)
+            return float(max(y0 + pad, min(ay, y1 - pad)))
+
+        if tip_lo_b <= ay <= tip_hi_b or (
+            ap > 0 and tip_lo_b <= ap <= tip_hi_b and abs(ay - ap) < span * 0.30
+        ):
+            ay = _pick_away()
+        # 再確認離 tip 帶
+        if tip_lo_b <= ay <= tip_hi_b:
+            ay = _pick_away()
+        if ap > 0 and abs(ay - ap) < span * 0.18:
+            # 仍貼現價：往尖上空白再推（急殺時現價在 tip 內）
+            if above_ok and (prefer_above or not below_ok):
+                ay = float(max(above, ap + span * 0.22))
+            elif below_ok:
+                ay = float(min(below, ap - span * 0.22))
+    ay = float(max(y0 + pad, min(ay, y1 - pad)))
+    # 最終仍在 tip 帶內＝軸太窄，硬釘尖上緣外（裁不到就貼上緣內邊）
+    if th > 0 and tl > 0 and th >= tl:
+        tip_pad = max(span * 0.04, abs(th - tl) * 0.10)
+        if (float(tl) - tip_pad) <= ay <= (float(th) + tip_pad):
+            ay = float(min(y1 - pad, float(th) + tip_pad * 1.6))
     return float(ay)
 
 
@@ -5121,6 +5182,8 @@ def render_biaoke_structure_png(
             float(ymin),
             float(ymax),
             avoid_price=float(last_c) if last_c > 0 else 0.0,
+            tip_high=float(highs[-1] if highs else 0) or 0.0,
+            tip_low=float(lows[-1] if lows else 0) or 0.0,
         ),
     )
     # 已刪演化區膚色底＋「演化區（不是保證…）」底標

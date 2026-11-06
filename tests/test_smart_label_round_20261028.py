@@ -7,11 +7,27 @@ import inspect
 def test_close_tag_clearance_widened_for_prev_close():
     from biaoke_chart import _CLOSE_TAG_CANDLE_CLEAR, _close_tags_lower_right_y
 
-    assert float(_CLOSE_TAG_CANDLE_CLEAR) >= 11.0
+    assert float(_CLOSE_TAG_CANDLE_CLEAR) >= 14.5
     # 6213 級中價：錨點必須明顯低於現價，不准落在 750 現價帶
     ay = _close_tags_lower_right_y(350.0, 1000.0, avoid_price=778.0)
     assert ay < 620.0
     assert abs(ay - 778.0) >= 140.0
+
+
+def test_close_tags_avoid_tip_candle_vertical_span():
+    """3595 長陰：昨收｜今收錨點不准落在末日高低影線帶內；急殺優先尖上空白。"""
+    from biaoke_chart import _close_tags_lower_right_y
+
+    # 價窗很大、現價在下半；tip K 422～649 蓋住舊 14% 錨
+    ay = _close_tags_lower_right_y(
+        200.0,
+        2800.0,
+        avoid_price=561.7,
+        tip_high=649.0,
+        tip_low=422.0,
+    )
+    assert ay > 649.0 + 20.0  # 下半 tip → 尖上空白
+    assert abs(ay - 561.7) >= 80.0
 
 
 def test_structure_skips_near_end_spike_vline():

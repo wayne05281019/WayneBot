@@ -64,6 +64,7 @@ WRITTEN_ABSOLUTE_TARGETS: Dict[str, Tuple[Dict[str, Any], ...]] = {
 
 _DEFAULT_LOOKBACK = 40
 _EARLIER_LOOKBACK = 80  # 近窗內次層已破 → 往更早 K 再找一檔
+_DEEP_LOOKBACK = 180  # 連破多層（2383 收遠低於主撐）→ 再往更早次大量區串聯
 
 
 def _sid(raw: Any) -> str:
@@ -270,6 +271,9 @@ def find_secondary_vol_zone(
     hit = _pick(int(lookback or _DEFAULT_LOOKBACK))
     if hit is None and allow_earlier and int(lookback or 0) < _EARLIER_LOOKBACK:
         hit = _pick(_EARLIER_LOOKBACK)
+    # 近／早窗次層全被收盤連破 → 深窗再串一檔（破撐≠換主區；只補下一層）
+    if hit is None and allow_earlier and int(lookback or 0) < _DEEP_LOOKBACK:
+        hit = _pick(_DEEP_LOOKBACK)
     return hit
 
 

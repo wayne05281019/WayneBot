@@ -4548,6 +4548,8 @@ def _paint_key_zone_smart_tags(
     ymin: float,
     ymax: float,
     occupied: Optional[List[Tuple[float, float, float, float]]] = None,
+    broke_support: bool = False,
+    over_pressure: bool = False,
 ) -> List[Tuple[float, float, float, float]]:
     """現任主大量區壓／撐（REQUIRED）：依本圖淨空自適應同側；找不到淨空也必須留標。
 
@@ -4556,6 +4558,7 @@ def _paint_key_zone_smart_tags(
     - 壓在上、撐在下（依價位垂直序）；壓貼區帶上緣，不准飛中圖天際。
     - 每圖自揀左／中／右最佳淨空槽（對 K／量）；成對盡量同 X／同側。
       預設偏好左緣淨空（3081 基準）；2233 靠左＝該圖適合，非寫死永遠釘左。
+    - 2026-11-06：收盤破撐／過壓仍鎖主區價，角標加「已破」／「已過」（破撐≠換主區）。
     """
     from biaoke_next_support import (
         _approx_layer_tag_half_w,
@@ -4569,9 +4572,15 @@ def _paint_key_zone_smart_tags(
     # 壓先、撐後：保證垂直序（上壓下撐）
     items: List[Tuple[float, str, str]] = []
     if float(hi or 0) > 0:
-        items.append((float(hi), _PRESS, f"大量區壓 {_fmt_price(hi)}"))
+        press_txt = f"大量區壓 {_fmt_price(hi)}"
+        if over_pressure:
+            press_txt = f"{press_txt}已過"
+        items.append((float(hi), _PRESS, press_txt))
     if float(lo or 0) > 0:
-        items.append((float(lo), _HOLD, f"大量區撐 {_fmt_price(lo)}"))
+        hold_txt = f"大量區撐 {_fmt_price(lo)}"
+        if broke_support:
+            hold_txt = f"{hold_txt}已破"
+        items.append((float(lo), _HOLD, hold_txt))
     _key_tag_box = dict(
         boxstyle=f"round,pad={float(VOL_ZONE_TAG_PAD):.2f}",
         facecolor="#ffffff",
@@ -6472,6 +6481,8 @@ def _paint_volume_zone(
             ymin=float(ymin),
             ymax=float(ymax),
             occupied=_key_occ,
+            broke_support=bool((next_pack or {}).get("broke")),
+            over_pressure=bool((next_pack or {}).get("over")),
         )
     except Exception:
         logger.debug("大量區主壓撐智能標略過 sid=%s", sid, exc_info=True)

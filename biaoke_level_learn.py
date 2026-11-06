@@ -1413,6 +1413,11 @@ def _paint_stamp_hbox(
         ),
         zorder=float(zorder),
     )
+    # 欄頂白底戳：不准被 axes clip 裁半；整盒仍須落在格子內（呼叫端抬高 ylim／y）
+    try:
+        ab.set_clip_on(False)
+    except Exception:
+        pass
     host.add_artist(ab)
 
 
@@ -8222,10 +8227,11 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     fig, (axu, axt, ax, axv) = plt.subplots(
         4,
         1,
-        figsize=(15.6, 15.2),
+        figsize=(15.6, 15.6),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(2.05, 2.20, 3.20, 0.95), hspace=0.12),
+        # 欄間加高：三白底戳上移仍落在各格內，不准擋縮圖K／九波
+        gridspec_kw=dict(height_ratios=(2.15, 2.30, 3.30, 0.95), hspace=0.18),
     )
     fig.patch.set_facecolor(_LIVE_BG)
     # top：標題列；戳改各欄右上，頁眉不再塞三戳
@@ -8343,7 +8349,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             ]
             y_lo_s = min([x for x in sox_l if x == x] + sox_pred_ys)
             y_hi_s = max([x for x in sox_h if x == x] + sox_pred_ys)
-            axu.set_ylim(y_lo_s - span_s * 0.22, y_hi_s + span_s * 0.22)
+            # 頂上多留給白底戳；戳上移後仍不准蓋最上緣 K
+            axu.set_ylim(y_lo_s - span_s * 0.22, y_hi_s + span_s * 0.32)
             _pin_pivot_name(
                 axu, s5s, sy5s, "費⑤起", "#40c4ff", _fp, side="right", tip="low", n=n_axis, pad_x=0.35, fontsize=8
             )
@@ -8373,6 +8380,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     zorder=8,
                 )
             # 右標延到加權 tip 後，與加權同一 x_col（對齊「7/29低…」那欄）
+            _sox_y0 = y_lo_s - span_s * 0.22
+            _sox_y1 = y_hi_s + span_s * 0.32
             _sox_right_deferred = _paint_sox_thesis_preds(
                 axu,
                 bars=bars,
@@ -8384,16 +8393,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 fp=_fp,
                 i_now=sox_i_now,
                 n=n_axis,
-                ymin=y_lo_s - span_s * 0.22,
-                ymax=y_hi_s + span_s * 0.22,
+                ymin=_sox_y0,
+                ymax=_sox_y1,
                 now_y=float(sn),
                 now_lab=f"費C今{_px(float(sn))}",
                 place=False,
             )
-            _sox_ylabel_span = (
-                y_lo_s - span_s * 0.22,
-                y_hi_s + span_s * 0.22,
-            )
+            _sox_ylabel_span = (_sox_y0, _sox_y1)
             # 末根費半K在 tip＋右標之後再蓋一次（見 xlim 後最終蓋回）
             _sox_last_repaint = {
                 "i": sox_i_now,
@@ -8820,8 +8826,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             except (TypeError, ValueError):
                 pass
         pad = max(120.0, (hi_v - lo_v) * 0.08)
-        axt.set_ylim(lo_v - pad, hi_v + pad)
-        _tx_ylabel_span = (lo_v - pad, hi_v + pad)
+        pad_top = max(pad * 1.55, (hi_v - lo_v) * 0.14)
+        axt.set_ylim(lo_v - pad, hi_v + pad_top)
+        _tx_ylabel_span = (lo_v - pad, hi_v + pad_top)
     # 電子盤自己的爆大量日（常≠加權 10/15）：金K／亮桃K＋本欄豎線
     _tx_axis_ymds = [_ymd(bars[i].get("date")) for i in range(n_tw)]
     _tx_i_pri, _tx_i_nxt = _vol_sr_index_on_axis(tx_vol_sr, axis_ymds=_tx_axis_ymds)
@@ -8843,9 +8850,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # —— 中：加權日盤價（先畫底帶在K下一層，再畫K）——
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
-    # 上下多留：高點浪名在尖上、低點浪名在尖下，不准被裁、也不准回頭蓋K
+    # 上下多留：高點浪名在尖上、低點浪名在尖下；頂上再加一截給白底戳
     ymin = min([min(lows), y5s, y_alow] + list(tw_supports)) - 720
-    ymax = max([max(highs), y5e, y_b_end]) + 1100
+    ymax = max([max(highs), y5e, y_b_end]) + 1550
     # 預估端先算：同價只留端點「飆預測」，左青帶／右欄不准再貼一次
     tip_pre = _c_forecast_tip(
         i_now=i_now, y_now=y_now, y_ref=y_bhi, lows=c_seg_lows, anchors=tip_anchors
@@ -9531,8 +9538,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 三戳：鎖在各欄 axes 左上（上緣線下方）；用 transAxes 才不會被 tight 裁出框外
-    _stamp_ax_x, _stamp_ax_y = 0.02, 0.80
+    # 三戳：鎖在各欄 axes 左上近上緣（框內）；欄頂已加高天空，戳上移不准出格、不准擋九波／縮圖K
+    _stamp_ax_x, _stamp_ax_y = 0.02, 0.96
     if _sox_chg_tip:
         _paint_index_last_chg_tip(
             fig,
