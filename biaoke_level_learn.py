@@ -1243,6 +1243,23 @@ def _vol_sr_avoid_spans(vol_sr: Optional[Dict[str, Any]]) -> List[Tuple[float, f
     return out
 
 
+def _fig_stamp_xy_axes_top_left(
+    ax: Any,
+    fig: Any,
+    *,
+    left_frac: float = 0.02,
+    top_frac: float = 0.92,
+) -> Tuple[float, float]:
+    """該圖框內左上角（遠窗三白底戳共用相對位；ha=left／va=top）。"""
+    try:
+        pos = ax.get_position()
+    except Exception:
+        return (0.10, 0.88)
+    x = float(pos.x0) + float(pos.width) * max(0.01, min(0.20, float(left_frac)))
+    y = float(pos.y0) + float(pos.height) * max(0.70, min(0.98, float(top_frac)))
+    return (float(x), float(y))
+
+
 def _fig_stamp_xy_axes_bottom_right(
     ax: Any,
     fig: Any,
@@ -2157,6 +2174,20 @@ def _latest_level_thesis(
         snip = post_snip
         if post_snip_id:
             post_id = post_snip_id
+    # 9波擴延／35500~37300：後文改口壓舊 C3-5（庫內有就蓋；沒有則補已確認口頭）
+    try:
+        _ensure_c9_oral_thesis_snap(db_path, as_of=cap)
+        c9_snip = _find_c9_extension_snip(db_path, cap)
+        if c9_snip and (
+            _text_has_c9_extension(c9_snip) and not _text_has_c9_extension(snip)
+        ):
+            snip = c9_snip
+            post_id = post_id or "oral-c9-band"
+        elif c9_snip and _text_has_c9_extension(c9_snip):
+            # 主文仍是舊 C3-5 時，仍把 C9 文併進偵測池
+            snip = f"{c9_snip} {snip}"
+    except Exception:
+        logger.debug("C9 題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
     if post_snip:
         morph_blob = f"{morph_blob} {post_snip}"
@@ -2193,16 +2224,16 @@ def _latest_level_thesis(
     c35_done = bool(
         re.search(r"C3-5\s*完成|第二組下跌脈動.*(?:完成|落底)", snip)
     )
-    # 9波擴延 C-7→C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
+    # 9波擴延 C-7轉C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
     has_c9_band = bool(
         re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", snip)
     )
     has_9ext = bool(re.search(r"9\s*波\s*擴延", snip))
     has_c78 = bool(
         re.search(
-            r"C\s*[-–]\s*7.{0,24}(?:轉|->|→|走完).{0,12}C\s*[-–]\s*8|"
+            r"C\s*[-–]\s*7.{0,24}(?:轉|->|→|走完).{0,16}C\s*[-–]\s*8|"
             r"C\s*[-–]\s*7.{0,12}C\s*[-–]\s*8|"
-            r"七走完|準備往\s*八|往八走",
+            r"七走完|準備往\s*八|往八走|C-7轉C-8",
             snip,
         )
     )
@@ -2211,12 +2242,12 @@ def _latest_level_thesis(
     if has_9ext or (has_c78 and (has_c9 or has_c9_band)) or (
         has_c9_band and (has_c78 or has_c9)
     ):
-        # 口述改口：今天七走完、準備往八（仍接 C-9）
-        thesis = "大A→大B→大C｜9波擴延・C-7走完→C-8→C-9（預估）"
+        # 口述改口：目前最有可能 C-7轉C-8，最後 C-9；低點區 35500~37300
+        thesis = "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）"
         wait = (
             "低點區35500~37300；C-9跌完＝這段下殺完；C走完≠新五波升"
             if has_c9_band
-            else "C-7走完→C-8→C-9；C-9跌完＝這段下殺完；C走完≠新五波升"
+            else "C-7轉C-8→C-9；C-9跌完＝這段下殺完；C走完≠新五波升"
         )
     elif c35_done or (
         has_35 and re.search(r"落底確認|目前開始反彈|反彈能否穿刺", snip)
@@ -3709,15 +3740,111 @@ def _c9_extension_active(pack: Optional[Dict[str, Any]] = None) -> bool:
 
 def _c9_now_step_label() -> str:
     """此刻層級短標（話筒／釘點／縮圖共用）。"""
-    return "C-7走完→C-8"
+    return "C-7轉C-8"
 
 
 def _c9_oral_now_line() -> str:
-    """9波擴延人話：七走完≠整段沒了；接下來八先上、再九最後下。"""
+    """9波擴延人話：目前最有可能 C-7轉C-8；最後一小段 C-9；低點區 35500~37300。"""
     return (
-        "今天只走完七，不是整段沒了；接下來八會先往上，"
-        "再走最後一段九往下；九跌完才算這段下殺完"
+        "目前最有可能C-7轉C-8；還有最後一小段下跌C-9，"
+        "要跌就全部跌完；低點約會落在35500~37300"
     )
+
+
+# 飆大口頭題旨（已確認）：第二段下殺＝9波擴延・C-7轉C-8→C-9・低點區35500~37300
+# 併留舊劇本一 35000~38000：有 C9 後 38000 改口「已破」、35000 右標拿掉
+_C9_ORAL_SNIP = (
+    "大盤第二段下殺應該是走9波擴延，目前最有可能C-7轉 C-8，"
+    "還有最後一小段下跌C-9要跌就全部跌完，低點約會落在35500~37300之間。"
+    "第一套劇本大盤會跌到35000~38000之間。"
+)
+
+
+def _text_has_c9_extension(blob: str) -> bool:
+    """是否為 9波擴延／C-7→C-8／C-9／35500~37300 改口題旨。"""
+    s = str(blob or "")
+    if not s.strip():
+        return False
+    has_band = bool(re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s))
+    has_9 = bool(re.search(r"9\s*波\s*擴延", s))
+    has_c78 = bool(
+        re.search(
+            r"C\s*[-–]\s*7.{0,24}(?:轉|->|→|走完).{0,16}C\s*[-–]\s*8|"
+            r"C\s*[-–]\s*7.{0,12}C\s*[-–]\s*8|"
+            r"七走完|準備往\s*八|往八走|C-7轉C-8",
+            s,
+        )
+    )
+    has_c9 = bool(re.search(r"C\s*[-–]\s*9", s))
+    return bool(has_9 or (has_c78 and (has_c9 or has_band)) or (has_band and (has_c78 or has_c9)))
+
+
+def _find_c9_extension_snip(db_path: str, cap_ymd: str) -> str:
+    """庫內近窗掃 9波擴延／35500~37300（後文改口可壓舊 C3-5）。"""
+    cap = _ymd(cap_ymd)
+    if not db_path or not cap:
+        return ""
+    ensure_tables(db_path)
+    # 1) level snaps
+    try:
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                "SELECT snippet FROM biaoke_level_snaps "
+                "WHERE as_of<=? ORDER BY as_of DESC, created_at DESC LIMIT 12",
+                (cap,),
+            ).fetchall()
+        finally:
+            conn.close()
+        for (snip,) in rows or ():
+            if _text_has_c9_extension(str(snip or "")):
+                return str(snip or "").strip()
+    except Exception:
+        logger.debug("掃 C9 snap 略過", exc_info=True)
+    # 2) 公開主文／自回
+    try:
+        cap_dash = f"{cap[:4]}-{cap[4:6]}-{cap[6:8]}"
+        since = (
+            datetime.strptime(cap, "%Y%m%d") - timedelta(days=21)
+        ).strftime("%Y-%m-%d")
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            rows = conn.execute(
+                "SELECT text FROM biaoke_posts WHERE date>=? AND date<=? "
+                "AND (text LIKE '%35500%' OR text LIKE '%9波擴延%' "
+                "OR text LIKE '%C-7%' OR text LIKE '%C-9%') "
+                "ORDER BY date DESC, time DESC LIMIT 20",
+                (since, cap_dash),
+            ).fetchall()
+        finally:
+            conn.close()
+        for (text,) in rows or ():
+            if _text_has_c9_extension(str(text or "")):
+                return str(text or "").strip()
+    except Exception:
+        logger.debug("掃 C9 貼文略過", exc_info=True)
+    return ""
+
+
+def _ensure_c9_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
+    """題旨庫若還沒有 C9／35500~37300：寫入已確認口頭題旨（只補缺，不准蓋他更新文）。"""
+    if not db_path:
+        return
+    day = _ymd(as_of) or datetime.now(TAIPEI).strftime("%Y%m%d")
+    if _find_c9_extension_snip(db_path, day):
+        return
+    try:
+        _upsert_snap(
+            db_path,
+            post_id="oral-c9-band",
+            as_of=day,
+            post_date=f"{day[:4]}-{day[4:6]}-{day[6:8]}",
+            post_time="13:30",
+            snippet=_C9_ORAL_SNIP,
+            chart_path="",
+        )
+    except Exception:
+        logger.debug("補 C9 口頭題旨 snap 略過", exc_info=True)
 
 
 # 主圖／右下九波縮圖共用色（C1…C9）；虛線 C9 用紫
@@ -4407,26 +4534,11 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag=tag,
             label=lab,
         )
-    # 劇本一／凌晨改口：大盤 35000~38000（區間兩端都標，不准發明中間價）
-    if re.search(r"35000\s*[-~～到至]\s*38000|35000.{0,8}38000", s):
-        _add(
-            "tw",
-            level=38000.0,
-            ref_ymd="",
-            role="劇本一上沿",
-            tag="未到",
-            label=f"飆預測{_px(38000)}劇本一上沿",
-        )
-        _add(
-            "tw",
-            level=35000.0,
-            ref_ymd="",
-            role="劇本一下沿",
-            tag="未到",
-            label=f"飆預測{_px(35000)}劇本一下沿",
-        )
     # C-9 低點區：35500~37300（他原文兩端；不准發明中間價）
-    if re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s):
+    has_c9_zone = bool(
+        re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s)
+    )
+    if has_c9_zone:
         _add(
             "tw",
             level=37300.0,
@@ -4442,6 +4554,33 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             role="C9低下沿",
             tag="未到",
             label=f"飆預測{_px(35500)}C9低下沿",
+        )
+        # 有 C9 區：舊劇本一上沿 38000 改口「已破」仍要上右標；35000 不准再標
+        _add(
+            "tw",
+            level=38000.0,
+            ref_ymd="",
+            role="劇本一上沿",
+            tag="已破",
+            label=f"飆預測{_px(38000)}已破",
+        )
+    # 劇本一／凌晨改口：大盤 35000~38000（無 C9 區才兩端都標）
+    elif re.search(r"35000\s*[-~～到至]\s*38000|35000.{0,8}38000", s):
+        _add(
+            "tw",
+            level=38000.0,
+            ref_ymd="",
+            role="劇本一上沿",
+            tag="未到",
+            label=f"飆預測{_px(38000)}劇本一上沿",
+        )
+        _add(
+            "tw",
+            level=35000.0,
+            ref_ymd="",
+            role="劇本一下沿",
+            tag="未到",
+            label=f"飆預測{_px(35000)}劇本一下沿",
         )
 
     # 費半：7/29 A波低 10445；周五 10439 已破；次回測 4/28 9865
@@ -4511,6 +4650,11 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             except (TypeError, ValueError):
                 continue
             if not (35000.0 <= lv <= 60000.0):
+                continue
+            # 有 C9 區：舊劇本一 35000／38000 不准再當裸抽點（38000 已上「已破」）
+            if has_c9_zone and (
+                abs(lv - 35000.0) < 1.0 or abs(lv - 38000.0) < 1.0
+            ):
                 continue
             key = round(lv, 1)
             if key in seen_tw:
@@ -6190,7 +6334,7 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         s,
     ):
         if re.search(
-            r"七走完|準備往\s*八|往八走|"
+            r"七走完|準備往\s*八|往八走|C-7轉C-8|"
             r"C\s*[-–]\s*7.{0,20}(?:轉|->|→|走完).{0,12}C\s*[-–]\s*8",
             s,
         ):
@@ -7507,7 +7651,7 @@ def _paint_eight_wave_inset(
             )
             tip = f"此刻＝{nk}"
             if use_c9:
-                tip = "此刻＝C-7走完→C-8｜虛線＝C-9"
+                tip = "此刻＝C-7轉C-8｜虛線＝C-9"
             elif c_flash and flash_step:
                 tip = f"此刻＝{nk}・閃①～⑤之{flash_step}"
             ax.text(
@@ -7829,6 +7973,7 @@ def _tw_pred_right_notes(
                 hi_vals.append(float(b.get("high")))
             except (TypeError, ValueError, AttributeError):
                 continue
+    drop_script1 = _tw_has_c9_low_zone(pack)
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
             lv = float(row.get("level"))
@@ -7838,6 +7983,11 @@ def _tw_pred_right_notes(
             continue
         tag = str(row.get("tag") or "")
         role = str(row.get("role") or "")
+        # 有 C9 低點區：舊劇本一下沿 35000 不准再畫（上沿 38000 改口「已破」仍留）
+        if drop_script1 and (
+            role == "劇本一下沿" or abs(lv - 35000.0) < 1.0
+        ):
+            continue
         if tag in {"未到", "未破", "已破"}:
             br = (
                 _tw_pred_break_tag(lv, lows, pack=pack, role=role)
@@ -8937,7 +9087,12 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             {
                 "x": n_axis - 1,
                 "y": float(tip_anchor),
-                "text": _biaoke_pred_label(float(tip_anchor)),
+                "text": _biaoke_pred_label(
+                    float(tip_anchor),
+                    _tw_pred_break_tag(
+                        float(tip_anchor), c_seg_lows, pack=pack
+                    ),
+                ),
                 "color": "#ea80fc",
             }
         )
@@ -9335,43 +9490,15 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         ha="left",
         va="top",
     )
-    # 三戳：共用同一個 figure 右緣 x（ha=right → 框右邊對齊），Y 各自避讓
-    _stamp_clear = 0.26
-    _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_bottom_right(
-        axu,
-        fig,
-        right_clear_frac=_stamp_clear,
-        avoid_spans=_vol_sr_avoid_spans(sox_vol_sr),
-        avoid_ys=[float(n.get("y")) for n in (_sox_right_deferred or []) if n.get("y") is not None],
-    )
-    _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_bottom_right(
-        axt,
-        fig,
-        right_clear_frac=_stamp_clear,
-        avoid_spans=_vol_sr_avoid_spans(tx_vol_sr),
-        avoid_ys=[float(n.get("y")) for n in (_tx_right_notes or []) if n.get("y") is not None],
-    )
-    _tw_avoid = _vol_sr_avoid_spans(far_vol_sr)
+    # 三戳：各欄左上角相對同位（話筒紅框）；ha=left／va=top 往右下長，不壓右標
+    _sox_stamp_x, _sox_stamp_y = _fig_stamp_xy_axes_top_left(axu, fig)
+    _tx_stamp_x, _tx_stamp_y = _fig_stamp_xy_axes_top_left(axt, fig)
+    _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_top_left(ax, fig)
+    # 強制三戳同一左緣（取加權欄左緣，費半／台指對齊）
     try:
-        if sr.get("support") is not None and sr.get("resist") is not None:
-            _tw_avoid.append((float(sr["support"]), float(sr["resist"])))
-    except (TypeError, ValueError, AttributeError):
-        pass
-    _tw_stamp_x, _tw_stamp_y = _fig_stamp_xy_axes_bottom_right(
-        ax,
-        fig,
-        right_clear_frac=_stamp_clear,
-        avoid_spans=_tw_avoid,
-        avoid_ys=[float(n.get("y")) for n in (right_notes or []) if n.get("y") is not None],
-    )
-    # 強制三戳同一右緣（取最右合法錨，避免某一欄 clear 漂掉）
-    try:
-        _pos_r = float(ax.get_position().x0) + float(ax.get_position().width) * (
-            1.0 - float(_stamp_clear)
-        )
+        _stamp_left_x = float(ax.get_position().x0) + float(ax.get_position().width) * 0.02
     except Exception:
-        _pos_r = max(float(_sox_stamp_x), float(_tx_stamp_x), float(_tw_stamp_x))
-    _stamp_right_x = float(_pos_r)
+        _stamp_left_x = min(float(_sox_stamp_x), float(_tx_stamp_x), float(_tw_stamp_x))
     if _sox_chg_tip:
         _paint_index_last_chg_tip(
             fig,
@@ -9379,10 +9506,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_sox_chg_tip.get("prev"),
             label_prefix="費半",
             fp=_fp,
-            x=_stamp_right_x,
+            x=_stamp_left_x,
             y=_sox_stamp_y,
-            ha="right",
-            va="bottom",
+            ha="left",
+            va="top",
             asof_ymd=str(_sox_chg_tip.get("asof") or ""),
             chart_asof=str(as_of or ""),
             session_live=bool(_sox_chg_tip.get("live")),
@@ -9410,10 +9537,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_tx_chg_tip.get("prev"),
             label_prefix="台指電子盤",
             fp=_fp,
-            x=_stamp_right_x,
+            x=_stamp_left_x,
             y=_tx_stamp_y,
-            ha="right",
-            va="bottom",
+            ha="left",
+            va="top",
             clock=_tx_clock,
             asof_ymd=_tx_asof_stamp,
             # 夜盤進行中才盤中；MIS 末筆鐘／殘 live 不准白天冒充盤中
@@ -9429,10 +9556,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             prev_close=_tx_chg_tip.get("prev"),
             label_prefix=str(_tx_chg_tip.get("label") or "台指電子盤"),
             fp=_fp,
-            x=_stamp_right_x,
+            x=_stamp_left_x,
             y=_tx_stamp_y,
-            ha="right",
-            va="bottom",
+            ha="left",
+            va="top",
             clock=_tx_clock,
             asof_ymd=str(_tx_chg_tip.get("asof") or ""),
             session_live=_tx_night_live and bool(_tx_clock),
@@ -9444,10 +9571,10 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pack=pack,
         close=closes[-1],
         fp=_fp,
-        x=_stamp_right_x,
+        x=_stamp_left_x,
         y=_tw_stamp_y,
-        ha="right",
-        va="bottom",
+        ha="left",
+        va="top",
         label_prefix="加權",
     )
     # 腳註多行：thesis＋預測點按｜分行；壓在 x 軸日期下方，不准互疊、不准裁半截

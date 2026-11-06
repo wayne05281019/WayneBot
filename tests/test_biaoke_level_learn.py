@@ -241,13 +241,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "tx_vol_sr" in far_blk
     assert "_tx_right_notes" in far_blk
     assert "電盤" in far_blk
-    # 三戳偏右下但讓出右標欄；避撐壓底色＋右標；八浪再往左
-    assert "_fig_stamp_xy_axes_bottom_right" in far_blk
-    assert "def _fig_stamp_xy_axes_bottom_right" in src
-    assert "right_clear_frac" in src
-    assert "_vol_sr_avoid_spans" in far_blk
-    assert "avoid_ys" in far_blk
-    assert 'va="bottom"' in far_blk
+    # 三戳各欄左上角相對同位（話筒紅框）；ha=left／va=top
+    assert "_fig_stamp_xy_axes_top_left" in far_blk
+    assert "def _fig_stamp_xy_axes_top_left" in src
+    assert "_stamp_left_x" in far_blk
+    assert 'ha="left"' in far_blk and 'va="top"' in far_blk
     assert "CRefPrice" in src or "參考價" in src
     assert "_tx_chg_tip = _resolve_tx_after_hours_tip" in far_blk
     assert "scale=0.46" in far_blk and "pin_bottom=True" in far_blk
@@ -266,8 +264,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _paint_vol_sr_day_guides" in src
     assert "_VOL_SR_GUIDE_NEXT" in src
     assert "_paint_max_vol_day_guide((axu, axt, ax, axv)" not in far_blk
-    # 三戳同一右緣；加權不加浪段大底色；費A低不准豎導
-    assert "_stamp_right_x" in far_blk
+    # 三戳同一左緣；加權不加浪段大底色；費A低不准豎導
+    assert "_stamp_left_x" in far_blk
     assert 'facecolor="#40c4ff", alpha=0.06' not in far_blk
     assert 'facecolor="#ea80fc", alpha=0.05' not in far_blk
     assert '"次回測", "再回測"' in src or "'次回測', '再回測'" in src
@@ -304,7 +302,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_TEACH_EIGHT_WAVE_INSET_W_FRAC" in src
     assert "_near_inset" in near_blk
     assert "c_flash=True" in micro_blk
-    assert "c_flash=True" not in near_blk
+    # 近窗日K八浪不開 c_flash；c9_60m 超近專用才開（夾在 live 與 super_near 之間）
+    live_only = src[
+        src.index("def _render_twii_live_dark") : src.index(
+            "def _render_twii_super_near_c9_60m"
+        )
+    ]
+    assert "c_flash=True" not in live_only
     assert "_c_flash_step" in src
     assert 'panels="far"' in src or "panels: str" in src
     # 遠窗大C 必須自大B末連到今，不准 10/6 後斷線
@@ -613,26 +617,25 @@ def test_wave_now_ladder_big_to_small():
 
 
 def test_wave_now_ladder_c9_extension_oral():
-    """9波擴延：人話七走完、準備往八→C-9；超近／話筒共用。"""
+    """9波擴延：人話 C-7轉C-8→C-9；超近／話筒共用。"""
     from biaoke_level_learn import _wave_now_ladder
 
     pack = {
-        "thesis": "大A→大B→大C｜9波擴延・C-7走完→C-8→C-9（預估）",
+        "thesis": "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）",
         "snippet": (
-            "大盤第二段下殺應該是走9波擴延，今天七走完、準備往八，"
+            "大盤第二段下殺應該是走9波擴延，目前最有可能C-7轉 C-8，"
             "還有最後一小段下跌C-9要跌就全部跌完，低點約會落在35500~37300之間。"
         ),
         "wait_struct": "低點區35500~37300；C-9跌完＝這段下殺完；C走完≠新五波升",
         "thesis_as_of": "20261106",
     }
     out = _wave_now_ladder(pack)
-    assert out["now"] == "C-7走完→C-8"
+    assert out["now"] == "C-7轉C-8"
     assert "9波擴延" in out["chain"]
-    assert "C-7走完→C-8" in out["one_line"] and "C-9" in out["one_line"]
-    assert "只走完七" in out["now_line"] or "七走完" in out["now_line"]
-    assert "不是整段沒了" in out["now_line"] or "≠整段" in out["now_line"]
-    assert "八會先往上" in out["now_line"] or "八先上" in out["now_line"]
-    assert "九" in out["now_line"]
+    assert "C-7轉C-8" in out["one_line"] and "C-9" in out["one_line"]
+    assert "C-7轉C-8" in out["now_line"]
+    assert "35500~37300" in out["now_line"]
+    assert "C-9" in out["now_line"] or "九" in out["now_line"]
     assert "as_of" not in out["now_line"]
     assert "題旨日 11/6" in out["now_line"]
 
@@ -656,8 +659,8 @@ def test_nine_wave_inset_c9_ext_labels():
     assert _c9_ext_flash_step("C-8") == 8
     assert _c9_ext_flash_step("C-9") == 9
     pack = {
-        "thesis": "大A→大B→大C｜9波擴延・C-7走完→C-8→C-9（預估）",
-        "snippet": "9波擴延，今天七走完、準備往八，C-9，35500~37300",
+        "thesis": "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）",
+        "snippet": "9波擴延，目前最有可能C-7轉 C-8，C-9，35500~37300",
         "pred_levels": {
             "tw": [
                 {"level": 37300.0, "role": "C9低上沿"},
@@ -669,7 +672,7 @@ def test_nine_wave_inset_c9_ext_labels():
     assert _eight_wave_now_key(pack) == "C-8"
     src = inspect.getsource(_paint_eight_wave_inset)
     assert "c9_ext" in src
-    assert "此刻＝C-7走完→C-8｜虛線＝C-9" in src
+    assert "此刻＝C-7轉C-8｜虛線＝C-9" in src
     assert "框內9波｜金＝C7→C8｜虛線＝C9" in src
     fig = plt.figure(figsize=(4, 3), dpi=80)
     _paint_eight_wave_inset(
@@ -731,6 +734,8 @@ def test_thesis_pred_c9_band_and_38000_broke():
     texts = " ".join(str(n.get("text") or "") for n in notes)
     assert f"{_px(38000)}已破" in texts
     assert _px(37300) in texts and _px(35500) in texts
+    # 有 C9 區：舊 35000 劇本一下沿不准再出現在右標
+    assert _px(35000) not in texts
     # 三窗都要掛紫底帶 helper
     import biaoke_level_learn as bll
 
