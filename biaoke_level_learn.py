@@ -10028,8 +10028,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         figsize=(15.6, 9.8),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        # 欄間加空：結構日畫進價／量間空檔；量底只留疏刻（附圖五）
-        gridspec_kw=dict(height_ratios=(5.5, 1.35), hspace=0.26),
+        # 欄間薄一截：結構日單行；量底只留疏刻
+        gridspec_kw=dict(height_ratios=(5.5, 1.35), hspace=0.10),
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
@@ -10584,17 +10584,16 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     _axpos = ax.get_position()
     _axvpos = axv.get_position()
-    # 結構日釘價／量欄間（附圖五上紅框）；奇偶上下錯開，緩 10/6·10/15·11/6 互壓
+    # 結構日：欄間單行、字級略大；不准上下排拉高空檔
     try:
         _gap_y = (float(_axpos.y0) + float(_axvpos.y1)) * 0.5
-        for _j, (_ti, _lab) in enumerate(_near_major_date_labs):
+        for _ti, _lab in _near_major_date_labs:
             _fx, _fy = _fig_xy_from_axes_data(ax, fig, float(_ti), float(ymin))
-            _gy = float(_gap_y) + (0.016 if (_j % 2 == 0) else -0.016)
             fig.text(
                 float(_fx),
-                float(_gy),
+                float(_gap_y),
                 _lab,
-                fontproperties=_fp(8, "bold"),
+                fontproperties=_fp(9.5, "bold"),
                 color=_LIVE_TEXT,
                 ha="center",
                 va="center",
@@ -10603,15 +10602,15 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             )
     except Exception:
         pass
-    # 近窗九波：紅框空檔等比放大；上緣不准碰到 35,500 藍虛線
+    # 近窗九波：再大一點；底緣貼價欄下框線不准穿出，上緣仍避開 35,500 藍虛線
     try:
         _iw0, _ih0 = _teach_eight_wave_inset_wh(fig)
-        _sc = 0.52
-        _iw = min(float(_iw0) * _sc, float(_axpos.width) * 0.30)
-        _ih = min(float(_ih0) * _sc, float(_axpos.height) * 0.22)
-        _left = float(_axpos.x0) + float(_axpos.width) * 0.16
-        _bot = float(_axpos.y0) + 0.014
-        # 藍虛線＝飆預測 35,500；上緣留縫
+        _sc = 0.62
+        _iw = min(float(_iw0) * _sc, float(_axpos.width) * 0.34)
+        _ih = min(float(_ih0) * _sc, float(_axpos.height) * 0.26)
+        _left = float(_axpos.x0) + float(_axpos.width) * 0.15
+        # 下面那條框線＝價欄底緣；底邊貼齊不准再往下
+        _bot = float(_axpos.y0)
         _, _fy_cap = _fig_xy_from_axes_data(ax, fig, float(i5s) + 28.0, 35500.0)
         _max_top = float(_fy_cap) - 0.012
         if _bot + _ih > _max_top:
@@ -10627,7 +10626,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             ymin=float(ymin),
             ymax=float(ymax),
             n_bars=n,
-            scale=0.52,
+            scale=0.62,
             pin_bottom=True,
         )
     _c9_near = _c9_extension_active(pack)
@@ -11164,13 +11163,9 @@ def _render_twii_super_near_c9_60m(
 def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
     """教具④超級近窗：C 段內『哪一層小波』對齊他說的；另色線僅前提不同才畫。
 
-    9波擴延題旨：改走加權日盤 60 分（10/6→日盤收）才能釘出 C1…C8。
+    一律加權日K（近／遠已把 C1…C7 釘清楚；不再改走 60 分樣式）。
     不是買訊。個股不准發明浪；大盤細微只標他點過／題旨能對上的層。
     """
-    if _c9_extension_active(pack):
-        got = _render_twii_super_near_c9_60m(db_path, save_path, pack)
-        if got:
-            return got
     try:
         import matplotlib
 

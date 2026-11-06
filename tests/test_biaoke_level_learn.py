@@ -205,13 +205,16 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
     assert "avoid_top_left_stamp=True" in near_blk
     assert "float(i5s) + 7.5" in near_blk  # ⑤起讓過首根K
-    assert "hspace=0.26" in near_blk
+    assert "hspace=0.10" in near_blk
     assert "labs_ax" in near_blk and "labs_axv" in near_blk
-    assert "0.52" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
-    assert "width) * 0.16" in near_blk  # 九波鎖價欄紅框
+    assert "0.62" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
+    assert "width) * 0.15" in near_blk  # 九波鎖價欄紅框
     assert "35500.0" in near_blk  # 上緣不准碰藍虛線
     assert "float(i5e) + 7.0" in near_blk  # ⑤末尖右下讓過戳
-    assert "_near_major_date_labs" in near_blk  # 結構日畫進欄間空檔
+    assert "_near_major_date_labs" in near_blk  # 結構日欄間單行
+    assert "_fp(9.5" in near_blk  # 結構日字級略大
+    # 超近窗改回日K：主路不准再轉 60 分
+    assert "_render_twii_super_near_c9_60m" not in micro_blk
     assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
     assert "_twii_macro_wave_anchors" in src
     assert (
@@ -2279,8 +2282,8 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert "float(i5s) + 7.5" in near
     assert "float(i5e) + 7.0" in near
     assert "_teach_eight_wave_inset_wh" in near
-    assert "0.52" in near
-    assert "width) * 0.16" in near
+    assert "0.62" in near
+    assert "width) * 0.15" in near
     assert "35500.0" in near
     assert "_near_major_date_labs" in near
     # C7／C8 字標多餘（右欄已有 C-7轉C-8今）；圓點仍留
@@ -2288,7 +2291,8 @@ def test_near_micro_follow_far_c9_twii_presentation():
         __import__("biaoke_level_learn", fromlist=["_paint_c9_ext_k_path"])._paint_c9_ext_k_path
     )
     assert 'lab in {"C7", "C8"}' in path_src or "lab in {'C7', 'C8'}" in path_src
-    # 超近（日K備援＋60分主路）跟進
+    # 超近改回日K；60 分函式仍留著但不當主路
+    assert "_render_twii_super_near_c9_60m" not in micro
     assert "_c9_now_step_label()" in micro
     assert 'title="九波擴延"' in micro
     assert 'side="left"' in micro
