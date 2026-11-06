@@ -1844,11 +1844,13 @@ def vol_zone_day_path_label(
     card: Optional[Dict[str, Any]] = None,
     session_live: Optional[bool] = None,
     emerging: Optional[bool] = None,
+    role: str = "",
 ) -> str:
     """③最後一根走勢標：對應當日官方／MIS 開高低收＋既有壓撐，不是死釘『月/日 壓價』。
 
     例形：10月6日 撐為2,940  今最高3,055  今最低2,915  收盤未過撐  收2,920
     盤中改現價／興櫃日均價口吻，價跟表頭同源。只留事實句。不是買訊。
+    role=next：破主撐／過主壓後改對灰底下一層（2313：收159 對下一層撐154，不准仍寫主撐245未站上）。
     bars／zone_date 保留給呼叫端相容（判斷句已刪，不再用來計次）。
     """
     del bars, zone_date  # 相容舊呼叫；當日標不再做近窗測次判斷
@@ -1879,6 +1881,9 @@ def vol_zone_day_path_label(
     hi_s = _fmt_price(hi)
     cl_s = _fmt_price(cl)
     lo_s = _fmt_price(lo)
+    next_role = str(role or "").strip().lower() == "next"
+    hold_tag = "下一層撐為" if next_role else "撐為"
+    press_tag = "下一層壓為" if next_role else "壓為"
 
     press_touch = _bar_tests_press(face, press)
     hold_touch = _bar_tests_hold(face, hold)
@@ -1907,13 +1912,13 @@ def vol_zone_day_path_label(
         else:
             low_bit = ""
         line = (
-            f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
+            f"{day_zh} {hold_tag}{hold_s}  今最高{hi_s}{low_bit}  "
             f"{verb}  {short}{cl_s}"
         )
     else:
         verb = f"{voice['over']}壓" if cl > press else f"{voice['not_over']}壓"
         line = (
-            f"{day_zh} 壓為{press_s}  今最高{hi_s}  "
+            f"{day_zh} {press_tag}{press_s}  今最高{hi_s}  "
             f"{verb}  {short}{cl_s}"
         )
     return "  ".join(line.split())
@@ -6037,14 +6042,44 @@ def _paint_volume_zone(
             )
         except Exception:
             pass
+        # 破主撐／過主壓：橘框改對灰底下一層（與圖上灰帶一致）；主區仍不換
+        path_press = float(hi)
+        path_hold = float(lo)
+        path_role = ""
+        try:
+            from biaoke_next_support import resolve_next_support
+
+            _path_pack = resolve_next_support(
+                list(bars_face or []),
+                sid=str(sid or ""),
+                close=float(last_bar.get("close") or last_cl or 0),
+                support=float(lo or 0),
+                pressure=float(hi or 0),
+                spike_date=str(spike_date or ""),
+            )
+            _layer = dict(_path_pack.get("layer") or {})
+            _lo_n = float(_layer.get("low") or 0)
+            _hi_n = float(_layer.get("high") or 0)
+            if (
+                (_path_pack.get("broke") or _path_pack.get("over"))
+                and _lo_n > 0
+                and _hi_n > 0
+                and _hi_n >= _lo_n
+            ):
+                path_press = float(_hi_n)
+                path_hold = float(_lo_n)
+                path_role = "next"
+        except Exception:
+            logger.debug("日況橘框下一層改口略過 sid=%s", sid, exc_info=True)
         path_msg = vol_zone_day_path_label(
-            float(hi),
-            float(lo),
+            float(path_press),
+            float(path_hold),
             last_bar,
             bars=bars_face,
             zone_date=str(spike_date or ""),
             session_live=bool(face_meta.get("session_live")),
             emerging=bool(face_meta.get("emerging")),
+            role=path_role,
         )
         if path_msg and last_hi > 0 and float(hi) > 0:
             bits = [p for p in path_msg.split("  ") if p]

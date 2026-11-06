@@ -4907,6 +4907,7 @@ def _paint_next_layer_vol_zone(
     fp: Any,
     direction: str = "below",
     labels: bool = True,
+    avoid_top_left_stamp: bool = False,
 ) -> None:
     """下一層大量區灰帶（對齊結構圖下一層；暗底教具可讀）。"""
     y0, y1 = float(low), float(high)
@@ -4917,31 +4918,27 @@ def _paint_next_layer_vol_zone(
     ax.axhspan(y0, y1, facecolor="#90a4ae", alpha=0.20, zorder=0.45)
     if not labels:
         return
-    press = f"{day_tag}下一層壓 {_px(y1)}"
-    hold = f"{day_tag}下一層撐 {_px(y0)}"
-    ax.text(
-        0.01,
+    _paint_left_sr_label(
+        ax,
         y1,
-        press,
-        transform=ax.get_yaxis_transform(),
-        fontproperties=fp(8.5, "bold"),
+        f"{day_tag}下一層壓 {_px(y1)}",
+        fp=fp,
         color="#cfd8dc",
-        ha="left",
+        edge="#78909c",
         va="bottom",
-        zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#78909c", lw=0.7, alpha=0.94),
+        fontsize=8.5,
+        avoid_top_left_stamp=avoid_top_left_stamp,
     )
-    ax.text(
-        0.01,
+    _paint_left_sr_label(
+        ax,
         y0,
-        hold,
-        transform=ax.get_yaxis_transform(),
-        fontproperties=fp(8.5, "bold"),
+        f"{day_tag}下一層撐 {_px(y0)}",
+        fp=fp,
         color="#cfd8dc",
-        ha="left",
+        edge="#78909c",
         va="top",
-        zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#78909c", lw=0.7, alpha=0.94),
+        fontsize=8.5,
+        avoid_top_left_stamp=avoid_top_left_stamp,
     )
     _ = direction
 
@@ -4960,6 +4957,7 @@ def _paint_window_dual_zones(
     skip_label_ys: Optional[Sequence[float]] = None,
     vol_lookback: int = 40,
     vol_sr: Optional[Dict[str, Any]] = None,
+    avoid_top_left_stamp: bool = False,
 ) -> Dict[str, Any]:
     """遠／近／超近共用：黃＝大量撐壓、灰＝下一層大量區、青＝飆預測位階帶；底色在K下層。"""
     n = len(highs)
@@ -4987,6 +4985,7 @@ def _paint_window_dual_zones(
             low=float(primary["low"]),
             date_lab=str(primary.get("date") or ""),
             fp=fp,
+            avoid_top_left_stamp=avoid_top_left_stamp,
         )
     if nxt.get("high") and nxt.get("low"):
         _paint_next_layer_vol_zone(
@@ -4996,6 +4995,7 @@ def _paint_window_dual_zones(
             date_lab=str(nxt.get("date") or ""),
             fp=fp,
             direction=str(nxt.get("direction") or "below"),
+            avoid_top_left_stamp=avoid_top_left_stamp,
         )
         # 下一層帶也列入青帶避讓
         try:
@@ -5772,6 +5772,80 @@ def _paint_tx_now_price_rail(
     )
 
 
+def _left_sr_label_xy(
+    ax,
+    y: float,
+    *,
+    avoid_top_left_stamp: bool = False,
+    stamp_top_frac: float = 0.78,
+    clear_x: float = 0.48,
+) -> Tuple[float, bool]:
+    """左欄價標 X（axes）；白底戳佔左上時改右移並回傳 need_dash。"""
+    x = 0.01
+    if not avoid_top_left_stamp or ax is None:
+        return float(x), False
+    try:
+        y0, y1 = ax.get_ylim()
+        span = max(float(y1) - float(y0), 1.0)
+        axes_y = (float(y) - float(y0)) / span
+    except Exception:
+        return float(x), False
+    if axes_y >= float(stamp_top_frac):
+        return float(clear_x), True
+    return float(x), False
+
+
+def _paint_left_sr_label(
+    ax,
+    y: float,
+    text: str,
+    *,
+    fp: Any,
+    color: str,
+    edge: str,
+    va: str,
+    fontsize: float = 9,
+    avoid_top_left_stamp: bool = False,
+) -> None:
+    """左欄大量／下一層標；若與遠窗白底戳互壓 → 右移＋虛線連回價位。"""
+    if ax is None or fp is None or not text:
+        return
+    x, need_dash = _left_sr_label_xy(ax, y, avoid_top_left_stamp=avoid_top_left_stamp)
+    tr = ax.get_yaxis_transform()
+    if need_dash:
+        ax.plot(
+            [0.02, max(0.04, float(x) - 0.02)],
+            [float(y), float(y)],
+            transform=tr,
+            color=str(edge),
+            lw=0.75,
+            ls=(0, (2.4, 1.6)),
+            alpha=0.82,
+            zorder=10,
+            solid_capstyle="butt",
+            clip_on=False,
+        )
+    ax.text(
+        float(x),
+        float(y),
+        str(text),
+        transform=tr,
+        fontproperties=fp(float(fontsize), "bold"),
+        color=str(color),
+        ha="left",
+        va=str(va),
+        zorder=11,
+        bbox=dict(
+            boxstyle="round,pad=0.12",
+            fc="#0b0f14",
+            ec=str(edge),
+            lw=0.7,
+            alpha=0.94,
+        ),
+        clip_on=False,
+    )
+
+
 def _paint_max_vol_hl_zone(
     ax,
     *,
@@ -5780,11 +5854,13 @@ def _paint_max_vol_hl_zone(
     date_lab: str,
     fp: Any,
     labels: bool = True,
+    avoid_top_left_stamp: bool = False,
 ) -> None:
     """淺黃底＝大量撐壓（爆大量日最高～最低）；底色 zorder 低於K棒。
 
     左標一定帶交易日月日，跟金K／量柱黃／豎虛線同一日，不准只寫高低不寫日。
     labels=False：只留底色（遠窗電子盤改走右欄疏開，左欄不准再卡一坨）。
+    avoid_top_left_stamp：遠窗三白底戳佔左上時，頂部價標右移＋虛線，不准被戳蓋住。
     """
     y0, y1 = float(low), float(high)
     if y1 <= y0:
@@ -5795,29 +5871,27 @@ def _paint_max_vol_hl_zone(
     ax.axhspan(y0, y1, facecolor="#ffeb3b", alpha=0.18, zorder=0.5)
     if not labels:
         return
-    ax.text(
-        0.01,
+    _paint_left_sr_label(
+        ax,
         y1,
         f"{day_tag}大量壓 {_px(y1)}",
-        transform=ax.get_yaxis_transform(),
-        fontproperties=fp(9, "bold"),
+        fp=fp,
         color="#ffe082",
-        ha="left",
+        edge="#ffeb3b",
         va="bottom",
-        zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ffeb3b", lw=0.7, alpha=0.94),
+        fontsize=9,
+        avoid_top_left_stamp=avoid_top_left_stamp,
     )
-    ax.text(
-        0.01,
+    _paint_left_sr_label(
+        ax,
         y0,
         f"{day_tag}大量撐 {_px(y0)}",
-        transform=ax.get_yaxis_transform(),
-        fontproperties=fp(9, "bold"),
+        fp=fp,
         color="#ffe082",
-        ha="left",
+        edge="#ffeb3b",
         va="top",
-        zorder=11,
-        bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ffeb3b", lw=0.7, alpha=0.94),
+        fontsize=9,
+        avoid_top_left_stamp=avoid_top_left_stamp,
     )
 
 
@@ -8458,6 +8532,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             low=float(pri["low"]),
             date_lab=str(pri.get("date") or ""),
             fp=_fp,
+            avoid_top_left_stamp=True,
         )
         if (sox_vol_sr.get("next") or {}).get("high"):
             nxt = sox_vol_sr["next"]
@@ -8468,6 +8543,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 date_lab=str(nxt.get("date") or ""),
                 fp=_fp,
                 direction=str(nxt.get("direction") or "below"),
+                avoid_top_left_stamp=True,
             )
     # 費半自己的爆大量日（常≠加權 10/15）：金K／亮桃K＋本欄豎線
     _sox_axis_ymds = [_ymd(bars[i].get("date")) for i in range(n_tw)]
@@ -8876,6 +8952,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         skip_label_ys=skip_lab_ys,
         vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
         vol_sr=far_vol_sr,
+        avoid_top_left_stamp=True,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
     sr = zone.get("sr") or {}
