@@ -204,11 +204,13 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert 'title="九波擴延"' in near_blk
     assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
     assert "avoid_top_left_stamp=True" in near_blk
-    assert "float(i5s) + 4.2" in near_blk  # ⑤起尖右上空檔，讓過九波＋首根K
-    assert "hspace=0.16" in near_blk
+    assert "float(i5s) + 7.5" in near_blk  # ⑤起讓過首根K（九波已遷量欄）
+    assert "hspace=0.26" in near_blk
     assert "labs_ax" in near_blk and "labs_axv" in near_blk
-    assert "0.48" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
-    assert "float(i5e) + 2.6" in near_blk  # ⑤末尖右上空檔讓過戳
+    assert "0.28" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
+    assert "_axvpos" in near_blk  # 九波鎖量欄左上閃K
+    assert "float(i5e) + 7.0" in near_blk  # ⑤末尖右下讓過戳
+    assert "_near_major_date_labs" in near_blk  # 結構日畫進欄間空檔
     assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
     assert "_twii_macro_wave_anchors" in src
     assert (
@@ -2273,9 +2275,12 @@ def test_near_micro_follow_far_c9_twii_presentation():
     assert "大B末 {_px" in near or 'f"大B末 {_px' in near
     assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near
     assert "avoid_top_left_stamp=True" in near
-    assert "float(i5s) + 4.2" in near
-    assert "float(i5e) + 2.6" in near
+    assert "float(i5s) + 7.5" in near
+    assert "float(i5e) + 7.0" in near
     assert "_teach_eight_wave_inset_wh" in near
+    assert "0.28" in near
+    assert "_axvpos" in near
+    assert "_near_major_date_labs" in near
     # C7／C8 字標多餘（右欄已有 C-7轉C-8今）；圓點仍留
     path_src = inspect.getsource(
         __import__("biaoke_level_learn", fromlist=["_paint_c9_ext_k_path"])._paint_c9_ext_k_path

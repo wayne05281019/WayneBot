@@ -10028,8 +10028,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         figsize=(15.6, 9.8),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        # 欄間加空：結構日上移到價圖底，量圖底只留疏刻（附圖五）
-        gridspec_kw=dict(height_ratios=(5.5, 1.35), hspace=0.16),
+        # 欄間加空：結構日畫進價／量間空檔；量底只留疏刻（附圖五）
+        gridspec_kw=dict(height_ratios=(5.5, 1.35), hspace=0.26),
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
@@ -10172,10 +10172,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     _reserve_avoid_zone(ax, float(n) - 24.0, 40500.0, float(n) + 5.0, 43300.0)
     _reserve_avoid_zone(ax, float(n) * 0.55, 31800.0, float(n) - 0.5, 39200.0)
-    # ⑤起：尖點右上方空檔（讓過左下九波縮圖＋首根K）
+    # ⑤起：尖點右上空檔（附圖二）— 九波已遷量欄，這裡只讓過首根K
     _w5_lab = f"⑤起 {_md(bars[i5s].get('date'))}"
-    _w5_x = float(i5s) + 4.2
-    _w5_y = float(y5s) + span * 0.062
+    _w5_x = float(i5s) + 7.5
+    _w5_y = float(y5s) + span * 0.105
     ax.text(
         _w5_x,
         _w5_y,
@@ -10199,10 +10199,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ax._wayne_pin_seats = []
         seats = ax._wayne_pin_seats
     seats.append((_w5_x, _w5_y))
-    # ⑤末：尖點右上方空檔（6月峰遠低於10月高，右上天空），讓過戳＋縮圖K（附圖一）
+    # ⑤末：尖點右下方空檔（附圖一）— 讓過左上白底戳＋峰後縮圖K
     _w5e_lab = f"⑤末＝A起 {_md(bars[i5e].get('date'))}"
-    _w5e_x = float(i5e) + 2.6
-    _w5e_y = float(y5e) + span * 0.042
+    _w5e_x = float(i5e) + 7.0
+    _w5e_y = float(y5e) - span * 0.028
     ax.text(
         _w5e_x,
         _w5e_y,
@@ -10210,7 +10210,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         fontproperties=_fp(9, "normal"),
         color="#40c4ff",
         ha="left",
-        va="bottom",
+        va="top",
         zorder=10,
         clip_on=False,
         bbox=dict(
@@ -10448,7 +10448,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         f"今在大C內震盪（不是新的大A／大B）｜C走完≠新五波升"
         f"{c_sub_teach}｜黃線Fib＝反彈壓｜型態：{morph_line}｜{intent_line}"
     )
-    # 附圖五：結構日上移到價／量欄間空檔；量圖底只留疏刻，不准整排互壓
+    # 附圖五：sharex 會讓兩欄 tick 字互蓋 → 結構日改畫進價／量欄間空檔；
+    # 量底只留更疏刻，不准整排壓迫
     major_ymds = {
         "20260401",
         "20260623",
@@ -10466,7 +10467,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     for i, r in enumerate(bars):
         d = _ymd(r.get("date"))
         is_major = i in major_idx or d in major_ymds
-        is_sparse = (i % 7 == 0) and not is_major
+        is_sparse = (i % 20 == 0) and not is_major
         if not (is_major or is_sparse):
             continue
         if i in t_all:
@@ -10479,36 +10480,32 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         else:
             labs_ax.append("")
             labs_axv.append(md)
-    # 結構日互距不夠就再疏；量底疏刻 min_gap 更大
     t_ax, l_ax = _sparse_xticks(
         [t for t, lab in zip(t_all, labs_ax) if lab],
         [lab for lab in labs_ax if lab],
-        min_gap=3,
+        min_gap=4,
     )
     t_av, l_av = _sparse_xticks(
         [t for t, lab in zip(t_all, labs_axv) if lab],
         [lab for lab in labs_axv if lab],
-        min_gap=5,
+        min_gap=18,
     )
     t_merged = sorted(set(t_ax) | set(t_av))
-    lab_ax_map = dict(zip(t_ax, l_ax))
     lab_av_map = dict(zip(t_av, l_av))
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     ax.set_xticks(t_merged)
-    ax.set_xticklabels(
-        [lab_ax_map.get(t, "") for t in t_merged],
-        fontproperties=_fp(8, "bold"),
-        color=_LIVE_TEXT,
-    )
-    ax.tick_params(axis="x", labelbottom=True, length=3, pad=1)
-    plt.setp(ax.get_xticklabels(), visible=True)
+    ax.set_xticklabels([])
+    ax.tick_params(axis="x", labelbottom=False, length=2, pad=1)
     axv.set_xticks(t_merged)
     axv.set_xticklabels(
         [lab_av_map.get(t, "") for t in t_merged],
         fontproperties=_fp(8, "bold"),
         color=_LIVE_MUTED,
     )
+    axv.tick_params(axis="x", labelbottom=True, length=3, pad=2)
+    # 結構日：subplots_adjust 後用 fig 座標釘在價／量欄間空檔（附圖五上紅框）
+    _near_major_date_labs = list(zip(t_ax, l_ax))
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
@@ -10556,7 +10553,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         va="top",
     )
     # 近窗白底戳：跟遠窗同一套鎖主圖 axes 框內左上（不准出框、不准擋九波／縮圖K）
-    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.07)
     _stamp_ax_x, _stamp_ax_y = 0.02, 0.96
     _paint_teach_query_stamp(
         fig,
@@ -10578,25 +10575,53 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         foot_one = f"{foot_one}｜量價：{intent_one}"[:160]
     fig.text(
         0.03,
-        0.018,
+        0.012,
         foot_one,
         fontproperties=_fp(9, "bold"),
         color=_LIVE_MUTED,
         ha="left",
         va="bottom",
     )
-    # 近窗九波：縮小鎖價圖左下角（附圖三），不准蓋夏秋縮圖K／價底結構日
+    _axpos = ax.get_position()
+    _axvpos = axv.get_position()
+    # 結構日釘價／量欄間（附圖五上紅框）；奇偶上下錯開，緩 10/6·10/15·11/6 互壓
     try:
-        _axpos = ax.get_position()
+        _gap_y = (float(_axpos.y0) + float(_axvpos.y1)) * 0.5
+        for _j, (_ti, _lab) in enumerate(_near_major_date_labs):
+            _fx, _fy = _fig_xy_from_axes_data(ax, fig, float(_ti), float(ymin))
+            _gy = float(_gap_y) + (0.016 if (_j % 2 == 0) else -0.016)
+            fig.text(
+                float(_fx),
+                float(_gy),
+                _lab,
+                fontproperties=_fp(8, "bold"),
+                color=_LIVE_TEXT,
+                ha="center",
+                va="center",
+                clip_on=False,
+                zorder=20,
+            )
+    except Exception:
+        pass
+    # 近窗九波：縮後鎖量欄左上（附圖三），完全閃過縮圖K；欄間留給結構日（附圖五）
+    try:
         _iw, _ih = _teach_eight_wave_inset_wh(fig)
-        _iw = min(float(_iw) * 0.48, float(_axpos.width) * 0.28)
-        _ih = min(float(_ih) * 0.48, float(_axpos.height) * 0.20)
+        _iw = min(float(_iw) * 0.28, float(_axvpos.width) * 0.20)
+        _ih = min(float(_ih) * 0.28, float(_axvpos.height) * 0.82)
         _near_inset = (
-            float(_axpos.x0) + 0.010,
-            float(_axpos.y0) + 0.014,
+            float(_axvpos.x0) + 0.008,
+            float(_axvpos.y1) - float(_ih) - 0.004,
             float(_iw),
             float(_ih),
         )
+        _min_bot = float(_axvpos.y0) + 0.030
+        if _near_inset[1] < _min_bot:
+            _near_inset = (
+                _near_inset[0],
+                _min_bot,
+                _near_inset[2],
+                max(0.045, float(_axvpos.y1) - 0.006 - _min_bot),
+            )
     except Exception:
         _near_inset = _eight_wave_inset_rect_left_of_vmax(
             ax,
@@ -10605,7 +10630,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             ymin=float(ymin),
             ymax=float(ymax),
             n_bars=n,
-            scale=0.48,
+            scale=0.28,
             pin_bottom=True,
         )
     _c9_near = _c9_extension_active(pack)
