@@ -4491,6 +4491,8 @@ def _structure_render_memo_key(
         # quiet-rails-v1：個股軌道標幾何化（名＋價），禁像素掃；不准互蓋舊像素掃圖
         "struct-quiet-rails-v1",
         "ink-paint-v65-volsave238",
+        # next-deep-v1：破撐下一層深窗串聯；不准互蓋無灰帶舊圖
+        "next-deep-v1",
         int(_BARS),
         str((work[0].get("date") if work else "") or "")[:8],
         # 時段標（收盤／盤中）進鍵，不准互蓋快取
@@ -4498,6 +4500,19 @@ def _structure_render_memo_key(
         int(bool(_q0.get("is_live"))),
         round(float((info.get("struct") or {}).get("spike_high") or 0), 2),
         round(float((info.get("struct") or {}).get("spike_vol") or 0), 0),
+        # 下一層高低進鍵：有／無灰帶不准互蓋
+        round(
+            float(
+                ((info.get("next_support") or {}).get("layer") or {}).get("low") or 0
+            ),
+            2,
+        ),
+        round(
+            float(
+                ((info.get("next_support") or {}).get("layer") or {}).get("high") or 0
+            ),
+            2,
+        ),
     )
 
 
@@ -4524,6 +4539,24 @@ def try_biaoke_structure_memo(
     if len(work) < 8:
         return ""
     info = analyze_structure(work)
+    if sid:
+        try:
+            from biaoke_next_support import (
+                attach_next_support,
+                merge_face_onto_history,
+                next_layer_history_bars,
+            )
+
+            attach_next_support(
+                info,
+                sid=str(sid),
+                bars=merge_face_onto_history(
+                    next_layer_history_bars(rows),
+                    work,
+                ),
+            )
+        except Exception:
+            pass
     memo_key = _structure_render_memo_key(
         rows,
         work,
@@ -4562,11 +4595,20 @@ def render_biaoke_structure_png(
     work = structure_visible_bars(rows)
     info = analyze_structure(work)
     # 查股／飆大出圖帶明確 sid：原文目標檔別隔離（聯亞／奇鋐…）
+    # 下一層用長窗歷史（深窗串聯）；可視 work 只負責畫 K，不准裁掉次大量源
     if sid:
         try:
-            from biaoke_next_support import attach_next_support
+            from biaoke_next_support import (
+                attach_next_support,
+                merge_face_onto_history,
+                next_layer_history_bars,
+            )
 
-            attach_next_support(info, sid=str(sid), bars=work)
+            _hist = merge_face_onto_history(
+                next_layer_history_bars(rows),
+                work,
+            )
+            attach_next_support(info, sid=str(sid), bars=_hist)
         except Exception:
             logger.debug("結構圖下一撐 sid 掛載略過", exc_info=True)
     n = len(work)
