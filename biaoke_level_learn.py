@@ -4507,6 +4507,172 @@ def _next_support_resist(
     }
 
 
+def _nearest_bar_touching_px(
+    bars: Sequence[Dict[str, Any]],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    *,
+    px: float,
+    before_i: int,
+) -> Optional[Dict[str, Any]]:
+    """往左找最近一根高低包住現價的日（水平虛線對到哪一天曾走過這個價）。"""
+    try:
+        y = float(px)
+    except (TypeError, ValueError):
+        return None
+    if y <= 0:
+        return None
+    tip = max(0, int(before_i))
+    n = min(len(bars), len(highs), len(lows))
+    for i in range(tip - 1, -1, -1):
+        if i >= n:
+            continue
+        try:
+            hi = float(highs[i])
+            lo = float(lows[i])
+        except (TypeError, ValueError):
+            continue
+        if not (hi == hi and lo == lo and hi > 0 and lo > 0):
+            continue
+        if lo <= y <= hi:
+            return {
+                "i": int(i),
+                "date": _ymd((bars[i] or {}).get("date")),
+                "high": hi,
+                "low": lo,
+            }
+    return None
+
+
+def _nearest_vol_support_row(
+    vol_sr: Optional[Dict[str, Any]],
+    *,
+    px: float,
+) -> Optional[Dict[str, Any]]:
+    """大量／下一層撐裡，低於現價且最近的一檔（含 date／low）。"""
+    try:
+        y = float(px)
+    except (TypeError, ValueError):
+        return None
+    if y <= 0 or not isinstance(vol_sr, dict):
+        return None
+    cands: List[Dict[str, Any]] = []
+    for key in ("primary", "next"):
+        row = vol_sr.get(key) or {}
+        try:
+            lo = float(row.get("low") or 0)
+        except (TypeError, ValueError):
+            lo = 0.0
+        if lo <= 0 or lo >= y - 1.0:
+            continue
+        cands.append(
+            {
+                "date": _ymd(row.get("date")),
+                "low": lo,
+                "high": float(row.get("high") or 0) or None,
+                "kind": key,
+            }
+        )
+    if not cands:
+        return None
+    cands.sort(key=lambda r: float(y) - float(r["low"]))
+    return cands[0]
+
+
+def _paint_tx_now_price_rail(
+    ax,
+    *,
+    px: float,
+    tip_i: int,
+    fp: Any,
+    live: bool = False,
+    asof_ymd: str = "",
+    hit: Optional[Dict[str, Any]] = None,
+    near_sup: Optional[Dict[str, Any]] = None,
+) -> None:
+    """電子盤現價／收盤水平虛線：對日期＋近撐月日價。
+
+    紫虛線＝當下或收盤價一路往左；碰到舊K的日子豎虛＋「曾到」；
+    下方最近大量撐另標近撐月日價，方便看最近撐在哪。
+    """
+    if ax is None or fp is None:
+        return
+    try:
+        y = float(px)
+        tip = int(tip_i)
+    except (TypeError, ValueError):
+        return
+    if y <= 0 or tip < 0:
+        return
+    # 水平虛線：左緣 → 末根（不准貫穿右欄標籤）
+    ax.plot(
+        [-0.45, float(tip) + 0.15],
+        [y, y],
+        color="#ea80fc",
+        lw=1.25,
+        ls=(0, (5, 2.4)),
+        alpha=0.92,
+        zorder=9,
+        solid_capstyle="butt",
+    )
+    phase = "盤中" if live else "收盤"
+    md = _md(asof_ymd) if _ymd(asof_ymd) else ""
+    head = f"{md}{phase}" if md else phase
+    bits = [f"{head} {_px(y)}"]
+    if hit and _ymd(hit.get("date")):
+        hi = int(hit.get("i") or -1)
+        if hi >= 0:
+            ax.axvline(
+                float(hi),
+                color="#ea80fc",
+                lw=0.85,
+                ls=(0, (2, 2.2)),
+                alpha=0.55,
+                zorder=3,
+            )
+        bits.append(f"←{_md(hit.get('date'))}曾到")
+    if near_sup and float(near_sup.get("low") or 0) > 0:
+        sm = _md(near_sup.get("date")) if _ymd(near_sup.get("date")) else ""
+        if sm:
+            bits.append(f"近撐{sm} {_px(float(near_sup['low']))}")
+        else:
+            bits.append(f"近撐 {_px(float(near_sup['low']))}")
+        # 近撐也畫一條淡青虛線，方便跟現價紫線對照
+        try:
+            sy = float(near_sup["low"])
+            ax.plot(
+                [-0.45, float(tip) + 0.15],
+                [sy, sy],
+                color="#4dd0e1",
+                lw=1.05,
+                ls=(0, (4, 2.5)),
+                alpha=0.75,
+                zorder=8,
+                solid_capstyle="butt",
+            )
+        except (TypeError, ValueError):
+            pass
+    # 貼在現價線左側中段，不准蓋末根 tip
+    x_lab = max(0.6, float(tip) * 0.42)
+    ax.text(
+        x_lab,
+        y,
+        "｜".join(bits),
+        fontproperties=fp(8, "bold"),
+        color="#f3e5f5",
+        ha="left",
+        va="bottom",
+        zorder=12,
+        bbox=dict(
+            boxstyle="round,pad=0.14",
+            fc="#0b0f14",
+            ec="#ea80fc",
+            lw=0.7,
+            alpha=0.92,
+        ),
+    )
+
+
 def _paint_max_vol_hl_zone(
     ax,
     *,
@@ -6935,6 +7101,29 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "volume": float(tx_v[i] if i < len(tx_v) else 0),
             }
         )
+    # 末根用即時／收盤同口價重算破撐（不准庫內舊收讓下一層消失或錯掛）
+    _tx_live_sr = live_tx if isinstance(live_tx, dict) else None
+    if not _tx_live_sr and isinstance(pack, dict):
+        _tx_live_sr = pack.get("live_tx") if isinstance(pack.get("live_tx"), dict) else None
+    if tx_rows_for_vol and isinstance(_tx_live_sr, dict):
+        try:
+            _lpx = float(_tx_live_sr.get("close") or 0)
+        except (TypeError, ValueError):
+            _lpx = 0.0
+        if _lpx > 0:
+            last = dict(tx_rows_for_vol[-1])
+            try:
+                _lo = float(_tx_live_sr.get("low") or last.get("low") or _lpx)
+                _hi = float(_tx_live_sr.get("high") or last.get("high") or _lpx)
+                _oo = float(_tx_live_sr.get("open") or last.get("open") or _lpx)
+            except (TypeError, ValueError):
+                _lo = _hi = _oo = _lpx
+            last["close"] = _lpx
+            last["low"] = min(x for x in (_lo, float(last.get("low") or _lpx), _lpx) if x > 0)
+            last["high"] = max(_hi, float(last.get("high") or 0), _lpx)
+            if _oo > 0:
+                last["open"] = _oo
+            tx_rows_for_vol[-1] = last
     tx_vol_sr = _resolve_teach_vol_sr(
         tx_rows_for_vol,
         lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(tx_rows_for_vol) - 1)),
@@ -6961,11 +7150,16 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "color": "#ffe082",
             }
         )
+        _pri_broke = bool(pri.get("broke_support"))
         _tx_right_notes.append(
             {
                 "x": n_tw - 1,
                 "y": float(pri["low"]),
-                "text": f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}",
+                "text": (
+                    f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}已破"
+                    if _pri_broke
+                    else f"{_tx_pri_tag}電盤大量撐 {_px(pri['low'])}"
+                ),
                 "color": "#ffe082",
             }
         )
@@ -6983,14 +7177,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             )
             _tx_nxt_md = _md(nxt.get("date"))
             _tx_nxt_tag = f"{_tx_nxt_md} " if _tx_nxt_md else ""
-            _tx_right_notes.append(
-                {
-                    "x": n_tw - 1,
-                    "y": float(nxt["high"]),
-                    "text": f"{_tx_nxt_tag}電盤下一層壓 {_px(nxt['high'])}",
-                    "color": "#ff8aa0",
-                }
-            )
+            # 先標撐再標壓：33799＝區高＝壓，不准被誤認成接下來的撐
             _tx_right_notes.append(
                 {
                     "x": n_tw - 1,
@@ -6999,7 +7186,23 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                     "color": "#ff8aa0",
                 }
             )
-    tx_now = float(tx_c[tx_valid[-1]]) if tx_valid else None
+            _tx_right_notes.append(
+                {
+                    "x": n_tw - 1,
+                    "y": float(nxt["high"]),
+                    "text": f"{_tx_nxt_tag}電盤下一層壓 {_px(nxt['high'])}",
+                    "color": "#ff8aa0",
+                }
+            )
+    # 現價＝即時／收盤同口（與黃紅戳一致）；不准再用庫內舊收去挑近撐
+    tx_now = None
+    if isinstance(_tx_live_sr, dict):
+        try:
+            tx_now = float(_tx_live_sr.get("close") or 0) or None
+        except (TypeError, ValueError):
+            tx_now = None
+    if not tx_now and tx_valid:
+        tx_now = float(tx_c[tx_valid[-1]])
     if tx_now and tx_now > 0:
         tx_sup = []
         tx_res = []
@@ -7100,13 +7303,39 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "prev": float(tx_c[prev_i]) if prev_i is not None else None,
                 "min_body": float(tx_min_body),
             }
+            _tx_px_rail = float(tx_c[tip_i])
             _tx_right_notes.append(
                 {
                     "x": tip_i,
-                    "y": float(tx_c[tip_i]),
-                    "text": f"電盤即時 {_px(tx_c[tip_i])}",
+                    "y": _tx_px_rail,
+                    "text": f"電盤即時 {_px(_tx_px_rail)}",
                     "color": "#ea80fc",
                 }
+            )
+            # 現價水平虛線：往左對日期；近撐只認大量區低（3/6 撐＝32820，不准把區高33799當撐）
+            _tx_hit = _nearest_bar_touching_px(
+                bars, tx_h, tx_l, px=_tx_px_rail, before_i=int(tip_i)
+            )
+            _tx_near_sup = _nearest_vol_support_row(tx_vol_sr, px=_tx_px_rail)
+            _tx_rail_live = bool(
+                isinstance(_tx_live_sr, dict)
+                and float((_tx_live_sr or {}).get("close") or 0) > 0
+                and _tx_night_session_live()
+            )
+            _tx_rail_asof = ""
+            if isinstance(_tx_live_sr, dict):
+                _tx_rail_asof = _ymd(_tx_live_sr.get("date"))
+            if not _tx_rail_asof and tip_i < len(bars):
+                _tx_rail_asof = _ymd(bars[tip_i].get("date"))
+            _paint_tx_now_price_rail(
+                axt,
+                px=_tx_px_rail,
+                tip_i=int(tip_i),
+                fp=_fp,
+                live=_tx_rail_live,
+                asof_ymd=str(_tx_rail_asof or ""),
+                hit=_tx_hit,
+                near_sup=_tx_near_sup,
             )
         lo_v = min(float(tx_l[i]) for i in tx_valid)
         hi_v = max(float(tx_h[i]) for i in tx_valid)

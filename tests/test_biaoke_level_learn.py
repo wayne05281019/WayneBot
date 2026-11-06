@@ -1139,6 +1139,79 @@ def test_stamp_md_phase_close_or_intraday_before_numbers():
     assert _tx_night_session_live(datetime(2026, 11, 6, 10, 0, tzinfo=tz)) is False
 
 
+def test_tx_next_layer_33799_is_press_not_support():
+    """破 6/10 大量撐後下一層：3/6 區高 33799＝壓；撐＝32820。不准把 33799 當撐。"""
+    from biaoke_level_learn import (
+        _nearest_vol_support_row,
+        _next_support_resist,
+        _resolve_teach_vol_sr,
+        _ymd,
+    )
+
+    rows = [
+        {
+            "date": "20260304",
+            "open": 34000,
+            "high": 34444,
+            "low": 32834,
+            "close": 33548,
+            "volume": 148908,
+        },
+        {
+            "date": "20260306",
+            "open": 33695,
+            "high": 33799,
+            "low": 32820,
+            "close": 33288,
+            "volume": 135936,
+        },
+        {
+            "date": "20260610",
+            "open": 44700,
+            "high": 45073,
+            "low": 42334,
+            "close": 43878,
+            "volume": 121791,
+        },
+        {
+            "date": "20261104",
+            "open": 42000,
+            "high": 42298,
+            "low": 38799,
+            "close": 40000,
+            "volume": 80000,
+        },
+        {
+            "date": "20261105",
+            "open": 41990,
+            "high": 42298,
+            "low": 38799,
+            "close": 38936,
+            "volume": 89277,
+        },
+    ]
+    sr = _resolve_teach_vol_sr(rows, lookback=80)
+    assert sr.get("primary")
+    assert float((sr["primary"] or {}).get("low") or 0) == 42334.0
+    assert bool((sr["primary"] or {}).get("broke_support")) is True
+    nxt = sr.get("next") or {}
+    assert nxt, "破撐後必須掛下一層大量區"
+    assert _ymd(nxt.get("date")) in ("20260306", "20260304")
+    # 區高＝壓（約 33799／34444）；撐＝區低，绝不是 33799
+    assert float(nxt.get("high") or 0) >= 33790.0
+    assert abs(float(nxt.get("low") or 0) - 33799.0) > 50.0
+    near = _nearest_vol_support_row(sr, px=38936.0)
+    assert near is not None
+    assert float(near["low"]) == float(nxt["low"])
+    nxt_sr = _next_support_resist(
+        38936.0,
+        supports=[float(sr["primary"]["low"]), float(nxt["low"])],
+        resists=[float(sr["primary"]["high"]), float(nxt["high"])],
+    )
+    assert nxt_sr.get("support") == float(nxt["low"])
+    assert abs(float(nxt_sr["support"]) - 33799.0) > 50.0
+
+
 def test_reconcile_sox_last_close_patches_stale_intraday(tmp_path, monkeypatch):
     """已收後庫內末日若偏離 Yahoo 現價 → 覆寫成官方收（修 9185→9011）。"""
     import sys
