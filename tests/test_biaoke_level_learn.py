@@ -201,11 +201,14 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_paint_eight_wave_inset" in near_blk
     assert "_paint_eight_wave_inset" in micro_blk
     assert "detail=False" in near_blk
-    assert "scale=1.0" in near_blk and "pin_bottom=True" in near_blk
     assert 'title="九波擴延"' in near_blk
     assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
     assert "avoid_top_left_stamp=True" in near_blk
-    assert "float(i5s) + 2.15" in near_blk  # ⑤起尖點右上，不准踩 x 軸／卡左緣
+    assert "float(i5s) + 4.2" in near_blk  # ⑤起尖右上空檔，讓過九波＋首根K
+    assert "hspace=0.16" in near_blk
+    assert "labs_ax" in near_blk and "labs_axv" in near_blk
+    assert "0.48" in near_blk and "_teach_eight_wave_inset_wh" in near_blk
+    assert "float(i5e) + 2.6" in near_blk  # ⑤末尖右上空檔讓過戳
     assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
     assert "_twii_macro_wave_anchors" in src
     assert (
@@ -2265,13 +2268,19 @@ def test_near_micro_follow_far_c9_twii_presentation():
     # 近窗跟進
     assert "_c9_now_step_label()" in near
     assert 'title="九波擴延"' in near
-    assert "scale=1.0" in near and "pin_bottom=True" in near
     assert "nudge=True" in near
     assert 'side="left"' in near
     assert "大B末 {_px" in near or 'f"大B末 {_px' in near
     assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near
     assert "avoid_top_left_stamp=True" in near
-    assert "float(i5s) + 2.15" in near
+    assert "float(i5s) + 4.2" in near
+    assert "float(i5e) + 2.6" in near
+    assert "_teach_eight_wave_inset_wh" in near
+    # C7／C8 字標多餘（右欄已有 C-7轉C-8今）；圓點仍留
+    path_src = inspect.getsource(
+        __import__("biaoke_level_learn", fromlist=["_paint_c9_ext_k_path"])._paint_c9_ext_k_path
+    )
+    assert 'lab in {"C7", "C8"}' in path_src or "lab in {'C7', 'C8'}" in path_src
     # 超近（日K備援＋60分主路）跟進
     assert "_c9_now_step_label()" in micro
     assert 'title="九波擴延"' in micro

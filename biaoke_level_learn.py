@@ -4156,8 +4156,11 @@ def _paint_c9_ext_k_path(
                 linewidths=0.95,
                 zorder=8.8,
             )
-        # 浪號要一眼對得上哪一根 K：C1…C8（細標，不准粗盒互壓）
-        odd = lab in {"C1", "C3", "C5", "C7"}
+        # 浪號要一眼對得上哪一根 K：C1…C6 細標；C7／C8 只留圓點
+        # （右欄已有「C-7轉C-8今」→ 再釘字＝多餘，且易被座位推到量欄邊）
+        if lab in {"C7", "C8"}:
+            continue
+        odd = lab in {"C1", "C3", "C5"}
         tip_side = "low" if odd else "high"
         _pin_pivot_name(
             ax,
@@ -4170,7 +4173,7 @@ def _paint_c9_ext_k_path(
             tip=tip_side,
             n=n,
             pad_x=0.28,
-            fontsize=max(7.5, float(fontsize) - (0.0 if is_hot else 1.0)),
+            fontsize=max(7.5, float(fontsize) - 1.0),
         )
     # C9 只標在預估虛線端，不准拿已走柱冒充
     if tip is not None:
@@ -10025,7 +10028,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         figsize=(15.6, 9.8),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(5.5, 1.35), hspace=0.04),
+        # 欄間加空：結構日上移到價圖底，量圖底只留疏刻（附圖五）
+        gridspec_kw=dict(height_ratios=(5.5, 1.35), hspace=0.16),
     )
     fig.patch.set_facecolor(_LIVE_BG)
     _style_live_ax(ax, axv)
@@ -10162,16 +10166,16 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     # 先定 ylim／xlim 再釘浪名（跟遠窗同）：lift／字級才對最終軸距，⑤起不准卡裁
     ax.set_xlim(-0.6, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
     ax.set_ylim(ymin, ymax)
-    # 禁區先登記：左上白底戳＋右上價空＋左下九波帶，智慧標不准蓋主線／縮圖／戳
+    # 禁區先登記：左上白底戳（加寬）＋右上價空＋左下九波帶
     _reserve_avoid_zone(
-        ax, -1.0, float(ymax) - span * 0.20, float(n) * 0.32, float(ymax) + 80.0
+        ax, -1.0, float(ymax) - span * 0.28, float(n) * 0.42, float(ymax) + 80.0
     )
     _reserve_avoid_zone(ax, float(n) - 24.0, 40500.0, float(n) + 5.0, 43300.0)
     _reserve_avoid_zone(ax, float(n) * 0.55, 31800.0, float(n) - 0.5, 39200.0)
-    # ⑤起：尖點右上方一小截（貼圓點、離 x 軸），不准踩軸／卡左緣／整盒蓋住藍線起點
+    # ⑤起：尖點右上方空檔（讓過左下九波縮圖＋首根K）
     _w5_lab = f"⑤起 {_md(bars[i5s].get('date'))}"
-    _w5_x = float(i5s) + 2.15
-    _w5_y = float(y5s) + span * 0.032
+    _w5_x = float(i5s) + 4.2
+    _w5_y = float(y5s) + span * 0.062
     ax.text(
         _w5_x,
         _w5_y,
@@ -10195,19 +10199,29 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ax._wayne_pin_seats = []
         seats = ax._wayne_pin_seats
     seats.append((_w5_x, _w5_y))
-    _pin_pivot_name(
-        ax,
-        i5e,
-        y5e,
-        f"⑤末＝A起 {_md(bars[i5e].get('date'))}",
-        "#40c4ff",
-        _fp,
-        side="auto",
-        tip="high",
-        n=n,
-        pad_x=0.35,
-        fontsize=9,
+    # ⑤末：尖點右上方空檔（6月峰遠低於10月高，右上天空），讓過戳＋縮圖K（附圖一）
+    _w5e_lab = f"⑤末＝A起 {_md(bars[i5e].get('date'))}"
+    _w5e_x = float(i5e) + 2.6
+    _w5e_y = float(y5e) + span * 0.042
+    ax.text(
+        _w5e_x,
+        _w5e_y,
+        _w5e_lab,
+        fontproperties=_fp(9, "normal"),
+        color="#40c4ff",
+        ha="left",
+        va="bottom",
+        zorder=10,
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.08",
+            fc="#0b0f14",
+            ec="#40c4ff",
+            lw=0.45,
+            alpha=0.88,
+        ),
     )
+    seats.append((_w5e_x, _w5e_y))
     _pin_pivot_name(
         ax,
         i_alow,
@@ -10434,28 +10448,67 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         f"今在大C內震盪（不是新的大A／大B）｜C走完≠新五波升"
         f"{c_sub_teach}｜黃線Fib＝反彈壓｜型態：{morph_line}｜{intent_line}"
     )
-    want_dates = {
+    # 附圖五：結構日上移到價／量欄間空檔；量圖底只留疏刻，不准整排互壓
+    major_ymds = {
         "20260401",
         "20260623",
         "20260729",
         "20261006",
         "20261015",
-        "20261022",
         _ymd(bars[-1].get("date")),
     }
-    t2, l2 = [], []
+    major_idx = {int(i5s), int(i5e), int(i_alow), int(i_b_end), int(i_now)}
+    if i_vmax is not None:
+        major_idx.add(int(i_vmax))
+    t_all: List[int] = []
+    labs_ax: List[str] = []
+    labs_axv: List[str] = []
     for i, r in enumerate(bars):
         d = _ymd(r.get("date"))
-        if d in want_dates or i % 4 == 0:
-            if i not in t2:
-                t2.append(i)
-                l2.append(_md(d))
-    t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
-    # xlim／ylim 已在釘浪名前設過；這裡只補量欄
+        is_major = i in major_idx or d in major_ymds
+        is_sparse = (i % 7 == 0) and not is_major
+        if not (is_major or is_sparse):
+            continue
+        if i in t_all:
+            continue
+        t_all.append(i)
+        md = _md(d)
+        if is_major:
+            labs_ax.append(md)
+            labs_axv.append("")
+        else:
+            labs_ax.append("")
+            labs_axv.append(md)
+    # 結構日互距不夠就再疏；量底疏刻 min_gap 更大
+    t_ax, l_ax = _sparse_xticks(
+        [t for t, lab in zip(t_all, labs_ax) if lab],
+        [lab for lab in labs_ax if lab],
+        min_gap=3,
+    )
+    t_av, l_av = _sparse_xticks(
+        [t for t, lab in zip(t_all, labs_axv) if lab],
+        [lab for lab in labs_axv if lab],
+        min_gap=5,
+    )
+    t_merged = sorted(set(t_ax) | set(t_av))
+    lab_ax_map = dict(zip(t_ax, l_ax))
+    lab_av_map = dict(zip(t_av, l_av))
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
-    axv.set_xticks(t2)
-    axv.set_xticklabels(l2, fontproperties=_fp(9, "bold"), color=_LIVE_TEXT)
+    ax.set_xticks(t_merged)
+    ax.set_xticklabels(
+        [lab_ax_map.get(t, "") for t in t_merged],
+        fontproperties=_fp(8, "bold"),
+        color=_LIVE_TEXT,
+    )
+    ax.tick_params(axis="x", labelbottom=True, length=3, pad=1)
+    plt.setp(ax.get_xticklabels(), visible=True)
+    axv.set_xticks(t_merged)
+    axv.set_xticklabels(
+        [lab_av_map.get(t, "") for t in t_merged],
+        fontproperties=_fp(8, "bold"),
+        color=_LIVE_MUTED,
+    )
     for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
         lab.set_fontproperties(_fp(9, "bold"))
         lab.set_color(_LIVE_MUTED)
@@ -10532,29 +10585,29 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗九波：左下再放大（單欄空間比遠窗寬），仍不准跨過黃虛線／擋右標
-    _near_inset = _eight_wave_inset_rect_left_of_vmax(
-        ax,
-        fig,
-        i_vmax=int(i_vmax) if i_vmax is not None else None,
-        ymin=float(ymin),
-        ymax=float(ymax),
-        n_bars=n,
-        scale=1.0,
-        pin_bottom=True,
-    )
+    # 近窗九波：縮小鎖價圖左下角（附圖三），不准蓋夏秋縮圖K／價底結構日
     try:
-        _ins_l, _ins_b, _ins_w, _ins_h = _near_inset
         _axpos = ax.get_position()
-        # 近窗單欄：九波明顯放大；右緣鎖欄寬 62% 內、不准跨黃虛線
-        _max_right = float(_axpos.x0) + float(_axpos.width) * 0.62
-        _ins_h = min(float(_ins_h) * 1.38, float(_axpos.height) * 0.40)
-        _ins_w = min(float(_ins_w) * 1.38, float(_axpos.width) * 0.60)
-        if _ins_l + _ins_w > _max_right:
-            _ins_l = max(float(_axpos.x0) + 0.006, _max_right - _ins_w)
-        _near_inset = (float(_ins_l), float(_ins_b), float(_ins_w), float(_ins_h))
+        _iw, _ih = _teach_eight_wave_inset_wh(fig)
+        _iw = min(float(_iw) * 0.48, float(_axpos.width) * 0.28)
+        _ih = min(float(_ih) * 0.48, float(_axpos.height) * 0.20)
+        _near_inset = (
+            float(_axpos.x0) + 0.010,
+            float(_axpos.y0) + 0.014,
+            float(_iw),
+            float(_ih),
+        )
     except Exception:
-        pass
+        _near_inset = _eight_wave_inset_rect_left_of_vmax(
+            ax,
+            fig,
+            i_vmax=int(i_vmax) if i_vmax is not None else None,
+            ymin=float(ymin),
+            ymax=float(ymax),
+            n_bars=n,
+            scale=0.48,
+            pin_bottom=True,
+        )
     _c9_near = _c9_extension_active(pack)
     _paint_eight_wave_inset(
         fig,
