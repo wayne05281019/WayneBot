@@ -223,14 +223,20 @@ def _floats(snap: Dict[str, Any], keys) -> List[float]:
     return out
 
 
-def last_post_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """1 分 K（含盤後）裡，取現金收盤後最後一筆。盤中還沒有盤後 bar 就回 None。"""
+def _last_session_px_from_block(
+    block: Dict[str, Any], *, which: str
+) -> Optional[Dict[str, Any]]:
+    """1 分 K（含盤前／盤後）取指定時段最後一筆。which＝pre｜post。"""
     meta = block.get("meta") or {}
     period = meta.get("currentTradingPeriod") or {}
-    post = period.get("post") or {}
     regular = period.get("regular") or {}
-    start = int(post.get("start") or 0) or int(regular.get("end") or 0)
-    end = int(post.get("end") or 0)
+    slot = period.get(which) or {}
+    if which == "post":
+        start = int(slot.get("start") or 0) or int(regular.get("end") or 0)
+        end = int(slot.get("end") or 0)
+    else:
+        start = int(slot.get("start") or 0)
+        end = int(slot.get("end") or 0) or int(regular.get("start") or 0)
     if not start:
         return None
     stamps = block.get("timestamp") or []
@@ -248,22 +254,40 @@ def last_post_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         last_px, last_t = float(close), t
     if last_px is None:
         return None
-    cash_px = None
-    reg_end = int(regular.get("end") or start)
-    for ts, close in zip(stamps, closes):
-        if close is None:
-            continue
-        t = int(ts)
-        if t < start:
-            cash_px = float(close)
-        elif cash_px is None and t <= reg_end:
-            cash_px = float(close)
-    prev = cash_px
+    # 對照現金：盤後對當日現金收；盤前對昨收／chartPreviousClose
+    prev = None
+    if which == "post":
+        reg_end = int(regular.get("end") or start)
+        for ts, close in zip(stamps, closes):
+            if close is None:
+                continue
+            t = int(ts)
+            if t < start:
+                prev = float(close)
+            elif prev is None and t <= reg_end:
+                prev = float(close)
     if prev is None:
         prev = _as_float(meta.get("previousClose") or meta.get("chartPreviousClose"))
     pct = (last_px - prev) / prev * 100.0 if prev else None
     chg = (last_px - prev) if prev is not None else None
-    return {"price": last_px, "ts": last_t, "previous_close": prev, "pct": pct, "chg": chg}
+    return {
+        "price": last_px,
+        "ts": last_t,
+        "previous_close": prev,
+        "pct": pct,
+        "chg": chg,
+        "which": which,
+    }
+
+
+def last_post_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """1 分 K（含盤後）裡，取現金收盤後最後一筆。盤中還沒有盤後 bar 就回 None。"""
+    return _last_session_px_from_block(block, which="post")
+
+
+def last_pre_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """1 分 K（含盤前）裡，取開盤前最後一筆。還沒盤前 bar 就回 None。"""
+    return _last_session_px_from_block(block, which="pre")
 
 
 def _fetch_symbol(sym: str, *, session_open: bool = False, timeout: float = 20) -> Dict[str, Any]:
@@ -294,12 +318,16 @@ def _fetch_symbol(sym: str, *, session_open: bool = False, timeout: float = 20) 
 def fetch_live_sox_display_bar(
     now: Optional[datetime] = None, *, force: bool = False
 ) -> Optional[Dict[str, Any]]:
-    """美股現金盤中：Yahoo ^SOX 當日未收 OHLC（只渲染、不寫庫、不當官方收）。
+    """Yahoo ^SOX 顯示柱（只渲染、不寫庫、不當官方收）。
 
-    費半指數量常為 0 → 另帶 SOXX 量代理（標 volume_proxy）。非現金盤中回 None。
+    - regular：現金盤中未收 OHLC（live_session=1）
+    - post：現金收＋盤後末筆疊上（live_session=1）
+    - overnight＋force：試盤前末筆；有就 live；沒有就回最新日K（live_session=0）
+    費半指數量常為 0 → 另帶 SOXX 量代理（標 volume_proxy）。
+    話筒波浪鍵 force=True：晚上也隨時重抓費半。
     """
     phase = us_tape_phase(now)
-    if phase != "regular" and not force:
+    if phase not in ("regular", "post") and not force:
         return None
     try:
         url = _chart_url("^SOX", interval="1d", range_="5d")
@@ -321,6 +349,13 @@ def fetch_live_sox_display_bar(
             last_px = _as_float(closes[-1]) if closes else None
         if last_px is None or last_px <= 0:
             return None
+        # 盤前：Yahoo meta.preMarketPrice（指數有才用；仍須 >=500）
+        pre_from_meta = False
+        if phase == "overnight":
+            pre_px = _as_float(meta.get("preMarketPrice"))
+            if pre_px is not None and pre_px >= 500:
+                last_px = float(pre_px)
+                pre_from_meta = True
         o = _as_float(opens[-1]) if opens else None
         h = _as_float(highs[-1]) if highs else None
         lo = _as_float(lows[-1]) if lows else None
@@ -365,6 +400,40 @@ def fetch_live_sox_display_bar(
                     soxx_vol = float(mv)
         except Exception:
             logger.debug("SOXX 量代理略過", exc_info=True)
+        live_flag = 1 if phase == "regular" else 0
+        if pre_from_meta:
+            live_flag = 1
+            if expected:
+                session = expected
+        # 盤後／盤前：只疊 ^SOX 1 分末筆（不准用 SOXX ETF 價蓋指數）
+        if phase in ("post", "overnight") or (force and phase != "regular"):
+            ext = None
+            try:
+                if phase == "post":
+                    ext = _fetch_post_last("^SOX")
+                else:
+                    # overnight＝盤前窗或深夜：先試盤前，再試盤後（剛收完）
+                    ext = _fetch_pre_last("^SOX")
+                    if not ext:
+                        ext = _fetch_post_last("^SOX")
+            except Exception:
+                logger.debug("費半盤前／盤後末筆略過", exc_info=True)
+                ext = None
+            if ext and float(ext.get("price") or 0) > 0:
+                px = float(ext["price"])
+                # 防線：指數通常上千；ETF 百元級不准蓋進來
+                if px >= 500:
+                    last_px = px
+                    h = max(float(h or 0), px, float(o or px))
+                    lo = min(x for x in (lo, px, o) if x and x > 0)
+                    live_flag = 1
+                    if ext.get("ts"):
+                        try:
+                            session = datetime.fromtimestamp(
+                                int(ext["ts"]), tz=NY
+                            ).strftime("%Y%m%d")
+                        except Exception:
+                            pass
         return {
             "date": session,
             "open": float(o),
@@ -373,7 +442,8 @@ def fetch_live_sox_display_bar(
             "close": float(last_px),
             "volume": float(vol),
             "volume_proxy": float(soxx_vol),
-            "live_session": 1,
+            "live_session": int(live_flag),
+            "session_phase": phase,
             "symbol": "SOX",
         }
     except Exception:
@@ -389,6 +459,16 @@ def _fetch_post_last(sym: str) -> Optional[Dict[str, Any]]:
     if not result:
         return None
     return last_post_from_block(result[0])
+
+
+def _fetch_pre_last(sym: str) -> Optional[Dict[str, Any]]:
+    url = _chart_url(sym, interval="1m", range_="1d", include_prepost=True)
+    resp = _SESSION.get(url, timeout=20)
+    resp.raise_for_status()
+    result = (resp.json().get("chart") or {}).get("result") or []
+    if not result:
+        return None
+    return last_pre_from_block(result[0])
 
 
 def fetch_outer_tape(*, force: bool = False) -> Dict[str, Any]:

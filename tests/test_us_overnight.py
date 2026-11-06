@@ -6,6 +6,7 @@ from us_overnight import (
     format_quote_move,
     format_us_lead_line,
     last_post_from_block,
+    last_pre_from_block,
     pick_us_lead_group,
 )
 
@@ -61,6 +62,25 @@ def test_last_post_pct_vs_cash_close_not_previous_close():
     assert got["price"] == 97.5
     assert got["previous_close"] == 102.0
     assert abs(got["pct"] - (97.5 - 102.0) / 102.0 * 100.0) < 1e-9
+
+
+def test_last_pre_from_block_uses_pre_window():
+    block = {
+        "meta": {
+            "previousClose": 100.0,
+            "currentTradingPeriod": {
+                "pre": {"start": 500, "end": 1000},
+                "regular": {"start": 1000, "end": 2000},
+                "post": {"start": 2000, "end": 3000},
+            },
+        },
+        "timestamp": [400, 600, 900, 1100],
+        "indicators": {"quote": [{"close": [99.0, 101.5, 102.0, 103.0]}]},
+    }
+    got = last_pre_from_block(block)
+    assert got["price"] == 102.0
+    assert got["previous_close"] == 100.0
+    assert abs(got["pct"] - 2.0) < 1e-9
 
 
 def test_outer_rows_brent_dx_twd():
