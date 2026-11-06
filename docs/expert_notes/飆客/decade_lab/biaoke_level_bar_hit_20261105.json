@@ -1,0 +1,159 @@
+{
+  "written_at": "2026-11-05T01:06:49",
+  "tz": "Asia/Taipei",
+  "purpose_zh": "收緊位階對質：他點過的位→官方柱碰到沒→對／偏／未完",
+  "twii_n": 5423,
+  "twii_from": "20061102",
+  "twii_to": "20261103",
+  "fwd_n": 5,
+  "tol_pct": 0.005,
+  "min_index_level": 15000.0,
+  "inventory": {
+    "encodings_zh": [
+      "biaoke_level_snaps＋_score_against_next＝口語對口語（不是官方柱）",
+      "biaoke_open_day_paints＋_score_levels_vs_bar＝隔日 TX 柱對活畫關鍵位",
+      "wave8 textbook_8cycle＝實驗室八循環幾何（已採用）",
+      "wave8 biaoke_degree＝標籤→方向窗（~47%，不採用）",
+      "biaoke_micro_fractal＝細微波關鍵詞→後5日（弱）",
+      "teach kit＝遠／近／超近加權教具渲圖，對質另軌",
+      "本檔現況 level_bar_fwd5_role_infer＝他點過的指數位→加權後窗碰到沒"
+    ],
+    "wrong_window_fix_zh": "對質窗改為發文日之後 FWD 根；include_day0 僅作對照不准採用"
+  },
+  "tracks": {
+    "level_bar_fwd5_role_infer": {
+      "n_rows": 114,
+      "n_decided": 112,
+      "hit": 69,
+      "miss": 43,
+      "hit_rate": 0.6160714285714286,
+      "gate_n20": true,
+      "n_days": 46,
+      "outcome_counts": {
+        "對": 69,
+        "偏": 43,
+        "未完": 2
+      },
+      "role_counts": {
+        "break": 43,
+        "pressure": 39,
+        "support": 29,
+        "touch": 3
+      },
+      "pot": "他說／飆預測",
+      "window": "fwd_only"
+    },
+    "wrong_window_incl_day0": {
+      "n_rows": 114,
+      "n_decided": 112,
+      "hit": 70,
+      "miss": 42,
+      "hit_rate": 0.625,
+      "gate_n20": true,
+      "n_days": 46,
+      "outcome_counts": {
+        "對": 70,
+        "偏": 42,
+        "未完": 2
+      },
+      "role_counts": {
+        "break": 43,
+        "pressure": 39,
+        "support": 29,
+        "touch": 3
+      },
+      "pot": "對照／不准採用",
+      "window": "incl_day0"
+    },
+    "levelish_explicit_fwd5": {
+      "n_rows": 215,
+      "n_decided": 210,
+      "hit": 114,
+      "miss": 96,
+      "hit_rate": 0.5428571428571428,
+      "gate_n20": true,
+      "n_days": 110,
+      "outcome_counts": {
+        "對": 114,
+        "偏": 96,
+        "未完": 5
+      },
+      "role_counts": {
+        "break": 89,
+        "pressure": 100,
+        "support": 26
+      },
+      "pot": "加樣本",
+      "window": "fwd_only"
+    },
+    "level_bar_vnext_explicit_hybrid": {
+      "n_rows": 71,
+      "n_decided": 60,
+      "hit": 30,
+      "miss": 30,
+      "hit_rate": 0.5,
+      "gate_n20": true,
+      "n_days": 55,
+      "outcome_counts": {
+        "缺柱": 7,
+        "對": 30,
+        "偏": 30,
+        "觀望不計分": 3,
+        "未完": 1
+      },
+      "role_counts": {},
+      "pot": "他說／飆預測・下一鍵",
+      "window": "level_or_direction"
+    },
+    "level_bar_explicit_tol3": {
+      "n_rows": 58,
+      "n_decided": 56,
+      "hit": 25,
+      "miss": 31,
+      "hit_rate": 0.44642857142857145,
+      "gate_n20": true,
+      "n_days": 28,
+      "outcome_counts": {
+        "對": 25,
+        "偏": 31,
+        "未完": 2
+      },
+      "role_counts": {
+        "break": 31,
+        "pressure": 17,
+        "support": 10
+      },
+      "pot": "下一鍵旁枝",
+      "window": "fwd_only"
+    }
+  },
+  "current_variant": "level_bar_fwd5_role_infer",
+  "next_variant": {
+    "variant": "level_bar_vnext_explicit_hybrid",
+    "rule_zh": "degree_turns：明確點位多數決柱對質，否則方向窗 fallback",
+    "n_decided": 60,
+    "hit_rate": 0.5,
+    "vs_current": {
+      "current_hit_rate": 0.6160714285714286,
+      "edge": -0.1160714285714286
+    },
+    "gate_n20": true,
+    "replace": false,
+    "phone_sync": "blocked",
+    "also_collecting": "level_bar_explicit_tol3／levelish_explicit_fwd5"
+  },
+  "adopt": {
+    "pick": "level_bar_fwd5_role_infer",
+    "reason": "下一鍵未贏現況或 n 不足；繼續靜默收集"
+  },
+  "WAVE_NEURONS_MATCH": false,
+  "wave_neurons_gap_zh": [
+    "飆大位階方向軌仍弱於教科書八循環（wave8 adopt=textbook）",
+    "細微波／形態命中仍弱",
+    "位→柱軌雖能量化，仍未到「神經元真的跟他一樣」的人工鎖",
+    "phone 未過閘；不准發明 5／9、不准上話筒"
+  ],
+  "not_buy_signal": true,
+  "phone_sync": "blocked",
+  "note_zh": "只認他點過的大盤位＋官方柱。空名單不算。WAVE_NEURONS_MATCH 仍 False。"
+}

@@ -1,14 +1,14 @@
 {
-  "id": "gap-20261104-path_forecast",
-  "written_at": "2026-11-04T18:16:32",
+  "id": "gap-20261105-path_forecast",
+  "written_at": "2026-11-05T00:59:20",
   "tz": "Asia/Taipei",
   "source": "path_forecast",
-  "fruitless": false,
-  "reason_zh": "幅度 MAE 1.31pt 偏大（n=24）→ 目標幅度要重切；因素不足不計分占比 93.3%；market_margin_daily 列數偏少 n=809（二十年窗應更厚）",
+  "fruitless": true,
+  "reason_zh": "幅度 MAE 1.33pt 偏大（n=31）→ 目標幅度要重切；因素不足不計分占比 93.0%；why 空包占比 66.9% → 投票因素點不亮，覆盤無從歸因；market_margin_daily 列數偏少 n=853（二十年窗應更厚）",
   "evidence": {
     "path": {
-      "hit_rate_directional": 1.0,
-      "directional_n": 24,
+      "hit_rate_directional": 0.6888888888888889,
+      "directional_n": 45,
       "factor_pack": [
         "wave_bias",
         "wave_phase",
@@ -100,9 +100,9 @@
         "wave_fib_mode",
         "wave_fib_expect_down"
       ],
-      "hit_rate_amplitude": 0.8333333333333334,
-      "amp_n": 24,
-      "amp_mae_pct": 1.3089
+      "hit_rate_amplitude": 0.7419354838709677,
+      "amp_n": 31,
+      "amp_mae_pct": 1.3305
     },
     "wave": {
       "adopt": {
@@ -114,9 +114,9 @@
     },
     "lab": {
       "n": 5419,
-      "insufficient_n": 5058,
+      "insufficient_n": 5037,
       "watch_n": 337,
-      "empty_why_n": 60
+      "empty_why_n": 3627
     },
     "coverage": {
       "ok": true,
@@ -192,13 +192,13 @@
           "to": "20261104"
         }
       },
-      "market_margin_daily": 809,
+      "market_margin_daily": 853,
       "market_tape_daily": 2696,
       "futures_daily": 1462
     },
     "lab_frac": {
-      "insufficient": 0.933382542904595,
-      "empty_why": 0.011072153533862336
+      "insufficient": 0.9295072891677432,
+      "empty_why": 0.6693116811219783
     }
   },
   "ideas": [
@@ -301,11 +301,6 @@
   ],
   "schedule": [
     {
-      "at": "2026-11-04T22:40:00",
-      "kind": "retest_path",
-      "note_zh": "夜窗：path_forecast 重測（有新柱才有意義）"
-    },
-    {
       "at": "2026-11-05T05:30:00",
       "kind": "fetch_us_macro",
       "note_zh": "美盤後：美債／日圓／金銅／恐懼"
@@ -359,6 +354,11 @@
       "at": "2026-11-07T10:00:00",
       "kind": "backfill_long",
       "note_zh": "週末長史補洞（margin／tape／TE）"
+    },
+    {
+      "at": "2026-11-07T14:00:00",
+      "kind": "retest_wave_path",
+      "note_zh": "週末：波浪＋走勢預測重測落檔"
     }
   ],
   "status": "queued",

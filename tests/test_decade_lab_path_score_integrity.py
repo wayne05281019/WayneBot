@@ -100,4 +100,7 @@ def test_run_integrity_writes_latest():
     assert summary2["path_score_integrity"]["track"] == "path_score_integrity_v1"
     # 不應把舊 dir 滿寫成可上話筒
     assert summary2["phone_sync"] == "blocked"
-    assert summary.get("hit_rate_directional") == 1.0  # 歷史數字仍在母檔
+    # 母檔方向命中率＝封印後誠實數（31/45），不准再鎖死假 1.0
+    hr = float(summary.get("hit_rate_directional") or 0)
+    assert abs(hr - (31 / 45)) < 1e-9
+    assert 0.0 < hr < 1.0
