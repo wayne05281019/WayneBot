@@ -271,7 +271,8 @@ def test_glance_split_layout_emerging_only(tmp_path, monkeypatch):
     assert lay["chart_points"][8]["revenue"] is None
     assert any(a == "EPS" for a, _ in lay["bottom"])
     assert lay.get("bottom_season")
-    assert "第" in lay["bottom_season"] and "季" in lay["bottom_season"]
+    # 累計季報：2＝上半年（不准標成「第2季」誤導單季）
+    assert "上半年" in lay["bottom_season"] or "前三季" in lay["bottom_season"] or "第1季" in lay["bottom_season"] or "全年" in lay["bottom_season"]
     assert len(lay["quarter_boxes"]) >= 2
     assert any(b["season"] == 2 for b in lay["quarter_boxes"])
     # 左列 1→12

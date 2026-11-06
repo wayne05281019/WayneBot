@@ -197,7 +197,10 @@ def test_midday_line_tags_listing_when_row_has_market():
 
 def test_month_season_labels_are_human():
     assert format_month_zh("202608") == "2026年8月"
-    assert format_season_zh(2026, 2) == "2026年第2季"
+    assert format_season_zh(2026, 1) == "2026年第1季"
+    assert format_season_zh(2026, 2) == "2026年上半年"
+    assert format_season_zh(2026, 3) == "2026年前三季"
+    assert format_season_zh(2026, 4) == "2026年全年"
     assert month_display("202607", "202608") == "2026年7月（8月尚未公告）"
     assert month_display("202608", "202608") == "2026年8月"
 
