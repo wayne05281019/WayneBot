@@ -585,3 +585,55 @@ def test_far_teach_sox_tx_and_d9_use_deep_window():
     merged = _teach_vol_rows_merge_deep(face, deep)
     assert len(merged) >= int(_DEEP_LOOKBACK) + 1
     assert float(merged[-1]["close"]) == 0.5
+
+def test_face_path_sr_levels_switches_to_next_after_break():
+    """共用日況規則：破主撐且有下一層 → press/hold/role=next（大量區／三合一同一套）。"""
+    from biaoke_next_support import face_path_sr_levels
+
+    day = date(2026, 8, 1)
+    rows = []
+    for i in range(40):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        if i == 10:
+            o, h, l, c, v = 85, 95, 80, 88, 12000
+        elif i == 18:
+            o, h, l, c, v = 110, 130, 100, 120, 25000
+        elif i == 39:
+            o, h, l, c, v = 98, 99, 88, 90, 3000
+        else:
+            px = 115 - i * 0.2
+            o, h, l, c, v = px, px + 3, px - 3, px + 0.5, 1500
+        rows.append(
+            {
+                "date": d,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+            }
+        )
+    lv = face_path_sr_levels(
+        press=130.0,
+        hold=100.0,
+        close=90.0,
+        bars=rows,
+        sid="9999",
+        spike_date="20260819",
+    )
+    assert lv["broke"] is True
+    assert lv["role"] == "next"
+    assert float(lv["hold"]) == 80.0
+    assert float(lv["press"]) == 95.0
+    # 未破 → 仍主區
+    ok = face_path_sr_levels(
+        press=130.0,
+        hold=100.0,
+        close=110.0,
+        bars=rows,
+        sid="9999",
+        spike_date="20260819",
+    )
+    assert ok["role"] == ""
+    assert float(ok["hold"]) == 100.0
+

@@ -545,6 +545,67 @@ def resolve_next_support(
     return out
 
 
+def face_path_sr_levels(
+    *,
+    press: Any,
+    hold: Any,
+    close: Any,
+    bars: Sequence[Dict[str, Any]] = (),
+    sid: str = "",
+    spike_date: str = "",
+    pack: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """日況橘框／三合一當日標要用的壓撐：破主撐或過主壓且有下一層 → 改對灰底。
+
+    主區錨不變（破撐≠換主區）；只改「站上撐／未站上撐／過壓」這句對哪一層。
+    回傳：press, hold, role(""|"next"), pack, broke, over。
+    """
+    hi = _num(press)
+    lo = _num(hold)
+    cl = _num(close)
+    out: Dict[str, Any] = {
+        "press": hi,
+        "hold": lo,
+        "role": "",
+        "pack": None,
+        "broke": False,
+        "over": False,
+    }
+    if hi <= 0 or lo <= 0 or hi < lo:
+        return out
+    resolved = pack if isinstance(pack, dict) else None
+    if resolved is None:
+        try:
+            resolved = resolve_next_support(
+                list(bars or []),
+                sid=str(sid or ""),
+                close=cl if cl > 0 else None,
+                support=lo,
+                pressure=hi,
+                spike_date=str(spike_date or ""),
+            )
+        except Exception:
+            resolved = None
+    if not isinstance(resolved, dict):
+        return out
+    out["pack"] = resolved
+    out["broke"] = bool(resolved.get("broke"))
+    out["over"] = bool(resolved.get("over"))
+    layer = dict(resolved.get("layer") or {})
+    lo_n = _num(layer.get("low"))
+    hi_n = _num(layer.get("high"))
+    if (
+        (out["broke"] or out["over"])
+        and lo_n > 0
+        and hi_n > 0
+        and hi_n >= lo_n
+    ):
+        out["press"] = hi_n
+        out["hold"] = lo_n
+        out["role"] = "next"
+    return out
+
+
 def reason_next_support_line(
     *,
     broken_lo: float = 0.0,

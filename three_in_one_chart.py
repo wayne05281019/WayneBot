@@ -1459,8 +1459,41 @@ def _polish_vol_figure(
         last_i = lb.get("_i")
         press = float(spike_hi)
         hold = float(spike_lo)
+        path_role = ""
+        try:
+            from biaoke_next_support import face_path_sr_levels
+
+            _sid0 = ""
+            if isinstance(card, dict):
+                _sid0 = str(
+                    card.get("stock_id")
+                    or card.get("sid")
+                    or card.get("code")
+                    or ""
+                )
+            if not _sid0 and bars:
+                _sid0 = str((bars[-1] or {}).get("stock_id") or "")
+            _lv = face_path_sr_levels(
+                press=press,
+                hold=hold,
+                close=last_cl,
+                bars=list(bars or []),
+                sid=_sid0,
+                spike_date=str(zone_date or ""),
+            )
+            press = float(_lv.get("press") or press)
+            hold = float(_lv.get("hold") or hold)
+            path_role = str(_lv.get("role") or "")
+        except Exception:
+            path_role = ""
         msg = vol_zone_day_path_label(
-            press, hold, lb, bars=bars, zone_date=zone_date, card=card
+            press,
+            hold,
+            lb,
+            bars=bars,
+            zone_date=zone_date,
+            card=card,
+            role=path_role,
         )
         if last_i is not None and last_hi > 0 and press > 0 and msg:
             ymin, ymax = ax1.get_ylim()

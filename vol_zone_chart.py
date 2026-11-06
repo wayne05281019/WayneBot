@@ -1855,11 +1855,13 @@ def vol_zone_day_path_label(
     card: Optional[Dict[str, Any]] = None,
     session_live: Optional[bool] = None,
     emerging: Optional[bool] = None,
+    role: str = "",
 ) -> str:
     """③最後一根走勢標：對應當日官方／MIS 開高低收＋既有壓撐，不是死釘『月/日 壓價』。
 
     例形：10月6日 撐為2,940  今最高3,055  今最低2,915  收盤未過撐  收2,920
     盤中改現價／興櫃日均價口吻，價跟表頭同源。只留事實句。不是買訊。
+    role=next：破主撐／過主壓後改對灰底下一層（2313：收159 對下一層撐154，不准仍寫主撐245未站上）。
     bars／zone_date 保留給呼叫端相容（判斷句已刪，不再用來計次）。
     """
     del bars, zone_date  # 相容舊呼叫；當日標不再做近窗測次判斷
@@ -1890,6 +1892,9 @@ def vol_zone_day_path_label(
     hi_s = _fmt_price(hi)
     cl_s = _fmt_price(cl)
     lo_s = _fmt_price(lo)
+    next_role = str(role or "").strip().lower() == "next"
+    hold_tag = "下一層撐為" if next_role else "撐為"
+    press_tag = "下一層壓為" if next_role else "壓為"
 
     press_touch = _bar_tests_press(face, press)
     hold_touch = _bar_tests_hold(face, hold)
@@ -1918,13 +1923,13 @@ def vol_zone_day_path_label(
         else:
             low_bit = ""
         line = (
-            f"{day_zh} 撐為{hold_s}  今最高{hi_s}{low_bit}  "
+            f"{day_zh} {hold_tag}{hold_s}  今最高{hi_s}{low_bit}  "
             f"{verb}  {short}{cl_s}"
         )
     else:
         verb = f"{voice['over']}壓" if cl > press else f"{voice['not_over']}壓"
         line = (
-            f"{day_zh} 壓為{press_s}  今最高{hi_s}  "
+            f"{day_zh} {press_tag}{press_s}  今最高{hi_s}  "
             f"{verb}  {short}{cl_s}"
         )
     return "  ".join(line.split())
@@ -4577,6 +4582,8 @@ def _paint_key_zone_smart_tags(
     ymin: float,
     ymax: float,
     occupied: Optional[List[Tuple[float, float, float, float]]] = None,
+    broke_support: bool = False,
+    over_pressure: bool = False,
 ) -> List[Tuple[float, float, float, float]]:
     """現任主大量區壓／撐（REQUIRED）：依本圖淨空自適應同側；找不到淨空也必須留標。
 
@@ -4585,6 +4592,7 @@ def _paint_key_zone_smart_tags(
     - 壓在上、撐在下（依價位垂直序）；壓貼區帶上緣，不准飛中圖天際。
     - 每圖自揀左／中／右最佳淨空槽（對 K／量）；成對盡量同 X／同側。
       預設偏好左緣淨空（3081 基準）；2233 靠左＝該圖適合，非寫死永遠釘左。
+    - 2026-11-06：收盤破撐／過壓仍鎖主區價，角標加「已破」／「已過」（破撐≠換主區）。
     """
     from biaoke_next_support import (
         _approx_layer_tag_half_w,
@@ -4598,9 +4606,15 @@ def _paint_key_zone_smart_tags(
     # 壓先、撐後：保證垂直序（上壓下撐）
     items: List[Tuple[float, str, str]] = []
     if float(hi or 0) > 0:
-        items.append((float(hi), _PRESS, f"大量區壓 {_fmt_price(hi)}"))
+        press_txt = f"大量區壓 {_fmt_price(hi)}"
+        if over_pressure:
+            press_txt = f"{press_txt}已過"
+        items.append((float(hi), _PRESS, press_txt))
     if float(lo or 0) > 0:
-        items.append((float(lo), _HOLD, f"大量區撐 {_fmt_price(lo)}"))
+        hold_txt = f"大量區撐 {_fmt_price(lo)}"
+        if broke_support:
+            hold_txt = f"{hold_txt}已破"
+        items.append((float(lo), _HOLD, hold_txt))
     _key_tag_box = dict(
         boxstyle=f"round,pad={float(VOL_ZONE_TAG_PAD):.2f}",
         facecolor="#ffffff",
@@ -6010,6 +6024,7 @@ def _paint_volume_zone(
     except Exception:
         hdr_quote = None
     path_shown = ""
+    _path_levels: Dict[str, Any] = {}
     try:
         last_bar = {
             "date": last.get("date"),
@@ -6057,9 +6072,12 @@ def _paint_volume_zone(
             )
         except Exception:
             pass
-        # 日況句內破撐下一層也要長窗；近窗 view 只夠畫 K
+        # 破主撐／過主壓：橘框改對灰底下一層（與圖上灰帶一致）；主區仍不換
+        # 同一套 face_path_sr_levels，後面 next_pack 直接重用，不准各算各的
+        # 下一層用長窗（_channel_bars_face）＋臉末日；近窗 view 只夠畫 K
         try:
             from biaoke_next_support import (
+                face_path_sr_levels,
                 merge_face_onto_history,
                 next_layer_history_bars,
             )
@@ -6068,16 +6086,27 @@ def _paint_volume_zone(
                 next_layer_history_bars(_channel_bars_face or bars_face),
                 bars_face,
             )
+            _path_levels = face_path_sr_levels(
+                press=float(hi),
+                hold=float(lo),
+                close=float(last_bar.get("close") or last_cl or 0),
+                bars=list(_path_bars or []),
+                sid=str(sid or ""),
+                spike_date=str(spike_date or ""),
+            )
         except Exception:
+            logger.debug("日況橘框下一層改口略過 sid=%s", sid, exc_info=True)
+            _path_levels = {}
             _path_bars = list(bars_face or [])
         path_msg = vol_zone_day_path_label(
-            float(hi),
-            float(lo),
+            float(_path_levels.get("press") or hi),
+            float(_path_levels.get("hold") or lo),
             last_bar,
             bars=_path_bars,
             zone_date=str(spike_date or ""),
             session_live=bool(face_meta.get("session_live")),
             emerging=bool(face_meta.get("emerging")),
+            role=str(_path_levels.get("role") or ""),
         )
         if path_msg and last_hi > 0 and float(hi) > 0:
             bits = [p for p in path_msg.split("  ") if p]
@@ -6129,7 +6158,7 @@ def _paint_volume_zone(
             logger.exception("大量區推平行軌失敗 sid=%s", sid)
             channel = {}
     # D4／D5-T1：原文目標／破撐 NEXT 價也先吃進 ylim
-    # 下一層用長窗（_channel_bars_face）＋臉末日；近窗 view 不准裁掉深窗串聯
+    # 日況橘框已算過 face_path → 重用同包；無包則長窗再算，不准近窗裁掉深窗串聯
     next_pack: Dict[str, Any] = {}
     try:
         from biaoke_next_support import (
@@ -6156,15 +6185,19 @@ def _paint_volume_zone(
             next_layer_history_bars(_channel_bars_face or face_rows),
             face_rows,
         )
-        next_pack = resolve_next_support(
-            face_rows,
-            sid=str(sid or ""),
-            close=float(last_cl or 0),
-            support=float(lo or 0),
-            pressure=float(hi or 0),
-            spike_date=str(spike_date or ""),
-            channel=channel if isinstance(channel, dict) else {},
-        )
+        _reuse = (_path_levels or {}).get("pack") if isinstance(_path_levels, dict) else None
+        if isinstance(_reuse, dict):
+            next_pack = dict(_reuse)
+        else:
+            next_pack = resolve_next_support(
+                face_rows,
+                sid=str(sid or ""),
+                close=float(last_cl or 0),
+                support=float(lo or 0),
+                pressure=float(hi or 0),
+                spike_date=str(spike_date or ""),
+                channel=channel if isinstance(channel, dict) else {},
+            )
         if not next_pack.get("written"):
             next_pack["written"] = written_targets_for(str(sid or ""))
         y_span = max(float(ymax) - float(ymin), 1.0)
@@ -6524,6 +6557,8 @@ def _paint_volume_zone(
             ymin=float(ymin),
             ymax=float(ymax),
             occupied=_key_occ,
+            broke_support=bool((next_pack or {}).get("broke")),
+            over_pressure=bool((next_pack or {}).get("over")),
         )
     except Exception:
         logger.debug("大量區主壓撐智能標略過 sid=%s", sid, exc_info=True)

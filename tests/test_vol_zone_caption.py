@@ -599,3 +599,31 @@ def test_broke_caption_names_deep_next_layer_under_crash():
     )
     assert "撐4,980已跌破" in short
     assert "下一層壓2,005／撐1,840" not in short
+
+def test_day_path_label_next_layer_after_primary_broke():
+    """2313 形：主撐245已破；橘框改對灰底下一層撐154 → 收159＝站上撐。"""
+    from vol_zone_chart import vol_zone_day_path_label
+
+    today = {
+        "date": "20261106",
+        "open": 149,
+        "high": 163.5,
+        "low": 149,
+        "close": 159,
+        "volume": 5000,
+    }
+    # 錯：仍對主撐245 → 未站上
+    bad = vol_zone_day_path_label(256.0, 245.0, today, bars=[today])
+    assert "撐為245" in bad
+    assert "未站上撐" in bad
+    # 對：下一層 169.5／154
+    good = vol_zone_day_path_label(
+        169.5, 154.0, today, bars=[today], role="next"
+    )
+    assert "下一層撐為154" in good
+    assert "收盤站上撐" in good
+    assert "未站上撐" not in good
+    assert "收159" in good
+
+
+
