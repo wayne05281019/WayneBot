@@ -2746,6 +2746,208 @@ def _sox_daily_from_minutes(db_path: str) -> int:
     return n
 
 
+def _fetch_yahoo_index_near_bars(yid: str = "^SOX") -> List[Dict[str, Any]]:
+    """Yahoo 近窗日K列（美東日）。非現金盤中：末日收用 regularMarketPrice 覆寫。"""
+    yid_s = str(yid or "").strip() or "^SOX"
+    try:
+        import requests
+        from us_overnight import us_tape_phase
+    except Exception:
+        return []
+    ua = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid_s}"
+        f"?interval=1d&range=10d"
+    )
+    try:
+        resp = requests.get(url, timeout=12, headers=ua)
+        if int(getattr(resp, "status_code", 0) or 0) != 200:
+            return []
+        block = ((resp.json() or {}).get("chart") or {}).get("result") or [None]
+        block = block[0] or {}
+        meta = block.get("meta") or {}
+        stamps = block.get("timestamp") or []
+        q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
+    except Exception:
+        logger.exception("Yahoo %s 近窗抓取失敗", yid_s)
+        return []
+    ny = ZoneInfo("America/New_York")
+    opens = q.get("open") or []
+    highs = q.get("high") or []
+    lows = q.get("low") or []
+    closes = q.get("close") or []
+    vols = q.get("volume") or []
+    rows: List[Dict[str, Any]] = []
+    for i in range(len(stamps)):
+        try:
+            cl = closes[i] if i < len(closes) else None
+            op = opens[i] if i < len(opens) else None
+            if cl is None or op is None:
+                continue
+            d = datetime.fromtimestamp(int(stamps[i]), tz=ny).strftime("%Y%m%d")
+            o = float(op)
+            c = float(cl)
+            h = float(highs[i]) if i < len(highs) and highs[i] is not None else max(o, c)
+            lo = float(lows[i]) if i < len(lows) and lows[i] is not None else min(o, c)
+            v = float(vols[i] or 0) if i < len(vols) else 0.0
+        except (TypeError, ValueError, OSError, IndexError):
+            continue
+        rows.append(
+            {
+                "date": d,
+                "open": o,
+                "high": max(h, o, c),
+                "low": min(x for x in (lo, o, c) if x and x > 0),
+                "close": c,
+                "volume": v,
+            }
+        )
+    if not rows:
+        return []
+    phase = ""
+    try:
+        phase = str(us_tape_phase(datetime.now(TAIPEI)) or "")
+    except Exception:
+        phase = ""
+    if phase != "regular":
+        try:
+            px = float(meta.get("regularMarketPrice") or 0)
+        except (TypeError, ValueError):
+            px = 0.0
+        ts = int(meta.get("regularMarketTime") or 0)
+        if px > 0 and ts > 0:
+            d_meta = datetime.fromtimestamp(ts, tz=ny).strftime("%Y%m%d")
+            try:
+                o = float(meta.get("regularMarketOpen") or rows[-1].get("open") or px)
+                h = float(meta.get("regularMarketDayHigh") or rows[-1].get("high") or px)
+                lo = float(meta.get("regularMarketDayLow") or rows[-1].get("low") or px)
+            except (TypeError, ValueError):
+                o = h = lo = px
+            payload = {
+                "date": d_meta,
+                "open": o,
+                "high": max(h, o, px),
+                "low": min(x for x in (lo, o, px) if x and x > 0),
+                "close": float(px),
+                "volume": float(rows[-1].get("volume") or 0),
+            }
+            if _ymd(rows[-1].get("date")) == d_meta:
+                rows[-1] = payload
+            elif d_meta > _ymd(rows[-1].get("date")):
+                rows.append(payload)
+            else:
+                for i in range(len(rows) - 1, -1, -1):
+                    if _ymd(rows[i].get("date")) == d_meta:
+                        rows[i] = payload
+                        break
+    return rows
+
+
+def _fetch_yahoo_index_last_bar(yid: str = "^SOX") -> Optional[Dict[str, Any]]:
+    """Yahoo 近窗最後一根有效日K（美東日）。"""
+    rows = _fetch_yahoo_index_near_bars(yid)
+    return dict(rows[-1]) if rows else None
+
+
+def _inject_yahoo_us_last_into_rows(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    yid: str = "^SOX",
+    sym: str = "SOX",
+    db_path: str = "",
+) -> List[Dict[str, Any]]:
+    """出圖當下把 Yahoo 近窗日K併進列；庫失敗仍改記憶體——黃框不准卡舊收。"""
+    by_d: Dict[str, Dict[str, Any]] = {}
+    for r in rows or []:
+        d = _ymd((r or {}).get("date"))
+        try:
+            px = float((r or {}).get("close") or 0)
+        except (TypeError, ValueError):
+            px = 0.0
+        if len(d) == 8 and px > 0:
+            by_d[d] = dict(r)
+    fresh = _fetch_yahoo_index_near_bars(yid)
+    if not fresh:
+        out = [by_d[k] for k in sorted(by_d)]
+        return out
+    for bar in fresh:
+        d = _ymd(bar.get("date"))
+        try:
+            px = float(bar.get("close") or 0)
+        except (TypeError, ValueError):
+            px = 0.0
+        if len(d) != 8 or px <= 0:
+            continue
+        by_d[d] = {
+            "date": d,
+            "open": float(bar.get("open") or px),
+            "high": float(bar.get("high") or px),
+            "low": float(bar.get("low") or px),
+            "close": px,
+            "volume": float(bar.get("volume") or 0),
+        }
+    out = [by_d[k] for k in sorted(by_d)]
+    if db_path and fresh:
+        try:
+            from taiwan_market import ensure_index_daily_table
+
+            ensure_index_daily_table(db_path)
+            sym_u = str(sym or "SOX").upper()
+            conn = sqlite3.connect(db_path, timeout=20.0)
+            try:
+                for bar in fresh:
+                    d = _ymd(bar.get("date"))
+                    px = float(bar.get("close") or 0)
+                    if len(d) != 8 or px <= 0:
+                        continue
+                    conn.execute(
+                        """
+                        INSERT INTO index_daily(
+                            date, symbol, open, high, low, close, volume, pct_change, updated_at
+                        ) VALUES (?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(date, symbol) DO UPDATE SET
+                            open=excluded.open, high=excluded.high, low=excluded.low,
+                            close=excluded.close, volume=excluded.volume,
+                            updated_at=excluded.updated_at
+                        """,
+                        (
+                            d,
+                            sym_u,
+                            float(bar.get("open") or px),
+                            float(bar.get("high") or px),
+                            float(bar.get("low") or px),
+                            px,
+                            float(bar.get("volume") or 0),
+                            None,
+                            _now(),
+                        ),
+                    )
+                rows2 = conn.execute(
+                    "SELECT date, close FROM index_daily WHERE symbol=? ORDER BY date",
+                    (sym_u,),
+                ).fetchall()
+                prev = None
+                for d, c in rows2:
+                    if prev and prev > 0 and c:
+                        pct = (float(c) / float(prev) - 1.0) * 100.0
+                        conn.execute(
+                            "UPDATE index_daily SET pct_change=? WHERE date=? AND symbol=?",
+                            (pct, d, sym_u),
+                        )
+                    prev = float(c) if c else prev
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            logger.exception("費半 Yahoo 近窗寫庫略過（記憶體列已更新）")
+    return out
+
+
 def _reconcile_us_index_last_close(db_path: str, *, sym: str, yid: str) -> bool:
     """美股已收後：庫內末日收若偏離 Yahoo regularMarketPrice，用 meta 全日欄覆寫。
 
@@ -3338,12 +3540,18 @@ def _official_bar_high(db_path: str, symbol: str, ymd: str) -> Optional[float]:
 
 
 def _sox_latest_px(db_path: str, *, live: Optional[Dict[str, Any]] = None) -> float:
-    """費半最新價：盤中即時優先，否則庫內最新收（出圖對撐壓用）。"""
+    """費半最新價：盤中即時優先；否則 Yahoo 末日／庫內最新收（出圖對撐壓用）。"""
     try:
         px = float((live or {}).get("close") or (live or {}).get("price") or 0)
         if px > 0:
             return px
     except (TypeError, ValueError):
+        pass
+    try:
+        bar = _fetch_yahoo_index_last_bar("^SOX")
+        if bar and float(bar.get("close") or 0) > 0:
+            return float(bar["close"])
+    except Exception:
         pass
     if not db_path:
         return 0.0
@@ -6734,6 +6942,13 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
     # 出圖當下重抓費半即時：黃框指數＋末根縮圖K同口更新
     live_sox = _ensure_paint_live_sox(pack)
     sox = _load_us_daily(db_path, "SOX", sox_since)
+    # 盤後／漏抓：強制把 Yahoo 末日併進列（修 11/3＝10647 卡死、漏 11/5＝9011）
+    try:
+        sox = _inject_yahoo_us_last_into_rows(
+            sox, yid="^SOX", sym="SOX", db_path=db_path
+        )
+    except Exception:
+        logger.exception("遠窗費半 Yahoo 末日注入略過")
     if live_sox or (pack or {}).get("live_sox"):
         sox = _merge_live_sox_display_bar(
             sox, live_sox or (pack or {}).get("live_sox")
@@ -7788,8 +8003,33 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         a.set_xlim(x_left, x_right)
     # xlim 定完再蓋末根費半K（避免右標／裁切吃掉周五官方柱）
     if _sox_last_repaint:
+        # 黃框＋末根K同口：只認真實美股列（Yahoo 已注入）；不准軸上前收填日殘值
+        _sox_live = (pack or {}).get("live_sox") if isinstance(pack, dict) else None
+        _pair = _us_real_close_pair(sox, _sox_live)
+        _tip_close = _pair.get("close")
+        if _tip_close is not None and float(_tip_close or 0) > 0:
+            _real = None
+            _asof_p = _ymd(_pair.get("asof"))
+            for _r in reversed(list(sox or [])):
+                if _ymd((_r or {}).get("date")) == _asof_p:
+                    _real = _r
+                    break
+            if _real:
+                try:
+                    _sox_last_repaint["o"] = float(_real.get("open") or _tip_close)
+                    _sox_last_repaint["h"] = float(_real.get("high") or _tip_close)
+                    _sox_last_repaint["l"] = float(_real.get("low") or _tip_close)
+                except (TypeError, ValueError):
+                    pass
+            _sox_last_repaint["c"] = float(_tip_close)
+        else:
+            _tip_close = float(_sox_last_repaint["c"])
         _prev = _sox_last_repaint.get("prev")
-        _prev_c = float(sox_c[_prev]) if _prev is not None else None
+        _prev_c = (
+            float(_pair["prev_close"])
+            if _pair.get("prev_close")
+            else (float(sox_c[_prev]) if _prev is not None else None)
+        )
         _paint_one_live_candle(
             axu,
             int(_sox_last_repaint["i"]),
@@ -7846,18 +8086,22 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             zorder=20,
             clip_on=False,
         )
-        # 黃框指數＝末根縮圖K同口價（出圖當下 live）；前收仍走真實美股列
-        _pair = _us_real_close_pair(sox, (pack or {}).get("live_sox"))
-        _sox_live = (pack or {}).get("live_sox") if isinstance(pack, dict) else None
+        _tip_asof = str(
+            _ymd((_sox_live or {}).get("date"))
+            if (
+                isinstance(_sox_live, dict)
+                and float((_sox_live or {}).get("close") or 0) > 0
+            )
+            else (_pair.get("asof") or "")
+        )
         _sox_chg_tip = {
-            "close": float(_sox_last_repaint["c"]),
+            "close": float(_tip_close),
             "prev": _pair.get("prev_close"),
-            "asof": str(
-                _ymd((_sox_live or {}).get("date"))
-                or _pair.get("asof")
-                or ""
+            "asof": _tip_asof,
+            "live": bool(
+                isinstance(_sox_live, dict)
+                and float((_sox_live or {}).get("close") or 0) > 0
             ),
-            "live": bool(isinstance(_sox_live, dict) and float((_sox_live or {}).get("close") or 0) > 0),
         }
     if _tx_last_repaint:
         _prev_tx = _tx_last_repaint.get("prev")
@@ -9496,6 +9740,12 @@ def _render_us_compare_dark(db_path: str, save_path: str, pack: Dict[str, Any]) 
     bars = list(bars[i0:])
     anc = _twii_abc_anchors(bars)
     sox = _load_us_daily(db_path, "SOX", "20260920")
+    try:
+        sox = _inject_yahoo_us_last_into_rows(
+            sox, yid="^SOX", sym="SOX", db_path=db_path
+        )
+    except Exception:
+        logger.exception("外圍教具費半 Yahoo 末日注入略過")
     if (pack or {}).get("live_sox"):
         sox = _merge_live_sox_display_bar(sox, (pack or {}).get("live_sox"))
     ixic = _load_us_daily(db_path, "IXIC", "20260920")
