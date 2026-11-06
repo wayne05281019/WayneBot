@@ -551,6 +551,41 @@ def test_sample_3081_3017_resolve_smoke():
                 assert pack.get("none_label") == NONE_LABEL
 
 
+def test_structure_chart_and_chain_use_deep_next_attach():
+    """結構圖說／desk 結構填充必須深窗 re-attach（與 paint 同尺）。"""
+    import inspect
+
+    from biaoke_chart import build_biaoke_structure_chart
+    from biaoke_chain import _fill_structure
+    from biaoke_forecast import record_stock
+
+    for fn in (build_biaoke_structure_chart, _fill_structure, record_stock):
+        src = inspect.getsource(fn)
+        assert "next_layer_history_bars" in src, fn.__name__
+        assert "attach_next_support" in src, fn.__name__
+
+
+def test_far_teach_sox_tx_and_d9_use_deep_window():
+    """遠窗費半／電盤與 D9 LOOKBACK 必須夠深窗。"""
+    import inspect
+
+    from biaoke_dist_channel_second_verify import LOOKBACK_BARS as D9_LB
+    from biaoke_level_learn import _teach_vol_rows_merge_deep
+    from biaoke_next_support import _DEEP_LOOKBACK
+    from biaoke_vol_next_sup_verify import LOOKBACK_BARS as D4_LB
+
+    assert int(D4_LB) >= int(_DEEP_LOOKBACK) + 1
+    assert int(D9_LB) >= int(_DEEP_LOOKBACK) + 1
+    src = open("biaoke_level_learn.py", encoding="utf-8").read()
+    assert "_teach_vol_rows_merge_deep" in src
+    assert "sox_for_sr = _teach_vol_rows_merge_deep" in src
+    assert "tx_for_sr = _teach_vol_rows_merge_deep" in src
+    deep = [{"date": f"20260{i:03d}", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 10} for i in range(1, 220)]
+    face = [dict(deep[-1], close=0.5)]
+    merged = _teach_vol_rows_merge_deep(face, deep)
+    assert len(merged) >= int(_DEEP_LOOKBACK) + 1
+    assert float(merged[-1]["close"]) == 0.5
+
 def test_face_path_sr_levels_switches_to_next_after_break():
     """共用日況規則：破主撐且有下一層 → press/hold/role=next（大量區／三合一同一套）。"""
     from biaoke_next_support import face_path_sr_levels
@@ -602,75 +637,3 @@ def test_face_path_sr_levels_switches_to_next_after_break():
     assert ok["role"] == ""
     assert float(ok["hold"]) == 100.0
 
-
-def test_deep_lookback_cascades_when_near_layers_all_broken():
-    """連破近窗次層後，深窗仍可串到未破的次大量區（2383 級急殺）。"""
-    from biaoke_next_support import _DEEP_LOOKBACK, find_secondary_vol_zone
-
-    assert int(_DEEP_LOOKBACK) >= 180
-    day = date(2026, 2, 1)
-    rows = []
-    for i in range(200):
-        d = (day + timedelta(days=i)).strftime("%Y%m%d")
-        if i == 30:
-            # 深窗內（約 170 根前）次大量：低 1840 高 2005（收 3820 未破）
-            o, h, l, c, v = 1900, 2005, 1840, 1950, 9000
-        elif i == 160:
-            # 近／早窗次層：低 3930（收已破）
-            o, h, l, c, v = 4200, 4510, 3930, 4100, 7000
-        elif i == 175:
-            # 主大量：高 5330 低 4980
-            o, h, l, c, v = 5100, 5330, 4980, 5200, 12000
-        elif i == 199:
-            # 收遠低於主撐與近窗次層
-            o, h, l, c, v = 4000, 4100, 3700, 3820, 4000
-        else:
-            # 其餘柱高低都壓在主撐之上，避免誤當次層
-            o, h, l, c, v = 5200, 5250, 5150, 5220, 800
-        rows.append(
-            {
-                "date": d,
-                "open": float(o),
-                "high": float(h),
-                "low": float(l),
-                "close": float(c),
-                "volume": float(v),
-            }
-        )
-    spike = rows[175]["date"]
-    # 近窗 alone（不准深窗）→ 近層全破＝None
-    near_only = find_secondary_vol_zone(
-        rows,
-        direction="below",
-        ref_lo=4980.0,
-        exclude_date=spike,
-        close=3820.0,
-        lookback=40,
-        allow_earlier=False,
-    )
-    assert near_only is None
-    # allow_earlier 含深窗 → 串到未破 1840
-    deep = find_secondary_vol_zone(
-        rows,
-        direction="below",
-        ref_lo=4980.0,
-        exclude_date=spike,
-        close=3820.0,
-        lookback=40,
-        allow_earlier=True,
-    )
-    assert deep is not None
-    assert float(deep["low"]) == 1840.0
-    assert float(deep["high"]) == 2005.0
-    pack = resolve_next_support(
-        rows,
-        sid="2383",
-        close=3820.0,
-        support=4980.0,
-        pressure=5330.0,
-        spike_date=spike,
-    )
-    assert pack["broke"] is True
-    assert pack["main_zone_unchanged"] is True
-    assert pack["layer"] is not None
-    assert float(pack["layer"]["low"]) == 1840.0

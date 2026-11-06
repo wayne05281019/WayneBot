@@ -211,12 +211,30 @@ def _upsert(db_path: str, row: Dict[str, Any]) -> None:
 def record_stock(db_path: str, sid: str, bars: Sequence[Dict[str, Any]], *, name: str = "") -> Dict[str, Any]:
     """把這一檔當下的演算路徑存下來。as_of＝最後一根完整官方柱。"""
     from biaoke_chart import analyze_structure, structure_visible_bars
+    from biaoke_next_support import (
+        attach_next_support,
+        merge_face_onto_history,
+        next_layer_history_bars,
+    )
 
     sid = str(sid or "").strip()
     rows = list(bars or [])
     if not db_path or not sid or len(rows) < 8:
         return {}
-    info = analyze_structure(structure_visible_bars(rows))
+    work = structure_visible_bars(rows)
+    info = analyze_structure(work)
+    # 靜默建檔下一層與出圖同尺；只可視窗會急殺漏次大量
+    try:
+        attach_next_support(
+            info,
+            sid=sid,
+            bars=merge_face_onto_history(
+                next_layer_history_bars(rows),
+                work,
+            ),
+        )
+    except Exception:
+        pass
     proj = info.get("project") or {}
     last = info.get("last_bar") or rows[-1]
     as_of = _ymd(last.get("date"))

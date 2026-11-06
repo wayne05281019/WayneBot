@@ -2,7 +2,7 @@
 """破大量區撐 → 下一撐到達率／續跌・靜默對質骨架（D4；非買訊）。
 
 事件＝收盤跌破近窗大量區撐（盤中刺穿不算）。
-NEXT＝通道平行撐／次大量區／原文目標／近窗樞紐低（見 biaoke_next_support）。
+NEXT＝次大量區壓+撐（深窗串聯）／原文目標（見 biaoke_next_support；平行通道不准搶下一層名）。
 指標：下一撐到達率（前瞻窗低觸及 NEXT）、續跌機率（收＜事件收）、附 h1／h3／h5。
 分軌 kind＝biaoke_vol_next_sup；勝率不准混海選／黃金買點。
 n≥20 獨立交易日且贏基線才談上臉；本檔只落檔＋算率，不改買訊。
@@ -19,6 +19,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from biaoke_next_support import (
     NONE_LABEL,
+    _DEEP_LOOKBACK,
     close_broke_vol_support,
     resolve_next_support,
 )
@@ -29,7 +30,8 @@ VARIANT_WITH_NEXT = "with_next"  # 有 NEXT 候選
 VARIANT_NO_NEXT = "no_next"  # 暫無下一官方結構撐（基線對照）
 TRACK_VARIANTS = (VARIANT_WITH_NEXT, VARIANT_NO_NEXT)
 FORWARD_H = (1, 3, 5)
-LOOKBACK_BARS = 80  # 近窗＋前瞻緩衝；逐檔載入
+# 與出圖深窗同尺；舊 80 會讓 D4 急殺連破漏次大量
+LOOKBACK_BARS = int(_DEEP_LOOKBACK) + 1 + 7
 MAX_FORWARD = 5
 MIN_UNIQUE_DAYS = OPTIMIZE_MIN_N
 # 重活避開話筒尖峰（台北）
