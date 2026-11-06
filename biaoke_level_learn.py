@@ -3907,6 +3907,27 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
     return tuple(uniq)
 
 
+def _teach_vol_rows_merge_deep(
+    face_rows: Sequence[Dict[str, Any]],
+    deep_rows: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """教具下一層用深窗歷史；可視軸可短。臉末日覆寫收價。不准造假柱。"""
+    face = list(face_rows or [])
+    deep = list(deep_rows or [])
+    if not deep and not face:
+        return []
+    if not deep:
+        return face
+    try:
+        from biaoke_next_support import merge_face_onto_history, next_layer_history_bars
+
+        hist = next_layer_history_bars(deep) if len(deep) > 1 else list(deep)
+        return merge_face_onto_history(hist, face or deep)
+    except Exception:
+        logger.exception("教具深窗合併略過")
+        return face or deep
+
+
 def _resolve_teach_vol_sr(
     bars: Sequence[Dict[str, Any]],
     *,
@@ -3915,6 +3936,7 @@ def _resolve_teach_vol_sr(
     """教具大量撐壓＋下一層（對齊結構圖／大量區規則；不是買訊）。
 
     primary＝volume_first 仍有效爆大量日高低；破撐／過壓後才掛下一層大量區。
+    下一層在傳入列上 cascade；呼叫端若軸窗短於深窗須先併深窗歷史。
     """
     rows = list(bars or [])
     out: Dict[str, Any] = {
@@ -7195,7 +7217,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             }
     _set_upright_ylabel(axu, "費半 SOX", fp=_fp, color=_LIVE_MUTED, fontsize=10)
     # 費半大量撐壓：指數無量 → SOXX ETF 量代理對齊同日（標清楚）
-    sox_vol_map = _soxx_volume_by_date(db_path)
+    # 軸窗≤152；下一層另載深窗歷史再併臉（急殺連破才找得到次大量）
+    _sox_deep_since = "20250101"
+    sox_vol_map = _soxx_volume_by_date(db_path, since=_sox_deep_since)
     sox_rows_for_vol: List[Dict[str, Any]] = []
     for i in range(n_axis):
         d = (
@@ -7226,9 +7250,29 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "volume": float(sox_vol_map.get(d) or 0),
             }
         )
+    sox_deep_rows: List[Dict[str, Any]] = []
+    try:
+        for r in _load_us_daily(db_path, "SOX", _sox_deep_since):
+            d = _ymd(r.get("date"))
+            if not d:
+                continue
+            sox_deep_rows.append(
+                {
+                    "date": d,
+                    "open": float(r.get("open") or r.get("close") or 0),
+                    "high": float(r.get("high") or 0),
+                    "low": float(r.get("low") or 0),
+                    "close": float(r.get("close") or 0),
+                    "volume": float(sox_vol_map.get(d) or r.get("volume") or 0),
+                }
+            )
+    except Exception:
+        logger.exception("遠窗費半深窗量價略過")
+        sox_deep_rows = list(sox_rows_for_vol)
+    sox_for_sr = _teach_vol_rows_merge_deep(sox_rows_for_vol, sox_deep_rows)
     sox_vol_sr = _resolve_teach_vol_sr(
-        sox_rows_for_vol,
-        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(sox_rows_for_vol) - 1)),
+        sox_for_sr,
+        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(sox_for_sr) - 1)),
     )
     if (sox_vol_sr.get("primary") or {}).get("high"):
         pri = sox_vol_sr["primary"]
@@ -7339,9 +7383,19 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             if _oo > 0:
                 last["open"] = _oo
             tx_rows_for_vol[-1] = last
+    # 軸窗短；電子盤下一層另載深窗夜盤日K再併臉
+    _tx_deep_since = "20250101"
+    try:
+        tx_deep_rows = _load_tx_futures_daily(
+            db_path, session="night", since=_tx_deep_since
+        )
+    except Exception:
+        logger.exception("遠窗電子盤深窗量價略過")
+        tx_deep_rows = list(tx_rows_for_vol)
+    tx_for_sr = _teach_vol_rows_merge_deep(tx_rows_for_vol, tx_deep_rows)
     tx_vol_sr = _resolve_teach_vol_sr(
-        tx_rows_for_vol,
-        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(tx_rows_for_vol) - 1)),
+        tx_for_sr,
+        lookback=min(_FAR_TEACH_VOL_LOOKBACK, max(40, len(tx_for_sr) - 1)),
     )
     # 撐壓底色先畫在K下層
     if (tx_vol_sr.get("primary") or {}).get("high"):

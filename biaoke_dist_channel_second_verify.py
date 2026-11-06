@@ -50,7 +50,12 @@ D9_VARIANTS = (D9_SECOND, D9_FIRST, D9_NEXT)
 FORWARD_H = (1, 3, 5)
 MAX_FORWARD = 5
 MIN_BARS = 40
-LOOKBACK_BARS = 120
+# 與出圖深窗同尺；舊 120 急殺連破會漏次大量 NEXT
+try:
+    from biaoke_next_support import _DEEP_LOOKBACK as _D9_DEEP_LB
+except Exception:  # pragma: no cover
+    _D9_DEEP_LB = 180
+LOOKBACK_BARS = int(_D9_DEEP_LB) + 1 + 7
 SPIKE_LOOKBACK = 40
 SPIKE_PCT = 90.0
 PATH_WITHIN = 15

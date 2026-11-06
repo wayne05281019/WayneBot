@@ -563,3 +563,25 @@ def test_structure_chart_and_chain_use_deep_next_attach():
         src = inspect.getsource(fn)
         assert "next_layer_history_bars" in src, fn.__name__
         assert "attach_next_support" in src, fn.__name__
+
+
+def test_far_teach_sox_tx_and_d9_use_deep_window():
+    """遠窗費半／電盤與 D9 LOOKBACK 必須夠深窗。"""
+    import inspect
+
+    from biaoke_dist_channel_second_verify import LOOKBACK_BARS as D9_LB
+    from biaoke_level_learn import _teach_vol_rows_merge_deep
+    from biaoke_next_support import _DEEP_LOOKBACK
+    from biaoke_vol_next_sup_verify import LOOKBACK_BARS as D4_LB
+
+    assert int(D4_LB) >= int(_DEEP_LOOKBACK) + 1
+    assert int(D9_LB) >= int(_DEEP_LOOKBACK) + 1
+    src = open("biaoke_level_learn.py", encoding="utf-8").read()
+    assert "_teach_vol_rows_merge_deep" in src
+    assert "sox_for_sr = _teach_vol_rows_merge_deep" in src
+    assert "tx_for_sr = _teach_vol_rows_merge_deep" in src
+    deep = [{"date": f"20260{i:03d}", "open": 1, "high": 2, "low": 1, "close": 1.5, "volume": 10} for i in range(1, 220)]
+    face = [dict(deep[-1], close=0.5)]
+    merged = _teach_vol_rows_merge_deep(face, deep)
+    assert len(merged) >= int(_DEEP_LOOKBACK) + 1
+    assert float(merged[-1]["close"]) == 0.5
