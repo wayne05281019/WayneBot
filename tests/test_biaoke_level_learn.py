@@ -2059,6 +2059,93 @@ def test_merge_live_twii_display_bar_overlays_today(monkeypatch):
     assert int(out[-1].get("live_session") or 0) == 1
 
 
+def test_merge_live_twii_off_hours_when_official_lags(monkeypatch):
+    """盤後空窗：官方日K仍停昨日 → 仍疊 MIS 今日柱，標收盤不准寫盤中。"""
+    from biaoke_level_learn import _merge_live_twii_display_bar
+
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda: False)
+    bars = [
+        {
+            "date": "20261105",
+            "open": 42000,
+            "high": 43000,
+            "low": 41000,
+            "close": 41575,
+            "volume": 50,
+        }
+    ]
+    live = {
+        "price": 39701.64,
+        "open": 41000.0,
+        "high": 41200.0,
+        "low": 37800.0,
+        "volume": 120,
+        "date": "20261106",
+    }
+    out = _merge_live_twii_display_bar(bars, live)
+    assert len(out) == 2
+    assert out[-1]["date"] == "20261106"
+    assert abs(float(out[-1]["close"]) - 39701.64) < 0.01
+    assert float(out[-1]["volume"]) == 120.0
+    assert int(out[-1].get("live_session") or 0) == 0
+
+
+def test_merge_live_twii_off_hours_skips_when_official_has_today(monkeypatch):
+    """盤後：官方已有今日收 → 不准再用 MIS 蓋。"""
+    from biaoke_level_learn import _merge_live_twii_display_bar
+
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda: False)
+    bars = [
+        {
+            "date": "20261106",
+            "open": 41000,
+            "high": 41200,
+            "low": 37800,
+            "close": 39701.64,
+            "volume": 200,
+        }
+    ]
+    live = {
+        "price": 39999.0,
+        "open": 41000.0,
+        "high": 41200.0,
+        "low": 37800.0,
+        "volume": 1,
+        "date": "20261106",
+    }
+    out = _merge_live_twii_display_bar(bars, live)
+    assert len(out) == 1
+    assert abs(float(out[-1]["close"]) - 39701.64) < 0.01
+    assert float(out[-1]["volume"]) == 200.0
+
+
+def test_fill_live_twii_when_official_lags(monkeypatch):
+    """prepare 路徑：開市日官方落後 → pack 補 live_twii。"""
+    from biaoke_level_learn import _fill_live_twii_when_official_lags
+
+    monkeypatch.setattr(
+        "trading_calendar.is_tw_open_calendar_day", lambda d: True
+    )
+    monkeypatch.setattr(
+        "biaoke_level_learn._twii_chart_as_of", lambda _db: "20261105"
+    )
+    monkeypatch.setattr(
+        "live_quote.fetch_mis_index_quote",
+        lambda fresh=False, require_session=True: {
+            "price": 39701.64,
+            "date": "20261106",
+            "volume": 88,
+        },
+    )
+    pack = _fill_live_twii_when_official_lags(
+        {"chart_as_of": "20261105"},
+        "/tmp/x.db",
+        now=datetime(2026, 11, 6, 17, 50, tzinfo=TAIPEI),
+    )
+    assert pack.get("live_twii")
+    assert abs(float(pack["live_twii"]["price"]) - 39701.64) < 0.01
+
+
 def test_merge_live_sox_display_bar_overlays_session():
     """費半盤中 Yahoo 疊顯示柱：跟 live date 走、不寫庫。"""
     from biaoke_level_learn import _merge_live_sox_display_bar

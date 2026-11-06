@@ -254,8 +254,14 @@ def test_market_wave_phone_paint_uses_trio_panels_only():
     assert 'mode == "full"' in src
     assert "_render_us_compare_dark" in src
     assert "_render_tx60_png" in src
+    prep_src = inspect.getsource(prepare_wave_live_pack)
     assert "prepare_wave_live_pack" in inspect.getsource(prepare_wave_live_pack)
-    assert "_ensure_teach_index_bars" in inspect.getsource(prepare_wave_live_pack)
+    assert "_ensure_teach_index_bars" in prep_src
+    # 晚上波浪：費半 force 重抓＋電子夜盤 live_tx
+    assert "_ensure_paint_live_sox" in prep_src
+    assert "_tx_night_session_live" in prep_src
+    assert "_ensure_paint_live_tx" in prep_src
+    assert "_fill_live_twii_when_official_lags" in prep_src
     # 排程／ingest 鉤子仍預設 full（不傳 panels）
     maybe = inspect.getsource(maybe_paint_open_day_after_ingest)
     assert "paint_open_day_hypothesis(db_path, force=force)" in maybe

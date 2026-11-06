@@ -6938,7 +6938,6 @@ class WayneTelegramBot:
         """遠窗缺檔時單獨重渲一次（不准整包重畫拖一分鐘）。"""
         try:
             from biaoke_level_learn import (
-                _build_live_pack,
                 _paint_dir,
                 _render_twii_far_dark,
                 _sparse_slot_id,
@@ -6949,22 +6948,12 @@ class WayneTelegramBot:
                 from datetime import datetime
                 from zoneinfo import ZoneInfo
 
-                from biaoke_level_learn import _ensure_teach_index_bars
+                from biaoke_level_learn import prepare_wave_live_pack
 
                 dt = datetime.now(ZoneInfo("Asia/Taipei"))
-                # 單張遠窗補渲也要先同步最新官方日K，不准畫到缺末日
-                _ensure_teach_index_bars(self.db_path)
-                pack = dict(_build_live_pack(self.db_path, now=dt) or {})
-                pack["query_at"] = dt.isoformat()
-                try:
-                    from live_quote import fetch_mis_index_quote, is_live_merge_window
-
-                    if is_live_merge_window(dt):
-                        live_tw = fetch_mis_index_quote(fresh=True)
-                        if live_tw:
-                            pack["live_twii"] = live_tw
-                except Exception:
-                    pass
+                # 單張遠窗補渲走同一 prep：官方落後也要疊今日加權，不准畫到昨日收
+                pack = dict(prepare_wave_live_pack(self.db_path, now=dt) or {})
+                pack.pop("_prep_now", None)
                 slot = _sparse_slot_id(dt, force=True) or f"force-{dt.strftime('%Y%m%d')}"
                 out = os.path.join(_paint_dir(self.db_path), f"{slot}-far.png")
                 return _render_twii_far_dark(self.db_path, out, pack) or ""
@@ -7057,6 +7046,16 @@ class WayneTelegramBot:
             kit: dict = {}
             thesis = str(pack.get("thesis") or stored.get("thesis") or "").strip()
             as_of = str(pack.get("chart_as_of") or stored.get("as_of") or "").strip()
+            want_as = str(pack.get("chart_as_of") or "").replace("-", "")[:8]
+
+            def _stored_asof_ok() -> bool:
+                """存檔 as_of 不得落後 pack 顯示日；落後＝舊圖，不准回退。"""
+                got = str(stored.get("as_of") or "").replace("-", "")[:8]
+                if want_as and len(want_as) == 8 and got and len(got) == 8:
+                    return got >= want_as
+                if want_as and len(want_as) == 8 and not got:
+                    return False
+                return True
 
             # 層級一句用同一 pack，不准再 _build_live_pack
             ladder_line = ""
@@ -7118,7 +7117,7 @@ class WayneTelegramBot:
                 if far_painted:
                     thesis = str(far_painted.get("thesis") or thesis)[:180]
                     as_of = str(far_painted.get("as_of") or as_of)
-                if not self._market_teach_path_ok(far_path):
+                if not self._market_teach_path_ok(far_path) and _stored_asof_ok():
                     far_path = str(stored.get("far_path") or "")
                 if not self._market_teach_path_ok(far_path):
                     if wait_h and wait_h[0] is not None:
@@ -7189,7 +7188,7 @@ class WayneTelegramBot:
                     logger.exception("大盤近窗活畫略過")
                     near_painted = {}
                 near_path = str((near_painted or {}).get("near_path") or "")
-                if not self._market_teach_path_ok(near_path):
+                if not self._market_teach_path_ok(near_path) and _stored_asof_ok():
                     near_path = str(stored.get("near_path") or "")
 
                 # 3) 開超近 paint，同時送近窗
@@ -7241,7 +7240,7 @@ class WayneTelegramBot:
                     logger.exception("大盤超近活畫略過")
                     micro_painted = {}
                 micro_path = str((micro_painted or {}).get("micro_path") or "")
-                if not self._market_teach_path_ok(micro_path):
+                if not self._market_teach_path_ok(micro_path) and _stored_asof_ok():
                     micro_path = str(stored.get("micro_path") or "")
 
                 if self._market_teach_path_ok(micro_path):

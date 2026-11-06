@@ -501,25 +501,37 @@ def _merge_live_index_display_bar(
 def _merge_live_twii_display_bar(
     bars: Sequence[Dict[str, Any]], live: Optional[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """盤中顯示用：把 MIS 加權疊成當日未收柱（只渲染、不寫庫、不當官方收）。
+    """顯示用：把 MIS 加權疊成當日柱（只渲染、不寫庫、不當官方收）。
 
     末K OHLC＋成交量都疊；量認 MIS（加權用 m），不准留 0 假柱。
+    盤中窗一律疊；盤後空窗僅當官方日K還沒有今日柱才疊（修話筒卡昨日收）。
     """
     if not live:
-        return [dict(r) for r in (bars or [])]
-    try:
-        from live_quote import is_live_merge_window
-    except Exception:
-        return [dict(r) for r in (bars or [])]
-    try:
-        if not is_live_merge_window():
-            return [dict(r) for r in (bars or [])]
-    except Exception:
         return [dict(r) for r in (bars or [])]
     today = _ymd(live.get("date")) if isinstance(live, dict) else ""
     if len(today or "") != 8:
         today = datetime.now(TAIPEI).strftime("%Y%m%d")
-    return _merge_live_index_display_bar(bars, live, today=today)
+    out = [dict(r) for r in (bars or [])]
+    last_d = _ymd(out[-1].get("date")) if out else ""
+    in_window = False
+    try:
+        from live_quote import is_live_merge_window
+
+        in_window = bool(is_live_merge_window())
+    except Exception:
+        in_window = False
+    if not in_window:
+        # 官方已有今日（或更新）收盤柱 → 不准再用 MIS 蓋
+        if last_d and last_d >= today:
+            return out
+    merged = _merge_live_index_display_bar(bars, live, today=today)
+    # 盤後空窗疊 MIS 末筆＝當日已收價；標收盤（live_session=0），不准還寫盤中
+    if merged and not in_window:
+        last = dict(merged[-1])
+        if int(last.get("live_session") or 0) == 1:
+            last["live_session"] = 0
+            merged[-1] = last
+    return merged
 
 
 def _merge_live_sox_display_bar(
@@ -539,7 +551,10 @@ def _ensure_paint_live_sox(
     *,
     now: Optional[datetime] = None,
 ) -> Optional[Dict[str, Any]]:
-    """出圖當下再抓費半即時（force）；黃框指數與末根縮圖K必須同口價一起更新。"""
+    """出圖當下再抓費半（force）：現金盤中／盤後／盤前有價都疊。
+
+    話筒晚上按波浪也要更新黃框＋末根；不准只吃現金盤中才動。
+    """
     dt = now or datetime.now(TAIPEI)
     if getattr(dt, "tzinfo", None) is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -547,15 +562,15 @@ def _ensure_paint_live_sox(
         dt = dt.astimezone(TAIPEI)
     live: Optional[Dict[str, Any]] = None
     try:
-        from us_overnight import fetch_live_sox_display_bar, us_tape_phase
+        from us_overnight import fetch_live_sox_display_bar
 
-        # 現金盤中每次出圖重抓；非盤中不造假即時
-        if us_tape_phase(dt) == "regular":
-            live = fetch_live_sox_display_bar(dt, force=True)
+        live = fetch_live_sox_display_bar(dt, force=True)
     except Exception:
         logger.debug("出圖費半即時略過", exc_info=True)
         live = None
-    if live and isinstance(pack, dict):
+    # 只把「真的在動」的費半當 live_sox（盤中／盤前／盤後末筆）；否則清掉舊 live，改走收盤注入
+    is_live = bool(live) and int((live or {}).get("live_session") or 0) == 1
+    if is_live and isinstance(pack, dict):
         pack["live_sox"] = live
         try:
             pred = (
@@ -569,8 +584,22 @@ def _ensure_paint_live_sox(
         except Exception:
             logger.debug("出圖費半撐壓階梯略過", exc_info=True)
         return live
-    if isinstance(pack, dict) and isinstance(pack.get("live_sox"), dict):
-        return pack.get("live_sox")
+    if isinstance(pack, dict):
+        if live and not is_live:
+            pack.pop("live_sox", None)
+            try:
+                pred = (
+                    pack.get("pred_levels")
+                    if isinstance(pack.get("pred_levels"), dict)
+                    else {}
+                )
+                pack["pred_levels"] = _refresh_sox_pred_cascade(
+                    pred, "", sox_px=float(live.get("close") or 0)
+                )
+            except Exception:
+                pass
+        elif isinstance(pack.get("live_sox"), dict):
+            return pack.get("live_sox")
     return None
 
 
@@ -658,10 +687,59 @@ def _ensure_teach_index_bars(db_path: str) -> None:
         sync_index_daily(db_path, range_="3mo")
     except Exception:
         logger.exception("教具補加權日K略過")
+    # 開市日若仍缺「今天」柱：再短窗 sync 一次（修盤後空窗話筒仍停昨日）
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+        from taiwan_market import sync_index_daily
+
+        today = datetime.now(TAIPEI).strftime("%Y%m%d")
+        if is_tw_open_calendar_day(today):
+            asof = _twii_chart_as_of(db_path)
+            if asof < today:
+                sync_index_daily(db_path, range_="1mo")
+    except Exception:
+        logger.debug("教具補今日加權再同步略過", exc_info=True)
     try:
         _ensure_us_index_daily(db_path)
     except Exception:
         logger.exception("教具補費半日K略過")
+
+
+def _fill_live_twii_when_official_lags(
+    pack: Dict[str, Any], db_path: str, *, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """開市日官方日K還沒到今天：用 MIS 最後一筆疊顯示柱（盤中＋盤後入庫空窗）。
+
+    話筒波浪鍵連盤中／剛收盤都要看得到今日加權＋量；不准卡在昨日收盤黃框。
+    """
+    out = dict(pack or {})
+    if out.get("live_twii"):
+        return out
+    dt = now or datetime.now(TAIPEI)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    today = dt.strftime("%Y%m%d")
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        if not is_tw_open_calendar_day(today):
+            return out
+    except Exception:
+        return out
+    asof = _ymd(out.get("chart_as_of")) or _twii_chart_as_of(db_path)
+    if asof and asof >= today:
+        return out
+    try:
+        from live_quote import fetch_mis_index_quote
+
+        live = fetch_mis_index_quote(fresh=True, require_session=False)
+        if live:
+            out["live_twii"] = live
+    except Exception:
+        logger.debug("教具 MIS 加權疊柱略過", exc_info=True)
+    return out
 
 
 def _finish_last_twii_candle(
@@ -11822,15 +11900,33 @@ def prepare_wave_live_pack(
                 pack["live_twii"] = live_tw
     except Exception:
         logger.debug("prepare_wave 盤中加權略過", exc_info=True)
+    # 官方日K若仍停昨日：盤後空窗也要疊 MIS，不准三張黃框卡昨日收
     try:
-        from us_overnight import fetch_live_sox_display_bar
-
-        live_sox = fetch_live_sox_display_bar(dt)
-        if live_sox:
-            pack["live_sox"] = live_sox
+        pack = _fill_live_twii_when_official_lags(pack, db_path, now=dt)
+        # 疊完重讀 as_of（顯示日）
+        try:
+            live_bars = _twii_bars_for_teach(db_path, 4, pack)
+            if live_bars:
+                pack["chart_as_of"] = _ymd(live_bars[-1].get("date")) or pack.get(
+                    "chart_as_of"
+                )
+        except Exception:
+            pass
     except Exception:
-        logger.debug("prepare_wave 盤中費半略過", exc_info=True)
+        logger.debug("prepare_wave 官方落後疊加略過", exc_info=True)
+    live_sox = None
+    try:
+        # force：晚上／盤前／盤後按波浪也重抓費半，不准卡昨日收
+        live_sox = _ensure_paint_live_sox(pack, now=dt)
+    except Exception:
+        logger.debug("prepare_wave 費半即時略過", exc_info=True)
         live_sox = None
+    # 電子夜盤進行中（15:00–05:00）：波浪 prep 就帶 live_tx，遠窗紅框同口
+    try:
+        if _tx_night_session_live(dt):
+            _ensure_paint_live_tx(pack, now=dt)
+    except Exception:
+        logger.debug("prepare_wave 電子夜盤即時略過", exc_info=True)
     # 即時價若已破 4/28 9865 → 掛 2/25 8498 再回測（撐壓對最新價）
     try:
         pred = pack.get("pred_levels") if isinstance(pack.get("pred_levels"), dict) else {}
@@ -12024,6 +12120,15 @@ def paint_open_day_hypothesis(
         us_path = ""
         tx60_path = ""
 
+    # as_of＝加權末柱顯示日（官方收或盤中／空窗疊加），不准寫日曆 ymd 讓舊圖假裝今天
+    chart_as_of = _ymd(pack.get("chart_as_of")) or _twii_chart_as_of(db_path) or ymd
+    try:
+        live_bars = _twii_bars_for_teach(db_path, 8, pack)
+        if live_bars:
+            chart_as_of = _ymd(live_bars[-1].get("date")) or chart_as_of
+    except Exception:
+        pass
+
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         conn.execute(
@@ -12034,6 +12139,7 @@ def paint_open_day_hypothesis(
                 far_path, near_path, us_path, micro_path, pending, created_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
             ON CONFLICT(slot_id) DO UPDATE SET
+                as_of=excluded.as_of,
                 thesis=excluded.thesis,
                 wait_struct=excluded.wait_struct,
                 turn_note=excluded.turn_note,
@@ -12059,7 +12165,7 @@ def paint_open_day_hypothesis(
             """,
             (
                 slot_id,
-                ymd,
+                chart_as_of,
                 thesis,
                 wait_struct,
                 turn_note,
@@ -12079,14 +12185,6 @@ def paint_open_day_hypothesis(
     finally:
         conn.close()
 
-    # 回傳 as_of＝加權最新已收柱日（或盤中疊加顯示日）；不准用日曆 ymd 把週末查詢寫成假收盤日
-    chart_as_of = _ymd(pack.get("chart_as_of")) or _twii_chart_as_of(db_path) or ymd
-    try:
-        live_bars = _twii_bars_for_teach(db_path, 8, pack)
-        if live_bars:
-            chart_as_of = _ymd(live_bars[-1].get("date")) or chart_as_of
-    except Exception:
-        pass
     logger.info(
         "活畫 slot=%s thesis=%s far=%s near=%s micro=%s us=%s tx60=%s as_of=%s",
         slot_id,
