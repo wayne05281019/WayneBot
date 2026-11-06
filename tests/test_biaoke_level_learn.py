@@ -241,15 +241,15 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "tx_vol_sr" in far_blk
     assert "_tx_right_notes" in far_blk
     assert "電盤" in far_blk
-    # 三戳各欄左上角相對同位（話筒紅框）；ha=left／va=top
-    assert "_fig_stamp_xy_axes_top_left" in far_blk
-    assert "def _fig_stamp_xy_axes_top_left" in src
-    assert "_stamp_left_x" in far_blk
+    # 三戳鎖各欄 axes 左上（上緣下方）；transAxes 才不被 tight 裁出框外
+    assert "_stamp_ax_x" in far_blk and "_stamp_ax_y" in far_blk
+    assert "ax=axu" in far_blk and "ax=axt" in far_blk
     assert 'ha="left"' in far_blk and 'va="top"' in far_blk
+    assert "def _fig_stamp_xy_axes_top_left" in src
     assert "CRefPrice" in src or "參考價" in src
     assert "_tx_chg_tip = _resolve_tx_after_hours_tip" in far_blk
-    assert "scale=0.46" in far_blk and "pin_bottom=True" in far_blk
-    assert "0.40" in far_blk  # 八浪右緣鎖左 40%
+    assert "scale=0.56" in far_blk and "pin_bottom=True" in far_blk
+    assert "0.42" in far_blk  # 八浪右緣鎖左 42%（縮圖略放大）
     assert "labelbottom=True" in far_blk
     # 左軸逐字正讀；電子盤左標全關改右欄疏開（大量＋下一層）
     assert "_set_upright_ylabel" in far_blk
@@ -264,8 +264,8 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _paint_vol_sr_day_guides" in src
     assert "_VOL_SR_GUIDE_NEXT" in src
     assert "_paint_max_vol_day_guide((axu, axt, ax, axv)" not in far_blk
-    # 三戳同一左緣；加權不加浪段大底色；費A低不准豎導
-    assert "_stamp_left_x" in far_blk
+    # 三戳同一 axes 相對位；加權不加浪段大底色；費A低不准豎導
+    assert "_stamp_ax_x" in far_blk
     assert 'facecolor="#40c4ff", alpha=0.06' not in far_blk
     assert 'facecolor="#ea80fc", alpha=0.05' not in far_blk
     assert '"次回測", "再回測"' in src or "'次回測', '再回測'" in src
