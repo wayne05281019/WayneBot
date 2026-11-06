@@ -670,10 +670,20 @@ def _plain_wave_now_phrase(now: str) -> str:
         return "大C裡的 C3-3 主跌"
     if re.match(r"C3-3-\d$", n):
         return f"大C細浪 {n}（超近窗那張）"
+    if n == "C3-5":
+        return "大C裡的 C3-5（第二組下跌脈動）"
     if n == "C3":
         return "大C 的 C3 段"
     if n == "大C進行中":
         return "大C下跌進行中"
+    if n == "9波擴延":
+        return "大C第二段下殺・9波擴延"
+    if n in ("C-7轉C-8", "C-8"):
+        return "9波擴延：C-7 轉 C-8（後面還有一小段 C-9）"
+    if n == "C-7":
+        return "9波擴延：C-7（接著轉 C-8，後面還有 C-9）"
+    if n == "C-9":
+        return "9波擴延最後一小段 C-9（跌完＝這段下殺完）"
     return n
 
 
@@ -708,6 +718,13 @@ def format_teach_brief(db_path: str = "") -> str:
     lines.append("<b>現在</b>")
     # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
     lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
+    if "9波擴延" in thesis or "C-7轉C-8" in thesis:
+        lines.append(
+            html_escape(
+                "第二段下殺走 9 波擴延：目前最有可能 C-7 轉 C-8，"
+                "後面還有最後一小段 C-9；C-9 跌完＝這段下殺完。"
+            )
+        )
     if now:
         sit = f"目前落在：{_plain_wave_now_phrase(now)}"
         if day_zh:
@@ -733,6 +750,10 @@ def format_teach_brief(db_path: str = "") -> str:
             # 「中繼後原方向」補一句人話
             if one_w in ("中繼後原方向", "中繼後走原方向"):
                 one_w = "中繼結束後，多半續走原來的下跌方向"
+            elif re.search(r"低點區\s*35500", one_w):
+                one_w = "低點約會落在 35500~37300；C-9 跌完＝這段下殺完"
+            elif re.search(r"C-7轉C-8→C-9", one_w):
+                one_w = "C-7 轉 C-8，後面還有 C-9；跌完＝這段下殺完"
             struct_bits.append(f"· 下一步：{one_w}")
     if struct_bits:
         lines.append("")
@@ -740,18 +761,32 @@ def format_teach_brief(db_path: str = "") -> str:
         for bit in struct_bits:
             lines.append(html_escape(bit))
     pred_note = str(pack.get("pred_note") or "").strip()
+    pred = pack.get("pred_levels") or {}
     if not pred_note:
-        pred = pack.get("pred_levels") or {}
         bits = []
         for row in (pred.get("tw") or []) + (pred.get("sox") or []):
             lab = str((row or {}).get("label") or "").strip()
             if lab:
                 bits.append(lab)
-            if len(bits) >= 4:
+            if len(bits) >= 6:
                 break
         pred_note = "｜".join(bits)
-    if pred_note:
+    # C9 低點區優先寫成看得懂的區間句（兩端都是他原文）
+    c9_hi = c9_lo = None
+    for row in pred.get("tw") or []:
+        role = str((row or {}).get("role") or "")
+        try:
+            lv = float((row or {}).get("level"))
+        except (TypeError, ValueError):
+            continue
+        if role == "C9低上沿" or abs(lv - 37300.0) < 1.0:
+            c9_hi = lv
+        elif role == "C9低下沿" or abs(lv - 35500.0) < 1.0:
+            c9_lo = lv
+    if pred_note or (c9_lo is not None and c9_hi is not None):
         bits = []
+        if c9_lo is not None and c9_hi is not None:
+            bits.append(f"C-9低點區 {int(c9_lo)}~{int(c9_hi)}")
         for raw in re.split(r"[｜|]", pred_note):
             bit = raw.strip()
             if not bit:
@@ -761,9 +796,14 @@ def format_teach_brief(db_path: str = "") -> str:
                 bit = re.sub(r"(明日|明天)", "", bit).strip(" ・")
             # 「飆預測45,546」保留數字，拿掉重複前綴堆叠可讀性
             bit = re.sub(r"^飆預測\s*", "", bit).strip() or bit
-            if bit:
+            # 舊劇本一 38000 上沿：有 C9 區時改寫成已破
+            if c9_lo is not None and re.search(r"38000.*劇本一上沿|38000$", bit):
+                bit = "38000已破"
+            if re.search(r"C9低|35500|37300", bit) and c9_lo is not None:
+                continue
+            if bit and bit not in bits:
                 bits.append(bit)
-            if len(bits) >= 4:
+            if len(bits) >= 5:
                 break
         if bits:
             lines.append("")
@@ -786,7 +826,8 @@ def format_wave_level_one_liner(db_path: str = "") -> str:
     now = str(ladder.get("now") or "").strip()
     if not now:
         return ""
-    return html_escape(f"大盤現在落在「{now}」（細節按「波浪位階」・非買訊）")
+    plain = _plain_wave_now_phrase(now) or now
+    return html_escape(f"大盤現在落在「{plain}」（細節按「波浪位階」・非買訊）")
 
 
 def _when_short(date: str, time_s: str) -> str:

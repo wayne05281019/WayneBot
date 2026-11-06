@@ -1732,14 +1732,16 @@ def _reply_level_delta(blob: str) -> bool:
     # 明確大盤／費半數字或改口
     if re.search(
         r"45546|46292|44210|44042|39384|42000|41000|40000|35000|38000|"
-        r"9865|10445|8498|47500",
+        r"35500|37300|9865|10445|8498|47500",
         s,
     ):
         return True
-    # 改口／假跌破：要有大盤戰場，且不是「還是會破三日低」這種空話
-    if re.search(r"假跌破|劇本一|有效穿刺|1\s*[-–]?\s*4\s*重疊", s) and _INDEXISH.search(
-        s
-    ):
+    # 改口／假跌破／9波擴延 C-7→C-9：要有大盤戰場
+    if re.search(
+        r"假跌破|劇本一|有效穿刺|1\s*[-–]?\s*4\s*重疊|9\s*波\s*擴延|"
+        r"C\s*[-–]\s*[789]",
+        s,
+    ) and _INDEXISH.search(s):
         return True
     if re.search(r"(?:9865|10445|8498).{0,6}會破|會破.{0,6}(?:9865|10445|8498)", s):
         return True
@@ -1871,11 +1873,14 @@ def _latest_biaoke_index_snip(
                 if t >= best_time:
                     continue
                 flat = re.sub(r"\s+", " ", blob).strip()
-                # 只抽劇本／8498／35000~38000 句，不准整篇塞進來擠掉凌晨改口
+                # 只抽劇本／8498／35000~38000／C9低點區句，不准整篇塞進來擠掉凌晨改口
                 for m in re.finditer(
                     r"[^。｜]{0,40}(?:劇本一|第一套劇本)[^。｜]{0,120}"
                     r"|[^。｜]{0,40}8498[^。｜]{0,40}"
                     r"|[^。｜]{0,40}35000\s*[-~～到至]\s*38000[^。｜]{0,40}"
+                    r"|[^。｜]{0,40}35500\s*[-~～到至]\s*37300[^。｜]{0,40}"
+                    r"|[^。｜]{0,60}9\s*波\s*擴延[^。｜]{0,80}"
+                    r"|[^。｜]{0,40}C\s*[-–]\s*7[^。｜]{0,48}C\s*[-–]\s*8[^。｜]{0,40}"
                     r"|[^。｜]{0,40}2\s*/\s*25\s*高點?\s*8498[^。｜]{0,40}",
                     flat,
                 ):
@@ -2085,8 +2090,30 @@ def _latest_level_thesis(
     c35_done = bool(
         re.search(r"C3-5\s*完成|第二組下跌脈動.*(?:完成|落底)", snip)
     )
+    # 9波擴延 C-7→C-8→C-9＋低點區 35500~37300（後文改口壓舊 C3-5）
+    has_c9_band = bool(
+        re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", snip)
+    )
+    has_9ext = bool(re.search(r"9\s*波\s*擴延", snip))
+    has_c78 = bool(
+        re.search(
+            r"C\s*[-–]\s*7.{0,24}(?:轉|->|→).{0,8}C\s*[-–]\s*8|"
+            r"C\s*[-–]\s*7.{0,12}C\s*[-–]\s*8",
+            snip,
+        )
+    )
+    has_c9 = bool(re.search(r"C\s*[-–]\s*9", snip))
     # 夜盤第二組落底（C3-5完成）優先於舊 C3-3 題旨；後文改口壓前文
-    if c35_done or (
+    if has_9ext or (has_c78 and (has_c9 or has_c9_band)) or (
+        has_c9_band and (has_c78 or has_c9)
+    ):
+        thesis = "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）"
+        wait = (
+            "低點區35500~37300；C-9跌完＝這段下殺完；C走完≠新五波升"
+            if has_c9_band
+            else "C-7轉C-8→C-9；C-9跌完＝這段下殺完；C走完≠新五波升"
+        )
+    elif c35_done or (
         has_35 and re.search(r"落底確認|目前開始反彈|反彈能否穿刺", snip)
     ):
         thesis = "大A→大B→大C｜C內＝C3-5完成（第二組落底・預估）"
@@ -3462,6 +3489,87 @@ def _claim_anchors(db_path: str) -> Dict[str, Any]:
     return out
 
 
+def _tw_has_c9_low_zone(pack: Optional[Dict[str, Any]] = None) -> bool:
+    """題旨是否已收 C-9 低點區 35500~37300（他改口後舊 38000 上沿改標已破）。"""
+    roles = {
+        str(r.get("role") or "")
+        for r in ((pack or {}).get("pred_levels") or {}).get("tw") or []
+    }
+    if "C9低上沿" in roles or "C9低下沿" in roles:
+        return True
+    for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if abs(lv - 37300.0) < 1.0 or abs(lv - 35500.0) < 1.0:
+            return True
+    return False
+
+
+def _tw_pred_break_tag(
+    level: float,
+    lows: Sequence[float],
+    *,
+    pack: Optional[Dict[str, Any]] = None,
+    role: str = "",
+) -> str:
+    """加權預測錨破位標：官方低觸及＝已破；有 C9 區時舊 38000 劇本一上沿改口標已破。"""
+    br = _level_break_tag(level, lows)
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return br
+    role_s = str(role or "")
+    if (
+        (role_s == "劇本一上沿" or abs(lv - 38000.0) < 1.0)
+        and _tw_has_c9_low_zone(pack)
+    ):
+        return "已破"
+    return br
+
+
+def _paint_c9_low_zone_band(
+    ax: Any,
+    pack: Optional[Dict[str, Any]],
+    *,
+    fp: Any,
+) -> Optional[Tuple[float, float]]:
+    """三窗共用：C-9 低點區 35500~37300 紫底帶＋標（他原文；非買訊）。"""
+    preds = ((pack or {}).get("pred_levels") or {}).get("tw") or []
+    y_hi = y_lo = None
+    for row in preds:
+        role = str(row.get("role") or "")
+        try:
+            lv = float(row.get("level"))
+        except (TypeError, ValueError):
+            continue
+        if role == "C9低上沿" or abs(lv - 37300.0) < 1.0:
+            y_hi = lv
+        elif role == "C9低下沿" or abs(lv - 35500.0) < 1.0:
+            y_lo = lv
+    if y_hi is None or y_lo is None or float(y_hi) <= float(y_lo):
+        return None
+    lo, hi = float(y_lo), float(y_hi)
+    ax.axhspan(lo, hi, facecolor="#ce93d8", alpha=0.16, zorder=0.35)
+    mid = (lo + hi) * 0.5
+    ax.text(
+        0.012,
+        mid,
+        f"飆預測{_px(lo)}~{_px(hi)}（C-9低點區）",
+        transform=ax.get_yaxis_transform(),
+        fontproperties=fp(8, "bold"),
+        color="#ce93d8",
+        ha="left",
+        va="center",
+        zorder=11,
+        bbox=dict(
+            boxstyle="round,pad=0.12", fc="#0b0f14", ec="#ce93d8", lw=0.65, alpha=0.94
+        ),
+    )
+    return (lo, hi)
+
+
 def _level_break_tag(level: float, lows: Sequence[float]) -> str:
     """官方柱是否已破該價；未破不准寫已破。"""
     try:
@@ -3716,6 +3824,24 @@ def _thesis_pred_levels(snip: str, db_path: str = "") -> Dict[str, Any]:
             tag="未到",
             label=f"飆預測{_px(35000)}劇本一下沿",
         )
+    # C-9 低點區：35500~37300（他原文兩端；不准發明中間價）
+    if re.search(r"35500\s*[-~～到至]\s*37300|35500.{0,8}37300", s):
+        _add(
+            "tw",
+            level=37300.0,
+            ref_ymd="",
+            role="C9低上沿",
+            tag="未到",
+            label=f"飆預測{_px(37300)}C9低上沿",
+        )
+        _add(
+            "tw",
+            level=35500.0,
+            ref_ymd="",
+            role="C9低下沿",
+            tag="未到",
+            label=f"飆預測{_px(35500)}C9低下沿",
+        )
 
     # 費半：7/29 A波低 10445；周五 10439 已破；次回測 4/28 9865
     if re.search(r"10445", s) and re.search(r"7\s*/\s*29|A\s*波", s):
@@ -3862,9 +3988,12 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
 
     只吃 pred_levels.tw 與 key_levels 的 pred_tw_*（他寫死預測錨）。
     反彈穿刺／轉震盪＝上方觀察壓，進右標、不准當下跌虛線下一錨。
+    有 C9 低點區時，舊劇本一 35000／38000 不准再當虛線下一錨（改口已破）。
     不准把舊 claim_* 歷史宣稱混進虛線梯，否則端點／右標會卡在舊價。
     """
     _OVERHEAD = {"反彈穿刺", "轉震盪"}
+    _OLD_SCRIPT1 = {"劇本一上沿", "劇本一下沿"}
+    drop_script1 = _tw_has_c9_low_zone(pack)
     his: List[float] = []
     for row in ((pack or {}).get("pred_levels") or {}).get("tw") or []:
         try:
@@ -3873,6 +4002,8 @@ def _tw_tip_anchors(pack: Optional[Dict[str, Any]] = None) -> Tuple[float, ...]:
             continue
         role = str(row.get("role") or "")
         if role in _OVERHEAD:
+            continue
+        if drop_script1 and role in _OLD_SCRIPT1:
             continue
         if 30000.0 <= v <= 60000.0:
             his.append(v)
@@ -5432,6 +5563,24 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         degree = "C3"
     elif re.search(r"(現在在C|下降ABC.*C|主跌段)", s):
         degree = "C"
+    # 9波擴延 C-7／C-8／C-9（必帶連字號，不准誤吃 C3-7）
+    if re.search(
+        r"9\s*波\s*擴延|C\s*[-–]\s*7.{0,24}C\s*[-–]\s*8|C\s*[-–]\s*9|"
+        r"35500\s*[-~～到至]\s*37300",
+        s,
+    ):
+        if re.search(r"C\s*[-–]\s*7.{0,20}(?:轉|->|→).{0,8}C\s*[-–]\s*8", s):
+            degree = "C-8"
+        elif re.search(r"C\s*[-–]\s*9", s) and not re.search(
+            r"C\s*[-–]\s*7|C\s*[-–]\s*8", s
+        ):
+            degree = "C-9"
+        elif re.search(r"C\s*[-–]\s*7", s):
+            degree = "C-7"
+        elif re.search(r"C\s*[-–]\s*8", s):
+            degree = "C-8"
+        elif re.search(r"C\s*[-–]\s*9", s):
+            degree = "C-9"
     chain = "五波→ABC→C"
     if degree.startswith("C3"):
         chain = "五波→ABC→C→C3-3" if "C3-3" in degree else "五波→ABC→C→C3"
@@ -5439,6 +5588,8 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
         chain = "五波→ABC→C→C3-5"
     if degree in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
         chain = f"五波→ABC→C→C3-3→{degree}"
+    if degree in ("C-7", "C-8", "C-9"):
+        chain = "五波→ABC→C→9波擴延→C-7→C-8→C-9"
     return {"degree": degree, "chain": chain, "raw": s[:160]}
 
 
@@ -5964,7 +6115,15 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     thesis = str(pack.get("thesis") or text)
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
     steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
-    if deg in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
+    if deg in ("C-7", "C-8", "C-9") or "9波擴延" in thesis or "C-7轉C-8" in thesis:
+        steps.append("9波擴延")
+        if deg == "C-9":
+            steps.extend(["C-7→C-8", "C-9"])
+        elif deg == "C-7":
+            steps.append("C-7")
+        else:
+            steps.append("C-7轉C-8")
+    elif deg in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
         steps.extend(["C3-3主跌", deg])
     elif "3→4" in thesis:
         steps.extend(["C3-3主跌", "C3-3-4"])
@@ -5993,6 +6152,39 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     else:
         day_zh = ""
         day_bit = ""
+    # 9波擴延：話筒／超近說明用人話，不准只丟 C-7 代號
+    if "9波擴延" in steps or deg in ("C-7", "C-8", "C-9"):
+        oral_now = (
+            "目前最有可能 C-7 轉 C-8，還有最後一小段下跌 C-9；"
+            "C-9 要跌就全部跌完"
+        )
+        one_line = "現在：9波擴延・C-7轉C-8→C-9（預估）"
+        now_line = (
+            oral_now
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            "現在走到（大→小）\n"
+            f"{chain}\n"
+            f"{oral_now}"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
+    else:
+        one_line = f"現在走到：{chain}"
+        now_line = (
+            f"落在「{now}」"
+            + (f"・{day_bit}" if day_bit else "")
+            + "・預估會改・非買訊"
+        )
+        teach_box = (
+            f"現在走到（大→小）\n"
+            f"{chain}\n"
+            f"落在「{now}」"
+            + (f"・{day_bit}" if day_bit else "")
+            + "\n預估會改・非買訊"
+        )
     return {
         "steps": steps,
         "chain": chain,
@@ -6000,19 +6192,9 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         "degree": deg,
         "day_zh": day_zh,
         "day_bit": day_bit,
-        "one_line": f"現在走到：{chain}",
-        "now_line": (
-            f"落在「{now}」"
-            + (f"・{day_bit}" if day_bit else "")
-            + "・預估會改・非買訊"
-        ),
-        "teach_box": (
-            f"現在走到（大→小）\n"
-            f"{chain}\n"
-            f"落在「{now}」"
-            + (f"・{day_bit}" if day_bit else "")
-            + "\n預估會改・非買訊"
-        ),
+        "one_line": one_line,
+        "now_line": now_line,
+        "teach_box": teach_box,
     }
 
 
@@ -6853,11 +7035,16 @@ def _tw_pred_right_notes(
         if round(lv, 1) in skip:
             continue
         tag = str(row.get("tag") or "")
+        role = str(row.get("role") or "")
         if tag in {"未到", "未破", "已破"}:
-            text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) if tag == "未到" else tag)
+            br = (
+                _tw_pred_break_tag(lv, lows, pack=pack, role=role)
+                if tag == "未到"
+                else tag
+            )
+            text = _biaoke_pred_label(lv, br)
         else:
             text = str(row.get("label") or _biaoke_pred_label(lv))
-        role = str(row.get("role") or "")
         # 周一破台指／反彈穿刺／轉震盪：狀態跟官方柱
         if abs(lv - 44042.0) < 0.6:
             text = _biaoke_pred_label(lv, _level_break_tag(lv, lows) + "周一")
@@ -6877,8 +7064,11 @@ def _tw_pred_right_notes(
             st = "已穿" if (now_px is not None and now_px >= lv - 0.5) else "未穿"
             suffix = "穿刺" if role == "反彈穿刺" else "轉震盪"
             text = _biaoke_pred_label(lv, st + suffix)
-        elif role in {"劇本一上沿", "劇本一下沿"}:
-            text = str(row.get("label") or _biaoke_pred_label(lv))
+        elif role in {"劇本一上沿", "劇本一下沿", "C9低上沿", "C9低下沿"}:
+            # 劇本一 38000：有 C9 區＝已破；C9 兩沿跟官方柱
+            text = _biaoke_pred_label(
+                lv, _tw_pred_break_tag(lv, lows, pack=pack, role=role)
+            )
         # 近／超近窗沒有 ref 日柱時從窗左拉滿，不准縮成末日短樁
         x_note = 0
         ref = _ymd(row.get("ref_ymd"))
@@ -6891,7 +7081,9 @@ def _tw_pred_right_notes(
                 "x": x_note,
                 "y": lv,
                 "text": text[:28],
-                "color": "#82b1ff" if lv < 45000 else "#4dd0e1",
+                "color": "#ce93d8"
+                if role in {"C9低上沿", "C9低下沿"}
+                else ("#82b1ff" if lv < 45000 else "#4dd0e1"),
             }
         )
         skip.add(round(lv, 1))
@@ -7614,6 +7806,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         vol_lookback=_FAR_TEACH_VOL_LOOKBACK,
         vol_sr=far_vol_sr,
     )
+    _paint_c9_low_zone_band(ax, pack, fp=_fp)
     sr = zone.get("sr") or {}
     sr_skip = zone.get("sr_skip") or {}
     if zone.get("i_vmax") is not None:
@@ -7849,7 +8042,8 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
                 "x": n_axis - 1,
                 "y": float(anch),
                 "text": _biaoke_pred_label(
-                    float(anch), _level_break_tag(float(anch), c_seg_lows)
+                    float(anch),
+                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
                 ),
                 "color": "#82b1ff",
             }
@@ -8662,6 +8856,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         vol_lookback=40,
         vol_sr=near_vol_sr,
     )
+    _paint_c9_low_zone_band(ax, pack, fp=_fp)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
     if i_vmax is not None:
@@ -8876,7 +9071,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 "y": float(tip_anchor),
                 "text": _biaoke_pred_label(
                     float(tip_anchor),
-                    _level_break_tag(float(tip_anchor), c_seg_lows),
+                    _tw_pred_break_tag(float(tip_anchor), c_seg_lows, pack=pack),
                 ),
                 "color": "#ea80fc",
             }
@@ -8893,7 +9088,8 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 "x": 0,
                 "y": float(anch),
                 "text": _biaoke_pred_label(
-                    float(anch), _level_break_tag(float(anch), c_seg_lows)
+                    float(anch),
+                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
                 ),
                 "color": "#82b1ff",
             }
@@ -8996,7 +9192,11 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ladder = _wave_now_ladder(pack)
     # 標題跟當日層級走：一眼看到大→小走到哪；雙底色與遠窗對齊
     title_bit = str(ladder.get("now") or "").strip() or "現在在C（預估）"
-    if len(title_bit) > 22:
+    if title_bit in ("C-7轉C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
+        ladder.get("chain") or ""
+    ):
+        title_bit = "C-7轉C-8→C-9"
+    elif len(title_bit) > 22:
         title_bit = title_bit[:21] + "…"
     vz_y = _teach_vol_sr_title_bit(
         zone.get("vol_sr") or near_vol_sr,
@@ -9187,6 +9387,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         vol_lookback=40,
         vol_sr=micro_vol_sr,
     )
+    _paint_c9_low_zone_band(ax, pack, fp=_fp)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
     i_vmax = zone.get("i_vmax")
     if i_vmax is not None:
@@ -9300,7 +9501,13 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     c_lo = min(float(lows[i]) for i in range(i_b_peak, n))
     c_hi = max(float(highs[i]) for i in range(i_b_peak, n))
     pad = (c_hi - c_lo) * 0.04
-    now_lab = f"今＝{ladder.get('now') or 'C進行中'}（預估）"
+    _now_pin = str(ladder.get("now") or "").strip()
+    if _now_pin in ("C-7轉C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
+        ladder.get("chain") or ""
+    ):
+        now_lab = "今＝C-7轉C-8→C-9（預估）"
+    else:
+        now_lab = f"今＝{_now_pin or 'C進行中'}（預估）"
     # 大B末日期用右欄／B釘；近B(10/14)不釘名（非峰、非縮圖B）
     # B＋①～⑤ 全釘（與右縮圖一一對）；金圈＝浪級此刻
     _flash_side = {"B": "left", "①": "left", "②": "right", "③": "left", "④": "right", "⑤": "left"}
@@ -9403,7 +9610,16 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     now_vis = str(ladder.get("now") or deg_his or "").strip()
     if now_vis and now_vis not in hierarchy:
         hierarchy = f"{hierarchy}\n此刻＝{now_vis}"
-    if deg_his.startswith("C3-3-") and geom_show and geom_show != deg_his:
+    # 9波擴延題旨：中排主句跟人話對齊，不准被舊 C3 柱讀蓋掉
+    if deg_his in ("C-7", "C-8", "C-9") or "9波擴延" in hierarchy:
+        if "目前最有可能" not in hierarchy:
+            hierarchy = (
+                f"{hierarchy}\n"
+                "目前最有可能 C-7 轉 C-8，還有最後一小段下跌 C-9；"
+                "要跌就全部跌完"
+            )
+        geom_line = "日K小波①～⑤＝柱上細讀（輔）；口述主＝C-7轉C-8→C-9"
+    elif deg_his.startswith("C3-3-") and geom_show and geom_show != deg_his:
         geom_line = f"日K小波柱讀：{geom_show}（口述此刻＝{deg_his}）"
     else:
         geom_line = f"日K小波：{geom_show or '—'}（柱上自讀，非口述）"
@@ -9499,7 +9715,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
                 "y": float(tip_anchor),
                 "text": _biaoke_pred_label(
                     float(tip_anchor),
-                    _level_break_tag(float(tip_anchor), c_seg_lows),
+                    _tw_pred_break_tag(float(tip_anchor), c_seg_lows, pack=pack),
                 ),
                 "color": "#ea80fc",
             }
@@ -9514,7 +9730,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
                 "x": 0,
                 "y": float(anch),
                 "text": _biaoke_pred_label(
-                    float(anch), _level_break_tag(float(anch), c_seg_lows)
+                    float(anch),
+                    _tw_pred_break_tag(float(anch), c_seg_lows, pack=pack),
                 ),
                 "color": "#82b1ff",
             }
@@ -9609,11 +9826,19 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     c_sub_bit = ""
     if c_sub.get("ok"):
         c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}（同遠／近）"
+    _micro_now = str(ladder.get("now") or "").strip()
+    _micro_title = (
+        "第3張（超近窗）：C-7轉C-8→C-9（9波擴延・預估）"
+        if (
+            _micro_now in ("C-7轉C-8", "C-8", "C-7", "C-9")
+            or "9波擴延" in str(ladder.get("chain") or "")
+        )
+        else "第3張（超近窗）：C內細浪（對齊他60分・不取代ABC）"
+    )
     fig.text(
         0.03,
         0.972,
-        f"第3張（超近窗）：C內細浪（對齊他60分・不取代ABC）　｜　{vz_y}　｜　{vz_c}"
-        f"{c_sub_bit}",
+        f"{_micro_title}　｜　{vz_y}　｜　{vz_c}{c_sub_bit}",
         fontproperties=_fp(12, "bold"),
         color=_LIVE_TEXT,
         ha="left",
@@ -9622,7 +9847,9 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     # 不准 [:40] 把「C3-3-4」裁成「C3-3」；尾碼必須完整
     _ol = str(ladder.get("one_line") or "他說現在：C進行中")
     _now = str(ladder.get("now") or "").strip()
-    if len(_ol) > 52 and _now and _ol.endswith(_now):
+    if "9波擴延" in _ol or "C-7轉C-8" in _ol:
+        _ol = "現在：9波擴延・目前最有可能C-7轉C-8→還有C-9"
+    elif len(_ol) > 52 and _now and _ol.endswith(_now):
         _ol = f"他說現在：…→{_now}"
     elif len(_ol) > 52:
         _ol = _ol[:51] + "…"
@@ -9640,7 +9867,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     _paint_teach_query_stamp(
         fig, bars, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
     )
-    foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))[:64]
+    foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))
+    if "C-7" in foot_m or "9波擴延" in foot_m:
+        foot_m = "目前最有可能C-7轉C-8，還有最後一小段下跌C-9；要跌就全部跌完"
+    else:
+        foot_m = foot_m[:64]
     fig.text(
         0.03,
         0.012,

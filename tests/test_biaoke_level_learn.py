@@ -606,6 +606,75 @@ def test_wave_now_ladder_big_to_small():
     assert "as_of" not in to4["now_line"] and "as_of" not in to4["teach_box"]
 
 
+def test_wave_now_ladder_c9_extension_oral():
+    """9波擴延：人話 C-7轉C-8→C-9；超近／話筒共用。"""
+    from biaoke_level_learn import _wave_now_ladder
+
+    pack = {
+        "thesis": "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）",
+        "snippet": (
+            "大盤第二段下殺應該是走9波擴延，目前最有可能C-7轉 C-8，"
+            "還有最後一小段下跌C-9要跌就全部跌完，低點約會落在35500~37300之間。"
+        ),
+        "wait_struct": "低點區35500~37300；C-9跌完＝這段下殺完；C走完≠新五波升",
+        "thesis_as_of": "20261106",
+    }
+    out = _wave_now_ladder(pack)
+    assert out["now"] == "C-7轉C-8"
+    assert "9波擴延" in out["chain"]
+    assert "C-7轉C-8" in out["one_line"] and "C-9" in out["one_line"]
+    assert "目前最有可能 C-7 轉 C-8" in out["now_line"]
+    assert "最後一小段下跌 C-9" in out["now_line"]
+    assert "要跌就全部跌完" in out["now_line"] or "全部跌完" in out["teach_box"]
+    assert "as_of" not in out["now_line"]
+    assert "題旨日 11/6" in out["now_line"]
+
+
+def test_thesis_pred_c9_band_and_38000_broke():
+    """35500~37300 進 pred；有 C9 時 38000 標已破；虛線下一錨改走 C9。"""
+    from biaoke_level_learn import (
+        _biaoke_pred_label,
+        _paint_c9_low_zone_band,
+        _thesis_pred_levels,
+        _tw_pred_break_tag,
+        _tw_pred_right_notes,
+        _tw_tip_anchors,
+    )
+
+    snip = (
+        "大盤第二段下殺應該是走9波擴延，目前最有可能C-7轉 C-8，"
+        "還有最後一小段下跌C-9，低點約會落在35500~37300之間。"
+        "第一套劇本大盤會跌到35000~38000之間。"
+    )
+    pred = _thesis_pred_levels(snip, "")
+    roles = {str(r.get("role")): r for r in (pred.get("tw") or [])}
+    assert "C9低上沿" in roles and abs(float(roles["C9低上沿"]["level"]) - 37300) < 1
+    assert "C9低下沿" in roles and abs(float(roles["C9低下沿"]["level"]) - 35500) < 1
+    assert "劇本一上沿" in roles
+    pack = {"pred_levels": pred}
+    tips = _tw_tip_anchors(pack)
+    assert all(abs(t - 38000) > 1 and abs(t - 35000) > 1 for t in tips)
+    assert any(abs(t - 37300) < 1 for t in tips)
+    assert any(abs(t - 35500) < 1 for t in tips)
+    from biaoke_level_learn import _px
+
+    br = _tw_pred_break_tag(38000.0, [45000.0], pack=pack, role="劇本一上沿")
+    assert br == "已破"
+    assert _biaoke_pred_label(38000.0, br) == f"飆預測{_px(38000)}已破"
+    notes = _tw_pred_right_notes(
+        pack, n=10, lows=[45000.0], tip_skip=set(), bars=None
+    )
+    texts = " ".join(str(n.get("text") or "") for n in notes)
+    assert f"{_px(38000)}已破" in texts
+    assert _px(37300) in texts and _px(35500) in texts
+    # 三窗都要掛紫底帶 helper
+    import biaoke_level_learn as bll
+
+    src = open(bll.__file__, encoding="utf-8").read()
+    assert src.count("_paint_c9_low_zone_band(") >= 4  # def + far/near/micro
+    assert "_paint_c9_low_zone_band" in src
+
+
 def test_sox_abc_anchors_not_copy_twii_ab():
     """費半 A/B 用合成柱自算；不准落在加權 A/B 同索引（10/13–10/14 那兩格）。"""
     from biaoke_level_learn import _sox_abc_anchors_on_axis
