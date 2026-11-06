@@ -201,8 +201,11 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "_paint_eight_wave_inset" in near_blk
     assert "_paint_eight_wave_inset" in micro_blk
     assert "detail=False" in near_blk
-    assert "scale=0.56" in near_blk and "pin_bottom=True" in near_blk
+    assert "scale=1.0" in near_blk and "pin_bottom=True" in near_blk
     assert 'title="九波擴延"' in near_blk
+    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
+    assert "avoid_top_left_stamp=True" in near_blk
+    assert "float(i5s) + 2.15" in near_blk  # ⑤起尖點右上，不准踩 x 軸／卡左緣
     assert "detail=True" in micro_blk or "detail=False if _c9_micro" in micro_blk
     assert "_twii_macro_wave_anchors" in src
     assert (
@@ -280,15 +283,15 @@ def test_live_dark_renderer_enforces_fifth_above_b():
     assert "def _resolve_tx_after_hours_tip" in src
     assert "def _paint_tx_after_hours_tip" in src
     assert "費半｜台指電子盤｜加權日盤" in far_blk
-    # 大B末標假突破；近窗黃戳改貼標題列右緣（不准釘 41200 價位空檔蓋柱）
+    # 大B末標假突破；近窗白底戳改主圖框內左上（跟遠窗同軸座標）
     assert "假突破" in src
     assert "假突破" in far_blk and "假突破" in near_blk
     assert "_stamp_y_data" not in near_blk
-    assert "y=0.982" in near_blk
-    assert "x=0.995" in near_blk
+    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near_blk
+    assert 'ha="left"' in near_blk and "ax=ax" in near_blk
     assert "_reserve_avoid_zone" in src
     assert "_seat_onchart_labels" in src
-    # 近窗黃戳改用 figure 分數；資料座標換算工具仍給其他標座用
+    # 近窗戳走 axes 左上；資料座標換算工具仍給其他標座用
     assert "def _fig_xy_from_axes_data" in src
     # 超近：上＝縮圖K、中＝說明＋八浪、下＝量；不准再疊進橫圖中下方
     assert "y=0.855" in micro_blk
@@ -2262,10 +2265,13 @@ def test_near_micro_follow_far_c9_twii_presentation():
     # 近窗跟進
     assert "_c9_now_step_label()" in near
     assert 'title="九波擴延"' in near
-    assert "scale=0.56" in near and "pin_bottom=True" in near
+    assert "scale=1.0" in near and "pin_bottom=True" in near
     assert "nudge=True" in near
     assert 'side="left"' in near
     assert "大B末 {_px" in near or 'f"大B末 {_px' in near
+    assert "_stamp_ax_x, _stamp_ax_y = 0.02, 0.96" in near
+    assert "avoid_top_left_stamp=True" in near
+    assert "float(i5s) + 2.15" in near
     # 超近（日K備援＋60分主路）跟進
     assert "_c9_now_step_label()" in micro
     assert 'title="九波擴延"' in micro

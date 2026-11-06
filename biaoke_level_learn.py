@@ -10031,8 +10031,9 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     _style_live_ax(ax, axv)
     tw_supports = _tw_support_ladder(pack)
     tip_anchors = _tw_tip_anchors(pack)
-    ymin = min([min(lows)] + list(tw_supports)) - 480
-    ymax = max(highs) + 860
+    # 上下多留：⑤起／大A 低點浪名要離 x 軸；頂上再加一截給白底戳（主圖框內左上）
+    ymin = min([min(lows), y5s, y_alow] + list(tw_supports)) - 780
+    ymax = max(highs) + 1180
     # 預估端先算：同價只留端點飆預測
     tip_pre = _c_forecast_tip(
         i_now=i_now,
@@ -10047,6 +10048,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     # 他點錨走右欄 → 左欄不准再貼同價壓虛線
     skip_lab_ys = list(skip_lab_ys) + [float(v) for v in tip_anchors]
     # 與遠窗同一套雙底色（黃＝大量撐壓、灰＝下一層、青＝飆預測位階帶）
+    # 白底戳改主圖左上 → 頂部價標右移避讓
     zone = _paint_window_dual_zones(
         ax,
         highs=highs,
@@ -10060,6 +10062,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         skip_label_ys=skip_lab_ys,
         vol_lookback=40,
         vol_sr=near_vol_sr,
+        avoid_top_left_stamp=True,
     )
     _paint_c9_low_zone_band(ax, pack, fp=_fp)
     _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
@@ -10156,22 +10159,42 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     )
     span = max(ymax - ymin, 1.0)
     ax.axvline(i_c, color="#ea80fc", lw=0.95, ls=(0, (2, 2)), alpha=0.8, zorder=5)
-    # 禁區先登記：黃戳帶＋右下縮圖帶，智慧標不准蓋主線／縮圖／戳
+    # 先定 ylim／xlim 再釘浪名（跟遠窗同）：lift／字級才對最終軸距，⑤起不准卡裁
+    ax.set_xlim(-0.6, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
+    ax.set_ylim(ymin, ymax)
+    # 禁區先登記：左上白底戳＋右上價空＋左下九波帶，智慧標不准蓋主線／縮圖／戳
+    _reserve_avoid_zone(
+        ax, -1.0, float(ymax) - span * 0.20, float(n) * 0.32, float(ymax) + 80.0
+    )
     _reserve_avoid_zone(ax, float(n) - 24.0, 40500.0, float(n) + 5.0, 43300.0)
     _reserve_avoid_zone(ax, float(n) * 0.55, 31800.0, float(n) - 0.5, 39200.0)
-    _pin_pivot_name(
-        ax,
-        i5s,
-        y5s,
-        f"⑤起 {_md(bars[i5s].get('date'))}",
-        "#40c4ff",
-        _fp,
-        side="auto",
-        tip="low",
-        n=n,
-        pad_x=0.35,
-        fontsize=9,
+    # ⑤起：尖點右上方一小截（貼圓點、離 x 軸），不准踩軸／卡左緣／整盒蓋住藍線起點
+    _w5_lab = f"⑤起 {_md(bars[i5s].get('date'))}"
+    _w5_x = float(i5s) + 2.15
+    _w5_y = float(y5s) + span * 0.032
+    ax.text(
+        _w5_x,
+        _w5_y,
+        _w5_lab,
+        fontproperties=_fp(9, "normal"),
+        color="#40c4ff",
+        ha="left",
+        va="bottom",
+        zorder=10,
+        clip_on=False,
+        bbox=dict(
+            boxstyle="round,pad=0.08",
+            fc="#0b0f14",
+            ec="#40c4ff",
+            lw=0.45,
+            alpha=0.88,
+        ),
     )
+    seats = getattr(ax, "_wayne_pin_seats", None)
+    if seats is None:
+        ax._wayne_pin_seats = []
+        seats = ax._wayne_pin_seats
+    seats.append((_w5_x, _w5_y))
     _pin_pivot_name(
         ax,
         i5e,
@@ -10428,9 +10451,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
                 t2.append(i)
                 l2.append(_md(d))
     t2, l2 = _sparse_xticks(t2, l2, min_gap=2)
-    # 右標水平往左貼K；近窗留寬≥8 data 夠長標進軸內
-    ax.set_xlim(-0.6, max(n + 8.6, float(tip.get("xlim_right") or n) + 2.0))
-    ax.set_ylim(ymin, ymax)
+    # xlim／ylim 已在釘浪名前設過；這裡只補量欄
     axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.4)
     axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
     axv.set_xticks(t2)
@@ -10481,18 +10502,20 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="top",
     )
-    # 近窗黃戳：貼標題列右緣（與遠窗同策略）。不准再釘價位空檔～41200——
-    # 盤中價／C線走到那帶會整塊蓋住觀測位（黃匡白標互壓）。
+    # 近窗白底戳：跟遠窗同一套鎖主圖 axes 框內左上（不准出框、不准擋九波／縮圖K）
     fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.08)
+    _stamp_ax_x, _stamp_ax_y = 0.02, 0.96
     _paint_teach_query_stamp(
         fig,
         bars,
         pack=pack,
         close=closes[-1],
         fp=_fp,
-        x=0.995,
-        y=0.982,
-        ha="right",
+        x=_stamp_ax_x,
+        y=_stamp_ax_y,
+        ha="left",
+        va="top",
+        ax=ax,
     )
     # 單行腳：不准雙行疊字蓋數字
     intent_foot = str(pack.get("intent_note") or pack.get("vol_note") or "")
@@ -10509,7 +10532,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ha="left",
         va="bottom",
     )
-    # 近窗九波／八浪：跟遠窗同一套縮小貼左下（不准擋右標／縮圖K）
+    # 近窗九波：左下再放大（單欄空間比遠窗寬），仍不准跨過黃虛線／擋右標
     _near_inset = _eight_wave_inset_rect_left_of_vmax(
         ax,
         fig,
@@ -10517,13 +10540,16 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         ymin=float(ymin),
         ymax=float(ymax),
         n_bars=n,
-        scale=0.56,
+        scale=1.0,
         pin_bottom=True,
     )
     try:
         _ins_l, _ins_b, _ins_w, _ins_h = _near_inset
         _axpos = ax.get_position()
-        _max_right = float(_axpos.x0) + float(_axpos.width) * 0.42
+        # 近窗單欄：九波明顯放大；右緣鎖欄寬 62% 內、不准跨黃虛線
+        _max_right = float(_axpos.x0) + float(_axpos.width) * 0.62
+        _ins_h = min(float(_ins_h) * 1.38, float(_axpos.height) * 0.40)
+        _ins_w = min(float(_ins_w) * 1.38, float(_axpos.width) * 0.60)
         if _ins_l + _ins_w > _max_right:
             _ins_l = max(float(_axpos.x0) + 0.006, _max_right - _ins_w)
         _near_inset = (float(_ins_l), float(_ins_b), float(_ins_w), float(_ins_h))
