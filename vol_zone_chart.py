@@ -5995,6 +5995,7 @@ def _paint_volume_zone(
     except Exception:
         hdr_quote = None
     path_shown = ""
+    _path_levels: Dict[str, Any] = {}
     try:
         last_bar = {
             "date": last.get("date"),
@@ -6043,43 +6044,30 @@ def _paint_volume_zone(
         except Exception:
             pass
         # 破主撐／過主壓：橘框改對灰底下一層（與圖上灰帶一致）；主區仍不換
-        path_press = float(hi)
-        path_hold = float(lo)
-        path_role = ""
+        # 同一套 face_path_sr_levels，後面 next_pack 直接重用，不准各算各的
         try:
-            from biaoke_next_support import resolve_next_support
+            from biaoke_next_support import face_path_sr_levels
 
-            _path_pack = resolve_next_support(
-                list(bars_face or []),
-                sid=str(sid or ""),
+            _path_levels = face_path_sr_levels(
+                press=float(hi),
+                hold=float(lo),
                 close=float(last_bar.get("close") or last_cl or 0),
-                support=float(lo or 0),
-                pressure=float(hi or 0),
+                bars=list(bars_face or []),
+                sid=str(sid or ""),
                 spike_date=str(spike_date or ""),
             )
-            _layer = dict(_path_pack.get("layer") or {})
-            _lo_n = float(_layer.get("low") or 0)
-            _hi_n = float(_layer.get("high") or 0)
-            if (
-                (_path_pack.get("broke") or _path_pack.get("over"))
-                and _lo_n > 0
-                and _hi_n > 0
-                and _hi_n >= _lo_n
-            ):
-                path_press = float(_hi_n)
-                path_hold = float(_lo_n)
-                path_role = "next"
         except Exception:
             logger.debug("日況橘框下一層改口略過 sid=%s", sid, exc_info=True)
+            _path_levels = {}
         path_msg = vol_zone_day_path_label(
-            float(path_press),
-            float(path_hold),
+            float(_path_levels.get("press") or hi),
+            float(_path_levels.get("hold") or lo),
             last_bar,
             bars=bars_face,
             zone_date=str(spike_date or ""),
             session_live=bool(face_meta.get("session_live")),
             emerging=bool(face_meta.get("emerging")),
-            role=path_role,
+            role=str(_path_levels.get("role") or ""),
         )
         if path_msg and last_hi > 0 and float(hi) > 0:
             bits = [p for p in path_msg.split("  ") if p]
@@ -6131,6 +6119,7 @@ def _paint_volume_zone(
             logger.exception("大量區推平行軌失敗 sid=%s", sid)
             channel = {}
     # D4／D5-T1：原文目標／破撐 NEXT 價也先吃進 ylim
+    # 日況橘框已算過 face_path → 重用同包，不准再解析一次對不上
     next_pack: Dict[str, Any] = {}
     try:
         from biaoke_next_support import resolve_next_support, written_targets_for
@@ -6148,15 +6137,19 @@ def _paint_volume_zone(
                 }
                 for r in view.to_dict("records")
             ]
-        next_pack = resolve_next_support(
-            face_rows,
-            sid=str(sid or ""),
-            close=float(last_cl or 0),
-            support=float(lo or 0),
-            pressure=float(hi or 0),
-            spike_date=str(spike_date or ""),
-            channel=channel if isinstance(channel, dict) else {},
-        )
+        _reuse = (_path_levels or {}).get("pack") if isinstance(_path_levels, dict) else None
+        if isinstance(_reuse, dict):
+            next_pack = dict(_reuse)
+        else:
+            next_pack = resolve_next_support(
+                face_rows,
+                sid=str(sid or ""),
+                close=float(last_cl or 0),
+                support=float(lo or 0),
+                pressure=float(hi or 0),
+                spike_date=str(spike_date or ""),
+                channel=channel if isinstance(channel, dict) else {},
+            )
         if not next_pack.get("written"):
             next_pack["written"] = written_targets_for(str(sid or ""))
         y_span = max(float(ymax) - float(ymin), 1.0)

@@ -4795,22 +4795,32 @@ def render_biaoke_structure_png(
     )
     hline_xmax = float(label_col_left) - 0.9
     # 2026-10-29 鎖臉：主大量區只留桃色帶（上方 axhspan），不畫壓／撐水平線；角標仍留。
+    # 2026-11-06：破撐／過壓角標加已破／已過（與大量區專圖同一口吻；主區仍不換）
+    _ns0 = dict(info.get("next_support") or {})
+    _main_broke = bool(_ns0.get("broke") or info.get("under_support"))
+    _main_over = bool(_ns0.get("over"))
     if spike_hi:
+        _press_lab = f"壓 {_px_quote(spike_hi)}"
+        if _main_over:
+            _press_lab = f"{_press_lab}已過"
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": spike_hi,
-                "text": f"壓 {_px_quote(spike_hi)}",
+                "text": _press_lab,
                 "color": _PRESS,
                 "size": _STRUCTURE_TAG_SIZE,
             }
         )
     if spike_lo:
+        _hold_lab = f"撐 {_px_quote(spike_lo)}"
+        if _main_broke:
+            _hold_lab = f"{_hold_lab}已破"
         right_notes.append(
             {
                 "x": float(label_col_left) - 0.6,
                 "y": spike_lo,
-                "text": f"撐 {_px_quote(spike_lo)}",
+                "text": _hold_lab,
                 "color": _HOLD,
                 "size": _STRUCTURE_TAG_SIZE,
             }

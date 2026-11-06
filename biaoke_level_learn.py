@@ -5013,6 +5013,7 @@ def _paint_window_dual_zones(
         exclude_hi=y_excl_hi,
         skip_label_ys=skip_label_ys,
         x_end=float(n) + 0.12 if n else None,
+        avoid_top_left_stamp=avoid_top_left_stamp,
     )
     return {
         "sr": sr,
@@ -5935,6 +5936,7 @@ def _paint_next_sr_zone(
     exclude_hi: Optional[float] = None,
     skip_label_ys: Optional[Sequence[float]] = None,
     x_end: Optional[float] = None,
+    avoid_top_left_stamp: bool = False,
 ) -> Dict[str, Optional[float]]:
     """飆預測位階青帶；與最大量黃帶重疊處不塗（兩底色不准互疊）。
 
@@ -5974,23 +5976,23 @@ def _paint_next_sr_zone(
 
     # 左標：真價若不在黃帶內才標；在黃帶內 → 交給右欄（不准看起來像青底蓋過黃）
     # 左標有畫的 → 同價水平虛線（位階不是某日K，但是他點過的真價）
+    # 遠窗白底戳佔左上時同大量壓撐：右移＋虛線
     if support is not None:
         if _y_inside_hl(float(support), exclude_lo, exclude_hi):
             skipped["support"] = float(support)
         else:
             _level_dash(float(support))
             if not _skip_lab(float(support)):
-                ax.text(
-                    0.01,
+                _paint_left_sr_label(
+                    ax,
                     float(support),
                     _biaoke_pred_label(float(support)),
-                    transform=ax.get_yaxis_transform(),
-                    fontproperties=fp(9, "bold"),
+                    fp=fp,
                     color="#b2ebf2",
-                    ha="left",
+                    edge="#4dd0e1",
                     va="top",
-                    zorder=11,
-                    bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
+                    fontsize=9,
+                    avoid_top_left_stamp=avoid_top_left_stamp,
                 )
     if resist is not None:
         if _y_inside_hl(float(resist), exclude_lo, exclude_hi):
@@ -5998,17 +6000,16 @@ def _paint_next_sr_zone(
         else:
             _level_dash(float(resist))
             if not _skip_lab(float(resist)):
-                ax.text(
-                    0.01,
+                _paint_left_sr_label(
+                    ax,
                     float(resist),
                     _biaoke_pred_label(float(resist)),
-                    transform=ax.get_yaxis_transform(),
-                    fontproperties=fp(9, "bold"),
+                    fp=fp,
                     color="#b2ebf2",
-                    ha="left",
+                    edge="#4dd0e1",
                     va="bottom",
-                    zorder=11,
-                    bbox=dict(boxstyle="round,pad=0.12", fc="#0b0f14", ec="#4dd0e1", lw=0.7, alpha=0.94),
+                    fontsize=9,
+                    avoid_top_left_stamp=avoid_top_left_stamp,
                 )
     if support is None or resist is None:
         return skipped
