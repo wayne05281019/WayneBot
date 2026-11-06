@@ -2201,18 +2201,29 @@ def _latest_level_thesis(
         snip = post_snip
         if post_snip_id:
             post_id = post_snip_id
-    # 9波擴延／35500~37300：後文改口壓舊 C3-5（庫內有就蓋；沒有則補已確認口頭）
+    # 9波擴延／35500~37300：庫內真文／snap 可壓舊 C3-x；口頭只補「尚無題旨」空窗
+    # 更早 as_of／已有橫台・C3-3・C3-5 真文時，不准 oral-c9-band 蓋掉
     try:
-        _ensure_c9_oral_thesis_snap(db_path, as_of=cap)
-        c9_snip = _find_c9_extension_snip(db_path, cap)
-        if c9_snip and (
-            _text_has_c9_extension(c9_snip) and not _text_has_c9_extension(snip)
+        if cap >= _C9_ORAL_AS_OF:
+            _ensure_c9_oral_thesis_snap(db_path, as_of=cap)
+        c9_snip = _find_c9_extension_snip(db_path, cap, include_oral=False)
+        if (
+            not c9_snip
+            and not str(snip or "").strip()
+            and cap >= _C9_ORAL_AS_OF
         ):
-            snip = c9_snip
-            post_id = post_id or "oral-c9-band"
-        elif c9_snip and _text_has_c9_extension(c9_snip):
-            # 主文仍是舊 C3-5 時，仍把 C9 文併進偵測池
-            snip = f"{c9_snip} {snip}"
+            c9_snip = _C9_ORAL_SNIP
+        if c9_snip and _text_has_c9_extension(c9_snip):
+            if not _text_has_c9_extension(snip):
+                if not str(snip or "").strip():
+                    # 空題旨才用口頭／真 C9 填上
+                    snip = c9_snip
+                    post_id = post_id or "oral-c9-band"
+                else:
+                    # 已有真文：只准「非口頭」C9 改口壓舊
+                    snip = c9_snip
+            elif cap >= _C9_ORAL_AS_OF:
+                snip = f"{c9_snip} {snip}"
     except Exception:
         logger.debug("C9 題旨覆寫略過", exc_info=True)
     morph_blob = snip + " " + " ".join(str(r["snippet"] or "") for r in (extra or []))
@@ -3780,6 +3791,8 @@ def _c9_oral_now_line() -> str:
 
 # 飆大口頭題旨（已確認）：第二段下殺＝9波擴延・C-7轉C-8→C-9・低點區35500~37300
 # 併留舊劇本一 35000~38000：有 C9 後 38000 改口「已破」、35000 右標拿掉
+# 口頭 as_of＝確認日；更早題旨 cap 不准回填這段蓋掉當日真文／snap
+_C9_ORAL_AS_OF = "20261106"
 _C9_ORAL_SNIP = (
     "大盤第二段下殺應該是走9波擴延，目前最有可能C-7轉 C-8，"
     "還有最後一小段下跌C-9要跌就全部跌完，低點約會落在35500~37300之間。"
@@ -3806,8 +3819,13 @@ def _text_has_c9_extension(blob: str) -> bool:
     return bool(has_9 or (has_c78 and (has_c9 or has_band)) or (has_band and (has_c78 or has_c9)))
 
 
-def _find_c9_extension_snip(db_path: str, cap_ymd: str) -> str:
-    """庫內近窗掃 9波擴延／35500~37300（後文改口可壓舊 C3-5）。"""
+def _find_c9_extension_snip(
+    db_path: str, cap_ymd: str, *, include_oral: bool = True
+) -> str:
+    """庫內近窗掃 9波擴延／35500~37300（後文改口可壓舊 C3-5）。
+
+    include_oral=False：略過 oral-c9-band（題旨組裝時口頭只准補空窗，不准蓋真文）。
+    """
     cap = _ymd(cap_ymd)
     if not db_path or not cap:
         return ""
@@ -3817,13 +3835,15 @@ def _find_c9_extension_snip(db_path: str, cap_ymd: str) -> str:
         conn = sqlite3.connect(db_path, timeout=15.0)
         try:
             rows = conn.execute(
-                "SELECT snippet FROM biaoke_level_snaps "
+                "SELECT post_id, snippet FROM biaoke_level_snaps "
                 "WHERE as_of<=? ORDER BY as_of DESC, created_at DESC LIMIT 12",
                 (cap,),
             ).fetchall()
         finally:
             conn.close()
-        for (snip,) in rows or ():
+        for post_id, snip in rows or ():
+            if (not include_oral) and str(post_id or "") == "oral-c9-band":
+                continue
             if _text_has_c9_extension(str(snip or "")):
                 return str(snip or "").strip()
     except Exception:
@@ -3854,18 +3874,24 @@ def _find_c9_extension_snip(db_path: str, cap_ymd: str) -> str:
 
 
 def _ensure_c9_oral_thesis_snap(db_path: str, *, as_of: str = "") -> None:
-    """題旨庫若還沒有 C9／35500~37300：寫入已確認口頭題旨（只補缺，不准蓋他更新文）。"""
+    """題旨庫若還沒有 C9／35500~37300：寫入已確認口頭題旨（只補缺，不准蓋他更新文）。
+
+    只在 as_of≥確認日才補；口頭 snap 固定 as_of＝確認日，不准用更早 cap 回填蓋歷史題旨。
+    """
     if not db_path:
         return
     day = _ymd(as_of) or datetime.now(TAIPEI).strftime("%Y%m%d")
+    if not day or day < _C9_ORAL_AS_OF:
+        return
     if _find_c9_extension_snip(db_path, day):
         return
+    oral_day = _C9_ORAL_AS_OF
     try:
         _upsert_snap(
             db_path,
             post_id="oral-c9-band",
-            as_of=day,
-            post_date=f"{day[:4]}-{day[4:6]}-{day[6:8]}",
+            as_of=oral_day,
+            post_date=f"{oral_day[:4]}-{oral_day[4:6]}-{oral_day[6:8]}",
             post_time="13:30",
             snippet=_C9_ORAL_SNIP,
             chart_path="",
