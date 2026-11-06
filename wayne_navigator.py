@@ -859,8 +859,22 @@ class NavigatorEngine:
                     merge_live = False
                 if len(str(cap)) != 8:
                     em_max = str(df["date"].astype(str).str.replace("-", "", regex=False).max() or "")[:8]
+                    listed_as_of = str(db_as_of or "").replace("-", "")[:8]
                     if len(em_max) == 8:
-                        db_as_of = em_max
+                        # 盤中今日均價／超前上市完整日 → 不准當官方 as_of
+                        try:
+                            from trading_calendar import is_official_daily_bar
+
+                            em_ok = bool(is_official_daily_bar(em_max))
+                        except Exception:
+                            em_ok = False
+                        if em_ok and (not listed_as_of or em_max <= listed_as_of):
+                            db_as_of = em_max
+                        elif listed_as_of:
+                            db_as_of = listed_as_of
+                        elif em_ok:
+                            db_as_of = em_max
+                        # else：保留原 db_as_of（可能空），截斷時不認未收 em_max
         conn.close()
 
         if len(df) < 5:
@@ -4885,16 +4899,36 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
 def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFrame:
     path = db_path or get_db_path()
+    # 導航與決策卡同尺：庫內只到最後完整收；盤中未收／半套日不准當末日
+    cap = ""
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        cap = str(db_as_of_trading_date(path) or "").replace("-", "")[:8]
+    except Exception:
+        cap = ""
     conn = sqlite3.connect(path, timeout=30.0)
     conn.execute("PRAGMA busy_timeout=10000;")
-    df = pd.read_sql_query(
-        """
-        SELECT date, stock_name, open, high, low, close, volume, pct_change
-        FROM daily_quotes WHERE stock_id = ? ORDER BY date DESC LIMIT ?
-        """,
-        conn,
-        params=(str(stock_id).strip(), days),
-    )
+    if len(cap) == 8:
+        df = pd.read_sql_query(
+            """
+            SELECT date, stock_name, open, high, low, close, volume, pct_change
+            FROM daily_quotes
+            WHERE stock_id = ? AND replace(CAST(date AS TEXT), '-', '') <= ?
+            ORDER BY date DESC LIMIT ?
+            """,
+            conn,
+            params=(str(stock_id).strip(), cap, days),
+        )
+    else:
+        df = pd.read_sql_query(
+            """
+            SELECT date, stock_name, open, high, low, close, volume, pct_change
+            FROM daily_quotes WHERE stock_id = ? ORDER BY date DESC LIMIT ?
+            """,
+            conn,
+            params=(str(stock_id).strip(), days),
+        )
     conn.close()
     emerging = False
     if df.empty or len(df) < 5:
@@ -4912,6 +4946,10 @@ def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFr
     df = df.iloc[::-1].reset_index(drop=True)
     df["stock_id"] = str(stock_id).strip()
     if emerging:
+        # 興櫃：截到官方可認日（盤中今日均價不當導航末日）
+        if len(cap) == 8:
+            dnorm = df["date"].astype(str).str.replace("-", "", regex=False)
+            df = df[dnorm <= cap].reset_index(drop=True)
         return df
     try:
         from live_quote import append_live_bar
@@ -7826,7 +7864,26 @@ def draw_from_ohlc(
     if work is None:
         return ""
     # 畫圖才對開市日軸：缺列＝前收停價＋量0；週末／國定假不進軸（短快取）
-    work = align_ohlc_cached(work, str(stock_id or ""))
+    # 與大量區／結構同 skip：官方確認無列／全市場空日不准發明假柱
+    skip_invent: Optional[set] = None
+    path = str(db_path or "").strip()
+    sid0 = str(stock_id or "").strip()
+    if path and sid0 and not work.empty:
+        try:
+            from vol_zone_chart import (
+                load_confirmed_absent_dates,
+                market_wide_empty_open_days,
+            )
+
+            d0 = str(work["date"].iloc[0]).replace("-", "")[:8]
+            d1 = str(work["date"].iloc[-1]).replace("-", "")[:8]
+            skip_invent = set(load_confirmed_absent_dates(sid0, path, d0, d1) or [])
+            skip_invent |= set(market_wide_empty_open_days(path, d0, d1) or [])
+        except Exception:
+            skip_invent = None
+    work = align_ohlc_cached(
+        work, sid0, skip_invent_dates=skip_invent if skip_invent else None
+    )
     if work is None or work.empty:
         return ""
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")

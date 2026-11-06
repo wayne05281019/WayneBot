@@ -826,8 +826,9 @@ def resolve_watch_view_as_of(
         complete = str(latest_complete_quote_date(db_path, now=stamp, cap=want) or "")
     except Exception:
         complete = ""
-    as_of = complete or want
-    if want and as_of > want:
+    # 只認完整官方收；無齊庫不准退回 want（可能無柱）
+    as_of = complete or ""
+    if want and as_of and as_of > want:
         as_of = want
     lag: Optional[str] = None
     if (
@@ -870,11 +871,7 @@ def watchlist_join_pnl(
         as_of, _lag = resolve_watch_view_as_of(db_path, now=now)
     except Exception:
         as_of = None
-    if not as_of:
-        try:
-            as_of = watch_display_cap(now)
-        except Exception:
-            as_of = None
+    # 無完整日＝不算查看收；不准退回 want／cap 無柱日
     ensure_core_schema(db_path)
     with get_db_connection(db_path, write=False) as conn:
         for r in rows or []:
