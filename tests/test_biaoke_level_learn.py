@@ -1093,6 +1093,78 @@ def test_ensure_us_index_daily_always_refreshes_recent():
     assert "Asia/Taipei" not in upsert_src
 
 
+def test_inject_yahoo_sox_overwrites_stale_10647(tmp_path, monkeypatch):
+    """遠窗黃框不准卡 11/3＝10647；出圖注入 Yahoo 近窗 → 11/5＝9011。"""
+    import types
+
+    import biaoke_level_learn as m
+    from taiwan_market import ensure_index_daily_table
+
+    db = tmp_path / "sox.db"
+    ensure_index_daily_table(str(db))
+
+    def _fake_near(_yid="^SOX"):
+        return [
+            {
+                "date": "20261103",
+                "open": 10574.0,
+                "high": 10761.0,
+                "low": 10530.0,
+                "close": 10600.4,
+                "volume": 0.0,
+            },
+            {
+                "date": "20261104",
+                "open": 10485.0,
+                "high": 10652.0,
+                "low": 10064.0,
+                "close": 10268.65,
+                "volume": 0.0,
+            },
+            {
+                "date": "20261105",
+                "open": 9806.3,
+                "high": 9838.1,
+                "low": 8997.4,
+                "close": 9011.14,
+                "volume": 0.0,
+            },
+        ]
+
+    monkeypatch.setattr(m, "_fetch_yahoo_index_near_bars", _fake_near)
+    stale = [
+        {
+            "date": "20261103",
+            "open": 10500.0,
+            "high": 10700.0,
+            "low": 10400.0,
+            "close": 10647.0,
+            "volume": 0.0,
+        }
+    ]
+    out = m._inject_yahoo_us_last_into_rows(
+        stale, yid="^SOX", sym="SOX", db_path=str(db)
+    )
+    pair = m._us_real_close_pair(out)
+    assert pair["asof"] == "20261105"
+    assert abs(float(pair["close"]) - 9011.14) < 0.02
+    assert abs(float(pair["prev_close"]) - 10268.65) < 0.02
+    assert float(pair["close"]) < 9500
+
+
+def test_far_paint_wires_sox_yahoo_inject_and_stamp_uses_pair():
+    """遠窗出圖必注入 Yahoo；黃框 close 走 _us_real_close_pair 不准吃末根填日K。"""
+    import inspect
+
+    from biaoke_level_learn import _render_twii_far_dark
+
+    src = inspect.getsource(_render_twii_far_dark)
+    assert "_inject_yahoo_us_last_into_rows" in src
+    assert '_us_real_close_pair(sox, _sox_live)' in src
+    assert '_sox_chg_tip = {\n            "close": float(_sox_last_repaint["c"])' not in src
+    assert '"close": float(_tip_close)' in src
+
+
 def test_soxx_volume_proxy_always_refreshes_near_window():
     """SOXX 量代理不准「已有≥40列」整段跳過；日期美東；價跳兇只動量。"""
     import inspect
