@@ -263,11 +263,33 @@ def _fill_structure(db_path: str, brief: Dict[str, Any]) -> None:
         return
     try:
         from biaoke_brain import load_bars
-        from biaoke_chart import analyze_structure
+        from biaoke_chart import analyze_structure, structure_visible_bars
+        from biaoke_next_support import (
+            attach_next_support,
+            merge_face_onto_history,
+            next_layer_history_bars,
+        )
 
-        bars = load_bars(db_path, sid, n=80)
+        try:
+            from vol_zone_chart import lookup_vol_ensure_days
+
+            need = int(lookup_vol_ensure_days())
+        except Exception:
+            need = 188
+        bars = load_bars(db_path, sid, n=max(need, 188))
         if len(bars) >= 8:
-            brief["structure"] = analyze_structure(bars[-60:]) or {}
+            work = structure_visible_bars(bars)
+            info = analyze_structure(work) or {}
+            # desk 文字下一層與出圖同尺；舊 bars[-60:] 急殺會漏次大量
+            attach_next_support(
+                info,
+                sid=sid,
+                bars=merge_face_onto_history(
+                    next_layer_history_bars(bars),
+                    work,
+                ),
+            )
+            brief["structure"] = info
     except Exception:
         pass
     brief["rail"] = _rail_from_brief(brief)
@@ -977,11 +999,31 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
     if info is None and db_path and sid:
         try:
             from biaoke_brain import load_bars
-            from biaoke_chart import analyze_structure
+            from biaoke_chart import analyze_structure, structure_visible_bars
+            from biaoke_next_support import (
+                attach_next_support,
+                merge_face_onto_history,
+                next_layer_history_bars,
+            )
 
-            bars = load_bars(db_path, sid, n=80)
+            try:
+                from vol_zone_chart import lookup_vol_ensure_days
+
+                need = int(lookup_vol_ensure_days())
+            except Exception:
+                need = 188
+            bars = load_bars(db_path, sid, n=max(need, 188))
             if len(bars) >= 8:
-                info = analyze_structure(bars[-60:]) or {}
+                work = structure_visible_bars(bars)
+                info = analyze_structure(work) or {}
+                attach_next_support(
+                    info,
+                    sid=sid,
+                    bars=merge_face_onto_history(
+                        next_layer_history_bars(bars),
+                        work,
+                    ),
+                )
         except Exception:
             info = None
     if info:

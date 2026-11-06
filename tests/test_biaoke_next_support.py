@@ -549,3 +549,17 @@ def test_sample_3081_3017_resolve_smoke():
                 assert float(pack["layer"]["high"]) > 0
             elif not pack.get("primary"):
                 assert pack.get("none_label") == NONE_LABEL
+
+
+def test_structure_chart_and_chain_use_deep_next_attach():
+    """結構圖說／desk 結構填充必須深窗 re-attach（與 paint 同尺）。"""
+    import inspect
+
+    from biaoke_chart import build_biaoke_structure_chart
+    from biaoke_chain import _fill_structure
+    from biaoke_forecast import record_stock
+
+    for fn in (build_biaoke_structure_chart, _fill_structure, record_stock):
+        src = inspect.getsource(fn)
+        assert "next_layer_history_bars" in src, fn.__name__
+        assert "attach_next_support" in src, fn.__name__

@@ -6167,7 +6167,27 @@ def build_biaoke_structure_chart(
     if not bars:
         return {"ok": False, "path": "", "caption": ""}
     nm = name or str(bars[-1].get("stock_name") or sid)
-    info = analyze_structure(structure_visible_bars(bars))
+    work = structure_visible_bars(bars)
+    info = analyze_structure(work)
+    # 圖說／回傳 info 必須與 paint 同尺深窗下一層；只 analyze 可視窗會急殺漏灰帶
+    if sid:
+        try:
+            from biaoke_next_support import (
+                attach_next_support,
+                merge_face_onto_history,
+                next_layer_history_bars,
+            )
+
+            attach_next_support(
+                info,
+                sid=str(sid),
+                bars=merge_face_onto_history(
+                    next_layer_history_bars(bars),
+                    work,
+                ),
+            )
+        except Exception:
+            logger.debug("結構圖說下一層深窗略過", exc_info=True)
     # 代號出圖也走串接表達面：文字桌與圖說同一條判斷／官方結構
     q = (ask or "").strip() or sid
     surface: Dict[str, Any] = {}
