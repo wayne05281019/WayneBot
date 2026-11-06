@@ -15,6 +15,7 @@ from biaoke_ingest import (
     REFRESH_LATEST,
     REFRESH_PREOPEN,
     ingest_public_posts,
+    in_core_session_window,
     in_preopen_window,
     parse_article_html,
     parse_author_replies,
@@ -391,17 +392,34 @@ def test_poll_wait_preopen_five_minutes_and_old_replies():
     assert refresh_latest_now(wed_pre) == REFRESH_PREOPEN
     wed_mid = datetime(2026, 9, 9, 8, 30, tzinfo=tz)
     assert poll_wait_seconds(wed_mid) == PREOPEN_EVERY_SEC
+    # 08:49 最多睡到 08:50，不准再睡 10 分
+    wed_edge = datetime(2026, 9, 9, 8, 49, tzinfo=tz)
+    assert poll_wait_seconds(wed_edge) == 60
+    assert in_core_session_window(wed_edge) is False
+    # 使用者鎖：08:50 起每 3 分（含 08:59／09:00）
+    core_start = datetime(2026, 9, 9, 8, 50, tzinfo=tz)
+    assert in_core_session_window(core_start) is True
+    assert poll_wait_seconds(core_start) == SESSION_EVERY_SEC
     wed_last = datetime(2026, 9, 9, 8, 59, tzinfo=tz)
-    assert poll_wait_seconds(wed_last) == 2 * 60
+    assert poll_wait_seconds(wed_last) == SESSION_EVERY_SEC
     before = datetime(2026, 9, 9, 7, 59, tzinfo=tz)
     assert in_preopen_window(before) is False
     assert poll_wait_seconds(before) == AFTER_EVERY_SEC
     assert refresh_latest_now(before) == REFRESH_LATEST
     open_bell = datetime(2026, 9, 9, 9, 0, tzinfo=tz)
     assert in_preopen_window(open_bell) is False
-    assert poll_wait_seconds(open_bell) <= 60
+    assert poll_wait_seconds(open_bell) == SESSION_EVERY_SEC
     session_start = datetime(2026, 9, 9, 9, 1, tzinfo=tz)
     assert poll_wait_seconds(session_start) == SESSION_EVERY_SEC
+    core_noon = datetime(2026, 9, 9, 12, 0, tzinfo=tz)
+    assert in_core_session_window(core_noon) is True
+    assert poll_wait_seconds(core_noon) == SESSION_EVERY_SEC
+    core_end = datetime(2026, 9, 9, 13, 0, tzinfo=tz)
+    assert in_core_session_window(core_end) is True
+    assert poll_wait_seconds(core_end) == SESSION_EVERY_SEC
+    after_core = datetime(2026, 9, 9, 13, 1, tzinfo=tz)
+    assert in_core_session_window(after_core) is False
+    assert poll_wait_seconds(after_core) == SESSION_EVERY_SEC  # 至 13:30 仍 3 分
     close_bell = datetime(2026, 9, 9, 13, 30, tzinfo=tz)
     assert poll_wait_seconds(close_bell) == SESSION_EVERY_SEC
     after_close = datetime(2026, 9, 9, 13, 31, tzinfo=tz)
@@ -416,6 +434,23 @@ def test_poll_wait_preopen_five_minutes_and_old_replies():
     hol_pre = datetime(2026, 9, 25, 8, 30, tzinfo=tz)
     assert in_preopen_window(hol_pre) is False
     assert poll_wait_seconds(hol_pre) == CLOSED_EVERY_SEC
+
+
+def test_poll_wait_core_session_0850_1300_locked():
+    """使用者鎖：開市日盤中 08:50–13:00 必每 3 分。"""
+    tz = ZoneInfo("Asia/Taipei")
+    fri = datetime(2026, 11, 6, 8, 50, tzinfo=tz)
+    assert in_core_session_window(fri) is True
+    assert poll_wait_seconds(fri) == SESSION_EVERY_SEC
+    fri_mid = datetime(2026, 11, 6, 10, 12, tzinfo=tz)
+    assert poll_wait_seconds(fri_mid) == SESSION_EVERY_SEC
+    fri_end = datetime(2026, 11, 6, 13, 0, tzinfo=tz)
+    assert in_core_session_window(fri_end) is True
+    assert poll_wait_seconds(fri_end) == SESSION_EVERY_SEC
+    # 08:49 仍盤前 10 分節奏（最多睡到 08:50）
+    fri_pre = datetime(2026, 11, 6, 8, 40, tzinfo=tz)
+    assert in_core_session_window(fri_pre) is False
+    assert poll_wait_seconds(fri_pre) == 10 * 60
 
 
 def test_preopen_rereads_latest_two_threads(tmp_path, monkeypatch):
