@@ -64,7 +64,46 @@ WRITTEN_ABSOLUTE_TARGETS: Dict[str, Tuple[Dict[str, Any], ...]] = {
 
 _DEFAULT_LOOKBACK = 40
 _EARLIER_LOOKBACK = 80  # 近窗內次層已破 → 往更早 K 再找一檔
-_DEEP_LOOKBACK = 180  # 連破多層（2383 收遠低於主撐）→ 再往更早次大量區串聯
+_DEEP_LOOKBACK = 180  # 連破多層（急殺遠低於主撐）→ 再往更早次大量區串聯
+
+
+def next_layer_history_bars(
+    bars: Sequence[Dict[str, Any]],
+    *,
+    min_bars: int = 0,
+) -> List[Dict[str, Any]]:
+    """下一層演算用歷史尾段：至少深窗＋末日；出圖可視窗可更短，不准裁掉串聯源。"""
+    rows = list(bars or [])
+    need = max(int(min_bars or 0), int(_DEEP_LOOKBACK) + 1)
+    if len(rows) <= need:
+        return rows
+    return rows[-need:]
+
+
+def merge_face_onto_history(
+    history: Sequence[Dict[str, Any]],
+    face_bars: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """長窗歷史＋查股／盤中臉柱末日：下一層用長窗，收價認臉。不准造假柱。"""
+    hist = [dict(r) for r in list(history or [])]
+    face = list(face_bars or [])
+    if not face:
+        return hist
+    last_f = dict(face[-1] or {})
+    if not hist:
+        return [dict(r) for r in face]
+    d_h = _ymd(hist[-1].get("date"))
+    d_f = _ymd(last_f.get("date"))
+    patch = {
+        k: last_f.get(k)
+        for k in ("open", "high", "low", "close", "volume")
+        if last_f.get(k) is not None
+    }
+    if d_f and d_h == d_f:
+        hist[-1] = {**hist[-1], **patch}
+    elif d_f and (not d_h or d_f > d_h):
+        hist.append({**last_f})
+    return hist
 
 
 def _sid(raw: Any) -> str:

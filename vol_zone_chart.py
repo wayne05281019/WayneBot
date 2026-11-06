@@ -98,8 +98,19 @@ def lookup_vol_ensure_days(
     lookback: int = VOL_ZONE_LOOKBACK,
     bars: int = VOL_ZONE_BARS,
 ) -> int:
-    """查股第 3／4 張 prepare 同一窗長；提早 ensure 用這個 days。"""
-    return max(int(bars) + int(lookback) + VOL_ZONE_MA60_WARM, 180)
+    """查股第 3／4 張 prepare 同一窗長；提早 ensure 用這個 days。
+
+    下限含下一層深窗串聯（_DEEP_LOOKBACK=180＋末日），急殺連破近層才找得到次大量。
+    """
+    try:
+        from biaoke_next_support import _DEEP_LOOKBACK as _NEXT_DEEP
+    except Exception:
+        _NEXT_DEEP = 180
+    return max(
+        int(bars) + int(lookback) + VOL_ZONE_MA60_WARM,
+        int(_NEXT_DEEP) + 1,
+        180,
+    )
 # 同檔同 as_of 壓力區圖短快取（名單→點股三張可複用）
 # 對齊查股 memo TTL：同指紋複製不進 paint（現價指紋變了會 miss）
 _VZ_RENDER_TTL_SEC = 180.0
@@ -107,7 +118,7 @@ _VZ_RENDER_LOCK = threading.Lock()
 _VZ_RENDER_MEMO: Dict[Tuple[Any, ...], Tuple[float, str, str]] = {}
 _VZ_RENDER_MEMO_MAX = 96
 # 畫面上線／戳後 bump
-_VZ_PAINT_VER = 68  # 表頭收旁真昨收漲跌點／％同列（2026-10-30）
+_VZ_PAINT_VER = 69  # next-deep-v1：破撐下一層用長窗深串聯（2026-11-06）
 _BG = "#ffffff"
 _UP = "#e53935"
 _DN = "#00897b"
@@ -6045,25 +6056,35 @@ def _paint_volume_zone(
             pass
         # 破主撐／過主壓：橘框改對灰底下一層（與圖上灰帶一致）；主區仍不換
         # 同一套 face_path_sr_levels，後面 next_pack 直接重用，不准各算各的
+        # 下一層用長窗（_channel_bars_face）＋臉末日；近窗 view 只夠畫 K
         try:
-            from biaoke_next_support import face_path_sr_levels
+            from biaoke_next_support import (
+                face_path_sr_levels,
+                merge_face_onto_history,
+                next_layer_history_bars,
+            )
 
+            _path_bars = merge_face_onto_history(
+                next_layer_history_bars(_channel_bars_face or bars_face),
+                bars_face,
+            )
             _path_levels = face_path_sr_levels(
                 press=float(hi),
                 hold=float(lo),
                 close=float(last_bar.get("close") or last_cl or 0),
-                bars=list(bars_face or []),
+                bars=list(_path_bars or []),
                 sid=str(sid or ""),
                 spike_date=str(spike_date or ""),
             )
         except Exception:
             logger.debug("日況橘框下一層改口略過 sid=%s", sid, exc_info=True)
             _path_levels = {}
+            _path_bars = list(bars_face or [])
         path_msg = vol_zone_day_path_label(
             float(_path_levels.get("press") or hi),
             float(_path_levels.get("hold") or lo),
             last_bar,
-            bars=bars_face,
+            bars=_path_bars,
             zone_date=str(spike_date or ""),
             session_live=bool(face_meta.get("session_live")),
             emerging=bool(face_meta.get("emerging")),
@@ -6119,10 +6140,15 @@ def _paint_volume_zone(
             logger.exception("大量區推平行軌失敗 sid=%s", sid)
             channel = {}
     # D4／D5-T1：原文目標／破撐 NEXT 價也先吃進 ylim
-    # 日況橘框已算過 face_path → 重用同包，不准再解析一次對不上
+    # 日況橘框已算過 face_path → 重用同包；無包則長窗再算，不准近窗裁掉深窗串聯
     next_pack: Dict[str, Any] = {}
     try:
-        from biaoke_next_support import resolve_next_support, written_targets_for
+        from biaoke_next_support import (
+            merge_face_onto_history,
+            next_layer_history_bars,
+            resolve_next_support,
+            written_targets_for,
+        )
 
         face_rows = list(bars_face or [])
         if not face_rows:
@@ -6137,6 +6163,10 @@ def _paint_volume_zone(
                 }
                 for r in view.to_dict("records")
             ]
+        face_rows = merge_face_onto_history(
+            next_layer_history_bars(_channel_bars_face or face_rows),
+            face_rows,
+        )
         _reuse = (_path_levels or {}).get("pack") if isinstance(_path_levels, dict) else None
         if isinstance(_reuse, dict):
             next_pack = dict(_reuse)
