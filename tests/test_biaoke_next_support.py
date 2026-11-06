@@ -9,12 +9,15 @@ import pytest
 from biaoke_next_support import (
     NONE_LABEL,
     WRITTEN_ABSOLUTE_TARGETS,
+    _DEEP_LOOKBACK,
     attach_next_support,
     close_broke_vol_support,
     close_over_vol_pressure,
     collect_next_support_candidates,
     find_secondary_vol_zone,
     find_secondary_vol_zone_support,
+    merge_face_onto_history,
+    next_layer_history_bars,
     pick_layer_label_along_line,
     reason_next_support_line,
     resolve_next_support,
@@ -394,6 +397,123 @@ def test_paint_uses_cjk_fontproperties():
     assert "_cjk_fp" in src or "_fp" in src
     assert "pick_layer_label_along_line" in src or "layer_labels" in src
     assert 'layer_labels="smart"' in open("vol_zone_chart.py", encoding="utf-8").read()
+
+
+def test_deep_lookback_cascades_when_near_layers_all_broken():
+    """連破近窗次層後，深窗仍可串到未破的次大量區（2383 級急殺）。"""
+    assert int(_DEEP_LOOKBACK) >= 180
+    day = date(2026, 2, 1)
+    rows = []
+    for i in range(200):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        if i == 30:
+            # 深窗內次大量：低 1840 高 2005（收 3820 未破）
+            o, h, l, c, v = 1900, 2005, 1840, 1950, 9000
+        elif i == 160:
+            # 近／早窗次層：低 3930（收已破）
+            o, h, l, c, v = 4200, 4510, 3930, 4100, 7000
+        elif i == 175:
+            # 主大量：高 5330 低 4980
+            o, h, l, c, v = 5100, 5330, 4980, 5200, 12000
+        elif i == 199:
+            o, h, l, c, v = 4000, 4100, 3700, 3820, 4000
+        else:
+            o, h, l, c, v = 5200, 5250, 5150, 5220, 800
+        rows.append(
+            {
+                "date": d,
+                "open": float(o),
+                "high": float(h),
+                "low": float(l),
+                "close": float(c),
+                "volume": float(v),
+            }
+        )
+    spike = rows[175]["date"]
+    near_only = find_secondary_vol_zone(
+        rows,
+        direction="below",
+        ref_lo=4980.0,
+        exclude_date=spike,
+        close=3820.0,
+        lookback=40,
+        allow_earlier=False,
+    )
+    assert near_only is None
+    deep = find_secondary_vol_zone(
+        rows,
+        direction="below",
+        ref_lo=4980.0,
+        exclude_date=spike,
+        close=3820.0,
+        lookback=40,
+        allow_earlier=True,
+    )
+    assert deep is not None
+    assert float(deep["low"]) == 1840.0
+    assert float(deep["high"]) == 2005.0
+    pack = resolve_next_support(
+        rows,
+        sid="2383",
+        close=3820.0,
+        support=4980.0,
+        pressure=5330.0,
+        spike_date=spike,
+        under_support=True,
+    )
+    assert pack["broke"] is True
+    assert pack["layer"] is not None
+    assert float(pack["layer"]["low"]) == 1840.0
+    assert pack["main_zone_unchanged"] is True
+
+
+def test_next_layer_history_keeps_deep_window_and_face():
+    """可視近窗可短；下一層歷史至少深窗，臉末日覆寫收價。"""
+    day = date(2026, 1, 1)
+    rows = []
+    for i in range(220):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        rows.append(
+            {
+                "date": d,
+                "open": 100.0,
+                "high": 110.0,
+                "low": 90.0,
+                "close": 105.0,
+                "volume": 1000.0,
+            }
+        )
+    hist = next_layer_history_bars(rows)
+    assert len(hist) == int(_DEEP_LOOKBACK) + 1
+    assert hist[0]["date"] == rows[-len(hist)]["date"]
+    face = [
+        {
+            "date": rows[-1]["date"],
+            "open": 95.0,
+            "high": 100.0,
+            "low": 90.0,
+            "close": 92.0,
+            "volume": 5000.0,
+        }
+    ]
+    merged = merge_face_onto_history(hist, face)
+    assert len(merged) == len(hist)
+    assert float(merged[-1]["close"]) == 92.0
+
+
+def test_structure_and_vol_zone_use_deep_next_history():
+    """結構圖／大量區出圖路徑必須用長窗算下一層，不准只拿可視近窗。"""
+    import inspect
+
+    from biaoke_chart import render_biaoke_structure_png
+
+    struct_src = inspect.getsource(render_biaoke_structure_png)
+    assert "next_layer_history_bars" in struct_src
+    assert "merge_face_onto_history" in struct_src
+    vz = open("vol_zone_chart.py", encoding="utf-8").read()
+    assert "next_layer_history_bars" in vz
+    assert "merge_face_onto_history" in vz
+    assert "_channel_bars_face" in vz
 
 
 @pytest.mark.production_db
