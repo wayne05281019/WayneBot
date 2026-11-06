@@ -607,23 +607,23 @@ def test_wave_now_ladder_big_to_small():
 
 
 def test_wave_now_ladder_c9_extension_oral():
-    """9波擴延：人話 C-7轉C-8→C-9；超近／話筒共用。"""
+    """9波擴延：人話七走完、準備往八→C-9；超近／話筒共用。"""
     from biaoke_level_learn import _wave_now_ladder
 
     pack = {
-        "thesis": "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）",
+        "thesis": "大A→大B→大C｜9波擴延・C-7走完→C-8→C-9（預估）",
         "snippet": (
-            "大盤第二段下殺應該是走9波擴延，目前最有可能C-7轉 C-8，"
+            "大盤第二段下殺應該是走9波擴延，今天七走完、準備往八，"
             "還有最後一小段下跌C-9要跌就全部跌完，低點約會落在35500~37300之間。"
         ),
         "wait_struct": "低點區35500~37300；C-9跌完＝這段下殺完；C走完≠新五波升",
         "thesis_as_of": "20261106",
     }
     out = _wave_now_ladder(pack)
-    assert out["now"] == "C-7轉C-8"
+    assert out["now"] == "C-7走完→C-8"
     assert "9波擴延" in out["chain"]
-    assert "C-7轉C-8" in out["one_line"] and "C-9" in out["one_line"]
-    assert "目前最有可能 C-7 轉 C-8" in out["now_line"]
+    assert "C-7走完→C-8" in out["one_line"] and "C-9" in out["one_line"]
+    assert "七走完" in out["now_line"] and "準備往八" in out["now_line"]
     assert "最後一小段下跌 C-9" in out["now_line"]
     assert "要跌就全部跌完" in out["now_line"] or "全部跌完" in out["teach_box"]
     assert "as_of" not in out["now_line"]
@@ -649,8 +649,8 @@ def test_nine_wave_inset_c9_ext_labels():
     assert _c9_ext_flash_step("C-8") == 8
     assert _c9_ext_flash_step("C-9") == 9
     pack = {
-        "thesis": "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）",
-        "snippet": "9波擴延，C-7轉 C-8，C-9，35500~37300",
+        "thesis": "大A→大B→大C｜9波擴延・C-7走完→C-8→C-9（預估）",
+        "snippet": "9波擴延，今天七走完、準備往八，C-9，35500~37300",
         "pred_levels": {
             "tw": [
                 {"level": 37300.0, "role": "C9低上沿"},
@@ -662,7 +662,7 @@ def test_nine_wave_inset_c9_ext_labels():
     assert _eight_wave_now_key(pack) == "C-8"
     src = inspect.getsource(_paint_eight_wave_inset)
     assert "c9_ext" in src
-    assert "此刻＝C-7轉C-8｜虛線＝C-9" in src
+    assert "此刻＝C-7走完→C-8｜虛線＝C-9" in src
     assert "框內9波｜金＝C7→C8｜虛線＝C9" in src
     fig = plt.figure(figsize=(4, 3), dpi=80)
     _paint_eight_wave_inset(

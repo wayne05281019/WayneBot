@@ -2097,8 +2097,9 @@ def _latest_level_thesis(
     has_9ext = bool(re.search(r"9\s*波\s*擴延", snip))
     has_c78 = bool(
         re.search(
-            r"C\s*[-–]\s*7.{0,24}(?:轉|->|→).{0,8}C\s*[-–]\s*8|"
-            r"C\s*[-–]\s*7.{0,12}C\s*[-–]\s*8",
+            r"C\s*[-–]\s*7.{0,24}(?:轉|->|→|走完).{0,12}C\s*[-–]\s*8|"
+            r"C\s*[-–]\s*7.{0,12}C\s*[-–]\s*8|"
+            r"七走完|準備往\s*八|往八走",
             snip,
         )
     )
@@ -2107,11 +2108,12 @@ def _latest_level_thesis(
     if has_9ext or (has_c78 and (has_c9 or has_c9_band)) or (
         has_c9_band and (has_c78 or has_c9)
     ):
-        thesis = "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）"
+        # 口述改口：今天七走完、準備往八（仍接 C-9）
+        thesis = "大A→大B→大C｜9波擴延・C-7走完→C-8→C-9（預估）"
         wait = (
             "低點區35500~37300；C-9跌完＝這段下殺完；C走完≠新五波升"
             if has_c9_band
-            else "C-7轉C-8→C-9；C-9跌完＝這段下殺完；C走完≠新五波升"
+            else "C-7走完→C-8→C-9；C-9跌完＝這段下殺完；C走完≠新五波升"
         )
     elif c35_done or (
         has_35 and re.search(r"落底確認|目前開始反彈|反彈能否穿刺", snip)
@@ -2192,6 +2194,58 @@ def _load_tx60_rows(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
                 "volume": float(b.get("v") or 0),
             }
         )
+    return out
+
+
+def _load_twii60_day_rows(
+    db_path: str,
+    *,
+    since_ymd: str = "20261006",
+    until_ymd: str = "",
+) -> List[Dict[str, Any]]:
+    """加權日盤 60 分：自 since（含）到 until 日盤收（預設庫內最新）。
+
+    只收 09:00–13:30 日盤柱；夜盤／盤後不進超近 9 波窗。價＝官方 minute_bars。
+    """
+    try:
+        from kline_hop import load_minute_bars
+
+        raw = load_minute_bars("TWII", "60", db_path) or []
+    except Exception:
+        return []
+    since = _ymd(since_ymd) or "20261006"
+    until = _ymd(until_ymd)
+    out: List[Dict[str, Any]] = []
+    for b in raw:
+        ts = str(b.get("t") or "")
+        if len(ts) < 12:
+            continue
+        ymd = ts[:8]
+        if ymd < since:
+            continue
+        if until and ymd > until:
+            continue
+        try:
+            hm = int(ts[8:12])
+        except ValueError:
+            continue
+        # 台股日盤：09:00–13:30
+        if hm < 900 or hm > 1330:
+            continue
+        try:
+            out.append(
+                {
+                    "date": ymd,
+                    "ts": ts,
+                    "open": float(b.get("o") or 0),
+                    "high": float(b.get("h") or 0),
+                    "low": float(b.get("l") or 0),
+                    "close": float(b.get("c") or 0),
+                    "volume": float(b.get("v") or 0),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
     return out
 
 
@@ -3530,19 +3584,290 @@ def _tw_pred_break_tag(
 
 
 def _c9_extension_active(pack: Optional[Dict[str, Any]] = None) -> bool:
-    """題旨是否為 9波擴延 C-7轉C-8→C-9（只認他文／pred，不准自創）。"""
+    """題旨是否為 9波擴延 C-7走完→C-8→C-9（只認他文／pred，不准自創）。"""
     if _tw_has_c9_low_zone(pack):
         return True
     thesis = str((pack or {}).get("thesis") or "")
     snip = str((pack or {}).get("snippet") or "")
     wait = str((pack or {}).get("wait_struct") or "")
     blob = f"{thesis} {snip} {wait}"
-    if "9波擴延" in blob or "C-7轉C-8" in blob:
+    if (
+        "9波擴延" in blob
+        or "C-7走完" in blob
+        or "C-7轉C-8" in blob
+        or "準備往八" in blob
+    ):
         return True
     return bool(
         re.search(r"C\s*[-–]\s*7.{0,24}C\s*[-–]\s*8", blob)
         and re.search(r"C\s*[-–]\s*9", blob)
     )
+
+
+def _c9_now_step_label() -> str:
+    """此刻層級短標（話筒／釘點／縮圖共用）。"""
+    return "C-7走完→C-8"
+
+
+def _c9_oral_now_line() -> str:
+    """9波擴延人話：七走完、準備往八；後面還有 C-9。"""
+    return (
+        "今天七走完、準備往八；後面還有最後一小段下跌 C-9；"
+        "要跌就全部跌完"
+    )
+
+
+def _c9_ext_bar_pivots(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    *,
+    i_bhi: int,
+    i_now: int,
+    tf: str = "1d",
+) -> List[Tuple[int, float, str]]:
+    """C 段 9 波擴延：用官方柱 zigzag 找 B→C1…C7／C8（價只取官方高低）。
+
+    奇數浪＝低點、偶數浪＝反彈高。口述＝七走完、準備往八 → 60分優先讓末日落在 C7。
+    tf＝60：加權日盤 60 分（超近窗）；1d＝日K。不准發明中間價。
+    """
+    n = min(len(highs), len(lows), len(closes))
+    if not (0 <= int(i_bhi) < int(i_now) < n):
+        return []
+    ib, i_end = int(i_bhi), int(i_now)
+    try:
+        yb = float(highs[ib])
+    except (TypeError, ValueError):
+        return []
+    ranges: List[float] = []
+    for i in range(ib, i_end + 1):
+        try:
+            ranges.append(abs(float(highs[i]) - float(lows[i])))
+        except (TypeError, ValueError):
+            continue
+    atr = (
+        sorted(ranges)[len(ranges) // 2]
+        if ranges
+        else max(180.0, abs(yb) * 0.008)
+    )
+
+    def _run(thr: float) -> List[Tuple[int, float, str]]:
+        out: List[Tuple[int, float, str]] = [(ib, yb, "B")]
+        looking_low = True  # C1 先找低
+        ext_i, ext_y = ib, yb
+        wave = 0
+        for i in range(ib + 1, i_end + 1):
+            try:
+                hi = float(highs[i])
+                lo = float(lows[i])
+            except (TypeError, ValueError):
+                continue
+            if looking_low:
+                if lo <= ext_y:
+                    ext_i, ext_y = i, lo
+                elif hi >= ext_y + thr:
+                    wave += 1
+                    out.append((int(ext_i), float(ext_y), f"C{wave}"))
+                    looking_low = False
+                    ext_i, ext_y = i, hi
+                    if wave >= 8:
+                        break
+            else:
+                if hi >= ext_y:
+                    ext_i, ext_y = i, hi
+                elif lo <= ext_y - thr:
+                    wave += 1
+                    out.append((int(ext_i), float(ext_y), f"C{wave}"))
+                    looking_low = True
+                    ext_i, ext_y = i, lo
+                    if wave >= 8:
+                        break
+        # 收尾：未確認極端入列（今多半 C7 低；八還沒走出就不硬湊 C8）
+        if wave < 8 and ext_i > out[-1][0]:
+            wave += 1
+            out.append((int(ext_i), float(ext_y), f"C{wave}"))
+        if out and out[-1][0] < i_end and wave < 8:
+            try:
+                y_last = (
+                    float(lows[i_end])
+                    if looking_low or wave % 2 == 0
+                    else float(closes[i_end])
+                )
+            except (TypeError, ValueError):
+                y_last = float(closes[i_end])
+            pi, py, plab = out[-1]
+            if abs(i_end - pi) <= 1 and abs(y_last - py) < thr * 0.35:
+                out[-1] = (i_end, y_last, plab)
+            else:
+                wave += 1
+                out.append((i_end, y_last, f"C{wave}"))
+        trimmed: List[Tuple[int, float, str]] = []
+        for row in out:
+            lab = str(row[2])
+            if lab == "B":
+                trimmed.append(row)
+                continue
+            try:
+                num = int(lab.lstrip("C"))
+            except ValueError:
+                continue
+            if num <= 8:
+                trimmed.append(row)
+        return trimmed
+
+    if str(tf) == "60":
+        # 掃門檻：優先「最後一浪＝C7 且靠近末日」（七走完、準備往八）
+        cands: List[Tuple[float, float, List[Tuple[int, float, str]]]] = []
+        for mult in (3.2, 3.6, 4.0, 4.4, 4.8, 5.2):
+            thr = max(float(atr) * mult, abs(yb) * 0.018, 900.0)
+            piv = _run(thr)
+            labs = {lab: (i, y) for i, y, lab in piv}
+            score = 0.0
+            if "C7" in labs and "C8" not in labs:
+                score += 40.0
+            elif "C7" in labs:
+                score += 20.0
+            if "C7" in labs:
+                score += 30.0 * (1.0 - abs(labs["C7"][0] - i_end) / max(1, i_end - ib))
+            score += min(8, sum(1 for lab in labs if lab.startswith("C"))) * 2.0
+            cands.append((score, -thr, piv))
+        cands.sort(reverse=True)
+        return cands[0][2] if cands else _run(max(float(atr) * 4.0, abs(yb) * 0.018, 950.0))
+    thr_d = max(float(atr) * 1.15, abs(yb) * 0.0075, 220.0)
+    return _run(thr_d)
+
+
+def _paint_c9_ext_k_path(
+    ax: Any,
+    pivots: Sequence[Tuple[int, float, str]],
+    *,
+    n: int,
+    fp: Any,
+    tip: Optional[Dict[str, Any]] = None,
+    fontsize: float = 9,
+) -> bool:
+    """主圖 K：畫 B→C1…C8 折線＋浪號釘點；C9 只走預估虛線端。"""
+    rows = [(int(i), float(y), str(lab)) for i, y, lab in (pivots or [])]
+    if len(rows) < 3:
+        return False
+    xs = [r[0] for r in rows]
+    ys = [r[1] for r in rows]
+    # 找到 C7／C8 索引
+    i_c7 = next((j for j, r in enumerate(rows) if r[2] == "C7"), None)
+    i_c8 = next((j for j, r in enumerate(rows) if r[2] == "C8"), None)
+    # 實線到 C7（或 C8 若已走出反彈高）
+    solid_end = i_c8 if i_c8 is not None else (i_c7 if i_c7 is not None else len(rows) - 1)
+    solid_end = max(1, int(solid_end))
+    ax.plot(
+        xs[: solid_end + 1],
+        ys[: solid_end + 1],
+        color="#0b0f14",
+        lw=3.2,
+        solid_capstyle="round",
+        solid_joinstyle="round",
+        zorder=6.3,
+    )
+    ax.plot(
+        xs[: solid_end + 1],
+        ys[: solid_end + 1],
+        color="#ff5252",
+        lw=2.05,
+        solid_capstyle="round",
+        solid_joinstyle="round",
+        zorder=6.4,
+        label="C段9波・C1…C8（官方柱）",
+    )
+    # C7→C8 金線強調（他說此刻）
+    if i_c7 is not None and i_c8 is not None and i_c8 > i_c7:
+        ax.plot(
+            [xs[i_c7], xs[i_c8]],
+            [ys[i_c7], ys[i_c8]],
+            color="#ffd54f",
+            lw=2.6,
+            zorder=6.6,
+            solid_capstyle="round",
+        )
+    for j, (ii, yy, lab) in enumerate(rows):
+        if lab == "B":
+            continue
+        is_hot = lab in {"C7", "C8"}
+        ax.scatter(
+            [ii],
+            [yy],
+            s=70 if is_hot else 40,
+            c="#ffd54f" if is_hot else "#ffffff",
+            zorder=8.7,
+            edgecolors="#111111",
+            linewidths=0.65,
+        )
+        if is_hot:
+            ax.scatter(
+                [ii],
+                [yy],
+                s=118,
+                facecolors="none",
+                edgecolors="#ffd54f",
+                linewidths=1.7,
+                zorder=8.8,
+            )
+        # 浪號要一眼對得上哪一根 K：C1…C8
+        odd = lab in {"C1", "C3", "C5", "C7"}
+        tip_side = "low" if odd else "high"
+        name = lab if lab != "C8" else "C8"
+        if lab == "C7":
+            name = "C7"
+        _pin_pivot_name(
+            ax,
+            int(ii),
+            float(yy),
+            name,
+            "#ffd54f" if is_hot else "#ff8a80",
+            fp,
+            side="left" if odd else "right",
+            tip=tip_side,
+            n=n,
+            pad_x=0.32,
+            fontsize=fontsize if is_hot else max(8.0, fontsize - 0.5),
+        )
+    # C9 只標在預估虛線端，不准拿已走柱冒充
+    if tip is not None:
+        try:
+            fx = float(tip.get("fut_x"))
+            fy = float(tip.get("fut_y"))
+        except (TypeError, ValueError):
+            return True
+        last_i, last_y = xs[-1], ys[-1]
+        ax.plot(
+            [last_i, fx],
+            [last_y, fy],
+            color="#ce93d8",
+            lw=1.7,
+            ls=(0, (3.5, 1.8)),
+            zorder=6.5,
+        )
+        ax.scatter(
+            [fx],
+            [fy],
+            s=52,
+            facecolors="none",
+            edgecolors="#ce93d8",
+            linewidths=1.3,
+            zorder=8.9,
+        )
+        _pin_pivot_name(
+            ax,
+            fx,
+            fy,
+            "C9（預估）",
+            "#ce93d8",
+            fp,
+            side="right",
+            tip="low",
+            n=n,
+            pad_x=0.4,
+            fontsize=max(8.0, fontsize - 0.5),
+        )
+    return True
 
 
 def _paint_c9_extension_on_bars(
@@ -3557,16 +3882,35 @@ def _paint_c9_extension_on_bars(
     pin_now: bool = True,
     side: str = "left",
     fontsize: float = 9,
+    pivots: Optional[Sequence[Tuple[int, float, str]]] = None,
 ) -> bool:
-    """三窗 K 上標：今＝C-7轉C-8；預估虛線端＝→C-9。不准發明 C-7／C-8 轉折價。"""
+    """三窗 K：有官方轉折就釘 C1…C8＋虛線 C9；否則只留此刻／C9 人話標。"""
     if not _c9_extension_active(pack):
         return False
+    if pivots and _paint_c9_ext_k_path(
+        ax, pivots, n=n, fp=fp, tip=tip, fontsize=fontsize
+    ):
+        if pin_now:
+            _pin_pivot_name(
+                ax,
+                int(i_now),
+                float(y_now),
+                f"今＝{_c9_now_step_label()}（預估）",
+                "#ea80fc",
+                fp,
+                side=side,
+                tip="mid",
+                n=n,
+                pad_x=0.55,
+                fontsize=fontsize,
+            )
+        return True
     if pin_now:
         _pin_pivot_name(
             ax,
             int(i_now),
             float(y_now),
-            "C-7轉C-8（今・預估）",
+            f"{_c9_now_step_label()}（今・預估）",
             "#ea80fc",
             fp,
             side=side,
@@ -5634,10 +5978,14 @@ def _his_micro_degree(blob: str) -> Dict[str, str]:
     # 9波擴延 C-7／C-8／C-9（必帶連字號，不准誤吃 C3-7）
     if re.search(
         r"9\s*波\s*擴延|C\s*[-–]\s*7.{0,24}C\s*[-–]\s*8|C\s*[-–]\s*9|"
-        r"35500\s*[-~～到至]\s*37300",
+        r"35500\s*[-~～到至]\s*37300|七走完|準備往\s*八|往八走",
         s,
     ):
-        if re.search(r"C\s*[-–]\s*7.{0,20}(?:轉|->|→).{0,8}C\s*[-–]\s*8", s):
+        if re.search(
+            r"七走完|準備往\s*八|往八走|"
+            r"C\s*[-–]\s*7.{0,20}(?:轉|->|→|走完).{0,12}C\s*[-–]\s*8",
+            s,
+        ):
             degree = "C-8"
         elif re.search(r"C\s*[-–]\s*9", s) and not re.search(
             r"C\s*[-–]\s*7|C\s*[-–]\s*8", s
@@ -6183,14 +6531,20 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
     thesis = str(pack.get("thesis") or text)
     # 大結構跟他鎖的：A底→B反彈→C；不准寫成「五波升完再ABC」讓人把7/29→四萬九當上升⑤
     steps: List[str] = ["大A底7/29", "大B反彈", "大C進行中"]
-    if deg in ("C-7", "C-8", "C-9") or "9波擴延" in thesis or "C-7轉C-8" in thesis:
+    if (
+        deg in ("C-7", "C-8", "C-9")
+        or "9波擴延" in thesis
+        or "C-7轉C-8" in thesis
+        or "C-7走完" in thesis
+        or "準備往八" in thesis
+    ):
         steps.append("9波擴延")
         if deg == "C-9":
-            steps.extend(["C-7→C-8", "C-9"])
+            steps.extend([_c9_now_step_label(), "C-9"])
         elif deg == "C-7":
             steps.append("C-7")
         else:
-            steps.append("C-7轉C-8")
+            steps.append(_c9_now_step_label())
     elif deg in ("C3-3-1", "C3-3-2", "C3-3-3", "C3-3-4"):
         steps.extend(["C3-3主跌", deg])
     elif "3→4" in thesis:
@@ -6222,11 +6576,8 @@ def _wave_now_ladder(pack: Optional[Dict[str, Any]] = None, *, blob: str = "") -
         day_bit = ""
     # 9波擴延：話筒／超近說明用人話，不准只丟 C-7 代號
     if "9波擴延" in steps or deg in ("C-7", "C-8", "C-9"):
-        oral_now = (
-            "目前最有可能 C-7 轉 C-8，還有最後一小段下跌 C-9；"
-            "C-9 要跌就全部跌完"
-        )
-        one_line = "現在：9波擴延・C-7轉C-8→C-9（預估）"
+        oral_now = _c9_oral_now_line()
+        one_line = f"現在：9波擴延・{_c9_now_step_label()}→C-9（預估）"
         now_line = (
             oral_now
             + (f"・{day_bit}" if day_bit else "")
@@ -6363,7 +6714,7 @@ def _eight_wave_now_key(pack: Optional[Dict[str, Any]] = None) -> str:
     """從層級鏈取八浪縮圖此刻鍵（大結構落在修正波 C）。
 
     C3-3-x 細碼必須完整保留給閃折①～⑤，不准裁成裸 C。
-    9波擴延題旨回 C-8（C-7轉C-8；虛線接 C-9）。
+    9波擴延題旨回 C-8（七走完、準備往八；虛線接 C-9）。
     """
     if _c9_extension_active(pack):
         now = str((_wave_now_ladder(pack) or {}).get("now") or "").strip()
@@ -6407,13 +6758,19 @@ def _c_flash_step(now_key: str) -> int:
 
 
 def _c9_ext_flash_step(now_key: str) -> int:
-    """9波擴延縮圖：此刻落在 C-1…C-9 哪一尖（1-based；C-8＝轉折中）。"""
+    """9波擴延縮圖：此刻落在 C-1…C-9 哪一尖（1-based；七走完→準備往八＝C-8）。"""
     nk = str(now_key or "").upper().replace(" ", "")
+    raw = str(now_key or "")
     if "C-9" in nk or nk.endswith("9"):
         return 9
-    if "C-7" in nk and "8" not in nk:
+    if "C-7" in nk and "8" not in nk and "走完" not in raw:
         return 7
-    if "C-8" in nk or "C-7轉C-8" in str(now_key or ""):
+    if (
+        "C-8" in nk
+        or "C-7轉C-8" in raw
+        or "C-7走完" in raw
+        or "準備往八" in raw
+    ):
         return 8
     return 8
 
@@ -6542,7 +6899,7 @@ def _paint_eight_wave_inset(
 ) -> None:
     """三張教具共用：教科書八浪縮圖；detail 框此刻；c_flash＝超近在C內畫下殺閃折①～⑤。
 
-    c9_ext＝True：C 內改畫 9 波擴延（C1…C9）；此刻 C-7轉C-8，C8→C9 虛線（教具示意，非買訊）。
+    c9_ext＝True：C 內改畫 9 波擴延（C1…C9）；此刻七走完→C-8，C8→C9 虛線（教具示意，非買訊）。
     """
     try:
         import matplotlib.pyplot as plt
@@ -6730,19 +7087,40 @@ def _paint_eight_wave_inset(
         cx, cy = pts[8]
         dx, dy = cx - bx, cy - by
         if use_c9:
-            # 教具 9 波下殺：奇＝低、偶＝反彈；不准發明真價，只示意結構
-            flash_spec = [
-                (0.00, 0.00, "B"),
-                (0.08, 0.22, "C1"),
-                (0.17, 0.12, "C2"),
-                (0.27, 0.38, "C3"),
-                (0.37, 0.26, "C4"),
-                (0.47, 0.52, "C5"),
-                (0.57, 0.40, "C6"),
-                (0.68, 0.72, "C7"),
-                (0.80, 0.58, "C8"),
-                (1.00, 1.00, "C9"),
+            # 優先＝主圖官方柱 C1…C8；缺才退回教具示意比例（仍標 C1…C9）
+            raw_piv = [
+                (int(i), float(y), str(lab))
+                for i, y, lab in (flash_pivots or [])
+                if str(lab) == "B" or str(lab).startswith("C")
             ]
+            flash_spec = _flash_spec_from_pivots(raw_piv) if len(raw_piv) >= 4 else []
+            has_c_labs = bool(
+                flash_spec
+                and any(str(lab).startswith("C") for _t, _d, lab in flash_spec)
+            )
+            if (not has_c_labs) or len(flash_spec) < 5:
+                flash_spec = [
+                    (0.00, 0.00, "B"),
+                    (0.08, 0.22, "C1"),
+                    (0.17, 0.12, "C2"),
+                    (0.27, 0.38, "C3"),
+                    (0.37, 0.26, "C4"),
+                    (0.47, 0.52, "C5"),
+                    (0.57, 0.40, "C6"),
+                    (0.68, 0.72, "C7"),
+                    (0.80, 0.58, "C8"),
+                    (1.00, 1.00, "C9"),
+                ]
+            else:
+                # 官方柱只到 C7／C8：t 壓到 0.82，末端補示意 C9（虛線用）
+                scaled = [
+                    (min(0.82, float(t) * 0.82), float(d), str(lab))
+                    for t, d, lab in flash_spec
+                    if str(lab) != "C9"
+                ]
+                if scaled:
+                    scaled[0] = (0.0, 0.0, scaled[0][2])
+                flash_spec = scaled + [(1.00, 1.00, "C9")]
             flash_step = _c9_ext_flash_step(nk)
         else:
             # 優先用主圖傳入的官方柱錨；缺才退回近似比例（仍須六點）
@@ -6760,32 +7138,53 @@ def _paint_eight_wave_inset(
         for t, drop, _lab in flash_spec:
             flash_pts.append((bx + dx * t, by + dy * drop))
         flash_pts[0] = (bx, by)
-        flash_pts[-1] = (cx, cy)
-        if use_c9 and len(flash_pts) >= 10:
-            # C1…C8 實線；C8→C9 虛線（還有最後一小段）
-            solid = flash_pts[:9]  # B…C8
-            fx = [p[0] for p in solid]
-            fy = [p[1] for p in solid]
+        # 非 9 波：末點鎖 C 框角；9 波末點＝C9 示意（不准被外框 C 蓋掉）
+        if not use_c9:
+            flash_pts[-1] = (cx, cy)
+        elif flash_spec and str(flash_spec[-1][2]) == "C9":
+            flash_pts[-1] = (cx, cy)
+        lab_idx = {
+            str(lab): j for j, (_t, _d, lab) in enumerate(flash_spec) if j < len(flash_pts)
+        }
+        if use_c9 and lab_idx:
+            # 實線到 C7／C8（已走出的）；C7／C8→C9 虛線
+            solid_labs = [
+                lab
+                for lab in ("B", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")
+                if lab in lab_idx
+            ]
+            solid_i = [lab_idx[lab] for lab in solid_labs]
+            fx = [flash_pts[i][0] for i in solid_i]
+            fy = [flash_pts[i][1] for i in solid_i]
             ax.plot(fx, fy, color="#0b0f14", lw=2.35, zorder=6.1, solid_capstyle="round")
             ax.plot(fx, fy, color="#ffffff", lw=1.45, zorder=6.2, solid_capstyle="round")
             ax.plot(fx, fy, color="#ff5252", lw=1.05, zorder=6.3, solid_capstyle="round")
-            # 金亮 C7→C8（目前最有可能）
-            ax.plot(
-                [flash_pts[7][0], flash_pts[8][0]],
-                [flash_pts[7][1], flash_pts[8][1]],
-                color="#ffd54f",
-                lw=2.4,
-                zorder=6.5,
-                solid_capstyle="round",
-            )
-            ax.plot(
-                [flash_pts[8][0], flash_pts[9][0]],
-                [flash_pts[8][1], flash_pts[9][1]],
-                color="#ce93d8",
-                lw=1.55,
-                ls=(0, (3.2, 1.6)),
-                zorder=6.4,
-            )
+            i7 = lab_idx.get("C7")
+            i8 = lab_idx.get("C8")
+            i9 = lab_idx.get("C9")
+            if i7 is not None and i8 is not None:
+                ax.plot(
+                    [flash_pts[i7][0], flash_pts[i8][0]],
+                    [flash_pts[i7][1], flash_pts[i8][1]],
+                    color="#ffd54f",
+                    lw=2.4,
+                    zorder=6.5,
+                    solid_capstyle="round",
+                )
+                dash_from = i8
+            elif i7 is not None:
+                dash_from = i7
+            else:
+                dash_from = solid_i[-1] if solid_i else None
+            if dash_from is not None and i9 is not None:
+                ax.plot(
+                    [flash_pts[dash_from][0], flash_pts[i9][0]],
+                    [flash_pts[dash_from][1], flash_pts[i9][1]],
+                    color="#ce93d8",
+                    lw=1.55,
+                    ls=(0, (3.2, 1.6)),
+                    zorder=6.4,
+                )
         else:
             fx = [p[0] for p in flash_pts]
             fy = [p[1] for p in flash_pts]
@@ -6825,27 +7224,32 @@ def _paint_eight_wave_inset(
                 va="center",
                 zorder=8,
             )
-        if use_c9 and len(flash_pts) >= 9:
-            # 金圈在 C8（轉折中）；C9 虛線端另圈淡紫
-            sx, sy = flash_pts[8]
-            ax.scatter(
-                [sx],
-                [sy],
-                s=78,
-                facecolors="none",
-                edgecolors="#ffd54f",
-                linewidths=1.55,
-                zorder=9,
-            )
-            ax.scatter(
-                [flash_pts[9][0]],
-                [flash_pts[9][1]],
-                s=52,
-                facecolors="none",
-                edgecolors="#ce93d8",
-                linewidths=1.2,
-                zorder=9,
-            )
+        if use_c9:
+            # 金圈優先 C8；沒有 C8 就圈 C7（他說 C-7 轉 C-8）
+            hot = lab_idx.get("C8")
+            if hot is None:
+                hot = lab_idx.get("C7")
+            if hot is not None and hot < len(flash_pts):
+                ax.scatter(
+                    [flash_pts[hot][0]],
+                    [flash_pts[hot][1]],
+                    s=78,
+                    facecolors="none",
+                    edgecolors="#ffd54f",
+                    linewidths=1.55,
+                    zorder=9,
+                )
+            i9 = lab_idx.get("C9")
+            if i9 is not None and i9 < len(flash_pts):
+                ax.scatter(
+                    [flash_pts[i9][0]],
+                    [flash_pts[i9][1]],
+                    s=52,
+                    facecolors="none",
+                    edgecolors="#ce93d8",
+                    linewidths=1.2,
+                    zorder=9,
+                )
         elif 1 <= flash_step < len(flash_pts):
             sx, sy = flash_pts[flash_step]
             ax.scatter(
@@ -6886,7 +7290,7 @@ def _paint_eight_wave_inset(
             )
             tip = f"此刻＝{nk}"
             if use_c9:
-                tip = "此刻＝C-7轉C-8｜虛線＝C-9"
+                tip = "此刻＝C-7走完→C-8｜虛線＝C-9"
             elif c_flash and flash_step:
                 tip = f"此刻＝{nk}・閃①～⑤之{flash_step}"
             ax.text(
@@ -8161,7 +8565,15 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pad_x=0.22,
         fontsize=10,
     )
-    # 遠窗：C進行中只留轉折點（紫點）；9波擴延時 K 上釘 C-7轉C-8／→C-9
+    # 遠窗：9波擴延時 K 上釘 C1…C8（官方柱）＋虛線 C9
+    _c9_now = _c9_extension_active(pack)
+    _c9_pivots_far = (
+        _c9_ext_bar_pivots(
+            highs, lows, closes, i_bhi=int(i_b_end), i_now=int(i_now)
+        )
+        if _c9_now
+        else []
+    )
     _paint_c9_extension_on_bars(
         ax,
         pack=pack,
@@ -8173,9 +8585,9 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         pin_now=True,
         side="left",
         fontsize=9,
+        pivots=_c9_pivots_far,
     )
     tip_skip: set = set()
-    _c9_now = _c9_extension_active(pack)
     right_notes = [
         {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
         {"x": i5e, "y": y5e, "text": f"⑤終 {_px(y5e)}", "color": "#40c4ff"},
@@ -8190,7 +8602,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
             "x": i_now,
             "y": y_now,
             "text": (
-                f"C-7轉C-8今 {_px(y_now)}"
+                f"{_c9_now_step_label()}今 {_px(y_now)}"
                 if _c9_now
                 else f"大C今 {_px(y_now)}"
             ),
@@ -8769,6 +9181,7 @@ def _render_twii_far_dark(db_path: str, save_path: str, pack: Dict[str, Any]) ->
         rect=_far_ins,
         title="九波擴延" if _c9_far else "八浪",
         c9_ext=_c9_far,
+        flash_pivots=_c9_pivots_far if _c9_far else None,
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
@@ -9211,6 +9624,14 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         pad_x=0.35,
         fontsize=9,
     )
+    _c9_near_now = _c9_extension_active(pack)
+    _c9_pivots_near = (
+        _c9_ext_bar_pivots(
+            highs, lows, closes, i_bhi=int(i_b_end), i_now=int(i_now)
+        )
+        if _c9_near_now
+        else []
+    )
     if not _paint_c9_extension_on_bars(
         ax,
         pack=pack,
@@ -9222,6 +9643,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         pin_now=True,
         side="right",
         fontsize=9,
+        pivots=_c9_pivots_near,
     ):
         _pin_pivot_name(
             ax,
@@ -9242,7 +9664,6 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     sr_skip = zone.get("sr_skip") or {}
     tip_anchor = tip.get("anchor_y")
     tip_skip: set = set()
-    _c9_near_now = _c9_extension_active(pack)
     right_notes = [
         {"x": i5s, "y": y5s, "text": f"⑤起 {_px(y5s)}", "color": "#40c4ff"},
         {"x": i5e, "y": y5e, "text": f"⑤末 {_px(y5e)}", "color": "#40c4ff"},
@@ -9257,7 +9678,7 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
             "x": i_now,
             "y": y_now,
             "text": (
-                f"C-7轉C-8今 {_px(y_now)}"
+                f"{_c9_now_step_label()}今 {_px(y_now)}"
                 if _c9_near_now
                 else f"大C今 {_px(y_now)}"
             ),
@@ -9419,10 +9840,10 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
     ladder = _wave_now_ladder(pack)
     # 標題跟當日層級走：一眼看到大→小走到哪；雙底色與遠窗對齊
     title_bit = str(ladder.get("now") or "").strip() or "現在在C（預估）"
-    if title_bit in ("C-7轉C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
+    if title_bit in ("C-7轉C-8", "C-7走完→C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
         ladder.get("chain") or ""
     ):
-        title_bit = "C-7轉C-8→C-9"
+        title_bit = f"{_c9_now_step_label()}→C-9"
     elif len(title_bit) > 22:
         title_bit = title_bit[:21] + "…"
     vz_y = _teach_vol_sr_title_bit(
@@ -9504,17 +9925,300 @@ def _render_twii_live_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -
         rect=_near_inset,
         title="九波擴延・C" if _c9_near else "八浪對位",
         c9_ext=_c9_near,
+        flash_pivots=_c9_pivots_near if _c9_near else None,
     )
     fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
     plt.close(fig)
     return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
 
 
+def _render_twii_super_near_c9_60m(
+    db_path: str, save_path: str, pack: Dict[str, Any]
+) -> str:
+    """超近窗・9波擴延專用：加權日盤 60 分 K（10/6→最新日盤收）釘 C1…C8。
+
+    日K切不出細浪時改 60 分；價／量只認 minute_bars 官方柱。非買訊。
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from decision_card_signals import candle_up_taiwan
+        from wayne_navigator import NAV_CHART_DPI, _fp
+    except Exception:
+        return ""
+    if not save_path:
+        return ""
+    rows = _load_twii60_day_rows(db_path, since_ymd="20261006")
+    if len(rows) < 24:
+        return ""
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    n = len(rows)
+    opens = [float(r["open"]) for r in rows]
+    highs = [float(r["high"]) for r in rows]
+    lows = [float(r["low"]) for r in rows]
+    closes = [float(r["close"]) for r in rows]
+    vols = [float(r["volume"]) for r in rows]
+    # B 峰＝10/6 起窗內最高（大B末假突破）
+    i_b = max(range(min(12, n)), key=lambda i: float(highs[i]))
+    for i, r in enumerate(rows):
+        if str(r.get("date") or "") == "20261006" and float(highs[i]) >= float(highs[i_b]):
+            i_b = i
+    i_now = n - 1
+    y_b = float(highs[i_b])
+    y_now = float(closes[i_now])
+    pivots = _c9_ext_bar_pivots(
+        highs, lows, closes, i_bhi=i_b, i_now=i_now, tf="60"
+    )
+    ladder = _wave_now_ladder(pack)
+    tip_anchors = _tw_tip_anchors(pack)
+    # 預估虛線：往 C9 低點區（他原文 35500~37300）
+    tip = _c_forecast_tip(
+        i_now=i_now,
+        y_now=y_now,
+        y_ref=y_b,
+        lows=lows[i_b : i_now + 1] or lows,
+        anchors=tip_anchors or (37300.0, 35500.0),
+    )
+
+    fig = plt.figure(figsize=(15.6, 11.4), dpi=NAV_CHART_DPI)
+    _gs = fig.add_gridspec(
+        3,
+        2,
+        height_ratios=(5.4, 2.55, 1.15),
+        width_ratios=(1.12, 1.0),
+        hspace=0.10,
+        wspace=0.05,
+    )
+    ax = fig.add_subplot(_gs[0, :])
+    ax_leg = fig.add_subplot(_gs[1, 0])
+    ax_wave_host = fig.add_subplot(_gs[1, 1])
+    axv = fig.add_subplot(_gs[2, :], sharex=ax)
+    fig.patch.set_facecolor(_LIVE_BG)
+    _style_live_ax(ax, axv)
+    for _ax_info in (ax_leg, ax_wave_host):
+        _ax_info.set_facecolor("#0b0f14")
+        for _sp in _ax_info.spines.values():
+            _sp.set_color("#546e7a")
+            _sp.set_linewidth(0.95)
+        _ax_info.set_xticks([])
+        _ax_info.set_yticks([])
+        _ax_info.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+
+    tw_supports = _tw_support_ladder(pack)
+    ymin = min([min(lows)] + list(tw_supports) + [35500.0]) - 420
+    ymax = max(highs) + 720
+    zone = _paint_window_dual_zones(
+        ax,
+        highs=highs,
+        lows=lows,
+        vols=vols,
+        bars=rows,
+        y_now=float(y_now),
+        fp=_fp,
+        supports=tw_supports,
+        resists=(47637.0, 48613.0, y_b),
+        skip_label_ys=[float(v) for v in tip_anchors],
+        vol_lookback=40,
+    )
+    _paint_c9_low_zone_band(ax, pack, fp=_fp)
+    _paint_live_candles(ax, axv, opens, highs, lows, closes, vols, candle_up_taiwan)
+    # 預估虛線（C9）
+    ax.plot(
+        [i_now, float(tip["fut_x"])],
+        [y_now, float(tip["fut_y"])],
+        color="#ea80fc",
+        lw=1.55,
+        ls=(0, (4, 2)),
+        alpha=0.8,
+        zorder=6,
+    )
+    _paint_c9_extension_on_bars(
+        ax,
+        pack=pack,
+        i_now=i_now,
+        y_now=y_now,
+        n=n,
+        fp=_fp,
+        tip=tip,
+        pin_now=True,
+        side="right",
+        fontsize=9,
+        pivots=pivots,
+    )
+    _pin_pivot_name(
+        ax,
+        int(i_b),
+        float(y_b),
+        f"B {_px(y_b)}",
+        "#40c4ff",
+        _fp,
+        side="left",
+        tip="high",
+        n=n,
+        pad_x=0.35,
+        fontsize=10,
+    )
+
+    # 右欄：C1…C8 價＋低點區
+    right_notes: List[Dict[str, Any]] = []
+    tip_skip: set = set()
+    for ii, yy, lab in pivots:
+        if lab == "B":
+            continue
+        right_notes.append(
+            {
+                "x": int(ii),
+                "y": float(yy),
+                "text": f"{lab} {_px(yy)}",
+                "color": "#ffd54f" if lab in {"C7", "C8"} else "#ff8a80",
+            }
+        )
+        tip_skip.add(round(float(yy), 1))
+    right_notes.extend(
+        _tw_pred_right_notes(
+            pack, n=n, lows=lows, tip_skip=tip_skip, bars=rows
+        )
+    )
+    y_bot, y_top = float(ymin), float(ymax)
+    ax.set_ylim(y_bot, y_top)
+    x_col = float(n) + 1.55
+    try:
+        x_col = max(x_col, float(tip.get("fut_x") or n) + 0.35)
+    except (TypeError, ValueError):
+        pass
+    _place_live_right_labels(
+        ax,
+        right_notes,
+        n=n,
+        ymin=y_bot,
+        ymax=y_top,
+        fp=_fp,
+        level_dash=True,
+        min_gap=(y_top - y_bot) * 0.045,
+        x_col=x_col,
+    )
+    ax.set_xlim(-0.6, max(n + 6.5, float(tip.get("fut_x") or n) + 2.2))
+    axv.set_ylim(0, (max(vols) if any(vols) else 1) * 1.35)
+    axv.set_ylabel("量", fontproperties=_fp(10, "bold"), color=_LIVE_MUTED)
+
+    # 時間軸：日＋時
+    ticks, labs = [], []
+    for i, r in enumerate(rows):
+        ts = str(r.get("ts") or "")
+        if len(ts) < 12:
+            continue
+        if i == 0 or i == n - 1 or ts[8:12] in {"0900", "1300"} or i % 8 == 0:
+            ticks.append(i)
+            labs.append(f"{int(ts[4:6])}/{int(ts[6:8])} {ts[8:10]}")
+    axv.set_xticks(ticks)
+    axv.set_xticklabels(labs, fontproperties=_fp(8, "bold"), color=_LIVE_TEXT)
+    for lab in list(ax.get_yticklabels()) + list(axv.get_yticklabels()):
+        lab.set_fontproperties(_fp(9, "bold"))
+        lab.set_color(_LIVE_MUTED)
+
+    last_ts = str(rows[-1].get("ts") or "")
+    last_day = (
+        f"{int(last_ts[4:6])}/{int(last_ts[6:8])} {last_ts[8:10]}:{last_ts[10:12]}"
+        if len(last_ts) >= 12
+        else ""
+    )
+    fig.text(
+        0.03,
+        0.972,
+        f"第3張（超近窗・60分）：10/6→日盤收｜{_c9_now_step_label()}→C-9（9波擴延・預估）",
+        fontproperties=_fp(12, "bold"),
+        color=_LIVE_TEXT,
+        ha="left",
+        va="top",
+    )
+    fig.text(
+        0.03,
+        0.945,
+        f"加權日盤60分｜{last_day}收 {_px(y_now)}｜金＝C7→C8｜虛線＝C9｜非買訊",
+        fontproperties=_fp(9, "bold"),
+        color="#ce93d8",
+        ha="left",
+        va="top",
+    )
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.06)
+    _paint_teach_query_stamp(
+        fig, rows, pack=pack, close=closes[-1], fp=_fp, x=0.995, y=0.855
+    )
+
+    # 中排左＝人話層級
+    hierarchy = str(ladder.get("teach_box") or "")
+    if "七走完" not in hierarchy and "目前最有可能" not in hierarchy:
+        hierarchy = f"{hierarchy}\n{_c9_oral_now_line()}"
+    labs_line = " ".join(
+        f"{lab}@{_ymd(rows[i].get('date'))[4:6]}/{_ymd(rows[i].get('date'))[6:8]}"
+        for i, _y, lab in pivots
+        if lab.startswith("C")
+    )
+    ax_leg.text(
+        0.04,
+        0.96,
+        "\n".join(
+            [
+                hierarchy,
+                "底圖＝加權日盤60分（10/6→日盤收）",
+                f"浪序：{labs_line}"[:120],
+                f"日K小波柱讀略｜口述主＝{_c9_now_step_label()}→C-9",
+            ]
+        ),
+        transform=ax_leg.transAxes,
+        ha="left",
+        va="top",
+        fontproperties=_fp(9, "bold"),
+        color=_LIVE_TEXT,
+        linespacing=1.28,
+        zorder=3,
+    )
+    foot_m = _c9_oral_now_line().replace(" ", "")
+    fig.text(
+        0.03,
+        0.012,
+        f"{foot_m}｜上＝60分K｜中＝說明＋九波縮圖｜下＝量｜C走完≠新五波升",
+        fontproperties=_fp(10, "bold"),
+        color=_LIVE_TEXT,
+        ha="left",
+        va="bottom",
+    )
+    fig.canvas.draw()
+    _pos = ax_wave_host.get_position()
+    ax_wave_host.set_visible(False)
+    _paint_eight_wave_inset(
+        fig,
+        fp=_fp,
+        now_key=_eight_wave_now_key(pack),
+        detail=True,
+        c_flash=True,
+        flash_pivots=pivots,
+        rect=(float(_pos.x0), float(_pos.y0), float(_pos.width), float(_pos.height)),
+        title="九波擴延・C（對60分）",
+        c9_ext=True,
+    )
+    fig.savefig(save_path, facecolor=_LIVE_BG, bbox_inches="tight")
+    plt.close(fig)
+    pack["micro_tf"] = "twii60"
+    pack["micro_c9_pivots"] = [
+        {"i": int(i), "y": float(y), "lab": str(lab), "ts": str(rows[i].get("ts") or "")}
+        for i, y, lab in pivots
+    ]
+    return save_path if os.path.isfile(save_path) and os.path.getsize(save_path) > 4000 else ""
+
+
 def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, Any]) -> str:
     """教具④超級近窗：C 段內『哪一層小波』對齊他說的；另色線僅前提不同才畫。
 
+    9波擴延題旨：改走加權日盤 60 分（10/6→日盤收）才能釘出 C1…C8。
     不是買訊。個股不准發明浪；大盤細微只標他點過／題旨能對上的層。
     """
+    if _c9_extension_active(pack):
+        got = _render_twii_super_near_c9_60m(db_path, save_path, pack)
+        if got:
+            return got
     try:
         import matplotlib
 
@@ -9655,11 +10359,23 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         show_label=False,  # 超近：45546／c5 只走右欄，圖上不准浮
         anchors=tip_anchors,
     )
-    # 細浪重畫：B＝大B末真高 →①…⑤；與右縮圖 flash_pivots 同一套，不准另編
-    flash_pivots = _c_teach_flash_pivots(
-        highs, lows, closes, i_bhi=i_b_peak, i_c=i_c, i_now=i_now, c_sub=c_sub
+    # 細浪重畫：B＝大B末真高 →①…⑤；9波題旨改走官方柱 C1…C8（主視覺）
+    _c9_micro = _c9_extension_active(pack)
+    _c9_pivots_micro = (
+        _c9_ext_bar_pivots(
+            highs, lows, closes, i_bhi=int(i_b_peak), i_now=int(i_now)
+        )
+        if _c9_micro
+        else []
     )
-    if len(flash_pivots) >= 6:
+    flash_pivots = (
+        _c9_pivots_micro
+        if len(_c9_pivots_micro) >= 4
+        else _c_teach_flash_pivots(
+            highs, lows, closes, i_bhi=i_b_peak, i_c=i_c, i_now=i_now, c_sub=c_sub
+        )
+    )
+    if len(flash_pivots) >= 4:
         geom_xs = [int(p[0]) for p in flash_pivots]
         geom_ys = [float(p[1]) for p in flash_pivots]
     else:
@@ -9670,73 +10386,79 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             float(highs[i_c2]),
             float(closes[i_now]),
         ]
-    _c9_micro = _c9_extension_active(pack)
-    # 雙描邊＋實折；9波題旨時橙線改輔讀，主視覺改 C-7轉C-8＋虛線→C-9
-    ax.plot(
-        geom_xs,
-        geom_ys,
-        color="#0b0f14",
-        lw=3.4 if not _c9_micro else 2.2,
-        solid_capstyle="round",
-        solid_joinstyle="round",
-        zorder=6.2,
-        alpha=1.0 if not _c9_micro else 0.35,
-    )
-    ax.plot(
-        geom_xs,
-        geom_ys,
-        color="#ffab40",
-        lw=2.15 if not _c9_micro else 1.35,
-        solid_capstyle="round",
-        solid_joinstyle="round",
-        zorder=6.4,
-        alpha=1.0 if not _c9_micro else 0.40,
-        label=(
-            "日K輔讀①～⑤"
-            if _c9_micro
-            else "日K小波①～⑤（＝縮圖）"
-        ),
-    )
-    flash_step = _c_flash_step(str(ladder.get("now") or ""))
-    if _c9_micro:
-        # 9波：金圈釘在今＝C-7轉C-8；虛線端＝C-9（跟預估 tip 同點）
-        flash_step = len(geom_xs) - 1
-    for j, (gx, gy) in enumerate(zip(geom_xs, geom_ys)):
-        is_now = j == flash_step  # 0=B；1…5＝①～⑤；9波題旨＝末日
-        ax.scatter(
-            [gx],
-            [gy],
-            s=78 if is_now else 44,
-            c="#ffd54f" if is_now else "#ffab40",
-            zorder=8.5,
-            edgecolors="#111111",
-            linewidths=0.7,
-            alpha=1.0 if (is_now or not _c9_micro) else 0.45,
+    if _c9_micro and len(_c9_pivots_micro) >= 4:
+        # 主視覺＝C1…C8 浪號釘在對應 K；①～⑤ 橙線不畫，免搶讀
+        _paint_c9_extension_on_bars(
+            ax,
+            pack=pack,
+            i_now=i_now,
+            y_now=float(closes[i_now]),
+            n=n,
+            fp=_fp,
+            tip=tip,
+            pin_now=True,
+            side="right",
+            fontsize=9,
+            pivots=_c9_pivots_micro,
         )
-        if is_now:
+        flash_step = 0
+    else:
+        # 雙描邊＋實折，讓 B→①～⑤ 一眼對得上縮圖閃折
+        ax.plot(
+            geom_xs,
+            geom_ys,
+            color="#0b0f14",
+            lw=3.4,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+            zorder=6.2,
+        )
+        ax.plot(
+            geom_xs,
+            geom_ys,
+            color="#ffab40",
+            lw=2.15,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+            zorder=6.4,
+            label="日K小波①～⑤（＝縮圖）",
+        )
+        flash_step = _c_flash_step(str(ladder.get("now") or ""))
+        for j, (gx, gy) in enumerate(zip(geom_xs, geom_ys)):
+            is_now = j == flash_step
             ax.scatter(
                 [gx],
                 [gy],
-                s=130,
-                facecolors="none",
-                edgecolors="#ffd54f",
-                linewidths=1.8,
-                zorder=8.6,
+                s=78 if is_now else 44,
+                c="#ffd54f" if is_now else "#ffab40",
+                zorder=8.5,
+                edgecolors="#111111",
+                linewidths=0.7,
             )
-    _paint_c9_extension_on_bars(
-        ax,
-        pack=pack,
-        i_now=i_now,
-        y_now=float(closes[i_now]),
-        n=n,
-        fp=_fp,
-        tip=tip,
-        pin_now=False,  # 下面 now_lab 已釘人話
-        side="right",
-        fontsize=9,
-    )
-    # c5 只釘點（對他60分），不再另畫紫折線搶①～⑤浪階
-    if c_sub.get("ok"):
+            if is_now:
+                ax.scatter(
+                    [gx],
+                    [gy],
+                    s=130,
+                    facecolors="none",
+                    edgecolors="#ffd54f",
+                    linewidths=1.8,
+                    zorder=8.6,
+                )
+        _paint_c9_extension_on_bars(
+            ax,
+            pack=pack,
+            i_now=i_now,
+            y_now=float(closes[i_now]),
+            n=n,
+            fp=_fp,
+            tip=tip,
+            pin_now=False,
+            side="right",
+            fontsize=9,
+        )
+    # c5 只釘點（對他60分）；9波題旨時讓路給 C1…C8
+    if c_sub.get("ok") and not _c9_micro:
         i5c, y5c = int(c_sub["i_c5_lo"]), float(c_sub["y_c5"])
         ax.scatter(
             [i5c],
@@ -9749,55 +10471,61 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
             label="c5細（對他60分）",
         )
 
-    # 轉折浪名釘同價Y；B峰＝大B末真高；①～⑤與縮圖同錨
+    # 轉折浪名釘同價Y；9波題旨已在 _paint_c9_ext_k_path 釘 C1…C8
     c_lo = min(float(lows[i]) for i in range(i_b_peak, n))
     c_hi = max(float(highs[i]) for i in range(i_b_peak, n))
     pad = (c_hi - c_lo) * 0.04
     _now_pin = str(ladder.get("now") or "").strip()
     if _c9_micro:
-        now_lab = "今＝C-7轉C-8（預估）"
-    elif _now_pin in ("C-7轉C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
+        now_lab = f"今＝{_c9_now_step_label()}（預估）"
+    elif _now_pin in ("C-7轉C-8", "C-7走完→C-8", "C-8", "C-7", "C-9") or "9波擴延" in str(
         ladder.get("chain") or ""
     ):
-        now_lab = "今＝C-7轉C-8→C-9（預估）"
+        now_lab = f"今＝{_c9_now_step_label()}→C-9（預估）"
     else:
         now_lab = f"今＝{_now_pin or 'C進行中'}（預估）"
-    # 大B末日期用右欄／B釘；近B(10/14)不釘名（非峰、非縮圖B）
-    # B＋①～⑤ 全釘（與右縮圖一一對）；金圈＝浪級此刻；9波題旨末日改釘 C-7轉C-8
+    # 非 9 波：B＋①～⑤ 全釘（與右縮圖一一對）
     _flash_side = {"B": "left", "①": "left", "②": "right", "③": "left", "④": "right", "⑤": "left"}
     _flash_tip = {"B": "high", "①": "low", "②": "high", "③": "low", "④": "high", "⑤": "mid"}
-    for _fi, _fy, _flab in flash_pivots:
-        if _flab == "B":
-            _name = f"B {_px(_fy)}"
-        elif _flab == "④" and c_sub.get("ok") and not _c9_micro:
-            _name = f"④＝c4 {_px(_fy)}"
-        elif _flab == "⑤":
-            _name = (
-                f"C-7轉C-8 {_px(_fy)}"
-                if _c9_micro
-                else f"⑤今 {_px(_fy)}"
+    if not _c9_micro:
+        for _fi, _fy, _flab in flash_pivots:
+            if _flab == "B":
+                _name = f"B {_px(_fy)}"
+            elif _flab == "④" and c_sub.get("ok"):
+                _name = f"④＝c4 {_px(_fy)}"
+            elif _flab == "⑤":
+                _name = f"⑤今 {_px(_fy)}"
+            else:
+                _name = f"{_flab} {_px(_fy)}"
+            _pin_pivot_name(
+                ax,
+                int(_fi),
+                float(_fy),
+                _name,
+                "#ffd54f" if _flab == "④" and flash_step == 4 else "#ffab40",
+                _fp,
+                side=_flash_side.get(_flab, "auto"),
+                tip=_flash_tip.get(_flab, "mid"),
+                n=n,
+                pad_x=0.35,
+                fontsize=10 if _flab == "B" else 9,
             )
-        else:
-            if _c9_micro and _flab in ("①", "②", "③", "④"):
-                continue  # 9波題旨：輔線留點、字只留 B／今，免跟 C7／C9 搶讀
-            _name = f"{_flab} {_px(_fy)}"
+    else:
+        # 9波仍釘大B末價，方便對起點
         _pin_pivot_name(
             ax,
-            int(_fi),
-            float(_fy),
-            _name,
-            "#ffd54f"
-            if (_flab == "⑤" and _c9_micro)
-            or (_flab == "④" and flash_step == 4 and not _c9_micro)
-            else "#ffab40",
+            int(i_b_peak),
+            float(y_b_peak),
+            f"B {_px(y_b_peak)}",
+            "#40c4ff",
             _fp,
-            side=_flash_side.get(_flab, "auto"),
-            tip=_flash_tip.get(_flab, "mid"),
+            side="left",
+            tip="high",
             n=n,
             pad_x=0.35,
-            fontsize=10 if _flab == "B" else 9,
+            fontsize=10,
         )
-    # 說明句：C 起確認（Y 用真價）；今層級字另釘，避免跟⑤價標疊
+    # 說明句：C 起確認（Y 用真價）；今層級字另釘（9波已在浪號路徑釘過就不重複）
     _pin_pivot_name(
         ax,
         i_c,
@@ -9811,19 +10539,20 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         pad_x=0.55,
         fontsize=9,
     )
-    _pin_pivot_name(
-        ax,
-        i_now,
-        float(closes[i_now]),
-        now_lab,
-        "#ffffff",
-        _fp,
-        side="right",
-        tip="mid",
-        n=n,
-        pad_x=0.55,
-        fontsize=9,
-    )
+    if not (_c9_micro and len(_c9_pivots_micro) >= 4):
+        _pin_pivot_name(
+            ax,
+            i_now,
+            float(closes[i_now]),
+            now_lab,
+            "#ffffff",
+            _fp,
+            side="right",
+            tip="mid",
+            n=n,
+            pad_x=0.55,
+            fontsize=9,
+        )
 
     # 另前提演化（薄荷虛線）：只有跟他約的不同才畫
     if need_alt:
@@ -9875,13 +10604,9 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         hierarchy = f"{hierarchy}\n此刻＝{now_vis}"
     # 9波擴延題旨：中排主句跟人話對齊，不准被舊 C3 柱讀蓋掉
     if deg_his in ("C-7", "C-8", "C-9") or "9波擴延" in hierarchy:
-        if "目前最有可能" not in hierarchy:
-            hierarchy = (
-                f"{hierarchy}\n"
-                "目前最有可能 C-7 轉 C-8，還有最後一小段下跌 C-9；"
-                "要跌就全部跌完"
-            )
-        geom_line = "日K小波①～⑤＝柱上細讀（輔）；口述主＝C-7轉C-8→C-9"
+        if "七走完" not in hierarchy and "目前最有可能" not in hierarchy:
+            hierarchy = f"{hierarchy}\n{_c9_oral_now_line()}"
+        geom_line = f"日K小波①～⑤＝柱上細讀（輔）；口述主＝{_c9_now_step_label()}→C-9"
     elif deg_his.startswith("C3-3-") and geom_show and geom_show != deg_his:
         geom_line = f"日K小波柱讀：{geom_show}（口述此刻＝{deg_his}）"
     else:
@@ -10091,9 +10816,10 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         c_sub_bit = f"｜細c4 {_px(c_sub['y_c4'])}／c5 {_px(c_sub['y_c5'])}（同遠／近）"
     _micro_now = str(ladder.get("now") or "").strip()
     _micro_title = (
-        "第3張（超近窗）：C-7轉C-8→C-9（9波擴延・預估）"
+        f"第3張（超近窗）：{_c9_now_step_label()}→C-9（9波擴延・預估）"
         if (
-            _micro_now in ("C-7轉C-8", "C-8", "C-7", "C-9")
+            _micro_now
+            in ("C-7轉C-8", "C-7走完→C-8", "C-8", "C-7", "C-9")
             or "9波擴延" in str(ladder.get("chain") or "")
         )
         else "第3張（超近窗）：C內細浪（對齊他60分・不取代ABC）"
@@ -10110,8 +10836,8 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     # 不准 [:40] 把「C3-3-4」裁成「C3-3」；尾碼必須完整
     _ol = str(ladder.get("one_line") or "他說現在：C進行中")
     _now = str(ladder.get("now") or "").strip()
-    if "9波擴延" in _ol or "C-7轉C-8" in _ol:
-        _ol = "現在：9波擴延・目前最有可能C-7轉C-8→還有C-9"
+    if "9波擴延" in _ol or "C-7轉C-8" in _ol or "C-7走完" in _ol:
+        _ol = f"現在：9波擴延・{_c9_oral_now_line()}"
     elif len(_ol) > 52 and _now and _ol.endswith(_now):
         _ol = f"他說現在：…→{_now}"
     elif len(_ol) > 52:
@@ -10136,7 +10862,7 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
     )
     foot_m = str(ladder.get("now_line") or (pack.get("thesis") or ""))
     if "C-7" in foot_m or "9波擴延" in foot_m:
-        foot_m = "目前最有可能C-7轉C-8，還有最後一小段下跌C-9；要跌就全部跌完"
+        foot_m = _c9_oral_now_line().replace(" ", "")
     else:
         foot_m = foot_m[:64]
     fig.text(
@@ -10158,7 +10884,11 @@ def _render_twii_super_near_dark(db_path: str, save_path: str, pack: Dict[str, A
         now_key=_eight_wave_now_key(pack),
         detail=True,
         c_flash=True,
-        flash_pivots=flash_pivots,
+        flash_pivots=(
+            _c9_pivots_micro
+            if (_c9_micro and len(_c9_pivots_micro) >= 4)
+            else flash_pivots
+        ),
         rect=(float(_pos.x0), float(_pos.y0), float(_pos.width), float(_pos.height)),
         title="九波擴延・C" if _c9_micro else "八浪・C閃",
         c9_ext=_c9_micro,

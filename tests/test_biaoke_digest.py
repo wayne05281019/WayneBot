@@ -1055,9 +1055,9 @@ def test_format_teach_brief_c9_extension_readable(monkeypatch):
 
     def _fake(_db):
         return {
-            "thesis": "大A→大B→大C｜9波擴延・C-7轉C-8→C-9（預估）",
+            "thesis": "大A→大B→大C｜9波擴延・C-7走完→C-8→C-9（預估）",
             "snippet": (
-                "大盤第二段下殺應該是走9波擴延，目前最有可能C-7轉 C-8，"
+                "大盤第二段下殺應該是走9波擴延，今天七走完、準備往八，"
                 "還有最後一小段下跌C-9要跌就全部跌完，低點約會落在35500~37300之間。"
             ),
             "wait_struct": "低點區35500~37300；C-9跌完＝這段下殺完；C走完≠新五波升",
@@ -1091,12 +1091,12 @@ def test_format_teach_brief_c9_extension_readable(monkeypatch):
     monkeypatch.setattr("biaoke_level_learn._build_live_pack", _fake)
     out = format_teach_brief("x.db")
     assert "9 波擴延" in out or "9波擴延" in out
-    assert "C-7" in out and "C-8" in out and "C-9" in out
+    assert "七走完" in out and "準備往八" in out and "C-9" in out
     assert "35500~37300" in out or "35500~37300" in out.replace(" ", "")
     assert "38000已破" in out
     assert "as_of" not in out
     one = format_wave_level_one_liner("x.db")
-    assert "C-7" in one and "C-8" in one
+    assert "七走完" in one or ("C-7" in one and "C-8" in one)
     assert "波浪位階" in one
 
 

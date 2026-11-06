@@ -678,10 +678,10 @@ def _plain_wave_now_phrase(now: str) -> str:
         return "大C下跌進行中"
     if n == "9波擴延":
         return "大C第二段下殺・9波擴延"
-    if n in ("C-7轉C-8", "C-8"):
-        return "9波擴延：C-7 轉 C-8（後面還有一小段 C-9）"
+    if n in ("C-7轉C-8", "C-7走完→C-8", "C-8"):
+        return "9波擴延：七走完、準備往八（後面還有一小段 C-9）"
     if n == "C-7":
-        return "9波擴延：C-7（接著轉 C-8，後面還有 C-9）"
+        return "9波擴延：C-7（接著準備往八，後面還有 C-9）"
     if n == "C-9":
         return "9波擴延最後一小段 C-9（跌完＝這段下殺完）"
     return n
@@ -718,10 +718,15 @@ def format_teach_brief(db_path: str = "") -> str:
     lines.append("<b>現在</b>")
     # 一條路＋目前落在哪；不准再叠「大A→大B→…→落在」兩段重複
     lines.append(html_escape("大盤：大A底（7/29）→ 大B反彈 → 大C下跌中。"))
-    if "9波擴延" in thesis or "C-7轉C-8" in thesis:
+    if (
+        "9波擴延" in thesis
+        or "C-7轉C-8" in thesis
+        or "C-7走完" in thesis
+        or "準備往八" in thesis
+    ):
         lines.append(
             html_escape(
-                "第二段下殺走 9 波擴延：目前最有可能 C-7 轉 C-8，"
+                "第二段下殺走 9 波擴延：今天七走完、準備往八；"
                 "後面還有最後一小段 C-9；C-9 跌完＝這段下殺完。"
             )
         )
@@ -752,8 +757,8 @@ def format_teach_brief(db_path: str = "") -> str:
                 one_w = "中繼結束後，多半續走原來的下跌方向"
             elif re.search(r"低點區\s*35500", one_w):
                 one_w = "低點約會落在 35500~37300；C-9 跌完＝這段下殺完"
-            elif re.search(r"C-7轉C-8→C-9", one_w):
-                one_w = "C-7 轉 C-8，後面還有 C-9；跌完＝這段下殺完"
+            elif re.search(r"C-7(?:轉|走完).{0,8}C-8→C-9|C-7走完→C-8→C-9", one_w):
+                one_w = "七走完、準備往八，後面還有 C-9；跌完＝這段下殺完"
             struct_bits.append(f"· 下一步：{one_w}")
     if struct_bits:
         lines.append("")
